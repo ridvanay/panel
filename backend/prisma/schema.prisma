@@ -262,6 +262,16 @@ model PageView {
   @@map("page_views")
 }
 
+// Tek satırlık (singleton) global site ayarları — id her zaman "singleton" sabiti.
+model SiteSettings {
+  id        String   @id @default("singleton")
+  siteName  String   @default("Site")
+  logoUrl   String?
+  updatedAt DateTime @updatedAt
+
+  @@map("site_settings")
+}
+
 model Media {
   id        String   @id @default(uuid())
   seq       Int      @unique @default(autoincrement())

@@ -20,6 +20,7 @@ import { adminPagesRoutes, publicPagesRoutes } from "./modules/pages/pages.route
 import { adminBlogCategoriesRoutes, adminBlogPostsRoutes, publicBlogRoutes } from "./modules/blog/blog.routes";
 import { adminMediaRoutes } from "./modules/media/media.routes";
 import { adminStatsRoutes } from "./modules/stats/stats.routes";
+import { adminSettingsRoutes, publicSettingsRoutes } from "./modules/settings/settings.routes";
 
 export function buildApp() {
   const app = Fastify({
@@ -58,6 +59,8 @@ export function buildApp() {
       api.register(adminBlogCategoriesRoutes, { prefix: "/admin/blog/categories" });
       api.register(adminMediaRoutes, { prefix: "/admin/media" });
       api.register(adminStatsRoutes, { prefix: "/admin/stats" });
+      api.register(publicSettingsRoutes, { prefix: "/settings" });
+      api.register(adminSettingsRoutes, { prefix: "/admin/settings" });
       // Kendi content-type parser'ını (raw body) kaydeder — kendi encapsulation
       // context'inde kaldığı için diğer /api/v1 uçlarının JSON parse'ını etkilemez.
       api.register(stripeWebhookRoutes, { prefix: "/webhooks/stripe" });

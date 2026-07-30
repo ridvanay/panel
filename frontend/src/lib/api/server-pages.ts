@@ -12,3 +12,15 @@ export async function fetchPageBySlugServer(slug: string): Promise<SitePage | nu
     return null;
   }
 }
+
+/** Site nav'ı için — yayınlanmış tüm sayfaların hafif listesi. */
+export async function fetchPublishedPagesServer(): Promise<SitePage[]> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/pages`, { next: { revalidate: 60 } });
+    if (!res.ok) return [];
+    const json = (await res.json()) as { data: SitePage[] };
+    return json.data;
+  } catch {
+    return [];
+  }
+}

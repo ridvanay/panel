@@ -110,6 +110,16 @@ export async function adminPagesRoutes(app: FastifyInstance) {
 export async function publicPagesRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
 
+  // Site nav'ı için: yayınlanmış tüm sayfaların hafif listesi.
+  server.get("/", { schema: { response: { 200: ApiSuccessSchema(z.array(PageSchema)) } } }, async (_request, reply) => {
+    const rows = await app.prisma.page.findMany({
+      where: { status: "PUBLISHED" },
+      orderBy: { seq: "asc" },
+      take: 100,
+    });
+    return reply.send(ok(rows.map(toPageDto)));
+  });
+
   server.get(
     "/:slug",
     { schema: { params: PageSlugParamSchema, response: { 200: ApiSuccessSchema(PageSchema) } } },

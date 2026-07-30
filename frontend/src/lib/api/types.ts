@@ -246,6 +246,16 @@ export interface Media {
   createdAt: string;
 }
 
+export interface SiteSettings {
+  siteName: string;
+  logoUrl: string | null;
+}
+
+export interface UpdateSiteSettingsRequest {
+  siteName?: string;
+  logoUrl?: string | null;
+}
+
 export interface UpdateBlogPostRequest {
   title?: string;
   slug?: string;

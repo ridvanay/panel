@@ -126,6 +126,12 @@ export const MediaSchema = z.object({
 });
 export type MediaDto = z.infer<typeof MediaSchema>;
 
+export const SiteSettingsSchema = z.object({
+  siteName: z.string(),
+  logoUrl: z.string().nullable(),
+});
+export type SiteSettingsDto = z.infer<typeof SiteSettingsSchema>;
+
 export const AuthTokensSchema = z.object({
   accessToken: z.string(),
   accessTokenExpiresAt: z.string(),

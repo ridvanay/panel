@@ -1,4 +1,4 @@
-import type { User, Organization, Membership, Invitation, Plan, Subscription, Page, BlogCategory, BlogPost, Media } from "@prisma/client";
+import type { User, Organization, Membership, Invitation, Plan, Subscription, Page, BlogCategory, BlogPost, Media, SiteSettings } from "@prisma/client";
 import type {
   UserDto,
   OrganizationDto,
@@ -10,6 +10,7 @@ import type {
   BlogCategoryDto,
   BlogPostDto,
   MediaDto,
+  SiteSettingsDto,
 } from "../schemas/entities";
 import { env } from "../config/env";
 
@@ -126,6 +127,13 @@ export function toMediaDto(media: Media): MediaDto {
     mimeType: media.mimeType,
     sizeBytes: media.sizeBytes,
     createdAt: media.createdAt.toISOString(),
+  };
+}
+
+export function toSiteSettingsDto(settings: SiteSettings): SiteSettingsDto {
+  return {
+    siteName: settings.siteName,
+    logoUrl: settings.logoUrl,
   };
 }
 
