@@ -1,14 +1,17 @@
 import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { authenticate } from "../../middleware/authenticate";
+import { requireSiteRole } from "../../middleware/site-rbac";
 import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema } from "../../schemas/common";
 import { PageSchema, SiteSettingsSchema } from "../../schemas/entities";
 import { toPageDto, toSiteSettingsDto } from "../../mappers";
-import { UpdateSiteSettingsRequestSchema } from "./settings.schemas";
+import { logAudit } from "../../lib/audit";
+import { PERMISSIONS_MATRIX } from "../../lib/permissions-matrix";
+import { PermissionsMatrixDto, PermissionsMatrixSchema, UpdateSiteSettingsRequestSchema } from "./settings.schemas";
 
-const SETTINGS_ID = "singleton";
-const DEFAULTS = { siteName: "Site", logoUrl: null as string | null, homePageId: null as string | null };
+export const SETTINGS_ID = "singleton";
+export const DEFAULTS = { siteName: "Site", logoUrl: null as string | null, homePageId: null as string | null };
 
 async function readSettings(app: FastifyInstance) {
   const row = await app.prisma.siteSettings.findUnique({ where: { id: SETTINGS_ID } });
@@ -45,14 +48,38 @@ export async function adminSettingsRoutes(app: FastifyInstance) {
 
   server.patch(
     "/",
-    { schema: { body: UpdateSiteSettingsRequestSchema, response: { 200: ApiSuccessSchema(SiteSettingsSchema) } } },
+    {
+      preHandler: requireSiteRole("ADMIN"),
+      schema: { body: UpdateSiteSettingsRequestSchema, response: { 200: ApiSuccessSchema(SiteSettingsSchema) } },
+    },
     async (request, reply) => {
       const settings = await app.prisma.siteSettings.upsert({
         where: { id: SETTINGS_ID },
         create: { id: SETTINGS_ID, ...DEFAULTS, ...request.body },
         update: request.body,
       });
+
+      await logAudit(app, {
+        actorId: request.user!.id,
+        actorEmail: request.user!.email,
+        action: "settings.update",
+        targetType: "SiteSettings",
+        targetId: "singleton",
+        metadata: { changed: Object.keys(request.body) },
+        ipAddress: request.ip,
+      });
+
       return reply.send(ok(toSiteSettingsDto(settings)));
+    }
+  );
+
+  // `/admin/settings/permissions` — statik yetki matrisi, yalnızca ADMIN görebilir
+  // (frontend'in "Yetkiler" ekranında göstermesi için).
+  server.get(
+    "/permissions",
+    { preHandler: requireSiteRole("ADMIN"), schema: { response: { 200: ApiSuccessSchema(PermissionsMatrixSchema) } } },
+    async (_request, reply) => {
+      return reply.send(ok(PERMISSIONS_MATRIX as unknown as PermissionsMatrixDto));
     }
   );
 }

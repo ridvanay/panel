@@ -1,5 +1,5 @@
 import "fastify";
-import type { PrismaClient, MembershipRole } from "@prisma/client";
+import type { PrismaClient, MembershipRole, SiteRole } from "@prisma/client";
 
 declare module "fastify" {
   interface FastifyInstance {
@@ -7,7 +7,7 @@ declare module "fastify" {
   }
 
   interface FastifyRequest {
-    user?: { id: string; email: string };
+    user?: { id: string; email: string; role: SiteRole };
     membership?: { role: MembershipRole; organizationId: string };
   }
 }

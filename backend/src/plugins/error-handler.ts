@@ -57,6 +57,12 @@ export default fp(async function errorHandlerPlugin(app: FastifyInstance) {
       return sendError(reply, 409, "CONFLICT", "Bu kayıt zaten mevcut.");
     }
 
+    // Serializable transaction write-conflict (bkz. admin-users.routes.ts::runSerializable) —
+    // birkaç retry'dan sonra hâlâ çakışıyorsa istemciye 500 yerine anlamlı bir 409 dönülür.
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") {
+      return sendError(reply, 409, "CONFLICT", "İşlem başka bir eşzamanlı değişiklikle çakıştı. Lütfen tekrar deneyin.");
+    }
+
     if (fastifyErr.statusCode === 429) {
       return sendError(reply, 429, "RATE_LIMITED", "Çok fazla istek. Lütfen birazdan tekrar deneyin.");
     }

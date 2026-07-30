@@ -11,15 +11,43 @@ export const InvitationStatusSchema = z.enum(["PENDING", "ACCEPTED", "EXPIRED", 
 export const SubscriptionStatusSchema = z.enum(["TRIALING", "ACTIVE", "PAST_DUE", "CANCELED", "INCOMPLETE"]);
 export const PageStatusSchema = z.enum(["DRAFT", "PUBLISHED"]);
 
+// `/admin/*` CMS uçları için org'dan bağımsız site-geneli rol/durum (bkz. middleware/site-rbac.ts).
+// MembershipRoleSchema (organizasyon bazlı) ile KARIŞTIRILMAMALI.
+export const SiteRoleSchema = z.enum(["ADMIN", "EDITOR", "VIEWER"]);
+export const SiteUserStatusSchema = z.enum(["ACTIVE", "SUSPENDED"]);
+export const AuditStatusSchema = z.enum(["SUCCESS", "FAILURE", "FORBIDDEN"]);
+
 export const UserSchema = z.object({
   id: z.string().uuid(),
   email: z.string().email(),
   name: z.string(),
   avatarUrl: z.string().nullable(),
   emailVerifiedAt: z.string().nullable(),
+  role: SiteRoleSchema,
   createdAt: z.string(),
 });
 export type UserDto = z.infer<typeof UserSchema>;
+
+/** `/admin/users` uçlarında dönen genişletilmiş kullanıcı DTO'su — yalnızca ADMIN görebilir. */
+export const AdminUserSchema = UserSchema.extend({
+  status: SiteUserStatusSchema,
+  lastLoginAt: z.string().nullable(),
+});
+export type AdminUserDto = z.infer<typeof AdminUserSchema>;
+
+export const AuditLogSchema = z.object({
+  id: z.string().uuid(),
+  actorId: z.string().uuid().nullable(),
+  actorEmail: z.string().nullable(),
+  action: z.string(),
+  status: AuditStatusSchema,
+  targetType: z.string().nullable(),
+  targetId: z.string().nullable(),
+  metadata: z.record(z.unknown()).nullable(),
+  ipAddress: z.string().nullable(),
+  createdAt: z.string(),
+});
+export type AuditLogDto = z.infer<typeof AuditLogSchema>;
 
 export const OrganizationSchema = z.object({
   id: z.string().uuid(),
@@ -132,6 +160,50 @@ export const SiteSettingsSchema = z.object({
   homePageId: z.string().uuid().nullable(),
 });
 export type SiteSettingsDto = z.infer<typeof SiteSettingsSchema>;
+
+export const SocialPlatformSchema = z.enum(["TWITTER", "GITHUB", "LINKEDIN", "INSTAGRAM", "FACEBOOK", "YOUTUBE", "OTHER"]);
+
+export const NavigationItemSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  href: z.string(),
+  order: z.number(),
+});
+export type NavigationItemDto = z.infer<typeof NavigationItemSchema>;
+
+export const SocialLinkSchema = z.object({
+  id: z.string(),
+  platform: SocialPlatformSchema,
+  url: z.string(),
+  order: z.number(),
+});
+export type SocialLinkDto = z.infer<typeof SocialLinkSchema>;
+
+export const FooterLinkSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  href: z.string(),
+  order: z.number(),
+});
+export type FooterLinkDto = z.infer<typeof FooterLinkSchema>;
+
+export const FooterColumnSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  order: z.number(),
+  links: z.array(FooterLinkSchema),
+});
+export type FooterColumnDto = z.infer<typeof FooterColumnSchema>;
+
+export const NavigationConfigSchema = z.object({
+  headerCtaLabel: z.string().nullable(),
+  headerCtaHref: z.string().nullable(),
+  footerCopyrightText: z.string().nullable(),
+  navigationItems: z.array(NavigationItemSchema),
+  socialLinks: z.array(SocialLinkSchema),
+  footerColumns: z.array(FooterColumnSchema),
+});
+export type NavigationConfigDto = z.infer<typeof NavigationConfigSchema>;
 
 export const AuthTokensSchema = z.object({
   accessToken: z.string(),

@@ -104,6 +104,11 @@
 }
 
 @media (prefers-color-scheme: dark) {
+  /*
+   * Bu blok, admin paneli DIŞINDAKİ genel siteyi (public sayfalar) yalnızca OS/tarayıcı
+   * `prefers-color-scheme` tercihine göre kısmen koyulaştırır (next-themes'ten bağımsız,
+   * kasıtlı olarak böyle kalıyor — genel sitede henüz bir tema anahtarı yok).
+   */
   :root {
     --surface: #12121a;
     --surface-muted: #1a1a24;
@@ -115,6 +120,85 @@
     --viz-series-1: #3987e5;
     --viz-series-2: #d95926;
   }
+}
+
+/*
+ * Admin paneli artık next-themes ile GERÇEK bir Açık/Koyu/Sistem tema anahtarına sahip:
+ * next-themes seçilen/çözümlenen tema "dark" olduğunda `<html>`'e `class="dark"` ekler,
+ * "light" olduğunda kaldırır (attribute="class").
+ *
+ * Bu blok ÖNCEDEN `@media (prefers-color-scheme: dark)` içindeydi, yani SADECE OS/tarayıcı
+ * tercihine bakıyordu — next-themes'in yönettiği `.dark` class'ından tamamen bağımsızdı.
+ * Bu iki mekanizma çakışıyordu: kullanıcı admin panelinden explicit olarak "Açık" temayı
+ * seçse bile OS koyu modundaysa panel yine de koyu görünüyordu (ve tam tersi: "Koyu" seçilse
+ * bile OS açıksa panelin --surface/--primary gibi custom token'ları hâlâ açık kalıyordu —
+ * bu da Topbar/main gibi `bg-surface` kullanan alanlarda düşük kontrast/görünürlük
+ * regresyonuna yol açardı).
+ *
+ * Çözüm: `.admin-shell` artık OS tercihi yerine next-themes'in yönettiği `.dark` class'ına
+ * (descendant selector `.dark .admin-shell`) bağlı. Kullanıcı "Koyu" seçtiğinde veya "Sistem"
+ * seçilip OS tercihi koyu olduğunda next-themes zaten `.dark`'ı ekliyor, bu blok da devreye
+ * giriyor; "Açık" seçildiğinde (OS ne olursa olsun) `.dark` kaldırılıyor ve `.admin-shell`
+ * yukarıdaki varsayılan (açık) `:root` shadcn token'larına düşüyor. Böylece admin panelinde
+ * hangi mod aktifse (light/dark/system) her zaman doğru kontrast sağlanıyor. Ayrıca burada
+ * --surface/--surface-muted/--border/--primary/--viz-series-* de dahil ediliyor (yukarıdaki
+ * OS-tabanlı blokta olduğu gibi) ki Topbar/main gibi bu token'ları kullanan admin yüzeyleri de
+ * gerçek tema seçimini doğru yansıtsın.
+ */
+.dark .admin-shell {
+  --surface: #12121a;
+  --surface-muted: #1a1a24;
+  --border: #262633;
+
+  --primary: var(--accent-500, #6366f1);
+  --primary-hover: var(--accent-400, #818cf8);
+
+  --viz-series-1: var(--accent-500, #6366f1);
+  --viz-series-2: #d95926;
+
+  --background: #0a0a10;
+  --foreground: #f2f2f7;
+  --card: #12121a;
+  --card-foreground: #f2f2f7;
+  --popover: #16161f;
+  --popover-foreground: #f2f2f7;
+  --secondary: #1e1e29;
+  --secondary-foreground: #f2f2f7;
+  --muted: #1a1a24;
+  --muted-foreground: #9d9db2;
+  --accent: #23232f;
+  --accent-foreground: #f2f2f7;
+  --destructive: #f87171;
+  --input: #2a2a38;
+  --ring: var(--accent-500, #6366f1);
+
+  --danger: #f87171;
+  --danger-foreground: #1a0505;
+  --success: #4ade80;
+
+  --sidebar: #0a0a12;
+  --sidebar-foreground: #f5f5ff;
+  --sidebar-primary: var(--accent-400, #818cf8);
+  --sidebar-primary-foreground: #0a0a12;
+  --sidebar-accent: rgba(255, 255, 255, 0.08);
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: rgba(255, 255, 255, 0.1);
+  --sidebar-ring: var(--accent-400, #818cf8);
+}
+
+/*
+ * Dinamik "Vurgu Rengi" (Accent Color) sistemi: `AccentProvider` (bkz.
+ * src/context/accent-context.tsx) seçilen paletin `--accent-300..700` ve
+ * `--accent-rgb-400`/`--accent-rgb-500` değişkenlerini `<html>` üzerine runtime'da
+ * `element.style.setProperty(...)` ile yazar. Bu blok, admin panelinin `--primary`/`--ring`/
+ * `--viz-series-1` gibi token'larını o accent değişkenlerine bağlar (var(--accent-*, fallback)
+ * ile — Provider henüz mount olmadan önce de güvenli bir varsayılana düşer).
+ */
+.admin-shell {
+  --primary: var(--accent-600, #4f46e5);
+  --primary-hover: var(--accent-700, #4338ca);
+  --ring: var(--accent-600, #4f46e5);
+  --viz-series-1: var(--accent-600, #4f46e5);
 }
 
 /* Klavye ile gezinen kullanıcılar için tutarlı, görünür odak halkası. */

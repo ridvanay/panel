@@ -3,6 +3,7 @@
 import { useEffect, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/context/auth-context";
+import { AccentProvider } from "@/context/accent-context";
 import { AdminSidebar } from "@/components/admin/sidebar";
 import { AdminTopbar } from "@/components/admin/topbar";
 import { CommandPalette } from "@/components/admin/command-palette";
@@ -29,13 +30,15 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   }
 
   return (
-    <SidebarProvider>
-      <AdminSidebar />
-      <SidebarInset>
-        <AdminTopbar />
-        <main className="flex-1 bg-surface-muted p-6">{children}</main>
-      </SidebarInset>
-      <CommandPalette />
-    </SidebarProvider>
+    <AccentProvider>
+      <SidebarProvider className="admin-shell">
+        <AdminSidebar />
+        <SidebarInset>
+          <AdminTopbar />
+          <main className="flex-1 bg-surface-muted p-6">{children}</main>
+        </SidebarInset>
+        <CommandPalette />
+      </SidebarProvider>
+    </AccentProvider>
   );
 }

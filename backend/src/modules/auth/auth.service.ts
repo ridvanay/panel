@@ -3,7 +3,7 @@ import type { User } from "@prisma/client";
 import { hashPassword, verifyPassword } from "../../lib/password";
 import { generateOpaqueToken, hashToken } from "../../lib/tokens";
 import { signAccessToken } from "../../lib/jwt";
-import { ConflictError, UnauthorizedError, NotFoundError } from "../../lib/errors";
+import { ConflictError, UnauthorizedError, NotFoundError, ForbiddenError } from "../../lib/errors";
 import { toUserDto } from "../../mappers";
 import { env } from "../../config/env";
 
@@ -51,9 +51,13 @@ export async function register(
     throw new ConflictError("Bu e-posta adresi zaten kayıtlı.");
   }
 
+  // Sıfırdan kurulan bir ortamda ilk kayıt olan kullanıcı otomatik ADMIN olur —
+  // aksi halde `/admin/*` uçlarına erişebilecek hiç kimse olmaz (kilitlenme).
+  const userCount = await app.prisma.user.count();
+
   const passwordHash = await hashPassword(input.password);
   const user = await app.prisma.user.create({
-    data: { email, passwordHash, name: input.name },
+    data: { email, passwordHash, name: input.name, role: userCount === 0 ? "ADMIN" : undefined },
   });
 
   const tokens = await issueTokenPair(app, user, meta);
@@ -66,6 +70,18 @@ export async function login(app: FastifyInstance, input: { email: string; passwo
   if (!user || !(await verifyPassword(user.passwordHash, input.password))) {
     throw new UnauthorizedError("E-posta veya şifre hatalı.");
   }
+
+  // `authenticate()`/`refresh()` zaten SUSPENDED kullanıcıları reddediyor (bkz. middleware/authenticate.ts),
+  // yani askıya alınmış biri buradan geçse bile hiçbir korumalı uca erişemez. Ama burada erken
+  // reddetmezsek: (a) kullanıcıya kafa karıştırıcı şekilde "giriş başarılı, tokenlar alındı" izlenimi
+  // verilip bir sonraki istekte 403 ile karşılaşılır, (b) kullanılamayacak bir refresh token DB'ye
+  // yazılır, (c) audit log'da askıya alınmış bir hesap için yanıltıcı bir "auth.login SUCCESS" kaydı
+  // oluşur. Bu yüzden aynı mesajla (authenticate.ts ile tutarlı) burada da erken reddediyoruz.
+  if (user.status === "SUSPENDED") {
+    throw new ForbiddenError("Hesabınız askıya alınmış.");
+  }
+
+  await app.prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
 
   const tokens = await issueTokenPair(app, user, meta);
   return { user, tokens };
@@ -100,6 +116,9 @@ export async function refresh(app: FastifyInstance, rawRefreshToken: string | un
   const user = await app.prisma.user.findUnique({ where: { id: existing.userId } });
   if (!user) {
     throw new UnauthorizedError();
+  }
+  if (user.status === "SUSPENDED") {
+    throw new ForbiddenError("Hesabınız askıya alınmış.");
   }
 
   const { token: accessToken, expiresAt: accessTokenExpiresAt } = signAccessToken({
@@ -138,19 +157,29 @@ export async function logout(app: FastifyInstance, rawRefreshToken: string | und
   });
 }
 
+/**
+ * Şifre sıfırlama token'ı üretir ve DB'ye (hash'lenmiş) kaydeder. `forgotPassword`
+ * (kullanıcı kendi başlatır) ve admin-users modülündeki yeni kullanıcı oluşturma akışı
+ * (admin başlatır, kullanıcı ilk şifresini böyle belirler) bu fonksiyonu paylaşır.
+ */
+export async function createPasswordResetToken(app: FastifyInstance, userId: string): Promise<string> {
+  const rawToken = generateOpaqueToken();
+  await app.prisma.passwordResetToken.create({
+    data: {
+      userId,
+      tokenHash: hashToken(rawToken),
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+    },
+  });
+  return rawToken;
+}
+
 export async function forgotPassword(app: FastifyInstance, email: string) {
   const user = await app.prisma.user.findUnique({ where: { email: email.toLowerCase() } });
   // Kullanıcı yoksa sessizce çık — e-posta enumeration'ı önlemek için route her zaman 202 döner.
   if (!user) return;
 
-  const rawToken = generateOpaqueToken();
-  await app.prisma.passwordResetToken.create({
-    data: {
-      userId: user.id,
-      tokenHash: hashToken(rawToken),
-      expiresAt: new Date(Date.now() + 60 * 60 * 1000),
-    },
-  });
+  const rawToken = await createPasswordResetToken(app, user.id);
 
   // TODO(email-provider): Resend/SES entegre edilene kadar bağlantı sadece loglanır.
   app.log.info(

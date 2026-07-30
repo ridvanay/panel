@@ -1,0 +1,1120 @@
+openapi: 3.0.3
+info:
+  title: SaaS Platform API
+  version: "1.0"
+  description: >
+    Frontend (Next.js) ve backend (Node.js/Fastify) ajanlarının uyacağı API
+    kontratı. Kaynak doğruluk: bu dosya + ../shared-types.ts + ARCHITECTURE.md.
+servers:
+  - url: https://api.example.com/api/v1
+    description: Production
+  - url: http://localhost:4000/api/v1
+    description: Local
+
+tags:
+  - name: Auth
+  - name: Users
+  - name: Organizations
+  - name: Members
+  - name: Invitations
+  - name: Plans
+  - name: Billing
+  - name: Webhooks
+  - name: Health
+  - name: AdminUsers
+    description: Org'dan bağımsız site-geneli kullanıcı/rol yönetimi (`/admin/users`) — yalnızca SiteRole=ADMIN.
+  - name: Logs
+    description: Audit log (`/admin/logs`) — yalnızca SiteRole=ADMIN.
+  - name: Navigation
+    description: >
+      Site header/nav/footer yapılandırması (`/navigation`, `/admin/navigation`).
+      `/navigation` public'tir (site header/nav/footer bunu okur); `/admin/navigation`
+      yönetim ekranı içindir, PUT yalnızca SiteRole=ADMIN.
+
+security:
+  - bearerAuth: []
+
+paths:
+  /healthz:
+    get:
+      tags: [Health]
+      security: []
+      summary: Servis sağlık kontrolü
+      responses:
+        "200":
+          description: Servis ayakta
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+
+  /auth/register:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Yeni kullanıcı kaydı
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RegisterRequest" }
+      responses:
+        "201":
+          description: Kayıt başarılı, oturum açıldı
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/AuthResponse" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      security: []
+      summary: E-posta/şifre ile giriş
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoginRequest" }
+      responses:
+        "200":
+          description: Giriş başarılı
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/AuthResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Refresh cookie ile yeni access token al (rotasyonlu)
+      security: []
+      description: Refresh token httpOnly cookie üzerinden okunur, body gerekmez.
+      responses:
+        "200":
+          description: Yeni access token
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/AuthTokens" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Oturumu kapat (refresh token'ı iptal et)
+      responses:
+        "204": { description: Çıkış yapıldı }
+
+  /auth/forgot-password:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Şifre sıfırlama e-postası gönder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        "202": { description: İstek alındı (e-posta enumeration önlemek için her zaman 202) }
+
+  /auth/reset-password:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Şifreyi token ile sıfırla
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, newPassword]
+              properties:
+                token: { type: string }
+                newPassword: { type: string, minLength: 8 }
+      responses:
+        "204": { description: Şifre güncellendi }
+        "400": { $ref: "#/components/responses/ValidationError" }
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Mevcut oturumun kullanıcı ve üyelik bilgisi
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/AuthSession" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /users/me:
+    get:
+      tags: [Users]
+      summary: Profilimi getir
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/User" }
+    patch:
+      tags: [Users]
+      summary: Profilimi güncelle
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateUserRequest" }
+      responses:
+        "200":
+          description: Güncellendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/User" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /organizations:
+    get:
+      tags: [Organizations]
+      summary: Üyesi olduğum organizasyonları listele
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/Organization" }
+    post:
+      tags: [Organizations]
+      summary: Yeni organizasyon oluştur (oluşturan OWNER olur)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateOrganizationRequest" }
+      responses:
+        "201":
+          description: Oluşturuldu
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Organization" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /organizations/{orgId}:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+    get:
+      tags: [Organizations]
+      summary: Organizasyon detayı
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Organization" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [Organizations]
+      summary: Organizasyonu güncelle (ADMIN/OWNER)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateOrganizationRequest" }
+      responses:
+        "200":
+          description: Güncellendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Organization" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    delete:
+      tags: [Organizations]
+      summary: Organizasyonu sil (yalnızca OWNER)
+      responses:
+        "204": { description: Silindi }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /organizations/{orgId}/members:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+    get:
+      tags: [Members]
+      summary: Organizasyon üyelerini listele
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/Membership" }
+
+  /organizations/{orgId}/members/{userId}:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+      - name: userId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [Members]
+      summary: Üye rolünü değiştir (ADMIN/OWNER)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateMembershipRequest" }
+      responses:
+        "200":
+          description: Güncellendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Membership" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    delete:
+      tags: [Members]
+      summary: Üyeyi organizasyondan çıkar (ADMIN/OWNER)
+      responses:
+        "204": { description: Çıkarıldı }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /organizations/{orgId}/invitations:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+    get:
+      tags: [Invitations]
+      summary: Bekleyen davetleri listele (ADMIN/OWNER)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/Invitation" }
+    post:
+      tags: [Invitations]
+      summary: Yeni üye davet et (ADMIN/OWNER)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateInvitationRequest" }
+      responses:
+        "201":
+          description: Davet gönderildi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Invitation" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /invitations/{token}/accept:
+    post:
+      tags: [Invitations]
+      summary: Daveti kabul et (giriş yapmış kullanıcı)
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Kabul edildi, üyelik oluşturuldu
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Membership" }
+        "410": { description: Davet süresi dolmuş/iptal edilmiş }
+
+  /plans:
+    get:
+      tags: [Plans]
+      security: []
+      summary: Herkese açık plan listesi
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/Plan" }
+
+  /organizations/{orgId}/subscription:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+    get:
+      tags: [Billing]
+      summary: Organizasyonun abonelik durumu
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Subscription" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /organizations/{orgId}/subscription/checkout-session:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+    post:
+      tags: [Billing]
+      summary: Stripe Checkout oturumu oluştur (OWNER)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateCheckoutSessionRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/CheckoutSessionResponse" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /organizations/{orgId}/subscription/portal-session:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+    post:
+      tags: [Billing]
+      summary: Stripe Billing Portal oturumu oluştur (OWNER)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/BillingPortalResponse" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/users:
+    get:
+      tags: [AdminUsers]
+      summary: Site kullanıcılarını listele (yalnızca ADMIN)
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/AdminUser" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [AdminUsers]
+      summary: Yeni site kullanıcısı oluştur (yalnızca ADMIN)
+      description: >
+        Kullanılamaz rastgele bir şifreyle oluşturulur; kullanıcı gerçek şifresini
+        dönen `setPasswordUrl` üzerinden belirler (MVP/dev-only: e-posta sağlayıcısı
+        entegre edilene kadar bağlantı doğrudan response'ta döner).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateAdminUserRequest" }
+      responses:
+        "201":
+          description: Oluşturuldu
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/CreateAdminUserResponse" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/users/{userId}/role:
+    parameters:
+      - name: userId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [AdminUsers]
+      summary: Kullanıcının rolünü değiştir (yalnızca ADMIN)
+      description: >
+        Hedef kullanıcı sistemdeki tek aktif ADMIN ise ve yeni rol ADMIN değilse
+        409 CONFLICT döner ("en az bir yönetici kalmalı" kuralı).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateAdminUserRoleRequest" }
+      responses:
+        "200":
+          description: Güncellendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/AdminUser" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /admin/users/{userId}/status:
+    parameters:
+      - name: userId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [AdminUsers]
+      summary: Kullanıcının durumunu (ACTIVE/SUSPENDED) değiştir (yalnızca ADMIN)
+      description: >
+        Kendi hesabınızı askıya alamazsınız (her zaman 409). Hedef kullanıcı
+        sistemdeki tek aktif ADMIN ise ve yeni durum SUSPENDED ise de 409 döner.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateAdminUserStatusRequest" }
+      responses:
+        "200":
+          description: Güncellendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/AdminUser" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /admin/logs:
+    get:
+      tags: [Logs]
+      summary: Audit log kayıtlarını listele (yalnızca ADMIN)
+      description: >
+        SAPMA: diğer tüm sayfalanan listelerin aksine en yeni kayıt önce gelir
+        (`orderBy seq desc` + `seq < cursor`), diğer uçlarda `orderBy seq asc` + `seq > cursor`.
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: status
+          in: query
+          required: false
+          schema: { type: string, enum: [SUCCESS, FAILURE, FORBIDDEN] }
+        - name: action
+          in: query
+          required: false
+          description: Öneke göre filtreler (ör. "user." → user.create, user.role_change, ...).
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/AuditLog" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/settings/permissions:
+    get:
+      tags: [AdminUsers]
+      summary: Statik rol/modül/aksiyon yetki matrisini getir (yalnızca ADMIN)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/PermissionsMatrix" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /navigation:
+    get:
+      tags: [Navigation]
+      security: []
+      summary: Yayındaki navigasyon/header/footer yapılandırmasını getir (public)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/NavigationConfig" }
+
+  /admin/navigation:
+    get:
+      tags: [Navigation]
+      summary: Navigasyon/header/footer yapılandırmasını getir (yönetim ekranı)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/NavigationConfig" }
+    put:
+      tags: [Navigation]
+      summary: Navigasyon/header/footer yapılandırmasını değiştir (yalnızca ADMIN)
+      description: >
+        Tam değiştirme (replace) semantiği: `navigationItems`/`socialLinks`/`footerColumns`
+        gönderilen dizilerle DB'deki mevcut kayıtların tamamının yerini alır (delete-then-recreate,
+        tek transaction içinde).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateNavigationConfigRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/NavigationConfig" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /webhooks/stripe:
+    post:
+      tags: [Webhooks]
+      security: []
+      summary: Stripe webhook alıcı (imza `Stripe-Signature` header ile doğrulanır)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        "200": { description: İşlendi }
+        "400": { description: Geçersiz imza }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    OrgId:
+      name: orgId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      schema: { type: string }
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema: { type: integer, default: 20, maximum: 100 }
+
+  responses:
+    Unauthorized:
+      description: Kimlik doğrulama yok/geçersiz
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+    Forbidden:
+      description: Yetki yok
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+    NotFound:
+      description: Kaynak bulunamadı
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+    Conflict:
+      description: Çakışma (ör. e-posta zaten kayıtlı)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+    ValidationError:
+      description: Girdi doğrulama hatası
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+
+  schemas:
+    ApiSuccessEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data: {}
+        meta:
+          type: object
+          properties:
+            nextCursor: { type: string, nullable: true }
+
+    ApiErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum: [UNAUTHORIZED, FORBIDDEN, NOT_FOUND, VALIDATION_ERROR, CONFLICT, RATE_LIMITED, INTERNAL_ERROR]
+            message: { type: string }
+            details:
+              type: object
+              additionalProperties:
+                type: array
+                items: { type: string }
+
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        name: { type: string }
+        avatarUrl: { type: string, nullable: true }
+        emailVerifiedAt: { type: string, format: date-time, nullable: true }
+        role: { type: string, enum: [ADMIN, EDITOR, VIEWER] }
+        createdAt: { type: string, format: date-time }
+
+    AdminUser:
+      description: "`/admin/users` uçlarında dönen genişletilmiş kullanıcı DTO'su — yalnızca ADMIN görebilir."
+      allOf:
+        - $ref: "#/components/schemas/User"
+        - type: object
+          properties:
+            status: { type: string, enum: [ACTIVE, SUSPENDED] }
+            lastLoginAt: { type: string, format: date-time, nullable: true }
+
+    AuditLog:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        actorId: { type: string, format: uuid, nullable: true }
+        actorEmail: { type: string, nullable: true }
+        action: { type: string, example: "user.role_change" }
+        status: { type: string, enum: [SUCCESS, FAILURE, FORBIDDEN] }
+        targetType: { type: string, nullable: true }
+        targetId: { type: string, nullable: true }
+        metadata:
+          type: object
+          nullable: true
+          additionalProperties: true
+        ipAddress: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    CreateAdminUserRequest:
+      type: object
+      required: [name, email]
+      properties:
+        name: { type: string, minLength: 1 }
+        email: { type: string, format: email }
+        role: { type: string, enum: [ADMIN, EDITOR, VIEWER], default: EDITOR }
+
+    CreateAdminUserResponse:
+      type: object
+      properties:
+        user: { $ref: "#/components/schemas/AdminUser" }
+        setPasswordUrl: { type: string, format: uri }
+
+    UpdateAdminUserRoleRequest:
+      type: object
+      required: [role]
+      properties:
+        role: { type: string, enum: [ADMIN, EDITOR, VIEWER] }
+
+    UpdateAdminUserStatusRequest:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [ACTIVE, SUSPENDED] }
+
+    PermissionsMatrix:
+      type: object
+      properties:
+        roles:
+          type: array
+          items: { type: string, enum: [ADMIN, EDITOR, VIEWER] }
+        modules:
+          type: array
+          items:
+            type: object
+            properties:
+              module: { type: string }
+              label: { type: string }
+              actions:
+                type: object
+                additionalProperties:
+                  type: array
+                  items: { type: string, enum: [ADMIN, EDITOR, VIEWER] }
+
+    Organization:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+        ownerId: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+
+    Membership:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
+        role: { type: string, enum: [OWNER, ADMIN, MEMBER] }
+        status: { type: string, enum: [ACTIVE, INVITED, SUSPENDED] }
+        user:
+          type: object
+          properties:
+            id: { type: string, format: uuid }
+            name: { type: string }
+            email: { type: string, format: email }
+            avatarUrl: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    Invitation:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
+        email: { type: string, format: email }
+        role: { type: string, enum: [ADMIN, MEMBER] }
+        status: { type: string, enum: [PENDING, ACCEPTED, EXPIRED, REVOKED] }
+        expiresAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+
+    Plan:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        priceMonthlyCents: { type: integer }
+        priceYearlyCents: { type: integer }
+        currency: { type: string, example: TRY }
+        limits:
+          type: object
+          additionalProperties: { type: integer }
+
+    Subscription:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
+        plan: { $ref: "#/components/schemas/Plan" }
+        status: { type: string, enum: [TRIALING, ACTIVE, PAST_DUE, CANCELED, INCOMPLETE] }
+        currentPeriodEnd: { type: string, format: date-time }
+        cancelAtPeriodEnd: { type: boolean }
+
+    AuthTokens:
+      type: object
+      properties:
+        accessToken: { type: string }
+        accessTokenExpiresAt: { type: string, format: date-time }
+
+    AuthSession:
+      type: object
+      properties:
+        user: { $ref: "#/components/schemas/User" }
+        memberships:
+          type: array
+          items:
+            type: object
+            properties:
+              organizationId: { type: string, format: uuid }
+              role: { type: string, enum: [OWNER, ADMIN, MEMBER] }
+
+    AuthResponse:
+      type: object
+      properties:
+        user: { $ref: "#/components/schemas/User" }
+        tokens: { $ref: "#/components/schemas/AuthTokens" }
+
+    RegisterRequest:
+      type: object
+      required: [email, password, name]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 8 }
+        name: { type: string, minLength: 1 }
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string }
+
+    UpdateUserRequest:
+      type: object
+      properties:
+        name: { type: string }
+        avatarUrl: { type: string }
+
+    CreateOrganizationRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1 }
+
+    UpdateOrganizationRequest:
+      type: object
+      properties:
+        name: { type: string, minLength: 1 }
+
+    CreateInvitationRequest:
+      type: object
+      required: [email, role]
+      properties:
+        email: { type: string, format: email }
+        role: { type: string, enum: [ADMIN, MEMBER] }
+
+    UpdateMembershipRequest:
+      type: object
+      required: [role]
+      properties:
+        role: { type: string, enum: [ADMIN, MEMBER] }
+
+    CreateCheckoutSessionRequest:
+      type: object
+      required: [planId, billingCycle, successUrl, cancelUrl]
+      properties:
+        planId: { type: string, format: uuid }
+        billingCycle: { type: string, enum: [monthly, yearly] }
+        successUrl: { type: string, format: uri }
+        cancelUrl: { type: string, format: uri }
+
+    CheckoutSessionResponse:
+      type: object
+      properties:
+        checkoutUrl: { type: string, format: uri }
+
+    BillingPortalResponse:
+      type: object
+      properties:
+        portalUrl: { type: string, format: uri }
+
+    NavigationItem:
+      type: object
+      properties:
+        id: { type: string }
+        label: { type: string }
+        href: { type: string }
+        order: { type: integer }
+
+    SocialLink:
+      type: object
+      properties:
+        id: { type: string }
+        platform: { type: string, enum: [TWITTER, GITHUB, LINKEDIN, INSTAGRAM, FACEBOOK, YOUTUBE, OTHER] }
+        url: { type: string }
+        order: { type: integer }
+
+    FooterLink:
+      type: object
+      properties:
+        id: { type: string }
+        label: { type: string }
+        href: { type: string }
+        order: { type: integer }
+
+    FooterColumn:
+      type: object
+      properties:
+        id: { type: string }
+        title: { type: string }
+        order: { type: integer }
+        links:
+          type: array
+          items: { $ref: "#/components/schemas/FooterLink" }
+
+    NavigationConfig:
+      type: object
+      properties:
+        headerCtaLabel: { type: string, nullable: true }
+        headerCtaHref: { type: string, nullable: true }
+        footerCopyrightText: { type: string, nullable: true }
+        navigationItems:
+          type: array
+          items: { $ref: "#/components/schemas/NavigationItem" }
+        socialLinks:
+          type: array
+          items: { $ref: "#/components/schemas/SocialLink" }
+        footerColumns:
+          type: array
+          items: { $ref: "#/components/schemas/FooterColumn" }
+
+    UpdateNavigationConfigRequest:
+      description: >
+        Tam değiştirme (replace) semantiği — `navigationItems`/`socialLinks`/`footerColumns`
+        dizileri gönderilen haliyle mevcut kayıtların tamamının yerini alır; `id` alanları
+        istemciden gönderilmez (sunucu yeniden üretir).
+      type: object
+      required: [navigationItems, socialLinks, footerColumns]
+      properties:
+        headerCtaLabel: { type: string, maxLength: 60, nullable: true }
+        headerCtaHref:
+          type: string
+          maxLength: 500
+          nullable: true
+          description: "yalnızca http(s)://, / veya # ile başlayan yollar kabul edilir"
+        footerCopyrightText: { type: string, maxLength: 200, nullable: true }
+        navigationItems:
+          type: array
+          maxItems: 20
+          items:
+            type: object
+            required: [label, href, order]
+            properties:
+              label: { type: string, minLength: 1, maxLength: 80 }
+              href: { type: string, minLength: 1, maxLength: 500 }
+              order: { type: integer, minimum: 0 }
+        socialLinks:
+          type: array
+          maxItems: 15
+          items:
+            type: object
+            required: [platform, url, order]
+            properties:
+              platform: { type: string, enum: [TWITTER, GITHUB, LINKEDIN, INSTAGRAM, FACEBOOK, YOUTUBE, OTHER] }
+              url: { type: string, minLength: 1, maxLength: 500 }
+              order: { type: integer, minimum: 0 }
+        footerColumns:
+          type: array
+          maxItems: 8
+          items:
+            type: object
+            required: [title, order, links]
+            properties:
+              title: { type: string, minLength: 1, maxLength: 80 }
+              order: { type: integer, minimum: 0 }
+              links:
+                type: array
+                maxItems: 20
+                items:
+                  type: object
+                  required: [label, href, order]
+                  properties:
+                    label: { type: string, minLength: 1, maxLength: 80 }
+                    href: { type: string, minLength: 1, maxLength: 500 }
+                    order: { type: integer, minimum: 0 }

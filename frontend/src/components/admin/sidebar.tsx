@@ -12,6 +12,8 @@ import {
   Image as ImageIcon,
   Settings,
   LayoutGrid,
+  LayoutTemplate,
+  Users,
 } from "lucide-react";
 import {
   Sidebar,
@@ -26,6 +28,7 @@ import {
   SidebarMenuItem,
   SidebarSeparator,
 } from "@/components/ui/sidebar";
+import { ThemeToggle } from "@/components/admin/theme-toggle";
 
 const navItems = [
   { href: "/admin", label: "Genel Bakış", icon: LayoutDashboard },
@@ -33,6 +36,8 @@ const navItems = [
   { href: "/admin/blog", label: "Blog", icon: Newspaper },
   { href: "/admin/stats", label: "İstatistikler", icon: BarChart3 },
   { href: "/admin/media", label: "Medya", icon: ImageIcon },
+  { href: "/admin/navigation", label: "Navigasyon", icon: LayoutTemplate },
+  { href: "/admin/users", label: "Kullanıcılar", icon: Users },
   { href: "/admin/settings", label: "Ayarlar", icon: Settings },
 ];
 
@@ -44,12 +49,12 @@ const navItems = [
 const darkSidebarVars = {
   "--sidebar": "#0a0a12",
   "--sidebar-foreground": "#f5f5ff",
-  "--sidebar-primary": "#818cf8",
+  "--sidebar-primary": "var(--accent-400)",
   "--sidebar-primary-foreground": "#0a0a12",
   "--sidebar-accent": "rgba(255,255,255,0.08)",
   "--sidebar-accent-foreground": "#ffffff",
   "--sidebar-border": "rgba(255,255,255,0.1)",
-  "--sidebar-ring": "#818cf8",
+  "--sidebar-ring": "var(--accent-400)",
 } as CSSProperties;
 
 export function AdminSidebar() {
@@ -58,15 +63,15 @@ export function AdminSidebar() {
   return (
     <Sidebar style={darkSidebarVars} className="border-white/10">
       <div className="relative flex h-full flex-col overflow-hidden bg-gradient-to-b from-[#0a0a12] via-[#0c0c16] to-[#08080f] backdrop-blur-2xl">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_15%_0%,rgba(99,102,241,0.28),transparent_50%)]" />
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_85%_100%,rgba(217,70,239,0.14),transparent_55%)]" />
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_15%_0%,rgba(var(--accent-rgb-500),0.28),transparent_50%)]" />
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_85%_100%,rgba(var(--accent-rgb-500),0.14),transparent_55%)]" />
 
         <SidebarHeader className="relative px-3 py-4">
           <Link
             href="/admin"
             className="flex items-center gap-2.5 rounded-xl px-2 py-1.5 transition-colors hover:bg-white/5"
           >
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-fuchsia-600 text-white shadow-[0_0_20px_rgba(129,140,248,0.5)]">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[linear-gradient(to_bottom_right,var(--accent-500),var(--accent-700))] text-white shadow-[0_0_20px_rgba(var(--accent-rgb-400),0.5)]">
               <LayoutGrid className="h-4 w-4" />
             </span>
             <span className="flex flex-col leading-tight">
@@ -100,7 +105,7 @@ export function AdminSidebar() {
                           {active && (
                             <motion.span
                               layoutId="admin-sidebar-active-pill"
-                              className="absolute inset-0 rounded-lg bg-white/10 shadow-[0_0_18px_rgba(129,140,248,0.35)]"
+                              className="absolute inset-0 rounded-lg bg-white/10 shadow-[0_0_18px_rgba(var(--accent-rgb-400),0.35)]"
                               transition={{ type: "spring", stiffness: 420, damping: 34 }}
                             />
                           )}
@@ -116,10 +121,14 @@ export function AdminSidebar() {
           </SidebarGroup>
         </SidebarContent>
 
-        <SidebarFooter className="relative px-3 py-3">
+        <SidebarFooter className="relative space-y-2 px-3 py-3">
+          <div className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-2.5 py-2 text-xs text-white/50">
+            <span>Tema</span>
+            <ThemeToggle variant="sidebar" />
+          </div>
           <div className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-2.5 py-2 text-xs text-white/50">
             <span>Sürüm</span>
-            <span className="rounded-full bg-gradient-to-r from-indigo-500 to-fuchsia-600 px-2 py-0.5 font-medium text-white shadow-[0_0_10px_rgba(129,140,248,0.45)]">
+            <span className="rounded-full bg-[linear-gradient(to_right,var(--accent-500),var(--accent-700))] px-2 py-0.5 font-medium text-white shadow-[0_0_10px_rgba(var(--accent-rgb-400),0.45)]">
               v1.0
             </span>
           </div>

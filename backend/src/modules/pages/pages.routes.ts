@@ -3,6 +3,7 @@ import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { authenticate } from "../../middleware/authenticate";
+import { requireSiteRole } from "../../middleware/site-rbac";
 import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema, CursorQuerySchema } from "../../schemas/common";
 import { PageSchema } from "../../schemas/entities";
@@ -39,7 +40,10 @@ export async function adminPagesRoutes(app: FastifyInstance) {
 
   server.post(
     "/",
-    { schema: { body: CreatePageRequestSchema, response: { 201: ApiSuccessSchema(PageSchema) } } },
+    {
+      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      schema: { body: CreatePageRequestSchema, response: { 201: ApiSuccessSchema(PageSchema) } },
+    },
     async (request, reply) => {
       const { title, slug, status, blocks, seoTitle, seoDescription } = request.body;
 
@@ -72,6 +76,7 @@ export async function adminPagesRoutes(app: FastifyInstance) {
   server.patch(
     "/:pageId",
     {
+      preHandler: requireSiteRole("ADMIN", "EDITOR"),
       schema: { params: PageIdParamSchema, body: UpdatePageRequestSchema, response: { 200: ApiSuccessSchema(PageSchema) } },
     },
     async (request, reply) => {
@@ -96,7 +101,10 @@ export async function adminPagesRoutes(app: FastifyInstance) {
 
   server.delete(
     "/:pageId",
-    { schema: { params: PageIdParamSchema, response: { 204: z.undefined() } } },
+    {
+      preHandler: requireSiteRole("ADMIN"),
+      schema: { params: PageIdParamSchema, response: { 204: z.undefined() } },
+    },
     async (request, reply) => {
       await app.prisma.page.delete({ where: { id: request.params.pageId } }).catch(() => {
         throw new NotFoundError("Sayfa bulunamadı.");

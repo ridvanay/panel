@@ -26,13 +26,52 @@ export type MembershipStatus = "ACTIVE" | "INVITED" | "SUSPENDED";
 export type InvitationStatus = "PENDING" | "ACCEPTED" | "EXPIRED" | "REVOKED";
 export type SubscriptionStatus = "TRIALING" | "ACTIVE" | "PAST_DUE" | "CANCELED" | "INCOMPLETE";
 
+export type SiteRole = "ADMIN" | "EDITOR" | "VIEWER";
+export type SiteUserStatus = "ACTIVE" | "SUSPENDED";
+
 export interface User {
   id: string;
   email: string;
   name: string;
   avatarUrl: string | null;
   emailVerifiedAt: string | null;
+  role: SiteRole;
   createdAt: string;
+}
+
+/**
+ * `/admin/users` uçlarının döndürdüğü kullanıcı kaydı — `User`'dan farklı olarak
+ * yönetim listesine özgü `status` ve `lastLoginAt` alanlarını da içerir.
+ */
+export interface AdminUser {
+  id: string;
+  email: string;
+  name: string;
+  avatarUrl: string | null;
+  emailVerifiedAt: string | null;
+  role: SiteRole;
+  createdAt: string;
+  status: SiteUserStatus;
+  lastLoginAt: string | null;
+}
+
+export interface CreateAdminUserRequest {
+  name: string;
+  email: string;
+  role?: SiteRole;
+}
+
+export interface CreateAdminUserResponse {
+  user: AdminUser;
+  setPasswordUrl?: string;
+}
+
+export interface UpdateUserRoleRequest {
+  role: SiteRole;
+}
+
+export interface UpdateUserStatusRequest {
+  status: SiteUserStatus;
 }
 
 export interface Organization {
@@ -266,4 +305,86 @@ export interface UpdateBlogPostRequest {
   coverImageUrl?: string | null;
   status?: ContentStatus;
   categoryId?: string | null;
+}
+
+export type AuditStatus = "SUCCESS" | "FAILURE" | "FORBIDDEN";
+
+export interface AuditLog {
+  id: string;
+  actorId: string | null;
+  actorEmail: string | null;
+  action: string;
+  status: AuditStatus;
+  targetType: string | null;
+  targetId: string | null;
+  metadata: Record<string, unknown> | null;
+  ipAddress: string | null;
+  createdAt: string;
+}
+
+/**
+ * `/admin/settings/permissions` salt-okunur rol izin matrisi — backend'de kod
+ * seviyesinde sabittir, bu ekrandan düzenlenemez, yalnızca görüntülenir.
+ */
+export interface PermissionsMatrix {
+  roles: SiteRole[];
+  modules: {
+    module: string;
+    label: string;
+    actions: Record<string, SiteRole[]>;
+  }[];
+}
+
+/**
+ * Header/footer navigasyon yönetimi — `/admin/navigation` (Navigasyon Builder).
+ * `href`/`url` alanları backend'de `^(https?:\/\/|\/|#)` regex'iyle valide edilir
+ * (mailto:/tel: reddedilir).
+ */
+export type SocialPlatform = "TWITTER" | "GITHUB" | "LINKEDIN" | "INSTAGRAM" | "FACEBOOK" | "YOUTUBE" | "OTHER";
+
+export interface NavigationItemDto {
+  id: string;
+  label: string;
+  href: string;
+  order: number;
+}
+
+export interface SocialLinkDto {
+  id: string;
+  platform: SocialPlatform;
+  url: string;
+  order: number;
+}
+
+export interface FooterLinkDto {
+  id: string;
+  label: string;
+  href: string;
+  order: number;
+}
+
+export interface FooterColumnDto {
+  id: string;
+  title: string;
+  order: number;
+  links: FooterLinkDto[];
+}
+
+export interface NavigationConfigDto {
+  headerCtaLabel: string | null;
+  headerCtaHref: string | null;
+  footerCopyrightText: string | null;
+  navigationItems: NavigationItemDto[];
+  socialLinks: SocialLinkDto[];
+  footerColumns: FooterColumnDto[];
+}
+
+/** PUT body: `id` alanları yok — id'ler yalnızca form state/React key amaçlı, backend'e gönderilmeden önce strip edilir. */
+export interface UpdateNavigationConfigRequest {
+  headerCtaLabel?: string | null;
+  headerCtaHref?: string | null;
+  footerCopyrightText?: string | null;
+  navigationItems: { label: string; href: string; order: number }[];
+  socialLinks: { platform: SocialPlatform; url: string; order: number }[];
+  footerColumns: { title: string; order: number; links: { label: string; href: string; order: number }[] }[];
 }

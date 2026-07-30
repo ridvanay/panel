@@ -1,6 +1,25 @@
-import type { User, Organization, Membership, Invitation, Plan, Subscription, Page, BlogCategory, BlogPost, Media, SiteSettings } from "@prisma/client";
+import type {
+  User,
+  Organization,
+  Membership,
+  Invitation,
+  Plan,
+  Subscription,
+  Page,
+  BlogCategory,
+  BlogPost,
+  Media,
+  SiteSettings,
+  AuditLog,
+  NavigationItem,
+  SocialLink,
+  FooterColumn,
+  FooterLink,
+} from "@prisma/client";
 import type {
   UserDto,
+  AdminUserDto,
+  AuditLogDto,
   OrganizationDto,
   MembershipDto,
   InvitationDto,
@@ -11,6 +30,7 @@ import type {
   BlogPostDto,
   MediaDto,
   SiteSettingsDto,
+  NavigationConfigDto,
 } from "../schemas/entities";
 import { env } from "../config/env";
 
@@ -21,7 +41,31 @@ export function toUserDto(user: User): UserDto {
     name: user.name,
     avatarUrl: user.avatarUrl,
     emailVerifiedAt: user.emailVerifiedAt ? user.emailVerifiedAt.toISOString() : null,
+    role: user.role,
     createdAt: user.createdAt.toISOString(),
+  };
+}
+
+export function toAdminUserDto(user: User): AdminUserDto {
+  return {
+    ...toUserDto(user),
+    status: user.status,
+    lastLoginAt: user.lastLoginAt ? user.lastLoginAt.toISOString() : null,
+  };
+}
+
+export function toAuditLogDto(log: AuditLog): AuditLogDto {
+  return {
+    id: log.id,
+    actorId: log.actorId,
+    actorEmail: log.actorEmail,
+    action: log.action,
+    status: log.status,
+    targetType: log.targetType,
+    targetId: log.targetId,
+    metadata: (log.metadata as Record<string, unknown> | null) ?? null,
+    ipAddress: log.ipAddress,
+    createdAt: log.createdAt.toISOString(),
   };
 }
 
@@ -140,6 +184,49 @@ export function toSiteSettingsDto(settings: SiteSettings): SiteSettingsDto {
     siteName: settings.siteName,
     logoUrl: settings.logoUrl,
     homePageId: settings.homePageId,
+  };
+}
+
+type FooterColumnWithLinks = FooterColumn & { links: FooterLink[] };
+
+interface NavigationConfigInput {
+  settings: SiteSettings | null;
+  navigationItems: NavigationItem[];
+  socialLinks: SocialLink[];
+  footerColumns: FooterColumnWithLinks[];
+}
+
+export function toNavigationConfigDto({ settings, navigationItems, socialLinks, footerColumns }: NavigationConfigInput): NavigationConfigDto {
+  return {
+    headerCtaLabel: settings?.headerCtaLabel ?? null,
+    headerCtaHref: settings?.headerCtaHref ?? null,
+    footerCopyrightText: settings?.footerCopyrightText ?? null,
+    navigationItems: navigationItems.map((item) => ({
+      id: item.id,
+      label: item.label,
+      href: item.href,
+      order: item.order,
+    })),
+    socialLinks: socialLinks.map((link) => ({
+      id: link.id,
+      platform: link.platform,
+      url: link.url,
+      order: link.order,
+    })),
+    footerColumns: footerColumns.map((column) => ({
+      id: column.id,
+      title: column.title,
+      order: column.order,
+      links: column.links
+        .slice()
+        .sort((a, b) => a.order - b.order)
+        .map((link) => ({
+          id: link.id,
+          label: link.label,
+          href: link.href,
+          order: link.order,
+        })),
+    })),
   };
 }
 

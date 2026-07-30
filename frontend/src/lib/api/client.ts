@@ -3,7 +3,7 @@ import { ApiClientError } from "./error";
 import { clearAccessToken, getAccessToken, setAccessToken } from "./token-store";
 import type { ApiErrorBody, AuthTokens, Page } from "./types";
 
-type Method = "GET" | "POST" | "PATCH" | "DELETE";
+type Method = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 
 interface RequestOptions {
   method?: Method;

@@ -7,6 +7,8 @@ import { ApiSuccessSchema } from "../../schemas/common";
 import { AuthResponseSchema, AuthSessionSchema, AuthTokensSchema } from "../../schemas/entities";
 import { toUserDto } from "../../mappers";
 import { REFRESH_COOKIE_NAME, refreshCookieOptions } from "../../lib/cookies";
+import { logAudit } from "../../lib/audit";
+import { ForbiddenError, UnauthorizedError } from "../../lib/errors";
 import * as authService from "./auth.service";
 import {
   ForgotPasswordRequestSchema,
@@ -49,18 +51,50 @@ export default async function authRoutes(app: FastifyInstance) {
       schema: { body: LoginRequestSchema, response: { 200: ApiSuccessSchema(AuthResponseSchema) } },
     },
     async (request, reply) => {
-      const { user, tokens } = await authService.login(app, request.body, {
-        userAgent: request.headers["user-agent"],
-        ipAddress: request.ip,
-      });
+      try {
+        const { user, tokens } = await authService.login(app, request.body, {
+          userAgent: request.headers["user-agent"],
+          ipAddress: request.ip,
+        });
 
-      reply.setCookie(REFRESH_COOKIE_NAME, tokens.refreshToken, refreshCookieOptions());
-      return reply.send(
-        ok({
-          user: toUserDto(user),
-          tokens: { accessToken: tokens.accessToken, accessTokenExpiresAt: tokens.accessTokenExpiresAt.toISOString() },
-        })
-      );
+        await logAudit(app, {
+          actorId: user.id,
+          actorEmail: user.email,
+          action: "auth.login",
+          status: "SUCCESS",
+          ipAddress: request.ip,
+        });
+
+        reply.setCookie(REFRESH_COOKIE_NAME, tokens.refreshToken, refreshCookieOptions());
+        return reply.send(
+          ok({
+            user: toUserDto(user),
+            tokens: { accessToken: tokens.accessToken, accessTokenExpiresAt: tokens.accessTokenExpiresAt.toISOString() },
+          })
+        );
+      } catch (err) {
+        if (err instanceof UnauthorizedError) {
+          await logAudit(app, {
+            actorId: null,
+            actorEmail: request.body.email,
+            action: "auth.login",
+            status: "FAILURE",
+            ipAddress: request.ip,
+          });
+        } else if (err instanceof ForbiddenError) {
+          // Askıya alınmış bir hesapla giriş denemesi (bkz. auth.service.ts::login) — şifre
+          // doğruydu ama hesap durumu izin vermedi, bu yüzden yanlış şifre denemelerinden
+          // (FAILURE) ayırt edilebilmesi için FORBIDDEN olarak loglanır.
+          await logAudit(app, {
+            actorId: null,
+            actorEmail: request.body.email,
+            action: "auth.login",
+            status: "FORBIDDEN",
+            ipAddress: request.ip,
+          });
+        }
+        throw err;
+      }
     }
   );
 

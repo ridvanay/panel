@@ -42,21 +42,46 @@ enum PageStatus {
   PUBLISHED
 }
 
+// `/admin/*` CMS uçları için org'dan bağımsız site-geneli rol/durum — MembershipRole ile
+// KARIŞTIRILMAMALI, tamamen ayrı bir yetkilendirme ekseni (bkz. middleware/site-rbac.ts).
+enum SiteRole {
+  ADMIN
+  EDITOR
+  VIEWER
+}
+
+enum SiteUserStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum AuditStatus {
+  SUCCESS
+  FAILURE
+  FORBIDDEN
+}
+
 model User {
-  id              String    @id @default(uuid())
-  email           String    @unique
+  id              String         @id @default(uuid())
+  // Sıralı, dış dünyaya sızmayan iç sayaç — cursor sayfalamada stabil sıralama için.
+  seq             Int            @unique @default(autoincrement())
+  email           String         @unique
   passwordHash    String
   name            String
   avatarUrl       String?
   emailVerifiedAt DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  role            SiteRole       @default(VIEWER)
+  status          SiteUserStatus @default(ACTIVE)
+  lastLoginAt     DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 
   ownedOrganizations  Organization[]        @relation("OrganizationOwner")
   memberships         Membership[]
   refreshTokens        RefreshToken[]
   passwordResetTokens  PasswordResetToken[]
   blogPosts            BlogPost[]
+  auditLogs            AuditLog[]            @relation("AuditLogActor")
 
   @@map("users")
 }
@@ -265,17 +290,80 @@ model PageView {
 
 // Tek satırlık (singleton) global site ayarları — id her zaman "singleton" sabiti.
 model SiteSettings {
-  id         String   @id @default("singleton")
-  siteName   String   @default("Site")
-  logoUrl    String?
-  homePageId String?
-  updatedAt  DateTime @updatedAt
+  id                  String   @id @default("singleton")
+  siteName            String   @default("Site")
+  logoUrl             String?
+  homePageId          String?
+  headerCtaLabel      String?
+  headerCtaHref       String?
+  footerCopyrightText String?
+  updatedAt           DateTime @updatedAt
 
   // Kök `/` rotasında render edilecek sayfa. Sayfa silinirse otomatik null'a düşer
   // (bkz. pages.routes.ts) — frontend bu durumda varsayılan (SaaS pazarlama) fallback'i gösterir.
   homePage Page? @relation(fields: [homePageId], references: [id], onDelete: SetNull)
 
   @@map("site_settings")
+}
+
+model NavigationItem {
+  id        String   @id @default(uuid())
+  seq       Int      @unique @default(autoincrement())
+  order     Int
+  label     String
+  href      String
+  createdAt DateTime @default(now())
+
+  @@index([order])
+  @@map("navigation_items")
+}
+
+enum SocialPlatform {
+  TWITTER
+  GITHUB
+  LINKEDIN
+  INSTAGRAM
+  FACEBOOK
+  YOUTUBE
+  OTHER
+}
+
+model SocialLink {
+  id        String         @id @default(uuid())
+  seq       Int            @unique @default(autoincrement())
+  order     Int
+  platform  SocialPlatform
+  url       String
+  createdAt DateTime       @default(now())
+
+  @@index([order])
+  @@map("social_links")
+}
+
+model FooterColumn {
+  id        String   @id @default(uuid())
+  seq       Int      @unique @default(autoincrement())
+  order     Int
+  title     String
+  createdAt DateTime @default(now())
+
+  links FooterLink[]
+
+  @@index([order])
+  @@map("footer_columns")
+}
+
+model FooterLink {
+  id       String @id @default(uuid())
+  columnId String
+  order    Int
+  label    String
+  href     String
+
+  column FooterColumn @relation(fields: [columnId], references: [id], onDelete: Cascade)
+
+  @@index([columnId])
+  @@map("footer_links")
 }
 
 model Media {
@@ -291,4 +379,27 @@ model Media {
   createdAt DateTime @default(now())
 
   @@map("media")
+}
+
+// Admin panelindeki hassas/yetkilendirme ile ilgili aksiyonların değişmez kaydı
+// (giriş denemeleri, rol/durum değişiklikleri, ayar güncellemeleri, yetkisiz erişim denemeleri).
+model AuditLog {
+  id         String      @id @default(uuid())
+  seq        Int         @unique @default(autoincrement())
+  actorId    String?
+  actorEmail String?
+  action     String
+  status     AuditStatus @default(SUCCESS)
+  targetType String?
+  targetId   String?
+  metadata   Json?
+  ipAddress  String?
+  createdAt  DateTime    @default(now())
+
+  actor User? @relation("AuditLogActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([action])
+  @@index([actorId])
+  @@map("audit_logs")
 }

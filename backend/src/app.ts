@@ -10,6 +10,8 @@ import uploadsPlugin from "./plugins/uploads";
 import healthRoutes from "./modules/health/health.routes";
 import authRoutes from "./modules/auth/auth.routes";
 import usersRoutes from "./modules/users/users.routes";
+import { adminUsersRoutes } from "./modules/users/admin-users.routes";
+import { logsRoutes } from "./modules/logs/logs.routes";
 import organizationsRoutes from "./modules/organizations/organizations.routes";
 import membersRoutes from "./modules/members/members.routes";
 import { acceptInvitationRoutes, orgInvitationsRoutes } from "./modules/invitations/invitations.routes";
@@ -21,6 +23,7 @@ import { adminBlogCategoriesRoutes, adminBlogPostsRoutes, publicBlogRoutes } fro
 import { adminMediaRoutes } from "./modules/media/media.routes";
 import { adminStatsRoutes } from "./modules/stats/stats.routes";
 import { adminSettingsRoutes, publicSettingsRoutes } from "./modules/settings/settings.routes";
+import { adminNavigationRoutes, publicNavigationRoutes } from "./modules/navigation/navigation.routes";
 
 export function buildApp() {
   const app = Fastify({
@@ -49,6 +52,8 @@ export function buildApp() {
     async (api) => {
       api.register(authRoutes, { prefix: "/auth" });
       api.register(usersRoutes, { prefix: "/users" });
+      api.register(adminUsersRoutes, { prefix: "/admin/users" });
+      api.register(logsRoutes, { prefix: "/admin/logs" });
       api.register(organizationsRoutes, { prefix: "/organizations" });
       api.register(membersRoutes, { prefix: "/organizations/:orgId/members" });
       api.register(orgInvitationsRoutes, { prefix: "/organizations/:orgId/invitations" });
@@ -64,6 +69,8 @@ export function buildApp() {
       api.register(adminStatsRoutes, { prefix: "/admin/stats" });
       api.register(publicSettingsRoutes, { prefix: "/settings" });
       api.register(adminSettingsRoutes, { prefix: "/admin/settings" });
+      api.register(publicNavigationRoutes, { prefix: "/navigation" });
+      api.register(adminNavigationRoutes, { prefix: "/admin/navigation" });
       // Kendi content-type parser'ını (raw body) kaydeder — kendi encapsulation
       // context'inde kaldığı için diğer /api/v1 uçlarının JSON parse'ını etkilemez.
       api.register(stripeWebhookRoutes, { prefix: "/webhooks/stripe" });

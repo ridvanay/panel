@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
 import { authenticate } from "../../middleware/authenticate";
+import { requireSiteRole } from "../../middleware/site-rbac";
 import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema, CursorQuerySchema } from "../../schemas/common";
 import { MediaSchema } from "../../schemas/entities";
@@ -20,7 +21,10 @@ export async function adminMediaRoutes(app: FastifyInstance) {
 
   server.post(
     "/",
-    { schema: { response: { 201: ApiSuccessSchema(MediaSchema) } } },
+    {
+      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      schema: { response: { 201: ApiSuccessSchema(MediaSchema) } },
+    },
     async (request, reply) => {
       const file = await request.file();
       if (!file) {
@@ -72,7 +76,10 @@ export async function adminMediaRoutes(app: FastifyInstance) {
 
   server.delete(
     "/:mediaId",
-    { schema: { params: MediaIdParamSchema, response: { 204: z.undefined() } } },
+    {
+      preHandler: requireSiteRole("ADMIN"),
+      schema: { params: MediaIdParamSchema, response: { 204: z.undefined() } },
+    },
     async (request, reply) => {
       const media = await app.prisma.media.findUnique({ where: { id: request.params.mediaId } });
       if (!media) throw new NotFoundError("Medya bulunamadı.");

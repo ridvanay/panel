@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
 import { authenticate } from "../../middleware/authenticate";
+import { requireSiteRole } from "../../middleware/site-rbac";
 import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema, CursorQuerySchema } from "../../schemas/common";
 import { BlogCategorySchema, BlogPostSchema } from "../../schemas/entities";
@@ -47,7 +48,10 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
 
   server.post(
     "/",
-    { schema: { body: CreateBlogPostRequestSchema, response: { 201: ApiSuccessSchema(BlogPostSchema) } } },
+    {
+      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      schema: { body: CreateBlogPostRequestSchema, response: { 201: ApiSuccessSchema(BlogPostSchema) } },
+    },
     async (request, reply) => {
       const { title, slug, excerpt, contentHtml, coverImageUrl, status, categoryId } = request.body;
 
@@ -86,6 +90,7 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
   server.patch(
     "/:postId",
     {
+      preHandler: requireSiteRole("ADMIN", "EDITOR"),
       schema: {
         params: PostIdParamSchema,
         body: UpdateBlogPostRequestSchema,
@@ -114,7 +119,10 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
 
   server.delete(
     "/:postId",
-    { schema: { params: PostIdParamSchema, response: { 204: z.undefined() } } },
+    {
+      preHandler: requireSiteRole("ADMIN"),
+      schema: { params: PostIdParamSchema, response: { 204: z.undefined() } },
+    },
     async (request, reply) => {
       await app.prisma.blogPost.delete({ where: { id: request.params.postId } }).catch(() => {
         throw new NotFoundError("Yazı bulunamadı.");
@@ -140,7 +148,10 @@ export async function adminBlogCategoriesRoutes(app: FastifyInstance) {
 
   server.post(
     "/",
-    { schema: { body: CreateBlogCategoryRequestSchema, response: { 201: ApiSuccessSchema(BlogCategorySchema) } } },
+    {
+      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      schema: { body: CreateBlogCategoryRequestSchema, response: { 201: ApiSuccessSchema(BlogCategorySchema) } },
+    },
     async (request, reply) => {
       const category = await app.prisma.blogCategory.create({
         data: {
@@ -155,6 +166,7 @@ export async function adminBlogCategoriesRoutes(app: FastifyInstance) {
   server.patch(
     "/:categoryId",
     {
+      preHandler: requireSiteRole("ADMIN", "EDITOR"),
       schema: {
         params: CategoryIdParamSchema,
         body: UpdateBlogCategoryRequestSchema,
@@ -177,7 +189,10 @@ export async function adminBlogCategoriesRoutes(app: FastifyInstance) {
 
   server.delete(
     "/:categoryId",
-    { schema: { params: CategoryIdParamSchema, response: { 204: z.undefined() } } },
+    {
+      preHandler: requireSiteRole("ADMIN"),
+      schema: { params: CategoryIdParamSchema, response: { 204: z.undefined() } },
+    },
     async (request, reply) => {
       await app.prisma.blogCategory.delete({ where: { id: request.params.categoryId } }).catch(() => {
         throw new NotFoundError("Kategori bulunamadı.");
