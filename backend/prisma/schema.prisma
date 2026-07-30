@@ -201,7 +201,8 @@ model Page {
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
 
-  views PageView[]
+  views        PageView[]
+  siteSettings SiteSettings[]
 
   @@map("pages")
 }
@@ -264,10 +265,15 @@ model PageView {
 
 // Tek satırlık (singleton) global site ayarları — id her zaman "singleton" sabiti.
 model SiteSettings {
-  id        String   @id @default("singleton")
-  siteName  String   @default("Site")
-  logoUrl   String?
-  updatedAt DateTime @updatedAt
+  id         String   @id @default("singleton")
+  siteName   String   @default("Site")
+  logoUrl    String?
+  homePageId String?
+  updatedAt  DateTime @updatedAt
+
+  // Kök `/` rotasında render edilecek sayfa. Sayfa silinirse otomatik null'a düşer
+  // (bkz. pages.routes.ts) — frontend bu durumda varsayılan (SaaS pazarlama) fallback'i gösterir.
+  homePage Page? @relation(fields: [homePageId], references: [id], onDelete: SetNull)
 
   @@map("site_settings")
 }

@@ -129,6 +129,7 @@ export type MediaDto = z.infer<typeof MediaSchema>;
 export const SiteSettingsSchema = z.object({
   siteName: z.string(),
   logoUrl: z.string().nullable(),
+  homePageId: z.string().uuid().nullable(),
 });
 export type SiteSettingsDto = z.infer<typeof SiteSettingsSchema>;
 

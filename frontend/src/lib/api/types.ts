@@ -249,11 +249,13 @@ export interface Media {
 export interface SiteSettings {
   siteName: string;
   logoUrl: string | null;
+  homePageId: string | null;
 }
 
 export interface UpdateSiteSettingsRequest {
   siteName?: string;
   logoUrl?: string | null;
+  homePageId?: string | null;
 }
 
 export interface UpdateBlogPostRequest {

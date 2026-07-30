@@ -134,6 +134,7 @@ export function toSiteSettingsDto(settings: SiteSettings): SiteSettingsDto {
   return {
     siteName: settings.siteName,
     logoUrl: settings.logoUrl,
+    homePageId: settings.homePageId,
   };
 }
 

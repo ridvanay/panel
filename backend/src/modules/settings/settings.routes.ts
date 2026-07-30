@@ -3,12 +3,12 @@ import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { authenticate } from "../../middleware/authenticate";
 import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema } from "../../schemas/common";
-import { SiteSettingsSchema } from "../../schemas/entities";
-import { toSiteSettingsDto } from "../../mappers";
+import { PageSchema, SiteSettingsSchema } from "../../schemas/entities";
+import { toPageDto, toSiteSettingsDto } from "../../mappers";
 import { UpdateSiteSettingsRequestSchema } from "./settings.schemas";
 
 const SETTINGS_ID = "singleton";
-const DEFAULTS = { siteName: "Site", logoUrl: null as string | null };
+const DEFAULTS = { siteName: "Site", logoUrl: null as string | null, homePageId: null as string | null };
 
 async function readSettings(app: FastifyInstance) {
   const row = await app.prisma.siteSettings.findUnique({ where: { id: SETTINGS_ID } });
@@ -21,6 +21,16 @@ export async function publicSettingsRoutes(app: FastifyInstance) {
 
   server.get("/", { schema: { response: { 200: ApiSuccessSchema(SiteSettingsSchema) } } }, async (_request, reply) => {
     return reply.send(ok(await readSettings(app)));
+  });
+
+  // Kök `/` rotası için: seçili ana sayfa yayında değilse veya seçili değilse null döner
+  // (frontend bu durumda kendi varsayılan fallback'ini gösterir).
+  server.get("/homepage", { schema: { response: { 200: ApiSuccessSchema(PageSchema.nullable()) } } }, async (_request, reply) => {
+    const settings = await app.prisma.siteSettings.findUnique({ where: { id: SETTINGS_ID } });
+    if (!settings?.homePageId) return reply.send(ok(null));
+
+    const page = await app.prisma.page.findFirst({ where: { id: settings.homePageId, status: "PUBLISHED" } });
+    return reply.send(ok(page ? toPageDto(page) : null));
   });
 }
 

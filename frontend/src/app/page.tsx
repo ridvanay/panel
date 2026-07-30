@@ -1,59 +1,28 @@
-import { Navbar } from "@/components/marketing/navbar";
-import { Card } from "@/components/ui/card";
-import { LinkButton } from "@/components/ui/link-button";
+import { fetchHomepageServer, fetchSiteSettingsServer } from "@/lib/api/server-settings";
+import { fetchPublishedPagesServer } from "@/lib/api/server-pages";
+import { SiteHeader } from "@/components/site/site-header";
+import { SiteFooter } from "@/components/site/site-footer";
+import { BlockRenderer } from "@/components/site/blocks";
+import { ViewTracker } from "@/components/site/view-tracker";
+import { FallbackHome } from "@/components/marketing/fallback-home";
+import type { Block } from "@/lib/page-builder/types";
 
-const features = [
-  {
-    title: "Organizasyon ve takım yönetimi",
-    description: "Sınırsız üye, rol bazlı yetkilendirme (Sahip / Yönetici / Üye) ve e-posta ile davet akışı.",
-  },
-  {
-    title: "Güvenli kimlik doğrulama",
-    description: "Rotasyonlu refresh token, argon2 şifre hash'leme ve oturum güvenliği kutudan çıkar.",
-  },
-  {
-    title: "Esnek faturalandırma",
-    description: "Stripe ile aylık/yıllık planlar, self-servis fatura portalı ve otomatik abonelik senkronizasyonu.",
-  },
-];
+export default async function RootPage() {
+  const homePage = await fetchHomepageServer();
+  if (!homePage) {
+    return <FallbackHome />;
+  }
 
-export default function HomePage() {
+  const [settings, pages] = await Promise.all([fetchSiteSettingsServer(), fetchPublishedPagesServer()]);
+
   return (
     <div className="flex min-h-screen flex-col">
-      <Navbar />
-
+      <SiteHeader settings={settings} pages={pages} />
       <main className="flex-1">
-        <section className="mx-auto max-w-4xl px-4 py-24 text-center sm:px-6">
-          <h1 className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl">
-            Ekibiniz için modern bir temel
-          </h1>
-          <p className="mx-auto mt-4 max-w-2xl text-lg text-foreground/60">
-            Organizasyonları, üyeleri ve faturalandırmayı tek bir yerden yönetin. Dakikalar içinde başlayın, kredi kartı
-            gerekmez.
-          </p>
-          <div className="mt-8 flex flex-wrap justify-center gap-3">
-            <LinkButton href="/register">Ücretsiz başla</LinkButton>
-            <LinkButton href="/pricing" variant="secondary">
-              Fiyatlandırmayı gör
-            </LinkButton>
-          </div>
-        </section>
-
-        <section className="mx-auto max-w-6xl px-4 pb-24 sm:px-6">
-          <div className="grid gap-6 sm:grid-cols-3">
-            {features.map((feature) => (
-              <Card key={feature.title}>
-                <h2 className="text-base font-semibold text-foreground">{feature.title}</h2>
-                <p className="mt-2 text-sm text-foreground/60">{feature.description}</p>
-              </Card>
-            ))}
-          </div>
-        </section>
+        <ViewTracker kind="page" slug={homePage.slug} />
+        <BlockRenderer blocks={homePage.blocks as unknown as Block[]} />
       </main>
-
-      <footer className="border-t border-border py-8 text-center text-sm text-foreground/50">
-        © {new Date().getFullYear()} SaaS Platform. Tüm hakları saklıdır.
-      </footer>
+      <SiteFooter siteName={settings.siteName} />
     </div>
   );
 }
