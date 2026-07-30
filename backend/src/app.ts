@@ -24,10 +24,13 @@ import { adminSettingsRoutes, publicSettingsRoutes } from "./modules/settings/se
 
 export function buildApp() {
   const app = Fastify({
-    logger: {
-      level: env.NODE_ENV === "production" ? "info" : "debug",
-      transport: env.NODE_ENV === "production" ? undefined : { target: "pino-pretty" },
-    },
+    logger:
+      env.NODE_ENV === "test"
+        ? false
+        : {
+            level: env.NODE_ENV === "production" ? "info" : "debug",
+            transport: env.NODE_ENV === "production" ? undefined : { target: "pino-pretty" },
+          },
     trustProxy: true,
   }).withTypeProvider<ZodTypeProvider>();
 
