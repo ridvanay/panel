@@ -231,6 +231,12 @@ export interface CreateBlogPostRequest {
   categoryId?: string | null;
 }
 
+export interface DailyViewStats {
+  date: string;
+  pageViews: number;
+  postViews: number;
+}
+
 export interface Media {
   id: string;
   url: string;

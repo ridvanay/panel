@@ -19,6 +19,7 @@ import stripeWebhookRoutes from "./modules/webhooks/stripe.routes";
 import { adminPagesRoutes, publicPagesRoutes } from "./modules/pages/pages.routes";
 import { adminBlogCategoriesRoutes, adminBlogPostsRoutes, publicBlogRoutes } from "./modules/blog/blog.routes";
 import { adminMediaRoutes } from "./modules/media/media.routes";
+import { adminStatsRoutes } from "./modules/stats/stats.routes";
 
 export function buildApp() {
   const app = Fastify({
@@ -56,6 +57,7 @@ export function buildApp() {
       api.register(adminBlogPostsRoutes, { prefix: "/admin/blog" });
       api.register(adminBlogCategoriesRoutes, { prefix: "/admin/blog/categories" });
       api.register(adminMediaRoutes, { prefix: "/admin/media" });
+      api.register(adminStatsRoutes, { prefix: "/admin/stats" });
       // Kendi content-type parser'ını (raw body) kaydeder — kendi encapsulation
       // context'inde kaldığı için diğer /api/v1 uçlarının JSON parse'ını etkilemez.
       api.register(stripeWebhookRoutes, { prefix: "/webhooks/stripe" });
