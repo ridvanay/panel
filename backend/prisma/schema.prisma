@@ -1,0 +1,278 @@
+// docs/architecture/ARCHITECTURE.md (bölüm 6, ER diyagramı) ve openapi.yaml ile
+// birebir uyumlu tutulmalıdır. Alan/enum değişikliği önce oradaki dokümanlara yansır.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum MembershipRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum MembershipStatus {
+  ACTIVE
+  INVITED
+  SUSPENDED
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  INCOMPLETE
+}
+
+enum PageStatus {
+  DRAFT
+  PUBLISHED
+}
+
+model User {
+  id              String    @id @default(uuid())
+  email           String    @unique
+  passwordHash    String
+  name            String
+  avatarUrl       String?
+  emailVerifiedAt DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  ownedOrganizations  Organization[]        @relation("OrganizationOwner")
+  memberships         Membership[]
+  refreshTokens        RefreshToken[]
+  passwordResetTokens  PasswordResetToken[]
+  blogPosts            BlogPost[]
+
+  @@map("users")
+}
+
+model Organization {
+  id        String   @id @default(uuid())
+  // Sıralı, dış dünyaya sızmayan iç sayaç — cursor sayfalamada stabil sıralama için.
+  seq       Int      @unique @default(autoincrement())
+  name      String
+  slug      String   @unique
+  ownerId   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  owner        User          @relation("OrganizationOwner", fields: [ownerId], references: [id])
+  memberships  Membership[]
+  invitations  Invitation[]
+  subscription Subscription?
+
+  @@map("organizations")
+}
+
+model Membership {
+  id             String           @id @default(uuid())
+  seq            Int              @unique @default(autoincrement())
+  userId         String
+  organizationId String
+  role           MembershipRole
+  status         MembershipStatus @default(ACTIVE)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+  @@index([organizationId])
+  @@map("memberships")
+}
+
+model Invitation {
+  id             String           @id @default(uuid())
+  organizationId String
+  email          String
+  role           MembershipRole
+  status         InvitationStatus @default(PENDING)
+  tokenHash      String           @unique
+  expiresAt      DateTime
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  // Aynı e-posta için birden fazla PENDING davet olmasın kontrolü uygulama
+  // katmanında yapılır (Prisma koşullu/kısmi unique index'i desteklemiyor).
+  @@index([organizationId, email])
+  @@map("invitations")
+}
+
+model Plan {
+  id                   String   @id @default(uuid())
+  name                 String
+  stripePriceIdMonthly String?
+  stripePriceIdYearly  String?
+  priceMonthlyCents    Int
+  priceYearlyCents     Int
+  currency             String   @default("TRY")
+  limits               Json     @default("{}")
+  isActive             Boolean  @default(true)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  subscriptions Subscription[]
+
+  @@map("plans")
+}
+
+model Subscription {
+  id                   String             @id @default(uuid())
+  organizationId       String             @unique
+  planId               String
+  status               SubscriptionStatus @default(TRIALING)
+  stripeCustomerId     String?
+  stripeSubscriptionId String?            @unique
+  currentPeriodEnd     DateTime
+  cancelAtPeriodEnd    Boolean            @default(false)
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  plan         Plan         @relation(fields: [planId], references: [id])
+
+  @@map("subscriptions")
+}
+
+// Opak refresh token'ın SHA-256 hash'i saklanır, ham değer asla DB'ye yazılmaz.
+model RefreshToken {
+  id                  String    @id @default(uuid())
+  userId              String
+  tokenHash           String    @unique
+  expiresAt           DateTime
+  revoked             Boolean   @default(false)
+  replacedByTokenHash String?
+  userAgent           String?
+  ipAddress           String?
+  createdAt           DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_reset_tokens")
+}
+
+// Tek site (global) kapsamında: organizationId yok, herhangi bir authenticated kullanıcı yönetir.
+model Page {
+  id             String     @id @default(uuid())
+  seq            Int        @unique @default(autoincrement())
+  title          String
+  slug           String     @unique
+  status         PageStatus @default(DRAFT)
+  // Sayfa builder blokları — sıralı JSON dizi, şekli frontend'de lib/page-builder/types.ts::Block ile eşleşir.
+  blocks         Json       @default("[]")
+  seoTitle       String?
+  seoDescription String?
+  publishedAt    DateTime?
+  // Denormalize toplam sayaç — admin liste/detay ekranlarında ekstra sorgu gerektirmeden okunur.
+  viewCount      Int        @default(0)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  views PageView[]
+
+  @@map("pages")
+}
+
+model BlogCategory {
+  id        String     @id @default(uuid())
+  seq       Int        @unique @default(autoincrement())
+  name      String
+  slug      String     @unique
+  createdAt DateTime   @default(now())
+
+  posts BlogPost[]
+
+  @@map("blog_categories")
+}
+
+model BlogPost {
+  id            String     @id @default(uuid())
+  seq           Int        @unique @default(autoincrement())
+  title         String
+  slug          String     @unique
+  excerpt       String?
+  contentHtml   String     @default("")
+  coverImageUrl String?
+  status        PageStatus @default(DRAFT)
+  categoryId    String?
+  authorId      String?
+  publishedAt   DateTime?
+  viewCount     Int        @default(0)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  category BlogCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  author   User?         @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  views    PageView[]
+
+  @@index([categoryId])
+  @@map("blog_posts")
+}
+
+// Günlük bucket'lı ziyaret kaydı: pageId/postId'den yalnızca biri set edilir.
+// (pageId, date) ve (postId, date) unique çiftleri, upsert ile "aynı gün ikinci görüntülemede
+// count'u artır" mantığını sağlar; ileride zaman serisi grafiği için de temel oluşturur.
+model PageView {
+  id        String   @id @default(uuid())
+  pageId    String?
+  postId    String?
+  date      DateTime
+  count     Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  page Page?     @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  post BlogPost? @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([pageId, date])
+  @@unique([postId, date])
+  @@map("page_views")
+}
+
+model Media {
+  id        String   @id @default(uuid())
+  seq       Int      @unique @default(autoincrement())
+  // Diskteki fiziksel yol (uploads/ altında) — DB kaydı silinirken dosyayı bulmak için.
+  path      String
+  // /uploads/... göreli URL; DTO'da PUBLIC_URL ile mutlaklaştırılır.
+  url       String
+  filename  String
+  mimeType  String
+  sizeBytes Int
+  createdAt DateTime @default(now())
+
+  @@map("media")
+}
