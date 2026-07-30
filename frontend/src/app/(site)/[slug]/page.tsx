@@ -10,9 +10,15 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const { slug } = await params;
   const page = await fetchPageBySlugServer(slug);
   if (!page) return {};
+
+  const title = page.seoTitle || page.title;
+  const description = page.seoDescription ?? undefined;
+
   return {
-    title: page.seoTitle || page.title,
-    description: page.seoDescription ?? undefined,
+    title,
+    description,
+    openGraph: { title, description, type: "website" },
+    twitter: { card: "summary", title, description },
   };
 }
 

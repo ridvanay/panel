@@ -10,7 +10,16 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const { slug } = await params;
   const post = await fetchBlogPostBySlugServer(slug);
   if (!post) return {};
-  return { title: post.title, description: post.excerpt ?? undefined };
+
+  const description = post.excerpt ?? undefined;
+  const images = post.coverImageUrl ? [post.coverImageUrl] : undefined;
+
+  return {
+    title: post.title,
+    description,
+    openGraph: { title: post.title, description, type: "article", images },
+    twitter: { card: images ? "summary_large_image" : "summary", title: post.title, description, images },
+  };
 }
 
 export default async function BlogPostPage({ params }: PageProps) {
