@@ -24,6 +24,7 @@ import { adminMediaRoutes } from "./modules/media/media.routes";
 import { adminStatsRoutes } from "./modules/stats/stats.routes";
 import { adminSettingsRoutes, publicSettingsRoutes } from "./modules/settings/settings.routes";
 import { adminNavigationRoutes, publicNavigationRoutes } from "./modules/navigation/navigation.routes";
+import { systemRoutes } from "./modules/system/system.routes";
 
 export function buildApp() {
   const app = Fastify({
@@ -71,6 +72,8 @@ export function buildApp() {
       api.register(adminSettingsRoutes, { prefix: "/admin/settings" });
       api.register(publicNavigationRoutes, { prefix: "/navigation" });
       api.register(adminNavigationRoutes, { prefix: "/admin/navigation" });
+      // Route içinde `/health` path'i tanımlanır, nihai uç `/admin/health` olur.
+      api.register(systemRoutes, { prefix: "/admin" });
       // Kendi content-type parser'ını (raw body) kaydeder — kendi encapsulation
       // context'inde kaldığı için diğer /api/v1 uçlarının JSON parse'ını etkilemez.
       api.register(stripeWebhookRoutes, { prefix: "/webhooks/stripe" });

@@ -2,19 +2,40 @@ import Link from "next/link";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import type { BlogPost } from "@/lib/api/types";
 
 interface PostTableProps {
   posts: BlogPost[];
   deletingId: string | null;
   onDelete: (postId: string) => void;
+  selectedIds: Set<string>;
+  onToggleSelect: (postId: string) => void;
+  onToggleSelectAll: () => void;
+  allSelected: boolean;
 }
 
-export function PostTable({ posts, deletingId, onDelete }: PostTableProps) {
+export function PostTable({
+  posts,
+  deletingId,
+  onDelete,
+  selectedIds,
+  onToggleSelect,
+  onToggleSelectAll,
+  allSelected,
+}: PostTableProps) {
   return (
     <Table>
       <TableHeader>
         <TableRow>
+          <TableHead>
+            <Checkbox
+              aria-label="Tümünü seç"
+              checked={allSelected}
+              indeterminate={selectedIds.size > 0 && !allSelected}
+              onCheckedChange={onToggleSelectAll}
+            />
+          </TableHead>
           <TableHead>Başlık</TableHead>
           <TableHead>Kategori</TableHead>
           <TableHead>Durum</TableHead>
@@ -25,13 +46,20 @@ export function PostTable({ posts, deletingId, onDelete }: PostTableProps) {
       <TableBody>
         {posts.length === 0 && (
           <TableRow>
-            <TableCell colSpan={5} className="text-center text-foreground/50">
+            <TableCell colSpan={6} className="text-center text-foreground/50">
               Henüz yazı yok
             </TableCell>
           </TableRow>
         )}
         {posts.map((post) => (
           <TableRow key={post.id}>
+            <TableCell>
+              <Checkbox
+                aria-label={`${post.title} yazısını seç`}
+                checked={selectedIds.has(post.id)}
+                onCheckedChange={() => onToggleSelect(post.id)}
+              />
+            </TableCell>
             <TableCell>
               <Link href={`/admin/blog/${post.id}`} className="font-medium text-foreground hover:text-primary">
                 {post.title}

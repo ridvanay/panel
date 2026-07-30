@@ -691,6 +691,91 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationError" }
 
+  /admin/stats/views:
+    get:
+      tags: [Stats]
+      summary: Günlük sayfa/yazı görüntülenme zaman serisi
+      parameters:
+        - name: days
+          in: query
+          required: false
+          schema: { type: integer, default: 30, maximum: 90, minimum: 1 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/DailyViewStats" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /admin/stats/live-visitors:
+    get:
+      tags: [Stats]
+      summary: >
+        Süreç-içi (in-memory) canlı ziyaretçi sayısı — son 60 saniye içinde
+        bir görüntülenme (view) endpoint'i çağıran benzersiz IP+User-Agent sayısı.
+        Dağıtık DEĞİLDİR: çoklu instance dağıtımda her process kendi sayacını tutar.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/LiveVisitors" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /admin/stats/breakdown:
+    get:
+      tags: [Stats]
+      summary: Belirtilen aralıktaki görüntülenmelerin cihaz türü ve ülkeye göre kırılımı
+      parameters:
+        - name: days
+          in: query
+          required: false
+          schema: { type: integer, default: 30, maximum: 90, minimum: 1 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/ViewsBreakdown" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /admin/health:
+    get:
+      tags: [System]
+      summary: Sistem sağlığı — DB ping/boyutu, medya depolama, sunucu belleği/yükü (yalnızca ADMIN)
+      description: >
+        Tüm alanlar gerçek zamanlı ölçülür (DB `SELECT 1` ping süresi, `pg_database_size`,
+        `Media.sizeBytes` toplamı, Node `os`/`process` bellek-yük-uptime bilgisi) — sabit/uydurma
+        değer içermez. `dbQuotaBytes`/`mediaStorageQuotaBytes`, ilgili ortam değişkeni
+        (`DB_STORAGE_QUOTA_MB`/`MEDIA_STORAGE_QUOTA_MB`) tanımlı değilse `null` döner.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/SystemHealth" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
   /webhooks/stripe:
     post:
       tags: [Webhooks]
@@ -1118,3 +1203,74 @@ components:
                     label: { type: string, minLength: 1, maxLength: 80 }
                     href: { type: string, minLength: 1, maxLength: 500 }
                     order: { type: integer, minimum: 0 }
+
+
+    DailyViewStats:
+      type: object
+      properties:
+        date: { type: string, format: date, example: "2026-07-30" }
+        pageViews: { type: integer }
+        postViews: { type: integer }
+
+    LiveVisitors:
+      type: object
+      properties:
+        count:
+          type: integer
+          description: >
+            Son 60 saniye içinde bir görüntülenme endpoint'ini çağıran benzersiz
+            IP+User-Agent sayısı (süreç-içi/in-memory, dağıtık değil).
+
+    DeviceBreakdownEntry:
+      type: object
+      properties:
+        type: { type: string, enum: [MOBILE, DESKTOP, TABLET, UNKNOWN] }
+        count: { type: integer }
+
+    CountryBreakdownEntry:
+      type: object
+      properties:
+        country:
+          type: string
+          description: >
+            ISO 3166-1 alpha-2 ülke kodu, bilinmiyorsa "UNKNOWN"; ilk 10 dışında
+            kalan ülkelerin toplamı "OTHER" olarak tek satırda döner.
+        count: { type: integer }
+
+    ViewsBreakdown:
+      type: object
+      properties:
+        devices:
+          type: array
+          items: { $ref: "#/components/schemas/DeviceBreakdownEntry" }
+        countries:
+          type: array
+          items: { $ref: "#/components/schemas/CountryBreakdownEntry" }
+
+    SystemHealth:
+      type: object
+      description: Tüm alanlar gerçek zamanlı ölçülür — sabit/uydurma değer içermez.
+      properties:
+        dbPingMs: { type: number, description: "`SELECT 1` sorgusunun ölçülen süresi (ms)" }
+        dbSizeBytes: { type: number, description: "`pg_database_size(current_database())`" }
+        dbQuotaBytes:
+          type: number
+          nullable: true
+          description: "DB_STORAGE_QUOTA_MB tanımlı değilse null"
+        mediaStorageBytes: { type: number, description: "Media.sizeBytes toplamı" }
+        mediaStorageQuotaBytes:
+          type: number
+          nullable: true
+          description: "MEDIA_STORAGE_QUOTA_MB tanımlı değilse null"
+        memoryUsedBytes: { type: number }
+        memoryTotalBytes: { type: number }
+        processMemoryBytes: { type: number, description: "process.memoryUsage().rss" }
+        loadAverage:
+          type: array
+          items: { type: number }
+          minItems: 3
+          maxItems: 3
+          description: "os.loadavg() — [1dk, 5dk, 15dk]; Windows'ta her zaman [0,0,0] döner (platform kısıtı)"
+        platform: { type: string, example: "linux" }
+        uptimeSeconds: { type: number }
+        checkedAt: { type: string, format: date-time }

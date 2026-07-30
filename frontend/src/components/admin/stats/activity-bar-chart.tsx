@@ -9,6 +9,7 @@ import { Card } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { Alert } from "@/components/ui/alert";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
+import { ChartTooltipContent } from "@/components/admin/stats/chart-tooltip";
 
 const dateFormatter = new Intl.DateTimeFormat("tr-TR", { day: "numeric", month: "short" });
 
@@ -80,16 +81,7 @@ export function ActivityBarChart() {
                   axisLine={false}
                   width={40}
                 />
-                <Tooltip
-                  cursor={{ fill: "var(--primary)", opacity: 0.08 }}
-                  contentStyle={{
-                    background: "var(--surface)",
-                    border: "1px solid var(--border)",
-                    borderRadius: 8,
-                    fontSize: 12,
-                  }}
-                  labelStyle={{ color: "var(--foreground)" }}
-                />
+                <Tooltip cursor={{ fill: "var(--primary)", opacity: 0.08 }} content={ChartTooltipContent} />
                 <Bar
                   dataKey="total"
                   name="Toplam görüntülenme"

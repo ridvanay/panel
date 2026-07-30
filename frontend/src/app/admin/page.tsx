@@ -8,6 +8,9 @@ import * as statsApi from "@/lib/api/stats";
 import { StatCard, type StatCardDelta } from "@/components/admin/stats/stat-card";
 import { VisitorChart } from "@/components/admin/stats/visitor-chart";
 import { ActivityBarChart } from "@/components/admin/stats/activity-bar-chart";
+import { LiveVisitorsBadge } from "@/components/admin/stats/live-visitors-badge";
+import { DeviceBreakdownChart } from "@/components/admin/stats/device-breakdown-chart";
+import { CountryBreakdownList } from "@/components/admin/stats/country-breakdown-list";
 import { PageHeading } from "@/components/admin/page-heading";
 import { Alert } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -111,7 +114,12 @@ export default function AdminDashboardPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeading icon={LayoutDashboard} title="Genel Bakış" description="Sitenizin son durumu." />
+      <PageHeading
+        icon={LayoutDashboard}
+        title="Genel Bakış"
+        description="Sitenizin son durumu."
+        actions={<LiveVisitorsBadge />}
+      />
 
       {error && (
         <Alert variant="error">
@@ -164,6 +172,11 @@ export default function AdminDashboardPage() {
       <div className="grid gap-4 lg:grid-cols-2">
         <VisitorChart />
         <ActivityBarChart />
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <DeviceBreakdownChart />
+        <CountryBreakdownList />
       </div>
     </div>
   );

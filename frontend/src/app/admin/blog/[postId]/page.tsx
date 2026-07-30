@@ -18,8 +18,10 @@ import { Spinner } from "@/components/ui/spinner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { PostEditor } from "@/components/admin/blog/post-editor";
 import { ImageUploadField } from "@/components/admin/media/image-upload-field";
+import { SeoPreview } from "@/components/admin/seo-preview";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { AlertCircle, ChevronLeft } from "lucide-react";
+import { motion } from "framer-motion";
 
 interface PostSnapshot {
   title: string;
@@ -154,7 +156,7 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6 pb-24">
+    <div className="mx-auto max-w-6xl space-y-6 pb-24">
       <div>
         <Link
           href="/admin/blog"
@@ -194,49 +196,59 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
         </Alert>
       )}
 
-      <Card className="space-y-4">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field id="title" label="Başlık" required>
-            {(inputProps) => <Input {...inputProps} required value={title} onChange={(e) => setTitle(e.target.value)} />}
-          </Field>
-          <Field id="slug" label="Slug (URL)" required>
-            {(inputProps) => <Input {...inputProps} required value={slug} onChange={(e) => setSlug(e.target.value)} />}
-          </Field>
+      <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
+        <div className="min-w-0 space-y-6">
+          <Card className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field id="title" label="Başlık" required>
+                {(inputProps) => <Input {...inputProps} required value={title} onChange={(e) => setTitle(e.target.value)} />}
+              </Field>
+              <Field id="slug" label="Slug (URL)" required>
+                {(inputProps) => <Input {...inputProps} required value={slug} onChange={(e) => setSlug(e.target.value)} />}
+              </Field>
+            </div>
+
+            <Field id="excerpt" label="Özet">
+              {(inputProps) => <Textarea {...inputProps} value={excerpt} onChange={(e) => setExcerpt(e.target.value)} rows={2} />}
+            </Field>
+
+            <ImageUploadField id="coverImageUrl" label="Kapak görseli" value={coverImageUrl} onChange={setCoverImageUrl} />
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field id="category" label="Kategori">
+                {(inputProps) => (
+                  <Select {...inputProps} value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+                    <option value="">Kategorisiz</option>
+                    {categories.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.name}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </Field>
+              <Field id="status" label="Durum">
+                {(inputProps) => (
+                  <Select {...inputProps} value={status} onChange={(e) => setStatus(e.target.value as ContentStatus)}>
+                    <option value="DRAFT">Taslak</option>
+                    <option value="PUBLISHED">Yayında</option>
+                  </Select>
+                )}
+              </Field>
+            </div>
+          </Card>
+
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-foreground">İçerik</label>
+            <PostEditor content={contentHtml} onChange={setContentHtml} />
+          </div>
         </div>
 
-        <Field id="excerpt" label="Özet">
-          {(inputProps) => <Textarea {...inputProps} value={excerpt} onChange={(e) => setExcerpt(e.target.value)} rows={2} />}
-        </Field>
-
-        <ImageUploadField id="coverImageUrl" label="Kapak görseli" value={coverImageUrl} onChange={setCoverImageUrl} />
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field id="category" label="Kategori">
-            {(inputProps) => (
-              <Select {...inputProps} value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-                <option value="">Kategorisiz</option>
-                {categories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
-                  </option>
-                ))}
-              </Select>
-            )}
-          </Field>
-          <Field id="status" label="Durum">
-            {(inputProps) => (
-              <Select {...inputProps} value={status} onChange={(e) => setStatus(e.target.value as ContentStatus)}>
-                <option value="DRAFT">Taslak</option>
-                <option value="PUBLISHED">Yayında</option>
-              </Select>
-            )}
-          </Field>
+        <div className="lg:sticky lg:top-6 lg:self-start">
+          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+            <SeoPreview title={title} description={excerpt} slug={slug} imageUrl={coverImageUrl} />
+          </motion.div>
         </div>
-      </Card>
-
-      <div>
-        <label className="mb-1.5 block text-sm font-medium text-foreground">İçerik</label>
-        <PostEditor content={contentHtml} onChange={setContentHtml} />
       </div>
 
       <div className="sticky bottom-6 z-10 flex justify-end">

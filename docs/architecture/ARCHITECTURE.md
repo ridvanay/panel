@@ -257,6 +257,10 @@ erDiagram
 | Navigation | `GET /navigation` | public |
 | Navigation | `GET /admin/navigation` | authenticated |
 | Navigation | `PUT /admin/navigation` | site-geneli `SiteRole=ADMIN` |
+| Stats | `GET /admin/stats/views` | authenticated |
+| Stats | `GET /admin/stats/live-visitors` | authenticated |
+| Stats | `GET /admin/stats/breakdown` | authenticated |
+| System | `GET /admin/health` | site-geneli `SiteRole=ADMIN` |
 
 > Not: `pages`/`blog`/`media`/`settings` CMS uçları (`/admin/pages`, `/admin/blog`,
 > `/admin/media`, `/admin/settings`) bu tablonun ilk sürümünden sonra eklendi;
@@ -272,6 +276,30 @@ erDiagram
 > `onDelete: Cascade`); ayrıca `SiteSettings`'e `headerCtaLabel`/`headerCtaHref`/
 > `footerCopyrightText` eklendi. Tam sözleşme için `openapi.yaml`'daki
 > `NavigationConfig`/`UpdateNavigationConfigRequest` şemalarına bakın.
+
+> Canlı Analytics (cihaz/ülke kırılımı + canlı ziyaretçi sayısı): `PageView`
+> modeline `deviceType` (`DeviceType`: `MOBILE`/`DESKTOP`/`TABLET`/`UNKNOWN`,
+> User-Agent'tan `lib/device.ts::detectDeviceType` ile) ve `country` (ISO 3166-1
+> alpha-2, bilinmiyorsa `"UNKNOWN"` sentinel — NULL değil, aksi halde Postgres
+> unique index'lerinde NULL'ların birbirinden farklı sayılması upsert'te çifte
+> satır/race condition riski yaratır; IP'den `geoip-lite` ile — offline, harici
+> API çağrısı/anahtar YOK — `lib/geo.ts::detectCountry` ile) eklendi. Bu ikisi ve
+> `date` birlikte compound unique kısıtını oluşturur (`(pageId|postId, date,
+> deviceType, country)`), böylece "aynı gün + aynı cihaz + aynı ülke" için
+> upsert count'u artırır. `GET /admin/stats/breakdown?days=N` bu kırılımı
+> `groupBy` ile özetler (ülkelerde ilk 10 + kalanı `"OTHER"` olarak toplanır).
+> `GET /admin/stats/live-visitors` süreç-içi (in-memory, `lib/live-visitors.ts`)
+> "son 60 saniyede view endpoint'i çağıran IP+User-Agent" sayacını döner — DAĞITIK
+> DEĞİL (çoklu instance'ta her process kendi sayacını tutar, Redis gibi paylaşımlı
+> bir store bu kapsamda yok), sunucu yeniden başlarsa sıfırlanır; gerçek istek
+> sinyaline dayanır, uydurma/simüle veri ÜRETİLMEZ. Sistem sağlığı (`GET
+> /admin/health`, yalnızca `SiteRole=ADMIN`): gerçek zamanlı DB ping (`SELECT 1`
+> süresi), `pg_database_size` ile DB boyutu, `Media.sizeBytes` toplamı, Node
+> `os`/`process` modüllerinden bellek/yük/uptime — hiçbir alan sabit/uydurma
+> değildir. `DB_STORAGE_QUOTA_MB`/`MEDIA_STORAGE_QUOTA_MB` ortam değişkenleri
+> tanımlıysa quota alanları doldurulur (frontend doluluk yüzdesi hesaplayabilir),
+> tanımsızsa `null` döner (frontend yalnızca mutlak boyutu gösterir — asla
+> varsayılan/sahte bir kota göstermez).
 
 Ayrıntılı request/response şemaları için `openapi.yaml` esastır.
 

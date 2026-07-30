@@ -61,6 +61,13 @@ enum AuditStatus {
   FORBIDDEN
 }
 
+enum DeviceType {
+  MOBILE
+  DESKTOP
+  TABLET
+  UNKNOWN
+}
+
 model User {
   id              String         @id @default(uuid())
   // Sıralı, dış dünyaya sızmayan iç sayaç — cursor sayfalamada stabil sıralama için.
@@ -269,22 +276,28 @@ model BlogPost {
 }
 
 // Günlük bucket'lı ziyaret kaydı: pageId/postId'den yalnızca biri set edilir.
-// (pageId, date) ve (postId, date) unique çiftleri, upsert ile "aynı gün ikinci görüntülemede
-// count'u artır" mantığını sağlar; ileride zaman serisi grafiği için de temel oluşturur.
+// (pageId, date, deviceType, country) ve (postId, date, deviceType, country) unique çiftleri,
+// upsert ile "aynı gün + aynı cihaz + aynı ülke için ikinci görüntülemede count'u artır"
+// mantığını sağlar; hem zaman serisi hem cihaz/ülke kırılımı grafikleri için temel oluşturur.
 model PageView {
-  id        String   @id @default(uuid())
-  pageId    String?
-  postId    String?
-  date      DateTime
-  count     Int      @default(1)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String     @id @default(uuid())
+  pageId     String?
+  postId     String?
+  date       DateTime
+  deviceType DeviceType @default(UNKNOWN)
+  // ISO 3166-1 alpha-2 ülke kodu; bilinmiyorsa "UNKNOWN" (NULL DEĞİL — Postgres unique
+  // index'lerinde NULL'lar birbirinden farklı sayılır, bu da upsert'te çifte satır/race
+  // condition riski yaratırdı; non-null sentinel bunu önler).
+  country    String     @default("UNKNOWN")
+  count      Int        @default(1)
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
 
   page Page?     @relation(fields: [pageId], references: [id], onDelete: Cascade)
   post BlogPost? @relation(fields: [postId], references: [id], onDelete: Cascade)
 
-  @@unique([pageId, date])
-  @@unique([postId, date])
+  @@unique([pageId, date, deviceType, country])
+  @@unique([postId, date, deviceType, country])
   @@map("page_views")
 }
 

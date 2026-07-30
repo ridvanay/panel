@@ -388,3 +388,45 @@ export interface UpdateNavigationConfigRequest {
   socialLinks: { platform: SocialPlatform; url: string; order: number }[];
   footerColumns: { title: string; order: number; links: { label: string; href: string; order: number }[] }[];
 }
+
+/**
+ * Canlı analytics ve sistem sağlığı — `/admin/stats/live-visitors`, `/admin/stats/breakdown`,
+ * `/admin/health`. Bkz. mimari kararı: bu ekranlar dürüstlük ilkesiyle tasarlanır — backend
+ * "UNKNOWN"/null döndürdüğünde UI bunu asla sahte bir varsayılanla gizlemez.
+ */
+export interface LiveVisitorsDto {
+  count: number;
+}
+
+export type DeviceType = "MOBILE" | "DESKTOP" | "TABLET" | "UNKNOWN";
+
+export interface DeviceBreakdownItem {
+  type: DeviceType;
+  count: number;
+}
+
+/** `country` "UNKNOWN" veya "OTHER" olabilir, ama asla `null` değildir. */
+export interface CountryBreakdownItem {
+  country: string;
+  count: number;
+}
+
+export interface BreakdownDto {
+  devices: DeviceBreakdownItem[];
+  countries: CountryBreakdownItem[];
+}
+
+export interface SystemHealthDto {
+  dbPingMs: number;
+  dbSizeBytes: number;
+  dbQuotaBytes: number | null;
+  mediaStorageBytes: number;
+  mediaStorageQuotaBytes: number | null;
+  memoryUsedBytes: number;
+  memoryTotalBytes: number;
+  processMemoryBytes: number;
+  loadAverage: [number, number, number];
+  platform: string;
+  uptimeSeconds: number;
+  checkedAt: string;
+}

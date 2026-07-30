@@ -11,6 +11,9 @@ import { NotFoundError } from "../../lib/errors";
 import { parseCursor, buildPageMeta } from "../../lib/pagination";
 import { slugify } from "../../lib/slug";
 import { startOfUtcDay } from "../../lib/date";
+import { detectDeviceType } from "../../lib/device";
+import { detectCountry } from "../../lib/geo";
+import { touchVisitor } from "../../lib/live-visitors";
 import {
   CategoryIdParamSchema,
   CreateBlogCategoryRequestSchema,
@@ -247,11 +250,15 @@ export async function publicBlogRoutes(app: FastifyInstance) {
       });
       if (!post) throw new NotFoundError("Yazı bulunamadı.");
 
+      const deviceType = detectDeviceType(request.headers["user-agent"]);
+      const country = detectCountry(request.ip);
+      touchVisitor(request.ip, request.headers["user-agent"]);
+
       const date = startOfUtcDay();
       await app.prisma.$transaction([
         app.prisma.pageView.upsert({
-          where: { postId_date: { postId: post.id, date } },
-          create: { postId: post.id, date, count: 1 },
+          where: { postId_date_deviceType_country: { postId: post.id, date, deviceType, country } },
+          create: { postId: post.id, date, deviceType, country, count: 1 },
           update: { count: { increment: 1 } },
         }),
         app.prisma.blogPost.update({ where: { id: post.id }, data: { viewCount: { increment: 1 } } }),

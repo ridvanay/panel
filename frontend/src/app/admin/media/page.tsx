@@ -3,11 +3,12 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type DragEvent } from "react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
-import { AlertCircle, Copy, Image as ImageIcon, UploadCloud } from "lucide-react";
+import { AlertCircle, Copy, Download, Image as ImageIcon, UploadCloud } from "lucide-react";
 import * as mediaApi from "@/lib/api/media";
 import type { Media } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Alert } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -15,6 +16,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { MediaPreviewDialog } from "@/components/admin/media-preview-dialog";
 import { PageHeading } from "@/components/admin/page-heading";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
+import { exportToCsv } from "@/lib/export-csv";
 import { cn } from "@/lib/cn";
 
 function formatSize(bytes: number): string {
@@ -44,7 +46,10 @@ const galleryItemVariants = {
 export default function AdminMediaPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragCounterRef = useRef(0);
+  const colorCanvasRef = useRef<HTMLCanvasElement>(null);
+  const requestedColorIdsRef = useRef<Set<string>>(new Set());
   const [items, setItems] = useState<Media[] | null>(null);
+  const [dominantColors, setDominantColors] = useState<Record<string, string | null>>({});
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
@@ -52,6 +57,11 @@ export default function AdminMediaPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Media | null>(null);
   const [previewMedia, setPreviewMedia] = useState<Media | null>(null);
+
+  // Toplu işlemler için seçim durumu.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -67,6 +77,51 @@ export default function AdminMediaPage() {
       await load();
     })();
   }, [load]);
+
+  // Her medya öğesi için baskın rengi paylaşılan, gizli bir canvas üzerinden hesapla.
+  useEffect(() => {
+    if (!items) return;
+    for (const media of items) {
+      if (requestedColorIdsRef.current.has(media.id)) continue;
+      requestedColorIdsRef.current.add(media.id);
+
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => {
+        const canvas = colorCanvasRef.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        canvas.width = 10;
+        canvas.height = 10;
+        ctx.drawImage(img, 0, 0, 10, 10);
+        try {
+          const data = ctx.getImageData(0, 0, 10, 10).data;
+          let r = 0;
+          let g = 0;
+          let b = 0;
+          let count = 0;
+          for (let i = 0; i < data.length; i += 4) {
+            r += data[i];
+            g += data[i + 1];
+            b += data[i + 2];
+            count += 1;
+          }
+          const hex = `#${[r, g, b]
+            .map((c) => Math.round(c / count).toString(16).padStart(2, "0"))
+            .join("")}`;
+          setDominantColors((prev) => ({ ...prev, [media.id]: hex }));
+        } catch {
+          // CORS nedeniyle canvas "tainted" olduysa güvenli şekilde vazgeç, sahte renk gösterme.
+          setDominantColors((prev) => ({ ...prev, [media.id]: null }));
+        }
+      };
+      img.onerror = () => {
+        setDominantColors((prev) => ({ ...prev, [media.id]: null }));
+      };
+      img.src = media.url;
+    }
+  }, [items]);
 
   async function handleFiles(fileList: FileList | File[]) {
     const files = Array.from(fileList);
@@ -176,6 +231,55 @@ export default function AdminMediaPage() {
     toast.success("Görsel URL'si kopyalandı.");
   }
 
+  function toggleSelect(mediaId: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(mediaId)) next.delete(mediaId);
+      else next.add(mediaId);
+      return next;
+    });
+  }
+
+  async function handleBulkDelete() {
+    const ids = Array.from(selectedIds);
+    setBulkDeleting(true);
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const id of ids) {
+      try {
+        await mediaApi.deleteMedia(id);
+        successCount += 1;
+      } catch {
+        failCount += 1;
+      }
+    }
+
+    setBulkDeleting(false);
+    setBulkDeleteConfirmOpen(false);
+    setSelectedIds(new Set());
+    await load();
+
+    if (successCount > 0 && failCount === 0) {
+      toast.success(successCount === 1 ? "1 görsel silindi." : `${successCount} görsel silindi.`);
+    } else if (successCount > 0 && failCount > 0) {
+      toast.success(`${successCount} görsel silindi, ${failCount} görsel silinemedi.`);
+    } else if (failCount > 0) {
+      toast.error(failCount === 1 ? "Görsel silinemedi." : `${failCount} görsel silinemedi.`);
+    }
+  }
+
+  function handleBulkExport() {
+    if (!items) return;
+    const selectedItems = items.filter((m) => selectedIds.has(m.id));
+    if (selectedItems.length === 0) return;
+    exportToCsv("secili-medya.csv", selectedItems, [
+      { key: "filename", label: "Dosya Adı" },
+      { key: "sizeBytes", label: "Boyut", format: (value) => formatSize(value as number) },
+      { key: "url", label: "URL" },
+    ]);
+  }
+
   const pendingPlaceholderCount = uploadProgress ? Math.max(uploadProgress.total - uploadProgress.done, 0) : 0;
 
   return (
@@ -209,6 +313,24 @@ export default function AdminMediaPage() {
             {error}
           </span>
         </Alert>
+      )}
+
+      {selectedIds.size > 0 && (
+        <Card className="flex flex-wrap items-center gap-3 p-4">
+          <span className="text-sm font-medium text-foreground">{selectedIds.size} seçili</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="destructive" size="sm" onClick={() => setBulkDeleteConfirmOpen(true)}>
+              Toplu Sil
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleBulkExport}>
+              <Download className="h-4 w-4" />
+              CSV Dışa Aktar
+            </Button>
+          </div>
+          <Button variant="ghost" size="sm" className="ml-auto" onClick={() => setSelectedIds(new Set())}>
+            Seçimi Temizle
+          </Button>
+        </Card>
       )}
 
       <label
@@ -255,13 +377,13 @@ export default function AdminMediaPage() {
         />
       ) : (
         <motion.div
-          className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4"
+          className="columns-2 sm:columns-3 lg:columns-4 gap-4"
           variants={galleryContainerVariants}
           initial="hidden"
           animate="visible"
         >
           {Array.from({ length: pendingPlaceholderCount }).map((_, index) => (
-            <motion.div key={`pending-${index}`} variants={galleryItemVariants}>
+            <motion.div key={`pending-${index}`} variants={galleryItemVariants} className="break-inside-avoid mb-4">
               <Card className="space-y-2 p-3">
                 <div className="flex aspect-square w-full items-center justify-center rounded-md bg-muted">
                   <Spinner className="h-6 w-6 text-foreground/40" />
@@ -277,6 +399,7 @@ export default function AdminMediaPage() {
               variants={galleryItemVariants}
               whileHover={{ y: -4 }}
               transition={{ duration: 0.2 }}
+              className="break-inside-avoid mb-4"
             >
               <Card className="space-y-2 p-3">
                 <div className="group relative">
@@ -290,9 +413,33 @@ export default function AdminMediaPage() {
                     <img
                       src={media.url}
                       alt=""
-                      className="aspect-square w-full object-cover transition-transform duration-200 group-hover:scale-105"
+                      loading="eager"
+                      onLoad={(e) => e.currentTarget.classList.remove("opacity-0", "blur-sm")}
+                      className="w-full h-auto object-cover opacity-0 blur-sm transition-[opacity,filter,transform] duration-300 group-hover:scale-105"
                     />
                   </button>
+                  {dominantColors[media.id] && (
+                    <span
+                      className="absolute bottom-2 left-2 h-4 w-4 rounded-full ring-2 ring-white/80"
+                      style={{ backgroundColor: dominantColors[media.id]! }}
+                      aria-hidden="true"
+                    />
+                  )}
+                  <div
+                    className={cn(
+                      "absolute top-2 left-2 flex h-8 w-8 items-center justify-center rounded-lg bg-foreground/60 backdrop-blur transition-opacity",
+                      selectedIds.has(media.id)
+                        ? "opacity-100"
+                        : "opacity-0 focus-within:opacity-100 group-hover:opacity-100"
+                    )}
+                  >
+                    <Checkbox
+                      aria-label={`${media.filename} öğesini seç`}
+                      checked={selectedIds.has(media.id)}
+                      onCheckedChange={() => toggleSelect(media.id)}
+                      className="border-background/70 text-background data-checked:border-primary"
+                    />
+                  </div>
                   <button
                     type="button"
                     onClick={() => handleCopy(media.url)}
@@ -317,6 +464,9 @@ export default function AdminMediaPage() {
         </motion.div>
       )}
 
+      {/* Baskın renk hesaplaması için paylaşılan, görünmez tek canvas. */}
+      <canvas ref={colorCanvasRef} className="hidden" />
+
       <MediaPreviewDialog
         media={previewMedia}
         open={previewMedia !== null}
@@ -336,6 +486,19 @@ export default function AdminMediaPage() {
         destructive
         loading={deletingId === pendingDelete?.id}
         onConfirm={handleDelete}
+      />
+
+      <ConfirmDialog
+        open={bulkDeleteConfirmOpen}
+        onOpenChange={(open) => {
+          if (!open) setBulkDeleteConfirmOpen(false);
+        }}
+        title="Görselleri toplu sil"
+        description={`${selectedIds.size} görseli silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`}
+        confirmText="Sil"
+        destructive
+        loading={bulkDeleting}
+        onConfirm={handleBulkDelete}
       />
     </div>
   );

@@ -30,12 +30,14 @@
     "dotenv": "^16.4.5",
     "fastify": "^4.28.1",
     "fastify-type-provider-zod": "^2.1.0",
+    "geoip-lite": "^2.0.3",
     "jsonwebtoken": "^9.0.2",
     "pino-pretty": "^11.2.2",
     "stripe": "^16.8.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@types/geoip-lite": "^1.4.4",
     "@types/jsonwebtoken": "^9.0.6",
     "@types/node": "^20.14.15",
     "prisma": "^5.19.1",

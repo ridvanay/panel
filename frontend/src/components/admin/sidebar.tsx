@@ -14,6 +14,7 @@ import {
   LayoutGrid,
   LayoutTemplate,
   Users,
+  Activity,
 } from "lucide-react";
 import {
   Sidebar,
@@ -38,6 +39,7 @@ const navItems = [
   { href: "/admin/media", label: "Medya", icon: ImageIcon },
   { href: "/admin/navigation", label: "Navigasyon", icon: LayoutTemplate },
   { href: "/admin/users", label: "Kullanıcılar", icon: Users },
+  { href: "/admin/system", label: "Sistem Sağlığı", icon: Activity },
   { href: "/admin/settings", label: "Ayarlar", icon: Settings },
 ];
 

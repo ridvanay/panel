@@ -9,6 +9,7 @@ import { Card } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { Alert } from "@/components/ui/alert";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
+import { ChartTooltipContent } from "@/components/admin/stats/chart-tooltip";
 
 const dateFormatter = new Intl.DateTimeFormat("tr-TR", { day: "numeric", month: "short" });
 
@@ -79,15 +80,7 @@ export function VisitorChart() {
                   axisLine={false}
                   width={40}
                 />
-                <Tooltip
-                  contentStyle={{
-                    background: "var(--surface)",
-                    border: "1px solid var(--border)",
-                    borderRadius: 8,
-                    fontSize: 12,
-                  }}
-                  labelStyle={{ color: "var(--foreground)" }}
-                />
+                <Tooltip content={ChartTooltipContent} />
                 <Legend iconType="plainline" wrapperStyle={{ fontSize: 12, color: "var(--foreground)" }} />
                 <Area
                   type="monotone"
@@ -97,6 +90,8 @@ export function VisitorChart() {
                   strokeWidth={2}
                   fill="url(#pageViewsFill)"
                   style={{ filter: "drop-shadow(0 0 6px var(--viz-series-1))" }}
+                  dot={{ r: 3, strokeWidth: 0, fill: "var(--viz-series-1)" }}
+                  activeDot={{ r: 5, style: { filter: "drop-shadow(0 0 6px var(--viz-series-1))" } }}
                 />
                 <Area
                   type="monotone"
@@ -106,6 +101,8 @@ export function VisitorChart() {
                   strokeWidth={2}
                   fill="url(#postViewsFill)"
                   style={{ filter: "drop-shadow(0 0 6px var(--viz-series-2))" }}
+                  dot={{ r: 3, strokeWidth: 0, fill: "var(--viz-series-2)" }}
+                  activeDot={{ r: 5, style: { filter: "drop-shadow(0 0 6px var(--viz-series-2))" } }}
                 />
               </AreaChart>
             </ResponsiveContainer>

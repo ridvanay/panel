@@ -20,8 +20,10 @@ import { Spinner } from "@/components/ui/spinner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { BlockList } from "@/components/admin/page-builder/block-list";
 import { BuilderCanvas } from "@/components/admin/page-builder/builder-canvas";
+import { SeoPreview } from "@/components/admin/seo-preview";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { AlertCircle, ChevronLeft } from "lucide-react";
+import { motion } from "framer-motion";
 
 interface PageSnapshot {
   title: string;
@@ -192,34 +194,42 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
         </Alert>
       )}
 
-      <Card className="space-y-4">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field id="title" label="Başlık" required>
-            {(inputProps) => <Input {...inputProps} required value={title} onChange={(e) => setTitle(e.target.value)} />}
+      <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
+        <Card className="min-w-0 space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field id="title" label="Başlık" required>
+              {(inputProps) => <Input {...inputProps} required value={title} onChange={(e) => setTitle(e.target.value)} />}
+            </Field>
+            <Field id="slug" label="Slug (URL)" required>
+              {(inputProps) => <Input {...inputProps} required value={slug} onChange={(e) => setSlug(e.target.value)} />}
+            </Field>
+          </div>
+
+          <Field id="status" label="Durum">
+            {(inputProps) => (
+              <Select {...inputProps} value={status} onChange={(e) => setStatus(e.target.value as ContentStatus)}>
+                <option value="DRAFT">Taslak</option>
+                <option value="PUBLISHED">Yayında</option>
+              </Select>
+            )}
           </Field>
-          <Field id="slug" label="Slug (URL)" required>
-            {(inputProps) => <Input {...inputProps} required value={slug} onChange={(e) => setSlug(e.target.value)} />}
+
+          <Field id="seoTitle" label="SEO başlığı">
+            {(inputProps) => <Input {...inputProps} value={seoTitle} onChange={(e) => setSeoTitle(e.target.value)} />}
           </Field>
+          <Field id="seoDescription" label="SEO açıklaması">
+            {(inputProps) => (
+              <Textarea {...inputProps} value={seoDescription} onChange={(e) => setSeoDescription(e.target.value)} rows={2} />
+            )}
+          </Field>
+        </Card>
+
+        <div className="lg:sticky lg:top-6 lg:self-start">
+          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+            <SeoPreview title={seoTitle || title} description={seoDescription} slug={slug} imageUrl={null} />
+          </motion.div>
         </div>
-
-        <Field id="status" label="Durum">
-          {(inputProps) => (
-            <Select {...inputProps} value={status} onChange={(e) => setStatus(e.target.value as ContentStatus)}>
-              <option value="DRAFT">Taslak</option>
-              <option value="PUBLISHED">Yayında</option>
-            </Select>
-          )}
-        </Field>
-
-        <Field id="seoTitle" label="SEO başlığı">
-          {(inputProps) => <Input {...inputProps} value={seoTitle} onChange={(e) => setSeoTitle(e.target.value)} />}
-        </Field>
-        <Field id="seoDescription" label="SEO açıklaması">
-          {(inputProps) => (
-            <Textarea {...inputProps} value={seoDescription} onChange={(e) => setSeoDescription(e.target.value)} rows={2} />
-          )}
-        </Field>
-      </Card>
+      </div>
 
       <div>
         <h2 className="text-base font-semibold text-foreground">İçerik blokları</h2>

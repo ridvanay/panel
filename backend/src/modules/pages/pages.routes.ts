@@ -12,6 +12,9 @@ import { NotFoundError } from "../../lib/errors";
 import { parseCursor, buildPageMeta } from "../../lib/pagination";
 import { slugify } from "../../lib/slug";
 import { startOfUtcDay } from "../../lib/date";
+import { detectDeviceType } from "../../lib/device";
+import { detectCountry } from "../../lib/geo";
+import { touchVisitor } from "../../lib/live-visitors";
 import { CreatePageRequestSchema, PageIdParamSchema, PageSlugParamSchema, UpdatePageRequestSchema } from "./pages.schemas";
 
 /** `/admin/pages` prefix'i altında bağlanır (bkz. app.ts) — tüm durumlar (taslak dahil), authenticated. */
@@ -150,11 +153,15 @@ export async function publicPagesRoutes(app: FastifyInstance) {
       });
       if (!page) throw new NotFoundError("Sayfa bulunamadı.");
 
+      const deviceType = detectDeviceType(request.headers["user-agent"]);
+      const country = detectCountry(request.ip);
+      touchVisitor(request.ip, request.headers["user-agent"]);
+
       const date = startOfUtcDay();
       await app.prisma.$transaction([
         app.prisma.pageView.upsert({
-          where: { pageId_date: { pageId: page.id, date } },
-          create: { pageId: page.id, date, count: 1 },
+          where: { pageId_date_deviceType_country: { pageId: page.id, date, deviceType, country } },
+          create: { pageId: page.id, date, deviceType, country, count: 1 },
           update: { count: { increment: 1 } },
         }),
         app.prisma.page.update({ where: { id: page.id }, data: { viewCount: { increment: 1 } } }),

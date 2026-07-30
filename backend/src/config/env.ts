@@ -31,6 +31,11 @@ const EnvSchema = z.object({
   S3_ENDPOINT: z.string().optional(),
   // CDN/CloudFront base URL — tanımlıysa medya URL'leri bundan üretilir, aksi halde S3 sağlayıcı URL'i kullanılır.
   S3_PUBLIC_URL: z.string().optional(),
+
+  // Tanımlıysa GET /admin/health "doluluk yüzdesi" hesaplayabilir; tanımsızsa frontend
+  // sadece mutlak boyutu gösterir (bkz. modules/system).
+  DB_STORAGE_QUOTA_MB: z.coerce.number().int().positive().optional(),
+  MEDIA_STORAGE_QUOTA_MB: z.coerce.number().int().positive().optional(),
 });
 
 const parsed = EnvSchema.safeParse(process.env);
