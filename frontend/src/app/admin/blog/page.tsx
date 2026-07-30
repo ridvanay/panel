@@ -1,18 +1,25 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { motion } from "framer-motion";
+import { toast } from "sonner";
 import * as blogApi from "@/lib/api/blog";
 import type { BlogPost } from "@/lib/api/types";
 import { LinkButton } from "@/components/ui/link-button";
 import { Alert } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { PostTable } from "@/components/admin/blog/post-table";
+import { PageHeading } from "@/components/admin/page-heading";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
+import { AlertCircle, Newspaper } from "lucide-react";
 
 export default function AdminBlogListPage() {
   const [posts, setPosts] = useState<BlogPost[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<BlogPost | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -29,11 +36,19 @@ export default function AdminBlogListPage() {
     })();
   }, [load]);
 
-  async function handleDelete(postId: string) {
-    if (!confirm("Bu yazıyı silmek istediğinize emin misiniz?")) return;
+  function requestDelete(postId: string) {
+    const post = posts?.find((p) => p.id === postId) ?? null;
+    setPendingDelete(post);
+  }
+
+  async function handleDelete() {
+    if (!pendingDelete) return;
+    const postId = pendingDelete.id;
     setDeletingId(postId);
     try {
       await blogApi.deletePost(postId);
+      toast.success("Yazı silindi.");
+      setPendingDelete(null);
       await load();
     } catch (err) {
       setError(friendlyErrorMessage(err));
@@ -44,23 +59,61 @@ export default function AdminBlogListPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-foreground">Blog Yazıları</h1>
-          <p className="mt-1 text-sm text-foreground/60">Yayınlanan ve taslak yazıların listesi.</p>
-        </div>
-        <LinkButton href="/admin/blog/new">Yeni Yazı</LinkButton>
-      </div>
+      <PageHeading
+        icon={Newspaper}
+        title="Blog Yazıları"
+        description="Yayınlanan ve taslak yazıların listesi."
+        actions={<LinkButton href="/admin/blog/new">Yeni Yazı</LinkButton>}
+      />
 
-      {error && <Alert variant="error">{error}</Alert>}
+      {error && (
+        <Alert variant="error">
+          <span className="flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            {error}
+          </span>
+        </Alert>
+      )}
 
       {posts === null ? (
         <div className="flex justify-center py-12">
           <Spinner className="h-6 w-6 text-primary" />
         </div>
+      ) : posts.length === 0 ? (
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+        >
+          <EmptyState
+            icon={Newspaper}
+            title="Henüz yazı yok"
+            description="İlk blog yazınızı oluşturarak başlayın."
+            action={<LinkButton href="/admin/blog/new">Yeni Yazı</LinkButton>}
+          />
+        </motion.div>
       ) : (
-        <PostTable posts={posts} deletingId={deletingId} onDelete={handleDelete} />
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+        >
+          <PostTable posts={posts} deletingId={deletingId} onDelete={requestDelete} />
+        </motion.div>
       )}
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingDelete(null);
+        }}
+        title="Yazıyı sil"
+        description={pendingDelete ? `"${pendingDelete.title}" yazısını silmek istediğinize emin misiniz? Bu işlem geri alınamaz.` : undefined}
+        confirmText="Sil"
+        destructive
+        loading={deletingId === pendingDelete?.id}
+        onConfirm={handleDelete}
+      />
     </div>
   );
 }

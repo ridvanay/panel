@@ -1,3 +1,4 @@
+import { ArrowUp, ArrowDown, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { blockRegistry } from "@/lib/page-builder/registry";
@@ -55,20 +56,34 @@ export function BuilderCanvas({ blocks, onChange }: { blocks: Block[]; onChange:
           <div className="flex items-center justify-between border-b border-border pb-3">
             <span className="text-sm font-medium text-foreground">{blockRegistry[block.type].label}</span>
             <div className="flex gap-1">
-              <Button type="button" variant="ghost" size="sm" onClick={() => moveBlock(index, -1)} disabled={index === 0}>
-                ↑
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Yukarı taşı"
+                onClick={() => moveBlock(index, -1)}
+                disabled={index === 0}
+              >
+                <ArrowUp />
               </Button>
               <Button
                 type="button"
                 variant="ghost"
-                size="sm"
+                size="icon-sm"
+                aria-label="Aşağı taşı"
                 onClick={() => moveBlock(index, 1)}
                 disabled={index === blocks.length - 1}
               >
-                ↓
+                <ArrowDown />
               </Button>
-              <Button type="button" variant="ghost" size="sm" onClick={() => removeBlock(index)}>
-                Sil
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Bloğu sil"
+                onClick={() => removeBlock(index)}
+              >
+                <Trash2 />
               </Button>
             </div>
           </div>

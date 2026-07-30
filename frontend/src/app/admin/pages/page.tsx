@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { toast } from "sonner";
 import * as pagesApi from "@/lib/api/pages";
 import type { SitePage } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
@@ -9,13 +10,18 @@ import { LinkButton } from "@/components/ui/link-button";
 import { Badge } from "@/components/ui/badge";
 import { Alert } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { PageHeading } from "@/components/admin/page-heading";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
+import { AlertCircle, FileText } from "lucide-react";
 
 export default function AdminPagesListPage() {
   const [pages, setPages] = useState<SitePage[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<SitePage | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -32,11 +38,14 @@ export default function AdminPagesListPage() {
     })();
   }, [load]);
 
-  async function handleDelete(pageId: string) {
-    if (!confirm("Bu sayfayı silmek istediğinize emin misiniz?")) return;
+  async function handleDelete() {
+    if (!pendingDelete) return;
+    const pageId = pendingDelete.id;
     setDeletingId(pageId);
     try {
       await pagesApi.deletePage(pageId);
+      toast.success("Sayfa silindi.");
+      setPendingDelete(null);
       await load();
     } catch (err) {
       setError(friendlyErrorMessage(err));
@@ -47,20 +56,33 @@ export default function AdminPagesListPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-foreground">Sayfalar</h1>
-          <p className="mt-1 text-sm text-foreground/60">Ana Sayfa, Hakkımızda gibi dinamik sayfaların listesi.</p>
-        </div>
-        <LinkButton href="/admin/pages/new">Yeni Sayfa</LinkButton>
-      </div>
+      <PageHeading
+        icon={FileText}
+        title="Sayfalar"
+        description="Ana Sayfa, Hakkımızda gibi dinamik sayfaların listesi."
+        actions={<LinkButton href="/admin/pages/new">Yeni Sayfa</LinkButton>}
+      />
 
-      {error && <Alert variant="error">{error}</Alert>}
+      {error && (
+        <Alert variant="error">
+          <span className="flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            {error}
+          </span>
+        </Alert>
+      )}
 
       {pages === null ? (
         <div className="flex justify-center py-12">
           <Spinner className="h-6 w-6 text-primary" />
         </div>
+      ) : pages.length === 0 ? (
+        <EmptyState
+          icon={FileText}
+          title="Henüz sayfa yok"
+          description="İlk sayfanızı oluşturarak başlayın."
+          action={<LinkButton href="/admin/pages/new">Yeni Sayfa</LinkButton>}
+        />
       ) : (
         <Table>
           <TableHeader>
@@ -73,13 +95,6 @@ export default function AdminPagesListPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {pages.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={5} className="text-center text-foreground/50">
-                  Henüz sayfa yok
-                </TableCell>
-              </TableRow>
-            )}
             {pages.map((page) => (
               <TableRow key={page.id}>
                 <TableCell>
@@ -95,7 +110,7 @@ export default function AdminPagesListPage() {
                 </TableCell>
                 <TableCell className="text-right text-foreground/60">{page.viewCount.toLocaleString("tr-TR")}</TableCell>
                 <TableCell className="text-right">
-                  <Button variant="ghost" size="sm" loading={deletingId === page.id} onClick={() => handleDelete(page.id)}>
+                  <Button variant="ghost" size="sm" onClick={() => setPendingDelete(page)}>
                     Sil
                   </Button>
                 </TableCell>
@@ -104,6 +119,19 @@ export default function AdminPagesListPage() {
           </TableBody>
         </Table>
       )}
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingDelete(null);
+        }}
+        title="Sayfayı sil"
+        description={pendingDelete ? `"${pendingDelete.title}" sayfasını silmek istediğinize emin misiniz? Bu işlem geri alınamaz.` : undefined}
+        confirmText="Sil"
+        destructive
+        loading={deletingId === pendingDelete?.id}
+        onConfirm={handleDelete}
+      />
     </div>
   );
 }

@@ -1,9 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
-import path from "node:path";
-import fs from "node:fs/promises";
-import crypto from "node:crypto";
 import { authenticate } from "../../middleware/authenticate";
 import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema, CursorQuerySchema } from "../../schemas/common";
@@ -11,7 +8,7 @@ import { MediaSchema } from "../../schemas/entities";
 import { toMediaDto } from "../../mappers";
 import { NotFoundError, ValidationError } from "../../lib/errors";
 import { parseCursor, buildPageMeta } from "../../lib/pagination";
-import { UPLOAD_DIR } from "../../plugins/uploads";
+import { storage } from "../../lib/storage";
 import { MediaIdParamSchema } from "./media.schemas";
 
 const ALLOWED_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "image/svg+xml"]);
@@ -36,14 +33,16 @@ export async function adminMediaRoutes(app: FastifyInstance) {
       }
 
       const buffer = await file.toBuffer();
-      const ext = path.extname(file.filename);
-      const storedName = `${crypto.randomUUID()}${ext}`;
-      await fs.writeFile(path.join(UPLOAD_DIR, storedName), buffer);
+      const { path: storedPath, url } = await storage.save({
+        buffer,
+        filename: file.filename,
+        mimeType: file.mimetype,
+      });
 
       const media = await app.prisma.media.create({
         data: {
-          path: storedName,
-          url: `/uploads/${storedName}`,
+          path: storedPath,
+          url,
           filename: file.filename,
           mimeType: file.mimetype,
           sizeBytes: buffer.byteLength,
@@ -79,7 +78,7 @@ export async function adminMediaRoutes(app: FastifyInstance) {
       if (!media) throw new NotFoundError("Medya bulunamadı.");
 
       await app.prisma.media.delete({ where: { id: media.id } });
-      await fs.unlink(path.join(UPLOAD_DIR, media.path)).catch(() => {});
+      await storage.remove(media.path).catch(() => {});
 
       return reply.code(204).send();
     }

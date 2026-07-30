@@ -1,5 +1,6 @@
 "use client";
 
+import { LogOut } from "lucide-react";
 import { useAuth } from "@/context/auth-context";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -17,6 +18,7 @@ export function AdminTopbar() {
         <Avatar name={user.name} src={user.avatarUrl} size={28} />
         <span className="hidden text-sm text-foreground/80 sm:inline">{user.name}</span>
         <Button size="sm" variant="ghost" onClick={() => logout()}>
+          <LogOut />
           Çıkış yap
         </Button>
       </div>

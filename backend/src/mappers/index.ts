@@ -119,10 +119,15 @@ export function toBlogCategoryDto(category: BlogCategory): BlogCategoryDto {
 
 type BlogPostWithCategory = BlogPost & { category: BlogCategory | null };
 
+/** S3/CDN sürücüsü zaten mutlak URL üretir; local sürücü relative `/uploads/...` yolu döner. */
+function absolutizeMediaUrl(url: string): string {
+  return /^https?:\/\//i.test(url) ? url : `${env.PUBLIC_URL}${url}`;
+}
+
 export function toMediaDto(media: Media): MediaDto {
   return {
     id: media.id,
-    url: `${env.PUBLIC_URL}${media.url}`,
+    url: absolutizeMediaUrl(media.url),
     filename: media.filename,
     mimeType: media.mimeType,
     sizeBytes: media.sizeBytes,

@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/context/auth-context";
 import { AdminSidebar } from "@/components/admin/sidebar";
 import { AdminTopbar } from "@/components/admin/topbar";
+import { CommandPalette } from "@/components/admin/command-palette";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
 
@@ -34,6 +35,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         <AdminTopbar />
         <main className="flex-1 bg-surface-muted p-6">{children}</main>
       </SidebarInset>
+      <CommandPalette />
     </SidebarProvider>
   );
 }

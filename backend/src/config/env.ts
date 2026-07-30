@@ -20,6 +20,17 @@ const EnvSchema = z.object({
 
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
   RATE_LIMIT_WINDOW: z.string().default("1 minute"),
+
+  // Medya depolama — "local" (varsayılan, diske yazar) veya "s3" (S3/MinIO/R2 uyumlu nesne depolama).
+  STORAGE_DRIVER: z.enum(["local", "s3"]).default("local"),
+  S3_BUCKET: z.string().optional(),
+  S3_REGION: z.string().optional(),
+  S3_ACCESS_KEY_ID: z.string().optional(),
+  S3_SECRET_ACCESS_KEY: z.string().optional(),
+  // MinIO/Cloudflare R2 gibi S3-uyumlu servisler için özel uç nokta.
+  S3_ENDPOINT: z.string().optional(),
+  // CDN/CloudFront base URL — tanımlıysa medya URL'leri bundan üretilir, aksi halde S3 sağlayıcı URL'i kullanılır.
+  S3_PUBLIC_URL: z.string().optional(),
 });
 
 const parsed = EnvSchema.safeParse(process.env);
