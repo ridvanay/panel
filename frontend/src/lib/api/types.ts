@@ -37,6 +37,7 @@ export interface User {
   emailVerifiedAt: string | null;
   role: SiteRole;
   createdAt: string;
+  twoFactorEnabled: boolean;
 }
 
 /**
@@ -194,6 +195,12 @@ export interface Page<T> {
 
 export type ContentStatus = "DRAFT" | "PUBLISHED";
 
+/**
+ * `Page`/`BlogPost` çeviri gölgesi — TR kanonik kolonlar, `translations.EN` yalnızca
+ * override taşır (kısmi olabilir). Bkz. ARCHITECTURE.md §10.5.
+ */
+export type ContentTranslations = Record<string, Record<string, unknown>>;
+
 // Not: `Page<T>` yukarıda sayfalama zarfı olarak kullanıldığı için site sayfası
 // varlığı çakışmasın diye `SitePage` adlandırıldı.
 export interface SitePage {
@@ -204,6 +211,11 @@ export interface SitePage {
   blocks: Record<string, unknown>[];
   seoTitle: string | null;
   seoDescription: string | null;
+  ogTitle: string | null;
+  ogImageUrl: string | null;
+  canonicalUrl: string | null;
+  noIndex: boolean;
+  translations: ContentTranslations;
   publishedAt: string | null;
   viewCount: number;
   createdAt: string;
@@ -217,6 +229,11 @@ export interface CreateSitePageRequest {
   blocks?: Record<string, unknown>[];
   seoTitle?: string;
   seoDescription?: string;
+  ogTitle?: string | null;
+  ogImageUrl?: string | null;
+  canonicalUrl?: string | null;
+  noIndex?: boolean;
+  translations?: ContentTranslations;
 }
 
 export interface UpdateSitePageRequest {
@@ -226,6 +243,11 @@ export interface UpdateSitePageRequest {
   blocks?: Record<string, unknown>[];
   seoTitle?: string | null;
   seoDescription?: string | null;
+  ogTitle?: string | null;
+  ogImageUrl?: string | null;
+  canonicalUrl?: string | null;
+  noIndex?: boolean;
+  translations?: ContentTranslations;
 }
 
 export interface BlogCategory {
@@ -254,6 +276,13 @@ export interface BlogPost {
   coverImageUrl: string | null;
   status: ContentStatus;
   category: BlogCategory | null;
+  seoTitle: string | null;
+  seoDescription: string | null;
+  ogTitle: string | null;
+  ogImageUrl: string | null;
+  canonicalUrl: string | null;
+  noIndex: boolean;
+  translations: ContentTranslations;
   publishedAt: string | null;
   viewCount: number;
   createdAt: string;
@@ -268,6 +297,13 @@ export interface CreateBlogPostRequest {
   coverImageUrl?: string;
   status?: ContentStatus;
   categoryId?: string | null;
+  seoTitle?: string | null;
+  seoDescription?: string | null;
+  ogTitle?: string | null;
+  ogImageUrl?: string | null;
+  canonicalUrl?: string | null;
+  noIndex?: boolean;
+  translations?: ContentTranslations;
 }
 
 export interface DailyViewStats {
@@ -305,6 +341,32 @@ export interface UpdateBlogPostRequest {
   coverImageUrl?: string | null;
   status?: ContentStatus;
   categoryId?: string | null;
+  seoTitle?: string | null;
+  seoDescription?: string | null;
+  ogTitle?: string | null;
+  ogImageUrl?: string | null;
+  canonicalUrl?: string | null;
+  noIndex?: boolean;
+  translations?: ContentTranslations;
+}
+
+/**
+ * İçerik sürüm kontrolü (Revision History) — bkz. ARCHITECTURE.md §10.1.
+ * `/admin/pages/{id}/revisions` ve `/admin/blog/{id}/revisions` uçları.
+ */
+export type ContentEntityType = "PAGE" | "BLOG_POST";
+
+export interface ContentRevisionSummary {
+  id: string;
+  editedById: string | null;
+  editedByName: string;
+  createdAt: string;
+}
+
+export interface ContentRevision extends ContentRevisionSummary {
+  entityType: ContentEntityType;
+  entityId: string;
+  snapshot: Record<string, unknown>;
 }
 
 export type AuditStatus = "SUCCESS" | "FAILURE" | "FORBIDDEN";
@@ -429,4 +491,82 @@ export interface SystemHealthDto {
   platform: string;
   uptimeSeconds: number;
   checkedAt: string;
+}
+
+/**
+ * Güvenlik & 2FA (TOTP) + Aktif Oturumlar — bkz. ARCHITECTURE.md §10.4.
+ * `POST /auth/login` artık `AuthResponse` yerine `LoginResult` döner: 2FA kapalıysa
+ * doğrudan token çifti, açıksa `{ requiresTwoFactor: true, challengeToken }`.
+ */
+export interface LoginRequiresTwoFactorResponse {
+  requiresTwoFactor: true;
+  challengeToken: string;
+}
+export type LoginResult = AuthResponse | LoginRequiresTwoFactorResponse;
+
+export interface VerifyTwoFactorRequest {
+  challengeToken: string;
+  code: string;
+}
+
+export interface TwoFactorSetupResponse {
+  otpauthUrl: string;
+  qrCodeDataUrl: string;
+  setupToken: string;
+}
+export interface EnableTwoFactorRequest {
+  setupToken: string;
+  code: string;
+}
+export interface EnableTwoFactorResponse {
+  backupCodes: string[];
+}
+export interface DisableTwoFactorRequest {
+  password: string;
+}
+export interface RegenerateBackupCodesRequest {
+  password: string;
+}
+export interface RegenerateBackupCodesResponse {
+  backupCodes: string[];
+}
+
+export interface Session {
+  id: string;
+  userAgent: string | null;
+  ipAddress: string | null;
+  createdAt: string;
+  expiresAt: string;
+  isCurrent: boolean;
+}
+
+/**
+ * E-posta & Bildirim Şablonu Yöneticisi — bkz. ARCHITECTURE.md §10.3.
+ * `/admin/notifications/templates` uçları.
+ */
+export type EmailTemplateKey = "WELCOME" | "PASSWORD_RESET" | "SYSTEM_ANNOUNCEMENT";
+
+export interface EmailTemplate {
+  id: string;
+  key: EmailTemplateKey;
+  name: string;
+  subject: string;
+  bodyHtml: string;
+  availableVariables: string[];
+  updatedAt: string;
+  createdAt: string;
+}
+
+export interface UpdateEmailTemplateRequest {
+  subject?: string;
+  bodyHtml?: string;
+}
+
+export interface PreviewEmailTemplateRequest {
+  sampleValues: Record<string, string>;
+}
+
+export interface PreviewEmailTemplateResponse {
+  renderedSubject: string;
+  renderedHtml: string;
 }

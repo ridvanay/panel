@@ -19,20 +19,27 @@ function countryLabel(country: string): string {
   return country;
 }
 
-export function CountryBreakdownList() {
+interface CountryBreakdownListProps {
+  /** Son kaç günün verisi çekilecek. Verilmezse mevcut varsayılan (30) korunur. */
+  days?: number;
+}
+
+export function CountryBreakdownList({ days = 30 }: CountryBreakdownListProps) {
   const [countries, setCountries] = useState<CountryBreakdownItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
+      setCountries(null);
+      setError(null);
       try {
-        const breakdown = await statsApi.getBreakdown(30);
+        const breakdown = await statsApi.getBreakdown(days);
         setCountries(breakdown.countries);
       } catch (err) {
         setError(friendlyErrorMessage(err));
       }
     })();
-  }, []);
+  }, [days]);
 
   const total = countries?.reduce((sum, item) => sum + item.count, 0) ?? 0;
   const maxCount = countries?.reduce((max, item) => Math.max(max, item.count), 0) ?? 0;
@@ -63,7 +70,7 @@ export function CountryBreakdownList() {
             </Tooltip>
           )}
         </div>
-        <p className="text-xs text-foreground/60">Son 30 gün · ülkeye göre ziyaretçi sayısı</p>
+        <p className="text-xs text-foreground/60">Son {days} gün · ülkeye göre ziyaretçi sayısı</p>
 
         {error ? (
           <Alert variant="error" className="mt-4">

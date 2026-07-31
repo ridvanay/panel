@@ -1,12 +1,21 @@
 import { apiFetch } from "./client";
-import type { AuthResponse, AuthSession, AuthTokens, LoginRequest, RegisterRequest } from "./types";
+import type { AuthResponse, AuthSession, AuthTokens, LoginRequest, LoginResult, RegisterRequest } from "./types";
 
 export function register(input: RegisterRequest) {
   return apiFetch<AuthResponse>("/auth/register", { method: "POST", body: input, skipAuthRetry: true });
 }
 
 export function login(input: LoginRequest) {
-  return apiFetch<AuthResponse>("/auth/login", { method: "POST", body: input, skipAuthRetry: true });
+  return apiFetch<LoginResult>("/auth/login", { method: "POST", body: input, skipAuthRetry: true });
+}
+
+/** §10.4 — `login()` `requiresTwoFactor: true` döndürdüğünde bu uçla TOTP/backup kodu doğrulanır. */
+export function verifyTwoFactor(challengeToken: string, code: string) {
+  return apiFetch<AuthResponse>("/auth/2fa/verify", {
+    method: "POST",
+    body: { challengeToken, code },
+    skipAuthRetry: true,
+  });
 }
 
 export function refresh() {

@@ -5,9 +5,11 @@ import { motion } from "framer-motion";
 import { Area, AreaChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import * as statsApi from "@/lib/api/stats";
 import type { DailyViewStats } from "@/lib/api/types";
+import { BarChart3 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { Alert } from "@/components/ui/alert";
+import { EmptyState } from "@/components/ui/empty-state";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { ChartTooltipContent } from "@/components/admin/stats/chart-tooltip";
 
@@ -20,19 +22,26 @@ function formatChartData(rows: DailyViewStats[]) {
   }));
 }
 
-export function VisitorChart() {
+interface VisitorChartProps {
+  /** Son kaç günün verisi çekilecek. Verilmezse mevcut varsayılan (30) korunur. */
+  days?: number;
+}
+
+export function VisitorChart({ days = 30 }: VisitorChartProps) {
   const [data, setData] = useState<DailyViewStats[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
+      setData(null);
+      setError(null);
       try {
-        setData(await statsApi.getViewStats(30));
+        setData(await statsApi.getViewStats(days));
       } catch (err) {
         setError(friendlyErrorMessage(err));
       }
     })();
-  }, []);
+  }, [days]);
 
   return (
     <motion.div
@@ -42,7 +51,7 @@ export function VisitorChart() {
     >
       <Card>
         <h3 className="text-sm font-medium text-foreground">Görüntülenme trendi</h3>
-        <p className="text-xs text-foreground/60">Son 30 gün · sayfa ve blog görüntülenmeleri</p>
+        <p className="text-xs text-foreground/60">Son {days} gün · sayfa ve blog görüntülenmeleri</p>
 
         {error ? (
           <Alert variant="error" className="mt-4">
@@ -51,6 +60,15 @@ export function VisitorChart() {
         ) : data === null ? (
           <div className="flex h-72 items-center justify-center">
             <Spinner className="h-6 w-6 text-primary" />
+          </div>
+        ) : data.every((d) => d.pageViews === 0 && d.postViews === 0) ? (
+          <div className="flex h-72 items-center justify-center">
+            <EmptyState
+              icon={BarChart3}
+              title="Henüz görüntülenme verisi yok"
+              description={`Son ${days} günde sayfa veya blog görüntülenmesi kaydedilmedi.`}
+              className="border-none p-0"
+            />
           </div>
         ) : (
           <div className="mt-4 h-72 w-full">

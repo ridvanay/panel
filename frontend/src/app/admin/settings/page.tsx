@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ComponentType, type ReactNode } from "react";
+import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import type { LucideProps } from "lucide-react";
 import { toast } from "sonner";
@@ -52,6 +53,8 @@ const ROLE_LETTERS: Record<SiteRole, string> = {
   VIEWER: "V",
 };
 
+const UNSAVED_CHANGES_WARNING = "Kaydedilmemiş değişiklikleriniz var. Yine de ayrılmak istiyor musunuz?";
+
 interface GeneralSettingsSnapshot {
   siteName: string;
   logoUrl: string;
@@ -82,7 +85,7 @@ function DarkField({
         )}
       </label>
       {children}
-      {hint && <p className="text-xs text-white/40">{hint}</p>}
+      {hint && <p className="text-xs text-white/60">{hint}</p>}
     </div>
   );
 }
@@ -115,7 +118,7 @@ function BentoCard({
         </span>
         <div>
           <h2 className="text-sm font-semibold text-white">{title}</h2>
-          <p className="mt-0.5 text-xs text-white/45">{description}</p>
+          <p className="mt-0.5 text-xs text-white/60">{description}</p>
         </div>
       </div>
       <div className="relative mt-5 space-y-4">{children}</div>
@@ -131,7 +134,7 @@ function RoleBadge({ role, active }: { role: SiteRole; active: boolean }) {
         "flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[11px] font-semibold ring-1 transition",
         active
           ? "bg-[rgba(var(--accent-rgb-500),0.2)] text-[var(--accent-300)] ring-[rgba(var(--accent-rgb-400),0.4)]"
-          : "bg-white/[0.02] text-white/15 ring-white/5"
+          : "bg-white/[0.02] text-white/40 ring-white/5"
       )}
     >
       {ROLE_LETTERS[role]}
@@ -197,6 +200,37 @@ export default function AdminSettingsPage() {
     if (!snapshot) return false;
     return siteName !== snapshot.siteName || logoUrl !== snapshot.logoUrl || homePageId !== snapshot.homePageId;
   }, [siteName, logoUrl, homePageId, snapshot]);
+
+  const pathname = usePathname();
+
+  // Kaydedilmemiş değişiklik varken sekmeyi kapatma/yenileme/tamamen ayrılma girişiminde tarayıcının native uyarısını göster.
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    function handleBeforeUnload(event: BeforeUnloadEvent) {
+      event.preventDefault();
+      event.returnValue = "";
+    }
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [hasUnsavedChanges]);
+
+  // Kaydedilmemiş değişiklik varken sidebar/başka bir admin bağlantısına tıklanınca onay iste
+  // (Next.js App Router'da global bir route-change event'i olmadığı için capture-phase click dinleniyor).
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    function handleDocumentClick(event: MouseEvent) {
+      const target = event.target as HTMLElement | null;
+      const link = target?.closest("a");
+      const href = link?.getAttribute("href");
+      if (!href || !href.startsWith("/admin") || href === pathname) return;
+      if (!window.confirm(UNSAVED_CHANGES_WARNING)) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    }
+    document.addEventListener("click", handleDocumentClick, true);
+    return () => document.removeEventListener("click", handleDocumentClick, true);
+  }, [hasUnsavedChanges, pathname]);
 
   const loadPermissions = useCallback(async () => {
     if (permissionsLoaded || permissionsLoading) return;
@@ -316,7 +350,13 @@ export default function AdminSettingsPage() {
 
         <Tabs
           value={activeTab}
-          onValueChange={(value) => setActiveTab(String(value))}
+          onValueChange={(value) => {
+            const nextTab = String(value);
+            if (activeTab === "general" && hasUnsavedChanges && nextTab !== activeTab) {
+              if (!window.confirm(UNSAVED_CHANGES_WARNING)) return;
+            }
+            setActiveTab(nextTab);
+          }}
         >
           <TabsList className={tabsListClassName}>
             <TabsTrigger value="general" className={tabsTriggerClassName}>
@@ -428,7 +468,7 @@ export default function AdminSettingsPage() {
                       className="h-32 w-full rounded-xl border border-white/10 bg-white/5 object-contain sm:h-full"
                     />
                   ) : (
-                    <div className="flex h-32 w-full items-center justify-center rounded-xl border border-dashed border-white/15 bg-white/[0.02] text-xs text-white/30 sm:h-full">
+                    <div className="flex h-32 w-full items-center justify-center rounded-xl border border-dashed border-white/15 bg-white/[0.02] text-xs text-white/60 sm:h-full">
                       Logo yok
                     </div>
                   )}
@@ -472,6 +512,12 @@ export default function AdminSettingsPage() {
               className="sticky bottom-6 z-10 flex justify-end"
             >
               <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.06] px-4 py-3 shadow-[0_8px_40px_rgba(0,0,0,0.45)] backdrop-blur-xl">
+                {hasUnsavedChanges && !saving && (
+                  <span className="flex items-center gap-1.5 text-xs text-amber-300/90">
+                    <span className="h-1.5 w-1.5 rounded-full bg-amber-400" aria-hidden="true" />
+                    Kaydedilmemiş değişiklikler var
+                  </span>
+                )}
                 {saving && <span className="text-xs text-white/50">Kaydediliyor…</span>}
                 <motion.button
                   type="button"
@@ -513,7 +559,7 @@ export default function AdminSettingsPage() {
                     <div className="overflow-x-auto rounded-xl border border-white/10">
                       <table className="w-full min-w-[560px] border-collapse text-sm">
                         <thead>
-                          <tr className="border-b border-white/10 bg-white/[0.02] text-left text-xs tracking-wide text-white/40 uppercase">
+                          <tr className="border-b border-white/10 bg-white/[0.02] text-left text-xs tracking-wide text-white/60 uppercase">
                             <th className="px-4 py-3 font-medium">Modül</th>
                             {actionColumns.map((col) => (
                               <th key={col} className="px-4 py-3 text-center font-medium">
@@ -530,7 +576,7 @@ export default function AdminSettingsPage() {
                                 const rolesForAction = mod.actions[col];
                                 if (!rolesForAction) {
                                   return (
-                                    <td key={col} className="px-4 py-3 text-center text-white/15">
+                                    <td key={col} className="px-4 py-3 text-center text-white/50">
                                       —
                                     </td>
                                   );
@@ -551,7 +597,7 @@ export default function AdminSettingsPage() {
                       </table>
                     </div>
 
-                    <p className="flex items-start gap-1.5 text-xs text-white/40">
+                    <p className="flex items-start gap-1.5 text-xs text-white/60">
                       <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                       Bu izin matrisi sistem tarafından tanımlanır ve bu ekrandan değiştirilemez.
                     </p>
@@ -619,7 +665,7 @@ export default function AdminSettingsPage() {
                   </div>
                 </div>
 
-                <p className="flex items-start gap-1.5 text-xs text-white/40">
+                <p className="flex items-start gap-1.5 text-xs text-white/60">
                   <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                   Bu yapılandırma henüz bu ortamda desteklenmiyor.
                 </p>

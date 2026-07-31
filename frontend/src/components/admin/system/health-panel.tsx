@@ -7,11 +7,14 @@ import type { SystemHealthDto } from "@/lib/api/types";
 import { Card } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { Alert } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/cn";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { AlertCircle, Clock, Cpu, Database, Gauge, HardDrive, MemoryStick } from "lucide-react";
 
 const POLL_INTERVAL_MS = 10000;
+/** Sparkline'larda tutulan maksimum örnek sayısı (~10 dakikalık geçmiş, 10sn poll aralığıyla). */
+const MAX_HISTORY_POINTS = 60;
 
 /** Bayt değerini otomatik olarak B/KB/MB/GB birimine çevirir. */
 export function formatBytes(bytes: number): string {
@@ -51,13 +54,13 @@ function pingTone(ms: number): "success" | "warning" | "danger" {
 
 const toneTextClasses: Record<"success" | "warning" | "danger", string> = {
   success: "text-success",
-  warning: "text-amber-500 dark:text-amber-400",
+  warning: "text-warning",
   danger: "text-danger",
 };
 
 const toneBarClasses: Record<"success" | "warning" | "danger", string> = {
   success: "bg-success",
-  warning: "bg-amber-500 dark:bg-amber-400",
+  warning: "bg-warning",
   danger: "bg-danger",
 };
 
@@ -66,18 +69,68 @@ interface MetricCardProps {
   label: string;
   children: ReactNode;
   note?: ReactNode;
+  /** Platform kısıtı nedeniyle bu metrik toplanamıyorsa true — kartı soluklaştırır ve "Desteklenmiyor" rozeti gösterir. */
+  disabled?: boolean;
 }
 
-function MetricCard({ icon: Icon, label, children, note }: MetricCardProps) {
+function MetricCard({ icon: Icon, label, children, note, disabled }: MetricCardProps) {
   return (
-    <Card className="space-y-3">
-      <div className="flex items-center gap-2 text-foreground/60">
-        <Icon className="h-4 w-4" />
-        <p className="text-sm font-medium">{label}</p>
+    <Card
+      className={cn(
+        "space-y-3",
+        disabled && "border-dashed border-border/40 bg-surface/40 hover:border-border/40 hover:shadow-none"
+      )}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-foreground/60">
+          <Icon className="h-4 w-4" />
+          <p className="text-sm font-medium">{label}</p>
+        </div>
+        {disabled && <Badge tone="neutral">Desteklenmiyor</Badge>}
       </div>
-      <div>{children}</div>
-      {note && <p className="text-xs text-foreground/50">{note}</p>}
+      <div className={cn(disabled && "opacity-60 grayscale-[0.4]")}>{children}</div>
+      {note && <p className="text-xs text-foreground/60">{note}</p>}
     </Card>
+  );
+}
+
+const sparklineStrokeClasses: Record<"success" | "warning" | "danger" | "primary" | "neutral", string> = {
+  success: "stroke-success",
+  warning: "stroke-warning",
+  danger: "stroke-danger",
+  primary: "stroke-primary",
+  neutral: "stroke-foreground/55",
+};
+
+/** Son N örneği ince bir SVG polyline olarak çizen dekoratif mini-grafik (0-1 veri noktası varken yer tutucu bir çizgi gösterir). */
+function Sparkline({ data, tone }: { data: number[]; tone: keyof typeof sparklineStrokeClasses }) {
+  if (data.length < 2) {
+    return <div className="h-8 w-full border-b border-dashed border-border/30" aria-hidden="true" />;
+  }
+
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const range = max - min || 1;
+  const points = data
+    .map((value, index) => {
+      const x = (index / (data.length - 1)) * 100;
+      const y = 24 - ((value - min) / range) * 24;
+      return `${x.toFixed(2)},${y.toFixed(2)}`;
+    })
+    .join(" ");
+
+  return (
+    <svg className="h-8 w-full" viewBox="0 0 100 24" preserveAspectRatio="none" aria-hidden="true">
+      <polyline
+        points={points}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={1.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className={sparklineStrokeClasses[tone]}
+      />
+    </svg>
   );
 }
 
@@ -104,6 +157,9 @@ const cardVariants = {
 export function HealthPanel() {
   const [health, setHealth] = useState<SystemHealthDto | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [dbPingHistory, setDbPingHistory] = useState<number[]>([]);
+  const [ramPercentHistory, setRamPercentHistory] = useState<number[]>([]);
+  const [processMemoryHistory, setProcessMemoryHistory] = useState<number[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -114,6 +170,11 @@ export function HealthPanel() {
         if (!cancelled) {
           setHealth(result);
           setError(null);
+          const ramPercent =
+            result.memoryTotalBytes > 0 ? (result.memoryUsedBytes / result.memoryTotalBytes) * 100 : 0;
+          setDbPingHistory((prev) => [...prev, result.dbPingMs].slice(-MAX_HISTORY_POINTS));
+          setRamPercentHistory((prev) => [...prev, ramPercent].slice(-MAX_HISTORY_POINTS));
+          setProcessMemoryHistory((prev) => [...prev, result.processMemoryBytes].slice(-MAX_HISTORY_POINTS));
         }
       } catch (err) {
         if (!cancelled) setError(friendlyErrorMessage(err));
@@ -179,7 +240,10 @@ export function HealthPanel() {
       >
         <motion.div variants={cardVariants}>
           <MetricCard icon={Gauge} label="Veritabanı Ping">
-            <p className={cn("text-2xl font-semibold", toneTextClasses[pingSeverity])}>{health.dbPingMs} ms</p>
+            <div className="space-y-2">
+              <p className={cn("text-2xl font-semibold", toneTextClasses[pingSeverity])}>{health.dbPingMs} ms</p>
+              <Sparkline data={dbPingHistory} tone={pingSeverity} />
+            </div>
           </MetricCard>
         </motion.div>
 
@@ -188,7 +252,10 @@ export function HealthPanel() {
             <div className="space-y-2">
               <p className="text-2xl font-semibold text-foreground">%{ramPercent.toFixed(0)}</p>
               <ProgressBar percent={ramPercent} />
-              <p className="text-xs text-foreground/50">
+              <div className="mt-1">
+                <Sparkline data={ramPercentHistory} tone="primary" />
+              </div>
+              <p className="text-xs text-foreground/60">
                 {formatBytes(health.memoryUsedBytes)} / {formatBytes(health.memoryTotalBytes)}
               </p>
             </div>
@@ -197,7 +264,10 @@ export function HealthPanel() {
 
         <motion.div variants={cardVariants}>
           <MetricCard icon={MemoryStick} label="Bu Süreç (Process) Belleği">
-            <p className="text-2xl font-semibold text-foreground">{formatBytes(health.processMemoryBytes)}</p>
+            <div className="space-y-2">
+              <p className="text-2xl font-semibold text-foreground">{formatBytes(health.processMemoryBytes)}</p>
+              <Sparkline data={processMemoryHistory} tone="neutral" />
+            </div>
           </MetricCard>
         </motion.div>
 
@@ -205,6 +275,7 @@ export function HealthPanel() {
           <MetricCard
             icon={Cpu}
             label="CPU Ortalama Yük (1 dk)"
+            disabled={isWindows}
             note={
               isWindows
                 ? "Bu metrik Windows'ta Node.js API sınırlaması nedeniyle kullanılamıyor."
@@ -222,12 +293,12 @@ export function HealthPanel() {
               {dbQuotaPercent !== null ? (
                 <>
                   <ProgressBar percent={dbQuotaPercent} />
-                  <p className="text-xs text-foreground/50">
+                  <p className="text-xs text-foreground/60">
                     {formatBytes(health.dbSizeBytes)} / {formatBytes(health.dbQuotaBytes as number)}
                   </p>
                 </>
               ) : (
-                <p className="text-xs text-foreground/50">Kota bilgisi mevcut değil.</p>
+                <p className="text-xs text-foreground/60">Kota bilgisi mevcut değil.</p>
               )}
             </div>
           </MetricCard>
@@ -240,12 +311,12 @@ export function HealthPanel() {
               {mediaQuotaPercent !== null ? (
                 <>
                   <ProgressBar percent={mediaQuotaPercent} />
-                  <p className="text-xs text-foreground/50">
+                  <p className="text-xs text-foreground/60">
                     {formatBytes(health.mediaStorageBytes)} / {formatBytes(health.mediaStorageQuotaBytes as number)}
                   </p>
                 </>
               ) : (
-                <p className="text-xs text-foreground/50">Kota bilgisi mevcut değil.</p>
+                <p className="text-xs text-foreground/60">Kota bilgisi mevcut değil.</p>
               )}
             </div>
           </MetricCard>
@@ -258,7 +329,7 @@ export function HealthPanel() {
         </motion.div>
       </motion.div>
 
-      <p className="text-xs text-foreground/40">
+      <p className="text-xs text-foreground/60">
         Son güncelleme: {new Date(health.checkedAt).toLocaleString("tr-TR")} · platform: {health.platform} · her{" "}
         {POLL_INTERVAL_MS / 1000} saniyede bir otomatik yenilenir.
       </p>

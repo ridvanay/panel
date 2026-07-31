@@ -1,0 +1,11 @@
+{
+	"version": "0.0.1",
+	"configurations": [
+		{
+			"name": "pmk-onizleme",
+			"runtimeExecutable": "node",
+			"runtimeArgs": ["C:/Users/Ridonei/AppData/Local/Temp/claude/C--Users-Ridonei-Desktop-claude-code-proje/0530de41-8ba2-4ce2-b224-3b873493c719/scratchpad/pmk-server.js"],
+			"port": 8009
+		}
+	]
+}

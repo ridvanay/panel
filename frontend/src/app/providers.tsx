@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import { ThemeProvider } from "next-themes";
 import { AuthProvider } from "@/context/auth-context";
+import { I18nProvider } from "@/context/i18n-context";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -15,10 +16,12 @@ export function Providers({ children }: { children: ReactNode }) {
     // yönetiyoruz (bkz. components/admin/theme-toggle.tsx).
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
       <AuthProvider>
-        <TooltipProvider>
-          {children}
-          <Toaster />
-        </TooltipProvider>
+        <I18nProvider>
+          <TooltipProvider>
+            {children}
+            <Toaster />
+          </TooltipProvider>
+        </I18nProvider>
       </AuthProvider>
     </ThemeProvider>
   );

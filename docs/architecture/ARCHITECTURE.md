@@ -141,6 +141,10 @@ erDiagram
 
   USER ||--o{ AUDIT_LOG : "acts (actorId, nullable)"
 
+  USER ||--o{ BACKUP_CODE : "owns (§10.4)"
+  USER ||--o{ CONTENT_REVISION : "edits (editedById, nullable, §10.1)"
+  USER ||--o{ EMAIL_TEMPLATE : "updates (updatedById, nullable, §10.3)"
+
   USER {
     uuid id PK
     string email
@@ -151,6 +155,36 @@ erDiagram
     enum role "SiteRole: ADMIN/EDITOR/VIEWER — org-RBAC'tan ayrı"
     enum status "SiteUserStatus: ACTIVE/SUSPENDED"
     datetime lastLoginAt
+    boolean twoFactorEnabled "§10.4"
+    string twoFactorSecret "nullable, AES-256-GCM şifreli, §10.4"
+    datetime twoFactorVerifiedAt "nullable, §10.4"
+    datetime createdAt
+  }
+  CONTENT_REVISION {
+    uuid id PK
+    enum entityType "ContentEntityType: PAGE/BLOG_POST, §10.1"
+    string entityId "polymorphic, FK yok"
+    json snapshot
+    uuid editedById FK "nullable, onDelete SetNull"
+    string editedByName
+    datetime createdAt
+  }
+  EMAIL_TEMPLATE {
+    uuid id PK
+    string key "unique, §10.3"
+    string name
+    string subject
+    string bodyHtml
+    json availableVariables
+    uuid updatedById FK "nullable, onDelete SetNull"
+    datetime updatedAt
+    datetime createdAt
+  }
+  BACKUP_CODE {
+    uuid id PK
+    uuid userId FK "onDelete Cascade, §10.4"
+    string codeHash
+    datetime usedAt "nullable"
     datetime createdAt
   }
   AUDIT_LOG {
@@ -317,3 +351,183 @@ Ayrıntılı request/response şemaları için `openapi.yaml` esastır.
 5. **Çakışma çözümü**: FE ve BE farklı alan adı/şekli üretirse, bu doküman ve
    `shared-types.ts` bağlayıcıdır; farklılık tespit edilirse önce burada
    düzeltme yapılır, sonra ilgili ajan koduna yansıtılır.
+
+## 10. "Olmazsa Olmaz" Modülleri v1 (Taslak — bağlayıcı sözleşme)
+
+Durum: Taslak v1 · Sahibi: Mimar. Bu bölüm §5-§8'deki mevcut kurallara (site-geneli
+`SiteRole` RBAC, `AuditLog`, zarf/hata sözleşmesi, cursor sayfalama) tabidir; burada
+yalnızca 5 yeni modülün veri modeli ve uç noktaları tanımlanır. `db-agent`,
+`backend-agent`, `security-agent`, `frontend-agent` bu bölümü tek doğruluk kaynağı
+olarak kullanır — şekil değişirse önce burada güncellenir.
+
+### 10.1 İçerik Sürüm Kontrolü (Revision History)
+
+**Model** `ContentRevision`:
+```
+id            uuid PK
+seq           int unique autoincrement
+entityType    enum ContentEntityType { PAGE, BLOG_POST }
+entityId      string            // Page.id veya BlogPost.id (FK yok — silinen içerikle
+                                  // birlikte revizyonların da silinmesi Cascade ile
+                                  // sağlanır: entityId'ye göre elle temizlik gerekmez,
+                                  // bkz. not aşağıda)
+snapshot      Json              // güncellemeden HEMEN ÖNCEKİ tam alan seti
+editedById    string? FK->User  onDelete: SetNull
+editedByName  string            // silinen kullanıcı için okunabilir ad snapshot'ı
+createdAt     datetime @default(now())
+
+@@index([entityType, entityId, createdAt])
+```
+- Not: `entityId` polymorphic olduğu için gerçek bir FK/Cascade kurulamaz; Page/BlogPost
+  silindiğinde ilişkili `ContentRevision` kayıtlarını service katmanında (aynı
+  transaction içinde) elle silin.
+- `snapshot` şekli: Page için `{ title, slug, blocks, seoTitle, seoDescription, ogTitle,
+  ogImageUrl, canonicalUrl, noIndex, translations }`; BlogPost için `{ title, slug,
+  excerpt, contentHtml, coverImageUrl, categoryId, seoTitle, seoDescription, ogTitle,
+  ogImageUrl, canonicalUrl, noIndex, translations }`.
+- **Yazma kuralı**: `PATCH /admin/pages/{id}` ve `PATCH /admin/blog/{id}` her
+  güncellemeden önce mevcut (eski) satırın `snapshot`'ını `ContentRevision`'a yazar
+  (aynı transaction). Entity başına en fazla **50** revizyon tutulur — 51. yazımda en
+  eski kayıt silinir (`findMany` + `orderBy createdAt asc` + `take` fazlasını sil).
+- **Uç noktalar** (yetki: ilgili entity'nin yazma eşiğiyle aynı — `ADMIN`+`EDITOR`):
+  - `GET /admin/pages/{id}/revisions?limit&cursor` → `data: ContentRevision[]`
+    (snapshot alanı hariç liste görünümü: id, editedByName, createdAt, seq — detay için
+    ayrı çağrı), `GET /admin/pages/{id}/revisions/{revisionId}` → tam snapshot dahil.
+  - `POST /admin/pages/{id}/revisions/{revisionId}/restore` → önce mevcut state'i yeni
+    bir revizyon olarak kaydeder (geri dönüş de geri alınabilir olsun diye), sonra
+    snapshot'ı uygular, güncel `Page` DTO'sunu döner.
+  - Aynı üçlü `blog` için: `GET/POST /admin/blog/{id}/revisions[...]`.
+
+### 10.2 Gelişmiş SEO & Social Card (Meta Management)
+
+Yeni backend/DB işi minimal — mevcut `Page`/`BlogPost` alanlarına ekleme:
+```
+ogTitle        String?
+ogImageUrl     String?
+canonicalUrl   String?
+noIndex        Boolean  @default(false)
+```
+(`seoTitle`/`seoDescription` `Page`'de zaten vardı; `BlogPost`'ta YOKTU — db-agent bunu da
+aynı migration'a ekledi, bkz. §6 ER diyagramı.) Bu alanlar mevcut
+`UpdatePageRequestSchema` / `UpdateBlogPostRequestSchema`'ya (Zod, tümü `.optional()`,
+`canonicalUrl` boşsa `null`, geçerliyse `z.string().url()`) ve DTO'lara eklenir; **yeni
+endpoint yok**. Public `GET /pages/{slug}` ve `GET /blog/{slug}` cevaplarına da bu
+alanlar eklenir (frontend `<head>` meta/canonical/robots etiketlerini bunlardan üretir;
+`noIndex=true` → `<meta name="robots" content="noindex">`).
+Google SERP / Twitter / LinkedIn kart önizlemesi **saf frontend bileşeni** — form
+state'inden türetilir, backend'e ihtiyaç duymaz.
+
+### 10.3 E-posta & Bildirim Şablonu Yöneticisi
+
+**Model** `EmailTemplate`:
+```
+id                  uuid PK
+key                 string @unique   // "WELCOME" | "PASSWORD_RESET" | "SYSTEM_ANNOUNCEMENT"
+name                string           // insan-okur ad, ör. "Hoş Geldin E-postası"
+subject             string
+bodyHtml            string
+availableVariables  Json             // ör. ["user_name","reset_link"] — salt bilgi amaçlı
+updatedById         string? FK->User onDelete: SetNull
+updatedAt           datetime @updatedAt
+createdAt           datetime @default(now())
+```
+- `prisma/seed.ts` üç varsayılan kaydı (`WELCOME`, `PASSWORD_RESET`,
+  `SYSTEM_ANNOUNCEMENT`) `availableVariables` ile birlikte tohumlar.
+- Değişken sözdizimi: `{{user_name}}`, `{{reset_link}}` vb. — render'da basit,
+  allow-list'e dayalı string replace kullanılır (bir template engine/`eval` KULLANILMAZ
+  — enjeksiyon riski).
+- **Uç noktalar** (yetki: `ADMIN` — bu iletiler tüm kullanıcılara gidebildiği için
+  `EDITOR` eşiği yetersiz):
+  - `GET /admin/notifications/templates` → `data: EmailTemplate[]`
+  - `GET /admin/notifications/templates/{key}` → `data: EmailTemplate`
+  - `PATCH /admin/notifications/templates/{key}` body `{ subject?, bodyHtml? }` →
+    audit log (`notifications.template_update`)
+  - `POST /admin/notifications/templates/{key}/preview` body
+    `{ sampleValues: Record<string,string> }` → `data: { renderedSubject, renderedHtml }`
+- Gerçek e-posta gönderimi kapsam dışı (mevcut `TODO(email-provider)` — bkz.
+  `auth.service.ts::forgotPassword` — geçerliliğini korur); bu modül yalnızca şablon
+  CRUD + önizleme sağlar.
+
+### 10.4 Güvenlik & 2FA (TOTP) + Aktif Oturumlar
+
+**`User` model eklemeleri**:
+```
+twoFactorEnabled     Boolean   @default(false)
+twoFactorSecret      String?   // AES-256-GCM ile şifrelenmiş base32 TOTP secret — DÜZ METİN SAKLANMAZ
+twoFactorVerifiedAt  DateTime?
+```
+Şifreleme: yeni `lib/crypto.ts` (`encryptSecret`/`decryptSecret`, AES-256-GCM), anahtar
+`env.ENCRYPTION_KEY` (32 byte, base64 — `.env.example`'a eklenir).
+
+**Yeni model** `BackupCode`:
+```
+id        uuid PK
+userId    string FK->User onDelete: Cascade
+codeHash  string   // sha256(code) — argon2 gerekmez, tek kullanımlık kısa kod
+usedAt    DateTime?
+createdAt DateTime @default(now())
+
+@@index([userId])
+```
+Etkinleştirmede 10 adet insan-okur kod (ör. `XXXX-XXXX`) üretilir, hash'lenip saklanır,
+**düz metin yalnızca bir kez** response'ta döner.
+
+**Login akışı değişikliği** (`auth.service.ts::login`): şifre doğrulandıktan sonra
+`user.twoFactorEnabled === true` ise token çifti HEMEN verilmez; bunun yerine 5 dakika
+ömürlü, `purpose: "2fa_challenge"` claim'li bir JWT (`challengeToken`) üretilip
+`{ requiresTwoFactor: true, challengeToken }` (200) döner. Yeni:
+`POST /auth/2fa/verify` body `{ challengeToken, code }` → `code` TOTP veya bir backup
+kodu ile eşleşirse (backup kodu kullanılırsa `usedAt` işaretlenir, tek kullanımlık)
+normal `login` ile aynı token çiftini üretir ve döner.
+
+**Uç noktalar** (`/admin/settings/security/2fa/*`, hepsi `authenticate` gerektirir —
+org/site-rol şartı yok, herkes KENDİ hesabı için yönetir):
+- `POST .../setup` → yeni secret üretir (henüz DB'ye YAZILMAZ, JWT'ye gömülü kısa ömürlü
+  `setupToken` içinde taşınır), `data: { otpauthUrl, qrCodeDataUrl, setupToken }`.
+- `POST .../enable` body `{ setupToken, code }` → doğrularsa `twoFactorSecret`
+  (şifreli) + `twoFactorEnabled=true` yazar, 10 backup kodu üretir, `data: { backupCodes: string[] }`
+  döner (audit: `security.2fa_enable`).
+- `POST .../disable` body `{ password }` → şifre doğrulaması ister, 2FA'yı kapatır,
+  `BackupCode` kayıtlarını siler, **mevcut oturum hariç** tüm `RefreshToken`'ları iptal
+  eder (audit: `security.2fa_disable`).
+- `POST .../backup-codes/regenerate` body `{ password }` → eskileri geçersiz kılar, 10
+  yeni kod döner (audit: `security.2fa_backup_codes_regenerate`).
+
+**Aktif oturumlar** (`/admin/settings/security/sessions`, yeni tablo GEREKMEZ —
+`RefreshToken.userAgent`/`ipAddress` zaten var):
+- `GET .../sessions` → `data: Session[]` (`id, userAgent, ipAddress, createdAt,
+  expiresAt, isCurrent`) — yalnızca `revoked=false && expiresAt > now()`.
+- `DELETE .../sessions/{id}` → o oturumu iptal eder (audit: `security.session_revoke`).
+- `POST .../sessions/revoke-others` → mevcut hariç tümünü iptal eder.
+- "Mevcut oturum" tespiti: istek cookie'sindeki ham refresh token hash'i ile eşleşen
+  kayıt `isCurrent: true`.
+
+Yeni bağımlılıklar (backend): `otplib` (TOTP), `qrcode` (PNG data URI üretimi).
+
+### 10.5 Çoklu Dil & Yerelleştirme (i18n)
+
+**İçerik çevirisi** — yeni tablo yerine mevcut JSON-alan deseniyle tutarlı, tek ek
+alan: `Page` ve `BlogPost`'a `translations Json @default("{}")`. Şekil:
+```ts
+type Translations = {
+  EN?: {
+    title?: string; seoTitle?: string; seoDescription?: string; ogTitle?: string;
+    canonicalUrl?: string;
+    blocks?: unknown[];       // yalnızca Page
+    excerpt?: string; contentHtml?: string;  // yalnızca BlogPost
+  };
+};
+```
+TR = kanonik/varsayılan (mevcut kolonlar), `translations.EN` yalnızca override'ları
+taşır (kısmi olabilir — eksik alan TR'ye düşer). `PATCH` endpoint'leri body'de
+`translations?: Translations` alanını **shallow merge** ile kabul eder (tam replace
+DEĞİL — `EN` objesi kendi içinde tam replace, ama TR kolonlarını etkilemez).
+Public okuma: `GET /pages/{slug}?locale=EN` / `GET /blog/{slug}?locale=EN` — alan
+bazlı fallback (EN'de olmayan alan TR'den gelir); `locale` verilmezse/`TR` ise
+kolonlar direkt döner.
+
+**Admin panel arayüz dili** (chrome/UI metinleri, içerikten bağımsız) — backend işi
+YOK, saf frontend: `localStorage` (`adminLocale`, `"tr"|"en"`) + basit
+`I18nProvider`/`useT()` context'i (iki küçük sözlük dosyası). Yeni bağımlılık (ör.
+`next-intl`) eklenmez — kapsam admin chrome'u ile sınırlı, routing gerektirmez.
+`AdminTopbar`'a dil seçici (bayrak/kısaltma) eklenir.

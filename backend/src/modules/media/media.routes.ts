@@ -14,6 +14,14 @@ import { MediaIdParamSchema } from "./media.schemas";
 
 const ALLOWED_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "image/svg+xml"]);
 
+// Diğer admin listeleme uçlarıyla paylaşılan global limitten (env.RATE_LIMIT_MAX) bağımsız,
+// bu uca özel orta seviye üst sınır — hem savunma derinliği (hızlı veri dökümü/scraping'e karşı)
+// hem de diğer admin trafiğinin (health polling, dashboard) global bütçeyi tüketmesi durumunda
+// bu ucun erişiminin garanti altında kalması için (bkz. logs.routes.ts::LOGS_RATE_LIMIT). Sadece
+// GET/listeleme içindir — POST/DELETE zaten requireSiteRole ile korunuyor ve daha maliyetli/az
+// sıklıkta çağrılan işlemler.
+const MEDIA_LIST_RATE_LIMIT = { max: 120, timeWindow: "1 minute" };
+
 /** `/admin/media` prefix'i altında bağlanır (bkz. app.ts) — authenticated. */
 export async function adminMediaRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
@@ -59,7 +67,10 @@ export async function adminMediaRoutes(app: FastifyInstance) {
 
   server.get(
     "/",
-    { schema: { querystring: CursorQuerySchema, response: { 200: ApiSuccessSchema(z.array(MediaSchema)) } } },
+    {
+      config: { rateLimit: MEDIA_LIST_RATE_LIMIT },
+      schema: { querystring: CursorQuerySchema, response: { 200: ApiSuccessSchema(z.array(MediaSchema)) } },
+    },
     async (request, reply) => {
       const { cursor, limit } = request.query;
       const cursorSeq = parseCursor(cursor);

@@ -18,7 +18,13 @@ const EnvSchema = z.object({
   STRIPE_SECRET_KEY: z.string().default(""),
   STRIPE_WEBHOOK_SECRET: z.string().default(""),
 
-  RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
+  // Global (route-özel override edilmemiş) uçlar için istek limiti. 100/dk admin panelinin
+  // normal kullanımında (10sn'de bir /admin/health polling'i, sayfa geçişlerinde paralel
+  // GET'ler, dashboard grafikleri vb.) yanlışlıkla aşılıyordu — 300/dk bu trafiği rahatça
+  // karşılarken kaba kuvvet/scraping'e karşı yine de bir üst sınır koyar. Hassas uçlar
+  // (login, 2FA vb.) zaten kendi route-level `config: { rateLimit: {...} }` override'ları
+  // ile çok daha sıkı bir limite (5/dk) tabidir — bkz. auth.routes.ts, security.routes.ts.
+  RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
   RATE_LIMIT_WINDOW: z.string().default("1 minute"),
 
   // Medya depolama — "local" (varsayılan, diske yazar) veya "s3" (S3/MinIO/R2 uyumlu nesne depolama).
@@ -36,6 +42,10 @@ const EnvSchema = z.object({
   // sadece mutlak boyutu gösterir (bkz. modules/system).
   DB_STORAGE_QUOTA_MB: z.coerce.number().int().positive().optional(),
   MEDIA_STORAGE_QUOTA_MB: z.coerce.number().int().positive().optional(),
+
+  // §10.4 Güvenlik & 2FA — TOTP secret şifrelemesi için AES-256-GCM anahtarı (32 byte, base64).
+  // bkz. lib/crypto.ts::encryptSecret/decryptSecret.
+  ENCRYPTION_KEY: z.string().min(1, "ENCRYPTION_KEY zorunlu."),
 });
 
 const parsed = EnvSchema.safeParse(process.env);

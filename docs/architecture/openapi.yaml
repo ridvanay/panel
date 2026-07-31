@@ -30,6 +30,15 @@ tags:
       Site header/nav/footer yapılandırması (`/navigation`, `/admin/navigation`).
       `/navigation` public'tir (site header/nav/footer bunu okur); `/admin/navigation`
       yönetim ekranı içindir, PUT yalnızca SiteRole=ADMIN.
+  - name: ContentRevisions
+    description: >
+      İçerik sürüm kontrolü (`/admin/pages/{pageId}/revisions`,
+      `/admin/blog/{postId}/revisions`) — bkz. ARCHITECTURE.md §10.1. Yetki eşiği,
+      ilgili entity'nin (pages/blog) yazma eşiğiyle aynı (SiteRole=ADMIN veya EDITOR).
+  - name: EmailTemplates
+    description: >
+      E-posta & bildirim şablonu yönetimi (`/admin/notifications/templates`) — bkz.
+      ARCHITECTURE.md §10.3. Tüm uçlar yalnızca SiteRole=ADMIN.
 
 security:
   - bearerAuth: []
@@ -776,6 +785,241 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
+  /admin/pages/{pageId}/revisions:
+    parameters:
+      - $ref: "#/components/parameters/PageId"
+    get:
+      tags: [ContentRevisions]
+      summary: Sayfanın revizyon geçmişini listele (ADMIN/EDITOR)
+      description: >
+        Liste görünümü `snapshot` alanını İÇERMEZ (id, editedById, editedByName,
+        createdAt) — tam snapshot için `GET .../revisions/{revisionId}`. En yeni
+        revizyon önce gelir.
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/ContentRevisionSummary" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/pages/{pageId}/revisions/{revisionId}:
+    parameters:
+      - $ref: "#/components/parameters/PageId"
+      - $ref: "#/components/parameters/RevisionId"
+    get:
+      tags: [ContentRevisions]
+      summary: Bir revizyonun tam snapshot'ını getir (ADMIN/EDITOR)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/ContentRevision" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/pages/{pageId}/revisions/{revisionId}/restore:
+    parameters:
+      - $ref: "#/components/parameters/PageId"
+      - $ref: "#/components/parameters/RevisionId"
+    post:
+      tags: [ContentRevisions]
+      summary: Sayfayı bu revizyondaki hale geri döndür (ADMIN/EDITOR)
+      description: >
+        Geri dönüş de geri alınabilsin diye önce mevcut state yeni bir revizyon
+        olarak kaydedilir, ardından hedef revizyonun snapshot'ı uygulanır.
+      responses:
+        "200":
+          description: Sayfa geri yüklendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Page" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/blog/{postId}/revisions:
+    parameters:
+      - $ref: "#/components/parameters/PostId"
+    get:
+      tags: [ContentRevisions]
+      summary: Yazının revizyon geçmişini listele (ADMIN/EDITOR)
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/ContentRevisionSummary" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/blog/{postId}/revisions/{revisionId}:
+    parameters:
+      - $ref: "#/components/parameters/PostId"
+      - $ref: "#/components/parameters/RevisionId"
+    get:
+      tags: [ContentRevisions]
+      summary: Bir revizyonun tam snapshot'ını getir (ADMIN/EDITOR)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/ContentRevision" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/blog/{postId}/revisions/{revisionId}/restore:
+    parameters:
+      - $ref: "#/components/parameters/PostId"
+      - $ref: "#/components/parameters/RevisionId"
+    post:
+      tags: [ContentRevisions]
+      summary: Yazıyı bu revizyondaki hale geri döndür (ADMIN/EDITOR)
+      description: >
+        Geri dönüş de geri alınabilsin diye önce mevcut state yeni bir revizyon
+        olarak kaydedilir, ardından hedef revizyonun snapshot'ı uygulanır.
+      responses:
+        "200":
+          description: Yazı geri yüklendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/BlogPost" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/notifications/templates:
+    get:
+      tags: [EmailTemplates]
+      summary: Tüm e-posta şablonlarını listele (yalnızca ADMIN)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/EmailTemplate" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/notifications/templates/{key}:
+    parameters:
+      - $ref: "#/components/parameters/TemplateKey"
+    get:
+      tags: [EmailTemplates]
+      summary: Bir e-posta şablonunu getir (yalnızca ADMIN)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/EmailTemplate" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [EmailTemplates]
+      summary: Bir e-posta şablonunu güncelle (yalnızca ADMIN)
+      description: "Audit log: `notifications.template_update`."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateEmailTemplateRequest" }
+      responses:
+        "200":
+          description: Güncellendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/EmailTemplate" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/notifications/templates/{key}/preview:
+    parameters:
+      - $ref: "#/components/parameters/TemplateKey"
+    post:
+      tags: [EmailTemplates]
+      summary: Şablonu örnek değerlerle render ederek önizle (yalnızca ADMIN, DB'ye yazmaz)
+      description: >
+        Değişken render'ı allow-list'e dayalı, güvenli string replace ile yapılır
+        (`EmailTemplate.availableVariables`) — bir template engine/`eval` kullanılmaz.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PreviewEmailTemplateRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/PreviewEmailTemplateResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
   /webhooks/stripe:
     post:
       tags: [Webhooks]
@@ -813,6 +1057,27 @@ components:
       in: query
       required: false
       schema: { type: integer, default: 20, maximum: 100 }
+    PageId:
+      name: pageId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    PostId:
+      name: postId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    RevisionId:
+      name: revisionId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    TemplateKey:
+      name: key
+      in: path
+      required: true
+      description: "ör. WELCOME, PASSWORD_RESET, SYSTEM_ANNOUNCEMENT"
+      schema: { type: string }
 
   responses:
     Unauthorized:
@@ -1274,3 +1539,143 @@ components:
         platform: { type: string, example: "linux" }
         uptimeSeconds: { type: number }
         checkedAt: { type: string, format: date-time }
+
+    BlogCategory:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    Page:
+      description: >
+        `/admin/pages` ve `/pages` uçlarında dönen sayfa DTO'su. `translations.EN`
+        yalnızca override'ları taşır (bkz. ARCHITECTURE.md §10.5); `?locale=EN` ile
+        okunan public GET'lerde bu alanlar zaten TR'ye alan-bazlı fallback edilmiş
+        olarak gelir.
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        slug: { type: string }
+        status: { type: string, enum: [DRAFT, PUBLISHED] }
+        blocks:
+          type: array
+          items: { type: object, additionalProperties: true }
+        seoTitle: { type: string, nullable: true }
+        seoDescription: { type: string, nullable: true }
+        ogTitle: { type: string, nullable: true }
+        ogImageUrl: { type: string, nullable: true }
+        canonicalUrl: { type: string, nullable: true }
+        noIndex: { type: boolean }
+        translations:
+          type: object
+          description: "ör. { \"EN\": { \"title\": \"...\", \"blocks\": [...] } } — bkz. shared-types.ts::PageTranslations"
+          additionalProperties:
+            type: object
+            additionalProperties: true
+        publishedAt: { type: string, format: date-time, nullable: true }
+        viewCount: { type: integer }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    BlogPost:
+      description: >
+        `/admin/blog` ve `/blog` uçlarında dönen yazı DTO'su. `translations.EN` yalnızca
+        override'ları taşır (bkz. ARCHITECTURE.md §10.5).
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        slug: { type: string }
+        excerpt: { type: string, nullable: true }
+        contentHtml: { type: string }
+        coverImageUrl: { type: string, nullable: true }
+        status: { type: string, enum: [DRAFT, PUBLISHED] }
+        category:
+          allOf:
+            - $ref: "#/components/schemas/BlogCategory"
+          nullable: true
+        seoTitle: { type: string, nullable: true }
+        seoDescription: { type: string, nullable: true }
+        ogTitle: { type: string, nullable: true }
+        ogImageUrl: { type: string, nullable: true }
+        canonicalUrl: { type: string, nullable: true }
+        noIndex: { type: boolean }
+        translations:
+          type: object
+          description: "ör. { \"EN\": { \"title\": \"...\", \"contentHtml\": \"...\" } } — bkz. shared-types.ts::BlogPostTranslations"
+          additionalProperties:
+            type: object
+            additionalProperties: true
+        publishedAt: { type: string, format: date-time, nullable: true }
+        viewCount: { type: integer }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    ContentEntityType:
+      type: string
+      enum: [PAGE, BLOG_POST]
+
+    ContentRevisionSummary:
+      description: >
+        Revizyon liste görünümü — `snapshot` alanını İÇERMEZ (bkz. ARCHITECTURE.md §10.1).
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        editedById: { type: string, format: uuid, nullable: true }
+        editedByName: { type: string, description: "silinen kullanıcı için okunabilir ad snapshot'ı" }
+        createdAt: { type: string, format: date-time }
+
+    ContentRevision:
+      allOf:
+        - $ref: "#/components/schemas/ContentRevisionSummary"
+        - type: object
+          properties:
+            entityType: { $ref: "#/components/schemas/ContentEntityType" }
+            entityId: { type: string }
+            snapshot:
+              type: object
+              description: >
+                Güncellemeden HEMEN ÖNCEKİ tam alan seti — Page için `{ title, slug,
+                blocks, seoTitle, seoDescription, ogTitle, ogImageUrl, canonicalUrl,
+                noIndex, translations }`; BlogPost için `{ title, slug, excerpt,
+                contentHtml, coverImageUrl, categoryId, seoTitle, seoDescription,
+                ogTitle, ogImageUrl, canonicalUrl, noIndex, translations }`.
+              additionalProperties: true
+
+    EmailTemplate:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        key: { type: string, example: WELCOME }
+        name: { type: string }
+        subject: { type: string }
+        bodyHtml: { type: string }
+        availableVariables:
+          type: array
+          items: { type: string }
+          description: "salt bilgi amaçlı, ör. [\"user_name\", \"reset_link\"]"
+        updatedAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+
+    UpdateEmailTemplateRequest:
+      type: object
+      properties:
+        subject: { type: string, minLength: 1 }
+        bodyHtml: { type: string }
+
+    PreviewEmailTemplateRequest:
+      type: object
+      required: [sampleValues]
+      properties:
+        sampleValues:
+          type: object
+          additionalProperties: { type: string }
+
+    PreviewEmailTemplateResponse:
+      type: object
+      properties:
+        renderedSubject: { type: string }
+        renderedHtml: { type: string }

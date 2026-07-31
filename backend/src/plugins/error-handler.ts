@@ -39,9 +39,20 @@ export default fp(async function errorHandlerPlugin(app: FastifyInstance) {
       return sendError(reply, 422, "VALIDATION_ERROR", "Girdi doğrulama hatası.", flattenZodIssues(error.issues));
     }
 
-    const fastifyErr = error as FastifyError;
+    const fastifyErr = error as FastifyError & { retryAfterSeconds?: number };
     if (fastifyErr.code === "FST_REQ_FILE_TOO_LARGE") {
       return sendError(reply, 422, "VALIDATION_ERROR", "Dosya çok büyük.", { file: ["En fazla 5MB yükleyebilirsiniz."] });
+    }
+
+    // Fastify core'un `bodyLimit` kontrolü — multipart parser'a hiç ulaşmadan, ham istek
+    // gövdesi (dosya + form alanları + multipart overhead) app.ts'teki `bodyLimit`'i aşınca
+    // tetiklenir. `FST_REQ_FILE_TOO_LARGE` (üstteki dal) multipart'ın KENDİ `fileSize`
+    // limitine özel; bu dal ise Fastify core seviyesindeki 413'ü yakalar — aksi halde
+    // hiçbir branch'e uymayıp anlamsız bir 500'e düşerdi.
+    if (fastifyErr.code === "FST_ERR_CTP_BODY_TOO_LARGE") {
+      return sendError(reply, 413, "PAYLOAD_TOO_LARGE", "İstek gövdesi çok büyük.", {
+        file: ["En fazla 5MB yükleyebilirsiniz."],
+      });
     }
 
     if (fastifyErr.validation) {
@@ -64,7 +75,21 @@ export default fp(async function errorHandlerPlugin(app: FastifyInstance) {
     }
 
     if (fastifyErr.statusCode === 429) {
-      return sendError(reply, 429, "RATE_LIMITED", "Çok fazla istek. Lütfen birazdan tekrar deneyin.");
+      // `retryAfterSeconds` — plugins/security.ts::errorResponseBuilder tarafından hesaplanıp
+      // throw edilen objeden gelir (Retry-After HTTP header'ı zaten @fastify/rate-limit
+      // tarafından otomatik set edilir; burada aynı bilgiyi JSON gövdesine de somut olarak ekliyoruz).
+      const retryAfterSeconds = fastifyErr.retryAfterSeconds;
+      const message =
+        typeof retryAfterSeconds === "number"
+          ? `Çok fazla istek. ${retryAfterSeconds} saniye sonra tekrar deneyin.`
+          : "Çok fazla istek. Lütfen birazdan tekrar deneyin.";
+      return sendError(
+        reply,
+        429,
+        "RATE_LIMITED",
+        message,
+        typeof retryAfterSeconds === "number" ? { retryAfterSeconds: [String(retryAfterSeconds)] } : undefined
+      );
     }
 
     request.log.error(error);

@@ -12,11 +12,19 @@ import { Alert } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Select } from "@/components/ui/select";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { PostTable } from "@/components/admin/blog/post-table";
 import { PageHeading } from "@/components/admin/page-heading";
+import { ListPagination } from "@/components/admin/list-pagination";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { exportToCsv } from "@/lib/export-csv";
-import { AlertCircle, Download, Newspaper } from "lucide-react";
+import { useFilteredList } from "@/hooks/use-filtered-list";
+import { AlertCircle, Download, Newspaper, Search } from "lucide-react";
+
+function matchesPost(post: BlogPost, query: string): boolean {
+  return post.title.toLowerCase().includes(query);
+}
 
 export default function AdminBlogListPage() {
   const [posts, setPosts] = useState<BlogPost[] | null>(null);
@@ -28,6 +36,18 @@ export default function AdminBlogListPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
+
+  const {
+    search,
+    setSearch,
+    page,
+    setPage,
+    pageSize,
+    setPageSize,
+    totalPages,
+    filteredCount,
+    items: visiblePosts,
+  } = useFilteredList(posts, matchesPost);
 
   const load = useCallback(async () => {
     try {
@@ -75,11 +95,21 @@ export default function AdminBlogListPage() {
   }
 
   function toggleSelectAll() {
-    if (!posts) return;
-    setSelectedIds((prev) => (prev.size === posts.length ? new Set() : new Set(posts.map((p) => p.id))));
+    if (visiblePosts.length === 0) return;
+    const visibleIds = visiblePosts.map((p) => p.id);
+    const allVisibleSelected = visibleIds.every((id) => selectedIds.has(id));
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allVisibleSelected) {
+        visibleIds.forEach((id) => next.delete(id));
+      } else {
+        visibleIds.forEach((id) => next.add(id));
+      }
+      return next;
+    });
   }
 
-  const allSelected = posts !== null && posts.length > 0 && selectedIds.size === posts.length;
+  const allSelected = visiblePosts.length > 0 && visiblePosts.every((p) => selectedIds.has(p.id));
 
   async function handleBulkDelete() {
     const ids = Array.from(selectedIds);
@@ -188,21 +218,59 @@ export default function AdminBlogListPage() {
           />
         </motion.div>
       ) : (
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3 }}
-        >
-          <PostTable
-            posts={posts}
-            deletingId={deletingId}
-            onDelete={requestDelete}
-            selectedIds={selectedIds}
-            onToggleSelect={toggleSelect}
-            onToggleSelectAll={toggleSelectAll}
-            allSelected={allSelected}
-          />
-        </motion.div>
+        <>
+          <div className="flex flex-wrap items-center gap-3">
+            <InputGroup className="w-full sm:max-w-xs">
+              <InputGroupAddon>
+                <Search />
+              </InputGroupAddon>
+              <InputGroupInput
+                placeholder="Başlığa göre ara..."
+                aria-label="Başlığa göre ara"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </InputGroup>
+            {totalPages > 10 && (
+              <Select
+                aria-label="Sayfa boyutu"
+                value={pageSize}
+                onChange={(e) => setPageSize(Number(e.target.value))}
+                className="w-24"
+              >
+                <option value={10}>10 / sayfa</option>
+                <option value={20}>20 / sayfa</option>
+                <option value={50}>50 / sayfa</option>
+              </Select>
+            )}
+          </div>
+
+          {filteredCount === 0 ? (
+            <EmptyState
+              icon={Search}
+              title="Sonuç bulunamadı"
+              description="Arama kriterlerinize uyan bir yazı yok."
+            />
+          ) : (
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+            >
+              <PostTable
+                posts={visiblePosts}
+                deletingId={deletingId}
+                onDelete={requestDelete}
+                selectedIds={selectedIds}
+                onToggleSelect={toggleSelect}
+                onToggleSelectAll={toggleSelectAll}
+                allSelected={allSelected}
+              />
+            </motion.div>
+          )}
+
+          {totalPages > 10 && <ListPagination page={page} totalPages={totalPages} onPageChange={setPage} />}
+        </>
       )}
 
       <ConfirmDialog

@@ -12,16 +12,36 @@ import { Alert } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Select } from "@/components/ui/select";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PageHeading } from "@/components/admin/page-heading";
+import { ListPagination } from "@/components/admin/list-pagination";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
-import { AlertCircle, FileText } from "lucide-react";
+import { useFilteredList } from "@/hooks/use-filtered-list";
+import { AlertCircle, FileText, Search } from "lucide-react";
+
+function matchesSitePage(page: SitePage, query: string): boolean {
+  return page.title.toLowerCase().includes(query) || page.slug.toLowerCase().includes(query);
+}
 
 export default function AdminPagesListPage() {
   const [pages, setPages] = useState<SitePage[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<SitePage | null>(null);
+
+  const {
+    search,
+    setSearch,
+    page: currentPage,
+    setPage,
+    pageSize,
+    setPageSize,
+    totalPages,
+    filteredCount,
+    items: visiblePages,
+  } = useFilteredList(pages, matchesSitePage);
 
   const load = useCallback(async () => {
     try {
@@ -84,40 +104,76 @@ export default function AdminPagesListPage() {
           action={<LinkButton href="/admin/pages/new">Yeni Sayfa</LinkButton>}
         />
       ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Başlık</TableHead>
-              <TableHead>Slug</TableHead>
-              <TableHead>Durum</TableHead>
-              <TableHead className="text-right">Görüntülenme</TableHead>
-              <TableHead className="text-right">İşlemler</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {pages.map((page) => (
-              <TableRow key={page.id}>
-                <TableCell>
-                  <Link href={`/admin/pages/${page.id}`} className="font-medium text-foreground hover:text-primary">
-                    {page.title}
-                  </Link>
-                </TableCell>
-                <TableCell className="text-foreground/60">/{page.slug}</TableCell>
-                <TableCell>
-                  <Badge tone={page.status === "PUBLISHED" ? "success" : "neutral"}>
-                    {page.status === "PUBLISHED" ? "Yayında" : "Taslak"}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-right text-foreground/60">{page.viewCount.toLocaleString("tr-TR")}</TableCell>
-                <TableCell className="text-right">
-                  <Button variant="ghost" size="sm" onClick={() => setPendingDelete(page)}>
-                    Sil
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+        <>
+          <div className="flex flex-wrap items-center gap-3">
+            <InputGroup className="w-full sm:max-w-xs">
+              <InputGroupAddon>
+                <Search />
+              </InputGroupAddon>
+              <InputGroupInput
+                placeholder="Başlık veya slug ara..."
+                aria-label="Başlık veya slug ara"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </InputGroup>
+            {totalPages > 10 && (
+              <Select
+                aria-label="Sayfa boyutu"
+                value={pageSize}
+                onChange={(e) => setPageSize(Number(e.target.value))}
+                className="w-24"
+              >
+                <option value={10}>10 / sayfa</option>
+                <option value={20}>20 / sayfa</option>
+                <option value={50}>50 / sayfa</option>
+              </Select>
+            )}
+          </div>
+
+          {filteredCount === 0 ? (
+            <EmptyState icon={Search} title="Sonuç bulunamadı" description="Arama kriterlerinize uyan bir sayfa yok." />
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-auto">Başlık</TableHead>
+                  <TableHead className="w-48">Slug</TableHead>
+                  <TableHead className="w-28">Durum</TableHead>
+                  <TableHead className="w-32 text-right">Görüntülenme</TableHead>
+                  <TableHead className="w-24 text-right">İşlemler</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {visiblePages.map((page) => (
+                  <TableRow key={page.id}>
+                    <TableCell className="w-auto">
+                      <Link href={`/admin/pages/${page.id}`} className="font-medium text-foreground hover:text-primary">
+                        {page.title}
+                      </Link>
+                    </TableCell>
+                    <TableCell className="w-48 text-foreground/60">/{page.slug}</TableCell>
+                    <TableCell className="w-28">
+                      <Badge tone={page.status === "PUBLISHED" ? "success" : "warning"}>
+                        {page.status === "PUBLISHED" ? "Yayında" : "Taslak"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="w-32 text-right text-foreground/60">
+                      {page.viewCount.toLocaleString("tr-TR")}
+                    </TableCell>
+                    <TableCell className="w-24 text-right">
+                      <Button variant="ghost" size="sm" onClick={() => setPendingDelete(page)}>
+                        Sil
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+
+          {totalPages > 10 && <ListPagination page={currentPage} totalPages={totalPages} onPageChange={setPage} />}
+        </>
       )}
 
       <ConfirmDialog

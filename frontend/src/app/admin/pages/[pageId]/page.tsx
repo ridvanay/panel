@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import * as pagesApi from "@/lib/api/pages";
-import type { ContentStatus } from "@/lib/api/types";
+import * as revisionsApi from "@/lib/api/revisions";
+import type { ContentStatus, ContentTranslations } from "@/lib/api/types";
 import type { Block, BlockType } from "@/lib/page-builder/types";
 import { createBlock } from "@/lib/page-builder/registry";
 import { Card } from "@/components/ui/card";
@@ -15,15 +16,21 @@ import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { Alert } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { BlockList } from "@/components/admin/page-builder/block-list";
 import { BuilderCanvas } from "@/components/admin/page-builder/builder-canvas";
 import { SeoPreview } from "@/components/admin/seo-preview";
+import { RevisionHistory } from "@/components/admin/revision-history";
+import { ImageUploadField } from "@/components/admin/media/image-upload-field";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
-import { AlertCircle, ChevronLeft } from "lucide-react";
+import { AlertCircle, ChevronLeft, FileText, Search, History as HistoryIcon } from "lucide-react";
 import { motion } from "framer-motion";
+
+type Locale = "TR" | "EN";
 
 interface PageSnapshot {
   title: string;
@@ -32,6 +39,30 @@ interface PageSnapshot {
   seoTitle: string;
   seoDescription: string;
   blocks: Block[];
+  ogTitle: string;
+  ogImageUrl: string;
+  canonicalUrl: string;
+  noIndex: boolean;
+  translations: string;
+}
+
+/** İçerik + SEO sekmelerinde TR/EN override arasında geçiş için küçük segmented control. */
+function LocaleToggle({ locale, onChange }: { locale: Locale; onChange: (locale: Locale) => void }) {
+  return (
+    <div className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface-muted p-1">
+      {(["TR", "EN"] as const).map((option) => (
+        <Button
+          key={option}
+          type="button"
+          size="xs"
+          variant={locale === option ? "default" : "ghost"}
+          onClick={() => onChange(option)}
+        >
+          {option}
+        </Button>
+      ))}
+    </div>
+  );
 }
 
 export default function PageBuilderPage({ params }: { params: Promise<{ pageId: string }> }) {
@@ -44,6 +75,7 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [locale, setLocale] = useState<Locale>("TR");
 
   const [title, setTitle] = useState("");
   const [slug, setSlug] = useState("");
@@ -51,8 +83,28 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
   const [seoTitle, setSeoTitle] = useState("");
   const [seoDescription, setSeoDescription] = useState("");
   const [blocks, setBlocks] = useState<Block[]>([]);
+  const [ogTitle, setOgTitle] = useState("");
+  const [ogImageUrl, setOgImageUrl] = useState("");
+  const [canonicalUrl, setCanonicalUrl] = useState("");
+  const [noIndex, setNoIndex] = useState(false);
+  const [translations, setTranslations] = useState<ContentTranslations>({});
   const [viewCount, setViewCount] = useState(0);
   const [snapshot, setSnapshot] = useState<PageSnapshot | null>(null);
+
+  function getEnField(key: string): string {
+    const value = translations.EN?.[key];
+    return typeof value === "string" ? value : "";
+  }
+
+  function setEnField(key: string, value: string) {
+    setTranslations((prev) => ({ ...prev, EN: { ...(prev.EN ?? {}), [key]: value } }));
+  }
+
+  const enBlocks = (translations.EN?.blocks as unknown as Block[] | undefined) ?? [];
+
+  function setEnBlocks(nextBlocks: Block[]) {
+    setTranslations((prev) => ({ ...prev, EN: { ...(prev.EN ?? {}), blocks: nextBlocks as unknown as unknown[] } }));
+  }
 
   const load = useCallback(async () => {
     try {
@@ -64,6 +116,11 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
       setSeoTitle(page.seoTitle ?? "");
       setSeoDescription(page.seoDescription ?? "");
       setBlocks(loadedBlocks);
+      setOgTitle(page.ogTitle ?? "");
+      setOgImageUrl(page.ogImageUrl ?? "");
+      setCanonicalUrl(page.canonicalUrl ?? "");
+      setNoIndex(page.noIndex);
+      setTranslations(page.translations ?? {});
       setViewCount(page.viewCount);
       setSnapshot({
         title: page.title,
@@ -72,6 +129,11 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
         seoTitle: page.seoTitle ?? "",
         seoDescription: page.seoDescription ?? "",
         blocks: loadedBlocks,
+        ogTitle: page.ogTitle ?? "",
+        ogImageUrl: page.ogImageUrl ?? "",
+        canonicalUrl: page.canonicalUrl ?? "",
+        noIndex: page.noIndex,
+        translations: JSON.stringify(page.translations ?? {}),
       });
       setLoaded(true);
     } catch (err) {
@@ -93,12 +155,34 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
       status !== snapshot.status ||
       seoTitle !== snapshot.seoTitle ||
       seoDescription !== snapshot.seoDescription ||
-      JSON.stringify(blocks) !== JSON.stringify(snapshot.blocks)
+      JSON.stringify(blocks) !== JSON.stringify(snapshot.blocks) ||
+      ogTitle !== snapshot.ogTitle ||
+      ogImageUrl !== snapshot.ogImageUrl ||
+      canonicalUrl !== snapshot.canonicalUrl ||
+      noIndex !== snapshot.noIndex ||
+      JSON.stringify(translations) !== snapshot.translations
     );
-  }, [title, slug, status, seoTitle, seoDescription, blocks, snapshot]);
+  }, [
+    title,
+    slug,
+    status,
+    seoTitle,
+    seoDescription,
+    blocks,
+    ogTitle,
+    ogImageUrl,
+    canonicalUrl,
+    noIndex,
+    translations,
+    snapshot,
+  ]);
 
   function addBlock(type: BlockType) {
-    setBlocks((prev) => [...prev, createBlock(type)]);
+    if (locale === "TR") {
+      setBlocks((prev) => [...prev, createBlock(type)]);
+    } else {
+      setEnBlocks([...enBlocks, createBlock(type)]);
+    }
   }
 
   async function handleSave() {
@@ -112,6 +196,11 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
         seoTitle: seoTitle || null,
         seoDescription: seoDescription || null,
         blocks: blocks as unknown as Record<string, unknown>[],
+        ogTitle: ogTitle || null,
+        ogImageUrl: ogImageUrl || null,
+        canonicalUrl: canonicalUrl || null,
+        noIndex,
+        translations,
       });
       toast.success("Sayfa kaydedildi.");
       await load();
@@ -194,53 +283,173 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
         </Alert>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
-        <Card className="min-w-0 space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field id="title" label="Başlık" required>
-              {(inputProps) => <Input {...inputProps} required value={title} onChange={(e) => setTitle(e.target.value)} />}
-            </Field>
-            <Field id="slug" label="Slug (URL)" required>
-              {(inputProps) => <Input {...inputProps} required value={slug} onChange={(e) => setSlug(e.target.value)} />}
-            </Field>
+      <Tabs defaultValue="content">
+        <TabsList>
+          <TabsTrigger value="content">
+            <FileText className="h-3.5 w-3.5" />
+            İçerik
+          </TabsTrigger>
+          <TabsTrigger value="seo">
+            <Search className="h-3.5 w-3.5" />
+            SEO &amp; Sosyal
+          </TabsTrigger>
+          <TabsTrigger value="revisions">
+            <HistoryIcon className="h-3.5 w-3.5" />
+            Geçmiş Sürümler
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="content" className="mt-6 space-y-6 outline-none">
+          <div className="flex justify-end">
+            <LocaleToggle locale={locale} onChange={setLocale} />
           </div>
 
-          <Field id="status" label="Durum">
-            {(inputProps) => (
-              <Select {...inputProps} value={status} onChange={(e) => setStatus(e.target.value as ContentStatus)}>
-                <option value="DRAFT">Taslak</option>
-                <option value="PUBLISHED">Yayında</option>
-              </Select>
-            )}
-          </Field>
+          <Card className="min-w-0 space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field id="title" label="Başlık" required={locale === "TR"}>
+                {(inputProps) => (
+                  <Input
+                    {...inputProps}
+                    required={locale === "TR"}
+                    value={locale === "TR" ? title : getEnField("title")}
+                    onChange={(e) =>
+                      locale === "TR" ? setTitle(e.target.value) : setEnField("title", e.target.value)
+                    }
+                  />
+                )}
+              </Field>
+              <Field id="slug" label="Slug (URL)" required>
+                {(inputProps) => <Input {...inputProps} required value={slug} onChange={(e) => setSlug(e.target.value)} />}
+              </Field>
+            </div>
 
-          <Field id="seoTitle" label="SEO başlığı">
-            {(inputProps) => <Input {...inputProps} value={seoTitle} onChange={(e) => setSeoTitle(e.target.value)} />}
-          </Field>
-          <Field id="seoDescription" label="SEO açıklaması">
-            {(inputProps) => (
-              <Textarea {...inputProps} value={seoDescription} onChange={(e) => setSeoDescription(e.target.value)} rows={2} />
-            )}
-          </Field>
-        </Card>
+            <Field id="status" label="Durum">
+              {(inputProps) => (
+                <Select {...inputProps} value={status} onChange={(e) => setStatus(e.target.value as ContentStatus)}>
+                  <option value="DRAFT">Taslak</option>
+                  <option value="PUBLISHED">Yayında</option>
+                </Select>
+              )}
+            </Field>
+          </Card>
 
-        <div className="lg:sticky lg:top-6 lg:self-start">
-          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
-            <SeoPreview title={seoTitle || title} description={seoDescription} slug={slug} imageUrl={null} />
-          </motion.div>
-        </div>
-      </div>
+          <div>
+            <h2 className="text-base font-semibold text-foreground">
+              İçerik blokları {locale === "EN" && <span className="text-foreground/40">(EN)</span>}
+            </h2>
+            <p className="mt-1 text-sm text-foreground/60">Sayfaya blok ekleyin ve sırasını düzenleyin.</p>
+            <div className="mt-4">
+              <BlockList onAdd={addBlock} />
+            </div>
+            <div className="mt-4">
+              {locale === "TR" ? (
+                <BuilderCanvas blocks={blocks} onChange={setBlocks} />
+              ) : (
+                <BuilderCanvas blocks={enBlocks} onChange={setEnBlocks} />
+              )}
+            </div>
+          </div>
+        </TabsContent>
 
-      <div>
-        <h2 className="text-base font-semibold text-foreground">İçerik blokları</h2>
-        <p className="mt-1 text-sm text-foreground/60">Sayfaya blok ekleyin ve sırasını düzenleyin.</p>
-        <div className="mt-4">
-          <BlockList onAdd={addBlock} />
-        </div>
-        <div className="mt-4">
-          <BuilderCanvas blocks={blocks} onChange={setBlocks} />
-        </div>
-      </div>
+        <TabsContent value="seo" className="mt-6 outline-none">
+          <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
+            <div className="min-w-0 space-y-4">
+              <div className="flex justify-end">
+                <LocaleToggle locale={locale} onChange={setLocale} />
+              </div>
+
+              <Card className="space-y-4">
+                <Field id="seoTitle" label="SEO başlığı">
+                  {(inputProps) => (
+                    <Input
+                      {...inputProps}
+                      value={locale === "TR" ? seoTitle : getEnField("seoTitle")}
+                      onChange={(e) =>
+                        locale === "TR" ? setSeoTitle(e.target.value) : setEnField("seoTitle", e.target.value)
+                      }
+                    />
+                  )}
+                </Field>
+                <Field id="seoDescription" label="SEO açıklaması">
+                  {(inputProps) => (
+                    <Textarea
+                      {...inputProps}
+                      value={locale === "TR" ? seoDescription : getEnField("seoDescription")}
+                      onChange={(e) =>
+                        locale === "TR" ? setSeoDescription(e.target.value) : setEnField("seoDescription", e.target.value)
+                      }
+                      rows={2}
+                    />
+                  )}
+                </Field>
+                <Field id="ogTitle" label="Sosyal medya (OG) başlığı" hint="Boş bırakılırsa SEO başlığı kullanılır.">
+                  {(inputProps) => (
+                    <Input
+                      {...inputProps}
+                      value={locale === "TR" ? ogTitle : getEnField("ogTitle")}
+                      onChange={(e) =>
+                        locale === "TR" ? setOgTitle(e.target.value) : setEnField("ogTitle", e.target.value)
+                      }
+                    />
+                  )}
+                </Field>
+                {locale === "TR" && (
+                  <ImageUploadField
+                    id="ogImageUrl"
+                    label="Sosyal medya (OG) görseli"
+                    value={ogImageUrl}
+                    onChange={setOgImageUrl}
+                  />
+                )}
+                <Field id="canonicalUrl" label="Canonical URL" hint="Boş bırakılırsa otomatik belirlenir.">
+                  {(inputProps) => (
+                    <Input
+                      {...inputProps}
+                      type="url"
+                      placeholder="https://…"
+                      value={locale === "TR" ? canonicalUrl : getEnField("canonicalUrl")}
+                      onChange={(e) =>
+                        locale === "TR" ? setCanonicalUrl(e.target.value) : setEnField("canonicalUrl", e.target.value)
+                      }
+                    />
+                  )}
+                </Field>
+                {locale === "TR" && (
+                  <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">İndekslemeyi engelle</p>
+                      <p className="text-xs text-foreground/60">Arama motorları bu içeriği indekslemesin.</p>
+                    </div>
+                    <Switch checked={noIndex} onCheckedChange={setNoIndex} />
+                  </div>
+                )}
+              </Card>
+            </div>
+
+            <div className="lg:sticky lg:top-6 lg:self-start">
+              <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+                <SeoPreview
+                  title={ogTitle || seoTitle || title}
+                  description={seoDescription}
+                  slug={slug}
+                  imageUrl={ogImageUrl}
+                />
+              </motion.div>
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="revisions" className="mt-6 outline-none">
+          <RevisionHistory
+            entityLabel="Sayfa"
+            loadRevisions={(cursor) => revisionsApi.listPageRevisions(pageId, cursor)}
+            onRestore={async (revisionId) => {
+              await revisionsApi.restorePageRevision(pageId, revisionId);
+              await load();
+            }}
+          />
+        </TabsContent>
+      </Tabs>
 
       <div className="sticky bottom-6 z-10 flex justify-end">
         <div className="flex items-center gap-3 rounded-xl border border-border bg-surface/95 px-4 py-3 shadow-lg backdrop-blur">

@@ -5,6 +5,7 @@ export type ApiErrorCode =
   | "VALIDATION_ERROR"
   | "CONFLICT"
   | "RATE_LIMITED"
+  | "PAYLOAD_TOO_LARGE"
   | "INTERNAL_ERROR";
 
 export class ApiError extends Error {
@@ -47,5 +48,12 @@ export class ConflictError extends ApiError {
 export class ValidationError extends ApiError {
   constructor(message = "Girdi doğrulama hatası.", details?: Record<string, string[]>) {
     super(422, "VALIDATION_ERROR", message, details);
+  }
+}
+
+/** Fastify core'un `FST_ERR_CTP_BODY_TOO_LARGE` (413) hatası için kullanılan zarf — bkz. plugins/error-handler.ts. */
+export class PayloadTooLargeError extends ApiError {
+  constructor(message = "İstek gövdesi çok büyük.", details?: Record<string, string[]>) {
+    super(413, "PAYLOAD_TOO_LARGE", message, details);
   }
 }

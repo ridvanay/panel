@@ -13,6 +13,18 @@ export const CategoryIdParamSchema = z.object({
   categoryId: z.string().uuid(),
 });
 
+export const PostRevisionIdParamSchema = z.object({
+  postId: z.string().uuid(),
+  revisionId: z.string().uuid(),
+});
+
+/** TR = kanonik/varsayılan; şimdilik tek ek dil (bkz. ARCHITECTURE.md §10.5). */
+export const LocaleQuerySchema = z.object({
+  locale: z.enum(["EN"]).optional(),
+});
+
+const TranslationsSchema = z.record(z.string(), z.record(z.string(), z.unknown()));
+
 export const CreateBlogPostRequestSchema = z.object({
   title: z.string().min(1),
   slug: z.string().min(1).optional(),
@@ -21,6 +33,15 @@ export const CreateBlogPostRequestSchema = z.object({
   coverImageUrl: z.string().optional(),
   status: PageStatusSchema.optional(),
   categoryId: z.string().uuid().nullable().optional(),
+  seoTitle: z.string().nullable().optional(),
+  seoDescription: z.string().nullable().optional(),
+  // §10.2 Gelişmiş SEO & Social Card — boş string yerine `null` kabul edilir (frontend boşsa null gönderir).
+  ogTitle: z.string().nullable().optional(),
+  ogImageUrl: z.string().nullable().optional(),
+  canonicalUrl: z.string().url().nullable().optional(),
+  noIndex: z.boolean().optional(),
+  // §10.5 Çoklu Dil & Yerelleştirme — bkz. shared-types.ts::BlogPostTranslations.
+  translations: TranslationsSchema.optional(),
 });
 
 export const UpdateBlogPostRequestSchema = z.object({
@@ -31,6 +52,13 @@ export const UpdateBlogPostRequestSchema = z.object({
   coverImageUrl: z.string().nullable().optional(),
   status: PageStatusSchema.optional(),
   categoryId: z.string().uuid().nullable().optional(),
+  seoTitle: z.string().nullable().optional(),
+  seoDescription: z.string().nullable().optional(),
+  ogTitle: z.string().nullable().optional(),
+  ogImageUrl: z.string().nullable().optional(),
+  canonicalUrl: z.string().url().nullable().optional(),
+  noIndex: z.boolean().optional(),
+  translations: TranslationsSchema.optional(),
 });
 
 export const CreateBlogCategoryRequestSchema = z.object({

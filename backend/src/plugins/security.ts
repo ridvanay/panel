@@ -23,5 +23,19 @@ export default fp(async function securityPlugin(app: FastifyInstance) {
     global: true,
     max: env.RATE_LIMIT_MAX,
     timeWindow: env.RATE_LIMIT_WINDOW,
+    // Varsayılan header davranışı korunur (Retry-After dahil x-ratelimit-* header'ları
+    // otomatik eklenir, bkz. addHeaders/addHeadersOnExceeding varsayılanları) — burada sadece
+    // JSON gövdesini projenin standart hata zarfıyla (`{ error: { code, message, details } }`,
+    // bkz. plugins/error-handler.ts::sendError) tutarlı hale getiriyor ve kalan bekleme
+    // süresini somut saniye olarak mesaja/gövdeye ekliyoruz. Bu obje `throw` edilip
+    // setErrorHandler'a düşer (bkz. error-handler.ts'teki RATE_LIMITED dalı).
+    errorResponseBuilder: (_request, context) => {
+      const retryAfterSeconds = Math.max(1, Math.ceil(context.ttl / 1000));
+      return {
+        statusCode: 429,
+        retryAfterSeconds,
+        message: `Çok fazla istek. ${retryAfterSeconds} saniye sonra tekrar deneyin.`,
+      };
+    },
   });
 });

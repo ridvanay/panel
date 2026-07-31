@@ -7,15 +7,20 @@ import type { AuthSession, LoginRequest, RegisterRequest, User } from "@/lib/api
 
 type AuthStatus = "loading" | "authenticated" | "unauthenticated";
 
+/** `login()` 2FA açık kullanıcılarda token vermeden `challengeToken` döner (bkz. ARCHITECTURE.md §10.4). */
+type LoginOutcome = { requiresTwoFactor: false } | { requiresTwoFactor: true; challengeToken: string };
+
 interface AuthContextValue {
   status: AuthStatus;
   user: User | null;
   memberships: AuthSession["memberships"];
-  login: (input: LoginRequest) => Promise<void>;
+  login: (input: LoginRequest) => Promise<LoginOutcome>;
   register: (input: RegisterRequest) => Promise<void>;
   logout: () => Promise<void>;
   /** Üyelik listesini tazelemek için (org oluşturma/silme, davet kabul sonrası). */
   refreshSession: () => Promise<void>;
+  /** 2FA challenge sonrası TOTP/backup kodu doğrulaması; başarılıysa oturumu açar. */
+  verifyTwoFactor: (challengeToken: string, code: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -62,8 +67,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [loadSession]);
 
   const login = useCallback(
-    async (input: LoginRequest) => {
-      await authApi.login(input);
+    async (input: LoginRequest): Promise<LoginOutcome> => {
+      const result = await authApi.login(input);
+      if ("requiresTwoFactor" in result) {
+        // 2FA gerekiyor — henüz token yok, loadSession() ÇAĞRILMAZ.
+        return { requiresTwoFactor: true, challengeToken: result.challengeToken };
+      }
+      await loadSession();
+      return { requiresTwoFactor: false };
+    },
+    [loadSession]
+  );
+
+  const verifyTwoFactor = useCallback(
+    async (challengeToken: string, code: string) => {
+      await authApi.verifyTwoFactor(challengeToken, code);
       await loadSession();
     },
     [loadSession]
@@ -96,6 +114,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     register,
     logout,
     refreshSession: loadSession,
+    verifyTwoFactor,
   };
 
   return <AuthContext value={value}>{children}</AuthContext>;

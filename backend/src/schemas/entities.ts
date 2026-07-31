@@ -25,6 +25,8 @@ export const UserSchema = z.object({
   emailVerifiedAt: z.string().nullable(),
   role: SiteRoleSchema,
   createdAt: z.string(),
+  // §10.4 Güvenlik & 2FA — bkz. ARCHITECTURE.md §10.4.
+  twoFactorEnabled: z.boolean(),
 });
 export type UserDto = z.infer<typeof UserSchema>;
 
@@ -113,6 +115,13 @@ export const PageSchema = z.object({
   blocks: z.array(z.record(z.unknown())),
   seoTitle: z.string().nullable(),
   seoDescription: z.string().nullable(),
+  // §10.2 Gelişmiş SEO & Social Card — bkz. ARCHITECTURE.md §10.2.
+  ogTitle: z.string().nullable(),
+  ogImageUrl: z.string().nullable(),
+  canonicalUrl: z.string().nullable(),
+  noIndex: z.boolean(),
+  // §10.5 Çoklu Dil & Yerelleştirme — TR (kolonlar) kanonik, translations.EN yalnızca override.
+  translations: z.record(z.string(), z.record(z.string(), z.unknown())),
   publishedAt: z.string().nullable(),
   viewCount: z.number().int(),
   createdAt: z.string(),
@@ -137,6 +146,15 @@ export const BlogPostSchema = z.object({
   coverImageUrl: z.string().nullable(),
   status: PageStatusSchema,
   category: BlogCategorySchema.nullable(),
+  seoTitle: z.string().nullable(),
+  seoDescription: z.string().nullable(),
+  // §10.2 Gelişmiş SEO & Social Card — bkz. ARCHITECTURE.md §10.2.
+  ogTitle: z.string().nullable(),
+  ogImageUrl: z.string().nullable(),
+  canonicalUrl: z.string().nullable(),
+  noIndex: z.boolean(),
+  // §10.5 Çoklu Dil & Yerelleştirme — TR (kolonlar) kanonik, translations.EN yalnızca override.
+  translations: z.record(z.string(), z.record(z.string(), z.unknown())),
   publishedAt: z.string().nullable(),
   viewCount: z.number().int(),
   createdAt: z.string(),
@@ -227,3 +245,54 @@ export const AuthResponseSchema = z.object({
   tokens: AuthTokensSchema,
 });
 export type AuthResponseDto = z.infer<typeof AuthResponseSchema>;
+
+/** §10.4 Güvenlik & 2FA — POST /auth/login başarılı ama 2FA açıksa döner (token YOK). */
+export const LoginRequiresTwoFactorSchema = z.object({
+  requiresTwoFactor: z.literal(true),
+  challengeToken: z.string(),
+});
+export type LoginRequiresTwoFactorDto = z.infer<typeof LoginRequiresTwoFactorSchema>;
+
+/** §10.4 Güvenlik & 2FA — GET /admin/settings/security/sessions. */
+export const SessionSchema = z.object({
+  id: z.string().uuid(),
+  userAgent: z.string().nullable(),
+  ipAddress: z.string().nullable(),
+  createdAt: z.string(),
+  expiresAt: z.string(),
+  isCurrent: z.boolean(),
+});
+export type SessionDto = z.infer<typeof SessionSchema>;
+
+// ---------- §10.1 İçerik Sürüm Kontrolü (Revision History) ----------
+
+export const ContentEntityTypeSchema = z.enum(["PAGE", "BLOG_POST"]);
+
+export const ContentRevisionSummarySchema = z.object({
+  id: z.string().uuid(),
+  editedById: z.string().uuid().nullable(),
+  editedByName: z.string(),
+  createdAt: z.string(),
+});
+export type ContentRevisionSummaryDto = z.infer<typeof ContentRevisionSummarySchema>;
+
+export const ContentRevisionSchema = ContentRevisionSummarySchema.extend({
+  entityType: ContentEntityTypeSchema,
+  entityId: z.string(),
+  snapshot: z.record(z.string(), z.unknown()),
+});
+export type ContentRevisionDto = z.infer<typeof ContentRevisionSchema>;
+
+// ---------- §10.3 E-posta & Bildirim Şablonu Yöneticisi ----------
+
+export const EmailTemplateSchema = z.object({
+  id: z.string().uuid(),
+  key: z.string(),
+  name: z.string(),
+  subject: z.string(),
+  bodyHtml: z.string(),
+  availableVariables: z.array(z.string()),
+  updatedAt: z.string(),
+  createdAt: z.string(),
+});
+export type EmailTemplateDto = z.infer<typeof EmailTemplateSchema>;

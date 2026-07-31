@@ -291,3 +291,138 @@ export interface UpdateNavigationConfigRequest {
     links: Array<Omit<FooterLink, "id">>;
   }>;
 }
+
+// ---------- §10.1 İçerik Sürüm Kontrolü (Revision History) ----------
+// Backend: modules/revisions/*. Bkz. ARCHITECTURE.md §10.1.
+
+export type ContentEntityType = "PAGE" | "BLOG_POST";
+
+export interface ContentRevisionSummary {
+  id: string;
+  editedById: string | null;
+  editedByName: string;
+  createdAt: string; // ISO 8601
+}
+
+export interface ContentRevision extends ContentRevisionSummary {
+  entityType: ContentEntityType;
+  entityId: string;
+  snapshot: Record<string, unknown>; // Page ya da BlogPost alan seti, bkz. §10.1
+}
+
+// ---------- §10.2 SEO & Social Card — Page/BlogPost'a eklenen alanlar ----------
+
+export interface SeoFields {
+  seoTitle: string | null;
+  seoDescription: string | null;
+  ogTitle: string | null;
+  ogImageUrl: string | null;
+  canonicalUrl: string | null;
+  noIndex: boolean;
+}
+
+// ---------- §10.3 E-posta & Bildirim Şablonu Yöneticisi ----------
+// Backend: modules/email-templates/*. Bkz. ARCHITECTURE.md §10.3.
+
+export type EmailTemplateKey = "WELCOME" | "PASSWORD_RESET" | "SYSTEM_ANNOUNCEMENT";
+
+export interface EmailTemplate {
+  id: string;
+  key: EmailTemplateKey;
+  name: string;
+  subject: string;
+  bodyHtml: string;
+  availableVariables: string[]; // ör. ["user_name", "reset_link"]
+  updatedAt: string;
+  createdAt: string;
+}
+
+export interface UpdateEmailTemplateRequest {
+  subject?: string;
+  bodyHtml?: string;
+}
+
+export interface PreviewEmailTemplateRequest {
+  sampleValues: Record<string, string>;
+}
+
+export interface PreviewEmailTemplateResponse {
+  renderedSubject: string;
+  renderedHtml: string;
+}
+
+// ---------- §10.4 Güvenlik & 2FA + Aktif Oturumlar ----------
+// Backend: modules/security/*, auth.service.ts (login akışı). Bkz. ARCHITECTURE.md §10.4.
+
+/** POST /auth/login başarılı ama 2FA açıksa döner (token YOK). */
+export interface LoginRequiresTwoFactorResponse {
+  requiresTwoFactor: true;
+  challengeToken: string;
+}
+
+export interface VerifyTwoFactorRequest {
+  challengeToken: string;
+  code: string; // 6 haneli TOTP veya "XXXX-XXXX" backup kodu
+}
+
+export interface TwoFactorSetupResponse {
+  otpauthUrl: string;
+  qrCodeDataUrl: string; // data:image/png;base64,...
+  setupToken: string; // 5 dk ömürlü, henüz DB'ye yazılmamış secret'ı taşır
+}
+
+export interface EnableTwoFactorRequest {
+  setupToken: string;
+  code: string;
+}
+
+export interface EnableTwoFactorResponse {
+  backupCodes: string[]; // düz metin, YALNIZCA bu response'ta bir kez döner
+}
+
+export interface DisableTwoFactorRequest {
+  password: string;
+}
+
+export interface RegenerateBackupCodesRequest {
+  password: string;
+}
+
+export interface RegenerateBackupCodesResponse {
+  backupCodes: string[];
+}
+
+export interface Session {
+  id: string;
+  userAgent: string | null;
+  ipAddress: string | null;
+  createdAt: string;
+  expiresAt: string;
+  isCurrent: boolean;
+}
+
+// ---------- §10.5 Çoklu Dil & Yerelleştirme (i18n) ----------
+
+export type ContentLocale = "EN"; // TR kanonik/varsayılan; şimdilik tek ek dil
+
+export interface PageTranslation {
+  title?: string;
+  seoTitle?: string;
+  seoDescription?: string;
+  ogTitle?: string;
+  canonicalUrl?: string;
+  blocks?: unknown[];
+}
+
+export interface BlogPostTranslation {
+  title?: string;
+  seoTitle?: string;
+  seoDescription?: string;
+  ogTitle?: string;
+  canonicalUrl?: string;
+  excerpt?: string;
+  contentHtml?: string;
+}
+
+export type PageTranslations = Partial<Record<ContentLocale, PageTranslation>>;
+export type BlogPostTranslations = Partial<Record<ContentLocale, BlogPostTranslation>>;

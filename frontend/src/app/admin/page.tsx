@@ -16,6 +16,7 @@ import { Alert } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card } from "@/components/ui/card";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
+import { computeDelta } from "@/lib/stats-summary";
 import { AlertCircle, LayoutDashboard } from "lucide-react";
 
 interface Summary {
@@ -30,26 +31,6 @@ interface Summary {
 function isSameMonth(dateKey: string, reference: Date): boolean {
   const [year, month] = dateKey.split("-").map(Number);
   return year === reference.getUTCFullYear() && month === reference.getUTCMonth() + 1;
-}
-
-/**
- * Bu ayki ve önceki ayki toplamları karşılaştırarak yüzde değişim üretir.
- * Önceki ay için veri yoksa (baseline 0), anlamlı bir yüzde hesaplanamayacağı
- * için `undefined` döner ve kart delta göstermez.
- */
-function computeDelta(current: number, previous: number): StatCardDelta | undefined {
-  if (!previous || previous <= 0) return undefined;
-
-  const changePercent = ((current - previous) / previous) * 100;
-  if (!Number.isFinite(changePercent)) return undefined;
-
-  const direction: StatCardDelta["direction"] = changePercent >= 0 ? "up" : "down";
-
-  return {
-    value: `%${Math.abs(changePercent).toFixed(1)}`,
-    direction,
-    isGood: direction === "up",
-  };
 }
 
 function StatCardSkeleton() {

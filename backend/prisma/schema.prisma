@@ -68,6 +68,12 @@ enum DeviceType {
   UNKNOWN
 }
 
+// §10.1 İçerik Sürüm Kontrolü — ContentRevision.entityType (bkz. ARCHITECTURE.md §10.1).
+enum ContentEntityType {
+  PAGE
+  BLOG_POST
+}
+
 model User {
   id              String         @id @default(uuid())
   // Sıralı, dış dünyaya sızmayan iç sayaç — cursor sayfalamada stabil sıralama için.
@@ -83,12 +89,22 @@ model User {
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
-  ownedOrganizations  Organization[]        @relation("OrganizationOwner")
+  // §10.4 Güvenlik & 2FA (TOTP) — bkz. ARCHITECTURE.md §10.4.
+  twoFactorEnabled    Boolean   @default(false)
+  // AES-256-GCM ile şifrelenmiş base32 TOTP secret — DÜZ METİN SAKLANMAZ (bkz. lib/crypto.ts).
+  twoFactorSecret     String?
+  twoFactorVerifiedAt DateTime?
+
+  ownedOrganizations  Organization[]       @relation("OrganizationOwner")
   memberships         Membership[]
-  refreshTokens        RefreshToken[]
-  passwordResetTokens  PasswordResetToken[]
-  blogPosts            BlogPost[]
-  auditLogs            AuditLog[]            @relation("AuditLogActor")
+  refreshTokens       RefreshToken[]
+  passwordResetTokens PasswordResetToken[]
+  blogPosts           BlogPost[]
+  auditLogs           AuditLog[]           @relation("AuditLogActor")
+  backupCodes         BackupCode[]
+  // Polymorphic ContentRevision.editedById / EmailTemplate.updatedById için zorunlu karşı-ilişki alanları.
+  contentRevisions    ContentRevision[]    @relation("ContentRevisionEditor")
+  emailTemplateEdits  EmailTemplate[]      @relation("EmailTemplateUpdater")
 
   @@map("users")
 }
@@ -186,15 +202,15 @@ model Subscription {
 
 // Opak refresh token'ın SHA-256 hash'i saklanır, ham değer asla DB'ye yazılmaz.
 model RefreshToken {
-  id                  String    @id @default(uuid())
+  id                  String   @id @default(uuid())
   userId              String
-  tokenHash           String    @unique
+  tokenHash           String   @unique
   expiresAt           DateTime
-  revoked             Boolean   @default(false)
+  revoked             Boolean  @default(false)
   replacedByTokenHash String?
   userAgent           String?
   ipAddress           String?
-  createdAt           DateTime  @default(now())
+  createdAt           DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -227,6 +243,13 @@ model Page {
   blocks         Json       @default("[]")
   seoTitle       String?
   seoDescription String?
+  // §10.2 Gelişmiş SEO & Social Card — bkz. ARCHITECTURE.md §10.2.
+  ogTitle        String?
+  ogImageUrl     String?
+  canonicalUrl   String?
+  noIndex        Boolean    @default(false)
+  // §10.5 Çoklu Dil & Yerelleştirme — TR (kolonlar) kanonik, translations.EN yalnızca override.
+  translations   Json       @default("{}")
   publishedAt    DateTime?
   // Denormalize toplam sayaç — admin liste/detay ekranlarında ekstra sorgu gerektirmeden okunur.
   viewCount      Int        @default(0)
@@ -240,11 +263,11 @@ model Page {
 }
 
 model BlogCategory {
-  id        String     @id @default(uuid())
-  seq       Int        @unique @default(autoincrement())
+  id        String   @id @default(uuid())
+  seq       Int      @unique @default(autoincrement())
   name      String
-  slug      String     @unique
-  createdAt DateTime   @default(now())
+  slug      String   @unique
+  createdAt DateTime @default(now())
 
   posts BlogPost[]
 
@@ -252,20 +275,29 @@ model BlogCategory {
 }
 
 model BlogPost {
-  id            String     @id @default(uuid())
-  seq           Int        @unique @default(autoincrement())
-  title         String
-  slug          String     @unique
-  excerpt       String?
-  contentHtml   String     @default("")
-  coverImageUrl String?
-  status        PageStatus @default(DRAFT)
-  categoryId    String?
-  authorId      String?
-  publishedAt   DateTime?
-  viewCount     Int        @default(0)
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
+  id             String     @id @default(uuid())
+  seq            Int        @unique @default(autoincrement())
+  title          String
+  slug           String     @unique
+  excerpt        String?
+  contentHtml    String     @default("")
+  coverImageUrl  String?
+  status         PageStatus @default(DRAFT)
+  categoryId     String?
+  authorId       String?
+  seoTitle       String?
+  seoDescription String?
+  // §10.2 Gelişmiş SEO & Social Card — bkz. ARCHITECTURE.md §10.2.
+  ogTitle        String?
+  ogImageUrl     String?
+  canonicalUrl   String?
+  noIndex        Boolean    @default(false)
+  // §10.5 Çoklu Dil & Yerelleştirme — TR (kolonlar) kanonik, translations.EN yalnızca override.
+  translations   Json       @default("{}")
+  publishedAt    DateTime?
+  viewCount      Int        @default(0)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
 
   category BlogCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   author   User?         @relation(fields: [authorId], references: [id], onDelete: SetNull)
@@ -415,4 +447,60 @@ model AuditLog {
   @@index([action])
   @@index([actorId])
   @@map("audit_logs")
+}
+
+// §10.1 İçerik Sürüm Kontrolü (Revision History) — bkz. ARCHITECTURE.md §10.1.
+// entityId polymorphic (Page.id veya BlogPost.id) olduğu için gerçek bir FK/Cascade
+// kurulamaz; ilgili içerik silindiğinde revizyonlar service katmanında (aynı
+// transaction içinde) elle silinir.
+model ContentRevision {
+  id           String            @id @default(uuid())
+  seq          Int               @unique @default(autoincrement())
+  entityType   ContentEntityType
+  entityId     String
+  // Güncellemeden HEMEN ÖNCEKİ tam alan seti (bkz. ARCHITECTURE.md §10.1 için Page/BlogPost şekli).
+  snapshot     Json
+  editedById   String?
+  // Silinen kullanıcı için okunabilir ad snapshot'ı.
+  editedByName String
+  createdAt    DateTime          @default(now())
+
+  editedBy User? @relation("ContentRevisionEditor", fields: [editedById], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId, createdAt])
+  @@map("content_revisions")
+}
+
+// §10.3 E-posta & Bildirim Şablonu Yöneticisi — bkz. ARCHITECTURE.md §10.3.
+model EmailTemplate {
+  id                 String   @id @default(uuid())
+  seq                Int      @unique @default(autoincrement())
+  key                String   @unique
+  name               String
+  subject            String
+  bodyHtml           String
+  // Salt bilgi amaçlı — ör. ["user_name","reset_link"] (bkz. ARCHITECTURE.md §10.3).
+  availableVariables Json
+  updatedById        String?
+  updatedAt          DateTime @updatedAt
+  createdAt          DateTime @default(now())
+
+  updatedBy User? @relation("EmailTemplateUpdater", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@map("email_templates")
+}
+
+// §10.4 Güvenlik & 2FA (TOTP) — tek kullanımlık yedek kurtarma kodları.
+model BackupCode {
+  id        String    @id @default(uuid())
+  userId    String
+  // sha256(code) — argon2 gerekmez, tek kullanımlık kısa kod.
+  codeHash  String
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("backup_codes")
 }

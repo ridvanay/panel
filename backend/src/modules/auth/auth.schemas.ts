@@ -19,3 +19,9 @@ export const ResetPasswordRequestSchema = z.object({
   token: z.string().min(1),
   newPassword: z.string().min(8, "Şifre en az 8 karakter olmalı."),
 });
+
+/** §10.4 Güvenlik & 2FA — POST /auth/2fa/verify body'si. `code`: 6 haneli TOTP veya "XXXX-XXXX" backup kodu. */
+export const VerifyTwoFactorRequestSchema = z.object({
+  challengeToken: z.string().min(1),
+  code: z.string().min(4),
+});

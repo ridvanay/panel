@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import type { User } from "@prisma/client";
 import { hashPassword, verifyPassword } from "../../lib/password";
 import { generateOpaqueToken, hashToken } from "../../lib/tokens";
-import { signAccessToken } from "../../lib/jwt";
+import { signAccessToken, signChallengeToken } from "../../lib/jwt";
 import { ConflictError, UnauthorizedError, NotFoundError, ForbiddenError } from "../../lib/errors";
 import { toUserDto } from "../../mappers";
 import { env } from "../../config/env";
@@ -12,13 +12,14 @@ interface RequestMeta {
   ipAddress?: string;
 }
 
-interface TokenIssue {
+export interface TokenIssue {
   accessToken: string;
   accessTokenExpiresAt: Date;
   refreshToken: string;
 }
 
-async function issueTokenPair(app: FastifyInstance, user: User, meta: RequestMeta): Promise<TokenIssue> {
+/** `login()` (şifre doğru + 2FA kapalı) ve `POST /auth/2fa/verify` (2FA doğrulandıktan sonra) tarafından paylaşılır. */
+export async function issueTokenPair(app: FastifyInstance, user: User, meta: RequestMeta): Promise<TokenIssue> {
   const { token: accessToken, expiresAt: accessTokenExpiresAt } = signAccessToken({
     sub: user.id,
     email: user.email,
@@ -64,7 +65,16 @@ export async function register(
   return { user, tokens };
 }
 
-export async function login(app: FastifyInstance, input: { email: string; password: string }, meta: RequestMeta) {
+/** §10.4 Güvenlik & 2FA — `login()`'ün 2FA açık/kapalı iki farklı sonucunu ayırt eden discriminated union. */
+export type LoginResult =
+  | { twoFactorRequired: true; challengeToken: string }
+  | { twoFactorRequired: false; user: User; tokens: TokenIssue };
+
+export async function login(
+  app: FastifyInstance,
+  input: { email: string; password: string },
+  meta: RequestMeta
+): Promise<LoginResult> {
   const user = await app.prisma.user.findUnique({ where: { email: input.email.toLowerCase() } });
   // E-posta ve şifre hatalarını ayırt etmiyoruz: hangi alanın yanlış olduğunu sızdırmamak için.
   if (!user || !(await verifyPassword(user.passwordHash, input.password))) {
@@ -81,10 +91,17 @@ export async function login(app: FastifyInstance, input: { email: string; passwo
     throw new ForbiddenError("Hesabınız askıya alınmış.");
   }
 
+  // §10.4: 2FA açıksa şifre doğru olsa bile token çifti HEMEN verilmez — önce
+  // POST /auth/2fa/verify ile TOTP/backup kodu doğrulanmalı (bkz. modules/security).
+  if (user.twoFactorEnabled) {
+    const challengeToken = signChallengeToken(user.id);
+    return { twoFactorRequired: true, challengeToken };
+  }
+
   await app.prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
 
   const tokens = await issueTokenPair(app, user, meta);
-  return { user, tokens };
+  return { twoFactorRequired: false, user, tokens };
 }
 
 export async function refresh(app: FastifyInstance, rawRefreshToken: string | undefined, meta: RequestMeta) {

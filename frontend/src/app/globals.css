@@ -13,9 +13,28 @@
   --primary-hover: #4338ca;
   --primary-foreground: oklch(0.985 0 0);
 
-  --danger: #dc2626;
+  /*
+   * WCAG AA kontrast denetimi (2026-07-31, ui-designer): eski değerler (#dc2626 / #16a34a / #f59e0b)
+   * `Badge`/`Alert` gibi bileşenlerde `bg-{tone}/10 text-{tone}` pattern'i ile (fiilen neredeyse
+   * beyaz bir kompozit arka plan üzerinde) kullanıldığında AA'nın (4.5:1) altında kalıyordu:
+   *   - eski --warning #f59e0b → ~2.1:1 (düz metin) / ~2.9:1 (Badge kompoziti)
+   *   - eski --success #16a34a → ~4.6:1 (düz metin, sınırda) / ~4.3:1 (Badge kompoziti, FAIL)
+   *   - eski --danger  #dc2626 → 4.83:1 (düz metin, GEÇER) / ~4.13:1 (Badge kompoziti, FAIL)
+   * Aşağıdaki yeni değerler aynı Tailwind amber/emerald/red ton ailesinde bir kademe daha koyu
+   * (ton kimliği korunuyor) ve hem düz metin hem de Badge'in %10 opak kompoziti üzerinde AA'yı geçiyor:
+   *   - --danger  #b91c1c (red-700)   → 6.47:1 düz metin / 4.98:1 Badge kompoziti
+   *   - --success #166534 (green-800) → 7.13:1 düz metin / 6.00:1 Badge kompoziti
+   *   - --warning #92400e (amber-800) → 7.09:1 düz metin / 6.08:1 Badge kompoziti
+   * Dark tema (.dark .admin-shell, aşağıda) zaten AA'yı geçiyordu (8-9:1 aralığı), o blok
+   * değiştirilmedi.
+   */
+  --danger: #b91c1c;
   --danger-foreground: #ffffff;
-  --success: #16a34a;
+  --success: #166534;
+  --warning: #92400e;
+  /* --warning artık koyulaştığı için (amber-800) olası bir solid bg-warning + warning-foreground
+     kullanımında beyaz metin gerekir (eski koyu kahverengi #451a03 artık düşük kontrast üretirdi). */
+  --warning-foreground: #ffffff;
 
   --viz-series-1: #2a78d6;
   --viz-series-2: #eb6834;
@@ -64,6 +83,8 @@
   --color-danger: var(--danger);
   --color-danger-foreground: var(--danger-foreground);
   --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
 
   --font-sans: var(--font-sans);
   --font-mono: var(--font-geist-mono);
@@ -175,6 +196,8 @@
   --danger: #f87171;
   --danger-foreground: #1a0505;
   --success: #4ade80;
+  --warning: #fbbf24;
+  --warning-foreground: #451a03;
 
   --sidebar: #0a0a12;
   --sidebar-foreground: #f5f5ff;

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
-import { AlertCircle, Download, Users as UsersIcon } from "lucide-react";
+import { AlertCircle, Download, Search, UserCheck, UserX, Users as UsersIcon } from "lucide-react";
 import * as usersAdminApi from "@/lib/api/users-admin";
 import type { AdminUser, SiteRole, SiteUserStatus } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
@@ -16,12 +16,20 @@ import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { PageHeading } from "@/components/admin/page-heading";
+import { ListPagination } from "@/components/admin/list-pagination";
 import { NewUserDialog } from "@/components/admin/users/new-user-dialog";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { exportToCsv, type CsvColumn } from "@/lib/export-csv";
+import { useFilteredList } from "@/hooks/use-filtered-list";
 import { useAuth } from "@/context/auth-context";
+
+function matchesUser(user: AdminUser, query: string): boolean {
+  return user.name.toLowerCase().includes(query) || user.email.toLowerCase().includes(query);
+}
 
 const roleLabels: Record<SiteRole, string> = {
   ADMIN: "Admin",
@@ -58,6 +66,18 @@ export default function AdminUsersPage() {
   const [bulkRoleLoading, setBulkRoleLoading] = useState(false);
   const [bulkStatusAction, setBulkStatusAction] = useState<SiteUserStatus | null>(null);
   const [bulkStatusLoading, setBulkStatusLoading] = useState(false);
+
+  const {
+    search,
+    setSearch,
+    page,
+    setPage,
+    pageSize,
+    setPageSize,
+    totalPages,
+    filteredCount,
+    items: visibleUsers,
+  } = useFilteredList(users, matchesUser);
 
   const load = useCallback(async () => {
     try {
@@ -160,11 +180,27 @@ export default function AdminUsersPage() {
   }
 
   function toggleSelectAll() {
-    if (!users) return;
-    setSelectedIds((prev) => (prev.size === users.length ? new Set() : new Set(users.map((u) => u.id))));
+    if (visibleUsers.length === 0) return;
+    const visibleIds = visibleUsers.map((u) => u.id);
+    const allVisibleSelected = visibleIds.every((id) => selectedIds.has(id));
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allVisibleSelected) {
+        visibleIds.forEach((id) => next.delete(id));
+      } else {
+        visibleIds.forEach((id) => next.add(id));
+      }
+      return next;
+    });
   }
 
-  const allSelected = users !== null && users.length > 0 && selectedIds.size === users.length;
+  const allSelected = visibleUsers.length > 0 && visibleUsers.every((u) => selectedIds.has(u.id));
+
+  // Backend `assertNotLastActiveAdmin` ile serbest transaction içinde son aktif admin'i
+  // koruyor; burada aynı kuralı istemci tarafında öngörerek kullanıcının önceden
+  // reddedileceğini görmesini sağlıyoruz (backend kontrolünün yerine geçmez).
+  const activeAdminCount = users?.filter((u) => u.role === "ADMIN" && u.status === "ACTIVE").length ?? 0;
+  const LAST_ADMIN_MESSAGE = "Sistemde en az bir yönetici kalmalı.";
 
   async function handleConfirmBulkRoleChange() {
     const ids = Array.from(selectedIds);
@@ -315,71 +351,134 @@ export default function AdminUsersPage() {
           action={<Button onClick={() => setNewUserDialogOpen(true)}>Yeni Kullanıcı Ekle</Button>}
         />
       ) : (
-        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>
-                  <Checkbox
-                    aria-label="Tümünü seç"
-                    checked={allSelected}
-                    indeterminate={selectedIds.size > 0 && !allSelected}
-                    onCheckedChange={toggleSelectAll}
-                  />
-                </TableHead>
-                <TableHead>Profil</TableHead>
-                <TableHead>İsim</TableHead>
-                <TableHead>E-posta</TableHead>
-                <TableHead>Rol</TableHead>
-                <TableHead>Durum</TableHead>
-                <TableHead>Son Giriş Tarihi</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {users.map((user) => (
-                <TableRow key={user.id}>
-                  <TableCell>
-                    <Checkbox
-                      aria-label={`${user.name} kullanıcısını seç`}
-                      checked={selectedIds.has(user.id)}
-                      onCheckedChange={() => toggleSelect(user.id)}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Avatar name={user.name} src={user.avatarUrl} size={32} />
-                  </TableCell>
-                  <TableCell className="font-medium text-foreground">{user.name}</TableCell>
-                  <TableCell className="text-foreground/60">{user.email}</TableCell>
-                  <TableCell>
-                    <Select
-                      aria-label={`${user.name} rolü`}
-                      value={user.role}
-                      onChange={(e) =>
-                        setPendingRoleChange({ user, newRole: e.target.value as SiteRole })
-                      }
-                      className="w-32"
-                    >
-                      <option value="ADMIN">Admin</option>
-                      <option value="EDITOR">Editor</option>
-                      <option value="VIEWER">Viewer</option>
-                    </Select>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <Badge tone={user.status === "ACTIVE" ? "success" : "danger"}>
-                        {user.status === "ACTIVE" ? "Aktif" : "Askıda"}
-                      </Badge>
-                      <Button variant="ghost" size="sm" onClick={() => setPendingStatusChange(user)}>
-                        {user.status === "ACTIVE" ? "Askıya Al" : "Aktifleştir"}
-                      </Button>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-foreground/60">{formatLastLogin(user.lastLoginAt)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </motion.div>
+        <>
+          <div className="flex flex-wrap items-center gap-3">
+            <InputGroup className="w-full sm:max-w-xs">
+              <InputGroupAddon>
+                <Search />
+              </InputGroupAddon>
+              <InputGroupInput
+                placeholder="İsim veya e-posta ara..."
+                aria-label="İsim veya e-posta ara"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </InputGroup>
+            {totalPages > 10 && (
+              <Select
+                aria-label="Sayfa boyutu"
+                value={pageSize}
+                onChange={(e) => setPageSize(Number(e.target.value))}
+                className="w-24"
+              >
+                <option value={10}>10 / sayfa</option>
+                <option value={20}>20 / sayfa</option>
+                <option value={50}>50 / sayfa</option>
+              </Select>
+            )}
+          </div>
+
+          {filteredCount === 0 ? (
+            <EmptyState icon={Search} title="Sonuç bulunamadı" description="Arama kriterlerinize uyan bir kullanıcı yok." />
+          ) : (
+            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-10">
+                      <Checkbox
+                        aria-label="Tümünü seç"
+                        checked={allSelected}
+                        indeterminate={selectedIds.size > 0 && !allSelected}
+                        onCheckedChange={toggleSelectAll}
+                      />
+                    </TableHead>
+                    <TableHead className="w-14">Profil</TableHead>
+                    <TableHead className="w-auto">İsim</TableHead>
+                    <TableHead className="w-56">E-posta</TableHead>
+                    <TableHead className="w-32">Rol</TableHead>
+                    <TableHead className="w-28">Durum</TableHead>
+                    <TableHead className="w-24 text-right">İşlemler</TableHead>
+                    <TableHead className="w-40 text-right">Son Giriş Tarihi</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {visibleUsers.map((user) => {
+                    const isLastActiveAdmin =
+                      user.role === "ADMIN" && user.status === "ACTIVE" && activeAdminCount === 1;
+                    const statusActionLabel = user.status === "ACTIVE" ? "Askıya Al" : "Aktifleştir";
+                    const tooltipLabel = isLastActiveAdmin ? LAST_ADMIN_MESSAGE : statusActionLabel;
+
+                    return (
+                      <TableRow key={user.id}>
+                        <TableCell className="w-10">
+                          <Checkbox
+                            aria-label={`${user.name} kullanıcısını seç`}
+                            checked={selectedIds.has(user.id)}
+                            onCheckedChange={() => toggleSelect(user.id)}
+                          />
+                        </TableCell>
+                        <TableCell className="w-14">
+                          <Avatar name={user.name} src={user.avatarUrl} size={32} />
+                        </TableCell>
+                        <TableCell className="w-auto font-medium text-foreground">{user.name}</TableCell>
+                        <TableCell className="w-56 text-foreground/60">{user.email}</TableCell>
+                        <TableCell className="w-32">
+                          <Select
+                            aria-label={`${user.name} rolü`}
+                            value={user.role}
+                            onChange={(e) =>
+                              setPendingRoleChange({ user, newRole: e.target.value as SiteRole })
+                            }
+                            disabled={isLastActiveAdmin}
+                            title={isLastActiveAdmin ? LAST_ADMIN_MESSAGE : undefined}
+                            className="w-32"
+                          >
+                            <option value="ADMIN">Admin</option>
+                            <option value="EDITOR">Editor</option>
+                            <option value="VIEWER">Viewer</option>
+                          </Select>
+                        </TableCell>
+                        <TableCell className="w-28">
+                          <Badge tone={user.status === "ACTIVE" ? "success" : "danger"}>
+                            {user.status === "ACTIVE" ? "Aktif" : "Askıda"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="w-24 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <Tooltip>
+                              <TooltipTrigger render={<span tabIndex={0} className="inline-flex" />}>
+                                <Button
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  aria-label={tooltipLabel}
+                                  disabled={isLastActiveAdmin}
+                                  onClick={() => setPendingStatusChange(user)}
+                                >
+                                  {user.status === "ACTIVE" ? (
+                                    <UserX className="h-4 w-4" />
+                                  ) : (
+                                    <UserCheck className="h-4 w-4" />
+                                  )}
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>{tooltipLabel}</TooltipContent>
+                            </Tooltip>
+                          </div>
+                        </TableCell>
+                        <TableCell className="w-40 text-right text-foreground/60">
+                          {formatLastLogin(user.lastLoginAt)}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </motion.div>
+          )}
+
+          {totalPages > 10 && <ListPagination page={page} totalPages={totalPages} onPageChange={setPage} />}
+        </>
       )}
 
       <NewUserDialog

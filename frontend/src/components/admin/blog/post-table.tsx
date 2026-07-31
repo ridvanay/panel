@@ -1,8 +1,11 @@
 import Link from "next/link";
+import { Eye, Pencil, Trash2 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { LinkButton } from "@/components/ui/link-button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { BlogPost } from "@/lib/api/types";
 
 interface PostTableProps {
@@ -28,7 +31,7 @@ export function PostTable({
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>
+          <TableHead className="w-10">
             <Checkbox
               aria-label="Tümünü seç"
               checked={allSelected}
@@ -36,11 +39,11 @@ export function PostTable({
               onCheckedChange={onToggleSelectAll}
             />
           </TableHead>
-          <TableHead>Başlık</TableHead>
-          <TableHead>Kategori</TableHead>
-          <TableHead>Durum</TableHead>
-          <TableHead className="text-right">Görüntülenme</TableHead>
-          <TableHead className="text-right">İşlemler</TableHead>
+          <TableHead className="w-auto">Başlık</TableHead>
+          <TableHead className="w-40">Kategori</TableHead>
+          <TableHead className="w-28">Durum</TableHead>
+          <TableHead className="w-32 text-right">Görüntülenme</TableHead>
+          <TableHead className="w-24 text-right">İşlemler</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -53,29 +56,82 @@ export function PostTable({
         )}
         {posts.map((post) => (
           <TableRow key={post.id}>
-            <TableCell>
+            <TableCell className="w-10">
               <Checkbox
                 aria-label={`${post.title} yazısını seç`}
                 checked={selectedIds.has(post.id)}
                 onCheckedChange={() => onToggleSelect(post.id)}
               />
             </TableCell>
-            <TableCell>
+            <TableCell className="w-auto">
               <Link href={`/admin/blog/${post.id}`} className="font-medium text-foreground hover:text-primary">
                 {post.title}
               </Link>
             </TableCell>
-            <TableCell className="text-foreground/60">{post.category?.name ?? "—"}</TableCell>
-            <TableCell>
-              <Badge tone={post.status === "PUBLISHED" ? "success" : "neutral"}>
+            <TableCell className="w-40 text-foreground/60">{post.category?.name ?? "—"}</TableCell>
+            <TableCell className="w-28">
+              <Badge tone={post.status === "PUBLISHED" ? "success" : "warning"}>
                 {post.status === "PUBLISHED" ? "Yayında" : "Taslak"}
               </Badge>
             </TableCell>
-            <TableCell className="text-right text-foreground/60">{post.viewCount.toLocaleString("tr-TR")}</TableCell>
-            <TableCell className="text-right">
-              <Button variant="ghost" size="sm" loading={deletingId === post.id} onClick={() => onDelete(post.id)}>
-                Sil
-              </Button>
+            <TableCell className="w-32 text-right text-foreground/60">
+              {post.viewCount.toLocaleString("tr-TR")}
+            </TableCell>
+            <TableCell className="w-24 text-right">
+              <div className="flex items-center justify-end gap-1">
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <LinkButton
+                        href={`/admin/blog/${post.id}`}
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="Düzenle"
+                      />
+                    }
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </TooltipTrigger>
+                  <TooltipContent>Düzenle</TooltipContent>
+                </Tooltip>
+
+                {post.status === "PUBLISHED" && (
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <LinkButton
+                          href={`/blog/${post.slug}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label="Görüntüle"
+                        />
+                      }
+                    >
+                      <Eye className="h-4 w-4" />
+                    </TooltipTrigger>
+                    <TooltipContent>Görüntüle</TooltipContent>
+                  </Tooltip>
+                )}
+
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="Sil"
+                        loading={deletingId === post.id}
+                        onClick={() => onDelete(post.id)}
+                      />
+                    }
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </TooltipTrigger>
+                  <TooltipContent>Sil</TooltipContent>
+                </Tooltip>
+              </div>
             </TableCell>
           </TableRow>
         ))}

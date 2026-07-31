@@ -10,6 +10,12 @@ import { toAuditLogDto } from "../../mappers";
 import { parseCursor, buildPageMeta } from "../../lib/pagination";
 import { LogsQuerySchema } from "./logs.schemas";
 
+// Diğer admin listeleme uçlarıyla paylaşılan global limitten (env.RATE_LIMIT_MAX) bağımsız,
+// bu uca özel orta seviye üst sınır — hem savunma derinliği (hızlı veri dökümü/scraping'e karşı)
+// hem de diğer admin trafiğinin (health polling, dashboard) global bütçeyi tüketmesi durumunda
+// bu ucun erişiminin garanti altında kalması için (bkz. security.routes.ts::SENSITIVE_ACTION_RATE_LIMIT).
+const LOGS_RATE_LIMIT = { max: 120, timeWindow: "1 minute" };
+
 /**
  * `/admin/logs` prefix'i altında bağlanır (bkz. app.ts) — yalnızca ADMIN.
  * SAPMA: diğer tüm sayfalanan listelerin aksine (bkz. media/pages/blog: `orderBy seq:"asc"`
@@ -23,7 +29,10 @@ export async function logsRoutes(app: FastifyInstance) {
 
   server.get(
     "/",
-    { schema: { querystring: LogsQuerySchema, response: { 200: ApiSuccessSchema(z.array(AuditLogSchema)) } } },
+    {
+      config: { rateLimit: LOGS_RATE_LIMIT },
+      schema: { querystring: LogsQuerySchema, response: { 200: ApiSuccessSchema(z.array(AuditLogSchema)) } },
+    },
     async (request, reply) => {
       const { cursor, limit, status, action } = request.query;
       const cursorSeq = parseCursor(cursor);

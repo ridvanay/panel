@@ -1,30 +1,76 @@
 import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
+import type { BlogPost } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { authenticate } from "../../middleware/authenticate";
 import { requireSiteRole } from "../../middleware/site-rbac";
 import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema, CursorQuerySchema } from "../../schemas/common";
-import { BlogCategorySchema, BlogPostSchema } from "../../schemas/entities";
-import { toBlogCategoryDto, toBlogPostDto } from "../../mappers";
+import { BlogCategorySchema, BlogPostSchema, ContentRevisionSchema, ContentRevisionSummarySchema } from "../../schemas/entities";
+import { toBlogCategoryDto, toBlogPostDto, toContentRevisionDto, toContentRevisionSummaryDto } from "../../mappers";
 import { NotFoundError } from "../../lib/errors";
-import { parseCursor, buildPageMeta } from "../../lib/pagination";
+import { parseCursor, encodeCursor, buildPageMeta } from "../../lib/pagination";
 import { slugify } from "../../lib/slug";
 import { startOfUtcDay } from "../../lib/date";
 import { detectDeviceType } from "../../lib/device";
 import { detectCountry } from "../../lib/geo";
 import { touchVisitor } from "../../lib/live-visitors";
+import { snapshotBeforeUpdate } from "../../lib/content-revisions";
 import {
   CategoryIdParamSchema,
   CreateBlogCategoryRequestSchema,
   CreateBlogPostRequestSchema,
+  LocaleQuerySchema,
   PostIdParamSchema,
+  PostRevisionIdParamSchema,
   PostSlugParamSchema,
   UpdateBlogCategoryRequestSchema,
   UpdateBlogPostRequestSchema,
 } from "./blog.schemas";
 
 const WITH_CATEGORY = { category: true } as const;
+
+/** Güncellemeden HEMEN ÖNCEKİ alan setini döner (bkz. ARCHITECTURE.md §10.1). */
+function toBlogPostSnapshot(post: BlogPost): Record<string, unknown> {
+  return {
+    title: post.title,
+    slug: post.slug,
+    excerpt: post.excerpt,
+    contentHtml: post.contentHtml,
+    coverImageUrl: post.coverImageUrl,
+    categoryId: post.categoryId,
+    seoTitle: post.seoTitle,
+    seoDescription: post.seoDescription,
+    ogTitle: post.ogTitle,
+    ogImageUrl: post.ogImageUrl,
+    canonicalUrl: post.canonicalUrl,
+    noIndex: post.noIndex,
+    translations: post.translations,
+  };
+}
+
+/**
+ * §10.5 Çoklu Dil & Yerelleştirme — `locale=EN` verildiğinde `translations.EN`'deki
+ * alan bazlı override'ları uygular (eksik alan TR/kanonik kolondan gelir).
+ */
+function applyLocale<T extends BlogPost>(post: T, locale?: "EN"): T {
+  if (locale !== "EN") return post;
+  const translations = (post.translations as Record<string, Record<string, unknown>> | null) ?? {};
+  const en = translations.EN;
+  if (!en) return post;
+
+  return {
+    ...post,
+    title: typeof en.title === "string" ? en.title : post.title,
+    seoTitle: typeof en.seoTitle === "string" ? en.seoTitle : post.seoTitle,
+    seoDescription: typeof en.seoDescription === "string" ? en.seoDescription : post.seoDescription,
+    ogTitle: typeof en.ogTitle === "string" ? en.ogTitle : post.ogTitle,
+    canonicalUrl: typeof en.canonicalUrl === "string" ? en.canonicalUrl : post.canonicalUrl,
+    excerpt: typeof en.excerpt === "string" ? en.excerpt : post.excerpt,
+    contentHtml: typeof en.contentHtml === "string" ? en.contentHtml : post.contentHtml,
+  };
+}
 
 /** `/admin/blog` prefix'i altında bağlanır (bkz. app.ts) — tüm durumlar (taslak dahil), authenticated. */
 export async function adminBlogPostsRoutes(app: FastifyInstance) {
@@ -56,7 +102,22 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
       schema: { body: CreateBlogPostRequestSchema, response: { 201: ApiSuccessSchema(BlogPostSchema) } },
     },
     async (request, reply) => {
-      const { title, slug, excerpt, contentHtml, coverImageUrl, status, categoryId } = request.body;
+      const {
+        title,
+        slug,
+        excerpt,
+        contentHtml,
+        coverImageUrl,
+        status,
+        categoryId,
+        seoTitle,
+        seoDescription,
+        ogTitle,
+        ogImageUrl,
+        canonicalUrl,
+        noIndex,
+        translations,
+      } = request.body;
 
       const post = await app.prisma.blogPost.create({
         data: {
@@ -68,6 +129,13 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
           status: status ?? "DRAFT",
           categoryId: categoryId ?? undefined,
           authorId: request.user!.id,
+          seoTitle,
+          seoDescription,
+          ogTitle,
+          ogImageUrl,
+          canonicalUrl,
+          noIndex,
+          translations: (translations ?? {}) as Prisma.InputJsonValue,
           publishedAt: status === "PUBLISHED" ? new Date() : null,
         },
         include: WITH_CATEGORY,
@@ -104,13 +172,29 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
       const existing = await app.prisma.blogPost.findUnique({ where: { id: request.params.postId } });
       if (!existing) throw new NotFoundError("Yazı bulunamadı.");
 
-      const { slug, ...rest } = request.body;
+      await snapshotBeforeUpdate(app, "BLOG_POST", existing.id, toBlogPostSnapshot(existing), request.user!.id);
+
+      const { slug, translations, ...rest } = request.body;
+
+      const mergedTranslations =
+        translations !== undefined
+          ? {
+              ...((existing.translations as Record<string, Record<string, unknown>>) ?? {}),
+              ...Object.fromEntries(
+                Object.entries(translations).map(([locale, fields]) => [
+                  locale,
+                  { ...(((existing.translations as Record<string, Record<string, unknown>>) ?? {})[locale] ?? {}), ...fields },
+                ])
+              ),
+            }
+          : undefined;
 
       const post = await app.prisma.blogPost.update({
         where: { id: request.params.postId },
         data: {
           ...rest,
           ...(slug !== undefined ? { slug: slugify(slug) } : {}),
+          ...(mergedTranslations !== undefined ? { translations: mergedTranslations as Prisma.InputJsonValue } : {}),
           ...(rest.status === "PUBLISHED" && !existing.publishedAt ? { publishedAt: new Date() } : {}),
         },
         include: WITH_CATEGORY,
@@ -131,6 +215,110 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
         throw new NotFoundError("Yazı bulunamadı.");
       });
       return reply.code(204).send();
+    }
+  );
+
+  // §10.1 İçerik Sürüm Kontrolü — yetki eşiği yazı düzenleme ile aynı (ADMIN+EDITOR).
+  server.get(
+    "/:postId/revisions",
+    {
+      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      schema: {
+        params: PostIdParamSchema,
+        querystring: CursorQuerySchema,
+        response: { 200: ApiSuccessSchema(z.array(ContentRevisionSummarySchema)) },
+      },
+    },
+    async (request, reply) => {
+      const { cursor, limit } = request.query;
+      const cursorSeq = parseCursor(cursor);
+
+      const rows = await app.prisma.contentRevision.findMany({
+        where: {
+          entityType: "BLOG_POST",
+          entityId: request.params.postId,
+          ...(cursorSeq ? { seq: { lt: cursorSeq } } : {}),
+        },
+        orderBy: { seq: "desc" },
+        take: limit,
+      });
+
+      const nextCursor = rows.length === limit ? encodeCursor(rows[rows.length - 1]!.seq) : null;
+
+      return reply.send(ok(rows.map(toContentRevisionSummaryDto), { nextCursor }));
+    }
+  );
+
+  server.get(
+    "/:postId/revisions/:revisionId",
+    {
+      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      schema: { params: PostRevisionIdParamSchema, response: { 200: ApiSuccessSchema(ContentRevisionSchema) } },
+    },
+    async (request, reply) => {
+      const revision = await app.prisma.contentRevision.findUnique({ where: { id: request.params.revisionId } });
+      if (!revision || revision.entityType !== "BLOG_POST" || revision.entityId !== request.params.postId) {
+        throw new NotFoundError("Revizyon bulunamadı.");
+      }
+      return reply.send(ok(toContentRevisionDto(revision)));
+    }
+  );
+
+  server.post(
+    "/:postId/revisions/:revisionId/restore",
+    {
+      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      schema: { params: PostRevisionIdParamSchema, response: { 200: ApiSuccessSchema(BlogPostSchema) } },
+    },
+    async (request, reply) => {
+      const existing = await app.prisma.blogPost.findUnique({ where: { id: request.params.postId } });
+      if (!existing) throw new NotFoundError("Yazı bulunamadı.");
+
+      const revision = await app.prisma.contentRevision.findUnique({ where: { id: request.params.revisionId } });
+      if (!revision || revision.entityType !== "BLOG_POST" || revision.entityId !== request.params.postId) {
+        throw new NotFoundError("Revizyon bulunamadı.");
+      }
+
+      // Geri dönüş de geri alınabilir olsun diye önce mevcut state'i yeni bir revizyon olarak kaydet.
+      await snapshotBeforeUpdate(app, "BLOG_POST", existing.id, toBlogPostSnapshot(existing), request.user!.id);
+
+      const snapshot = revision.snapshot as {
+        title: string;
+        slug: string;
+        excerpt: string | null;
+        contentHtml: string;
+        coverImageUrl: string | null;
+        categoryId: string | null;
+        seoTitle: string | null;
+        seoDescription: string | null;
+        ogTitle: string | null;
+        ogImageUrl: string | null;
+        canonicalUrl: string | null;
+        noIndex: boolean;
+        translations: unknown;
+      };
+
+      const post = await app.prisma.blogPost.update({
+        where: { id: request.params.postId },
+        data: {
+          title: snapshot.title,
+          slug: snapshot.slug,
+          excerpt: snapshot.excerpt,
+          contentHtml: snapshot.contentHtml,
+          coverImageUrl: snapshot.coverImageUrl,
+          categoryId: snapshot.categoryId,
+          seoTitle: snapshot.seoTitle,
+          seoDescription: snapshot.seoDescription,
+          ogTitle: snapshot.ogTitle,
+          ogImageUrl: snapshot.ogImageUrl,
+          canonicalUrl: snapshot.canonicalUrl,
+          noIndex: snapshot.noIndex,
+          translations: (snapshot.translations ?? {}) as Prisma.InputJsonValue,
+        },
+        include: WITH_CATEGORY,
+      });
+
+      return reply.send(ok(toBlogPostDto(post)));
     }
   );
 }
@@ -229,14 +417,16 @@ export async function publicBlogRoutes(app: FastifyInstance) {
 
   server.get(
     "/:slug",
-    { schema: { params: PostSlugParamSchema, response: { 200: ApiSuccessSchema(BlogPostSchema) } } },
+    {
+      schema: { params: PostSlugParamSchema, querystring: LocaleQuerySchema, response: { 200: ApiSuccessSchema(BlogPostSchema) } },
+    },
     async (request, reply) => {
       const post = await app.prisma.blogPost.findFirst({
         where: { slug: request.params.slug, status: "PUBLISHED" },
         include: WITH_CATEGORY,
       });
       if (!post) throw new NotFoundError("Yazı bulunamadı.");
-      return reply.send(ok(toBlogPostDto(post)));
+      return reply.send(ok(toBlogPostDto(applyLocale(post, request.query.locale))));
     }
   );
 

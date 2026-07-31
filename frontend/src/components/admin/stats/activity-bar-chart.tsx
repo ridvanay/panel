@@ -8,8 +8,10 @@ import type { DailyViewStats } from "@/lib/api/types";
 import { Card } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { Alert } from "@/components/ui/alert";
+import { EmptyState } from "@/components/ui/empty-state";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { ChartTooltipContent } from "@/components/admin/stats/chart-tooltip";
+import { BarChart3 } from "lucide-react";
 
 const dateFormatter = new Intl.DateTimeFormat("tr-TR", { day: "numeric", month: "short" });
 
@@ -25,19 +27,26 @@ function formatActivityData(rows: DailyViewStats[]): ActivityDatum[] {
   }));
 }
 
-export function ActivityBarChart() {
+interface ActivityBarChartProps {
+  /** Son kaç günün verisi çekilecek. Verilmezse mevcut varsayılan (7) korunur. */
+  days?: number;
+}
+
+export function ActivityBarChart({ days = 7 }: ActivityBarChartProps) {
   const [data, setData] = useState<DailyViewStats[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
+      setData(null);
+      setError(null);
       try {
-        setData(await statsApi.getViewStats(7));
+        setData(await statsApi.getViewStats(days));
       } catch (err) {
         setError(friendlyErrorMessage(err));
       }
     })();
-  }, []);
+  }, [days]);
 
   return (
     <motion.div
@@ -46,8 +55,8 @@ export function ActivityBarChart() {
       transition={{ duration: 0.4, ease: "easeOut", delay: 0.1 }}
     >
       <Card>
-        <h3 className="text-sm font-medium text-foreground">Haftalık aktivite</h3>
-        <p className="text-xs text-foreground/60">Son 7 gün · toplam görüntülenme</p>
+        <h3 className="text-sm font-medium text-foreground">{days === 7 ? "Haftalık aktivite" : "Aktivite"}</h3>
+        <p className="text-xs text-foreground/60">Son {days} gün · toplam görüntülenme</p>
 
         {error ? (
           <Alert variant="error" className="mt-4">
@@ -56,6 +65,15 @@ export function ActivityBarChart() {
         ) : data === null ? (
           <div className="flex h-72 items-center justify-center">
             <Spinner className="h-6 w-6 text-primary" />
+          </div>
+        ) : data.every((d) => d.pageViews + d.postViews === 0) ? (
+          <div className="flex h-72 items-center justify-center">
+            <EmptyState
+              icon={BarChart3}
+              title="Henüz aktivite verisi yok"
+              description={`Son ${days} günde sayfa veya blog görüntülenmesi kaydedilmedi.`}
+              className="border-none p-0"
+            />
           </div>
         ) : (
           <div className="mt-4 h-72 w-full">

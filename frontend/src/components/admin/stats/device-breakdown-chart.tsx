@@ -28,20 +28,27 @@ const DEVICE_COLORS: Record<DeviceType, string> = {
   UNKNOWN: "var(--accent-400, #818cf8)",
 };
 
-export function DeviceBreakdownChart() {
+interface DeviceBreakdownChartProps {
+  /** Son kaç günün verisi çekilecek. Verilmezse mevcut varsayılan (30) korunur. */
+  days?: number;
+}
+
+export function DeviceBreakdownChart({ days = 30 }: DeviceBreakdownChartProps) {
   const [devices, setDevices] = useState<DeviceBreakdownItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
+      setDevices(null);
+      setError(null);
       try {
-        const breakdown = await statsApi.getBreakdown(30);
+        const breakdown = await statsApi.getBreakdown(days);
         setDevices(breakdown.devices);
       } catch (err) {
         setError(friendlyErrorMessage(err));
       }
     })();
-  }, []);
+  }, [days]);
 
   const total = devices?.reduce((sum, item) => sum + item.count, 0) ?? 0;
   // Tooltip/Legend'in Türkçe etiket gösterebilmesi için görsel katmanda
@@ -56,7 +63,7 @@ export function DeviceBreakdownChart() {
     >
       <Card>
         <h3 className="text-sm font-medium text-foreground">Cihaz Dağılımı</h3>
-        <p className="text-xs text-foreground/60">Son 30 gün · ziyaretçi cihaz türü</p>
+        <p className="text-xs text-foreground/60">Son {days} gün · ziyaretçi cihaz türü</p>
 
         {error ? (
           <Alert variant="error" className="mt-4">

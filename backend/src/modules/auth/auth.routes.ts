@@ -4,18 +4,31 @@ import { z } from "zod";
 import { authenticate } from "../../middleware/authenticate";
 import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema } from "../../schemas/common";
-import { AuthResponseSchema, AuthSessionSchema, AuthTokensSchema } from "../../schemas/entities";
+import {
+  AuthResponseSchema,
+  AuthSessionSchema,
+  AuthTokensSchema,
+  LoginRequiresTwoFactorSchema,
+} from "../../schemas/entities";
 import { toUserDto } from "../../mappers";
 import { REFRESH_COOKIE_NAME, refreshCookieOptions } from "../../lib/cookies";
 import { logAudit } from "../../lib/audit";
 import { ForbiddenError, UnauthorizedError } from "../../lib/errors";
+import { verifyChallengeToken } from "../../lib/jwt";
+import { decryptSecret } from "../../lib/crypto";
+import { verifyTotp } from "../../lib/totp";
+import { hashBackupCode } from "../../lib/backup-codes";
 import * as authService from "./auth.service";
 import {
   ForgotPasswordRequestSchema,
   LoginRequestSchema,
   RegisterRequestSchema,
   ResetPasswordRequestSchema,
+  VerifyTwoFactorRequestSchema,
 } from "./auth.schemas";
+
+// "XXXX-XXXX" biçimli yedek kod deseni (bkz. lib/backup-codes.ts).
+const BACKUP_CODE_PATTERN = /^[A-Z0-9]{4}-[A-Z0-9]{4}$/i;
 
 const AUTH_RATE_LIMIT = { max: 5, timeWindow: "1 minute" };
 
@@ -48,14 +61,34 @@ export default async function authRoutes(app: FastifyInstance) {
     "/login",
     {
       config: { rateLimit: AUTH_RATE_LIMIT },
-      schema: { body: LoginRequestSchema, response: { 200: ApiSuccessSchema(AuthResponseSchema) } },
+      schema: {
+        body: LoginRequestSchema,
+        response: { 200: ApiSuccessSchema(z.union([AuthResponseSchema, LoginRequiresTwoFactorSchema])) },
+      },
     },
     async (request, reply) => {
       try {
-        const { user, tokens } = await authService.login(app, request.body, {
+        const result = await authService.login(app, request.body, {
           userAgent: request.headers["user-agent"],
           ipAddress: request.ip,
         });
+
+        if (result.twoFactorRequired) {
+          // Şifre doğru — 2FA doğrulaması bekleniyor. Token/cookie HENÜZ verilmez
+          // (bkz. auth.service.ts::login, POST /auth/2fa/verify).
+          await logAudit(app, {
+            actorId: null,
+            actorEmail: request.body.email,
+            action: "auth.login",
+            status: "SUCCESS",
+            metadata: { twoFactorChallenge: true },
+            ipAddress: request.ip,
+          });
+
+          return reply.send(ok({ requiresTwoFactor: true as const, challengeToken: result.challengeToken }));
+        }
+
+        const { user, tokens } = result;
 
         await logAudit(app, {
           actorId: user.id,
@@ -95,6 +128,79 @@ export default async function authRoutes(app: FastifyInstance) {
         }
         throw err;
       }
+    }
+  );
+
+  // §10.4 Güvenlik & 2FA — login() `requiresTwoFactor` döndürdüğünde bu uç TOTP/backup
+  // kodunu doğrulayıp normal login ile AYNI token çiftini üretir (bkz. auth.service.ts::issueTokenPair).
+  server.post(
+    "/2fa/verify",
+    {
+      config: { rateLimit: AUTH_RATE_LIMIT },
+      schema: { body: VerifyTwoFactorRequestSchema, response: { 200: ApiSuccessSchema(AuthResponseSchema) } },
+    },
+    async (request, reply) => {
+      const { challengeToken, code } = request.body;
+
+      let userId: string;
+      try {
+        userId = verifyChallengeToken(challengeToken).sub;
+      } catch {
+        throw new UnauthorizedError("Geçersiz veya süresi dolmuş doğrulama isteği.");
+      }
+
+      const user = await app.prisma.user.findUnique({ where: { id: userId } });
+      if (!user || !user.twoFactorEnabled || !user.twoFactorSecret) {
+        throw new UnauthorizedError();
+      }
+
+      let verified = false;
+      if (BACKUP_CODE_PATTERN.test(code)) {
+        const codeHash = hashBackupCode(code);
+        const backupCode = await app.prisma.backupCode.findFirst({
+          where: { userId: user.id, codeHash, usedAt: null },
+        });
+        if (backupCode) {
+          await app.prisma.backupCode.update({ where: { id: backupCode.id }, data: { usedAt: new Date() } });
+          verified = true;
+        }
+      } else {
+        verified = verifyTotp(decryptSecret(user.twoFactorSecret), code);
+      }
+
+      if (!verified) {
+        await logAudit(app, {
+          actorId: user.id,
+          actorEmail: user.email,
+          action: "auth.2fa_verify",
+          status: "FAILURE",
+          ipAddress: request.ip,
+        });
+        throw new UnauthorizedError("Geçersiz doğrulama kodu.");
+      }
+
+      await app.prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
+      const tokens = await authService.issueTokenPair(app, user, {
+        userAgent: request.headers["user-agent"],
+        ipAddress: request.ip,
+      });
+
+      await logAudit(app, {
+        actorId: user.id,
+        actorEmail: user.email,
+        action: "auth.login",
+        status: "SUCCESS",
+        metadata: { via: "2fa" },
+        ipAddress: request.ip,
+      });
+
+      reply.setCookie(REFRESH_COOKIE_NAME, tokens.refreshToken, refreshCookieOptions());
+      return reply.send(
+        ok({
+          user: toUserDto(user),
+          tokens: { accessToken: tokens.accessToken, accessTokenExpiresAt: tokens.accessTokenExpiresAt.toISOString() },
+        })
+      );
     }
   );
 
