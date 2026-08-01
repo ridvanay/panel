@@ -211,7 +211,9 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
       toast.success("Yazı kaydedildi.");
       await load();
     } catch (err) {
-      setSaveError(friendlyErrorMessage(err));
+      const message = friendlyErrorMessage(err);
+      setSaveError(message);
+      toast.error(message);
     } finally {
       setSaving(false);
     }
@@ -224,7 +226,9 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
       toast.success("Yazı silindi.");
       router.push("/admin/blog");
     } catch (err) {
-      setSaveError(friendlyErrorMessage(err));
+      const message = friendlyErrorMessage(err);
+      setSaveError(message);
+      toast.error(message);
       setDeleting(false);
     }
   }

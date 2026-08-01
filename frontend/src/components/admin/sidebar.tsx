@@ -17,6 +17,7 @@ import {
   Activity,
   Mail,
   ShieldCheck,
+  ScrollText,
 } from "lucide-react";
 import {
   Sidebar,
@@ -42,8 +43,9 @@ const navItems = [
   { href: "/admin/navigation", label: "Navigasyon", icon: LayoutTemplate },
   { href: "/admin/users", label: "Kullanıcılar", icon: Users },
   { href: "/admin/system", label: "Sistem Sağlığı", icon: Activity },
-  { href: "/admin/notifications/templates", label: "Bildirimler", icon: Mail },
+  { href: "/admin/notifications/templates", label: "E-posta Şablonları", icon: Mail },
   { href: "/admin/settings/security", label: "Güvenlik", icon: ShieldCheck },
+  { href: "/admin/logs", label: "Aktivite Günlükleri", icon: ScrollText },
   { href: "/admin/settings", label: "Ayarlar", icon: Settings },
 ];
 

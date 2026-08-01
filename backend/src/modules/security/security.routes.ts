@@ -15,6 +15,7 @@ import { REFRESH_COOKIE_NAME } from "../../lib/cookies";
 import { hashToken } from "../../lib/tokens";
 import { logAudit } from "../../lib/audit";
 import { NotFoundError, UnauthorizedError } from "../../lib/errors";
+import { SENSITIVE_ACTION_RATE_LIMIT } from "../../lib/rate-limit";
 import {
   SetupTwoFactorResponseSchema,
   EnableTwoFactorRequestSchema,
@@ -24,12 +25,6 @@ import {
   RegenerateBackupCodesResponseSchema,
   SessionIdParamSchema,
 } from "./security.schemas";
-
-// Şifre doğrulaması gerektiren hassas 2FA uçları (brute-force hedefi olabilir) — global limit
-// (env.RATE_LIMIT_MAX, admin gezinme trafiğini karşılayacak şekilde gevşetildi) tek başına
-// yeterli değil; auth.routes.ts::AUTH_RATE_LIMIT ile aynı pattern (route-level `config.rateLimit`)
-// burada da uygulanır.
-const SENSITIVE_ACTION_RATE_LIMIT = { max: 5, timeWindow: "1 minute" };
 
 /** Eski yedek kodları siler, 10 yeni üretir+hash'ler+kaydeder, düz metinleri döner. */
 async function replaceBackupCodes(app: FastifyInstance, userId: string): Promise<string[]> {

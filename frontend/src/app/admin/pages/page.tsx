@@ -68,7 +68,9 @@ export default function AdminPagesListPage() {
       setPendingDelete(null);
       await load();
     } catch (err) {
-      setError(friendlyErrorMessage(err));
+      const message = friendlyErrorMessage(err);
+      setError(message);
+      toast.error(message);
     } finally {
       setDeletingId(null);
     }

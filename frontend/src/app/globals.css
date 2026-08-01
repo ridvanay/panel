@@ -38,6 +38,22 @@
 
   --viz-series-1: #2a78d6;
   --viz-series-2: #eb6834;
+
+  /*
+   * "Bento" görsel dili (admin/settings sayfası) için tema-duyarlı token seti (2026-07-31,
+   * ui-designer J.2 kararı: mevcut glass/bento estetiği korunuyor, sadece hardcoded white/NN ve
+   * #05050a değerleri token'a bağlanıyor). Açık tema değerleri: sayfa arka planı düz --background
+   * beyazından kasıtlı olarak ayrışan hafif lavanta tonlu gri, kart dolgusu/border'lar açık zemin
+   * üzerinde ince koyu-tonlu cam.
+   */
+  --bento-bg: #f6f6fb;
+  --bento-surface: rgba(15, 15, 35, 0.035);
+  --bento-surface-muted: rgba(15, 15, 35, 0.02);
+  --bento-border: rgba(15, 15, 35, 0.08);
+  --bento-border-hover: rgba(15, 15, 35, 0.14);
+  --bento-glow-1: rgba(var(--accent-rgb-500), 0.08);
+  --bento-glow-2: rgba(var(--accent-rgb-500), 0.06);
+
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -86,6 +102,19 @@
   --color-warning: var(--warning);
   --color-warning-foreground: var(--warning-foreground);
 
+  --color-bento-bg: var(--bento-bg);
+  --color-bento-surface: var(--bento-surface);
+  --color-bento-surface-muted: var(--bento-surface-muted);
+  --color-bento-border: var(--bento-border);
+  --color-bento-border-hover: var(--bento-border-hover);
+
+  --color-bento-fg-80: color-mix(in oklch, var(--foreground) 80%, transparent);
+  --color-bento-fg-60: color-mix(in oklch, var(--foreground) 60%, transparent);
+  --color-bento-fg-50: color-mix(in oklch, var(--foreground) 50%, transparent);
+  --color-bento-fg-40: color-mix(in oklch, var(--foreground) 40%, transparent);
+  --color-bento-fg-30: color-mix(in oklch, var(--foreground) 30%, transparent);
+  --color-bento-fg-20: color-mix(in oklch, var(--foreground) 20%, transparent);
+
   --font-sans: var(--font-sans);
   --font-mono: var(--font-geist-mono);
   --font-heading: var(--font-sans);
@@ -124,24 +153,23 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-@media (prefers-color-scheme: dark) {
-  /*
-   * Bu blok, admin paneli DIŞINDAKİ genel siteyi (public sayfalar) yalnızca OS/tarayıcı
-   * `prefers-color-scheme` tercihine göre kısmen koyulaştırır (next-themes'ten bağımsız,
-   * kasıtlı olarak böyle kalıyor — genel sitede henüz bir tema anahtarı yok).
-   */
-  :root {
-    --surface: #12121a;
-    --surface-muted: #1a1a24;
-    --border: #262633;
-
-    --primary: #6366f1;
-    --primary-hover: #818cf8;
-
-    --viz-series-1: #3987e5;
-    --viz-series-2: #d95926;
-  }
-}
+/*
+ * (2026-07-31, frontend-agent — J.1 bug fix) Burada eskiden `@media (prefers-color-scheme: dark)`
+ * içinde `:root`'u OS/tarayıcı tercihine göre koyu değerlere zorlayan bir blok vardı. O blok
+ * next-themes'in yönettiği `.dark` class'ından (aşağıdaki `.dark .admin-shell` bloğu — admin
+ * panelinin kendi Açık/Koyu/Sistem seçicisi) TAMAMEN bağımsızdı: kullanıcı admin panelinde
+ * açıkça "Açık" temayı seçip `.dark` class'ı kaldırılsa bile, OS koyu modundaysa bu media query
+ * yine eşleşip `--surface`/`--surface-muted`/`--border`/`--primary`/`--viz-series-*`'ı `:root`
+ * üzerinde koyu değerlere zorluyordu — `--background`/`--foreground` ise sadece class-tabanlı
+ * bloklarda tanımlı olduğu için açık kalıyordu, sonuç: koyu kart + koyu metin üzerinde koyu
+ * arka plan yerine açık `--background` üstünde koyu `--surface` kartlar, okunamaz kontrast.
+ * Blok tamamen kaldırıldı: `:root` zaten varsayılan açık tema değerlerinde duruyor (satır ~8-10,
+ * 12-13, 39-40) ve admin panelinin tek doğru kaynağı `.dark .admin-shell` + `.admin-shell`
+ * (aşağıda) next-themes class'ı üzerinden çalışıyor. Genel/public sitede (admin dışı sayfalar)
+ * bu blok public bir sayfada `--surface`/`--primary` gibi token'ları hiç kullanmayan yerlerde
+ * zaten görünür bir etki yaratmıyordu ve kaldırılması bir görsel gerilemeye yol açmaz; `:root`
+ * kendi başına zaten doğru açık tema değerlerini taşıyor.
+ */
 
 /*
  * Admin paneli artık next-themes ile GERÇEK bir Açık/Koyu/Sistem tema anahtarına sahip:
@@ -176,6 +204,16 @@
 
   --viz-series-1: var(--accent-500, #6366f1);
   --viz-series-2: #d95926;
+
+  /* Bento token seti — koyu tema değerleri, mevcut admin/settings görünümünü BİREBİR korur
+     (sadece hardcoded white/NN ve #05050a değerleri buraya taşındı, J.2). */
+  --bento-bg: #05050a;
+  --bento-surface: rgba(255, 255, 255, 0.03);
+  --bento-surface-muted: rgba(255, 255, 255, 0.02);
+  --bento-border: rgba(255, 255, 255, 0.1);
+  --bento-border-hover: rgba(255, 255, 255, 0.2);
+  --bento-glow-1: rgba(var(--accent-rgb-500), 0.16);
+  --bento-glow-2: rgba(var(--accent-rgb-500), 0.12);
 
   --background: #0a0a10;
   --foreground: #f2f2f7;

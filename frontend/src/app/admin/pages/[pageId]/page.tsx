@@ -205,7 +205,9 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
       toast.success("Sayfa kaydedildi.");
       await load();
     } catch (err) {
-      setSaveError(friendlyErrorMessage(err));
+      const message = friendlyErrorMessage(err);
+      setSaveError(message);
+      toast.error(message);
     } finally {
       setSaving(false);
     }
@@ -218,7 +220,9 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
       toast.success("Sayfa silindi.");
       router.push("/admin/pages");
     } catch (err) {
-      setSaveError(friendlyErrorMessage(err));
+      const message = friendlyErrorMessage(err);
+      setSaveError(message);
+      toast.error(message);
       setDeleting(false);
     }
   }

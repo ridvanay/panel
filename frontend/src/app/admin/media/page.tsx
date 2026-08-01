@@ -174,9 +174,12 @@ export default function AdminMediaPage() {
   }
 
   async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
-    const files = event.target.files;
+    // `event.target.files` input'un YAŞAYAN (live) FileList'ine bir referans — aşağıdaki
+    // `event.target.value = ""` bu seçimi temizlerken AYNI referansı da boşaltıyordu (length 0
+    // oluyordu), bu yüzden dosyalar bir diziye kopyalanıp değeri SIFIRLAMADAN ÖNCE ayrıştırılıyor.
+    const files = Array.from(event.target.files ?? []);
     event.target.value = "";
-    if (!files || files.length === 0) return;
+    if (files.length === 0) return;
     await handleFiles(files);
   }
 

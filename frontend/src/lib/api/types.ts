@@ -155,9 +155,24 @@ export interface UpdateOrganizationRequest {
   name?: string;
 }
 
+/**
+ * `PATCH /users/me` — kendi profilini güncelleme. `avatarUrl: null` avatarı kaldırır;
+ * boş string `""` geçersizdir (422). Bkz. docs/architecture/shared-types.ts.
+ */
 export interface UpdateUserRequest {
   name?: string;
-  avatarUrl?: string;
+  avatarUrl?: string | null;
+}
+
+/**
+ * `POST /users/me/change-password` — oturum açmış kullanıcının kendi şifresini
+ * değiştirmesi. Başarıda 204 döner ve mevcut oturum hariç tüm refresh token'lar
+ * iptal edilir. Yeni şifre tekrarı alanı yalnızca istemci tarafı doğrulamasıdır,
+ * gövdede gönderilmez.
+ */
+export interface ChangePasswordRequest {
+  currentPassword: string;
+  newPassword: string;
 }
 
 export interface CreateInvitationRequest {

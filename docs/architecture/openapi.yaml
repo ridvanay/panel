@@ -215,6 +215,36 @@ paths:
                       data: { $ref: "#/components/schemas/User" }
         "422": { $ref: "#/components/responses/ValidationError" }
 
+  /users/me/change-password:
+    post:
+      tags: [Users]
+      summary: Kendi şifremi değiştir
+      description: >
+        Oturum açmış kullanıcı KENDİ şifresini değiştirir (site-rol şartı YOK, `authenticate`
+        yeterli). `currentPassword` argon2 ile doğrulanır; hatalıysa 401 döner ve
+        `security.password_change` audit kaydı `status: FAILURE` ile yazılır. Başarılı olursa
+        `passwordHash` güncellenir ve **mevcut oturum hariç** tüm `RefreshToken` kayıtları
+        iptal edilir (bkz. `/admin/settings/security/2fa/disable` ile aynı politika) —
+        yani diğer cihazlardaki oturumlar zorla kapanır, isteği yapan cihaz açık kalır.
+        Hassas uç: route-level rate limit uygulanır (5 istek / 1 dakika).
+        Şifre sıfırlama (token ile, oturumsuz) akışı için bkz. `/auth/reset-password`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ChangePasswordRequest" }
+      responses:
+        "204": { description: Şifre değiştirildi (gövde yok) }
+        "401":
+          description: >
+            `currentPassword` hatalı veya oturum geçersiz. Mesaj, hangi alanın hatalı
+            olduğunu sızdırmayacak şekilde sabittir ("Şifre hatalı.").
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
   /organizations:
     get:
       tags: [Organizations]
@@ -1105,6 +1135,11 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+    TooManyRequests:
+      description: "Hız sınırı aşıldı (`error.code: RATE_LIMITED`)"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
 
   schemas:
     ApiSuccessEnvelope:
@@ -1127,7 +1162,17 @@ components:
           properties:
             code:
               type: string
-              enum: [UNAUTHORIZED, FORBIDDEN, NOT_FOUND, VALIDATION_ERROR, CONFLICT, RATE_LIMITED, INTERNAL_ERROR]
+              enum:
+                [
+                  UNAUTHORIZED,
+                  FORBIDDEN,
+                  NOT_FOUND,
+                  VALIDATION_ERROR,
+                  CONFLICT,
+                  RATE_LIMITED,
+                  PAYLOAD_TOO_LARGE,
+                  INTERNAL_ERROR,
+                ]
             message: { type: string }
             details:
               type: object
@@ -1316,10 +1361,28 @@ components:
         password: { type: string }
 
     UpdateUserRequest:
+      description: >
+        Kendi profilini güncelleme (`PATCH /users/me`). Yalnızca `name` ve `avatarUrl`
+        değiştirilebilir — `email`, `role`, `status` BU UÇTAN DEĞİŞTİRİLEMEZ (rol/durum
+        için bkz. `/admin/users/{userId}/role|status`). `avatarUrl: null` gönderilirse
+        avatar kaldırılır (boş string `""` GEÇERSİZDİR, 422 döner).
       type: object
       properties:
-        name: { type: string }
-        avatarUrl: { type: string }
+        name: { type: string, minLength: 1, maxLength: 80 }
+        avatarUrl: { type: string, format: uri, nullable: true }
+
+    ChangePasswordRequest:
+      description: >
+        `POST /users/me/change-password` gövdesi. `newPassword` kuralı `RegisterRequest`
+        ve `/auth/reset-password` ile AYNIDIR (min 8 karakter) — tek kaynak: bu kontrat.
+        `newPassword === currentPassword` ise 422 (`details.newPassword`) döner.
+        Yeni şifre tekrarı (`confirm`) YALNIZCA istemci tarafı doğrulamasıdır, gövdede
+        GÖNDERİLMEZ.
+      type: object
+      required: [currentPassword, newPassword]
+      properties:
+        currentPassword: { type: string, minLength: 1 }
+        newPassword: { type: string, minLength: 8 }
 
     CreateOrganizationRequest:
       type: object

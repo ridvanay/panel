@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, type ChangeEvent } from "react";
+import { toast } from "sonner";
 import * as mediaApi from "@/lib/api/media";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,8 +35,11 @@ function GalleryImageRow({
     try {
       const media = await mediaApi.uploadMedia(file);
       onChangeUrl(media.url);
+      toast.success("Görsel yüklendi.");
     } catch (err) {
-      setError(friendlyErrorMessage(err));
+      const message = friendlyErrorMessage(err);
+      setError(message);
+      toast.error(message);
     } finally {
       setUploading(false);
     }

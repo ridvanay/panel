@@ -171,9 +171,24 @@ export interface UpdateOrganizationRequest {
   name?: string;
 }
 
+/**
+ * `PATCH /users/me` — kendi profilini güncelleme. `email`/`role`/`status` BU UÇTAN
+ * DEĞİŞTİRİLEMEZ. `avatarUrl: null` avatarı kaldırır; boş string `""` geçersizdir (422).
+ */
 export interface UpdateUserRequest {
   name?: string;
-  avatarUrl?: string;
+  avatarUrl?: string | null;
+}
+
+/**
+ * `POST /users/me/change-password` — oturum açmış kullanıcının kendi şifresini
+ * değiştirmesi. Başarıda 204 döner ve MEVCUT OTURUM HARİÇ tüm refresh token'lar iptal
+ * edilir (bkz. ARCHITECTURE.md §10.6). `currentPassword` hatalıysa 401.
+ * Yeni şifre tekrarı alanı yalnızca istemci tarafı doğrulamasıdır, gövdede gönderilmez.
+ */
+export interface ChangePasswordRequest {
+  currentPassword: string;
+  newPassword: string; // min 8 karakter — RegisterRequest.password ile aynı kural
 }
 
 export interface CreateInvitationRequest {

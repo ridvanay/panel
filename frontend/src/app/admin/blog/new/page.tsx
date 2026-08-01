@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
+import { toast } from "sonner";
 import { AlertCircle, ChevronLeft, Newspaper } from "lucide-react";
 import * as blogApi from "@/lib/api/blog";
 import type { BlogCategory } from "@/lib/api/types";
@@ -53,9 +54,12 @@ export default function NewBlogPostPage() {
         categoryId: categoryId || null,
         contentHtml,
       });
+      toast.success("Yazı oluşturuldu.");
       router.push(`/admin/blog/${post.id}`);
     } catch (err) {
-      setError(friendlyErrorMessage(err));
+      const message = friendlyErrorMessage(err);
+      setError(message);
+      toast.error(message);
       setCreating(false);
     }
   }

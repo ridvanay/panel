@@ -20,7 +20,7 @@ import { ListPagination } from "@/components/admin/list-pagination";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { exportToCsv } from "@/lib/export-csv";
 import { useFilteredList } from "@/hooks/use-filtered-list";
-import { AlertCircle, Download, Newspaper, Search } from "lucide-react";
+import { AlertCircle, Download, Newspaper, Search, Tag } from "lucide-react";
 
 function matchesPost(post: BlogPost, query: string): boolean {
   return post.title.toLowerCase().includes(query);
@@ -79,7 +79,9 @@ export default function AdminBlogListPage() {
       setPendingDelete(null);
       await load();
     } catch (err) {
-      setError(friendlyErrorMessage(err));
+      const message = friendlyErrorMessage(err);
+      setError(message);
+      toast.error(message);
     } finally {
       setDeletingId(null);
     }
@@ -170,7 +172,15 @@ export default function AdminBlogListPage() {
         icon={Newspaper}
         title="Blog Yazıları"
         description="Yayınlanan ve taslak yazıların listesi."
-        actions={<LinkButton href="/admin/blog/new">Yeni Yazı</LinkButton>}
+        actions={
+          <div className="flex items-center gap-2">
+            <LinkButton href="/admin/blog/categories" variant="outline">
+              <Tag className="h-4 w-4" />
+              Kategoriler
+            </LinkButton>
+            <LinkButton href="/admin/blog/new">Yeni Yazı</LinkButton>
+          </div>
+        }
       />
 
       {error && (

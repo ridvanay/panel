@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { toast } from "sonner";
 import { useAuth } from "@/context/auth-context";
 import * as usersApi from "@/lib/api/users";
 import { Card } from "@/components/ui/card";
@@ -27,8 +28,11 @@ export default function AccountPage() {
       await usersApi.updateMe({ name, avatarUrl: avatarUrl || undefined });
       await refreshSession();
       setSuccess(true);
+      toast.success("Bilgileriniz güncellendi.");
     } catch (err) {
-      setError(friendlyErrorMessage(err));
+      const message = friendlyErrorMessage(err);
+      setError(message);
+      toast.error(message);
     } finally {
       setSaving(false);
     }

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
@@ -7,6 +8,8 @@ import Image from "@tiptap/extension-image";
 import { Bold, Italic, Heading2, List, Link as LinkIcon, Image as ImageIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { MediaPicker } from "@/components/admin/media/media-picker";
+import type { Media } from "@/lib/api/types";
 
 function ToolbarButton({
   active,
@@ -35,6 +38,7 @@ function ToolbarButton({
 }
 
 export function PostEditor({ content, onChange }: { content: string; onChange: (html: string) => void }) {
+  const [mediaPickerOpen, setMediaPickerOpen] = useState(false);
   const editor = useEditor({
     extensions: [StarterKit, Link, Image],
     content,
@@ -59,9 +63,12 @@ export function PostEditor({ content, onChange }: { content: string; onChange: (
 
   function handleInsertImage() {
     if (!editor) return;
-    const url = window.prompt("Görsel URL'si", "https://");
-    if (!url) return;
-    editor.chain().focus().setImage({ src: url }).run();
+    setMediaPickerOpen(true);
+  }
+
+  function handleMediaSelect(media: Media) {
+    editor?.chain().focus().setImage({ src: media.url }).run();
+    setMediaPickerOpen(false);
   }
 
   return (
@@ -103,6 +110,7 @@ export function PostEditor({ content, onChange }: { content: string; onChange: (
         </ToolbarButton>
       </div>
       <EditorContent editor={editor} className="min-h-[200px] px-3 py-2" />
+      <MediaPicker open={mediaPickerOpen} onOpenChange={setMediaPickerOpen} onSelect={handleMediaSelect} />
     </div>
   );
 }

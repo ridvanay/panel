@@ -51,7 +51,9 @@ export default function AdminBlogCategoriesPage() {
       setName("");
       await load();
     } catch (err) {
-      setCreateError(friendlyErrorMessage(err));
+      const message = friendlyErrorMessage(err);
+      setCreateError(message);
+      toast.error(message);
     } finally {
       setCreating(false);
     }
@@ -67,7 +69,9 @@ export default function AdminBlogCategoriesPage() {
       setPendingDelete(null);
       await load();
     } catch (err) {
-      setError(friendlyErrorMessage(err));
+      const message = friendlyErrorMessage(err);
+      setError(message);
+      toast.error(message);
     } finally {
       setDeletingId(null);
     }

@@ -1,6 +1,7 @@
 "use client";
 
-import { LogOut, Languages, Search } from "lucide-react";
+import { LogOut, Languages, Search, ShieldCheck, User } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/auth-context";
 import { useAdminLocale, useT } from "@/context/i18n-context";
 import { useCommandPalette } from "@/context/command-palette-context";
@@ -14,6 +15,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { AdminLocale } from "@/lib/i18n/dictionaries";
@@ -54,7 +56,7 @@ function AdminLocaleSwitcher() {
 export function AdminTopbar() {
   const { user, logout } = useAuth();
   const { setOpen } = useCommandPalette();
-  const t = useT();
+  const router = useRouter();
   if (!user) return null;
 
   return (
@@ -80,12 +82,35 @@ export function AdminTopbar() {
         <ThemeToggle />
         <AccentColorPicker />
         <NotificationCenter />
-        <Avatar name={user.name} src={user.avatarUrl} size={28} />
-        <span className="hidden text-sm text-foreground/80 sm:inline">{user.name}</span>
-        <Button size="sm" variant="ghost" onClick={() => logout()}>
-          <LogOut />
-          {t("topbar.logout")}
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <button
+                type="button"
+                aria-label="Hesap menüsü"
+                className="flex items-center gap-2 rounded-lg px-1.5 py-1 transition-colors hover:bg-surface-muted"
+              />
+            }
+          >
+            <Avatar name={user.name} src={user.avatarUrl} size={28} />
+            <span className="hidden text-sm text-foreground/80 sm:inline">{user.name}</span>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => router.push("/admin/account")}>
+              <User className="h-4 w-4" />
+              Hesabım
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => router.push("/admin/settings/security")}>
+              <ShieldCheck className="h-4 w-4" />
+              Güvenlik
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => logout()}>
+              <LogOut className="h-4 w-4" />
+              Çıkış Yap
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </header>
   );

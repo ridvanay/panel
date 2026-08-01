@@ -531,3 +531,49 @@ YOK, saf frontend: `localStorage` (`adminLocale`, `"tr"|"en"`) + basit
 `I18nProvider`/`useT()` context'i (iki küçük sözlük dosyası). Yeni bağımlılık (ör.
 `next-intl`) eklenmez — kapsam admin chrome'u ile sınırlı, routing gerektirmez.
 `AdminTopbar`'a dil seçici (bayrak/kısaltma) eklenir.
+
+### 10.6 Hesap Ayarları ("Hesabım") + Global Bildirim (Toast) Standardı
+
+**Şema değişikliği GEREKMEZ.** `User.name` ve `User.avatarUrl` zaten mevcut;
+`AuditLog.action` serbest `String` (enum değil), yeni action ismi için migration
+gerekmez. db-agent bu iş için devreye GİRMEZ.
+
+**Uç noktalar** (`/users/*`, `authenticate` yeterli — herkes yalnızca KENDİ hesabını
+yönetir, site-rol şartı YOK):
+- `PATCH /users/me` (MEVCUT) → `{ name?, avatarUrl? }`. **Sözleşme düzeltmesi:**
+  `avatarUrl` artık `string | null`; `null` avatarı kaldırır. Boş string `""`
+  GEÇERSİZDİR (422) — istemci `""` yerine `null` göndermelidir.
+- `POST /users/me/change-password` (YENİ) → body `{ currentPassword, newPassword }`,
+  başarıda **204** (gövde yok).
+  - `currentPassword` argon2 (`lib/password.ts::verifyPassword`) ile doğrulanır;
+    hatalıysa `401 UNAUTHORIZED` ("Şifre hatalı.") + audit `status: FAILURE`.
+  - `newPassword`: min 8 karakter (`RegisterRequest.password` ile aynı kural);
+    `newPassword === currentPassword` ise `422` (`details.newPassword`).
+  - Başarıda `passwordHash` güncellenir ve **mevcut oturum HARİÇ** tüm
+    `RefreshToken` kayıtları `revoked=true` yapılır — `2fa/disable` ile birebir aynı
+    politika (cookie'deki ham token'ın `hashToken()` karşılığı hariç tutulur).
+    Gerekçe: şifre değişiminde diğer cihazlardaki oturumlar zorla kapanmalıdır;
+    isteği yapan cihazın oturumu bilinçli olarak korunur (kullanıcı kendini atmaz).
+  - Audit action: `security.password_change` (`targetType: "User"`, `targetId: <kendi
+    id>`; `metadata` ASLA şifre/hash içermez).
+  - Rate limit: route-level `config.rateLimit = { max: 5, timeWindow: "1 minute" }` —
+    `security.routes.ts::SENSITIVE_ACTION_RATE_LIMIT` ile aynı desen. Aşılırsa
+    `429 RATE_LIMITED`.
+
+**Frontend yerleşimi**: `/admin/account` ROUTE'u (modal DEĞİL). Gerekçe: üç ayrı
+bölüm (profil / avatar / şifre) + `MediaPicker` gibi kendi başına modal açan bir alt
+bileşen içerir; modal-içinde-modal deseninden kaçınılır ve `/admin/settings/security`
+ile aynı "kişisel hesap" bilgi mimarisi korunur. Şifre değiştirme formu bu sayfa
+İÇİNDE bir `Card`'dır (2FA disable'daki gibi ayrı bir `Dialog` değil) — sayfanın
+kendisi zaten kimliği doğrulanmış özel bir alandır.
+
+**Toast standardı** (`sonner`, `providers.tsx`'te mount edilmiş — yeni altyapı YOK):
+kullanıcı tarafından TETİKLENEN her mutasyon (create/update/delete/restore/bulk)
+sonucunda tam olarak bir toast gösterilir.
+- Başarı: `toast.success("<Varlık> <fiil geçmiş zaman>.")` — ör. "Yazı oluşturuldu."
+- Hata: `toast.error(friendlyErrorMessage(err))`.
+- Toast, mevcut inline `Alert`/`saveError` gösterimini KALDIRMAZ; kalıcı bağlam için
+  inline hata korunur, toast anlık geri bildirimdir (mevcut `settings/page.tsx`
+  deseni referanstır).
+- İSTİSNA: kullanıcı tetiklemeyen arka plan yüklemeleri (`load()`, liste/polling
+  hataları) toast ÜRETMEZ — bunlar inline `Alert` ile gösterilir.

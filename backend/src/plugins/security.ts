@@ -10,6 +10,11 @@ export default fp(async function securityPlugin(app: FastifyInstance) {
   await app.register(helmet, {
     // Saf JSON API — HTML sunmuyoruz, CSP burada anlamsız ve istemci entegrasyonlarını kırabilir.
     contentSecurityPolicy: false,
+    // helmet'in varsayılanı `same-origin`; ancak /uploads/* altındaki görseller/medya
+    // farklı origin/port'taki frontend'den (bkz. plugins/uploads.ts — "herkese açık
+    // statik servis") <img> ile yüklenmek üzere tasarlandı. `same-origin` bu cross-origin
+    // resource yüklemelerini tarayıcıda sessizce engelliyordu (CORS izin verse bile).
+    crossOriginResourcePolicy: { policy: "cross-origin" },
   });
 
   await app.register(cors, {

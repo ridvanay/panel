@@ -13,6 +13,7 @@ import {
   PlusCircle,
   FilePlus2,
   Search,
+  User,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCommandPalette } from "@/context/command-palette-context";
@@ -34,6 +35,7 @@ const pageItems: PaletteItem[] = [
   { href: "/admin/stats", label: "İstatistikler", icon: BarChart3 },
   { href: "/admin/media", label: "Medya", icon: ImageIcon },
   { href: "/admin/settings", label: "Ayarlar", icon: Settings },
+  { href: "/admin/account", label: "Hesabım", icon: User, keywords: ["profil", "şifre", "avatar"] },
 ];
 
 const quickActionItems: PaletteItem[] = [
