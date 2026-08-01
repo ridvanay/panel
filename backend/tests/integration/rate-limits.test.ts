@@ -78,3 +78,54 @@ describe("rate-limits — route-level (/admin/logs, /admin/media)", () => {
     expect(body.error.details.retryAfterSeconds).toBeDefined();
   });
 });
+
+/**
+ * `/users/me/change-password` route-level rate limit'i (5/dakika, bkz.
+ * lib/rate-limit.ts::SENSITIVE_ACTION_RATE_LIMIT) doğrular. Kendi izole `buildTestApp()`
+ * instance'ında ve kendi kullanıcısında çalışır ki `users.test.ts`'teki senaryoların
+ * (o dosyada zaten 5 isteklik bütçe kimliksiz/yanlış-şifre/doğrulama/başarı senaryolarıyla
+ * tam dolduruluyor) bütçesini etkilemesin veya ondan etkilenmesin.
+ */
+describe("rate-limits — route-level (/users/me/change-password)", () => {
+  let app: FastifyInstance;
+  let user: Awaited<ReturnType<typeof registerTestUser>>;
+
+  function authHeader(token: string) {
+    return { authorization: `Bearer ${token}` };
+  }
+
+  beforeAll(async () => {
+    app = await buildTestApp();
+    await resetDatabase(app.prisma);
+    user = await registerTestUser(app, { email: "rate-limit-change-password@example.com" });
+  });
+
+  afterAll(async () => {
+    await resetDatabase(app.prisma);
+    await app.close();
+  });
+
+  it("5 istek başarısız (yanlış şifre) sonrası 6. istek 429 döner ve RATE_LIMITED detaylarını içerir", async () => {
+    for (let i = 0; i < 5; i++) {
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/users/me/change-password",
+        headers: authHeader(user.accessToken),
+        payload: { currentPassword: "yanlis-sifre", newPassword: "YeniSifre123!" },
+      });
+      expect(res.statusCode).toBe(401);
+    }
+
+    const res6 = await app.inject({
+      method: "POST",
+      url: "/api/v1/users/me/change-password",
+      headers: authHeader(user.accessToken),
+      payload: { currentPassword: "yanlis-sifre", newPassword: "YeniSifre123!" },
+    });
+
+    expect(res6.statusCode).toBe(429);
+    const body = res6.json();
+    expect(body.error.code).toBe("RATE_LIMITED");
+    expect(body.error.details.retryAfterSeconds).toBeDefined();
+  });
+});

@@ -36,7 +36,7 @@ export function AuthPageShell({
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-surface-muted px-4 py-12">
+    <main className="admin-shell flex min-h-screen items-center justify-center bg-surface-muted px-4 py-12">
       <div className="w-full max-w-sm">
         <div className="mb-6 text-center">
           <Link href="/" className="text-lg font-semibold text-foreground">

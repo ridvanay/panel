@@ -15,7 +15,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PageHeading } from "@/components/admin/page-heading";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
-import { AlertCircle, Tag } from "lucide-react";
+import { AlertCircle, Check, Pencil, Tag, X } from "lucide-react";
 
 export default function AdminBlogCategoriesPage() {
   const [categories, setCategories] = useState<BlogCategory[] | null>(null);
@@ -26,6 +26,10 @@ export default function AdminBlogCategoriesPage() {
   const [name, setName] = useState("");
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [savingId, setSavingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -56,6 +60,35 @@ export default function AdminBlogCategoriesPage() {
       toast.error(message);
     } finally {
       setCreating(false);
+    }
+  }
+
+  function startEdit(category: BlogCategory) {
+    setEditingId(category.id);
+    setEditName(category.name);
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setEditName("");
+  }
+
+  async function handleUpdate(categoryId: string) {
+    const trimmed = editName.trim();
+    if (!trimmed) return;
+    setSavingId(categoryId);
+    try {
+      await blogApi.updateCategory(categoryId, { name: trimmed });
+      toast.success("Kategori güncellendi.");
+      setEditingId(null);
+      setEditName("");
+      await load();
+    } catch (err) {
+      const message = friendlyErrorMessage(err);
+      setError(message);
+      toast.error(message);
+    } finally {
+      setSavingId(null);
     }
   }
 
@@ -105,16 +138,72 @@ export default function AdminBlogCategoriesPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {categories.map((category) => (
-              <TableRow key={category.id}>
-                <TableCell className="font-medium text-foreground">{category.name}</TableCell>
-                <TableCell className="text-right">
-                  <Button variant="ghost" size="sm" onClick={() => setPendingDelete(category)}>
-                    Sil
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
+            {categories.map((category) => {
+              const isEditing = editingId === category.id;
+              return (
+                <TableRow key={category.id}>
+                  <TableCell className="font-medium text-foreground">
+                    {isEditing ? (
+                      <Input
+                        aria-label="Kategori adı"
+                        autoFocus
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            void handleUpdate(category.id);
+                          } else if (e.key === "Escape") {
+                            e.preventDefault();
+                            cancelEdit();
+                          }
+                        }}
+                      />
+                    ) : (
+                      category.name
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {isEditing ? (
+                      <div className="flex justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label="Kaydet"
+                          loading={savingId === category.id}
+                          onClick={() => handleUpdate(category.id)}
+                        >
+                          <Check className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label="Vazgeç"
+                          disabled={savingId === category.id}
+                          onClick={cancelEdit}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          aria-label={`"${category.name}" kategorisini düzenle`}
+                          onClick={() => startEdit(category)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => setPendingDelete(category)}>
+                          Sil
+                        </Button>
+                      </div>
+                    )}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       )}
