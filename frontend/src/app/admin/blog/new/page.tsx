@@ -7,7 +7,8 @@ import { motion } from "framer-motion";
 import { toast } from "sonner";
 import { AlertCircle, ChevronLeft, Newspaper } from "lucide-react";
 import * as blogApi from "@/lib/api/blog";
-import type { BlogCategory } from "@/lib/api/types";
+import * as usersAdminApi from "@/lib/api/users-admin";
+import type { AdminUser, BlogCategory } from "@/lib/api/types";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
@@ -19,9 +20,12 @@ import { PostEditor } from "@/components/admin/blog/post-editor";
 import { ImageUploadField } from "@/components/admin/media/image-upload-field";
 import { PageHeading } from "@/components/admin/page-heading";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
+import { useAuth } from "@/context/auth-context";
 
 export default function NewBlogPostPage() {
   const router = useRouter();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "ADMIN";
   const [categories, setCategories] = useState<BlogCategory[]>([]);
 
   const [title, setTitle] = useState("");
@@ -32,6 +36,11 @@ export default function NewBlogPostPage() {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [admins, setAdmins] = useState<AdminUser[]>([]);
+  const [authorIdOverride, setAuthorIdOverride] = useState<string | null>(null);
+  // Varsayılan yazar giriş yapmış kullanıcıdır; ADMIN dropdown'dan değiştirene kadar override boş kalır.
+  const authorId = authorIdOverride ?? user?.id ?? "";
+
   useEffect(() => {
     (async () => {
       try {
@@ -41,6 +50,18 @@ export default function NewBlogPostPage() {
       }
     })();
   }, []);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    (async () => {
+      try {
+        const page = await usersAdminApi.listAdminUsers();
+        setAdmins(page.items);
+      } catch {
+        // Yazar dropdown'u opsiyonel bir kolaylık — yüklenemezse form yine de gönderilebilir.
+      }
+    })();
+  }, [isAdmin]);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -53,6 +74,7 @@ export default function NewBlogPostPage() {
         coverImageUrl: coverImageUrl || undefined,
         categoryId: categoryId || null,
         contentHtml,
+        authorId: isAdmin && authorId ? authorId : undefined,
       });
       toast.success("Yazı oluşturuldu.");
       router.push(`/admin/blog/${post.id}`);
@@ -111,6 +133,20 @@ export default function NewBlogPostPage() {
               </Select>
             )}
           </Field>
+
+          {isAdmin && admins.length > 0 && (
+            <Field id="authorId" label="Yazar" hint="Varsayılan olarak siz atanırsınız; ADMIN başka bir kullanıcı seçebilir.">
+              {(inputProps) => (
+                <Select {...inputProps} value={authorId} onChange={(e) => setAuthorIdOverride(e.target.value)}>
+                  {admins.map((admin) => (
+                    <option key={admin.id} value={admin.id}>
+                      {admin.name} ({admin.email})
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+          )}
 
           <div>
             <label className="mb-1.5 block text-sm font-medium text-foreground">İçerik</label>

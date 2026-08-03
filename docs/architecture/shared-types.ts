@@ -441,3 +441,72 @@ export interface BlogPostTranslation {
 
 export type PageTranslations = Partial<Record<ContentLocale, PageTranslation>>;
 export type BlogPostTranslations = Partial<Record<ContentLocale, BlogPostTranslation>>;
+
+// ---------- §10.7 İçerik Yönetim Listesi (Sayfalar & Blog ortak tablosu) ----------
+// Bkz. ARCHITECTURE.md §10.7 + openapi.yaml tag Pages/Blog.
+// Page ve BlogPost DTO'ları için ORTAK ek alanlar — iki varlıkta da birebir aynıdır.
+
+/** Listelerde gösterilen minimum kullanıcı özeti (hassas alan taşımaz). */
+export interface UserSummary {
+  id: string;
+  name: string;
+  email: string;
+  avatarUrl: string | null;
+}
+
+export type SeoScoreIssueCode =
+  | "SEO_TITLE_MISSING"
+  | "SEO_TITLE_LENGTH"
+  | "SEO_DESCRIPTION_MISSING"
+  | "SEO_DESCRIPTION_LENGTH"
+  | "COVER_IMAGE_MISSING"
+  | "IMAGE_MISSING"
+  | "IMAGE_ALT_MISSING"
+  | "CONTENT_TOO_SHORT";
+
+export interface SeoScoreIssue {
+  /** Kararlı anahtar — frontend mantığı ve testler BUNA bağlanır. */
+  code: SeoScoreIssueCode;
+  /** Kullanıcıya gösterilecek Türkçe açıklama; metni değişebilir. */
+  label: string;
+}
+
+/** Page ve BlogPost DTO'larına §10.7 ile eklenen alanlar. */
+export interface ContentListFields {
+  deletedAt: string | null; // ISO 8601; dolu = ÇÖPTE
+  authorId: string | null;
+  author: UserSummary | null;
+  seoScore: number; // 0..100 — backend hesaplar, persist edilmez
+  seoScoreIssues: SeoScoreIssue[];
+}
+
+/** Sekme sayaçları — sunucu hesaplar, istek filtrelerinden etkilenmez. */
+export interface ContentCounts {
+  all: number; // deletedAt IS NULL (çöp HARİÇ) = published + draft
+  published: number;
+  draft: number;
+  trashed: number;
+}
+
+export interface ContentListMeta {
+  nextCursor?: string | null;
+  counts: ContentCounts;
+}
+
+/** `?trashed=` sorgu parametresi; varsayılan "exclude". */
+export type TrashedFilter = "exclude" | "include" | "only";
+
+export type BulkContentAction = "trash" | "restore" | "publish" | "draft" | "permanent-delete";
+
+export interface BulkContentActionRequest {
+  ids: string[]; // 1..100, sunucuda teklenir
+  action: BulkContentAction;
+}
+
+export interface BulkContentActionResult {
+  action: BulkContentAction;
+  requestedCount: number;
+  affectedCount: number;
+  /** Uygulanamayan id'ler — kısmi başarı HATA DEĞİLDİR (yanıt yine 200). */
+  skippedIds: string[];
+}

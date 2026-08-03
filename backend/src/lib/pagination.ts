@@ -17,3 +17,16 @@ export function buildPageMeta<T extends { seq: number }>(items: T[], limit: numb
   const nextCursor = items.length === limit ? encodeCursor(items[items.length - 1]!.seq) : null;
   return { nextCursor };
 }
+
+/**
+ * §10.7 İçerik Yönetim Listesi — `buildPageMeta` sonucuna sekme sayaçlarını (`counts`)
+ * merge eder. `counts` çağıran tarafta AYRI/tek bir sorguyla (istek filtrelerinden
+ * etkilenmeden, tüm tabloya bakarak) hesaplanmış olmalıdır — bkz. `lib/content-counts.ts`.
+ */
+export function buildPageMetaWithCounts<T extends { seq: number }, C extends Record<string, unknown>>(
+  items: T[],
+  limit: number,
+  counts: C
+) {
+  return { ...buildPageMeta(items, limit), counts };
+}

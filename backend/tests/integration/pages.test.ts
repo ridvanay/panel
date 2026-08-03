@@ -7,11 +7,12 @@ import { registerTestUser } from "../helpers/auth";
 describe("pages", () => {
   let app: FastifyInstance;
   let accessToken: string;
+  let userId: string;
 
   beforeAll(async () => {
     app = await buildTestApp();
     await resetDatabase(app.prisma);
-    ({ accessToken } = await registerTestUser(app));
+    ({ accessToken, userId } = await registerTestUser(app));
   });
 
   afterAll(async () => {
@@ -119,7 +120,7 @@ describe("pages", () => {
     expect(after.json().data.viewCount).toBe(2);
   });
 
-  it("deletes a page, after which it 404s", async () => {
+  it("soft-deletes a page (moves to trash) — it still 200s on GET with deletedAt set", async () => {
     const create = await app.inject({
       method: "POST",
       url: "/api/v1/admin/pages",
@@ -131,8 +132,14 @@ describe("pages", () => {
     const del = await app.inject({ method: "DELETE", url: `/api/v1/admin/pages/${pageId}`, headers: authHeader() });
     expect(del.statusCode).toBe(204);
 
+    // §10.7 — DAVRANIŞ DEĞİŞİKLİĞİ: artık kalıcı silinmez, GET çöpteki kaydı da döner.
     const get = await app.inject({ method: "GET", url: `/api/v1/admin/pages/${pageId}`, headers: authHeader() });
-    expect(get.statusCode).toBe(404);
+    expect(get.statusCode).toBe(200);
+    expect(get.json().data.deletedAt).not.toBeNull();
+
+    // İdempotenttir: zaten çöpteyken tekrar silmek de 204 döner.
+    const delAgain = await app.inject({ method: "DELETE", url: `/api/v1/admin/pages/${pageId}`, headers: authHeader() });
+    expect(delAgain.statusCode).toBe(204);
   });
 
   it("404s when deleting a nonexistent page", async () => {
@@ -142,5 +149,229 @@ describe("pages", () => {
       headers: authHeader(),
     });
     expect(res.statusCode).toBe(404);
+  });
+
+  describe("§10.7 çöp kutusu / toplu işlem / SEO skoru", () => {
+    it("excludes trashed pages from the default (trashed=exclude) list, but includes them via trashed=only", async () => {
+      const create = await app.inject({
+        method: "POST",
+        url: "/api/v1/admin/pages",
+        headers: authHeader(),
+        payload: { title: "Çöp Testi Sayfası" },
+      });
+      const pageId = create.json().data.id;
+      await app.inject({ method: "DELETE", url: `/api/v1/admin/pages/${pageId}`, headers: authHeader() });
+
+      const excludeList = await app.inject({ method: "GET", url: "/api/v1/admin/pages?trashed=exclude", headers: authHeader() });
+      expect(excludeList.json().data.map((p: { id: string }) => p.id)).not.toContain(pageId);
+
+      const onlyList = await app.inject({ method: "GET", url: "/api/v1/admin/pages?trashed=only", headers: authHeader() });
+      expect(onlyList.json().data.map((p: { id: string }) => p.id)).toContain(pageId);
+
+      const includeList = await app.inject({ method: "GET", url: "/api/v1/admin/pages?trashed=include", headers: authHeader() });
+      expect(includeList.json().data.map((p: { id: string }) => p.id)).toContain(pageId);
+    });
+
+    it("returns meta.counts on the list endpoint, unaffected by trashed/status filters", async () => {
+      const res = await app.inject({ method: "GET", url: "/api/v1/admin/pages?trashed=only&limit=1", headers: authHeader() });
+      expect(res.statusCode).toBe(200);
+      const counts = res.json().meta.counts;
+      expect(counts).toHaveProperty("all");
+      expect(counts).toHaveProperty("published");
+      expect(counts).toHaveProperty("draft");
+      expect(counts).toHaveProperty("trashed");
+      expect(counts.all).toBe(counts.published + counts.draft);
+    });
+
+    it("restores a trashed page — status is unchanged, and it is idempotent", async () => {
+      const create = await app.inject({
+        method: "POST",
+        url: "/api/v1/admin/pages",
+        headers: authHeader(),
+        payload: { title: "Geri Yüklenecek", status: "PUBLISHED" },
+      });
+      const pageId = create.json().data.id;
+      await app.inject({ method: "DELETE", url: `/api/v1/admin/pages/${pageId}`, headers: authHeader() });
+
+      const restore = await app.inject({ method: "POST", url: `/api/v1/admin/pages/${pageId}/restore`, headers: authHeader() });
+      expect(restore.statusCode).toBe(200);
+      expect(restore.json().data.deletedAt).toBeNull();
+      expect(restore.json().data.status).toBe("PUBLISHED");
+
+      // İdempotent: zaten çöpte değilken tekrar restore etmek de 200 döner.
+      const restoreAgain = await app.inject({ method: "POST", url: `/api/v1/admin/pages/${pageId}/restore`, headers: authHeader() });
+      expect(restoreAgain.statusCode).toBe(200);
+    });
+
+    it("rejects editing a trashed page with 409, and requires trash before permanent delete", async () => {
+      const create = await app.inject({
+        method: "POST",
+        url: "/api/v1/admin/pages",
+        headers: authHeader(),
+        payload: { title: "Kalıcı Silme Testi" },
+      });
+      const pageId = create.json().data.id;
+
+      // Çöpte değilken kalıcı silme → 409.
+      const permanentBeforeTrash = await app.inject({
+        method: "DELETE",
+        url: `/api/v1/admin/pages/${pageId}/permanent`,
+        headers: authHeader(),
+      });
+      expect(permanentBeforeTrash.statusCode).toBe(409);
+
+      await app.inject({ method: "DELETE", url: `/api/v1/admin/pages/${pageId}`, headers: authHeader() });
+
+      // Çöpteki içerik düzenlenemez → 409.
+      const patch = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/admin/pages/${pageId}`,
+        headers: authHeader(),
+        payload: { title: "Değişmemeli" },
+      });
+      expect(patch.statusCode).toBe(409);
+
+      const permanent = await app.inject({ method: "DELETE", url: `/api/v1/admin/pages/${pageId}/permanent`, headers: authHeader() });
+      expect(permanent.statusCode).toBe(204);
+
+      const get = await app.inject({ method: "GET", url: `/api/v1/admin/pages/${pageId}`, headers: authHeader() });
+      expect(get.statusCode).toBe(404);
+    });
+
+    it("applies a bulk trash action with partial success (skippedIds)", async () => {
+      const create = await app.inject({
+        method: "POST",
+        url: "/api/v1/admin/pages",
+        headers: authHeader(),
+        payload: { title: "Toplu İşlem Sayfası" },
+      });
+      const pageId = create.json().data.id;
+      const missingId = "00000000-0000-0000-0000-000000000099";
+
+      const bulk = await app.inject({
+        method: "POST",
+        url: "/api/v1/admin/pages/bulk",
+        headers: authHeader(),
+        payload: { ids: [pageId, missingId], action: "trash" },
+      });
+
+      expect(bulk.statusCode).toBe(200);
+      const result = bulk.json().data;
+      expect(result.action).toBe("trash");
+      expect(result.requestedCount).toBe(2);
+      expect(result.affectedCount).toBe(1);
+      expect(result.skippedIds).toContain(missingId);
+
+      const get = await app.inject({ method: "GET", url: `/api/v1/admin/pages/${pageId}`, headers: authHeader() });
+      expect(get.json().data.deletedAt).not.toBeNull();
+    });
+
+    it("computes a low SEO score with issues for a bare-minimum page, and a full score once completed", async () => {
+      const create = await app.inject({
+        method: "POST",
+        url: "/api/v1/admin/pages",
+        headers: authHeader(),
+        payload: { title: "SEO Testi" },
+      });
+      const pageId = create.json().data.id;
+      expect(create.json().data.seoScore).toBeLessThan(100);
+      expect(create.json().data.seoScoreIssues.length).toBeGreaterThan(0);
+
+      const longText = Array.from({ length: 120 }, (_, i) => `kelime${i}`).join(" ");
+      // Kriter eşiklerinin (50-60 / 120-160 karakter) TAM sınırında kalmak için üretilmiş
+      // sabit uzunlukta string'ler kullanılır (elle karakter saymak yerine).
+      const seoTitle = "T".repeat(55);
+      const seoDescription = "D".repeat(140);
+      const update = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/admin/pages/${pageId}`,
+        headers: authHeader(),
+        payload: {
+          seoTitle,
+          seoDescription,
+          ogImageUrl: "https://example.com/cover.jpg",
+          blocks: [
+            { id: "b1", type: "text", data: { html: longText } },
+            { id: "b2", type: "image", data: { url: "https://example.com/img.jpg", alt: "Açıklayıcı alt metin" } },
+          ],
+        },
+      });
+
+      expect(update.statusCode).toBe(200);
+      expect(update.json().data.seoScore).toBe(100);
+      expect(update.json().data.seoScoreIssues).toEqual([]);
+    });
+
+    it("assigns the creating user as author by default, and returns a UserSummary", async () => {
+      const create = await app.inject({
+        method: "POST",
+        url: "/api/v1/admin/pages",
+        headers: authHeader(),
+        payload: { title: "Yazar Testi" },
+      });
+      const page = create.json().data;
+      expect(page.authorId).toBe(userId);
+      expect(page.author).toMatchObject({ id: userId, name: expect.any(String), email: expect.any(String) });
+    });
+
+    it("clears SiteSettings.homePageId when the home page is trashed (restore does NOT bring it back)", async () => {
+      const create = await app.inject({
+        method: "POST",
+        url: "/api/v1/admin/pages",
+        headers: authHeader(),
+        payload: { title: "Ana Sayfa Adayı", status: "PUBLISHED" },
+      });
+      const pageId = create.json().data.id;
+
+      const setHome = await app.inject({
+        method: "PATCH",
+        url: "/api/v1/admin/settings",
+        headers: authHeader(),
+        payload: { homePageId: pageId },
+      });
+      expect(setHome.statusCode).toBe(200);
+      expect(setHome.json().data.homePageId).toBe(pageId);
+
+      await app.inject({ method: "DELETE", url: `/api/v1/admin/pages/${pageId}`, headers: authHeader() });
+
+      const settingsAfterTrash = await app.inject({ method: "GET", url: "/api/v1/admin/settings", headers: authHeader() });
+      expect(settingsAfterTrash.json().data.homePageId).toBeNull();
+
+      // Restore bunu GERİ ALMAZ — kullanıcı manuel olarak tekrar ana sayfa seçmelidir.
+      await app.inject({ method: "POST", url: `/api/v1/admin/pages/${pageId}/restore`, headers: authHeader() });
+      const settingsAfterRestore = await app.inject({ method: "GET", url: "/api/v1/admin/settings", headers: authHeader() });
+      expect(settingsAfterRestore.json().data.homePageId).toBeNull();
+    });
+
+    it("forbids an EDITOR from assigning another user as author (403), but allows ADMIN", async () => {
+      const editor = await registerTestUser(app);
+      await app.prisma.user.update({ where: { id: editor.userId }, data: { role: "EDITOR" } });
+      const editorAuthHeader = { authorization: `Bearer ${editor.accessToken}` };
+
+      const forbidden = await app.inject({
+        method: "POST",
+        url: "/api/v1/admin/pages",
+        headers: editorAuthHeader,
+        payload: { title: "Editör Yazar Testi", authorId: userId },
+      });
+      expect(forbidden.statusCode).toBe(403);
+
+      const asAdmin = await app.inject({
+        method: "POST",
+        url: "/api/v1/admin/pages",
+        headers: authHeader(),
+        payload: { title: "Admin Yazar Testi", authorId: editor.userId },
+      });
+      expect(asAdmin.statusCode).toBe(201);
+      expect(asAdmin.json().data.authorId).toBe(editor.userId);
+
+      const nonexistentAuthor = await app.inject({
+        method: "POST",
+        url: "/api/v1/admin/pages",
+        headers: authHeader(),
+        payload: { title: "Yok Yazar Testi", authorId: "00000000-0000-0000-0000-000000000042" },
+      });
+      expect(nonexistentAuthor.statusCode).toBe(422);
+    });
   });
 });

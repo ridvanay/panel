@@ -107,6 +107,72 @@ export const SubscriptionSchema = z.object({
 });
 export type SubscriptionDto = z.infer<typeof SubscriptionSchema>;
 
+// ---------- §10.7 İçerik Yönetim Listesi (Çöp Kutusu, Yazar, SEO Skoru) ----------
+
+/**
+ * Kullanıcının listelerde gösterilen minimum özeti — hassas alan (rol/durum/
+ * e-posta doğrulaması) TAŞIMAZ. Yazar sütunu ve yazar dropdown'ı bunu kullanır.
+ */
+export const UserSummarySchema = z.object({
+  id: z.string().uuid(),
+  name: z.string(),
+  email: z.string().email(),
+  avatarUrl: z.string().nullable(),
+});
+export type UserSummaryDto = z.infer<typeof UserSummarySchema>;
+
+/** Kararlı makine-okunur kod — frontend/qa mantığı BUNA bağlanır, `label` yalnızca gösterim içindir. */
+export const SeoScoreIssueCodeSchema = z.enum([
+  "SEO_TITLE_MISSING",
+  "SEO_TITLE_LENGTH",
+  "SEO_DESCRIPTION_MISSING",
+  "SEO_DESCRIPTION_LENGTH",
+  "COVER_IMAGE_MISSING",
+  "IMAGE_MISSING",
+  "IMAGE_ALT_MISSING",
+  "CONTENT_TOO_SHORT",
+]);
+export type SeoScoreIssueCode = z.infer<typeof SeoScoreIssueCodeSchema>;
+
+export const SeoScoreIssueSchema = z.object({
+  code: SeoScoreIssueCodeSchema,
+  label: z.string(),
+});
+export type SeoScoreIssueDto = z.infer<typeof SeoScoreIssueSchema>;
+
+/** Sekme sayaçları — tablo genelinde hesaplanır, istek filtrelerinden ETKİLENMEZ (bkz. §10.7). */
+export const ContentCountsSchema = z.object({
+  all: z.number().int(),
+  published: z.number().int(),
+  draft: z.number().int(),
+  trashed: z.number().int(),
+});
+export type ContentCountsDto = z.infer<typeof ContentCountsSchema>;
+
+/** `GET /admin/pages` ve `GET /admin/blog` yanıtlarının `meta` zarfı. */
+export const ContentListMetaSchema = z.object({
+  nextCursor: z.string().nullable().optional(),
+  counts: ContentCountsSchema,
+});
+export type ContentListMetaDto = z.infer<typeof ContentListMetaSchema>;
+
+export const BulkContentActionSchema = z.enum(["trash", "restore", "publish", "draft", "permanent-delete"]);
+export type BulkContentAction = z.infer<typeof BulkContentActionSchema>;
+
+export const BulkContentActionRequestSchema = z.object({
+  ids: z.array(z.string().uuid()).min(1).max(100),
+  action: BulkContentActionSchema,
+});
+export type BulkContentActionRequestDto = z.infer<typeof BulkContentActionRequestSchema>;
+
+export const BulkContentActionResultSchema = z.object({
+  action: BulkContentActionSchema,
+  requestedCount: z.number().int(),
+  affectedCount: z.number().int(),
+  skippedIds: z.array(z.string().uuid()),
+});
+export type BulkContentActionResultDto = z.infer<typeof BulkContentActionResultSchema>;
+
 export const PageSchema = z.object({
   id: z.string().uuid(),
   title: z.string(),
@@ -126,6 +192,12 @@ export const PageSchema = z.object({
   viewCount: z.number().int(),
   createdAt: z.string(),
   updatedAt: z.string(),
+  // ---- §10.7 İçerik Yönetim Listesi ----
+  deletedAt: z.string().nullable(),
+  authorId: z.string().uuid().nullable(),
+  author: UserSummarySchema.nullable(),
+  seoScore: z.number().int().min(0).max(100),
+  seoScoreIssues: z.array(SeoScoreIssueSchema),
 });
 export type PageDto = z.infer<typeof PageSchema>;
 
@@ -159,6 +231,12 @@ export const BlogPostSchema = z.object({
   viewCount: z.number().int(),
   createdAt: z.string(),
   updatedAt: z.string(),
+  // ---- §10.7 İçerik Yönetim Listesi ----
+  deletedAt: z.string().nullable(),
+  authorId: z.string().uuid().nullable(),
+  author: UserSummarySchema.nullable(),
+  seoScore: z.number().int().min(0).max(100),
+  seoScoreIssues: z.array(SeoScoreIssueSchema),
 });
 export type BlogPostDto = z.infer<typeof BlogPostSchema>;
 

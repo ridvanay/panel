@@ -100,6 +100,7 @@ model User {
   refreshTokens       RefreshToken[]
   passwordResetTokens PasswordResetToken[]
   blogPosts           BlogPost[]
+  pages               Page[]
   auditLogs           AuditLog[]           @relation("AuditLogActor")
   backupCodes         BackupCode[]
   // Polymorphic ContentRevision.editedById / EmailTemplate.updatedById için zorunlu karşı-ilişki alanları.
@@ -253,12 +254,18 @@ model Page {
   publishedAt    DateTime?
   // Denormalize toplam sayaç — admin liste/detay ekranlarında ekstra sorgu gerektirmeden okunur.
   viewCount      Int        @default(0)
+  // §10.7 Soft-delete (çöp kutusu) — bkz. ARCHITECTURE.md §10.7.
+  deletedAt      DateTime?
+  authorId       String?
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
 
+  author       User?          @relation(fields: [authorId], references: [id], onDelete: SetNull)
   views        PageView[]
   siteSettings SiteSettings[]
 
+  @@index([deletedAt, status])
+  @@index([authorId])
   @@map("pages")
 }
 
@@ -296,6 +303,8 @@ model BlogPost {
   translations   Json       @default("{}")
   publishedAt    DateTime?
   viewCount      Int        @default(0)
+  // §10.7 Soft-delete (çöp kutusu) — bkz. ARCHITECTURE.md §10.7.
+  deletedAt      DateTime?
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
 
@@ -304,6 +313,8 @@ model BlogPost {
   views    PageView[]
 
   @@index([categoryId])
+  @@index([deletedAt, status])
+  @@index([authorId])
   @@map("blog_posts")
 }
 

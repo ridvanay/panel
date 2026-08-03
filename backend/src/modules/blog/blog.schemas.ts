@@ -42,6 +42,8 @@ export const CreateBlogPostRequestSchema = z.object({
   noIndex: z.boolean().optional(),
   // §10.5 Çoklu Dil & Yerelleştirme — bkz. shared-types.ts::BlogPostTranslations.
   translations: TranslationsSchema.optional(),
+  // §10.7 — `CreatePageRequest.authorId` ile aynı kural (bkz. lib/content-author.ts).
+  authorId: z.string().uuid().nullable().optional(),
 });
 
 export const UpdateBlogPostRequestSchema = z.object({
@@ -59,6 +61,8 @@ export const UpdateBlogPostRequestSchema = z.object({
   canonicalUrl: z.string().url().nullable().optional(),
   noIndex: z.boolean().optional(),
   translations: TranslationsSchema.optional(),
+  // §10.7 — yalnızca ADMIN değiştirebilir.
+  authorId: z.string().uuid().nullable().optional(),
 });
 
 export const CreateBlogCategoryRequestSchema = z.object({

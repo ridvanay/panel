@@ -201,6 +201,8 @@ export interface BillingPortalResponse {
 
 export interface PageMeta {
   nextCursor: string | null;
+  /** Yalnızca `/admin/pages` ve `/admin/blog` yanıtlarında dolu gelir — bkz. `ContentCounts`. */
+  counts?: ContentCounts;
 }
 
 export interface Page<T> {
@@ -209,6 +211,57 @@ export interface Page<T> {
 }
 
 export type ContentStatus = "DRAFT" | "PUBLISHED";
+
+/**
+ * §10.7 İçerik Yönetim Listesi — Sayfalar/Blog ortak alanları. Bkz.
+ * docs/architecture/shared-types.ts::ContentListFields / ContentCounts / TrashedFilter.
+ */
+export interface UserSummary {
+  id: string;
+  name: string;
+  email: string;
+  avatarUrl: string | null;
+}
+
+export type SeoScoreIssueCode =
+  | "SEO_TITLE_MISSING"
+  | "SEO_TITLE_LENGTH"
+  | "SEO_DESCRIPTION_MISSING"
+  | "SEO_DESCRIPTION_LENGTH"
+  | "COVER_IMAGE_MISSING"
+  | "IMAGE_MISSING"
+  | "IMAGE_ALT_MISSING"
+  | "CONTENT_TOO_SHORT";
+
+export interface SeoScoreIssue {
+  code: SeoScoreIssueCode;
+  label: string;
+}
+
+/** Sekme sayaçları — sunucu hesaplar, istek filtrelerinden etkilenmez. */
+export interface ContentCounts {
+  all: number;
+  published: number;
+  draft: number;
+  trashed: number;
+}
+
+/** `?trashed=` sorgu parametresi; varsayılan "exclude". */
+export type TrashedFilter = "exclude" | "include" | "only";
+
+export type BulkContentAction = "trash" | "restore" | "publish" | "draft" | "permanent-delete";
+
+export interface BulkContentActionRequest {
+  ids: string[];
+  action: BulkContentAction;
+}
+
+export interface BulkContentActionResult {
+  action: BulkContentAction;
+  requestedCount: number;
+  affectedCount: number;
+  skippedIds: string[];
+}
 
 /**
  * `Page`/`BlogPost` çeviri gölgesi — TR kanonik kolonlar, `translations.EN` yalnızca
@@ -235,6 +288,12 @@ export interface SitePage {
   viewCount: number;
   createdAt: string;
   updatedAt: string;
+  // ---- §10.7 İçerik Yönetim Listesi ----
+  deletedAt: string | null;
+  authorId: string | null;
+  author: UserSummary | null;
+  seoScore: number;
+  seoScoreIssues: SeoScoreIssue[];
 }
 
 export interface CreateSitePageRequest {
@@ -249,6 +308,8 @@ export interface CreateSitePageRequest {
   canonicalUrl?: string | null;
   noIndex?: boolean;
   translations?: ContentTranslations;
+  /** Verilmezse giriş yapmış kullanıcı yazar olur; başka id atamak yalnızca ADMIN'e açıktır. */
+  authorId?: string;
 }
 
 export interface UpdateSitePageRequest {
@@ -302,6 +363,12 @@ export interface BlogPost {
   viewCount: number;
   createdAt: string;
   updatedAt: string;
+  // ---- §10.7 İçerik Yönetim Listesi ----
+  deletedAt: string | null;
+  authorId: string | null;
+  author: UserSummary | null;
+  seoScore: number;
+  seoScoreIssues: SeoScoreIssue[];
 }
 
 export interface CreateBlogPostRequest {
@@ -319,6 +386,8 @@ export interface CreateBlogPostRequest {
   canonicalUrl?: string | null;
   noIndex?: boolean;
   translations?: ContentTranslations;
+  /** Verilmezse giriş yapmış kullanıcı yazar olur; başka id atamak yalnızca ADMIN'e açıktır. */
+  authorId?: string;
 }
 
 export interface DailyViewStats {

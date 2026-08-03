@@ -30,6 +30,15 @@ tags:
       Site header/nav/footer yapılandırması (`/navigation`, `/admin/navigation`).
       `/navigation` public'tir (site header/nav/footer bunu okur); `/admin/navigation`
       yönetim ekranı içindir, PUT yalnızca SiteRole=ADMIN.
+  - name: Pages
+    description: >
+      CMS sayfa yönetimi (`/admin/pages`). Okuma authenticated, yazma SiteRole=ADMIN
+      veya EDITOR, kalıcı silme yalnızca ADMIN. Soft-delete (çöp kutusu), toplu işlem
+      ve SEO tamlık skoru için bkz. ARCHITECTURE.md §10.7.
+  - name: Blog
+    description: >
+      Blog yazısı yönetimi (`/admin/blog`). Yetki eşikleri ve çöp/toplu işlem/SEO skoru
+      davranışı `Pages` ile BİREBİR AYNIDIR — bkz. ARCHITECTURE.md §10.7.
   - name: ContentRevisions
     description: >
       İçerik sürüm kontrolü (`/admin/pages/{pageId}/revisions`,
@@ -815,6 +824,448 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
+  /admin/pages:
+    get:
+      tags: [Pages]
+      summary: Sayfaları listele — çöp filtresi + sekme sayaçları (authenticated)
+      description: >
+        **Çöp kutusu (soft-delete) semantiği:** varsayılan `trashed=exclude`, yani
+        `deletedAt IS NULL` olan kayıtlar döner. `trashed=include` çöptekiler DAHİL
+        tümünü, `trashed=only` yalnızca çöptekileri döner.
+
+
+        **Sekme sayaçları:** `meta.counts` HER ZAMAN döner ve `trashed`/`status`/
+        `cursor`/`limit` parametrelerinden ETKİLENMEZ — tablo genelinde tek bir
+        `groupBy` ile hesaplanır. Frontend'in 4 sekmesinin (Tümü/Yayınlanmış/Taslak/Çöp)
+        rakamları BURADAN okunur; client-side sayım YAPILMAZ (100'lük sayfa limitinin
+        ötesinde yanlış sonuç verirdi).
+
+
+        **v1 frontend kullanımı:** `?trashed=include&limit=100` ile çekilir, satır
+        filtreleme/arama/sayfalama client-side yapılır (`useFilteredList`). Toplam kayıt
+        100'ü aşarsa frontend `meta.nextCursor` boşalana kadar döngüyle devam sayfalarını
+        çeker (`counts.all + counts.trashed` beklenen toplamı verir). `status` parametresi
+        API tüketicileri ve ileride sunucu-taraflı sayfalamaya geçiş için vardır;
+        v1 frontend'i KULLANMAZ.
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/TrashedFilter"
+        - $ref: "#/components/parameters/ContentStatusFilter"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/Page" }
+                      meta: { $ref: "#/components/schemas/ContentListMeta" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [Pages]
+      summary: Yeni sayfa oluştur (ADMIN/EDITOR)
+      description: >
+        `slug` verilmezse `title`'dan üretilir. `authorId` verilmezse giriş yapmış
+        kullanıcı yazar olur; BAŞKA bir kullanıcıyı yazar atamak yalnızca ADMIN'e
+        açıktır (EDITOR gönderirse 403).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreatePageRequest" }
+      responses:
+        "201":
+          description: Sayfa oluşturuldu
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Page" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/pages/{pageId}:
+    parameters:
+      - $ref: "#/components/parameters/PageId"
+    get:
+      tags: [Pages]
+      summary: Sayfa detayı (authenticated)
+      description: >
+        Çöpteki sayfayı da döner (geri yükleme/onay ekranları için) — çağıran taraf
+        `deletedAt` alanına bakarak davranışını belirler.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Page" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [Pages]
+      summary: Sayfayı güncelle — tam düzenleme VE hızlı düzenleme (ADMIN/EDITOR)
+      description: >
+        **Hızlı Düzenle (Quick Edit) için AYRI UÇ YOKTUR** — liste ekranındaki inline
+        mini form da bu ucu kısmi gövdeyle çağırır: `{ title?, slug?, status? }`.
+        Böylece slug tekilliği, revizyon snapshot'ı ve `publishedAt` mantığı tek yerde kalır.
+
+
+        Kurallar:
+
+        - Her başarılı PATCH, güncellemeden önceki hali `ContentRevision` olarak kaydeder (§10.1).
+
+        - Çöpteki bir sayfa DÜZENLENEMEZ → `409 CONFLICT` (`"Çöpteki içerik düzenlenemez.
+        Önce geri yükleyin."`). Önce `POST .../restore`.
+
+        - `status: PUBLISHED` ve `publishedAt` boşsa `publishedAt = now()` set edilir.
+        Taslağa geri alma `publishedAt`'i TEMİZLEMEZ (ilk yayın tarihi kalıcıdır).
+
+        - `authorId` alanını yalnızca ADMIN değiştirebilir; EDITOR gönderirse 403.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdatePageRequest" }
+      responses:
+        "200":
+          description: Güncellendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Page" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: >
+            Slug çakışması VEYA çöpteki içeriği düzenleme girişimi
+            (`error.code: CONFLICT`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+    delete:
+      tags: [Pages]
+      summary: Sayfayı ÇÖPE TAŞI — soft delete (ADMIN/EDITOR)
+      description: >
+        **DAVRANIŞ DEĞİŞİKLİĞİ:** bu uç artık kalıcı silmez, `deletedAt = now()` set eder.
+        Kalıcı silme için `DELETE /admin/pages/{pageId}/permanent` (yalnızca ADMIN).
+
+
+        - İdempotenttir: zaten çöpte olan sayfa için de 204 döner.
+
+        - Çöpe taşınan sayfa `SiteSettings.homePageId` ise, aynı transaction içinde
+        `homePageId = null` yapılır (public site kırılmasın). Geri yükleme bunu GERİ ALMAZ.
+
+        - Yetki eşiği ADMIN-only'den ADMIN/EDITOR'e GENİŞLETİLMİŞTİR (çöp geri
+        alınabilir bir işlemdir); kalıcı silme ADMIN-only kalır.
+      responses:
+        "204": { description: Çöpe taşındı }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/pages/{pageId}/restore:
+    parameters:
+      - $ref: "#/components/parameters/PageId"
+    post:
+      tags: [Pages]
+      summary: Sayfayı çöpten geri yükle (ADMIN/EDITOR)
+      description: >
+        `deletedAt = null` yapar. `status` DEĞİŞTİRİLMEZ — sayfa çöpe taşındığındaki
+        durumuna (DRAFT/PUBLISHED) geri döner. İdempotenttir: çöpte olmayan sayfa için
+        de 200 ve mevcut kayıt döner.
+      responses:
+        "200":
+          description: Geri yüklendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Page" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/pages/{pageId}/permanent:
+    parameters:
+      - $ref: "#/components/parameters/PageId"
+    delete:
+      tags: [Pages]
+      summary: Sayfayı KALICI sil — geri alınamaz (yalnızca ADMIN)
+      description: >
+        Güvenlik bariyeri: sayfa ÖNCE çöpte olmalıdır. `deletedAt IS NULL` ise
+        `409 CONFLICT` (`"Kalıcı silmeden önce içeriği çöpe taşıyın."`).
+
+
+        Aynı transaction içinde temizlenmesi ZORUNLU yan kayıtlar:
+
+        - `ContentRevision` satırları (polymorphic, FK YOK → elle silinmeli:
+        `entityType = PAGE AND entityId = {pageId}`).
+
+        - `PageView` satırları FK cascade ile otomatik silinir.
+
+        - `SiteSettings.homePageId` FK `onDelete: SetNull` ile otomatik boşalır.
+
+        - `AuditLog` kaydı yazılır (`page.permanent_delete`).
+      responses:
+        "204": { description: Kalıcı olarak silindi }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "İçerik çöpte değil (`error.code: CONFLICT`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+
+  /admin/pages/bulk:
+    post:
+      tags: [Pages]
+      summary: Sayfalarda toplu işlem (ADMIN/EDITOR; permanent-delete yalnızca ADMIN)
+      description: >
+        Liste ekranındaki toplu işlem menüsü ve "Çöpü Boşalt" bu ucu kullanır —
+        ayrı bir "çöpü boşalt" ucu YOKTUR (frontend çöpteki id'leri
+        `action: permanent-delete` ile gönderir).
+
+
+        **Kısmi başarı bir hata DEĞİLDİR:** uygulanamayan id'ler `skippedIds`'e düşer
+        ve yanıt yine 200 olur. Atlama sebepleri:
+
+        - id bulunamadı,
+
+        - `trash` → zaten çöpte,
+
+        - `restore` → zaten çöpte değil,
+
+        - `publish`/`draft` → kayıt çöpte (önce geri yüklenmeli),
+
+        - `permanent-delete` → kayıt çöpte değil.
+
+
+        `permanent-delete` yalnızca ADMIN içindir; EDITOR gönderirse tüm istek 403 olur
+        (kısmi uygulama yapılmaz). Her toplu işlem tek bir `AuditLog` kaydı yazar
+        (`page.bulk_<action>`, metadata'da id listesi).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BulkContentActionRequest" }
+      responses:
+        "200":
+          description: İşlem uygulandı (kısmi başarı dahil)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/BulkContentActionResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/blog:
+    get:
+      tags: [Blog]
+      summary: Blog yazılarını listele — çöp filtresi + sekme sayaçları (authenticated)
+      description: >
+        Davranış `GET /admin/pages` ile BİREBİR AYNI (çöp semantiği, `meta.counts`,
+        v1 frontend kullanımı) — oradaki açıklama bağlayıcıdır.
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/TrashedFilter"
+        - $ref: "#/components/parameters/ContentStatusFilter"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/BlogPost" }
+                      meta: { $ref: "#/components/schemas/ContentListMeta" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [Blog]
+      summary: Yeni blog yazısı oluştur (ADMIN/EDITOR)
+      description: >
+        `authorId` kuralı `POST /admin/pages` ile aynıdır: verilmezse giriş yapmış
+        kullanıcı, başka kullanıcı atamak yalnızca ADMIN'e açıktır.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateBlogPostRequest" }
+      responses:
+        "201":
+          description: Yazı oluşturuldu
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/BlogPost" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/blog/{postId}:
+    parameters:
+      - $ref: "#/components/parameters/PostId"
+    get:
+      tags: [Blog]
+      summary: Blog yazısı detayı (authenticated) — çöptekiler dahil
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/BlogPost" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [Blog]
+      summary: Yazıyı güncelle — tam düzenleme VE hızlı düzenleme (ADMIN/EDITOR)
+      description: >
+        Kurallar `PATCH /admin/pages/{pageId}` ile BİREBİR AYNI — Hızlı Düzenle için ayrı
+        uç yoktur, kısmi gövde `{ title?, slug?, status? }` bu uca gönderilir; çöpteki
+        yazı düzenlenemez (409).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateBlogPostRequest" }
+      responses:
+        "200":
+          description: Güncellendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/BlogPost" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: >
+            Slug çakışması VEYA çöpteki içeriği düzenleme girişimi
+            (`error.code: CONFLICT`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+    delete:
+      tags: [Blog]
+      summary: Yazıyı ÇÖPE TAŞI — soft delete (ADMIN/EDITOR)
+      description: >
+        `DELETE /admin/pages/{pageId}` ile aynı davranış (idempotent, `deletedAt = now()`,
+        yetki eşiği ADMIN/EDITOR). BlogPost'un `SiteSettings` bağı YOKTUR.
+      responses:
+        "204": { description: Çöpe taşındı }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/blog/{postId}/restore:
+    parameters:
+      - $ref: "#/components/parameters/PostId"
+    post:
+      tags: [Blog]
+      summary: Yazıyı çöpten geri yükle (ADMIN/EDITOR)
+      responses:
+        "200":
+          description: Geri yüklendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/BlogPost" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/blog/{postId}/permanent:
+    parameters:
+      - $ref: "#/components/parameters/PostId"
+    delete:
+      tags: [Blog]
+      summary: Yazıyı KALICI sil — geri alınamaz (yalnızca ADMIN)
+      description: >
+        `DELETE /admin/pages/{pageId}/permanent` ile aynı kural: yazı ÖNCE çöpte olmalı,
+        değilse 409. Aynı transaction'da `ContentRevision` satırları
+        (`entityType = BLOG_POST AND entityId = {postId}`) elle silinir; `PageView`
+        cascade ile düşer; `AuditLog` (`blog_post.permanent_delete`) yazılır.
+      responses:
+        "204": { description: Kalıcı olarak silindi }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "İçerik çöpte değil (`error.code: CONFLICT`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+
+  /admin/blog/bulk:
+    post:
+      tags: [Blog]
+      summary: Blog yazılarında toplu işlem (ADMIN/EDITOR; permanent-delete yalnızca ADMIN)
+      description: >
+        `POST /admin/pages/bulk` ile BİREBİR AYNI gövde, aynı yanıt, aynı atlama kuralları.
+        Audit action öneki `blog_post.bulk_<action>`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BulkContentActionRequest" }
+      responses:
+        "200":
+          description: İşlem uygulandı (kısmi başarı dahil)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/BulkContentActionResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
   /admin/pages/{pageId}/revisions:
     parameters:
       - $ref: "#/components/parameters/PageId"
@@ -1102,6 +1553,25 @@ components:
       in: path
       required: true
       schema: { type: string, format: uuid }
+    TrashedFilter:
+      name: trashed
+      in: query
+      required: false
+      description: >
+        Çöp kutusu filtresi (§10.7). `exclude` (varsayılan) = yalnızca
+        `deletedAt IS NULL`; `include` = çöptekiler dahil tümü; `only` = yalnızca çöp.
+      schema:
+        type: string
+        enum: [exclude, include, only]
+        default: exclude
+    ContentStatusFilter:
+      name: status
+      in: query
+      required: false
+      description: >
+        Sunucu tarafı durum filtresi. v1 admin liste ekranı KULLANMAZ (sekmeler
+        client-side filtreler) — API tüketicileri ve ileride sunucu-taraflı sayfalama için.
+      schema: { type: string, enum: [DRAFT, PUBLISHED] }
     TemplateKey:
       name: key
       in: path
@@ -1642,6 +2112,39 @@ components:
         viewCount: { type: integer }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+        # ---- §10.7 İçerik Yönetim Listesi ----
+        deletedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: >
+            Soft-delete zaman damgası. `null` = aktif, dolu = ÇÖPTE. Public uçlar
+            (`/pages`, `/pages/{slug}`, view sayacı, `SiteSettings.homePage`) bu alanı
+            `null` olarak FİLTRELEMEK ZORUNDADIR.
+        authorId: { type: string, format: uuid, nullable: true }
+        author:
+          allOf:
+            - $ref: "#/components/schemas/UserSummary"
+          nullable: true
+          description: >
+            Yazar özeti. Mevcut kayıtlarda backfill YAPILMAZ → eski sayfalarda `null`
+            gelir, UI "—" gösterir. `authorId` ile birlikte döner: form/dropdown
+            `authorId`'ye bağlanır, tablo `author`'ı render eder.
+        seoScore:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: >
+            Backend'de HER OKUMADA hesaplanan basit SEO tamlık skoru (persist EDİLMEZ,
+            ekstra DB sorgusu yapılmaz). 5 kriter × 20 puan — bkz.
+            `#/components/schemas/SeoScoreIssue` ve ARCHITECTURE.md §10.7.
+            Rozet renk eşiği (frontend): <50 kırmızı, 50–79 sarı, ≥80 yeşil.
+        seoScoreIssues:
+          type: array
+          description: >
+            Puan kaybettiren kriterler. Boş dizi = 100 puan. Rozete tıklanınca bu liste
+            gösterilir. Sıra deterministiktir (kriter numarasına göre).
+          items: { $ref: "#/components/schemas/SeoScoreIssue" }
 
     BlogPost:
       description: >
@@ -1676,6 +2179,255 @@ components:
         viewCount: { type: integer }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+        # ---- §10.7 İçerik Yönetim Listesi ----
+        deletedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: >
+            Soft-delete zaman damgası. Public uçlar (`/blog`, `/blog/{slug}`, view
+            sayacı) `deletedAt: null` FİLTRESİ UYGULAMAK ZORUNDADIR.
+        authorId: { type: string, format: uuid, nullable: true }
+        author:
+          allOf:
+            - $ref: "#/components/schemas/UserSummary"
+          nullable: true
+          description: >
+            **Şema zaten vardı (`BlogPost.authorId` + `author` ilişkisi), DTO'da EKSİKTİ**
+            — bu sürümle DTO'ya ve mapper'a eklenir.
+        seoScore:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: "Bkz. `Page.seoScore` — aynı algoritma, entity'ye özgü girdilerle."
+        seoScoreIssues:
+          type: array
+          items: { $ref: "#/components/schemas/SeoScoreIssue" }
+
+    UserSummary:
+      description: >
+        Kullanıcının listelerde gösterilen minimum özeti — hassas alan (rol/durum/
+        e-posta doğrulaması) TAŞIMAZ. Yazar sütunu ve yazar dropdown'ı bunu kullanır.
+      type: object
+      required: [id, name, email]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        email: { type: string, format: email }
+        avatarUrl: { type: string, nullable: true }
+
+    ContentCounts:
+      description: >
+        Sekme sayaçları — tablo genelinde hesaplanır, istek filtrelerinden ETKİLENMEZ.
+        WordPress semantiği: "Tümü" çöptekileri İÇERMEZ.
+      type: object
+      required: [all, published, draft, trashed]
+      properties:
+        all: { type: integer, description: "deletedAt IS NULL olan tüm kayıtlar (= published + draft)" }
+        published: { type: integer, description: "status = PUBLISHED AND deletedAt IS NULL" }
+        draft: { type: integer, description: "status = DRAFT AND deletedAt IS NULL" }
+        trashed: { type: integer, description: "deletedAt IS NOT NULL" }
+
+    ContentListMeta:
+      description: "`GET /admin/pages` ve `GET /admin/blog` yanıtlarının `meta` zarfı."
+      type: object
+      required: [counts]
+      properties:
+        nextCursor: { type: string, nullable: true }
+        counts: { $ref: "#/components/schemas/ContentCounts" }
+
+    SeoScoreIssueCode:
+      type: string
+      description: >
+        Kararlı makine-okunur kod. Frontend/qa mantığı BU KODA bağlanır; `label`
+        yalnızca gösterim içindir (metni değişebilir).
+      enum:
+        - SEO_TITLE_MISSING
+        - SEO_TITLE_LENGTH
+        - SEO_DESCRIPTION_MISSING
+        - SEO_DESCRIPTION_LENGTH
+        - COVER_IMAGE_MISSING
+        - IMAGE_MISSING
+        - IMAGE_ALT_MISSING
+        - CONTENT_TOO_SHORT
+
+    SeoScoreIssue:
+      description: >
+        **Puanlama (toplam 100, 5 kriter × 20p):**
+
+
+        1. Meta başlık: yok → 0p `SEO_TITLE_MISSING`; var ama uzunluk 50–60 dışında →
+        10p `SEO_TITLE_LENGTH`; 50–60 arası → 20p.
+
+        2. Meta açıklama: yok → 0p `SEO_DESCRIPTION_MISSING`; var ama 120–160 dışında →
+        10p `SEO_DESCRIPTION_LENGTH`; 120–160 arası → 20p.
+
+        3. Kapak görseli: yoksa 0p `COVER_IMAGE_MISSING`, varsa 20p.
+        BlogPost → `coverImageUrl`, boşsa `ogImageUrl`.
+        Page → `ogImageUrl`, boşsa ilk `image` bloğunun `data.url` değeri.
+
+        4. Alt-metinli görsel: hiç görsel yoksa 0p `IMAGE_MISSING`; görsel var ama
+        hiçbirinde dolu alt yoksa 0p `IMAGE_ALT_MISSING`; en az biri alt'lıysa 20p.
+        Page → `blocks` içindeki `image`/`gallery` bloklarının `data.alt` (gallery'de
+        herhangi bir öğenin alt'ı). BlogPost → `contentHtml` içindeki `<img alt="...">`;
+        kapak görseli bu kriteri KARŞILAMAZ (3. kriterle çift sayılmasın diye).
+
+        5. İçerik uzunluğu: kelime sayısı eşiğin altındaysa 0p `CONTENT_TOO_SHORT`,
+        değilse 20p. Eşik: **Page ≥ 100**, **BlogPost ≥ 300** kelime. Kelime =
+        HTML/etiketler ayıklandıktan sonra boşlukla ayrılmış boş olmayan token.
+        Page metni: blokların `data.text`/`data.title`/`data.subtitle`/`data.html`
+        alanlarının birleşimi. BlogPost metni: `contentHtml`.
+
+
+        Skor yalnızca TR/kanonik kolonlardan hesaplanır (`translations` v1'de dikkate
+        alınmaz). Hesap saf ve senkron olmalıdır — liste yanıtında satır başına çalışır.
+      type: object
+      required: [code, label]
+      properties:
+        code: { $ref: "#/components/schemas/SeoScoreIssueCode" }
+        label:
+          type: string
+          description: "Kullanıcıya gösterilecek Türkçe metin, ör. \"Meta açıklama 120–160 karakter olmalı (şu an 84).\""
+
+    BulkContentActionRequest:
+      type: object
+      required: [ids, action]
+      properties:
+        ids:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items: { type: string, format: uuid }
+          description: "Tekrarlı id'ler sunucuda teklenir (dedupe)."
+        action:
+          type: string
+          enum: [trash, restore, publish, draft, permanent-delete]
+          description: >
+            `trash` = çöpe taşı; `restore` = geri yükle; `publish`/`draft` = durum
+            değiştir (çöptekiler atlanır); `permanent-delete` = kalıcı sil
+            (yalnızca ADMIN, yalnızca çöptekiler).
+
+    BulkContentActionResult:
+      type: object
+      required: [action, requestedCount, affectedCount, skippedIds]
+      properties:
+        action: { type: string, enum: [trash, restore, publish, draft, permanent-delete] }
+        requestedCount: { type: integer, description: "dedupe sonrası gönderilen id sayısı" }
+        affectedCount: { type: integer }
+        skippedIds:
+          type: array
+          items: { type: string, format: uuid }
+          description: "Uygulanamayan id'ler (bulunamayan veya durumu uygun olmayan). Hata DEĞİLDİR."
+
+    CreatePageRequest:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string, minLength: 1 }
+        slug: { type: string, minLength: 1, description: "verilmezse title'dan slugify edilir" }
+        status: { type: string, enum: [DRAFT, PUBLISHED], default: DRAFT }
+        blocks:
+          type: array
+          items: { type: object, additionalProperties: true }
+        seoTitle: { type: string }
+        seoDescription: { type: string }
+        ogTitle: { type: string, nullable: true }
+        ogImageUrl: { type: string, nullable: true }
+        canonicalUrl: { type: string, format: uri, nullable: true }
+        noIndex: { type: boolean, default: false }
+        translations:
+          type: object
+          additionalProperties: { type: object, additionalProperties: true }
+        authorId:
+          type: string
+          format: uuid
+          nullable: true
+          description: >
+            §10.7 — verilmezse giriş yapmış kullanıcı atanır. Giriş yapmış kullanıcıdan
+            FARKLI bir id yalnızca ADMIN tarafından gönderilebilir (EDITOR → 403);
+            var olmayan kullanıcı → 422.
+
+    UpdatePageRequest:
+      description: >
+        Tüm alanlar opsiyoneldir. Hızlı Düzenle (Quick Edit) bu şemanın
+        `{ title, slug, status }` alt kümesini gönderir — ayrı bir uç/şema YOKTUR.
+      type: object
+      properties:
+        title: { type: string, minLength: 1 }
+        slug: { type: string, minLength: 1 }
+        status: { type: string, enum: [DRAFT, PUBLISHED] }
+        blocks:
+          type: array
+          items: { type: object, additionalProperties: true }
+        seoTitle: { type: string, nullable: true }
+        seoDescription: { type: string, nullable: true }
+        ogTitle: { type: string, nullable: true }
+        ogImageUrl: { type: string, nullable: true }
+        canonicalUrl: { type: string, format: uri, nullable: true }
+        noIndex: { type: boolean }
+        translations:
+          type: object
+          additionalProperties: { type: object, additionalProperties: true }
+        authorId:
+          type: string
+          format: uuid
+          nullable: true
+          description: "Yalnızca ADMIN değiştirebilir (EDITOR gönderirse 403). `null` = yazarı kaldır."
+
+    CreateBlogPostRequest:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string, minLength: 1 }
+        slug: { type: string, minLength: 1 }
+        excerpt: { type: string }
+        contentHtml: { type: string }
+        coverImageUrl: { type: string }
+        status: { type: string, enum: [DRAFT, PUBLISHED], default: DRAFT }
+        categoryId: { type: string, format: uuid, nullable: true }
+        seoTitle: { type: string, nullable: true }
+        seoDescription: { type: string, nullable: true }
+        ogTitle: { type: string, nullable: true }
+        ogImageUrl: { type: string, nullable: true }
+        canonicalUrl: { type: string, format: uri, nullable: true }
+        noIndex: { type: boolean, default: false }
+        translations:
+          type: object
+          additionalProperties: { type: object, additionalProperties: true }
+        authorId:
+          type: string
+          format: uuid
+          nullable: true
+          description: >
+            §10.7 — `CreatePageRequest.authorId` ile aynı kural. **Mevcut kod bunu
+            gövdeden okumadan `request.user.id` olarak sabitliyor**; yeni kuralda
+            gövdeden gelen değer (ADMIN ise) önceliklidir.
+
+    UpdateBlogPostRequest:
+      description: "Tüm alanlar opsiyonel; Hızlı Düzenle `{ title, slug, status }` alt kümesini gönderir."
+      type: object
+      properties:
+        title: { type: string, minLength: 1 }
+        slug: { type: string, minLength: 1 }
+        excerpt: { type: string, nullable: true }
+        contentHtml: { type: string }
+        coverImageUrl: { type: string, nullable: true }
+        status: { type: string, enum: [DRAFT, PUBLISHED] }
+        categoryId: { type: string, format: uuid, nullable: true }
+        seoTitle: { type: string, nullable: true }
+        seoDescription: { type: string, nullable: true }
+        ogTitle: { type: string, nullable: true }
+        ogImageUrl: { type: string, nullable: true }
+        canonicalUrl: { type: string, format: uri, nullable: true }
+        noIndex: { type: boolean }
+        translations:
+          type: object
+          additionalProperties: { type: object, additionalProperties: true }
+        authorId:
+          type: string
+          format: uuid
+          nullable: true
+          description: "Yalnızca ADMIN değiştirebilir."
 
     ContentEntityType:
       type: string

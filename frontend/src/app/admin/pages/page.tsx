@@ -1,80 +1,43 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
-import { toast } from "sonner";
+import { motion } from "framer-motion";
+import { AlertCircle, FileText, Search } from "lucide-react";
 import * as pagesApi from "@/lib/api/pages";
 import type { SitePage } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
 import { LinkButton } from "@/components/ui/link-button";
-import { Badge } from "@/components/ui/badge";
 import { Alert } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Select } from "@/components/ui/select";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PageHeading } from "@/components/admin/page-heading";
 import { ListPagination } from "@/components/admin/list-pagination";
-import { friendlyErrorMessage } from "@/lib/api/friendly-error";
-import { useFilteredList } from "@/hooks/use-filtered-list";
-import { AlertCircle, FileText, Search } from "lucide-react";
+import { ContentListTabs } from "@/components/admin/content-list/content-list-tabs";
+import { ContentListBulkBar } from "@/components/admin/content-list/content-list-bulk-bar";
+import { ContentListTable } from "@/components/admin/content-list/content-list-table";
+import { useContentList } from "@/components/admin/content-list/use-content-list";
+import { useAuth } from "@/context/auth-context";
 
 function matchesSitePage(page: SitePage, query: string): boolean {
   return page.title.toLowerCase().includes(query) || page.slug.toLowerCase().includes(query);
 }
 
 export default function AdminPagesListPage() {
-  const [pages, setPages] = useState<SitePage[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [pendingDelete, setPendingDelete] = useState<SitePage | null>(null);
+  const { user } = useAuth();
+  const isAdmin = user?.role === "ADMIN";
 
-  const {
-    search,
-    setSearch,
-    page: currentPage,
-    setPage,
-    pageSize,
-    setPageSize,
-    totalPages,
-    filteredCount,
-    items: visiblePages,
-  } = useFilteredList(pages, matchesSitePage);
-
-  const load = useCallback(async () => {
-    try {
-      const page = await pagesApi.listPages();
-      setPages(page.items);
-    } catch (err) {
-      setError(friendlyErrorMessage(err));
-    }
-  }, []);
-
-  useEffect(() => {
-    (async () => {
-      await load();
-    })();
-  }, [load]);
-
-  async function handleDelete() {
-    if (!pendingDelete) return;
-    const pageId = pendingDelete.id;
-    setDeletingId(pageId);
-    try {
-      await pagesApi.deletePage(pageId);
-      toast.success("Sayfa silindi.");
-      setPendingDelete(null);
-      await load();
-    } catch (err) {
-      const message = friendlyErrorMessage(err);
-      setError(message);
-      toast.error(message);
-    } finally {
-      setDeletingId(null);
-    }
-  }
+  const list = useContentList<SitePage>({
+    fetchList: pagesApi.listPages,
+    updateItem: (id, input) => pagesApi.updatePage(id, input),
+    trashItem: pagesApi.deletePage,
+    restoreItem: pagesApi.restorePage,
+    permanentDeleteItem: pagesApi.permanentDeletePage,
+    bulkAction: pagesApi.bulkPagesAction,
+    matches: matchesSitePage,
+    nounSingular: "Sayfa",
+  });
 
   return (
     <div className="space-y-6">
@@ -85,45 +48,54 @@ export default function AdminPagesListPage() {
         actions={<LinkButton href="/admin/pages/new">Yeni Sayfa</LinkButton>}
       />
 
-      {error && (
+      {list.error && (
         <Alert variant="error">
-          <span className="flex items-center gap-2">
-            <AlertCircle className="h-4 w-4 shrink-0" />
-            {error}
+          <span className="flex flex-wrap items-center justify-between gap-3">
+            <span className="flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              {list.error}
+            </span>
+            <Button type="button" variant="outline" size="sm" onClick={() => void list.reload()}>
+              Tekrar Dene
+            </Button>
           </span>
         </Alert>
       )}
 
-      {pages === null ? (
+      {list.loading ? (
         <div className="flex justify-center py-12">
           <Spinner className="h-6 w-6 text-primary" />
         </div>
-      ) : pages.length === 0 ? (
-        <EmptyState
-          icon={FileText}
-          title="Henüz sayfa yok"
-          description="İlk sayfanızı oluşturarak başlayın."
-          action={<LinkButton href="/admin/pages/new">Yeni Sayfa</LinkButton>}
-        />
+      ) : list.totalItemCount === 0 ? (
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+          <EmptyState
+            icon={FileText}
+            title="Henüz sayfa yok"
+            description="İlk sayfanızı oluşturarak başlayın."
+            action={<LinkButton href="/admin/pages/new">Yeni Sayfa</LinkButton>}
+          />
+        </motion.div>
       ) : (
         <>
+          <ContentListTabs value={list.activeFilter} onValueChange={list.setActiveFilter} counts={list.counts} />
+
           <div className="flex flex-wrap items-center gap-3">
-            <InputGroup className="w-full sm:max-w-xs">
+            <InputGroup className="w-full sm:max-w-xs border-2 border-border bg-muted">
               <InputGroupAddon>
                 <Search />
               </InputGroupAddon>
               <InputGroupInput
                 placeholder="Başlık veya slug ara..."
                 aria-label="Başlık veya slug ara"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                value={list.search}
+                onChange={(e) => list.setSearch(e.target.value)}
               />
             </InputGroup>
-            {totalPages > 10 && (
+            {list.totalPages > 10 && (
               <Select
                 aria-label="Sayfa boyutu"
-                value={pageSize}
-                onChange={(e) => setPageSize(Number(e.target.value))}
+                value={list.pageSize}
+                onChange={(e) => list.setPageSize(Number(e.target.value))}
                 className="w-24"
               >
                 <option value={10}>10 / sayfa</option>
@@ -133,62 +105,81 @@ export default function AdminPagesListPage() {
             )}
           </div>
 
-          {filteredCount === 0 ? (
-            <EmptyState icon={Search} title="Sonuç bulunamadı" description="Arama kriterlerinize uyan bir sayfa yok." />
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-auto">Başlık</TableHead>
-                  <TableHead className="w-48">Slug</TableHead>
-                  <TableHead className="w-28">Durum</TableHead>
-                  <TableHead className="w-32 text-right">Görüntülenme</TableHead>
-                  <TableHead className="w-24 text-right">İşlemler</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {visiblePages.map((page) => (
-                  <TableRow key={page.id}>
-                    <TableCell className="w-auto">
-                      <Link href={`/admin/pages/${page.id}`} className="font-medium text-foreground hover:text-primary">
-                        {page.title}
-                      </Link>
-                    </TableCell>
-                    <TableCell className="w-48 text-foreground/60">/{page.slug}</TableCell>
-                    <TableCell className="w-28">
-                      <Badge tone={page.status === "PUBLISHED" ? "success" : "warning"}>
-                        {page.status === "PUBLISHED" ? "Yayında" : "Taslak"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="w-32 text-right text-foreground/60">
-                      {page.viewCount.toLocaleString("tr-TR")}
-                    </TableCell>
-                    <TableCell className="w-24 text-right">
-                      <Button variant="ghost" size="sm" onClick={() => setPendingDelete(page)}>
-                        Sil
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+          {list.selectedIds.size > 0 && (
+            <ContentListBulkBar
+              selectedCount={list.selectedIds.size}
+              activeFilter={list.activeFilter}
+              isAdmin={isAdmin}
+              action={list.bulkSelectAction}
+              onActionChange={list.setBulkSelectAction}
+              onApply={list.applyBulkSelectAction}
+              applying={list.bulkApplying}
+              onClearSelection={list.clearSelection}
+            />
           )}
 
-          {totalPages > 10 && <ListPagination page={currentPage} totalPages={totalPages} onPageChange={setPage} />}
+          {list.filteredCount === 0 ? (
+            <EmptyState icon={Search} title="Sonuç bulunamadı" description="Arama kriterlerinize uyan bir sayfa yok." />
+          ) : (
+            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+              <ContentListTable
+                items={list.visibleItems}
+                activeFilter={list.activeFilter}
+                isAdmin={isAdmin}
+                selectedIds={list.selectedIds}
+                onToggleSelect={list.toggleSelect}
+                onToggleSelectAll={list.toggleSelectAll}
+                allSelected={list.allSelected}
+                editingId={list.editingId}
+                quickEditValues={list.quickEditValues}
+                quickEditSaving={list.quickEditSaving}
+                quickEditError={list.quickEditError}
+                onQuickEditChange={list.updateQuickEditValues}
+                onQuickEditSave={list.saveQuickEdit}
+                onQuickEditCancel={list.cancelQuickEdit}
+                onStartQuickEdit={list.startQuickEdit}
+                busyId={list.busyId}
+                onTrash={list.handleTrash}
+                onRestore={list.handleRestore}
+                onRequestPermanentDelete={list.requestPermanentDelete}
+                editHref={(page) => `/admin/pages/${page.id}`}
+                viewHref={(page) => `/${page.slug}`}
+              />
+            </motion.div>
+          )}
+
+          {list.totalPages > 10 && <ListPagination page={list.page} totalPages={list.totalPages} onPageChange={list.setPage} />}
         </>
       )}
 
       <ConfirmDialog
-        open={pendingDelete !== null}
+        open={list.pendingPermanentDelete !== null}
         onOpenChange={(open) => {
-          if (!open) setPendingDelete(null);
+          if (!open) list.cancelPermanentDelete();
         }}
-        title="Sayfayı sil"
-        description={pendingDelete ? `"${pendingDelete.title}" sayfasını silmek istediğinize emin misiniz? Bu işlem geri alınamaz.` : undefined}
-        confirmText="Sil"
+        title="Sayfayı kalıcı sil"
+        description={
+          list.pendingPermanentDelete
+            ? `"${list.pendingPermanentDelete.title}" sayfasını kalıcı olarak silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`
+            : undefined
+        }
+        confirmText="Kalıcı Sil"
         destructive
-        loading={deletingId === pendingDelete?.id}
-        onConfirm={handleDelete}
+        loading={list.permanentDeleting}
+        onConfirm={list.confirmPermanentDelete}
+      />
+
+      <ConfirmDialog
+        open={list.pendingBulkPermanentDelete}
+        onOpenChange={(open) => {
+          if (!open) list.cancelBulkPermanentDelete();
+        }}
+        title="Sayfaları kalıcı sil"
+        description={`${list.selectedIds.size} sayfayı kalıcı olarak silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`}
+        confirmText="Kalıcı Sil"
+        destructive
+        loading={list.bulkApplying}
+        onConfirm={list.confirmBulkPermanentDelete}
       />
     </div>
   );

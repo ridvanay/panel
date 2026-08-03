@@ -2,15 +2,27 @@ import { apiFetch, apiFetchPage } from "./client";
 import type {
   BlogCategory,
   BlogPost,
+  BulkContentAction,
+  BulkContentActionResult,
   CreateBlogCategoryRequest,
   CreateBlogPostRequest,
   Page,
+  TrashedFilter,
   UpdateBlogCategoryRequest,
   UpdateBlogPostRequest,
 } from "./types";
 
-export function listPosts(cursor?: string): Promise<Page<BlogPost>> {
-  return apiFetchPage<BlogPost>("/admin/blog", { query: { cursor, limit: 100 } });
+export interface ListPostsParams {
+  cursor?: string;
+  /** Varsayılan: "exclude" (backend varsayılanı). */
+  trashed?: TrashedFilter;
+  limit?: number;
+}
+
+export function listPosts(params: ListPostsParams = {}): Promise<Page<BlogPost>> {
+  return apiFetchPage<BlogPost>("/admin/blog", {
+    query: { cursor: params.cursor, limit: params.limit ?? 100, trashed: params.trashed },
+  });
 }
 
 export function createPost(input: CreateBlogPostRequest) {
@@ -25,8 +37,26 @@ export function updatePost(postId: string, input: UpdateBlogPostRequest) {
   return apiFetch<BlogPost>(`/admin/blog/${postId}`, { method: "PATCH", body: input });
 }
 
+/** Artık soft-delete: `deletedAt = now()` set eder (çöpe taşır), idempotenttir. */
 export function deletePost(postId: string) {
   return apiFetch<void>(`/admin/blog/${postId}`, { method: "DELETE" });
+}
+
+/** Çöpteki yazıyı geri yükler (`deletedAt = null`); status değişmez. */
+export function restorePost(postId: string) {
+  return apiFetch<BlogPost>(`/admin/blog/${postId}/restore`, { method: "POST" });
+}
+
+/** Kalıcı silme — yalnızca ADMIN, kayıt önce çöpte olmalıdır. */
+export function permanentDeletePost(postId: string) {
+  return apiFetch<void>(`/admin/blog/${postId}/permanent`, { method: "DELETE" });
+}
+
+export function bulkPostsAction(ids: string[], action: BulkContentAction) {
+  return apiFetch<BulkContentActionResult>("/admin/blog/bulk", {
+    method: "POST",
+    body: { ids, action },
+  });
 }
 
 export function listCategories() {

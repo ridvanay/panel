@@ -1,150 +1,47 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { toast } from "sonner";
+import { AlertCircle, Download, Newspaper, Search, Tag } from "lucide-react";
 import * as blogApi from "@/lib/api/blog";
 import type { BlogPost } from "@/lib/api/types";
-import { LinkButton } from "@/components/ui/link-button";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { LinkButton } from "@/components/ui/link-button";
 import { Alert } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Select } from "@/components/ui/select";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
-import { PostTable } from "@/components/admin/blog/post-table";
 import { PageHeading } from "@/components/admin/page-heading";
 import { ListPagination } from "@/components/admin/list-pagination";
-import { friendlyErrorMessage } from "@/lib/api/friendly-error";
+import { ContentListTabs } from "@/components/admin/content-list/content-list-tabs";
+import { ContentListBulkBar } from "@/components/admin/content-list/content-list-bulk-bar";
+import { ContentListTable } from "@/components/admin/content-list/content-list-table";
+import { useContentList } from "@/components/admin/content-list/use-content-list";
+import { useAuth } from "@/context/auth-context";
 import { exportToCsv } from "@/lib/export-csv";
-import { useFilteredList } from "@/hooks/use-filtered-list";
-import { AlertCircle, Download, Newspaper, Search, Tag } from "lucide-react";
 
 function matchesPost(post: BlogPost, query: string): boolean {
   return post.title.toLowerCase().includes(query);
 }
 
 export default function AdminBlogListPage() {
-  const [posts, setPosts] = useState<BlogPost[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [pendingDelete, setPendingDelete] = useState<BlogPost | null>(null);
+  const { user } = useAuth();
+  const isAdmin = user?.role === "ADMIN";
 
-  // Toplu işlemler için seçim durumu.
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
-  const [bulkDeleting, setBulkDeleting] = useState(false);
-
-  const {
-    search,
-    setSearch,
-    page,
-    setPage,
-    pageSize,
-    setPageSize,
-    totalPages,
-    filteredCount,
-    items: visiblePosts,
-  } = useFilteredList(posts, matchesPost);
-
-  const load = useCallback(async () => {
-    try {
-      const page = await blogApi.listPosts();
-      setPosts(page.items);
-    } catch (err) {
-      setError(friendlyErrorMessage(err));
-    }
-  }, []);
-
-  useEffect(() => {
-    (async () => {
-      await load();
-    })();
-  }, [load]);
-
-  function requestDelete(postId: string) {
-    const post = posts?.find((p) => p.id === postId) ?? null;
-    setPendingDelete(post);
-  }
-
-  async function handleDelete() {
-    if (!pendingDelete) return;
-    const postId = pendingDelete.id;
-    setDeletingId(postId);
-    try {
-      await blogApi.deletePost(postId);
-      toast.success("Yazı silindi.");
-      setPendingDelete(null);
-      await load();
-    } catch (err) {
-      const message = friendlyErrorMessage(err);
-      setError(message);
-      toast.error(message);
-    } finally {
-      setDeletingId(null);
-    }
-  }
-
-  function toggleSelect(postId: string) {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(postId)) next.delete(postId);
-      else next.add(postId);
-      return next;
-    });
-  }
-
-  function toggleSelectAll() {
-    if (visiblePosts.length === 0) return;
-    const visibleIds = visiblePosts.map((p) => p.id);
-    const allVisibleSelected = visibleIds.every((id) => selectedIds.has(id));
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (allVisibleSelected) {
-        visibleIds.forEach((id) => next.delete(id));
-      } else {
-        visibleIds.forEach((id) => next.add(id));
-      }
-      return next;
-    });
-  }
-
-  const allSelected = visiblePosts.length > 0 && visiblePosts.every((p) => selectedIds.has(p.id));
-
-  async function handleBulkDelete() {
-    const ids = Array.from(selectedIds);
-    setBulkDeleting(true);
-    let successCount = 0;
-    let failCount = 0;
-
-    for (const id of ids) {
-      try {
-        await blogApi.deletePost(id);
-        successCount += 1;
-      } catch {
-        failCount += 1;
-      }
-    }
-
-    setBulkDeleting(false);
-    setBulkDeleteConfirmOpen(false);
-    setSelectedIds(new Set());
-    await load();
-
-    if (successCount > 0 && failCount === 0) {
-      toast.success(successCount === 1 ? "1 yazı silindi." : `${successCount} yazı silindi.`);
-    } else if (successCount > 0 && failCount > 0) {
-      toast.success(`${successCount} yazı silindi, ${failCount} yazı silinemedi.`);
-    } else if (failCount > 0) {
-      toast.error(failCount === 1 ? "Yazı silinemedi." : `${failCount} yazı silinemedi.`);
-    }
-  }
+  const list = useContentList<BlogPost>({
+    fetchList: blogApi.listPosts,
+    updateItem: (id, input) => blogApi.updatePost(id, input),
+    trashItem: blogApi.deletePost,
+    restoreItem: blogApi.restorePost,
+    permanentDeleteItem: blogApi.permanentDeletePost,
+    bulkAction: blogApi.bulkPostsAction,
+    matches: matchesPost,
+    nounSingular: "Yazı",
+  });
 
   function handleBulkExport() {
-    if (!posts) return;
-    const selectedPosts = posts.filter((p) => selectedIds.has(p.id));
+    const selectedPosts = list.tabItems.filter((p) => list.selectedIds.has(p.id));
     if (selectedPosts.length === 0) return;
     exportToCsv("secili-blog-yazilari.csv", selectedPosts, [
       { key: "title", label: "Başlık" },
@@ -183,43 +80,26 @@ export default function AdminBlogListPage() {
         }
       />
 
-      {error && (
+      {list.error && (
         <Alert variant="error">
-          <span className="flex items-center gap-2">
-            <AlertCircle className="h-4 w-4 shrink-0" />
-            {error}
+          <span className="flex flex-wrap items-center justify-between gap-3">
+            <span className="flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              {list.error}
+            </span>
+            <Button type="button" variant="outline" size="sm" onClick={() => void list.reload()}>
+              Tekrar Dene
+            </Button>
           </span>
         </Alert>
       )}
 
-      {selectedIds.size > 0 && (
-        <Card className="flex flex-wrap items-center gap-3 p-4">
-          <span className="text-sm font-medium text-foreground">{selectedIds.size} seçili</span>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button variant="destructive" size="sm" onClick={() => setBulkDeleteConfirmOpen(true)}>
-              Toplu Sil
-            </Button>
-            <Button variant="outline" size="sm" onClick={handleBulkExport}>
-              <Download className="h-4 w-4" />
-              CSV Dışa Aktar
-            </Button>
-          </div>
-          <Button variant="ghost" size="sm" className="ml-auto" onClick={() => setSelectedIds(new Set())}>
-            Seçimi Temizle
-          </Button>
-        </Card>
-      )}
-
-      {posts === null ? (
+      {list.loading ? (
         <div className="flex justify-center py-12">
           <Spinner className="h-6 w-6 text-primary" />
         </div>
-      ) : posts.length === 0 ? (
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3 }}
-        >
+      ) : list.totalItemCount === 0 ? (
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
           <EmptyState
             icon={Newspaper}
             title="Henüz yazı yok"
@@ -229,23 +109,25 @@ export default function AdminBlogListPage() {
         </motion.div>
       ) : (
         <>
+          <ContentListTabs value={list.activeFilter} onValueChange={list.setActiveFilter} counts={list.counts} />
+
           <div className="flex flex-wrap items-center gap-3">
-            <InputGroup className="w-full sm:max-w-xs">
+            <InputGroup className="w-full sm:max-w-xs border-2 border-border bg-muted">
               <InputGroupAddon>
                 <Search />
               </InputGroupAddon>
               <InputGroupInput
                 placeholder="Başlığa göre ara..."
                 aria-label="Başlığa göre ara"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                value={list.search}
+                onChange={(e) => list.setSearch(e.target.value)}
               />
             </InputGroup>
-            {totalPages > 10 && (
+            {list.totalPages > 10 && (
               <Select
                 aria-label="Sayfa boyutu"
-                value={pageSize}
-                onChange={(e) => setPageSize(Number(e.target.value))}
+                value={list.pageSize}
+                onChange={(e) => list.setPageSize(Number(e.target.value))}
                 className="w-24"
               >
                 <option value={10}>10 / sayfa</option>
@@ -255,58 +137,91 @@ export default function AdminBlogListPage() {
             )}
           </div>
 
-          {filteredCount === 0 ? (
-            <EmptyState
-              icon={Search}
-              title="Sonuç bulunamadı"
-              description="Arama kriterlerinize uyan bir yazı yok."
+          {list.selectedIds.size > 0 && (
+            <ContentListBulkBar
+              selectedCount={list.selectedIds.size}
+              activeFilter={list.activeFilter}
+              isAdmin={isAdmin}
+              action={list.bulkSelectAction}
+              onActionChange={list.setBulkSelectAction}
+              onApply={list.applyBulkSelectAction}
+              applying={list.bulkApplying}
+              onClearSelection={list.clearSelection}
+              extraActions={
+                <Button variant="outline" size="sm" onClick={handleBulkExport}>
+                  <Download className="h-4 w-4" />
+                  CSV Dışa Aktar
+                </Button>
+              }
             />
+          )}
+
+          {list.filteredCount === 0 ? (
+            <EmptyState icon={Search} title="Sonuç bulunamadı" description="Arama kriterlerinize uyan bir yazı yok." />
           ) : (
-            <motion.div
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3 }}
-            >
-              <PostTable
-                posts={visiblePosts}
-                deletingId={deletingId}
-                onDelete={requestDelete}
-                selectedIds={selectedIds}
-                onToggleSelect={toggleSelect}
-                onToggleSelectAll={toggleSelectAll}
-                allSelected={allSelected}
+            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+              <ContentListTable
+                items={list.visibleItems}
+                activeFilter={list.activeFilter}
+                isAdmin={isAdmin}
+                selectedIds={list.selectedIds}
+                onToggleSelect={list.toggleSelect}
+                onToggleSelectAll={list.toggleSelectAll}
+                allSelected={list.allSelected}
+                editingId={list.editingId}
+                quickEditValues={list.quickEditValues}
+                quickEditSaving={list.quickEditSaving}
+                quickEditError={list.quickEditError}
+                onQuickEditChange={list.updateQuickEditValues}
+                onQuickEditSave={list.saveQuickEdit}
+                onQuickEditCancel={list.cancelQuickEdit}
+                onStartQuickEdit={list.startQuickEdit}
+                busyId={list.busyId}
+                onTrash={list.handleTrash}
+                onRestore={list.handleRestore}
+                onRequestPermanentDelete={list.requestPermanentDelete}
+                editHref={(post) => `/admin/blog/${post.id}`}
+                viewHref={(post) => `/blog/${post.slug}`}
+                categoryColumn={{
+                  header: "Kategori",
+                  render: (post) => post.category?.name ?? "—",
+                }}
               />
             </motion.div>
           )}
 
-          {totalPages > 10 && <ListPagination page={page} totalPages={totalPages} onPageChange={setPage} />}
+          {list.totalPages > 10 && <ListPagination page={list.page} totalPages={list.totalPages} onPageChange={list.setPage} />}
         </>
       )}
 
       <ConfirmDialog
-        open={pendingDelete !== null}
+        open={list.pendingPermanentDelete !== null}
         onOpenChange={(open) => {
-          if (!open) setPendingDelete(null);
+          if (!open) list.cancelPermanentDelete();
         }}
-        title="Yazıyı sil"
-        description={pendingDelete ? `"${pendingDelete.title}" yazısını silmek istediğinize emin misiniz? Bu işlem geri alınamaz.` : undefined}
-        confirmText="Sil"
+        title="Yazıyı kalıcı sil"
+        description={
+          list.pendingPermanentDelete
+            ? `"${list.pendingPermanentDelete.title}" yazısını kalıcı olarak silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`
+            : undefined
+        }
+        confirmText="Kalıcı Sil"
         destructive
-        loading={deletingId === pendingDelete?.id}
-        onConfirm={handleDelete}
+        loading={list.permanentDeleting}
+        onConfirm={list.confirmPermanentDelete}
       />
 
       <ConfirmDialog
-        open={bulkDeleteConfirmOpen}
+        open={list.pendingBulkPermanentDelete}
         onOpenChange={(open) => {
-          if (!open) setBulkDeleteConfirmOpen(false);
+          if (!open) list.cancelBulkPermanentDelete();
         }}
-        title="Yazıları toplu sil"
-        description={`${selectedIds.size} yazıyı silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`}
-        confirmText="Sil"
+        title="Yazıları kalıcı sil"
+        description={`${list.selectedIds.size} yazıyı kalıcı olarak silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`}
+        confirmText="Kalıcı Sil"
         destructive
-        loading={bulkDeleting}
-        onConfirm={handleBulkDelete}
+        loading={list.bulkApplying}
+        onConfirm={list.confirmBulkPermanentDelete}
       />
     </div>
   );

@@ -31,6 +31,14 @@
   --danger: #b91c1c;
   --danger-foreground: #ffffff;
   --success: #166534;
+  /*
+   * (2026-08-03, ui-designer) `--success-foreground` eksikti: solid (bg-{tone} + text-{tone}-foreground)
+   * Badge varyantı için ekleniyor (bkz. content-list-table.tsx durum rozeti, seo-score-badge.tsx).
+   *   - light --success-foreground #ffffff → --success #166534 üzerinde 7.13:1 (AA/AAA geçer)
+   *   - dark  --success-foreground #052e16 → --success #4ade80 (.dark .admin-shell) üzerinde 8.55:1 (AA/AAA geçer)
+   * --danger-foreground/--warning-foreground ile aynı "solid rozet üzerinde okunaklı metin" deseni izleniyor.
+   */
+  --success-foreground: #ffffff;
   --warning: #92400e;
   /* --warning artık koyulaştığı için (amber-800) olası bir solid bg-warning + warning-foreground
      kullanımında beyaz metin gerekir (eski koyu kahverengi #451a03 artık düşük kontrast üretirdi). */
@@ -99,6 +107,7 @@
   --color-danger: var(--danger);
   --color-danger-foreground: var(--danger-foreground);
   --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
   --color-warning: var(--warning);
   --color-warning-foreground: var(--warning-foreground);
 
@@ -234,6 +243,7 @@
   --danger: #f87171;
   --danger-foreground: #1a0505;
   --success: #4ade80;
+  --success-foreground: #052e16;
   --warning: #fbbf24;
   --warning-foreground: #451a03;
 

@@ -577,3 +577,70 @@ sonucunda tam olarak bir toast gösterilir.
   deseni referanstır).
 - İSTİSNA: kullanıcı tetiklemeyen arka plan yüklemeleri (`load()`, liste/polling
   hataları) toast ÜRETMEZ — bunlar inline `Alert` ile gösterilir.
+
+### 10.7 İçerik Yönetim Listesi (WordPress-tarzı Sayfalar & Blog tablosu)
+
+Sayfalar (`Page`) ve Blog Yazıları (`BlogPost`) admin liste ekranları ORTAK bir tablo
+bileşeni kullanır. İki varlık için sözleşme **birebir simetriktir** — endpoint isimleri,
+gövde şekilleri, hata kodları ve DTO alanları aynıdır; farklı olan tek şey yol öneki
+(`/admin/pages` vs `/admin/blog`) ve SEO skorunun entity'ye özgü girdileridir.
+Bağlayıcı kaynak: `openapi.yaml` (tag `Pages` / `Blog`).
+
+**Şema (db-agent):**
+- `Page`: `deletedAt DateTime?`, `authorId String?` + `author User? @relation(..., onDelete: SetNull)`;
+  `User` tarafına karşı-ilişki `pages Page[]`. İndeksler: `@@index([deletedAt, status])`,
+  `@@index([authorId])`.
+- `BlogPost`: `deletedAt DateTime?` (author ilişkisi ZATEN VAR). Aynı iki indeks.
+- `slug` tekilliği çöptekileri DE kapsar (unique constraint dokunulmaz). Çöpe taşırken
+  slug yeniden adlandırılmaz; çakışan yeni kayıt `409 CONFLICT` alır ve mesaj kullanıcıyı
+  çöpe yönlendirir. Otomatik çöp temizleme (retention cron) v1 KAPSAM DIŞI.
+
+**Soft-delete (çöp kutusu):**
+- `DELETE /admin/{pages|blog}/{id}` artık `deletedAt = now()` yapar (KALICI SİLMEZ) ve
+  yetki eşiği ADMIN-only'den **ADMIN/EDITOR**'e genişler.
+- `DELETE .../{id}/permanent` (ADMIN-only) kalıcı siler; kayıt ÖNCE çöpte olmalıdır,
+  değilse 409. `ContentRevision` satırları polymorphic olduğu için FK cascade YOKTUR →
+  aynı transaction içinde elle silinir.
+- Çöpe taşınan sayfa `SiteSettings.homePageId` ise aynı transaction'da `homePageId = null`
+  yapılır; geri yükleme bunu geri almaz.
+- **Tüm public okuma yolları `deletedAt: null` filtresi eklemek ZORUNDADIR**
+  (`publicPagesRoutes`, `publicBlogRoutes`, view sayacı upsert'leri,
+  `settings.routes.ts` homePage sorgusu, sitemap/feed üreten her yer).
+- Çöpteki içerik DÜZENLENEMEZ: `PATCH .../{id}` → 409.
+
+**Sekme sayaçları — sunucu tarafı (karar):** `GET /admin/{pages|blog}` yanıtı
+`meta.counts { all, published, draft, trashed }` döner; tek `groupBy` ile tablo genelinde
+hesaplanır ve istek filtrelerinden etkilenmez. Gerekçe: `limit` tavanı 100'dür, client
+tarafında sayım 100+ kayıtta yanlış sonuç verirdi. Satır filtreleme/arama/sayfalama ise
+MEVCUT desende (`useFilteredList`, client-side) kalır — frontend `?trashed=include&limit=100`
+çeker, gerekiyorsa `meta.nextCursor` boşalana dek döngüyle devam eder.
+
+**Hızlı Düzenle (Quick Edit):** AYRI UÇ YOKTUR. Inline mini form mevcut
+`PATCH .../{id}` ucunu `{ title?, slug?, status? }` kısmi gövdesiyle çağırır — slug
+tekilliği, revizyon snapshot'ı (§10.1) ve `publishedAt` mantığı tek yerde kalsın diye.
+Taslağa alma `publishedAt`'i temizlemez (ilk yayın tarihi kalıcıdır).
+
+**Toplu işlem:** `POST /admin/{pages|blog}/bulk` → `{ ids[1..100], action }`,
+action ∈ `trash | restore | publish | draft | permanent-delete`. Kısmi başarı hata
+değildir (200 + `skippedIds`). "Çöpü Boşalt" ayrı uç değildir; frontend çöpteki id'leri
+`permanent-delete` ile gönderir.
+
+**Yazar:** `authorId` create/update gövdelerine eklenir. Verilmezse giriş yapmış
+kullanıcı; BAŞKA kullanıcı atamak/değiştirmek yalnızca **ADMIN** (EDITOR → 403).
+Dropdown mevcut `GET /admin/users` ile beslenir, YENİ UÇ YOKTUR (zaten ADMIN-only, bu da
+"yalnızca ADMIN atayabilir" kuralıyla örtüşür). Eski kayıtlar için backfill yapılmaz →
+`author: null`, UI "—" gösterir.
+
+**SEO tamlık skoru:** BACKEND hesaplar (frontend yalnızca render eder), her okumada
+saf/senkron olarak üretilir, persist EDİLMEZ. `seoScore: 0..100` + `seoScoreIssues:
+{ code, label }[]`. `code` kararlı makine-okunur anahtardır (frontend mantığı ve testler
+buna bağlanır), `label` gösterime yönelik Türkçe metindir. 5 kriter × 20 puan ve tam
+eşikler `openapi.yaml#/components/schemas/SeoScoreIssue` açıklamasındadır (bağlayıcı).
+Rozet renkleri: <50 kırmızı, 50–79 sarı, ≥80 yeşil (ui-designer token'ları).
+
+**Tarih sütunu:** yeni alan gerekmez — `status=PUBLISHED && publishedAt != null` ise
+"Yayınlandı — {publishedAt}", çöpteyse "Çöpe taşındı — {deletedAt}", aksi halde
+"Son Düzenleme — {updatedAt}".
+
+**Audit:** `page.trash|restore|permanent_delete|bulk_<action>` ve `blog_post.*`
+karşılıkları yazılır (`AuditLog.action` serbest string, migration gerekmez).

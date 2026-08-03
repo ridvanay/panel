@@ -32,7 +32,12 @@ export async function publicSettingsRoutes(app: FastifyInstance) {
     const settings = await app.prisma.siteSettings.findUnique({ where: { id: SETTINGS_ID } });
     if (!settings?.homePageId) return reply.send(ok(null));
 
-    const page = await app.prisma.page.findFirst({ where: { id: settings.homePageId, status: "PUBLISHED" } });
+    // §10.7 İçerik Yönetim Listesi — çöpteki sayfa ana sayfa OLAMAZ (trash sırasında zaten
+    // homePageId temizlenir, ama başka bir yoldan kalırsa da burada ekstra bir güvenlik ağıdır).
+    const page = await app.prisma.page.findFirst({
+      where: { id: settings.homePageId, status: "PUBLISHED", deletedAt: null },
+      include: { author: true },
+    });
     return reply.send(ok(page ? toPageDto(page) : null));
   });
 }

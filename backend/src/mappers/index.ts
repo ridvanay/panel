@@ -38,8 +38,10 @@ import type {
   ContentRevisionDto,
   EmailTemplateDto,
   SessionDto,
+  UserSummaryDto,
 } from "../schemas/entities";
 import { env } from "../config/env";
+import { computeBlogPostSeoScore, computePageSeoScore } from "../lib/seo-score";
 
 export function toUserDto(user: User): UserDto {
   return {
@@ -145,7 +147,21 @@ export function toSubscriptionDto(subscription: SubscriptionWithPlan): Subscript
   };
 }
 
-export function toPageDto(page: Page): PageDto {
+/** Yazar özeti — hassas alan (rol/durum/e-posta doğrulaması) TAŞIMAZ (bkz. ARCHITECTURE.md §10.7). */
+export function toUserSummaryDto(user: User): UserSummaryDto {
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    avatarUrl: user.avatarUrl,
+  };
+}
+
+type PageWithAuthor = Page & { author?: User | null };
+
+export function toPageDto(page: PageWithAuthor): PageDto {
+  const { score, issues } = computePageSeoScore(page);
+
   return {
     id: page.id,
     title: page.title,
@@ -163,6 +179,12 @@ export function toPageDto(page: Page): PageDto {
     viewCount: page.viewCount,
     createdAt: page.createdAt.toISOString(),
     updatedAt: page.updatedAt.toISOString(),
+    // ---- §10.7 İçerik Yönetim Listesi ----
+    deletedAt: page.deletedAt ? page.deletedAt.toISOString() : null,
+    authorId: page.authorId,
+    author: page.author ? toUserSummaryDto(page.author) : null,
+    seoScore: score,
+    seoScoreIssues: issues,
   };
 }
 
@@ -175,7 +197,7 @@ export function toBlogCategoryDto(category: BlogCategory): BlogCategoryDto {
   };
 }
 
-type BlogPostWithCategory = BlogPost & { category: BlogCategory | null };
+type BlogPostWithCategory = BlogPost & { category: BlogCategory | null; author?: User | null };
 
 /** S3/CDN sürücüsü zaten mutlak URL üretir; local sürücü relative `/uploads/...` yolu döner. */
 function absolutizeMediaUrl(url: string): string {
@@ -245,6 +267,8 @@ export function toNavigationConfigDto({ settings, navigationItems, socialLinks, 
 }
 
 export function toBlogPostDto(post: BlogPostWithCategory): BlogPostDto {
+  const { score, issues } = computeBlogPostSeoScore(post);
+
   return {
     id: post.id,
     title: post.title,
@@ -265,6 +289,12 @@ export function toBlogPostDto(post: BlogPostWithCategory): BlogPostDto {
     viewCount: post.viewCount,
     createdAt: post.createdAt.toISOString(),
     updatedAt: post.updatedAt.toISOString(),
+    // ---- §10.7 İçerik Yönetim Listesi ----
+    deletedAt: post.deletedAt ? post.deletedAt.toISOString() : null,
+    authorId: post.authorId,
+    author: post.author ? toUserSummaryDto(post.author) : null,
+    seoScore: score,
+    seoScoreIssues: issues,
   };
 }
 

@@ -1,17 +1,19 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { toast } from "sonner";
 import { AlertCircle, ChevronDown, ChevronLeft, FileText, Search } from "lucide-react";
 import * as pagesApi from "@/lib/api/pages";
-import type { ContentStatus } from "@/lib/api/types";
+import * as usersAdminApi from "@/lib/api/users-admin";
+import type { AdminUser, ContentStatus } from "@/lib/api/types";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { InputGroup, InputGroupAddon, InputGroupInput, InputGroupText } from "@/components/ui/input-group";
 import { Alert } from "@/components/ui/alert";
@@ -19,6 +21,7 @@ import { PageHeading } from "@/components/admin/page-heading";
 import { ImageUploadField } from "@/components/admin/media/image-upload-field";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { cn } from "@/lib/cn";
+import { useAuth } from "@/context/auth-context";
 
 /** Backend'deki `slugify` (bkz. `backend/src/lib/slug.ts`) ile eşdeğer, sadece istemci tarafı önizlemesi içindir. */
 function slugify(input: string): string {
@@ -71,6 +74,8 @@ const GOOGLE_DESCRIPTION_LIMIT = 155;
 
 export default function NewPagePage() {
   const router = useRouter();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "ADMIN";
   const [title, setTitle] = useState("");
   const [slug, setSlug] = useState("");
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
@@ -81,6 +86,23 @@ export default function NewPagePage() {
   const [ogImageUrl, setOgImageUrl] = useState("");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [admins, setAdmins] = useState<AdminUser[]>([]);
+  const [authorIdOverride, setAuthorIdOverride] = useState<string | null>(null);
+  // Varsayılan yazar giriş yapmış kullanıcıdır; ADMIN dropdown'dan değiştirene kadar override boş kalır.
+  const authorId = authorIdOverride ?? user?.id ?? "";
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    (async () => {
+      try {
+        const page = await usersAdminApi.listAdminUsers();
+        setAdmins(page.items);
+      } catch {
+        // Yazar dropdown'u opsiyonel bir kolaylık — yüklenemezse form yine de gönderilebilir.
+      }
+    })();
+  }, [isAdmin]);
 
   function handleTitleChange(value: string) {
     setTitle(value);
@@ -106,6 +128,7 @@ export default function NewPagePage() {
         seoTitle: seoTitle || undefined,
         seoDescription: seoDescription || undefined,
         ogImageUrl: ogImageUrl || undefined,
+        authorId: isAdmin && authorId ? authorId : undefined,
       });
       toast.success("Sayfa oluşturuldu.");
       router.push(`/admin/pages/${page.id}`);
@@ -176,6 +199,20 @@ export default function NewPagePage() {
               <p className="text-sm font-medium text-foreground">Durum</p>
               <StatusToggle status={status} onChange={setStatus} />
             </div>
+
+            {isAdmin && admins.length > 0 && (
+              <Field id="authorId" label="Yazar" hint="Varsayılan olarak siz atanırsınız; ADMIN başka bir kullanıcı seçebilir.">
+                {(inputProps) => (
+                  <Select {...inputProps} value={authorId} onChange={(e) => setAuthorIdOverride(e.target.value)}>
+                    {admins.map((admin) => (
+                      <option key={admin.id} value={admin.id}>
+                        {admin.name} ({admin.email})
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </Field>
+            )}
 
             <div className="border-t border-border pt-4">
               <button

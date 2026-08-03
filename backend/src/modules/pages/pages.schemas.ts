@@ -37,6 +37,8 @@ export const CreatePageRequestSchema = z.object({
   noIndex: z.boolean().optional(),
   // §10.5 Çoklu Dil & Yerelleştirme — bkz. shared-types.ts::PageTranslations.
   translations: TranslationsSchema.optional(),
+  // §10.7 — verilmezse giriş yapmış kullanıcı atanır; BAŞKA bir id yalnızca ADMIN'e açıktır (bkz. lib/content-author.ts).
+  authorId: z.string().uuid().nullable().optional(),
 });
 
 export const UpdatePageRequestSchema = z.object({
@@ -51,4 +53,6 @@ export const UpdatePageRequestSchema = z.object({
   canonicalUrl: z.string().url().nullable().optional(),
   noIndex: z.boolean().optional(),
   translations: TranslationsSchema.optional(),
+  // §10.7 — yalnızca ADMIN değiştirebilir (EDITOR gönderirse 403); `null` = yazarı kaldır.
+  authorId: z.string().uuid().nullable().optional(),
 });
