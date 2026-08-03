@@ -187,7 +187,7 @@ function Sidebar({
           data-sidebar="sidebar"
           data-slot="sidebar"
           data-mobile="true"
-          className="w-(--sidebar-width) bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden"
+          className="w-(--sidebar-width) bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden data-[side=left]:w-(--sidebar-width) data-[side=left]:max-w-[85vw]"
           style={
             {
               "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
@@ -263,8 +263,8 @@ function SidebarTrigger({
       data-sidebar="trigger"
       data-slot="sidebar-trigger"
       variant="ghost"
-      size="icon-sm"
-      className={cn(className)}
+      size="icon"
+      className={cn("relative after:absolute after:-inset-2", className)}
       onClick={(event) => {
         onClick?.(event)
         toggleSidebar()

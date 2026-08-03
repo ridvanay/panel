@@ -110,7 +110,14 @@ export function ImageUploadField({
           <UploadCloud className="h-4 w-4" />
           <span className="hidden sm:inline">Yükle</span>
         </Button>
-        <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          aria-label="Bilgisayardan görsel yükle"
+          className="hidden"
+          onChange={handleFileChange}
+        />
       </div>
 
       {error && <p className="text-xs text-danger">{error}</p>}

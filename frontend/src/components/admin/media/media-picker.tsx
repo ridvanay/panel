@@ -112,7 +112,14 @@ export function MediaPicker({ open, onOpenChange, onSelect }: MediaPickerProps) 
               <UploadCloud className="h-4 w-4" />
               Yükle
             </Button>
-            <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              aria-label="Bilgisayardan görsel yükle"
+              className="hidden"
+              onChange={handleFileChange}
+            />
           </div>
 
           {uploadError && (

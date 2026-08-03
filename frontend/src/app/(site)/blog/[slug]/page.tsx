@@ -1,25 +1,35 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { fetchBlogPostBySlugServer } from "@/lib/api/server-blog";
+import { fetchSiteSettingsServer } from "@/lib/api/server-settings";
 import { ViewTracker } from "@/components/site/view-tracker";
 import { ViewCount } from "@/components/site/view-count";
+import { buildContentMetadata } from "@/lib/seo";
+import { SITE_URL } from "@/lib/env";
 
 type PageProps = { params: Promise<{ slug: string }> };
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug } = await params;
-  const post = await fetchBlogPostBySlugServer(slug);
+  const [post, settings] = await Promise.all([fetchBlogPostBySlugServer(slug), fetchSiteSettingsServer()]);
   if (!post) return {};
 
-  const description = post.excerpt ?? undefined;
-  const images = post.coverImageUrl ? [post.coverImageUrl] : undefined;
-
-  return {
-    title: post.title,
-    description,
-    openGraph: { title: post.title, description, type: "article", images },
-    twitter: { card: images ? "summary_large_image" : "summary", title: post.title, description, images },
-  };
+  return buildContentMetadata(
+    {
+      title: post.title,
+      description: post.excerpt,
+      ogTitle: post.ogTitle,
+      ogImageUrl: post.ogImageUrl,
+      canonicalUrl: post.canonicalUrl,
+      noIndex: post.noIndex,
+    },
+    {
+      fallbackCanonicalUrl: `${SITE_URL}/blog/${slug}`,
+      siteName: settings.siteName,
+      type: "article",
+      fallbackImageUrl: post.coverImageUrl,
+    },
+  );
 }
 
 export default async function BlogPostPage({ params }: PageProps) {

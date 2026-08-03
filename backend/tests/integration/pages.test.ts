@@ -83,6 +83,38 @@ describe("pages", () => {
     expect(publicList.json().data.map((p: { slug: string }) => p.slug)).toContain(page.slug);
   });
 
+  // §10.2 Gelişmiş SEO & Social Card — frontend generateMetadata() bu alanlara bağlıdır;
+  // public detay ucu bunları eksiksiz döndürmelidir.
+  it("returns full SEO/OG fields (ogTitle, ogImageUrl, canonicalUrl, noIndex) on the public detail endpoint", async () => {
+    const create = await app.inject({
+      method: "POST",
+      url: "/api/v1/admin/pages",
+      headers: authHeader(),
+      payload: {
+        title: "SEO Alanları Sayfası",
+        status: "PUBLISHED",
+        seoTitle: "Özel SEO Başlığı",
+        seoDescription: "Özel SEO açıklaması.",
+        ogTitle: "Özel OG Başlığı",
+        ogImageUrl: "https://example.com/og-image.jpg",
+        canonicalUrl: "https://example.com/seo-alanlari-sayfasi",
+        noIndex: true,
+      },
+    });
+    expect(create.statusCode).toBe(201);
+    const page = create.json().data;
+
+    const publicGet = await app.inject({ method: "GET", url: `/api/v1/pages/${page.slug}` });
+    expect(publicGet.statusCode).toBe(200);
+    const dto = publicGet.json().data;
+    expect(dto.seoTitle).toBe("Özel SEO Başlığı");
+    expect(dto.seoDescription).toBe("Özel SEO açıklaması.");
+    expect(dto.ogTitle).toBe("Özel OG Başlığı");
+    expect(dto.ogImageUrl).toBe("https://example.com/og-image.jpg");
+    expect(dto.canonicalUrl).toBe("https://example.com/seo-alanlari-sayfasi");
+    expect(dto.noIndex).toBe(true);
+  });
+
   it("updates a page's title and blocks", async () => {
     const create = await app.inject({
       method: "POST",

@@ -40,7 +40,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           <AdminSidebar />
           <SidebarInset>
             <AdminTopbar />
-            <main className="flex-1 overflow-hidden bg-surface-muted p-6">
+            <main className="flex-1 overflow-hidden bg-surface-muted p-4 md:p-6">
               <AnimatePresence mode="wait">
                 <motion.div
                   key={pathname}

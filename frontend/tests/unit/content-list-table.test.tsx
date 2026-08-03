@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, within } from "@testing-library/react";
 import { ContentListTable } from "@/components/admin/content-list/content-list-table";
 import type { ContentListEntity, QuickEditValues } from "@/components/admin/content-list/types";
 
@@ -47,14 +47,33 @@ const baseProps = {
 };
 
 describe("ContentListTable", () => {
+  // Bileşen; masaüstü/tablet için bir <table> ve mobil için CSS (`md:hidden`/`hidden md:block`)
+  // ile geçişli ayrı bir kart listesi render eder — ikisi de aynı anda DOM'a yazılır (jsdom medya
+  // sorgularını uygulamaz). Bu yüzden içerik metinleri iki kez görünür; testler `<table>` içine
+  // `within` ile scope edilerek masaüstü render'ı doğrular.
   it("başlık, yazar, SEO ve görüntülenme sütunlarını render eder", () => {
     render(<ContentListTable items={[makeItem()]} {...baseProps} />);
+    const table = within(screen.getByRole("table"));
 
-    expect(screen.getByText("Örnek Sayfa")).toBeInTheDocument();
-    expect(screen.getByText("Ada Lovelace")).toBeInTheDocument();
-    expect(screen.getByText("90")).toBeInTheDocument();
-    expect(screen.getByText("42")).toBeInTheDocument();
-    expect(screen.getByText("Yayında")).toBeInTheDocument();
+    expect(table.getByText("Örnek Sayfa")).toBeInTheDocument();
+    expect(table.getByText("Ada Lovelace")).toBeInTheDocument();
+    expect(table.getByText("90")).toBeInTheDocument();
+    expect(table.getByText("42")).toBeInTheDocument();
+    expect(table.getByText("Yayında")).toBeInTheDocument();
+  });
+
+  it("mobil kart listesinde başlık, yazar, SEO, durum ve görüntülenme gösterilir", () => {
+    render(<ContentListTable items={[makeItem()]} {...baseProps} />);
+    // Mobil kart konteyneri `md:hidden` sınıfıyla işaretli tek kardeş div'dir.
+    const mobileList = document.querySelector(".md\\:hidden");
+    expect(mobileList).not.toBeNull();
+    const mobile = within(mobileList as HTMLElement);
+
+    expect(mobile.getByText("Örnek Sayfa")).toBeInTheDocument();
+    expect(mobile.getByText("Ada Lovelace")).toBeInTheDocument();
+    expect(mobile.getByText("90")).toBeInTheDocument();
+    expect(mobile.getByText("42")).toBeInTheDocument();
+    expect(mobile.getByText("Yayında")).toBeInTheDocument();
   });
 
   it("yazarı olmayan içerik için tire gösterir", () => {
@@ -121,10 +140,11 @@ describe("ContentListTable", () => {
     );
 
     expect(screen.queryByText("Düzenle")).not.toBeInTheDocument();
-    expect(screen.getByDisplayValue("Örnek Sayfa")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("ornek-sayfa")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Güncelle" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "İptal" })).toBeInTheDocument();
+    // Quick-edit formu hem masaüstü satırında hem mobil kart modunda (ayrı `id`'lerle) render edilir.
+    expect(screen.getAllByDisplayValue("Örnek Sayfa")).toHaveLength(2);
+    expect(screen.getAllByDisplayValue("ornek-sayfa")).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: "Güncelle" })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: "İptal" })).toHaveLength(2);
   });
 
   it("blog için Kategori sütunu opsiyonel olarak render edilir", () => {
@@ -136,6 +156,7 @@ describe("ContentListTable", () => {
       />
     );
     expect(screen.getByText("Kategori")).toBeInTheDocument();
-    expect(screen.getByText("Teknoloji")).toBeInTheDocument();
+    // Kategori değeri hem masaüstü sütununda hem mobil kart meta satırında render edilir.
+    expect(screen.getAllByText("Teknoloji")).toHaveLength(2);
   });
 });

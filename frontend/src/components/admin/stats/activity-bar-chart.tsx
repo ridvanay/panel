@@ -55,7 +55,7 @@ export function ActivityBarChart({ days = 7 }: ActivityBarChartProps) {
       transition={{ duration: 0.4, ease: "easeOut", delay: 0.1 }}
     >
       <Card>
-        <h3 className="text-sm font-medium text-foreground">{days === 7 ? "Haftalık aktivite" : "Aktivite"}</h3>
+        <h2 className="text-sm font-medium text-foreground">{days === 7 ? "Haftalık aktivite" : "Aktivite"}</h2>
         <p className="text-xs text-foreground/60">Son {days} gün · toplam görüntülenme</p>
 
         {error ? (

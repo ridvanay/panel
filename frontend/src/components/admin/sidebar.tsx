@@ -108,7 +108,7 @@ export function AdminSidebar() {
                         <SidebarMenuButton
                           render={<Link href={item.href} />}
                           isActive={active}
-                          className="group relative gap-3 overflow-hidden rounded-lg border border-transparent px-3 text-white/55 transition-colors hover:text-white data-active:border-white/10 data-active:text-white"
+                          className="group relative h-11 gap-3 overflow-hidden rounded-lg border border-transparent px-3 text-white/55 transition-colors hover:text-white data-active:border-white/10 data-active:text-white md:h-8"
                         >
                           {active && (
                             <motion.span

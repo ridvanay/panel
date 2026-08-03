@@ -62,7 +62,7 @@ export function DeviceBreakdownChart({ days = 30 }: DeviceBreakdownChartProps) {
       transition={{ duration: 0.4, ease: "easeOut" }}
     >
       <Card>
-        <h3 className="text-sm font-medium text-foreground">Cihaz Dağılımı</h3>
+        <h2 className="text-sm font-medium text-foreground">Cihaz Dağılımı</h2>
         <p className="text-xs text-foreground/60">Son {days} gün · ziyaretçi cihaz türü</p>
 
         {error ? (
@@ -70,13 +70,13 @@ export function DeviceBreakdownChart({ days = 30 }: DeviceBreakdownChartProps) {
             {error}
           </Alert>
         ) : devices === null ? (
-          <div className="flex h-64 items-center justify-center">
+          <div className="flex h-72 items-center justify-center">
             <Spinner className="h-6 w-6 text-primary" />
           </div>
         ) : total === 0 ? (
           <EmptyState icon={PieChartIcon} title="Henüz veri yok" className="mt-4 border-none p-6" />
         ) : (
-          <div className="mt-4 h-64 w-full">
+          <div className="mt-4 h-72 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie

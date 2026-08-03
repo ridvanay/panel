@@ -16,7 +16,7 @@ interface ContentListTabsProps {
 export function ContentListTabs({ value, onValueChange, counts }: ContentListTabsProps) {
   return (
     <Tabs value={value} onValueChange={(v) => onValueChange(v as ContentListFilter)}>
-      <TabsList variant="line">
+      <TabsList variant="line" className="flex-nowrap overflow-x-auto">
         <TabsTrigger value="all">
           Tümü <span className="ml-1 tabular-nums text-foreground/70">({counts.all})</span>
         </TabsTrigger>

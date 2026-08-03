@@ -55,7 +55,7 @@ export function ContentListBulkBar({
           aria-label="Toplu işlem seç"
           value={action}
           onChange={(e) => onActionChange(e.target.value as BulkSelectAction)}
-          className="w-40"
+          className="w-full sm:w-40"
         >
           {options.map((opt) => (
             <option key={opt.value} value={opt.value}>

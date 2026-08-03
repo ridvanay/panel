@@ -53,7 +53,7 @@ export function CountryBreakdownList({ days = 30 }: CountryBreakdownListProps) {
     >
       <Card>
         <div className="flex items-center gap-1.5">
-          <h3 className="text-sm font-medium text-foreground">Ülke Trafiği</h3>
+          <h2 className="text-sm font-medium text-foreground">Ülke Trafiği</h2>
           {hasUnknown && (
             <Tooltip>
               <TooltipTrigger

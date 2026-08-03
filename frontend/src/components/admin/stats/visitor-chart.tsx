@@ -50,7 +50,7 @@ export function VisitorChart({ days = 30 }: VisitorChartProps) {
       transition={{ duration: 0.4, ease: "easeOut" }}
     >
       <Card>
-        <h3 className="text-sm font-medium text-foreground">Görüntülenme trendi</h3>
+        <h2 className="text-sm font-medium text-foreground">Görüntülenme trendi</h2>
         <p className="text-xs text-foreground/60">Son {days} gün · sayfa ve blog görüntülenmeleri</p>
 
         {error ? (

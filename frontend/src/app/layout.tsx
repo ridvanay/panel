@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Providers } from "./providers";
+import { SITE_URL } from "@/lib/env";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -14,6 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  // Relative OG image/canonical URL'lerinin doğru mutlak URL'e çözümlenmesi için gerekli.
+  metadataBase: new URL(SITE_URL),
   title: {
     default: "SaaS Platform",
     template: "%s · SaaS Platform",

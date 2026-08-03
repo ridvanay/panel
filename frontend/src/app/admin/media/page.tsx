@@ -302,6 +302,7 @@ export default function AdminMediaPage() {
               type="file"
               accept="image/*"
               multiple
+              aria-label="Bilgisayardan görsel yükle"
               className="hidden"
               onChange={handleFileChange}
             />

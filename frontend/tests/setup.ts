@@ -1,4 +1,22 @@
 import "@testing-library/jest-dom/vitest";
+import { expect } from "vitest";
+import { toHaveNoViolations } from "jest-axe";
+
+// jest-axe'in `toHaveNoViolations` matcher'ını global `expect`'e ekler — a11y denetim testleri
+// (bkz. tests/unit/a11y-*.test.tsx) `expect(results).toHaveNoViolations()` şeklinde kullanır.
+expect.extend(toHaveNoViolations);
+
+// jsdom `ResizeObserver`'ı implemente etmez; recharts'ın `ResponsiveContainer`'ı (bkz.
+// visitor-chart.tsx/activity-bar-chart.tsx/device-breakdown-chart.tsx) mount olurken bunu
+// kullanır — polyfill olmadan "ResizeObserver is not defined" ile patlar.
+if (typeof globalThis.ResizeObserver === "undefined") {
+  class ResizeObserverPolyfill {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+  globalThis.ResizeObserver = ResizeObserverPolyfill as unknown as typeof ResizeObserver;
+}
 
 // jsdom, `Range`/`Element` için `getClientRects`/`getBoundingClientRect` implemente etmez.
 // TipTap/ProseMirror tabanlı editörler `.focus()` çağrısında görünürlük hesaplamak için bunu

@@ -57,7 +57,14 @@ function GalleryImageRow({
         <Button type="button" variant="secondary" size="sm" loading={uploading} onClick={() => fileInputRef.current?.click()}>
           Yükle
         </Button>
-        <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          aria-label="Bilgisayardan görsel yükle"
+          className="hidden"
+          onChange={handleFileChange}
+        />
         <Button type="button" variant="ghost" size="sm" onClick={onRemove}>
           Kaldır
         </Button>

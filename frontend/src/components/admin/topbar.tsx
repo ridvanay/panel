@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/auth-context";
 import { useAdminLocale, useT } from "@/context/i18n-context";
 import { useCommandPalette } from "@/context/command-palette-context";
+import { cn } from "@/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { SidebarTrigger } from "@/components/ui/sidebar";
@@ -56,6 +57,7 @@ function AdminLocaleSwitcher() {
 export function AdminTopbar() {
   const { user, logout } = useAuth();
   const { setOpen } = useCommandPalette();
+  const { adminLocale, setAdminLocale } = useAdminLocale();
   const router = useRouter();
   if (!user) return null;
 
@@ -63,6 +65,16 @@ export function AdminTopbar() {
     <header className="sticky top-0 z-10 flex items-center justify-between border-b border-border/60 bg-surface/80 px-4 py-3 shadow-sm backdrop-blur-xl">
       <div className="flex items-center gap-3">
         <SidebarTrigger />
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="md:hidden"
+          aria-label="Ara"
+          onClick={() => setOpen(true)}
+        >
+          <Search className="h-4 w-4" />
+        </Button>
         <button
           type="button"
           aria-label="Komut menüsünü aç"
@@ -78,9 +90,11 @@ export function AdminTopbar() {
       </div>
 
       <div className="flex items-center gap-3">
-        <AdminLocaleSwitcher />
+        <div className="hidden items-center gap-3 sm:flex">
+          <AdminLocaleSwitcher />
+          <AccentColorPicker />
+        </div>
         <ThemeToggle />
-        <AccentColorPicker />
         <NotificationCenter />
         <DropdownMenu>
           <DropdownMenuTrigger
@@ -96,6 +110,28 @@ export function AdminTopbar() {
             <span className="hidden text-sm text-foreground/80 sm:inline">{user.name}</span>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            <div className="flex items-center justify-between gap-2 px-1.5 py-1 sm:hidden">
+              <div className="flex items-center gap-1" role="group" aria-label="Dil">
+                {LOCALE_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setAdminLocale(option.value)}
+                    aria-pressed={option.value === adminLocale}
+                    className={cn(
+                      "rounded-md px-1.5 py-1 text-xs transition-colors",
+                      option.value === adminLocale
+                        ? "bg-accent font-medium text-accent-foreground"
+                        : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                    )}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              <AccentColorPicker />
+            </div>
+            <DropdownMenuSeparator className="sm:hidden" />
             <DropdownMenuItem onClick={() => router.push("/admin/account")}>
               <User className="h-4 w-4" />
               Hesabım
