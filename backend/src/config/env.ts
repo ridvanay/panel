@@ -10,6 +10,28 @@ const EnvSchema = z.object({
 
   DATABASE_URL: z.string().min(1, "DATABASE_URL zorunlu."),
 
+  // Fastify'ın `trustProxy` ayarı — `X-Forwarded-*` header'larının (özellikle `request.ip`,
+  // rate-limit'in IP bazlı sayaçları ve audit log'daki `ipAddress`) hangi koşulda güvenilir
+  // sayılacağını belirler. Önünde GERÇEK bir reverse-proxy (nginx/ALB/Cloudflare) yoksa bu
+  // AÇIK bırakılmamalı — aksi halde istemci, sahte `X-Forwarded-For` header'ıyla IP'sini
+  // (dolayısıyla rate-limit/audit log kayıtlarını) taklit edebilir. Varsayılan güvenli değer:
+  // "false" (header'lara hiç güvenme, doğrudan soket IP'sini kullan). Kabul edilen değerler:
+  //   - boş / "false" → trustProxy: false
+  //   - "true"        → trustProxy: true (TÜM proxy header'larına güvenilir — sadece bilinen,
+  //                      güvenilir bir tek-proxy önünde çalışıyorsanız kullanın)
+  //   - IP/CIDR veya virgülle ayrılmış liste (örn. "10.0.0.0/8,172.16.0.0/12") → Fastify'a
+  //     olduğu gibi iletilir, sadece o adres(ler)den gelen `X-Forwarded-*` güvenilir sayılır.
+  TRUST_PROXY: z
+    .string()
+    .optional()
+    .default("false")
+    .transform((value): boolean | string => {
+      const trimmed = value.trim();
+      if (trimmed === "" || trimmed.toLowerCase() === "false") return false;
+      if (trimmed.toLowerCase() === "true") return true;
+      return trimmed;
+    }),
+
   JWT_PRIVATE_KEY_BASE64: z.string().optional(),
   JWT_PUBLIC_KEY_BASE64: z.string().optional(),
   ACCESS_TOKEN_TTL_MIN: z.coerce.number().int().positive().default(15),
@@ -46,6 +68,35 @@ const EnvSchema = z.object({
   // §10.4 Güvenlik & 2FA — TOTP secret şifrelemesi için AES-256-GCM anahtarı (32 byte, base64).
   // bkz. lib/crypto.ts::encryptSecret/decryptSecret.
   ENCRYPTION_KEY: z.string().min(1, "ENCRYPTION_KEY zorunlu."),
+
+  // E-posta gönderimi (SMTP) — bkz. lib/mail.ts. Sağlayıcı koda gömülmez: Mailtrap/SendGrid
+  // SMTP/Resend SMTP/kurumsal SMTP hepsi aynı SMTP_HOST/PORT/USER/PASS arayüzüyle çalışır.
+  // SMTP_HOST boş bırakılırsa: NODE_ENV=development'ta lib/mail.ts otomatik bir Ethereal
+  // (ethereal.email) test hesabı oluşturur — hiçbir kurulum gerekmez. NODE_ENV=test veya
+  // production'da SMTP_HOST eksikse gönderim denendiğinde sendMail() anlamlı bir hata fırlatır
+  // (EmailDeliveryError) — zorunlu tutulmaz ki DB migration/health gibi mail'e ihtiyaç duymayan
+  // komutlar SMTP kurulmadan da çalışabilsin.
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number().int().positive().default(587),
+  // "true"/"false" string'i olarak okunur — z.coerce.boolean() boş olmayan HER string'i (örn.
+  // "false") true'ya çevirdiği için burada kasıtlı olarak kullanılmadı.
+  SMTP_SECURE: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  // Gönderen adı + adresi, örn. "Şirket Adı <no-reply@example.com>".
+  SMTP_FROM: z.string().default("No-Reply <no-reply@example.com>"),
+
+  // Hata takibi (Sentry veya uyumlu bir self-hosted alternatif — GlitchTip vb. aynı DSN
+  // formatını kullanır). Tanımsız/boş bırakılırsa Sentry HİÇ init edilmez (varsayılan KAPALI,
+  // no-op) — bkz. lib/sentry.ts. Sadece error-handler.ts'teki son catch-all (beklenmedik 500)
+  // dalı bu SDK'yı kullanır; bilinen/ele alınmış hatalar (ApiError, ZodError, 429 vb.) hiç
+  // gönderilmez.
+  SENTRY_DSN: z.string().optional(),
+  SENTRY_ENVIRONMENT: z.string().optional(),
+  SENTRY_TRACES_SAMPLE_RATE: z.coerce.number().min(0).max(1).default(0),
 });
 
 const parsed = EnvSchema.safeParse(process.env);
