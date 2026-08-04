@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import * as Sentry from "@sentry/nextjs";
 import * as authApi from "@/lib/api/auth";
 import { clearAccessToken, getAccessToken } from "@/lib/api/token-store";
 import type { AuthSession, LoginRequest, RegisterRequest, User } from "@/lib/api/types";
@@ -36,10 +37,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(session.user);
       setMemberships(session.memberships);
       setStatus("authenticated");
+      // Sentry hata event'lerini "hangi kullanıcı" sorusuna bağlamak için — SADECE id
+      // (PII olmadan, bkz. proje kökü CLAUDE.md § Kurallar); email/isim ASLA gönderilmez.
+      Sentry.setUser({ id: session.user.id });
     } catch {
       setUser(null);
       setMemberships([]);
       setStatus("unauthenticated");
+      Sentry.setUser(null);
     }
   }, []);
 
@@ -103,6 +108,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(null);
       setMemberships([]);
       setStatus("unauthenticated");
+      Sentry.setUser(null);
     }
   }, []);
 
