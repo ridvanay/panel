@@ -1,0 +1,134 @@
+name: CD - Deploy
+
+# Production deploy'u SADECE:
+#   1) `master`/`release` branch'ine bir push (branch protection sayesinde bu her zaman
+#      onaylanmış bir PR merge'ünün sonucudur) VEYA `v*.*.*` formatında bir tag push'u ile,
+#   2) VE GitHub Environment "production" için Settings → Environments'ta tanımlı
+#      "required reviewers" (manuel onay) adımından SONRA gerçekleşir — bkz. INFRA.md.
+#
+# NOT (devops-agent): Bu workflow, gerçek bulut/hosting hedefi (K8s/ECS/Fly.io/VM+SSH vb.)
+# henüz architect tarafından karara bağlanmadığı için bir İSKELET/ŞABLONDUR. "deploy" job'ındaki
+# adım placeholder'dır; gerçek platform seçildiğinde doldurulmalıdır. Migration, image build ve
+# onay/branch kısıtlaması KISIMLARI ÜRETİME HAZIRDIR.
+on:
+  push:
+    branches: [master, release]
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Deploy hedefi"
+        required: true
+        default: production
+        type: choice
+        options: [staging, production]
+
+concurrency:
+  group: deploy-${{ github.event.inputs.environment || 'production' }}
+  cancel-in-progress: false
+
+jobs:
+  # 1) Aynı lint → typecheck → test → build zincirini (ci.yml) yeniden çalıştırır.
+  #    Branch protection her zaman devrede olmayabilir/yanlış yapılandırılabilir — deploy
+  #    pipeline'ı hiçbir zaman doğrulanmamış koda güvenmemeli.
+  ci:
+    name: Pre-deploy verification (CI)
+    uses: ./.github/workflows/ci.yml
+
+  # 2) Veritabanı migration'ları — KOD DEPLOY'UNDAN ÖNCE, db-agent'ın prisma/migrations/
+  #    altındaki dosyaları üzerinden. Rule: "Veritabanı migration'ları deploy pipeline'ında
+  #    db-agent'ın tanımladığı migration dosyaları üzerinden, kod deploy'undan önce çalıştırılır."
+  migrate:
+    name: Run database migrations
+    needs: ci
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'production' }}
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prisma generate
+        run: npx prisma generate
+
+      - name: Prisma migrate deploy
+        run: npx prisma migrate deploy
+        env:
+          # GitHub Environment secret'ı — repo Settings → Environments → production/staging →
+          # Environment secrets → DATABASE_URL. ASLA workflow dosyasına açık yazılmaz.
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+  # 3) Docker image'larını build edip registry'ye push eder (immutable tag: git SHA).
+  build-and-push:
+    name: Build & push images
+    needs: migrate
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'production' }}
+    strategy:
+      matrix:
+        service: [backend, frontend]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.REGISTRY_URL }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: Build & push
+        uses: docker/build-push-action@v6
+        with:
+          context: ./${{ matrix.service }}
+          push: true
+          build-args: |
+            NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}
+            NEXT_PUBLIC_SITE_URL=${{ secrets.NEXT_PUBLIC_SITE_URL }}
+          tags: |
+            ${{ secrets.REGISTRY_URL }}/${{ matrix.service }}:${{ github.sha }}
+            ${{ secrets.REGISTRY_URL }}/${{ matrix.service }}:latest
+
+  # 4) Zero-downtime rollout. HEDEF PLATFORM SEÇİLDİĞİNDE bu adım doldurulmalı — örnekler:
+  #      - Kubernetes: `kubectl set image deploy/backend backend=$IMAGE:$SHA && kubectl rollout status ...`
+  #      - AWS ECS: `aws ecs update-service --force-new-deployment` (rolling, health check destekli)
+  #      - Docker Swarm: `docker service update --image $IMAGE:$SHA --update-order start-first backend`
+  #      - Basit VM + docker compose: SSH ile yeni image'ı çek, `docker compose up -d --no-deps backend`
+  #        (health check yeşil olana kadar eski container ayakta kalır — "start-first" mantığı)
+  #    Hepsinde ortak nokta: her iki servisin de container HEALTHCHECK'i (bkz. Dockerfile'lar,
+  #    /api/v1/healthz ve /api/health) yeşil olmadan trafik yeni sürüme yönlendirilmez.
+  deploy:
+    name: Rolling deploy
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'production' }}
+    steps:
+      - name: Deploy (placeholder)
+        run: |
+          echo "TODO(architect/devops-agent): hedef platform seçildiğinde bu adımı doldurun."
+          echo "Image tag: ${{ github.sha }}"
+          echo "Rollback planı için bkz. INFRA.md#rollback — bir sorun halinde bir önceki"
+          echo "başarılı SHA/tag ile bu workflow workflow_dispatch üzerinden yeniden tetiklenebilir"
+          echo "ya da platforma özel 'rollback' komutu (kubectl rollout undo / ecs deploy önceki task-def / docker service rollback) çalıştırılır."
+
+      - name: Kritik hata durumunda bilgilendirme (placeholder)
+        if: failure()
+        run: |
+          echo "TODO: Bu adım başarısız olursa architect'e (Slack/e-posta webhook) otomatik bildirim gönderin."
+          echo "Kural: 'Kritik bir deploy hatası/rollback durumunda architect'i bilgilendir.'"

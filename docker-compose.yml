@@ -1,0 +1,90 @@
+# Kök docker-compose.yml — tam yığın (DB + backend + frontend) lokal geliştirme/entegrasyon
+# ortamı. Sadece veritabanına ihtiyaç duyan backend geliştirmesi için `backend/docker-compose.yml`
+# (db-only) kullanmaya devam edebilirsiniz — bu dosya ikisini birbirinin yerine geçmez, ek bir
+# "her şey bir arada" seçenektir. Servisler arasında zero-downtime/rolling deploy stratejisi
+# için bkz. INFRA.md.
+#
+# Kullanım:
+#   docker compose up --build
+#   Backend:  http://localhost:4000/api/v1  (healthcheck: /api/v1/healthz)
+#   Frontend: http://localhost:3000          (healthcheck: /api/health)
+#
+# NOT: backend servisi `backend/.env` dosyasını `env_file` ile okur — bu dosya repoya girmez
+# (.gitignore), her geliştirici kendi `.env.example`'ından türetir.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: saas_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - saas_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d saas_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    environment:
+      # docker-compose ağında Postgres servisi "db" host adıyla erişilir — .env'deki
+      # DATABASE_URL genelde localhost'a işaret eder, burada override edilir.
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/saas_dev?schema=public
+      PORT: 4000
+      # env_file (.env) NODE_ENV=development taşıyor ve env_file, environment'tan ÖNCE
+      # işlense de compose bu bloktaki değeri üstün tutar — Dockerfile'daki
+      # `ENV NODE_ENV=production`'ın .env tarafından ezilmemesi için burada da açıkça set edilir
+      # (aksi halde production'a özgü zorunlu kontroller — bkz. src/lib/keys.ts JWT anahtarı,
+      # SMTP zorunluluğu — devre dışı kalır ve her restart'ta geçici JWT anahtarı üretilir).
+      NODE_ENV: production
+    ports:
+      - "4000:4000"
+    volumes:
+      # Yerel medya deposu (STORAGE_DRIVER=local) container yeniden oluşturulduğunda kaybolmasın.
+      - saas_uploads:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:4000/api/v1/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 5
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Tarayıcı doğrudan host'taki 4000 portuna erişir (backend container'ının iç ağ adı
+        # "backend" tarayıcıdan çözülemez) — bu yüzden localhost, docker network adı değil.
+        NEXT_PUBLIC_API_URL: http://localhost:4000/api/v1
+        NEXT_PUBLIC_SITE_URL: http://localhost:3000
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 5
+
+volumes:
+  saas_pgdata:
+  saas_uploads:
