@@ -8,3 +8,12 @@
  * `users.routes.ts` (`POST /me/change-password`).
  */
 export const SENSITIVE_ACTION_RATE_LIMIT = { max: 5, timeWindow: "1 minute" };
+
+/**
+ * `/uploads/*` (bkz. plugins/uploads.ts) — auth GEREKTİRMEYEN, herkese açık statik medya
+ * servisi. `env.RATE_LIMIT_MAX`'tan (300/dk, admin panel navigasyonu için gevşetildi) daha
+ * sıkı bir üst sınır: kimliksiz bir istemci global limitin tamamını tek başına (scraping/
+ * kaba-kuvvet dosya keşfi/bant genişliği tüketimi amacıyla) harcayabilir. 60/dk normal bir
+ * sayfa yüklemesini (birkaç görsel) rahatça karşılarken otomatize kötüye kullanımı sınırlar.
+ */
+export const UPLOADS_RATE_LIMIT = { max: 60, timeWindow: "1 minute" };
