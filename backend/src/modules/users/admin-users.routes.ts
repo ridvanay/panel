@@ -13,6 +13,7 @@ import { ConflictError, NotFoundError } from "../../lib/errors";
 import { parseCursor, buildPageMeta } from "../../lib/pagination";
 import { hashPassword } from "../../lib/password";
 import { createPasswordResetToken } from "../auth/auth.service";
+import { sendPasswordResetEmail } from "../email-templates/email-templates.service";
 import { logAudit } from "../../lib/audit";
 import { env } from "../../config/env";
 import {
@@ -24,7 +25,7 @@ import {
 
 const CreateAdminUserResponseSchema = z.object({
   user: AdminUserSchema,
-  setPasswordUrl: z.string(),
+  emailStatus: z.enum(["sent", "failed"]),
 });
 
 /**
@@ -110,10 +111,22 @@ export async function adminUsersRoutes(app: FastifyInstance) {
       });
 
       const rawToken = await createPasswordResetToken(app, user.id);
-      // MVP/dev-only seçim: gerçek bir e-posta sağlayıcısı entegre edilene kadar
-      // (bkz. auth.service.ts::forgotPassword TODO) bağlantı response'ta döner ve loglanır.
       const setPasswordUrl = `${env.FRONTEND_URL}/reset-password?token=${rawToken}`;
-      app.log.info({ setPasswordUrl }, "Yeni admin kullanıcı — şifre belirleme bağlantısı (dev-log)");
+
+      // Şifre belirleme bağlantısı ARTIK ne response'ta ne de log'da düz metin dönmez (bkz.
+      // security-agent kararı — token sızıntısı temizliği). E-posta gönderimi best-effort'tur:
+      // başarısız olursa kullanıcı kaydı GERİ ALINMAZ (admin panelde zaten oluşturulmuş
+      // görünür) — admin'e "giriş ekranından 'şifremi unuttum' ile devam edin" denilebilir,
+      // bu mevcut `POST /auth/forgot-password` akışını kullanır (ayrı bir "resend" ucu
+      // GEREKMEZ, bkz. görev notları).
+      let emailStatus: "sent" | "failed";
+      try {
+        await sendPasswordResetEmail(app, { email: user.email, name: user.name }, setPasswordUrl);
+        emailStatus = "sent";
+      } catch (err) {
+        app.log.error({ err, userId: user.id }, "Yeni kullanıcı için şifre belirleme e-postası gönderilemedi");
+        emailStatus = "failed";
+      }
 
       await logAudit(app, {
         actorId: request.user!.id,
@@ -125,7 +138,7 @@ export async function adminUsersRoutes(app: FastifyInstance) {
         ipAddress: request.ip,
       });
 
-      return reply.code(201).send(ok({ user: toAdminUserDto(user), setPasswordUrl }));
+      return reply.code(201).send(ok({ user: toAdminUserDto(user), emailStatus }));
     }
   );
 

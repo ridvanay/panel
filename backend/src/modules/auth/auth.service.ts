@@ -6,6 +6,7 @@ import { signAccessToken, signChallengeToken } from "../../lib/jwt";
 import { ConflictError, UnauthorizedError, NotFoundError, ForbiddenError } from "../../lib/errors";
 import { toUserDto } from "../../mappers";
 import { env } from "../../config/env";
+import { sendPasswordResetEmail, sendWelcomeEmail } from "../email-templates/email-templates.service";
 
 interface RequestMeta {
   userAgent?: string;
@@ -62,6 +63,18 @@ export async function register(
   });
 
   const tokens = await issueTokenPair(app, user, meta);
+
+  // Karşılama maili best-effort'tur: gönderim başarısız olsa bile kayıt işlemi geri alınmaz/
+  // engellenmez (kullanıcı zaten hesabına giriş yapabilir durumda) — sadece loglanır. Bu,
+  // `forgotPassword`'un aksine kritik bir güvenlik akışı değil, ek bir bildirimdir. `await` ile
+  // tamamlanmasını bekliyoruz (fire-and-forget yerine) ki testlerde/hata takibinde deterministik
+  // olsun; ama hatayı yutup register()'ı asla başarısız kılmıyoruz.
+  try {
+    await sendWelcomeEmail(app, { email: user.email, name: user.name });
+  } catch (err) {
+    app.log.error({ err, userId: user.id }, "Karşılama e-postası gönderilemedi");
+  }
+
   return { user, tokens };
 }
 
@@ -194,15 +207,17 @@ export async function createPasswordResetToken(app: FastifyInstance, userId: str
 export async function forgotPassword(app: FastifyInstance, email: string) {
   const user = await app.prisma.user.findUnique({ where: { email: email.toLowerCase() } });
   // Kullanıcı yoksa sessizce çık — e-posta enumeration'ı önlemek için route her zaman 202 döner.
+  // (Bu davranış SADECE "kullanıcı yok" durumu için geçerli — aşağıda "kullanıcı var ama gönderim
+  // başarısız oldu" durumunda hatayı BİLEREK yutmuyoruz, bkz. sendPasswordResetEmail çağrısı.)
   if (!user) return;
 
   const rawToken = await createPasswordResetToken(app, user.id);
+  const resetUrl = `${env.FRONTEND_URL}/reset-password?token=${rawToken}`;
 
-  // TODO(email-provider): Resend/SES entegre edilene kadar bağlantı sadece loglanır.
-  app.log.info(
-    { resetUrl: `${env.FRONTEND_URL}/reset-password?token=${rawToken}` },
-    "Şifre sıfırlama bağlantısı (e-posta sağlayıcısı bağlanana kadar dev-log)"
-  );
+  // Gerçek SMTP hatası (kullanıcı var, gönderim başarısız) burada YUTULMAZ — sendMail() zaten
+  // app.log.error ile stack + hedef adresi (asla token/şifre) loglar ve EmailDeliveryError (502)
+  // fırlatır; bu hata route'a kadar yükselip anlamlı bir hata olarak döner (bkz. lib/errors.ts).
+  await sendPasswordResetEmail(app, { email: user.email, name: user.name }, resetUrl);
 }
 
 export async function resetPassword(app: FastifyInstance, rawToken: string, newPassword: string) {

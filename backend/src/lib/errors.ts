@@ -6,6 +6,7 @@ export type ApiErrorCode =
   | "CONFLICT"
   | "RATE_LIMITED"
   | "PAYLOAD_TOO_LARGE"
+  | "EMAIL_DELIVERY_FAILED"
   | "INTERNAL_ERROR";
 
 export class ApiError extends Error {
@@ -55,5 +56,18 @@ export class ValidationError extends ApiError {
 export class PayloadTooLargeError extends ApiError {
   constructor(message = "İstek gövdesi çok büyük.", details?: Record<string, string[]>) {
     super(413, "PAYLOAD_TOO_LARGE", message, details);
+  }
+}
+
+/**
+ * SMTP gönderimi (bkz. lib/mail.ts::sendMail) başarısız olduğunda fırlatılır — 502 (Bad Gateway):
+ * istemcinin isteği geçersiz değil, bizim upstream bağımlılığımız (SMTP sağlayıcısı) başarısız oldu.
+ * `forgotPassword` gibi akışlarda kullanıcı bulunamadığında hâlâ sessizce 202 dönülür (e-posta
+ * enumeration koruması bozulmaz) — bu hata SADECE kullanıcı var ama gerçek gönderim başarısız
+ * olduğunda fırlatılır, böylece backend hatayı sessizce yutmaz.
+ */
+export class EmailDeliveryError extends ApiError {
+  constructor(message = "E-posta gönderilemedi.") {
+    super(502, "EMAIL_DELIVERY_FAILED", message);
   }
 }

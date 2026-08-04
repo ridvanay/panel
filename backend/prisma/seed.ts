@@ -70,6 +70,22 @@ async function main() {
       availableVariables: ["user_name", "announcement_title", "announcement_body"],
     },
   });
+
+  // Organizasyon daveti — bkz. modules/invitations/invitations.routes.ts::orgInvitationsRoutes.
+  // Ham davet bağlantısı artık ne response'ta ne de log'da düz metin dönmez (bkz. security-agent
+  // kararı — token sızıntısı temizliği); bunun yerine bu şablon üzerinden gerçekten gönderilir.
+  await prisma.emailTemplate.upsert({
+    where: { key: "ORG_INVITATION" },
+    update: {},
+    create: {
+      key: "ORG_INVITATION",
+      name: "Organizasyon Daveti",
+      subject: "{{inviter_name}} seni {{organization_name}} organizasyonuna davet etti",
+      bodyHtml:
+        "<p>Merhaba,</p><p>{{inviter_name}}, seni <strong>{{organization_name}}</strong> organizasyonuna davet etti. Daveti kabul etmek için aşağıdaki bağlantıya tıkla:</p><p><a href=\"{{accept_url}}\">Daveti Kabul Et</a></p><p>Bu daveti sen talep etmediysen bu e-postayı yok sayabilirsin.</p>",
+      availableVariables: ["inviter_name", "organization_name", "accept_url"],
+    },
+  });
 }
 
 main()

@@ -7,9 +7,10 @@ import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema, OrgIdParamSchema } from "../../schemas/common";
 import { InvitationSchema, MembershipSchema } from "../../schemas/entities";
 import { toInvitationDto, toMembershipDto } from "../../mappers";
-import { ApiError, ConflictError, ForbiddenError } from "../../lib/errors";
+import { ApiError, ConflictError, ForbiddenError, NotFoundError } from "../../lib/errors";
 import { generateOpaqueToken, hashToken } from "../../lib/tokens";
 import { env } from "../../config/env";
+import { sendTemplateEmail } from "../email-templates/email-templates.service";
 import { CreateInvitationRequestSchema, InvitationTokenParamSchema } from "./invitations.schemas";
 
 const USER_SELECT = { id: true, name: true, email: true, avatarUrl: true } as const;
@@ -70,11 +71,26 @@ export async function orgInvitationsRoutes(app: FastifyInstance) {
         },
       });
 
-      // TODO(email-provider): Resend/SES bağlanana kadar davet bağlantısı loglanır.
-      app.log.info(
-        { acceptUrl: `${env.FRONTEND_URL}/invitations/${rawToken}/accept` },
-        "Organizasyon daveti (dev-log)"
-      );
+      // Ham davet bağlantısı ARTIK ne response'ta ne de log'da düz metin dönmez (bkz.
+      // security-agent kararı — token sızıntısı temizliği). Gönderim best-effort'tur: başarısız
+      // olursa davet DB'de PENDING olarak kalır (bkz. GET /organizations/:orgId/invitations),
+      // isteği BAŞARISIZ KILMAZ — ayrı bir "resend" ucu bu turun kapsamında GEREKMEZ.
+      const acceptUrl = `${env.FRONTEND_URL}/invitations/${rawToken}/accept`;
+      const [organization, inviter] = await Promise.all([
+        app.prisma.organization.findUnique({ where: { id: organizationId }, select: { name: true } }),
+        app.prisma.user.findUnique({ where: { id: request.user!.id }, select: { name: true } }),
+      ]);
+      if (!organization) throw new NotFoundError("Organizasyon bulunamadı.");
+
+      try {
+        await sendTemplateEmail(app, "ORG_INVITATION", email, {
+          inviter_name: inviter?.name ?? request.user!.email,
+          organization_name: organization.name,
+          accept_url: acceptUrl,
+        });
+      } catch (err) {
+        app.log.error({ err, invitationId: invitation.id }, "Organizasyon daveti e-postası gönderilemedi");
+      }
 
       return reply.code(201).send(ok(toInvitationDto(invitation)));
     }
