@@ -1,7 +1,8 @@
 import fp from "fastify-plugin";
-import type { FastifyInstance, FastifyError } from "fastify";
+import type { FastifyInstance, FastifyError, FastifyRequest } from "fastify";
 import { Prisma } from "@prisma/client";
 import { ApiError, ApiErrorCode } from "../lib/errors";
+import { Sentry, sentryEnabled } from "../lib/sentry";
 
 interface ZodLikeIssue {
   path: (string | number)[];
@@ -23,6 +24,33 @@ function flattenZodIssues(issues: ZodLikeIssue[]): Record<string, string[]> {
 
 function sendError(reply: import("fastify").FastifyReply, statusCode: number, code: ApiErrorCode, message: string, details?: Record<string, string[]>) {
   return reply.code(statusCode).send({ error: { code, message, ...(details ? { details } : {}) } });
+}
+
+// SADECE bu dosyanın en altındaki "beklenmedik 500" catch-all dalından çağrılır — ApiError,
+// ZodError, validation, rate-limit gibi BİLİNEN/ele alınmış hatalar Sentry'ye hiç gitmez
+// (aksi halde her 4xx gürültü olarak Sentry kotasını tüketir ve gerçek regresyonları gömer).
+// PII sızıntısı olmaması için context'e SADECE user id/role, HTTP method ve route PATTERN'i
+// (query string olmadan — query string token/PII taşıyabilir) eklenir; email ASLA gönderilmez.
+function reportUnexpectedError(error: Error, request: FastifyRequest): void {
+  if (!sentryEnabled) return;
+
+  Sentry.captureException(error, {
+    // `request.id` — plugins/request-id.ts tarafından response'a da yansıtılan aynı trace id
+    // (bkz. app.ts::genReqId/requestIdHeader). Sentry event'i ile aynı isteğin backend log
+    // satırlarını (pino `reqId` alanı) eşleştirmek için `tags` altında tutulur (tags Sentry
+    // UI'da aranabilir/filtrelenebilir, `contexts`'in aksine).
+    tags: { requestId: request.id },
+    contexts: {
+      request: {
+        method: request.method,
+        // `request.routeOptions.url` route TANIMINI verir (örn. "/api/v1/organizations/:orgId"),
+        // `request.url` ise gerçek istek yolunu ham query string'iyle birlikte taşır — PII/token
+        // sızıntısını önlemek için burada bilerek route pattern'i kullanılıyor.
+        route: request.routeOptions?.url ?? request.url.split("?")[0],
+      },
+    },
+    user: request.user?.id ? { id: request.user.id, role: request.user.role } : undefined,
+  });
 }
 
 export default fp(async function errorHandlerPlugin(app: FastifyInstance) {
@@ -93,6 +121,7 @@ export default fp(async function errorHandlerPlugin(app: FastifyInstance) {
     }
 
     request.log.error(error);
+    reportUnexpectedError(error, request);
     return sendError(reply, 500, "INTERNAL_ERROR", "Beklenmeyen bir sunucu hatası oluştu.");
   });
 });
