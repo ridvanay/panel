@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { AlertCircle, Copy, UserPlus } from "lucide-react";
+import { AlertCircle, UserPlus } from "lucide-react";
 import * as usersAdminApi from "@/lib/api/users-admin";
-import type { AdminUser, SiteRole } from "@/lib/api/types";
+import type { AdminUser, CreateAdminUserResponse, SiteRole } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -26,9 +26,15 @@ interface NewUserDialogProps {
   onCreated: (user: AdminUser) => void;
 }
 
+interface CreatedUserResult {
+  user: AdminUser;
+  emailStatus: CreateAdminUserResponse["emailStatus"];
+}
+
 /**
- * "Yeni Kullanıcı Ekle" formu. Backend henüz gerçek e-posta göndermediği için
- * yanıtta gelebilecek `setPasswordUrl` (dev-only) kopyalanabilir bir link olarak gösterilir.
+ * "Yeni Kullanıcı Ekle" formu. Backend, kullanıcının e-posta adresine şifre belirleme
+ * linkini otomatik olarak gönderir; ham link artık response'ta dönmez (güvenlik).
+ * `emailStatus` alanına göre gönderim başarı/başarısız durumu kullanıcıya bildirilir.
  */
 export function NewUserDialog({ open, onOpenChange, onCreated }: NewUserDialogProps) {
   const [name, setName] = useState("");
@@ -36,14 +42,14 @@ export function NewUserDialog({ open, onOpenChange, onCreated }: NewUserDialogPr
   const [role, setRole] = useState<SiteRole>("EDITOR");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [setPasswordUrl, setSetPasswordUrl] = useState<string | null>(null);
+  const [createdResult, setCreatedResult] = useState<CreatedUserResult | null>(null);
 
   function resetForm() {
     setName("");
     setEmail("");
     setRole("EDITOR");
     setError(null);
-    setSetPasswordUrl(null);
+    setCreatedResult(null);
   }
 
   function handleOpenChange(next: boolean) {
@@ -58,22 +64,12 @@ export function NewUserDialog({ open, onOpenChange, onCreated }: NewUserDialogPr
       const result = await usersAdminApi.createAdminUser({ name, email, role });
       toast.success("Kullanıcı oluşturuldu.");
       onCreated(result.user);
-      if (result.setPasswordUrl) {
-        setSetPasswordUrl(result.setPasswordUrl);
-      } else {
-        handleOpenChange(false);
-      }
+      setCreatedResult({ user: result.user, emailStatus: result.emailStatus });
     } catch (err) {
       setError(friendlyErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
-  }
-
-  async function handleCopyLink() {
-    if (!setPasswordUrl) return;
-    await navigator.clipboard.writeText(setPasswordUrl);
-    toast.success("Link kopyalandı.");
   }
 
   return (
@@ -102,23 +98,24 @@ export function NewUserDialog({ open, onOpenChange, onCreated }: NewUserDialogPr
           </Alert>
         )}
 
-        {setPasswordUrl ? (
+        {createdResult ? (
           <div className="space-y-3">
-            <Alert variant="success">Kullanıcı başarıyla oluşturuldu.</Alert>
-            <div className="space-y-1.5">
-              <p className="text-sm font-medium text-foreground">
-                Şifre belirleme linki (geliştirme ortamı)
-              </p>
-              <div className="flex items-center gap-2">
-                <Input readOnly value={setPasswordUrl} className="text-xs" />
-                <Button type="button" variant="outline" size="icon" onClick={handleCopyLink} aria-label="Linki kopyala">
-                  <Copy />
-                </Button>
-              </div>
-              <p className="text-xs text-foreground/60">
-                Backend henüz gerçek e-posta göndermiyor; bu linki kullanıcıyla siz paylaşın.
-              </p>
-            </div>
+            {createdResult.emailStatus === "sent" ? (
+              <Alert variant="success">
+                Kullanıcı oluşturuldu, şifre belirleme bağlantısı{" "}
+                <span className="font-medium">{createdResult.user.email}</span> adresine gönderildi.
+              </Alert>
+            ) : (
+              <Alert variant="info">
+                <span className="flex items-start gap-2">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>
+                    Kullanıcı oluşturuldu, ancak şifre belirleme e-postası gönderilemedi. Kullanıcı giriş
+                    ekranındaki &ldquo;Şifremi Unuttum&rdquo; seçeneğiyle şifresini belirleyebilir.
+                  </span>
+                </span>
+              </Alert>
+            )}
           </div>
         ) : (
           <div className="space-y-4">
@@ -151,7 +148,7 @@ export function NewUserDialog({ open, onOpenChange, onCreated }: NewUserDialogPr
         )}
 
         <DialogFooter>
-          {setPasswordUrl ? (
+          {createdResult ? (
             <Button type="button" onClick={() => handleOpenChange(false)}>
               Kapat
             </Button>

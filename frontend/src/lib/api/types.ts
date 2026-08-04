@@ -64,7 +64,7 @@ export interface CreateAdminUserRequest {
 
 export interface CreateAdminUserResponse {
   user: AdminUser;
-  setPasswordUrl?: string;
+  emailStatus: "sent" | "failed";
 }
 
 export interface UpdateUserRoleRequest {
