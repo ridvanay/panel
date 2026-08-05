@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
-import path from "node:path";
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { env } from "../../config/env";
+import { extensionForMimeType } from "../mime-detect";
 import type { MediaStorage, SaveMediaInput, SaveMediaResult } from "./types";
 
 /**
@@ -35,8 +35,10 @@ export class S3Storage implements MediaStorage {
     });
   }
 
-  async save({ buffer, filename, mimeType }: SaveMediaInput): Promise<SaveMediaResult> {
-    const ext = path.extname(filename);
+  async save({ buffer, mimeType }: SaveMediaInput): Promise<SaveMediaResult> {
+    // GÜVENLİK: key uzantısı orijinal dosya adından DEĞİL, doğrulanmış `mimeType`'tan türetilir
+    // (bkz. local.storage.ts'teki aynı gerekçe / lib/mime-detect.ts::extensionForMimeType).
+    const ext = extensionForMimeType(mimeType);
     const key = `${crypto.randomUUID()}${ext}`;
 
     await this.client.send(

@@ -103,8 +103,8 @@ export default function AccountPage() {
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
           <Card className="space-y-4">
             <div>
-              <h2 className="text-sm font-semibold text-foreground">Profil</h2>
-              <p className="mt-1 text-sm text-foreground/60">Ad soyadınızı ve hesap bilgilerinizi görüntüleyin.</p>
+              <h2 className="admin-h2">Profil</h2>
+              <p className="mt-1 admin-text-secondary">Ad soyadınızı ve hesap bilgilerinizi görüntüleyin.</p>
             </div>
 
             {profileError && (
@@ -146,8 +146,8 @@ export default function AccountPage() {
         >
           <Card className="space-y-4">
             <div>
-              <h2 className="text-sm font-semibold text-foreground">Avatar</h2>
-              <p className="mt-1 text-sm text-foreground/60">Profilinizde görünecek görseli değiştirin.</p>
+              <h2 className="admin-h2">Avatar</h2>
+              <p className="mt-1 admin-text-secondary">Profilinizde görünecek görseli değiştirin.</p>
             </div>
 
             <ImageUploadField
@@ -172,8 +172,8 @@ export default function AccountPage() {
       >
         <Card className="space-y-4">
           <div>
-            <h2 className="text-sm font-semibold text-foreground">Şifre</h2>
-            <p className="mt-1 text-sm text-foreground/60">
+            <h2 className="admin-h2">Şifre</h2>
+            <p className="mt-1 admin-text-secondary">
               Şifrenizi değiştirdiğinizde bu cihaz hariç diğer tüm oturumlarınız kapatılır.
             </p>
           </div>

@@ -22,8 +22,8 @@ export function PageHeading({ icon: Icon, title, description, actions, className
           <Icon className="h-5 w-5" />
         </span>
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">{title}</h1>
-          {description && <p className="mt-1 text-sm text-foreground/60">{description}</p>}
+          <h1 className="admin-h1">{title}</h1>
+          {description && <p className="mt-1 admin-text-secondary">{description}</p>}
         </div>
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}

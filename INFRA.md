@@ -39,6 +39,73 @@ orkestrasyon/container health check için **kullanılmaz**, sadece admin panel i
 - `backend/eslint.config.mjs` — backend'de daha önce hiç lint kurulumu yoktu, CI'daki lint
   adımı için minimal bir flat config eklendi (bkz. "Bilinen sınırlamalar").
 
+## İçe aktarma dosya deposu (`storage/imports`)
+
+backend-agent, §10.8.5 Toplu İçe Aktarma özelliği için `backend/src/lib/import-storage.ts`'de
+yeni, **private** bir yerel dosya deposu ekledi (`<cwd>/storage/imports/<uuid>`,
+`STORAGE_DRIVER=local` iken). Bu, `lib/storage/*` (MediaStorage → `uploads/`, auth'suz
+`/uploads/*` ile public servis edilir) ile **karıştırılmamalıdır** — WXR/CSV kaynak dosyaları
+e-posta adresi/yayınlanmamış taslak içeriği barındırabileceği için asla public olamaz.
+
+devops-agent tarafında yapılan/kontrol edilen değişiklikler:
+
+- **`backend/.gitignore`**: `storage/imports/` zaten backend-agent tarafından eklenmiş —
+  doğrulandı, ek değişiklik gerekmedi.
+- **`backend/Dockerfile`**: runtime stage'e `uploads/` ile aynı pattern'de
+  `RUN mkdir -p /app/storage/imports && chown -R nodejs:nodejs /app/storage` eklendi. Kod
+  tarafında zaten `LocalImportStorage` constructor'ı `fs.mkdirSync(..., {recursive:true})`
+  ile dizini garanti ediyor (`ensureLocalDir()`), ama Dockerfile'da önceden oluşturmak diğer
+  storage dizinleriyle (uploads) tutarlılık sağlıyor ve doğru sahiplik/izin (nodejs kullanıcısı)
+  ilk yazmadan önce garantileniyor.
+- **Volume kararı: KASITLI OLARAK volume EKLENMEDİ** (`saas_uploads` gibi bir
+  `saas_import_storage` named volume yok, ne kök `docker-compose.yml`'de ne de production
+  hedefinde önerilir). Gerekçe:
+  - Bu dosyalar tanım gereği **geçici**dir: bir import job'ı bittiğinde (başarılı/başarısız
+    fark etmeksizin) kaynak dosya silinir (`importStorage.remove`, bkz. import-storage.ts).
+    Kalıcılığın hiçbir faydası yok — kalıcı olması gereken şey job'ın SONUCU (DB'deki
+    `ImportJob` kaydı ve oluşturulan `Post`/`Media` satırları), kaynak dosyanın kendisi değil.
+  - Container yeniden başlarsa (deploy, crash, restart) yarım kalmış importlar zaten
+    ARCHITECTURE.md §10.8'deki `onReady` recovery hook'u tarafından `FAILED` durumuna
+    çekiliyor — kullanıcı dosyayı yeniden yükleyip job'ı tekrar başlatmak zorunda kalıyor,
+    ki bu kabul edilebilir bir davranış (yarım kalmış bir import'u "kaldığı yerden devam
+    ettirmek" zaten desteklenmiyor).
+  - Volume eklemek burada sadece gereksiz operasyonel yük (yönetilecek ek bir disk/volume,
+    yedekleme kapsamına girip girmeyeceği sorusu vb.) getirir, hiçbir dayanıklılık faydası
+    sağlamaz.
+  - **Ancak**: dizin container ÇALIŞIRKEN mevcut ve yazılabilir olmalı (yukarıdaki Dockerfile
+    değişikliği bunu garanti eder) ve yeterli disk alanı olmalı — büyük bir WXR/ZIP importu
+    sırasında container'ın ephemeral (overlay fs) disk kotası dolabilir. Production hedefi
+    seçildiğinde (bkz. "CD" bölümü) hedef platformun container disk/ephemeral-storage
+    limitinin (K8s `emptyDir`/`ephemeral-storage` request-limit, ECS task disk vb.) beklenen
+    maksimum import dosyası boyutuna göre ayarlanması **architect/devops-agent**'ın
+    sorumluluğundadır — şu an bir limit tanımlı değil (backend-agent'ın import boyut
+    limitini nerede uyguladığı ayrı bir kontrol konusu, bu devops-agent görev kapsamı dışında).
+  - S3 sürücüsünde (`STORAGE_DRIVER=s3`) bu tartışma zaten geçersiz — dosya container'ın
+    dışında, S3 bucket'ında tutulur, container'ın kendisi stateless kalır.
+
+## Bağımlılık politikası — `allowScripts` (backend)
+
+backend-agent, içe aktarma özelliği için şu bağımlılıkları ekledi: `saxes`, `csv-parse`,
+`sanitize-html`, `yauzl` (+ dev: `@types/yauzl`, `@types/sanitize-html`, `yazl`,
+`@types/yazl`). `backend/package.json`'daki `allowScripts` bloğu yalnızca **native
+build/postinstall/preinstall gerektiren** paketleri (`@prisma/client`, `@prisma/engines`,
+`argon2`, `esbuild`, `prisma` — hepsi native binary indirir/derler) listeleyen bir
+allow-list'tir; listede olmayan paketlerin lifecycle script'i çalıştırmaması beklenir.
+
+Kontrol: yukarıdaki 8 paketin kendi `package.json`'ları (`node_modules/<paket>/package.json`)
+**doğrudan** incelendi — hiçbirinde `preinstall`/`install`/`postinstall` script'i YOK (sadece
+`build`/`test`/`lint` gibi paket-geliştirme script'leri var, bunlar `npm ci` sırasında
+çalışmaz). Transitif bağımlılıkları da (`xmlchars`, `pend`, `buffer-crc32`, `htmlparser2`,
+`deepmerge`, `escape-string-regexp`, `is-plain-object`, `parse-srcset`, `postcss`, `launder`)
+aynı şekilde kontrol edildi: tek istisna `is-plain-object`'in bir `prepare: "rollup -c"`
+script'i var, ancak `prepare` script'leri npm tarafından yalnızca **git kaynaklı**
+bağımlılıklarda veya paketin kendi kök dizininde (`npm install` doğrudan o pakette
+çalıştırıldığında) tetiklenir — registry'den (npm tarball) kurulan bir bağımlılık için
+`npm ci`/`npm install` sırasında ÇALIŞMAZ. Dolayısıyla:
+
+**Karar: `allowScripts`'e hiçbir ekleme yapılmadı.** Yeni bağımlılıkların hiçbiri kurulum
+sırasında script çalıştırmıyor, allow-list'in mevcut (native-only) kapsamı bozulmadı.
+
 ## Ortam değişkenleri
 
 `backend/.env.example` ve `frontend/.env.local.example` (+ `frontend/.env.local`) gerçek
@@ -68,6 +135,13 @@ Production/staging secret'ları (GitHub Environment secrets, repoya asla girmez 
   servise bağlanıp kendi `saas_test` veritabanını oluşturup migrate eder.
 - `docker-build` job'ı (matrix: backend/frontend) her iki Dockerfile'ı push ETMEDEN build eder
   — bir Dockerfile regresyonu PR'da hemen yakalanır.
+- **İçe aktarma testleri** (`backend/tests/unit/import-*.test.ts`,
+  `backend/tests/integration/import.test.ts`, `backend/tests/integration/media.test.ts`):
+  `backend/vitest.config.ts`'de özel bir `include`/`exclude` deseni YOK (varsayılan
+  `**/*.{test,spec}.*` glob'u kullanılıyor) — bu yüzden yeni test dosyaları herhangi bir CI
+  konfigürasyon değişikliği gerekmeden mevcut `npm test` (backend job'ının "Test" adımı)
+  tarafından otomatik olarak toplanıp çalıştırılıyor. **Doğrulandı, ekstra değişiklik
+  gerekmedi.**
 
 ### Branch protection (manuel — GitHub UI, sen açmalısın)
 

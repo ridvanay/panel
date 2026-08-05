@@ -67,20 +67,27 @@ export default fp(async function errorHandlerPlugin(app: FastifyInstance) {
       return sendError(reply, 422, "VALIDATION_ERROR", "Girdi doğrulama hatası.", flattenZodIssues(error.issues));
     }
 
+    // `@fastify/multipart`'ın KENDİ `fileSize` limitine özel (bkz. plugins/uploads.ts global
+    // 5MB VE modules/import/import.routes.ts route-level `request.parts({ limits: { fileSize
+    // } })` override'ı — limit route'a göre değişir, bu yüzden burada limit'e özgü bir mesaj
+    // (ör. "5MB") HARDCODE EDİLMEZ; her route kendi spesifik mesajını zaten kendi hata
+    // yakalama/kontrol mantığında verir — bkz. import.routes.ts::PayloadTooLargeError). Bu dal
+    // yalnızca son bir güvenlik ağıdır (ör. `request.file()` kullanan diğer route'lar için).
+    // `@fastify/multipart` bu hatayı orijinalde 413 statüsüyle üretir (bkz. node_modules/
+    // @fastify/multipart/index.js::RequestFileTooLargeError) — burada da 413 döndürülür.
     const fastifyErr = error as FastifyError & { retryAfterSeconds?: number };
     if (fastifyErr.code === "FST_REQ_FILE_TOO_LARGE") {
-      return sendError(reply, 422, "VALIDATION_ERROR", "Dosya çok büyük.", { file: ["En fazla 5MB yükleyebilirsiniz."] });
+      return sendError(reply, 413, "PAYLOAD_TOO_LARGE", "Yüklenen dosya bu uç için izin verilen boyut sınırını aşıyor.");
     }
 
     // Fastify core'un `bodyLimit` kontrolü — multipart parser'a hiç ulaşmadan, ham istek
-    // gövdesi (dosya + form alanları + multipart overhead) app.ts'teki `bodyLimit`'i aşınca
-    // tetiklenir. `FST_REQ_FILE_TOO_LARGE` (üstteki dal) multipart'ın KENDİ `fileSize`
-    // limitine özel; bu dal ise Fastify core seviyesindeki 413'ü yakalar — aksi halde
-    // hiçbir branch'e uymayıp anlamsız bir 500'e düşerdi.
+    // gövdesi (dosya + form alanları + multipart overhead) app.ts'teki (veya route-level
+    // override'ı varsa onun) `bodyLimit`'i aşınca tetiklenir. `FST_REQ_FILE_TOO_LARGE` (üstteki
+    // dal) multipart'ın KENDİ `fileSize` limitine özel; bu dal ise Fastify core seviyesindeki
+    // 413'ü yakalar — aksi halde hiçbir branch'e uymayıp anlamsız bir 500'e düşerdi. Limit
+    // route'a göre değiştiği için burada da spesifik bir boyut HARDCODE EDİLMEZ.
     if (fastifyErr.code === "FST_ERR_CTP_BODY_TOO_LARGE") {
-      return sendError(reply, 413, "PAYLOAD_TOO_LARGE", "İstek gövdesi çok büyük.", {
-        file: ["En fazla 5MB yükleyebilirsiniz."],
-      });
+      return sendError(reply, 413, "PAYLOAD_TOO_LARGE", "İstek gövdesi bu uç için izin verilen boyut sınırını aşıyor.");
     }
 
     if (fastifyErr.validation) {

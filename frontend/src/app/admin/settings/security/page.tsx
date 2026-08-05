@@ -235,8 +235,8 @@ export default function SecurityPage() {
         <Card className="space-y-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h2 className="text-sm font-semibold text-foreground">İki Faktörlü Doğrulama</h2>
-              <p className="mt-1 text-sm text-foreground/60">
+              <h2 className="admin-h2">İki Faktörlü Doğrulama</h2>
+              <p className="mt-1 admin-text-secondary">
                 Hesabınıza giriş yaparken kimlik doğrulama uygulamanızdan bir kod isteyerek ekstra güvenlik katmanı ekler.
               </p>
             </div>
@@ -274,8 +274,8 @@ export default function SecurityPage() {
         <Card className="space-y-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h2 className="text-sm font-semibold text-foreground">Aktif Oturumlar</h2>
-              <p className="mt-1 text-sm text-foreground/60">Hesabınıza giriş yapılmış tüm cihazlar.</p>
+              <h2 className="admin-h2">Aktif Oturumlar</h2>
+              <p className="mt-1 admin-text-secondary">Hesabınıza giriş yapılmış tüm cihazlar.</p>
             </div>
             <Button
               variant="outline"

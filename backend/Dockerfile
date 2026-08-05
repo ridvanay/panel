@@ -55,6 +55,13 @@ COPY --from=build --chown=nodejs:nodejs /app/dist ./dist
 # volume/S3 kullanılması önerilir, bkz. INFRA.md.
 RUN mkdir -p /app/uploads && chown -R nodejs:nodejs /app/uploads
 
+# §10.8.5 Toplu İçe Aktarma — PRIVATE, GEÇİCİ kaynak dosya deposu (lib/import-storage.ts,
+# STORAGE_DRIVER=local). `uploads/`'ın aksine kasıtlı olarak volume'e BAĞLANMAZ — bkz.
+# INFRA.md "İçe aktarma dosya deposu (storage/imports)" bölümü. Dizin yine de burada
+# önceden oluşturulur ki container ilk isteği karşılamadan önce yazma izinleri hazır olsun
+# (kod tarafında da `ensureLocalDir()` ile `fs.mkdirSync(..., {recursive:true})` fallback'i var).
+RUN mkdir -p /app/storage/imports && chown -R nodejs:nodejs /app/storage
+
 USER nodejs
 
 EXPOSE 4000

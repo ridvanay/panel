@@ -209,7 +209,7 @@ export default function AdminBlogCategoriesPage() {
       )}
 
       <Card>
-        <h2 className="text-base font-semibold text-foreground">Yeni kategori</h2>
+        <h2 className="admin-h2">Yeni kategori</h2>
         {createError && (
           <Alert variant="error" className="mt-4">
             <span className="flex items-center gap-2">

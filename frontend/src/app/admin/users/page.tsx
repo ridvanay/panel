@@ -67,6 +67,8 @@ export default function AdminUsersPage() {
   const [bulkStatusAction, setBulkStatusAction] = useState<SiteUserStatus | null>(null);
   const [bulkStatusLoading, setBulkStatusLoading] = useState(false);
 
+  const [exporting, setExporting] = useState(false);
+
   const {
     search,
     setSearch,
@@ -158,16 +160,36 @@ export default function AdminUsersPage() {
     ];
   }
 
-  function handleExport() {
-    if (!users || users.length === 0) return;
-    exportToCsv("kullanicilar.csv", users, csvColumns());
+  // `users` state (liste ekranını besleyen) SADECE `listAdminUsers()`'ın tek sayfasını
+  // taşır (bkz. `load()` yukarıda) — 100'den fazla kullanıcıda dışa aktarma sessizce
+  // eksik veri üretmesin diye burada `listAllAdminUsers()` ile TÜM kayıtlar ayrıca
+  // (cursor döngüsüyle) çekilir (bkz. `use-content-list.ts` satır ~87-106 ile aynı desen).
+  async function handleExport() {
+    setExporting(true);
+    try {
+      const allUsers = await usersAdminApi.listAllAdminUsers();
+      if (allUsers.length === 0) return;
+      exportToCsv("kullanicilar.csv", allUsers, csvColumns());
+    } catch (err) {
+      toast.error(friendlyErrorMessage(err));
+    } finally {
+      setExporting(false);
+    }
   }
 
-  function handleBulkExport() {
-    if (!users) return;
-    const selectedUsers = users.filter((u) => selectedIds.has(u.id));
-    if (selectedUsers.length === 0) return;
-    exportToCsv("secili-kullanicilar.csv", selectedUsers, csvColumns());
+  async function handleBulkExport() {
+    if (selectedIds.size === 0) return;
+    setExporting(true);
+    try {
+      const allUsers = await usersAdminApi.listAllAdminUsers();
+      const selectedUsers = allUsers.filter((u) => selectedIds.has(u.id));
+      if (selectedUsers.length === 0) return;
+      exportToCsv("secili-kullanicilar.csv", selectedUsers, csvColumns());
+    } catch (err) {
+      toast.error(friendlyErrorMessage(err));
+    } finally {
+      setExporting(false);
+    }
   }
 
   function toggleSelect(id: string) {
@@ -285,7 +307,8 @@ export default function AdminUsersPage() {
           <>
             <Button
               variant="outline"
-              onClick={handleExport}
+              onClick={() => void handleExport()}
+              loading={exporting}
               disabled={users === null || users.length === 0}
             >
               <Download className="h-4 w-4" />
@@ -328,7 +351,7 @@ export default function AdminUsersPage() {
             <Button variant="outline" size="sm" onClick={() => setBulkStatusAction("ACTIVE")}>
               Aktifleştir
             </Button>
-            <Button variant="outline" size="sm" onClick={handleBulkExport}>
+            <Button variant="outline" size="sm" onClick={() => void handleBulkExport()} loading={exporting}>
               <Download className="h-4 w-4" />
               CSV Dışa Aktar
             </Button>

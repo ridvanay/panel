@@ -74,6 +74,42 @@ enum ContentEntityType {
   BLOG_POST
 }
 
+// §10.8 Toplu İçe Aktarma (Import) — bkz. ARCHITECTURE.md §10.8.2.
+enum ImportJobType {
+  PAGES
+  BLOG
+  WORDPRESS
+  USERS
+  MEDIA
+}
+
+enum ImportSourceFormat {
+  CSV
+  JSON
+  XML
+  ZIP
+}
+
+enum ImportJobStatus {
+  PENDING
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum ImportDuplicateStrategy {
+  SKIP
+  OVERWRITE
+  CREATE_NEW
+}
+
+enum ImportErrorSeverity {
+  ERROR
+  SKIPPED
+}
+
 model User {
   id              String         @id @default(uuid())
   // Sıralı, dış dünyaya sızmayan iç sayaç — cursor sayfalamada stabil sıralama için.
@@ -106,6 +142,8 @@ model User {
   // Polymorphic ContentRevision.editedById / EmailTemplate.updatedById için zorunlu karşı-ilişki alanları.
   contentRevisions    ContentRevision[]    @relation("ContentRevisionEditor")
   emailTemplateEdits  EmailTemplate[]      @relation("EmailTemplateUpdater")
+  // §10.8 Toplu İçe Aktarma (Import) — bkz. ARCHITECTURE.md §10.8.2.
+  importJobs          ImportJob[]          @relation("ImportJobCreator")
 
   @@map("users")
 }
@@ -514,4 +552,73 @@ model BackupCode {
 
   @@index([userId])
   @@map("backup_codes")
+}
+
+// §10.8 Toplu İçe Aktarma (Import) — bkz. ARCHITECTURE.md §10.8.2. Kuyruk YOK; bu satır
+// asenkron süreç-içi worker'ın tek doğruluk kaynağıdır (bkz. ARCHITECTURE.md §10.8.1).
+model ImportJob {
+  id                String                   @id @default(uuid())
+  // Sıralı, dış dünyaya sızmayan iç sayaç — cursor sayfalamada stabil sıralama için.
+  seq               Int                      @unique @default(autoincrement())
+  type              ImportJobType
+  format            ImportSourceFormat
+  status            ImportJobStatus          @default(PENDING)
+  // PENDING iken null; başlatma anında seçilir.
+  duplicateStrategy ImportDuplicateStrategy?
+  // Kullanıcının yüklediği ORİJİNAL ad — yalnızca gösterim.
+  filename          String
+  // Gizli depodaki dosya referansı (rastgele UUID adı / S3 key). API'de ASLA DÖNMEZ.
+  storagePath       String?
+  sizeBytes         Int
+  // Onay ekranını besleyen önizleme (openapi #/components/schemas/ImportJobPreview).
+  preview           Json?
+  // Başlatırken seçilen alan eşleştirmesi + defaultStatus/defaultAuthorId/defaultCategoryId.
+  options           Json                     @default("{}")
+  totalCount        Int                      @default(0)
+  processedCount    Int                      @default(0)
+  successCount      Int                      @default(0)
+  errorCount        Int                      @default(0)
+  skippedCount      Int                      @default(0)
+  // Yalnızca işin TAMAMINI başarısız kılan hata; satır hataları ImportJobError'dadır.
+  errorSummary      String?
+  createdById       String?
+  cancelRequestedAt DateTime?
+  startedAt         DateTime?
+  finishedAt        DateTime?
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+
+  createdBy User?            @relation("ImportJobCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  errors    ImportJobError[]
+
+  @@index([status])
+  @@index([type])
+  @@index([createdById])
+  @@map("import_jobs")
+}
+
+// §10.8 Toplu İçe Aktarma — satır bazlı hata/atlama kaydı. Tavan 1.000/iş (bkz.
+// ARCHITECTURE.md §10.8.2); aşıldığında yazma durur, errorCount saymaya devam eder.
+model ImportJobError {
+  id        String              @id @default(uuid())
+  seq       Int                 @unique @default(autoincrement())
+  jobId     String
+  // Kaynak dosyadaki 1-tabanlı sıra (CSV'de başlık satırı HARİÇ).
+  rowNumber Int
+  // openapi #/components/schemas/ImportJobErrorCode ile BİREBİR — AuditLog.action ile aynı
+  // desen: kod listesi sık büyür, serbest string DEĞİL ama enum da DEĞİL (bkz. §10.8.2).
+  code      String
+  message   String
+  severity  ImportErrorSeverity @default(ERROR)
+  field     String?
+  // WXR'da wp:post_id, ZIP'te arşiv içi dosya adı, CSV/JSON'da slug/email.
+  sourceRef String?
+  // Satırın ham hâli, 8 KB'a KIRPILIR. KİŞİSEL VERİ İÇEREBİLİR (bkz. ARCHITECTURE.md §10.8.8).
+  rawData   Json?
+  createdAt DateTime            @default(now())
+
+  job ImportJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId, seq])
+  @@map("import_job_errors")
 }

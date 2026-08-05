@@ -3,3 +3,7 @@ dist/
 .env
 *.log
 uploads/
+# §10.8 Toplu İçe Aktarma — PRIVATE depo (uploads/ ile KARIŞTIRILMAMALI, auth'suz servis
+# EDİLMEZ). Yüklenen WXR/CSV/ZIP dosyaları geçici olarak burada durur, iş sonlanınca silinir
+# (bkz. ARCHITECTURE.md §10.8.5, lib/import-storage.ts).
+storage/imports/

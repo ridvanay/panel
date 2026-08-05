@@ -72,7 +72,7 @@ export default function EmailTemplatesListPage() {
           {templates.map((template) => (
             <Card key={template.id} interactive className="flex flex-col gap-3">
               <div className="flex items-center justify-between gap-2">
-                <h2 className="text-sm font-semibold text-foreground">{template.name}</h2>
+                <h2 className="admin-h2">{template.name}</h2>
                 <Badge tone="primary">{template.key}</Badge>
               </div>
               <p className="line-clamp-2 text-sm text-foreground/60">{template.subject}</p>

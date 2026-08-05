@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { AlertCircle, FileText, Search } from "lucide-react";
+import { AlertCircle, Download, FileText, Search } from "lucide-react";
 import * as pagesApi from "@/lib/api/pages";
 import type { SitePage } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
@@ -18,11 +18,16 @@ import { ContentListTabs } from "@/components/admin/content-list/content-list-ta
 import { ContentListBulkBar } from "@/components/admin/content-list/content-list-bulk-bar";
 import { ContentListTable } from "@/components/admin/content-list/content-list-table";
 import { useContentList } from "@/components/admin/content-list/use-content-list";
+import { buildContentCsvColumns } from "@/components/admin/content-list/csv-columns";
 import { useAuth } from "@/context/auth-context";
+import { exportToCsv } from "@/lib/export-csv";
 
 function matchesSitePage(page: SitePage, query: string): boolean {
   return page.title.toLowerCase().includes(query) || page.slug.toLowerCase().includes(query);
 }
+
+// Sayfalar'da kategori kavramı yok — Blog'la aynı ORTAK sütun seti, kategori sütunu hariç.
+const pageCsvColumns = buildContentCsvColumns<SitePage>();
 
 export default function AdminPagesListPage() {
   const { user } = useAuth();
@@ -39,13 +44,36 @@ export default function AdminPagesListPage() {
     nounSingular: "Sayfa",
   });
 
+  function handleExport() {
+    if (list.tabItems.length === 0) return;
+    exportToCsv("sayfalar.csv", list.tabItems, pageCsvColumns);
+  }
+
+  function handleBulkExport() {
+    const selectedPages = list.tabItems.filter((p) => list.selectedIds.has(p.id));
+    if (selectedPages.length === 0) return;
+    exportToCsv("secili-sayfalar.csv", selectedPages, pageCsvColumns);
+  }
+
   return (
     <div className="space-y-6">
       <PageHeading
         icon={FileText}
         title="Sayfalar"
         description="Ana Sayfa, Hakkımızda gibi dinamik sayfaların listesi."
-        actions={<LinkButton href="/admin/pages/new">Yeni Sayfa</LinkButton>}
+        actions={
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={handleExport}
+              disabled={list.loading || list.tabItems.length === 0}
+            >
+              <Download className="h-4 w-4" />
+              Dışa Aktar
+            </Button>
+            <LinkButton href="/admin/pages/new">Yeni Sayfa</LinkButton>
+          </div>
+        }
       />
 
       {list.error && (
@@ -115,6 +143,12 @@ export default function AdminPagesListPage() {
               onApply={list.applyBulkSelectAction}
               applying={list.bulkApplying}
               onClearSelection={list.clearSelection}
+              extraActions={
+                <Button variant="outline" size="sm" onClick={handleBulkExport}>
+                  <Download className="h-4 w-4" />
+                  CSV Dışa Aktar
+                </Button>
+              }
             />
           )}
 

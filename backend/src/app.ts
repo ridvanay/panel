@@ -30,6 +30,9 @@ import { adminNavigationRoutes, publicNavigationRoutes } from "./modules/navigat
 import { systemRoutes } from "./modules/system/system.routes";
 import { emailTemplatesRoutes } from "./modules/email-templates/email-templates.routes";
 import { securityTwoFactorRoutes, securitySessionsRoutes } from "./modules/security/security.routes";
+import { adminImportRoutes } from "./modules/import/import.routes";
+import { recoverStuckImportJobs } from "./modules/import/import.worker";
+import { registerImportRetentionScheduler } from "./modules/import/import.retention";
 
 export function buildApp() {
   // `SENTRY_DSN` tanımsızsa no-op (bkz. lib/sentry.ts) — her `buildApp()` çağrısında
@@ -138,12 +141,30 @@ export function buildApp() {
       // §10.4 Güvenlik & 2FA + Aktif Oturumlar — bkz. ARCHITECTURE.md §10.4.
       api.register(securityTwoFactorRoutes, { prefix: "/admin/settings/security/2fa" });
       api.register(securitySessionsRoutes, { prefix: "/admin/settings/security/sessions" });
+      // §10.8 Toplu İçe Aktarma (Import) — bkz. ARCHITECTURE.md §10.8.
+      api.register(adminImportRoutes, { prefix: "/admin/import/jobs" });
       // Kendi content-type parser'ını (raw body) kaydeder — kendi encapsulation
       // context'inde kaldığı için diğer /api/v1 uçlarının JSON parse'ını etkilemez.
       api.register(stripeWebhookRoutes, { prefix: "/webhooks/stripe" });
     },
     { prefix: "/api/v1" }
   );
+
+  // §10.8.1 çökme/restart kurtarma (ZORUNLU) — `QUEUED`/`PROCESSING`'de kalmış içe aktarma
+  // işleri sunucu her açılışında `FAILED` yapılır. Kök `app` üzerinde (encapsulated route
+  // context'i DEĞİL) kayıtlıdır ki `app.prisma`'ya erişebilsin ve tüm plugin ağacı hazır
+  // olduktan hemen sonra, dinlemeye başlamadan ÖNCE çalışsın (bkz. ARCHITECTURE.md §10.8.1 —
+  // bu hook OLMADAN işler sonsuza dek `PROCESSING`'de asılı kalır ve UI sonsuz poll eder).
+  app.addHook("onReady", async () => {
+    await recoverStuckImportJobs(app);
+
+    // §10.8.8.1 compliance-agent kararı (2026-08-05, BLOCKER) — 30 günlük PII redaksiyonu +
+    // 90 günlük ImportJob saklama süresi GERÇEK ZAMAN-TETİKLEMELİ uygulanır (bir sonraki
+    // yüklemeye bağlı tembel tetikleme KABUL EDİLEMEZ, bkz. import.retention.ts). `app.prisma`
+    // yalnızca burada (onReady, tüm plugin ağacı yüklendikten SONRA) güvenle kullanılabilir —
+    // `recoverStuckImportJobs` ile AYNI gerekçe. `onClose` ile kendi interval'ını temizler.
+    registerImportRetentionScheduler(app);
+  });
 
   return app;
 }

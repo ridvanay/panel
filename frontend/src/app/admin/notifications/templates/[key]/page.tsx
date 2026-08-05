@@ -156,8 +156,8 @@ export default function EditEmailTemplatePage({ params }: { params: Promise<{ ke
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <div>
-            <h1 className="text-2xl font-semibold text-foreground">{template.name}</h1>
-            <p className="mt-1 text-sm text-foreground/60">
+            <h1 className="admin-h1">{template.name}</h1>
+            <p className="mt-1 admin-text-secondary">
               <Badge tone="primary">{template.key}</Badge>
             </p>
           </div>
@@ -201,8 +201,8 @@ export default function EditEmailTemplatePage({ params }: { params: Promise<{ ke
 
         <div className="lg:sticky lg:top-6 lg:self-start">
           <Card className="space-y-3">
-            <h2 className="text-sm font-semibold text-foreground">Kullanılabilir Değişkenler</h2>
-            <p className="text-xs text-foreground/60">
+            <h2 className="admin-h2">Kullanılabilir Değişkenler</h2>
+            <p className="admin-text-secondary">
               Bu değişkenleri konu veya içerik metnine ekleyip tıklayarak panoya kopyalayabilirsiniz.
             </p>
             <div className="flex flex-wrap gap-2">

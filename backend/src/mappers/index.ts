@@ -18,6 +18,8 @@ import type {
   ContentRevision,
   EmailTemplate,
   RefreshToken,
+  ImportJob,
+  ImportJobError,
 } from "@prisma/client";
 import type {
   UserDto,
@@ -39,9 +41,14 @@ import type {
   EmailTemplateDto,
   SessionDto,
   UserSummaryDto,
+  ImportJobSummaryDto,
+  ImportJobDto,
+  ImportJobErrorDto,
+  ImportJobPreviewDto,
 } from "../schemas/entities";
 import { env } from "../config/env";
 import { computeBlogPostSeoScore, computePageSeoScore } from "../lib/seo-score";
+import { DUPLICATE_STRATEGY_FROM_PRISMA, SEVERITY_FROM_PRISMA } from "../modules/import/import.constants";
 
 export function toUserDto(user: User): UserDto {
   return {
@@ -325,6 +332,52 @@ export function toSessionDto(refreshToken: RefreshToken, isCurrent: boolean): Se
     createdAt: refreshToken.createdAt.toISOString(),
     expiresAt: refreshToken.expiresAt.toISOString(),
     isCurrent,
+  };
+}
+
+type ImportJobWithCreator = ImportJob & { createdBy?: User | null };
+
+export function toImportJobSummaryDto(job: ImportJobWithCreator): ImportJobSummaryDto {
+  return {
+    id: job.id,
+    type: job.type,
+    format: job.format,
+    status: job.status,
+    duplicateStrategy: job.duplicateStrategy ? DUPLICATE_STRATEGY_FROM_PRISMA[job.duplicateStrategy] : null,
+    filename: job.filename,
+    sizeBytes: job.sizeBytes,
+    totalCount: job.totalCount,
+    processedCount: job.processedCount,
+    successCount: job.successCount,
+    errorCount: job.errorCount,
+    skippedCount: job.skippedCount,
+    errorSummary: job.errorSummary,
+    createdById: job.createdById,
+    createdBy: job.createdBy ? toUserSummaryDto(job.createdBy) : null,
+    createdAt: job.createdAt.toISOString(),
+    startedAt: job.startedAt ? job.startedAt.toISOString() : null,
+    finishedAt: job.finishedAt ? job.finishedAt.toISOString() : null,
+  };
+}
+
+export function toImportJobDto(job: ImportJobWithCreator): ImportJobDto {
+  return {
+    ...toImportJobSummaryDto(job),
+    preview: (job.preview as ImportJobPreviewDto | null) ?? null,
+  };
+}
+
+export function toImportJobErrorDto(row: ImportJobError): ImportJobErrorDto {
+  return {
+    id: row.id,
+    rowNumber: row.rowNumber,
+    code: row.code as ImportJobErrorDto["code"],
+    message: row.message,
+    severity: SEVERITY_FROM_PRISMA[row.severity],
+    field: row.field,
+    sourceRef: row.sourceRef,
+    rawData: (row.rawData as Record<string, unknown> | null) ?? null,
+    createdAt: row.createdAt.toISOString(),
   };
 }
 

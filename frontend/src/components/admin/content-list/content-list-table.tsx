@@ -176,7 +176,7 @@ export function ContentListTable<T extends ContentListEntity>({
                     />
                   </TableCell>
                   <TableCell className="w-auto">
-                    <Link href={editHref(item)} className="font-semibold text-primary hover:text-primary-hover hover:underline underline-offset-2 dark:text-primary-hover">
+                    <Link href={editHref(item)} className="admin-link">
                       {item.title}
                     </Link>
                     <div className="mt-0.5 flex items-center gap-1.5 text-xs text-foreground/70 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">

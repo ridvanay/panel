@@ -116,7 +116,7 @@ function BentoCard({
           <Icon className="h-4 w-4" />
         </span>
         <div>
-          <h2 className="text-sm font-semibold text-foreground">{title}</h2>
+          <h2 className="admin-h2">{title}</h2>
           <p className="mt-0.5 text-xs text-bento-fg-60">{description}</p>
         </div>
       </div>
@@ -326,7 +326,7 @@ export default function AdminSettingsPage() {
             <Settings2 className="h-5 w-5" />
           </motion.span>
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground">Ayarlar</h1>
+            <h1 className="admin-h1">Ayarlar</h1>
             <p className="mt-1 text-sm text-bento-fg-50">
               Sitenin adı, logosu ve ana sayfası gibi genel ayarlarını buradan yönet.
             </p>

@@ -31,6 +31,7 @@ dosya ve `openapi.yaml` / `shared-types.ts` güncellenir, sonra kod yazılır.
 | E-posta | Resend/SES (doğrulama, davet, şifre sıfırlama) | |
 | Dağıtım | Frontend: Vercel/Node edge; Backend: konteyner (Fly.io/Render/ECS) | |
 | Gözlemlenebilirlik | OpenTelemetry + yapılandırılmış log (pino) | |
+| Toplu içe aktarma | `saxes` (XML/WXR), `csv-parse` (CSV), `yauzl` (ZIP), `sanitize-html` (HTML) | Seçim gerekçeleri ve reddedilen alternatifler §10.8.3'te — backend-agent tek başına değiştiremez |
 
 ## 3. Sistem mimarisi
 
@@ -644,3 +645,527 @@ Rozet renkleri: <50 kırmızı, 50–79 sarı, ≥80 yeşil (ui-designer token'l
 
 **Audit:** `page.trash|restore|permanent_delete|bulk_<action>` ve `blog_post.*`
 karşılıkları yazılır (`AuditLog.action` serbest string, migration gerekmez).
+
+### 10.8 Toplu İçe Aktarma (Import) + Dışa Aktarma
+
+Durum: v1 · Sahibi: Mimar. Bağlayıcı kaynak: `openapi.yaml` (tag `Import`). Bu bölüm
+`db-agent`, `backend-agent`, `frontend-agent`, `security-agent`, `qa-agent` için tek
+doğruluk kaynağıdır.
+
+#### 10.8.1 Arka plan işleme kararı — kuyruk YOK, süreç-içi worker + DB durum tablosu
+
+Projede BullMQ/Redis/kuyruk altyapısı **yoktur** ve v1'de **kurulmayacaktır**. Karar:
+`ImportJob` satırı doğruluk kaynağı, işleme aynı Node sürecinde asenkron yürür.
+
+- `POST .../start` `QUEUED` yazar, `202` döner ve worker'ı `setImmediate` ile tetikler —
+  istek/yanıt döngüsünü BEKLETMEZ.
+- **Eşzamanlılık 1**: modül-düzeyi FIFO; ikinci iş `QUEUED`'da bekler. Gerekçe: bellek ve
+  DB yükünü sınırlamak; içe aktarma nadir, uzun ve I/O-yoğun bir işlemdir.
+- **Parti (batch) boyutu 25**: her 25 kayıtta bir sayaçlar (`processedCount`,
+  `successCount`, `errorCount`, `skippedCount`) DB'ye yazılır → poll eden UI ilerlemeyi
+  görür. Aynı noktada `cancelRequestedAt` kontrol edilir (işbirlikçi iptal).
+- **Çökme/restart kurtarma (ZORUNLU)**: `app.addHook("onReady")` içinde
+  `status IN (QUEUED, PROCESSING)` olan tüm işler `FAILED` + `errorSummary: "Sunucu
+  yeniden başlatıldığı için içe aktarma yarıda kaldı."` yapılır. Bu OLMADAN iş sonsuza
+  dek `PROCESSING`'de asılı kalır ve UI sonsuz poll eder.
+- **Bilinen sınır (kabul edildi)**: süreç-içi worker **tek instance** varsayar. Yatay
+  ölçeklemede (birden fazla API replikası) `onReady` kurtarması komşu instance'ın canlı
+  işini yanlışlıkla `FAILED` yapar. Ölçeklendiğimiz gün BullMQ'ya geçilir; **API kontratı
+  ve `ImportJob` tablosu AYNEN KALIR**, yalnızca tetikleyici (`setImmediate` → `queue.add`)
+  değişir. Bu, kararı geri alınabilir kılar — kuyruğu şimdi kurmamanın gerekçesi budur.
+- Realtime bildirim (SSE/WebSocket) YOK: frontend `GET /admin/import/jobs/{jobId}` ucunu
+  **2 sn**'de bir poll eder, iş sonlanınca §10.6 toast standardıyla bildirim gösterir.
+
+#### 10.8.2 Şema (db-agent — TEK SAHİP)
+
+```prisma
+enum ImportJobType         { PAGES  BLOG  WORDPRESS  USERS  MEDIA }
+enum ImportSourceFormat    { CSV  JSON  XML  ZIP }
+enum ImportJobStatus       { PENDING  QUEUED  PROCESSING  COMPLETED  FAILED  CANCELLED }
+enum ImportDuplicateStrategy { SKIP  OVERWRITE  CREATE_NEW }
+enum ImportErrorSeverity   { ERROR  SKIPPED }
+
+model ImportJob {
+  id                String     @id @default(uuid())
+  seq               Int        @unique @default(autoincrement())   // cursor sayfalama
+  type              ImportJobType
+  format            ImportSourceFormat
+  status            ImportJobStatus @default(PENDING)
+  duplicateStrategy ImportDuplicateStrategy?                        // PENDING iken null
+  // Kullanıcının yüklediği ORİJİNAL ad — yalnızca gösterim.
+  filename          String
+  // Gizli depodaki dosya referansı (rastgele UUID adı / S3 key). API'de ASLA DÖNMEZ.
+  storagePath       String?
+  sizeBytes         Int
+  // Onay ekranını besleyen önizleme (openapi #/components/schemas/ImportJobPreview).
+  preview           Json?
+  // Başlatırken seçilen alan eşleştirmesi + defaultStatus/defaultAuthorId/defaultCategoryId.
+  options           Json       @default("{}")
+  totalCount        Int        @default(0)
+  processedCount    Int        @default(0)
+  successCount      Int        @default(0)
+  errorCount        Int        @default(0)
+  skippedCount      Int        @default(0)
+  // Yalnızca işin TAMAMINI başarısız kılan hata; satır hataları ImportJobError'dadır.
+  errorSummary      String?
+  createdById       String?
+  cancelRequestedAt DateTime?
+  startedAt         DateTime?
+  finishedAt        DateTime?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  createdBy User?             @relation("ImportJobCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  errors    ImportJobError[]
+
+  @@index([status])
+  @@index([type])
+  @@index([createdById])
+  @@map("import_jobs")
+}
+
+model ImportJobError {
+  id          String   @id @default(uuid())
+  seq         Int      @unique @default(autoincrement())
+  jobId       String
+  // Kaynak dosyadaki 1-tabanlı sıra (CSV'de başlık satırı HARİÇ).
+  rowNumber   Int
+  // openapi #/components/schemas/ImportJobErrorCode ile BİREBİR — serbest string DEĞİL.
+  code        String
+  message     String
+  severity    ImportErrorSeverity @default(ERROR)
+  field       String?
+  // WXR'da wp:post_id, ZIP'te arşiv içi dosya adı, CSV/JSON'da slug/email.
+  sourceRef   String?
+  // Satırın ham hâli, 8 KB'a KIRPILIR. KİŞİSEL VERİ İÇEREBİLİR (bkz. 10.8.8).
+  rawData     Json?
+  createdAt   DateTime @default(now())
+
+  job ImportJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId, seq])
+  @@map("import_job_errors")
+}
+```
+`User` tarafına karşı-ilişki alanı: `importJobs ImportJob[] @relation("ImportJobCreator")`.
+
+- **Hata satırı tavanı 1.000/iş** — aşıldığında YAZMA DURUR (`errorCount` saymaya devam
+  eder), `GET .../errors` `meta.truncated: true` döner. Bozuk bir 5.000 satırlık CSV'nin
+  DB'yi doldurması böylece engellenir.
+- **`code` neden String, enum değil?** Kod listesi (`ImportJobErrorCode`) uygulama
+  geliştikçe sık büyür; her yeni kod için migration gerekmesin diye `AuditLog.action` ile
+  aynı desen kullanılır. Bağlayıcı liste `openapi.yaml`'dadır ve Zod ile doğrulanır.
+
+#### 10.8.3 Kütüphane seçimleri (bağlayıcı — backend-agent kendi başına değiştiremez)
+
+| İş | Seçim | Gerekçe / reddedilenler |
+|---|---|---|
+| XML/WXR | **`saxes@^6`** | Streaming SAX → bellek dosya boyutundan BAĞIMSIZ (aynı anda tek `<item>` RAM'de). Saf ayrıştırıcı, hiç I/O yapmaz → dış varlık (XXE) çözümlemesi yapısal olarak İMKÂNSIZ. CJS + gömülü tipler, tek bağımlılık (`xmlchars`). **Ret:** `fast-xml-parser` (DOM tabanlı, tüm dosya bellekte; iç DTD varlıklarını genişletir → billion-laughs yüzeyi), `xml2js` (DOM kurar, bakımsız), `libxmljs`/`node-expat` (native binding, GERÇEK XXE yüzeyi). |
+| ZIP | **`yauzl@^3`** | Merkezi dizini okur, girişleri tembel/streaming açar, kendiliğinden diske YAZMAZ → zip-slip ancak biz arşivdeki adı yola koyarsak mümkün olur (koymuyoruz, kendi UUID adımızı üretiyoruz). **Ret:** `adm-zip` (arşivi tümüyle belleğe alır, geçmiş zip-slip CVE'leri), `unzipper` (daha ağır, daha çok bağımlılık). |
+| CSV | **`csv-parse@^7`** | BOM (`bom: true`), tırnaklı alan, gömülü `,`/`\n`/`\r\n`, `relax_column_count`, hem sync (önizleme) hem stream (çalıştırma) API'si, bağımlılıksız. **Ret:** elle `split(",")` — kendi dışa aktarıcımız (`export-csv.ts`) tırnaklı alan üretiyor, elle bölme kendi çıktımızı bile okuyamazdı. |
+| JSON | Kütüphane YOK | Boyut-kapalı buffer üzerinde `JSON.parse` + Zod. |
+| HTML temizleme | **`sanitize-html@^2`** | Aşağıya bakınız — v1'in en kritik güvenlik gereksinimi. |
+
+#### 10.8.4 HTML sanitizasyonu (ZORUNLU — yeni bir güvenlik gereksinimi)
+
+Bugün projede **hiçbir HTML sanitizasyonu yoktur** (`grep`: 0 sonuç) ve
+`BlogPost.contentHtml` ile `Block{type:"text"}.data.html` public sitede
+`dangerouslySetInnerHTML` ile render edilir
+(`frontend/src/app/(site)/blog/[slug]/page.tsx`, `components/site/blocks/text-block.tsx`).
+Bu bugüne kadar kabul edilebilirdi çünkü tek yazar GÜVENİLEN ADMIN/EDITOR'dü.
+
+**İçe aktarma bu güven modelini bozar**: WXR/CSV/JSON içeriği yabancı (belki ele
+geçirilmiş) bir siteden gelir. Bu yüzden:
+
+- İçe aktarılan HER HTML alanı (`content:encoded`, `excerpt:encoded`, CSV/JSON'daki
+  `contentHtml`) DB'ye yazılmadan ÖNCE **sunucu tarafında** `sanitize-html` ile
+  temizlenir. Yalnızca sunucu tarafı geçerlidir — istemci temizliği güvenlik değildir.
+- İzin listesi (allow-list) yaklaşımı: `<script>`, `<style>`, `<iframe>`, `<object>`,
+  `<embed>`, `<form>`, tüm `on*` öznitelikleri ve `javascript:`/`data:` URL şemaları
+  REDDEDİLİR.
+- WordPress kısa kodları (`[gallery ...]`, `[caption ...]`) düz metin olarak KALIR (v1'de
+  yorumlanmaz); zararsızdır, ayrı uyarı gerekmez.
+- **security-agent'a ayrı görev (bu işten BAĞIMSIZ bulgu):**
+  `media.routes.ts::ALLOWED_MIME_TYPES` bugün `image/svg+xml`'e izin veriyor ve
+  `/uploads/*` aynı origin'den servis ediliyor → mevcut doğrudan yükleme yolunda
+  depolanmış XSS riski. İçe aktarma tarafında SVG kesin olarak REDDEDİLİR
+  (`MEDIA_SVG_REJECTED`).
+
+#### 10.8.5 Yükleme, boyut limitleri ve dosyanın nerede durduğu
+
+- **Global multipart limiti route-level override edilir.** `plugins/uploads.ts`
+  `@fastify/multipart`'ı `{ fileSize: 5MB, files: 1 }` ile GLOBAL kaydediyor.
+  `@fastify/multipart` v10, `request.file(opts)` / `request.parts(opts)` ile verilen
+  seçenekleri plugin seçeneklerinin ÜZERİNE deep-merge eder
+  (`node_modules/@fastify/multipart/index.js::handleMultipart`) → route içinde
+  `request.file({ limits: { fileSize: N, files: 1, fields: 5 } })` yeterlidir; plugin'i
+  değiştirmeye GEREK YOKTUR (ve değiştirilMEmelidir — medya yükleme 5 MB'da kalmalı).
+- **`app.ts`'teki global `bodyLimit` de aşılmalıdır**: `bodyLimit: MAX_UPLOAD_BYTES + 64KB`
+  Fastify core seviyesinde uygulanır ve büyük istekleri multipart'a ULAŞMADAN 413 ile
+  keser (bkz. `app.ts` içindeki mevcut yorum). Bu yüzden içe aktarma route'ları
+  **route-level `bodyLimit`** de tanımlar. İkisi birlikte yapılmadan 5 MB'ın üstü çalışmaz.
+- Tip başına dosya limiti: `PAGES`/`BLOG`/`USERS` **10 MB** · `WORDPRESS` **50 MB** ·
+  `MEDIA` **100 MB**. Kayıt tavanı: `USERS` 500 · `PAGES`/`BLOG` 5.000 · `WORDPRESS`
+  10.000 item · `MEDIA` 500 dosya.
+
+**413/422 kararı (mimar hakemliği — proje geneli kural):** Boyut aşımı **HER ZAMAN 413
+`PAYLOAD_TOO_LARGE`**'dır, 422 değil. RFC 9110 §15.5.14 gereği 413 tam olarak bu durum
+içindir; 422 ise iyi biçimlendirilmiş ama anlamsal olarak geçersiz bir GÖVDE içindir —
+çok büyük bir dosya bir alan doğrulama hatası değil, taşıma seviyesinde bir limit
+ihlalidir.
+
+Bu, `plugins/error-handler.ts`'te **var olan bir tutarsızlığı da düzeltir**: aynı dosyada
+`FST_ERR_CTP_BODY_TOO_LARGE` → 413 iken hemen üstündeki `FST_REQ_FILE_TOO_LARGE` → 422
+map ediliyor. İkisi de aynı sınıf hatadır ve aynı statüyü dönmelidir.
+
+Route-local kontrol tek başına YETERSİZDİR ve bu bir varsayım değil, doğrulanmış bir
+davranıştır: `@fastify/multipart`'ta `throwFileSizeLimit` varsayılanı `true`'dur
+(`index.js:172-174`), bu yüzden 100 MB'lık sert tavan aşıldığında `file.on("limit")` →
+`onError(RequestFileTooLargeError)` tetiklenir ve hata `cleanup()` → `ch(lastError)`
+yoluyla `for await (const part of parts)` döngüsünden **fırlar** — yani route içindeki
+tip-bazlı boyut kontrolüne HİÇ ULAŞILMAZ. Sonuç bugün: 100 MB üstü bir yükleme
+`422` + `"En fazla 5MB yükleyebilirsiniz."` döner (hem yanlış statü hem yanlış mesaj).
+
+Bu yüzden **her iki katman da gereklidir**:
+1. **Global handler** (`error-handler.ts`): `FST_REQ_FILE_TOO_LARGE` → **413
+   `PAYLOAD_TOO_LARGE`**, limitten bağımsız/genel bir mesajla (sabit "5MB" metni
+   KALDIRILIR — import route'larında yanlıştır). Bu emniyet ağıdır ve ileride eklenecek
+   her multipart route'u otomatik kapsar; "type-aware" bir dallanmaya GEREK YOKTUR.
+2. **Route-local kontrol** (mevcut `import.routes.ts` yaklaşımı — **ONAYLANDI**):
+   tip-bazlı gerçek limiti ve kullanıcıya gösterilecek spesifik mesajı üretir
+   (`PayloadTooLargeError`).
+
+Etki alanı denetlendi ve dar: `/admin/media` `openapi.yaml`'da HİÇ tanımlı değil (ayrı
+bir kontrat boşluğu — documentation-agent'a not), hiçbir test 422 beklemiyor ve frontend
+`friendly-error.ts` yalnızca `error.message`/`details` gösteriyor, statüye göre
+dallanmıyor (`PAYLOAD_TOO_LARGE` zaten `frontend/src/lib/api/types.ts`'te tanımlı).
+- **Kaynak dosya `uploads/` altına YAZILAMAZ.** `UPLOAD_DIR`, `@fastify/static` ile
+  **auth'suz, herkese açık** servis ediliyor; bir WXR/CSV e-posta adresleri ve
+  yayınlanmamış taslaklar içerir. İçe aktarma dosyaları ayrı, public OLMAYAN bir yere
+  yazılır: `IMPORT_DIR = <cwd>/storage/imports` (local) veya S3'te `imports/` ön eki
+  (private ACL, URL üretilmez). Dosya adı `randomUUID()`'dir; kullanıcının verdiği ad
+  ASLA yola konmaz. `lib/storage/*` (MediaStorage) bilinçli olarak **kullanılmaz** — o
+  soyutlama public bir `url` döndürmek üzere tasarlanmıştır.
+  → **devops-agent**: `storage/imports` için `uploads/` ile aynı şekilde volume mount +
+  `.gitignore` girdisi + Dockerfile'da klasör oluşturma gerekir.
+- **Yaşam süresi**: kaynak dosya iş `COMPLETED|FAILED|CANCELLED` olur olmaz silinir.
+  Onaylanmamış `PENDING` işler 24 saat sonra süpürülür — **cron YOK**, süpürme her yeni
+  yüklemede tembel (lazy) olarak tetiklenir.
+
+#### 10.8.6 WordPress WXR eşleştirmesi (backend-agent tahmin YÜRÜTMEZ)
+
+WXR, RSS 2.0'ın WordPress ad alanlarıyla genişletilmiş hâlidir. Ad alanı **URI**'leriyle
+eşleştirilir, `wp:`/`content:` **ön ekleriyle DEĞİL** (ön ek dosyadan dosyaya değişebilir)
+→ `saxes` `{ xmlns: true }` ile kurulur. 1.0/1.1/1.2 URI'lerinin üçü de kabul edilir.
+
+| Ön ek | Ad alanı URI |
+|---|---|
+| `wp` | `http://wordpress.org/export/1.2/` (ve `.../1.0/`, `.../1.1/`) |
+| `excerpt` | `http://wordpress.org/export/1.2/excerpt/` |
+| `content` | `http://purl.org/rss/1.0/modules/content/` |
+| `dc` | `http://purl.org/dc/elements/1.1/` |
+| `wfw` | `http://wellformedweb.org/CommentAPI/` (yok sayılır) |
+
+**Kanal (channel) düzeyi** — `<item>`'lardan önce toplanır:
+- `wp:author` → `{ wp:author_login → wp:author_email, wp:author_display_name }` sözlüğü.
+  Yalnızca yazar çözümlemesi için kullanılır; **kullanıcı OLUŞTURMAZ**.
+- `wp:category` → `{ wp:cat_name (görünen ad), wp:category_nicename (slug) }` →
+  `BlogCategory` upsert (`slug` üzerinden). `wp:category_parent` YOK SAYILIR (şemamızda
+  kategori hiyerarşisi yok).
+- `wp:tag` / `wp:term` → YOK SAYILIR (etiket modelimiz yok) → `WP_TAGS_UNSUPPORTED` uyarısı.
+
+**`wp:post_type` yönlendirmesi:** `post` → `BlogPost` · `page` → `Page` ·
+`attachment` → yalnızca URL sözlüğüne (aşağıya bkz.) · `nav_menu_item`, `revision`,
+`custom_css`, `wp_global_styles`, `wp_block`, `wp_navigation` ve diğer her şey → ATLANIR
+(`UNSUPPORTED_POST_TYPE`, `skippedCount`).
+
+**`wp:status` → `PageStatus`:** `publish` → `PUBLISHED` · `draft`/`pending`/`auto-draft`
+→ `DRAFT` · `private` → `DRAFT` + `WP_PRIVATE_AS_DRAFT` uyarısı (özel/private durumumuz
+yok) · `future` → `DRAFT` + `WP_SCHEDULED_AS_DRAFT` (zamanlanmış yayın desteklenmiyor) ·
+`trash`/`inherit` → ATLANIR.
+
+**`<item>` alan eşleştirmesi:**
+
+| WXR alanı | Hedef (BlogPost) | Hedef (Page) | Kural |
+|---|---|---|---|
+| `title` | `title` | `title` | ZORUNLU; boşsa satır hatası `REQUIRED_FIELD_MISSING` |
+| `wp:post_name` | `slug` | `slug` | URL-decode edilir; boşsa `slugify(title)`; çakışma → `duplicateStrategy` |
+| `content:encoded` | `contentHtml` | `blocks` | Page'de tek blok: `[{ id: uuid(), type: "text", data: { html } }]`. **Her iki durumda da sanitize edilir (10.8.4).** |
+| `excerpt:encoded` | `excerpt` | — | Boşsa `null`. Page'de karşılığı YOK, yok sayılır |
+| `wp:status` | `status` | `status` | Yukarıdaki eşleme |
+| `wp:post_date_gmt` (yoksa `wp:post_date`) | `publishedAt` | `publishedAt` | Yalnızca `status = PUBLISHED` ise. **`"0000-00-00 00:00:00"` WordPress'in NULL sentinel'idir → `null` sayılır.** Geçersiz tarih → `INVALID_DATE`, satır yine yazılır (`publishedAt: null`) |
+| `dc:creator` (author_login) | `authorId` | `authorId` | `wp:author` sözlüğünden e-posta bulunur → `User.email` (case-insensitive) araması. Eşleşme yoksa `options.defaultAuthorId`, o da yoksa `null` + `WP_AUTHOR_UNMATCHED` uyarısı. **ASLA kullanıcı oluşturmaz.** |
+| `<category domain="category" nicename="...">` | `categoryId` | — | İLK eşleşen kullanılır (şemada tek kategori). `nicename` → `BlogCategory.slug` upsert, CDATA metni → `name` |
+| `<category domain="post_tag">` | — | — | Yok sayılır (`WP_TAGS_UNSUPPORTED`) |
+| `wp:postmeta[_thumbnail_id]` | `coverImageUrl` | `ogImageUrl` | Değer = attachment'ın `wp:post_id`'si → o attachment item'ının `wp:attachment_url`'ü. **İki geçişli**: attachment'lar yazılardan SONRA gelebilir, bu yüzden `post_id → attachment_url` sözlüğü önizleme (1. geçiş) sırasında kurulur |
+| `wp:postmeta[_yoast_wpseo_title]` \| `[rank_math_title]` | `seoTitle` | `seoTitle` | |
+| `[_yoast_wpseo_metadesc]` \| `[rank_math_description]` | `seoDescription` | `seoDescription` | |
+| `[_yoast_wpseo_canonical]` \| `[rank_math_canonical_url]` | `canonicalUrl` | `canonicalUrl` | Geçersiz URL → `null` (satır hatası değil) |
+| `[_yoast_wpseo_meta-robots-noindex] == "1"` \| `[rank_math_robots]` içinde `noindex` | `noIndex` | `noIndex` | Aksi hâlde `false` |
+| `[_yoast_wpseo_opengraph-title]` \| `[rank_math_facebook_title]` | `ogTitle` | `ogTitle` | |
+| `[_yoast_wpseo_opengraph-image]` \| `[rank_math_facebook_image]` | `ogImageUrl` | `ogImageUrl` | |
+| `wp:post_id`, `guid`, `link` | — | — | Kolon olarak SAKLANMAZ; hata satırlarında `sourceRef` olarak izlenebilirlik sağlar |
+| `wp:comment*`, `wp:is_sticky`, `wp:menu_order`, `wp:ping_status`, `wp:comment_status`, `wp:post_password`, `wp:post_parent` | — | — | Yok sayılır |
+
+**Medya (attachment) kararı — v1'de dosya İNDİRİLMEZ.** `wp:attachment_url` kaynak siteyi
+gösterir. Sunucudan uzak URL indirmek **SSRF** (iç ağ / cloud metadata servisi taraması)
+ve sınırsız süre/bant genişliği demektir. v1: `coverImageUrl` ve `content:encoded`
+içindeki `<img src>` **orijinal uzak URL olarak kalır**; `Media` kaydı OLUŞTURULMAZ.
+Önizleme `WP_MEDIA_NOT_DOWNLOADED` uyarısıyla bunu açıkça söyler ("N medya bağlantısı
+kaynak siteye işaret ediyor, görseller taşınmaz"). Görselleri taşımak isteyen kullanıcı,
+WordPress medya klasörünü ZIP'leyip `MEDIA` içe aktarımını kullanır. İleride
+`downloadMedia` bayrağı eklenirse allow-list + DNS rebinding koruması + boyut/süre limiti
+ZORUNLU olur.
+
+**Güvenlik — XXE / billion-laughs (security-agent denetler):**
+1. Ayrıştırıcı seçimi (`saxes`) dış varlık çözümlemesini yapısal olarak imkânsız kılar.
+2. Buna EK OLARAK, ayrıştırmadan önce dosyanın ilk 64 KB'ı (prolog ve DOCTYPE ancak orada
+   bulunabilir) taranır; `<!DOCTYPE` veya `<!ENTITY` görülürse dosya **422 ile reddedilir**
+   (mesaj: "XML DTD/varlık tanımı içeren dosyalar güvenlik nedeniyle kabul edilmez.").
+   Bu, ayrıştırıcıdan bağımsız ikinci savunma katmanıdır (defense-in-depth).
+3. Derinlik/eleman sayacı: 100 seviyeden derin iç içe geçme veya 10.000'den fazla item
+   → **yükleme anında 422, iş OLUŞTURULMAZ** (mimar kararı; bu madde önceden "iş `FAILED`"
+   diyordu, §10.8.5'teki genel kayıt-tavanı kuralıyla çelişiyordu — genel kural geçerlidir).
+
+**Genel ilke (tüm tipler için bağlayıcı):** Kaynak dosyadan **statik olarak** tespit
+edilebilen her kusur — boyut, format uyuşmazlığı, kayıt tavanı, DTD/derinlik, ZIP bombası,
+zip-slip — önizleme geçişi sırasında yakalanır ve **422 ile reddedilir, iş oluşturulmaz**
+(boyut aşımı hariç: o 413'tür, bkz. §10.8.5). `FAILED` durumu YALNIZCA çalışma anında
+ortaya çıkan hatalara ayrılmıştır (DB hatası, sunucu yeniden başlatma). Gerekçe: kullanıcı
+hatayı anında ve düzeltilebilir biçimde görür; "iş oluştur → başlat → poll et → başarısız
+olduğunu öğren" döngüsü, önizleme adımının varlık sebebini ortadan kaldırırdı. Ayrıca
+`FAILED` işlerin listesi böylece gerçek operasyonel arızaların sinyali olarak kalır,
+kullanıcı girdi hatalarıyla gürültülenmez.
+
+#### 10.8.7 Tip bazlı özel kurallar
+
+**`USERS` (CSV):** sütunlar `name,email,role` (başlıklar Türkçe olabilir, eşleştirme
+`fieldMapping` ile). `role` ∈ `ADMIN|EDITOR|VIEWER` (büyük/küçük harf duyarsız); boşsa
+`EDITOR` (`POST /admin/users` varsayılanıyla aynı). Kayıt akışı mevcut uçla BİREBİR
+AYNIDIR: rastgele kullanılamaz şifre + şifre belirleme token'ı + e-posta. E-posta
+gönderimi **satır bazında best-effort**'tur; başarısızlık kullanıcıyı SİLMEZ, satır
+`EMAIL_DELIVERY_FAILED` (`severity: error`) olarak raporlanır ama kullanıcı oluşmuş kalır.
+Var olan e-posta → `DUPLICATE_SKIPPED`. **`overwrite`/`createNew` YASAK (422)** — CSV ile
+rol değiştirmek yetki yükseltme vektörüdür; rol değişikliği tek yolla,
+`PATCH /admin/users/{userId}/role` ile yapılır. Her oluşturulan kullanıcı için `AuditLog`
+`user.create` yazılır (metadata'ya `importJobId` eklenir). E-posta gönderimi 10/sn ile
+kısılır (SMTP sağlayıcısı korunur).
+
+**`MEDIA` (ZIP):**
+- MIME tipi **magic bytes**'tan belirlenir, uzantıdan DEĞİL (arşiv içi ad saldırgan
+  kontrolündedir). İzin verilenler `media.routes.ts::ALLOWED_MIME_TYPES` ile aynı, ANCAK
+  `image/svg+xml` **hariç** → `MEDIA_SVG_REJECTED`.
+- Zip bombası koruması (herhangi biri ihlal → 422, iş oluşturulmaz): giriş sayısı > 500;
+  tek girişin açılmış boyutu > 5 MB; toplam açılmış boyut > 200 MB; herhangi bir girişte
+  sıkıştırma oranı (açılmış/sıkıştırılmış) > 100.
+- **Zip-slip koruması — TÜM ARŞİV reddedilir (mimar kararı, "fail closed").** `..`,
+  mutlak yol veya sürücü harfi içeren TEK BİR giriş adı, arşivin tamamını **422** ile
+  reddettirir; kalan girişler işlenmez. Bu, `yauzl@3`'ün fiili davranışıdır (giriş adını
+  kendi içinde valide eder ve ilk güvensiz isimde okumayı tümüyle abort eder, `entry`
+  event'i hiç emit edilmez) ve bilinçli olarak BENİMSENMİŞTİR — bypass edilip elle
+  giriş-bazlı okumaya geçilMEYECEKTİR. Gerekçe: zip-slip yolu içeren bir arşiv "biraz
+  kirli" bir arşiv değildir; bizi hedef alan bir araçla üretilmiştir. Böyle bir girdiye
+  kısmi güven göstermek yanlış varsayılandır. Ek fayda: davranışı akıl yürütmesi ve test
+  etmesi tekildir ("ya tamamı ya hiçbiri").
+  → backend-agent'ın eklediği **giriş-bazlı yedek kontrol KORUNUR** (defense-in-depth):
+  yauzl ileride değişir/değiştirilirse veya `strictFileNames` semantiği kayarsa koruma
+  ayakta kalır.
+- Bunun **istisnası zararsız girişlerdir**: dizin girişleri, `__MACOSX/`, nokta ile
+  başlayan dosyalar ve desteklenmeyen MIME'ler tek tek ATLANIR (arşivin geri kalanı
+  işlenir). Yani kural şudur: **kötü niyetli yol → tüm arşiv reddedilir; zararsız/ilgisiz
+  giriş → yalnızca o giriş atlanır.**
+- Diskteki ad zaten `storage.save()` tarafından üretilir; arşivdeki ad ASLA yola konmaz.
+- Yazma yolu mevcut `lib/storage` (public `/uploads/`) üzerindendir — bu DOĞRUDUR, medya
+  zaten publictir. Rapor `filename → url` eşlerini listeler ("dosya adı eşleştirme").
+
+**`PAGES`/`BLOG` (CSV/JSON):** `title` zorunlu. `slug` boşsa `slugify(title)`. `status`
+boşsa `options.defaultStatus` (varsayılan **`DRAFT`** — gözden geçirilmemiş içerik public
+siteye düşmesin). `categoryName` verilirse `BlogCategory` slug üzerinden upsert edilir,
+yoksa `options.defaultCategoryId`. `authorEmail` verilirse `User` araması yapılır,
+bulunamazsa `options.defaultAuthorId` → `null` (**kullanıcı oluşturulmaz**). JSON girdisi
+bir kayıt **dizisi** ya da `{ items: [...] }` olabilir.
+
+**Yazar/kategori çözümlenememesi satır hatası DEĞİLDİR (mimar kararı).** Kayıt başarıyla
+yazılır, yalnızca ilgili alan default'a/`null`'a düşer. Bu yüzden `ImportJobErrorCode`
+listesinden `AUTHOR_UNRESOLVED` ve `CATEGORY_UNRESOLVED` **KALDIRILMIŞTIR** — spec'te
+tanımlıydılar ama hiçbir yerde tetiklenmiyorlardı. Gerekçe: `ImportJobError.severity`
+yalnızca `ERROR|SKIPPED` olabilir ve ikisi de sayaçları besler; başarıyla yazılmış bir
+satırı "hata" ya da "atlandı" diye raporlamak "150 kayıttan 147 başarılı, 3 hata"
+özetini doğrudan yanıltıcı kılardı. Hata modelinde bilinçli olarak `WARNING` severity
+YOKTUR; ileride gerçekten gerekirse severity + kodlar TEK BİR kararla birlikte eklenir.
+Operatörün kontrol mekanizması `StartImportJobRequest.defaultAuthorId` /
+`defaultCategoryId` alanlarıdır; WXR'da ayrıca onay ÖNCESİ agregat uyarı gösterilir
+(`WP_AUTHOR_UNMATCHED`), ki asıl faydalı yer de orasıdır — kullanıcı henüz onaylamamıştır.
+
+**`overwrite` ile Page/BlogPost güncellemesi**, normal `PATCH` gibi önce bir
+`ContentRevision` snapshot'ı yazar (§10.1) — içe aktarma da geri alınabilir olsun diye.
+**Çöpteki (`deletedAt != null`) kayıt ASLA overwrite EDİLMEZ** → `TARGET_TRASHED`
+(§10.7'deki "çöpteki içerik düzenlenemez" kuralıyla tutarlı).
+
+**Geri alma (rollback) v1 KAPSAM DIŞI.** Yanlış içe aktarım
+`POST /admin/{pages|blog}/bulk` + `action: trash` ile temizlenir; UI rapor ekranında bu
+yolu gösterir.
+
+#### 10.8.8 Saklama & KVKK (compliance-agent değerlendirir)
+
+- `ImportJob` kayıtları **90 gün** saklanır; `ImportJobError.rawData` KİŞİSEL VERİ
+  içerebilir (`USERS` içe aktarımında ad/e-posta). ADMIN-only erişim tek başına yeterli
+  değildir — saklama süresi ve gerekiyorsa maskeleme compliance-agent kararıdır.
+- Kaynak dosya iş biter bitmez silinir (10.8.5) — bu, en büyük PII yığınını en kısa sürede
+  ortadan kaldırır.
+- `AuditLog`: `import.upload`, `import.start`, `import.cancel`, `import.delete` +
+  `USERS` içe aktarımında satır başına mevcut `user.create`.
+
+##### 10.8.8.1 compliance-agent kararı (2026-08-05) — ÜRETİME ÇIKIŞ İÇİN KOŞULLU ONAY
+
+**Sonuç: ONAY — ŞARTLA. Aşağıdaki 1(a)/1(b) maddeleri yapılmadan üretime çıkış
+BLOCKER'dır.** Kod incelendi: `ImportJob`/`ImportJobError` şeması (`schema.prisma`),
+`import.worker.ts` (rawData'nın nasıl doldurulduğu, tüm çağrı yerleri), `import.routes.ts`
+(RBAC, `GET .../errors`), `lib/audit.ts`. Bulgular ve gerekçeli kararlar aşağıdadır. Bu bir
+hukuki görüş DEĞİLDİR; nihai saklama süreleri için gerçek bir KVKK/GDPR hukuk danışmanına
+onaylatılmalıdır (bkz. madde 3, sonda).
+
+**Bulgu — dokümante edilen politika ile kod arasında boşluk:** §10.8.8 "90 gün saklanır"
+diyor ama kodda (`import.constants.ts`, `import.routes.ts`, `grep -r "cron|setInterval|
+scheduled" backend/src`) bunu uygulayan HİÇBİR mekanizma yok. Tek var olan süpürme
+`sweepStalePendingJobs` (§10.8.5) — o yalnızca 24 saatten eski `PENDING` (hiç
+başlatılmamış) işleri temizler; `COMPLETED`/`FAILED`/`CANCELLED` işler ve bunların
+`ImportJobError.rawData`'sı bugün İTİBARİYLE SÜRESİZ saklanıyor. Yazılı bir "90 gün"
+kararının uygulanmadan durması, KVKK m.4/2-d ve GDPR Art. 5(1)(e) "saklama sınırlaması"
+ilkesi açısından kabul edilemez — bu yüzden BLOCKER.
+
+**1. Saklama süresi kararı (ikiye ayrılmış — job zarfı vs. PII taşıyan hata satırı):**
+
+- `ImportJob` zarfı (status, sayaçlar, `filename`, `options`, `createdById` referansı —
+  başlı başına PII değil, dolaylı biçimde "kim ne zaman ne yükledi" bilgisi taşır):
+  mimarın belirlediği **90 gün** AYNEN KORUNUR, kısaltmaya gerek yok.
+- `ImportJobError.rawData` (ad/e-posta/ham satır barındırabilir — asıl PII yükü):
+  **90 gün fazla uzun.** Amaç yalnızca ADMIN'in hatalı satırı görüp düzeltmesidir; bu
+  operasyonel ihtiyaç gün/hafta mertebesindedir, ay mertebesinde değil. Karar:
+  **`rawData` (ve `USERS` tipinde e-posta içeren `sourceRef`) job'un geri kalanından
+  BAĞIMSIZ olarak 30 gün sonra REDAKTE edilir** (satır silinmez — `code`/`message`/
+  `severity`/`rowNumber`/`field`/`jobId` istatistik ve denetim amaçlı kalır; yalnızca
+  PII içeren alanlar `null`/`{ _redacted: true }` yapılır). Bu, "veri minimizasyonu
+  zaman içinde ilerler" (progressive redaction) yaklaşımıdır — job seviyesinde
+  operasyonel geçmiş korunurken PII erken temizlenir.
+- **1(a) — backend-agent'a somut gereksinim (BLOCKER, üretim öncesi ZORUNLU):**
+  Gerçek zaman-tetiklemeli bir zamanlanmış iş (cron / uygulama içi periyodik
+  `setInterval` / devops-agent'ın yöneteceği bir scheduler — seçim backend-agent +
+  devops-agent'ın kararı, tek instance varsayımı §10.8.1'deki gibi kabul edilebilir):
+  - Her çalıştığında `ImportJobError` için `createdAt < now() - 30 gün` olan satırlarda
+    `rawData = null` yapar; `job.type === "USERS"` ise aynı satırların `sourceRef`'ini de
+    (e-posta içerebilir) redakte eder — diğer tiplerde `sourceRef` (post_id/guid/dosya
+    adı) PII DEĞİLDİR, dokunulmaz.
+  - Her çalıştığında `status IN (COMPLETED, FAILED, CANCELLED)` VE
+    `(finishedAt ?? createdAt) < now() - 90 gün` olan `ImportJob` satırlarını SİLER —
+    `ImportJobError` `onDelete: Cascade` olduğundan (şemada zaten var) çocuk satırlar
+    otomatik gider.
+  - **NEDEN "tembel/lazy" (yeni yüklemede tetiklenen) DEĞİL, gerçek zaman-bazlı olmalı:**
+    §10.8.1 kendi ifadesiyle içe aktarma "nadir" bir işlemdir — bu, `sweepStalePendingJobs`
+    gibi bir sonraki yüklemeye bağlı tetikleme ile saklama SLA'sının haftalarca/aylarca
+    gecikebileceği, dolayısıyla ihlal edilebileceği anlamına gelir. Retention bir
+    uyumluluk taahhüdüdür, "biri bir şey yüklerse çalışır" YETERSİZDİR.
+  - İdempotent ve tekrar çalıştırılabilir olmalı (zaten redakte/silinmiş satırlarda no-op).
+- **1(b) — backend-agent'a somut gereksinim (BLOCKER, üretim öncesi ZORUNLU, küçük
+  değişiklik):** `import.worker.ts` `runUsersJob` içinde `DUPLICATE_SKIPPED` satırı
+  (`~L767`, bugün `rawData: record`) **`rawData` YAZMAMALI** (`undefined`/atlanmalı).
+  Gerekçe: bu satır, importu YÜKLEYEN kişinin değil, sistemde ZATEN var olan BAŞKA bir
+  kullanıcının PII'sini — o kullanıcının rızası/bilgisi/import işlemiyle bir ilgisi
+  olmaksızın — gereksiz yere ikinci bir tabloya kopyalar. Teşhis değeri sıfırdır:
+  "hangi e-posta çakıştı" bilgisi zaten `sourceRef: email` alanında var, tam satırın
+  (ad + rol dahil) ayrıca `rawData`'da durmasının hiçbir operasyonel faydası yoktur —
+  veri minimizasyonu ilkesi (KVKK m.4/2-c, GDPR Art. 5(1)(c)) ihlali. Diğer tiplerin
+  `DUPLICATE_SKIPPED` çağrıları (örn. `MEDIA`: `rawData: { name: entry.name }`) zaten
+  minimal, değişiklik gerekmez.
+
+**2. Maskeleme kararı: gerekli DEĞİL (yukarıdaki 1a/1b şartıyla).** `rawData` içindeki
+e-posta/ad için yazım anında kısmi maskeleme (`a***@example.com`) İSTENMİYOR. Gerekçe:
+(i) erişim zaten ADMIN-only'e sıkı biçimde kısıtlı (`import.routes.ts`
+`requireSiteRole("ADMIN")` router-seviyesinde) — `User` tablosunun kendisiyle AYNI güven
+seviyesi, maskeleme burada ek bir koruma katmanı eklemez; (ii) ADMIN'in hatayı teşhis
+edebilmesi için TAM değeri görmesi gerekir (örn. `INVALID_EMAIL` — hangi karakterin
+hatalı olduğunu görmek için maskelenmemiş değer şart); (iii) `rawData` serbest-form
+`Json` olduğundan (fieldMapping'e göre değişen sütunlar) tutarlı/genel bir maskeleme
+fonksiyonu yazmak, kazanılan gizlilik faydasına kıyasla orantısız mühendislik karmaşıklığı
+getirir. **Bu kabul TAMAMEN 1(a)'nın (30 günlük otomatik redaksiyon) fiilen üretime
+çıkmış olması ŞARTINA bağlıdır** — 1(a) yoksa "kısa saklama + ADMIN-only" savunması
+geçersiz kalır ve maskeleme yeniden gündeme gelir.
+
+**3. `AuditLog` tutarlılığı — BLOCKER DEĞİL ama proje-geneli acil bulgu:** `AuditLog`
+şemasında (`schema.prisma` L480-499) VE kodda hiçbir saklama politikası/temizleme
+mekanizması yok — bu Import'tan ÖNCE de var olan bir boşluktur, Import'un YARATTIĞI bir
+sorun değildir, bu yüzden Import'un üretime çıkışını BLOKE ETMİYORUM. Ancak Import bu
+boşluğun PII yoğunluğunu somut biçimde artırıyor: `USERS` tipi bir iş başına en fazla 500
+satır (`IMPORT_RECORD_CAPS.USERS`), her biri `metadata: { email, role, importJobId }`
+içeren `user.create` audit kaydı yazabiliyor (`import.worker.ts:778-785`) — hepsi
+SÜRESİZ duruyor. **Öneri (architect'e ayrı, bağımsız bir backlog maddesi olarak
+devredilir):** `AuditLog` için proje-geneli bir saklama süresi tanımlanmalı (güvenlik/
+denetim logları için tipik başlangıç noktası 1-2 yıl — KESİN rakam hukuki onay gerektirir,
+bkz. madde 4) + eşleşen bir temizleme işi. Bu, Import'un DoD'sinin bir parçası değildir.
+
+**4. Unutulma hakkı (KVKK m.11 / GDPR Art. 17) — bugün ürünün HİÇBİR YERİNDE bir "kullanıcı
+silme" ucu yok (`grep -ri "deleteUser\|right to erasure\|unutulma" backend/src` → 0
+sonuç).** Bu Import modülünün eksiği DEĞİL, ürün genelinde henüz hiç inşa edilmemiş bir
+akış — bu yüzden Import'u BLOKE ETMİYORUM. Ancak ileride bu akış inşa edildiğinde
+(backend-agent, ayrı görev) şunlar ZORUNLU olarak kapsanmalı:
+- Hedef kullanıcının e-postasını içeren `ImportJobError.rawData`/`sourceRef` satırları da
+  redakte edilmeli (1(a)'daki 30 günlük otomatik redaksiyon bu pencereyi büyük ölçüde
+  daraltır, ama 0-30 gün arası için hâlâ manuel bir eşleştirme/redaksiyon adımı gerekir —
+  `sourceRef = email` OR `rawData` JSON içinde e-posta araması ile).
+  Not: bir `USERS` importunda kullanıcı BAŞARIYLA oluşturulmuş ama e-posta gönderimi
+  başarısız olmuşsa (`EMAIL_DELIVERY_FAILED`, `import.worker.ts:795-802`) `rawData` o
+  kullanıcının `User` satırıyla ZATEN aynı bilgiyi tekrarlar; erişim seviyesi aynı
+  olduğundan bu, silme talebinde ayrıca risk artırmaz ama tutarlılık için yine de
+  redakte edilmelidir.
+- `AuditLog` satırları silme talebiyle OTOMATİK silinMEMELİDİR — denetim/kötüye kullanım
+  önleme amacı, KENDİ SINIRLI ve TANIMLI saklama süresi dahilinde erişim hakkını meşru
+  biçimde geçersiz kılabilir (GDPR Art. 17(3)(b) benzeri gerekçe) — ANCAK bu istisnanın
+  geçerli olabilmesi tam olarak madde 3'teki tanımlı/sonlu saklama süresinin var
+  OLMASINA bağlıdır; "sınırsız süre" bir istisna gerekçesi olamaz. Bu da madde 3'ü
+  Import'tan bağımsız ama ACİL kılan ikinci sebeptir.
+
+**5. Onaylanan / değişiklik gerektirmeyen maddeler:**
+- Kaynak dosyanın iş biter bitmez silinmesi (§10.8.5) — en büyük PII yığınının en kısa
+  sürede yok edilmesi, doğru uygulama.
+- `/admin/import/*` router-seviyesi `requireSiteRole("ADMIN")` — uygun erişim katmanı.
+- `ImportJob` zarfı için 90 günlük süre (madde 1'deki ayrıma bakınız).
+- `WORDPRESS`/`PAGES`/`BLOG` tipi `rawData`'daki daha düşük hassasiyetli PII
+  (`authorEmail` sütunu, WXR `creatorLogin`) — 1(a)'daki 30 günlük redaksiyon TÜM
+  `ImportJobError` satırlarına tip ayrımı yapılmadan uygulanacağından ayrıca bir kod
+  yolu gerekmez.
+
+**Hukuki not:** Bu bölüm KVKK/GDPR ilkelerinin (veri minimizasyonu, saklama sınırlaması,
+unutulma hakkı) teknik bir gereksinime çevrilmesidir; hukuki tavsiye YERİNE GEÇMEZ.
+Özellikle madde 1'deki 30/90 günlük rakamlar ve madde 3'teki `AuditLog` süresi, nihai
+onay için şirketin KVKK/GDPR hukuk danışmanına sunulmalıdır.
+
+#### 10.8.9 Dışa aktarma (bonus madde) — YENİ UÇ YOK
+
+Mevcut `frontend/src/lib/export-csv.ts::exportToCsv` **doğru çalışıyor** (BOM'lu UTF-8,
+tırnak kaçışı, gömülü `,`/`"`/`\n` işleniyor) ve sunucu ucuna gerek yok: admin listeleri
+zaten tüm kayıtları belleğe çekiyor.
+
+**ANCAK doğrulamada gerçek bir hata bulundu (frontend-agent düzeltir):**
+`frontend/src/app/admin/users/page.tsx:84` `listAdminUsers()` fonksiyonunu **cursor
+döngüsü olmadan bir kez** çağırıyor (`limit: 100`). Yani "Dışa Aktar", 100'den fazla
+kullanıcı olduğunda **sessizce ilk 100'ü** dışa aktarıyor ve kullanıcı eksik veri aldığını
+fark etmiyor. `components/admin/content-list/use-content-list.ts:87-106` bu döngüyü DOĞRU
+yapıyor; kullanıcılar sayfası aynı deseni uygulamalıdır.
+
+Sayfalar/Blog dışa aktarma durumu: Blog'da yalnızca "seçilenleri dışa aktar" var
+(`admin/blog/page.tsx:46`), Sayfalar'da **hiç yok**. İkisi de ortak `content-list`
+bileşenini kullandığı için dışa aktarma ORTAK bileşene taşınır (kopyalanmaz) ve her
+ikisinde "Tümünü" + "Seçilenleri" olarak sunulur. Sütunlar: Başlık, Slug, Durum, Yazar,
+Kategori (yalnızca blog), Görüntülenme, Yayın Tarihi, Son Güncelleme.
+
+### Bilinen Sorunlar / Backlog
+
+- **`preValidation` vs RBAC hook sıralaması** (2026-08-05, qa-agent, orta öncelik,
+  blocker değil): Zod `body` şeması olan ve `preHandler` tabanlı RBAC kullanan route'larda
+  (örn. `POST /admin/import/jobs/:jobId/start`) body doğrulaması `preValidation`'da,
+  `authenticate`/`requireSiteRole` hook'larından ÖNCE çalışıyor. Sonuç: yetkisiz bir
+  çağıran bozuk/boş body gönderirse 403 yerine 422 alıyor. Veri sızıntısı yok (şema zaten
+  `openapi.yaml` ile public) ve geçerli isteklerde bir etkisi yok — projede yaygın bir
+  pattern, sadece import'a özel değil. Düzeltme: RBAC hook'larını `preValidation`'dan önce
+  çalışacak şekilde (örn. `onRequest` seviyesinde) taşımak — proje genelinde bir geçiş
+  gerektirir, bu sprintin kapsamına alınmadı.

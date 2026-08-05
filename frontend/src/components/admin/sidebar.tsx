@@ -18,6 +18,7 @@ import {
   Mail,
   ShieldCheck,
   ScrollText,
+  Upload,
 } from "lucide-react";
 import {
   Sidebar,
@@ -33,14 +34,26 @@ import {
   SidebarSeparator,
 } from "@/components/ui/sidebar";
 import { ThemeToggle } from "@/components/admin/theme-toggle";
+import { useAuth } from "@/context/auth-context";
+import type { SiteRole } from "@/lib/api/types";
 
-const navItems = [
+interface NavItem {
+  href: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  /** Verilmezse tüm rollere görünür. `/admin/import` gibi ADMIN-only uçlar için kullanılır
+   *  (bkz. `notification-center.tsx`'teki `user.role !== "ADMIN"` deseniyle AYNI mantık). */
+  roles?: SiteRole[];
+}
+
+const navItems: NavItem[] = [
   { href: "/admin", label: "Genel Bakış", icon: LayoutDashboard },
   { href: "/admin/pages", label: "Sayfalar", icon: FileText },
   { href: "/admin/blog", label: "Blog", icon: Newspaper },
   { href: "/admin/stats", label: "İstatistikler", icon: BarChart3 },
   { href: "/admin/media", label: "Medya", icon: ImageIcon },
   { href: "/admin/navigation", label: "Navigasyon", icon: LayoutTemplate },
+  { href: "/admin/import", label: "İçe Aktar", icon: Upload, roles: ["ADMIN"] },
   { href: "/admin/users", label: "Kullanıcılar", icon: Users },
   { href: "/admin/system", label: "Sistem Sağlığı", icon: Activity },
   { href: "/admin/notifications/templates", label: "E-posta Şablonları", icon: Mail },
@@ -67,6 +80,8 @@ const darkSidebarVars = {
 
 export function AdminSidebar() {
   const pathname = usePathname();
+  const { user } = useAuth();
+  const visibleNavItems = navItems.filter((item) => !item.roles || (user && item.roles.includes(user.role)));
 
   return (
     <Sidebar style={darkSidebarVars} className="border-white/10">
@@ -96,7 +111,7 @@ export function AdminSidebar() {
             <SidebarGroupLabel className="px-2 text-white/35">Menü</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu className="gap-1">
-                {navItems.map((item, index) => {
+                {visibleNavItems.map((item, index) => {
                   const active = item.href === "/admin" ? pathname === item.href : pathname.startsWith(item.href);
                   return (
                     <SidebarMenuItem key={item.href}>

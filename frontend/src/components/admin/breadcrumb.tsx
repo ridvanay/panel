@@ -12,6 +12,7 @@ const NAV_LABELS: { href: string; label: string }[] = [
   { href: "/admin/stats", label: "İstatistikler" },
   { href: "/admin/media", label: "Medya" },
   { href: "/admin/navigation", label: "Navigasyon" },
+  { href: "/admin/import", label: "İçe Aktar" },
   { href: "/admin/users", label: "Kullanıcılar" },
   { href: "/admin/system", label: "Sistem Sağlığı" },
   { href: "/admin/notifications/templates", label: "Bildirimler" },
@@ -19,10 +20,16 @@ const NAV_LABELS: { href: string; label: string }[] = [
   { href: "/admin/settings", label: "Ayarlar" },
 ];
 
-/** Bilinen sabit alt-segment adları (`new`, `categories` vb.) için Türkçe etiket. Bilinmeyen (dinamik id/key) segmentler "Düzenle" varsayar. */
-function subSegmentLabel(segment: string): string {
+/**
+ * Bilinen sabit alt-segment adları (`new`, `categories` vb.) için Türkçe etiket.
+ * Bilinmeyen (dinamik id/key) segmentler varsayılan olarak "Düzenle" sayılır — ANCAK
+ * `/admin/import/<jobId>` bir düzenleyici DEĞİL, rapor/onay ekranıdır, bu yüzden
+ * `parentHref` ile özel durum tanımlanır.
+ */
+function subSegmentLabel(segment: string, parentHref: string): string {
   if (segment === "new") return "Yeni";
   if (segment === "categories") return "Kategoriler";
+  if (parentHref === "/admin/import") return "İş Detayı";
   return "Düzenle";
 }
 
@@ -57,7 +64,7 @@ export function buildBreadcrumbs(pathname: string): Crumb[] | null {
   remainder.forEach((segment, index) => {
     const isLast = index === remainder.length - 1;
     crumbs.push({
-      label: subSegmentLabel(segment),
+      label: subSegmentLabel(segment, matched.href),
       href: isLast ? null : `${matched.href}/${remainder.slice(0, index + 1).join("/")}`,
     });
   });

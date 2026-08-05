@@ -267,8 +267,8 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <div>
-            <h1 className="text-2xl font-semibold text-foreground">Yazıyı Düzenle</h1>
-            <p className="mt-1 text-sm text-foreground/60">{viewCount.toLocaleString("tr-TR")} görüntülenme</p>
+            <h1 className="admin-h1">Yazıyı Düzenle</h1>
+            <p className="mt-1 admin-text-secondary">{viewCount.toLocaleString("tr-TR")} görüntülenme</p>
           </div>
           {hasUnsavedChanges && (
             <Badge tone="primary">

@@ -27,6 +27,7 @@ import { snapshotBeforeUpdate } from "../../lib/content-revisions";
 import { getPageContentCounts } from "../../lib/content-counts";
 import { resolveAuthorId } from "../../lib/content-author";
 import { logAudit } from "../../lib/audit";
+import { sanitizePageBlocks, sanitizePageTranslations } from "./lib/sanitize-blocks";
 import { SETTINGS_ID } from "../settings/settings.routes";
 import {
   CreatePageRequestSchema,
@@ -127,14 +128,17 @@ export async function adminPagesRoutes(app: FastifyInstance) {
           title,
           slug: slug ? slugify(slug) : slugify(title),
           status: status ?? "DRAFT",
-          blocks: (blocks ?? []) as Prisma.InputJsonValue,
+          // Stored-XSS koruması: EDITOR de yazabildiği için (ADMIN'den daha az güvenilir bir rol)
+          // "text" block'larının `data.html`'i DB'ye yazılmadan önce sanitize edilir — public
+          // sitede `dangerouslySetInnerHTML` ile doğrudan render edilir (bkz. lib/html-sanitize.ts).
+          blocks: sanitizePageBlocks(blocks ?? []) as Prisma.InputJsonValue,
           seoTitle,
           seoDescription,
           ogTitle,
           ogImageUrl,
           canonicalUrl,
           noIndex,
-          translations: (translations ?? {}) as Prisma.InputJsonValue,
+          translations: (translations ? sanitizePageTranslations(translations) : {}) as Prisma.InputJsonValue,
           publishedAt: status === "PUBLISHED" ? new Date() : null,
           authorId,
         },
@@ -175,12 +179,16 @@ export async function adminPagesRoutes(app: FastifyInstance) {
       const { slug, translations, authorId: requestedAuthorId, ...rest } = request.body;
       const resolvedAuthorId = await resolveAuthorId(app, requestedAuthorId, request.user!);
 
+      // Stored-XSS koruması: gelen çeviriler merge'den ÖNCE sanitize edilir (mevcut kayıttaki
+      // çeviriler zaten sanitize edilmiş halde DB'de duruyor — bkz. lib/html-sanitize.ts).
+      const sanitizedTranslations = translations !== undefined ? sanitizePageTranslations(translations) : undefined;
+
       const mergedTranslations =
-        translations !== undefined
+        sanitizedTranslations !== undefined
           ? {
               ...((existing.translations as Record<string, Record<string, unknown>>) ?? {}),
               ...Object.fromEntries(
-                Object.entries(translations).map(([locale, fields]) => [
+                Object.entries(sanitizedTranslations).map(([locale, fields]) => [
                   locale,
                   { ...(((existing.translations as Record<string, Record<string, unknown>>) ?? {})[locale] ?? {}), ...fields },
                 ])
@@ -192,7 +200,7 @@ export async function adminPagesRoutes(app: FastifyInstance) {
         where: { id: request.params.pageId },
         data: {
           ...rest,
-          blocks: rest.blocks !== undefined ? (rest.blocks as Prisma.InputJsonValue) : undefined,
+          blocks: rest.blocks !== undefined ? (sanitizePageBlocks(rest.blocks) as Prisma.InputJsonValue) : undefined,
           ...(slug !== undefined ? { slug: slugify(slug) } : {}),
           ...(mergedTranslations !== undefined ? { translations: mergedTranslations as Prisma.InputJsonValue } : {}),
           ...(rest.status === "PUBLISHED" && !existing.publishedAt ? { publishedAt: new Date() } : {}),
@@ -483,14 +491,20 @@ export async function adminPagesRoutes(app: FastifyInstance) {
         data: {
           title: snapshot.title,
           slug: snapshot.slug,
-          blocks: snapshot.blocks as Prisma.InputJsonValue,
+          // Savunmada derinlik: bu sanitizasyon eklenmeden ÖNCE kaydedilmiş eski revizyonlar
+          // temizlenmemiş HTML içerebilir — geri yükleme her zaman yeniden sanitize eder.
+          blocks: (Array.isArray(snapshot.blocks)
+            ? sanitizePageBlocks(snapshot.blocks)
+            : snapshot.blocks) as Prisma.InputJsonValue,
           seoTitle: snapshot.seoTitle,
           seoDescription: snapshot.seoDescription,
           ogTitle: snapshot.ogTitle,
           ogImageUrl: snapshot.ogImageUrl,
           canonicalUrl: snapshot.canonicalUrl,
           noIndex: snapshot.noIndex,
-          translations: (snapshot.translations ?? {}) as Prisma.InputJsonValue,
+          translations: (snapshot.translations
+            ? sanitizePageTranslations(snapshot.translations as Record<string, Record<string, unknown>>)
+            : {}) as Prisma.InputJsonValue,
         },
         include: WITH_AUTHOR,
       });

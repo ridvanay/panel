@@ -374,3 +374,143 @@ export const EmailTemplateSchema = z.object({
   createdAt: z.string(),
 });
 export type EmailTemplateDto = z.infer<typeof EmailTemplateSchema>;
+
+// ---------- §10.8 Toplu İçe Aktarma (Import) — openapi.yaml Import tag ile birebir ----------
+// NOT: `ImportDuplicateStrategy`/`ImportErrorSeverity` API sözleşmesinde lowerCamel string
+// olarak tanımlıdır (`skip`/`overwrite`/`createNew`, `error`/`skipped`) — Prisma enum'ları
+// (`SKIP`/`OVERWRITE`/`CREATE_NEW`, `ERROR`/`SKIPPED`) İLE KARIŞTIRILMAMALI. Dönüşüm
+// `modules/import/import.constants.ts`'te tek noktadan yapılır.
+
+export const ImportJobTypeSchema = z.enum(["PAGES", "BLOG", "WORDPRESS", "USERS", "MEDIA"]);
+export type ImportJobType = z.infer<typeof ImportJobTypeSchema>;
+
+export const ImportSourceFormatSchema = z.enum(["CSV", "JSON", "XML", "ZIP"]);
+export type ImportSourceFormat = z.infer<typeof ImportSourceFormatSchema>;
+
+export const ImportJobStatusSchema = z.enum(["PENDING", "QUEUED", "PROCESSING", "COMPLETED", "FAILED", "CANCELLED"]);
+export type ImportJobStatus = z.infer<typeof ImportJobStatusSchema>;
+
+export const ImportDuplicateStrategySchema = z.enum(["skip", "overwrite", "createNew"]);
+export type ImportDuplicateStrategy = z.infer<typeof ImportDuplicateStrategySchema>;
+
+export const ImportFieldMappingSchema = z.record(z.string(), z.string().nullable());
+export type ImportFieldMapping = z.infer<typeof ImportFieldMappingSchema>;
+
+export const ImportPreviewFieldStatusSchema = z.enum(["matched", "unmatched", "ignored", "missingRequired"]);
+
+export const ImportPreviewFieldSchema = z.object({
+  sourceField: z.string(),
+  targetField: z.string().nullable(),
+  status: ImportPreviewFieldStatusSchema,
+});
+export type ImportPreviewFieldDto = z.infer<typeof ImportPreviewFieldSchema>;
+
+export const ImportJobPreviewWarningCodeSchema = z.enum([
+  "WP_MEDIA_NOT_DOWNLOADED",
+  "WP_TAGS_UNSUPPORTED",
+  "WP_AUTHOR_UNMATCHED",
+  "WP_PRIVATE_AS_DRAFT",
+  "WP_SCHEDULED_AS_DRAFT",
+  "HTML_WILL_BE_SANITIZED",
+  "SLUG_COLLISION",
+  "MEDIA_SVG_REJECTED",
+  "UNMAPPED_COLUMNS",
+]);
+
+export const ImportJobPreviewWarningSchema = z.object({
+  code: ImportJobPreviewWarningCodeSchema,
+  message: z.string(),
+  count: z.number().int().optional(),
+});
+export type ImportJobPreviewWarningDto = z.infer<typeof ImportJobPreviewWarningSchema>;
+
+export const ImportJobPreviewBreakdownSchema = z
+  .object({
+    pages: z.number().int(),
+    posts: z.number().int(),
+    attachments: z.number().int(),
+    categories: z.number().int(),
+    skipped: z.number().int(),
+  })
+  .partial();
+export type ImportJobPreviewBreakdownDto = z.infer<typeof ImportJobPreviewBreakdownSchema>;
+
+export const ImportJobPreviewSchema = z.object({
+  totalCount: z.number().int(),
+  canStart: z.boolean(),
+  fields: z.array(ImportPreviewFieldSchema),
+  targetFields: z.array(z.string()),
+  suggestedMapping: ImportFieldMappingSchema,
+  samples: z.array(z.record(z.string(), z.unknown())).max(5),
+  breakdown: ImportJobPreviewBreakdownSchema.optional(),
+  warnings: z.array(ImportJobPreviewWarningSchema),
+});
+export type ImportJobPreviewDto = z.infer<typeof ImportJobPreviewSchema>;
+
+export const ImportJobSummarySchema = z.object({
+  id: z.string().uuid(),
+  type: ImportJobTypeSchema,
+  format: ImportSourceFormatSchema,
+  status: ImportJobStatusSchema,
+  duplicateStrategy: ImportDuplicateStrategySchema.nullable(),
+  filename: z.string(),
+  sizeBytes: z.number().int(),
+  totalCount: z.number().int(),
+  processedCount: z.number().int(),
+  successCount: z.number().int(),
+  errorCount: z.number().int(),
+  skippedCount: z.number().int(),
+  errorSummary: z.string().nullable(),
+  createdById: z.string().uuid().nullable(),
+  createdBy: UserSummarySchema.nullable().optional(),
+  createdAt: z.string(),
+  startedAt: z.string().nullable(),
+  finishedAt: z.string().nullable(),
+});
+export type ImportJobSummaryDto = z.infer<typeof ImportJobSummarySchema>;
+
+export const ImportJobSchema = ImportJobSummarySchema.extend({
+  preview: ImportJobPreviewSchema.nullable(),
+});
+export type ImportJobDto = z.infer<typeof ImportJobSchema>;
+
+export const ImportJobErrorCodeSchema = z.enum([
+  "REQUIRED_FIELD_MISSING",
+  "INVALID_VALUE",
+  "INVALID_EMAIL",
+  "INVALID_ROLE",
+  "INVALID_DATE",
+  "INVALID_URL",
+  "DUPLICATE_SKIPPED",
+  "TARGET_TRASHED",
+  "SLUG_CONFLICT",
+  "UNSUPPORTED_POST_TYPE",
+  "UNSUPPORTED_STATUS",
+  "UNSUPPORTED_MIME",
+  "FILE_TOO_LARGE",
+  "EMAIL_DELIVERY_FAILED",
+  "DB_ERROR",
+]);
+export type ImportJobErrorCode = z.infer<typeof ImportJobErrorCodeSchema>;
+
+export const ImportJobErrorSeveritySchema = z.enum(["error", "skipped"]);
+export type ImportJobErrorSeverity = z.infer<typeof ImportJobErrorSeveritySchema>;
+
+export const ImportJobErrorSchema = z.object({
+  id: z.string().uuid(),
+  rowNumber: z.number().int(),
+  code: ImportJobErrorCodeSchema,
+  message: z.string(),
+  severity: ImportJobErrorSeveritySchema,
+  field: z.string().nullable(),
+  sourceRef: z.string().nullable(),
+  rawData: z.record(z.string(), z.unknown()).nullable(),
+  createdAt: z.string(),
+});
+export type ImportJobErrorDto = z.infer<typeof ImportJobErrorSchema>;
+
+export const ImportJobErrorListMetaSchema = z.object({
+  nextCursor: z.string().nullable().optional(),
+  truncated: z.boolean(),
+});
+export type ImportJobErrorListMetaDto = z.infer<typeof ImportJobErrorListMetaSchema>;

@@ -77,8 +77,8 @@ function SectionCard({
   return (
     <Card className="space-y-4">
       <div>
-        <h2 className="text-sm font-semibold text-foreground">{title}</h2>
-        {description && <p className="mt-0.5 text-xs text-foreground/60">{description}</p>}
+        <h2 className="admin-h2">{title}</h2>
+        {description && <p className="mt-1 admin-text-secondary">{description}</p>}
       </div>
       {children}
     </Card>

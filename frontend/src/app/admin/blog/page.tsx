@@ -18,12 +18,16 @@ import { ContentListTabs } from "@/components/admin/content-list/content-list-ta
 import { ContentListBulkBar } from "@/components/admin/content-list/content-list-bulk-bar";
 import { ContentListTable } from "@/components/admin/content-list/content-list-table";
 import { useContentList } from "@/components/admin/content-list/use-content-list";
+import { buildContentCsvColumns } from "@/components/admin/content-list/csv-columns";
 import { useAuth } from "@/context/auth-context";
 import { exportToCsv } from "@/lib/export-csv";
 
 function matchesPost(post: BlogPost, query: string): boolean {
   return post.title.toLowerCase().includes(query);
 }
+
+/** Blog kategorisi, `ContentListEntity`'nin ORTAK alan setinde yok — bkz. `csv-columns.ts`. */
+const blogCsvColumns = buildContentCsvColumns<BlogPost>((post) => post.category?.name ?? "—");
 
 export default function AdminBlogListPage() {
   const { user } = useAuth();
@@ -40,27 +44,15 @@ export default function AdminBlogListPage() {
     nounSingular: "Yazı",
   });
 
+  function handleExport() {
+    if (list.tabItems.length === 0) return;
+    exportToCsv("blog-yazilari.csv", list.tabItems, blogCsvColumns);
+  }
+
   function handleBulkExport() {
     const selectedPosts = list.tabItems.filter((p) => list.selectedIds.has(p.id));
     if (selectedPosts.length === 0) return;
-    exportToCsv("secili-blog-yazilari.csv", selectedPosts, [
-      { key: "title", label: "Başlık" },
-      {
-        key: "category",
-        label: "Kategori",
-        format: (value) => (value as BlogPost["category"])?.name ?? "—",
-      },
-      {
-        key: "status",
-        label: "Durum",
-        format: (value) => (value === "PUBLISHED" ? "Yayında" : "Taslak"),
-      },
-      {
-        key: "viewCount",
-        label: "Görüntülenme",
-        format: (value) => String(value),
-      },
-    ]);
+    exportToCsv("secili-blog-yazilari.csv", selectedPosts, blogCsvColumns);
   }
 
   return (
@@ -71,6 +63,14 @@ export default function AdminBlogListPage() {
         description="Yayınlanan ve taslak yazıların listesi."
         actions={
           <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={handleExport}
+              disabled={list.loading || list.tabItems.length === 0}
+            >
+              <Download className="h-4 w-4" />
+              Dışa Aktar
+            </Button>
             <LinkButton href="/admin/blog/categories" variant="outline">
               <Tag className="h-4 w-4" />
               Kategoriler

@@ -136,6 +136,62 @@ describe("pages", () => {
     expect(update.json().data.blocks).toHaveLength(1);
   });
 
+  // Güvenlik: EDITOR de sayfa yazabildiği için (ADMIN'den daha az güvenilir bir rol), "text"
+  // block'unun `data.html`'i public sitede `dangerouslySetInnerHTML` ile DOĞRUDAN render edilir
+  // (bkz. frontend/src/components/site/blocks/text-block.tsx) — bu yüzden DB'ye yazılmadan önce
+  // sanitize edilmelidir (bkz. lib/html-sanitize.ts).
+  it("sanitizes a <script>-injected text block's html on create, keeping legitimate formatting", async () => {
+    const create = await app.inject({
+      method: "POST",
+      url: "/api/v1/admin/pages",
+      headers: authHeader(),
+      payload: {
+        title: "XSS Denemesi",
+        blocks: [
+          {
+            id: "b1",
+            type: "text",
+            data: { html: '<p>Merhaba <b>dünya</b></p><script>alert(1)</script><a href="javascript:alert(2)">tıkla</a>' },
+          },
+        ],
+      },
+    });
+
+    expect(create.statusCode).toBe(201);
+    const html = create.json().data.blocks[0].data.html as string;
+    expect(html).not.toContain("<script");
+    expect(html).not.toContain("alert(1)");
+    expect(html).not.toContain("javascript:");
+    expect(html).toContain("<p>Merhaba <b>dünya</b></p>");
+  });
+
+  it("sanitizes a <script>-injected text block's html on update", async () => {
+    const create = await app.inject({
+      method: "POST",
+      url: "/api/v1/admin/pages",
+      headers: authHeader(),
+      payload: { title: "XSS Update Denemesi" },
+    });
+    const pageId = create.json().data.id;
+
+    const update = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/admin/pages/${pageId}`,
+      headers: authHeader(),
+      payload: {
+        blocks: [
+          { id: "b1", type: "text", data: { html: '<p onclick="alert(1)">Merhaba</p><iframe src="evil.com"></iframe>' } },
+        ],
+      },
+    });
+
+    expect(update.statusCode).toBe(200);
+    const html = update.json().data.blocks[0].data.html as string;
+    expect(html).not.toContain("onclick");
+    expect(html).not.toContain("iframe");
+    expect(html).toContain("Merhaba");
+  });
+
   it("increments viewCount on the public view-tracking endpoint", async () => {
     const create = await app.inject({
       method: "POST",

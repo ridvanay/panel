@@ -48,6 +48,20 @@ tags:
     description: >
       E-posta & bildirim şablonu yönetimi (`/admin/notifications/templates`) — bkz.
       ARCHITECTURE.md §10.3. Tüm uçlar yalnızca SiteRole=ADMIN.
+  - name: Import
+    description: >
+      Toplu içe aktarma (`/admin/import/*`) — bkz. ARCHITECTURE.md §10.8. Sayfa/blog
+      (CSV+JSON), WordPress WXR (XML), kullanıcı (CSV) ve medya (ZIP) içe aktarımı.
+
+      **TÜM uçlar İSTİSNASIZ yalnızca SiteRole=ADMIN'dir** — içerik yazma eşiği normalde
+      ADMIN+EDITOR olsa da (bkz. `Pages`/`Blog`), toplu içe aktarma kayıt-bazlı incelemeyi
+      atlar, mevcut içeriğin ÜZERİNE yazabilir, keyfi `authorId` atayabilir ve (kullanıcı
+      içe aktarımında) hesap oluşturup rol verebilir. EDITOR/VIEWER → 403.
+
+      **Dışa aktarma için uç YOKTUR (karar):** CSV dışa aktarma tamamen client-side'dır
+      (`frontend/src/lib/export-csv.ts::exportToCsv`) — admin listeleri zaten tüm kayıtları
+      `meta.nextCursor` döngüsüyle belleğe çeker, ayrı bir sunucu ucu ikinci bir doğruluk
+      kaynağı yaratırdı. Bkz. ARCHITECTURE.md §10.8 "Dışa aktarma".
 
 security:
   - bearerAuth: []
@@ -1501,6 +1515,288 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "422": { $ref: "#/components/responses/ValidationError" }
 
+  /admin/import/jobs:
+    get:
+      tags: [Import]
+      summary: İçe aktarma işi geçmişini listele (yalnızca ADMIN)
+      description: >
+        Cursor sayfalı, `seq DESC` (en yeni önce) sıralı. `preview` alanı liste
+        görünümünde DÖNMEZ (büyük olabilir) — detay için `GET /admin/import/jobs/{jobId}`.
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/ImportJobTypeFilter"
+        - $ref: "#/components/parameters/ImportJobStatusFilter"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/ImportJobSummary" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [Import]
+      summary: 1. ADIM — dosya yükle ve ÖNİZLEME üret (yalnızca ADMIN, İÇERİK YAZMAZ)
+      description: >
+        `multipart/form-data`. **Bu uç HİÇBİR Page/BlogPost/User/Media kaydı OLUŞTURMAZ.**
+        Dosyayı gizli (public servis edilmeyen) bir konuma yazar, ayrıştırıp doğrular ve
+        `status: PENDING` bir `ImportJob` üretir; `preview` alanı kaç kayıt bulunduğunu,
+        hangi alanların eşleştiğini/eşleşmediğini ve ilk 5 örnek satırı taşır. Yazma
+        2. adımda (`POST .../start`) başlar.
+
+
+        **Alanlar:**
+
+        - `file` (binary, ZORUNLU) — tek dosya.
+
+        - `type` (string, ZORUNLU) — `#/components/schemas/ImportJobType`.
+
+
+        `format` İSTEMCİDEN ALINMAZ, sunucu dosyanın gerçek içeriğinden (magic bytes +
+        yapısal ayrıştırma) türetir; uzantı/`Content-Type` bilgi amaçlıdır, GÜVENİLMEZ.
+        Geçerlilik matrisi (ihlal → 422): `PAGES`,`BLOG` → CSV|JSON · `WORDPRESS` → XML ·
+        `USERS` → CSV · `MEDIA` → ZIP.
+
+
+        **Boyut limitleri** (global 5 MB multipart limitinin route-level override'ı —
+        `request.parts({ limits })` + route `bodyLimit`, bkz. ARCHITECTURE.md §10.8.5):
+        `PAGES`/`BLOG`/`USERS` 10 MB · `WORDPRESS` 50 MB · `MEDIA` 100 MB.
+        **Her boyut aşımı İSTİSNASIZ 413 `PAYLOAD_TOO_LARGE` döner** — tip-bazlı limit de,
+        100 MB'lık sert üst tavan da, Fastify core `bodyLimit`i de. 422 DÖNMEZ (bkz.
+        ARCHITECTURE.md §10.8.5 "413/422 kararı").
+
+
+        **Kayıt sayısı tavanları** (aşım → 422, iş oluşturulmaz): `USERS` 500 satır ·
+        `PAGES`/`BLOG` 5.000 satır · `WORDPRESS` 10.000 item · `MEDIA` 500 dosya.
+
+
+        **Hız sınırı:** 10 istek / 10 dakika (route-level). Aşım → 429.
+
+
+        Audit log: `import.upload` (metadata: `type`, `format`, `sizeBytes`, `totalCount`).
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: "#/components/schemas/CreateImportJobRequest" }
+      responses:
+        "201":
+          description: "Dosya kabul edildi, önizleme hazır (`status: PENDING`)"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/ImportJob" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "422":
+          description: >
+            Dosya yok / bozuk / `type` ile format uyuşmuyor / kayıt tavanı aşıldı /
+            XML'de DOCTYPE-DTD tespit edildi veya iç içe geçme 100 seviyeyi aştı (bkz.
+            ARCHITECTURE.md §10.8.6 XXE savunması) / ZIP bombası ya da güvensiz arşiv
+            yolu (zip-slip) tespit edildi. `error.details` alan-bazlı açıklama taşır.
+
+
+            **Bu kontrollerin HEPSİ yükleme anında yapılır ve iş OLUŞTURULMAZ** — kaynak
+            dosyadan statik olarak tespit edilebilen hiçbir kusur `FAILED` bir işe
+            dönüşmez. `FAILED`, yalnızca çalışma anında ortaya çıkan hatalara ayrılmıştır
+            (DB hatası, sunucu yeniden başlatma). Boyut aşımı bu daldan DEĞİL, 413'ten döner.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /admin/import/jobs/{jobId}:
+    parameters:
+      - $ref: "#/components/parameters/ImportJobId"
+    get:
+      tags: [Import]
+      summary: İşin durumunu/ilerlemesini/özet raporunu getir — POLL UCU (yalnızca ADMIN)
+      description: >
+        Frontend bu ucu **2 saniyede bir** poll eder (WebSocket/SSE YOKTUR — projede
+        realtime altyapısı yok, bkz. ARCHITECTURE.md §10.8). Worker sayaçları her 25
+        kayıtta bir DB'ye yazar, dolayısıyla ilerleme çubuğu adım adım artar.
+
+
+        `status` ∈ `COMPLETED|FAILED|CANCELLED` olduğunda poll durdurulur ve özet rapor
+        gösterilir: "`totalCount` kayıttan `successCount` başarılı, `errorCount` hata"
+        (+ `skippedCount`). Hata nedenleri için `GET .../errors`.
+
+
+        Kullanıcı sayfadan ayrılabilir: iş sunucu tarafında devam eder, dönüşte bu uç
+        güncel durumu verir. Bildirim, frontend'in bu ucu poll etmesiyle üretilen bir
+        toast'tır (bkz. ARCHITECTURE.md §10.6 toast standardı).
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/ImportJob" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [Import]
+      summary: İş kaydını sil — geçmişten kaldır (yalnızca ADMIN)
+      description: >
+        `ImportJobError` satırlarını (FK cascade) ve varsa kalan kaynak dosyayı da siler.
+        **İçe aktarılmış içeriği GERİ ALMAZ** — geri alma (rollback) v1 KAPSAM DIŞIDIR;
+        yanlış içe aktarım, ilgili listelerden toplu çöpe taşıma ile temizlenir
+        (`POST /admin/{pages|blog}/bulk`, `action: trash`).
+
+
+        `status: PROCESSING` olan iş SİLİNEMEZ → 409 (`"İşlenen bir iş silinemez. Önce
+        iptal edin."`). Audit log: `import.delete`.
+      responses:
+        "204": { description: Silindi }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "İş işlenirken silinemez (`error.code: CONFLICT`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+
+  /admin/import/jobs/{jobId}/start:
+    parameters:
+      - $ref: "#/components/parameters/ImportJobId"
+    post:
+      tags: [Import]
+      summary: 2. ADIM — onayla ve arka planda işlemeyi başlat (yalnızca ADMIN)
+      description: >
+        `PENDING` → `QUEUED` geçişi yapar ve **202 ile HEMEN döner**; yazma işlemi
+        istek/yanıt döngüsünün DIŞINDA, aynı Node süreci içinde asenkron olarak yürür
+        (kuyruk altyapısı yok — karar ve gerekçesi ARCHITECTURE.md §10.8'de).
+
+
+        Aynı anda **yalnızca BİR iş** `PROCESSING` olabilir; ikinci iş `QUEUED`'da
+        sırasını bekler. Bu, isteği başarısız KILMAZ.
+
+
+        `status` `PENDING` değilse → 409 (`"Bu iş zaten başlatılmış."`) — istek
+        idempotent DEĞİLDİR, çift tıklama korumasını frontend + bu 409 birlikte sağlar.
+
+
+        Gövde, önizleme ekranında yapılan seçimleri taşır (alan eşleştirme + çakışma
+        stratejisi). Gövde boş gönderilirse `POST /admin/import/jobs` yanıtındaki
+        `preview.suggestedMapping` ve `duplicateStrategy: skip` varsayılanları uygulanır.
+
+
+        Audit log: `import.start` (metadata: `type`, `totalCount`, `duplicateStrategy`).
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StartImportJobRequest" }
+      responses:
+        "202":
+          description: "Kabul edildi, arka planda işleniyor (`status: QUEUED`)"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/ImportJob" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "İş `PENDING` durumunda değil (`error.code: CONFLICT`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/import/jobs/{jobId}/cancel:
+    parameters:
+      - $ref: "#/components/parameters/ImportJobId"
+    post:
+      tags: [Import]
+      summary: İşi iptal et (yalnızca ADMIN)
+      description: >
+        **İşbirlikçi (cooperative) iptaldir:** `cancelRequestedAt = now()` yazılır, worker
+        bunu HER PARTİ (25 kayıt) başında kontrol eder ve fark ettiğinde durup
+        `status: CANCELLED` yapar. Bu yüzden yanıt anında `status` hâlâ `PROCESSING`
+        olabilir — frontend poll ederek `CANCELLED`'ı bekler.
+
+
+        **O ana kadar yazılmış kayıtlar GERİ ALINMAZ** (rollback yok, bkz.
+        `DELETE /admin/import/jobs/{jobId}`); sayaçlar nerede kalındığını gösterir.
+        `PENDING`/`QUEUED` bir iş anında `CANCELLED` olur (hiç kayıt yazılmamıştır).
+
+
+        `COMPLETED|FAILED|CANCELLED` bir iş için → 409. Audit log: `import.cancel`.
+      responses:
+        "200":
+          description: İptal talebi alındı
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/ImportJob" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "İş zaten sonlanmış (`error.code: CONFLICT`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+
+  /admin/import/jobs/{jobId}/errors:
+    parameters:
+      - $ref: "#/components/parameters/ImportJobId"
+    get:
+      tags: [Import]
+      summary: İşin satır-bazlı hata/atlama kayıtlarını listele (yalnızca ADMIN)
+      description: >
+        Özet rapordaki "3 hata" satırına tıklanınca açılan liste. Cursor sayfalı,
+        `seq ASC` (dosyadaki sırayla). İş başına EN FAZLA 1.000 hata satırı saklanır;
+        aşıldığında yazma durur (`ImportJob.errorCount` gerçek sayıyı saymaya devam eder)
+        ve `meta.truncated: true` döner.
+
+
+        Bu satırlar `rawData` içinde KİŞİSEL VERİ taşıyabilir (ör. `USERS` içe aktarımında
+        e-posta) → saklama süresi ve maskeleme kuralı compliance-agent'ın alanıdır
+        (bkz. ARCHITECTURE.md §10.8 "Saklama & KVKK").
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/ImportJobError" }
+                      meta: { $ref: "#/components/schemas/ImportJobErrorListMeta" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /webhooks/stripe:
     post:
       tags: [Webhooks]
@@ -1578,6 +1874,21 @@ components:
       required: true
       description: "ör. WELCOME, PASSWORD_RESET, SYSTEM_ANNOUNCEMENT"
       schema: { type: string }
+    ImportJobId:
+      name: jobId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ImportJobTypeFilter:
+      name: type
+      in: query
+      required: false
+      schema: { $ref: "#/components/schemas/ImportJobType" }
+    ImportJobStatusFilter:
+      name: status
+      in: query
+      required: false
+      schema: { $ref: "#/components/schemas/ImportJobStatus" }
 
   responses:
     Unauthorized:
@@ -1607,6 +1918,13 @@ components:
           schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
     TooManyRequests:
       description: "Hız sınırı aşıldı (`error.code: RATE_LIMITED`)"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+    PayloadTooLarge:
+      description: >
+        Yüklenen dosya/istek gövdesi izin verilen boyutu aşıyor
+        (`error.code: PAYLOAD_TOO_LARGE`, bkz. lib/errors.ts::PayloadTooLargeError).
       content:
         application/json:
           schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
@@ -2494,3 +2812,362 @@ components:
       properties:
         renderedSubject: { type: string }
         renderedHtml: { type: string }
+
+    # ---- §10.8 Toplu İçe Aktarma (Import) ----
+
+    ImportJobType:
+      type: string
+      description: >
+        İçe aktarmanın HEDEFİ (dosya formatı değil — o `ImportSourceFormat`'tır).
+        `WORDPRESS` tek bir WXR dosyasından hem `Page` hem `BlogPost` hem `BlogCategory`
+        üretebilir; diğerleri tek hedeflidir.
+      enum: [PAGES, BLOG, WORDPRESS, USERS, MEDIA]
+
+    ImportSourceFormat:
+      type: string
+      description: >
+        Sunucunun dosya İÇERİĞİNDEN türettiği format (istemci GÖNDERMEZ, gönderse de
+        yok sayılır). Geçerlilik matrisi: PAGES,BLOG → CSV|JSON · WORDPRESS → XML ·
+        USERS → CSV · MEDIA → ZIP.
+      enum: [CSV, JSON, XML, ZIP]
+
+    ImportJobStatus:
+      type: string
+      description: >
+        - `PENDING` — dosya yüklendi ve ayrıştırıldı, önizleme hazır, KULLANICI ONAYI
+        bekleniyor. Hiçbir kayıt YAZILMAMIŞTIR. 24 saat onaylanmazsa iş ve kaynak dosya
+        otomatik temizlenir (tembel süpürme: her yeni yüklemede çalışır, cron YOK).
+
+        - `QUEUED` — onaylandı, süreç-içi kuyrukta sırasını bekliyor (aynı anda tek iş).
+
+        - `PROCESSING` — işleniyor; sayaçlar 25 kayıtta bir güncellenir.
+
+        - `COMPLETED` — bitti. `errorCount > 0` OLABİLİR — kısmi başarı bir hata DEĞİLDİR
+        (`POST /admin/pages/bulk` ile aynı felsefe).
+
+        - `FAILED` — hiç kayıt yazılamadan çöktü (bozuk dosya, DB hatası) VEYA sunucu
+        işlem sırasında yeniden başladı (bkz. `errorSummary`).
+
+        - `CANCELLED` — kullanıcı iptal etti; o ana kadar yazılanlar KALIR.
+      enum: [PENDING, QUEUED, PROCESSING, COMPLETED, FAILED, CANCELLED]
+
+    ImportDuplicateStrategy:
+      type: string
+      description: >
+        Var olan bir kayıtla çakışma bulunduğunda ne yapılacağı. Eşleştirme anahtarı:
+        `PAGES`/`BLOG`/`WORDPRESS` → `slug` · `USERS` → `email` · `MEDIA` →
+        `Media.filename`.
+
+
+        - `skip` (VARSAYILAN) — mevcut kayıt korunur, satır `skippedCount`'a yazılır.
+
+        - `overwrite` — mevcut kayıt güncellenir. Page/BlogPost'ta bu, normal `PATCH`
+        gibi ÖNCE bir `ContentRevision` snapshot'ı yazar (§10.1) — geri dönüş mümkün
+        kalsın diye. ÇÖPTEKİ (`deletedAt != null`) kayıt ASLA overwrite edilmez, atlanır
+        (`TARGET_TRASHED`).
+
+        - `createNew` — slug'a `-2`, `-3` … eklenerek yeni kayıt açılır. `USERS` ve
+        `MEDIA` için GEÇERSİZDİR.
+
+
+        **`USERS` için yalnızca `skip` kabul edilir; `overwrite`/`createNew` → 422.**
+        Gerekçe: CSV ile mevcut bir kullanıcının rolünü değiştirebilmek doğrudan bir
+        yetki yükseltme (privilege escalation) vektörüdür — rol değişikliği tek yolla,
+        `PATCH /admin/users/{userId}/role` ile yapılır.
+      enum: [skip, overwrite, createNew]
+
+    CreateImportJobRequest:
+      description: "`multipart/form-data` gövdesi — `POST /admin/import/jobs`."
+      type: object
+      required: [file, type]
+      properties:
+        file:
+          type: string
+          format: binary
+          description: "Tek dosya. Boyut limitleri uç açıklamasındadır."
+        type: { $ref: "#/components/schemas/ImportJobType" }
+
+    ImportFieldMapping:
+      description: >
+        CSV/JSON içe aktarımında **kaynak alan adı → hedef şema alanı** eşlemesi
+        (`{ "Baslik": "title", "Icerik": "contentHtml" }`). Anahtar = dosyadaki sütun/
+        özellik adı, değer = hedef alan adı (`ImportJobPreview.targetFields` içindeki
+        değerlerden biri) ya da `null` (bu sütunu YOK SAY).
+
+
+        `WORDPRESS` ve `MEDIA` için ANLAMSIZDIR ve yok sayılır — WXR eşleştirmesi sabit
+        ve kurallıdır (bkz. ARCHITECTURE.md §10.8 eşleştirme tablosu).
+      type: object
+      additionalProperties:
+        type: string
+        nullable: true
+
+    ImportPreviewField:
+      description: "Önizleme ekranındaki 'hangi alan eşleşti / eşleşmedi' satırı."
+      type: object
+      required: [sourceField, targetField, status]
+      properties:
+        sourceField:
+          type: string
+          description: "Dosyadaki sütun/özellik adı (CSV başlığı, JSON anahtarı, WXR eleman adı)."
+        targetField:
+          type: string
+          nullable: true
+          description: "Otomatik eşleşen hedef şema alanı; eşleşmediyse `null`."
+        status:
+          type: string
+          description: >
+            - `matched` — otomatik eşleşti (birebir ad veya bilinen eş anlamlı).
+
+            - `unmatched` — hedefi bulunamadı; kullanıcı `fieldMapping` ile atayabilir,
+            atamazsa bu sütun YOK SAYILIR (hata değildir).
+
+            - `ignored` — bizim şemamızda karşılığı OLMADIĞI bilinen alan (ör. WordPress
+            `post_tag`, `wp:comment`); UI bunu bilgi olarak gösterir.
+
+            - `missingRequired` — ZORUNLU hedef alan (`title`; `USERS` için `email`)
+            dosyada bulunamadı → iş başlatılamaz, `preview.canStart: false`.
+          enum: [matched, unmatched, ignored, missingRequired]
+
+    ImportJobPreview:
+      description: >
+        `POST /admin/import/jobs` sonrası dönen, ONAY EKRANINI besleyen özet. Yalnızca
+        okuma amaçlıdır; hiçbir kayıt yazılmamıştır.
+      type: object
+      required: [totalCount, canStart, fields, targetFields, suggestedMapping, samples, warnings]
+      properties:
+        totalCount:
+          type: integer
+          description: "Dosyada bulunan İŞLENEBİLİR kayıt sayısı (atlanacağı şimdiden bilinenler hariç)."
+        canStart:
+          type: boolean
+          description: >
+            `false` ise `POST .../start` 422 döner (ör. zorunlu alan eşleşmedi, kayıt yok).
+            UI onay butonunu bu alana göre pasifleştirir.
+        fields:
+          type: array
+          items: { $ref: "#/components/schemas/ImportPreviewField" }
+        targetFields:
+          type: array
+          description: >
+            Bu `type` için atanabilecek hedef şema alanlarının listesi — eşleştirme
+            dropdown'ını besler. Ör. `BLOG` → [title, slug, excerpt, contentHtml,
+            coverImageUrl, status, categoryName, seoTitle, seoDescription, ogTitle,
+            ogImageUrl, canonicalUrl, noIndex, publishedAt, authorEmail].
+          items: { type: string }
+        suggestedMapping:
+          allOf:
+            - $ref: "#/components/schemas/ImportFieldMapping"
+          description: "Otomatik eşleşmenin sonucu — `StartImportJobRequest.fieldMapping` gönderilmezse bu kullanılır."
+        samples:
+          type: array
+          description: "Dosyanın İLK 5 kaydı, eşleştirme uygulanmış hâliyle (kullanıcı gözle doğrulasın diye)."
+          maxItems: 5
+          items: { type: object, additionalProperties: true }
+        breakdown:
+          type: object
+          description: >
+            Yalnızca `WORDPRESS` için: WXR `wp:post_type` kırılımı. Frontend "12 sayfa,
+            340 yazı, 87 medya bağlantısı, 5 kategori bulundu" özetini bundan üretir.
+          properties:
+            pages: { type: integer }
+            posts: { type: integer }
+            attachments: { type: integer }
+            categories: { type: integer }
+            skipped:
+              type: integer
+              description: "Desteklenmeyen `wp:post_type` (nav_menu_item, revision, custom_css, wp_block …) + `wp:status: trash|inherit`."
+        warnings:
+          type: array
+          description: >
+            İşi ENGELLEMEYEN ama kullanıcıya onaydan ÖNCE gösterilmesi ZORUNLU uyarılar.
+            Kararlı kod + Türkçe metin (`SeoScoreIssue` ile aynı desen).
+          items:
+            type: object
+            required: [code, message]
+            properties:
+              code:
+                type: string
+                enum:
+                  - WP_MEDIA_NOT_DOWNLOADED
+                  - WP_TAGS_UNSUPPORTED
+                  - WP_AUTHOR_UNMATCHED
+                  - WP_PRIVATE_AS_DRAFT
+                  - WP_SCHEDULED_AS_DRAFT
+                  - HTML_WILL_BE_SANITIZED
+                  - SLUG_COLLISION
+                  - MEDIA_SVG_REJECTED
+                  - UNMAPPED_COLUMNS
+              message: { type: string, description: "Gösterime hazır Türkçe metin." }
+              count: { type: integer, description: "Kaç kaydı etkiliyor (varsa)." }
+
+    ImportJobSummary:
+      description: >
+        `GET /admin/import/jobs` liste görünümü — `ImportJob`'ın `preview` alanı
+        ÇIKARILMIŞ hâli (liste yanıtını şişirmemek için).
+      type: object
+      required: [id, type, format, status, filename, sizeBytes, totalCount, processedCount, successCount, errorCount, skippedCount, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        type: { $ref: "#/components/schemas/ImportJobType" }
+        format: { $ref: "#/components/schemas/ImportSourceFormat" }
+        status: { $ref: "#/components/schemas/ImportJobStatus" }
+        duplicateStrategy:
+          allOf:
+            - $ref: "#/components/schemas/ImportDuplicateStrategy"
+          nullable: true
+          description: "`PENDING` işlerde `null` (henüz seçilmedi)."
+        filename:
+          type: string
+          description: >
+            Kullanıcının yüklediği ORİJİNAL dosya adı — yalnızca GÖSTERİM içindir.
+            Diskteki ad ilişkisizdir (rastgele UUID) ve API'de HİÇBİR ZAMAN dönmez.
+        sizeBytes: { type: integer }
+        totalCount: { type: integer, description: "Dosyadaki işlenebilir kayıt sayısı (`preview.totalCount` ile aynı)." }
+        processedCount: { type: integer, description: "İşlenmiş kayıt = success + error + skipped. İlerleme çubuğu: processedCount / totalCount." }
+        successCount: { type: integer }
+        errorCount: { type: integer }
+        skippedCount: { type: integer, description: "Çakışma nedeniyle (strateji `skip`) veya desteklenmeyen tür nedeniyle atlananlar." }
+        errorSummary:
+          type: string
+          nullable: true
+          description: "İşin TAMAMINI başarısız kılan hata (`FAILED`) için tek satırlık Türkçe açıklama; satır-bazlı hatalar burada DEĞİL `GET .../errors`'tadır."
+        createdById: { type: string, format: uuid, nullable: true }
+        createdBy:
+          allOf:
+            - $ref: "#/components/schemas/UserSummary"
+          nullable: true
+        createdAt: { type: string, format: date-time }
+        startedAt: { type: string, format: date-time, nullable: true }
+        finishedAt: { type: string, format: date-time, nullable: true }
+
+    ImportJob:
+      description: "Tekil iş DTO'su — `ImportJobSummary` + `preview`."
+      allOf:
+        - $ref: "#/components/schemas/ImportJobSummary"
+        - type: object
+          properties:
+            preview:
+              allOf:
+                - $ref: "#/components/schemas/ImportJobPreview"
+              nullable: true
+              description: "İş sonlandıktan sonra da korunur (rapor ekranı geçmişte de açılabilsin diye)."
+
+    StartImportJobRequest:
+      description: "Onay ekranının seçimleri. Gövde HİÇ gönderilmezse tüm varsayılanlar uygulanır."
+      type: object
+      properties:
+        fieldMapping:
+          allOf:
+            - $ref: "#/components/schemas/ImportFieldMapping"
+          description: "Verilmezse `preview.suggestedMapping` kullanılır. `WORDPRESS`/`MEDIA`'da yok sayılır."
+        duplicateStrategy:
+          allOf:
+            - $ref: "#/components/schemas/ImportDuplicateStrategy"
+          description: "Varsayılan `skip`."
+        defaultStatus:
+          type: string
+          enum: [DRAFT, PUBLISHED]
+          description: >
+            `PAGES`/`BLOG` içe aktarımında kaynakta `status` alanı YOKSA/BOŞSA uygulanacak
+            varsayılan. **Varsayılanın varsayılanı `DRAFT`'tır** — içe aktarılan içerik
+            gözden geçirilmeden public siteye düşmesin. `WORDPRESS`'te yok sayılır
+            (orada `wp:status` bağlayıcıdır).
+        defaultAuthorId:
+          type: string
+          format: uuid
+          nullable: true
+          description: >
+            Yazarı çözümlenemeyen kayıtlara atanacak kullanıcı. Verilmezse `null` kalır
+            (UI "—" gösterir). **İçe aktarma HİÇBİR KOŞULDA kendiliğinden kullanıcı
+            OLUŞTURMAZ** — `USERS` içe aktarımı bunun tek istisnası ve tek yoludur.
+        defaultCategoryId:
+          type: string
+          format: uuid
+          nullable: true
+          description: "`BLOG` (CSV/JSON) için kategorisi çözümlenemeyen yazılara atanacak kategori. `WORDPRESS`'te kategoriler WXR'dan upsert edilir, bu alan yok sayılır."
+
+    ImportJobErrorCode:
+      type: string
+      description: >
+        Kararlı, makine-okunur satır hatası kodu — frontend gruplama/rozet mantığı ve
+        qa testleri BU KODA bağlanır, `message` yalnızca gösterimdir (`SeoScoreIssueCode`
+        ile aynı sözleşme).
+
+
+        **Bu liste yalnızca GERÇEKTEN tetiklenen kodları içerir.** Yazar/kategori
+        çözümlenemediğinde satır hatası ÜRETİLMEZ — kayıt `defaultAuthorId`/
+        `defaultCategoryId`'ye, o da yoksa `null`'a sessizce düşer ve BAŞARILI sayılır
+        (bkz. ARCHITECTURE.md §10.8.7). Başarılı bir satır için "uyarı" üretmek
+        `successCount`/`errorCount` özetini yanıltıcı kılardı; hata modelinde bilinçli
+        olarak `WARNING` severity YOKTUR. Operatörün kontrolü `StartImportJobRequest`
+        içindeki default alanlarıdır; WXR'da ayrıca onay ÖNCESİ agregat uyarı gösterilir
+        (`ImportJobPreview.warnings[].code = WP_AUTHOR_UNMATCHED`).
+      enum:
+        - REQUIRED_FIELD_MISSING
+        - INVALID_VALUE
+        - INVALID_EMAIL
+        - INVALID_ROLE
+        - INVALID_DATE
+        - INVALID_URL
+        - DUPLICATE_SKIPPED
+        - TARGET_TRASHED
+        - SLUG_CONFLICT
+        - UNSUPPORTED_POST_TYPE
+        - UNSUPPORTED_STATUS
+        - UNSUPPORTED_MIME
+        - FILE_TOO_LARGE
+        - EMAIL_DELIVERY_FAILED
+        - DB_ERROR
+
+    ImportJobError:
+      description: >
+        Tek bir kaydın başarısız olma/atlanma nedeni. **Atlama (`skipped`) da burada
+        raporlanır** — kullanıcı "3 kayıt neden atlandı?" sorusunu tek listeden yanıtlar;
+        `severity` alanı ikisini ayırır.
+      type: object
+      required: [id, rowNumber, code, message, severity, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        rowNumber:
+          type: integer
+          description: >
+            KAYNAK DOSYADAKİ 1-tabanlı sıra. CSV'de başlık satırı HARİÇ (ilk veri satırı
+            = 1). JSON'da dizi indeksi + 1. WXR'da `<item>` sırası. ZIP'te arşiv içindeki
+            giriş sırası.
+        code: { $ref: "#/components/schemas/ImportJobErrorCode" }
+        message: { type: string, description: "Gösterime hazır Türkçe açıklama." }
+        severity:
+          type: string
+          enum: [error, skipped]
+          description: "`error` → `errorCount`'a, `skipped` → `skippedCount`'a sayılır."
+        field:
+          type: string
+          nullable: true
+          description: "Hataya yol açan hedef alan adı (varsa), ör. `email`, `slug`."
+        sourceRef:
+          type: string
+          nullable: true
+          description: "Kaynaktaki tanımlayıcı — WXR'da `wp:post_id`, ZIP'te arşiv içi dosya adı, CSV/JSON'da varsa `slug`/`email`."
+        rawData:
+          type: object
+          nullable: true
+          additionalProperties: true
+          description: >
+            Satırın ham hâli (yeniden deneme/düzeltme için). **8 KB'a kırpılır** ve
+            KİŞİSEL VERİ İÇEREBİLİR → ADMIN-only olması yeterli değildir, saklama süresi
+            compliance-agent kararına tabidir (bkz. ARCHITECTURE.md §10.8).
+        createdAt: { type: string, format: date-time }
+
+    ImportJobErrorListMeta:
+      description: "`GET /admin/import/jobs/{jobId}/errors` yanıtının `meta` zarfı."
+      type: object
+      required: [truncated]
+      properties:
+        nextCursor: { type: string, nullable: true }
+        truncated:
+          type: boolean
+          description: >
+            `true` ise iş başına 1.000 satırlık saklama tavanı aşılmıştır ve hata
+            satırlarının bir kısmı DB'ye YAZILMAMIŞTIR (`ImportJob.errorCount` yine de
+            gerçek toplamı gösterir). UI bunu açıkça belirtir.

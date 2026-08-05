@@ -18,6 +18,9 @@ export type ApiErrorCode =
   | "VALIDATION_ERROR"
   | "CONFLICT"
   | "RATE_LIMITED"
+  // openapi.yaml `#/components/responses/PayloadTooLarge` (413) — İçe aktarma dosya
+  // yükleme ucunda kullanılır (bkz. lib/api/import.ts). Önceden bu union'da eksikti.
+  | "PAYLOAD_TOO_LARGE"
   | "INTERNAL_ERROR"
   | "NETWORK_ERROR";
 
@@ -203,6 +206,12 @@ export interface PageMeta {
   nextCursor: string | null;
   /** Yalnızca `/admin/pages` ve `/admin/blog` yanıtlarında dolu gelir — bkz. `ContentCounts`. */
   counts?: ContentCounts;
+  /**
+   * Yalnızca `GET /admin/import/jobs/{jobId}/errors` yanıtında dolu gelir (bkz.
+   * `ImportJobErrorListMeta` openapi şeması) — iş başına 1.000 satırlık saklama tavanı
+   * aşıldığında `true`.
+   */
+  truncated?: boolean;
 }
 
 export interface Page<T> {
@@ -653,4 +662,165 @@ export interface PreviewEmailTemplateRequest {
 export interface PreviewEmailTemplateResponse {
   renderedSubject: string;
   renderedHtml: string;
+}
+
+/**
+ * Toplu İçe Aktarma (Import) — bkz. ARCHITECTURE.md §10.8, openapi.yaml `Import` tag'i.
+ * `/admin/import/*` uçları — yalnızca ADMIN.
+ */
+
+/** İçe aktarmanın HEDEFİ (dosya formatı değil — o `ImportSourceFormat`'tır). */
+export type ImportJobType = "PAGES" | "BLOG" | "WORDPRESS" | "USERS" | "MEDIA";
+
+/** Sunucunun dosya İÇERİĞİNDEN türettiği format — istemci göndermez, göndersede yok sayılır. */
+export type ImportSourceFormat = "CSV" | "JSON" | "XML" | "ZIP";
+
+export type ImportJobStatus = "PENDING" | "QUEUED" | "PROCESSING" | "COMPLETED" | "FAILED" | "CANCELLED";
+
+/**
+ * Var olan bir kayıtla çakışma bulunduğunda ne yapılacağı. `USERS` için yalnızca `skip`
+ * kabul edilir (`overwrite`/`createNew` → 422, yetki yükseltme vektörü).
+ */
+export type ImportDuplicateStrategy = "skip" | "overwrite" | "createNew";
+
+/**
+ * Kaynak alan adı → hedef şema alanı eşlemesi. Değer `null` ise o sütun yok sayılır.
+ * `WORDPRESS`/`MEDIA` için anlamsızdır ve yok sayılır.
+ */
+export type ImportFieldMapping = Record<string, string | null>;
+
+export type ImportPreviewFieldStatus = "matched" | "unmatched" | "ignored" | "missingRequired";
+
+export interface ImportPreviewField {
+  sourceField: string;
+  /** Otomatik eşleşen hedef şema alanı; eşleşmediyse `null`. */
+  targetField: string | null;
+  status: ImportPreviewFieldStatus;
+}
+
+export type ImportJobWarningCode =
+  | "WP_MEDIA_NOT_DOWNLOADED"
+  | "WP_TAGS_UNSUPPORTED"
+  | "WP_AUTHOR_UNMATCHED"
+  | "WP_PRIVATE_AS_DRAFT"
+  | "WP_SCHEDULED_AS_DRAFT"
+  | "HTML_WILL_BE_SANITIZED"
+  | "SLUG_COLLISION"
+  | "MEDIA_SVG_REJECTED"
+  | "UNMAPPED_COLUMNS";
+
+export interface ImportJobWarning {
+  code: ImportJobWarningCode;
+  /** Gösterime hazır Türkçe metin — mantık İÇİN `code` kullanılır, bu yalnızca gösterimdir. */
+  message: string;
+  count?: number;
+}
+
+/** Yalnızca `WORDPRESS` için: WXR `wp:post_type` kırılımı. */
+export interface ImportJobBreakdown {
+  pages?: number;
+  posts?: number;
+  attachments?: number;
+  categories?: number;
+  skipped?: number;
+}
+
+/** `POST /admin/import/jobs` sonrası dönen, ONAY EKRANINI besleyen özet. */
+export interface ImportJobPreview {
+  totalCount: number;
+  /** `false` ise `POST .../start` 422 döner — UI onay butonunu bu alana göre pasifleştirir. */
+  canStart: boolean;
+  fields: ImportPreviewField[];
+  /** Bu `type` için atanabilecek hedef şema alanları — eşleştirme dropdown'ını besler. */
+  targetFields: string[];
+  /** Otomatik eşleşmenin sonucu — `StartImportJobRequest.fieldMapping` gönderilmezse bu kullanılır. */
+  suggestedMapping: ImportFieldMapping;
+  /** Dosyanın ilk 5 kaydı, eşleştirme uygulanmış hâliyle. */
+  samples: Record<string, unknown>[];
+  breakdown?: ImportJobBreakdown;
+  warnings: ImportJobWarning[];
+}
+
+export interface ImportJobSummary {
+  id: string;
+  type: ImportJobType;
+  format: ImportSourceFormat;
+  status: ImportJobStatus;
+  /** `PENDING` işlerde `null` (henüz seçilmedi). */
+  duplicateStrategy: ImportDuplicateStrategy | null;
+  /** Kullanıcının yüklediği ORİJİNAL dosya adı — yalnızca gösterim içindir. */
+  filename: string;
+  sizeBytes: number;
+  totalCount: number;
+  /** İşlenmiş kayıt = success + error + skipped. İlerleme çubuğu: processedCount / totalCount. */
+  processedCount: number;
+  successCount: number;
+  errorCount: number;
+  skippedCount: number;
+  /** İşin TAMAMINI başarısız kılan hata (`FAILED`); satır hataları burada DEĞİL `.../errors`'tadır. */
+  errorSummary: string | null;
+  createdById: string | null;
+  createdBy: UserSummary | null;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+}
+
+/** Tekil iş DTO'su — `ImportJobSummary` + `preview`. */
+export interface ImportJob extends ImportJobSummary {
+  /** İş sonlandıktan sonra da korunur (rapor ekranı geçmişte de açılabilsin diye). */
+  preview: ImportJobPreview | null;
+}
+
+/** Onay ekranının seçimleri — gövde hiç gönderilmezse tüm varsayılanlar uygulanır. */
+export interface StartImportJobRequest {
+  /** Verilmezse `preview.suggestedMapping` kullanılır. `WORDPRESS`/`MEDIA`'da yok sayılır. */
+  fieldMapping?: ImportFieldMapping;
+  /** Varsayılan `skip`. */
+  duplicateStrategy?: ImportDuplicateStrategy;
+  /** `PAGES`/`BLOG` içe aktarımında kaynakta `status` yoksa uygulanacak varsayılan (varsayılanın varsayılanı `DRAFT`). */
+  defaultStatus?: ContentStatus;
+  /** Yazarı çözümlenemeyen kayıtlara atanacak kullanıcı. İçe aktarma HİÇBİR KOŞULDA kendiliğinden kullanıcı oluşturmaz. */
+  defaultAuthorId?: string | null;
+  /** `BLOG` (CSV/JSON) için kategorisi çözümlenemeyen yazılara atanacak kategori. */
+  defaultCategoryId?: string | null;
+}
+
+export type ImportJobErrorCode =
+  | "REQUIRED_FIELD_MISSING"
+  | "INVALID_VALUE"
+  | "INVALID_EMAIL"
+  | "INVALID_ROLE"
+  | "INVALID_DATE"
+  | "INVALID_URL"
+  | "DUPLICATE_SKIPPED"
+  | "TARGET_TRASHED"
+  | "SLUG_CONFLICT"
+  | "UNSUPPORTED_POST_TYPE"
+  | "UNSUPPORTED_STATUS"
+  | "CATEGORY_UNRESOLVED"
+  | "AUTHOR_UNRESOLVED"
+  | "UNSUPPORTED_MIME"
+  | "FILE_TOO_LARGE"
+  | "EMAIL_DELIVERY_FAILED"
+  | "DB_ERROR";
+
+/**
+ * Tek bir kaydın başarısız olma/atlanma nedeni. Atlama (`skipped`) da burada raporlanır —
+ * `severity` alanı ikisini ayırır.
+ */
+export interface ImportJobError {
+  id: string;
+  /** KAYNAK DOSYADAKİ 1-tabanlı sıra (CSV'de başlık satırı hariç, ilk veri satırı = 1). */
+  rowNumber: number;
+  code: ImportJobErrorCode;
+  /** Gösterime hazır Türkçe açıklama. */
+  message: string;
+  severity: "error" | "skipped";
+  field: string | null;
+  /** Kaynaktaki tanımlayıcı — WXR'da `wp:post_id`, ZIP'te arşiv içi dosya adı, CSV/JSON'da slug/email. */
+  sourceRef: string | null;
+  /** Satırın ham hâli (8 KB'a kırpılır). KİŞİSEL VERİ İÇEREBİLİR (bkz. ARCHITECTURE.md §10.8.8). */
+  rawData: Record<string, unknown> | null;
+  createdAt: string;
 }
