@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import Link from "@tiptap/extension-link";
 import Image from "@tiptap/extension-image";
 import { Bold, Italic, Heading2, List, Link as LinkIcon, Image as ImageIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -40,7 +39,7 @@ function ToolbarButton({
 export function PostEditor({ content, onChange }: { content: string; onChange: (html: string) => void }) {
   const [mediaPickerOpen, setMediaPickerOpen] = useState(false);
   const editor = useEditor({
-    extensions: [StarterKit, Link, Image],
+    extensions: [StarterKit, Image],
     content,
     immediatelyRender: false,
     editorProps: {
