@@ -1,10 +1,13 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
+import { Controller, useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { AlertCircle, ChevronLeft, Newspaper } from "lucide-react";
 import * as blogApi from "@/lib/api/blog";
 import * as usersAdminApi from "@/lib/api/users-admin";
@@ -22,24 +25,46 @@ import { PageHeading } from "@/components/admin/page-heading";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { useAuth } from "@/context/auth-context";
 
+// `blogApi.createPost` gövdesini BİREBİR yansıtan istemci tarafı zod şeması. `title` ve
+// `contentHtml` mevcut davranışta HTML5 `required` ile korunuyordu — burada gerçek bir
+// istemci tarafı doğrulama mesajına dönüştürülmesi KABUL EDİLEN bir iyileştirmedir.
+const formSchema = z.object({
+  title: z.string().min(1, "Başlık gerekli."),
+  excerpt: z.string().optional(),
+  coverImageUrl: z.string().optional(),
+  categoryId: z.string().optional(),
+  contentHtml: z.string().min(1, "İçerik gerekli."),
+  authorId: z.string().optional(),
+});
+
+type FormValues = z.infer<typeof formSchema>;
+
 export default function NewBlogPostPage() {
   const router = useRouter();
   const { user } = useAuth();
   const isAdmin = user?.role === "ADMIN";
   const [categories, setCategories] = useState<BlogCategory[]>([]);
-
-  const [title, setTitle] = useState("");
-  const [excerpt, setExcerpt] = useState("");
-  const [coverImageUrl, setCoverImageUrl] = useState("");
-  const [categoryId, setCategoryId] = useState("");
-  const [contentHtml, setContentHtml] = useState("");
-  const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [admins, setAdmins] = useState<AdminUser[]>([]);
-  const [authorIdOverride, setAuthorIdOverride] = useState<string | null>(null);
-  // Varsayılan yazar giriş yapmış kullanıcıdır; ADMIN dropdown'dan değiştirene kadar override boş kalır.
-  const authorId = authorIdOverride ?? user?.id ?? "";
+
+  const {
+    register,
+    handleSubmit,
+    control,
+    formState: { errors, isSubmitting },
+  } = useForm<FormValues>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      title: "",
+      excerpt: "",
+      coverImageUrl: "",
+      categoryId: "",
+      contentHtml: "",
+      // Varsayılan yazar giriş yapmış kullanıcıdır; ADMIN dropdown'dan değiştirene kadar override boş kalır.
+      authorId: user?.id ?? "",
+    },
+  });
 
   useEffect(() => {
     (async () => {
@@ -63,18 +88,16 @@ export default function NewBlogPostPage() {
     })();
   }, [isAdmin]);
 
-  async function handleSubmit(event: FormEvent) {
-    event.preventDefault();
+  async function onSubmit(values: FormValues) {
     setError(null);
-    setCreating(true);
     try {
       const post = await blogApi.createPost({
-        title,
-        excerpt: excerpt || undefined,
-        coverImageUrl: coverImageUrl || undefined,
-        categoryId: categoryId || null,
-        contentHtml,
-        authorId: isAdmin && authorId ? authorId : undefined,
+        title: values.title,
+        excerpt: values.excerpt || undefined,
+        coverImageUrl: values.coverImageUrl || undefined,
+        categoryId: values.categoryId || null,
+        contentHtml: values.contentHtml,
+        authorId: isAdmin && values.authorId ? values.authorId : undefined,
       });
       toast.success("Yazı oluşturuldu.");
       router.push(`/admin/blog/${post.id}`);
@@ -82,7 +105,6 @@ export default function NewBlogPostPage() {
       const message = friendlyErrorMessage(err);
       setError(message);
       toast.error(message);
-      setCreating(false);
     }
   }
 
@@ -108,22 +130,26 @@ export default function NewBlogPostPage() {
             </span>
           </Alert>
         )}
-        <form className="space-y-4" onSubmit={handleSubmit} noValidate>
-          <Field id="title" label="Başlık" required>
-            {(inputProps) => (
-              <Input {...inputProps} required value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
-            )}
+        <form className="space-y-4" onSubmit={handleSubmit(onSubmit)} noValidate>
+          <Field id="title" label="Başlık" error={errors.title?.message} required>
+            {(inputProps) => <Input {...inputProps} {...register("title")} autoFocus />}
           </Field>
 
           <Field id="excerpt" label="Özet">
-            {(inputProps) => <Textarea {...inputProps} value={excerpt} onChange={(e) => setExcerpt(e.target.value)} rows={2} />}
+            {(inputProps) => <Textarea {...inputProps} {...register("excerpt")} rows={2} />}
           </Field>
 
-          <ImageUploadField id="coverImageUrl" label="Kapak görseli" value={coverImageUrl} onChange={setCoverImageUrl} />
+          <Controller
+            control={control}
+            name="coverImageUrl"
+            render={({ field }) => (
+              <ImageUploadField id="coverImageUrl" label="Kapak görseli" value={field.value ?? ""} onChange={field.onChange} />
+            )}
+          />
 
           <Field id="category" label="Kategori">
             {(inputProps) => (
-              <Select {...inputProps} value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+              <Select {...inputProps} {...register("categoryId")}>
                 <option value="">Kategorisiz</option>
                 {categories.map((category) => (
                   <option key={category.id} value={category.id}>
@@ -137,7 +163,7 @@ export default function NewBlogPostPage() {
           {isAdmin && admins.length > 0 && (
             <Field id="authorId" label="Yazar" hint="Varsayılan olarak siz atanırsınız; ADMIN başka bir kullanıcı seçebilir.">
               {(inputProps) => (
-                <Select {...inputProps} value={authorId} onChange={(e) => setAuthorIdOverride(e.target.value)}>
+                <Select {...inputProps} {...register("authorId")}>
                   {admins.map((admin) => (
                     <option key={admin.id} value={admin.id}>
                       {admin.name} ({admin.email})
@@ -149,11 +175,22 @@ export default function NewBlogPostPage() {
           )}
 
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-foreground">İçerik</label>
-            <PostEditor content={contentHtml} onChange={setContentHtml} />
+            <label className="mb-1.5 block text-sm font-medium text-foreground" id="contentHtml-label">
+              İçerik
+            </label>
+            <Controller
+              control={control}
+              name="contentHtml"
+              render={({ field }) => <PostEditor content={field.value} onChange={field.onChange} />}
+            />
+            {errors.contentHtml && (
+              <p role="alert" className="mt-1.5 text-xs text-danger">
+                {errors.contentHtml.message}
+              </p>
+            )}
           </div>
 
-          <Button type="submit" loading={creating}>
+          <Button type="submit" loading={isSubmitting}>
             Oluştur ve devam et
           </Button>
         </form>
