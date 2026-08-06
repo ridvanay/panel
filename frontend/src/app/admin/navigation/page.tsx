@@ -313,23 +313,32 @@ export default function AdminNavigationPage() {
   }
 
   const previewSettings = { siteName, logoUrl: logoUrl || null, homePageId: null };
-  const previewNavigationItems = navigationItems.map((item, index) => ({
-    id: item.localId,
-    label: item.label,
-    href: item.href,
-    order: index,
-  }));
-  const previewSocialLinks = socialLinks.map((link, index) => ({
-    id: link.localId,
-    platform: link.platform,
-    url: link.url,
-    order: index,
-  }));
+  // Henüz label/href/url doldurulmamış yeni eklenen satırlar önizlemeye YANSITILMAZ — aksi
+  // halde SiteHeader/SiteFooter bunları `<a href="">` (erişilebilir ismi olmayan link, axe-core
+  // "link-name" kritik ihlali) olarak render eder (bkz. qa-agent a11y bulgusu).
+  const previewNavigationItems = navigationItems
+    .filter((item) => item.label.trim() && item.href.trim())
+    .map((item, index) => ({
+      id: item.localId,
+      label: item.label,
+      href: item.href,
+      order: index,
+    }));
+  const previewSocialLinks = socialLinks
+    .filter((link) => link.url.trim())
+    .map((link, index) => ({
+      id: link.localId,
+      platform: link.platform,
+      url: link.url,
+      order: index,
+    }));
   const previewFooterColumns = footerColumns.map((col, index) => ({
     id: col.localId,
     title: col.title,
     order: index,
-    links: col.links.map((link, linkIndex) => ({ id: link.localId, label: link.label, href: link.href, order: linkIndex })),
+    links: col.links
+      .filter((link) => link.label.trim() && link.href.trim())
+      .map((link, linkIndex) => ({ id: link.localId, label: link.label, href: link.href, order: linkIndex })),
   }));
 
   return (
