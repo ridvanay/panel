@@ -1,7 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import * as blogApi from "@/lib/api/blog";
 import type { BlogCategory } from "@/lib/api/types";
 import { Card } from "@/components/ui/card";
@@ -17,15 +20,34 @@ import { PageHeading } from "@/components/admin/page-heading";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { AlertCircle, Check, Pencil, Tag, X } from "lucide-react";
 
+// `blogApi.createCategory` gövdesini yansıtan istemci tarafı zod şeması. `name` görsel olarak
+// "required" işaretli — mevcut davranışta bu client-side kontrol YOKTU (form `noValidate`
+// idi), gerçek bir doğrulama mesajına dönüştürülmesi diğer formlardaki gibi KABUL EDİLEBİLİR
+// bir iyileştirmedir. Tablo içi satır düzenleme (`handleUpdate`) bir `<form>` DEĞİL, imperatif
+// bir kontrollü input + `onKeyDown` etkileşimidir — bu nedenle kapsamın (manuel
+// useState+FormEvent.preventDefault paterni) dışında bırakılır ve DEĞİŞTİRİLMEDEN korunur.
+const createCategoryFormSchema = z.object({
+  name: z.string().min(1, "Kategori adı gerekli."),
+});
+
+type CreateCategoryFormValues = z.infer<typeof createCategoryFormSchema>;
+
 export default function AdminBlogCategoriesPage() {
   const [categories, setCategories] = useState<BlogCategory[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<BlogCategory | null>(null);
 
-  const [name, setName] = useState("");
-  const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const {
+    register: registerCreate,
+    handleSubmit: handleCreateFormSubmit,
+    reset: resetCreateForm,
+    formState: { errors: createErrors, isSubmitting: creating },
+  } = useForm<CreateCategoryFormValues>({
+    resolver: zodResolver(createCategoryFormSchema),
+    defaultValues: { name: "" },
+  });
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
@@ -45,21 +67,17 @@ export default function AdminBlogCategoriesPage() {
     })();
   }, [load]);
 
-  async function handleCreate(event: FormEvent) {
-    event.preventDefault();
+  async function onCreateSubmit(values: CreateCategoryFormValues) {
     setCreateError(null);
-    setCreating(true);
     try {
-      await blogApi.createCategory({ name });
+      await blogApi.createCategory({ name: values.name });
       toast.success("Kategori eklendi.");
-      setName("");
+      resetCreateForm();
       await load();
     } catch (err) {
       const message = friendlyErrorMessage(err);
       setCreateError(message);
       toast.error(message);
-    } finally {
-      setCreating(false);
     }
   }
 
@@ -218,12 +236,14 @@ export default function AdminBlogCategoriesPage() {
             </span>
           </Alert>
         )}
-        <form className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end" onSubmit={handleCreate} noValidate>
+        <form
+          className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end"
+          onSubmit={handleCreateFormSubmit(onCreateSubmit)}
+          noValidate
+        >
           <div className="flex-1">
-            <Field id="category-name" label="Kategori adı" required>
-              {(inputProps) => (
-                <Input {...inputProps} required value={name} onChange={(e) => setName(e.target.value)} />
-              )}
+            <Field id="category-name" label="Kategori adı" error={createErrors.name?.message} required>
+              {(inputProps) => <Input {...inputProps} {...registerCreate("name")} />}
             </Field>
           </div>
           <Button type="submit" loading={creating}>
