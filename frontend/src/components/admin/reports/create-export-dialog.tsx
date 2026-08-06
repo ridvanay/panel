@@ -120,7 +120,14 @@ export function CreateExportDialog({ open, onOpenChange, onCreated }: CreateExpo
       },
     };
 
-    const job = await mutation.mutateAsync(payload);
+    // `mutateAsync` başarısızlıkta fırlatır (TanStack Query) — hata zaten `mutation.error` ile
+    // yukarıda render ediliyor, burada sadece yakalanmamış promise reddini önlemek için yutulur.
+    let job: Awaited<ReturnType<typeof mutation.mutateAsync>>;
+    try {
+      job = await mutation.mutateAsync(payload);
+    } catch {
+      return;
+    }
     reset();
     onOpenChange(false);
     onCreated(job.id);
