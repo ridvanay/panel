@@ -37,7 +37,7 @@ const STATUS_FILTERS: Array<{ label: string; value: AuditStatus | undefined }> =
 const STATUS_CONFIG: Record<AuditStatus, { icon: typeof CheckCircle2; className: string }> = {
   SUCCESS: { icon: CheckCircle2, className: "bg-success/10 text-success" },
   FAILURE: { icon: XCircle, className: "bg-danger/10 text-danger" },
-  FORBIDDEN: { icon: ShieldAlert, className: "bg-amber-500/10 text-amber-500" },
+  FORBIDDEN: { icon: ShieldAlert, className: "bg-warning/10 text-warning" },
 };
 
 const listContainerVariants = {
