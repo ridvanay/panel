@@ -61,7 +61,24 @@ tags:
       **Dışa aktarma için uç YOKTUR (karar):** CSV dışa aktarma tamamen client-side'dır
       (`frontend/src/lib/export-csv.ts::exportToCsv`) — admin listeleri zaten tüm kayıtları
       `meta.nextCursor` döngüsüyle belleğe çeker, ayrı bir sunucu ucu ikinci bir doğruluk
-      kaynağı yaratırdı. Bkz. ARCHITECTURE.md §10.8 "Dışa aktarma".
+      kaynağı yaratırdı. Bkz. ARCHITECTURE.md §10.8 "Dışa aktarma". (Bu, `Pages`/`Blog`/
+      `AdminUsers` LİSTE ekranlarının CSV dışa aktarımı içindir — analitik/raporlama dışa
+      aktarımı için bkz. `Reports` tag'i, `/admin/reports/exports`.)
+  - name: Stats
+    description: >
+      Admin analitik/raporlama verisi (`/admin/stats/*`) — bkz. ARCHITECTURE.md §10.8.10.
+      RBAC UÇ-BAZLIDIR (modül genelinde tek bir eşik YOKTUR): içerik analitiği (`/views`,
+      `/breakdown`, `/top-content`, `/live-visitors`) SiteRole=ADMIN veya EDITOR; kullanıcı/
+      gelir verisi (`/summary`, `/users`, `/revenue`) yalnızca SiteRole=ADMIN (PII/gelir
+      riski nedeniyle).
+  - name: Reports
+    description: >
+      Analitik rapor dışa aktarma (`/admin/reports/exports`) — bkz. ARCHITECTURE.md
+      §10.8.10. **TÜM uçlar İSTİSNASIZ yalnızca SiteRole=ADMIN'dir** (rapor türü fark
+      etmeksizin — `Stats`'ın `/summary|/users|/revenue` kısıtlamasıyla AYNI gerekçe, ama
+      burada tip ayrımı bile YAPILMAZ). Süreç-içi worker ile asenkron üretilir (kuyruk
+      altyapısı yok, §10.8.1 ile aynı desen); oluşturma ucu 10 istek/10 dakika ile
+      sınırlıdır (429).
 
 security:
   - bearerAuth: []
@@ -756,12 +773,17 @@ paths:
   /admin/stats/views:
     get:
       tags: [Stats]
-      summary: Günlük sayfa/yazı görüntülenme zaman serisi
+      summary: Günlük sayfa/yazı görüntülenme zaman serisi (SiteRole=ADMIN veya EDITOR)
+      description: >
+        `granularity` bucket boyutunu belirler (varsayılan `day`). `compare` bu uçta
+        KABUL EDİLİR ama YOK SAYILIR — karşılaştırma deltası yalnızca `GET .../summary`
+        yanıtında döner.
       parameters:
-        - name: days
-          in: query
-          required: false
-          schema: { type: integer, default: 30, maximum: 90, minimum: 1 }
+        - $ref: "#/components/parameters/StatsDays"
+        - $ref: "#/components/parameters/StatsFrom"
+        - $ref: "#/components/parameters/StatsTo"
+        - $ref: "#/components/parameters/StatsGranularity"
+        - $ref: "#/components/parameters/StatsCompare"
       responses:
         "200":
           description: OK
@@ -776,14 +798,16 @@ paths:
                         items: { $ref: "#/components/schemas/DailyViewStats" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
 
   /admin/stats/live-visitors:
     get:
       tags: [Stats]
       summary: >
-        Süreç-içi (in-memory) canlı ziyaretçi sayısı — son 60 saniye içinde
-        bir görüntülenme (view) endpoint'i çağıran benzersiz IP+User-Agent sayısı.
-        Dağıtık DEĞİLDİR: çoklu instance dağıtımda her process kendi sayacını tutar.
+        Süreç-içi (in-memory) canlı ziyaretçi sayısı (SiteRole=ADMIN veya EDITOR) —
+        son 60 saniye içinde bir görüntülenme (view) endpoint'i çağıran benzersiz
+        IP+User-Agent sayısı. Dağıtık DEĞİLDİR: çoklu instance dağıtımda her process
+        kendi sayacını tutar.
       responses:
         "200":
           description: OK
@@ -800,12 +824,17 @@ paths:
   /admin/stats/breakdown:
     get:
       tags: [Stats]
-      summary: Belirtilen aralıktaki görüntülenmelerin cihaz türü ve ülkeye göre kırılımı
+      summary: >
+        Belirtilen aralıktaki görüntülenmelerin cihaz türü ve ülkeye göre kırılımı
+        (SiteRole=ADMIN veya EDITOR)
+      description: >
+        `compare` bu uçta KABUL EDİLİR ama YOK SAYILIR (bkz. `/views` açıklaması).
       parameters:
-        - name: days
-          in: query
-          required: false
-          schema: { type: integer, default: 30, maximum: 90, minimum: 1 }
+        - $ref: "#/components/parameters/StatsDays"
+        - $ref: "#/components/parameters/StatsFrom"
+        - $ref: "#/components/parameters/StatsTo"
+        - $ref: "#/components/parameters/StatsGranularity"
+        - $ref: "#/components/parameters/StatsCompare"
       responses:
         "200":
           description: OK
@@ -818,6 +847,128 @@ paths:
                       data: { $ref: "#/components/schemas/ViewsBreakdown" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/stats/top-content:
+    get:
+      tags: [Stats]
+      summary: En çok görüntülenen sayfa/yazılar, azalan sırayla (SiteRole=ADMIN veya EDITOR)
+      description: >
+        Cursor sayfalı. `contentType` alanı `page`/`post` ayrımını verir, `id`/`slug`
+        ilgili `Page`/`BlogPost` kaydına aittir.
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/StatsDays"
+        - $ref: "#/components/parameters/StatsFrom"
+        - $ref: "#/components/parameters/StatsTo"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/TopContentItem" }
+                      meta: { $ref: "#/components/schemas/TopContentListMeta" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/stats/summary:
+    get:
+      tags: [Stats]
+      summary: Dönem özeti — görüntülenme/kullanıcı/gelir tek bakışta (yalnızca SiteRole=ADMIN)
+      description: >
+        `activeSubscriptions`/`mrrCents` ANLIK durumu yansıtır (dönem sonuna göre DEĞİL) —
+        `Subscription` geçmiş durum geçmişi tutan bir tablo olmadığı için bu iki alan için
+        `compare` BİLEREK dönülmez (bkz. `SummaryStats.compare` alan açıklaması).
+        `compare=true` verilirse `pageViews`/`postViews`/`newUsers` için bir önceki
+        eş-uzunluktaki dönemle karşılaştırma deltası `compare` alanında döner; verilmezse
+        `compare: null`.
+      parameters:
+        - $ref: "#/components/parameters/StatsDays"
+        - $ref: "#/components/parameters/StatsFrom"
+        - $ref: "#/components/parameters/StatsTo"
+        - $ref: "#/components/parameters/StatsGranularity"
+        - $ref: "#/components/parameters/StatsCompare"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/SummaryStats" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/stats/users:
+    get:
+      tags: [Stats]
+      summary: Yeni kullanıcı zaman serisi + anlık rol dağılımı (yalnızca SiteRole=ADMIN)
+      description: >
+        `compare` bu uçta KABUL EDİLİR ama YOK SAYILIR (bkz. `/admin/stats/views`
+        açıklaması — yalnızca `/summary` karşılaştırma deltası döner). `roleDistribution`
+        dönemle SINIRLI DEĞİLDİR — kullanıcı tablosunun ANLIK rol dağılımıdır.
+      parameters:
+        - $ref: "#/components/parameters/StatsDays"
+        - $ref: "#/components/parameters/StatsFrom"
+        - $ref: "#/components/parameters/StatsTo"
+        - $ref: "#/components/parameters/StatsGranularity"
+        - $ref: "#/components/parameters/StatsCompare"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/UsersStats" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/stats/revenue:
+    get:
+      tags: [Stats]
+      summary: Gelir zaman serisi (yeni MRR/churn) + anlık MRR/aktif abonelik (yalnızca SiteRole=ADMIN)
+      description: >
+        `compare` bu uçta KABUL EDİLİR ama YOK SAYILIR (bkz. `/admin/stats/views`
+        açıklaması). `activeSubscriptions`/`mrrCents` ANLIK toplamlardır (dönem sonuna
+        göre DEĞİL). `series[].newMrrCents` bucket içinde OLUŞTURULAN aboneliklerin
+        `priceMonthlyCents` toplamıdır; `series[].churnedCount` bucket içinde `CANCELED`
+        durumuna geçen (yaklaşık — `updatedAt` referans alınır) abonelik sayısıdır.
+        Yıllık abonelikler ay karşılığına ÇEVRİLMEZ, olduğu gibi `priceMonthlyCents`
+        kullanılır.
+      parameters:
+        - $ref: "#/components/parameters/StatsDays"
+        - $ref: "#/components/parameters/StatsFrom"
+        - $ref: "#/components/parameters/StatsTo"
+        - $ref: "#/components/parameters/StatsGranularity"
+        - $ref: "#/components/parameters/StatsCompare"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/RevenueStats" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
 
   /admin/health:
     get:
@@ -1800,6 +1951,144 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /admin/reports/exports:
+    get:
+      tags: [Reports]
+      summary: Dışa aktarma işi geçmişini listele (yalnızca SiteRole=ADMIN)
+      description: >
+        Cursor sayfalı, `seq DESC` (en yeni önce). `type`/`status` ile filtrelenebilir.
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/ExportJobTypeFilter"
+        - $ref: "#/components/parameters/ExportJobStatusFilter"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/ExportJob" }
+                      meta: { $ref: "#/components/schemas/ExportJobListMeta" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [Reports]
+      summary: Yeni bir analitik rapor dışa aktarma işi oluştur (yalnızca SiteRole=ADMIN)
+      description: >
+        **202 ile HEMEN döner** (`status: PENDING`); rapor (CSV/PDF) süreç-içi bir worker
+        tarafından arka planda üretilir — kuyruk altyapısı YOK (`/admin/import/jobs`'un
+        2. adımıyla AYNI desen, bkz. ARCHITECTURE.md §10.8.1/§10.8.10). Hazır olduğunda
+        `GET /{jobId}` ile durum poll edilir, `status: COMPLETED` olunca
+        `GET /{jobId}/download` ile indirilir.
+
+
+        `from`/`to` ZORUNLUDUR (aralık en fazla 366 gün — aşımı 422, iş HİÇ
+        oluşturulmaz). `filters` yalnızca ilgili `type` için anlamlıdır: `USERS` →
+        `filters.role`, `REVENUE` → `filters.subscriptionStatus`; diğer tiplerde YOK
+        SAYILIR.
+
+
+        **`unmaskPii`** (varsayılan `false`) — `true` verilirse `USERS`/`REVENUE`
+        raporlarındaki e-posta gibi alanlar MASKELENMEDEN dönülür. Bu zaten ADMIN-only
+        bir uç olduğu için AYRI bir onay akışı YOKTUR, ancak `reports.export.unmasked_pii`
+        adıyla AYRI bir audit kaydı yazılır ve üretilen `ExportJob.containsPii = true`
+        set edilir. Saklama süresi bu durumda KISALIR: varsayılan (maskeli) dosyalar 7
+        gün, `unmaskPii: true` ile üretilenler yalnızca 48 saat saklanır (compliance-agent
+        kararı, bkz. ARCHITECTURE.md §10.8.10).
+
+
+        Audit log: `reports.export.create` (+ `unmaskPii: true` ise ayrıca
+        `reports.export.unmasked_pii`).
+
+
+        **Hız sınırı:** 10 istek / 10 dakika (route-level, pahalı DB aggregation +
+        PDF/CSV üretimi tetiklediği için). Aşım → 429.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateExportJobRequest" }
+      responses:
+        "202":
+          description: "Kabul edildi, arka planda üretiliyor (`status: PENDING`)"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/ExportJob" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /admin/reports/exports/{jobId}:
+    parameters:
+      - $ref: "#/components/parameters/ExportJobId"
+    get:
+      tags: [Reports]
+      summary: İşin durumunu/sonucunu getir — POLL UCU (yalnızca SiteRole=ADMIN)
+      description: >
+        `status` `COMPLETED` olduğunda `GET .../download` ile dosya indirilebilir hâle
+        gelir. `status` `FAILED` ise `errorSummary` başarısızlık nedenini taşır.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/ExportJob" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/reports/exports/{jobId}/download:
+    parameters:
+      - $ref: "#/components/parameters/ExportJobId"
+    get:
+      tags: [Reports]
+      summary: Hazır dosyayı indir (yalnızca SiteRole=ADMIN)
+      description: >
+        `Content-Type` rapor formatına göre `text/csv; charset=utf-8` ya da
+        `application/pdf`'tir; `Content-Disposition: attachment` ile birlikte döner
+        (dosya adı `export-{type}-{jobId}.{csv|pdf}`). `storagePath` API'de ASLA
+        dönmez — dosya bu uç üzerinden akıtılır.
+
+
+        `status !== COMPLETED` (dosya henüz hazır değil) → 409. `expiresAt` geçmişse
+        (saklama süresi dolmuşsa) → 404, `status` ne olursa olsun. Audit log:
+        `reports.export.download` (metadata: `containsPii`).
+      responses:
+        "200":
+          description: Dosya akışı
+          content:
+            text/csv:
+              schema: { type: string, format: binary }
+            application/pdf:
+              schema: { type: string, format: binary }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: "İş bulunamadı VEYA indirme süresi dolmuş (`error.code: NOT_FOUND`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "409":
+          description: "Rapor henüz hazır değil (`error.code: CONFLICT`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+
   /webhooks/stripe:
     post:
       tags: [Webhooks]
@@ -1892,6 +2181,64 @@ components:
       in: query
       required: false
       schema: { $ref: "#/components/schemas/ImportJobStatus" }
+    StatsDays:
+      name: days
+      in: query
+      required: false
+      deprecated: true
+      description: >
+        DEPRECATED — `from`/`to` kullanın. `from`/`to` verilmezse geriye uyumluluk
+        amacıyla kullanılır (varsayılan son 30 gün, en fazla 90 gün). `from`/`to` ile
+        birlikte verilirse `from`/`to` kazanır.
+      schema: { type: integer, minimum: 1, maximum: 90 }
+    StatsFrom:
+      name: from
+      in: query
+      required: false
+      description: "ISO-8601 (UTC) başlangıç tarihi. `to` ile BİRLİKTE verilmelidir."
+      schema: { type: string, format: date-time }
+    StatsTo:
+      name: to
+      in: query
+      required: false
+      description: >
+        ISO-8601 (UTC) bitiş tarihi. `from` ile BİRLİKTE verilmelidir. `from`/`to`
+        aralığı en fazla 366 gün olabilir ve `from` <= `to` olmalıdır — aşımı 422
+        (`ValidationError`) ile reddedilir, iş/istek oluşturulmaz.
+      schema: { type: string, format: date-time }
+    StatsGranularity:
+      name: granularity
+      in: query
+      required: false
+      description: "`PageView`/kullanıcı/gelir günlük bucket'ının haftalık/aylık'a toplanması. Varsayılan `day`."
+      schema:
+        allOf:
+          - $ref: "#/components/schemas/Granularity"
+        default: day
+    StatsCompare:
+      name: compare
+      in: query
+      required: false
+      description: >
+        `true` ise bir önceki eş-uzunluktaki dönemle karşılaştırma deltası döner.
+        Yalnızca `GET /admin/stats/summary` tarafından KULLANILIR — diğer `/admin/stats/*`
+        uçları bu parametreyi kabul eder ama YOK SAYAR.
+      schema: { type: boolean, default: false }
+    ExportJobId:
+      name: jobId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ExportJobTypeFilter:
+      name: type
+      in: query
+      required: false
+      schema: { $ref: "#/components/schemas/ExportJobType" }
+    ExportJobStatusFilter:
+      name: status
+      in: query
+      required: false
+      schema: { $ref: "#/components/schemas/ExportJobStatus" }
 
   responses:
     Unauthorized:
@@ -2365,6 +2712,115 @@ components:
         countries:
           type: array
           items: { $ref: "#/components/schemas/CountryBreakdownEntry" }
+
+    Granularity:
+      type: string
+      enum: [day, week, month]
+      description: "`PageView`/kullanıcı/gelir günlük bucket'ının toplama seçeneği."
+
+    TopContentItem:
+      type: object
+      required: [contentType, id, title, slug, views]
+      properties:
+        contentType: { type: string, enum: [page, post] }
+        id: { type: string, format: uuid }
+        title: { type: string }
+        slug: { type: string }
+        views: { type: integer }
+
+    TopContentListMeta:
+      type: object
+      properties:
+        nextCursor: { type: string, nullable: true }
+
+    SummaryCompare:
+      type: object
+      description: "`GET /admin/stats/summary?compare=true` yanıtındaki karşılaştırma deltası."
+      required: [pageViews, postViews, newUsers]
+      properties:
+        pageViews: { type: integer }
+        postViews: { type: integer }
+        newUsers: { type: integer }
+
+    SummaryStats:
+      type: object
+      required: [from, to, granularity, pageViews, postViews, newUsers, activeSubscriptions, mrrCents, compare]
+      properties:
+        from: { type: string, format: date-time }
+        to: { type: string, format: date-time }
+        granularity: { $ref: "#/components/schemas/Granularity" }
+        pageViews: { type: integer }
+        postViews: { type: integer }
+        newUsers: { type: integer }
+        activeSubscriptions:
+          type: integer
+          description: "ANLIK (şimdiki zaman) durum — dönem sonuna göre DEĞİL."
+        mrrCents:
+          type: integer
+          description: >
+            ANLIK MRR, yalnızca `Plan.priceMonthlyCents` toplamı — `Subscription`
+            faturalama periyodunu (aylık/yıllık) ayrı bir alanda TUTMADIĞI için yıllık
+            abonelikler ay karşılığına ÇEVRİLMEDEN, olduğu gibi toplanır.
+        compare:
+          allOf:
+            - $ref: "#/components/schemas/SummaryCompare"
+          nullable: true
+          description: >
+            `compare=true` istendiyse dolu, aksi hâlde `null`. `activeSubscriptions`/
+            `mrrCents` için delta BİLEREK YOKTUR — `Subscription` geçmiş durum geçmişi
+            tutan bir tablo değil, yalnızca ANLIK durumu taşıyor; geçmiş bir dönem için
+            "o an aktif olan abonelik sayısı" güvenilir biçimde yeniden inşa edilemiyor.
+
+    UserSeriesPoint:
+      type: object
+      properties:
+        date: { type: string, format: date }
+        count: { type: integer }
+
+    RoleDistributionEntry:
+      type: object
+      properties:
+        role: { type: string, enum: [ADMIN, EDITOR, VIEWER] }
+        count: { type: integer }
+
+    UsersStats:
+      type: object
+      required: [from, to, granularity, series, roleDistribution]
+      properties:
+        from: { type: string, format: date-time }
+        to: { type: string, format: date-time }
+        granularity: { $ref: "#/components/schemas/Granularity" }
+        series:
+          type: array
+          items: { $ref: "#/components/schemas/UserSeriesPoint" }
+        roleDistribution:
+          type: array
+          description: "Dönemle SINIRLI DEĞİL — kullanıcı tablosunun ANLIK rol dağılımı."
+          items: { $ref: "#/components/schemas/RoleDistributionEntry" }
+
+    RevenueSeriesPoint:
+      type: object
+      properties:
+        date: { type: string, format: date }
+        newMrrCents:
+          type: integer
+          description: "Bucket içinde OLUŞTURULAN aboneliklerin `priceMonthlyCents` toplamı (\"yeni MRR\")."
+        churnedCount:
+          type: integer
+          description: "Bucket içinde `CANCELED` durumuna geçen (yaklaşık — `updatedAt` referans alınır) abonelik sayısı."
+
+    RevenueStats:
+      type: object
+      required: [from, to, granularity, activeSubscriptions, mrrCents, series]
+      properties:
+        from: { type: string, format: date-time }
+        to: { type: string, format: date-time }
+        granularity: { $ref: "#/components/schemas/Granularity" }
+        activeSubscriptions: { type: integer, description: "ANLIK toplam — bkz. `SummaryStats.activeSubscriptions`." }
+        mrrCents: { type: integer, description: "ANLIK toplam — bkz. `SummaryStats.mrrCents`." }
+        series:
+          type: array
+          items: { $ref: "#/components/schemas/RevenueSeriesPoint" }
 
     SystemHealth:
       type: object
@@ -3174,3 +3630,117 @@ components:
             `true` ise iş başına 1.000 satırlık saklama tavanı aşılmıştır ve hata
             satırlarının bir kısmı DB'ye YAZILMAMIŞTIR (`ImportJob.errorCount` yine de
             gerçek toplamı gösterir). UI bunu açıkça belirtir.
+
+    # ---- §10.8.10 Analitik Rapor Dışa Aktarma (Export) ----
+
+    ExportJobType:
+      type: string
+      description: >
+        Dışa aktarılan rapor kaynağı — ilgili `/admin/stats/*` ucuyla BİREBİR eşleşir
+        (`TOP_CONTENT` → `GET /admin/stats/top-content`, vb.).
+      enum: [VIEWS, BREAKDOWN, SUMMARY, TOP_CONTENT, USERS, REVENUE]
+
+    ExportFileFormat:
+      type: string
+      enum: [CSV, PDF]
+
+    ExportJobStatus:
+      type: string
+      description: >
+        `ImportJobStatus`'tan daha sadedir (`QUEUED`/`CANCELLED` YOKTUR) — export
+        satır-satır işlenen bir toplu içe aktarma değil, tek seferlik rapor üretimidir.
+
+
+        - `PENDING` — iş oluşturuldu, worker sırasını bekliyor.
+
+        - `PROCESSING` — rapor üretiliyor.
+
+        - `COMPLETED` — dosya hazır, `GET .../download` ile indirilebilir.
+
+        - `FAILED` — hiç dosya üretilmeden başarısız oldu (bkz. `errorSummary`).
+      enum: [PENDING, PROCESSING, COMPLETED, FAILED]
+
+    ExportFilters:
+      type: object
+      description: >
+        Yalnızca ilgili `type` için anlamlıdır — diğer tiplerde gönderilse de worker
+        tarafından YOK SAYILIR.
+      properties:
+        role:
+          type: string
+          enum: [ADMIN, EDITOR, VIEWER]
+          description: "Yalnızca `type: USERS` için."
+        subscriptionStatus:
+          type: string
+          enum: [TRIALING, ACTIVE, PAST_DUE, CANCELED, INCOMPLETE]
+          description: "Yalnızca `type: REVENUE` için."
+
+    CreateExportJobRequest:
+      type: object
+      required: [type, format, from, to]
+      properties:
+        type: { $ref: "#/components/schemas/ExportJobType" }
+        format: { $ref: "#/components/schemas/ExportFileFormat" }
+        from: { type: string, format: date-time, description: "ISO-8601 (UTC). `to` ile BİRLİKTE zorunludur." }
+        to:
+          type: string
+          format: date-time
+          description: "ISO-8601 (UTC). Aralık en fazla 366 gün olabilir ve `from` <= `to` olmalıdır — aşımı 422, iş OLUŞTURULMAZ."
+        granularity:
+          allOf:
+            - $ref: "#/components/schemas/Granularity"
+          description: "Varsayılan `day`. `type: TOP_CONTENT`/`VIEWS`/`BREAKDOWN` raporlarında worker tarafında yok sayılabilir (ilgili `/admin/stats/*` ucunun granularity kullanımıyla TUTARLI)."
+        filters:
+          allOf:
+            - $ref: "#/components/schemas/ExportFilters"
+          description: "Varsayılan `{}`."
+        unmaskPii:
+          type: boolean
+          default: false
+          description: >
+            `true` verilirse `USERS`/`REVENUE` raporlarındaki PII alanları (ör. e-posta)
+            MASKELENMEDEN dönülür. AYRI bir onay akışı YOKTUR (zaten ADMIN-only bir uç)
+            ama `reports.export.unmasked_pii` audit kaydı yazılır, `ExportJob.containsPii`
+            `true` set edilir ve dosyanın saklama süresi 7 günden 48 saate DÜŞER
+            (compliance-agent kararı, bkz. ARCHITECTURE.md §10.8.10).
+
+    ExportJob:
+      type: object
+      required: [id, type, format, status, filters, containsPii, errorSummary, createdById, expiresAt, startedAt, finishedAt, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        type: { $ref: "#/components/schemas/ExportJobType" }
+        format: { $ref: "#/components/schemas/ExportFileFormat" }
+        status: { $ref: "#/components/schemas/ExportJobStatus" }
+        filters:
+          type: object
+          additionalProperties: true
+          description: "İstek parametrelerinin tamamı (`from`/`to`/`granularity`/`filters`/`unmaskPii`) — bkz. `CreateExportJobRequest`."
+        containsPii:
+          type: boolean
+          description: >
+            `USERS`/`REVENUE` gibi kişisel veri içerebilecek türlerde `true` (maskeli
+            export'larda DA `true`dur — maskeleme durumunu YANSITMAZ; ham/maskelenmemiş
+            erişim yalnızca `reports.export.unmasked_pii` audit kaydıyla izlenir).
+        errorSummary: { type: string, nullable: true }
+        createdById: { type: string, format: uuid, nullable: true }
+        createdBy:
+          allOf:
+            - $ref: "#/components/schemas/UserSummary"
+          nullable: true
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: "İndirme linkinin/dosyanın süre sonu — bu süreden sonra `GET .../download` 404 döner."
+        startedAt: { type: string, format: date-time, nullable: true }
+        finishedAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        # NOT: `storagePath` (gizli depodaki dosya referansı) BİLEREK burada YOK — API'de
+        # ASLA dönmez, dosya yalnızca `GET .../download` üzerinden akıtılır.
+
+    ExportJobListMeta:
+      type: object
+      properties:
+        nextCursor: { type: string, nullable: true }
