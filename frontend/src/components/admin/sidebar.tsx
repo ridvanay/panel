@@ -75,7 +75,7 @@ export function AdminSidebar() {
       {/*
        * Tema-duyarlılık (2026-08-06, ui-designer kararı): sidebar artık hardcoded koyu hex'ler
        * yerine `globals.css`'teki shadcn `--sidebar*` token'larını (light: açık, `.dark
-       * .admin-shell`: koyu — bkz. globals.css satır ~86-93 / ~258-265) kullanır. `ui/sidebar.tsx`
+       * .admin-shell`: koyu — bkz. globals.css satır ~71-78 / ~220-227) kullanır. `ui/sidebar.tsx`
        * zaten `bg-sidebar`/`text-sidebar-foreground` uyguluyor; buradaki gradient de token'dan
        * türetiliyor (`color-mix`) böylece hem light hem dark temada doğru zeminden başlar.
        */}
