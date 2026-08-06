@@ -220,6 +220,7 @@ export function toMediaDto(media: Media): MediaDto {
     filename: media.filename,
     mimeType: media.mimeType,
     sizeBytes: media.sizeBytes,
+    altText: media.altText,
     createdAt: media.createdAt.toISOString(),
   };
 }

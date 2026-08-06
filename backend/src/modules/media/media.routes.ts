@@ -11,7 +11,7 @@ import { NotFoundError, ValidationError } from "../../lib/errors";
 import { parseCursor, buildPageMeta } from "../../lib/pagination";
 import { storage } from "../../lib/storage";
 import { detectImageMimeType } from "../../lib/mime-detect";
-import { MediaIdParamSchema } from "./media.schemas";
+import { MediaIdParamSchema, UpdateMediaAltTextRequestSchema } from "./media.schemas";
 
 // SVG kasıtlı olarak allow-list'te YOK: metin tabanlıdır, magic byte imzası yoktur ve içine
 // `<script>` gömülebildiği için depolanmış XSS riski taşır — import modülü (§10.8.7,
@@ -104,6 +104,29 @@ export async function adminMediaRoutes(app: FastifyInstance) {
       });
 
       return reply.send(ok(rows.map(toMediaDto), buildPageMeta(rows, limit)));
+    }
+  );
+
+  server.patch(
+    "/:mediaId",
+    {
+      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      schema: {
+        params: MediaIdParamSchema,
+        body: UpdateMediaAltTextRequestSchema,
+        response: { 200: ApiSuccessSchema(MediaSchema) },
+      },
+    },
+    async (request, reply) => {
+      const media = await app.prisma.media.findUnique({ where: { id: request.params.mediaId } });
+      if (!media) throw new NotFoundError("Medya bulunamadı.");
+
+      const updated = await app.prisma.media.update({
+        where: { id: media.id },
+        data: { altText: request.body.altText },
+      });
+
+      return reply.send(ok(toMediaDto(updated)));
     }
   );
 

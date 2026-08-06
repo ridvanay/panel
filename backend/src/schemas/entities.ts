@@ -246,6 +246,7 @@ export const MediaSchema = z.object({
   filename: z.string(),
   mimeType: z.string(),
   sizeBytes: z.number().int(),
+  altText: z.string().nullable(),
   createdAt: z.string(),
 });
 export type MediaDto = z.infer<typeof MediaSchema>;
