@@ -180,3 +180,59 @@ describe("rate-limits — route-level (POST /admin/reports/exports)", () => {
     expect(body.error.details.retryAfterSeconds).toBeDefined();
   });
 });
+
+/**
+ * `POST /admin/users` route-level rate limit'i (20/dakika, bkz.
+ * admin-users.routes.ts::ADMIN_USERS_RATE_LIMIT) doğrular — `POST /admin/reports/exports`
+ * İLE AYNI GEREKÇE, `env.RATE_LIMIT_MAX`'tan bağımsız, hassas kullanıcı yönetimi uçlarına
+ * (create/rol/durum değişikliği) özel bir tavan (bkz. d804d51, security-agent denetimi).
+ * `PATCH /:userId/role` ve `PATCH /:userId/status` AYNI `ADMIN_USERS_RATE_LIMIT` sabitini
+ * paylaşır — mekanizmanın kendisini (route-level rate-limit config'in doğru bağlandığını)
+ * kanıtlamak için üç uçtan birini (POST) doğrulamak yeterlidir, her uç kendi bağımsız
+ * bütçesine sahiptir (Fastify rate-limit route-scoped çalışır). Kendi izole
+ * `buildTestApp()` instance'ında çalışır.
+ */
+describe("rate-limits — route-level (POST /admin/users)", () => {
+  let app: FastifyInstance;
+  let admin: Awaited<ReturnType<typeof registerTestUser>>;
+
+  function authHeader(token: string) {
+    return { authorization: `Bearer ${token}` };
+  }
+
+  beforeAll(async () => {
+    app = await buildTestApp();
+    await resetDatabase(app.prisma);
+    // Boş bir DB'de ilk kayıt olan kullanıcı otomatik ADMIN olur (bkz. auth.service.ts).
+    admin = await registerTestUser(app, { email: "rate-limit-admin-users@example.com" });
+  });
+
+  afterAll(async () => {
+    await resetDatabase(app.prisma);
+    await app.close();
+  });
+
+  it("20 istek başarılı (201), 21. istek 429 döner ve RATE_LIMITED detaylarını içerir", async () => {
+    for (let i = 0; i < 20; i++) {
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/admin/users",
+        headers: authHeader(admin.accessToken),
+        payload: { name: `Rate Limit User ${i}`, email: `rate-limit-user-${i}@example.com` },
+      });
+      expect(res.statusCode).toBe(201);
+    }
+
+    const res21 = await app.inject({
+      method: "POST",
+      url: "/api/v1/admin/users",
+      headers: authHeader(admin.accessToken),
+      payload: { name: "Rate Limit User 21", email: "rate-limit-user-21@example.com" },
+    });
+
+    expect(res21.statusCode).toBe(429);
+    const body = res21.json();
+    expect(body.error.code).toBe("RATE_LIMITED");
+    expect(body.error.details.retryAfterSeconds).toBeDefined();
+  });
+});

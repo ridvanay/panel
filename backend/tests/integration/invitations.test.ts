@@ -81,4 +81,35 @@ describe("POST /organizations/:orgId/invitations — SMTP/şablon yapılandırı
     expect(res.statusCode).toBe(201);
     expect(res.payload).not.toMatch(/invitations\/[^/]+\/accept/);
   });
+
+  /**
+   * Regresyon: `CreateInvitationRequestSchema.role` şu an `z.enum(["ADMIN", "MEMBER"])` ile
+   * OWNER'ı şema seviyesinde reddediyor (bkz. invitations.schemas.ts) — bu, invitations.routes.ts
+   * içindeki `request.membership!.role !== "OWNER" && requestedRole === "OWNER"` savunma-derinliği
+   * kontrolünün bugün pratikte HİÇ tetiklenemediği anlamına gelir (994ff56 commit yorumu).
+   * Bu test şemanın hâlâ OWNER'ı reddettiğini kanıtlar; biri ileride şemayı gevşetirse (ör. OWNER'ı
+   * enum'a eklerse) bu test KIRILIR ve bize route handler'daki ForbiddenError kontrolünün gerçekten
+   * devreye girip girmediğini AYRICA doğrulamamız gerektiğini hatırlatır.
+   *
+   * NOT (kısıt): Zod body validasyonu route handler'dan ÖNCE (Fastify schema compile aşamasında)
+   * çalışıyor, bu yüzden route handler'daki ForbiddenError dalını -şema onu bypass etmeden-
+   * doğrudan tetiklemenin test-suite içinden bir yolu yok (handler'a zod'u atlayarak erişen bir
+   * test yardımcısı da yok). Bu, backend-agent'a/architect'e iletilmesi gereken bir kısıttır:
+   * eğer OWNER daveti şema seviyesinde ileride açılırsa, ForbiddenError dalı için AYRI bir
+   * entegrasyon testi bu görevin bir parçası olarak eklenmelidir.
+   */
+  it("CreateInvitationRequestSchema role='OWNER' isteğini şema seviyesinde 422 (VALIDATION_ERROR) ile reddeder", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/organizations/${orgId}/invitations`,
+      headers: authHeader(ownerToken),
+      payload: { email: "owner-invite-attempt@example.com", role: "OWNER" },
+    });
+
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.code).toBe("VALIDATION_ERROR");
+
+    const invitation = await app.prisma.invitation.findFirst({ where: { email: "owner-invite-attempt@example.com" } });
+    expect(invitation).toBeNull();
+  });
 });
