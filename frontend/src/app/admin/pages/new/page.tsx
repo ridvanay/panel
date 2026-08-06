@@ -1,10 +1,13 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { toast } from "sonner";
+import { Controller, useForm, useWatch } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { AlertCircle, ChevronDown, ChevronLeft, FileText, Search } from "lucide-react";
 import * as pagesApi from "@/lib/api/pages";
 import * as usersAdminApi from "@/lib/api/users-admin";
@@ -72,25 +75,54 @@ function StatusToggle({ status, onChange }: { status: ContentStatus; onChange: (
 const GOOGLE_TITLE_LIMIT = 60;
 const GOOGLE_DESCRIPTION_LIMIT = 155;
 
+// `pagesApi.createPage` gövdesini yansıtan istemci tarafı zod şeması. `slug` görsel olarak
+// "required" işaretli (boş bırakılırsa başlıktan otomatik oluşturulur ibaresiyle) ama gerçek
+// gönderim mantığında OPSİYONEL — mevcut davranış (slug || undefined) BİREBİR korunur.
+const formSchema = z.object({
+  title: z.string().min(1, "Başlık gerekli."),
+  slug: z.string().optional(),
+  status: z.enum(["DRAFT", "PUBLISHED"]),
+  seoTitle: z.string().optional(),
+  seoDescription: z.string().optional(),
+  ogImageUrl: z.string().optional(),
+  authorId: z.string().optional(),
+});
+
+type FormValues = z.infer<typeof formSchema>;
+
 export default function NewPagePage() {
   const router = useRouter();
   const { user } = useAuth();
   const isAdmin = user?.role === "ADMIN";
-  const [title, setTitle] = useState("");
-  const [slug, setSlug] = useState("");
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
-  const [status, setStatus] = useState<ContentStatus>("DRAFT");
   const [seoOpen, setSeoOpen] = useState(false);
-  const [seoTitle, setSeoTitle] = useState("");
-  const [seoDescription, setSeoDescription] = useState("");
-  const [ogImageUrl, setOgImageUrl] = useState("");
-  const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [admins, setAdmins] = useState<AdminUser[]>([]);
-  const [authorIdOverride, setAuthorIdOverride] = useState<string | null>(null);
-  // Varsayılan yazar giriş yapmış kullanıcıdır; ADMIN dropdown'dan değiştirene kadar override boş kalır.
-  const authorId = authorIdOverride ?? user?.id ?? "";
+
+  const {
+    register,
+    handleSubmit,
+    control,
+    setValue,
+    formState: { errors, isSubmitting },
+  } = useForm<FormValues>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      title: "",
+      slug: "",
+      status: "DRAFT",
+      seoTitle: "",
+      seoDescription: "",
+      ogImageUrl: "",
+      // Varsayılan yazar giriş yapmış kullanıcıdır; ADMIN dropdown'dan değiştirene kadar override boş kalır.
+      authorId: user?.id ?? "",
+    },
+  });
+
+  const title = useWatch({ control, name: "title" });
+  const seoTitle = useWatch({ control, name: "seoTitle" }) ?? "";
+  const seoDescription = useWatch({ control, name: "seoDescription" }) ?? "";
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -105,30 +137,26 @@ export default function NewPagePage() {
   }, [isAdmin]);
 
   function handleTitleChange(value: string) {
-    setTitle(value);
     if (!slugManuallyEdited) {
-      setSlug(slugify(value));
+      setValue("slug", slugify(value));
     }
   }
 
-  function handleSlugChange(value: string) {
+  function handleSlugChange() {
     setSlugManuallyEdited(true);
-    setSlug(value);
   }
 
-  async function handleSubmit(event: FormEvent) {
-    event.preventDefault();
+  async function onSubmit(values: FormValues) {
     setError(null);
-    setCreating(true);
     try {
       const page = await pagesApi.createPage({
-        title,
-        slug: slug || undefined,
-        status,
-        seoTitle: seoTitle || undefined,
-        seoDescription: seoDescription || undefined,
-        ogImageUrl: ogImageUrl || undefined,
-        authorId: isAdmin && authorId ? authorId : undefined,
+        title: values.title,
+        slug: values.slug || undefined,
+        status: values.status,
+        seoTitle: values.seoTitle || undefined,
+        seoDescription: values.seoDescription || undefined,
+        ogImageUrl: values.ogImageUrl || undefined,
+        authorId: isAdmin && values.authorId ? values.authorId : undefined,
       });
       toast.success("Sayfa oluşturuldu.");
       router.push(`/admin/pages/${page.id}`);
@@ -136,7 +164,6 @@ export default function NewPagePage() {
       const message = friendlyErrorMessage(err);
       setError(message);
       toast.error(message);
-      setCreating(false);
     }
   }
 
@@ -166,14 +193,12 @@ export default function NewPagePage() {
               </span>
             </Alert>
           )}
-          <form className="space-y-4" onSubmit={handleSubmit} noValidate>
-            <Field id="title" label="Başlık" required>
+          <form className="space-y-4" onSubmit={handleSubmit(onSubmit)} noValidate>
+            <Field id="title" label="Başlık" error={errors.title?.message} required>
               {(inputProps) => (
                 <Input
                   {...inputProps}
-                  required
-                  value={title}
-                  onChange={(e) => handleTitleChange(e.target.value)}
+                  {...register("title", { onChange: (e) => handleTitleChange(e.target.value) })}
                   autoFocus
                 />
               )}
@@ -187,8 +212,7 @@ export default function NewPagePage() {
                   </InputGroupAddon>
                   <InputGroupInput
                     {...inputProps}
-                    value={slug}
-                    onChange={(e) => handleSlugChange(e.target.value)}
+                    {...register("slug", { onChange: handleSlugChange })}
                     placeholder="ornek-sayfa-slug"
                   />
                 </InputGroup>
@@ -197,13 +221,17 @@ export default function NewPagePage() {
 
             <div className="space-y-1.5">
               <p className="text-sm font-medium text-foreground">Durum</p>
-              <StatusToggle status={status} onChange={setStatus} />
+              <Controller
+                control={control}
+                name="status"
+                render={({ field }) => <StatusToggle status={field.value} onChange={field.onChange} />}
+              />
             </div>
 
             {isAdmin && admins.length > 0 && (
               <Field id="authorId" label="Yazar" hint="Varsayılan olarak siz atanırsınız; ADMIN başka bir kullanıcı seçebilir.">
                 {(inputProps) => (
-                  <Select {...inputProps} value={authorId} onChange={(e) => setAuthorIdOverride(e.target.value)}>
+                  <Select {...inputProps} {...register("authorId")}>
                     {admins.map((admin) => (
                       <option key={admin.id} value={admin.id}>
                         {admin.name} ({admin.email})
@@ -240,29 +268,26 @@ export default function NewPagePage() {
                   >
                     <div className="space-y-4 pt-4">
                       <Field id="seoTitle" label="SEO başlığı" hint={`${seoTitle.length}/${GOOGLE_TITLE_LIMIT} karakter`}>
-                        {(inputProps) => (
-                          <Input {...inputProps} value={seoTitle} onChange={(e) => setSeoTitle(e.target.value)} />
-                        )}
+                        {(inputProps) => <Input {...inputProps} {...register("seoTitle")} />}
                       </Field>
                       <Field
                         id="seoDescription"
                         label="SEO açıklaması"
                         hint={`${seoDescription.length}/${GOOGLE_DESCRIPTION_LIMIT} karakter`}
                       >
-                        {(inputProps) => (
-                          <Textarea
-                            {...inputProps}
-                            rows={2}
-                            value={seoDescription}
-                            onChange={(e) => setSeoDescription(e.target.value)}
+                        {(inputProps) => <Textarea {...inputProps} rows={2} {...register("seoDescription")} />}
+                      </Field>
+                      <Controller
+                        control={control}
+                        name="ogImageUrl"
+                        render={({ field }) => (
+                          <ImageUploadField
+                            id="ogImageUrl"
+                            label="Sosyal medya (OG) görseli"
+                            value={field.value ?? ""}
+                            onChange={field.onChange}
                           />
                         )}
-                      </Field>
-                      <ImageUploadField
-                        id="ogImageUrl"
-                        label="Sosyal medya (OG) görseli"
-                        value={ogImageUrl}
-                        onChange={setOgImageUrl}
                       />
                     </div>
                   </motion.div>
@@ -270,7 +295,7 @@ export default function NewPagePage() {
               </AnimatePresence>
             </div>
 
-            <Button type="submit" loading={creating} disabled={!title.trim()}>
+            <Button type="submit" loading={isSubmitting} disabled={!title?.trim()}>
               Oluştur ve devam et
             </Button>
           </form>
