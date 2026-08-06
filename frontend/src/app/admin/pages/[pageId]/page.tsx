@@ -90,6 +90,11 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
   const [translations, setTranslations] = useState<ContentTranslations>({});
   const [viewCount, setViewCount] = useState(0);
   const [snapshot, setSnapshot] = useState<PageSnapshot | null>(null);
+  // Metin bloklarındaki PostEditor (TipTap) içeriği yalnızca ilk mount'ta okur (uncontrolled).
+  // `load()` her çalıştığında (ilk yükleme, versiyon restore) bu sayaç artırılır ve
+  // BuilderCanvas'ın `key`'ine dahil edilerek tüm blok editörleri TAM REMOUNT edilir —
+  // böylece restore sonrası editör state'i her zaman güncel blok verisiyle senkron kalır.
+  const [editorGeneration, setEditorGeneration] = useState(0);
 
   function getEnField(key: string): string {
     const value = translations.EN?.[key];
@@ -122,6 +127,7 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
       setNoIndex(page.noIndex);
       setTranslations(page.translations ?? {});
       setViewCount(page.viewCount);
+      setEditorGeneration((prev) => prev + 1);
       setSnapshot({
         title: page.title,
         slug: page.slug,
@@ -347,9 +353,9 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
             </div>
             <div className="mt-4">
               {locale === "TR" ? (
-                <BuilderCanvas blocks={blocks} onChange={setBlocks} />
+                <BuilderCanvas key={`TR-${editorGeneration}`} blocks={blocks} onChange={setBlocks} />
               ) : (
-                <BuilderCanvas blocks={enBlocks} onChange={setEnBlocks} />
+                <BuilderCanvas key={`EN-${editorGeneration}`} blocks={enBlocks} onChange={setEnBlocks} />
               )}
             </div>
           </div>

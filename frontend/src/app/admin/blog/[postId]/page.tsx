@@ -94,6 +94,11 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
   const [translations, setTranslations] = useState<ContentTranslations>({});
   const [viewCount, setViewCount] = useState(0);
   const [snapshot, setSnapshot] = useState<PostSnapshot | null>(null);
+  // TipTap `useEditor({ content })` içeriği yalnızca ilk mount'ta okur (uncontrolled).
+  // `load()` her çalıştığında (ilk yükleme, versiyon restore) bu sayaç artırılır ve
+  // PostEditor'ın `key`'ine dahil edilerek editör TAM REMOUNT edilir — böylece restore
+  // sonrası editör state'i her zaman güncel `contentHtml` ile senkron kalır.
+  const [editorGeneration, setEditorGeneration] = useState(0);
 
   function getEnField(key: string): string {
     const value = translations.EN?.[key];
@@ -141,6 +146,7 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
       setCategories(cats);
       setSnapshot(nextSnapshot);
       setLoaded(true);
+      setEditorGeneration((prev) => prev + 1);
     } catch (err) {
       setLoadError(friendlyErrorMessage(err));
     }
@@ -377,7 +383,7 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
               İçerik {locale === "EN" && <span className="text-foreground/40">(EN)</span>}
             </label>
             <PostEditor
-              key={locale}
+              key={`${locale}-${editorGeneration}`}
               content={locale === "TR" ? contentHtml : getEnField("contentHtml")}
               onChange={(html) => (locale === "TR" ? setContentHtml(html) : setEnField("contentHtml", html))}
             />
