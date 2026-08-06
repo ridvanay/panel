@@ -19,6 +19,7 @@ import {
   ShieldCheck,
   ScrollText,
   Upload,
+  FileArchive,
 } from "lucide-react";
 import {
   Sidebar,
@@ -51,6 +52,9 @@ const navItems: NavItem[] = [
   { href: "/admin/pages", label: "Sayfalar", icon: FileText },
   { href: "/admin/blog", label: "Blog", icon: Newspaper },
   { href: "/admin/stats", label: "İstatistikler", icon: BarChart3 },
+  // `/admin/reports/exports/*` backend'de TAMAMEN ADMIN-only (bkz. reports.routes.ts) —
+  // `/admin/import` ile AYNI `roles` deseni.
+  { href: "/admin/reports", label: "Raporlar", icon: FileArchive, roles: ["ADMIN"] },
   { href: "/admin/media", label: "Medya", icon: ImageIcon },
   { href: "/admin/navigation", label: "Navigasyon", icon: LayoutTemplate },
   { href: "/admin/import", label: "İçe Aktar", icon: Upload, roles: ["ADMIN"] },
