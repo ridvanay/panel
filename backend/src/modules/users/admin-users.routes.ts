@@ -28,6 +28,12 @@ const CreateAdminUserResponseSchema = z.object({
   emailStatus: z.enum(["sent", "failed"]),
 });
 
+// Diğer admin uçlarıyla paylaşılan global limitten (env.RATE_LIMIT_MAX) bağımsız, hassas
+// kullanıcı yönetimi işlemlerine (oluşturma/rol/durum değişikliği) özel savunma-derinliği
+// üst sınırı — bu uçlar zaten requireSiteRole("ADMIN") ile korunuyor, düşük risk ama
+// ele geçirilmiş bir admin oturumunun toplu istismarını sınırlar (bkz. security-agent denetimi).
+const ADMIN_USERS_RATE_LIMIT = { max: 20, timeWindow: "1 minute" };
+
 /**
  * Bir kullanıcının hâlâ en az bir aktif ADMIN'in kalıp kalmayacağını kontrol eder.
  * `excludeUserId` üzerinde işlem yapılan kullanıcıdır (rol/durum değişikliği henüz
@@ -97,6 +103,7 @@ export async function adminUsersRoutes(app: FastifyInstance) {
   server.post(
     "/",
     {
+      config: { rateLimit: ADMIN_USERS_RATE_LIMIT },
       schema: { body: CreateAdminUserRequestSchema, response: { 201: ApiSuccessSchema(CreateAdminUserResponseSchema) } },
     },
     async (request, reply) => {
@@ -145,6 +152,7 @@ export async function adminUsersRoutes(app: FastifyInstance) {
   server.patch(
     "/:userId/role",
     {
+      config: { rateLimit: ADMIN_USERS_RATE_LIMIT },
       schema: {
         params: AdminUserIdParamSchema,
         body: UpdateAdminUserRoleRequestSchema,
@@ -184,6 +192,7 @@ export async function adminUsersRoutes(app: FastifyInstance) {
   server.patch(
     "/:userId/status",
     {
+      config: { rateLimit: ADMIN_USERS_RATE_LIMIT },
       schema: {
         params: AdminUserIdParamSchema,
         body: UpdateAdminUserStatusRequestSchema,
