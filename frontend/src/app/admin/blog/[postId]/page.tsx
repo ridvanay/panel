@@ -194,6 +194,18 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
     snapshot,
   ]);
 
+  // Kaydedilmemiş değişiklik varken sekmeyi kapatma/yenileme/tamamen ayrılma girişiminde
+  // tarayıcının native uyarısını göster (bkz. admin/settings/page.tsx'teki aynı patern).
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    function handleBeforeUnload(event: BeforeUnloadEvent) {
+      event.preventDefault();
+      event.returnValue = "";
+    }
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [hasUnsavedChanges]);
+
   async function handleSave() {
     setSaveError(null);
     setSaving(true);
