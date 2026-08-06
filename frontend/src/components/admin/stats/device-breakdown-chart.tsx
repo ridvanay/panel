@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
-import * as statsApi from "@/lib/api/stats";
-import type { DeviceBreakdownItem, DeviceType } from "@/lib/api/types";
+import { useBreakdownStats } from "@/hooks/use-stats";
+import type { StatsRangeQuery } from "@/lib/api/stats";
+import type { DeviceType } from "@/lib/api/types";
 import { Card } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { Alert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { PieChart as PieChartIcon } from "lucide-react";
@@ -31,24 +32,15 @@ const DEVICE_COLORS: Record<DeviceType, string> = {
 interface DeviceBreakdownChartProps {
   /** Son kaç günün verisi çekilecek. Verilmezse mevcut varsayılan (30) korunur. */
   days?: number;
+  /** Verilirse `days` yerine kullanılır — `/admin/stats/page.tsx`'teki tarih aralığı filtresi. */
+  range?: StatsRangeQuery;
+  rangeLabel?: string;
 }
 
-export function DeviceBreakdownChart({ days = 30 }: DeviceBreakdownChartProps) {
-  const [devices, setDevices] = useState<DeviceBreakdownItem[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    (async () => {
-      setDevices(null);
-      setError(null);
-      try {
-        const breakdown = await statsApi.getBreakdown(days);
-        setDevices(breakdown.devices);
-      } catch (err) {
-        setError(friendlyErrorMessage(err));
-      }
-    })();
-  }, [days]);
+export function DeviceBreakdownChart({ days = 30, range, rangeLabel }: DeviceBreakdownChartProps) {
+  const query = useBreakdownStats(range ?? { days });
+  const devices = query.data?.devices ?? null;
+  const error = query.isError ? friendlyErrorMessage(query.error) : null;
 
   const total = devices?.reduce((sum, item) => sum + item.count, 0) ?? 0;
   // Tooltip/Legend'in Türkçe etiket gösterebilmesi için görsel katmanda
@@ -63,13 +55,18 @@ export function DeviceBreakdownChart({ days = 30 }: DeviceBreakdownChartProps) {
     >
       <Card>
         <h2 className="text-sm font-medium text-foreground">Cihaz Dağılımı</h2>
-        <p className="text-xs text-foreground/60">Son {days} gün · ziyaretçi cihaz türü</p>
+        <p className="text-xs text-foreground/60">{rangeLabel ?? `Son ${days} gün`} · ziyaretçi cihaz türü</p>
 
         {error ? (
           <Alert variant="error" className="mt-4">
-            {error}
+            <span className="flex flex-wrap items-center justify-between gap-3">
+              {error}
+              <Button type="button" variant="outline" size="sm" onClick={() => void query.refetch()}>
+                Tekrar Dene
+              </Button>
+            </span>
           </Alert>
-        ) : devices === null ? (
+        ) : query.isPending ? (
           <div className="flex h-72 items-center justify-center">
             <Spinner className="h-6 w-6 text-primary" />
           </div>
@@ -87,7 +84,7 @@ export function DeviceBreakdownChart({ days = 30 }: DeviceBreakdownChartProps) {
                   outerRadius={85}
                   paddingAngle={2}
                 >
-                  {devices.map((item) => (
+                  {(devices ?? []).map((item) => (
                     <Cell
                       key={item.type}
                       fill={DEVICE_COLORS[item.type]}
@@ -101,7 +98,7 @@ export function DeviceBreakdownChart({ days = 30 }: DeviceBreakdownChartProps) {
                 <Legend
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   formatter={(value: any, entry: any) => {
-                    const payload = entry?.payload as DeviceBreakdownItem | undefined;
+                    const payload = entry?.payload as { type: DeviceType } | undefined;
                     return payload ? DEVICE_LABELS[payload.type] : value;
                   }}
                   iconType="circle"

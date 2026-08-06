@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import * as statsApi from "@/lib/api/stats";
-import type { CountryBreakdownItem } from "@/lib/api/types";
+import { useBreakdownStats } from "@/hooks/use-stats";
+import type { StatsRangeQuery } from "@/lib/api/stats";
 import { Card } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { Alert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
@@ -22,24 +22,15 @@ function countryLabel(country: string): string {
 interface CountryBreakdownListProps {
   /** Son kaç günün verisi çekilecek. Verilmezse mevcut varsayılan (30) korunur. */
   days?: number;
+  /** Verilirse `days` yerine kullanılır — `/admin/stats/page.tsx`'teki tarih aralığı filtresi. */
+  range?: StatsRangeQuery;
+  rangeLabel?: string;
 }
 
-export function CountryBreakdownList({ days = 30 }: CountryBreakdownListProps) {
-  const [countries, setCountries] = useState<CountryBreakdownItem[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    (async () => {
-      setCountries(null);
-      setError(null);
-      try {
-        const breakdown = await statsApi.getBreakdown(days);
-        setCountries(breakdown.countries);
-      } catch (err) {
-        setError(friendlyErrorMessage(err));
-      }
-    })();
-  }, [days]);
+export function CountryBreakdownList({ days = 30, range, rangeLabel }: CountryBreakdownListProps) {
+  const query = useBreakdownStats(range ?? { days });
+  const countries = query.data?.countries ?? null;
+  const error = query.isError ? friendlyErrorMessage(query.error) : null;
 
   const total = countries?.reduce((sum, item) => sum + item.count, 0) ?? 0;
   const maxCount = countries?.reduce((max, item) => Math.max(max, item.count), 0) ?? 0;
@@ -70,13 +61,18 @@ export function CountryBreakdownList({ days = 30 }: CountryBreakdownListProps) {
             </Tooltip>
           )}
         </div>
-        <p className="text-xs text-foreground/60">Son {days} gün · ülkeye göre ziyaretçi sayısı</p>
+        <p className="text-xs text-foreground/60">{rangeLabel ?? `Son ${days} gün`} · ülkeye göre ziyaretçi sayısı</p>
 
         {error ? (
           <Alert variant="error" className="mt-4">
-            {error}
+            <span className="flex flex-wrap items-center justify-between gap-3">
+              {error}
+              <Button type="button" variant="outline" size="sm" onClick={() => void query.refetch()}>
+                Tekrar Dene
+              </Button>
+            </span>
           </Alert>
-        ) : countries === null ? (
+        ) : query.isPending ? (
           <div className="flex h-40 items-center justify-center">
             <Spinner className="h-6 w-6 text-primary" />
           </div>
@@ -84,7 +80,7 @@ export function CountryBreakdownList({ days = 30 }: CountryBreakdownListProps) {
           <EmptyState icon={Globe} title="Henüz veri yok" className="mt-4 border-none p-6" />
         ) : (
           <ul className="mt-4 space-y-3">
-            {countries
+            {(countries ?? [])
               .slice()
               .sort((a, b) => b.count - a.count)
               .map((item) => {

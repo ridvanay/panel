@@ -1,7 +1,17 @@
+import type { ReactElement } from "react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { axe } from "jest-axe";
 import AdminDashboardPage from "@/app/admin/page";
+
+// `admin/page.tsx` altındaki grafik/rozet bileşenleri artık TanStack Query hook'ları kullanıyor
+// (bkz. hooks/use-stats.ts) — `providers.tsx`'teki `QueryClientProvider` bu izole render'da
+// YOK, bu yüzden testin kendisi sağlıyor (`retry: false` — başarısız mock'larda testi yavaşlatmaz).
+function renderWithQueryClient(ui: ReactElement) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
+}
 
 vi.mock("@/lib/api/pages", () => ({ listPages: vi.fn() }));
 vi.mock("@/lib/api/blog", () => ({ listPosts: vi.fn() }));
@@ -36,7 +46,7 @@ describe("AdminDashboardPage — a11y", () => {
   });
 
   it("özet kartlar ve grafikler yüklendikten sonra kritik/ciddi a11y ihlali içermez", async () => {
-    const { container } = render(<AdminDashboardPage />);
+    const { container } = renderWithQueryClient(<AdminDashboardPage />);
 
     expect(await screen.findByText("Toplam sayfa")).toBeInTheDocument();
 

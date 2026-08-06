@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Area, AreaChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import * as statsApi from "@/lib/api/stats";
+import { useViewStats } from "@/hooks/use-stats";
+import type { StatsRangeQuery } from "@/lib/api/stats";
 import type { DailyViewStats } from "@/lib/api/types";
 import { BarChart3 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { Alert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { ChartTooltipContent } from "@/components/admin/stats/chart-tooltip";
@@ -25,23 +26,16 @@ function formatChartData(rows: DailyViewStats[]) {
 interface VisitorChartProps {
   /** Son kaç günün verisi çekilecek. Verilmezse mevcut varsayılan (30) korunur. */
   days?: number;
+  /** Verilirse `days` yerine kullanılır — `/admin/stats/page.tsx`'teki tarih aralığı filtresi. */
+  range?: StatsRangeQuery;
+  /** Grafik başlığı altındaki alt metin — filtre bağlamına göre üst bileşen özelleştirebilir. */
+  rangeLabel?: string;
 }
 
-export function VisitorChart({ days = 30 }: VisitorChartProps) {
-  const [data, setData] = useState<DailyViewStats[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    (async () => {
-      setData(null);
-      setError(null);
-      try {
-        setData(await statsApi.getViewStats(days));
-      } catch (err) {
-        setError(friendlyErrorMessage(err));
-      }
-    })();
-  }, [days]);
+export function VisitorChart({ days = 30, range, rangeLabel }: VisitorChartProps) {
+  const query = useViewStats(range ?? { days });
+  const data = query.data ?? null;
+  const error = query.isError ? friendlyErrorMessage(query.error) : null;
 
   return (
     <motion.div
@@ -51,29 +45,34 @@ export function VisitorChart({ days = 30 }: VisitorChartProps) {
     >
       <Card>
         <h2 className="text-sm font-medium text-foreground">Görüntülenme trendi</h2>
-        <p className="text-xs text-foreground/60">Son {days} gün · sayfa ve blog görüntülenmeleri</p>
+        <p className="text-xs text-foreground/60">{rangeLabel ?? `Son ${days} gün`} · sayfa ve blog görüntülenmeleri</p>
 
         {error ? (
           <Alert variant="error" className="mt-4">
-            {error}
+            <span className="flex flex-wrap items-center justify-between gap-3">
+              {error}
+              <Button type="button" variant="outline" size="sm" onClick={() => void query.refetch()}>
+                Tekrar Dene
+              </Button>
+            </span>
           </Alert>
-        ) : data === null ? (
+        ) : query.isPending ? (
           <div className="flex h-72 items-center justify-center">
             <Spinner className="h-6 w-6 text-primary" />
           </div>
-        ) : data.every((d) => d.pageViews === 0 && d.postViews === 0) ? (
+        ) : data && data.every((d) => d.pageViews === 0 && d.postViews === 0) ? (
           <div className="flex h-72 items-center justify-center">
             <EmptyState
               icon={BarChart3}
               title="Henüz görüntülenme verisi yok"
-              description={`Son ${days} günde sayfa veya blog görüntülenmesi kaydedilmedi.`}
+              description="Seçili aralıkta sayfa veya blog görüntülenmesi kaydedilmedi."
               className="border-none p-0"
             />
           </div>
         ) : (
           <div className="mt-4 h-72 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={formatChartData(data)} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
+              <AreaChart data={formatChartData(data ?? [])} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
                 <defs>
                   <linearGradient id="pageViewsFill" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor="var(--viz-series-1)" stopOpacity={0.25} />
