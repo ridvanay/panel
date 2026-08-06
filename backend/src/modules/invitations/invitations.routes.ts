@@ -11,6 +11,7 @@ import { ApiError, ConflictError, ForbiddenError, NotFoundError } from "../../li
 import { generateOpaqueToken, hashToken } from "../../lib/tokens";
 import { env } from "../../config/env";
 import { sendTemplateEmail } from "../email-templates/email-templates.service";
+import { logAudit } from "../../lib/audit";
 import { CreateInvitationRequestSchema, InvitationTokenParamSchema } from "./invitations.schemas";
 
 const USER_SELECT = { id: true, name: true, email: true, avatarUrl: true } as const;
@@ -60,6 +61,17 @@ export async function orgInvitationsRoutes(app: FastifyInstance) {
       });
       if (existingInvite) throw new ConflictError("Bu e-postaya zaten bekleyen bir davet var.");
 
+      // Privilege escalation önleme: OWNER olmayan bir ADMIN, kendinden yüksek (OWNER) rolle
+      // davet gönderemez (bkz. security-agent denetimi). NOT: `CreateInvitationRequestSchema`
+      // (ve openapi.yaml kontratı) şu an `role`'ü zaten ADMIN|MEMBER ile sınırlıyor, yani bu
+      // dal bugün ölü koddur — ama kontrat ileride OWNER'ı eklerse tek başına yeterli olması
+      // için savunma-derinliği amacıyla burada tutuluyor. Literal union ile "OWNER" arasında
+      // TS'in "olanaksız karşılaştırma" uyarısını önlemek için `string`'e genişletiyoruz.
+      const requestedRole: string = request.body.role;
+      if (request.membership!.role !== "OWNER" && requestedRole === "OWNER") {
+        throw new ForbiddenError("Yalnızca OWNER rolündeki üyeler OWNER daveti gönderebilir.");
+      }
+
       const rawToken = generateOpaqueToken();
       const invitation = await app.prisma.invitation.create({
         data: {
@@ -91,6 +103,16 @@ export async function orgInvitationsRoutes(app: FastifyInstance) {
       } catch (err) {
         app.log.error({ err, invitationId: invitation.id }, "Organizasyon daveti e-postası gönderilemedi");
       }
+
+      await logAudit(app, {
+        actorId: request.user!.id,
+        actorEmail: request.user!.email,
+        action: "invitation.create",
+        targetType: "Invitation",
+        targetId: invitation.id,
+        metadata: { organizationId, email, role: request.body.role },
+        ipAddress: request.ip,
+      });
 
       return reply.code(201).send(ok(toInvitationDto(invitation)));
     }
@@ -133,6 +155,16 @@ export async function acceptInvitationRoutes(app: FastifyInstance) {
         });
         await tx.invitation.update({ where: { id: invitation.id }, data: { status: "ACCEPTED" } });
         return membershipRow;
+      });
+
+      await logAudit(app, {
+        actorId: request.user!.id,
+        actorEmail: request.user!.email,
+        action: "invitation.accept",
+        targetType: "Membership",
+        targetId: membership.id,
+        metadata: { organizationId: invitation.organizationId, role: invitation.role },
+        ipAddress: request.ip,
       });
 
       return reply.send(ok(toMembershipDto(membership)));
