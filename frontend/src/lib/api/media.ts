@@ -14,3 +14,8 @@ export function listMedia(cursor?: string): Promise<Page<Media>> {
 export function deleteMedia(mediaId: string) {
   return apiFetch<void>(`/admin/media/${mediaId}`, { method: "DELETE" });
 }
+
+/** Boş string backend'de 422 döner (`altText` boş bırakılamaz) — çağıran taraf önceden doğrulamalı. */
+export function updateMediaAltText(mediaId: string, altText: string): Promise<Media> {
+  return apiFetch<Media>(`/admin/media/${mediaId}`, { method: "PATCH", body: { altText } });
+}

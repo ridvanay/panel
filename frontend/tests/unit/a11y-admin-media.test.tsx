@@ -22,6 +22,7 @@ const items: Media[] = [
     filename: "kapak.png",
     mimeType: "image/png",
     sizeBytes: 204800,
+    altText: null,
     createdAt: "2026-08-01T10:00:00.000Z",
   },
   {
@@ -30,6 +31,7 @@ const items: Media[] = [
     filename: "banner.jpg",
     mimeType: "image/jpeg",
     sizeBytes: 512000,
+    altText: null,
     createdAt: "2026-08-02T10:00:00.000Z",
   },
   {
@@ -38,6 +40,7 @@ const items: Media[] = [
     filename: "logo.svg",
     mimeType: "image/svg+xml",
     sizeBytes: 10240,
+    altText: null,
     createdAt: "2026-08-03T10:00:00.000Z",
   },
 ];

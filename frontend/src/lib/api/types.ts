@@ -492,6 +492,8 @@ export interface Media {
   filename: string;
   mimeType: string;
   sizeBytes: number;
+  /** a11y: editör içeriğine eklenirken zorunlu tutulur; kütüphanede henüz atanmamışsa `null`. */
+  altText: string | null;
   createdAt: string;
 }
 

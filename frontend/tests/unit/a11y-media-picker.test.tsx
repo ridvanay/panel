@@ -12,8 +12,8 @@ const mediaApi = await import("@/lib/api/media");
 const axeOptions = { rules: { region: { enabled: false } } };
 
 const sampleMedia: Media[] = [
-  { id: "media-1", url: "https://example.com/a.png", filename: "a.png", mimeType: "image/png", sizeBytes: 100, createdAt: "2026-01-01T00:00:00.000Z" },
-  { id: "media-2", url: "https://example.com/b.png", filename: "b.png", mimeType: "image/png", sizeBytes: 200, createdAt: "2026-01-02T00:00:00.000Z" },
+  { id: "media-1", url: "https://example.com/a.png", filename: "a.png", mimeType: "image/png", sizeBytes: 100, altText: null, createdAt: "2026-01-01T00:00:00.000Z" },
+  { id: "media-2", url: "https://example.com/b.png", filename: "b.png", mimeType: "image/png", sizeBytes: 200, altText: null, createdAt: "2026-01-02T00:00:00.000Z" },
 ];
 
 describe("MediaPicker — a11y ve klavye davranışı", () => {

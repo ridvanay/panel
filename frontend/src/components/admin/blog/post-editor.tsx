@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Image from "@tiptap/extension-image";
+import { toast } from "sonner";
 import {
   Bold,
   Italic,
@@ -25,7 +26,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { MediaPicker } from "@/components/admin/media/media-picker";
+import * as mediaApi from "@/lib/api/media";
 import type { Media } from "@/lib/api/types";
+import { Field } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 
 function ToolbarButton({
   active,
@@ -55,6 +61,12 @@ function ToolbarButton({
 
 export function PostEditor({ content, onChange }: { content: string; onChange: (html: string) => void }) {
   const [mediaPickerOpen, setMediaPickerOpen] = useState(false);
+  // a11y: editöre eklenecek her görsel için alt metin zorunlu — MediaPicker'dan seçim yapıldıktan
+  // sonra doğrudan eklemek yerine bu ara onay adımından geçirilir (bkz. görev notu Faz 2).
+  const [pendingMedia, setPendingMedia] = useState<Media | null>(null);
+  const [altTextDraft, setAltTextDraft] = useState("");
+  const [altTextError, setAltTextError] = useState<string | null>(null);
+  const [altTextSubmitting, setAltTextSubmitting] = useState(false);
   const editor = useEditor({
     extensions: [StarterKit, Image],
     content,
@@ -83,8 +95,43 @@ export function PostEditor({ content, onChange }: { content: string; onChange: (
   }
 
   function handleMediaSelect(media: Media) {
-    editor?.chain().focus().setImage({ src: media.url }).run();
+    // Görsel doğrudan editöre eklenmez — önce alt metin onay dialoğu açılır (zorunlu a11y adımı).
     setMediaPickerOpen(false);
+    setPendingMedia(media);
+    setAltTextDraft(media.altText ?? "");
+    setAltTextError(null);
+  }
+
+  function handleAltTextDialogOpenChange(next: boolean) {
+    if (!next) {
+      setPendingMedia(null);
+      setAltTextDraft("");
+      setAltTextError(null);
+    }
+  }
+
+  async function handleConfirmAltText() {
+    if (!pendingMedia) return;
+    const trimmed = altTextDraft.trim();
+    if (!trimmed) {
+      setAltTextError("Alt metin zorunludur.");
+      return;
+    }
+
+    setAltTextSubmitting(true);
+    setAltTextError(null);
+    try {
+      const updated = await mediaApi.updateMediaAltText(pendingMedia.id, trimmed);
+      editor?.chain().focus().setImage({ src: updated.url, alt: trimmed }).run();
+      setPendingMedia(null);
+      setAltTextDraft("");
+    } catch (err) {
+      const message = friendlyErrorMessage(err);
+      setAltTextError(message);
+      toast.error(message);
+    } finally {
+      setAltTextSubmitting(false);
+    }
   }
 
   return (
@@ -197,6 +244,57 @@ export function PostEditor({ content, onChange }: { content: string; onChange: (
       </div>
       <EditorContent editor={editor} className="min-h-[200px] px-3 py-2" />
       <MediaPicker open={mediaPickerOpen} onOpenChange={setMediaPickerOpen} onSelect={handleMediaSelect} />
+
+      <Dialog open={pendingMedia !== null} onOpenChange={handleAltTextDialogOpenChange}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Alt metin ekle</DialogTitle>
+            <DialogDescription>
+              Görselin ne gösterdiğini kısaca açıklayın — ekran okuyucu kullanan ziyaretçiler için gereklidir.
+            </DialogDescription>
+          </DialogHeader>
+
+          {pendingMedia && (
+            <div className="flex items-center gap-3">
+              {/* eslint-disable-next-line @next/next/no-img-element -- yüklenen/harici görsel URL'si */}
+              <img
+                src={pendingMedia.url}
+                alt=""
+                className="h-16 w-16 shrink-0 rounded-md border border-border object-cover"
+              />
+              <div className="flex-1">
+                <Field id="image-alt-text" label="Alt metin" required error={altTextError ?? undefined}>
+                  {(inputProps) => (
+                    <Input
+                      {...inputProps}
+                      value={altTextDraft}
+                      onChange={(e) => {
+                        setAltTextDraft(e.target.value);
+                        if (altTextError) setAltTextError(null);
+                      }}
+                      placeholder="Örn. Ürünün önden çekilmiş fotoğrafı"
+                    />
+                  )}
+                </Field>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => handleAltTextDialogOpenChange(false)}>
+              Vazgeç
+            </Button>
+            <Button
+              type="button"
+              loading={altTextSubmitting}
+              disabled={!altTextDraft.trim()}
+              onClick={handleConfirmAltText}
+            >
+              Ekle
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
