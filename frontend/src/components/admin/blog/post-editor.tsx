@@ -4,7 +4,24 @@ import { useState } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Image from "@tiptap/extension-image";
-import { Bold, Italic, Heading2, List, Link as LinkIcon, Image as ImageIcon } from "lucide-react";
+import {
+  Bold,
+  Italic,
+  Underline,
+  Strikethrough,
+  Code,
+  SquareCode,
+  Quote,
+  Heading2,
+  Heading3,
+  List,
+  ListOrdered,
+  Minus,
+  Undo2,
+  Redo2,
+  Link as LinkIcon,
+  Image as ImageIcon,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { MediaPicker } from "@/components/admin/media/media-picker";
@@ -88,12 +105,46 @@ export function PostEditor({ content, onChange }: { content: string; onChange: (
           <Italic />
         </ToolbarButton>
         <ToolbarButton
-          label="Başlık"
+          label="Altı çizili"
+          active={editor?.isActive("underline")}
+          onClick={() => editor?.chain().focus().toggleUnderline().run()}
+        >
+          <Underline />
+        </ToolbarButton>
+        <ToolbarButton
+          label="Üstü çizili"
+          active={editor?.isActive("strike")}
+          onClick={() => editor?.chain().focus().toggleStrike().run()}
+        >
+          <Strikethrough />
+        </ToolbarButton>
+        <ToolbarButton
+          label="Satır içi kod"
+          active={editor?.isActive("code")}
+          onClick={() => editor?.chain().focus().toggleCode().run()}
+        >
+          <Code />
+        </ToolbarButton>
+
+        <div className="mx-1 h-5 w-px bg-border" />
+
+        <ToolbarButton
+          label="Başlık 2"
           active={editor?.isActive("heading", { level: 2 })}
           onClick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()}
         >
           <Heading2 />
         </ToolbarButton>
+        <ToolbarButton
+          label="Başlık 3"
+          active={editor?.isActive("heading", { level: 3 })}
+          onClick={() => editor?.chain().focus().toggleHeading({ level: 3 }).run()}
+        >
+          <Heading3 />
+        </ToolbarButton>
+
+        <div className="mx-1 h-5 w-px bg-border" />
+
         <ToolbarButton
           label="Madde listesi"
           active={editor?.isActive("bulletList")}
@@ -101,11 +152,47 @@ export function PostEditor({ content, onChange }: { content: string; onChange: (
         >
           <List />
         </ToolbarButton>
+        <ToolbarButton
+          label="Numaralı liste"
+          active={editor?.isActive("orderedList")}
+          onClick={() => editor?.chain().focus().toggleOrderedList().run()}
+        >
+          <ListOrdered />
+        </ToolbarButton>
+
+        <div className="mx-1 h-5 w-px bg-border" />
+
+        <ToolbarButton
+          label="Alıntı"
+          active={editor?.isActive("blockquote")}
+          onClick={() => editor?.chain().focus().toggleBlockquote().run()}
+        >
+          <Quote />
+        </ToolbarButton>
+        <ToolbarButton
+          label="Kod bloğu"
+          active={editor?.isActive("codeBlock")}
+          onClick={() => editor?.chain().focus().toggleCodeBlock().run()}
+        >
+          <SquareCode />
+        </ToolbarButton>
+        <ToolbarButton label="Yatay çizgi" onClick={() => editor?.chain().focus().setHorizontalRule().run()}>
+          <Minus />
+        </ToolbarButton>
         <ToolbarButton label="Bağlantı" active={editor?.isActive("link")} onClick={handleSetLink}>
           <LinkIcon />
         </ToolbarButton>
         <ToolbarButton label="Görsel ekle" onClick={handleInsertImage}>
           <ImageIcon />
+        </ToolbarButton>
+
+        <div className="mx-1 h-5 w-px bg-border" />
+
+        <ToolbarButton label="Geri al" onClick={() => editor?.chain().focus().undo().run()}>
+          <Undo2 />
+        </ToolbarButton>
+        <ToolbarButton label="Yinele" onClick={() => editor?.chain().focus().redo().run()}>
+          <Redo2 />
         </ToolbarButton>
       </div>
       <EditorContent editor={editor} className="min-h-[200px] px-3 py-2" />
