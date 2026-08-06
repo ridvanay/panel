@@ -110,6 +110,31 @@ enum ImportErrorSeverity {
   SKIPPED
 }
 
+// §10.8.10 Analitik Rapor Dışa Aktarma (Export) — bkz. ARCHITECTURE.md §10.8.10.
+// /admin/stats uçlarıyla uyumlu rapor türleri.
+enum ExportJobType {
+  VIEWS
+  BREAKDOWN
+  SUMMARY
+  TOP_CONTENT
+  USERS
+  REVENUE
+}
+
+enum ExportFileFormat {
+  CSV
+  PDF
+}
+
+// ImportJobStatus'tan daha sade: QUEUED/CANCELLED yok — worker tek-instance
+// senkron/kuyruksuz olacak (bkz. §10.8.1'deki "Kuyruk YOK" kararıyla aynı desen).
+enum ExportJobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
 model User {
   id              String         @id @default(uuid())
   // Sıralı, dış dünyaya sızmayan iç sayaç — cursor sayfalamada stabil sıralama için.
@@ -144,6 +169,8 @@ model User {
   emailTemplateEdits  EmailTemplate[]      @relation("EmailTemplateUpdater")
   // §10.8 Toplu İçe Aktarma (Import) — bkz. ARCHITECTURE.md §10.8.2.
   importJobs          ImportJob[]          @relation("ImportJobCreator")
+  // §10.8.10 Analitik Rapor Dışa Aktarma (Export) — bkz. ARCHITECTURE.md §10.8.10.
+  exportJobs          ExportJob[]          @relation("ExportJobCreator")
 
   @@map("users")
 }
@@ -379,6 +406,12 @@ model PageView {
 
   @@unique([pageId, date, deviceType, country])
   @@unique([postId, date, deviceType, country])
+  // Tüm /admin/stats uçları `WHERE date >= :since` ile başlayıp ardından deviceType/country'ye
+  // GROUP BY uyguluyor (bkz. stats.routes.ts); leading kolonu pageId/postId olan yukarıdaki
+  // unique index'ler bu taramada kullanılamıyor (seq scan). deviceType/country WHERE'de
+  // filtrelenmiyor, yalnızca GROUP BY'da — bu yüzden composite değil, tek kolonlu date indeksi
+  // yeterli ve gereksiz büyümeden kaçınır.
+  @@index([date])
   @@map("page_views")
 }
 
@@ -621,4 +654,40 @@ model ImportJobError {
 
   @@index([jobId, seq])
   @@map("import_job_errors")
+}
+
+// §10.8.10 Analitik Rapor Dışa Aktarma (Export) — bkz. ARCHITECTURE.md §10.8.10. Kuyruk YOK;
+// ImportJob (§10.8.1) ile AYNI süreç-içi worker deseni, tek-instance varsayımıyla kullanılır.
+// ImportJobError paterni burada YOK: bir export, satır satır işlenen bir toplu içe aktarma
+// değil, tek seferlik rapor üretimidir — ya bütünüyle biter ya da errorSummary ile başarısız olur.
+model ExportJob {
+  id           String           @id @default(uuid())
+  // Sıralı, dış dünyaya sızmayan iç sayaç — cursor sayfalamada stabil sıralama için.
+  seq          Int              @unique @default(autoincrement())
+  type         ExportJobType
+  format       ExportFileFormat
+  status       ExportJobStatus  @default(PENDING)
+  // Rapor parametreleri: tarih aralığı (from/to), rol/segment filtreleri, maskeleme tercihi vb.
+  filters      Json             @default("{}")
+  // Gizli depodaki dosya referansı (rastgele UUID adı / S3 key). API'de ASLA DÖNMEZ.
+  storagePath  String?
+  // Export'un maskelenmemiş/ham PII içerip içermediği — compliance-agent audit/erişim
+  // kararında kullanır (bkz. ARCHITECTURE.md §10.8.8 ile aynı KVKK değerlendirme deseni).
+  containsPii  Boolean          @default(false)
+  createdById  String?
+  // Yalnızca işin TAMAMINI başarısız kılan hata (ImportJob.errorSummary ile aynı desen).
+  errorSummary String?
+  // İndirme linkinin/dosyanın süre sonu — saklama süresi politikası için (bkz. §10.8.10).
+  expiresAt    DateTime?
+  startedAt    DateTime?
+  finishedAt   DateTime?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  createdBy User? @relation("ExportJobCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([type])
+  @@index([createdById])
+  @@map("export_jobs")
 }

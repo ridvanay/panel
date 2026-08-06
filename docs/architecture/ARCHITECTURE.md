@@ -1158,6 +1158,75 @@ bileşenini kullandığı için dışa aktarma ORTAK bileşene taşınır (kopya
 ikisinde "Tümünü" + "Seçilenleri" olarak sunulur. Sütunlar: Başlık, Slug, Durum, Yazar,
 Kategori (yalnızca blog), Görüntülenme, Yayın Tarihi, Son Güncelleme.
 
+#### 10.8.10 Analitik Rapor Dışa Aktarma (Export) — Şema (db-agent — TEK SAHİP)
+
+Durum: v1 · `feature/admin-analytics-v2`'nin ilk (db-agent) adımı. **10.8.9 ile
+KARIŞTIRILMAMALI**: 10.8.9 admin liste sayfalarının (Kullanıcılar/Blog/Sayfalar) TAMAMEN
+istemci taraflı CSV dışa aktarımıyla ilgiliydi ve "YENİ UÇ YOK" sonucuna varmıştı. Bu
+madde ise **admin analitik/raporlama** (`/admin/stats/*`) verilerinin CSV/PDF olarak
+ASENKRON dışa aktarılmasıyla ilgilidir — veri hacmi (tüm `PageView` satırları, kullanıcı/
+gelir raporları) ve PDF üretimi istemci tarafında yapılamayacak kadar ağır olabileceği için
+sunucu tarafı bir iş kaydına ihtiyaç var. Endpoint/worker tasarımı backend-agent'ın işi;
+burada yalnızca şema tanımlanır.
+
+```prisma
+enum ExportJobType    { VIEWS  BREAKDOWN  SUMMARY  TOP_CONTENT  USERS  REVENUE }
+enum ExportFileFormat { CSV  PDF }
+enum ExportJobStatus  { PENDING  PROCESSING  COMPLETED  FAILED }
+
+model ExportJob {
+  id           String            @id @default(uuid())
+  seq          Int               @unique @default(autoincrement())   // cursor sayfalama
+  type         ExportJobType
+  format       ExportFileFormat
+  status       ExportJobStatus   @default(PENDING)
+  filters      Json              @default("{}")   // tarih aralığı, rol/segment, maskeleme tercihi vb.
+  // Gizli depodaki dosya referansı. API'de ASLA DÖNMEZ.
+  storagePath  String?
+  // Ham/maskelenmemiş PII içeriyorsa true — compliance-agent audit/erişim kararında kullanır.
+  containsPii  Boolean           @default(false)
+  createdById  String?
+  errorSummary String?
+  expiresAt    DateTime?         // indirme linkinin/dosyanın süre sonu (saklama politikası)
+  startedAt    DateTime?
+  finishedAt   DateTime?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  createdBy User? @relation("ExportJobCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([type])
+  @@index([createdById])
+  @@map("export_jobs")
+}
+```
+`User` tarafına karşı-ilişki alanı: `exportJobs ExportJob[] @relation("ExportJobCreator")`.
+
+- **İşleme deseni** — §10.8.1'deki "Kuyruk YOK, süreç-içi worker + DB durum tablosu"
+  kararıyla AYNI (tek instance varsayımı, `onReady` kurtarması vb.); worker
+  implementasyonu backend-agent'ındır.
+- **`ImportJobError` paterni burada yok**: export satır-satır işlenen bir toplu içe
+  aktarma değil, tek seferlik rapor üretimidir (ya bütünüyle biter ya da `errorSummary`
+  ile başarısız olur) — bu yüzden ayrı bir `ExportJobError` tablosu eklenmedi.
+  `ExportJobStatus` da bu yüzden `ImportJobStatus`'tan daha sade (`QUEUED`/`CANCELLED` yok).
+- **`containsPii`**: `USERS`/`REVENUE` gibi türler ham e-posta/isim/ödeme verisi
+  içerebilir; bu alan compliance-agent'ın §10.8.8 ile aynı desende saklama/erişim
+  kararı almasını sağlar — backend-agent worker'da rapor türüne göre bu alanı set eder.
+- **`expiresAt`**: indirilebilir dosyanın/linkin süre sonu; saklama süresi politikası
+  compliance-agent tarafından değerlendirilecektir (bkz. §10.8.8.1'deki gibi bir karar
+  gerekebilir).
+
+##### PageView performans indeksi (bu adımın ikinci parçası)
+
+`/admin/stats/*` uçlarının tamamı `WHERE date >= :since` ile başlayıp `deviceType`/
+`country`'ye yalnızca `GROUP BY`'da (WHERE'de değil) dokunuyor (bkz.
+`stats.routes.ts`). Mevcut `@@unique([pageId, date, deviceType, country])` /
+`@@unique([postId, date, deviceType, country])` indekslerinin leading kolonu
+`pageId`/`postId` olduğu için bu sorgu paterninde kullanılamıyor (seq scan). Eklenen
+`@@index([date])` bunu çözüyor; `deviceType` WHERE'de filtrelenmediği için composite
+`[date, deviceType]` indeksi gereksiz ek yazma maliyeti getirirdi, eklenmedi.
+
 ### Bilinen Sorunlar / Backlog
 
 - **`preValidation` vs RBAC hook sıralaması** (2026-08-05, qa-agent, orta öncelik,
