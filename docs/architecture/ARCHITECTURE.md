@@ -1183,7 +1183,8 @@ model ExportJob {
   filters      Json              @default("{}")   // tarih aralığı, rol/segment, maskeleme tercihi vb.
   // Gizli depodaki dosya referansı. API'de ASLA DÖNMEZ.
   storagePath  String?
-  // Ham/maskelenmemiş PII içeriyorsa true — compliance-agent audit/erişim kararında kullanır.
+  // Export TÜRÜ (USERS/REVENUE) kişisel veri içeriyorsa true — MASKELENMİŞ olsa dahi. Maskeleme
+  // durumu `filters.unmaskPii` + `reports.export.unmasked_pii` audit kaydında izlenir.
   containsPii  Boolean           @default(false)
   createdById  String?
   errorSummary String?
@@ -1210,12 +1211,47 @@ model ExportJob {
   aktarma değil, tek seferlik rapor üretimidir (ya bütünüyle biter ya da `errorSummary`
   ile başarısız olur) — bu yüzden ayrı bir `ExportJobError` tablosu eklenmedi.
   `ExportJobStatus` da bu yüzden `ImportJobStatus`'tan daha sade (`QUEUED`/`CANCELLED` yok).
-- **`containsPii`**: `USERS`/`REVENUE` gibi türler ham e-posta/isim/ödeme verisi
-  içerebilir; bu alan compliance-agent'ın §10.8.8 ile aynı desende saklama/erişim
+- **`containsPii`**: `USERS`/`REVENUE` gibi türler kişisel veri (e-posta/isim/ödeme
+  bağlamı) içerebilir; bu alan compliance-agent'ın §10.8.8 ile aynı desende saklama/erişim
   kararı almasını sağlar — backend-agent worker'da rapor türüne göre bu alanı set eder.
+  DİKKAT: bu alan MASKELEME DURUMUNU yansıtmaz (maskeli export'larda da `true`'dur) —
+  ham/maskelenmemiş erişim `filters.unmaskPii` + ayrı `reports.export.unmasked_pii`
+  audit kaydıyla izlenir (bkz. aşağıdaki compliance-agent kararı).
 - **`expiresAt`**: indirilebilir dosyanın/linkin süre sonu; saklama süresi politikası
-  compliance-agent tarafından değerlendirilecektir (bkz. §10.8.8.1'deki gibi bir karar
-  gerekebilir).
+  aşağıda compliance-agent tarafından karara bağlanmıştır.
+
+##### compliance-agent kararı (2026-08-06, BLOCKER) — Export saklama süresi, PII maskeleme ve audit
+
+`import.retention.ts` üstündeki §10.8.8.1 emsaliyle (30 gün PII redaksiyonu / 90 gün job
+saklama) KARŞILAŞTIRILARAK değerlendirildi. Export, import job zarfından FARKLI bir risk
+profiline sahiptir: DB satırı değil, doğrudan indirilebilir/kopyalanabilir bir dosya
+ARTEFAKTIDIR ve talep üzerine kaynak veriden her an yeniden üretilebilir — bu yüzden import'un
+90 günlük "zarf saklama" emsalinden ÇOK daha kısa bir süre uygundur, DAHA UZUN değil.
+
+1. **Kapsam/maskeleme doğrulandı**: `USERS` export'u yalnızca `id/name/email/role/status/
+   createdAt/lastLoginAt` döner (gereksiz alan YOK); `email`, `unmaskPii=false` (varsayılan)
+   iken worker'da satır satır `maskEmail`'den geçirilir, atlayan bir code path YOK. `REVENUE`
+   export'u `Subscription.stripeCustomerId` DÖNMÜYOR (veri minimizasyonuna zaten uygun).
+   `AuditLog`/`RefreshToken.ipAddress` HİÇBİR export türüne dahil DEĞİL — `maskIp` şu an
+   kullanılmıyor, ileride IP taşıyan bir rapor eklenirse hazır tutuluyor (bkz. pii-mask.ts).
+2. **Saklama süresi — FARKLILAŞTIRILDI**: varsayılan (maskeli) export dosyaları **7 gün**
+   sonra silinir (`EXPORT_JOB_RETENTION_MS`) — import'un 90 günlük emsalinden kasıtlı olarak
+   çok daha kısa, çünkü export bir türev/yeniden-üretilebilir çıktıdır. `unmaskPii: true` ile
+   üretilen (ham e-posta içeren) dosyalar İÇİN AYRI ve DAHA KISA bir süre eklendi: **48 saat**
+   (`EXPORT_JOB_RETENTION_UNMASKED_MS`) — "progressive redaction" ilkesiyle (§10.8.8.1) TUTARLI:
+   ham PII'nin erişilebilir kaldığı pencere minimize edilir.
+3. **Audit iz sürülebilirliği — güçlendirildi**: `reports.export.unmasked_pii` audit kaydı
+   artık KENDİ İÇİNDE yeterli (`actorId`/`actorEmail`/`ipAddress` + `metadata: {type, format,
+   from, to}`) — bir soruşturma senaryosunda `reports.export.create` ile AYRICA join
+   gerektirmeden "kim, ne zaman, hangi rapor türü, hangi tarih aralığı için ham PII talep
+   etti" sorusuna tek kayıttan cevap verir. `reports.export.download` audit kaydı da
+   `containsPii` metadata'sını taşır (indirilen dosyanın PII-bearing türde olduğu ayrıca
+   görülebilir).
+4. **Scheduler doğrulandı**: `registerExportRetentionScheduler` `app.ts`'e bağlı, `onClose`
+   ile temizleniyor, `import.retention.ts` ile AYNI desen — ek bir eylem gerekmedi.
+
+Bu karar hukuki tavsiye DEĞİLDİR — KVKK/GDPR ilkelerinin teknik gereksinime çevrilmiş
+hâlidir; nihai hukuki onay için gerçek bir hukuk danışmanına başvurulmalıdır.
 
 ##### PageView performans indeksi (bu adımın ikinci parçası)
 

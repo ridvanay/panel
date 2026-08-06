@@ -671,8 +671,11 @@ model ExportJob {
   filters      Json             @default("{}")
   // Gizli depodaki dosya referansı (rastgele UUID adı / S3 key). API'de ASLA DÖNMEZ.
   storagePath  String?
-  // Export'un maskelenmemiş/ham PII içerip içermediği — compliance-agent audit/erişim
-  // kararında kullanır (bkz. ARCHITECTURE.md §10.8.8 ile aynı KVKK değerlendirme deseni).
+  // Bu export TÜRÜNÜN (USERS/REVENUE) kişisel veri alanı (e-posta vb.) İÇERİP İÇERMEDİĞİ —
+  // MASKELENMİŞ olsa dahi `true`'dur (maskeleme durumu BURADA değil, `filters.unmaskPii` +
+  // `reports.export.unmasked_pii` audit kaydında izlenir; bkz. compliance-agent notu,
+  // ARCHITECTURE.md §10.8.10 ve reports.worker.ts::buildExportTable). compliance-agent
+  // audit/erişim kararında kullanır (bkz. §10.8.8 ile aynı KVKK değerlendirme deseni).
   containsPii  Boolean          @default(false)
   createdById  String?
   // Yalnızca işin TAMAMINI başarısız kılan hata (ImportJob.errorSummary ile aynı desen).

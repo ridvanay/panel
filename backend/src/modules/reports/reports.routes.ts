@@ -13,7 +13,7 @@ import { encodeCursor, parseCursor } from "../../lib/pagination";
 import { logAudit } from "../../lib/audit";
 import { exportStorage } from "../../lib/export-storage";
 import { resolveStatsRange } from "../../lib/stats-query";
-import { EXPORT_JOB_RETENTION_MS } from "./reports.constants";
+import { EXPORT_JOB_RETENTION_MS, EXPORT_JOB_RETENTION_UNMASKED_MS } from "./reports.constants";
 import { CreateExportJobRequestSchema, ExportJobIdParamSchema, ListExportJobsQuerySchema } from "./reports.schemas";
 import { enqueueExportJob } from "./reports.worker";
 
@@ -81,6 +81,10 @@ export async function adminReportsRoutes(app: FastifyInstance) {
       // (bkz. lib/stats-query.ts::resolveStatsRange, 422 ValidationError fırlatır).
       resolveStatsRange({ from: body.from, to: body.to });
 
+      // compliance-agent kararı (2026-08-06) — ham PII içeren (`unmaskPii: true`) dosyalar
+      // varsayılan maskeli dosyalardan çok daha kısa saklanır (bkz. reports.constants.ts).
+      const retentionMs = body.unmaskPii ? EXPORT_JOB_RETENTION_UNMASKED_MS : EXPORT_JOB_RETENTION_MS;
+
       const job = await app.prisma.exportJob.create({
         data: {
           type: body.type,
@@ -90,7 +94,7 @@ export async function adminReportsRoutes(app: FastifyInstance) {
           // `filters` sütunu hem tarih aralığını hem tip-bazlı ek filtreleri hem de maskeleme
           // tercihini taşır (ARCHITECTURE.md §10.8.10'daki alan açıklamasıyla TUTARLI).
           filters: { from: body.from, to: body.to, granularity: body.granularity, filters: body.filters, unmaskPii: body.unmaskPii } as Prisma.InputJsonValue,
-          expiresAt: new Date(Date.now() + EXPORT_JOB_RETENTION_MS),
+          expiresAt: new Date(Date.now() + retentionMs),
           createdById: request.user!.id,
         },
         include: { createdBy: true },
@@ -110,6 +114,10 @@ export async function adminReportsRoutes(app: FastifyInstance) {
 
       // Kullanıcı tarafından onaylanmış karar — `unmaskPii: true` AYRI ve açıkça işaretli bir
       // audit action'ı gerektirir (ek bir onay akışı YOK, bu zaten ADMIN-only bir uçtur).
+      // compliance-agent notu (2026-08-06): metadata KENDİ İÇİNDE yeterli olmalı — bir denetim/
+      // soruşturma senaryosunda bu kaydın `reports.export.create` ile AYRICA eşleştirilmesine
+      // (targetId join'i) gerek kalmadan "hangi rapor tipi + hangi tarih aralığı için ham PII
+      // görüntülendi" sorusuna tek başına cevap versin diye `from`/`to`/`format` de eklendi.
       if (body.unmaskPii) {
         await logAudit(app, {
           actorId: request.user!.id,
@@ -117,7 +125,7 @@ export async function adminReportsRoutes(app: FastifyInstance) {
           action: "reports.export.unmasked_pii",
           targetType: "ExportJob",
           targetId: job.id,
-          metadata: { type: body.type },
+          metadata: { type: body.type, format: body.format, from: body.from, to: body.to },
           ipAddress: request.ip,
         });
       }
