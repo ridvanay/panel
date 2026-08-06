@@ -3,6 +3,22 @@ import PDFDocument from "pdfkit";
 export type ExportCellValue = string | number;
 
 /**
+ * security-agent — CSV/Formula Injection (CWE-1236, OWASP): satırlar `title`/`name`/
+ * `organization.name` gibi SON KULLANICI tarafından serbestçe girilebilen alanlar içerir
+ * (ör. `POST /auth/register`'daki `name` hiçbir karakter kısıtlaması olmadan kaydedilir).
+ * Değer `=`, `+`, `-`, `@`, TAB (0x09) ya da CR (0x0D) ile BAŞLIYORSA Excel/Google Sheets
+ * bunu formül olarak yorumlar (ör. `=HYPERLINK(...)`, `=cmd|'/C calc'!A1`) — rapor bir
+ * ADMIN tarafından açıldığında veri sızıntısı/komut çalıştırma riski doğurur. Tetikleyici
+ * bir karakterle başlayan değerlerin başına tek tırnak (`'`) eklenir; bu Excel'de değeri
+ * DÜZ METİN olarak gösterir (görünür ama zararsız), CSV/RFC 4180 anlamını DEĞİŞTİRMEZ.
+ */
+const CSV_FORMULA_TRIGGER = /^[=+\-@\t\r]/;
+
+function neutralizeCsvFormula(str: string): string {
+  return CSV_FORMULA_TRIGGER.test(str) ? `'${str}` : str;
+}
+
+/**
  * §10.8.10 — elle CSV üretimi (kullanıcı tarafından onaylanmış karar: `csv-parse` yalnızca
  * PARSE için, yazma için ekstra bağımlılık gerekmiyor). RFC 4180'e uygun kaçış: değer virgül/
  * çift tırnak/satır sonu içeriyorsa çift tırnakla sarılır, iç çift tırnaklar ikizlenir.
@@ -10,7 +26,7 @@ export type ExportCellValue = string | number;
  */
 export function toCsv(columns: string[], rows: ExportCellValue[][]): Buffer {
   const escape = (value: ExportCellValue): string => {
-    const str = String(value);
+    const str = neutralizeCsvFormula(String(value));
     if (/[",\n\r]/.test(str)) {
       return `"${str.replace(/"/g, '""')}"`;
     }

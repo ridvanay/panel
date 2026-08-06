@@ -26,6 +26,15 @@ const EXPORT_FILE_EXTENSIONS: Record<"CSV" | "PDF", string> = { CSV: "csv", PDF:
 const ListExportJobsMetaSchema = z.object({ nextCursor: z.string().nullable().optional() });
 
 /**
+ * security-agent — `POST /` her çağrıda pahalı bir DB aggregation (§10.8.10'daki `stats-query.ts`
+ * fonksiyonları ya da 5000 satıra kadar `USERS`/`REVENUE` sorgusu) + PDF/CSV üretimi TETİKLER;
+ * global `env.RATE_LIMIT_MAX` (300/dk, admin navigasyonu için gevşetilmiş) tek başına yetersiz.
+ * `import.routes.ts::IMPORT_UPLOAD_RATE_LIMIT` ile AYNI desen/gerekçe — kaynak tüketimi/kötüye
+ * kullanımı sınırlamak için route-level ayrı bir tavan.
+ */
+const EXPORT_CREATE_RATE_LIMIT = { max: 10, timeWindow: "10 minutes" };
+
+/**
  * `/admin/reports/exports` prefix'i altında bağlanır (bkz. app.ts) — kullanıcı tarafından
  * onaylanmış karar: TÜM uçlar yalnızca ADMIN (export'ta PII/gelir riski var, rapor türü fark
  * etmeksizin — `/admin/stats/{summary,users,revenue}` ile AYNI kısıtlama, ama burada tip
@@ -61,7 +70,10 @@ export async function adminReportsRoutes(app: FastifyInstance) {
 
   server.post(
     "/",
-    { schema: { body: CreateExportJobRequestSchema, response: { 202: ApiSuccessSchema(ExportJobSchema) } } },
+    {
+      config: { rateLimit: EXPORT_CREATE_RATE_LIMIT },
+      schema: { body: CreateExportJobRequestSchema, response: { 202: ApiSuccessSchema(ExportJobSchema) } },
+    },
     async (request, reply) => {
       const body = request.body;
 
