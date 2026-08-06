@@ -405,6 +405,87 @@ export interface DailyViewStats {
   postViews: number;
 }
 
+/**
+ * §10.8.10 genişletilmiş analitik uçları (`/admin/stats/summary|top-content|users|revenue` +
+ * `/admin/reports/exports/*`) — bkz. backend `stats.schemas.ts`/`reports.schemas.ts` ile
+ * BİREBİR alan adı eşleşmesi.
+ */
+export type StatsGranularity = "day" | "week" | "month";
+
+/** `/admin/stats/summary` `compare:true` olduğunda ÖNCEKİ (bir önceki eşit uzunluktaki) dönemin
+ *  ham toplamları — `activeSubscriptions`/`mrrCents` için BİLEREK yok (bkz. backend notu: anlık
+ *  durum, geçmişe dönük yeniden inşa edilemez). */
+export interface SummaryStatsCompare {
+  pageViews: number;
+  postViews: number;
+  newUsers: number;
+}
+
+/** `GET /admin/stats/summary` — YALNIZCA ADMIN. */
+export interface SummaryStats {
+  from: string;
+  to: string;
+  granularity: StatsGranularity;
+  pageViews: number;
+  postViews: number;
+  newUsers: number;
+  /** ANLIK (şimdiki zaman) durum — dönem sonuna göre DEĞİL. */
+  activeSubscriptions: number;
+  /** Kuruş cinsinden ANLIK MRR — `÷100` ile TL'ye çevrilir (`Plan.currency` varsayılan TRY). */
+  mrrCents: number;
+  compare: SummaryStatsCompare | null;
+}
+
+export type TopContentType = "page" | "post";
+
+/** `GET /admin/stats/top-content` — EDITOR+ADMIN, cursor sayfalı. */
+export interface TopContentItem {
+  contentType: TopContentType;
+  id: string;
+  title: string;
+  slug: string;
+  views: number;
+}
+
+export interface UsersStatsSeriesPoint {
+  date: string;
+  count: number;
+}
+
+export interface UsersStatsRoleDistributionItem {
+  role: SiteRole;
+  count: number;
+}
+
+/** `GET /admin/stats/users` — YALNIZCA ADMIN. */
+export interface UsersStats {
+  from: string;
+  to: string;
+  granularity: StatsGranularity;
+  series: UsersStatsSeriesPoint[];
+  /** Dönemle SINIRLI DEĞİL — kullanıcı tablosunun ANLIK rol dağılımı. */
+  roleDistribution: UsersStatsRoleDistributionItem[];
+}
+
+export interface RevenueStatsSeriesPoint {
+  date: string;
+  /** Bucket içinde OLUŞAN aboneliklerin `priceMonthlyCents` toplamı ("yeni MRR"). */
+  newMrrCents: number;
+  /** Bucket içinde `CANCELED` durumuna geçen (yaklaşık) abonelik sayısı. */
+  churnedCount: number;
+}
+
+/** `GET /admin/stats/revenue` — YALNIZCA ADMIN. */
+export interface RevenueStats {
+  from: string;
+  to: string;
+  granularity: StatsGranularity;
+  /** ANLIK toplamlar — bkz. `SummaryStats` üstündeki not. */
+  activeSubscriptions: number;
+  mrrCents: number;
+  series: RevenueStatsSeriesPoint[];
+}
+
 export interface Media {
   id: string;
   url: string;
@@ -823,4 +904,59 @@ export interface ImportJobError {
   /** Satırın ham hâli (8 KB'a kırpılır). KİŞİSEL VERİ İÇEREBİLİR (bkz. ARCHITECTURE.md §10.8.8). */
   rawData: Record<string, unknown> | null;
   createdAt: string;
+}
+
+/**
+ * Analitik Rapor Dışa Aktarma (Export) — bkz. ARCHITECTURE.md §10.8.10, openapi.yaml `Reports`
+ * tag'i. `/admin/reports/exports/*` uçları — TÜMÜ yalnızca ADMIN.
+ */
+export type ExportJobType = "VIEWS" | "BREAKDOWN" | "SUMMARY" | "TOP_CONTENT" | "USERS" | "REVENUE";
+export type ExportFileFormat = "CSV" | "PDF";
+export type ExportJobStatus = "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED";
+
+/** `USERS` için `role`, `REVENUE` için `subscriptionStatus` — diğer tiplerde yok sayılır. */
+export interface ExportJobTypeFilters {
+  role?: SiteRole;
+  subscriptionStatus?: SubscriptionStatus;
+}
+
+export interface CreateExportJobRequest {
+  type: ExportJobType;
+  format: ExportFileFormat;
+  /** ISO-8601, `to` ile BİRLİKTE. */
+  from: string;
+  /** ISO-8601, `from` ile BİRLİKTE. */
+  to: string;
+  /** Verilmezse backend varsayılanı `"day"`. */
+  granularity?: StatsGranularity;
+  filters?: ExportJobTypeFilters;
+  /**
+   * `true` ise dosya ham/maskesiz kişisel veri içerir — compliance-agent kararı: varsayılan
+   * `false` (maskeli), ayrı bir onay akışı YOK ama backend `reports.export.unmasked_pii` audit
+   * kaydı yazar ve maskesiz dosyalar çok daha kısa saklanır.
+   */
+  unmaskPii?: boolean;
+}
+
+/** `ExportJob.filters` — backend `POST` gövdesinin TAMAMINI (from/to/granularity/filters/
+ *  unmaskPii) saklar, geriye `Record<string, unknown>` olarak döner (bkz. backend `z.record`). */
+export type ExportJobStoredFilters = Partial<CreateExportJobRequest> & Record<string, unknown>;
+
+export interface ExportJob {
+  id: string;
+  type: ExportJobType;
+  format: ExportFileFormat;
+  status: ExportJobStatus;
+  filters: ExportJobStoredFilters;
+  /** Ham/maskelenmemiş PII içeriyorsa `true` — bkz. `unmaskPii`. */
+  containsPii: boolean;
+  errorSummary: string | null;
+  createdById: string | null;
+  createdBy: UserSummary | null;
+  /** İndirme linkinin süre sonu — bu tarihten sonra `.../download` 404 döner. */
+  expiresAt: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
 }

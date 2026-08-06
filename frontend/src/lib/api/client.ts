@@ -9,7 +9,9 @@ type Method = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 interface RequestOptions {
   method?: Method;
   body?: unknown;
-  query?: Record<string, string | number | undefined>;
+  // `boolean` — `/admin/stats/*` ve `/admin/reports/exports` uçlarındaki `compare`/`unmaskPii`
+  // gibi Zod `z.coerce.boolean()` alanları için (bkz. lib/api/stats.ts). `String(true)` → "true".
+  query?: Record<string, string | number | boolean | undefined>;
   /** /auth/* uçlarının kendisi için true: 401'de sonsuz refresh döngüsünü engeller. */
   skipAuthRetry?: boolean;
 }
