@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
+import { Controller, useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { AlertCircle, User } from "lucide-react";
 import { useAuth } from "@/context/auth-context";
 import * as usersApi from "@/lib/api/users";
@@ -25,73 +27,98 @@ const roleLabels: Record<SiteRole, string> = {
 
 const MIN_PASSWORD_LENGTH = 8;
 
+// `usersApi.updateMe` gövdesini yansıtan istemci tarafı zod şeması. `name` görsel olarak
+// "required" işaretli — mevcut davranışta bu client-side kontrol YOKTU (form `noValidate`
+// idi), gerçek bir doğrulama mesajına dönüştürülmesi blog başlığındaki gibi KABUL EDİLEBİLİR
+// bir iyileştirmedir. `avatarUrl` opsiyonel kalır (boş = avatarı kaldır, bkz. onSubmit).
+const profileFormSchema = z.object({
+  name: z.string().min(1, "Ad soyad gerekli."),
+  avatarUrl: z.string().optional(),
+});
+
+type ProfileFormValues = z.infer<typeof profileFormSchema>;
+
+// `usersApi.changePassword` gövdesini yansıtan şema. Tekil alan kuralları (boş olamaz, en az
+// 8 karakter) zod ile doğrulanır — mesaj ve eşik MEVCUT `MIN_PASSWORD_LENGTH` kontrolüyle
+// birebir aynıdır. Eşleşme/mevcut şifreden farklılık gibi ÇAPRAZ alan kuralları ise MEVCUT
+// tek-Alert UX'ini birebir korumak için `onSubmit` içinde imzalı biçimde bırakıldı (bkz. altta).
+const passwordFormSchema = z.object({
+  currentPassword: z.string().min(1, "Mevcut şifre gerekli."),
+  newPassword: z.string().min(MIN_PASSWORD_LENGTH, "Şifre en az 8 karakter olmalı."),
+  newPasswordConfirm: z.string().min(1, "Yeni şifre tekrarını girin."),
+});
+
+type PasswordFormValues = z.infer<typeof passwordFormSchema>;
+
 export default function AccountPage() {
   const { user, refreshSession } = useAuth();
 
-  // Bölüm 1-2: Profil + Avatar (tek PATCH altında birleştirildi).
-  const [name, setName] = useState(user?.name ?? "");
-  const [avatarUrl, setAvatarUrl] = useState(user?.avatarUrl ?? "");
-  const [profileSaving, setProfileSaving] = useState(false);
-  const [profileError, setProfileError] = useState<string | null>(null);
+  // Bölüm 1-2: Profil + Avatar (tek PATCH altında birleştirildi, kendi useForm instance'ı).
+  const {
+    register: registerProfile,
+    handleSubmit: handleProfileFormSubmit,
+    control: profileControl,
+    formState: { errors: profileErrors, isSubmitting: profileSaving },
+    setError: setProfileFormError,
+  } = useForm<ProfileFormValues>({
+    resolver: zodResolver(profileFormSchema),
+    defaultValues: {
+      name: user?.name ?? "",
+      avatarUrl: user?.avatarUrl ?? "",
+    },
+  });
 
-  // Bölüm 3: Şifre değiştir.
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [newPasswordConfirm, setNewPasswordConfirm] = useState("");
-  const [passwordSaving, setPasswordSaving] = useState(false);
-  const [passwordError, setPasswordError] = useState<string | null>(null);
+  // Bölüm 3: Şifre değiştir (ayrı submit butonu → ayrı useForm instance'ı).
+  const {
+    register: registerPassword,
+    handleSubmit: handlePasswordFormSubmit,
+    reset: resetPasswordForm,
+    setError: setPasswordFormError,
+    formState: { errors: passwordErrors, isSubmitting: passwordSaving },
+  } = useForm<PasswordFormValues>({
+    resolver: zodResolver(passwordFormSchema),
+    defaultValues: {
+      currentPassword: "",
+      newPassword: "",
+      newPasswordConfirm: "",
+    },
+  });
 
   if (!user) return null;
 
-  async function handleProfileSubmit(event: FormEvent) {
-    event.preventDefault();
-    setProfileError(null);
-    setProfileSaving(true);
+  async function onProfileSubmit(values: ProfileFormValues) {
     try {
       // Kritik: ImageUploadField boş string üretir, backend "" yerine null bekliyor
       // (kontrat: null = avatarı kaldır, "" = 422 doğrulama hatası).
-      await usersApi.updateMe({ name, avatarUrl: avatarUrl || null });
+      await usersApi.updateMe({ name: values.name, avatarUrl: values.avatarUrl || null });
       await refreshSession();
       toast.success("Profiliniz güncellendi.");
     } catch (err) {
       const message = friendlyErrorMessage(err);
-      setProfileError(message);
+      setProfileFormError("root", { message });
       toast.error(message);
-    } finally {
-      setProfileSaving(false);
     }
   }
 
-  async function handlePasswordSubmit(event: FormEvent) {
-    event.preventDefault();
-    setPasswordError(null);
-
-    if (newPassword.length < MIN_PASSWORD_LENGTH) {
-      setPasswordError("Şifre en az 8 karakter olmalı.");
+  async function onPasswordSubmit(values: PasswordFormValues) {
+    // Çapraz alan kuralları — mevcut tek-Alert UX'i birebir korunur (bkz. yukarıdaki not).
+    if (values.newPassword !== values.newPasswordConfirm) {
+      setPasswordFormError("root", { message: "Yeni şifreler eşleşmiyor." });
       return;
     }
-    if (newPassword !== newPasswordConfirm) {
-      setPasswordError("Yeni şifreler eşleşmiyor.");
-      return;
-    }
-    if (newPassword === currentPassword) {
-      setPasswordError("Yeni şifre mevcut şifreden farklı olmalı.");
+    if (values.newPassword === values.currentPassword) {
+      setPasswordFormError("root", { message: "Yeni şifre mevcut şifreden farklı olmalı." });
       return;
     }
 
-    setPasswordSaving(true);
     try {
-      await usersApi.changePassword({ currentPassword, newPassword });
-      setCurrentPassword("");
-      setNewPassword("");
-      setNewPasswordConfirm("");
+      await usersApi.changePassword({ currentPassword: values.currentPassword, newPassword: values.newPassword });
+      resetPasswordForm();
       toast.success("Şifreniz değiştirildi. Diğer cihazlardaki oturumlarınız kapatıldı.");
     } catch (err) {
       const message = friendlyErrorMessage(err);
-      setPasswordError(message);
+      setPasswordFormError("root", { message });
       toast.error(message);
-    } finally {
-      setPasswordSaving(false);
     }
   }
 
@@ -99,7 +126,7 @@ export default function AccountPage() {
     <div className="space-y-6">
       <PageHeading icon={User} title="Hesabım" description="Profil bilgilerinizi ve hesap güvenliğinizi yönetin." />
 
-      <form onSubmit={handleProfileSubmit} noValidate className="space-y-6">
+      <form onSubmit={handleProfileFormSubmit(onProfileSubmit)} noValidate className="space-y-6">
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
           <Card className="space-y-4">
             <div>
@@ -107,25 +134,17 @@ export default function AccountPage() {
               <p className="mt-1 admin-text-secondary">Ad soyadınızı ve hesap bilgilerinizi görüntüleyin.</p>
             </div>
 
-            {profileError && (
+            {profileErrors.root?.message && (
               <Alert variant="error">
                 <span className="flex items-center gap-2">
                   <AlertCircle className="h-4 w-4 shrink-0" />
-                  {profileError}
+                  {profileErrors.root.message}
                 </span>
               </Alert>
             )}
 
-            <Field id="name" label="Ad Soyad" required>
-              {(inputProps) => (
-                <Input
-                  {...inputProps}
-                  required
-                  maxLength={80}
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                />
-              )}
+            <Field id="name" label="Ad Soyad" error={profileErrors.name?.message} required>
+              {(inputProps) => <Input {...inputProps} maxLength={80} {...registerProfile("name")} />}
             </Field>
 
             <Field id="email" label="E-posta">
@@ -150,12 +169,18 @@ export default function AccountPage() {
               <p className="mt-1 admin-text-secondary">Profilinizde görünecek görseli değiştirin.</p>
             </div>
 
-            <ImageUploadField
-              id="avatarUrl"
-              label="Avatar"
-              value={avatarUrl}
-              onChange={setAvatarUrl}
-              previewShape="circle"
+            <Controller
+              control={profileControl}
+              name="avatarUrl"
+              render={({ field }) => (
+                <ImageUploadField
+                  id="avatarUrl"
+                  label="Avatar"
+                  value={field.value ?? ""}
+                  onChange={field.onChange}
+                  previewShape="circle"
+                />
+              )}
             />
 
             <Button type="submit" loading={profileSaving}>
@@ -178,52 +203,36 @@ export default function AccountPage() {
             </p>
           </div>
 
-          <form onSubmit={handlePasswordSubmit} noValidate className="space-y-4">
-            {passwordError && (
+          <form onSubmit={handlePasswordFormSubmit(onPasswordSubmit)} noValidate className="space-y-4">
+            {passwordErrors.root?.message && (
               <Alert variant="error">
                 <span className="flex items-center gap-2">
                   <AlertCircle className="h-4 w-4 shrink-0" />
-                  {passwordError}
+                  {passwordErrors.root.message}
                 </span>
               </Alert>
             )}
 
-            <Field id="currentPassword" label="Mevcut Şifre" required>
+            <Field id="currentPassword" label="Mevcut Şifre" error={passwordErrors.currentPassword?.message} required>
               {(inputProps) => (
-                <Input
-                  {...inputProps}
-                  type="password"
-                  required
-                  autoComplete="current-password"
-                  value={currentPassword}
-                  onChange={(e) => setCurrentPassword(e.target.value)}
-                />
+                <Input {...inputProps} type="password" autoComplete="current-password" {...registerPassword("currentPassword")} />
               )}
             </Field>
 
-            <Field id="newPassword" label="Yeni Şifre" required>
+            <Field id="newPassword" label="Yeni Şifre" error={passwordErrors.newPassword?.message} required>
               {(inputProps) => (
-                <Input
-                  {...inputProps}
-                  type="password"
-                  required
-                  autoComplete="new-password"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                />
+                <Input {...inputProps} type="password" autoComplete="new-password" {...registerPassword("newPassword")} />
               )}
             </Field>
 
-            <Field id="newPasswordConfirm" label="Yeni Şifre (Tekrar)" required>
+            <Field
+              id="newPasswordConfirm"
+              label="Yeni Şifre (Tekrar)"
+              error={passwordErrors.newPasswordConfirm?.message}
+              required
+            >
               {(inputProps) => (
-                <Input
-                  {...inputProps}
-                  type="password"
-                  required
-                  autoComplete="new-password"
-                  value={newPasswordConfirm}
-                  onChange={(e) => setNewPasswordConfirm(e.target.value)}
-                />
+                <Input {...inputProps} type="password" autoComplete="new-password" {...registerPassword("newPasswordConfirm")} />
               )}
             </Field>
 
