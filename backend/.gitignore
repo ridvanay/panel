@@ -7,3 +7,5 @@ uploads/
 # EDİLMEZ). Yüklenen WXR/CSV/ZIP dosyaları geçici olarak burada durur, iş sonlanınca silinir
 # (bkz. ARCHITECTURE.md §10.8.5, lib/import-storage.ts).
 storage/imports/
+# §10.8.10 Analitik Rapor Dışa Aktarma — AYNI GEREKÇEYLE PRIVATE depo (bkz. lib/export-storage.ts).
+storage/exports/

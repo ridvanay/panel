@@ -33,6 +33,9 @@ import { securityTwoFactorRoutes, securitySessionsRoutes } from "./modules/secur
 import { adminImportRoutes } from "./modules/import/import.routes";
 import { recoverStuckImportJobs } from "./modules/import/import.worker";
 import { registerImportRetentionScheduler } from "./modules/import/import.retention";
+import { adminReportsRoutes } from "./modules/reports/reports.routes";
+import { recoverStuckExportJobs } from "./modules/reports/reports.worker";
+import { registerExportRetentionScheduler } from "./modules/reports/reports.retention";
 
 export function buildApp() {
   // `SENTRY_DSN` tanımsızsa no-op (bkz. lib/sentry.ts) — her `buildApp()` çağrısında
@@ -143,6 +146,8 @@ export function buildApp() {
       api.register(securitySessionsRoutes, { prefix: "/admin/settings/security/sessions" });
       // §10.8 Toplu İçe Aktarma (Import) — bkz. ARCHITECTURE.md §10.8.
       api.register(adminImportRoutes, { prefix: "/admin/import/jobs" });
+      // §10.8.10 Analitik Rapor Dışa Aktarma (Export) — bkz. ARCHITECTURE.md §10.8.10.
+      api.register(adminReportsRoutes, { prefix: "/admin/reports/exports" });
       // Kendi content-type parser'ını (raw body) kaydeder — kendi encapsulation
       // context'inde kaldığı için diğer /api/v1 uçlarının JSON parse'ını etkilemez.
       api.register(stripeWebhookRoutes, { prefix: "/webhooks/stripe" });
@@ -164,6 +169,12 @@ export function buildApp() {
     // yalnızca burada (onReady, tüm plugin ağacı yüklendikten SONRA) güvenle kullanılabilir —
     // `recoverStuckImportJobs` ile AYNI gerekçe. `onClose` ile kendi interval'ını temizler.
     registerImportRetentionScheduler(app);
+
+    // §10.8.10 Analitik Rapor Dışa Aktarma (Export) — `recoverStuckImportJobs` ile AYNI
+    // gerekçeyle `onReady`'de: `PROCESSING`'de kalmış işleri `FAILED`e çevirir VE `PENDING`
+    // işleri (in-process kuyruk restart'ta kaybolduğu için) yeniden kuyruğa alır.
+    await recoverStuckExportJobs(app);
+    registerExportRetentionScheduler(app);
   });
 
   return app;

@@ -514,3 +514,41 @@ export const ImportJobErrorListMetaSchema = z.object({
   truncated: z.boolean(),
 });
 export type ImportJobErrorListMetaDto = z.infer<typeof ImportJobErrorListMetaSchema>;
+
+// ---------- §10.8.10 Analitik Rapor Dışa Aktarma (Export) — openapi.yaml Reports tag ile birebir ----------
+// NOT: `ImportJobType`'ın aksine burada API ↔ Prisma dönüşümü YOK — üç enum de (Type/Format/
+// Status) API sözleşmesinde de UPPER_SNAKE (bkz. db-agent şeması, ARCHITECTURE.md §10.8.10).
+
+export const ExportJobTypeSchema = z.enum(["VIEWS", "BREAKDOWN", "SUMMARY", "TOP_CONTENT", "USERS", "REVENUE"]);
+export type ExportJobType = z.infer<typeof ExportJobTypeSchema>;
+
+export const ExportFileFormatSchema = z.enum(["CSV", "PDF"]);
+export type ExportFileFormat = z.infer<typeof ExportFileFormatSchema>;
+
+export const ExportJobStatusSchema = z.enum(["PENDING", "PROCESSING", "COMPLETED", "FAILED"]);
+export type ExportJobStatus = z.infer<typeof ExportJobStatusSchema>;
+
+export const ExportJobSchema = z.object({
+  id: z.string().uuid(),
+  type: ExportJobTypeSchema,
+  format: ExportFileFormatSchema,
+  status: ExportJobStatusSchema,
+  // İstek parametrelerinin (from/to/granularity/filters/unmaskPii) tamamı — bkz.
+  // modules/reports/reports.schemas.ts::CreateExportJobRequestSchema.
+  filters: z.record(z.string(), z.unknown()),
+  // Ham/maskelenmemiş PII içeriyorsa true (bkz. reports.worker.ts) — compliance-agent
+  // audit/erişim kararında kullanır (ARCHITECTURE.md §10.8.10 ile §10.8.8 aynı desen).
+  containsPii: z.boolean(),
+  errorSummary: z.string().nullable(),
+  createdById: z.string().uuid().nullable(),
+  createdBy: UserSummarySchema.nullable().optional(),
+  // İndirme linkinin/dosyanın süre sonu — `storagePath` gibi ASLA dönmez YOK, bu alan
+  // (`ImportJob`'ın aksine) BİLEREK API'de dönülür: istemcinin "ne zamana kadar indirilebilir"
+  // bilgisine ihtiyacı var.
+  expiresAt: z.string().nullable(),
+  startedAt: z.string().nullable(),
+  finishedAt: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type ExportJobDto = z.infer<typeof ExportJobSchema>;

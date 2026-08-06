@@ -1,0 +1,161 @@
+import type { FastifyInstance } from "fastify";
+import type { ZodTypeProvider } from "fastify-type-provider-zod";
+import type { Prisma } from "@prisma/client";
+import { z } from "zod";
+import { authenticate } from "../../middleware/authenticate";
+import { requireSiteRole } from "../../middleware/site-rbac";
+import { ok } from "../../lib/envelope";
+import { ApiSuccessSchema, ApiSuccessWithMeta } from "../../schemas/common";
+import { ExportJobSchema } from "../../schemas/entities";
+import { toExportJobDto } from "../../mappers";
+import { ConflictError, NotFoundError } from "../../lib/errors";
+import { encodeCursor, parseCursor } from "../../lib/pagination";
+import { logAudit } from "../../lib/audit";
+import { exportStorage } from "../../lib/export-storage";
+import { resolveStatsRange } from "../../lib/stats-query";
+import { EXPORT_JOB_RETENTION_MS } from "./reports.constants";
+import { CreateExportJobRequestSchema, ExportJobIdParamSchema, ListExportJobsQuerySchema } from "./reports.schemas";
+import { enqueueExportJob } from "./reports.worker";
+
+const EXPORT_CONTENT_TYPES: Record<"CSV" | "PDF", string> = {
+  CSV: "text/csv; charset=utf-8",
+  PDF: "application/pdf",
+};
+const EXPORT_FILE_EXTENSIONS: Record<"CSV" | "PDF", string> = { CSV: "csv", PDF: "pdf" };
+
+const ListExportJobsMetaSchema = z.object({ nextCursor: z.string().nullable().optional() });
+
+/**
+ * `/admin/reports/exports` prefix'i altında bağlanır (bkz. app.ts) — kullanıcı tarafından
+ * onaylanmış karar: TÜM uçlar yalnızca ADMIN (export'ta PII/gelir riski var, rapor türü fark
+ * etmeksizin — `/admin/stats/{summary,users,revenue}` ile AYNI kısıtlama, ama burada tip
+ * ayrımı bile YAPILMAZ).
+ */
+export async function adminReportsRoutes(app: FastifyInstance) {
+  const server = app.withTypeProvider<ZodTypeProvider>();
+  server.addHook("preHandler", authenticate);
+  server.addHook("preHandler", requireSiteRole("ADMIN"));
+
+  server.get(
+    "/",
+    { schema: { querystring: ListExportJobsQuerySchema, response: { 200: ApiSuccessWithMeta(z.array(ExportJobSchema), ListExportJobsMetaSchema) } } },
+    async (request, reply) => {
+      const { cursor, limit, type, status } = request.query;
+      const cursorSeq = parseCursor(cursor);
+
+      const rows = await app.prisma.exportJob.findMany({
+        where: {
+          ...(cursorSeq ? { seq: { lt: cursorSeq } } : {}),
+          ...(type ? { type } : {}),
+          ...(status ? { status } : {}),
+        },
+        orderBy: { seq: "desc" },
+        take: limit,
+        include: { createdBy: true },
+      });
+
+      const nextCursor = rows.length === limit ? encodeCursor(rows[rows.length - 1]!.seq) : null;
+      return reply.send(ok(rows.map(toExportJobDto), { nextCursor }));
+    }
+  );
+
+  server.post(
+    "/",
+    { schema: { body: CreateExportJobRequestSchema, response: { 202: ApiSuccessSchema(ExportJobSchema) } } },
+    async (request, reply) => {
+      const body = request.body;
+
+      // Aralık doğrulaması (366 gün tavanı, `from` <= `to` vb.) — geçersizse iş HİÇ oluşturulmaz
+      // (bkz. lib/stats-query.ts::resolveStatsRange, 422 ValidationError fırlatır).
+      resolveStatsRange({ from: body.from, to: body.to });
+
+      const job = await app.prisma.exportJob.create({
+        data: {
+          type: body.type,
+          format: body.format,
+          status: "PENDING",
+          // Worker BU JSON'u okuyarak raporu üretir (bkz. reports.worker.ts::runExportJob) —
+          // `filters` sütunu hem tarih aralığını hem tip-bazlı ek filtreleri hem de maskeleme
+          // tercihini taşır (ARCHITECTURE.md §10.8.10'daki alan açıklamasıyla TUTARLI).
+          filters: { from: body.from, to: body.to, granularity: body.granularity, filters: body.filters, unmaskPii: body.unmaskPii } as Prisma.InputJsonValue,
+          expiresAt: new Date(Date.now() + EXPORT_JOB_RETENTION_MS),
+          createdById: request.user!.id,
+        },
+        include: { createdBy: true },
+      });
+
+      enqueueExportJob(app, job.id);
+
+      await logAudit(app, {
+        actorId: request.user!.id,
+        actorEmail: request.user!.email,
+        action: "reports.export.create",
+        targetType: "ExportJob",
+        targetId: job.id,
+        metadata: { type: body.type, format: body.format, from: body.from, to: body.to, unmaskPii: body.unmaskPii },
+        ipAddress: request.ip,
+      });
+
+      // Kullanıcı tarafından onaylanmış karar — `unmaskPii: true` AYRI ve açıkça işaretli bir
+      // audit action'ı gerektirir (ek bir onay akışı YOK, bu zaten ADMIN-only bir uçtur).
+      if (body.unmaskPii) {
+        await logAudit(app, {
+          actorId: request.user!.id,
+          actorEmail: request.user!.email,
+          action: "reports.export.unmasked_pii",
+          targetType: "ExportJob",
+          targetId: job.id,
+          metadata: { type: body.type },
+          ipAddress: request.ip,
+        });
+      }
+
+      return reply.code(202).send(ok(toExportJobDto(job)));
+    }
+  );
+
+  server.get(
+    "/:jobId",
+    { schema: { params: ExportJobIdParamSchema, response: { 200: ApiSuccessSchema(ExportJobSchema) } } },
+    async (request, reply) => {
+      const job = await app.prisma.exportJob.findUnique({ where: { id: request.params.jobId }, include: { createdBy: true } });
+      if (!job) throw new NotFoundError("Dışa aktarma işi bulunamadı.");
+      return reply.send(ok(toExportJobDto(job)));
+    }
+  );
+
+  server.get(
+    "/:jobId/download",
+    { schema: { params: ExportJobIdParamSchema } },
+    async (request, reply) => {
+      const job = await app.prisma.exportJob.findUnique({ where: { id: request.params.jobId } });
+      if (!job) throw new NotFoundError("Dışa aktarma işi bulunamadı.");
+
+      if (job.expiresAt && job.expiresAt.getTime() < Date.now()) {
+        throw new NotFoundError("Bu raporun indirme süresi dolmuş.");
+      }
+      if (job.status !== "COMPLETED" || !job.storagePath) {
+        throw new ConflictError("Rapor henüz hazır değil.");
+      }
+
+      const buffer = await exportStorage.read(job.storagePath);
+      const extension = EXPORT_FILE_EXTENSIONS[job.format];
+      const filename = `export-${job.type.toLowerCase()}-${job.id}.${extension}`;
+
+      await logAudit(app, {
+        actorId: request.user!.id,
+        actorEmail: request.user!.email,
+        action: "reports.export.download",
+        targetType: "ExportJob",
+        targetId: job.id,
+        metadata: { type: job.type, format: job.format, containsPii: job.containsPii },
+        ipAddress: request.ip,
+      });
+
+      return reply
+        .header("Content-Type", EXPORT_CONTENT_TYPES[job.format])
+        .header("Content-Disposition", `attachment; filename="${filename}"`)
+        .send(buffer);
+    }
+  );
+}

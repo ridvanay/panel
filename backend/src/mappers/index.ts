@@ -20,6 +20,7 @@ import type {
   RefreshToken,
   ImportJob,
   ImportJobError,
+  ExportJob,
 } from "@prisma/client";
 import type {
   UserDto,
@@ -45,6 +46,7 @@ import type {
   ImportJobDto,
   ImportJobErrorDto,
   ImportJobPreviewDto,
+  ExportJobDto,
 } from "../schemas/entities";
 import { env } from "../config/env";
 import { computeBlogPostSeoScore, computePageSeoScore } from "../lib/seo-score";
@@ -378,6 +380,28 @@ export function toImportJobErrorDto(row: ImportJobError): ImportJobErrorDto {
     sourceRef: row.sourceRef,
     rawData: (row.rawData as Record<string, unknown> | null) ?? null,
     createdAt: row.createdAt.toISOString(),
+  };
+}
+
+type ExportJobWithCreator = ExportJob & { createdBy?: User | null };
+
+/** §10.8.10 — `storagePath` BİLEREK dönmez (bkz. schemas/entities.ts::ExportJobSchema notu). */
+export function toExportJobDto(job: ExportJobWithCreator): ExportJobDto {
+  return {
+    id: job.id,
+    type: job.type,
+    format: job.format,
+    status: job.status,
+    filters: (job.filters as Record<string, unknown>) ?? {},
+    containsPii: job.containsPii,
+    errorSummary: job.errorSummary,
+    createdById: job.createdById,
+    createdBy: job.createdBy ? toUserSummaryDto(job.createdBy) : null,
+    expiresAt: job.expiresAt ? job.expiresAt.toISOString() : null,
+    startedAt: job.startedAt ? job.startedAt.toISOString() : null,
+    finishedAt: job.finishedAt ? job.finishedAt.toISOString() : null,
+    createdAt: job.createdAt.toISOString(),
+    updatedAt: job.updatedAt.toISOString(),
   };
 }
 
