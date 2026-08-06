@@ -129,3 +129,54 @@ describe("rate-limits — route-level (/users/me/change-password)", () => {
     expect(body.error.details.retryAfterSeconds).toBeDefined();
   });
 });
+
+/**
+ * `POST /admin/reports/exports` route-level rate limit'i (10/10dk, bkz.
+ * reports.routes.ts::EXPORT_CREATE_RATE_LIMIT) doğrular — `import.routes.ts::IMPORT_UPLOAD_RATE_LIMIT`
+ * İLE AYNI GEREKÇE (pahalı DB aggregation + dosya üretimi tetikleyen bir uç, global
+ * `env.RATE_LIMIT_MAX`'tan bağımsız, kod içinde sabit bir tavan). Kendi izole `buildTestApp()`
+ * instance'ında çalışır.
+ */
+describe("rate-limits — route-level (POST /admin/reports/exports)", () => {
+  let app: FastifyInstance;
+  let admin: Awaited<ReturnType<typeof registerTestUser>>;
+
+  function authHeader(token: string) {
+    return { authorization: `Bearer ${token}` };
+  }
+
+  beforeAll(async () => {
+    app = await buildTestApp();
+    await resetDatabase(app.prisma);
+    admin = await registerTestUser(app, { email: "rate-limit-export-admin@example.com" });
+  });
+
+  afterAll(async () => {
+    await resetDatabase(app.prisma);
+    await app.close();
+  });
+
+  it("10 istek başarılı (202), 11. istek 429 döner ve RATE_LIMITED detaylarını içerir", async () => {
+    for (let i = 0; i < 10; i++) {
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/admin/reports/exports",
+        headers: authHeader(admin.accessToken),
+        payload: { type: "VIEWS", format: "CSV", from: "2026-01-01", to: "2026-01-02" },
+      });
+      expect(res.statusCode).toBe(202);
+    }
+
+    const res11 = await app.inject({
+      method: "POST",
+      url: "/api/v1/admin/reports/exports",
+      headers: authHeader(admin.accessToken),
+      payload: { type: "VIEWS", format: "CSV", from: "2026-01-01", to: "2026-01-02" },
+    });
+
+    expect(res11.statusCode).toBe(429);
+    const body = res11.json();
+    expect(body.error.code).toBe("RATE_LIMITED");
+    expect(body.error.details.retryAfterSeconds).toBeDefined();
+  });
+});
