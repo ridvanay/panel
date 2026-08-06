@@ -444,6 +444,13 @@ paths:
     post:
       tags: [Invitations]
       summary: Yeni üye davet et (ADMIN/OWNER)
+      description: >
+        `role` şema seviyesinde zaten `ADMIN|MEMBER` ile sınırlıdır (`OWNER` gönderilirse
+        422). Buna EK olarak yetkilendirme seviyesinde savunma-derinliği kontrolü vardır:
+        davet eden `OWNER` DEĞİLSE (yani `ADMIN` ise) ve `role: "OWNER"` isterse 403 döner
+        — bugün şema zaten bu durumu engellediği için bu dal fiilen ölü koddur, ama kontrat
+        ileride `OWNER`'ı `role` enum'una eklerse tek başına yeterli olması için tutulur
+        (bkz. security-agent denetimi). Başarılı istek `invitation.create` audit kaydı yazar.
       requestBody:
         required: true
         content:
@@ -459,12 +466,21 @@ paths:
                   - $ref: "#/components/schemas/ApiSuccessEnvelope"
                   - properties:
                       data: { $ref: "#/components/schemas/Invitation" }
+        "403":
+          description: >
+            Davet eden `OWNER` değilken `role: "OWNER"` istedi (savunma-derinliği —
+            bkz. yukarıdaki açıklama).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
         "409": { $ref: "#/components/responses/Conflict" }
 
   /invitations/{token}/accept:
     post:
       tags: [Invitations]
       summary: Daveti kabul et (giriş yapmış kullanıcı)
+      description: >
+        Başarılı kabulde `invitation.accept` audit kaydı yazılır (`targetType: "Membership"`).
       parameters:
         - name: token
           in: path
@@ -586,6 +602,11 @@ paths:
         Kullanılamaz rastgele bir şifreyle oluşturulur; kullanıcı gerçek şifresini
         dönen `setPasswordUrl` üzerinden belirler (MVP/dev-only: e-posta sağlayıcısı
         entegre edilene kadar bağlantı doğrudan response'ta döner).
+
+
+        **Hız sınırı:** 20 istek / 1 dakika (route-level, `ADMIN_USERS_RATE_LIMIT`
+        — savunma-derinliği, ele geçirilmiş bir admin oturumunun toplu istismarını
+        sınırlar). Aşım → 429.
       requestBody:
         required: true
         content:
@@ -603,6 +624,7 @@ paths:
                       data: { $ref: "#/components/schemas/CreateAdminUserResponse" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /admin/users/{userId}/role:
     parameters:
@@ -616,6 +638,10 @@ paths:
       description: >
         Hedef kullanıcı sistemdeki tek aktif ADMIN ise ve yeni rol ADMIN değilse
         409 CONFLICT döner ("en az bir yönetici kalmalı" kuralı).
+
+
+        **Hız sınırı:** 20 istek / 1 dakika (route-level, `ADMIN_USERS_RATE_LIMIT`
+        — bkz. `POST /admin/users`). Aşım → 429.
       requestBody:
         required: true
         content:
@@ -634,6 +660,7 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /admin/users/{userId}/status:
     parameters:
@@ -647,6 +674,10 @@ paths:
       description: >
         Kendi hesabınızı askıya alamazsınız (her zaman 409). Hedef kullanıcı
         sistemdeki tek aktif ADMIN ise ve yeni durum SUSPENDED ise de 409 döner.
+
+
+        **Hız sınırı:** 20 istek / 1 dakika (route-level, `ADMIN_USERS_RATE_LIMIT`
+        — bkz. `POST /admin/users`). Aşım → 429.
       requestBody:
         required: true
         content:
@@ -665,6 +696,7 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /admin/logs:
     get:

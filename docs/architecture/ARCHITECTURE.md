@@ -122,9 +122,10 @@ flowchart LR
   Sistemde en az bir aktif `ADMIN` kalması zorunlu tutulur (son admin'i düşürmek/
   askıya almak 409 CONFLICT döner); bir kullanıcı kendi hesabını askıya alamaz.
 - **Audit Log**: hassas/yetkilendirme aksiyonları (`auth.login` başarı/başarısızlık,
-  `user.create`/`user.role_change`/`user.status_change`, `settings.update`, ve
-  `requireSiteRole` guard'ının engellediği her istek — `FORBIDDEN` durumuyla
-  otomatik) değişmez şekilde `AuditLog` tablosuna yazılır (bkz. `lib/audit.ts`).
+  `user.create`/`user.role_change`/`user.status_change`, `invitation.create`/
+  `invitation.accept`, `settings.update`, ve `requireSiteRole` guard'ının
+  engellediği her istek — `FORBIDDEN` durumuyla otomatik) değişmez şekilde
+  `AuditLog` tablosuna yazılır (bkz. `lib/audit.ts`).
   `metadata` alanına asla token/URL/şifre yazılmaz. Sadece `ADMIN` rolü
   `GET /admin/logs` ile okuyabilir (en yeni kayıt önce, `status`/`action` öneki
   ile filtrelenebilir).
