@@ -2,16 +2,18 @@ import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
 import { authenticate } from "../../middleware/authenticate";
+import { requireSiteRole } from "../../middleware/site-rbac";
 import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema } from "../../schemas/common";
 import { addUtcDays, startOfUtcDay, toDateKey } from "../../lib/date";
 import { countLiveVisitors } from "../../lib/live-visitors";
 import { BreakdownSchema, DailyViewStatsSchema, LiveVisitorsSchema, ViewStatsQuerySchema } from "./stats.schemas";
 
-/** `/admin/stats` prefix'i altında bağlanır (bkz. app.ts) — authenticated. */
+/** `/admin/stats` prefix'i altında bağlanır (bkz. app.ts) — yalnızca ADMIN. */
 export async function adminStatsRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
   server.addHook("preHandler", authenticate);
+  server.addHook("preHandler", requireSiteRole("ADMIN"));
 
   server.get(
     "/views",

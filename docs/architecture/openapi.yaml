@@ -775,6 +775,7 @@ paths:
                         type: array
                         items: { $ref: "#/components/schemas/DailyViewStats" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
 
   /admin/stats/live-visitors:
     get:
@@ -794,6 +795,7 @@ paths:
                   - properties:
                       data: { $ref: "#/components/schemas/LiveVisitors" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
 
   /admin/stats/breakdown:
     get:
@@ -815,6 +817,7 @@ paths:
                   - properties:
                       data: { $ref: "#/components/schemas/ViewsBreakdown" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
 
   /admin/health:
     get:

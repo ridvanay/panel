@@ -20,13 +20,34 @@ describe("stats", () => {
     await app.close();
   });
 
-  function authHeader() {
-    return { authorization: `Bearer ${accessToken}` };
+  function authHeader(token: string = accessToken) {
+    return { authorization: `Bearer ${token}` };
   }
 
   it("rejects /admin/stats/views without authentication (401)", async () => {
     const res = await app.inject({ method: "GET", url: "/api/v1/admin/stats/views" });
     expect(res.statusCode).toBe(401);
+  });
+
+  describe("RBAC guard (requireSiteRole)", () => {
+    it("ADMIN olmayan (VIEWER) bir kullanıcı /admin/stats uçlarına erişemez (403)", async () => {
+      // İlk kayıt (admin1) zaten ADMIN oldu; ikinci register: userCount artık 0 değil
+      // -> şema varsayılanı VIEWER (bkz. schema.prisma::User.role).
+      const viewer = await registerTestUser(app, { email: "stats-viewer1@example.com" });
+      const headers = authHeader(viewer.accessToken);
+
+      const views = await app.inject({ method: "GET", url: "/api/v1/admin/stats/views", headers });
+      expect(views.statusCode).toBe(403);
+      expect(views.json().error.code).toBe("FORBIDDEN");
+
+      const liveVisitors = await app.inject({ method: "GET", url: "/api/v1/admin/stats/live-visitors", headers });
+      expect(liveVisitors.statusCode).toBe(403);
+      expect(liveVisitors.json().error.code).toBe("FORBIDDEN");
+
+      const breakdown = await app.inject({ method: "GET", url: "/api/v1/admin/stats/breakdown", headers });
+      expect(breakdown.statusCode).toBe(403);
+      expect(breakdown.json().error.code).toBe("FORBIDDEN");
+    });
   });
 
   it("records deviceType/country breakdown on public page views", async () => {
