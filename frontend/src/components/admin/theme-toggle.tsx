@@ -51,9 +51,9 @@ function withSmoothThemeTransition(apply: () => void) {
 
 interface ThemeToggleProps {
   /**
-   * `sidebar`: Sidebar kalıcı olarak koyu/cam temalı olduğu için (bkz. sidebar.tsx) buton ve
-   * açılan menü de her zaman o paletle (beyaz metin, hover:bg-white/10) uyumlu render edilir —
-   * uygulamanın aktif light/dark temasından ETKİLENMEZ.
+   * `sidebar`: Sidebar artık temaya duyarlı (bkz. sidebar.tsx, 2026-08-06) — bu buton ve
+   * açılan menü de hardcoded beyaz yerine `--sidebar-*` token'larını kullanır, böylece hem
+   * light hem dark temada sidebar'ın kendi zeminiyle (glass/cam yüzey) tutarlı kalır.
    * `default`: Topbar gibi temaya duyarlı alanlarda, aktif temanın normal token'larını kullanır.
    */
   variant?: "default" | "sidebar";
@@ -90,7 +90,7 @@ export function ThemeToggle({ variant = "default", className }: ThemeToggleProps
             className={cn(
               "overflow-hidden",
               isSidebar
-                ? "text-white/55 hover:bg-white/10 hover:text-white"
+                ? "text-sidebar-foreground/55 hover:bg-sidebar-accent hover:text-sidebar-foreground"
                 : "text-muted-foreground hover:text-foreground",
               className
             )}
@@ -115,7 +115,7 @@ export function ThemeToggle({ variant = "default", className }: ThemeToggleProps
         align="end"
         className={cn(
           isSidebar &&
-            "border border-white/10 bg-[#14141d] text-white shadow-[0_10px_40px_rgba(0,0,0,0.5)] ring-white/10"
+            "border-sidebar-border bg-sidebar text-sidebar-foreground shadow-[0_10px_40px_rgba(0,0,0,0.5)]"
         )}
       >
         {THEME_OPTIONS.map(({ value, label, icon: Icon }) => (
@@ -124,7 +124,7 @@ export function ThemeToggle({ variant = "default", className }: ThemeToggleProps
             onClick={() => withSmoothThemeTransition(() => setTheme(value))}
             className={cn(
               current === value && "font-medium",
-              isSidebar && "text-white/70 focus:bg-white/10 focus:text-white"
+              isSidebar && "text-sidebar-foreground/70 focus:bg-sidebar-accent focus:text-sidebar-accent-foreground"
             )}
           >
             <Icon className="h-4 w-4" />
