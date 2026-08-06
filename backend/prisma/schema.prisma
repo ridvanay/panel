@@ -503,6 +503,8 @@ model Media {
   filename  String
   mimeType  String
   sizeBytes Int
+  // a11y — editör içi içerik görseli eklerken zorunlu (bkz. modules/blog/post-editor.tsx); kapak görseli/avatar gibi diğer kullanımlarda opsiyonel.
+  altText   String?
   createdAt DateTime @default(now())
 
   @@map("media")
