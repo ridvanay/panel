@@ -8,6 +8,8 @@ import { TextBlockEditor } from "./blocks/text-block";
 import { ImageBlockEditor } from "./blocks/image-block";
 import { GalleryBlockEditor } from "./blocks/gallery-block";
 import { CtaBlockEditor } from "./blocks/cta-block";
+import { FeaturedProductsBlockEditor } from "./blocks/featured-products-block";
+import { FeaturedPortfolioBlockEditor } from "./blocks/featured-portfolio-block";
 
 function BlockEditor({ block, onChange }: { block: Block; onChange: (block: Block) => void }) {
   switch (block.type) {
@@ -21,6 +23,10 @@ function BlockEditor({ block, onChange }: { block: Block; onChange: (block: Bloc
       return <GalleryBlockEditor block={block} onChange={onChange} />;
     case "cta":
       return <CtaBlockEditor block={block} onChange={onChange} />;
+    case "featured-products":
+      return <FeaturedProductsBlockEditor block={block} onChange={onChange} />;
+    case "featured-portfolio":
+      return <FeaturedPortfolioBlockEditor block={block} onChange={onChange} />;
   }
 }
 

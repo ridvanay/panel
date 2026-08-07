@@ -1,4 +1,4 @@
-export type BlockType = "hero" | "text" | "image" | "gallery" | "cta";
+export type BlockType = "hero" | "text" | "image" | "gallery" | "cta" | "featured-products" | "featured-portfolio";
 
 interface BaseBlock {
   id: string;
@@ -30,4 +30,26 @@ export interface CtaBlock extends BaseBlock {
   data: { heading: string; buttonLabel: string; buttonHref: string };
 }
 
-export type Block = HeroBlock | TextBlock | ImageBlock | GalleryBlock | CtaBlock;
+/**
+ * §Faz 4 Site Şablonu — `products`/`portfolio` modülleri kapalıyken bu bloklar public tarafta
+ * SESSİZCE hiçbir şey render ETMEZ (bkz. components/site/blocks). Şablon SADECE ÖNERİ niteliğinde,
+ * bu bloklar herhangi bir modülü otomatik açmaz/kapatmaz.
+ */
+export interface FeaturedProductsBlock extends BaseBlock {
+  type: "featured-products";
+  data: { heading?: string; limit: number; categoryId?: string };
+}
+
+export interface FeaturedPortfolioBlock extends BaseBlock {
+  type: "featured-portfolio";
+  data: { heading?: string; limit: number; categoryId?: string };
+}
+
+export type Block =
+  | HeroBlock
+  | TextBlock
+  | ImageBlock
+  | GalleryBlock
+  | CtaBlock
+  | FeaturedProductsBlock
+  | FeaturedPortfolioBlock;

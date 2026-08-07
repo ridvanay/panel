@@ -6,6 +6,8 @@ export const blockRegistry: Record<BlockType, { label: string }> = {
   image: { label: "Görsel" },
   gallery: { label: "Galeri" },
   cta: { label: "Çağrı Butonu (CTA)" },
+  "featured-products": { label: "Öne Çıkan Ürünler" },
+  "featured-portfolio": { label: "Öne Çıkan Projeler" },
 };
 
 function newId(): string {
@@ -25,5 +27,9 @@ export function createBlock(type: BlockType): Block {
       return { id, type, data: { images: [] } };
     case "cta":
       return { id, type, data: { heading: "Harekete geçin", buttonLabel: "Tıklayın", buttonHref: "/" } };
+    case "featured-products":
+      return { id, type, data: { heading: "", limit: 4 } };
+    case "featured-portfolio":
+      return { id, type, data: { heading: "", limit: 4 } };
   }
 }
