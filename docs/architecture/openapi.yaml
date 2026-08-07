@@ -44,6 +44,12 @@ tags:
       İçerik sürüm kontrolü (`/admin/pages/{pageId}/revisions`,
       `/admin/blog/{postId}/revisions`) — bkz. ARCHITECTURE.md §10.1. Yetki eşiği,
       ilgili entity'nin (pages/blog) yazma eşiğiyle aynı (SiteRole=ADMIN veya EDITOR).
+  - name: Media
+    description: >
+      Editör içi görsel yönetimi (`/admin/media`) — blog/sayfa içerik bloklarına ve
+      kapak görsellerine BURADAN yüklenir. Okuma authenticated, yükleme/alt metin
+      güncelleme SiteRole=ADMIN veya EDITOR, kalıcı silme yalnızca ADMIN. `Page`/
+      `BlogPost`'un aksine soft-delete/çöp kutusu YOKTUR.
   - name: EmailTemplates
     description: >
       E-posta & bildirim şablonu yönetimi (`/admin/notifications/templates`) — bkz.
@@ -1181,6 +1187,52 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /admin/pages/{pageId}/autosave:
+    parameters:
+      - $ref: "#/components/parameters/PageId"
+    post:
+      tags: [Pages]
+      summary: Sayfayı otomatik kaydet — 3sn debounce (ADMIN/EDITOR)
+      description: >
+        Faz 3 (autosave). `PATCH /admin/pages/{pageId}`'ten BİLİNÇLİ olarak AYRIDIR:
+        `ContentRevision` snapshot'ı ÜRETMEZ ve `AuditLog` YAZMAZ — aksi halde 3sn'lik
+        debounce ile tetiklenen her otomatik kayıt, entity başına revizyon tavanını
+        (`MAX_REVISIONS_PER_ENTITY`) doldurup kullanıcının bilinçli "Kaydet" ile ürettiği
+        anlamlı geçmişi silerdi (bkz. backend `lib/content-revisions.ts`).
+
+
+        Gövde `UpdatePageRequest`'in DAR bir alt kümesidir — yalnızca aktif düzenlenen
+        `title`/`blocks` korunur; `status`/`slug`/SEO/çeviri/`scheduledAt` bu uçtan
+        DEĞİŞTİRİLEMEZ.
+
+
+        Çöpteki bir sayfa autosave EDİLEMEZ → `409 CONFLICT` (`PATCH` ile aynı mesaj:
+        `"Çöpteki içerik düzenlenemez. Önce geri yükleyin."`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AutosavePageRequest" }
+      responses:
+        "200":
+          description: Kaydedildi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/AutosaveResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "Çöpteki içeriği autosave etme girişimi (`error.code: CONFLICT`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
   /admin/pages/{pageId}/restore:
     parameters:
       - $ref: "#/components/parameters/PageId"
@@ -1398,6 +1450,43 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /admin/blog/{postId}/autosave:
+    parameters:
+      - $ref: "#/components/parameters/PostId"
+    post:
+      tags: [Blog]
+      summary: Yazıyı otomatik kaydet — 3sn debounce (ADMIN/EDITOR)
+      description: >
+        Davranış `POST /admin/pages/{pageId}/autosave` ile BİREBİR AYNI — oradaki
+        açıklama (revizyon/audit üretmez, çöpteki içerik 409) bağlayıcıdır. Gövde
+        `UpdateBlogPostRequest`'in DAR bir alt kümesidir — yalnızca `title`/`excerpt`/
+        `contentHtml` korunur; `status`/`slug`/kategori/SEO/çeviri/`scheduledAt` bu
+        uçtan DEĞİŞTİRİLEMEZ.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AutosaveBlogPostRequest" }
+      responses:
+        "200":
+          description: Kaydedildi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/AutosaveResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "Çöpteki içeriği autosave etme girişimi (`error.code: CONFLICT`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
   /admin/blog/{postId}/restore:
     parameters:
       - $ref: "#/components/parameters/PostId"
@@ -1606,6 +1695,127 @@ paths:
                   - $ref: "#/components/schemas/ApiSuccessEnvelope"
                   - properties:
                       data: { $ref: "#/components/schemas/BlogPost" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/media:
+    get:
+      tags: [Media]
+      summary: Yüklenen görselleri listele (authenticated)
+      description: >
+        Cursor sayfalı, `seq ASC` (diğer içerik listeleriyle aynı yön) — çöp kutusu
+        semantiği YOKTUR (`Media` soft-delete DESTEKLEMEZ, `DELETE` kalıcıdır).
+
+
+        **Hız sınırı:** 120 istek / 1 dakika (route-level, diğer admin GET uçlarının
+        paylaştığı global limitten BAĞIMSIZ — hızlı veri dökümü/scraping'e karşı
+        savunma derinliği VE bu ucun diğer admin trafiğinin (health polling, dashboard)
+        global bütçeyi tüketmesinden bağımsız erişilebilir kalması için, bkz.
+        `logs.routes.ts::LOGS_RATE_LIMIT` ile AYNI desen). Aşım → 429.
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/Media" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+    post:
+      tags: [Media]
+      summary: Görsel yükle (ADMIN/EDITOR)
+      description: >
+        `multipart/form-data`, tek dosya. Editör (blog/sayfa) içerik bloklarına ve
+        kapak görseline BURADAN eklenir.
+
+
+        **Güvenlik — çift doğrulama:** yalnızca JPEG/PNG/WEBP/GIF kabul edilir. SVG
+        kasıtlı olarak allow-list'te YOKTUR: metin tabanlıdır, magic byte imzası
+        taşımaz ve içine `<script>` gömülebildiği için depolanmış-XSS riski taşır.
+        `file`'ın beyan ettiği `Content-Type` GÜVENİLMEZ — gerçek tür, dosya
+        içeriğinin ilk baytlarından (magic bytes) tespit edilir; beyan edilenle
+        UYUŞMUYORSA ya da tanınmıyorsa/SVG ise istek `422` ile reddedilir
+        (`POST /admin/import/jobs` ile AYNI kod yolu, bkz. `lib/mime-detect.ts`).
+
+
+        **Boyut limiti:** global multipart limiti (`MAX_UPLOAD_BYTES`, 5 MB) —
+        `POST /admin/import/jobs`'un aksine bu ucun kendine özgü bir route-level
+        override'ı YOKTUR. Aşım → `413 PAYLOAD_TOO_LARGE`.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: "#/components/schemas/UploadMediaRequest" }
+      responses:
+        "201":
+          description: Yüklendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Media" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "422":
+          description: >
+            Dosya yok / desteklenmeyen tür beyan edildi / dosya içeriği tanınan bir
+            görsel biçimiyle eşleşmiyor (SVG dahil) / beyan edilen tür ile tespit
+            edilen tür UYUŞMUYOR (`error.details.file`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+
+  /admin/media/{mediaId}:
+    parameters:
+      - $ref: "#/components/parameters/MediaId"
+    patch:
+      tags: [Media]
+      summary: Görselin alt metnini güncelle (ADMIN/EDITOR)
+      description: >
+        Faz 2 içerik editörü — editör içi görsellerde erişilebilirlik/SEO alt metni
+        zorunluluğu. v1'de TEK güncellenebilir alan `altText`'tir; dosyanın kendisi,
+        `url`/`filename`/`mimeType` DEĞİŞTİRİLEMEZ (yeniden yüklemek gerekir).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateMediaAltTextRequest" }
+      responses:
+        "200":
+          description: Güncellendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Media" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+    delete:
+      tags: [Media]
+      summary: Görseli KALICI sil — geri alınamaz (yalnızca ADMIN)
+      description: >
+        `Media` soft-delete DESTEKLEMEZ (Page/BlogPost'un aksine `deletedAt`/çöp kutusu
+        YOKTUR) — bu uç DB kaydını VE depolanan dosyayı KALICI olarak siler. Dosya
+        silme en iyi-çaba (best-effort) yapılır: depolama katmanındaki hata istek
+        sonucunu ETKİLEMEZ (DB kaydı yine de silinir).
+      responses:
+        "204": { description: Kalıcı olarak silindi }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -2173,6 +2383,11 @@ components:
       in: path
       required: true
       schema: { type: string, format: uuid }
+    MediaId:
+      name: mediaId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
     TrashedFilter:
       name: trashed
       in: query
@@ -2191,7 +2406,7 @@ components:
       description: >
         Sunucu tarafı durum filtresi. v1 admin liste ekranı KULLANMAZ (sekmeler
         client-side filtreler) — API tüketicileri ve ileride sunucu-taraflı sayfalama için.
-      schema: { type: string, enum: [DRAFT, PUBLISHED] }
+      schema: { $ref: "#/components/schemas/PageStatus" }
     TemplateKey:
       name: key
       in: path
@@ -2890,6 +3105,17 @@ components:
         slug: { type: string }
         createdAt: { type: string, format: date-time }
 
+    PageStatus:
+      description: >
+        `Page` ve `BlogPost` için ORTAK durum enum'ı (bkz. backend `schemas/entities.ts::
+        PageStatusSchema`) — TEK kaynak, `Page`/`BlogPost` DTO'ları ile create/update
+        istek gövdeleri ve `ContentStatusFilter` parametresi BURAYA referans verir.
+        `SCHEDULED` = **zamanlanmış yayın**: içerik `scheduledAt` alanındaki gelecek
+        tarihte otomatik `PUBLISHED`'e geçer (Faz 4). `scheduledAt` ile çapraz-alan
+        kuralı için ilgili create/update şemalarındaki `scheduledAt` açıklamasına bakın.
+      type: string
+      enum: [DRAFT, PUBLISHED, SCHEDULED]
+
     Page:
       description: >
         `/admin/pages` ve `/pages` uçlarında dönen sayfa DTO'su. `translations.EN`
@@ -2901,7 +3127,7 @@ components:
         id: { type: string, format: uuid }
         title: { type: string }
         slug: { type: string }
-        status: { type: string, enum: [DRAFT, PUBLISHED] }
+        status: { $ref: "#/components/schemas/PageStatus" }
         blocks:
           type: array
           items: { type: object, additionalProperties: true }
@@ -2918,6 +3144,11 @@ components:
             type: object
             additionalProperties: true
         publishedAt: { type: string, format: date-time, nullable: true }
+        scheduledAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: "Zamanlanmış yayın hedef tarihi — yalnızca status=SCHEDULED iken anlamlı, aksi halde null."
         viewCount: { type: integer }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
@@ -2967,7 +3198,7 @@ components:
         excerpt: { type: string, nullable: true }
         contentHtml: { type: string }
         coverImageUrl: { type: string, nullable: true }
-        status: { type: string, enum: [DRAFT, PUBLISHED] }
+        status: { $ref: "#/components/schemas/PageStatus" }
         category:
           allOf:
             - $ref: "#/components/schemas/BlogCategory"
@@ -2985,6 +3216,11 @@ components:
             type: object
             additionalProperties: true
         publishedAt: { type: string, format: date-time, nullable: true }
+        scheduledAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: "Zamanlanmış yayın hedef tarihi — yalnızca status=SCHEDULED iken anlamlı, aksi halde null."
         viewCount: { type: integer }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
@@ -3012,6 +3248,52 @@ components:
         seoScoreIssues:
           type: array
           items: { $ref: "#/components/schemas/SeoScoreIssue" }
+
+    Media:
+      description: >
+        `/admin/media` uçlarında dönen yüklenen görsel DTO'su. Editör içi görseller
+        (blog/sayfa içerik bloklarına eklenenler) ve kapak görselleri BURADAN seçilir.
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        url: { type: string, format: uri }
+        filename: { type: string }
+        mimeType:
+          type: string
+          description: "Gerçek dosya İÇERİĞİNDEN (magic bytes) tespit edilir — beyan edilen Content-Type GÜVENİLMEZ. bkz. POST açıklaması."
+          enum: [image/jpeg, image/png, image/webp, image/gif]
+        sizeBytes: { type: integer }
+        altText:
+          type: string
+          nullable: true
+          description: >
+            Erişilebilirlik/SEO alt metni. Yüklemede `null` gelir; `PATCH
+            /admin/media/{mediaId}` ile ayrıca set edilir. `SeoScoreIssue`'nun
+            `IMAGE_ALT_MISSING` kriteri BU ALANA DEĞİL, içeriğe gömülü `<img alt>`/blok
+            `data.alt` alanına bakar (bkz. `SeoScoreIssue` açıklaması) — ikisi AYRI
+            kavramlardır.
+        createdAt: { type: string, format: date-time }
+
+    UpdateMediaAltTextRequest:
+      description: "`PATCH /admin/media/{mediaId}` gövdesi — v1'de TEK güncellenebilir alan."
+      type: object
+      required: [altText]
+      properties:
+        altText: { type: string, minLength: 1, description: "Boş string kabul edilmez → 422." }
+
+    UploadMediaRequest:
+      description: "`multipart/form-data` gövdesi — `POST /admin/media`."
+      type: object
+      required: [file]
+      properties:
+        file:
+          type: string
+          format: binary
+          description: >
+            Tek dosya. Yalnızca JPEG/PNG/WEBP/GIF — beyan edilen `Content-Type` GÜVENİLMEZ,
+            gerçek tür dosya içeriğinin ilk baytlarından (magic bytes) tespit edilir; SVG
+            İSTİSNASIZ REDDEDİLİR (stored-XSS riski, bkz. POST açıklaması). Boyut limiti
+            uç açıklamasındadır.
 
     UserSummary:
       description: >
@@ -3134,7 +3416,7 @@ components:
       properties:
         title: { type: string, minLength: 1 }
         slug: { type: string, minLength: 1, description: "verilmezse title'dan slugify edilir" }
-        status: { type: string, enum: [DRAFT, PUBLISHED], default: DRAFT }
+        status: { allOf: [{ $ref: "#/components/schemas/PageStatus" }], default: DRAFT }
         blocks:
           type: array
           items: { type: object, additionalProperties: true }
@@ -3155,6 +3437,18 @@ components:
             §10.7 — verilmezse giriş yapmış kullanıcı atanır. Giriş yapmış kullanıcıdan
             FARKLI bir id yalnızca ADMIN tarafından gönderilebilir (EDITOR → 403);
             var olmayan kullanıcı → 422.
+        scheduledAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: >
+            Faz 4 (zamanlanmış yayın). **Çapraz-alan kuralı (OpenAPI şeması TEK BAŞINA
+            ifade edemez — zod `.refine()` ile uygulanır, bkz. backend
+            `schemas/common.ts::refineScheduledAt`):** `status: SCHEDULED` gönderilmişse
+            bu alan ZORUNLUDUR ve şu andan İLERİDE bir tarih olmalıdır; aksi halde
+            `422 VALIDATION_ERROR` döner (`error.details.scheduledAt`) ve kayıt hiç
+            OLUŞTURULMAZ. `status` `SCHEDULED` DEĞİLSE (ör. `DRAFT`/`PUBLISHED`/hiç
+            gönderilmemiş) bu alan gönderilse dahi YOK SAYILIR.
 
     UpdatePageRequest:
       description: >
@@ -3164,7 +3458,7 @@ components:
       properties:
         title: { type: string, minLength: 1 }
         slug: { type: string, minLength: 1 }
-        status: { type: string, enum: [DRAFT, PUBLISHED] }
+        status: { $ref: "#/components/schemas/PageStatus" }
         blocks:
           type: array
           items: { type: object, additionalProperties: true }
@@ -3182,6 +3476,17 @@ components:
           format: uuid
           nullable: true
           description: "Yalnızca ADMIN değiştirebilir (EDITOR gönderirse 403). `null` = yazarı kaldır."
+        scheduledAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: >
+            Faz 4 (zamanlanmış yayın) — çapraz-alan kuralı `CreatePageRequest.scheduledAt`
+            ile AYNIDIR (`status: SCHEDULED` iken zorunlu + gelecekte olmalı, aksi halde
+            422; `refineScheduledAt`). EK OLARAK: istekte `status` alanı GÖNDERİLMİŞSE ve
+            değeri `SCHEDULED` DEĞİLSE, sunucu eski bir zamanlama artığı kalmasın diye
+            `scheduledAt`'i sunucu tarafında `null`'a temizler (bu istekte `status`
+            gönderilmediyse mevcut zamanlamaya DOKUNULMAZ).
 
     CreateBlogPostRequest:
       type: object
@@ -3192,7 +3497,7 @@ components:
         excerpt: { type: string }
         contentHtml: { type: string }
         coverImageUrl: { type: string }
-        status: { type: string, enum: [DRAFT, PUBLISHED], default: DRAFT }
+        status: { allOf: [{ $ref: "#/components/schemas/PageStatus" }], default: DRAFT }
         categoryId: { type: string, format: uuid, nullable: true }
         seoTitle: { type: string, nullable: true }
         seoDescription: { type: string, nullable: true }
@@ -3211,6 +3516,14 @@ components:
             §10.7 — `CreatePageRequest.authorId` ile aynı kural. **Mevcut kod bunu
             gövdeden okumadan `request.user.id` olarak sabitliyor**; yeni kuralda
             gövdeden gelen değer (ADMIN ise) önceliklidir.
+        scheduledAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: >
+            Faz 4 (zamanlanmış yayın) — çapraz-alan kuralı `CreatePageRequest.scheduledAt`
+            ile AYNIDIR (`status: SCHEDULED` iken zorunlu + gelecekte olmalı, aksi halde
+            422; `refineScheduledAt`).
 
     UpdateBlogPostRequest:
       description: "Tüm alanlar opsiyonel; Hızlı Düzenle `{ title, slug, status }` alt kümesini gönderir."
@@ -3221,7 +3534,7 @@ components:
         excerpt: { type: string, nullable: true }
         contentHtml: { type: string }
         coverImageUrl: { type: string, nullable: true }
-        status: { type: string, enum: [DRAFT, PUBLISHED] }
+        status: { $ref: "#/components/schemas/PageStatus" }
         categoryId: { type: string, format: uuid, nullable: true }
         seoTitle: { type: string, nullable: true }
         seoDescription: { type: string, nullable: true }
@@ -3237,6 +3550,54 @@ components:
           format: uuid
           nullable: true
           description: "Yalnızca ADMIN değiştirebilir."
+        scheduledAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: >
+            Faz 4 (zamanlanmış yayın) — çapraz-alan kuralı `CreatePageRequest.scheduledAt`
+            ile AYNIDIR. EK OLARAK: istekte `status` alanı GÖNDERİLMİŞSE ve değeri
+            `SCHEDULED` DEĞİLSE, sunucu eski bir zamanlama artığı kalmasın diye
+            `scheduledAt`'i sunucu tarafında `null`'a temizler (`status` gönderilmediyse
+            mevcut zamanlamaya DOKUNULMAZ) — bkz. `UpdatePageRequest.scheduledAt`.
+
+    AutosavePageRequest:
+      description: >
+        Faz 3 (autosave) — `POST /admin/pages/{pageId}/autosave` gövdesi. `UpdatePageRequest`'in
+        BİLİNÇLİ olarak DAR bir alt kümesidir: yalnızca kullanıcının aktif düzenlediği
+        metin alanları korunur; `status`/`slug`/SEO/çeviri gibi alanlar kapsam DIŞIDIR
+        (bu uçtan gönderilse dahi kabul EDİLMEZ, şema seviyesinde yoktur).
+      type: object
+      properties:
+        title: { type: string, minLength: 1 }
+        blocks:
+          type: array
+          items: { type: object, additionalProperties: true }
+
+    AutosaveBlogPostRequest:
+      description: >
+        Faz 3 (autosave) — `POST /admin/blog/{postId}/autosave` gövdesi. `AutosavePageRequest`
+        ile AYNI niyet, `BlogPost` şemasına uyarlanmış alan seti (`blocks` yerine
+        `excerpt`/`contentHtml` — `BlogPost`'ta `blocks` alanı YOKTUR).
+      type: object
+      properties:
+        title: { type: string, minLength: 1 }
+        excerpt: { type: string, nullable: true }
+        contentHtml: { type: string }
+
+    AutosaveResponse:
+      description: >
+        `POST /admin/{blog,pages}/{id}/autosave` ortak yanıt şeması. **BİLİNÇLİ olarak
+        minimaldir: autosave `ContentRevision` ÜRETMEZ ve `AuditLog` YAZMAZ** (bkz.
+        backend `lib/content-revisions.ts`, `MAX_REVISIONS_PER_ENTITY`) — aksi halde
+        3sn'lik debounce ile tetiklenen her otomatik kayıt, entity başına revizyon
+        tavanını doldurup kullanıcının bilinçli "Kaydet" ile ürettiği anlamlı geçmişi
+        silerdi. Bu yüzden tam entity DTO'su DÖNMEZ — istemci yalnızca en son kayıt
+        zamanını bilmek ister.
+      type: object
+      required: [savedAt]
+      properties:
+        savedAt: { type: string, format: date-time }
 
     ContentEntityType:
       type: string
