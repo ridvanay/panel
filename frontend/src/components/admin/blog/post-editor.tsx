@@ -4,6 +4,13 @@ import { useState } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Image from "@tiptap/extension-image";
+import { Table } from "@tiptap/extension-table";
+import { TableRow } from "@tiptap/extension-table-row";
+import { TableHeader } from "@tiptap/extension-table-header";
+import { TableCell } from "@tiptap/extension-table-cell";
+import { Highlight } from "@tiptap/extension-highlight";
+import { CharacterCount } from "@tiptap/extension-character-count";
+import { Placeholder } from "@tiptap/extension-placeholder";
 import { toast } from "sonner";
 import {
   Bold,
@@ -22,6 +29,11 @@ import {
   Redo2,
   Link as LinkIcon,
   Image as ImageIcon,
+  Table as TableIcon,
+  Rows3,
+  Columns3,
+  Trash2,
+  Highlighter,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -68,7 +80,19 @@ export function PostEditor({ content, onChange }: { content: string; onChange: (
   const [altTextError, setAltTextError] = useState<string | null>(null);
   const [altTextSubmitting, setAltTextSubmitting] = useState(false);
   const editor = useEditor({
-    extensions: [StarterKit, Image],
+    extensions: [
+      StarterKit,
+      Image,
+      // resizable: false BİLİNÇLİ bir karar — sütun yeniden boyutlandırma açılırsa `colwidth`
+      // attribute'u üretilir, bu backend sanitize allow-list'inde YOK (kaldırma/değiştirme).
+      Table.configure({ resizable: false }),
+      TableRow,
+      TableHeader,
+      TableCell,
+      Highlight,
+      CharacterCount,
+      Placeholder.configure({ placeholder: "İçeriğinizi buraya yazın…" }),
+    ],
     content,
     immediatelyRender: false,
     editorProps: {
@@ -172,6 +196,13 @@ export function PostEditor({ content, onChange }: { content: string; onChange: (
         >
           <Code />
         </ToolbarButton>
+        <ToolbarButton
+          label="Vurgula"
+          active={editor?.isActive("highlight")}
+          onClick={() => editor?.chain().focus().toggleHighlight().run()}
+        >
+          <Highlighter />
+        </ToolbarButton>
 
         <div className="mx-1 h-5 w-px bg-border" />
 
@@ -232,6 +263,33 @@ export function PostEditor({ content, onChange }: { content: string; onChange: (
         <ToolbarButton label="Görsel ekle" onClick={handleInsertImage}>
           <ImageIcon />
         </ToolbarButton>
+        <ToolbarButton
+          label="Tablo ekle"
+          active={editor?.isActive("table")}
+          onClick={() => editor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}
+        >
+          <TableIcon />
+        </ToolbarButton>
+
+        {editor?.isActive("table") && (
+          <>
+            <ToolbarButton label="Satır ekle" onClick={() => editor?.chain().focus().addRowAfter().run()}>
+              <Rows3 />
+            </ToolbarButton>
+            <ToolbarButton label="Sütun ekle" onClick={() => editor?.chain().focus().addColumnAfter().run()}>
+              <Columns3 />
+            </ToolbarButton>
+            <ToolbarButton label="Satır sil" onClick={() => editor?.chain().focus().deleteRow().run()}>
+              <Trash2 />
+            </ToolbarButton>
+            <ToolbarButton label="Sütun sil" onClick={() => editor?.chain().focus().deleteColumn().run()}>
+              <Trash2 />
+            </ToolbarButton>
+            <ToolbarButton label="Tabloyu sil" onClick={() => editor?.chain().focus().deleteTable().run()}>
+              <Trash2 />
+            </ToolbarButton>
+          </>
+        )}
 
         <div className="mx-1 h-5 w-px bg-border" />
 
@@ -243,6 +301,9 @@ export function PostEditor({ content, onChange }: { content: string; onChange: (
         </ToolbarButton>
       </div>
       <EditorContent editor={editor} className="min-h-[200px] px-3 py-2" />
+      <div className="border-t border-input px-3 py-1 text-right text-xs text-muted-foreground">
+        {editor?.storage.characterCount.characters() ?? 0} karakter
+      </div>
       <MediaPicker open={mediaPickerOpen} onOpenChange={setMediaPickerOpen} onSelect={handleMediaSelect} />
 
       <Dialog open={pendingMedia !== null} onOpenChange={handleAltTextDialogOpenChange}>

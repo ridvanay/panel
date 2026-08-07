@@ -352,3 +352,17 @@
     @apply font-semibold text-primary underline-offset-2 transition-colors hover:text-primary-hover hover:underline dark:text-primary-hover;
   }
 }
+
+/*
+ * TipTap Placeholder extension (post-editor.tsx, içerik editörü Faz 5) — extension'ın kendisi
+ * sadece `data-placeholder` attribute'u ve `is-editor-empty`/`is-empty` class'larını DOM'a ekler,
+ * görünür bir stil ÜRETMEZ. Bu kural olmadan placeholder metni hiçbir zaman ekranda görünmez.
+ * Renk `--color-muted-foreground` token'ını kullanır — yeni bir renk üretilmedi.
+ */
+.tiptap p.is-editor-empty:first-child::before {
+  float: left;
+  height: 0;
+  color: var(--color-muted-foreground);
+  content: attr(data-placeholder);
+  pointer-events: none;
+}
