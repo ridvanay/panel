@@ -137,6 +137,16 @@ enum ExportJobStatus {
   FAILED
 }
 
+enum OrderStatus {
+  PENDING
+  PAID
+  FAILED
+  CANCELLED
+  EXPIRED
+  REFUNDED
+  FULFILLED
+}
+
 model User {
   id              String         @id @default(uuid())
   // Sıralı, dış dünyaya sızmayan iç sayaç — cursor sayfalamada stabil sıralama için.
@@ -177,6 +187,10 @@ model User {
   exportJobs          ExportJob[]          @relation("ExportJobCreator")
   // §10.9 Eklenti/Modül Yönetimi — bkz. ARCHITECTURE.md §10.9.
   siteModuleUpdates   SiteModule[]         @relation("SiteModuleUpdater")
+  // §10.9.3 Sepet + Stripe Checkout — genelde NULL kalır (misafir checkout); SiteRole
+  // kullanıcısı (ör. ADMIN test amaçlı) teorik olarak sepet/sipariş sahibi olabilir.
+  carts               Cart[]               @relation("CartOwner")
+  orders              Order[]              @relation("OrderCustomer")
 
   @@map("users")
 }
@@ -452,6 +466,9 @@ model Product {
   coverMedia Media?           @relation("ProductCoverMedia", fields: [coverMediaId], references: [id], onDelete: SetNull)
   author     User?            @relation("ProductAuthor", fields: [authorId], references: [id], onDelete: SetNull)
   images     ProductImage[]
+  // §10.9.3 Sepet + Stripe Checkout — bkz. Cart/Order modelleri altındaki not.
+  cartItems  CartItem[]       @relation("CartItemProduct")
+  orderItems OrderItem[]      @relation("OrderItemProduct")
 
   @@index([categoryId])
   @@index([deletedAt, status])
@@ -810,4 +827,105 @@ model SiteModule {
 
   @@index([updatedById])
   @@map("site_modules")
+}
+
+// §10.9.3 Sepet + Stripe Checkout (Eklenti/Modül Yönetimi) — bkz. ARCHITECTURE.md. Misafir
+// checkout: Cart.tokenHash opak token'ın hash'i (bkz. lib/tokens.ts), Cart.siteUserId genelde
+// NULL. Stok düşürme Serializable transaction ile yapılır (bkz. admin-users.routes.ts::
+// runSerializable paterni) — checkout.session.completed webhook'unda tek transaction içinde
+// stok kontrolü+düşürme+Order.status=PAID ATOMIK yapılır.
+model Cart {
+  id         String     @id @default(uuid())
+  // Opak sepet token'ının SHA-256 hash'i (bkz. lib/tokens.ts::hashToken) — ham değer yalnızca
+  // istemciye (çerez/localStorage) döner, DB'ye asla yazılmaz.
+  tokenHash  String     @unique
+  currency   String     @default("TRY")
+  siteUserId String?
+  // Genelde misafir checkout ile NULL kalır; SiteRole kullanıcısı (ör. ADMIN test amaçlı)
+  // teorik olarak sepet sahibi olabilir.
+  siteUser   User?      @relation("CartOwner", fields: [siteUserId], references: [id], onDelete: SetNull)
+  // Terk edilmiş sepetlerin süresi dolunca süreç-içi sweeper temizler (bkz. §10.1/§10.2'deki
+  // scheduledAt sweeper deseniyle aynı yaklaşım).
+  expiresAt  DateTime
+  items      CartItem[]
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  @@index([siteUserId])
+  @@index([expiresAt])
+  @@map("carts")
+}
+
+model CartItem {
+  id             String   @id @default(uuid())
+  cartId         String
+  cart           Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  productId      String
+  product        Product  @relation("CartItemProduct", fields: [productId], references: [id], onDelete: Cascade)
+  quantity       Int
+  // Sepete eklenme anındaki birim fiyat (kuruş) — checkout'a kadar fiyat değişikliğinden
+  // etkilenmemesi için snapshot alınır (Product.priceCents/discountPriceCents ile AYNI değil).
+  unitPriceCents Int
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([cartId, productId])
+  @@index([productId])
+  @@map("cart_items")
+}
+
+model Order {
+  id                      String      @id @default(uuid())
+  // Sıralı, dış dünyaya sızmayan iç sayaç — cursor sayfalamada stabil sıralama için.
+  seq                     Int         @unique @default(autoincrement())
+  // Müşteriye/faturaya gösterilen okunabilir sipariş numarası — üretimi backend-agent'ın işi.
+  orderNumber             String      @unique
+  cartId                  String?
+  siteUserId              String?
+  // Genelde misafir checkout ile NULL kalır; SiteRole kullanıcısı (ör. ADMIN test amaçlı)
+  // teorik olarak sipariş sahibi olabilir.
+  siteUser                User?       @relation("OrderCustomer", fields: [siteUserId], references: [id], onDelete: SetNull)
+  customerEmail           String
+  customerName            String?
+  status                  OrderStatus @default(PENDING)
+  currency                String
+  subtotalCents           Int
+  discountCents           Int         @default(0)
+  // KDV fiyata DAHİL (Product.taxRatePercent ile AYNI karar) — bu alan sadece FATURA/gösterim
+  // amaçlı ayrıştırma içindir, totalCents'e ayrıca eklenmez.
+  taxCents                Int         @default(0)
+  totalCents              Int
+  stripeCheckoutSessionId String?     @unique
+  stripePaymentIntentId   String?
+  // Yalnızca ödeme/işlemi tamamıyla başarısız kılan hata (ImportJob.errorSummary ile AYNI desen).
+  errorSummary            String?
+  paidAt                  DateTime?
+  createdAt               DateTime    @default(now())
+  updatedAt               DateTime    @updatedAt
+
+  items OrderItem[]
+
+  @@index([status])
+  @@index([siteUserId])
+  @@index([stripePaymentIntentId])
+  @@map("orders")
+}
+
+model OrderItem {
+  id             String   @id @default(uuid())
+  orderId        String
+  order          Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId      String?
+  // Ürün kalıcı silinse (veya siparişten sonra değişse) bile sipariş geçmişi bozulmasın diye
+  // productTitle/productSku/unitPriceCents SNAPSHOT olarak denormalize saklanır.
+  product        Product? @relation("OrderItemProduct", fields: [productId], references: [id], onDelete: SetNull)
+  productTitle   String
+  productSku     String?
+  unitPriceCents Int
+  quantity       Int
+  lineTotalCents Int
+
+  @@index([orderId])
+  @@index([productId])
+  @@map("order_items")
 }
