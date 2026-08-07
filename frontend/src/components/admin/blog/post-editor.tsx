@@ -95,6 +95,10 @@ export function PostEditor({ content, onChange }: { content: string; onChange: (
     ],
     content,
     immediatelyRender: false,
+    // TipTap v3'te varsayılan `false` ile aynı davranır — bu olmadan toolbar'daki
+    // aktif/basılı durumlar (`editor.isActive(...)`) ve tablo bağlamsal butonları
+    // hiçbir kullanıcı etkileşiminden sonra güncellenmez (bkz. qa-agent bulgusu).
+    shouldRerenderOnTransaction: true,
     editorProps: {
       attributes: { class: "prose prose-sm max-w-none focus:outline-none" },
     },

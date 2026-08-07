@@ -32,19 +32,11 @@ describe("PostEditor — tablo araç çubuğu (Faz 5)", () => {
     });
   });
 
-  // BUG (frontend-agent'a yönlendirilmeli, düzeltilmedi — bkz. görev raporu): `post-editor.tsx`
-  // `useEditor({...})` çağrısında `shouldRerenderOnTransaction` AYARLANMAMIŞ. TipTap v3'te bu
-  // seçeneğin varsayılanı `undefined` iken `useEditor.ts`'in kendi iç mantığı (@tiptap/react
-  // `useEditor`) bunu `false` ile AYNI kabul eder (`options.shouldRerenderOnTransaction === false
-  // || options.shouldRerenderOnTransaction === void 0` → seçici hep `null` döner). Sonuç: hiçbir
-  // toolbar düğmesinin `aria-pressed`/`active` durumu (Kalın, İtalik, Tablo vb.) kullanıcı
-  // etkileşiminden SONRA GÜNCELLENMEZ — PostEditor yalnızca PARENT'ı (örn. `[postId]/page.tsx`
-  // `contentHtml` state'i) başka bir sebeple re-render olduğunda dolaylı olarak tazelenir. Aynı
-  // sebeple "tablo içindeyken satır/sütun ekle-sil düğmelerinin görünmesi" de ÇALIŞMIYOR —
-  // `editor?.isActive("table")` her zaman ilk render'daki (false) değerde donuk kalıyor. Empirik
-  // doğrulama: `Kalın` düğmesine tıklandıktan sonra bile `aria-pressed` "false" olarak KALIYOR.
-  // Düzeltme (frontend-agent): `useEditor({ ..., shouldRerenderOnTransaction: true })`.
-  it.skip("[BİLİNEN BUG — düzeltilmedi] tablo içindeyken satır/sütun ekle-sil düğmeleri görünür hale gelmeli", async () => {
+  // Regresyon testi: `post-editor.tsx`'teki `useEditor` çağrısına `shouldRerenderOnTransaction:
+  // true` eklenmeden önce (qa-agent bulgusu) toolbar düğmelerinin `aria-pressed`/`active` durumu
+  // ve `editor?.isActive("table")`'a bağlı bağlamsal butonlar kullanıcı etkileşiminden sonra HİÇ
+  // güncellenmiyordu. Orkestratör tarafından düzeltildi — bu test artık gerçek davranışı doğruluyor.
+  it("tablo içindeyken satır/sütun ekle-sil düğmeleri görünür hale gelir", async () => {
     const user = userEvent.setup();
     render(<PostEditor content="<p>merhaba</p>" onChange={() => {}} />);
 
