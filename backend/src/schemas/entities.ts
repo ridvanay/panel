@@ -615,6 +615,74 @@ export type ExportFileFormat = z.infer<typeof ExportFileFormatSchema>;
 export const ExportJobStatusSchema = z.enum(["PENDING", "PROCESSING", "COMPLETED", "FAILED"]);
 export type ExportJobStatus = z.infer<typeof ExportJobStatusSchema>;
 
+// ---------- §10.9.3 Sepet + Stripe Checkout (Eklenti/Modül Yönetimi) — bkz. ARCHITECTURE.md,
+// prisma/schema.prisma::Cart/CartItem/Order/OrderItem. openapi.yaml'a bu fazda DOKUNULMADI
+// (bkz. görev notu) — bu şemalar backend-agent'ın kararıyla tanımlandı.
+
+/** `GET /cart` yanıtındaki her satır — dondurulmuş fiyat (`frozenUnitPriceCents`, sepete eklenme
+ * anındaki `CartItem.unitPriceCents`) ile DB'den taze okunan `currentPriceCents` AYRI dönülür,
+ * ikisi farklıysa frontend uyarı gösterebilir (bkz. cart.routes.ts). */
+export const CartItemSchema = z.object({
+  id: z.string().uuid(),
+  productId: z.string().uuid(),
+  product: z.object({
+    id: z.string().uuid(),
+    title: z.string(),
+    slug: z.string(),
+    coverImageUrl: z.string().nullable(),
+    stockQuantity: z.number().int(),
+  }),
+  quantity: z.number().int(),
+  frozenUnitPriceCents: z.number().int(),
+  currentPriceCents: z.number().int(),
+  lineTotalCents: z.number().int(),
+});
+export type CartItemDto = z.infer<typeof CartItemSchema>;
+
+/** Cookie yoksa/geçersizse (henüz hiçbir şey eklenmemiş) boş sepet döner — `currency: null`. */
+export const CartSchema = z.object({
+  items: z.array(CartItemSchema),
+  currency: z.string().nullable(),
+  // Dondurulmuş fiyatlar (`frozenUnitPriceCents * quantity`) üzerinden toplam — checkout'un
+  // hesaplayacağı nihai tutarla AYNI mantık, ama checkout DB'den TEKRAR taze okuyup kendi
+  // hesabını yapar (bkz. checkout.routes.ts) — burası yalnızca gösterim amaçlıdır.
+  subtotalCents: z.number().int(),
+});
+export type CartDto = z.infer<typeof CartSchema>;
+
+export const OrderStatusSchema = z.enum(["PENDING", "PAID", "FAILED", "CANCELLED", "EXPIRED", "REFUNDED", "FULFILLED"]);
+export type OrderStatus = z.infer<typeof OrderStatusSchema>;
+
+export const OrderItemSchema = z.object({
+  id: z.string().uuid(),
+  productId: z.string().uuid().nullable(),
+  // Ürün silinse/değişse bile sipariş geçmişi bozulmasın diye SNAPSHOT (bkz. prisma/schema.prisma::OrderItem).
+  productTitle: z.string(),
+  productSku: z.string().nullable(),
+  unitPriceCents: z.number().int(),
+  quantity: z.number().int(),
+  lineTotalCents: z.number().int(),
+});
+export type OrderItemDto = z.infer<typeof OrderItemSchema>;
+
+export const OrderSchema = z.object({
+  id: z.string().uuid(),
+  orderNumber: z.string(),
+  status: OrderStatusSchema,
+  customerEmail: z.string(),
+  customerName: z.string().nullable(),
+  currency: z.string(),
+  subtotalCents: z.number().int(),
+  discountCents: z.number().int(),
+  taxCents: z.number().int(),
+  totalCents: z.number().int(),
+  errorSummary: z.string().nullable(),
+  paidAt: z.string().nullable(),
+  createdAt: z.string(),
+  items: z.array(OrderItemSchema),
+});
+export type OrderDto = z.infer<typeof OrderSchema>;
+
 export const ExportJobSchema = z.object({
   id: z.string().uuid(),
   type: ExportJobTypeSchema,

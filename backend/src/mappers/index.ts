@@ -25,6 +25,9 @@ import type {
   ProductCategory,
   Product,
   ProductImage,
+  CartItem,
+  Order,
+  OrderItem,
 } from "@prisma/client";
 import type {
   UserDto,
@@ -55,6 +58,10 @@ import type {
   ProductCategoryDto,
   ProductDto,
   ProductImageDto,
+  CartDto,
+  CartItemDto,
+  OrderDto,
+  OrderItemDto,
 } from "../schemas/entities";
 import { env } from "../config/env";
 import { computeBlogPostSeoScore, computePageSeoScore, computeProductSeoScore } from "../lib/seo-score";
@@ -505,6 +512,78 @@ export function toExportJobDto(job: ExportJobWithCreator): ExportJobDto {
     finishedAt: job.finishedAt ? job.finishedAt.toISOString() : null,
     createdAt: job.createdAt.toISOString(),
     updatedAt: job.updatedAt.toISOString(),
+  };
+}
+
+// ---------- §10.9.3 Sepet + Stripe Checkout ----------
+
+type CartItemWithProduct = CartItem & {
+  product: Pick<Product, "id" | "title" | "slug" | "stockQuantity" | "priceCents" | "discountPriceCents"> & {
+    coverMedia: Media | null;
+  };
+};
+
+/** `frozenUnitPriceCents` (sepete eklenme anı) ile `currentPriceCents` (DB'den taze, indirimliyse
+ * indirim fiyatı) AYRI döner — bkz. schemas/entities.ts::CartItemSchema notu. */
+export function toCartItemDto(item: CartItemWithProduct): CartItemDto {
+  const currentPriceCents = item.product.discountPriceCents ?? item.product.priceCents;
+
+  return {
+    id: item.id,
+    productId: item.productId,
+    product: {
+      id: item.product.id,
+      title: item.product.title,
+      slug: item.product.slug,
+      coverImageUrl: item.product.coverMedia ? absolutizeMediaUrl(item.product.coverMedia.url) : null,
+      stockQuantity: item.product.stockQuantity,
+    },
+    quantity: item.quantity,
+    frozenUnitPriceCents: item.unitPriceCents,
+    currentPriceCents,
+    lineTotalCents: item.unitPriceCents * item.quantity,
+  };
+}
+
+export function toCartDto(items: CartItemWithProduct[], currency: string | null): CartDto {
+  const mapped = items.map(toCartItemDto);
+  return {
+    items: mapped,
+    currency,
+    subtotalCents: mapped.reduce((sum, item) => sum + item.lineTotalCents, 0),
+  };
+}
+
+export function toOrderItemDto(item: OrderItem): OrderItemDto {
+  return {
+    id: item.id,
+    productId: item.productId,
+    productTitle: item.productTitle,
+    productSku: item.productSku,
+    unitPriceCents: item.unitPriceCents,
+    quantity: item.quantity,
+    lineTotalCents: item.lineTotalCents,
+  };
+}
+
+type OrderWithItems = Order & { items: OrderItem[] };
+
+export function toOrderDto(order: OrderWithItems): OrderDto {
+  return {
+    id: order.id,
+    orderNumber: order.orderNumber,
+    status: order.status,
+    customerEmail: order.customerEmail,
+    customerName: order.customerName,
+    currency: order.currency,
+    subtotalCents: order.subtotalCents,
+    discountCents: order.discountCents,
+    taxCents: order.taxCents,
+    totalCents: order.totalCents,
+    errorSummary: order.errorSummary,
+    paidAt: order.paidAt ? order.paidAt.toISOString() : null,
+    createdAt: order.createdAt.toISOString(),
+    items: order.items.map(toOrderItemDto),
   };
 }
 
