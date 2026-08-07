@@ -1,7 +1,7 @@
 import { API_BASE_URL } from "../env";
 import type { SiteSettings, SitePage } from "./types";
 
-const DEFAULT_SETTINGS: SiteSettings = { siteName: "Site", logoUrl: null, homePageId: null };
+const DEFAULT_SETTINGS: SiteSettings = { siteName: "Site", logoUrl: null, homePageId: null, siteTemplate: "SHOWCASE" };
 
 /** Sunucu bileşenlerinden çağrılır — bkz. server-plans.ts'teki apiFetch kullanılmama gerekçesi. */
 export async function fetchSiteSettingsServer(): Promise<SiteSettings> {

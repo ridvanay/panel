@@ -20,7 +20,25 @@ import { ImageUploadField } from "@/components/admin/media/image-upload-field";
 import { PageHeading } from "@/components/admin/page-heading";
 import { cn } from "@/lib/utils";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
-import { AlertCircle, CheckCircle2, Globe, ImageIcon, Lock, Mail, ShieldCheck, Settings2 } from "lucide-react";
+import type { SiteTemplate } from "@/lib/api/types";
+import {
+  AlertCircle,
+  Briefcase,
+  CheckCircle2,
+  Globe,
+  ImageIcon,
+  Lock,
+  Mail,
+  ShieldCheck,
+  ShoppingBag,
+  Settings2,
+} from "lucide-react";
+
+const SITE_TEMPLATE_OPTIONS: { value: SiteTemplate; label: string; description: string; icon: typeof Globe }[] = [
+  { value: "SHOWCASE", label: "Tanıtım Sitesi", description: "Kurumsal/tanıtım odaklı sayfalar.", icon: Globe },
+  { value: "COMMERCE", label: "Satış Sitesi", description: "Ürün kataloğu ve satış akışı önerilir.", icon: ShoppingBag },
+  { value: "PORTFOLIO", label: "Portföy Sitesi", description: "Proje/portföy vitrini önerilir.", icon: Briefcase },
+];
 
 const gridVariants = {
   hidden: {},
@@ -55,6 +73,7 @@ interface GeneralSettingsSnapshot {
   siteName: string;
   logoUrl: string;
   homePageId: string;
+  siteTemplate: SiteTemplate;
 }
 
 function RoleBadge({ role, active }: { role: SiteRole; active: boolean }) {
@@ -105,6 +124,7 @@ export default function AdminSettingsPage() {
   const [siteName, setSiteName] = useState("");
   const [logoUrl, setLogoUrl] = useState("");
   const [homePageId, setHomePageId] = useState("");
+  const [siteTemplate, setSiteTemplate] = useState<SiteTemplate>("SHOWCASE");
   const [publishedPages, setPublishedPages] = useState<SitePage[]>([]);
   const [snapshot, setSnapshot] = useState<GeneralSettingsSnapshot | null>(null);
 
@@ -124,11 +144,13 @@ export default function AdminSettingsPage() {
       setSiteName(settings.siteName);
       setLogoUrl(settings.logoUrl ?? "");
       setHomePageId(settings.homePageId ?? "");
+      setSiteTemplate(settings.siteTemplate);
       setPublishedPages(pages.items.filter((page) => page.status === "PUBLISHED"));
       setSnapshot({
         siteName: settings.siteName,
         logoUrl: settings.logoUrl ?? "",
         homePageId: settings.homePageId ?? "",
+        siteTemplate: settings.siteTemplate,
       });
       setLoaded(true);
     } catch (err) {
@@ -144,8 +166,13 @@ export default function AdminSettingsPage() {
 
   const hasUnsavedChanges = useMemo(() => {
     if (!snapshot) return false;
-    return siteName !== snapshot.siteName || logoUrl !== snapshot.logoUrl || homePageId !== snapshot.homePageId;
-  }, [siteName, logoUrl, homePageId, snapshot]);
+    return (
+      siteName !== snapshot.siteName ||
+      logoUrl !== snapshot.logoUrl ||
+      homePageId !== snapshot.homePageId ||
+      siteTemplate !== snapshot.siteTemplate
+    );
+  }, [siteName, logoUrl, homePageId, siteTemplate, snapshot]);
 
   const pathname = usePathname();
 
@@ -227,9 +254,14 @@ export default function AdminSettingsPage() {
     setSaved(false);
     setSaving(true);
     try {
-      await settingsApi.updateSettings({ siteName, logoUrl: logoUrl || null, homePageId: homePageId || null });
+      await settingsApi.updateSettings({
+        siteName,
+        logoUrl: logoUrl || null,
+        homePageId: homePageId || null,
+        siteTemplate,
+      });
       setSaved(true);
-      setSnapshot({ siteName, logoUrl, homePageId });
+      setSnapshot({ siteName, logoUrl, homePageId, siteTemplate });
       toast.success("Ayarlar kaydedildi.");
     } catch (err) {
       const message = friendlyErrorMessage(err);
@@ -371,6 +403,48 @@ export default function AdminSettingsPage() {
                     </Select>
                   )}
                 </Field>
+              </Card>
+            </motion.div>
+
+            <motion.div variants={cardVariants} className="lg:col-span-3">
+              <Card className="space-y-4">
+                <SectionHeader
+                  icon={ShoppingBag}
+                  title="Site Şablonu"
+                  description="Sitenizin ağırlıklı kullanım amacını seçin — bu seçim SADECE modül önerisi göstermek içindir, hiçbir modülü otomatik açıp kapatmaz."
+                />
+                <div role="radiogroup" aria-label="Site şablonu" className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  {SITE_TEMPLATE_OPTIONS.map((option) => {
+                    const Icon = option.icon;
+                    const active = option.value === siteTemplate;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        role="radio"
+                        aria-checked={active}
+                        onClick={() => setSiteTemplate(option.value)}
+                        className={cn(
+                          "flex items-start gap-2.5 rounded-lg border p-3 text-left transition-all duration-300",
+                          active ? "border-primary bg-primary/5" : "border-border hover:bg-muted"
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md",
+                            active ? "bg-primary/15 text-primary" : "bg-muted text-foreground/60"
+                          )}
+                        >
+                          <Icon className="h-4 w-4" />
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block text-sm font-medium text-foreground">{option.label}</span>
+                          <span className="block text-xs text-foreground/60">{option.description}</span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
               </Card>
             </motion.div>
 

@@ -20,7 +20,7 @@ const pagesApi = await import("@/lib/api/pages");
 
 const axeOptions = { rules: { region: { enabled: false } } };
 
-const settings: SiteSettings = { siteName: "Örnek Site", logoUrl: null, homePageId: null };
+const settings: SiteSettings = { siteName: "Örnek Site", logoUrl: null, homePageId: null, siteTemplate: "SHOWCASE" };
 const permissions: PermissionsMatrix = {
   roles: ["ADMIN", "EDITOR", "VIEWER"],
   modules: [{ module: "pages", label: "Sayfalar", actions: { view: ["ADMIN", "EDITOR", "VIEWER"], edit: ["ADMIN", "EDITOR"] } }],

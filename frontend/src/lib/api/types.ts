@@ -828,16 +828,24 @@ export interface UpdateOrderStatusRequest {
   status: OrderStatus;
 }
 
+/**
+ * §Faz 4 Site Şablonu — SADECE ÖNERİ niteliğinde, hiçbir modülü otomatik açıp kapatmaz,
+ * hiçbir CSS/layout dallanmasına yol açmaz. Bkz. `SiteModule.recommendedFor`.
+ */
+export type SiteTemplate = "SHOWCASE" | "COMMERCE" | "PORTFOLIO";
+
 export interface SiteSettings {
   siteName: string;
   logoUrl: string | null;
   homePageId: string | null;
+  siteTemplate: SiteTemplate;
 }
 
 export interface UpdateSiteSettingsRequest {
   siteName?: string;
   logoUrl?: string | null;
   homePageId?: string | null;
+  siteTemplate?: SiteTemplate;
 }
 
 export interface UpdateBlogPostRequest {
@@ -1254,6 +1262,12 @@ export interface SiteModule {
   enabled: boolean;
   updatedAt: string | null;
   updatedBy: UserSummary | null;
+  /**
+   * §Faz 4 Site Şablonu — bu modülün hangi site şablon(lar)ı için ÖNERİLDİĞİ (yalnızca görsel
+   * ipucu, davranışı etkilemez). SHOWCASE için özel önerilen modül yoktur, bu yüzden boş/undefined
+   * olabilir.
+   */
+  recommendedFor?: SiteTemplate[];
 }
 
 export interface UpdateSiteModuleRequest {

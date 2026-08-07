@@ -21,7 +21,7 @@ const navigationApi = await import("@/lib/api/navigation");
 
 const axeOptions = { rules: { region: { enabled: false } } };
 
-const settings: SiteSettings = { siteName: "Örnek Site", logoUrl: null, homePageId: null };
+const settings: SiteSettings = { siteName: "Örnek Site", logoUrl: null, homePageId: null, siteTemplate: "SHOWCASE" };
 
 const publishedPages: SitePage[] = [
   {

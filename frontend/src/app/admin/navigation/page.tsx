@@ -312,7 +312,7 @@ export default function AdminNavigationPage() {
     );
   }
 
-  const previewSettings = { siteName, logoUrl: logoUrl || null, homePageId: null };
+  const previewSettings = { siteName, logoUrl: logoUrl || null, homePageId: null, siteTemplate: "SHOWCASE" as const };
   // Henüz label/href/url doldurulmamış yeni eklenen satırlar önizlemeye YANSITILMAZ — aksi
   // halde SiteHeader/SiteFooter bunları `<a href="">` (erişilebilir ismi olmayan link, axe-core
   // "link-name" kritik ihlali) olarak render eder (bkz. qa-agent a11y bulgusu).
