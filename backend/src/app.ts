@@ -26,6 +26,7 @@ import { adminBlogCategoriesRoutes, adminBlogPostsRoutes, publicBlogRoutes } fro
 import { adminMediaRoutes } from "./modules/media/media.routes";
 import { adminStatsRoutes } from "./modules/stats/stats.routes";
 import { adminSettingsRoutes, publicSettingsRoutes } from "./modules/settings/settings.routes";
+import { adminSiteModulesRoutes, publicModulesRoutes } from "./modules/site-modules/site-modules.routes";
 import { adminNavigationRoutes, publicNavigationRoutes } from "./modules/navigation/navigation.routes";
 import { systemRoutes } from "./modules/system/system.routes";
 import { emailTemplatesRoutes } from "./modules/email-templates/email-templates.routes";
@@ -139,6 +140,9 @@ export function buildApp() {
       api.register(adminSettingsRoutes, { prefix: "/admin/settings" });
       api.register(publicNavigationRoutes, { prefix: "/navigation" });
       api.register(adminNavigationRoutes, { prefix: "/admin/navigation" });
+      // §10.9 Eklenti/Modül Yönetimi — bkz. ARCHITECTURE.md §10.9.
+      api.register(publicModulesRoutes, { prefix: "/modules" });
+      api.register(adminSiteModulesRoutes, { prefix: "/admin/modules" });
       // Route içinde `/health` path'i tanımlanır, nihai uç `/admin/health` olur.
       api.register(systemRoutes, { prefix: "/admin" });
       api.register(emailTemplatesRoutes, { prefix: "/admin/notifications/templates" });

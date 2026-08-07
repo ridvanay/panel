@@ -21,6 +21,7 @@ import type {
   ImportJob,
   ImportJobError,
   ExportJob,
+  SiteModule,
 } from "@prisma/client";
 import type {
   UserDto,
@@ -47,10 +48,12 @@ import type {
   ImportJobErrorDto,
   ImportJobPreviewDto,
   ExportJobDto,
+  SiteModuleDto,
 } from "../schemas/entities";
 import { env } from "../config/env";
 import { computeBlogPostSeoScore, computePageSeoScore } from "../lib/seo-score";
 import { DUPLICATE_STRATEGY_FROM_PRISMA, SEVERITY_FROM_PRISMA } from "../modules/import/import.constants";
+import type { ModuleDefinition } from "../lib/module-registry";
 
 export function toUserDto(user: User): UserDto {
   return {
@@ -231,6 +234,25 @@ export function toSiteSettingsDto(settings: SiteSettings): SiteSettingsDto {
     siteName: settings.siteName,
     logoUrl: settings.logoUrl,
     homePageId: settings.homePageId,
+  };
+}
+
+/**
+ * §10.9 Eklenti/Modül Yönetimi — statik registry TANIMINI (`ModuleDefinition`) `SiteModule`
+ * tablosundaki durum satırıyla (varsa) birleştirir. `row` YOKSA (henüz hiç toggle edilmemiş)
+ * `definition.defaultEnabled` fallback olur, `updatedAt`/`updatedBy` `null` döner.
+ */
+export function toSiteModuleDto(
+  definition: ModuleDefinition,
+  row: (SiteModule & { updatedBy: User | null }) | null
+): SiteModuleDto {
+  return {
+    key: definition.key,
+    label: definition.label,
+    description: definition.description,
+    enabled: row ? row.enabled : definition.defaultEnabled,
+    updatedAt: row ? row.updatedAt.toISOString() : null,
+    updatedBy: row?.updatedBy ? toUserSummaryDto(row.updatedBy) : null,
   };
 }
 

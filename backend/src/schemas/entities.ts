@@ -262,6 +262,26 @@ export const SiteSettingsSchema = z.object({
 });
 export type SiteSettingsDto = z.infer<typeof SiteSettingsSchema>;
 
+// ---------- §10.9 Eklenti/Modül Yönetimi — modül TANIMI lib/module-registry.ts'te statik, burada
+// SADECE aktif/pasif durum + kim/ne zaman değiştirdiği görünür (bkz. prisma/schema.prisma::SiteModule).
+
+export const SiteModuleSchema = z.object({
+  key: z.string(),
+  label: z.string(),
+  description: z.string(),
+  enabled: z.boolean(),
+  updatedAt: z.string().nullable(),
+  updatedBy: UserSummarySchema.nullable(),
+});
+export type SiteModuleDto = z.infer<typeof SiteModuleSchema>;
+
+/** `GET /modules` (public) yanıtı — label/description/updatedBy TAŞIMAZ, sadece nav/layout kararı için. */
+export const PublicSiteModuleSchema = z.object({
+  key: z.string(),
+  enabled: z.boolean(),
+});
+export type PublicSiteModuleDto = z.infer<typeof PublicSiteModuleSchema>;
+
 export const SocialPlatformSchema = z.enum(["TWITTER", "GITHUB", "LINKEDIN", "INSTAGRAM", "FACEBOOK", "YOUTUBE", "OTHER"]);
 
 export const NavigationItemSchema = z.object({
