@@ -317,6 +317,65 @@ export const ProductSchema = z.object({
 });
 export type ProductDto = z.infer<typeof ProductSchema>;
 
+// ---------- §10.9.4 Portföy Modülü (Eklenti/Modül Yönetimi) — `Product`'ın (§10.9.2)
+// BİREBİR paterni, ticari alanlar (fiyat/stok/SKU) yerine `clientName`/`projectUrl`/`completedAt`/
+// `order` (manuel sıralama, bkz. ARCHITECTURE.md, prisma/schema.prisma::PortfolioItem).
+
+export const PortfolioCategorySchema = z.object({
+  id: z.string().uuid(),
+  name: z.string(),
+  slug: z.string(),
+  createdAt: z.string(),
+});
+export type PortfolioCategoryDto = z.infer<typeof PortfolioCategorySchema>;
+
+/** Sıralı portföy galerisi öğesi — bu fazda YAZMA ucu YOK (yalnızca okunur, `ProductImageSchema` ile AYNI patern). */
+export const PortfolioImageSchema = z.object({
+  id: z.string().uuid(),
+  media: MediaSchema,
+  order: z.number().int(),
+});
+export type PortfolioImageDto = z.infer<typeof PortfolioImageSchema>;
+
+export const PortfolioItemSchema = z.object({
+  id: z.string().uuid(),
+  title: z.string(),
+  slug: z.string(),
+  summary: z.string().nullable(),
+  contentHtml: z.string(),
+  clientName: z.string().nullable(),
+  projectUrl: z.string().nullable(),
+  completedAt: z.string().nullable(),
+  // Manuel sıralama (kullanıcı kararı) — `viewCount`/`seq` ile KARIŞTIRILMAMALI.
+  order: z.number().int(),
+  status: PageStatusSchema,
+  category: PortfolioCategorySchema.nullable(),
+  coverMedia: MediaSchema.nullable(),
+  images: z.array(PortfolioImageSchema),
+  seoTitle: z.string().nullable(),
+  seoDescription: z.string().nullable(),
+  // §10.2 Gelişmiş SEO & Social Card — bkz. ARCHITECTURE.md §10.2.
+  ogTitle: z.string().nullable(),
+  ogImageUrl: z.string().nullable(),
+  canonicalUrl: z.string().nullable(),
+  noIndex: z.boolean(),
+  // §10.5 Çoklu Dil & Yerelleştirme — TR (kolonlar) kanonik, translations.EN yalnızca override.
+  translations: z.record(z.string(), z.record(z.string(), z.unknown())),
+  publishedAt: z.string().nullable(),
+  // Zamanlanmış yayın hedef tarihi — yalnızca status=SCHEDULED iken anlamlı.
+  scheduledAt: z.string().nullable(),
+  viewCount: z.number().int(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  // ---- §10.7 İçerik Yönetim Listesi ----
+  deletedAt: z.string().nullable(),
+  authorId: z.string().uuid().nullable(),
+  author: UserSummarySchema.nullable(),
+  seoScore: z.number().int().min(0).max(100),
+  seoScoreIssues: z.array(SeoScoreIssueSchema),
+});
+export type PortfolioItemDto = z.infer<typeof PortfolioItemSchema>;
+
 export const SiteSettingsSchema = z.object({
   siteName: z.string(),
   logoUrl: z.string().nullable(),
@@ -431,7 +490,7 @@ export type SessionDto = z.infer<typeof SessionSchema>;
 
 // ---------- §10.1 İçerik Sürüm Kontrolü (Revision History) ----------
 
-export const ContentEntityTypeSchema = z.enum(["PAGE", "BLOG_POST", "PRODUCT"]);
+export const ContentEntityTypeSchema = z.enum(["PAGE", "BLOG_POST", "PRODUCT", "PORTFOLIO_ITEM"]);
 
 export const ContentRevisionSummarySchema = z.object({
   id: z.string().uuid(),

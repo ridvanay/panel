@@ -24,6 +24,13 @@ export const MODULE_REGISTRY: ModuleDefinition[] = [
     defaultEnabled: true,
     adminPath: "/admin/products",
   },
+  {
+    key: "portfolio",
+    label: "Portföy",
+    description: "Proje/iş portföyü.",
+    defaultEnabled: true,
+    adminPath: "/admin/portfolio",
+  },
 ];
 
 export function getModuleDefinition(key: string): ModuleDefinition | undefined {

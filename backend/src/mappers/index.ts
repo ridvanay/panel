@@ -25,6 +25,9 @@ import type {
   ProductCategory,
   Product,
   ProductImage,
+  PortfolioCategory,
+  PortfolioItem,
+  PortfolioImage,
   CartItem,
   Order,
   OrderItem,
@@ -58,13 +61,21 @@ import type {
   ProductCategoryDto,
   ProductDto,
   ProductImageDto,
+  PortfolioCategoryDto,
+  PortfolioItemDto,
+  PortfolioImageDto,
   CartDto,
   CartItemDto,
   OrderDto,
   OrderItemDto,
 } from "../schemas/entities";
 import { env } from "../config/env";
-import { computeBlogPostSeoScore, computePageSeoScore, computeProductSeoScore } from "../lib/seo-score";
+import {
+  computeBlogPostSeoScore,
+  computePageSeoScore,
+  computePortfolioItemSeoScore,
+  computeProductSeoScore,
+} from "../lib/seo-score";
 import { DUPLICATE_STRATEGY_FROM_PRISMA, SEVERITY_FROM_PRISMA } from "../modules/import/import.constants";
 import type { ModuleDefinition } from "../lib/module-registry";
 
@@ -412,6 +423,76 @@ export function toProductDto(product: ProductWithRelations): ProductDto {
     deletedAt: product.deletedAt ? product.deletedAt.toISOString() : null,
     authorId: product.authorId,
     author: product.author ? toUserSummaryDto(product.author) : null,
+    seoScore: score,
+    seoScoreIssues: issues,
+  };
+}
+
+export function toPortfolioCategoryDto(category: PortfolioCategory): PortfolioCategoryDto {
+  return {
+    id: category.id,
+    name: category.name,
+    slug: category.slug,
+    createdAt: category.createdAt.toISOString(),
+  };
+}
+
+type PortfolioImageWithMedia = PortfolioImage & { media: Media };
+
+function toPortfolioImageDto(image: PortfolioImageWithMedia): PortfolioImageDto {
+  return {
+    id: image.id,
+    media: toMediaDto(image.media),
+    order: image.order,
+  };
+}
+
+type PortfolioItemWithRelations = PortfolioItem & {
+  category: PortfolioCategory | null;
+  coverMedia: Media | null;
+  author?: User | null;
+  images?: PortfolioImageWithMedia[];
+};
+
+export function toPortfolioItemDto(item: PortfolioItemWithRelations): PortfolioItemDto {
+  const { score, issues } = computePortfolioItemSeoScore({
+    seoTitle: item.seoTitle,
+    seoDescription: item.seoDescription,
+    ogImageUrl: item.ogImageUrl,
+    contentHtml: item.contentHtml,
+    coverMediaUrl: item.coverMedia ? absolutizeMediaUrl(item.coverMedia.url) : null,
+  });
+
+  return {
+    id: item.id,
+    title: item.title,
+    slug: item.slug,
+    summary: item.summary,
+    contentHtml: item.contentHtml,
+    clientName: item.clientName,
+    projectUrl: item.projectUrl,
+    completedAt: item.completedAt ? item.completedAt.toISOString() : null,
+    order: item.order,
+    status: item.status,
+    category: item.category ? toPortfolioCategoryDto(item.category) : null,
+    coverMedia: item.coverMedia ? toMediaDto(item.coverMedia) : null,
+    images: (item.images ?? []).map(toPortfolioImageDto),
+    seoTitle: item.seoTitle,
+    seoDescription: item.seoDescription,
+    ogTitle: item.ogTitle,
+    ogImageUrl: item.ogImageUrl,
+    canonicalUrl: item.canonicalUrl,
+    noIndex: item.noIndex,
+    translations: (item.translations as Record<string, Record<string, unknown>>) ?? {},
+    publishedAt: item.publishedAt ? item.publishedAt.toISOString() : null,
+    scheduledAt: item.scheduledAt ? item.scheduledAt.toISOString() : null,
+    viewCount: item.viewCount,
+    createdAt: item.createdAt.toISOString(),
+    updatedAt: item.updatedAt.toISOString(),
+    // ---- §10.7 İçerik Yönetim Listesi ----
+    deletedAt: item.deletedAt ? item.deletedAt.toISOString() : null,
+    authorId: item.authorId,
+    author: item.author ? toUserSummaryDto(item.author) : null,
     seoScore: score,
     seoScoreIssues: issues,
   };

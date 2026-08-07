@@ -1,4 +1,4 @@
-import type { BlogPost, Page, Product } from "@prisma/client";
+import type { BlogPost, Page, PortfolioItem, Product } from "@prisma/client";
 import type { SeoScoreIssueDto } from "../schemas/entities";
 
 /**
@@ -229,6 +229,30 @@ export function computeProductSeoScore(
   return combineResults([
     scoreMetaTitle(product.seoTitle),
     scoreMetaDescription(product.seoDescription),
+    scoreCoverImage(coverImageUrl),
+    scoreImagesWithAlt(images),
+    scoreContentLength(countWords(contentText), PRODUCT_WORD_THRESHOLD),
+  ]);
+}
+
+/**
+ * §10.9.4 Portföy Modülü — `computeProductSeoScore` ile BİREBİR AYNI patern, yalnızca alan adı
+ * `descriptionHtml` yerine `contentHtml`'dir (bkz. prisma/schema.prisma::PortfolioItem).
+ */
+export function computePortfolioItemSeoScore(
+  item: Pick<PortfolioItem, "seoTitle" | "seoDescription" | "ogImageUrl" | "contentHtml"> & {
+    coverMediaUrl: string | null;
+  }
+): SeoScoreResult {
+  const coverImageUrl = item.coverMediaUrl?.trim() ? item.coverMediaUrl : item.ogImageUrl;
+  const contentHtml = item.contentHtml ?? "";
+  // Kapak görseli bu kriteri KARŞILAMAZ — yalnızca içerik (contentHtml) içindeki <img> etiketleri sayılır.
+  const images = extractImgTags(contentHtml).map((tag) => ({ alt: extractAlt(tag) }));
+  const contentText = stripHtml(contentHtml);
+
+  return combineResults([
+    scoreMetaTitle(item.seoTitle),
+    scoreMetaDescription(item.seoDescription),
     scoreCoverImage(coverImageUrl),
     scoreImagesWithAlt(images),
     scoreContentLength(countWords(contentText), PRODUCT_WORD_THRESHOLD),
