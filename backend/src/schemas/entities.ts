@@ -189,6 +189,8 @@ export const PageSchema = z.object({
   // §10.5 Çoklu Dil & Yerelleştirme — TR (kolonlar) kanonik, translations.EN yalnızca override.
   translations: z.record(z.string(), z.record(z.string(), z.unknown())),
   publishedAt: z.string().nullable(),
+  // Zamanlanmış yayın hedef tarihi — yalnızca status=SCHEDULED iken anlamlı.
+  scheduledAt: z.string().nullable(),
   viewCount: z.number().int(),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -228,6 +230,8 @@ export const BlogPostSchema = z.object({
   // §10.5 Çoklu Dil & Yerelleştirme — TR (kolonlar) kanonik, translations.EN yalnızca override.
   translations: z.record(z.string(), z.record(z.string(), z.unknown())),
   publishedAt: z.string().nullable(),
+  // Zamanlanmış yayın hedef tarihi — yalnızca status=SCHEDULED iken anlamlı.
+  scheduledAt: z.string().nullable(),
   viewCount: z.number().int(),
   createdAt: z.string(),
   updatedAt: z.string(),
