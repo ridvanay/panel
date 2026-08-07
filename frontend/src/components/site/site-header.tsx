@@ -1,4 +1,8 @@
+"use client";
+
 import Link from "next/link";
+import { ShoppingCart } from "lucide-react";
+import { useCartOptional } from "@/context/cart-context";
 import type { NavigationItemDto, SitePage, SiteSettings } from "@/lib/api/types";
 
 interface SiteHeaderProps {
@@ -11,6 +15,10 @@ interface SiteHeaderProps {
 }
 
 export function SiteHeader({ settings, pages, navigationItems, ctaLabel, ctaHref }: SiteHeaderProps) {
+  // `useCartOptional`: bu bileşen `admin/navigation/page.tsx`'teki canlı önizlemede
+  // `CartProvider` OLMADAN da render edilir (admin layout'unda sepet KASTEN yok) — o durumda
+  // rozet sessizce 0 gösterir, hata fırlatmaz.
+  const itemCount = useCartOptional()?.itemCount ?? 0;
   const navLinks =
     navigationItems && navigationItems.length > 0
       ? navigationItems.map((item) => ({ href: item.href, label: item.label }))
@@ -46,6 +54,21 @@ export function SiteHeader({ settings, pages, navigationItems, ctaLabel, ctaHref
               {ctaLabel}
             </Link>
           )}
+          <Link
+            href="/cart"
+            aria-label={`Sepet, ${itemCount} ürün`}
+            className="relative inline-flex h-9 w-9 items-center justify-center rounded-lg text-foreground/70 transition-colors hover:bg-surface-muted hover:text-foreground"
+          >
+            <ShoppingCart className="h-5 w-5" />
+            {itemCount > 0 && (
+              <span
+                aria-hidden="true"
+                className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground"
+              >
+                {itemCount > 99 ? "99+" : itemCount}
+              </span>
+            )}
+          </Link>
         </div>
       </nav>
     </header>

@@ -4,6 +4,7 @@ import { fetchProductBySlugServer } from "@/lib/api/server-products";
 import { fetchSiteSettingsServer } from "@/lib/api/server-settings";
 import { ViewTracker } from "@/components/site/view-tracker";
 import { ViewCount } from "@/components/site/view-count";
+import { AddToCartButton } from "@/components/site/add-to-cart-button";
 import { buildContentMetadata } from "@/lib/seo";
 import { formatPriceFromCents } from "@/lib/format-price";
 import { SITE_URL } from "@/lib/env";
@@ -92,6 +93,8 @@ export default async function ProductDetailPage({ params }: PageProps) {
       </div>
 
       {product.excerpt && <p className="mt-2 text-sm text-foreground/60">{product.excerpt}</p>}
+
+      <AddToCartButton productId={product.id} stockQuantity={product.stockQuantity} />
 
       <div className="prose mt-6 max-w-none" dangerouslySetInnerHTML={{ __html: product.descriptionHtml }} />
     </article>
