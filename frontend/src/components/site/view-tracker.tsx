@@ -4,9 +4,15 @@ import { useEffect, useRef } from "react";
 import { API_BASE_URL } from "@/lib/env";
 
 interface ViewTrackerProps {
-  kind: "page" | "blog";
+  kind: "page" | "blog" | "product";
   slug: string;
 }
+
+const VIEW_PATH_PREFIX: Record<ViewTrackerProps["kind"], string> = {
+  page: "/pages",
+  blog: "/blog",
+  product: "/products",
+};
 
 /**
  * Sayfa render olur olmaz (yalnızca tarayıcıda, ilk mount'ta) görüntülenme sayacını artırır.
@@ -20,7 +26,7 @@ export function ViewTracker({ kind, slug }: ViewTrackerProps) {
     if (fired.current) return;
     fired.current = true;
 
-    const path = kind === "page" ? `/pages/${slug}/view` : `/blog/${slug}/view`;
+    const path = `${VIEW_PATH_PREFIX[kind]}/${slug}/view`;
     fetch(`${API_BASE_URL}${path}`, { method: "POST" }).catch(() => {});
   }, [kind, slug]);
 
