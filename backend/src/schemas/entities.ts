@@ -369,7 +369,7 @@ export type SessionDto = z.infer<typeof SessionSchema>;
 
 // ---------- §10.1 İçerik Sürüm Kontrolü (Revision History) ----------
 
-export const ContentEntityTypeSchema = z.enum(["PAGE", "BLOG_POST"]);
+export const ContentEntityTypeSchema = z.enum(["PAGE", "BLOG_POST", "PRODUCT"]);
 
 export const ContentRevisionSummarySchema = z.object({
   id: z.string().uuid(),
