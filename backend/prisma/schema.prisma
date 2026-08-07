@@ -602,16 +602,27 @@ model PageView {
   @@map("page_views")
 }
 
+enum SiteTemplate {
+  SHOWCASE
+  COMMERCE
+  PORTFOLIO
+}
+
 // Tek satırlık (singleton) global site ayarları — id her zaman "singleton" sabiti.
 model SiteSettings {
-  id                  String   @id @default("singleton")
-  siteName            String   @default("Site")
+  id                  String       @id @default("singleton")
+  siteName            String       @default("Site")
   logoUrl             String?
   homePageId          String?
+  // §10.9.5 Site Şablonu (Eklenti/Modül Yönetimi) — SADECE tavsiye niteliğinde: hangi
+  // modüllerin/blok tiplerinin önerildiğini UI'da göstermek için kullanılır, hiçbir modülü
+  // OTOMATIK açmaz/kapatmaz (bkz. ARCHITECTURE.md, kullanıcı kararı). SHOWCASE=Tanıtım Sitesi,
+  // COMMERCE=Satış Sitesi, PORTFOLIO=Portföy Sitesi.
+  siteTemplate        SiteTemplate @default(SHOWCASE)
   headerCtaLabel      String?
   headerCtaHref       String?
   footerCopyrightText String?
-  updatedAt           DateTime @updatedAt
+  updatedAt           DateTime     @updatedAt
 
   // Kök `/` rotasında render edilecek sayfa. Sayfa silinirse otomatik null'a düşer
   // (bkz. pages.routes.ts) — frontend bu durumda varsayılan (SaaS pazarlama) fallback'i gösterir.
