@@ -36,6 +36,7 @@ import { registerImportRetentionScheduler } from "./modules/import/import.retent
 import { adminReportsRoutes } from "./modules/reports/reports.routes";
 import { recoverStuckExportJobs } from "./modules/reports/reports.worker";
 import { registerExportRetentionScheduler } from "./modules/reports/reports.retention";
+import { registerScheduledPublishSweeper } from "./lib/scheduled-publish";
 
 export function buildApp() {
   // `SENTRY_DSN` tanımsızsa no-op (bkz. lib/sentry.ts) — her `buildApp()` çağrısında
@@ -175,6 +176,13 @@ export function buildApp() {
     // işleri (in-process kuyruk restart'ta kaybolduğu için) yeniden kuyruğa alır.
     await recoverStuckExportJobs(app);
     registerExportRetentionScheduler(app);
+
+    // İçerik editörü Faz 4 (zamanlanmış yayın) — `registerImportRetentionScheduler`/
+    // `registerExportRetentionScheduler` ile AYNI gerekçeyle `onReady`'de: `app.prisma`
+    // yalnızca burada (tüm plugin ağacı yüklendikten SONRA) güvenle kullanılabilir. Açılışta
+    // hemen bir kez çalışır ki uzun süre kapalı kalmış bir sunucuda bekleyen zamanlamalar
+    // dakikalık turu beklemeden anında yayınlansın (bkz. lib/scheduled-publish.ts).
+    registerScheduledPublishSweeper(app);
   });
 
   return app;
