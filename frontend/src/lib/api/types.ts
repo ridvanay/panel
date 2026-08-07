@@ -632,6 +632,88 @@ export interface AdjustProductStockRequest {
   stockQuantity: number;
 }
 
+/**
+ * Sepet/Checkout/Sipariş — bkz. görev notu "Backend kontratı (kesinleşti, DOĞRULANMIŞ)".
+ * Sepet kimliği `cart_token` httpOnly cookie ile taşınır; frontend cookie'yi ELLE OKUMAZ/YAZMAZ,
+ * `apiFetch`'in `credentials:"include"` ayarı yeterlidir.
+ */
+export interface CartProduct {
+  id: string;
+  title: string;
+  slug: string;
+  coverImageUrl: string | null;
+  stockQuantity: number;
+}
+
+export interface CartItem {
+  id: string;
+  productId: string;
+  product: CartProduct;
+  quantity: number;
+  /** Sepete eklendiği andaki birim fiyat — güncel fiyattan (`currentPriceCents`) farklıysa UI uyarı gösterir. */
+  frozenUnitPriceCents: number;
+  currentPriceCents: number;
+  lineTotalCents: number;
+}
+
+export interface Cart {
+  items: CartItem[];
+  /** Sepet boşken `null` olabilir. */
+  currency: string | null;
+  subtotalCents: number;
+}
+
+export interface AddCartItemRequest {
+  productId: string;
+  /** 1-99 aralığı — backend `AddCartItemSchema.quantity`. */
+  quantity: number;
+}
+
+export interface UpdateCartItemRequest {
+  quantity: number;
+}
+
+/** `POST /checkout/session` — sepetten Stripe Checkout oturumu başlatır. */
+export interface CreateCartCheckoutSessionRequest {
+  customerEmail: string;
+  customerName?: string;
+}
+
+export type OrderStatus = "PENDING" | "PAID" | "FAILED" | "CANCELLED" | "EXPIRED" | "REFUNDED" | "FULFILLED";
+
+export interface OrderItem {
+  id: string;
+  productId: string;
+  productTitle: string;
+  productSku: string | null;
+  unitPriceCents: number;
+  quantity: number;
+  lineTotalCents: number;
+}
+
+export interface Order {
+  id: string;
+  orderNumber: string;
+  status: OrderStatus;
+  /** `GET /admin/orders` liste ucunda MASKELİ, `GET /admin/orders/:orderId` tekil ucunda MASKESİZ döner. */
+  customerEmail: string;
+  customerName: string | null;
+  currency: string;
+  subtotalCents: number;
+  discountCents: number;
+  taxCents: number;
+  totalCents: number;
+  errorSummary: string | null;
+  paidAt: string | null;
+  createdAt: string;
+  items: OrderItem[];
+}
+
+/** `PATCH /admin/orders/:orderId/status` — sadece `PENDING→CANCELLED`, `PAID→FULFILLED` izinli. */
+export interface UpdateOrderStatusRequest {
+  status: OrderStatus;
+}
+
 export interface SiteSettings {
   siteName: string;
   logoUrl: string | null;
