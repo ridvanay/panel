@@ -19,3 +19,8 @@ export const OrderIdParamSchema = z.object({
 export const UpdateOrderStatusRequestSchema = z.object({
   status: z.enum(["FULFILLED", "CANCELLED"]),
 });
+
+/** `POST /:orderId/refund` — yalnızca `PAID`/`FULFILLED` siparişlerde kabul edilir (bkz. orders.routes.ts). */
+export const RefundOrderRequestSchema = z.object({
+  reason: z.string().min(1).max(500).optional(),
+});

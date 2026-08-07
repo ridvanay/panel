@@ -529,11 +529,20 @@ export interface UpdateProductCategoryRequest {
   slug?: string;
 }
 
-/** Sıralı ürün galerisi öğesi — bu fazda YAZMA ucu YOK (yalnızca okunur, bkz. görev notu). */
+/**
+ * Sıralı ürün galerisi öğesi — `POST /admin/products/:productId/images` ile eklenir,
+ * `DELETE /admin/products/:productId/images/:imageId` ile kaldırılır. Her iki uç da
+ * güncellenmiş `Product` DTO'sunu (bu `images` alanı dahil) döner.
+ */
 export interface ProductImage {
   id: string;
   media: Media;
   order: number;
+}
+
+/** `POST /admin/products/:productId/images` gövdesi. */
+export interface AddProductImageRequest {
+  mediaId: string;
 }
 
 export interface Product {
@@ -654,11 +663,20 @@ export interface UpdatePortfolioCategoryRequest {
   slug?: string;
 }
 
-/** Sıralı portföy galerisi öğesi — bu fazda YAZMA ucu YOK, `ProductImage` ile AYNI patern. */
+/**
+ * Sıralı portföy galerisi öğesi — `ProductImage` ile AYNI patern:
+ * `POST /admin/portfolio/:portfolioItemId/images` ile eklenir,
+ * `DELETE /admin/portfolio/:portfolioItemId/images/:imageId` ile kaldırılır.
+ */
 export interface PortfolioImage {
   id: string;
   media: Media;
   order: number;
+}
+
+/** `POST /admin/portfolio/:portfolioItemId/images` gövdesi. */
+export interface AddPortfolioImageRequest {
+  mediaId: string;
 }
 
 export interface PortfolioItem {
@@ -826,6 +844,11 @@ export interface Order {
 /** `PATCH /admin/orders/:orderId/status` — sadece `PENDING→CANCELLED`, `PAID→FULFILLED` izinli. */
 export interface UpdateOrderStatusRequest {
   status: OrderStatus;
+}
+
+/** `POST /admin/orders/:orderId/refund` — sadece `PAID`/`FULFILLED` siparişler için, aksi halde 409. */
+export interface RefundOrderRequest {
+  reason?: string;
 }
 
 /**

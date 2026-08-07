@@ -3,15 +3,18 @@
 import { use, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { AlertCircle, CheckCircle2, ChevronLeft, XCircle } from "lucide-react";
+import { AlertCircle, CheckCircle2, ChevronLeft, RotateCcw, XCircle } from "lucide-react";
 import * as ordersApi from "@/lib/api/orders";
 import type { Order, OrderStatus } from "@/lib/api/types";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert } from "@/components/ui/alert";
+import { Field } from "@/components/ui/field";
+import { Textarea } from "@/components/ui/textarea";
 import { Spinner } from "@/components/ui/spinner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { formatPriceFromCents } from "@/lib/format-price";
@@ -26,6 +29,9 @@ export default function AdminOrderDetailPage({ params }: { params: Promise<{ ord
   const [error, setError] = useState<string | null>(null);
   const [updating, setUpdating] = useState(false);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [refundDialogOpen, setRefundDialogOpen] = useState(false);
+  const [refundReason, setRefundReason] = useState("");
+  const [refunding, setRefunding] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
@@ -53,6 +59,21 @@ export default function AdminOrderDetailPage({ params }: { params: Promise<{ ord
       toast.error(friendlyErrorMessage(err));
     } finally {
       setUpdating(false);
+    }
+  }
+
+  async function handleRefund() {
+    setRefunding(true);
+    try {
+      const updated = await ordersApi.refundOrder(orderId, refundReason.trim() || undefined);
+      setOrder(updated);
+      toast.success("Sipariş iade edildi.");
+      setRefundDialogOpen(false);
+      setRefundReason("");
+    } catch (err) {
+      toast.error(friendlyErrorMessage(err));
+    } finally {
+      setRefunding(false);
     }
   }
 
@@ -113,6 +134,12 @@ export default function AdminOrderDetailPage({ params }: { params: Promise<{ ord
             <Button loading={updating} onClick={() => handleStatusChange("FULFILLED")}>
               <CheckCircle2 className="h-4 w-4" />
               Tamamlandı Olarak İşaretle
+            </Button>
+          )}
+          {(order.status === "PAID" || order.status === "FULFILLED") && (
+            <Button variant="outline" onClick={() => setRefundDialogOpen(true)}>
+              <RotateCcw className="h-4 w-4" />
+              İade Et
             </Button>
           )}
         </div>
@@ -187,6 +214,44 @@ export default function AdminOrderDetailPage({ params }: { params: Promise<{ ord
         loading={updating}
         onConfirm={() => handleStatusChange("CANCELLED")}
       />
+
+      <Dialog
+        open={refundDialogOpen}
+        onOpenChange={(next) => {
+          setRefundDialogOpen(next);
+          if (!next) setRefundReason("");
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Siparişi iade et</DialogTitle>
+            <DialogDescription>
+              {`"${order.orderNumber}" numaralı siparişi iade etmek istediğinize emin misiniz? Bu işlem geri alınamaz.`}
+            </DialogDescription>
+          </DialogHeader>
+
+          <Field id="refundReason" label="Sebep" hint="Opsiyonel — yalnızca dahili kayıt amaçlıdır.">
+            {(inputProps) => (
+              <Textarea
+                {...inputProps}
+                rows={3}
+                value={refundReason}
+                onChange={(e) => setRefundReason(e.target.value)}
+                placeholder="İade sebebini yazın…"
+              />
+            )}
+          </Field>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setRefundDialogOpen(false)}>
+              Vazgeç
+            </Button>
+            <Button type="button" variant="destructive" loading={refunding} onClick={handleRefund}>
+              İade Et
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

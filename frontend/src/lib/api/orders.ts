@@ -1,5 +1,5 @@
 import { apiFetch, apiFetchPage } from "./client";
-import type { Order, OrderStatus, Page, UpdateOrderStatusRequest } from "./types";
+import type { Order, OrderStatus, Page, RefundOrderRequest, UpdateOrderStatusRequest } from "./types";
 
 export interface ListOrdersParams {
   cursor?: string;
@@ -22,4 +22,12 @@ export function getOrder(orderId: string) {
 /** `PATCH /admin/orders/:orderId/status` — sadece `PENDING→CANCELLED`, `PAID→FULFILLED` izinli, aksi halde 409. */
 export function updateOrderStatus(orderId: string, input: UpdateOrderStatusRequest) {
   return apiFetch<Order>(`/admin/orders/${orderId}/status`, { method: "PATCH", body: input });
+}
+
+/** `POST /admin/orders/:orderId/refund` — sadece `PAID`/`FULFILLED` sipariş için, aksi halde 409. */
+export function refundOrder(orderId: string, reason?: string) {
+  return apiFetch<Order>(`/admin/orders/${orderId}/refund`, {
+    method: "POST",
+    body: { reason } satisfies RefundOrderRequest,
+  });
 }
