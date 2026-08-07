@@ -85,6 +85,50 @@ tags:
       burada tip ayrımı bile YAPILMAZ). Süreç-içi worker ile asenkron üretilir (kuyruk
       altyapısı yok, §10.8.1 ile aynı desen); oluşturma ucu 10 istek/10 dakika ile
       sınırlıdır (429).
+  - name: Settings
+    description: >
+      Site geneli tekil (singleton) ayarlar (`/settings`, `/admin/settings`) — bkz.
+      ARCHITECTURE.md §10.9.5. `/settings` public'tir (site header/nav bunu okur),
+      `/admin/settings` yönetim ekranı içindir, PATCH yalnızca SiteRole=ADMIN.
+  - name: Modules
+    description: >
+      Eklenti/Modül Yönetimi (`/admin/modules`, `/modules`) — bkz. ARCHITECTURE.md
+      §10.9.1. Modül TANIMLARI (`key`/`label`/`description`/`recommendedFor`) kod içi
+      statik bir registry'dir; yalnızca aktif/pasif DURUM DB'de tutulur. `GET
+      /admin/modules` SiteRole=ADMIN/EDITOR/VIEWER, `PATCH /admin/modules/{key}`
+      yalnızca ADMIN. `GET /modules` public'tir (site header/nav hangi modüllerin
+      aktif olduğunu buradan okur).
+  - name: Products
+    description: >
+      Ürünler modülü (`/admin/products`, `/products`) — bkz. ARCHITECTURE.md §10.9.2.
+      Yetki eşikleri ve çöp/SEO skoru davranışı `Pages`/`Blog` ile BİREBİR AYNIDIR
+      (§10.7), üzerine e-ticaret alanları (fiyat/stok/SKU) eklenmiştir. Public uçlar
+      (`/products*`) yalnızca `products` modülü AKTİFSE yanıt verir — kapalıyken TÜM
+      public uçlar `404 NOT_FOUND` döner (bkz. `Modules` tag'i); admin uçları modül
+      durumundan BAĞIMSIZDIR (veri korunumu).
+  - name: Portfolio
+    description: >
+      Portföy modülü (`/admin/portfolio`, `/portfolio`) — bkz. ARCHITECTURE.md §10.9.4.
+      `Products` ile BİREBİR AYNI patern (fiyat/stok/SKU yerine `clientName`/
+      `projectUrl`/`completedAt`/manuel `order` sıralaması). Public uçlar yalnızca
+      `portfolio` modülü AKTİFSE yanıt verir — kapalıyken 404 (bkz. `Modules` tag'i).
+  - name: Cart
+    description: >
+      Misafir alışveriş sepeti (`/cart`) — bkz. ARCHITECTURE.md §10.9.3. Kimlik
+      doğrulama GEREKTİRMEZ; opak, httpOnly bir çerez (`cart_token`) ile takip edilir.
+      Yalnızca `products` modülü AKTİFSE yanıt verir — kapalıyken 404.
+  - name: Checkout
+    description: >
+      Stripe Checkout oturumu oluşturma (`/checkout/session`) — bkz. ARCHITECTURE.md
+      §10.9.3. Kimlik doğrulama GEREKTİRMEZ. Yalnızca `products` modülü AKTİFSE yanıt
+      verir — kapalıyken 404. Route-level hız sınırı: 10 istek/dakika (IP bazlı).
+  - name: Orders
+    description: >
+      Admin sipariş yönetimi (`/admin/orders`) — bkz. ARCHITECTURE.md §10.9.3. **TÜM
+      uçlar İSTİSNASIZ yalnızca SiteRole=ADMIN'dir.** Modül durumundan BAĞIMSIZDIR
+      (`products` modülü kapatılsa dahi geçmiş siparişler görüntülenebilir — veri
+      korunumu, `Products`/`Portfolio` admin uçlarıyla AYNI karar). `customerEmail`
+      LİSTEDE maskelenir, DETAYDA maskesiz döner (bkz. uç açıklaması).
 
 security:
   - bearerAuth: []
@@ -2331,11 +2375,1272 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
 
+  /settings:
+    get:
+      tags: [Settings]
+      security: []
+      summary: Site ayarlarını oku (public)
+      description: >
+        Henüz hiç `PATCH /admin/settings` çağrılmadıysa (satır yok) sabit varsayılanlar
+        döner: `{ siteName: "Site", logoUrl: null, homePageId: null, siteTemplate:
+        SHOWCASE }` — lazy-upsert paterni (bkz. `settings.routes.ts::DEFAULTS`,
+        `ARCHITECTURE.md` §10.9.5).
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/SiteSettings" }
+
+  /settings/homepage:
+    get:
+      tags: [Settings]
+      security: []
+      summary: Kök `/` rotasında render edilecek sayfayı getir (public)
+      description: >
+        `SiteSettings.homePageId` boşsa VEYA seçili sayfa yayında/çöpte değilse `data:
+        null` döner — frontend bu durumda kendi varsayılan (SaaS pazarlama) fallback'ini
+        gösterir.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        allOf: [{ $ref: "#/components/schemas/Page" }]
+                        nullable: true
+
+  /admin/settings:
+    get:
+      tags: [Settings]
+      summary: Site ayarlarını oku (authenticated)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/SiteSettings" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    patch:
+      tags: [Settings]
+      summary: Site ayarlarını güncelle (yalnızca SiteRole=ADMIN)
+      description: >
+        Satır yoksa (ilk çağrı) `DEFAULTS` ile birlikte oluşturulur (upsert). Audit log:
+        `settings.update` (`metadata.changed` = gönderilen alan adları).
+
+
+        `siteTemplate` — §10.9.5 Site Şablonu (bkz. ARCHITECTURE.md). **SADECE tavsiye
+        niteliğindedir**: değeri değiştirmek HİÇBİR modülü otomatik açmaz/kapatmaz,
+        yalnızca frontend kurulum sihirbazının hangi modülleri/blok tiplerini
+        ÖNERECEĞİNİ belirler (bkz. `SiteModule.recommendedFor`). Modül açma/kapama
+        HER ZAMAN `PATCH /admin/modules/{key}` ile ayrı bir işlemdir.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateSiteSettingsRequest" }
+      responses:
+        "200":
+          description: Güncellendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/SiteSettings" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/modules:
+    get:
+      tags: [Modules]
+      summary: Modül listesini oku — tanım + aktif/pasif durum (ADMIN/EDITOR/VIEWER)
+      description: >
+        Kod içi statik `MODULE_REGISTRY`'deki HER modül tanımı (`key`/`label`/
+        `description`/`recommendedFor`) `SiteModule` tablosundaki (varsa) durum
+        satırıyla LEFT JOIN mantığıyla birleştirilir — registry'de olup DB'de satırı
+        olmayan bir modül `defaultEnabled` değeriyle, `updatedAt: null`/`updatedBy: null`
+        olarak döner (bkz. ARCHITECTURE.md §10.9.1).
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/SiteModule" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /admin/modules/{key}:
+    parameters:
+      - $ref: "#/components/parameters/ModuleKey"
+    patch:
+      tags: [Modules]
+      summary: Bir modülü aç/kapat (yalnızca SiteRole=ADMIN)
+      description: >
+        `key` registry'de tanımlı değilse `404 NOT_FOUND` döner. DB'de satır yoksa
+        (ilk toggle) lazy-upsert ile oluşturulur. Audit log: `module.enable` /
+        `module.disable` (`metadata: { key, enabled }`).
+
+
+        **Kapatmanın etkisi:** ilgili modülün PUBLIC uçları (`Products`/`Portfolio`/
+        `Cart`/`Checkout` tag'leri) `404 NOT_FOUND` döner — admin uçları ETKİLENMEZ,
+        mevcut veri korunur (bkz. ARCHITECTURE.md §10.9.1 "neden 404, neden admin
+        guard'lanmıyor").
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateModuleRequest" }
+      responses:
+        "200":
+          description: Güncellendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/SiteModule" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /modules:
+    get:
+      tags: [Modules]
+      security: []
+      summary: Aktif modül anahtarlarını oku (public)
+      description: >
+        Site header/nav'ının hangi modülleri (ör. "Ürünler" menü linki) göstereceğine
+        karar vermek için okuduğu dar/minimal görünüm — `label`/`description`/
+        `updatedBy` TAŞIMAZ.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/PublicSiteModule" }
+
+  /admin/products:
+    get:
+      tags: [Products]
+      summary: Ürünleri listele — çöp filtresi + sekme sayaçları + arama (authenticated)
+      description: >
+        Çöp kutusu semantiği, sekme sayaçları (`meta.counts`) ve cursor sayfalama
+        `Pages`/`Blog` (§10.7) ile BİREBİR AYNIDIR. EK olarak `search` — `title`/`sku`
+        alanlarında büyük/küçük harf duyarsız (`contains`, `insensitive`) arama yapar.
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/TrashedFilter"
+        - $ref: "#/components/parameters/ContentStatusFilter"
+        - $ref: "#/components/parameters/SearchQuery"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/Product" }
+                      meta: { $ref: "#/components/schemas/ContentListMeta" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [Products]
+      summary: Yeni ürün oluştur (ADMIN/EDITOR)
+      description: >
+        `slug` verilmezse `title`'dan üretilir. `authorId` verilmezse giriş yapmış
+        kullanıcı yazar olur (yalnızca ADMIN başka bir kullanıcı atayabilir — §10.7 ile
+        AYNI kural). `priceCents`/`discountPriceCents` HER ZAMAN kuruş/cent cinsinden
+        pozitif tam sayıdır (float KESİNLİKLE kabul edilmez). `discountPriceCents`
+        verilmişse `priceCents`'ten KÜÇÜK olmalıdır, aksi halde `422
+        VALIDATION_ERROR` (`error.details.discountPriceCents`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateProductRequest" }
+      responses:
+        "201":
+          description: Ürün oluşturuldu
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Product" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/products/{productId}:
+    parameters:
+      - $ref: "#/components/parameters/ProductId"
+    get:
+      tags: [Products]
+      summary: Ürün detayı (authenticated)
+      description: "Çöpteki ürünü de döner (geri yükleme/onay ekranları için) — `deletedAt` filtresi YOKTUR."
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Product" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [Products]
+      summary: Ürünü güncelle (ADMIN/EDITOR)
+      description: >
+        Her başarılı PATCH, güncellemeden önceki hali `ContentRevision` olarak kaydeder
+        (`entityType: PRODUCT`, §10.1 ile AYNI mekanizma) — **ancak bu fazda ürünler
+        için revizyon LİSTELEME/GERİ YÜKLEME UCU YOKTUR** (yalnızca yazılır, bkz.
+        ARCHITECTURE.md §10.9.2). Çöpteki bir ürün DÜZENLENEMEZ → `409 CONFLICT`. Fiyat/
+        indirim doğrulaması `POST` ile AYNIDIR (nihai/etkin değerler üzerinden çapraz
+        kontrol edilir — istekte yalnızca `discountPriceCents` gönderilse dahi mevcut
+        kayıttaki `priceCents`'e göre doğrulanır).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateProductRequest" }
+      responses:
+        "200":
+          description: Güncellendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Product" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "Çöpteki içeriği düzenleme girişimi (`error.code: CONFLICT`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+    delete:
+      tags: [Products]
+      summary: Ürünü ÇÖPE TAŞI — soft delete (ADMIN/EDITOR)
+      description: "`Pages`/`Blog` (§10.7) ile BİREBİR AYNI davranış. İdempotenttir. Kalıcı silme için `DELETE .../permanent` (yalnızca ADMIN)."
+      responses:
+        "204": { description: Çöpe taşındı }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/products/{productId}/restore:
+    parameters:
+      - $ref: "#/components/parameters/ProductId"
+    post:
+      tags: [Products]
+      summary: Ürünü çöpten geri yükle (ADMIN/EDITOR)
+      description: "`status` DEĞİŞMEZ. İdempotenttir — çöpte olmayan ürün için de 200 ve mevcut kayıt döner."
+      responses:
+        "200":
+          description: Geri yüklendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Product" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/products/{productId}/permanent:
+    parameters:
+      - $ref: "#/components/parameters/ProductId"
+    delete:
+      tags: [Products]
+      summary: Ürünü KALICI sil — geri alınamaz (yalnızca ADMIN)
+      description: >
+        Ürün ÖNCE çöpte olmalıdır, değilse `409 CONFLICT`. Aynı transaction içinde
+        `ContentRevision` satırları (polymorphic, FK YOK → elle silinir, `entityType:
+        PRODUCT`) temizlenir. Audit log: `product.permanent_delete`.
+      responses:
+        "204": { description: Kalıcı olarak silindi }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "Ürün çöpte değil (`error.code: CONFLICT`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+
+  /admin/products/{productId}/stock:
+    parameters:
+      - $ref: "#/components/parameters/ProductId"
+    patch:
+      tags: [Products]
+      summary: Stoku ELLE düzelt (ADMIN/EDITOR)
+      description: >
+        Adminin manuel stok düzeltmesi içindir — checkout'un OTOMATİK stok düşürmesiyle
+        (bkz. `Webhooks` tag'i, `handleOrderPaid`) KARIŞTIRILMAMALIDIR; bu uç Serializable
+        transaction KULLANMAZ (basit doğrudan `UPDATE`). Audit log: `product.stock_adjust`
+        (`metadata: { from, to }`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdjustProductStockRequest" }
+      responses:
+        "200":
+          description: Güncellendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Product" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/products/{productId}/images:
+    parameters:
+      - $ref: "#/components/parameters/ProductId"
+    post:
+      tags: [Products]
+      summary: Ürün galerisine görsel ekle (ADMIN/EDITOR)
+      description: >
+        `mediaId` galeride ZATEN varsa (`@@unique([productId, mediaId])`) `409
+        CONFLICT`. Yeni satır mevcut en yüksek `order` değerinin bir fazlasına eklenir
+        (galerinin SONUNA). Güncellenmiş `Product` DTO'sunu (galeri dahil) döner.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AddProductImageRequest" }
+      responses:
+        "201":
+          description: Galeriye eklendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Product" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: "Ürün VEYA medya bulunamadı (`error.code: NOT_FOUND`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "409":
+          description: "Görsel zaten galeride (`error.code: CONFLICT`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/products/{productId}/images/{imageId}:
+    parameters:
+      - $ref: "#/components/parameters/ProductId"
+      - $ref: "#/components/parameters/ImageId"
+    delete:
+      tags: [Products]
+      summary: Ürün galerisinden görsel kaldır (ADMIN/EDITOR)
+      description: >
+        `imageId`'nin GERÇEKTEN bu `productId`'ye ait olduğu doğrulanır (IDOR
+        koruması) — eşleşmezse `404 NOT_FOUND`. Güncellenmiş `Product` DTO'sunu
+        (galeri dahil) döner.
+      responses:
+        "200":
+          description: Galeriden kaldırıldı
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Product" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/products/categories:
+    get:
+      tags: [Products]
+      summary: Ürün kategorilerini listele (authenticated)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/ProductCategory" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [Products]
+      summary: Yeni ürün kategorisi oluştur (ADMIN/EDITOR)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateProductCategoryRequest" }
+      responses:
+        "201":
+          description: Kategori oluşturuldu
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/ProductCategory" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/products/categories/{categoryId}:
+    parameters:
+      - $ref: "#/components/parameters/ProductCategoryId"
+    patch:
+      tags: [Products]
+      summary: Ürün kategorisini güncelle (ADMIN/EDITOR)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateProductCategoryRequest" }
+      responses:
+        "200":
+          description: Güncellendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/ProductCategory" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+    delete:
+      tags: [Products]
+      summary: Ürün kategorisini sil (yalnızca ADMIN)
+      description: "Kategoriye bağlı ürünler `SetNull` ile kategorisiz kalır (silinmez)."
+      responses:
+        "204": { description: Silindi }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /products:
+    get:
+      tags: [Products]
+      security: []
+      summary: Yayınlanmış ürünleri listele (public)
+      description: >
+        Yalnızca `status: PUBLISHED` ve çöpte olmayan (`deletedAt: null`) ürünler döner.
+        `products` modülü kapalıysa `404 NOT_FOUND` (bkz. `Modules` tag'i).
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/Product" }
+        "404":
+          description: "Modül kapalı VEYA kaynak yok (`error.code: NOT_FOUND`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+
+  /products/{slug}:
+    parameters:
+      - $ref: "#/components/parameters/ProductSlug"
+    get:
+      tags: [Products]
+      security: []
+      summary: Ürün detayı — slug ile (public)
+      description: "Yayınlanmamış/çöpteki/kapalı-modül ürünler için `404 NOT_FOUND`."
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Product" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /products/{slug}/view:
+    parameters:
+      - $ref: "#/components/parameters/ProductSlug"
+    post:
+      tags: [Products]
+      security: []
+      summary: Görüntülenme sayacını artır (public, kimliksiz)
+      description: "`Product.viewCount` +1 yapar. Bot/tekrar-tıklama koruması YOKTUR (v1 kapsam dışı, `Page`/`BlogPost` view sayaçlarıyla AYNI basit yaklaşım)."
+      responses:
+        "204": { description: Sayıldı }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/portfolio:
+    get:
+      tags: [Portfolio]
+      summary: Portföy öğelerini listele — çöp filtresi + sekme sayaçları + arama (authenticated)
+      description: >
+        `Products`/`Pages`/`Blog` ile BİREBİR AYNI çöp kutusu/sekme sayacı/cursor
+        sayfalama semantiği. `search` — `title`/`clientName` alanlarında büyük/küçük
+        harf duyarsız arama yapar.
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/TrashedFilter"
+        - $ref: "#/components/parameters/ContentStatusFilter"
+        - $ref: "#/components/parameters/SearchQuery"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/PortfolioItem" }
+                      meta: { $ref: "#/components/schemas/ContentListMeta" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [Portfolio]
+      summary: Yeni portföy öğesi oluştur (ADMIN/EDITOR)
+      description: >
+        `slug` verilmezse `title`'dan üretilir. `order` manuel sıralama alanıdır
+        (kullanıcı kararı) — `viewCount`/iç `seq` sayacıyla KARIŞTIRILMAMALIDIR, public
+        liste BUNA göre `asc` sıralanır.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreatePortfolioItemRequest" }
+      responses:
+        "201":
+          description: Öğe oluşturuldu
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/PortfolioItem" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/portfolio/{itemId}:
+    parameters:
+      - $ref: "#/components/parameters/PortfolioItemId"
+    get:
+      tags: [Portfolio]
+      summary: Portföy öğesi detayı (authenticated)
+      description: "Çöpteki öğeyi de döner (geri yükleme/onay ekranları için) — `deletedAt` filtresi YOKTUR."
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/PortfolioItem" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [Portfolio]
+      summary: Portföy öğesini güncelle (ADMIN/EDITOR)
+      description: >
+        `Product` (`PATCH /admin/products/{productId}`) ile BİREBİR AYNI davranış:
+        güncellemeden önceki hal `ContentRevision` olarak yazılır (`entityType:
+        PORTFOLIO_ITEM`) — bu fazda listeleme/geri yükleme ucu YOKTUR. Çöpteki bir öğe
+        DÜZENLENEMEZ → `409 CONFLICT`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdatePortfolioItemRequest" }
+      responses:
+        "200":
+          description: Güncellendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/PortfolioItem" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "Çöpteki içeriği düzenleme girişimi (`error.code: CONFLICT`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+    delete:
+      tags: [Portfolio]
+      summary: Portföy öğesini ÇÖPE TAŞI — soft delete (ADMIN/EDITOR)
+      description: "İdempotenttir. Kalıcı silme için `DELETE .../permanent` (yalnızca ADMIN)."
+      responses:
+        "204": { description: Çöpe taşındı }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/portfolio/{itemId}/restore:
+    parameters:
+      - $ref: "#/components/parameters/PortfolioItemId"
+    post:
+      tags: [Portfolio]
+      summary: Portföy öğesini çöpten geri yükle (ADMIN/EDITOR)
+      description: "`status` DEĞİŞMEZ. İdempotenttir."
+      responses:
+        "200":
+          description: Geri yüklendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/PortfolioItem" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/portfolio/{itemId}/permanent:
+    parameters:
+      - $ref: "#/components/parameters/PortfolioItemId"
+    delete:
+      tags: [Portfolio]
+      summary: Portföy öğesini KALICI sil — geri alınamaz (yalnızca ADMIN)
+      description: >
+        Öğe ÖNCE çöpte olmalıdır, değilse `409 CONFLICT`. `ContentRevision` satırları
+        (`entityType: PORTFOLIO_ITEM`) aynı transaction'da elle silinir. Audit log:
+        `portfolio_item.permanent_delete`.
+      responses:
+        "204": { description: Kalıcı olarak silindi }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "Öğe çöpte değil (`error.code: CONFLICT`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+
+  /admin/portfolio/{itemId}/images:
+    parameters:
+      - $ref: "#/components/parameters/PortfolioItemId"
+    post:
+      tags: [Portfolio]
+      summary: Portföy öğesi galerisine görsel ekle (ADMIN/EDITOR)
+      description: >
+        `Products` (`POST /admin/products/{productId}/images`) ile BİREBİR AYNI davranış:
+        `mediaId` galeride ZATEN varsa (`@@unique([portfolioItemId, mediaId])`) `409
+        CONFLICT`, yeni satır galerinin SONUNA eklenir. Güncellenmiş `PortfolioItem`
+        DTO'sunu (galeri dahil) döner.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AddPortfolioImageRequest" }
+      responses:
+        "201":
+          description: Galeriye eklendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/PortfolioItem" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: "Öğe VEYA medya bulunamadı (`error.code: NOT_FOUND`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "409":
+          description: "Görsel zaten galeride (`error.code: CONFLICT`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/portfolio/{itemId}/images/{imageId}:
+    parameters:
+      - $ref: "#/components/parameters/PortfolioItemId"
+      - $ref: "#/components/parameters/ImageId"
+    delete:
+      tags: [Portfolio]
+      summary: Portföy öğesi galerisinden görsel kaldır (ADMIN/EDITOR)
+      description: >
+        `imageId`'nin GERÇEKTEN bu `itemId`'ye ait olduğu doğrulanır (IDOR koruması) —
+        eşleşmezse `404 NOT_FOUND`. Güncellenmiş `PortfolioItem` DTO'sunu (galeri
+        dahil) döner.
+      responses:
+        "200":
+          description: Galeriden kaldırıldı
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/PortfolioItem" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/portfolio/categories:
+    get:
+      tags: [Portfolio]
+      summary: Portföy kategorilerini listele (authenticated)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/PortfolioCategory" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [Portfolio]
+      summary: Yeni portföy kategorisi oluştur (ADMIN/EDITOR)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreatePortfolioCategoryRequest" }
+      responses:
+        "201":
+          description: Kategori oluşturuldu
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/PortfolioCategory" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/portfolio/categories/{categoryId}:
+    parameters:
+      - $ref: "#/components/parameters/PortfolioCategoryId"
+    patch:
+      tags: [Portfolio]
+      summary: Portföy kategorisini güncelle (ADMIN/EDITOR)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdatePortfolioCategoryRequest" }
+      responses:
+        "200":
+          description: Güncellendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/PortfolioCategory" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+    delete:
+      tags: [Portfolio]
+      summary: Portföy kategorisini sil (yalnızca ADMIN)
+      description: "Kategoriye bağlı öğeler `SetNull` ile kategorisiz kalır (silinmez)."
+      responses:
+        "204": { description: Silindi }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /portfolio:
+    get:
+      tags: [Portfolio]
+      security: []
+      summary: Yayınlanmış portföy öğelerini listele (public)
+      description: >
+        Yalnızca `status: PUBLISHED` ve çöpte olmayan öğeler döner, **manuel `order`
+        alanına göre `asc` sıralanır** (`seq`/`viewCount` DEĞİL). `portfolio` modülü
+        kapalıysa `404 NOT_FOUND`.
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/PortfolioItem" }
+        "404":
+          description: "Modül kapalı VEYA kaynak yok (`error.code: NOT_FOUND`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+
+  /portfolio/{slug}:
+    parameters:
+      - $ref: "#/components/parameters/PortfolioSlug"
+    get:
+      tags: [Portfolio]
+      security: []
+      summary: Portföy öğesi detayı — slug ile (public)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/PortfolioItem" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /portfolio/{slug}/view:
+    parameters:
+      - $ref: "#/components/parameters/PortfolioSlug"
+    post:
+      tags: [Portfolio]
+      security: []
+      summary: Görüntülenme sayacını artır (public, kimliksiz)
+      responses:
+        "204": { description: Sayıldı }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /cart:
+    get:
+      tags: [Cart]
+      security: []
+      summary: Sepeti oku (public, kimliksiz)
+      description: >
+        `cart_token` çerezi yoksa VEYA eşleşen/süresi geçmemiş bir sepet yoksa
+        BOŞ sepet döner (`{ items: [], currency: null, subtotalCents: 0 }`) — hata
+        DEĞİLDİR. `products` modülü kapalıysa `404 NOT_FOUND`.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Cart" }
+        "404":
+          description: "Modül kapalı (`error.code: NOT_FOUND`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+
+  /cart/items:
+    post:
+      tags: [Cart]
+      security: []
+      summary: Sepete ürün ekle (public, kimliksiz)
+      description: >
+        **Sepet cookie'si YOKSA burada lazy-create edilir** — opak bir token üretilir,
+        `Cart.tokenHash` alanına SHA-256 hash'i yazılır (ham değer asla DB'ye gitmez),
+        ham token `Set-Cookie: cart_token=...` ile döner (`httpOnly`, `secure` yalnızca
+        prod, `sameSite: lax`, `path: /`, 30 gün — bkz. ARCHITECTURE.md §10.9.3 "misafir
+        sepet"). Aynı ürün zaten sepette varsa miktar TOPLANIR (üst sınır 99).
+
+
+        Sepette farklı bir para biriminden ürün varsa (`Cart.currency` != eklenecek
+        ürünün `currency`'si) `409 CONFLICT`; sepet BOŞSA para birimi yeni eklenen ürüne
+        göre YENİDEN belirlenir. Stokta yoksa (`stockQuantity === 0`) `409 CONFLICT`.
+        Fiyat, ekleme ANINDA `Product.discountPriceCents ?? priceCents` olarak
+        DONDURULUP (`CartItem.unitPriceCents`) satıra yazılır — sonraki fiyat
+        değişikliklerinden ETKİLENMEZ (checkout'ta tekrar taze okunur, bkz. `Checkout`
+        tag'i).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AddCartItemRequest" }
+      responses:
+        "201":
+          description: Eklendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Cart" }
+        "404":
+          description: "Ürün bulunamadı VEYA modül kapalı (`error.code: NOT_FOUND`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "409":
+          description: "Ürün tükenmiş VEYA para birimi çakışması (`error.code: CONFLICT`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /cart/items/{itemId}:
+    parameters:
+      - $ref: "#/components/parameters/CartItemId"
+    patch:
+      tags: [Cart]
+      security: []
+      summary: Sepet satırının miktarını güncelle (public, kimliksiz)
+      description: "Yalnızca `cart_token` çerezinin SAHİP OLDUĞU sepetteki satırlar güncellenebilir — başka bir sepete ait `itemId` `404 NOT_FOUND` döner."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateCartItemRequest" }
+      responses:
+        "200":
+          description: Güncellendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Cart" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+    delete:
+      tags: [Cart]
+      security: []
+      summary: Sepet satırını kaldır (public, kimliksiz)
+      responses:
+        "204": { description: Kaldırıldı }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /checkout/session:
+    post:
+      tags: [Checkout]
+      security: []
+      summary: Stripe Checkout oturumu oluştur (public, kimliksiz)
+      description: >
+        **Hız sınırı: 10 istek/dakika (IP bazlı, route-level override)** — para hareketi
+        başlatan bu uca özel sıkı bir üst sınırdır (bkz. ARCHITECTURE.md §10.9.3).
+
+
+        Akış: `cart_token` çerezinden sepet okunur (yok/boşsa `409 CONFLICT`, "Sepetiniz
+        boş."). **GÜVENLİK: fiyat/stok istemciden (sepetteki dondurulmuş fiyattan)
+        ASLA kabul edilmez** — her satır, sipariş oluşturulmadan hemen önce `Product`
+        tablosundan TAZE okunur; ürün artık yayında değilse/silinmişse veya stok
+        yetersizse `409 CONFLICT` (kullanıcı dostu Türkçe mesajla, ör. `"\"X\" için
+        yeterli stok yok."`) — sipariş HİÇ oluşturulmaz.
+
+
+        Doğrulama geçerse: `status: PENDING` bir `Order` (+ `OrderItem` satırları,
+        `productTitle`/`productSku`/`unitPriceCents` SNAPSHOT olarak) oluşturulur, ardından
+        Stripe'ta `mode: payment` bir Checkout Session açılır. **Fiyatlar HER ZAMAN
+        `price_data` ile dinamik gönderilir — Stripe Dashboard'da önceden tanımlı bir
+        `Price` ID'si ASLA kullanılmaz** (mevcut abonelik akışının aksine, bkz.
+        ARCHITECTURE.md §10.9.3 "neden price_data"), çünkü ürün fiyatı/kataloğu bizim
+        DB'mizde yönetilir. `success_url`/`cancel_url` `FRONTEND_URL`'e göre üretilir.
+        `checkoutUrl` alanına yönlendirme sonrası ödemenin ASIL sonucu webhook (`Webhooks`
+        tag'i, `checkout.session.completed`) ile işlenir — bu uç YALNIZCA oturumu açar.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CartCheckoutSessionRequest" }
+      responses:
+        "201":
+          description: Checkout oturumu oluşturuldu
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/CheckoutSessionResponse" }
+        "404":
+          description: "Modül kapalı (`error.code: NOT_FOUND`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "409":
+          description: "Sepet boş VEYA ürün(ler) artık satın alınamıyor/stok yetersiz (`error.code: CONFLICT`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /admin/orders:
+    get:
+      tags: [Orders]
+      summary: Siparişleri listele (yalnızca SiteRole=ADMIN)
+      description: >
+        Cursor sayfalı, `seq asc`. `status` ile filtrelenebilir. **`customerEmail`
+        MASKELENİR** (`lib/pii-mask.ts::maskEmail`, ör. `a***@domain.com`) — gerekçe:
+        liste ekranı toplu göz atma/triage amaçlıdır, tam e-posta burada gerekli
+        değildir (bkz. detay ucundaki maskesiz davranışla karşıtlık).
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/OrderStatusFilter"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/Order" }
+                      meta: { $ref: "#/components/schemas/OrderListMeta" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/orders/{orderId}:
+    parameters:
+      - $ref: "#/components/parameters/OrderId"
+    get:
+      tags: [Orders]
+      summary: Sipariş detayı (yalnızca SiteRole=ADMIN)
+      description: >
+        **`customerEmail` MASKELENMEZ** (listeden farklı olarak) — detay ekranı fiilen
+        kargo/iletişim amacıyla açılır, admin'in müşteriyle iletişime geçmesi (ör.
+        teslimat sorunu) için tam adrese ihtiyacı vardır.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Order" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/orders/{orderId}/status:
+    parameters:
+      - $ref: "#/components/parameters/OrderId"
+    patch:
+      tags: [Orders]
+      summary: Sipariş durumunu değiştir (yalnızca SiteRole=ADMIN)
+      description: >
+        **Yalnızca İKİ geçişe izin verilir:** `PAID -> FULFILLED` (kargoya
+        verildi/teslim edildi) ve `PENDING -> CANCELLED` (admin ödeme beklenmeden
+        manuel iptal eder). Başka HER durum kombinasyonu (ör. `FAILED -> FULFILLED`,
+        `CANCELLED -> PAID`) `409 CONFLICT` ile reddedilir.
+
+
+        **Bu uç `-> REFUNDED` hedef durumunu KABUL ETMEZ** — manuel iade AYRI bir uçtan
+        (`POST /admin/orders/{orderId}/refund`) yapılır, bkz. aşağıda. Audit log:
+        `order.status_change` (`metadata: { from, to }`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateOrderStatusRequest" }
+      responses:
+        "200":
+          description: Güncellendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Order" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "İzin verilmeyen durum geçişi (`error.code: CONFLICT`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/orders/{orderId}/refund:
+    parameters:
+      - $ref: "#/components/parameters/OrderId"
+    post:
+      tags: [Orders]
+      summary: Siparişi manuel iade et (yalnızca SiteRole=ADMIN)
+      description: >
+        Yalnızca `PAID`/`FULFILLED` durumundaki siparişlerde çalışır — başka bir
+        durumdaysa VEYA `Order.stripePaymentIntentId` yoksa `409 CONFLICT`. **Gerçek
+        parayı Stripe üzerinden geri öder** (`stripe.refunds.create`,
+        `stripePaymentIntentId` üzerinden) — yalnızca `Order.status`'u değiştirip
+        parayı olduğu gibi bırakan "sahte" bir iade DEĞİLDİR.
+
+
+        **Çifte iade / race koruması:** durum geçişi `updateMany({ where: { status: {
+        in: [PAID, FULFILLED] } } })` ile ATOMİK olarak "claim" edilir — iki eşzamanlı
+        istekten yalnızca BİRİ Stripe'a gerçek iade isteği gönderebilir, diğeri
+        `claim.count === 0` ile `409 CONFLICT` alır ve Stripe'a HİÇ gitmez. Ayrıca
+        `stripe.refunds.create`'e siparişe göre DETERMİNİSTİK bir `idempotencyKey`
+        (`order-refund-{orderId}`) verilir — bir retry (ağ hatası/timeout sonrası)
+        AYNI Stripe iade kaydını döner, ikinci bir gerçek para hareketi TETİKLEMEZ.
+        Stripe isteği BAŞARISIZ olursa claim geri alınır (`Order.status` eski haline
+        döner) ve sipariş yeniden iade edilebilir kalır. Başarılıysa `Order.status =
+        REFUNDED`. Audit log: `order.refund` (`metadata: { from, to, reason,
+        stripeRefundId }`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RefundOrderRequest" }
+      responses:
+        "200":
+          description: İade edildi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Order" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: >
+            Sipariş `PAID`/`FULFILLED` durumunda değil, Stripe ödeme kaydı yok, sipariş
+            durumu claim sırasında değişti VEYA Stripe iade isteğini reddetti
+            (`error.code: CONFLICT`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
   /webhooks/stripe:
     post:
       tags: [Webhooks]
       security: []
       summary: Stripe webhook alıcı (imza `Stripe-Signature` header ile doğrulanır)
+      description: >
+        Ham (parse edilmemiş) body üzerinde `stripe.webhooks.constructEvent` ile imza
+        doğrulanır — bu route kendi `application/json` content-type parser'ını
+        (`parseAs: buffer`) kayıt eder, uygulamanın geri kalanındaki JSON parse'ını
+        ETKİLEMEZ. İmza eksik/geçersizse VEYA `STRIPE_WEBHOOK_SECRET` tanımsızsa `400`.
+
+
+        `checkout.session.completed` artık İKİ farklı akıştan gelebilir (aynı Stripe
+        hesabı hem org abonelikleri hem misafir ürün siparişleri için kullanılıyor):
+        `session.mode === "subscription"` ise MEVCUT abonelik akışı (davranış
+        DEĞİŞMEDİ); `session.mode === "payment"` ise `Checkout` tag'inin ürettiği
+        sepet siparişi akışıdır — bkz. ARCHITECTURE.md §10.9.3 "stok concurrency".
+
+
+        **Sepet siparişi akışı (`payment` mode) — idempotency + stok:**
+        `session.metadata.orderId` ile `Order` bulunur, stok kontrolü + düşürme +
+        `Order.status` güncellemesi TEK Serializable transaction'da (`runSerializable`,
+        bkz. ARCHITECTURE.md §10.9.3) ATOMIK yapılır. `order.status !== PENDING` ise
+        (Stripe aynı event'i birden fazla gönderebilir; ayrıca
+        `Order.stripeCheckoutSessionId` `@unique` ikinci savunma hattıdır) sessizce
+        döner — stok TEKRAR düşürülmez, e-posta TEKRAR gönderilmez. Stok yetersizse
+        `Order.status = FAILED`, `errorSummary: "insufficient_stock"` yazılır (throw
+        EDİLMEZ — para zaten Stripe üzerinden alınmış, admin panelden manuel
+        müdahale gerekir). Yeterliyse stok düşürülür, `Order.status = PAID`,
+        `paidAt = now()` ve (best-effort, webhook isteğini BOZMAZ) `ORDER_CONFIRMATION`
+        e-postası gönderilir.
+
+
+        `checkout.session.expired` (yalnızca `PENDING` durumundaki siparişi
+        `EXPIRED` yapar, `updateMany` ile idempotent) ve
+        `customer.subscription.updated`/`deleted` (mevcut abonelik akışı) de bu
+        ucun işlediği diğer olay tipleridir; tanınmayan olay tipleri sessizce
+        (200 ile) yok sayılır.
       requestBody:
         required: true
         content:
@@ -2486,6 +3791,77 @@ components:
       in: query
       required: false
       schema: { $ref: "#/components/schemas/ExportJobStatus" }
+    SearchQuery:
+      name: search
+      in: query
+      required: false
+      description: >
+        Serbest metin arama (§10.9.2/§10.9.4) — `Products` uçlarında `title`/`sku`,
+        `Portfolio` uçlarında `title`/`clientName` üzerinde büyük/küçük harf duyarsız
+        (`contains`, `insensitive`) çalışır. v1 admin liste ekranı KULLANMAZ (bkz.
+        `TrashedFilter`/`ContentStatusFilter` ile AYNI "API tüketicileri için" gerekçesi).
+      schema: { type: string, minLength: 1 }
+    ModuleKey:
+      name: key
+      in: path
+      required: true
+      description: "ör. products, portfolio (bkz. lib/module-registry.ts::MODULE_REGISTRY)"
+      schema: { type: string }
+    ProductId:
+      name: productId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ProductSlug:
+      name: slug
+      in: path
+      required: true
+      schema: { type: string }
+    ProductCategoryId:
+      name: categoryId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    PortfolioItemId:
+      name: itemId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    PortfolioSlug:
+      name: slug
+      in: path
+      required: true
+      schema: { type: string }
+    PortfolioCategoryId:
+      name: categoryId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    CartItemId:
+      name: itemId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    OrderId:
+      name: orderId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    OrderStatusFilter:
+      name: status
+      in: query
+      required: false
+      schema: { $ref: "#/components/schemas/OrderStatus" }
+    ImageId:
+      name: imageId
+      in: path
+      required: true
+      description: >
+        `ProductImage`/`PortfolioImage` satır id'si — `POST/DELETE .../images` uçlarında
+        `productId`/`itemId` ile BİRLİKTE kullanılır. `DELETE`'te route handler `imageId`'nin
+        GERÇEKTEN o `productId`/`itemId`'ye ait olduğunu doğrular (IDOR koruması) —
+        eşleşmezse (başka bir ürünün/öğenin görsel id'si verilse dahi) `404 NOT_FOUND`.
+      schema: { type: string, format: uuid }
 
   responses:
     Unauthorized:
@@ -2805,7 +4181,10 @@ components:
     CheckoutSessionResponse:
       type: object
       properties:
-        checkoutUrl: { type: string, format: uri }
+        checkoutUrl:
+          type: string
+          format: uri
+          description: "Stripe Checkout'un barındırdığı ödeme sayfası URL'i — istemci buraya yönlendirir."
 
     BillingPortalResponse:
       type: object
@@ -4134,6 +5513,587 @@ components:
         # ASLA dönmez, dosya yalnızca `GET .../download` üzerinden akıtılır.
 
     ExportJobListMeta:
+      type: object
+      properties:
+        nextCursor: { type: string, nullable: true }
+
+    # ---- §10.9 Eklenti/Modül Yönetimi ----
+
+    SiteTemplate:
+      description: >
+        §10.9.5 Site Şablonu — bkz. `SiteSettings.siteTemplate` ve
+        `SiteModule.recommendedFor`. **SADECE tavsiye niteliğindedir**, hiçbir modülü
+        otomatik açmaz/kapatmaz (bkz. ARCHITECTURE.md §10.9.5). `SHOWCASE` = Tanıtım
+        Sitesi (varsayılan, özel bir modül önerisi YOK), `COMMERCE` = Satış Sitesi
+        (`products` modülü önerilir), `PORTFOLIO` = Portföy Sitesi (`portfolio` modülü
+        önerilir).
+      type: string
+      enum: [SHOWCASE, COMMERCE, PORTFOLIO]
+
+    SiteSettings:
+      description: "`/settings` ve `/admin/settings` uçlarında dönen tekil (singleton) site ayarları DTO'su."
+      type: object
+      properties:
+        siteName: { type: string }
+        logoUrl: { type: string, nullable: true }
+        homePageId: { type: string, format: uuid, nullable: true }
+        siteTemplate: { $ref: "#/components/schemas/SiteTemplate" }
+
+    UpdateSiteSettingsRequest:
+      description: "`PATCH /admin/settings` gövdesi — tüm alanlar opsiyoneldir, satır yoksa `DEFAULTS` ile birlikte oluşturulur (upsert)."
+      type: object
+      properties:
+        siteName: { type: string, minLength: 1 }
+        logoUrl: { type: string, nullable: true }
+        homePageId: { type: string, format: uuid, nullable: true }
+        siteTemplate: { $ref: "#/components/schemas/SiteTemplate" }
+
+    SiteModule:
+      description: >
+        `GET /admin/modules` ve `PATCH /admin/modules/{key}` yanıtı — kod içi statik
+        `MODULE_REGISTRY` TANIMI (`key`/`label`/`description`/`recommendedFor`) ile
+        `SiteModule` tablosundaki (varsa) durum satırının BİRLEŞİMİ (bkz.
+        ARCHITECTURE.md §10.9.1).
+      type: object
+      properties:
+        key: { type: string, example: products }
+        label: { type: string, example: "Ürünler" }
+        description: { type: string }
+        enabled:
+          type: boolean
+          description: "DB'de satır varsa oradaki değer; satır YOKSA (hiç toggle edilmemiş) registry'deki `defaultEnabled` fallback olur."
+        updatedAt: { type: string, format: date-time, nullable: true }
+        updatedBy:
+          allOf:
+            - $ref: "#/components/schemas/UserSummary"
+          nullable: true
+          description: "Satır yoksa (hiç toggle edilmemiş) `null`."
+        recommendedFor:
+          type: array
+          items: { $ref: "#/components/schemas/SiteTemplate" }
+          description: "Bu modülün hangi `siteTemplate` değer(ler)i için ÖNERİLDİĞİ — backend davranışını ETKİLEMEZ, yalnızca frontend kurulum sihirbazı okur. Tanımsız/boş olabilir (ör. SHOWCASE için özel bir modül önerisi YOK)."
+
+    PublicSiteModule:
+      description: "`GET /modules` (public) yanıtı — `label`/`description`/`updatedBy` TAŞIMAZ, yalnızca nav/layout kararı için."
+      type: object
+      properties:
+        key: { type: string }
+        enabled: { type: boolean }
+
+    UpdateModuleRequest:
+      type: object
+      required: [enabled]
+      properties:
+        enabled: { type: boolean }
+
+    # ---- §10.9.2 Ürünler Modülü ----
+
+    ProductCategory:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    ProductImage:
+      description: >
+        Sıralı ürün galerisi öğesi. `coverMediaId`'nin AKSİNE, `POST`/`PATCH
+        /admin/products` gövdelerinden SET EDİLEMEZ — kendi ayrı uçları vardır:
+        `POST /admin/products/{productId}/images` (ekle, `mediaId` zaten galerideyse
+        409) ve `DELETE /admin/products/{productId}/images/{imageId}` (kaldır, IDOR
+        korumalı — bkz. ARCHITECTURE.md §10.9.2 "galeri yönetimi").
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        media: { $ref: "#/components/schemas/Media" }
+        order: { type: integer }
+
+    Product:
+      description: >
+        `/admin/products` ve `/products` uçlarında dönen ürün DTO'su. `BlogCategory`/
+        `BlogPost` (§10.7) ile BİREBİR AYNI çöp kutusu/yazar/SEO skoru alan seti +
+        e-ticaret alanları (fiyat/stok/SKU). `translations.EN` yalnızca override'ları
+        taşır (bkz. ARCHITECTURE.md §10.5).
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        slug: { type: string }
+        excerpt: { type: string, nullable: true }
+        descriptionHtml: { type: string }
+        priceCents:
+          type: integer
+          description: "HER ZAMAN kuruş/cent cinsinden pozitif tam sayı — float KESİNLİKLE YOK (ödeme hassasiyeti)."
+        currency: { type: string, example: TRY }
+        taxRatePercent:
+          type: number
+          nullable: true
+          description: "KDV fiyata DAHİLDİR — bu alan yalnızca fatura/gösterim amaçlı ayrıştırma içindir, `priceCents`'e AYRICA eklenmez."
+        discountPriceCents:
+          type: integer
+          nullable: true
+          description: "Doluysa `priceCents`'ten KÜÇÜKTÜR (create/update sırasında sunucu tarafında doğrulanır)."
+        sku: { type: string, nullable: true }
+        stockQuantity: { type: integer }
+        status: { $ref: "#/components/schemas/PageStatus" }
+        category:
+          allOf:
+            - $ref: "#/components/schemas/ProductCategory"
+          nullable: true
+        coverMedia:
+          allOf:
+            - $ref: "#/components/schemas/Media"
+          nullable: true
+        images:
+          type: array
+          items: { $ref: "#/components/schemas/ProductImage" }
+        seoTitle: { type: string, nullable: true }
+        seoDescription: { type: string, nullable: true }
+        ogTitle: { type: string, nullable: true }
+        ogImageUrl: { type: string, nullable: true }
+        canonicalUrl: { type: string, nullable: true }
+        noIndex: { type: boolean }
+        translations:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties: true
+        publishedAt: { type: string, format: date-time, nullable: true }
+        scheduledAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: "Zamanlanmış yayın hedef tarihi — yalnızca status=SCHEDULED iken anlamlı, aksi halde null."
+        viewCount: { type: integer }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        deletedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: "Soft-delete zaman damgası. Public uçlar (`/products`, `/products/{slug}`) `deletedAt: null` FİLTRESİ UYGULAMAK ZORUNDADIR."
+        authorId: { type: string, format: uuid, nullable: true }
+        author:
+          allOf:
+            - $ref: "#/components/schemas/UserSummary"
+          nullable: true
+        seoScore:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: "Bkz. `Page.seoScore` — aynı algoritma, entity'ye özgü girdilerle (kapak görseli = `coverMedia`)."
+        seoScoreIssues:
+          type: array
+          items: { $ref: "#/components/schemas/SeoScoreIssue" }
+
+    CreateProductRequest:
+      type: object
+      required: [title, priceCents]
+      properties:
+        title: { type: string, minLength: 1 }
+        slug: { type: string, minLength: 1, description: "verilmezse title'dan slugify edilir" }
+        excerpt: { type: string }
+        descriptionHtml: { type: string }
+        priceCents: { type: integer, minimum: 1 }
+        currency: { type: string, minLength: 1, default: TRY }
+        taxRatePercent: { type: number, minimum: 0, maximum: 100, nullable: true }
+        discountPriceCents:
+          type: integer
+          minimum: 1
+          nullable: true
+          description: "Verilmişse `priceCents`'ten KÜÇÜK olmalı, aksi halde 422 (`error.details.discountPriceCents`)."
+        sku: { type: string, minLength: 1, nullable: true }
+        stockQuantity: { type: integer, minimum: 0, default: 0 }
+        status: { allOf: [{ $ref: "#/components/schemas/PageStatus" }], default: DRAFT }
+        categoryId: { type: string, format: uuid, nullable: true }
+        coverMediaId: { type: string, format: uuid, nullable: true }
+        seoTitle: { type: string, nullable: true }
+        seoDescription: { type: string, nullable: true }
+        ogTitle: { type: string, nullable: true }
+        ogImageUrl: { type: string, nullable: true }
+        canonicalUrl: { type: string, format: uri, nullable: true }
+        noIndex: { type: boolean, default: false }
+        translations:
+          type: object
+          additionalProperties: { type: object, additionalProperties: true }
+        authorId:
+          type: string
+          format: uuid
+          nullable: true
+          description: "§10.7 — verilmezse giriş yapmış kullanıcı atanır; BAŞKA bir kullanıcı yalnızca ADMIN tarafından atanabilir (EDITOR → 403)."
+        scheduledAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: "Faz 4 (zamanlanmış yayın) — `CreatePageRequest.scheduledAt` ile AYNI çapraz-alan kuralı (`refineScheduledAt`)."
+
+    UpdateProductRequest:
+      description: "Tüm alanlar opsiyoneldir. Hızlı Düzenle `{ title, slug, status }` alt kümesini gönderir."
+      type: object
+      properties:
+        title: { type: string, minLength: 1 }
+        slug: { type: string, minLength: 1 }
+        excerpt: { type: string, nullable: true }
+        descriptionHtml: { type: string }
+        priceCents: { type: integer, minimum: 1 }
+        currency: { type: string, minLength: 1 }
+        taxRatePercent: { type: number, minimum: 0, maximum: 100, nullable: true }
+        discountPriceCents:
+          type: integer
+          minimum: 1
+          nullable: true
+          description: >
+            Yalnızca bu istekte GÖNDERİLİRSE doğrulanır — istekte `priceCents`
+            gönderilmese dahi mevcut kayıttaki fiyata göre çapraz kontrol edilir
+            (bkz. `products.routes.ts::assertDiscountBelowPrice`).
+        sku: { type: string, minLength: 1, nullable: true }
+        stockQuantity: { type: integer, minimum: 0 }
+        status: { $ref: "#/components/schemas/PageStatus" }
+        categoryId: { type: string, format: uuid, nullable: true }
+        coverMediaId: { type: string, format: uuid, nullable: true }
+        seoTitle: { type: string, nullable: true }
+        seoDescription: { type: string, nullable: true }
+        ogTitle: { type: string, nullable: true }
+        ogImageUrl: { type: string, nullable: true }
+        canonicalUrl: { type: string, format: uri, nullable: true }
+        noIndex: { type: boolean }
+        translations:
+          type: object
+          additionalProperties: { type: object, additionalProperties: true }
+        authorId: { type: string, format: uuid, nullable: true, description: "Yalnızca ADMIN değiştirebilir." }
+        scheduledAt: { type: string, format: date-time, nullable: true }
+
+    AdjustProductStockRequest:
+      description: "`PATCH /admin/products/{productId}/stock` gövdesi — adminin ELLE stok düzeltmesi, checkout'un otomatik düşürmesiyle KARIŞTIRILMAMALIDIR."
+      type: object
+      required: [stockQuantity]
+      properties:
+        stockQuantity: { type: integer, minimum: 0 }
+
+    CreateProductCategoryRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1 }
+        slug: { type: string, minLength: 1, description: "verilmezse name'den slugify edilir" }
+
+    UpdateProductCategoryRequest:
+      type: object
+      properties:
+        name: { type: string, minLength: 1 }
+        slug: { type: string, minLength: 1 }
+
+    AddProductImageRequest:
+      description: "`POST /admin/products/{productId}/images` gövdesi — galeriye tek bir `Media` ekler."
+      type: object
+      required: [mediaId]
+      properties:
+        mediaId: { type: string, format: uuid }
+
+    # ---- §10.9.4 Portföy Modülü ----
+
+    PortfolioCategory:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    PortfolioImage:
+      description: >
+        `ProductImage` ile AYNI patern — sıralı galeri öğesi, kendi ayrı yazma uçları
+        vardır: `POST /admin/portfolio/{itemId}/images` (ekle, duplicate `mediaId` →
+        409) ve `DELETE /admin/portfolio/{itemId}/images/{imageId}` (kaldır, IDOR
+        korumalı).
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        media: { $ref: "#/components/schemas/Media" }
+        order: { type: integer }
+
+    PortfolioItem:
+      description: >
+        `/admin/portfolio` ve `/portfolio` uçlarında dönen portföy öğesi DTO'su.
+        `Product`'ın (§10.9.2) BİREBİR paterni — ticari alanlar (fiyat/stok/SKU) yerine
+        `clientName`/`projectUrl`/`completedAt`/manuel `order` sıralaması.
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        slug: { type: string }
+        summary: { type: string, nullable: true }
+        contentHtml: { type: string }
+        clientName: { type: string, nullable: true }
+        projectUrl: { type: string, nullable: true }
+        completedAt: { type: string, format: date-time, nullable: true }
+        order:
+          type: integer
+          description: "Manuel sıralama (kullanıcı kararı) — `viewCount`/iç `seq` sayacıyla KARIŞTIRILMAMALIDIR. Public liste BUNA göre `asc` sıralanır."
+        status: { $ref: "#/components/schemas/PageStatus" }
+        category:
+          allOf:
+            - $ref: "#/components/schemas/PortfolioCategory"
+          nullable: true
+        coverMedia:
+          allOf:
+            - $ref: "#/components/schemas/Media"
+          nullable: true
+        images:
+          type: array
+          items: { $ref: "#/components/schemas/PortfolioImage" }
+        seoTitle: { type: string, nullable: true }
+        seoDescription: { type: string, nullable: true }
+        ogTitle: { type: string, nullable: true }
+        ogImageUrl: { type: string, nullable: true }
+        canonicalUrl: { type: string, nullable: true }
+        noIndex: { type: boolean }
+        translations:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties: true
+        publishedAt: { type: string, format: date-time, nullable: true }
+        scheduledAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: "Zamanlanmış yayın hedef tarihi — yalnızca status=SCHEDULED iken anlamlı, aksi halde null."
+        viewCount: { type: integer }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        deletedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: "Soft-delete zaman damgası. Public uçlar (`/portfolio`, `/portfolio/{slug}`) `deletedAt: null` FİLTRESİ UYGULAMAK ZORUNDADIR."
+        authorId: { type: string, format: uuid, nullable: true }
+        author:
+          allOf:
+            - $ref: "#/components/schemas/UserSummary"
+          nullable: true
+        seoScore: { type: integer, minimum: 0, maximum: 100 }
+        seoScoreIssues:
+          type: array
+          items: { $ref: "#/components/schemas/SeoScoreIssue" }
+
+    CreatePortfolioItemRequest:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string, minLength: 1 }
+        slug: { type: string, minLength: 1, description: "verilmezse title'dan slugify edilir" }
+        summary: { type: string }
+        contentHtml: { type: string }
+        clientName: { type: string, minLength: 1, nullable: true }
+        projectUrl: { type: string, format: uri, nullable: true }
+        completedAt: { type: string, format: date-time, nullable: true }
+        order: { type: integer, description: "Manuel sıralama — bkz. `PortfolioItem.order`." }
+        status: { allOf: [{ $ref: "#/components/schemas/PageStatus" }], default: DRAFT }
+        categoryId: { type: string, format: uuid, nullable: true }
+        coverMediaId: { type: string, format: uuid, nullable: true }
+        seoTitle: { type: string, nullable: true }
+        seoDescription: { type: string, nullable: true }
+        ogTitle: { type: string, nullable: true }
+        ogImageUrl: { type: string, nullable: true }
+        canonicalUrl: { type: string, format: uri, nullable: true }
+        noIndex: { type: boolean, default: false }
+        translations:
+          type: object
+          additionalProperties: { type: object, additionalProperties: true }
+        authorId: { type: string, format: uuid, nullable: true, description: "§10.7 — `CreatePageRequest.authorId` ile AYNI kural." }
+        scheduledAt: { type: string, format: date-time, nullable: true }
+
+    UpdatePortfolioItemRequest:
+      description: "Tüm alanlar opsiyoneldir. Hızlı Düzenle `{ title, slug, status }` alt kümesini gönderir."
+      type: object
+      properties:
+        title: { type: string, minLength: 1 }
+        slug: { type: string, minLength: 1 }
+        summary: { type: string, nullable: true }
+        contentHtml: { type: string }
+        clientName: { type: string, minLength: 1, nullable: true }
+        projectUrl: { type: string, format: uri, nullable: true }
+        completedAt: { type: string, format: date-time, nullable: true }
+        order: { type: integer }
+        status: { $ref: "#/components/schemas/PageStatus" }
+        categoryId: { type: string, format: uuid, nullable: true }
+        coverMediaId: { type: string, format: uuid, nullable: true }
+        seoTitle: { type: string, nullable: true }
+        seoDescription: { type: string, nullable: true }
+        ogTitle: { type: string, nullable: true }
+        ogImageUrl: { type: string, nullable: true }
+        canonicalUrl: { type: string, format: uri, nullable: true }
+        noIndex: { type: boolean }
+        translations:
+          type: object
+          additionalProperties: { type: object, additionalProperties: true }
+        authorId: { type: string, format: uuid, nullable: true, description: "Yalnızca ADMIN değiştirebilir." }
+        scheduledAt: { type: string, format: date-time, nullable: true }
+
+    CreatePortfolioCategoryRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1 }
+        slug: { type: string, minLength: 1 }
+
+    UpdatePortfolioCategoryRequest:
+      type: object
+      properties:
+        name: { type: string, minLength: 1 }
+        slug: { type: string, minLength: 1 }
+
+    AddPortfolioImageRequest:
+      description: "`POST /admin/portfolio/{itemId}/images` gövdesi — galeriye tek bir `Media` ekler."
+      type: object
+      required: [mediaId]
+      properties:
+        mediaId: { type: string, format: uuid }
+
+    # ---- §10.9.3 Sepet + Stripe Checkout ----
+
+    CartItem:
+      description: >
+        `GET /cart` yanıtındaki her satır — sepete eklenme anında DONDURULAN
+        (`frozenUnitPriceCents`, `CartItem.unitPriceCents`) fiyat ile DB'den taze
+        okunan `currentPriceCents` AYRI döner; ikisi farklıysa frontend kullanıcıya
+        "fiyat değişti" uyarısı gösterebilir (checkout DB'den TEKRAR taze okuyup
+        kendi hesabını yapar — burası yalnızca gösterim amaçlıdır).
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        productId: { type: string, format: uuid }
+        product:
+          type: object
+          properties:
+            id: { type: string, format: uuid }
+            title: { type: string }
+            slug: { type: string }
+            coverImageUrl: { type: string, nullable: true }
+            stockQuantity: { type: integer }
+        quantity: { type: integer }
+        frozenUnitPriceCents: { type: integer }
+        currentPriceCents: { type: integer }
+        lineTotalCents: { type: integer }
+
+    Cart:
+      description: "Cookie yoksa/geçersizse (henüz hiçbir şey eklenmemiş) boş sepet döner (`currency: null`)."
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/CartItem" }
+        currency: { type: string, nullable: true }
+        subtotalCents:
+          type: integer
+          description: "Dondurulmuş fiyatlar (`frozenUnitPriceCents * quantity`) üzerinden toplam — checkout'un hesaplayacağı nihai tutarla AYNI mantık, ama checkout kendi hesabını yeniden yapar."
+
+    AddCartItemRequest:
+      type: object
+      required: [productId, quantity]
+      properties:
+        productId: { type: string, format: uuid }
+        quantity: { type: integer, minimum: 1, maximum: 99 }
+
+    UpdateCartItemRequest:
+      type: object
+      required: [quantity]
+      properties:
+        quantity: { type: integer, minimum: 1, maximum: 99 }
+
+    CartCheckoutSessionRequest:
+      description: >
+        `CreateCheckoutSessionRequest` (abonelik/`Billing` akışı, `planId`/`billingCycle`
+        tabanlı) İLE KARIŞTIRILMAMALI — bu, sepet/ürün tabanlı tek seferlik ödeme akışına
+        özgü AYRI bir şemadır. GÜVENLİK: bu uç PUBLIC + kimliksiz — üst sınırsız string
+        alanlar DB'ye/Stripe'a/e-posta şablonuna aşırı büyük payload sızdırabilir (kaba bir
+        DoS vektörü), bu yüzden `customerEmail`/`customerName` üst sınırlıdır (RFC 5321
+        e-posta üst sınırı 254 karakter).
+      type: object
+      required: [customerEmail]
+      properties:
+        customerEmail: { type: string, format: email, maxLength: 254 }
+        customerName: { type: string, minLength: 1, maxLength: 200 }
+
+    OrderStatus:
+      description: >
+        `Order.status` yaşam döngüsü — `PENDING` (checkout session açıldı, ödeme
+        bekleniyor) → `PAID` (webhook onayladı) → `FULFILLED` (admin elle işaretler).
+        `FAILED` = webhook'ta stok yetersiz çıktı (para alınmış olabilir, admin manuel
+        müdahale eder); `CANCELLED` = admin `PENDING`'ken elle iptal etti; `EXPIRED` =
+        Stripe Checkout Session'ı ödeme tamamlanmadan süresi doldu (webhook otomatik
+        işler). `REFUNDED` = admin `POST /admin/orders/{orderId}/refund` ile manuel
+        iade etti (yalnızca `PAID`/`FULFILLED` kaynak durumlardan ulaşılabilir, bkz.
+        ARCHITECTURE.md §10.9.3 "manuel iade akışı") — `PATCH
+        /admin/orders/{orderId}/status` bu uçtan HEDEF DEĞER OLARAK KABUL ETMEZ,
+        yalnızca ayrı `refund` ucundan ulaşılır.
+      type: string
+      enum: [PENDING, PAID, FAILED, CANCELLED, EXPIRED, REFUNDED, FULFILLED]
+
+    OrderItem:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        productId:
+          type: string
+          format: uuid
+          nullable: true
+          description: "Ürün kalıcı silinirse `SetNull` ile `null` olur — sipariş geçmişi BOZULMAZ (aşağıdaki alanlar zaten SNAPSHOT)."
+        productTitle: { type: string, description: "SNAPSHOT — ürün silinse/değişse bile sipariş geçmişi bozulmasın diye." }
+        productSku: { type: string, nullable: true }
+        unitPriceCents: { type: integer }
+        quantity: { type: integer }
+        lineTotalCents: { type: integer }
+
+    Order:
+      description: "`/admin/orders` uçlarında dönen sipariş DTO'su."
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        orderNumber: { type: string, example: "ORD-LXK3F2-A1B2", description: "Müşteriye/faturaya gösterilen okunabilir sipariş numarası." }
+        status: { $ref: "#/components/schemas/OrderStatus" }
+        customerEmail:
+          type: string
+          format: email
+          description: "LİSTEDE (`GET /admin/orders`) maskelenir (`a***@domain.com`); DETAYDA (`GET /admin/orders/{orderId}`) maskesiz döner."
+        customerName: { type: string, nullable: true }
+        currency: { type: string }
+        subtotalCents: { type: integer }
+        discountCents: { type: integer }
+        taxCents: { type: integer, description: "KDV fiyata DAHİLDİR — sadece fatura/gösterim amaçlı ayrıştırma, `totalCents`'e AYRICA eklenmez." }
+        totalCents: { type: integer }
+        errorSummary: { type: string, nullable: true, description: "Yalnızca `status: FAILED` iken anlamlı (ör. `insufficient_stock`)." }
+        paidAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/OrderItem" }
+
+    UpdateOrderStatusRequest:
+      description: >
+        `PATCH /admin/orders/{orderId}/status` gövdesi — yalnızca hedef durum olarak
+        `FULFILLED` (kaynak `PAID` olmalı) veya `CANCELLED` (kaynak `PENDING` olmalı)
+        kabul edilir; şema seviyesinde diğer `OrderStatus` değerleri (`REFUNDED` dahil)
+        zaten REDDEDİLİR (422). Kaynak/hedef eşleşmezse route handler `409 CONFLICT`
+        döner.
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [FULFILLED, CANCELLED] }
+
+    RefundOrderRequest:
+      description: >
+        `POST /admin/orders/{orderId}/refund` gövdesi — `reason` yalnızca audit log
+        (`order.refund` metadata) + Stripe'a gönderilen iade kaydı için bilgi amaçlıdır,
+        Stripe'ın kendi `reason` enum'ına EŞLENMEZ (Stripe tarafına her zaman sabit
+        `requested_by_customer` gönderilir).
+      type: object
+      properties:
+        reason: { type: string, minLength: 1, maxLength: 500 }
+
+    OrderListMeta:
       type: object
       properties:
         nextCursor: { type: string, nullable: true }

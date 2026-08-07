@@ -1264,6 +1264,275 @@ hâlidir; nihai hukuki onay için gerçek bir hukuk danışmanına başvurulmal�
 `@@index([date])` bunu çözüyor; `deviceType` WHERE'de filtrelenmediği için composite
 `[date, deviceType]` indeksi gereksiz ek yazma maliyeti getirirdi, eklenmedi.
 
+### 10.9 Eklenti/Modül Yönetimi + Site Şablonu (Products/Portfolio/Cart/Checkout/Orders)
+
+Durum: v1 · Sahibi: Mimar. Bağlayıcı kaynak: `openapi.yaml` (tag `Modules`/`Products`/
+`Portfolio`/`Cart`/`Checkout`/`Orders`/`Settings`). `feature/modules-system` dalında
+Faz 1–4 olarak uygulandı: (1) modül registry/toggle mekanizması, (2) Ürünler modülü,
+(2b) Sepet + Stripe Checkout + Siparişler, (3) Portföy modülü, (4) Site Şablonu +
+page-builder genişletmesi.
+
+#### 10.9.1 Modül sistemi tasarımı — statik kod-registry + DB-only durum
+
+**İki katman kasıtlı olarak ayrılmıştır:**
+
+- **Tanım (kod, salt-okunur):** `backend/src/lib/module-registry.ts::MODULE_REGISTRY`
+  — hangi modüllerin sistemde VAR olduğu, `label`/`description`/`defaultEnabled`/
+  `adminPath`/`recommendedFor`. `lib/permissions-matrix.ts` ile AYNI paternde: kod
+  değişmeden yeni bir modül "keşfedilemez", yeni modül eklemek her zaman bir kod
+  değişikliğidir (migration DEĞİL).
+- **Durum (DB, tek gerçek):** `SiteModule` tablosu yalnızca `enabled` + kim/ne zaman
+  değiştirdiğini tutar. Satır YOKSA (hiç toggle edilmemiş) `defaultEnabled` fallback
+  olur — `settings.routes.ts::DEFAULTS` ile AYNI lazy-upsert paterni (`lib/
+  module-state.ts::isModuleEnabled`). Seed ZORUNLU değildir.
+
+`GET /admin/modules` bu iki katmanı LEFT JOIN mantığıyla birleştirir
+(`toSiteModuleDto`); `PATCH /admin/modules/{key}` yalnızca DURUM'u değiştirir, TANIMI
+DEĞİL.
+
+**Neden 404, neden 403 değil:** `middleware/module-guard.ts::requireModuleEnabled(key)`
+public route'larda bir modül kapalıyken (veya hiç tanımlı değilken) `NotFoundError`
+(404) fırlatır — `ForbiddenError` (403) BİLİNÇLİ olarak kullanılmaz. 403, "bu kaynak
+var ama erişimin engellendi" der; bu da bir dış gözlemciye (ör. rakip, otomatik
+tarayıcı) sitenin hangi modülleri kurulu-ama-kapalı tuttuğunu sızdırır. 404 ile kapalı
+bir modülün var olup olmadığı ayırt edilemez — açık bir güvenlik/bilgi sızıntısı
+kararıdır.
+
+**Neden admin route'lar hiç guard'lanmıyor:** `/admin/products*`, `/admin/portfolio*`,
+`/admin/orders*` `requireModuleEnabled` HİÇ kullanmaz — modül kapatılsa dahi admin
+tam CRUD'a erişebilir. Gerekçe veri korunumudur: bir modülü geçici kapatmak (ör.
+stok tükendi, kampanya bitti) mevcut ürün/sipariş verisini "kilitleyip" adminin
+düzenleme/görüntüleme yeteneğini kaybetmesine YOL AÇMAMALIDIR. Yalnızca *public*
+görünürlük kapanır. Bu, `app.ts`'teki `§10.9.2`/`§10.9.3`/`§10.9.4` yorumlarında
+açıkça işaretlenmiştir.
+
+`GET /modules` (public, dar DTO — yalnızca `key`/`enabled`) site header/nav'ının
+hangi menü öğelerini göstereceğine karar vermesi içindir; `label`/`description`/
+`updatedBy` TAŞIMAZ (yönetim ekranına özgü bilgi).
+
+#### 10.9.2 Ürünler Modülü — content model pattern'i
+
+`Product`/`ProductCategory`, `Page`/`BlogPost` (§10.7) ile **BİREBİR AYNI** içerik
+modeli paternini izler:
+
+- Çöp kutusu (`deletedAt`), yazar (`authorId`/`author`, §10.7 kuralı: verilmezse
+  giriş yapan kullanıcı, başkasını atamak yalnızca ADMIN), SEO skoru (`seoScore`/
+  `seoScoreIssues`, aynı 5-kriter algoritması), çoklu dil (`translations`, §10.5),
+  zamanlanmış yayın (`scheduledAt`, Faz 4 sweeper'ı BlogPost/Page ile PAYLAŞILIR),
+  sekme sayaçları (`meta.counts`) ve içerik revizyonu (`ContentRevision`,
+  `entityType: PRODUCT`) BİREBİR aynı kod yollarını (`snapshotBeforeUpdate`,
+  `resolveAuthorId`, `sanitizeRichHtml`, `getProductContentCounts`) kullanır.
+- Üstüne yalnızca e-ticarete özgü alanlar eklenir: `priceCents`/`currency` (HER ZAMAN
+  kuruş cinsinden `Int`, float KESİNLİKLE yok), `taxRatePercent` (fiyata DAHİL, salt
+  fatura ayrıştırması için), `discountPriceCents` (nullable, doluysa `priceCents`'ten
+  küçük olmalı — hem Zod `refine` hem route-handler çapraz kontrolü, bkz.
+  `products.routes.ts::assertDiscountBelowPrice`), `sku` (unique), `stockQuantity`.
+- **Bilinen eksik (bilinçli faz sınırı):** `snapshotBeforeUpdate` her `PATCH`'te
+  `Product`/`PortfolioItem` için de `ContentRevision` YAZAR, ama bu fazda
+  `Page`/`BlogPost`'un aksine bunları LİSTELEYEN/GERİ YÜKLEYEN bir uç (`GET/POST
+  .../revisions`) YOKTUR — kayıtlar sessizce birikir (yine `MAX_REVISIONS_PER_ENTITY`
+  ile sınırlı). İleride `ContentRevisions` tag'i Product/Portfolio'ya genişletilecekse
+  route'lar `pages.routes.ts`'teki mevcut implementasyondan BİREBİR kopyalanabilir.
+
+**Media ilişki paterni — neden gerçek FK, neden Page/BlogPost'tan FARKLI:**
+`Page`/`BlogPost` kapak görselini eski bir `coverImageUrl: String?` (serbest metin
+URL) alanıyla tutar — herhangi bir string kabul eder, `Media` tablosuyla ilişkisi
+YOKTUR. `Product`/`PortfolioItem` bunun yerine gerçek bir FK kullanır:
+`coverMediaId String?` + `coverMedia Media? @relation(..., onDelete: SetNull)`, ve
+ayrıca sıralı bir galeri join tablosu (`ProductImage`/`PortfolioImage`,
+`@@unique([productId, mediaId])`, `onDelete: Cascade`). Gerekçe:
+
+1. **Bütünlük:** e-ticaret ürün kartı/detayında kapak görseli ÇOK daha kritik bir
+   UI elemanıdır (dönüşüm oranını doğrudan etkiler) — serbest metin URL'de yazım
+   hatası/kırık link riski, gerçek FK ile İMKANSIZDIR (referans bütünlüğü DB
+   seviyesinde garanti edilir).
+2. **Galeri ihtiyacı:** ürün/portföy detay sayfaları çoklu görsel (galeri/karusel)
+   gösterir — `BlogPost`'ta bu ihtiyaç hiç yoktu (`contentHtml` içine gömülü `<img>`
+   yeterliydi), `Product`/`PortfolioItem`'da ayrı, SIRALANABİLİR bir koleksiyon
+   gerekiyordu.
+3. **`Media` silme davranışı korunur:** `coverMediaId` `onDelete: SetNull` — bir
+   görsel `/admin/media`'dan silinirse ürün KIRILMAZ, yalnızca kapaksız kalır (`Page`/
+   `BlogPost`'un serbest URL'i zaten bu sorunu YAŞAMAZDI ama referans bütünlüğü de
+   HİÇ SAĞLAMAZDI).
+- **Galeri yönetimi — ayrı yazma uçları:** `coverMediaId`, `POST`/`PATCH
+  /admin/{products,portfolio}` gövdelerinde set edilirken, galeri (`images[]`)
+  KENDİ ayrı uçlarından yönetilir — `admin/media` ile AYNI RBAC eşiği (`ADMIN`/
+  `EDITOR`): `POST /admin/products/{productId}/images` (`{ mediaId }` body)
+  `ProductImage` satırı ekler, mevcut en yüksek `order`'ın bir fazlasına
+  (galerinin SONUNA) yazılır; aynı `mediaId` zaten galerideyse (`@@unique([productId,
+  mediaId])`) `409 CONFLICT`. `DELETE /admin/products/{productId}/images/{imageId}`
+  satırı kaldırır — `imageId`'nin GERÇEKTEN o `productId`'ye ait olduğu route
+  handler'da doğrulanır (**IDOR koruması**: başka bir ürünün galeri satırı id'si
+  verilse `404 NOT_FOUND`, `Media`'nın kendisi silinmez, yalnızca ilişki satırı
+  silinir). `PortfolioItem` için (§10.9.4) birebir eşdeğer uçlar (`/admin/portfolio/
+  {itemId}/images`, `@@unique([portfolioItemId, mediaId])`) vardır. Sıralama
+  (drag-drop reorder) ucu bu fazda hâlâ YOKTUR — yalnızca ekleme/kaldırma
+  desteklenir, mevcut sıra korunur.
+
+#### 10.9.3 Sepet + Stripe Checkout + Siparişler
+
+**Guest cart — opak token + `sameSite: lax`:** Sepet, kimlik doğrulaması
+GEREKTİRMEZ. `POST /cart/items` sepeti "lazy" oluşturur: 32 baytlık rastgele bir
+token üretilir (`lib/tokens.ts::generateOpaqueToken`), SHA-256 hash'i `Cart.tokenHash`
+alanına yazılır (ham değer DB'ye ASLA gitmez — refresh token'larla AYNI desen), ham
+token `httpOnly`/`secure` (yalnızca prod)/`sameSite: lax`/`path: /`/30 gün bir çerezle
+(`cart_token`) istemciye döner. `sameSite`, `REFRESH_COOKIE`'nin (`strict`) AKSİNE
+BİLİNÇLİ olarak `lax` seçilmiştir: kullanıcı ödeme için Stripe'ın domain'ine
+yönlendirilir ve ödeme sonrası `success_url`/`cancel_url` ile bizim domain'imize GERİ
+DÖNER — bu bir **cross-site top-level navigasyondur** (Stripe → bizim site). `strict`
+bu durumda çerezi taşımaz (tarayıcı farklı origin'den gelen navigasyonda strict
+çerezi göndermez), sepet token'ı kaybolur ve kullanıcı "sipariş onaylandı" ekranında
+sepetini/siparişini göremez. `lax`, GET tabanlı top-level navigasyonlarda çerezi
+taşırken CSRF açısından hâlâ makul bir varsayılan sağlar (bkz. MDN `SameSite=Lax`).
+Terk edilmiş sepetler `lib/cart-retention.ts::registerCartRetentionSweeper` ile
+dakikalık, süreç-içi bir sweeper tarafından SESSİZCE silinir (`expiresAt < now()`,
+bildirim YOK — e-ticaret sitelerinde standart davranış, `import.retention.ts`/
+`scheduled-publish.ts` ile AYNI "gerçek zaman-tetiklemeli, kuyruk YOK" deseni).
+
+**Stripe entegrasyonu — neden `price_data`, mevcut abonelik akışından FARKI:**
+Mevcut org abonelik akışı (`billing.service.ts::createCheckoutSession`) Stripe
+Dashboard'da ÖNCEDEN TANIMLI bir `Price` ID'si kullanır (`stripePriceIdMonthly`/
+`stripePriceIdYearly`, `line_items: [{ price: priceId, quantity }]`) — planlar
+sabit/az sayıda olduğu için bu pratiktir. `checkout.routes.ts` bunun YERİNE HER ZAMAN
+`price_data` ile DİNAMİK fiyat gönderir (`line_items: [{ price_data: { currency,
+unit_amount, product_data: { name } }, quantity }]`) ve önceden tanımlı bir `Price`
+ID'si ASLA kullanmaz. Gerekçe: ürün kataloğu/fiyatları TAMAMEN bizim DB'mizde
+(`Product.priceCents`) yönetilir, admin bir ürünü saniyeler içinde ekleyip
+fiyatlandırabilir — bunun için Stripe Dashboard'da karşılık gelen bir `Price` nesnesi
+ÖNCEDEN/EŞ ZAMANLI oluşturmak (ve senkron tutmak) gereksiz bir entegrasyon yüküdür.
+`price_data` Stripe'a "bu oturuma özel, tek seferlik" bir fiyat tanımlar — kalıcı bir
+Stripe nesnesi YARATMAZ.
+
+**Sipariş oluşturma — fiyat/stok istemciden ASLA kabul edilmez:** `POST
+/checkout/session` sepetteki DONDURULMUŞ fiyatlara (`CartItem.unitPriceCents`)
+GÜVENMEZ — her satır, `Order`/`OrderItem` oluşturulmadan hemen önce `Product`
+tablosundan TAZE okunur (yayında mı, çöpte mi, stok yeterli mi). Doğrulama geçerse
+`status: PENDING` bir `Order` + SNAPSHOT `OrderItem`ler (`productTitle`/`productSku`/
+`unitPriceCents` — ürün sonradan silinse/değişse bile sipariş geçmişi BOZULMAZ)
+yazılır, ardından Stripe Checkout Session açılır.
+
+**Webhook idempotency — çift savunma:** `POST /webhooks/stripe` ham (parse edilmemiş)
+body üzerinde imza doğrular (`stripe.webhooks.constructEvent`). Stripe AYNI event'i
+birden fazla kez gönderebileceği için (ağ hatası/retry) `handleOrderPaid`
+(`modules/webhooks/stripe.routes.ts`) İKİ katmanlı savunma uygular:
+
+1. **Durum kontrolü:** `order.status !== "PENDING"` ise sessizce döner — stok TEKRAR
+   düşürülmez, e-posta TEKRAR gönderilmez.
+2. **Unique constraint:** `Order.stripeCheckoutSessionId @unique` — aynı Checkout
+   Session'ın farklı bir `Order`'a ikinci kez bağlanması DB seviyesinde engellenir.
+
+Bu iki savunma birbirinin YEDEĞİDİR, tek başına HİÇBİRİ yeterli kabul edilmez
+(uygulama mantığı hatası + DB constraint'i çakışan senaryoları BAĞIMSIZ olarak
+kapatır).
+
+**Stok concurrency — `runSerializable<T>()`:** `backend/src/lib/serializable-tx.ts`
+Postgres **Serializable** izolasyon seviyesinde `$transaction` çalıştırıp, çakışan
+eşzamanlı transaction'lardan biri Postgres tarafından `P2034` (write conflict) ile
+reddedilirse otomatik olarak (en fazla 3 kez) retry eden genel bir yardımcıdır.
+Aslen `admin-users.routes.ts::assertNotLastActiveAdmin`in "check-then-act" (TOCTOU)
+race'ini kapatmak için yazıldı; `handleOrderPaid` bunu şu ATOMIK bloğu tek
+transaction'da yürütmek için KULLANIR: (a) `Order` + stok kontrolü OKU, (b) yetersizse
+`status: FAILED, errorSummary: "insufficient_stock"` yaz ve BAŞARIYLA bitir (throw
+ETME — para zaten Stripe üzerinden alınmış, bu bir hata değil bir iş sonucudur), (c)
+yeterliyse HER `OrderItem` için `Product.stockQuantity` düş + `Order.status = PAID`.
+Serializable izolasyon, aynı ürünün SON adedine yarışan iki eşzamanlı webhook
+çağrısında bir siparişin `PAID`, diğerinin (retry sonrası taze stok okumasıyla)
+`FAILED` olmasını GARANTİ eder — `tests/integration/webhook-order.test.ts` bunu bir
+eşzamanlılık testiyle doğrular. Adminin `PATCH /admin/products/{id}/stock` ile ELLE
+stok düzeltmesi bu mekanizmayı KULLANMAZ (basit doğrudan `UPDATE`) — kasıtlı olarak
+ayrı tutulur, tek kullanıcılı bir admin işlemidir, race riski yoktur.
+
+**Sipariş durumu — kısıtlı geçiş kümesi:** `PATCH /admin/orders/{orderId}/status`
+yalnızca `PAID -> FULFILLED` ve `PENDING -> CANCELLED` geçişlerine izin verir; başka
+HER kombinasyon `409 CONFLICT`. `-> REFUNDED` bu uçtan HEDEF DURUM OLARAK KABUL
+EDİLMEZ — iade AYRI bir uçtan yapılır (aşağıda). `customerEmail` liste ucunda
+maskelenir (`lib/pii-mask.ts::maskEmail`), detay ucunda maskesiz döner — gerekçe uç
+açıklamalarında ve `openapi.yaml`'da detaylıdır.
+
+**Manuel iade — `POST /admin/orders/{orderId}/refund`:** yalnızca ADMIN, yalnızca
+`PAID`/`FULFILLED` durumundaki siparişlerde çalışır (`REFUNDABLE_STATUSES`, bkz.
+`orders.routes.ts`) — başka bir durumdaysa VEYA `Order.stripePaymentIntentId` yoksa
+`409 CONFLICT`. Stripe Dashboard üzerinden elle iade edip `Order.status`'u DB'de
+senkronsuz bırakan eski yaklaşımın YERİNE geçti: `stripe.refunds.create`
+(`stripePaymentIntentId` üzerinden) ile **gerçek parayı Stripe üzerinden geri öder**
+— yalnızca DB durumunu değiştiren "sahte" bir iade DEĞİLDİR.
+
+- **Çifte iade / race koruması — atomik "claim" deseni:** iki eşzamanlı `POST
+  /refund` isteğinin İKİSİNİN DE Stripe'a gerçek iade göndermesini önlemek için,
+  durum geçişi ÖNCE `updateMany({ where: { id, status: { in: [PAID, FULFILLED] } },
+  data: { status: "REFUNDED" } })` ile ATOMİK olarak "claim" edilir — standart satır
+  kilidi semantiği sayesinde aynı satıra eşzamanlı gelen ikinci `UPDATE`, birincinin
+  commit'ini bekler ve `WHERE`'i YENİDEN değerlendirir. `claim.count === 0` ise
+  sipariş durumu zaten değişmiş demektir → `409 CONFLICT`, Stripe'a HİÇ gidilmez.
+  Yalnızca claim'i KAZANAN istek Stripe çağrısını yapar. (Faz 2b'deki
+  `runSerializable` — bkz. §10.9.3 "stok concurrency" — burada GEREKLİ DEĞİLDİR: o,
+  çok tabloyu/satırı kapsayan çok adımlı okuma+yazmalar içindir; burada tek satırlık
+  koşullu `UPDATE` yeterlidir ve dış bir ağ çağrısını [Stripe] bir DB transaction'ı
+  içinde tutmaktan bilinçli olarak kaçınılır.)
+- **Idempotency key:** `stripe.refunds.create`'e siparişe göre DETERMİNİSTİK bir
+  `idempotencyKey` (`order-refund-{orderId}`) verilir — ağ hatası/timeout sonrası bir
+  retry (istemci veya Stripe SDK'sının kendi iç retry mekanizması) AYNI Stripe iade
+  kaydını döner, ikinci bir gerçek para hareketi TETİKLEMEZ.
+- **Başarısız Stripe çağrısı — claim geri alınır:** `stripe.refunds.create` hata
+  fırlatırsa (`Stripe.errors.StripeError`), az önce kazanılan claim GERİ ALINIR
+  (`Order.status` eski değerine `UPDATE` edilir) ve `409 CONFLICT` (Stripe'ın hata
+  mesajıyla) döner — sipariş yeniden iade edilebilir kalır, "hayalet" bir
+  `REFUNDED` durumunda TAKILI KALMAZ.
+- **Başarı:** `Order.status = REFUNDED`, audit log `order.refund` (`metadata: {
+  from, to, reason, stripeRefundId }`) yazılır. `reason` (opsiyonel, max 500 karakter,
+  `RefundOrderRequestSchema`) yalnızca audit/Stripe kaydı için bilgi amaçlıdır.
+
+`OrderStatus` enum'ındaki `REFUNDED` değeri artık bu uçtan FİİLEN ulaşılabilir bir
+hedef durumdur (önceki fazda yalnızca Stripe Dashboard'un elle üretebileceği,
+uçlardan erişilemeyen bir değer olarak AYRILMIŞTI).
+
+#### 10.9.4 Portföy Modülü
+
+`PortfolioItem`/`PortfolioCategory`, `Product`/`ProductCategory`'nin (§10.9.2)
+**BİREBİR aynı paternidir** — aynı çöp kutusu/yazar/SEO skoru/çoklu dil/zamanlanmış
+yayın alan seti, aynı `ContentRevision` (`entityType: PORTFOLIO_ITEM`, yine yalnızca
+YAZILIR — listeleme/geri yükleme ucu YOK, bkz. §10.9.2 "bilinen eksik") ve aynı
+`coverMediaId`/galeri (`PortfolioImage`, kendi `POST`/`DELETE .../images` uçları ile
+yönetilir — `ProductImage` ile BİREBİR AYNI ekleme/duplicate/IDOR davranışı, bkz.
+§10.9.2 "galeri yönetimi") media ilişki paterni. Tek fark
+ticari alanlar (`priceCents`/`currency`/`discountPriceCents`/`sku`/`stockQuantity`)
+yerine portföye özgü alanlardır: `clientName` (nullable), `projectUrl` (nullable,
+URL doğrulamalı), `completedAt` (nullable tarih) ve **manuel `order`** (kullanıcının
+sürükle-bırak ile belirlediği sıralama — `seq`/`viewCount` ile KARIŞTIRILMAMALIDIR;
+`Product`'ın public listesi `seq asc` sıralanırken, `PortfolioItem`'ın public listesi
+BİLİNÇLİ olarak `order asc` sıralanır, çünkü bir portföyde "en son eklenen" değil
+"kullanıcının seçtiği vitrin sırası" önemlidir).
+
+#### 10.9.5 Site Şablonu — SADECE öneri, otomatik davranış YOK
+
+`SiteSettings.siteTemplate` (`SHOWCASE` | `COMMERCE` | `PORTFOLIO`, varsayılan
+`SHOWCASE`) ve `SiteModule.recommendedFor` (`ModuleDefinition.recommendedFor`, kod içi
+statik) **HİÇBİR modülü otomatik açmaz/kapatmaz ve HİÇBİR veriyi değiştirmez.**
+Backend bu alanları yalnızca DEPOLAR/TAŞIR — okuma/yazma dışında hiçbir iş mantığı
+UYGULAMAZ. Tek tüketicisi frontend'in kurulum sihirbazıdır: `siteTemplate: COMMERCE`
+seçildiğinde sihirbaz "Ürünler modülünü etkinleştirmek ister misiniz?" gibi bir ÖNERİ
+gösterebilir, ama nihai `PATCH /admin/modules/{key}` çağrısı HER ZAMAN ayrı, admin'in
+bilinçli onayıyla yapılan bir işlemdir. Bu ayrım kasıtlıdır: bir ayar alanını
+değiştirmenin sessizce başka bir alt sistemi (modül durumu) tetiklemesi şaşırtıcı
+(surprising) bir yan etkidir — iki kavram API sözleşmesinde de (`PATCH
+/admin/settings` vs `PATCH /admin/modules/{key}`) fiziksel olarak AYRI uçlardır.
+
+#### 10.9.6 Page-builder blok genişletmesi — yeni tema sistemi İCAT EDİLMEDİ
+
+Ürün/portföy öne çıkarma ihtiyacı (ör. anasayfada "Öne Çıkan Ürünler" bölümü), Faz 1–3
+İçerik Editörü'nde (§10.7 öncesi) kurulmuş MEVCUT page-builder blok altyapısına iki
+yeni blok TÜRÜ eklenerek karşılandı: `featured-products` ve `featured-portfolio`
+(`frontend/src/lib/page-builder/registry.ts::blockRegistry`,
+`frontend/src/components/site/blocks/index.tsx`). **Backend'de bu blok türleri için
+HİÇBİR şema değişikliği YOKTUR** — `Page.blocks` zaten serbest biçimli bir
+`Json`/`z.array(z.record(z.unknown()))` alanıdır (bkz. `openapi.yaml#/components/
+schemas/Page.blocks`); yeni blok türü eklemek, mevcut `hero`/`text`/`image`/`gallery`/
+`cta` bloklarıyla AYNI mekanizmayı (frontend registry + render bileşeni) kullanır,
+YENİ bir "tema"/"layout sistemi" kavramı İCAT EDİLMEDİ. Blok verisi (`{ heading,
+limit }`) render anında ilgili public listeleme ucundan (`GET /products` veya `GET
+/portfolio`, `limit` parametresiyle) beslenir — blok içine ürün/portföy KOPYALANMAZ,
+her render'da GÜNCEL veri çekilir.
+
 ### Bilinen Sorunlar / Backlog
 
 - **`preValidation` vs RBAC hook sıralaması** (2026-08-05, qa-agent, orta öncelik,
