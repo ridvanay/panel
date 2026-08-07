@@ -4,7 +4,7 @@ import type { BlockType } from "@/lib/page-builder/types";
 
 describe("blockRegistry", () => {
   it("has a label for every block type", () => {
-    const types: BlockType[] = ["hero", "text", "image", "gallery", "cta"];
+    const types: BlockType[] = ["hero", "text", "image", "gallery", "cta", "featured-products", "featured-portfolio"];
     for (const type of types) {
       expect(blockRegistry[type].label).toEqual(expect.any(String));
       expect(blockRegistry[type].label.length).toBeGreaterThan(0);
@@ -41,5 +41,24 @@ describe("createBlock", () => {
     const a = createBlock("text");
     const b = createBlock("text");
     expect(a.id).not.toBe(b.id);
+  });
+
+  // §Faz 4 Site Şablonu — "Öne Çıkan Ürünler"/"Öne Çıkan Projeler" blokları.
+  it("creates a featured-products block with a default limit and no categoryId", () => {
+    const block = createBlock("featured-products");
+    expect(block.type).toBe("featured-products");
+    if (block.type === "featured-products") {
+      expect(block.data.limit).toBe(4);
+      expect(block.data.categoryId).toBeUndefined();
+    }
+  });
+
+  it("creates a featured-portfolio block with a default limit and no categoryId", () => {
+    const block = createBlock("featured-portfolio");
+    expect(block.type).toBe("featured-portfolio");
+    if (block.type === "featured-portfolio") {
+      expect(block.data.limit).toBe(4);
+      expect(block.data.categoryId).toBeUndefined();
+    }
   });
 });
