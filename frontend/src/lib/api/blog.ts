@@ -74,3 +74,14 @@ export function updateCategory(categoryId: string, input: UpdateBlogCategoryRequ
 export function deleteCategory(categoryId: string) {
   return apiFetch<void>(`/admin/blog/categories/${categoryId}`, { method: "DELETE" });
 }
+
+/**
+ * Sessiz crash/kapatma-kurtarma güvenlik ağı — revizyon/audit ÜRETMEZ, "Kaydet" butonunun
+ * YERİNİ ALMAZ (bkz. `use-autosave.ts` ve `admin/blog/[postId]/page.tsx`).
+ */
+export function autosavePost(
+  postId: string,
+  body: { title?: string; excerpt?: string | null; contentHtml?: string }
+) {
+  return apiFetch<{ savedAt: string }>(`/admin/blog/${postId}/autosave`, { method: "POST", body });
+}

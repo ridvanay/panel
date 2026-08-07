@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import * as blogApi from "@/lib/api/blog";
 import * as revisionsApi from "@/lib/api/revisions";
 import type { BlogCategory, ContentStatus, ContentTranslations } from "@/lib/api/types";
+import { useAutosave } from "@/hooks/use-autosave";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -24,7 +25,7 @@ import { ImageUploadField } from "@/components/admin/media/image-upload-field";
 import { SeoPreview } from "@/components/admin/seo-preview";
 import { RevisionHistory } from "@/components/admin/revision-history";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
-import { AlertCircle, ChevronLeft, FileText, Search, History as HistoryIcon } from "lucide-react";
+import { AlertCircle, AlertTriangle, ChevronLeft, FileText, Search, History as HistoryIcon } from "lucide-react";
 import { motion } from "framer-motion";
 
 type Locale = "TR" | "EN";
@@ -205,6 +206,15 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [hasUnsavedChanges]);
+
+  // Sessiz crash/kapatma-kurtarma güvenlik ağı — mevcut "Kaydet" butonunun/`hasUnsavedChanges`
+  // akışının YERİNE GEÇMEZ (bkz. `use-autosave.ts`), bu yüzden başarıda `snapshot` GÜNCELLENMEZ.
+  // Yalnızca TR içerik + yalnızca yüklendikten sonra aktif (EN çevirisi bu turun kapsamı dışında).
+  const { status: autosaveStatus, lastSavedAt: autosaveSavedAt } = useAutosave({
+    values: [title, excerpt, contentHtml],
+    enabled: loaded && locale === "TR",
+    save: () => blogApi.autosavePost(postId, { title, excerpt: excerpt || null, contentHtml }),
+  });
 
   async function handleSave() {
     setSaveError(null);
@@ -505,6 +515,25 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
       <div className="sticky bottom-6 z-10 flex justify-end">
         <div className="flex items-center gap-3 rounded-xl border border-border bg-surface/95 px-4 py-3 shadow-lg backdrop-blur">
           {saving && <span className="text-xs text-foreground/60">Kaydediliyor…</span>}
+          {/* Autosave göstergesi — "Kaydediliyor…" (elle kaydetme) metniyle KARIŞTIRILMASIN diye
+              ayrı, göze batmayan bir stil kullanılır; ikisi aynı anda görünebilir. */}
+          {autosaveStatus === "saving" && (
+            <span className="text-xs text-foreground/40">Taslak kaydediliyor…</span>
+          )}
+          {autosaveStatus === "saved" && autosaveSavedAt && (
+            <span className="text-xs text-foreground/40">
+              Taslak kaydedildi{" "}
+              {new Date(autosaveSavedAt).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}
+            </span>
+          )}
+          {autosaveStatus === "error" && (
+            <span title="Taslak otomatik kaydedilemedi. 'Kaydet' butonuyla elle kaydedebilirsiniz.">
+              <AlertTriangle
+                className="h-3.5 w-3.5 text-warning/70"
+                aria-label="Taslak otomatik kaydedilemedi. 'Kaydet' butonuyla elle kaydedebilirsiniz."
+              />
+            </span>
+          )}
           <Button loading={saving} onClick={handleSave}>
             Kaydet
           </Button>

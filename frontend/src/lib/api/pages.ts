@@ -8,6 +8,7 @@ import type {
   TrashedFilter,
   UpdateSitePageRequest,
 } from "./types";
+import type { Block } from "@/lib/page-builder/types";
 
 export interface ListPagesParams {
   cursor?: string;
@@ -54,4 +55,12 @@ export function bulkPagesAction(ids: string[], action: BulkContentAction) {
     method: "POST",
     body: { ids, action },
   });
+}
+
+/**
+ * Sessiz crash/kapatma-kurtarma güvenlik ağı — revizyon/audit ÜRETMEZ, "Kaydet" butonunun
+ * YERİNİ ALMAZ (bkz. `use-autosave.ts` ve `admin/pages/[pageId]/page.tsx`).
+ */
+export function autosavePage(pageId: string, body: { title?: string; blocks?: Block[] }) {
+  return apiFetch<{ savedAt: string }>(`/admin/pages/${pageId}/autosave`, { method: "POST", body });
 }
