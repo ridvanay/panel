@@ -73,6 +73,7 @@ enum DeviceType {
 enum ContentEntityType {
   PAGE
   BLOG_POST
+  PRODUCT
 }
 
 // §10.8 Toplu İçe Aktarma (Import) — bkz. ARCHITECTURE.md §10.8.2.
@@ -163,6 +164,8 @@ model User {
   passwordResetTokens PasswordResetToken[]
   blogPosts           BlogPost[]
   pages               Page[]
+  // §10.9.2 Ürünler Modülü — bkz. ARCHITECTURE.md §10.9.2.
+  products            Product[]            @relation("ProductAuthor")
   auditLogs           AuditLog[]           @relation("AuditLogActor")
   backupCodes         BackupCode[]
   // Polymorphic ContentRevision.editedById / EmailTemplate.updatedById için zorunlu karşı-ilişki alanları.
@@ -392,6 +395,86 @@ model BlogPost {
   @@map("blog_posts")
 }
 
+model ProductCategory {
+  id        String   @id @default(uuid())
+  seq       Int      @unique @default(autoincrement())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+
+  products Product[]
+
+  @@map("product_categories")
+}
+
+// §10.9.2 Ürünler Modülü (Eklenti/Modül Yönetimi) — bkz. ARCHITECTURE.md. Fiyat Int (kuruş),
+// KDV fiyata dahil, stok sayısal (checkout'ta Serializable transaction ile düşürülür, bkz.
+// admin-users.routes.ts::runSerializable paterni).
+model Product {
+  id                 String     @id @default(uuid())
+  seq                Int        @unique @default(autoincrement())
+  title              String
+  slug               String     @unique
+  excerpt            String?
+  descriptionHtml    String     @default("")
+  // Para: HER ZAMAN kuruş/cent cinsinden Int — float KESİNLİKLE YOK (ödeme hassasiyeti).
+  priceCents         Int
+  currency           String     @default("TRY")
+  // KDV fiyata DAHİL (kullanıcı kararı) — bu alan sadece FATURA/gösterim amaçlı ayrıştırma içindir.
+  taxRatePercent     Decimal?   @db.Decimal(5, 2)
+  discountPriceCents Int?
+  sku                String?    @unique
+  stockQuantity      Int        @default(0)
+  status             PageStatus @default(DRAFT)
+  categoryId         String?
+  coverMediaId       String?
+  seoTitle           String?
+  seoDescription     String?
+  // §10.2 Gelişmiş SEO & Social Card — bkz. ARCHITECTURE.md §10.2.
+  ogTitle            String?
+  ogImageUrl         String?
+  canonicalUrl       String?
+  noIndex            Boolean    @default(false)
+  // §10.5 Çoklu Dil & Yerelleştirme — TR (kolonlar) kanonik, translations.EN yalnızca override.
+  translations       Json       @default("{}")
+  publishedAt        DateTime?
+  // Zamanlanmış yayın hedef tarihi — yalnızca status=SCHEDULED iken anlamlı; süreç-içi sweeper bu
+  // tarihe ulaşınca status'u PUBLISHED'a çevirir (bkz. modules/{blog,pages}/*-publish-scheduler.ts).
+  scheduledAt        DateTime?
+  viewCount          Int        @default(0)
+  // §10.7 Soft-delete (çöp kutusu) — bkz. ARCHITECTURE.md §10.7.
+  deletedAt          DateTime?
+  authorId           String?
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+
+  category   ProductCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  coverMedia Media?           @relation("ProductCoverMedia", fields: [coverMediaId], references: [id], onDelete: SetNull)
+  author     User?            @relation("ProductAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  images     ProductImage[]
+
+  @@index([categoryId])
+  @@index([deletedAt, status])
+  @@index([authorId])
+  @@index([coverMediaId])
+  @@map("products")
+}
+
+// Sıralı join tablosu — FooterColumn/FooterLink ile AYNI desen (bkz. yukarıdaki model).
+model ProductImage {
+  id        String @id @default(uuid())
+  productId String
+  mediaId   String
+  order     Int    @default(0)
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  media   Media   @relation("ProductGalleryImage", fields: [mediaId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, mediaId])
+  @@index([mediaId])
+  @@map("product_images")
+}
+
 // Günlük bucket'lı ziyaret kaydı: pageId/postId'den yalnızca biri set edilir.
 // (pageId, date, deviceType, country) ve (postId, date, deviceType, country) unique çiftleri,
 // upsert ile "aynı gün + aynı cihaz + aynı ülke için ikinci görüntülemede count'u artır"
@@ -515,6 +598,10 @@ model Media {
   // a11y — editör içi içerik görseli eklerken zorunlu (bkz. modules/blog/post-editor.tsx); kapak görseli/avatar gibi diğer kullanımlarda opsiyonel.
   altText   String?
   createdAt DateTime @default(now())
+
+  // §10.9.2 Ürünler Modülü — bkz. ARCHITECTURE.md §10.9.2.
+  productCovers       Product[]      @relation("ProductCoverMedia")
+  productGalleryItems ProductImage[] @relation("ProductGalleryImage")
 
   @@map("media")
 }
