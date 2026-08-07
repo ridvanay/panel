@@ -19,6 +19,7 @@ import {
   ScrollText,
   Upload,
   FileArchive,
+  Blocks,
 } from "lucide-react";
 import {
   Sidebar,
@@ -35,15 +36,38 @@ import {
 } from "@/components/ui/sidebar";
 import { ThemeToggle } from "@/components/admin/theme-toggle";
 import { useAuth } from "@/context/auth-context";
+import { useModules } from "@/context/modules-context";
 import type { SiteRole } from "@/lib/api/types";
 
-interface NavItem {
+export interface NavItem {
   href: string;
   label: string;
   icon: typeof LayoutDashboard;
   /** Verilmezse tüm rollere görünür. `/admin/import` gibi ADMIN-only uçlar için kullanılır
    *  (bkz. `notification-center.tsx`'teki `user.role !== "ADMIN"` deseniyle AYNI mantık). */
   roles?: SiteRole[];
+  /**
+   * Eklenti/Modül Yönetimi (Faz 1) — verilmezse item her zaman görünür. Verilirse, yalnızca
+   * `MODULE_REGISTRY`'de KAYITLI ve `enabled: false` olan bir key item'ı gizler; kayıtsız
+   * (henüz tanımlanmamış) key'ler `useModules().isModuleEnabled` üzerinden hep `true` döner.
+   * Faz 1'de hiçbir mevcut item'a atanmaz — Products/Portfolio gibi sonraki fazlarda kullanılacak.
+   */
+  module?: string;
+}
+
+/**
+ * Rol + modül filtresini birlikte uygular — `AdminSidebar`'dan ayrık, saf (pure) bir fonksiyon
+ * olarak dışa açılır ki birim testlerde gerçek bileşeni (framer-motion/sidebar primitives)
+ * render etmeden mantık doğrulanabilsin.
+ */
+export function filterVisibleNavItems(
+  items: NavItem[],
+  user: { role: SiteRole } | null,
+  isModuleEnabled: (key: string) => boolean
+): NavItem[] {
+  return items.filter(
+    (item) => (!item.roles || (user && item.roles.includes(user.role))) && (!item.module || isModuleEnabled(item.module))
+  );
 }
 
 const navItems: NavItem[] = [
@@ -62,13 +86,15 @@ const navItems: NavItem[] = [
   { href: "/admin/notifications/templates", label: "E-posta Şablonları", icon: Mail },
   { href: "/admin/settings/security", label: "Güvenlik", icon: ShieldCheck },
   { href: "/admin/logs", label: "Aktivite Günlükleri", icon: ScrollText },
+  { href: "/admin/modules", label: "Modüller", icon: Blocks, roles: ["ADMIN"] },
   { href: "/admin/settings", label: "Ayarlar", icon: Settings },
 ];
 
 export function AdminSidebar() {
   const pathname = usePathname();
   const { user } = useAuth();
-  const visibleNavItems = navItems.filter((item) => !item.roles || (user && item.roles.includes(user.role)));
+  const { isModuleEnabled } = useModules();
+  const visibleNavItems = filterVisibleNavItems(navItems, user, isModuleEnabled);
 
   return (
     <Sidebar className="border-sidebar-border">

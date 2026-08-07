@@ -921,6 +921,31 @@ export interface ImportJobError {
 }
 
 /**
+ * Eklenti/Modül Yönetimi (Faz 1) — bkz. ARCHITECTURE.md, `/admin/modules` (tüm roller
+ * okuyabilir, yalnızca ADMIN `PATCH` edebilir) ve `/modules` (public, auth gerektirmez) uçları.
+ * `MODULE_REGISTRY` backend'de bu turda BOŞ — Products/Portfolio gibi somut modüller
+ * sonraki fazlarda eklenecek; burada kurulan UI/altyapı bu yüzden GENEL olmalı.
+ */
+export interface SiteModule {
+  key: string;
+  label: string;
+  description: string;
+  enabled: boolean;
+  updatedAt: string | null;
+  updatedBy: UserSummary | null;
+}
+
+export interface UpdateSiteModuleRequest {
+  enabled: boolean;
+}
+
+/** `GET /modules` (public) — site ziyaretçi tarafında hangi modüllerin açık olduğunu görmek için. */
+export interface PublicModule {
+  key: string;
+  enabled: boolean;
+}
+
+/**
  * Analitik Rapor Dışa Aktarma (Export) — bkz. ARCHITECTURE.md §10.8.10, openapi.yaml `Reports`
  * tag'i. `/admin/reports/exports/*` uçları — TÜMÜ yalnızca ADMIN.
  */
