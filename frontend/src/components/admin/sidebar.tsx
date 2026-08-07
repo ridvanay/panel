@@ -21,6 +21,7 @@ import {
   FileArchive,
   Blocks,
   ShoppingBag,
+  Receipt,
 } from "lucide-react";
 import {
   Sidebar,
@@ -76,6 +77,7 @@ const navItems: NavItem[] = [
   { href: "/admin/pages", label: "Sayfalar", icon: FileText },
   { href: "/admin/blog", label: "Blog", icon: Newspaper },
   { href: "/admin/products", label: "Ürünler", icon: ShoppingBag, module: "products" },
+  { href: "/admin/orders", label: "Siparişler", icon: Receipt, module: "products" },
   { href: "/admin/stats", label: "İstatistikler", icon: BarChart3 },
   // `/admin/reports/exports/*` backend'de TAMAMEN ADMIN-only (bkz. reports.routes.ts) —
   // `/admin/import` ile AYNI `roles` deseni.
