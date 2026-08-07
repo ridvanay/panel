@@ -23,6 +23,7 @@ import billingRoutes from "./modules/billing/billing.routes";
 import stripeWebhookRoutes from "./modules/webhooks/stripe.routes";
 import { adminPagesRoutes, publicPagesRoutes } from "./modules/pages/pages.routes";
 import { adminBlogCategoriesRoutes, adminBlogPostsRoutes, publicBlogRoutes } from "./modules/blog/blog.routes";
+import { adminProductCategoriesRoutes, adminProductsRoutes, publicProductsRoutes } from "./modules/products/products.routes";
 import { adminMediaRoutes } from "./modules/media/media.routes";
 import { adminStatsRoutes } from "./modules/stats/stats.routes";
 import { adminSettingsRoutes, publicSettingsRoutes } from "./modules/settings/settings.routes";
@@ -134,6 +135,11 @@ export function buildApp() {
       api.register(publicBlogRoutes, { prefix: "/blog" });
       api.register(adminBlogPostsRoutes, { prefix: "/admin/blog" });
       api.register(adminBlogCategoriesRoutes, { prefix: "/admin/blog/categories" });
+      // §10.9.2 Ürünler Modülü — public uçlar `requireModuleEnabled("products")` ile korunur
+      // (bkz. products.routes.ts), admin uçları modül durumundan BAĞIMSIZ her zaman çalışır.
+      api.register(publicProductsRoutes, { prefix: "/products" });
+      api.register(adminProductsRoutes, { prefix: "/admin/products" });
+      api.register(adminProductCategoriesRoutes, { prefix: "/admin/products/categories" });
       api.register(adminMediaRoutes, { prefix: "/admin/media" });
       api.register(adminStatsRoutes, { prefix: "/admin/stats" });
       api.register(publicSettingsRoutes, { prefix: "/settings" });
