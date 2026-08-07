@@ -874,6 +874,30 @@ model CartItem {
   @@map("cart_items")
 }
 
+// compliance-agent kararı (2026-08-07, §10.9.3 Sepet + Stripe Checkout denetimi) — `Order`/
+// `OrderItem` için OTOMATİK silme/anonimleştirme job'ı EKLENMEDİ (`import.retention.ts`/
+// `cart-retention.ts`'teki sweeper desenlerinin AKSİNE, bilinçli bir tercih):
+//
+// 1. Saklama gerekçesi: Bu kayıtlar terk edilmiş bir sepet/geçici bir taslak DEĞİL,
+//    tamamlanmış bir ticari işlemin kaydıdır — KVKK md.5/2-c ("bir sözleşmenin kurulması
+//    veya ifasıyla doğrudan doğruya ilgili olması") ve md.5/2-ç ("veri sorumlusunun hukuki
+//    yükümlülüğünün yerine getirilmesi", bkz. VUK kapsamında muhasebe belgelerinin yıllarca
+//    saklanma zorunluluğu) kapsamında saklama meşrudur. Süreli bir sweeper burada YANLIŞ
+//    araçtır — nihai/kesin saklama süresi (ör. N yıl) muhasebe mevzuatına bağlıdır ve bu
+//    projenin (üretim değil, şablon/SaaS demo) kapsamı dışındadır; gerçek bir üretim
+//    ortamında bu süre GERÇEK bir hukuk danışmanıyla teyit edilip burada netleştirilmelidir.
+// 2. Veri minimizasyonu: `customerEmail`/`customerName` DIŞINDA doğrudan kişilik verisi
+//    YOKTUR (adres/telefon v1 kapsamı dışında bilinçli olarak toplanmıyor) — yeni bir alan
+//    eklenmeden önce compliance-agent'a danışılmalı.
+// 3. Unutulma hakkı: Otomatik bir "hesabımı/verimi sil" ucu bu fazda YOK (misafir
+//    checkout'ta hesap kavramı yok). Bir KVKK md.11 silme talebi gelirse admin, `customerEmail`/
+//    `customerName` alanlarını MANUEL olarak anonim bir değerle (ör. "[REDACTED]") günceller;
+//    `OrderItem`/tutar alanları SİLİNMEZ (muhasebe zorunluluğu devam eder, yalnızca kimliklendirici
+//    alanlar temizlenir). Bu akış sık talep edilirse `POST /admin/orders/:id/anonymize` gibi
+//    dedike bir uç architect onayıyla eklenebilir — şu an tek seferlik manuel işlem yeterlidir.
+//
+// Bu bir hukuki tavsiye DEĞİLDİR — nihai saklama süresi/anonimleştirme politikası için gerçek
+// bir hukuk danışmanına başvurulmalıdır.
 model Order {
   id                      String      @id @default(uuid())
   // Sıralı, dış dünyaya sızmayan iç sayaç — cursor sayfalamada stabil sıralama için.
