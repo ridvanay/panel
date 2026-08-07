@@ -37,6 +37,7 @@ interface PostSnapshot {
   coverImageUrl: string;
   categoryId: string;
   status: ContentStatus;
+  scheduledAt: string;
   contentHtml: string;
   seoTitle: string;
   seoDescription: string;
@@ -45,6 +46,23 @@ interface PostSnapshot {
   canonicalUrl: string;
   noIndex: boolean;
   translations: string;
+}
+
+/**
+ * ISO datetime string'i `datetime-local` input'unun beklediği `YYYY-MM-DDTHH:mm` biçimine
+ * çevirir. Saat dilimi dönüşümüne GİRMEZ (basit tutulur) — `Date` yerel saatle string üretir.
+ */
+function toDatetimeLocalValue(iso: string | null): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+/** `datetime-local` `min` attribute'u için "şimdi" değeri — geçmiş tarih seçimini istemci tarafında engeller. */
+function nowDatetimeLocalValue(): string {
+  return toDatetimeLocalValue(new Date().toISOString());
 }
 
 /** İçerik + SEO sekmelerinde TR/EN override arasında geçiş için küçük segmented control. */
@@ -85,6 +103,7 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
   const [coverImageUrl, setCoverImageUrl] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [status, setStatus] = useState<ContentStatus>("DRAFT");
+  const [scheduledAt, setScheduledAt] = useState("");
   const [contentHtml, setContentHtml] = useState("");
   const [seoTitle, setSeoTitle] = useState("");
   const [seoDescription, setSeoDescription] = useState("");
@@ -94,6 +113,7 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
   const [noIndex, setNoIndex] = useState(false);
   const [translations, setTranslations] = useState<ContentTranslations>({});
   const [viewCount, setViewCount] = useState(0);
+  const [publishedAt, setPublishedAt] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<PostSnapshot | null>(null);
   // TipTap `useEditor({ content })` içeriği yalnızca ilk mount'ta okur (uncontrolled).
   // `load()` her çalıştığında (ilk yükleme, versiyon restore) bu sayaç artırılır ve
@@ -120,6 +140,7 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
         coverImageUrl: post.coverImageUrl ?? "",
         categoryId: post.category?.id ?? "",
         status: post.status,
+        scheduledAt: toDatetimeLocalValue(post.scheduledAt),
         contentHtml: post.contentHtml,
         seoTitle: post.seoTitle ?? "",
         seoDescription: post.seoDescription ?? "",
@@ -135,6 +156,7 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
       setCoverImageUrl(nextSnapshot.coverImageUrl);
       setCategoryId(nextSnapshot.categoryId);
       setStatus(nextSnapshot.status);
+      setScheduledAt(nextSnapshot.scheduledAt);
       setContentHtml(nextSnapshot.contentHtml);
       setSeoTitle(nextSnapshot.seoTitle);
       setSeoDescription(nextSnapshot.seoDescription);
@@ -144,6 +166,7 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
       setNoIndex(nextSnapshot.noIndex);
       setTranslations(post.translations ?? {});
       setViewCount(post.viewCount);
+      setPublishedAt(post.publishedAt);
       setCategories(cats);
       setSnapshot(nextSnapshot);
       setLoaded(true);
@@ -168,6 +191,7 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
       coverImageUrl !== snapshot.coverImageUrl ||
       categoryId !== snapshot.categoryId ||
       status !== snapshot.status ||
+      scheduledAt !== snapshot.scheduledAt ||
       contentHtml !== snapshot.contentHtml ||
       seoTitle !== snapshot.seoTitle ||
       seoDescription !== snapshot.seoDescription ||
@@ -184,6 +208,7 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
     coverImageUrl,
     categoryId,
     status,
+    scheduledAt,
     contentHtml,
     seoTitle,
     seoDescription,
@@ -227,6 +252,7 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
         coverImageUrl: coverImageUrl || null,
         categoryId: categoryId || null,
         status,
+        scheduledAt: status === "SCHEDULED" ? new Date(scheduledAt).toISOString() : null,
         contentHtml,
         seoTitle: seoTitle || null,
         seoDescription: seoDescription || null,
@@ -296,7 +322,19 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
         <div className="flex items-center gap-2">
           <div>
             <h1 className="admin-h1">Yazıyı Düzenle</h1>
-            <p className="mt-1 admin-text-secondary">{viewCount.toLocaleString("tr-TR")} görüntülenme</p>
+            <p className="mt-1 admin-text-secondary">
+              {viewCount.toLocaleString("tr-TR")} görüntülenme
+              {status === "SCHEDULED" && !publishedAt && scheduledAt && (
+                <>
+                  {" "}
+                  · Zamanlandı:{" "}
+                  {new Date(scheduledAt).toLocaleString("tr-TR", {
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                  })}
+                </>
+              )}
+            </p>
           </div>
           {hasUnsavedChanges && (
             <Badge tone="primary">
@@ -394,9 +432,24 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
                   <Select {...inputProps} value={status} onChange={(e) => setStatus(e.target.value as ContentStatus)}>
                     <option value="DRAFT">Taslak</option>
                     <option value="PUBLISHED">Yayında</option>
+                    <option value="SCHEDULED">Zamanlanmış</option>
                   </Select>
                 )}
               </Field>
+              {status === "SCHEDULED" && (
+                <Field id="scheduledAt" label="Yayın tarihi" required>
+                  {(inputProps) => (
+                    <Input
+                      {...inputProps}
+                      type="datetime-local"
+                      required
+                      min={nowDatetimeLocalValue()}
+                      value={scheduledAt}
+                      onChange={(e) => setScheduledAt(e.target.value)}
+                    />
+                  )}
+                </Field>
+              )}
             </div>
           </Card>
 

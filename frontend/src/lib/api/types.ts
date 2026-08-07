@@ -219,7 +219,7 @@ export interface Page<T> {
   meta: PageMeta;
 }
 
-export type ContentStatus = "DRAFT" | "PUBLISHED";
+export type ContentStatus = "DRAFT" | "PUBLISHED" | "SCHEDULED";
 
 /**
  * §10.7 İçerik Yönetim Listesi — Sayfalar/Blog ortak alanları. Bkz.
@@ -294,6 +294,8 @@ export interface SitePage {
   noIndex: boolean;
   translations: ContentTranslations;
   publishedAt: string | null;
+  /** `status === "SCHEDULED"` iken gelecekteki yayın tarihi (ISO datetime); aksi halde `null`. */
+  scheduledAt: string | null;
   viewCount: number;
   createdAt: string;
   updatedAt: string;
@@ -309,6 +311,8 @@ export interface CreateSitePageRequest {
   title: string;
   slug?: string;
   status?: ContentStatus;
+  /** `status === "SCHEDULED"` iken ZORUNLU ve gelecekte bir tarih olmalı (backend 422 ile reddeder). */
+  scheduledAt?: string | null;
   blocks?: Record<string, unknown>[];
   seoTitle?: string;
   seoDescription?: string;
@@ -325,6 +329,8 @@ export interface UpdateSitePageRequest {
   title?: string;
   slug?: string;
   status?: ContentStatus;
+  /** `status === "SCHEDULED"` iken ZORUNLU ve gelecekte bir tarih olmalı (backend 422 ile reddeder). */
+  scheduledAt?: string | null;
   blocks?: Record<string, unknown>[];
   seoTitle?: string | null;
   seoDescription?: string | null;
@@ -369,6 +375,8 @@ export interface BlogPost {
   noIndex: boolean;
   translations: ContentTranslations;
   publishedAt: string | null;
+  /** `status === "SCHEDULED"` iken gelecekteki yayın tarihi (ISO datetime); aksi halde `null`. */
+  scheduledAt: string | null;
   viewCount: number;
   createdAt: string;
   updatedAt: string;
@@ -387,6 +395,8 @@ export interface CreateBlogPostRequest {
   contentHtml?: string;
   coverImageUrl?: string;
   status?: ContentStatus;
+  /** `status === "SCHEDULED"` iken ZORUNLU ve gelecekte bir tarih olmalı (backend 422 ile reddeder). */
+  scheduledAt?: string | null;
   categoryId?: string | null;
   seoTitle?: string | null;
   seoDescription?: string | null;
@@ -516,6 +526,8 @@ export interface UpdateBlogPostRequest {
   contentHtml?: string;
   coverImageUrl?: string | null;
   status?: ContentStatus;
+  /** `status === "SCHEDULED"` iken ZORUNLU ve gelecekte bir tarih olmalı (backend 422 ile reddeder). */
+  scheduledAt?: string | null;
   categoryId?: string | null;
   seoTitle?: string | null;
   seoDescription?: string | null;

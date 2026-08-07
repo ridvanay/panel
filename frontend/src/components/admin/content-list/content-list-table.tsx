@@ -53,6 +53,13 @@ interface ContentListTableProps<T extends ContentListEntity> {
 
 const columnCountBase = 7; // Checkbox, Başlık, Yazar, SEO, Durum, Tarih, Görüntülenme
 
+/** Durum rozetinin tonu/etiketi — `SCHEDULED` mor tonda ayrışır (yayında/taslaktan farklı). */
+function statusBadgeProps(status: ContentListEntity["status"]): { tone: "success" | "warning" | "primary"; label: string } {
+  if (status === "PUBLISHED") return { tone: "success", label: "Yayında" };
+  if (status === "SCHEDULED") return { tone: "primary", label: "Zamanlanmış" };
+  return { tone: "warning", label: "Taslak" };
+}
+
 export function ContentListTable<T extends ContentListEntity>({
   items,
   activeFilter,
@@ -260,8 +267,8 @@ export function ContentListTable<T extends ContentListEntity>({
                     <SeoScoreBadge score={item.seoScore} issues={item.seoScoreIssues} entityLabel={item.title} />
                   </TableCell>
                   <TableCell className="w-24">
-                    <Badge tone={item.status === "PUBLISHED" ? "success" : "warning"} size="lg" solid>
-                      {item.status === "PUBLISHED" ? "Yayında" : "Taslak"}
+                    <Badge tone={statusBadgeProps(item.status).tone} size="lg" solid>
+                      {statusBadgeProps(item.status).label}
                     </Badge>
                   </TableCell>
                   <TableCell className="w-36">
@@ -432,8 +439,8 @@ export function ContentListTable<T extends ContentListEntity>({
 
               <div className="mt-3 flex items-center justify-between gap-2 border-t border-border/60 pt-3 pl-11">
                 <div className="flex items-center gap-2">
-                  <Badge tone={item.status === "PUBLISHED" ? "success" : "warning"} size="lg" solid>
-                    {item.status === "PUBLISHED" ? "Yayında" : "Taslak"}
+                  <Badge tone={statusBadgeProps(item.status).tone} size="lg" solid>
+                    {statusBadgeProps(item.status).label}
                   </Badge>
                   <SeoScoreBadge score={item.seoScore} issues={item.seoScoreIssues} entityLabel={item.title} />
                 </div>

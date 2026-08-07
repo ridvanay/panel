@@ -37,6 +37,7 @@ interface PageSnapshot {
   title: string;
   slug: string;
   status: ContentStatus;
+  scheduledAt: string;
   seoTitle: string;
   seoDescription: string;
   blocks: Block[];
@@ -45,6 +46,23 @@ interface PageSnapshot {
   canonicalUrl: string;
   noIndex: boolean;
   translations: string;
+}
+
+/**
+ * ISO datetime string'i `datetime-local` input'unun beklediği `YYYY-MM-DDTHH:mm` biçimine
+ * çevirir. Saat dilimi dönüşümüne GİRMEZ (basit tutulur) — `Date` yerel saatle string üretir.
+ */
+function toDatetimeLocalValue(iso: string | null): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+/** `datetime-local` `min` attribute'u için "şimdi" değeri — geçmiş tarih seçimini istemci tarafında engeller. */
+function nowDatetimeLocalValue(): string {
+  return toDatetimeLocalValue(new Date().toISOString());
 }
 
 /** İçerik + SEO sekmelerinde TR/EN override arasında geçiş için küçük segmented control. */
@@ -81,6 +99,7 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
   const [title, setTitle] = useState("");
   const [slug, setSlug] = useState("");
   const [status, setStatus] = useState<ContentStatus>("DRAFT");
+  const [scheduledAt, setScheduledAt] = useState("");
   const [seoTitle, setSeoTitle] = useState("");
   const [seoDescription, setSeoDescription] = useState("");
   const [blocks, setBlocks] = useState<Block[]>([]);
@@ -90,6 +109,7 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
   const [noIndex, setNoIndex] = useState(false);
   const [translations, setTranslations] = useState<ContentTranslations>({});
   const [viewCount, setViewCount] = useState(0);
+  const [publishedAt, setPublishedAt] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<PageSnapshot | null>(null);
   // Metin bloklarındaki PostEditor (TipTap) içeriği yalnızca ilk mount'ta okur (uncontrolled).
   // `load()` her çalıştığında (ilk yükleme, versiyon restore) bu sayaç artırılır ve
@@ -119,6 +139,7 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
       setTitle(page.title);
       setSlug(page.slug);
       setStatus(page.status);
+      setScheduledAt(toDatetimeLocalValue(page.scheduledAt));
       setSeoTitle(page.seoTitle ?? "");
       setSeoDescription(page.seoDescription ?? "");
       setBlocks(loadedBlocks);
@@ -128,11 +149,13 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
       setNoIndex(page.noIndex);
       setTranslations(page.translations ?? {});
       setViewCount(page.viewCount);
+      setPublishedAt(page.publishedAt);
       setEditorGeneration((prev) => prev + 1);
       setSnapshot({
         title: page.title,
         slug: page.slug,
         status: page.status,
+        scheduledAt: toDatetimeLocalValue(page.scheduledAt),
         seoTitle: page.seoTitle ?? "",
         seoDescription: page.seoDescription ?? "",
         blocks: loadedBlocks,
@@ -160,6 +183,7 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
       title !== snapshot.title ||
       slug !== snapshot.slug ||
       status !== snapshot.status ||
+      scheduledAt !== snapshot.scheduledAt ||
       seoTitle !== snapshot.seoTitle ||
       seoDescription !== snapshot.seoDescription ||
       JSON.stringify(blocks) !== JSON.stringify(snapshot.blocks) ||
@@ -173,6 +197,7 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
     title,
     slug,
     status,
+    scheduledAt,
     seoTitle,
     seoDescription,
     blocks,
@@ -221,6 +246,7 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
         title,
         slug,
         status,
+        scheduledAt: status === "SCHEDULED" ? new Date(scheduledAt).toISOString() : null,
         seoTitle: seoTitle || null,
         seoDescription: seoDescription || null,
         blocks: blocks as unknown as Record<string, unknown>[],
@@ -290,7 +316,19 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
         <div className="flex items-center gap-2">
           <div>
             <h1 className="admin-h1">Sayfa Düzenleyici</h1>
-            <p className="mt-1 admin-text-secondary">{viewCount.toLocaleString("tr-TR")} görüntülenme</p>
+            <p className="mt-1 admin-text-secondary">
+              {viewCount.toLocaleString("tr-TR")} görüntülenme
+              {status === "SCHEDULED" && !publishedAt && scheduledAt && (
+                <>
+                  {" "}
+                  · Zamanlandı:{" "}
+                  {new Date(scheduledAt).toLocaleString("tr-TR", {
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                  })}
+                </>
+              )}
+            </p>
           </div>
           {hasUnsavedChanges && (
             <Badge tone="primary">
@@ -355,14 +393,31 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
               </Field>
             </div>
 
-            <Field id="status" label="Durum">
-              {(inputProps) => (
-                <Select {...inputProps} value={status} onChange={(e) => setStatus(e.target.value as ContentStatus)}>
-                  <option value="DRAFT">Taslak</option>
-                  <option value="PUBLISHED">Yayında</option>
-                </Select>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field id="status" label="Durum">
+                {(inputProps) => (
+                  <Select {...inputProps} value={status} onChange={(e) => setStatus(e.target.value as ContentStatus)}>
+                    <option value="DRAFT">Taslak</option>
+                    <option value="PUBLISHED">Yayında</option>
+                    <option value="SCHEDULED">Zamanlanmış</option>
+                  </Select>
+                )}
+              </Field>
+              {status === "SCHEDULED" && (
+                <Field id="scheduledAt" label="Yayın tarihi" required>
+                  {(inputProps) => (
+                    <Input
+                      {...inputProps}
+                      type="datetime-local"
+                      required
+                      min={nowDatetimeLocalValue()}
+                      value={scheduledAt}
+                      onChange={(e) => setScheduledAt(e.target.value)}
+                    />
+                  )}
+                </Field>
               )}
-            </Field>
+            </div>
           </Card>
 
           <div>
