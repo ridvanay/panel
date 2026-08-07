@@ -16,6 +16,7 @@ import { createPasswordResetToken } from "../auth/auth.service";
 import { sendPasswordResetEmail } from "../email-templates/email-templates.service";
 import { logAudit } from "../../lib/audit";
 import { env } from "../../config/env";
+import { runSerializable } from "../../lib/serializable-tx";
 import {
   AdminUserIdParamSchema,
   CreateAdminUserRequestSchema,
@@ -51,30 +52,6 @@ async function assertNotLastActiveAdmin(tx: Prisma.TransactionClient, excludeUse
   if (remainingAdmins === 0) {
     throw new ConflictError("Sistemde en az bir yönetici kalmalı.");
   }
-}
-
-/**
- * "Son admin kalmadı" kontrolü + update'i tek bir Serializable transaction'da serialize eder.
- * Postgres, Serializable izolasyonda çakışan eşzamanlı transaction'lardan birini
- * P2034 (write conflict) ile reddeder — bunu birkaç kez retry ediyoruz (düşük trafikli
- * bir admin panelinde çakışma son derece nadir, ama olası olduğunda sessizce yanlış
- * sonuca değil, ya başarıya ya da açık bir hataya varmalıyız).
- */
-async function runSerializable<T>(
-  app: FastifyInstance,
-  fn: (tx: Prisma.TransactionClient) => Promise<T>,
-  attempts = 3
-): Promise<T> {
-  for (let attempt = 1; attempt <= attempts; attempt++) {
-    try {
-      return await app.prisma.$transaction(fn, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
-    } catch (err) {
-      const isSerializationConflict = err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2034";
-      if (!isSerializationConflict || attempt === attempts) throw err;
-    }
-  }
-  /* istanbul ignore next — döngü ya `return` ya da `throw` ile biter. */
-  throw new Error("unreachable");
 }
 
 /** `/admin/users` prefix'i altında bağlanır (bkz. app.ts) — tüm uçlar yalnızca ADMIN. */
