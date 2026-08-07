@@ -11,7 +11,7 @@ import type { ContentCountsDto } from "../schemas/entities";
  * geçirilir — kullanıcı girdisiyle asla doldurulmaz, bu yüzden `$queryRaw` + `Prisma.raw`
  * ile tablo adı enterpolasyonu SQL enjeksiyonuna açık DEĞİLDİR.
  */
-async function fetchContentCounts(prisma: PrismaClient, table: "pages" | "blog_posts"): Promise<ContentCountsDto> {
+async function fetchContentCounts(prisma: PrismaClient, table: "pages" | "blog_posts" | "products"): Promise<ContentCountsDto> {
   const rows = await prisma.$queryRaw<{ published: bigint; draft: bigint; trashed: bigint }[]>`
     SELECT
       COUNT(*) FILTER (WHERE "deletedAt" IS NULL AND "status" = 'PUBLISHED') AS published,
@@ -34,4 +34,9 @@ export function getPageContentCounts(prisma: PrismaClient): Promise<ContentCount
 
 export function getBlogPostContentCounts(prisma: PrismaClient): Promise<ContentCountsDto> {
   return fetchContentCounts(prisma, "blog_posts");
+}
+
+/** §10.9.2 Ürünler Modülü — `blog_posts`/`pages` ile AYNI şema (deletedAt/status kolonları). */
+export function getProductContentCounts(prisma: PrismaClient): Promise<ContentCountsDto> {
+  return fetchContentCounts(prisma, "products");
 }

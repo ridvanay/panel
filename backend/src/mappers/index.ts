@@ -22,6 +22,9 @@ import type {
   ImportJobError,
   ExportJob,
   SiteModule,
+  ProductCategory,
+  Product,
+  ProductImage,
 } from "@prisma/client";
 import type {
   UserDto,
@@ -49,9 +52,12 @@ import type {
   ImportJobPreviewDto,
   ExportJobDto,
   SiteModuleDto,
+  ProductCategoryDto,
+  ProductDto,
+  ProductImageDto,
 } from "../schemas/entities";
 import { env } from "../config/env";
-import { computeBlogPostSeoScore, computePageSeoScore } from "../lib/seo-score";
+import { computeBlogPostSeoScore, computePageSeoScore, computeProductSeoScore } from "../lib/seo-score";
 import { DUPLICATE_STRATEGY_FROM_PRISMA, SEVERITY_FROM_PRISMA } from "../modules/import/import.constants";
 import type { ModuleDefinition } from "../lib/module-registry";
 
@@ -327,6 +333,78 @@ export function toBlogPostDto(post: BlogPostWithCategory): BlogPostDto {
     deletedAt: post.deletedAt ? post.deletedAt.toISOString() : null,
     authorId: post.authorId,
     author: post.author ? toUserSummaryDto(post.author) : null,
+    seoScore: score,
+    seoScoreIssues: issues,
+  };
+}
+
+export function toProductCategoryDto(category: ProductCategory): ProductCategoryDto {
+  return {
+    id: category.id,
+    name: category.name,
+    slug: category.slug,
+    createdAt: category.createdAt.toISOString(),
+  };
+}
+
+type ProductImageWithMedia = ProductImage & { media: Media };
+
+function toProductImageDto(image: ProductImageWithMedia): ProductImageDto {
+  return {
+    id: image.id,
+    media: toMediaDto(image.media),
+    order: image.order,
+  };
+}
+
+type ProductWithRelations = Product & {
+  category: ProductCategory | null;
+  coverMedia: Media | null;
+  author?: User | null;
+  images?: ProductImageWithMedia[];
+};
+
+export function toProductDto(product: ProductWithRelations): ProductDto {
+  const { score, issues } = computeProductSeoScore({
+    seoTitle: product.seoTitle,
+    seoDescription: product.seoDescription,
+    ogImageUrl: product.ogImageUrl,
+    descriptionHtml: product.descriptionHtml,
+    coverMediaUrl: product.coverMedia ? absolutizeMediaUrl(product.coverMedia.url) : null,
+  });
+
+  return {
+    id: product.id,
+    title: product.title,
+    slug: product.slug,
+    excerpt: product.excerpt,
+    descriptionHtml: product.descriptionHtml,
+    priceCents: product.priceCents,
+    currency: product.currency,
+    taxRatePercent: product.taxRatePercent !== null && product.taxRatePercent !== undefined ? Number(product.taxRatePercent) : null,
+    discountPriceCents: product.discountPriceCents,
+    sku: product.sku,
+    stockQuantity: product.stockQuantity,
+    status: product.status,
+    category: product.category ? toProductCategoryDto(product.category) : null,
+    coverMedia: product.coverMedia ? toMediaDto(product.coverMedia) : null,
+    images: (product.images ?? []).map(toProductImageDto),
+    seoTitle: product.seoTitle,
+    seoDescription: product.seoDescription,
+    ogTitle: product.ogTitle,
+    ogImageUrl: product.ogImageUrl,
+    canonicalUrl: product.canonicalUrl,
+    noIndex: product.noIndex,
+    translations: (product.translations as Record<string, Record<string, unknown>>) ?? {},
+    publishedAt: product.publishedAt ? product.publishedAt.toISOString() : null,
+    scheduledAt: product.scheduledAt ? product.scheduledAt.toISOString() : null,
+    viewCount: product.viewCount,
+    createdAt: product.createdAt.toISOString(),
+    updatedAt: product.updatedAt.toISOString(),
+    // ---- §10.7 İçerik Yönetim Listesi ----
+    deletedAt: product.deletedAt ? product.deletedAt.toISOString() : null,
+    authorId: product.authorId,
+    author: product.author ? toUserSummaryDto(product.author) : null,
     seoScore: score,
     seoScoreIssues: issues,
   };

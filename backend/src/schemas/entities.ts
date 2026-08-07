@@ -255,6 +255,68 @@ export const MediaSchema = z.object({
 });
 export type MediaDto = z.infer<typeof MediaSchema>;
 
+// ---------- §10.9.2 Ürünler Modülü (Eklenti/Modül Yönetimi) — BlogCategory/BlogPost paterniyle
+// BİREBİR aynı §10.7 çöp kutusu/yazar/SEO skoru alan setine, e-ticaret alanları (fiyat/stok/SKU)
+// eklenmiş hâli (bkz. ARCHITECTURE.md, prisma/schema.prisma::Product).
+
+export const ProductCategorySchema = z.object({
+  id: z.string().uuid(),
+  name: z.string(),
+  slug: z.string(),
+  createdAt: z.string(),
+});
+export type ProductCategoryDto = z.infer<typeof ProductCategorySchema>;
+
+/** Sıralı ürün galerisi öğesi — bu fazda YAZMA ucu YOK (yalnızca okunur, bkz. görev notu). */
+export const ProductImageSchema = z.object({
+  id: z.string().uuid(),
+  media: MediaSchema,
+  order: z.number().int(),
+});
+export type ProductImageDto = z.infer<typeof ProductImageSchema>;
+
+export const ProductSchema = z.object({
+  id: z.string().uuid(),
+  title: z.string(),
+  slug: z.string(),
+  excerpt: z.string().nullable(),
+  descriptionHtml: z.string(),
+  // Para: HER ZAMAN kuruş/cent cinsinden Int — float KESİNLİKLE YOK (bkz. prisma/schema.prisma::Product).
+  priceCents: z.number().int(),
+  currency: z.string(),
+  // KDV fiyata DAHİL — bu alan yalnızca fatura/gösterim amaçlı ayrıştırma içindir.
+  taxRatePercent: z.number().nullable(),
+  discountPriceCents: z.number().int().nullable(),
+  sku: z.string().nullable(),
+  stockQuantity: z.number().int(),
+  status: PageStatusSchema,
+  category: ProductCategorySchema.nullable(),
+  coverMedia: MediaSchema.nullable(),
+  images: z.array(ProductImageSchema),
+  seoTitle: z.string().nullable(),
+  seoDescription: z.string().nullable(),
+  // §10.2 Gelişmiş SEO & Social Card — bkz. ARCHITECTURE.md §10.2.
+  ogTitle: z.string().nullable(),
+  ogImageUrl: z.string().nullable(),
+  canonicalUrl: z.string().nullable(),
+  noIndex: z.boolean(),
+  // §10.5 Çoklu Dil & Yerelleştirme — TR (kolonlar) kanonik, translations.EN yalnızca override.
+  translations: z.record(z.string(), z.record(z.string(), z.unknown())),
+  publishedAt: z.string().nullable(),
+  // Zamanlanmış yayın hedef tarihi — yalnızca status=SCHEDULED iken anlamlı.
+  scheduledAt: z.string().nullable(),
+  viewCount: z.number().int(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  // ---- §10.7 İçerik Yönetim Listesi ----
+  deletedAt: z.string().nullable(),
+  authorId: z.string().uuid().nullable(),
+  author: UserSummarySchema.nullable(),
+  seoScore: z.number().int().min(0).max(100),
+  seoScoreIssues: z.array(SeoScoreIssueSchema),
+});
+export type ProductDto = z.infer<typeof ProductSchema>;
+
 export const SiteSettingsSchema = z.object({
   siteName: z.string(),
   logoUrl: z.string().nullable(),

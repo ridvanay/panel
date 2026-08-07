@@ -1,4 +1,4 @@
-import type { BlogPost, Page } from "@prisma/client";
+import type { BlogPost, Page, Product } from "@prisma/client";
 import type { SeoScoreIssueDto } from "../schemas/entities";
 
 /**
@@ -24,6 +24,8 @@ const DESCRIPTION_MIN = 120;
 const DESCRIPTION_MAX = 160;
 const PAGE_WORD_THRESHOLD = 100;
 const BLOG_POST_WORD_THRESHOLD = 300;
+// Ürün açıklamaları blog yazılarından tipik olarak daha kısadır (bkz. §10.9.2) — sayfa eşiğiyle aynı.
+const PRODUCT_WORD_THRESHOLD = 100;
 
 function scoreMetaTitle(seoTitle: string | null): CriterionResult {
   const trimmed = seoTitle?.trim() ?? "";
@@ -204,5 +206,31 @@ export function computeBlogPostSeoScore(
     scoreCoverImage(coverImageUrl),
     scoreImagesWithAlt(images),
     scoreContentLength(countWords(contentText), BLOG_POST_WORD_THRESHOLD),
+  ]);
+}
+
+/**
+ * §10.9.2 Ürünler Modülü — `computeBlogPostSeoScore` ile AYNI 5 kriter. `Product`'ın kapak
+ * görseli `coverImageUrl` KOLONU değil `coverMediaId` İLİŞKİSİ üzerinden gelir (bkz.
+ * prisma/schema.prisma::Product) — bu yüzden çözümlenmiş URL çağıran taraftan (mapper,
+ * `coverMedia` include'ından) parametre olarak alınır, burada JOIN YAPILMAZ.
+ */
+export function computeProductSeoScore(
+  product: Pick<Product, "seoTitle" | "seoDescription" | "ogImageUrl" | "descriptionHtml"> & {
+    coverMediaUrl: string | null;
+  }
+): SeoScoreResult {
+  const coverImageUrl = product.coverMediaUrl?.trim() ? product.coverMediaUrl : product.ogImageUrl;
+  const descriptionHtml = product.descriptionHtml ?? "";
+  // Kapak görseli bu kriteri KARŞILAMAZ — yalnızca açıklama (descriptionHtml) içindeki <img> etiketleri sayılır.
+  const images = extractImgTags(descriptionHtml).map((tag) => ({ alt: extractAlt(tag) }));
+  const contentText = stripHtml(descriptionHtml);
+
+  return combineResults([
+    scoreMetaTitle(product.seoTitle),
+    scoreMetaDescription(product.seoDescription),
+    scoreCoverImage(coverImageUrl),
+    scoreImagesWithAlt(images),
+    scoreContentLength(countWords(contentText), PRODUCT_WORD_THRESHOLD),
   ]);
 }
