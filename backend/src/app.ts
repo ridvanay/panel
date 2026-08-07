@@ -39,6 +39,10 @@ import { adminReportsRoutes } from "./modules/reports/reports.routes";
 import { recoverStuckExportJobs } from "./modules/reports/reports.worker";
 import { registerExportRetentionScheduler } from "./modules/reports/reports.retention";
 import { registerScheduledPublishSweeper } from "./lib/scheduled-publish";
+import { cartRoutes } from "./modules/cart/cart.routes";
+import { checkoutRoutes } from "./modules/checkout/checkout.routes";
+import { ordersRoutes } from "./modules/orders/orders.routes";
+import { registerCartRetentionSweeper } from "./lib/cart-retention";
 
 export function buildApp() {
   // `SENTRY_DSN` tanımsızsa no-op (bkz. lib/sentry.ts) — her `buildApp()` çağrısında
@@ -159,6 +163,12 @@ export function buildApp() {
       api.register(adminImportRoutes, { prefix: "/admin/import/jobs" });
       // §10.8.10 Analitik Rapor Dışa Aktarma (Export) — bkz. ARCHITECTURE.md §10.8.10.
       api.register(adminReportsRoutes, { prefix: "/admin/reports/exports" });
+      // §10.9.3 Sepet + Stripe Checkout — PUBLIC, `requireModuleEnabled("products")` guard'lı
+      // (bkz. cart.routes.ts/checkout.routes.ts). Admin sipariş yönetimi modül durumundan
+      // BAĞIMSIZDIR (veri korunumu, `adminProductsRoutes` ile AYNI karar).
+      api.register(cartRoutes, { prefix: "/cart" });
+      api.register(checkoutRoutes, { prefix: "/checkout" });
+      api.register(ordersRoutes, { prefix: "/admin/orders" });
       // Kendi content-type parser'ını (raw body) kaydeder — kendi encapsulation
       // context'inde kaldığı için diğer /api/v1 uçlarının JSON parse'ını etkilemez.
       api.register(stripeWebhookRoutes, { prefix: "/webhooks/stripe" });
@@ -193,6 +203,11 @@ export function buildApp() {
     // hemen bir kez çalışır ki uzun süre kapalı kalmış bir sunucuda bekleyen zamanlamalar
     // dakikalık turu beklemeden anında yayınlansın (bkz. lib/scheduled-publish.ts).
     registerScheduledPublishSweeper(app);
+
+    // §10.9.3 Sepet + Stripe Checkout — `registerImportRetentionScheduler`/
+    // `registerScheduledPublishSweeper` ile AYNI gerekçeyle `onReady`'de: süresi geçmiş
+    // sepetleri sessizce temizler (bkz. lib/cart-retention.ts).
+    registerCartRetentionSweeper(app);
   });
 
   return app;

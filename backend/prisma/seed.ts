@@ -71,6 +71,21 @@ async function main() {
     },
   });
 
+  // §10.9.3 Sepet + Stripe Checkout — sipariş ödemesi onaylandığında gönderilen e-posta
+  // (bkz. modules/webhooks/stripe.routes.ts::handleOrderPaid).
+  await prisma.emailTemplate.upsert({
+    where: { key: "ORDER_CONFIRMATION" },
+    update: {},
+    create: {
+      key: "ORDER_CONFIRMATION",
+      name: "Sipariş Onay E-postası",
+      subject: "Siparişiniz alındı — {{order_number}}",
+      bodyHtml:
+        "<p>Merhaba {{customer_name}},</p><p><strong>{{order_number}}</strong> numaralı siparişiniz için ödemeniz alındı.</p><p>Sipariş içeriği: {{items_summary}}</p><p>Toplam: {{total_formatted}}</p><p>Bizi tercih ettiğiniz için teşekkür ederiz.</p>",
+      availableVariables: ["order_number", "customer_name", "items_summary", "total_formatted"],
+    },
+  });
+
   // Organizasyon daveti — bkz. modules/invitations/invitations.routes.ts::orgInvitationsRoutes.
   // Ham davet bağlantısı artık ne response'ta ne de log'da düz metin dönmez (bkz. security-agent
   // kararı — token sızıntısı temizliği); bunun yerine bu şablon üzerinden gerçekten gönderilir.
