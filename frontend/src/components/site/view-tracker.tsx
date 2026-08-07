@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import { API_BASE_URL } from "@/lib/env";
 
 interface ViewTrackerProps {
-  kind: "page" | "blog" | "product";
+  kind: "page" | "blog" | "product" | "portfolio";
   slug: string;
 }
 
@@ -12,6 +12,7 @@ const VIEW_PATH_PREFIX: Record<ViewTrackerProps["kind"], string> = {
   page: "/pages",
   blog: "/blog",
   product: "/products",
+  portfolio: "/portfolio",
 };
 
 /**
