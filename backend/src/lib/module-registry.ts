@@ -16,7 +16,15 @@ export interface ModuleDefinition {
   adminPath?: string;
 }
 
-export const MODULE_REGISTRY: ModuleDefinition[] = [];
+export const MODULE_REGISTRY: ModuleDefinition[] = [
+  {
+    key: "products",
+    label: "Ürünler",
+    description: "Ürün kataloğu, sepet ve satın alma akışı.",
+    defaultEnabled: true,
+    adminPath: "/admin/products",
+  },
+];
 
 export function getModuleDefinition(key: string): ModuleDefinition | undefined {
   return MODULE_REGISTRY.find((module) => module.key === key);
