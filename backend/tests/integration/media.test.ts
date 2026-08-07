@@ -24,6 +24,8 @@ const HTML_XSS_BYTES = Buffer.from("<html><body><script>alert(document.cookie)</
 describe("media — /admin/media (magic-byte doğrulama)", () => {
   let app: FastifyInstance;
   let adminToken: string;
+  let editorToken: string;
+  let viewerToken: string;
   const createdStoredPaths: string[] = [];
 
   beforeAll(async () => {
@@ -32,6 +34,13 @@ describe("media — /admin/media (magic-byte doğrulama)", () => {
     // İlk kayıt otomatik ADMIN olur (bkz. auth.service.ts::register).
     const admin = await registerTestUser(app, { email: "media-admin@example.com" });
     adminToken = admin.accessToken;
+
+    const editor = await registerTestUser(app, { email: "media-editor@example.com" });
+    await app.prisma.user.update({ where: { id: editor.userId }, data: { role: "EDITOR" } });
+    editorToken = editor.accessToken;
+
+    const viewer = await registerTestUser(app, { email: "media-viewer@example.com" });
+    viewerToken = viewer.accessToken;
   });
 
   afterEach(async () => {
@@ -106,5 +115,95 @@ describe("media — /admin/media (magic-byte doğrulama)", () => {
     const pdf = Buffer.from("%PDF-1.4\n%some fake pdf content");
     const res = await upload("application/pdf", pdf, "doc.pdf");
     expect(res.statusCode).toBe(422);
+  });
+
+  // §Faz 2 içerik editörü — `PATCH /:mediaId` alt-metin güncelleme ucu (bkz. media.routes.ts,
+  // media.schemas.ts::UpdateMediaAltTextRequestSchema). Gerçek bir dosya yüklemeye gerek
+  // yok — Media satırı doğrudan Prisma ile oluşturulur (RBAC/validasyon uçları dosya
+  // içeriğinden bağımsızdır).
+  describe("PATCH /:mediaId (alt-text)", () => {
+    async function createMediaRow(suffix: string) {
+      return app.prisma.media.create({
+        data: {
+          path: `alt-text-test-${suffix}.png`,
+          url: `/uploads/alt-text-test-${suffix}.png`,
+          filename: `alt-text-test-${suffix}.png`,
+          mimeType: "image/png",
+          sizeBytes: 100,
+        },
+      });
+    }
+
+    it("ADMIN alt metni günceller (200)", async () => {
+      const media = await createMediaRow("admin");
+      const res = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/admin/media/${media.id}`,
+        headers: authHeader(adminToken),
+        payload: { altText: "Ürünün önden çekilmiş fotoğrafı" },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().data.altText).toBe("Ürünün önden çekilmiş fotoğrafı");
+    });
+
+    it("EDITOR alt metni günceller (200)", async () => {
+      const media = await createMediaRow("editor");
+      const res = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/admin/media/${media.id}`,
+        headers: authHeader(editorToken),
+        payload: { altText: "Editör tarafından girilen açıklama" },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().data.altText).toBe("Editör tarafından girilen açıklama");
+    });
+
+    it("VIEWER erişemez (403)", async () => {
+      const media = await createMediaRow("viewer");
+      const res = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/admin/media/${media.id}`,
+        headers: authHeader(viewerToken),
+        payload: { altText: "Değişmemeli" },
+      });
+      expect(res.statusCode).toBe(403);
+
+      const stored = await app.prisma.media.findUniqueOrThrow({ where: { id: media.id } });
+      expect(stored.altText).toBeNull();
+    });
+
+    it("kimliği doğrulanmamış istek 401 alır", async () => {
+      const media = await createMediaRow("unauth");
+      const res = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/admin/media/${media.id}`,
+        payload: { altText: "x" },
+      });
+      expect(res.statusCode).toBe(401);
+    });
+
+    it("boş string altText 422 ile reddedilir", async () => {
+      const media = await createMediaRow("empty");
+      const res = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/admin/media/${media.id}`,
+        headers: authHeader(adminToken),
+        payload: { altText: "" },
+      });
+      expect(res.statusCode).toBe(422);
+
+      const stored = await app.prisma.media.findUniqueOrThrow({ where: { id: media.id } });
+      expect(stored.altText).toBeNull();
+    });
+
+    it("olmayan mediaId 404 döner", async () => {
+      const res = await app.inject({
+        method: "PATCH",
+        url: "/api/v1/admin/media/00000000-0000-0000-0000-000000000099",
+        headers: authHeader(adminToken),
+        payload: { altText: "x" },
+      });
+      expect(res.statusCode).toBe(404);
+    });
   });
 });

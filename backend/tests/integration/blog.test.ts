@@ -8,12 +8,16 @@ describe("blog posts (§10.7 çöp kutusu / toplu işlem / yazar / SEO skoru)", 
   let app: FastifyInstance;
   let accessToken: string;
   let userId: string;
+  let viewerToken: string;
 
   beforeAll(async () => {
     app = await buildTestApp();
     await resetDatabase(app.prisma);
     // İlk kayıt olan kullanıcı otomatik ADMIN olur (bkz. auth.service.ts).
     ({ accessToken, userId } = await registerTestUser(app));
+
+    const viewer = await registerTestUser(app, { email: "blog-viewer@example.com" });
+    viewerToken = viewer.accessToken;
   });
 
   afterAll(async () => {
@@ -375,6 +379,52 @@ describe("blog posts (§10.7 çöp kutusu / toplu işlem / yazar / SEO skoru)", 
         payload: { title: "x" },
       });
       expect(res.statusCode).toBe(401);
+    });
+
+    it("VIEWER autosave ucuna erişemez (403)", async () => {
+      const create = await app.inject({
+        method: "POST",
+        url: "/api/v1/admin/blog",
+        headers: authHeader(),
+        payload: { title: "VIEWER Autosave Denemesi" },
+      });
+      const postId = create.json().data.id;
+
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/v1/admin/blog/${postId}/autosave`,
+        headers: { authorization: `Bearer ${viewerToken}` },
+        payload: { title: "Değişmemeli" },
+      });
+      expect(res.statusCode).toBe(403);
+    });
+
+    // Faz 3 + Faz 4 etkileşimi (bkz. görev notu) — autosave `status`/`scheduledAt`'e DOKUNMAZ.
+    it("SCHEDULED bir yazıda autosave çağrılırsa status/scheduledAt DEĞİŞMEZ, sadece içerik alanları güncellenir", async () => {
+      const future = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+      const create = await app.inject({
+        method: "POST",
+        url: "/api/v1/admin/blog",
+        headers: authHeader(),
+        payload: { title: "Zamanlanmışken Autosave", status: "SCHEDULED", scheduledAt: future },
+      });
+      const postId = create.json().data.id;
+      const beforeScheduledAt = create.json().data.scheduledAt;
+      expect(create.json().data.status).toBe("SCHEDULED");
+
+      const autosave = await app.inject({
+        method: "POST",
+        url: `/api/v1/admin/blog/${postId}/autosave`,
+        headers: authHeader(),
+        payload: { title: "İçerik Güncellendi" },
+      });
+      expect(autosave.statusCode).toBe(200);
+
+      const get = await app.inject({ method: "GET", url: `/api/v1/admin/blog/${postId}`, headers: authHeader() });
+      const dto = get.json().data;
+      expect(dto.title).toBe("İçerik Güncellendi");
+      expect(dto.status).toBe("SCHEDULED");
+      expect(dto.scheduledAt).toBe(beforeScheduledAt);
     });
   });
 });

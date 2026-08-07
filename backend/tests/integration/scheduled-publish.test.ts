@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { buildTestApp } from "../helpers/build-test-app";
 import { resetDatabase } from "../helpers/reset-db";
@@ -166,6 +166,116 @@ describe("zamanlanmış yayın (Faz 4)", () => {
       const dto = get.json().data;
       expect(dto.status).toBe("PUBLISHED");
       expect(dto.publishedAt).not.toBeNull();
+    });
+  });
+
+  // Boşluk taraması (bkz. görev notu) — sınır durumu, çoklu-tablo tek-tarama, ve status=DRAFT
+  // ile elle zamanlamanın temizlenmesi.
+  describe("edge case'ler", () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("scheduledAt tam olarak sweeper'ın `now`'ına eşit olduğunda da yayınlanır (lte, lt DEĞİL)", async () => {
+      // Yalnızca `Date` sahtelenir — setTimeout/network zamanlayıcıları GERÇEK kalır (DB
+      // sürücüsünün/undici'nin iç zamanlayıcılarını bozmamak için `toFake: ["Date"]`).
+      const fixedNow = new Date("2026-06-01T12:00:00.000Z");
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(fixedNow);
+
+      const create = await app.inject({
+        method: "POST",
+        url: "/api/v1/admin/blog",
+        headers: authHeader(),
+        payload: { title: "Sınırda Zamanlanmış Yazı", status: "SCHEDULED", scheduledAt: new Date(fixedNow.getTime() + 1).toISOString() },
+      });
+      const postId = create.json().data.id;
+      // DB'ye API validasyonunu bypass ederek TAM `fixedNow` değerini yaz (create sırasında
+      // gelecek zorunluluğu var, bu yüzden 1ms sonrası ile oluşturulup burada eşitlenir).
+      await app.prisma.blogPost.update({ where: { id: postId }, data: { scheduledAt: fixedNow } });
+
+      const result = await runScheduledPublishSweep(app);
+      expect(result.publishedBlogPosts).toBeGreaterThanOrEqual(1);
+
+      const stored = await app.prisma.blogPost.findUniqueOrThrow({ where: { id: postId } });
+      expect(stored.status).toBe("PUBLISHED");
+    });
+
+    it("aynı taramada hem due bir blog yazısını hem de due bir sayfayı yayınlar (biri diğerini atlamaz)", async () => {
+      const createPost = await app.inject({
+        method: "POST",
+        url: "/api/v1/admin/blog",
+        headers: authHeader(),
+        payload: { title: "Ortak Tarama Yazısı", status: "SCHEDULED", scheduledAt: FUTURE },
+      });
+      const postId = createPost.json().data.id;
+      await app.prisma.blogPost.update({ where: { id: postId }, data: { scheduledAt: new Date(PAST) } });
+
+      const createPage = await app.inject({
+        method: "POST",
+        url: "/api/v1/admin/pages",
+        headers: authHeader(),
+        payload: { title: "Ortak Tarama Sayfası", status: "SCHEDULED", scheduledAt: FUTURE },
+      });
+      const pageId = createPage.json().data.id;
+      await app.prisma.page.update({ where: { id: pageId }, data: { scheduledAt: new Date(PAST) } });
+
+      const result = await runScheduledPublishSweep(app);
+      expect(result.publishedBlogPosts).toBeGreaterThanOrEqual(1);
+      expect(result.publishedPages).toBeGreaterThanOrEqual(1);
+
+      const [storedPost, storedPage] = await Promise.all([
+        app.prisma.blogPost.findUniqueOrThrow({ where: { id: postId } }),
+        app.prisma.page.findUniqueOrThrow({ where: { id: pageId } }),
+      ]);
+      expect(storedPost.status).toBe("PUBLISHED");
+      expect(storedPage.status).toBe("PUBLISHED");
+    });
+
+    it("status=SCHEDULED'dan status=DRAFT'a EXPLICIT geçişte scheduledAt null'a temizlenir (blog yazısı)", async () => {
+      const create = await app.inject({
+        method: "POST",
+        url: "/api/v1/admin/blog",
+        headers: authHeader(),
+        payload: { title: "Taslağa Döndürülecek Yazı", status: "SCHEDULED", scheduledAt: FUTURE },
+      });
+      const postId = create.json().data.id;
+
+      const update = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/admin/blog/${postId}`,
+        headers: authHeader(),
+        payload: { status: "DRAFT" },
+      });
+      expect(update.statusCode).toBe(200);
+      expect(update.json().data.status).toBe("DRAFT");
+      expect(update.json().data.scheduledAt ?? null).toBeNull();
+
+      const stored = await app.prisma.blogPost.findUniqueOrThrow({ where: { id: postId } });
+      expect(stored.scheduledAt).toBeNull();
+    });
+
+    it("status=SCHEDULED'dan status=DRAFT'a EXPLICIT geçişte scheduledAt null'a temizlenir (sayfa)", async () => {
+      const create = await app.inject({
+        method: "POST",
+        url: "/api/v1/admin/pages",
+        headers: authHeader(),
+        payload: { title: "Taslağa Döndürülecek Sayfa", status: "SCHEDULED", scheduledAt: FUTURE },
+      });
+      const pageId = create.json().data.id;
+
+      const update = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/admin/pages/${pageId}`,
+        headers: authHeader(),
+        payload: { status: "DRAFT" },
+      });
+      expect(update.statusCode).toBe(200);
+      expect(update.json().data.status).toBe("DRAFT");
+      expect(update.json().data.scheduledAt ?? null).toBeNull();
+
+      const stored = await app.prisma.page.findUniqueOrThrow({ where: { id: pageId } });
+      expect(stored.scheduledAt).toBeNull();
     });
   });
 });
