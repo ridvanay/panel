@@ -6,7 +6,13 @@ import { z } from "zod";
 import { authenticate } from "../../middleware/authenticate";
 import { requireSiteRole } from "../../middleware/site-rbac";
 import { ok } from "../../lib/envelope";
-import { ApiSuccessSchema, ApiSuccessWithMeta, ContentListQuerySchema, CursorQuerySchema } from "../../schemas/common";
+import {
+  ApiSuccessSchema,
+  ApiSuccessWithMeta,
+  AutosaveResponseSchema,
+  ContentListQuerySchema,
+  CursorQuerySchema,
+} from "../../schemas/common";
 import {
   BulkContentActionRequestSchema,
   BulkContentActionResultSchema,
@@ -30,6 +36,7 @@ import { logAudit } from "../../lib/audit";
 import { sanitizePageBlocks, sanitizePageTranslations } from "./lib/sanitize-blocks";
 import { SETTINGS_ID } from "../settings/settings.routes";
 import {
+  AutosavePageRequestSchema,
   CreatePageRequestSchema,
   LocaleQuerySchema,
   PageIdParamSchema,
@@ -210,6 +217,42 @@ export async function adminPagesRoutes(app: FastifyInstance) {
       });
 
       return reply.send(ok(toPageDto(page)));
+    }
+  );
+
+  // Faz 3 (autosave) — 3sn debounce ile frontend'den çağrılır. Bilinçli olarak `PATCH`'ten
+  // AYRIDIR: `snapshotBeforeUpdate` (revizyon) ve `logAudit` ÇAĞIRMAZ — aksi halde her
+  // otomatik kayıt entity başına 50'lik revizyon tavanını (MAX_REVISIONS_PER_ENTITY) doldurup
+  // kullanıcının bilinçli "Kaydet" ile ürettiği anlamlı geçmişi silerdi (bkz. lib/content-revisions.ts).
+  server.post(
+    "/:pageId/autosave",
+    {
+      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      schema: {
+        params: PageIdParamSchema,
+        body: AutosavePageRequestSchema,
+        response: { 200: ApiSuccessSchema(AutosaveResponseSchema) },
+      },
+    },
+    async (request, reply) => {
+      const existing = await app.prisma.page.findUnique({ where: { id: request.params.pageId } });
+      if (!existing) throw new NotFoundError("Sayfa bulunamadı.");
+
+      if (existing.deletedAt) {
+        throw new ConflictError("Çöpteki içerik düzenlenemez. Önce geri yükleyin.");
+      }
+
+      const { title, blocks } = request.body;
+
+      await app.prisma.page.update({
+        where: { id: request.params.pageId },
+        data: {
+          ...(title !== undefined ? { title } : {}),
+          ...(blocks !== undefined ? { blocks: sanitizePageBlocks(blocks) as Prisma.InputJsonValue } : {}),
+        },
+      });
+
+      return reply.send(ok({ savedAt: new Date().toISOString() }));
     }
   );
 

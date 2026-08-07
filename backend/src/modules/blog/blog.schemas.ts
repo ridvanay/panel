@@ -65,6 +65,17 @@ export const UpdateBlogPostRequestSchema = z.object({
   authorId: z.string().uuid().nullable().optional(),
 });
 
+/**
+ * Faz 3 (autosave) — `POST /admin/blog/:postId/autosave`. `UpdateBlogPostRequestSchema`'nın
+ * bilinçli olarak DAR bir alt kümesi: SEO/durum/slug/kategori/çeviri gibi alanlar autosave'in
+ * kapsamı DIŞINDA tutulur (yalnızca kullanıcının aktif düzenlediği metin alanları korunur).
+ */
+export const AutosaveBlogPostRequestSchema = z.object({
+  title: z.string().min(1).optional(),
+  excerpt: z.string().nullable().optional(),
+  contentHtml: z.string().optional(),
+});
+
 export const CreateBlogCategoryRequestSchema = z.object({
   name: z.string().min(1),
   slug: z.string().min(1).optional(),

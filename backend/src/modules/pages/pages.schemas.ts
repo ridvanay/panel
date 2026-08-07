@@ -41,6 +41,18 @@ export const CreatePageRequestSchema = z.object({
   authorId: z.string().uuid().nullable().optional(),
 });
 
+/**
+ * Faz 3 (autosave) — `POST /admin/pages/:pageId/autosave`. `UpdatePageRequestSchema`'nın
+ * bilinçli olarak DAR bir alt kümesi: SEO/durum/slug/çeviri kapsam DIŞI. NOT: mimari kontrat
+ * blog için `excerpt`/`contentHtml` alanlarını referans alıyor, ancak `Page` modelinde bu
+ * alanlar YOK — sayfanın içerik alanı `blocks`'tur, bu yüzden burada `title`/`blocks`
+ * kullanılır (aynı korumaya-değer-alan-seti niyeti, Page şemasına uyarlanmış hali).
+ */
+export const AutosavePageRequestSchema = z.object({
+  title: z.string().min(1).optional(),
+  blocks: z.array(BlockSchema).optional(),
+});
+
 export const UpdatePageRequestSchema = z.object({
   title: z.string().min(1).optional(),
   slug: z.string().min(1).optional(),

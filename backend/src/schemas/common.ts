@@ -79,3 +79,13 @@ export const OrgMemberParamSchema = z.object({
 });
 
 export const EmptyResponseSchema = z.undefined();
+
+/**
+ * Faz 3 (autosave) — `POST /admin/{blog,pages}/:id/autosave` ortak yanıt şeması.
+ * Bilinçli olarak minimal: autosave revizyon üretmez ve audit loglamaz (bkz.
+ * lib/content-revisions.ts), bu yüzden tam entity DTO'sunu dönmenin bir faydası
+ * yok — istemci yalnızca "en son ne zaman kaydedildi"yi bilmek ister.
+ */
+export const AutosaveResponseSchema = z.object({
+  savedAt: z.string(),
+});

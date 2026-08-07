@@ -462,4 +462,88 @@ describe("pages", () => {
       expect(nonexistentAuthor.statusCode).toBe(422);
     });
   });
+
+  // Faz 3 (autosave) — bilinçli olarak revizyonsuz/audit'siz (bkz. lib/content-revisions.ts).
+  // NOT: Page modelinde `excerpt`/`contentHtml` yok — sayfanın içerik alanı `blocks`'tur.
+  describe("autosave (Faz 3)", () => {
+    it("updates title/blocks, sanitizes blocks, and does not create a revision or audit log", async () => {
+      const create = await app.inject({
+        method: "POST",
+        url: "/api/v1/admin/pages",
+        headers: authHeader(),
+        payload: { title: "Autosave Öncesi" },
+      });
+      const pageId = create.json().data.id;
+
+      const revisionsBefore = await app.inject({
+        method: "GET",
+        url: `/api/v1/admin/pages/${pageId}/revisions`,
+        headers: authHeader(),
+      });
+      expect(revisionsBefore.json().data).toHaveLength(0);
+
+      const autosave = await app.inject({
+        method: "POST",
+        url: `/api/v1/admin/pages/${pageId}/autosave`,
+        headers: authHeader(),
+        payload: {
+          title: "Autosave Sonrası",
+          blocks: [{ type: "text", data: { html: '<p onclick="alert(1)">Merhaba</p>' } }],
+        },
+      });
+
+      expect(autosave.statusCode).toBe(200);
+      expect(autosave.json().data).toEqual({ savedAt: expect.any(String) });
+
+      const revisionsAfter = await app.inject({
+        method: "GET",
+        url: `/api/v1/admin/pages/${pageId}/revisions`,
+        headers: authHeader(),
+      });
+      expect(revisionsAfter.json().data).toHaveLength(0);
+
+      const get = await app.inject({ method: "GET", url: `/api/v1/admin/pages/${pageId}`, headers: authHeader() });
+      const dto = get.json().data;
+      expect(dto.title).toBe("Autosave Sonrası");
+      const html = JSON.stringify(dto.blocks);
+      expect(html).not.toContain("onclick");
+      expect(html).toContain("Merhaba");
+    });
+
+    it("rejects autosave on a trashed page with 409", async () => {
+      const create = await app.inject({
+        method: "POST",
+        url: "/api/v1/admin/pages",
+        headers: authHeader(),
+        payload: { title: "Çöpteyken Autosave" },
+      });
+      const pageId = create.json().data.id;
+      await app.inject({ method: "DELETE", url: `/api/v1/admin/pages/${pageId}`, headers: authHeader() });
+
+      const autosave = await app.inject({
+        method: "POST",
+        url: `/api/v1/admin/pages/${pageId}/autosave`,
+        headers: authHeader(),
+        payload: { title: "Değişmemeli" },
+      });
+      expect(autosave.statusCode).toBe(409);
+    });
+
+    it("requires authentication (401)", async () => {
+      const create = await app.inject({
+        method: "POST",
+        url: "/api/v1/admin/pages",
+        headers: authHeader(),
+        payload: { title: "Yetkisiz Autosave" },
+      });
+      const pageId = create.json().data.id;
+
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/v1/admin/pages/${pageId}/autosave`,
+        payload: { title: "x" },
+      });
+      expect(res.statusCode).toBe(401);
+    });
+  });
 });

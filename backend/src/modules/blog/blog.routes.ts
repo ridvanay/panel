@@ -6,7 +6,13 @@ import { z } from "zod";
 import { authenticate } from "../../middleware/authenticate";
 import { requireSiteRole } from "../../middleware/site-rbac";
 import { ok } from "../../lib/envelope";
-import { ApiSuccessSchema, ApiSuccessWithMeta, ContentListQuerySchema, CursorQuerySchema } from "../../schemas/common";
+import {
+  ApiSuccessSchema,
+  ApiSuccessWithMeta,
+  AutosaveResponseSchema,
+  ContentListQuerySchema,
+  CursorQuerySchema,
+} from "../../schemas/common";
 import {
   BlogCategorySchema,
   BlogPostSchema,
@@ -31,6 +37,7 @@ import { logAudit } from "../../lib/audit";
 import { sanitizeRichHtml } from "../../lib/html-sanitize";
 import { sanitizeBlogTranslations } from "./lib/sanitize-content";
 import {
+  AutosaveBlogPostRequestSchema,
   CategoryIdParamSchema,
   CreateBlogCategoryRequestSchema,
   CreateBlogPostRequestSchema,
@@ -242,6 +249,43 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
       });
 
       return reply.send(ok(toBlogPostDto(post)));
+    }
+  );
+
+  // Faz 3 (autosave) — 3sn debounce ile frontend'den çağrılır. Bilinçli olarak `PATCH`'ten
+  // AYRIDIR: `snapshotBeforeUpdate` (revizyon) ve `logAudit` ÇAĞIRMAZ — aksi halde her
+  // otomatik kayıt entity başına 50'lik revizyon tavanını (MAX_REVISIONS_PER_ENTITY) doldurup
+  // kullanıcının bilinçli "Kaydet" ile ürettiği anlamlı geçmişi silerdi (bkz. lib/content-revisions.ts).
+  server.post(
+    "/:postId/autosave",
+    {
+      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      schema: {
+        params: PostIdParamSchema,
+        body: AutosaveBlogPostRequestSchema,
+        response: { 200: ApiSuccessSchema(AutosaveResponseSchema) },
+      },
+    },
+    async (request, reply) => {
+      const existing = await app.prisma.blogPost.findUnique({ where: { id: request.params.postId } });
+      if (!existing) throw new NotFoundError("Yazı bulunamadı.");
+
+      if (existing.deletedAt) {
+        throw new ConflictError("Çöpteki içerik düzenlenemez. Önce geri yükleyin.");
+      }
+
+      const { title, excerpt, contentHtml } = request.body;
+
+      await app.prisma.blogPost.update({
+        where: { id: request.params.postId },
+        data: {
+          ...(title !== undefined ? { title } : {}),
+          ...(excerpt !== undefined ? { excerpt } : {}),
+          ...(contentHtml !== undefined ? { contentHtml: sanitizeRichHtml(contentHtml) } : {}),
+        },
+      });
+
+      return reply.send(ok({ savedAt: new Date().toISOString() }));
     }
   );
 
