@@ -147,6 +147,7 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
         canonicalUrl,
         noIndex,
         translations,
+        scheduledAt,
       } = request.body;
 
       const resolvedAuthorId = await resolveAuthorId(app, request.body.authorId, request.user!);
@@ -173,6 +174,9 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
           noIndex,
           translations: (translations ? sanitizeBlogTranslations(translations) : {}) as Prisma.InputJsonValue,
           publishedAt: status === "PUBLISHED" ? new Date() : null,
+          // Faz 4 (zamanlanmış yayın) — `CreateBlogPostRequestSchema`'nın `refine`'ı zaten
+          // `status === "SCHEDULED"` iken `scheduledAt`'in gelecekte dolu olmasını garanti eder.
+          scheduledAt: status === "SCHEDULED" && scheduledAt ? new Date(scheduledAt) : null,
         },
         include: WITH_RELATIONS,
       });
@@ -215,7 +219,7 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
 
       await snapshotBeforeUpdate(app, "BLOG_POST", existing.id, toBlogPostSnapshot(existing), request.user!.id);
 
-      const { slug, translations, authorId: requestedAuthorId, ...rest } = request.body;
+      const { slug, translations, authorId: requestedAuthorId, scheduledAt, ...rest } = request.body;
       const resolvedAuthorId = await resolveAuthorId(app, requestedAuthorId, request.user!);
 
       // Stored-XSS koruması: gelen çeviriler merge'den ÖNCE sanitize edilir (mevcut kayıttaki
@@ -243,6 +247,14 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
           ...(slug !== undefined ? { slug: slugify(slug) } : {}),
           ...(mergedTranslations !== undefined ? { translations: mergedTranslations as Prisma.InputJsonValue } : {}),
           ...(rest.status === "PUBLISHED" && !existing.publishedAt ? { publishedAt: new Date() } : {}),
+          // Faz 4 (zamanlanmış yayın) — yalnızca bu istekte `status` GÖNDERİLMİŞSE dokunulur (aksi
+          // halde ilgisiz bir alan güncellemesi mevcut bir zamanlamayı bozardı). `status ===
+          // "SCHEDULED"` ise `UpdateBlogPostRequestSchema`'nın `refine`'ı `scheduledAt`'in
+          // gelecekte dolu olmasını garanti eder; `PUBLISHED`/`DRAFT`'a manuel geçişte ise eski
+          // zamanlama artığı kalmasın diye `null`'a temizlenir.
+          ...(rest.status !== undefined
+            ? { scheduledAt: rest.status === "SCHEDULED" && scheduledAt ? new Date(scheduledAt) : null }
+            : {}),
           ...(resolvedAuthorId !== undefined ? { authorId: resolvedAuthorId } : {}),
         },
         include: WITH_RELATIONS,

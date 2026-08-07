@@ -124,8 +124,20 @@ export async function adminPagesRoutes(app: FastifyInstance) {
       schema: { body: CreatePageRequestSchema, response: { 201: ApiSuccessSchema(PageSchema) } },
     },
     async (request, reply) => {
-      const { title, slug, status, blocks, seoTitle, seoDescription, ogTitle, ogImageUrl, canonicalUrl, noIndex, translations } =
-        request.body;
+      const {
+        title,
+        slug,
+        status,
+        blocks,
+        seoTitle,
+        seoDescription,
+        ogTitle,
+        ogImageUrl,
+        canonicalUrl,
+        noIndex,
+        translations,
+        scheduledAt,
+      } = request.body;
 
       const resolvedAuthorId = await resolveAuthorId(app, request.body.authorId, request.user!);
       const authorId = resolvedAuthorId === undefined ? request.user!.id : resolvedAuthorId;
@@ -147,6 +159,9 @@ export async function adminPagesRoutes(app: FastifyInstance) {
           noIndex,
           translations: (translations ? sanitizePageTranslations(translations) : {}) as Prisma.InputJsonValue,
           publishedAt: status === "PUBLISHED" ? new Date() : null,
+          // Faz 4 (zamanlanmış yayın) — `CreatePageRequestSchema`'nın `refine`'ı zaten
+          // `status === "SCHEDULED"` iken `scheduledAt`'in gelecekte dolu olmasını garanti eder.
+          scheduledAt: status === "SCHEDULED" && scheduledAt ? new Date(scheduledAt) : null,
           authorId,
         },
         include: WITH_AUTHOR,
@@ -183,7 +198,7 @@ export async function adminPagesRoutes(app: FastifyInstance) {
 
       await snapshotBeforeUpdate(app, "PAGE", existing.id, toPageSnapshot(existing), request.user!.id);
 
-      const { slug, translations, authorId: requestedAuthorId, ...rest } = request.body;
+      const { slug, translations, authorId: requestedAuthorId, scheduledAt, ...rest } = request.body;
       const resolvedAuthorId = await resolveAuthorId(app, requestedAuthorId, request.user!);
 
       // Stored-XSS koruması: gelen çeviriler merge'den ÖNCE sanitize edilir (mevcut kayıttaki
@@ -211,6 +226,14 @@ export async function adminPagesRoutes(app: FastifyInstance) {
           ...(slug !== undefined ? { slug: slugify(slug) } : {}),
           ...(mergedTranslations !== undefined ? { translations: mergedTranslations as Prisma.InputJsonValue } : {}),
           ...(rest.status === "PUBLISHED" && !existing.publishedAt ? { publishedAt: new Date() } : {}),
+          // Faz 4 (zamanlanmış yayın) — yalnızca bu istekte `status` GÖNDERİLMİŞSE dokunulur (aksi
+          // halde ilgisiz bir alan güncellemesi mevcut bir zamanlamayı bozardı). `status ===
+          // "SCHEDULED"` ise `UpdatePageRequestSchema`'nın `refine`'ı `scheduledAt`'in gelecekte
+          // dolu olmasını garanti eder; `PUBLISHED`/`DRAFT`'a manuel geçişte ise eski zamanlama
+          // artığı kalmasın diye `null`'a temizlenir.
+          ...(rest.status !== undefined
+            ? { scheduledAt: rest.status === "SCHEDULED" && scheduledAt ? new Date(scheduledAt) : null }
+            : {}),
           ...(resolvedAuthorId !== undefined ? { authorId: resolvedAuthorId } : {}),
         },
         include: WITH_AUTHOR,

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PageStatusSchema } from "./entities";
 
 /** docs/architecture/openapi.yaml #/components/schemas/ApiErrorEnvelope ile birebir. */
 export const ApiErrorCodeSchema = z.enum([
@@ -66,7 +67,9 @@ export const TrashedFilterSchema = z.enum(["exclude", "include", "only"]).defaul
  */
 export const ContentListQuerySchema = CursorQuerySchema.extend({
   trashed: TrashedFilterSchema,
-  status: z.enum(["DRAFT", "PUBLISHED"]).optional(),
+  // `PageStatusSchema` ile TEK kaynak — Faz 4 (zamanlanmış yayın) ile "SCHEDULED" eklendiğinde
+  // burası da otomatik güncel kalır (bkz. schemas/entities.ts).
+  status: PageStatusSchema.optional(),
 });
 
 export const OrgIdParamSchema = z.object({
@@ -89,3 +92,24 @@ export const EmptyResponseSchema = z.undefined();
 export const AutosaveResponseSchema = z.object({
   savedAt: z.string(),
 });
+
+/**
+ * Faz 4 (zamanlanmış yayın) — `blog.schemas.ts`/`pages.schemas.ts`'teki create/update
+ * gövdelerinde BİREBİR AYNI çapraz-alan kuralı (kod tekrarını önlemek için burada tek noktadan
+ * paylaşılır): `status === "SCHEDULED"` İSE `scheduledAt` ZORUNLU ve GELECEKTE bir tarih olmalı;
+ * aksi halde (`DRAFT`/`PUBLISHED`/status hiç gönderilmemişse) `scheduledAt` body'de gönderilse
+ * dahi göz ardı edilir — route handler'da `null`'a temizlenir (bkz. blog.routes.ts/pages.routes.ts),
+ * eski bir zamanlama artığı kalmasın diye.
+ */
+export function refineScheduledAt<T extends { status?: "DRAFT" | "PUBLISHED" | "SCHEDULED"; scheduledAt?: string | null }>(
+  data: T
+): boolean {
+  if (data.status !== "SCHEDULED") return true;
+  if (!data.scheduledAt) return false;
+  return new Date(data.scheduledAt).getTime() > Date.now();
+}
+
+export const SCHEDULED_AT_REFINEMENT: { message: string; path: (string | number)[] } = {
+  message: "SCHEDULED durumu için scheduledAt zorunludur ve gelecekte bir tarih olmalıdır.",
+  path: ["scheduledAt"],
+};

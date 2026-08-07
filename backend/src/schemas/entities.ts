@@ -9,7 +9,7 @@ export const MembershipRoleSchema = z.enum(["OWNER", "ADMIN", "MEMBER"]);
 export const MembershipStatusSchema = z.enum(["ACTIVE", "INVITED", "SUSPENDED"]);
 export const InvitationStatusSchema = z.enum(["PENDING", "ACCEPTED", "EXPIRED", "REVOKED"]);
 export const SubscriptionStatusSchema = z.enum(["TRIALING", "ACTIVE", "PAST_DUE", "CANCELED", "INCOMPLETE"]);
-export const PageStatusSchema = z.enum(["DRAFT", "PUBLISHED"]);
+export const PageStatusSchema = z.enum(["DRAFT", "PUBLISHED", "SCHEDULED"]);
 
 // `/admin/*` CMS uçları için org'dan bağımsız site-geneli rol/durum (bkz. middleware/site-rbac.ts).
 // MembershipRoleSchema (organizasyon bazlı) ile KARIŞTIRILMAMALI.
