@@ -507,6 +507,131 @@ export interface Media {
   createdAt: string;
 }
 
+/**
+ * §10.9.2 Ürünler Modülü — BlogCategory/BlogPost paterniyle BİREBİR aynı §10.7 çöp kutusu/
+ * yazar/SEO skoru alan setine, e-ticaret alanları (fiyat/stok/SKU) eklenmiş hâli. Bkz.
+ * backend/src/schemas/entities.ts::ProductSchema (tek doğruluk kaynağı).
+ */
+export interface ProductCategory {
+  id: string;
+  name: string;
+  slug: string;
+  createdAt: string;
+}
+
+export interface CreateProductCategoryRequest {
+  name: string;
+  slug?: string;
+}
+
+export interface UpdateProductCategoryRequest {
+  name?: string;
+  slug?: string;
+}
+
+/** Sıralı ürün galerisi öğesi — bu fazda YAZMA ucu YOK (yalnızca okunur, bkz. görev notu). */
+export interface ProductImage {
+  id: string;
+  media: Media;
+  order: number;
+}
+
+export interface Product {
+  id: string;
+  title: string;
+  slug: string;
+  excerpt: string | null;
+  descriptionHtml: string;
+  /** Para: HER ZAMAN kuruş/cent cinsinden Int — float KESİNLİKLE YOK. */
+  priceCents: number;
+  currency: string;
+  /** KDV fiyata DAHİL — bu alan yalnızca fatura/gösterim amaçlı ayrıştırma içindir. */
+  taxRatePercent: number | null;
+  discountPriceCents: number | null;
+  sku: string | null;
+  stockQuantity: number;
+  status: ContentStatus;
+  category: ProductCategory | null;
+  coverMedia: Media | null;
+  images: ProductImage[];
+  seoTitle: string | null;
+  seoDescription: string | null;
+  ogTitle: string | null;
+  ogImageUrl: string | null;
+  canonicalUrl: string | null;
+  noIndex: boolean;
+  translations: ContentTranslations;
+  publishedAt: string | null;
+  /** `status === "SCHEDULED"` iken gelecekteki yayın tarihi (ISO datetime); aksi halde `null`. */
+  scheduledAt: string | null;
+  viewCount: number;
+  createdAt: string;
+  updatedAt: string;
+  // ---- §10.7 İçerik Yönetim Listesi ----
+  deletedAt: string | null;
+  authorId: string | null;
+  author: UserSummary | null;
+  seoScore: number;
+  seoScoreIssues: SeoScoreIssue[];
+}
+
+export interface CreateProductRequest {
+  title: string;
+  slug?: string;
+  excerpt?: string;
+  descriptionHtml?: string;
+  priceCents: number;
+  currency?: string;
+  taxRatePercent?: number | null;
+  discountPriceCents?: number | null;
+  sku?: string | null;
+  stockQuantity?: number;
+  status?: ContentStatus;
+  categoryId?: string | null;
+  coverMediaId?: string | null;
+  seoTitle?: string | null;
+  seoDescription?: string | null;
+  ogTitle?: string | null;
+  ogImageUrl?: string | null;
+  canonicalUrl?: string | null;
+  noIndex?: boolean;
+  translations?: ContentTranslations;
+  /** Verilmezse giriş yapmış kullanıcı yazar olur; başka id atamak yalnızca ADMIN'e açıktır. */
+  authorId?: string | null;
+  /** `status === "SCHEDULED"` iken ZORUNLU ve gelecekte bir tarih olmalı (backend 422 ile reddeder). */
+  scheduledAt?: string | null;
+}
+
+export interface UpdateProductRequest {
+  title?: string;
+  slug?: string;
+  excerpt?: string | null;
+  descriptionHtml?: string;
+  priceCents?: number;
+  currency?: string;
+  taxRatePercent?: number | null;
+  discountPriceCents?: number | null;
+  sku?: string | null;
+  stockQuantity?: number;
+  status?: ContentStatus;
+  categoryId?: string | null;
+  coverMediaId?: string | null;
+  seoTitle?: string | null;
+  seoDescription?: string | null;
+  ogTitle?: string | null;
+  ogImageUrl?: string | null;
+  canonicalUrl?: string | null;
+  noIndex?: boolean;
+  translations?: ContentTranslations;
+  authorId?: string | null;
+  scheduledAt?: string | null;
+}
+
+/** Admin'in elle stok düzeltmesi — `PATCH /admin/products/:productId/stock`. */
+export interface AdjustProductStockRequest {
+  stockQuantity: number;
+}
+
 export interface SiteSettings {
   siteName: string;
   logoUrl: string | null;
