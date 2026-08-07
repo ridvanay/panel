@@ -633,6 +633,120 @@ export interface AdjustProductStockRequest {
 }
 
 /**
+ * §10.9.4 Portföy Modülü — `Product`'ın (§10.9.2) BİREBİR paterni, ticari alanlar
+ * (fiyat/stok/SKU) yerine `clientName`/`projectUrl`/`completedAt`/`order` (manuel sıralama).
+ * Bkz. backend/src/schemas/entities.ts::PortfolioItemSchema (tek doğruluk kaynağı).
+ */
+export interface PortfolioCategory {
+  id: string;
+  name: string;
+  slug: string;
+  createdAt: string;
+}
+
+export interface CreatePortfolioCategoryRequest {
+  name: string;
+  slug?: string;
+}
+
+export interface UpdatePortfolioCategoryRequest {
+  name?: string;
+  slug?: string;
+}
+
+/** Sıralı portföy galerisi öğesi — bu fazda YAZMA ucu YOK, `ProductImage` ile AYNI patern. */
+export interface PortfolioImage {
+  id: string;
+  media: Media;
+  order: number;
+}
+
+export interface PortfolioItem {
+  id: string;
+  title: string;
+  slug: string;
+  summary: string | null;
+  contentHtml: string;
+  clientName: string | null;
+  projectUrl: string | null;
+  completedAt: string | null;
+  /** Manuel sıralama (kullanıcı kararı) — düşük sayı önce gösterilir. `viewCount` İLE KARIŞTIRILMAMALI. */
+  order: number;
+  status: ContentStatus;
+  category: PortfolioCategory | null;
+  coverMedia: Media | null;
+  images: PortfolioImage[];
+  seoTitle: string | null;
+  seoDescription: string | null;
+  ogTitle: string | null;
+  ogImageUrl: string | null;
+  canonicalUrl: string | null;
+  noIndex: boolean;
+  translations: ContentTranslations;
+  publishedAt: string | null;
+  /** `status === "SCHEDULED"` iken gelecekteki yayın tarihi (ISO datetime); aksi halde `null`. */
+  scheduledAt: string | null;
+  viewCount: number;
+  createdAt: string;
+  updatedAt: string;
+  // ---- §10.7 İçerik Yönetim Listesi ----
+  deletedAt: string | null;
+  authorId: string | null;
+  author: UserSummary | null;
+  seoScore: number;
+  seoScoreIssues: SeoScoreIssue[];
+}
+
+export interface CreatePortfolioItemRequest {
+  title: string;
+  slug?: string;
+  summary?: string;
+  contentHtml?: string;
+  clientName?: string | null;
+  projectUrl?: string | null;
+  /** ISO-8601 datetime string — tarih-only girişler `new Date(value).toISOString()` ile çevrilir. */
+  completedAt?: string | null;
+  order?: number;
+  status?: ContentStatus;
+  categoryId?: string | null;
+  coverMediaId?: string | null;
+  seoTitle?: string | null;
+  seoDescription?: string | null;
+  ogTitle?: string | null;
+  ogImageUrl?: string | null;
+  canonicalUrl?: string | null;
+  noIndex?: boolean;
+  translations?: ContentTranslations;
+  /** Verilmezse giriş yapmış kullanıcı yazar olur; başka id atamak yalnızca ADMIN'e açıktır. */
+  authorId?: string | null;
+  /** `status === "SCHEDULED"` iken ZORUNLU ve gelecekte bir tarih olmalı (backend 422 ile reddeder). */
+  scheduledAt?: string | null;
+}
+
+export interface UpdatePortfolioItemRequest {
+  title?: string;
+  slug?: string;
+  summary?: string | null;
+  contentHtml?: string;
+  clientName?: string | null;
+  projectUrl?: string | null;
+  completedAt?: string | null;
+  order?: number;
+  status?: ContentStatus;
+  categoryId?: string | null;
+  coverMediaId?: string | null;
+  seoTitle?: string | null;
+  seoDescription?: string | null;
+  ogTitle?: string | null;
+  ogImageUrl?: string | null;
+  canonicalUrl?: string | null;
+  noIndex?: boolean;
+  translations?: ContentTranslations;
+  authorId?: string | null;
+  scheduledAt?: string | null;
+}
+
+/**
  * Sepet/Checkout/Sipariş — bkz. görev notu "Backend kontratı (kesinleşti, DOĞRULANMIŞ)".
  * Sepet kimliği `cart_token` httpOnly cookie ile taşınır; frontend cookie'yi ELLE OKUMAZ/YAZMAZ,
  * `apiFetch`'in `credentials:"include"` ayarı yeterlidir.
