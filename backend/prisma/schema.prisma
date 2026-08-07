@@ -74,6 +74,7 @@ enum ContentEntityType {
   PAGE
   BLOG_POST
   PRODUCT
+  PORTFOLIO_ITEM
 }
 
 // §10.8 Toplu İçe Aktarma (Import) — bkz. ARCHITECTURE.md §10.8.2.
@@ -176,6 +177,8 @@ model User {
   pages               Page[]
   // §10.9.2 Ürünler Modülü — bkz. ARCHITECTURE.md §10.9.2.
   products            Product[]            @relation("ProductAuthor")
+  // §10.9.4 Portföy Modülü — bkz. ARCHITECTURE.md §10.9.4.
+  portfolioItems      PortfolioItem[]      @relation("PortfolioAuthor")
   auditLogs           AuditLog[]           @relation("AuditLogActor")
   backupCodes         BackupCode[]
   // Polymorphic ContentRevision.editedById / EmailTemplate.updatedById için zorunlu karşı-ilişki alanları.
@@ -492,6 +495,81 @@ model ProductImage {
   @@map("product_images")
 }
 
+model PortfolioCategory {
+  id        String   @id @default(uuid())
+  seq       Int      @unique @default(autoincrement())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+
+  items PortfolioItem[]
+
+  @@map("portfolio_categories")
+}
+
+// §10.9.4 Portföy Modülü (Eklenti/Modül Yönetimi) — Ürünler modülünün (Product) BİREBİR
+// paterni, manuel "order" alanıyla sıralanır (kullanıcı kararı — completedAt yerine).
+model PortfolioItem {
+  id             String     @id @default(uuid())
+  seq            Int        @unique @default(autoincrement())
+  title          String
+  slug           String     @unique
+  summary        String?
+  contentHtml    String     @default("")
+  clientName     String?
+  projectUrl     String?
+  completedAt    DateTime?
+  order          Int        @default(0)
+  status         PageStatus @default(DRAFT)
+  categoryId     String?
+  coverMediaId   String?
+  seoTitle       String?
+  seoDescription String?
+  // §10.2 Gelişmiş SEO & Social Card — bkz. ARCHITECTURE.md §10.2.
+  ogTitle        String?
+  ogImageUrl     String?
+  canonicalUrl   String?
+  noIndex        Boolean    @default(false)
+  // §10.5 Çoklu Dil & Yerelleştirme — TR (kolonlar) kanonik, translations.EN yalnızca override.
+  translations   Json       @default("{}")
+  publishedAt    DateTime?
+  // Zamanlanmış yayın hedef tarihi — yalnızca status=SCHEDULED iken anlamlı; süreç-içi sweeper bu
+  // tarihe ulaşınca status'u PUBLISHED'a çevirir (bkz. modules/{blog,pages}/*-publish-scheduler.ts).
+  scheduledAt    DateTime?
+  viewCount      Int        @default(0)
+  // §10.7 Soft-delete (çöp kutusu) — bkz. ARCHITECTURE.md §10.7.
+  deletedAt      DateTime?
+  authorId       String?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  category   PortfolioCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  coverMedia Media?             @relation("PortfolioCoverMedia", fields: [coverMediaId], references: [id], onDelete: SetNull)
+  author     User?              @relation("PortfolioAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  images     PortfolioImage[]
+
+  @@index([categoryId])
+  @@index([deletedAt, status])
+  @@index([authorId])
+  @@index([coverMediaId])
+  @@map("portfolio_items")
+}
+
+// Sıralı join tablosu — ProductImage ile AYNI desen (bkz. yukarıdaki model).
+model PortfolioImage {
+  id              String @id @default(uuid())
+  portfolioItemId String
+  mediaId         String
+  order           Int    @default(0)
+
+  portfolioItem PortfolioItem @relation(fields: [portfolioItemId], references: [id], onDelete: Cascade)
+  media         Media         @relation("PortfolioGalleryImage", fields: [mediaId], references: [id], onDelete: Cascade)
+
+  @@unique([portfolioItemId, mediaId])
+  @@index([mediaId])
+  @@map("portfolio_images")
+}
+
 // Günlük bucket'lı ziyaret kaydı: pageId/postId'den yalnızca biri set edilir.
 // (pageId, date, deviceType, country) ve (postId, date, deviceType, country) unique çiftleri,
 // upsert ile "aynı gün + aynı cihaz + aynı ülke için ikinci görüntülemede count'u artır"
@@ -617,8 +695,11 @@ model Media {
   createdAt DateTime @default(now())
 
   // §10.9.2 Ürünler Modülü — bkz. ARCHITECTURE.md §10.9.2.
-  productCovers       Product[]      @relation("ProductCoverMedia")
-  productGalleryItems ProductImage[] @relation("ProductGalleryImage")
+  productCovers         Product[]        @relation("ProductCoverMedia")
+  productGalleryItems   ProductImage[]   @relation("ProductGalleryImage")
+  // §10.9.4 Portföy Modülü — bkz. ARCHITECTURE.md §10.9.4.
+  portfolioCovers       PortfolioItem[]  @relation("PortfolioCoverMedia")
+  portfolioGalleryItems PortfolioImage[] @relation("PortfolioGalleryImage")
 
   @@map("media")
 }
