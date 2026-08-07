@@ -14,6 +14,13 @@ export interface ModuleDefinition {
   defaultEnabled: boolean;
   /** Frontend sidebar filtresi için referans — backend bu alanı okumaz/kullanmaz, sadece taşır. */
   adminPath?: string;
+  /**
+   * §Faz 4 Site Şablonu — bu modülün hangi `SiteSettings.siteTemplate` değer(ler)i için ÖNERİLDİĞİ
+   * (bkz. prisma/schema.prisma::SiteTemplate). Backend bu alanı okumaz/uygulamaz, yalnızca taşır —
+   * frontend kurulum sihirbazında öneri göstermek için kullanır. SHOWCASE için özel bir modül
+   * önerisi YOK, bu yüzden tanımsız bırakılır.
+   */
+  recommendedFor?: ("SHOWCASE" | "COMMERCE" | "PORTFOLIO")[];
 }
 
 export const MODULE_REGISTRY: ModuleDefinition[] = [
@@ -23,6 +30,7 @@ export const MODULE_REGISTRY: ModuleDefinition[] = [
     description: "Ürün kataloğu, sepet ve satın alma akışı.",
     defaultEnabled: true,
     adminPath: "/admin/products",
+    recommendedFor: ["COMMERCE"],
   },
   {
     key: "portfolio",
@@ -30,6 +38,7 @@ export const MODULE_REGISTRY: ModuleDefinition[] = [
     description: "Proje/iş portföyü.",
     defaultEnabled: true,
     adminPath: "/admin/portfolio",
+    recommendedFor: ["PORTFOLIO"],
   },
 ];
 

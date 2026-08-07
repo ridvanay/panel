@@ -258,6 +258,7 @@ export function toSiteSettingsDto(settings: SiteSettings): SiteSettingsDto {
     siteName: settings.siteName,
     logoUrl: settings.logoUrl,
     homePageId: settings.homePageId,
+    siteTemplate: settings.siteTemplate,
   };
 }
 
@@ -277,6 +278,7 @@ export function toSiteModuleDto(
     enabled: row ? row.enabled : definition.defaultEnabled,
     updatedAt: row ? row.updatedAt.toISOString() : null,
     updatedBy: row?.updatedBy ? toUserSummaryDto(row.updatedBy) : null,
+    recommendedFor: definition.recommendedFor,
   };
 }
 

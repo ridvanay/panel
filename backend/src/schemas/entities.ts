@@ -376,10 +376,15 @@ export const PortfolioItemSchema = z.object({
 });
 export type PortfolioItemDto = z.infer<typeof PortfolioItemSchema>;
 
+export const SiteTemplateSchema = z.enum(["SHOWCASE", "COMMERCE", "PORTFOLIO"]);
+export type SiteTemplate = z.infer<typeof SiteTemplateSchema>;
+
 export const SiteSettingsSchema = z.object({
   siteName: z.string(),
   logoUrl: z.string().nullable(),
   homePageId: z.string().uuid().nullable(),
+  // §Faz 4 Site Şablonu — bkz. prisma/schema.prisma::SiteSettings.siteTemplate (db-agent).
+  siteTemplate: SiteTemplateSchema,
 });
 export type SiteSettingsDto = z.infer<typeof SiteSettingsSchema>;
 
@@ -393,6 +398,10 @@ export const SiteModuleSchema = z.object({
   enabled: z.boolean(),
   updatedAt: z.string().nullable(),
   updatedBy: UserSummarySchema.nullable(),
+  // §Faz 4 Site Şablonu — hangi site şablon(lar)ı için önerilen modül olduğu (frontend kurulum
+  // sihirbazında öneri göstermek için okur, backend davranışını ETKİLEMEZ). SHOWCASE için özel
+  // önerilen modül yok, bu yüzden boş/undefined olabilir.
+  recommendedFor: z.array(SiteTemplateSchema).optional(),
 });
 export type SiteModuleDto = z.infer<typeof SiteModuleSchema>;
 

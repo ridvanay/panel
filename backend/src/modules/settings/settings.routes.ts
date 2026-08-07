@@ -11,7 +11,12 @@ import { PERMISSIONS_MATRIX } from "../../lib/permissions-matrix";
 import { PermissionsMatrixDto, PermissionsMatrixSchema, UpdateSiteSettingsRequestSchema } from "./settings.schemas";
 
 export const SETTINGS_ID = "singleton";
-export const DEFAULTS = { siteName: "Site", logoUrl: null as string | null, homePageId: null as string | null };
+export const DEFAULTS = {
+  siteName: "Site",
+  logoUrl: null as string | null,
+  homePageId: null as string | null,
+  siteTemplate: "SHOWCASE" as const,
+};
 
 async function readSettings(app: FastifyInstance) {
   const row = await app.prisma.siteSettings.findUnique({ where: { id: SETTINGS_ID } });
