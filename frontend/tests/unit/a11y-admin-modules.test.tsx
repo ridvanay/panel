@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { axe } from "jest-axe";
@@ -8,6 +8,10 @@ import type { SiteModule, User } from "@/lib/api/types";
 vi.mock("@/lib/api/modules", () => ({
   listModules: vi.fn(),
   updateModule: vi.fn(),
+}));
+
+vi.mock("@/lib/api/settings", () => ({
+  getSettings: vi.fn(),
 }));
 
 let mockUser: User;
@@ -20,6 +24,7 @@ vi.mock("@/context/modules-context", () => ({
 }));
 
 const modulesApi = await import("@/lib/api/modules");
+const settingsApi = await import("@/lib/api/settings");
 
 const axeOptions = { rules: { region: { enabled: false } } };
 
@@ -57,6 +62,16 @@ const modules: SiteModule[] = [
 ];
 
 describe("AdminModulesPage — a11y", () => {
+  beforeEach(() => {
+    // "Önerilen" rozeti için mevcut site şablonu çekilir — davranışı etkilemez, testler için sabit.
+    vi.mocked(settingsApi.getSettings).mockResolvedValue({
+      siteName: "Site",
+      logoUrl: null,
+      homePageId: null,
+      siteTemplate: "SHOWCASE",
+    });
+  });
+
   it("boş modül listesinde kritik/ciddi a11y ihlali içermez", async () => {
     mockUser = makeUser({ role: "ADMIN" });
     vi.mocked(modulesApi.listModules).mockResolvedValue([]);

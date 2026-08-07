@@ -6,10 +6,12 @@ import { AlertCircle, Blocks, Lock } from "lucide-react";
 import { useAuth } from "@/context/auth-context";
 import { useModules } from "@/context/modules-context";
 import * as modulesApi from "@/lib/api/modules";
-import type { SiteModule } from "@/lib/api/types";
+import * as settingsApi from "@/lib/api/settings";
+import type { SiteModule, SiteTemplate } from "@/lib/api/types";
 import { PageHeading } from "@/components/admin/page-heading";
 import { Card } from "@/components/ui/card";
 import { Alert } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
@@ -30,12 +32,16 @@ export default function AdminModulesPage() {
   const [modules, setModules] = useState<SiteModule[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pendingKey, setPendingKey] = useState<string | null>(null);
+  // Yalnızca görsel bir ipucu için — "Önerilen" rozetini göstermek amacıyla mevcut site
+  // şablonu ayrıca çekilir, herhangi bir modülün aktif/pasif davranışını ETKİLEMEZ.
+  const [siteTemplate, setSiteTemplate] = useState<SiteTemplate | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
     try {
-      const list = await modulesApi.listModules();
+      const [list, settings] = await Promise.all([modulesApi.listModules(), settingsApi.getSettings()]);
       setModules(list);
+      setSiteTemplate(settings.siteTemplate);
     } catch (err) {
       setError(friendlyErrorMessage(err));
     }
@@ -114,6 +120,11 @@ export default function AdminModulesPage() {
                     <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
                       {module.key}
                     </span>
+                    {siteTemplate && module.recommendedFor?.includes(siteTemplate) && (
+                      <Badge tone="primary" size="sm">
+                        Önerilen
+                      </Badge>
+                    )}
                   </div>
                   {module.description && <p className="text-sm text-foreground/60">{module.description}</p>}
                   {module.updatedAt && (
