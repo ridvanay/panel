@@ -172,6 +172,8 @@ model User {
   importJobs          ImportJob[]          @relation("ImportJobCreator")
   // §10.8.10 Analitik Rapor Dışa Aktarma (Export) — bkz. ARCHITECTURE.md §10.8.10.
   exportJobs          ExportJob[]          @relation("ExportJobCreator")
+  // §10.9 Eklenti/Modül Yönetimi — bkz. ARCHITECTURE.md §10.9.
+  siteModuleUpdates   SiteModule[]         @relation("SiteModuleUpdater")
 
   @@map("users")
 }
@@ -702,4 +704,23 @@ model ExportJob {
   @@index([type])
   @@index([createdById])
   @@map("export_jobs")
+}
+
+// §10.9 Eklenti/Modül Yönetimi — modül TANIMI kod içi statik registry'de (bkz. lib/module-registry.ts,
+// backend-agent ekleyecek), burada SADECE aktif/pasif durumu + kim/ne zaman değiştirdiği tutulur. Yeni
+// satır ilk toggle'da lazy upsert ile oluşur (bkz. settings.routes.ts::DEFAULTS paterni) — seed ZORUNLU
+// değil, registry'deki defaultEnabled değeri satır yoksa fallback olur.
+model SiteModule {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  enabled     Boolean  @default(true)
+  settings    Json     @default("{}")
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  updatedBy User? @relation("SiteModuleUpdater", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@index([updatedById])
+  @@map("site_modules")
 }
