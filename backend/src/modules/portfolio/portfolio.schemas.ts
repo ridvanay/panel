@@ -14,6 +14,16 @@ export const PortfolioCategoryIdParamSchema = z.object({
   categoryId: z.string().uuid(),
 });
 
+export const PortfolioImageIdParamSchema = z.object({
+  itemId: z.string().uuid(),
+  imageId: z.string().uuid(),
+});
+
+/** `POST /:itemId/images` — galeriye tek bir Media ekler (bkz. portfolio.routes.ts). */
+export const AddPortfolioImageRequestSchema = z.object({
+  mediaId: z.string().uuid(),
+});
+
 /**
  * `GET /admin/portfolio` — `ContentListQuerySchema` (cursor/limit/trashed/status, products.schemas.ts
  * ile ORTAK) + portföye özel serbest metin arama (`title`/`clientName` üzerinde, bkz. portfolio.routes.ts).

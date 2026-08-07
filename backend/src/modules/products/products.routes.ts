@@ -20,12 +20,14 @@ import { logAudit } from "../../lib/audit";
 import { sanitizeRichHtml } from "../../lib/html-sanitize";
 import { sanitizeProductTranslations } from "./lib/sanitize-content";
 import {
+  AddProductImageRequestSchema,
   AdjustProductStockRequestSchema,
   CreateProductCategoryRequestSchema,
   CreateProductRequestSchema,
   ListProductsQuerySchema,
   ProductCategoryIdParamSchema,
   ProductIdParamSchema,
+  ProductImageIdParamSchema,
   ProductSlugParamSchema,
   UpdateProductCategoryRequestSchema,
   UpdateProductRequestSchema,
@@ -394,6 +396,63 @@ export async function adminProductsRoutes(app: FastifyInstance) {
       });
 
       return reply.send(ok(toProductDto(product)));
+    }
+  );
+
+  // Galeriye görsel ekle — aynı `mediaId` zaten galerideyse 409 (bkz. `@@unique([productId, mediaId])`).
+  server.post(
+    "/:productId/images",
+    {
+      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      schema: {
+        params: ProductIdParamSchema,
+        body: AddProductImageRequestSchema,
+        response: { 201: ApiSuccessSchema(ProductSchema) },
+      },
+    },
+    async (request, reply) => {
+      const product = await app.prisma.product.findUnique({ where: { id: request.params.productId } });
+      if (!product) throw new NotFoundError("Ürün bulunamadı.");
+
+      const media = await app.prisma.media.findUnique({ where: { id: request.body.mediaId } });
+      if (!media) throw new NotFoundError("Medya bulunamadı.");
+
+      const existingImage = await app.prisma.productImage.findUnique({
+        where: { productId_mediaId: { productId: product.id, mediaId: media.id } },
+      });
+      if (existingImage) throw new ConflictError("Bu görsel zaten ürünün galerisinde.");
+
+      const lastImage = await app.prisma.productImage.findFirst({
+        where: { productId: product.id },
+        orderBy: { order: "desc" },
+      });
+
+      await app.prisma.productImage.create({
+        data: { productId: product.id, mediaId: media.id, order: lastImage ? lastImage.order + 1 : 0 },
+      });
+
+      const updated = await app.prisma.product.findUnique({ where: { id: product.id }, include: WITH_RELATIONS });
+      return reply.code(201).send(ok(toProductDto(updated!)));
+    }
+  );
+
+  // Galeriden görsel kaldır — `imageId`'nin GERÇEKTEN bu ürüne ait olduğu doğrulanır (IDOR koruması).
+  server.delete(
+    "/:productId/images/:imageId",
+    {
+      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      schema: { params: ProductImageIdParamSchema, response: { 200: ApiSuccessSchema(ProductSchema) } },
+    },
+    async (request, reply) => {
+      const { productId, imageId } = request.params;
+      const image = await app.prisma.productImage.findUnique({ where: { id: imageId } });
+      if (!image || image.productId !== productId) throw new NotFoundError("Galeri görseli bulunamadı.");
+
+      await app.prisma.productImage.delete({ where: { id: imageId } });
+
+      const updated = await app.prisma.product.findUnique({ where: { id: productId }, include: WITH_RELATIONS });
+      if (!updated) throw new NotFoundError("Ürün bulunamadı.");
+      return reply.send(ok(toProductDto(updated)));
     }
   );
 }

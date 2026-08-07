@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import * as productsApi from "@/lib/api/products";
-import type { ContentStatus, Media, ProductCategory } from "@/lib/api/types";
+import type { ContentStatus, Media, ProductCategory, ProductImage } from "@/lib/api/types";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +19,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { MediaSelectField } from "@/components/admin/media/media-select-field";
+import { GalleryField } from "@/components/admin/media/gallery-field";
 import { SeoPreview } from "@/components/admin/seo-preview";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { AlertCircle, ChevronLeft, FileText, Search } from "lucide-react";
@@ -91,6 +92,7 @@ export default function EditProductPage({ params }: { params: Promise<{ productI
   const [stockQuantity, setStockQuantity] = useState("0");
   const [categoryId, setCategoryId] = useState("");
   const [coverMedia, setCoverMedia] = useState<Media | null>(null);
+  const [images, setImages] = useState<ProductImage[]>([]);
   const [status, setStatus] = useState<ContentStatus>("DRAFT");
   const [scheduledAt, setScheduledAt] = useState("");
   const [seoTitle, setSeoTitle] = useState("");
@@ -143,6 +145,7 @@ export default function EditProductPage({ params }: { params: Promise<{ productI
       setStockQuantity(nextSnapshot.stockQuantity);
       setCategoryId(nextSnapshot.categoryId);
       setCoverMedia(product.coverMedia);
+      setImages(product.images);
       setStatus(nextSnapshot.status);
       setScheduledAt(nextSnapshot.scheduledAt);
       setSeoTitle(nextSnapshot.seoTitle);
@@ -290,6 +293,16 @@ export default function EditProductPage({ params }: { params: Promise<{ productI
     } finally {
       setSaving(false);
     }
+  }
+
+  async function handleAddImage(media: Media) {
+    const updated = await productsApi.addProductImage(productId, media.id);
+    setImages(updated.images);
+  }
+
+  async function handleRemoveImage(imageId: string) {
+    const updated = await productsApi.removeProductImage(productId, imageId);
+    setImages(updated.images);
   }
 
   async function handleDelete() {
@@ -486,6 +499,15 @@ export default function EditProductPage({ params }: { params: Promise<{ productI
             </div>
 
             <MediaSelectField id="coverMedia" label="Kapak görseli" value={coverMedia} onChange={setCoverMedia} />
+
+            <GalleryField
+              id="gallery"
+              label="Galeri"
+              hint="Kapak görseli dışında, ürün detay sayfasında gösterilecek ek görseller."
+              images={images}
+              onAdd={handleAddImage}
+              onRemove={handleRemoveImage}
+            />
 
             <div className="grid gap-4 sm:grid-cols-2">
               <Field id="category" label="Kategori">

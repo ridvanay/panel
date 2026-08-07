@@ -20,10 +20,12 @@ import { logAudit } from "../../lib/audit";
 import { sanitizeRichHtml } from "../../lib/html-sanitize";
 import { sanitizePortfolioTranslations } from "./lib/sanitize-content";
 import {
+  AddPortfolioImageRequestSchema,
   CreatePortfolioCategoryRequestSchema,
   CreatePortfolioItemRequestSchema,
   ListPortfolioItemsQuerySchema,
   PortfolioCategoryIdParamSchema,
+  PortfolioImageIdParamSchema,
   PortfolioItemIdParamSchema,
   PortfolioItemSlugParamSchema,
   UpdatePortfolioCategoryRequestSchema,
@@ -329,6 +331,63 @@ export async function adminPortfolioRoutes(app: FastifyInstance) {
       });
 
       return reply.code(204).send();
+    }
+  );
+
+  // Galeriye görsel ekle — aynı `mediaId` zaten galerideyse 409 (bkz. `@@unique([portfolioItemId, mediaId])`).
+  server.post(
+    "/:itemId/images",
+    {
+      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      schema: {
+        params: PortfolioItemIdParamSchema,
+        body: AddPortfolioImageRequestSchema,
+        response: { 201: ApiSuccessSchema(PortfolioItemSchema) },
+      },
+    },
+    async (request, reply) => {
+      const item = await app.prisma.portfolioItem.findUnique({ where: { id: request.params.itemId } });
+      if (!item) throw new NotFoundError("Portföy öğesi bulunamadı.");
+
+      const media = await app.prisma.media.findUnique({ where: { id: request.body.mediaId } });
+      if (!media) throw new NotFoundError("Medya bulunamadı.");
+
+      const existingImage = await app.prisma.portfolioImage.findUnique({
+        where: { portfolioItemId_mediaId: { portfolioItemId: item.id, mediaId: media.id } },
+      });
+      if (existingImage) throw new ConflictError("Bu görsel zaten portföy öğesinin galerisinde.");
+
+      const lastImage = await app.prisma.portfolioImage.findFirst({
+        where: { portfolioItemId: item.id },
+        orderBy: { order: "desc" },
+      });
+
+      await app.prisma.portfolioImage.create({
+        data: { portfolioItemId: item.id, mediaId: media.id, order: lastImage ? lastImage.order + 1 : 0 },
+      });
+
+      const updated = await app.prisma.portfolioItem.findUnique({ where: { id: item.id }, include: WITH_RELATIONS });
+      return reply.code(201).send(ok(toPortfolioItemDto(updated!)));
+    }
+  );
+
+  // Galeriden görsel kaldır — `imageId`'nin GERÇEKTEN bu öğeye ait olduğu doğrulanır (IDOR koruması).
+  server.delete(
+    "/:itemId/images/:imageId",
+    {
+      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      schema: { params: PortfolioImageIdParamSchema, response: { 200: ApiSuccessSchema(PortfolioItemSchema) } },
+    },
+    async (request, reply) => {
+      const { itemId, imageId } = request.params;
+      const image = await app.prisma.portfolioImage.findUnique({ where: { id: imageId } });
+      if (!image || image.portfolioItemId !== itemId) throw new NotFoundError("Galeri görseli bulunamadı.");
+
+      await app.prisma.portfolioImage.delete({ where: { id: imageId } });
+
+      const updated = await app.prisma.portfolioItem.findUnique({ where: { id: itemId }, include: WITH_RELATIONS });
+      if (!updated) throw new NotFoundError("Portföy öğesi bulunamadı.");
+      return reply.send(ok(toPortfolioItemDto(updated)));
     }
   );
 }

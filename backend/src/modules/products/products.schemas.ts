@@ -14,6 +14,16 @@ export const ProductCategoryIdParamSchema = z.object({
   categoryId: z.string().uuid(),
 });
 
+export const ProductImageIdParamSchema = z.object({
+  productId: z.string().uuid(),
+  imageId: z.string().uuid(),
+});
+
+/** `POST /:productId/images` — galeriye tek bir Media ekler (bkz. products.routes.ts). */
+export const AddProductImageRequestSchema = z.object({
+  mediaId: z.string().uuid(),
+});
+
 /**
  * `GET /admin/products` — `ContentListQuerySchema` (cursor/limit/trashed/status, blog/pages ile
  * ORTAK) + ürünlere özel serbest metin arama (`title`/`sku` üzerinde, bkz. products.routes.ts).

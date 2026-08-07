@@ -1,5 +1,6 @@
 import { apiFetch, apiFetchPage } from "./client";
 import type {
+  AddPortfolioImageRequest,
   BulkContentAction,
   BulkContentActionResult,
   CreatePortfolioCategoryRequest,
@@ -52,6 +53,19 @@ export function restorePortfolioItem(itemId: string) {
 /** Kalıcı silme — yalnızca ADMIN, kayıt önce çöpte olmalıdır. */
 export function permanentDeletePortfolioItem(itemId: string) {
   return apiFetch<void>(`/admin/portfolio/${itemId}/permanent`, { method: "DELETE" });
+}
+
+/** `POST /admin/portfolio/:portfolioItemId/images` — güncellenmiş `PortfolioItem` DTO'sunu (`images` dahil) döner. */
+export function addPortfolioImage(itemId: string, mediaId: string) {
+  return apiFetch<PortfolioItem>(`/admin/portfolio/${itemId}/images`, {
+    method: "POST",
+    body: { mediaId } satisfies AddPortfolioImageRequest,
+  });
+}
+
+/** `DELETE /admin/portfolio/:portfolioItemId/images/:imageId` — güncellenmiş `PortfolioItem` DTO'sunu döner. */
+export function removePortfolioImage(itemId: string, imageId: string) {
+  return apiFetch<PortfolioItem>(`/admin/portfolio/${itemId}/images/${imageId}`, { method: "DELETE" });
 }
 
 export function listPortfolioCategories() {

@@ -1,5 +1,6 @@
 import { apiFetch, apiFetchPage } from "./client";
 import type {
+  AddProductImageRequest,
   AdjustProductStockRequest,
   BulkContentAction,
   BulkContentActionResult,
@@ -58,6 +59,19 @@ export function permanentDeleteProduct(productId: string) {
 /** Admin'in ELLE stok düzeltmesi — bu fazın düzenleme formu `updateProduct` ile stok da güncelleyebilir; bu uç ayrı/hızlı stok düzeltme ekranları için saklıdır. */
 export function updateProductStock(productId: string, input: AdjustProductStockRequest) {
   return apiFetch<Product>(`/admin/products/${productId}/stock`, { method: "PATCH", body: input });
+}
+
+/** `POST /admin/products/:productId/images` — güncellenmiş `Product` DTO'sunu (`images` dahil) döner. */
+export function addProductImage(productId: string, mediaId: string) {
+  return apiFetch<Product>(`/admin/products/${productId}/images`, {
+    method: "POST",
+    body: { mediaId } satisfies AddProductImageRequest,
+  });
+}
+
+/** `DELETE /admin/products/:productId/images/:imageId` — güncellenmiş `Product` DTO'sunu döner. */
+export function removeProductImage(productId: string, imageId: string) {
+  return apiFetch<Product>(`/admin/products/${productId}/images/${imageId}`, { method: "DELETE" });
 }
 
 export function listProductCategories() {
