@@ -40,6 +40,7 @@ enum SubscriptionStatus {
 enum PageStatus {
   DRAFT
   PUBLISHED
+  SCHEDULED
 }
 
 // `/admin/*` CMS uçları için org'dan bağımsız site-geneli rol/durum — MembershipRole ile
@@ -317,6 +318,9 @@ model Page {
   // §10.5 Çoklu Dil & Yerelleştirme — TR (kolonlar) kanonik, translations.EN yalnızca override.
   translations   Json       @default("{}")
   publishedAt    DateTime?
+  // Zamanlanmış yayın hedef tarihi — yalnızca status=SCHEDULED iken anlamlı; süreç-içi sweeper bu
+  // tarihe ulaşınca status'u PUBLISHED'a çevirir (bkz. modules/{blog,pages}/*-publish-scheduler.ts).
+  scheduledAt    DateTime?
   // Denormalize toplam sayaç — admin liste/detay ekranlarında ekstra sorgu gerektirmeden okunur.
   viewCount      Int        @default(0)
   // §10.7 Soft-delete (çöp kutusu) — bkz. ARCHITECTURE.md §10.7.
@@ -367,6 +371,9 @@ model BlogPost {
   // §10.5 Çoklu Dil & Yerelleştirme — TR (kolonlar) kanonik, translations.EN yalnızca override.
   translations   Json       @default("{}")
   publishedAt    DateTime?
+  // Zamanlanmış yayın hedef tarihi — yalnızca status=SCHEDULED iken anlamlı; süreç-içi sweeper bu
+  // tarihe ulaşınca status'u PUBLISHED'a çevirir (bkz. modules/{blog,pages}/*-publish-scheduler.ts).
+  scheduledAt    DateTime?
   viewCount      Int        @default(0)
   // §10.7 Soft-delete (çöp kutusu) — bkz. ARCHITECTURE.md §10.7.
   deletedAt      DateTime?
