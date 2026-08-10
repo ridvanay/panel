@@ -100,11 +100,18 @@ async function buildTabularPreview(
 }
 
 async function buildWordpressPreview(app: FastifyInstance, buffer: Buffer): Promise<BuildPreviewResult> {
-  const parsed = parseWxr(buffer);
+  const parsed = parseWxr(buffer, { allowedPostTypes: ["post", "page"], recordCap: IMPORT_RECORD_CAPS.WORDPRESS });
   assertRecordCap("WORDPRESS", parsed.items.length);
 
   const warnings: ImportJobPreviewWarningDto[] = [];
 
+  if (parsed.breakdown.products > 0) {
+    warnings.push({
+      code: "WP_PRODUCTS_SKIPPED",
+      message: `${parsed.breakdown.products} ürün (WooCommerce) bulundu; bu tipte içe aktarılmaz. Aynı dosyayı "Ürünler" tipiyle yeniden yükleyin.`,
+      count: parsed.breakdown.products,
+    });
+  }
   if (parsed.breakdown.attachments > 0) {
     warnings.push({
       code: "WP_MEDIA_NOT_DOWNLOADED",
@@ -200,6 +207,104 @@ async function buildWordpressPreview(app: FastifyInstance, buffer: Buffer): Prom
   return { preview, totalCount: parsed.items.length };
 }
 
+/**
+ * §10.8.9 WooCommerce (`PRODUCTS`) önizlemesi — `buildWordpressPreview` ile AYNI `parseWxr`
+ * giriş noktasını kullanır (`allowedPostTypes: ["product"]`), XXE/derinlik koruması ve
+ * `_thumbnail_id` iki geçişli çözümlemesi otomatik miras alınır (bkz. wxr.parser.ts modül üstü
+ * notu — mimar kararı 2A).
+ */
+async function buildProductsPreview(app: FastifyInstance, buffer: Buffer): Promise<BuildPreviewResult> {
+  const parsed = parseWxr(buffer, { allowedPostTypes: ["product"], recordCap: IMPORT_RECORD_CAPS.PRODUCTS });
+  assertRecordCap("PRODUCTS", parsed.items.length);
+
+  const warnings: ImportJobPreviewWarningDto[] = [];
+
+  if (parsed.wcOrdersIgnoredCount > 0) {
+    warnings.push({
+      code: "WC_ORDERS_IGNORED",
+      message: `${parsed.wcOrdersIgnoredCount} sipariş/müşteri kaydı bulundu; güvenlik ve kişisel veri nedeniyle içe aktarılmadı.`,
+      count: parsed.wcOrdersIgnoredCount,
+    });
+  }
+  if (parsed.wcVariationsUnsupportedCount > 0) {
+    warnings.push({
+      code: "WC_VARIATIONS_UNSUPPORTED",
+      message: `${parsed.wcVariationsUnsupportedCount} ürün varyasyonu desteklenmiyor; yalnızca ana ürün kayıtları içe aktarılacak.`,
+      count: parsed.wcVariationsUnsupportedCount,
+    });
+  }
+  if (parsed.hasUnsupportedTags) {
+    warnings.push({ code: "WP_TAGS_UNSUPPORTED", message: "Ürün etiketleri (product_tag) desteklenmiyor, yok sayılacak." });
+  }
+
+  const galleryCount = parsed.items.filter((i) => i.hasGalleryOrThumbnail).length;
+  if (galleryCount > 0) {
+    warnings.push({
+      code: "WC_GALLERY_NOT_IMPORTED",
+      message: `${galleryCount} ürün görseli kaynak siteye işaret ediyor; görseller taşınmaz. Medya klasörünü ZIP'leyip MEDIA içe aktarımıyla yükledikten sonra kapak görsellerini elle atayın.`,
+      count: galleryCount,
+    });
+  }
+
+  const stockNotManagedCount = parsed.items.filter((i) => i.manageStockRaw?.trim().toLowerCase() !== "yes").length;
+  if (stockNotManagedCount > 0) {
+    warnings.push({
+      code: "WC_STOCK_NOT_MANAGED",
+      message: `${stockNotManagedCount} üründe stok takibi kapalı; miktar 0/1 olarak varsayıldı, içe aktarımdan sonra gözden geçirin.`,
+      count: stockNotManagedCount,
+    });
+  }
+
+  if (parsed.items.length > 0) {
+    warnings.push({
+      code: "WC_TAX_NOT_IMPORTED",
+      message: "WooCommerce vergi ORANI dosyada bulunmuyor (yalnızca sınıf bilgisi taşınır); vergi oranı boş bırakılacak.",
+    });
+    warnings.push({
+      code: "HTML_WILL_BE_SANITIZED",
+      message: "Ürün açıklamalarındaki HTML, güvenlik nedeniyle sunucu tarafında temizlenecek.",
+    });
+  }
+
+  const skus = parsed.items.map((i) => i.sku).filter((s): s is string => Boolean(s));
+  const slugs = parsed.items.map((i) => i.slugRaw || slugify(i.title));
+  const [existingBySku, existingBySlug] = await Promise.all([
+    skus.length > 0 ? app.prisma.product.count({ where: { sku: { in: skus } } }) : 0,
+    slugs.length > 0 ? app.prisma.product.count({ where: { slug: { in: slugs } } }) : 0,
+  ]);
+  const slugCollisions = existingBySku + existingBySlug;
+  if (slugCollisions > 0) {
+    warnings.push({
+      code: "SLUG_COLLISION",
+      message: `${slugCollisions} ürün mevcut bir SKU/slug ile çakışıyor — seçilen çakışma stratejisine göre işlenecek.`,
+      count: slugCollisions,
+    });
+  }
+
+  const samples = parsed.items.slice(0, 5).map((item) => ({
+    title: item.title,
+    slug: item.slugRaw || slugify(item.title),
+    sku: item.sku,
+    status: item.status,
+    regularPrice: item.regularPriceRaw ?? item.priceRaw,
+    salePrice: item.salePriceRaw,
+    categoryName: item.categoryName,
+  }));
+
+  const preview: ImportJobPreviewDto = {
+    totalCount: parsed.items.length,
+    canStart: parsed.items.length > 0,
+    fields: [],
+    targetFields: [],
+    suggestedMapping: {},
+    samples,
+    breakdown: parsed.breakdown,
+    warnings,
+  };
+
+  return { preview, totalCount: parsed.items.length };
+}
+
 async function buildMediaPreview(app: FastifyInstance, buffer: Buffer): Promise<BuildPreviewResult> {
   const { entries } = await parseMediaZip(buffer);
   assertRecordCap("MEDIA", entries.length);
@@ -254,6 +359,8 @@ export async function buildImportPreview(
       return buildTabularPreview(app, "USERS", format, buffer);
     case "WORDPRESS":
       return buildWordpressPreview(app, buffer);
+    case "PRODUCTS":
+      return buildProductsPreview(app, buffer);
     case "MEDIA":
       return buildMediaPreview(app, buffer);
     default:

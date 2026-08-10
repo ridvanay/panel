@@ -1,4 +1,4 @@
-import { FileText, Newspaper, Users as UsersIcon, Image as ImageIcon, Globe } from "lucide-react";
+import { FileText, Newspaper, Users as UsersIcon, Image as ImageIcon, Globe, Package } from "lucide-react";
 import type { ImportJobType } from "@/lib/api/types";
 
 /**
@@ -17,6 +17,14 @@ export interface ImportTypeConfig {
   formatHint: string;
   maxSizeLabel: string;
   maxRecordsLabel: string;
+  /**
+   * Eklenti/Modül Yönetimi (Faz 1) ile AYNI desen — `sidebar.tsx::NavItem.module` (bkz.
+   * `useModules().isModuleEnabled`). Verilmezse kart her zaman görünür; verilirse yalnızca
+   * ilgili modül `enabled: false` olduğunda gizlenir. Bu YALNIZCA UX kolaylığıdır — asıl
+   * denetim sunucudadır: modül kapalıyken `type: PRODUCTS` ile yükleme 422 döner
+   * (bkz. ARCHITECTURE.md §10.8.9 "Products modülü KAPALIYSA").
+   */
+  module?: string;
 }
 
 export const IMPORT_TYPE_CONFIGS: ImportTypeConfig[] = [
@@ -51,6 +59,17 @@ export const IMPORT_TYPE_CONFIGS: ImportTypeConfig[] = [
     maxRecordsLabel: "en fazla 10.000 öğe",
   },
   {
+    type: "PRODUCTS",
+    label: "WooCommerce Ürünleri",
+    description: "WordPress dışa aktarma dosyasından (.xml) yalnızca ürünleri içe aktarın; sipariş/müşteri kayıtları asla aktarılmaz.",
+    icon: Package,
+    accept: ".xml,text/xml,application/xml",
+    formatHint: "WooCommerce WXR (XML)",
+    maxSizeLabel: "50 MB",
+    maxRecordsLabel: "en fazla 5.000 kayıt",
+    module: "products",
+  },
+  {
     type: "USERS",
     label: "Kullanıcılar",
     description: "CSV dosyasından yeni kullanıcı hesapları oluşturun.",
@@ -80,4 +99,16 @@ export function importTypeConfig(type: ImportJobType): ImportTypeConfig {
 
 export function importTypeLabel(type: ImportJobType): string {
   return importTypeConfig(type).label;
+}
+
+/**
+ * Modül filtresini saf (pure) bir fonksiyon olarak dışa açar — `sidebar.tsx::filterVisibleNavItems`
+ * ile AYNI test edilebilirlik gerekçesi: gerçek bileşeni (dialog/context) render etmeden birim
+ * testte doğrulanabilsin. `import-upload-dialog.tsx` bunu `useModules().isModuleEnabled` ile çağırır.
+ */
+export function visibleImportTypeConfigs(
+  configs: ImportTypeConfig[],
+  isModuleEnabled: (key: string) => boolean
+): ImportTypeConfig[] {
+  return configs.filter((c) => !c.module || isModuleEnabled(c.module));
 }

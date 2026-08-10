@@ -22,6 +22,12 @@ export const StartImportJobRequestSchema = z.object({
   fieldMapping: ImportFieldMappingSchema.optional(),
   duplicateStrategy: ImportDuplicateStrategySchema.optional(),
   defaultStatus: z.enum(["DRAFT", "PUBLISHED"]).optional(),
+  /**
+   * §10.8.9 — YALNIZCA `PRODUCTS` için anlamlıdır (WooCommerce WXR'ı para birimini TAŞIMAZ).
+   * Format doğrulaması burada (3 harf); geçerli/tanınan ISO-4217 kodu kontrolü
+   * `import.routes.ts`'te `ISO_4217_CURRENCY_CODES` ile yapılır (422 → `error.details.defaultCurrency`).
+   */
+  defaultCurrency: z.string().length(3).optional(),
   defaultAuthorId: z.string().uuid().nullable().optional(),
   defaultCategoryId: z.string().uuid().nullable().optional(),
 });

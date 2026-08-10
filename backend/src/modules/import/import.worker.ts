@@ -11,12 +11,13 @@ import { createPasswordResetToken } from "../auth/auth.service";
 import { sendPasswordResetEmail } from "../email-templates/email-templates.service";
 import { snapshotBeforeUpdate } from "../../lib/content-revisions";
 import type { ImportFieldMapping, ImportJobErrorCode, ImportJobType, ImportSourceFormat } from "../../schemas/entities";
-import { IMPORT_BATCH_SIZE, IMPORT_ERROR_ROW_CAP, SEVERITY_TO_PRISMA } from "./import.constants";
+import { IMPORT_BATCH_SIZE, IMPORT_ERROR_ROW_CAP, IMPORT_RECORD_CAPS, SEVERITY_TO_PRISMA } from "./import.constants";
 import { applyFieldMapping } from "./lib/field-mapping";
 import { sanitizeRichHtml as sanitizeImportedHtml } from "../../lib/html-sanitize";
 import { parseTabular } from "./parsers/tabular.parser";
 import { parseWxr, type WxrItem } from "./parsers/wxr.parser";
 import { parseMediaZip } from "./parsers/zip.parser";
+import { parsePriceToCents } from "./lib/price-parse";
 import type { StartImportJobRequest } from "./import.schemas";
 
 // ---------------------------------------------------------------------------
@@ -59,6 +60,12 @@ async function drainQueue(app: FastifyInstance): Promise<void> {
  * §10.8.1 çökme/restart kurtarma — sunucu açılışında `QUEUED`/`PROCESSING`'de kalmış işler
  * `FAILED` yapılır. BU HOOK OLMADAN bu işler sonsuza dek `PROCESSING`'de asılı kalır ve
  * frontend'in 2 sn'lik poll'u sonsuza dek devam eder (bkz. ARCHITECTURE.md §10.8.1).
+ *
+ * §10.8.9.1 compliance-agent BLOKER düzeltmesi (2026-08-10) — `FAILED` yapılan işlerin ham
+ * kaynak dosyası (`storagePath`), normal akışın `finally` bloğunda çağırdığı
+ * `cleanupSourceFile` İLE AYNI best-effort desenle silinir; aksi hâlde büyük WordPress/
+ * WooCommerce dosyaları (sipariş/müşteri PII'si taşıyabilir) sunucu çökmesi sonrası süresiz
+ * öksüz kalırdı. Silme hatası job'u etkilemez (yalnızca loglanır).
  */
 export async function recoverStuckImportJobs(app: FastifyInstance): Promise<void> {
   const stuck = await app.prisma.importJob.findMany({
@@ -72,6 +79,16 @@ export async function recoverStuckImportJobs(app: FastifyInstance): Promise<void
     data: { status: "FAILED", errorSummary: "Sunucu yeniden başlatıldığı için içe aktarma yarıda kaldı.", finishedAt: new Date() },
   });
   app.log.warn({ count: stuck.length }, "Yarıda kalmış içe aktarma işleri FAILED olarak işaretlendi (sunucu restart kurtarması)");
+
+  for (const job of stuck) {
+    if (!job.storagePath) continue;
+    await importStorage.remove(job.storagePath).catch((err) => {
+      app.log.error({ err, jobId: job.id }, "Yarıda kalmış içe aktarma işinin kaynak dosyası silinemedi");
+    });
+    await app.prisma.importJob.update({ where: { id: job.id }, data: { storagePath: null } }).catch((err) => {
+      app.log.error({ err, jobId: job.id }, "Yarıda kalmış içe aktarma işinin storagePath alanı temizlenemedi");
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -259,6 +276,9 @@ export async function runImportJob(app: FastifyInstance, jobId: string): Promise
         break;
       case "WORDPRESS":
         await runWordpressJob(app, ctx, buffer, options);
+        break;
+      case "PRODUCTS":
+        await runProductsJob(app, ctx, buffer, options);
         break;
       case "MEDIA":
         await runMediaJob(app, ctx, buffer, options);
@@ -819,7 +839,7 @@ async function runUsersJob(app: FastifyInstance, ctx: JobRunContext, buffer: Buf
 // ---------------------------------------------------------------------------
 
 async function runWordpressJob(app: FastifyInstance, ctx: JobRunContext, buffer: Buffer, options: StartImportJobRequest): Promise<void> {
-  const parsed = parseWxr(buffer);
+  const parsed = parseWxr(buffer, { allowedPostTypes: ["post", "page"], recordCap: IMPORT_RECORD_CAPS.WORDPRESS });
   const duplicateStrategy = options.duplicateStrategy ?? "skip";
 
   // Kategorileri baştan upsert et (WXR'dan) → nicename -> id sözlüğü.
@@ -921,7 +941,9 @@ async function runWordpressJob(app: FastifyInstance, ctx: JobRunContext, buffer:
           status,
           publishedAt,
           contentHtml: sanitizedHtml,
-          excerpt: item.excerpt,
+          // §10.8.6/§10.8.4 — `excerpt:encoded` de `content:encoded` İLE AYNI şekilde sanitize
+          // edilir (ARCHITECTURE.md §10.8.4: "İçe aktarılan HER HTML alanı ... sanitize edilir").
+          excerpt: item.excerpt ? sanitizeImportedHtml(item.excerpt) : null,
           coverImageUrl: item.resolvedThumbnailUrl,
           categoryId,
           seoTitle: item.seoTitle,
@@ -936,6 +958,363 @@ async function runWordpressJob(app: FastifyInstance, ctx: JobRunContext, buffer:
           rawData: item,
         });
       }
+    } catch (err) {
+      await ctx.recordRow({ severity: "error", rowNumber, code: "DB_ERROR", message: `Kayıt yazılamadı: ${(err as Error).message}`, sourceRef, rawData: item });
+    }
+
+    if (await ctx.maybeFlushAndCheckCancel(index, items.length)) break;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// PRODUCTS (WooCommerce WXR) — §10.8.9. AYNI `parseWxr` giriş noktası WORDPRESS ile
+// PAYLAŞILIR (mimar kararı 2A güvenlik maddesi) — XXE/derinlik koruması İKİ KEZ YAZILMAZ.
+// ---------------------------------------------------------------------------
+
+interface WriteProductInput {
+  baseSlug: string;
+  /** Eşleştirme/tekillik anahtarı — doluysa `sku`, boşsa `null` (o zaman `baseSlug` kullanılır). */
+  sku: string | null;
+  duplicateStrategy: "skip" | "overwrite" | "createNew";
+  title: string;
+  status: "DRAFT" | "PUBLISHED";
+  publishedAt: Date | null;
+  descriptionHtml: string;
+  excerpt: string | null;
+  priceCents: number;
+  discountPriceCents: number | null;
+  currency: string;
+  stockQuantity: number;
+  categoryId: string | null;
+  authorId: string | null;
+  seoTitle: string | null;
+  seoDescription: string | null;
+  ogTitle: string | null;
+  ogImageUrl: string | null;
+  canonicalUrl: string | null;
+  noIndex: boolean;
+  rowNumber: number;
+  ctx: JobRunContext;
+  rawData: unknown;
+}
+
+/**
+ * §10.8.9 SKU/tekillik kuralı (karar 2E) — eşleştirme anahtarı `sku`'dur (varsa), `sku` boşsa
+ * `slug`. `createNew` + SKU çakışması → satır ATLANIR (`ABC-1`/`ABC-1-2` iki ayrı stok kalemi
+ * demek olurdu, envanteri sessizce bozar) — slug çakışması gibi `-2`/`-3` İLE ÇÖZÜLMEZ.
+ * `taxRatePercent` HER ZAMAN `null` bırakılır (§10.8.9 KDV kuralı — export oran taşımaz),
+ * `coverMediaId` HER ZAMAN `null` (§10.8.9 görsel kuralı — SSRF, `ProductImage` YAZILMAZ).
+ */
+async function writeProduct(app: FastifyInstance, input: WriteProductInput): Promise<void> {
+  const existing = input.sku
+    ? await app.prisma.product.findUnique({ where: { sku: input.sku } })
+    : await app.prisma.product.findUnique({ where: { slug: input.baseSlug } });
+
+  const baseData = {
+    title: input.title,
+    status: input.status,
+    descriptionHtml: input.descriptionHtml,
+    excerpt: input.excerpt,
+    priceCents: input.priceCents,
+    discountPriceCents: input.discountPriceCents,
+    currency: input.currency,
+    sku: input.sku,
+    taxRatePercent: null,
+    stockQuantity: input.stockQuantity,
+    categoryId: input.categoryId,
+    coverMediaId: null,
+    authorId: input.authorId,
+    seoTitle: input.seoTitle,
+    seoDescription: input.seoDescription,
+    ogTitle: input.ogTitle,
+    ogImageUrl: input.ogImageUrl,
+    canonicalUrl: input.canonicalUrl,
+    noIndex: input.noIndex,
+  };
+
+  if (!existing) {
+    await app.prisma.product.create({ data: { ...baseData, slug: input.baseSlug, publishedAt: input.publishedAt } });
+    input.ctx.recordSuccess();
+    return;
+  }
+
+  if (input.duplicateStrategy === "skip") {
+    await input.ctx.recordRow({
+      severity: "skipped",
+      rowNumber: input.rowNumber,
+      code: "DUPLICATE_SKIPPED",
+      message: input.sku ? `"${input.sku}" SKU'lu ürün zaten mevcut, atlandı.` : `"${input.baseSlug}" slug'ı zaten kullanılıyor, atlandı.`,
+      sourceRef: input.sku ?? input.baseSlug,
+      rawData: input.rawData,
+    });
+    return;
+  }
+
+  if (input.duplicateStrategy === "overwrite") {
+    if (existing.deletedAt) {
+      await input.ctx.recordRow({
+        severity: "error",
+        rowNumber: input.rowNumber,
+        code: "TARGET_TRASHED",
+        message: "Çöpteki ürün güncellenemez, atlandı.",
+        sourceRef: input.sku ?? input.baseSlug,
+        rawData: input.rawData,
+      });
+      return;
+    }
+    // `ctx.actor` — işi başlatan ADMIN (worker'da HTTP request context YOK, bkz. JobRunContext).
+    if (input.ctx.actor) {
+      await snapshotBeforeUpdate(
+        app,
+        "PRODUCT",
+        existing.id,
+        {
+          title: existing.title,
+          slug: existing.slug,
+          excerpt: existing.excerpt,
+          descriptionHtml: existing.descriptionHtml,
+          priceCents: existing.priceCents,
+          currency: existing.currency,
+          taxRatePercent: existing.taxRatePercent ? Number(existing.taxRatePercent) : null,
+          discountPriceCents: existing.discountPriceCents,
+          sku: existing.sku,
+          stockQuantity: existing.stockQuantity,
+          categoryId: existing.categoryId,
+          coverMediaId: existing.coverMediaId,
+          seoTitle: existing.seoTitle,
+          seoDescription: existing.seoDescription,
+          ogTitle: existing.ogTitle,
+          ogImageUrl: existing.ogImageUrl,
+          canonicalUrl: existing.canonicalUrl,
+          noIndex: existing.noIndex,
+          translations: existing.translations,
+        },
+        input.ctx.actor.id
+      );
+    }
+    // Slug DEĞİŞTİRİLMEZ (normal `PATCH` gibi davranır) — `writePage`/`writeBlogPost` ile AYNI desen.
+    await app.prisma.product.update({
+      where: { id: existing.id },
+      data: { ...baseData, ...(input.publishedAt && !existing.publishedAt ? { publishedAt: input.publishedAt } : {}) },
+    });
+    input.ctx.recordSuccess();
+    return;
+  }
+
+  // createNew — SKU çakışması ÇÖZÜLEMEZ (karar 2E): satır ATLANIR, "-2" İLE YENİ SKU UYDURULMAZ.
+  if (input.sku) {
+    await input.ctx.recordRow({
+      severity: "skipped",
+      rowNumber: input.rowNumber,
+      code: "DUPLICATE_SKIPPED",
+      message: `"${input.sku}" SKU'lu ürün zaten mevcut; SKU çakışması yeni kayıtla çözülemez, atlandı.`,
+      sourceRef: input.sku,
+      rawData: input.rawData,
+    });
+    return;
+  }
+  // SKU'suz ürün — yalnızca slug çakışıyordu, `-2`/`-3` ile serbestçe çoğaltılabilir.
+  const availableSlug = await findAvailableSlug(
+    async (slug) => Boolean(await app.prisma.product.findUnique({ where: { slug } })),
+    input.baseSlug
+  );
+  await app.prisma.product.create({ data: { ...baseData, slug: availableSlug, publishedAt: input.publishedAt } });
+  input.ctx.recordSuccess();
+}
+
+async function runProductsJob(app: FastifyInstance, ctx: JobRunContext, buffer: Buffer, options: StartImportJobRequest): Promise<void> {
+  const parsed = parseWxr(buffer, { allowedPostTypes: ["product"], recordCap: IMPORT_RECORD_CAPS.PRODUCTS });
+  const duplicateStrategy = options.duplicateStrategy ?? "skip";
+  // §10.8.9 karar 2C — `defaultStatus` PRODUCTS'ta TÜM kayıtlara bir TAVAN olarak uygulanır
+  // (WORDPRESS'in aksine `wp:status` YOK SAYILMAZ ama asla defaultStatus'u AŞAMAZ).
+  const defaultStatus = options.defaultStatus ?? "DRAFT";
+  const defaultCurrency = (options.defaultCurrency ?? "TRY").toUpperCase();
+
+  // Ürün kategorisi (product_cat) → nicename bazlı upsert önbelleği (BlogCategory deseniyle AYNI).
+  const categoryIdByNicename = new Map<string, string>();
+  // Dosya İÇİNDE tekrarlanan SKU tespiti — DB'ye gitmeden, `Set` ile (bkz. ARCHITECTURE.md §10.8.9).
+  const seenSkus = new Set<string>();
+
+  const items = parsed.items;
+  for (let index = 0; index < items.length; index++) {
+    const rowNumber = index + 1;
+    const item = items[index]!;
+    const sourceRef = item.postId ?? item.guid ?? item.link ?? undefined;
+
+    const title = item.title.trim();
+    if (!title) {
+      await ctx.recordRow({ severity: "error", rowNumber, code: "REQUIRED_FIELD_MISSING", message: "Başlık (title) zorunludur.", field: "title", sourceRef, rawData: item });
+      if (await ctx.maybeFlushAndCheckCancel(index, items.length)) break;
+      continue;
+    }
+
+    const sku = item.sku;
+    if (sku) {
+      if (seenSkus.has(sku)) {
+        await ctx.recordRow({
+          severity: "skipped",
+          rowNumber,
+          code: "DUPLICATE_SKIPPED",
+          message: `"${sku}" SKU'su dosya içinde tekrarlanıyor, atlandı.`,
+          field: "sku",
+          sourceRef,
+          rawData: item,
+        });
+        if (await ctx.maybeFlushAndCheckCancel(index, items.length)) break;
+        continue;
+      }
+      seenSkus.add(sku);
+    }
+
+    // ---- Fiyat kuralı (§10.8.9, en kritik madde) — string tabanlı tamsayı aritmetiği. ----
+    const regularPriceRaw = item.regularPriceRaw?.trim() ? item.regularPriceRaw : item.priceRaw;
+    if (!regularPriceRaw || !regularPriceRaw.trim()) {
+      await ctx.recordRow({
+        severity: "error",
+        rowNumber,
+        code: "REQUIRED_FIELD_MISSING",
+        message: "Fiyat (_regular_price veya _price) zorunludur.",
+        field: "priceCents",
+        sourceRef,
+        rawData: item,
+      });
+      if (await ctx.maybeFlushAndCheckCancel(index, items.length)) break;
+      continue;
+    }
+    const priceCents = parsePriceToCents(regularPriceRaw);
+    if (priceCents === null || priceCents <= 0) {
+      await ctx.recordRow({
+        severity: "error",
+        rowNumber,
+        code: "INVALID_VALUE",
+        message: "Fiyat sayısal bir değer değil ya da 0/negatif.",
+        field: "priceCents",
+        sourceRef,
+        rawData: item,
+      });
+      if (await ctx.maybeFlushAndCheckCancel(index, items.length)) break;
+      continue;
+    }
+
+    // `_sale_price >= priceCents` (ya da ayrıştırılamıyor) → indirim düşürülür, satır yine
+    // YAZILIR (bkz. ARCHITECTURE.md §10.8.9 fiyat kuralı madde 4) ama veri kalitesi için bir
+    // `INVALID_VALUE` (severity: error) satırı da loglanır — `INVALID_DATE` (WORDPRESS) İLE
+    // AYNI "alan düzeltilip kayıt yine de yazılır" deseni (bkz. writePage/writeBlogPost tarihi).
+    let discountPriceCents: number | null = null;
+    const salePriceRaw = item.salePriceRaw?.trim();
+    if (salePriceRaw) {
+      const parsedSale = parsePriceToCents(salePriceRaw);
+      if (parsedSale !== null && parsedSale > 0 && parsedSale < priceCents) {
+        discountPriceCents = parsedSale;
+      } else {
+        await ctx.recordRow({
+          severity: "error",
+          rowNumber,
+          code: "INVALID_VALUE",
+          message: "İndirimli fiyat (_sale_price) geçersiz veya normal fiyattan küçük değil; indirim yok sayıldı.",
+          field: "discountPriceCents",
+          sourceRef,
+          rawData: item,
+        });
+      }
+    }
+
+    // ---- Stok kuralı ----
+    const manageStock = item.manageStockRaw?.trim().toLowerCase() === "yes";
+    let stockQuantity: number;
+    if (manageStock) {
+      const parsedStock = Number.parseInt(item.stockRaw ?? "", 10);
+      stockQuantity = Number.isFinite(parsedStock) ? Math.max(0, parsedStock) : 0;
+    } else {
+      const stockStatus = item.stockStatusRaw?.trim().toLowerCase();
+      stockQuantity = stockStatus === "instock" ? 1 : 0;
+    }
+
+    // ---- Durum (§2C tavanı) — sonuç `defaultStatus`'u AŞAMAZ. ----
+    const sourceIsPublish = item.status === "publish";
+    const status: "DRAFT" | "PUBLISHED" = sourceIsPublish && defaultStatus === "PUBLISHED" ? "PUBLISHED" : "DRAFT";
+
+    let publishedAt: Date | null = null;
+    if (status === "PUBLISHED") {
+      const rawDate = item.postDateGmt || item.postDate;
+      const parsedDate = parseWpDate(rawDate);
+      if (rawDate && !rawDate.startsWith("0000-00-00") && !parsedDate) {
+        await ctx.recordRow({ severity: "error", rowNumber, code: "INVALID_DATE", message: "Yayın tarihi geçersiz, boş bırakıldı.", field: "publishedAt", sourceRef, rawData: item });
+      }
+      publishedAt = parsedDate ?? new Date();
+    }
+
+    // ---- Kategori (`<category domain="product_cat">`) — BlogCategory upsert deseniyle AYNI. ----
+    let categoryId: string | null = options.defaultCategoryId ?? null;
+    if (item.categoryNicename) {
+      let id = categoryIdByNicename.get(item.categoryNicename);
+      if (!id) {
+        const category = await app.prisma.productCategory.upsert({
+          where: { slug: slugify(item.categoryNicename) },
+          create: { name: item.categoryName ?? item.categoryNicename, slug: slugify(item.categoryNicename) },
+          update: {},
+        });
+        id = category.id;
+        categoryIdByNicename.set(item.categoryNicename, id);
+      }
+      categoryId = id;
+    }
+
+    // ---- Yazar (dc:creator) — §10.8.6 ile AYNI, ASLA kullanıcı OLUŞTURMAZ. ----
+    let authorId: string | null = options.defaultAuthorId ?? null;
+    if (item.creatorLogin) {
+      const author = parsed.authors.get(item.creatorLogin);
+      if (author?.email) {
+        const user = await app.prisma.user.findUnique({ where: { email: author.email.toLowerCase() }, select: { id: true } });
+        if (user) authorId = user.id;
+      }
+    }
+
+    let decodedSlug: string | null = null;
+    if (item.slugRaw) {
+      try {
+        decodedSlug = decodeURIComponent(item.slugRaw);
+      } catch {
+        decodedSlug = item.slugRaw;
+      }
+    }
+    const baseSlug = slugify(decodedSlug || title);
+
+    const descriptionHtml = sanitizeImportedHtml(item.contentHtml);
+    const canonicalUrl = safeUrl(item.canonicalUrl);
+    // `_thumbnail_id` → `ogImageUrl` YALNIZCA Yoast/RankMath boş bıraktıysa yedek kaynak (attachment
+    // URL string'i olarak — `Media` kaydı OLUŞTURULMAZ, dosya İNDİRİLMEZ, SSRF kararı). `writePage`
+    // (WORDPRESS) ile AYNI `?? resolvedThumbnailUrl ?? null` deseni.
+    const ogImageUrl = item.ogImageUrl ?? item.resolvedThumbnailUrl ?? null;
+
+    try {
+      await writeProduct(app, {
+        baseSlug,
+        sku,
+        duplicateStrategy,
+        title,
+        status,
+        publishedAt,
+        descriptionHtml,
+        // §10.8.9/§10.8.4 — `excerpt:encoded` de `content:encoded` İLE AYNI şekilde sanitize
+        // edilir (ARCHITECTURE.md §10.8.4: "İçe aktarılan HER HTML alanı ... sanitize edilir").
+        excerpt: item.excerpt ? sanitizeImportedHtml(item.excerpt) : null,
+        priceCents,
+        discountPriceCents,
+        currency: defaultCurrency,
+        stockQuantity,
+        categoryId,
+        authorId,
+        seoTitle: item.seoTitle,
+        seoDescription: item.seoDescription,
+        ogTitle: item.ogTitle,
+        ogImageUrl,
+        canonicalUrl,
+        noIndex: item.noIndex,
+        rowNumber,
+        ctx,
+        rawData: item,
+      });
     } catch (err) {
       await ctx.recordRow({ severity: "error", rowNumber, code: "DB_ERROR", message: `Kayıt yazılamadı: ${(err as Error).message}`, sourceRef, rawData: item });
     }

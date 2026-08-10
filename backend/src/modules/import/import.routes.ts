@@ -12,6 +12,7 @@ import { ConflictError, NotFoundError, PayloadTooLargeError, ValidationError } f
 import { encodeCursor, parseCursor } from "../../lib/pagination";
 import { logAudit } from "../../lib/audit";
 import { importStorage } from "../../lib/import-storage";
+import { isModuleEnabled } from "../../lib/module-state";
 import { buildImportPreview } from "./import.preview";
 import { detectImportFormat } from "./lib/format-detect";
 import {
@@ -20,6 +21,7 @@ import {
   IMPORT_ERROR_ROW_CAP,
   IMPORT_FILE_SIZE_LIMITS,
   IMPORT_PENDING_SWEEP_MS,
+  ISO_4217_CURRENCY_CODES,
 } from "./import.constants";
 import { CreateImportJobRequestSchema, ImportJobIdParamSchema, ListImportJobsQuerySchema, StartImportJobRequestSchema } from "./import.schemas";
 import { enqueueImportJob } from "./import.worker";
@@ -125,9 +127,17 @@ export async function adminImportRoutes(app: FastifyInstance) {
 
       const typeParse = CreateImportJobRequestSchema.shape.type.safeParse(typeValue);
       if (!typeParse.success) {
-        throw new ValidationError("Geçersiz veya eksik `type` alanı.", { type: ["PAGES, BLOG, WORDPRESS, USERS veya MEDIA olmalı."] });
+        throw new ValidationError("Geçersiz veya eksik `type` alanı.", { type: ["PAGES, BLOG, WORDPRESS, PRODUCTS, USERS veya MEDIA olmalı."] });
       }
       const type = typeParse.data;
+
+      // §10.8.9 — `Products` modülü kapalıysa `PRODUCTS` tipiyle iş OLUŞTURULMAZ (422, `NOT_FOUND`
+      // değil — kapalı bir modüle veri yazmak modül anahtarının anlamını boşa çıkarırdı).
+      if (type === "PRODUCTS" && !(await isModuleEnabled(app, "products"))) {
+        throw new ValidationError("Ürünler modülü kapalı olduğundan bu tipte içe aktarma yapılamaz.", {
+          type: ["Ürünler modülünü Modüller ekranından etkinleştirin."],
+        });
+      }
 
       const typeLimit = IMPORT_FILE_SIZE_LIMITS[type];
       if (truncated || buffer.byteLength > typeLimit) {
@@ -257,10 +267,23 @@ export async function adminImportRoutes(app: FastifyInstance) {
         throw new ValidationError("Bu iş başlatılamaz — önizlemede zorunlu bir alan eşleşmedi ya da işlenebilir kayıt yok.");
       }
 
+      // §10.8.9 `defaultCurrency` — YALNIZCA `PRODUCTS` için anlamlıdır. Verilmezse `TRY`;
+      // ISO-4217 3 harfli, büyük harfe normalize edilir; tanınmayan kod → 422.
+      let defaultCurrency: string | undefined;
+      if (job.type === "PRODUCTS") {
+        defaultCurrency = (body.defaultCurrency ?? "TRY").toUpperCase();
+        if (!ISO_4217_CURRENCY_CODES.has(defaultCurrency)) {
+          throw new ValidationError("Geçersiz para birimi kodu.", {
+            defaultCurrency: ["Tanınan bir ISO-4217 para birimi kodu olmalı (ör. TRY, USD, EUR)."],
+          });
+        }
+      }
+
       const options = {
         fieldMapping: body.fieldMapping ?? preview?.suggestedMapping ?? {},
         duplicateStrategy,
         defaultStatus: body.defaultStatus ?? "DRAFT",
+        defaultCurrency,
         defaultAuthorId: body.defaultAuthorId ?? null,
         defaultCategoryId: body.defaultCategoryId ?? null,
       };
@@ -283,7 +306,10 @@ export async function adminImportRoutes(app: FastifyInstance) {
         action: "import.start",
         targetType: "ImportJob",
         targetId: job.id,
-        metadata: { type: job.type, totalCount: job.totalCount, duplicateStrategy },
+        // §10.8.9 — `PRODUCTS` işlerinde `defaultCurrency`/`defaultStatus` DA taşınır (bkz.
+        // ARCHITECTURE.md §10.8.9 "Audit" maddesi). Ürün-bazlı `product.create` audit'i
+        // BİLEREK YAZILMAZ (5.000 ürünlük bir aktarım AuditLog'u işe yaramaz biçimde şişirirdi).
+        metadata: { type: job.type, totalCount: job.totalCount, duplicateStrategy, defaultStatus: options.defaultStatus, defaultCurrency },
         ipAddress: request.ip,
       });
 

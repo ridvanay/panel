@@ -892,9 +892,10 @@ export interface UpdateBlogPostRequest {
 
 /**
  * İçerik sürüm kontrolü (Revision History) — bkz. ARCHITECTURE.md §10.1.
- * `/admin/pages/{id}/revisions` ve `/admin/blog/{id}/revisions` uçları.
+ * `/admin/{pages,blog,products,portfolio}/{id}/revisions` uçları — dördü de tam parite
+ * (mimar kararı, faz sınırı KALDIRILDI).
  */
-export type ContentEntityType = "PAGE" | "BLOG_POST";
+export type ContentEntityType = "PAGE" | "BLOG_POST" | "PRODUCT" | "PORTFOLIO_ITEM";
 
 export interface ContentRevisionSummary {
   id: string;
@@ -1116,8 +1117,12 @@ export interface PreviewEmailTemplateResponse {
  * `/admin/import/*` uçları — yalnızca ADMIN.
  */
 
-/** İçe aktarmanın HEDEFİ (dosya formatı değil — o `ImportSourceFormat`'tır). */
-export type ImportJobType = "PAGES" | "BLOG" | "WORDPRESS" | "USERS" | "MEDIA";
+/**
+ * İçe aktarmanın HEDEFİ (dosya formatı değil — o `ImportSourceFormat`'tır). `PRODUCTS`
+ * (WooCommerce/WXR) `WORDPRESS`'ten BİLEREK ayrı bir tiptir — bkz. openapi.yaml
+ * `ImportJobType` açıklaması / ARCHITECTURE.md §10.8.9 (mimar kararı 2A).
+ */
+export type ImportJobType = "PAGES" | "BLOG" | "WORDPRESS" | "PRODUCTS" | "USERS" | "MEDIA";
 
 /** Sunucunun dosya İÇERİĞİNDEN türettiği format — istemci göndermez, göndersede yok sayılır. */
 export type ImportSourceFormat = "CSV" | "JSON" | "XML" | "ZIP";
@@ -1154,7 +1159,15 @@ export type ImportJobWarningCode =
   | "HTML_WILL_BE_SANITIZED"
   | "SLUG_COLLISION"
   | "MEDIA_SVG_REJECTED"
-  | "UNMAPPED_COLUMNS";
+  | "UNMAPPED_COLUMNS"
+  // §10.8.9 WooCommerce (`PRODUCTS`) uyarıları — `WC_*` kodları YALNIZCA `PRODUCTS`
+  // tipinde, `WP_PRODUCTS_SKIPPED` ise YALNIZCA `WORDPRESS` tipinde üretilir.
+  | "WP_PRODUCTS_SKIPPED"
+  | "WC_TAX_NOT_IMPORTED"
+  | "WC_STOCK_NOT_MANAGED"
+  | "WC_VARIATIONS_UNSUPPORTED"
+  | "WC_GALLERY_NOT_IMPORTED"
+  | "WC_ORDERS_IGNORED";
 
 export interface ImportJobWarning {
   code: ImportJobWarningCode;
@@ -1163,12 +1176,22 @@ export interface ImportJobWarning {
   count?: number;
 }
 
-/** Yalnızca `WORDPRESS` için: WXR `wp:post_type` kırılımı. */
+/**
+ * Yalnızca XML (WXR) tabanlı tipler — `WORDPRESS` ve `PRODUCTS` — için: `wp:post_type`
+ * kırılımı. Her iki tipte de AYNI şema döner; ilgisiz alanlar `0`'dır (bkz. openapi.yaml
+ * `ImportJobPreview.breakdown`).
+ */
 export interface ImportJobBreakdown {
   pages?: number;
   posts?: number;
   attachments?: number;
   categories?: number;
+  /**
+   * `wp:post_type: product` sayısı (WooCommerce). `PRODUCTS` tipinde işlenecek kayıt
+   * sayısıdır; `WORDPRESS` tipinde yalnızca bilgi amaçlıdır (bu item'lar ATLANIR —
+   * `WP_PRODUCTS_SKIPPED`). Ürün varyasyonları (`product_variation`) buraya DAHİL DEĞİLDİR.
+   */
+  products?: number;
   skipped?: number;
 }
 
@@ -1221,16 +1244,26 @@ export interface ImportJob extends ImportJobSummary {
 
 /** Onay ekranının seçimleri — gövde hiç gönderilmezse tüm varsayılanlar uygulanır. */
 export interface StartImportJobRequest {
-  /** Verilmezse `preview.suggestedMapping` kullanılır. `WORDPRESS`/`MEDIA`'da yok sayılır. */
+  /** Verilmezse `preview.suggestedMapping` kullanılır. `WORDPRESS`/`PRODUCTS`/`MEDIA`'da yok sayılır. */
   fieldMapping?: ImportFieldMapping;
   /** Varsayılan `skip`. */
   duplicateStrategy?: ImportDuplicateStrategy;
-  /** `PAGES`/`BLOG` içe aktarımında kaynakta `status` yoksa uygulanacak varsayılan (varsayılanın varsayılanı `DRAFT`). */
+  /**
+   * `PAGES`/`BLOG` içe aktarımında kaynakta `status` yoksa uygulanacak varsayılan
+   * (varsayılanın varsayılanı `DRAFT`). `PRODUCTS`'ta anlamı GENİŞTİR (karar 2C): yalnızca
+   * "boş durum" için değil TÜM ürünler için tavan olarak uygulanır — WooCommerce'te
+   * `publish` olan bir ürün dahi varsayılan olarak `DRAFT` açılır.
+   */
   defaultStatus?: ContentStatus;
   /** Yazarı çözümlenemeyen kayıtlara atanacak kullanıcı. İçe aktarma HİÇBİR KOŞULDA kendiliğinden kullanıcı oluşturmaz. */
   defaultAuthorId?: string | null;
   /** `BLOG` (CSV/JSON) için kategorisi çözümlenemeyen yazılara atanacak kategori. */
   defaultCategoryId?: string | null;
+  /**
+   * YALNIZCA `PRODUCTS` için — WooCommerce WXR'ı para birimini item düzeyinde TAŞIMAZ.
+   * ISO-4217 3 harfli kod, verilmezse `TRY`. Diğer tiplerde yok sayılır.
+   */
+  defaultCurrency?: string;
 }
 
 export type ImportJobErrorCode =

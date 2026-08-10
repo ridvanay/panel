@@ -24,6 +24,13 @@ vi.mock("@/context/auth-context", () => ({
   useAuth: () => ({ user: mockUser }),
 }));
 
+// `ImportUploadDialog` artık `useModules()` ile PRODUCTS kartını modül-farkında filtreliyor
+// (bkz. import-type-config.ts::visibleImportTypeConfigs) — `a11y-admin-modules.test.tsx` ile
+// AYNI mock deseni; `products` modülü açık varsayılır ki kart listede test edilebilsin.
+vi.mock("@/context/modules-context", () => ({
+  useModules: () => ({ isModuleEnabled: () => true }),
+}));
+
 const importApi = await import("@/lib/api/import");
 
 const axeOptions = { rules: { region: { enabled: false } } };

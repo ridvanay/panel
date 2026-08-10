@@ -1,6 +1,6 @@
 import { SaxesParser, type SaxesAttributeNS } from "saxes";
 import { ValidationError } from "../../../lib/errors";
-import { IMPORT_RECORD_CAPS, WXR_MAX_DEPTH } from "../import.constants";
+import { WXR_MAX_DEPTH } from "../import.constants";
 import { assertNoDoctypeOrEntity } from "../lib/xml-guard";
 
 /**
@@ -43,13 +43,42 @@ export interface WxrItem {
   noIndex: boolean;
   /** İki geçişli çözümleme (bkz. modül üstü not) sonrası doldurulur — attachment yazılardan SONRA gelebilir. */
   resolvedThumbnailUrl: string | null;
+
+  // ---- §10.8.9 WooCommerce (yalnızca postType === "product" iken anlamlıdır) ----
+  /** `_sku` postmeta'sı — trim edilmiş; boş string `null`'a düşer. */
+  sku: string | null;
+  /** `_regular_price` postmeta ham METİN değeri (kuruşa çevrim `lib/price-parse.ts`'te yapılır). */
+  regularPriceRaw: string | null;
+  /** `_sale_price` postmeta ham METİN değeri. */
+  salePriceRaw: string | null;
+  /** `_price` postmeta ham METİN değeri — YALNIZCA `_regular_price` yoksa yedek kaynak. */
+  priceRaw: string | null;
+  /** `_manage_stock` postmeta ham değeri (`"yes"`/`"no"`). */
+  manageStockRaw: string | null;
+  /** `_stock` postmeta ham METİN değeri. */
+  stockRaw: string | null;
+  /** `_stock_status` postmeta ham değeri (`instock`/`outofstock`/`onbackorder`). */
+  stockStatusRaw: string | null;
+  /**
+   * `_thumbnail_id` veya `_product_image_gallery` postmeta'sı DOLU mu — yalnızca aggregate
+   * `WC_GALLERY_NOT_IMPORTED` önizleme uyarısının sayacı için (bkz. §10.8.9 görsel kuralı).
+   * Değerlerin KENDİSİ saklanmaz (SSRF kararı — dosya asla indirilmez).
+   */
+  hasGalleryOrThumbnail: boolean;
 }
 
 export interface WxrBreakdown {
   pages: number;
   posts: number;
+  products: number;
   attachments: number;
   categories: number;
+  /**
+   * Materyalize EDİLMEYEN (yazılmayan) her şey: mevcut çalıştırma modunda hedeflenmeyen
+   * post/page/product item'ları (ör. `WORDPRESS` modunda `product`), gerçekten desteklenmeyen
+   * `wp:post_type` değerleri (`nav_menu_item`, `revision`, `wp_block`, `product_variation`,
+   * `shop_order` …) VE `trash`/`inherit` durumundaki item'lar.
+   */
   skipped: number;
 }
 
@@ -57,14 +86,33 @@ export interface WxrParseResult {
   authors: Map<string, WxrAuthor>;
   /** nicename -> görünen ad. */
   categories: Map<string, string>;
-  /** Yalnızca YAZILABİLİR adaylar: post_type ∈ {post, page} VE status ∉ {trash, inherit}. */
+  /** Yalnızca YAZILABİLİR adaylar: `postType ∈ allowedPostTypes` VE `status ∉ {trash, inherit}`. */
   items: WxrItem[];
-  /** Etiketli (post_tag) en az bir item bulunduysa true — `WP_TAGS_UNSUPPORTED` uyarısı için. */
+  /** Etiketli (post_tag/product_tag) en az bir item bulunduysa true — `WP_TAGS_UNSUPPORTED` uyarısı için. */
   hasUnsupportedTags: boolean;
   breakdown: WxrBreakdown;
+  /**
+   * §10.8.9.1 compliance-agent kararı (2026-08-10) — `shop_order`/`shop_order_refund`/
+   * `shop_subscription`/`customer`/`shop_coupon` item'larının SAYISI (PII/ödeme verisi taşıyan
+   * item'lar, hiçbir alanı OKUNMAZ/SAKLANMAZ — `applyPostmeta`'ya bile ULAŞMAZLAR). Yalnızca
+   * `PRODUCTS` önizlemesinde `WC_ORDERS_IGNORED` agregat uyarısını beslemek için sayılır.
+   */
+  wcOrdersIgnoredCount: number;
+  /** `product_variation` item sayısı — yalnızca `WC_VARIATIONS_UNSUPPORTED` uyarısı için. */
+  wcVariationsUnsupportedCount: number;
 }
 
-const SUPPORTED_ITEM_POST_TYPES = new Set(["post", "page"]);
+/** Bu ayrıştırıcının item DÜZEYİNDE tanıdığı, gerçek bir hedefi olan post type'lar. */
+export type WxrTargetPostType = "post" | "page" | "product";
+
+/**
+ * §10.8.9.1 compliance-agent kararı — PII/ödeme verisi taşıyan post type'lar. Bu tipteki
+ * item'lar `applyPostmeta`'ya HİÇ ulaşmaz (parse anında, item belleğe tam alınmadan düşürülür,
+ * bkz. closetag handler'ındaki erken `return`) — `_billing_*`/`_shipping_*`/`_payment_method`
+ * gibi postmeta'lar YAPISAL OLARAK okunmaz.
+ */
+const PII_POST_TYPES = new Set(["shop_order", "shop_order_refund", "shop_subscription", "customer", "shop_customer", "shop_coupon"]);
+
 const SKIPPED_STATUSES = new Set(["trash", "inherit"]);
 
 interface Frame {
@@ -79,16 +127,22 @@ function attrValue(attributes: Record<string, SaxesAttributeNS>, name: string): 
 }
 
 /**
- * `wp:postmeta` içindeki Yoast/RankMath anahtarlarını SEO alanlarına eşler (bkz.
- * ARCHITECTURE.md §10.8.6 eşleştirme tablosu — Yoast VE RankMath'in İKİSİ de desteklenir).
- * İLK eşleşen kazanır (bir postta hem Yoast hem RankMath meta'sı olağan değildir ama olursa
- * öngörülebilir olsun diye).
+ * `wp:postmeta` içindeki Yoast/RankMath/WooCommerce anahtarlarını alanlara eşler (bkz.
+ * ARCHITECTURE.md §10.8.6/§10.8.9 eşleştirme tabloları). **ALLOW-LIST switch deseni** — bu
+ * fonksiyon BİLEREK genel bir `key -> value` Map'ine REFAKTÖR EDİLMEZ (compliance-agent kararı,
+ * §10.8.9.1): tanınmayan HER meta anahtarı sessizce yok sayılır, hiçbir zaman materyalize
+ * edilmez. İLK eşleşen kazanır (bir postta hem Yoast hem RankMath meta'sı olağan değildir ama
+ * olursa öngörülebilir olsun diye).
  */
 function applyPostmeta(item: WxrItem, key: string | null, value: string | null): void {
   if (!key) return;
   switch (key) {
     case "_thumbnail_id":
       item.thumbnailId = value;
+      if (value) item.hasGalleryOrThumbnail = true;
+      break;
+    case "_product_image_gallery":
+      if (value && value.trim()) item.hasGalleryOrThumbnail = true;
       break;
     case "_yoast_wpseo_title":
     case "rank_math_title":
@@ -115,6 +169,28 @@ function applyPostmeta(item: WxrItem, key: string | null, value: string | null):
     case "_yoast_wpseo_opengraph-image":
     case "rank_math_facebook_image":
       if (!item.ogImageUrl) item.ogImageUrl = value;
+      break;
+    // ---- §10.8.9 WooCommerce (yalnızca postType === "product" item'larında anlamlıdır) ----
+    case "_sku":
+      item.sku = value && value.trim() ? value.trim() : null;
+      break;
+    case "_regular_price":
+      item.regularPriceRaw = value;
+      break;
+    case "_sale_price":
+      item.salePriceRaw = value;
+      break;
+    case "_price":
+      item.priceRaw = value;
+      break;
+    case "_manage_stock":
+      item.manageStockRaw = value;
+      break;
+    case "_stock":
+      item.stockRaw = value;
+      break;
+    case "_stock_status":
+      item.stockStatusRaw = value;
       break;
     default:
       break;
@@ -146,7 +222,22 @@ function emptyItem(): WxrItem {
     ogImageUrl: null,
     noIndex: false,
     resolvedThumbnailUrl: null,
+    sku: null,
+    regularPriceRaw: null,
+    salePriceRaw: null,
+    priceRaw: null,
+    manageStockRaw: null,
+    stockRaw: null,
+    stockStatusRaw: null,
+    hasGalleryOrThumbnail: false,
   };
+}
+
+export interface ParseWxrOptions {
+  /** Bu çalıştırmada `items`'e MATERYALİZE edilecek post type'lar (ör. `WORDPRESS` → `["post","page"]`, `PRODUCTS` → `["product"]`). */
+  allowedPostTypes: WxrTargetPostType[];
+  /** `IMPORT_RECORD_CAPS[type]` — yalnızca `items.length` (yazılabilir adaylar) üzerinden kontrol edilir. */
+  recordCap: number;
 }
 
 /**
@@ -154,14 +245,25 @@ function emptyItem(): WxrItem {
  * ARCHITECTURE.md §10.8.3/§10.8.6 — DOM'a alınmaz, XXE yapısal olarak imkânsız). Her `<item>`
  * kapanışında yalnızca o item'ın çıkarılmış alanları belleğe eklenir (tüm ham XML DEĞİL).
  *
+ * §10.8.9 ile birlikte bu fonksiyon `WORDPRESS` VE `PRODUCTS` tiplerinin TEK ortak giriş
+ * noktasıdır (mimar kararı 2A güvenlik maddesi — XXE/derinlik koruması İKİ KEZ YAZILMAZ).
+ * `options.allowedPostTypes` hangi post type'ların `items`'e YAZILACAĞINI belirler; `breakdown`
+ * ise MOD'DAN BAĞIMSIZ olarak dosyada GERÇEKTEN NE OLDUĞUNU raporlar (bkz. openapi.yaml
+ * `ImportJobPreview.breakdown` açıklaması — "type neyi YAZACAĞINI belirler, breakdown dosyada
+ * NE OLDUĞUNU anlatır").
+ *
  * "İki geçişli" `_thumbnail_id` çözümlemesi (bkz. §10.8.6) burada TEK bir SAX taramasıyla
  * elde edilir: tarama sırasında hem item'lar hem attachment URL sözlüğü toplanır, tarama
  * BİTTİKTEN SONRA (ikinci mantıksal "geçiş") `resolvedThumbnailUrl` her item için doldurulur —
  * dosyayı fiziksel olarak iki kez okumaktan daha verimli, aynı sonucu verir (attachment'ların
- * item'lardan önce mi sonra mı geldiği ÖNEMSİZDİR).
+ * item'lardan önce mi sonra mı geldiği ÖNEMSİZDİR). Bu çözümleme mod'dan BAĞIMSIZDIR (attachment
+ * item'ları her zaman toplanır) — `PRODUCTS` modunda da `_thumbnail_id` → `ogImageUrl` yedek
+ * kaynağı için kullanılır (bkz. import.worker.ts::runProductsJob).
  */
-export function parseWxr(buffer: Buffer): WxrParseResult {
+export function parseWxr(buffer: Buffer, options: ParseWxrOptions): WxrParseResult {
   assertNoDoctypeOrEntity(buffer);
+
+  const allowedPostTypes = new Set<string>(options.allowedPostTypes);
 
   const parser = new SaxesParser({ xmlns: true });
   const stack: Frame[] = [];
@@ -171,8 +273,10 @@ export function parseWxr(buffer: Buffer): WxrParseResult {
   const items: WxrItem[] = [];
   const attachmentUrlByPostId = new Map<string, string>();
 
-  const breakdown: WxrBreakdown = { pages: 0, posts: 0, attachments: 0, categories: 0, skipped: 0 };
+  const breakdown: WxrBreakdown = { pages: 0, posts: 0, products: 0, attachments: 0, categories: 0, skipped: 0 };
   let hasUnsupportedTags = false;
+  let wcOrdersIgnoredCount = 0;
+  let wcVariationsUnsupportedCount = 0;
 
   let currentAuthor: Partial<WxrAuthor> | null = null;
   let currentCategory: { nicename: string | null; name: string | null } | null = null;
@@ -180,6 +284,16 @@ export function parseWxr(buffer: Buffer): WxrParseResult {
   let currentItemCategory: { domain: string | null; nicename: string | null } | null = null;
   let currentPostmetaKey: string | null = null;
   let currentPostmetaValue: string | null = null;
+  /**
+   * §10.8.9.1 PII kapısı — `true` iken bu `<item>` `shop_order`/`customer`/… türündendir ve
+   * postmeta OKUNMAZ (`applyPostmeta` hiç çağrılmaz). `wp:post_type` metin içeriği item'ın
+   * İÇİNDE, genelde EN BAŞTA gelir; bu bayrak `post_type` kapanışında set edilir ve item'ın
+   * KENDİSİ kapanana kadar postmeta okumayı bloklar. `post_type` geç gelirse (nadir/bozuk
+   * export), o ana kadar okunmuş postmeta zaten allow-list'te olduğundan PII TAŞIMAZ — yine de
+   * item kapanışında `PII_POST_TYPES` kontrolüyle satır tamamen DÜŞÜRÜLÜR ve hiçbir alanı
+   * `items`'e YAZILMAZ.
+   */
+  let currentItemIsPii = false;
 
   parser.on("error", (err) => {
     throw err;
@@ -195,6 +309,7 @@ export function parseWxr(buffer: Buffer): WxrParseResult {
 
     if (tag.uri === "" && tag.local === "item") {
       currentItem = emptyItem();
+      currentItemIsPii = false;
     } else if (WP_NS.has(tag.uri) && tag.local === "author") {
       currentAuthor = {};
     } else if (WP_NS.has(tag.uri) && tag.local === "category") {
@@ -262,6 +377,13 @@ export function parseWxr(buffer: Buffer): WxrParseResult {
       return;
     }
 
+    // ---- Item düzeyi: wp:post_type erken tespiti — PII item'ları için postmeta OKUMAYI durdurur ----
+    if (inItem && currentItem && WP_NS.has(frame.uri) && frame.local === "post_type") {
+      currentItem.postType = text || "";
+      if (PII_POST_TYPES.has(currentItem.postType)) currentItemIsPii = true;
+      return;
+    }
+
     // ---- Item düzeyi: wp:postmeta (meta_key/meta_value'nun ebeveyni item DEĞİL, postmeta'dır — `inItem` BURADA KULLANILMAZ) ----
     const inPostmeta = currentItem !== null && parent && WP_NS.has(parent.uri) && parent.local === "postmeta";
     if (WP_NS.has(frame.uri) && frame.local === "meta_key" && inPostmeta) {
@@ -273,20 +395,27 @@ export function parseWxr(buffer: Buffer): WxrParseResult {
       return;
     }
     if (WP_NS.has(frame.uri) && frame.local === "postmeta" && currentItem) {
-      applyPostmeta(currentItem, currentPostmetaKey, currentPostmetaValue);
+      // §10.8.9.1 PII kapısı — `shop_order` vb. item'larda postmeta ASLA `applyPostmeta`'ya
+      // ulaşmaz (`_billing_*`/`_shipping_*`/`_payment_method` yapısal olarak okunmaz).
+      if (!currentItemIsPii) applyPostmeta(currentItem, currentPostmetaKey, currentPostmetaValue);
       currentPostmetaKey = null;
       currentPostmetaValue = null;
       return;
     }
 
-    // ---- Item düzeyi: RSS <category domain="category|post_tag"> — İLK eşleşen kategori kullanılır ----
+    // ---- Item düzeyi: RSS <category domain="category|post_tag|product_cat|product_tag"> — İLK eşleşen kategori kullanılır ----
+    // §10.8.9.1 PII kapısı — PII item'larında kategori de OKUNMAZ (savunma derinliği).
     if (frame.uri === "" && frame.local === "category" && currentItem && currentItemCategory) {
-      if (currentItemCategory.domain === "category") {
+      if (currentItemIsPii) {
+        currentItemCategory = null;
+        return;
+      }
+      if (currentItemCategory.domain === "category" || currentItemCategory.domain === "product_cat") {
         if (!currentItem.categoryNicename) {
           currentItem.categoryNicename = currentItemCategory.nicename ?? text;
           currentItem.categoryName = text;
         }
-      } else if (currentItemCategory.domain === "post_tag") {
+      } else if (currentItemCategory.domain === "post_tag" || currentItemCategory.domain === "product_tag") {
         currentItem.tagsFound = true;
         hasUnsupportedTags = true;
       }
@@ -295,7 +424,10 @@ export function parseWxr(buffer: Buffer): WxrParseResult {
     }
 
     // ---- Item düzeyi: basit alanlar ----
-    if (inItem && currentItem) {
+    // §10.8.9.1 PII kapısı (savunma derinliği) — PII item'larında (`shop_order` vb.) hiçbir
+    // basit alan (title/link/guid/tarih …) DA okunmaz; item zaten kapanışta tamamen düşürülür,
+    // bu yalnızca "belleğe HİÇ alınmadan düşür" ilkesini harfiyen uygular.
+    if (inItem && currentItem && !currentItemIsPii) {
       if (frame.uri === "" && frame.local === "title") currentItem.title = text;
       else if (frame.uri === "" && frame.local === "link") currentItem.link = text || null;
       else if (frame.uri === "" && frame.local === "guid") currentItem.guid = text || null;
@@ -306,7 +438,6 @@ export function parseWxr(buffer: Buffer): WxrParseResult {
       else if (WP_NS.has(frame.uri) && frame.local === "post_date_gmt") currentItem.postDateGmt = text || null;
       else if (WP_NS.has(frame.uri) && frame.local === "post_date") currentItem.postDate = text || null;
       else if (WP_NS.has(frame.uri) && frame.local === "status") currentItem.status = text || null;
-      else if (WP_NS.has(frame.uri) && frame.local === "post_type") currentItem.postType = text || "";
       else if (WP_NS.has(frame.uri) && frame.local === "post_name") currentItem.slugRaw = text || null;
       else if (WP_NS.has(frame.uri) && frame.local === "attachment_url" && currentItem.postType === "attachment") {
         // attachment_url, post_type'tan SONRA gelmeyebilir; postId aşağıda item bitişinde eşlenir.
@@ -317,7 +448,17 @@ export function parseWxr(buffer: Buffer): WxrParseResult {
     // ---- <item> kapanışı: sınıflandır + breakdown güncelle ----
     if (frame.uri === "" && frame.local === "item" && currentItem) {
       const item = currentItem;
+      const wasPii = currentItemIsPii;
       currentItem = null;
+      currentItemIsPii = false;
+
+      // §10.8.9.1 PII kapısı — `shop_order` vb. item'lar burada TAMAMEN düşürülür. `rawData`'ya
+      // ASLA yazılmaz (bu fonksiyon zaten hiçbir postmeta'sını okumadı) ve `items`'e HİÇ girmez.
+      if (wasPii) {
+        breakdown.skipped += 1;
+        wcOrdersIgnoredCount += 1;
+        return;
+      }
 
       if (item.postType === "attachment") {
         breakdown.attachments += 1;
@@ -326,7 +467,14 @@ export function parseWxr(buffer: Buffer): WxrParseResult {
         return;
       }
 
-      if (!SUPPORTED_ITEM_POST_TYPES.has(item.postType)) {
+      if (item.postType === "product_variation") {
+        breakdown.skipped += 1;
+        wcVariationsUnsupportedCount += 1;
+        return;
+      }
+
+      const isKnownType = item.postType === "post" || item.postType === "page" || item.postType === "product";
+      if (!isKnownType) {
         breakdown.skipped += 1;
         return;
       }
@@ -336,7 +484,16 @@ export function parseWxr(buffer: Buffer): WxrParseResult {
       }
 
       if (item.postType === "page") breakdown.pages += 1;
-      else breakdown.posts += 1;
+      else if (item.postType === "post") breakdown.posts += 1;
+      else breakdown.products += 1;
+
+      if (!allowedPostTypes.has(item.postType)) {
+        // Dosyada GERÇEKTEN var ama bu çalıştırma modunda hedeflenmiyor (ör. WORDPRESS modunda
+        // `product`) — breakdown'daki ilgili sayaç (pages/posts/products) yine de artırılmış
+        // olur (mod-bağımsız "dosyada ne var" raporu), ama `items`'e YAZILMAZ.
+        breakdown.skipped += 1;
+        return;
+      }
 
       items.push(item);
     }
@@ -350,8 +507,8 @@ export function parseWxr(buffer: Buffer): WxrParseResult {
     throw new ValidationError("XML (WXR) dosyası ayrıştırılamadı veya bozuk.", { file: [(err as Error).message] });
   }
 
-  if (items.length > IMPORT_RECORD_CAPS.WORDPRESS) {
-    throw new ValidationError(`WXR dosyasında en fazla ${IMPORT_RECORD_CAPS.WORDPRESS} öğe içe aktarılabilir.`, {
+  if (items.length > options.recordCap) {
+    throw new ValidationError(`Bu içe aktarma türü için en fazla ${options.recordCap} kayıt içe aktarılabilir.`, {
       file: [`${items.length} öğe bulundu.`],
     });
   }
@@ -365,5 +522,5 @@ export function parseWxr(buffer: Buffer): WxrParseResult {
 
   breakdown.categories = categories.size;
 
-  return { authors, categories, items, hasUnsupportedTags, breakdown };
+  return { authors, categories, items, hasUnsupportedTags, breakdown, wcOrdersIgnoredCount, wcVariationsUnsupportedCount };
 }

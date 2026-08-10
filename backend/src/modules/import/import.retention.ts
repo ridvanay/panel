@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { Prisma } from "@prisma/client";
+import { importStorage } from "../../lib/import-storage";
 import { IMPORT_ERROR_ROW_REDACTION_MS, IMPORT_JOB_RETENTION_MS, IMPORT_RETENTION_SWEEP_INTERVAL_MS } from "./import.constants";
 
 export interface ImportRetentionSweepResult {
@@ -18,6 +19,12 @@ export interface ImportRetentionSweepResult {
  * 2. **Job zarfı saklama (90 gün)**: `COMPLETED`/`FAILED`/`CANCELLED` `ImportJob`
  *    satırları `finishedAt` (yoksa `createdAt`) 90 günden eskiyse TAMAMEN silinir —
  *    `ImportJobError` `onDelete: Cascade` olduğundan çocuk satırlar otomatik gider.
+ *
+ * §10.8.9.1 compliance-agent BLOKER düzeltmesi (2026-08-10) — silinecek job'ların
+ * `storagePath`'i (varsa) `deleteMany`'den ÖNCE `importStorage.remove` ile best-effort
+ * temizlenir (aynen worker'ın `cleanupSourceFile`/`recoverStuckImportJobs` deseninde olduğu
+ * gibi); DB satırı zaten cascade ile gideceğinden ayrıca `storagePath: null` update'ine
+ * gerek yoktur. Silme hatası taramayı DURDURMAZ (yalnızca loglanır).
  *
  * İDEMPOTENT'tir — zaten redakte edilmiş/silinmiş satırlarda no-op (bkz. `where` filtreleri).
  */
@@ -45,11 +52,24 @@ export async function runImportRetentionSweep(app: FastifyInstance): Promise<Imp
     data: { rawData: Prisma.DbNull },
   });
 
+  const jobRetentionWhere: Prisma.ImportJobWhereInput = {
+    status: { in: ["COMPLETED", "FAILED", "CANCELLED"] },
+    OR: [{ finishedAt: { lt: jobRetentionCutoff } }, { finishedAt: null, createdAt: { lt: jobRetentionCutoff } }],
+  };
+
+  const jobsToDelete = await app.prisma.importJob.findMany({
+    where: { ...jobRetentionWhere, storagePath: { not: null } },
+    select: { id: true, storagePath: true },
+  });
+  for (const job of jobsToDelete) {
+    if (!job.storagePath) continue;
+    await importStorage.remove(job.storagePath).catch((err) => {
+      app.log.error({ err, jobId: job.id }, "Saklama süresi dolan içe aktarma işinin kaynak dosyası silinemedi");
+    });
+  }
+
   const deletedJobs = await app.prisma.importJob.deleteMany({
-    where: {
-      status: { in: ["COMPLETED", "FAILED", "CANCELLED"] },
-      OR: [{ finishedAt: { lt: jobRetentionCutoff } }, { finishedAt: null, createdAt: { lt: jobRetentionCutoff } }],
-    },
+    where: jobRetentionWhere,
   });
 
   return {

@@ -40,23 +40,59 @@ export const IMPORT_JOB_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
  */
 export const IMPORT_RETENTION_SWEEP_INTERVAL_MS = 60 * 60 * 1000;
 
-/** §10.8.5 — tip başına dosya boyutu limiti (bytes). */
+/**
+ * §10.8.5 — tip başına dosya boyutu limiti (bytes). `PRODUCTS` `WORDPRESS` ile AYNIDIR
+ * (aynı WXR dosyası yüklenir) — bkz. ARCHITECTURE.md §10.8.5.
+ */
 export const IMPORT_FILE_SIZE_LIMITS: Record<ImportJobType, number> = {
   PAGES: 10 * 1024 * 1024,
   BLOG: 10 * 1024 * 1024,
   USERS: 10 * 1024 * 1024,
   WORDPRESS: 50 * 1024 * 1024,
+  PRODUCTS: 50 * 1024 * 1024,
   MEDIA: 100 * 1024 * 1024,
 };
 
-/** §10.8.5 — tip başına kayıt/öğe sayısı tavanı (aşım → 422, iş oluşturulmaz). */
+/**
+ * §10.8.5/§10.8.9.1 — tip başına kayıt/öğe sayısı tavanı (aşım → 422, iş oluşturulmaz).
+ * `PRODUCTS`: architect kararıyla BİLİNÇLİ olarak 5.000'de tutulur (WORDPRESS'in 10.000'inden
+ * DÜŞÜK — ürün satırı başına doğrulama daha pahalıdır) — bkz. ARCHITECTURE.md §10.8.9.1
+ * "Kayıt tavanı" maddesi. DEĞİŞTİRİLMEMELİDİR. Tavan yalnızca işlenecek `product` item'ı
+ * üzerinden sayılır (dosyadaki toplam item sayısı üzerinden DEĞİL).
+ */
 export const IMPORT_RECORD_CAPS: Record<ImportJobType, number> = {
   USERS: 500,
   PAGES: 5000,
   BLOG: 5000,
   WORDPRESS: 10000,
+  PRODUCTS: 5000,
   MEDIA: 500,
 };
+
+/**
+ * §10.8.9 `StartImportJobRequest.defaultCurrency` doğrulaması — ISO-4217 3 harfli kodların
+ * bilinen tam listesi (aktif/tarihi para birimleri). Tanınmayan kod → 422
+ * (`error.details.defaultCurrency`, bkz. import.routes.ts). Büyük harfe normalize edilmiş
+ * hâlde tutulur.
+ */
+export const ISO_4217_CURRENCY_CODES = new Set([
+  "AED", "AFN", "ALL", "AMD", "ANG", "AOA", "ARS", "AUD", "AWG", "AZN",
+  "BAM", "BBD", "BDT", "BGN", "BHD", "BIF", "BMD", "BND", "BOB", "BRL",
+  "BSD", "BTN", "BWP", "BYN", "BZD", "CAD", "CDF", "CHF", "CLP", "CNY",
+  "COP", "CRC", "CUP", "CVE", "CZK", "DJF", "DKK", "DOP", "DZD", "EGP",
+  "ERN", "ETB", "EUR", "FJD", "FKP", "GBP", "GEL", "GHS", "GIP", "GMD",
+  "GNF", "GTQ", "GYD", "HKD", "HNL", "HTG", "HUF", "IDR", "ILS", "INR",
+  "IQD", "IRR", "ISK", "JMD", "JOD", "JPY", "KES", "KGS", "KHR", "KMF",
+  "KPW", "KRW", "KWD", "KYD", "KZT", "LAK", "LBP", "LKR", "LRD", "LSL",
+  "LYD", "MAD", "MDL", "MGA", "MKD", "MMK", "MNT", "MOP", "MRU", "MUR",
+  "MVR", "MWK", "MXN", "MYR", "MZN", "NAD", "NGN", "NIO", "NOK", "NPR",
+  "NZD", "OMR", "PAB", "PEN", "PGK", "PHP", "PKR", "PLN", "PYG", "QAR",
+  "RON", "RSD", "RUB", "RWF", "SAR", "SBD", "SCR", "SDG", "SEK", "SGD",
+  "SHP", "SLE", "SOS", "SRD", "SSP", "STN", "SYP", "SZL", "THB", "TJS",
+  "TMT", "TND", "TOP", "TRY", "TTD", "TWD", "TZS", "UAH", "UGX", "USD",
+  "UYU", "UZS", "VES", "VND", "VUV", "WST", "XAF", "XCD", "XOF", "XPF",
+  "YER", "ZAR", "ZMW", "ZWL",
+]);
 
 /** §10.8.7 MEDIA zip bombası koruması. */
 export const ZIP_BOMB_LIMITS = {
@@ -70,11 +106,16 @@ export const ZIP_BOMB_LIMITS = {
 export const WXR_PROLOG_SCAN_BYTES = 64 * 1024;
 export const WXR_MAX_DEPTH = 100;
 
-/** Geçerlilik matrisi (ihlal → 422). openapi.yaml `POST /admin/import/jobs` açıklaması. */
+/**
+ * Geçerlilik matrisi (ihlal → 422). openapi.yaml `POST /admin/import/jobs` açıklaması.
+ * `PRODUCTS` bilinçli olarak yalnızca XML (WooCommerce WXR) kabul eder — ürün CSV/JSON içe
+ * aktarımı bu fazın KAPSAMI DIŞINDADIR (bkz. openapi.yaml `ImportSourceFormat`).
+ */
 export const IMPORT_TYPE_TO_FORMATS: Record<ImportJobType, ImportSourceFormat[]> = {
   PAGES: ["CSV", "JSON"],
   BLOG: ["CSV", "JSON"],
   WORDPRESS: ["XML"],
+  PRODUCTS: ["XML"],
   USERS: ["CSV"],
   MEDIA: ["ZIP"],
 };

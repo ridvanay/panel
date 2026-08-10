@@ -17,7 +17,8 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
-import { IMPORT_TYPE_CONFIGS, importTypeConfig } from "./import-type-config";
+import { useModules } from "@/context/modules-context";
+import { IMPORT_TYPE_CONFIGS, importTypeConfig, visibleImportTypeConfigs } from "./import-type-config";
 
 interface ImportUploadDialogProps {
   open: boolean;
@@ -44,6 +45,11 @@ export function ImportUploadDialog({ open, onOpenChange, onCreated }: ImportUplo
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { isModuleEnabled } = useModules();
+
+  // Modül kapalıyken kartı gizle — `sidebar.tsx::filterVisibleNavItems` ile AYNI desen.
+  // Sunucu tarafı zaten `type: PRODUCTS` + modül kapalıyken 422 döner (bkz. import-type-config.ts).
+  const visibleTypeConfigs = visibleImportTypeConfigs(IMPORT_TYPE_CONFIGS, isModuleEnabled);
 
   const config = importTypeConfig(type);
 
@@ -100,7 +106,7 @@ export function ImportUploadDialog({ open, onOpenChange, onCreated }: ImportUplo
 
         <div className="space-y-4">
           <div role="radiogroup" aria-label="İçe aktarma türü" className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {IMPORT_TYPE_CONFIGS.map((option) => {
+            {visibleTypeConfigs.map((option) => {
               const Icon = option.icon;
               const active = option.type === type;
               return (

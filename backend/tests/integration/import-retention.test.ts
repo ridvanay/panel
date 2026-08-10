@@ -5,6 +5,7 @@ import { buildTestApp } from "../helpers/build-test-app";
 import { resetDatabase } from "../helpers/reset-db";
 import { runImportRetentionSweep } from "../../src/modules/import/import.retention";
 import { IMPORT_ERROR_ROW_REDACTION_MS, IMPORT_JOB_RETENTION_MS } from "../../src/modules/import/import.constants";
+import { importStorage } from "../../src/lib/import-storage";
 
 /**
  * §10.8.8.1 compliance-agent kararı (2026-08-05, BLOCKER) — 30 günlük `ImportJobError.rawData`/
@@ -162,6 +163,35 @@ describe("import PII redaksiyonu ve saklama süresi (§10.8.8.1)", () => {
 
     const recentJobAfter = await app.prisma.importJob.findUnique({ where: { id: recentJob.id } });
     expect(recentJobAfter).not.toBeNull();
+  });
+
+  it("90 günden eski bir ImportJob silinirken storagePath'teki ham kaynak dosyası da temizlenir (§10.8.9.1)", async () => {
+    const veryOld = new Date(Date.now() - IMPORT_JOB_RETENTION_MS - 24 * 60 * 60 * 1000);
+    const storagePath = await importStorage.save(Buffer.from("<xml></xml>"));
+    await expect(importStorage.read(storagePath)).resolves.toBeInstanceOf(Buffer);
+
+    const oldJob = await app.prisma.importJob.create({
+      data: {
+        type: "WORDPRESS",
+        format: "XML",
+        status: "COMPLETED",
+        filename: "site.xml",
+        sizeBytes: 11,
+        totalCount: 1,
+        processedCount: 1,
+        successCount: 1,
+        errorCount: 0,
+        createdAt: veryOld,
+        finishedAt: veryOld,
+        storagePath,
+      },
+    });
+
+    await runImportRetentionSweep(app);
+
+    const oldJobAfter = await app.prisma.importJob.findUnique({ where: { id: oldJob.id } });
+    expect(oldJobAfter).toBeNull();
+    await expect(importStorage.read(storagePath)).rejects.toBeTruthy();
   });
 
   it("idempotenttir — zaten redakte edilmiş/silinmiş satırlarda ikinci çalıştırma no-op'tur (hata FIRLATMAZ)", async () => {

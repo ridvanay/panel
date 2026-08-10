@@ -320,10 +320,11 @@ describe("import (§10.8)", () => {
       expect(jobCountAfter).toBe(jobCountBefore);
     });
 
-    it("gerçek bir WXR dosyası kabul edilir ve sayfa/yazı üretir", async () => {
+    it("gerçek bir WXR dosyası kabul edilir ve sayfa/yazı üretir; excerpt:encoded de content:encoded İLE AYNI şekilde sanitize edilir", async () => {
       const wxr = `<?xml version="1.0" encoding="UTF-8" ?>
 <rss version="2.0"
   xmlns:content="http://purl.org/rss/1.0/modules/content/"
+  xmlns:excerpt="http://wordpress.org/export/1.2/excerpt/"
   xmlns:wp="http://wordpress.org/export/1.2/"
   xmlns:dc="http://purl.org/dc/elements/1.1/">
 <channel>
@@ -331,6 +332,7 @@ describe("import (§10.8)", () => {
   <item>
     <title>Ilk Yazi</title>
     <content:encoded><![CDATA[<p>Merhaba <script>alert(1)</script></p>]]></content:encoded>
+    <excerpt:encoded><![CDATA[<p>Ozet <script>alert(2)</script></p>]]></excerpt:encoded>
     <wp:post_id>1</wp:post_id>
     <wp:status>publish</wp:status>
     <wp:post_type>post</wp:post_type>
@@ -362,6 +364,455 @@ describe("import (§10.8)", () => {
       const post = await app.prisma.blogPost.findFirst({ where: { slug: "ilk-yazi" } });
       expect(post).not.toBeNull();
       expect(post!.contentHtml).not.toContain("script");
+      // security-agent bulgusu (Konu 2 denetimi) — `excerpt:encoded` de sanitize edilmeli
+      // (ARCHITECTURE.md §10.8.4: "İçe aktarılan HER HTML alanı ... sanitize edilir").
+      expect(post!.excerpt).not.toContain("script");
+      expect(post!.excerpt).toContain("Ozet");
+    });
+  });
+
+  describe("PRODUCTS (WooCommerce) — §10.8.9", () => {
+    // Ayrı `app`/ADMIN örneği — bu blok tek başına 10'dan fazla `POST /admin/import/jobs`
+    // çağrısı yapar ve route-level rate limiti "10 istek / 10 dakika"tır (bkz.
+    // import.routes.ts::IMPORT_UPLOAD_RATE_LIMIT) — "Boyut limitleri"/"Yarış durumu"
+    // bloklarındaki AYNI izolasyon gerekçesi.
+    // İKİ AYRI `app` örneği kullanılır: bu blok toplamda 10'un ÜZERİNDE `POST /admin/import/jobs`
+    // çağrısı yapar (rate limit "10 istek / 10 dakika"tır, bkz. import.routes.ts::
+    // IMPORT_UPLOAD_RATE_LIMIT), tek bir örnek yetmez — `productsApp2` yalnızca son birkaç testte
+    // kullanılır.
+    let productsApp: FastifyInstance;
+    let productsAdminToken: string;
+    let productsApp2: FastifyInstance;
+    let productsAdminToken2: string;
+
+    beforeAll(async () => {
+      productsApp = await buildTestApp();
+      const admin = await registerTestUser(productsApp, { email: "import-products-admin@example.com" });
+      await productsApp.prisma.user.update({ where: { id: admin.userId }, data: { role: "ADMIN" } });
+      productsAdminToken = admin.accessToken;
+
+      productsApp2 = await buildTestApp();
+      const admin2 = await registerTestUser(productsApp2, { email: "import-products-admin-2@example.com" });
+      await productsApp2.prisma.user.update({ where: { id: admin2.userId }, data: { role: "ADMIN" } });
+      productsAdminToken2 = admin2.accessToken;
+    });
+
+    afterAll(async () => {
+      await productsApp.close();
+      await productsApp2.close();
+    });
+
+    function wcWxr(items: string): string {
+      return `<?xml version="1.0" encoding="UTF-8" ?>
+<rss version="2.0"
+  xmlns:content="http://purl.org/rss/1.0/modules/content/"
+  xmlns:excerpt="http://wordpress.org/export/1.2/excerpt/"
+  xmlns:wp="http://wordpress.org/export/1.2/"
+  xmlns:dc="http://purl.org/dc/elements/1.1/">
+<channel>
+  <title>Test WooCommerce Site</title>
+  ${items}
+</channel></rss>`;
+    }
+
+    function meta(key: string, value: string): string {
+      return `<wp:postmeta><wp:meta_key><![CDATA[${key}]]></wp:meta_key><wp:meta_value><![CDATA[${value}]]></wp:meta_value></wp:postmeta>`;
+    }
+
+    function productItem(opts: {
+      title: string;
+      postId: string;
+      sku?: string;
+      regularPrice?: string;
+      salePrice?: string;
+      category?: string;
+      extraMeta?: string;
+      status?: string;
+    }): string {
+      const { title, postId, sku, regularPrice, salePrice, category = "", extraMeta = "", status = "publish" } = opts;
+      const metas = [
+        sku !== undefined ? meta("_sku", sku) : "",
+        regularPrice !== undefined ? meta("_regular_price", regularPrice) : "",
+        salePrice !== undefined ? meta("_sale_price", salePrice) : "",
+        extraMeta,
+      ].join("");
+      return `
+      <item>
+        <title>${title}</title>
+        <content:encoded><![CDATA[<p>Ürün açıklaması</p>]]></content:encoded>
+        <wp:post_id>${postId}</wp:post_id>
+        <wp:status>${status}</wp:status>
+        <wp:post_type>product</wp:post_type>
+        <wp:post_name>${title.toLowerCase().replace(/\s+/g, "-")}</wp:post_name>
+        ${category}
+        ${metas}
+      </item>`;
+    }
+
+    async function pollProductsJobUntilTerminal(
+      jobId: string,
+      timeoutMs = 15000,
+      useApp = productsApp,
+      useToken = productsAdminToken
+    ): Promise<Record<string, unknown>> {
+      const deadline = Date.now() + timeoutMs;
+      while (Date.now() < deadline) {
+        const res = await useApp.inject({
+          method: "GET",
+          url: `/api/v1/admin/import/jobs/${jobId}`,
+          headers: authHeader(useToken),
+        });
+        const data = res.json().data;
+        if (["COMPLETED", "FAILED", "CANCELLED"].includes(data.status)) return data;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      throw new Error(`İş ${jobId} zaman aşımına uğradı (terminal duruma ulaşmadı).`);
+    }
+
+    async function uploadAndStart(
+      xml: string,
+      body: Record<string, unknown> = {},
+      useApp = productsApp,
+      useToken = productsAdminToken
+    ): Promise<{ upload: { statusCode: number; json: () => any }; jobId: string | null }> {
+      const { body: payload, contentType } = buildMultipartPayload({
+        fields: { type: "PRODUCTS" },
+        file: { filename: "woo-export.xml", contentType: "application/xml", content: Buffer.from(xml) },
+      });
+      const upload = await useApp.inject({
+        method: "POST",
+        url: "/api/v1/admin/import/jobs",
+        headers: { ...authHeader(useToken), "content-type": contentType },
+        payload,
+      });
+      if (upload.statusCode !== 201) return { upload, jobId: null };
+      const jobId = upload.json().data.id;
+      await useApp.inject({
+        method: "POST",
+        url: `/api/v1/admin/import/jobs/${jobId}/start`,
+        headers: authHeader(useToken),
+        payload: body,
+      });
+      return { upload, jobId };
+    }
+
+    it("DTD/ENTITY içeren bir dosya PRODUCTS tipinde de 422 ile reddedilir, iş OLUŞTURULMAZ", async () => {
+      const maliciousXml = [
+        '<?xml version="1.0"?>',
+        "<!DOCTYPE lolz [",
+        ' <!ENTITY lol "lol">',
+        ' <!ENTITY lol2 "&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;">',
+        "]>",
+        "<rss><channel><lolz>&lol2;</lolz></channel></rss>",
+      ].join("\n");
+
+      const { body, contentType } = buildMultipartPayload({
+        fields: { type: "PRODUCTS" },
+        file: { filename: "evil-products.xml", contentType: "application/xml", content: Buffer.from(maliciousXml) },
+      });
+
+      const jobCountBefore = await productsApp.prisma.importJob.count();
+      const res = await productsApp.inject({
+        method: "POST",
+        url: "/api/v1/admin/import/jobs",
+        headers: { ...authHeader(productsAdminToken), "content-type": contentType },
+        payload: body,
+      });
+
+      expect(res.statusCode).toBe(422);
+      expect(res.json().error.message).toMatch(/DTD|varlık/i);
+      expect(await productsApp.prisma.importJob.count()).toBe(jobCountBefore);
+    });
+
+    it("ürünler modülü kapalıyken type: PRODUCTS ile yükleme 422 döner", async () => {
+      const disable = await productsApp.inject({
+        method: "PATCH",
+        url: "/api/v1/admin/modules/products",
+        headers: authHeader(productsAdminToken),
+        payload: { enabled: false },
+      });
+      expect(disable.statusCode).toBe(200);
+
+      try {
+        const xml = wcWxr(productItem({ title: "Kapalı Modül Ürünü", postId: "1", regularPrice: "10.00" }));
+        const { body, contentType } = buildMultipartPayload({
+          fields: { type: "PRODUCTS" },
+          file: { filename: "woo.xml", contentType: "application/xml", content: Buffer.from(xml) },
+        });
+        const res = await productsApp.inject({
+          method: "POST",
+          url: "/api/v1/admin/import/jobs",
+          headers: { ...authHeader(productsAdminToken), "content-type": contentType },
+          payload: body,
+        });
+        expect(res.statusCode).toBe(422);
+      } finally {
+        await productsApp.inject({
+          method: "PATCH",
+          url: "/api/v1/admin/modules/products",
+          headers: authHeader(productsAdminToken),
+          payload: { enabled: true },
+        });
+      }
+    });
+
+    it("uçtan uca: ürün/varyasyon/sipariş karışık bir WXR — yalnızca ürünler yazılır, breakdown+uyarılar doğru, sipariş PII'si rawData'ya YAZILMAZ", async () => {
+      const orderItem = `
+      <item>
+        <title>Order #999</title>
+        <wp:post_id>500</wp:post_id>
+        <wp:status>wc-completed</wp:status>
+        <wp:post_type>shop_order</wp:post_type>
+        ${meta("_billing_email", "gizli-musteri@example.com")}
+        ${meta("_billing_first_name", "GizliAd")}
+        ${meta("_billing_last_name", "GizliSoyad")}
+        ${meta("_payment_method", "stripe")}
+        ${meta("_billing_phone", "5551234567")}
+      </item>`;
+      const variationItem = `
+      <item>
+        <title>Varyasyon Ürünü - Kırmızı</title>
+        <wp:post_id>501</wp:post_id>
+        <wp:status>publish</wp:status>
+        <wp:post_type>product_variation</wp:post_type>
+        ${meta("_regular_price", "50.00")}
+      </item>`;
+      const product1 = productItem({
+        title: "Widget A",
+        postId: "1",
+        sku: "WID-A",
+        regularPrice: "199.90",
+        category: `<category domain="product_cat" nicename="widgets"><![CDATA[Widgets]]></category>`,
+      });
+      const product2 = productItem({
+        title: "Widget B",
+        postId: "2",
+        sku: "WID-B",
+        regularPrice: "100.00",
+        salePrice: "150.00", // >= regularPrice -> indirim yok sayılır + INVALID_VALUE satırı
+      });
+
+      const xml = wcWxr(orderItem + variationItem + product1 + product2);
+
+      const { body: uploadBody, contentType } = buildMultipartPayload({
+        fields: { type: "PRODUCTS" },
+        file: { filename: "woo-mixed.xml", contentType: "application/xml", content: Buffer.from(xml) },
+      });
+      const upload = await productsApp.inject({
+        method: "POST",
+        url: "/api/v1/admin/import/jobs",
+        headers: { ...authHeader(productsAdminToken), "content-type": contentType },
+        payload: uploadBody,
+      });
+      expect(upload.statusCode).toBe(201);
+      const preview = upload.json().data.preview;
+      expect(preview.totalCount).toBe(2);
+      expect(preview.breakdown.products).toBe(2);
+
+      const warningCodes = preview.warnings.map((w: { code: string }) => w.code);
+      expect(warningCodes).toContain("WC_ORDERS_IGNORED");
+      expect(warningCodes).toContain("WC_VARIATIONS_UNSUPPORTED");
+      expect(warningCodes).toContain("WC_TAX_NOT_IMPORTED");
+
+      const jobId = upload.json().data.id;
+      const start = await productsApp.inject({
+        method: "POST",
+        url: `/api/v1/admin/import/jobs/${jobId}/start`,
+        headers: authHeader(productsAdminToken),
+        payload: { duplicateStrategy: "skip", defaultCurrency: "USD" },
+      });
+      expect(start.statusCode).toBe(202);
+
+      const finished = await pollProductsJobUntilTerminal(jobId);
+      expect(finished.status).toBe("COMPLETED");
+      expect(finished.successCount).toBe(2);
+      // Widget B'nin indirim satırı için 1 hata satırı (INVALID_VALUE) BEKLENİR ama satır yine
+      // BAŞARILI sayılır (kayıt yazılır) — bkz. import.worker.ts::runProductsJob yorum notu.
+      expect(finished.errorCount).toBe(1);
+
+      const widgetA = await productsApp.prisma.product.findFirst({ where: { sku: "WID-A" } });
+      expect(widgetA).not.toBeNull();
+      expect(widgetA!.priceCents).toBe(19990);
+      expect(widgetA!.currency).toBe("USD");
+      expect(widgetA!.status).toBe("DRAFT"); // defaultStatus varsayılanı DRAFT
+      expect(widgetA!.taxRatePercent).toBeNull();
+      expect(widgetA!.coverMediaId).toBeNull();
+      const widgetACategory = await productsApp.prisma.productCategory.findUnique({ where: { id: widgetA!.categoryId! } });
+      expect(widgetACategory?.slug).toBe("widgets");
+
+      const widgetB = await productsApp.prisma.product.findFirst({ where: { sku: "WID-B" } });
+      expect(widgetB).not.toBeNull();
+      expect(widgetB!.priceCents).toBe(10000);
+      expect(widgetB!.discountPriceCents).toBeNull(); // sale >= regular -> düşürüldü
+
+      // §10.8.9.1 compliance regresyon testi — shop_order PII'si HİÇBİR ImportJobError satırına
+      // (rawData/sourceRef/message) SIZMAMALI. Sipariş item'ı parser'da tamamen düşürüldüğü için
+      // (breakdown.skipped'a yansır) ilişkili bir hata/atlama satırı da OLUŞMAMALIDIR.
+      const errorsRes = await productsApp.inject({
+        method: "GET",
+        url: `/api/v1/admin/import/jobs/${jobId}/errors`,
+        headers: authHeader(productsAdminToken),
+      });
+      expect(errorsRes.statusCode).toBe(200);
+      const errorRows: Array<{ rawData: unknown; sourceRef: string | null; message: string }> = errorsRes.json().data;
+      for (const row of errorRows) {
+        expect(JSON.stringify(row.rawData ?? "")).not.toMatch(/gizli-musteri@example\.com|GizliAd|GizliSoyad|stripe|5551234567/);
+        expect(row.sourceRef ?? "").not.toMatch(/gizli-musteri@example\.com/);
+        expect(row.message).not.toMatch(/gizli-musteri@example\.com|GizliAd|GizliSoyad/);
+      }
+      // Sipariş item'ı için AYRICA bir satır oluşmadığını (yalnızca Widget B'nin indirim satırı
+      // var olduğunu) doğrula.
+      expect(errorRows).toHaveLength(1);
+      expect(errorRows[0]!.message).toMatch(/indirim|sale/i);
+
+      const productCountAfter = await productsApp.prisma.product.count();
+      expect(productCountAfter).toBe(2); // sipariş/varyasyon KESİNLİKLE Product olarak yazılmadı
+    });
+
+    it("duplicateStrategy: overwrite — SKU eşleşen ürün güncellenir, ContentRevision snapshot'ı yazılır", async () => {
+      const initialXml = wcWxr(productItem({ title: "Overwrite Ürün", postId: "10", sku: "OVR-1", regularPrice: "50.00" }));
+      const first = await uploadAndStart(initialXml, { duplicateStrategy: "skip" });
+      expect(first.upload.statusCode).toBe(201);
+      await pollProductsJobUntilTerminal(first.jobId!);
+
+      const before = await productsApp.prisma.product.findFirst({ where: { sku: "OVR-1" } });
+      expect(before).not.toBeNull();
+      expect(before!.priceCents).toBe(5000);
+
+      const updatedXml = wcWxr(productItem({ title: "Overwrite Ürün Güncel", postId: "10", sku: "OVR-1", regularPrice: "75.00" }));
+      const second = await uploadAndStart(updatedXml, { duplicateStrategy: "overwrite" });
+      expect(second.upload.statusCode).toBe(201);
+      const finished = await pollProductsJobUntilTerminal(second.jobId!);
+      expect(finished.status).toBe("COMPLETED");
+      expect(finished.successCount).toBe(1);
+
+      const after = await productsApp.prisma.product.findUnique({ where: { id: before!.id } });
+      expect(after!.title).toBe("Overwrite Ürün Güncel");
+      expect(after!.priceCents).toBe(7500);
+      expect(after!.slug).toBe(before!.slug); // slug DEĞİŞMEZ (overwrite normal PATCH gibi davranır)
+
+      const revision = await productsApp.prisma.contentRevision.findFirst({ where: { entityType: "PRODUCT", entityId: before!.id } });
+      expect(revision).not.toBeNull();
+    });
+
+    it("duplicateStrategy: createNew + SKU çakışması → satır ATLANIR (DUPLICATE_SKIPPED), '-2' SKU UYDURULMAZ", async () => {
+      const initialXml = wcWxr(productItem({ title: "CreateNew SKU Ürün", postId: "20", sku: "CN-SKU-1", regularPrice: "30.00" }));
+      const first = await uploadAndStart(initialXml, { duplicateStrategy: "skip" });
+      await pollProductsJobUntilTerminal(first.jobId!);
+      const countAfterFirst = await productsApp.prisma.product.count({ where: { sku: "CN-SKU-1" } });
+      expect(countAfterFirst).toBe(1);
+
+      const dupXml = wcWxr(productItem({ title: "CreateNew SKU Ürün Kopya", postId: "21", sku: "CN-SKU-1", regularPrice: "35.00" }));
+      const second = await uploadAndStart(dupXml, { duplicateStrategy: "createNew" });
+      const finished = await pollProductsJobUntilTerminal(second.jobId!);
+      expect(finished.status).toBe("COMPLETED");
+      expect(finished.skippedCount).toBe(1);
+      expect(finished.successCount).toBe(0);
+
+      const skuCount = await productsApp.prisma.product.count({ where: { sku: "CN-SKU-1" } });
+      expect(skuCount).toBe(1); // ikinci kayıt YAZILMADI
+    });
+
+    it("SKU'suz ürünlerde createNew slug çakışmasını '-2' ile çözer (SKU olmadığından serbestçe çoğaltılır)", async () => {
+      const initialXml = wcWxr(productItem({ title: "SKUsuz Urun", postId: "30", regularPrice: "40.00" }));
+      const first = await uploadAndStart(initialXml, { duplicateStrategy: "skip" });
+      await pollProductsJobUntilTerminal(first.jobId!);
+
+      const dupXml = wcWxr(productItem({ title: "SKUsuz Urun", postId: "31", regularPrice: "45.00" }));
+      const second = await uploadAndStart(dupXml, { duplicateStrategy: "createNew" });
+      const finished = await pollProductsJobUntilTerminal(second.jobId!);
+      expect(finished.status).toBe("COMPLETED");
+      expect(finished.successCount).toBe(1);
+
+      const products = await productsApp.prisma.product.findMany({ where: { title: "SKUsuz Urun" }, orderBy: { seq: "asc" } });
+      expect(products).toHaveLength(2);
+      expect(products[1]!.slug).toBe(`${products[0]!.slug}-2`);
+    });
+
+    it("eksik/geçersiz fiyat → satır yazılmaz (REQUIRED_FIELD_MISSING / INVALID_VALUE)", async () => {
+      const missingPrice = productItem({ title: "Fiyatsiz Urun", postId: "40" }); // regularPrice YOK
+      const invalidPrice = productItem({ title: "Bozuk Fiyat Urun", postId: "41", regularPrice: "abc" });
+      const zeroPrice = productItem({ title: "Sifir Fiyat Urun", postId: "42", regularPrice: "0" });
+
+      const xml = wcWxr(missingPrice + invalidPrice + zeroPrice);
+      const { upload, jobId } = await uploadAndStart(xml, { duplicateStrategy: "skip" });
+      expect(upload.statusCode).toBe(201);
+      const finished = await pollProductsJobUntilTerminal(jobId!);
+      expect(finished.status).toBe("COMPLETED");
+      expect(finished.successCount).toBe(0);
+      expect(finished.errorCount).toBe(3);
+
+      const count = await productsApp.prisma.product.count({
+        where: { title: { in: ["Fiyatsiz Urun", "Bozuk Fiyat Urun", "Sifir Fiyat Urun"] } },
+      });
+      expect(count).toBe(0);
+    });
+
+    it("defaultStatus: PUBLISHED tavanı — yalnızca kaynakta wp:status=publish olan ürünler yayınlanır, diğerleri DRAFT kalır", async () => {
+      const published = productItem({ title: "Yayindaki Urun", postId: "50", regularPrice: "10.00", status: "publish" });
+      const draft = productItem({ title: "Taslak Urun", postId: "51", regularPrice: "10.00", status: "draft" });
+
+      const xml = wcWxr(published + draft);
+      const { jobId } = await uploadAndStart(xml, { duplicateStrategy: "skip", defaultStatus: "PUBLISHED" }, productsApp2, productsAdminToken2);
+      const finished = await pollProductsJobUntilTerminal(jobId!, 15000, productsApp2, productsAdminToken2);
+      expect(finished.status).toBe("COMPLETED");
+      expect(finished.successCount).toBe(2);
+
+      const pub = await productsApp2.prisma.product.findFirst({ where: { title: "Yayindaki Urun" } });
+      const drf = await productsApp2.prisma.product.findFirst({ where: { title: "Taslak Urun" } });
+      expect(pub!.status).toBe("PUBLISHED");
+      expect(pub!.publishedAt).not.toBeNull();
+      expect(drf!.status).toBe("DRAFT");
+    });
+
+    it("geçersiz defaultCurrency 422 döner", async () => {
+      const xml = wcWxr(productItem({ title: "Para Birimi Testi", postId: "60", regularPrice: "10.00" }));
+      const { body, contentType } = buildMultipartPayload({
+        fields: { type: "PRODUCTS" },
+        file: { filename: "currency.xml", contentType: "application/xml", content: Buffer.from(xml) },
+      });
+      const upload = await productsApp2.inject({
+        method: "POST",
+        url: "/api/v1/admin/import/jobs",
+        headers: { ...authHeader(productsAdminToken2), "content-type": contentType },
+        payload: body,
+      });
+      expect(upload.statusCode).toBe(201);
+      const jobId = upload.json().data.id;
+
+      const start = await productsApp2.inject({
+        method: "POST",
+        url: `/api/v1/admin/import/jobs/${jobId}/start`,
+        headers: authHeader(productsAdminToken2),
+        payload: { defaultCurrency: "XXX-not-real" },
+      });
+      expect(start.statusCode).toBe(422);
+    });
+
+    it("excerpt:encoded de content:encoded İLE AYNI şekilde sanitize edilir (security-agent bulgusu, Konu 2 denetimi)", async () => {
+      const item = `
+      <item>
+        <title>Excerpt Sanitize Testi</title>
+        <content:encoded><![CDATA[<p>Aciklama <script>alert(1)</script></p>]]></content:encoded>
+        <excerpt:encoded><![CDATA[<p>Ozet <script>alert(2)</script></p>]]></excerpt:encoded>
+        <wp:post_id>70</wp:post_id>
+        <wp:status>publish</wp:status>
+        <wp:post_type>product</wp:post_type>
+        <wp:post_name>excerpt-sanitize-testi</wp:post_name>
+        ${meta("_regular_price", "10.00")}
+      </item>`;
+      const xml = wcWxr(item);
+
+      const { jobId } = await uploadAndStart(xml, { duplicateStrategy: "skip" }, productsApp2, productsAdminToken2);
+      const finished = await pollProductsJobUntilTerminal(jobId!, 15000, productsApp2, productsAdminToken2);
+      expect(finished.status).toBe("COMPLETED");
+      expect(finished.successCount).toBe(1);
+
+      const product = await productsApp2.prisma.product.findFirst({ where: { slug: "excerpt-sanitize-testi" } });
+      expect(product).not.toBeNull();
+      expect(product!.descriptionHtml).not.toContain("script");
+      expect(product!.excerpt).not.toContain("script");
+      expect(product!.excerpt).toContain("Ozet");
     });
   });
 

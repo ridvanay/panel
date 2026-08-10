@@ -35,8 +35,12 @@ const BREAKDOWN_LABELS: Record<string, string> = {
   posts: "yazı",
   attachments: "medya bağlantısı",
   categories: "kategori",
+  products: "ürün",
   skipped: "desteklenmeyen öğe (atlandı)",
 };
+
+/** ISO-4217 — tam liste gerekmiyor (openapi.yaml `defaultCurrency` notu), yaygın birkaçı yeterli. */
+const DEFAULT_CURRENCY_OPTIONS = ["TRY", "USD", "EUR", "GBP"] as const;
 
 function formatSampleValue(value: unknown): string {
   if (value === null || value === undefined || value === "") return "—";
@@ -60,9 +64,12 @@ export function ImportPreviewPanel({ job, onStarted }: ImportPreviewPanelProps) 
   const preview = job.preview;
 
   const showMapping = job.type === "PAGES" || job.type === "BLOG" || job.type === "USERS";
-  const showDefaultStatus = job.type === "PAGES" || job.type === "BLOG";
+  const showDefaultStatus = job.type === "PAGES" || job.type === "BLOG" || job.type === "PRODUCTS";
   const showDefaultAuthor = job.type === "PAGES" || job.type === "BLOG" || job.type === "WORDPRESS";
   const showDefaultCategory = job.type === "BLOG";
+  // YALNIZCA `PRODUCTS` — WooCommerce WXR'ı para birimini item düzeyinde TAŞIMAZ (bkz.
+  // openapi.yaml `StartImportJobRequest.defaultCurrency`, ARCHITECTURE.md §10.8.9).
+  const showDefaultCurrency = job.type === "PRODUCTS";
   const strategyOptions = allowedDuplicateStrategies(job.type);
 
   // Lazy initializer (bir kere, mount'ta) — `[jobId]/page.tsx` bu paneli `key={job.id}` ile
@@ -81,6 +88,7 @@ export function ImportPreviewPanel({ job, onStarted }: ImportPreviewPanelProps) 
   const [defaultStatus, setDefaultStatus] = useState<ContentStatus>("DRAFT");
   const [defaultAuthorId, setDefaultAuthorId] = useState<string>("");
   const [defaultCategoryId, setDefaultCategoryId] = useState<string>("");
+  const [defaultCurrency, setDefaultCurrency] = useState<string>("TRY");
 
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [categories, setCategories] = useState<BlogCategory[]>([]);
@@ -116,6 +124,7 @@ export function ImportPreviewPanel({ job, onStarted }: ImportPreviewPanelProps) 
       if (showDefaultStatus) body.defaultStatus = defaultStatus;
       if (showDefaultAuthor && defaultAuthorId) body.defaultAuthorId = defaultAuthorId;
       if (showDefaultCategory && defaultCategoryId) body.defaultCategoryId = defaultCategoryId;
+      if (showDefaultCurrency) body.defaultCurrency = defaultCurrency;
       const updated = await importApi.startImportJob(job.id, body);
       toast.success("İçe aktarma başlatıldı.");
       onStarted(updated);
@@ -295,11 +304,36 @@ export function ImportPreviewPanel({ job, onStarted }: ImportPreviewPanelProps) 
           </Field>
 
           {showDefaultStatus && (
-            <Field id="default-status" label="Durum belirtilmeyen kayıtlar için varsayılan">
+            <Field
+              id="default-status"
+              label={
+                job.type === "PRODUCTS"
+                  ? "Ürünler için başlangıç durumu (tüm ürünlere uygulanır)"
+                  : "Durum belirtilmeyen kayıtlar için varsayılan"
+              }
+            >
               {(inputProps) => (
                 <Select {...inputProps} value={defaultStatus} onChange={(e) => setDefaultStatus(e.target.value as ContentStatus)}>
                   <option value="DRAFT">Taslak</option>
                   <option value="PUBLISHED">Yayında</option>
+                </Select>
+              )}
+            </Field>
+          )}
+
+          {showDefaultCurrency && (
+            <Field
+              id="default-currency"
+              label="Para birimi"
+              hint="WooCommerce dışa aktarma dosyası para birimini taşımaz; içe aktarılan tüm ürünlere bu birim atanır."
+            >
+              {(inputProps) => (
+                <Select {...inputProps} value={defaultCurrency} onChange={(e) => setDefaultCurrency(e.target.value)}>
+                  {DEFAULT_CURRENCY_OPTIONS.map((code) => (
+                    <option key={code} value={code}>
+                      {code}
+                    </option>
+                  ))}
                 </Select>
               )}
             </Field>

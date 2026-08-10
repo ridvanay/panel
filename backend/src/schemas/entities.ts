@@ -536,7 +536,7 @@ export type EmailTemplateDto = z.infer<typeof EmailTemplateSchema>;
 // (`SKIP`/`OVERWRITE`/`CREATE_NEW`, `ERROR`/`SKIPPED`) İLE KARIŞTIRILMAMALI. Dönüşüm
 // `modules/import/import.constants.ts`'te tek noktadan yapılır.
 
-export const ImportJobTypeSchema = z.enum(["PAGES", "BLOG", "WORDPRESS", "USERS", "MEDIA"]);
+export const ImportJobTypeSchema = z.enum(["PAGES", "BLOG", "WORDPRESS", "PRODUCTS", "USERS", "MEDIA"]);
 export type ImportJobType = z.infer<typeof ImportJobTypeSchema>;
 
 export const ImportSourceFormatSchema = z.enum(["CSV", "JSON", "XML", "ZIP"]);
@@ -566,6 +566,12 @@ export const ImportJobPreviewWarningCodeSchema = z.enum([
   "WP_AUTHOR_UNMATCHED",
   "WP_PRIVATE_AS_DRAFT",
   "WP_SCHEDULED_AS_DRAFT",
+  "WP_PRODUCTS_SKIPPED",
+  "WC_TAX_NOT_IMPORTED",
+  "WC_STOCK_NOT_MANAGED",
+  "WC_VARIATIONS_UNSUPPORTED",
+  "WC_GALLERY_NOT_IMPORTED",
+  "WC_ORDERS_IGNORED",
   "HTML_WILL_BE_SANITIZED",
   "SLUG_COLLISION",
   "MEDIA_SVG_REJECTED",
@@ -585,6 +591,7 @@ export const ImportJobPreviewBreakdownSchema = z
     posts: z.number().int(),
     attachments: z.number().int(),
     categories: z.number().int(),
+    products: z.number().int(),
     skipped: z.number().int(),
   })
   .partial();

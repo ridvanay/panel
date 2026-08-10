@@ -84,6 +84,9 @@ enum ImportJobType {
   WORDPRESS
   USERS
   MEDIA
+  // §10.8.9 WooCommerce ürün içe aktarma. Enum değeri eklemek geri alınamaz bir
+  // işlemdir (ALTER TYPE ... ADD VALUE) — bu migration tek başına gönderilir.
+  PRODUCTS
 }
 
 enum ImportSourceFormat {
