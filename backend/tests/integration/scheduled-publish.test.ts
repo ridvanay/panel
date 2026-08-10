@@ -169,6 +169,120 @@ describe("zamanlanmış yayın (Faz 4)", () => {
     });
   });
 
+  describe("products", () => {
+    it("creates a SCHEDULED product and the sweeper publishes it once due", async () => {
+      const create = await app.inject({
+        method: "POST",
+        url: "/api/v1/admin/products",
+        headers: authHeader(),
+        payload: {
+          title: "Zamanlanmış Ürün",
+          priceCents: 1000,
+          status: "SCHEDULED",
+          scheduledAt: FUTURE,
+        },
+      });
+      expect(create.statusCode).toBe(201);
+      const product = create.json().data;
+      expect(product.status).toBe("SCHEDULED");
+      expect(product.publishedAt).toBeNull();
+
+      // Zamanı simüle et: sweeper'ın yakalayacağı şekilde `scheduledAt`'i geçmişe çek
+      // (doğrudan DB üzerinden — API'nin kendi validasyonunu BYPASS eder, bilerek).
+      await app.prisma.product.update({ where: { id: product.id }, data: { scheduledAt: new Date(PAST) } });
+
+      const result = await runScheduledPublishSweep(app);
+      expect(result.publishedProducts).toBeGreaterThanOrEqual(1);
+
+      const get = await app.inject({
+        method: "GET",
+        url: `/api/v1/admin/products/${product.id}`,
+        headers: authHeader(),
+      });
+      const dto = get.json().data;
+      expect(dto.status).toBe("PUBLISHED");
+      expect(dto.publishedAt).not.toBeNull();
+      expect(dto.scheduledAt ?? null).toBeNull();
+    });
+
+    it("leaves a future-scheduled product untouched", async () => {
+      const create = await app.inject({
+        method: "POST",
+        url: "/api/v1/admin/products",
+        headers: authHeader(),
+        payload: {
+          title: "Gelecekteki Zamanlanmış Ürün",
+          priceCents: 1000,
+          status: "SCHEDULED",
+          scheduledAt: FUTURE,
+        },
+      });
+      const productId = create.json().data.id;
+
+      await runScheduledPublishSweep(app);
+
+      const stored = await app.prisma.product.findUniqueOrThrow({ where: { id: productId } });
+      expect(stored.status).toBe("SCHEDULED");
+      expect(stored.publishedAt).toBeNull();
+    });
+  });
+
+  describe("portfolio items", () => {
+    it("creates a SCHEDULED portfolio item and the sweeper publishes it once due", async () => {
+      const create = await app.inject({
+        method: "POST",
+        url: "/api/v1/admin/portfolio",
+        headers: authHeader(),
+        payload: {
+          title: "Zamanlanmış Portföy Öğesi",
+          status: "SCHEDULED",
+          scheduledAt: FUTURE,
+        },
+      });
+      expect(create.statusCode).toBe(201);
+      const item = create.json().data;
+      expect(item.status).toBe("SCHEDULED");
+      expect(item.publishedAt).toBeNull();
+
+      // Zamanı simüle et: sweeper'ın yakalayacağı şekilde `scheduledAt`'i geçmişe çek
+      // (doğrudan DB üzerinden — API'nin kendi validasyonunu BYPASS eder, bilerek).
+      await app.prisma.portfolioItem.update({ where: { id: item.id }, data: { scheduledAt: new Date(PAST) } });
+
+      const result = await runScheduledPublishSweep(app);
+      expect(result.publishedPortfolioItems).toBeGreaterThanOrEqual(1);
+
+      const get = await app.inject({
+        method: "GET",
+        url: `/api/v1/admin/portfolio/${item.id}`,
+        headers: authHeader(),
+      });
+      const dto = get.json().data;
+      expect(dto.status).toBe("PUBLISHED");
+      expect(dto.publishedAt).not.toBeNull();
+      expect(dto.scheduledAt ?? null).toBeNull();
+    });
+
+    it("leaves a future-scheduled portfolio item untouched", async () => {
+      const create = await app.inject({
+        method: "POST",
+        url: "/api/v1/admin/portfolio",
+        headers: authHeader(),
+        payload: {
+          title: "Gelecekteki Zamanlanmış Portföy Öğesi",
+          status: "SCHEDULED",
+          scheduledAt: FUTURE,
+        },
+      });
+      const itemId = create.json().data.id;
+
+      await runScheduledPublishSweep(app);
+
+      const stored = await app.prisma.portfolioItem.findUniqueOrThrow({ where: { id: itemId } });
+      expect(stored.status).toBe("SCHEDULED");
+      expect(stored.publishedAt).toBeNull();
+    });
+  });
+
   // Boşluk taraması (bkz. görev notu) — sınır durumu, çoklu-tablo tek-tarama, ve status=DRAFT
   // ile elle zamanlamanın temizlenmesi.
   describe("edge case'ler", () => {

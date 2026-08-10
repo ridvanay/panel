@@ -10,21 +10,24 @@ export const SCHEDULED_PUBLISH_SWEEP_INTERVAL_MS = 60 * 1000;
 export interface ScheduledPublishSweepResult {
   publishedPages: number;
   publishedBlogPosts: number;
+  publishedProducts: number;
+  publishedPortfolioItems: number;
 }
 
 /**
- * Faz 4 (zamanlanmış yayın) — `Page`/`BlogPost` ortak süreç-içi yayınlama taraması.
- * `status: "SCHEDULED"` ve `scheduledAt <= now()` olan satırları TEK bir `updateMany` ile
- * (satır satır DEĞİL — BATCH) `status: "PUBLISHED"`, `publishedAt: now()`, `scheduledAt: null`
- * yapar. `Page` ve `BlogPost` ayrı tablolar olduğu için iki ayrı `updateMany` gerekir, ama iş
- * mantığı BİREBİR aynı olduğundan kod tekrarını önlemek için TEK fonksiyonda toplanır (blog.routes.ts
- * ve pages.routes.ts'in ayrı sweeper'lara ihtiyacı YOK). İDEMPOTENT'tir — zaten yayınlanmış
- * satırlarda `where` filtresi (status: "SCHEDULED") sayesinde no-op.
+ * Faz 4 (zamanlanmış yayın) — `Page`/`BlogPost`/`Product`/`PortfolioItem` ortak süreç-içi
+ * yayınlama taraması. `status: "SCHEDULED"` ve `scheduledAt <= now()` olan satırları TEK bir
+ * `updateMany` ile (satır satır DEĞİL — BATCH) `status: "PUBLISHED"`, `publishedAt: now()`,
+ * `scheduledAt: null` yapar. Dört model de ayrı tablolar olduğu için ayrı `updateMany` gerekir,
+ * ama iş mantığı BİREBİR aynı olduğundan kod tekrarını önlemek için TEK fonksiyonda toplanır
+ * (blog.routes.ts, pages.routes.ts, products.routes.ts, portfolio.routes.ts'in ayrı sweeper'lara
+ * ihtiyacı YOK). İDEMPOTENT'tir — zaten yayınlanmış satırlarda `where` filtresi
+ * (status: "SCHEDULED") sayesinde no-op.
  */
 export async function runScheduledPublishSweep(app: FastifyInstance): Promise<ScheduledPublishSweepResult> {
   const now = new Date();
 
-  const [pages, blogPosts] = await Promise.all([
+  const [pages, blogPosts, products, portfolioItems] = await Promise.all([
     app.prisma.page.updateMany({
       where: { status: "SCHEDULED", scheduledAt: { lte: now } },
       data: { status: "PUBLISHED", publishedAt: now, scheduledAt: null },
@@ -33,9 +36,22 @@ export async function runScheduledPublishSweep(app: FastifyInstance): Promise<Sc
       where: { status: "SCHEDULED", scheduledAt: { lte: now } },
       data: { status: "PUBLISHED", publishedAt: now, scheduledAt: null },
     }),
+    app.prisma.product.updateMany({
+      where: { status: "SCHEDULED", scheduledAt: { lte: now } },
+      data: { status: "PUBLISHED", publishedAt: now, scheduledAt: null },
+    }),
+    app.prisma.portfolioItem.updateMany({
+      where: { status: "SCHEDULED", scheduledAt: { lte: now } },
+      data: { status: "PUBLISHED", publishedAt: now, scheduledAt: null },
+    }),
   ]);
 
-  return { publishedPages: pages.count, publishedBlogPosts: blogPosts.count };
+  return {
+    publishedPages: pages.count,
+    publishedBlogPosts: blogPosts.count,
+    publishedProducts: products.count,
+    publishedPortfolioItems: portfolioItems.count,
+  };
 }
 
 /**
