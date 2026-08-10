@@ -75,16 +75,26 @@ export function ImageUploadField({
       </label>
 
       {value && (
-        // eslint-disable-next-line @next/next/no-img-element -- yüklenen/harici görsel URL'si, next/image remotePatterns henüz tanımlı değil
-        <img
-          src={value}
-          alt=""
+        // Önizleme HER ZAMAN kendi konteynerine sığdırılmış (object-fit) gösterilir —
+        // konteyner `overflow-hidden` + sabit boyutla sınırlı olduğu için görselin gerçek
+        // (intrinsic) boyutu ne olursa olsun taşma/dev-boyut görünümü oluşamaz. Kare mod
+        // (logo/kapak görseli gibi kırpılmaması gereken içerik) `object-contain` + nötr bir
+        // zemin (letterbox alanı için) kullanır; dairesel mod (avatar) BİLEREK `object-cover`
+        // ile kırpmaya devam eder (tasarım kararı: avatar dairesini eksiksiz doldurmalı).
+        <div
           className={
             previewShape === "circle"
-              ? "mx-auto h-24 w-24 rounded-full border border-border object-cover"
-              : "h-32 w-full rounded-md border border-border object-cover"
+              ? "mx-auto flex h-24 w-24 items-center justify-center overflow-hidden rounded-full border border-border bg-muted"
+              : "flex h-32 w-full items-center justify-center overflow-hidden rounded-md border border-border bg-muted"
           }
-        />
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element -- yüklenen/harici görsel URL'si, next/image remotePatterns henüz tanımlı değil */}
+          <img
+            src={value}
+            alt=""
+            className={previewShape === "circle" ? "h-full w-full object-cover" : "h-full w-full object-contain"}
+          />
+        </div>
       )}
 
       <div className="flex flex-wrap gap-2">

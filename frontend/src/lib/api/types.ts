@@ -945,11 +945,20 @@ export interface PermissionsMatrix {
  */
 export type SocialPlatform = "TWITTER" | "GITHUB" | "LINKEDIN" | "INSTAGRAM" | "FACEBOOK" | "YOUTUBE" | "OTHER";
 
+/**
+ * Hiyerarşik (iç içe geçebilen) menü öğesi — düz dizi + `parentId` ile ifade edilir (nested
+ * JSON DEĞİL). Maksimum derinlik 2'dir: `parentId` dolu olan bir öğe YALNIZCA `parentId`'si
+ * null olan (kök) bir öğeyi işaret edebilir. `order` KARDEŞ-KAPSAMLIDIR (aynı `parentId`
+ * grubu içinde 0'dan artar). Sunucu diziyi `(parentId NULLS FIRST, order)` ile döner — kök
+ * öğeler her zaman alt öğelerden önce gelir. Bkz. ARCHITECTURE.md §10.10.1.
+ */
 export interface NavigationItemDto {
   id: string;
   label: string;
   href: string;
   order: number;
+  /** Üst öğenin `id`'si; null ise kök seviye öğedir. */
+  parentId: string | null;
 }
 
 export interface SocialLinkDto {
@@ -982,12 +991,20 @@ export interface NavigationConfigDto {
   footerColumns: FooterColumnDto[];
 }
 
-/** PUT body: `id` alanları yok — id'ler yalnızca form state/React key amaçlı, backend'e gönderilmeden önce strip edilir. */
+/**
+ * PUT body. `socialLinks`/`footerColumns` için `id` alanları YOK — id'ler yalnızca form
+ * state/React key amaçlı, backend'e gönderilmeden önce strip edilir. `navigationItems` bunun
+ * İSTİSNASIDIR: hiyerarşi (`parentId`) aynı payload içinde çözülebilsin diye istemci her öğe
+ * için ürettiği bir UUID'yi (`crypto.randomUUID()`) `id` olarak gönderir ve bu değer gerçek
+ * `NavigationItem.id` olarak yazılır (geçici→kalıcı id eşleme adımı yoktur). `id` opsiyoneldir
+ * ancak BAŞKA BİR ÖĞENİN `parentId`'si tarafından işaret edilen bir öğe için ZORUNLUDUR — bu
+ * yüzden istemci pratikte her öğe için her zaman `id` gönderir. Bkz. ARCHITECTURE.md §10.10.2.
+ */
 export interface UpdateNavigationConfigRequest {
   headerCtaLabel?: string | null;
   headerCtaHref?: string | null;
   footerCopyrightText?: string | null;
-  navigationItems: { label: string; href: string; order: number }[];
+  navigationItems: { id?: string; label: string; href: string; order: number; parentId?: string | null }[];
   socialLinks: { platform: SocialPlatform; url: string; order: number }[];
   footerColumns: { title: string; order: number; links: { label: string; href: string; order: number }[] }[];
 }
