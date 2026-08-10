@@ -127,6 +127,20 @@ export default fp(async function errorHandlerPlugin(app: FastifyInstance) {
       );
     }
 
+    // Fastify core'un (veya content-type-parser/multipart gibi altyapı pluginlerinin) kendisinin
+    // zaten geçerli bir 4xx `statusCode` ile ürettiği ama yukarıdaki hiçbir spesifik dala (ApiError,
+    // Zod, validation, Prisma, 429) uymayan hatalar için genel bir ağ. Örn.
+    // `FST_ERR_CTP_INVALID_CONTENT_LENGTH` (bozuk/uyumsuz Content-Length header'ı) Fastify
+    // tarafından `statusCode: 400` ile bir FastifyError olarak fırlatılır — bu aslında bir istemci
+    // hatasıdır ve aşağıdaki catch-all'a düşüp anlamsız bir 500'e dönüştürülmemelidir. Fastify'ın
+    // verdiği statusCode korunur (spesifik bir ApiErrorCode karşılığı olmadığından "BAD_REQUEST"
+    // ile sarılır); böylece gelecekte ortaya çıkabilecek benzer content-type-parser/multipart hata
+    // kodları da yeni bir dal eklemeye gerek kalmadan otomatik doğru eşlenir. Yalnızca gerçekten
+    // statusCode'u olmayan/beklenmeyen hatalar aşağıdaki 500 catch-all'a düşer.
+    if (typeof fastifyErr.statusCode === "number" && fastifyErr.statusCode >= 400 && fastifyErr.statusCode < 500) {
+      return sendError(reply, fastifyErr.statusCode, "BAD_REQUEST", error.message || "Geçersiz istek.");
+    }
+
     request.log.error(error);
     reportUnexpectedError(error, request);
     return sendError(reply, 500, "INTERNAL_ERROR", "Beklenmeyen bir sunucu hatası oluştu.");

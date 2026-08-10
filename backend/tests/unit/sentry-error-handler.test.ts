@@ -34,6 +34,18 @@ async function buildApp() {
   app.get("/known", async () => {
     throw new ValidationError("Girdi doğrulama hatası.", { email: ["Zorunlu alan."] });
   });
+  app.get("/fastify-4xx", async () => {
+    // Fastify core'un content-type-parser'ının `FST_ERR_CTP_INVALID_CONTENT_LENGTH` için
+    // ürettiği hatayı simüle eder — ApiError/ZodError DEĞİL, ama Fastify'ın kendisi zaten
+    // `statusCode: 400` ile üretmiş bir hata (bkz. plugins/error-handler.ts genel 4xx fallback'i).
+    const err = new Error("Request body size did not match Content-Length") as Error & {
+      statusCode: number;
+      code: string;
+    };
+    err.statusCode = 400;
+    err.code = "FST_ERR_CTP_INVALID_CONTENT_LENGTH";
+    throw err;
+  });
 
   await app.ready();
   return app;
@@ -70,6 +82,17 @@ describe("error-handler.ts — Sentry entegrasyonu", () => {
     const res = await app.inject({ method: "GET", url: "/known" });
 
     expect(res.statusCode).toBe(422);
+    expect(captureExceptionMock).not.toHaveBeenCalled();
+
+    await app.close();
+  });
+
+  it("Fastify'ın kendi ürettiği, geçerli statusCode'lu 4xx hatalarını (ör. FST_ERR_CTP_INVALID_CONTENT_LENGTH) 500'e düşürmeden kendi statusCode'uyla döner ve Sentry'ye göndermez", async () => {
+    const app = await buildApp();
+    const res = await app.inject({ method: "GET", url: "/fastify-4xx" });
+
+    expect(res.statusCode).toBe(400);
+    expect(JSON.parse(res.body)).toMatchObject({ error: { code: "BAD_REQUEST" } });
     expect(captureExceptionMock).not.toHaveBeenCalled();
 
     await app.close();

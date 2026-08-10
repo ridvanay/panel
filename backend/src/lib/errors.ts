@@ -7,6 +7,14 @@ export type ApiErrorCode =
   | "RATE_LIMITED"
   | "PAYLOAD_TOO_LARGE"
   | "EMAIL_DELIVERY_FAILED"
+  /**
+   * Fastify core'un (veya content-type-parser/multipart gibi altyapı pluginlerinin) kendisinin
+   * zaten geçerli bir 4xx `statusCode` ile ürettiği ama daha spesifik bir ApiError/VALIDATION_ERROR/
+   * PAYLOAD_TOO_LARGE/CONFLICT/RATE_LIMITED dalına uymayan hatalar için genel fallback — bkz.
+   * plugins/error-handler.ts (ör. FST_ERR_CTP_INVALID_CONTENT_LENGTH: bozuk/uyumsuz Content-Length
+   * header'ı, statusCode 400). Bu tür hatalar birer istemci hatasıdır, 500'e düşürülmemelidir.
+   */
+  | "BAD_REQUEST"
   | "INTERNAL_ERROR";
 
 export class ApiError extends Error {
