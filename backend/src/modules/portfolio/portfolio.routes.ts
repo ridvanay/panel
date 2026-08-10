@@ -7,13 +7,22 @@ import { authenticate } from "../../middleware/authenticate";
 import { requireSiteRole } from "../../middleware/site-rbac";
 import { requireModuleEnabled } from "../../middleware/module-guard";
 import { ok } from "../../lib/envelope";
-import { ApiSuccessSchema, ApiSuccessWithMeta, CursorQuerySchema } from "../../schemas/common";
-import { ContentListMetaSchema, PortfolioCategorySchema, PortfolioItemSchema } from "../../schemas/entities";
-import { toPortfolioCategoryDto, toPortfolioItemDto } from "../../mappers";
+import { ApiSuccessSchema, ApiSuccessWithMeta, AutosaveResponseSchema, CursorQuerySchema } from "../../schemas/common";
+import {
+  BulkContentActionRequestSchema,
+  BulkContentActionResultSchema,
+  ContentListMetaSchema,
+  ContentRevisionSchema,
+  ContentRevisionSummarySchema,
+  PortfolioCategorySchema,
+  PortfolioItemSchema,
+} from "../../schemas/entities";
+import { toContentRevisionDto, toContentRevisionSummaryDto, toPortfolioCategoryDto, toPortfolioItemDto } from "../../mappers";
 import { ConflictError, NotFoundError } from "../../lib/errors";
 import { parseCursor, buildPageMeta, buildPageMetaWithCounts } from "../../lib/pagination";
 import { slugify } from "../../lib/slug";
-import { snapshotBeforeUpdate } from "../../lib/content-revisions";
+import { snapshotBeforeUpdate, listContentRevisions, getContentRevisionOrThrow } from "../../lib/content-revisions";
+import { runBulkContentAction, type BulkContentDelegate } from "../../lib/bulk-content-actions";
 import { getPortfolioItemContentCounts } from "../../lib/content-counts";
 import { resolveAuthorId } from "../../lib/content-author";
 import { logAudit } from "../../lib/audit";
@@ -21,6 +30,7 @@ import { sanitizeRichHtml } from "../../lib/html-sanitize";
 import { sanitizePortfolioTranslations } from "./lib/sanitize-content";
 import {
   AddPortfolioImageRequestSchema,
+  AutosavePortfolioItemRequestSchema,
   CreatePortfolioCategoryRequestSchema,
   CreatePortfolioItemRequestSchema,
   ListPortfolioItemsQuerySchema,
@@ -28,6 +38,7 @@ import {
   PortfolioImageIdParamSchema,
   PortfolioItemIdParamSchema,
   PortfolioItemSlugParamSchema,
+  PortfolioRevisionIdParamSchema,
   UpdatePortfolioCategoryRequestSchema,
   UpdatePortfolioItemRequestSchema,
 } from "./portfolio.schemas";
@@ -247,6 +258,44 @@ export async function adminPortfolioRoutes(app: FastifyInstance) {
     }
   );
 
+  // Faz 3 (autosave) — 3sn debounce ile frontend'den çağrılır. Bilinçli olarak `PATCH`'ten
+  // AYRIDIR: `snapshotBeforeUpdate` (revizyon) ve `logAudit` ÇAĞIRMAZ (bkz. products.routes.ts'teki
+  // AYNI gerekçe). `status`/`slug`/`order`/`clientName`/`projectUrl`/`completedAt`/SEO/çeviri BU
+  // UÇTAN DEĞİŞTİRİLEMEZ — `AutosavePortfolioItemRequestSchema` şema seviyesinde zaten yalnızca
+  // title/summary/contentHtml içerir.
+  server.post(
+    "/:itemId/autosave",
+    {
+      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      schema: {
+        params: PortfolioItemIdParamSchema,
+        body: AutosavePortfolioItemRequestSchema,
+        response: { 200: ApiSuccessSchema(AutosaveResponseSchema) },
+      },
+    },
+    async (request, reply) => {
+      const existing = await app.prisma.portfolioItem.findUnique({ where: { id: request.params.itemId } });
+      if (!existing) throw new NotFoundError("Portföy öğesi bulunamadı.");
+
+      if (existing.deletedAt) {
+        throw new ConflictError("Çöpteki içerik düzenlenemez. Önce geri yükleyin.");
+      }
+
+      const { title, summary, contentHtml } = request.body;
+
+      await app.prisma.portfolioItem.update({
+        where: { id: request.params.itemId },
+        data: {
+          ...(title !== undefined ? { title } : {}),
+          ...(summary !== undefined ? { summary } : {}),
+          ...(contentHtml !== undefined ? { contentHtml: sanitizeRichHtml(contentHtml) } : {}),
+        },
+      });
+
+      return reply.send(ok({ savedAt: new Date().toISOString() }));
+    }
+  );
+
   // §10.7 İçerik Yönetim Listesi — ÇÖPE TAŞI (soft-delete), KALICI SİLMEZ. İdempotenttir.
   server.delete(
     "/:itemId",
@@ -388,6 +437,139 @@ export async function adminPortfolioRoutes(app: FastifyInstance) {
       const updated = await app.prisma.portfolioItem.findUnique({ where: { id: itemId }, include: WITH_RELATIONS });
       if (!updated) throw new NotFoundError("Portföy öğesi bulunamadı.");
       return reply.send(ok(toPortfolioItemDto(updated)));
+    }
+  );
+
+  // §10.1/§10.7 — toplu işlem. Ortak helper (bkz. ARCHITECTURE.md §10.1 karar 1A) — dört route
+  // (page/blog_post/product/portfolio_item) BİREBİR aynı davranışı paylaşır.
+  server.post(
+    "/bulk",
+    {
+      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      schema: { body: BulkContentActionRequestSchema, response: { 200: ApiSuccessSchema(BulkContentActionResultSchema) } },
+    },
+    async (request, reply) => {
+      const result = await runBulkContentAction(
+        app,
+        {
+          getDelegate: (client) => client.portfolioItem as unknown as BulkContentDelegate,
+          entityType: "PORTFOLIO_ITEM",
+          targetType: "PortfolioItem",
+          auditActionPrefix: "portfolio_item.",
+        },
+        {
+          ids: request.body.ids,
+          action: request.body.action,
+          actor: { id: request.user!.id, email: request.user!.email, role: request.user!.role },
+          ip: request.ip,
+        }
+      );
+
+      return reply.send(ok(result));
+    }
+  );
+
+  // §10.1 İçerik Sürüm Kontrolü — yetki eşiği öğe düzenleme ile aynı (ADMIN+EDITOR). `Product`
+  // ile BİREBİR AYNI sözleşme (bkz. lib/content-revisions.ts::listContentRevisions).
+  server.get(
+    "/:itemId/revisions",
+    {
+      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      schema: {
+        params: PortfolioItemIdParamSchema,
+        querystring: CursorQuerySchema,
+        response: { 200: ApiSuccessSchema(z.array(ContentRevisionSummarySchema)) },
+      },
+    },
+    async (request, reply) => {
+      const { rows, nextCursor } = await listContentRevisions(app, "PORTFOLIO_ITEM", request.params.itemId, request.query);
+      return reply.send(ok(rows.map(toContentRevisionSummaryDto), { nextCursor }));
+    }
+  );
+
+  server.get(
+    "/:itemId/revisions/:revisionId",
+    {
+      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      schema: { params: PortfolioRevisionIdParamSchema, response: { 200: ApiSuccessSchema(ContentRevisionSchema) } },
+    },
+    async (request, reply) => {
+      const revision = await getContentRevisionOrThrow(app, "PORTFOLIO_ITEM", request.params.itemId, request.params.revisionId);
+      return reply.send(ok(toContentRevisionDto(revision)));
+    }
+  );
+
+  // `Product`'ın AKSİNE 422 dalı YOKTUR — `PortfolioItem`'da doğrulanacak bir çapraz-alan kuralı
+  // (fiyat/indirim gibi) BULUNMAZ (bkz. ARCHITECTURE.md §10.1). `Product`'taki gibi snapshot
+  // uygulanmadan önce çöp kontrolü yapılır (öğe çöpteyse 409, bkz. openapi.yaml bu ucun 409 açıklaması).
+  server.post(
+    "/:itemId/revisions/:revisionId/restore",
+    {
+      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      schema: { params: PortfolioRevisionIdParamSchema, response: { 200: ApiSuccessSchema(PortfolioItemSchema) } },
+    },
+    async (request, reply) => {
+      const existing = await app.prisma.portfolioItem.findUnique({ where: { id: request.params.itemId } });
+      if (!existing) throw new NotFoundError("Portföy öğesi bulunamadı.");
+
+      if (existing.deletedAt) {
+        throw new ConflictError("Çöpteki içerik düzenlenemez. Önce geri yükleyin.");
+      }
+
+      const revision = await getContentRevisionOrThrow(app, "PORTFOLIO_ITEM", request.params.itemId, request.params.revisionId);
+
+      // Geri dönüş de geri alınabilir olsun diye önce mevcut state'i yeni bir revizyon olarak kaydet.
+      await snapshotBeforeUpdate(app, "PORTFOLIO_ITEM", existing.id, toPortfolioItemSnapshot(existing), request.user!.id);
+
+      const snapshot = revision.snapshot as {
+        title: string;
+        slug: string;
+        summary: string | null;
+        contentHtml: string;
+        clientName: string | null;
+        projectUrl: string | null;
+        completedAt: string | null;
+        order: number;
+        categoryId: string | null;
+        coverMediaId: string | null;
+        seoTitle: string | null;
+        seoDescription: string | null;
+        ogTitle: string | null;
+        ogImageUrl: string | null;
+        canonicalUrl: string | null;
+        noIndex: boolean;
+        translations: unknown;
+      };
+
+      const item = await app.prisma.portfolioItem.update({
+        where: { id: request.params.itemId },
+        data: {
+          title: snapshot.title,
+          slug: snapshot.slug,
+          summary: snapshot.summary,
+          // Savunmada derinlik: bu sanitizasyon eklenmeden ÖNCE kaydedilmiş eski revizyonlar
+          // temizlenmemiş HTML içerebilir — geri yükleme her zaman yeniden sanitize eder.
+          contentHtml: sanitizeRichHtml(snapshot.contentHtml),
+          clientName: snapshot.clientName,
+          projectUrl: snapshot.projectUrl,
+          completedAt: snapshot.completedAt ? new Date(snapshot.completedAt) : null,
+          order: snapshot.order,
+          categoryId: snapshot.categoryId,
+          coverMediaId: snapshot.coverMediaId,
+          seoTitle: snapshot.seoTitle,
+          seoDescription: snapshot.seoDescription,
+          ogTitle: snapshot.ogTitle,
+          ogImageUrl: snapshot.ogImageUrl,
+          canonicalUrl: snapshot.canonicalUrl,
+          noIndex: snapshot.noIndex,
+          translations: (snapshot.translations
+            ? sanitizePortfolioTranslations(snapshot.translations as Record<string, Record<string, unknown>>)
+            : {}) as Prisma.InputJsonValue,
+        },
+        include: WITH_RELATIONS,
+      });
+
+      return reply.send(ok(toPortfolioItemDto(item)));
     }
   );
 }

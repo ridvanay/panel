@@ -7,13 +7,22 @@ import { authenticate } from "../../middleware/authenticate";
 import { requireSiteRole } from "../../middleware/site-rbac";
 import { requireModuleEnabled } from "../../middleware/module-guard";
 import { ok } from "../../lib/envelope";
-import { ApiSuccessSchema, ApiSuccessWithMeta, CursorQuerySchema } from "../../schemas/common";
-import { ContentListMetaSchema, ProductCategorySchema, ProductSchema } from "../../schemas/entities";
-import { toProductCategoryDto, toProductDto } from "../../mappers";
+import { ApiSuccessSchema, ApiSuccessWithMeta, AutosaveResponseSchema, CursorQuerySchema } from "../../schemas/common";
+import {
+  BulkContentActionRequestSchema,
+  BulkContentActionResultSchema,
+  ContentListMetaSchema,
+  ContentRevisionSchema,
+  ContentRevisionSummarySchema,
+  ProductCategorySchema,
+  ProductSchema,
+} from "../../schemas/entities";
+import { toContentRevisionDto, toContentRevisionSummaryDto, toProductCategoryDto, toProductDto } from "../../mappers";
 import { ConflictError, NotFoundError, ValidationError } from "../../lib/errors";
 import { parseCursor, buildPageMeta, buildPageMetaWithCounts } from "../../lib/pagination";
 import { slugify } from "../../lib/slug";
-import { snapshotBeforeUpdate } from "../../lib/content-revisions";
+import { snapshotBeforeUpdate, listContentRevisions, getContentRevisionOrThrow } from "../../lib/content-revisions";
+import { runBulkContentAction, type BulkContentDelegate } from "../../lib/bulk-content-actions";
 import { getProductContentCounts } from "../../lib/content-counts";
 import { resolveAuthorId } from "../../lib/content-author";
 import { logAudit } from "../../lib/audit";
@@ -22,12 +31,14 @@ import { sanitizeProductTranslations } from "./lib/sanitize-content";
 import {
   AddProductImageRequestSchema,
   AdjustProductStockRequestSchema,
+  AutosaveProductRequestSchema,
   CreateProductCategoryRequestSchema,
   CreateProductRequestSchema,
   ListProductsQuerySchema,
   ProductCategoryIdParamSchema,
   ProductIdParamSchema,
   ProductImageIdParamSchema,
+  ProductRevisionIdParamSchema,
   ProductSlugParamSchema,
   UpdateProductCategoryRequestSchema,
   UpdateProductRequestSchema,
@@ -276,6 +287,43 @@ export async function adminProductsRoutes(app: FastifyInstance) {
     }
   );
 
+  // Faz 3 (autosave) — 3sn debounce ile frontend'den çağrılır. Bilinçli olarak `PATCH`'ten
+  // AYRIDIR: `snapshotBeforeUpdate` (revizyon) ve `logAudit` ÇAĞIRMAZ (bkz. pages.routes.ts'teki
+  // AYNI gerekçe). Ticari alanlar (fiyat/indirim/SKU/stok/durum/slug) BU UÇTAN DEĞİŞTİRİLEMEZ —
+  // `AutosaveProductRequestSchema` şema seviyesinde zaten yalnızca title/excerpt/descriptionHtml içerir.
+  server.post(
+    "/:productId/autosave",
+    {
+      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      schema: {
+        params: ProductIdParamSchema,
+        body: AutosaveProductRequestSchema,
+        response: { 200: ApiSuccessSchema(AutosaveResponseSchema) },
+      },
+    },
+    async (request, reply) => {
+      const existing = await app.prisma.product.findUnique({ where: { id: request.params.productId } });
+      if (!existing) throw new NotFoundError("Ürün bulunamadı.");
+
+      if (existing.deletedAt) {
+        throw new ConflictError("Çöpteki içerik düzenlenemez. Önce geri yükleyin.");
+      }
+
+      const { title, excerpt, descriptionHtml } = request.body;
+
+      await app.prisma.product.update({
+        where: { id: request.params.productId },
+        data: {
+          ...(title !== undefined ? { title } : {}),
+          ...(excerpt !== undefined ? { excerpt } : {}),
+          ...(descriptionHtml !== undefined ? { descriptionHtml: sanitizeRichHtml(descriptionHtml) } : {}),
+        },
+      });
+
+      return reply.send(ok({ savedAt: new Date().toISOString() }));
+    }
+  );
+
   // §10.7 İçerik Yönetim Listesi — ÇÖPE TAŞI (soft-delete), KALICI SİLMEZ. İdempotenttir.
   server.delete(
     "/:productId",
@@ -453,6 +501,147 @@ export async function adminProductsRoutes(app: FastifyInstance) {
       const updated = await app.prisma.product.findUnique({ where: { id: productId }, include: WITH_RELATIONS });
       if (!updated) throw new NotFoundError("Ürün bulunamadı.");
       return reply.send(ok(toProductDto(updated)));
+    }
+  );
+
+  // §10.1/§10.7 — toplu işlem. Ortak helper (bkz. ARCHITECTURE.md §10.1 karar 1A) — dört route
+  // (page/blog_post/product/portfolio_item) BİREBİR aynı davranışı paylaşır.
+  server.post(
+    "/bulk",
+    {
+      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      schema: { body: BulkContentActionRequestSchema, response: { 200: ApiSuccessSchema(BulkContentActionResultSchema) } },
+    },
+    async (request, reply) => {
+      const result = await runBulkContentAction(
+        app,
+        {
+          getDelegate: (client) => client.product as unknown as BulkContentDelegate,
+          entityType: "PRODUCT",
+          targetType: "Product",
+          auditActionPrefix: "product.",
+        },
+        {
+          ids: request.body.ids,
+          action: request.body.action,
+          actor: { id: request.user!.id, email: request.user!.email, role: request.user!.role },
+          ip: request.ip,
+        }
+      );
+
+      return reply.send(ok(result));
+    }
+  );
+
+  // §10.1 İçerik Sürüm Kontrolü — yetki eşiği ürün düzenleme ile aynı (ADMIN+EDITOR). `Page`/
+  // `BlogPost` ile BİREBİR AYNI sözleşme (bkz. lib/content-revisions.ts::listContentRevisions).
+  server.get(
+    "/:productId/revisions",
+    {
+      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      schema: {
+        params: ProductIdParamSchema,
+        querystring: CursorQuerySchema,
+        response: { 200: ApiSuccessSchema(z.array(ContentRevisionSummarySchema)) },
+      },
+    },
+    async (request, reply) => {
+      const { rows, nextCursor } = await listContentRevisions(app, "PRODUCT", request.params.productId, request.query);
+      return reply.send(ok(rows.map(toContentRevisionSummaryDto), { nextCursor }));
+    }
+  );
+
+  server.get(
+    "/:productId/revisions/:revisionId",
+    {
+      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      schema: { params: ProductRevisionIdParamSchema, response: { 200: ApiSuccessSchema(ContentRevisionSchema) } },
+    },
+    async (request, reply) => {
+      const revision = await getContentRevisionOrThrow(app, "PRODUCT", request.params.productId, request.params.revisionId);
+      return reply.send(ok(toContentRevisionDto(revision)));
+    }
+  );
+
+  // `Page`/`BlogPost`'tan TEK FARK — 422 dalı vardır (çapraz-alan doğrulaması, bkz.
+  // ARCHITECTURE.md §10.1). Ayrıca `Product`'a özgü: snapshot uygulanmadan önce çöp kontrolü de
+  // yapılır (öğe çöpteyse 409) — bkz. openapi.yaml bu ucun 409 açıklaması.
+  server.post(
+    "/:productId/revisions/:revisionId/restore",
+    {
+      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      schema: { params: ProductRevisionIdParamSchema, response: { 200: ApiSuccessSchema(ProductSchema) } },
+    },
+    async (request, reply) => {
+      const existing = await app.prisma.product.findUnique({ where: { id: request.params.productId } });
+      if (!existing) throw new NotFoundError("Ürün bulunamadı.");
+
+      if (existing.deletedAt) {
+        throw new ConflictError("Çöpteki içerik düzenlenemez. Önce geri yükleyin.");
+      }
+
+      const revision = await getContentRevisionOrThrow(app, "PRODUCT", request.params.productId, request.params.revisionId);
+
+      const snapshot = revision.snapshot as {
+        title: string;
+        slug: string;
+        excerpt: string | null;
+        descriptionHtml: string;
+        priceCents: number;
+        currency: string;
+        taxRatePercent: number | null;
+        discountPriceCents: number | null;
+        sku: string | null;
+        stockQuantity: number;
+        categoryId: string | null;
+        coverMediaId: string | null;
+        seoTitle: string | null;
+        seoDescription: string | null;
+        ogTitle: string | null;
+        ogImageUrl: string | null;
+        canonicalUrl: string | null;
+        noIndex: boolean;
+        translations: unknown;
+      };
+
+      // `PATCH /admin/products/{productId}` ile AYNI çapraz-alan doğrulaması — düşerse hiçbir
+      // şey yazılmaz (henüz hiçbir write yapılmadı) ve 422 döner.
+      assertDiscountBelowPrice(snapshot.priceCents, snapshot.discountPriceCents);
+
+      // Geri dönüş de geri alınabilir olsun diye önce mevcut state'i yeni bir revizyon olarak kaydet.
+      await snapshotBeforeUpdate(app, "PRODUCT", existing.id, toProductSnapshot(existing), request.user!.id);
+
+      const product = await app.prisma.product.update({
+        where: { id: request.params.productId },
+        data: {
+          title: snapshot.title,
+          slug: snapshot.slug,
+          excerpt: snapshot.excerpt,
+          // Savunmada derinlik: bu sanitizasyon eklenmeden ÖNCE kaydedilmiş eski revizyonlar
+          // temizlenmemiş HTML içerebilir — geri yükleme her zaman yeniden sanitize eder.
+          descriptionHtml: sanitizeRichHtml(snapshot.descriptionHtml),
+          priceCents: snapshot.priceCents,
+          currency: snapshot.currency,
+          taxRatePercent: snapshot.taxRatePercent,
+          discountPriceCents: snapshot.discountPriceCents,
+          sku: snapshot.sku,
+          stockQuantity: snapshot.stockQuantity,
+          categoryId: snapshot.categoryId,
+          coverMediaId: snapshot.coverMediaId,
+          seoTitle: snapshot.seoTitle,
+          seoDescription: snapshot.seoDescription,
+          ogTitle: snapshot.ogTitle,
+          ogImageUrl: snapshot.ogImageUrl,
+          canonicalUrl: snapshot.canonicalUrl,
+          noIndex: snapshot.noIndex,
+          translations: (snapshot.translations
+            ? sanitizeProductTranslations(snapshot.translations as Record<string, Record<string, unknown>>)
+            : {}) as Prisma.InputJsonValue,
+        },
+        include: WITH_RELATIONS,
+      });
+
+      return reply.send(ok(toProductDto(product)));
     }
   );
 }

@@ -5,7 +5,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import * as productsApi from "@/lib/api/products";
+import * as revisionsApi from "@/lib/api/revisions";
 import type { ContentStatus, Media, ProductCategory, ProductImage } from "@/lib/api/types";
+import { useAutosave } from "@/hooks/use-autosave";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -21,8 +23,9 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { MediaSelectField } from "@/components/admin/media/media-select-field";
 import { GalleryField } from "@/components/admin/media/gallery-field";
 import { SeoPreview } from "@/components/admin/seo-preview";
+import { RevisionHistory } from "@/components/admin/revision-history";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
-import { AlertCircle, ChevronLeft, FileText, Search } from "lucide-react";
+import { AlertCircle, AlertTriangle, ChevronLeft, FileText, Search, History as HistoryIcon } from "lucide-react";
 
 const CURRENCIES = ["TRY", "USD", "EUR", "GBP"] as const;
 
@@ -228,6 +231,16 @@ export default function EditProductPage({ params }: { params: Promise<{ productI
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [hasUnsavedChanges]);
 
+  // Sessiz crash/kapatma-kurtarma güvenlik ağı — mevcut "Kaydet" butonunun/`hasUnsavedChanges`
+  // akışının YERİNE GEÇMEZ (bkz. `use-autosave.ts`), bu yüzden başarıda `snapshot` GÜNCELLENMEZ.
+  // Yalnızca serbest metin alanları (`title`/`excerpt`/`descriptionHtml`) — ticari alanlar
+  // (fiyat/indirim/SKU/stok/durum) bu uçtan DEĞİŞTİRİLEMEZ (bkz. AutosaveProductRequest).
+  const { status: autosaveStatus, lastSavedAt: autosaveSavedAt } = useAutosave({
+    values: [title, excerpt, descriptionHtml],
+    enabled: loaded,
+    save: () => productsApi.autosaveProduct(productId, { title, excerpt: excerpt || null, descriptionHtml }),
+  });
+
   /**
    * `discountPriceCents < priceCents` çapraz kontrolü — backend zaten aynı kuralı uyguluyor
    * (bkz. products.routes.ts::assertDiscountBelowPrice), ama kullanıcıya isteği hiç
@@ -400,6 +413,10 @@ export default function EditProductPage({ params }: { params: Promise<{ productI
           <TabsTrigger value="seo">
             <Search className="h-3.5 w-3.5" />
             SEO &amp; Sosyal
+          </TabsTrigger>
+          <TabsTrigger value="revisions">
+            <HistoryIcon className="h-3.5 w-3.5" />
+            Geçmiş Sürümler
           </TabsTrigger>
         </TabsList>
 
@@ -598,11 +615,41 @@ export default function EditProductPage({ params }: { params: Promise<{ productI
             </div>
           </div>
         </TabsContent>
+
+        <TabsContent value="revisions" className="mt-6 outline-none">
+          <RevisionHistory
+            entityLabel="Ürün"
+            loadRevisions={(cursor) => revisionsApi.listProductRevisions(productId, cursor)}
+            onRestore={async (revisionId) => {
+              await revisionsApi.restoreProductRevision(productId, revisionId);
+              await load();
+            }}
+          />
+        </TabsContent>
       </Tabs>
 
       <div className="sticky bottom-6 z-10 flex justify-end">
         <div className="flex items-center gap-3 rounded-xl border border-border bg-surface/95 px-4 py-3 shadow-lg backdrop-blur">
           {saving && <span className="text-xs text-foreground/60">Kaydediliyor…</span>}
+          {/* Autosave göstergesi — "Kaydediliyor…" (elle kaydetme) metniyle KARIŞTIRILMASIN diye
+              ayrı, göze batmayan bir stil kullanılır; ikisi aynı anda görünebilir. */}
+          {autosaveStatus === "saving" && (
+            <span className="text-xs text-foreground/40">Taslak kaydediliyor…</span>
+          )}
+          {autosaveStatus === "saved" && autosaveSavedAt && (
+            <span className="text-xs text-foreground/40">
+              Taslak kaydedildi{" "}
+              {new Date(autosaveSavedAt).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}
+            </span>
+          )}
+          {autosaveStatus === "error" && (
+            <span title="Taslak otomatik kaydedilemedi. 'Kaydet' butonuyla elle kaydedebilirsiniz.">
+              <AlertTriangle
+                className="h-3.5 w-3.5 text-warning/70"
+                aria-label="Taslak otomatik kaydedilemedi. 'Kaydet' butonuyla elle kaydedebilirsiniz."
+              />
+            </span>
+          )}
           <Button loading={saving} onClick={handleSave}>
             Kaydet
           </Button>

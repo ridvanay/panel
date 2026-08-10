@@ -19,6 +19,11 @@ export const ProductImageIdParamSchema = z.object({
   imageId: z.string().uuid(),
 });
 
+export const ProductRevisionIdParamSchema = z.object({
+  productId: z.string().uuid(),
+  revisionId: z.string().uuid(),
+});
+
 /** `POST /:productId/images` — galeriye tek bir Media ekler (bkz. products.routes.ts). */
 export const AddProductImageRequestSchema = z.object({
   mediaId: z.string().uuid(),
@@ -114,6 +119,20 @@ export const UpdateProductRequestSchema = z
   })
   .refine(refineScheduledAt, SCHEDULED_AT_REFINEMENT)
   .refine(refineDiscountBelowPrice, DISCOUNT_REFINEMENT);
+
+/**
+ * `POST /admin/products/:productId/autosave` — `AutosaveProductRequest` (bkz. openapi.yaml).
+ * `UpdateProductRequestSchema`'nın BİLİNÇLİ olarak DAR bir alt kümesi: ticari alanlar
+ * (fiyat/indirim/SKU/stok/durum/slug/SEO/çeviri/`scheduledAt`) KAPSAM DIŞIDIR — fiyat/indirim
+ * çapraz-alan kuralı ve `sku` tekilliği yarım kalmış bir taslak üzerinde 3 saniyede bir
+ * doğrulanamaz (bkz. ARCHITECTURE.md §10.1). Bu uçtan gönderilseler dahi kabul EDİLMEZLER
+ * (şema seviyesinde yokturlar).
+ */
+export const AutosaveProductRequestSchema = z.object({
+  title: z.string().min(1).optional(),
+  excerpt: z.string().nullable().optional(),
+  descriptionHtml: z.string().optional(),
+});
 
 /** Admin'in elle stok düzeltmesi — checkout'un otomatik stok düşürmesiyle (Faz 2b) KARIŞTIRILMAMALI. */
 export const AdjustProductStockRequestSchema = z.object({

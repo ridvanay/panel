@@ -90,38 +90,19 @@ export function deleteProductCategory(categoryId: string) {
   return apiFetch<void>(`/admin/products/categories/${categoryId}`, { method: "DELETE" });
 }
 
-/**
- * `useContentList` (bkz. components/admin/content-list/use-content-list.ts), blog/pages'teki
- * gibi TEK bir `POST .../bulk` ucu bekler — ürünler modülünde bu fazda böyle bir uç YOK (bkz.
- * backend/src/modules/products/products.routes.ts, görev notu "Backend'e DOKUNMA"). Aynı
- * `BulkContentActionResult` sözleşmesini, halihazırda var olan TEKİL uçları paralel çağırarak
- * İSTEMCİ TARAFINDA üretiyoruz — ContentList altyapısı böylece blog/pages ile BİREBİR aynı
- * kalıyor ve backend'de hiçbir değişiklik gerekmiyor.
- */
-export async function bulkProductsAction(ids: string[], action: BulkContentAction): Promise<BulkContentActionResult> {
-  const results = await Promise.allSettled(
-    ids.map((id) => {
-      switch (action) {
-        case "trash":
-          return deleteProduct(id);
-        case "restore":
-          return restoreProduct(id);
-        case "publish":
-          return updateProduct(id, { status: "PUBLISHED" });
-        case "draft":
-          return updateProduct(id, { status: "DRAFT" });
-        case "permanent-delete":
-          return permanentDeleteProduct(id);
-      }
-    })
-  );
-
-  const skippedIds: string[] = [];
-  let affectedCount = 0;
-  results.forEach((result, index) => {
-    if (result.status === "fulfilled") affectedCount += 1;
-    else skippedIds.push(ids[index]);
+/** `POST /admin/products/bulk` — `bulkPagesAction`/`bulkPostsAction` ile BİREBİR AYNI sözleşme. */
+export function bulkProductsAction(ids: string[], action: BulkContentAction) {
+  return apiFetch<BulkContentActionResult>("/admin/products/bulk", {
+    method: "POST",
+    body: { ids, action },
   });
+}
 
-  return { action, requestedCount: ids.length, affectedCount, skippedIds };
+/**
+ * Sessiz crash/kapatma-kurtarma güvenlik ağı — revizyon/audit ÜRETMEZ, "Kaydet" butonunun
+ * YERİNİ ALMAZ (bkz. `use-autosave.ts` ve `admin/products/[productId]/page.tsx`). Gövde
+ * `UpdateProductRequest`'in DAR bir alt kümesidir — yalnızca `title`/`excerpt`/`descriptionHtml`.
+ */
+export function autosaveProduct(productId: string, body: { title?: string; excerpt?: string | null; descriptionHtml?: string }) {
+  return apiFetch<{ savedAt: string }>(`/admin/products/${productId}/autosave`, { method: "POST", body });
 }

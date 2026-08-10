@@ -23,14 +23,15 @@ import {
   ContentRevisionSummarySchema,
 } from "../../schemas/entities";
 import { toBlogCategoryDto, toBlogPostDto, toContentRevisionDto, toContentRevisionSummaryDto } from "../../mappers";
-import { ConflictError, ForbiddenError, NotFoundError } from "../../lib/errors";
-import { parseCursor, encodeCursor, buildPageMeta, buildPageMetaWithCounts } from "../../lib/pagination";
+import { ConflictError, NotFoundError } from "../../lib/errors";
+import { parseCursor, buildPageMeta, buildPageMetaWithCounts } from "../../lib/pagination";
 import { slugify } from "../../lib/slug";
 import { startOfUtcDay } from "../../lib/date";
 import { detectDeviceType } from "../../lib/device";
 import { detectCountry } from "../../lib/geo";
 import { touchVisitor } from "../../lib/live-visitors";
-import { snapshotBeforeUpdate } from "../../lib/content-revisions";
+import { snapshotBeforeUpdate, listContentRevisions, getContentRevisionOrThrow } from "../../lib/content-revisions";
+import { runBulkContentAction, type BulkContentDelegate } from "../../lib/bulk-content-actions";
 import { getBlogPostContentCounts } from "../../lib/content-counts";
 import { resolveAuthorId } from "../../lib/content-author";
 import { logAudit } from "../../lib/audit";
@@ -396,95 +397,23 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
       schema: { body: BulkContentActionRequestSchema, response: { 200: ApiSuccessSchema(BulkContentActionResultSchema) } },
     },
     async (request, reply) => {
-      const { ids: rawIds, action } = request.body;
-      const ids = Array.from(new Set(rawIds));
-
-      if (action === "permanent-delete" && request.user!.role !== "ADMIN") {
-        throw new ForbiddenError("Kalıcı silme yalnızca ADMIN'e açıktır.");
-      }
-
-      const rows = await app.prisma.blogPost.findMany({ where: { id: { in: ids } }, select: { id: true, deletedAt: true } });
-      const rowById = new Map(rows.map((row) => [row.id, row]));
-
-      const applicableIds: string[] = [];
-      const skippedIds: string[] = [];
-
-      for (const id of ids) {
-        const row = rowById.get(id);
-        if (!row) {
-          skippedIds.push(id);
-          continue;
-        }
-
-        const isTrashed = row.deletedAt !== null;
-        const applicable =
-          (action === "trash" && !isTrashed) ||
-          (action === "restore" && isTrashed) ||
-          ((action === "publish" || action === "draft") && !isTrashed) ||
-          (action === "permanent-delete" && isTrashed);
-
-        if (applicable) {
-          applicableIds.push(id);
-        } else {
-          skippedIds.push(id);
-        }
-      }
-
-      if (applicableIds.length > 0) {
-        switch (action) {
-          case "trash": {
-            await app.prisma.blogPost.updateMany({ where: { id: { in: applicableIds } }, data: { deletedAt: new Date() } });
-            break;
-          }
-          case "restore": {
-            await app.prisma.blogPost.updateMany({ where: { id: { in: applicableIds } }, data: { deletedAt: null } });
-            break;
-          }
-          case "publish": {
-            await app.prisma.$transaction([
-              app.prisma.blogPost.updateMany({
-                where: { id: { in: applicableIds }, publishedAt: null },
-                data: { status: "PUBLISHED", publishedAt: new Date() },
-              }),
-              app.prisma.blogPost.updateMany({
-                where: { id: { in: applicableIds }, publishedAt: { not: null } },
-                data: { status: "PUBLISHED" },
-              }),
-            ]);
-            break;
-          }
-          case "draft": {
-            // Taslağa alma `publishedAt`'i TEMİZLEMEZ (ilk yayın tarihi kalıcıdır).
-            await app.prisma.blogPost.updateMany({ where: { id: { in: applicableIds } }, data: { status: "DRAFT" } });
-            break;
-          }
-          case "permanent-delete": {
-            await app.prisma.$transaction([
-              app.prisma.contentRevision.deleteMany({ where: { entityType: "BLOG_POST", entityId: { in: applicableIds } } }),
-              app.prisma.blogPost.deleteMany({ where: { id: { in: applicableIds } } }),
-            ]);
-            break;
-          }
-        }
-
-        await logAudit(app, {
-          actorId: request.user!.id,
-          actorEmail: request.user!.email,
-          action: `blog_post.bulk_${action}`,
+      const result = await runBulkContentAction(
+        app,
+        {
+          getDelegate: (client) => client.blogPost as unknown as BulkContentDelegate,
+          entityType: "BLOG_POST",
           targetType: "BlogPost",
-          metadata: { ids: applicableIds, skippedIds },
-          ipAddress: request.ip,
-        });
-      }
-
-      return reply.send(
-        ok({
-          action,
-          requestedCount: ids.length,
-          affectedCount: applicableIds.length,
-          skippedIds,
-        })
+          auditActionPrefix: "blog_post.",
+        },
+        {
+          ids: request.body.ids,
+          action: request.body.action,
+          actor: { id: request.user!.id, email: request.user!.email, role: request.user!.role },
+          ip: request.ip,
+        }
       );
+
+      return reply.send(ok(result));
     }
   );
 
@@ -500,21 +429,7 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
       },
     },
     async (request, reply) => {
-      const { cursor, limit } = request.query;
-      const cursorSeq = parseCursor(cursor);
-
-      const rows = await app.prisma.contentRevision.findMany({
-        where: {
-          entityType: "BLOG_POST",
-          entityId: request.params.postId,
-          ...(cursorSeq ? { seq: { lt: cursorSeq } } : {}),
-        },
-        orderBy: { seq: "desc" },
-        take: limit,
-      });
-
-      const nextCursor = rows.length === limit ? encodeCursor(rows[rows.length - 1]!.seq) : null;
-
+      const { rows, nextCursor } = await listContentRevisions(app, "BLOG_POST", request.params.postId, request.query);
       return reply.send(ok(rows.map(toContentRevisionSummaryDto), { nextCursor }));
     }
   );
@@ -526,10 +441,7 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
       schema: { params: PostRevisionIdParamSchema, response: { 200: ApiSuccessSchema(ContentRevisionSchema) } },
     },
     async (request, reply) => {
-      const revision = await app.prisma.contentRevision.findUnique({ where: { id: request.params.revisionId } });
-      if (!revision || revision.entityType !== "BLOG_POST" || revision.entityId !== request.params.postId) {
-        throw new NotFoundError("Revizyon bulunamadı.");
-      }
+      const revision = await getContentRevisionOrThrow(app, "BLOG_POST", request.params.postId, request.params.revisionId);
       return reply.send(ok(toContentRevisionDto(revision)));
     }
   );
@@ -544,10 +456,11 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
       const existing = await app.prisma.blogPost.findUnique({ where: { id: request.params.postId } });
       if (!existing) throw new NotFoundError("Yazı bulunamadı.");
 
-      const revision = await app.prisma.contentRevision.findUnique({ where: { id: request.params.revisionId } });
-      if (!revision || revision.entityType !== "BLOG_POST" || revision.entityId !== request.params.postId) {
-        throw new NotFoundError("Revizyon bulunamadı.");
+      if (existing.deletedAt) {
+        throw new ConflictError("Çöpteki içerik düzenlenemez. Önce geri yükleyin.");
       }
+
+      const revision = await getContentRevisionOrThrow(app, "BLOG_POST", request.params.postId, request.params.revisionId);
 
       // Geri dönüş de geri alınabilir olsun diye önce mevcut state'i yeni bir revizyon olarak kaydet.
       await snapshotBeforeUpdate(app, "BLOG_POST", existing.id, toBlogPostSnapshot(existing), request.user!.id);

@@ -5,7 +5,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import * as portfolioApi from "@/lib/api/portfolio";
+import * as revisionsApi from "@/lib/api/revisions";
 import type { ContentStatus, Media, PortfolioCategory, PortfolioImage } from "@/lib/api/types";
+import { useAutosave } from "@/hooks/use-autosave";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -21,8 +23,9 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { MediaSelectField } from "@/components/admin/media/media-select-field";
 import { GalleryField } from "@/components/admin/media/gallery-field";
 import { SeoPreview } from "@/components/admin/seo-preview";
+import { RevisionHistory } from "@/components/admin/revision-history";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
-import { AlertCircle, ChevronLeft, FileText, Search } from "lucide-react";
+import { AlertCircle, AlertTriangle, ChevronLeft, FileText, Search, History as HistoryIcon } from "lucide-react";
 
 interface PortfolioItemSnapshot {
   title: string;
@@ -227,6 +230,16 @@ export default function EditPortfolioItemPage({ params }: { params: Promise<{ it
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [hasUnsavedChanges]);
 
+  // Sessiz crash/kapatma-kurtarma güvenlik ağı — mevcut "Kaydet" butonunun/`hasUnsavedChanges`
+  // akışının YERİNE GEÇMEZ (bkz. `use-autosave.ts`), bu yüzden başarıda `snapshot` GÜNCELLENMEZ.
+  // Yalnızca serbest metin alanları (`title`/`summary`/`contentHtml`) — `status`/`slug`/`order`/
+  // `clientName`/`projectUrl`/`completedAt`/SEO/çeviri bu uçtan DEĞİŞTİRİLEMEZ.
+  const { status: autosaveStatus, lastSavedAt: autosaveSavedAt } = useAutosave({
+    values: [title, summary, contentHtml],
+    enabled: loaded,
+    save: () => portfolioApi.autosavePortfolioItem(itemId, { title, summary: summary || null, contentHtml }),
+  });
+
   /**
    * `projectUrl` geçerli URL kontrolü — backend zaten aynı kuralı uyguluyor
    * (bkz. portfolio.schemas.ts::CreatePortfolioItemRequestSchema.projectUrl), ama kullanıcıya
@@ -391,6 +404,10 @@ export default function EditPortfolioItemPage({ params }: { params: Promise<{ it
             <Search className="h-3.5 w-3.5" />
             SEO &amp; Sosyal
           </TabsTrigger>
+          <TabsTrigger value="revisions">
+            <HistoryIcon className="h-3.5 w-3.5" />
+            Geçmiş Sürümler
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="content" className="mt-6 space-y-6 outline-none">
@@ -544,11 +561,41 @@ export default function EditPortfolioItemPage({ params }: { params: Promise<{ it
             </div>
           </div>
         </TabsContent>
+
+        <TabsContent value="revisions" className="mt-6 outline-none">
+          <RevisionHistory
+            entityLabel="Portföy öğesi"
+            loadRevisions={(cursor) => revisionsApi.listPortfolioItemRevisions(itemId, cursor)}
+            onRestore={async (revisionId) => {
+              await revisionsApi.restorePortfolioItemRevision(itemId, revisionId);
+              await load();
+            }}
+          />
+        </TabsContent>
       </Tabs>
 
       <div className="sticky bottom-6 z-10 flex justify-end">
         <div className="flex items-center gap-3 rounded-xl border border-border bg-surface/95 px-4 py-3 shadow-lg backdrop-blur">
           {saving && <span className="text-xs text-foreground/60">Kaydediliyor…</span>}
+          {/* Autosave göstergesi — "Kaydediliyor…" (elle kaydetme) metniyle KARIŞTIRILMASIN diye
+              ayrı, göze batmayan bir stil kullanılır; ikisi aynı anda görünebilir. */}
+          {autosaveStatus === "saving" && (
+            <span className="text-xs text-foreground/40">Taslak kaydediliyor…</span>
+          )}
+          {autosaveStatus === "saved" && autosaveSavedAt && (
+            <span className="text-xs text-foreground/40">
+              Taslak kaydedildi{" "}
+              {new Date(autosaveSavedAt).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}
+            </span>
+          )}
+          {autosaveStatus === "error" && (
+            <span title="Taslak otomatik kaydedilemedi. 'Kaydet' butonuyla elle kaydedebilirsiniz.">
+              <AlertTriangle
+                className="h-3.5 w-3.5 text-warning/70"
+                aria-label="Taslak otomatik kaydedilemedi. 'Kaydet' butonuyla elle kaydedebilirsiniz."
+              />
+            </span>
+          )}
           <Button loading={saving} onClick={handleSave}>
             Kaydet
           </Button>

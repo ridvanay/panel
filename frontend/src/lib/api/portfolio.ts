@@ -84,37 +84,19 @@ export function deletePortfolioCategory(categoryId: string) {
   return apiFetch<void>(`/admin/portfolio/categories/${categoryId}`, { method: "DELETE" });
 }
 
-/**
- * `useContentList` (bkz. components/admin/content-list/use-content-list.ts), blog/pages'teki
- * gibi TEK bir `POST .../bulk` ucu bekler — portföy modülünde bu fazda böyle bir uç YOK
- * (bkz. backend/src/modules/portfolio/portfolio.routes.ts, görev notu "Backend'e DOKUNMA").
- * `bulkProductsAction` ile BİREBİR aynı desen: mevcut TEKİL uçları paralel çağırarak
- * `BulkContentActionResult` sözleşmesini istemci tarafında üretiyoruz.
- */
-export async function bulkPortfolioItemsAction(ids: string[], action: BulkContentAction): Promise<BulkContentActionResult> {
-  const results = await Promise.allSettled(
-    ids.map((id) => {
-      switch (action) {
-        case "trash":
-          return deletePortfolioItem(id);
-        case "restore":
-          return restorePortfolioItem(id);
-        case "publish":
-          return updatePortfolioItem(id, { status: "PUBLISHED" });
-        case "draft":
-          return updatePortfolioItem(id, { status: "DRAFT" });
-        case "permanent-delete":
-          return permanentDeletePortfolioItem(id);
-      }
-    })
-  );
-
-  const skippedIds: string[] = [];
-  let affectedCount = 0;
-  results.forEach((result, index) => {
-    if (result.status === "fulfilled") affectedCount += 1;
-    else skippedIds.push(ids[index]);
+/** `POST /admin/portfolio/bulk` — `bulkProductsAction` ile BİREBİR AYNI sözleşme. */
+export function bulkPortfolioItemsAction(ids: string[], action: BulkContentAction) {
+  return apiFetch<BulkContentActionResult>("/admin/portfolio/bulk", {
+    method: "POST",
+    body: { ids, action },
   });
+}
 
-  return { action, requestedCount: ids.length, affectedCount, skippedIds };
+/**
+ * Sessiz crash/kapatma-kurtarma güvenlik ağı — revizyon/audit ÜRETMEZ, "Kaydet" butonunun
+ * YERİNİ ALMAZ (bkz. `use-autosave.ts` ve `admin/portfolio/[itemId]/page.tsx`). Gövde
+ * `UpdatePortfolioItemRequest`'in DAR bir alt kümesidir — yalnızca `title`/`summary`/`contentHtml`.
+ */
+export function autosavePortfolioItem(itemId: string, body: { title?: string; summary?: string | null; contentHtml?: string }) {
+  return apiFetch<{ savedAt: string }>(`/admin/portfolio/${itemId}/autosave`, { method: "POST", body });
 }

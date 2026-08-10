@@ -427,4 +427,48 @@ describe("blog posts (§10.7 çöp kutusu / toplu işlem / yazar / SEO skoru)", 
       expect(dto.scheduledAt).toBe(beforeScheduledAt);
     });
   });
+
+  // §10.1 İçerik Sürüm Kontrolü — revizyon geri yükleme, çöpteki içerik için `PATCH`/autosave
+  // ile AYNI 409 iş kuralına tabidir (bkz. security-agent bulgusu: bu kontrol eksikti).
+  describe("revision restore", () => {
+    it("rejects restoring a revision on a trashed post with 409, and leaves the trashed content unchanged", async () => {
+      const create = await app.inject({
+        method: "POST",
+        url: "/api/v1/admin/blog",
+        headers: authHeader(),
+        payload: { title: "Çöpteyken Restore v1" },
+      });
+      const postId = create.json().data.id;
+
+      const patch = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/admin/blog/${postId}`,
+        headers: authHeader(),
+        payload: { title: "Çöpteyken Restore v2" },
+      });
+      expect(patch.statusCode).toBe(200);
+
+      const revisions = (
+        await app.inject({
+          method: "GET",
+          url: `/api/v1/admin/blog/${postId}/revisions`,
+          headers: authHeader(),
+        })
+      ).json().data;
+      expect(revisions.length).toBeGreaterThan(0);
+
+      await app.inject({ method: "DELETE", url: `/api/v1/admin/blog/${postId}`, headers: authHeader() });
+
+      const restore = await app.inject({
+        method: "POST",
+        url: `/api/v1/admin/blog/${postId}/revisions/${revisions[0].id}/restore`,
+        headers: authHeader(),
+      });
+      expect(restore.statusCode).toBe(409);
+
+      const get = await app.inject({ method: "GET", url: `/api/v1/admin/blog/${postId}`, headers: authHeader() });
+      expect(get.json().data.title).toBe("Çöpteyken Restore v2");
+      expect(get.json().data.deletedAt).not.toBeNull();
+    });
+  });
 });

@@ -19,6 +19,11 @@ export const PortfolioImageIdParamSchema = z.object({
   imageId: z.string().uuid(),
 });
 
+export const PortfolioRevisionIdParamSchema = z.object({
+  itemId: z.string().uuid(),
+  revisionId: z.string().uuid(),
+});
+
 /** `POST /:itemId/images` — galeriye tek bir Media ekler (bkz. portfolio.routes.ts). */
 export const AddPortfolioImageRequestSchema = z.object({
   mediaId: z.string().uuid(),
@@ -90,6 +95,18 @@ export const UpdatePortfolioItemRequestSchema = z
     scheduledAt: z.string().datetime().nullable().optional(),
   })
   .refine(refineScheduledAt, SCHEDULED_AT_REFINEMENT);
+
+/**
+ * `POST /admin/portfolio/:itemId/autosave` — `AutosavePortfolioItemRequest` (bkz. openapi.yaml).
+ * `AutosaveProductRequestSchema` ile AYNI niyet — yalnızca aktif düzenlenen serbest metin
+ * alanları korunur; `status`/`slug`/`order`/`clientName`/`projectUrl`/`completedAt`/SEO/çeviri
+ * bu uçtan DEĞİŞTİRİLEMEZ (şema seviyesinde yoktur).
+ */
+export const AutosavePortfolioItemRequestSchema = z.object({
+  title: z.string().min(1).optional(),
+  summary: z.string().nullable().optional(),
+  contentHtml: z.string().optional(),
+});
 
 export const CreatePortfolioCategoryRequestSchema = z.object({
   name: z.string().min(1),
