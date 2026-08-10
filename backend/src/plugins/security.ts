@@ -20,6 +20,10 @@ export default fp(async function securityPlugin(app: FastifyInstance) {
   await app.register(cors, {
     origin: env.FRONTEND_URL,
     credentials: true, // refresh token httpOnly cookie için gerekli
+    // @fastify/cors'un varsayılanı yalnızca "GET,HEAD,POST" — bu API PATCH/PUT/DELETE
+    // kullandığı için (ör. içerik düzenleme/silme) açıkça listelenmezse tarayıcı preflight'ı
+    // bu metodları reddeder ve gerçek istek hiç gönderilmez (ağ hatası gibi görünür).
+    methods: ["GET", "HEAD", "POST", "PATCH", "PUT", "DELETE"],
   });
 
   await app.register(cookie);
