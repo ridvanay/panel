@@ -301,6 +301,7 @@ export function toNavigationConfigDto({ settings, navigationItems, socialLinks, 
       label: item.label,
       href: item.href,
       order: item.order,
+      parentId: item.parentId,
     })),
     socialLinks: socialLinks.map((link) => ({
       id: link.id,

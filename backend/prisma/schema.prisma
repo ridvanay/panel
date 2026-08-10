@@ -635,14 +635,31 @@ model SiteSettings {
 }
 
 model NavigationItem {
-  id        String   @id @default(uuid())
-  seq       Int      @unique @default(autoincrement())
-  order     Int
-  label     String
-  href      String
+  id   String @id @default(uuid())
+  seq  Int    @unique @default(autoincrement())
+  // KARDEŞ-KAPSAMLI sıra: aynı `parentId` grubu içinde 0'dan artan. Global bir sıra
+  // DEĞİLDİR — tüketici önce `parentId`'ye göre gruplar, sonra `order`'a göre sıralar.
+  order Int
+  label String
+  href  String
+  // Hiyerarşi (WordPress menü düzenleyicisi benzeri alt menü). null = kök seviye öğe.
+  // MAKSİMUM DERİNLİK 2 (kök + bir alt seviye): `parentId` dolu olan bir öğe, YALNIZCA
+  // `parentId`'si null olan (kök) bir öğeyi işaret edebilir. Bu kural DB'de değil API
+  // validasyonunda zorlanır (bkz. ARCHITECTURE.md §6.x Navigasyon Hiyerarşisi) — Postgres
+  // CHECK ile ifade edilemez (başka satıra bakmayı gerektirir). Kural sayesinde döngü
+  // (cycle) ve kendine referans yapısal olarak imkânsızdır.
+  parentId  String?
   createdAt DateTime @default(now())
 
+  // Self-relation. Cascade: bir üst öğe silinirse alt öğeleri de silinir — DB'de asla
+  // öksüz (orphan) alt menü kalmaz. (PUT /admin/navigation tam-replace olduğu için pratikte
+  // deleteMany({}) tetikler; cascade yine de bütünlük garantisidir.)
+  parent   NavigationItem?  @relation("NavigationItemHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children NavigationItem[] @relation("NavigationItemHierarchy")
+
   @@index([order])
+  // FK doğrulaması ve "bir kökün alt öğeleri" sorgusu için; ayrıca cascade delete'i hızlandırır.
+  @@index([parentId])
   @@map("navigation_items")
 }
 

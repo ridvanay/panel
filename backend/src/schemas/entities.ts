@@ -419,6 +419,7 @@ export const NavigationItemSchema = z.object({
   label: z.string(),
   href: z.string(),
   order: z.number(),
+  parentId: z.string().nullable(),
 });
 export type NavigationItemDto = z.infer<typeof NavigationItemSchema>;
 
