@@ -57,6 +57,31 @@ Kategoriler: `Added` / `Changed` / `Fixed` / `Removed`.
     kanonik bir portföy post type'ı olmadığından (her tema kendi custom post
     type'ını kullanır) bu, v1 kapsamı dışında bırakıldı.
 
+- **Admin Navigasyon: iç içe (nested) menüler ve WordPress benzeri düzenleyici** —
+  Navigasyon sayfası iki sekmeye ayrıldı: **Menüleri Düzenle** ve **Konumları Yönet**.
+  - Menü öğeleri artık dnd-kit tabanlı gerçek sürükle-bırak ile hem sıralanabiliyor
+    hem de birbirinin altına (nested) taşınabiliyor — maksimum derinlik 2 (kök + 1
+    alt seviye).
+  - "Menüleri Düzenle" sekmesinde sol panelden içerik türüne göre (Sayfalar / Blog /
+    Ürünler / Portföy) yayındaki içerik checkbox ile menüye eklenebiliyor; ayrıca
+    serbest metin/URL girilen Özel Bağlantılar desteği var.
+  - "Konumları Yönet" sekmesi Logo/Marka, Header CTA ve Footer konumlarını tek yerde
+    topluyor (veri modeli değişmedi, yalnızca yönetim arayüzü gruplandı).
+  - Backend: `NavigationItem` şemasına self-relation `parentId` eklendi (migration).
+    `PUT /admin/navigation` artık hiyerarşik bir düz dizi kabul ediyor: her öğe
+    isteğe bağlı istemci-üretimli `id` ve `parentId` taşıyabilir; derinlik-2 kuralı,
+    kendi kendine referans ve payload-içi `parentId` bütünlüğü sunucu tarafında
+    doğrulanıyor (`422`). Kayıt sırasında kök öğeler önce, alt öğeler sonra
+    eklenerek (roots-first) `parentId` referans bütünlüğü garanti ediliyor.
+  - Sunucu `GET /admin/navigation` ve genel/public menü uçlarında diziyi
+    `(parentId NULLS FIRST, order)` sırasıyla döner; `order` kardeş-kapsamlıdır
+    (global değil, aynı `parentId` grubu içinde 0'dan artar).
+  - Gerçek site header'ı (public, anonim kullanıcılara sunulan) artık nested menü
+    öğelerini dropdown olarak render ediyor — önceden düz liste olarak render
+    ediliyordu ve alt öğeler yanlış/eksik görünüyordu.
+  - Kapsam: backend 9 yeni entegrasyon testi, frontend 251 test (unit + a11y),
+    security-agent denetimi ve qa-agent bağımsız curl doğrulaması; kritik bulgu yok.
+
 ### Changed
 
 - Zamanlanmış yayın (`scheduledAt` sweeper) artık **Ürün** ve **Portföy**'de de
@@ -65,6 +90,8 @@ Kategoriler: `Added` / `Changed` / `Fixed` / `Removed`.
 
 ### Fixed
 
+- Admin Canlı Önizleme panelinde ve gerçek site header'ında logo görselinin
+  taşarak bozuk render olması düzeltildi (object-fit/boyut kısıtlaması eksikti).
 - Genel hata işleyici: bazı geçersiz istekler (ör. bozuk `Content-Length` header'ı)
   artık doğru şekilde `400` dönüyor (önceden yanlışlıkla `500` dönüyordu).
 - İçe aktarma sistemi: asılı kalan/süresi dolan import işlerinin ham kaynak

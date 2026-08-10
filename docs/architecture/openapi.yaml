@@ -833,7 +833,11 @@ paths:
       description: >
         Tam değiştirme (replace) semantiği: `navigationItems`/`socialLinks`/`footerColumns`
         gönderilen dizilerle DB'deki mevcut kayıtların tamamının yerini alır (delete-then-recreate,
-        tek transaction içinde).
+        tek transaction içinde). `navigationItems` hiyerarşiktir (`parentId`); kayıt sırasında
+        sunucu önce kök öğeleri, sonra alt öğeleri yazar (self-FK sıralama garantisi —
+        bkz. ARCHITECTURE.md "Navigasyon Hiyerarşisi"). Menüye içerikten (sayfa/blog/ürün/portföy)
+        eklenen öğeler de sıradan öğelerdir: yalnızca `label`/`href` snapshot'ı taşınır,
+        kaynak içeriğe kalıcı referans TUTULMAZ.
       requestBody:
         required: true
         content:
@@ -4535,12 +4539,30 @@ components:
         portalUrl: { type: string, format: uri }
 
     NavigationItem:
+      description: >
+        Hiyerarşik (iç içe geçebilen) menü öğesi. Yapı DÜZ BİR DİZİ + `parentId` ile ifade
+        edilir (iç içe/nested JSON ağacı DEĞİL) — WordPress'in kendi veri modeliyle ve
+        dnd-kit "nested sortable" paterniyle aynı. Tüketici ağacı `parentId`'ye göre kurar.
+        Maksimum derinlik 2'dir: `parentId` dolu olan bir öğe yalnızca `parentId`'si null
+        olan (kök) bir öğeyi işaret edebilir; dolayısıyla döngü/kendine referans imkânsızdır.
+        `order` KARDEŞ-KAPSAMLIDIR (aynı `parentId` grubu içinde 0'dan artar), global sıra
+        değildir — tüketici önce `parentId`'ye göre gruplamalı, sonra `order`'a göre
+        sıralamalıdır. Sunucu diziyi `(parentId NULLS FIRST, order)` ile döner, yani kök
+        öğeler her zaman alt öğelerden önce gelir (tek geçişli ağaç kurulumu güvenlidir).
       type: object
+      required: [id, label, href, order, parentId]
       properties:
-        id: { type: string }
+        id: { type: string, format: uuid }
         label: { type: string }
         href: { type: string }
-        order: { type: integer }
+        order:
+          type: integer
+          description: "Kardeşler arası sıra (aynı `parentId` içinde 0'dan artan)."
+        parentId:
+          type: string
+          format: uuid
+          nullable: true
+          description: "Üst öğenin `id`'si; null ise kök seviye öğedir."
 
     SocialLink:
       type: object
@@ -4587,8 +4609,13 @@ components:
     UpdateNavigationConfigRequest:
       description: >
         Tam değiştirme (replace) semantiği — `navigationItems`/`socialLinks`/`footerColumns`
-        dizileri gönderilen haliyle mevcut kayıtların tamamının yerini alır; `id` alanları
-        istemciden gönderilmez (sunucu yeniden üretir).
+        dizileri gönderilen haliyle mevcut kayıtların tamamının yerini alır.
+        `socialLinks`/`footerColumns` için `id` istemciden GÖNDERİLMEZ (sunucu üretir).
+        `navigationItems` bunun İSTİSNASIDIR: hiyerarşi (`parentId`) aynı payload içinde
+        çözülebilsin diye istemci her öğe için kendi ürettiği bir UUID'yi (`crypto.randomUUID()`)
+        `id` olarak gönderebilir ve bu değer gerçek `NavigationItem.id` olarak yazılır
+        (geçici→kalıcı id eşleme adımı yoktur). `id` gönderilmezse sunucu üretir; ancak
+        BAŞKA BİR ÖĞENİN `parentId`'si tarafından işaret edilen bir öğe için `id` ZORUNLUDUR.
       type: object
       required: [navigationItems, socialLinks, footerColumns]
       properties:
@@ -4602,13 +4629,35 @@ components:
         navigationItems:
           type: array
           maxItems: 20
+          description: >
+            DÜZ dizi (nested JSON ağacı değil); hiyerarşi `parentId` ile kurulur.
+            `maxItems: 20` TÜM SEVİYELERİN TOPLAMIDIR (kök + alt öğeler) — nesting bu
+            limiti değiştirmez. 422 ile reddedilen ek kurallar: (1) `id` değerleri payload
+            içinde benzersiz olmalı; (2) `parentId`, aynı payload'daki bir öğenin `id`'siyle
+            eşleşmeli (DB'deki eski bir id'ye referans geçersizdir — kayıt tam-replace'tir);
+            (3) maksimum derinlik 2 — `parentId` ile işaret edilen öğenin kendi `parentId`'si
+            null OLMALIDIR; (4) bir öğe kendi `id`'sini `parentId` olarak veremez.
           items:
             type: object
             required: [label, href, order]
             properties:
+              id:
+                type: string
+                format: uuid
+                description: >
+                  İstemcinin ürettiği UUID; gerçek `NavigationItem.id` olarak yazılır.
+                  Opsiyoneldir, ancak öğe bir `parentId` tarafından işaret ediliyorsa zorunludur.
               label: { type: string, minLength: 1, maxLength: 80 }
               href: { type: string, minLength: 1, maxLength: 500 }
-              order: { type: integer, minimum: 0 }
+              order:
+                type: integer
+                minimum: 0
+                description: "Kardeşler arası sıra (aynı `parentId` grubu içinde 0'dan artan)."
+              parentId:
+                type: string
+                format: uuid
+                nullable: true
+                description: "Üst öğenin `id`'si; yok/null ise kök seviye öğe."
         socialLinks:
           type: array
           maxItems: 15

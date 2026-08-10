@@ -310,7 +310,10 @@ erDiagram
 > transaction içinde delete-then-recreate edilir). Modeller: `NavigationItem`,
 > `SocialLink` (`SocialPlatform` enum), `FooterColumn` → `FooterLink` (1-n,
 > `onDelete: Cascade`); ayrıca `SiteSettings`'e `headerCtaLabel`/`headerCtaHref`/
-> `footerCopyrightText` eklendi. Tam sözleşme için `openapi.yaml`'daki
+> `footerCopyrightText` eklendi. `NavigationItem` artık **hiyerarşiktir**
+> (`parentId` self-relation, düz dizi + parentId; maksimum derinlik 2, kardeş-kapsamlı
+> `order`, istemci tarafında üretilen `id`) — bağlayıcı kararlar ve self-FK insert
+> sıralaması için bkz. §10.10. Tam sözleşme için `openapi.yaml`'daki
 > `NavigationConfig`/`UpdateNavigationConfigRequest` şemalarına bakın.
 
 > Canlı Analytics (cihaz/ülke kırılımı + canlı ziyaretçi sayısı): `PageView`
@@ -1819,6 +1822,148 @@ YENİ bir "tema"/"layout sistemi" kavramı İCAT EDİLMEDİ. Blok verisi (`{ hea
 limit }`) render anında ilgili public listeleme ucundan (`GET /products` veya `GET
 /portfolio`, `limit` parametresiyle) beslenir — blok içine ürün/portföy KOPYALANMAZ,
 her render'da GÜNCEL veri çekilir.
+
+### 10.10 Navigasyon Menü Düzenleyicisi (WordPress-tarzı, hiyerarşik)
+
+Admin `/admin/navigation` sayfası iki sekmeye ayrılır — **"Menüleri Düzenle"** (menü
+öğeleri + içerikten ekleme panelleri) ve **"Konumları Yönet"** (Logo/Marka, Header CTA,
+Footer alanları). Menü öğeleri sürükle-bırakla **iç içe geçirilebilir** hale gelir.
+Aşağıdaki kararlar bağlayıcıdır; backend-agent/frontend-agent tahmin YÜRÜTMEZ.
+
+#### 10.10.1 Veri modeli — düz dizi + `parentId` (nested JSON DEĞİL)
+
+`NavigationItem`'a nullable `parentId` + self-relation (`NavigationItemHierarchy`,
+`onDelete: Cascade`) ve `@@index([parentId])` eklendi (bkz. `schema.prisma`). Hem API
+payload'ı hem DB **düz (flat) bir liste**tir; ağaç `parentId` ile kurulur. İç içe JSON
+ağacı REDDEDİLDİ çünkü: (1) DB'ye zaten satır bazında yazılıyor, ağaç yazma anında
+düzleştirilmek zorunda; (2) dnd-kit'in "nested sortable" paterni de düz liste + `depth`
+üzerinden çalışır, ağaç↔düz dönüşümü her sürüklemede gereksiz maliyet ve hata kaynağı;
+(3) kısmi güncelleme/validasyon (per-item hata mesajı) düz dizide çok daha basit.
+
+**Maksimum derinlik = 2 (kök + bir alt seviye).** Kural şu tek cümleye indirgenmiştir:
+*`parentId` dolu olan bir öğe, YALNIZCA `parentId`'si null olan bir öğeyi işaret edebilir.*
+Bunun üç faydası var: (a) doğrulama özyineleme/graf gezintisi gerektirmez, O(n) tek geçiş;
+(b) döngü (cycle) ve kendine referans **yapısal olarak imkânsız** — çünkü bir öğe kendini
+işaret ederse `parentId`'si dolu olur ve artık kök olmadığı için hedef geçersizleşir;
+(c) site header'ı zaten tam olarak iki seviye (kök + dropdown) render ediyor — daha derin
+veri kullanıcının oluşturup ASLA göremeyeceği "hayalet" öğeler üretirdi. Derinliği 3'e
+çıkarmak istenirse önce kontrat (openapi.yaml), sonra header renderer güncellenir; DB
+şemasında bir değişiklik gerekmez. Derinlik **DB'de zorlanmaz** (Postgres CHECK başka
+satıra bakamaz), API validasyon katmanında zorlanır — tek yazma yolu `PUT /admin/navigation`
+olduğu için bu yeterlidir.
+
+`order` alanı artık **kardeş-kapsamlıdır**: aynı `parentId` grubu içinde 0'dan artar,
+global bir indeks DEĞİLDİR. Global pre-order indeksi reddedildi çünkü "çocukların
+indeksleri ebeveynin indeksi ile bir sonraki kardeşin indeksi arasında olmalı" gibi
+DB'nin zorlayamayacağı gizli bir değişmez (invariant) yaratırdı; herhangi bir istemci
+hatası ağacı sessizce bozardı. Okuma tarafında sunucu `(parentId NULLS FIRST, order)`
+sıralaması döner — böylece kök öğeler her zaman alt öğelerden önce gelir ve tüketici
+tek geçişte ağacı kurabilir. Okuma tarafında bağlayıcı sorgu (backend-agent tahmin
+yürütmesin; `nulls` sıralaması Prisma 4.16'dan beri GA, projede Prisma 5.19 — preview
+flag GEREKMEZ):
+
+```ts
+app.prisma.navigationItem.findMany({
+  orderBy: [{ parentId: { sort: "asc", nulls: "first" } }, { order: "asc" }],
+});
+```
+
+**Toplam öğe limiti 20'de KALIYOR** (`.max(20)`). Bu limit tüm seviyelerin toplamıdır;
+nesting öğe sayısını değil yalnızca hiyerarşik dağılımını değiştirir, dolayısıyla
+limiti artırmak için bir gerekçe yok.
+
+#### 10.10.2 İstemci tarafında ID üretimi — ONAYLANDI
+
+Frontend'in `crypto.randomUUID()` ile ürettiği id, `NavigationItem.id` olarak **aynen
+yazılır** (Prisma `createMany` açık `id` kabul eder). Böylece bir alt öğenin `parentId`'si
+aynı payload içindeki gerçek id'yi işaret eder ve "geçici id → kalıcı id" eşleme tablosu
+kurma ihtiyacı ortadan kalkar. Sözleşmede `id` **opsiyoneldir** (geriye dönük uyumluluk:
+verilmezse sunucu üretir), ancak **bir `parentId` tarafından işaret edilen öğede
+zorunludur**. `id` UUID formatında olmalı ve payload içinde benzersiz olmalıdır (aksi
+halde 422). `socialLinks`/`footerColumns` bu istisnanın DIŞINDADIR — onlarda id istemciden
+gelmez, çünkü orada çözülecek bir iç-referans yok.
+
+**Hakemlik — ui-designer'ın `parentIndex` önerisi (design-notes "Karar 0") REDDEDİLDİ.**
+ui-designer, mevcut kontratın istemciden `id` almadığını doğru tespit edip ebeveyni "aynı
+dizideki index" ile göstermeyi önerdi. Gerekçeli ret: (1) index **konumsaldır** — diziye
+bir öğe eklendiğinde/silindiğinde/yeniden sıralandığında TÜM referansların yeniden
+haritalanması gerekir; tek bir off-by-one hatası bir öğeyi sessizce yanlış ebeveyne
+bağlar ve bu hata validasyondan geçer (index hâlâ "geçerli"dir). (2) DB zaten `parentId`
+tutmak zorunda olduğu için sunucunun yazma anında index→id çevirisi yapması gerekir —
+gereksiz bir dönüşüm katmanı. (3) GET yanıtı `parentIndex` ifade edemez (index yalnızca
+o isteğe özgüdür), bu da request ve response şekillerini asimetrik yapar — sözleşmenin
+tek doğruluk kaynağı olma niteliğini zayıflatır. İstemcide zaten kararlı UUID (`localId`)
+var; onu doğrudan `id` yapmak hem daha basit hem daha güvenli. ui-designer'ın diğer tüm
+kararları (özellikle maksimum derinlik 2 — bağımsız olarak aynı sonuca varmış) geçerlidir.
+
+#### 10.10.3 Self-referencing bulk insert sırası — KARAR: topolojik sıralama (seçenek c)
+
+`PUT /admin/navigation` tam-replace deseni (`deleteMany({})` + `createMany(...)`, tek
+transaction) **KORUNUR**. `parentId` eklenince ortaya çıkan risk, `createMany` içindeki
+bir alt öğe satırının kendi üst öğesinden önce yazılması hâlinde FK ihlali almaktır.
+Karar: **istemciden gelen düz liste, insert'ten önce sunucuda kök-öğeler-önce olacak
+şekilde sıralanır.** Derinlik 2 olduğu için bu genel bir topolojik sıralamaya değil,
+**kararlı (stable) iki-parçalı bölmeye** indirgenir:
+
+```
+const roots    = items.filter((i) => i.parentId == null);
+const children = items.filter((i) => i.parentId != null);
+await tx.navigationItem.createMany({ data: [...roots, ...children] });
+```
+
+Gerekçe ve diğer seçeneklerin reddi:
+
+- **(a) `DEFERRABLE INITIALLY DEFERRED` FK — REDDEDİLDİ.** Prisma bu niteliği şema
+  dilinde ifade edemez; yalnızca migration'a elle raw SQL (`ALTER TABLE ... DROP
+  CONSTRAINT ... ADD CONSTRAINT ... DEFERRABLE INITIALLY DEFERRED`) yazılarak eklenebilir.
+  Sonraki `prisma migrate dev` çalıştırmalarında Prisma bu niteliği introspection'da
+  görmediği için **şema kayması (drift)** üretir ve kısıt sessizce eski hâline dönebilir.
+  Tek bir endpoint'in yazma sırasını düzeltmek için tüm migration hattına kalıcı bir
+  kırılganlık eklemeye değmez.
+- **(b) İki geçişli insert (`parentId: null` ile yaz → sonra update) — REDDEDİLDİ.**
+  Doğru çalışır ama her kayıtta N adet ek UPDATE (veya `updateMany` döngüsü) demektir;
+  ayrıca DB'de kısa süreliğine **anlamsız bir ara durum** (tüm öğeler kök) oluşturur.
+  Transaction içinde bu dışarıdan görünmez, fakat gereksiz karmaşıklıktır.
+- **(c) Sıralama — SEÇİLDİ.** Ek sorgu yok, migration'a dokunmuyor, DB-agnostik, tek
+  transaction korunuyor ve okunduğunda niyeti kendi kendini açıklıyor.
+
+**Not (backend-agent bunu güvenlik ağı sayabilir ama BUNA GÜVENMEMELİDİR):** PostgreSQL'de
+FK doğrulaması bir AFTER ROW trigger'ıdır ve `NOT DEFERRABLE INITIALLY IMMEDIATE` bile
+olsa kuyruğa alınıp **ifade (statement) sonunda** çalışır. Prisma `createMany`'yi tek bir
+çok-satırlı `INSERT ... VALUES (...), (...)` ifadesine çevirdiği sürece satır sırası
+teknik olarak önemsizdir. Ancak Prisma, parametre sayısı sürücü limitine yaklaştığında
+`createMany`'yi **birden çok ifadeye bölebilir**; bölünme gerçekleşirse sıra yeniden
+kritik hâle gelir. Yukarıdaki sıralama bu senaryoda da doğru kalır — bu yüzden davranış
+"muhtemelen çalışır"a bırakılmaz, açıkça garanti edilir.
+
+Ek olarak `createMany` ÖNCESİ, `deleteMany` ile aynı transaction içinde şu doğrulamalar
+yapılır (hepsi 422 `VALIDATION_ERROR`): payload içi `id` benzersizliği; her `parentId`'nin
+aynı payload'da bir `id` ile eşleşmesi (DB'deki eski bir id'ye referans GEÇERSİZ — kayıt
+tam-replace'tir); işaret edilen öğenin `parentId`'sinin null olması (derinlik 2); bir
+öğenin kendi `id`'sini `parentId` olarak verememesi. Zod `superRefine` bunun doğru yeridir
+— dizi bütününe bakan çapraz-alan kuralları olduğu için tekil öğe şemasında ifade edilemez.
+
+#### 10.10.4 İçerikten menü öğesi ekleme — snapshot, kalıcı referans YOK
+
+Sayfalar/Blog/Ürünler/Portföy panellerinden checkbox ile seçilen içerik, menüye **o anki
+`label`/`href` değerlerinin kopyası** olarak eklenir. `contentType`/`contentId` gibi
+polimorfik bir kaynak referansı **TUTULMAZ**; bu paneller yalnızca "Özel Bağlantı"
+formunu otomatik dolduran bir kısayoldur ve veri modeli açısından ikisi arasında hiçbir
+fark yoktur. Gerekçe: polimorfik FK Prisma'da doğal olarak ifade edilemez (dört ayrı
+nullable FK veya kısıtsız `String` id demek); içerik silindiğinde/yayından kaldırıldığında
+menü öğesine ne olacağı (sessizce sil / gizle / 404'e bırak) her tip için ayrı bir ürün
+kararı gerektirir; ve WordPress'in "Özel Bağlantı" davranışı da tam olarak budur.
+**Kabul edilen ödünç:** bir sayfanın slug'ı değişirse menü bağlantısı sessizce kırılır.
+Bu bilinçli bir tercihtir; ileride gerekirse çözüm menüye kaynak referansı eklemek DEĞİL,
+"kırık bağlantı denetçisi" (admin'de uyarı rozeti) eklemektir — menü modeli basit kalır.
+
+#### 10.10.5 "Konumları Yönet" sekmesi — veri modeli değişikliği YOK
+
+Bu sekme mevcut Logo/Marka, Header CTA (`SiteSettings.headerCtaLabel/headerCtaHref`),
+Footer (`footerCopyrightText`, `SocialLink`, `FooterColumn`/`FooterLink`) alanlarını
+barındırır. **Şema, uç nokta ve payload'da hiçbir değişiklik yoktur** — iş tamamen
+frontend'de yeniden gruplamadır (`page.tsx`'in iki sekmeli bileşenlere bölünmesi).
+frontend-agent bu sekme için backend'den bir şey beklememelidir.
 
 ### Bilinen Sorunlar / Backlog
 

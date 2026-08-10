@@ -251,11 +251,20 @@ export interface PermissionsMatrix {
 // Backend: modules/navigation/*, mappers/index.ts::toNavigationConfigDto.
 // Public: GET /navigation. Admin: GET/PUT /admin/navigation (PUT yalnızca SiteRole=ADMIN).
 
+/**
+ * Hiyerarşik menü öğesi. Yapı DÜZ DİZİ + `parentId` ile ifade edilir (nested JSON ağacı
+ * değil). Maksimum derinlik 2: `parentId` dolu bir öğe yalnızca `parentId === null` olan
+ * bir kök öğeyi işaret edebilir. `order` kardeş-kapsamlıdır (aynı `parentId` grubu içinde
+ * 0'dan artar). Sunucu diziyi `(parentId NULLS FIRST, order)` ile döner.
+ */
 export interface NavigationItem {
   id: string;
   label: string;
   href: string;
+  /** Kardeşler arası sıra — global sıra DEĞİL. */
   order: number;
+  /** Üst öğenin id'si; null = kök seviye. */
+  parentId: string | null;
 }
 
 export interface SocialLink {
@@ -290,15 +299,20 @@ export interface NavigationConfig {
 
 /**
  * PUT /admin/navigation body'si — tam değiştirme (replace) semantiği: dizi alanları
- * gönderilen haliyle DB'deki mevcut kayıtların tamamının yerini alır (id istemciden
- * gönderilmez, sunucu yeniden üretir). `href`/`url` alanları yalnızca `http(s)://`,
- * `/` veya `#` ile başlayabilir (bkz. navigation.schemas.ts::HrefSchema).
+ * gönderilen haliyle DB'deki mevcut kayıtların tamamının yerini alır. `socialLinks`/
+ * `footerColumns` için id istemciden gönderilmez (sunucu üretir); `navigationItems`
+ * istisnadır — hiyerarşi aynı payload içinde çözülebilsin diye istemci UUID'yi `id`
+ * olarak gönderir ve bu değer gerçek `NavigationItem.id` olur. `id` verilmezse sunucu
+ * üretir, ancak bir `parentId` tarafından işaret edilen öğede zorunludur.
+ * `href`/`url` alanları yalnızca `http(s)://`, `/` veya `#` ile başlayabilir
+ * (bkz. navigation.schemas.ts::HrefSchema).
  */
 export interface UpdateNavigationConfigRequest {
   headerCtaLabel?: string | null;
   headerCtaHref?: string | null;
   footerCopyrightText?: string | null;
-  navigationItems: Array<Omit<NavigationItem, "id">>;
+  /** Tüm seviyelerin toplamı en fazla 20 öğe. Derinlik en fazla 2. */
+  navigationItems: Array<Omit<NavigationItem, "id" | "parentId"> & { id?: string; parentId?: string | null }>;
   socialLinks: Array<Omit<SocialLink, "id">>;
   footerColumns: Array<{
     title: string;
