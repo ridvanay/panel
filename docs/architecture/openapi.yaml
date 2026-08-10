@@ -1659,6 +1659,13 @@ paths:
       description: >
         Geri dönüş de geri alınabilsin diye önce mevcut state yeni bir revizyon
         olarak kaydedilir, ardından hedef revizyonun snapshot'ı uygulanır.
+
+
+        **Çöpteki bir sayfa revizyondan geri yüklenEMEZ → `409 CONFLICT`**
+        (`PATCH`/`autosave` ile AYNI kural ve aynı mesaj: `"Çöpteki içerik
+        düzenlenemez. Önce geri yükleyin."`). Bu kontrol security-agent denetiminde
+        eksik bulunup eklenmiştir — dört entity de (Page/BlogPost/Product/
+        PortfolioItem) artık bu konuda PARİTEDEDİR (§10.1).
       responses:
         "200":
           description: Sayfa geri yüklendi
@@ -1672,6 +1679,11 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "Çöpteki içeriği revizyondan geri yükleme girişimi (`error.code: CONFLICT`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
 
   /admin/blog/{postId}/revisions:
     parameters:
@@ -1729,6 +1741,11 @@ paths:
       description: >
         Geri dönüş de geri alınabilsin diye önce mevcut state yeni bir revizyon
         olarak kaydedilir, ardından hedef revizyonun snapshot'ı uygulanır.
+
+
+        **Çöpteki bir yazı revizyondan geri yüklenEMEZ → `409 CONFLICT`**
+        (`POST /admin/pages/{pageId}/revisions/{revisionId}/restore` ile BİREBİR AYNI
+        kural ve mesaj).
       responses:
         "200":
           description: Yazı geri yüklendi
@@ -1742,6 +1759,11 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "Çöpteki içeriği revizyondan geri yükleme girişimi (`error.code: CONFLICT`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
 
   /admin/media:
     get:
@@ -2002,19 +2024,24 @@ paths:
         `format` İSTEMCİDEN ALINMAZ, sunucu dosyanın gerçek içeriğinden (magic bytes +
         yapısal ayrıştırma) türetir; uzantı/`Content-Type` bilgi amaçlıdır, GÜVENİLMEZ.
         Geçerlilik matrisi (ihlal → 422): `PAGES`,`BLOG` → CSV|JSON · `WORDPRESS` → XML ·
-        `USERS` → CSV · `MEDIA` → ZIP.
+        `PRODUCTS` → XML · `USERS` → CSV · `MEDIA` → ZIP.
 
 
         **Boyut limitleri** (global 5 MB multipart limitinin route-level override'ı —
         `request.parts({ limits })` + route `bodyLimit`, bkz. ARCHITECTURE.md §10.8.5):
-        `PAGES`/`BLOG`/`USERS` 10 MB · `WORDPRESS` 50 MB · `MEDIA` 100 MB.
+        `PAGES`/`BLOG`/`USERS` 10 MB · `WORDPRESS` 50 MB · `PRODUCTS` 50 MB ·
+        `MEDIA` 100 MB.
         **Her boyut aşımı İSTİSNASIZ 413 `PAYLOAD_TOO_LARGE` döner** — tip-bazlı limit de,
         100 MB'lık sert üst tavan da, Fastify core `bodyLimit`i de. 422 DÖNMEZ (bkz.
         ARCHITECTURE.md §10.8.5 "413/422 kararı").
 
 
         **Kayıt sayısı tavanları** (aşım → 422, iş oluşturulmaz): `USERS` 500 satır ·
-        `PAGES`/`BLOG` 5.000 satır · `WORDPRESS` 10.000 item · `MEDIA` 500 dosya.
+        `PAGES`/`BLOG` 5.000 satır · `WORDPRESS` 10.000 item · `PRODUCTS` 5.000 kayıt ·
+        `MEDIA` 500 dosya. `PRODUCTS`'ın tavanı `WORDPRESS`'ten DÜŞÜKTÜR: ürün satırı
+        başına düşen doğrulama (fiyat/SKU tekilliği/kategori upsert) daha pahalıdır ve
+        tavan, İŞLENECEK `product` item'ı üzerinden sayılır — aynı dosyadaki yazı/sayfa/
+        attachment item'ları bu sayıya girmez.
 
 
         **Hız sınırı:** 10 istek / 10 dakika (route-level). Aşım → 429.
@@ -2628,9 +2655,10 @@ paths:
       summary: Ürünü güncelle (ADMIN/EDITOR)
       description: >
         Her başarılı PATCH, güncellemeden önceki hali `ContentRevision` olarak kaydeder
-        (`entityType: PRODUCT`, §10.1 ile AYNI mekanizma) — **ancak bu fazda ürünler
-        için revizyon LİSTELEME/GERİ YÜKLEME UCU YOKTUR** (yalnızca yazılır, bkz.
-        ARCHITECTURE.md §10.9.2). Çöpteki bir ürün DÜZENLENEMEZ → `409 CONFLICT`. Fiyat/
+        (`entityType: PRODUCT`, §10.1 ile AYNI mekanizma); revizyonlar
+        `GET /admin/products/{productId}/revisions` ile listelenir ve
+        `POST .../revisions/{revisionId}/restore` ile geri yüklenir (Page/BlogPost ile
+        TAM PARİTE). Çöpteki bir ürün DÜZENLENEMEZ → `409 CONFLICT`. Fiyat/
         indirim doğrulaması `POST` ile AYNIDIR (nihai/etkin değerler üzerinden çapraz
         kontrol edilir — istekte yalnızca `discountPriceCents` gönderilse dahi mevcut
         kayıttaki `priceCents`'e göre doğrulanır).
@@ -2667,6 +2695,171 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/products/{productId}/autosave:
+    parameters:
+      - $ref: "#/components/parameters/ProductId"
+    post:
+      tags: [Products]
+      summary: Ürünü otomatik kaydet — 3sn debounce (ADMIN/EDITOR)
+      description: >
+        Davranış `POST /admin/pages/{pageId}/autosave` ile BİREBİR AYNI — oradaki
+        açıklama (`ContentRevision` ÜRETMEZ, `AuditLog` YAZMAZ, çöpteki içerik 409)
+        bağlayıcıdır. Gövde `UpdateProductRequest`'in DAR bir alt kümesidir — yalnızca
+        serbest metin alanları (`title`/`excerpt`/`descriptionHtml`) korunur.
+        **Fiyat/indirim/SKU/stok/durum bu uçtan DEĞİŞTİRİLEMEZ** (şema seviyesinde
+        yoktur): `priceCents`/`discountPriceCents` çapraz-alan kuralı ve `sku` tekilliği
+        yarım kalmış bir taslak üzerinde 3 saniyede bir doğrulanamaz; ticari alanlar
+        yalnızca bilinçli `PATCH` ile yazılır.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AutosaveProductRequest" }
+      responses:
+        "200":
+          description: Kaydedildi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/AutosaveResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "Çöpteki içeriği autosave etme girişimi (`error.code: CONFLICT`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/products/bulk:
+    post:
+      tags: [Products]
+      summary: Ürünlerde toplu işlem (ADMIN/EDITOR; permanent-delete yalnızca ADMIN)
+      description: >
+        `POST /admin/pages/bulk` ile BİREBİR AYNI gövde, aynı yanıt, aynı atlama
+        kuralları, aynı ADMIN-only `permanent-delete` eşiği (EDITOR gönderirse tüm
+        istek 403, kısmi uygulama YAPILMAZ). Audit action öneki `product.bulk_<action>`.
+
+
+        **Atomiklik (mimar kararı — ortak helper):** `pages`/`blog` ile aynı kod yolu
+        kullanılır; toplu işlem TEK bir transaction içinde çalışır ve `permanent-delete`
+        dalında ilgili `ContentRevision` satırları (`entityType: PRODUCT`) aynı
+        transaction'da elle silinir (polymorphic, FK YOK). Atlanan id'ler transaction'ı
+        BOZMAZ — kısmi başarı bir hata değildir (200 + `skippedIds`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BulkContentActionRequest" }
+      responses:
+        "200":
+          description: İşlem uygulandı (kısmi başarı dahil)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/BulkContentActionResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/products/{productId}/revisions:
+    parameters:
+      - $ref: "#/components/parameters/ProductId"
+    get:
+      tags: [ContentRevisions]
+      summary: Ürünün revizyon geçmişini listele (ADMIN/EDITOR)
+      description: >
+        `GET /admin/pages/{pageId}/revisions` ile BİREBİR AYNI sözleşme — liste görünümü
+        `snapshot` alanını İÇERMEZ, en yeni revizyon önce gelir. Kayıtlar
+        `entityType: PRODUCT` filtresiyle okunur.
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/ContentRevisionSummary" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/products/{productId}/revisions/{revisionId}:
+    parameters:
+      - $ref: "#/components/parameters/ProductId"
+      - $ref: "#/components/parameters/RevisionId"
+    get:
+      tags: [ContentRevisions]
+      summary: Bir revizyonun tam snapshot'ını getir (ADMIN/EDITOR)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/ContentRevision" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/products/{productId}/revisions/{revisionId}/restore:
+    parameters:
+      - $ref: "#/components/parameters/ProductId"
+      - $ref: "#/components/parameters/RevisionId"
+    post:
+      tags: [ContentRevisions]
+      summary: Ürünü bu revizyondaki hale geri döndür (ADMIN/EDITOR)
+      description: >
+        Geri dönüş de geri alınabilsin diye önce mevcut state yeni bir revizyon olarak
+        kaydedilir, ardından hedef revizyonun snapshot'ı uygulanır.
+
+
+        **`Page`/`BlogPost`'tan TEK FARK — 422 dalı vardır.** Snapshot uygulanmadan ÖNCE
+        `PATCH /admin/products/{productId}` ile AYNI çapraz-alan doğrulamaları
+        çalıştırılır: `discountPriceCents < priceCents`
+        (`products.routes.ts::assertDiscountBelowPrice`). Doğrulama düşerse hiçbir şey
+        yazılmaz (transaction geri alınır) ve `422 VALIDATION_ERROR` döner. Ayrıca
+        snapshot'taki `sku`/`slug` bu arada BAŞKA bir kayda geçmişse `409 CONFLICT`
+        döner — geri yükleme tekilliği ASLA ihlal etmez.
+      responses:
+        "200":
+          description: Ürün geri yüklendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Product" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: >
+            Snapshot'taki `slug` veya `sku` bu arada başka bir kayda geçmiş, ya da ürün
+            çöpte (`error.code: CONFLICT`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
 
   /admin/products/{productId}/restore:
     parameters:
@@ -3019,8 +3212,8 @@ paths:
       description: >
         `Product` (`PATCH /admin/products/{productId}`) ile BİREBİR AYNI davranış:
         güncellemeden önceki hal `ContentRevision` olarak yazılır (`entityType:
-        PORTFOLIO_ITEM`) — bu fazda listeleme/geri yükleme ucu YOKTUR. Çöpteki bir öğe
-        DÜZENLENEMEZ → `409 CONFLICT`.
+        PORTFOLIO_ITEM`) ve `GET/POST /admin/portfolio/{itemId}/revisions[...]` ile
+        listelenip geri yüklenebilir. Çöpteki bir öğe DÜZENLENEMEZ → `409 CONFLICT`.
       requestBody:
         required: true
         content:
@@ -3054,6 +3247,156 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/portfolio/{itemId}/autosave:
+    parameters:
+      - $ref: "#/components/parameters/PortfolioItemId"
+    post:
+      tags: [Portfolio]
+      summary: Portföy öğesini otomatik kaydet — 3sn debounce (ADMIN/EDITOR)
+      description: >
+        `POST /admin/products/{productId}/autosave` ile BİREBİR AYNI davranış
+        (`ContentRevision` ÜRETMEZ, `AuditLog` YAZMAZ, çöpteki içerik 409). Gövde
+        `UpdatePortfolioItemRequest`'in DAR bir alt kümesidir — yalnızca
+        `title`/`summary`/`contentHtml` korunur; `status`/`slug`/`order`/`clientName`/
+        `projectUrl`/`completedAt`/SEO/çeviri bu uçtan DEĞİŞTİRİLEMEZ.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AutosavePortfolioItemRequest" }
+      responses:
+        "200":
+          description: Kaydedildi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/AutosaveResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "Çöpteki içeriği autosave etme girişimi (`error.code: CONFLICT`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/portfolio/bulk:
+    post:
+      tags: [Portfolio]
+      summary: Portföy öğelerinde toplu işlem (ADMIN/EDITOR; permanent-delete yalnızca ADMIN)
+      description: >
+        `POST /admin/products/bulk` ile BİREBİR AYNI gövde, yanıt, atlama kuralları ve
+        atomiklik garantisi (ortak helper, tek transaction); `permanent-delete` dalında
+        `ContentRevision` satırları `entityType: PORTFOLIO_ITEM` ile temizlenir. Audit
+        action öneki `portfolio_item.bulk_<action>`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BulkContentActionRequest" }
+      responses:
+        "200":
+          description: İşlem uygulandı (kısmi başarı dahil)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/BulkContentActionResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/portfolio/{itemId}/revisions:
+    parameters:
+      - $ref: "#/components/parameters/PortfolioItemId"
+    get:
+      tags: [ContentRevisions]
+      summary: Portföy öğesinin revizyon geçmişini listele (ADMIN/EDITOR)
+      description: >
+        `GET /admin/products/{productId}/revisions` ile BİREBİR AYNI sözleşme; kayıtlar
+        `entityType: PORTFOLIO_ITEM` filtresiyle okunur.
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/ContentRevisionSummary" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/portfolio/{itemId}/revisions/{revisionId}:
+    parameters:
+      - $ref: "#/components/parameters/PortfolioItemId"
+      - $ref: "#/components/parameters/RevisionId"
+    get:
+      tags: [ContentRevisions]
+      summary: Bir revizyonun tam snapshot'ını getir (ADMIN/EDITOR)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/ContentRevision" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/portfolio/{itemId}/revisions/{revisionId}/restore:
+    parameters:
+      - $ref: "#/components/parameters/PortfolioItemId"
+      - $ref: "#/components/parameters/RevisionId"
+    post:
+      tags: [ContentRevisions]
+      summary: Portföy öğesini bu revizyondaki hale geri döndür (ADMIN/EDITOR)
+      description: >
+        Geri dönüş de geri alınabilsin diye önce mevcut state yeni bir revizyon olarak
+        kaydedilir, ardından hedef revizyonun snapshot'ı uygulanır.
+
+
+        **`Product`'ın AKSİNE 422 dalı YOKTUR** — `PortfolioItem`'da doğrulanacak bir
+        çapraz-alan kuralı (fiyat/indirim gibi) BULUNMAZ. Yalnızca `slug` tekilliği
+        korunur: snapshot'taki `slug` bu arada başka bir kayda geçmişse `409 CONFLICT`.
+      responses:
+        "200":
+          description: Portföy öğesi geri yüklendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/PortfolioItem" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: >
+            Snapshot'taki `slug` bu arada başka bir kayda geçmiş, ya da öğe çöpte
+            (`error.code: CONFLICT`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
 
   /admin/portfolio/{itemId}/restore:
     parameters:
@@ -4964,9 +5307,37 @@ components:
         excerpt: { type: string, nullable: true }
         contentHtml: { type: string }
 
+    AutosaveProductRequest:
+      description: >
+        `POST /admin/products/{productId}/autosave` gövdesi. `AutosavePageRequest` ile
+        AYNI niyet, `Product` şemasına uyarlanmış alan seti. **Ticari alanlar BİLİNÇLİ
+        olarak KAPSAM DIŞIDIR** (`priceCents`, `discountPriceCents`, `currency`,
+        `taxRatePercent`, `sku`, `stockQuantity`, `status`, `slug`, SEO, çeviri,
+        `scheduledAt`): fiyat/indirim çapraz-alan kuralı ve `sku` tekilliği yarım kalmış
+        bir taslak üzerinde 3 saniyede bir doğrulanamaz — bu alanlar yalnızca bilinçli
+        `PATCH` ile yazılır. Bu uçtan gönderilseler dahi kabul EDİLMEZLER (şema
+        seviyesinde yokturlar).
+      type: object
+      properties:
+        title: { type: string, minLength: 1 }
+        excerpt: { type: string, nullable: true }
+        descriptionHtml: { type: string }
+
+    AutosavePortfolioItemRequest:
+      description: >
+        `POST /admin/portfolio/{itemId}/autosave` gövdesi. `AutosaveProductRequest` ile
+        AYNI niyet, `PortfolioItem` şemasına uyarlanmış alan seti (`excerpt`/
+        `descriptionHtml` yerine `summary`/`contentHtml`). `status`/`slug`/`order`/
+        `clientName`/`projectUrl`/`completedAt`/SEO/çeviri kapsam DIŞIDIR.
+      type: object
+      properties:
+        title: { type: string, minLength: 1 }
+        summary: { type: string, nullable: true }
+        contentHtml: { type: string }
+
     AutosaveResponse:
       description: >
-        `POST /admin/{blog,pages}/{id}/autosave` ortak yanıt şeması. **BİLİNÇLİ olarak
+        `POST /admin/{blog,pages,products,portfolio}/{id}/autosave` ortak yanıt şeması. **BİLİNÇLİ olarak
         minimaldir: autosave `ContentRevision` ÜRETMEZ ve `AuditLog` YAZMAZ** (bkz.
         backend `lib/content-revisions.ts`, `MAX_REVISIONS_PER_ENTITY`) — aksi halde
         3sn'lik debounce ile tetiklenen her otomatik kayıt, entity başına revizyon
@@ -4980,7 +5351,11 @@ components:
 
     ContentEntityType:
       type: string
-      enum: [PAGE, BLOG_POST]
+      description: >
+        Revizyon tutulan içerik türleri. `PRODUCT`/`PORTFOLIO_ITEM` DB enum'ında zaten
+        vardı (yazma tarafı çalışıyordu); artık okuma/geri yükleme uçları da mevcuttur —
+        dördü de `ContentRevisions` tag'i kapsamındadır (bkz. ARCHITECTURE.md §10.1).
+      enum: [PAGE, BLOG_POST, PRODUCT, PORTFOLIO_ITEM]
 
     ContentRevisionSummary:
       description: >
@@ -5006,7 +5381,19 @@ components:
                 blocks, seoTitle, seoDescription, ogTitle, ogImageUrl, canonicalUrl,
                 noIndex, translations }`; BlogPost için `{ title, slug, excerpt,
                 contentHtml, coverImageUrl, categoryId, seoTitle, seoDescription,
-                ogTitle, ogImageUrl, canonicalUrl, noIndex, translations }`.
+                ogTitle, ogImageUrl, canonicalUrl, noIndex, translations }`; Product
+                için `{ title, slug, excerpt, descriptionHtml, priceCents, currency,
+                taxRatePercent, discountPriceCents, sku, stockQuantity, categoryId,
+                coverMediaId, seoTitle, seoDescription, ogTitle, ogImageUrl,
+                canonicalUrl, noIndex, translations }`; PortfolioItem için `{ title,
+                slug, summary, contentHtml, clientName, projectUrl, completedAt, order,
+                categoryId, coverMediaId, seoTitle, seoDescription, ogTitle, ogImageUrl,
+                canonicalUrl, noIndex, translations }`.
+
+
+                **Galeri (`images[]`) snapshot'a DAHİL DEĞİLDİR** — ayrı uçlardan
+                (`.../images`) yönetilen bir ilişki koleksiyonudur ve `PATCH` ile
+                değişmez; dolayısıyla revizyon geri yükleme galeriye DOKUNMAZ.
               additionalProperties: true
 
     EmailTemplate:
@@ -5052,14 +5439,39 @@ components:
         İçe aktarmanın HEDEFİ (dosya formatı değil — o `ImportSourceFormat`'tır).
         `WORDPRESS` tek bir WXR dosyasından hem `Page` hem `BlogPost` hem `BlogCategory`
         üretebilir; diğerleri tek hedeflidir.
-      enum: [PAGES, BLOG, WORDPRESS, USERS, MEDIA]
+
+
+        **`PRODUCTS` (WooCommerce) — neden `WORDPRESS`'ten AYRI bir tip (mimar kararı
+        2A):** İkisi de AYNI WXR/XML formatını okur; fark, `wp:post_type` filtresidir —
+        `WORDPRESS` `post`/`page`/`attachment`'ı işler, `PRODUCTS` yalnızca `product`'ı.
+        Aynı dosya her iki tiple de yüklenebilir ve farklı sonuç verir. `WORDPRESS`'e
+        sessizce "bir de ürün varsa onu da içe aktar" davranışı EKLENMEMİŞTİR: bugün
+        WooCommerce'li bir WXR'ı `WORDPRESS` olarak yükleyen bir kullanıcı yalnızca
+        sayfa/yazı bekler; o akışa ürün yazmak **sessiz bir yan etki** (silent side
+        effect) olurdu — üstelik `Products` modülü kapalıyken bile kayıt üretirdi.
+        Ayrı tip; ayrı önizleme, ayrı sayaç, ayrı onay, ayrı `AuditLog` demektir.
+        `WORDPRESS` tipinde bulunan `product` item'ları ATLANIR ve önizlemede
+        `WP_PRODUCTS_SKIPPED` uyarısıyla kullanıcı doğru tipe yönlendirilir.
+
+
+        `PRODUCTS` yalnızca `Product` (+ `ProductCategory` upsert) üretir; WooCommerce
+        siparişleri/müşterileri (`shop_order`, `shop_coupon`, `customer`) **ASLA** içe
+        aktarılmaz (`WC_ORDERS_IGNORED` — PII ve ödeme verisi kapsam dışıdır). Portföy
+        içe aktarımı v1 KAPSAM DIŞIDIR (karar 2B — WordPress tarafında karşılığı olan
+        standart bir post-type yoktur; her tema kendi CPT'sini uydurur).
+      enum: [PAGES, BLOG, WORDPRESS, PRODUCTS, USERS, MEDIA]
 
     ImportSourceFormat:
       type: string
       description: >
         Sunucunun dosya İÇERİĞİNDEN türettiği format (istemci GÖNDERMEZ, gönderse de
         yok sayılır). Geçerlilik matrisi: PAGES,BLOG → CSV|JSON · WORDPRESS → XML ·
-        USERS → CSV · MEDIA → ZIP.
+        **PRODUCTS → XML** · USERS → CSV · MEDIA → ZIP.
+
+
+        `PRODUCTS` bilinçli olarak yalnızca XML (WooCommerce WXR) kabul eder; ürün
+        CSV/JSON içe aktarımı ayrı bir alan-eşleme problemidir (varyasyon, öznitelik,
+        çoklu para birimi) ve bu fazın KAPSAMI DIŞINDADIR.
       enum: [CSV, JSON, XML, ZIP]
 
     ImportJobStatus:
@@ -5086,19 +5498,37 @@ components:
       type: string
       description: >
         Var olan bir kayıtla çakışma bulunduğunda ne yapılacağı. Eşleştirme anahtarı:
-        `PAGES`/`BLOG`/`WORDPRESS` → `slug` · `USERS` → `email` · `MEDIA` →
-        `Media.filename`.
+        `PAGES`/`BLOG`/`WORDPRESS` → `slug` · **`PRODUCTS` → `sku` (varsa), `sku` boşsa
+        `slug`** · `USERS` → `email` · `MEDIA` → `Media.filename`.
+
+
+        **`PRODUCTS`'ta neden `sku` önceliklidir:** SKU bir mağazanın stok kimliğidir;
+        aynı ürünün adı/slug'ı değişebilir ama SKU sabittir. Slug'a bakıp SKU'yu yok
+        saymak, ikinci içe aktarımda AYNI ürünü ikinci kez yaratır ve `Product.sku`
+        unique kısıtı yüzünden satırı hataya düşürürdü.
 
 
         - `skip` (VARSAYILAN) — mevcut kayıt korunur, satır `skippedCount`'a yazılır.
 
-        - `overwrite` — mevcut kayıt güncellenir. Page/BlogPost'ta bu, normal `PATCH`
-        gibi ÖNCE bir `ContentRevision` snapshot'ı yazar (§10.1) — geri dönüş mümkün
-        kalsın diye. ÇÖPTEKİ (`deletedAt != null`) kayıt ASLA overwrite edilmez, atlanır
-        (`TARGET_TRASHED`).
+        - `overwrite` — mevcut kayıt güncellenir. Page/BlogPost/Product'ta bu, normal
+        `PATCH` gibi ÖNCE bir `ContentRevision` snapshot'ı yazar (§10.1) — geri dönüş
+        mümkün kalsın diye. ÇÖPTEKİ (`deletedAt != null`) kayıt ASLA overwrite edilmez,
+        atlanır (`TARGET_TRASHED`).
 
         - `createNew` — slug'a `-2`, `-3` … eklenerek yeni kayıt açılır. `USERS` ve
         `MEDIA` için GEÇERSİZDİR.
+
+
+        **`PRODUCTS` + `createNew` + SKU çakışması → SATIR ATLANIR (karar 2E).**
+        `createNew`, `PRODUCTS` tipinde de seçilebilir ve slug çakışmalarını normal
+        şekilde `-2`/`-3` ile çözer; ANCAK çakışma `sku` üzerindeyse satır YAZILMAZ,
+        `DUPLICATE_SKIPPED` (`severity: skipped`) ile `skippedCount`'a düşer. Gerekçe:
+        `Product.sku` DB seviyesinde uniquedir — slug gibi "sonuna sayı ekleyip yeni
+        kayıt aç" davranışı SKU için ANLAMSIZDIR (`ABC-1` ile `ABC-1-2` iki ayrı stok
+        kalemi demektir ve mağazanın envanterini sessizce bozar). Tercih edilen davranış
+        "uydurulmuş SKU ile yanlış kayıt" değil, "atla ve raporla"dır. Bu, `createNew`'i
+        `PRODUCTS` için 422 ile YASAKLAMAKTAN da farklıdır: SKU'suz ürünler (`sku: null`)
+        `createNew` ile sorunsuz çoğaltılabilir.
 
 
         **`USERS` için yalnızca `skip` kabul edilir; `overwrite`/`createNew` → 422.**
@@ -5126,8 +5556,9 @@ components:
         değerlerden biri) ya da `null` (bu sütunu YOK SAY).
 
 
-        `WORDPRESS` ve `MEDIA` için ANLAMSIZDIR ve yok sayılır — WXR eşleştirmesi sabit
-        ve kurallıdır (bkz. ARCHITECTURE.md §10.8 eşleştirme tablosu).
+        `WORDPRESS`, `PRODUCTS` ve `MEDIA` için ANLAMSIZDIR ve yok sayılır — WXR
+        eşleştirmesi sabit ve kurallıdır (bkz. ARCHITECTURE.md §10.8.6 WordPress ve
+        §10.8.9 WooCommerce eşleştirme tabloları).
       type: object
       additionalProperties:
         type: string
@@ -5198,16 +5629,29 @@ components:
         breakdown:
           type: object
           description: >
-            Yalnızca `WORDPRESS` için: WXR `wp:post_type` kırılımı. Frontend "12 sayfa,
-            340 yazı, 87 medya bağlantısı, 5 kategori bulundu" özetini bundan üretir.
+            Yalnızca XML (WXR) tabanlı tipler — `WORDPRESS` ve `PRODUCTS` — için:
+            `wp:post_type` kırılımı. Frontend "12 sayfa, 340 yazı, 87 medya bağlantısı,
+            5 kategori bulundu" (veya `PRODUCTS`'ta "214 ürün bulundu") özetini bundan
+            üretir. Her iki tipte de AYNI şema döner; ilgisiz alanlar `0`'dır — `type`
+            neyi YAZACAĞINI belirler, `breakdown` dosyada NE OLDUĞUNU anlatır. Bu sayede
+            `WORDPRESS` yüklemesinde `products > 0` görülürse kullanıcı `PRODUCTS` tipine
+            yönlendirilebilir (`WP_PRODUCTS_SKIPPED`) ve tersi de geçerlidir.
           properties:
             pages: { type: integer }
             posts: { type: integer }
             attachments: { type: integer }
             categories: { type: integer }
+            products:
+              type: integer
+              description: >
+                `wp:post_type: product` sayısı (WooCommerce). `PRODUCTS` tipinde
+                işlenecek kayıt sayısıdır; `WORDPRESS` tipinde bilgi amaçlıdır ve bu
+                item'lar ATLANIR (`skipped`'a da sayılır). Ürün VARYASYONLARI
+                (`product_variation`) buraya DAHİL DEĞİLDİR — desteklenmez, `skipped`'a
+                yazılır ve `WC_VARIATIONS_UNSUPPORTED` uyarısı üretilir.
             skipped:
               type: integer
-              description: "Desteklenmeyen `wp:post_type` (nav_menu_item, revision, custom_css, wp_block …) + `wp:status: trash|inherit`."
+              description: "Desteklenmeyen `wp:post_type` (nav_menu_item, revision, custom_css, wp_block, product_variation, shop_order …) + `wp:status: trash|inherit`."
         warnings:
           type: array
           description: >
@@ -5219,12 +5663,47 @@ components:
             properties:
               code:
                 type: string
+                description: >
+                  `WC_*` ön ekli kodlar YALNIZCA `PRODUCTS` (WooCommerce) tipinde,
+                  `WP_PRODUCTS_SKIPPED` ise yalnızca `WORDPRESS` tipinde üretilir
+                  (bkz. ARCHITECTURE.md §10.8.9):
+
+                  - `WP_PRODUCTS_SKIPPED` — dosyada `wp:post_type: product` item'ları
+                  var ama tip `WORDPRESS`; bunlar ATLANIYOR. Mesaj kullanıcıyı aynı
+                  dosyayı `PRODUCTS` tipiyle yeniden yüklemeye yönlendirir.
+
+                  - `WC_TAX_NOT_IMPORTED` — WooCommerce vergi SINIFI (`_tax_class`,
+                  `_tax_status`) taşır, oran değil; oranlar mağaza ayarındadır ve
+                  export'ta YOKTUR → `Product.taxRatePercent` `null` bırakılır.
+
+                  - `WC_STOCK_NOT_MANAGED` — `_manage_stock: no` olan ürünlerde
+                  `_stock` yoktur; `stockQuantity` `_stock_status`'a göre 0/1'e
+                  düşürülür (bkz. §10.8.9 eşleme tablosu).
+
+                  - `WC_VARIATIONS_UNSUPPORTED` — `product_variation` item'ları ve
+                  `variable` tipli ürünlerin varyantları desteklenmez; yalnızca ANA
+                  ürün yazılır, varyasyonlar `skippedCount`'a düşer.
+
+                  - `WC_GALLERY_NOT_IMPORTED` — `_product_image_gallery`/
+                  `_thumbnail_id` kaynak sitedeki attachment'lara işaret eder;
+                  `WP_MEDIA_NOT_DOWNLOADED` ile AYNI SSRF gerekçesiyle dosya
+                  İNDİRİLMEZ, `ProductImage` satırı OLUŞTURULMAZ (§10.8.9).
+
+                  - `WC_ORDERS_IGNORED` — dosyada `shop_order`/`shop_coupon`/`customer`
+                  item'ları var; bunlar KİŞİSEL VERİ ve ödeme verisidir, hiçbir tipte
+                  içe aktarılmaz.
                 enum:
                   - WP_MEDIA_NOT_DOWNLOADED
                   - WP_TAGS_UNSUPPORTED
                   - WP_AUTHOR_UNMATCHED
                   - WP_PRIVATE_AS_DRAFT
                   - WP_SCHEDULED_AS_DRAFT
+                  - WP_PRODUCTS_SKIPPED
+                  - WC_TAX_NOT_IMPORTED
+                  - WC_STOCK_NOT_MANAGED
+                  - WC_VARIATIONS_UNSUPPORTED
+                  - WC_GALLERY_NOT_IMPORTED
+                  - WC_ORDERS_IGNORED
                   - HTML_WILL_BE_SANITIZED
                   - SLUG_COLLISION
                   - MEDIA_SVG_REJECTED
@@ -5291,7 +5770,7 @@ components:
         fieldMapping:
           allOf:
             - $ref: "#/components/schemas/ImportFieldMapping"
-          description: "Verilmezse `preview.suggestedMapping` kullanılır. `WORDPRESS`/`MEDIA`'da yok sayılır."
+          description: "Verilmezse `preview.suggestedMapping` kullanılır. `WORDPRESS`/`PRODUCTS`/`MEDIA`'da yok sayılır."
         duplicateStrategy:
           allOf:
             - $ref: "#/components/schemas/ImportDuplicateStrategy"
@@ -5304,6 +5783,30 @@ components:
             varsayılan. **Varsayılanın varsayılanı `DRAFT`'tır** — içe aktarılan içerik
             gözden geçirilmeden public siteye düşmesin. `WORDPRESS`'te yok sayılır
             (orada `wp:status` bağlayıcıdır).
+
+
+            **`PRODUCTS`'ta anlamı GENİŞTİR (karar 2C):** `WORDPRESS`'in aksine yok
+            SAYILMAZ ve yalnızca "boş durum" için değil, **TÜM ürünler için** uygulanır —
+            WooCommerce'te `wp:status: publish` olan bir ürün dahi bizde varsayılan olarak
+            `DRAFT` açılır. Gerekçe: bir ürünün yayına girmesi, bir yazının yayına
+            girmesinden farklıdır — fiyat/KDV/stok/kargo doğrulanmadan public mağazaya
+            düşen ürün doğrudan yanlış fiyatla SATIŞ demektir; ayrıca içe aktarım
+            sırasında görseller kaynak siteye işaret eder (`WC_GALLERY_NOT_IMPORTED`).
+            Operatör bilinçli olarak `PUBLISHED` gönderirse WooCommerce'teki `publish`
+            durumundaki ürünler yayınlanır, `draft`/`pending`/`private` olanlar yine
+            `DRAFT` kalır (durum YÜKSELTİLMEZ). `wp:status: trash` her koşulda ATLANIR.
+        defaultCurrency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          default: TRY
+          description: >
+            YALNIZCA `PRODUCTS` için. WooCommerce WXR'ı para birimini **item düzeyinde
+            TAŞIMAZ** (`_price` yalnızca sayıdır; para birimi mağaza ayarıdır ve export'a
+            girmez) — bu yüzden `Product.currency` dosyadan TÜRETİLEMEZ ve operatörden
+            alınır. Verilmezse `TRY`. ISO-4217 3 harfli kod, büyük harfe normalize edilir;
+            tanınmayan kod → 422 (`error.details.defaultCurrency`). Diğer tiplerde yok
+            sayılır.
         defaultAuthorId:
           type: string
           format: uuid

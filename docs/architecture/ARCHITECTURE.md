@@ -368,8 +368,8 @@ olarak kullanır — şekil değişirse önce burada güncellenir.
 ```
 id            uuid PK
 seq           int unique autoincrement
-entityType    enum ContentEntityType { PAGE, BLOG_POST }
-entityId      string            // Page.id veya BlogPost.id (FK yok — silinen içerikle
+entityType    enum ContentEntityType { PAGE, BLOG_POST, PRODUCT, PORTFOLIO_ITEM }
+entityId      string            // Page/BlogPost/Product/PortfolioItem.id (FK yok — silinen içerikle
                                   // birlikte revizyonların da silinmesi Cascade ile
                                   // sağlanır: entityId'ye göre elle temizlik gerekmez,
                                   // bkz. not aşağıda)
@@ -399,6 +399,54 @@ createdAt     datetime @default(now())
     bir revizyon olarak kaydeder (geri dönüş de geri alınabilir olsun diye), sonra
     snapshot'ı uygular, güncel `Page` DTO'sunu döner.
   - Aynı üçlü `blog` için: `GET/POST /admin/blog/{id}/revisions[...]`.
+
+**PRODUCT / PORTFOLIO_ITEM artık revizyon + autosave + toplu işlem KAPSAMINDADIR
+(mimar kararı, faz sınırı KALDIRILDI).** `Product` ve `PortfolioItem` `PATCH`'leri
+`ContentRevision` yazmayı zaten yapıyordu, ama listeleyen/geri yükleyen uç YOKTU —
+kayıtlar sessizce birikiyordu (bkz. §10.9.2'deki eski "bilinen eksik" notu). Artık
+dört entity de **tam paritededir**; `openapi.yaml` bağlayıcıdır:
+
+| Entity | `entityType` | Revizyon uçları | Autosave | Toplu işlem |
+|---|---|---|---|---|
+| `Page` | `PAGE` | `/admin/pages/{pageId}/revisions[...]` | `/admin/pages/{pageId}/autosave` | `/admin/pages/bulk` |
+| `BlogPost` | `BLOG_POST` | `/admin/blog/{postId}/revisions[...]` | `/admin/blog/{postId}/autosave` | `/admin/blog/bulk` |
+| `Product` | `PRODUCT` | `/admin/products/{productId}/revisions[...]` | `/admin/products/{productId}/autosave` | `/admin/products/bulk` |
+| `PortfolioItem` | `PORTFOLIO_ITEM` | `/admin/portfolio/{itemId}/revisions[...]` | `/admin/portfolio/{itemId}/autosave` | `/admin/portfolio/bulk` |
+
+- **Şema/migration gerekmez** — `ContentEntityType` DB enum'ında `PRODUCT` ve
+  `PORTFOLIO_ITEM` ZATEN VARDI. Bu tümüyle bir route/servis işidir (db-agent'a iş
+  düşmez; düşerse yalnızca `@@index([entityType, entityId, createdAt])`'in yeni okuma
+  hacmi altında yeterli olduğunun doğrulanması).
+- **`snapshot` şekli:** `Product` → `{ title, slug, excerpt, descriptionHtml,
+  priceCents, currency, taxRatePercent, discountPriceCents, sku, stockQuantity,
+  categoryId, coverMediaId, seoTitle, seoDescription, ogTitle, ogImageUrl, canonicalUrl,
+  noIndex, translations }`; `PortfolioItem` → `{ title, slug, summary, contentHtml,
+  clientName, projectUrl, completedAt, order, categoryId, coverMediaId, seoTitle,
+  seoDescription, ogTitle, ogImageUrl, canonicalUrl, noIndex, translations }`.
+  **Galeri (`images[]`) snapshot'a GİRMEZ** — ayrı uçlardan yönetilir, `PATCH` ile
+  değişmez, dolayısıyla geri yükleme galeriye DOKUNMAZ.
+- **Geri yüklemede TEK asimetri — `Product`'ta 422 dalı:** snapshot uygulanmadan önce
+  `PATCH` ile aynı çapraz-alan doğrulaması (`discountPriceCents < priceCents`,
+  `assertDiscountBelowPrice`) çalıştırılır; düşerse hiçbir şey yazılmaz ve 422 döner.
+  Ayrıca snapshot'taki `sku`/`slug` bu arada başka bir kayda geçmişse 409. `PortfolioItem`
+  ve `Page`/`BlogPost`'ta çapraz-alan kuralı YOKTUR → 422 dalı da YOKTUR (yalnızca `slug`
+  tekilliği için 409).
+- **Autosave'in DAR gövdesi ticari alanları KAPSAMAZ:** `AutosaveProductRequest` yalnızca
+  `{ title, excerpt, descriptionHtml }`; fiyat/indirim/SKU/stok/durum 3 saniyede bir
+  doğrulanamayacağı (ve yarım taslakta anlamsız olduğu) için yalnızca bilinçli `PATCH`
+  ile yazılır. `AutosavePortfolioItemRequest` → `{ title, summary, contentHtml }`.
+  Autosave, `Page`/`BlogPost`'ta olduğu gibi **revizyon ÜRETMEZ ve `AuditLog` YAZMAZ**.
+- **Toplu işlem ortak helper'a çıkarılır (karar 1A — backend-agent için bağlayıcı):**
+  `pages.routes.ts`/`blog.routes.ts` içindeki bulk mantığı dört kez kopyalanMAYACAK;
+  entity-agnostik tek bir helper'a (`lib/bulk-content-actions.ts`) taşınır ve dört route
+  bunu Prisma delegate + `entityType` + audit öneki ile parametreleyerek çağırır.
+  Gerekçe: atomiklik (tek transaction), `permanent-delete`'in ADMIN-only eşiği,
+  `ContentRevision` elle temizliği ve `skippedIds` semantiği güvenlik açısından kritik
+  ve **birebir aynı** kurallardır; dört kopya, dördünün zamanla ayrışması demektir.
+  Audit önekleri: `page.` · `blog_post.` · `product.` · `portfolio_item.` +
+  `bulk_<action>`.
+- **Kapsam dışı (bilinçli):** revizyonlar arası görsel diff/karşılaştırma ekranı ve
+  revizyona not/etiket ekleme bu fazda YOK.
 
 ### 10.2 Gelişmiş SEO & Social Card (Meta Management)
 
@@ -622,10 +670,21 @@ MEVCUT desende (`useFilteredList`, client-side) kalır — frontend `?trashed=in
 tekilliği, revizyon snapshot'ı (§10.1) ve `publishedAt` mantığı tek yerde kalsın diye.
 Taslağa alma `publishedAt`'i temizlemez (ilk yayın tarihi kalıcıdır).
 
-**Toplu işlem:** `POST /admin/{pages|blog}/bulk` → `{ ids[1..100], action }`,
-action ∈ `trash | restore | publish | draft | permanent-delete`. Kısmi başarı hata
-değildir (200 + `skippedIds`). "Çöpü Boşalt" ayrı uç değildir; frontend çöpteki id'leri
-`permanent-delete` ile gönderir.
+**Toplu işlem:** `POST /admin/{pages|blog|products|portfolio}/bulk` →
+`{ ids[1..100], action }`, action ∈ `trash | restore | publish | draft |
+permanent-delete`. Kısmi başarı hata değildir (200 + `skippedIds`). "Çöpü Boşalt" ayrı
+uç değildir; frontend çöpteki id'leri `permanent-delete` ile gönderir. Dördü de TEK bir
+ortak helper üzerinden çalışır (karar 1A, §10.1) — tek transaction, aynı atlama
+kuralları, aynı ADMIN-only `permanent-delete` eşiği; farklı olan yalnızca Prisma
+delegate'i, `ContentRevision.entityType` ve audit önekidir.
+
+**PRODUCT / PORTFOLIO_ITEM bu bölümün TAMAMINI devralır (mimar kararı).** `Product`
+(§10.9.2) ve `PortfolioItem` (§10.9.4) yalnızca çöp kutusu/yazar/SEO skoru/sekme
+sayaçları paternini değil, artık **revizyon geçmişi, autosave ve toplu işlemi de**
+`Page`/`BlogPost` ile birebir aynı sözleşmeyle uygular — tam uç listesi ve tek
+asimetri (`Product` geri yüklemesindeki 422 çapraz-alan dalı) §10.1'deki parite
+tablosundadır. Bu bölümdeki kurallardan bir sapma varsa, §10.1 ve `openapi.yaml`
+bağlayıcıdır.
 
 **Yazar:** `authorId` create/update gövdelerine eklenir. Verilmezse giriş yapmış
 kullanıcı; BAŞKA kullanıcı atamak/değiştirmek yalnızca **ADMIN** (EDITOR → 403).
@@ -645,7 +704,9 @@ Rozet renkleri: <50 kırmızı, 50–79 sarı, ≥80 yeşil (ui-designer token'l
 "Son Düzenleme — {updatedAt}".
 
 **Audit:** `page.trash|restore|permanent_delete|bulk_<action>` ve `blog_post.*`
-karşılıkları yazılır (`AuditLog.action` serbest string, migration gerekmez).
+karşılıkları yazılır; `Product`/`PortfolioItem` toplu işlemleri için `product.*` ve
+`portfolio_item.*` önekleri kullanılır (`AuditLog.action` serbest string, migration
+gerekmez).
 
 ### 10.8 Toplu İçe Aktarma (Import) + Dışa Aktarma
 
@@ -680,7 +741,7 @@ Projede BullMQ/Redis/kuyruk altyapısı **yoktur** ve v1'de **kurulmayacaktır**
 #### 10.8.2 Şema (db-agent — TEK SAHİP)
 
 ```prisma
-enum ImportJobType         { PAGES  BLOG  WORDPRESS  USERS  MEDIA }
+enum ImportJobType         { PAGES  BLOG  WORDPRESS  PRODUCTS  USERS  MEDIA }
 enum ImportSourceFormat    { CSV  JSON  XML  ZIP }
 enum ImportJobStatus       { PENDING  QUEUED  PROCESSING  COMPLETED  FAILED  CANCELLED }
 enum ImportDuplicateStrategy { SKIP  OVERWRITE  CREATE_NEW }
@@ -756,6 +817,16 @@ model ImportJobError {
 - **`code` neden String, enum değil?** Kod listesi (`ImportJobErrorCode`) uygulama
   geliştikçe sık büyür; her yeni kod için migration gerekmesin diye `AuditLog.action` ile
   aynı desen kullanılır. Bağlayıcı liste `openapi.yaml`'dadır ve Zod ile doğrulanır.
+- **`PRODUCTS` için db-agent'a düşen TEK iş (§10.8.9):** `ImportJobType` enum'ına
+  `PRODUCTS` değerini ekleyen migration (`ALTER TYPE ... ADD VALUE`). Bunun dışında yeni
+  tablo/kolon/indeks GEREKMEZ — `options` (Json) `defaultCurrency`'yi taşır, ürünler
+  mevcut `Product`/`ProductCategory` tablolarına yazılır. Enum değeri eklemek geri
+  alınamaz bir işlemdir; migration ayrı ve tek başına gönderilmelidir.
+- **Önizleme uyarı kodları (`ImportJobPreview.warnings[].code`) migration GEREKTİRMEZ** —
+  `preview` bir `Json` kolondur; §10.8.9'un getirdiği 6 yeni kod (`WP_PRODUCTS_SKIPPED`,
+  `WC_TAX_NOT_IMPORTED`, `WC_STOCK_NOT_MANAGED`, `WC_VARIATIONS_UNSUPPORTED`,
+  `WC_GALLERY_NOT_IMPORTED`, `WC_ORDERS_IGNORED`) yalnızca `openapi.yaml` + Zod
+  seviyesinde tanımlıdır.
 
 #### 10.8.3 Kütüphane seçimleri (bağlayıcı — backend-agent kendi başına değiştiremez)
 
@@ -806,8 +877,14 @@ geçirilmiş) bir siteden gelir. Bu yüzden:
   keser (bkz. `app.ts` içindeki mevcut yorum). Bu yüzden içe aktarma route'ları
   **route-level `bodyLimit`** de tanımlar. İkisi birlikte yapılmadan 5 MB'ın üstü çalışmaz.
 - Tip başına dosya limiti: `PAGES`/`BLOG`/`USERS` **10 MB** · `WORDPRESS` **50 MB** ·
-  `MEDIA` **100 MB**. Kayıt tavanı: `USERS` 500 · `PAGES`/`BLOG` 5.000 · `WORDPRESS`
-  10.000 item · `MEDIA` 500 dosya.
+  `PRODUCTS` **50 MB** · `MEDIA` **100 MB**. Kayıt tavanı: `USERS` 500 ·
+  `PAGES`/`BLOG` 5.000 · `WORDPRESS` 10.000 item · `PRODUCTS` **5.000 kayıt** ·
+  `MEDIA` 500 dosya.
+- `PRODUCTS` boyut limiti `WORDPRESS` ile aynıdır (aynı WXR dosyası yüklenir), ama kayıt
+  tavanı daha DÜŞÜKTÜR (5.000): ürün satırı başına düşen doğrulama (fiyat ayrıştırma,
+  SKU tekilliği, kategori upsert) yazı/sayfa satırından pahalıdır. Tavan **işlenecek
+  `product` item'ı** üzerinden sayılır — aynı dosyadaki `post`/`page`/`attachment`
+  item'ları bu sayıya GİRMEZ (bkz. §10.8.9).
 
 **413/422 kararı (mimar hakemliği — proje geneli kural):** Boyut aşımı **HER ZAMAN 413
 `PAYLOAD_TOO_LARGE`**'dır, 422 değil. RFC 9110 §15.5.14 gereği 413 tam olarak bu durum
@@ -879,6 +956,11 @@ eşleştirilir, `wp:`/`content:` **ön ekleriyle DEĞİL** (ön ek dosyadan dosy
 `attachment` → yalnızca URL sözlüğüne (aşağıya bkz.) · `nav_menu_item`, `revision`,
 `custom_css`, `wp_global_styles`, `wp_block`, `wp_navigation` ve diğer her şey → ATLANIR
 (`UNSUPPORTED_POST_TYPE`, `skippedCount`).
+
+> **`product` item'ları (WooCommerce):** `WORDPRESS` tipinde bunlar da ATLANIR, ancak
+> sessizce değil — önizlemede `WP_PRODUCTS_SKIPPED` uyarısı kullanıcıyı aynı dosyayı
+> `PRODUCTS` tipiyle yeniden yüklemeye yönlendirir. Eşleme kuralları **§10.8.9**'dadır
+> (ayrı tip olma gerekçesi dahil).
 
 **`wp:status` → `PageStatus`:** `publish` → `PUBLISHED` · `draft`/`pending`/`auto-draft`
 → `DRAFT` · `private` → `DRAFT` + `WP_PRIVATE_AS_DRAFT` uyarısı (özel/private durumumuz
@@ -998,7 +1080,11 @@ Operatörün kontrol mekanizması `StartImportJobRequest.defaultAuthorId` /
 `defaultCategoryId` alanlarıdır; WXR'da ayrıca onay ÖNCESİ agregat uyarı gösterilir
 (`WP_AUTHOR_UNMATCHED`), ki asıl faydalı yer de orasıdır — kullanıcı henüz onaylamamıştır.
 
-**`overwrite` ile Page/BlogPost güncellemesi**, normal `PATCH` gibi önce bir
+**`PRODUCTS` (WooCommerce XML):** kuralları hacimli olduğu için AYRI bir bölümdedir —
+bkz. **§10.8.9** (fiyat/SKU/stok/KDV/kategori/görsel eşlemesi, `defaultCurrency`,
+`defaultStatus`'un genişlemiş anlamı, sipariş PII düşürme kuralı).
+
+**`overwrite` ile Page/BlogPost/Product güncellemesi**, normal `PATCH` gibi önce bir
 `ContentRevision` snapshot'ı yazar (§10.1) — içe aktarma da geri alınabilir olsun diye.
 **Çöpteki (`deletedAt != null`) kayıt ASLA overwrite EDİLMEZ** → `TARGET_TRASHED`
 (§10.7'deki "çöpteki içerik düzenlenemez" kuralıyla tutarlı).
@@ -1016,6 +1102,10 @@ yolu gösterir.
   ortadan kaldırır.
 - `AuditLog`: `import.upload`, `import.start`, `import.cancel`, `import.delete` +
   `USERS` içe aktarımında satır başına mevcut `user.create`.
+- **AÇIK BLOKER (tüm tipleri etkiler, bkz. §10.8.9.1):** `recoverStuckImportJobs` ve
+  `runImportRetentionSweep` işin `storagePath`'ini temizlemiyor → çökme/restart sonrası
+  PII taşıyan ham kaynak dosya öksüz kalabiliyor. Her iki fonksiyona `importStorage.remove`
+  + `storagePath: null` eklenmelidir (backend-agent).
 
 ##### 10.8.8.1 compliance-agent kararı (2026-08-05) — ÜRETİME ÇIKIŞ İÇİN KOŞULLU ONAY
 
@@ -1140,29 +1230,199 @@ unutulma hakkı) teknik bir gereksinime çevrilmesidir; hukuki tavsiye YERİNE G
 Özellikle madde 1'deki 30/90 günlük rakamlar ve madde 3'teki `AuditLog` süresi, nihai
 onay için şirketin KVKK/GDPR hukuk danışmanına sunulmalıdır.
 
-#### 10.8.9 Dışa aktarma (bonus madde) — YENİ UÇ YOK
+#### 10.8.9 WooCommerce (`PRODUCTS`) eşleştirmesi (backend-agent tahmin YÜRÜTMEZ)
 
-Mevcut `frontend/src/lib/export-csv.ts::exportToCsv` **doğru çalışıyor** (BOM'lu UTF-8,
-tırnak kaçışı, gömülü `,`/`"`/`\n` işleniyor) ve sunucu ucuna gerek yok: admin listeleri
-zaten tüm kayıtları belleğe çekiyor.
+Durum: v1 · Sahibi: Mimar. Bağlayıcı kaynak: `openapi.yaml` (`ImportJobType: PRODUCTS`).
+**§10.8.6 (WordPress WXR) bu bölümün ÖN KOŞULUDUR** — ad alanı çözümlemesi, `saxes`
+kurulumu, XXE/DTD savunması, iki geçişli attachment sözlüğü, `dc:creator` yazar
+çözümlemesi ve Yoast/RankMath SEO postmeta eşlemesi BİREBİR AYNIDIR ve burada tekrar
+edilmez. Bu bölüm yalnızca **farkları** tanımlar.
 
-**ANCAK doğrulamada gerçek bir hata bulundu (frontend-agent düzeltir):**
-`frontend/src/app/admin/users/page.tsx:84` `listAdminUsers()` fonksiyonunu **cursor
-döngüsü olmadan bir kez** çağırıyor (`limit: 100`). Yani "Dışa Aktar", 100'den fazla
-kullanıcı olduğunda **sessizce ilk 100'ü** dışa aktarıyor ve kullanıcı eksik veri aldığını
-fark etmiyor. `components/admin/content-list/use-content-list.ts:87-106` bu döngüyü DOĞRU
-yapıyor; kullanıcılar sayfası aynı deseni uygulamalıdır.
+**Neden ayrı tip (`PRODUCTS`), `WORDPRESS`'e eklenti değil — karar 2A:** İkisi de aynı
+WXR dosyasını okur; fark yalnızca `wp:post_type` filtresidir. `WORDPRESS` akışına ürün
+yazmak **sessiz bir yan etki** olurdu: bugün o tipi seçen kullanıcı sayfa/yazı bekler,
+`Products` modülü kapalı olsa bile kayıt üretilirdi ve önizlemedeki sayaçlar ne
+gösterdiğinden bağımsız olarak mağazaya veri düşerdi. Ayrı tip → ayrı önizleme, ayrı
+onay, ayrı sayaç, ayrı audit. `WORDPRESS` tipinde karşılaşılan `product` item'ları
+ATLANIR (`UNSUPPORTED_POST_TYPE`, `skippedCount`) ve önizlemede `WP_PRODUCTS_SKIPPED`
+uyarısı kullanıcıyı doğru tipe yönlendirir. Tersi de geçerlidir: `PRODUCTS` tipinde
+`post`/`page` item'ları atlanır.
 
-Sayfalar/Blog dışa aktarma durumu: Blog'da yalnızca "seçilenleri dışa aktar" var
-(`admin/blog/page.tsx:46`), Sayfalar'da **hiç yok**. İkisi de ortak `content-list`
-bileşenini kullandığı için dışa aktarma ORTAK bileşene taşınır (kopyalanmaz) ve her
-ikisinde "Tümünü" + "Seçilenleri" olarak sunulur. Sütunlar: Başlık, Slug, Durum, Yazar,
-Kategori (yalnızca blog), Görüntülenme, Yayın Tarihi, Son Güncelleme.
+**Portföy içe aktarımı KAPSAM DIŞI (karar 2B).** WordPress tarafında portföyün standart
+bir post-type'ı YOKTUR (her tema kendi CPT'sini uydurur: `jetpack-portfolio`,
+`avada_portfolio`, `project`…). Tahmine dayalı bir eşleme, yanlış içeriği yanlış modüle
+yazma riskini taşır; ihtiyaç doğarsa ayrı bir karar ve ayrı bir `PORTFOLIO` tipiyle
+ele alınır.
+
+**Kapsanan `wp:post_type` değerleri:**
+- `product` → `Product` (TEK yazılan tür).
+- `product_variation` → ATLANIR (`UNSUPPORTED_POST_TYPE`) + `WC_VARIATIONS_UNSUPPORTED`.
+  Şemamızda varyant/öznitelik modeli YOKTUR; `variable` tipli ürünün yalnızca ANA kaydı
+  yazılır (fiyatı `_price`/`_regular_price`'tan, yoksa varyasyonların en düşüğünden
+  DEĞİL — türetme yapılmaz, fiyat yoksa satır hatası).
+- `shop_order`, `shop_order_refund`, `shop_coupon`, `shop_subscription`, `customer`
+  → **ASLA içe aktarılmaz**, `skippedCount` + `WC_ORDERS_IGNORED` (aşağıda PII kuralı).
+- Diğer her şey (`nav_menu_item`, `revision`, `wp_block`, `attachment` …) → §10.8.6'daki
+  kuralla atlanır (`attachment`, yalnızca 1. geçişte `post_id → attachment_url`
+  sözlüğüne girer).
+
+**`<item>` alan eşleştirmesi (WooCommerce → `Product`):**
+
+| WXR / postmeta alanı | Hedef (`Product`) | Kural |
+|---|---|---|
+| `title` | `title` | ZORUNLU; boşsa `REQUIRED_FIELD_MISSING` |
+| `wp:post_name` | `slug` | URL-decode; boşsa `slugify(title)`; çakışma → `duplicateStrategy` |
+| `content:encoded` | `descriptionHtml` | **Sanitize edilir (§10.8.4).** WooCommerce shortcode'ları (`[product_page]`, `[woocommerce_...]`) düz metin olarak KALIR — yorumlanmaz, ayrıştırılmaz |
+| `excerpt:encoded` | `excerpt` | WooCommerce "kısa açıklama"sıdır; boşsa `null` |
+| `_sku` | `sku` | Trim edilir; boş string → `null`. **Tekillik anahtarıdır** (aşağıya bkz.) |
+| `_regular_price` | `priceCents` | ZORUNLU (aşağıdaki fiyat kuralı). Yoksa `_price`'a düşülür; ikisi de yoksa `REQUIRED_FIELD_MISSING` |
+| `_sale_price` | `discountPriceCents` | Boş/0 → `null`. **`>= priceCents` ise `null`'a düşürülür** (satır hatası DEĞİL — bkz. fiyat kuralı) |
+| `_price` | — | Yalnızca `_regular_price` yoksa yedek kaynak; kolon olarak SAKLANMAZ (WooCommerce'in "etkin fiyat" önbelleğidir) |
+| (dosyada yok) | `currency` | `StartImportJobRequest.defaultCurrency` (varsayılan `TRY`) — WXR para birimi TAŞIMAZ |
+| `_tax_status`, `_tax_class` | `taxRatePercent` | **`null` bırakılır** + `WC_TAX_NOT_IMPORTED` (bkz. KDV kuralı) |
+| `_manage_stock`, `_stock`, `_stock_status` | `stockQuantity` | Bkz. stok kuralı + `WC_STOCK_NOT_MANAGED` |
+| `<category domain="product_cat" nicename="...">` | `categoryId` | İLK eşleşen kullanılır (şemada tek kategori). `nicename` → `ProductCategory.slug` upsert, CDATA metni → `name`. Hiç yoksa `defaultCategoryId`, o da yoksa `null` |
+| `<category domain="product_tag">` | — | Yok sayılır (`WP_TAGS_UNSUPPORTED`, §10.8.6 ile aynı) |
+| `_thumbnail_id`, `_product_image_gallery` | — | **`coverMediaId` = `null`, `ProductImage` YAZILMAZ** + `WC_GALLERY_NOT_IMPORTED` (bkz. görsel kuralı) |
+| `wp:status` | `status` | §10.8.6 eşlemesi UYGULANIR, sonra **§2C tavanı**: sonuç `defaultStatus`'u AŞAMAZ (varsayılan `DRAFT`). `trash`/`inherit` → ATLANIR |
+| `wp:post_date_gmt` (yoksa `wp:post_date`) | `publishedAt` | Yalnızca nihai `status = PUBLISHED` ise. `"0000-00-00 00:00:00"` → `null` |
+| `dc:creator` | `authorId` | §10.8.6 ile AYNI (`wp:author` sözlüğü → `User.email`; yoksa `defaultAuthorId` → `null` + `WP_AUTHOR_UNMATCHED`). **ASLA kullanıcı oluşturmaz** |
+| Yoast / RankMath postmeta | `seoTitle`, `seoDescription`, `canonicalUrl`, `noIndex`, `ogTitle`, `ogImageUrl` | §10.8.6 tablosuyla BİREBİR AYNI |
+| `_weight`, `_length`, `_width`, `_height`, `_virtual`, `_downloadable`, `_download_*`, `_backorders`, `_sold_individually`, `_purchase_note`, `_upsell_ids`, `_crosssell_ids`, `_product_url`, `_button_text`, `_children`, `_wc_review_count`, `_wc_average_rating` | — | Şemamızda karşılığı YOK → yok sayılır (önizlemede `status: ignored`, satır hatası DEĞİL) |
+| `wp:post_id`, `guid`, `link` | — | Saklanmaz; hata satırlarında `sourceRef` olarak izlenebilirlik sağlar |
+| `wp:comment*` (ürün yorumları/puanları) | — | Yok sayılır — yorum/derecelendirme modelimiz yok |
+
+**Fiyat kuralı (en kritik madde — `Product.priceCents` HER ZAMAN kuruş cinsinden `Int`):**
+1. WooCommerce fiyatı ondalıklı bir METİNDİR (`"199.90"`, bazı export'larda `"199,90"`).
+   Ayrıştırma: binlik ayraçları temizle, virgülü noktaya çevir, `Number` ile oku.
+2. **Kuruşa çevirme `Math.round(value * 100)` ile YAPILMAZ** — float hassasiyeti
+   (`19.99 * 100 = 1998.9999…`) para biriminde kabul edilemez. Ondalık kısım METİN
+   üzerinden ayrılır (`"199.9"` → tam kısım `199`, kesir `90`'a pad'lenir) ve tam sayı
+   aritmetiğiyle birleştirilir. İkiden fazla ondalık basamak → **banker's rounding DEĞİL**,
+   yarım yukarı yuvarlanır ve satır BAŞARILI sayılır.
+3. Sonuç `<= 0` veya sayı değilse → `INVALID_VALUE` (satır hatası, ürün yazılmaz).
+   `CreateProductRequest.priceCents` zaten `minimum: 1`'dir; ücretsiz ürün v1'de YOK.
+4. `_sale_price >= _regular_price` (WooCommerce bunu ENGELLEMEZ, geçmiş kampanya artığı
+   sık görülür) → `discountPriceCents = null` ve satır **BAŞARILI** yazılır. Gerekçe:
+   `assertDiscountBelowPrice` çapraz-alan kuralı bizim iş kuralımızdır; kaynak veriyi
+   bu yüzden reddetmek, yüzlerce ürünlük bir mağaza aktarımını anlamsızca bölerdi —
+   indirimi düşürmek bilgi kaybı olmayan güvenli yoldur (operatör sonradan girer).
+
+**SKU / tekillik kuralı (karar 2E):** Eşleştirme anahtarı `sku`'dur (varsa), `sku` boşsa
+`slug`. `Product.sku` DB'de uniquedir.
+- `skip` (varsayılan) → mevcut ürün korunur, satır `DUPLICATE_SKIPPED` (`skipped`).
+- `overwrite` → mevcut ürün güncellenir; normal `PATCH` gibi ÖNCE `ContentRevision`
+  snapshot'ı yazılır (§10.1, `entityType: PRODUCT`). Çöpteki kayıt ASLA overwrite
+  edilmez → `TARGET_TRASHED`.
+- `createNew` → slug çakışması `-2`/`-3` ile çözülür, **ama SKU çakışmasında satır
+  ATLANIR** (`DUPLICATE_SKIPPED`, `severity: skipped`). "SKU'ya `-2` ekleyip yeni ürün
+  aç" davranışı YASAKTIR: `ABC-1` ile `ABC-1-2` iki ayrı stok kalemi demektir ve
+  mağazanın envanterini sessizce bozar. SKU'suz ürünler (`sku: null`) `createNew` ile
+  sorunsuz çoğaltılır (unique kısıt `null`'ları çakıştırmaz).
+- **Dosya İÇİNDE tekrarlanan SKU** (aynı WXR'da iki `product` aynı `_sku` ile): ilk satır
+  yazılır, sonrakiler `DUPLICATE_SKIPPED`. Bu kontrol DB'ye gitmeden, iş boyunca tutulan
+  bir `Set` ile yapılır — aksi halde aynı transaction içinde unique ihlali alınırdı.
+
+**Stok kuralı:** `Product.stockQuantity` `Int` (nullable DEĞİL, `minimum: 0`).
+- `_manage_stock: yes` → `stockQuantity = parseInt(_stock)`; negatif değer (WooCommerce
+  backorder'da negatife düşebilir) → `0`'a sıkıştırılır; ayrıştırılamıyorsa `0`.
+- `_manage_stock: no` (veya yok) → `_stock` GÜVENİLİR DEĞİLDİR. `_stock_status`'a
+  düşülür: `instock` → `1`, `outofstock` → `0`, `onbackorder` → `0`. Bu ürünler için
+  önizlemede **`WC_STOCK_NOT_MANAGED`** uyarısı üretilir (agregat, satır hatası değil):
+  "N üründe stok takibi kapalı; miktar 0/1 olarak varsayıldı, içe aktarımdan sonra
+  gözden geçirin." Gerekçe: `1` yazmak "stokta var" bilgisini korur; `0` yazmak
+  mağazayı sessizce satışa kapatırdı, büyük bir sayı yazmak ise olmayan stok satardı.
+
+**KDV kuralı:** WooCommerce WXR'ı vergi ORANI TAŞIMAZ — item düzeyinde yalnızca vergi
+SINIFI (`_tax_class`: boş/`reduced-rate`/`zero-rate`) ve `_tax_status` bulunur; gerçek
+yüzdeler mağazanın vergi tablosundadır ve export'a GİRMEZ. Sınıf adından yüzde tahmin
+etmek (`reduced-rate` → %10?) ülkeye/yıla göre değişen bir varsayımdır ve **yanlış
+faturaya** yol açar. Karar: `taxRatePercent = null` bırakılır + önizlemede
+`WC_TAX_NOT_IMPORTED` uyarısı. Not: bizim modelimizde KDV fiyata DAHİLDİR (§10.9.2),
+yani `null` KDV `priceCents`'i etkilemez — yalnızca fatura ayrıştırması yapılamaz.
+
+**Görsel kuralı:** `_thumbnail_id` ve `_product_image_gallery` (virgülle ayrılmış
+attachment id listesi) kaynak sitedeki dosyalara işaret eder. §10.8.6'daki
+**SSRF gerekçesi burada da aynen geçerlidir** (uzak URL indirmek iç ağ/cloud metadata
+taraması ve sınırsız bant genişliği demektir). ANCAK `Page`/`BlogPost`'tan bir FARK
+vardır: orada `coverImageUrl` SERBEST METİN olduğu için uzak URL öylece saklanabiliyordu;
+`Product.coverMediaId` ise **`Media` tablosuna gerçek bir FK'dir** (§10.9.2) —
+uydurulmuş bir `Media` satırı OLUŞTURULAMAZ. Bu yüzden:
+- `coverMediaId = null`, `ProductImage` satırı YAZILMAZ.
+- `descriptionHtml` içindeki `<img src>` uzak URL olarak KALIR (sanitize'dan geçerek).
+- Önizlemede `WC_GALLERY_NOT_IMPORTED`: "N ürün görseli kaynak siteye işaret ediyor;
+  görseller taşınmaz. Medya klasörünü ZIP'leyip `MEDIA` içe aktarımıyla yükledikten
+  sonra kapak görsellerini elle atayın."
+
+**Sipariş/müşteri PII düşürme kuralı (compliance-agent için bağlayıcı):**
+WooCommerce export'u sıklıkla `shop_order` item'ları içerir; bunlar ad, e-posta,
+telefon, fatura/teslimat ADRESİ ve ödeme meta'sı (`_billing_*`, `_shipping_*`,
+`_payment_method`, `_transaction_id`) taşır — yani projedeki **en yoğun PII yığını**.
+1. Bu item'lar hiçbir tipte içe AKTARILMAZ (`Order` kayıtları yalnızca gerçek
+   Stripe checkout akışından doğar, §10.9.3).
+2. Atlanırken **`ImportJobError.rawData` ve `sourceRef` YAZILMAZ** (`undefined`).
+   §10.8.8.1 madde 1(b) ile AYNI gerekçe: içe aktarmayı yapan kişinin değil, ÜÇÜNCÜ
+   kişilerin PII'sini hata tablosuna kopyalamak veri minimizasyonu ihlalidir. Satır
+   yalnızca `rowNumber` + `code` + Türkçe `message` ile raporlanır.
+3. Sayaç: `skippedCount`. Önizlemede tek bir agregat `WC_ORDERS_IGNORED` uyarısı
+   gösterilir ("N sipariş/müşteri kaydı bulundu; bunlar güvenlik ve kişisel veri
+   nedeniyle içe aktarılmaz").
+4. `AuditLog` metadata'sına da sipariş içeriği YAZILMAZ — yalnızca adet.
+
+**Audit:** `import.upload` / `import.start` metadata'sında `type: PRODUCTS` +
+`defaultCurrency` + `defaultStatus` taşınır. Yazılan her ürün için ayrıca ürün-bazlı
+`product.create` audit'i YAZILMAZ (`USERS`'ın aksine) — 5.000 ürünlük bir aktarım
+`AuditLog`'u işe yaramaz biçimde şişirirdi; iş kaydının kendisi (sayaçlar + hata
+listesi) izlenebilirlik için yeterlidir.
+
+**`Products` modülü KAPALIYSA:** `POST /admin/import/jobs` `type: PRODUCTS` ile
+**422** döner (`error.details.type`, mesaj kullanıcıyı Modüller ekranına yönlendirir).
+İş oluşturulmaz. Gerekçe: kapalı bir modüle veri yazmak, modül anahtarının anlamını
+(§10.9.1) boşa çıkarırdı.
+
+##### 10.8.9.1 Compliance onayı (compliance-agent, 2026-08-10 — KOŞULLU)
+
+**Karar 2F — sipariş/müşteri PII'sinin parser'da hiç materyalize edilmeden düşürülmesi:
+ONAYLANDI.** Veri minimizasyonu ilkesi açısından yeterlidir; **mevcut `wxr.parser.ts`
+allow-list postmeta deseni korunduğu sürece**. Genel bir `postmeta key → value` Map'ine
+REFAKTÖR EDİLMEMELİDİR (backend-agent için bağlayıcı kısıt: böyle bir refaktör, `shop_order`
+item'larının `_billing_*`/`_shipping_*` meta'sını belleğe alıp PII'yi materyalize ederdi —
+allow-list, PII'nin hiç okunmamasını yapısal olarak garanti eder). Ham WXR dosyasının
+normal akışta (`finally` bloğunda) işlem biter bitmez silinmesi yeterlidir.
+
+**BLOKER (implementasyon başlamadan önce giderilmeli — PRODUCTS'ın Definition of Done'a
+girmesi buna bağlıdır):** `recoverStuckImportJobs` (çökme/restart kurtarma) ve
+`runImportRetentionSweep` (90 günlük iş silme), asılı kalan/süresi dolan işlerin
+`storagePath`'ini temizlemiyor — sunucu çökmesi durumunda sipariş PII'si taşıyan ham dosya
+süresiz öksüz kalabilir. **Bu, TÜM import tiplerini etkileyen genel bir hatadır**
+(`PRODUCTS`'a özgü değildir); her iki fonksiyonda `importStorage.remove` çağrısı +
+`storagePath: null` yazımı eklenmelidir. Sahibi: backend-agent (§10.8.8.1'deki retention
+maddeleriyle aynı iş paketi).
+
+**Ek notlar (bağlayıcı):**
+- Hata loglarına ham XML metni ASLA yazılmaz — yalnızca `{ jobId, code, rowNumber }`.
+  (Bu, yukarıdaki "sipariş satırlarında `rawData`/`sourceRef` yazılmaz" kuralının
+  observability tarafındaki karşılığıdır; observability-agent da bu kurala tabidir.)
+- `WC_ORDERS_IGNORED` önizleme metni kullanıcıya net gösterilir: **"N sipariş/müşteri
+  kaydı bulundu; güvenlik ve kişisel veri nedeniyle içe aktarılmadı."**
+
+**Kayıt tavanı — architect hakemliği (çözülmüş çelişki).** compliance-agent, maruz kalma
+süresini sınırlamak gerekçesiyle tavanın `WORDPRESS` ile aynı mertebede (10.000 kayıt /
+50 MB) tutulmasını önerdi. **Karar: boyut limiti 50 MB olarak KABUL EDİLDİ (zaten öyleydi),
+kayıt tavanı ise 5.000'de KALIYOR.** Gerekçe: (1) daha DÜŞÜK tavan, önerinin kendi
+gerekçesiyle aynı yöne çalışır — daha az kayıt, daha kısa işleme süresi, ham dosyanın
+`finally` bloğunda daha erken silinmesi, yani daha KISA maruz kalma; (2) 5.000 tavanı
+kullanıcı tarafından açıkça onaylanmış bir karardır; (3) tavan yalnızca **işlenecek
+`product` item'ı** üzerinden sayılır, dosyadaki toplam item sayısı üzerinden değil — yani
+`WORDPRESS`'in 10.000'iyle doğrudan kıyaslanabilir bir sayı değildir. Bu madde bir BLOKER
+değil "ek not" olarak iletildiğinden implementasyon bu kararla ilerleyebilir;
+compliance-agent itiraz ederse konu architect'e yeniden eskale edilir.
 
 #### 10.8.10 Analitik Rapor Dışa Aktarma (Export) — Şema (db-agent — TEK SAHİP)
 
-Durum: v1 · `feature/admin-analytics-v2`'nin ilk (db-agent) adımı. **10.8.9 ile
-KARIŞTIRILMAMALI**: 10.8.9 admin liste sayfalarının (Kullanıcılar/Blog/Sayfalar) TAMAMEN
+Durum: v1 · `feature/admin-analytics-v2`'nin ilk (db-agent) adımı. **10.8.11 ile
+KARIŞTIRILMAMALI** (o madde bu belgede önceden 10.8.9 numarasını taşıyordu): 10.8.11
+admin liste sayfalarının (Kullanıcılar/Blog/Sayfalar) TAMAMEN
 istemci taraflı CSV dışa aktarımıyla ilgiliydi ve "YENİ UÇ YOK" sonucuna varmıştı. Bu
 madde ise **admin analitik/raporlama** (`/admin/stats/*`) verilerinin CSV/PDF olarak
 ASENKRON dışa aktarılmasıyla ilgilidir — veri hacmi (tüm `PageView` satırları, kullanıcı/
@@ -1264,6 +1524,31 @@ hâlidir; nihai hukuki onay için gerçek bir hukuk danışmanına başvurulmal�
 `@@index([date])` bunu çözüyor; `deviceType` WHERE'de filtrelenmediği için composite
 `[date, deviceType]` indeksi gereksiz ek yazma maliyeti getirirdi, eklenmedi.
 
+#### 10.8.11 Dışa aktarma (bonus madde) — YENİ UÇ YOK
+
+> **Numara notu (mimar):** Bu bölüm önceden §10.8.9 idi; §10.8.9 numarası WooCommerce
+> (`PRODUCTS`) eşleştirmesine verildi ve bu madde 10.8.11'e taşındı. §10.8.10 (Analitik
+> Rapor Export) numarası **bilinçli olarak DEĞİŞTİRİLMEDİ** — kod tabanında ~35 yerde
+> (`reports.*`, `stats.*`, `export-storage.ts`, testler) referans veriliyor ve
+> yeniden numaralandırmak bu izleri kırardı.
+
+Mevcut `frontend/src/lib/export-csv.ts::exportToCsv` **doğru çalışıyor** (BOM'lu UTF-8,
+tırnak kaçışı, gömülü `,`/`"`/`\n` işleniyor) ve sunucu ucuna gerek yok: admin listeleri
+zaten tüm kayıtları belleğe çekiyor.
+
+**ANCAK doğrulamada gerçek bir hata bulundu (frontend-agent düzeltir):**
+`frontend/src/app/admin/users/page.tsx:84` `listAdminUsers()` fonksiyonunu **cursor
+döngüsü olmadan bir kez** çağırıyor (`limit: 100`). Yani "Dışa Aktar", 100'den fazla
+kullanıcı olduğunda **sessizce ilk 100'ü** dışa aktarıyor ve kullanıcı eksik veri aldığını
+fark etmiyor. `components/admin/content-list/use-content-list.ts:87-106` bu döngüyü DOĞRU
+yapıyor; kullanıcılar sayfası aynı deseni uygulamalıdır.
+
+Sayfalar/Blog dışa aktarma durumu: Blog'da yalnızca "seçilenleri dışa aktar" var
+(`admin/blog/page.tsx:46`), Sayfalar'da **hiç yok**. İkisi de ortak `content-list`
+bileşenini kullandığı için dışa aktarma ORTAK bileşene taşınır (kopyalanmaz) ve her
+ikisinde "Tümünü" + "Seçilenleri" olarak sunulur. Sütunlar: Başlık, Slug, Durum, Yazar,
+Kategori (yalnızca blog), Görüntülenme, Yayın Tarihi, Son Güncelleme.
+
 ### 10.9 Eklenti/Modül Yönetimi + Site Şablonu (Products/Portfolio/Cart/Checkout/Orders)
 
 Durum: v1 · Sahibi: Mimar. Bağlayıcı kaynak: `openapi.yaml` (tag `Modules`/`Products`/
@@ -1327,12 +1612,14 @@ modeli paternini izler:
   fatura ayrıştırması için), `discountPriceCents` (nullable, doluysa `priceCents`'ten
   küçük olmalı — hem Zod `refine` hem route-handler çapraz kontrolü, bkz.
   `products.routes.ts::assertDiscountBelowPrice`), `sku` (unique), `stockQuantity`.
-- **Bilinen eksik (bilinçli faz sınırı):** `snapshotBeforeUpdate` her `PATCH`'te
-  `Product`/`PortfolioItem` için de `ContentRevision` YAZAR, ama bu fazda
-  `Page`/`BlogPost`'un aksine bunları LİSTELEYEN/GERİ YÜKLEYEN bir uç (`GET/POST
-  .../revisions`) YOKTUR — kayıtlar sessizce birikir (yine `MAX_REVISIONS_PER_ENTITY`
-  ile sınırlı). İleride `ContentRevisions` tag'i Product/Portfolio'ya genişletilecekse
-  route'lar `pages.routes.ts`'teki mevcut implementasyondan BİREBİR kopyalanabilir.
+- **~~Bilinen eksik~~ → GİDERİLDİ (mimar kararı):** `snapshotBeforeUpdate` her
+  `PATCH`'te `Product`/`PortfolioItem` için de `ContentRevision` yazıyordu ama bunları
+  LİSTELEYEN/GERİ YÜKLEYEN uç YOKTU — kayıtlar sessizce birikiyordu. Artık
+  `ContentRevisions` tag'i dört entity'yi de kapsar; ayrıca autosave ve toplu işlem
+  uçları da eklenmiştir. **Bağlayıcı tanım §10.1'deki parite tablosudur** (uç listesi,
+  `snapshot` alan setleri, `Product` geri yüklemesindeki 422 çapraz-alan dalı, toplu
+  işlemin ortak helper'a çıkarılması). Revizyon tavanı (`MAX_REVISIONS_PER_ENTITY`)
+  değişmez.
 
 **Media ilişki paterni — neden gerçek FK, neden Page/BlogPost'tan FARKLI:**
 `Page`/`BlogPost` kapak görselini eski bir `coverImageUrl: String?` (serbest metin
