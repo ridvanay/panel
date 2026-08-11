@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { motion } from "framer-motion";
 import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { useBreakdownStats } from "@/hooks/use-stats";
@@ -37,7 +38,8 @@ interface DeviceBreakdownChartProps {
   rangeLabel?: string;
 }
 
-export function DeviceBreakdownChart({ days = 30, range, rangeLabel }: DeviceBreakdownChartProps) {
+// `memo` gerekçesi: bkz. visitor-chart.tsx üstündeki not.
+export const DeviceBreakdownChart = memo(function DeviceBreakdownChart({ days = 30, range, rangeLabel }: DeviceBreakdownChartProps) {
   const query = useBreakdownStats(range ?? { days });
   const devices = query.data?.devices ?? null;
   const error = query.isError ? friendlyErrorMessage(query.error) : null;
@@ -111,4 +113,4 @@ export function DeviceBreakdownChart({ days = 30, range, rangeLabel }: DeviceBre
       </Card>
     </motion.div>
   );
-}
+});

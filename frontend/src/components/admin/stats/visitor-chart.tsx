@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { motion } from "framer-motion";
 import { Area, AreaChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useViewStats } from "@/hooks/use-stats";
@@ -32,7 +33,11 @@ interface VisitorChartProps {
   rangeLabel?: string;
 }
 
-export function VisitorChart({ days = 30, range, rangeLabel }: VisitorChartProps) {
+// `memo`: dashboard'da bu bileşen prop almadan (`<VisitorChart />`) çağrılıyor ve kendi verisini
+// `useViewStats` ile bağımsız çekiyor — parent (`AdminDashboardPage`) `summary`/`error` state'i
+// değiştikçe re-render olduğunda, memo OLMADAN bu (recharts SVG'si pahalı) bileşen de gereksiz
+// yere yeniden render ediliyordu (gerçek ölçüm: PERFORMANCE_NOTES.md).
+export const VisitorChart = memo(function VisitorChart({ days = 30, range, rangeLabel }: VisitorChartProps) {
   const query = useViewStats(range ?? { days });
   const data = query.data ?? null;
   const error = query.isError ? friendlyErrorMessage(query.error) : null;
@@ -128,4 +133,4 @@ export function VisitorChart({ days = 30, range, rangeLabel }: VisitorChartProps
       </Card>
     </motion.div>
   );
-}
+});

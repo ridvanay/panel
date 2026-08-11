@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { memo, useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { ChevronDown, ChevronLeft, ChevronRight, GripVertical, Trash2 } from "lucide-react";
@@ -13,10 +13,13 @@ interface NavTreeRowProps {
   item: FlatNavItem;
   canIndentItem: boolean;
   canOutdentItem: boolean;
-  onIndent: () => void;
-  onOutdent: () => void;
-  onUpdate: (patch: { label?: string; href?: string }) => void;
-  onRemove: () => void;
+  // `id` parametresi alır (kendi id'sine bağlı bir closure DEĞİL) — böylece NavTreeEditor bu
+  // callback'leri `useCallback` ile TEK SEFER oluşturup her satıra AYNI referansı geçebilir.
+  // Gerekçe: bkz. PERFORMANCE_NOTES.md — gerçek ölçümle doğrulanmış re-render bug'ı.
+  onIndent: (id: string) => void;
+  onOutdent: (id: string) => void;
+  onUpdate: (id: string, patch: { label?: string; href?: string }) => void;
+  onRemove: (id: string) => void;
   hrefHint: string;
 }
 
@@ -25,8 +28,13 @@ interface NavTreeRowProps {
  * Girinti/derinlik GÖRSEL olarak satırın KENDİSİ tarafından değil, çağıran (`NavTreeEditor`)
  * tarafından — çocukları saran `border-l` konteyneriyle (Karar 4) — uygulanır; bu yüzden bu
  * bileşen kendi derinliğini bilmesi gerekmez.
+ *
+ * `memo`: `items` prop'u değişmediği sürece (ör. sürükleme sırasında `NavTreeEditor`'ın kendi
+ * `offsetLeft`/`overId` state'i değiştiğinde) bu satırın props'ları (aynı `item` referansı +
+ * stabil callback'ler) DEĞİŞMEZ — memo olmadan TÜM satırlar her sürükleme hareketinde yeniden
+ * render oluyordu (gerçek ölçüm: PERFORMANCE_NOTES.md).
  */
-export function NavTreeRow({
+export const NavTreeRow = memo(function NavTreeRow({
   item,
   canIndentItem,
   canOutdentItem,
@@ -72,7 +80,7 @@ export function NavTreeRow({
           size="icon-xs"
           aria-label="Girinti azalt (üst seviyeye taşı)"
           disabled={!canOutdentItem}
-          onClick={onOutdent}
+          onClick={() => onOutdent(item.id)}
         >
           <ChevronLeft className="h-3.5 w-3.5" />
         </Button>
@@ -82,7 +90,7 @@ export function NavTreeRow({
           size="icon-xs"
           aria-label="Girinti artır (alt öğe yap)"
           disabled={!canIndentItem}
-          onClick={onIndent}
+          onClick={() => onIndent(item.id)}
         >
           <ChevronRight className="h-3.5 w-3.5" />
         </Button>
@@ -107,7 +115,7 @@ export function NavTreeRow({
               <Input
                 id={`nav-tree-label-${item.id}`}
                 value={item.label}
-                onChange={(e) => onUpdate({ label: e.target.value })}
+                onChange={(e) => onUpdate(item.id, { label: e.target.value })}
                 placeholder="Ör. Hakkımızda"
               />
             </div>
@@ -118,13 +126,13 @@ export function NavTreeRow({
               <Input
                 id={`nav-tree-href-${item.id}`}
                 value={item.href}
-                onChange={(e) => onUpdate({ href: e.target.value })}
+                onChange={(e) => onUpdate(item.id, { href: e.target.value })}
                 placeholder="/hakkimizda"
               />
             </div>
           </div>
           <p className="text-xs text-foreground/50">{hrefHint}</p>
-          <Button type="button" variant="destructive" size="sm" onClick={onRemove}>
+          <Button type="button" variant="destructive" size="sm" onClick={() => onRemove(item.id)}>
             <Trash2 className="h-4 w-4" />
             Kaldır
           </Button>
@@ -132,7 +140,7 @@ export function NavTreeRow({
       )}
     </div>
   );
-}
+});
 
 /** `DragOverlay` içeriği — Karar 5.5: sürüklenen satırın gerçek görsel kopyası. */
 export function NavTreeRowOverlay({ item }: { item: FlatNavItem }) {

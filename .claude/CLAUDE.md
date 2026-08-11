@@ -18,6 +18,7 @@ Bu dosya, projedeki tüm ajanların uyduğu ortak protokolü tanımlar. Herhangi
 | **compliance-agent** | KVKK/GDPR, PII yönetimi, veri saklama | Teknik güvenlik implementasyonu |
 | **documentation-agent** | API doc, README, CHANGELOG | Kod yazma |
 | **code-quality-agent** | Lint/format, PR checklist, bağımlılık politikası | Mimari karar |
+| **performance-agent** | Sorgu/render/bundle optimizasyonu, cache stratejisi | Yeni özellik geliştirme, mimari karar |
 
 **Altın kural:** Bir ajan kendi tablosundaki "Yapmaz" sütununa giren bir işe kalkışırsa, görevi doğru ajana devretmesi gerekir. Belirsizlik durumunda **architect** hakemdir.
 
@@ -34,6 +35,8 @@ Bu dosya, projedeki tüm ajanların uyduğu ortak protokolü tanımlar. Herhangi
 9. **documentation-agent** API doc + CHANGELOG günceller.
 10. **devops-agent** CI/CD üzerinden deploy eder; **observability-agent** izlemenin kapsadığından emin olur.
 
+Not: performance-agent bu akışın standart bir adımı değildir — düzenli olarak değil, yavaşlama şikayeti geldiğinde veya büyük bir özellik sonrası isteğe bağlı bir performans denetimi olarak devreye girer.
+
 Küçük/basit görevlerde bu adımların hepsi gerekmez — architect hangi ajanların devreye gireceğine karar verir.
 
 ## Çakışma Çözümü
@@ -41,6 +44,7 @@ Küçük/basit görevlerde bu adımların hepsi gerekmez — architect hangi aja
 - İki ajanın çıktısı çelişirse (örn. frontend'in beklediği alan backend'de yok), **API kontratı** (openapi.yaml) tek doğru kaynaktır (single source of truth). Kontrata uymayan taraf düzeltir.
 - Görsel çelişki (örn. iki farklı stil önerisi) → **ui-designer**'ın kararı geçerlidir.
 - Güvenlik ile hız/kolaylık çelişirse → **security-agent** öncelikli, architect nihai onayı verir.
+- Performans ile güvenlik çelişirse → performance-agent önce security-agent ile koordine olur, çözülemezse architect karar verir.
 - Çözülemeyen her çakışma **architect**'e eskale edilir.
 
 ## Definition of Done (bir görev ne zaman "bitmiş" sayılır)

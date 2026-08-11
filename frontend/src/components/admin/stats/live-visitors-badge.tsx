@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { useLiveVisitors } from "@/hooks/use-stats";
 
 /**
@@ -13,7 +14,10 @@ import { useLiveVisitors } from "@/hooks/use-stats";
  * Hata durumunda sessizce gizlenir: bu küçük bir widget, sayfayı bloklayan bir hata
  * göstermemeli.
  */
-export function LiveVisitorsBadge() {
+// `memo` gerekçesi: bkz. visitor-chart.tsx üstündeki not — bu rozet 5sn'de bir kendi
+// polling'iyle güncelleniyor, `AdminDashboardPage`'in `summary` state'i değiştikçe de
+// gereksiz yere yeniden render edilmesin diye.
+export const LiveVisitorsBadge = memo(function LiveVisitorsBadge() {
   const { data, isError } = useLiveVisitors();
 
   if (isError || data === undefined) return null;
@@ -27,4 +31,4 @@ export function LiveVisitorsBadge() {
       {data.count.toLocaleString("tr-TR")} kişi şu an sayfa görüntülüyor
     </span>
   );
-}
+});

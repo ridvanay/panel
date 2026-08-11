@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -53,8 +53,15 @@ export function NavTreeEditor({ items, onChange, hrefHint }: NavTreeEditorProps)
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  const flat = flattenDepthFirst(items);
-  const sortableIds = flat.map((item) => item.id);
+  // `useMemo`: `SortableContext`'in `items` prop'u (dnd-kit'in KENDİ context'i) referans
+  // değişikliğine duyarlı — `sortableIds` her render'da YENİ bir dizi olursa, içindeki HER
+  // `useSortable()` çağrısı (yani her `NavTreeRow`) context üzerinden re-render TETİKLENİR,
+  // bu `NavTreeRow`'daki `memo`'yu tamamen ATLAR (memo sadece parent'ın prop'u değiştirince
+  // devreye girer, context aboneliğini durduramaz). Sürükleme sırasında sadece `offsetLeft`/
+  // `overId` değiştiğinde `items` AYNI kaldığı için bu referans da stabil kalmalı — gerçek
+  // ölçümle doğrulanmış kök neden (bkz. PERFORMANCE_NOTES.md).
+  const flat = useMemo(() => flattenDepthFirst(items), [items]);
+  const sortableIds = useMemo(() => flat.map((item) => item.id), [flat]);
   const activeItem = activeId ? flat.find((item) => item.id === activeId) ?? null : null;
   const projection = previewProjection(items, activeId, overId, offsetLeft);
 
@@ -82,18 +89,24 @@ export function NavTreeEditor({ items, onChange, hrefHint }: NavTreeEditorProps)
     resetDragState();
   }
 
-  function handleIndent(id: string) {
-    onChange(indentItem(items, id));
-  }
-  function handleOutdent(id: string) {
-    onChange(outdentItem(items, id));
-  }
-  function handleUpdate(id: string, patch: { label?: string; href?: string }) {
-    onChange(updateItem(items, id, patch));
-  }
-  function handleRemove(id: string) {
-    onChange(removeItemCascade(items, id));
-  }
+  // `useCallback`: NavTreeRow'a AYNI fonksiyon referansı geçilsin diye — id, closure yerine
+  // parametre olarak alınıyor (bkz. nav-tree-row.tsx). Bu olmadan her satıra her render'da YENİ
+  // bir inline callback geçiliyordu, bu da `memo`'yu anlamsız kılıp sürükleme sırasında TÜM
+  // satırların yeniden render olmasına yol açıyordu (gerçek ölçüm: PERFORMANCE_NOTES.md).
+  const handleIndent = useCallback((id: string) => onChange(indentItem(items, id)), [items, onChange]);
+  const handleOutdent = useCallback((id: string) => onChange(outdentItem(items, id)), [items, onChange]);
+  const handleUpdate = useCallback(
+    (id: string, patch: { label?: string; href?: string }) => onChange(updateItem(items, id, patch)),
+    [items, onChange]
+  );
+  const handleRemove = useCallback((id: string) => onChange(removeItemCascade(items, id)), [items, onChange]);
+
+  // `useMemo`: `items` değişmediği sürece (ör. sürükleme sırasında sadece `offsetLeft`/`overId`
+  // değiştiğinde) AYNI `tree` referansı korunur — `buildTree` zaten `item` referanslarını
+  // koruyor (bkz. nav-tree-utils.ts), bu da `NavTreeRow`'un `memo` karşılaştırmasının satır
+  // gerçekten değişmediyse geçerli olmasını sağlar. Hook kuralları gereği erken `return`'den
+  // ÖNCE çağrılmalı.
+  const tree = useMemo(() => buildTree(items), [items]);
 
   if (items.length === 0) {
     return (
@@ -104,8 +117,6 @@ export function NavTreeEditor({ items, onChange, hrefHint }: NavTreeEditorProps)
       />
     );
   }
-
-  const tree = buildTree(items);
 
   function renderIndicatorAbove(rowId: string) {
     if (!activeId || overId !== rowId || !projection) return null;
@@ -131,10 +142,10 @@ export function NavTreeEditor({ items, onChange, hrefHint }: NavTreeEditorProps)
                 item={node.item}
                 canIndentItem={canIndent(items, node.item.id)}
                 canOutdentItem={canOutdent(items, node.item.id)}
-                onIndent={() => handleIndent(node.item.id)}
-                onOutdent={() => handleOutdent(node.item.id)}
-                onUpdate={(patch) => handleUpdate(node.item.id, patch)}
-                onRemove={() => handleRemove(node.item.id)}
+                onIndent={handleIndent}
+                onOutdent={handleOutdent}
+                onUpdate={handleUpdate}
+                onRemove={handleRemove}
                 hrefHint={hrefHint}
               />
               {node.children.length > 0 && (
@@ -146,10 +157,10 @@ export function NavTreeEditor({ items, onChange, hrefHint }: NavTreeEditorProps)
                         item={child}
                         canIndentItem={canIndent(items, child.id)}
                         canOutdentItem={canOutdent(items, child.id)}
-                        onIndent={() => handleIndent(child.id)}
-                        onOutdent={() => handleOutdent(child.id)}
-                        onUpdate={(patch) => handleUpdate(child.id, patch)}
-                        onRemove={() => handleRemove(child.id)}
+                        onIndent={handleIndent}
+                        onOutdent={handleOutdent}
+                        onUpdate={handleUpdate}
+                        onRemove={handleRemove}
                         hrefHint={hrefHint}
                       />
                     </div>

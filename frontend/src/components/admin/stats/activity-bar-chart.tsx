@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { motion } from "framer-motion";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useViewStats } from "@/hooks/use-stats";
@@ -36,7 +37,8 @@ interface ActivityBarChartProps {
   rangeLabel?: string;
 }
 
-export function ActivityBarChart({ days = 7, range, rangeLabel }: ActivityBarChartProps) {
+// `memo` gerekçesi: bkz. visitor-chart.tsx üstündeki not.
+export const ActivityBarChart = memo(function ActivityBarChart({ days = 7, range, rangeLabel }: ActivityBarChartProps) {
   const query = useViewStats(range ?? { days });
   const data = query.data ?? null;
   const error = query.isError ? friendlyErrorMessage(query.error) : null;
@@ -113,4 +115,4 @@ export function ActivityBarChart({ days = 7, range, rangeLabel }: ActivityBarCha
       </Card>
     </motion.div>
   );
-}
+});

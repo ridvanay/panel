@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { motion } from "framer-motion";
 import { useBreakdownStats } from "@/hooks/use-stats";
 import type { StatsRangeQuery } from "@/lib/api/stats";
@@ -27,7 +28,8 @@ interface CountryBreakdownListProps {
   rangeLabel?: string;
 }
 
-export function CountryBreakdownList({ days = 30, range, rangeLabel }: CountryBreakdownListProps) {
+// `memo` gerekçesi: bkz. visitor-chart.tsx üstündeki not.
+export const CountryBreakdownList = memo(function CountryBreakdownList({ days = 30, range, rangeLabel }: CountryBreakdownListProps) {
   const query = useBreakdownStats(range ?? { days });
   const countries = query.data?.countries ?? null;
   const error = query.isError ? friendlyErrorMessage(query.error) : null;
@@ -108,4 +110,4 @@ export function CountryBreakdownList({ days = 30, range, rangeLabel }: CountryBr
       </Card>
     </motion.div>
   );
-}
+});
