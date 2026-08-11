@@ -727,9 +727,18 @@ model Media {
   filename  String
   mimeType  String
   sizeBytes Int
+  // Görsel piksel boyutu (kart üzerinde "1920×1080" etiketi için) — upload anında hesaplanır, migration ÖNCESİ yüklenmiş görsellerde null kalır, geriye dönük backfill YAPILMAZ.
+  width     Int?
+  height    Int?
   // a11y — editör içi içerik görseli eklerken zorunlu (bkz. modules/blog/post-editor.tsx); kapak görseli/avatar gibi diğer kullanımlarda opsiyonel.
   altText   String?
+  // §10.11 Medya Kütüphanesi — Klasör Sistemi. `null` = "Kategorisiz" (bu bir klasör
+  // KAYDI değil, klasörsüzlüğün ta kendisidir). Klasör silinirse SetNull ile boşalır —
+  // görsel/disk dosyası ASLA silinmez (bkz. ARCHITECTURE.md §10.11.3).
+  folderId  String?
   createdAt DateTime @default(now())
+
+  folder MediaFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
 
   // §10.9.2 Ürünler Modülü — bkz. ARCHITECTURE.md §10.9.2.
   productCovers         Product[]        @relation("ProductCoverMedia")
@@ -738,7 +747,42 @@ model Media {
   portfolioCovers       PortfolioItem[]  @relation("PortfolioCoverMedia")
   portfolioGalleryItems PortfolioImage[] @relation("PortfolioGalleryImage")
 
+  @@index([folderId])
   @@map("media")
+}
+
+// §10.11 Medya Kütüphanesi — Klasör Sistemi. Düz dizi + `parentId` self-relation
+// (`NavigationItem` ile AYNI patern, bkz. ARCHITECTURE.md §10.11.1). MAKSİMUM DERİNLİK 2
+// (kök + bir alt seviye) — Postgres CHECK başka satıra bakamadığı için DB'de ZORLANMAZ,
+// API validasyon katmanında zorlanır (backend-agent). "Kategorisiz" bir klasör KAYDI
+// DEĞİLDİR — `Media.folderId IS NULL`'ın ta kendisidir, sentetik satır YOK.
+model MediaFolder {
+  id   String @id @default(uuid())
+  // Sıralı, dış dünyaya sızmayan iç sayaç — cursor sayfalamada stabil sıralama için
+  // (diğer modellerle aynı desen); §10.11 kontratında cursor pagination kullanılmasa da
+  // proje genelindeki tutarlılık için korunur.
+  seq  Int    @unique @default(autoincrement())
+  name String
+
+  // Hiyerarşi. NavigationItem.parentId'nin AKSİNE (Cascade) burada `onDelete: SetNull`
+  // kullanılır — klasör silinince alt klasörler CASCADE silinmez, KÖKE çıkar (architect
+  // kararı, bkz. ARCHITECTURE.md §10.11.3: "hiçbir şey kaskad silinmez").
+  parentId String?
+
+  parent   MediaFolder?  @relation("MediaFolderHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children MediaFolder[] @relation("MediaFolderHierarchy")
+  media    Media[]
+
+  createdAt DateTime @default(now())
+
+  // Savunma derinliği — SERVİS KATMANINDA zorlanan case-insensitive benzersizlik
+  // kuralının YERİNE GEÇMEZ: Postgres'te NULL'lar birbirinden farklı sayıldığı için bu
+  // kısıt kök seviyeyi (parentId IS NULL) KORUMAZ, ayrıca case-sensitive'dir (bkz.
+  // ARCHITECTURE.md §10.11.1 "İsim benzersizliği — dikkat, DB tek başına yetmez").
+  @@unique([parentId, name])
+  // FK doğrulaması ve "bir kökün alt klasörleri" sorgusu için.
+  @@index([parentId])
+  @@map("media_folders")
 }
 
 // Admin panelindeki hassas/yetkilendirme ile ilgili aksiyonların değişmez kaydı

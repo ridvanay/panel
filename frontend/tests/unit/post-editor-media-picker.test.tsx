@@ -11,6 +11,8 @@ import type { Media } from "@/lib/api/types";
 vi.mock("@/lib/api/media", () => ({
   listMedia: vi.fn(),
   updateMediaAltText: vi.fn(),
+  // §10.11 Medya Kütüphanesi — Klasör Sistemi: `MediaPicker` açılışta `listMediaFolders`'ı da çeker.
+  listMediaFolders: vi.fn(() => Promise.resolve([])),
 }));
 
 const mediaApi = await import("@/lib/api/media");
@@ -22,6 +24,9 @@ const sampleMedia: Media = {
   mimeType: "image/png",
   sizeBytes: 1024,
   altText: null,
+  width: null,
+  height: null,
+  folderId: null,
   createdAt: "2026-07-31T00:00:00.000Z",
 };
 

@@ -50,6 +50,12 @@ tags:
       kapak görsellerine BURADAN yüklenir. Okuma authenticated, yükleme/alt metin
       güncelleme SiteRole=ADMIN veya EDITOR, kalıcı silme yalnızca ADMIN. `Page`/
       `BlogPost`'un aksine soft-delete/çöp kutusu YOKTUR.
+
+
+      **Klasör sistemi (`/admin/media/folders`, `/admin/media/move`)** — bkz.
+      ARCHITECTURE.md §10.11. Klasör okuma authenticated (admin medya sayfası VE
+      `MediaPicker` AYNI ucu paylaşır), oluşturma/yeniden adlandırma/taşıma
+      ADMIN veya EDITOR, klasör silme yalnızca ADMIN. Klasör silmek MEDYA SİLMEZ.
   - name: EmailTemplates
     description: >
       E-posta & bildirim şablonu yönetimi (`/admin/notifications/templates`) — bkz.
@@ -1778,6 +1784,15 @@ paths:
         semantiği YOKTUR (`Media` soft-delete DESTEKLEMEZ, `DELETE` kalıcıdır).
 
 
+        **`folderId` filtresi (§10.11):** SUNUCU tarafındadır (tür/tarih/dosya adı
+        filtrelerinin aksine — onlar frontend-only kalır). Gerekçe: klasör seçimi
+        sayfalamanın KAPSAMINI değiştirir; client-side filtrelenirse `meta.nextCursor`
+        döngüsü her klasör değişiminde tüm kütüphaneyi yeniden çekmek zorunda kalır.
+        Filtre ÖZYİNELEMELİ DEĞİLDİR — yalnızca doğrudan o klasördeki medya döner
+        (alt klasörlerdekiler DAHİL EDİLMEZ), böylece dönen kayıt sayısı ilgili
+        `MediaFolder.mediaCount` ile BİREBİR aynıdır.
+
+
         **Hız sınırı:** 120 istek / 1 dakika (route-level, diğer admin GET uçlarının
         paylaştığı global limitten BAĞIMSIZ — hızlı veri dökümü/scraping'e karşı
         savunma derinliği VE bu ucun diğer admin trafiğinin (health polling, dashboard)
@@ -1786,6 +1801,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/MediaFolderFilter"
       responses:
         "200":
           description: OK
@@ -1820,6 +1836,13 @@ paths:
         **Boyut limiti:** global multipart limiti (`MAX_UPLOAD_BYTES`, 5 MB) —
         `POST /admin/import/jobs`'un aksine bu ucun kendine özgü bir route-level
         override'ı YOKTUR. Aşım → `413 PAYLOAD_TOO_LARGE`.
+
+
+        **Klasör (§10.11):** opsiyonel `folderId` alanı gönderilirse yükleme doğrudan
+        o klasöre düşer (kullanıcı bir klasörün içindeyken yüklediğinde beklenen
+        davranış); gönderilmezse `folderId: null` = "Kategorisiz". Klasör bulunamazsa
+        `404` — bu kontrol dosya DİSKE YAZILMADAN ÖNCE yapılır, aksi hâlde DB kaydı
+        olmayan yetim dosya kalır.
       requestBody:
         required: true
         content:
@@ -1837,12 +1860,17 @@ paths:
                       data: { $ref: "#/components/schemas/Media" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: "`folderId` gönderildi ama böyle bir klasör YOK (dosya diske yazılmadan reddedilir)."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
         "413": { $ref: "#/components/responses/PayloadTooLarge" }
         "422":
           description: >
             Dosya yok / desteklenmeyen tür beyan edildi / dosya içeriği tanınan bir
             görsel biçimiyle eşleşmiyor (SVG dahil) / beyan edilen tür ile tespit
-            edilen tür UYUŞMUYOR (`error.details.file`).
+            edilen tür UYUŞMUYOR (`error.details.file`) / `folderId` UUID değil.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
@@ -1857,6 +1885,13 @@ paths:
         Faz 2 içerik editörü — editör içi görsellerde erişilebilirlik/SEO alt metni
         zorunluluğu. v1'de TEK güncellenebilir alan `altText`'tir; dosyanın kendisi,
         `url`/`filename`/`mimeType` DEĞİŞTİRİLEMEZ (yeniden yüklemek gerekir).
+
+
+        **Bu uç `folderId` KABUL ETMEZ (karar, §10.11)** — klasör değiştirmenin TEK
+        yolu `POST /admin/media/move`'dur. Gerekçe: taşımanın tekil ve toplu hâli tek
+        kod yolunda kalsın, "kısmi başarı" semantiği tek yerde tanımlansın ve istemci
+        tarafında "hangi ucu kullanayım?" ikiliği doğmasın. Gövdeye `folderId`
+        eklenirse `422` (bilinmeyen alan).
       requestBody:
         required: true
         content:
@@ -1889,6 +1924,251 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+
+  # ---------------------------------------------------------------------------
+  # MEDYA KLASÖRLERİ (§10.11) — AJAN KAPSAM NOTU (architect, bağlayıcı)
+  #
+  #   db-agent       : `MediaFolder` modeli (id, seq, name, parentId, createdAt),
+  #                    self-relation onDelete: SetNull, `Media.folderId` nullable FK
+  #                    onDelete: SetNull, @@index([parentId]) + @@index([folderId]),
+  #                    tek migration. İş kuralı/validasyon YAZMAZ.
+  #   backend-agent  : Aşağıdaki 5 uç + Zod şemaları + mapper (`toMediaFolderDto`).
+  #                    Derinlik/döngü/isim-çakışması kurallarını UYGULAR, şema TASARLAMAZ.
+  #   frontend-agent : Klasör ağacı paneli (admin medya sayfası + MediaPicker AYNI
+  #                    veri kaynağı), `folderId` query'si ile listeleme, seçim
+  #                    kısayolları (shift/ctrl/cmd + Ctrl+A), "Klasöre Taşı" aksiyonu.
+  #   ui-designer    : Ağaç satırı / seçim çubuğu / "Kategorisiz" durumu için
+  #                    tasarım tokenleri + boş-durum metinleri. Kod YAZMAZ.
+  #   qa-agent       : Klasör silme → medyanın Kategorisiz'e düşmesi, alt klasörün
+  #                    köke çıkması, kısmi başarı (skippedIds) senaryoları.
+  #
+  # Fastify yönlendirme notu: `/admin/media/folders` ve `/admin/media/move` STATİK
+  # segmentlerdir; find-my-way statik segmenti `/:mediaId` parametresine göre ÖNCELİKLİ
+  # eşleştirir — çakışma YOKTUR (ayrıca `mediaId` uuid doğrulandığı için "folders"
+  # zaten 422 verirdi).
+  # ---------------------------------------------------------------------------
+
+  /admin/media/folders:
+    get:
+      tags: [Media]
+      summary: Medya klasörlerini listele — DÜZ dizi + parentId (authenticated)
+      description: >
+        **Karar — düz (flat) dizi, iç içe JSON ağacı DEĞİL** (`NavigationItem` ile AYNI
+        patern, bkz. §10.10.1): (1) DB zaten satır bazlıdır, ağaç yazma anında
+        düzleştirilmek zorunda kalırdı; (2) özyinelemeli şema Zod/`fastify-type-provider-zod`
+        tarafında `z.lazy` + tip çıkarımı sorunları doğurur ve OpenAPI istemci üreticilerinde
+        kırılgandır; (3) tüketici (admin sayfası VE `MediaPicker`) ağacı tek geçişte
+        `parentId`'ye göre kurar. Sunucu `(parentId NULLS FIRST, name ASC)` sıralar —
+        kök klasörler her zaman alt klasörlerden ÖNCE gelir, tek geçişli ağaç kurulumu
+        güvenlidir.
+
+
+        **Sayfalama YOKTUR** (cursor/limit almaz) — v1 varsayımı klasör sayısının küçük
+        (~200 altı) olmasıdır ve ağaç panelinin doğru çizilebilmesi için TÜM düğümlere
+        aynı anda ihtiyaç vardır. Aynı gerekçeyle **klasör adı araması FRONTEND-only'dir**
+        (query param YOKTUR): tüm liste zaten bellektedir, sunucuya gitmek ek gecikme
+        dışında bir şey kazandırmaz.
+
+
+        `mediaCount` her klasörün DOĞRUDAN içindeki medya sayısıdır (alt klasörler HARİÇ)
+        ve tek sorguda (`include: { _count: { select: { media: true } } }`) hesaplanır —
+        N+1 sorgu YASAK. "Kategorisiz" (`folderId IS NULL`) bir klasör kaydı DEĞİLDİR,
+        listede DÖNMEZ; sayısı gerekiyorsa `GET /admin/media?folderId=none` ile alınır.
+
+
+        **Hız sınırı:** `GET /admin/media` ile AYNI (120 istek / 1 dakika) — `MediaPicker`
+        her açılışında bu ucu çağırır.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/MediaFolder" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+    post:
+      tags: [Media]
+      summary: Klasör oluştur (ADMIN/EDITOR)
+      description: >
+        Yetki eşiği `POST /admin/media` (yükleme) ile AYNI — klasör oluşturmak
+        içerik düzenleme işidir, yıkıcı değildir.
+
+
+        `parentId` verilirse hedef klasörün KENDİ `parentId`'si null OLMALIDIR
+        (maksimum derinlik 2 — kök + bir alt seviye, §10.11) → aksi hâlde `422`.
+        Aynı `parentId` altında büyük/küçük harf duyarsız aynı isim → `409 CONFLICT`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateMediaFolderRequest" }
+      responses:
+        "201":
+          description: Oluşturuldu
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/MediaFolder" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: "`parentId` gönderildi ama böyle bir klasör YOK."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "409":
+          description: "Aynı üst klasör altında aynı isim (case-insensitive) — `error.code: CONFLICT`."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/media/folders/{folderId}:
+    parameters:
+      - $ref: "#/components/parameters/MediaFolderId"
+    patch:
+      tags: [Media]
+      summary: Klasörü yeniden adlandır / başka klasörün altına taşı (ADMIN/EDITOR)
+      description: >
+        En az bir alan gönderilmelidir (`name` ve/veya `parentId`); ikisi de yoksa `422`.
+        `parentId: null` gönderilmesi "klasörü köke taşı" demektir — alanın HİÇ
+        gönderilmemesi ise "üst klasörü değiştirme" demektir (ikisi FARKLIDIR).
+
+
+        Doğrulama kuralları (hepsi `422`, `error.details` ile):
+
+        - klasör kendi `parentId`'si olamaz;
+
+        - hedef üst klasörün `parentId`'si null OLMALIDIR (derinlik 2);
+
+        - klasörün KENDİ alt klasörleri varsa başka bir klasörün altına taşınamaz
+          (derinlik aşımı) — önce alt klasörler köke taşınmalıdır.
+
+
+        Bu üç kural birlikte döngüyü (cycle) YAPISAL olarak imkânsız kılar; özyinelemeli
+        ata (ancestor) gezintisi GEREKMEZ. İsim çakışması → `409`.
+
+
+        **Not (v1 kapsam):** frontend v1'de yalnızca yeniden adlandırmayı zorunlu olarak
+        sunar; klasör taşıma UI'ı (sürükle-bırak) opsiyoneldir — kontrat şimdiden hazırdır.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateMediaFolderRequest" }
+      responses:
+        "200":
+          description: Güncellendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/MediaFolder" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "Aynı üst klasör altında aynı isim (case-insensitive) — `error.code: CONFLICT`."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+    delete:
+      tags: [Media]
+      summary: Klasörü sil — içindeki medya SİLİNMEZ (yalnızca ADMIN)
+      description: >
+        Yetki eşiği `DELETE /admin/media/{mediaId}` ile AYNI (yalnızca ADMIN) — klasör
+        silmek medyayı yok etmese de organizasyon bilgisini geri alınamaz biçimde kaybeder.
+
+
+        **Silmenin iki yan etkisi de KAYIPSIZDIR (karar, §10.11):**
+
+        - **İçindeki medya:** `Media.folderId` `SetNull` ile boşalır → görseller
+          "Kategorisiz"e düşer. Görseller ASLA silinmez, disk dosyalarına DOKUNULMAZ.
+
+        - **Alt klasörler:** CASCADE **DEĞİL** — alt klasörlerin `parentId`'si `SetNull`
+          ile boşalır, yani KÖKE çıkarlar (içerikleriyle birlikte korunurlar). Cascade
+          reddedildi: tek bir tıklamayla görünmeyen bir alt ağacın tüm organizasyonunu
+          silmek, "medyayı silmiyoruz" güvencesiyle çelişen sürpriz bir veri kaybı
+          olurdu; ayrıca derinlik 2 sınırında alt klasörün köke çıkması HER ZAMAN
+          geçerli bir durumdur (ek doğrulama gerekmez).
+
+
+        Her iki etki de FK `onDelete: SetNull` ile DB seviyesinde ifade edilir — servis
+        katmanında elle `updateMany` GEREKMEZ (backend-agent döngü yazmasın).
+
+
+        İstemci, silme onay diyaloğunda etkiyi açıkça yazmalıdır ("N görsel Kategorisiz'e
+        taşınacak, M alt klasör en üst seviyeye çıkacak").
+      responses:
+        "204": { description: "Silindi (medya ve alt klasörler korundu)" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/media/move:
+    post:
+      tags: [Media]
+      summary: Medyayı klasöre taşı — tekil ve toplu TEK uç (ADMIN/EDITOR)
+      description: >
+        **Karar — ayrı bir `/move-bulk` ucu YOKTUR:** gövde her zaman `mediaIds` dizisi
+        alır, tekil taşıma tek elemanlı dizidir. Gerekçe: taşıma mantığı (varlık kontrolü,
+        hedef klasör doğrulaması, kısmi başarı) tek kod yolunda kalır; iki uç iki ayrı
+        davranış sapması ve iki ayrı test yüzeyi demektir. `POST /admin/pages/bulk`
+        ailesiyle aynı felsefe.
+
+
+        **Kısmi başarı bir hata DEĞİLDİR:** bulunamayan id'ler `skippedIds`'e düşer,
+        yanıt yine `200`. Zaten hedef klasörde olan medya "taşındı" sayılır (idempotent,
+        `movedCount`'a dahildir) — atlanmaz.
+
+
+        `folderId: null` = "Kategorisiz'e taşı" (klasörden çıkar). Alan ZORUNLUDUR ama
+        değeri null OLABİLİR; hiç gönderilmemesi `422`'dir (kazara "klasörden çıkarma"
+        olmasın diye niyet açıkça belirtilmelidir).
+
+
+        Hedef klasör verilmiş ama YOKSA istek TAMAMEN reddedilir (`404`) — kısmi
+        uygulama YAPILMAZ. Yazma tek `updateMany` ile yapılır (id başına sorgu YASAK).
+
+
+        **AuditLog yazılmaz (v1 kararı):** mevcut medya modülünde upload/delete de audit
+        yazmıyor; taşıma daha az yıkıcı bir işlem olduğu için tutarlılık korunur. İleride
+        eklenirse eylem öneki `media.move` olacaktır.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MoveMediaRequest" }
+      responses:
+        "200":
+          description: Taşındı (kısmi başarı dahil)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/MoveMediaResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: "Hedef klasör (`folderId`) bulunamadı — hiçbir medya taşınmadı."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
 
   /admin/notifications/templates:
     get:
@@ -4040,6 +4320,25 @@ components:
       in: path
       required: true
       schema: { type: string, format: uuid }
+    MediaFolderId:
+      name: folderId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    MediaFolderFilter:
+      name: folderId
+      in: query
+      required: false
+      description: >
+        Klasör filtresi (§10.11). Verilmezse **filtre uygulanmaz** (tüm kütüphane,
+        klasörlü + klasörsüz). `none` = yalnızca "Kategorisiz" (`folderId IS NULL`).
+        UUID = yalnızca o klasördeki medya, ÖZYİNELEMELİ DEĞİL (alt klasörlerdekiler
+        DAHİL EDİLMEZ). UUID de `none` de olmayan bir değer → `422`. Var olmayan bir
+        UUID → `404` DEĞİL, boş liste + `200` (klasör silinirken açık kalan bir
+        sekmenin hata göstermemesi için).
+      schema:
+        type: string
+        description: "UUID veya `none` sabiti."
     TrashedFilter:
       name: trashed
       in: query
@@ -5034,6 +5333,18 @@ components:
           description: "Gerçek dosya İÇERİĞİNDEN (magic bytes) tespit edilir — beyan edilen Content-Type GÜVENİLMEZ. bkz. POST açıklaması."
           enum: [image/jpeg, image/png, image/webp, image/gif]
         sizeBytes: { type: integer }
+        width:
+          type: integer
+          nullable: true
+          description: >
+            Görsel piksel genişliği — upload anında hesaplanır. Eski kayıtlarda veya
+            hesaplanamayan (bozuk/desteklenmeyen) dosyalarda `null`.
+        height:
+          type: integer
+          nullable: true
+          description: >
+            Görsel piksel yüksekliği — upload anında hesaplanır. Eski kayıtlarda veya
+            hesaplanamayan (bozuk/desteklenmeyen) dosyalarda `null`.
         altText:
           type: string
           nullable: true
@@ -5043,10 +5354,115 @@ components:
             `IMAGE_ALT_MISSING` kriteri BU ALANA DEĞİL, içeriğe gömülü `<img alt>`/blok
             `data.alt` alanına bakar (bkz. `SeoScoreIssue` açıklaması) — ikisi AYRI
             kavramlardır.
+        folderId:
+          type: string
+          format: uuid
+          nullable: true
+          description: >
+            Ait olduğu `MediaFolder`. `null` = "Kategorisiz" (§10.11) — bu bir klasör
+            KAYDI değil, klasörsüzlüğün ta kendisidir. Klasör silinirse FK `SetNull` ile
+            otomatik `null` olur. DTO klasör ADINI TAŞIMAZ (karar): istemci klasör
+            listesini zaten `GET /admin/media/folders` ile bir kez çeker ve id→ad
+            eşlemesini bellekte yapar; adı her medya satırına gömmek gereksiz join +
+            iki kopyalı doğruluk kaynağı olurdu.
         createdAt: { type: string, format: date-time }
 
+    MediaFolder:
+      description: >
+        Medya kütüphanesi klasörü (§10.11). Hiyerarşi DÜZ DİZİ + `parentId` ile ifade
+        edilir (`NavigationItem` ile aynı patern, iç içe JSON ağacı DEĞİL). **Maksimum
+        derinlik 2'dir** (kök + bir alt seviye): `parentId` dolu olan bir klasör yalnızca
+        `parentId`'si null olan bir klasörü işaret edebilir — döngü yapısal olarak
+        imkânsızdır. Sunucu `(parentId NULLS FIRST, name ASC)` sıralı döner.
+      type: object
+      required: [id, name, parentId, mediaCount, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, maxLength: 80 }
+        parentId:
+          type: string
+          format: uuid
+          nullable: true
+          description: "Üst klasörün `id`'si; null ise kök seviye klasördür."
+        mediaCount:
+          type: integer
+          description: >
+            DOĞRUDAN bu klasördeki medya sayısı — alt klasörlerdekiler DAHİL DEĞİLDİR
+            (kümülatif/rollup sayaç bilinçli olarak yok: `GET /admin/media?folderId=`
+            de özyinelemeli olmadığı için sayı, tıklandığında görülecek liste uzunluğuyla
+            BİREBİR eşleşir). Tek sorguda `_count` ile hesaplanır, N+1 YASAK.
+        createdAt: { type: string, format: date-time }
+
+    CreateMediaFolderRequest:
+      description: "`POST /admin/media/folders` gövdesi."
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+          description: >
+            Baştaki/sondaki boşluklar sunucuda kırpılır (trim); kırpma sonrası boş
+            kalırsa `422`. Aynı üst klasör altında case-insensitive benzersiz olmalıdır
+            (`409`).
+        parentId:
+          type: string
+          format: uuid
+          nullable: true
+          default: null
+          description: "Verilmezse/null ise kök seviye. Hedefin kendi `parentId`'si null OLMALIDIR (derinlik 2) → aksi hâlde 422."
+
+    UpdateMediaFolderRequest:
+      description: >
+        `PATCH /admin/media/folders/{folderId}` gövdesi. En az bir alan gönderilmelidir;
+        boş gövde `422`. Alanın GÖNDERİLMEMESİ "değiştirme", `parentId: null` ise
+        "köke taşı" demektir.
+      type: object
+      minProperties: 1
+      properties:
+        name: { type: string, minLength: 1, maxLength: 80 }
+        parentId: { type: string, format: uuid, nullable: true }
+
+    MoveMediaRequest:
+      description: "`POST /admin/media/move` gövdesi — tekil taşıma tek elemanlı `mediaIds` dizisidir."
+      type: object
+      required: [mediaIds, folderId]
+      properties:
+        mediaIds:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items: { type: string, format: uuid }
+          description: >
+            Tekrarlı id'ler sunucuda teklenir (dedupe). Üst sınır `BulkContentActionRequest`
+            ile AYNI (100) — daha fazlası için istemci parçalara böler.
+        folderId:
+          type: string
+          format: uuid
+          nullable: true
+          description: >
+            Hedef klasör; `null` = "Kategorisiz'e taşı". Alan ZORUNLUDUR (değeri null
+            olabilir) — kazara klasörden çıkarmayı önlemek için niyet açıkça belirtilir.
+
+    MoveMediaResult:
+      type: object
+      required: [folderId, requestedCount, movedCount, skippedIds]
+      properties:
+        folderId: { type: string, format: uuid, nullable: true, description: "İsteğin hedef klasörü (yankı)." }
+        requestedCount: { type: integer, description: "dedupe sonrası gönderilen id sayısı" }
+        movedCount:
+          type: integer
+          description: "Güncellenen kayıt sayısı. Zaten hedef klasörde olan medya da DAHİLDİR (idempotent)."
+        skippedIds:
+          type: array
+          items: { type: string, format: uuid }
+          description: "Bulunamayan medya id'leri. Hata DEĞİLDİR (`200` döner)."
+
     UpdateMediaAltTextRequest:
-      description: "`PATCH /admin/media/{mediaId}` gövdesi — v1'de TEK güncellenebilir alan."
+      description: >
+        `PATCH /admin/media/{mediaId}` gövdesi — TEK güncellenebilir alan. `folderId`
+        BİLEREK yoktur; klasör değişimi yalnızca `POST /admin/media/move` ile yapılır.
       type: object
       required: [altText]
       properties:
@@ -5065,6 +5481,13 @@ components:
             gerçek tür dosya içeriğinin ilk baytlarından (magic bytes) tespit edilir; SVG
             İSTİSNASIZ REDDEDİLİR (stored-XSS riski, bkz. POST açıklaması). Boyut limiti
             uç açıklamasındadır.
+        folderId:
+          type: string
+          format: uuid
+          description: >
+            Opsiyonel — yükleme doğrudan bu klasöre düşer (§10.11). Verilmezse
+            "Kategorisiz". Multipart alanı olarak string gelir; klasör yoksa `404`
+            (dosya diske YAZILMADAN ÖNCE kontrol edilir).
 
     UserSummary:
       description: >

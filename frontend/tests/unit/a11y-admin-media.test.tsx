@@ -9,6 +9,8 @@ vi.mock("@/lib/api/media", () => ({
   listMedia: vi.fn(),
   uploadMedia: vi.fn(),
   deleteMedia: vi.fn(),
+  // §10.11 Medya Kütüphanesi — Klasör Sistemi: sayfa artık mount'ta klasör ağacını da çeker.
+  listMediaFolders: vi.fn(() => Promise.resolve([])),
 }));
 
 const mediaApi = await import("@/lib/api/media");
@@ -23,6 +25,9 @@ const items: Media[] = [
     mimeType: "image/png",
     sizeBytes: 204800,
     altText: null,
+    width: null,
+    height: null,
+    folderId: null,
     createdAt: "2026-08-01T10:00:00.000Z",
   },
   {
@@ -32,6 +37,9 @@ const items: Media[] = [
     mimeType: "image/jpeg",
     sizeBytes: 512000,
     altText: null,
+    width: null,
+    height: null,
+    folderId: null,
     createdAt: "2026-08-02T10:00:00.000Z",
   },
   {
@@ -41,6 +49,9 @@ const items: Media[] = [
     mimeType: "image/svg+xml",
     sizeBytes: 10240,
     altText: null,
+    width: null,
+    height: null,
+    folderId: null,
     createdAt: "2026-08-03T10:00:00.000Z",
   },
 ];

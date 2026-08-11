@@ -5,7 +5,8 @@ import { axe } from "jest-axe";
 import { MediaSelectField } from "@/components/admin/media/media-select-field";
 import type { Media } from "@/lib/api/types";
 
-vi.mock("@/lib/api/media", () => ({ listMedia: vi.fn(), uploadMedia: vi.fn() }));
+// §10.11 Medya Kütüphanesi — Klasör Sistemi: `MediaPicker` açılışta `listMediaFolders`'ı da çeker.
+vi.mock("@/lib/api/media", () => ({ listMedia: vi.fn(), uploadMedia: vi.fn(), listMediaFolders: vi.fn(() => Promise.resolve([])) }));
 
 const mediaApi = await import("@/lib/api/media");
 
@@ -18,6 +19,9 @@ const sampleMedia: Media = {
   mimeType: "image/png",
   sizeBytes: 1024,
   altText: "Ürün kapak görseli",
+  width: null,
+  height: null,
+  folderId: null,
   createdAt: "2026-01-01T00:00:00.000Z",
 };
 

@@ -250,10 +250,39 @@ export const MediaSchema = z.object({
   filename: z.string(),
   mimeType: z.string(),
   sizeBytes: z.number().int(),
+  width: z.number().int().nullable(),
+  height: z.number().int().nullable(),
   altText: z.string().nullable(),
+  // §10.11 Medya Kütüphanesi — Klasör Sistemi. `null` = "Kategorisiz" (bu bir klasör KAYDI
+  // DEĞİLDİR). DTO klasör ADINI TAŞIMAZ (karar) — istemci `GET /admin/media/folders`'ı bir
+  // kez çekip id→ad eşlemesini bellekte yapar.
+  folderId: z.string().uuid().nullable(),
   createdAt: z.string(),
 });
 export type MediaDto = z.infer<typeof MediaSchema>;
+
+// §10.11 Medya Kütüphanesi — Klasör Sistemi. Düz dizi + `parentId` self-relation
+// (`NavigationItem` ile AYNI patern). Maksimum derinlik 2 — bkz. ARCHITECTURE.md §10.11.1.
+export const MediaFolderSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string().max(80),
+  parentId: z.string().uuid().nullable(),
+  // DOĞRUDAN bu klasördeki medya sayısı — alt klasörlerdekiler DAHİL DEĞİLDİR (rollup YOK,
+  // bkz. ARCHITECTURE.md §10.11.1). Tek sorguda `_count` ile hesaplanır, N+1 YASAK.
+  mediaCount: z.number().int(),
+  createdAt: z.string(),
+});
+export type MediaFolderDto = z.infer<typeof MediaFolderSchema>;
+
+// `POST /admin/media/move` yanıtı — `BulkContentActionResultSchema` ile AYNI kısmi-başarı
+// felsefesi (`skippedIds` + 200, hata DEĞİL). Bkz. ARCHITECTURE.md §10.11.4.
+export const MoveMediaResultSchema = z.object({
+  folderId: z.string().uuid().nullable(),
+  requestedCount: z.number().int(),
+  movedCount: z.number().int(),
+  skippedIds: z.array(z.string().uuid()),
+});
+export type MoveMediaResultDto = z.infer<typeof MoveMediaResultSchema>;
 
 // ---------- §10.9.2 Ürünler Modülü (Eklenti/Modül Yönetimi) — BlogCategory/BlogPost paterniyle
 // BİREBİR aynı §10.7 çöp kutusu/yazar/SEO skoru alan setine, e-ticaret alanları (fiyat/stok/SKU)

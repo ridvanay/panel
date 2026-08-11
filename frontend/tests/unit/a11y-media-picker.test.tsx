@@ -5,15 +5,17 @@ import { axe } from "jest-axe";
 import { MediaPicker } from "@/components/admin/media/media-picker";
 import type { Media } from "@/lib/api/types";
 
-vi.mock("@/lib/api/media", () => ({ listMedia: vi.fn(), uploadMedia: vi.fn() }));
+// §10.11 Medya Kütüphanesi — Klasör Sistemi: `MediaPicker` artık `MediaFolderTree` (mode="picker")
+// için `listMediaFolders`'ı da açılışta çeker.
+vi.mock("@/lib/api/media", () => ({ listMedia: vi.fn(), uploadMedia: vi.fn(), listMediaFolders: vi.fn(() => Promise.resolve([])) }));
 
 const mediaApi = await import("@/lib/api/media");
 
 const axeOptions = { rules: { region: { enabled: false } } };
 
 const sampleMedia: Media[] = [
-  { id: "media-1", url: "https://example.com/a.png", filename: "a.png", mimeType: "image/png", sizeBytes: 100, altText: null, createdAt: "2026-01-01T00:00:00.000Z" },
-  { id: "media-2", url: "https://example.com/b.png", filename: "b.png", mimeType: "image/png", sizeBytes: 200, altText: null, createdAt: "2026-01-02T00:00:00.000Z" },
+  { id: "media-1", url: "https://example.com/a.png", filename: "a.png", mimeType: "image/png", sizeBytes: 100, altText: null, width: null, height: null, folderId: null, createdAt: "2026-01-01T00:00:00.000Z" },
+  { id: "media-2", url: "https://example.com/b.png", filename: "b.png", mimeType: "image/png", sizeBytes: 200, altText: null, width: null, height: null, folderId: null, createdAt: "2026-01-02T00:00:00.000Z" },
 ];
 
 describe("MediaPicker — a11y ve klavye davranışı", () => {

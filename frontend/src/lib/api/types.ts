@@ -504,7 +504,63 @@ export interface Media {
   sizeBytes: number;
   /** a11y: editör içeriğine eklenirken zorunlu tutulur; kütüphanede henüz atanmamışsa `null`. */
   altText: string | null;
+  /** Piksel cinsinden genişlik/yükseklik — eski kayıtlarda (backend hesaplayamadıysa) `null`. */
+  width: number | null;
+  height: number | null;
+  /**
+   * §10.11 Medya Kütüphanesi — Klasör Sistemi. Ait olduğu `MediaFolder`'ın id'si; `null` =
+   * "Kategorisiz" — bu bir klasör KAYDI değil, klasörsüzlüğün ta kendisidir. DTO klasör ADINI
+   * TAŞIMAZ — istemci `GET /admin/media/folders`'ı bir kez çekip id→ad eşlemesini bellekte yapar.
+   */
+  folderId: string | null;
   createdAt: string;
+}
+
+/**
+ * §10.11 Medya Kütüphanesi — Klasör Sistemi. Hiyerarşi DÜZ DİZİ + `parentId` ile ifade edilir
+ * (`NavigationItem` ile AYNI patern, iç içe JSON ağacı DEĞİL). Maksimum derinlik 2'dir (kök + bir
+ * alt seviye). Sunucu `(parentId NULLS FIRST, name ASC)` sıralı döner. Bkz. ARCHITECTURE.md §10.11.1.
+ */
+export interface MediaFolder {
+  id: string;
+  name: string;
+  /** Üst klasörün `id`'si; null ise kök seviye klasördür. */
+  parentId: string | null;
+  /** DOĞRUDAN bu klasördeki medya sayısı — alt klasörlerdekiler DAHİL DEĞİLDİR (rollup YOK). */
+  mediaCount: number;
+  createdAt: string;
+}
+
+/** `POST /admin/media/folders` gövdesi. */
+export interface CreateMediaFolderRequest {
+  name: string;
+  /** Verilmezse/null ise kök seviye. Hedefin KENDİ `parentId`'si null OLMALIDIR (derinlik 2). */
+  parentId?: string | null;
+}
+
+/**
+ * `PATCH /admin/media/folders/{folderId}` gövdesi. Alanın HİÇ gönderilmemesi "değiştirme",
+ * `parentId: null` ise "köke taşı" demektir (ikisi FARKLIDIR) — bkz. ARCHITECTURE.md §10.11.1.
+ */
+export interface UpdateMediaFolderRequest {
+  name?: string;
+  parentId?: string | null;
+}
+
+/** `POST /admin/media/move` gövdesi — tekil taşıma tek elemanlı `mediaIds` dizisidir. */
+export interface MoveMediaRequest {
+  mediaIds: string[];
+  /** Hedef klasör; `null` = "Kategorisiz'e taşı". Alan ZORUNLUDUR (değeri null olabilir). */
+  folderId: string | null;
+}
+
+export interface MoveMediaResult {
+  folderId: string | null;
+  requestedCount: number;
+  /** Güncellenen kayıt sayısı — zaten hedef klasörde olan medya da DAHİLDİR (idempotent). */
+  movedCount: number;
+  /** Bulunamayan medya id'leri. Hata DEĞİLDİR (`200` döner). */
+  skippedIds: string[];
 }
 
 /**

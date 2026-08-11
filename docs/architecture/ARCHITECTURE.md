@@ -303,6 +303,13 @@ erDiagram
 > tam sözleşmeleri için `openapi.yaml`'a bakın. Bu uçlardaki yazma işlemleri artık
 > yukarıdaki site-geneli `SiteRole` guard'ına da tabidir (bkz. §5).
 
+> Medya klasörleri: `GET /admin/media/folders` (authenticated),
+> `POST /admin/media/folders` + `PATCH /admin/media/folders/{folderId}` +
+> `POST /admin/media/move` (`SiteRole=ADMIN` veya `EDITOR`),
+> `DELETE /admin/media/folders/{folderId}` (yalnızca `SiteRole=ADMIN`). `Media.folderId`
+> nullable (`null` = "Kategorisiz"), `GET /admin/media` `folderId` filtresi alır.
+> Bağlayıcı kararlar için bkz. §10.11.
+
 > Navigasyon/Header/Footer Yönetimi: `GET /navigation` (public — site
 > header/nav/footer bunu okur), `GET /admin/navigation` (authenticated),
 > `PUT /admin/navigation` (yalnızca `SiteRole=ADMIN`, tam değiştirme/replace
@@ -1964,6 +1971,122 @@ Footer (`footerCopyrightText`, `SocialLink`, `FooterColumn`/`FooterLink`) alanla
 barındırır. **Şema, uç nokta ve payload'da hiçbir değişiklik yoktur** — iş tamamen
 frontend'de yeniden gruplamadır (`page.tsx`'in iki sekmeli bileşenlere bölünmesi).
 frontend-agent bu sekme için backend'den bir şey beklememelidir.
+
+### 10.11 Medya Kütüphanesi — Klasör Sistemi + Gelişmiş Çoklu Seçim
+
+Medya kütüphanesine iki geliştirme ekleniyor: (A) **klasör sistemi** (kontrat değişikliği
+gerektirir) ve (B) **gelişmiş çoklu seçim kısayolları** (frontend-only). Aşağıdaki
+kararlar bağlayıcıdır; ajanlar tahmin YÜRÜTMEZ. Uçların tam şekli `openapi.yaml`
+(`Media` tag'i) içindedir — çelişki hâlinde kontrat kazanır.
+
+#### 10.11.1 Veri modeli — `MediaFolder` düz dizi + `parentId`, maksimum derinlik 2
+
+`MediaFolder` (id, seq, name, `parentId` self-relation, createdAt) + `Media.folderId`
+nullable FK. **"Kategorisiz" bir klasör KAYDI DEĞİLDİR** — `folderId IS NULL`'ın ta
+kendisidir. Sentetik bir "Kategorisiz" satırı reddedildi: silinemez/yeniden
+adlandırılamaz özel bir kayıt, her yazma ucuna "bu id özel mi?" kontrolü eklerdi ve
+seed/migration'da tekilliğini garanti etmek gerekirdi.
+
+**Maksimum derinlik 2 (kök + bir alt seviye)**, §10.10.1'deki navigasyon kuralının
+birebir aynısı: *`parentId` dolu olan bir klasör YALNIZCA `parentId`'si null olan bir
+klasörü işaret edebilir.* Faydaları aynı: doğrulama O(n) tek geçiş, döngü **yapısal
+olarak imkânsız** (ata gezintisi/recursive CTE gerekmez), ve UI zaten tek girintili bir
+ağaç paneli çiziyor. Derinliği artırmak istenirse önce kontrat, sonra doğrulama katmanı
+güncellenir; **DB şeması değişmez**. Derinlik DB'de zorlanmaz (Postgres CHECK başka
+satıra bakamaz), API validasyon katmanında zorlanır.
+
+API payload'ı **düz dizidir**, iç içe JSON ağacı değildir — gerekçeler §10.10.1 ile aynı,
+ek olarak: özyinelemeli şema `fastify-type-provider-zod` tarafında `z.lazy` + tip çıkarımı
+sorunları doğurur. Sunucu `(parentId NULLS FIRST, name ASC)` döner; tüketici tek geçişte
+ağacı kurar. Bağlayıcı okuma sorgusu:
+
+```ts
+app.prisma.mediaFolder.findMany({
+  orderBy: [{ parentId: { sort: "asc", nulls: "first" } }, { name: "asc" }],
+  include: { _count: { select: { media: true } } },
+});
+```
+
+`mediaCount` **doğrudan** içerikteki medya sayısıdır (alt klasörler hariç) ve yukarıdaki
+TEK sorguda gelir — klasör başına ayrı `count()` (N+1) yasaktır. Kümülatif (rollup) sayaç
+bilinçli olarak yoktur: `GET /admin/media?folderId=` de özyinelemeli olmadığı için sayı,
+klasöre tıklandığında görülecek liste uzunluğuyla birebir eşleşir; rollup gösterilseydi
+"12 yazıyor ama 3 görsel var" tutarsızlığı doğardı.
+
+**İsim benzersizliği — dikkat, DB tek başına yetmez.** Kural: aynı `parentId` altında
+case-insensitive benzersiz isim, ihlalde `409 CONFLICT`. Bu kural **servis katmanında**
+zorlanır. `@@unique([parentId, name])` savunma derinliği olarak eklenebilir ama
+**kök seviyeyi KORUMAZ**: PostgreSQL'de NULL'lar birbirinden farklı sayılır, dolayısıyla
+`parentId IS NULL` olan iki satır aynı `name` ile bu kısıttan geçer. db-agent bu kısıtı
+"iş bitti" sanmamalıdır; ayrıca kısıt case-sensitive'dir, kontrattaki kural değildir.
+
+#### 10.11.2 Uç noktalar ve yetki eşikleri
+
+| Uç | Yetki | Not |
+|---|---|---|
+| `GET /admin/media/folders` | authenticated | Admin medya sayfası VE `MediaPicker` AYNI ucu paylaşır |
+| `POST /admin/media/folders` | ADMIN, EDITOR | `POST /admin/media` (upload) ile aynı eşik |
+| `PATCH /admin/media/folders/{folderId}` | ADMIN, EDITOR | yeniden adlandır ve/veya taşı |
+| `DELETE /admin/media/folders/{folderId}` | **yalnızca ADMIN** | `DELETE /admin/media/{mediaId}` ile aynı eşik |
+| `POST /admin/media/move` | ADMIN, EDITOR | tekil + toplu TEK uç |
+| `GET /admin/media?folderId=` | authenticated | sunucu tarafı filtre |
+
+Eşikler mevcut medya desenini aynen izler: **yıkıcı olmayan yazma → ADMIN+EDITOR, kalıcı
+kayıp riski taşıyan silme → yalnızca ADMIN**. Klasör silmek görselleri yok etmese de
+organizasyon bilgisini geri alınamaz biçimde kaybettirdiği için ADMIN eşiğindedir.
+
+`GET /admin/media/folders` **sayfalanmaz** ve **arama parametresi almaz**: ağaç panelinin
+doğru çizilmesi tüm düğümleri gerektirir, v1 varsayımı klasör sayısının ~200 altında
+olmasıdır ve liste zaten bellekte olduğu için **klasör adı araması frontend-only'dir**.
+
+#### 10.11.3 Silme semantiği — hiçbir şey kaskad silinmez
+
+- **İçindeki medya:** `Media.folderId` `onDelete: SetNull` → görseller "Kategorisiz"e
+  düşer. Görsel kaydı ve disk dosyası ASLA silinmez.
+- **Alt klasörler:** **CASCADE DEĞİL** — self-relation da `onDelete: SetNull`, alt
+  klasörler `parentId = null` alarak KÖKE çıkar. Cascade reddedildi: tek tıkla görünmeyen
+  bir alt ağacın organizasyonunu silmek, "medyayı silmiyoruz" güvencesiyle çelişen
+  sürpriz bir kayıp olurdu; ayrıca derinlik-2 sınırında alt klasörün köke çıkması her
+  zaman geçerli bir durumdur, ek doğrulama gerekmez.
+
+Her iki etki de FK davranışıyla DB seviyesinde ifade edilir — servis katmanında elle
+`updateMany` döngüsü YAZILMAZ. Frontend onay diyaloğunda etkiyi sayısal olarak yazar
+("N görsel Kategorisiz'e taşınacak, M alt klasör en üst seviyeye çıkacak").
+
+#### 10.11.4 Taşıma — tek uç, tekil = tek elemanlı dizi
+
+Ayrı bir `/move-bulk` ucu **YOKTUR**. `POST /admin/media/move` her zaman `mediaIds`
+dizisi + `folderId` (nullable ama ZORUNLU alan) alır; tekil taşıma tek elemanlı dizidir.
+İki ayrı uç, iki ayrı kısmi-başarı semantiği ve zamanla birbirinden sapan iki kod yolu
+demek olurdu. Kısmi başarı hata değildir (`skippedIds` + `200`, `POST /admin/pages/bulk`
+ailesiyle aynı felsefe); hedef klasör yoksa istek tamamen reddedilir (`404`), kısmi
+uygulama yapılmaz. Yazma **tek `updateMany`** ile yapılır.
+
+**`PATCH /admin/media/{mediaId}` `folderId` KABUL ETMEZ** — hakemlik kararı: "tek alan
+güncellenebilir" kuralı korunur ve taşımanın tek doğru yolu olur. Frontend `folderId`'yi
+PATCH ile göndermeye çalışırsa 422 alır; kontrat tarafı haklıdır.
+
+`POST /admin/media` (upload) ise opsiyonel `folderId` **kabul eder** — kullanıcı bir
+klasörün içindeyken yüklediğinde görselin oraya düşmesi beklenen davranıştır ve
+"yükle sonra taşı" iki isteklik bir yarış durumu yaratırdı. Klasör varlık kontrolü
+**dosya diske yazılmadan ÖNCE** yapılır, aksi hâlde DB kaydı olmayan yetim dosya kalır.
+
+#### 10.11.5 Gelişmiş çoklu seçim — frontend-only, kontrat etkisi YOK
+
+Shift+tık aralık seçimi, Ctrl/Cmd+tık toggle, Ctrl/Cmd+A ile *o an görünen* (aktif
+klasör + tür/tarih/arama filtreleri sonrası) tüm öğeleri seçme, seçim çubuğunda
+Toplu Sil / Klasöre Taşı. **Backend'de hiçbir değişiklik gerektirmez** — mevcut checkbox
+seçimi zaten var, eklenen tamamen etkileşim katmanıdır. Bağlayıcı davranış kuralları:
+
+- Aralık (shift) seçimi **görünen sıralamaya göre** hesaplanır (grid ve listede aynı
+  dizi kullanılır) — "son tıklanan öğe" (anchor) state'te tutulur.
+- Ctrl+A **yalnızca medya ızgarası odaktayken** çalışır ve tarayıcının "tümünü seç"
+  davranışını `preventDefault` ile bastırır; bir input odaktayken ASLA yakalanmaz.
+- Klasör değiştirildiğinde seçim **temizlenir** (görünmeyen öğeler üzerinde toplu işlem
+  yapılmasını önlemek için).
+- Toplu silme hâlâ id başına `DELETE /admin/media/{mediaId}` ile yapılır (v1'de toplu
+  silme ucu YOKTUR, mevcut davranış korunur). Bir toplu-silme ucu istenirse önce kontrat
+  güncellenir.
 
 ### Bilinen Sorunlar / Backlog
 

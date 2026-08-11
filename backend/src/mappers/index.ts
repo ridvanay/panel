@@ -9,6 +9,7 @@ import type {
   BlogCategory,
   BlogPost,
   Media,
+  MediaFolder,
   SiteSettings,
   AuditLog,
   NavigationItem,
@@ -45,6 +46,7 @@ import type {
   BlogCategoryDto,
   BlogPostDto,
   MediaDto,
+  MediaFolderDto,
   SiteSettingsDto,
   NavigationConfigDto,
   ContentRevisionSummaryDto,
@@ -248,8 +250,26 @@ export function toMediaDto(media: Media): MediaDto {
     filename: media.filename,
     mimeType: media.mimeType,
     sizeBytes: media.sizeBytes,
+    width: media.width,
+    height: media.height,
     altText: media.altText,
+    // §10.11 Medya Kütüphanesi — Klasör Sistemi. `null` = "Kategorisiz".
+    folderId: media.folderId,
     createdAt: media.createdAt.toISOString(),
+  };
+}
+
+// §10.11 Medya Kütüphanesi — Klasör Sistemi. `mediaCount` TEK sorguda `_count` ile gelir
+// (bkz. media.routes.ts::GET /admin/media/folders) — N+1 sorgu YASAK.
+type MediaFolderWithCount = MediaFolder & { _count: { media: number } };
+
+export function toMediaFolderDto(folder: MediaFolderWithCount): MediaFolderDto {
+  return {
+    id: folder.id,
+    name: folder.name,
+    parentId: folder.parentId,
+    mediaCount: folder._count.media,
+    createdAt: folder.createdAt.toISOString(),
   };
 }
 
