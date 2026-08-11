@@ -10,6 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { NavigationItemDto, SitePage, SiteSettings } from "@/lib/api/types";
+import { DEFAULT_HEADER_LOGO_HEIGHT } from "@/lib/site-settings/logo";
 
 interface SiteHeaderProps {
   settings: SiteSettings;
@@ -67,17 +68,28 @@ export function SiteHeader({ settings, pages, navigationItems, ctaLabel, ctaHref
         aria-label="Site gezinme"
       >
         <Link href="/" className="flex items-center gap-2 text-lg font-semibold text-foreground">
-          {settings.logoUrl && (
-            // Konteyner (`h-8 w-8 shrink-0 overflow-hidden`) + `object-contain`: logo görselinin
-            // gerçek (intrinsic) boyutu/en-boy oranı ne olursa olsun sabit 32x32px kutuya
-            // sığdırılmış gösterilir, asla taşmaz/büyümez. `shrink-0`: header dar bir viewport'ta
-            // sıkışırsa flexbox'ın img'yi orantısızca küçültmesini engeller.
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded">
+          {settings.logoUrl ? (
+            // Sabit KARE kutu modeli TERK EDİLDİ: logo artık kendi doğal en-boy oranını korur.
+            // Render yüksekliği `headerLogoHeight` (varsayılan `DEFAULT_HEADER_LOGO_HEIGHT`) ile
+            // belirlenir, genişlik `w-auto` ile serbest bırakılır; `headerLogoMaxWidth` doluysa
+            // bir taşma tavanı olarak uygulanır. `shrink-0`: header dar bir viewport'ta sıkışırsa
+            // flexbox'ın img'yi orantısızca küçültmesini engeller. Logo varken site adı metni
+            // DOM'dan kaldırılır — img'nin `alt`'ı link'in tek erişilebilir adı kaynağıdır.
+            <span className="flex shrink-0 items-center">
               {/* eslint-disable-next-line @next/next/no-img-element -- logo URL'si medya kütüphanesinden gelir, next/image remotePatterns henüz tanımlı değil */}
-              <img src={settings.logoUrl} alt="" className="h-full w-full object-contain" />
+              <img
+                src={settings.logoUrl}
+                alt={settings.siteName?.trim() || "Site"}
+                className="block w-auto object-contain"
+                style={{
+                  height: `${settings.headerLogoHeight ?? DEFAULT_HEADER_LOGO_HEIGHT}px`,
+                  ...(settings.headerLogoMaxWidth ? { maxWidth: `${settings.headerLogoMaxWidth}px` } : {}),
+                }}
+              />
             </span>
+          ) : (
+            <span>{settings.siteName?.trim() || "Site"}</span>
           )}
-          {settings.siteName}
         </Link>
 
         <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">

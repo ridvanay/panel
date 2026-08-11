@@ -376,10 +376,12 @@ export default function AdminSettingsPage() {
             <motion.div variants={cardVariants} className="lg:col-span-2">
               <Card className="space-y-4">
                 <SectionHeader icon={Globe} title="Genel" description="Sitenizin adı ve genel kimliği." />
-                <Field id="siteName" label="Site adı" required>
-                  {(inputProps) => (
-                    <Input {...inputProps} required value={siteName} onChange={(e) => setSiteName(e.target.value)} />
-                  )}
+                <Field
+                  id="siteName"
+                  label="Site adı"
+                  hint="Logo yüklenmemişse header ve footer'da kullanılır. Sloganı düzenlemek ve canlı önizlemeyi görmek için Navigasyon → Site Kimliği bölümüne gidin."
+                >
+                  {(inputProps) => <Input {...inputProps} value={siteName} onChange={(e) => setSiteName(e.target.value)} />}
                 </Field>
               </Card>
             </motion.div>

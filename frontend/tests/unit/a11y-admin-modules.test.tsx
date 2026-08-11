@@ -67,8 +67,11 @@ describe("AdminModulesPage — a11y", () => {
     vi.mocked(settingsApi.getSettings).mockResolvedValue({
       siteName: "Site",
       logoUrl: null,
+      tagline: null,
       homePageId: null,
       siteTemplate: "SHOWCASE",
+      headerLogoHeight: null,
+      headerLogoMaxWidth: null,
     });
   });
 

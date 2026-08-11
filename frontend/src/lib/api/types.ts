@@ -860,15 +860,23 @@ export type SiteTemplate = "SHOWCASE" | "COMMERCE" | "PORTFOLIO";
 export interface SiteSettings {
   siteName: string;
   logoUrl: string | null;
+  tagline: string | null;
   homePageId: string | null;
   siteTemplate: SiteTemplate;
+  /** px, 16-96. `null` ise render sırasında `DEFAULT_HEADER_LOGO_HEIGHT` (32) kullanılır. */
+  headerLogoHeight: number | null;
+  /** px, 40-400. `null` ise genişlik sınırsızdır (yalnızca doğal en-boy oranı geçerlidir). */
+  headerLogoMaxWidth: number | null;
 }
 
 export interface UpdateSiteSettingsRequest {
   siteName?: string;
   logoUrl?: string | null;
+  tagline?: string | null;
   homePageId?: string | null;
   siteTemplate?: SiteTemplate;
+  headerLogoHeight?: number | null;
+  headerLogoMaxWidth?: number | null;
 }
 
 export interface UpdateBlogPostRequest {

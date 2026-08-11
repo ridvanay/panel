@@ -5,6 +5,7 @@ import { fetchNavigationConfigServer } from "@/lib/api/server-navigation";
 import { CartProvider } from "@/context/cart-context";
 import { SiteHeader } from "@/components/site/site-header";
 import { SiteFooter } from "@/components/site/site-footer";
+import { getFooterLogoHeight } from "@/lib/site-settings/logo";
 
 export default async function SiteLayout({ children }: { children: ReactNode }) {
   const [settings, pages, navigation] = await Promise.all([
@@ -27,6 +28,9 @@ export default async function SiteLayout({ children }: { children: ReactNode }) 
         <main className="flex-1">{children}</main>
         <SiteFooter
           siteName={settings.siteName}
+          logoUrl={settings.logoUrl}
+          logoHeight={getFooterLogoHeight(settings.headerLogoHeight)}
+          tagline={settings.tagline}
           socialLinks={navigation.socialLinks}
           footerColumns={navigation.footerColumns}
           copyrightText={navigation.footerCopyrightText}

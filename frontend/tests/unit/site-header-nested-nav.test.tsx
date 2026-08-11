@@ -5,7 +5,15 @@ import { axe } from "jest-axe";
 import { SiteHeader } from "@/components/site/site-header";
 import type { NavigationItemDto, SiteSettings } from "@/lib/api/types";
 
-const settings: SiteSettings = { siteName: "Örnek Site", logoUrl: null, homePageId: null, siteTemplate: "SHOWCASE" };
+const settings: SiteSettings = {
+  siteName: "Örnek Site",
+  logoUrl: null,
+  tagline: null,
+  homePageId: null,
+  siteTemplate: "SHOWCASE",
+  headerLogoHeight: null,
+  headerLogoMaxWidth: null,
+};
 
 const axeOptions = { rules: { region: { enabled: false } } };
 

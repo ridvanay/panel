@@ -616,6 +616,12 @@ model SiteSettings {
   id                  String       @id @default("singleton")
   siteName            String       @default("Site")
   logoUrl             String?
+  // WP "Tagline" — footer'da logo/site adının altında gösterilir, opsiyonel
+  tagline             String?
+  // Header logo render yüksekliği/opsiyonel max-genişlik tavanı — footer logosu bundan
+  // orantılı türetilir (frontend), ayrı bir DB kolonu YOK
+  headerLogoHeight    Int? // px, null = varsayılan 32 kullanılır (frontend'de)
+  headerLogoMaxWidth  Int? // px, null = sınırsız (genişlik tavanı yok)
   homePageId          String?
   // §10.9.5 Site Şablonu (Eklenti/Modül Yönetimi) — SADECE tavsiye niteliğinde: hangi
   // modüllerin/blok tiplerinin önerildiğini UI'da göstermek için kullanılır, hiçbir modülü
@@ -635,13 +641,13 @@ model SiteSettings {
 }
 
 model NavigationItem {
-  id   String @id @default(uuid())
-  seq  Int    @unique @default(autoincrement())
+  id        String   @id @default(uuid())
+  seq       Int      @unique @default(autoincrement())
   // KARDEŞ-KAPSAMLI sıra: aynı `parentId` grubu içinde 0'dan artan. Global bir sıra
   // DEĞİLDİR — tüketici önce `parentId`'ye göre gruplar, sonra `order`'a göre sıralar.
-  order Int
-  label String
-  href  String
+  order     Int
+  label     String
+  href      String
   // Hiyerarşi (WordPress menü düzenleyicisi benzeri alt menü). null = kök seviye öğe.
   // MAKSİMUM DERİNLİK 2 (kök + bir alt seviye): `parentId` dolu olan bir öğe, YALNIZCA
   // `parentId`'si null olan (kök) bir öğeyi işaret edebilir. Bu kural DB'de değil API

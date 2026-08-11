@@ -4,6 +4,10 @@ import type { FooterColumnDto, SocialLinkDto, SocialPlatform } from "@/lib/api/t
 
 interface SiteFooterProps {
   siteName: string;
+  logoUrl?: string | null;
+  /** Çağıran taraf (header yüksekliğinden `getFooterLogoHeight` ile) orantılamış değeri geçirir — footer, header'dan habersiz "dumb component" olarak kalır. */
+  logoHeight?: number | null;
+  tagline?: string | null;
   socialLinks?: SocialLinkDto[];
   footerColumns?: FooterColumnDto[];
   copyrightText?: string | null;
@@ -33,28 +37,44 @@ const SOCIAL_LABELS: Record<SocialPlatform, string> = {
   OTHER: "Diğer",
 };
 
-export function SiteFooter({ siteName, socialLinks, footerColumns, copyrightText }: SiteFooterProps) {
+export function SiteFooter({
+  siteName,
+  logoUrl,
+  logoHeight,
+  tagline,
+  socialLinks,
+  footerColumns,
+  copyrightText,
+}: SiteFooterProps) {
   const hasSocial = Boolean(socialLinks && socialLinks.length > 0);
   const hasColumns = Boolean(footerColumns && footerColumns.length > 0);
   const year = new Date().getFullYear();
+  const displayName = siteName?.trim() || "Site";
   const copyrightLine =
-    copyrightText && copyrightText.trim().length > 0 ? copyrightText : `© ${year} ${siteName}`;
-
-  // Geriye dönük uyumluluk: sosyal link/footer sütunu yoksa mevcut tek-satır davranış korunur.
-  if (!hasSocial && !hasColumns) {
-    return (
-      <footer className="border-t border-border">
-        <div className="mx-auto max-w-5xl px-4 py-6 text-sm text-foreground/50 sm:px-6">{copyrightLine}</div>
-      </footer>
-    );
-  }
+    copyrightText && copyrightText.trim().length > 0 ? copyrightText : `© ${year} ${displayName}`;
 
   return (
     <footer className="border-t border-border">
-      <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
+      <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-10">
         <div className="flex flex-col gap-8 sm:flex-row sm:flex-wrap sm:justify-between">
           <div className="max-w-xs space-y-3">
-            <p className="text-sm font-semibold text-foreground">{siteName}</p>
+            {logoUrl ? (
+              // 28 = eski varsayılan `h-7`; çağıran taraf (`getFooterLogoHeight`) zaten header
+              // yüksekliğinden orantılayıp `logoHeight` prop'unu geçirdiği için burada sadece
+              // son bir güvenlik fallback'idir.
+              <span className="flex shrink-0 items-center">
+                {/* eslint-disable-next-line @next/next/no-img-element -- bkz. site-header.tsx aynı gerekçe */}
+                <img
+                  src={logoUrl}
+                  alt={displayName}
+                  className="block w-auto object-contain"
+                  style={{ height: `${logoHeight ?? 28}px` }}
+                />
+              </span>
+            ) : (
+              <p className="text-sm font-semibold text-foreground">{displayName}</p>
+            )}
+            {tagline && tagline.trim().length > 0 && <p className="text-xs text-foreground/50">{tagline}</p>}
             {hasSocial && (
               <div className="flex flex-wrap items-center gap-2">
                 {socialLinks!.map((link) => {

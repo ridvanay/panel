@@ -257,6 +257,9 @@ export function toSiteSettingsDto(settings: SiteSettings): SiteSettingsDto {
   return {
     siteName: settings.siteName,
     logoUrl: settings.logoUrl,
+    tagline: settings.tagline,
+    headerLogoHeight: settings.headerLogoHeight,
+    headerLogoMaxWidth: settings.headerLogoMaxWidth,
     homePageId: settings.homePageId,
     siteTemplate: settings.siteTemplate,
   };

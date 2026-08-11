@@ -14,6 +14,9 @@ export const SETTINGS_ID = "singleton";
 export const DEFAULTS = {
   siteName: "Site",
   logoUrl: null as string | null,
+  tagline: null as string | null,
+  headerLogoHeight: null as number | null,
+  headerLogoMaxWidth: null as number | null,
   homePageId: null as string | null,
   siteTemplate: "SHOWCASE" as const,
 };

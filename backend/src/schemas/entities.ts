@@ -382,6 +382,10 @@ export type SiteTemplate = z.infer<typeof SiteTemplateSchema>;
 export const SiteSettingsSchema = z.object({
   siteName: z.string(),
   logoUrl: z.string().nullable(),
+  tagline: z.string().nullable(),
+  // Header logo boyutu — null ise frontend varsayılanı (yükseklik 32px, genişlik sınırsız) kullanır.
+  headerLogoHeight: z.number().nullable(),
+  headerLogoMaxWidth: z.number().nullable(),
   homePageId: z.string().uuid().nullable(),
   // §Faz 4 Site Şablonu — bkz. prisma/schema.prisma::SiteSettings.siteTemplate (db-agent).
   siteTemplate: SiteTemplateSchema,

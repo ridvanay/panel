@@ -30,7 +30,15 @@ const modulesApi = await import("@/lib/api/modules");
 
 const axeOptions = { rules: { region: { enabled: false } } };
 
-const settings: SiteSettings = { siteName: "Örnek Site", logoUrl: null, homePageId: null, siteTemplate: "SHOWCASE" };
+const settings: SiteSettings = {
+  siteName: "Örnek Site",
+  logoUrl: null,
+  tagline: null,
+  homePageId: null,
+  siteTemplate: "SHOWCASE",
+  headerLogoHeight: null,
+  headerLogoMaxWidth: null,
+};
 
 const publishedPages: SitePage[] = [
   {
