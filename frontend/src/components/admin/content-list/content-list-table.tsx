@@ -115,44 +115,50 @@ export function ContentListTable<T extends ContentListEntity>({
             {items.map((item) => {
               if (editingId === item.id) {
                 return (
-                  <TableRow key={item.id} className="border-l-2 border-l-primary bg-muted/40 hover:bg-muted/40">
+                  <TableRow
+                    key={item.id}
+                    className="border-l-4 border-l-primary border-y border-primary/20 bg-primary/8 hover:bg-primary/8"
+                  >
                     <TableCell colSpan={colSpan} className="p-4">
-                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-[2fr_1fr_1fr_auto]">
-                        <div className="space-y-1">
-                          <label htmlFor={`quick-edit-title-${item.id}`} className="text-xs font-medium text-foreground/60">
-                            Başlık
-                          </label>
-                          <Input
-                            id={`quick-edit-title-${item.id}`}
-                            value={quickEditValues.title}
-                            onChange={(e) => onQuickEditChange({ title: e.target.value })}
-                            autoFocus
-                          />
+                      <div className="animate-in fade-in-0 slide-in-from-top-1 duration-200 flex flex-col gap-3">
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[2fr_1fr_1fr]">
+                          <div className="space-y-1">
+                            <label htmlFor={`quick-edit-title-${item.id}`} className="block text-xs font-medium text-foreground/60">
+                              Başlık
+                            </label>
+                            <Input
+                              id={`quick-edit-title-${item.id}`}
+                              value={quickEditValues.title}
+                              onChange={(e) => onQuickEditChange({ title: e.target.value })}
+                              autoFocus
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label htmlFor={`quick-edit-slug-${item.id}`} className="block text-xs font-medium text-foreground/60">
+                              Slug
+                            </label>
+                            <Input
+                              id={`quick-edit-slug-${item.id}`}
+                              value={quickEditValues.slug}
+                              onChange={(e) => onQuickEditChange({ slug: e.target.value })}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label htmlFor={`quick-edit-status-${item.id}`} className="block text-xs font-medium text-foreground/60">
+                              Durum
+                            </label>
+                            <Select
+                              id={`quick-edit-status-${item.id}`}
+                              className="min-w-36"
+                              value={quickEditValues.status}
+                              onChange={(e) => onQuickEditChange({ status: e.target.value as QuickEditValues["status"] })}
+                            >
+                              <option value="DRAFT">Taslak</option>
+                              <option value="PUBLISHED">Yayında</option>
+                            </Select>
+                          </div>
                         </div>
-                        <div className="space-y-1">
-                          <label htmlFor={`quick-edit-slug-${item.id}`} className="text-xs font-medium text-foreground/60">
-                            Slug
-                          </label>
-                          <Input
-                            id={`quick-edit-slug-${item.id}`}
-                            value={quickEditValues.slug}
-                            onChange={(e) => onQuickEditChange({ slug: e.target.value })}
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label htmlFor={`quick-edit-status-${item.id}`} className="text-xs font-medium text-foreground/60">
-                            Durum
-                          </label>
-                          <Select
-                            id={`quick-edit-status-${item.id}`}
-                            value={quickEditValues.status}
-                            onChange={(e) => onQuickEditChange({ status: e.target.value as QuickEditValues["status"] })}
-                          >
-                            <option value="DRAFT">Taslak</option>
-                            <option value="PUBLISHED">Yayında</option>
-                          </Select>
-                        </div>
-                        <div className="flex items-end gap-2">
+                        <div className="flex items-center justify-end gap-2">
                           <Button type="button" size="sm" loading={quickEditSaving} onClick={onQuickEditSave}>
                             Güncelle
                           </Button>
@@ -161,7 +167,7 @@ export function ContentListTable<T extends ContentListEntity>({
                           </Button>
                         </div>
                         {quickEditError && (
-                          <p role="alert" className="text-xs text-danger sm:col-span-4">
+                          <p role="alert" className="animate-in fade-in-0 duration-150 text-xs text-danger">
                             {quickEditError}
                           </p>
                         )}
@@ -289,10 +295,10 @@ export function ContentListTable<T extends ContentListEntity>({
 
           if (editingId === item.id) {
             return (
-              <div key={item.id} className="rounded-xl border border-l-2 border-primary bg-muted/40 p-4 shadow-sm">
-                <div className="grid grid-cols-1 gap-3">
+              <div key={item.id} className="rounded-xl border border-l-4 border-l-primary border-primary/20 bg-primary/8 p-4 shadow-sm">
+                <div className="animate-in fade-in-0 slide-in-from-top-1 duration-200 grid grid-cols-1 gap-3">
                   <div className="space-y-1">
-                    <label htmlFor={`quick-edit-title-m-${item.id}`} className="text-xs font-medium text-foreground/60">
+                    <label htmlFor={`quick-edit-title-m-${item.id}`} className="block text-xs font-medium text-foreground/60">
                       Başlık
                     </label>
                     <Input
@@ -304,7 +310,7 @@ export function ContentListTable<T extends ContentListEntity>({
                     />
                   </div>
                   <div className="space-y-1">
-                    <label htmlFor={`quick-edit-slug-m-${item.id}`} className="text-xs font-medium text-foreground/60">
+                    <label htmlFor={`quick-edit-slug-m-${item.id}`} className="block text-xs font-medium text-foreground/60">
                       Slug
                     </label>
                     <Input
@@ -315,7 +321,7 @@ export function ContentListTable<T extends ContentListEntity>({
                     />
                   </div>
                   <div className="space-y-1">
-                    <label htmlFor={`quick-edit-status-m-${item.id}`} className="text-xs font-medium text-foreground/60">
+                    <label htmlFor={`quick-edit-status-m-${item.id}`} className="block text-xs font-medium text-foreground/60">
                       Durum
                     </label>
                     <Select
@@ -329,7 +335,7 @@ export function ContentListTable<T extends ContentListEntity>({
                     </Select>
                   </div>
                   {quickEditError && (
-                    <p role="alert" className="text-xs text-danger">
+                    <p role="alert" className="animate-in fade-in-0 duration-150 text-xs text-danger">
                       {quickEditError}
                     </p>
                   )}
