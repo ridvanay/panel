@@ -23,6 +23,7 @@ import {
   ShoppingBag,
   Receipt,
   Briefcase,
+  Palette,
 } from "lucide-react";
 import {
   Sidebar,
@@ -86,6 +87,7 @@ const navItems: NavItem[] = [
   { href: "/admin/reports", label: "Raporlar", icon: FileArchive, roles: ["ADMIN"] },
   { href: "/admin/media", label: "Medya", icon: ImageIcon },
   { href: "/admin/navigation", label: "Navigasyon", icon: LayoutTemplate },
+  { href: "/admin/appearance", label: "Görünüm", icon: Palette },
   { href: "/admin/import", label: "İçe Aktar", icon: Upload, roles: ["ADMIN"] },
   { href: "/admin/users", label: "Kullanıcılar", icon: Users },
   { href: "/admin/system", label: "Sistem Sağlığı", icon: Activity },

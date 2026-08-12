@@ -236,3 +236,55 @@ describe("rate-limits — route-level (POST /admin/users)", () => {
     expect(body.error.details.retryAfterSeconds).toBeDefined();
   });
 });
+
+/**
+ * `PUT /admin/appearance/custom-code/{css,js}` route-level rate limit'i (10/dakika, bkz.
+ * appearance.routes.ts::CUSTOM_CODE_RATE_LIMIT, openapi.yaml açıklaması "Hız sınırı: 10 istek /
+ * 1 dakika") doğrular — qa-agent boşluğu (security-agent'ın bıraktığı 403/422 testleri
+ * appearance.test.ts'te zaten var, ama hız sınırının GERÇEKTEN 429 döndürdüğünü doğrulayan bir
+ * test yoktu). `env.RATE_LIMIT_MAX`'tan bağımsız, kod içinde sabit bir tavan — diğer route-level
+ * limit testleriyle AYNI desen. Kendi izole `buildTestApp()` instance'ında çalışır.
+ */
+describe("rate-limits — route-level (PUT /admin/appearance/custom-code/css)", () => {
+  let app: FastifyInstance;
+  let admin: Awaited<ReturnType<typeof registerTestUser>>;
+
+  function authHeader(token: string) {
+    return { authorization: `Bearer ${token}` };
+  }
+
+  beforeAll(async () => {
+    app = await buildTestApp();
+    await resetDatabase(app.prisma);
+    admin = await registerTestUser(app, { email: "rate-limit-custom-css-admin@example.com" });
+  });
+
+  afterAll(async () => {
+    await resetDatabase(app.prisma);
+    await app.close();
+  });
+
+  it("10 istek başarılı (200), 11. istek 429 döner ve RATE_LIMITED detaylarını içerir", async () => {
+    for (let i = 0; i < 10; i++) {
+      const res = await app.inject({
+        method: "PUT",
+        url: "/api/v1/admin/appearance/custom-code/css",
+        headers: authHeader(admin.accessToken),
+        payload: { css: `body { color: red; } /* ${i} */`, acknowledged: true },
+      });
+      expect(res.statusCode).toBe(200);
+    }
+
+    const res11 = await app.inject({
+      method: "PUT",
+      url: "/api/v1/admin/appearance/custom-code/css",
+      headers: authHeader(admin.accessToken),
+      payload: { css: "body { color: blue; }", acknowledged: true },
+    });
+
+    expect(res11.statusCode).toBe(429);
+    const body = res11.json();
+    expect(body.error.code).toBe("RATE_LIMITED");
+    expect(body.error.details.retryAfterSeconds).toBeDefined();
+  });
+});

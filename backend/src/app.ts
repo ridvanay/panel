@@ -28,6 +28,7 @@ import { adminPortfolioCategoriesRoutes, adminPortfolioRoutes, publicPortfolioRo
 import { adminMediaRoutes } from "./modules/media/media.routes";
 import { adminStatsRoutes } from "./modules/stats/stats.routes";
 import { adminSettingsRoutes, publicSettingsRoutes } from "./modules/settings/settings.routes";
+import { adminAppearanceRoutes, publicAppearanceRoutes } from "./modules/appearance/appearance.routes";
 import { adminSiteModulesRoutes, publicModulesRoutes } from "./modules/site-modules/site-modules.routes";
 import { adminNavigationRoutes, publicNavigationRoutes } from "./modules/navigation/navigation.routes";
 import { systemRoutes } from "./modules/system/system.routes";
@@ -155,6 +156,10 @@ export function buildApp() {
       api.register(adminStatsRoutes, { prefix: "/admin/stats" });
       api.register(publicSettingsRoutes, { prefix: "/settings" });
       api.register(adminSettingsRoutes, { prefix: "/admin/settings" });
+      // §10.12 Site Özelleştirme — bkz. ARCHITECTURE.md §10.12. `/admin/settings` NASIL ÇALIŞTIĞI,
+      // bu ise NASIL GÖRÜNDÜĞÜ (rota sınırı §10.12.1).
+      api.register(publicAppearanceRoutes, { prefix: "/appearance" });
+      api.register(adminAppearanceRoutes, { prefix: "/admin/appearance" });
       api.register(publicNavigationRoutes, { prefix: "/navigation" });
       api.register(adminNavigationRoutes, { prefix: "/admin/navigation" });
       // §10.9 Eklenti/Modül Yönetimi — bkz. ARCHITECTURE.md §10.9.

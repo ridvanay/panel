@@ -323,6 +323,17 @@ erDiagram
 > sıralaması için bkz. §10.10. Tam sözleşme için `openapi.yaml`'daki
 > `NavigationConfig`/`UpdateNavigationConfigRequest` şemalarına bakın.
 
+> Site Özelleştirme (görünüm): `GET /appearance` (public — `(site)` layout'u SSR'de
+> bunu okur, özel CSS/JS dahil), `GET /admin/appearance` +
+> `GET /admin/appearance/presets` + `GET /admin/appearance/custom-code`
+> (authenticated), `PATCH /admin/appearance` + `POST /admin/appearance/reset` +
+> `PUT /admin/appearance/custom-code/css` + `PUT /admin/appearance/custom-code/js`
+> (**yalnızca `SiteRole=ADMIN`, istisnasız**). İki yeni singleton model:
+> `SiteAppearance` ve `SiteCustomCode`; **`SiteSettings` DEĞİŞMEZ**. Özel JS
+> `CUSTOM_CODE_ENABLED` ortam değişkeniyle tümden kapatılabilir. Bağlayıcı kararlar
+> (rota sınırı, `SiteModule` yerine tipli anahtarlar, `--site-*` token scope'u, özel
+> kod tehdit modeli) için bkz. §10.12.
+
 > Canlı Analytics (cihaz/ülke kırılımı + canlı ziyaretçi sayısı): `PageView`
 > modeline `deviceType` (`DeviceType`: `MOBILE`/`DESKTOP`/`TABLET`/`UNKNOWN`,
 > User-Agent'tan `lib/device.ts::detectDeviceType` ile) ve `country` (ISO 3166-1
@@ -2087,6 +2098,324 @@ seçimi zaten var, eklenen tamamen etkileşim katmanıdır. Bağlayıcı davran�
 - Toplu silme hâlâ id başına `DELETE /admin/media/{mediaId}` ile yapılır (v1'de toplu
   silme ucu YOKTUR, mevcut davranış korunur). Bir toplu-silme ucu istenirse önce kontrat
   güncellenir.
+
+### 10.12 Site Özelleştirme (WordPress Customizer benzeri görünüm paneli)
+
+Admin paneline, ziyaretçi sitesinin **görünümünü** yöneten yeni bir bölüm ekleniyor:
+`/admin/appearance` ("Site Özelleştirme"). Aşağıdaki kararlar bağlayıcıdır; ajanlar
+tahmin YÜRÜTMEZ. Uçların tam şekli `openapi.yaml` (`Appearance` tag'i) içindedir —
+çelişki hâlinde kontrat kazanır.
+
+**Bu bölümün TEK cümlelik ilkesi:** buradaki hiçbir ayar admin panelinin kendi
+görünümünü değiştirmez; admin teması (`next-themes` açık/koyu + `AccentProvider`
+vurgu rengi) **kullanıcı başına** bir tercihtir, bu panel ise **site geneli** bir
+yayın ayarıdır. İkisi ne veri modelinde, ne uçta, ne de CSS token'ında birbirine
+değer.
+
+#### 10.12.1 Rota sınırı — üç ekran, tek sahiplik, taşıma YOK
+
+Üç yönetim ekranı arasındaki sınır şu üç soruyla çizilir:
+
+| Soru | Ekran | Örnek alanlar |
+|---|---|---|
+| Site **nasıl çalışır**? (kimlik/işlev/hesap) | `/admin/settings` | `siteName`, `homePageId`, `siteTemplate`, rol matrisi, SMTP |
+| Site **nasıl görünür**? | `/admin/appearance` **(YENİ)** | renkler, fontlar, başlık düzeni, anahtarlar, 404, özel kod |
+| Site içinde **nereye gidilir**? + site kimliği | `/admin/navigation` | menü ağacı, header CTA, footer sütunları, **logo/slogan**, **sosyal hesap linkleri** |
+
+**Karar: Logo & Marka ve Sosyal Hesap Linkleri TAŞINMAZ — derin link verilir.**
+İkisi de `/admin/navigation` ekranında çalışır durumda, canlı önizlemeye bağlı ve
+kendi kaydedilmemiş-değişiklik akışına sahiptir. Taşımak, kullanıcıya görünen hiçbir
+kazanç sağlamadan saf bir gerileme riskidir; ayrıca logo header/footer yapısının,
+sosyal linkler de footer sütunlarının **yanında** düzenlendiğinde anlamlıdır.
+`/admin/appearance` bunun yerine salt-okunur birer özet kartı gösterir ve
+`/admin/navigation?tab=locations` derin linkini verir (frontend-agent, `activeTab`'ı
+`?tab=` sorgu parametresinden okuyacak şekilde küçük bir ekleme yapar).
+
+Bu, **her iki mevcut yüzey için de aynı kararın** uygulanmasıdır — tutarlılık
+kasıtlıdır. Genel kural: **bir alan YALNIZCA TEK bir ekranda düzenlenir; diğer
+ekranlar yalnızca derin link verir.** (`/admin/settings`'teki `siteName` alanı bu
+kuralın zaten uygulanmış bir örneğidir: slogan orada düzenlenmez, Navigasyon'a
+yönlendirir.)
+
+Gerçekten YENİ olan tek sosyal medya işlevi **paylaşım butonlarıdır**
+(`socialShareEnabled` / `socialShareNetworks`) — bu, ziyaretçinin içeriği dışarı
+paylaşmasıdır ve sitenin kendi hesaplarıyla ilgisi yoktur. Bu yüzden `SocialPlatform`
+enum'u YENİDEN KULLANILMAZ; ayrı bir `SocialShareNetwork` enum'u tanımlanır (biri
+`GITHUB` gibi paylaşım hedefi olmayan, diğeri `COPY_LINK` gibi hesabı olmayan
+değerler içerir; birleştirmek iki listeyi de yanlış kılardı).
+
+#### 10.12.2 Şema stratejisi — iki YENİ singleton tablo, `SiteSettings` DOKUNULMAZ
+
+**Karar: `SiteSettings`'e HİÇBİR kolon eklenmez.** Yeni iki tablo açılır:
+`SiteAppearance` (görünüm) ve `SiteCustomCode` (özel CSS/JS + denetim izi). İkisi de
+`id = "singleton"` sabiti ve `SiteSettings` ile aynı lazy-upsert `DEFAULTS` desenini
+kullanır.
+
+Gerekçeler (önem sırasına göre):
+
+1. **Rol eşiği farklıdır ve alan-başına RBAC bir anti-paterndir.** `PATCH
+   /admin/settings` bugün tek bir ADMIN eşiğine sahiptir. Görünüm ayarlarının denetim/
+   onay/hız-sınırı politikası (özellikle özel JS) bundan farklıdır. Ayrı tablo → ayrı
+   uç → rolün `requireSiteRole` preHandler'ı ile **uç seviyesinde** zorlanması. Tek
+   gövdede "bu alan ADMIN, şu alan EDITOR" mantığı, tam olarak sessizce yanlış
+   uygulanan türden bir koddur.
+2. **`GET /settings` PUBLIC'tir.** Oraya ~30 görünüm kolonu eklemek, mevcut public
+   DTO'nun şeklini ve onu tüketen her testi/istemciyi değiştirirdi. Yeni bir public
+   uç (`GET /appearance`) mevcut sözleşmeyi hiç kırmadan eklenir.
+3. **Yaşam döngüleri farklıdır.** Görünüm bir bütün olarak sıfırlanabilir/ön ayara
+   döndürülebilir (`POST /admin/appearance/reset`); `siteName`/`homePageId` için
+   böyle bir işlem anlamsızdır. "Renklerimi sıfırla" komutunun ana sayfa seçimini de
+   sıfırlayabilecek bir tabloda yaşaması riskli bir yakınlıktır.
+4. **Sıcak bir tabloda migration riski yoktur** — `SiteSettings` her public sayfa
+   render'ında okunur.
+
+**Karar: alanlar TİPLİ KOLONDUR, JSON blob DEĞİL.** `SiteModule.settings` gibi bir
+`Json` alanı cazip görünür ama: Zod ile alan-başına doğrulama (hex deseni, enum,
+min/max) kaybolur, OpenAPI'de gerçek bir şekil tanımlanamaz, kısmi PATCH semantiği
+belirsizleşir ve tüketici her okumada elle tip daraltma yapmak zorunda kalır. Renk/
+font/anahtar alanlarının sayısı (~28) sabit ve öngörülebilirdir; bu, tam olarak
+kolonların işidir.
+
+Tek FK: `SiteAppearance.pageHeaderBackgroundMediaId → Media`, `onDelete: SetNull`
+(mevcut `coverMediaId` paterni — serbest URL alanı değil, medya kütüphanesinden
+seçim). Görsel silinirse banner sessizce renge/sade metne düşer, 500 vermez.
+`SiteCustomCode.cssUpdatedById`/`jsUpdatedById → User`, `onDelete: SetNull` —
+kullanıcı silinse de denetim satırı korunur.
+
+#### 10.12.3 Tema ön ayarları — statik kod registry'si, tablo YOK, canlı bağ YOK
+
+Ön ayarlar (`Klasik`/`Modern`/`Minimal` vb.) `lib/appearance-presets.ts` içinde
+**kod içi statik bir liste**dir — `MODULE_REGISTRY` ve `PERMISSIONS_MATRIX` ile aynı
+patern. DB tablosu yoktur (kullanıcı ön ayar OLUŞTURAMAZ; bu istenirse ayrı bir
+özelliktir).
+
+**Ön ayar uygulamak bir sunucu işlemi DEĞİLDİR.** İstemci `GET
+/admin/appearance/presets`'ten değerleri alır, formu doldurur, kullanıcı Kaydet
+dediğinde normal `PATCH /admin/appearance` gider. Sebep: `presetKey` **canlı bir bağ
+olsaydı**, kullanıcı tek bir rengi elle değiştirdiğinde "ön ayar hâlâ geçerli mi?"
+sorusu cevapsız kalırdı ve her okuma "ön ayar + override" birleştirmesi gerektirirdi.
+Bunun yerine ön ayar bir **tohum (seed)** değerdir: alanlar her zaman tek başına
+düzenlenebilir (kullanıcının istediği "ileri kullanıcı için atlama imkanı"), elle
+değişiklik yapılınca istemci `presetKey: null` (özel) gönderir.
+
+Ön ayarlar **yalnızca renk ve tipografi** taşır. Bakım modu/çerez bandı gibi
+anahtarları, 404 metinlerini veya özel kodu ASLA değiştirmezler — bir "tema seçimi"nin
+siteyi bakıma alması kabul edilemez bir sürpriz olurdu.
+
+Ön ayar listesinin frontend sabiti yerine **sunucu ucu** olmasının sebebi: ön ayar,
+doğrudan bu kontratın alanlarına yazılacak değerleri içerir; frontend'de dursaydı
+sunucu doğrulamasından bağımsız evrilir ve enum'da olmayan bir font içeren ön ayar
+kaydedilirken 422 verirdi. Statik bir listeyi API üzerinden sunmanın projede zaten
+emsali var: `GET /admin/settings/permissions`.
+
+**Fontlar kapalı bir enum'dur** (`SiteFont`) — bu bir tercih değil, teknik
+zorunluluktur: frontend `next/font/google` kullanır ve bu API font adının **derleme
+zamanında** bilinmesini gerektirir; çalışma zamanında gelen keyfi bir dize yüklenemez.
+Ek fayda, kontrolsüz üçüncü taraf isteklerinin ve öngörülemeyen düzenin önlenmesidir.
+`SYSTEM` varsayılanı hiç harici istek yapmaz.
+
+#### 10.12.4 Renk/tipografi render sözleşmesi — `--site-*` token'ları, `.site-scope`
+
+Admin paneli `globals.css` içinde `.admin-shell` altında `--primary`/`--ring`/
+`--viz-series-1` token'larını `AccentProvider`'ın yazdığı `--accent-*` değişkenlerine
+bağlar. Site renkleri bu token'lara **ASLA yazmaz**. Bağlayıcı kural:
+
+- Site değerleri `--site-primary`, `--site-secondary`, `--site-button`,
+  `--site-button-text`, `--site-link`, `--site-heading-font`, `--site-body-font`,
+  `--site-base-font-size` değişkenlerine yazılır.
+- Bu değişkenler **yalnızca `(site)` route grubunun layout'undaki `.site-scope`
+  sarmalayıcısına** uygulanır — `:root`'a DEĞİL. `:root`'a yazmak, `.admin-shell`
+  tarafından geçersiz kılınsa bile, admin panelindeki `.admin-shell` dışında kalan
+  her şeyi (toast, dialog portal'ları) etkileme riski taşır.
+
+Bu isimlendirme kararı **yük taşıyan** bir karardır: admin panelindeki canlı
+önizlemenin, ayrı bir iframe'e taşınmadan, mevcut `SiteHeader`/`SiteFooter`
+bileşenleriyle güvenle çalışabilmesinin tek sebebi budur — önizleme sarmalayıcısına
+`.site-scope` + `--site-*` verilir, admin arayüzü etkilenmez.
+
+**Alan adlarında `site` ön eki KULLANILMAZ** (`SiteAppearance.primaryColor`, ne
+`sitePrimaryColor`): tablo/uç/DTO adı kapsamı zaten taşır ve `SiteAppearance.
+sitePrimaryColor` kekemelik olurdu. Site-scope netliği isim tekrarıyla değil,
+yukarıdaki **render sözleşmesiyle** garanti edilir. (Bu, "alan adları açıkça
+site-scope olsun" isteğinin lafzından ziyade amacını karşılayan bilinçli bir
+sapmadır; kayda geçirilmiştir.)
+
+**Kontrast sunucuda zorlanmaz.** Renk seçimi öznel bir tasarım kararıdır; sert bir
+422 kullanıcıyı kendi sitesinden kilitlerdi. Bunun yerine istemci, WCAG AA eşiğinin
+altındaki kombinasyonlarda seçicinin yanında **engellemeyen** bir uyarı gösterir
+(eşiği ve metni ui-designer tanımlar). `buttonTextColor` ayrı bir alandır çünkü
+otomatik siyah/beyaz türetimi orta tonlu zeminlerde AA'yı güvenilir biçimde sağlamaz.
+
+#### 10.12.5 Görünüm anahtarları — `SiteModule` DEĞİL, tipli kolonlar
+
+**Karar: "Kayan yukarı çık butonu", "çerez bandı", "bakım modu" gibi anahtarlar
+`SiteModule` tablosunu KULLANMAZ.** Gerekçe:
+
+- `SiteModule`/`MODULE_REGISTRY` (§10.9) semantiği "kendi admin rotaları, kendi veri
+  modeli ve kendi menü girdisi olan bir özellik alanı"dır (`adminPath`,
+  `recommendedFor` alanları bunun içindir). Yukarı-çık butonunun ne admin sayfası, ne
+  veri modeli, ne de sidebar girdisi vardır. Registry'ye eklemek, "Eklentiler"
+  ekranında onu "Ürünler"in eşiti gibi göstermek olurdu — kullanıcıya söylenen
+  semantik bir yalan.
+- `SiteModule.settings` `Json`'dır: çerez bandının metni ve politika linki için
+  alan-başına doğrulama ve gerçek bir OpenAPI şekli gerekir.
+- Yön asimetriktir: bir anahtar ileride gerçek bir modüle terfi ettirilebilir; ama
+  aslında onay kutusundan ibaret olan bir "modül", kullanıcıya dönük bir ekranı
+  kalıcı olarak kirletir.
+
+**Kabul edilen anahtarlar (v1, beş adet):** `backToTopEnabled` (varsayılan `true`),
+`stickyHeaderEnabled` (`true`), `cookieBannerEnabled` (`false`, + `cookieBannerText`
++ `cookieBannerPolicyHref`), `maintenanceModeEnabled` (`false`, +
+`maintenanceMessage`) ve — kendi bölümünde — `socialShareEnabled`. Hepsinin ortak
+özelliği: hedefledikleri arayüz ya zaten vardır (header) ya da bağımsız, küçük bir
+bileşendir.
+
+**Reddedilenler (gerekçesiyle):** ekmek kırıntısı/breadcrumb (var olmayan bir sayfa
+hiyerarşisini gerektirir), okuma ilerleme çubuğu (kapsam şişmesi), "animasyonları
+kapat" (bu bir ziyaretçi tercihidir ve `prefers-reduced-motion` ile karşılanmalıdır —
+site sahibinin ayarı olarak modellemek erişilebilirlik açısından yanlış olurdu),
+kenar çubuğu/widget (mimari yok, kullanıcı da kapsam dışı bıraktı).
+
+**Çerez bandı — v1 BİLGİLENDİRMEDİR, onay yöneticisi DEĞİLDİR.** Hiçbir script'i
+engellemez, koşullu yüklemez ve onay kaydı tutmaz. Bu, KVKK/GDPR açısından kritik bir
+ayrımdır: arayüz metni "onay alıyoruz" izlenimi verirse, olmayan bir uyumluluk vaat
+edilmiş olur. compliance-agent metni bu gözle doğrular; gerçek bir onay yöneticisi
+(kategoriler, geri çekme, onay kaydı) ayrı bir özelliktir.
+
+**Bakım modu bir GÜVENLİK kontrolü DEĞİL, bir SUNUM anahtarıdır.** API'yi kapatmaz,
+hiçbir veriyi korumaz. Bağlayıcı kurallar:
+
+- Yalnızca `(site)` route grubunun layout'unda değerlendirilir. `/admin` **başka bir
+  route grubudur ve etkilenmez** — yönetici kendini asla kilitleyemez. Bunun API
+  seviyesinde bir engel olarak uygulanması YASAKTIR (admin paneli kendi kendini
+  kilitlerdi).
+- Bakım sayfası HTTP **503** + `Retry-After` ile döner (arama motorlarının doğru
+  davranışı için; 200 dönmek sayfaların "içerik bu" diye indekslenmesine yol açar).
+- **v1'de kullanıcıya özel atlatma (bypass) YOKTUR.** Sebep teknik: `(site)`
+  layout'unun ayar çağrısı anonim ve `revalidate: 60` ile ISR-önbelleklidir; oturuma
+  duyarlı bir atlatma, her public sayfa render'ında `cache: "no-store"` gerektirir ve
+  bu gerçek bir performans gerilemesidir. Bakım sayfası `/admin`'e bir bağlantı
+  içerir. İleride istenirse doğru yer `middleware.ts`'tir (oturum çerezi istek başına
+  okunabilir ve layout'un önbelleği bozulmaz).
+
+#### 10.12.6 Özel CSS/JS — tehdit modeli ve katmanlı koruma
+
+Bu, kontrattaki **en yüksek riskli** yüzeydir: kaydedilen metin her ziyaretçinin
+tarayıcısında sitenin kendi kaynağından (same-origin) çalışır.
+
+**Karar: TÜM görünüm yazma uçları — CSS ve JS dahil — yalnızca ADMIN'dir.** Bu,
+"CSS için ADMIN/EDITOR olabilir" ilk önerisinden bilinçli bir sapmadır ve hakemlik
+kararıdır: EDITOR'a global CSS yazdırıp renk seçiciyi yasaklamak tutarsızdır, ve CSS
+tek başına bir saldırı yüzeyidir — `position: fixed` kaplamayla clickjacking,
+`content: url(...)` ile dışarı istek/veri sızdırma, yasal uyarıyı veya çerez bandını
+`display: none` ile gizleme. security-agent bu politikayı **sıkılaştırabilir,
+gevşetemez**. Okuma (`GET`) authenticated'tır: kod zaten public HTML kaynağında
+görünür olduğundan okumayı kısıtlamak güvenlik tiyatrosu olurdu.
+
+**Ayrı uçlar, ayrı belgeler.** `PUT /admin/appearance/custom-code/css` ve `PUT
+/admin/appearance/custom-code/js` — PATCH değil PUT, çünkü gövde tek bir metin
+belgesinin tamamıdır. Ayrı olmalarının sebebi, JS politikasını CSS'ten bağımsız
+sıkılaştırabilmek ve tek gövde içinde alan-başına rol kontrolü anti-paterninden
+kaçınmaktır.
+
+**Onay akışı kontratta temsil edilir:** gövdede `acknowledged: boolean` zorunlu
+alandır. Değer boş DEĞİLSE `true` olmak zorundadır, aksi hâlde `422
+VALIDATION_ERROR`. Kod **temizlenirken** (`null`/`""`) onay aranmaz — kod kaldırmak
+her zaman güvenlidir. Onayın sunucuda zorlanması şarttır; yalnızca arayüzdeki bir
+onay kutusu doğrudan API çağrısıyla atlanabilirdi.
+
+**Reddedilen seçenek: sunucu tarafı sanitizasyon.** Keyfi JavaScript'i anlamlı
+biçimde temizlemek imkânsızdır; kısmi bir temizleyici, olmayan bir güvenliğe dair
+yanlış güven yaratır. Koruma bunun yerine **katmanlıdır**: yetenek kısıtı (ADMIN),
+açık onay, denetim izi, hız sınırı, boyut sınırı ve kill switch.
+
+**Denetim izi:** `appearance.custom_css.update` / `appearance.custom_js.update`,
+`metadata: { length, sha256, acknowledged }`. **Kod gövdesi audit metadata'sına
+yazılmaz** — 50 KB'lık blob'u denetim kaydında çoğaltmak yerine özet tutulur (özet
+ayrıca ileride CSP hash kaynağı olarak yeniden kullanılabilir).
+
+**Kill switch:** `CUSTOM_CODE_ENABLED` ortam değişkeni (varsayılan `true`). `false`
+iken iki PUT ucu 403 döner ve public `GET /appearance` `customJs: null` verir; saklı
+değer korunur ve yönetim ucunda görünmeye devam eder. Barındırılan/çok kiracılı bir
+kurulumda keyfi JS tümden yasaklanabilsin ve olay anında tek kaldıraçla kapatılabilsin
+diye vardır. devops-agent bu değişkeni sahiplenir; arayüz kapalıyken editörü devre
+dışı bırakıp nedenini açıklar (kullanıcı 403'ü kaydettikten sonra görmemelidir).
+
+**Render sözleşmesi (frontend-agent için bağlayıcı):**
+
+- Enjeksiyon **YALNIZCA `(site)` route grubunun layout'unda** yapılır. Kök
+  `app/layout.tsx` admin panelini de sarmalar; oraya konması site CSS'inin admin
+  arayüzünü bozması demektir. Bu, bu bölümdeki **tek en önemli uygulama kuralıdır**.
+- `customCss` → `<style>`; `customJs` → `next/script`,
+  `strategy="afterInteractive"`, sabit `id`.
+- Gömmeden önce kapanış etiketi kaçışı ZORUNLUDUR (`</style` ve `</script`
+  dizilerinin nötrleştirilmesi) — aksi hâlde metin, kendi etiketinden çıkıp
+  belgeye keyfi işaretleme enjekte edebilir.
+- **Özel CSS/JS canlı önizlemede UYGULANMAZ (v1).** Önizleme, admin DOM'u içinde
+  satır içi çalışır; keyfi CSS'i doğru önizlemek gerçek bir belge (iframe) gerektirir
+  ve mevcut paylaşılan `SiteHeader`/`SiteFooter` yaklaşımını bozardı. Bu bölüm bunun
+  yerine "yeni sekmede siteyi aç" sunar. (Renkler/fontlar/düzen önizlemede
+  ÇALIŞIR — `--site-*` scope'u sayesinde, bkz. §10.12.4.)
+
+#### 10.12.7 404 sayfası
+
+`notFoundTitle` / `notFoundMessage` / `notFoundButtonLabel` / `notFoundButtonHref`,
+hepsi nullable; `null` ise frontend'in sabit Türkçe varsayılanı kullanılır. Buton,
+etiket ve href'in **ikisi de** doluysa gösterilir (`headerCta*` ile aynı kural).
+
+İki bağlayıcı uygulama notu:
+
+- Mevcut `frontend/src/app/not-found.tsx` **kök** not-found'dur ve admin 404'lerini de
+  yakalar. Özelleştirilmiş 404, `(site)` segmentinin **kendi** `not-found.tsx`'ine
+  konur; admin genel olanı kullanmaya devam eder.
+- 404 render'ı sırasında yapılan ayar çağrısı **asla hata fırlatmamalıdır** — bir 404
+  bileşeninde fırlatılan hata 500'e dönüşür. `fetchSiteSettingsServer`'daki
+  try/catch → varsayılan deseni birebir uygulanır.
+
+#### 10.12.8 Kaydedilmemiş değişiklik koruması — ortak hook'a ÇIKARILIR (refactor kapsamdadır)
+
+Bugün aynı mantık (`beforeunload` + capture-phase link tıklaması + `window.confirm` +
+aynı Türkçe uyarı metni) `/admin/navigation` ve `/admin/settings` sayfalarında
+**kopyalanmış** durumdadır. Dokuz bölümlü yeni panelde üçüncü bir kopya çıkarmak
+sürdürülebilir değildir.
+
+**Karar: `frontend/src/hooks/use-unsaved-changes-guard.ts` çıkarılır ve mevcut İKİ
+sayfa da bu hook'a taşınır — refactor bu görevin kapsamındadır.** Sadece yeni panelde
+kullanmak, kopyaların kalıcılaşmasını garantilerdi. Taşıma mekaniktir (iki uygulama
+zaten birebir aynı); riski qa-agent'ın iki mevcut sayfa için ekleyeceği regresyon
+testi karşılar. `UNSAVED_CHANGES_WARNING` sabiti de hook modülüne taşınır (tek metin
+kaynağı).
+
+Bağlayıcı imza:
+
+```ts
+useUnsavedChangesGuard({ enabled: boolean; message?: string }): {
+  confirmDiscard: () => boolean; // sekme değişimi gibi uygulama-içi geçişler için
+}
+```
+
+Efektler `beforeunload` ve `/admin` linklerine capture-phase tıklamayı üstlenir;
+`confirmDiscard()` sekme değiştirmede çağrılır ve devam edilebiliyorsa `true` döner.
+
+#### 10.12.9 Panel yapısı ve kaydetme semantiği
+
+Panelin dokuz bölümünün **hepsi tek bir `PATCH /admin/appearance` ucunu kullanır**
+(özel kod hariç). "Bölüm başına Kaydet" bir **arayüz** kavramıdır: her bölüm yalnızca
+kendi alanlarını gönderir, kısmi PATCH semantiği bunu doğal olarak karşılar. Dokuz
+ayrı uç = dokuz Zod şeması + zamanla birbirinden sapan dokuz kod yolu demek olurdu.
+Bölüm başına Kaydet düğmesinin yanında, tüm kirli bölümleri tek istekte yazan bir
+"Tümünü Kaydet" yapışkan çubuğu bulunur (mevcut sayfaların yapışkan Kaydet kartı
+paterni).
+
+Canlı önizleme **mevcut** `SiteHeader`/`SiteFooter` bileşenleriyle yapılır — yeni bir
+önizleme bileşeni YAZILMAZ. `/admin/navigation`'daki `previewSettings` /
+`previewNavigationItems` / `previewSocialLinks` / `previewFooterColumns` deseni
+genişletilerek yeniden kullanılır; ortak kısım paylaşılan bir bileşene çıkarılabilir,
+ancak `SiteHeader`/`SiteFooter`'ın prop arayüzü DEĞİŞTİRİLMEDEN.
+
+Önbellek gecikmesi kullanıcıya söylenir: public ayar çağrısı `revalidate: 60`
+kullandığından değişiklikler siteye **en geç 60 saniyede** yansır; panel bunu açıkça
+yazar. `cache: "no-store"`'a geçmek yasaktır (her public sayfa render'ında ek istek).
 
 ### Bilinen Sorunlar / Backlog
 

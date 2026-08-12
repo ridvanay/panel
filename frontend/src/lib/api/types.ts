@@ -1471,3 +1471,175 @@ export interface ExportJob {
   createdAt: string;
   updatedAt: string;
 }
+
+/**
+ * §10.12 Site Özelleştirme (Görünüm) — openapi.yaml `Appearance` tag'i. İSİMLENDİRME KURALI
+ * (bağlayıcı): bu bloktaki HER alan YALNIZCA ziyaretçi (public) sitesini etkiler; alan adlarında
+ * `site` ön eki KULLANILMAZ — ayrım RENDER katmanında zorlanır (bkz. ARCHITECTURE.md §10.12.4,
+ * `--site-*` CSS değişkenleri + `.site-scope`). Admin panelinin kendi teması (`--primary` vb.)
+ * bu tiplerden ASLA türetilmez.
+ */
+export type SiteFont =
+  | "SYSTEM"
+  | "INTER"
+  | "ROBOTO"
+  | "OPEN_SANS"
+  | "MONTSERRAT"
+  | "POPPINS"
+  | "LORA"
+  | "PLAYFAIR_DISPLAY"
+  | "SOURCE_SERIF_4";
+
+export type PageHeaderStyle = "PLAIN" | "BANNER" | "HIDDEN";
+
+/**
+ * Yazı/sayfa altındaki paylaşım butonları — `SocialPlatform`'dan (site kimliğinin KENDİ hesap
+ * linkleri, bkz. yukarıdaki `SocialLinkDto`) BİLEREK AYRIDIR ve onunla BİRLEŞTİRİLMEZ.
+ */
+export type SocialShareNetwork = "TWITTER" | "FACEBOOK" | "LINKEDIN" | "WHATSAPP" | "EMAIL" | "COPY_LINK";
+
+/** `GET /admin/appearance` ve `PATCH /admin/appearance` yanıtı — tekil (singleton) görünüm ayarları. */
+export interface SiteAppearance {
+  /** En son uygulanan ön ayarın anahtarı; `null` = özel (kullanıcı alanları elle değiştirdi). CANLI BİR BAĞ DEĞİLDİR. */
+  presetKey: string | null;
+  pageHeaderStyle: PageHeaderStyle;
+  pageHeaderBackgroundColor: string | null;
+  /** Medya kütüphanesinden seçilir (mevcut `coverMediaId` paterni) — serbest URL alanı DEĞİL. */
+  pageHeaderBackgroundMediaId: string | null;
+  /** Yanıta özel, YAZILAMAZ alan — `pageHeaderBackgroundMediaId`'nin sunucuda çözümlenmiş URL'i. */
+  pageHeaderBackgroundUrl: string | null;
+  pageHeaderOverlayOpacity: number;
+  primaryColor: string;
+  secondaryColor: string;
+  buttonColor: string;
+  buttonTextColor: string;
+  linkColor: string;
+  headingFont: SiteFont;
+  bodyFont: SiteFont;
+  baseFontSize: number;
+  socialShareEnabled: boolean;
+  socialShareNetworks: SocialShareNetwork[];
+  backToTopEnabled: boolean;
+  stickyHeaderEnabled: boolean;
+  cookieBannerEnabled: boolean;
+  cookieBannerText: string | null;
+  cookieBannerPolicyHref: string | null;
+  maintenanceModeEnabled: boolean;
+  maintenanceMessage: string | null;
+  notFoundTitle: string | null;
+  notFoundMessage: string | null;
+  notFoundButtonLabel: string | null;
+  notFoundButtonHref: string | null;
+  /** Hiç kaydedilmemişse (DEFAULTS) `null`. */
+  updatedAt: string | null;
+}
+
+/**
+ * `GET /appearance` (public) yanıtı. `SiteAppearance`'tan FARKLARI: `presetKey`,
+ * `pageHeaderBackgroundMediaId`, `updatedAt` TAŞIMAZ; `customCss`/`customJs` İÇERİR — `(site)`
+ * layout'u bu iki değeri her SSR render'ında ihtiyaç duyar.
+ */
+export interface PublicSiteAppearance {
+  pageHeaderStyle: PageHeaderStyle;
+  pageHeaderBackgroundColor: string | null;
+  pageHeaderBackgroundUrl: string | null;
+  pageHeaderOverlayOpacity: number;
+  primaryColor: string;
+  secondaryColor: string;
+  buttonColor: string;
+  buttonTextColor: string;
+  linkColor: string;
+  headingFont: SiteFont;
+  bodyFont: SiteFont;
+  baseFontSize: number;
+  socialShareEnabled: boolean;
+  socialShareNetworks: SocialShareNetwork[];
+  backToTopEnabled: boolean;
+  stickyHeaderEnabled: boolean;
+  cookieBannerEnabled: boolean;
+  cookieBannerText: string | null;
+  cookieBannerPolicyHref: string | null;
+  maintenanceModeEnabled: boolean;
+  maintenanceMessage: string | null;
+  notFoundTitle: string | null;
+  notFoundMessage: string | null;
+  notFoundButtonLabel: string | null;
+  notFoundButtonHref: string | null;
+  /** `(site)` layout'unda `<style>` olarak gömülür — ASLA kök `app/layout.tsx`'te DEĞİL. */
+  customCss: string | null;
+  /** `CUSTOM_CODE_ENABLED=false` iken HER ZAMAN `null` (kill switch). */
+  customJs: string | null;
+}
+
+/**
+ * `PATCH /admin/appearance` gövdesi — TÜM alanlar opsiyoneldir, yalnızca gönderilenler yazılır.
+ * `customCss`/`customJs`/`pageHeaderBackgroundUrl` bu gövdede KASITLI olarak YOKTUR.
+ */
+export interface UpdateSiteAppearanceRequest {
+  presetKey?: string | null;
+  pageHeaderStyle?: PageHeaderStyle;
+  pageHeaderBackgroundColor?: string | null;
+  pageHeaderBackgroundMediaId?: string | null;
+  pageHeaderOverlayOpacity?: number;
+  primaryColor?: string;
+  secondaryColor?: string;
+  buttonColor?: string;
+  buttonTextColor?: string;
+  linkColor?: string;
+  headingFont?: SiteFont;
+  bodyFont?: SiteFont;
+  baseFontSize?: number;
+  socialShareEnabled?: boolean;
+  /** Tam değiştirme (replace) semantiği — gönderilen dizi mevcut seçimin YERİNE geçer. */
+  socialShareNetworks?: SocialShareNetwork[];
+  backToTopEnabled?: boolean;
+  stickyHeaderEnabled?: boolean;
+  cookieBannerEnabled?: boolean;
+  cookieBannerText?: string | null;
+  cookieBannerPolicyHref?: string | null;
+  maintenanceModeEnabled?: boolean;
+  maintenanceMessage?: string | null;
+  notFoundTitle?: string | null;
+  notFoundMessage?: string | null;
+  notFoundButtonLabel?: string | null;
+  notFoundButtonHref?: string | null;
+}
+
+export interface ResetAppearanceRequest {
+  /** Verilirse o ön ayarın değerlerine, verilmezse/`null` ise fabrika `DEFAULTS`'una dönülür. */
+  presetKey?: string | null;
+}
+
+/** `GET /admin/appearance/presets` öğesi — kod içi statik registry (DB tablosu YOKTUR). */
+export interface AppearancePreset {
+  key: string;
+  label: string;
+  description: string;
+  /** `PATCH /admin/appearance` gövdesine OLDUĞU GİBİ gönderilebilecek alanlar (yalnızca renk/tipografi). */
+  values: UpdateSiteAppearanceRequest;
+}
+
+/** `GET /admin/appearance/custom-code` ve iki PUT ucunun yanıtı. */
+export interface SiteCustomCode {
+  css: string | null;
+  /** `CUSTOM_CODE_ENABLED=false` iken saklanan değer bu yönetim ucunda GÖRÜNMEYE devam eder. */
+  js: string | null;
+  cssUpdatedAt: string | null;
+  cssUpdatedBy: UserSummary | null;
+  jsUpdatedAt: string | null;
+  jsUpdatedBy: UserSummary | null;
+  /** Ortamın kill switch durumu (`CUSTOM_CODE_ENABLED`). */
+  customCodeEnabled: boolean;
+}
+
+export interface UpdateCustomCssRequest {
+  /** Belgenin TAMAMI (PUT). `null`/`""` = özel CSS'i kaldır. */
+  css: string | null;
+  /** `css` boş değilse `true` OLMAK ZORUNDADIR (sunucu `422` ile zorlar). */
+  acknowledged: boolean;
+}
+
+export interface UpdateCustomJsRequest {
+  js: string | null;
+  acknowledged: boolean;
+}

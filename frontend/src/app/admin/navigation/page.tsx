@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from "react";
+import { useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 import {
@@ -41,11 +42,10 @@ import { useModules } from "@/context/modules-context";
 import { ContentPickerPanel, type ContentPickerSection } from "@/components/admin/navigation/content-picker-panel";
 import { NavTreeEditor } from "@/components/admin/navigation/nav-tree-editor";
 import { appendRootItems, toNavigationItemsPayload, type FlatNavItem } from "@/components/admin/navigation/nav-tree-utils";
+import { useUnsavedChangesGuard } from "@/hooks/use-unsaved-changes-guard";
 
 const HREF_HINT =
   "http(s):// ile başlayan tam bir bağlantı, / ile başlayan site-içi yol veya # ile başlayan bağlantı girin.";
-
-const UNSAVED_CHANGES_WARNING = "Kaydedilmemiş değişiklikleriniz var. Yine de ayrılmak istiyor musunuz?";
 
 const SOCIAL_PLATFORM_OPTIONS: { value: SocialPlatform; label: string }[] = [
   { value: "TWITTER", label: "Twitter / X" },
@@ -173,10 +173,14 @@ function RowActions({
   );
 }
 
-export default function AdminNavigationPage() {
+function AdminNavigationPageContent() {
   const { isModuleEnabled } = useModules();
 
-  const [activeTab, setActiveTab] = useState("menus");
+  // Derin link desteği (§10.12.1) — `/admin/appearance`'daki Logo & Marka / Sosyal Medya özet
+  // kartları `?tab=locations` ile buraya yönlendirir. Yalnızca İLK render'da okunur (sonraki
+  // sekme değişiklikleri normal `activeTab` state'i ile yönetilir, URL'i sürekli SENKRONİZE etmez).
+  const searchParams = useSearchParams();
+  const [activeTab, setActiveTab] = useState(() => (searchParams.get("tab") === "locations" ? "locations" : "menus"));
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -323,6 +327,11 @@ export default function AdminNavigationPage() {
   function hasUnsavedChangesForTab(tab: string) {
     return tab === "menus" ? menuHasUnsavedChanges : locationsHasUnsavedChanges;
   }
+
+  // §10.12.8 — ortak hook: beforeunload + `/admin` linklerine capture-phase tıklama, herhangi
+  // bir sekme kirliyse devrede (davranış öncekiyle AYNI — bu iki efekt önceden bu sayfada YOKTU,
+  // ama hook'un bağlayıcı imzası ikisini birden sağladığı için artık ÜCRETSİZ eklenmiş olur).
+  const { confirmDiscard } = useUnsavedChangesGuard({ enabled: menuHasUnsavedChanges || locationsHasUnsavedChanges });
 
   // --- Sosyal medya linkleri ---
   function addSocialLink() {
@@ -558,7 +567,7 @@ export default function AdminNavigationPage() {
         onValueChange={(value) => {
           const nextTab = String(value);
           if (hasUnsavedChangesForTab(activeTab) && nextTab !== activeTab) {
-            if (!window.confirm(UNSAVED_CHANGES_WARNING)) return;
+            if (!confirmDiscard()) return;
           }
           setActiveTab(nextTab);
         }}
@@ -911,7 +920,12 @@ export default function AdminNavigationPage() {
               className="space-y-2 lg:sticky lg:top-6"
             >
               <p className="text-xs font-medium tracking-wide text-foreground/50 uppercase">Canlı Önizleme</p>
-              <div className="overflow-hidden rounded-xl border border-border">
+              {/* `.site-scope` (§10.12.4) — SiteHeader/SiteFooter artık `--site-button`/`--site-link`
+                  gibi TOKEN'LARI kullanıyor (bkz. site-header.tsx/site-footer.tsx); bu sınıf
+                  olmadan o değişkenler tanımsız kalır. Bu sayfa renk YÖNETMEDİĞİ için sadece
+                  `globals.css`'teki .site-scope VARSAYILANLARI uygulanır (indigo/siyah) — gerçek
+                  site renkleri yalnızca /admin/appearance önizlemesinde satır-içi `style` ile geçersiz kılınır. */}
+              <div className="site-scope overflow-hidden rounded-xl border border-border">
                 <SiteHeader
                   settings={previewSettings}
                   pages={publishedPages}
@@ -957,5 +971,30 @@ export default function AdminNavigationPage() {
         </Card>
       </motion.div>
     </div>
+  );
+}
+
+function AdminNavigationPageFallback() {
+  return (
+    <div className="space-y-6">
+      <PageHeading icon={LayoutTemplate} title="Navigasyon Yönetimi" description="Menüleri ve site konumlarını yönetin." />
+      <div className="flex justify-center py-12">
+        <Spinner className="h-6 w-6 text-primary" />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * NOT (Next.js 16 — bkz. frontend/AGENTS.md): `useSearchParams` kullanan Client Component
+ * production build'de `<Suspense>` ile sarılmalı, aksi halde build hata verir (bkz.
+ * `app/admin/stats/page.tsx` ile AYNI pattern) — `?tab=locations` derin link desteği bu sarmalamayı
+ * gerektirir.
+ */
+export default function AdminNavigationPage() {
+  return (
+    <Suspense fallback={<AdminNavigationPageFallback />}>
+      <AdminNavigationPageContent />
+    </Suspense>
   );
 }

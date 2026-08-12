@@ -6,6 +6,12 @@ import AdminNavigationPage from "@/app/admin/navigation/page";
 import { ModulesProvider } from "@/context/modules-context";
 import type { NavigationConfigDto, Page, SitePage, SiteSettings } from "@/lib/api/types";
 
+// `useSearchParams` (`?tab=` derin link desteği, §10.12.1) + `useUnsavedChangesGuard`'ın
+// kullandığı `usePathname` — bkz. a11y-admin-stats.test.tsx ile AYNI mock deseni.
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/admin/navigation",
+  useSearchParams: () => new URLSearchParams(""),
+}));
 vi.mock("@/lib/api/settings", () => ({
   getSettings: vi.fn(),
   updateSettings: vi.fn(),

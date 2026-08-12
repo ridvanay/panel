@@ -96,6 +96,30 @@ tags:
       Site geneli tekil (singleton) ayarlar (`/settings`, `/admin/settings`) — bkz.
       ARCHITECTURE.md §10.9.5. `/settings` public'tir (site header/nav bunu okur),
       `/admin/settings` yönetim ekranı içindir, PATCH yalnızca SiteRole=ADMIN.
+
+
+      **Kapsam sınırı (§10.12):** `Settings` sitenin NASIL ÇALIŞTIĞINI tutar
+      (`siteName`, `homePageId`, `siteTemplate`, rol matrisi, entegrasyonlar).
+      Sitenin NASIL GÖRÜNDÜĞÜ `Appearance` tag'ine (`/appearance`,
+      `/admin/appearance`), NEREYE GİDİLDİĞİ ise `Navigation` tag'ine aittir.
+      `SiteSettings` şeması bu bölümle GENİŞLETİLMEZ — bkz. `Appearance` tag'i.
+  - name: Appearance
+    description: >
+      Site Özelleştirme / görünüm ayarları (`/appearance`, `/admin/appearance`) — bkz.
+      ARCHITECTURE.md §10.12. Renk, tipografi, sayfa başlığı düzeni, tema ön ayarı,
+      görünüm anahtarları (toggle), 404 sayfası ve özel CSS/JS.
+
+
+      **TÜM yazma uçları İSTİSNASIZ yalnızca SiteRole=ADMIN'dir** (okuma:
+      authenticated). EDITOR bilinçli olarak DIŞARIDA bırakılmıştır: bu ayarlar tek
+      bir satırda tüm siteyi etkiler, kayıt-bazlı değildir ve özel CSS/JS ile
+      keyfi kod yürütmeye kadar uzanır (gerekçe: ARCHITECTURE.md §10.12.6).
+
+
+      **Bu ayarlar YALNIZCA ziyaretçi (public) tarafını etkiler; admin panelinin
+      kendi teması/vurgu rengi bu uçlardan ASLA değiştirilemez.** Admin teması
+      `next-themes` + `AccentProvider` ile kullanıcı-başına yönetilir ve
+      `.admin-shell` altında ayrı token'lar kullanır (bkz. §10.12.4).
   - name: Modules
     description: >
       Eklenti/Modül Yönetimi (`/admin/modules`, `/modules`) — bkz. ARCHITECTURE.md
@@ -2775,6 +2799,377 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationError" }
+
+  # ---------------------------------------------------------------------------
+  # SİTE ÖZELLEŞTİRME (§10.12) — AJAN KAPSAM NOTU (architect, bağlayıcı)
+  #
+  #   db-agent       : İKİ yeni singleton tablo (`SiteAppearance`, `SiteCustomCode`),
+  #                    TEK migration. `SiteSettings`'e HİÇBİR kolon EKLENMEZ ve mevcut
+  #                    hiçbir kolonu DEĞİŞTİRİLMEZ (§10.12.2 gerekçe). Renk/font/enum
+  #                    alanları TİPLİ kolondur — JSON blob YASAK. Tek FK:
+  #                    `SiteAppearance.pageHeaderBackgroundMediaId` → `Media`,
+  #                    `onDelete: SetNull` (görsel silinince banner sade metne düşer,
+  #                    500 vermez). `SiteCustomCode` audit kolonları (`cssUpdatedById`,
+  #                    `jsUpdatedById`) → `User`, `onDelete: SetNull`. İş kuralı/rol
+  #                    kontrolü/uzunluk doğrulaması YAZMAZ.
+  #   backend-agent  : Aşağıdaki 7 uç + Zod şemaları + mapper (`toSiteAppearanceDto`,
+  #                    `toPublicSiteAppearanceDto`, `toSiteCustomCodeDto`) + statik
+  #                    `lib/appearance-presets.ts` registry'si (MODULE_REGISTRY ile
+  #                    AYNI patern). Lazy-upsert `DEFAULTS` deseni `settings.routes.ts`
+  #                    ile birebir aynıdır. `acknowledged` kuralını, kill-switch'i ve
+  #                    audit kaydını UYGULAR; şema TASARLAMAZ, güvenlik POLİTİKASI
+  #                    BELİRLEMEZ (politika: security-agent + §10.12.6).
+  #   frontend-agent : `/admin/appearance` paneli (9 bölüm, bölüm-başına Kaydet),
+  #                    `(site)` layout'unda token/font/özel kod enjeksiyonu,
+  #                    `(site)/not-found.tsx`, ORTAK `useUnsavedChangesGuard` hook'unu
+  #                    ÇIKARIR ve mevcut `/admin/navigation` + `/admin/settings`
+  #                    sayfalarını bu hook'a taşır (§10.12.8 — refactor KAPSAMDADIR).
+  #                    Canlı önizleme MEVCUT `SiteHeader`/`SiteFooter` bileşenleriyle
+  #                    yapılır — YENİ bir önizleme bileşeni YAZILMAZ.
+  #   ui-designer    : `--site-*` token isim listesi, ön ayar (preset) paletleri,
+  #                    kontrast uyarı eşiği (WCAG AA), font eşleştirme tablosu,
+  #                    bakım/404/çerez bandı boş-durum metinleri. Kod YAZMAZ.
+  #   security-agent : §10.12.6 özel CSS/JS tehdit modeli denetimi — rol eşiği,
+  #                    `acknowledged` akışı, `</script>` kaçışı, kill-switch, audit
+  #                    hash'i, CSP etkileşimi. Politikayı SIKILAŞTIRABİLİR, GEVŞETEMEZ.
+  #   compliance-agent: Çerez bandı v1 "bilgilendirme" olarak tanımlıdır, ONAY YÖNETİCİSİ
+  #                    DEĞİLDİR (hiçbir script'i engellemez) — KVKK/GDPR açısından UI
+  #                    metninin bunu yanlış vaat etmediğini doğrular (§10.12.5).
+  #   qa-agent       : Özel JS'in admin paneline SIZMADIĞI (yalnızca `(site)` layout),
+  #                    `acknowledged: false` → 422, EDITOR → 403, bakım modunda
+  #                    `/admin`'in ERİŞİLEBİLİR kaldığı, ortak unsaved-guard'ın
+  #                    mevcut iki sayfada REGRESYON yaratmadığı senaryoları.
+  #
+  # Rota sınırı: `/admin/settings` = sitenin NASIL ÇALIŞTIĞI + hesap/organizasyon;
+  # `/admin/appearance` = sitenin NASIL GÖRÜNDÜĞÜ; `/admin/navigation` = NEREYE
+  # gidildiği + site kimliği (logo/slogan) + footer/sosyal hesap linkleri.
+  # Bir alan YALNIZCA TEK bir ekranda düzenlenir; diğer ekranlar derin link verir
+  # (bkz. §10.12.1 — Logo & Marka ve Sosyal Hesap Linkleri TAŞINMAZ).
+  # ---------------------------------------------------------------------------
+
+  /appearance:
+    get:
+      tags: [Appearance]
+      security: []
+      summary: Site görünüm ayarlarını oku (public)
+      description: >
+        `(site)` layout'unun SSR sırasında çağırdığı TEK uç — renk/tipografi
+        token'ları, sayfa başlığı düzeni, görünüm anahtarları, 404 metinleri ve
+        özel CSS/JS aynı yanıtta döner. Ayrı bir `/appearance/custom-code` public
+        ucu KASITLI olarak YOKTUR: her public sayfa render'ı ikinci bir gidiş-dönüş
+        ödemek zorunda kalırdı.
+
+
+        Satır yoksa (hiç kaydedilmemiş) sabit `DEFAULTS` döner — `GET /settings`
+        ile AYNI lazy-upsert paterni, 404 DÖNMEZ.
+
+
+        **`customCss`/`customJs` bu public yanıtta yer alır ve bu bir sızıntı
+        DEĞİLDİR** — bu kod zaten her ziyaretçinin HTML kaynağına gömülerek
+        yayınlanır. `CUSTOM_CODE_ENABLED=false` ortamlarında (kill switch,
+        §10.12.6) `customJs` HER ZAMAN `null` döner.
+
+
+        **Önbellek:** tüketici `next: { revalidate: 60 }` kullanır (`GET /settings`
+        ile AYNI) — görünüm değişikliği siteye en geç 60 saniyede yansır; admin
+        paneli kullanıcıya bunu YAZAR. `cache: "no-store"` YASAKTIR (her public
+        sayfa render'ında ek istek demektir).
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/PublicSiteAppearance" }
+
+  /admin/appearance:
+    get:
+      tags: [Appearance]
+      summary: Site görünüm ayarlarını oku (authenticated)
+      description: >
+        Public yanıta EK olarak `presetKey` ve `updatedAt` döner. Okuma eşiği
+        authenticated'tır (VIEWER dahil) — panel salt-okunur görüntülenebilir,
+        yazma yalnızca ADMIN'dir.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/SiteAppearance" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    patch:
+      tags: [Appearance]
+      summary: Site görünüm ayarlarını güncelle (yalnızca SiteRole=ADMIN)
+      description: >
+        Satır yoksa (ilk çağrı) `DEFAULTS` ile birlikte oluşturulur (upsert) —
+        `PATCH /admin/settings` ile AYNI desen. Tüm alanlar opsiyoneldir; yalnızca
+        GÖNDERİLEN alanlar yazılır. Audit log: `appearance.update`
+        (`metadata.changed` = gönderilen alan adları).
+
+
+        **Panelin 9 bölümünün HEPSİ bu TEK ucu kullanır** — bölüm başına ayrı uç
+        YOKTUR (özel CSS/JS hariç, bkz. `/admin/appearance/custom-code/*`). "Bölüm
+        başına Kaydet" bir ARAYÜZ kavramıdır: her bölüm yalnızca kendi alanlarını
+        gönderir, kısmi PATCH semantiği bunu doğal olarak karşılar. 9 ayrı uç, 9
+        ayrı Zod şeması ve zamanla birbirinden sapan 9 kod yolu demek olurdu.
+
+
+        **Tema ön ayarı (preset) uygulama bir SUNUCU işlemi DEĞİLDİR:** istemci
+        `GET /admin/appearance/presets`'ten değerleri alır, formu doldurur ve
+        kullanıcı Kaydet dediğinde bu uca `presetKey` ile BİRLİKTE tüm alanları
+        gönderir. `presetKey` yalnızca "en son hangi ön ayardan başlandı" bilgisidir,
+        CANLI BİR BAĞ DEĞİLDİR — ön ayar sonradan değişirse kayıtlı renkler
+        değişmez. Kullanıcı tek bir rengi elle değiştirirse istemci `presetKey`'i
+        `null` (özel) gönderir.
+
+
+        **Kontrast (WCAG) sunucuda ZORLANMAZ:** renk seçimi öznel bir tasarım
+        kararıdır ve sert bir 422 kullanıcıyı kilitlerdi. İstemci, kontrast oranı
+        AA eşiğinin altındaysa seçicinin yanında ENGELLEMEYEN bir uyarı gösterir
+        (bkz. §10.12.4, ui-designer eşiği tanımlar).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateSiteAppearanceRequest" }
+      responses:
+        "200":
+          description: Güncellendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/SiteAppearance" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: "`pageHeaderBackgroundMediaId` ile gönderilen medya bulunamadı (`error.code: NOT_FOUND`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/appearance/presets:
+    get:
+      tags: [Appearance]
+      summary: Tema ön ayarlarını listele — statik registry (authenticated)
+      description: >
+        Kod içi statik `lib/appearance-presets.ts` listesi — `MODULE_REGISTRY` ve
+        `PERMISSIONS_MATRIX` ile AYNI patern (bkz. `GET /admin/settings/permissions`,
+        o da statik bir matrisi API üzerinden sunar). DB tablosu YOKTUR.
+
+
+        **Neden frontend sabiti değil de sunucu ucu (karar):** ön ayar, doğrudan
+        bu kontratın alanlarına yazılacak DEĞERLER içerir (renk kodları, `SiteFont`
+        enum'u). Frontend sabiti olsaydı, sunucu tarafı doğrulamadan bağımsız
+        evrilir ve enum'da olmayan bir font içeren bir ön ayar kaydedilirken 422
+        verirdi. Sunucu sahipliği tek doğruluk kaynağını ve test edilebilirliği
+        garanti eder.
+
+
+        **Public DEĞİLDİR:** ziyaretçi sitesi ön ayar TANIMLARINI asla okumaz,
+        yalnızca uygulanmış (kaydedilmiş) değerleri `GET /appearance`'tan alır.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/AppearancePreset" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /admin/appearance/reset:
+    post:
+      tags: [Appearance]
+      summary: Görünüm ayarlarını varsayılana/ön ayara döndür (yalnızca SiteRole=ADMIN)
+      description: >
+        Kullanıcı renk/tipografi ayarlarını bozduğunda geri dönüş kapısı. Gövde boşsa
+        (`presetKey` yok) fabrika `DEFAULTS`'una, `presetKey` verilirse o ön ayarın
+        değerlerine döner.
+
+
+        **Özel CSS/JS bu işlemden ETKİLENMEZ** (bilinçli karar): "renklerimi
+        sıfırla" niyeti, kullanıcının elle yazdığı kodu sessizce silmeyi ASLA
+        kapsamaz. Özel kodu temizlemek için ilgili PUT ucuna boş değer gönderilir.
+        Audit log: `appearance.reset` (`metadata.presetKey`).
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ResetAppearanceRequest" }
+      responses:
+        "200":
+          description: Sıfırlandı
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/SiteAppearance" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: "Bilinmeyen `presetKey` (`error.code: NOT_FOUND`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/appearance/custom-code:
+    get:
+      tags: [Appearance]
+      summary: Özel CSS/JS'i ve denetim izini oku (authenticated)
+      description: >
+        CSS ve JS gövdeleri + kim/ne zaman güncelledi bilgisi. Okuma eşiği
+        authenticated'tır: bu kod zaten public HTML kaynağında görünür olduğundan
+        okumayı ADMIN'e kısıtlamak GÜVENLİK TİYATROSU olurdu. Yazma eşiği ise
+        yalnızca ADMIN'dir (aşağıdaki PUT uçları) — arayüz, ADMIN olmayan kullanıcıya
+        editörü salt-okunur gösterir.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/SiteCustomCode" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /admin/appearance/custom-code/css:
+    put:
+      tags: [Appearance]
+      summary: Özel CSS'i tamamen değiştir (yalnızca SiteRole=ADMIN)
+      description: >
+        **PUT (PATCH değil):** gövde tek bir metin belgesinin TAMAMIDIR, kısmi
+        birleştirme semantiği yoktur.
+
+
+        **Neden EDITOR DEĞİL (hakemlik kararı, §10.12.6):** EDITOR'a global CSS
+        yazma yetkisi verip renk seçiciyi yasaklamak tutarsız olurdu; ayrıca CSS
+        tek başına bir saldırı yüzeyidir — `position: fixed` kaplama ile
+        clickjacking, `content: url(...)` ile dışarı veri sızdırma, yasal
+        uyarıları/çerez bandını `display: none` ile gizleme. Bu panelin TÜM yazma
+        uçları ADMIN'dir.
+
+
+        **`acknowledged` kuralı:** `css` BOŞ DEĞİLSE gövdede `acknowledged: true`
+        ZORUNLUDUR; eksik/`false` ise `422 VALIDATION_ERROR` döner. Kodu TEMİZLEMEK
+        (`null` veya `""`) onay GEREKTİRMEZ — kod kaldırmak her zaman güvenlidir.
+        Bu alan, arayüzdeki "bu kodun ne yaptığını anlıyorum" onay kutusunun
+        kontrattaki karşılığıdır ve sunucu tarafında ZORLANIR (yalnızca arayüzde
+        kalan bir onay, doğrudan API çağrısıyla atlanabilirdi).
+
+
+        Audit log: `appearance.custom_css.update`, `metadata: { length, sha256,
+        acknowledged }`. **Kod gövdesi audit metadata'sına YAZILMAZ** — 50 KB'lık
+        bir blob'u denetim kaydında çoğaltmak yerine sha256 özeti tutulur.
+
+
+        **Hız sınırı:** 10 istek / 1 dakika. Aşım → 429.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateCustomCssRequest" }
+      responses:
+        "200":
+          description: Güncellendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/SiteCustomCode" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: >
+            SiteRole ADMIN değil VEYA `CUSTOM_CODE_ENABLED=false` (kill switch,
+            §10.12.6) — `error.code: FORBIDDEN`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /admin/appearance/custom-code/js:
+    put:
+      tags: [Appearance]
+      summary: Özel JS'i tamamen değiştir (yalnızca SiteRole=ADMIN, en yüksek risk)
+      description: >
+        **Bu kontrattaki EN YÜKSEK RİSKLİ yazma ucudur:** kaydedilen metin, her
+        ziyaretçinin tarayıcısında sitenin kendi kaynağından çalışır. Ayrı bir uç
+        olmasının sebebi, rol/onay/denetim politikasını CSS'ten bağımsız
+        sıkılaştırabilmek ve tek bir gövde içinde alan-başına rol kontrolü yapma
+        anti-paterninden kaçınmaktır (rol, `requireSiteRole` preHandler'ı ile uç
+        seviyesinde zorlanır).
+
+
+        Kurallar CSS ucuyla AYNI (`acknowledged` zorunluluğu, sha256 audit,
+        10 istek/dakika) + şu farklar:
+
+        - Kill switch `CUSTOM_CODE_ENABLED=false` iken bu uç 403 döner VE
+          `GET /appearance` `customJs: null` döner.
+
+        - Audit action: `appearance.custom_js.update`.
+
+        - Maksimum uzunluk 20.000 karakter (CSS'te 50.000) — bu metin her sayfanın
+          HTML'ine gömülür, doğrudan sayfa ağırlığıdır.
+
+
+        **Sunucu tarafı "sanitizasyon" BİLİNÇLİ OLARAK YAPILMAZ (karar):** keyfi
+        JavaScript'i anlamlı biçimde temizlemek teorik olarak imkânsızdır ve kısmi
+        bir temizleyici, olmayan bir güvenliğe dair yanlış güven yaratırdı. Koruma
+        katmanları bunun yerine: yetenek kısıtı (yalnızca ADMIN), açık onay
+        (`acknowledged`), denetim izi (sha256 + aktör), hız sınırı ve kill switch.
+
+
+        **CSP notu (security-agent):** şu an `@fastify/helmet` `contentSecurityPolicy:
+        false` ile çalışıyor. İleride CSP açılırsa bu satır-içi (inline) script
+        bloğu bir nonce veya sha256 kaynağı gerektirir — özet zaten denetim için
+        hesaplandığından yeniden kullanılabilir.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateCustomJsRequest" }
+      responses:
+        "200":
+          description: Güncellendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/SiteCustomCode" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: >
+            SiteRole ADMIN değil VEYA `CUSTOM_CODE_ENABLED=false` (kill switch) —
+            `error.code: FORBIDDEN`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /admin/modules:
     get:
@@ -6571,6 +6966,314 @@ components:
       required: [enabled]
       properties:
         enabled: { type: boolean }
+
+    # ---- §10.12 Site Özelleştirme (Görünüm) ----
+    #
+    # İSİMLENDİRME KURALI (bağlayıcı): bu bölümdeki HER alan YALNIZCA ziyaretçi
+    # (public) sitesini etkiler. Alan adlarında `site` ön eki KULLANILMAZ (tablo/uç/DTO
+    # adı `SiteAppearance` zaten kapsamı taşır, `SiteAppearance.sitePrimaryColor`
+    # kekemelik olurdu); ayrım bunun yerine RENDER katmanında zorlanır: bu değerler
+    # DAİMA `--site-*` ön ekli CSS değişkenlerine ve `.site-scope` sınıfına yazılır.
+    # Admin panelinin token'ları (`--primary` vb., `.admin-shell` altında) bu uçlardan
+    # ASLA türetilmez. Bkz. ARCHITECTURE.md §10.12.4.
+
+    SiteFont:
+      description: >
+        İzin verilen yazı tipleri — **serbest metin DEĞİL, kapalı bir enum (karar).**
+        Teknik zorunluluk: frontend fontları `next/font/google` ile yükler ve bu API
+        font adının DERLEME ZAMANINDA bilinmesini gerektirir; çalışma zamanında gelen
+        keyfi bir dize `next/font` ile YÜKLENEMEZ. Ek fayda: keyfi ad, kontrolsüz bir
+        üçüncü taraf isteğine ve öngörülemeyen sayfa düzenine yol açardı.
+
+
+        `SYSTEM` = harici istek YOK, işletim sistemi font yığını (varsayılan).
+        Yeni bir font eklemek = bu enum + frontend eşleştirme tablosu + ui-designer
+        onayı (üç yerde birden), kasıtlı olarak sürtünmeli bir işlemdir.
+
+
+        **Admin panelinin Geist fontu bu enum'dan BAĞIMSIZDIR ve bu ayarla
+        DEĞİŞTİRİLEMEZ** (bkz. `app/layout.tsx`).
+      type: string
+      enum: [SYSTEM, INTER, ROBOTO, OPEN_SANS, MONTSERRAT, POPPINS, LORA, PLAYFAIR_DISPLAY, SOURCE_SERIF_4]
+
+    PageHeaderStyle:
+      description: >
+        Sayfa/blog yazısı başlık bloğunun düzeni. `PLAIN` = sade metin başlık
+        (varsayılan), `BANNER` = arka plan rengi/görseli olan geniş blok,
+        `HIDDEN` = başlık bloğu hiç render edilmez (başlık yalnızca `<title>`/SEO
+        meta'sında kalır — SEO kaybı YOKTUR).
+
+
+        Site GENELİNDE tek bir değerdir; v1'de sayfa-başına geçersiz kılma (override)
+        YOKTUR. İstenirse `Page`/`BlogPost` üzerine nullable bir override kolonu
+        eklenmesi gerekir — önce kontrat güncellenir.
+      type: string
+      enum: [PLAIN, BANNER, HIDDEN]
+
+    SocialShareNetwork:
+      description: >
+        Yazı/sayfa altındaki paylaşım butonları. **`SocialPlatform` enum'undan
+        AYRIDIR ve onunla BİRLEŞTİRİLMEMELİDİR** (bkz. `Navigation` tag'i): o enum
+        sitenin KENDİ hesaplarının footer linklerini tanımlar (GITHUB gibi paylaşım
+        hedefi olmayan değerler içerir), bu enum ise ziyaretçinin içeriği NEREYE
+        paylaşabileceğini tanımlar (`COPY_LINK` gibi bir hesabı olmayan değerler
+        içerir). İki liste zamanla farklı yönlere evrilir.
+      type: string
+      enum: [TWITTER, FACEBOOK, LINKEDIN, WHATSAPP, EMAIL, COPY_LINK]
+
+    HexColor:
+      description: >
+        Kanonik 6 haneli hex renk. Kısaltma (`#abc`), alfa kanalı (`#rrggbbaa`),
+        isimli renk (`red`) ve `oklch()`/`rgb()` KABUL EDİLMEZ — tek kanonik biçim,
+        renk seçicisinden DB'ye ve CSS değişkenine kayıpsız gidiş-dönüş sağlar ve
+        değere kaçış (escape) uygulamadan CSS'e gömülmesini güvenli kılar.
+      type: string
+      pattern: "^#[0-9a-fA-F]{6}$"
+      example: "#4f46e5"
+
+    AppearancePreset:
+      description: >
+        `GET /admin/appearance/presets` öğesi — kod içi statik `lib/appearance-presets.ts`
+        kaydı (DB tablosu YOKTUR). `values`, `PATCH /admin/appearance` gövdesine
+        OLDUĞU GİBİ gönderilebilecek alanları taşır.
+      type: object
+      properties:
+        key: { type: string, example: modern }
+        label: { type: string, example: "Modern" }
+        description: { type: string, example: "Yüksek kontrastlı, geniş boşluklu, sans-serif." }
+        values:
+          description: "Ön ayarın uyguladığı alanlar — SADECE renk ve tipografi. Ön ayarlar ASLA görünüm anahtarlarını (bakım modu/çerez bandı), 404 metinlerini veya özel kodu değiştirmez."
+          allOf: [{ $ref: "#/components/schemas/UpdateSiteAppearanceRequest" }]
+
+    SiteAppearance:
+      description: >
+        `GET /admin/appearance` ve `PATCH /admin/appearance` yanıtı — tekil (singleton)
+        görünüm ayarları DTO'su. Satır yoksa sabit `DEFAULTS` döner (lazy-upsert,
+        `SiteSettings` ile AYNI desen).
+      type: object
+      properties:
+        presetKey:
+          type: string
+          nullable: true
+          description: "En son uygulanan ön ayarın anahtarı; `null` = özel (kullanıcı alanları elle değiştirdi). CANLI BİR BAĞ DEĞİLDİR — bkz. `PATCH /admin/appearance` açıklaması."
+        # --- §3 Sayfa Başlığı Düzeni ---
+        pageHeaderStyle: { $ref: "#/components/schemas/PageHeaderStyle" }
+        pageHeaderBackgroundColor:
+          allOf: [{ $ref: "#/components/schemas/HexColor" }]
+          nullable: true
+          description: "Yalnızca `pageHeaderStyle: BANNER` iken kullanılır. Hem renk hem görsel doluysa GÖRSEL kazanır, renk görsel yüklenene kadarki yedek (fallback) zemindir."
+        pageHeaderBackgroundMediaId:
+          type: string
+          format: uuid
+          nullable: true
+          description: "Medya kütüphanesinden seçilir — serbest URL alanı DEĞİL (mevcut `coverMediaId` paterni). Görsel silinirse FK `onDelete: SetNull` ile boşalır ve banner sessizce renge/sade metne düşer."
+        pageHeaderBackgroundUrl:
+          type: string
+          nullable: true
+          description: "**Yanıta özel, YAZILAMAZ alan** — `pageHeaderBackgroundMediaId`'nin sunucuda çözümlenmiş URL'i. Public site tüketicisinin ayrıca medya sorgusu yapmasını önler."
+        pageHeaderOverlayOpacity:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: "Banner görselinin üzerine binen koyu katmanın yüzdesi (varsayılan 40). Erişilebilirlik alanıdır: görsel üzerindeki başlık metninin okunabilir kalmasını sağlar."
+        # --- §4 Stil / Genel Renk (SADECE ziyaretçi sitesi) ---
+        primaryColor: { $ref: "#/components/schemas/HexColor" }
+        secondaryColor: { $ref: "#/components/schemas/HexColor" }
+        buttonColor: { $ref: "#/components/schemas/HexColor" }
+        buttonTextColor:
+          allOf: [{ $ref: "#/components/schemas/HexColor" }]
+          description: "Buton zemini üzerindeki metin rengi — ayrı bir alandır çünkü otomatik türetim (siyah/beyaz seçimi) orta tonlu zeminlerde AA kontrastını güvenilir biçimde sağlayamaz."
+        linkColor: { $ref: "#/components/schemas/HexColor" }
+        # --- §6 Yazı Tipi ---
+        headingFont: { $ref: "#/components/schemas/SiteFont" }
+        bodyFont: { $ref: "#/components/schemas/SiteFont" }
+        baseFontSize:
+          type: integer
+          minimum: 14
+          maximum: 20
+          description: "Gövde metni temel boyutu (px, varsayılan 16). Alt sınır 14'tür — daha küçüğü okunabilirlik/erişilebilirlik eşiğinin altına düşerdi."
+        # --- §5 Sosyal Medya Paylaşımı (HESAP LİNKLERİ BURADA DEĞİL — bkz. Navigation) ---
+        socialShareEnabled:
+          type: boolean
+          description: "Yazı/sayfa altındaki paylaşım butonları. **Sitenin kendi sosyal hesap LİNKLERİ bu uçta DEĞİLDİR** — onlar `SocialLink` modeli ve `/admin/navigation` ekranında yaşar (§10.12.1: taşınmadı, derin link verildi)."
+        socialShareNetworks:
+          type: array
+          items: { $ref: "#/components/schemas/SocialShareNetwork" }
+          description: "`socialShareEnabled: false` iken de saklanır (kullanıcı tekrar açtığında seçimi kaybolmaz). Boş dizi geçerlidir ve butonların hiçbirinin gösterilmemesi demektir."
+        # --- §7 Ekstra Özellikler (görünüm anahtarları) ---
+        backToTopEnabled: { type: boolean }
+        stickyHeaderEnabled: { type: boolean }
+        cookieBannerEnabled:
+          type: boolean
+          description: "**v1'de BİLGİLENDİRME bandıdır, ONAY YÖNETİCİSİ DEĞİLDİR** — hiçbir script'i/çerezi engellemez veya koşullu yüklemez. Arayüz metni bunu vaat ETMEMELİDİR (compliance-agent doğrular, bkz. §10.12.5)."
+        cookieBannerText: { type: string, nullable: true, maxLength: 500 }
+        cookieBannerPolicyHref: { type: string, nullable: true, maxLength: 2048, description: "Gizlilik/çerez politikası sayfasına bağlantı (genelde bir dahili `/slug`)." }
+        maintenanceModeEnabled:
+          type: boolean
+          description: >
+            Ziyaretçi sitesinde bakım sayfası gösterir. **SUNUM KATMANI anahtarıdır,
+            bir GÜVENLİK/ERİŞİM kontrolü DEĞİLDİR:** API'yi kapatmaz ve hiçbir veriyi
+            korumaz. `/admin` rotaları BAŞKA bir route grubundadır ve bu anahtardan
+            ETKİLENMEZ — yönetici kendini asla kilitleyemez (bkz. §10.12.5).
+        maintenanceMessage: { type: string, nullable: true, maxLength: 500 }
+        # --- §9 404 Sayfası ---
+        notFoundTitle: { type: string, nullable: true, maxLength: 120, description: "`null` ise frontend'in sabit Türkçe varsayılanı kullanılır (tüm 404 alanları için aynı kural)." }
+        notFoundMessage: { type: string, nullable: true, maxLength: 500 }
+        notFoundButtonLabel: { type: string, nullable: true, maxLength: 60 }
+        notFoundButtonHref: { type: string, nullable: true, maxLength: 2048, description: "Varsayılan `/`. Butonun gösterilmesi için `notFoundButtonLabel` ve `notFoundButtonHref` İKİSİNİN DE dolu olması gerekir (`headerCta*` ile aynı kural)." }
+        updatedAt: { type: string, format: date-time, nullable: true, description: "Hiç kaydedilmemişse (DEFAULTS) `null`." }
+
+    PublicSiteAppearance:
+      description: >
+        `GET /appearance` (public) yanıtı. `SiteAppearance`'tan FARKLARI: `presetKey`,
+        `pageHeaderBackgroundMediaId` ve `updatedAt` TAŞIMAZ (yalnızca yönetim
+        ekranını ilgilendirir); buna karşılık `customCss`/`customJs` İÇERİR — çünkü
+        `(site)` layout'u bu iki değeri her SSR render'ında ihtiyaç duyar ve ikinci
+        bir istek gereksiz gecikme olurdu.
+      type: object
+      properties:
+        pageHeaderStyle: { $ref: "#/components/schemas/PageHeaderStyle" }
+        pageHeaderBackgroundColor: { allOf: [{ $ref: "#/components/schemas/HexColor" }], nullable: true }
+        pageHeaderBackgroundUrl: { type: string, nullable: true }
+        pageHeaderOverlayOpacity: { type: integer, minimum: 0, maximum: 100 }
+        primaryColor: { $ref: "#/components/schemas/HexColor" }
+        secondaryColor: { $ref: "#/components/schemas/HexColor" }
+        buttonColor: { $ref: "#/components/schemas/HexColor" }
+        buttonTextColor: { $ref: "#/components/schemas/HexColor" }
+        linkColor: { $ref: "#/components/schemas/HexColor" }
+        headingFont: { $ref: "#/components/schemas/SiteFont" }
+        bodyFont: { $ref: "#/components/schemas/SiteFont" }
+        baseFontSize: { type: integer, minimum: 14, maximum: 20 }
+        socialShareEnabled: { type: boolean }
+        socialShareNetworks:
+          type: array
+          items: { $ref: "#/components/schemas/SocialShareNetwork" }
+        backToTopEnabled: { type: boolean }
+        stickyHeaderEnabled: { type: boolean }
+        cookieBannerEnabled: { type: boolean }
+        cookieBannerText: { type: string, nullable: true }
+        cookieBannerPolicyHref: { type: string, nullable: true }
+        maintenanceModeEnabled: { type: boolean }
+        maintenanceMessage: { type: string, nullable: true }
+        notFoundTitle: { type: string, nullable: true }
+        notFoundMessage: { type: string, nullable: true }
+        notFoundButtonLabel: { type: string, nullable: true }
+        notFoundButtonHref: { type: string, nullable: true }
+        customCss:
+          type: string
+          nullable: true
+          description: "`(site)` layout'unda `<style>` olarak gömülür. **ASLA kök `app/layout.tsx`'te DEĞİL** — kök layout admin panelini de sarmalar ve site CSS'i admin arayüzünü bozardı (bkz. §10.12.6)."
+        customJs:
+          type: string
+          nullable: true
+          description: "`CUSTOM_CODE_ENABLED=false` iken HER ZAMAN `null` (kill switch). Enjeksiyon kuralları `customCss` ile aynıdır; ek olarak `</script` dizisi kaçırılmak ZORUNDADIR."
+
+    UpdateSiteAppearanceRequest:
+      description: >
+        `PATCH /admin/appearance` gövdesi — TÜM alanlar opsiyoneldir, yalnızca
+        gönderilenler yazılır (satır yoksa `DEFAULTS` ile birlikte oluşturulur).
+        Panelin her bölümü SADECE kendi alanlarını gönderir.
+
+
+        **`customCss`/`customJs` bu gövdede KASITLI olarak YOKTUR** — kendi PUT
+        uçları vardır (farklı onay/denetim/hız-sınırı politikası).
+        **`pageHeaderBackgroundUrl` de YOKTUR** (türetilmiş, salt-okunur alan);
+        gönderilirse 422 alınır.
+      type: object
+      properties:
+        presetKey: { type: string, nullable: true }
+        pageHeaderStyle: { $ref: "#/components/schemas/PageHeaderStyle" }
+        pageHeaderBackgroundColor: { allOf: [{ $ref: "#/components/schemas/HexColor" }], nullable: true }
+        pageHeaderBackgroundMediaId: { type: string, format: uuid, nullable: true, description: "Var olmayan bir medya id'si → `404 NOT_FOUND` (kısmi yazma YAPILMAZ)." }
+        pageHeaderOverlayOpacity: { type: integer, minimum: 0, maximum: 100 }
+        primaryColor: { $ref: "#/components/schemas/HexColor" }
+        secondaryColor: { $ref: "#/components/schemas/HexColor" }
+        buttonColor: { $ref: "#/components/schemas/HexColor" }
+        buttonTextColor: { $ref: "#/components/schemas/HexColor" }
+        linkColor: { $ref: "#/components/schemas/HexColor" }
+        headingFont: { $ref: "#/components/schemas/SiteFont" }
+        bodyFont: { $ref: "#/components/schemas/SiteFont" }
+        baseFontSize: { type: integer, minimum: 14, maximum: 20 }
+        socialShareEnabled: { type: boolean }
+        socialShareNetworks:
+          type: array
+          items: { $ref: "#/components/schemas/SocialShareNetwork" }
+          description: "Tam değiştirme (replace) semantiği — gönderilen dizi mevcut seçimin YERİNE geçer, birleştirilmez. Yinelenen değerler sunucuda tekilleştirilir."
+        backToTopEnabled: { type: boolean }
+        stickyHeaderEnabled: { type: boolean }
+        cookieBannerEnabled: { type: boolean }
+        cookieBannerText: { type: string, nullable: true, maxLength: 500 }
+        cookieBannerPolicyHref: { type: string, nullable: true, maxLength: 2048 }
+        maintenanceModeEnabled: { type: boolean }
+        maintenanceMessage: { type: string, nullable: true, maxLength: 500 }
+        notFoundTitle: { type: string, nullable: true, maxLength: 120 }
+        notFoundMessage: { type: string, nullable: true, maxLength: 500 }
+        notFoundButtonLabel: { type: string, nullable: true, maxLength: 60 }
+        notFoundButtonHref: { type: string, nullable: true, maxLength: 2048 }
+
+    ResetAppearanceRequest:
+      type: object
+      properties:
+        presetKey:
+          type: string
+          nullable: true
+          description: "Verilirse o ön ayarın değerlerine, verilmezse/`null` ise fabrika `DEFAULTS`'una dönülür. Özel CSS/JS HİÇBİR durumda etkilenmez."
+
+    SiteCustomCode:
+      description: >
+        `GET /admin/appearance/custom-code` ve iki PUT ucunun yanıtı. Gövdelerin yanı
+        sıra "kim/ne zaman" denetim izini taşır — özel kodun kaynağını izlemek olay
+        müdahalesinin (incident response) ilk adımıdır.
+      type: object
+      properties:
+        css: { type: string, nullable: true }
+        js:
+          type: string
+          nullable: true
+          description: "`CUSTOM_CODE_ENABLED=false` iken saklanan değer KORUNUR ve bu yönetim ucunda GÖRÜNÜR (yönetici ne kaydedildiğini görebilmelidir); yalnızca public `GET /appearance` `null` döner ve yazma 403'tür."
+        cssUpdatedAt: { type: string, format: date-time, nullable: true }
+        cssUpdatedBy:
+          allOf: [{ $ref: "#/components/schemas/UserSummary" }]
+          nullable: true
+          description: "Kullanıcı silinmişse `null` (FK `onDelete: SetNull`) — denetim satırı yine de korunur."
+        jsUpdatedAt: { type: string, format: date-time, nullable: true }
+        jsUpdatedBy:
+          allOf: [{ $ref: "#/components/schemas/UserSummary" }]
+          nullable: true
+        customCodeEnabled:
+          type: boolean
+          description: "Ortamın kill switch durumu (`CUSTOM_CODE_ENABLED`). Arayüz `false` iken editörleri devre dışı bırakır ve nedenini açıklar — kullanıcı 403'ü ancak kaydettikten sonra görmemelidir."
+
+    UpdateCustomCssRequest:
+      type: object
+      required: [css, acknowledged]
+      properties:
+        css:
+          type: string
+          nullable: true
+          maxLength: 50000
+          description: "Belgenin TAMAMI (PUT). `null` veya `\"\"` = özel CSS'i kaldır."
+        acknowledged:
+          type: boolean
+          description: >
+            Arayüzdeki "bu kodun ne yaptığını anlıyorum" onayının kontrattaki
+            karşılığı. `css` BOŞ DEĞİLSE `true` OLMAK ZORUNDADIR, aksi hâlde
+            `422 VALIDATION_ERROR`. Kod temizlenirken (`null`/`""`) değeri
+            YOK SAYILIR. Sunucuda zorlanır — yalnızca arayüzde kalan bir onay,
+            doğrudan API çağrısıyla atlanabilirdi.
+
+    UpdateCustomJsRequest:
+      type: object
+      required: [js, acknowledged]
+      properties:
+        js:
+          type: string
+          nullable: true
+          maxLength: 20000
+          description: "Belgenin TAMAMI (PUT). `null` veya `\"\"` = özel JS'i kaldır. Sınır CSS'ten (50.000) düşüktür: bu metin her sayfaya gömülür ve doğrudan sayfa ağırlığıdır."
+        acknowledged:
+          type: boolean
+          description: "`UpdateCustomCssRequest.acknowledged` ile AYNI kural."
 
     # ---- §10.9.2 Ürünler Modülü ----
 

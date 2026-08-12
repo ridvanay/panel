@@ -86,7 +86,8 @@ export function SiteFooter({
                       target="_blank"
                       rel="noreferrer noopener"
                       aria-label={SOCIAL_LABELS[link.platform] ?? link.platform}
-                      className="flex h-8 w-8 items-center justify-center rounded-full border border-border text-foreground/60 transition-colors hover:border-primary hover:text-primary"
+                      // §10.12.4 — `--site-link` (`.site-scope` altında satır-içi yazılır).
+                      className="flex h-8 w-8 items-center justify-center rounded-full border border-border text-foreground/60 transition-colors hover:border-[var(--site-link)] hover:text-[var(--site-link)]"
                     >
                       <Icon className="h-4 w-4" />
                     </a>
@@ -104,7 +105,7 @@ export function SiteFooter({
                   <ul className="space-y-1.5">
                     {column.links.map((link) => (
                       <li key={link.id}>
-                        <Link href={link.href} className="text-sm text-foreground/60 hover:text-foreground">
+                        <Link href={link.href} className="text-sm text-foreground/60 hover:text-[var(--site-link)]">
                           {link.label}
                         </Link>
                       </li>

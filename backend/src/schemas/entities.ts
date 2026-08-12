@@ -815,4 +815,129 @@ export const ExportJobSchema = z.object({
   createdAt: z.string(),
   updatedAt: z.string(),
 });
+
+// ---------- §10.12 Site Özelleştirme (Görünüm) — openapi.yaml `Appearance` tag'i ile birebir.
+// İSİMLENDİRME KURALI (bağlayıcı, bkz. ARCHITECTURE.md §10.12.4): bu bölümdeki HER alan YALNIZCA
+// ziyaretçi (public) sitesini etkiler. Alan adlarında `site` ön eki KULLANILMAZ — ayrım RENDER
+// katmanında (`--site-*` CSS değişkenleri + `.site-scope`) zorlanır, admin panelinin kendi
+// `--primary`/`AccentProvider` token'larıyla ASLA karışmaz.
+
+export const SiteFontSchema = z.enum([
+  "SYSTEM",
+  "INTER",
+  "ROBOTO",
+  "OPEN_SANS",
+  "MONTSERRAT",
+  "POPPINS",
+  "LORA",
+  "PLAYFAIR_DISPLAY",
+  "SOURCE_SERIF_4",
+]);
+export type SiteFont = z.infer<typeof SiteFontSchema>;
+
+export const PageHeaderStyleSchema = z.enum(["PLAIN", "BANNER", "HIDDEN"]);
+export type PageHeaderStyle = z.infer<typeof PageHeaderStyleSchema>;
+
+// `SocialPlatformSchema`'dan (sitenin KENDİ hesap linkleri) BİLİNÇLİ olarak AYRIDIR — bkz.
+// ARCHITECTURE.md §10.12.1, iki liste zamanla farklı yönlere evrilir.
+export const SocialShareNetworkSchema = z.enum(["TWITTER", "FACEBOOK", "LINKEDIN", "WHATSAPP", "EMAIL", "COPY_LINK"]);
+export type SocialShareNetwork = z.infer<typeof SocialShareNetworkSchema>;
+
+// Kanonik 6 haneli hex renk — kısaltma/alfa kanalı/isimli renk/oklch() KABUL EDİLMEZ (bkz.
+// openapi.yaml `HexColor`): tek kanonik biçim, kaçış (escape) uygulamadan CSS değişkenine
+// güvenle gömülmesini sağlar.
+export const HexColorSchema = z.string().regex(/^#[0-9a-fA-F]{6}$/, "Geçerli bir 6 haneli hex renk olmalıdır (örn. #4f46e5).");
+
+export const SiteAppearanceSchema = z.object({
+  presetKey: z.string().nullable(),
+  // --- Sayfa Başlığı Düzeni ---
+  pageHeaderStyle: PageHeaderStyleSchema,
+  pageHeaderBackgroundColor: HexColorSchema.nullable(),
+  pageHeaderBackgroundMediaId: z.string().uuid().nullable(),
+  pageHeaderBackgroundUrl: z.string().nullable(),
+  pageHeaderOverlayOpacity: z.number().int().min(0).max(100),
+  // --- Renkler (SADECE ziyaretçi sitesi) ---
+  primaryColor: HexColorSchema,
+  secondaryColor: HexColorSchema,
+  buttonColor: HexColorSchema,
+  buttonTextColor: HexColorSchema,
+  linkColor: HexColorSchema,
+  // --- Yazı Tipi ---
+  headingFont: SiteFontSchema,
+  bodyFont: SiteFontSchema,
+  baseFontSize: z.number().int().min(14).max(20),
+  // --- Sosyal Medya Paylaşımı (hesap LİNKLERİ burada DEĞİL — bkz. SocialLink/Navigation) ---
+  socialShareEnabled: z.boolean(),
+  socialShareNetworks: z.array(SocialShareNetworkSchema),
+  // --- Görünüm anahtarları ---
+  backToTopEnabled: z.boolean(),
+  stickyHeaderEnabled: z.boolean(),
+  cookieBannerEnabled: z.boolean(),
+  cookieBannerText: z.string().nullable(),
+  cookieBannerPolicyHref: z.string().nullable(),
+  maintenanceModeEnabled: z.boolean(),
+  maintenanceMessage: z.string().nullable(),
+  // --- 404 Sayfası ---
+  notFoundTitle: z.string().nullable(),
+  notFoundMessage: z.string().nullable(),
+  notFoundButtonLabel: z.string().nullable(),
+  notFoundButtonHref: z.string().nullable(),
+  updatedAt: z.string().nullable(),
+});
+export type SiteAppearanceDto = z.infer<typeof SiteAppearanceSchema>;
+
+/**
+ * `GET /appearance` (public) yanıtı. `SiteAppearance`'tan FARKLARI: `presetKey`,
+ * `pageHeaderBackgroundMediaId` ve `updatedAt` TAŞIMAZ; buna karşılık `customCss`/`customJs`
+ * İÇERİR (`(site)` layout'u ikinci bir istek atmadan SSR'da ihtiyaç duyar, bkz. §10.12.6).
+ */
+export const PublicSiteAppearanceSchema = z.object({
+  pageHeaderStyle: PageHeaderStyleSchema,
+  pageHeaderBackgroundColor: HexColorSchema.nullable(),
+  pageHeaderBackgroundUrl: z.string().nullable(),
+  pageHeaderOverlayOpacity: z.number().int().min(0).max(100),
+  primaryColor: HexColorSchema,
+  secondaryColor: HexColorSchema,
+  buttonColor: HexColorSchema,
+  buttonTextColor: HexColorSchema,
+  linkColor: HexColorSchema,
+  headingFont: SiteFontSchema,
+  bodyFont: SiteFontSchema,
+  baseFontSize: z.number().int().min(14).max(20),
+  socialShareEnabled: z.boolean(),
+  socialShareNetworks: z.array(SocialShareNetworkSchema),
+  backToTopEnabled: z.boolean(),
+  stickyHeaderEnabled: z.boolean(),
+  cookieBannerEnabled: z.boolean(),
+  cookieBannerText: z.string().nullable(),
+  cookieBannerPolicyHref: z.string().nullable(),
+  maintenanceModeEnabled: z.boolean(),
+  maintenanceMessage: z.string().nullable(),
+  notFoundTitle: z.string().nullable(),
+  notFoundMessage: z.string().nullable(),
+  notFoundButtonLabel: z.string().nullable(),
+  notFoundButtonHref: z.string().nullable(),
+  // `(site)` layout'unda `<style>` olarak gömülür — kök `app/layout.tsx`'te ASLA (admin panelini
+  // de sarmalar, bkz. §10.12.6).
+  customCss: z.string().nullable(),
+  // `CUSTOM_CODE_ENABLED=false` iken HER ZAMAN `null` (kill switch).
+  customJs: z.string().nullable(),
+});
+export type PublicSiteAppearanceDto = z.infer<typeof PublicSiteAppearanceSchema>;
+
+/**
+ * `GET /admin/appearance/custom-code` ve iki PUT ucunun yanıtı — §10.12.6 kontrattaki EN YÜKSEK
+ * RİSKLİ yüzey. `js`, `CUSTOM_CODE_ENABLED=false` iken bu yönetim ucunda YİNE GÖRÜNÜR (yönetici ne
+ * kaydedildiğini görebilmelidir); yalnızca public `GET /appearance` `null` döner.
+ */
+export const SiteCustomCodeSchema = z.object({
+  css: z.string().nullable(),
+  js: z.string().nullable(),
+  cssUpdatedAt: z.string().nullable(),
+  cssUpdatedBy: UserSummarySchema.nullable(),
+  jsUpdatedAt: z.string().nullable(),
+  jsUpdatedBy: UserSummarySchema.nullable(),
+  customCodeEnabled: z.boolean(),
+});
+export type SiteCustomCodeDto = z.infer<typeof SiteCustomCodeSchema>;
 export type ExportJobDto = z.infer<typeof ExportJobSchema>;

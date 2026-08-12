@@ -122,9 +122,12 @@ export function SiteHeader({ settings, pages, navigationItems, ctaLabel, ctaHref
             )
           )}
           {showCta && (
+            // §10.12.4 — `--site-button`/`--site-button-text` (`.site-scope` altında satır-içi
+            // yazılır, bkz. globals.css `.site-scope` fallback bloğu). Admin'in `--primary`
+            // token'ından KASITLI olarak bağımsız.
             <Link
               href={ctaHref as string}
-              className="rounded-lg bg-primary px-3.5 py-1.5 text-sm font-medium text-primary-foreground transition-all hover:bg-primary/80"
+              className="rounded-lg bg-[var(--site-button)] px-3.5 py-1.5 text-sm font-medium text-[var(--site-button-text)] transition-all hover:opacity-85"
             >
               {ctaLabel}
             </Link>
@@ -138,7 +141,7 @@ export function SiteHeader({ settings, pages, navigationItems, ctaLabel, ctaHref
             {itemCount > 0 && (
               <span
                 aria-hidden="true"
-                className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground"
+                className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--site-button)] px-1 text-[10px] font-semibold text-[var(--site-button-text)]"
               >
                 {itemCount > 99 ? "99+" : itemCount}
               </span>

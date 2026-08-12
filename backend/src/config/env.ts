@@ -97,6 +97,18 @@ const EnvSchema = z.object({
   SENTRY_DSN: z.string().optional(),
   SENTRY_ENVIRONMENT: z.string().optional(),
   SENTRY_TRACES_SAMPLE_RATE: z.coerce.number().min(0).max(1).default(0),
+
+  // §10.12.6 Özel CSS/JS kill switch (kontrattaki EN YÜKSEK RİSKLİ yüzey — devops-agent sahiplenir).
+  // `false` iken `PUT /admin/appearance/custom-code/{css,js}` 403 döner ve public `GET /appearance`
+  // `customJs` HER ZAMAN `null` verir; saklı değer KORUNUR ve yönetim ucunda (`GET
+  // /admin/appearance/custom-code`) görünmeye devam eder. Barındırılan/çok kiracılı bir kurulumda
+  // keyfi JS'in olay anında tek kaldıraçla kapatılabilmesi için vardır (bkz. ARCHITECTURE.md §10.12.6).
+  // `SMTP_SECURE` ile AYNI desen — `z.coerce.boolean()` boş olmayan HER string'i (örn. "false")
+  // true'ya çevirdiği için kasıtlı olarak kullanılmadı.
+  CUSTOM_CODE_ENABLED: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((v) => v === "true"),
 });
 
 const parsed = EnvSchema.safeParse(process.env);

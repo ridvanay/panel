@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import * as settingsApi from "@/lib/api/settings";
@@ -20,6 +19,7 @@ import { ImageUploadField } from "@/components/admin/media/image-upload-field";
 import { PageHeading } from "@/components/admin/page-heading";
 import { cn } from "@/lib/utils";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
+import { useUnsavedChangesGuard } from "@/hooks/use-unsaved-changes-guard";
 import type { SiteTemplate } from "@/lib/api/types";
 import {
   AlertCircle,
@@ -66,8 +66,6 @@ const ROLE_LETTERS: Record<SiteRole, string> = {
   EDITOR: "E",
   VIEWER: "V",
 };
-
-const UNSAVED_CHANGES_WARNING = "Kaydedilmemiş değişiklikleriniz var. Yine de ayrılmak istiyor musunuz?";
 
 interface GeneralSettingsSnapshot {
   siteName: string;
@@ -174,36 +172,9 @@ export default function AdminSettingsPage() {
     );
   }, [siteName, logoUrl, homePageId, siteTemplate, snapshot]);
 
-  const pathname = usePathname();
-
-  // Kaydedilmemiş değişiklik varken sekmeyi kapatma/yenileme/tamamen ayrılma girişiminde tarayıcının native uyarısını göster.
-  useEffect(() => {
-    if (!hasUnsavedChanges) return;
-    function handleBeforeUnload(event: BeforeUnloadEvent) {
-      event.preventDefault();
-      event.returnValue = "";
-    }
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [hasUnsavedChanges]);
-
-  // Kaydedilmemiş değişiklik varken sidebar/başka bir admin bağlantısına tıklanınca onay iste
-  // (Next.js App Router'da global bir route-change event'i olmadığı için capture-phase click dinleniyor).
-  useEffect(() => {
-    if (!hasUnsavedChanges) return;
-    function handleDocumentClick(event: MouseEvent) {
-      const target = event.target as HTMLElement | null;
-      const link = target?.closest("a");
-      const href = link?.getAttribute("href");
-      if (!href || !href.startsWith("/admin") || href === pathname) return;
-      if (!window.confirm(UNSAVED_CHANGES_WARNING)) {
-        event.preventDefault();
-        event.stopPropagation();
-      }
-    }
-    document.addEventListener("click", handleDocumentClick, true);
-    return () => document.removeEventListener("click", handleDocumentClick, true);
-  }, [hasUnsavedChanges, pathname]);
+  // §10.12.8 — ortak hook: beforeunload + `/admin` linklerine capture-phase tıklama uyarısı
+  // (davranış öncekiyle AYNI, sadece kod paylaşılıyor).
+  const { confirmDiscard } = useUnsavedChangesGuard({ enabled: hasUnsavedChanges });
 
   const loadPermissions = useCallback(async () => {
     // Ref kontrolü senkron ve stabildir: aynı render/effect döngüsünde iki kez
@@ -316,7 +287,7 @@ export default function AdminSettingsPage() {
         onValueChange={(value) => {
           const nextTab = String(value);
           if (activeTab === "general" && hasUnsavedChanges && nextTab !== activeTab) {
-            if (!window.confirm(UNSAVED_CHANGES_WARNING)) return;
+            if (!confirmDiscard()) return;
           }
           setActiveTab(nextTab);
         }}

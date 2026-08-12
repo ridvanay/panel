@@ -366,3 +366,37 @@
   content: attr(data-placeholder);
   pointer-events: none;
 }
+
+/*
+ * §10.12.4 Site Özelleştirme — `--site-*` render sözleşmesi (ARCHITECTURE.md, BAĞLAYICI).
+ *
+ * Bu değişkenler `:root`'a YAZILMAZ — yalnızca `.site-scope` sarmalayıcısına satır-içi `style`
+ * ile (canlı önizleme VE gerçek `(site)` layout'unda) yazılır. Buradaki blok SADECE fallback
+ * (varsayılan) değerleri tanımlar — backend `DEFAULTS`'uyla (appearance.routes.ts) BİREBİR aynı
+ * tutulmalıdır — ki satır-içi `style` prop'u henüz uygulanmadan (ör. bir üst bileşen hydrate
+ * olmadan) `.site-scope` çıplak kalırsa bile görünüm bozulmaz. Admin panelinin kendi `--primary`/
+ * `--ring` token'ları (`.admin-shell` altında) bu blok tarafından ASLA etkilenmez — iki değişken
+ * seti birbirinden tamamen bağımsızdır.
+ */
+.site-scope {
+  --site-primary: #4f46e5;
+  --site-secondary: #111827;
+  --site-button: #4f46e5;
+  --site-button-text: #ffffff;
+  --site-link: #4f46e5;
+  --site-heading-font: inherit;
+  --site-body-font: inherit;
+  --site-base-font-size: 16px;
+
+  font-family: var(--site-body-font);
+  font-size: var(--site-base-font-size);
+}
+
+.site-scope h1,
+.site-scope h2,
+.site-scope h3,
+.site-scope h4,
+.site-scope h5,
+.site-scope h6 {
+  font-family: var(--site-heading-font);
+}

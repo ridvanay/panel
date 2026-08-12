@@ -64,3 +64,69 @@ describe("AdminSettingsPage — a11y", () => {
     expect(results).toHaveNoViolations();
   });
 });
+
+/**
+ * ARCHITECTURE.md §10.12.8 — `useUnsavedChangesGuard`'a taşınan refactor'ün riskini karşılayan
+ * regresyon testi. `/admin/navigation` için AYNI senaryo `a11y-admin-navigation.test.tsx`'te zaten
+ * var (`describe("AdminNavigationPage — sekme değişimi kaydedilmemiş değişiklik uyarısı")`); bu
+ * dosyada `/admin/settings` için EKSİKTİ — qa-agent boşluğu.
+ */
+describe("AdminSettingsPage — sekme değişimi kaydedilmemiş değişiklik uyarısı", () => {
+  it("'Genel Ayarlar' sekmesinde değişiklik varken 'Güvenlik & Rol İzinleri'ne geçilirse onay istenir; iptal edilirse sekme değişmez", async () => {
+    vi.mocked(settingsApi.getSettings).mockResolvedValue(settings);
+    vi.mocked(pagesApi.listPages).mockResolvedValue({ items: [], meta: { nextCursor: null } });
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+
+    const user = userEvent.setup();
+    render(<AdminSettingsPage />);
+
+    const siteNameInput = await screen.findByLabelText(/Site adı/);
+    await user.clear(siteNameInput);
+    await user.type(siteNameInput, "Yeni Site Adı");
+
+    await user.click(screen.getByRole("tab", { name: /Güvenlik & Rol İzinleri/ }));
+
+    expect(confirmSpy).toHaveBeenCalled();
+    // window.confirm false döndürdüğü için sekme değişmemeli (AdminNavigationPage testiyle AYNI beklenti).
+    expect(screen.getByRole("tab", { name: /Genel Ayarlar/ })).toHaveAttribute("aria-selected", "true");
+
+    confirmSpy.mockRestore();
+  });
+
+  it("onay verilirse ('confirm' true döner) sekme değişir", async () => {
+    vi.mocked(settingsApi.getSettings).mockResolvedValue(settings);
+    vi.mocked(pagesApi.listPages).mockResolvedValue({ items: [], meta: { nextCursor: null } });
+    vi.mocked(settingsApi.getPermissionsMatrix).mockResolvedValue(permissions);
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    const user = userEvent.setup();
+    render(<AdminSettingsPage />);
+
+    const siteNameInput = await screen.findByLabelText(/Site adı/);
+    await user.clear(siteNameInput);
+    await user.type(siteNameInput, "Yeni Site Adı");
+
+    await user.click(screen.getByRole("tab", { name: /Güvenlik & Rol İzinleri/ }));
+
+    expect(confirmSpy).toHaveBeenCalled();
+    expect(screen.getByRole("tab", { name: /Güvenlik & Rol İzinleri/ })).toHaveAttribute("aria-selected", "true");
+
+    confirmSpy.mockRestore();
+  });
+
+  it("kaydedilmemiş değişiklik yokken sekme değişiminde window.confirm HİÇ çağrılmaz", async () => {
+    vi.mocked(settingsApi.getSettings).mockResolvedValue(settings);
+    vi.mocked(pagesApi.listPages).mockResolvedValue({ items: [], meta: { nextCursor: null } });
+    vi.mocked(settingsApi.getPermissionsMatrix).mockResolvedValue(permissions);
+    const confirmSpy = vi.spyOn(window, "confirm");
+
+    const user = userEvent.setup();
+    render(<AdminSettingsPage />);
+
+    await screen.findByLabelText(/Site adı/);
+    await user.click(screen.getByRole("tab", { name: /Güvenlik & Rol İzinleri/ }));
+
+    expect(confirmSpy).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
+  });
+});

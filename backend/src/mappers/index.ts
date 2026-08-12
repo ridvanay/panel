@@ -32,6 +32,8 @@ import type {
   CartItem,
   Order,
   OrderItem,
+  SiteAppearance,
+  SiteCustomCode,
 } from "@prisma/client";
 import type {
   UserDto,
@@ -70,6 +72,9 @@ import type {
   CartItemDto,
   OrderDto,
   OrderItemDto,
+  SiteAppearanceDto,
+  PublicSiteAppearanceDto,
+  SiteCustomCodeDto,
 } from "../schemas/entities";
 import { env } from "../config/env";
 import {
@@ -704,5 +709,105 @@ export function toEmailTemplateDto(template: EmailTemplate): EmailTemplateDto {
     availableVariables: (template.availableVariables as string[]) ?? [],
     updatedAt: template.updatedAt.toISOString(),
     createdAt: template.createdAt.toISOString(),
+  };
+}
+
+// ---------- §10.12 Site Özelleştirme (Görünüm) ----------
+
+type SiteAppearanceWithMedia = SiteAppearance & { pageHeaderBackgroundMedia: Media | null };
+
+/**
+ * `GET /admin/appearance` ve `PATCH /admin/appearance` yanıtı. `pageHeaderBackgroundUrl` —
+ * türetilmiş/salt-okunur alan — `pageHeaderBackgroundMediaId`'nin sunucuda çözümlenmiş URL'idir
+ * (bkz. ARCHITECTURE.md §10.12.2, mevcut `coverMediaId` paterniyle AYNI).
+ */
+export function toSiteAppearanceDto(appearance: SiteAppearanceWithMedia): SiteAppearanceDto {
+  return {
+    presetKey: appearance.presetKey,
+    pageHeaderStyle: appearance.pageHeaderStyle,
+    pageHeaderBackgroundColor: appearance.pageHeaderBackgroundColor,
+    pageHeaderBackgroundMediaId: appearance.pageHeaderBackgroundMediaId,
+    pageHeaderBackgroundUrl: appearance.pageHeaderBackgroundMedia ? absolutizeMediaUrl(appearance.pageHeaderBackgroundMedia.url) : null,
+    pageHeaderOverlayOpacity: appearance.pageHeaderOverlayOpacity,
+    primaryColor: appearance.primaryColor,
+    secondaryColor: appearance.secondaryColor,
+    buttonColor: appearance.buttonColor,
+    buttonTextColor: appearance.buttonTextColor,
+    linkColor: appearance.linkColor,
+    headingFont: appearance.headingFont,
+    bodyFont: appearance.bodyFont,
+    baseFontSize: appearance.baseFontSize,
+    socialShareEnabled: appearance.socialShareEnabled,
+    socialShareNetworks: appearance.socialShareNetworks,
+    backToTopEnabled: appearance.backToTopEnabled,
+    stickyHeaderEnabled: appearance.stickyHeaderEnabled,
+    cookieBannerEnabled: appearance.cookieBannerEnabled,
+    cookieBannerText: appearance.cookieBannerText,
+    cookieBannerPolicyHref: appearance.cookieBannerPolicyHref,
+    maintenanceModeEnabled: appearance.maintenanceModeEnabled,
+    maintenanceMessage: appearance.maintenanceMessage,
+    notFoundTitle: appearance.notFoundTitle,
+    notFoundMessage: appearance.notFoundMessage,
+    notFoundButtonLabel: appearance.notFoundButtonLabel,
+    notFoundButtonHref: appearance.notFoundButtonHref,
+    updatedAt: appearance.updatedAt.toISOString(),
+  };
+}
+
+/**
+ * `GET /appearance` (public) yanıtı — `SiteAppearanceDto`'dan `presetKey`/
+ * `pageHeaderBackgroundMediaId`/`updatedAt`'i (yalnızca yönetim ekranını ilgilendirir) ÇIKARIR,
+ * `customCss`/`customJs`'İ EKLER (bkz. ARCHITECTURE.md §10.12.6 — kill switch uygulaması
+ * ÇAĞIRAN TARAFTA yapılır, bu fonksiyon yalnızca ZATEN çözülmüş değerleri taşır).
+ */
+export function toPublicSiteAppearanceDto(appearance: SiteAppearanceDto, customCss: string | null, customJs: string | null): PublicSiteAppearanceDto {
+  return {
+    pageHeaderStyle: appearance.pageHeaderStyle,
+    pageHeaderBackgroundColor: appearance.pageHeaderBackgroundColor,
+    pageHeaderBackgroundUrl: appearance.pageHeaderBackgroundUrl,
+    pageHeaderOverlayOpacity: appearance.pageHeaderOverlayOpacity,
+    primaryColor: appearance.primaryColor,
+    secondaryColor: appearance.secondaryColor,
+    buttonColor: appearance.buttonColor,
+    buttonTextColor: appearance.buttonTextColor,
+    linkColor: appearance.linkColor,
+    headingFont: appearance.headingFont,
+    bodyFont: appearance.bodyFont,
+    baseFontSize: appearance.baseFontSize,
+    socialShareEnabled: appearance.socialShareEnabled,
+    socialShareNetworks: appearance.socialShareNetworks,
+    backToTopEnabled: appearance.backToTopEnabled,
+    stickyHeaderEnabled: appearance.stickyHeaderEnabled,
+    cookieBannerEnabled: appearance.cookieBannerEnabled,
+    cookieBannerText: appearance.cookieBannerText,
+    cookieBannerPolicyHref: appearance.cookieBannerPolicyHref,
+    maintenanceModeEnabled: appearance.maintenanceModeEnabled,
+    maintenanceMessage: appearance.maintenanceMessage,
+    notFoundTitle: appearance.notFoundTitle,
+    notFoundMessage: appearance.notFoundMessage,
+    notFoundButtonLabel: appearance.notFoundButtonLabel,
+    notFoundButtonHref: appearance.notFoundButtonHref,
+    customCss,
+    customJs,
+  };
+}
+
+type SiteCustomCodeWithUpdaters = SiteCustomCode & { cssUpdatedBy: User | null; jsUpdatedBy: User | null };
+
+/**
+ * `row` `null` olabilir (hiç kaydedilmemiş, henüz satır yok) — bu durumda `DEFAULTS` gibi tüm
+ * alanlar `null` döner (`GET /settings` ile AYNI lazy-upsert paterni, 404 DÖNMEZ). `customCodeEnabled`
+ * — ortamın kill switch durumu (`CUSTOM_CODE_ENABLED`) — ÇAĞIRAN TARAFTAN gelir, bu tabloda bir
+ * kolon DEĞİLDİR.
+ */
+export function toSiteCustomCodeDto(row: SiteCustomCodeWithUpdaters | null, customCodeEnabled: boolean): SiteCustomCodeDto {
+  return {
+    css: row?.customCss ?? null,
+    js: row?.customJs ?? null,
+    cssUpdatedAt: row?.cssUpdatedAt ? row.cssUpdatedAt.toISOString() : null,
+    cssUpdatedBy: row?.cssUpdatedBy ? toUserSummaryDto(row.cssUpdatedBy) : null,
+    jsUpdatedAt: row?.jsUpdatedAt ? row.jsUpdatedAt.toISOString() : null,
+    jsUpdatedBy: row?.jsUpdatedBy ? toUserSummaryDto(row.jsUpdatedBy) : null,
+    customCodeEnabled,
   };
 }

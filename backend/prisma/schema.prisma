@@ -197,6 +197,10 @@ model User {
   // kullanıcısı (ör. ADMIN test amaçlı) teorik olarak sepet/sipariş sahibi olabilir.
   carts               Cart[]               @relation("CartOwner")
   orders              Order[]              @relation("OrderCustomer")
+  // §10.12.6 Özel CSS/JS denetim izi — SiteCustomCode.cssUpdatedById/jsUpdatedById
+  // için zorunlu karşı-ilişki alanları (ContentRevision/EmailTemplate ile AYNI desen).
+  cssCodeUpdates      SiteCustomCode[]     @relation("SiteCustomCodeCssUpdater")
+  jsCodeUpdates       SiteCustomCode[]     @relation("SiteCustomCodeJsUpdater")
 
   @@map("users")
 }
@@ -640,6 +644,152 @@ model SiteSettings {
   @@map("site_settings")
 }
 
+enum PageHeaderStyle {
+  PLAIN
+  BANNER
+  HIDDEN
+}
+
+// `next/font/google` derleme zamanında font adını bilmek ZORUNDA olduğundan kapalı
+// enum — serbest metin DEĞİL (bkz. ARCHITECTURE.md §10.12.3). SYSTEM = harici istek
+// YOK, işletim sistemi font yığını (varsayılan). Admin panelinin Geist fontu bu
+// enum'dan BAĞIMSIZDIR.
+enum SiteFont {
+  SYSTEM
+  INTER
+  ROBOTO
+  OPEN_SANS
+  MONTSERRAT
+  POPPINS
+  LORA
+  PLAYFAIR_DISPLAY
+  SOURCE_SERIF_4
+}
+
+// Yazı/sayfa altındaki paylaşım butonları hedefi. `SocialPlatform`'dan (sitenin
+// KENDİ hesap linkleri, bkz. SocialLink) BİLİNÇLİ olarak AYRIDIR — bkz.
+// ARCHITECTURE.md §10.12.1.
+enum SocialShareNetwork {
+  TWITTER
+  FACEBOOK
+  LINKEDIN
+  WHATSAPP
+  EMAIL
+  COPY_LINK
+}
+
+// §10.12 Site Özelleştirme (WordPress Customizer benzeri görünüm paneli) — bkz.
+// ARCHITECTURE.md §10.12.2. Tek satırlık (singleton) tablo, id her zaman "singleton"
+// sabiti, SiteSettings ile AYNI lazy-upsert `DEFAULTS` deseni. SiteSettings'e
+// KASITLI olarak DOKUNULMADI: farklı rol eşiği (bu tablonun TÜM yazma uçları
+// ADMIN-only; SiteSettings PATCH bugün tek eşiğe sahip ama alan-başına RBAC bir
+// anti-paterndir), GET /settings'in PUBLIC sözleşmesinin şeklini korumak (yeni
+// public uç GET /appearance açıldı) ve farklı yaşam döngüsü (bu tablo
+// POST /admin/appearance/reset ile bütün olarak ön ayara/fabrika değerine
+// döndürülebilir — SiteSettings için böyle bir işlem anlamsızdır).
+model SiteAppearance {
+  id String @id @default("singleton")
+
+  // En son uygulanan ön ayarın anahtarı — lib/appearance-presets.ts (backend-agent
+  // sahipliğinde) içindeki statik kod registry'sine REFERANSTIR, FK DEĞİL
+  // (MODULE_REGISTRY paterniyle AYNI, bkz. ARCHITECTURE.md §10.12.3). CANLI BİR BAĞ
+  // DEĞİLDİR: elle alan değişikliğinde istemci null (özel) gönderir.
+  presetKey String?
+
+  // --- Sayfa Başlığı Düzeni ---
+  pageHeaderStyle             PageHeaderStyle @default(PLAIN)
+  // Yalnızca pageHeaderStyle=BANNER iken kullanılır; görsel de doluysa GÖRSEL kazanır,
+  // bu renk görsel yüklenene kadarki yedek zemindir.
+  pageHeaderBackgroundColor   String?
+  pageHeaderBackgroundMediaId String?
+  // Banner görselinin üzerine binen koyu katmanın yüzdesi (0-100), varsayılan 40.
+  pageHeaderOverlayOpacity    Int             @default(40)
+
+  // --- Renkler (SADECE ziyaretçi sitesi — admin teması AccentProvider'dan gelir,
+  // bu alanlarla ASLA karışmaz, bkz. ARCHITECTURE.md §10.12.4) ---
+  primaryColor    String @default("#4f46e5")
+  secondaryColor  String @default("#111827")
+  buttonColor     String @default("#4f46e5")
+  // Buton zemini üzerindeki metin rengi — ayrı bir alandır çünkü otomatik siyah/beyaz
+  // türetimi orta tonlu zeminlerde AA kontrastını güvenilir biçimde sağlayamaz.
+  buttonTextColor String @default("#ffffff")
+  linkColor       String @default("#4f46e5")
+
+  // --- Yazı Tipi ---
+  headingFont  SiteFont @default(SYSTEM)
+  bodyFont     SiteFont @default(SYSTEM)
+  // px, varsayılan 16. Alt sınır (Zod, backend-agent) 14 — okunabilirlik eşiği.
+  baseFontSize Int      @default(16)
+
+  // --- Sosyal Medya Paylaşımı — SİTENİN KENDİ hesap LİNKLERİ BURADA DEĞİL (bkz.
+  // SocialLink modeli / §10.12.1). socialShareEnabled=false iken de saklanır. ---
+  socialShareEnabled  Boolean              @default(false)
+  socialShareNetworks SocialShareNetwork[] @default([])
+
+  // --- Görünüm anahtarları (§10.12.5) — SiteModule/MODULE_REGISTRY BİLİNÇLİ OLARAK
+  // KULLANILMAZ: bunların ne admin sayfası, ne veri modeli, ne sidebar girdisi var. ---
+  backToTopEnabled       Boolean @default(true)
+  stickyHeaderEnabled    Boolean @default(true)
+  cookieBannerEnabled    Boolean @default(false)
+  cookieBannerText       String?
+  cookieBannerPolicyHref String?
+  // SUNUM KATMANI anahtarıdır, GÜVENLİK/ERİŞİM kontrolü DEĞİL — yalnızca `(site)`
+  // route grubunu etkiler, `/admin` BAŞKA bir route grubudur ve ASLA etkilenmez
+  // (yönetici kendini kilitleyemez, bkz. ARCHITECTURE.md §10.12.5).
+  maintenanceModeEnabled Boolean @default(false)
+  maintenanceMessage     String?
+
+  // --- 404 Sayfası (§10.12.7) — hepsi nullable; null ise frontend'in sabit Türkçe
+  // varsayılanı kullanılır. Buton yalnızca label VE href ikisi de doluysa gösterilir. ---
+  notFoundTitle       String?
+  notFoundMessage     String?
+  notFoundButtonLabel String?
+  notFoundButtonHref  String?
+
+  // Hiç kaydedilmemişse (satır yok) API DEFAULTS döner, bu alan null olamaz — satır
+  // var olduğu an @updatedAt ile doldurulur.
+  updatedAt DateTime @updatedAt
+
+  // Medya kütüphanesinden seçim — serbest URL alanı DEĞİL (mevcut `coverMediaId`
+  // paterniyle AYNI). Görsel silinirse SetNull ile boşalır, banner sessizce
+  // renge/sade metne düşer (500 vermez).
+  pageHeaderBackgroundMedia Media? @relation("SiteAppearancePageHeaderBackground", fields: [pageHeaderBackgroundMediaId], references: [id], onDelete: SetNull)
+
+  @@index([pageHeaderBackgroundMediaId])
+  @@map("site_appearance")
+}
+
+// §10.12.6 Özel CSS/JS — kontrattaki EN YÜKSEK RİSKLİ yüzey (kaydedilen metin her
+// ziyaretçinin tarayıcısında same-origin çalışır). SiteAppearance'tan BİLİNÇLİ olarak
+// AYRI tablo: yazma politikası (TÜMÜ ADMIN-only, açık onay, hız sınırı, kill switch)
+// SiteAppearance'ın geri kalanından bağımsız sıkılaştırılabilsin diye (bkz.
+// ARCHITECTURE.md §10.12.2 gerekçe #1, §10.12.6). sha256 özeti bu tabloda bir kolon
+// olarak SAKLANMAZ — yalnızca yazma anında AuditLog.metadata'ya düşer (backend-agent);
+// 50 KB'lık gövdeyi audit kaydında çoğaltmamak için kod gövdesi de audit'e yazılmaz.
+model SiteCustomCode {
+  id String @id @default("singleton")
+
+  // Belgenin TAMAMI (PUT semantiği) — null/"" = kaldırıldı.
+  customCss String?
+  // CUSTOM_CODE_ENABLED=false (kill switch, devops-agent) iken saklanan değer
+  // KORUNUR; yalnızca public GET /appearance yanıtında null'a düşer ve yazma 403'tür.
+  customJs  String?
+
+  cssUpdatedById String?
+  cssUpdatedAt   DateTime?
+  jsUpdatedById  String?
+  jsUpdatedAt    DateTime?
+
+  // Kullanıcı silinse de denetim satırı korunur (onDelete: SetNull) — "kim/ne zaman"
+  // olay müdahalesinin (incident response) ilk adımıdır.
+  cssUpdatedBy User? @relation("SiteCustomCodeCssUpdater", fields: [cssUpdatedById], references: [id], onDelete: SetNull)
+  jsUpdatedBy  User? @relation("SiteCustomCodeJsUpdater", fields: [jsUpdatedById], references: [id], onDelete: SetNull)
+
+  @@index([cssUpdatedById])
+  @@index([jsUpdatedById])
+  @@map("site_custom_code")
+}
+
 model NavigationItem {
   id        String   @id @default(uuid())
   seq       Int      @unique @default(autoincrement())
@@ -746,6 +896,9 @@ model Media {
   // §10.9.4 Portföy Modülü — bkz. ARCHITECTURE.md §10.9.4.
   portfolioCovers       PortfolioItem[]  @relation("PortfolioCoverMedia")
   portfolioGalleryItems PortfolioImage[] @relation("PortfolioGalleryImage")
+  // §10.12.2 Site Özelleştirme — SiteAppearance.pageHeaderBackgroundMediaId için
+  // zorunlu karşı-ilişki alanı.
+  pageHeaderBackgrounds SiteAppearance[] @relation("SiteAppearancePageHeaderBackground")
 
   @@index([folderId])
   @@map("media")
