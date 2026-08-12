@@ -1,15 +1,22 @@
 import Link from "next/link";
 import type { PortfolioItem } from "@/lib/api/types";
+import { withLocalePrefix } from "@/lib/i18n/site-path";
 
 interface PortfolioCardProps {
   item: PortfolioItem;
+  activeLocaleCode?: string;
+  defaultLocaleCode?: string;
 }
 
 /** `ProductCard` ile BİREBİR aynı görsel patern (bkz. site/product-card.tsx), fiyat YERİNE müşteri adı gösterilir. */
-export function PortfolioCard({ item }: PortfolioCardProps) {
+export function PortfolioCard({ item, activeLocaleCode, defaultLocaleCode }: PortfolioCardProps) {
+  const href = activeLocaleCode
+    ? withLocalePrefix(`/portfolio/${item.slug}`, activeLocaleCode, defaultLocaleCode ?? activeLocaleCode)
+    : `/portfolio/${item.slug}`;
+
   return (
     <Link
-      href={`/portfolio/${item.slug}`}
+      href={href}
       className="block overflow-hidden rounded-lg border border-border transition-colors hover:bg-surface-muted"
     >
       <div className="relative aspect-square w-full bg-surface-muted">

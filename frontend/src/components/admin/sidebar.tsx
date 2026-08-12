@@ -41,11 +41,13 @@ import {
 import { ThemeToggle } from "@/components/admin/theme-toggle";
 import { useAuth } from "@/context/auth-context";
 import { useModules } from "@/context/modules-context";
+import { useT } from "@/context/i18n-context";
 import type { SiteRole } from "@/lib/api/types";
 
 export interface NavItem {
   href: string;
-  label: string;
+  /** `nav.*` sözlük anahtarı — sabit Türkçe string DEĞİL (bkz. `lib/i18n/dictionaries/nav.ts`). */
+  labelKey: string;
   icon: typeof LayoutDashboard;
   /** Verilmezse tüm rollere görünür. `/admin/import` gibi ADMIN-only uçlar için kullanılır
    *  (bkz. `notification-center.tsx`'teki `user.role !== "ADMIN"` deseniyle AYNI mantık). */
@@ -75,33 +77,34 @@ export function filterVisibleNavItems(
 }
 
 const navItems: NavItem[] = [
-  { href: "/admin", label: "Genel Bakış", icon: LayoutDashboard },
-  { href: "/admin/pages", label: "Sayfalar", icon: FileText },
-  { href: "/admin/blog", label: "Blog", icon: Newspaper },
-  { href: "/admin/products", label: "Ürünler", icon: ShoppingBag, module: "products" },
-  { href: "/admin/orders", label: "Siparişler", icon: Receipt, module: "products" },
-  { href: "/admin/portfolio", label: "Portföy", icon: Briefcase, module: "portfolio" },
-  { href: "/admin/stats", label: "İstatistikler", icon: BarChart3 },
+  { href: "/admin", labelKey: "nav.overview", icon: LayoutDashboard },
+  { href: "/admin/pages", labelKey: "nav.pages", icon: FileText },
+  { href: "/admin/blog", labelKey: "nav.blog", icon: Newspaper },
+  { href: "/admin/products", labelKey: "nav.products", icon: ShoppingBag, module: "products" },
+  { href: "/admin/orders", labelKey: "nav.orders", icon: Receipt, module: "products" },
+  { href: "/admin/portfolio", labelKey: "nav.portfolio", icon: Briefcase, module: "portfolio" },
+  { href: "/admin/stats", labelKey: "nav.stats", icon: BarChart3 },
   // `/admin/reports/exports/*` backend'de TAMAMEN ADMIN-only (bkz. reports.routes.ts) —
   // `/admin/import` ile AYNI `roles` deseni.
-  { href: "/admin/reports", label: "Raporlar", icon: FileArchive, roles: ["ADMIN"] },
-  { href: "/admin/media", label: "Medya", icon: ImageIcon },
-  { href: "/admin/navigation", label: "Navigasyon", icon: LayoutTemplate },
-  { href: "/admin/appearance", label: "Görünüm", icon: Palette },
-  { href: "/admin/import", label: "İçe Aktar", icon: Upload, roles: ["ADMIN"] },
-  { href: "/admin/users", label: "Kullanıcılar", icon: Users },
-  { href: "/admin/system", label: "Sistem Sağlığı", icon: Activity },
-  { href: "/admin/notifications/templates", label: "E-posta Şablonları", icon: Mail },
-  { href: "/admin/settings/security", label: "Güvenlik", icon: ShieldCheck },
-  { href: "/admin/logs", label: "Aktivite Günlükleri", icon: ScrollText },
-  { href: "/admin/modules", label: "Modüller", icon: Blocks, roles: ["ADMIN"] },
-  { href: "/admin/settings", label: "Ayarlar", icon: Settings },
+  { href: "/admin/reports", labelKey: "nav.reports", icon: FileArchive, roles: ["ADMIN"] },
+  { href: "/admin/media", labelKey: "nav.media", icon: ImageIcon },
+  { href: "/admin/navigation", labelKey: "nav.navigation", icon: LayoutTemplate },
+  { href: "/admin/appearance", labelKey: "nav.appearance", icon: Palette },
+  { href: "/admin/import", labelKey: "nav.import", icon: Upload, roles: ["ADMIN"] },
+  { href: "/admin/users", labelKey: "nav.users", icon: Users },
+  { href: "/admin/system", labelKey: "nav.system", icon: Activity },
+  { href: "/admin/notifications/templates", labelKey: "nav.emailTemplates", icon: Mail },
+  { href: "/admin/settings/security", labelKey: "nav.security", icon: ShieldCheck },
+  { href: "/admin/logs", labelKey: "nav.logs", icon: ScrollText },
+  { href: "/admin/modules", labelKey: "nav.modules", icon: Blocks, roles: ["ADMIN"] },
+  { href: "/admin/settings", labelKey: "nav.settings", icon: Settings },
 ];
 
 export function AdminSidebar() {
   const pathname = usePathname();
   const { user } = useAuth();
   const { isModuleEnabled } = useModules();
+  const t = useT();
   const visibleNavItems = filterVisibleNavItems(navItems, user, isModuleEnabled);
 
   return (
@@ -126,8 +129,8 @@ export function AdminSidebar() {
               <LayoutGrid className="h-4 w-4" />
             </span>
             <span className="flex flex-col leading-tight">
-              <span className="text-sm font-semibold text-sidebar-foreground">Yönetim Paneli</span>
-              <span className="text-xs text-sidebar-foreground/40">İçerik ve site yönetimi</span>
+              <span className="text-sm font-semibold text-sidebar-foreground">{t("nav.brandTitle")}</span>
+              <span className="text-xs text-sidebar-foreground/40">{t("nav.brandSubtitle")}</span>
             </span>
           </Link>
         </SidebarHeader>
@@ -136,11 +139,12 @@ export function AdminSidebar() {
 
         <SidebarContent className="relative px-2 py-3">
           <SidebarGroup>
-            <SidebarGroupLabel className="px-2 text-sidebar-foreground/35">Menü</SidebarGroupLabel>
+            <SidebarGroupLabel className="px-2 text-sidebar-foreground/35">{t("nav.menu")}</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu className="gap-1">
                 {visibleNavItems.map((item, index) => {
                   const active = item.href === "/admin" ? pathname === item.href : pathname.startsWith(item.href);
+                  const label = t(item.labelKey);
                   return (
                     <SidebarMenuItem key={item.href}>
                       <motion.div
@@ -161,7 +165,10 @@ export function AdminSidebar() {
                             />
                           )}
                           <item.icon className="relative h-4 w-4" />
-                          <span className="relative">{item.label}</span>
+                          {/* §5 metin genişlemesi — EN/DE etiketleri kırpılır, sarma (wrap) YOK (design-notes-i18n.md §5). */}
+                          <span className="relative min-w-0 flex-1 truncate" title={label}>
+                            {label}
+                          </span>
                         </SidebarMenuButton>
                       </motion.div>
                     </SidebarMenuItem>
@@ -174,11 +181,11 @@ export function AdminSidebar() {
 
         <SidebarFooter className="relative space-y-2 px-3 py-3">
           <div className="flex items-center justify-between rounded-lg border border-sidebar-border bg-sidebar-foreground/5 px-2.5 py-2 text-xs text-sidebar-foreground/50">
-            <span>Tema</span>
+            <span>{t("nav.theme")}</span>
             <ThemeToggle variant="sidebar" />
           </div>
           <div className="flex items-center justify-between rounded-lg border border-sidebar-border bg-sidebar-foreground/5 px-2.5 py-2 text-xs text-sidebar-foreground/50">
-            <span>Sürüm</span>
+            <span>{t("nav.version")}</span>
             <span className="rounded-full bg-[linear-gradient(to_right,var(--accent-500),var(--accent-700))] px-2 py-0.5 font-medium text-white shadow-[0_0_10px_rgba(var(--accent-rgb-400),0.45)]">
               v1.0
             </span>

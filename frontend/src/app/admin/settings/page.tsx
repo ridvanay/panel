@@ -17,9 +17,11 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ImageUploadField } from "@/components/admin/media/image-upload-field";
 import { PageHeading } from "@/components/admin/page-heading";
+import { LocaleManager } from "@/components/admin/locale-manager";
 import { cn } from "@/lib/utils";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { useUnsavedChangesGuard } from "@/hooks/use-unsaved-changes-guard";
+import { useT } from "@/context/i18n-context";
 import type { SiteTemplate } from "@/lib/api/types";
 import {
   AlertCircle,
@@ -27,6 +29,7 @@ import {
   CheckCircle2,
   Globe,
   ImageIcon,
+  Languages,
   Lock,
   Mail,
   ShieldCheck,
@@ -111,6 +114,7 @@ function SectionHeader({
 }
 
 export default function AdminSettingsPage() {
+  const t = useT();
   const [activeTab, setActiveTab] = useState("general");
 
   const [loaded, setLoaded] = useState(false);
@@ -305,6 +309,10 @@ export default function AdminSettingsPage() {
           <TabsTrigger value="integrations">
             <Mail className="h-3.5 w-3.5" />
             E-posta / API Yapılandırmaları
+          </TabsTrigger>
+          <TabsTrigger value="languages">
+            <Languages className="h-3.5 w-3.5" />
+            {t("localeManager.tabLabel")}
           </TabsTrigger>
         </TabsList>
 
@@ -576,6 +584,19 @@ export default function AdminSettingsPage() {
                 <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                 Bu yapılandırma henüz bu ortamda desteklenmiyor.
               </p>
+            </Card>
+          </motion.div>
+        </TabsContent>
+
+        <TabsContent value="languages" className="mt-6 outline-none">
+          <motion.div variants={cardVariants} initial="hidden" animate="show">
+            <Card className="space-y-4">
+              <SectionHeader
+                icon={Languages}
+                title={t("localeManager.title")}
+                description={t("localeManager.description")}
+              />
+              <LocaleManager />
             </Card>
           </motion.div>
         </TabsContent>

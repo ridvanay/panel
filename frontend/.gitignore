@@ -40,3 +40,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Playwright (qa-agent E2E)
+/playwright-report/
+/test-results/
+/tests/e2e/.auth/

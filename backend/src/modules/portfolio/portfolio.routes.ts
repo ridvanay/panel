@@ -27,6 +27,17 @@ import { getPortfolioItemContentCounts } from "../../lib/content-counts";
 import { resolveAuthorId } from "../../lib/content-author";
 import { logAudit } from "../../lib/audit";
 import { sanitizeRichHtml } from "../../lib/html-sanitize";
+import {
+  applyFieldLocalization,
+  attachLocalizations,
+  attachLocalizationsOne,
+  deleteContentSlugsForEntity,
+  getLocaleSet,
+  mergeTranslations,
+  resolveEffectiveLocaleCode,
+  resolveEntityIdBySlug,
+  syncContentSlugs,
+} from "../../lib/localization";
 import { sanitizePortfolioTranslations } from "./lib/sanitize-content";
 import {
   AddPortfolioImageRequestSchema,
@@ -34,6 +45,7 @@ import {
   CreatePortfolioCategoryRequestSchema,
   CreatePortfolioItemRequestSchema,
   ListPortfolioItemsQuerySchema,
+  LocaleQuerySchema,
   PortfolioCategoryIdParamSchema,
   PortfolioImageIdParamSchema,
   PortfolioItemIdParamSchema,
@@ -74,6 +86,36 @@ function toPortfolioItemSnapshot(item: PortfolioItem): Record<string, unknown> {
   };
 }
 
+const PORTFOLIO_ITEM_STRING_FIELDS = [
+  "title",
+  "seoTitle",
+  "seoDescription",
+  "ogTitle",
+  "canonicalUrl",
+  "summary",
+  "contentHtml",
+] as const;
+
+/**
+ * §0.1b — ÖNCELİK 1: `PortfolioItem` public GET'lerinde `translations` YAZILABİLİYORDU ama
+ * OKUNAMIYORDU (`applyLocale()` hiç YOKTU). Artık `BlogPost`/`Product`/`Page` ile AYNI ortak
+ * yardımcıyı kullanır (bkz. lib/localization.ts).
+ */
+function applyPortfolioItemLocale<T extends PortfolioItem>(item: T, effectiveLocale: string | undefined): T {
+  if (!effectiveLocale) return item;
+  return applyFieldLocalization(item, effectiveLocale, PORTFOLIO_ITEM_STRING_FIELDS);
+}
+
+async function toPortfolioItemDtoLocalized(app: FastifyInstance, item: Parameters<typeof toPortfolioItemDto>[0]) {
+  const localizations = await attachLocalizationsOne(app, "PORTFOLIO_ITEM", item);
+  return toPortfolioItemDto(item, localizations);
+}
+
+async function toPortfolioItemDtosLocalized(app: FastifyInstance, items: Parameters<typeof toPortfolioItemDto>[0][]) {
+  const map = await attachLocalizations(app, "PORTFOLIO_ITEM", items);
+  return items.map((item) => toPortfolioItemDto(item, map.get(item.id) ?? []));
+}
+
 /** `/admin/portfolio` prefix'i altında bağlanır (bkz. app.ts) — tüm durumlar (taslak dahil), authenticated. */
 export async function adminPortfolioRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
@@ -110,7 +152,7 @@ export async function adminPortfolioRoutes(app: FastifyInstance) {
         getPortfolioItemContentCounts(app.prisma),
       ]);
 
-      return reply.send(ok(rows.map(toPortfolioItemDto), buildPageMetaWithCounts(rows, limit, counts)));
+      return reply.send(ok(await toPortfolioItemDtosLocalized(app, rows), buildPageMetaWithCounts(rows, limit, counts)));
     }
   );
 
@@ -146,39 +188,48 @@ export async function adminPortfolioRoutes(app: FastifyInstance) {
       const resolvedAuthorId = await resolveAuthorId(app, request.body.authorId, request.user!);
       const authorId = resolvedAuthorId === undefined ? request.user!.id : resolvedAuthorId;
 
-      const item = await app.prisma.portfolioItem.create({
-        data: {
-          title,
-          slug: slug ? slugify(slug) : slugify(title),
-          summary,
-          // Stored-XSS koruması: EDITOR de yazabildiği için (ADMIN'den daha az güvenilir bir rol)
-          // içerik DB'ye yazılmadan önce sanitize edilir — public sitede `dangerouslySetInnerHTML`
-          // ile doğrudan render edilir (bkz. lib/html-sanitize.ts).
-          contentHtml: sanitizeRichHtml(contentHtml),
-          clientName: clientName ?? undefined,
-          projectUrl: projectUrl ?? undefined,
-          completedAt: completedAt ? new Date(completedAt) : undefined,
-          order: order ?? undefined,
-          status: status ?? "DRAFT",
-          categoryId: categoryId ?? undefined,
-          coverMediaId: coverMediaId ?? undefined,
-          authorId,
-          seoTitle,
-          seoDescription,
-          ogTitle,
-          ogImageUrl,
-          canonicalUrl,
-          noIndex,
-          translations: (translations ? sanitizePortfolioTranslations(translations) : {}) as Prisma.InputJsonValue,
-          publishedAt: status === "PUBLISHED" ? new Date() : null,
-          // Faz 4 (zamanlanmış yayın) — `CreatePortfolioItemRequestSchema`'nın `refine`'ı zaten
-          // `status === "SCHEDULED"` iken `scheduledAt`'in gelecekte dolu olmasını garanti eder.
-          scheduledAt: status === "SCHEDULED" && scheduledAt ? new Date(scheduledAt) : null,
-        },
-        include: WITH_RELATIONS,
+      const { enabled: enabledLocales } = await getLocaleSet(app);
+      const sanitizedTranslations = translations ? sanitizePortfolioTranslations(translations) : {};
+
+      const item = await app.prisma.$transaction(async (tx) => {
+        const created = await tx.portfolioItem.create({
+          data: {
+            title,
+            slug: slug ? slugify(slug) : slugify(title),
+            summary,
+            // Stored-XSS koruması: EDITOR de yazabildiği için (ADMIN'den daha az güvenilir bir rol)
+            // içerik DB'ye yazılmadan önce sanitize edilir — public sitede `dangerouslySetInnerHTML`
+            // ile doğrudan render edilir (bkz. lib/html-sanitize.ts).
+            contentHtml: sanitizeRichHtml(contentHtml),
+            clientName: clientName ?? undefined,
+            projectUrl: projectUrl ?? undefined,
+            completedAt: completedAt ? new Date(completedAt) : undefined,
+            order: order ?? undefined,
+            status: status ?? "DRAFT",
+            categoryId: categoryId ?? undefined,
+            coverMediaId: coverMediaId ?? undefined,
+            authorId,
+            seoTitle,
+            seoDescription,
+            ogTitle,
+            ogImageUrl,
+            canonicalUrl,
+            noIndex,
+            translations: sanitizedTranslations as Prisma.InputJsonValue,
+            publishedAt: status === "PUBLISHED" ? new Date() : null,
+            // Faz 4 (zamanlanmış yayın) — `CreatePortfolioItemRequestSchema`'nın `refine`'ı zaten
+            // `status === "SCHEDULED"` iken `scheduledAt`'in gelecekte dolu olmasını garanti eder.
+            scheduledAt: status === "SCHEDULED" && scheduledAt ? new Date(scheduledAt) : null,
+          },
+          include: WITH_RELATIONS,
+        });
+
+        await syncContentSlugs(tx, enabledLocales, "PORTFOLIO_ITEM", created.id, created.slug, created.translations);
+
+        return created;
       });
 
-      return reply.code(201).send(ok(toPortfolioItemDto(item)));
+      return reply.code(201).send(ok(await toPortfolioItemDtoLocalized(app, item)));
     }
   );
 
@@ -192,7 +243,7 @@ export async function adminPortfolioRoutes(app: FastifyInstance) {
         include: WITH_RELATIONS,
       });
       if (!item) throw new NotFoundError("Portföy öğesi bulunamadı.");
-      return reply.send(ok(toPortfolioItemDto(item)));
+      return reply.send(ok(await toPortfolioItemDtoLocalized(app, item)));
     }
   );
 
@@ -222,39 +273,38 @@ export async function adminPortfolioRoutes(app: FastifyInstance) {
       // Stored-XSS koruması: gelen çeviriler merge'den ÖNCE sanitize edilir (mevcut kayıttaki
       // çeviriler zaten sanitize edilmiş halde DB'de duruyor — bkz. lib/html-sanitize.ts).
       const sanitizedTranslations = translations !== undefined ? sanitizePortfolioTranslations(translations) : undefined;
-
       const mergedTranslations =
-        sanitizedTranslations !== undefined
-          ? {
-              ...((existing.translations as Record<string, Record<string, unknown>>) ?? {}),
-              ...Object.fromEntries(
-                Object.entries(sanitizedTranslations).map(([locale, fields]) => [
-                  locale,
-                  { ...(((existing.translations as Record<string, Record<string, unknown>>) ?? {})[locale] ?? {}), ...fields },
-                ])
-              ),
-            }
-          : undefined;
+        sanitizedTranslations !== undefined ? mergeTranslations(existing.translations, sanitizedTranslations) : undefined;
 
-      const item = await app.prisma.portfolioItem.update({
-        where: { id: request.params.itemId },
-        data: {
-          ...rest,
-          ...(rest.contentHtml !== undefined ? { contentHtml: sanitizeRichHtml(rest.contentHtml) } : {}),
-          ...(slug !== undefined ? { slug: slugify(slug) } : {}),
-          ...(completedAt !== undefined ? { completedAt: completedAt ? new Date(completedAt) : null } : {}),
-          ...(mergedTranslations !== undefined ? { translations: mergedTranslations as Prisma.InputJsonValue } : {}),
-          ...(rest.status === "PUBLISHED" && !existing.publishedAt ? { publishedAt: new Date() } : {}),
-          // Faz 4 (zamanlanmış yayın) — yalnızca bu istekte `status` GÖNDERİLMİŞSE dokunulur.
-          ...(rest.status !== undefined
-            ? { scheduledAt: rest.status === "SCHEDULED" && scheduledAt ? new Date(scheduledAt) : null }
-            : {}),
-          ...(resolvedAuthorId !== undefined ? { authorId: resolvedAuthorId } : {}),
-        },
-        include: WITH_RELATIONS,
+      const { enabled: enabledLocales } = await getLocaleSet(app);
+
+      const item = await app.prisma.$transaction(async (tx) => {
+        const updated = await tx.portfolioItem.update({
+          where: { id: request.params.itemId },
+          data: {
+            ...rest,
+            ...(rest.contentHtml !== undefined ? { contentHtml: sanitizeRichHtml(rest.contentHtml) } : {}),
+            ...(slug !== undefined ? { slug: slugify(slug) } : {}),
+            ...(completedAt !== undefined ? { completedAt: completedAt ? new Date(completedAt) : null } : {}),
+            ...(mergedTranslations !== undefined ? { translations: mergedTranslations as Prisma.InputJsonValue } : {}),
+            ...(rest.status === "PUBLISHED" && !existing.publishedAt ? { publishedAt: new Date() } : {}),
+            // Faz 4 (zamanlanmış yayın) — yalnızca bu istekte `status` GÖNDERİLMİŞSE dokunulur.
+            ...(rest.status !== undefined
+              ? { scheduledAt: rest.status === "SCHEDULED" && scheduledAt ? new Date(scheduledAt) : null }
+              : {}),
+            ...(resolvedAuthorId !== undefined ? { authorId: resolvedAuthorId } : {}),
+          },
+          include: WITH_RELATIONS,
+        });
+
+        if (slug !== undefined || mergedTranslations !== undefined) {
+          await syncContentSlugs(tx, enabledLocales, "PORTFOLIO_ITEM", updated.id, updated.slug, updated.translations);
+        }
+
+        return updated;
       });
 
-      return reply.send(ok(toPortfolioItemDto(item)));
+      return reply.send(ok(await toPortfolioItemDtoLocalized(app, item)));
     }
   );
 
@@ -349,7 +399,7 @@ export async function adminPortfolioRoutes(app: FastifyInstance) {
       }
 
       const item = await app.prisma.portfolioItem.findUnique({ where: { id: existing.id }, include: WITH_RELATIONS });
-      return reply.send(ok(toPortfolioItemDto(item!)));
+      return reply.send(ok(await toPortfolioItemDtoLocalized(app, item!)));
     }
   );
 
@@ -365,10 +415,11 @@ export async function adminPortfolioRoutes(app: FastifyInstance) {
       if (!existing) throw new NotFoundError("Portföy öğesi bulunamadı.");
       if (!existing.deletedAt) throw new ConflictError("Kalıcı silmeden önce içeriği çöpe taşıyın.");
 
-      await app.prisma.$transaction([
-        app.prisma.contentRevision.deleteMany({ where: { entityType: "PORTFOLIO_ITEM", entityId: existing.id } }),
-        app.prisma.portfolioItem.delete({ where: { id: existing.id } }),
-      ]);
+      await app.prisma.$transaction(async (tx) => {
+        await tx.contentRevision.deleteMany({ where: { entityType: "PORTFOLIO_ITEM", entityId: existing.id } });
+        await deleteContentSlugsForEntity(tx, "PORTFOLIO_ITEM", existing.id);
+        await tx.portfolioItem.delete({ where: { id: existing.id } });
+      });
 
       await logAudit(app, {
         actorId: request.user!.id,
@@ -416,7 +467,7 @@ export async function adminPortfolioRoutes(app: FastifyInstance) {
       });
 
       const updated = await app.prisma.portfolioItem.findUnique({ where: { id: item.id }, include: WITH_RELATIONS });
-      return reply.code(201).send(ok(toPortfolioItemDto(updated!)));
+      return reply.code(201).send(ok(await toPortfolioItemDtoLocalized(app, updated!)));
     }
   );
 
@@ -436,7 +487,7 @@ export async function adminPortfolioRoutes(app: FastifyInstance) {
 
       const updated = await app.prisma.portfolioItem.findUnique({ where: { id: itemId }, include: WITH_RELATIONS });
       if (!updated) throw new NotFoundError("Portföy öğesi bulunamadı.");
-      return reply.send(ok(toPortfolioItemDto(updated)));
+      return reply.send(ok(await toPortfolioItemDtoLocalized(app, updated)));
     }
   );
 
@@ -541,35 +592,44 @@ export async function adminPortfolioRoutes(app: FastifyInstance) {
         translations: unknown;
       };
 
-      const item = await app.prisma.portfolioItem.update({
-        where: { id: request.params.itemId },
-        data: {
-          title: snapshot.title,
-          slug: snapshot.slug,
-          summary: snapshot.summary,
-          // Savunmada derinlik: bu sanitizasyon eklenmeden ÖNCE kaydedilmiş eski revizyonlar
-          // temizlenmemiş HTML içerebilir — geri yükleme her zaman yeniden sanitize eder.
-          contentHtml: sanitizeRichHtml(snapshot.contentHtml),
-          clientName: snapshot.clientName,
-          projectUrl: snapshot.projectUrl,
-          completedAt: snapshot.completedAt ? new Date(snapshot.completedAt) : null,
-          order: snapshot.order,
-          categoryId: snapshot.categoryId,
-          coverMediaId: snapshot.coverMediaId,
-          seoTitle: snapshot.seoTitle,
-          seoDescription: snapshot.seoDescription,
-          ogTitle: snapshot.ogTitle,
-          ogImageUrl: snapshot.ogImageUrl,
-          canonicalUrl: snapshot.canonicalUrl,
-          noIndex: snapshot.noIndex,
-          translations: (snapshot.translations
-            ? sanitizePortfolioTranslations(snapshot.translations as Record<string, Record<string, unknown>>)
-            : {}) as Prisma.InputJsonValue,
-        },
-        include: WITH_RELATIONS,
+      const { enabled: enabledLocales } = await getLocaleSet(app);
+      const sanitizedTranslations = snapshot.translations
+        ? sanitizePortfolioTranslations(snapshot.translations as Record<string, Record<string, unknown> | null>)
+        : {};
+
+      const item = await app.prisma.$transaction(async (tx) => {
+        const updated = await tx.portfolioItem.update({
+          where: { id: request.params.itemId },
+          data: {
+            title: snapshot.title,
+            slug: snapshot.slug,
+            summary: snapshot.summary,
+            // Savunmada derinlik: bu sanitizasyon eklenmeden ÖNCE kaydedilmiş eski revizyonlar
+            // temizlenmemiş HTML içerebilir — geri yükleme her zaman yeniden sanitize eder.
+            contentHtml: sanitizeRichHtml(snapshot.contentHtml),
+            clientName: snapshot.clientName,
+            projectUrl: snapshot.projectUrl,
+            completedAt: snapshot.completedAt ? new Date(snapshot.completedAt) : null,
+            order: snapshot.order,
+            categoryId: snapshot.categoryId,
+            coverMediaId: snapshot.coverMediaId,
+            seoTitle: snapshot.seoTitle,
+            seoDescription: snapshot.seoDescription,
+            ogTitle: snapshot.ogTitle,
+            ogImageUrl: snapshot.ogImageUrl,
+            canonicalUrl: snapshot.canonicalUrl,
+            noIndex: snapshot.noIndex,
+            translations: sanitizedTranslations as Prisma.InputJsonValue,
+          },
+          include: WITH_RELATIONS,
+        });
+
+        await syncContentSlugs(tx, enabledLocales, "PORTFOLIO_ITEM", updated.id, updated.slug, updated.translations);
+
+        return updated;
       });
 
-      return reply.send(ok(toPortfolioItemDto(item)));
+      return reply.send(ok(await toPortfolioItemDtoLocalized(app, item)));
     }
   );
 }
@@ -655,7 +715,12 @@ export async function publicPortfolioRoutes(app: FastifyInstance) {
 
   server.get(
     "/",
-    { schema: { querystring: CursorQuerySchema, response: { 200: ApiSuccessSchema(z.array(PortfolioItemSchema)) } } },
+    {
+      schema: {
+        querystring: CursorQuerySchema.merge(LocaleQuerySchema),
+        response: { 200: ApiSuccessSchema(z.array(PortfolioItemSchema)) },
+      },
+    },
     async (request, reply) => {
       const { cursor, limit } = request.query;
       const cursorSeq = parseCursor(cursor);
@@ -668,20 +733,49 @@ export async function publicPortfolioRoutes(app: FastifyInstance) {
         include: WITH_RELATIONS,
       });
 
-      return reply.send(ok(rows.map(toPortfolioItemDto), buildPageMeta(rows, limit)));
+      const localeSet = await getLocaleSet(app);
+      const effectiveLocale = resolveEffectiveLocaleCode(localeSet, request.query.locale);
+      const localizationsByEntity = await attachLocalizations(app, "PORTFOLIO_ITEM", rows);
+
+      const dtos = rows.map((row) =>
+        toPortfolioItemDto(applyPortfolioItemLocale(row, effectiveLocale), localizationsByEntity.get(row.id) ?? [])
+      );
+
+      return reply.send(ok(dtos, buildPageMeta(rows, limit)));
     }
   );
 
   server.get(
     "/:slug",
-    { schema: { params: PortfolioItemSlugParamSchema, response: { 200: ApiSuccessSchema(PortfolioItemSchema) } } },
+    {
+      schema: {
+        params: PortfolioItemSlugParamSchema,
+        querystring: LocaleQuerySchema,
+        response: { 200: ApiSuccessSchema(PortfolioItemSchema) },
+      },
+    },
     async (request, reply) => {
-      const item = await app.prisma.portfolioItem.findFirst({
-        where: { slug: request.params.slug, status: "PUBLISHED", deletedAt: null },
-        include: WITH_RELATIONS,
-      });
-      if (!item) throw new NotFoundError("Portföy öğesi bulunamadı.");
-      return reply.send(ok(toPortfolioItemDto(item)));
+      const localeSet = await getLocaleSet(app);
+      const effectiveLocale = resolveEffectiveLocaleCode(localeSet, request.query.locale);
+
+      // §0.1b/§4 — ÖNCELİK 1 düzeltmesi: artık `/pages`/`/blog` ile BİREBİR AYNI slug çözümlemesi.
+      const translatedEntityId = await resolveEntityIdBySlug(app, "PORTFOLIO_ITEM", request.params.slug, effectiveLocale);
+      const item = translatedEntityId
+        ? await app.prisma.portfolioItem.findFirst({
+            where: { id: translatedEntityId, status: "PUBLISHED", deletedAt: null },
+            include: WITH_RELATIONS,
+          })
+        : null;
+      const resolvedItem =
+        item ??
+        (await app.prisma.portfolioItem.findFirst({
+          where: { slug: request.params.slug, status: "PUBLISHED", deletedAt: null },
+          include: WITH_RELATIONS,
+        }));
+      if (!resolvedItem) throw new NotFoundError("Portföy öğesi bulunamadı.");
+
+      const localizations = await attachLocalizationsOne(app, "PORTFOLIO_ITEM", resolvedItem);
+      return reply.send(ok(toPortfolioItemDto(applyPortfolioItemLocale(resolvedItem, effectiveLocale), localizations)));
     }
   );
 

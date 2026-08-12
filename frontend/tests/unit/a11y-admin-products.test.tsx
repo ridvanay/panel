@@ -70,6 +70,7 @@ function makeProduct(overrides: Partial<Product> = {}): Product {
     author: { id: "user-1", name: "Admin Kullanıcı", email: "admin@example.com", avatarUrl: null },
     seoScore: 80,
     seoScoreIssues: [],
+    localizations: [],
     ...overrides,
   };
 }

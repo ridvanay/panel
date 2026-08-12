@@ -27,6 +27,17 @@ import { getProductContentCounts } from "../../lib/content-counts";
 import { resolveAuthorId } from "../../lib/content-author";
 import { logAudit } from "../../lib/audit";
 import { sanitizeRichHtml } from "../../lib/html-sanitize";
+import {
+  applyFieldLocalization,
+  attachLocalizations,
+  attachLocalizationsOne,
+  deleteContentSlugsForEntity,
+  getLocaleSet,
+  mergeTranslations,
+  resolveEffectiveLocaleCode,
+  resolveEntityIdBySlug,
+  syncContentSlugs,
+} from "../../lib/localization";
 import { sanitizeProductTranslations } from "./lib/sanitize-content";
 import {
   AddProductImageRequestSchema,
@@ -35,6 +46,7 @@ import {
   CreateProductCategoryRequestSchema,
   CreateProductRequestSchema,
   ListProductsQuerySchema,
+  LocaleQuerySchema,
   ProductCategoryIdParamSchema,
   ProductIdParamSchema,
   ProductImageIdParamSchema,
@@ -92,6 +104,36 @@ function assertDiscountBelowPrice(finalPriceCents: number, finalDiscountPriceCen
   }
 }
 
+const PRODUCT_STRING_FIELDS = [
+  "title",
+  "seoTitle",
+  "seoDescription",
+  "ogTitle",
+  "canonicalUrl",
+  "excerpt",
+  "descriptionHtml",
+] as const;
+
+/**
+ * §0.1b — ÖNCELİK 1: `Product` public GET'lerinde `translations` YAZILABİLİYORDU ama
+ * OKUNAMIYORDU (`applyLocale()` hiç YOKTU). Artık `BlogPost`/`Page` ile AYNI ortak yardımcıyı
+ * kullanır (bkz. lib/localization.ts).
+ */
+function applyProductLocale<T extends Product>(product: T, effectiveLocale: string | undefined): T {
+  if (!effectiveLocale) return product;
+  return applyFieldLocalization(product, effectiveLocale, PRODUCT_STRING_FIELDS);
+}
+
+async function toProductDtoLocalized(app: FastifyInstance, product: Parameters<typeof toProductDto>[0]) {
+  const localizations = await attachLocalizationsOne(app, "PRODUCT", product);
+  return toProductDto(product, localizations);
+}
+
+async function toProductDtosLocalized(app: FastifyInstance, products: Parameters<typeof toProductDto>[0][]) {
+  const map = await attachLocalizations(app, "PRODUCT", products);
+  return products.map((product) => toProductDto(product, map.get(product.id) ?? []));
+}
+
 /** `/admin/products` prefix'i altında bağlanır (bkz. app.ts) — tüm durumlar (taslak dahil), authenticated. */
 export async function adminProductsRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
@@ -128,7 +170,7 @@ export async function adminProductsRoutes(app: FastifyInstance) {
         getProductContentCounts(app.prisma),
       ]);
 
-      return reply.send(ok(rows.map(toProductDto), buildPageMetaWithCounts(rows, limit, counts)));
+      return reply.send(ok(await toProductDtosLocalized(app, rows), buildPageMetaWithCounts(rows, limit, counts)));
     }
   );
 
@@ -168,41 +210,50 @@ export async function adminProductsRoutes(app: FastifyInstance) {
       const resolvedAuthorId = await resolveAuthorId(app, request.body.authorId, request.user!);
       const authorId = resolvedAuthorId === undefined ? request.user!.id : resolvedAuthorId;
 
-      const product = await app.prisma.product.create({
-        data: {
-          title,
-          slug: slug ? slugify(slug) : slugify(title),
-          excerpt,
-          // Stored-XSS koruması: EDITOR de yazabildiği için (ADMIN'den daha az güvenilir bir rol)
-          // içerik DB'ye yazılmadan önce sanitize edilir — public sitede `dangerouslySetInnerHTML`
-          // ile doğrudan render edilir (bkz. lib/html-sanitize.ts).
-          descriptionHtml: sanitizeRichHtml(descriptionHtml),
-          priceCents,
-          currency: currency ?? undefined,
-          taxRatePercent: taxRatePercent ?? undefined,
-          discountPriceCents: discountPriceCents ?? undefined,
-          sku: sku ?? undefined,
-          stockQuantity: stockQuantity ?? undefined,
-          status: status ?? "DRAFT",
-          categoryId: categoryId ?? undefined,
-          coverMediaId: coverMediaId ?? undefined,
-          authorId,
-          seoTitle,
-          seoDescription,
-          ogTitle,
-          ogImageUrl,
-          canonicalUrl,
-          noIndex,
-          translations: (translations ? sanitizeProductTranslations(translations) : {}) as Prisma.InputJsonValue,
-          publishedAt: status === "PUBLISHED" ? new Date() : null,
-          // Faz 4 (zamanlanmış yayın) — `CreateProductRequestSchema`'nın `refine`'ı zaten
-          // `status === "SCHEDULED"` iken `scheduledAt`'in gelecekte dolu olmasını garanti eder.
-          scheduledAt: status === "SCHEDULED" && scheduledAt ? new Date(scheduledAt) : null,
-        },
-        include: WITH_RELATIONS,
+      const { enabled: enabledLocales } = await getLocaleSet(app);
+      const sanitizedTranslations = translations ? sanitizeProductTranslations(translations) : {};
+
+      const product = await app.prisma.$transaction(async (tx) => {
+        const created = await tx.product.create({
+          data: {
+            title,
+            slug: slug ? slugify(slug) : slugify(title),
+            excerpt,
+            // Stored-XSS koruması: EDITOR de yazabildiği için (ADMIN'den daha az güvenilir bir rol)
+            // içerik DB'ye yazılmadan önce sanitize edilir — public sitede `dangerouslySetInnerHTML`
+            // ile doğrudan render edilir (bkz. lib/html-sanitize.ts).
+            descriptionHtml: sanitizeRichHtml(descriptionHtml),
+            priceCents,
+            currency: currency ?? undefined,
+            taxRatePercent: taxRatePercent ?? undefined,
+            discountPriceCents: discountPriceCents ?? undefined,
+            sku: sku ?? undefined,
+            stockQuantity: stockQuantity ?? undefined,
+            status: status ?? "DRAFT",
+            categoryId: categoryId ?? undefined,
+            coverMediaId: coverMediaId ?? undefined,
+            authorId,
+            seoTitle,
+            seoDescription,
+            ogTitle,
+            ogImageUrl,
+            canonicalUrl,
+            noIndex,
+            translations: sanitizedTranslations as Prisma.InputJsonValue,
+            publishedAt: status === "PUBLISHED" ? new Date() : null,
+            // Faz 4 (zamanlanmış yayın) — `CreateProductRequestSchema`'nın `refine`'ı zaten
+            // `status === "SCHEDULED"` iken `scheduledAt`'in gelecekte dolu olmasını garanti eder.
+            scheduledAt: status === "SCHEDULED" && scheduledAt ? new Date(scheduledAt) : null,
+          },
+          include: WITH_RELATIONS,
+        });
+
+        await syncContentSlugs(tx, enabledLocales, "PRODUCT", created.id, created.slug, created.translations);
+
+        return created;
       });
 
-      return reply.code(201).send(ok(toProductDto(product)));
+      return reply.code(201).send(ok(await toProductDtoLocalized(app, product)));
     }
   );
 
@@ -216,7 +267,7 @@ export async function adminProductsRoutes(app: FastifyInstance) {
         include: WITH_RELATIONS,
       });
       if (!product) throw new NotFoundError("Ürün bulunamadı.");
-      return reply.send(ok(toProductDto(product)));
+      return reply.send(ok(await toProductDtoLocalized(app, product)));
     }
   );
 
@@ -252,38 +303,37 @@ export async function adminProductsRoutes(app: FastifyInstance) {
       // Stored-XSS koruması: gelen çeviriler merge'den ÖNCE sanitize edilir (mevcut kayıttaki
       // çeviriler zaten sanitize edilmiş halde DB'de duruyor — bkz. lib/html-sanitize.ts).
       const sanitizedTranslations = translations !== undefined ? sanitizeProductTranslations(translations) : undefined;
-
       const mergedTranslations =
-        sanitizedTranslations !== undefined
-          ? {
-              ...((existing.translations as Record<string, Record<string, unknown>>) ?? {}),
-              ...Object.fromEntries(
-                Object.entries(sanitizedTranslations).map(([locale, fields]) => [
-                  locale,
-                  { ...(((existing.translations as Record<string, Record<string, unknown>>) ?? {})[locale] ?? {}), ...fields },
-                ])
-              ),
-            }
-          : undefined;
+        sanitizedTranslations !== undefined ? mergeTranslations(existing.translations, sanitizedTranslations) : undefined;
 
-      const product = await app.prisma.product.update({
-        where: { id: request.params.productId },
-        data: {
-          ...rest,
-          ...(rest.descriptionHtml !== undefined ? { descriptionHtml: sanitizeRichHtml(rest.descriptionHtml) } : {}),
-          ...(slug !== undefined ? { slug: slugify(slug) } : {}),
-          ...(mergedTranslations !== undefined ? { translations: mergedTranslations as Prisma.InputJsonValue } : {}),
-          ...(rest.status === "PUBLISHED" && !existing.publishedAt ? { publishedAt: new Date() } : {}),
-          // Faz 4 (zamanlanmış yayın) — yalnızca bu istekte `status` GÖNDERİLMİŞSE dokunulur.
-          ...(rest.status !== undefined
-            ? { scheduledAt: rest.status === "SCHEDULED" && scheduledAt ? new Date(scheduledAt) : null }
-            : {}),
-          ...(resolvedAuthorId !== undefined ? { authorId: resolvedAuthorId } : {}),
-        },
-        include: WITH_RELATIONS,
+      const { enabled: enabledLocales } = await getLocaleSet(app);
+
+      const product = await app.prisma.$transaction(async (tx) => {
+        const updated = await tx.product.update({
+          where: { id: request.params.productId },
+          data: {
+            ...rest,
+            ...(rest.descriptionHtml !== undefined ? { descriptionHtml: sanitizeRichHtml(rest.descriptionHtml) } : {}),
+            ...(slug !== undefined ? { slug: slugify(slug) } : {}),
+            ...(mergedTranslations !== undefined ? { translations: mergedTranslations as Prisma.InputJsonValue } : {}),
+            ...(rest.status === "PUBLISHED" && !existing.publishedAt ? { publishedAt: new Date() } : {}),
+            // Faz 4 (zamanlanmış yayın) — yalnızca bu istekte `status` GÖNDERİLMİŞSE dokunulur.
+            ...(rest.status !== undefined
+              ? { scheduledAt: rest.status === "SCHEDULED" && scheduledAt ? new Date(scheduledAt) : null }
+              : {}),
+            ...(resolvedAuthorId !== undefined ? { authorId: resolvedAuthorId } : {}),
+          },
+          include: WITH_RELATIONS,
+        });
+
+        if (slug !== undefined || mergedTranslations !== undefined) {
+          await syncContentSlugs(tx, enabledLocales, "PRODUCT", updated.id, updated.slug, updated.translations);
+        }
+
+        return updated;
       });
 
-      return reply.send(ok(toProductDto(product)));
+      return reply.send(ok(await toProductDtoLocalized(app, product)));
     }
   );
 
@@ -377,7 +427,7 @@ export async function adminProductsRoutes(app: FastifyInstance) {
       }
 
       const product = await app.prisma.product.findUnique({ where: { id: existing.id }, include: WITH_RELATIONS });
-      return reply.send(ok(toProductDto(product!)));
+      return reply.send(ok(await toProductDtoLocalized(app, product!)));
     }
   );
 
@@ -393,10 +443,11 @@ export async function adminProductsRoutes(app: FastifyInstance) {
       if (!existing) throw new NotFoundError("Ürün bulunamadı.");
       if (!existing.deletedAt) throw new ConflictError("Kalıcı silmeden önce içeriği çöpe taşıyın.");
 
-      await app.prisma.$transaction([
-        app.prisma.contentRevision.deleteMany({ where: { entityType: "PRODUCT", entityId: existing.id } }),
-        app.prisma.product.delete({ where: { id: existing.id } }),
-      ]);
+      await app.prisma.$transaction(async (tx) => {
+        await tx.contentRevision.deleteMany({ where: { entityType: "PRODUCT", entityId: existing.id } });
+        await deleteContentSlugsForEntity(tx, "PRODUCT", existing.id);
+        await tx.product.delete({ where: { id: existing.id } });
+      });
 
       await logAudit(app, {
         actorId: request.user!.id,
@@ -443,7 +494,7 @@ export async function adminProductsRoutes(app: FastifyInstance) {
         ipAddress: request.ip,
       });
 
-      return reply.send(ok(toProductDto(product)));
+      return reply.send(ok(await toProductDtoLocalized(app, product)));
     }
   );
 
@@ -480,7 +531,7 @@ export async function adminProductsRoutes(app: FastifyInstance) {
       });
 
       const updated = await app.prisma.product.findUnique({ where: { id: product.id }, include: WITH_RELATIONS });
-      return reply.code(201).send(ok(toProductDto(updated!)));
+      return reply.code(201).send(ok(await toProductDtoLocalized(app, updated!)));
     }
   );
 
@@ -500,7 +551,7 @@ export async function adminProductsRoutes(app: FastifyInstance) {
 
       const updated = await app.prisma.product.findUnique({ where: { id: productId }, include: WITH_RELATIONS });
       if (!updated) throw new NotFoundError("Ürün bulunamadı.");
-      return reply.send(ok(toProductDto(updated)));
+      return reply.send(ok(await toProductDtoLocalized(app, updated)));
     }
   );
 
@@ -611,37 +662,46 @@ export async function adminProductsRoutes(app: FastifyInstance) {
       // Geri dönüş de geri alınabilir olsun diye önce mevcut state'i yeni bir revizyon olarak kaydet.
       await snapshotBeforeUpdate(app, "PRODUCT", existing.id, toProductSnapshot(existing), request.user!.id);
 
-      const product = await app.prisma.product.update({
-        where: { id: request.params.productId },
-        data: {
-          title: snapshot.title,
-          slug: snapshot.slug,
-          excerpt: snapshot.excerpt,
-          // Savunmada derinlik: bu sanitizasyon eklenmeden ÖNCE kaydedilmiş eski revizyonlar
-          // temizlenmemiş HTML içerebilir — geri yükleme her zaman yeniden sanitize eder.
-          descriptionHtml: sanitizeRichHtml(snapshot.descriptionHtml),
-          priceCents: snapshot.priceCents,
-          currency: snapshot.currency,
-          taxRatePercent: snapshot.taxRatePercent,
-          discountPriceCents: snapshot.discountPriceCents,
-          sku: snapshot.sku,
-          stockQuantity: snapshot.stockQuantity,
-          categoryId: snapshot.categoryId,
-          coverMediaId: snapshot.coverMediaId,
-          seoTitle: snapshot.seoTitle,
-          seoDescription: snapshot.seoDescription,
-          ogTitle: snapshot.ogTitle,
-          ogImageUrl: snapshot.ogImageUrl,
-          canonicalUrl: snapshot.canonicalUrl,
-          noIndex: snapshot.noIndex,
-          translations: (snapshot.translations
-            ? sanitizeProductTranslations(snapshot.translations as Record<string, Record<string, unknown>>)
-            : {}) as Prisma.InputJsonValue,
-        },
-        include: WITH_RELATIONS,
+      const { enabled: enabledLocales } = await getLocaleSet(app);
+      const sanitizedTranslations = snapshot.translations
+        ? sanitizeProductTranslations(snapshot.translations as Record<string, Record<string, unknown> | null>)
+        : {};
+
+      const product = await app.prisma.$transaction(async (tx) => {
+        const updated = await tx.product.update({
+          where: { id: request.params.productId },
+          data: {
+            title: snapshot.title,
+            slug: snapshot.slug,
+            excerpt: snapshot.excerpt,
+            // Savunmada derinlik: bu sanitizasyon eklenmeden ÖNCE kaydedilmiş eski revizyonlar
+            // temizlenmemiş HTML içerebilir — geri yükleme her zaman yeniden sanitize eder.
+            descriptionHtml: sanitizeRichHtml(snapshot.descriptionHtml),
+            priceCents: snapshot.priceCents,
+            currency: snapshot.currency,
+            taxRatePercent: snapshot.taxRatePercent,
+            discountPriceCents: snapshot.discountPriceCents,
+            sku: snapshot.sku,
+            stockQuantity: snapshot.stockQuantity,
+            categoryId: snapshot.categoryId,
+            coverMediaId: snapshot.coverMediaId,
+            seoTitle: snapshot.seoTitle,
+            seoDescription: snapshot.seoDescription,
+            ogTitle: snapshot.ogTitle,
+            ogImageUrl: snapshot.ogImageUrl,
+            canonicalUrl: snapshot.canonicalUrl,
+            noIndex: snapshot.noIndex,
+            translations: sanitizedTranslations as Prisma.InputJsonValue,
+          },
+          include: WITH_RELATIONS,
+        });
+
+        await syncContentSlugs(tx, enabledLocales, "PRODUCT", updated.id, updated.slug, updated.translations);
+
+        return updated;
       });
 
-      return reply.send(ok(toProductDto(product)));
+      return reply.send(ok(await toProductDtoLocalized(app, product)));
     }
   );
 }
@@ -727,7 +787,12 @@ export async function publicProductsRoutes(app: FastifyInstance) {
 
   server.get(
     "/",
-    { schema: { querystring: CursorQuerySchema, response: { 200: ApiSuccessSchema(z.array(ProductSchema)) } } },
+    {
+      schema: {
+        querystring: CursorQuerySchema.merge(LocaleQuerySchema),
+        response: { 200: ApiSuccessSchema(z.array(ProductSchema)) },
+      },
+    },
     async (request, reply) => {
       const { cursor, limit } = request.query;
       const cursorSeq = parseCursor(cursor);
@@ -739,20 +804,45 @@ export async function publicProductsRoutes(app: FastifyInstance) {
         include: WITH_RELATIONS,
       });
 
-      return reply.send(ok(rows.map(toProductDto), buildPageMeta(rows, limit)));
+      const localeSet = await getLocaleSet(app);
+      const effectiveLocale = resolveEffectiveLocaleCode(localeSet, request.query.locale);
+      const localizationsByEntity = await attachLocalizations(app, "PRODUCT", rows);
+
+      const dtos = rows.map((row) =>
+        toProductDto(applyProductLocale(row, effectiveLocale), localizationsByEntity.get(row.id) ?? [])
+      );
+
+      return reply.send(ok(dtos, buildPageMeta(rows, limit)));
     }
   );
 
   server.get(
     "/:slug",
-    { schema: { params: ProductSlugParamSchema, response: { 200: ApiSuccessSchema(ProductSchema) } } },
+    {
+      schema: { params: ProductSlugParamSchema, querystring: LocaleQuerySchema, response: { 200: ApiSuccessSchema(ProductSchema) } },
+    },
     async (request, reply) => {
-      const product = await app.prisma.product.findFirst({
-        where: { slug: request.params.slug, status: "PUBLISHED", deletedAt: null },
-        include: WITH_RELATIONS,
-      });
-      if (!product) throw new NotFoundError("Ürün bulunamadı.");
-      return reply.send(ok(toProductDto(product)));
+      const localeSet = await getLocaleSet(app);
+      const effectiveLocale = resolveEffectiveLocaleCode(localeSet, request.query.locale);
+
+      // §0.1b/§4 — ÖNCELİK 1 düzeltmesi: artık `/pages`/`/blog` ile BİREBİR AYNI slug çözümlemesi.
+      const translatedEntityId = await resolveEntityIdBySlug(app, "PRODUCT", request.params.slug, effectiveLocale);
+      const product = translatedEntityId
+        ? await app.prisma.product.findFirst({
+            where: { id: translatedEntityId, status: "PUBLISHED", deletedAt: null },
+            include: WITH_RELATIONS,
+          })
+        : null;
+      const resolvedProduct =
+        product ??
+        (await app.prisma.product.findFirst({
+          where: { slug: request.params.slug, status: "PUBLISHED", deletedAt: null },
+          include: WITH_RELATIONS,
+        }));
+      if (!resolvedProduct) throw new NotFoundError("Ürün bulunamadı.");
+
+      const localizations = await attachLocalizationsOne(app, "PRODUCT", resolvedProduct);
+      return reply.send(ok(toProductDto(applyProductLocale(resolvedProduct, effectiveLocale), localizations)));
     }
   );
 

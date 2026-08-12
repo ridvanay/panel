@@ -22,6 +22,14 @@ vi.mock("@/lib/api/media", () => ({
   updateMediaAltText: vi.fn(),
   uploadMedia: vi.fn(),
 }));
+vi.mock("@/lib/api/locales", () => ({
+  listAdminLocales: vi.fn().mockResolvedValue([
+    { code: "tr", label: "Türkçe", nativeLabel: "Türkçe", isDefault: true, enabled: true, sortOrder: 0, hreflang: null },
+  ]),
+}));
+vi.mock("@/context/auth-context", () => ({
+  useAuth: () => ({ user: { id: "user-1", email: "admin@example.com", name: "Admin", avatarUrl: null, role: "ADMIN" } }),
+}));
 
 const pagesApi = await import("@/lib/api/pages");
 const revisionsApi = await import("@/lib/api/revisions");
@@ -50,6 +58,8 @@ function makePage(overrides: Partial<SitePage> = {}): SitePage {
     author: null,
     seoScore: 0,
     seoScoreIssues: [],
+    localizations: [],
+    isLegalDocument: false,
     ...overrides,
   };
 }

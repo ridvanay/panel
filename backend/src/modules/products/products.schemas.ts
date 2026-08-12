@@ -37,7 +37,12 @@ export const ListProductsQuerySchema = ContentListQuerySchema.extend({
   search: z.string().min(1).optional(),
 });
 
-const TranslationsSchema = z.record(z.string(), z.record(z.string(), z.unknown()));
+// §9 backend-agent madde 5 — locale bazında `null` = çeviriyi SİL.
+const TranslationsSchema = z.record(z.string(), z.record(z.string(), z.unknown()).nullable());
+
+// §9 backend-agent madde 1 — Product public GET'lerinde `translations` yazılabiliyordu ama
+// okunamıyordu (§0.1b); ortak `LocaleQuerySchema` artık burada da kullanılır.
+export { LocaleQuerySchema } from "../../schemas/common";
 
 /**
  * `discountPriceCents` verilmişse `priceCents`'ten KÜÇÜK olmalı (bkz. ARCHITECTURE.md §10.9.2).

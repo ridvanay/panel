@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import * as productsApi from "@/lib/api/products";
 import * as revisionsApi from "@/lib/api/revisions";
-import type { ContentStatus, Media, ProductCategory, ProductImage } from "@/lib/api/types";
+import * as localesApi from "@/lib/api/locales";
+import type { ContentStatus, ContentTranslations, Locale as LocaleDto, Media, ProductCategory, ProductImage } from "@/lib/api/types";
 import { useAutosave } from "@/hooks/use-autosave";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -20,14 +21,20 @@ import { Alert } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { LocaleTabs } from "@/components/admin/locale-tabs";
+import { LocaleFallbackBadge, FALLBACK_FIELD_CLASSES } from "@/components/admin/locale-fallback-badge";
 import { MediaSelectField } from "@/components/admin/media/media-select-field";
 import { GalleryField } from "@/components/admin/media/gallery-field";
 import { SeoPreview } from "@/components/admin/seo-preview";
 import { RevisionHistory } from "@/components/admin/revision-history";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
+import { computeLocaleStatus, getTranslatedField, isFallbackField, localeStatusDetail, setTranslatedField } from "@/lib/i18n/translation-helpers";
 import { AlertCircle, AlertTriangle, ChevronLeft, FileText, Search, History as HistoryIcon } from "lucide-react";
 
 const CURRENCIES = ["TRY", "USD", "EUR", "GBP"] as const;
+
+/** §9 frontend-agent madde 10 — Products editöründe çeviri editörü BUGÜN YOK, bu turda eklendi. */
+const TRANSLATABLE_FIELD_KEYS = ["title", "excerpt", "descriptionHtml", "seoTitle", "seoDescription", "ogTitle", "canonicalUrl"];
 
 interface ProductSnapshot {
   title: string;
@@ -50,6 +57,7 @@ interface ProductSnapshot {
   ogImageUrl: string;
   canonicalUrl: string;
   noIndex: boolean;
+  translations: string;
 }
 
 /** ISO datetime string'i `datetime-local` input'unun beklediği `YYYY-MM-DDTHH:mm` biçimine çevirir. */
@@ -82,6 +90,34 @@ export default function EditProductPage({ params }: { params: Promise<{ productI
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [locales, setLocales] = useState<LocaleDto[]>([]);
+  const [locale, setLocale] = useState<string>("");
+  const [translations, setTranslations] = useState<ContentTranslations>({});
+  const [savedTranslations, setSavedTranslations] = useState<ContentTranslations>({});
+
+  const defaultLocale = locales.find((l) => l.isDefault) ?? null;
+  const isDefaultLocale = !defaultLocale || locale === defaultLocale.code;
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const data = await localesApi.listAdminLocales();
+        const sorted = [...data].sort((a, b) => a.sortOrder - b.sortOrder);
+        setLocales(sorted);
+        setLocale((prev) => prev || sorted.find((l) => l.isDefault)?.code || sorted[0]?.code || "tr");
+      } catch {
+        setLocale((prev) => prev || "tr");
+      }
+    })();
+  }, []);
+
+  function getEnField(key: string): string {
+    return getTranslatedField(translations, locale, key);
+  }
+
+  function setEnField(key: string, value: string) {
+    setTranslatedField(setTranslations, locale, key, value);
+  }
 
   const [title, setTitle] = useState("");
   const [slug, setSlug] = useState("");
@@ -135,6 +171,7 @@ export default function EditProductPage({ params }: { params: Promise<{ productI
         ogImageUrl: product.ogImageUrl ?? "",
         canonicalUrl: product.canonicalUrl ?? "",
         noIndex: product.noIndex,
+        translations: JSON.stringify(product.translations ?? {}),
       };
       setTitle(nextSnapshot.title);
       setSlug(nextSnapshot.slug);
@@ -157,6 +194,8 @@ export default function EditProductPage({ params }: { params: Promise<{ productI
       setOgImageUrl(nextSnapshot.ogImageUrl);
       setCanonicalUrl(nextSnapshot.canonicalUrl);
       setNoIndex(nextSnapshot.noIndex);
+      setTranslations(product.translations ?? {});
+      setSavedTranslations(product.translations ?? {});
       setViewCount(product.viewCount);
       setPublishedAt(product.publishedAt);
       setCategories(cats);
@@ -195,7 +234,8 @@ export default function EditProductPage({ params }: { params: Promise<{ productI
       ogTitle !== snapshot.ogTitle ||
       ogImageUrl !== snapshot.ogImageUrl ||
       canonicalUrl !== snapshot.canonicalUrl ||
-      noIndex !== snapshot.noIndex
+      noIndex !== snapshot.noIndex ||
+      JSON.stringify(translations) !== snapshot.translations
     );
   }, [
     title,
@@ -218,6 +258,7 @@ export default function EditProductPage({ params }: { params: Promise<{ productI
     ogImageUrl,
     canonicalUrl,
     noIndex,
+    translations,
     snapshot,
   ]);
 
@@ -296,8 +337,10 @@ export default function EditProductPage({ params }: { params: Promise<{ productI
         ogImageUrl: ogImageUrl || null,
         canonicalUrl: canonicalUrl || null,
         noIndex,
+        translations,
       });
       toast.success("Ürün kaydedildi.");
+      setSavedTranslations(translations);
       await load();
     } catch (err) {
       const message = friendlyErrorMessage(err);
@@ -421,10 +464,41 @@ export default function EditProductPage({ params }: { params: Promise<{ productI
         </TabsList>
 
         <TabsContent value="content" className="mt-6 space-y-6 outline-none">
+          {locales.length > 0 && (
+            <div className="flex justify-end">
+              <LocaleTabs
+                locales={locales}
+                value={locale}
+                onValueChange={setLocale}
+                statusFor={(code) => computeLocaleStatus(savedTranslations, code, TRANSLATABLE_FIELD_KEYS)}
+                partialDetailFor={(code) => localeStatusDetail(savedTranslations, code, TRANSLATABLE_FIELD_KEYS)}
+              />
+            </div>
+          )}
+
           <Card className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field id="title" label="Başlık" required>
-                {(inputProps) => <Input {...inputProps} required value={title} onChange={(e) => setTitle(e.target.value)} />}
+              <Field id="title" label="Başlık" required={isDefaultLocale}>
+                {(inputProps) => {
+                  const fallback = !isDefaultLocale && isFallbackField(translations, locale, "title", title);
+                  return (
+                    <>
+                      {fallback && defaultLocale && (
+                        <div className="mb-1 flex justify-end">
+                          <LocaleFallbackBadge defaultLabel={defaultLocale.nativeLabel} />
+                        </div>
+                      )}
+                      <Input
+                        {...inputProps}
+                        required={isDefaultLocale}
+                        className={fallback ? FALLBACK_FIELD_CLASSES : undefined}
+                        placeholder={fallback ? title : undefined}
+                        value={isDefaultLocale ? title : getEnField("title")}
+                        onChange={(e) => (isDefaultLocale ? setTitle(e.target.value) : setEnField("title", e.target.value))}
+                      />
+                    </>
+                  );
+                }}
               </Field>
               <Field id="slug" label="Slug (URL)" required>
                 {(inputProps) => <Input {...inputProps} required value={slug} onChange={(e) => setSlug(e.target.value)} />}
@@ -432,12 +506,26 @@ export default function EditProductPage({ params }: { params: Promise<{ productI
             </div>
 
             <Field id="excerpt" label="Özet">
-              {(inputProps) => <Textarea {...inputProps} value={excerpt} onChange={(e) => setExcerpt(e.target.value)} rows={2} />}
+              {(inputProps) => (
+                <Textarea
+                  {...inputProps}
+                  value={isDefaultLocale ? excerpt : getEnField("excerpt")}
+                  onChange={(e) => (isDefaultLocale ? setExcerpt(e.target.value) : setEnField("excerpt", e.target.value))}
+                  rows={2}
+                />
+              )}
             </Field>
 
             <Field id="descriptionHtml" label="Açıklama" hint="Şimdilik düz metin — zengin metin editörü sonraki bir iyileştirmedir.">
               {(inputProps) => (
-                <Textarea {...inputProps} value={descriptionHtml} onChange={(e) => setDescriptionHtml(e.target.value)} rows={6} />
+                <Textarea
+                  {...inputProps}
+                  value={isDefaultLocale ? descriptionHtml : getEnField("descriptionHtml")}
+                  onChange={(e) =>
+                    isDefaultLocale ? setDescriptionHtml(e.target.value) : setEnField("descriptionHtml", e.target.value)
+                  }
+                  rows={6}
+                />
               )}
             </Field>
 
@@ -569,39 +657,75 @@ export default function EditProductPage({ params }: { params: Promise<{ productI
         <TabsContent value="seo" className="mt-6 outline-none">
           <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
             <div className="min-w-0 space-y-4">
+              {locales.length > 0 && (
+                <div className="flex justify-end">
+                  <LocaleTabs
+                    locales={locales}
+                    value={locale}
+                    onValueChange={setLocale}
+                    statusFor={(code) => computeLocaleStatus(savedTranslations, code, TRANSLATABLE_FIELD_KEYS)}
+                    partialDetailFor={(code) => localeStatusDetail(savedTranslations, code, TRANSLATABLE_FIELD_KEYS)}
+                  />
+                </div>
+              )}
               <Card className="space-y-4">
                 <Field id="seoTitle" label="SEO başlığı">
-                  {(inputProps) => <Input {...inputProps} value={seoTitle} onChange={(e) => setSeoTitle(e.target.value)} />}
+                  {(inputProps) => (
+                    <Input
+                      {...inputProps}
+                      value={isDefaultLocale ? seoTitle : getEnField("seoTitle")}
+                      onChange={(e) => (isDefaultLocale ? setSeoTitle(e.target.value) : setEnField("seoTitle", e.target.value))}
+                    />
+                  )}
                 </Field>
                 <Field id="seoDescription" label="SEO açıklaması">
                   {(inputProps) => (
-                    <Textarea {...inputProps} value={seoDescription} onChange={(e) => setSeoDescription(e.target.value)} rows={2} />
+                    <Textarea
+                      {...inputProps}
+                      value={isDefaultLocale ? seoDescription : getEnField("seoDescription")}
+                      onChange={(e) =>
+                        isDefaultLocale ? setSeoDescription(e.target.value) : setEnField("seoDescription", e.target.value)
+                      }
+                      rows={2}
+                    />
                   )}
                 </Field>
                 <Field id="ogTitle" label="Sosyal medya (OG) başlığı" hint="Boş bırakılırsa SEO başlığı kullanılır.">
-                  {(inputProps) => <Input {...inputProps} value={ogTitle} onChange={(e) => setOgTitle(e.target.value)} />}
+                  {(inputProps) => (
+                    <Input
+                      {...inputProps}
+                      value={isDefaultLocale ? ogTitle : getEnField("ogTitle")}
+                      onChange={(e) => (isDefaultLocale ? setOgTitle(e.target.value) : setEnField("ogTitle", e.target.value))}
+                    />
+                  )}
                 </Field>
-                <Field id="ogImageUrl" label="Sosyal medya (OG) görseli URL'si" hint="Boş bırakılırsa kapak görseli kullanılır.">
-                  {(inputProps) => <Input {...inputProps} value={ogImageUrl} onChange={(e) => setOgImageUrl(e.target.value)} />}
-                </Field>
+                {isDefaultLocale && (
+                  <Field id="ogImageUrl" label="Sosyal medya (OG) görseli URL'si" hint="Boş bırakılırsa kapak görseli kullanılır.">
+                    {(inputProps) => <Input {...inputProps} value={ogImageUrl} onChange={(e) => setOgImageUrl(e.target.value)} />}
+                  </Field>
+                )}
                 <Field id="canonicalUrl" label="Canonical URL" hint="Boş bırakılırsa otomatik belirlenir.">
                   {(inputProps) => (
                     <Input
                       {...inputProps}
                       type="url"
                       placeholder="https://…"
-                      value={canonicalUrl}
-                      onChange={(e) => setCanonicalUrl(e.target.value)}
+                      value={isDefaultLocale ? canonicalUrl : getEnField("canonicalUrl")}
+                      onChange={(e) =>
+                        isDefaultLocale ? setCanonicalUrl(e.target.value) : setEnField("canonicalUrl", e.target.value)
+                      }
                     />
                   )}
                 </Field>
-                <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
-                  <div>
-                    <p className="text-sm font-medium text-foreground">İndekslemeyi engelle</p>
-                    <p className="text-xs text-foreground/60">Arama motorları bu içeriği indekslemesin.</p>
+                {isDefaultLocale && (
+                  <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">İndekslemeyi engelle</p>
+                      <p className="text-xs text-foreground/60">Arama motorları bu içeriği indekslemesin.</p>
+                    </div>
+                    <Switch checked={noIndex} onCheckedChange={setNoIndex} />
                   </div>
-                  <Switch checked={noIndex} onCheckedChange={setNoIndex} />
-                </div>
+                )}
               </Card>
             </div>
 

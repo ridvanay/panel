@@ -1,17 +1,24 @@
 import Link from "next/link";
 import type { Product } from "@/lib/api/types";
 import { formatPriceFromCents } from "@/lib/format-price";
+import { withLocalePrefix } from "@/lib/i18n/site-path";
 
 interface ProductCardProps {
   product: Product;
+  /** Verilmezse varsayılan dil kabul edilir (öneksiz link — geriye dönük uyumluluk). */
+  activeLocaleCode?: string;
+  defaultLocaleCode?: string;
 }
 
-export function ProductCard({ product }: ProductCardProps) {
+export function ProductCard({ product, activeLocaleCode, defaultLocaleCode }: ProductCardProps) {
   const soldOut = product.stockQuantity === 0;
+  const href = activeLocaleCode
+    ? withLocalePrefix(`/products/${product.slug}`, activeLocaleCode, defaultLocaleCode ?? activeLocaleCode)
+    : `/products/${product.slug}`;
 
   return (
     <Link
-      href={`/products/${product.slug}`}
+      href={href}
       className="block overflow-hidden rounded-lg border border-border transition-colors hover:bg-surface-muted"
     >
       <div className="relative aspect-square w-full bg-surface-muted">

@@ -19,12 +19,11 @@ export const PostRevisionIdParamSchema = z.object({
   revisionId: z.string().uuid(),
 });
 
-/** TR = kanonik/varsayılan; şimdilik tek ek dil (bkz. ARCHITECTURE.md §10.5). */
-export const LocaleQuerySchema = z.object({
-  locale: z.enum(["EN"]).optional(),
-});
+// §9 backend-agent madde 2 — ortak `LocaleQuerySchema` artık `schemas/common.ts`'te.
+export { LocaleQuerySchema } from "../../schemas/common";
 
-const TranslationsSchema = z.record(z.string(), z.record(z.string(), z.unknown()));
+// §9 backend-agent madde 5 — locale bazında `null` = çeviriyi SİL.
+const TranslationsSchema = z.record(z.string(), z.record(z.string(), z.unknown()).nullable());
 
 export const CreateBlogPostRequestSchema = z
   .object({

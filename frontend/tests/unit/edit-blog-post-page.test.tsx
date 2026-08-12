@@ -54,6 +54,7 @@ function makePost(overrides: Partial<BlogPost> = {}): BlogPost {
     author: null,
     seoScore: 0,
     seoScoreIssues: [],
+    localizations: [],
     ...overrides,
   };
 }

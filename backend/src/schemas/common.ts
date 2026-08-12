@@ -113,3 +113,16 @@ export const SCHEDULED_AT_REFINEMENT: { message: string; path: (string | number)
   message: "SCHEDULED durumu için scheduledAt zorunludur ve gelecekte bir tarih olmalıdır.",
   path: ["scheduledAt"],
 };
+
+/**
+ * §10.5 Çoklu Dil & Yerelleştirme — ortak `?locale=` query şeması (bkz.
+ * .claude/architect-scope-i18n.md §9 backend-agent madde 2: `pages.schemas.ts`/
+ * `blog.schemas.ts`'te KOPYALANMIŞ `z.enum(["EN"])` sabit şemasının yerini alır).
+ * Bilinçli olarak SERBEST bir string kabul eder (regex/enum İLE SINIRLANMAZ) — geçersiz/
+ * bilinmeyen bir kod openapi.yaml `LocaleQuery` sözleşmesi gereği `400`/`422` DEĞİL, sessiz
+ * fallback üretmelidir; şema seviyesinde reddetmek bu kuralı ihlal ederdi (bkz.
+ * lib/localization.ts::resolveEffectiveLocaleCode — asıl çözümleme/tolerans BURADA yapılır).
+ */
+export const LocaleQuerySchema = z.object({
+  locale: z.string().min(1).optional(),
+});

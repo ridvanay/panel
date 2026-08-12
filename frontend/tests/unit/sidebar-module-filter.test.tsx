@@ -9,7 +9,7 @@ function makeUser(role: SiteRole) {
 
 describe("filterVisibleNavItems — modül filtresi", () => {
   it("registry'de KAYITLI OLMAYAN bir module key'ine sahip item HER ZAMAN görünür kalır", () => {
-    const items: NavItem[] = [{ href: "/admin/unknown", label: "Bilinmeyen", icon: LayoutDashboard, module: "unknown-key" }];
+    const items: NavItem[] = [{ href: "/admin/unknown", labelKey: "Bilinmeyen", icon: LayoutDashboard, module: "unknown-key" }];
     // isModuleEnabled kayıtsız key için her zaman true döner — ModulesProvider'ın gerçek davranışı.
     const isModuleEnabled = () => true;
 
@@ -18,7 +18,7 @@ describe("filterVisibleNavItems — modül filtresi", () => {
   });
 
   it("registry'de kayıtlı ve enabled:false olan bir modülün item'ı gizlenir", () => {
-    const items: NavItem[] = [{ href: "/admin/products", label: "Ürünler", icon: LayoutDashboard, module: "products" }];
+    const items: NavItem[] = [{ href: "/admin/products", labelKey: "Ürünler", icon: LayoutDashboard, module: "products" }];
     const isModuleEnabled = (key: string) => key !== "products";
 
     const visible = filterVisibleNavItems(items, makeUser("ADMIN"), isModuleEnabled);
@@ -26,7 +26,7 @@ describe("filterVisibleNavItems — modül filtresi", () => {
   });
 
   it("registry'de kayıtlı ve enabled:true olan bir modülün item'ı görünür", () => {
-    const items: NavItem[] = [{ href: "/admin/products", label: "Ürünler", icon: LayoutDashboard, module: "products" }];
+    const items: NavItem[] = [{ href: "/admin/products", labelKey: "Ürünler", icon: LayoutDashboard, module: "products" }];
     const isModuleEnabled = () => true;
 
     const visible = filterVisibleNavItems(items, makeUser("ADMIN"), isModuleEnabled);
@@ -34,7 +34,7 @@ describe("filterVisibleNavItems — modül filtresi", () => {
   });
 
   it("module alanı olmayan item'lar isModuleEnabled hiç çağrılmadan görünür kalır", () => {
-    const items: NavItem[] = [{ href: "/admin/pages", label: "Sayfalar", icon: LayoutDashboard }];
+    const items: NavItem[] = [{ href: "/admin/pages", labelKey: "Sayfalar", icon: LayoutDashboard }];
     let called = false;
     const isModuleEnabled = () => {
       called = true;
@@ -48,8 +48,8 @@ describe("filterVisibleNavItems — modül filtresi", () => {
 
   it("rol ve modül filtreleri birlikte uygulanır", () => {
     const items: NavItem[] = [
-      { href: "/admin/modules", label: "Modüller", icon: LayoutDashboard, roles: ["ADMIN"] },
-      { href: "/admin/products", label: "Ürünler", icon: LayoutDashboard, module: "products" },
+      { href: "/admin/modules", labelKey: "Modüller", icon: LayoutDashboard, roles: ["ADMIN"] },
+      { href: "/admin/products", labelKey: "Ürünler", icon: LayoutDashboard, module: "products" },
     ];
     const isModuleEnabled = (key: string) => key !== "products";
 

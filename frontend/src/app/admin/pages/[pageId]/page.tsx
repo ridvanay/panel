@@ -6,10 +6,12 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import * as pagesApi from "@/lib/api/pages";
 import * as revisionsApi from "@/lib/api/revisions";
-import type { ContentStatus, ContentTranslations } from "@/lib/api/types";
+import * as localesApi from "@/lib/api/locales";
+import type { ContentStatus, ContentTranslations, Locale as LocaleDto } from "@/lib/api/types";
 import type { Block, BlockType } from "@/lib/page-builder/types";
 import { createBlock } from "@/lib/page-builder/registry";
 import { useAutosave } from "@/hooks/use-autosave";
+import { useAuth } from "@/context/auth-context";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -22,16 +24,27 @@ import { Alert } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { LocaleTabs } from "@/components/admin/locale-tabs";
+import { LocaleFallbackBadge, FALLBACK_FIELD_CLASSES } from "@/components/admin/locale-fallback-badge";
 import { BlockList } from "@/components/admin/page-builder/block-list";
 import { BuilderCanvas } from "@/components/admin/page-builder/builder-canvas";
 import { SeoPreview } from "@/components/admin/seo-preview";
 import { RevisionHistory } from "@/components/admin/revision-history";
 import { ImageUploadField } from "@/components/admin/media/image-upload-field";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
-import { AlertCircle, AlertTriangle, ChevronLeft, FileText, Search, History as HistoryIcon } from "lucide-react";
+import {
+  getTranslatedField,
+  setTranslatedField,
+  computeLocaleStatus,
+  localeStatusDetail,
+  isFallbackField,
+} from "@/lib/i18n/translation-helpers";
+import { AlertCircle, AlertTriangle, ChevronLeft, FileText, Scale, Search, History as HistoryIcon } from "lucide-react";
 import { motion } from "framer-motion";
 
-type Locale = "TR" | "EN";
+/** SEO sekmesindeki alan-bazlı çeviri durumunun hesaplandığı alan kümesi (§2.3). `blocks` İçerik
+ *  sekmesinde ayrıca kontrol edilir — TR "kaynak dil" olduğu için bu liste yalnızca override alanlarıdır. */
+const TRANSLATABLE_FIELD_KEYS = ["title", "blocks", "seoTitle", "seoDescription", "ogTitle", "canonicalUrl"];
 
 interface PageSnapshot {
   title: string;
@@ -45,6 +58,7 @@ interface PageSnapshot {
   ogImageUrl: string;
   canonicalUrl: string;
   noIndex: boolean;
+  isLegalDocument: boolean;
   translations: string;
 }
 
@@ -65,28 +79,11 @@ function nowDatetimeLocalValue(): string {
   return toDatetimeLocalValue(new Date().toISOString());
 }
 
-/** İçerik + SEO sekmelerinde TR/EN override arasında geçiş için küçük segmented control. */
-function LocaleToggle({ locale, onChange }: { locale: Locale; onChange: (locale: Locale) => void }) {
-  return (
-    <div className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface-muted p-1">
-      {(["TR", "EN"] as const).map((option) => (
-        <Button
-          key={option}
-          type="button"
-          size="xs"
-          variant={locale === option ? "default" : "ghost"}
-          onClick={() => onChange(option)}
-        >
-          {option}
-        </Button>
-      ))}
-    </div>
-  );
-}
-
 export default function PageBuilderPage({ params }: { params: Promise<{ pageId: string }> }) {
   const { pageId } = use(params);
   const router = useRouter();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "ADMIN";
 
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -94,7 +91,8 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [locale, setLocale] = useState<Locale>("TR");
+  const [locales, setLocales] = useState<LocaleDto[]>([]);
+  const [locale, setLocale] = useState<string>("");
 
   const [title, setTitle] = useState("");
   const [slug, setSlug] = useState("");
@@ -107,7 +105,9 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
   const [ogImageUrl, setOgImageUrl] = useState("");
   const [canonicalUrl, setCanonicalUrl] = useState("");
   const [noIndex, setNoIndex] = useState(false);
+  const [isLegalDocument, setIsLegalDocument] = useState(false);
   const [translations, setTranslations] = useState<ContentTranslations>({});
+  const [savedTranslations, setSavedTranslations] = useState<ContentTranslations>({});
   const [viewCount, setViewCount] = useState(0);
   const [publishedAt, setPublishedAt] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<PageSnapshot | null>(null);
@@ -117,19 +117,35 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
   // böylece restore sonrası editör state'i her zaman güncel blok verisiyle senkron kalır.
   const [editorGeneration, setEditorGeneration] = useState(0);
 
+  const defaultLocale = locales.find((l) => l.isDefault) ?? null;
+  const isDefaultLocale = !defaultLocale || locale === defaultLocale.code;
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const data = await localesApi.listAdminLocales();
+        const sorted = [...data].sort((a, b) => a.sortOrder - b.sortOrder);
+        setLocales(sorted);
+        setLocale((prev) => prev || sorted.find((l) => l.isDefault)?.code || sorted[0]?.code || "tr");
+      } catch {
+        // Dil listesi çekilemezse editör tek-dilli (varsayılan) davranışa düşer — çökmez.
+        setLocale((prev) => prev || "tr");
+      }
+    })();
+  }, []);
+
   function getEnField(key: string): string {
-    const value = translations.EN?.[key];
-    return typeof value === "string" ? value : "";
+    return getTranslatedField(translations, locale, key);
   }
 
   function setEnField(key: string, value: string) {
-    setTranslations((prev) => ({ ...prev, EN: { ...(prev.EN ?? {}), [key]: value } }));
+    setTranslatedField(setTranslations, locale, key, value);
   }
 
-  const enBlocks = (translations.EN?.blocks as unknown as Block[] | undefined) ?? [];
+  const enBlocks = (translations[locale]?.blocks as unknown as Block[] | undefined) ?? [];
 
   function setEnBlocks(nextBlocks: Block[]) {
-    setTranslations((prev) => ({ ...prev, EN: { ...(prev.EN ?? {}), blocks: nextBlocks as unknown as unknown[] } }));
+    setTranslations((prev) => ({ ...prev, [locale]: { ...(prev[locale] ?? {}), blocks: nextBlocks as unknown as unknown[] } }));
   }
 
   const load = useCallback(async () => {
@@ -147,7 +163,9 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
       setOgImageUrl(page.ogImageUrl ?? "");
       setCanonicalUrl(page.canonicalUrl ?? "");
       setNoIndex(page.noIndex);
+      setIsLegalDocument(page.isLegalDocument);
       setTranslations(page.translations ?? {});
+      setSavedTranslations(page.translations ?? {});
       setViewCount(page.viewCount);
       setPublishedAt(page.publishedAt);
       setEditorGeneration((prev) => prev + 1);
@@ -163,6 +181,7 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
         ogImageUrl: page.ogImageUrl ?? "",
         canonicalUrl: page.canonicalUrl ?? "",
         noIndex: page.noIndex,
+        isLegalDocument: page.isLegalDocument,
         translations: JSON.stringify(page.translations ?? {}),
       });
       setLoaded(true);
@@ -191,6 +210,7 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
       ogImageUrl !== snapshot.ogImageUrl ||
       canonicalUrl !== snapshot.canonicalUrl ||
       noIndex !== snapshot.noIndex ||
+      isLegalDocument !== snapshot.isLegalDocument ||
       JSON.stringify(translations) !== snapshot.translations
     );
   }, [
@@ -205,6 +225,7 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
     ogImageUrl,
     canonicalUrl,
     noIndex,
+    isLegalDocument,
     translations,
     snapshot,
   ]);
@@ -223,15 +244,15 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
 
   // Sessiz crash/kapatma-kurtarma güvenlik ağı — mevcut "Kaydet" butonunun/`hasUnsavedChanges`
   // akışının YERİNE GEÇMEZ (bkz. `use-autosave.ts`), bu yüzden başarıda `snapshot` GÜNCELLENMEZ.
-  // Yalnızca TR içerik + yalnızca yüklendikten sonra aktif (EN çevirisi bu turun kapsamı dışında).
+  // Yalnızca varsayılan dil içeriği + yalnızca yüklendikten sonra aktif (çeviri sekmeleri bu turun kapsamı dışında).
   const { status: autosaveStatus, lastSavedAt: autosaveSavedAt } = useAutosave({
     values: [title, blocks],
-    enabled: loaded && locale === "TR",
+    enabled: loaded && isDefaultLocale,
     save: () => pagesApi.autosavePage(pageId, { title, blocks }),
   });
 
   function addBlock(type: BlockType) {
-    if (locale === "TR") {
+    if (isDefaultLocale) {
       setBlocks((prev) => [...prev, createBlock(type)]);
     } else {
       setEnBlocks([...enBlocks, createBlock(type)]);
@@ -254,9 +275,12 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
         ogImageUrl: ogImageUrl || null,
         canonicalUrl: canonicalUrl || null,
         noIndex,
+        // §5.1 — yalnızca ADMIN gönderebilir (EDITOR → 403); EDITOR oturumunda alan HİÇ eklenmez.
+        ...(isAdmin ? { isLegalDocument } : {}),
         translations,
       });
       toast.success("Sayfa kaydedildi.");
+      setSavedTranslations(translations);
       await load();
     } catch (err) {
       const message = friendlyErrorMessage(err);
@@ -370,23 +394,41 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
         </TabsList>
 
         <TabsContent value="content" className="mt-6 space-y-6 outline-none">
-          <div className="flex justify-end">
-            <LocaleToggle locale={locale} onChange={setLocale} />
-          </div>
+          {locales.length > 0 && (
+            <div className="flex justify-end">
+              <LocaleTabs
+                locales={locales}
+                value={locale}
+                onValueChange={setLocale}
+                statusFor={(code) => computeLocaleStatus(savedTranslations, code, TRANSLATABLE_FIELD_KEYS)}
+                partialDetailFor={(code) => localeStatusDetail(savedTranslations, code, TRANSLATABLE_FIELD_KEYS)}
+              />
+            </div>
+          )}
 
           <Card className="min-w-0 space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field id="title" label="Başlık" required={locale === "TR"}>
-                {(inputProps) => (
-                  <Input
-                    {...inputProps}
-                    required={locale === "TR"}
-                    value={locale === "TR" ? title : getEnField("title")}
-                    onChange={(e) =>
-                      locale === "TR" ? setTitle(e.target.value) : setEnField("title", e.target.value)
-                    }
-                  />
-                )}
+              <Field id="title" label="Başlık" required={isDefaultLocale}>
+                {(inputProps) => {
+                  const fallback = !isDefaultLocale && isFallbackField(translations, locale, "title", title);
+                  return (
+                    <>
+                      {fallback && defaultLocale && (
+                        <div className="mb-1 flex justify-end">
+                          <LocaleFallbackBadge defaultLabel={defaultLocale.nativeLabel} />
+                        </div>
+                      )}
+                      <Input
+                        {...inputProps}
+                        required={isDefaultLocale}
+                        className={fallback ? FALLBACK_FIELD_CLASSES : undefined}
+                        placeholder={fallback ? title : undefined}
+                        value={isDefaultLocale ? title : getEnField("title")}
+                        onChange={(e) => (isDefaultLocale ? setTitle(e.target.value) : setEnField("title", e.target.value))}
+                      />
+                    </>
+                  );
+                }}
               </Field>
               <Field id="slug" label="Slug (URL)" required>
                 {(inputProps) => <Input {...inputProps} required value={slug} onChange={(e) => setSlug(e.target.value)} />}
@@ -418,21 +460,41 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
                 </Field>
               )}
             </div>
+
+            {isAdmin && (
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2.5">
+                <div className="flex items-start gap-2.5">
+                  <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <Scale className="h-4 w-4" />
+                  </span>
+                  <div>
+                    <p className="text-sm font-medium text-foreground">Hukuki belge</p>
+                    <p className="text-xs text-foreground/60">
+                      Gizlilik politikası, KVKK aydınlatma metni, kullanım koşulları vb. — işaretlenirse
+                      çevrilmemiş dillerde bu sayfanın gövdesi sessizce varsayılan dile DÜŞMEZ; bunun yerine
+                      ziyaretçiye açık bir bildirim + varsayılan dildeki sürüme bağlantı gösterilir (KVKK m.10 /
+                      GDPR m.12). Bu bir görsel etiket DEĞİL, çeviri davranışını değiştiren bir anahtardır.
+                    </p>
+                  </div>
+                </div>
+                <Switch checked={isLegalDocument} onCheckedChange={setIsLegalDocument} />
+              </div>
+            )}
           </Card>
 
           <div>
             <h2 className="admin-h2">
-              İçerik blokları {locale === "EN" && <span className="text-foreground/40">(EN)</span>}
+              İçerik blokları {!isDefaultLocale && <span className="text-foreground/40">({locale.toUpperCase()})</span>}
             </h2>
             <p className="mt-1 admin-text-secondary">Sayfaya blok ekleyin ve sırasını düzenleyin.</p>
             <div className="mt-4">
               <BlockList onAdd={addBlock} />
             </div>
             <div className="mt-4">
-              {locale === "TR" ? (
-                <BuilderCanvas key={`TR-${editorGeneration}`} blocks={blocks} onChange={setBlocks} />
+              {isDefaultLocale ? (
+                <BuilderCanvas key={`default-${editorGeneration}`} blocks={blocks} onChange={setBlocks} />
               ) : (
-                <BuilderCanvas key={`EN-${editorGeneration}`} blocks={enBlocks} onChange={setEnBlocks} />
+                <BuilderCanvas key={`${locale}-${editorGeneration}`} blocks={enBlocks} onChange={setEnBlocks} />
               )}
             </div>
           </div>
@@ -441,29 +503,49 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
         <TabsContent value="seo" className="mt-6 outline-none">
           <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
             <div className="min-w-0 space-y-4">
-              <div className="flex justify-end">
-                <LocaleToggle locale={locale} onChange={setLocale} />
-              </div>
+              {locales.length > 0 && (
+                <div className="flex justify-end">
+                  <LocaleTabs
+                    locales={locales}
+                    value={locale}
+                    onValueChange={setLocale}
+                    statusFor={(code) => computeLocaleStatus(savedTranslations, code, TRANSLATABLE_FIELD_KEYS)}
+                    partialDetailFor={(code) => localeStatusDetail(savedTranslations, code, TRANSLATABLE_FIELD_KEYS)}
+                  />
+                </div>
+              )}
 
               <Card className="space-y-4">
                 <Field id="seoTitle" label="SEO başlığı">
-                  {(inputProps) => (
-                    <Input
-                      {...inputProps}
-                      value={locale === "TR" ? seoTitle : getEnField("seoTitle")}
-                      onChange={(e) =>
-                        locale === "TR" ? setSeoTitle(e.target.value) : setEnField("seoTitle", e.target.value)
-                      }
-                    />
-                  )}
+                  {(inputProps) => {
+                    const fallback = !isDefaultLocale && isFallbackField(translations, locale, "seoTitle", seoTitle);
+                    return (
+                      <>
+                        {fallback && defaultLocale && (
+                          <div className="mb-1 flex justify-end">
+                            <LocaleFallbackBadge defaultLabel={defaultLocale.nativeLabel} />
+                          </div>
+                        )}
+                        <Input
+                          {...inputProps}
+                          className={fallback ? FALLBACK_FIELD_CLASSES : undefined}
+                          placeholder={fallback ? seoTitle : undefined}
+                          value={isDefaultLocale ? seoTitle : getEnField("seoTitle")}
+                          onChange={(e) =>
+                            isDefaultLocale ? setSeoTitle(e.target.value) : setEnField("seoTitle", e.target.value)
+                          }
+                        />
+                      </>
+                    );
+                  }}
                 </Field>
                 <Field id="seoDescription" label="SEO açıklaması">
                   {(inputProps) => (
                     <Textarea
                       {...inputProps}
-                      value={locale === "TR" ? seoDescription : getEnField("seoDescription")}
+                      value={isDefaultLocale ? seoDescription : getEnField("seoDescription")}
                       onChange={(e) =>
-                        locale === "TR" ? setSeoDescription(e.target.value) : setEnField("seoDescription", e.target.value)
+                        isDefaultLocale ? setSeoDescription(e.target.value) : setEnField("seoDescription", e.target.value)
                       }
                       rows={2}
                     />
@@ -473,14 +555,14 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
                   {(inputProps) => (
                     <Input
                       {...inputProps}
-                      value={locale === "TR" ? ogTitle : getEnField("ogTitle")}
+                      value={isDefaultLocale ? ogTitle : getEnField("ogTitle")}
                       onChange={(e) =>
-                        locale === "TR" ? setOgTitle(e.target.value) : setEnField("ogTitle", e.target.value)
+                        isDefaultLocale ? setOgTitle(e.target.value) : setEnField("ogTitle", e.target.value)
                       }
                     />
                   )}
                 </Field>
-                {locale === "TR" && (
+                {isDefaultLocale && (
                   <ImageUploadField
                     id="ogImageUrl"
                     label="Sosyal medya (OG) görseli"
@@ -494,14 +576,14 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
                       {...inputProps}
                       type="url"
                       placeholder="https://…"
-                      value={locale === "TR" ? canonicalUrl : getEnField("canonicalUrl")}
+                      value={isDefaultLocale ? canonicalUrl : getEnField("canonicalUrl")}
                       onChange={(e) =>
-                        locale === "TR" ? setCanonicalUrl(e.target.value) : setEnField("canonicalUrl", e.target.value)
+                        isDefaultLocale ? setCanonicalUrl(e.target.value) : setEnField("canonicalUrl", e.target.value)
                       }
                     />
                   )}
                 </Field>
-                {locale === "TR" && (
+                {isDefaultLocale && (
                   <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
                     <div>
                       <p className="text-sm font-medium text-foreground">İndekslemeyi engelle</p>

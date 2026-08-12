@@ -22,7 +22,7 @@ import {
   PageSchema,
 } from "../../schemas/entities";
 import { toContentRevisionDto, toContentRevisionSummaryDto, toPageDto } from "../../mappers";
-import { ConflictError, NotFoundError } from "../../lib/errors";
+import { ConflictError, ForbiddenError, NotFoundError } from "../../lib/errors";
 import { parseCursor, buildPageMetaWithCounts } from "../../lib/pagination";
 import { slugify } from "../../lib/slug";
 import { startOfUtcDay } from "../../lib/date";
@@ -34,6 +34,17 @@ import { runBulkContentAction, type BulkContentDelegate } from "../../lib/bulk-c
 import { getPageContentCounts } from "../../lib/content-counts";
 import { resolveAuthorId } from "../../lib/content-author";
 import { logAudit } from "../../lib/audit";
+import {
+  applyFieldLocalization,
+  attachLocalizations,
+  attachLocalizationsOne,
+  deleteContentSlugsForEntity,
+  getLocaleSet,
+  mergeTranslations,
+  resolveEffectiveLocaleCode,
+  resolveEntityIdBySlug,
+  syncContentSlugs,
+} from "../../lib/localization";
 import { sanitizePageBlocks, sanitizePageTranslations } from "./lib/sanitize-blocks";
 import { SETTINGS_ID } from "../settings/settings.routes";
 import {
@@ -61,29 +72,53 @@ function toPageSnapshot(page: Page): Record<string, unknown> {
     ogImageUrl: page.ogImageUrl,
     canonicalUrl: page.canonicalUrl,
     noIndex: page.noIndex,
+    isLegalDocument: page.isLegalDocument,
     translations: page.translations,
   };
 }
 
-/**
- * §10.5 Çoklu Dil & Yerelleştirme — `locale=EN` verildiğinde `translations.EN`'deki
- * alan bazlı override'ları uygular (eksik alan TR/kanonik kolondan gelir).
- */
-function applyLocale<T extends Page>(page: T, locale?: "EN"): T {
-  if (locale !== "EN") return page;
-  const translations = (page.translations as Record<string, Record<string, unknown>> | null) ?? {};
-  const en = translations.EN;
-  if (!en) return page;
+const PAGE_STRING_FIELDS = ["title", "seoTitle", "seoDescription", "ogTitle", "canonicalUrl"] as const;
+const PAGE_ARRAY_FIELDS = ["blocks"] as const;
 
-  return {
-    ...page,
-    title: typeof en.title === "string" ? en.title : page.title,
-    seoTitle: typeof en.seoTitle === "string" ? en.seoTitle : page.seoTitle,
-    seoDescription: typeof en.seoDescription === "string" ? en.seoDescription : page.seoDescription,
-    ogTitle: typeof en.ogTitle === "string" ? en.ogTitle : page.ogTitle,
-    canonicalUrl: typeof en.canonicalUrl === "string" ? en.canonicalUrl : page.canonicalUrl,
-    blocks: Array.isArray(en.blocks) ? (en.blocks as Prisma.JsonValue) : page.blocks,
-  };
+/**
+ * §10.5/§5.1 — `applyLocale()` artık `lib/localization.ts`'teki ortak yardımcıyı sarar
+ * (bkz. .claude/architect-scope-i18n.md §9 backend-agent madde 2/9). `Page`'e özgü TEK fark:
+ * `isLegalDocument: true` VE istenen locale'de çeviri YOKSA (`translated: false`) sessiz
+ * fallback UYGULANMAZ — `blocks` BOŞ döner, `title` varsayılan dilden gelmeye devam eder
+ * (KVKK m.10 / GDPR m.12, bkz. §5.1). SEO alanları normal fallback'e tabidir; yalnızca
+ * `title` ve `blocks` bilinçli olarak istisna dışı/içi tutulur.
+ */
+function applyPageLocale<T extends Page>(page: T, effectiveLocale: string | undefined, translatedInLocale: boolean): T {
+  if (!effectiveLocale) return page;
+
+  if (page.isLegalDocument && !translatedInLocale) {
+    const seoLocalized = applyFieldLocalization(
+      page,
+      effectiveLocale,
+      ["seoTitle", "seoDescription", "ogTitle", "canonicalUrl"] as const
+    );
+    return { ...seoLocalized, blocks: [] } as T;
+  }
+
+  return applyFieldLocalization(page, effectiveLocale, PAGE_STRING_FIELDS, PAGE_ARRAY_FIELDS);
+}
+
+/** §5.1 — `isLegalDocument` alanını YALNIZCA ADMIN gönderebilir (EDITOR → 403). */
+function assertLegalDocumentAuthorized(value: boolean | undefined, actorRole: "ADMIN" | "EDITOR" | "VIEWER"): void {
+  if (value === undefined) return;
+  if (actorRole !== "ADMIN") {
+    throw new ForbiddenError("isLegalDocument alanını yalnızca ADMIN değiştirebilir.");
+  }
+}
+
+async function toPageDtoLocalized(app: FastifyInstance, page: Parameters<typeof toPageDto>[0]) {
+  const localizations = await attachLocalizationsOne(app, "PAGE", page);
+  return toPageDto(page, localizations);
+}
+
+async function toPageDtosLocalized(app: FastifyInstance, pages: Parameters<typeof toPageDto>[0][]) {
+  const map = await attachLocalizations(app, "PAGE", pages);
+  return pages.map((page) => toPageDto(page, map.get(page.id) ?? []));
 }
 
 /** `/admin/pages` prefix'i altında bağlanır (bkz. app.ts) — tüm durumlar (taslak dahil), authenticated. */
@@ -114,7 +149,7 @@ export async function adminPagesRoutes(app: FastifyInstance) {
         getPageContentCounts(app.prisma),
       ]);
 
-      return reply.send(ok(rows.map(toPageDto), buildPageMetaWithCounts(rows, limit, counts)));
+      return reply.send(ok(await toPageDtosLocalized(app, rows), buildPageMetaWithCounts(rows, limit, counts)));
     }
   );
 
@@ -136,39 +171,65 @@ export async function adminPagesRoutes(app: FastifyInstance) {
         ogImageUrl,
         canonicalUrl,
         noIndex,
+        isLegalDocument,
         translations,
         scheduledAt,
       } = request.body;
 
+      assertLegalDocumentAuthorized(isLegalDocument, request.user!.role);
+
       const resolvedAuthorId = await resolveAuthorId(app, request.body.authorId, request.user!);
       const authorId = resolvedAuthorId === undefined ? request.user!.id : resolvedAuthorId;
 
-      const page = await app.prisma.page.create({
-        data: {
-          title,
-          slug: slug ? slugify(slug) : slugify(title),
-          status: status ?? "DRAFT",
-          // Stored-XSS koruması: EDITOR de yazabildiği için (ADMIN'den daha az güvenilir bir rol)
-          // "text" block'larının `data.html`'i DB'ye yazılmadan önce sanitize edilir — public
-          // sitede `dangerouslySetInnerHTML` ile doğrudan render edilir (bkz. lib/html-sanitize.ts).
-          blocks: sanitizePageBlocks(blocks ?? []) as Prisma.InputJsonValue,
-          seoTitle,
-          seoDescription,
-          ogTitle,
-          ogImageUrl,
-          canonicalUrl,
-          noIndex,
-          translations: (translations ? sanitizePageTranslations(translations) : {}) as Prisma.InputJsonValue,
-          publishedAt: status === "PUBLISHED" ? new Date() : null,
-          // Faz 4 (zamanlanmış yayın) — `CreatePageRequestSchema`'nın `refine`'ı zaten
-          // `status === "SCHEDULED"` iken `scheduledAt`'in gelecekte dolu olmasını garanti eder.
-          scheduledAt: status === "SCHEDULED" && scheduledAt ? new Date(scheduledAt) : null,
-          authorId,
-        },
-        include: WITH_AUTHOR,
+      const { enabled: enabledLocales } = await getLocaleSet(app);
+      const sanitizedTranslations = translations ? sanitizePageTranslations(translations) : {};
+
+      const page = await app.prisma.$transaction(async (tx) => {
+        const created = await tx.page.create({
+          data: {
+            title,
+            slug: slug ? slugify(slug) : slugify(title),
+            status: status ?? "DRAFT",
+            // Stored-XSS koruması: EDITOR de yazabildiği için (ADMIN'den daha az güvenilir bir rol)
+            // "text" block'larının `data.html`'i DB'ye yazılmadan önce sanitize edilir — public
+            // sitede `dangerouslySetInnerHTML` ile doğrudan render edilir (bkz. lib/html-sanitize.ts).
+            blocks: sanitizePageBlocks(blocks ?? []) as Prisma.InputJsonValue,
+            seoTitle,
+            seoDescription,
+            ogTitle,
+            ogImageUrl,
+            canonicalUrl,
+            noIndex,
+            isLegalDocument: isLegalDocument ?? false,
+            translations: sanitizedTranslations as Prisma.InputJsonValue,
+            publishedAt: status === "PUBLISHED" ? new Date() : null,
+            // Faz 4 (zamanlanmış yayın) — `CreatePageRequestSchema`'nın `refine`'ı zaten
+            // `status === "SCHEDULED"` iken `scheduledAt`'in gelecekte dolu olmasını garanti eder.
+            scheduledAt: status === "SCHEDULED" && scheduledAt ? new Date(scheduledAt) : null,
+            authorId,
+          },
+          include: WITH_AUTHOR,
+        });
+
+        // §9 backend-agent madde 5 — `ContentSlug` satırları içerikle AYNI transaction'da senkronlanır.
+        await syncContentSlugs(tx, enabledLocales, "PAGE", created.id, created.slug, created.translations);
+
+        return created;
       });
 
-      return reply.code(201).send(ok(toPageDto(page)));
+      if (isLegalDocument === true) {
+        await logAudit(app, {
+          actorId: request.user!.id,
+          actorEmail: request.user!.email,
+          action: "content.legal_flag_change",
+          targetType: "Page",
+          targetId: page.id,
+          metadata: { isLegalDocument: true },
+          ipAddress: request.ip,
+        });
+      }
+
+      return reply.code(201).send(ok(await toPageDtoLocalized(app, page)));
     }
   );
 
@@ -179,7 +240,7 @@ export async function adminPagesRoutes(app: FastifyInstance) {
       // Çöpteki sayfayı da döner (geri yükleme/onay ekranları için) — deletedAt filtresi YOK.
       const page = await app.prisma.page.findUnique({ where: { id: request.params.pageId }, include: WITH_AUTHOR });
       if (!page) throw new NotFoundError("Sayfa bulunamadı.");
-      return reply.send(ok(toPageDto(page)));
+      return reply.send(ok(await toPageDtoLocalized(app, page)));
     }
   );
 
@@ -197,50 +258,68 @@ export async function adminPagesRoutes(app: FastifyInstance) {
         throw new ConflictError("Çöpteki içerik düzenlenemez. Önce geri yükleyin.");
       }
 
+      assertLegalDocumentAuthorized(request.body.isLegalDocument, request.user!.role);
+
       await snapshotBeforeUpdate(app, "PAGE", existing.id, toPageSnapshot(existing), request.user!.id);
 
-      const { slug, translations, authorId: requestedAuthorId, scheduledAt, ...rest } = request.body;
+      const { slug, translations, authorId: requestedAuthorId, scheduledAt, isLegalDocument, ...rest } = request.body;
       const resolvedAuthorId = await resolveAuthorId(app, requestedAuthorId, request.user!);
 
       // Stored-XSS koruması: gelen çeviriler merge'den ÖNCE sanitize edilir (mevcut kayıttaki
       // çeviriler zaten sanitize edilmiş halde DB'de duruyor — bkz. lib/html-sanitize.ts).
       const sanitizedTranslations = translations !== undefined ? sanitizePageTranslations(translations) : undefined;
-
+      // §9 backend-agent madde 5 — locale bazında shallow merge; `null` = o dilin çevirisini sil.
       const mergedTranslations =
-        sanitizedTranslations !== undefined
-          ? {
-              ...((existing.translations as Record<string, Record<string, unknown>>) ?? {}),
-              ...Object.fromEntries(
-                Object.entries(sanitizedTranslations).map(([locale, fields]) => [
-                  locale,
-                  { ...(((existing.translations as Record<string, Record<string, unknown>>) ?? {})[locale] ?? {}), ...fields },
-                ])
-              ),
-            }
-          : undefined;
+        sanitizedTranslations !== undefined ? mergeTranslations(existing.translations, sanitizedTranslations) : undefined;
 
-      const page = await app.prisma.page.update({
-        where: { id: request.params.pageId },
-        data: {
-          ...rest,
-          blocks: rest.blocks !== undefined ? (sanitizePageBlocks(rest.blocks) as Prisma.InputJsonValue) : undefined,
-          ...(slug !== undefined ? { slug: slugify(slug) } : {}),
-          ...(mergedTranslations !== undefined ? { translations: mergedTranslations as Prisma.InputJsonValue } : {}),
-          ...(rest.status === "PUBLISHED" && !existing.publishedAt ? { publishedAt: new Date() } : {}),
-          // Faz 4 (zamanlanmış yayın) — yalnızca bu istekte `status` GÖNDERİLMİŞSE dokunulur (aksi
-          // halde ilgisiz bir alan güncellemesi mevcut bir zamanlamayı bozardı). `status ===
-          // "SCHEDULED"` ise `UpdatePageRequestSchema`'nın `refine`'ı `scheduledAt`'in gelecekte
-          // dolu olmasını garanti eder; `PUBLISHED`/`DRAFT`'a manuel geçişte ise eski zamanlama
-          // artığı kalmasın diye `null`'a temizlenir.
-          ...(rest.status !== undefined
-            ? { scheduledAt: rest.status === "SCHEDULED" && scheduledAt ? new Date(scheduledAt) : null }
-            : {}),
-          ...(resolvedAuthorId !== undefined ? { authorId: resolvedAuthorId } : {}),
-        },
-        include: WITH_AUTHOR,
+      const finalSlug = slug !== undefined ? slugify(slug) : existing.slug;
+      const { enabled: enabledLocales } = await getLocaleSet(app);
+
+      const page = await app.prisma.$transaction(async (tx) => {
+        const updated = await tx.page.update({
+          where: { id: request.params.pageId },
+          data: {
+            ...rest,
+            blocks: rest.blocks !== undefined ? (sanitizePageBlocks(rest.blocks) as Prisma.InputJsonValue) : undefined,
+            ...(slug !== undefined ? { slug: finalSlug } : {}),
+            ...(isLegalDocument !== undefined ? { isLegalDocument } : {}),
+            ...(mergedTranslations !== undefined ? { translations: mergedTranslations as Prisma.InputJsonValue } : {}),
+            ...(rest.status === "PUBLISHED" && !existing.publishedAt ? { publishedAt: new Date() } : {}),
+            // Faz 4 (zamanlanmış yayın) — yalnızca bu istekte `status` GÖNDERİLMİŞSE dokunulur (aksi
+            // halde ilgisiz bir alan güncellemesi mevcut bir zamanlamayı bozardı). `status ===
+            // "SCHEDULED"` ise `UpdatePageRequestSchema`'nın `refine`'ı `scheduledAt`'in gelecekte
+            // dolu olmasını garanti eder; `PUBLISHED`/`DRAFT`'a manuel geçişte ise eski zamanlama
+            // artığı kalmasın diye `null`'a temizlenir.
+            ...(rest.status !== undefined
+              ? { scheduledAt: rest.status === "SCHEDULED" && scheduledAt ? new Date(scheduledAt) : null }
+              : {}),
+            ...(resolvedAuthorId !== undefined ? { authorId: resolvedAuthorId } : {}),
+          },
+          include: WITH_AUTHOR,
+        });
+
+        // Slug ve/veya çeviriler değiştiyse ContentSlug satırları AYNI transaction'da senkronlanır
+        // (kanonik slug değişmese dahi resync ZARARSIZ — bkz. lib/localization.ts::syncContentSlugs).
+        if (slug !== undefined || mergedTranslations !== undefined) {
+          await syncContentSlugs(tx, enabledLocales, "PAGE", updated.id, updated.slug, updated.translations);
+        }
+
+        return updated;
       });
 
-      return reply.send(ok(toPageDto(page)));
+      if (isLegalDocument !== undefined && isLegalDocument !== existing.isLegalDocument) {
+        await logAudit(app, {
+          actorId: request.user!.id,
+          actorEmail: request.user!.email,
+          action: "content.legal_flag_change",
+          targetType: "Page",
+          targetId: page.id,
+          metadata: { from: existing.isLegalDocument, to: isLegalDocument },
+          ipAddress: request.ip,
+        });
+      }
+
+      return reply.send(ok(await toPageDtoLocalized(app, page)));
     }
   );
 
@@ -336,7 +415,7 @@ export async function adminPagesRoutes(app: FastifyInstance) {
       }
 
       const page = await app.prisma.page.findUnique({ where: { id: existing.id }, include: WITH_AUTHOR });
-      return reply.send(ok(toPageDto(page!)));
+      return reply.send(ok(await toPageDtoLocalized(app, page!)));
     }
   );
 
@@ -352,10 +431,13 @@ export async function adminPagesRoutes(app: FastifyInstance) {
       if (!existing) throw new NotFoundError("Sayfa bulunamadı.");
       if (!existing.deletedAt) throw new ConflictError("Kalıcı silmeden önce içeriği çöpe taşıyın.");
 
-      await app.prisma.$transaction([
-        app.prisma.contentRevision.deleteMany({ where: { entityType: "PAGE", entityId: existing.id } }),
-        app.prisma.page.delete({ where: { id: existing.id } }),
-      ]);
+      await app.prisma.$transaction(async (tx) => {
+        await tx.contentRevision.deleteMany({ where: { entityType: "PAGE", entityId: existing.id } });
+        // §9 backend-agent madde 7 — `ContentSlug`'ın içerik tablolarına FK'si YOKTUR (polimorfik),
+        // kalıcı silmede AYNI transaction'da elle temizlenir (bkz. lib/localization.ts).
+        await deleteContentSlugsForEntity(tx, "PAGE", existing.id);
+        await tx.page.delete({ where: { id: existing.id } });
+      });
 
       await logAudit(app, {
         actorId: request.user!.id,
@@ -464,33 +546,105 @@ export async function adminPagesRoutes(app: FastifyInstance) {
         ogImageUrl: string | null;
         canonicalUrl: string | null;
         noIndex: boolean;
+        isLegalDocument?: boolean;
         translations: unknown;
       };
 
-      const page = await app.prisma.page.update({
-        where: { id: request.params.pageId },
-        data: {
-          title: snapshot.title,
-          slug: snapshot.slug,
-          // Savunmada derinlik: bu sanitizasyon eklenmeden ÖNCE kaydedilmiş eski revizyonlar
-          // temizlenmemiş HTML içerebilir — geri yükleme her zaman yeniden sanitize eder.
-          blocks: (Array.isArray(snapshot.blocks)
-            ? sanitizePageBlocks(snapshot.blocks)
-            : snapshot.blocks) as Prisma.InputJsonValue,
-          seoTitle: snapshot.seoTitle,
-          seoDescription: snapshot.seoDescription,
-          ogTitle: snapshot.ogTitle,
-          ogImageUrl: snapshot.ogImageUrl,
-          canonicalUrl: snapshot.canonicalUrl,
-          noIndex: snapshot.noIndex,
-          translations: (snapshot.translations
-            ? sanitizePageTranslations(snapshot.translations as Record<string, Record<string, unknown>>)
-            : {}) as Prisma.InputJsonValue,
-        },
-        include: WITH_AUTHOR,
+      const { enabled: enabledLocales } = await getLocaleSet(app);
+      const sanitizedTranslations = snapshot.translations
+        ? sanitizePageTranslations(snapshot.translations as Record<string, Record<string, unknown> | null>)
+        : {};
+
+      // §5.1/security-agent bulgusu (bkz. .claude/security-review-i18n.md) — bu route
+      // `requireSiteRole("ADMIN", "EDITOR")` ile korunuyor, ama `isLegalDocument` alanı
+      // YALNIZCA ADMIN değiştirebilir (bkz. `assertLegalDocumentAuthorized`, PATCH ile AYNI
+      // kural). Eski revizyonun snapshot'ı bu bayrağı taşıyorsa VE mevcut değerden FARKLIYSA,
+      // bunu bir EDITOR'ün "geri yükleme" aracılığıyla ADMIN onayı/audit'i OLMADAN
+      // değiştirmesine izin VERİLMEZ. Seçilen davranış (kısmi uygulama — restore'un TAMAMI
+      // reddedilmez): EDITOR ise bu TEK ALAN atlanır ve mevcut değer KORUNUR (tıpkı "snapshot'ta
+      // hiç yoksa korunur" dalıyla AYNI kod yolu) — geri kalan tüm alanlar normal şekilde geri
+      // yüklenir. ADMIN ise (PATCH ile birebir aynı) değişiklik uygulanır ve
+      // `content.legal_flag_change` denetlenir. EDITOR'ün reddedilen denemesi de (isteği
+      // BLOKE ETMEDEN) `FORBIDDEN` durumuyla denetlenir — sessiz bir "hayır" değil, görünür bir
+      // iz bırakır (KVKK/GDPR uyumluluk denetimi için).
+      const snapshotLegalDocument = snapshot.isLegalDocument;
+      const legalDocumentWouldChange = snapshotLegalDocument !== undefined && snapshotLegalDocument !== existing.isLegalDocument;
+      const actorIsAdmin = request.user!.role === "ADMIN";
+      const applyLegalDocumentChange = legalDocumentWouldChange && actorIsAdmin;
+      const rejectedLegalDocumentChange = legalDocumentWouldChange && !actorIsAdmin;
+
+      const page = await app.prisma.$transaction(async (tx) => {
+        const updated = await tx.page.update({
+          where: { id: request.params.pageId },
+          data: {
+            title: snapshot.title,
+            slug: snapshot.slug,
+            // Savunmada derinlik: bu sanitizasyon eklenmeden ÖNCE kaydedilmiş eski revizyonlar
+            // temizlenmemiş HTML içerebilir — geri yükleme her zaman yeniden sanitize eder.
+            blocks: (Array.isArray(snapshot.blocks)
+              ? sanitizePageBlocks(snapshot.blocks)
+              : snapshot.blocks) as Prisma.InputJsonValue,
+            seoTitle: snapshot.seoTitle,
+            seoDescription: snapshot.seoDescription,
+            ogTitle: snapshot.ogTitle,
+            ogImageUrl: snapshot.ogImageUrl,
+            canonicalUrl: snapshot.canonicalUrl,
+            noIndex: snapshot.noIndex,
+            // Eski revizyonlarda (bu alan eklenmeden ÖNCE alınmış) `isLegalDocument` YOKTUR —
+            // bu durumda mevcut değer KORUNUR. AYNI şekilde EDITOR'ün yetkisiz bir değişikliği
+            // de (yukarıda hesaplanan `rejectedLegalDocumentChange`) uygulanmaz — mevcut değer
+            // KORUNUR (sessizce ATLANIR, restore'un geri kalanı bloklanmaz).
+            ...(snapshotLegalDocument !== undefined && !rejectedLegalDocumentChange
+              ? { isLegalDocument: snapshotLegalDocument }
+              : {}),
+            translations: sanitizedTranslations as Prisma.InputJsonValue,
+          },
+          include: WITH_AUTHOR,
+        });
+
+        await syncContentSlugs(tx, enabledLocales, "PAGE", updated.id, updated.slug, updated.translations);
+
+        return updated;
       });
 
-      return reply.send(ok(toPageDto(page)));
+      if (applyLegalDocumentChange) {
+        await logAudit(app, {
+          actorId: request.user!.id,
+          actorEmail: request.user!.email,
+          action: "content.legal_flag_change",
+          targetType: "Page",
+          targetId: page.id,
+          metadata: {
+            from: existing.isLegalDocument,
+            to: snapshotLegalDocument,
+            viaRevisionRestore: true,
+            revisionId: request.params.revisionId,
+          },
+          ipAddress: request.ip,
+        });
+      } else if (rejectedLegalDocumentChange) {
+        // İstek reddedilmedi (restore'un geri kalanı uygulandı) ama bu ALAN uygulanmadı —
+        // bu denemenin görünür bir izi olsun diye `FORBIDDEN` statüsüyle ayrıca denetlenir
+        // (bkz. requireSiteRole'ün route-seviyesi 403'leri logladığı AYNI desen).
+        await logAudit(app, {
+          actorId: request.user!.id,
+          actorEmail: request.user!.email,
+          action: "content.legal_flag_change",
+          status: "FORBIDDEN",
+          targetType: "Page",
+          targetId: page.id,
+          metadata: {
+            attemptedFrom: existing.isLegalDocument,
+            attemptedTo: snapshotLegalDocument,
+            viaRevisionRestore: true,
+            revisionId: request.params.revisionId,
+            reason: "isLegalDocument alanını yalnızca ADMIN değiştirebilir; alan atlanarak geri kalan revizyon geri yüklendi.",
+          },
+          ipAddress: request.ip,
+        });
+      }
+
+      return reply.send(ok(await toPageDtoLocalized(app, page)));
     }
   );
 }
@@ -499,16 +653,30 @@ export async function adminPagesRoutes(app: FastifyInstance) {
 export async function publicPagesRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
 
-  // Site nav'ı için: yayınlanmış tüm sayfaların hafif listesi.
-  server.get("/", { schema: { response: { 200: ApiSuccessSchema(z.array(PageSchema)) } } }, async (_request, reply) => {
-    const rows = await app.prisma.page.findMany({
-      where: { status: "PUBLISHED", deletedAt: null },
-      orderBy: { seq: "asc" },
-      take: 100,
-      include: WITH_AUTHOR,
-    });
-    return reply.send(ok(rows.map(toPageDto)));
-  });
+  server.get(
+    "/",
+    { schema: { querystring: LocaleQuerySchema, response: { 200: ApiSuccessSchema(z.array(PageSchema)) } } },
+    async (request, reply) => {
+      const rows = await app.prisma.page.findMany({
+        where: { status: "PUBLISHED", deletedAt: null },
+        orderBy: { seq: "asc" },
+        take: 100,
+        include: WITH_AUTHOR,
+      });
+
+      const localeSet = await getLocaleSet(app);
+      const effectiveLocale = resolveEffectiveLocaleCode(localeSet, request.query.locale);
+      const localizationsByEntity = await attachLocalizations(app, "PAGE", rows);
+
+      const dtos = rows.map((row) => {
+        const localizations = localizationsByEntity.get(row.id) ?? [];
+        const translated = effectiveLocale ? localizations.find((l) => l.locale === effectiveLocale)?.translated ?? false : false;
+        return toPageDto(applyPageLocale(row, effectiveLocale, translated), localizations);
+      });
+
+      return reply.send(ok(dtos));
+    }
+  );
 
   server.get(
     "/:slug",
@@ -516,12 +684,30 @@ export async function publicPagesRoutes(app: FastifyInstance) {
       schema: { params: PageSlugParamSchema, querystring: LocaleQuerySchema, response: { 200: ApiSuccessSchema(PageSchema) } },
     },
     async (request, reply) => {
-      const page = await app.prisma.page.findFirst({
-        where: { slug: request.params.slug, status: "PUBLISHED", deletedAt: null },
-        include: WITH_AUTHOR,
-      });
-      if (!page) throw new NotFoundError("Sayfa bulunamadı.");
-      return reply.send(ok(toPageDto(applyLocale(page, request.query.locale))));
+      const localeSet = await getLocaleSet(app);
+      const effectiveLocale = resolveEffectiveLocaleCode(localeSet, request.query.locale);
+
+      // §4/§12.2 — slug çözümleme: (1) ContentSlug(locale, slug) tam eşleşme, (2) varsayılan
+      // dildeki kanonik `slug` kolonu. İkisi de tutmazsa 404.
+      const translatedEntityId = await resolveEntityIdBySlug(app, "PAGE", request.params.slug, effectiveLocale);
+      const page = translatedEntityId
+        ? await app.prisma.page.findFirst({
+            where: { id: translatedEntityId, status: "PUBLISHED", deletedAt: null },
+            include: WITH_AUTHOR,
+          })
+        : null;
+      const resolvedPage =
+        page ??
+        (await app.prisma.page.findFirst({
+          where: { slug: request.params.slug, status: "PUBLISHED", deletedAt: null },
+          include: WITH_AUTHOR,
+        }));
+      if (!resolvedPage) throw new NotFoundError("Sayfa bulunamadı.");
+
+      const localizations = await attachLocalizationsOne(app, "PAGE", resolvedPage);
+      const translated = effectiveLocale ? localizations.find((l) => l.locale === effectiveLocale)?.translated ?? false : false;
+
+      return reply.send(ok(toPageDto(applyPageLocale(resolvedPage, effectiveLocale, translated), localizations)));
     }
   );
 

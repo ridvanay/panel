@@ -208,7 +208,9 @@ describe("content revisions, SEO fields & i18n (§10.1, §10.2, §10.5)", () => 
       expect(patch.statusCode).toBe(422);
     });
 
-    it("applies translations.EN as a field-level fallback on the public locale-aware GET", async () => {
+    // §2.4 (bkz. .claude/architect-scope-i18n.md, bağlayıcı) — yazma yolu YALNIZCA küçük harf
+    // locale anahtarı üretir; `EN` (büyük harf) yalnızca ESKİ veri için bir OKUMA toleransıdır.
+    it("applies translations.en as a field-level fallback on the public locale-aware GET", async () => {
       const create = await app.inject({
         method: "POST",
         url: "/api/v1/admin/pages",
@@ -225,14 +227,16 @@ describe("content revisions, SEO fields & i18n (§10.1, §10.2, §10.5)", () => 
         method: "PATCH",
         url: `/api/v1/admin/pages/${page.id}`,
         headers: authHeader(),
-        payload: { translations: { EN: { title: "EN Title" } } },
+        payload: { translations: { en: { title: "EN Title" } } },
       });
       expect(patch.statusCode).toBe(200);
-      expect(patch.json().data.translations.EN.title).toBe("EN Title");
+      expect(patch.json().data.translations.en.title).toBe("EN Title");
 
       const defaultLocale = await app.inject({ method: "GET", url: `/api/v1/pages/${page.slug}` });
       expect(defaultLocale.json().data.title).toBe("TR Başlık");
 
+      // Sözleşme: `?locale=` büyük/küçük harf FARK ETMEKSİZİN normalize edilir (bkz.
+      // lib/localization.ts::resolveEffectiveLocaleCode) — `EN` de `en` de aynı sonucu üretir.
       const enLocale = await app.inject({ method: "GET", url: `/api/v1/pages/${page.slug}?locale=EN` });
       expect(enLocale.statusCode).toBe(200);
       // Override edilen alan EN'den gelir...
@@ -254,20 +258,20 @@ describe("content revisions, SEO fields & i18n (§10.1, §10.2, §10.5)", () => 
         method: "PATCH",
         url: `/api/v1/admin/pages/${pageId}`,
         headers: authHeader(),
-        payload: { translations: { EN: { title: "First EN Title" } } },
+        payload: { translations: { en: { title: "First EN Title" } } },
       });
 
       const second = await app.inject({
         method: "PATCH",
         url: `/api/v1/admin/pages/${pageId}`,
         headers: authHeader(),
-        payload: { translations: { EN: { seoTitle: "EN SEO Title" } } },
+        payload: { translations: { en: { seoTitle: "EN SEO Title" } } },
       });
 
       const translations = second.json().data.translations;
       // İkinci PATCH yalnızca seoTitle gönderdi ama ilk PATCH'teki title kaybolmamalı (shallow merge).
-      expect(translations.EN.title).toBe("First EN Title");
-      expect(translations.EN.seoTitle).toBe("EN SEO Title");
+      expect(translations.en.title).toBe("First EN Title");
+      expect(translations.en.seoTitle).toBe("EN SEO Title");
     });
   });
 

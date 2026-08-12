@@ -50,6 +50,7 @@ function makePortfolioItem(overrides: Partial<PortfolioItem> = {}): PortfolioIte
     author: null,
     seoScore: 0,
     seoScoreIssues: [],
+    localizations: [],
     ...overrides,
   };
 }

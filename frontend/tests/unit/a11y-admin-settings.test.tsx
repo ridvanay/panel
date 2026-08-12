@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { axe } from "jest-axe";
 import AdminSettingsPage from "@/app/admin/settings/page";
+import { I18nProvider } from "@/context/i18n-context";
 import type { PermissionsMatrix, SiteSettings } from "@/lib/api/types";
 
 vi.mock("next/navigation", () => ({
@@ -14,6 +15,7 @@ vi.mock("@/lib/api/settings", () => ({
   getPermissionsMatrix: vi.fn(),
 }));
 vi.mock("@/lib/api/pages", () => ({ listPages: vi.fn() }));
+vi.mock("@/lib/api/locales", () => ({ listAdminLocales: vi.fn().mockResolvedValue([]) }));
 
 const settingsApi = await import("@/lib/api/settings");
 const pagesApi = await import("@/lib/api/pages");
@@ -39,7 +41,7 @@ describe("AdminSettingsPage — a11y", () => {
     vi.mocked(settingsApi.getSettings).mockResolvedValue(settings);
     vi.mocked(pagesApi.listPages).mockResolvedValue({ items: [], meta: { nextCursor: null } });
 
-    const { container } = render(<AdminSettingsPage />);
+    const { container } = render(<I18nProvider><AdminSettingsPage /></I18nProvider>);
 
     expect(await screen.findByLabelText(/Site adı/)).toBeInTheDocument();
 
@@ -53,7 +55,7 @@ describe("AdminSettingsPage — a11y", () => {
     vi.mocked(settingsApi.getPermissionsMatrix).mockResolvedValue(permissions);
 
     const user = userEvent.setup();
-    const { container } = render(<AdminSettingsPage />);
+    const { container } = render(<I18nProvider><AdminSettingsPage /></I18nProvider>);
 
     await screen.findByLabelText(/Site adı/);
     await user.click(screen.getByRole("tab", { name: /Güvenlik & Rol İzinleri/ }));
@@ -78,7 +80,7 @@ describe("AdminSettingsPage — sekme değişimi kaydedilmemiş değişiklik uya
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
 
     const user = userEvent.setup();
-    render(<AdminSettingsPage />);
+    render(<I18nProvider><AdminSettingsPage /></I18nProvider>);
 
     const siteNameInput = await screen.findByLabelText(/Site adı/);
     await user.clear(siteNameInput);
@@ -100,7 +102,7 @@ describe("AdminSettingsPage — sekme değişimi kaydedilmemiş değişiklik uya
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
 
     const user = userEvent.setup();
-    render(<AdminSettingsPage />);
+    render(<I18nProvider><AdminSettingsPage /></I18nProvider>);
 
     const siteNameInput = await screen.findByLabelText(/Site adı/);
     await user.clear(siteNameInput);
@@ -121,7 +123,7 @@ describe("AdminSettingsPage — sekme değişimi kaydedilmemiş değişiklik uya
     const confirmSpy = vi.spyOn(window, "confirm");
 
     const user = userEvent.setup();
-    render(<AdminSettingsPage />);
+    render(<I18nProvider><AdminSettingsPage /></I18nProvider>);
 
     await screen.findByLabelText(/Site adı/);
     await user.click(screen.getByRole("tab", { name: /Güvenlik & Rol İzinleri/ }));

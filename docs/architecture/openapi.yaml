@@ -159,6 +159,25 @@ tags:
       (`products` modülü kapatılsa dahi geçmiş siparişler görüntülenebilir — veri
       korunumu, `Products`/`Portfolio` admin uçlarıyla AYNI karar). `customerEmail`
       LİSTEDE maskelenir, DETAYDA maskesiz döner (bkz. uç açıklaması).
+  - name: Localization
+    description: >
+      Çoklu dil yapılandırması (`/locales`, `/admin/locales`) — bkz. ARCHITECTURE.md
+      §10.5 ve `.claude/architect-scope-i18n.md`. Desteklenen diller VERİDİR (kod
+      değil): yeni bir dil eklemek `Locale` tablosuna bir SATIR eklemekle olur, şema
+      değişikliği/migration/deploy GEREKTİRMEZ.
+
+
+      `GET /locales` public'tir (site dil değiştirici ve `[lang]` rota doğrulaması
+      bunu okur); `/admin/locales` yönetim içindir ve yazma uçları yalnızca
+      SiteRole=ADMIN'dir (EDITOR dahi dil ekleyemez — dil eklemek sitenin URL
+      uzayını ve sitemap'ini genişleten yapısal bir karardır).
+
+
+      **Terminoloji (bağlayıcı):** `locale` = BCP-47 dil kodu, HER ZAMAN küçük harf
+      (`tr`, `en`, `de`, `en-gb`). Veritabanı, API, URL prefix'i ve `<html lang>` bu
+      TEK gösterimi kullanır. `translations` JSON'undaki ESKİ büyük-harf anahtarlar
+      (`{"EN": {...}}`) geriye dönük uyumluluk için okunur ama YENİ yazımlarda
+      KULLANILMAZ (bkz. migration notu, architect-scope-i18n.md §2.4).
 
 security:
   - bearerAuth: []
@@ -3762,6 +3781,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/LocaleQuery"
       responses:
         "200":
           description: OK
@@ -3783,6 +3803,7 @@ paths:
   /products/{slug}:
     parameters:
       - $ref: "#/components/parameters/ProductSlug"
+      - $ref: "#/components/parameters/LocaleQuery"
     get:
       tags: [Products]
       security: []
@@ -4270,6 +4291,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/LocaleQuery"
       responses:
         "200":
           description: OK
@@ -4291,6 +4313,7 @@ paths:
   /portfolio/{slug}:
     parameters:
       - $ref: "#/components/parameters/PortfolioSlug"
+      - $ref: "#/components/parameters/LocaleQuery"
     get:
       tags: [Portfolio]
       security: []
@@ -4672,6 +4695,260 @@ paths:
         "200": { description: İşlendi }
         "400": { description: Geçersiz imza }
 
+  # ---------------------------------------------------------------------------
+  # Localization (§10.5 — bkz. .claude/architect-scope-i18n.md)
+  # ---------------------------------------------------------------------------
+
+  /locales:
+    get:
+      tags: [Localization]
+      security: []
+      summary: Etkin dilleri listele (public)
+      description: >
+        Yalnızca `enabled: true` diller, `sortOrder` artan sırada döner. Varsayılan
+        dil (`isDefault: true`) HER ZAMAN listenin içindedir ve devre dışı
+        BIRAKILAMAZ (bkz. `DELETE /admin/locales/{code}`).
+
+
+        Site header'daki dil değiştirici ve `app/[lang]` rota doğrulaması bu ucu
+        okur. Önbellek politikası `GET /appearance` ile AYNIDIR (`revalidate: 60`) —
+        dil listesi nadiren değişen, her istekte gereken bir yapılandırmadır.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/Locale" }
+
+  /admin/locales:
+    get:
+      tags: [Localization]
+      summary: Tüm dilleri listele (devre dışı olanlar DAHİL)
+      description: "Okuma authenticated (herhangi bir SiteRole) — çeviri editörü sekmelerini kurmak için EDITOR de okur."
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/Locale" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [Localization]
+      summary: Yeni dil ekle (yalnızca SiteRole=ADMIN)
+      description: >
+        **Şema değişikliği/migration GEREKTİRMEZ** — yalnızca bir satır eklenir.
+        `code` benzersizdir ve normalize edilir (küçük harf, `_` → `-`); zaten varsa
+        `409 CONFLICT`.
+
+
+        Yeni dil eklemek MEVCUT içeriği ÇEVİRMEZ: tüm içerik, çevrilene kadar
+        varsayılan dile düşer (bkz. `Content Fallback` kuralı, `ContentLocalization`
+        şeması). `enabled: true` ile eklenen dil ANINDA public `/locales` yanıtına ve
+        `[lang]` rota uzayına girer — bu yüzden yeni diller varsayılan olarak
+        `enabled: false` ile eklenmeli, çeviri hazır olunca açılmalıdır.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LocaleUpsertRequest" }
+      responses:
+        "201":
+          description: Oluşturuldu
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Locale" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409":
+          description: "Bu `code` zaten kayıtlı (`error.code: CONFLICT`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/locales/{code}:
+    parameters:
+      - $ref: "#/components/parameters/LocaleCode"
+    patch:
+      tags: [Localization]
+      summary: Dili güncelle (yalnızca SiteRole=ADMIN)
+      description: >
+        `code` DEĞİŞTİRİLEMEZ (URL uzayının ve `ContentSlug` satırlarının kimliğidir);
+        yeniden adlandırmak yerine yeni dil ekleyip eskisini silmek gerekir.
+
+
+        `isDefault: true` gönderilirse işlem TEK bir transaction'da yürür: eski
+        varsayılanın bayrağı düşürülür, yenisi kaldırılır. Varsayılan dil
+        `enabled: false` YAPILAMAZ (422).
+
+
+        Varsayılan dili değiştirmek **sitenin URL yapısını değiştirir** (prefix'siz
+        servis edilen dil değişir). Bu yüzden admin UI, isteği GÖNDERMEDEN ÖNCE bir
+        onay diyaloğu göstermek ZORUNDADIR.
+
+
+        **Yanıt bir `warnings` alanı DÖNDÜRMEZ** (bu açıklamanın ilk hâli döndürdüğünü
+        söylüyordu — yanlıştı, düzeltildi). Gerekçe: onay, isteğin ÖNCESİNDE alınmalıdır;
+        yanıtla birlikte gelen bir uyarı, değişiklik ZATEN yapıldıktan sonra ulaşır ve
+        onay amacına hizmet etmez. Etki bilgisi istemci tarafında `Locale.enabled` +
+        `translatedContentCount` ve mevcut içerik sayaçlarından gösterilir; bunun için
+        ek bir uç/alan GEREKMEZ.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LocaleUpdateRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Locale" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+    delete:
+      tags: [Localization]
+      summary: Dili sil (yalnızca SiteRole=ADMIN)
+      description: >
+        **Varsayılan dil SİLİNEMEZ** → `422` (`details.code`). Silme, o dile ait TÜM
+        `ContentSlug` satırlarını ve içeriklerdeki `translations.<code>` JSON
+        anahtarlarını KALICI olarak kaldırır (çöp kutusu YOK — geri alınamaz).
+
+
+        Bu yıkıcı bir işlemdir: admin UI, silinecek çeviri sayısını `GET
+        /admin/locales` yanıtındaki `translatedContentCount` ile göstermeli ve
+        kullanıcıdan dil kodunu yazarak onaylamasını istemelidir. Audit action:
+        `localization.locale_delete`.
+      responses:
+        "204": { description: Silindi }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  # ---------------------------------------------------------------------------
+  # Public içerik uçları — bu uçlar KODDA mevcuttu ama sözleşmede TANIMSIZDI
+  # (bkz. architect-scope-i18n.md §7, sözleşme boşluğu). Locale desteğiyle birlikte
+  # buraya normalize edildi.
+  # ---------------------------------------------------------------------------
+
+  /pages:
+    get:
+      tags: [Pages]
+      security: []
+      summary: Yayınlanmış sayfaları listele (public)
+      description: >
+        Yalnızca `status: PUBLISHED` ve `deletedAt: null` sayfalar döner.
+        `?locale=` verildiğinde alan bazlı çeviri uygulanır (bkz. `LocaleQuery`).
+      parameters:
+        - $ref: "#/components/parameters/LocaleQuery"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/Page" }
+
+  /pages/{slug}:
+    parameters:
+      - name: slug
+        in: path
+        required: true
+        description: >
+          İstenen dildeki slug. Çözümleme sırası: (1) `ContentSlug(locale, slug)`
+          tam eşleşme, (2) varsayılan dildeki kanonik `slug` kolonu. İkisi de
+          tutmazsa `404`.
+        schema: { type: string }
+      - $ref: "#/components/parameters/LocaleQuery"
+    get:
+      tags: [Pages]
+      security: []
+      summary: Sayfa detayı — slug ile (public)
+      description: "Yayınlanmamış/çöpteki sayfalar için `404 NOT_FOUND`."
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Page" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /blog:
+    get:
+      tags: [Blog]
+      security: []
+      summary: Yayınlanmış blog yazılarını listele (public)
+      parameters:
+        - $ref: "#/components/parameters/LocaleQuery"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/BlogPost" }
+
+  /blog/{slug}:
+    parameters:
+      - name: slug
+        in: path
+        required: true
+        schema: { type: string }
+      - $ref: "#/components/parameters/LocaleQuery"
+    get:
+      tags: [Blog]
+      security: []
+      summary: Blog yazısı detayı — slug ile (public)
+      description: "Slug çözümlemesi `/pages/{slug}` ile BİREBİR AYNIDIR."
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/BlogPost" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -4893,6 +5170,33 @@ components:
       in: query
       required: false
       schema: { $ref: "#/components/schemas/OrderStatus" }
+    LocaleCode:
+      name: code
+      in: path
+      required: true
+      description: "BCP-47 dil kodu, küçük harf (`tr`, `en`, `de`, `en-gb`)."
+      schema: { type: string, pattern: "^[a-z]{2,3}(-[a-z0-9]{2,8})?$" }
+    LocaleQuery:
+      name: locale
+      in: query
+      required: false
+      description: >
+        İçeriğin hangi dilde döneceği. Verilmezse VEYA varsayılan dile eşitse kanonik
+        kolonlar aynen döner. Bilinmeyen/devre dışı bir kod verilirse **hata DEĞİL**,
+        sessizce varsayılan dil kullanılır (`400` DÖNMEZ) — gerekçe: locale, URL'den
+        türeyen bir sunum tercihidir; geçersiz bir dil yüzünden içerik sayfası
+        çökmemelidir. Rota düzeyinde 404 kararını frontend `[lang]` segmenti verir.
+
+
+        **Alan bazlı fallback:** istenen dilde bulunmayan/boş her alan tek tek
+        varsayılan dilden doldurulur — kısmi çeviri GEÇERLİDİR (bkz. `Content Fallback`).
+
+
+        **TEK İSTİSNA — `Page.isLegalDocument: true`:** hukuki belgelerde fallback
+        UYGULANMAZ, gövde boş döner (KVKK m.10 / GDPR m.12). Bkz.
+        `Page.isLegalDocument`.
+      schema: { type: string, pattern: "^[a-z]{2,3}(-[a-z0-9]{2,8})?$" }
+      example: en
     ImageId:
       name: imageId
       in: path
@@ -4944,6 +5248,143 @@ components:
           schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
 
   schemas:
+    # -------------------------------------------------------------------------
+    # Localization (§10.5 — bkz. .claude/architect-scope-i18n.md)
+    # -------------------------------------------------------------------------
+    Locale:
+      type: object
+      description: >
+        Desteklenen bir dil. **Bu bir VERİ satırıdır, kod sabiti DEĞİLDİR** — yeni dil
+        eklemek migration gerektirmez (kabul kriteri).
+      required: [code, label, nativeLabel, isDefault, enabled, sortOrder]
+      properties:
+        code:
+          type: string
+          description: "BCP-47, küçük harf. Birincil anahtar; oluşturulduktan sonra DEĞİŞMEZ."
+          example: en
+        label:
+          type: string
+          description: "Yönetim panelinde gösterilen ad (panel dilinde) — ör. \"İngilizce\"."
+        nativeLabel:
+          type: string
+          description: "Dilin kendi adı — site dil değiştiricide BU gösterilir (ör. \"English\")."
+        isDefault:
+          type: boolean
+          description: >
+            Varsayılan/kanonik dil. **Tam olarak BİR** locale `true` olabilir (DB'de
+            partial unique index ile zorlanır). Bu dil URL'de prefix ALMAZ ve içerik
+            tablolarındaki kanonik kolonlarda saklanır.
+        enabled:
+          type: boolean
+          description: "`false` ise public `/locales` yanıtında ve `[lang]` rota uzayında YER ALMAZ; içerik çevirileri KORUNUR (silinmez)."
+        sortOrder:
+          type: integer
+          description: "Dil değiştiricideki görüntülenme sırası (artan)."
+        hreflang:
+          type: string
+          nullable: true
+          description: >
+            `<link rel="alternate" hreflang="...">` ve sitemap `alternates` için
+            kullanılacak değer. Boşsa `code` kullanılır. Bölgesel hedefleme gereken
+            durumlar içindir (ör. `code: en` iken `hreflang: en-GB`).
+        translatedContentCount:
+          type: integer
+          readOnly: true
+          description: >
+            Bu dilde EN AZ BİR alanı çevrilmiş içerik sayısı (`ContentSlug` satır
+            sayısı). YALNIZCA `/admin/locales` yanıtlarında döner — silme onay
+            diyaloğunun etkisini göstermek için.
+
+    LocaleUpsertRequest:
+      type: object
+      required: [code, label, nativeLabel]
+      properties:
+        code: { type: string, pattern: "^[a-z]{2,3}(-[a-z0-9]{2,8})?$" }
+        label: { type: string, minLength: 1 }
+        nativeLabel: { type: string, minLength: 1 }
+        enabled: { type: boolean, default: false }
+        sortOrder: { type: integer, default: 0 }
+        hreflang: { type: string, nullable: true }
+
+    LocaleUpdateRequest:
+      type: object
+      description: "`code` KASITLI olarak yoktur — değiştirilemez (bkz. uç açıklaması)."
+      properties:
+        label: { type: string, minLength: 1 }
+        nativeLabel: { type: string, minLength: 1 }
+        enabled: { type: boolean }
+        isDefault: { type: boolean }
+        sortOrder: { type: integer }
+        hreflang: { type: string, nullable: true }
+
+    ContentLocalization:
+      type: object
+      description: >
+        Bir içeriğin TEK bir dildeki yayın durumu ve slug'ı. Her içerik DTO'su
+        (`Page`, `BlogPost`, `Product`, `PortfolioItem`) `localizations` dizisinde
+        BUNLARI döner — hreflang etiketleri, sitemap `alternates` ve site dil
+        değiştiricisi TEK bir istekle bu diziden beslenir (N+1 istek YOK).
+      required: [locale, slug, translated]
+      properties:
+        locale: { type: string, example: en }
+        slug:
+          type: string
+          description: >
+            Bu dildeki slug. İçerik bu dilde çevrilmemişse (`translated: false`)
+            varsayılan dilin slug'ı döner — URL her zaman çözümlenebilir kalır.
+          example: about-us
+        translated:
+          type: boolean
+          description: >
+            `true` = bu dilde gerçek bir çeviri VAR (en azından başlık). `false` =
+            içerik bu dilde varsayılan dile düşüyor.
+
+
+            **SEO kuralı (bağlayıcı):** `translated: false` olan diller için hreflang
+            alternate ÜRETİLMEZ ve sitemap'e girmez — aksi halde Google'a birebir
+            aynı içerik farklı URL'lerde duplicate olarak sunulmuş olur.
+
+    ContentTranslations:
+      type: object
+      description: >
+        İçeriğin çeviri gölgesi. Anahtar = locale kodu (küçük harf), değer = yalnızca
+        OVERRIDE edilen alanlar. Kanonik/varsayılan dil BU OBJEDE YER ALMAZ — o,
+        tablonun kendi kolonlarındadır.
+
+
+        **Kısmi olabilir:** eksik her alan varsayılan dilden gelir. `PATCH` uçları bu
+        alanı **shallow merge** eder (locale bazında): gönderilen locale'in objesi tam
+        replace edilir, gönderilmeyen locale'ler KORUNUR. Bir dilin çevirisini silmek
+        için o locale anahtarını `null` gönderin.
+      additionalProperties:
+        type: object
+        description: "Çevrilebilir alanlar — entity'ye göre değişir (bkz. aşağıdaki örnek)."
+        properties:
+          title: { type: string }
+          slug:
+            type: string
+            description: >
+              Bu dile ÖZEL slug (ör. TR `hakkimizda` ↔ EN `about-us`). Yazıldığında
+              backend `ContentSlug` tablosunda `(locale, slug)` benzersizliğini
+              doğrular; çakışırsa `409 CONFLICT`. Verilmezse kanonik slug kullanılır.
+          seoTitle: { type: string }
+          seoDescription: { type: string }
+          ogTitle: { type: string }
+          canonicalUrl: { type: string, nullable: true }
+          excerpt: { type: string, description: "BlogPost/Product" }
+          summary: { type: string, description: "PortfolioItem" }
+          contentHtml: { type: string, description: "BlogPost/PortfolioItem — sanitize edilir" }
+          descriptionHtml: { type: string, description: "Product — sanitize edilir" }
+          blocks:
+            type: array
+            items: { type: object }
+            description: "YALNIZCA Page — sanitize edilir (kanonik bloklarla AYNI kurallar)."
+      example:
+        en:
+          title: About Us
+          slug: about-us
+          seoDescription: Learn more about our company.
+
     ApiSuccessEnvelope:
       type: object
       required: [data]
@@ -5583,10 +6024,11 @@ components:
 
     Page:
       description: >
-        `/admin/pages` ve `/pages` uçlarında dönen sayfa DTO'su. `translations.EN`
-        yalnızca override'ları taşır (bkz. ARCHITECTURE.md §10.5); `?locale=EN` ile
-        okunan public GET'lerde bu alanlar zaten TR'ye alan-bazlı fallback edilmiş
-        olarak gelir.
+        `/admin/pages` ve `/pages` uçlarında dönen sayfa DTO'su. `translations`
+        yalnızca override'ları taşır (bkz. ARCHITECTURE.md §10.5); `?locale=` ile
+        okunan public GET'lerde bu alanlar zaten varsayılan dile alan-bazlı fallback
+        edilmiş olarak gelir — **`isLegalDocument: true` HARİÇ** (bkz. o alanın
+        açıklaması).
       type: object
       properties:
         id: { type: string, format: uuid }
@@ -5602,12 +6044,45 @@ components:
         ogImageUrl: { type: string, nullable: true }
         canonicalUrl: { type: string, nullable: true }
         noIndex: { type: boolean }
-        translations:
-          type: object
-          description: "ör. { \"EN\": { \"title\": \"...\", \"blocks\": [...] } } — bkz. shared-types.ts::PageTranslations"
-          additionalProperties:
-            type: object
-            additionalProperties: true
+        isLegalDocument:
+          type: boolean
+          default: false
+          description: >
+            Bu sayfa bir HUKUKİ BELGE mi (gizlilik politikası, KVKK aydınlatma metni,
+            çerez politikası, kullanım koşulları, mesafeli satış sözleşmesi...).
+
+
+            **Çeviri davranışını DEĞİŞTİRİR (bağlayıcı, KVKK m.10 / GDPR m.12):**
+            `true` ise §5'in "sessiz fallback" kuralı bu sayfaya UYGULANMAZ.
+            Varsayılan olmayan bir dilde bu sayfanın çevirisi YOKSA
+            (`localizations[locale].translated == false`), public GET yanıtında
+            çevrilebilir gövde alanları (`blocks`) **BOŞ** döner. Çevrilmemiş bir
+            hukuki metni ziyaretçiye o dildeymiş gibi göstermek şeffaflık
+            yükümlülüğünün ihlalidir.
+
+
+            Bu boşaltma **sunucu tarafında** yapılır (istemcinin bayrağı kontrol
+            etmesine GÜVENİLMEZ) — fail-safe. Yalnızca public okumaları etkiler;
+            `/admin/pages/*` yanıtları ham kaydı döndürür ve düzenleme bozulmaz.
+
+
+            İstemci bu durumu `isLegalDocument && !localizations[locale].translated`
+            ile tespit eder ve gövde yerine "bu belge bu dilde mevcut değil +
+            varsayılan dildeki sürüme bağlantı" bildirimi gösterir. AYRI bir yanıt
+            alanı YOKTUR — durum mevcut alanlardan türetilebilir.
+
+
+            **Yalnızca SiteRole=ADMIN değiştirebilir** (EDITOR dahi DEĞİL): bu bayrağı
+            kaldırmak, hukuki metinlerde sessiz çeviri fallback'ini yeniden
+            etkinleştirmek demektir — uyumluluk sonucu olan bir karardır ve
+            denetlenir (`content.legal_flag_change`).
+        translations: { $ref: "#/components/schemas/ContentTranslations" }
+        localizations:
+          type: array
+          description: >
+            Bu sayfanın TÜM etkin dillerdeki slug'ı ve çeviri durumu — hreflang ve
+            sitemap `alternates` üretimi için. Public uçlarda HER ZAMAN döner.
+          items: { $ref: "#/components/schemas/ContentLocalization" }
         publishedAt: { type: string, format: date-time, nullable: true }
         scheduledAt:
           type: string
@@ -5674,12 +6149,10 @@ components:
         ogImageUrl: { type: string, nullable: true }
         canonicalUrl: { type: string, nullable: true }
         noIndex: { type: boolean }
-        translations:
-          type: object
-          description: "ör. { \"EN\": { \"title\": \"...\", \"contentHtml\": \"...\" } } — bkz. shared-types.ts::BlogPostTranslations"
-          additionalProperties:
-            type: object
-            additionalProperties: true
+        translations: { $ref: "#/components/schemas/ContentTranslations" }
+        localizations:
+          type: array
+          items: { $ref: "#/components/schemas/ContentLocalization" }
         publishedAt: { type: string, format: date-time, nullable: true }
         scheduledAt:
           type: string
@@ -6015,6 +6488,10 @@ components:
         ogImageUrl: { type: string, nullable: true }
         canonicalUrl: { type: string, format: uri, nullable: true }
         noIndex: { type: boolean, default: false }
+        isLegalDocument:
+          type: boolean
+          default: false
+          description: "Yalnızca SiteRole=ADMIN gönderebilir (EDITOR → `403`). Bkz. `Page.isLegalDocument`."
         translations:
           type: object
           additionalProperties: { type: object, additionalProperties: true }
@@ -6057,6 +6534,12 @@ components:
         ogImageUrl: { type: string, nullable: true }
         canonicalUrl: { type: string, format: uri, nullable: true }
         noIndex: { type: boolean }
+        isLegalDocument:
+          type: boolean
+          description: >
+            Yalnızca SiteRole=ADMIN gönderebilir (EDITOR → `403`). Değeri DEĞİŞTİREN
+            her istek `content.legal_flag_change` audit kaydı üretir. Bkz.
+            `Page.isLegalDocument`.
         translations:
           type: object
           additionalProperties: { type: object, additionalProperties: true }
@@ -6559,6 +7042,14 @@ components:
                   - `WC_ORDERS_IGNORED` — dosyada `shop_order`/`shop_coupon`/`customer`
                   item'ları var; bunlar KİŞİSEL VERİ ve ödeme verisidir, hiçbir tipte
                   içe aktarılmaz.
+
+                  - `UNKNOWN_LOCALE` — dosyadaki `locale` sütunu (veya WXR
+                  `<language>` elemanı) `Locale` tablosunda KAYITLI OLMAYAN bir dil
+                  kodu içeriyor. İlgili satırlar **varsayılan dile** aktarılır (iş
+                  DURDURULMAZ). Mesaj, tanınmayan kodların KÜMESİNİ ve etkilenen satır
+                  sayısını içerir — satır başına ayrı kayıt ÜRETİLMEZ (bkz.
+                  `.claude/architect-scope-i18n.md` §8.1). Kullanıcı, dili önce
+                  `/admin/locales`'ten ekleyip içe aktarmayı tekrarlayabilir.
                 enum:
                   - WP_MEDIA_NOT_DOWNLOADED
                   - WP_TAGS_UNSUPPORTED
@@ -6575,6 +7066,7 @@ components:
                   - SLUG_COLLISION
                   - MEDIA_SVG_REJECTED
                   - UNMAPPED_COLUMNS
+                  - UNKNOWN_LOCALE
               message: { type: string, description: "Gösterime hazır Türkçe metin." }
               count: { type: integer, description: "Kaç kaydı etkiliyor (varsa)." }
 
@@ -7343,11 +7835,10 @@ components:
         ogImageUrl: { type: string, nullable: true }
         canonicalUrl: { type: string, nullable: true }
         noIndex: { type: boolean }
-        translations:
-          type: object
-          additionalProperties:
-            type: object
-            additionalProperties: true
+        translations: { $ref: "#/components/schemas/ContentTranslations" }
+        localizations:
+          type: array
+          items: { $ref: "#/components/schemas/ContentLocalization" }
         publishedAt: { type: string, format: date-time, nullable: true }
         scheduledAt:
           type: string
@@ -7538,11 +8029,10 @@ components:
         ogImageUrl: { type: string, nullable: true }
         canonicalUrl: { type: string, nullable: true }
         noIndex: { type: boolean }
-        translations:
-          type: object
-          additionalProperties:
-            type: object
-            additionalProperties: true
+        translations: { $ref: "#/components/schemas/ContentTranslations" }
+        localizations:
+          type: array
+          items: { $ref: "#/components/schemas/ContentLocalization" }
         publishedAt: { type: string, format: date-time, nullable: true }
         scheduledAt:
           type: string

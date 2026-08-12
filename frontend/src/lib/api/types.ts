@@ -273,10 +273,64 @@ export interface BulkContentActionResult {
 }
 
 /**
- * `Page`/`BlogPost` çeviri gölgesi — TR kanonik kolonlar, `translations.EN` yalnızca
- * override taşır (kısmi olabilir). Bkz. ARCHITECTURE.md §10.5.
+ * `Page`/`BlogPost`/`Product`/`PortfolioItem` çeviri gölgesi — varsayılan dil kanonik
+ * kolonlarda kalır, `translations.<locale>` (küçük harf) yalnızca override taşır (kısmi
+ * olabilir). Bkz. ARCHITECTURE.md §10.5, `.claude/architect-scope-i18n.md` §1.2.
  */
 export type ContentTranslations = Record<string, Record<string, unknown>>;
+
+/**
+ * Desteklenen bir dil — VERİ satırıdır, kod sabiti DEĞİLDİR (yeni dil eklemek migration
+ * gerektirmez). Bkz. `.claude/architect-scope-i18n.md` §2.1, openapi `Locale` şeması.
+ */
+export interface Locale {
+  /** BCP-47, küçük harf. Birincil anahtar; oluşturulduktan sonra DEĞİŞMEZ. */
+  code: string;
+  /** Yönetim panelinde gösterilen ad (panel dilinde). */
+  label: string;
+  /** Dilin kendi adı — site dil değiştiricide BU gösterilir. */
+  nativeLabel: string;
+  /** Tam olarak BİR locale `true` olabilir. Bu dil URL'de prefix ALMAZ. */
+  isDefault: boolean;
+  /** `false` ise public `/locales` yanıtında ve `[lang]` rota uzayında YER ALMAZ. */
+  enabled: boolean;
+  /** Dil değiştiricideki görüntülenme sırası (artan). */
+  sortOrder: number;
+  /** `hreflang` override — boşsa `code` kullanılır. */
+  hreflang: string | null;
+  /** YALNIZCA `/admin/locales` yanıtlarında döner. */
+  translatedContentCount?: number;
+}
+
+export interface LocaleUpsertRequest {
+  code: string;
+  label: string;
+  nativeLabel: string;
+  enabled?: boolean;
+  sortOrder?: number;
+  hreflang?: string | null;
+}
+
+export interface LocaleUpdateRequest {
+  label?: string;
+  nativeLabel?: string;
+  enabled?: boolean;
+  isDefault?: boolean;
+  sortOrder?: number;
+  hreflang?: string | null;
+}
+
+/**
+ * Bir içeriğin TEK bir dildeki yayın durumu ve slug'ı — hreflang/sitemap/dil değiştirici
+ * TEK bir istekle bu diziden beslenir (N+1 istek YOK). Bkz. openapi `ContentLocalization`.
+ */
+export interface ContentLocalization {
+  locale: string;
+  /** Bu dildeki slug; çevrilmemişse varsayılan dilin slug'ı döner. */
+  slug: string;
+  /** `true` = bu dilde gerçek bir çeviri VAR (en azından başlık). */
+  translated: boolean;
+}
 
 // Not: `Page<T>` yukarıda sayfalama zarfı olarak kullanıldığı için site sayfası
 // varlığı çakışmasın diye `SitePage` adlandırıldı.
@@ -292,7 +346,15 @@ export interface SitePage {
   ogImageUrl: string | null;
   canonicalUrl: string | null;
   noIndex: boolean;
+  /**
+   * Hukuki belge mi (gizlilik politikası, KVKK aydınlatma metni...) — `true` ise §5
+   * sessiz çeviri fallback'i UYGULANMAZ (bkz. `.claude/architect-scope-i18n.md` §5.1).
+   * Yalnızca SiteRole=ADMIN değiştirebilir.
+   */
+  isLegalDocument: boolean;
   translations: ContentTranslations;
+  /** Bu sayfanın TÜM etkin dillerdeki slug'ı ve çeviri durumu — hreflang/sitemap için. */
+  localizations: ContentLocalization[];
   publishedAt: string | null;
   /** `status === "SCHEDULED"` iken gelecekteki yayın tarihi (ISO datetime); aksi halde `null`. */
   scheduledAt: string | null;
@@ -320,6 +382,8 @@ export interface CreateSitePageRequest {
   ogImageUrl?: string | null;
   canonicalUrl?: string | null;
   noIndex?: boolean;
+  /** Yalnızca SiteRole=ADMIN gönderebilir (EDITOR → 403). */
+  isLegalDocument?: boolean;
   translations?: ContentTranslations;
   /** Verilmezse giriş yapmış kullanıcı yazar olur; başka id atamak yalnızca ADMIN'e açıktır. */
   authorId?: string;
@@ -338,6 +402,8 @@ export interface UpdateSitePageRequest {
   ogImageUrl?: string | null;
   canonicalUrl?: string | null;
   noIndex?: boolean;
+  /** Yalnızca SiteRole=ADMIN gönderebilir (EDITOR → 403). Değişimde `content.legal_flag_change` audit. */
+  isLegalDocument?: boolean;
   translations?: ContentTranslations;
 }
 
@@ -374,6 +440,8 @@ export interface BlogPost {
   canonicalUrl: string | null;
   noIndex: boolean;
   translations: ContentTranslations;
+  /** Bu yazının TÜM etkin dillerdeki slug'ı ve çeviri durumu — hreflang/sitemap için. */
+  localizations: ContentLocalization[];
   publishedAt: string | null;
   /** `status === "SCHEDULED"` iken gelecekteki yayın tarihi (ISO datetime); aksi halde `null`. */
   scheduledAt: string | null;
@@ -626,6 +694,8 @@ export interface Product {
   canonicalUrl: string | null;
   noIndex: boolean;
   translations: ContentTranslations;
+  /** Bu ürünün TÜM etkin dillerdeki slug'ı ve çeviri durumu — hreflang/sitemap için. */
+  localizations: ContentLocalization[];
   publishedAt: string | null;
   /** `status === "SCHEDULED"` iken gelecekteki yayın tarihi (ISO datetime); aksi halde `null`. */
   scheduledAt: string | null;
@@ -757,6 +827,8 @@ export interface PortfolioItem {
   canonicalUrl: string | null;
   noIndex: boolean;
   translations: ContentTranslations;
+  /** Bu öğenin TÜM etkin dillerdeki slug'ı ve çeviri durumu — hreflang/sitemap için. */
+  localizations: ContentLocalization[];
   publishedAt: string | null;
   /** `status === "SCHEDULED"` iken gelecekteki yayın tarihi (ISO datetime); aksi halde `null`. */
   scheduledAt: string | null;

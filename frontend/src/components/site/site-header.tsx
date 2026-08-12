@@ -9,7 +9,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import type { NavigationItemDto, SitePage, SiteSettings } from "@/lib/api/types";
+import { LanguageSwitcher } from "@/components/site/language-switcher";
+import { withLocalePrefix } from "@/lib/i18n/site-path";
+import type { Locale, NavigationItemDto, SitePage, SiteSettings } from "@/lib/api/types";
 import { DEFAULT_HEADER_LOGO_HEIGHT } from "@/lib/site-settings/logo";
 
 interface SiteHeaderProps {
@@ -19,6 +21,9 @@ interface SiteHeaderProps {
   navigationItems?: NavigationItemDto[];
   ctaLabel?: string | null;
   ctaHref?: string | null;
+  /** §9 frontend-agent madde 4 — verilmezse dil değiştirici gösterilmez (ör. admin canlı önizleme). */
+  locales?: Locale[];
+  activeLocale?: Locale;
 }
 
 interface NavNode {
@@ -46,7 +51,7 @@ function buildNavTree(items: NavigationItemDto[]): NavNode[] {
   }));
 }
 
-export function SiteHeader({ settings, pages, navigationItems, ctaLabel, ctaHref }: SiteHeaderProps) {
+export function SiteHeader({ settings, pages, navigationItems, ctaLabel, ctaHref, locales, activeLocale }: SiteHeaderProps) {
   // `useCartOptional`: bu bileşen `admin/navigation/page.tsx`'teki canlı önizlemede
   // `CartProvider` OLMADAN da render edilir (admin layout'unda sepet KASTEN yok) — o durumda
   // rozet sessizce 0 gösterir, hata fırlatmaz.
@@ -60,6 +65,9 @@ export function SiteHeader({ settings, pages, navigationItems, ctaLabel, ctaHref
         ];
 
   const showCta = Boolean(ctaLabel && ctaHref);
+  const defaultLocaleCode = locales?.find((l) => l.isDefault)?.code ?? activeLocale?.code ?? "tr";
+  const localize = (path: string) =>
+    activeLocale ? withLocalePrefix(path, activeLocale.code, defaultLocaleCode) : path;
 
   return (
     <header className="border-b border-border bg-surface/80 backdrop-blur">
@@ -67,7 +75,7 @@ export function SiteHeader({ settings, pages, navigationItems, ctaLabel, ctaHref
         className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6"
         aria-label="Site gezinme"
       >
-        <Link href="/" className="flex items-center gap-2 text-lg font-semibold text-foreground">
+        <Link href={localize("/")} className="flex items-center gap-2 text-lg font-semibold text-foreground">
           {settings.logoUrl ? (
             // Sabit KARE kutu modeli TERK EDİLDİ: logo artık kendi doğal en-boy oranını korur.
             // Render yüksekliği `headerLogoHeight` (varsayılan `DEFAULT_HEADER_LOGO_HEIGHT`) ile
@@ -109,14 +117,14 @@ export function SiteHeader({ settings, pages, navigationItems, ctaLabel, ctaHref
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start">
                   {link.children.map((child) => (
-                    <DropdownMenuItem key={child.id} render={<Link href={child.href} />}>
+                    <DropdownMenuItem key={child.id} render={<Link href={localize(child.href)} />}>
                       {child.label}
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuContent>
               </DropdownMenu>
             ) : (
-              <Link key={link.id} href={link.href} className="text-foreground/70 hover:text-foreground">
+              <Link key={link.id} href={localize(link.href)} className="text-foreground/70 hover:text-foreground">
                 {link.label}
               </Link>
             )
@@ -126,14 +134,15 @@ export function SiteHeader({ settings, pages, navigationItems, ctaLabel, ctaHref
             // yazılır, bkz. globals.css `.site-scope` fallback bloğu). Admin'in `--primary`
             // token'ından KASITLI olarak bağımsız.
             <Link
-              href={ctaHref as string}
+              href={localize(ctaHref as string)}
               className="rounded-lg bg-[var(--site-button)] px-3.5 py-1.5 text-sm font-medium text-[var(--site-button-text)] transition-all hover:opacity-85"
             >
               {ctaLabel}
             </Link>
           )}
+          {locales && activeLocale && <LanguageSwitcher locales={locales} activeLocale={activeLocale} />}
           <Link
-            href="/cart"
+            href={localize("/cart")}
             aria-label={`Sepet, ${itemCount} ürün`}
             className="relative inline-flex h-9 w-9 items-center justify-center rounded-lg text-foreground/70 transition-colors hover:bg-surface-muted hover:text-foreground"
           >

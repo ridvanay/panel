@@ -36,6 +36,17 @@ import { getBlogPostContentCounts } from "../../lib/content-counts";
 import { resolveAuthorId } from "../../lib/content-author";
 import { logAudit } from "../../lib/audit";
 import { sanitizeRichHtml } from "../../lib/html-sanitize";
+import {
+  applyFieldLocalization,
+  attachLocalizations,
+  attachLocalizationsOne,
+  deleteContentSlugsForEntity,
+  getLocaleSet,
+  mergeTranslations,
+  resolveEffectiveLocaleCode,
+  resolveEntityIdBySlug,
+  syncContentSlugs,
+} from "../../lib/localization";
 import { sanitizeBlogTranslations } from "./lib/sanitize-content";
 import {
   AutosaveBlogPostRequestSchema,
@@ -72,26 +83,34 @@ function toBlogPostSnapshot(post: BlogPost): Record<string, unknown> {
   };
 }
 
-/**
- * §10.5 Çoklu Dil & Yerelleştirme — `locale=EN` verildiğinde `translations.EN`'deki
- * alan bazlı override'ları uygular (eksik alan TR/kanonik kolondan gelir).
- */
-function applyLocale<T extends BlogPost>(post: T, locale?: "EN"): T {
-  if (locale !== "EN") return post;
-  const translations = (post.translations as Record<string, Record<string, unknown>> | null) ?? {};
-  const en = translations.EN;
-  if (!en) return post;
+const BLOG_POST_STRING_FIELDS = [
+  "title",
+  "seoTitle",
+  "seoDescription",
+  "ogTitle",
+  "canonicalUrl",
+  "excerpt",
+  "contentHtml",
+] as const;
 
-  return {
-    ...post,
-    title: typeof en.title === "string" ? en.title : post.title,
-    seoTitle: typeof en.seoTitle === "string" ? en.seoTitle : post.seoTitle,
-    seoDescription: typeof en.seoDescription === "string" ? en.seoDescription : post.seoDescription,
-    ogTitle: typeof en.ogTitle === "string" ? en.ogTitle : post.ogTitle,
-    canonicalUrl: typeof en.canonicalUrl === "string" ? en.canonicalUrl : post.canonicalUrl,
-    excerpt: typeof en.excerpt === "string" ? en.excerpt : post.excerpt,
-    contentHtml: typeof en.contentHtml === "string" ? en.contentHtml : post.contentHtml,
-  };
+/**
+ * §10.5 Çoklu Dil & Yerelleştirme — `lib/localization.ts`'teki ortak yardımcıyı sarar (bkz.
+ * .claude/architect-scope-i18n.md §9 backend-agent madde 2). `BlogPost`'ta §5.1 istisnası
+ * YOKTUR (yalnızca `Page.isLegalDocument`) — düz alan bazlı sessiz fallback uygulanır.
+ */
+function applyBlogPostLocale<T extends BlogPost>(post: T, effectiveLocale: string | undefined): T {
+  if (!effectiveLocale) return post;
+  return applyFieldLocalization(post, effectiveLocale, BLOG_POST_STRING_FIELDS);
+}
+
+async function toBlogPostDtoLocalized(app: FastifyInstance, post: Parameters<typeof toBlogPostDto>[0]) {
+  const localizations = await attachLocalizationsOne(app, "BLOG_POST", post);
+  return toBlogPostDto(post, localizations);
+}
+
+async function toBlogPostDtosLocalized(app: FastifyInstance, posts: Parameters<typeof toBlogPostDto>[0][]) {
+  const map = await attachLocalizations(app, "BLOG_POST", posts);
+  return posts.map((post) => toBlogPostDto(post, map.get(post.id) ?? []));
 }
 
 /** `/admin/blog` prefix'i altında bağlanır (bkz. app.ts) — tüm durumlar (taslak dahil), authenticated. */
@@ -122,7 +141,7 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
         getBlogPostContentCounts(app.prisma),
       ]);
 
-      return reply.send(ok(rows.map(toBlogPostDto), buildPageMetaWithCounts(rows, limit, counts)));
+      return reply.send(ok(await toBlogPostDtosLocalized(app, rows), buildPageMetaWithCounts(rows, limit, counts)));
     }
   );
 
@@ -154,35 +173,44 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
       const resolvedAuthorId = await resolveAuthorId(app, request.body.authorId, request.user!);
       const authorId = resolvedAuthorId === undefined ? request.user!.id : resolvedAuthorId;
 
-      const post = await app.prisma.blogPost.create({
-        data: {
-          title,
-          slug: slug ? slugify(slug) : slugify(title),
-          excerpt,
-          // Stored-XSS koruması: EDITOR de yazabildiği için (ADMIN'den daha az güvenilir bir rol)
-          // içerik DB'ye yazılmadan önce sanitize edilir — public sitede `dangerouslySetInnerHTML`
-          // ile doğrudan render edilir (bkz. lib/html-sanitize.ts).
-          contentHtml: sanitizeRichHtml(contentHtml),
-          coverImageUrl,
-          status: status ?? "DRAFT",
-          categoryId: categoryId ?? undefined,
-          authorId,
-          seoTitle,
-          seoDescription,
-          ogTitle,
-          ogImageUrl,
-          canonicalUrl,
-          noIndex,
-          translations: (translations ? sanitizeBlogTranslations(translations) : {}) as Prisma.InputJsonValue,
-          publishedAt: status === "PUBLISHED" ? new Date() : null,
-          // Faz 4 (zamanlanmış yayın) — `CreateBlogPostRequestSchema`'nın `refine`'ı zaten
-          // `status === "SCHEDULED"` iken `scheduledAt`'in gelecekte dolu olmasını garanti eder.
-          scheduledAt: status === "SCHEDULED" && scheduledAt ? new Date(scheduledAt) : null,
-        },
-        include: WITH_RELATIONS,
+      const { enabled: enabledLocales } = await getLocaleSet(app);
+      const sanitizedTranslations = translations ? sanitizeBlogTranslations(translations) : {};
+
+      const post = await app.prisma.$transaction(async (tx) => {
+        const created = await tx.blogPost.create({
+          data: {
+            title,
+            slug: slug ? slugify(slug) : slugify(title),
+            excerpt,
+            // Stored-XSS koruması: EDITOR de yazabildiği için (ADMIN'den daha az güvenilir bir rol)
+            // içerik DB'ye yazılmadan önce sanitize edilir — public sitede `dangerouslySetInnerHTML`
+            // ile doğrudan render edilir (bkz. lib/html-sanitize.ts).
+            contentHtml: sanitizeRichHtml(contentHtml),
+            coverImageUrl,
+            status: status ?? "DRAFT",
+            categoryId: categoryId ?? undefined,
+            authorId,
+            seoTitle,
+            seoDescription,
+            ogTitle,
+            ogImageUrl,
+            canonicalUrl,
+            noIndex,
+            translations: sanitizedTranslations as Prisma.InputJsonValue,
+            publishedAt: status === "PUBLISHED" ? new Date() : null,
+            // Faz 4 (zamanlanmış yayın) — `CreateBlogPostRequestSchema`'nın `refine`'ı zaten
+            // `status === "SCHEDULED"` iken `scheduledAt`'in gelecekte dolu olmasını garanti eder.
+            scheduledAt: status === "SCHEDULED" && scheduledAt ? new Date(scheduledAt) : null,
+          },
+          include: WITH_RELATIONS,
+        });
+
+        await syncContentSlugs(tx, enabledLocales, "BLOG_POST", created.id, created.slug, created.translations);
+
+        return created;
       });
 
-      return reply.code(201).send(ok(toBlogPostDto(post)));
+      return reply.code(201).send(ok(await toBlogPostDtoLocalized(app, post)));
     }
   );
 
@@ -196,7 +224,7 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
         include: WITH_RELATIONS,
       });
       if (!post) throw new NotFoundError("Yazı bulunamadı.");
-      return reply.send(ok(toBlogPostDto(post)));
+      return reply.send(ok(await toBlogPostDtoLocalized(app, post)));
     }
   );
 
@@ -226,42 +254,41 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
       // Stored-XSS koruması: gelen çeviriler merge'den ÖNCE sanitize edilir (mevcut kayıttaki
       // çeviriler zaten sanitize edilmiş halde DB'de duruyor — bkz. lib/html-sanitize.ts).
       const sanitizedTranslations = translations !== undefined ? sanitizeBlogTranslations(translations) : undefined;
-
       const mergedTranslations =
-        sanitizedTranslations !== undefined
-          ? {
-              ...((existing.translations as Record<string, Record<string, unknown>>) ?? {}),
-              ...Object.fromEntries(
-                Object.entries(sanitizedTranslations).map(([locale, fields]) => [
-                  locale,
-                  { ...(((existing.translations as Record<string, Record<string, unknown>>) ?? {})[locale] ?? {}), ...fields },
-                ])
-              ),
-            }
-          : undefined;
+        sanitizedTranslations !== undefined ? mergeTranslations(existing.translations, sanitizedTranslations) : undefined;
 
-      const post = await app.prisma.blogPost.update({
-        where: { id: request.params.postId },
-        data: {
-          ...rest,
-          ...(rest.contentHtml !== undefined ? { contentHtml: sanitizeRichHtml(rest.contentHtml) } : {}),
-          ...(slug !== undefined ? { slug: slugify(slug) } : {}),
-          ...(mergedTranslations !== undefined ? { translations: mergedTranslations as Prisma.InputJsonValue } : {}),
-          ...(rest.status === "PUBLISHED" && !existing.publishedAt ? { publishedAt: new Date() } : {}),
-          // Faz 4 (zamanlanmış yayın) — yalnızca bu istekte `status` GÖNDERİLMİŞSE dokunulur (aksi
-          // halde ilgisiz bir alan güncellemesi mevcut bir zamanlamayı bozardı). `status ===
-          // "SCHEDULED"` ise `UpdateBlogPostRequestSchema`'nın `refine`'ı `scheduledAt`'in
-          // gelecekte dolu olmasını garanti eder; `PUBLISHED`/`DRAFT`'a manuel geçişte ise eski
-          // zamanlama artığı kalmasın diye `null`'a temizlenir.
-          ...(rest.status !== undefined
-            ? { scheduledAt: rest.status === "SCHEDULED" && scheduledAt ? new Date(scheduledAt) : null }
-            : {}),
-          ...(resolvedAuthorId !== undefined ? { authorId: resolvedAuthorId } : {}),
-        },
-        include: WITH_RELATIONS,
+      const { enabled: enabledLocales } = await getLocaleSet(app);
+
+      const post = await app.prisma.$transaction(async (tx) => {
+        const updated = await tx.blogPost.update({
+          where: { id: request.params.postId },
+          data: {
+            ...rest,
+            ...(rest.contentHtml !== undefined ? { contentHtml: sanitizeRichHtml(rest.contentHtml) } : {}),
+            ...(slug !== undefined ? { slug: slugify(slug) } : {}),
+            ...(mergedTranslations !== undefined ? { translations: mergedTranslations as Prisma.InputJsonValue } : {}),
+            ...(rest.status === "PUBLISHED" && !existing.publishedAt ? { publishedAt: new Date() } : {}),
+            // Faz 4 (zamanlanmış yayın) — yalnızca bu istekte `status` GÖNDERİLMİŞSE dokunulur (aksi
+            // halde ilgisiz bir alan güncellemesi mevcut bir zamanlamayı bozardı). `status ===
+            // "SCHEDULED"` ise `UpdateBlogPostRequestSchema`'nın `refine`'ı `scheduledAt`'in
+            // gelecekte dolu olmasını garanti eder; `PUBLISHED`/`DRAFT`'a manuel geçişte ise eski
+            // zamanlama artığı kalmasın diye `null`'a temizlenir.
+            ...(rest.status !== undefined
+              ? { scheduledAt: rest.status === "SCHEDULED" && scheduledAt ? new Date(scheduledAt) : null }
+              : {}),
+            ...(resolvedAuthorId !== undefined ? { authorId: resolvedAuthorId } : {}),
+          },
+          include: WITH_RELATIONS,
+        });
+
+        if (slug !== undefined || mergedTranslations !== undefined) {
+          await syncContentSlugs(tx, enabledLocales, "BLOG_POST", updated.id, updated.slug, updated.translations);
+        }
+
+        return updated;
       });
 
-      return reply.send(ok(toBlogPostDto(post)));
+      return reply.send(ok(await toBlogPostDtoLocalized(app, post)));
     }
   );
 
@@ -355,7 +382,7 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
       }
 
       const post = await app.prisma.blogPost.findUnique({ where: { id: existing.id }, include: WITH_RELATIONS });
-      return reply.send(ok(toBlogPostDto(post!)));
+      return reply.send(ok(await toBlogPostDtoLocalized(app, post!)));
     }
   );
 
@@ -371,10 +398,11 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
       if (!existing) throw new NotFoundError("Yazı bulunamadı.");
       if (!existing.deletedAt) throw new ConflictError("Kalıcı silmeden önce içeriği çöpe taşıyın.");
 
-      await app.prisma.$transaction([
-        app.prisma.contentRevision.deleteMany({ where: { entityType: "BLOG_POST", entityId: existing.id } }),
-        app.prisma.blogPost.delete({ where: { id: existing.id } }),
-      ]);
+      await app.prisma.$transaction(async (tx) => {
+        await tx.contentRevision.deleteMany({ where: { entityType: "BLOG_POST", entityId: existing.id } });
+        await deleteContentSlugsForEntity(tx, "BLOG_POST", existing.id);
+        await tx.blogPost.delete({ where: { id: existing.id } });
+      });
 
       await logAudit(app, {
         actorId: request.user!.id,
@@ -481,31 +509,40 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
         translations: unknown;
       };
 
-      const post = await app.prisma.blogPost.update({
-        where: { id: request.params.postId },
-        data: {
-          title: snapshot.title,
-          slug: snapshot.slug,
-          excerpt: snapshot.excerpt,
-          // Savunmada derinlik: bu sanitizasyon eklenmeden ÖNCE kaydedilmiş eski revizyonlar
-          // temizlenmemiş HTML içerebilir — geri yükleme her zaman yeniden sanitize eder.
-          contentHtml: sanitizeRichHtml(snapshot.contentHtml),
-          coverImageUrl: snapshot.coverImageUrl,
-          categoryId: snapshot.categoryId,
-          seoTitle: snapshot.seoTitle,
-          seoDescription: snapshot.seoDescription,
-          ogTitle: snapshot.ogTitle,
-          ogImageUrl: snapshot.ogImageUrl,
-          canonicalUrl: snapshot.canonicalUrl,
-          noIndex: snapshot.noIndex,
-          translations: (snapshot.translations
-            ? sanitizeBlogTranslations(snapshot.translations as Record<string, Record<string, unknown>>)
-            : {}) as Prisma.InputJsonValue,
-        },
-        include: WITH_RELATIONS,
+      const { enabled: enabledLocales } = await getLocaleSet(app);
+      const sanitizedTranslations = snapshot.translations
+        ? sanitizeBlogTranslations(snapshot.translations as Record<string, Record<string, unknown> | null>)
+        : {};
+
+      const post = await app.prisma.$transaction(async (tx) => {
+        const updated = await tx.blogPost.update({
+          where: { id: request.params.postId },
+          data: {
+            title: snapshot.title,
+            slug: snapshot.slug,
+            excerpt: snapshot.excerpt,
+            // Savunmada derinlik: bu sanitizasyon eklenmeden ÖNCE kaydedilmiş eski revizyonlar
+            // temizlenmemiş HTML içerebilir — geri yükleme her zaman yeniden sanitize eder.
+            contentHtml: sanitizeRichHtml(snapshot.contentHtml),
+            coverImageUrl: snapshot.coverImageUrl,
+            categoryId: snapshot.categoryId,
+            seoTitle: snapshot.seoTitle,
+            seoDescription: snapshot.seoDescription,
+            ogTitle: snapshot.ogTitle,
+            ogImageUrl: snapshot.ogImageUrl,
+            canonicalUrl: snapshot.canonicalUrl,
+            noIndex: snapshot.noIndex,
+            translations: sanitizedTranslations as Prisma.InputJsonValue,
+          },
+          include: WITH_RELATIONS,
+        });
+
+        await syncContentSlugs(tx, enabledLocales, "BLOG_POST", updated.id, updated.slug, updated.translations);
+
+        return updated;
       });
 
-      return reply.send(ok(toBlogPostDto(post)));
+      return reply.send(ok(await toBlogPostDtoLocalized(app, post)));
     }
   );
 }
@@ -586,7 +623,12 @@ export async function publicBlogRoutes(app: FastifyInstance) {
 
   server.get(
     "/",
-    { schema: { querystring: CursorQuerySchema, response: { 200: ApiSuccessSchema(z.array(BlogPostSchema)) } } },
+    {
+      schema: {
+        querystring: CursorQuerySchema.merge(LocaleQuerySchema),
+        response: { 200: ApiSuccessSchema(z.array(BlogPostSchema)) },
+      },
+    },
     async (request, reply) => {
       const { cursor, limit } = request.query;
       const cursorSeq = parseCursor(cursor);
@@ -598,7 +640,15 @@ export async function publicBlogRoutes(app: FastifyInstance) {
         include: WITH_RELATIONS,
       });
 
-      return reply.send(ok(rows.map(toBlogPostDto), buildPageMeta(rows, limit)));
+      const localeSet = await getLocaleSet(app);
+      const effectiveLocale = resolveEffectiveLocaleCode(localeSet, request.query.locale);
+      const localizationsByEntity = await attachLocalizations(app, "BLOG_POST", rows);
+
+      const dtos = rows.map((row) =>
+        toBlogPostDto(applyBlogPostLocale(row, effectiveLocale), localizationsByEntity.get(row.id) ?? [])
+      );
+
+      return reply.send(ok(dtos, buildPageMeta(rows, limit)));
     }
   );
 
@@ -608,12 +658,27 @@ export async function publicBlogRoutes(app: FastifyInstance) {
       schema: { params: PostSlugParamSchema, querystring: LocaleQuerySchema, response: { 200: ApiSuccessSchema(BlogPostSchema) } },
     },
     async (request, reply) => {
-      const post = await app.prisma.blogPost.findFirst({
-        where: { slug: request.params.slug, status: "PUBLISHED", deletedAt: null },
-        include: WITH_RELATIONS,
-      });
-      if (!post) throw new NotFoundError("Yazı bulunamadı.");
-      return reply.send(ok(toBlogPostDto(applyLocale(post, request.query.locale))));
+      const localeSet = await getLocaleSet(app);
+      const effectiveLocale = resolveEffectiveLocaleCode(localeSet, request.query.locale);
+
+      // §4/§12.2 — slug çözümlemesi `/pages/{slug}` ile BİREBİR AYNIDIR.
+      const translatedEntityId = await resolveEntityIdBySlug(app, "BLOG_POST", request.params.slug, effectiveLocale);
+      const post = translatedEntityId
+        ? await app.prisma.blogPost.findFirst({
+            where: { id: translatedEntityId, status: "PUBLISHED", deletedAt: null },
+            include: WITH_RELATIONS,
+          })
+        : null;
+      const resolvedPost =
+        post ??
+        (await app.prisma.blogPost.findFirst({
+          where: { slug: request.params.slug, status: "PUBLISHED", deletedAt: null },
+          include: WITH_RELATIONS,
+        }));
+      if (!resolvedPost) throw new NotFoundError("Yazı bulunamadı.");
+
+      const localizations = await attachLocalizationsOne(app, "BLOG_POST", resolvedPost);
+      return reply.send(ok(toBlogPostDto(applyBlogPostLocale(resolvedPost, effectiveLocale), localizations)));
     }
   );
 

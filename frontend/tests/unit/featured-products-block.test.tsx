@@ -55,6 +55,7 @@ function makeProduct(overrides: Partial<Product> = {}): Product {
     author: null,
     seoScore: 0,
     seoScoreIssues: [],
+    localizations: [],
     ...overrides,
   };
 }

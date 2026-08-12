@@ -1,0 +1,41 @@
+import type { NamespaceDictionary } from "./types";
+
+/** Panel genelinde tekrarlanan ortak buton/durum etiketleri. */
+export const commonDictionary: NamespaceDictionary = {
+  tr: {
+    "common.save": "Kaydet",
+    "common.saving": "Kaydediliyor…",
+    "common.cancel": "İptal",
+    "common.delete": "Sil",
+    "common.edit": "Düzenle",
+    "common.add": "Ekle",
+    "common.close": "Kapat",
+    "common.confirm": "Onayla",
+    "common.retry": "Tekrar Dene",
+    "common.loading": "Yükleniyor…",
+    "common.search": "Ara",
+    "common.draft": "Taslak",
+    "common.published": "Yayında",
+    "common.scheduled": "Zamanlanmış",
+    "common.unsavedChanges": "Kaydedilmemiş değişiklik",
+    "common.itemsCount": "{count} öğe",
+  },
+  en: {
+    "common.save": "Save",
+    "common.saving": "Saving…",
+    "common.cancel": "Cancel",
+    "common.delete": "Delete",
+    "common.edit": "Edit",
+    "common.add": "Add",
+    "common.close": "Close",
+    "common.confirm": "Confirm",
+    "common.retry": "Retry",
+    "common.loading": "Loading…",
+    "common.search": "Search",
+    "common.draft": "Draft",
+    "common.published": "Published",
+    "common.scheduled": "Scheduled",
+    "common.unsavedChanges": "Unsaved change",
+    "common.itemsCount": "{count} items",
+  },
+};

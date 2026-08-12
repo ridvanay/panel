@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import * as blogApi from "@/lib/api/blog";
 import * as revisionsApi from "@/lib/api/revisions";
-import type { BlogCategory, ContentStatus, ContentTranslations } from "@/lib/api/types";
+import * as localesApi from "@/lib/api/locales";
+import type { BlogCategory, ContentStatus, ContentTranslations, Locale as LocaleDto } from "@/lib/api/types";
 import { useAutosave } from "@/hooks/use-autosave";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -20,15 +21,18 @@ import { Alert } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { LocaleTabs } from "@/components/admin/locale-tabs";
+import { LocaleFallbackBadge, FALLBACK_FIELD_CLASSES } from "@/components/admin/locale-fallback-badge";
 import { PostEditor } from "@/components/admin/blog/post-editor";
 import { ImageUploadField } from "@/components/admin/media/image-upload-field";
 import { SeoPreview } from "@/components/admin/seo-preview";
 import { RevisionHistory } from "@/components/admin/revision-history";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
+import { computeLocaleStatus, getTranslatedField, isFallbackField, localeStatusDetail, setTranslatedField } from "@/lib/i18n/translation-helpers";
 import { AlertCircle, AlertTriangle, ChevronLeft, FileText, Search, History as HistoryIcon } from "lucide-react";
 import { motion } from "framer-motion";
 
-type Locale = "TR" | "EN";
+const TRANSLATABLE_FIELD_KEYS = ["title", "excerpt", "contentHtml", "seoTitle", "seoDescription", "ogTitle", "canonicalUrl"];
 
 interface PostSnapshot {
   title: string;
@@ -65,25 +69,6 @@ function nowDatetimeLocalValue(): string {
   return toDatetimeLocalValue(new Date().toISOString());
 }
 
-/** İçerik + SEO sekmelerinde TR/EN override arasında geçiş için küçük segmented control. */
-function LocaleToggle({ locale, onChange }: { locale: Locale; onChange: (locale: Locale) => void }) {
-  return (
-    <div className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface-muted p-1">
-      {(["TR", "EN"] as const).map((option) => (
-        <Button
-          key={option}
-          type="button"
-          size="xs"
-          variant={locale === option ? "default" : "ghost"}
-          onClick={() => onChange(option)}
-        >
-          {option}
-        </Button>
-      ))}
-    </div>
-  );
-}
-
 export default function EditBlogPostPage({ params }: { params: Promise<{ postId: string }> }) {
   const { postId } = use(params);
   const router = useRouter();
@@ -95,7 +80,25 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [locale, setLocale] = useState<Locale>("TR");
+  const [locales, setLocales] = useState<LocaleDto[]>([]);
+  const [locale, setLocale] = useState<string>("");
+  const [savedTranslations, setSavedTranslations] = useState<ContentTranslations>({});
+
+  const defaultLocale = locales.find((l) => l.isDefault) ?? null;
+  const isDefaultLocale = !defaultLocale || locale === defaultLocale.code;
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const data = await localesApi.listAdminLocales();
+        const sorted = [...data].sort((a, b) => a.sortOrder - b.sortOrder);
+        setLocales(sorted);
+        setLocale((prev) => prev || sorted.find((l) => l.isDefault)?.code || sorted[0]?.code || "tr");
+      } catch {
+        setLocale((prev) => prev || "tr");
+      }
+    })();
+  }, []);
 
   const [title, setTitle] = useState("");
   const [slug, setSlug] = useState("");
@@ -122,12 +125,11 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
   const [editorGeneration, setEditorGeneration] = useState(0);
 
   function getEnField(key: string): string {
-    const value = translations.EN?.[key];
-    return typeof value === "string" ? value : "";
+    return getTranslatedField(translations, locale, key);
   }
 
   function setEnField(key: string, value: string) {
-    setTranslations((prev) => ({ ...prev, EN: { ...(prev.EN ?? {}), [key]: value } }));
+    setTranslatedField(setTranslations, locale, key, value);
   }
 
   const load = useCallback(async () => {
@@ -165,6 +167,7 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
       setCanonicalUrl(nextSnapshot.canonicalUrl);
       setNoIndex(nextSnapshot.noIndex);
       setTranslations(post.translations ?? {});
+      setSavedTranslations(post.translations ?? {});
       setViewCount(post.viewCount);
       setPublishedAt(post.publishedAt);
       setCategories(cats);
@@ -234,10 +237,10 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
 
   // Sessiz crash/kapatma-kurtarma güvenlik ağı — mevcut "Kaydet" butonunun/`hasUnsavedChanges`
   // akışının YERİNE GEÇMEZ (bkz. `use-autosave.ts`), bu yüzden başarıda `snapshot` GÜNCELLENMEZ.
-  // Yalnızca TR içerik + yalnızca yüklendikten sonra aktif (EN çevirisi bu turun kapsamı dışında).
+  // Yalnızca varsayılan dil içeriği + yalnızca yüklendikten sonra aktif (çeviri sekmeleri bu turun kapsamı dışında).
   const { status: autosaveStatus, lastSavedAt: autosaveSavedAt } = useAutosave({
     values: [title, excerpt, contentHtml],
-    enabled: loaded && locale === "TR",
+    enabled: loaded && isDefaultLocale,
     save: () => blogApi.autosavePost(postId, { title, excerpt: excerpt || null, contentHtml }),
   });
 
@@ -263,6 +266,7 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
         translations,
       });
       toast.success("Yazı kaydedildi.");
+      setSavedTranslations(translations);
       await load();
     } catch (err) {
       const message = friendlyErrorMessage(err);
@@ -376,23 +380,41 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
         </TabsList>
 
         <TabsContent value="content" className="mt-6 space-y-6 outline-none">
-          <div className="flex justify-end">
-            <LocaleToggle locale={locale} onChange={setLocale} />
-          </div>
+          {locales.length > 0 && (
+            <div className="flex justify-end">
+              <LocaleTabs
+                locales={locales}
+                value={locale}
+                onValueChange={setLocale}
+                statusFor={(code) => computeLocaleStatus(savedTranslations, code, TRANSLATABLE_FIELD_KEYS)}
+                partialDetailFor={(code) => localeStatusDetail(savedTranslations, code, TRANSLATABLE_FIELD_KEYS)}
+              />
+            </div>
+          )}
 
           <Card className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field id="title" label="Başlık" required={locale === "TR"}>
-                {(inputProps) => (
-                  <Input
-                    {...inputProps}
-                    required={locale === "TR"}
-                    value={locale === "TR" ? title : getEnField("title")}
-                    onChange={(e) =>
-                      locale === "TR" ? setTitle(e.target.value) : setEnField("title", e.target.value)
-                    }
-                  />
-                )}
+              <Field id="title" label="Başlık" required={isDefaultLocale}>
+                {(inputProps) => {
+                  const fallback = !isDefaultLocale && isFallbackField(translations, locale, "title", title);
+                  return (
+                    <>
+                      {fallback && defaultLocale && (
+                        <div className="mb-1 flex justify-end">
+                          <LocaleFallbackBadge defaultLabel={defaultLocale.nativeLabel} />
+                        </div>
+                      )}
+                      <Input
+                        {...inputProps}
+                        required={isDefaultLocale}
+                        className={fallback ? FALLBACK_FIELD_CLASSES : undefined}
+                        placeholder={fallback ? title : undefined}
+                        value={isDefaultLocale ? title : getEnField("title")}
+                        onChange={(e) => (isDefaultLocale ? setTitle(e.target.value) : setEnField("title", e.target.value))}
+                      />
+                    </>
+                  );
+                }}
               </Field>
               <Field id="slug" label="Slug (URL)" required>
                 {(inputProps) => <Input {...inputProps} required value={slug} onChange={(e) => setSlug(e.target.value)} />}
@@ -403,9 +425,9 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
               {(inputProps) => (
                 <Textarea
                   {...inputProps}
-                  value={locale === "TR" ? excerpt : getEnField("excerpt")}
+                  value={isDefaultLocale ? excerpt : getEnField("excerpt")}
                   onChange={(e) =>
-                    locale === "TR" ? setExcerpt(e.target.value) : setEnField("excerpt", e.target.value)
+                    isDefaultLocale ? setExcerpt(e.target.value) : setEnField("excerpt", e.target.value)
                   }
                   rows={2}
                 />
@@ -455,12 +477,12 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
 
           <div>
             <label className="mb-1.5 block text-sm font-medium text-foreground">
-              İçerik {locale === "EN" && <span className="text-foreground/40">(EN)</span>}
+              İçerik {!isDefaultLocale && <span className="text-foreground/40">({locale.toUpperCase()})</span>}
             </label>
             <PostEditor
               key={`${locale}-${editorGeneration}`}
-              content={locale === "TR" ? contentHtml : getEnField("contentHtml")}
-              onChange={(html) => (locale === "TR" ? setContentHtml(html) : setEnField("contentHtml", html))}
+              content={isDefaultLocale ? contentHtml : getEnField("contentHtml")}
+              onChange={(html) => (isDefaultLocale ? setContentHtml(html) : setEnField("contentHtml", html))}
             />
           </div>
         </TabsContent>
@@ -468,18 +490,26 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
         <TabsContent value="seo" className="mt-6 outline-none">
           <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
             <div className="min-w-0 space-y-4">
-              <div className="flex justify-end">
-                <LocaleToggle locale={locale} onChange={setLocale} />
-              </div>
+              {locales.length > 0 && (
+                <div className="flex justify-end">
+                  <LocaleTabs
+                    locales={locales}
+                    value={locale}
+                    onValueChange={setLocale}
+                    statusFor={(code) => computeLocaleStatus(savedTranslations, code, TRANSLATABLE_FIELD_KEYS)}
+                    partialDetailFor={(code) => localeStatusDetail(savedTranslations, code, TRANSLATABLE_FIELD_KEYS)}
+                  />
+                </div>
+              )}
 
               <Card className="space-y-4">
                 <Field id="seoTitle" label="SEO başlığı">
                   {(inputProps) => (
                     <Input
                       {...inputProps}
-                      value={locale === "TR" ? seoTitle : getEnField("seoTitle")}
+                      value={isDefaultLocale ? seoTitle : getEnField("seoTitle")}
                       onChange={(e) =>
-                        locale === "TR" ? setSeoTitle(e.target.value) : setEnField("seoTitle", e.target.value)
+                        isDefaultLocale ? setSeoTitle(e.target.value) : setEnField("seoTitle", e.target.value)
                       }
                     />
                   )}
@@ -488,9 +518,9 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
                   {(inputProps) => (
                     <Textarea
                       {...inputProps}
-                      value={locale === "TR" ? seoDescription : getEnField("seoDescription")}
+                      value={isDefaultLocale ? seoDescription : getEnField("seoDescription")}
                       onChange={(e) =>
-                        locale === "TR" ? setSeoDescription(e.target.value) : setEnField("seoDescription", e.target.value)
+                        isDefaultLocale ? setSeoDescription(e.target.value) : setEnField("seoDescription", e.target.value)
                       }
                       rows={2}
                     />
@@ -500,14 +530,14 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
                   {(inputProps) => (
                     <Input
                       {...inputProps}
-                      value={locale === "TR" ? ogTitle : getEnField("ogTitle")}
+                      value={isDefaultLocale ? ogTitle : getEnField("ogTitle")}
                       onChange={(e) =>
-                        locale === "TR" ? setOgTitle(e.target.value) : setEnField("ogTitle", e.target.value)
+                        isDefaultLocale ? setOgTitle(e.target.value) : setEnField("ogTitle", e.target.value)
                       }
                     />
                   )}
                 </Field>
-                {locale === "TR" && (
+                {isDefaultLocale && (
                   <ImageUploadField
                     id="ogImageUrl"
                     label="Sosyal medya (OG) görseli"
@@ -521,14 +551,14 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
                       {...inputProps}
                       type="url"
                       placeholder="https://…"
-                      value={locale === "TR" ? canonicalUrl : getEnField("canonicalUrl")}
+                      value={isDefaultLocale ? canonicalUrl : getEnField("canonicalUrl")}
                       onChange={(e) =>
-                        locale === "TR" ? setCanonicalUrl(e.target.value) : setEnField("canonicalUrl", e.target.value)
+                        isDefaultLocale ? setCanonicalUrl(e.target.value) : setEnField("canonicalUrl", e.target.value)
                       }
                     />
                   )}
                 </Field>
-                {locale === "TR" && (
+                {isDefaultLocale && (
                   <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
                     <div>
                       <p className="text-sm font-medium text-foreground">İndekslemeyi engelle</p>

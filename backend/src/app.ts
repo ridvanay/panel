@@ -31,6 +31,7 @@ import { adminSettingsRoutes, publicSettingsRoutes } from "./modules/settings/se
 import { adminAppearanceRoutes, publicAppearanceRoutes } from "./modules/appearance/appearance.routes";
 import { adminSiteModulesRoutes, publicModulesRoutes } from "./modules/site-modules/site-modules.routes";
 import { adminNavigationRoutes, publicNavigationRoutes } from "./modules/navigation/navigation.routes";
+import { adminLocalesRoutes, publicLocalesRoutes } from "./modules/localization/localization.routes";
 import { systemRoutes } from "./modules/system/system.routes";
 import { emailTemplatesRoutes } from "./modules/email-templates/email-templates.routes";
 import { securityTwoFactorRoutes, securitySessionsRoutes } from "./modules/security/security.routes";
@@ -162,6 +163,9 @@ export function buildApp() {
       api.register(adminAppearanceRoutes, { prefix: "/admin/appearance" });
       api.register(publicNavigationRoutes, { prefix: "/navigation" });
       api.register(adminNavigationRoutes, { prefix: "/admin/navigation" });
+      // §10.5 Çoklu Dil & Yerelleştirme — bkz. .claude/architect-scope-i18n.md.
+      api.register(publicLocalesRoutes, { prefix: "/locales" });
+      api.register(adminLocalesRoutes, { prefix: "/admin/locales" });
       // §10.9 Eklenti/Modül Yönetimi — bkz. ARCHITECTURE.md §10.9.
       api.register(publicModulesRoutes, { prefix: "/modules" });
       api.register(adminSiteModulesRoutes, { prefix: "/admin/modules" });

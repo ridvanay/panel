@@ -16,11 +16,11 @@ import {
 import * as usersAdminApi from "@/lib/api/users-admin";
 import * as logsApi from "@/lib/api/logs";
 import type { AdminUser, AuditLog } from "@/lib/api/types";
+import { useAdminLocale } from "@/context/i18n-context";
+import { toIntlLocale } from "@/lib/i18n/intl-locale";
 
-const dateFormatter = new Intl.DateTimeFormat("tr-TR", { dateStyle: "medium", timeStyle: "short" });
-
-function formatDate(iso: string): string {
-  return dateFormatter.format(new Date(iso));
+function formatDate(iso: string, intlLocale: string): string {
+  return new Intl.DateTimeFormat(intlLocale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(iso));
 }
 
 type CriticalStatus = "FAILURE" | "FORBIDDEN";
@@ -46,6 +46,8 @@ type LoadState = "idle" | "loading" | "loaded" | "error";
  */
 export function NotificationCenter() {
   const { user } = useAuth();
+  const { adminLocale } = useAdminLocale();
+  const intlLocale = toIntlLocale(adminLocale);
 
   const [loadState, setLoadState] = React.useState<LoadState>("idle");
   const [recentUsers, setRecentUsers] = React.useState<AdminUser[]>([]);
@@ -158,7 +160,7 @@ export function NotificationCenter() {
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-medium text-foreground">{log.action}</p>
                           <p className="truncate text-xs text-foreground/50">
-                            {log.actorEmail ?? "Sistem"} · {formatDate(log.createdAt)}
+                            {log.actorEmail ?? "Sistem"} · {formatDate(log.createdAt, intlLocale)}
                           </p>
                         </div>
                       </li>

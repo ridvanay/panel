@@ -17,30 +17,32 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCommandPalette } from "@/context/command-palette-context";
+import { useT } from "@/context/i18n-context";
 
 type PaletteItem = {
   href: string;
-  label: string;
+  labelKey: string;
   icon: typeof LayoutDashboard;
   keywords?: string[];
 };
 
 /**
  * `sidebar.tsx`'teki `navItems` ile birebir aynı liste (referans alındı, o dosyaya dokunulmadı).
+ * Etiketler `t()` üzerinden çözümlenir (sözlük anahtarları `nav.*`/`commandPalette.*`).
  */
 const pageItems: PaletteItem[] = [
-  { href: "/admin", label: "Genel Bakış", icon: LayoutDashboard },
-  { href: "/admin/pages", label: "Sayfalar", icon: FileText },
-  { href: "/admin/blog", label: "Blog", icon: Newspaper },
-  { href: "/admin/stats", label: "İstatistikler", icon: BarChart3 },
-  { href: "/admin/media", label: "Medya", icon: ImageIcon },
-  { href: "/admin/settings", label: "Ayarlar", icon: Settings },
-  { href: "/admin/account", label: "Hesabım", icon: User, keywords: ["profil", "şifre", "avatar"] },
+  { href: "/admin", labelKey: "nav.overview", icon: LayoutDashboard },
+  { href: "/admin/pages", labelKey: "nav.pages", icon: FileText },
+  { href: "/admin/blog", labelKey: "nav.blog", icon: Newspaper },
+  { href: "/admin/stats", labelKey: "nav.stats", icon: BarChart3 },
+  { href: "/admin/media", labelKey: "nav.media", icon: ImageIcon },
+  { href: "/admin/settings", labelKey: "nav.settings", icon: Settings },
+  { href: "/admin/account", labelKey: "commandPalette.myAccount", icon: User, keywords: ["profil", "şifre", "avatar"] },
 ];
 
 const quickActionItems: PaletteItem[] = [
-  { href: "/admin/blog/new", label: "Yeni blog yazısı oluştur", icon: PlusCircle, keywords: ["blog", "yazı", "yeni"] },
-  { href: "/admin/pages/new", label: "Yeni sayfa oluştur", icon: FilePlus2, keywords: ["sayfa", "yeni"] },
+  { href: "/admin/blog/new", labelKey: "commandPalette.newBlogPost", icon: PlusCircle, keywords: ["blog", "yazı", "yeni"] },
+  { href: "/admin/pages/new", labelKey: "commandPalette.newPage", icon: FilePlus2, keywords: ["sayfa", "yeni"] },
 ];
 
 const itemClassName =
@@ -53,6 +55,7 @@ export function CommandPalette() {
   const { open, setOpen } = useCommandPalette();
   const [search, setSearch] = useState("");
   const router = useRouter();
+  const t = useT();
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -86,7 +89,7 @@ export function CommandPalette() {
     <Command.Dialog
       open={open}
       onOpenChange={handleOpenChange}
-      label="Komut Menüsü"
+      label={t("commandPalette.label")}
       loop
       overlayClassName="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0"
       contentClassName={cn(
@@ -100,44 +103,50 @@ export function CommandPalette() {
           value={search}
           onValueChange={setSearch}
           autoFocus
-          placeholder="Bir sayfa ara veya bir eylem seç..."
+          placeholder={t("commandPalette.placeholder")}
           className="h-12 w-full bg-transparent text-sm text-foreground placeholder:text-foreground/40 outline-none focus:ring-0"
         />
       </div>
 
       <Command.List className="max-h-80 overflow-y-auto p-2">
         <Command.Empty className="px-3 py-6 text-center text-sm text-foreground/50">
-          Sonuç bulunamadı.
+          {t("commandPalette.noResults")}
         </Command.Empty>
 
-        <Command.Group heading="Sayfalar" className={groupClassName}>
-          {pageItems.map((item) => (
-            <Command.Item
-              key={item.href}
-              value={item.label}
-              keywords={[item.href, ...(item.keywords ?? [])]}
-              onSelect={() => runCommand(item.href)}
-              className={itemClassName}
-            >
-              <item.icon className="h-4 w-4 shrink-0 text-foreground/50" />
-              <span>{item.label}</span>
-            </Command.Item>
-          ))}
+        <Command.Group heading={t("commandPalette.pagesGroup")} className={groupClassName}>
+          {pageItems.map((item) => {
+            const label = t(item.labelKey);
+            return (
+              <Command.Item
+                key={item.href}
+                value={label}
+                keywords={[item.href, ...(item.keywords ?? [])]}
+                onSelect={() => runCommand(item.href)}
+                className={itemClassName}
+              >
+                <item.icon className="h-4 w-4 shrink-0 text-foreground/50" />
+                <span>{label}</span>
+              </Command.Item>
+            );
+          })}
         </Command.Group>
 
-        <Command.Group heading="Hızlı Eylemler" className={groupClassName}>
-          {quickActionItems.map((item) => (
-            <Command.Item
-              key={item.href}
-              value={item.label}
-              keywords={[item.href, ...(item.keywords ?? [])]}
-              onSelect={() => runCommand(item.href)}
-              className={itemClassName}
-            >
-              <item.icon className="h-4 w-4 shrink-0 text-primary" />
-              <span>{item.label}</span>
-            </Command.Item>
-          ))}
+        <Command.Group heading={t("commandPalette.quickActionsGroup")} className={groupClassName}>
+          {quickActionItems.map((item) => {
+            const label = t(item.labelKey);
+            return (
+              <Command.Item
+                key={item.href}
+                value={label}
+                keywords={[item.href, ...(item.keywords ?? [])]}
+                onSelect={() => runCommand(item.href)}
+                className={itemClassName}
+              >
+                <item.icon className="h-4 w-4 shrink-0 text-primary" />
+                <span>{label}</span>
+              </Command.Item>
+            );
+          })}
         </Command.Group>
       </Command.List>
     </Command.Dialog>

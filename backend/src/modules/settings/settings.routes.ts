@@ -6,6 +6,7 @@ import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema } from "../../schemas/common";
 import { PageSchema, SiteSettingsSchema } from "../../schemas/entities";
 import { toPageDto, toSiteSettingsDto } from "../../mappers";
+import { attachLocalizationsOne } from "../../lib/localization";
 import { logAudit } from "../../lib/audit";
 import { PERMISSIONS_MATRIX } from "../../lib/permissions-matrix";
 import { PermissionsMatrixDto, PermissionsMatrixSchema, UpdateSiteSettingsRequestSchema } from "./settings.schemas";
@@ -46,7 +47,13 @@ export async function publicSettingsRoutes(app: FastifyInstance) {
       where: { id: settings.homePageId, status: "PUBLISHED", deletedAt: null },
       include: { author: true },
     });
-    return reply.send(ok(page ? toPageDto(page) : null));
+    if (!page) return reply.send(ok(null));
+
+    // §10.5 Çoklu Dil & Yerelleştirme — `PageSchema.localizations` artık ZORUNLU bir alan;
+    // bu uç `?locale=` KABUL ETMEZ (her zaman kanonik/varsayılan dili döner, bkz. openapi.yaml
+    // bu ucun sözleşmesi) ama yanıt şeması yine de dolu bir `localizations` dizisi bekler.
+    const localizations = await attachLocalizationsOne(app, "PAGE", page);
+    return reply.send(ok(toPageDto(page, localizations)));
   });
 }
 

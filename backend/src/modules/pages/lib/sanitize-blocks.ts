@@ -30,10 +30,13 @@ export function sanitizePageBlocks(blocks: unknown[]): unknown[] {
  * sanitize edilmemiş HTML sızabilirdi (bkz. pages.routes.ts::applyLocale).
  */
 export function sanitizePageTranslations(
-  translations: Record<string, Record<string, unknown>>
-): Record<string, Record<string, unknown>> {
+  translations: Record<string, Record<string, unknown> | null>
+): Record<string, Record<string, unknown> | null> {
   return Object.fromEntries(
     Object.entries(translations).map(([locale, fields]) => {
+      // §9 backend-agent madde 5 — `null` = bu dilin çevirisini SİL; sanitize edilecek
+      // içerik yok, olduğu gibi geçirilir (bkz. lib/localization.ts::mergeTranslations).
+      if (fields === null) return [locale, null];
       if (!Array.isArray(fields.blocks)) return [locale, fields];
       return [locale, { ...fields, blocks: sanitizePageBlocks(fields.blocks) }];
     })

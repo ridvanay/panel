@@ -34,6 +34,7 @@ import type {
   OrderItem,
   SiteAppearance,
   SiteCustomCode,
+  Locale,
 } from "@prisma/client";
 import type {
   UserDto,
@@ -75,6 +76,8 @@ import type {
   SiteAppearanceDto,
   PublicSiteAppearanceDto,
   SiteCustomCodeDto,
+  LocaleDto,
+  ContentLocalizationDto,
 } from "../schemas/entities";
 import { env } from "../config/env";
 import {
@@ -202,7 +205,12 @@ export function toUserSummaryDto(user: User): UserSummaryDto {
 
 type PageWithAuthor = Page & { author?: User | null };
 
-export function toPageDto(page: PageWithAuthor): PageDto {
+/**
+ * §10.5 Çoklu Dil & Yerelleştirme — `localizations` çağıran tarafta TEK bir toplu sorguyla
+ * (bkz. lib/localization.ts::attachLocalizations, N+1 YASAK) hesaplanır ve buraya geçirilir;
+ * bu fonksiyon DB'ye ERİŞMEZ (saf/senkron kalır, `computePageSeoScore` ile AYNI ilke).
+ */
+export function toPageDto(page: PageWithAuthor, localizations: ContentLocalizationDto[] = []): PageDto {
   const { score, issues } = computePageSeoScore(page);
 
   return {
@@ -217,7 +225,9 @@ export function toPageDto(page: PageWithAuthor): PageDto {
     ogImageUrl: page.ogImageUrl,
     canonicalUrl: page.canonicalUrl,
     noIndex: page.noIndex,
+    isLegalDocument: page.isLegalDocument,
     translations: (page.translations as Record<string, Record<string, unknown>>) ?? {},
+    localizations,
     publishedAt: page.publishedAt ? page.publishedAt.toISOString() : null,
     scheduledAt: page.scheduledAt ? page.scheduledAt.toISOString() : null,
     viewCount: page.viewCount,
@@ -354,7 +364,7 @@ export function toNavigationConfigDto({ settings, navigationItems, socialLinks, 
   };
 }
 
-export function toBlogPostDto(post: BlogPostWithCategory): BlogPostDto {
+export function toBlogPostDto(post: BlogPostWithCategory, localizations: ContentLocalizationDto[] = []): BlogPostDto {
   const { score, issues } = computeBlogPostSeoScore(post);
 
   return {
@@ -373,6 +383,7 @@ export function toBlogPostDto(post: BlogPostWithCategory): BlogPostDto {
     canonicalUrl: post.canonicalUrl,
     noIndex: post.noIndex,
     translations: (post.translations as Record<string, Record<string, unknown>>) ?? {},
+    localizations,
     publishedAt: post.publishedAt ? post.publishedAt.toISOString() : null,
     scheduledAt: post.scheduledAt ? post.scheduledAt.toISOString() : null,
     viewCount: post.viewCount,
@@ -413,7 +424,7 @@ type ProductWithRelations = Product & {
   images?: ProductImageWithMedia[];
 };
 
-export function toProductDto(product: ProductWithRelations): ProductDto {
+export function toProductDto(product: ProductWithRelations, localizations: ContentLocalizationDto[] = []): ProductDto {
   const { score, issues } = computeProductSeoScore({
     seoTitle: product.seoTitle,
     seoDescription: product.seoDescription,
@@ -445,6 +456,7 @@ export function toProductDto(product: ProductWithRelations): ProductDto {
     canonicalUrl: product.canonicalUrl,
     noIndex: product.noIndex,
     translations: (product.translations as Record<string, Record<string, unknown>>) ?? {},
+    localizations,
     publishedAt: product.publishedAt ? product.publishedAt.toISOString() : null,
     scheduledAt: product.scheduledAt ? product.scheduledAt.toISOString() : null,
     viewCount: product.viewCount,
@@ -485,7 +497,7 @@ type PortfolioItemWithRelations = PortfolioItem & {
   images?: PortfolioImageWithMedia[];
 };
 
-export function toPortfolioItemDto(item: PortfolioItemWithRelations): PortfolioItemDto {
+export function toPortfolioItemDto(item: PortfolioItemWithRelations, localizations: ContentLocalizationDto[] = []): PortfolioItemDto {
   const { score, issues } = computePortfolioItemSeoScore({
     seoTitle: item.seoTitle,
     seoDescription: item.seoDescription,
@@ -515,6 +527,7 @@ export function toPortfolioItemDto(item: PortfolioItemWithRelations): PortfolioI
     canonicalUrl: item.canonicalUrl,
     noIndex: item.noIndex,
     translations: (item.translations as Record<string, Record<string, unknown>>) ?? {},
+    localizations,
     publishedAt: item.publishedAt ? item.publishedAt.toISOString() : null,
     scheduledAt: item.scheduledAt ? item.scheduledAt.toISOString() : null,
     viewCount: item.viewCount,
@@ -800,6 +813,26 @@ type SiteCustomCodeWithUpdaters = SiteCustomCode & { cssUpdatedBy: User | null; 
  * — ortamın kill switch durumu (`CUSTOM_CODE_ENABLED`) — ÇAĞIRAN TARAFTAN gelir, bu tabloda bir
  * kolon DEĞİLDİR.
  */
+// ---------- §10.5 Çoklu Dil & Yerelleştirme ----------
+
+/**
+ * `translatedContentCount` YALNIZCA `/admin/locales` yanıtlarında dolu döner (bkz.
+ * openapi.yaml `Locale.translatedContentCount`) — public `/locales` çağıran taraf bu
+ * parametreyi vermez.
+ */
+export function toLocaleDto(locale: Locale, translatedContentCount?: number): LocaleDto {
+  return {
+    code: locale.code,
+    label: locale.label,
+    nativeLabel: locale.nativeLabel,
+    isDefault: locale.isDefault,
+    enabled: locale.enabled,
+    sortOrder: locale.sortOrder,
+    hreflang: locale.hreflang,
+    ...(translatedContentCount !== undefined ? { translatedContentCount } : {}),
+  };
+}
+
 export function toSiteCustomCodeDto(row: SiteCustomCodeWithUpdaters | null, customCodeEnabled: boolean): SiteCustomCodeDto {
   return {
     css: row?.customCss ?? null,

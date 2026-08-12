@@ -9,10 +9,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useT } from "@/context/i18n-context";
 
 interface ShortcutEntry {
   keys: string[];
-  description: string;
+  descriptionKey: string;
 }
 
 /**
@@ -21,11 +22,11 @@ interface ShortcutEntry {
  * buraya EKLENMEMELİDİR.
  */
 const shortcuts: ShortcutEntry[] = [
-  { keys: ["Ctrl/Cmd", "K"], description: "Hızlı arama (komut menüsünü aç)" },
-  { keys: ["?"], description: "Bu kısayol kılavuzunu aç" },
-  { keys: ["G", "D"], description: "Genel Bakış sayfasına git" },
-  { keys: ["G", "U"], description: "Kullanıcılar sayfasına git" },
-  { keys: ["G", "B"], description: "Blog sayfasına git" },
+  { keys: ["Ctrl/Cmd", "K"], descriptionKey: "shortcuts.quickSearch" },
+  { keys: ["?"], descriptionKey: "shortcuts.openGuide" },
+  { keys: ["G", "D"], descriptionKey: "shortcuts.goOverview" },
+  { keys: ["G", "U"], descriptionKey: "shortcuts.goUsers" },
+  { keys: ["G", "B"], descriptionKey: "shortcuts.goBlog" },
 ];
 
 /**
@@ -48,6 +49,7 @@ export function KeyboardShortcutsModal() {
   const [gPending, setGPending] = useState(false);
   const gTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const router = useRouter();
+  const t = useT();
 
   useEffect(() => {
     function clearGPending() {
@@ -103,20 +105,20 @@ export function KeyboardShortcutsModal() {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Klavye Kısayolları</DialogTitle>
-          <DialogDescription>Panelde kullanabileceğiniz kısayolların listesi.</DialogDescription>
+          <DialogTitle>{t("shortcuts.title")}</DialogTitle>
+          <DialogDescription>{t("shortcuts.description")}</DialogDescription>
         </DialogHeader>
         <ul className="space-y-2.5">
           {shortcuts.map((shortcut) => (
             <li
-              key={shortcut.description}
+              key={shortcut.descriptionKey}
               className="flex items-center justify-between gap-4 text-sm text-foreground/80"
             >
-              <span>{shortcut.description}</span>
+              <span>{t(shortcut.descriptionKey)}</span>
               <span className="flex shrink-0 items-center gap-1">
                 {shortcut.keys.map((key, index) => (
                   <span key={key} className="flex items-center gap-1">
-                    {index > 0 && <span className="text-xs text-foreground/40">sonra</span>}
+                    {index > 0 && <span className="text-xs text-foreground/40">{t("shortcuts.then")}</span>}
                     <kbd className="rounded-md border border-border bg-muted px-1.5 py-0.5 font-mono text-xs font-medium text-foreground">
                       {key}
                     </kbd>

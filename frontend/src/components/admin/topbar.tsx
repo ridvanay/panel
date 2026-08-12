@@ -1,6 +1,6 @@
 "use client";
 
-import { LogOut, Languages, Search, ShieldCheck, User } from "lucide-react";
+import { LogOut, Languages, Check, Search, ShieldCheck, User } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/auth-context";
 import { useAdminLocale, useT } from "@/context/i18n-context";
@@ -21,9 +21,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { AdminLocale } from "@/lib/i18n/dictionaries";
 
+// design-notes-i18n.md §1.2/§4 — bayrak KULLANILMAZ (bayrak ülke temsil eder, dil değil);
+// sade kısa kod ("TR"/"EN") + `Languages` ikonu tek başına "hangi dil" bilgisini taşır.
 const LOCALE_OPTIONS: { value: AdminLocale; label: string }[] = [
-  { value: "tr", label: "🇹🇷 TR" },
-  { value: "en", label: "🇬🇧 EN" },
+  { value: "tr", label: "TR" },
+  { value: "en", label: "EN" },
 ];
 
 function AdminLocaleSwitcher() {
@@ -44,9 +46,11 @@ function AdminLocaleSwitcher() {
           <DropdownMenuItem
             key={option.value}
             onClick={() => setAdminLocale(option.value)}
-            className={option.value === adminLocale ? "font-medium" : undefined}
+            className={cn("gap-2", option.value === adminLocale ? "font-medium" : undefined)}
           >
             {option.label}
+            {/* design-notes-i18n.md §1.2 — seçili öğe `Check` ikonu ile işaretlenir (accent-color-picker.tsx ile aynı desen), tek sinyal olmasın diye `font-medium` İLE BİRLİKTE. */}
+            {option.value === adminLocale && <Check className="ml-auto h-4 w-4" />}
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>
@@ -58,6 +62,7 @@ export function AdminTopbar() {
   const { user, logout } = useAuth();
   const { setOpen } = useCommandPalette();
   const { adminLocale, setAdminLocale } = useAdminLocale();
+  const t = useT();
   const router = useRouter();
   if (!user) return null;
 
@@ -70,19 +75,19 @@ export function AdminTopbar() {
           variant="ghost"
           size="icon"
           className="md:hidden"
-          aria-label="Ara"
+          aria-label={t("topbar.search")}
           onClick={() => setOpen(true)}
         >
           <Search className="h-4 w-4" />
         </Button>
         <button
           type="button"
-          aria-label="Komut menüsünü aç"
+          aria-label={t("topbar.openCommandPalette")}
           onClick={() => setOpen(true)}
           className="hidden h-8 w-64 items-center gap-2 rounded-lg border border-input bg-transparent px-2.5 text-sm text-foreground/40 transition-colors hover:text-foreground/60 md:flex"
         >
           <Search className="h-4 w-4 shrink-0" />
-          <span className="flex-1 text-left">Ara...</span>
+          <span className="flex-1 text-left">{t("topbar.searchPlaceholder")}</span>
           <kbd className="rounded border border-input px-1.5 py-0.5 font-mono text-[10px] text-foreground/40">
             ⌘K
           </kbd>
@@ -101,7 +106,7 @@ export function AdminTopbar() {
             render={
               <button
                 type="button"
-                aria-label="Hesap menüsü"
+                aria-label={t("topbar.accountMenu")}
                 className="flex items-center gap-2 rounded-lg px-1.5 py-1 transition-colors hover:bg-surface-muted"
               />
             }
@@ -111,7 +116,7 @@ export function AdminTopbar() {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <div className="flex items-center justify-between gap-2 px-1.5 py-1 sm:hidden">
-              <div className="flex items-center gap-1" role="group" aria-label="Dil">
+              <div className="flex items-center gap-1" role="group" aria-label={t("topbar.language")}>
                 {LOCALE_OPTIONS.map((option) => (
                   <button
                     key={option.value}
@@ -134,16 +139,16 @@ export function AdminTopbar() {
             <DropdownMenuSeparator className="sm:hidden" />
             <DropdownMenuItem onClick={() => router.push("/admin/account")}>
               <User className="h-4 w-4" />
-              Hesabım
+              {t("topbar.myAccount")}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => router.push("/admin/settings/security")}>
               <ShieldCheck className="h-4 w-4" />
-              Güvenlik
+              {t("topbar.security")}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => logout()}>
               <LogOut className="h-4 w-4" />
-              Çıkış Yap
+              {t("topbar.logout")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

@@ -117,6 +117,7 @@ describe("NewProductPage — form validasyonu", () => {
       author: null,
       seoScore: 0,
       seoScoreIssues: [],
+      localizations: [],
     });
     const user = userEvent.setup();
 

@@ -173,6 +173,35 @@ export const BulkContentActionResultSchema = z.object({
 });
 export type BulkContentActionResultDto = z.infer<typeof BulkContentActionResultSchema>;
 
+// ---------- §10.5 Çoklu Dil & Yerelleştirme (bkz. .claude/architect-scope-i18n.md, bağlayıcı
+// karar dokümanı) — openapi.yaml `Locale`/`ContentLocalization`/`ContentTranslations` şemalarının
+// Zod karşılığı.
+
+export const LocaleSchema = z.object({
+  code: z.string(),
+  label: z.string(),
+  nativeLabel: z.string(),
+  isDefault: z.boolean(),
+  enabled: z.boolean(),
+  sortOrder: z.number().int(),
+  hreflang: z.string().nullable(),
+  // YALNIZCA `/admin/locales` yanıtlarında dolu döner (bkz. openapi.yaml `Locale.translatedContentCount`).
+  translatedContentCount: z.number().int().optional(),
+});
+export type LocaleDto = z.infer<typeof LocaleSchema>;
+
+/**
+ * Bir içeriğin TEK bir dildeki yayın durumu/slug'ı — hreflang, sitemap `alternates` ve site
+ * dil değiştiricisi TEK bir istekle bu diziden beslenir (N+1 istek YOK, bkz.
+ * lib/localization.ts::attachLocalizations).
+ */
+export const ContentLocalizationSchema = z.object({
+  locale: z.string(),
+  slug: z.string(),
+  translated: z.boolean(),
+});
+export type ContentLocalizationDto = z.infer<typeof ContentLocalizationSchema>;
+
 export const PageSchema = z.object({
   id: z.string().uuid(),
   title: z.string(),
@@ -186,8 +215,13 @@ export const PageSchema = z.object({
   ogImageUrl: z.string().nullable(),
   canonicalUrl: z.string().nullable(),
   noIndex: z.boolean(),
-  // §10.5 Çoklu Dil & Yerelleştirme — TR (kolonlar) kanonik, translations.EN yalnızca override.
+  // §5.1 hukuki belge istisnası — YALNIZCA SiteRole=ADMIN değiştirebilir (bkz.
+  // .claude/architect-scope-i18n.md §5.1, prisma/schema.prisma::Page.isLegalDocument).
+  isLegalDocument: z.boolean(),
+  // §10.5 Çoklu Dil & Yerelleştirme — TR (kolonlar) kanonik, translations.<locale> yalnızca override.
   translations: z.record(z.string(), z.record(z.string(), z.unknown())),
+  // Bu sayfanın TÜM etkin dillerdeki slug/çeviri durumu — public uçlarda HER ZAMAN dolu döner.
+  localizations: z.array(ContentLocalizationSchema),
   publishedAt: z.string().nullable(),
   // Zamanlanmış yayın hedef tarihi — yalnızca status=SCHEDULED iken anlamlı.
   scheduledAt: z.string().nullable(),
@@ -227,8 +261,10 @@ export const BlogPostSchema = z.object({
   ogImageUrl: z.string().nullable(),
   canonicalUrl: z.string().nullable(),
   noIndex: z.boolean(),
-  // §10.5 Çoklu Dil & Yerelleştirme — TR (kolonlar) kanonik, translations.EN yalnızca override.
+  // §10.5 Çoklu Dil & Yerelleştirme — TR (kolonlar) kanonik, translations.<locale> yalnızca override.
   translations: z.record(z.string(), z.record(z.string(), z.unknown())),
+  // Bu içeriğin TÜM etkin dillerdeki slug/çeviri durumu — public uçlarda HER ZAMAN dolu döner.
+  localizations: z.array(ContentLocalizationSchema),
   publishedAt: z.string().nullable(),
   // Zamanlanmış yayın hedef tarihi — yalnızca status=SCHEDULED iken anlamlı.
   scheduledAt: z.string().nullable(),
@@ -329,8 +365,10 @@ export const ProductSchema = z.object({
   ogImageUrl: z.string().nullable(),
   canonicalUrl: z.string().nullable(),
   noIndex: z.boolean(),
-  // §10.5 Çoklu Dil & Yerelleştirme — TR (kolonlar) kanonik, translations.EN yalnızca override.
+  // §10.5 Çoklu Dil & Yerelleştirme — TR (kolonlar) kanonik, translations.<locale> yalnızca override.
   translations: z.record(z.string(), z.record(z.string(), z.unknown())),
+  // Bu içeriğin TÜM etkin dillerdeki slug/çeviri durumu — public uçlarda HER ZAMAN dolu döner.
+  localizations: z.array(ContentLocalizationSchema),
   publishedAt: z.string().nullable(),
   // Zamanlanmış yayın hedef tarihi — yalnızca status=SCHEDULED iken anlamlı.
   scheduledAt: z.string().nullable(),
@@ -388,8 +426,10 @@ export const PortfolioItemSchema = z.object({
   ogImageUrl: z.string().nullable(),
   canonicalUrl: z.string().nullable(),
   noIndex: z.boolean(),
-  // §10.5 Çoklu Dil & Yerelleştirme — TR (kolonlar) kanonik, translations.EN yalnızca override.
+  // §10.5 Çoklu Dil & Yerelleştirme — TR (kolonlar) kanonik, translations.<locale> yalnızca override.
   translations: z.record(z.string(), z.record(z.string(), z.unknown())),
+  // Bu içeriğin TÜM etkin dillerdeki slug/çeviri durumu — public uçlarda HER ZAMAN dolu döner.
+  localizations: z.array(ContentLocalizationSchema),
   publishedAt: z.string().nullable(),
   // Zamanlanmış yayın hedef tarihi — yalnızca status=SCHEDULED iken anlamlı.
   scheduledAt: z.string().nullable(),

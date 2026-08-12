@@ -44,8 +44,21 @@ export function useAdminLocale(): I18nContextValue {
   return ctx;
 }
 
-/** `t("nav.pages")` gibi anahtar tabanlı çeviri erişimi. Anahtar sözlükte yoksa anahtarın kendisini döner. */
+/**
+ * `t("nav.pages")` gibi anahtar tabanlı çeviri erişimi. Anahtar sözlükte yoksa anahtarın
+ * kendisini döner. `params` verilirse şablondaki `{ad}` yer tutucuları değiştirilir
+ * (ör. `t("content.deleted", { count: 3 })` → sözlükte `"{count} içerik silindi"`).
+ */
 export function useT() {
   const { adminLocale } = useAdminLocale();
-  return useCallback((key: string) => dictionaries[adminLocale][key] ?? key, [adminLocale]);
+  return useCallback(
+    (key: string, params?: Record<string, string | number>) => {
+      const template = dictionaries[adminLocale][key] ?? key;
+      if (!params) return template;
+      return template.replace(/\{(\w+)\}/g, (match, name: string) =>
+        name in params ? String(params[name]) : match
+      );
+    },
+    [adminLocale]
+  );
 }

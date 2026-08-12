@@ -70,6 +70,9 @@ enum DeviceType {
 }
 
 // §10.1 İçerik Sürüm Kontrolü — ContentRevision.entityType (bkz. ARCHITECTURE.md §10.1).
+// §10.5 Çoklu Dil & Yerelleştirme — ContentSlug.entityType de BU enum'ı kullanır (bkz.
+// .claude/architect-scope-i18n.md §2.2, bağlayıcı karar dokümanı); yerelleştirme için
+// ayrı bir "içerik tipi" enum'ı İCAT EDİLMEZ.
 enum ContentEntityType {
   PAGE
   BLOG_POST
@@ -330,33 +333,48 @@ model PasswordResetToken {
 
 // Tek site (global) kapsamında: organizationId yok, herhangi bir authenticated kullanıcı yönetir.
 model Page {
-  id             String     @id @default(uuid())
-  seq            Int        @unique @default(autoincrement())
-  title          String
-  slug           String     @unique
-  status         PageStatus @default(DRAFT)
+  id              String     @id @default(uuid())
+  seq             Int        @unique @default(autoincrement())
+  title           String
+  // §10.5 Çoklu Dil & Yerelleştirme — VARSAYILAN dilin (Locale.isDefault) kanonik
+  // slug'ı. Diğer dillerin slug'ları BURADA DEĞİL, ContentSlug tablosundadır (bkz.
+  // .claude/architect-scope-i18n.md §2.3, bağlayıcı karar dokümanı) — bu kolon
+  // yapısal olarak DEĞİŞMEDİ, yalnızca anlamı netleştirildi.
+  slug            String     @unique
+  status          PageStatus @default(DRAFT)
   // Sayfa builder blokları — sıralı JSON dizi, şekli frontend'de lib/page-builder/types.ts::Block ile eşleşir.
-  blocks         Json       @default("[]")
-  seoTitle       String?
-  seoDescription String?
+  blocks          Json       @default("[]")
+  seoTitle        String?
+  seoDescription  String?
   // §10.2 Gelişmiş SEO & Social Card — bkz. ARCHITECTURE.md §10.2.
-  ogTitle        String?
-  ogImageUrl     String?
-  canonicalUrl   String?
-  noIndex        Boolean    @default(false)
-  // §10.5 Çoklu Dil & Yerelleştirme — TR (kolonlar) kanonik, translations.EN yalnızca override.
-  translations   Json       @default("{}")
-  publishedAt    DateTime?
+  ogTitle         String?
+  ogImageUrl      String?
+  canonicalUrl    String?
+  noIndex         Boolean    @default(false)
+  // §10.5 Çoklu Dil & Yerelleştirme — varsayılan dil (Locale.isDefault) alanları TR
+  // KOLONLARDA kanonik; diğer diller `{ [locale]: { title, ... } }` şeklinde küçük harf
+  // BCP-47 anahtarlarla BURADA (ör. translations.en). Ayrı bir Translation tablosu
+  // BİLİNÇLİ olarak AÇILMADI (gerekçe: .claude/architect-scope-i18n.md §1.2). Slug bu
+  // JSON'da TUTULMAZ — bkz. ContentSlug modeli (§1.3).
+  translations    Json       @default("{}")
+  // §5 istisnası — hukuki belge (gizlilik politikası, KVKK aydınlatma metni, çerez
+  // politikası, kullanım koşulları, mesafeli satış sözleşmesi...).
+  // true ise SESSİZ ÇEVİRİ FALLBACK'İ UYGULANMAZ (KVKK m.10 / GDPR m.12) —
+  // gerekçe ve tam davranış: .claude/architect-scope-i18n.md §5.1 (bkz. §2.3.1,
+  // compliance-agent itirazı üzerine eklendi — alan adı DAVRANIŞ değil NİYET taşır).
+  // YALNIZCA SiteRole=ADMIN değiştirebilir; her değişiklik denetlenir.
+  isLegalDocument Boolean    @default(false)
+  publishedAt     DateTime?
   // Zamanlanmış yayın hedef tarihi — yalnızca status=SCHEDULED iken anlamlı; süreç-içi sweeper bu
   // tarihe ulaşınca status'u PUBLISHED'a çevirir (bkz. modules/{blog,pages}/*-publish-scheduler.ts).
-  scheduledAt    DateTime?
+  scheduledAt     DateTime?
   // Denormalize toplam sayaç — admin liste/detay ekranlarında ekstra sorgu gerektirmeden okunur.
-  viewCount      Int        @default(0)
+  viewCount       Int        @default(0)
   // §10.7 Soft-delete (çöp kutusu) — bkz. ARCHITECTURE.md §10.7.
-  deletedAt      DateTime?
-  authorId       String?
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
+  deletedAt       DateTime?
+  authorId        String?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
 
   author       User?          @relation(fields: [authorId], references: [id], onDelete: SetNull)
   views        PageView[]
@@ -383,6 +401,10 @@ model BlogPost {
   id             String     @id @default(uuid())
   seq            Int        @unique @default(autoincrement())
   title          String
+  // §10.5 Çoklu Dil & Yerelleştirme — VARSAYILAN dilin (Locale.isDefault) kanonik
+  // slug'ı. Diğer dillerin slug'ları BURADA DEĞİL, ContentSlug tablosundadır (bkz.
+  // .claude/architect-scope-i18n.md §2.3, bağlayıcı karar dokümanı) — bu kolon
+  // yapısal olarak DEĞİŞMEDİ, yalnızca anlamı netleştirildi.
   slug           String     @unique
   excerpt        String?
   contentHtml    String     @default("")
@@ -397,7 +419,11 @@ model BlogPost {
   ogImageUrl     String?
   canonicalUrl   String?
   noIndex        Boolean    @default(false)
-  // §10.5 Çoklu Dil & Yerelleştirme — TR (kolonlar) kanonik, translations.EN yalnızca override.
+  // §10.5 Çoklu Dil & Yerelleştirme — varsayılan dil (Locale.isDefault) alanları TR
+  // KOLONLARDA kanonik; diğer diller `{ [locale]: { title, ... } }` şeklinde küçük harf
+  // BCP-47 anahtarlarla BURADA (ör. translations.en). Ayrı bir Translation tablosu
+  // BİLİNÇLİ olarak AÇILMADI (gerekçe: .claude/architect-scope-i18n.md §1.2). Slug bu
+  // JSON'da TUTULMAZ — bkz. ContentSlug modeli (§1.3).
   translations   Json       @default("{}")
   publishedAt    DateTime?
   // Zamanlanmış yayın hedef tarihi — yalnızca status=SCHEDULED iken anlamlı; süreç-içi sweeper bu
@@ -438,6 +464,10 @@ model Product {
   id                 String     @id @default(uuid())
   seq                Int        @unique @default(autoincrement())
   title              String
+  // §10.5 Çoklu Dil & Yerelleştirme — VARSAYILAN dilin (Locale.isDefault) kanonik
+  // slug'ı. Diğer dillerin slug'ları BURADA DEĞİL, ContentSlug tablosundadır (bkz.
+  // .claude/architect-scope-i18n.md §2.3, bağlayıcı karar dokümanı) — bu kolon
+  // yapısal olarak DEĞİŞMEDİ, yalnızca anlamı netleştirildi.
   slug               String     @unique
   excerpt            String?
   descriptionHtml    String     @default("")
@@ -459,7 +489,11 @@ model Product {
   ogImageUrl         String?
   canonicalUrl       String?
   noIndex            Boolean    @default(false)
-  // §10.5 Çoklu Dil & Yerelleştirme — TR (kolonlar) kanonik, translations.EN yalnızca override.
+  // §10.5 Çoklu Dil & Yerelleştirme — varsayılan dil (Locale.isDefault) alanları TR
+  // KOLONLARDA kanonik; diğer diller `{ [locale]: { title, ... } }` şeklinde küçük harf
+  // BCP-47 anahtarlarla BURADA (ör. translations.en). Ayrı bir Translation tablosu
+  // BİLİNÇLİ olarak AÇILMADI (gerekçe: .claude/architect-scope-i18n.md §1.2). Slug bu
+  // JSON'da TUTULMAZ — bkz. ContentSlug modeli (§1.3).
   translations       Json       @default("{}")
   publishedAt        DateTime?
   // Zamanlanmış yayın hedef tarihi — yalnızca status=SCHEDULED iken anlamlı; süreç-içi sweeper bu
@@ -520,6 +554,10 @@ model PortfolioItem {
   id             String     @id @default(uuid())
   seq            Int        @unique @default(autoincrement())
   title          String
+  // §10.5 Çoklu Dil & Yerelleştirme — VARSAYILAN dilin (Locale.isDefault) kanonik
+  // slug'ı. Diğer dillerin slug'ları BURADA DEĞİL, ContentSlug tablosundadır (bkz.
+  // .claude/architect-scope-i18n.md §2.3, bağlayıcı karar dokümanı) — bu kolon
+  // yapısal olarak DEĞİŞMEDİ, yalnızca anlamı netleştirildi.
   slug           String     @unique
   summary        String?
   contentHtml    String     @default("")
@@ -537,7 +575,11 @@ model PortfolioItem {
   ogImageUrl     String?
   canonicalUrl   String?
   noIndex        Boolean    @default(false)
-  // §10.5 Çoklu Dil & Yerelleştirme — TR (kolonlar) kanonik, translations.EN yalnızca override.
+  // §10.5 Çoklu Dil & Yerelleştirme — varsayılan dil (Locale.isDefault) alanları TR
+  // KOLONLARDA kanonik; diğer diller `{ [locale]: { title, ... } }` şeklinde küçük harf
+  // BCP-47 anahtarlarla BURADA (ör. translations.en). Ayrı bir Translation tablosu
+  // BİLİNÇLİ olarak AÇILMADI (gerekçe: .claude/architect-scope-i18n.md §1.2). Slug bu
+  // JSON'da TUTULMAZ — bkz. ContentSlug modeli (§1.3).
   translations   Json       @default("{}")
   publishedAt    DateTime?
   // Zamanlanmış yayın hedef tarihi — yalnızca status=SCHEDULED iken anlamlı; süreç-içi sweeper bu
@@ -575,6 +617,68 @@ model PortfolioImage {
   @@unique([portfolioItemId, mediaId])
   @@index([mediaId])
   @@map("portfolio_images")
+}
+
+// §10.5 Çoklu Dil & Yerelleştirme — desteklenen diller VERİDİR, kod sabiti DEĞİL.
+// Yeni dil eklemek = yeni SATIR. Migration/deploy GEREKTİRMEZ (kabul kriteri, bkz.
+// .claude/architect-scope-i18n.md §2.1, bağlayıcı karar dokümanı).
+model Locale {
+  // BCP-47, HER ZAMAN küçük harf ("tr", "en", "de", "en-gb"). Birincil anahtar —
+  // oluşturulduktan sonra DEĞİŞTİRİLEMEZ (URL uzayının ve ContentSlug'ın kimliği).
+  code        String   @id
+  // Panelde gösterilen ad (panel dilinde) — ör. "İngilizce".
+  label       String
+  // Dilin kendi adı — site dil değiştiricide BU gösterilir ("English").
+  nativeLabel String
+  // Kanonik dil. TAM OLARAK BİR satır true olabilir — DB seviyesinde
+  // `locales_single_default` kısmi unique index'iyle zorlanır (bkz. migration SQL,
+  // Prisma DSL bunu ifade edemez). Bu dil URL'de prefix ALMAZ ve içerik tablolarının
+  // kanonik kolonlarında saklanır.
+  isDefault   Boolean  @default(false)
+  // false ise public /locales ve [lang] rota uzayında YOK; çeviriler KORUNUR.
+  enabled     Boolean  @default(false)
+  sortOrder   Int      @default(0)
+  // hreflang override (ör. code="en" iken "en-GB"). Boşsa `code` kullanılır.
+  hreflang    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  contentSlugs ContentSlug[]
+
+  @@index([enabled, sortOrder])
+  @@map("locales")
+}
+
+// §10.5 — dil başına slug + "bu dilde çeviri var mı?" indeksi. Slug'lar JSON'da
+// TUTULAMAZ (benzersizlik + ters arama + dilden bağımsız indeks ihtiyacı) — gerekçe:
+// .claude/architect-scope-i18n.md §1.3 (bağlayıcı karar dokümanı).
+//
+// "Çevrildi mi?" kuralı: ayrı bir isTranslated kolonu YOKTUR — bir içerik, `L` dili için
+// bir ContentSlug satırı VARSA o dilde çevrilmiş sayılır (bkz. §1.4).
+model ContentSlug {
+  id         String            @id @default(uuid())
+  // Hangi içerik tipi — mevcut ContentEntityType enum'ı YENİDEN KULLANILIR, yeni bir
+  // enum İCAT EDİLMEZ (ortak terminoloji kuralı).
+  entityType ContentEntityType
+  entityId   String
+  locale     String
+  slug       String
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+
+  localeRef Locale @relation(fields: [locale], references: [code], onDelete: Cascade)
+
+  // URL benzersizliği — AYNI dilde AYNI slug iki kez olamaz. NOT: entityType DAHİL
+  // DEĞİL — /en/about hem bir Page hem bir Product olamaz, çünkü rota uzayları
+  // çakışabilir ve belirsizlik ziyaretçiye yansır.
+  @@unique([locale, slug])
+  // Bir içeriğin bir dilde EN FAZLA bir slug'ı olur.
+  @@unique([entityType, entityId, locale])
+  // "Bu içeriğin tüm dillerdeki slug'ları" (hreflang/localizations üretimi).
+  @@index([entityType, entityId])
+  // "Bu dilde çevrilmiş tüm X'ler" (sitemap üretimi).
+  @@index([locale, entityType])
+  @@map("content_slugs")
 }
 
 // Günlük bucket'lı ziyaret kaydı: pageId/postId'den yalnızca biri set edilir.

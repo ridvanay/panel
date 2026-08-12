@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import CheckoutPage from "@/app/(site)/checkout/page";
+import CheckoutPage from "@/app/[lang]/(site)/checkout/page";
 import { CartProvider } from "@/context/cart-context";
 import type { Cart } from "@/lib/api/types";
 

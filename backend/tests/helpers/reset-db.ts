@@ -31,4 +31,20 @@ export async function resetDatabase(prisma: PrismaClient) {
 
   const names = tables.map((t) => `"public"."${t.tablename}"`).join(", ");
   await prisma.$executeRawUnsafe(`TRUNCATE TABLE ${names} RESTART IDENTITY CASCADE`);
+
+  // §10.5 Çoklu Dil & Yerelleştirme — `locales` tablosu TRUNCATE ile birlikte az önce
+  // silinen `tr`/`en` seed satırlarını (bkz. migration
+  // `20260812055828_add_locale_and_content_slug`) `prisma migrate deploy` YALNIZCA global
+  // setup'ta (tüm test dosyalarından ÖNCE) bir kez çalıştırdığı için bir daha üretmez —
+  // bu satır olmadan `resetDatabase()`'i çağıran HER test dosyası "varsayılan dil yok"
+  // durumuna düşerdi. Üretimde bu SORUN DEĞİLDİR (TRUNCATE hiç çalışmaz); bu YALNIZCA test
+  // izolasyonu için gereken bir yeniden-tohumlamadır (bkz. lib/localization.ts'teki ayrı
+  // savunma ağı, gerçek çökme senaryolarına karşı).
+  await prisma.locale.createMany({
+    data: [
+      { code: "tr", label: "Türkçe", nativeLabel: "Türkçe", isDefault: true, enabled: true, sortOrder: 0 },
+      { code: "en", label: "İngilizce", nativeLabel: "English", isDefault: false, enabled: true, sortOrder: 1 },
+    ],
+    skipDuplicates: true,
+  });
 }

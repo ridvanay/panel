@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { AtSign, Briefcase, Camera, Globe, Play, Terminal, ThumbsUp, type LucideIcon } from "lucide-react";
+import { withLocalePrefix } from "@/lib/i18n/site-path";
 import type { FooterColumnDto, SocialLinkDto, SocialPlatform } from "@/lib/api/types";
 
 interface SiteFooterProps {
@@ -11,6 +12,9 @@ interface SiteFooterProps {
   socialLinks?: SocialLinkDto[];
   footerColumns?: FooterColumnDto[];
   copyrightText?: string | null;
+  /** Verilmezse öneklemeye GİRİLMEZ (geriye dönük uyumluluk — admin canlı önizleme). */
+  activeLocaleCode?: string;
+  defaultLocaleCode?: string;
 }
 
 /**
@@ -45,7 +49,11 @@ export function SiteFooter({
   socialLinks,
   footerColumns,
   copyrightText,
+  activeLocaleCode,
+  defaultLocaleCode,
 }: SiteFooterProps) {
+  const localize = (path: string) =>
+    activeLocaleCode ? withLocalePrefix(path, activeLocaleCode, defaultLocaleCode ?? activeLocaleCode) : path;
   const hasSocial = Boolean(socialLinks && socialLinks.length > 0);
   const hasColumns = Boolean(footerColumns && footerColumns.length > 0);
   const year = new Date().getFullYear();
@@ -105,7 +113,7 @@ export function SiteFooter({
                   <ul className="space-y-1.5">
                     {column.links.map((link) => (
                       <li key={link.id}>
-                        <Link href={link.href} className="text-sm text-foreground/60 hover:text-[var(--site-link)]">
+                        <Link href={localize(link.href)} className="text-sm text-foreground/60 hover:text-[var(--site-link)]">
                           {link.label}
                         </Link>
                       </li>

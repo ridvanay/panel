@@ -15,14 +15,16 @@ export const PageRevisionIdParamSchema = z.object({
   revisionId: z.string().uuid(),
 });
 
-/** TR = kanonik/varsayılan; şimdilik tek ek dil (bkz. ARCHITECTURE.md §10.5). */
-export const LocaleQuerySchema = z.object({
-  locale: z.enum(["EN"]).optional(),
-});
+// §9 backend-agent madde 2 — ortak `LocaleQuerySchema` artık `schemas/common.ts`'te (bkz. o
+// dosya) — burada KOPYALANMIŞ, sabit `z.enum(["EN"])` şeması KALDIRILDI. Diğer route dosyaları
+// da aynı şemayı import eder.
+export { LocaleQuerySchema } from "../../schemas/common";
 
 const BlockSchema = z.record(z.unknown());
 
-const TranslationsSchema = z.record(z.string(), z.record(z.string(), z.unknown()));
+// §9 backend-agent madde 5 — locale bazında `null` = çeviriyi SİL (bkz. openapi.yaml
+// `ContentTranslations` açıklaması, lib/localization.ts::mergeTranslations).
+const TranslationsSchema = z.record(z.string(), z.record(z.string(), z.unknown()).nullable());
 
 export const CreatePageRequestSchema = z
   .object({
@@ -37,6 +39,9 @@ export const CreatePageRequestSchema = z
     ogImageUrl: z.string().nullable().optional(),
     canonicalUrl: z.string().url().nullable().optional(),
     noIndex: z.boolean().optional(),
+    // §5.1 hukuki belge istisnası — YALNIZCA SiteRole=ADMIN gönderebilir (EDITOR → 403, bkz.
+    // pages.routes.ts::assertLegalDocumentAuthorized).
+    isLegalDocument: z.boolean().optional(),
     // §10.5 Çoklu Dil & Yerelleştirme — bkz. shared-types.ts::PageTranslations.
     translations: TranslationsSchema.optional(),
     // §10.7 — verilmezse giriş yapmış kullanıcı atanır; BAŞKA bir id yalnızca ADMIN'e açıktır (bkz. lib/content-author.ts).
@@ -70,6 +75,9 @@ export const UpdatePageRequestSchema = z
     ogImageUrl: z.string().nullable().optional(),
     canonicalUrl: z.string().url().nullable().optional(),
     noIndex: z.boolean().optional(),
+    // §5.1 hukuki belge istisnası — YALNIZCA SiteRole=ADMIN gönderebilir (EDITOR → 403). Değeri
+    // DEĞİŞTİREN her istek `content.legal_flag_change` audit kaydı üretir (bkz. pages.routes.ts).
+    isLegalDocument: z.boolean().optional(),
     translations: TranslationsSchema.optional(),
     // §10.7 — yalnızca ADMIN değiştirebilir (EDITOR gönderirse 403); `null` = yazarı kaldır.
     authorId: z.string().uuid().nullable().optional(),
