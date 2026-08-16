@@ -2417,6 +2417,24 @@ ancak `SiteHeader`/`SiteFooter`'ın prop arayüzü DEĞİŞTİRİLMEDEN.
 kullandığından değişiklikler siteye **en geç 60 saniyede** yansır; panel bunu açıkça
 yazar. `cache: "no-store"`'a geçmek yasaktır (her public sayfa render'ında ek istek).
 
+#### 10.12.10 Sayfa Başlığı Banner'ı — public tarafta HENÜZ implemente EDİLMEDİ
+
+`pageHeaderStyle: "BANNER"` admin panelinde (`/admin/appearance`, "Sayfa Başlığı
+Düzeni" bölümü) seçilebilir ve önizlemede (`PreviewPageHeaderBanner`) render edilir,
+ancak `(site)` route grubunda (`frontend/src/app/[lang]/(site)/`) bu stili gerçek
+ziyaretçi sayfalarında basan bir bileşen **yok** — `fetchSiteAppearanceServer`
+(`frontend/src/lib/api/server-appearance.ts`) yalnızca header/footer renk-font CSS
+değişkenlerini besliyor, sayfa başlığı bloğunun kendisi henüz yazılmadı.
+
+O bileşen yazılırken **admin önizlemesiyle aynı okunabilirlik garantisi** uygulanmalı:
+metnin arkasına `overlayOpacity`'den bağımsız, sabit `bg-black/60 backdrop-blur-sm`
+bir pill (bkz. `PreviewPageHeaderBanner`, `frontend/src/app/admin/appearance/page.tsx`).
+Text-shadow tek başına yetersizdir — etkinliği arka plan görselinin içeriğine göre
+değişir; blur tabanlı pill arkasındaki her görseli/deseni bulanıklaştırıp karartarak
+`overlayOpacity` %0 olsa bile sabit bir kontrast tabanı garanti eder. Bu iki
+render'ın (admin önizleme / gerçek site) görsel olarak sapması, "önizlemede okunur,
+sitede okunmaz" tutarsızlığına yol açar.
+
 ### Bilinen Sorunlar / Backlog
 
 - **`preValidation` vs RBAC hook sıralaması** (2026-08-05, qa-agent, orta öncelik,

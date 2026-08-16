@@ -22,12 +22,15 @@ import {
   Link2,
   Mail,
   MessageCircle,
+  Monitor,
   Paintbrush,
   Palette,
   PanelTop,
   Share2,
   ShieldAlert,
+  Smartphone,
   Sparkles,
+  Tablet,
   ThumbsUp,
   ToggleRight,
   Type,
@@ -52,7 +55,7 @@ import type {
 } from "@/lib/api/types";
 import { PageHeading } from "@/components/admin/page-heading";
 import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
@@ -69,23 +72,44 @@ import { ColorField } from "@/components/admin/appearance/color-field";
 import { SiteHeader } from "@/components/site/site-header";
 import { SiteFooter } from "@/components/site/site-footer";
 import { fieldErrorsFrom, friendlyErrorMessage } from "@/lib/api/friendly-error";
+import { DEFAULT_APPEARANCE } from "@/lib/api/server-appearance";
 import { getFooterLogoHeight } from "@/lib/site-settings/logo";
 import { SITE_FONT_OPTIONS } from "@/lib/site-settings/appearance";
 import { SITE_FONT_FAMILY, SITE_FONT_VARIABLES } from "@/lib/site-settings/site-fonts";
 import { cn } from "@/lib/utils";
 import { useUnsavedChangesGuard } from "@/hooks/use-unsaved-changes-guard";
 
-/** design-notes-appearance-panel.md §0 — 9 sekme, sıra `SiteAppearance` şemasındaki bölümlerle birebir. */
-const TAB_ITEMS: { value: string; label: string; icon: typeof Palette }[] = [
-  { value: "brand", label: "Logo & Marka", icon: Palette },
-  { value: "presets", label: "Tasarım Ön Ayarları", icon: Sparkles },
-  { value: "pageHeader", label: "Sayfa Başlığı Düzeni", icon: LayoutTemplate },
-  { value: "colors", label: "Stil / Renk", icon: Paintbrush },
-  { value: "social", label: "Sosyal Medya Paylaşımı", icon: Share2 },
-  { value: "typography", label: "Yazı Tipi", icon: Type },
-  { value: "features", label: "Ekstra Özellikler", icon: ToggleRight },
-  { value: "customCode", label: "Özel CSS / JS", icon: Code2 },
-  { value: "notFound", label: "404 Sayfası", icon: FileQuestion },
+/**
+ * design-notes-appearance-panel.md §0 — 9 sekme, sıra `SiteAppearance` şemasındaki bölümlerle birebir.
+ * design-notes-appearance-polish.md §2 — sekmeler görüntüleme amaçlı 3 gruba ayrılır (Marka/Tasarım/
+ * Gelişmiş); `SECTION_FIELDS`/`SECTION_KEYS` mantığı DEĞİŞMEZ, yalnızca `TabsList` içindeki sıra/
+ * gruplama değişir.
+ */
+const TAB_GROUPS: { label: string; items: { value: string; label: string; icon: typeof Palette }[] }[] = [
+  {
+    label: "Marka",
+    items: [
+      { value: "brand", label: "Logo & Marka", icon: Palette },
+      { value: "social", label: "Sosyal Medya Paylaşımı", icon: Share2 },
+    ],
+  },
+  {
+    label: "Tasarım",
+    items: [
+      { value: "presets", label: "Tasarım Ön Ayarları", icon: Sparkles },
+      { value: "pageHeader", label: "Sayfa Başlığı Düzeni", icon: LayoutTemplate },
+      { value: "colors", label: "Stil / Renk", icon: Paintbrush },
+      { value: "typography", label: "Yazı Tipi", icon: Type },
+    ],
+  },
+  {
+    label: "Gelişmiş",
+    items: [
+      { value: "features", label: "Ekstra Özellikler", icon: ToggleRight },
+      { value: "customCode", label: "Özel CSS / JS", icon: Code2 },
+      { value: "notFound", label: "404 Sayfası", icon: FileQuestion },
+    ],
+  },
 ];
 
 const PAGE_HEADER_STYLE_OPTIONS: { value: PageHeaderStyle; label: string; description: string; icon: typeof ImageIcon }[] = [
@@ -216,6 +240,25 @@ const SECTION_FIELDS = {
 type SectionKey = keyof typeof SECTION_FIELDS;
 const SECTION_KEYS = Object.keys(SECTION_FIELDS) as SectionKey[];
 
+/**
+ * design-notes-appearance-polish.md §4 — `isTabFilled` `DEFAULT_APPEARANCE`
+ * (`@/lib/api/server-appearance`, backend `DEFAULTS`'uyla birebir eşleşen tek doğru kaynak) ile
+ * karşılaştırır. `DEFAULT_APPEARANCE` yalnızca PUBLIC alanları taşır (`PublicSiteAppearance`) —
+ * admin-only `presetKey`/`pageHeaderBackgroundMediaId` orada YOK. Bu iki alan için "taze form"
+ * varsayılanı (`presetKey: null`, `pageHeaderBackgroundMediaId: null`) burada eklenir; aksi halde
+ * `JSON.stringify(değer) !== undefined` her zaman `true` döner ve presets/colors/typography/pageHeader
+ * sekmeleri hep "dolu" görünürdü (design-notes'taki taslak koddaki bir gözden kaçırma — burada düzeltildi).
+ * `pageHeaderBackgroundColor` için de AYNI gerekçe: `formFromDto` `null`'ı formda `"#ffffff"`'e
+ * normalize eder (renk seçici her zaman geçerli bir hex bekler) — karşılaştırma bu normalize edilmiş
+ * değerle yapılmalı, yoksa dokunulmamış bir form bile "dolu" görünür.
+ */
+const FULLNESS_DEFAULTS: Record<string, unknown> = {
+  ...DEFAULT_APPEARANCE,
+  presetKey: null,
+  pageHeaderBackgroundMediaId: null,
+  pageHeaderBackgroundColor: DEFAULT_APPEARANCE.pageHeaderBackgroundColor ?? "#ffffff",
+};
+
 function buildSectionPayload(form: AppearanceFormState, section: SectionKey): UpdateSiteAppearanceRequest {
   const payload: Record<string, unknown> = {};
   for (const key of SECTION_FIELDS[section]) {
@@ -259,6 +302,24 @@ function DirtyDot() {
   return <span className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-warning" aria-hidden="true" />;
 }
 
+/**
+ * design-notes-appearance-polish.md §4 — `DirtyDot`'tan (sağ, yalnızca dirty iken) tamamen ayrı bir
+ * "doluluk soketi": solda, ikonun hemen önünde, HER ZAMAN render edilir (boşken içi boş halka,
+ * doluyken dolu nokta) — `primary` tonu bilinçli seçildi, bu sayfada `success` "kontrast AA eşiğini
+ * geçti" anlamında zaten kullanılıyor (ContrastBadge), iki farklı anlamı aynı renkte çakıştırmamak için.
+ */
+function FullnessSocket({ filled }: { filled: boolean }) {
+  return (
+    <span
+      className={cn(
+        "h-1.5 w-1.5 shrink-0 rounded-full border",
+        filled ? "border-primary bg-primary" : "border-foreground/25 bg-transparent"
+      )}
+      aria-hidden="true"
+    />
+  );
+}
+
 function SectionSaveButton({ dirty, saving, onClick }: { dirty: boolean; saving: boolean; onClick: () => void }) {
   return (
     <div className="flex justify-end">
@@ -289,15 +350,33 @@ function PreviewPageHeaderBanner({
       }}
     >
       <div className="absolute inset-0 bg-black" style={{ opacity: overlayOpacity / 100 }} aria-hidden="true" />
-      <span className="relative text-xs font-medium text-white">Örnek Sayfa Başlığı</span>
+      {/* design-notes-appearance-polish.md §1 — okunabilirlik pill'i `overlayOpacity`'den BAĞIMSIZ,
+          overlay katmanının (yukarıda) EK bir garantisi; overlay %0 olsa bile metin okunur kalır. */}
+      <span className="relative rounded-md bg-black/60 px-3 py-1 text-xs font-medium text-white backdrop-blur-sm">
+        Örnek Sayfa Başlığı
+      </span>
     </div>
   );
 }
+
+/** design-notes-appearance-polish.md §3 — canlı önizlemede cihaz genişliği toggle'ı, salt GÖRSEL. */
+type PreviewDevice = "desktop" | "tablet" | "mobile";
+const DEVICE_MAX_WIDTH: Record<PreviewDevice, string> = {
+  desktop: "100%",
+  tablet: "768px",
+  mobile: "375px",
+};
+const DEVICE_OPTIONS: { value: PreviewDevice; label: string; icon: typeof Monitor }[] = [
+  { value: "desktop", label: "Masaüstü", icon: Monitor },
+  { value: "tablet", label: "Tablet", icon: Tablet },
+  { value: "mobile", label: "Mobil", icon: Smartphone },
+];
 
 export default function AdminAppearancePage() {
   const [activeTab, setActiveTab] = useState("brand");
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [previewDevice, setPreviewDevice] = useState<PreviewDevice>("desktop");
 
   const [form, setForm] = useState<AppearanceFormState | null>(null);
   const [snapshot, setSnapshot] = useState<AppearanceFormState | null>(null);
@@ -401,6 +480,18 @@ export default function AdminAppearancePage() {
     if (tab === "customCode") return cssDirty || jsDirty;
     if (tab in SECTION_FIELDS) return isSectionDirty(tab as SectionKey);
     return false;
+  }
+
+  /** design-notes-appearance-polish.md §4 — bölüm "dolu" mu (fabrika DEFAULTS'undan farklı mı)?
+   * Karşılaştırma `snapshot` (son KAYDEDİLMİŞ durum) üzerinden yapılır, `form` (anlık taslak)
+   * ÜZERİNDEN DEĞİL — taslak değişiklikler "doluluk"u geçici değiştirmemeli, o zaten DirtyDot'un işi. */
+  function isTabFilled(tab: string): boolean {
+    if (tab === "customCode") return Boolean(customCodeMeta?.css?.trim() || customCodeMeta?.js?.trim());
+    if (tab === "brand") return false; // salt-okunur özet — "doluluk" Navigasyon ekranına ait, burada yanıltıcı olur
+    if (!snapshot || !(tab in SECTION_FIELDS)) return false;
+    return SECTION_FIELDS[tab as SectionKey].some(
+      (key) => JSON.stringify(toRequestValue(key, snapshot[key])) !== JSON.stringify(FULLNESS_DEFAULTS[key])
+    );
   }
 
   function requestTabChange(next: string) {
@@ -598,12 +689,29 @@ export default function AdminAppearancePage() {
           className="min-w-0 flex-1 lg:flex-row"
         >
           <TabsList variant="line" className="w-full lg:sticky lg:top-6 lg:w-64 lg:shrink-0">
-            {TAB_ITEMS.map((tab) => (
-              <TabsTrigger key={tab.value} value={tab.value}>
-                <tab.icon className="h-3.5 w-3.5" />
-                {tab.label}
-                {isTabDirty(tab.value) && <DirtyDot />}
-              </TabsTrigger>
+            {TAB_GROUPS.map((group, i) => (
+              // design-notes-appearance-polish.md §2 — grup sarmalayıcı `<div>` Base UI'nin Tab
+              // kaydını (context-bazlı, DOM derinliğinden bağımsız) BOZMAZ; içindeki `<span aria-hidden>`
+              // etiket gerçek bir `Tab` bileşeni OLMADIĞI için roving-tabindex döngüsüne hiç girmez.
+              <div key={group.label} className="w-full">
+                <span
+                  className={cn(
+                    "block px-2 pb-1 text-[11px] font-semibold tracking-wide text-foreground/40 uppercase",
+                    i === 0 ? "mt-0" : "mt-3"
+                  )}
+                  aria-hidden="true"
+                >
+                  {group.label}
+                </span>
+                {group.items.map((tab) => (
+                  <TabsTrigger key={tab.value} value={tab.value}>
+                    <FullnessSocket filled={isTabFilled(tab.value)} />
+                    <tab.icon className="h-3.5 w-3.5" />
+                    {tab.label}
+                    {isTabDirty(tab.value) && <DirtyDot />}
+                  </TabsTrigger>
+                ))}
+              </div>
             ))}
           </TabsList>
 
@@ -618,10 +726,12 @@ export default function AdminAppearancePage() {
                 />
                 <div className="flex items-center gap-3 rounded-lg border border-border/60 bg-surface-muted p-3">
                   {siteSettings.logoUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element -- medya kütüphanesinden gelen URL, site-header.tsx ile AYNI gerekçe
-                    <img src={siteSettings.logoUrl} alt="" className="h-8 w-auto object-contain" />
+                    <span className="flex h-14 w-20 shrink-0 items-center justify-center rounded-md border border-border/40 bg-surface p-2">
+                      {/* eslint-disable-next-line @next/next/no-img-element -- medya kütüphanesinden gelen URL, site-header.tsx ile AYNI gerekçe */}
+                      <img src={siteSettings.logoUrl} alt="" className="max-h-10 w-auto object-contain" />
+                    </span>
                   ) : (
-                    <span className="flex h-8 w-8 items-center justify-center rounded-md bg-muted text-xs font-semibold text-foreground/50">
+                    <span className="flex h-14 w-20 shrink-0 items-center justify-center rounded-md bg-muted text-base font-semibold text-foreground/50">
                       {siteSettings.siteName?.trim().charAt(0).toUpperCase() || "S"}
                     </span>
                   )}
@@ -630,9 +740,46 @@ export default function AdminAppearancePage() {
                     <p className="truncate text-xs text-foreground/50">{siteSettings.tagline || "Slogan tanımlanmamış"}</p>
                   </div>
                 </div>
-                <Button type="button" variant="secondary" size="sm" render={<Link href="/admin/navigation?tab=locations" />}>
+
+                {/* design-notes-appearance-polish.md §5b — aktif renk paleti şeridi, YENİ state/API YOK. */}
+                <div className="space-y-1.5 border-t border-border/60 pt-4">
+                  <p className="text-xs font-medium text-foreground/60">Aktif Renk Paleti</p>
+                  <div className="flex h-6 overflow-hidden rounded-md">
+                    <span className="flex-1" style={{ backgroundColor: form.primaryColor }} title="Birincil" />
+                    <span className="flex-1" style={{ backgroundColor: form.secondaryColor }} title="İkincil" />
+                    <span className="flex-1" style={{ backgroundColor: form.buttonColor }} title="Buton" />
+                    <span className="flex-1" style={{ backgroundColor: form.linkColor }} title="Bağlantı" />
+                  </div>
+                </div>
+
+                {/* design-notes-appearance-polish.md §5b — Header CTA önizlemesi, navigation state'inden. */}
+                <div className="space-y-1.5">
+                  <p className="text-xs font-medium text-foreground/60">Header CTA Önizlemesi</p>
+                  {navigation.headerCtaLabel && navigation.headerCtaHref ? (
+                    <span
+                      className="inline-flex items-center rounded-lg px-3.5 py-1.5 text-xs font-medium"
+                      style={{ backgroundColor: form.buttonColor, color: form.buttonTextColor }}
+                    >
+                      {navigation.headerCtaLabel}
+                    </span>
+                  ) : (
+                    <p className="text-xs text-foreground/40">Header CTA tanımlanmamış.</p>
+                  )}
+                </div>
+
+                {/*
+                  NOT: Base UI'nin kendi dokümantasyonu (`node_modules/@base-ui/react/docs/react/components/button.md`
+                  §"Rendering links as buttons") `<Button render={<Link/>}>` desenini AÇIKÇA yanlış kabul ediyor —
+                  "Links (<a>) have their own semantics and should not be rendered as buttons through the `render`
+                  prop... style the <a> element directly with CSS rather than using the Button component." Bu yüzden
+                  `nativeButton={false}` ile susturmak yerine (ki bu, `role="button"` zorlayarak `<a>`'nın gerçek
+                  `link` rolünü EZER — a11y regresyonu, `getByRole("link", ...)` testini kırar), burada `Link`
+                  doğrudan `buttonVariants()` ile stillendiriliyor. Aynı desen bu sayfadaki diğer 2 "link-as-button"
+                  kullanımında da uygulandı.
+                */}
+                <Link href="/admin/navigation?tab=locations" className={cn(buttonVariants({ variant: "secondary", size: "sm" }))}>
                   <ExternalLink className="h-3.5 w-3.5" /> Navigasyon&apos;da Düzenle
-                </Button>
+                </Link>
               </Card>
             </TabsContent>
 
@@ -1271,43 +1418,77 @@ export default function AdminAppearancePage() {
               <Code2 className="mx-auto h-8 w-8 text-foreground/30" />
               <p className="text-sm font-medium text-foreground">Özel kod önizlemede uygulanmaz</p>
               <p className="text-xs text-foreground/60">Kaydettikten sonra değişiklikleri görmek için siteyi yeni sekmede açın.</p>
-              <Button type="button" variant="secondary" size="sm" render={<a href="/" target="_blank" rel="noreferrer" />}>
+              <a href="/" target="_blank" rel="noreferrer" className={cn(buttonVariants({ variant: "secondary", size: "sm" }))}>
                 <ExternalLink className="h-3.5 w-3.5" /> Siteyi Aç
-              </Button>
+              </a>
             </Card>
           ) : (
             <div className="space-y-2">
-              <p className="text-xs font-medium tracking-wide text-foreground/50 uppercase">Canlı Önizleme</p>
-              <div
-                className={`site-scope overflow-hidden rounded-xl border border-border ${SITE_FONT_VARIABLES}`}
-                style={previewCssVars}
-              >
-                <SiteHeader
-                  settings={siteSettings}
-                  pages={publishedPages}
-                  navigationItems={navigation.navigationItems}
-                  ctaLabel={navigation.headerCtaLabel}
-                  ctaHref={navigation.headerCtaHref}
-                />
-                <div className="flex min-h-32 flex-col items-center justify-center gap-2 bg-muted/30 px-4 py-10 text-center">
-                  {form.pageHeaderStyle === "BANNER" && (
-                    <PreviewPageHeaderBanner
-                      backgroundColor={form.pageHeaderBackgroundColor}
-                      backgroundUrl={pageHeaderBackgroundMedia?.url ?? null}
-                      overlayOpacity={form.pageHeaderOverlayOpacity}
-                    />
-                  )}
-                  <p className="text-xs text-foreground/40">Sayfa içeriği</p>
+              {/* design-notes-appearance-polish.md §3 — cihaz görünümü toggle'ı + ayrı "yeni sekmede aç". */}
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-medium tracking-wide text-foreground/50 uppercase">Canlı Önizleme</p>
+                <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-0.5 rounded-md border border-border/60 bg-surface-muted p-0.5">
+                    {DEVICE_OPTIONS.map((opt) => (
+                      <Button
+                        key={opt.value}
+                        type="button"
+                        size="icon-xs"
+                        variant={previewDevice === opt.value ? "secondary" : "ghost"}
+                        onClick={() => setPreviewDevice(opt.value)}
+                        aria-label={opt.label}
+                        aria-pressed={previewDevice === opt.value}
+                      >
+                        <opt.icon className="h-3 w-3" />
+                      </Button>
+                    ))}
+                  </div>
+                  <a
+                    href="/"
+                    target="_blank"
+                    rel="noreferrer"
+                    className={cn(buttonVariants({ variant: "ghost", size: "icon-xs" }))}
+                    aria-label="Siteyi yeni sekmede aç"
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
                 </div>
-                <SiteFooter
-                  siteName={siteSettings.siteName}
-                  logoUrl={siteSettings.logoUrl}
-                  logoHeight={getFooterLogoHeight(siteSettings.headerLogoHeight)}
-                  tagline={siteSettings.tagline}
-                  socialLinks={navigation.socialLinks}
-                  footerColumns={navigation.footerColumns}
-                  copyrightText={navigation.footerCopyrightText}
-                />
+              </div>
+              <div
+                className="mx-auto w-full transition-all duration-300 ease-in-out"
+                style={{ maxWidth: DEVICE_MAX_WIDTH[previewDevice] }}
+              >
+                <div
+                  className={`site-scope overflow-hidden rounded-xl border border-border ${SITE_FONT_VARIABLES}`}
+                  style={previewCssVars}
+                >
+                  <SiteHeader
+                    settings={siteSettings}
+                    pages={publishedPages}
+                    navigationItems={navigation.navigationItems}
+                    ctaLabel={navigation.headerCtaLabel}
+                    ctaHref={navigation.headerCtaHref}
+                  />
+                  <div className="flex min-h-32 flex-col items-center justify-center gap-2 bg-muted/30 px-4 py-10 text-center">
+                    {form.pageHeaderStyle === "BANNER" && (
+                      <PreviewPageHeaderBanner
+                        backgroundColor={form.pageHeaderBackgroundColor}
+                        backgroundUrl={pageHeaderBackgroundMedia?.url ?? null}
+                        overlayOpacity={form.pageHeaderOverlayOpacity}
+                      />
+                    )}
+                    <p className="text-xs text-foreground/40">Sayfa içeriği</p>
+                  </div>
+                  <SiteFooter
+                    siteName={siteSettings.siteName}
+                    logoUrl={siteSettings.logoUrl}
+                    logoHeight={getFooterLogoHeight(siteSettings.headerLogoHeight)}
+                    tagline={siteSettings.tagline}
+                    socialLinks={navigation.socialLinks}
+                    footerColumns={navigation.footerColumns}
+                    copyrightText={navigation.footerCopyrightText}
+                  />
+                </div>
               </div>
               <p className="text-xs text-foreground/50">
                 Değişiklikler yayına alındıktan sonra sitenizde en geç 60 saniye içinde görünür.
