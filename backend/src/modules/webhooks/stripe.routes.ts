@@ -5,6 +5,8 @@ import { stripe } from "../../lib/stripe";
 import { env } from "../../config/env";
 import { runSerializable } from "../../lib/serializable-tx";
 import { sendTemplateEmail } from "../email-templates/email-templates.service";
+import { emitWebhookEvent } from "../../lib/webhook-emitter";
+import { buildWebhookOrderPayload } from "../../lib/webhook-order-payload";
 
 function mapStatus(status: Stripe.Subscription.Status): SubscriptionStatus {
   switch (status) {
@@ -156,6 +158,10 @@ async function handleOrderPaid(app: FastifyInstance, session: Stripe.Checkout.Se
   // Transaction SONRASI, best-effort: e-posta gönderimi asıl webhook isteğini BOZMAZ (mevcut
   // admin-users.routes.ts::sendPasswordResetEmail catch paterniyle AYNI yaklaşım).
   const order = outcome.order;
+
+  // §10.13.8 — `ORDER_PAID`, sipariş `PAID`'e geçtikten SONRA (§10.13's giden webhook sistemi;
+  // Stripe'ın BİZE gönderdiği GELEN webhook'la KARIŞTIRILMAMALI).
+  await emitWebhookEvent(app, "ORDER_PAID", await buildWebhookOrderPayload(app, order));
   try {
     await sendTemplateEmail(app, "ORDER_CONFIRMATION", order.customerEmail, {
       order_number: order.orderNumber,

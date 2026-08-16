@@ -1,4 +1,6 @@
 import type { FastifyInstance } from "fastify";
+import { emitWebhookEvent } from "./webhook-emitter";
+import { toPublicBlogPostDto, toPublicPageDto, toPublicPortfolioItemDto } from "../modules/public-api/public-api.mappers";
 
 /**
  * `import.retention.ts::IMPORT_RETENTION_SWEEP_INTERVAL_MS` İLE AYNI DESEN/GEREKÇE — gerçek
@@ -26,25 +28,54 @@ export interface ScheduledPublishSweepResult {
  */
 export async function runScheduledPublishSweep(app: FastifyInstance): Promise<ScheduledPublishSweepResult> {
   const now = new Date();
+  const dueWhere = { status: "SCHEDULED" as const, scheduledAt: { lte: now } };
+
+  // §10.13.8 — `PAGE_PUBLISHED`/`BLOG_POST_PUBLISHED`/`PORTFOLIO_ITEM_PUBLISHED` bu sweeper'dan da
+  // tetiklenir (bkz. emisyon noktaları tablosu). `Product`'ın karşılığı YOKTUR — `PRODUCT_*`
+  // olayları BİLİNÇLİ olarak yalnızca `products.routes.ts` CRUD uçlarından tetiklenir, sweeper'dan
+  // DEĞİL (o üçlü publish-transition'a değil doğrudan CRUD yaşam döngüsüne bağlıdır).
+  const [duePages, dueBlogPosts, duePortfolioItems] = await Promise.all([
+    app.prisma.page.findMany({ where: dueWhere }),
+    app.prisma.blogPost.findMany({ where: dueWhere, include: { category: true } }),
+    app.prisma.portfolioItem.findMany({ where: dueWhere, include: { category: true, coverMedia: true, images: { include: { media: true }, orderBy: { order: "asc" } } } }),
+  ]);
 
   const [pages, blogPosts, products, portfolioItems] = await Promise.all([
     app.prisma.page.updateMany({
-      where: { status: "SCHEDULED", scheduledAt: { lte: now } },
+      where: dueWhere,
       data: { status: "PUBLISHED", publishedAt: now, scheduledAt: null },
     }),
     app.prisma.blogPost.updateMany({
-      where: { status: "SCHEDULED", scheduledAt: { lte: now } },
+      where: dueWhere,
       data: { status: "PUBLISHED", publishedAt: now, scheduledAt: null },
     }),
     app.prisma.product.updateMany({
-      where: { status: "SCHEDULED", scheduledAt: { lte: now } },
+      where: dueWhere,
       data: { status: "PUBLISHED", publishedAt: now, scheduledAt: null },
     }),
     app.prisma.portfolioItem.updateMany({
-      where: { status: "SCHEDULED", scheduledAt: { lte: now } },
+      where: dueWhere,
       data: { status: "PUBLISHED", publishedAt: now, scheduledAt: null },
     }),
   ]);
+
+  for (const page of duePages) {
+    await emitWebhookEvent(app, "PAGE_PUBLISHED", toPublicPageDto({ ...page, status: "PUBLISHED", publishedAt: now, scheduledAt: null }));
+  }
+  for (const post of dueBlogPosts) {
+    await emitWebhookEvent(
+      app,
+      "BLOG_POST_PUBLISHED",
+      toPublicBlogPostDto({ ...post, status: "PUBLISHED", publishedAt: now, scheduledAt: null })
+    );
+  }
+  for (const item of duePortfolioItems) {
+    await emitWebhookEvent(
+      app,
+      "PORTFOLIO_ITEM_PUBLISHED",
+      toPublicPortfolioItemDto({ ...item, status: "PUBLISHED", publishedAt: now, scheduledAt: null })
+    );
+  }
 
   return {
     publishedPages: pages.count,

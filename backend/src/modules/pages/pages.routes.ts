@@ -47,6 +47,8 @@ import {
 } from "../../lib/localization";
 import { sanitizePageBlocks, sanitizePageTranslations } from "./lib/sanitize-blocks";
 import { SETTINGS_ID } from "../settings/settings.routes";
+import { emitWebhookEvent } from "../../lib/webhook-emitter";
+import { toPublicPageDto } from "../public-api/public-api.mappers";
 import {
   AutosavePageRequestSchema,
   CreatePageRequestSchema,
@@ -319,6 +321,13 @@ export async function adminPagesRoutes(app: FastifyInstance) {
         });
       }
 
+      // §10.13.8 — `PAGE_PUBLISHED` YALNIZCA duruma GEÇİŞTE (`!existing.publishedAt` →
+      // `page.publishedAt` dolu) tetiklenir; transaction COMMIT'inden SONRA, `emitWebhookEvent`
+      // TEK giriş noktasıdır (route doğrudan `WebhookDelivery` OLUŞTURMAZ).
+      if (!existing.publishedAt && page.publishedAt) {
+        await emitWebhookEvent(app, "PAGE_PUBLISHED", toPublicPageDto(page));
+      }
+
       return reply.send(ok(await toPageDtoLocalized(app, page)));
     }
   );
@@ -460,6 +469,21 @@ export async function adminPagesRoutes(app: FastifyInstance) {
       schema: { body: BulkContentActionRequestSchema, response: { 200: ApiSuccessSchema(BulkContentActionResultSchema) } },
     },
     async (request, reply) => {
+      // §10.13.8 — `PAGE_PUBLISHED` YALNIZCA duruma GEÇİŞTE tetiklenir. `runBulkContentAction`
+      // (Page/BlogPost/Product/PortfolioItem arasında PAYLAŞILAN ortak yardımcı) transitionı BİLMEZ
+      // (yalnızca satır sayısı döner) — bu yüzden "geçiş adayları" (henüz yayınlanmamış, çöpte
+      // olmayan id'ler) ÇAĞRIDAN ÖNCE belirlenir, commit SONRASI gerçekten yayınlananlar arasından
+      // filtrelenir (`skippedIds` çıkarılır) ve emisyon transaction dışında yapılır (§10.13.8 kuralı).
+      const publishCandidateIds =
+        request.body.action === "publish"
+          ? (
+              await app.prisma.page.findMany({
+                where: { id: { in: request.body.ids }, deletedAt: null, publishedAt: null },
+                select: { id: true },
+              })
+            ).map((row) => row.id)
+          : [];
+
       const result = await runBulkContentAction(
         app,
         {
@@ -483,6 +507,16 @@ export async function adminPagesRoutes(app: FastifyInstance) {
           ip: request.ip,
         }
       );
+
+      if (publishCandidateIds.length > 0) {
+        const transitionedIds = publishCandidateIds.filter((id) => !result.skippedIds.includes(id));
+        if (transitionedIds.length > 0) {
+          const publishedRows = await app.prisma.page.findMany({ where: { id: { in: transitionedIds } } });
+          for (const row of publishedRows) {
+            await emitWebhookEvent(app, "PAGE_PUBLISHED", toPublicPageDto(row));
+          }
+        }
+      }
 
       return reply.send(ok(result));
     }

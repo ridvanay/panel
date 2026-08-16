@@ -6,6 +6,36 @@ Format [Keep a Changelog](https://keepachangelog.com/tr/1.1.0/) temel alınmış
 ## [Unreleased]
 
 ### Added
+- **Üçüncü parti entegrasyon: API Anahtarı yönetimi, salt-okunur Public API ve
+  imzalı giden webhook sistemi.** Üç birbirine bağlı yetenek eklendi:
+  - **API Anahtarları** (`/admin/settings/api-keys`, yalnızca `SiteRole=ADMIN`):
+    `cmsk_<prefix>_<secret>` formatında anahtar üretimi, `READ`/`READ_WRITE`
+    scope'u, opsiyonel son kullanma tarihi, iptal (soft) ve kalıcı silme. Ham
+    anahtar yalnızca oluşturma anında bir kez döner; sunucu yalnızca `sha256`
+    özetini saklar.
+  - **Public API** (`GET /api/v1/public/*`) — mevcut admin API'sinden ayrı,
+    salt-okunur bir katman: yayındaki sayfalar, blog yazıları, ürünler ve
+    portföy öğeleri `X-Api-Key` header'ı ile okunabilir. Kendi `Public*` DTO'ları
+    kullanılır (personel e-postası/SEO skoru gibi iç alanlar asla sızmaz).
+    Anahtar başına ve IP başına iki bağımsız katmanlı hız sınırlama, kota
+    header'ları (`x-ratelimit-*`) her yanıtta döner.
+  - **Giden Webhook'lar** (`/admin/settings/webhooks`, yalnızca `SiteRole=ADMIN`):
+    içerik yayınlama/güncelleme ve sipariş olaylarında (`PAGE_PUBLISHED`,
+    `BLOG_POST_PUBLISHED/UPDATED`, `PRODUCT_CREATED/UPDATED/DELETED`,
+    `PORTFOLIO_ITEM_PUBLISHED`, `ORDER_CREATED/PAID/STATUS_CHANGED`) HMAC-SHA256
+    ile imzalanmış (`X-Webhook-Signature: sha256=...`) POST istekleri gönderir;
+    otomatik yeniden deneme (üstel gecikme + jitter, en fazla 5 deneme) ve
+    üst üste 20 başarısızlık sonrası otomatik duraklatma içerir. Delivery
+    logları görüntülenebilir ve elle yeniden gönderilebilir (`redeliver`).
+  - **Güvenlik:** webhook hedef URL'leri oluşturma anında ve **her teslimat
+    denemesinde yeniden** SSRF filtresinden geçer (yalnızca `https`/443, literal
+    IP ve özel/loopback/link-local/CGNAT/bulut-metadata aralıkları reddedilir,
+    DNS rebinding'e karşı pinlenmiş bağlantı, yönlendirme takip edilmez);
+    API anahtarları `crypto.timingSafeEqual` ile doğrulanır; webhook secret'ları
+    AES-256-GCM ile şifreli saklanır (geri çözülebilir olması HMAC üretimi için
+    zorunludur); imza doğrulaması sabit zamanlıdır ve 300 saniyelik bir
+    zaman damgası toleransıyla replay saldırılarına karşı korunur.
+  - security-agent denetiminden geçti; production'a hazır.
 - **Medya Kütüphanesi: klasör sistemi.** Görseller artık klasörlere organize edilebilir.
   - Klasör oluşturma, yeniden adlandırma ve silme (`POST/PATCH/DELETE /admin/media/folders`).
   - Klasör hiyerarşisi en fazla 2 seviye derinliğindedir (kök + bir alt seviye).
@@ -73,3 +103,9 @@ Format [Keep a Changelog](https://keepachangelog.com/tr/1.1.0/) temel alınmış
 - Site Özelleştirme paneli için tam API kontratı ve karar gerekçeleri:
   `docs/architecture/openapi.yaml` (`Appearance` tag'i) ve
   `docs/architecture/ARCHITECTURE.md` §10.12.
+- API Anahtarı / Public API / Giden Webhook sistemi için tam API kontratı ve
+  karar gerekçeleri: `docs/architecture/openapi.yaml` (`ApiKeys`,
+  `OutboundWebhooks`, `PublicApi` tag'leri) ve `docs/architecture/ARCHITECTURE.md`
+  §10.13. Üçüncü parti entegratörler için hızlı başlangıç, örnek webhook
+  payload'ları ve imza doğrulama (Node.js) örneği: aynı dosyada §10.13.11
+  (Public API) ve §10.13.12 (webhook payload'ları).

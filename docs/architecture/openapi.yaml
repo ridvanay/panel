@@ -178,6 +178,72 @@ tags:
       TEK gösterimi kullanır. `translations` JSON'undaki ESKİ büyük-harf anahtarlar
       (`{"EN": {...}}`) geriye dönük uyumluluk için okunur ama YENİ yazımlarda
       KULLANILMAZ (bkz. migration notu, architect-scope-i18n.md §2.4).
+  - name: ApiKeys
+    description: >
+      API anahtarı yönetimi (`/admin/settings/api-keys`) — bkz. ARCHITECTURE.md §10.13.3.
+      Üçüncü parti entegrasyonların (`PublicApi`) kimlik doğrulaması için kullanılan
+      anahtarlar burada üretilir/iptal edilir.
+
+
+      **TÜM uçlar İSTİSNASIZ yalnızca SiteRole=ADMIN'dir — OKUMA DAHİL.** EDITOR/VIEWER
+      → 403. Gerekçe: anahtar listesi (adlar, ön ekler, scope'lar) saldırı yüzeyi
+      haritasıdır (bkz. §10.13.10).
+
+
+      **Ham anahtar YALNIZCA `POST` (201) yanıtında `plainKey` olarak BİR KEZ döner**;
+      DB'de `sha256` hash'i saklanır (§10.13.3), başka hiçbir uçtan geri okunamaz.
+      Liste/detay yanıtları yalnızca `keyPrefix` + `last4` taşır.
+  - name: OutboundWebhooks
+    description: >
+      **GİDEN** webhook yönetimi (`/admin/settings/webhooks`) — bkz. ARCHITECTURE.md
+      §10.13.8/§10.13.9. Bir olay gerçekleştiğinde BİZİM dış bir URL'e HMAC ile
+      imzalanmış POST attığımız sistemdir.
+
+
+      **`Webhooks` tag'i İLE KARIŞTIRILMAMALI:** o tag `POST /webhooks/stripe`
+      içindir, yani BİZE GELEN (inbound) webhook'tur. İki sistem birbirinin tersidir;
+      ne modül, ne tip, ne uç adı paylaşırlar.
+
+
+      **TÜM uçlar İSTİSNASIZ yalnızca SiteRole=ADMIN'dir — OKUMA DAHİL.** Secret
+      (`whsec_…`) yalnızca oluşturma (201) ve `rotate-secret` yanıtlarında
+      `plainSecret` olarak BİR KEZ döner; DB'de AES-256-GCM ile ŞİFRELİ saklanır
+      (hash DEĞİL — HMAC üretimi için geri çözülebilir olmak ZORUNDADIR, gerekçe
+      §10.13.9). URL'ler SSRF'e karşı hem oluşturmada hem her teslimatta doğrulanır
+      (§10.13.7).
+  - name: PublicApi
+    description: >
+      Üçüncü parti entegrasyonlar için **SALT-OKUNUR** public API katmanı
+      (`/api/v1/public/*`) — bkz. ARCHITECTURE.md §10.13.4/§10.13.5. Admin API'sinden
+      ve mevcut kimliksiz site uçlarından (`/pages`, `/blog`, `/products`,
+      `/portfolio`) **AYRI** bir katmandır.
+
+
+      **Kimlik doğrulama: `X-Api-Key: cmsk_…` — TEK kabul edilen biçim.**
+      `Authorization: Bearer` bu katmanda KABUL EDİLMEZ (401); simetrik olarak bir API
+      anahtarı da `/admin/*` uçlarında kabul edilmez. Kimlik bilgisi türlerinin
+      karışması yapısal olarak imkânsız kılınmıştır (§10.13.4).
+
+
+      **Yalnızca `GET`.** Tüm sorgular `status = PUBLISHED AND deletedAt IS NULL` ile
+      başlar; `?status=`/`?trashed=` gibi filtreler bu katmanda YOKTUR (422). Ürün/
+      portföy uçları ilgili modül kapalıysa `404` döner (`Modules` tag'i ile aynı
+      davranış).
+
+
+      **Hız sınırı iki katmanlıdır (§10.13.6):** IP tabanı 300/dk (atlanamaz) +
+      doğrulanmış anahtar başına 120/dk (burst 20/sn). `x-ratelimit-*` header'ları
+      anahtar kotasını yansıtır.
+
+
+      **DTO'lar AYRIDIR** (`PublicPage`, `PublicBlogPost`, `PublicProduct`,
+      `PublicPortfolioItem`): admin DTO'larındaki `author` (personel **e-postası**
+      içerir), `authorId`, `seoScore`, `deletedAt`, `viewCount`, `translations`
+      alanları BU KATMANDA DÖNMEZ (§10.13.5).
+
+
+      **Sunucudan-sunucuya kullanım içindir** — CORS `origin: "*"` AÇILMAZ; tarayıcı
+      içi JavaScript'ten API anahtarı kullanmak anahtarı ifşa eder.
 
 security:
   - bearerAuth: []
@@ -4949,12 +5015,824 @@ paths:
                       data: { $ref: "#/components/schemas/BlogPost" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  # ===========================================================================
+  # §10.13.3 API Anahtarı Yönetimi — /admin/settings/api-keys
+  # TÜM uçlar yalnızca SiteRole=ADMIN (OKUMA DAHİL).
+  # ===========================================================================
+
+  /admin/settings/api-keys:
+    get:
+      tags: [ApiKeys]
+      summary: API anahtarlarını listele
+      description: >
+        Cursor sayfalı (`seq desc`). **`plainKey` ASLA dönmez** — yalnızca `keyPrefix`
+        + `last4` ile maskeli gösterim mümkündür (§10.13.3 "tek seferlik gösterim").
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/ApiKeyStatusFilter"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/ApiKey" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [ApiKeys]
+      summary: Yeni API anahtarı oluştur
+      description: >
+        **Ham anahtar (`plainKey`) YALNIZCA BU YANITTA, BİR KEZ döner.** Sunucu
+        yalnızca `sha256` hash'ini saklar (§10.13.3) — kaybedilen bir anahtar geri
+        alınamaz, yenisi üretilmelidir. İstemci bu değeri kalıcı olarak saklamamalı,
+        kullanıcıya kopyalatıp ekrandan kaldırmalıdır.
+
+
+        Hız sınırı: `API_KEY_MANAGEMENT_RATE_LIMIT` (10/dk). Audit: `api_key.create`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateApiKeyRequest" }
+      responses:
+        "201":
+          description: Oluşturuldu — `plainKey` tek seferlik
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/CreateApiKeyResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /admin/settings/api-keys/{keyId}:
+    parameters:
+      - $ref: "#/components/parameters/ApiKeyId"
+    patch:
+      tags: [ApiKeys]
+      summary: API anahtarı meta verisini güncelle
+      description: >
+        `name`/`description`/`scope`/`expiresAt` güncellenir. **Anahtarın kendisi
+        DEĞİŞTİRİLEMEZ** (rotasyon = yeni anahtar oluştur + eskisini iptal et).
+        Güncelleme doğrulama cache'ini anında temizler (§10.13.4).
+        Audit: `api_key.update`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateApiKeyRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/ApiKey" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+    delete:
+      tags: [ApiKeys]
+      summary: API anahtarını kalıcı sil
+      description: >
+        Satırı tamamen kaldırır. **Önerilen akış önce `revoke`'tur** (denetim izi
+        korunur); kalıcı silme yalnızca kaydı da temizlemek istendiğinde kullanılır.
+        Her iki durumda da anahtar anında geçersizleşir (cache temizlenir).
+        Audit: `api_key.delete`.
+      responses:
+        "204": { description: Silindi }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /admin/settings/api-keys/{keyId}/revoke:
+    parameters:
+      - $ref: "#/components/parameters/ApiKeyId"
+    post:
+      tags: [ApiKeys]
+      summary: API anahtarını iptal et (soft)
+      description: >
+        `status: REVOKED` + `revokedAt`/`revokedById` yazılır; satır KALIR.
+        Anahtar **anında** geçersizleşir — süreç-içi doğrulama cache'inin girişi
+        senkron olarak temizlenir, gecikme penceresi YOKTUR (§10.13.4).
+        Zaten `REVOKED` bir anahtarda `409 CONFLICT`. Audit: `api_key.revoke`.
+      responses:
+        "200":
+          description: İptal edildi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/ApiKey" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  # ===========================================================================
+  # §10.13.8 Giden Webhook Yönetimi — /admin/settings/webhooks
+  # TÜM uçlar yalnızca SiteRole=ADMIN (OKUMA DAHİL).
+  # ===========================================================================
+
+  /admin/settings/webhooks/events:
+    get:
+      tags: [OutboundWebhooks]
+      summary: Abone olunabilecek olayların kayıt defteri
+      description: >
+        **Statik bir kod registry'sidir** (`lib/webhook-events.ts`), DB tablosu
+        DEĞİLDİR — `GET /admin/settings/permissions` ve `GET /admin/appearance/presets`
+        ile AYNI desen. Frontend olay listesini/etiketlerini HARDCODE ETMEZ; buradan
+        okur. Böylece yeni bir olay eklendiğinde arayüz kendiliğinden günceldir.
+
+
+        **Rota önceliği notu:** bu statik segment `/{webhookId}` parametreli rotadan
+        önce eşleşir (Fastify radix router davranışı) — `events` geçerli bir UUID
+        olmadığı için zaten çakışma yoktur.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/WebhookEventDefinition" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/settings/webhooks:
+    get:
+      tags: [OutboundWebhooks]
+      summary: Webhook'ları listele
+      description: "Cursor sayfalı (`seq desc`). Secret ASLA dönmez — yalnızca `secretLast4`."
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/OutboundWebhook" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [OutboundWebhooks]
+      summary: Yeni webhook tanımla
+      description: >
+        `url` **SSRF doğrulamasından geçer** (§10.13.7): yalnızca `https`, yalnızca
+        port 443, literal IP YASAK, tek etiketli/`.local`/`.internal`/`localhost`
+        adlar YASAK, DNS çözümlemesinin döndürdüğü TÜM adresler public unicast
+        olmalıdır (`169.254.169.254` bulut metadata dahil tüm özel aralıklar
+        reddedilir). Reddedilirse `422` + `error.details.url`; ayrıca
+        `outbound_webhook.url_rejected` audit kaydı (status `FORBIDDEN`) yazılır.
+
+
+        Site genelinde en fazla `WEBHOOK_MAX_COUNT` (20) webhook olabilir — aşımda
+        `409 CONFLICT`. Hız sınırı: `WEBHOOK_MANAGEMENT_RATE_LIMIT` (20/dk).
+
+
+        **`plainSecret` (`whsec_<64hex>`) YALNIZCA BU YANITTA, BİR KEZ döner.**
+        Audit: `outbound_webhook.create`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateOutboundWebhookRequest" }
+      responses:
+        "201":
+          description: Oluşturuldu — `plainSecret` tek seferlik
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/CreateOutboundWebhookResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409":
+          description: "Webhook üst sınırı (20) aşıldı (`error.code: CONFLICT`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422":
+          description: "Girdi doğrulama hatası VEYA SSRF kontrolünün reddi (`error.details.url`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /admin/settings/webhooks/{webhookId}:
+    parameters:
+      - $ref: "#/components/parameters/OutboundWebhookId"
+    get:
+      tags: [OutboundWebhooks]
+      summary: Webhook detayı
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/OutboundWebhook" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [OutboundWebhooks]
+      summary: Webhook güncelle
+      description: >
+        `url` gönderilirse SSRF doğrulaması YENİDEN çalışır (POST ile aynı kurallar).
+        `status: "ACTIVE"` gönderildiğinde `consecutiveFailureCount` **0'lanır** ve
+        `autoDisabledAt` temizlenir — otomatik kapatılmış (§10.13.8) bir webhook'u
+        elle yeniden etkinleştirmenin yolu budur.
+        Audit: `outbound_webhook.update`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateOutboundWebhookRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/OutboundWebhook" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422":
+          description: "Girdi doğrulama hatası VEYA SSRF kontrolünün reddi (`error.details.url`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+    delete:
+      tags: [OutboundWebhooks]
+      summary: Webhook sil
+      description: >
+        İlişkili `WebhookDelivery` kayıtları **cascade** silinir (`onDelete: Cascade`)
+        — bekleyen/yeniden denenecek gönderimler dahil. Audit:
+        `outbound_webhook.delete`.
+      responses:
+        "204": { description: Silindi }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /admin/settings/webhooks/{webhookId}/rotate-secret:
+    parameters:
+      - $ref: "#/components/parameters/OutboundWebhookId"
+    post:
+      tags: [OutboundWebhooks]
+      summary: İmzalama secret'ını döndür (rotate)
+      description: >
+        Yeni bir `whsec_<64hex>` üretir, AES-256-GCM ile şifreleyip kaydeder ve
+        **düz metnini bu yanıtta BİR KEZ** döner. Eski secret ANINDA geçersizdir —
+        kademeli geçiş (grace period) YOKTUR; alıcı yeni secret'ı yüklemeden önceki
+        gönderimler alıcı tarafında doğrulanamaz. Bu bilinçli bir sadeleştirmedir:
+        iki aktif secret tutmak, sızmış bir secret'ın geçerli kalma penceresini
+        uzatır.
+
+
+        Hız sınırı: `WEBHOOK_MANAGEMENT_RATE_LIMIT`. Audit:
+        `outbound_webhook.rotate_secret`.
+      responses:
+        "200":
+          description: Rotasyon tamam — `plainSecret` tek seferlik
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/RotateWebhookSecretResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /admin/settings/webhooks/{webhookId}/test:
+    parameters:
+      - $ref: "#/components/parameters/OutboundWebhookId"
+    post:
+      tags: [OutboundWebhooks]
+      summary: Test gönderimi kuyrukla (PING)
+      description: >
+        `PING` olayı için bir `WebhookDelivery` satırı oluşturur ve **202** döner —
+        gönderim SENKRON DEĞİLDİR, dispatcher sweeper'ı en geç 15 sn içinde alır.
+        İstemci sonucu `GET .../deliveries/{deliveryId}` ile yoklar.
+
+
+        Webhook `PAUSED`/`DISABLED` olsa dahi test gönderimi YAPILIR (amaç, yeniden
+        etkinleştirmeden önce uç noktayı doğrulamaktır), ancak `events` listesinde
+        `PING` olmasa bile çalışır — test, abonelikten bağımsızdır.
+
+
+        **En sıkı hız sınırı buradadır:** `WEBHOOK_TEST_RATE_LIMIT` (5/dk). Bu uç,
+        sunucumuzu keyfi bir dış adrese istek atmaya ikna eden en doğrudan yoldur;
+        URL zaten SSRF doğrulamasından geçmiş olsa da amplifikasyon vektörüdür.
+        Audit: `outbound_webhook.test`.
+      responses:
+        "202":
+          description: Kuyruklandı
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/EnqueueWebhookDeliveryResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /admin/settings/webhooks/{webhookId}/deliveries:
+    parameters:
+      - $ref: "#/components/parameters/OutboundWebhookId"
+    get:
+      tags: [OutboundWebhooks]
+      summary: Gönderim logunu listele
+      description: >
+        Cursor sayfalı, `seq desc`. Liste DTO'su (`WebhookDeliverySummary`) **payload
+        ve yanıt gövdesi TAŞIMAZ** — bunlar yalnızca detay ucunda döner (liste
+        yanıtını şişirmemek ve PII'yi gereksiz yere dolaştırmamak için).
+
+
+        Saklama (§10.13.8): webhook başına en yeni **100** kayıt, yaş tavanı **30
+        gün**; `containsPii: true` kayıtların `payload`'ı **7 gün** sonra redakte
+        edilir.
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/WebhookDeliveryStatusFilter"
+        - $ref: "#/components/parameters/WebhookEventFilter"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/WebhookDeliverySummary" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/settings/webhooks/{webhookId}/deliveries/{deliveryId}:
+    parameters:
+      - $ref: "#/components/parameters/OutboundWebhookId"
+      - $ref: "#/components/parameters/WebhookDeliveryId"
+    get:
+      tags: [OutboundWebhooks]
+      summary: Gönderim detayı
+      description: >
+        `payload` (gönderilen tam gövde) + `responseBodySnippet` (alıcı yanıtının ilk
+        512 karakteri) döner. Route handler `deliveryId`'nin GERÇEKTEN o `webhookId`'ye
+        ait olduğunu doğrular (IDOR koruması) — eşleşmezse `404` (bkz. `ImageId`
+        parametresindeki AYNI desen).
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/WebhookDelivery" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/settings/webhooks/{webhookId}/deliveries/{deliveryId}/redeliver:
+    parameters:
+      - $ref: "#/components/parameters/OutboundWebhookId"
+      - $ref: "#/components/parameters/WebhookDeliveryId"
+    post:
+      tags: [OutboundWebhooks]
+      summary: Gönderimi elle yeniden gönder
+      description: >
+        Kaynak kaydın `payload`'ını **BİREBİR** kullanarak YENİ bir `WebhookDelivery`
+        satırı oluşturur (`redeliveryOfId` ile kaynağa bağlanır) ve **202** döner.
+        Kaynak satırın sayaçları/durumu DEĞİŞTİRİLMEZ — denetim izi değişmezdir.
+        Yeni satır yeni bir `X-Webhook-Delivery` id'si taşır; imza yeni bir
+        timestamp ile üretilir.
+
+
+        Payload redakte edilmişse (§10.13.8, 7 gün) `409 CONFLICT`.
+        Hız sınırı: `WEBHOOK_REDELIVER_RATE_LIMIT` (10/dk). Audit:
+        `outbound_webhook.redeliver`.
+      responses:
+        "202":
+          description: Kuyruklandı
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/EnqueueWebhookDeliveryResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "Payload redakte edilmiş, yeniden gönderilemez (`error.code: CONFLICT`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  # ===========================================================================
+  # §10.13.5 Public API katmanı — /api/v1/public/*
+  # SALT-OKUNUR. Kimlik: X-Api-Key (apiKeyAuth). bearerAuth KABUL EDİLMEZ.
+  # ===========================================================================
+
+  /public/me:
+    get:
+      tags: [PublicApi]
+      security: [{ apiKeyAuth: [] }]
+      summary: Çağıran anahtarın kendi bilgisi
+      description: >
+        Entegrasyon teşhisi için: anahtarın adı, scope'u ve o anki kota durumu.
+        **Anahtarın kendisini/hash'ini/ön ekini DÖNMEZ** — çağıran zaten anahtara
+        sahiptir, geri yansıtmak log/proxy yüzeyini gereksiz genişletir.
+      responses:
+        "200":
+          description: OK
+          headers:
+            x-ratelimit-limit: { $ref: "#/components/headers/RateLimitLimit" }
+            x-ratelimit-remaining: { $ref: "#/components/headers/RateLimitRemaining" }
+            x-ratelimit-reset: { $ref: "#/components/headers/RateLimitReset" }
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/PublicApiKeyInfo" }
+        "401": { $ref: "#/components/responses/ApiKeyUnauthorized" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /public/pages:
+    get:
+      tags: [PublicApi]
+      security: [{ apiKeyAuth: [] }]
+      summary: Yayındaki sayfaları listele
+      description: >
+        `status = PUBLISHED AND deletedAt IS NULL` sabittir ve **atlanamaz**.
+        Sıralama `publishedAt desc, seq desc`. Cursor sayfalı.
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/LocaleQuery"
+      responses:
+        "200":
+          description: OK
+          headers:
+            x-ratelimit-limit: { $ref: "#/components/headers/RateLimitLimit" }
+            x-ratelimit-remaining: { $ref: "#/components/headers/RateLimitRemaining" }
+            x-ratelimit-reset: { $ref: "#/components/headers/RateLimitReset" }
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/PublicPage" }
+        "401": { $ref: "#/components/responses/ApiKeyUnauthorized" }
+        "403": { $ref: "#/components/responses/ApiKeyForbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /public/pages/{slug}:
+    parameters:
+      - $ref: "#/components/parameters/PublicSlug"
+      - $ref: "#/components/parameters/LocaleQuery"
+    get:
+      tags: [PublicApi]
+      security: [{ apiKeyAuth: [] }]
+      summary: Sayfa detayı — slug ile
+      description: "Taslak/çöpteki sayfalar için `404 NOT_FOUND` (varlıkları sızdırılmaz)."
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/PublicPage" }
+        "401": { $ref: "#/components/responses/ApiKeyUnauthorized" }
+        "403": { $ref: "#/components/responses/ApiKeyForbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /public/blog:
+    get:
+      tags: [PublicApi]
+      security: [{ apiKeyAuth: [] }]
+      summary: Yayındaki blog yazılarını listele
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/LocaleQuery"
+        - name: category
+          in: query
+          required: false
+          description: "Kategori **slug**'ı (id DEĞİL — dış tüketici için id opak/anlamsızdır)."
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/PublicBlogPost" }
+        "401": { $ref: "#/components/responses/ApiKeyUnauthorized" }
+        "403": { $ref: "#/components/responses/ApiKeyForbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /public/blog/categories:
+    get:
+      tags: [PublicApi]
+      security: [{ apiKeyAuth: [] }]
+      summary: Blog kategorilerini listele
+      description: >
+        **Rota önceliği (§10.13.5 madde 5):** bu statik segment `/public/blog/{slug}`
+        parametreli rotadan ÖNCE eşleşir (Fastify radix router). Sonuç: `categories`
+        slug'lı bir blog yazısı bu uçtan erişilemez olur — kabul edilmiş kısıt.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/PublicCategory" }
+        "401": { $ref: "#/components/responses/ApiKeyUnauthorized" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /public/blog/{slug}:
+    parameters:
+      - $ref: "#/components/parameters/PublicSlug"
+      - $ref: "#/components/parameters/LocaleQuery"
+    get:
+      tags: [PublicApi]
+      security: [{ apiKeyAuth: [] }]
+      summary: Blog yazısı detayı — slug ile
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/PublicBlogPost" }
+        "401": { $ref: "#/components/responses/ApiKeyUnauthorized" }
+        "403": { $ref: "#/components/responses/ApiKeyForbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /public/products:
+    get:
+      tags: [PublicApi]
+      security: [{ apiKeyAuth: [] }]
+      summary: Yayındaki ürünleri listele
+      description: >
+        `products` modülü **kapalıysa `404 NOT_FOUND`** — mevcut `/products` ucuyla
+        BİREBİR aynı davranış (`requireModuleEnabled`, bkz. `Modules` tag'i). Modülün
+        kapalı olduğu 403 ile sızdırılmaz.
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/LocaleQuery"
+        - $ref: "#/components/parameters/SearchQuery"
+        - name: category
+          in: query
+          required: false
+          description: "Kategori **slug**'ı."
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/PublicProduct" }
+        "401": { $ref: "#/components/responses/ApiKeyUnauthorized" }
+        "403": { $ref: "#/components/responses/ApiKeyForbidden" }
+        "404":
+          description: "Modül kapalı (`error.code: NOT_FOUND`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /public/products/categories:
+    get:
+      tags: [PublicApi]
+      security: [{ apiKeyAuth: [] }]
+      summary: Ürün kategorilerini listele
+      description: "`products` modülü kapalıysa `404`. Rota önceliği `/public/blog/categories` ile aynı."
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/PublicCategory" }
+        "401": { $ref: "#/components/responses/ApiKeyUnauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /public/products/{slug}:
+    parameters:
+      - $ref: "#/components/parameters/PublicSlug"
+      - $ref: "#/components/parameters/LocaleQuery"
+    get:
+      tags: [PublicApi]
+      security: [{ apiKeyAuth: [] }]
+      summary: Ürün detayı — slug ile
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/PublicProduct" }
+        "401": { $ref: "#/components/responses/ApiKeyUnauthorized" }
+        "403": { $ref: "#/components/responses/ApiKeyForbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /public/portfolio:
+    get:
+      tags: [PublicApi]
+      security: [{ apiKeyAuth: [] }]
+      summary: Yayındaki portföy öğelerini listele
+      description: >
+        **Manuel `order asc` ile sıralanır** (`seq`/`publishedAt` DEĞİL) — mevcut
+        `/portfolio` ucuyla aynı (§10.9.4). `portfolio` modülü kapalıysa `404`.
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/LocaleQuery"
+        - name: category
+          in: query
+          required: false
+          description: "Kategori **slug**'ı."
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/PublicPortfolioItem" }
+        "401": { $ref: "#/components/responses/ApiKeyUnauthorized" }
+        "403": { $ref: "#/components/responses/ApiKeyForbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /public/portfolio/categories:
+    get:
+      tags: [PublicApi]
+      security: [{ apiKeyAuth: [] }]
+      summary: Portföy kategorilerini listele
+      description: "`portfolio` modülü kapalıysa `404`."
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/PublicCategory" }
+        "401": { $ref: "#/components/responses/ApiKeyUnauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /public/portfolio/{slug}:
+    parameters:
+      - $ref: "#/components/parameters/PublicSlug"
+      - $ref: "#/components/parameters/LocaleQuery"
+    get:
+      tags: [PublicApi]
+      security: [{ apiKeyAuth: [] }]
+      summary: Portföy öğesi detayı — slug ile
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/PublicPortfolioItem" }
+        "401": { $ref: "#/components/responses/ApiKeyUnauthorized" }
+        "403": { $ref: "#/components/responses/ApiKeyForbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-Api-Key
+      description: >
+        §10.13.4 — YALNIZCA `/api/v1/public/*` katmanında geçerlidir. Ham anahtar
+        formatı `cmsk_<12hex>_<64hex>` (82 karakter). `Authorization: Bearer <key>`
+        biçimi **KABUL EDİLMEZ** (bağlayıcı karar — kimlik bilgisi türlerinin
+        karışmasını yapısal olarak engeller). Anahtar geçersiz/iptal edilmiş/süresi
+        dolmuşsa `401`; scope yetersizse `403`. Hata mesajı "yok" ile "yanlış"
+        ayrımını YAPMAZ (numaralandırma koruması).
 
   parameters:
     OrgId:
@@ -5207,6 +6085,45 @@ components:
         GERÇEKTEN o `productId`/`itemId`'ye ait olduğunu doğrular (IDOR koruması) —
         eşleşmezse (başka bir ürünün/öğenin görsel id'si verilse dahi) `404 NOT_FOUND`.
       schema: { type: string, format: uuid }
+    ApiKeyId:
+      name: keyId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ApiKeyStatusFilter:
+      name: status
+      in: query
+      required: false
+      schema: { $ref: "#/components/schemas/ApiKeyStatus" }
+    OutboundWebhookId:
+      name: webhookId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    WebhookDeliveryId:
+      name: deliveryId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    WebhookDeliveryStatusFilter:
+      name: status
+      in: query
+      required: false
+      schema: { $ref: "#/components/schemas/WebhookDeliveryStatus" }
+    WebhookEventFilter:
+      name: event
+      in: query
+      required: false
+      schema: { $ref: "#/components/schemas/WebhookEvent" }
+    PublicSlug:
+      name: slug
+      in: path
+      required: true
+      description: >
+        İstenen dildeki slug. Çözümleme `/pages/{slug}` ile BİREBİR AYNIDIR
+        (§10.13.5 madde 4): (1) `ContentSlug(locale, slug)` tam eşleşme,
+        (2) varsayılan dildeki kanonik `slug` kolonu. İkisi de tutmazsa `404`.
+      schema: { type: string }
 
   responses:
     Unauthorized:
@@ -5246,6 +6163,39 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+    ApiKeyUnauthorized:
+      description: >
+        `X-Api-Key` eksik, formata uymuyor, bilinmiyor, iptal edilmiş veya süresi
+        dolmuş (`error.code: UNAUTHORIZED`). **Mesaj bu durumları AYIRT ETMEZ** —
+        tek ve sabit bir metin döner ("Geçersiz veya eksik API anahtarı.");
+        numaralandırma/oracle davranışı engellenir (§10.13.4).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+    ApiKeyForbidden:
+      description: >
+        Anahtar geçerli ama `scope` yetersiz (`error.code: FORBIDDEN`). v1'de tüm
+        public uçlar `READ` istediği için pratikte oluşmaz; kontrat ileride yazma
+        uçları eklendiğinde davranışın belirsiz kalmaması için ŞİMDİDEN tanımlıdır
+        (§10.13.4 madde 5).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+
+  headers:
+    RateLimitLimit:
+      description: >
+        §10.13.6 — **Katman 2'nin (doğrulanmış anahtar başına kota)** üst sınırı.
+        Katman 1 (IP tabanı, 300/dk) bilinçli olarak yansıtılmaz: entegratör için
+        anlamlı olan kendi anahtarının kotasıdır, IP tabanı sessiz bir güvenlik
+        tabanıdır.
+      schema: { type: integer, example: 120 }
+    RateLimitRemaining:
+      description: "Geçerli pencerede kalan istek hakkı (anahtar kotası)."
+      schema: { type: integer, example: 118 }
+    RateLimitReset:
+      description: "Pencerenin sıfırlanmasına kalan saniye."
+      schema: { type: integer, example: 42 }
 
   schemas:
     # -------------------------------------------------------------------------
@@ -8276,3 +9226,568 @@ components:
       type: object
       properties:
         nextCursor: { type: string, nullable: true }
+
+    # -------------------------------------------------------------------------
+    # §10.13 Üçüncü Parti Entegrasyon — API Anahtarları
+    # -------------------------------------------------------------------------
+
+    ApiKeyScope:
+      type: string
+      description: >
+        `READ` = yalnızca okuma. `READ_WRITE` = okuma + yazma.
+
+
+        **v1'de public katmanda yazma ucu YOKTUR** — dolayısıyla iki değer arasında
+        şu an gözlemlenebilir bir davranış farkı bulunmaz. Enum ve doğrulama hattı
+        yine de ŞİMDİDEN vardır (kullanıcı gereksinimi, §10.13.4 madde 5): yazma ucu
+        eklendiğinde yeni bir migration ve yeni bir yetki ekseni icat edilmesin diye.
+      enum: [READ, READ_WRITE]
+
+    ApiKeyStatus:
+      type: string
+      description: >
+        `REVOKED` **soft** iptaldir — satır silinmez, denetim izi korunur. İptal
+        ANINDA etkilidir (doğrulama cache girişi senkron temizlenir, §10.13.4).
+      enum: [ACTIVE, REVOKED]
+
+    ApiKey:
+      type: object
+      description: >
+        `/admin/settings/api-keys` uçlarında dönen DTO. **Ham anahtarı ASLA
+        içermez** — yalnızca `keyPrefix` (gizli olmayan tanıtıcı parça) ve `last4`.
+      required: [id, name, keyPrefix, last4, maskedKey, scope, status, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, example: "Mobil Uygulama" }
+        description: { type: string, nullable: true }
+        keyPrefix:
+          type: string
+          example: "cmsk_7f3ka9dm2q0x"
+          description: >
+            Ham anahtarın GİZLİ OLMAYAN tanıtıcı parçası (`cmsk_` + 12 hex).
+            Doğrulamada indeks araması buna göre yapılır; admin panelinde ve destek
+            akışlarında "hangi anahtar?" sorusunu secret'ı ifşa etmeden cevaplar.
+        last4:
+          type: string
+          minLength: 4
+          maxLength: 4
+          example: "9f2c"
+          description: "Ham anahtarın son 4 karakteri — maskeli gösterim için."
+        maskedKey:
+          type: string
+          readOnly: true
+          example: "cmsk_7f3ka9dm2q0x…9f2c"
+          description: "Sunucuda türetilen hazır gösterim dizesi (`keyPrefix` + `…` + `last4`) — istemci kendi maskeleme mantığını YAZMAZ."
+        scope: { $ref: "#/components/schemas/ApiKeyScope" }
+        status: { $ref: "#/components/schemas/ApiKeyStatus" }
+        lastUsedAt: { type: string, format: date-time, nullable: true }
+        lastUsedIp:
+          type: string
+          nullable: true
+          description: >
+            **MASKELENMİŞ** istemci IP'si (`lib/pii-mask.ts::maskIp`). Ham IP DB'ye
+            YAZILMAZ (veri minimizasyonu, §10.13.10). Amaç: sızmış bir anahtarın
+            beklenmedik bir konumdan kullanıldığını fark etmek.
+
+
+            Yazma kısıtlıdır: `lastUsedAt` boşsa veya 60 sn'den eskiyse güncellenir —
+            aksi hâlde her okuma isteği bir yazma isteği doğururdu (§10.13.4 madde 7).
+        expiresAt: { type: string, format: date-time, nullable: true, description: "null = süresiz." }
+        revokedAt: { type: string, format: date-time, nullable: true }
+        createdById: { type: string, format: uuid, nullable: true }
+        createdByName: { type: string, nullable: true, description: "Oluşturan kullanıcının ADI. E-posta BİLİNÇLİ olarak DÖNMEZ." }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    CreateApiKeyRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100, example: "Zapier Entegrasyonu" }
+        description: { type: string, maxLength: 500, nullable: true }
+        scope:
+          allOf:
+            - $ref: "#/components/schemas/ApiKeyScope"
+          default: READ
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: "Verilirse GELECEKTE olmalıdır (aksi hâlde 422). null/verilmemiş = süresiz."
+
+    CreateApiKeyResponse:
+      type: object
+      description: >
+        **`plainKey` YALNIZCA BURADA, BİR KEZ döner.** Sunucu yalnızca `sha256`
+        hash'ini saklar (§10.13.3); kaybedilirse geri alınamaz, yeni anahtar
+        üretilmelidir. İstemci bu değeri localStorage/state'te KALICI TUTMAZ.
+      required: [apiKey, plainKey]
+      properties:
+        apiKey: { $ref: "#/components/schemas/ApiKey" }
+        plainKey:
+          type: string
+          example: "cmsk_7f3ka9dm2q0x_4b1e…"
+          description: "Ham anahtar (82 karakter, `cmsk_<12hex>_<64hex>`). `X-Api-Key` header'ında AYNEN kullanılır."
+
+    UpdateApiKeyRequest:
+      type: object
+      description: "Anahtarın KENDİSİ değiştirilemez — rotasyon = yeni anahtar + eskisini iptal."
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        description: { type: string, maxLength: 500, nullable: true }
+        scope: { $ref: "#/components/schemas/ApiKeyScope" }
+        expiresAt: { type: string, format: date-time, nullable: true }
+
+    PublicApiKeyInfo:
+      type: object
+      description: >
+        `GET /public/me` yanıtı. Anahtarın kendisini/hash'ini/ön ekini DÖNMEZ —
+        çağıran zaten anahtara sahiptir; geri yansıtmak log/proxy yüzeyini
+        gereksiz genişletir.
+      required: [name, scope, rateLimit]
+      properties:
+        name: { type: string }
+        scope: { $ref: "#/components/schemas/ApiKeyScope" }
+        expiresAt: { type: string, format: date-time, nullable: true }
+        rateLimit:
+          type: object
+          description: "Katman 2 (anahtar başına kota) durumu — `x-ratelimit-*` header'larıyla AYNI değerler."
+          required: [limit, remaining, resetSeconds]
+          properties:
+            limit: { type: integer, example: 120 }
+            remaining: { type: integer, example: 118 }
+            resetSeconds: { type: integer, example: 42 }
+
+    # -------------------------------------------------------------------------
+    # §10.13 Üçüncü Parti Entegrasyon — Giden (Outbound) Webhook'lar
+    # -------------------------------------------------------------------------
+
+    WebhookEvent:
+      type: string
+      description: >
+        Abone olunabilecek olaylar. **Wire gösterimi Prisma enum adıyla BİREBİR
+        AYNIDIR (SCREAMING_SNAKE)** — `blog_post.published` gibi ikinci bir
+        nokta-notasyonu gösterim BİLİNÇLİ olarak tanımlanmadı; projedeki tüm
+        enum'lar (`OrderStatus`, `PageStatus`, `ImportJobType`) wire'da bu biçimi
+        kullanır ve iki gösterim kaçınılmaz olarak birbirinden sapardı.
+
+
+        **`PING` gerçek bir olay değildir** — yalnızca `POST .../test` ile üretilir;
+        abonelik listesinde yer alması GEREKMEZ.
+
+
+        **`*_PUBLISHED` olayları yalnızca duruma GEÇİŞTE tetiklenir**
+        (`DRAFT`/`SCHEDULED` → `PUBLISHED`). Zaten yayında olan içeriğin tekrar
+        kaydedilmesi bu olayı ÜRETMEZ (onun için `*_UPDATED` vardır) — §10.13.8.
+      enum:
+        - PING
+        - PAGE_PUBLISHED
+        - BLOG_POST_PUBLISHED
+        - BLOG_POST_UPDATED
+        - PRODUCT_CREATED
+        - PRODUCT_UPDATED
+        - PRODUCT_DELETED
+        - PORTFOLIO_ITEM_PUBLISHED
+        - ORDER_CREATED
+        - ORDER_PAID
+        - ORDER_STATUS_CHANGED
+
+    WebhookEventDefinition:
+      type: object
+      description: >
+        `GET /admin/settings/webhooks/events` öğesi — statik kod registry'sinden
+        gelir (`lib/webhook-events.ts`), DB'den DEĞİL. Frontend olay listesini ve
+        Türkçe etiketleri BURADAN okur, hardcode etmez.
+      required: [event, label, description, containsPii]
+      properties:
+        event: { $ref: "#/components/schemas/WebhookEvent" }
+        label: { type: string, example: "Blog yazısı yayınlandı" }
+        description: { type: string, example: "Bir blog yazısı ilk kez PUBLISHED durumuna geçtiğinde tetiklenir." }
+        containsPii:
+          type: boolean
+          description: "Bu olayın payload'ı kişisel veri taşır mı (ör. `ORDER_*` → müşteri e-postası). Arayüz bu bayrağa göre uyarı gösterir."
+        payloadSchema:
+          type: string
+          nullable: true
+          description: "`data` alanının şeması için referans ad (ör. `PublicBlogPost`, `WebhookOrderPayload`) — dokümantasyon amaçlı."
+
+    OutboundWebhookStatus:
+      type: string
+      description: >
+        `PAUSED` = admin elle duraklattı. `DISABLED` = **sistem** üst üste 20
+        başarısız gönderim sonrası otomatik kapattı (§10.13.8); yeniden
+        etkinleştirme ELLEdir ve sayacı sıfırlar.
+      enum: [ACTIVE, PAUSED, DISABLED]
+
+    OutboundWebhook:
+      type: object
+      description: "`/admin/settings/webhooks` uçlarında dönen DTO. Secret ASLA dönmez — yalnızca `secretLast4`."
+      required: [id, name, url, events, status, secretLast4, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, maxLength: 100 }
+        description: { type: string, nullable: true }
+        url: { type: string, format: uri, example: "https://hooks.example.com/cms" }
+        secretLast4: { type: string, minLength: 4, maxLength: 4 }
+        events:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/WebhookEvent" }
+        status: { $ref: "#/components/schemas/OutboundWebhookStatus" }
+        consecutiveFailureCount:
+          type: integer
+          description: "Art arda başarısız gönderim sayacı; ilk başarılı gönderimde 0'lanır. 20'ye ulaşınca `status: DISABLED`."
+        autoDisabledAt: { type: string, format: date-time, nullable: true }
+        lastTriggeredAt: { type: string, format: date-time, nullable: true }
+        lastSuccessAt: { type: string, format: date-time, nullable: true }
+        lastFailureAt: { type: string, format: date-time, nullable: true }
+        createdById: { type: string, format: uuid, nullable: true }
+        createdByName: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    CreateOutboundWebhookRequest:
+      type: object
+      description: >
+        `url` §10.13.7 SSRF kurallarının TAMAMINDAN geçmelidir: yalnızca `https`,
+        yalnızca port 443, kimlik bilgisi içeremez, literal IP olamaz, tek etiketli/
+        `.local`/`.internal`/`.localhost`/`.lan`/`.home.arpa`/`.cluster.local`
+        olamaz ve DNS çözümlemesinin döndürdüğü **TÜM** adresler public unicast
+        olmalıdır (özel/loopback/link-local/CGNAT/multicast aralıkları ve
+        IPv4-mapped/NAT64/6to4 sarmalamaları dahil). İhlalde `422` +
+        `error.details.url`.
+      required: [name, url, events]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        description: { type: string, maxLength: 500, nullable: true }
+        url: { type: string, format: uri, maxLength: 2048 }
+        events:
+          type: array
+          minItems: 1
+          maxItems: 20
+          description: "Boş dizi YASAKTIR (422). Tekrarlanan değerler sunucuda teklenir."
+          items: { $ref: "#/components/schemas/WebhookEvent" }
+        status:
+          allOf:
+            - $ref: "#/components/schemas/OutboundWebhookStatus"
+          default: ACTIVE
+          description: "Oluştururken `DISABLED` GÖNDERİLEMEZ (422) — o değer yalnızca sistemin otomatik kapatmasıyla oluşur."
+
+    CreateOutboundWebhookResponse:
+      type: object
+      description: "**`plainSecret` YALNIZCA BURADA (ve `rotate-secret` yanıtında), BİR KEZ döner.**"
+      required: [webhook, plainSecret]
+      properties:
+        webhook: { $ref: "#/components/schemas/OutboundWebhook" }
+        plainSecret:
+          type: string
+          example: "whsec_4b1e…"
+          description: >
+            `whsec_` + 64 hex. Alıcı bu değeri `X-Webhook-Signature` doğrulamasında
+            HMAC anahtarı olarak kullanır (§10.13.9). DB'de AES-256-GCM ile şifreli
+            saklanır — hash DEĞİL, çünkü imza üretimi için geri çözülebilirlik
+            ZORUNLUDUR.
+
+    UpdateOutboundWebhookRequest:
+      type: object
+      description: >
+        `status: "ACTIVE"` gönderilmesi, otomatik kapatılmış bir webhook'u yeniden
+        etkinleştirir ve `consecutiveFailureCount`'u **0'lar**. `DISABLED` değeri
+        istemciden GÖNDERİLEMEZ (422).
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        description: { type: string, maxLength: 500, nullable: true }
+        url: { type: string, format: uri, maxLength: 2048 }
+        events:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items: { $ref: "#/components/schemas/WebhookEvent" }
+        status: { type: string, enum: [ACTIVE, PAUSED] }
+
+    RotateWebhookSecretResponse:
+      type: object
+      required: [webhook, plainSecret]
+      properties:
+        webhook: { $ref: "#/components/schemas/OutboundWebhook" }
+        plainSecret: { type: string, description: "Yeni secret. Eski secret ANINDA geçersizdir — grace period YOKTUR (§10.13.9)." }
+
+    EnqueueWebhookDeliveryResponse:
+      type: object
+      description: >
+        `POST .../test` ve `POST .../deliveries/{id}/redeliver` ortak yanıtı (202).
+        Gönderim SENKRON DEĞİLDİR; istemci sonucu `GET .../deliveries/{deliveryId}`
+        ile yoklar (dispatcher sweeper aralığı 15 sn).
+      required: [deliveryId]
+      properties:
+        deliveryId: { type: string, format: uuid }
+
+    WebhookDeliveryStatus:
+      type: string
+      description: >
+        `PENDING` sıraya alındı · `SENDING` gönderiliyor (çökme kurtarması bu durumu
+        arar) · `RETRYING` en az bir deneme başarısız, `nextAttemptAt` dolu ·
+        `SUCCEEDED` 2xx alındı · `FAILED` kalıcı hata VEYA deneme hakkı tükendi.
+      enum: [PENDING, SENDING, RETRYING, SUCCEEDED, FAILED]
+
+    WebhookDeliverySummary:
+      type: object
+      description: >
+        Delivery LİSTE DTO'su — `payload` ve `responseBodySnippet` **TAŞIMAZ**
+        (liste yanıtını şişirmemek ve PII'yi gereksiz dolaştırmamak için). Bunlar
+        yalnızca detay ucunda döner.
+      required: [id, event, status, attemptCount, maxAttempts, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: "`X-Webhook-Delivery` header'ında gönderilen değer — alıcının idempotency anahtarı."
+        event: { $ref: "#/components/schemas/WebhookEvent" }
+        status: { $ref: "#/components/schemas/WebhookDeliveryStatus" }
+        attemptCount: { type: integer }
+        maxAttempts: { type: integer, example: 5 }
+        nextAttemptAt: { type: string, format: date-time, nullable: true }
+        responseStatus: { type: integer, nullable: true, description: "Alıcının HTTP status kodu; ağ/DNS/TLS hatasında null." }
+        errorCode:
+          type: string
+          nullable: true
+          description: >
+            Makine-okunur hata sınıfı: `timeout` · `dns_failure` ·
+            `connection_refused` · `tls_error` · `redirect_not_followed` ·
+            `ssrf_blocked` · `http_error` · `unknown`.
+        errorMessage: { type: string, nullable: true }
+        durationMs: { type: integer, nullable: true }
+        containsPii: { type: boolean, description: "true ise `payload` 7 gün sonra redakte edilir (§10.13.10)." }
+        redeliveryOfId: { type: string, format: uuid, nullable: true, description: "Elle yeniden gönderimde kaynak kaydın id'si." }
+        firstAttemptAt: { type: string, format: date-time, nullable: true }
+        lastAttemptAt: { type: string, format: date-time, nullable: true }
+        deliveredAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    WebhookDelivery:
+      allOf:
+        - $ref: "#/components/schemas/WebhookDeliverySummary"
+        - type: object
+          description: "Detay DTO'su — `GET .../deliveries/{deliveryId}`."
+          properties:
+            payload:
+              allOf:
+                - $ref: "#/components/schemas/WebhookPayloadEnvelope"
+              description: >
+                Gönderilen gövdenin TAMAMI. Yeniden denemelerde BİREBİR AYNI baytlar
+                gönderilir (olay anındaki durum yeniden hesaplanmaz).
+                `containsPii: true` kayıtlarda 7 gün sonra `{"redacted": true}`
+                ile değiştirilir — o durumda `redeliver` ucu `409` döner.
+            responseBodySnippet:
+              type: string
+              nullable: true
+              description: >
+                Alıcı yanıtının **ilk 512 karakteri**. Tam gövde ASLA saklanmaz —
+                alıcının hata sayfası kendi iç bilgisini sızdırabilir. Okuma 8 KiB
+                ile sınırlıdır (yavaş/devasa yanıt bir DoS vektörüdür).
+
+    WebhookPayloadEnvelope:
+      type: object
+      description: >
+        **Giden POST gövdesi — tüm olaylarda AYNI zarf** (§10.13.9). İmzalanan dize
+        `${X-Webhook-Timestamp}.${rawBody}` olup gövdenin gönderilen baytlarıyla
+        birebir aynı serileştirmesi kullanılır.
+      required: [id, event, apiVersion, createdAt, data]
+      properties:
+        id: { type: string, format: uuid, description: "= `WebhookDelivery.id` = `X-Webhook-Delivery`. Alıcı BUNU idempotency anahtarı olarak kullanır." }
+        event: { $ref: "#/components/schemas/WebhookEvent" }
+        apiVersion: { type: string, enum: ["v1"] }
+        createdAt: { type: string, format: date-time }
+        data:
+          type: object
+          additionalProperties: true
+          description: >
+            Olay kaynağının gövdesi. **Public API DTO'larıyla AYNI şekildedir** —
+            tek dış kontrat, sıfır sapma: `PAGE_*` → `PublicPage`, `BLOG_POST_*` →
+            `PublicBlogPost`, `PRODUCT_CREATED|UPDATED` → `PublicProduct`,
+            `PORTFOLIO_ITEM_*` → `PublicPortfolioItem`.
+
+
+            İstisnalar: `ORDER_*` → `WebhookOrderPayload` (public API'de sipariş ucu
+            yoktur; sipariş webhook'unun tüm anlamı müşteri/tutar bilgisidir).
+            `PRODUCT_DELETED` → `{ id, slug }` (kaynak artık yok).
+            `PING` → `{ message: "ping", webhookId }`.
+
+    WebhookOrderPayload:
+      type: object
+      description: >
+        `ORDER_*` olaylarının `data` alanı. **Kişisel veri içerir** (`customerEmail`,
+        `customerName`) → `WebhookDelivery.containsPii = true` ve payload 7 gün sonra
+        redakte edilir. `Order` (admin DTO) ile KARIŞTIRILMAMALI: burada `customerEmail`
+        MASKELENMEZ — alıcının siparişi kendi sisteminde eşleştirebilmesi bu ucun
+        varlık sebebidir (bkz. §10.13.10, compliance-agent değerlendirmesine açık madde).
+      required: [id, orderNumber, status, customerEmail, currency, totalCents, items, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        orderNumber: { type: string, example: "ORD-LXK3F2-A1B2" }
+        status: { $ref: "#/components/schemas/OrderStatus" }
+        previousStatus:
+          allOf:
+            - $ref: "#/components/schemas/OrderStatus"
+          nullable: true
+          description: "Yalnızca `ORDER_STATUS_CHANGED` olayında dolar."
+        customerEmail: { type: string, format: email }
+        customerName: { type: string, nullable: true }
+        currency: { type: string }
+        subtotalCents: { type: integer }
+        discountCents: { type: integer }
+        taxCents: { type: integer }
+        totalCents: { type: integer }
+        paidAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              productSlug: { type: string, nullable: true }
+              productTitle: { type: string }
+              productSku: { type: string, nullable: true }
+              unitPriceCents: { type: integer }
+              quantity: { type: integer }
+              lineTotalCents: { type: integer }
+
+    # -------------------------------------------------------------------------
+    # §10.13.5 Public API DTO'ları — admin DTO'larından AYRI ve DONDURULMUŞ kontrat
+    # -------------------------------------------------------------------------
+    # ORTAK KURAL (tüm Public* şemaları için, ihlali güvenlik bulgusudur):
+    #   `author`, `authorId`, `seoScore`, `seoScoreIssues`, `deletedAt`, `viewCount`,
+    #   `translations` (ham blob) ve `localizations` alanları BU KATMANDA DÖNMEZ.
+    #   Sebep: (1) admin DTO'larındaki `author` PERSONEL E-POSTASI taşır ve üçüncü
+    #   parti bir entegratöre gönderilemez, (2) dış kontrat iç refactor'lardan
+    #   yalıtılmalıdır (§10.13.5).
+
+    PublicCategory:
+      type: object
+      description: "Blog/ürün/portföy kategorilerinin ORTAK public gösterimi — üçü için ayrı şema açılmadı (alan kümesi birebir aynı)."
+      required: [id, name, slug]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+
+    PublicSeo:
+      type: object
+      description: "Tüm public içerik DTO'larında BİREBİR aynı SEO alan kümesi (§10.2)."
+      properties:
+        seoTitle: { type: string, nullable: true }
+        seoDescription: { type: string, nullable: true }
+        ogTitle: { type: string, nullable: true }
+        ogImageUrl: { type: string, nullable: true }
+        canonicalUrl: { type: string, nullable: true }
+        noIndex: { type: boolean }
+
+    PublicImage:
+      type: object
+      description: "Galeri görseli — `Media` DTO'sunun public alt kümesi (dosya yolu/boyut/yükleyen bilgisi YOK)."
+      required: [url, order]
+      properties:
+        url: { type: string }
+        altText: { type: string, nullable: true }
+        order: { type: integer }
+
+    PublicPage:
+      allOf:
+        - $ref: "#/components/schemas/PublicSeo"
+        - type: object
+          required: [id, title, slug, blocks, publishedAt, updatedAt]
+          properties:
+            id: { type: string, format: uuid }
+            title: { type: string }
+            slug: { type: string }
+            blocks:
+              type: array
+              description: "Page-builder blokları (§10.9.6). `?locale=` ile alan bazlı fallback uygulanmış hâlde döner."
+              items: { type: object, additionalProperties: true }
+            isLegalDocument:
+              type: boolean
+              description: >
+                `true` ve istenen dilde çeviri yoksa `blocks` **BOŞ** döner (sessiz
+                fallback UYGULANMAZ — KVKK m.10 / GDPR m.12). Bu kural public API
+                katmanında da AYNEN geçerlidir; bkz. `LocaleQuery`.
+            publishedAt: { type: string, format: date-time, nullable: true }
+            updatedAt: { type: string, format: date-time }
+
+    PublicBlogPost:
+      allOf:
+        - $ref: "#/components/schemas/PublicSeo"
+        - type: object
+          required: [id, title, slug, contentHtml, publishedAt, updatedAt]
+          properties:
+            id: { type: string, format: uuid }
+            title: { type: string }
+            slug: { type: string }
+            excerpt: { type: string, nullable: true }
+            contentHtml: { type: string, description: "Sunucuda sanitize edilmiş HTML (§10.8.4)." }
+            coverImageUrl: { type: string, nullable: true }
+            category:
+              allOf:
+                - $ref: "#/components/schemas/PublicCategory"
+              nullable: true
+            publishedAt: { type: string, format: date-time, nullable: true }
+            updatedAt: { type: string, format: date-time }
+
+    PublicProduct:
+      allOf:
+        - $ref: "#/components/schemas/PublicSeo"
+        - type: object
+          required: [id, title, slug, priceCents, currency, inStock, publishedAt, updatedAt]
+          properties:
+            id: { type: string, format: uuid }
+            title: { type: string }
+            slug: { type: string }
+            excerpt: { type: string, nullable: true }
+            descriptionHtml: { type: string }
+            priceCents: { type: integer, description: "HER ZAMAN kuruş/cent — float YOK." }
+            discountPriceCents: { type: integer, nullable: true }
+            currency: { type: string, example: "TRY" }
+            taxRatePercent: { type: string, nullable: true, description: "Decimal(5,2), string olarak serileştirilir. KDV fiyata DAHİLDİR — sadece ayrıştırma amaçlı." }
+            sku: { type: string, nullable: true }
+            inStock:
+              type: boolean
+              description: >
+                **`stockQuantity` yerine türetilmiş bir boolean döner (bağlayıcı).**
+                Ham stok adedi rekabetçi/ticari bir bilgidir ve bir okuma API'sinin
+                gerektirdiğinden fazlasını ifşa eder; entegratörün ihtiyacı
+                "satılabilir mi?" sorusudur. Gerçek adet gerekirse admin API kullanılır.
+            coverImageUrl: { type: string, nullable: true }
+            images:
+              type: array
+              items: { $ref: "#/components/schemas/PublicImage" }
+            category:
+              allOf:
+                - $ref: "#/components/schemas/PublicCategory"
+              nullable: true
+            publishedAt: { type: string, format: date-time, nullable: true }
+            updatedAt: { type: string, format: date-time }
+
+    PublicPortfolioItem:
+      allOf:
+        - $ref: "#/components/schemas/PublicSeo"
+        - type: object
+          required: [id, title, slug, order, publishedAt, updatedAt]
+          properties:
+            id: { type: string, format: uuid }
+            title: { type: string }
+            slug: { type: string }
+            summary: { type: string, nullable: true }
+            contentHtml: { type: string }
+            clientName: { type: string, nullable: true }
+            projectUrl: { type: string, nullable: true }
+            completedAt: { type: string, format: date-time, nullable: true }
+            order: { type: integer, description: "Manuel sıra — liste ucu BUNA göre `asc` sıralar (§10.9.4)." }
+            coverImageUrl: { type: string, nullable: true }
+            images:
+              type: array
+              items: { $ref: "#/components/schemas/PublicImage" }
+            category:
+              allOf:
+                - $ref: "#/components/schemas/PublicCategory"
+              nullable: true
+            publishedAt: { type: string, format: date-time, nullable: true }
+            updatedAt: { type: string, format: date-time }

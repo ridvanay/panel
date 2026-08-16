@@ -10,6 +10,8 @@ import { CART_COOKIE_NAME } from "../../lib/cookies";
 import { stripe } from "../../lib/stripe";
 import { env } from "../../config/env";
 import { CheckoutSessionResponseSchema, CreateCheckoutSessionRequestSchema } from "./checkout.schemas";
+import { emitWebhookEvent } from "../../lib/webhook-emitter";
+import { buildWebhookOrderPayload } from "../../lib/webhook-order-payload";
 
 // Diğer hassas/istismara açık PUBLIC uçlarla (ör. admin-users.routes.ts::ADMIN_USERS_RATE_LIMIT)
 // AYNI route-level override paterni — global limitten (env.RATE_LIMIT_MAX) BAĞIMSIZ, para hareketi
@@ -105,6 +107,7 @@ export async function checkoutRoutes(app: FastifyInstance) {
           totalCents: subtotalCents,
           items: { create: orderItemsData },
         },
+        include: { items: true },
       });
 
       const session = await stripe.checkout.sessions.create({
@@ -126,6 +129,9 @@ export async function checkoutRoutes(app: FastifyInstance) {
       if (!session.url) throw new ConflictError("Stripe checkout oturumu oluşturulamadı.");
 
       await app.prisma.order.update({ where: { id: order.id }, data: { stripeCheckoutSessionId: session.id } });
+
+      // §10.13.8 — `ORDER_CREATED`, checkout oturumu başarıyla açıldıktan SONRA tetiklenir.
+      await emitWebhookEvent(app, "ORDER_CREATED", await buildWebhookOrderPayload(app, order));
 
       return reply.code(201).send(ok({ checkoutUrl: session.url }));
     }

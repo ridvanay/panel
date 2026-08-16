@@ -46,6 +46,11 @@ import { cartRoutes } from "./modules/cart/cart.routes";
 import { checkoutRoutes } from "./modules/checkout/checkout.routes";
 import { ordersRoutes } from "./modules/orders/orders.routes";
 import { registerCartRetentionSweeper } from "./lib/cart-retention";
+import { apiKeysRoutes } from "./modules/api-keys/api-keys.routes";
+import { outboundWebhooksRoutes } from "./modules/outbound-webhooks/outbound-webhooks.routes";
+import { publicApiRoutes } from "./modules/public-api/public-api.routes";
+import { registerWebhookDispatcher, recoverStuckWebhookDeliveries } from "./modules/outbound-webhooks/outbound-webhooks.dispatcher";
+import { registerWebhookDeliveryRetentionScheduler } from "./modules/outbound-webhooks/outbound-webhooks.retention";
 
 export function buildApp() {
   // `SENTRY_DSN` tanımsızsa no-op (bkz. lib/sentry.ts) — her `buildApp()` çağrısında
@@ -90,6 +95,12 @@ export function buildApp() {
                 "*.rawToken",
                 "*.refreshToken",
                 "*.accessToken",
+                // §10.13.3/§10.13.9 — API anahtarının/webhook secret'ının düz metin hâli YALNIZCA
+                // ilgili 201/200 yanıtında bir kez döner; loglara ASLA yansımamalıdır.
+                "plainKey",
+                "plainSecret",
+                "*.plainKey",
+                "*.plainSecret",
               ],
               censor: "[REDACTED]",
             },
@@ -188,6 +199,15 @@ export function buildApp() {
       // Kendi content-type parser'ını (raw body) kaydeder — kendi encapsulation
       // context'inde kaldığı için diğer /api/v1 uçlarının JSON parse'ını etkilemez.
       api.register(stripeWebhookRoutes, { prefix: "/webhooks/stripe" });
+      // §10.13 Üçüncü Parti Entegrasyon: API Anahtarları + Public API + Giden Webhook'lar — bkz.
+      // ARCHITECTURE.md §10.13. `apiKeysRoutes`/`outboundWebhooksRoutes` yalnızca SiteRole=ADMIN
+      // (okuma dahil). `publicApiRoutes` TAMAMEN AYRI bir kimlik doğrulama katmanıdır (`X-Api-Key`,
+      // bkz. middleware/api-key-auth.ts) — nihai yol `/api/v1/public/*`. DİKKAT: `outboundWebhooksRoutes`
+      // (GİDEN, biz dışarıya POST atarız) `stripeWebhookRoutes` (GELEN, Stripe bize POST atar) İLE
+      // KARIŞTIRILMAMALI — bkz. §10.13 isimlendirme çakışması uyarısı.
+      api.register(apiKeysRoutes, { prefix: "/admin/settings/api-keys" });
+      api.register(outboundWebhooksRoutes, { prefix: "/admin/settings/webhooks" });
+      api.register(publicApiRoutes, { prefix: "/public" });
     },
     { prefix: "/api/v1" }
   );
@@ -224,6 +244,14 @@ export function buildApp() {
     // `registerScheduledPublishSweeper` ile AYNI gerekçeyle `onReady`'de: süresi geçmiş
     // sepetleri sessizce temizler (bkz. lib/cart-retention.ts).
     registerCartRetentionSweeper(app);
+
+    // §10.13.8 Giden Webhook'lar — `recoverStuckImportJobs` İLE AYNI gerekçe: `SENDING`'de
+    // kalmış teslimatlar sunucu her açılışında `RETRYING`'e çevrilir (çökme/restart kurtarması,
+    // §10.8.1 deseni). `app.prisma` yalnızca burada (onReady, tüm plugin ağacı yüklendikten
+    // SONRA) güvenle kullanılabilir.
+    await recoverStuckWebhookDeliveries(app);
+    registerWebhookDispatcher(app);
+    registerWebhookDeliveryRetentionScheduler(app);
   });
 
   return app;

@@ -48,6 +48,8 @@ import {
   syncContentSlugs,
 } from "../../lib/localization";
 import { sanitizeBlogTranslations } from "./lib/sanitize-content";
+import { emitWebhookEvent } from "../../lib/webhook-emitter";
+import { toPublicBlogPostDto } from "../public-api/public-api.mappers";
 import {
   AutosaveBlogPostRequestSchema,
   CategoryIdParamSchema,
@@ -288,6 +290,15 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
         return updated;
       });
 
+      // §10.13.8 — `BLOG_POST_PUBLISHED` YALNIZCA duruma GEÇİŞTE, `BLOG_POST_UPDATED` yayındaki
+      // bir yazının içeriği DEĞİŞTİĞİNDE (durum zaten PUBLISHED kalıyorken) tetiklenir — ikisi
+      // AYNI istekte ASLA birlikte tetiklenmez.
+      if (!existing.publishedAt && post.publishedAt) {
+        await emitWebhookEvent(app, "BLOG_POST_PUBLISHED", toPublicBlogPostDto(post));
+      } else if (existing.status === "PUBLISHED" && post.status === "PUBLISHED") {
+        await emitWebhookEvent(app, "BLOG_POST_UPDATED", toPublicBlogPostDto(post));
+      }
+
       return reply.send(ok(await toBlogPostDtoLocalized(app, post)));
     }
   );
@@ -425,6 +436,18 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
       schema: { body: BulkContentActionRequestSchema, response: { 200: ApiSuccessSchema(BulkContentActionResultSchema) } },
     },
     async (request, reply) => {
+      // §10.13.8 — bkz. pages.routes.ts::"/bulk" AYNI desen/gerekçe (`runBulkContentAction`
+      // transitionı BİLMEZ, adaylar çağrıdan ÖNCE belirlenir, emisyon commit SONRASI yapılır).
+      const publishCandidateIds =
+        request.body.action === "publish"
+          ? (
+              await app.prisma.blogPost.findMany({
+                where: { id: { in: request.body.ids }, deletedAt: null, publishedAt: null },
+                select: { id: true },
+              })
+            ).map((row) => row.id)
+          : [];
+
       const result = await runBulkContentAction(
         app,
         {
@@ -440,6 +463,16 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
           ip: request.ip,
         }
       );
+
+      if (publishCandidateIds.length > 0) {
+        const transitionedIds = publishCandidateIds.filter((id) => !result.skippedIds.includes(id));
+        if (transitionedIds.length > 0) {
+          const publishedRows = await app.prisma.blogPost.findMany({ where: { id: { in: transitionedIds } }, include: { category: true } });
+          for (const row of publishedRows) {
+            await emitWebhookEvent(app, "BLOG_POST_PUBLISHED", toPublicBlogPostDto(row));
+          }
+        }
+      }
 
       return reply.send(ok(result));
     }

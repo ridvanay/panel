@@ -39,6 +39,8 @@ import {
   syncContentSlugs,
 } from "../../lib/localization";
 import { sanitizePortfolioTranslations } from "./lib/sanitize-content";
+import { emitWebhookEvent } from "../../lib/webhook-emitter";
+import { toPublicPortfolioItemDto } from "../public-api/public-api.mappers";
 import {
   AddPortfolioImageRequestSchema,
   AutosavePortfolioItemRequestSchema,
@@ -304,6 +306,11 @@ export async function adminPortfolioRoutes(app: FastifyInstance) {
         return updated;
       });
 
+      // §10.13.8 — `PORTFOLIO_ITEM_PUBLISHED` YALNIZCA duruma GEÇİŞTE tetiklenir.
+      if (!existing.publishedAt && item.publishedAt) {
+        await emitWebhookEvent(app, "PORTFOLIO_ITEM_PUBLISHED", toPublicPortfolioItemDto(item));
+      }
+
       return reply.send(ok(await toPortfolioItemDtoLocalized(app, item)));
     }
   );
@@ -500,6 +507,17 @@ export async function adminPortfolioRoutes(app: FastifyInstance) {
       schema: { body: BulkContentActionRequestSchema, response: { 200: ApiSuccessSchema(BulkContentActionResultSchema) } },
     },
     async (request, reply) => {
+      // §10.13.8 — bkz. pages.routes.ts::"/bulk" AYNI desen/gerekçe.
+      const publishCandidateIds =
+        request.body.action === "publish"
+          ? (
+              await app.prisma.portfolioItem.findMany({
+                where: { id: { in: request.body.ids }, deletedAt: null, publishedAt: null },
+                select: { id: true },
+              })
+            ).map((row) => row.id)
+          : [];
+
       const result = await runBulkContentAction(
         app,
         {
@@ -515,6 +533,16 @@ export async function adminPortfolioRoutes(app: FastifyInstance) {
           ip: request.ip,
         }
       );
+
+      if (publishCandidateIds.length > 0) {
+        const transitionedIds = publishCandidateIds.filter((id) => !result.skippedIds.includes(id));
+        if (transitionedIds.length > 0) {
+          const publishedRows = await app.prisma.portfolioItem.findMany({ where: { id: { in: transitionedIds } }, include: WITH_RELATIONS });
+          for (const row of publishedRows) {
+            await emitWebhookEvent(app, "PORTFOLIO_ITEM_PUBLISHED", toPublicPortfolioItemDto(row));
+          }
+        }
+      }
 
       return reply.send(ok(result));
     }

@@ -14,6 +14,8 @@ import { ConflictError, NotFoundError } from "../../lib/errors";
 import { parseCursor, buildPageMeta } from "../../lib/pagination";
 import { maskEmail } from "../../lib/pii-mask";
 import { logAudit } from "../../lib/audit";
+import { emitWebhookEvent } from "../../lib/webhook-emitter";
+import { buildWebhookOrderPayload } from "../../lib/webhook-order-payload";
 import {
   ListOrdersQuerySchema,
   OrderIdParamSchema,
@@ -122,6 +124,9 @@ export async function ordersRoutes(app: FastifyInstance) {
         ipAddress: request.ip,
       });
 
+      // §10.13.8 — `ORDER_STATUS_CHANGED`, durum güncellemesi commit'inden SONRA tetiklenir.
+      await emitWebhookEvent(app, "ORDER_STATUS_CHANGED", await buildWebhookOrderPayload(app, order, existing.status));
+
       return reply.send(ok(toOrderDto(order)));
     }
   );
@@ -198,6 +203,9 @@ export async function ordersRoutes(app: FastifyInstance) {
         metadata: { from: existing.status, to: "REFUNDED", reason: reason ?? null, stripeRefundId: refund.id },
         ipAddress: request.ip,
       });
+
+      // §10.13.8 — iade de bir `ORDER_STATUS_CHANGED`dir (orders.routes.ts status PATCH ile AYNI olay).
+      await emitWebhookEvent(app, "ORDER_STATUS_CHANGED", await buildWebhookOrderPayload(app, order!, existing.status));
 
       return reply.send(ok(toOrderDto(order!)));
     }

@@ -980,4 +980,316 @@ export const SiteCustomCodeSchema = z.object({
   customCodeEnabled: z.boolean(),
 });
 export type SiteCustomCodeDto = z.infer<typeof SiteCustomCodeSchema>;
+
+// ---------------------------------------------------------------------------
+// §10.13 Üçüncü Parti Entegrasyon — API Anahtarları (bkz. ARCHITECTURE.md §10.13.3/§10.13.4,
+// openapi.yaml tag `ApiKeys`). Modül: modules/api-keys/*.
+// ---------------------------------------------------------------------------
+
+export const ApiKeyScopeSchema = z.enum(["READ", "READ_WRITE"]);
+export type ApiKeyScope = z.infer<typeof ApiKeyScopeSchema>;
+
+/** `REVOKED` SOFT iptaldir — satır silinmez, denetim izi korunur (§10.13.4). */
+export const ApiKeyStatusSchema = z.enum(["ACTIVE", "REVOKED"]);
+export type ApiKeyStatus = z.infer<typeof ApiKeyStatusSchema>;
+
+/** `/admin/settings/api-keys` DTO'su. Ham anahtarı ASLA içermez. */
+export const ApiKeySchema = z.object({
+  id: z.string().uuid(),
+  name: z.string(),
+  description: z.string().nullable(),
+  keyPrefix: z.string(),
+  last4: z.string().min(4).max(4),
+  maskedKey: z.string(),
+  scope: ApiKeyScopeSchema,
+  status: ApiKeyStatusSchema,
+  lastUsedAt: z.string().nullable(),
+  lastUsedIp: z.string().nullable(),
+  expiresAt: z.string().nullable(),
+  revokedAt: z.string().nullable(),
+  createdById: z.string().uuid().nullable(),
+  createdByName: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type ApiKeyDto = z.infer<typeof ApiKeySchema>;
+
+/** `plainKey` YALNIZCA `POST /admin/settings/api-keys` (201) yanıtında, bir kez döner. */
+export const CreateApiKeyResponseSchema = z.object({
+  apiKey: ApiKeySchema,
+  plainKey: z.string(),
+});
+export type CreateApiKeyResponseDto = z.infer<typeof CreateApiKeyResponseSchema>;
+
+/** `GET /public/me` yanıtı — anahtarın kendisini/hash'ini/ön ekini DÖNMEZ. */
+export const PublicApiKeyInfoSchema = z.object({
+  name: z.string(),
+  scope: ApiKeyScopeSchema,
+  expiresAt: z.string().nullable(),
+  rateLimit: z.object({
+    limit: z.number().int(),
+    remaining: z.number().int(),
+    resetSeconds: z.number().int(),
+  }),
+});
+export type PublicApiKeyInfoDto = z.infer<typeof PublicApiKeyInfoSchema>;
+
+// ---------------------------------------------------------------------------
+// §10.13 Üçüncü Parti Entegrasyon — Giden (Outbound) Webhook'lar (bkz. ARCHITECTURE.md
+// §10.13.7/§10.13.8/§10.13.9, openapi.yaml tag `OutboundWebhooks`). Modül: modules/outbound-webhooks/*.
+//
+// DİKKAT: `POST /webhooks/stripe` (GELEN/inbound, modules/webhooks/*) İLE TAMAMEN AYRIDIR.
+// Çıplak `Webhook` adı hiçbir şemada kullanılmaz (belirsizdir).
+// ---------------------------------------------------------------------------
+
+/**
+ * Wire gösterimi Prisma enum adıyla BİREBİR AYNIDIR (SCREAMING_SNAKE). `PING` gerçek bir olay
+ * değildir — yalnızca `POST .../test` üretir. `*_PUBLISHED` olayları YALNIZCA duruma GEÇİŞTE
+ * tetiklenir (§10.13.8).
+ */
+export const WebhookEventSchema = z.enum([
+  "PING",
+  "PAGE_PUBLISHED",
+  "BLOG_POST_PUBLISHED",
+  "BLOG_POST_UPDATED",
+  "PRODUCT_CREATED",
+  "PRODUCT_UPDATED",
+  "PRODUCT_DELETED",
+  "PORTFOLIO_ITEM_PUBLISHED",
+  "ORDER_CREATED",
+  "ORDER_PAID",
+  "ORDER_STATUS_CHANGED",
+]);
+export type WebhookEvent = z.infer<typeof WebhookEventSchema>;
+
+/** `GET /admin/settings/webhooks/events` öğesi — statik kod registry'sinden gelir (bkz. lib/webhook-events.ts). */
+export const WebhookEventDefinitionSchema = z.object({
+  event: WebhookEventSchema,
+  label: z.string(),
+  description: z.string(),
+  containsPii: z.boolean(),
+  payloadSchema: z.string().nullable(),
+});
+export type WebhookEventDefinitionDto = z.infer<typeof WebhookEventDefinitionSchema>;
+
+/** `DISABLED` = SİSTEM otomatik kapattı; yeniden etkinleştirme ELLEdir (§10.13.8). */
+export const OutboundWebhookStatusSchema = z.enum(["ACTIVE", "PAUSED", "DISABLED"]);
+export type OutboundWebhookStatus = z.infer<typeof OutboundWebhookStatusSchema>;
+
+/** `/admin/settings/webhooks` DTO'su. Secret ASLA dönmez — yalnızca `secretLast4`. */
+export const OutboundWebhookSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string().max(100),
+  description: z.string().nullable(),
+  url: z.string(),
+  secretLast4: z.string().min(4).max(4),
+  events: z.array(WebhookEventSchema).min(1),
+  status: OutboundWebhookStatusSchema,
+  consecutiveFailureCount: z.number().int(),
+  autoDisabledAt: z.string().nullable(),
+  lastTriggeredAt: z.string().nullable(),
+  lastSuccessAt: z.string().nullable(),
+  lastFailureAt: z.string().nullable(),
+  createdById: z.string().uuid().nullable(),
+  createdByName: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type OutboundWebhookDto = z.infer<typeof OutboundWebhookSchema>;
+
+/** `plainSecret` YALNIZCA oluşturma/rotasyon yanıtında, bir kez döner. */
+export const CreateOutboundWebhookResponseSchema = z.object({
+  webhook: OutboundWebhookSchema,
+  plainSecret: z.string(),
+});
+export type CreateOutboundWebhookResponseDto = z.infer<typeof CreateOutboundWebhookResponseSchema>;
+
+export const RotateWebhookSecretResponseSchema = z.object({
+  webhook: OutboundWebhookSchema,
+  plainSecret: z.string(),
+});
+export type RotateWebhookSecretResponseDto = z.infer<typeof RotateWebhookSecretResponseSchema>;
+
+/** `POST .../test` ve `POST .../deliveries/{id}/redeliver` ortak yanıtı (202, asenkron). */
+export const EnqueueWebhookDeliveryResponseSchema = z.object({
+  deliveryId: z.string().uuid(),
+});
+export type EnqueueWebhookDeliveryResponseDto = z.infer<typeof EnqueueWebhookDeliveryResponseSchema>;
+
+export const WebhookDeliveryStatusSchema = z.enum(["PENDING", "SENDING", "RETRYING", "SUCCEEDED", "FAILED"]);
+export type WebhookDeliveryStatus = z.infer<typeof WebhookDeliveryStatusSchema>;
+
+export const WebhookDeliveryErrorCodeSchema = z.enum([
+  "timeout",
+  "dns_failure",
+  "connection_refused",
+  "tls_error",
+  "redirect_not_followed",
+  "ssrf_blocked",
+  "http_error",
+  "unknown",
+]);
+export type WebhookDeliveryErrorCode = z.infer<typeof WebhookDeliveryErrorCodeSchema>;
+
+/** Liste DTO'su — `payload`/`responseBodySnippet` TAŞIMAZ (bkz. §10.13.10). */
+export const WebhookDeliverySummarySchema = z.object({
+  id: z.string().uuid(),
+  event: WebhookEventSchema,
+  status: WebhookDeliveryStatusSchema,
+  attemptCount: z.number().int(),
+  maxAttempts: z.number().int(),
+  nextAttemptAt: z.string().nullable(),
+  responseStatus: z.number().int().nullable(),
+  errorCode: WebhookDeliveryErrorCodeSchema.nullable(),
+  errorMessage: z.string().nullable(),
+  durationMs: z.number().int().nullable(),
+  containsPii: z.boolean(),
+  redeliveryOfId: z.string().uuid().nullable(),
+  firstAttemptAt: z.string().nullable(),
+  lastAttemptAt: z.string().nullable(),
+  deliveredAt: z.string().nullable(),
+  createdAt: z.string(),
+});
+export type WebhookDeliverySummaryDto = z.infer<typeof WebhookDeliverySummarySchema>;
+
+/** Giden POST gövdesi — TÜM olaylarda AYNI zarf (§10.13.9). */
+export const WebhookPayloadEnvelopeSchema = z.object({
+  id: z.string().uuid(),
+  event: WebhookEventSchema,
+  apiVersion: z.literal("v1"),
+  createdAt: z.string(),
+  data: z.record(z.unknown()),
+});
+export type WebhookPayloadEnvelopeDto = z.infer<typeof WebhookPayloadEnvelopeSchema>;
+
+/** Detay DTO'su — `GET .../deliveries/{deliveryId}`. Redakte edilmişse `payload: { redacted: true }`. */
+export const WebhookDeliverySchema = WebhookDeliverySummarySchema.extend({
+  payload: z.union([WebhookPayloadEnvelopeSchema, z.object({ redacted: z.literal(true) })]),
+  responseBodySnippet: z.string().nullable(),
+});
+export type WebhookDeliveryDto = z.infer<typeof WebhookDeliverySchema>;
+
+/** `ORDER_*` olaylarının `data` alanı — `Order` (admin DTO) İLE KARIŞTIRILMAMALI, `customerEmail` MASKELENMEZ. */
+export const WebhookOrderPayloadSchema = z.object({
+  id: z.string().uuid(),
+  orderNumber: z.string(),
+  status: OrderStatusSchema,
+  previousStatus: OrderStatusSchema.nullable(),
+  customerEmail: z.string().email(),
+  customerName: z.string().nullable(),
+  currency: z.string(),
+  subtotalCents: z.number().int(),
+  discountCents: z.number().int(),
+  taxCents: z.number().int(),
+  totalCents: z.number().int(),
+  paidAt: z.string().nullable(),
+  createdAt: z.string(),
+  items: z.array(
+    z.object({
+      productSlug: z.string().nullable(),
+      productTitle: z.string(),
+      productSku: z.string().nullable(),
+      unitPriceCents: z.number().int(),
+      quantity: z.number().int(),
+      lineTotalCents: z.number().int(),
+    })
+  ),
+});
+export type WebhookOrderPayloadDto = z.infer<typeof WebhookOrderPayloadSchema>;
+
+// ---------------------------------------------------------------------------
+// §10.13.5 Public API DTO'ları — admin DTO'larından AYRI ve DONDURULMUŞ kontrat (bkz.
+// ARCHITECTURE.md §10.13.5, openapi.yaml tag `PublicApi`). Modül: modules/public-api/*.
+//
+// ORTAK KURAL (ihlali GÜVENLİK BULGUSUDUR): bu şemaların HİÇBİRİ `author`, `authorId`,
+// `seoScore`, `seoScoreIssues`, `deletedAt`, `viewCount`, `translations` ya da `localizations`
+// alanı TAŞIMAZ — admin DTO'larındaki `author` (`UserSummary`) PERSONEL E-POSTASI içerir.
+// ---------------------------------------------------------------------------
+
+export const PublicCategorySchema = z.object({
+  id: z.string().uuid(),
+  name: z.string(),
+  slug: z.string(),
+});
+export type PublicCategoryDto = z.infer<typeof PublicCategorySchema>;
+
+export const PublicSeoFieldsSchema = z.object({
+  seoTitle: z.string().nullable(),
+  seoDescription: z.string().nullable(),
+  ogTitle: z.string().nullable(),
+  ogImageUrl: z.string().nullable(),
+  canonicalUrl: z.string().nullable(),
+  noIndex: z.boolean(),
+});
+export type PublicSeoFieldsDto = z.infer<typeof PublicSeoFieldsSchema>;
+
+export const PublicImageSchema = z.object({
+  url: z.string(),
+  altText: z.string().nullable(),
+  order: z.number().int(),
+});
+export type PublicImageDto = z.infer<typeof PublicImageSchema>;
+
+export const PublicPageSchema = PublicSeoFieldsSchema.extend({
+  id: z.string().uuid(),
+  title: z.string(),
+  slug: z.string(),
+  blocks: z.array(z.record(z.unknown())),
+  isLegalDocument: z.boolean(),
+  publishedAt: z.string().nullable(),
+  updatedAt: z.string(),
+});
+export type PublicPageDto = z.infer<typeof PublicPageSchema>;
+
+export const PublicBlogPostSchema = PublicSeoFieldsSchema.extend({
+  id: z.string().uuid(),
+  title: z.string(),
+  slug: z.string(),
+  excerpt: z.string().nullable(),
+  contentHtml: z.string(),
+  coverImageUrl: z.string().nullable(),
+  category: PublicCategorySchema.nullable(),
+  publishedAt: z.string().nullable(),
+  updatedAt: z.string(),
+});
+export type PublicBlogPostDto = z.infer<typeof PublicBlogPostSchema>;
+
+export const PublicProductSchema = PublicSeoFieldsSchema.extend({
+  id: z.string().uuid(),
+  title: z.string(),
+  slug: z.string(),
+  excerpt: z.string().nullable(),
+  descriptionHtml: z.string(),
+  priceCents: z.number().int(),
+  discountPriceCents: z.number().int().nullable(),
+  currency: z.string(),
+  taxRatePercent: z.string().nullable(),
+  sku: z.string().nullable(),
+  /** `stockQuantity` YERİNE türetilmiş boolean (bağlayıcı, §10.13.5) — ham stok adedi DÖNMEZ. */
+  inStock: z.boolean(),
+  coverImageUrl: z.string().nullable(),
+  images: z.array(PublicImageSchema),
+  category: PublicCategorySchema.nullable(),
+  publishedAt: z.string().nullable(),
+  updatedAt: z.string(),
+});
+export type PublicProductDto = z.infer<typeof PublicProductSchema>;
+
+export const PublicPortfolioItemSchema = PublicSeoFieldsSchema.extend({
+  id: z.string().uuid(),
+  title: z.string(),
+  slug: z.string(),
+  summary: z.string().nullable(),
+  contentHtml: z.string(),
+  clientName: z.string().nullable(),
+  projectUrl: z.string().nullable(),
+  completedAt: z.string().nullable(),
+  order: z.number().int(),
+  coverImageUrl: z.string().nullable(),
+  images: z.array(PublicImageSchema),
+  category: PublicCategorySchema.nullable(),
+  publishedAt: z.string().nullable(),
+  updatedAt: z.string(),
+});
+export type PublicPortfolioItemDto = z.infer<typeof PublicPortfolioItemSchema>;
 export type ExportJobDto = z.infer<typeof ExportJobSchema>;

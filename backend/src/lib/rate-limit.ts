@@ -17,3 +17,34 @@ export const SENSITIVE_ACTION_RATE_LIMIT = { max: 5, timeWindow: "1 minute" };
  * sayfa yüklemesini (birkaç görsel) rahatça karşılarken otomatize kötüye kullanımı sınırlar.
  */
 export const UPLOADS_RATE_LIMIT = { max: 60, timeWindow: "1 minute" };
+
+// ---------------------------------------------------------------------------
+// §10.13 Üçüncü Parti Entegrasyon — API Anahtarları + Public API + Giden Webhook'lar.
+// Değerler/isimler ARCHITECTURE.md §10.13.6 tablosuyla BAĞLAYICI olarak bire bir eşleşir.
+// ---------------------------------------------------------------------------
+
+/**
+ * Katman 1 (IP tabanı, atlanamaz) — `/public/*` route-level `config.rateLimit`, VARSAYILAN
+ * keyGenerator (IP) ile. `@fastify/rate-limit`'in `onRequest` hook'u `preHandler` tabanlı API
+ * anahtarı doğrulamasından ÖNCE çalıştığı için burada anahtar id'sine göre kova ÜRETİLEMEZ
+ * (bkz. ARCHITECTURE.md §10.13.6 — bu tuzağa düşülmemesi gerektiği açıkça belgelenmiştir).
+ */
+export const PUBLIC_API_IP_RATE_LIMIT = { max: 300, timeWindow: "1 minute" };
+
+/** Katman 2 (doğrulanmış `ApiKey.id` başına kota) — bkz. lib/api-key-rate-limit.ts. */
+export const PUBLIC_API_KEY_RATE_LIMIT = { max: 120, timeWindow: "1 minute" };
+
+/** Katman 2 ile AYNI kova üzerinde ek ani-yük tavanı (bkz. lib/api-key-rate-limit.ts). */
+export const PUBLIC_API_KEY_BURST_RATE_LIMIT = { max: 20, timeWindow: "1 second" };
+
+/** `POST/PATCH/DELETE /admin/settings/api-keys*`, `.../revoke`. */
+export const API_KEY_MANAGEMENT_RATE_LIMIT = { max: 10, timeWindow: "1 minute" };
+
+/** `POST/PATCH/DELETE /admin/settings/webhooks*` (her biri DNS çözümlemesi tetikler). */
+export const WEBHOOK_MANAGEMENT_RATE_LIMIT = { max: 20, timeWindow: "1 minute" };
+
+/** `POST .../webhooks/{id}/test` — gerçek giden istek üretir, en güçlü kötüye kullanım vektörü. */
+export const WEBHOOK_TEST_RATE_LIMIT = { max: 5, timeWindow: "1 minute" };
+
+/** `POST .../deliveries/{id}/redeliver`. */
+export const WEBHOOK_REDELIVER_RATE_LIMIT = { max: 10, timeWindow: "1 minute" };

@@ -18,6 +18,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { ImageUploadField } from "@/components/admin/media/image-upload-field";
 import { PageHeading } from "@/components/admin/page-heading";
 import { LocaleManager } from "@/components/admin/locale-manager";
+import { ApiKeysSection } from "@/components/admin/settings/api-keys-section";
+import { WebhooksSection } from "@/components/admin/settings/webhooks-section";
 import { cn } from "@/lib/utils";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { useUnsavedChangesGuard } from "@/hooks/use-unsaved-changes-guard";
@@ -35,6 +37,7 @@ import {
   ShieldCheck,
   ShoppingBag,
   Settings2,
+  Webhook,
 } from "lucide-react";
 
 const SITE_TEMPLATE_OPTIONS: { value: SiteTemplate; label: string; description: string; icon: typeof Globe }[] = [
@@ -310,6 +313,10 @@ export default function AdminSettingsPage() {
             <Mail className="h-3.5 w-3.5" />
             E-posta / API Yapılandırmaları
           </TabsTrigger>
+          <TabsTrigger value="webhooks">
+            <Webhook className="h-3.5 w-3.5" />
+            Webhook&apos;lar
+          </TabsTrigger>
           <TabsTrigger value="languages">
             <Languages className="h-3.5 w-3.5" />
             {t("localeManager.tabLabel")}
@@ -546,13 +553,17 @@ export default function AdminSettingsPage() {
           </motion.div>
         </TabsContent>
 
-        <TabsContent value="integrations" className="mt-6 outline-none">
+        <TabsContent value="integrations" className="mt-6 space-y-6 outline-none">
+          <motion.div variants={cardVariants} initial="hidden" animate="show">
+            <ApiKeysSection />
+          </motion.div>
+
           <motion.div variants={cardVariants} initial="hidden" animate="show">
             <Card className="space-y-4">
               <SectionHeader
                 icon={Mail}
-                title="E-posta / API Yapılandırmaları"
-                description="SMTP ve API entegrasyon ayarları."
+                title="E-posta Yapılandırması"
+                description="SMTP entegrasyon ayarları."
               />
 
               <div className="inline-flex items-center gap-2 rounded-full border border-warning/30 bg-warning/10 px-3 py-1 text-xs font-medium text-warning">
@@ -573,11 +584,6 @@ export default function AdminSettingsPage() {
                 <Field id="smtpPassword" label="SMTP Parola">
                   {(inputProps) => <Input {...inputProps} type="password" disabled placeholder="••••••••" />}
                 </Field>
-                <div className="sm:col-span-2">
-                  <Field id="apiKey" label="API Anahtarı" hint="Harici entegrasyonlar için.">
-                    {(inputProps) => <Input {...inputProps} disabled placeholder="sk_live_…" />}
-                  </Field>
-                </div>
               </div>
 
               <p className="flex items-start gap-1.5 admin-text-secondary">
@@ -585,6 +591,12 @@ export default function AdminSettingsPage() {
                 Bu yapılandırma henüz bu ortamda desteklenmiyor.
               </p>
             </Card>
+          </motion.div>
+        </TabsContent>
+
+        <TabsContent value="webhooks" className="mt-6 outline-none">
+          <motion.div variants={cardVariants} initial="hidden" animate="show">
+            <WebhooksSection />
           </motion.div>
         </TabsContent>
 

@@ -39,6 +39,8 @@ import {
   syncContentSlugs,
 } from "../../lib/localization";
 import { sanitizeProductTranslations } from "./lib/sanitize-content";
+import { emitWebhookEvent } from "../../lib/webhook-emitter";
+import { toPublicProductDto } from "../public-api/public-api.mappers";
 import {
   AddProductImageRequestSchema,
   AdjustProductStockRequestSchema,
@@ -253,6 +255,10 @@ export async function adminProductsRoutes(app: FastifyInstance) {
         return created;
       });
 
+      // §10.13.8 — `PRODUCT_CREATED` diğer içerik türlerinin aksine yayın durumuna BAĞLI DEĞİLDİR
+      // (`Product`'ın bir `*_PUBLISHED` olayı YOKTUR); her başarılı `POST` tetikler.
+      await emitWebhookEvent(app, "PRODUCT_CREATED", toPublicProductDto(product));
+
       return reply.code(201).send(ok(await toProductDtoLocalized(app, product)));
     }
   );
@@ -332,6 +338,9 @@ export async function adminProductsRoutes(app: FastifyInstance) {
 
         return updated;
       });
+
+      // §10.13.8 — `PRODUCT_UPDATED` yayın durumundan BAĞIMSIZ, her başarılı `PATCH`'te tetiklenir.
+      await emitWebhookEvent(app, "PRODUCT_UPDATED", toPublicProductDto(product));
 
       return reply.send(ok(await toProductDtoLocalized(app, product)));
     }
@@ -448,6 +457,10 @@ export async function adminProductsRoutes(app: FastifyInstance) {
         await deleteContentSlugsForEntity(tx, "PRODUCT", existing.id);
         await tx.product.delete({ where: { id: existing.id } });
       });
+
+      // §10.13.8 — `PRODUCT_DELETED` = KALICI silme (soft-delete/çöp DEĞİL). `data = { id, slug }`
+      // (kaynak artık yok, tam DTO üretilemez, bkz. ARCHITECTURE.md §10.13.9 istisnaları).
+      await emitWebhookEvent(app, "PRODUCT_DELETED", { id: existing.id, slug: existing.slug });
 
       await logAudit(app, {
         actorId: request.user!.id,

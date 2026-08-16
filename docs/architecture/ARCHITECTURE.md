@@ -297,6 +297,9 @@ erDiagram
 | Stats | `GET /admin/stats/live-visitors` | authenticated |
 | Stats | `GET /admin/stats/breakdown` | authenticated |
 | System | `GET /admin/health` | site-geneli `SiteRole=ADMIN` |
+| ApiKeys | `GET/POST /admin/settings/api-keys`, `PATCH/DELETE /admin/settings/api-keys/{keyId}`, `POST .../revoke` | site-geneli `SiteRole=ADMIN` (okuma dahil, §10.13.10) |
+| OutboundWebhooks | `GET/POST /admin/settings/webhooks`, `GET/PATCH/DELETE .../{webhookId}`, `POST .../rotate-secret`, `POST .../test`, `GET .../deliveries`, `POST .../deliveries/{id}/redeliver` | site-geneli `SiteRole=ADMIN` (okuma dahil, §10.13.10) |
+| PublicApi | `GET /public/{me,pages,blog,products,portfolio}...` | `X-Api-Key` (API anahtarı, salt-okunur — §10.13.4/§10.13.5) |
 
 > Not: `pages`/`blog`/`media`/`settings` CMS uçları (`/admin/pages`, `/admin/blog`,
 > `/admin/media`, `/admin/settings`) bu tablonun ilk sürümünden sonra eklendi;
@@ -2434,6 +2437,1052 @@ değişir; blur tabanlı pill arkasındaki her görseli/deseni bulanıklaştır�
 `overlayOpacity` %0 olsa bile sabit bir kontrast tabanı garanti eder. Bu iki
 render'ın (admin önizleme / gerçek site) görsel olarak sapması, "önizlemede okunur,
 sitede okunmaz" tutarsızlığına yol açar.
+
+### 10.13 Üçüncü Parti Entegrasyon: API Anahtarları + Public API + Giden Webhook'lar
+
+Durum: v1 planlama · `feature/third-party-integration`. Bu bölüm **üç ayrı ama birbirine
+bağlı** yeteneği tanımlar:
+
+1. Admin panelden yönetilen **API anahtarı** sistemi (`/admin/settings/api-keys`),
+2. Bu anahtarlarla kimlik doğrulanan, mevcut admin API'sinden **AYRI ve SALT-OKUNUR**
+   bir **public API katmanı** (`/api/v1/public/*`),
+3. Olay bazlı, HMAC ile imzalanmış **giden (outbound) webhook** sistemi
+   (`/admin/settings/webhooks`).
+
+Aşağıdaki kararlar **bağlayıcıdır**; ajanlar tahmin YÜRÜTMEZ. Uçların tam şekli
+`openapi.yaml` (`ApiKeys`, `OutboundWebhooks`, `PublicApi` tag'leri) içindedir —
+çelişki hâlinde kontrat kazanır.
+
+**İsimlendirme çakışması uyarısı (ZORUNLU okuma):** projede zaten
+`backend/src/modules/webhooks/stripe.routes.ts` var ve o **GELEN** (inbound) bir
+webhook'tur — Stripe bize POST atar. Bu bölümdeki sistem tam tersidir: **BİZ dışarıya
+POST atarız**. İki kavram ASLA aynı modül/klasör/tip adı altında toplanmaz. Bağlayıcı
+ayrım:
+
+| Yön | Modül | URL | Kimlik doğrulama |
+|---|---|---|---|
+| **Gelen** (mevcut, DOKUNULMAZ) | `modules/webhooks/` | `POST /webhooks/stripe` | Stripe imza doğrulaması |
+| **Giden** (YENİ) | `modules/outbound-webhooks/` | `/admin/settings/webhooks` (yönetim) | `SiteRole=ADMIN` |
+
+Tip/DTO adlarında da bu ayrım korunur: `OutboundWebhook`, `WebhookDelivery`,
+`WebhookEvent`. Çıplak `Webhook` adı HİÇBİR yerde kullanılmaz (belirsizdir).
+
+#### 10.13.1 Modül ve dosya yapısı (backend-agent — bağlayıcı)
+
+Üç YENİ modül açılır; mevcut hiçbir modül taşınmaz/yeniden adlandırılmaz.
+
+```
+backend/src/modules/api-keys/
+  api-keys.routes.ts         # /admin/settings/api-keys — admin CRUD
+  api-keys.schemas.ts        # Zod
+  api-keys.service.ts        # anahtar üretimi, hash, doğrulama, cache invalidation
+
+backend/src/modules/outbound-webhooks/
+  outbound-webhooks.routes.ts      # /admin/settings/webhooks — admin CRUD + deliveries
+  outbound-webhooks.schemas.ts     # Zod
+  outbound-webhooks.service.ts     # CRUD iş mantığı, secret üretimi/rotasyonu
+  outbound-webhooks.dispatcher.ts  # süreç-içi sweeper + gönderim + backoff (§10.13.8)
+  outbound-webhooks.retention.ts   # delivery log budama (§10.13.8)
+
+backend/src/modules/public-api/
+  public-api.routes.ts       # /api/v1/public/* — SALT-OKUNUR (yalnızca GET)
+  public-api.schemas.ts      # Zod — Public* DTO'ları (§10.13.5)
+```
+
+Ortak/altyapı dosyaları:
+
+```
+backend/src/middleware/api-key-auth.ts   # X-Api-Key doğrulama preHandler'ı (§10.13.4)
+backend/src/lib/api-key.ts               # anahtar formatı, üretim, parse, hash
+backend/src/lib/api-key-rate-limit.ts    # anahtar-başına sayaç (§10.13.6)
+backend/src/lib/ssrf-guard.ts            # URL/IP doğrulama + pinned lookup (§10.13.7)
+backend/src/lib/webhook-signature.ts     # HMAC imza üretimi (§10.13.9)
+backend/src/lib/webhook-emitter.ts       # emitWebhookEvent() — tek giriş noktası
+backend/src/lib/webhook-events.ts        # olay kayıt defteri (statik registry)
+```
+
+`app.ts` kayıtları (mevcut desene birebir uyar):
+
+```ts
+api.register(apiKeysRoutes,          { prefix: "/admin/settings/api-keys" });
+api.register(outboundWebhooksRoutes, { prefix: "/admin/settings/webhooks" });
+api.register(publicApiRoutes,        { prefix: "/public" });   // nihai: /api/v1/public/*
+```
+
+Ayrıca `app.ts`'e §10.8.1 deseniyle AYNI şekilde iki kayıt daha eklenir:
+`registerWebhookDispatcher(app)` ve `registerWebhookDeliveryRetentionScheduler(app)`
+(`onReady` kurtarması + `onClose` temizliği ZORUNLU).
+
+**Yeni ortam değişkeni GEREKMEZ** (devops-agent notu): webhook secret'ları mevcut
+`ENCRYPTION_KEY` ile şifrelenir, hız sınırı sabitleri koddadır.
+
+#### 10.13.2 Şema (db-agent — TEK SAHİP)
+
+`backend/prisma/schema.prisma` tek dosyadır; aşağıdaki enum/modeller oraya eklenir.
+**Bu bölümdeki alan listesi bağlayıcıdır** — backend-agent şema tasarlamaz, tüketir.
+
+```prisma
+// --- API Anahtarları (§10.13.3) ---
+
+// İLERİYE DÖNÜK: public katman v1'de salt-okunurdur, ama scope kontrolü ŞİMDİDEN
+// şemada ve doğrulama hattında vardır (bkz. §10.13.4) — yazma uçları eklendiğinde
+// yeni bir migration ve yeni bir yetki ekseni İCAT EDİLMESİN diye.
+enum ApiKeyScope {
+  READ
+  READ_WRITE
+}
+
+enum ApiKeyStatus {
+  ACTIVE
+  REVOKED
+}
+
+model ApiKey {
+  id          String       @id @default(uuid())
+  seq         Int          @unique @default(autoincrement())   // cursor sayfalama
+  name        String                                            // ör. "Mobil Uygulama"
+  description String?
+  // Anahtarın GİZLİ OLMAYAN tanıtıcı parçası: `cmsk_<12hex>` (bkz. §10.13.3).
+  // Doğrulamada indeks araması bunun üzerinden yapılır — tüm anahtarları taramak YOK.
+  keyPrefix   String       @unique
+  // sha256(rawKey) hex. DÜZ METİN ASLA SAKLANMAZ, geri döndürülemez (bkz. §10.13.3).
+  keyHash     String       @unique
+  // Ham anahtarın SON 4 karakteri — listede maskeli gösterim için. Tek başına
+  // tahmin edilebilir bir bilgi taşımaz (32 byte entropinin son 16 biti).
+  last4       String
+  scope       ApiKeyScope  @default(READ)
+  status      ApiKeyStatus @default(ACTIVE)
+  lastUsedAt  DateTime?
+  // MASKELENMİŞ istemci IP'si (lib/pii-mask.ts::maskIp) — sızmış anahtarı tespit
+  // etmek için. HAM IP SAKLANMAZ (compliance-agent kararı, §10.13.10).
+  lastUsedIp  String?
+  expiresAt   DateTime?    // null = süresiz
+  revokedAt   DateTime?
+  revokedById String?
+  createdById String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  createdBy User? @relation("ApiKeyCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  revokedBy User? @relation("ApiKeyRevoker", fields: [revokedById], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([createdById])
+  @@map("api_keys")
+}
+
+// --- Giden Webhook'lar (§10.13.8) ---
+
+// Wire (JSON) gösterimi ENUM ADIYLA BİREBİR AYNIDIR — SCREAMING_SNAKE. Ayrı bir
+// `blog_post.published` gibi nokta-notasyonu eşleme tablosu BİLİNÇLİ olarak
+// AÇILMADI: projedeki tüm enum'lar (`OrderStatus`, `PageStatus`, `ImportJobType`)
+// wire'da SCREAMING_SNAKE'tir; ikinci bir gösterim kaçınılmaz olarak sapardı.
+enum WebhookEvent {
+  PING                       // yalnızca POST .../test ile üretilir, gerçek bir olay değildir
+  PAGE_PUBLISHED
+  BLOG_POST_PUBLISHED
+  BLOG_POST_UPDATED
+  PRODUCT_CREATED
+  PRODUCT_UPDATED
+  PRODUCT_DELETED
+  PORTFOLIO_ITEM_PUBLISHED
+  ORDER_CREATED
+  ORDER_PAID
+  ORDER_STATUS_CHANGED
+}
+
+enum OutboundWebhookStatus {
+  ACTIVE
+  PAUSED     // admin elle duraklattı
+  DISABLED   // sistem üst üste başarısızlık sonrası otomatik kapattı (§10.13.8)
+}
+
+enum WebhookDeliveryStatus {
+  PENDING    // sıraya alındı, henüz denenmedi
+  SENDING    // şu an gönderiliyor (çökme kurtarması bu durumu arar)
+  RETRYING   // en az bir deneme başarısız, `nextAttemptAt` dolu
+  SUCCEEDED  // 2xx alındı
+  FAILED     // kalıcı hata VEYA deneme hakkı tükendi
+}
+
+model OutboundWebhook {
+  id              String                @id @default(uuid())
+  seq             Int                   @unique @default(autoincrement())
+  name            String
+  description     String?
+  // SSRF doğrulamasından geçmiş mutlak https URL (§10.13.7). Şema seviyesinde
+  // `String`'dir; kısıt uygulama katmanındadır (lib/ssrf-guard.ts) — DB'de ifade
+  // edilemeyecek (DNS çözümlemesi gerektiren) bir kısıttır.
+  url             String
+  // AES-256-GCM ile ŞİFRELİ (lib/crypto.ts::encryptSecret) — HASH DEĞİL.
+  // Gerekçe §10.13.9'da: HMAC imzası için secret'ın GERİ ÇÖZÜLEBİLİR olması
+  // matematiksel bir zorunluluktur; hash'lenirse imza üretilemez.
+  secretEncrypted String
+  secretLast4     String
+  // Postgres enum dizisi. Boş dizi YASAKTIR (en az 1 olay), uygulama katmanı zorlar.
+  events          WebhookEvent[]
+  status          OutboundWebhookStatus @default(ACTIVE)
+  // Art arda başarısız gönderim sayacı; ilk başarılı gönderimde 0'a döner.
+  // WEBHOOK_AUTO_DISABLE_THRESHOLD'a ulaşınca status = DISABLED (§10.13.8).
+  consecutiveFailureCount Int           @default(0)
+  autoDisabledAt  DateTime?
+  lastTriggeredAt DateTime?
+  lastSuccessAt   DateTime?
+  lastFailureAt   DateTime?
+  createdById     String?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  createdBy  User?             @relation("OutboundWebhookCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  deliveries WebhookDelivery[]
+
+  @@index([status])
+  @@index([createdById])
+  @@map("outbound_webhooks")
+}
+
+model WebhookDelivery {
+  id         String                @id @default(uuid())
+  seq        Int                   @unique @default(autoincrement())   // cursor sayfalama
+  webhookId  String
+  event      WebhookEvent
+  // Gönderilen JSON gövdenin TAMAMI (zarf dahil, §10.13.9) — yeniden denemede
+  // BİREBİR AYNI baytlar gönderilir; olay anındaki durum yeniden hesaplanmaz.
+  payload    Json
+  // Alıcının idempotency anahtarı olarak kullandığı değer `id`'dir; ayrı bir
+  // `eventId` kolonu AÇILMADI (ikinci bir kimlik kavramı gereksiz).
+  status     WebhookDeliveryStatus @default(PENDING)
+  attemptCount Int                 @default(0)
+  maxAttempts  Int                 @default(5)
+  nextAttemptAt DateTime?          // dolu ve status IN (PENDING, RETRYING) ise sweeper alır
+  responseStatus     Int?
+  // Alıcı yanıtının İLK 512 karakteri (uygulama katmanında kesilir). Tam gövde
+  // ASLA saklanmaz — alıcı hata sayfasında kendi iç bilgisini sızdırabilir.
+  responseBodySnippet String?
+  // Makine-okunur hata sınıfı: "timeout" | "dns_failure" | "connection_refused" |
+  // "tls_error" | "redirect_not_followed" | "ssrf_blocked" | "http_error" | "unknown"
+  errorCode  String?
+  errorMessage String?
+  durationMs Int?
+  // Payload kişisel veri içeriyor mu (ORDER_* olayları: müşteri e-postası/adı).
+  // `ExportJob.containsPii` ile AYNI amaç ve AYNI saklama mantığı (§10.13.10).
+  containsPii Boolean              @default(false)
+  // Elle yeniden gönderimde (redeliver) kaynak kaydın id'si — denetim izi.
+  redeliveryOfId String?
+  firstAttemptAt DateTime?
+  lastAttemptAt  DateTime?
+  deliveredAt    DateTime?
+  createdAt      DateTime          @default(now())
+
+  webhook OutboundWebhook @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+
+  // Delivery log listesi HER ZAMAN tek bir webhook kapsamında ve `seq desc`
+  // sıralıdır — bu bileşik indeks o sorgunun tamamını karşılar.
+  @@index([webhookId, seq])
+  // Sweeper'ın sıcak sorgusu: WHERE status IN (...) AND nextAttemptAt <= now().
+  @@index([status, nextAttemptAt])
+  @@map("webhook_deliveries")
+}
+```
+
+`User` tarafına eklenecek karşı-ilişki alanları (Prisma zorunlu kılar):
+
+```prisma
+apiKeysCreated   ApiKey[]          @relation("ApiKeyCreator")
+apiKeysRevoked   ApiKey[]          @relation("ApiKeyRevoker")
+outboundWebhooks OutboundWebhook[] @relation("OutboundWebhookCreator")
+```
+
+Bilinçli olarak YAPILMAYANLAR (db-agent bunları "eksik" sanmasın):
+
+- **`WebhookDelivery.events` üzerinde GIN indeksi YOK.** Emisyon sorgusu
+  (`status = ACTIVE AND events has :event`) en fazla 20 satırlık bir tabloda çalışır
+  (§10.13.8 üst sınırı); `@@index([status])` + bellekte filtreleme yeterlidir. GIN'in
+  yazma maliyeti bu ölçekte gereksizdir.
+- **`ApiKey` için organizasyon/site FK'sı YOK.** Bu sistem site-genelidir
+  (`SiteSettings`/`SiteModule` ile aynı kapsam), org bazlı DEĞİLDİR — `SiteRole`
+  ekseninde yönetilir.
+- **`WebhookDeliveryAttempt` gibi ayrı bir deneme tablosu YOK.** Bir gönderimin
+  denemeleri `attemptCount`/`lastAttemptAt`/`responseStatus` ile özetlenir;
+  `ImportJobError` deseninin (satır-başına hata) buradaki karşılığı yoktur, çünkü
+  bir gönderim ya bütünüyle başarılıdır ya değildir (`ExportJob` ile aynı gerekçe).
+
+#### 10.13.3 API anahtarı formatı ve hash'leme (security-agent — bağlayıcı kontrat)
+
+**Ham anahtar formatı (değişmez):**
+
+```
+cmsk_<prefix>_<secret>
+      12 hex    64 hex
+```
+
+Örnek: `cmsk_7f3ka9dm2q0x_4b1e…` (toplam 82 karakter).
+Parse regex'i: `^cmsk_([0-9a-f]{12})_([0-9a-f]{64})$`.
+
+Kararların gerekçeleri:
+
+- **`cmsk_` sabit ön eki** — sızıntı taraması içindir. GitHub/GitLab push protection
+  ve `gitleaks` gibi araçlar ancak ayırt edici, sabit bir ön ek varsa bir dizeyi
+  "kimlik bilgisi" olarak tanıyabilir. Rastgele bir base64 dizesi taranamaz.
+- **Hex, base64url DEĞİL** — base64url alfabesi `_` içerir; ayırıcı olarak `_`
+  kullanan bir formatta parse belirsizleşirdi. Hex'in %33 uzunluk maliyeti, makine
+  tarafından taşınan bir kimlik bilgisinde önemsizdir.
+- **İki parçalı yapı (prefix + secret)** — doğrulama `WHERE keyPrefix = ?` ile TEK bir
+  unique indeks aramasıdır. Tek parçalı bir anahtarda ya tüm satırlar taranır ya da
+  hash'in kendisi aranır; ikincisi mümkündür ama prefix ayrıca **admin panelinde
+  gösterilebilir bir tanıtıcı** sağlar (hangi anahtarın kullanıldığı, secret'ı ifşa
+  etmeden loglardan/listeden okunabilir).
+- **`secret` = `crypto.randomBytes(32)`** — 256 bit entropi.
+
+**Hash'leme: `sha256(rawKey)` (hex), `lib/tokens.ts::hashToken` YENİDEN KULLANILIR.**
+Argon2/bcrypt gibi yavaş bir KDF **bilinçli olarak KULLANILMAZ.** Gerekçe (security-agent
+bunu bir bulgu olarak değil, kayda geçmiş bir karar olarak değerlendirmelidir):
+
+1. KDF'lerin varlık sebebi **düşük entropili** insan şifrelerini kaba kuvvete karşı
+   yavaşlatmaktır. Burada sır 256 bit **rastgeledir**; ön-görüntü araması sha256 ile
+   de argon2 ile de hesaplama olarak imkânsızdır. Yavaşlatmanın kazandırdığı güvenlik
+   sıfırdır.
+2. Buna karşılık maliyet gerçektir: doğrulama **her public API isteğinde** çalışır.
+   Argon2 (~100 ms) her isteğe eklenirse bu, kendi başına bir DoS vektörüdür.
+3. Projede emsal zaten budur: `RefreshToken` ve `PasswordResetToken` de `hashToken`
+   (sha256) kullanır. Üçüncü bir yaklaşım tutarsızlık üretirdi.
+
+**`lib/crypto.ts::encryptSecret` API anahtarı için KULLANILMAZ** — geri
+döndürülebilirdir; API anahtarının hiçbir senaryoda geri okunması gerekmez, dolayısıyla
+geri döndürülebilir saklama gereksiz bir risktir.
+
+**Tek seferlik gösterim:** ham anahtar YALNIZCA `POST /admin/settings/api-keys` (201)
+yanıtında `plainKey` alanında döner. Başka HİÇBİR uç bu değeri dönmez; loglanmaz
+(`app.ts` redact listesine `plainKey` ve `plainSecret` EKLENİR); audit `metadata`'sına
+yazılmaz.
+
+#### 10.13.4 Public API kimlik doğrulama — `X-Api-Key` (bağlayıcı)
+
+**Header kararı: `X-Api-Key: cmsk_…` — TEK kabul edilen biçim.**
+`Authorization: Bearer <key>` **KABUL EDİLMEZ** (ne birincil ne de geriye uyumluluk
+biçimi olarak). Gerekçe, estetik değil güvenliktir:
+
+- Admin API'si `Authorization: Bearer <JWT>` kullanır. Aynı header'ı iki farklı
+  kimlik bilgisi türü için kullanmak, yanlış doğrulayıcının yanlış tokeni ayrıştırmaya
+  çalıştığı kod yollarına kapı açar. Ayrı header ile bu **yapısal olarak imkânsızdır**:
+  `/public/*`'a gönderilen bir admin JWT'si sert 401'dir, `/admin/*`'a gönderilen bir
+  API anahtarı da sert 401'dir. Karışma yüzeyi sıfırdır.
+- Header adı kimlik bilgisi türünü kendi başına belli eder; proxy/log/destek
+  akışlarında teşhis kolaylaşır.
+
+**Doğrulama akışı** (`middleware/api-key-auth.ts`, `preHandler`):
+
+1. `X-Api-Key` yoksa/formata uymuyorsa → `401 UNAUTHORIZED`. **Hata mesajı ayrım
+   yapmaz** ("Geçersiz veya eksik API anahtarı.") — "anahtar yok" ile "anahtar yanlış"
+   ayrımı numaralandırma bilgisi sızdırır.
+2. `keyPrefix` ile satır bulunur; bulunmazsa → 401.
+3. `hashToken(rawKey)` ile `keyHash` **`crypto.timingSafeEqual`** kullanılarak
+   karşılaştırılır (düz `===` YASAK — zamanlama sızıntısı).
+4. `status !== ACTIVE` → 401. `expiresAt` geçmişte → 401.
+5. Scope kontrolü: rota `requiredScope` (varsayılan `READ`) belirtir; anahtarın scope'u
+   yetmiyorsa → `403 FORBIDDEN`. v1'de tüm public uçlar `READ` ister, dolayısıyla
+   `READ_WRITE` anahtar da geçer; **ama kontrol hattı ŞİMDİDEN vardır** (kullanıcı
+   gereksinimi) — ileride yazma ucu eklendiğinde `requiredScope: "READ_WRITE"` yazmak
+   yeterli olur.
+6. `request.apiKey = { id, name, scope }` set edilir. **`request.user` ASLA set
+   edilmez** — API anahtarı bir kullanıcı DEĞİLDİR; `requireSiteRole` gibi
+   kullanıcı-temelli guard'ların bir API anahtarıyla yanlışlıkla geçmesi bu sayede
+   imkânsızdır.
+7. `lastUsedAt`/`lastUsedIp` güncellemesi **kısıtlıdır**: yalnızca `lastUsedAt` boşsa
+   veya `API_KEY_LAST_USED_THROTTLE_MS` (60 sn) geçmişse yazılır, `void` ile
+   fire-and-forget çalışır ve hatası isteği DÜŞÜRMEZ (`logAudit` deseni). Aksi hâlde
+   her okuma isteği bir yazma isteği doğururdu.
+
+**Doğrulama cache'i:** `lib/api-key.ts` içinde süreç-içi, TTL'li (30 sn) küçük bir
+pozitif-sonuç cache'i tutulur (en fazla 500 giriş). **İptal/silme/güncelleme
+anında cache girişi senkron olarak temizlenir** (`invalidateApiKeyCache(keyId)`) —
+bu yüzden iptal edilmiş bir anahtarın 30 sn daha çalışması gibi bir pencere YOKTUR.
+Tek instance varsayımı §10.8.1 ile aynıdır; çok-instance'a geçilirse bu cache Redis'e
+taşınmalıdır (observability-agent/devops-agent notu).
+
+**CORS:** public API **sunucudan-sunucuya** kullanım içindir. Mevcut global CORS
+politikası (`origin: FRONTEND_URL`) DEĞİŞTİRİLMEZ; `/public/*` için `origin: "*"`
+AÇILMAZ. Tarayıcı içi JavaScript'ten API anahtarı kullanmak anahtarı ifşa eder —
+dokümantasyonda açık uyarı olarak yer alır.
+
+#### 10.13.5 Public API yüzeyi — yalnızca GET, ayrı `Public*` DTO'ları
+
+Prefix: `/api/v1/public/*`. **Tüm uçlar `GET`'tir**; v1'de yazma ucu YOKTUR.
+
+| Uç | Açıklama |
+|---|---|
+| `GET /public/me` | Çağıran anahtarın kendi bilgisi (ad, scope, kalan kota) — entegrasyon teşhisi |
+| `GET /public/pages` · `GET /public/pages/{slug}` | Yayındaki sayfalar |
+| `GET /public/blog` · `GET /public/blog/{slug}` · `GET /public/blog/categories` | Yayındaki blog yazıları |
+| `GET /public/products` · `GET /public/products/{slug}` · `GET /public/products/categories` | Yayındaki ürünler |
+| `GET /public/portfolio` · `GET /public/portfolio/{slug}` · `GET /public/portfolio/categories` | Yayındaki portföy öğeleri |
+
+Bağlayıcı davranış kuralları:
+
+1. **Görünürlük filtresi sunucudadır ve atlanamaz:** her sorgu `status = PUBLISHED AND
+   deletedAt IS NULL` ile başlar. `?status=`/`?trashed=` gibi parametreler bu katmanda
+   **YOKTUR** (kabul edilmez, 422) — admin listelerindeki filtreler buraya
+   KOPYALANMAZ. Taslak/çöp içeriğe erişim yolu bulunmamalıdır.
+2. **Modül kapısı korunur:** `/public/products*` ve `/public/portfolio*`
+   `requireModuleEnabled("products")` / `("portfolio")` guard'ını kullanır — modül
+   kapalıysa `404` (mevcut public uçlarla BİREBİR aynı davranış, §10.9).
+3. **Sayfalama:** cursor tabanlı, `?limit=` (varsayılan 20, en fazla **100**),
+   `meta.nextCursor`. Portföy listesi manuel `order asc` ile sıralanır (§10.9.4 ile
+   tutarlı), diğerleri `publishedAt desc, seq desc`.
+4. **`?locale=`** mevcut public uçlarla BİREBİR aynı semantiktir (alan bazlı sessiz
+   fallback; `Page.isLegalDocument` istisnası dahil, bkz. `LocaleQuery`).
+5. **Statik rota önceliği:** `/public/blog/categories` ile `/public/blog/{slug}`
+   çakışmaz — Fastify radix router statik segmenti parametreli olana tercih eder
+   (`/admin/blog/categories` ile aynı, projede kanıtlanmış desen). Yine de `categories`
+   slug'ı bir içerik için oluşturulamaz sayılmaz; slug ucu erişilemez olur — bu kabul
+   edilmiş bir kısıttır.
+
+**DTO kararı: public katman KENDİ `Public*` DTO'larını kullanır; `Page`/`BlogPost`/
+`Product`/`PortfolioItem` şemaları YENİDEN KULLANILMAZ.** Bu, iki somut sebeple
+yük taşıyan bir karardır:
+
+1. **PII sızıntısı önlenir.** Mevcut `toPageDto`/`toBlogPostDto`/`toProductDto`/
+   `toPortfolioItemDto` (bkz. `mappers/index.ts`) `author: UserSummary` döner ve
+   `UserSummary` **personel e-posta adresini içerir**. Üçüncü parti bir entegratöre
+   personel e-postası göndermek kabul edilemez. `Public*` DTO'ları katı bir
+   **izin listesidir**; `author`, `authorId`, `seoScore`, `seoScoreIssues`,
+   `deletedAt`, `viewCount`, `translations` (ham blob) ve `localizations` içermez.
+2. **Kontrat dondurulur.** Admin DTO'ları iç refactor'larla evrilir; üçüncü parti
+   sözleşmesi evrilemez. Ayrı şema, iç bir değişikliğin dış kontratı SESSİZCE
+   kırmasını yapısal olarak engeller. Sapma bedeli (mapper tekrarı) bilinçli olarak
+   kabul edilmiştir.
+
+`Public*` DTO alanları için bkz. `openapi.yaml#/components/schemas/PublicPage` vb. ve
+`shared-types.ts` §10.13 bölümü.
+
+#### 10.13.6 Hız sınırlama — iki katman, atlanamaz taban (bağlayıcı)
+
+Kullanıcı gereksinimi: "rate-limit bu yeni katmanda bypass edilemez olmalı". Bunu
+sağlayan **iki bağımsız katman** tanımlanır. Tek katmanlı çözümler yetersizdir ve
+sebebi kayda geçirilmelidir:
+
+> `@fastify/rate-limit`'in `onRequest` hook'u **kök seviyede** kayıtlıdır ve
+> `preHandler` tabanlı API anahtarı doğrulamasından **ÖNCE** çalışır. Bu yüzden
+> route-level `config.rateLimit` içinde "doğrulanmış anahtar id'sine göre" kova
+> üretmek MÜMKÜN DEĞİLDİR — o anda anahtar henüz doğrulanmamıştır. Header'dan
+> okunan **doğrulanmamış** bir ön eke göre kova üretmek ise saldırganın her istekte
+> rastgele bir ön ek göndererek sonsuz taze kova açmasına, yani sınırın tamamen
+> atlanmasına yol açar. Bu tuzağa DÜŞÜLMEMELİDİR.
+
+**Katman 1 — IP tabanı (atlanamaz).** `/public/*` rotalarında route-level
+`config.rateLimit` **varsayılan keyGenerator ile** (yani IP ile) kullanılır. Hiçbir
+header bu kovayı etkileyemez.
+
+**Katman 2 — anahtar başına kota.** `lib/api-key-rate-limit.ts` içinde süreç-içi
+kayan pencere sayacı; `api-key-auth` preHandler'ından **SONRA**, aynı kapsamda ikinci
+bir `preHandler` olarak çalışır. Kova anahtarı **doğrulanmış `ApiKey.id`**'dir.
+Doğrulanmamış/uydurma anahtar bu katmana hiç ulaşamaz (önce 401 alır) → kova
+bölünmesiyle atlatma imkânsızdır.
+
+`backend/src/lib/rate-limit.ts`'e eklenecek sabitler (isim ve değerler bağlayıcı;
+backend-agent implementasyonu yapar, değerleri kendi başına değiştiremez):
+
+| Sabit | Değer | Nerede |
+|---|---|---|
+| `PUBLIC_API_IP_RATE_LIMIT` | `{ max: 300, timeWindow: "1 minute" }` | `/public/*` route-level, IP kovası (Katman 1) |
+| `PUBLIC_API_KEY_RATE_LIMIT` | `{ max: 120, timeWindow: "1 minute" }` | doğrulanmış `ApiKey.id` kovası (Katman 2) |
+| `PUBLIC_API_KEY_BURST_RATE_LIMIT` | `{ max: 20, timeWindow: "1 second" }` | aynı kova, ani yük tavanı |
+| `API_KEY_MANAGEMENT_RATE_LIMIT` | `{ max: 10, timeWindow: "1 minute" }` | `POST/PATCH/DELETE /admin/settings/api-keys*`, `.../revoke` |
+| `WEBHOOK_MANAGEMENT_RATE_LIMIT` | `{ max: 20, timeWindow: "1 minute" }` | `POST/PATCH/DELETE /admin/settings/webhooks*` (her biri DNS çözümlemesi tetikler) |
+| `WEBHOOK_TEST_RATE_LIMIT` | `{ max: 5, timeWindow: "1 minute" }` | `POST .../webhooks/{id}/test` — gerçek giden istek üretir, en güçlü kötüye kullanım vektörü |
+| `WEBHOOK_REDELIVER_RATE_LIMIT` | `{ max: 10, timeWindow: "1 minute" }` | `POST .../deliveries/{id}/redeliver` |
+
+Yanıt sözleşmesi: aşımda `429` + standart hata zarfı (`error.code: RATE_LIMITED`) +
+`Retry-After`. `x-ratelimit-limit` / `x-ratelimit-remaining` / `x-ratelimit-reset`
+header'ları her `/public/*` yanıtında döner ve **Katman 2'nin (anahtar kotası)
+değerlerini taşır** — entegratör için anlamlı olan odur; Katman 1 sessiz bir tabandır.
+
+Süreç-içi sayaç, projenin mevcut tek-instance varsayımıyla (§10.8.1) tutarlıdır.
+Yatay ölçeklemeye geçilirse Katman 2 Redis'e taşınmalıdır — aksi hâlde efektif limit
+instance sayısıyla çarpılır (devops-agent/performance-agent notu).
+
+#### 10.13.7 SSRF önleme — katmanlı, teslimat anında yeniden doğrulanan (bağlayıcı)
+
+Webhook URL'i, admin tarafından girilen ve sunucumuzun **bağlantı kuracağı** bir
+adrestir; bu tanım gereği bir SSRF yüzeyidir. `lib/ssrf-guard.ts` aşağıdaki kontrolleri
+**HEM oluşturma/güncelleme anında HEM DE her teslimat denemesinde** uygular.
+
+**A. Sözdizimsel kontroller (URL parse sonrası):**
+
+1. Şema **yalnızca `https:`**. `http:` HİÇBİR ortamda kabul edilmez — geliştirme
+   istisnası da YOKTUR ("dev'de gevşet" kalıbı, üretimde unutulan bayrakların klasik
+   kaynağıdır). Yerel test için tünel servisi (ngrok vb.) kullanılır.
+2. URL'de kimlik bilgisi (`https://user:pass@host/...`) → RED.
+3. Port **yalnızca 443** (belirtilmemiş veya açıkça `:443`). Diğer tüm portlar → RED.
+   Gerçek webhook alıcıları (Zapier, Make, n8n, müşteri API gateway'leri) istisnasız
+   443 üzerindedir; keyfi port izni, iç servis port taramasının doğrudan yoludur.
+4. Host **literal IP OLAMAZ** (ne IPv4 ne IPv6, ne de `[::ffff:127.0.0.1]` gibi
+   sarmalanmış biçimler) → RED. Meşru bir webhook hedefi DNS adıdır. Bu tek kural,
+   basit SSRF yüklerinin büyük çoğunluğunu eler.
+5. Host adı **çok etiketli ve public bir DNS adı** olmalıdır. RED listesi: tek
+   etiketli adlar (nokta içermeyen), `localhost`, `*.localhost`, `*.local`,
+   `*.internal`, `*.intranet`, `*.lan`, `*.home.arpa`, `*.cluster.local`.
+6. Uzunluk sınırı: URL en fazla 2048 karakter.
+
+**B. Ağ katmanı kontrolleri (DNS çözümlemesi):**
+
+Host `dns.lookup(host, { all: true, verbatim: true })` ile çözülür. **Dönen TÜM
+adreslerin** her biri public unicast olmalıdır; **bir tanesi bile** aşağıdaki
+aralıklara düşerse istek reddedilir (kısmen-geçerli diye kabul edilmez):
+
+- IPv4: `0.0.0.0/8`, `10.0.0.0/8`, `100.64.0.0/10` (CGNAT), `127.0.0.0/8`,
+  `169.254.0.0/16` (**bulut metadata `169.254.169.254` dahil**), `172.16.0.0/12`,
+  `192.0.0.0/24`, `192.0.2.0/24`, `192.88.99.0/24`, `192.168.0.0/16`,
+  `198.18.0.0/15`, `198.51.100.0/24`, `203.0.113.0/24`, `224.0.0.0/4` (multicast),
+  `240.0.0.0/4` (reserved), `255.255.255.255/32`.
+- IPv6: `::/128`, `::1/128`, `fc00::/7` (ULA), `fe80::/10` (link-local),
+  `ff00::/8` (multicast).
+- **Sarmalanmış IPv4 açılır ve YENİDEN kontrol edilir:** `::ffff:0:0/96`
+  (IPv4-mapped), `64:ff9b::/96` (NAT64), `2002::/16` (6to4 — gömülü IPv4 çıkarılır).
+  Bu adım atlanırsa `::ffff:127.0.0.1` gibi bir kayıt kontrolü delip geçer.
+
+Çözümleme başarısızsa (NXDOMAIN/timeout) → RED (`errorCode: "dns_failure"`).
+
+**C. DNS rebinding (TOCTOU) — asıl zor kısım, çözüm PINLEME:**
+
+Oluşturma anındaki doğrulama **tek başına yetersizdir**: saldırgan, doğrulama
+sırasında public bir IP, teslimat sırasında `127.0.0.1` döndüren kısa TTL'li bir DNS
+kaydı kullanabilir. Bağlayıcı çözüm:
+
+1. Her teslimat denemesinde host **yeniden** çözülür ve B'deki kontroller **yeniden**
+   uygulanır.
+2. Geçen adreslerden biri seçilir ve **HTTP isteği o IP'ye PİNLENİR**: `undici`
+   `Agent`'ına özel bir `connect.lookup` verilir; bu fonksiyon **yalnızca doğrulanmış
+   IP'yi** döner ve işletim sistemi çözümleyicisine **ikinci kez başvurulmaz**.
+   `Host` header'ı ve TLS SNI/sertifika doğrulaması **orijinal host adıyla** yapılmaya
+   devam eder (aksi hâlde TLS kırılır ve MITM'e kapı açılır).
+3. **Yönlendirmeler (3xx) TAKİP EDİLMEZ** — `maxRedirects: 0`. Bir 3xx yanıtı
+   `FAILED` + `errorCode: "redirect_not_followed"` olarak kaydedilir ve **yeniden
+   denenmez**. Yönlendirme takibi, doğrulanmamış bir hedefe bağlanmanın en kısa
+   yoludur; pinlemeyi tamamen anlamsız kılar.
+4. **Proxy ortam değişkenleri (`HTTP_PROXY`/`HTTPS_PROXY`) onurlandırılmaz** — bir
+   proxy, pinlemeyi atlatır.
+5. Zaman aşımları: bağlantı **5 sn**, toplam **10 sn** (`WEBHOOK_REQUEST_TIMEOUT_MS`).
+   Yanıt gövdesi okuması **8 KiB** ile sınırlıdır (yavaş/devasa yanıt bir DoS
+   vektörüdür); saklanan snippet ilk 512 karakterdir.
+
+**D. Denetim:** URL reddi audit'e `outbound_webhook.url_rejected` +
+`status: FORBIDDEN` olarak yazılır (`metadata: { host, reason }` — **çözülen IP
+YAZILMAZ**, iç ağ topolojisini audit loguna sızdırmamak için). Oluşturma/güncelleme/
+silme/secret rotasyonu/test aksiyonları da `outbound_webhook.*` ile denetlenir.
+
+**E. Üst sınır:** site genelinde en fazla **20** webhook tanımlanabilir
+(`WEBHOOK_MAX_COUNT = 20`); aşımda `409 CONFLICT`. Tek bir olayın 20'den fazla giden
+istek doğurmasını ve tabloların sınırsız büyümesini engeller.
+
+#### 10.13.8 Teslimat, yeniden deneme ve delivery log
+
+**Emisyon (`lib/webhook-emitter.ts::emitWebhookEvent`) — TEK giriş noktası.** Route/
+service katmanı doğrudan `WebhookDelivery` satırı OLUŞTURMAZ; her zaman bu fonksiyonu
+çağırır. Bağlayıcı kurallar:
+
+- Emisyon **transaction COMMIT'inden SONRA** yapılır. Transaction içinde yapılırsa
+  geri alınan bir işlem için webhook gitmiş olabilir.
+- Emisyon **asıl isteği ASLA düşürmez** — `logAudit` ile aynı desen (`try/catch`,
+  hata yalnızca loglanır).
+- O olaya abone **`ACTIVE`** webhook yoksa hiçbir satır yazılmaz (sıfır maliyet).
+- Abone her webhook için bir `WebhookDelivery` satırı: `status: PENDING`,
+  `nextAttemptAt: now()`.
+
+Emisyon noktaları (backend-agent tahmin yürütmez):
+
+| Olay | Nereden |
+|---|---|
+| `PAGE_PUBLISHED` | `pages.routes.ts` PATCH/bulk **ve** `lib/scheduled-publish.ts` sweeper'ı |
+| `BLOG_POST_PUBLISHED` | `blog.routes.ts` PATCH/bulk **ve** blog yayın zamanlayıcısı |
+| `BLOG_POST_UPDATED` | `blog.routes.ts` PATCH — yayındaki bir yazının içeriği değiştiğinde |
+| `PRODUCT_CREATED` / `PRODUCT_UPDATED` / `PRODUCT_DELETED` | `products.routes.ts` (DELETED = kalıcı silme) |
+| `PORTFOLIO_ITEM_PUBLISHED` | `portfolio.routes.ts` PATCH/bulk |
+| `ORDER_CREATED` | `checkout.routes.ts` (session açıldığında) |
+| `ORDER_PAID` | `webhooks/stripe.routes.ts` (sipariş `PAID`'e geçtikten sonra) |
+| `ORDER_STATUS_CHANGED` | `orders.routes.ts` status PATCH + refund |
+| `PING` | `POST /admin/settings/webhooks/{id}/test` |
+
+**Bağlayıcı kural: `*_PUBLISHED` olayları YALNIZCA duruma GEÇİŞTE tetiklenir**
+(`DRAFT`/`SCHEDULED` → `PUBLISHED`). Zaten yayında olan bir içeriğin tekrar
+kaydedilmesi `*_PUBLISHED` üretmez (bunun için `*_UPDATED` vardır). Bu kolayca
+yanlış yapılan bir ayrımdır; qa-agent bunu test etmelidir.
+
+**Dispatcher (`outbound-webhooks.dispatcher.ts`) — süreç-içi, kuyruk YOK.** §10.8.1'de
+kurulan desenin aynısı:
+
+- `setInterval` ile her **15 sn**'de bir tarama: `status IN (PENDING, RETRYING) AND
+  nextAttemptAt <= now()`, `take: 20`, `orderBy: nextAttemptAt asc`.
+- Satır alınırken `status: SENDING` + `lastAttemptAt` yazılır (aynı satırın iki kez
+  işlenmesini önler).
+- Eşzamanlılık tavanı **5** (`WEBHOOK_DISPATCH_CONCURRENCY`).
+- `onReady` kurtarması ZORUNLU: `SENDING`'de kalmış satırlar `RETRYING`'e çevrilir ve
+  `nextAttemptAt: now()` yapılır (çökme/restart sonrası asılı kalmasın).
+- `onClose` ile interval temizlenir.
+
+**Yeniden deneme politikası:**
+
+| Sonuç | Davranış |
+|---|---|
+| `2xx` | `SUCCEEDED`, `deliveredAt` yazılır, webhook'un `consecutiveFailureCount` **0**'lanır |
+| `3xx` | `FAILED` — **yeniden denenmez** (`redirect_not_followed`, §10.13.7-C3) |
+| `408`, `429`, `5xx` | Yeniden denenir |
+| Diğer `4xx` | `FAILED` — yeniden denenmez (kalıcı istemci hatası; alıcının URL'i yanlış) |
+| Ağ hatası / timeout / DNS hatası / TLS hatası | Yeniden denenir |
+| SSRF reddi | `FAILED` — **yeniden denenmez** (`ssrf_blocked`) |
+
+`maxAttempts = 5` (1 ilk deneme + 4 yeniden deneme). Gecikme tablosu
+`WEBHOOK_RETRY_DELAYS_MS = [30_000, 120_000, 600_000, 3_600_000]` (30 sn → 2 dk →
+10 dk → 60 dk; toplam pencere ~72 dk). Üzerine **eşit jitter** uygulanır:
+`gecikme = base/2 + random(0, base/2)` — aynı anda başarısız olan çok sayıda
+gönderimin alıcıya senkronize dalga hâlinde geri dönmesini (thundering herd)
+engeller. Hak tükendiğinde `status: FAILED` ve `consecutiveFailureCount++`.
+
+**Otomatik kapatma:** `consecutiveFailureCount >= WEBHOOK_AUTO_DISABLE_THRESHOLD (20)`
+olduğunda webhook `status: DISABLED`, `autoDisabledAt: now()` yapılır ve
+`outbound_webhook.auto_disabled` audit kaydı yazılır. Yeniden etkinleştirme
+**ELLEdir** (`PATCH … { status: "ACTIVE" }`) ve sayacı sıfırlar. Ölü bir uç noktaya
+sonsuza dek istek atmak hem bizim hem alıcının kaynağını yakar.
+
+**Delivery log (`GET .../deliveries`):** cursor sayfalı, `seq desc`. Detay ucu
+`payload` + `responseBodySnippet` döner. Elle yeniden gönderim
+(`POST .../deliveries/{id}/redeliver`) **yeni bir satır oluşturur**
+(`redeliveryOfId` ile kaynağa bağlı); mevcut satırın sayaçları değiştirilmez —
+denetim izi değişmez kalmalıdır.
+
+**Budama (`outbound-webhooks.retention.ts`,** `import.retention.ts` **ile AYNI desen):**
+
+| Sabit | Değer | Etki |
+|---|---|---|
+| `WEBHOOK_DELIVERY_KEEP_PER_HOOK` | `100` | Webhook başına en yeni 100 kayıt tutulur, fazlası silinir ("son N gönderim" gereksinimi) |
+| `WEBHOOK_DELIVERY_RETENTION_MS` | `30 gün` | Yaş tavanı — 100'e ulaşmayan webhook'larda da log sonsuza kadar durmaz |
+| `WEBHOOK_DELIVERY_PII_REDACT_MS` | `7 gün` | `containsPii: true` kayıtlarda `payload` → `{"redacted": true}` (§10.13.10) |
+
+Redaksiyon penceresi (7 gün) yeniden deneme penceresinden (~72 dk) çok daha uzundur;
+budama bir retry'ı asla bozmaz.
+
+#### 10.13.9 HMAC imza formatı (bağlayıcı — alıcı bu sözleşmeye göre doğrular)
+
+**Secret formatı:** `whsec_` + 32 rastgele byte'ın hex'i (64 karakter) →
+`whsec_<64hex>`. Yalnızca oluşturma (`POST /admin/settings/webhooks`, 201) ve
+rotasyon (`POST .../rotate-secret`) yanıtlarında `plainSecret` olarak **bir kez**
+döner.
+
+**Saklama: `lib/crypto.ts::encryptSecret` (AES-256-GCM) — HASH DEĞİL.** Bu, kullanıcı
+gereksinimindeki "hash'lenerek saklanmalı" ifadesinden **bilinçli bir sapmadır** ve
+mimar tarafından hakemlik edilmiştir: HMAC imzası üretmek için secret'ın **düz metin
+hâline sunucunun her gönderimde ihtiyacı vardır**. Hash tek yönlüdür; hash'lenmiş bir
+secret ile imza üretmek matematiksel olarak imkânsızdır. Gereksinimin **amacı**
+("düz metin asla DB'de durmasın") AES-256-GCM ile tam olarak karşılanır; emsal
+projede zaten mevcuttur (`User.twoFactorSecret`, §10.4). API anahtarı için ise gerçek
+hash kullanılır (§10.13.3) — çünkü orada geri okuma ihtiyacı yoktur. security-agent
+bu iki farklı yaklaşımı bir tutarsızlık olarak değil, "geri okunması gerekiyor mu?"
+sorusuna verilen doğru iki farklı cevap olarak değerlendirmelidir.
+
+**Giden istek:**
+
+```
+POST <webhook.url>
+Content-Type: application/json
+User-Agent: CMS-Webhook/1.0
+X-Webhook-Id:        <OutboundWebhook.id>
+X-Webhook-Delivery:  <WebhookDelivery.id>      # alıcının idempotency anahtarı
+X-Webhook-Event:     <WebhookEvent>            # ör. BLOG_POST_PUBLISHED
+X-Webhook-Timestamp: <unix saniye>
+X-Webhook-Attempt:   <1..5>
+X-Webhook-Signature: sha256=<hex>
+```
+
+**İmzalanan dize (bağlayıcı):**
+
+```
+signedPayload = `${timestamp}.${rawBody}`
+signature     = HMAC_SHA256(secret, signedPayload)  →  lowercase hex
+header        = `sha256=${signature}`
+```
+
+Kritik uygulama notları:
+
+- `rawBody`, gövdenin **gönderilen baytlarıyla BİREBİR aynı** dize olmalıdır.
+  Dispatcher `JSON.stringify` **bir kez** çağırır, aynı dizeyi hem imzalar hem
+  gönderir. İki kez serileştirmek (anahtar sırası/boşluk farkı) imzayı sessizce
+  geçersiz kılar — bu, bu tür sistemlerdeki bir numaralı hatadır.
+- **`timestamp` imzanın İÇİNDEDİR** (başına eklenmiştir). Yalnızca gövdeyi imzalamak
+  replay saldırısına açıktır. Alıcı, `|now - timestamp| > 300 sn` ise isteği
+  reddetmelidir; bu, dokümantasyonda alıcıya verilen bağlayıcı tavsiyedir.
+- `sha256=` ön eki, ileride algoritma değiştirilebilsin diye vardır (alıcı ön eke
+  bakarak ayrıştırır) — çıplak hex GÖNDERİLMEZ.
+- Yeniden denemelerde **aynı `X-Webhook-Delivery` ve aynı gövde** gönderilir;
+  `X-Webhook-Timestamp` ve dolayısıyla imza HER DENEMEDE YENİLENİR (aksi hâlde 3.
+  denemede alıcının 300 sn'lik replay penceresi dolmuş olurdu).
+- Alıcı karşılaştırmayı **sabit zamanlı** yapmalıdır; bu da dokümantasyonda belirtilir.
+
+**Payload zarfı (tüm olaylarda aynı):**
+
+```json
+{
+  "id": "9f1c…",                         // = WebhookDelivery.id
+  "event": "BLOG_POST_PUBLISHED",
+  "apiVersion": "v1",
+  "createdAt": "2026-08-16T10:00:00.000Z",
+  "data": { }
+}
+```
+
+`data` alanının şekli **public API DTO'larıyla AYNIDIR** (`PublicPage`,
+`PublicBlogPost`, `PublicProduct`, `PublicPortfolioItem`) — tek bir dış kontrat,
+sıfır sapma. İstisnalar:
+
+- `ORDER_*` olaylarında `data` = `WebhookOrderPayload` (public API'de sipariş ucu
+  yoktur; sipariş webhook'unun tüm anlamı müşteri/tutar bilgisini taşımaktır).
+  Bu payload `customerEmail` içerir → `WebhookDelivery.containsPii = true`.
+- `PRODUCT_DELETED` olayında `data` = `{ "id": "…", "slug": "…" }` (kaynak artık
+  yoktur, tam DTO üretilemez).
+- `PING` olayında `data` = `{ "message": "ping", "webhookId": "…" }`.
+
+#### 10.13.10 Uç noktalar, yetki eşikleri ve compliance notları
+
+**Yetki: `/admin/settings/api-keys*` ve `/admin/settings/webhooks*` altındaki TÜM
+uçlar İSTİSNASIZ yalnızca `SiteRole=ADMIN`'dir** — okuma dahil. EDITOR/VIEWER → 403.
+Gerekçe: bir API anahtarı listesi (adlar, ön ekler, scope'lar) saldırı yüzeyi
+haritasıdır; bir webhook listesi ise dış entegrasyon topolojisidir. `Appearance`
+tag'indeki "EDITOR bilinçli olarak dışarıda" kararıyla aynı çizgide, ama burada
+**okuma da** kapsam dışıdır (Appearance'ta okuma authenticated'dır) — çünkü orada
+sızan bilgi renk/font, burada kimlik bilgisi metadatasıdır.
+
+| Grup | Uç | Not |
+|---|---|---|
+| ApiKeys | `GET /admin/settings/api-keys` | Cursor listesi; `plainKey` ASLA dönmez |
+| ApiKeys | `POST /admin/settings/api-keys` | **201** + `plainKey` (tek sefer) |
+| ApiKeys | `PATCH /admin/settings/api-keys/{keyId}` | `name`/`description`/`scope`/`expiresAt` |
+| ApiKeys | `POST /admin/settings/api-keys/{keyId}/revoke` | Soft — `status: REVOKED`, kayıt kalır (denetim izi) |
+| ApiKeys | `DELETE /admin/settings/api-keys/{keyId}` | **204**, kalıcı silme |
+| OutboundWebhooks | `GET /admin/settings/webhooks/events` | Statik olay kayıt defteri (etiket + açıklama) — frontend olay listesini HARDCODE ETMEZ |
+| OutboundWebhooks | `GET`/`POST /admin/settings/webhooks` | POST **201** + `plainSecret` (tek sefer) |
+| OutboundWebhooks | `GET`/`PATCH`/`DELETE /admin/settings/webhooks/{webhookId}` | DELETE **204**, delivery'ler cascade silinir |
+| OutboundWebhooks | `POST /admin/settings/webhooks/{webhookId}/rotate-secret` | Yeni `plainSecret` (tek sefer) |
+| OutboundWebhooks | `POST /admin/settings/webhooks/{webhookId}/test` | **202** + `deliveryId`; `PING` olayı kuyruklar |
+| OutboundWebhooks | `GET /admin/settings/webhooks/{webhookId}/deliveries` | Cursor listesi, `?status=` filtresi |
+| OutboundWebhooks | `GET .../deliveries/{deliveryId}` | `payload` + `responseBodySnippet` |
+| OutboundWebhooks | `POST .../deliveries/{deliveryId}/redeliver` | **202**, YENİ satır üretir |
+| PublicApi | `GET /public/*` | `X-Api-Key`, salt-okunur (§10.13.5) |
+
+**Audit aksiyon adları (bağlayıcı, `logAudit` ile):** `api_key.create`,
+`api_key.update`, `api_key.revoke`, `api_key.delete`, `outbound_webhook.create`,
+`outbound_webhook.update`, `outbound_webhook.delete`, `outbound_webhook.rotate_secret`,
+`outbound_webhook.test`, `outbound_webhook.redeliver`, `outbound_webhook.auto_disabled`,
+`outbound_webhook.url_rejected`. **`metadata`'ya ASLA `plainKey`/`plainSecret`/ham URL
+kimlik bilgisi yazılmaz** (`lib/audit.ts` kuralı).
+
+**Public API çağrıları audit'e YAZILMAZ.** Yüksek hacimli okuma trafiğidir; her GET
+için bir `AuditLog` satırı tabloyu boğar ve gerçek hassas aksiyonların görünürlüğünü
+azaltır. İzlenebilirlik `ApiKey.lastUsedAt`/`lastUsedIp` + normal erişim logları
+üzerinden sağlanır (observability-agent bu katman için ayrı bir metrik/alert
+tanımlayabilir).
+
+**compliance-agent için açık maddeler (değerlendirilmesi gerekenler, karar onların):**
+
+1. `WebhookDelivery.payload` — `ORDER_*` olaylarında müşteri e-postası/adı içerir
+   (`containsPii: true`). Önerilen saklama: 7 gün sonra payload redaksiyonu, 30 gün
+   sonra satırın tamamen silinmesi (§10.13.8). §10.8.8.1/§10.8.10'daki "progressive
+   redaction" ilkesiyle tutarlı olacak şekilde tasarlanmıştır.
+2. `ApiKey.lastUsedIp` — **maskelenmiş** saklanır (`lib/pii-mask.ts::maskIp`); ham IP
+   DB'ye yazılmaz. Amaç sızmış anahtar tespiti; veri minimizasyonu gözetilmiştir.
+3. **Veri dışa aktarımı yeni bir alıcı yaratır:** webhook, kişisel veriyi üçüncü bir
+   tarafa AKTARIR. Aydınlatma metni/veri işleyen envanteri açısından
+   değerlendirilmelidir — bu teknik bir karar değil, uyum kararıdır.
+
+**qa-agent için kritik akışlar:** (a) iptal edilmiş anahtarla 401, (b) süresi dolmuş
+anahtarla 401, (c) `READ` anahtarın scope korumalı uca 403'ü, (d) taslak/çöp içeriğin
+public API'de görünmemesi, (e) anahtar kotası aşımında 429, (f) `http://`,
+literal IP, `localhost`, `169.254.169.254`'e çözülen host ve 443 dışı port için
+webhook oluşturmanın reddi, (g) 5xx sonrası backoff ile yeniden deneme ve 5. denemede
+`FAILED`, (h) HMAC imzasının bilinen bir vektörle doğrulanması, (i) `*_PUBLISHED`
+olayının zaten yayındaki içerik tekrar kaydedilince tetiklenmemesi.
+
+#### 10.13.11 Entegratör Hızlı Başlangıç — Public API (documentation-agent — kullanım örneği)
+
+> Bu alt bölüm §10.13.1–10.13.10'daki **bağlayıcı** kontratın üzerine
+> documentation-agent tarafından eklenmiş bir kullanım kılavuzudur; hiçbir yeni
+> tasarım kararı İÇERMEZ/DEĞİŞTİRMEZ. Çelişki hâlinde yukarıdaki alt bölümler ve
+> `openapi.yaml` (`PublicApi` tag'i) kazanır. Hedef kitle: `/api/v1/public/*`
+> katmanını üçüncü bir sistemden (Zapier/Make/n8n, özel entegrasyon vb.)
+> tüketecek geliştiriciler.
+
+**1. API anahtarı alın.** Admin panel → Ayarlar → API Anahtarları → "Yeni Anahtar"
+(yalnızca `SiteRole=ADMIN` görür/oluşturur). Oluşturulan ham anahtar (`plainKey`,
+`cmsk_<12hex>_<64hex>`, 82 karakter) **yalnızca bu ekranda, bir kez** gösterilir;
+kaybederseniz eskisini iptal edip yenisini üretmeniz gerekir (§10.13.3). Anahtarı
+bir sır yöneticisinde/ortam değişkeninde saklayın — panelde ikinci kez gösterilmez.
+
+**2. İsteği gönderin.** Kimlik doğrulama `X-Api-Key` header'ı iledir;
+`Authorization: Bearer <key>` **kabul edilmez** (§10.13.4):
+
+```bash
+curl "https://api.example.com/api/v1/public/blog?limit=10" \
+  -H "X-Api-Key: cmsk_7f3ka9dm2q0x_4b1e...<64hex daha>"
+```
+
+**3. Yanıt zarfı ve sayfalama.** Tüm liste uçları aynı zarfı ve cursor sayfalama
+sözleşmesini kullanır:
+
+```json
+{
+  "data": [
+    { "id": "5e4d3c2b-...", "title": "Yeni Ürün Lansmanı", "slug": "yeni-urun-lansmani", "...": "..." }
+  ],
+  "meta": { "nextCursor": "eyJzZXEiOjEyM30" }
+}
+```
+
+`meta.nextCursor` doluysa bir sonraki sayfa `?cursor=<değer>` ile istenir; `null`
+ise son sayfadasınızdır. `?limit=` varsayılan 20, en fazla 100.
+
+**4. Hız sınırı.** Her `/public/*` yanıtı anahtar-başına kota durumunu
+(§10.13.6 Katman 2) header'da taşır:
+
+```
+x-ratelimit-limit: 120
+x-ratelimit-remaining: 118
+x-ratelimit-reset: 42
+```
+
+Aşımda `429 RATE_LIMITED` + `Retry-After` döner. Kendi anahtarınızın anlık kota
+durumunu ayrıca `GET /api/v1/public/me` ile de sorgulayabilirsiniz (aynı zamanda
+"anahtarım/scope'um doğru mu?" teşhisi için kullanışlıdır).
+
+**5. Hata kodları.**
+
+| HTTP | `error.code` | Anlamı |
+|---|---|---|
+| 401 | `UNAUTHORIZED` | Anahtar eksik / geçersiz / iptal edilmiş / süresi dolmuş — mesaj ayrım YAPMAZ (§10.13.4) |
+| 403 | `FORBIDDEN` | Anahtarın scope'u yetersiz (v1'de fiilen görülmez — tüm public uçlar `READ` ister, `READ_WRITE` da geçer) |
+| 404 | `NOT_FOUND` | Kayıt yok VEYA yayında değil — taslak/çöp içeriğin varlığı bile sızdırılmaz |
+| 422 | `VALIDATION_ERROR` | Sorgu parametresi geçersiz (ör. `limit > 100`) |
+| 429 | `RATE_LIMITED` | Kota aşıldı — `Retry-After` header'ına göre yeniden deneyin |
+
+**6. Uç noktalar (özet — tam şema `openapi.yaml`'da `PublicApi` tag'i altında):**
+
+| Uç | Not |
+|---|---|
+| `GET /public/me` | Anahtarınızın adı, scope'u, anlık kota durumu |
+| `GET /public/pages` · `GET /public/pages/{slug}` | Yayındaki sayfalar |
+| `GET /public/blog` · `.../{slug}` · `.../categories` | Yayındaki blog yazıları |
+| `GET /public/products` · `.../{slug}` · `.../categories` | Yayındaki ürünler (modül kapalıysa 404) |
+| `GET /public/portfolio` · `.../{slug}` · `.../categories` | Yayındaki portföy öğeleri (modül kapalıysa 404) |
+
+Tümü **salt-okunur**'dur (`GET`); v1'de yazma ucu yoktur. Ortak parametreler:
+`?cursor=`, `?limit=`, `?locale=` (mevcut public site uçlarıyla aynı fallback
+semantiği).
+
+**7. Entegratörün bilmesi gereken kısıtlar:**
+
+- Yalnızca `PUBLISHED` ve silinmemiş içerik döner; taslak/çöp filtre parametresi
+  bu katmanda YOKTUR.
+- Yanıtlar `author`/`authorId`/`seoScore`/`viewCount`/`translations` gibi iç
+  alanları İÇERMEZ — personel e-postası dahil hiçbir iç bilgi bu katmana sızmaz
+  (§10.13.5).
+- `PublicProduct.inStock` bir boolean'dır; gerçek stok adedi dönmez.
+- Bu API **sunucudan sunucuya** kullanım içindir. Anahtarı tarayıcı tarafı
+  JavaScript'e GÖMMEYİN — CORS bilinçli olarak yalnızca `FRONTEND_URL`'e açıktır,
+  `/public/*` için genişletilmemiştir (§10.13.4). Tarayıcıdan çağrılırsa anahtar
+  ağ sekmesinden herkese görünür olur.
+
+#### 10.13.12 Webhook Payload Örnekleri ve İmza Doğrulama (documentation-agent — kullanım örneği)
+
+> §10.13.8/§10.13.9'daki bağlayıcı formatın somut, kopyala-yapıştır örnekleridir.
+> Alıcı tarafı (webhook uç noktanız) bu sözleşmeye göre doğrulama yapmalıdır.
+
+**Giden isteğin tam görünümü** (`BLOG_POST_PUBLISHED` örneği — header'lar §10.13.9
+ile bağlayıcıdır):
+
+```
+POST /webhooks/cms HTTP/1.1
+Host: hooks.example.com
+Content-Type: application/json
+User-Agent: CMS-Webhook/1.0
+X-Webhook-Id: 3fbb5e2a-9c34-4d10-9d1a-1a2b3c4d5e6f
+X-Webhook-Delivery: 9f1c1e6a-9a3e-4b71-8b8a-6a1e2f3c4d5e
+X-Webhook-Event: BLOG_POST_PUBLISHED
+X-Webhook-Timestamp: 1786872000
+X-Webhook-Attempt: 1
+X-Webhook-Signature: sha256=6f2c1eab9d4f...<hex>
+
+{
+  "id": "9f1c1e6a-9a3e-4b71-8b8a-6a1e2f3c4d5e",
+  "event": "BLOG_POST_PUBLISHED",
+  "apiVersion": "v1",
+  "createdAt": "2026-08-16T10:00:00.000Z",
+  "data": {
+    "id": "5e4d3c2b-1a0f-4e5d-9c8b-7a6f5e4d3c2b",
+    "title": "Yeni Ürün Lansmanı",
+    "slug": "yeni-urun-lansmani",
+    "excerpt": "Kısa özet metni.",
+    "contentHtml": "<p>Yazının tam içeriği...</p>",
+    "coverImageUrl": "https://cdn.example.com/media/cover.jpg",
+    "category": { "id": "c1a2b3c4-5d6e-4f70-8a9b-0c1d2e3f4a5b", "name": "Duyurular", "slug": "duyurular" },
+    "seoTitle": null,
+    "seoDescription": null,
+    "ogTitle": null,
+    "ogImageUrl": null,
+    "canonicalUrl": null,
+    "noIndex": false,
+    "publishedAt": "2026-08-16T10:00:00.000Z",
+    "updatedAt": "2026-08-16T10:00:00.000Z"
+  }
+}
+```
+
+`X-Webhook-Delivery` = `data.id` üstündeki zarfın `id` alanı = alıcının
+**idempotency anahtarı**; yeniden denemelerde AYNI değer gelir.
+
+**Olay → `data` şeması eşlemesi** (tam alan listeleri için `openapi.yaml`'daki
+ilgili `Public*`/`WebhookOrderPayload` şemalarına bakın):
+
+| Olay | `data` şeması | Not |
+|---|---|---|
+| `PAGE_PUBLISHED` | `PublicPage` | Yalnızca DRAFT/SCHEDULED → PUBLISHED geçişinde |
+| `BLOG_POST_PUBLISHED` | `PublicBlogPost` | Yalnızca durum geçişinde (yukarıdaki örnek) |
+| `BLOG_POST_UPDATED` | `PublicBlogPost` | Yayındaki bir yazı güncellenince |
+| `PRODUCT_CREATED` / `PRODUCT_UPDATED` | `PublicProduct` | — |
+| `PRODUCT_DELETED` | `{ "id": "...", "slug": "..." }` | Kaynak artık yok, tam DTO üretilemez |
+| `PORTFOLIO_ITEM_PUBLISHED` | `PublicPortfolioItem` | Yalnızca durum geçişinde |
+| `ORDER_CREATED` / `ORDER_PAID` / `ORDER_STATUS_CHANGED` | `WebhookOrderPayload` | **PII içerir** (bkz. aşağı) |
+| `PING` | `{ "message": "ping", "webhookId": "..." }` | Yalnızca `POST .../test` ile üretilir, gerçek bir olay değildir |
+
+**`ORDER_STATUS_CHANGED` örneği** (`WebhookOrderPayload` — `customerEmail` alıcının
+siparişi kendi sisteminde eşleştirebilmesi için **maskelenmeden** gönderilir,
+bu yüzden `containsPii: true` işaretlenir ve delivery kaydı 7 gün sonra redakte
+edilir, §10.13.8/§10.13.10):
+
+```json
+{
+  "id": "b7a6c5d4-3e2f-41a0-9b8c-7d6e5f4a3b2c",
+  "event": "ORDER_STATUS_CHANGED",
+  "apiVersion": "v1",
+  "createdAt": "2026-08-16T11:30:00.000Z",
+  "data": {
+    "id": "a1b2c3d4-e5f6-4718-9a0b-1c2d3e4f5a6b",
+    "orderNumber": "ORD-LXK3F2-A1B2",
+    "status": "FULFILLED",
+    "previousStatus": "PAID",
+    "customerEmail": "musteri@example.com",
+    "customerName": "Ayşe Yılmaz",
+    "currency": "TRY",
+    "subtotalCents": 25000,
+    "discountCents": 0,
+    "taxCents": 4500,
+    "totalCents": 29500,
+    "paidAt": "2026-08-16T10:05:00.000Z",
+    "createdAt": "2026-08-16T10:00:00.000Z",
+    "items": [
+      {
+        "productSlug": "ornek-urun",
+        "productTitle": "Örnek Ürün",
+        "productSku": "SKU-001",
+        "unitPriceCents": 25000,
+        "quantity": 1,
+        "lineTotalCents": 25000
+      }
+    ]
+  }
+}
+```
+
+`ORDER_CREATED`/`ORDER_PAID` aynı şemayı kullanır; `previousStatus` yalnızca
+`ORDER_STATUS_CHANGED` olayında dolar (diğerlerinde `null`).
+
+**İmza doğrulama (alıcı tarafı, Node.js).** Sözleşme (§10.13.9 — bağlayıcı):
+
+```
+signedPayload = `${X-Webhook-Timestamp}.${rawBody}`
+signature     = hex(HMAC_SHA256(secret, signedPayload))
+header        = `sha256=${signature}`
+```
+
+`secret`, webhook oluşturulurken/`rotate-secret` ile dönen `whsec_<64hex>`
+değeridir. `rawBody`, gövdenin **gönderildiği baytlarla birebir aynı** ham
+dizedir — `JSON.parse` edilip yeniden `JSON.stringify` ile üretilmiş bir dize
+DEĞİLDİR (anahtar sırası/boşluk farkı imzayı sessizce geçersiz kılar, bu tür
+sistemlerdeki en yaygın hata budur).
+
+```js
+// npm i express  (örnek Express middleware'i; framework bağımsız mantık aynıdır)
+const crypto = require("crypto");
+const express = require("express");
+
+function verifyWebhookSignature({ rawBody, timestampHeader, signatureHeader, secret, toleranceSeconds = 300 }) {
+  const timestamp = Number(timestampHeader);
+  if (!Number.isFinite(timestamp)) return false;
+
+  // Replay koruması: timestamp imzanın İÇİNDEDİR (§10.13.9) — çok eski/gelecekteki
+  // bir istek reddedilir. Aynı pencere değeri (300 sn) sunucu tarafında da geçerlidir.
+  const now = Math.floor(Date.now() / 1000);
+  if (Math.abs(now - timestamp) > toleranceSeconds) return false;
+
+  const expectedSignature = crypto
+    .createHmac("sha256", secret)
+    .update(`${timestamp}.${rawBody}`, "utf8")
+    .digest("hex");
+  const expectedHeader = `sha256=${expectedSignature}`;
+
+  const a = Buffer.from(expectedHeader);
+  const b = Buffer.from(signatureHeader ?? "");
+  // Sabit zamanlı karşılaştırma ZORUNLUDUR (§10.13.9) — düz `===` zamanlama
+  // sızıntısına açıktır. Uzunluklar farklıysa timingSafeEqual'ı ÇAĞIRMADAN false
+  // dönülür (aksi hâlde fonksiyon kendisi hata fırlatır).
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
+}
+
+const app = express();
+
+app.post(
+  "/webhooks/cms",
+  express.raw({ type: "application/json" }), // ÖNEMLİ: ham body — express.json() DEĞİL
+  (req, res) => {
+    const rawBody = req.body.toString("utf8");
+
+    const ok = verifyWebhookSignature({
+      rawBody,
+      timestampHeader: req.header("X-Webhook-Timestamp"),
+      signatureHeader: req.header("X-Webhook-Signature"),
+      secret: process.env.CMS_WEBHOOK_SECRET, // whsec_...
+    });
+
+    if (!ok) {
+      return res.status(401).send("invalid signature");
+    }
+
+    const envelope = JSON.parse(rawBody);
+
+    // X-Webhook-Delivery (= envelope.id) idempotency anahtarınızdır: aynı id'yi
+    // ikinci kez işlemeyin — yeniden denemelerde (5xx/timeout sonrası) AYNI id,
+    // AYNI gövde, ama YENİ timestamp/imza ile tekrar gelir (§10.13.9).
+    // İşleyin: envelope.event, envelope.data ...
+
+    res.status(200).send("ok");
+  }
+);
+```
+
+**Diğer önemli davranışlar (alıcı tarafında beklenmesi gerekenler):**
+
+- **Zaman aşımı:** sunucumuz bağlantı için 5 sn, toplam istek için 10 sn bekler;
+  uç noktanız zamanında yanıt vermezse `timeout` olarak kaydedilip yeniden
+  denenir (§10.13.7-C5).
+- **Yeniden deneme takvimi:** `2xx` dışında (ve `3xx`/kalıcı `4xx` hariç) en fazla
+  5 deneme, aralar ~30 sn → 2 dk → 10 dk → 60 dk (+jitter); toplam pencere ~72 dk
+  (§10.13.8). Uç noktanız idempotent olmalıdır.
+- **Yönlendirme takip edilmez** (`3xx` = kalıcı başarısızlık) — webhook URL'inizi
+  doğrudan (redirect'siz) hedef olarak tanımlayın.
+- **Secret rotasyonu anında etkilidir** — grace period YOKTUR; yeni secret'ı
+  entegrasyonunuzda güncellemeden rotasyon yaparsanız bir sonraki teslimat imza
+  doğrulamasında başarısız olur (alıcı tarafında 401 döndürseniz bile CMS
+  tarafında bu `http_error` olarak işlenir ve yeniden denenir, ama kalıcı
+  hata sınıfına girmez — düzeltene kadar tüm denemeler tükenir).
+- Test için admin panelden `POST .../webhooks/{id}/test` ile bir `PING` olayı
+  tetiklenebilir; bu, uç noktanızı gerçek veriye dokunmadan doğrulamanın yoludur.
 
 ### Bilinen Sorunlar / Backlog
 

@@ -35,6 +35,9 @@ import type {
   SiteAppearance,
   SiteCustomCode,
   Locale,
+  ApiKey,
+  OutboundWebhook,
+  WebhookDelivery,
 } from "@prisma/client";
 import type {
   UserDto,
@@ -78,6 +81,10 @@ import type {
   SiteCustomCodeDto,
   LocaleDto,
   ContentLocalizationDto,
+  ApiKeyDto,
+  OutboundWebhookDto,
+  WebhookDeliverySummaryDto,
+  WebhookDeliveryDto,
 } from "../schemas/entities";
 import { env } from "../config/env";
 import {
@@ -88,6 +95,7 @@ import {
 } from "../lib/seo-score";
 import { DUPLICATE_STRATEGY_FROM_PRISMA, SEVERITY_FROM_PRISMA } from "../modules/import/import.constants";
 import type { ModuleDefinition } from "../lib/module-registry";
+import { buildMaskedKey } from "../lib/api-key";
 
 export function toUserDto(user: User): UserDto {
   return {
@@ -254,7 +262,7 @@ export function toBlogCategoryDto(category: BlogCategory): BlogCategoryDto {
 type BlogPostWithCategory = BlogPost & { category: BlogCategory | null; author?: User | null };
 
 /** S3/CDN sürücüsü zaten mutlak URL üretir; local sürücü relative `/uploads/...` yolu döner. */
-function absolutizeMediaUrl(url: string): string {
+export function absolutizeMediaUrl(url: string): string {
   return /^https?:\/\//i.test(url) ? url : `${env.PUBLIC_URL}${url}`;
 }
 
@@ -842,5 +850,87 @@ export function toSiteCustomCodeDto(row: SiteCustomCodeWithUpdaters | null, cust
     jsUpdatedAt: row?.jsUpdatedAt ? row.jsUpdatedAt.toISOString() : null,
     jsUpdatedBy: row?.jsUpdatedBy ? toUserSummaryDto(row.jsUpdatedBy) : null,
     customCodeEnabled,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// §10.13 Üçüncü Parti Entegrasyon — API Anahtarları + Giden Webhook'lar (bkz. ARCHITECTURE.md
+// §10.13, modules/api-keys/*, modules/outbound-webhooks/*). `Public*` DTO mapper'ları BİLİNÇLİ
+// olarak BURADA DEĞİL, `modules/public-api/public-api.mappers.ts`'te AYRI tutulur (§10.13.5 —
+// bu admin mapper'ları PII taşır, dış kontrata asla verilmez).
+// ---------------------------------------------------------------------------
+
+type ApiKeyWithCreator = ApiKey & { createdBy?: User | null };
+
+export function toApiKeyDto(key: ApiKeyWithCreator): ApiKeyDto {
+  return {
+    id: key.id,
+    name: key.name,
+    description: key.description,
+    keyPrefix: key.keyPrefix,
+    last4: key.last4,
+    maskedKey: buildMaskedKey(key.keyPrefix, key.last4),
+    scope: key.scope,
+    status: key.status,
+    lastUsedAt: key.lastUsedAt ? key.lastUsedAt.toISOString() : null,
+    lastUsedIp: key.lastUsedIp,
+    expiresAt: key.expiresAt ? key.expiresAt.toISOString() : null,
+    revokedAt: key.revokedAt ? key.revokedAt.toISOString() : null,
+    createdById: key.createdById,
+    createdByName: key.createdBy?.name ?? null,
+    createdAt: key.createdAt.toISOString(),
+    updatedAt: key.updatedAt.toISOString(),
+  };
+}
+
+type OutboundWebhookWithCreator = OutboundWebhook & { createdBy?: User | null };
+
+export function toOutboundWebhookDto(webhook: OutboundWebhookWithCreator): OutboundWebhookDto {
+  return {
+    id: webhook.id,
+    name: webhook.name,
+    description: webhook.description,
+    url: webhook.url,
+    secretLast4: webhook.secretLast4,
+    events: webhook.events,
+    status: webhook.status,
+    consecutiveFailureCount: webhook.consecutiveFailureCount,
+    autoDisabledAt: webhook.autoDisabledAt ? webhook.autoDisabledAt.toISOString() : null,
+    lastTriggeredAt: webhook.lastTriggeredAt ? webhook.lastTriggeredAt.toISOString() : null,
+    lastSuccessAt: webhook.lastSuccessAt ? webhook.lastSuccessAt.toISOString() : null,
+    lastFailureAt: webhook.lastFailureAt ? webhook.lastFailureAt.toISOString() : null,
+    createdById: webhook.createdById,
+    createdByName: webhook.createdBy?.name ?? null,
+    createdAt: webhook.createdAt.toISOString(),
+    updatedAt: webhook.updatedAt.toISOString(),
+  };
+}
+
+export function toWebhookDeliverySummaryDto(delivery: WebhookDelivery): WebhookDeliverySummaryDto {
+  return {
+    id: delivery.id,
+    event: delivery.event,
+    status: delivery.status,
+    attemptCount: delivery.attemptCount,
+    maxAttempts: delivery.maxAttempts,
+    nextAttemptAt: delivery.nextAttemptAt ? delivery.nextAttemptAt.toISOString() : null,
+    responseStatus: delivery.responseStatus,
+    errorCode: delivery.errorCode as WebhookDeliverySummaryDto["errorCode"],
+    errorMessage: delivery.errorMessage,
+    durationMs: delivery.durationMs,
+    containsPii: delivery.containsPii,
+    redeliveryOfId: delivery.redeliveryOfId,
+    firstAttemptAt: delivery.firstAttemptAt ? delivery.firstAttemptAt.toISOString() : null,
+    lastAttemptAt: delivery.lastAttemptAt ? delivery.lastAttemptAt.toISOString() : null,
+    deliveredAt: delivery.deliveredAt ? delivery.deliveredAt.toISOString() : null,
+    createdAt: delivery.createdAt.toISOString(),
+  };
+}
+
+export function toWebhookDeliveryDto(delivery: WebhookDelivery): WebhookDeliveryDto {
+  return {
+    ...toWebhookDeliverySummaryDto(delivery),
+    payload: delivery.payload as WebhookDeliveryDto["payload"],
+    responseBodySnippet: delivery.responseBodySnippet,
   };
 }
