@@ -8,8 +8,8 @@ import * as pagesApi from "@/lib/api/pages";
 import * as revisionsApi from "@/lib/api/revisions";
 import * as localesApi from "@/lib/api/locales";
 import type { ContentStatus, ContentTranslations, Locale as LocaleDto } from "@/lib/api/types";
-import type { Block, BlockType } from "@/lib/page-builder/types";
-import { createBlock } from "@/lib/page-builder/registry";
+import type { Block } from "@/lib/page-builder/types";
+import { createBlock, type PaletteBlockType } from "@/lib/page-builder/registry";
 import { useAutosave } from "@/hooks/use-autosave";
 import { useAuth } from "@/context/auth-context";
 import { Card } from "@/components/ui/card";
@@ -251,7 +251,7 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
     save: () => pagesApi.autosavePage(pageId, { title, blocks }),
   });
 
-  function addBlock(type: BlockType) {
+  function addBlock(type: PaletteBlockType) {
     if (isDefaultLocale) {
       setBlocks((prev) => [...prev, createBlock(type)]);
     } else {

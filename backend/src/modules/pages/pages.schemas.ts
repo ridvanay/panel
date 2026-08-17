@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { PageStatusSchema } from "../../schemas/entities";
 import { refineScheduledAt, SCHEDULED_AT_REFINEMENT } from "../../schemas/common";
+import { flattenPageBlocks } from "../../lib/page-blocks";
 
 export const PageIdParamSchema = z.object({
   pageId: z.string().uuid(),
@@ -20,11 +21,123 @@ export const PageRevisionIdParamSchema = z.object({
 // da aynı şemayı import eder.
 export { LocaleQuerySchema } from "../../schemas/common";
 
-const BlockSchema = z.record(z.unknown());
+// §10.17 Sayfa içerik bloklarında Grid/Kolon düzeni — bkz. ARCHITECTURE.md §10.17.3/§10.17.4.
+// `type !== "columns"` olan bloklar için serbestlik (`z.record(z.unknown())`) KORUNUR (minimum
+// diff, architect kararı); yalnızca `type: "columns"` için aşağıdaki dar şema devreye girer.
+const PAGE_COLUMNS_LEAF_FORBIDDEN_TYPES = new Set(["columns", "hero"]);
+const MAX_BLOCKS_PER_COLUMN = 20;
+/** Toplam blok sayısı (iç içe DAHİL) tavanı — §10.17.3, DoS koruması. */
+const MAX_TOTAL_PAGE_BLOCKS = 200;
+
+/** Bir sütunun İÇİNE konabilen bloklar — `columns`/`hero` HARİÇ, geri kalanı serbest kalır. */
+const PageColumnLeafBlockSchema = z.record(z.unknown()).superRefine((block, ctx) => {
+  const type = (block as Record<string, unknown>).type;
+  if (typeof type === "string" && PAGE_COLUMNS_LEAF_FORBIDDEN_TYPES.has(type)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `Sütun içine '${type}' bloğu eklenemez (yalnızca yaprak bloklar konabilir, derinlik en fazla 1).`,
+    });
+  }
+});
+
+const PageColumnSchema = z.object({
+  id: z.string().min(1),
+  blocks: z.array(PageColumnLeafBlockSchema).max(MAX_BLOCKS_PER_COLUMN),
+});
+
+const ColumnsBlockSchema = z
+  .object({
+    id: z.string().min(1),
+    type: z.literal("columns"),
+    data: z.object({
+      columnCount: z.union([z.literal(2), z.literal(3)]),
+      ratio: z.enum(["1-1", "2-1", "1-2", "1-1-1"]),
+      gap: z.enum(["none", "sm", "md", "lg"]).default("md"),
+      verticalAlign: z.enum(["top", "center", "bottom"]).default("top"),
+      columns: z.array(PageColumnSchema).min(2).max(3),
+    }),
+  })
+  .superRefine((block, ctx) => {
+    const { columnCount, ratio, columns } = block.data;
+    if (columns.length !== columnCount) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["data", "columns"],
+        message: "columns dizisinin uzunluğu columnCount ile eşit olmalıdır.",
+      });
+    }
+    const allowedRatios = columnCount === 2 ? ["1-1", "2-1", "1-2"] : ["1-1-1"];
+    if (!allowedRatios.includes(ratio)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["data", "ratio"],
+        message: `ratio, columnCount=${columnCount} ile uyumlu değil.`,
+      });
+    }
+  });
+
+const BlockSchema = z.record(z.unknown()).superRefine((block, ctx) => {
+  if ((block as Record<string, unknown>).type !== "columns") return; // eski davranış aynen korunur
+  const parsed = ColumnsBlockSchema.safeParse(block);
+  if (!parsed.success) {
+    for (const issue of parsed.error.issues) {
+      ctx.addIssue(issue);
+    }
+  }
+});
+
+/** §10.17.3 — sayfa başına (iç içe dahil) toplam en fazla 200 blok. */
+function refineTotalBlockCount(blocks: unknown[] | undefined): boolean {
+  if (!blocks) return true;
+  return flattenPageBlocks(blocks).length <= MAX_TOTAL_PAGE_BLOCKS;
+}
+const TOTAL_BLOCK_COUNT_REFINEMENT = {
+  message: `Toplam blok sayısı (iç içe dahil) en fazla ${MAX_TOTAL_PAGE_BLOCKS} olabilir.`,
+  path: ["blocks"],
+};
 
 // §9 backend-agent madde 5 — locale bazında `null` = çeviriyi SİL (bkz. openapi.yaml
 // `ContentTranslations` açıklaması, lib/localization.ts::mergeTranslations).
-const TranslationsSchema = z.record(z.string(), z.record(z.string(), z.unknown()).nullable());
+//
+// GÜVENLİK DÜZELTMESİ (security-agent denetimi, §10.17 sonrası) — bu şema önceden
+// `fields.blocks`'un İÇERİĞİNE hiç bakmıyordu (`z.record(z.unknown())`). Sonuç: üst seviye
+// `blocks` alanı için bağlayıcı olan iki kural — (a) `columns` derinliği en fazla 1
+// (`ColumnsBlockSchema` üzerinden, bir sütunun içine `columns`/`hero` KONULAMAZ) ve (b) sayfa
+// başına toplam en fazla `MAX_TOTAL_PAGE_BLOCKS` blok — `translations.<LOCALE>.blocks` için
+// UYGULANMIYORDU. `sanitizePageBlocks`/`flattenPageBlocks` (bkz. sanitize-blocks.ts,
+// lib/page-blocks.ts) sınırsız derinlikte özyinelemeli çalıştığından, kötü niyetli/ele geçirilmiş
+// bir EDITOR hesabı `translations` alanına keyfi derinlikte iç içe `columns` yerleştirip (a) şema
+// seviyesinde YASAKLANMIŞ bir yapıyı DB'ye yazdırabilir, (b) `flattenPageBlocks`'u
+// (seo-score.ts/sanitize-blocks.ts tarafından çağrılır) çok derin özyinelemeye zorlayarak
+// kaynak tüketimi/`RangeError: Maximum call stack size exceeded` (DoS) riski oluşturabilirdi.
+// XSS açısından risk YOKTU (sanitizePageTranslations zaten derinlik sınırı olmaksızın özyineler
+// ve her seviyedeki `text` bloğunu temizler) — ancak bu, dokümante edilmiş "derinlik en fazla 1"
+// değişmezinin (invariant) tutarsız uygulanması ve bir DoS yüzeyiydi. Düzeltme: her `locale`
+// için `fields.blocks` diziyse AYNI `BlockSchema`'dan (dolayısıyla `ColumnsBlockSchema`'dan) VE
+// `refineTotalBlockCount`'tan geçirilir.
+const TranslationsSchema = z
+  .record(z.string(), z.record(z.string(), z.unknown()).nullable())
+  .superRefine((translations, ctx) => {
+    for (const [locale, fields] of Object.entries(translations)) {
+      if (!fields || !Array.isArray(fields.blocks)) continue;
+
+      const parsedBlocks = z.array(BlockSchema).safeParse(fields.blocks);
+      if (!parsedBlocks.success) {
+        for (const issue of parsedBlocks.error.issues) {
+          ctx.addIssue({ ...issue, path: ["translations", locale, "blocks", ...issue.path] });
+        }
+        continue;
+      }
+
+      if (!refineTotalBlockCount(parsedBlocks.data)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["translations", locale, "blocks"],
+          message: TOTAL_BLOCK_COUNT_REFINEMENT.message,
+        });
+      }
+    }
+  });
 
 export const CreatePageRequestSchema = z
   .object({
@@ -49,7 +162,8 @@ export const CreatePageRequestSchema = z
     // Faz 4 (zamanlanmış yayın) — bkz. schemas/common.ts::refineScheduledAt açıklaması.
     scheduledAt: z.string().datetime().nullable().optional(),
   })
-  .refine(refineScheduledAt, SCHEDULED_AT_REFINEMENT);
+  .refine(refineScheduledAt, SCHEDULED_AT_REFINEMENT)
+  .refine((data) => refineTotalBlockCount(data.blocks), TOTAL_BLOCK_COUNT_REFINEMENT);
 
 /**
  * Faz 3 (autosave) — `POST /admin/pages/:pageId/autosave`. `UpdatePageRequestSchema`'nın
@@ -84,4 +198,5 @@ export const UpdatePageRequestSchema = z
     // Faz 4 (zamanlanmış yayın) — bkz. schemas/common.ts::refineScheduledAt açıklaması.
     scheduledAt: z.string().datetime().nullable().optional(),
   })
-  .refine(refineScheduledAt, SCHEDULED_AT_REFINEMENT);
+  .refine(refineScheduledAt, SCHEDULED_AT_REFINEMENT)
+  .refine((data) => refineTotalBlockCount(data.blocks), TOTAL_BLOCK_COUNT_REFINEMENT);

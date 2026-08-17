@@ -1,5 +1,6 @@
 import type { BlogPost, Page, PortfolioItem, Product } from "@prisma/client";
 import type { SeoScoreIssueDto } from "../schemas/entities";
+import { flattenPageBlocks } from "./page-blocks";
 
 /**
  * §10.7 İçerik Yönetim Listesi — SEO tamlık skoru. Backend'de HER OKUMADA saf/senkron
@@ -177,7 +178,9 @@ function collectPageText(blocks: RawBlock[]): string {
 }
 
 export function computePageSeoScore(page: Pick<Page, "seoTitle" | "seoDescription" | "ogImageUrl" | "blocks">): SeoScoreResult {
-  const blocks = readBlocks(page.blocks);
+  // §10.17.4 — `columns` içine taşınan bloklar da SKORA DAHİL edilmelidir, aksi halde kullanıcı
+  // içeriğini bir sütuna taşıdığı anda SEO skorunun sebepsizce düştüğünü görür (sessiz gerileme).
+  const blocks = flattenPageBlocks(readBlocks(page.blocks)) as RawBlock[];
   const images = collectPageImages(blocks);
   const coverImageUrl = page.ogImageUrl?.trim() ? page.ogImageUrl : firstImageBlockUrl(blocks);
   const contentText = collectPageText(blocks);

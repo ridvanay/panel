@@ -1,10 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { blockRegistry, createBlock } from "@/lib/page-builder/registry";
-import type { BlockType } from "@/lib/page-builder/types";
+import { blockRegistry, createBlock, type PaletteBlockType } from "@/lib/page-builder/registry";
 
 describe("blockRegistry", () => {
   it("has a label for every block type", () => {
-    const types: BlockType[] = ["hero", "text", "image", "gallery", "cta", "featured-products", "featured-portfolio"];
+    const types: PaletteBlockType[] = ["hero", "text", "image", "gallery", "cta", "featured-products", "featured-portfolio"];
     for (const type of types) {
       expect(blockRegistry[type].label).toEqual(expect.any(String));
       expect(blockRegistry[type].label.length).toBeGreaterThan(0);

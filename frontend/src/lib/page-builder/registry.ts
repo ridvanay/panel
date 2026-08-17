@@ -1,6 +1,13 @@
 import type { Block, BlockType } from "./types";
 
-export const blockRegistry: Record<BlockType, { label: string }> = {
+/**
+ * Palette blok tipleri — §10.17.6 mimar kararı: `registry.ts`'e `columns` EKLENMEZ, palette'te
+ * "Sütun" diye bir öğe yoktur. Sütun, var olan bir bloğun "Düzen" seçiciyle sarmalanmasıyla
+ * oluşur (bkz. `lib/page-builder/columns.ts`).
+ */
+export type PaletteBlockType = Exclude<BlockType, "columns">;
+
+export const blockRegistry: Record<PaletteBlockType, { label: string }> = {
   hero: { label: "Hero" },
   text: { label: "Metin" },
   image: { label: "Görsel" },
@@ -10,11 +17,11 @@ export const blockRegistry: Record<BlockType, { label: string }> = {
   "featured-portfolio": { label: "Öne Çıkan Projeler" },
 };
 
-function newId(): string {
+export function newId(): string {
   return typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : Math.random().toString(36).slice(2);
 }
 
-export function createBlock(type: BlockType): Block {
+export function createBlock(type: PaletteBlockType): Block {
   const id = newId();
   switch (type) {
     case "hero":
