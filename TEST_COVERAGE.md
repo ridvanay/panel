@@ -317,6 +317,118 @@ iki test için her koşumda taze/benzersiz bir slug üreten kısa bir rastgele s
 "ı"→"i" dönüşümü yine TAM olarak, yalnızca sabit kısım için, doğrulanmaya devam ediyor — asıl
 karakter dönüşümü regresyonu zaten 1. senaryoda TAM sabit bir slug ile ayrıca kapsanıyor).
 
+## §10.16 E-posta Şablonu Blok Editörü + İletişim Formu / §10.17 Sayfa Grid-Kolon Düzeni — E2E kapsamı (bu turda eklendi)
+
+Kaynak: `docs/architecture/ARCHITECTURE.md` §10.16 ve §10.17, `.claude/design-notes-email-editor-and-grid.md`.
+Kullanıcının açıkça istediği üç akış: (1) e-posta şablonu oluşturma → blok ekleme/sıralama →
+değişken ekleme (sistem+özel) → canlı önizleme → test gönderimi → aktifleştirme, (2) sayfa
+editöründe 2-3 sütunlu blok yerleşimi (wrap/boş-sütuna-bırak/sütunlar-arası-taşı/unwrap/mobil
+yığılma), (3) public iletişim formu gönderimi → admin Gelen Kutusu. Gerçek backend + Postgres'e
+(`saas_e2e`) karşı; test gönderimi backend'in dev-fallback Ethereal SMTP hesabına gider (GERÇEK
+posta kutusuna gitmez, bkz. `backend/src/lib/mail.ts`).
+
+| # | Senaryo | Dosya | Durum |
+|---|---|---|---|
+| 1 | Şablon oluşturma (varsayılan amaç "Özel"/CUSTOM) → editöre yönlendirme | `admin-email-template-editor.spec.ts` | ✅ Geçiyor |
+| 2 | 6 blok tipinin tamamı eklenir (Başlık/Metin/Buton/Görsel/Ayırıcı/Footer), sırayla otomatik seçilir | `admin-email-template-editor.spec.ts` | ✅ Geçiyor |
+| 3 | Konu + Başlık bloğuna SİSTEM değişkeni (`site_name`) panelden tıklayıp imlece ekleme | `admin-email-template-editor.spec.ts` | ✅ Geçiyor |
+| 4 | ÖZEL değişken tanımlama (inline form, canlı `slugify` anahtar önizlemesi) + Buton bloğu etiketine ekleme | `admin-email-template-editor.spec.ts` | ✅ Geçiyor (bkz. aşağıdaki bug 2 — kaydetme sonrası çalışıyor) |
+| 5 | Canlı önizleme — değişkenler örnek/gerçek verilerle DOLU render edilir, ham `{{...}}` sızmaz | `admin-email-template-editor.spec.ts` | ✅ Geçiyor |
+| 6 | Kaydet → Test E-postası Gönder (dev Ethereal SMTP) → başarı toast'ı (`sentTo` admin'in kendi adresi) | `admin-email-template-editor.spec.ts` | ✅ Geçiyor |
+| 7 | Aktif Yap → listede "Aktif" rozeti + "kullanıldığı yer" (Özel) doğru | `admin-email-template-editor.spec.ts` | ✅ Geçiyor |
+| 8 | "Düzen" seçiciden 2 Sütun seç (sarmalama) → boş sütun placeholder görünür | `admin-page-builder-columns.spec.ts` | ✅ Geçiyor |
+| 9 | İkinci blok (Metin) boş sütuna sürüklenir — "sol Görsel, sağ Metin" | `admin-page-builder-columns.spec.ts` | ✅ Geçiyor |
+| 10 | Kaydedilmiş 2 sütunlu içerik public'te DESKTOP'ta yan yana render edilir | `admin-page-builder-columns.spec.ts` | ✅ Geçiyor |
+| 11 | AYNI içerik MOBİL viewport'ta (`md` kırılma noktası altı) alt alta düşer (§10.17.5, ek JS yok) | `admin-page-builder-columns.spec.ts` | ✅ Geçiyor |
+| 12 | Unwrap (Tam Genişlik) — boş olmayan sütunda ConfirmDialog çıkar, onaylanınca İKİ blok da top-level'a düzleşir, veri KAYBOLMAZ | `admin-page-builder-columns.spec.ts` | ✅ Geçiyor |
+| 13 | Public iletişim formu — honeypot BOŞ → 201 + successMessage, admin Gelen Kutusu'nda `NEW`, detay açılınca otomatik `READ` | `public-contact-form.spec.ts` | ✅ Geçiyor |
+| 14 | Public iletişim formu — honeypot DOLU → sahte başarı (201) ama kayıt `SPAM` | `public-contact-form.spec.ts` | ✅ Geçiyor |
+| 15 (BUG) | Sütunlar arası taşıma: bloğu DOLU bir sütuna (mevcut öğenin üzerine) sürükleme | `admin-page-builder-columns.spec.ts` (`test.fail()`) | ❌ **Uygulama çöküyor** — bkz. bug 3 aşağıda |
+
+**13/13 "normal" senaryo yeşil + 1 bilinçli `test.fail()` (bug 3'ü izler).**
+
+### Bulunan ve raporlanan bug'lar (bu turda) — kural gereği qa-agent DÜZELTMEZ, ilgili ajana yönlendirir
+
+**1. frontend-agent — `useEmailTemplateEditor`: sayfa ilk yüklenirken tekrarlanan `GET` isteği geç
+dönüp kullanıcı düzenlemesini sessizce sıfırlıyor (dar pencereli veri kaybı, ORTA öncelik).**
+Şablon editörü açıldığında `GET /admin/notifications/templates/{id}` isteği tek bir mount'ta
+**4 kez** tetikleniyor (network trace ile doğrulandı — 2'şerli 2 grup, ~200-300ms arayla; büyük
+ihtimalle React Strict Mode'un dev-modu çift-effect'i + Next.js App Router navigasyon/RSC
+mount'unun üst üste binmesi). `load()`'un hiçbir istek iptali/AbortController'ı veya "yalnızca en
+son isteğin yanıtı kazanır" koruması yok — `applyLoaded()` HANGİ sırada dönerse dönsün state'i
+KOŞULSUZ uyguluyor. Sonuç: kullanıcı sayfa açılır açılmaz (~1-2sn içinde) bir alanı doldurursa, geç
+dönen bir yanıt o düzenlemeyi SESSİZCE sıfırlayabiliyor. qa-agent'ın testi bunu `page.waitForTimeout(1000)`
+ile atlatıyor (bkz. `admin-email-template-editor.spec.ts` madde 2 yorum bloğu) — kalıcı düzeltme
+frontend-agent'ın: `load()`'a bir "istek nesli" sayacı/AbortController eklenip yalnızca EN SON
+başlatılan isteğin yanıtının uygulanması gerekir.
+
+**2. frontend-agent — `components/admin/email-editor/variable-panel.tsx`: yeni tanımlanan özel
+değişken panelde HİÇ görünmüyor (design-notes §A.7 ihlali, YÜKSEK öncelik — özellik fiilen
+kullanılamaz).** "Özel Değişken Ekle" formu doldurulup "Ekle"ye basıldığında form KAPANIYOR
+(`handleAdd()` başarıyla çalışıp `customVariables` state'ine ekliyor) ama panel satırları
+`groupVariables(filtered)` — bu, YALNIZCA `variables` PROP'undan (sunucudan EN SON YÜKLEMEDE gelen,
+DB'ye kaydedilmiş liste) türetiliyor. Component'e ayrıca geçirilen `customVariables` (henüz
+KAYDEDİLMEMİŞ yeni tanım) render'a HİÇ katılmıyor — yalnızca "en fazla 20" sayacı ve
+`onAddCustomVariable` çağrısı için okunuyor. Kullanıcı "tanımla → hemen ekle" akışını (design-notes
+§A.7: "Eklenen değişken ANINDA 'Özel Değişkenler' grubunun listesine düşer") DENEYEMEZ — değişken
+yalnızca şablon KAYDEDİLİP sayfa yeniden yüklendikten SONRA kullanılabilir hale geliyor. qa-agent'ın
+testi bu yüzden "tanımla → Kaydet → bloğa dön → şimdi görünen değişkeni ekle" sırasını izliyor (bkz.
+`admin-email-template-editor.spec.ts` madde 7-10 yorumları). Düzeltme: `VariablePanel` içinde
+render'a giren liste `variables` ile `customVariables`'ın (henüz sunucuda karşılığı olmayanlar)
+BİRLEŞİMİ olmalı.
+
+**3. frontend-agent — KRİTİK: sütunlar arası blok taşıma (dolu bir sütuna sürükleme) admin
+uygulamasını çökertiyor.** Bir bloğu (özellikle TipTap tabanlı bir Metin bloğunu) BOŞ OLMAYAN bir
+sütuna, mevcut bir sıralanabilir öğenin ÜZERİNE sürüklemek React'in "Maximum update depth exceeded"
+hatasına yol açıyor (gerçek `pageError` olarak yakalandı, tarayıcı konsolunda doğrulandı). Yığın izi
+`PureEditorContent.componentDidMount → init → forceUpdate` (`@tiptap/react` `EditorContent`)
+üzerinden geliyor — taşınan blok yeni sütuna yeniden-ebeveynlenirken (re-parent) TipTap editörünün
+ard arda remount edilmesi bir sonsuz güncelleme döngüsüne giriyor. Sonuç: Error Boundary'ye düşülüyor
+("Beklenmeyen bir hata oluştu"), kullanıcı sayfayı yenilemeden DEVAM EDEMİYOR — kaydedilmemiş TÜM
+değişiklikler kaybolma riskiyle karşı karşıya. **Boş bir sütuna bırakmak ETKİLENMİYOR** (yalnızca
+DOLU sütuna/mevcut öğenin üzerine bırakmak tetikliyor). Reprodüksiyon adımları + tam stack trace:
+`admin-page-builder-columns.spec.ts`'teki ayrı, `test.fail()` ile işaretli test (`"BUG
+(frontend-agent) — sütunlar arası taşıma..."`) — bu test BEKLENEN davranışı yazar ve bug
+düzeltilince "beklenmedik biçimde geçti" diye kırmızıya dönüp işaretin kaldırılması gerektiğini
+haber verir. Ana test bu yüzden dolu-sütuna-taşımayı **atlar** (kapsamın geri kalanı bu çökme
+yüzünden maskelenmesin diye) — wrap/boş-sütuna-bırak/unwrap/public-render kapsamı ayrı, sağlam bir
+testte kalır.
+
+**4. backend-agent — bilgi amaçlı, ORTA öncelik: `purpose = CUSTOM` bir e-posta şablonu bir kez
+`POST .../activate` ile aktifleştirildikten SONRA hiçbir uçla tekrar deaktive/silinemez.**
+`activate` endpoint'i yalnızca `purpose !== "CUSTOM"` iken kardeş satırları pasifleştiriyor
+(§10.16.3 "CUSTOM'da teklik kuralı uygulanmaz" kararının doğal bir sonucu), `PATCH` gövdesi
+`isActive` alanını KABUL ETMİYOR, ve `DELETE` `isActive === true` iken KOŞULSUZ 409 dönüyor. Sonuç:
+admin panelinden aktifleştirilen bir CUSTOM şablon kalıcı olarak silinemez hale geliyor — kullanıcı
+onu "pasifleştirmenin" hiçbir yolu yok. Kritik bir güvenlik/veri sorunu değil (yalnızca kalıcı,
+silinemeyen bir satır birikimi) ama gerçek bir kullanılabilirlik açığı. qa-agent'ın kendi fixture
+temizliği bu yüzden bu durumu YUTUYOR (bkz. `tests/e2e/support/notifications-fixtures.ts` başlığı) —
+gerçek bir düzeltme (ör. CUSTOM için ayrı bir "Pasifleştir" ucu veya `PATCH`'in `isActive: false`
+kabul etmesi) backend-agent'ın kararı.
+
+### qa-agent'ın kendi test tasarımında bulup düzelttiği flaky kaynakları (bu turda)
+
+1. **`getByLabel(...)` gerçek `<label htmlFor>` (`Field` bileşeni) eşleşmelerinde tekrar tekrar
+   90s'de bile çözümlenmeden asılı kalıyordu** — `admin-blog-tags.spec.ts::openEditPage`'teki
+   BİREBİR AYNI, önceden belgelenmiş kategori (bkz. o dosyanın yorumu). `aria-label` tabanlı
+   eşleşmeler ETKİLENMEDİ. Düzeltme: dinamik `block.id` içeren alan id'leri için `getByLabel`
+   yerine kararlı `#id` veya SABİT SONEK (`[id$="-heading-text"]` gibi) CSS seçicilerine geçildi.
+2. **dnd-kit `PointerSensor` sentetik imleç olaylarını ara sıra (~%30 koşumda) tamamen kaçırıyor**,
+   sürükleme yerine tarayıcının varsayılan METİN SEÇİMİ tetikleniyordu. Kök neden bu ortamın
+   sentetik pointer-olayı zamanlamasında (`admin-locale-management.spec.ts` başlığındaki "tarayıcı
+   süreç çökmesi" notuyla AYNI kategori yerel Windows/Playwright sınırlaması) — uygulama kodu
+   DEĞİL. Düzeltme: `admin-page-builder-columns.spec.ts::dragUntil()` — her denemede konumları
+   TAZE okuyan, başarı koşulu sağlanana kadar (en fazla 4 kez) sürükleme hareketini TEKRARLAYAN bir
+   sarmalayıcı.
+3. Yeni CUSTOM e-posta şablonlarının backend'den **3 varsayılan başlangıç bloğuyla** (`logo-header`
+   + `heading` + `text`) geldiği ilk denemede fark edilmedi (ARCHITECTURE.md'de belgelenmemiş ama
+   kasıtlı bir UX kolaylığı, BUG değil) — test bunları baştan temizleyip kendi net blok sırasını
+   kuracak şekilde düzeltildi.
+
+Pre-existing, bu turdan bağımsız iki kez daha doğrulanan flake: `support/admin-session.ts`
+başlığında ÖNCEDEN belgelenmiş refresh-token yarışı (`waitForURL(/\/dashboard/)` zaman aşımı) —
+yeni bir bulgu DEĞİL, `retries: 1` ile telafi ediliyor.
+
 ## CI entegrasyonu (devops-agent'a not)
 
 `frontend/playwright.config.ts` `webServer` ile frontend'i otomatik başlatır (`reuseExistingServer:

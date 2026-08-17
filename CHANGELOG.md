@@ -1,111 +1,120 @@
 # Changelog
 
-Bu projedeki tüm önemli değişiklikler bu dosyada belgelenir.
-Format [Keep a Changelog](https://keepachangelog.com/tr/1.1.0/) temel alınmıştır.
+Bu proje [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) formatını ve
+[Conventional Commits](https://www.conventionalcommits.org)'i takip eder. Sürüm numaraları
+henüz etiketlenmemiştir (`0.1.0`, henüz ilk stabil sürüm öncesi); değişiklikler tarih
+bazlı olarak `Unreleased` altında gruplanır.
+
+Kaynak doğruluk: kontrat değişiklikleri için `docs/architecture/openapi.yaml` +
+`docs/architecture/shared-types.ts`; mimari kararlar için `docs/architecture/ARCHITECTURE.md`.
+Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
 
 ## [Unreleased]
 
 ### Added
-- **Üçüncü parti entegrasyon: API Anahtarı yönetimi, salt-okunur Public API ve
-  imzalı giden webhook sistemi.** Üç birbirine bağlı yetenek eklendi:
-  - **API Anahtarları** (`/admin/settings/api-keys`, yalnızca `SiteRole=ADMIN`):
-    `cmsk_<prefix>_<secret>` formatında anahtar üretimi, `READ`/`READ_WRITE`
-    scope'u, opsiyonel son kullanma tarihi, iptal (soft) ve kalıcı silme. Ham
-    anahtar yalnızca oluşturma anında bir kez döner; sunucu yalnızca `sha256`
-    özetini saklar.
-  - **Public API** (`GET /api/v1/public/*`) — mevcut admin API'sinden ayrı,
-    salt-okunur bir katman: yayındaki sayfalar, blog yazıları, ürünler ve
-    portföy öğeleri `X-Api-Key` header'ı ile okunabilir. Kendi `Public*` DTO'ları
-    kullanılır (personel e-postası/SEO skoru gibi iç alanlar asla sızmaz).
-    Anahtar başına ve IP başına iki bağımsız katmanlı hız sınırlama, kota
-    header'ları (`x-ratelimit-*`) her yanıtta döner.
-  - **Giden Webhook'lar** (`/admin/settings/webhooks`, yalnızca `SiteRole=ADMIN`):
-    içerik yayınlama/güncelleme ve sipariş olaylarında (`PAGE_PUBLISHED`,
-    `BLOG_POST_PUBLISHED/UPDATED`, `PRODUCT_CREATED/UPDATED/DELETED`,
-    `PORTFOLIO_ITEM_PUBLISHED`, `ORDER_CREATED/PAID/STATUS_CHANGED`) HMAC-SHA256
-    ile imzalanmış (`X-Webhook-Signature: sha256=...`) POST istekleri gönderir;
-    otomatik yeniden deneme (üstel gecikme + jitter, en fazla 5 deneme) ve
-    üst üste 20 başarısızlık sonrası otomatik duraklatma içerir. Delivery
-    logları görüntülenebilir ve elle yeniden gönderilebilir (`redeliver`).
-  - **Güvenlik:** webhook hedef URL'leri oluşturma anında ve **her teslimat
-    denemesinde yeniden** SSRF filtresinden geçer (yalnızca `https`/443, literal
-    IP ve özel/loopback/link-local/CGNAT/bulut-metadata aralıkları reddedilir,
-    DNS rebinding'e karşı pinlenmiş bağlantı, yönlendirme takip edilmez);
-    API anahtarları `crypto.timingSafeEqual` ile doğrulanır; webhook secret'ları
-    AES-256-GCM ile şifreli saklanır (geri çözülebilir olması HMAC üretimi için
-    zorunludur); imza doğrulaması sabit zamanlıdır ve 300 saniyelik bir
-    zaman damgası toleransıyla replay saldırılarına karşı korunur.
-  - security-agent denetiminden geçti; production'a hazır.
-- **Medya Kütüphanesi: klasör sistemi.** Görseller artık klasörlere organize edilebilir.
-  - Klasör oluşturma, yeniden adlandırma ve silme (`POST/PATCH/DELETE /admin/media/folders`).
-  - Klasör hiyerarşisi en fazla 2 seviye derinliğindedir (kök + bir alt seviye).
-  - Klasör silindiğinde içindeki görseller **silinmez** — otomatik olarak "Kategorisiz"
-    listesine düşer; alt klasörler varsa köke taşınır (organizasyon bilgisi kaybolur,
-    görseller ve dosyalar her zaman korunur).
-  - Aynı üst klasör altında birbirinin aynı (büyük/küçük harf duyarsız) isimde iki klasör
-    oluşturulamaz.
-  - Admin medya sayfasında ve içerik editöründeki görsel seçici (`MediaPicker`) aynı
-    klasör ağacını paylaşır.
-- **Medya taşıma.** Görseller tek bir uçtan (`POST /admin/media/move`) hem tekil hem toplu
-  olarak başka bir klasöre taşınabilir; hedef klasör verilmezse görsel "Kategorisiz"e alınır.
-- **Gelişmiş çoklu seçim.** Medya listesinde Shift+tık ile aralık seçimi, Ctrl/Cmd+tık ile
-  tekil ekle/çıkar, Ctrl/Cmd+A ile o an görünen (aktif klasör ve filtreler dahilindeki) tüm
-  öğeleri seçme desteği eklendi. Seçili öğeler için toplu silme ve toplu klasöre taşıma
-  eylemleri seçim çubuğunda sunulur.
-- Admin medya sayfasına yeni bir tablo/liste görünümü (`media-list-table`) eklendi.
 
-- **Site Özelleştirme paneli.** Yeni `/admin/appearance` ekranı, sitenin **görünümünü**
-  admin panelinin kendi temasından bağımsız olarak yönetir; dokuz bölümden oluşur:
-  Tasarım Ön Ayarları, Sayfa Başlığı Düzeni, Stil/Renk, Sosyal Medya (paylaşım butonu
-  anahtarı), Yazı Tipi, Ekstra Özellikler (kayan yukarı-çık, yapışkan başlık, çerez
-  bandı, bakım modu), Özel CSS/JS ve 404 Sayfası. Logo & Marka ve Sosyal Hesap
-  Linkleri bu panele **taşınmadı**; ilgili kartlar `/admin/navigation`'a derin link
-  verir (bu iki alan zaten orada düzenleniyordu).
-  - Yeni uçlar: `GET /appearance` (public), `GET/PATCH /admin/appearance`,
-    `GET /admin/appearance/presets`, `POST /admin/appearance/reset`,
-    `GET /admin/appearance/custom-code`,
-    `PUT /admin/appearance/custom-code/{css,js}`.
-  - Tasarım ön ayarları (Klasik/Modern/Minimal vb.) uygulandığı anda kaydedilmez —
-    yalnızca formu doldurur; kalıcı hale gelmesi için normal Kaydet akışı gerekir.
-  - Renkler ve fontlar admin panelinin kendi arayüzünü **hiçbir zaman** etkilemez;
-    site tarafında ayrı bir `--site-*` CSS değişken kümesiyle uygulanır.
-  - Canlı önizleme, mevcut `SiteHeader`/`SiteFooter` bileşenleri üzerinden çalışır
-    (ayrı bir önizleme bileşeni eklenmedi).
-  - Bakım modu yalnızca ziyaretçi tarafını etkiler (HTTP 503 + `Retry-After`); admin
-    paneli asla kilitlenmez. v1'de yönetici için bypass yoktur.
-  - Özel 404 sayfası: başlık/mesaj/buton metni ve linki özelleştirilebilir, boş
-    bırakılan alanlar için varsayılan Türkçe metinler kullanılır.
-  - **Özel CSS/JS** yalnızca ADMIN rolüne açıktır, kaydetmeden önce onay kutusu
-    işaretlenmesi zorunludur, `CUSTOM_CODE_ENABLED` ortam değişkeniyle tamamen
-    kapatılabilir (kill switch) ve her kayıt denetim izine (audit log) sha256 özetiyle
-    işlenir — kod gövdesinin kendisi denetim kaydına yazılmaz. Bu alan canlı
-    önizlemede uygulanmaz; "yeni sekmede siteyi aç" ile kontrol edilir.
-- **Ortak `useUnsavedChangesGuard` hook'u.** Kaydedilmemiş değişiklik uyarısı
-  (sayfadan ayrılırken onay isteme) artık tek bir paylaşılan hook'ta toplandı; Navigasyon
-  ve Ayarlar sayfaları da bu ortak hook'u kullanacak şekilde güncellendi (davranışta
-  kullanıcıya yansıyan bir değişiklik yok, sürdürülebilirlik iyileştirmesi).
+- **E-posta şablonu blok editörü** (`docs/architecture/ARCHITECTURE.md` §10.16). Admin artık
+  ham HTML yazmadan, sürükle-bırak bloklarla (logo/başlık, metin, buton, görsel, ayırıcı,
+  footer) e-posta şablonu tasarlayabiliyor. HTML **her zaman sunucuda** üretilir
+  (`backend/src/lib/email-renderer.ts`) — istemci yalnızca yapısal `blocks` verisi gönderir.
+  - Sistem değişkenleri (`{{user_name}}`, `{{reset_link}}` vb.) + şablon başına en fazla 20
+    kullanıcı tanımlı özel değişken. Değişken listesi `GET
+    /admin/notifications/templates/variables` ile registry'den (`lib/email-variables.ts`)
+    okunur, frontend'de hardcode edilmez.
+  - Durumsuz canlı önizleme: `POST /admin/notifications/templates/preview` (kaydetmeden
+    render), `iframe sandbox` içinde gösterilir.
+  - Kaydedilmiş şablonu admin'in kendi adresine test gönderimi: `POST
+    /admin/notifications/templates/{templateId}/test-send` (`to` alanı YOKTUR — alıcı her
+    zaman isteği yapan kullanıcı; spam-relay riskine karşı bilinçli bir kısıt).
+  - Şablon kopyalama: `POST /admin/notifications/templates/{templateId}/duplicate`.
+  - **BREAKING (dahili):** şablon adresleme `{key}`'den `{templateId}` (uuid)'e geçti —
+    kullanıcı şablonlarının `key`'i yoktur. Bkz. "Changed" bölümü.
+- **İletişim formu** (§10.16.7–10.16.9). Tek (singleton) yapılandırılabilir form + alan
+  yönetimi + gönderim kutusu ("Gelen Kutusu").
+  - Admin: `GET/PATCH /admin/contact/form`, `PUT /admin/contact/form/fields`, `GET
+    /admin/contact/submissions`, `GET/PATCH/DELETE
+    /admin/contact/submissions/{submissionId}`.
+  - Public: `GET /contact/form`, `POST /contact/submissions` (kimlik doğrulama gerektirmez).
+  - Gönderimler önce **veritabanına yazılır**, bildirim e-postası bundan türetilir — SMTP
+    arızası ziyaretçinin mesajını kaybettirmez (yanıt yine `201`, hata `notificationError`
+    alanında iz bırakır).
+  - KVKK: onay metni anlık görüntüsü (`consentTextSnapshot`), 30 gün sonra IP/User-Agent
+    redaksiyonu, yapılandırılabilir saklama süresi (`retentionDays`, varsayılan 180 gün).
+  - Kötüye kullanım koruması: honeypot alanı (`website`) + IP bazlı rate limit (5/dakika).
+    Bkz. "Known limitations" (CAPTCHA yok).
+- **Sayfa editöründe Grid/Kolon düzeni** (§10.17). Yalnızca `Page` içeriği için (Blog
+  kapsam dışı — blog içeriği hâlâ `contentHtml` TipTap zengin metnidir). Herhangi bir bloğu
+  2 veya 3 sütuna sarmalama/sarmalamayı kaldırma; 4 oran seçeneği (`1-1`, `2-1`, `1-2`,
+  `1-1-1`), sütun başı boşluk (`gap`) ve dikey hizalama (`verticalAlign`). Mobilde otomatik
+  alt alta düşme (`grid-cols-1` tabanı, saklı bir "mobilde yığıl" veri alanı YOKTUR — saf
+  CSS). Derinlik en fazla 1 (bir sütunun içine sütun/hero konulamaz, 422).
+  - Yeni `PageBlock` tipi: `columns` (bkz. `openapi.yaml::PageColumnsBlockData`).
+  - db-agent tarafında migration **YOK** (`Page.blocks` zaten serbest `Json` alanı).
 
 ### Changed
-- `GET /admin/media` artık `folderId` sorgu parametresini destekler (klasöre göre
-  sunucu tarafı filtreleme); `folderId=none` "Kategorisiz" görselleri döner.
-- `POST /admin/media` (yükleme) artık opsiyonel `folderId` kabul eder — kullanıcı bir
-  klasörün içindeyken yüklediği görsel doğrudan o klasöre düşer.
-- Görsel meta verisine `width`/`height` alanları eklendi (Prisma migration:
-  `20260811083016_add_media_width_height`).
 
-## Notlar
+- `sendTemplateEmail(app, key, …)` imzası `sendTemplateEmail(app, purpose, …)` oldu —
+  gönderim artık şablon anahtarına değil **amaca** (`EmailTemplatePurpose`) göre çözülür.
+  `purpose ≠ CUSTOM` amaçlarda aynı anda en fazla bir şablon aktif olabilir (DB seviyesinde
+  kısmi unique index ile de zorlanır).
+- E-posta şablonu uçları `{key}` yerine `{templateId}` (uuid) ile adresleniyor
+  (`frontend/src/lib/api/email-templates.ts`, `app/admin/notifications/templates/[templateId]/`).
+  `EmailTemplateKey` union tipi kaldırıldı.
+- `modules/pages/lib/sanitize-blocks.ts::sanitizePageBlocks` artık özyinelemeli — sütun
+  içindeki `text` bloklarını da temizliyor (önceden yalnızca üst seviyeyi geziyordu; bu bir
+  güvenlik düzeltmesiydi, bkz. "Fixed").
+- `lib/seo-score.ts` sütun içine taşınan görsel/metni de SEO tamlık skoruna dahil ediyor
+  (`flattenPageBlocks` üzerinden).
 
-- `PATCH /admin/media/{mediaId}` **`folderId` kabul etmez** — taşımanın tek yolu
-  `POST /admin/media/move`'dur. Bu kısıtın gerekçesi için bkz.
-  `docs/architecture/ARCHITECTURE.md` §10.11.4.
-- Tam API kontratı ve karar gerekçeleri için: `docs/architecture/openapi.yaml`
-  (`Media` tag'i) ve `docs/architecture/ARCHITECTURE.md` §10.11.
-- Site Özelleştirme paneli için tam API kontratı ve karar gerekçeleri:
-  `docs/architecture/openapi.yaml` (`Appearance` tag'i) ve
-  `docs/architecture/ARCHITECTURE.md` §10.12.
-- API Anahtarı / Public API / Giden Webhook sistemi için tam API kontratı ve
-  karar gerekçeleri: `docs/architecture/openapi.yaml` (`ApiKeys`,
-  `OutboundWebhooks`, `PublicApi` tag'leri) ve `docs/architecture/ARCHITECTURE.md`
-  §10.13. Üçüncü parti entegratörler için hızlı başlangıç, örnek webhook
-  payload'ları ve imza doğrulama (Node.js) örneği: aynı dosyada §10.13.11
-  (Public API) ve §10.13.12 (webhook payload'ları).
+### Fixed
+
+- **[security]** Sütun (`columns`) bloğu içine konan `text` bloklarının `data.html`'i
+  sanitize'den geçmeden DB'ye yazılabiliyordu → public sayfada stored XSS riski.
+  `sanitizePageBlocks` bir seviye özyinelemeli hale getirildi (security-agent).
+- **[security]** E-posta HTML'i, blog/sayfa için kullanılan geniş allow-list
+  (`sanitizeRichHtml`) yerine e-postaya özel, daha dar bir allow-list
+  (`sanitizeEmailRichText` — `style`/`class`/`id` YOK) ile temizleniyor; satır-içi stiller
+  yalnızca doğrulanmış token'lardan (renk regex'i, boşluk/hizalama enum'ları) üretiliyor,
+  kullanıcı ham CSS yazamıyor (security-agent).
+- **[security]** `button.href` ve benzeri değişken kabul eden alanlarda `javascript:`/`data:`
+  şemaları reddediliyor; değişken kalıbı (`{{var}}`) ile karışık serbest metin 422 ile
+  engelleniyor (security-agent).
+- **[security]** İletişim formu gönderiminde ziyaretçinin girdiği `email` hiçbir zaman SMTP
+  `to`/`from`/`Reply-To` başlığına yazılmıyor (başlık enjeksiyonu önleniyor) — yalnızca
+  gövdede HTML-escape edilerek değişken olarak basılıyor (security-agent).
+- **[security]** `POST /admin/notifications/templates/preview` ve `test-send` uçlarına
+  route seviyesinde rate limit eklendi (önceden yalnızca genel/global limit vardı;
+  security-agent denetimi).
+- **[compliance]** Otomatik eklenen KVKK footer'ındaki hukuki sayfa bağlantıları
+  düzeltildi — yayınlanan (`PUBLISHED`, silinmemiş) `isLegalDocument=true` sayfaların
+  tamamı doğru, mutlak URL ile listeleniyor (compliance-agent).
+- **[usability]** `purpose = CUSTOM` bir e-posta şablonu bir kez aktifleştirildikten sonra
+  hiçbir uçla deaktive/silinemiyordu (`DELETE` `isActive=true` iken koşulsuz 409
+  döndürüyordu, `PATCH` `isActive` alanını kabul etmiyordu — qa-agent bulgusu,
+  2026-08-17). `PATCH /admin/notifications/templates/{templateId}` artık **yalnızca
+  `purpose=CUSTOM` şablonlarda** `isActive` alanını kabul ediyor (`purpose != CUSTOM`
+  şablonlarda aktiflik hâlâ yalnızca `/activate`'in transaction'ıyla değişir, teklik
+  kuralı bozulmaz).
+- dnd-kit çok konteynerli sürükle-bırak: boş/kısa sütunlarda `closestCenter` yanlış hedef
+  seçiyordu → `closestCorners`'a geçildi.
+- "Tam Genişlik"e geri dönerken (sütunları kaldırma) boş olmayan sütunlardaki bloklar artık
+  sessizce silinmiyor; kullanıcıya onay diyaloğu gösterilip bloklar sırayla düzleştiriliyor.
+
+### Known limitations
+
+- **CAPTCHA yok.** Public iletişim formu (`POST /contact/submissions`) yalnızca honeypot
+  alanı + IP bazlı rate limit (5/dakika) ile korunuyor; üçüncü parti bir CAPTCHA/bot
+  koruması bilinçli olarak v1 kapsamı dışında bırakıldı (üçüncü parti bağımlılık kararı
+  security-agent'a ait). Yoğun spam görülürse fast-follow olarak eklenmesi öneriliyor.
+- **`sanitizeRichHtml` (blog/sayfa, legacy) `rel="noopener"` üretmiyor.** Bu, blok
+  editöründen ayrı, önceden var olan blog/sayfa zengin metin temizleyicisiyle ilgili bir
+  konudur (yeni e-posta temizleyicisi `sanitizeEmailRichText`'i etkilemez — o zaten
+  `target`/`rel` özniteliklerini ayrıca ele alır). security-agent bunu mimara iletilmesi
+  gereken ayrı bir konu olarak işaretledi.
+
+---
+
+## Sürüm öncesi geçmiş
+
+Bu değişiklik günlüğü açılmadan önceki değişiklikler için `git log` (Conventional Commits
+formatında) tek kaynaktır.

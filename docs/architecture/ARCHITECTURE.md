@@ -493,6 +493,17 @@ state'inden türetilir, backend'e ihtiyaç duymaz.
 
 ### 10.3 E-posta & Bildirim Şablonu Yöneticisi
 
+> **GÜNCEL DURUM İÇİN §10.16'YA BAKIN.** Bu bölüm temel modeli ve allow-list render
+> ilkesini tanımlar (hâlâ geçerli), ancak §10.16 şunları DEĞİŞTİRİR/GENİŞLETİR:
+> - `EmailTemplate` alanları (`purpose`, `editorMode`, `isSystem`, `isActive`,
+>   `blocks`, `customVariables`) ve `key`'in nullable olması,
+> - **uç adreslemesi `{key}` → `{templateId}` (BREAKING)**, yeni CRUD/activate/
+>   duplicate/test-send uçları,
+> - `sendTemplateEmail`'in anahtar yerine **amaca (purpose)** göre çözümlemesi.
+>
+> Aşağıdaki "Gerçek e-posta gönderimi kapsam dışı" cümlesi **ARTIK GEÇERSİZDİR** —
+> gönderim `lib/mail.ts` (SMTP) + `email-templates.service.ts` üzerinden çalışmaktadır.
+
 **Model** `EmailTemplate`:
 ```
 id                  uuid PK
@@ -4071,6 +4082,844 @@ tonu kullanır.
 Bu kararlar frontend-agent tarafından uygulanır; bu bölüm değişirse (örn. sütun sayısı
 gerçek veriyle denendiğinde çok sıkışık/boş görünürse) güncellemesi gereken taraf yine
 ui-designer'dır, frontend-agent kendi takdirine göre sütun/gap değiştirmez.
+
+### 10.16 E-posta Şablonu Blok Editörü + İletişim Formu
+
+Durum: v1 · Sahibi: Mimar · Bu bölüm §10.3'ün (mevcut ham-HTML şablon yöneticisi)
+**yerini almaz, onu genişletir**. §10.3'te tanımlı `EmailTemplate` modeli, uçlar ve
+`lib/template-render.ts` allow-list render'ı geçerliliğini korur; aşağıdaki maddeler
+üzerine eklenir. §10.3'ün "gerçek e-posta gönderimi kapsam dışı" cümlesi ARTIK GEÇERSİZDİR
+(gönderim `lib/mail.ts` + `email-templates.service.ts` ile hâlihazırda çalışıyor).
+
+#### 10.16.1 Kapsam, kapsam dışı ve mimar hakemliği
+
+**Kapsam içi:** kullanıcı tarafından oluşturulan e-posta şablonları, blok tabanlı
+sürükle-bırak editör, değişken (variable) sistemi + kullanıcı tanımlı özel değişkenler,
+tek (singleton) iletişim formu + alan yönetimi + gönderim kaydı (submission) saklama +
+şablonla admin bildirimi, sunucu tarafı canlı önizleme, admin'in kendi adresine test
+gönderimi.
+
+**Kapsam dışı (bilinçli, gerekçeli):**
+- **Şablon yerelleştirmesi (i18n).** `EmailTemplate`'te `translations` alanı AÇILMAZ.
+  Gerekçe: gönderim tetikleyicilerinin (`auth.service.ts`, `stripe.routes.ts`) hiçbiri
+  bugün alıcının dil tercihini bilmiyor (`User` modelinde locale alanı YOK) — şablon
+  çevirisi eklemek, çözülmemiş "alıcının dili nedir" sorusunu şablon katmanına
+  taşırdı. Sonraki tur.
+- **Şablon revizyon geçmişi.** `ContentRevision.entityType` genişletilmez; §10.1 kapsamı
+  Page/BlogPost'ta kalır. Bunun yerine `duplicate` ucu (bkz. §10.16.6) kullanıcıya
+  "kopyala, üzerinde dene" yolunu verir.
+- **`CONTACT_SUBMISSION_CREATED` giden webhook olayı.** §10.13.10 registry'sine
+  EKLENMEZ (Prisma `WebhookEvent` enum'ına dokunmamak, db-agent'ın diff'ini küçük
+  tutmak için). Doğal bir sonraki adımdır, bu turda değil.
+- **CAPTCHA / üçüncü parti bot koruması.** Üçüncü parti bağımlılık kararı
+  security-agent'ındır; v1'de honeypot + IP rate limit ile yetinilir (bkz. §10.16.9).
+
+**Mimar hakemliği — değişken adları Türkçe mi İngilizce mi?** İstek metninde
+`{{kullanici_adi}}`, `{{sifre_sifirlama_linki}}` gibi Türkçe anahtarlar örneklendi.
+**Karar: SİSTEM değişkenlerinin anahtarları İngilizce snake_case kalır**
+(`user_name`, `reset_link`, `site_name`, …). Üç bağlayıcı gerekçe:
+1. `prisma/seed.ts`'teki 5 şablon ve `email-templates.service.ts`'teki TÜM çağrı
+   yerleri bugün `user_name`/`reset_link` üretiyor. Anahtarı değiştirmek, üretimdeki
+   `PASSWORD_RESET` akışını sessizce bozar (allow-list dışı kalan `{{...}}` OLDUĞU GİBİ
+   basılır — kullanıcı e-postasında ham `{{sifre_sifirlama_linki}}` görür).
+2. Proje kuralı (`.claude/CLAUDE.md` § Ortak Proje Kuralları): kod ve değişken isimleri
+   İngilizce, kullanıcıya dönük metinler Türkçe.
+3. Kullanıcı deneyimi zaten korunur: değişken paneli **Türkçe etiketi birincil**
+   gösterir ("Kullanıcı Adı"), teknik anahtarı (`{{user_name}}`) ikincil satırda
+   verir. Kullanıcı hiçbir zaman anahtarı elle yazmaz, panelden ekler.
+
+**Özel (custom) değişkenlerde** anahtar kullanıcıya aittir ve Türkçe olabilir, ancak
+**ASCII zorunludur**: `lib/template-render.ts::PLACEHOLDER_PATTERN` = `/\{\{(\w+)\}\}/g`
+ve JS `\w` = `[A-Za-z0-9_]`. Yani `{{kullanici_adi}}` ÇALIŞIR, `{{çalışan_adı}}`
+**ÇALIŞMAZ** (sessizce render edilmez, ham metin olarak e-postaya basılır). Bu yüzden
+özel değişken anahtarı `^[a-z][a-z0-9_]{0,39}$` ile **sunucu tarafında** doğrulanır ve
+frontend, kullanıcının girdiği Türkçe etiketten anahtarı `slugify` ile ASCII'ye
+indirgeyerek önerir (`slugify` frontend'de zaten bağımlılık olarak var).
+
+#### 10.16.2 Veri modeli — `EmailTemplate` genişletmesi (yeni tablo AÇILMAZ)
+
+Kullanıcı şablonları için **ayrı bir tablo açılmaz**; `EmailTemplate` genişletilir.
+Gerekçe: gönderim yolu (`sendTemplateEmail`), render allow-list'i, liste ekranı ve
+önizleme her iki tür için de aynıdır; ikinci bir tablo bunların hepsini çiftler.
+
+```prisma
+enum EmailTemplatePurpose {
+  WELCOME
+  PASSWORD_RESET
+  SYSTEM_ANNOUNCEMENT
+  ORDER_CONFIRMATION
+  ORG_INVITATION
+  CONTACT_FORM_NOTIFICATION
+  CUSTOM
+}
+
+/// RAW  = §10.3'ten devralınan ham HTML şablonu (`bodyHtml` kaynak).
+/// BLOCKS = §10.16 blok editörü (`blocks` kaynak, `bodyHtml` KULLANILMAZ).
+enum EmailTemplateEditorMode {
+  RAW
+  BLOCKS
+}
+
+model EmailTemplate {
+  id                 String                  @id @default(uuid())
+  seq                Int                     @unique @default(autoincrement())
+  /// YENİ: nullable. Yalnızca `isSystem = true` satırlarda dolu (seed idempotency'si
+  /// için — `prisma/seed.ts` upsert'i `where: { key }` ile çalışmaya devam eder).
+  /// Kullanıcının oluşturduğu şablonlarda `null`; Postgres unique index birden çok
+  /// NULL'a izin verir.
+  key                String?                 @unique
+  name               String
+  purpose            EmailTemplatePurpose    @default(CUSTOM)   // YENİ
+  editorMode         EmailTemplateEditorMode @default(BLOCKS)   // YENİ
+  /// Seed'lenmiş çekirdek şablon — SİLİNEMEZ (403), `purpose`/`key` DEĞİŞTİRİLEMEZ.
+  isSystem           Boolean                 @default(false)    // YENİ
+  /// "Kullanımda mı?" — bkz. §10.16.3 aktiflik kuralı.
+  isActive           Boolean                 @default(false)    // YENİ
+  subject            String
+  /// Yalnızca editorMode=RAW için kaynak. BLOCKS modunda "" (render ÖNBELLEKLENMEZ).
+  bodyHtml           String                  @default("")       // YENİ default
+  /// editorMode=BLOCKS kaynağı — EmailBlock[] (bkz. §10.16.4).
+  blocks             Json                    @default("[]")     // YENİ
+  /// §10.3'ten devralındı, salt bilgi amaçlı; artık `lib/email-variables.ts`
+  /// registry'sinden TÜRETİLİR (bkz. §10.16.5) ve yazma uçlarında DEĞİŞTİRİLEMEZ.
+  availableVariables Json
+  /// Kullanıcı tanımlı değişkenler: { key, label, sampleValue }[] (bkz. §10.16.5).
+  customVariables    Json                    @default("[]")     // YENİ
+  updatedById        String?
+  updatedAt          DateTime                @updatedAt
+  createdAt          DateTime                @default(now())
+
+  updatedBy    User?         @relation("EmailTemplateUpdater", fields: [updatedById], references: [id], onDelete: SetNull)
+  contactForms ContactForm[] @relation("ContactFormNotificationTemplate")
+
+  @@index([purpose, isActive])
+  @@map("email_templates")
+}
+```
+
+**Migration adı:** `add_email_template_builder`.
+
+**Geriye dönük doldurma (backfill) — migration'ın parçası, ZORUNLU:**
+mevcut 5 satır (`WELCOME`, `PASSWORD_RESET`, `SYSTEM_ANNOUNCEMENT`,
+`ORDER_CONFIRMATION`, `ORG_INVITATION`) için `purpose` = `key` ile aynı değer,
+`editor_mode = 'RAW'`, `is_system = true`, `is_active = true`.
+Backfill YAPILMAZSA `sendTemplateEmail` hiçbir şablon bulamaz ve kayıt/şifre
+sıfırlama/sipariş onayı e-postalarının TAMAMI 404 ile düşer.
+
+**`bodyHtml` neden ÖNBELLEKLENMİYOR?** Render çıktısı site logosuna
+(`SiteSettings.logoUrl`), site adına ve yayınlanan hukuki sayfaların listesine
+(`Page.isLegalDocument`) bağlıdır. Bunlar şablondan bağımsız değişir; önbelleklenmiş
+HTML sessizce eskir ve KVKK footer'ı yanlış/eksik linkle gönderilir. Render maliyeti
+string birleştirmedir — önbelleklemenin faydası yok, riski gerçek.
+
+#### 10.16.3 Aktiflik kuralı — "kullanıldığı yer" semantiği
+
+Liste ekranındaki "kullanıldığı yer" ve "aktif/pasif" sütunları TEK bir kuraldan doğar:
+
+> `purpose ≠ CUSTOM` olan her amaç için **en fazla BİR** şablon `isActive = true`
+> olabilir; gönderim tetikleyicileri şablonu **amaca göre** çözer, anahtara göre değil.
+
+- `sendTemplateEmail(app, key, …)` imzası **`sendTemplateEmail(app, purpose, …)`**
+  olarak değişir; çözümleme `findFirst({ where: { purpose, isActive: true } })`.
+  Bulunamazsa mevcut davranış korunur: `NotFoundError` (sessizce yutulmaz).
+- `purpose = CUSTOM` şablonlarda `isActive` yalnızca "kullanılabilir/pasifleştirilmiş"
+  anlamı taşır, teklik kuralı UYGULANMAZ.
+- Teklik **iki katmanda** zorlanır (savunma derinliği, §10.13'teki çok katmanlı
+  rate-limit deseniyle aynı felsefe):
+  1. **Servis katmanı:** `POST /{templateId}/activate` tek bir transaction içinde
+     önce aynı `purpose`'un diğer satırlarını `isActive = false` yapar, sonra hedefi
+     `true` yapar.
+  2. **DB katmanı — kısmi unique index (raw SQL, Prisma şemasıyla ifade edilemez):**
+     ```sql
+     CREATE UNIQUE INDEX "email_templates_active_purpose_key"
+       ON "email_templates" ("purpose")
+       WHERE "is_active" = true AND "purpose" <> 'CUSTOM'::"EmailTemplatePurpose";
+     ```
+     db-agent bunu migration `.sql` dosyasına elle ekler ve `schema.prisma`'ya
+     açıklama satırı olarak not düşer (Prisma bu indeksi introspect edemez).
+
+`isActive = true` olan bir şablonu **silmek** 409 `CONFLICT` döner ("önce başka bir
+şablonu aktifleştirin") — aksi halde şifre sıfırlama akışı sessizce ölür.
+
+#### 10.16.4 E-posta blok modeli ve **sunucu tarafı** render (KRİTİK kısıt)
+
+**Doğrulanmış tuzak (§10.15.2 ile aynı sınıf hata):** `lib/html-sanitize.ts`'in global
+öznitelik listesi `"*": ["id", "class"]`'tır — **`style` özniteliği izin listesinde
+DEĞİLDİR ve DB'ye yazılmadan önce sessizce silinir.** E-posta HTML'i ise satır-içi
+(`inline`) `style` OLMADAN çalışmaz: Gmail `<style>` bloğunu ve harici CSS'i büyük ölçüde
+yok sayar, Outlook `class` seçicilerine güvenilemez. Yani **blok editörünün ürettiği
+HTML `sanitizeRichHtml`'den GEÇİRİLEMEZ** ve `sanitizeRichHtml` bu iş için
+gevşetilmemelidir (`style` açmak, tüm blog/sayfa içeriği için CSS enjeksiyon yüzeyi
+açardı).
+
+**Karar: HTML istemciden ASLA kabul edilmez; sunucu üretir.**
+
+- İstemci yalnızca **yapısal blok verisi** gönderir (`blocks: EmailBlock[]`).
+- `backend/src/lib/email-renderer.ts` (YENİ, backend-agent sahipliğinde) blokları
+  tablo-tabanlı, satır-içi stilli e-posta HTML'ine dönüştürür. Satır-içi `style`
+  değerleri **kullanıcı girdisinden değil**, doğrulanmış token'lardan üretilir
+  (hizalama enum'ı, `^#[0-9a-fA-F]{6}$` regex'li renk, `none|sm|md|lg` boşluk enum'ı).
+  Kullanıcı hiçbir koşulda ham CSS yazamaz.
+- Blok içi zengin metin (`text` bloğunun `html` alanı) `lib/html-sanitize.ts`'e YENİ bir
+  export ile temizlenir: **`sanitizeEmailRichText(html)`** — `sanitizeRichHtml`'den AYRI,
+  DAHA DAR bir allow-list:
+  `allowedTags: ["p","br","strong","em","u","s","a","ul","ol","li","span"]`,
+  `allowedAttributes: { a: ["href","target","rel"], "*": [] }`,
+  `allowedSchemes: ["http","https","mailto","tel"]`.
+  **`style`/`class`/`id` DAHİL DEĞİL** — görsel her şey renderer'ın işi.
+  `sanitizeRichHtml` ve `SANITIZE_OPTIONS` **DEĞİŞTİRİLMEZ**; iki sabit yan yana durur.
+- Değişken render'ı **HTML üretildikten SONRA**, mevcut `renderTemplate()` ile yapılır
+  (allow-list + HTML-escape, `lib/template-render.ts` DEĞİŞMEZ).
+
+**Blok tipleri** (`EmailBlockType`) ve veri şekilleri:
+
+```ts
+type EmailBlockType =
+  | "logo-header" | "heading" | "text" | "button" | "image" | "divider" | "footer";
+
+interface EmailBlockStyle {
+  align: "left" | "center" | "right";        // varsayılan "left"
+  backgroundColor: string | null;            // ^#[0-9a-fA-F]{6}$
+  textColor: string | null;                  // ^#[0-9a-fA-F]{6}$
+  paddingY: "none" | "sm" | "md" | "lg";     // varsayılan "md"
+  paddingX: "none" | "sm" | "md" | "lg";     // varsayılan "md"
+}
+
+interface EmailBlockBase { id: string; type: EmailBlockType; style: EmailBlockStyle; }
+```
+
+| type | `data` şeması | Değişken kabul eden alanlar |
+|---|---|---|
+| `logo-header` | `{ useSiteLogo: boolean; logoUrl: string \| null; height: number (16–120) }` | — |
+| `heading` | `{ text: string (1–200); level: 1 \| 2 \| 3 }` | `text` |
+| `text` | `{ html: string (≤ 20 000 krk) }` | `html` |
+| `button` | `{ label: string (1–80); href: string; backgroundColor: string \| null; textColor: string \| null; radius: "none" \| "sm" \| "full" }` | `label`, `href` |
+| `image` | `{ mediaId: string \| null; url: string; alt: string (1–200); width: number \| null }` | — |
+| `divider` | `{ thickness: 1 \| 2 \| 4; color: string \| null }` | — |
+| `footer` | `{ text: string (≤ 1000) }` | `text` |
+
+Bağlayıcı kısıtlar:
+- `useSiteLogo: true` iken `logoUrl` render anında `SiteSettings.logoUrl`'den okunur;
+  logo tanımsızsa blok **hiç render edilmez** (kırık görsel yerine boşluk).
+- `image.alt` **zorunludur** (a11y — §10.15.4 ile aynı kural; e-posta istemcilerinin
+  çoğu görselleri varsayılan olarak engeller, alt metin tek okunabilir içerik olur).
+- `button.href` ya `http(s)://…`/`mailto:` olmalı ya da **tamamen** tek bir değişken
+  olmalıdır (`^\{\{\w+\}\}$`). Karışık/serbest değerler 422. `javascript:`/`data:` her
+  koşulda reddedilir.
+- Şablon başına en fazla **50 blok**; `blocks` gövdesi en fazla **256 KB**.
+- **İç içe blok YOKTUR** — e-posta bloğu düz bir listedir (Bölüm B'nin sütun modeliyle
+  KARIŞTIRILMAMALI; ikisi ayrı sistemlerdir ve tip/registry paylaşmaz).
+
+**Zorunlu KVKK footer'ı (compliance kancası, bağlayıcı).** `renderEmailTemplate()`
+kullanıcının `footer` bloğundan BAĞIMSIZ olarak, çıktının **en sonuna** bir uyum
+footer'ı ekler. İçeriği:
+- `SiteSettings.siteName`,
+- `status = PUBLISHED`, `deletedAt = null`, `isLegalDocument = true` olan TÜM `Page`
+  kayıtlarının başlık + `${FRONTEND_URL}/{defaultLocale}/{slug}` bağlantıları
+  (mevcut "hukuki belge" ayarının doğrudan tüketicisi — yeni bir ayar İCAT EDİLMEZ).
+
+Kullanıcı bu bloğu silemez/kapatamaz; `footer` bloğu yalnızca **ek** metin (adres,
+imza) içindir. Hiç hukuki sayfa yoksa footer yalnızca site adını basar ve
+`app.log.warn` ile uyarı düşer (sessiz kalmaz).
+
+#### 10.16.5 Değişken (variable) sistemi
+
+**Registry:** `backend/src/lib/email-variables.ts` (YENİ) — `lib/permissions-matrix.ts`
+ve `lib/module-registry.ts` ile **aynı statik-registry deseni**. Frontend değişken
+listesini HARDCODE ETMEZ, API'den okur.
+
+```ts
+export interface EmailVariableDefinition {
+  key: string;            // ör. "user_name" — İngilizce snake_case (bkz. §10.16.1)
+  label: string;          // ör. "Kullanıcı Adı" — Türkçe, UI'da birincil
+  sampleValue: string;    // önizleme/test gönderiminde kullanılır
+  source: "system" | "custom" | "contact-field";
+}
+```
+
+Amaca göre sistem değişkenleri (bağlayıcı — mevcut `seed.ts` ve çağrı yerleriyle birebir):
+
+| purpose | değişkenler |
+|---|---|
+| (hepsi, global) | `site_name`, `site_url` |
+| `WELCOME` | `user_name`, `login_url` |
+| `PASSWORD_RESET` | `user_name`, `reset_link` |
+| `SYSTEM_ANNOUNCEMENT` | `user_name`, `announcement_title`, `announcement_body` |
+| `ORDER_CONFIRMATION` | `order_number`, `customer_name`, `items_summary`, `total_formatted` |
+| `ORG_INVITATION` | `inviter_name`, `organization_name`, `accept_url` |
+| `CONTACT_FORM_NOTIFICATION` | `form_title`, `submitted_at`, `submission_url` + **iletişim formunun her alanı için `{{<field.key>}}`** |
+| `CUSTOM` | yalnızca global + kullanıcının özel değişkenleri |
+
+`site_name`/`site_url` global olduğu için `WELCOME` şablonunda da geçerlidir; bu
+değişkenleri `sendTemplateEmail` **her çağrıda otomatik enjekte eder** (çağıranın
+göndermesine gerek yok).
+
+**Özel (custom) değişkenler.** `EmailTemplate.customVariables` = `{ key, label,
+sampleValue }[]`, en fazla 20 adet. Anahtar `^[a-z][a-z0-9_]{0,39}$` (bkz. §10.16.1) ve
+o şablonun sistem değişkenleriyle **çakışamaz** (422 `CONFLICT` değil, `VALIDATION_ERROR`
+— alan bazlı hata `details.customVariables`).
+
+**İletişim formu alanları otomatik değişken olur.** `purpose =
+CONTACT_FORM_NOTIFICATION` olan bir şablonun `variables` listesi hesaplanırken backend
+`ContactFormField` satırlarını okur ve her biri için `{ key: field.key, label:
+field.label, sampleValue: <tipe göre örnek>, source: "contact-field" }` üretir. Yani
+admin forma "telefon" alanı eklediğinde `{{telefon}}` **hiçbir ek işlem olmadan**
+değişken panelinde belirir (istenen davranış).
+
+**Doğrulama.** Yazma uçlarında (`POST`/`PATCH`) şablon metinlerindeki `{{…}}`
+kalıpları taranır; izinli sette olmayan bir anahtar varsa istek **422** ile reddedilir
+(`details.blocks = ["Tanımsız değişken: {{foo}}"]`). Gerekçe: allow-list dışı kalan
+kalıp `renderTemplate` tarafından OLDUĞU GİBİ basılır — kullanıcı bunu kaydetme anında
+değil, gerçek e-posta gittikten sonra fark eder. **Kaydetme anında hata vermek
+bilinçli bir seçimdir.**
+
+`availableVariables` alanı artık **istemciden kabul edilmez**; her yazmada registry'den
+türetilip yazılır (§10.3'teki "salt bilgi amaçlı" niteliği korunur, ama artık tek
+doğruluk kaynağı registry'dir).
+
+#### 10.16.6 E-posta şablonu uçları (yetki: SiteRole=ADMIN, GET dahil)
+
+**BREAKING:** §10.3'teki `{key}` adreslemesi **`{templateId}` (uuid)** ile değiştirilir.
+Gerekçe: kullanıcı şablonlarının `key`'i yoktur (`null`) ve `name` değiştirilebilir bir
+etikettir; kararlı adres yalnızca `id` olabilir. frontend-agent
+`frontend/src/lib/api/email-templates.ts`'i ve
+`app/admin/notifications/templates/[key]/` rotasını `[templateId]`'ye taşır.
+`frontend/src/lib/api/types.ts::EmailTemplateKey` union'ı **kaldırılır** (bugün zaten
+hatalı: `ORDER_CONFIRMATION`/`ORG_INVITATION` eksik).
+
+| Uç | Açıklama |
+|---|---|
+| `GET /admin/notifications/templates` | Liste (özet DTO — `blocks` DÖNMEZ). Sıra: `seq ASC`. Filtre: `?purpose=`, `?isActive=` |
+| `POST /admin/notifications/templates` | Yeni şablon. Body `{ name, purpose, subject?, blocks? }`. 201. Audit `notifications.template_create` |
+| `GET /admin/notifications/templates/variables?purpose=` | Şablon oluşturmadan ÖNCE değişken listesi (registry) |
+| `GET /admin/notifications/templates/{templateId}` | Tam DTO (`blocks` + hesaplanmış `variables` dahil) |
+| `PATCH /admin/notifications/templates/{templateId}` | `{ name?, subject?, blocks?, bodyHtml?, customVariables? }`. Audit `notifications.template_update` |
+| `DELETE /admin/notifications/templates/{templateId}` | 204. `isSystem` → 403, `isActive` → 409. Audit `notifications.template_delete` |
+| `POST /admin/notifications/templates/{templateId}/activate` | Bu şablonu amacın aktifi yapar (§10.16.3). Audit `notifications.template_activate` |
+| `POST /admin/notifications/templates/{templateId}/duplicate` | Kopya (`isSystem=false`, `isActive=false`, `key=null`, adı "… (kopya)"). 201 |
+| `POST /admin/notifications/templates/preview` | **Durumsuz (stateless) taslak önizleme** — kaydedilmemiş editör durumunu render eder. DB'ye YAZMAZ |
+| `POST /admin/notifications/templates/{templateId}/test-send` | **Kaydedilmiş** şablonu örnek verilerle admin'in KENDİ adresine gönderir |
+
+**İki ayrı önizleme/test yolu — bilinçli:**
+- Önizleme **durumsuzdur** (`{ subject, editorMode, blocks, bodyHtml, purpose,
+  customVariables, sampleValues? }` gövdesi) çünkü editörde her tuş vuruşunda (500 ms
+  debounce) çağrılır ve kaydetmeyi zorunlu kılmamalıdır.
+- Test gönderimi **kaydedilmiş satır üzerinden** çalışır: gerçekten gönderilecek olan
+  şeyin test edilmesi, kaydedilmemiş bir taslağın değil. Ayrıca audit kaydı somut bir
+  `targetId` gerektirir.
+
+**`test-send` güvenlik kararı (bağlayıcı):** gövde **`to` alanı KABUL ETMEZ**; alıcı her
+zaman `request.user.email`'dir. ADMIN arkasında bile "keyfi HTML'i keyfi adrese gönder"
+ucu bir spam-relay/phishing vektörüdür ve SMTP itibarımızı yakar. Yanıt
+`{ sentTo, messageId, previewUrl? }` (`previewUrl` yalnızca dev/Ethereal'de dolu, bkz.
+`lib/mail.ts`). Rate limit `EMAIL_TEST_SEND_RATE_LIMIT = { max: 3, timeWindow: "1 minute" }`
+(`lib/rate-limit.ts`'e eklenir). Audit `notifications.template_test_send` — metadata'ya
+alıcı adresi YAZILMAZ (audit metadata'sında PII yasağı; `actorEmail` zaten kayıtta).
+
+**Rota çakışması uyarısı (backend-agent):** `/variables` statik segmenti
+`/{templateId}` param segmentiyle aynı seviyededir. Fastify'ın radix router'ı statik
+segmenti önceler, dolayısıyla çakışma YOKTUR — ancak `templateId` param'ı
+`z.string().uuid()` ile doğrulanmalıdır ki yanlış sıralamada bile "variables" 422 verip
+sessiz bir 404'e dönüşmesin.
+
+#### 10.16.7 İletişim formu — veri modeli
+
+Site tarafında iletişim formu **YOKTUR** (doğrulandı: `backend/src` içinde tek bir
+`contact` eşleşmesi yok; frontend'deki tek eşleşme checkout sayfasındaki alakasız bir
+metin). Sıfırdan tanımlanır.
+
+**Karar: TEK (singleton) form.** `SiteSettings`/`SiteAppearance` ile aynı
+`id = "singleton"` + lazy-upsert deseni. Gerekçe: çoklu form, form seçici UI'ı, form
+başına şablon eşlemesi ve public rotada slug çözümlemesi getirir — istenmedi. İleri
+yol açık bırakılır: public uç bugünden `/contact/form` (tekil kaynak) olarak
+adlandırılır; çoklu forma geçişte `/contact/forms/{slug}` eklenir, mevcut uç
+varsayılana yönlenir.
+
+**Karar: gönderimler (submission) VERİTABANINA YAZILIR**, e-posta bildirimi bundan
+TÜRETİLİR. Gerekçe: SMTP tek hata noktasıdır; yalnızca e-posta gönderen bir form,
+SMTP arızasında ziyaretçinin mesajını **kalıcı olarak kaybeder** ve ziyaretçi bunu
+asla öğrenemez. Bu, kabul edilebilir bir tasarım değildir. Sonuç olarak minimal bir
+"Gelen Kutusu" ekranı da kapsama alınır (liste + detay + durum + silme) — bu bilinçli
+bir kapsam genişlemesidir, mimar kararıdır.
+
+```prisma
+enum ContactFieldType { TEXT EMAIL PHONE TEXTAREA SELECT CHECKBOX }
+enum ContactSubmissionStatus { NEW READ ARCHIVED SPAM }
+
+model ContactForm {
+  id                     String   @id @default("singleton")
+  title                  String   @default("İletişim")
+  description            String?
+  submitLabel            String   @default("Gönder")
+  successMessage         String   @default("Mesajınız alındı. En kısa sürede dönüş yapacağız.")
+  isEnabled              Boolean  @default(true)
+  /// Bildirimin gideceği adres. null ise bildirim GÖNDERİLMEZ (submission yine kaydedilir).
+  notifyEmail            String?
+  /// null ise purpose=CONTACT_FORM_NOTIFICATION olan aktif şablona düşülür (§10.16.3).
+  notificationTemplateId String?
+  // --- KVKK (compliance-agent alanı; alanlar mimar tarafından açılır, DEĞERLERİ ona aittir) ---
+  consentRequired        Boolean  @default(true)
+  consentText            String   @default("")
+  /// Onay metnindeki "Aydınlatma Metni" bağlantısının hedefi — `Page.isLegalDocument`
+  /// olan bir sayfa. Sayfa silinirse SetNull.
+  consentLegalPageId     String?
+  /// Gönderimlerin saklama süresi (gün). 0 = süresiz (compliance-agent onayı gerekir).
+  retentionDays          Int      @default(180)
+  updatedById            String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  notificationTemplate EmailTemplate?      @relation("ContactFormNotificationTemplate", fields: [notificationTemplateId], references: [id], onDelete: SetNull)
+  consentLegalPage     Page?               @relation("ContactFormConsentPage",          fields: [consentLegalPageId],     references: [id], onDelete: SetNull)
+  updatedBy            User?               @relation("ContactFormUpdater",              fields: [updatedById],            references: [id], onDelete: SetNull)
+  fields               ContactFormField[]
+  submissions          ContactSubmission[]
+
+  @@map("contact_forms")
+}
+
+model ContactFormField {
+  id          String           @id @default(uuid())
+  seq         Int              @unique @default(autoincrement())
+  formId      String
+  order       Int
+  /// ^[a-z][a-z0-9_]{0,39}$ — e-posta şablonunda {{key}} olarak görünür (§10.16.5).
+  key         String
+  label       String
+  type        ContactFieldType
+  required    Boolean          @default(false)
+  placeholder String?
+  helpText    String?
+  /// SELECT için { value, label }[]; diğer tiplerde [].
+  options     Json             @default("[]")
+  maxLength   Int?
+  /// name/email/message — SİLİNEMEZ ve `key`/`type`'ı DEĞİŞTİRİLEMEZ (label/sıra serbest).
+  isSystem    Boolean          @default(false)
+  createdAt   DateTime         @default(now())
+
+  form ContactForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+
+  @@unique([formId, key])
+  @@index([formId, order])
+  @@map("contact_form_fields")
+}
+
+model ContactSubmission {
+  id                  String                  @id @default(uuid())
+  /// Cursor sayfalama için stabil sıra (projedeki tüm listelerle aynı desen).
+  seq                 Int                     @unique @default(autoincrement())
+  formId              String
+  /// Liste/arama ve bildirim için denormalize — `data` içinde de bulunur.
+  name                String
+  email               String
+  /// TÜM alanların key→value anlık görüntüsü. Alan sonradan silinse bile veri korunur.
+  data                Json
+  status              ContactSubmissionStatus @default(NEW)
+  // --- KVKK ---
+  consentAt           DateTime?
+  /// Gönderim ANINDA gösterilen onay metninin birebir kopyası (ispat yükümlülüğü).
+  consentTextSnapshot String?
+  // --- PII (30 gün sonra redakte edilir, bkz. §10.16.10) ---
+  ipAddress           String?
+  userAgent           String?
+  piiRedactedAt       DateTime?
+  // --- Bildirim ---
+  notifiedAt          DateTime?
+  /// SMTP hatasının kısa mesajı — gönderim BAŞARISIZ olsa da submission kaydı durur.
+  notificationError   String?
+  readAt              DateTime?
+  readById            String?
+  createdAt           DateTime                @default(now())
+
+  form   ContactForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+  readBy User?       @relation("ContactSubmissionReader", fields: [readById], references: [id], onDelete: SetNull)
+
+  @@index([formId, status, seq])
+  @@index([createdAt])
+  @@map("contact_submissions")
+}
+```
+
+**Karşı-ilişki (back-relation) alanları — db-agent unutmasın:**
+`Page` → `contactFormConsents ContactForm[] @relation("ContactFormConsentPage")`,
+`User` → `contactFormUpdates ContactForm[] @relation("ContactFormUpdater")` ve
+`contactSubmissionsRead ContactSubmission[] @relation("ContactSubmissionReader")`.
+
+**Migration adı:** `add_contact_form`.
+
+**Seed (`prisma/seed.ts`) eklemeleri:**
+1. `ContactForm` singleton'ı (`upsert` `where: { id: "singleton" }`).
+2. Üç sistem alanı: `name` (TEXT, required), `email` (EMAIL, required),
+   `message` (TEXTAREA, required), `isSystem: true`, `order` 0/1/2.
+3. `CONTACT_FORM_NOTIFICATION` amaçlı, `isSystem: true`, `isActive: true`,
+   `editorMode: BLOCKS` bir e-posta şablonu — blok editörünün canlı bir örneği olur.
+
+**Karar: iletişim formu bir MODÜL DEĞİLDİR.** `MODULE_REGISTRY`'ye eklenmez; navigasyon
+ve site ayarları gibi çekirdek bir site yeteneğidir ve açma/kapama `ContactForm.isEnabled`
+ile zaten sağlanır. İkinci bir açma/kapama mekanizması (modül + isEnabled) kullanıcıyı
+"kapalı ama neden görünmüyor" tuzağına düşürür.
+
+#### 10.16.8 İletişim formu uçları
+
+**Admin (SiteRole=ADMIN; gönderim okuma ADMIN veya EDITOR):**
+
+| Uç | Yetki | Açıklama |
+|---|---|---|
+| `GET /admin/contact/form` | ADMIN | Form + alanlar (lazy-upsert varsayılanları) |
+| `PATCH /admin/contact/form` | ADMIN | `{ title?, description?, submitLabel?, successMessage?, isEnabled?, notifyEmail?, notificationTemplateId?, consentRequired?, consentText?, consentLegalPageId?, retentionDays? }`. Audit `contact.form_update` |
+| `PUT /admin/contact/form/fields` | ADMIN | **Tam değiştirme** (`PUT /admin/navigation` deseni). Audit `contact.fields_update` |
+| `GET /admin/contact/submissions` | ADMIN, EDITOR | Cursor sayfalı (`seq DESC`), `?status=`, `?q=` (ad/e-posta), `?cursor=`, `?limit=` |
+| `GET /admin/contact/submissions/{submissionId}` | ADMIN, EDITOR | Detay. **Okundu işaretlemez** (yan etkisiz GET) |
+| `PATCH /admin/contact/submissions/{submissionId}` | ADMIN, EDITOR | `{ status }`. `READ`'e geçişte `readAt`/`readById` dolar. Audit `contact.submission_status_change` |
+| `DELETE /admin/contact/submissions/{submissionId}` | ADMIN | 204. Audit `contact.submission_delete` (KVKK silme talebi karşılığı) |
+
+`PUT /admin/contact/form/fields` doğrulaması: gövdedeki `key`'ler tekil olmalı; üç
+sistem anahtarının (`name`,`email`,`message`) **hepsi bulunmalı** ve `type`'ları
+değişmemiş olmalı — aksi halde 422. Sistem alanı silmeye çalışmak sessizce yok
+sayılmaz, açıkça hata verir.
+
+**Public (kimlik doğrulama YOK):**
+
+| Uç | Açıklama |
+|---|---|
+| `GET /contact/form` | `isEnabled=false` ise **404**. Yanıt: alanlar + onay metni + hukuki sayfa bağlantısı. `notifyEmail`, `retentionDays`, `notificationTemplateId` **DÖNMEZ** (iç yapılandırma sızdırılmaz) |
+| `POST /contact/submissions` | 201 `{ id, message }`. `message` = `successMessage` |
+
+`POST /contact/submissions` gövdesi:
+```jsonc
+{
+  "values": { "name": "…", "email": "…", "message": "…", "telefon": "…" },
+  "consent": true,        // consentRequired ise zorunlu ve true olmalı
+  "website": ""           // honeypot — bkz. §10.16.9
+}
+```
+
+Doğrulama sırası ve davranış:
+1. Form kapalıysa → 404.
+2. Honeypot doluysa → **201 (sahte başarı)**, kayıt `status: SPAM`, e-posta GÖNDERİLMEZ.
+3. `consentRequired && consent !== true` → 422.
+4. `values` alan bazlı doğrulanır (`required`, `maxLength`, `EMAIL` formatı, `SELECT`
+   değeri `options` içinde). Tanımsız anahtarlar **sessizce atılır** (kayda girmez) —
+   kötü niyetli bir istemci `data`'yı şişiremesin.
+5. Kayıt yazılır (`consentAt`, `consentTextSnapshot`, `ipAddress`, `userAgent`).
+6. Bildirim e-postası gönderilir. **Gönderim hatası isteği DÜŞÜRMEZ**: `try/catch`,
+   `notificationError` doldurulur, `app.log.error` yazılır, yanıt yine **201**.
+   Ziyaretçi bizim SMTP arızamızın bedelini ödemez.
+
+Bildirim, `notifyEmail` adresine, `notificationTemplateId` (ya da amacın aktif şablonu)
+ile, değişken haritası `{ …values, form_title, submitted_at, submission_url }` olarak
+gönderilir. `submission_url` = `${FRONTEND_URL}/admin/contact/submissions/{id}`.
+
+#### 10.16.9 Kötüye kullanım koruması (security-agent gözden geçirir)
+
+- **Rate limit** (`lib/rate-limit.ts`'e eklenir, §10.13.6 tablosuyla aynı üslup):
+  - `CONTACT_SUBMIT_RATE_LIMIT = { max: 5, timeWindow: "1 minute" }` — IP tabanlı,
+    route-level `config.rateLimit`.
+  - `EMAIL_TEST_SEND_RATE_LIMIT = { max: 3, timeWindow: "1 minute" }`.
+- **Honeypot:** public formda `website` adlı, CSS ile gizlenmiş, `tabindex="-1"`,
+  `autocomplete="off"` bir alan. Doluysa 201 döner ama `SPAM` olarak kaydedilir —
+  botun "başarısız oldum" sinyali almasını engeller.
+- **Gövde boyutu:** `POST /contact/submissions` için toplam `values` serileştirilmiş
+  boyutu ≤ 32 KB (Fastify global `bodyLimit` 5 MB+, tek başına yetersiz).
+- **E-posta enjeksiyonu:** `notifyEmail` yalnızca ADMIN tarafından ayarlanır ve
+  `z.string().email()` ile doğrulanır; ziyaretçinin girdiği `email` **hiçbir zaman**
+  `to`/`from` başlığına konmaz (yalnızca gövdede değişken olarak, HTML-escape edilerek
+  basılır — `renderTemplate` bunu zaten yapar). `Reply-To` başlığı v1'de EKLENMEZ
+  (başlık enjeksiyonu yüzeyi açar; istenirse security-agent onayıyla eklenir).
+
+#### 10.16.10 Saklama (retention) ve PII (compliance-agent gözden geçirir)
+
+`ImportJob`'ın §10.8.8.1 deseniyle **birebir aynı** yaklaşım — tembel/bir sonraki
+yazmaya bağlı tetikleme KABUL EDİLEMEZ, gerçek zaman-tetiklemeli scheduler kullanılır:
+
+`backend/src/lib/contact-retention.ts` (YENİ), `app.ts::onReady` içinde **kendi
+try/catch bloğunda** (mevcut 5 grubun yanına 6. grup olarak) kaydedilir:
+- **30 gün:** `ipAddress`/`userAgent` `null`'lanır, `piiRedactedAt` yazılır.
+- **`retentionDays` gün** (varsayılan 180): submission **kalıcı silinir**.
+  `retentionDays = 0` → silme yok (compliance-agent onayı gerektiren özel durum).
+- `onClose` ile kendi interval'ini temizler.
+
+Ayrıca:
+- Admin liste yanıtında e-posta **maskelenmez** (iş gereği: admin cevap yazacak),
+  ancak `lib/pii-mask.ts::maskEmail` gelecekteki bir dışa aktarma için hazırdır.
+- `logAudit` metadata'sına ziyaretçi adı/e-postası/mesajı **YAZILMAZ** (yalnızca
+  `targetId`).
+- `ContactSubmission` **`lib/export-storage.ts` / rapor dışa aktarmaya dahil edilmez**
+  (yeni bir `ExportJobType` açılmaz) — bu turda kapsam dışı.
+
+#### 10.16.11 Frontend veri akışı (frontend-agent)
+
+**Şablon listesi** (`app/admin/notifications/templates/page.tsx` — yeniden yazılır):
+`listTemplates()` → kart/tablo; sütunlar: ad, **kullanıldığı yer** (= `purpose`'un
+Türkçe etiketi + `isActive` rozeti), son düzenleme (`updatedAt`, `date-fns` ile göreli),
+durum. "Yeni Şablon" → amaç seçimli modal → `POST` → `[templateId]`'ye yönlendir.
+
+**Editör** (`app/admin/notifications/templates/[templateId]/page.tsx`): üç sütun —
+sol blok paleti, orta tuval (dnd-kit), sağ seçili blok ayarları + değişken paneli.
+
+State (tek bir `useEmailTemplateEditor` hook'unda toplanır):
+```ts
+{
+  template: EmailTemplate | null;
+  name: string; subject: string;
+  blocks: EmailBlock[];
+  customVariables: EmailCustomVariable[];
+  selectedBlockId: string | null;
+  dirty: boolean;
+  preview: { html: string; subject: string } | null;
+  previewLoading: boolean;
+}
+```
+- **Otomatik kaydetme YOK** (sayfa/blog editöründen bilinçli fark: e-posta şablonu
+  canlı bir gönderim yolunu besler, yarım kaydedilmiş bir şablon gerçek kullanıcılara
+  bozuk e-posta gönderir). Kaydet açık, `dirty` iken sayfadan ayrılma uyarısı.
+- **Önizleme tek kaynaktan gelir:** istemci HTML üretmez, 500 ms debounce ile
+  `POST /admin/notifications/templates/preview` çağrılır. İki render motoru (istemci +
+  sunucu) sürüklenme (drift) demektir; §10.15.2'deki aynı "tek doğruluk kaynağı"
+  ilkesi.
+- **Önizleme `dangerouslySetInnerHTML` ile BASILMAZ.** `<iframe sandbox="" srcDoc={html}
+  title="E-posta önizlemesi" />` kullanılır. İki gerekçe: (a) savunma derinliği —
+  `sandbox` (allow-scripts YOK) script çalıştırmayı imkânsız kılar; (b) e-posta HTML'i
+  satır-içi stil + tablo düzeni içerir ve admin panelinin Tailwind bağlamına
+  sızdırılırsa hem görünüm bozulur hem önizleme yalan söyler.
+
+**Değişken ekleme (imleç konumuna).** `useVariableTarget()` adında küçük bir kayıt
+(registry) hook'u: değişken kabul eden HER alan (`subject` input'u, `heading.text`,
+`button.label`, `button.href`, `footer.text`, ve `text` bloğunun TipTap editörü)
+odaklandığında kendini "son hedef" olarak kaydeder. Değişken paneli:
+- hedef bir TipTap editörüyse → `editor.commands.insertContent("{{key}}")`;
+- hedef düz bir `<input>/<textarea>` ise → `selectionStart` konumuna metin eklenir ve
+  imleç eklenen metnin sonuna taşınır;
+- hiç hedef yoksa → buton `disabled` ve "Önce bir metin alanına tıklayın" ipucu
+  (sessizce yanlış yere eklemek YASAK).
+
+**dnd-kit.** `components/admin/navigation/nav-tree-editor.tsx`'teki mevcut kurulum
+referans alınır: `PointerSensor` (`activationConstraint: { distance: 6 }`) +
+`KeyboardSensor` (`sortableKeyboardCoordinates`), tek `SortableContext` +
+`verticalListSortingStrategy` (e-posta blokları düz bir listedir, izdüşüm/projection
+mantığı GEREKMEZ). `SortableContext`'in `items` dizisi `useMemo` ile stabil tutulur —
+`PERFORMANCE_NOTES.md`'de belgelenmiş, ölçülmüş re-render tuzağı.
+
+**İletişim formu ekranları.** `app/admin/contact/page.tsx` (form ayarları + alan
+düzenleyici, alan sıralaması yine dnd-kit) ve `app/admin/contact/submissions/`
+(liste + detay). Public form `app/[lang]/(site)/contact/page.tsx` — `GET /contact/form`
+ile alanlar dinamik render edilir, gönderim `POST /contact/submissions`. Sidebar'a
+"İletişim" girdisi eklenir.
+
+#### 10.16.12 ui-designer'dan beklenen kararlar (kod yazmaz, token/desen tanımlar)
+
+1. **Blok paleti**: sol panelde ikon+etiket listesi mi, üstte yatay çip şeridi mi;
+   sürüklenebilir paletten mi yoksa tıkla-ekle mi (mimar tercihi: tıkla-ekle + tuvalde
+   sürükle-sırala — palette sürükleme dnd karmaşıklığını iki katına çıkarır).
+2. **Seçili blok** göstergesi (kenarlık/gölge/ofset) ve sürükleme tutamacı (drag
+   handle) ikonu + hedef alanı boyutu. Renk tek başına gösterge OLAMAZ (WCAG 1.4.1).
+3. **Değişken paneli**: chip listesi mi arama kutulu liste mi; Türkçe etiket birincil,
+   `{{key}}` ikincil (mimar kararı) — tipografi/ton ölçeği ui-designer'ın.
+4. **Blok stil kontrolleri**: renk seçici (mevcut `accent-color-picker.tsx` yeniden
+   kullanılabilir mi), hizalama segment kontrolü, boşluk (`none/sm/md/lg`) token
+   değerlerinin px karşılıkları — **e-posta için px değerleri ZORUNLU** (rem/CSS
+   değişkeni e-posta istemcilerinde çalışmaz; ui-designer bu kısıtı bilerek karar verir).
+5. **Önizleme çerçevesi**: masaüstü/mobil genişlik geçişi, iframe çerçeve stili.
+6. **Şablon listesi** kart mı tablo mu (mevcut `content-list` deseni yeniden
+   kullanılabilir mi) + "aktif/pasif" rozet tonu.
+7. **Public iletişim formu** alan düzeni, hata durumu ve KVKK onay kutusu tipografisi.
+
+Kapsam DIŞI (mimar kararı, tasarımcıya sorulmaz): blok tipi anahtarları, `data`
+şemaları, değişken sözdizimi, iframe `sandbox` kullanımı, sunucu render'ı.
+
+---
+
+### 10.17 Sayfa içerik bloklarında Grid / Kolon düzeni
+
+Durum: v1 · Sahibi: Mimar.
+
+#### 10.17.1 Kapsam düzeltmesi — bu YALNIZCA `Page` içindir, Blog DEĞİL
+
+İstek "Sayfa/Blog içerik blokları" diyor, ancak **`BlogPost`'un blok sistemi YOKTUR**:
+blog içeriği `BlogPost.contentHtml` alanındaki TipTap zengin metnidir (bkz. §10.15.1 —
+oradaki tespitin tam tersi yönde aynı ayrım). Sütun düzeni **yalnızca
+`Page.blocks`** (ve `Page.translations.<LOCALE>.blocks`) için tanımlanır. Blog'a
+sütun getirmek, TipTap içinde bir "columns" node'u + `html-sanitize` allow-list'inde
+`style`/grid desteği gerektirirdi — ayrı ve çok daha büyük bir iş, bu turda REDDEDİLDİ.
+
+#### 10.17.2 db-agent için: **YAPILACAK HİÇBİR ŞEY YOK**
+
+`Page.blocks` zaten `Json @default("[]")`. Yeni tablo, yeni kolon, migration
+**GEREKMEZ**. Bu madde bilinçli olarak açıkça yazılmıştır ki db-agent boşuna bir
+migration üretmesin (§10.15.1 ile aynı gerekçe).
+
+#### 10.17.3 Veri modeli — iç içe `columns` konteyner bloğu
+
+İki seçenek değerlendirildi:
+- **(a)** Düz liste + her bloğa `layout: { span, row }` metadata'sı.
+- **(b)** `type: "columns"` konteyner bloğu, çocukları içinde tutar.
+
+**Karar: (b).** Gerekçe: (a)'da "hangi bloklar aynı satırda" bilgisi sıralamadan
+TÜRETİLİR; sütunlar arası taşıma, araya blok ekleme ve kısmi güncelleme bu türetmeyi
+bozar (bir bloğun silinmesi komşu satırı sessizce yeniden gruplar). (b)'de sahiplik
+açıktır, dnd-kit'in resmî "multiple containers" örneği doğrudan uygulanabilir ve
+sunucu doğrulaması yapısaldır.
+
+```ts
+export type PageColumnRatio = "1-1" | "2-1" | "1-2" | "1-1-1";
+export type PageBlockGap = "none" | "sm" | "md" | "lg";
+export type PageColumnVerticalAlign = "top" | "center" | "bottom";
+
+/** Bir sütunun İÇİNE konabilen bloklar — `columns` ve `hero` HARİÇ. */
+export type LeafBlock =
+  | TextBlock | ImageBlock | GalleryBlock | CtaBlock
+  | FeaturedProductsBlock | FeaturedPortfolioBlock;
+
+export interface ColumnsBlock {
+  id: string;
+  type: "columns";
+  data: {
+    columnCount: 2 | 3;
+    ratio: PageColumnRatio;
+    gap: PageBlockGap;
+    verticalAlign: PageColumnVerticalAlign;
+    columns: { id: string; blocks: LeafBlock[] }[];
+  };
+}
+
+export type Block = HeroBlock | LeafBlock | ColumnsBlock;
+```
+
+Bağlayıcı kurallar:
+- `columns.length === columnCount` (aksi halde 422).
+- `ratio` ↔ `columnCount` uyumu: `columnCount = 2` → `1-1 | 2-1 | 1-2`;
+  `columnCount = 3` → yalnızca `1-1-1`.
+- **Derinlik en fazla 1:** bir sütunun içine `columns` KONULAMAZ. `hero` de
+  konulamaz (tam-genişlik banner'dır, dar bir sütunda anlamsızdır). İkisi de
+  422 + `details.blocks`.
+- Sütun başına en fazla **20** blok; sayfa başına (iç içe dahil) toplam en fazla
+  **200** blok.
+- **Mobil yığılma bir VERİ ALANI DEĞİLDİR.** `stackOnMobile` gibi her zaman `true`
+  olan gizli bir bayrak eklenmez; yığılma tamamen CSS'tir (bkz. §10.17.5).
+
+**"Tam Genişlik" bir düzen değeri değil, `columns` bloğunun YOKLUĞUDUR.** UI'daki
+"Düzen: Tam Genişlik / 2 Sütun / 3 Sütun" seçicisi bir sarmalama (wrap) / sarmalamayı
+kaldırma (unwrap) işlemidir:
+- **Sarmalama** (`full → 2`): blok, 0. sütunu kendisi olan yeni bir `ColumnsBlock`
+  ile değiştirilir; diğer sütun(lar) boş başlar.
+- **Kaldırma** (`2 → full`): **VERİ KAYBI TUZAĞI.** Sütun 0 dışındaki sütunlarda blok
+  varsa, bunlar **atılmaz**; tüm sütunların blokları soldan sağa, sütun içi sırayla
+  düzleştirilip konteynerin yerine konur. Boş olmayan sütun varsa kullanıcıya onay
+  diyaloğu gösterilir ("2 sütundaki N blok alt alta taşınacak"). Sessizce silmek
+  YASAK.
+- **Daralma** (`3 → 2`): son sütunun blokları sütun 2'nin (yeni son sütunun) sonuna
+  eklenir. Aynı onay kuralı.
+
+#### 10.17.4 Backend — dokunulması ZORUNLU yerler
+
+Bu maddenin **en kritik güvenlik bulgusu**: `modules/pages/lib/sanitize-blocks.ts`
+bugün `blocks.map(...)` ile **yalnızca üst seviyeyi** dolaşıyor ve `type === "text"`
+bloklarının `data.html`'ini temizliyor. Sütun içine konan bir `text` bloğu bu
+döngüye **hiç uğramaz** → `sanitizeRichHtml` atlanır → public sayfada
+`dangerouslySetInnerHTML` ile basılan **stored XSS**. Bu, sütun özelliği eklenirken
+yapılabilecek en kolay ve en sessiz hatadır.
+
+Yapılacaklar (backend-agent):
+1. **`backend/src/lib/page-blocks.ts` (YENİ, paylaşılan):**
+   `flattenPageBlocks(blocks: unknown[]): unknown[]` — `columns` bloklarının
+   `data.columns[].blocks`'unu **doküman sırasında** (sütun 0 → sütun 1 → …)
+   düzleştirir. Konteynerin kendisi de sonuçta yer alır.
+2. **`sanitize-blocks.ts`:** `sanitizePageBlocks` bir seviye **özyinelemeli** olur —
+   `type === "columns"` ise her sütunun `blocks`'unu aynı fonksiyondan geçirir.
+   `sanitizePageTranslations` değişmeden bunu devralır (çeviri blokları da korunur).
+3. **`lib/seo-score.ts`:** `collectPageImages`, `firstImageBlockUrl`, `collectPageText`
+   `readBlocks(...)` yerine `flattenPageBlocks(readBlocks(...))` üzerinde çalışır.
+   Aksi halde sütuna taşınan metin/görseller SEO skorunda **yok sayılır** ve kullanıcı
+   içeriğini taşıdığı anda skorunun düştüğünü görür (sessiz gerileme).
+4. **`modules/pages/pages.schemas.ts`:** `BlockSchema` bugün `z.record(z.unknown())` —
+   tamamen serbest. **Bu serbestlik diğer tipler için KORUNUR** (minimum diff), yalnızca
+   `type === "columns"` için dar bir şema devreye girer:
+   ```ts
+   const BlockSchema = z.record(z.unknown()).superRefine((block, ctx) => {
+     if (block.type !== "columns") return;                 // eski davranış aynen
+     const parsed = ColumnsBlockSchema.safeParse(block);    // dar, tam şema
+     if (!parsed.success) { /* ctx.addIssue(...) */ }
+   });
+   ```
+   `ColumnsBlockSchema` çocuklarda `type ∉ {"columns","hero"}` kuralını ve sayısal
+   üst sınırları uygular.
+5. `mappers/index.ts::toPageDto` ve `public-api.mappers.ts` **değişmez**
+   (`blocks`'u olduğu gibi taşırlar) — ancak `docs/architecture/openapi.yaml`
+   `PageBlock` açıklaması güncellenir.
+6. `import.worker.ts` **değişmez** (içe aktarma her zaman tek bir `text` bloğu üretir).
+7. `pages.routes.ts::applyLocale` **değişmez** (`PAGE_ARRAY_FIELDS = ["blocks"]`
+   dizinin tamamını değiştirir, iç yapısına bakmaz).
+
+#### 10.17.5 Public render ve responsive davranış
+
+`components/site/blocks/index.tsx::BlockRenderer` `columns` dalını ekler ve **kendini
+bir kez özyineler** (sütun içindeki bloklar aynı `switch`'ten geçer; `columns` içinde
+`columns` şema düzeyinde imkânsız olduğu için sonsuz özyineleme riski yoktur).
+
+Grid eşlemesi (mimar kararı — tek bir kırılma noktası, `md` = 768px):
+
+| `columnCount` / `ratio` | sınıflar |
+|---|---|
+| 2 / `1-1` | `grid grid-cols-1 md:grid-cols-2` |
+| 2 / `2-1` | `grid grid-cols-1 md:grid-cols-3` + 1. çocuk `md:col-span-2` |
+| 2 / `1-2` | `grid grid-cols-1 md:grid-cols-3` + 2. çocuk `md:col-span-2` |
+| 3 / `1-1-1` | `grid grid-cols-1 md:grid-cols-3` |
+
+`grid-cols-1` tabanı sayesinde **mobilde sütunlar otomatik alt alta düşer** — ek bir
+alan/JS gerekmez. `verticalAlign` → `items-start | items-center | items-end`.
+`gap` token'larının somut değerleri **ui-designer'ındır**; `md` kırılma noktası ve
+sınıf iskeleti mimarın kontratıdır (renderer ile editör önizlemesinin aynı sınıfları
+kullanması zorunludur, aksi halde WYSIWYG yalan söyler).
+
+#### 10.17.6 Frontend — editör ve dnd-kit
+
+`components/admin/page-builder/builder-canvas.tsx` çok konteynerli hâle gelir.
+Konteyner kimliği sözleşmesi: kök liste `"root"`, her sütun `"col:<column.id>"`.
+
+- `DndContext` **tek** ve `builder-canvas`'ın en dışındadır; `collisionDetection`
+  `closestCenter` yerine **`closestCorners`** olur (çok konteynerli düzenlerde
+  `closestCenter` boş/kısa konteynerlerde yanlış hedef seçer — dnd-kit'in belgelenmiş
+  davranışı).
+- Her sütun kendi `SortableContext`'ine sahiptir (`verticalListSortingStrategy`), kök
+  liste de ayrı bir `SortableContext`'e.
+- **Boş sütun tuzağı:** içinde hiç `useSortable` öğesi olmayan bir sütuna bırakma
+  yapılamaz. Her sütun ayrıca `useDroppable({ id: "col:<id>" })` olmalı ve boşken
+  görünür bir minimum yükseklikli bırakma alanı ("Buraya blok sürükleyin") render
+  etmelidir.
+- `onDragOver` konteyner değişimini (blok A sütunundan B sütununa geçtiğinde) anında
+  uygular; `onDragEnd` yalnızca son sırayı sabitler — dnd-kit'in çok konteynerli
+  örneğindeki standart bölünme.
+- **Mevcut yukarı/aşağı ok butonları KALDIRILMAZ.** Sürükle-bırak eklenirken a11y
+  yedeği olarak dururlar (`KeyboardSensor` sürüklemeyi klavyeyle mümkün kılsa da,
+  ok butonları ekran okuyucu kullanıcıları için çok daha keşfedilebilir bir yoldur).
+  Ayrıca sütunlar arası taşıma için ok butonlarının yanına "Sütuna taşı" menüsü
+  eklenmesi **frontend-agent'ın takdirindedir**, zorunlu değildir.
+- `context/page-builder-context.tsx` şu yardımcılarla genişler:
+  `setBlockLayout(blockId, "full" | "2" | "3")` (§10.17.3 sarmala/kaldır kuralları,
+  onay gerektiren durumu çağırana bildirir), `moveBlock(activeId, from, to, index)`,
+  `updateBlockIn(containerId, blockId, next)`, `removeBlockIn(containerId, blockId)`.
+- `lib/page-builder/registry.ts`'e `columns` **EKLENMEZ** — blok paletinde "Sütun"
+  diye bir öğe yoktur; sütun, var olan bir bloğun "Düzen" seçiciyle sarmalanmasıyla
+  oluşur (istek metninin ifadesiyle birebir uyumlu).
+
+#### 10.17.7 ui-designer'dan beklenen kararlar
+
+1. **Sütun ikon seçici** (1/2/3 sütun) görsel dili: segment kontrolü mü ikon butonları
+   mı, seçili durum göstergesi (renk TEK BAŞINA olmaz — WCAG 1.4.1), ikonların çizimi.
+2. `gap` token'larının (`none/sm/md/lg`) somut Tailwind karşılıkları.
+3. Editördeki sütun konteynerinin görsel çerçevesi (kesikli kenarlık? etiket?) ve
+   **boş sütun bırakma alanının** görünümü.
+4. Sürükleme sırasındaki bırakma göstergesi (`DropIndicator`) —
+   `components/admin/navigation/nav-tree-row.tsx`'teki mevcut desen yeniden
+   kullanılabilir mi?
+5. `verticalAlign` kontrolünün UI'da gösterilip gösterilmeyeceği ve `ratio`
+   (`2-1`/`1-2`) seçicisinin v1'de açılıp açılmayacağı. **Şema her ikisini de
+   destekler**; açığa çıkarma kararı ui-designer'ındır.
+
+Kapsam DIŞI (mimar kararı): `md` kırılma noktası, grid sınıf iskeleti, `columns` veri
+şeması, derinlik kısıtı.
+
+---
 
 ### Bilinen Sorunlar / Backlog
 

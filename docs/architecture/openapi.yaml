@@ -56,10 +56,27 @@ tags:
       ARCHITECTURE.md §10.11. Klasör okuma authenticated (admin medya sayfası VE
       `MediaPicker` AYNI ucu paylaşır), oluşturma/yeniden adlandırma/taşıma
       ADMIN veya EDITOR, klasör silme yalnızca ADMIN. Klasör silmek MEDYA SİLMEZ.
+  - name: ContactForms
+    description: >
+      §10.16 İletişim Formu — tek (singleton) form yapılandırması
+      (`/admin/contact/form`, `/admin/contact/form/fields`), gönderim kutusu
+      (`/admin/contact/submissions`) ve PUBLIC uçlar (`/contact/form`,
+      `/contact/submissions`). Form yapılandırması yalnızca SiteRole=ADMIN; gönderim
+      okuma/durum güncelleme ADMIN veya EDITOR; gönderim silme yalnızca ADMIN.
+      Public gönderim ucu kimlik doğrulama İSTEMEZ, IP tabanlı rate limit + honeypot
+      ile korunur (bkz. ARCHITECTURE.md §10.16.9).
   - name: EmailTemplates
     description: >
       E-posta & bildirim şablonu yönetimi (`/admin/notifications/templates`) — bkz.
-      ARCHITECTURE.md §10.3. Tüm uçlar yalnızca SiteRole=ADMIN.
+      ARCHITECTURE.md §10.3 (temel) ve §10.16 (blok editörü genişletmesi). Tüm uçlar
+      yalnızca SiteRole=ADMIN (GET dahil).
+
+
+      **BREAKING (§10.16.6):** şablonlar artık `{key}` ile DEĞİL `{templateId}` (uuid)
+      ile adreslenir — kullanıcının oluşturduğu şablonların `key`'i `null`'dır.
+      `editorMode=BLOCKS` şablonlarında gövde HTML'i İSTEMCİDEN KABUL EDİLMEZ; istemci
+      yalnızca yapısal `blocks` gönderir, HTML'i sunucu üretir
+      (`lib/email-renderer.ts`) — bkz. §10.16.4.
   - name: Import
     description: >
       Toplu içe aktarma (`/admin/import/*`) — bkz. ARCHITECTURE.md §10.8. Sayfa/blog
@@ -2482,6 +2499,18 @@ paths:
     get:
       tags: [EmailTemplates]
       summary: Tüm e-posta şablonlarını listele (yalnızca ADMIN)
+      description: >
+        Özet DTO döner — `blocks`/`bodyHtml` DÖNMEZ (liste görünümünde gereksiz, büyük
+        olabilir). Sıralama `seq ASC`. Sayfalama YOKTUR (şablon sayısı doğası gereği azdır).
+      parameters:
+        - name: purpose
+          in: query
+          required: false
+          schema: { $ref: "#/components/schemas/EmailTemplatePurpose" }
+        - name: isActive
+          in: query
+          required: false
+          schema: { type: boolean }
       responses:
         "200":
           description: OK
@@ -2493,13 +2522,122 @@ paths:
                   - properties:
                       data:
                         type: array
-                        items: { $ref: "#/components/schemas/EmailTemplate" }
+                        items: { $ref: "#/components/schemas/EmailTemplateSummary" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [EmailTemplates]
+      summary: Yeni e-posta şablonu oluştur (yalnızca ADMIN)
+      description: >
+        `editorMode` her zaman `BLOCKS`'tur (yeni şablonlar RAW oluşturulamaz).
+        Oluşturulan şablon `isActive=false`, `isSystem=false`, `key=null` başlar.
+        Audit log: `notifications.template_create`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateEmailTemplateRequest" }
+      responses:
+        "201":
+          description: Oluşturuldu
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/EmailTemplate" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
 
-  /admin/notifications/templates/{key}:
+  /admin/notifications/templates/variables:
+    get:
+      tags: [EmailTemplates]
+      summary: Bir amaç için geçerli sistem değişkenlerini listele (yalnızca ADMIN)
+      description: >
+        `lib/email-variables.ts` statik registry'sinden beslenir (DB tablosu DEĞİLDİR) —
+        `lib/permissions-matrix.ts`/`lib/module-registry.ts` ile AYNI desen. Frontend
+        değişken listesini HARDCODE ETMEZ. Şablon HENÜZ OLUŞTURULMADAN (yeni şablon
+        sihirbazı) kullanılır; var olan bir şablonun değişkenleri zaten
+        `EmailTemplate.variables` alanında döner.
+
+
+        `purpose=CONTACT_FORM_NOTIFICATION` verildiğinde yanıt, iletişim formunun
+        alanlarından türetilen (`source: "contact-field"`) değişkenleri de İÇERİR.
+
+
+        DİKKAT (backend-agent): bu statik segment `/{templateId}` param segmentiyle aynı
+        seviyededir; Fastify radix router statiği önceler, `templateId` yine de
+        `uuid` ile doğrulanmalıdır.
+      parameters:
+        - name: purpose
+          in: query
+          required: true
+          schema: { $ref: "#/components/schemas/EmailTemplatePurpose" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/EmailVariableDefinition" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/notifications/templates/preview:
+    post:
+      tags: [EmailTemplates]
+      summary: Kaydedilmemiş taslağı render ederek önizle (yalnızca ADMIN, DURUMSUZ, DB'ye YAZMAZ)
+      description: >
+        Editörde her değişiklikte (500 ms debounce) çağrılır; kaydetmeyi ZORUNLU KILMAZ.
+        İki render motoru (istemci + sunucu) sürüklenme demektir — WYSIWYG'in tek
+        doğruluk kaynağı bu uçtur (bkz. ARCHITECTURE.md §10.16.11).
+
+
+        Değişken render'ı allow-list'e dayalı, güvenli string replace ile yapılır
+        (`lib/template-render.ts`) — bir template engine/`eval` KULLANILMAZ. Değer
+        verilmeyen değişkenler için registry'deki `sampleValue` kullanılır.
+
+
+        Dönen `renderedHtml` satır-içi (`inline`) stil içerir ve
+        `lib/html-sanitize.ts::sanitizeRichHtml`'den GEÇMEZ (geçemez — `style` allow-list
+        dışıdır, bkz. §10.16.4). İstemci bunu `dangerouslySetInnerHTML` ile BASMAZ;
+        `<iframe sandbox="" srcDoc={html}>` içinde gösterir.
+
+
+        Rate limit: 120/dakika (`EMAIL_TEMPLATE_PREVIEW_RATE_LIMIT`, IP değil oturum bazlı
+        global admin trafiğine ek — security-agent denetimi: uç DB'ye yazmasa da her çağrıda
+        site ayarları + hukuki sayfa sorgusu çalıştırır, önceden route-level bir üst sınırı
+        yoktu).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PreviewEmailTemplateRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/PreviewEmailTemplateResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/notifications/templates/{templateId}:
     parameters:
-      - $ref: "#/components/parameters/TemplateKey"
+      - $ref: "#/components/parameters/EmailTemplateId"
     get:
       tags: [EmailTemplates]
       summary: Bir e-posta şablonunu getir (yalnızca ADMIN)
@@ -2519,7 +2657,30 @@ paths:
     patch:
       tags: [EmailTemplates]
       summary: Bir e-posta şablonunu güncelle (yalnızca ADMIN)
-      description: "Audit log: `notifications.template_update`."
+      description: >
+        `bodyHtml` YALNIZCA `editorMode=RAW` şablonlarda kabul edilir; `BLOCKS`
+        şablonunda gönderilirse 422. `blocks` ise yalnızca `BLOCKS` modunda kabul edilir.
+        `purpose`/`editorMode`/`key`/`isSystem`/`availableVariables` BU UÇTAN
+        DEĞİŞTİRİLEMEZ.
+
+
+        **`isActive`** (qa-agent bulgusu, 2026-08-17 — kullanılabilirlik kilitlenmesi
+        düzeltmesi): YALNIZCA `purpose=CUSTOM` şablonlarda bu uçtan kabul edilir (`purpose
+        != CUSTOM` iken gönderilirse 422 — o durumda aktiflik YALNIZCA `/activate`'in
+        transaction'ıyla değişir, bkz. §10.16.3 teklik kuralı). `CUSTOM`'da teklik kuralı
+        UYGULANMADIĞI için (birden çok CUSTOM şablon aynı anda aktif olabilir) burada bir
+        transaction'a gerek YOKTUR. Bu alan olmadan bir CUSTOM şablon bir kez aktif
+        edildikten sonra ASLA deaktif/silinemiyordu (`DELETE` `isActive=true` iken
+        koşulsuz 409 döner) — kalıcı bir kilitlenmeydi; CUSTOM bir şablonu silmenin yolu
+        önce `PATCH { isActive: false }`, sonra `DELETE`'tir.
+
+
+        Şablon metinlerindeki tüm `{{...}}` kalıpları izinli değişken setine karşı
+        doğrulanır; tanımsız bir değişken varsa istek 422 ile REDDEDİLİR (aksi halde
+        kullanıcı hatayı ancak gerçek e-posta gittikten sonra fark ederdi).
+
+
+        Audit log: `notifications.template_update`.
       requestBody:
         required: true
         content:
@@ -2539,21 +2700,131 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "422": { $ref: "#/components/responses/ValidationError" }
+    delete:
+      tags: [EmailTemplates]
+      summary: Bir e-posta şablonunu sil (yalnızca ADMIN)
+      description: >
+        `isSystem=true` → 403 (seed'lenmiş çekirdek şablon silinemez).
+        `isActive=true` → 409 (önce başka bir şablon aktifleştirilmeli; aksi halde ilgili
+        gönderim akışı sessizce ölürdü). `purpose != CUSTOM` şablonlarda bu, başka bir
+        şablonu `POST .../activate` ile aktifleştirerek çözülür; `purpose = CUSTOM`
+        şablonlarda `PATCH .../{templateId}` ile `{ isActive: false }` göndererek de
+        çözülebilir (bkz. `UpdateEmailTemplateRequest.isActive`).
+        Audit log: `notifications.template_delete`.
+      responses:
+        "204": { description: Silindi }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "Aktif şablon silinemez."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
 
-  /admin/notifications/templates/{key}/preview:
+  /admin/notifications/templates/{templateId}/activate:
     parameters:
-      - $ref: "#/components/parameters/TemplateKey"
+      - $ref: "#/components/parameters/EmailTemplateId"
     post:
       tags: [EmailTemplates]
-      summary: Şablonu örnek değerlerle render ederek önizle (yalnızca ADMIN, DB'ye yazmaz)
+      summary: Şablonu amacının aktif şablonu yap (yalnızca ADMIN)
       description: >
-        Değişken render'ı allow-list'e dayalı, güvenli string replace ile yapılır
-        (`EmailTemplate.availableVariables`) — bir template engine/`eval` kullanılmaz.
+        Tek transaction içinde aynı `purpose`'a sahip diğer şablonlar pasifleştirilir,
+        sonra hedef aktifleştirilir (§10.16.3). `purpose=CUSTOM` şablonlarda teklik kuralı
+        UYGULANMAZ — `isActive` yalnızca "kullanılabilir" anlamı taşır.
+        Audit log: `notifications.template_activate`.
+      responses:
+        "200":
+          description: Aktifleştirildi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/EmailTemplate" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/notifications/templates/{templateId}/duplicate:
+    parameters:
+      - $ref: "#/components/parameters/EmailTemplateId"
+    post:
+      tags: [EmailTemplates]
+      summary: Şablonu kopyala (yalnızca ADMIN)
+      description: >
+        Kopya `isSystem=false`, `isActive=false`, `key=null` ve adı `"<ad> (kopya)"`
+        olarak oluşturulur. Sistem şablonlarını bozmadan denemek için birincil yol
+        (§10.16.1 — şablon revizyon geçmişi bilinçli olarak kapsam dışı).
+        Audit log: `notifications.template_duplicate`.
+      responses:
+        "201":
+          description: Kopyalandı
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/EmailTemplate" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/notifications/templates/{templateId}/test-send:
+    parameters:
+      - $ref: "#/components/parameters/EmailTemplateId"
+    post:
+      tags: [EmailTemplates]
+      summary: KAYDEDİLMİŞ şablonu örnek verilerle admin'in KENDİ adresine gönder (yalnızca ADMIN)
+      description: >
+        **Gövde `to` alanı KABUL ETMEZ** — alıcı her zaman isteği yapan kullanıcının
+        e-posta adresidir. ADMIN arkasında bile "keyfi HTML'i keyfi adrese gönder" ucu bir
+        spam-relay/phishing vektörüdür (§10.16.6, bağlayıcı güvenlik kararı).
+
+
+        Kaydedilmiş satır üzerinden çalışır (taslak DEĞİL): gerçekten gönderilecek olan
+        şey test edilir. Rate limit: 3/dakika (`EMAIL_TEST_SEND_RATE_LIMIT`).
+        Audit log: `notifications.template_test_send` — metadata'ya alıcı adresi YAZILMAZ.
+
+
+        SMTP başarısız olursa 502 `EMAIL_DELIVERY_FAILED` (bkz. `lib/errors.ts`).
       requestBody:
-        required: true
+        required: false
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/PreviewEmailTemplateRequest" }
+            schema: { $ref: "#/components/schemas/TestSendEmailTemplateRequest" }
+      responses:
+        "200":
+          description: Gönderildi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/TestSendEmailTemplateResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "502":
+          description: "SMTP gönderimi başarısız (`EMAIL_DELIVERY_FAILED`)."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+
+  # ---- §10.16 İletişim Formu — ADMIN ----
+
+  /admin/contact/form:
+    get:
+      tags: [ContactForms]
+      summary: İletişim formu yapılandırmasını getir (yalnızca ADMIN)
+      description: >
+        Tek (singleton) kayıt — `SiteSettings`/`SiteAppearance` ile AYNI lazy-upsert
+        deseni: satır yoksa varsayılanlar döner, DB'ye yazılmaz.
       responses:
         "200":
           description: OK
@@ -2563,11 +2834,238 @@ paths:
                 allOf:
                   - $ref: "#/components/schemas/ApiSuccessEnvelope"
                   - properties:
-                      data: { $ref: "#/components/schemas/PreviewEmailTemplateResponse" }
+                      data: { $ref: "#/components/schemas/ContactForm" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    patch:
+      tags: [ContactForms]
+      summary: İletişim formu yapılandırmasını güncelle (yalnızca ADMIN)
+      description: "Audit log: `contact.form_update` (metadata: değişen alan ADLARI, DEĞERLERİ değil)."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateContactFormRequest" }
+      responses:
+        "200":
+          description: Güncellendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/ContactForm" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/contact/form/fields:
+    put:
+      tags: [ContactForms]
+      summary: Form alanlarını TAM DEĞİŞTİR (yalnızca ADMIN)
+      description: >
+        `PUT /admin/navigation` ile AYNI tam-değiştirme (full replace) deseni — gövdedeki
+        dizi mevcut alanların TAMAMININ yerine geçer, `order` dizideki indekstir.
+
+
+        Doğrulama (hepsi 422): `key`'ler tekil olmalı ve `^[a-z][a-z0-9_]{0,39}$`
+        kalıbına uymalı; **üç sistem alanının (`name`, `email`, `message`) hepsi
+        bulunmalı** ve `type`'ları değişmemiş olmalıdır. Sistem alanını silme denemesi
+        SESSİZCE YOK SAYILMAZ, açıkça hata verir.
+
+
+        Alan `key`'leri `CONTACT_FORM_NOTIFICATION` şablonunda `{{key}}` değişkeni olarak
+        OTOMATİK görünür (§10.16.5) — ayrıca bir işlem gerekmez.
+
+
+        Audit log: `contact.fields_update`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ReplaceContactFormFieldsRequest" }
+      responses:
+        "200":
+          description: Güncellendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/ContactFormField" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/contact/submissions:
+    get:
+      tags: [ContactForms]
+      summary: Form gönderimlerini listele (ADMIN veya EDITOR)
+      description: >
+        Cursor sayfalı, `seq DESC` (en yeni önce). `data` alanı liste yanıtında DÖNMEZ
+        (detayda döner). `q` ad/e-posta üzerinde `contains` araması yapar.
+
+
+        KVKK: e-posta adresi admin listesinde MASKELENMEZ (iş gereği — admin cevap
+        yazacak). `ipAddress`/`userAgent` 30 gün sonra `null`'lanır (§10.16.10).
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: status
+          in: query
+          required: false
+          schema: { $ref: "#/components/schemas/ContactSubmissionStatus" }
+        - name: q
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/ContactSubmissionSummary" }
+                      meta:
+                        type: object
+                        properties:
+                          nextCursor: { type: string, nullable: true }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/contact/submissions/{submissionId}:
+    parameters:
+      - $ref: "#/components/parameters/ContactSubmissionId"
+    get:
+      tags: [ContactForms]
+      summary: Bir gönderimin detayını getir (ADMIN veya EDITOR)
+      description: >
+        Yan etkisizdir — okundu İŞARETLEMEZ (bunun için `PATCH .../{submissionId}`
+        `status: READ`). Yan etkili GET, önyükleme/prefetch ile istem dışı tetiklenir.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/ContactSubmission" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [ContactForms]
+      summary: Gönderim durumunu güncelle (ADMIN veya EDITOR)
+      description: >
+        `READ`'e geçişte `readAt`/`readById` doldurulur.
+        Audit log: `contact.submission_status_change` (metadata'ya ziyaretçi
+        adı/e-postası/mesajı YAZILMAZ — yalnızca `targetId` + durum geçişi).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateContactSubmissionRequest" }
+      responses:
+        "200":
+          description: Güncellendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/ContactSubmission" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "422": { $ref: "#/components/responses/ValidationError" }
+    delete:
+      tags: [ContactForms]
+      summary: Gönderimi kalıcı sil (yalnızca ADMIN)
+      description: >
+        Geri alınamaz — çöp kutusu YOKTUR. KVKK silme talebinin (veri sahibi hakkı)
+        karşılığıdır. Audit log: `contact.submission_delete`.
+      responses:
+        "204": { description: Silindi }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ---- §10.16 İletişim Formu — PUBLIC (kimlik doğrulama YOK) ----
+
+  /contact/form:
+    get:
+      tags: [ContactForms]
+      summary: Public iletişim formu tanımı (kimlik doğrulama YOK)
+      description: >
+        `isEnabled=false` ise **404** döner. Yanıt iç yapılandırmayı SIZDIRMAZ:
+        `notifyEmail`, `notificationTemplateId`, `retentionDays` alanları DÖNMEZ.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/PublicContactForm" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /contact/submissions:
+    post:
+      tags: [ContactForms]
+      summary: İletişim formunu gönder (kimlik doğrulama YOK)
+      description: >
+        Rate limit: 5/dakika, IP tabanlı (`CONTACT_SUBMIT_RATE_LIMIT`).
+        `values` serileştirilmiş boyutu ≤ 32 KB.
+
+
+        Davranış sırası (§10.16.8): (1) form kapalıysa 404 · (2) honeypot (`website`)
+        doluysa **201 (sahte başarı)** + kayıt `status: SPAM` + e-posta GÖNDERİLMEZ ·
+        (3) `consentRequired && consent !== true` → 422 · (4) alan bazlı doğrulama,
+        TANIMSIZ anahtarlar sessizce atılır (kayda girmez) · (5) kayıt yazılır ·
+        (6) bildirim e-postası gönderilir.
+
+
+        **SMTP hatası isteği DÜŞÜRMEZ**: `notificationError` doldurulur, `app.log.error`
+        yazılır, yanıt yine **201**. Ziyaretçi bizim SMTP arızamızın bedelini ödemez —
+        gönderim kaydı tek doğruluk kaynağıdır, e-posta ondan TÜRETİLİR.
+
+
+        Ziyaretçinin girdiği `email` HİÇBİR ZAMAN SMTP `to`/`from`/`Reply-To` başlığına
+        konmaz (başlık enjeksiyonu); yalnızca gövdede değişken olarak, HTML-escape
+        edilerek basılır.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateContactSubmissionRequest" }
+      responses:
+        "201":
+          description: Alındı
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/CreateContactSubmissionResponse" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /admin/import/jobs:
     get:
@@ -6111,8 +6609,21 @@ components:
       name: key
       in: path
       required: true
-      description: "ör. WELCOME, PASSWORD_RESET, SYSTEM_ANNOUNCEMENT"
+      deprecated: true
+      description: >
+        KULLANIMDAN KALDIRILDI (§10.16.6) — şablonlar artık `id` (uuid) ile adreslenir,
+        bkz. `EmailTemplateId`. Kullanıcının oluşturduğu şablonların `key`'i `null`'dır.
       schema: { type: string }
+    EmailTemplateId:
+      name: templateId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ContactSubmissionId:
+      name: submissionId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
     ImportJobId:
       name: jobId
       in: path
@@ -7244,7 +7755,7 @@ components:
         status: { $ref: "#/components/schemas/PageStatus" }
         blocks:
           type: array
-          items: { type: object, additionalProperties: true }
+          items: { $ref: "#/components/schemas/PageBlock" }
         seoTitle: { type: string, nullable: true }
         seoDescription: { type: string, nullable: true }
         ogTitle: { type: string, nullable: true }
@@ -7687,6 +8198,82 @@ components:
           items: { type: string, format: uuid }
           description: "Uygulanamayan id'ler (bulunamayan veya durumu uygun olmayan). Hata DEĞİLDİR."
 
+    # ---- §10.17 Sayfa içerik blokları + Grid/Kolon düzeni ----
+
+    PageBlock:
+      type: object
+      description: >
+        Sayfa içerik bloğu (`Page.blocks`, `Page.translations.<LOCALE>.blocks`).
+        **YALNIZCA `Page` içindir — `BlogPost`'un blok sistemi YOKTUR** (blog içeriği
+        `contentHtml` TipTap zengin metnidir, bkz. ARCHITECTURE.md §10.17.1).
+
+
+        `type` değerleri: `hero` · `text` · `image` · `gallery` · `cta` ·
+        `featured-products` · `featured-portfolio` · **`columns` (YENİ, §10.17)**.
+        `data` şekli tipe göre değişir; backend `type != "columns"` için şemayı BİLİNÇLİ
+        olarak serbest bırakır (`z.record(z.unknown())` — mevcut davranış korunur) ve
+        yalnızca `columns` için DAR doğrulama uygular.
+
+
+        `type: "text"` bloklarının `data.html`'i DB'ye yazılmadan önce
+        `lib/html-sanitize.ts::sanitizeRichHtml`'den geçer — **sütun İÇİNDEKİLER DAHİL**
+        (özyinelemeli, bkz. §10.17.4; bu özyineleme yapılmazsa stored XSS oluşur).
+      required: [id, type, data]
+      properties:
+        id: { type: string }
+        type:
+          type: string
+          enum: [hero, text, image, gallery, cta, featured-products, featured-portfolio, columns]
+        data:
+          type: object
+          additionalProperties: true
+          description: "`type: \"columns\"` için bkz. `PageColumnsBlockData`."
+
+    PageColumnsBlockData:
+      type: object
+      description: >
+        §10.17 Grid/Kolon düzeni. "Tam Genişlik" bir DEĞER DEĞİL, bu bloğun YOKLUĞUDUR —
+        UI'daki "Düzen" seçicisi bir sarmalama/sarmalamayı-kaldırma işlemidir.
+
+
+        **Derinlik en fazla 1:** bir sütunun içine `columns` KONULAMAZ; `hero` de
+        konulamaz (tam-genişlik banner). İhlal → `422 VALIDATION_ERROR`
+        (`error.details.blocks`).
+
+
+        Mobil yığılma bir VERİ ALANI DEĞİLDİR — tamamen CSS'tir (`grid-cols-1` tabanı +
+        `md:` kırılma noktası, §10.17.5). `stackOnMobile` gibi her zaman `true` olan
+        gizli bir bayrak EKLENMEZ.
+      required: [columnCount, ratio, gap, verticalAlign, columns]
+      properties:
+        columnCount:
+          type: integer
+          enum: [2, 3]
+          description: "`columns` dizisinin uzunluğu buna EŞİT olmalıdır, aksi halde 422."
+        ratio:
+          type: string
+          enum: ["1-1", "2-1", "1-2", "1-1-1"]
+          description: >
+            `columnCount=2` → `1-1|2-1|1-2`; `columnCount=3` → yalnızca `1-1-1`.
+            Uyumsuzluk 422. Renderer TÜM değerleri desteklemek ZORUNDADIR; kontrolü
+            arayüzde açığa çıkarmak ui-designer'ın kararıdır (§10.17.7).
+        gap: { type: string, enum: [none, sm, md, lg], default: md }
+        verticalAlign: { type: string, enum: [top, center, bottom], default: top }
+        columns:
+          type: array
+          minItems: 2
+          maxItems: 3
+          items:
+            type: object
+            required: [id, blocks]
+            properties:
+              id: { type: string }
+              blocks:
+                type: array
+                maxItems: 20
+                items: { $ref: "#/components/schemas/PageBlock" }
+                description: "`type` ∈ {`columns`, `hero`} OLAMAZ."
+
     CreatePageRequest:
       type: object
       required: [title]
@@ -7696,7 +8283,9 @@ components:
         status: { allOf: [{ $ref: "#/components/schemas/PageStatus" }], default: DRAFT }
         blocks:
           type: array
-          items: { type: object, additionalProperties: true }
+          maxItems: 200
+          items: { $ref: "#/components/schemas/PageBlock" }
+          description: "Üst sınır iç içe bloklar DAHİL sayılır (DoS koruması, §10.17.3)."
         seoTitle: { type: string }
         seoDescription: { type: string }
         ogTitle: { type: string, nullable: true }
@@ -7742,7 +8331,8 @@ components:
         status: { $ref: "#/components/schemas/PageStatus" }
         blocks:
           type: array
-          items: { type: object, additionalProperties: true }
+          maxItems: 200
+          items: { $ref: "#/components/schemas/PageBlock" }
         seoTitle: { type: string, nullable: true }
         seoDescription: { type: string, nullable: true }
         ogTitle: { type: string, nullable: true }
@@ -7982,31 +8572,222 @@ components:
                 değişmez; dolayısıyla revizyon geri yükleme galeriye DOKUNMAZ.
               additionalProperties: true
 
-    EmailTemplate:
+    EmailTemplatePurpose:
+      type: string
+      description: >
+        Şablonun KULLANILDIĞI YER. `CUSTOM` dışındaki her amaç için en fazla BİR şablon
+        `isActive=true` olabilir (§10.16.3 — kısmi unique index + servis transaction'ı ile
+        iki katmanda zorlanır). Gönderim tetikleyicileri şablonu ANAHTARA göre değil
+        AMACA göre çözer.
+      enum:
+        - WELCOME
+        - PASSWORD_RESET
+        - SYSTEM_ANNOUNCEMENT
+        - ORDER_CONFIRMATION
+        - ORG_INVITATION
+        - CONTACT_FORM_NOTIFICATION
+        - CUSTOM
+
+    EmailTemplateEditorMode:
+      type: string
+      description: >
+        `RAW` = §10.3'ten devralınan ham HTML şablonu (`bodyHtml` kaynak; seed'lenmiş
+        5 sistem şablonu bu moddadır ve davranışları BİT DÜZEYİNDE korunur).
+        `BLOCKS` = §10.16 blok editörü (`blocks` kaynak; `bodyHtml` KULLANILMAZ ve boş
+        string'tir). Yeni şablonlar HER ZAMAN `BLOCKS` olarak oluşturulur; mod
+        sonradan DEĞİŞTİRİLEMEZ.
+      enum: [RAW, BLOCKS]
+
+    EmailBlockType:
+      type: string
+      enum: [logo-header, heading, text, button, image, divider, footer]
+
+    EmailBlockStyle:
       type: object
+      description: >
+        Her blokta bulunan temel stil ayarları. Değerler KAPALI kümedir; renkler
+        `^#[0-9a-fA-F]{6}$` ile doğrulanır. Kullanıcı HİÇBİR KOŞULDA ham CSS yazamaz —
+        satır-içi `style` çıktısını yalnızca sunucudaki `lib/email-renderer.ts` üretir.
+      required: [align, paddingY, paddingX]
+      properties:
+        align: { type: string, enum: [left, center, right], default: left }
+        backgroundColor: { type: string, nullable: true, pattern: "^#[0-9a-fA-F]{6}$" }
+        textColor: { type: string, nullable: true, pattern: "^#[0-9a-fA-F]{6}$" }
+        paddingY: { type: string, enum: [none, sm, md, lg], default: md }
+        paddingX: { type: string, enum: [none, sm, md, lg], default: md }
+
+    EmailBlock:
+      type: object
+      description: >
+        E-posta içerik bloğu. `data` şekli `type`'a göre değişir (bkz. ARCHITECTURE.md
+        §10.16.4 tablosu — backend `zod` discriminated union ile DAR doğrular).
+        **İç içe blok YOKTUR** — e-posta blok listesi düzdür; §10.17'deki sayfa
+        `columns` bloğuyla KARIŞTIRILMAMALI, iki sistem tip/registry paylaşmaz.
+
+
+        Şablon başına en fazla 50 blok; `blocks` gövdesi en fazla 256 KB.
+      required: [id, type, style, data]
+      properties:
+        id: { type: string, description: "İstemcinin ürettiği uuid — dnd-kit sıralama anahtarı." }
+        type: { $ref: "#/components/schemas/EmailBlockType" }
+        style: { $ref: "#/components/schemas/EmailBlockStyle" }
+        data:
+          type: object
+          additionalProperties: true
+          description: >
+            `logo-header`: `{ useSiteLogo, logoUrl, height (16–120) }` ·
+            `heading`: `{ text (1–200), level: 1|2|3 }` ·
+            `text`: `{ html (≤20 000 krk) }` — `sanitizeEmailRichText()` ile temizlenir ·
+            `button`: `{ label (1–80), href, backgroundColor, textColor, radius: none|sm|full }` ·
+            `image`: `{ mediaId, url, alt (1–200, ZORUNLU), width }` ·
+            `divider`: `{ thickness: 1|2|4, color }` ·
+            `footer`: `{ text (≤1000) }`.
+
+
+            Değişken (`{{...}}`) kabul eden alanlar: `heading.text`, `text.html`,
+            `button.label`, `button.href`, `footer.text` (+ şablonun `subject`'i).
+            `button.href` ya `http(s)`/`mailto` olmalı ya da TAMAMEN tek bir değişken
+            olmalıdır (`^\\{\\{\\w+\\}\\}$`); `javascript:`/`data:` her koşulda reddedilir.
+
+    EmailVariableDefinition:
+      type: object
+      description: >
+        `lib/email-variables.ts` statik registry'sinden gelir. Anahtarlar İngilizce
+        snake_case'tir (mimar hakemliği, §10.16.1 — mevcut seed/çağrı yerleriyle
+        uyum ZORUNLU); `label` Türkçedir ve UI'da BİRİNCİL gösterilir.
+      required: [key, label, sampleValue, source]
+      properties:
+        key: { type: string, pattern: "^[a-z][a-z0-9_]{0,39}$", example: user_name }
+        label: { type: string, example: "Kullanıcı Adı" }
+        sampleValue: { type: string, example: "Ayşe Yılmaz" }
+        source:
+          type: string
+          enum: [system, custom, contact-field]
+          description: >
+            `contact-field` = iletişim formu alanından TÜRETİLDİ (yalnızca
+            `purpose=CONTACT_FORM_NOTIFICATION`). Admin forma "telefon" alanı
+            eklediğinde `{{telefon}}` hiçbir ek işlem olmadan burada belirir.
+
+    EmailCustomVariable:
+      type: object
+      description: >
+        Kullanıcı tanımlı değişken (şablon başına en fazla 20). `key` **ASCII olmak
+        ZORUNDADIR**: `lib/template-render.ts` kalıbı `/\\{\\{(\\w+)\\}\\}/g` ve JS `\\w` =
+        `[A-Za-z0-9_]` — `{{kullanici_adi}}` çalışır, `{{çalışan_adı}}` ÇALIŞMAZ (sessizce
+        ham metin olarak e-postaya basılır). Sistem değişkenleriyle çakışma 422.
+      required: [key, label, sampleValue]
+      properties:
+        key: { type: string, pattern: "^[a-z][a-z0-9_]{0,39}$" }
+        label: { type: string, minLength: 1, maxLength: 80 }
+        sampleValue: { type: string, maxLength: 200 }
+
+    EmailTemplateSummary:
+      type: object
+      description: "Liste yanıtı — `blocks`/`bodyHtml`/`variables` DÖNMEZ."
+      required: [id, name, purpose, editorMode, isSystem, isActive, subject, updatedAt, createdAt]
       properties:
         id: { type: string, format: uuid }
-        key: { type: string, example: WELCOME }
+        key:
+          type: string
+          nullable: true
+          description: "Yalnızca `isSystem=true` satırlarda dolu (seed idempotency'si); kullanıcı şablonlarında `null`."
+          example: WELCOME
         name: { type: string }
+        purpose: { $ref: "#/components/schemas/EmailTemplatePurpose" }
+        editorMode: { $ref: "#/components/schemas/EmailTemplateEditorMode" }
+        isSystem: { type: boolean }
+        isActive: { type: boolean }
         subject: { type: string }
-        bodyHtml: { type: string }
-        availableVariables:
-          type: array
-          items: { type: string }
-          description: "salt bilgi amaçlı, ör. [\"user_name\", \"reset_link\"]"
         updatedAt: { type: string, format: date-time }
         createdAt: { type: string, format: date-time }
 
+    EmailTemplate:
+      allOf:
+        - $ref: "#/components/schemas/EmailTemplateSummary"
+        - type: object
+          required: [bodyHtml, blocks, availableVariables, customVariables, variables]
+          properties:
+            bodyHtml:
+              type: string
+              description: "Yalnızca `editorMode=RAW` için anlamlı. `BLOCKS` modunda her zaman boş string — render ÖNBELLEKLENMEZ (§10.16.2)."
+            blocks:
+              type: array
+              items: { $ref: "#/components/schemas/EmailBlock" }
+            availableVariables:
+              type: array
+              items: { type: string }
+              description: >
+                §10.3'ten devralındı, salt bilgi amaçlı. **İstemciden ARTIK KABUL
+                EDİLMEZ** — her yazmada registry'den türetilip yazılır.
+            customVariables:
+              type: array
+              items: { $ref: "#/components/schemas/EmailCustomVariable" }
+            variables:
+              type: array
+              items: { $ref: "#/components/schemas/EmailVariableDefinition" }
+              description: >
+                HESAPLANMIŞ alan (DB'de tutulmaz): sistem registry'si (amaca göre) +
+                global (`site_name`, `site_url`) + `customVariables` +
+                (`CONTACT_FORM_NOTIFICATION` ise) iletişim formu alanları.
+                Değişken panelinin TEK veri kaynağıdır.
+
+    CreateEmailTemplateRequest:
+      type: object
+      required: [name, purpose]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        purpose: { $ref: "#/components/schemas/EmailTemplatePurpose" }
+        subject: { type: string, minLength: 1, maxLength: 200 }
+        blocks:
+          type: array
+          items: { $ref: "#/components/schemas/EmailBlock" }
+          description: "Verilmezse sunucu amaca uygun bir başlangıç blok seti üretir."
+
     UpdateEmailTemplateRequest:
       type: object
+      description: >
+        `bodyHtml` YALNIZCA `editorMode=RAW`, `blocks` YALNIZCA `BLOCKS` şablonda kabul
+        edilir (yanlış moda gönderim → 422). `purpose`/`editorMode`/`key`/`isSystem`/
+        `availableVariables` bu uçtan DEĞİŞTİRİLEMEZ.
       properties:
-        subject: { type: string, minLength: 1 }
+        name: { type: string, minLength: 1, maxLength: 120 }
+        subject: { type: string, minLength: 1, maxLength: 200 }
         bodyHtml: { type: string }
+        blocks:
+          type: array
+          items: { $ref: "#/components/schemas/EmailBlock" }
+        customVariables:
+          type: array
+          maxItems: 20
+          items: { $ref: "#/components/schemas/EmailCustomVariable" }
+        isActive:
+          type: boolean
+          description: >
+            YALNIZCA `purpose=CUSTOM` şablonlarda kabul edilir — aksi halde 422
+            (`error.details.isActive`). `purpose != CUSTOM` şablonlarda aktiflik
+            YALNIZCA `POST .../activate` ile değişir (§10.16.3 teklik kuralı,
+            transaction + kısmi unique index). CUSTOM'da teklik kuralı yoktur, bu
+            yüzden burada doğrudan değiştirilebilir — bu alan olmadan bir CUSTOM
+            şablon bir kez aktif edildikten sonra deaktif/silinemez hale gelirdi.
 
     PreviewEmailTemplateRequest:
       type: object
-      required: [sampleValues]
+      description: >
+        DURUMSUZ taslak önizleme gövdesi — kaydedilmemiş editör durumunu taşır.
+        `sampleValues` verilmeyen değişkenler için registry'deki `sampleValue` kullanılır
+        (kullanıcı "örnek verilerle dolu" önizlemeyi hiçbir şey girmeden görür).
+      required: [purpose, editorMode, subject]
       properties:
+        purpose: { $ref: "#/components/schemas/EmailTemplatePurpose" }
+        editorMode: { $ref: "#/components/schemas/EmailTemplateEditorMode" }
+        subject: { type: string }
+        blocks:
+          type: array
+          items: { $ref: "#/components/schemas/EmailBlock" }
+        bodyHtml: { type: string }
+        customVariables:
+          type: array
+          items: { $ref: "#/components/schemas/EmailCustomVariable" }
         sampleValues:
           type: object
           additionalProperties: { type: string }
@@ -8015,7 +8796,258 @@ components:
       type: object
       properties:
         renderedSubject: { type: string }
-        renderedHtml: { type: string }
+        renderedHtml:
+          type: string
+          description: >
+            Satır-içi stilli, tablo tabanlı e-posta HTML'i. `sanitizeRichHtml`'den
+            GEÇMEZ (geçemez — `style` allow-list dışıdır). İstemci bunu
+            `dangerouslySetInnerHTML` ile BASMAZ, `<iframe sandbox="" srcDoc>` içinde
+            gösterir (§10.16.11).
+
+
+            Çıktının SONUNDA, kullanıcının `footer` bloğundan BAĞIMSIZ olarak zorunlu
+            KVKK footer'ı bulunur: site adı + yayınlanan `Page.isLegalDocument`
+            sayfalarının bağlantıları. Kullanıcı bunu silemez/kapatamaz (§10.16.4).
+
+    TestSendEmailTemplateRequest:
+      type: object
+      description: >
+        **`to` alanı YOKTUR ve KABUL EDİLMEZ** — alıcı her zaman `request.user.email`.
+        Bilinçli güvenlik kararı (§10.16.6): keyfi HTML'i keyfi adrese gönderen bir uç,
+        ADMIN arkasında bile spam-relay/phishing vektörüdür.
+      properties:
+        sampleValues:
+          type: object
+          additionalProperties: { type: string }
+
+    TestSendEmailTemplateResponse:
+      type: object
+      required: [sentTo, messageId]
+      properties:
+        sentTo: { type: string, format: email, description: "Her zaman isteği yapan kullanıcının adresi." }
+        messageId: { type: string }
+        previewUrl:
+          type: string
+          nullable: true
+          description: "Yalnızca dev ortamında (Ethereal test hesabı) dolu — bkz. lib/mail.ts."
+
+    # ---- §10.16 İletişim Formu ----
+
+    ContactFieldType:
+      type: string
+      enum: [TEXT, EMAIL, PHONE, TEXTAREA, SELECT, CHECKBOX]
+
+    ContactSubmissionStatus:
+      type: string
+      enum: [NEW, READ, ARCHIVED, SPAM]
+
+    ContactFormField:
+      type: object
+      required: [id, order, key, label, type, required, options, isSystem]
+      properties:
+        id: { type: string, format: uuid }
+        order: { type: integer, description: "Dizideki indeks — `PUT` gövdesinden türetilir." }
+        key:
+          type: string
+          pattern: "^[a-z][a-z0-9_]{0,39}$"
+          description: "E-posta şablonunda `{{key}}` değişkeni olarak OTOMATİK görünür (§10.16.5)."
+        label: { type: string, minLength: 1, maxLength: 120 }
+        type: { $ref: "#/components/schemas/ContactFieldType" }
+        required: { type: boolean }
+        placeholder: { type: string, nullable: true }
+        helpText: { type: string, nullable: true }
+        options:
+          type: array
+          description: "Yalnızca `type=SELECT` için; diğer tiplerde boş dizi."
+          items:
+            type: object
+            required: [value, label]
+            properties:
+              value: { type: string }
+              label: { type: string }
+        maxLength: { type: integer, nullable: true }
+        isSystem:
+          type: boolean
+          description: >
+            `name`/`email`/`message` — SİLİNEMEZ, `key`/`type` DEĞİŞTİRİLEMEZ
+            (label/sıra/placeholder serbest).
+
+    ContactForm:
+      type: object
+      required: [id, title, submitLabel, successMessage, isEnabled, consentRequired, retentionDays, fields]
+      properties:
+        id: { type: string, example: singleton }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        submitLabel: { type: string }
+        successMessage: { type: string }
+        isEnabled: { type: boolean, description: "`false` iken public `GET /contact/form` ve `POST /contact/submissions` 404 döner." }
+        notifyEmail:
+          type: string
+          format: email
+          nullable: true
+          description: "`null` ise bildirim GÖNDERİLMEZ — gönderim yine de kaydedilir."
+        notificationTemplateId:
+          type: string
+          format: uuid
+          nullable: true
+          description: "`null` ise `purpose=CONTACT_FORM_NOTIFICATION` olan AKTİF şablona düşülür."
+        consentRequired: { type: boolean }
+        consentText: { type: string }
+        consentLegalPageId:
+          type: string
+          format: uuid
+          nullable: true
+          description: >
+            Onay metnindeki "Aydınlatma Metni" bağlantısının hedefi — `isLegalDocument=true`
+            olan bir `Page`. Sayfa silinirse `SetNull`.
+        retentionDays:
+          type: integer
+          minimum: 0
+          description: >
+            Gönderimlerin saklama süresi (gün, varsayılan 180). `0` = süresiz —
+            compliance-agent onayı gerektiren özel durum. PII (`ipAddress`/`userAgent`)
+            bundan BAĞIMSIZ olarak 30 günde redakte edilir (§10.16.10).
+        fields:
+          type: array
+          items: { $ref: "#/components/schemas/ContactFormField" }
+        updatedAt: { type: string, format: date-time }
+
+    UpdateContactFormRequest:
+      type: object
+      properties:
+        title: { type: string, minLength: 1, maxLength: 120 }
+        description: { type: string, nullable: true }
+        submitLabel: { type: string, minLength: 1, maxLength: 60 }
+        successMessage: { type: string, minLength: 1, maxLength: 500 }
+        isEnabled: { type: boolean }
+        notifyEmail: { type: string, format: email, nullable: true }
+        notificationTemplateId: { type: string, format: uuid, nullable: true }
+        consentRequired: { type: boolean }
+        consentText: { type: string, maxLength: 2000 }
+        consentLegalPageId: { type: string, format: uuid, nullable: true }
+        retentionDays: { type: integer, minimum: 0, maximum: 3650 }
+
+    ReplaceContactFormFieldsRequest:
+      type: object
+      required: [fields]
+      properties:
+        fields:
+          type: array
+          maxItems: 30
+          items:
+            type: object
+            required: [key, label, type]
+            properties:
+              key: { type: string, pattern: "^[a-z][a-z0-9_]{0,39}$" }
+              label: { type: string, minLength: 1, maxLength: 120 }
+              type: { $ref: "#/components/schemas/ContactFieldType" }
+              required: { type: boolean, default: false }
+              placeholder: { type: string, nullable: true }
+              helpText: { type: string, nullable: true }
+              maxLength: { type: integer, nullable: true, minimum: 1, maximum: 10000 }
+              options:
+                type: array
+                items:
+                  type: object
+                  required: [value, label]
+                  properties:
+                    value: { type: string }
+                    label: { type: string }
+
+    ContactSubmissionSummary:
+      type: object
+      description: "Liste yanıtı — `data`/`consentTextSnapshot`/`userAgent` DÖNMEZ."
+      required: [id, name, email, status, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        email: { type: string, format: email, description: "Admin listesinde MASKELENMEZ (iş gereği — admin cevap yazacak)." }
+        status: { $ref: "#/components/schemas/ContactSubmissionStatus" }
+        notifiedAt: { type: string, format: date-time, nullable: true }
+        notificationError:
+          type: string
+          nullable: true
+          description: "Dolu ise bildirim e-postası GİTMEDİ — arayüz bunu görünür bir uyarı olarak gösterir."
+        readAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    ContactSubmission:
+      allOf:
+        - $ref: "#/components/schemas/ContactSubmissionSummary"
+        - type: object
+          required: [data]
+          properties:
+            data:
+              type: object
+              additionalProperties: { type: string }
+              description: >
+                Gönderim ANINDAKİ tüm alanların key→value anlık görüntüsü. Alan sonradan
+                silinse bile veri KORUNUR (bu yüzden FK değil snapshot).
+            consentAt: { type: string, format: date-time, nullable: true }
+            consentTextSnapshot:
+              type: string
+              nullable: true
+              description: "Gönderim anında gösterilen onay metninin birebir kopyası (KVKK ispat yükümlülüğü)."
+            ipAddress: { type: string, nullable: true, description: "30 gün sonra `null`'lanır (§10.16.10)." }
+            userAgent: { type: string, nullable: true, description: "30 gün sonra `null`'lanır." }
+            piiRedactedAt: { type: string, format: date-time, nullable: true }
+
+    UpdateContactSubmissionRequest:
+      type: object
+      required: [status]
+      properties:
+        status: { $ref: "#/components/schemas/ContactSubmissionStatus" }
+
+    PublicContactForm:
+      type: object
+      description: >
+        Public form tanımı. `notifyEmail`, `notificationTemplateId` ve `retentionDays`
+        BİLİNÇLİ OLARAK DIŞARIDA BIRAKILIR — iç yapılandırma ziyaretçiye sızdırılmaz.
+      required: [title, submitLabel, consentRequired, fields]
+      properties:
+        title: { type: string }
+        description: { type: string, nullable: true }
+        submitLabel: { type: string }
+        consentRequired: { type: boolean }
+        consentText: { type: string }
+        consentLegalPage:
+          type: object
+          nullable: true
+          description: "Onay metnindeki hukuki belge bağlantısı — yayında değilse `null`."
+          properties:
+            title: { type: string }
+            slug: { type: string }
+        fields:
+          type: array
+          items: { $ref: "#/components/schemas/ContactFormField" }
+
+    CreateContactSubmissionRequest:
+      type: object
+      required: [values]
+      properties:
+        values:
+          type: object
+          additionalProperties: { type: string }
+          description: >
+            Alan `key` → değer. TANIMSIZ anahtarlar SESSİZCE ATILIR (kayda girmez) —
+            kötü niyetli bir istemci `data`'yı şişiremesin. Serileştirilmiş boyut ≤ 32 KB.
+        consent:
+          type: boolean
+          description: "`consentRequired=true` ise ZORUNLU ve `true` olmalı, aksi halde 422."
+        website:
+          type: string
+          description: >
+            **Honeypot** — CSS ile gizli, `tabindex=-1`, `autocomplete=off`. Dolu gelirse
+            yanıt yine **201 (sahte başarı)** olur, kayıt `status: SPAM` yazılır ve
+            e-posta GÖNDERİLMEZ. Bota "başarısız oldum" sinyali verilmez.
+
+    CreateContactSubmissionResponse:
+      type: object
+      required: [id, message]
+      properties:
+        id: { type: string, format: uuid }
+        message: { type: string, description: "`ContactForm.successMessage`." }
 
     # ---- §10.8 Toplu İçe Aktarma (Import) ----
 
