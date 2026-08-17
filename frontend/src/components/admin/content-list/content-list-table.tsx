@@ -1,10 +1,11 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { Eye, MoreVertical } from "lucide-react";
+import { Eye, Link2, MoreVertical } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
@@ -14,6 +15,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { QuickEditCard, QuickEditGrid } from "./quick-edit-grid";
 import { SeoScoreBadge } from "./seo-score-badge";
 import type { ContentListEntity, ContentListFilter, QuickEditValues } from "./types";
 
@@ -138,48 +140,64 @@ export function ContentListTable<T extends ContentListEntity, Q extends QuickEdi
                   >
                     <TableCell colSpan={colSpan} className="p-4">
                       <div className="animate-in fade-in-0 slide-in-from-top-1 duration-200 flex flex-col gap-3">
-                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[2fr_1fr_1fr]">
-                          <div className="space-y-1">
-                            <label htmlFor={`quick-edit-title-${item.id}`} className="block text-xs font-medium text-foreground/60">
-                              Başlık
-                            </label>
-                            <Input
-                              id={`quick-edit-title-${item.id}`}
-                              value={quickEditValues.title}
-                              onChange={(e) => onQuickEditChange({ title: e.target.value } as Partial<Q>)}
-                              autoFocus
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <label htmlFor={`quick-edit-slug-${item.id}`} className="block text-xs font-medium text-foreground/60">
-                              Slug
-                            </label>
-                            <Input
-                              id={`quick-edit-slug-${item.id}`}
-                              value={quickEditValues.slug}
-                              onChange={(e) => onQuickEditChange({ slug: e.target.value } as Partial<Q>)}
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <label htmlFor={`quick-edit-status-${item.id}`} className="block text-xs font-medium text-foreground/60">
-                              Durum
-                            </label>
-                            <Select
-                              id={`quick-edit-status-${item.id}`}
-                              className="min-w-36"
-                              value={quickEditValues.status}
-                              onChange={(e) => onQuickEditChange({ status: e.target.value as QuickEditValues["status"] } as Partial<Q>)}
-                            >
-                              <option value="DRAFT">Taslak</option>
-                              <option value="PUBLISHED">Yayında</option>
-                            </Select>
-                          </div>
-                        </div>
-                        {quickEditExtraFields?.({
-                          values: quickEditValues,
-                          onChange: onQuickEditChange,
-                          disabled: quickEditSaving,
-                        })}
+                        <QuickEditGrid columns={{ base: 1, md: 2, xl: quickEditExtraFields ? 3 : 2 }}>
+                          <QuickEditCard>
+                            <div className="space-y-3">
+                              <div className="space-y-1">
+                                <label htmlFor={`quick-edit-title-${item.id}`} className="block text-xs font-medium text-foreground/60">
+                                  Başlık
+                                </label>
+                                <Input
+                                  id={`quick-edit-title-${item.id}`}
+                                  value={quickEditValues.title}
+                                  onChange={(e) => onQuickEditChange({ title: e.target.value } as Partial<Q>)}
+                                  autoFocus
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <label htmlFor={`quick-edit-slug-${item.id}`} className="block text-xs font-medium text-foreground/60">
+                                  Slug
+                                </label>
+                                <InputGroup className="h-8">
+                                  <InputGroupAddon align="inline-start">
+                                    <Link2 className="h-3.5 w-3.5 text-foreground/40" />
+                                  </InputGroupAddon>
+                                  <InputGroupInput
+                                    id={`quick-edit-slug-${item.id}`}
+                                    className="font-mono text-xs md:text-xs text-foreground/80"
+                                    value={quickEditValues.slug}
+                                    onChange={(e) => onQuickEditChange({ slug: e.target.value } as Partial<Q>)}
+                                  />
+                                </InputGroup>
+                              </div>
+                            </div>
+                          </QuickEditCard>
+                          {quickEditExtraFields && (
+                            <QuickEditCard>
+                              {quickEditExtraFields({
+                                values: quickEditValues,
+                                onChange: onQuickEditChange,
+                                disabled: quickEditSaving,
+                              })}
+                            </QuickEditCard>
+                          )}
+                          <QuickEditCard span={{ md: 2, xl: 1 }}>
+                            <div className="max-w-56 space-y-1">
+                              <label htmlFor={`quick-edit-status-${item.id}`} className="block text-xs font-medium text-foreground/60">
+                                Durum
+                              </label>
+                              <Select
+                                id={`quick-edit-status-${item.id}`}
+                                className="min-w-36"
+                                value={quickEditValues.status}
+                                onChange={(e) => onQuickEditChange({ status: e.target.value as QuickEditValues["status"] } as Partial<Q>)}
+                              >
+                                <option value="DRAFT">Taslak</option>
+                                <option value="PUBLISHED">Yayında</option>
+                              </Select>
+                            </div>
+                          </QuickEditCard>
+                        </QuickEditGrid>
                         <div className="flex items-center justify-end gap-2">
                           <Button type="button" size="sm" loading={quickEditSaving} onClick={onQuickEditSave}>
                             Güncelle
@@ -341,11 +359,18 @@ export function ContentListTable<T extends ContentListEntity, Q extends QuickEdi
                     </label>
                     <Input
                       id={`quick-edit-slug-m-${item.id}`}
-                      className="h-11"
+                      className="h-11 font-mono text-xs md:text-xs text-foreground/80"
                       value={quickEditValues.slug}
                       onChange={(e) => onQuickEditChange({ slug: e.target.value } as Partial<Q>)}
                     />
                   </div>
+                  {quickEditExtraFields && <div aria-hidden className="border-t border-border/60" />}
+                  {quickEditExtraFields?.({
+                    values: quickEditValues,
+                    onChange: onQuickEditChange,
+                    disabled: quickEditSaving,
+                  })}
+                  <div aria-hidden className="border-t border-border/60" />
                   <div className="space-y-1">
                     <label htmlFor={`quick-edit-status-m-${item.id}`} className="block text-xs font-medium text-foreground/60">
                       Durum
@@ -360,11 +385,6 @@ export function ContentListTable<T extends ContentListEntity, Q extends QuickEdi
                       <option value="PUBLISHED">Yayında</option>
                     </Select>
                   </div>
-                  {quickEditExtraFields?.({
-                    values: quickEditValues,
-                    onChange: onQuickEditChange,
-                    disabled: quickEditSaving,
-                  })}
                   {quickEditError && (
                     <p role="alert" className="animate-in fade-in-0 duration-150 text-xs text-danger">
                       {quickEditError}
