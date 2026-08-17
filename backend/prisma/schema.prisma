@@ -176,7 +176,7 @@ enum ApiKeyStatus {
 // AÇILMADI: projedeki tüm enum'lar (`OrderStatus`, `PageStatus`, `ImportJobType`)
 // wire'da SCREAMING_SNAKE'tir; ikinci bir gösterim kaçınılmaz olarak sapardı.
 enum WebhookEvent {
-  PING                       // yalnızca POST .../test ile üretilir, gerçek bir olay değildir
+  PING // yalnızca POST .../test ile üretilir, gerçek bir olay değildir
   PAGE_PUBLISHED
   BLOG_POST_PUBLISHED
   BLOG_POST_UPDATED
@@ -191,16 +191,16 @@ enum WebhookEvent {
 
 enum OutboundWebhookStatus {
   ACTIVE
-  PAUSED     // admin elle duraklattı
-  DISABLED   // sistem üst üste başarısızlık sonrası otomatik kapattı (§10.13.8)
+  PAUSED // admin elle duraklattı
+  DISABLED // sistem üst üste başarısızlık sonrası otomatik kapattı (§10.13.8)
 }
 
 enum WebhookDeliveryStatus {
-  PENDING    // sıraya alındı, henüz denenmedi
-  SENDING    // şu an gönderiliyor (çökme kurtarması bu durumu arar)
-  RETRYING   // en az bir deneme başarısız, `nextAttemptAt` dolu
-  SUCCEEDED  // 2xx alındı
-  FAILED     // kalıcı hata VEYA deneme hakkı tükendi
+  PENDING // sıraya alındı, henüz denenmedi
+  SENDING // şu an gönderiliyor (çökme kurtarması bu durumu arar)
+  RETRYING // en az bir deneme başarısız, `nextAttemptAt` dolu
+  SUCCEEDED // 2xx alındı
+  FAILED // kalıcı hata VEYA deneme hakkı tükendi
 }
 
 model User {
@@ -224,40 +224,44 @@ model User {
   twoFactorSecret     String?
   twoFactorVerifiedAt DateTime?
 
-  ownedOrganizations  Organization[]       @relation("OrganizationOwner")
-  memberships         Membership[]
-  refreshTokens       RefreshToken[]
-  passwordResetTokens PasswordResetToken[]
-  blogPosts           BlogPost[]
-  pages               Page[]
+  ownedOrganizations     Organization[]       @relation("OrganizationOwner")
+  memberships            Membership[]
+  refreshTokens          RefreshToken[]
+  passwordResetTokens    PasswordResetToken[]
+  blogPosts              BlogPost[]
+  pages                  Page[]
   // §10.9.2 Ürünler Modülü — bkz. ARCHITECTURE.md §10.9.2.
-  products            Product[]            @relation("ProductAuthor")
+  products               Product[]            @relation("ProductAuthor")
   // §10.9.4 Portföy Modülü — bkz. ARCHITECTURE.md §10.9.4.
-  portfolioItems      PortfolioItem[]      @relation("PortfolioAuthor")
-  auditLogs           AuditLog[]           @relation("AuditLogActor")
-  backupCodes         BackupCode[]
+  portfolioItems         PortfolioItem[]      @relation("PortfolioAuthor")
+  auditLogs              AuditLog[]           @relation("AuditLogActor")
+  backupCodes            BackupCode[]
   // Polymorphic ContentRevision.editedById / EmailTemplate.updatedById için zorunlu karşı-ilişki alanları.
-  contentRevisions    ContentRevision[]    @relation("ContentRevisionEditor")
-  emailTemplateEdits  EmailTemplate[]      @relation("EmailTemplateUpdater")
+  contentRevisions       ContentRevision[]    @relation("ContentRevisionEditor")
+  emailTemplateEdits     EmailTemplate[]      @relation("EmailTemplateUpdater")
   // §10.8 Toplu İçe Aktarma (Import) — bkz. ARCHITECTURE.md §10.8.2.
-  importJobs          ImportJob[]          @relation("ImportJobCreator")
+  importJobs             ImportJob[]          @relation("ImportJobCreator")
   // §10.8.10 Analitik Rapor Dışa Aktarma (Export) — bkz. ARCHITECTURE.md §10.8.10.
-  exportJobs          ExportJob[]          @relation("ExportJobCreator")
+  exportJobs             ExportJob[]          @relation("ExportJobCreator")
   // §10.9 Eklenti/Modül Yönetimi — bkz. ARCHITECTURE.md §10.9.
-  siteModuleUpdates   SiteModule[]         @relation("SiteModuleUpdater")
+  siteModuleUpdates      SiteModule[]         @relation("SiteModuleUpdater")
   // §10.9.3 Sepet + Stripe Checkout — genelde NULL kalır (misafir checkout); SiteRole
   // kullanıcısı (ör. ADMIN test amaçlı) teorik olarak sepet/sipariş sahibi olabilir.
-  carts               Cart[]               @relation("CartOwner")
-  orders              Order[]              @relation("OrderCustomer")
+  carts                  Cart[]               @relation("CartOwner")
+  orders                 Order[]              @relation("OrderCustomer")
   // §10.12.6 Özel CSS/JS denetim izi — SiteCustomCode.cssUpdatedById/jsUpdatedById
   // için zorunlu karşı-ilişki alanları (ContentRevision/EmailTemplate ile AYNI desen).
-  cssCodeUpdates      SiteCustomCode[]     @relation("SiteCustomCodeCssUpdater")
-  jsCodeUpdates       SiteCustomCode[]     @relation("SiteCustomCodeJsUpdater")
+  cssCodeUpdates         SiteCustomCode[]     @relation("SiteCustomCodeCssUpdater")
+  jsCodeUpdates          SiteCustomCode[]     @relation("SiteCustomCodeJsUpdater")
   // §10.13 Üçüncü Parti Entegrasyon — API anahtarı + giden webhook denetim izi
   // için zorunlu karşı-ilişki alanları (ImportJob/ExportJob ile AYNI desen).
-  apiKeysCreated      ApiKey[]             @relation("ApiKeyCreator")
-  apiKeysRevoked      ApiKey[]             @relation("ApiKeyRevoker")
-  outboundWebhooks    OutboundWebhook[]    @relation("OutboundWebhookCreator")
+  apiKeysCreated         ApiKey[]             @relation("ApiKeyCreator")
+  apiKeysRevoked         ApiKey[]             @relation("ApiKeyRevoker")
+  outboundWebhooks       OutboundWebhook[]    @relation("OutboundWebhookCreator")
+  // §10.16.7 İletişim formu — ContactForm.updatedById / ContactSubmission.readById
+  // için zorunlu karşı-ilişki alanları (ContentRevision/EmailTemplate ile AYNI desen).
+  contactFormUpdates     ContactForm[]        @relation("ContactFormUpdater")
+  contactSubmissionsRead ContactSubmission[]  @relation("ContactSubmissionReader")
 
   @@map("users")
 }
@@ -430,9 +434,11 @@ model Page {
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
 
-  author       User?          @relation(fields: [authorId], references: [id], onDelete: SetNull)
-  views        PageView[]
-  siteSettings SiteSettings[]
+  author              User?          @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  views               PageView[]
+  siteSettings        SiteSettings[]
+  // §10.16.7 İletişim formu — ContactForm.consentLegalPageId için zorunlu karşı-ilişki alanı.
+  contactFormConsents ContactForm[]  @relation("ContactFormConsentPage")
 
   @@index([deletedAt, status])
   @@index([authorId])
@@ -1175,22 +1181,172 @@ model ContentRevision {
 }
 
 // §10.3 E-posta & Bildirim Şablonu Yöneticisi — bkz. ARCHITECTURE.md §10.3.
+// §10.16 Blok editörü + iletişim formu ile GENİŞLETİLDİ (yeni tablo AÇILMADI) — bkz.
+// ARCHITECTURE.md §10.16.2.
+enum EmailTemplatePurpose {
+  WELCOME
+  PASSWORD_RESET
+  SYSTEM_ANNOUNCEMENT
+  ORDER_CONFIRMATION
+  ORG_INVITATION
+  CONTACT_FORM_NOTIFICATION
+  CUSTOM
+}
+
+/// RAW  = §10.3'ten devralınan ham HTML şablonu (`bodyHtml` kaynak).
+/// BLOCKS = §10.16 blok editörü (`blocks` kaynak, `bodyHtml` KULLANILMAZ).
+enum EmailTemplateEditorMode {
+  RAW
+  BLOCKS
+}
+
 model EmailTemplate {
-  id                 String   @id @default(uuid())
-  seq                Int      @unique @default(autoincrement())
-  key                String   @unique
+  id                 String                  @id @default(uuid())
+  seq                Int                     @unique @default(autoincrement())
+  /// Yalnızca `isSystem = true` satırlarda dolu (seed idempotency'si için —
+  /// `prisma/seed.ts` upsert'i `where: { key }` ile çalışmaya devam eder). Kullanıcının
+  /// oluşturduğu şablonlarda `null`; Postgres unique index birden çok NULL'a izin verir.
+  key                String?                 @unique
   name               String
+  purpose            EmailTemplatePurpose    @default(CUSTOM)
+  editorMode         EmailTemplateEditorMode @default(BLOCKS)
+  /// Seed'lenmiş çekirdek şablon — SİLİNEMEZ (403), `purpose`/`key` DEĞİŞTİRİLEMEZ.
+  isSystem           Boolean                 @default(false)
+  /// "Kullanımda mı?" — bkz. ARCHITECTURE.md §10.16.3 aktiflik kuralı. `purpose != CUSTOM`
+  /// için amaç başına EN FAZLA BİR true — bu kural EK OLARAK kısmi unique index ile
+  /// DB katmanında da zorlanır (bkz. bu migration'ın `migration.sql` dosyasındaki raw SQL:
+  /// `email_templates_active_purpose_key`, Prisma şemasıyla ifade edilemez).
+  isActive           Boolean                 @default(false)
   subject            String
-  bodyHtml           String
-  // Salt bilgi amaçlı — ör. ["user_name","reset_link"] (bkz. ARCHITECTURE.md §10.3).
+  /// Yalnızca editorMode=RAW için kaynak. BLOCKS modunda "" (render ÖNBELLEKLENMEZ).
+  bodyHtml           String                  @default("")
+  /// editorMode=BLOCKS kaynağı — EmailBlock[] (bkz. ARCHITECTURE.md §10.16.4).
+  blocks             Json                    @default("[]")
+  // Salt bilgi amaçlı — artık `lib/email-variables.ts` registry'sinden TÜRETİLİR
+  // (bkz. ARCHITECTURE.md §10.16.5) ve yazma uçlarında DEĞİŞTİRİLEMEZ.
   availableVariables Json
+  /// Kullanıcı tanımlı değişkenler: { key, label, sampleValue }[] (bkz. §10.16.5).
+  customVariables    Json                    @default("[]")
   updatedById        String?
-  updatedAt          DateTime @updatedAt
-  createdAt          DateTime @default(now())
+  updatedAt          DateTime                @updatedAt
+  createdAt          DateTime                @default(now())
 
-  updatedBy User? @relation("EmailTemplateUpdater", fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedBy    User?         @relation("EmailTemplateUpdater", fields: [updatedById], references: [id], onDelete: SetNull)
+  contactForms ContactForm[] @relation("ContactFormNotificationTemplate")
 
+  @@index([purpose, isActive])
   @@map("email_templates")
+}
+
+// §10.16.7 İletişim formu — bkz. ARCHITECTURE.md §10.16.7. TEK (singleton) form,
+// SiteSettings/SiteAppearance ile AYNI id="singleton" + lazy-upsert deseni.
+enum ContactFieldType {
+  TEXT
+  EMAIL
+  PHONE
+  TEXTAREA
+  SELECT
+  CHECKBOX
+}
+
+enum ContactSubmissionStatus {
+  NEW
+  READ
+  ARCHIVED
+  SPAM
+}
+
+model ContactForm {
+  id                     String   @id @default("singleton")
+  title                  String   @default("İletişim")
+  description            String?
+  submitLabel            String   @default("Gönder")
+  successMessage         String   @default("Mesajınız alındı. En kısa sürede dönüş yapacağız.")
+  isEnabled              Boolean  @default(true)
+  /// Bildirimin gideceği adres. null ise bildirim GÖNDERİLMEZ (submission yine kaydedilir).
+  notifyEmail            String?
+  /// null ise purpose=CONTACT_FORM_NOTIFICATION olan aktif şablona düşülür (§10.16.3).
+  notificationTemplateId String?
+  // --- KVKK (compliance-agent alanı; alanlar mimar tarafından açılır, DEĞERLERİ ona aittir) ---
+  consentRequired        Boolean  @default(true)
+  consentText            String   @default("")
+  /// Onay metnindeki "Aydınlatma Metni" bağlantısının hedefi — `Page.isLegalDocument`
+  /// olan bir sayfa. Sayfa silinirse SetNull.
+  consentLegalPageId     String?
+  /// Gönderimlerin saklama süresi (gün). 0 = süresiz (compliance-agent onayı gerekir).
+  retentionDays          Int      @default(180)
+  updatedById            String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  notificationTemplate EmailTemplate?      @relation("ContactFormNotificationTemplate", fields: [notificationTemplateId], references: [id], onDelete: SetNull)
+  consentLegalPage     Page?               @relation("ContactFormConsentPage", fields: [consentLegalPageId], references: [id], onDelete: SetNull)
+  updatedBy            User?               @relation("ContactFormUpdater", fields: [updatedById], references: [id], onDelete: SetNull)
+  fields               ContactFormField[]
+  submissions          ContactSubmission[]
+
+  @@map("contact_forms")
+}
+
+model ContactFormField {
+  id          String           @id @default(uuid())
+  seq         Int              @unique @default(autoincrement())
+  formId      String
+  order       Int
+  /// ^[a-z][a-z0-9_]{0,39}$ — e-posta şablonunda {{key}} olarak görünür (§10.16.5).
+  key         String
+  label       String
+  type        ContactFieldType
+  required    Boolean          @default(false)
+  placeholder String?
+  helpText    String?
+  /// SELECT için { value, label }[]; diğer tiplerde [].
+  options     Json             @default("[]")
+  maxLength   Int?
+  /// name/email/message — SİLİNEMEZ ve `key`/`type`'ı DEĞİŞTİRİLEMEZ (label/sıra serbest).
+  isSystem    Boolean          @default(false)
+  createdAt   DateTime         @default(now())
+
+  form ContactForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+
+  @@unique([formId, key])
+  @@index([formId, order])
+  @@map("contact_form_fields")
+}
+
+model ContactSubmission {
+  id                  String                  @id @default(uuid())
+  /// Cursor sayfalama için stabil sıra (projedeki tüm listelerle aynı desen).
+  seq                 Int                     @unique @default(autoincrement())
+  formId              String
+  /// Liste/arama ve bildirim için denormalize — `data` içinde de bulunur.
+  name                String
+  email               String
+  /// TÜM alanların key→value anlık görüntüsü. Alan sonradan silinse bile veri korunur.
+  data                Json
+  status              ContactSubmissionStatus @default(NEW)
+  // --- KVKK ---
+  consentAt           DateTime?
+  /// Gönderim ANINDA gösterilen onay metninin birebir kopyası (ispat yükümlülüğü).
+  consentTextSnapshot String?
+  // --- PII (30 gün sonra redakte edilir, bkz. §10.16.10) ---
+  ipAddress           String?
+  userAgent           String?
+  piiRedactedAt       DateTime?
+  // --- Bildirim ---
+  notifiedAt          DateTime?
+  /// SMTP hatasının kısa mesajı — gönderim BAŞARISIZ olsa da submission kaydı durur.
+  notificationError   String?
+  readAt              DateTime?
+  readById            String?
+  createdAt           DateTime                @default(now())
+
+  form   ContactForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+  readBy User?       @relation("ContactSubmissionReader", fields: [readById], references: [id], onDelete: SetNull)
+
+  @@index([formId, status, seq])
+  @@index([createdAt])
+  @@map("contact_submissions")
 }
 
 // §10.4 Güvenlik & 2FA (TOTP) — tek kullanımlık yedek kurtarma kodları.
@@ -1465,8 +1621,8 @@ model OrderItem {
 // SiteRole ekseninde yönetilir; bilinçli olarak organizationId/site FK'sı YOK.
 model ApiKey {
   id          String       @id @default(uuid())
-  seq         Int          @unique @default(autoincrement())   // cursor sayfalama
-  name        String                                            // ör. "Mobil Uygulama"
+  seq         Int          @unique @default(autoincrement()) // cursor sayfalama
+  name        String // ör. "Mobil Uygulama"
   description String?
   // Anahtarın GİZLİ OLMAYAN tanıtıcı parçası: `cmsk_<12hex>` (bkz. §10.13.3).
   // Doğrulamada indeks araması bunun üzerinden yapılır — tüm anahtarları taramak YOK.
@@ -1482,7 +1638,7 @@ model ApiKey {
   // MASKELENMİŞ istemci IP'si (lib/pii-mask.ts::maskIp) — sızmış anahtarı tespit
   // etmek için. HAM IP SAKLANMAZ (compliance-agent kararı, §10.13.10).
   lastUsedIp  String?
-  expiresAt   DateTime?    // null = süresiz
+  expiresAt   DateTime? // null = süresiz
   revokedAt   DateTime?
   revokedById String?
   createdById String?
@@ -1499,32 +1655,32 @@ model ApiKey {
 
 // §10.13 Üçüncü Parti Entegrasyon: Giden Webhook'lar — bkz. ARCHITECTURE.md §10.13.2/§10.13.8.
 model OutboundWebhook {
-  id              String                @id @default(uuid())
-  seq             Int                   @unique @default(autoincrement())
-  name            String
-  description     String?
+  id                      String                @id @default(uuid())
+  seq                     Int                   @unique @default(autoincrement())
+  name                    String
+  description             String?
   // SSRF doğrulamasından geçmiş mutlak https URL (§10.13.7). Şema seviyesinde
   // `String`'dir; kısıt uygulama katmanındadır (lib/ssrf-guard.ts) — DB'de ifade
   // edilemeyecek (DNS çözümlemesi gerektiren) bir kısıttır.
-  url             String
+  url                     String
   // AES-256-GCM ile ŞİFRELİ (lib/crypto.ts::encryptSecret) — HASH DEĞİL.
   // Gerekçe §10.13.9'da: HMAC imzası için secret'ın GERİ ÇÖZÜLEBİLİR olması
   // matematiksel bir zorunluluktur; hash'lenirse imza üretilemez.
-  secretEncrypted String
-  secretLast4     String
+  secretEncrypted         String
+  secretLast4             String
   // Postgres enum dizisi. Boş dizi YASAKTIR (en az 1 olay), uygulama katmanı zorlar.
-  events          WebhookEvent[]
-  status          OutboundWebhookStatus @default(ACTIVE)
+  events                  WebhookEvent[]
+  status                  OutboundWebhookStatus @default(ACTIVE)
   // Art arda başarısız gönderim sayacı; ilk başarılı gönderimde 0'a döner.
   // WEBHOOK_AUTO_DISABLE_THRESHOLD'a ulaşınca status = DISABLED (§10.13.8).
-  consecutiveFailureCount Int           @default(0)
-  autoDisabledAt  DateTime?
-  lastTriggeredAt DateTime?
-  lastSuccessAt   DateTime?
-  lastFailureAt   DateTime?
-  createdById     String?
-  createdAt       DateTime              @default(now())
-  updatedAt       DateTime              @updatedAt
+  consecutiveFailureCount Int                   @default(0)
+  autoDisabledAt          DateTime?
+  lastTriggeredAt         DateTime?
+  lastSuccessAt           DateTime?
+  lastFailureAt           DateTime?
+  createdById             String?
+  createdAt               DateTime              @default(now())
+  updatedAt               DateTime              @updatedAt
 
   createdBy  User?             @relation("OutboundWebhookCreator", fields: [createdById], references: [id], onDelete: SetNull)
   deliveries WebhookDelivery[]
@@ -1542,37 +1698,37 @@ model OutboundWebhook {
 // - Ayrı bir `WebhookDeliveryAttempt` tablosu YOK: bir gönderimin denemeleri
 //   attemptCount/lastAttemptAt/responseStatus ile özetlenir (ExportJob ile AYNI gerekçe).
 model WebhookDelivery {
-  id         String                @id @default(uuid())
-  seq        Int                   @unique @default(autoincrement())   // cursor sayfalama
-  webhookId  String
-  event      WebhookEvent
+  id                  String                @id @default(uuid())
+  seq                 Int                   @unique @default(autoincrement()) // cursor sayfalama
+  webhookId           String
+  event               WebhookEvent
   // Gönderilen JSON gövdenin TAMAMI (zarf dahil, §10.13.9) — yeniden denemede
   // BİREBİR AYNI baytlar gönderilir; olay anındaki durum yeniden hesaplanmaz.
-  payload    Json
+  payload             Json
   // Alıcının idempotency anahtarı olarak kullandığı değer `id`'dir; ayrı bir
   // `eventId` kolonu AÇILMADI (ikinci bir kimlik kavramı gereksiz).
-  status     WebhookDeliveryStatus @default(PENDING)
-  attemptCount Int                 @default(0)
-  maxAttempts  Int                 @default(5)
-  nextAttemptAt DateTime?          // dolu ve status IN (PENDING, RETRYING) ise sweeper alır
-  responseStatus     Int?
+  status              WebhookDeliveryStatus @default(PENDING)
+  attemptCount        Int                   @default(0)
+  maxAttempts         Int                   @default(5)
+  nextAttemptAt       DateTime? // dolu ve status IN (PENDING, RETRYING) ise sweeper alır
+  responseStatus      Int?
   // Alıcı yanıtının İLK 512 karakteri (uygulama katmanında kesilir). Tam gövde
   // ASLA saklanmaz — alıcı hata sayfasında kendi iç bilgisini sızdırabilir.
   responseBodySnippet String?
   // Makine-okunur hata sınıfı: "timeout" | "dns_failure" | "connection_refused" |
   // "tls_error" | "redirect_not_followed" | "ssrf_blocked" | "http_error" | "unknown"
-  errorCode  String?
-  errorMessage String?
-  durationMs Int?
+  errorCode           String?
+  errorMessage        String?
+  durationMs          Int?
   // Payload kişisel veri içeriyor mu (ORDER_* olayları: müşteri e-postası/adı).
   // `ExportJob.containsPii` ile AYNI amaç ve AYNI saklama mantığı (§10.13.10).
-  containsPii Boolean              @default(false)
+  containsPii         Boolean               @default(false)
   // Elle yeniden gönderimde (redeliver) kaynak kaydın id'si — denetim izi.
-  redeliveryOfId String?
-  firstAttemptAt DateTime?
-  lastAttemptAt  DateTime?
-  deliveredAt    DateTime?
-  createdAt      DateTime          @default(now())
+  redeliveryOfId      String?
+  firstAttemptAt      DateTime?
+  lastAttemptAt       DateTime?
+  deliveredAt         DateTime?
+  createdAt           DateTime              @default(now())
 
   webhook OutboundWebhook @relation(fields: [webhookId], references: [id], onDelete: Cascade)
 
