@@ -219,40 +219,71 @@ export function buildApp() {
   // olduktan hemen sonra, dinlemeye başlamadan ÖNCE çalışsın (bkz. ARCHITECTURE.md §10.8.1 —
   // bu hook OLMADAN işler sonsuza dek `PROCESSING`'de asılı kalır ve UI sonsuz poll eder).
   app.addHook("onReady", async () => {
-    await recoverStuckImportJobs(app);
+    // devops-agent bulgusu (2026-08-17, docker-compose lokal deploy) — bu 5 grup BİRBİRİNDEN
+    // TAMAMEN BAĞIMSIZ alt sistemlerdir (import/export/scheduled-publish/cart/webhook); hiçbiri
+    // diğerinin çalışması için ön koşul DEĞİLDİR. Önceden hiçbir try/catch olmadan art arda
+    // `await` edildiklerinden, HERHANGİ birindeki geçici bir hata (örn. migration henüz
+    // uygulanmadan container ayağa kalkarsa bir tablo eksik olabilir) `onReady` hook'unu reddedip
+    // `server.ts`'teki `app.listen()`'i düşürüyor ve process.exit(1) ile TÜM backend'i (ilgisiz
+    // 7 alt sistem + tüm route'lar dahil) öldürüyordu. Her grup kendi try/catch'i içinde
+    // izole edilir: bir gruptaki hata SADECE o grubu (o oturum için) devre dışı bırakır
+    // (graceful degradation — sessiz DEĞİL, `app.log.error` ile mutlaka loglanır, bkz. proje
+    // CLAUDE.md § Kurallar madde 6/observability-agent), sunucunun geri kalanının açılmasını
+    // ASLA engellemez.
+    try {
+      await recoverStuckImportJobs(app);
 
-    // §10.8.8.1 compliance-agent kararı (2026-08-05, BLOCKER) — 30 günlük PII redaksiyonu +
-    // 90 günlük ImportJob saklama süresi GERÇEK ZAMAN-TETİKLEMELİ uygulanır (bir sonraki
-    // yüklemeye bağlı tembel tetikleme KABUL EDİLEMEZ, bkz. import.retention.ts). `app.prisma`
-    // yalnızca burada (onReady, tüm plugin ağacı yüklendikten SONRA) güvenle kullanılabilir —
-    // `recoverStuckImportJobs` ile AYNI gerekçe. `onClose` ile kendi interval'ını temizler.
-    registerImportRetentionScheduler(app);
+      // §10.8.8.1 compliance-agent kararı (2026-08-05, BLOCKER) — 30 günlük PII redaksiyonu +
+      // 90 günlük ImportJob saklama süresi GERÇEK ZAMAN-TETİKLEMELİ uygulanır (bir sonraki
+      // yüklemeye bağlı tembel tetikleme KABUL EDİLEMEZ, bkz. import.retention.ts). `app.prisma`
+      // yalnızca burada (onReady, tüm plugin ağacı yüklendikten SONRA) güvenle kullanılabilir —
+      // `recoverStuckImportJobs` ile AYNI gerekçe. `onClose` ile kendi interval'ını temizler.
+      registerImportRetentionScheduler(app);
+    } catch (err) {
+      app.log.error({ err }, "İçe aktarma (import) kurtarma/scheduler kurulumu başarısız oldu — bu oturumda içe aktarma alt sistemi eksik kalabilir.");
+    }
 
-    // §10.8.10 Analitik Rapor Dışa Aktarma (Export) — `recoverStuckImportJobs` ile AYNI
-    // gerekçeyle `onReady`'de: `PROCESSING`'de kalmış işleri `FAILED`e çevirir VE `PENDING`
-    // işleri (in-process kuyruk restart'ta kaybolduğu için) yeniden kuyruğa alır.
-    await recoverStuckExportJobs(app);
-    registerExportRetentionScheduler(app);
+    try {
+      // §10.8.10 Analitik Rapor Dışa Aktarma (Export) — `recoverStuckImportJobs` ile AYNI
+      // gerekçeyle `onReady`'de: `PROCESSING`'de kalmış işleri `FAILED`e çevirir VE `PENDING`
+      // işleri (in-process kuyruk restart'ta kaybolduğu için) yeniden kuyruğa alır.
+      await recoverStuckExportJobs(app);
+      registerExportRetentionScheduler(app);
+    } catch (err) {
+      app.log.error({ err }, "Dışa aktarma (export) kurtarma/scheduler kurulumu başarısız oldu — bu oturumda dışa aktarma alt sistemi eksik kalabilir.");
+    }
 
-    // İçerik editörü Faz 4 (zamanlanmış yayın) — `registerImportRetentionScheduler`/
-    // `registerExportRetentionScheduler` ile AYNI gerekçeyle `onReady`'de: `app.prisma`
-    // yalnızca burada (tüm plugin ağacı yüklendikten SONRA) güvenle kullanılabilir. Açılışta
-    // hemen bir kez çalışır ki uzun süre kapalı kalmış bir sunucuda bekleyen zamanlamalar
-    // dakikalık turu beklemeden anında yayınlansın (bkz. lib/scheduled-publish.ts).
-    registerScheduledPublishSweeper(app);
+    try {
+      // İçerik editörü Faz 4 (zamanlanmış yayın) — `registerImportRetentionScheduler`/
+      // `registerExportRetentionScheduler` ile AYNI gerekçeyle `onReady`'de: `app.prisma`
+      // yalnızca burada (tüm plugin ağacı yüklendikten SONRA) güvenle kullanılabilir. Açılışta
+      // hemen bir kez çalışır ki uzun süre kapalı kalmış bir sunucuda bekleyen zamanlamalar
+      // dakikalık turu beklemeden anında yayınlansın (bkz. lib/scheduled-publish.ts).
+      registerScheduledPublishSweeper(app);
+    } catch (err) {
+      app.log.error({ err }, "Zamanlanmış yayın (scheduled-publish) sweeper kurulumu başarısız oldu — bu oturumda bekleyen zamanlamalar süpürülmeyebilir.");
+    }
 
-    // §10.9.3 Sepet + Stripe Checkout — `registerImportRetentionScheduler`/
-    // `registerScheduledPublishSweeper` ile AYNI gerekçeyle `onReady`'de: süresi geçmiş
-    // sepetleri sessizce temizler (bkz. lib/cart-retention.ts).
-    registerCartRetentionSweeper(app);
+    try {
+      // §10.9.3 Sepet + Stripe Checkout — `registerImportRetentionScheduler`/
+      // `registerScheduledPublishSweeper` ile AYNI gerekçeyle `onReady`'de: süresi geçmiş
+      // sepetleri sessizce temizler (bkz. lib/cart-retention.ts).
+      registerCartRetentionSweeper(app);
+    } catch (err) {
+      app.log.error({ err }, "Sepet (cart) saklama süresi sweeper kurulumu başarısız oldu — bu oturumda süresi geçmiş sepetler temizlenmeyebilir.");
+    }
 
-    // §10.13.8 Giden Webhook'lar — `recoverStuckImportJobs` İLE AYNI gerekçe: `SENDING`'de
-    // kalmış teslimatlar sunucu her açılışında `RETRYING`'e çevrilir (çökme/restart kurtarması,
-    // §10.8.1 deseni). `app.prisma` yalnızca burada (onReady, tüm plugin ağacı yüklendikten
-    // SONRA) güvenle kullanılabilir.
-    await recoverStuckWebhookDeliveries(app);
-    registerWebhookDispatcher(app);
-    registerWebhookDeliveryRetentionScheduler(app);
+    try {
+      // §10.13.8 Giden Webhook'lar — `recoverStuckImportJobs` İLE AYNI gerekçe: `SENDING`'de
+      // kalmış teslimatlar sunucu her açılışında `RETRYING`'e çevrilir (çökme/restart kurtarması,
+      // §10.8.1 deseni). `app.prisma` yalnızca burada (onReady, tüm plugin ağacı yüklendikten
+      // SONRA) güvenle kullanılabilir.
+      await recoverStuckWebhookDeliveries(app);
+      registerWebhookDispatcher(app);
+      registerWebhookDeliveryRetentionScheduler(app);
+    } catch (err) {
+      app.log.error({ err }, "Giden webhook kurtarma/dispatcher/scheduler kurulumu başarısız oldu — bu oturumda webhook alt sistemi eksik kalabilir.");
+    }
   });
 
   return app;

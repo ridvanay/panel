@@ -14,6 +14,13 @@ env değişkeni veya altyapı ile ilgili bir değişiklik yaptığında burası 
 `backend`'deki `/admin/health` ayrı bir uçtur (auth gerektirir, depolama kotası bilgisi döner) —
 orkestrasyon/container health check için **kullanılmaz**, sadece admin panel içindir.
 
+**ÖNEMLİ — otomatik migration YOK**: backend container'ı başlarken şemayı kendiliğinden
+migrate etmez (`Dockerfile` CMD sadece `node dist/server.js`). Yeni migration içeren bir
+değişiklikten sonra `docker compose up` yapılıyorsa, backend'i başlatmadan/health'e
+geçmeden önce migration'ların manuel uygulanması gerekir — bkz. aşağıdaki "Tam `docker
+compose up` doğrulaması" bölümündeki adım adım komut ve kalıcı çözüm önerisi (ayrı bir
+`migrate` compose servisi).
+
 ## Dosyalar
 
 - `backend/Dockerfile`, `backend/.dockerignore` — multi-stage (deps → build → prod-deps →
@@ -307,3 +314,72 @@ kapsamı):
   gerçekten geçtiği doğrulandı — CI'daki adımların pratikte başarılı olacağına dair yüksek
   güven var, ama **ilk gerçek push/PR sonrası Actions sekmesinin kontrol edilmesi gerekir**
   (bkz. yukarıdaki "İlk push/PR sonrası kontrol edilecekler").
+
+## Tam `docker compose up` doğrulaması (2026-08-17 — gerçekten çalıştırıldı)
+
+Bu oturumda kök `docker-compose.yml` ile üç servis (db + backend + frontend) birlikte, gerçek
+portlarda (3000/4000/5432) lokalde ayağa kaldırıldı ve **healthy** durumuna geçtiği doğrulandı
+(bir önceki "Lokal doğrulama" bölümünde bu adım "ÇALIŞTIRILMADI" olarak not düşülmüştü — artık
+tamamlandı). Süreçte üç ayrı sorunla karşılaşıldı, hepsi çözüldü:
+
+1. **Backend'de otomatik migration YOK.** `backend/Dockerfile`'ın `CMD`'si doğrudan
+   `node dist/server.js` çalıştırıyor, `prisma migrate deploy` gibi bir startup adımı yok
+   (`backend/src/server.ts` içinde de böyle bir çağrı yok — kontrol edildi). Daha kötüsü:
+   startup'taki `recoverStuckImportJobs` recovery hook'u (`app.js:248` → içe aktarma
+   modülü, bkz. yukarıdaki "İçe aktarma dosya deposu" bölümü) şema henüz migrate
+   edilmemişse (`relation "import_jobs" does not exist`) **yakalanmamış bir Prisma hatası
+   fırlatıp tüm process'i çökertiyor** — container `restart: unless-stopped` sayesinde
+   sürekli yeniden başlayıp aynı hatayla tekrar çöküyor (crash-loop), `depends_on:
+   condition: service_healthy` zinciri yüzünden frontend de hiç başlamıyor. **Bu bir
+   uygulama kodu sağlamlık sorunu (backend-agent'ın kapsamı) — devops-agent burada
+   sadece tespit etti/geçici olarak migration'ı manuel uyguladı, `recoverStuckImportJobs`'un
+   şema eksikken sessizce/loglayarak devam etmesi (crash yerine) backend-agent'a
+   yönlendirilmeli.**
+   - **Geçici/manuel çözüm (bu oturumda uygulandı)**: host'tan, `backend/node_modules`
+     içindeki Prisma CLI ile (runtime image'ında CLI yok, bkz. Dockerfile notu — bu yüzden
+     `docker compose exec backend npx prisma ...` ÇALIŞMAZ, `prisma` paketi runtime'dan
+     silinmiş durumda):
+     ```
+     cd backend
+     DATABASE_URL="postgresql://postgres:postgres@localhost:5432/saas_dev?schema=public" npx prisma migrate deploy
+     ```
+     (compose'un `db` servisi `5432:5432` ile host'a expose edildiği için host'tan doğrudan
+     erişilebiliyor). Migration sonrası crash-loop'taki backend container'ı bir sonraki
+     otomatik restart denemesinde kendi kendine `healthy` oldu (ekstra bir `docker compose
+     restart` gerekmedi).
+   - **Kalıcı öneri**: `docker-compose.yml`'e migration'ları backend başlamadan önce
+     çalıştıran ayrı bir `migrate` servisi (`depends_on: db: condition: service_healthy`,
+     backend'in kendisi bu servise `depends_on: condition: service_completed_successfully`
+     ile bağlanır) eklemek — bu, CD pipeline'ındaki (`deploy.yml`) "migrate → deploy"
+     sırasını lokal compose'da da tutarlı hale getirir. Henüz eklenmedi (bu oturumun
+     kapsamı acil olarak lokal ortamı ayağa kaldırmaktı), ileride devops-agent tarafından
+     eklenebilir.
+2. **Port 5432 çakışması**: `backend/docker-compose.yml` (db-only, sadece backend
+   geliştirmesi için) ile başlatılmış eski bir `backend-db-1` container'ı (2 hafta önce
+   oluşturulmuş, `saas_test` DB'si için kullanılıyordu, dev server'lar bu oturumda
+   durdurulmadan önce hâlâ host port 5432'yi tutuyordu) kök `docker-compose.yml`'in kendi
+   `db` servisiyle çakıştı (`port is already allocated`). **Çözüm**: `docker stop
+   backend-db-1` ile durduruldu (**silinmedi**, volume'u da dokunulmadı) — iki compose
+   dosyası aynı anda, aynı host portunda çalışamaz, hangisi kullanılacaksa diğeri
+   durdurulmalı. `backend-db-1` container'ı hâlâ diskte duruyor, istenirse
+   `docker start backend-db-1` ile (kök compose stack'i durdurulduktan sonra, port
+   çakışmaması için) geri getirilebilir.
+3. **Docker Desktop network glitch (Windows)**: (2) numaralı port çakışması yüzünden
+   başarısız olan ilk `docker compose up --build -d` denemesi, `db`/`backend`
+   container'larını "Created" durumunda bıraktı; port serbest bırakılıp `docker compose up
+   -d` tekrar çalıştırıldığında container'lar "healthy" raporlandı ama gerçekte network
+   endpoint'leri hiç programlanmamıştı (`docker inspect ... NetworkSettings.Networks` boş
+   `{}` dönüyordu, container'lar arası DNS çözümü tamamen başarısız oluyordu — backend
+   `Can't reach database server at db:5432` hatasıyla sürekli çöküyordu, `db` container'ı
+   kendi içinde `pg_isready` ile sağlıklı görünmesine rağmen). **Çözüm**: `docker compose
+   down` (volume'lara DOKUNULMADI, sadece container+network silindi) ardından `docker
+   compose up -d` ile temiz bir network'ten yeniden oluşturuldu — bu sefer IP adresleri
+   doğru atandı. Kök neden muhtemelen başarısız olan ilk `up` denemesinin yarım kalmış
+   network state'i bırakması (Docker Desktop/Windows'a özgü bir sınır durumu) — tekrar
+   görülürse aynı `docker compose down && docker compose up -d` çözümü uygulanmalı.
+
+**Sonuç**: `saas_pgdata`/`saas_uploads` volume'ları **silinmedi/resetlenmedi** (kullanıcı
+kısıtlaması korundu) — kök `docker-compose.yml` kendi `claudecodeproje_saas_pgdata` adlı
+YENİ bir volume kullandığı için (proje adı dizin adından türetiliyor, `backend_saas_pgdata`
+ile karışmıyor), zaten sıfırdan boş bir DB'ydi, migration'lar buna baştan uygulandı — hiçbir
+mevcut veri riske atılmadı.
