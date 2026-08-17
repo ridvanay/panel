@@ -113,10 +113,15 @@ describe("webhooks/stripe — sepet siparişi (order) akışı (§10.9.3, KRİT�
 
     // prisma/seed.ts'in kurduğu ORDER_CONFIRMATION şablonunun bir kopyası — global test setup'ı
     // seed script'ini çalıştırmıyor (bkz. tests/integration/auth-forgot-password-success.test.ts notu).
+    // §10.16.3 BREAKING — `sendTemplateEmail` artık `purpose` + `isActive=true` ile çözümlenir.
     await app.prisma.emailTemplate.create({
       data: {
         key: "ORDER_CONFIRMATION",
         name: "Sipariş Onay E-postası",
+        purpose: "ORDER_CONFIRMATION",
+        editorMode: "RAW",
+        isSystem: true,
+        isActive: true,
         subject: "Siparişiniz alındı — {{order_number}}",
         bodyHtml: "<p>{{customer_name}}, {{order_number}} numaralı siparişiniz alındı. Toplam: {{total_formatted}}. {{items_summary}}</p>",
         availableVariables: ["order_number", "customer_name", "items_summary", "total_formatted"],

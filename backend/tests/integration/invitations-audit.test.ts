@@ -39,10 +39,15 @@ describe("invitation audit log — invitation.create ve invitation.accept", () =
 
     // Global test setup ORG_INVITATION şablonunu seed etmiyor (bkz. invitations-email-success.test.ts
     // ile aynı gerekçe) — elle ekliyoruz, aksi halde sendTemplateEmail şablon bulunamadı hatası atar.
+    // §10.16.3 BREAKING — `sendTemplateEmail` artık `purpose` + `isActive=true` ile çözümlenir.
     await app.prisma.emailTemplate.create({
       data: {
         key: "ORG_INVITATION",
         name: "Organizasyon Daveti",
+        purpose: "ORG_INVITATION",
+        editorMode: "RAW",
+        isSystem: true,
+        isActive: true,
         subject: "{{inviter_name}} seni {{organization_name}} organizasyonuna davet etti",
         bodyHtml:
           '<p>{{inviter_name}}, seni {{organization_name}} organizasyonuna davet etti.</p><p><a href="{{accept_url}}">Daveti Kabul Et</a></p>',

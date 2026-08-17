@@ -604,19 +604,242 @@ export const ContentRevisionSchema = ContentRevisionSummarySchema.extend({
 });
 export type ContentRevisionDto = z.infer<typeof ContentRevisionSchema>;
 
-// ---------- §10.3 E-posta & Bildirim Şablonu Yöneticisi ----------
+// ---------- §10.3 / §10.16 E-posta & Bildirim Şablonu Yöneticisi + Blok Editörü ----------
+// bkz. ARCHITECTURE.md §10.16, openapi.yaml tag: EmailTemplates. §10.3'teki RAW/ham-HTML
+// şablon yöneticisi devralınır (`bodyHtml`, `editorMode=RAW`); bu bölüm `blocks`/`editorMode=BLOCKS`
+// ile GENİŞLETİR.
 
-export const EmailTemplateSchema = z.object({
+export const EmailTemplatePurposeSchema = z.enum([
+  "WELCOME",
+  "PASSWORD_RESET",
+  "SYSTEM_ANNOUNCEMENT",
+  "ORDER_CONFIRMATION",
+  "ORG_INVITATION",
+  "CONTACT_FORM_NOTIFICATION",
+  "CUSTOM",
+]);
+export type EmailTemplatePurpose = z.infer<typeof EmailTemplatePurposeSchema>;
+
+export const EmailTemplateEditorModeSchema = z.enum(["RAW", "BLOCKS"]);
+export type EmailTemplateEditorMode = z.infer<typeof EmailTemplateEditorModeSchema>;
+
+export const EMAIL_HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
+export const EMAIL_CUSTOM_VARIABLE_KEY_PATTERN = /^[a-z][a-z0-9_]{0,39}$/;
+
+export const EmailBlockTypeSchema = z.enum(["logo-header", "heading", "text", "button", "image", "divider", "footer"]);
+
+/**
+ * YANIT (response) şeması — TÜM alanlar ZORUNLUDUR (bkz. shared-types.ts::EmailBlockStyle, TÜM
+ * alanlar non-optional). Yazma (request) tarafında `modules/email-templates/email-templates.schemas.ts`
+ * AYRI, `.default(...)` uygulayan daha esnek bir sürüm tanımlar — `buildEmailBlockSchema` bu iki
+ * sürümü de aynı `data` şekillerinden üretir (kod tekrarını önler).
+ */
+export const EmailBlockStyleSchema = z.object({
+  align: z.enum(["left", "center", "right"]),
+  backgroundColor: z.string().regex(EMAIL_HEX_COLOR_PATTERN).nullable(),
+  textColor: z.string().regex(EMAIL_HEX_COLOR_PATTERN).nullable(),
+  paddingY: z.enum(["none", "sm", "md", "lg"]),
+  paddingX: z.enum(["none", "sm", "md", "lg"]),
+});
+export type EmailBlockStyleDto = z.infer<typeof EmailBlockStyleSchema>;
+
+const EMAIL_BUTTON_HREF_VARIABLE_ONLY_PATTERN = /^\{\{[a-zA-Z0-9_]+\}\}$/;
+
+/** `button.href` — http(s)/mailto olmalı YA DA TAMAMEN tek bir değişken olmalıdır (§10.16.4). */
+export function isValidEmailButtonHref(href: string): boolean {
+  if (EMAIL_BUTTON_HREF_VARIABLE_ONLY_PATTERN.test(href)) return true;
+  return /^https?:\/\//i.test(href) || /^mailto:/i.test(href);
+}
+
+const EmailLogoHeaderDataSchema = z.object({
+  useSiteLogo: z.boolean(),
+  logoUrl: z.string().nullable(),
+  height: z.number().int().min(16).max(120),
+});
+const EmailHeadingDataSchema = z.object({
+  text: z.string().min(1).max(200),
+  level: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+});
+const EmailTextDataSchema = z.object({ html: z.string().max(20000) });
+const EmailButtonDataSchema = z
+  .object({
+    label: z.string().min(1).max(80),
+    href: z.string().min(1),
+    backgroundColor: z.string().regex(EMAIL_HEX_COLOR_PATTERN).nullable(),
+    textColor: z.string().regex(EMAIL_HEX_COLOR_PATTERN).nullable(),
+    radius: z.enum(["none", "sm", "full"]),
+  })
+  .superRefine((data, ctx) => {
+    if (!isValidEmailButtonHref(data.href)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["href"],
+        message: "href http(s)/mailto ile başlamalı ya da tamamen tek bir değişken ({{key}}) olmalıdır.",
+      });
+    }
+  });
+const EmailImageDataSchema = z.object({
+  mediaId: z.string().nullable(),
+  url: z.string().min(1),
+  alt: z.string().min(1).max(200),
+  width: z.number().int().positive().nullable(),
+});
+const EmailDividerDataSchema = z.object({
+  thickness: z.union([z.literal(1), z.literal(2), z.literal(4)]),
+  color: z.string().regex(EMAIL_HEX_COLOR_PATTERN).nullable(),
+});
+const EmailFooterDataSchema = z.object({ text: z.string().max(1000) });
+
+/**
+ * `styleSchema` parametreli fabrika — YANIT (`EmailBlockSchema`, tüm style alanları zorunlu) ve
+ * İSTEK (`email-templates.schemas.ts::EmailBlockInputSchema`, style alanları `.default(...)`'lı)
+ * şemalarını AYNI 7 `data` şeklinden üretir; iki tarafın da elle senkronize edilmiş bir kopyası
+ * OLMAZ.
+ */
+export function buildEmailBlockSchema<StyleSchema extends z.ZodTypeAny>(styleSchema: StyleSchema) {
+  return z.discriminatedUnion("type", [
+    z.object({ id: z.string().min(1), type: z.literal("logo-header"), style: styleSchema, data: EmailLogoHeaderDataSchema }),
+    z.object({ id: z.string().min(1), type: z.literal("heading"), style: styleSchema, data: EmailHeadingDataSchema }),
+    z.object({ id: z.string().min(1), type: z.literal("text"), style: styleSchema, data: EmailTextDataSchema }),
+    z.object({ id: z.string().min(1), type: z.literal("button"), style: styleSchema, data: EmailButtonDataSchema }),
+    z.object({ id: z.string().min(1), type: z.literal("image"), style: styleSchema, data: EmailImageDataSchema }),
+    z.object({ id: z.string().min(1), type: z.literal("divider"), style: styleSchema, data: EmailDividerDataSchema }),
+    z.object({ id: z.string().min(1), type: z.literal("footer"), style: styleSchema, data: EmailFooterDataSchema }),
+  ]);
+}
+
+/** Şablon başına en fazla 50 blok (§10.16.4) — İÇ İÇE BLOK YOKTUR (§10.17'nin `columns`'uyla KARIŞTIRILMAMALI). */
+export const EMAIL_BLOCKS_MAX = 50;
+
+export const EmailBlockSchema = buildEmailBlockSchema(EmailBlockStyleSchema);
+export type EmailBlockDto = z.infer<typeof EmailBlockSchema>;
+
+export const EmailVariableSourceSchema = z.enum(["system", "custom", "contact-field"]);
+
+export const EmailVariableDefinitionSchema = z.object({
+  key: z.string().regex(EMAIL_CUSTOM_VARIABLE_KEY_PATTERN),
+  label: z.string(),
+  sampleValue: z.string(),
+  source: EmailVariableSourceSchema,
+});
+export type EmailVariableDefinitionDto = z.infer<typeof EmailVariableDefinitionSchema>;
+
+export const EmailCustomVariableSchema = z.object({
+  key: z.string().regex(EMAIL_CUSTOM_VARIABLE_KEY_PATTERN),
+  label: z.string().min(1).max(80),
+  sampleValue: z.string().max(200),
+});
+export type EmailCustomVariableDto = z.infer<typeof EmailCustomVariableSchema>;
+
+/** Liste (`GET /admin/notifications/templates`) yanıtı — `blocks`/`bodyHtml`/`variables` DÖNMEZ. */
+export const EmailTemplateSummarySchema = z.object({
   id: z.string().uuid(),
-  key: z.string(),
+  key: z.string().nullable(),
   name: z.string(),
+  purpose: EmailTemplatePurposeSchema,
+  editorMode: EmailTemplateEditorModeSchema,
+  isSystem: z.boolean(),
+  isActive: z.boolean(),
   subject: z.string(),
-  bodyHtml: z.string(),
-  availableVariables: z.array(z.string()),
   updatedAt: z.string(),
   createdAt: z.string(),
 });
+export type EmailTemplateSummaryDto = z.infer<typeof EmailTemplateSummarySchema>;
+
+export const EmailTemplateSchema = EmailTemplateSummarySchema.extend({
+  bodyHtml: z.string(),
+  blocks: z.array(EmailBlockSchema),
+  availableVariables: z.array(z.string()),
+  customVariables: z.array(EmailCustomVariableSchema),
+  variables: z.array(EmailVariableDefinitionSchema),
+});
 export type EmailTemplateDto = z.infer<typeof EmailTemplateSchema>;
+
+// ---------- §10.16.7 İletişim Formu — bkz. openapi.yaml tag: ContactForms ----------
+
+export const ContactFieldTypeSchema = z.enum(["TEXT", "EMAIL", "PHONE", "TEXTAREA", "SELECT", "CHECKBOX"]);
+export type ContactFieldType = z.infer<typeof ContactFieldTypeSchema>;
+
+export const ContactSubmissionStatusSchema = z.enum(["NEW", "READ", "ARCHIVED", "SPAM"]);
+export type ContactSubmissionStatus = z.infer<typeof ContactSubmissionStatusSchema>;
+
+export const ContactFormFieldOptionSchema = z.object({
+  value: z.string(),
+  label: z.string(),
+});
+
+export const ContactFormFieldSchema = z.object({
+  id: z.string().uuid(),
+  order: z.number().int(),
+  key: z.string().regex(EMAIL_CUSTOM_VARIABLE_KEY_PATTERN),
+  label: z.string().min(1).max(120),
+  type: ContactFieldTypeSchema,
+  required: z.boolean(),
+  placeholder: z.string().nullable(),
+  helpText: z.string().nullable(),
+  options: z.array(ContactFormFieldOptionSchema),
+  maxLength: z.number().int().nullable(),
+  isSystem: z.boolean(),
+});
+export type ContactFormFieldDto = z.infer<typeof ContactFormFieldSchema>;
+
+export const ContactFormSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  description: z.string().nullable(),
+  submitLabel: z.string(),
+  successMessage: z.string(),
+  isEnabled: z.boolean(),
+  notifyEmail: z.string().nullable(),
+  notificationTemplateId: z.string().nullable(),
+  consentRequired: z.boolean(),
+  consentText: z.string(),
+  consentLegalPageId: z.string().nullable(),
+  retentionDays: z.number().int(),
+  fields: z.array(ContactFormFieldSchema),
+  updatedAt: z.string(),
+});
+export type ContactFormDto = z.infer<typeof ContactFormSchema>;
+
+export const ContactSubmissionSummarySchema = z.object({
+  id: z.string().uuid(),
+  name: z.string(),
+  email: z.string(),
+  status: ContactSubmissionStatusSchema,
+  notifiedAt: z.string().nullable(),
+  notificationError: z.string().nullable(),
+  readAt: z.string().nullable(),
+  createdAt: z.string(),
+});
+export type ContactSubmissionSummaryDto = z.infer<typeof ContactSubmissionSummarySchema>;
+
+export const ContactSubmissionSchema = ContactSubmissionSummarySchema.extend({
+  data: z.record(z.string()),
+  consentAt: z.string().nullable(),
+  consentTextSnapshot: z.string().nullable(),
+  ipAddress: z.string().nullable(),
+  userAgent: z.string().nullable(),
+  piiRedactedAt: z.string().nullable(),
+});
+export type ContactSubmissionDto = z.infer<typeof ContactSubmissionSchema>;
+
+/** PUBLIC — `notifyEmail`/`notificationTemplateId`/`retentionDays` BİLİNÇLİ OLARAK YOK (§10.16.8). */
+export const PublicContactFormSchema = z.object({
+  title: z.string(),
+  description: z.string().nullable(),
+  submitLabel: z.string(),
+  consentRequired: z.boolean(),
+  consentText: z.string(),
+  consentLegalPage: z.object({ title: z.string(), slug: z.string() }).nullable(),
+  fields: z.array(ContactFormFieldSchema),
+});
+export type PublicContactFormDto = z.infer<typeof PublicContactFormSchema>;
+
+export const CreateContactSubmissionResponseSchema = z.object({
+  id: z.string().uuid(),
+  message: z.string(),
+});
+export type CreateContactSubmissionResponseDto = z.infer<typeof CreateContactSubmissionResponseSchema>;
 
 // ---------- §10.8 Toplu İçe Aktarma (Import) — openapi.yaml Import tag ile birebir ----------
 // NOT: `ImportDuplicateStrategy`/`ImportErrorSeverity` API sözleşmesinde lowerCamel string

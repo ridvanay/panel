@@ -30,10 +30,15 @@ describe("POST /admin/users — SMTP mock'lanmış (başarı senaryosu)", () => 
     app = await buildTestApp();
     await resetDatabase(app.prisma);
 
+    // §10.16.3 BREAKING — `sendTemplateEmail` artık `purpose` + `isActive=true` ile çözümlenir.
     await app.prisma.emailTemplate.create({
       data: {
         key: "PASSWORD_RESET",
         name: "Şifre Sıfırlama E-postası",
+        purpose: "PASSWORD_RESET",
+        editorMode: "RAW",
+        isSystem: true,
+        isActive: true,
         subject: "Şifre sıfırlama talebiniz",
         bodyHtml: '<p>Merhaba {{user_name}},</p><p><a href="{{reset_link}}">Şifremi Sıfırla</a></p>',
         availableVariables: ["user_name", "reset_link"],

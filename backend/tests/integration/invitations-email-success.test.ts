@@ -33,10 +33,16 @@ describe("POST /organizations/:orgId/invitations — SMTP mock'lanmış (başar�
 
     // prisma/seed.ts'in kurduğu ORG_INVITATION şablonunun bir kopyası — global test setup'ı
     // seed script'ini çalıştırmıyor (bkz. tests/setup/global-setup.ts), bu yüzden elle ekliyoruz.
+    // §10.16.3 BREAKING — `sendTemplateEmail` artık `purpose` + `isActive=true` ile çözümlenir
+    // (`key` DEĞİL). `isSystem`/`editorMode: RAW` seed'deki gerçek satırla birebir uyumludur.
     await app.prisma.emailTemplate.create({
       data: {
         key: "ORG_INVITATION",
         name: "Organizasyon Daveti",
+        purpose: "ORG_INVITATION",
+        editorMode: "RAW",
+        isSystem: true,
+        isActive: true,
         subject: "{{inviter_name}} seni {{organization_name}} organizasyonuna davet etti",
         bodyHtml:
           '<p>{{inviter_name}}, seni {{organization_name}} organizasyonuna davet etti.</p><p><a href="{{accept_url}}">Daveti Kabul Et</a></p>',

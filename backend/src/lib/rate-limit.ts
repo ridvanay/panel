@@ -48,3 +48,37 @@ export const WEBHOOK_TEST_RATE_LIMIT = { max: 5, timeWindow: "1 minute" };
 
 /** `POST .../deliveries/{id}/redeliver`. */
 export const WEBHOOK_REDELIVER_RATE_LIMIT = { max: 10, timeWindow: "1 minute" };
+
+// ---------------------------------------------------------------------------
+// §10.16 E-posta Şablonu Blok Editörü + İletişim Formu — değerler/isimler
+// ARCHITECTURE.md §10.16.6/§10.16.9 tablosuyla BAĞLAYICI olarak bire bir eşleşir.
+// ---------------------------------------------------------------------------
+
+/**
+ * `POST /contact/submissions` — PUBLIC, kimlik doğrulama YOK, IP tabanlı (route-level
+ * `config.rateLimit`, varsayılan keyGenerator). Honeypot (`website` alanı) ile BİRLİKTE
+ * kullanılır — ikisi de tek başına yeterli değildir (§10.16.9 savunma derinliği).
+ */
+export const CONTACT_SUBMIT_RATE_LIMIT = { max: 5, timeWindow: "1 minute" };
+
+/**
+ * `POST /admin/notifications/templates/{templateId}/test-send` — ADMIN arkasında bile gerçek
+ * bir SMTP gönderimi tetiklediği için (spam-relay/itibar riski, bkz. §10.16.6) diğer admin
+ * uçlarından daha sıkı bir tavan.
+ */
+export const EMAIL_TEST_SEND_RATE_LIMIT = { max: 3, timeWindow: "1 minute" };
+
+/**
+ * `POST /admin/notifications/templates/preview` — güvenlik denetimi bulgusu (security-agent):
+ * bu uç önceden hiçbir route-level `config.rateLimit`'e sahip değildi, yalnızca global
+ * `env.RATE_LIMIT_MAX` (varsayılan 300/dk, TÜM `/admin/*` trafiğiyle PAYLAŞILAN bir kova) ile
+ * korunuyordu. Uç DB'ye yazmasa da (durumsuz render) her çağrıda `siteSettings` + yayınlanmış
+ * `Page` (KVKK footer) sorgusu çalıştırır ve editör 500ms debounce ile bunu ÇOK sık tetikler
+ * (§10.16.6) — ADMIN oturumu ele geçirilmiş/kötü niyetli bir istemci bunu döngüye sokup DB'ye
+ * gereksiz yük bindirebilir ve aynı kovayı paylaşan diğer admin uçlarını (dashboard, liste
+ * sayfaları) da etkileyebilir (bir "gürültülü komşu" DoS'u). ADMIN arkasında olduğu için
+ * `test-send`/`CONTACT_SUBMIT` kadar sıkı tutulmaz — editördeki gerçek kullanım paternini
+ * (500ms debounce ≈ dakikada en fazla ~120 çağrı, insan tuş vuruşu hızıyla sınırlı) rahatça
+ * karşılayacak, ama otomatize bir döngüyü sınırlayacak bir tavan.
+ */
+export const EMAIL_TEMPLATE_PREVIEW_RATE_LIMIT = { max: 120, timeWindow: "1 minute" };

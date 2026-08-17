@@ -88,3 +88,67 @@ export function sanitizeRichHtml(html: string | null | undefined): string {
   if (!html) return "";
   return sanitizeHtml(html, SANITIZE_OPTIONS);
 }
+
+/**
+ * §10.16.4 E-posta Şablonu Blok Editörü — `sanitizeRichHtml`'DEN BİLEREK AYRI, DAHA DAR bir
+ * allow-list. Yalnızca e-posta bloğu (`type: "text"`) içindeki zengin metin için kullanılır
+ * (bkz. `lib/email-renderer.ts`).
+ *
+ * GEREKÇE (ARCHITECTURE.md §10.16.4 — §10.15.2 ile AYNI SINIF tuzak): yukarıdaki
+ * `SANITIZE_OPTIONS.allowedAttributes["*"]` yalnızca `["id","class"]`'a izin verir — `style`
+ * özniteliği ALLOW-LIST DIŞIDIR ve sessizce silinir. E-posta HTML'i ise satır-içi (`inline`)
+ * `style` OLMADAN çalışmaz (Gmail `<style>` bloğunu, Outlook `class` seçicilerini güvenilir
+ * şekilde desteklemez) — ama `style`'ı `sanitizeRichHtml`'de GEVŞETMEK tüm blog/sayfa içeriği
+ * için bir CSS enjeksiyon yüzeyi açardı. Bu yüzden İKİ AYRI, birbirinden bağımsız sabit yan yana
+ * durur: `SANITIZE_OPTIONS` (blog/sayfa, DEĞİŞTİRİLMEZ) ve `EMAIL_RICH_TEXT_SANITIZE_OPTIONS`
+ * (yalnızca e-posta `text` bloğu).
+ *
+ * Bu allow-list `style`/`class`/`id` DAHİL DEĞİLDİR — e-posta blok editöründe görsel her şey
+ * (hizalama/renk/boşluk) `lib/email-renderer.ts` tarafından, doğrulanmış stil token'larından
+ * (enum hizalama, `^#[0-9a-fA-F]{6}$` renk, `none|sm|md|lg` boşluk) üretilir; kullanıcı hiçbir
+ * koşulda ham CSS yazamaz. Bu yüzden `text` bloğunun zengin metni SADECE metin biçimlendirme
+ * (kalın/italik/liste/link) taşır, blok DÜZENİNİ etkileyemez.
+ */
+/**
+ * GÜVENLİK DÜZELTMESİ (security-agent denetimi) — reverse tabnabbing savunması. `a` için
+ * `target`/`rel` allow-list'te olsa da (editör TipTap `Link` uzantısı `target="_blank"` +
+ * `rel="noopener noreferrer nofollow"`'u VARSAYILAN olarak birlikte üretir), `sanitize-html`
+ * bu ikisi arasında bir BAĞ kurmaz — editör UI'sı bypass edilip API doğrudan çağrılırsa
+ * `target="_blank"` olan ama `rel` göndermeyen/eksik bırakan bir istek, `window.opener` erişimi
+ * bırakan bir bağlantı olarak DB'ye yazılabilirdi (gönderilen e-postada hedef sayfa, açan
+ * sekmeyi yönlendirebilir — phishing vektörü). Savunma derinliği: `target="_blank"` olan HER
+ * `a` etiketine `rel="noopener noreferrer"` zorunlu kılınır (kullanıcının gönderdiği `rel`
+ * değeri neyse üzerine yazılır — burada güven değil, GÜVENLİK öncelenir).
+ */
+function enforceNoopenerOnBlankTarget(tagName: string, attribs: sanitizeHtml.Attributes): sanitizeHtml.Tag {
+  const nextAttribs = { ...attribs };
+  if (nextAttribs.target === "_blank") {
+    nextAttribs.rel = "noopener noreferrer";
+  } else {
+    delete nextAttribs.rel;
+  }
+  return { tagName, attribs: nextAttribs };
+}
+
+const EMAIL_RICH_TEXT_SANITIZE_OPTIONS: sanitizeHtml.IOptions = {
+  allowedTags: ["p", "br", "strong", "em", "u", "s", "a", "ul", "ol", "li", "span"],
+  allowedAttributes: {
+    a: ["href", "target", "rel"],
+    "*": [],
+  },
+  allowedSchemes: ["http", "https", "mailto", "tel"],
+  disallowedTagsMode: "discard",
+  transformTags: {
+    a: enforceNoopenerOnBlankTarget,
+  },
+};
+
+/**
+ * E-posta blok editörünün `text` bloğu (`data.html`) için — `sanitizeRichHtml`'den AYRI, DAHA
+ * DAR bir allow-list kullanır (bkz. yukarıdaki gerekçe). `null`/boş girdi olduğu gibi (boş
+ * string) döner.
+ */
+export function sanitizeEmailRichText(html: string | null | undefined): string {
+  if (!html) return "";
+  return sanitizeHtml(html, EMAIL_RICH_TEXT_SANITIZE_OPTIONS);
+}

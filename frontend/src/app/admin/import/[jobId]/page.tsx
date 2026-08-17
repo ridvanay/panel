@@ -30,7 +30,7 @@ import { friendlyErrorMessage } from "@/lib/api/friendly-error";
  *
  * NOT (Next.js 16 breaking change — bkz. frontend/AGENTS.md): dinamik route `params`
  * artık bir `Promise`, `use()` ile açılır (mevcut `admin/blog/[postId]/page.tsx` ve
- * `admin/notifications/templates/[key]/page.tsx` ile AYNI pattern).
+ * `admin/notifications/templates/[templateId]/page.tsx` ile AYNI pattern).
  */
 export default function ImportJobDetailPage({ params }: { params: Promise<{ jobId: string }> }) {
   const { jobId } = use(params);

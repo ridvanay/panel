@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sanitizeRichHtml } from "../../src/lib/html-sanitize";
+import { sanitizeEmailRichText, sanitizeRichHtml } from "../../src/lib/html-sanitize";
 
 // Bu, önceden yalnızca içe aktarma modülüne özel olan `sanitizeImportedHtml`'in yerini alan
 // paylaşılan sanitizer'ı test eder — artık blog/sayfa yazma yolları da AYNI fonksiyonu kullanır
@@ -92,6 +92,56 @@ describe("sanitizeRichHtml", () => {
       );
       expect(result).toContain('colspan="1"');
       expect(result).toContain('rowspan="1"');
+    });
+  });
+});
+
+// §10.16.4 E-posta blok editörü — `text` bloğunun zengin metni. `sanitizeRichHtml`'den AYRI,
+// DAHA DAR bir allow-list (bkz. html-sanitize.ts başındaki gerekçe).
+describe("sanitizeEmailRichText", () => {
+  it("strips <script>/<style>/on* handlers just like sanitizeRichHtml", () => {
+    const result = sanitizeEmailRichText('<p onclick="alert(1)">Hi</p><script>alert(1)</script><style>body{}</style>');
+    expect(result).toContain("Hi");
+    expect(result).not.toContain("onclick");
+    expect(result).not.toContain("script");
+    expect(result).not.toContain("style");
+  });
+
+  it("never allows 'style'/'class'/'id' attributes — layout is the renderer's job, not the user's (§10.16.4)", () => {
+    const result = sanitizeEmailRichText('<p style="background:url(javascript:alert(1))" class="x" id="y">Hi</p>');
+    expect(result).not.toContain("style=");
+    expect(result).not.toContain("class=");
+    expect(result).not.toContain('id="y"');
+  });
+
+  it("rejects javascript:/data: URLs in <a href> (only http/https/mailto/tel allowed)", () => {
+    const result = sanitizeEmailRichText('<a href="javascript:alert(1)">click</a>');
+    expect(result).not.toContain("javascript:");
+  });
+
+  it("drops tags outside the narrow allow-list (e.g. <h1>, <img>, <table>)", () => {
+    const result = sanitizeEmailRichText('<h1>Heading</h1><img src="https://example.com/a.png"><table><tr><td>x</td></tr></table>');
+    expect(result).not.toContain("<h1>");
+    expect(result).not.toContain("<img");
+    expect(result).not.toContain("<table>");
+  });
+
+  // Güvenlik düzetmesi (security-agent denetimi) — reverse tabnabbing savunması.
+  describe("target=_blank / rel=noopener enforcement (reverse tabnabbing defense-in-depth)", () => {
+    it("forces rel='noopener noreferrer' on a target=_blank link even if the caller omitted rel", () => {
+      const result = sanitizeEmailRichText('<a href="https://example.com" target="_blank">click</a>');
+      expect(result).toContain('rel="noopener noreferrer"');
+    });
+
+    it("overrides an attacker-supplied rel value on a target=_blank link (never trusts caller-provided rel)", () => {
+      const result = sanitizeEmailRichText('<a href="https://example.com" target="_blank" rel="opener">click</a>');
+      expect(result).toContain('rel="noopener noreferrer"');
+      expect(result).not.toContain('rel="opener"');
+    });
+
+    it("does not add rel on a link without target=_blank", () => {
+      const result = sanitizeEmailRichText('<a href="https://example.com">click</a>');
+      expect(result).not.toContain("rel=");
     });
   });
 });

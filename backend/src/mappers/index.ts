@@ -40,6 +40,9 @@ import type {
   ApiKey,
   OutboundWebhook,
   WebhookDelivery,
+  ContactForm,
+  ContactFormField,
+  ContactSubmission,
 } from "@prisma/client";
 import type {
   UserDto,
@@ -61,6 +64,13 @@ import type {
   ContentRevisionSummaryDto,
   ContentRevisionDto,
   EmailTemplateDto,
+  EmailTemplateSummaryDto,
+  EmailVariableDefinitionDto,
+  ContactFormDto,
+  ContactFormFieldDto,
+  ContactSubmissionSummaryDto,
+  ContactSubmissionDto,
+  PublicContactFormDto,
   SessionDto,
   UserSummaryDto,
   ImportJobSummaryDto,
@@ -747,16 +757,116 @@ export function toOrderDto(order: OrderWithItems): OrderDto {
   };
 }
 
-export function toEmailTemplateDto(template: EmailTemplate): EmailTemplateDto {
+/** §10.16.6 — liste yanıtı (`GET /admin/notifications/templates`): `blocks`/`bodyHtml`/`variables` DÖNMEZ. */
+export function toEmailTemplateSummaryDto(template: EmailTemplate): EmailTemplateSummaryDto {
   return {
     id: template.id,
     key: template.key,
     name: template.name,
+    purpose: template.purpose,
+    editorMode: template.editorMode,
+    isSystem: template.isSystem,
+    isActive: template.isActive,
     subject: template.subject,
-    bodyHtml: template.bodyHtml,
-    availableVariables: (template.availableVariables as string[]) ?? [],
     updatedAt: template.updatedAt.toISOString(),
     createdAt: template.createdAt.toISOString(),
+  };
+}
+
+/**
+ * §10.16.6 — tam DTO (`GET/POST/PATCH .../{templateId}` vb.). `variables` DB'de TUTULMAZ —
+ * çağıran taraf `lib/email-variables.ts::resolveTemplateVariables` ile HESAPLAYIP buraya geçirir
+ * (bu fonksiyon DB'ye ERİŞMEZ, `toPageDto`/`localizations` paterniyle AYNI ilke).
+ */
+export function toEmailTemplateDto(template: EmailTemplate, variables: EmailVariableDefinitionDto[]): EmailTemplateDto {
+  return {
+    ...toEmailTemplateSummaryDto(template),
+    bodyHtml: template.bodyHtml,
+    blocks: (template.blocks as EmailTemplateDto["blocks"]) ?? [],
+    availableVariables: (template.availableVariables as string[]) ?? [],
+    customVariables: (template.customVariables as EmailTemplateDto["customVariables"]) ?? [],
+    variables,
+  };
+}
+
+// ---------- §10.16.7 İletişim Formu ----------
+
+export function toContactFormFieldDto(field: ContactFormField): ContactFormFieldDto {
+  return {
+    id: field.id,
+    order: field.order,
+    key: field.key,
+    label: field.label,
+    type: field.type,
+    required: field.required,
+    placeholder: field.placeholder,
+    helpText: field.helpText,
+    options: (field.options as ContactFormFieldDto["options"]) ?? [],
+    maxLength: field.maxLength,
+    isSystem: field.isSystem,
+  };
+}
+
+type ContactFormWithFields = ContactForm & { fields: ContactFormField[] };
+
+export function toContactFormDto(form: ContactFormWithFields): ContactFormDto {
+  return {
+    id: form.id,
+    title: form.title,
+    description: form.description,
+    submitLabel: form.submitLabel,
+    successMessage: form.successMessage,
+    isEnabled: form.isEnabled,
+    notifyEmail: form.notifyEmail,
+    notificationTemplateId: form.notificationTemplateId,
+    consentRequired: form.consentRequired,
+    consentText: form.consentText,
+    consentLegalPageId: form.consentLegalPageId,
+    retentionDays: form.retentionDays,
+    fields: form.fields.map(toContactFormFieldDto),
+    updatedAt: form.updatedAt.toISOString(),
+  };
+}
+
+/** PUBLIC — `notifyEmail`/`notificationTemplateId`/`retentionDays` BİLİNÇLİ OLARAK YOK (§10.16.8). */
+export function toPublicContactFormDto(
+  form: ContactFormWithFields,
+  consentLegalPage: { title: string; slug: string } | null
+): PublicContactFormDto {
+  return {
+    title: form.title,
+    description: form.description,
+    submitLabel: form.submitLabel,
+    consentRequired: form.consentRequired,
+    consentText: form.consentText,
+    consentLegalPage,
+    fields: form.fields.map(toContactFormFieldDto),
+  };
+}
+
+/** Liste yanıtı — `data`/`consentTextSnapshot`/`userAgent` DÖNMEZ (§10.16.8). */
+export function toContactSubmissionSummaryDto(submission: ContactSubmission): ContactSubmissionSummaryDto {
+  return {
+    id: submission.id,
+    name: submission.name,
+    email: submission.email,
+    status: submission.status,
+    notifiedAt: submission.notifiedAt ? submission.notifiedAt.toISOString() : null,
+    notificationError: submission.notificationError,
+    readAt: submission.readAt ? submission.readAt.toISOString() : null,
+    createdAt: submission.createdAt.toISOString(),
+  };
+}
+
+export function toContactSubmissionDto(submission: ContactSubmission): ContactSubmissionDto {
+  return {
+    ...toContactSubmissionSummaryDto(submission),
+    data: (submission.data as Record<string, string>) ?? {},
+    consentAt: submission.consentAt ? submission.consentAt.toISOString() : null,
+    consentTextSnapshot: submission.consentTextSnapshot,
+    ipAddress: submission.ipAddress,
+    userAgent: submission.userAgent,
+    piiRedactedAt: submission.piiRedactedAt ? submission.piiRedactedAt.toISOString() : null,
   };
 }
 

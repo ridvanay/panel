@@ -29,10 +29,15 @@ describe("POST /auth/forgot-password — SMTP yapılandırılmadan (test ortamı
     // Global test setup seed script'ini çalıştırmıyor (bkz. tests/setup/global-setup.ts) — PASSWORD_RESET
     // şablonu olmadan sendTemplateEmail() 404 (NotFoundError) fırlatır, biz burada SMTP hatasını
     // (502) test etmek istiyoruz, şablon eksikliğini değil.
+    // §10.16.3 BREAKING — `sendTemplateEmail` artık `purpose` + `isActive=true` ile çözümlenir.
     await app.prisma.emailTemplate.create({
       data: {
         key: "PASSWORD_RESET",
         name: "Şifre Sıfırlama E-postası",
+        purpose: "PASSWORD_RESET",
+        editorMode: "RAW",
+        isSystem: true,
+        isActive: true,
         subject: "Şifre sıfırlama talebiniz",
         bodyHtml:
           '<p>Merhaba {{user_name}},</p><p><a href="{{reset_link}}">Şifremi Sıfırla</a></p>',
