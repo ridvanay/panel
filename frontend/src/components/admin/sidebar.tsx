@@ -24,6 +24,7 @@ import {
   Receipt,
   Briefcase,
   Palette,
+  MessageSquare,
 } from "lucide-react";
 import {
   Sidebar,
@@ -94,6 +95,7 @@ const navItems: NavItem[] = [
   { href: "/admin/users", labelKey: "nav.users", icon: Users },
   { href: "/admin/system", labelKey: "nav.system", icon: Activity },
   { href: "/admin/notifications/templates", labelKey: "nav.emailTemplates", icon: Mail },
+  { href: "/admin/contact", labelKey: "nav.contact", icon: MessageSquare },
   { href: "/admin/settings/security", labelKey: "nav.security", icon: ShieldCheck },
   { href: "/admin/logs", labelKey: "nav.logs", icon: ScrollText },
   { href: "/admin/modules", labelKey: "nav.modules", icon: Blocks, roles: ["ADMIN"] },

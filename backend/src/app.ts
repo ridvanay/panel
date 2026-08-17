@@ -34,6 +34,8 @@ import { adminNavigationRoutes, publicNavigationRoutes } from "./modules/navigat
 import { adminLocalesRoutes, publicLocalesRoutes } from "./modules/localization/localization.routes";
 import { systemRoutes } from "./modules/system/system.routes";
 import { emailTemplatesRoutes } from "./modules/email-templates/email-templates.routes";
+import { adminContactRoutes, publicContactRoutes } from "./modules/contact/contact.routes";
+import { registerContactRetentionScheduler } from "./lib/contact-retention";
 import { securityTwoFactorRoutes, securitySessionsRoutes } from "./modules/security/security.routes";
 import { adminImportRoutes } from "./modules/import/import.routes";
 import { recoverStuckImportJobs } from "./modules/import/import.worker";
@@ -184,6 +186,11 @@ export function buildApp() {
       // Route içinde `/health` path'i tanımlanır, nihai uç `/admin/health` olur.
       api.register(systemRoutes, { prefix: "/admin" });
       api.register(emailTemplatesRoutes, { prefix: "/admin/notifications/templates" });
+      // §10.16 İletişim Formu — PUBLIC `/contact/*` kimlik doğrulama GEREKTİRMEZ; admin
+      // `/admin/contact/*` form yapılandırması ADMIN-only, gönderim okuma ADMIN/EDITOR (bkz.
+      // contact.routes.ts). Bir MODÜL DEĞİLDİR (MODULE_REGISTRY'ye eklenmez, §10.16.7).
+      api.register(publicContactRoutes, { prefix: "/contact" });
+      api.register(adminContactRoutes, { prefix: "/admin/contact" });
       // §10.4 Güvenlik & 2FA + Aktif Oturumlar — bkz. ARCHITECTURE.md §10.4.
       api.register(securityTwoFactorRoutes, { prefix: "/admin/settings/security/2fa" });
       api.register(securitySessionsRoutes, { prefix: "/admin/settings/security/sessions" });
@@ -283,6 +290,17 @@ export function buildApp() {
       registerWebhookDeliveryRetentionScheduler(app);
     } catch (err) {
       app.log.error({ err }, "Giden webhook kurtarma/dispatcher/scheduler kurulumu başarısız oldu — bu oturumda webhook alt sistemi eksik kalabilir.");
+    }
+
+    try {
+      // §10.16.10 İletişim Formu PII saklama/redaksiyon — `registerImportRetentionScheduler` ile
+      // AYNI gerekçeyle `onReady`'de, kendi izole try/catch bloğunda (6. grup): `app.prisma`
+      // yalnızca burada (tüm plugin ağacı yüklendikten SONRA) güvenle kullanılabilir. Açılışta
+      // hemen bir kez çalışır ki uzun süre kapalı kalmış bir sunucuda 30/180 günlük eşikler bir
+      // sonraki saatlik turu beklemeden uygulansın (bkz. lib/contact-retention.ts).
+      registerContactRetentionScheduler(app);
+    } catch (err) {
+      app.log.error({ err }, "İletişim formu saklama süresi scheduler kurulumu başarısız oldu — bu oturumda süresi geçmiş gönderimler temizlenmeyebilir.");
     }
   });
 
