@@ -6,6 +6,7 @@ export function slugify(input: string): string {
   return (
     input
       .toLowerCase()
+      .replace(/ı/g, "i") // Türkçe noktasız "ı" (U+0131) NFKD ile ayrışmıyor, elle "i"ye çevir
       .normalize("NFKD")
       .replace(COMBINING_MARKS, "") // NFKD sonrası ayrışan aksan işaretlerini (ör. Turkce -> Türkçe) at
       .replace(/[^a-z0-9]+/g, "-")

@@ -39,7 +39,7 @@ describe("blog posts (§10.7 çöp kutusu / toplu işlem / yazar / SEO skoru)", 
 
     expect(res.statusCode).toBe(201);
     const post = res.json().data;
-    expect(post.slug).toBe("ilk-yaz");
+    expect(post.slug).toBe("ilk-yazi");
     expect(post.status).toBe("DRAFT");
     expect(post.deletedAt).toBeNull();
     expect(post.authorId).toBe(userId);

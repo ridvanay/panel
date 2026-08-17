@@ -1,10 +1,10 @@
-import { API_BASE_URL } from "../env";
+import { SERVER_API_BASE_URL } from "../env";
 import type { PublicModule } from "./types";
 
 /** Sunucu bileşenlerinden çağrılır — bkz. server-pages.ts'teki apiFetch kullanılmama gerekçesi. */
 export async function fetchPublicModulesServer(): Promise<PublicModule[]> {
   try {
-    const res = await fetch(`${API_BASE_URL}/modules`, { next: { revalidate: 60 } });
+    const res = await fetch(`${SERVER_API_BASE_URL}/modules`, { next: { revalidate: 60 } });
     if (!res.ok) return [];
     const json = (await res.json()) as { data: PublicModule[] };
     return json.data;

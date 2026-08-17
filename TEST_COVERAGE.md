@@ -273,6 +273,50 @@ KAYNAKLANMIYOR. Zaten bu dosyanın kendi bölümünde ("Bilinen ortam sınırlam
 bkz.) önceki bir qa-agent turu tarafından belgelenmiş, API seviyesinde ayrıca doğrulanmış,
 bilinen bir yerel Windows/Playwright ortam sınırlamasıdır. Yeni bir aksiyon GEREKMİYOR.
 
+## Blog yayınlama akışı — "yayınla → public URL'de görüntüle" (bu turda eklendi)
+
+Kaynak: bugün düzeltilen 2 kritik bug'ın regresyonu — (1) SSR fetch'lerin Docker'da backend'e
+ulaşamaması (`SERVER_API_BASE_URL`/`INTERNAL_API_URL` düzeltmesi, `frontend/src/lib/env.ts`),
+(2) `backend/src/lib/slug.ts::slugify()`'ın Türkçe noktasız "ı" (U+0131) karakterini "-" ile
+değiştirmesi (backend'in kendi `tests/unit/slug.test.ts`'i BURADA TEKRAR YAZILMADI — bu dosya
+aynı düzeltmeyi gerçek admin UI akışı + gerçek public sayfa render'ı üzerinden e2e seviyesinde
+doğrular).
+
+| # | Senaryo | Dosya | Durum |
+|---|---|---|---|
+| 1 | PUBLISHED yazı — Türkçe "ı" içeren başlığın slug'ı TAM olarak beklenen değere dönüşür (`isikli-kirik-yazi-testi`), `/blog/{slug}` VE `/tr/blog/{slug}` (301→prefix'siz) gerçek içerik döndürür (200, `<h1>`) | `blog-publish-public-url.spec.ts` | ✅ Geçiyor |
+| 2 | Admin UI'dan gerçek "Durum: Yayında" seçip "Kaydet" akışı — yayınlanmadan ÖNCE public URL 404, yayınlandıktan SONRA 200 | `blog-publish-public-url.spec.ts` | ✅ Geçiyor |
+| 3 | REGRESYON — DRAFT yazının public URL'i gerçekten 404 verir (publish/draft ayrımının netliği) | `blog-publish-public-url.spec.ts` | ✅ Geçiyor |
+
+**3/3 e2e senaryosu yeşil** (yerel `next dev` + backend `:4001` + `saas_e2e`, izole 3 kez ve tam
+suite içinde 2 kez tekrar koşuldu, tutarlı geçti).
+
+### Bug 1 (SSR/Docker network) — bu ortamda kapsanma durumu (dürüst değerlendirme)
+
+`playwright.config.ts` `webServer`, frontend'i **Docker DIŞINDA**, doğrudan `next dev` ile başlatır
+ve `NEXT_PUBLIC_API_URL=http://localhost:4001/api/v1` verir; `INTERNAL_API_URL` HİÇ set edilmez.
+`SERVER_API_BASE_URL` (`frontend/src/lib/env.ts`) bu durumda `API_BASE_URL`'e (`NEXT_PUBLIC_API_URL`)
+düşer — ve bu ortamda `localhost:4001` zaten GERÇEK backend'e işaret eder (aynı host, Docker
+container network izolasyonu YOK). Yani bu testler **SSR fetch'in backend'e ulaştığını ve public
+sayfanın gerçekten içerik döndürdüğünü** doğrular, ama **Bug 1'in kök nedenini (Docker container'ları
+arası `localhost` ile `backend:4000` network izolasyonu karışıklığı) reprodükleyip düzeltmeyi
+KANITLAMAZ** — kök neden bu ortamda zaten yok. `INTERNAL_API_URL` yönlendirmesinin kendisini
+doğrulamak için devops-agent'ın Docker Compose ortamında ayrı bir doğrulama adımı (ör.
+`docker compose up` sonrası `curl http://localhost:3000/blog/<slug>` veya Docker-tabanlı bir CI
+e2e job'ı) gerekir — bu turda qa-agent tarafından EKLENMEDİ (playwright.config.ts'in kapsamı
+dışında, devops-agent'ın Docker ortam yönetimi alanına girer).
+
+### qa-agent'ın KENDİ test tasarımında bulup düzelttiği bir flaky kaynağı (bu turda)
+
+İlk taslakta "Durum: Yayında" ve "DRAFT → 404" testleri SABİT (statik) Türkçe başlık/slug
+kullanıyordu. Aynı dosya arka arkaya (warm `next dev` sunucusu, `reuseExistingServer`) tekrar
+çalıştırıldığında, `proxy.ts`'in `revalidate: 60` fetch cache'i ÖNCEKİ koşumda AYNI slug'ın
+PUBLISHED halini önbellekte tuttuğu için "yayınlanmadan önce 404" beklentisi yanlışlıkla 200
+alıyordu (kararsız — tam suite koşumunda gözlemlendi, tekil koşumda GÖRÜNMÜYORDU). Düzeltme: bu
+iki test için her koşumda taze/benzersiz bir slug üreten kısa bir rastgele son ek eklendi (Türkçe
+"ı"→"i" dönüşümü yine TAM olarak, yalnızca sabit kısım için, doğrulanmaya devam ediyor — asıl
+karakter dönüşümü regresyonu zaten 1. senaryoda TAM sabit bir slug ile ayrıca kapsanıyor).
+
 ## CI entegrasyonu (devops-agent'a not)
 
 `frontend/playwright.config.ts` `webServer` ile frontend'i otomatik başlatır (`reuseExistingServer:

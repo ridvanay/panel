@@ -1,4 +1,4 @@
-import { API_BASE_URL } from "../env";
+import { SERVER_API_BASE_URL } from "../env";
 import type { PublicSiteAppearance } from "./types";
 
 /**
@@ -44,7 +44,7 @@ const DEFAULT_APPEARANCE: PublicSiteAppearance = {
  */
 export async function fetchSiteAppearanceServer(): Promise<PublicSiteAppearance> {
   try {
-    const res = await fetch(`${API_BASE_URL}/appearance`, { next: { revalidate: 60 } });
+    const res = await fetch(`${SERVER_API_BASE_URL}/appearance`, { next: { revalidate: 60 } });
     if (!res.ok) return DEFAULT_APPEARANCE;
     const json = (await res.json()) as { data: PublicSiteAppearance };
     return json.data;

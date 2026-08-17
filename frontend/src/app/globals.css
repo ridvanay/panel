@@ -157,18 +157,30 @@
                      div'e uygulanmaz, elle verilmek zorunda */
 }
 
+/*
+ * (2026-08-17, frontend-agent — bug fix) `repeat(N, ...)` SABİT N track oluşturuyordu — galeri
+ * gerçek öğe sayısından (örn. 2 görsel) daha az doluysa bile grid her zaman N (2/3/4) sütun
+ * genişliğinde render ediliyor, boş kalan track'ler `.blog-gallery` div'inin (TipTap atom node,
+ * `contenteditable=false`, seçilebilir) bounding box'ı İÇİNDE "hayalet" tıklanabilir alan
+ * bırakıyordu (o alana tıklamak node'u seçiyor, ardından yazı yazmak node'u SESSİZCE SİLİYORDU).
+ * `repeat(auto-fit, minmax(...))` gerçek öğe sayısından FAZLA olan track'leri collapse eder (0
+ * genişlik) — container'ın box'ı SADECE gerçek içerik kadar dolu olur, hayalet alan kalmaz.
+ * `minmax()` alt sınırı, mevcut tasarımın öngördüğü maksimum sütun sayısını (mobil 2, sm 3,
+ * md 4) tipik `max-w-3xl` prose container genişliklerinde (bkz. blog/[slug]/page.tsx) KABACA
+ * korur — N'den fazla görsel varsa aynı N sütun cap'i uygulanmaya devam eder.
+ */
 .blog-gallery--grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr)); /* mobil: 2 sütun */
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); /* mobil: ~2 sütun */
   gap: 0.5rem; /* 8px — gap-2, gallery-field.tsx ve public gallery-block.tsx ile aynı birim */
 }
 
 @media (min-width: 640px) { /* sm */
-  .blog-gallery--grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .blog-gallery--grid { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); } /* ~3 sütun */
 }
 
 @media (min-width: 768px) { /* md */
-  .blog-gallery--grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .blog-gallery--grid { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); } /* ~4 sütun */
 }
 
 .blog-gallery__item {

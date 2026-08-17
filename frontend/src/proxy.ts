@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { API_BASE_URL } from "@/lib/env";
+import { SERVER_API_BASE_URL } from "@/lib/env";
 import type { PublicSiteAppearance, Locale } from "@/lib/api/types";
 
 /**
@@ -70,7 +70,7 @@ const FALLBACK_LOCALE_CODE = "tr";
  *  (Next'in `fetch` önbelleği zaten aynı URL için istekleri tekilleştirir). */
 async function fetchEnabledLocales(): Promise<Locale[]> {
   try {
-    const res = await fetch(`${API_BASE_URL}/locales`, { next: { revalidate: 60 } });
+    const res = await fetch(`${SERVER_API_BASE_URL}/locales`, { next: { revalidate: 60 } });
     if (!res.ok) throw new Error("locales fetch failed");
     const json = (await res.json()) as { data: Locale[] };
     if (!json.data || json.data.length === 0) throw new Error("empty locales");
@@ -90,7 +90,7 @@ export async function proxy(request: NextRequest) {
   try {
     // `GET /appearance` — `(site)` layout'unun kendi çağrısıyla AYNI önbellek politikası
     // (`revalidate: 60`, §10.12.9) — bakım anahtarı için ikinci bir uç/politika İCAT edilmez.
-    const res = await fetch(`${API_BASE_URL}/appearance`, { next: { revalidate: 60 } });
+    const res = await fetch(`${SERVER_API_BASE_URL}/appearance`, { next: { revalidate: 60 } });
     if (res.ok) {
       const json = (await res.json()) as { data: PublicSiteAppearance };
       maintenanceEnabled = Boolean(json.data?.maintenanceModeEnabled);

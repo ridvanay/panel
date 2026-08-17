@@ -7,9 +7,19 @@ describe("slugify", () => {
   });
 
   it("strips combining-mark diacritics (ü, ç, ğ)", () => {
-    // Not: Türkçe noktasız "ı" NFKD ile ayrışmaz (bileşik değil, bağımsız bir harf) —
-    // bu yüzden "ı" [a-z0-9] dışı kabul edilip ayraca dönüşür. Bu mevcut/bilinen davranış.
-    expect(slugify("Türkçe Karakterler Şık Öğe")).toBe("turkce-karakterler-s-k-oge");
+    expect(slugify("Türkçe Karakterler Şık Öğe")).toBe("turkce-karakterler-sik-oge");
+  });
+
+  it("converts Turkish dotless ı (U+0131) to i", () => {
+    // "ı" NFKD ile ayrışmaz (bileşik değil, bağımsız bir harf) — bu yüzden
+    // elle "i"ye çevrilmesi gerekir, aksi halde COMBINING_MARKS tarafından
+    // yakalanmaz ve [^a-z0-9] tarafından ayraca dönüştürülür.
+    expect(slugify("Yazısı")).toBe("yazisi");
+    expect(slugify("ışık kırık")).toBe("isik-kirik");
+  });
+
+  it("converts Turkish dotted İ (U+0130, uppercase) to i", () => {
+    expect(slugify("İstanbul")).toBe("istanbul");
   });
 
   it("collapses repeated separators and trims leading/trailing dashes", () => {

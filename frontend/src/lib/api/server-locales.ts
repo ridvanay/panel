@@ -1,4 +1,4 @@
-import { API_BASE_URL } from "../env";
+import { SERVER_API_BASE_URL } from "../env";
 import type { Locale } from "./types";
 
 /**
@@ -17,7 +17,7 @@ const FALLBACK_LOCALES: Locale[] = [
  */
 export async function fetchLocalesServer(): Promise<Locale[]> {
   try {
-    const res = await fetch(`${API_BASE_URL}/locales`, { next: { revalidate: 60 } });
+    const res = await fetch(`${SERVER_API_BASE_URL}/locales`, { next: { revalidate: 60 } });
     if (!res.ok) return FALLBACK_LOCALES;
     const json = (await res.json()) as { data: Locale[] };
     if (!json.data || json.data.length === 0) return FALLBACK_LOCALES;

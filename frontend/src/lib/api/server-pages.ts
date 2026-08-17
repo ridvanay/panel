@@ -1,4 +1,4 @@
-import { API_BASE_URL } from "../env";
+import { SERVER_API_BASE_URL } from "../env";
 import type { SitePage } from "./types";
 
 function localeQuery(locale?: string): string {
@@ -12,7 +12,7 @@ function localeQuery(locale?: string): string {
  */
 export async function fetchPageBySlugServer(slug: string, locale?: string): Promise<SitePage | null> {
   try {
-    const res = await fetch(`${API_BASE_URL}/pages/${slug}${localeQuery(locale)}`, { next: { revalidate: 60 } });
+    const res = await fetch(`${SERVER_API_BASE_URL}/pages/${slug}${localeQuery(locale)}`, { next: { revalidate: 60 } });
     if (!res.ok) return null;
     const json = (await res.json()) as { data: SitePage };
     return json.data;
@@ -24,7 +24,7 @@ export async function fetchPageBySlugServer(slug: string, locale?: string): Prom
 /** Site nav'ı için — yayınlanmış tüm sayfaların hafif listesi. */
 export async function fetchPublishedPagesServer(locale?: string): Promise<SitePage[]> {
   try {
-    const res = await fetch(`${API_BASE_URL}/pages${localeQuery(locale)}`, { next: { revalidate: 60 } });
+    const res = await fetch(`${SERVER_API_BASE_URL}/pages${localeQuery(locale)}`, { next: { revalidate: 60 } });
     if (!res.ok) return [];
     const json = (await res.json()) as { data: SitePage[] };
     return json.data;

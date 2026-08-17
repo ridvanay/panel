@@ -1,4 +1,4 @@
-import { API_BASE_URL } from "../env";
+import { SERVER_API_BASE_URL } from "../env";
 import type { Plan } from "./types";
 
 /**
@@ -10,7 +10,7 @@ import type { Plan } from "./types";
  */
 export async function fetchPlansServer(): Promise<Plan[]> {
   try {
-    const res = await fetch(`${API_BASE_URL}/plans`, { next: { revalidate: 60 } });
+    const res = await fetch(`${SERVER_API_BASE_URL}/plans`, { next: { revalidate: 60 } });
     if (!res.ok) return [];
     const json = (await res.json()) as { data: Plan[] };
     return json.data;
