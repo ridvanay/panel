@@ -387,12 +387,12 @@ export default function AdminUsersPage() {
                 onChange={(e) => setSearch(e.target.value)}
               />
             </InputGroup>
-            {totalPages > 10 && (
+            {totalPages > 1 && (
               <Select
                 aria-label="Sayfa boyutu"
                 value={pageSize}
                 onChange={(e) => setPageSize(Number(e.target.value))}
-                className="w-24"
+                className="w-auto"
               >
                 <option value={10}>10 / sayfa</option>
                 <option value={20}>20 / sayfa</option>
@@ -500,7 +500,7 @@ export default function AdminUsersPage() {
             </motion.div>
           )}
 
-          {totalPages > 10 && <ListPagination page={page} totalPages={totalPages} onPageChange={setPage} />}
+          {totalPages > 1 && <ListPagination page={page} totalPages={totalPages} onPageChange={setPage} />}
         </>
       )}
 

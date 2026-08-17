@@ -900,3 +900,111 @@ export interface PublicPortfolioItem extends PublicSeoFields {
   publishedAt: string | null;
   updatedAt: string;
 }
+
+// ---------- §10.14 Blog Etiketleri (Tag) ----------
+// Backend: modules/blog/*. Bkz. ARCHITECTURE.md §10.14 + openapi.yaml tag `Blog`.
+//
+// Kategori (`BlogCategory`) = TEK birincil sınıflandırma (bire-çok).
+// Etiket (`BlogTag`)        = ÇOKLU yatay sınıflandırma (çoka-çok, `blog_post_tags`).
+// İkisi birbirinin yerine geçmez; UI'da da ayrı alan/ayrı sütundur.
+
+export interface BlogTag {
+  id: string;
+  name: string;
+  slug: string;
+  createdAt: string;
+  /**
+   * Bu etiketi taşıyan, ÇÖPTE OLMAYAN (`deletedAt: null`) yazı sayısı. `0` = yetim
+   * etiket; yetimler OTOMATİK SİLİNMEZ (§10.14.2) — bu alan onları görünür kılar.
+   *
+   * YALNIZCA `GET /admin/blog/tags` yanıtında doldurulur. `BlogPost.tags[]` içinde
+   * gömülü gelen etiketlerde BULUNMAZ (yazı başına N+1 sorgu doğururdu).
+   */
+  postCount?: number;
+}
+
+export interface CreateBlogTagRequest {
+  name: string;
+  /** Verilmezse `slugify(name)`. Çakışırsa 409 CONFLICT (global P2002 işleyicisi). */
+  slug?: string;
+}
+
+export interface UpdateBlogTagRequest {
+  /** `name` değişince `slug` OTOMATİK türetilmez — slug URL kimliğidir. */
+  name?: string;
+  slug?: string;
+}
+
+/**
+ * `BlogPost` DTO'suna eklenen alan. HER ZAMAN dizi (`[]` olabilir, `null` OLAMAZ),
+ * sıra deterministik: `seq ASC`.
+ */
+export interface BlogPostTagsField {
+  tags: BlogTag[];
+}
+
+/**
+ * `CreateBlogPostRequest` / `UpdateBlogPostRequest` gövdelerine eklenen alan.
+ *
+ * SEMANTİK (bağlayıcı, §10.14.4): TAM SET (replace), delta DEĞİL.
+ *   `tagIds: ["a","b"]` → yazının etiketleri tam olarak {a,b} olur, diğerleri kalkar.
+ *   `tagIds: []`        → tüm etiketler kaldırılır.
+ *   `tagIds: undefined` → etiketlere DOKUNULMAZ (alan hiç gönderilmemiş demektir).
+ * `[]` ile `undefined` arasındaki bu fark, Hızlı Düzenle'nin kısmi gövde
+ * sözleşmesinin dayandığı noktadır — ikisi AYNI ŞEY DEĞİLDİR.
+ *
+ * En fazla 50 id. Var olmayan id → 422. Tekrarlar sunucuda tekilleştirilir.
+ */
+export interface BlogPostTagIdsInput {
+  tagIds?: string[];
+}
+
+// ---------- §10.7.2 Hızlı Düzenle — entity'ye özgü genişletme ----------
+// ORTAK tip DEĞİŞMEZ; genişletme generic parametreyle yapılır ki `Page`/`Product`/
+// `PortfolioItem` hiç var olmayan alanları tipte taşımasın.
+//
+//   useContentList<T extends ContentListEntity, Q extends QuickEditValues = QuickEditValues>
+//   ContentListTable<T extends ContentListEntity, Q extends QuickEditValues = QuickEditValues>
+//
+// Varsayılan `QuickEditValues` olduğu için mevcut çağrı yerleri DEĞİŞMEZ.
+
+/** Tüm içerik listelerinin paylaştığı Hızlı Düzenle alanları — DEĞİŞTİRİLMEZ. */
+export interface QuickEditValuesBase {
+  title: string;
+  slug: string;
+  status: "DRAFT" | "PUBLISHED" | "SCHEDULED";
+}
+
+/** YALNIZCA blog listesi kullanır. `Page` bu tipi ASLA görmez. */
+export interface BlogQuickEditValues extends QuickEditValuesBase {
+  /** `""` DEĞİL `null` — `PATCH /admin/blog/{postId}` gövdesiyle birebir. */
+  categoryId: string | null;
+  /** TAM set (bkz. `BlogPostTagIdsInput`). */
+  tagIds: string[];
+}
+
+// ---------- §10.15 İçerik editörü Galeri bloğu ----------
+// YENİ PRISMA ALANI YOKTUR — galeri, `BlogPost.contentHtml` içindeki bir TipTap
+// node'udur (bkz. ARCHITECTURE.md §10.15.1).
+//
+// KRİTİK: `lib/html-sanitize.ts` global öznitelik izin listesi ["id","class"]'tır;
+// `data-*` öznitelikleri DB'ye yazılmadan ÖNCE SESSİZCE SİLİNİR. Bu yüzden galeri
+// `data-*` ile DEĞİL, SINIF tabanlı semantik HTML olarak serileşir:
+//
+//   <div class="blog-gallery blog-gallery--grid">
+//     <figure class="blog-gallery__item"><img src="…" alt="…" loading="lazy" /></figure>
+//   </div>
+//
+// Kullanılan etiket/öznitelerin tamamı mevcut allow-list'te ZATEN vardır → sanitizer
+// DEĞİŞTİRİLMEZ, `data-*` AÇILMAZ. Sınıf adları kontratın parçasıdır (TipTap
+// `parseHTML` eşleşmesi bunlara bağlıdır) ve ui-designer tarafından değiştirilemez.
+
+/** v1'de yalnızca "grid" — carousel reddedildi (§10.15.2), alan ileriye dönük tutuldu. */
+export type BlogGalleryLayout = "grid";
+
+/** TipTap node attrs — YALNIZCA bellekte; HTML'e sınıf+`img` olarak serileşir. */
+export interface BlogGalleryNodeAttrs {
+  /** Medya id'si TAŞINMAZ (`data-*` sanitize edilir) — kimlik URL'dir. */
+  items: { src: string; alt: string }[];
+  layout: BlogGalleryLayout;
+}

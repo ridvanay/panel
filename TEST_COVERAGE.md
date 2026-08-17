@@ -184,6 +184,95 @@ Frontend/backend içerik/DTO tarafında başka bug BULUNMADI — mevcut 608 test
 13 test (7 geçen + 3 bulk-publish + 3 dispatcher) toplamda `backend/tests/` altında **69 dosya /
 622 test**, hepsi yeşil.
 
+## Blog/Sayfa listesi + editör düzeltmeleri (pagination bug + Tag sistemi) — E2E kapsamı (bu turda eklendi)
+
+Kaynak: `docs/architecture/ARCHITECTURE.md` §10.7.1 (pagination eşik bug'ı), §10.7.2 (Hızlı
+Düzenle genişletmesi), §10.14 (Tag sistemi), §10.15 (galeri bloğu). Kullanıcının açıkça istediği
+odak: **madde 3 (pagination) ve Tag sistemi**, gerçek backend + Postgres'e (`saas_e2e`) karşı,
+GERÇEK 229 blog yazısıyla.
+
+| # | Senaryo | Dosya | Durum |
+|---|---|---|---|
+| KRİTİK | 229 yazı, 50/sayfa'da pagination + pageSize seçici GÖRÜNÜR kalır, 2. sayfaya geçilir, 10/sayfa'ya geri dönülür | `admin-blog-pagination.spec.ts` | ✅ Geçiyor |
+| — | `totalPages===1` iken pagination kontrolleri GİZLİ | `admin-blog-pagination.spec.ts` | ✅ Geçiyor |
+| — | 10/20/50 üç pageSize'ın hepsi — ilk/orta/son sayfa aralığında doğru satır sayısı + buton disabled durumları | `admin-blog-pagination.spec.ts` (3 alt senaryo) | ✅ Geçiyor |
+| — | pageSize seçici metni KESMİYOR (`w-24`→`w-auto` doğrulaması, ölçülen piksel genişliği ile) | `admin-blog-pagination.spec.ts` | ✅ Geçiyor |
+| madde 1 | Tam editörde satır-içi YENİ ETİKET oluşturma → otomatik seçili → kaydet → listede chip | `admin-blog-tags.spec.ts` | ✅ Geçiyor |
+| madde 5 | Tam editörde satır-içi YENİ KATEGORİ oluşturma → otomatik seçili → kaydet → listede görünür | `admin-blog-tags.spec.ts` | ✅ Geçiyor |
+| madde 3 | Hızlı Düzenle'den Kategori+Etiket değiştir → liste güncellenir | `admin-blog-tags.spec.ts` | ✅ Geçiyor |
+| madde 4 | `tagIds` TAM SET semantiği — 3 etiketten 1'i kaldırılınca PATCH gövdesi kalan 2'yi içerir (network-mock DEĞİL, gerçek `waitForRequest`) | `admin-blog-tags.spec.ts` | ✅ Geçiyor |
+| madde 4 (belge) | Hızlı Düzenle'de kategori/etiket DOKUNULMADAN kaydedilince PATCH gövdesi mevcut `tagIds`'i aynen taşır (gözlemlenen davranış — bkz. bulgu 3 aşağıda) | `admin-blog-tags.spec.ts` | ✅ Geçiyor |
+| madde 6 | Etikete göre filtreleme (client-side) | `admin-blog-tags.spec.ts` | ✅ Geçiyor |
+| madde 7 | Etiket silinince yazı VAR OLMAYA devam eder, yalnızca etiketi kaybeder | `admin-blog-tags.spec.ts` | ✅ Geçiyor |
+| — | `MediaPicker` çoklu seçim modu (toggle, "Seç (N)", maxSelection, Vazgeç) | `frontend/tests/unit/media-picker-multiple.test.tsx` (component-level, Playwright DEĞİL — zaman kısıtı, aşağıya bkz.) | ✅ Geçiyor |
+| — | `TagSelect` bileşeni (chip, arama, satır-içi oluşturma, TAM SET add/remove, `canCreate=false`) | `frontend/tests/unit/tag-select.test.tsx` | ✅ Geçiyor |
+| — | `useFilteredList` (etikete göre client-side filtre hook'u) | `frontend/tests/unit/use-filtered-list.test.tsx` | ✅ Geçiyor |
+
+**13/13 e2e senaryosu yeşil** (`admin-blog-pagination.spec.ts` 5, `admin-blog-tags.spec.ts` 8),
+**+14 yeni frontend unit test** yeşil, mevcut **375 frontend unit + 642 backend test** kırılmadı
+(tamamı bu turda yeniden koşuldu, hepsi geçti).
+
+### Kapsam dışı bırakılan — Öncelik 3 (galeri bloğu e2e)
+
+Zaman kısıtı nedeniyle "Galeri Ekle" → MediaPicker çoklu seçim → içerikte render → kaydet/yeniden
+aç → korunma akışının TAM Playwright e2e'si eklenmedi. Bunun yerine `MediaPicker`'ın çoklu seçim
+davranışı (seçili işaret, "Seç (N)", maxSelection) component-seviyesinde (`tests/unit/
+media-picker-multiple.test.tsx`) doğrulandı; galeri bloğunun TipTap içine doğru serialize/
+deserialize edildiği ise frontend-agent'ın kendi unit testlerine bırakıldı (bu tur qa-agent
+tarafından ayrıca doğrulanmadı). **Sonraki tur için önerilir**: tam editörde "Galeri Ekle" →
+2-3 görsel seç → kaydet → sayfa yenile → galerinin korunduğunu doğrulayan bir Playwright testi.
+
+### qa-agent'ın KENDİ test altyapısında bulup düzelttiği bug'lar (bu turda)
+
+Bu üçü **ürün/uygulama kodu DEĞİL**, qa-agent'ın kendi `tests/e2e/support/*.ts` fixture
+yardımcılarında/spec'lerindeydi — kural gereği (proje kökü CLAUDE.md, madde 3 "flaky testleri
+düzelt") qa-agent bunları doğrudan kendisi düzeltti:
+
+1. **KRİTİK — tüm fixture temizliği sessizce başarısız oluyordu.** `blog-fixtures.ts`/`api.ts`
+   içindeki `authHeaders()` GÖVDESİZ `DELETE` isteklerinde (ör. `deleteBlogPostPermanently`,
+   `deleteBlogCategory`, `deleteBlogTag`, `deletePagePermanently`, `deleteLocale`) de
+   `Content-Type: application/json` gönderiyordu; Fastify boş gövdeyi geçersiz JSON sayıp
+   `400 Bad Request: "Body cannot be empty when content-type is set to 'application/json'"`
+   döndürüyordu (GET/HEAD bundan muaf — yalnızca DELETE'lerde gözlemlendi). Hiçbir çağıran
+   `res.ok` kontrol etmediği için bu SESSİZCE yutuluyordu — sonuç: `cleanupBlogPostsByPrefix` hiç
+   çalışmıyordu, her koşum önceki 229+ test yazısını DB'de bırakıyor, bir sonraki koşumun
+   `createManyBlogPosts`'u `409 CONFLICT`'e çarpıyordu (kartopu etkisi). Düzeltme: gövdesiz
+   istekler için ayrı `authHeadersNoBody()` (yalnızca `Authorization`) + `assertDeleteOk()` ile
+   artık 2xx/404 dışındaki durumlar SESSİZCE YUTULMUYOR, fırlatılıyor.
+2. **Retry güvenli değildi.** `admin-blog-tags.spec.ts` testleri SABİT başlık/adla fixture
+   oluşturuyordu; yalnızca dosya-seviyesi `beforeAll`/`afterAll` temizliği vardı — bir test
+   başarısız olup retry edildiğinde ilk denemenin oluşturduğu kayıt hâlâ DB'de durduğundan retry
+   `409` alıyordu (asıl hatayı maskeleyen ikinci bir sahte başarısızlık). Düzeltme: `test.afterEach`
+   eklendi (her testten sonra süpürme, başarı/başarısızlık fark etmeksizin).
+3. **Hızlı Düzenle locator'ları strict-mode ihlali veriyordu.** `content-list-table` Hızlı
+   Düzenle'yi masaüstü/mobil için AYRI DOM markup'ında render ediyor (id'ler `-m-` son ekiyle
+   ayrışıyor), ikisi de aynı erişilebilir etikete sahip → `getByLabel` iki eşleşme buluyordu.
+   Düzeltme: ilgili locator'lara `.filter({ visible: true })` eklendi.
+4. **Tam editör sayfasında `getByLabel("Başlık")` güvenilir değildi.** Bir a11y-snapshot'ta
+   (`error-context.md`) elemanın DOĞRU değerle DOM'da olduğu görülmesine rağmen `getByLabel`
+   30s'de bile "element(s) not found" veriyordu (muhtemelen sayfadaki otomatik-taslak-kaydetme
+   göstergesiyle ("Taslak kaydedildi HH:MM") eşzamanlı bir remount/polling yarışı — kesin kök
+   neden doğrulanamadı, **frontend-agent'a bilgi amaçlı bırakılıyor**, uygulama davranışını
+   BOZMUYOR). Düzeltme: test, kararlı `#title` DOM id'sine (`Field id="title"`) geçti — bu,
+   `getByLabel` polling yarışını atlatıp aynı değeri doğruluyor.
+
+Bu dört düzeltmeden SONRA suite art arda 3 kez (`13/13`, sonra tam suite'in geri kalanıyla
+birlikte `33/34` — bkz. aşağıdaki pre-existing not) yeşil koştu; kalan tek ara-sıra görülen
+"flaky" (1/13 çalıştırmada) `createAuthenticatedPage`'in GERÇEK UI login'inde ara sıra oluşan bir
+zaman aşımıydı — bu, `admin-session.ts` başlığında ÖNCEDEN belgelenmiş, `retries: 1` ile zaten
+telafi edilen bilinen bir sınırlamadır (frontend'in refresh-token rotasyon yarışı, bkz. o
+dosyadaki uzun not); yeni bir bulgu DEĞİLDİR.
+
+### Pre-existing, bu turdan BAĞIMSIZ doğrulanan flake
+
+Tam suite koşumunda (`npx playwright test`, dosya filtresi yok) `admin-locale-management.spec.ts`
+"madde 7" testi 1 kez başarısız oldu. Bu dosyaya bu turda HİÇ dokunulmadı; testi TEK BAŞINA
+(diğer tüm dosyalardan izole) tekrar çalıştırınca AYNI şekilde başarısız olduğu doğrulandı —
+yani bu turdaki değişikliklerden (pagination/tag testleri veya `support/api.ts` düzeltmesi)
+KAYNAKLANMIYOR. Zaten bu dosyanın kendi bölümünde ("Bilinen ortam sınırlaması — madde 7", yukarı
+bkz.) önceki bir qa-agent turu tarafından belgelenmiş, API seviyesinde ayrıca doğrulanmış,
+bilinen bir yerel Windows/Playwright ortam sınırlamasıdır. Yeni bir aksiyon GEREKMİYOR.
+
 ## CI entegrasyonu (devops-agent'a not)
 
 `frontend/playwright.config.ts` `webServer` ile frontend'i otomatik başlatır (`reuseExistingServer:

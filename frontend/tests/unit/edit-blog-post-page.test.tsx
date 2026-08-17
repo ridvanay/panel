@@ -2,10 +2,24 @@ import { describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import EditBlogPostPage from "@/app/admin/blog/[postId]/page";
-import type { BlogPost, ContentRevisionSummary } from "@/lib/api/types";
+import type { BlogPost, ContentRevisionSummary, User } from "@/lib/api/types";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
+}));
+
+const mockUser: User = {
+  id: "user-1",
+  email: "editor@example.com",
+  name: "Test Kullanıcı",
+  avatarUrl: null,
+  emailVerifiedAt: "2026-01-01T00:00:00.000Z",
+  role: "EDITOR",
+  createdAt: "2026-01-01T00:00:00.000Z",
+  twoFactorEnabled: false,
+};
+vi.mock("@/context/auth-context", () => ({
+  useAuth: () => ({ user: mockUser }),
 }));
 vi.mock("@/lib/api/blog", () => ({
   getPost: vi.fn(),
@@ -13,6 +27,9 @@ vi.mock("@/lib/api/blog", () => ({
   deletePost: vi.fn(),
   autosavePost: vi.fn(),
   listCategories: vi.fn(),
+  // §10.14 — `[postId]/page.tsx::load()` `listTags()`'i de paralel çeker; varsayılan boş
+  // liste, testlerin `listCategories` gibi ayrıca stub'lamasına gerek bırakmaz.
+  listTags: vi.fn().mockResolvedValue([]),
 }));
 vi.mock("@/lib/api/revisions", () => ({
   listPostRevisions: vi.fn(),
@@ -55,6 +72,7 @@ function makePost(overrides: Partial<BlogPost> = {}): BlogPost {
     seoScore: 0,
     seoScoreIssues: [],
     localizations: [],
+    tags: [],
     ...overrides,
   };
 }

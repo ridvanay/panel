@@ -9,12 +9,14 @@ import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import type { GalleryBlock } from "@/lib/page-builder/types";
 
 function GalleryImageRow({
+  index,
   url,
   alt,
   onChangeUrl,
   onChangeAlt,
   onRemove,
 }: {
+  index: number;
   url: string;
   alt: string;
   onChangeUrl: (url: string) => void;
@@ -24,6 +26,11 @@ function GalleryImageRow({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // §10.15.4 a11y düzeltmesi — `placeholder` kalıcı bir etiket DEĞİLDİR (WCAG 3.3.2 ihlali).
+  // Satır tekrarlandığı için görsel gürültü olmasın diye label `sr-only`, ama DOM'da bulunur
+  // ve her satır için tekil id/metin taşır ("Görsel N URL", "Görsel N alt metni").
+  const urlInputId = `gallery-image-url-${index}`;
+  const altInputId = `gallery-image-alt-${index}`;
 
   async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -49,10 +56,16 @@ function GalleryImageRow({
     <div className="space-y-1">
       <div className="flex items-end gap-2">
         <div className="flex-1">
-          <Input placeholder="Görsel URL" value={url} onChange={(e) => onChangeUrl(e.target.value)} />
+          <label htmlFor={urlInputId} className="sr-only">
+            {`Görsel ${index + 1} URL`}
+          </label>
+          <Input id={urlInputId} placeholder="Görsel URL" value={url} onChange={(e) => onChangeUrl(e.target.value)} />
         </div>
         <div className="flex-1">
-          <Input placeholder="Alt metin" value={alt} onChange={(e) => onChangeAlt(e.target.value)} />
+          <label htmlFor={altInputId} className="sr-only">
+            {`Görsel ${index + 1} alt metni`}
+          </label>
+          <Input id={altInputId} placeholder="Alt metin" value={alt} onChange={(e) => onChangeAlt(e.target.value)} />
         </div>
         <Button type="button" variant="secondary" size="sm" loading={uploading} onClick={() => fileInputRef.current?.click()}>
           Yükle
@@ -93,6 +106,7 @@ export function GalleryBlockEditor({ block, onChange }: { block: GalleryBlock; o
       {block.data.images.map((image, index) => (
         <GalleryImageRow
           key={index}
+          index={index}
           url={image.url}
           alt={image.alt}
           onChangeUrl={(url) => updateImage(index, "url", url)}

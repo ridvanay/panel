@@ -1804,6 +1804,205 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
 
+  # ---------------------------------------------------------------------------
+  # Blog sınıflandırma: Kategoriler (bire-çok) + Etiketler (çoka-çok, §10.14)
+  #
+  # ROTA ÖNCELİĞİ: `categories` ve `tags` STATİK segmentlerdir ve Fastify radix
+  # router'da `/admin/blog/{postId}` parametreli rotadan ÖNCE eşleşir. Kabul edilmiş
+  # kısıt (`/public/blog/categories` ile aynı): bir yazıya `categories`/`tags`
+  # id'siyle erişilemez — id'ler UUID olduğu için pratikte çakışma yoktur.
+  #
+  # Kategori uçları KODDA ZATEN VARDI ama bu dosyada BELGELENMEMİŞTİ; etiket uçları
+  # eklenirken bu kontrat boşluğu da kapatıldı.
+  # ---------------------------------------------------------------------------
+  /admin/blog/categories:
+    get:
+      tags: [Blog]
+      summary: Blog kategorilerini listele (authenticated)
+      description: "Sayfalanmaz, arama parametresi almaz — liste bellekte tutulur, arama frontend-only."
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/BlogCategory" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [Blog]
+      summary: Yeni blog kategorisi oluştur (ADMIN/EDITOR)
+      description: >
+        Tam editördeki "+ Yeni Kategori Oluştur" satır-içi akışı (§10.14.5) da BU ucu
+        kullanır — satır-içi oluşturma için AYRI bir uç yoktur.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateBlogCategoryRequest" }
+      responses:
+        "201":
+          description: Kategori oluşturuldu
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/BlogCategory" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409":
+          description: "Aynı `slug`'a sahip kategori zaten var (`error.code: CONFLICT`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/blog/categories/{categoryId}:
+    parameters:
+      - $ref: "#/components/parameters/BlogCategoryId"
+    patch:
+      tags: [Blog]
+      summary: Blog kategorisini güncelle (ADMIN/EDITOR)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateBlogCategoryRequest" }
+      responses:
+        "200":
+          description: Güncellendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/BlogCategory" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "Hedef `slug` başka bir kategoride kullanılıyor (`error.code: CONFLICT`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+    delete:
+      tags: [Blog]
+      summary: Blog kategorisini sil (yalnızca ADMIN)
+      description: "Kategoriye bağlı yazılar `SetNull` ile kategorisiz kalır (silinmez)."
+      responses:
+        "204": { description: Silindi }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/blog/tags:
+    get:
+      tags: [Blog]
+      summary: Blog etiketlerini listele (authenticated)
+      description: >
+        §10.14.3 — sayfalanmaz, arama parametresi almaz (klasör listesiyle aynı gerekçe,
+        §10.11.2). `seq ASC` sırasında döner. Her kayıt `postCount` taşır; bu sayaç TEK
+        sorguda (`_count` ile) hesaplanır — etiket başına ayrı `count()` (N+1) YASAKTIR.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/BlogTag" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [Blog]
+      summary: Yeni blog etiketi oluştur (ADMIN/EDITOR)
+      description: >
+        Etiket yönetim ekranı VE editördeki satır-içi "yeni etiket" akışı (§10.14.5) aynı
+        ucu kullanır. Frontend, satır-içi akışta POST'tan ÖNCE yerel listede slug eşleşmesi
+        arar; bulursa istek göndermez ve var olanı seçer. Yine de `409` dönerse bu bir
+        HATA olarak gösterilmez — var olan kayıt seçilir (yarış durumu).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateBlogTagRequest" }
+      responses:
+        "201":
+          description: "Etiket oluşturuldu (`postCount` = 0)"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/BlogTag" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409":
+          description: >
+            Aynı `slug`'a sahip etiket zaten var (`error.code: CONFLICT`). Global Prisma
+            `P2002` işleyicisinden gelir; backend ek yakalama yazmaz.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/blog/tags/{tagId}:
+    parameters:
+      - $ref: "#/components/parameters/BlogTagId"
+    patch:
+      tags: [Blog]
+      summary: Blog etiketini güncelle (ADMIN/EDITOR)
+      description: "`name` güncellenince `slug` OTOMATİK türetilmez — slug URL kimliğidir, sessizce değişmez."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateBlogTagRequest" }
+      responses:
+        "200":
+          description: Güncellendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/BlogTag" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "Hedef `slug` başka bir etikette kullanılıyor (`error.code: CONFLICT`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+    delete:
+      tags: [Blog]
+      summary: Blog etiketini sil (yalnızca ADMIN)
+      description: >
+        §10.14.2 — `blog_post_tags` satırları FK cascade ile düşer; **yazılar SİLİNMEZ**,
+        yalnızca bu etiketi kaybeder (`BlogCategory` silmenin `SetNull` davranışıyla aynı
+        felsefe). Etiket kullanımda olsa bile silme ENGELLENMEZ; frontend onay diyaloğunda
+        etkilenecek yazı sayısını (`postCount`) yazar.
+      responses:
+        "204": { description: Silindi }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /admin/blog/{postId}/revisions:
     parameters:
       - $ref: "#/components/parameters/PostId"
@@ -6018,6 +6217,16 @@ components:
       in: path
       required: true
       schema: { type: string, format: uuid }
+    BlogCategoryId:
+      name: categoryId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    BlogTagId:
+      name: tagId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
     PortfolioItemId:
       name: itemId
       in: path
@@ -6961,6 +7170,54 @@ components:
         slug: { type: string }
         createdAt: { type: string, format: date-time }
 
+    BlogTag:
+      description: >
+        §10.14 Blog Etiketi. Kategoriden (`BlogCategory`) FARKI: bir yazı **birden çok**
+        etiket taşıyabilir (çoka-çok, `blog_post_tags` ara tablosu). Şema `BlogCategory`
+        ile birebir simetriktir, tek fark `postCount`'tur.
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+        createdAt: { type: string, format: date-time }
+        postCount:
+          type: integer
+          minimum: 0
+          description: >
+            Bu etiketi taşıyan, **çöpte OLMAYAN** (`deletedAt: null`) yazı sayısı. `0`
+            olması yetim bir etikettir — yetimler OTOMATİK SİLİNMEZ (§10.14.2), bu alan
+            yöneticinin onları görüp elle temizlemesi içindir. Yalnızca
+            `GET /admin/blog/tags` yanıtında doldurulur; `BlogPost.tags[]` içinde
+            gömülü gelen etiketlerde **bulunmaz** (N+1 sorgu doğururdu).
+
+    CreateBlogTagRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 60 }
+        slug: { type: string, minLength: 1, description: "verilmezse name'den slugify edilir" }
+
+    UpdateBlogTagRequest:
+      description: "Yalnızca gönderilen alan güncellenir; `name` değişince `slug` OTOMATİK değişmez (bağlantı kırmamak için)."
+      type: object
+      properties:
+        name: { type: string, minLength: 1, maxLength: 60 }
+        slug: { type: string, minLength: 1 }
+
+    CreateBlogCategoryRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1 }
+        slug: { type: string, minLength: 1, description: "verilmezse name'den slugify edilir" }
+
+    UpdateBlogCategoryRequest:
+      type: object
+      properties:
+        name: { type: string, minLength: 1 }
+        slug: { type: string, minLength: 1 }
+
     PageStatus:
       description: >
         `Page` ve `BlogPost` için ORTAK durum enum'ı (bkz. backend `schemas/entities.ts::
@@ -7093,6 +7350,14 @@ components:
           allOf:
             - $ref: "#/components/schemas/BlogCategory"
           nullable: true
+        tags:
+          type: array
+          description: >
+            §10.14 — bu yazının etiketleri. **HER ZAMAN dizi**, etiket yoksa `[]`
+            (asla `null`). Sıra DETERMİNİSTİKTİR: `seq ASC` (etiketin oluşturulma
+            sırası) — sıra garanti edilmezse liste/editör chip'leri istekler arasında
+            yer değiştirir. Buradaki `BlogTag` nesneleri `postCount` TAŞIMAZ.
+          items: { $ref: "#/components/schemas/BlogTag" }
         seoTitle: { type: string, nullable: true }
         seoDescription: { type: string, nullable: true }
         ogTitle: { type: string, nullable: true }
@@ -7521,6 +7786,13 @@ components:
         coverImageUrl: { type: string }
         status: { allOf: [{ $ref: "#/components/schemas/PageStatus" }], default: DRAFT }
         categoryId: { type: string, format: uuid, nullable: true }
+        tagIds:
+          type: array
+          maxItems: 50
+          items: { type: string, format: uuid }
+          description: >
+            §10.14.4 — yazının etiket seti. Verilmezse yazı etiketsiz oluşur. Var olmayan
+            bir id → `422`. Tekrar eden id'ler sessizce tekilleştirilir.
         seoTitle: { type: string, nullable: true }
         seoDescription: { type: string, nullable: true }
         ogTitle: { type: string, nullable: true }
@@ -7548,7 +7820,10 @@ components:
             422; `refineScheduledAt`).
 
     UpdateBlogPostRequest:
-      description: "Tüm alanlar opsiyonel; Hızlı Düzenle `{ title, slug, status }` alt kümesini gönderir."
+      description: >
+        Tüm alanlar opsiyonel. Hızlı Düzenle §10.7.2 ile `{ title, slug, status,
+        categoryId, tagIds }` alt kümesini gönderir (Sayfa/Ürün/Portföy Hızlı Düzenle'si
+        `{ title, slug, status }` ile SINIRLIDIR — kategori/etiket yalnızca blogda vardır).
       type: object
       properties:
         title: { type: string, minLength: 1 }
@@ -7558,6 +7833,17 @@ components:
         coverImageUrl: { type: string, nullable: true }
         status: { $ref: "#/components/schemas/PageStatus" }
         categoryId: { type: string, format: uuid, nullable: true }
+        tagIds:
+          type: array
+          maxItems: 50
+          items: { type: string, format: uuid }
+          description: >
+            §10.14.4 — **TAM SET (replace), delta DEĞİL.** Gönderilen dizi yazının yeni
+            etiket setidir; listede olmayan mevcut etiketler KALDIRILIR. `[]` tüm
+            etiketleri kaldırır. Alanı **hiç göndermemek** (`undefined`) etiketlere
+            DOKUNMAZ — `[]` ile `undefined` arasındaki bu fark bağlayıcıdır ve Hızlı
+            Düzenle'nin kısmi gövde sözleşmesi buna dayanır.
+            Var olmayan bir id → `422`. Çöpteki yazıda → `409` (§10.7).
         seoTitle: { type: string, nullable: true }
         seoDescription: { type: string, nullable: true }
         ogTitle: { type: string, nullable: true }

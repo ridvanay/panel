@@ -9,7 +9,9 @@ interface ListPaginationProps {
 
 /**
  * Blog/Kullanıcılar/Sayfalar tablolarının altında tekrar eden sayfalama göstergesi.
- * Yalnızca çağıran taraf `totalPages > 10` olduğunda render etmelidir.
+ * Yalnızca çağıran taraf `totalPages > 1` olduğunda render etmelidir — `totalPages`
+ * listenin kaç SAYFAYA bölündüğüdür, öğe sayısı DEĞİLDİR (bkz. ARCHITECTURE.md §10.7.1).
+ * `> 10` gibi bir eşik pageSize büyüdükçe (örn. 50/sayfa) kontrolleri sessizce gizler.
  */
 export function ListPagination({ page, totalPages, onPageChange }: ListPaginationProps) {
   return (

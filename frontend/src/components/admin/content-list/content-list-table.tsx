@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
 import { SeoScoreBadge } from "./seo-score-badge";
 import type { ContentListEntity, ContentListFilter, QuickEditValues } from "./types";
 
-interface ContentListTableProps<T extends ContentListEntity> {
+interface ContentListTableProps<T extends ContentListEntity, Q extends QuickEditValues = QuickEditValues> {
   items: T[];
   activeFilter: ContentListFilter;
   isAdmin: boolean;
@@ -28,10 +28,10 @@ interface ContentListTableProps<T extends ContentListEntity> {
   allSelected: boolean;
 
   editingId: string | null;
-  quickEditValues: QuickEditValues;
+  quickEditValues: Q;
   quickEditSaving: boolean;
   quickEditError: string | null;
-  onQuickEditChange: (values: Partial<QuickEditValues>) => void;
+  onQuickEditChange: (values: Partial<Q>) => void;
   onQuickEditSave: () => void;
   onQuickEditCancel: () => void;
   onStartQuickEdit: (item: T) => void;
@@ -44,11 +44,23 @@ interface ContentListTableProps<T extends ContentListEntity> {
   editHref: (item: T) => string;
   viewHref: (item: T) => string;
 
-  /** Blog'a özgü Kategori sütunu — Sayfalar'da bu prop verilmez, sütun render edilmez. */
-  categoryColumn?: {
+  /**
+   * Entity'ye özgü ek sütunlar (ör. Blog'un Kategori/Etiketler sütunu) — §10.7.2.
+   * Sayfalar'da bu prop verilmez, ek sütun render edilmez.
+   */
+  extraColumns?: {
+    key: string;
     header: string;
+    className?: string;
     render: (item: T) => ReactNode;
-  };
+  }[];
+
+  /**
+   * §10.7.2 — entity'ye özgü Hızlı Düzenle alanları (ör. Blog Kategori/Etiket). Masaüstü
+   * satır formunda VE mobil kart formunda (iki ayrı render yolu) durum alanından SONRA
+   * render edilir.
+   */
+  quickEditExtraFields?: (ctx: { values: Q; onChange: (v: Partial<Q>) => void; disabled: boolean }) => ReactNode;
 }
 
 const columnCountBase = 7; // Checkbox, Başlık, Yazar, SEO, Durum, Tarih, Görüntülenme
@@ -60,7 +72,7 @@ function statusBadgeProps(status: ContentListEntity["status"]): { tone: "success
   return { tone: "warning", label: "Taslak" };
 }
 
-export function ContentListTable<T extends ContentListEntity>({
+export function ContentListTable<T extends ContentListEntity, Q extends QuickEditValues = QuickEditValues>({
   items,
   activeFilter,
   isAdmin,
@@ -82,9 +94,10 @@ export function ContentListTable<T extends ContentListEntity>({
   onRequestPermanentDelete,
   editHref,
   viewHref,
-  categoryColumn,
-}: ContentListTableProps<T>) {
-  const colSpan = columnCountBase + (categoryColumn ? 1 : 0);
+  extraColumns,
+  quickEditExtraFields,
+}: ContentListTableProps<T, Q>) {
+  const colSpan = columnCountBase + (extraColumns?.length ?? 0);
   const isTrashed = activeFilter === "trashed";
 
   return (
@@ -104,7 +117,11 @@ export function ContentListTable<T extends ContentListEntity>({
               </TableHead>
               <TableHead className="w-auto">Başlık</TableHead>
               <TableHead className="w-36">Yazar</TableHead>
-              {categoryColumn && <TableHead className="w-36">{categoryColumn.header}</TableHead>}
+              {extraColumns?.map((col) => (
+                <TableHead key={col.key} className={col.className ?? "w-36"}>
+                  {col.header}
+                </TableHead>
+              ))}
               <TableHead className="w-20">SEO</TableHead>
               <TableHead className="w-24">Durum</TableHead>
               <TableHead className="w-36">Tarih</TableHead>
@@ -129,7 +146,7 @@ export function ContentListTable<T extends ContentListEntity>({
                             <Input
                               id={`quick-edit-title-${item.id}`}
                               value={quickEditValues.title}
-                              onChange={(e) => onQuickEditChange({ title: e.target.value })}
+                              onChange={(e) => onQuickEditChange({ title: e.target.value } as Partial<Q>)}
                               autoFocus
                             />
                           </div>
@@ -140,7 +157,7 @@ export function ContentListTable<T extends ContentListEntity>({
                             <Input
                               id={`quick-edit-slug-${item.id}`}
                               value={quickEditValues.slug}
-                              onChange={(e) => onQuickEditChange({ slug: e.target.value })}
+                              onChange={(e) => onQuickEditChange({ slug: e.target.value } as Partial<Q>)}
                             />
                           </div>
                           <div className="space-y-1">
@@ -151,13 +168,18 @@ export function ContentListTable<T extends ContentListEntity>({
                               id={`quick-edit-status-${item.id}`}
                               className="min-w-36"
                               value={quickEditValues.status}
-                              onChange={(e) => onQuickEditChange({ status: e.target.value as QuickEditValues["status"] })}
+                              onChange={(e) => onQuickEditChange({ status: e.target.value as QuickEditValues["status"] } as Partial<Q>)}
                             >
                               <option value="DRAFT">Taslak</option>
                               <option value="PUBLISHED">Yayında</option>
                             </Select>
                           </div>
                         </div>
+                        {quickEditExtraFields?.({
+                          values: quickEditValues,
+                          onChange: onQuickEditChange,
+                          disabled: quickEditSaving,
+                        })}
                         <div className="flex items-center justify-end gap-2">
                           <Button type="button" size="sm" loading={quickEditSaving} onClick={onQuickEditSave}>
                             Güncelle
@@ -268,7 +290,11 @@ export function ContentListTable<T extends ContentListEntity>({
                       <span className="text-foreground/70">—</span>
                     )}
                   </TableCell>
-                  {categoryColumn && <TableCell className="w-36 text-foreground/70">{categoryColumn.render(item)}</TableCell>}
+                  {extraColumns?.map((col) => (
+                    <TableCell key={col.key} className={col.className ?? "w-36 text-foreground/70"}>
+                      {col.render(item)}
+                    </TableCell>
+                  ))}
                   <TableCell className="w-20">
                     <SeoScoreBadge score={item.seoScore} issues={item.seoScoreIssues} entityLabel={item.title} />
                   </TableCell>
@@ -305,7 +331,7 @@ export function ContentListTable<T extends ContentListEntity>({
                       id={`quick-edit-title-m-${item.id}`}
                       className="h-11"
                       value={quickEditValues.title}
-                      onChange={(e) => onQuickEditChange({ title: e.target.value })}
+                      onChange={(e) => onQuickEditChange({ title: e.target.value } as Partial<Q>)}
                       autoFocus
                     />
                   </div>
@@ -317,7 +343,7 @@ export function ContentListTable<T extends ContentListEntity>({
                       id={`quick-edit-slug-m-${item.id}`}
                       className="h-11"
                       value={quickEditValues.slug}
-                      onChange={(e) => onQuickEditChange({ slug: e.target.value })}
+                      onChange={(e) => onQuickEditChange({ slug: e.target.value } as Partial<Q>)}
                     />
                   </div>
                   <div className="space-y-1">
@@ -328,12 +354,17 @@ export function ContentListTable<T extends ContentListEntity>({
                       id={`quick-edit-status-m-${item.id}`}
                       className="h-11"
                       value={quickEditValues.status}
-                      onChange={(e) => onQuickEditChange({ status: e.target.value as QuickEditValues["status"] })}
+                      onChange={(e) => onQuickEditChange({ status: e.target.value as QuickEditValues["status"] } as Partial<Q>)}
                     >
                       <option value="DRAFT">Taslak</option>
                       <option value="PUBLISHED">Yayında</option>
                     </Select>
                   </div>
+                  {quickEditExtraFields?.({
+                    values: quickEditValues,
+                    onChange: onQuickEditChange,
+                    disabled: quickEditSaving,
+                  })}
                   {quickEditError && (
                     <p role="alert" className="animate-in fade-in-0 duration-150 text-xs text-danger">
                       {quickEditError}
@@ -439,7 +470,11 @@ export function ContentListTable<T extends ContentListEntity>({
 
               <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 pl-11 text-xs text-foreground/70">
                 {item.author && <span>{item.author.name}</span>}
-                {categoryColumn && <span>{categoryColumn.render(item)}</span>}
+                {extraColumns?.map((col) => (
+                  <span key={col.key} className="inline-flex flex-wrap items-center gap-1">
+                    {col.render(item)}
+                  </span>
+                ))}
                 <MobileDateText item={item} />
               </div>
 

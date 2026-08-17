@@ -29,6 +29,7 @@ import {
   Redo2,
   Link as LinkIcon,
   Image as ImageIcon,
+  Images as GalleryIcon,
   Table as TableIcon,
   Rows3,
   Columns3,
@@ -44,6 +45,7 @@ import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
+import { BlogGallery } from "@/components/admin/blog/blog-gallery-extension";
 
 function ToolbarButton({
   active,
@@ -79,10 +81,20 @@ export function PostEditor({ content, onChange }: { content: string; onChange: (
   const [altTextDraft, setAltTextDraft] = useState("");
   const [altTextError, setAltTextError] = useState<string | null>(null);
   const [altTextSubmitting, setAltTextSubmitting] = useState(false);
+
+  // §10.15.4 — Galeri: MediaPicker (çoklu) kapandıktan sonra seçilen HER görsel için alt
+  // metin istenir; tekil görsel akışının (`handleConfirmAltText`) çoklu karşılığı.
+  const [galleryPickerOpen, setGalleryPickerOpen] = useState(false);
+  const [pendingGalleryMedia, setPendingGalleryMedia] = useState<Media[] | null>(null);
+  const [galleryAltDrafts, setGalleryAltDrafts] = useState<Record<string, string>>({});
+  const [galleryAltError, setGalleryAltError] = useState<string | null>(null);
+  const [gallerySubmitting, setGallerySubmitting] = useState(false);
+
   const editor = useEditor({
     extensions: [
       StarterKit,
       Image,
+      BlogGallery,
       // resizable: false BİLİNÇLİ bir karar — sütun yeniden boyutlandırma açılırsa `colwidth`
       // attribute'u üretilir, bu backend sanitize allow-list'inde YOK (kaldırma/değiştirme).
       Table.configure({ resizable: false }),
@@ -159,6 +171,57 @@ export function PostEditor({ content, onChange }: { content: string; onChange: (
       toast.error(message);
     } finally {
       setAltTextSubmitting(false);
+    }
+  }
+
+  function handleInsertGallery() {
+    if (!editor) return;
+    setGalleryPickerOpen(true);
+  }
+
+  function handleGallerySelect(mediaList: Media[]) {
+    setGalleryPickerOpen(false);
+    setPendingGalleryMedia(mediaList);
+    setGalleryAltDrafts(
+      Object.fromEntries(mediaList.map((media) => [media.id, media.altText ?? ""]))
+    );
+    setGalleryAltError(null);
+  }
+
+  function handleGalleryDialogOpenChange(next: boolean) {
+    if (!next) {
+      setPendingGalleryMedia(null);
+      setGalleryAltDrafts({});
+      setGalleryAltError(null);
+    }
+  }
+
+  const galleryAltAllFilled =
+    pendingGalleryMedia !== null && pendingGalleryMedia.every((media) => (galleryAltDrafts[media.id] ?? "").trim());
+
+  async function handleConfirmGalleryAltText() {
+    if (!pendingGalleryMedia || !galleryAltAllFilled) return;
+    setGallerySubmitting(true);
+    setGalleryAltError(null);
+    try {
+      const items = await Promise.all(
+        pendingGalleryMedia.map(async (media) => {
+          const trimmed = (galleryAltDrafts[media.id] ?? "").trim();
+          // Değişmediyse gereksiz yazma yapma — yalnızca alt metin farklıysa güncelle.
+          const url =
+            media.altText === trimmed ? media.url : (await mediaApi.updateMediaAltText(media.id, trimmed)).url;
+          return { src: url, alt: trimmed };
+        })
+      );
+      editor?.chain().focus().insertBlogGallery({ items, layout: "grid" }).run();
+      setPendingGalleryMedia(null);
+      setGalleryAltDrafts({});
+    } catch (err) {
+      const message = friendlyErrorMessage(err);
+      setGalleryAltError(message);
+      toast.error(message);
+    } finally {
+      setGallerySubmitting(false);
     }
   }
 
@@ -267,6 +330,9 @@ export function PostEditor({ content, onChange }: { content: string; onChange: (
         <ToolbarButton label="Görsel ekle" onClick={handleInsertImage}>
           <ImageIcon />
         </ToolbarButton>
+        <ToolbarButton label="Galeri ekle" onClick={handleInsertGallery}>
+          <GalleryIcon />
+        </ToolbarButton>
         <ToolbarButton
           label="Tablo ekle"
           active={editor?.isActive("table")}
@@ -354,6 +420,74 @@ export function PostEditor({ content, onChange }: { content: string; onChange: (
               loading={altTextSubmitting}
               disabled={!altTextDraft.trim()}
               onClick={handleConfirmAltText}
+            >
+              Ekle
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <MediaPicker
+        open={galleryPickerOpen}
+        onOpenChange={setGalleryPickerOpen}
+        multiple
+        onSelect={handleGallerySelect}
+      />
+
+      <Dialog open={pendingGalleryMedia !== null} onOpenChange={handleGalleryDialogOpenChange}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Galeri için alt metin ekle</DialogTitle>
+            <DialogDescription>
+              Her görselin ne gösterdiğini kısaca açıklayın — ekran okuyucu kullanan ziyaretçiler için gereklidir.
+            </DialogDescription>
+          </DialogHeader>
+
+          {pendingGalleryMedia && (
+            <div className="max-h-[60vh] space-y-3 overflow-y-auto">
+              {pendingGalleryMedia.map((media, index) => (
+                <div key={media.id} className="flex items-center gap-3">
+                  {/* eslint-disable-next-line @next/next/no-img-element -- yüklenen/harici görsel URL'si */}
+                  <img
+                    src={media.url}
+                    alt=""
+                    className="h-16 w-16 shrink-0 rounded-md border border-border object-cover"
+                  />
+                  <div className="flex-1">
+                    <Field id={`gallery-alt-text-${media.id}`} label={`Görsel ${index + 1} alt metni`} required>
+                      {(inputProps) => (
+                        <Input
+                          {...inputProps}
+                          value={galleryAltDrafts[media.id] ?? ""}
+                          onChange={(e) => {
+                            setGalleryAltDrafts((prev) => ({ ...prev, [media.id]: e.target.value }));
+                            if (galleryAltError) setGalleryAltError(null);
+                          }}
+                          placeholder="Örn. Ürünün önden çekilmiş fotoğrafı"
+                        />
+                      )}
+                    </Field>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {galleryAltError && (
+            <p role="alert" className="text-xs text-danger">
+              {galleryAltError}
+            </p>
+          )}
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => handleGalleryDialogOpenChange(false)}>
+              Vazgeç
+            </Button>
+            <Button
+              type="button"
+              loading={gallerySubmitting}
+              disabled={!galleryAltAllFilled}
+              onClick={handleConfirmGalleryAltText}
             >
               Ekle
             </Button>

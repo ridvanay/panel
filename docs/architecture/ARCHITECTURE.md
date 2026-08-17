@@ -732,6 +732,116 @@ karşılıkları yazılır; `Product`/`PortfolioItem` toplu işlemleri için `pr
 `portfolio_item.*` önekleri kullanılır (`AuditLog.action` serbest string, migration
 gerekmez).
 
+#### 10.7.1 Sayfalama kontrollerinin görünürlük eşiği — `totalPages > 1` (DÜZELTME, bağlayıcı)
+
+**Durum:** Bu bölüm, üretimde doğrulanmış KRİTİK bir kullanılabilirlik hatasını kapatır.
+Kontrat seviyesine yazılmasının sebebi, hatanın kaynağının bir kodlama kazası değil,
+**yanlış belgelenmiş bir kural** olmasıdır: `list-pagination.tsx` ve `use-filtered-list.ts`
+doc yorumları "yalnızca `totalPages > 10` olduğunda render edilmelidir" diyordu ve beş
+liste ekranı bu yanlış kuralı sadakatle uyguluyordu. Yorum düzeltilmeden kod düzeltilirse
+hata bir sonraki dokunuşta geri gelir.
+
+**Doğru kural (tek cümle):** *Sayfa boyutu seçici ve sayfalama kontrolleri
+`totalPages > 1` olduğunda gösterilir; `totalPages <= 1` iken gizlenir.*
+
+**Neden `> 10` bir hataydı — iki belirti, tek kök neden:**
+`useFilteredList.totalPages`, listenin **kaç sayfaya bölündüğüdür** (`ceil(n / pageSize)`),
+öğe sayısı DEĞİLDİR. Eşik büyük olasılıkla "10'dan fazla ÖĞE varsa göster" niyetiyle
+yazıldı, ama `totalPages` üzerine kuruldu. Sonuç, `pageSize` büyüdükçe kontrollerin
+kaybolduğu bir kısırdöngüdür:
+
+| Öğe | pageSize | totalPages | `> 10` | Gerçekte olması gereken |
+|---|---|---|---|---|
+| 229 | 10 | 23 | görünür | görünür |
+| 229 | 20 | 12 | görünür | görünür |
+| 229 | 50 | 5 | **gizli** | **görünür (5 sayfa!)** |
+
+Kullanıcı 50/sayfa'yı seçtiği anda `totalPages` 5'e düşer, koşul yanlışa döner ve **hem
+sayfalama hem de sayfa boyutu seçicisi aynı anda DOM'dan kalkar**. Kullanıcı ne 2. sayfaya
+geçebilir ne de 10/sayfa'ya geri dönebilir — durum yalnızca sayfa yenilenerek (state
+sıfırlanarak) kırılır. Kullanıcının bildirdiği "50/sayfa seçilince diğer sayfalara
+geçilemiyor" ve "sayfa boyutu dropdown'ı kayboluyor" şikâyetleri bu tek koşulun iki yüzüdür.
+
+**Kapsam kararı — beş liste ekranının HEPSİ düzeltilir (yalnızca blog/pages değil).**
+Kullanıcı yalnızca Blog ve Sayfa listelerinden şikâyet etti, ancak `grep -rn "totalPages > 10"`
+aynı kusurlu koşulun `blog`, `pages`, `products`, `portfolio`, `users` ekranlarında birebir
+kopyalandığını gösteriyor. Sadece ikisini düzeltmek (a) beş ekranı birbirinden ayrıştırır,
+(b) kalan üçünü "henüz rapor edilmemiş aynı hata" olarak bırakır, (c) düzeltilen ikisinin
+yanında yanlış örnek bırakır. Aynı kod, aynı hata, aynı düzeltme → tek turda kapatılır.
+
+`/admin/media` sayfası **bilinçli olarak kapsam dışıdır**: kendi doc yorumunda bu eşiği
+KOPYALAMADIĞINI zaten açıklıyor (`media/page.tsx` ~satır 844), yani orada hata yok.
+
+**İkincil hata — `w-24` sabit genişliği (kullanıcının 2. maddesi).** Sayfa boyutu
+`<Select>`'i `className="w-24"` ile sabitlenmiş; "10 / sayfa" metni + dropdown ok ikonu bu
+genişliğe sığmıyor ve metin kırpılıyor. `w-24` → `w-auto` (gerekiyorsa `min-w-[7.5rem]`).
+Sabit genişlik yeniden getirilmemelidir: seçenek metinleri yerelleştirmeyle (§10.5)
+uzayabilir.
+
+**Değiştirilecek dosyalar (frontend-agent):** `frontend/src/app/admin/{blog,pages,products,
+portfolio,users}/page.tsx` (her birinde 2 koşul + 1 `className`), ayrıca
+`frontend/src/components/admin/list-pagination.tsx` ve `frontend/src/hooks/use-filtered-list.ts`
+doc yorumları. **Yorum düzeltmesi opsiyonel değildir** — hatanın asıl kaynağı odur.
+
+> **Dikkat — `w-24`'ü toplu değiştir/yenile (replace-all) YAPMAYIN.**
+> `users/page.tsx` içinde sayfa boyutu `<Select>`'i DIŞINDA iki `w-24` daha var
+> (`<TableHead className="w-24 text-right">İşlemler</TableHead>` ve karşılık gelen
+> `<TableCell>`). Bunlar İşlemler sütununun genişliğidir, doğrudur ve
+> DEĞİŞTİRİLMEMELİDİR. Yalnızca sayfa boyutu `<Select>`'inin `className`'i düzeltilir
+> (5 dosyada 5 tane).
+
+**qa-agent regresyon testi (bağlayıcı):** "229 öğe → 50/sayfa seç → 2. sayfaya geç →
+10/sayfa'ya dön" akışı e2e olarak korunmalıdır; ayrıca `totalPages === 1` iken kontrollerin
+GÖRÜNMEDİĞİ de doğrulanmalıdır (eşiğin `> 0`'a kaydırılmadığından emin olmak için).
+
+#### 10.7.2 Hızlı Düzenle'nin entity'ye özgü alanlarla genişletilmesi (generic, bağlayıcı)
+
+Hızlı Düzenle'ye Blog'a özgü **Kategori + Etiket** alanları eklenir (kullanıcının 4.
+maddesi). `Page`/`Product`/`PortfolioItem`'da kategori-etiket semantiği aynı olmadığı için
+ortak tip **kirletilmez**.
+
+**Reddedilen yaklaşım:** `QuickEditValues`'a `categoryId?: string | null; tagIds?: string[]`
+gibi opsiyonel alanlar eklemek. Bu, `Page` tarafında hiçbir zaman dolmayacak alanları
+tipte görünür kılar, `PATCH /admin/pages/{id}`'e asla gitmeyecek alanların yanlışlıkla
+gönderilmesini tip sistemiyle engelleyemez ve "opsiyonel ama aslında zorunlu" belirsizliği
+yaratır.
+
+**Karar — ortak tip DEĞİŞMEZ, genişletme generic parametreyle yapılır:**
+
+```ts
+// content-list/types.ts — DEĞİŞMEDEN kalır
+export interface QuickEditValues { title: string; slug: string; status: ContentStatus; }
+
+// content-list/types.ts — YENİ, yalnızca blog listesi kullanır
+export interface BlogQuickEditValues extends QuickEditValues {
+  categoryId: string | null;   // "" DEĞİL null — PATCH gövdesiyle birebir
+  tagIds: string[];            // TAM set (delta değil), bkz. §10.14.4
+}
+```
+
+`useContentList` ve `ContentListTable` ikinci bir generic parametre alır:
+`<T extends ContentListEntity, Q extends QuickEditValues = QuickEditValues>`. Varsayılan
+`QuickEditValues` olduğu için **`pages`/`products`/`portfolio` çağrı yerleri hiç
+değişmez**. Blog `useContentList<BlogPost, BlogQuickEditValues>` der.
+
+İki yeni opsiyonel option/prop:
+- `useContentList` → `quickEditExtras?: (item: T) => Omit<Q, keyof QuickEditValues>` —
+  `startQuickEdit` çağrıldığında satırdan başlangıç değerlerini üretir. Verilmezse
+  `startQuickEdit` bugünkü `{ title, slug, status }` davranışını korur.
+- `ContentListTable` → `quickEditExtraFields?: (ctx: { values: Q; onChange: (v: Partial<Q>) => void; disabled: boolean }) => ReactNode` —
+  masaüstü satır formunda VE mobil kart formunda (iki ayrı render yolu var, İKİSİNE de
+  eklenmelidir) durum alanından sonra render edilir.
+
+`updateItem` imzası `(id, input: Partial<Q>) => Promise<T>` olur; blog için bu
+`PATCH /admin/blog/{postId}` gövdesine birebir oturur (§10.14.4).
+
+**Sütun slotu genelleştirilir:** `ContentListTable`'ın `categoryColumn?: { header, render }`
+prop'u `extraColumns?: { key: string; header: string; className?: string; render: (item: T) => ReactNode }[]`
+ile değiştirilir. Gerekçe: Etiketler sütunu ikinci bir ad-hoc prop (`tagsColumn`) gerektirirdi
+ve üçüncüsü kaçınılmazdı. `colSpan` hesabı `columnCountBase + extraColumns.length` olur.
+`products`/`portfolio` çağrı yerleri tek satırlık mekanik bir değişiklikle dizi formuna
+geçer; `pages` zaten bu prop'u kullanmıyor.
+
 ### 10.8 Toplu İçe Aktarma (Import) + Dışa Aktarma
 
 Durum: v1 · Sahibi: Mimar. Bağlayıcı kaynak: `openapi.yaml` (tag `Import`). Bu bölüm
@@ -3483,6 +3593,484 @@ app.post(
   hata sınıfına girmez — düzeltene kadar tüm denemeler tükenir).
 - Test için admin panelden `POST .../webhooks/{id}/test` ile bir `PING` olayı
   tetiklenebilir; bu, uç noktanızı gerçek veriye dokunmadan doğrulamanın yoludur.
+
+### 10.14 Blog Etiketleri (Tag) — çoka-çok sınıflandırma
+
+Durum: v1 · Sahibi: Mimar. Bağlayıcı kaynak: `openapi.yaml` (tag `Blog`). Bu bölüm
+`db-agent`, `backend-agent`, `frontend-agent` ve `qa-agent` için tek doğruluk kaynağıdır.
+
+Kategori (`BlogCategory`) bir yazının **tek** birincil sınıflandırmasıdır (bire-çok);
+etiket ise serbest, **çoklu** ve yatay bir sınıflandırmadır (çoka-çok). İkisi birbirinin
+yerine geçmez ve biri diğerini kapsamaz — bu ayrım UI'da da korunur (ayrı alanlar, ayrı
+sütunlar).
+
+#### 10.14.1 Şema (db-agent — TEK SAHİP)
+
+```prisma
+model BlogTag {
+  id        String   @id @default(uuid())
+  seq       Int      @unique @default(autoincrement())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+
+  posts BlogPostTag[]
+
+  @@map("blog_tags")
+}
+
+model BlogPostTag {
+  postId String
+  tagId  String
+
+  post BlogPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  tag  BlogTag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([postId, tagId])
+  @@index([tagId])
+  @@map("blog_post_tags")
+}
+```
+
+`BlogPost` tarafına karşı-ilişki eklenir: `tags BlogPostTag[]`. `BlogPost` üzerinde
+BAŞKA hiçbir kolon değişmez (`categoryId` olduğu gibi kalır).
+
+**`BlogTag`, `Tag` DEĞİL.** İsimlendirme `BlogCategory`/`ProductCategory`/
+`PortfolioCategory` deseninin devamıdır. Global bir `Tag` modeli, ürün veya portföy
+etiketleri istendiğinde ya çok-varlıklı polymorphic bir ara tabloya (bu projede
+`ContentRevision` dışında kaçınılan bir desen) ya da geriye dönük bir yeniden adlandırmaya
+zorlardı. Tablo adları `blog_tags` / `blog_post_tags`.
+
+**Ara tablo AÇIK (explicit), Prisma implicit m-n DEĞİL.** Gerekçeler: (a) implicit ilişki
+`_BlogPostToBlogTag` adında bir tablo üretir, bu projedeki snake_case + `@@map` tablo
+adlandırma standardını ihlal eder ve migration'da elle düzeltilemez; (b) açık tabloya
+ileride kolon eklenebilir (ör. sıralama için `seq`); (c) `onDelete` davranışı iki taraf
+için de açıkça ifade edilir, örtük varsayıma bırakılmaz.
+
+**İndeksler.** Bileşik birincil anahtar `@@id([postId, tagId])` hem tekilliği (aynı etiket
+bir yazıya iki kez eklenemez) hem de "bu yazının etiketleri" sorgusunun indeksini sağlar.
+Ters yön ("bu etiketi taşıyan yazılar", etikete göre filtreleme) bileşik anahtarın soldan
+öneki olmadığı için ayrı `@@index([tagId])` gerektirir. `slug @unique` public/idempotent
+aramanın anahtarıdır; `name` üzerinde DB tekilliği YOKTUR (bkz. §10.14.3).
+
+#### 10.14.2 Silme semantiği (bağlayıcı)
+
+| Olay | Sonuç |
+|---|---|
+| Yazı **çöpe** taşınır (`deletedAt` set) | Etiket ilişkileri **AYNEN KORUNUR**. Geri yükleme etiketleri geri getirmek zorundadır; soft-delete asla `blog_post_tags` satırına dokunmaz. |
+| Yazı **kalıcı** silinir | `BlogPostTag` satırları FK `onDelete: Cascade` ile düşer. `BlogTag` kayıtlarına DOKUNULMAZ. |
+| **Etiket** silinir | `BlogPostTag` satırları cascade düşer; yazılar silinmez, yalnızca o etiketi kaybeder. `BlogCategory` silmenin `SetNull` ile yazıyı kategorisiz bırakmasıyla aynı felsefe. |
+| Etiket **hiçbir yazıda kullanılmıyor** (yetim) | **OTOMATİK SİLİNMEZ.** |
+
+**Yetim etiketler bilinçli olarak temizlenmez.** WordPress'in aksine, son yazısından
+kaldırılan bir etiket ortadan kaybolmaz. Gerekçe: (a) otomatik silme, kullanıcının bir
+yazıdan etiketi geçici olarak çıkarmasıyla o etiketin adının/slug'ının sessizce yok
+olmasına yol açar — geri alınamaz ve sürpriz bir veri kaybıdır; (b) editoryal ekipler
+etiket sözlüğünü önceden hazırlar; (c) silme her zaman açık bir kullanıcı eylemidir
+(§10.11.3 "hiçbir şey kaskad silinmez" ilkesiyle tutarlı). Yetimlerin görünür olması için
+`BlogTag` DTO'su `postCount` taşır (bkz. §10.14.3) ve etiket yönetim ekranı bunu gösterir;
+temizlik **elle** yapılır. Otomatik/toplu temizlik istenirse önce bu bölüm güncellenir.
+
+`postCount` **çöptekileri saymaz** (`deletedAt: null` filtreli) — yoksa "3 yazıda
+kullanılıyor" diyen bir etiket, yayındaki hiçbir yazıda görünmezdi. Sayaç, klasör
+sayaçlarındaki (§10.11.1) kuralın aynısıyla **tek sorguda** gelir; etiket başına ayrı
+`count()` (N+1) yasaktır.
+
+#### 10.14.3 Uç noktalar ve yetki eşikleri
+
+`BlogCategory` uçlarının **birebir simetriği** — yeni bir desen icat edilmez:
+
+| Uç | Yetki | Not |
+|---|---|---|
+| `GET /admin/blog/tags` | authenticated | Sayfalanmaz, arama parametresi almaz (§10.11.2 klasör listesiyle aynı gerekçe: liste zaten bellekte, arama frontend-only) |
+| `POST /admin/blog/tags` | ADMIN, EDITOR | Satır-içi etiket oluşturmanın da kullandığı uç (§10.14.5) |
+| `PATCH /admin/blog/tags/{tagId}` | ADMIN, EDITOR | |
+| `DELETE /admin/blog/tags/{tagId}` | **yalnızca ADMIN** | `DELETE .../categories/{categoryId}` ile aynı eşik |
+
+**Kontrat boşluğu kapatılıyor:** `/admin/blog/categories` ve
+`/admin/blog/categories/{categoryId}` uçları kodda VAR ama `openapi.yaml`'da
+BELGELENMEMİŞ (`/admin/products/categories` belgeli). Etiket uçları eklenirken bu boşluk
+da kapatılır — aksi hâlde "kontrat tek doğruluk kaynağıdır" kuralı blog kategorileri için
+geçersiz kalırdı.
+
+**Slug türetme ve çakışma.** `POST` gövdesi `{ name, slug? }`; `slug` verilmezse
+`slugify(name)`. `slug` unique olduğu için aynı ada sahip ikinci etiket
+`409 CONFLICT` alır — global Prisma `P2002` işleyicisi (`plugins/error-handler.ts`) bunu
+zaten 409'a çeviriyor, backend-agent ek bir yakalama yazmaz. `name` üzerinde DB tekilliği
+yoktur çünkü kimlik slug'dır; "React" ve "react" aynı slug'a düşer ve ikincisi 409 alır —
+istenen davranış budur. Satır-içi oluşturmada 409'un kullanıcıya nasıl gösterileceği
+§10.14.5'tedir.
+
+**Etiket YENİDEN ADLANDIRILDIĞINDA slug otomatik değişmez** — `PATCH` yalnızca gönderilen
+alanı günceller (`BlogCategory` ile aynı davranış). Slug'ın URL kimliği olduğu ve sessizce
+değişmesinin bağlantı kırdığı için bu bilinçlidir.
+
+#### 10.14.4 Yazıya etiket atama — `tagIds` TAM SET (delta değil)
+
+Ayrı bir `POST /admin/blog/{postId}/tags` ucu **YOKTUR**. Etiketler yazının diğer alanları
+gibi mevcut create/update gövdeleriyle yönetilir:
+
+- `POST /admin/blog` → `tagIds?: string[]` (verilmezse boş)
+- `PATCH /admin/blog/{postId}` → `tagIds?: string[]`
+
+**Semantik: gönderilen dizi yazının TAM etiket setidir** (replace), ekleme/çıkarma deltası
+değil. `[]` göndermek tüm etiketleri kaldırır; alanı **hiç göndermemek** etiketlere
+dokunmaz (`undefined` ≠ `[]`). Bu ayrım Hızlı Düzenle için kritiktir ve `PATCH`'in kısmi
+gövde sözleşmesiyle tutarlıdır. Gerekçe: delta semantiği (`addTagIds`/`removeTagIds`) eşzamanlı
+iki düzenlemede birleşme (merge) kuralı gerektirir; replace semantiği ise "son yazan kazanır"
+kuralını tüm alanlarla aynı tutar.
+
+**Uygulama kuralları (backend-agent):**
+- Yazma, yazının güncellendiği **AYNI transaction** içinde yapılır. Yöntem: o yazıya ait
+  `blog_post_tags` satırlarından **artık listede olmayanları** `deleteMany`, **yeni
+  olanları** `createMany({ skipDuplicates: true })`. "Hepsini sil + hepsini ekle"
+  yaklaşımı, hiç değişmemiş satırları gereksizce çöpe atar.
+- Var olmayan bir `tagId` → `422 VALIDATION_ERROR` (sessizce yok sayılmaz). Kontrol tek
+  bir `findMany({ where: { id: { in: tagIds } } })` ile yapılır, id başına sorgu yasaktır.
+- Dizide tekrarlanan id'ler yazmadan önce tekilleştirilir (istek reddedilmez).
+- Üst sınır **50 etiket/yazı** (`z.array(...).max(50)`) — sınırsız dizi, sınırsız yazma
+  demektir.
+- Etiketler **çöpteki yazıda değiştirilemez** (§10.7'nin "çöpteki içerik düzenlenemez →
+  409" kuralı bu alan için de geçerlidir, ayrı bir dal yazılmaz).
+
+**Revizyon geçmişi (§10.1) — etiketler snapshot'a DAHİLDİR.** `toBlogPostSnapshot`
+`categoryId`'yi zaten saklıyor; etiketleri dışarıda bırakmak, eski bir revizyona dönen
+kullanıcının kategorisinin geri geldiği ama etiketlerinin gelmediği asimetrik bir
+davranış üretirdi. Snapshot'a `tagIds: string[]` eklenir, geri yükleme aynı replace
+semantiğini uygular. **Geri yüklemede artık var olmayan etiket id'leri sessizce
+atlanır** (422 DEĞİL) — kullanıcı silinmiş bir etiket yüzünden revizyonunu geri
+yükleyemez duruma düşürülemez; snapshot geçmiş bir anın kaydıdır, geçerli bir istek
+gövdesi değildir.
+
+**Autosave etiketleri KAPSAMAZ.** `AutosaveBlogPostRequestSchema` bilinçli olarak dar
+tutulmuştur (`categoryId` de dışarıdadır); `tagIds` eklenmez.
+
+#### 10.14.5 Frontend sözleşmesi
+
+**DTO.** `BlogPost.tags: BlogTag[]` — her zaman dizi (boşsa `[]`, asla `null`).
+Sıralama **deterministik**: `seq ASC` (oluşturulma sırası). Bir okuma sırası belirtilmezse
+Prisma'nın döndürdüğü sıra sabit değildir ve UI'da chip'ler istekler arasında yer
+değiştirir. `BlogPost` DTO'su tek şema olduğu için `tags` public `/blog` ucunda da görünür;
+etiketler public metadata olduğundan (kategori gibi) bu kabul edilmiştir — public sitede
+RENDER edilmesi bu turun kapsamında değildir.
+
+**Liste sütunu (kullanıcının 1. maddesi).** Blog listesine Kategori sütununun hemen sağına
+"Etiketler" sütunu eklenir (§10.7.2'deki `extraColumns` slotu). İçerik chip'lerdir;
+etiketi olmayan satır `—` gösterir. **En fazla 3 chip + "+N"** — sınırsız chip satır
+yüksekliğini patlatır ve tabloyu kaydırılamaz hâle getirir. `+N` bir buton DEĞİL,
+`title` ile tam listeyi veren bir metindir (satır tıklaması zaten Hızlı Düzenle'ye ait,
+çakışmamalı).
+
+**Etikete göre filtreleme (kullanıcının "opsiyonel, kolaysa" isteği) — DAHİL, client-side.**
+Yeni bir query parametresi ya da backend değişikliği GEREKTİRMEZ: §10.7 gereği blog listesi
+zaten tüm kayıtları belleğe çekiyor (`trashed=include&limit=100` + cursor döngüsü) ve
+arama/sayfalama client-side. Etiket filtresi arama kutusunun yanına bir `<Select>` olarak
+eklenir (tek etiket seçimi, "Tüm etiketler" varsayılan) ve `useFilteredList`'e giden diziyi
+sekme filtresinden SONRA daraltır. **Public `/blog?tag=` filtresi bu turun KAPSAMI
+DIŞINDADIR** (public site etiket sayfaları ayrı bir iş; yapılırsa `slug` üzerinden ve
+`@@index([tagId])` ile).
+
+**Etiket seçimi bileşeni.** Kategoriyle "aynı UX mantığı" istendi, ama kategori tekil bir
+`<Select>`, etiket çoklu. `<select multiple>` **kullanılmaz** (mobilde kullanılamaz,
+Ctrl+tık keşfedilebilir değil, seçili öğeler görünür kalmaz). Karar: **chip listesi +
+arama/ekleme kutusu** — seçili etiketler kaldırma butonlu chip'ler olarak gösterilir,
+altındaki kutu mevcut etiketleri filtreler. Bileşen `frontend/src/components/admin/blog/
+tag-select.tsx` olarak **tek kez** yazılır ve hem tam editörde hem Hızlı Düzenle'de
+kullanılır (iki ayrı uygulama = iki ayrı davranış).
+
+**a11y (bağlayıcı, pazarlık dışı):** kutunun görünür bir `<label>`'ı olacak —
+placeholder etiket YERİNE GEÇMEZ (aynı ihlal §10.15.4'te düzeltiliyor). Chip listesi
+`role="list"` + `aria-labelledby`, her kaldırma butonu `aria-label="{etiket} etiketini
+kaldır"`. Seçim/kaldırma sonrası değişiklik bir `aria-live="polite"` bölgesiyle duyurulur.
+
+**Satır-içi yeni Kategori/Etiket oluşturma (kullanıcının 5. maddesi).** Yeni uç
+gerekmez — mevcut `POST /admin/blog/categories` ve yeni `POST /admin/blog/tags`
+kullanılır. Akış:
+1. Dropdown'ın altındaki "+ Yeni Kategori Oluştur" satır-içi bir ad input'u ve
+   "Oluştur"/"Vazgeç" açar (yeni bir modal AÇILMAZ — editörde açık bir modal varken
+   ikinci bir katman kaydedilmemiş içerik riskini artırır).
+2. Başarıda dönen kayıt yerel listeye eklenir ve **otomatik seçilir**; liste yeniden
+   fetch EDİLMEZ (201 gövdesi zaten kaydı döner).
+3. `409 CONFLICT` **hata olarak gösterilmez**: aynı slug'lı kayıt zaten listede olduğu
+   için o kayıt seçilir ve "Bu etiket zaten vardı, seçildi." bilgi mesajı verilir.
+   Frontend ayrıca **POST'tan ÖNCE** yerel listede slug eşleşmesi arar; varsa istek hiç
+   gönderilmez. Böylece kullanıcı, hiçbir zaman kendi eyleminin sonucu olmayan bir hata
+   görmez.
+4. **EDITOR altı roller** (VIEWER) için oluşturma tetikleyicisi RENDER EDİLMEZ — 403'ü
+   kullanıcıya hata olarak göstermek yerine eylem hiç sunulmaz.
+5. Oluşturma **yazının kaydedilmesini beklemez** (kategori/etiket bağımsız kaynaklardır)
+   — ama seçim, yazı kaydedilene kadar yalnızca form state'idir.
+
+**Editör kirlilik (dirty) kontrolü.** `admin/blog/[postId]/page.tsx` alan-alan
+karşılaştırmayla (`categoryId !== snapshot.categoryId`) "kaydedilmemiş değişiklik" tespit
+ediyor. `tagIds` bir DİZİDİR; referans karşılaştırması her render'da yanlış pozitif verir.
+Karşılaştırma **sıralı birleştirme** (`[...ids].sort().join(",")`) ile yapılır — etiket
+sırası anlamlı değildir, yalnızca küme kimliği önemlidir.
+
+### 10.15 İçerik editöründe Galeri bloğu + MediaPicker çoklu seçim
+
+Durum: v1 · Sahibi: Mimar. Blog'un TipTap editörüne (`components/admin/blog/post-editor.tsx`)
+"Galeri Ekle" aracı eklenir. **Hedef Blog editörüdür; Sayfa'nın page-builder'ı DEĞİL** —
+`Page` bir TipTap alanı değil blok listesi kullanır ve onun `GalleryBlock`'u zaten vardır
+(§10.15.4'te yalnızca a11y'si düzeltilir).
+
+#### 10.15.1 Veri modeli — yeni Prisma alanı YOKTUR (doğrulandı)
+
+Galeri, TipTap içeriğinin İÇİNDE bir node'dur; `BlogPost.contentHtml` string alanına
+serileşir. `db-agent`'ın bu madde için yapacağı **hiçbir şey yoktur** ve ayrı bir
+`galleries` tablosu AÇILMAZ: galeri metin akışının bir parçasıdır, konumu paragraflara
+görelidir ve ayrı bir tabloya taşınsaydı bu konum yine `contentHtml` içinde bir yer
+tutucuyla ifade edilmek zorunda kalırdı (iki kaynak, senkronizasyon borcu).
+
+Bu, `components/admin/media/gallery-field.tsx`'ten (Ürün/Portföy galerisi) **kasıtlı olarak
+farklıdır**: orası forma ait bağımsız bir alandır ve her ekleme/kaldırmada ayrı API çağrısı
+yapar. O bileşen yeniden KULLANILMAZ; yalnızca ızgara/kaldırma butonu görsel deseni ve
+(doğru yapılmış) `aria-labelledby` + `role="list"` a11y yaklaşımı örnek alınır.
+
+#### 10.15.2 Serileştirme — sınıf tabanlı HTML (KRİTİK kısıt)
+
+**Doğrulanmış tuzak:** `backend/src/lib/html-sanitize.ts` bir allow-list uygular ve global
+öznitelik listesi yalnızca `["id", "class"]`'tır. **Bir `data-*` özniteliği DB'ye
+yazılmadan ÖNCE sessizce SİLİNİR.** Yani galeriyi `<div data-gallery data-media-ids="…">`
+gibi yaygın TipTap desenine göre serileştirirsek, kullanıcı kaydettikten sonra galeri
+attribute'larını kaybeder ve içerik yeniden yüklendiğinde galeri **düz bir görsel yığınına
+dönüşür**. Bu, kaydetmeden fark edilmeyen sinsi bir veri kaybıdır.
+
+**Karar: galeri, sanitizer'dan olduğu gibi geçen semantik HTML olarak serileşir.**
+Sanitizer değiştirilmez, `data-*` açılmaz, saldırı yüzeyi büyütülmez:
+
+```html
+<div class="blog-gallery blog-gallery--grid">
+  <figure class="blog-gallery__item">
+    <img src="https://…/a.jpg" alt="Alt metin" loading="lazy" />
+  </figure>
+  …
+</div>
+```
+
+Kullanılan her etiket (`div`, `figure`, `figcaption`, `img`) ve öznitelik
+(`class`, `src`, `alt`, `loading`) mevcut allow-list'te **zaten vardır** — doğrulandı.
+TipTap node'unun `parseHTML`'i `div.blog-gallery` sınıfına, düzen (layout) ise
+`blog-gallery--{layout}` modifier sınıfına bakar. Sanitizer'a dokunulmadığı için
+security-agent'ın bu madde için yeni bir denetimi gerekmez.
+
+**Medya id'leri HTML'e yazılmaz** (yazılamaz — `data-*` yok). Galerinin kimliği
+URL'lerdir. Sonuç ve kabul edilen kısıt: bir görsel medya kütüphanesinden silinirse
+galeride kırık bir görsel kalır — bu, editöre tekil görsel eklemenin bugünkü davranışıyla
+(`setImage({ src })`) **birebir aynıdır**, yeni bir zayıflık değildir.
+
+TipTap node attrs (yalnızca bellekte/serileştirme öncesi):
+`{ items: { src: string; alt: string }[]; layout: "grid" }`. Node `group: "block"`,
+`atom: true`, `draggable: true`.
+
+**`layout` v1'de yalnızca `"grid"`.** Carousel REDDEDİLDİ (bu tur): carousel public
+tarafta JavaScript, klavye gezinme, `aria-roledescription="carousel"`, otomatik oynatma
+durdurma ve reduced-motion desteği gerektirir — public site içeriği ise `prose` içine
+`dangerouslySetInnerHTML` ile basılan **statik HTML**'dir, orada davranış çalıştıracak bir
+bileşen yoktur. Alan yine de bir modifier SINIFI olarak tutulur ki carousel eklendiğinde
+mevcut içerik yeniden yazılmadan tanınsın.
+
+**Public render.** Site tarafında galeri React bileşeni yoktur; görünüm tamamen CSS'tir
+(`.blog-gallery` global stil). `img` `loading="lazy"` taşır. Boş galeri (0 görsel)
+serileştirilmez — kullanıcı hiç görsel seçmeden onaylarsa node hiç eklenmez.
+
+#### 10.15.3 MediaPicker çoklu seçim modu
+
+`MediaPicker` bugün yalnızca tekildir: tıklama = seç ve kapat (`onSelect: (media: Media) => void`).
+**Ayrı bir `MediaMultiPicker` bileşeni YAZILMAZ** — klasör ağacı, yükleme, arama, boş
+durumlar ve §10.11 davranışları ikinci bir kopyada sürüklenmeye başlar. Mevcut bileşen
+**ayrık (discriminated) bir prop birleşimiyle** genişletilir:
+
+```ts
+type MediaPickerProps = {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+} & (
+  | { multiple?: false; onSelect: (media: Media) => void }
+  | { multiple: true; onSelect: (media: Media[]) => void; maxSelection?: number }
+);
+```
+
+`multiple` verilmediğinde bugünkü davranış **bit düzeyinde korunur** — mevcut çağrı
+yerlerinin (post-editor tekil görsel, gallery-field, kapak görseli…) hiçbiri değişmez.
+Ayrık birleşim, `onSelect`'in tekil/çoğul imzasını tip düzeyinde ayırır; tek bir
+`Media | Media[]` imzası her çağrı yerinde tip daraltma zorunluluğu getirirdi.
+
+`multiple: true` davranışı (bağlayıcı):
+- Tıklama seçimi **toggle** eder, modal KAPANMAZ. Onay yalnızca alt bardaki
+  "Seç (N)" butonuyla verilir; N=0 iken buton `disabled`.
+- Seçili kart görsel olarak işaretlenir **ve** `aria-pressed={selected}` taşır (renk tek
+  başına gösterge olamaz — WCAG 1.4.1).
+- Shift+tık aralık seçimi ve Ctrl/Cmd+A, **§10.11.5'teki kurallarla birebir aynı**
+  şekilde davranır (anchor görünen sıralamaya göre; Ctrl+A yalnızca ızgara odaktayken ve
+  bir input odaktayken ASLA). Aynı davranışın iki yerde farklı çalışması kabul edilemez.
+- Klasör değiştirmek seçimi **temizlemez** (§10.11.5'in aksine, ve bu bilinçli bir
+  farktır): oradaki temizleme, görünmeyen öğeler üzerinde yıkıcı toplu işlem yapılmasını
+  önlemek içindir; burada eylem yıkıcı değildir ve kullanıcının birden çok klasörden
+  galeri toplaması beklenen bir akıştır. Seçim sayısı üst barda her zaman görünür kalır.
+- Modal kapanışında seçim sıfırlanır.
+- `maxSelection` varsayılanı **24**; sınıra ulaşıldığında seçilmemiş kartlar `disabled`
+  ve bir açıklama metni gösterilir.
+- Yükleme (`upload`) çoklu modda dosyayı seçime **ekler**, modalı kapatmaz.
+
+#### 10.15.4 a11y — alt metin ve tekrarlanmayan bulgu
+
+Önceki denetimin "GalleryBlock'ta placeholder-only form alanları" bulgusu
+`components/admin/page-builder/blocks/gallery-block.tsx` kaynaklıdır: `<Input
+placeholder="Görsel URL">` ve `<Input placeholder="Alt metin">` gerçek bir `<label>`
+ya da `aria-label` OLMADAN kullanılıyor. Placeholder kalıcı bir etiket değildir (yazmaya
+başlanınca kaybolur, ekran okuyucular tutarlı okumaz) — WCAG 3.3.2 ihlali.
+
+**Karar: bu düzeltme BU TURUN kapsamına alınır.** İki gerekçe: (a) izole, birkaç satırlık,
+davranış değiştirmeyen bir düzeltmedir; (b) bu turda ikinci bir galeri arayüzü
+eklerken bilinen aynı sınıf hatayı komşu dosyada bırakmak, yeni kodun kopyalayacağı yanlış
+örneği ayakta tutar. Düzeltme: her satırdaki iki alan `Field` (görünür label) ile sarılır;
+tekrarlayan satırlarda görsel gürültü sorunsa label `sr-only` olur ama **DOM'da bulunur** ve
+her satır için tekil id taşır ("Görsel 2 URL", "Görsel 2 alt metni").
+
+**Yeni Galeri bloğunun a11y'si (aynı hatayı TEKRARLAMA kuralı):**
+- Toolbar butonu mevcut `ToolbarButton` desenini kullanır: `aria-label="Galeri ekle"`.
+- Alt metin **her görsel için zorunludur** ve akış, tekil görsel eklemedeki mevcut alt
+  metin onay diyaloğunun (`post-editor.tsx::handleConfirmAltText`) çoklu karşılığıdır:
+  MediaPicker kapandıktan sonra seçilen her görsel için alt metin girilen bir liste
+  gösterilir, `Media.altText` varsa ön-doldurulur, **hepsi dolmadan "Ekle" `disabled`**.
+  Her alan gerçek bir `<label>`'a bağlıdır — placeholder ile etiketleme YASAK.
+- Alt metinler `Media.altText`'e de yazılır (mevcut `updateMediaAltText` ucuyla, tekil
+  akışın aynısı) — böylece aynı görsel bir daha eklendiğinde tekrar sorulmaz.
+- Editör içindeki galeri node'u `role="group"` + `aria-label="Galeri (N görsel)"`.
+
+#### 10.15.5 ui-designer devrede — evet, DAR bir kapsamla
+
+Galeri **görsel dili** (ızgara sütun sayısı ve kırılma noktaları, boşluk/`gap` token'ı,
+köşe yarıçapı, en-boy oranı ve kırpma davranışı, MediaPicker'daki "seçili" durumunun
+işareti) `ui-designer`'a devredilir; bunlar tasarım token'ı kararlarıdır ve `frontend-agent`
+tarafından uydurulmaz. **Kapsam dışı (mimar kararı, tasarımcıya sorulmaz):** `.blog-gallery`
+CSS sınıf adları ve HTML iskeleti — bunlar §10.15.2'de kontratın parçasıdır, çünkü
+sanitizer allow-list'i ve TipTap `parseHTML` eşleşmesi bunlara bağlıdır. ui-designer bu
+sınıfların İÇİNİ doldurur, adlarını değiştirmez. Etiket chip'lerinin görsel dili de
+(§10.14.5) ui-designer'a aittir; mevcut bir chip/badge token'ı varsa yenisi ÜRETİLMEZ.
+
+#### 10.15.6 ui-designer kararları — galeri grid'i, MediaPicker seçili işareti, etiket chip'i (bağlayıcı)
+
+Durum: v1 · Sahibi: ui-designer (2026-08-16). Kapsam §10.15.5'in bıraktığı dar alanla
+sınırlıdır: `.blog-gallery` sınıf adları/HTML iskeleti (§10.15.2) DEĞİŞTİRİLMEMİŞTİR,
+yalnızca bu sınıfların CSS içeriği ve iki bileşenin (`MediaPicker`, etiket chip'i) görsel
+durumları tanımlanmıştır. Referans alınan mevcut desenler: `gallery-field.tsx`
+(`aspect-square overflow-hidden rounded-md/lg`), `media-picker.tsx` (tekil seçim
+hover/focus deseni), `components/site/blocks/gallery-block.tsx` (public galeri emsali) ve
+`blog/[slug]/page.tsx`'teki kapak görseli (`rounded-lg`, aynı makale akışında bitişik
+görünür — radius tutarlılığı bu yüzden `--radius-lg` üzerinden kuruldu).
+
+**A) Galeri grid'i — `.blog-gallery` CSS içeriği.** Bu sınıflar ham HTML olarak hem public
+`prose` içine (`dangerouslySetInnerHTML`) hem TipTap editör alanına (`prose prose-sm`)
+düşer; Tailwind utility class'ı DEĞİL, gerçek CSS kuralı gerekir (`globals.css`'e, mevcut
+`:root`/`@theme inline` token blokları ile aynı dosyaya, ör. bu iki bloğun hemen altına
+eklenir):
+
+```css
+.blog-gallery {
+  margin: 2rem 0; /* mevcut spacing ölçeğinde 32px (my-8 karşılığı) — prose'un tanımadığı
+                     bir sınıf olduğu için Typography eklentisinin otomatik dikey ritmi bu
+                     div'e uygulanmaz, elle verilmek zorunda */
+}
+
+.blog-gallery--grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr)); /* mobil: 2 sütun */
+  gap: 0.5rem; /* 8px — gap-2, gallery-field.tsx ve public gallery-block.tsx ile aynı birim */
+}
+
+@media (min-width: 640px) { /* sm */
+  .blog-gallery--grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (min-width: 768px) { /* md */
+  .blog-gallery--grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+.blog-gallery__item {
+  margin: 0; /* <figure> UA-varsayılan margin'ini sıfırlar — sıfırlanmazsa grid gap'i bozar */
+  aspect-ratio: 1 / 1; /* aspect-square — mevcut TÜM galeri/picker desenleriyle birebir aynı oran */
+  overflow: hidden;
+  border-radius: var(--radius-lg); /* 0.625rem/10px — blog kapak görseliyle (rounded-lg) aynı makalede tutarlı */
+}
+
+.blog-gallery__item img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+```
+
+Gerekçe (sütun sayısı 2/3/4): container genişliği public tarafta `max-w-3xl` (768px,
+`px-4`/`px-6` ile ~608–736px içerik alanı) ile sınırlı — bu, sayfa oluşturucunun (page-builder)
+`GalleryBlockView`'inin (genelde daha geniş, tam-genişlik bir bölüm) 2/3 sütun kararından
+FARKLI bir bağlamdır; burada daha DAR bir sütuna daha FAZLA (4'e kadar) sütun sığdırmak
+görselleri küçültse de editoryal bir galeri için kabul edilebilir, admin galeri
+yönetim panellerindeki (`gallery-field.tsx`: 3/4/6 sütun) küçük-küçük-kare yönetim
+kartlarından kasıtlı olarak farklıdır — oradaki amaç yoğun bir yönetim listesi, buradaki
+amaç okunabilir bir editoryal görünümdür. `border` YOKTUR (gallery-field/media-picker'ın
+aksine) — bu, bir yönetim kartı değil public'te doğrudan görünecek içerik görselidir;
+en yakın emsal olan `GalleryBlockView` de border kullanmaz.
+
+**Boş/az öğe durumu:** grid `repeat(N, minmax(0,1fr))` sabit sütun sayısı kullanır (mevcut
+kod tabanındaki TÜM galeri örnekleri aynısını yapıyor, `auto-fill` deseni hiçbir yerde
+kullanılmıyor) — 2-3 görsellik bir galeri geniş ekranda dolu olmayan bir son satır
+bırakabilir; bu, projede zaten kabul edilmiş bir davranıştır, yeni bir sorun değildir.
+
+**B) MediaPicker çoklu seçim — "seçili" işareti.** Tekil moddaki mevcut kart
+(`aspect-square overflow-hidden rounded-lg border border-border … hover:ring-2
+hover:ring-primary/50 focus-visible:ring-2 focus-visible:ring-ring`) TABAN olarak kalır;
+`multiple: true` modunda seçili bir karta şu ek durum eklenir (renk TEK BAŞINA gösterge
+DEĞİLDİR — WCAG 1.4.1 gereği ikon+kalıcı ring birlikte kullanılır, `aria-pressed` zaten
+§10.15.3'te bağlayıcı):
+
+- Kart: `border-primary` (nötr `border-border` yerine) + KALICI `ring-2 ring-primary`
+  (yalnızca hover'da değil, seçiliyken her zaman görünür — tekil moddaki `hover:ring-2`
+  davranışından bilinçli fark budur).
+- Sağ üst köşede kalıcı bir onay rozeti: `absolute right-1 top-1 flex h-6 w-6
+  items-center justify-center rounded-full bg-primary text-primary-foreground` içinde
+  `lucide-react`'ten `<Check className="h-3.5 w-3.5" />`. Konum/boyut ölçeği
+  (`right-1 top-1`, `h-6 w-6`) `gallery-field.tsx`'teki kaldırma rozetiyle BİREBİR aynı —
+  "köşe rozeti" dili projede zaten var, yeniden icat edilmiyor. Tekil moddaki kaldırma
+  rozetinin aksine bu rozet `opacity-0` ile hover'da belirmez, seçiliyken HER ZAMAN
+  görünür (seçim durumunun fare olmadan da anlaşılması gerekir).
+- `maxSelection`'a ulaşıldığında seçilİ OLMAYAN kartlar: `opacity-40 cursor-not-allowed`
+  (mevcut `disabled` Button görünümüyle aynı dil) + `disabled` özniteliği (klavye/screen
+  reader odağından çıkar, §10.15.3 zaten bağlayıcı).
+- Grid'in kendisi (`grid-cols-3 gap-3 sm:grid-cols-4`) DEĞİŞMEZ — yalnızca kart durumu.
+
+**C) Etiket chip'i — mevcut `Badge` bileşeni (`components/ui/badge.tsx`), YENİ bileşen
+ÜRETİLMEZ.** Kullanılacak varyant: `tone="neutral" size="sm"` (soft/varsayılan, `solid`
+DEĞİL). Gerekçe: `solid` + renkli ton'lar (`primary`/`success`/`warning`) projede DURUM
+anlamı taşıyor (`ContentListTable`'daki "Yayında"/"Taslak"/"Zamanlanmış" rozetleri) —
+etiket bir durum değil serbest metadata'dır, aynı görsel dili kullanmak yanlış bir anlam
+çağrışımı yapar. Etiket başına renk/varyant farklılaştırma (hash'lenmiş renkler vb.)
+YAPILMAZ — `BlogTag` şemasında bir renk alanı yok (§10.14.1) ve icat edilen bir istemci
+taraflı renk şeması oturumlar arası tutarsız/rastgele görünür; tüm etiketler AYNI nötr
+tonu kullanır.
+
+- **Liste sütunu taşması:** mimarın "en fazla 3 chip + '+N'" kuralı (§10.14.5, DEĞİŞMEZ)
+  şu şekilde yerleşir: hücre `flex flex-wrap items-center gap-1` (satır YÜKSEKLİĞİ
+  büyürse en fazla 2 satıra sarar — mimarın "3+N sabit üst sınırı" zaten bunu pratikte
+  nadir kılar). Sütun genişliği Kategori'nin `w-36` (144px) yerine `w-48` (192px) — 3 chip
+  + "+N" metni 144px'e sığmaz. "+N" bir `Badge` DEĞİL, düz `<span className="text-xs
+  text-foreground/60" title="...">+N</span>` (mimar: buton değil, tıklama Hızlı
+  Düzenle'yle çakışmasın). Boş durum Kategori ile birebir aynı: `<span
+  className="text-foreground/70">—</span>`. Mobil kart görünümünde (`content-list-table.tsx`
+  `pl-11` meta satırı) aynı `Badge` + aynı 3+N kuralı, `flex flex-wrap gap-1` içinde.
+- **`tag-select.tsx` (editördeki çoklu seçim chip'i):** aynı `tone="neutral" size="sm"`
+  Badge, ama kaldırılabilir olduğu için yanına bitişik küçük bir X butonu eklenir (Badge
+  bileşeninin kendisi kaldırma slotu taşımaz, sarmalayan bir `<span className="inline-flex
+  items-center gap-1">` içinde `Badge` + `<button aria-label="{etiket} etiketini
+  kaldır"><X className="h-3 w-3" /></button>`). İki bağlamda (salt-okunur tablo hücresi /
+  düzenlenebilir form chip'i) AYNI ton kullanılması bilinçlidir — kullanıcı aynı etiketi
+  hem listede hem editörde aynı görsel dille tanır.
+
+Bu kararlar frontend-agent tarafından uygulanır; bu bölüm değişirse (örn. sütun sayısı
+gerçek veriyle denendiğinde çok sıkışık/boş görünürse) güncellemesi gereken taraf yine
+ui-designer'dır, frontend-agent kendi takdirine göre sütun/gap değiştirmez.
 
 ### Bilinen Sorunlar / Backlog
 

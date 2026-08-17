@@ -88,6 +88,13 @@ function authHeaders(token: string) {
   return { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
 }
 
+/** GET/DELETE (gövdesiz) istekler için — bkz. `blog-fixtures.ts` başlığındaki qa-agent bulgusu:
+ * `Content-Type: application/json` header'ı gövdesiz bir DELETE'te Fastify'de `400 Bad Request`
+ * üretir (GET/HEAD bundan muaf). `authHeaders()`'ı gövdesiz isteklerde KULLANMAYIN. */
+function authHeadersNoBody(token: string) {
+  return { Authorization: `Bearer ${token}` };
+}
+
 export interface PageFixtureInput {
   title: string;
   slug: string;
@@ -128,17 +135,20 @@ export async function createPage(token: string, input: PageFixtureInput) {
 }
 
 export async function deletePagePermanently(token: string, pageId: string) {
-  await fetch(`${API_BASE_URL}/admin/pages/${pageId}`, { method: "DELETE", headers: authHeaders(token) });
-  await fetch(`${API_BASE_URL}/admin/pages/${pageId}/permanent`, { method: "DELETE", headers: authHeaders(token) });
+  await fetch(`${API_BASE_URL}/admin/pages/${pageId}`, { method: "DELETE", headers: authHeadersNoBody(token) });
+  await fetch(`${API_BASE_URL}/admin/pages/${pageId}/permanent`, {
+    method: "DELETE",
+    headers: authHeadersNoBody(token),
+  });
 }
 
 export async function listAdminLocales(token: string) {
-  const res = await fetch(`${API_BASE_URL}/admin/locales`, { headers: authHeaders(token) });
+  const res = await fetch(`${API_BASE_URL}/admin/locales`, { headers: authHeadersNoBody(token) });
   return json<{ data: Array<Record<string, unknown>> }>(res).then((b) => b.data);
 }
 
 export async function deleteLocale(token: string, code: string) {
-  return fetch(`${API_BASE_URL}/admin/locales/${code}`, { method: "DELETE", headers: authHeaders(token) });
+  return fetch(`${API_BASE_URL}/admin/locales/${code}`, { method: "DELETE", headers: authHeadersNoBody(token) });
 }
 
 export async function createLocale(

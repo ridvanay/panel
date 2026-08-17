@@ -16,14 +16,21 @@ import {
 import {
   BlogCategorySchema,
   BlogPostSchema,
+  BlogTagSchema,
   BulkContentActionRequestSchema,
   BulkContentActionResultSchema,
   ContentListMetaSchema,
   ContentRevisionSchema,
   ContentRevisionSummarySchema,
 } from "../../schemas/entities";
-import { toBlogCategoryDto, toBlogPostDto, toContentRevisionDto, toContentRevisionSummaryDto } from "../../mappers";
-import { ConflictError, NotFoundError } from "../../lib/errors";
+import {
+  toBlogCategoryDto,
+  toBlogPostDto,
+  toBlogTagDto,
+  toContentRevisionDto,
+  toContentRevisionSummaryDto,
+} from "../../mappers";
+import { ConflictError, NotFoundError, ValidationError } from "../../lib/errors";
 import { parseCursor, buildPageMeta, buildPageMetaWithCounts } from "../../lib/pagination";
 import { slugify } from "../../lib/slug";
 import { startOfUtcDay } from "../../lib/date";
@@ -55,19 +62,31 @@ import {
   CategoryIdParamSchema,
   CreateBlogCategoryRequestSchema,
   CreateBlogPostRequestSchema,
+  CreateBlogTagRequestSchema,
   LocaleQuerySchema,
   PostIdParamSchema,
   PostRevisionIdParamSchema,
   PostSlugParamSchema,
+  TagIdParamSchema,
   UpdateBlogCategoryRequestSchema,
   UpdateBlogPostRequestSchema,
+  UpdateBlogTagRequestSchema,
 } from "./blog.schemas";
 
-/** Yazı detay/liste sorgularında kategori + yazar özetini de dönmek için (bkz. ARCHITECTURE.md §10.7). */
-const WITH_RELATIONS = { category: true, author: true } as const;
+/**
+ * Yazı detay/liste sorgularında kategori + yazar özetini de dönmek için (bkz. ARCHITECTURE.md
+ * §10.7). `tags` — §10.14 — `seq ASC` (etiketin oluşturulma sırası) sıralı gelir; bu sıra
+ * `toBlogPostDto`'nun DTO'ya taşıdığı sıradır (mapper AYRICA sıralamaz, tek doğruluk kaynağı
+ * burasıdır).
+ */
+const WITH_RELATIONS = {
+  category: true,
+  author: true,
+  tags: { include: { tag: true }, orderBy: { tag: { seq: "asc" } } },
+} as const;
 
 /** Güncellemeden HEMEN ÖNCEKİ alan setini döner (bkz. ARCHITECTURE.md §10.1). */
-function toBlogPostSnapshot(post: BlogPost): Record<string, unknown> {
+function toBlogPostSnapshot(post: BlogPost & { tags: { tagId: string }[] }): Record<string, unknown> {
   return {
     title: post.title,
     slug: post.slug,
@@ -75,6 +94,9 @@ function toBlogPostSnapshot(post: BlogPost): Record<string, unknown> {
     contentHtml: post.contentHtml,
     coverImageUrl: post.coverImageUrl,
     categoryId: post.categoryId,
+    // §10.14.4 — etiketler snapshot'a DAHİLDİR; eski bir revizyona dönüldüğünde kategori GERİ
+    // GELİRKEN etiketlerin gelmemesi asimetrik bir davranış olurdu.
+    tagIds: post.tags.map((t) => t.tagId),
     seoTitle: post.seoTitle,
     seoDescription: post.seoDescription,
     ogTitle: post.ogTitle,
@@ -83,6 +105,51 @@ function toBlogPostSnapshot(post: BlogPost): Record<string, unknown> {
     noIndex: post.noIndex,
     translations: post.translations,
   };
+}
+
+/**
+ * §10.14.4 — `tagIds` TAM SET (replace) senkronizasyonu, çağıranın AYNI transaction'ı içinde
+ * çalışır. "Hepsini sil + hepsini ekle" YASAK: yalnızca artık listede olmayan satırlar
+ * `deleteMany`, yalnızca yeni olanlar `createMany({ skipDuplicates: true })` ile yazılır.
+ *
+ * `validateExistence: true` (create/update) — var olmayan bir `tagId` → `ValidationError` (422).
+ * `validateExistence: false` (revizyon geri yükleme, §10.14.4) — var olmayan id'ler sessizce
+ * ATLANIR, kullanıcı silinmiş bir etiket yüzünden revizyonunu geri yükleyemez hâle gelmez.
+ *
+ * Tekrarlanan id'ler yazmadan ÖNCE tekilleştirilir (istek reddedilmez).
+ */
+async function syncBlogPostTags(
+  tx: Prisma.TransactionClient,
+  postId: string,
+  tagIds: string[],
+  options: { validateExistence: boolean }
+): Promise<void> {
+  const uniqueIds = Array.from(new Set(tagIds));
+
+  const existingTags = uniqueIds.length > 0 ? await tx.blogTag.findMany({ where: { id: { in: uniqueIds } }, select: { id: true } }) : [];
+  const existingIdSet = new Set(existingTags.map((t) => t.id));
+
+  if (options.validateExistence) {
+    const missing = uniqueIds.filter((id) => !existingIdSet.has(id));
+    if (missing.length > 0) {
+      throw new ValidationError("Geçersiz etiket id'leri.", { tagIds: missing });
+    }
+  }
+
+  const validIdSet = new Set(uniqueIds.filter((id) => existingIdSet.has(id)));
+
+  const current = await tx.blogPostTag.findMany({ where: { postId }, select: { tagId: true } });
+  const currentIdSet = new Set(current.map((row) => row.tagId));
+
+  const toRemove = [...currentIdSet].filter((id) => !validIdSet.has(id));
+  const toAdd = [...validIdSet].filter((id) => !currentIdSet.has(id));
+
+  if (toRemove.length > 0) {
+    await tx.blogPostTag.deleteMany({ where: { postId, tagId: { in: toRemove } } });
+  }
+  if (toAdd.length > 0) {
+    await tx.blogPostTag.createMany({ data: toAdd.map((tagId) => ({ postId, tagId })), skipDuplicates: true });
+  }
 }
 
 const BLOG_POST_STRING_FIELDS = [
@@ -162,6 +229,7 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
         coverImageUrl,
         status,
         categoryId,
+        tagIds,
         seoTitle,
         seoDescription,
         ogTitle,
@@ -209,7 +277,12 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
 
         await syncContentSlugs(tx, enabledLocales, "BLOG_POST", created.id, created.slug, created.translations);
 
-        return created;
+        // §10.14.4 — `tagIds` verilmezse yazı etiketsiz oluşur; `created.tags` zaten `[]`'tir,
+        // ekstra bir sorgu GEREKMEZ.
+        if (tagIds === undefined) return created;
+
+        await syncBlogPostTags(tx, created.id, tagIds, { validateExistence: true });
+        return tx.blogPost.findUniqueOrThrow({ where: { id: created.id }, include: WITH_RELATIONS });
       });
 
       return reply.code(201).send(ok(await toBlogPostDtoLocalized(app, post)));
@@ -241,7 +314,10 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
       },
     },
     async (request, reply) => {
-      const existing = await app.prisma.blogPost.findUnique({ where: { id: request.params.postId } });
+      const existing = await app.prisma.blogPost.findUnique({
+        where: { id: request.params.postId },
+        include: { tags: { select: { tagId: true } } },
+      });
       if (!existing) throw new NotFoundError("Yazı bulunamadı.");
 
       if (existing.deletedAt) {
@@ -250,7 +326,9 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
 
       await snapshotBeforeUpdate(app, "BLOG_POST", existing.id, toBlogPostSnapshot(existing), request.user!.id);
 
-      const { slug, translations, authorId: requestedAuthorId, scheduledAt, ...rest } = request.body;
+      // `tagIds` `BlogPost` tablosunda bir KOLON DEĞİLDİR — `rest`'ten AYRI tutulup
+      // `syncBlogPostTags` ile ara tabloya yazılır (bkz. ARCHITECTURE.md §10.14.4).
+      const { slug, translations, authorId: requestedAuthorId, scheduledAt, tagIds, ...rest } = request.body;
       const resolvedAuthorId = await resolveAuthorId(app, requestedAuthorId, request.user!);
 
       // Stored-XSS koruması: gelen çeviriler merge'den ÖNCE sanitize edilir (mevcut kayıttaki
@@ -287,7 +365,11 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
           await syncContentSlugs(tx, enabledLocales, "BLOG_POST", updated.id, updated.slug, updated.translations);
         }
 
-        return updated;
+        // §10.14.4 — `tagIds` GÖNDERİLMEMİŞSE (`undefined`) etiketlere DOKUNULMAZ.
+        if (tagIds === undefined) return updated;
+
+        await syncBlogPostTags(tx, updated.id, tagIds, { validateExistence: true });
+        return tx.blogPost.findUniqueOrThrow({ where: { id: updated.id }, include: WITH_RELATIONS });
       });
 
       // §10.13.8 — `BLOG_POST_PUBLISHED` YALNIZCA duruma GEÇİŞTE, `BLOG_POST_UPDATED` yayındaki
@@ -514,7 +596,10 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
       schema: { params: PostRevisionIdParamSchema, response: { 200: ApiSuccessSchema(BlogPostSchema) } },
     },
     async (request, reply) => {
-      const existing = await app.prisma.blogPost.findUnique({ where: { id: request.params.postId } });
+      const existing = await app.prisma.blogPost.findUnique({
+        where: { id: request.params.postId },
+        include: { tags: { select: { tagId: true } } },
+      });
       if (!existing) throw new NotFoundError("Yazı bulunamadı.");
 
       if (existing.deletedAt) {
@@ -533,6 +618,9 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
         contentHtml: string;
         coverImageUrl: string | null;
         categoryId: string | null;
+        // §10.14.4 — eski (bu özellikten ÖNCEKİ) revizyonlarda YOKTUR; `undefined` ise etiketlere
+        // DOKUNULMAZ (mevcut set korunur), tanımlıysa (boş dizi DAHİL) TAM SET olarak uygulanır.
+        tagIds?: string[];
         seoTitle: string | null;
         seoDescription: string | null;
         ogTitle: string | null;
@@ -572,7 +660,14 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
 
         await syncContentSlugs(tx, enabledLocales, "BLOG_POST", updated.id, updated.slug, updated.translations);
 
-        return updated;
+        // §10.14.4 — snapshot'ta `tagIds` YOKSA (eski revizyon) etiketlere DOKUNULMAZ. Varsa
+        // (boş dizi DAHİL) TAM SET olarak uygulanır; var olmayan etiket id'leri burada `422`
+        // FIRLATILMAZ, sessizce ATLANIR (`validateExistence: false`) — snapshot geçmiş bir anın
+        // kaydıdır, geçerli bir istek gövdesi değildir.
+        if (snapshot.tagIds === undefined) return updated;
+
+        await syncBlogPostTags(tx, updated.id, snapshot.tagIds, { validateExistence: false });
+        return tx.blogPost.findUniqueOrThrow({ where: { id: updated.id }, include: WITH_RELATIONS });
       });
 
       return reply.send(ok(await toBlogPostDtoLocalized(app, post)));
@@ -644,6 +739,88 @@ export async function adminBlogCategoriesRoutes(app: FastifyInstance) {
     async (request, reply) => {
       await app.prisma.blogCategory.delete({ where: { id: request.params.categoryId } }).catch(() => {
         throw new NotFoundError("Kategori bulunamadı.");
+      });
+      return reply.code(204).send();
+    }
+  );
+}
+
+/**
+ * `/admin/blog/tags` prefix'i altında bağlanır — authenticated. §10.14.3: `adminBlogCategoriesRoutes`
+ * ile BİREBİR SİMETRİK, tek fark `GET` yanıtının `postCount` taşıması ve `name` üst sınırının
+ * 60 olmasıdır (bkz. blog.schemas.ts::CreateBlogTagRequestSchema).
+ */
+export async function adminBlogTagsRoutes(app: FastifyInstance) {
+  const server = app.withTypeProvider<ZodTypeProvider>();
+  server.addHook("preHandler", authenticate);
+
+  server.get(
+    "/",
+    { schema: { response: { 200: ApiSuccessSchema(z.array(BlogTagSchema)) } } },
+    async (_request, reply) => {
+      // §10.14.2 — `postCount` ÇÖPTEKİLERİ SAYMAZ (`deletedAt: null` filtreli), TEK sorguda
+      // (`_count` ile filtrelenmiş ilişki sayımı) hesaplanır — etiket başına ayrı `count()` (N+1) YASAK.
+      const rows = await app.prisma.blogTag.findMany({
+        orderBy: { seq: "asc" },
+        include: { _count: { select: { posts: { where: { post: { deletedAt: null } } } } } },
+      });
+      return reply.send(ok(rows.map(toBlogTagDto)));
+    }
+  );
+
+  server.post(
+    "/",
+    {
+      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      schema: { body: CreateBlogTagRequestSchema, response: { 201: ApiSuccessSchema(BlogTagSchema) } },
+    },
+    async (request, reply) => {
+      const tag = await app.prisma.blogTag.create({
+        data: {
+          name: request.body.name,
+          slug: request.body.slug ? slugify(request.body.slug) : slugify(request.body.name),
+        },
+      });
+      // Yeni oluşturulan etiket henüz hiçbir yazıda kullanılmıyor → `postCount: 0`.
+      return reply.code(201).send(ok(toBlogTagDto({ ...tag, _count: { posts: 0 } })));
+    }
+  );
+
+  server.patch(
+    "/:tagId",
+    {
+      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      schema: {
+        params: TagIdParamSchema,
+        body: UpdateBlogTagRequestSchema,
+        response: { 200: ApiSuccessSchema(BlogTagSchema) },
+      },
+    },
+    async (request, reply) => {
+      const { slug, ...rest } = request.body;
+      const tag = await app.prisma.blogTag
+        .update({
+          where: { id: request.params.tagId },
+          data: { ...rest, ...(slug !== undefined ? { slug: slugify(slug) } : {}) },
+        })
+        .catch(() => {
+          throw new NotFoundError("Etiket bulunamadı.");
+        });
+      return reply.send(ok(toBlogTagDto(tag)));
+    }
+  );
+
+  server.delete(
+    "/:tagId",
+    {
+      preHandler: requireSiteRole("ADMIN"),
+      schema: { params: TagIdParamSchema, response: { 204: z.undefined() } },
+    },
+    async (request, reply) => {
+      // §10.14.2 — `blog_post_tags` satırları FK cascade ile düşer; yazılar SİLİNMEZ, yalnızca
+      // bu etiketi kaybederler. Kullanımda olsa bile silme ENGELLENMEZ.
+      await app.prisma.blogTag.delete({ where: { id: request.params.tagId } }).catch(() => {
+        throw new NotFoundError("Etiket bulunamadı.");
       });
       return reply.code(204).send();
     }

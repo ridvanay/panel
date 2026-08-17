@@ -152,11 +152,42 @@ describe("ContentListTable", () => {
       <ContentListTable
         items={[makeItem()]}
         {...baseProps}
-        categoryColumn={{ header: "Kategori", render: () => "Teknoloji" }}
+        extraColumns={[{ key: "category", header: "Kategori", render: () => "Teknoloji" }]}
       />
     );
     expect(screen.getByText("Kategori")).toBeInTheDocument();
     // Kategori değeri hem masaüstü sütununda hem mobil kart meta satırında render edilir.
     expect(screen.getAllByText("Teknoloji")).toHaveLength(2);
+  });
+
+  // §10.7.2 — `extraColumns` birden fazla ek sütunu (Kategori + Etiketler) destekler.
+  it("extraColumns birden fazla ek sütunu aynı anda render eder", () => {
+    render(
+      <ContentListTable
+        items={[makeItem()]}
+        {...baseProps}
+        extraColumns={[
+          { key: "category", header: "Kategori", render: () => "Teknoloji" },
+          { key: "tags", header: "Etiketler", render: () => "React, TypeScript" },
+        ]}
+      />
+    );
+    expect(screen.getByText("Kategori")).toBeInTheDocument();
+    expect(screen.getByText("Etiketler")).toBeInTheDocument();
+    expect(screen.getAllByText("React, TypeScript")).toHaveLength(2);
+  });
+
+  // §10.7.2 — `quickEditExtraFields` masaüstü VE mobil Hızlı Düzenle formunun İKİSİNDE de render edilir.
+  it("quickEditExtraFields hem masaüstü hem mobil Hızlı Düzenle formunda render edilir", () => {
+    render(
+      <ContentListTable
+        items={[makeItem()]}
+        {...baseProps}
+        editingId="item-1"
+        quickEditValues={defaultQuickEditValues}
+        quickEditExtraFields={() => <div data-testid="extra-field">Kategori/Etiket alanı</div>}
+      />
+    );
+    expect(screen.getAllByTestId("extra-field")).toHaveLength(2);
   });
 });

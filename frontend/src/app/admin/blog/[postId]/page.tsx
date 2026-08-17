@@ -7,8 +7,9 @@ import { toast } from "sonner";
 import * as blogApi from "@/lib/api/blog";
 import * as revisionsApi from "@/lib/api/revisions";
 import * as localesApi from "@/lib/api/locales";
-import type { BlogCategory, ContentStatus, ContentTranslations, Locale as LocaleDto } from "@/lib/api/types";
+import type { BlogCategory, BlogTag, ContentStatus, ContentTranslations, Locale as LocaleDto } from "@/lib/api/types";
 import { useAutosave } from "@/hooks/use-autosave";
+import { useAuth } from "@/context/auth-context";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -24,6 +25,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { LocaleTabs } from "@/components/admin/locale-tabs";
 import { LocaleFallbackBadge, FALLBACK_FIELD_CLASSES } from "@/components/admin/locale-fallback-badge";
 import { PostEditor } from "@/components/admin/blog/post-editor";
+import { CategorySelect } from "@/components/admin/blog/category-select";
+import { TagSelect } from "@/components/admin/blog/tag-select";
 import { ImageUploadField } from "@/components/admin/media/image-upload-field";
 import { SeoPreview } from "@/components/admin/seo-preview";
 import { RevisionHistory } from "@/components/admin/revision-history";
@@ -40,6 +43,8 @@ interface PostSnapshot {
   excerpt: string;
   coverImageUrl: string;
   categoryId: string;
+  /** Sıralı birleştirme (`[...ids].sort().join(",")`) — dizi referans karşılaştırması YANLIŞ pozitif verir. */
+  tagIds: string;
   status: ContentStatus;
   scheduledAt: string;
   contentHtml: string;
@@ -50,6 +55,11 @@ interface PostSnapshot {
   canonicalUrl: string;
   noIndex: boolean;
   translations: string;
+}
+
+/** Küme kimliği için sıra anlamlı değildir — `tagIds` dirty kontrolü ve gövde karşılaştırması bununla yapılır. */
+function sortedTagKey(ids: string[]): string {
+  return [...ids].sort().join(",");
 }
 
 /**
@@ -72,8 +82,12 @@ function nowDatetimeLocalValue(): string {
 export default function EditBlogPostPage({ params }: { params: Promise<{ postId: string }> }) {
   const { postId } = use(params);
   const router = useRouter();
+  const { user } = useAuth();
+  // §10.14.5 madde 4: EDITOR altı roller (VIEWER) için satır-içi oluşturma tetikleyicisi RENDER EDİLMEZ.
+  const canCreateTaxonomy = user?.role === "ADMIN" || user?.role === "EDITOR";
 
   const [categories, setCategories] = useState<BlogCategory[]>([]);
+  const [tags, setTags] = useState<BlogTag[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -105,6 +119,7 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
   const [excerpt, setExcerpt] = useState("");
   const [coverImageUrl, setCoverImageUrl] = useState("");
   const [categoryId, setCategoryId] = useState("");
+  const [tagIds, setTagIds] = useState<string[]>([]);
   const [status, setStatus] = useState<ContentStatus>("DRAFT");
   const [scheduledAt, setScheduledAt] = useState("");
   const [contentHtml, setContentHtml] = useState("");
@@ -134,13 +149,19 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
 
   const load = useCallback(async () => {
     try {
-      const [post, cats] = await Promise.all([blogApi.getPost(postId), blogApi.listCategories().catch(() => [])]);
+      const [post, cats, tagList] = await Promise.all([
+        blogApi.getPost(postId),
+        blogApi.listCategories().catch(() => []),
+        blogApi.listTags().catch(() => []),
+      ]);
+      const postTagIds = post.tags.map((t) => t.id);
       const nextSnapshot: PostSnapshot = {
         title: post.title,
         slug: post.slug,
         excerpt: post.excerpt ?? "",
         coverImageUrl: post.coverImageUrl ?? "",
         categoryId: post.category?.id ?? "",
+        tagIds: sortedTagKey(postTagIds),
         status: post.status,
         scheduledAt: toDatetimeLocalValue(post.scheduledAt),
         contentHtml: post.contentHtml,
@@ -157,6 +178,7 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
       setExcerpt(nextSnapshot.excerpt);
       setCoverImageUrl(nextSnapshot.coverImageUrl);
       setCategoryId(nextSnapshot.categoryId);
+      setTagIds(postTagIds);
       setStatus(nextSnapshot.status);
       setScheduledAt(nextSnapshot.scheduledAt);
       setContentHtml(nextSnapshot.contentHtml);
@@ -171,6 +193,13 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
       setViewCount(post.viewCount);
       setPublishedAt(post.publishedAt);
       setCategories(cats);
+      // `listTags()` TÜM etiketleri döner (superset); yine de başarısız olursa yazının
+      // gömülü `post.tags`'i ile birleştirilir ki seçili chip'ler her koşulda görünür kalsın.
+      setTags((prev) => {
+        const merged = new Map(tagList.length > 0 ? tagList.map((t) => [t.id, t] as const) : prev.map((t) => [t.id, t] as const));
+        for (const t of post.tags) if (!merged.has(t.id)) merged.set(t.id, t);
+        return Array.from(merged.values());
+      });
       setSnapshot(nextSnapshot);
       setLoaded(true);
       setEditorGeneration((prev) => prev + 1);
@@ -193,6 +222,9 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
       excerpt !== snapshot.excerpt ||
       coverImageUrl !== snapshot.coverImageUrl ||
       categoryId !== snapshot.categoryId ||
+      // `tagIds` bir DİZİDİR — referans karşılaştırması yanlış pozitif verir, sıralı
+      // birleştirme ile küme kimliği karşılaştırılır (§10.14.5).
+      sortedTagKey(tagIds) !== snapshot.tagIds ||
       status !== snapshot.status ||
       scheduledAt !== snapshot.scheduledAt ||
       contentHtml !== snapshot.contentHtml ||
@@ -210,6 +242,7 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
     excerpt,
     coverImageUrl,
     categoryId,
+    tagIds,
     status,
     scheduledAt,
     contentHtml,
@@ -254,6 +287,8 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
         excerpt: excerpt || null,
         coverImageUrl: coverImageUrl || null,
         categoryId: categoryId || null,
+        // Tam editör her zaman TÜM alanları gönderir — mevcut seçim TAM SET olarak yansıtılır.
+        tagIds,
         status,
         scheduledAt: status === "SCHEDULED" ? new Date(scheduledAt).toISOString() : null,
         contentHtml,
@@ -437,18 +472,14 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
             <ImageUploadField id="coverImageUrl" label="Kapak görseli" value={coverImageUrl} onChange={setCoverImageUrl} />
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field id="category" label="Kategori">
-                {(inputProps) => (
-                  <Select {...inputProps} value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-                    <option value="">Kategorisiz</option>
-                    {categories.map((category) => (
-                      <option key={category.id} value={category.id}>
-                        {category.name}
-                      </option>
-                    ))}
-                  </Select>
-                )}
-              </Field>
+              <CategorySelect
+                id="category"
+                categories={categories}
+                value={categoryId || null}
+                onChange={(id) => setCategoryId(id ?? "")}
+                onCategoryCreated={(category) => setCategories((prev) => [...prev, category])}
+                canCreate={canCreateTaxonomy}
+              />
               <Field id="status" label="Durum">
                 {(inputProps) => (
                   <Select {...inputProps} value={status} onChange={(e) => setStatus(e.target.value as ContentStatus)}>
@@ -473,6 +504,14 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
                 </Field>
               )}
             </div>
+
+            <TagSelect
+              availableTags={tags}
+              selectedIds={tagIds}
+              onChange={setTagIds}
+              onTagCreated={(tag) => setTags((prev) => [...prev, tag])}
+              canCreate={canCreateTaxonomy}
+            />
           </Card>
 
           <div>

@@ -245,6 +245,18 @@ export const BlogCategorySchema = z.object({
 });
 export type BlogCategoryDto = z.infer<typeof BlogCategorySchema>;
 
+// §10.14 Blog Etiketleri — `BlogCategory` ile birebir simetrik, tek fark `postCount`.
+// `postCount` YALNIZCA `GET /admin/blog/tags` yanıtında dolu döner; `BlogPost.tags[]`
+// içine gömülü etiketlerde TAŞINMAZ (N+1 sorgu doğururdu) — bkz. ARCHITECTURE.md §10.14.3/§10.14.5.
+export const BlogTagSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string(),
+  slug: z.string(),
+  createdAt: z.string(),
+  postCount: z.number().int().min(0).optional(),
+});
+export type BlogTagDto = z.infer<typeof BlogTagSchema>;
+
 export const BlogPostSchema = z.object({
   id: z.string().uuid(),
   title: z.string(),
@@ -254,6 +266,8 @@ export const BlogPostSchema = z.object({
   coverImageUrl: z.string().nullable(),
   status: PageStatusSchema,
   category: BlogCategorySchema.nullable(),
+  // §10.14 — bu yazının etiketleri. HER ZAMAN dizi (boşsa `[]`, asla `null`), `seq ASC` sıralı.
+  tags: z.array(BlogTagSchema),
   seoTitle: z.string().nullable(),
   seoDescription: z.string().nullable(),
   // §10.2 Gelişmiş SEO & Social Card — bkz. ARCHITECTURE.md §10.2.

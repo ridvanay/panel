@@ -17,10 +17,10 @@ const BULK_ACTION_LABELS: Record<BulkContentAction, string> = {
   "permanent-delete": "kalıcı olarak silindi",
 };
 
-export interface UseContentListOptions<T extends ContentListEntity> {
+export interface UseContentListOptions<T extends ContentListEntity, Q extends QuickEditValues = QuickEditValues> {
   /** `pagesApi.listPages` / `blogApi.listPosts` — modül seviyesinde sabit referans olmalı. */
   fetchList: (params: { cursor?: string; trashed?: TrashedFilter; limit?: number }) => Promise<Page<T>>;
-  updateItem: (id: string, input: Partial<QuickEditValues>) => Promise<T>;
+  updateItem: (id: string, input: Partial<Q>) => Promise<T>;
   /** Soft-delete (çöpe taşı) — mevcut `deletePage`/`deletePost`. */
   trashItem: (id: string) => Promise<void>;
   restoreItem: (id: string) => Promise<T>;
@@ -29,6 +29,17 @@ export interface UseContentListOptions<T extends ContentListEntity> {
   matches: (item: T, query: string) => boolean;
   /** Toast mesajlarında kullanılan tekil ad — örn. "Sayfa" / "Yazı". */
   nounSingular: string;
+  /**
+   * §10.7.2 — entity'ye özgü Hızlı Düzenle alanlarının (ör. Blog Kategori/Etiket)
+   * başlangıç değerlerini satırdan üretir. Verilmezse `startQuickEdit` bugünkü
+   * `{ title, slug, status }` davranışını korur.
+   */
+  quickEditExtras?: (item: T) => Omit<Q, keyof QuickEditValues>;
+  /**
+   * §10.14.5 — entity'ye özgü ek daraltma (ör. Blog'un etikete göre filtresi). Sekme
+   * filtresinden SONRA, arama/sayfalamadan ÖNCE uygulanır. Verilmezse hiçbir şey değişmez.
+   */
+  filterTabItems?: (items: T[]) => T[];
 }
 
 function filterByTab<T extends ContentListEntity>(items: T[], filter: ContentListFilter): T[] {
@@ -50,7 +61,7 @@ function filterByTab<T extends ContentListEntity>(items: T[], filter: ContentLis
  * uygular, ardından `useFilteredList` ile arama+sayfalamayı devreder. Seçim, Hızlı
  * Düzenle ve tekil/toplu çöp-geri yükle-kalıcı sil akışlarını da kapsar.
  */
-export function useContentList<T extends ContentListEntity>({
+export function useContentList<T extends ContentListEntity, Q extends QuickEditValues = QuickEditValues>({
   fetchList,
   updateItem,
   trashItem,
@@ -59,7 +70,9 @@ export function useContentList<T extends ContentListEntity>({
   bulkAction,
   matches,
   nounSingular,
-}: UseContentListOptions<T>) {
+  quickEditExtras,
+  filterTabItems,
+}: UseContentListOptions<T, Q>) {
   const [items, setItems] = useState<T[] | null>(null);
   const [counts, setCounts] = useState<ContentCounts>(EMPTY_COUNTS);
   const [error, setError] = useState<string | null>(null);
@@ -68,11 +81,13 @@ export function useContentList<T extends ContentListEntity>({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [quickEditValues, setQuickEditValues] = useState<QuickEditValues>({
+  // Başlangıç değeri yalnızca bir yer tutucudur — `editingId === null` iken hiç render
+  // edilmez, gerçek değerler `startQuickEdit` içinde (extras dahil) kurulur.
+  const [quickEditValues, setQuickEditValues] = useState<Q>({
     title: "",
     slug: "",
     status: "DRAFT",
-  });
+  } as Q);
   const [quickEditSaving, setQuickEditSaving] = useState(false);
   const [quickEditError, setQuickEditError] = useState<string | null>(null);
 
@@ -121,6 +136,13 @@ export function useContentList<T extends ContentListEntity>({
 
   const tabItems = useMemo(() => (items ? filterByTab(items, activeFilter) : []), [items, activeFilter]);
 
+  // §10.14.5 — Blog'un (opsiyonel) etikete göre filtresi gibi entity'ye özgü ek daraltmalar
+  // sekme filtresinden SONRA, arama/sayfalamadan ÖNCE uygulanır. Verilmezse `tabItems` aynen geçer.
+  const searchableItems = useMemo(
+    () => (filterTabItems ? filterTabItems(tabItems) : tabItems),
+    [filterTabItems, tabItems]
+  );
+
   const {
     search,
     setSearch,
@@ -131,7 +153,7 @@ export function useContentList<T extends ContentListEntity>({
     totalPages,
     filteredCount,
     items: visibleItems,
-  } = useFilteredList(items === null ? null : tabItems, matches);
+  } = useFilteredList(items === null ? null : searchableItems, matches);
 
   function toggleSelect(id: string) {
     setSelectedIds((prev) => {
@@ -162,7 +184,9 @@ export function useContentList<T extends ContentListEntity>({
 
   function startQuickEdit(item: T) {
     setEditingId(item.id);
-    setQuickEditValues({ title: item.title, slug: item.slug, status: item.status });
+    const base: QuickEditValues = { title: item.title, slug: item.slug, status: item.status };
+    const extras = quickEditExtras ? quickEditExtras(item) : ({} as Omit<Q, keyof QuickEditValues>);
+    setQuickEditValues({ ...base, ...extras } as Q);
     setQuickEditError(null);
   }
 
@@ -171,7 +195,7 @@ export function useContentList<T extends ContentListEntity>({
     setQuickEditError(null);
   }
 
-  function updateQuickEditValues(partial: Partial<QuickEditValues>) {
+  function updateQuickEditValues(partial: Partial<Q>) {
     setQuickEditValues((prev) => ({ ...prev, ...partial }));
   }
 

@@ -7,8 +7,11 @@ import { useMemo, useState } from "react";
  * Client-side: `items` zaten API'den tam liste olarak çekilmiş olmalı (cursor tabanlı
  * ek fetch yapmaz), bu hook yalnızca bellekteki listeyi filtreler ve dilimler.
  *
- * Sayfalama kontrolleri yalnızca `totalPages > 10` olduğunda anlamlıdır — bunu
- * göstermek/gizlemek çağıran bileşenin sorumluluğundadır (`totalPages` buradan okunur).
+ * Sayfalama kontrolleri yalnızca `totalPages > 1` olduğunda anlamlıdır — bunu
+ * göstermek/gizlemek çağıran bileşenin sorumluluğudur (`totalPages` buradan okunur).
+ * DİKKAT: `totalPages` listenin kaç SAYFAYA bölündüğüdür, öğe sayısı DEĞİLDİR; `> 10`
+ * gibi bir eşik `pageSize` büyüdükçe (örn. 229 öğe → 50/sayfa → totalPages=5) kontrolleri
+ * yanlışlıkla gizler (bkz. ARCHITECTURE.md §10.7.1 — üretimde doğrulanmış kritik bug).
  */
 export function useFilteredList<T>(items: T[] | null, matches: (item: T, query: string) => boolean) {
   const [search, setSearchRaw] = useState("");

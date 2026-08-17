@@ -143,6 +143,49 @@
 }
 
 /*
+ * §10.15.2/§10.15.6 (mimar + ui-designer) — Blog editörünün Galeri bloğu. Bu sınıflar ham
+ * HTML olarak hem public `prose` içine (`dangerouslySetInnerHTML`) hem TipTap editör alanına
+ * (`prose prose-sm`) düşer; Tailwind utility class'ı DEĞİL, gerçek CSS kuralı gerekir — ham
+ * HTML/`dangerouslySetInnerHTML` içine düşen bu sınıfları Tailwind'in JIT taraması GÖRMEZ.
+ * Sınıf adları (`blog-gallery`, `blog-gallery--grid`, `blog-gallery__item`) KONTRATIN
+ * PARÇASIDIR (§10.15.2) — sanitizer allow-list'i ve TipTap `parseHTML` eşleşmesi bunlara
+ * bağlıdır, DEĞİŞTİRİLEMEZ. Yalnızca bu sınıfların CSS içeriği ui-designer kararıdır.
+ */
+.blog-gallery {
+  margin: 2rem 0; /* mevcut spacing ölçeğinde 32px (my-8 karşılığı) — prose'un tanımadığı
+                     bir sınıf olduğu için Typography eklentisinin otomatik dikey ritmi bu
+                     div'e uygulanmaz, elle verilmek zorunda */
+}
+
+.blog-gallery--grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr)); /* mobil: 2 sütun */
+  gap: 0.5rem; /* 8px — gap-2, gallery-field.tsx ve public gallery-block.tsx ile aynı birim */
+}
+
+@media (min-width: 640px) { /* sm */
+  .blog-gallery--grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (min-width: 768px) { /* md */
+  .blog-gallery--grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+.blog-gallery__item {
+  margin: 0; /* <figure> UA-varsayılan margin'ini sıfırlar — sıfırlanmazsa grid gap'i bozar */
+  aspect-ratio: 1 / 1; /* aspect-square — mevcut TÜM galeri/picker desenleriyle birebir aynı oran */
+  overflow: hidden;
+  border-radius: var(--radius-lg); /* 0.625rem/10px — blog kapak görseliyle (rounded-lg) aynı makalede tutarlı */
+}
+
+.blog-gallery__item img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/*
  * (2026-07-31, frontend-agent — J.1 bug fix) Burada eskiden `@media (prefers-color-scheme: dark)`
  * içinde `:root`'u OS/tarayıcı tercihine göre koyu değerlere zorlayan bir blok vardı. O blok
  * next-themes'in yönettiği `.dark` class'ından (aşağıdaki `.dark .admin-shell` bloğu — admin

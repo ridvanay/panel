@@ -123,12 +123,12 @@ export default function AdminPortfolioListPage() {
                 onChange={(e) => list.setSearch(e.target.value)}
               />
             </InputGroup>
-            {list.totalPages > 10 && (
+            {list.totalPages > 1 && (
               <Select
                 aria-label="Sayfa boyutu"
                 value={list.pageSize}
                 onChange={(e) => list.setPageSize(Number(e.target.value))}
-                className="w-24"
+                className="w-auto"
               >
                 <option value={10}>10 / sayfa</option>
                 <option value={20}>20 / sayfa</option>
@@ -182,15 +182,18 @@ export default function AdminPortfolioListPage() {
                 onRequestPermanentDelete={list.requestPermanentDelete}
                 editHref={(item) => `/admin/portfolio/${item.id}`}
                 viewHref={(item) => `/portfolio/${item.slug}`}
-                categoryColumn={{
-                  header: "Kategori",
-                  render: (item) => item.category?.name ?? "—",
-                }}
+                extraColumns={[
+                  {
+                    key: "category",
+                    header: "Kategori",
+                    render: (item) => item.category?.name ?? "—",
+                  },
+                ]}
               />
             </motion.div>
           )}
 
-          {list.totalPages > 10 && <ListPagination page={list.page} totalPages={list.totalPages} onPageChange={list.setPage} />}
+          {list.totalPages > 1 && <ListPagination page={list.page} totalPages={list.totalPages} onPageChange={list.setPage} />}
         </>
       )}
 

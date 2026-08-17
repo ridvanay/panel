@@ -492,11 +492,44 @@ model BlogPost {
   category BlogCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   author   User?         @relation(fields: [authorId], references: [id], onDelete: SetNull)
   views    PageView[]
+  tags     BlogPostTag[]
 
   @@index([categoryId])
   @@index([deletedAt, status])
   @@index([authorId])
   @@map("blog_posts")
+}
+
+// §10.14 Blog Etiketleri (Tag) — çoka-çok sınıflandırma, bkz. ARCHITECTURE.md §10.14.1.
+// `BlogCategory` ile AYNI basitlikte (id/seq/name/slug); kategoriden farkı çoka-çok olması
+// (bkz. BlogPostTag ara tablosu). `name` üzerinde DB tekilliği YOK, kimlik `slug`'dır
+// (§10.14.3) — "React" ve "react" aynı slug'a düşer, ikincisi 409 alır.
+model BlogTag {
+  id        String   @id @default(uuid())
+  seq       Int      @unique @default(autoincrement())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+
+  posts BlogPostTag[]
+
+  @@map("blog_tags")
+}
+
+// §10.14.1 — açık (explicit) ara tablo, Prisma implicit m-n BİLİNÇLİ OLARAK KULLANILMADI
+// (implicit ilişki `_BlogPostToBlogTag` üretir, snake_case + @@map standardını ihlal eder).
+// §10.14.2 silme semantiği: yazı çöpe giderse bu satırlar KORUNUR (soft-delete dokunmaz);
+// yazı kalıcı silinirse ya da etiket silinirse cascade düşer (karşı taraf yaşamaya devam eder).
+model BlogPostTag {
+  postId String
+  tagId  String
+
+  post BlogPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  tag  BlogTag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([postId, tagId])
+  @@index([tagId])
+  @@map("blog_post_tags")
 }
 
 model ProductCategory {

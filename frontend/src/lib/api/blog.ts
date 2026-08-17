@@ -2,14 +2,17 @@ import { apiFetch, apiFetchPage } from "./client";
 import type {
   BlogCategory,
   BlogPost,
+  BlogTag,
   BulkContentAction,
   BulkContentActionResult,
   CreateBlogCategoryRequest,
   CreateBlogPostRequest,
+  CreateBlogTagRequest,
   Page,
   TrashedFilter,
   UpdateBlogCategoryRequest,
   UpdateBlogPostRequest,
+  UpdateBlogTagRequest,
 } from "./types";
 
 export interface ListPostsParams {
@@ -73,6 +76,25 @@ export function updateCategory(categoryId: string, input: UpdateBlogCategoryRequ
 
 export function deleteCategory(categoryId: string) {
   return apiFetch<void>(`/admin/blog/categories/${categoryId}`, { method: "DELETE" });
+}
+
+/** §10.14.3 — sayfalanmaz, arama parametresi almaz. `seq ASC` sırasında döner. */
+export function listTags() {
+  return apiFetch<BlogTag[]>("/admin/blog/tags");
+}
+
+/** Etiket yönetim ekranı VE editördeki satır-içi "yeni etiket" akışı aynı ucu kullanır. */
+export function createTag(input: CreateBlogTagRequest) {
+  return apiFetch<BlogTag>("/admin/blog/tags", { method: "POST", body: input });
+}
+
+export function updateTag(tagId: string, input: UpdateBlogTagRequest) {
+  return apiFetch<BlogTag>(`/admin/blog/tags/${tagId}`, { method: "PATCH", body: input });
+}
+
+/** Yalnızca ADMIN. */
+export function deleteTag(tagId: string) {
+  return apiFetch<void>(`/admin/blog/tags/${tagId}`, { method: "DELETE" });
 }
 
 /**

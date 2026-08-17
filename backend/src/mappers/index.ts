@@ -8,6 +8,8 @@ import type {
   Page,
   BlogCategory,
   BlogPost,
+  BlogTag,
+  BlogPostTag,
   Media,
   MediaFolder,
   SiteSettings,
@@ -50,6 +52,7 @@ import type {
   SubscriptionDto,
   PageDto,
   BlogCategoryDto,
+  BlogTagDto,
   BlogPostDto,
   MediaDto,
   MediaFolderDto,
@@ -259,7 +262,28 @@ export function toBlogCategoryDto(category: BlogCategory): BlogCategoryDto {
   };
 }
 
-type BlogPostWithCategory = BlogPost & { category: BlogCategory | null; author?: User | null };
+// §10.14 Blog Etiketleri — `_count.posts` YALNIZCA `GET /admin/blog/tags` sorgusunda (tek
+// sorguda `_count` ile, N+1 YASAK) geçirilir; `BlogPost.tags[]` içine gömülü etiketlerde
+// `_count` YOKTUR, bu yüzden `postCount` o bağlamda `undefined` kalır (bkz. ARCHITECTURE.md §10.14.3/§10.14.5).
+type BlogTagWithCount = BlogTag & { _count?: { posts: number } };
+
+export function toBlogTagDto(tag: BlogTagWithCount): BlogTagDto {
+  return {
+    id: tag.id,
+    name: tag.name,
+    slug: tag.slug,
+    createdAt: tag.createdAt.toISOString(),
+    ...(tag._count ? { postCount: tag._count.posts } : {}),
+  };
+}
+
+type BlogPostTagWithTag = BlogPostTag & { tag: BlogTag };
+
+type BlogPostWithCategory = BlogPost & {
+  category: BlogCategory | null;
+  author?: User | null;
+  tags?: BlogPostTagWithTag[];
+};
 
 /** S3/CDN sürücüsü zaten mutlak URL üretir; local sürücü relative `/uploads/...` yolu döner. */
 export function absolutizeMediaUrl(url: string): string {
@@ -384,6 +408,9 @@ export function toBlogPostDto(post: BlogPostWithCategory, localizations: Content
     coverImageUrl: post.coverImageUrl,
     status: post.status,
     category: post.category ? toBlogCategoryDto(post.category) : null,
+    // §10.14 — `seq ASC` sırası çağıran tarafın `include`'undaki `orderBy: { tag: { seq: "asc" } }`
+    // ile garanti edilir; burada AYRICA sıralama yapılmaz (çağıran taraf tek doğruluk kaynağı).
+    tags: (post.tags ?? []).map((postTag) => toBlogTagDto(postTag.tag)),
     seoTitle: post.seoTitle,
     seoDescription: post.seoDescription,
     ogTitle: post.ogTitle,

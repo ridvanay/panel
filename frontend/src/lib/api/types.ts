@@ -424,6 +424,33 @@ export interface UpdateBlogCategoryRequest {
   slug?: string;
 }
 
+// ---------- §10.14 Blog Etiketleri (Tag) ----------
+// Kategori (`BlogCategory`) = TEK birincil sınıflandırma (bire-çok).
+// Etiket (`BlogTag`) = ÇOKLU yatay sınıflandırma (çoka-çok, `blog_post_tags`).
+export interface BlogTag {
+  id: string;
+  name: string;
+  slug: string;
+  createdAt: string;
+  /**
+   * Çöpte OLMAYAN yazı sayısı. YALNIZCA `GET /admin/blog/tags` yanıtında doldurulur;
+   * `BlogPost.tags[]` içinde gömülü etiketlerde BULUNMAZ (N+1 sorgu doğururdu).
+   */
+  postCount?: number;
+}
+
+export interface CreateBlogTagRequest {
+  name: string;
+  /** Verilmezse `slugify(name)`. Çakışırsa 409 CONFLICT. */
+  slug?: string;
+}
+
+export interface UpdateBlogTagRequest {
+  /** `name` değişince `slug` OTOMATİK türetilmez — slug URL kimliğidir. */
+  name?: string;
+  slug?: string;
+}
+
 export interface BlogPost {
   id: string;
   title: string;
@@ -433,6 +460,8 @@ export interface BlogPost {
   coverImageUrl: string | null;
   status: ContentStatus;
   category: BlogCategory | null;
+  /** HER ZAMAN dizi (boşsa `[]`, asla `null`). Sıralama deterministik: `seq ASC`. */
+  tags: BlogTag[];
   seoTitle: string | null;
   seoDescription: string | null;
   ogTitle: string | null;
@@ -466,6 +495,11 @@ export interface CreateBlogPostRequest {
   /** `status === "SCHEDULED"` iken ZORUNLU ve gelecekte bir tarih olmalı (backend 422 ile reddeder). */
   scheduledAt?: string | null;
   categoryId?: string | null;
+  /**
+   * TAM SET (replace, delta DEĞİL). Verilmezse boş. En fazla 50 id; olmayan id → 422.
+   * Bkz. `BlogPostTagIdsInput` (§10.14.4).
+   */
+  tagIds?: string[];
   seoTitle?: string | null;
   seoDescription?: string | null;
   ogTitle?: string | null;
@@ -1017,6 +1051,12 @@ export interface UpdateBlogPostRequest {
   /** `status === "SCHEDULED"` iken ZORUNLU ve gelecekte bir tarih olmalı (backend 422 ile reddeder). */
   scheduledAt?: string | null;
   categoryId?: string | null;
+  /**
+   * TAM SET (replace, delta DEĞİL). `[]` tüm etiketleri kaldırır; `undefined` (alan hiç
+   * gönderilmemişse) etiketlere DOKUNMAZ. En fazla 50 id; olmayan id → 422.
+   * Bkz. `BlogPostTagIdsInput` (§10.14.4).
+   */
+  tagIds?: string[];
   seoTitle?: string | null;
   seoDescription?: string | null;
   ogTitle?: string | null;

@@ -29,3 +29,14 @@ export interface QuickEditValues {
   slug: string;
   status: ContentStatus;
 }
+
+/**
+ * §10.7.2 — YALNIZCA blog listesi kullanır. `Page`/`Product`/`PortfolioItem` bu tipi
+ * ASLA görmez; ortak `QuickEditValues` DEĞİŞMEZ, genişletme generic parametreyle yapılır.
+ */
+export interface BlogQuickEditValues extends QuickEditValues {
+  /** `""` DEĞİL `null` — `PATCH /admin/blog/{postId}` gövdesiyle birebir. */
+  categoryId: string | null;
+  /** TAM set (delta değil) — bkz. `UpdateBlogPostRequest.tagIds`. */
+  tagIds: string[];
+}

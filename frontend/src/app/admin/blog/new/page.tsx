@@ -11,7 +11,7 @@ import { z } from "zod";
 import { AlertCircle, ChevronLeft, Newspaper } from "lucide-react";
 import * as blogApi from "@/lib/api/blog";
 import * as usersAdminApi from "@/lib/api/users-admin";
-import type { AdminUser, BlogCategory } from "@/lib/api/types";
+import type { AdminUser, BlogCategory, BlogTag } from "@/lib/api/types";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
@@ -20,6 +20,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select } from "@/components/ui/select";
 import { Alert } from "@/components/ui/alert";
 import { PostEditor } from "@/components/admin/blog/post-editor";
+import { CategorySelect } from "@/components/admin/blog/category-select";
+import { TagSelect } from "@/components/admin/blog/tag-select";
 import { ImageUploadField } from "@/components/admin/media/image-upload-field";
 import { PageHeading } from "@/components/admin/page-heading";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
@@ -44,9 +46,13 @@ export default function NewBlogPostPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === "ADMIN";
   const [categories, setCategories] = useState<BlogCategory[]>([]);
+  const [tags, setTags] = useState<BlogTag[]>([]);
+  const [tagIds, setTagIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const [admins, setAdmins] = useState<AdminUser[]>([]);
+  // §10.14.5 madde 4: EDITOR altı roller (VIEWER) için satır-içi oluşturma tetikleyicisi RENDER EDİLMEZ.
+  const canCreateTaxonomy = user?.role === "ADMIN" || user?.role === "EDITOR";
 
   const {
     register,
@@ -74,6 +80,13 @@ export default function NewBlogPostPage() {
         // Kategori listesi opsiyonel — form kategori olmadan da gönderilebilir.
       }
     })();
+    (async () => {
+      try {
+        setTags(await blogApi.listTags());
+      } catch {
+        // Etiket listesi opsiyonel — form etiketsiz de gönderilebilir.
+      }
+    })();
   }, []);
 
   useEffect(() => {
@@ -96,6 +109,7 @@ export default function NewBlogPostPage() {
         excerpt: values.excerpt || undefined,
         coverImageUrl: values.coverImageUrl || undefined,
         categoryId: values.categoryId || null,
+        tagIds,
         contentHtml: values.contentHtml,
         authorId: isAdmin && values.authorId ? values.authorId : undefined,
       });
@@ -147,18 +161,28 @@ export default function NewBlogPostPage() {
             )}
           />
 
-          <Field id="category" label="Kategori">
-            {(inputProps) => (
-              <Select {...inputProps} {...register("categoryId")}>
-                <option value="">Kategorisiz</option>
-                {categories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
-                  </option>
-                ))}
-              </Select>
+          <Controller
+            control={control}
+            name="categoryId"
+            render={({ field }) => (
+              <CategorySelect
+                id="category"
+                categories={categories}
+                value={field.value || null}
+                onChange={(id) => field.onChange(id ?? "")}
+                onCategoryCreated={(category) => setCategories((prev) => [...prev, category])}
+                canCreate={canCreateTaxonomy}
+              />
             )}
-          </Field>
+          />
+
+          <TagSelect
+            availableTags={tags}
+            selectedIds={tagIds}
+            onChange={setTagIds}
+            onTagCreated={(tag) => setTags((prev) => [...prev, tag])}
+            canCreate={canCreateTaxonomy}
+          />
 
           {isAdmin && admins.length > 0 && (
             <Field id="authorId" label="Yazar" hint="Varsayılan olarak siz atanırsınız; ADMIN başka bir kullanıcı seçebilir.">
