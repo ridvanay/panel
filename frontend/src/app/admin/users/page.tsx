@@ -89,6 +89,8 @@ export default function AdminUsersPage() {
   const [bulkRoleLoading, setBulkRoleLoading] = useState(false);
   const [bulkStatusAction, setBulkStatusAction] = useState<Exclude<SiteUserStatus, "DELETED"> | null>(null);
   const [bulkStatusLoading, setBulkStatusLoading] = useState(false);
+  const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
+  const [bulkDeleteLoading, setBulkDeleteLoading] = useState(false);
 
   const [exporting, setExporting] = useState(false);
 
@@ -376,6 +378,77 @@ export default function AdminUsersPage() {
     }
   }
 
+  // Backend zaten kendi hesabı / son aktif admin için 409 ile reddedecek — ama burada bu
+  // kullanıcıları API'ye HİÇ göndermeden istemci tarafında (mevcut `isSelf`/`isLastActiveAdmin`
+  // hesaplamasıyla, bkz. satır ~298 ve satır ~529-530'daki tekil silme akışındaki karşılığı)
+  // önceden filtreliyoruz — gereksiz başarısız istek + kafa karıştırıcı hata yerine, sonuç
+  // mesajında net bir "admin koruması" ayrımı gösteriyoruz.
+  function getBulkDeleteEligibility(): { eligibleIds: string[]; excludedCount: number } {
+    const selectedUsers = users?.filter((u) => selectedIds.has(u.id)) ?? [];
+    const eligibleIds: string[] = [];
+    let excludedCount = 0;
+    for (const u of selectedUsers) {
+      const isSelf = u.id === currentUser?.id;
+      const isLastActiveAdmin = u.role === "ADMIN" && u.status === "ACTIVE" && activeAdminCount === 1;
+      if (isSelf || isLastActiveAdmin) {
+        excludedCount += 1;
+      } else {
+        eligibleIds.push(u.id);
+      }
+    }
+    return { eligibleIds, excludedCount };
+  }
+
+  async function handleConfirmBulkDelete() {
+    const { eligibleIds, excludedCount } = getBulkDeleteEligibility();
+    setBulkDeleteLoading(true);
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const id of eligibleIds) {
+      try {
+        const updated = await usersAdminApi.deleteUser(id);
+        setUsers((prev) => {
+          if (!prev) return prev;
+          if (!includeDeleted) return prev.filter((u) => u.id !== updated.id);
+          return prev.map((u) => (u.id === updated.id ? updated : u));
+        });
+        successCount += 1;
+      } catch {
+        failCount += 1;
+      }
+    }
+
+    setBulkDeleteLoading(false);
+    setBulkDeleteConfirmOpen(false);
+    setSelectedIds(new Set());
+    await load();
+
+    const parts: string[] = [];
+    if (successCount > 0) {
+      parts.push(successCount === 1 ? "1 kullanıcı silindi" : `${successCount} kullanıcı silindi`);
+    }
+    if (excludedCount > 0) {
+      parts.push(
+        excludedCount === 1
+          ? "1 kullanıcı admin koruması nedeniyle silinemedi"
+          : `${excludedCount} kullanıcı admin koruması nedeniyle silinemedi`
+      );
+    }
+    if (failCount > 0) {
+      parts.push(failCount === 1 ? "1 kullanıcı başarısız oldu" : `${failCount} kullanıcı başarısız oldu`);
+    }
+
+    if (parts.length > 0) {
+      const message = `${parts.join(", ")}.`;
+      if (successCount > 0) {
+        toast.success(message);
+      } else {
+        toast.error(message);
+      }
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeading
@@ -433,6 +506,10 @@ export default function AdminUsersPage() {
             <Button variant="outline" size="sm" onClick={() => void handleBulkExport()} loading={exporting}>
               <Download className="h-4 w-4" />
               CSV Dışa Aktar
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setBulkDeleteConfirmOpen(true)}>
+              <Trash2 className="h-4 w-4" />
+              Sil
             </Button>
           </div>
           <Button variant="ghost" size="sm" className="ml-auto" onClick={() => setSelectedIds(new Set())}>
@@ -718,6 +795,25 @@ export default function AdminUsersPage() {
         destructive={bulkStatusAction === "SUSPENDED"}
         loading={bulkStatusLoading}
         onConfirm={handleConfirmBulkStatusChange}
+      />
+
+      <ConfirmDialog
+        open={bulkDeleteConfirmOpen}
+        onOpenChange={(open) => {
+          if (!open) setBulkDeleteConfirmOpen(false);
+        }}
+        title="Kullanıcıları toplu sil"
+        description={(() => {
+          const { eligibleIds, excludedCount } = getBulkDeleteEligibility();
+          const base = `${eligibleIds.length} kullanıcıyı silmek istediğinize emin misiniz? Bu, kalıcı bir silme DEĞİLDİR: hesaplar devre dışı bırakılır, kullanıcılar giriş yapamaz ve mevcut oturumları sonlandırılır. Dilediğiniz zaman "Geri Yükle" ile hesapları yeniden etkinleştirebilirsiniz.`;
+          return excludedCount > 0
+            ? `${base} (${excludedCount} kullanıcı admin koruması nedeniyle bu işlemin dışında tutulacak.)`
+            : base;
+        })()}
+        confirmText="Kullanıcıları Sil"
+        tone="danger"
+        loading={bulkDeleteLoading}
+        onConfirm={handleConfirmBulkDelete}
       />
 
       <ConfirmDialog

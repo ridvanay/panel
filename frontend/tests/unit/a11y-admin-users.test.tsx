@@ -237,6 +237,88 @@ describe("AdminUsersPage — kullanıcı silme / geri yükleme", () => {
   });
 });
 
+describe("AdminUsersPage — toplu silme", () => {
+  it("golden path: seçili kullanıcılar (admin koruması içermeyen) toplu silinir ve net bir başarı mesajı gösterilir", async () => {
+    mockUser = makeUser({ id: "user-1" });
+    vi.mocked(usersAdminApi.listAdminUsers).mockResolvedValue({ items: adminUsers, meta: { nextCursor: null } });
+    vi.mocked(usersAdminApi.deleteUser).mockImplementation(async (userId: string) => {
+      const target = adminUsers.find((u) => u.id === userId)!;
+      return { ...target, status: "DELETED", deletedAt: "2026-08-18T12:00:00.000Z" };
+    });
+
+    const user = userEvent.setup();
+    render(<AdminUsersPage />);
+    await screen.findByText("Admin Kullanıcı");
+
+    // Editor ve Viewer — ikisi de ne self ne de son aktif admin.
+    await user.click(screen.getByRole("checkbox", { name: "Editor Kullanıcı kullanıcısını seç" }));
+    await user.click(screen.getByRole("checkbox", { name: "Viewer Kullanıcı kullanıcısını seç" }));
+
+    // Sayfada satır bazlı "Sil" butonları da bulunduğundan, toplu işlem çubuğuyla sınırlıyoruz
+    // (bkz. "Rolü Uygula" ile aynı konteyner).
+    const toolbar = screen.getByRole("button", { name: "Rolü Uygula" }).closest("div") as HTMLElement;
+    await user.click(within(toolbar).getByRole("button", { name: "Sil" }));
+    const dialog = await screen.findByRole("dialog", { name: "Kullanıcıları toplu sil" });
+    expect(within(dialog).getByText(/2 kullanıcıyı silmek istediğinize emin misiniz/)).toBeInTheDocument();
+    expect(within(dialog).queryByText(/admin koruması/)).not.toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole("button", { name: "Kullanıcıları Sil" }));
+
+    await waitFor(() => {
+      expect(usersAdminApi.deleteUser).toHaveBeenCalledWith("user-2");
+      expect(usersAdminApi.deleteUser).toHaveBeenCalledWith("user-3");
+    });
+
+    await waitFor(() => {
+      expect(toast.success).toHaveBeenCalledWith("2 kullanıcı silindi.");
+    });
+  });
+
+  it("sistemin tek aktif admini seçime dahil edilse bile toplu silmede otomatik hariç tutulur ve bu net bir mesajla bildirilir", async () => {
+    // user-1: hem giriş yapan kullanıcı (self) hem de sistemin tek aktif admini —
+    // API'ye HİÇ gönderilmemeli, sadece Editor için `deleteUser` çağrılmalı.
+    mockUser = makeUser({ id: "user-1" });
+    vi.mocked(usersAdminApi.listAdminUsers).mockResolvedValue({ items: adminUsers, meta: { nextCursor: null } });
+    vi.mocked(usersAdminApi.deleteUser).mockResolvedValue({
+      ...adminUsers[1],
+      status: "DELETED",
+      deletedAt: "2026-08-18T12:00:00.000Z",
+    });
+
+    const user = userEvent.setup();
+    render(<AdminUsersPage />);
+    await screen.findByText("Admin Kullanıcı");
+
+    await user.click(screen.getByRole("checkbox", { name: "Admin Kullanıcı kullanıcısını seç" }));
+    await user.click(screen.getByRole("checkbox", { name: "Editor Kullanıcı kullanıcısını seç" }));
+
+    const toolbar = screen.getByRole("button", { name: "Rolü Uygula" }).closest("div") as HTMLElement;
+    await user.click(within(toolbar).getByRole("button", { name: "Sil" }));
+    const dialog = await screen.findByRole("dialog", { name: "Kullanıcıları toplu sil" });
+    // Diyalog, silinecek gerçek sayıyı (1) ve hariç tutulan sayıyı (1) ÖNCEDEN gösterir.
+    expect(within(dialog).getByText(/1 kullanıcıyı silmek istediğinize emin misiniz/)).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(/1 kullanıcı admin koruması nedeniyle bu işlemin dışında tutulacak/)
+    ).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole("button", { name: "Kullanıcıları Sil" }));
+
+    await waitFor(() => {
+      expect(usersAdminApi.deleteUser).toHaveBeenCalledWith("user-2");
+    });
+    expect(usersAdminApi.deleteUser).not.toHaveBeenCalledWith("user-1");
+
+    // Sonuç mesajı SESSİZCE iptal etmez — başarı + admin koruması nedeniyle hariç tutulanı
+    // net biçimde ayırır.
+    await waitFor(() => {
+      expect(toast.success).toHaveBeenCalledWith("1 kullanıcı silindi, 1 kullanıcı admin koruması nedeniyle silinemedi.");
+    });
+
+    // Seçim temizlenmiş olmalı (mevcut bulk desenlerdeki gibi).
+    expect(screen.queryByText(/seçili/)).not.toBeInTheDocument();
+  });
+});
+
 describe("AdminUsersPage — durum / rol değişikliği", () => {
   // Regresyon testi (qa-agent bulgusu): "Askıya Al" butonunun disabled mantığı önceden yalnızca
   // `isLastActiveAdmin`'e bakıyordu, `isSelf`'e BAKMIYORDU — bu yüzden 2+ aktif admin varken bir
