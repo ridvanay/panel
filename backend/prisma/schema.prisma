@@ -51,9 +51,15 @@ enum SiteRole {
   VIEWER
 }
 
+// §10.7 benzeri soft-delete (çöp kutusu) deseni, kullanıcılar için — DELETED durumundaki
+// kullanıcı giriş yapamaz, admin listelerinde varsayılan olarak gizlenir; `deletedAt` alanı
+// (User modeli) ile birlikte "ne zaman silindi" bilgisini taşır. Enum değeri eklemek geri
+// alınamaz bir işlemdir (ALTER TYPE ... ADD VALUE) — bu migration ImportJobType.PRODUCTS
+// ile AYNI ilkeyle, izole/tek başına gönderilir (bkz. satır 90-92).
 enum SiteUserStatus {
   ACTIVE
   SUSPENDED
+  DELETED
 }
 
 enum AuditStatus {
@@ -215,6 +221,10 @@ model User {
   role            SiteRole       @default(VIEWER)
   status          SiteUserStatus @default(ACTIVE)
   lastLoginAt     DateTime?
+  // Soft-delete (çöp kutusu) — status=DELETED ile birlikte set edilir; sadece silindiyse
+  // dolu. Kalıcı silme (hard delete) DEĞİL — DELETE /admin/users/{userId} bu alanı doldurur,
+  // POST /admin/users/{userId}/restore null'a döndürür (bkz. openapi.yaml).
+  deletedAt       DateTime?
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 

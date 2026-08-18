@@ -3,7 +3,16 @@
 import { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
-import { AlertCircle, Download, Search, UserCheck, UserX, Users as UsersIcon } from "lucide-react";
+import {
+  AlertCircle,
+  Download,
+  RotateCcw,
+  Search,
+  Trash2,
+  UserCheck,
+  UserX,
+  Users as UsersIcon,
+} from "lucide-react";
 import * as usersAdminApi from "@/lib/api/users-admin";
 import type { AdminUser, SiteRole, SiteUserStatus } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
@@ -14,6 +23,7 @@ import { Alert } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
@@ -40,6 +50,13 @@ const roleLabels: Record<SiteRole, string> = {
 const statusLabels: Record<SiteUserStatus, string> = {
   ACTIVE: "aktif",
   SUSPENDED: "askıda",
+  DELETED: "silindi",
+};
+
+const statusBadgeTone: Record<SiteUserStatus, "success" | "danger" | "neutral"> = {
+  ACTIVE: "success",
+  SUSPENDED: "danger",
+  DELETED: "neutral",
 };
 
 interface PendingRoleChange {
@@ -59,12 +76,18 @@ export default function AdminUsersPage() {
   const [pendingStatusChange, setPendingStatusChange] = useState<AdminUser | null>(null);
   const [statusUpdating, setStatusUpdating] = useState(false);
 
+  const [includeDeleted, setIncludeDeleted] = useState(false);
+  const [pendingDeleteUser, setPendingDeleteUser] = useState<AdminUser | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [pendingRestoreUser, setPendingRestoreUser] = useState<AdminUser | null>(null);
+  const [restoreLoading, setRestoreLoading] = useState(false);
+
   // Toplu işlemler için seçim durumu.
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkRole, setBulkRole] = useState<SiteRole>("ADMIN");
   const [bulkRoleConfirmOpen, setBulkRoleConfirmOpen] = useState(false);
   const [bulkRoleLoading, setBulkRoleLoading] = useState(false);
-  const [bulkStatusAction, setBulkStatusAction] = useState<SiteUserStatus | null>(null);
+  const [bulkStatusAction, setBulkStatusAction] = useState<Exclude<SiteUserStatus, "DELETED"> | null>(null);
   const [bulkStatusLoading, setBulkStatusLoading] = useState(false);
 
   const [exporting, setExporting] = useState(false);
@@ -83,12 +106,12 @@ export default function AdminUsersPage() {
 
   const load = useCallback(async () => {
     try {
-      const page = await usersAdminApi.listAdminUsers();
+      const page = await usersAdminApi.listAdminUsers(undefined, includeDeleted);
       setUsers(page.items);
     } catch (err) {
       setError(friendlyErrorMessage(err));
     }
-  }, []);
+  }, [includeDeleted]);
 
   useEffect(() => {
     (async () => {
@@ -110,7 +133,10 @@ export default function AdminUsersPage() {
       toast.success("Rol güncellendi.");
       setPendingRoleChange(null);
     } catch (err) {
-      setError(friendlyErrorMessage(err));
+      // `toast.error` kullanılır: `setError` ile sayfa üstü `<Alert>` banner'ı, onay diyaloğu
+      // AÇIKKEN dialog'un tam ekran backdrop'ının ARKASINDA kalıp görünmez oluyor (bkz. delete/
+      // restore akışındaki aynı düzeltme ve durum değişikliği akışındaki karşılığı aşağıda).
+      toast.error(friendlyErrorMessage(err));
     } finally {
       setRoleUpdating(false);
     }
@@ -126,9 +152,56 @@ export default function AdminUsersPage() {
       toast.success(nextStatus === "SUSPENDED" ? "Kullanıcı askıya alındı." : "Kullanıcı aktifleştirildi.");
       setPendingStatusChange(null);
     } catch (err) {
-      setError(friendlyErrorMessage(err));
+      // `toast.error` kullanılır — bkz. `handleConfirmRoleChange` üstündeki not.
+      toast.error(friendlyErrorMessage(err));
     } finally {
       setStatusUpdating(false);
+    }
+  }
+
+  // Silme/geri yükleme 409'ları (kendi hesap / son yönetici / zaten geri alınmış) burada
+  // `toast.error` ile gösterilir — sayfanın üst kısmındaki `<Alert>` banner'ı, onay diyaloğu
+  // AÇIKKEN dialog'un tam ekran backdrop'ının ARKASINDA kalıp görünmez oluyordu (bkz. rol/durum
+  // değişikliğindeki bilinen sorun); toast ise diyaloğun üzerinde render olur.
+  async function handleConfirmDelete() {
+    if (!pendingDeleteUser) return;
+    const target = pendingDeleteUser;
+    setDeleteLoading(true);
+    try {
+      const updated = await usersAdminApi.deleteUser(target.id);
+      setUsers((prev) => {
+        if (!prev) return prev;
+        if (!includeDeleted) return prev.filter((u) => u.id !== updated.id);
+        return prev.map((u) => (u.id === updated.id ? updated : u));
+      });
+      setSelectedIds((prev) => {
+        if (!prev.has(updated.id)) return prev;
+        const next = new Set(prev);
+        next.delete(updated.id);
+        return next;
+      });
+      toast.success(`"${target.name}" silindi. Gerekirse "Geri Yükle" ile hesabı yeniden etkinleştirebilirsiniz.`);
+      setPendingDeleteUser(null);
+    } catch (err) {
+      toast.error(friendlyErrorMessage(err));
+    } finally {
+      setDeleteLoading(false);
+    }
+  }
+
+  async function handleConfirmRestore() {
+    if (!pendingRestoreUser) return;
+    const target = pendingRestoreUser;
+    setRestoreLoading(true);
+    try {
+      const updated = await usersAdminApi.restoreUser(target.id);
+      setUsers((prev) => (prev ? prev.map((u) => (u.id === updated.id ? updated : u)) : prev));
+      toast.success(`"${target.name}" geri yüklendi.`);
+      setPendingRestoreUser(null);
+    } catch (err) {
+      toast.error(friendlyErrorMessage(err));
+    } finally {
+      setRestoreLoading(false);
     }
   }
 
@@ -145,7 +218,8 @@ export default function AdminUsersPage() {
       {
         key: "status" as const,
         label: "Durum",
-        format: (value: unknown) => (value === "ACTIVE" ? "Aktif" : "Askıda"),
+        format: (value: unknown) =>
+          value === "ACTIVE" ? "Aktif" : value === "SUSPENDED" ? "Askıda" : "Silindi",
       },
       {
         key: "lastLoginAt" as const,
@@ -223,6 +297,11 @@ export default function AdminUsersPage() {
   // reddedileceğini görmesini sağlıyoruz (backend kontrolünün yerine geçmez).
   const activeAdminCount = users?.filter((u) => u.role === "ADMIN" && u.status === "ACTIVE").length ?? 0;
   const LAST_ADMIN_MESSAGE = "Sistemde en az bir yönetici kalmalı.";
+  const SELF_DELETE_MESSAGE = "Kendi hesabınızı silemezsiniz.";
+  // Backend `PATCH /admin/users/{userId}/status` kendi hesabın durumunu değiştirmeyi
+  // (askıya alma VEYA aktifleştirme, ikisi de) koşulsuz reddeder — bkz.
+  // `backend/src/modules/users/admin-users.routes.ts` satır ~204.
+  const SELF_STATUS_MESSAGE = "Kendi hesabınızın durumunu değiştiremezsiniz.";
 
   async function handleConfirmBulkRoleChange() {
     const ids = Array.from(selectedIds);
@@ -362,6 +441,21 @@ export default function AdminUsersPage() {
         </Card>
       )}
 
+      <div className="flex items-center gap-2">
+        <Switch
+          id="include-deleted-switch"
+          checked={includeDeleted}
+          onCheckedChange={(checked) => {
+            setIncludeDeleted(checked);
+            setSelectedIds(new Set());
+          }}
+          aria-label="Silinen kullanıcıları göster"
+        />
+        <label htmlFor="include-deleted-switch" className="cursor-pointer text-sm text-foreground/70">
+          Silinen kullanıcıları göster
+        </label>
+      </div>
+
       {users === null ? (
         <div className="flex justify-center py-12">
           <Spinner className="h-6 w-6 text-primary" />
@@ -421,16 +515,38 @@ export default function AdminUsersPage() {
                     <TableHead className="w-56">E-posta</TableHead>
                     <TableHead className="w-32">Rol</TableHead>
                     <TableHead className="w-28">Durum</TableHead>
-                    <TableHead className="w-24 text-right">İşlemler</TableHead>
+                    <TableHead className="w-32 text-right">İşlemler</TableHead>
                     <TableHead className="w-40 text-right">Son Giriş Tarihi</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {visibleUsers.map((user) => {
+                    const isDeleted = user.status === "DELETED";
+                    const isSelf = user.id === currentUser?.id;
+                    // Backend `assertNotLastActiveAdmin` `DELETE /admin/users/{userId}`'de de
+                    // `PATCH /status` ile AYNI kuralı uygular — burada da aynı ön-kontrolü
+                    // silme aksiyonu için tekrar kullanıyoruz.
                     const isLastActiveAdmin =
                       user.role === "ADMIN" && user.status === "ACTIVE" && activeAdminCount === 1;
                     const statusActionLabel = user.status === "ACTIVE" ? "Askıya Al" : "Aktifleştir";
-                    const tooltipLabel = isLastActiveAdmin ? LAST_ADMIN_MESSAGE : statusActionLabel;
+                    const statusDisabled = isSelf || isLastActiveAdmin;
+                    // NOT: sıra bilinçli — `isLastActiveAdmin` burada `isSelf`'ten ÖNCE kontrol
+                    // edilir (silme butonundaki `isSelf`-önce sırasının AKSİNE). Tek aktif admin
+                    // + kendi hesabı çakıştığında (senaryo (a)) kullanıcı "son yönetici" kısıtını
+                    // görmeli — bu, "2+ admin varken bile kendi durumunu değiştiremez" mesajından
+                    // (SELF_STATUS_MESSAGE) daha genel/öncelikli bir uyarı (bkz.
+                    // `tests/e2e/admin-user-management.spec.ts` senaryo (a)).
+                    const tooltipLabel = isLastActiveAdmin
+                      ? LAST_ADMIN_MESSAGE
+                      : isSelf
+                        ? SELF_STATUS_MESSAGE
+                        : statusActionLabel;
+                    const deleteDisabled = isSelf || isLastActiveAdmin;
+                    const deleteTooltipLabel = isSelf
+                      ? SELF_DELETE_MESSAGE
+                      : isLastActiveAdmin
+                        ? LAST_ADMIN_MESSAGE
+                        : "Sil";
 
                     return (
                       <TableRow key={user.id}>
@@ -453,8 +569,8 @@ export default function AdminUsersPage() {
                             onChange={(e) =>
                               setPendingRoleChange({ user, newRole: e.target.value as SiteRole })
                             }
-                            disabled={isLastActiveAdmin}
-                            title={isLastActiveAdmin ? LAST_ADMIN_MESSAGE : undefined}
+                            disabled={isLastActiveAdmin || isDeleted}
+                            title={isLastActiveAdmin ? LAST_ADMIN_MESSAGE : isDeleted ? "Silinmiş kullanıcı — önce geri yükleyin." : undefined}
                             className="w-32"
                           >
                             <option value="ADMIN">Admin</option>
@@ -463,30 +579,60 @@ export default function AdminUsersPage() {
                           </Select>
                         </TableCell>
                         <TableCell className="w-28">
-                          <Badge tone={user.status === "ACTIVE" ? "success" : "danger"}>
-                            {user.status === "ACTIVE" ? "Aktif" : "Askıda"}
-                          </Badge>
+                          <Badge tone={statusBadgeTone[user.status]}>{statusLabels[user.status]}</Badge>
                         </TableCell>
-                        <TableCell className="w-24 text-right">
+                        <TableCell className="w-32 text-right">
                           <div className="flex items-center justify-end gap-1">
-                            <Tooltip>
-                              <TooltipTrigger render={<span tabIndex={0} className="inline-flex" />}>
-                                <Button
-                                  variant="ghost"
-                                  size="icon-sm"
-                                  aria-label={tooltipLabel}
-                                  disabled={isLastActiveAdmin}
-                                  onClick={() => setPendingStatusChange(user)}
-                                >
-                                  {user.status === "ACTIVE" ? (
-                                    <UserX className="h-4 w-4" />
-                                  ) : (
-                                    <UserCheck className="h-4 w-4" />
-                                  )}
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>{tooltipLabel}</TooltipContent>
-                            </Tooltip>
+                            {isDeleted ? (
+                              <Tooltip>
+                                <TooltipTrigger render={<span tabIndex={0} className="inline-flex" />}>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon-sm"
+                                    aria-label="Geri Yükle"
+                                    onClick={() => setPendingRestoreUser(user)}
+                                  >
+                                    <RotateCcw className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Geri Yükle</TooltipContent>
+                              </Tooltip>
+                            ) : (
+                              <>
+                                <Tooltip>
+                                  <TooltipTrigger render={<span tabIndex={0} className="inline-flex" />}>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon-sm"
+                                      aria-label={tooltipLabel}
+                                      disabled={statusDisabled}
+                                      onClick={() => setPendingStatusChange(user)}
+                                    >
+                                      {user.status === "ACTIVE" ? (
+                                        <UserX className="h-4 w-4" />
+                                      ) : (
+                                        <UserCheck className="h-4 w-4" />
+                                      )}
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>{tooltipLabel}</TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                  <TooltipTrigger render={<span tabIndex={0} className="inline-flex" />}>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon-sm"
+                                      aria-label={deleteTooltipLabel}
+                                      disabled={deleteDisabled}
+                                      onClick={() => setPendingDeleteUser(user)}
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>{deleteTooltipLabel}</TooltipContent>
+                                </Tooltip>
+                              </>
+                            )}
                           </div>
                         </TableCell>
                         <TableCell className="w-40 text-right text-foreground/60">
@@ -572,6 +718,39 @@ export default function AdminUsersPage() {
         destructive={bulkStatusAction === "SUSPENDED"}
         loading={bulkStatusLoading}
         onConfirm={handleConfirmBulkStatusChange}
+      />
+
+      <ConfirmDialog
+        open={pendingDeleteUser !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingDeleteUser(null);
+        }}
+        title="Kullanıcıyı sil"
+        description={
+          pendingDeleteUser
+            ? `"${pendingDeleteUser.name}" kullanıcısını silmek istediğinize emin misiniz? Bu, kalıcı bir silme DEĞİLDİR: hesap devre dışı bırakılır, kullanıcı giriş yapamaz ve mevcut oturumları sonlandırılır. Dilediğiniz zaman "Geri Yükle" ile hesabı yeniden etkinleştirebilirsiniz.`
+            : undefined
+        }
+        confirmText="Kullanıcıyı Sil"
+        tone="danger"
+        loading={deleteLoading}
+        onConfirm={handleConfirmDelete}
+      />
+
+      <ConfirmDialog
+        open={pendingRestoreUser !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingRestoreUser(null);
+        }}
+        title="Kullanıcıyı geri yükle"
+        description={
+          pendingRestoreUser
+            ? `"${pendingRestoreUser.name}" kullanıcısını geri yüklemek istediğinize emin misiniz? Hesap yeniden aktif duruma geçer ve kullanıcı tekrar giriş yapabilir (önceki oturumları geri gelmez).`
+            : undefined
+        }
+        confirmText="Geri Yükle"
+        loading={restoreLoading}
+        onConfirm={handleConfirmRestore}
       />
     </div>
   );

@@ -110,7 +110,7 @@ flowchart LR
   RBAC'tan tamamen AYRI bir eksen — `pages`/`blog`/`media`/`settings`/`navigation`/
   `users`/`logs` gibi tek-site CMS uçlarında `User.role` (`SiteRole`:
   `ADMIN`/`EDITOR`/`VIEWER`) ve `User.status` (`SiteUserStatus`:
-  `ACTIVE`/`SUSPENDED`) kullanılır. Rol/durum kasıtlı olarak JWT'ye GÖMÜLMEZ — her
+  `ACTIVE`/`SUSPENDED`/`DELETED`) kullanılır. Rol/durum kasıtlı olarak JWT'ye GÖMÜLMEZ — her
   istekte `authenticate` middleware'i DB'den taze okur, böylece bir rol değişikliği
   veya askıya alma bir sonraki istekte hemen etkili olur (access token süresinin
   dolmasını beklemeden). Guard: `requireSiteRole` (bkz. `middleware/site-rbac.ts`).
@@ -120,7 +120,10 @@ flowchart LR
   yalnızca `ADMIN`; `navigation` (header/footer/nav yapılandırması) güncelleme →
   yalnızca `ADMIN`; `users`/`logs` → tüm uçlar yalnızca `ADMIN`.
   Sistemde en az bir aktif `ADMIN` kalması zorunlu tutulur (son admin'i düşürmek/
-  askıya almak 409 CONFLICT döner); bir kullanıcı kendi hesabını askıya alamaz.
+  askıya almak/silmek 409 CONFLICT döner); bir kullanıcı kendi hesabını askıya alamaz
+  veya silemez. Kullanıcı silme **yumuşak silmedir** (`status = DELETED` + `deletedAt`,
+  geri alınabilir); `DELETED` kullanıcı `SUSPENDED` ile birebir aynı şekilde giriş
+  yapamaz ve mevcut access token'ı kabul edilmez — bkz. §10.18.
 - **Audit Log**: hassas/yetkilendirme aksiyonları (`auth.login` başarı/başarısızlık,
   `user.create`/`user.role_change`/`user.status_change`, `invitation.create`/
   `invitation.accept`, `settings.update`, ve `requireSiteRole` guard'ının
@@ -155,8 +158,9 @@ erDiagram
     string avatarUrl
     datetime emailVerifiedAt
     enum role "SiteRole: ADMIN/EDITOR/VIEWER — org-RBAC'tan ayrı"
-    enum status "SiteUserStatus: ACTIVE/SUSPENDED"
+    enum status "SiteUserStatus: ACTIVE/SUSPENDED/DELETED — §10.18"
     datetime lastLoginAt
+    datetime deletedAt "nullable, yumuşak silme damgası, §10.18"
     boolean twoFactorEnabled "§10.4"
     string twoFactorSecret "nullable, AES-256-GCM şifreli, §10.4"
     datetime twoFactorVerifiedAt "nullable, §10.4"
@@ -1359,6 +1363,12 @@ akış — bu yüzden Import'u BLOKE ETMİYORUM. Ancak ileride bu akış inşa e
   geçerli olabilmesi tam olarak madde 3'teki tanımlı/sonlu saklama süresinin var
   OLMASINA bağlıdır; "sınırsız süre" bir istisna gerekçesi olamaz. Bu da madde 3'ü
   Import'tan bağımsız ama ACİL kılan ikinci sebeptir.
+
+> **Architect güncellemesi (2026-08-18) — bu maddenin DURUM TESPİTİ kısmen eskidir,
+> KARARI ve yukarıdaki gereksinimleri AYNEN geçerlidir:** `DELETE /admin/users/{userId}`
+> eklendi, ancak bu bir **yumuşak silmedir**, erasure DEĞİLDİR (kişisel veri satırda
+> kalmaya devam eder) — bkz. **§10.18**. Gerçek anonimleştirme akışı hâlâ AÇIKTIR ve
+> compliance-agent + db-agent'a devredilmiştir; konsolide backlog maddesi **§10.18.1**'dedir.
 
 **5. Onaylanan / değişiklik gerektirmeyen maddeler:**
 - Kaynak dosyanın iş biter bitmez silinmesi (§10.8.5) — en büyük PII yığınının en kısa
@@ -4967,6 +4977,75 @@ DB'de duruyor olabilir. `GET` uçları bu alanı **yeniden doğrulamadan** ham J
   şekline geçer. Ayrı bir migration script'i YAZILMADI (bilinçli — lazy/on-write geçiş,
   INFRA.md'deki "additive, backward-compatible" DB migration felsefesiyle aynı ruh).
 
+### 10.18 Admin kullanıcı silme — YUMUŞAK SİLME ve erasure sınırı
+
+Durum: v1 · Sahibi: Mimar. Bağlayıcı kaynak: `openapi.yaml`
+(`DELETE /admin/users/{userId}`, `POST /admin/users/{userId}/restore`,
+`GET /admin/users?includeDeleted=`). Şema sahibi: db-agent
+(migration `20260818074116_add_user_soft_delete`).
+
+**Karar:** `DELETE /admin/users/{userId}` **fiziksel silme YAPMAZ**; kullanıcıyı
+`status = DELETED` + `deletedAt = now()` durumuna alır (§10.7'deki içerik çöp kutusu
+deseniyle aynı ruh) ve `POST /admin/users/{userId}/restore` ile geri alınabilir.
+
+**Neden hard delete değil (üç bağlayıcı gerekçe):** (1) `Organization.ownerId` zorunlu
+bir ilişkidir ve `onDelete` tanımlı değildir (Prisma varsayılanı `Restrict`) — organizasyon
+sahibi bir kullanıcının fiziksel silinmesi FK hatasıyla 500 üretirdi; (2) `BlogPost`,
+`Page`, `Product`, `PortfolioItem` yazarlıkları `onDelete: SetNull`'dır — fiziksel silme,
+yayındaki içeriğin yazar bilgisini geri dönüşsüz koparırdı; (3) `AuditLog.actorId` de
+`SetNull`'dır — denetim izinin aktör bağı kopardı, oysa §10.8.8.1 madde 4 audit
+kayıtlarının bir silme talebiyle otomatik kaybolmaMAsını şart koşar.
+
+**Veri modeli etkisi (db-agent — TEK SAHİP, uygulandı):** `SiteUserStatus` enum'una
+`DELETED` değeri; `User.deletedAt DateTime?` alanı. Enum değeri eklemek geri alınamaz bir
+işlemdir (`ALTER TYPE ... ADD VALUE`) — bu yüzden migration izole/tek başına gönderildi
+(`ImportJobType.PRODUCTS` ile aynı ilke). ER özeti için bkz. §6.
+
+**Davranış özeti (ayrıntı ve hata kodları `openapi.yaml`'da — tek doğru kaynak):**
+- Silme atomiktir (tek Serializable transaction): `status`/`deletedAt` yazımı + TÜM
+  `RefreshToken` iptali + bekleyen `PasswordResetToken` geçersizleştirmesi +
+  `user.delete` audit kaydı. İçerik/medya/organizasyon kayıtlarına DOKUNULMAZ.
+- `DELETED` kullanıcı kimlik doğrulamada `SUSPENDED` ile BİREBİR aynı muamele görür
+  (`middleware/authenticate.ts`, `auth.service.ts`) — token ömrü boyunca erişim devam
+  ETMEZ.
+- `DELETED` kullanıcı diğer admin uçlarında "yok" sayılır (404); `GET /admin/users`
+  varsayılan olarak gizler, `includeDeleted=true` ile görünür.
+- Silme idempotent DEĞİLDİR; "kendi hesabını silme" ve "son aktif ADMIN" yasakları
+  409 döner ve son-admin kontrolü yazımla AYNI transaction içinde yapılır (TOCTOU).
+- Geri yükleme yalnızca `status`/`deletedAt`'i eski hâline döndürür; iptal edilen
+  oturumlar KASITLI OLARAK geri gelmez.
+
+#### 10.18.1 Unutulma hakkı (erasure/anonimleştirme) — KAPSAM DIŞI, backlog maddesi
+
+**Bu uç bir YÖNETİMSEL silmedir** ("bu kişi artık ekipte değil"). KVKK m.11 / GDPR
+Art. 17 **unutulma hakkını KARŞILAMAZ**: ad, e-posta, `passwordHash`, `lastLoginAt`,
+`AuditLog.actorEmail` ve varsa `ImportJobError.rawData` içindeki kişisel veriler satırda
+DURMAYA DEVAM EDER. Ürün yüzeyinde (UI metni, dokümantasyon, müşteriye verilen taahhüt)
+bu uç "verilerinizi sileriz" gibi SUNULMAMALIDIR — architect kararı, bağlayıcı.
+
+**Devir:** Gerçek, geri döndürülemez anonimleştirme AYRI bir iştir ve bu turun kapsamına
+ALINMAMIŞTIR. Sahiplik: **compliance-agent** (hangi alanın silineceği/anonimleştirileceği,
+hangi kaydın hukuki gerekçeyle saklanacağı, süreler) + **db-agent** (şema/migration ve
+`onDelete` davranışları). backend-agent yalnızca çıkan politikayı UYGULAR, kendi başına
+tasarlamaz. Bu iş açılana kadar madde bu bölümde **açık** kalır.
+
+**Bu iş açıldığında ZORUNLU olarak kapsanacaklar (ön çalışma, bağlayıcı çerçeve):**
+1. `User` satırı için "anonimleştir" semantiği: `email` → geri döndürülemez benzersiz
+   yer tutucu, `name` → sabit etiket (örn. "Silinmiş kullanıcı"), `passwordHash`/
+   `avatarUrl`/`twoFactorSecret`/`lastLoginAt` → `null`. Satırın KENDİSİ, §10.18'deki
+   üç FK gerekçesi nedeniyle yine SİLİNMEZ.
+2. `AuditLog.actorEmail` gibi denormalize PII kopyaları ve `ImportJobError.rawData`/
+   `sourceRef` eşleşmeleri (§10.8.8.1 madde 4'te tanımlı redaksiyon adımı) aynı akışta
+   ele alınmalıdır — `AuditLog` satırlarının KENDİSİ talep üzerine otomatik silinMEZ,
+   ancak bu istisna §10.8.8.1 madde 3'teki tanımlı/sonlu `AuditLog` saklama süresinin
+   var OLMASINA bağlıdır ("sınırsız süre" bir istisna gerekçesi olamaz).
+3. Anonimleştirme **geri alınamaz** olduğundan `restore` ile çelişir: akış, kaydı önce
+   `DELETED` durumuna alıp tanımlı bir bekleme penceresi sonunda anonimleştirmeli veya
+   anonimleştirmeyi ayrı ve açıkça onaylanan bir ADMIN aksiyonu yapmalıdır — seçim
+   compliance-agent + db-agent'ındır.
+4. Yeni bir audit aksiyonu (`user.anonymize`) ve kendi hız sınırı/RBAC eşiği tanımlanmalı;
+   security-agent akışı gözden geçirmelidir.
+
 ---
 
 ### Bilinen Sorunlar / Backlog
@@ -4980,3 +5059,9 @@ DB'de duruyor olabilir. `GET` uçları bu alanı **yeniden doğrulamadan** ham J
   pattern, sadece import'a özel değil. Düzeltme: RBAC hook'larını `preValidation`'dan önce
   çalışacak şekilde (örn. `onRequest` seviyesinde) taşımak — proje genelinde bir geçiş
   gerektirir, bu sprintin kapsamına alınmadı.
+- **Kullanıcı erasure / anonimleştirme (unutulma hakkı)** (2026-08-18, architect, AÇIK,
+  blocker değil — sahibi: compliance-agent + db-agent): `DELETE /admin/users/{userId}`
+  yalnızca yumuşak silmedir; KVKK m.11 / GDPR Art. 17 karşılanMAZ. Ayrıntılı çerçeve ve
+  bu iş açıldığında zorunlu kapsam maddeleri: **§10.18.1**. Bağımlılık: `AuditLog` için
+  proje-geneli saklama süresi (§10.8.8.1 madde 3) — o tanımlanmadan erasure istisnası
+  hukuken savunulamaz.

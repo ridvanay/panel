@@ -8,8 +8,13 @@ import type {
   SiteUserStatus,
 } from "./types";
 
-export function listAdminUsers(cursor?: string): Promise<Page<AdminUser>> {
-  return apiFetchPage<AdminUser>("/admin/users", { query: { cursor, limit: 100 } });
+/**
+ * `includeDeleted` — `true` ise `status: DELETED` (yumuşak silinmiş) kullanıcılar da listeye
+ * dahil edilir. Verilmezse backend varsayılanı (`false`) geçerlidir — bkz. openapi.yaml
+ * `GET /admin/users`.
+ */
+export function listAdminUsers(cursor?: string, includeDeleted?: boolean): Promise<Page<AdminUser>> {
+  return apiFetchPage<AdminUser>("/admin/users", { query: { cursor, limit: 100, includeDeleted } });
 }
 
 /**
@@ -38,6 +43,28 @@ export function updateUserRole(userId: string, role: SiteRole): Promise<AdminUse
   return apiFetch<AdminUser>(`/admin/users/${userId}/role`, { method: "PATCH", body: { role } });
 }
 
-export function updateUserStatus(userId: string, status: SiteUserStatus): Promise<AdminUser> {
+export function updateUserStatus(
+  userId: string,
+  status: Exclude<SiteUserStatus, "DELETED">
+): Promise<AdminUser> {
   return apiFetch<AdminUser>(`/admin/users/${userId}/status`, { method: "PATCH", body: { status } });
+}
+
+/**
+ * Yumuşak silme — kullanıcıyı `status: DELETED` yapar, oturumlarını iptal eder. Fiziksel
+ * silme DEĞİLDİR, `restoreUser()` ile geri alınabilir. Olası 409'lar: "Kendi hesabınızı
+ * silemezsiniz." / "Sistemde en az bir yönetici kalmalı." Bkz. openapi.yaml
+ * `DELETE /admin/users/{userId}`.
+ */
+export function deleteUser(userId: string): Promise<AdminUser> {
+  return apiFetch<AdminUser>(`/admin/users/${userId}`, { method: "DELETE" });
+}
+
+/**
+ * `status: DELETED` bir kullanıcıyı `ACTIVE`'e döndürür. Olası 409: "Bu kullanıcı
+ * silinmemiş." (hedef zaten ACTIVE/SUSPENDED). Bkz. openapi.yaml
+ * `POST /admin/users/{userId}/restore`.
+ */
+export function restoreUser(userId: string): Promise<AdminUser> {
+  return apiFetch<AdminUser>(`/admin/users/${userId}/restore`, { method: "POST" });
 }

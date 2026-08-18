@@ -429,6 +429,81 @@ Pre-existing, bu turdan bağımsız iki kez daha doğrulanan flake: `support/adm
 başlığında ÖNCEDEN belgelenmiş refresh-token yarışı (`waitForURL(/\/dashboard/)` zaman aşımı) —
 yeni bir bulgu DEĞİL, `retries: 1` ile telafi ediliyor.
 
+## Admin kullanıcı yönetimi — yumuşak silme + self/last-admin regresyon matrisi (bu turda eklendi)
+
+Kaynak: bir bug raporu üzerine backend-agent'ın soft-delete (`DELETE /admin/users/{userId}`,
+`POST .../restore`, `GET /admin/users?includeDeleted`) implementasyonu + kullanıcının açıkça
+istediği 3 regresyon senaryosu:
+(a) tek admin varken kendini silmeye/rol düşürmeye çalış → engellenmeli,
+(b) 2+ admin varken birini sil/düzenle → başarılı olmalı,
+(c) admin olmayan bir kullanıcıyı sil/düzenle → başarılı olmalı.
+
+Mevcut taban zaten kapsamlıydı: `backend/tests/integration/admin-users.test.ts` (RBAC + son-admin,
+24 test → bu turda 31'e çıktı) ve `admin-users-soft-delete.test.ts` (14 test) + frontend
+`tests/unit/a11y-admin-users.test.tsx` (mock API, a11y + golden-path). İnceleme SONUCUNDA iki
+GERÇEK boşluk tespit edildi ve kapatıldı (kod DEĞİŞTİRİLMEDİ, yalnızca test eklendi):
+
+1. **Boşluk — "self-block" testleri "son admin" kuralıyla KARIŞTIRILMIŞTI.** Mevcut self-delete
+   (`admin-users-soft-delete.test.ts`) ve self-suspend (`admin-users.test.ts`) testleri SADECE
+   aktörün AYNI ZAMANDA sistemin TEK aktif admini olduğu anda çalıştırılmıştı — backend'deki
+   koşulsuz self-check (`admin-users.routes.ts`, `assertNotLastActiveAdmin` ÇAĞRILMADAN ÖNCE)
+   ile "son admin" kuralı (`assertNotLastActiveAdmin`) o senaryoda TESADÜFEN aynı sonucu (409)
+   üretiyordu — yani koşulsuz self-check SİLİNSE bile o testler yeşil kalırdı. Kapatıldı:
+   `admin-users-regression-matrix.test.ts` 2+ aktif admin varken bile self-delete/self-suspend'in
+   409 döndüğünü (last-admin kuralından İZOLE) doğrudan doğruluyor.
+2. **Boşluk — senaryo (c)'nin `PATCH /role` ve `PATCH /status` başarı yolu hiç test edilmemişti.**
+   Mevcut testlerin TAMAMI ya ADMIN hedefler ya da DELETED hedefler üzerindeydi; bir ADMIN'in bir
+   EDITOR/VIEWER'ın rolünü/durumunu değiştirdiği başarı senaryosu (delete/restore için zaten
+   vardı) role/status için YOKTU. Kapatıldı: aynı dosyada 4 test (rol düşür/yükselt, durum
+   değiştir/geri al, hepsi non-admin hedefte).
+3. Tamamlayıcı: DELETED bir ADMIN'in restore edilip rolünün korunduğu (önceden yalnızca
+   EDITOR/VIEWER hedeflerle sınanmıştı) da eklendi.
+
+| Katman | Senaryo | Dosya | Durum |
+|---|---|---|---|
+| Backend entegrasyon | (a) self-delete, self-rol-düşürme, self-suspend — TEK admin | `admin-users-soft-delete.test.ts`, `admin-users.test.ts` (mevcut) | ✅ Geçiyor |
+| Backend entegrasyon | (a) self-suspend/self-delete — 2+ AKTİF ADMİN VARKEN de engellenir (izole edilmiş boşluk) | `admin-users-regression-matrix.test.ts` (yeni) | ✅ Geçiyor |
+| Backend entegrasyon | (b) 2+ admin varken diğerini sil/rol değiştir/suspend et | `admin-users-soft-delete.test.ts`, `admin-users.test.ts` (mevcut) | ✅ Geçiyor |
+| Backend entegrasyon | (c) admin-olmayan hedefte sil/restore | `admin-users-soft-delete.test.ts` (mevcut) | ✅ Geçiyor |
+| Backend entegrasyon | (c) admin-olmayan hedefte rol/durum değiştir (boşluk) | `admin-users-regression-matrix.test.ts` (yeni) | ✅ Geçiyor |
+| Backend entegrasyon | Race/write-skew (son 2 admin karşılıklı silme/suspend) | `admin-users.test.ts`, `admin-users-soft-delete.test.ts` (mevcut) | ✅ Geçiyor |
+| Frontend unit + a11y | Buton disabled durumları (self/last-admin), golden-path sil/geri yükle, 409 görünürlüğü | `a11y-admin-users.test.tsx` (mevcut) | ✅ Geçiyor |
+| **E2E (yeni katman)** | (a) gerçek backend state'inden hesaplanan disabled UI + API seviyesinde defense-in-depth (3×409) | `frontend/tests/e2e/admin-user-management.spec.ts` | ✅ Geçiyor |
+| **E2E** | (c) rol + durum değişikliği panelden gerçek tıklamayla (VIEWER→EDITOR→askıya al→aktifleştir) | `admin-user-management.spec.ts` | ✅ Geçiyor |
+| **E2E** | (c) sil → "Silinenleri göster" → geri yükle, gerçek tıklamayla | `admin-user-management.spec.ts` | ✅ Geçiyor |
+| **E2E** | (b) VIEWER→ADMIN yükselt (2. aktif admin kurulur) → diğer admin'i suspend/aktifleştir/sil | `admin-user-management.spec.ts` | ✅ Geçiyor |
+
+E2E katmanı bilinçli tercih: proje zaten olgun bir Playwright altyapısına sahipti (`frontend/
+playwright.config.ts`, `tests/e2e/support/{api,admin-session}.ts`) — yeni bir framework
+KURULMADI (kapsam dışı), mevcut desen (gerçek UI login + gerçek `fetch` fixture'ları) izlendi.
+Bu katman, backend `app.inject` testlerinin (gerçek HTTP/tarayıcı YOK) ve frontend'in mock'lu
+component testinin (gerçek backend YOK) KAPSAMADIĞI tek zinciri kapatıyor: gerçek buton tıklaması
+→ gerçek ağ isteği → gerçek route handler → gerçek DB satırı → tabloya yansıma. Yeni fixture
+yardımcıları `frontend/tests/e2e/support/admin-users-fixtures.ts`'te (`registerFixtureUser`,
+`adminGetUserByEmail`, `adminUpdateRole`, `adminUpdateStatus`, `cleanupFixtureUserByEmail`).
+
+**5/5 e2e senaryosu**, **7/7 yeni backend entegrasyon testi**, mevcut **743 backend + 451
+frontend** testin TAMAMI bu turda yeniden koşuldu — hepsi yeşil, hiçbir regresyon yok.
+
+### Bulgu (frontend-agent'a yönlendirilecek — qa-agent DÜZELTMEDİ)
+
+**ORTA öncelik — UX tutarsızlığı, güvenlik açığı DEĞİL:** `app/admin/users/page.tsx`'teki
+istemci-taraflı "Askıya Al" butonu devre dışı bırakma mantığı yalnızca `isLastActiveAdmin`'e
+bakıyor (`disabled={isLastActiveAdmin}`), `isSelf`'e BAKMIYOR — oysa aynı dosyada silme butonu
+için `deleteDisabled = isSelf || isLastActiveAdmin` şeklinde İKİSİNE BİRDEN bakılıyor. Backend'de
+`PATCH /status`'ün self-check'i (`admin-users.routes.ts` satır ~204-206) admin sayısından TAMAMEN
+bağımsız, koşulsuz bir kontroldür — bu yüzden 2+ aktif admin varken kullanıcı kendi satırındaki
+"Askıya Al" butonuna TIKLAYABİLİYOR (buton enabled), onay diyaloğunu geçiyor, backend 409 ile
+reddediyor (hesap GERÇEKTEN suspend olmuyor — kritik bir güvenlik açığı YOK) ama hata mesajı
+`setError` (üst banner) ile gösteriliyor ve bu banner'ın dialog backdrop'ının ARKASINDA kaybolduğu
+zaten dosyanın kendi yorumunda ("bilinen sorun") belgeli — kullanıcı NEDEN başarısız olduğunu
+görmüyor, dialog kapanmadan asılı kalıyor. Bunu doğrulayan test: `admin-user-management.spec.ts`
+"senaryo (b)" içindeki ilgili blok (buton enabled olduğunu VE hesabın gerçekten ACTIVE kaldığını
+doğruluyor, hata mesajının görünürlüğünü İDDİA ETMİYOR — bu bilinen kozmetik sorunla test'i
+kırılgan yapmamak için bilinçli bir tercih). Önerilen düzeltme: status butonunun `disabled`
+ifadesine `isSelf` eklensin (silme butonuyla TUTARLI hale getirilsin) VE/VEYA rol/durum
+hatalarının da (silme gibi) `toast` ile gösterilmesi sağlansın.
+
 ## CI entegrasyonu (devops-agent'a not)
 
 `frontend/playwright.config.ts` `webServer` ile frontend'i otomatik başlatır (`reuseExistingServer:

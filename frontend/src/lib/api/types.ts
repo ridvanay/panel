@@ -30,7 +30,13 @@ export type InvitationStatus = "PENDING" | "ACCEPTED" | "EXPIRED" | "REVOKED";
 export type SubscriptionStatus = "TRIALING" | "ACTIVE" | "PAST_DUE" | "CANCELED" | "INCOMPLETE";
 
 export type SiteRole = "ADMIN" | "EDITOR" | "VIEWER";
-export type SiteUserStatus = "ACTIVE" | "SUSPENDED";
+/**
+ * `DELETED` = yumuşak silme (bkz. `DELETE /admin/users/{userId}`). Satır fiziksel olarak
+ * silinmez; `POST /admin/users/{userId}/restore` ile geri alınabilir. Bu değer YALNIZCA
+ * okuma tarafında (`AdminUser.status`) görülür — durum değiştirme isteğinde KABUL EDİLMEZ
+ * (bkz. `UpdateUserStatusRequest`).
+ */
+export type SiteUserStatus = "ACTIVE" | "SUSPENDED" | "DELETED";
 
 export interface User {
   id: string;
@@ -57,6 +63,8 @@ export interface AdminUser {
   createdAt: string;
   status: SiteUserStatus;
   lastLoginAt: string | null;
+  /** Yumuşak silme damgası — `status: "DELETED"` ise dolu, aksi hâlde `null`. */
+  deletedAt: string | null;
 }
 
 export interface CreateAdminUserRequest {
@@ -75,7 +83,8 @@ export interface UpdateUserRoleRequest {
 }
 
 export interface UpdateUserStatusRequest {
-  status: SiteUserStatus;
+  /** `DELETED` BİLEREK dışarıda bırakılmıştır — silme yalnızca `DELETE /admin/users/{userId}` ile yapılır. */
+  status: Exclude<SiteUserStatus, "DELETED">;
 }
 
 export interface Organization {

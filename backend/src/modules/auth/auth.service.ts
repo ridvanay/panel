@@ -94,13 +94,16 @@ export async function login(
     throw new UnauthorizedError("E-posta veya şifre hatalı.");
   }
 
-  // `authenticate()`/`refresh()` zaten SUSPENDED kullanıcıları reddediyor (bkz. middleware/authenticate.ts),
-  // yani askıya alınmış biri buradan geçse bile hiçbir korumalı uca erişemez. Ama burada erken
-  // reddetmezsek: (a) kullanıcıya kafa karıştırıcı şekilde "giriş başarılı, tokenlar alındı" izlenimi
-  // verilip bir sonraki istekte 403 ile karşılaşılır, (b) kullanılamayacak bir refresh token DB'ye
-  // yazılır, (c) audit log'da askıya alınmış bir hesap için yanıltıcı bir "auth.login SUCCESS" kaydı
-  // oluşur. Bu yüzden aynı mesajla (authenticate.ts ile tutarlı) burada da erken reddediyoruz.
-  if (user.status === "SUSPENDED") {
+  // `authenticate()`/`refresh()` zaten SUSPENDED/DELETED kullanıcıları reddediyor (bkz.
+  // middleware/authenticate.ts), yani askıya alınmış/silinmiş biri buradan geçse bile hiçbir
+  // korumalı uca erişemez. Ama burada erken reddetmezsek: (a) kullanıcıya kafa karıştırıcı
+  // şekilde "giriş başarılı, tokenlar alındı" izlenimi verilip bir sonraki istekte 403 ile
+  // karşılaşılır, (b) kullanılamayacak bir refresh token DB'ye yazılır, (c) audit log'da
+  // askıya alınmış/silinmiş bir hesap için yanıltıcı bir "auth.login SUCCESS" kaydı oluşur.
+  // `DELETED` için de KASITLI OLARAK aynı jenerik mesaj kullanılır (authenticate.ts ile
+  // tutarlı) — "hesabınız silindi" gibi ayrı bir mesaj, bir e-postanın geçmişte var olup
+  // sonradan silindiğini sızdırırdı (bkz. güvenlik değerlendirmesi).
+  if (user.status === "SUSPENDED" || user.status === "DELETED") {
     throw new ForbiddenError("Hesabınız askıya alınmış.");
   }
 
@@ -147,7 +150,10 @@ export async function refresh(app: FastifyInstance, rawRefreshToken: string | un
   if (!user) {
     throw new UnauthorizedError();
   }
-  if (user.status === "SUSPENDED") {
+  // `DELETED` (yumuşak silme) `SUSPENDED` ile aynı şekilde reddedilir — bkz. login()'deki
+  // gerekçe ve middleware/authenticate.ts. Silme zaten bu kullanıcının TÜM refresh token'larını
+  // iptal eder, ama bu kontrol defense-in-depth'tir (ör. iptal işlemi eksik/gecikmeli kalırsa).
+  if (user.status === "SUSPENDED" || user.status === "DELETED") {
     throw new ForbiddenError("Hesabınız askıya alınmış.");
   }
 

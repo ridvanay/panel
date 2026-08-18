@@ -129,6 +129,7 @@ export function toAdminUserDto(user: User): AdminUserDto {
     ...toUserDto(user),
     status: user.status,
     lastLoginAt: user.lastLoginAt ? user.lastLoginAt.toISOString() : null,
+    deletedAt: user.deletedAt ? user.deletedAt.toISOString() : null,
   };
 }
 

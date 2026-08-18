@@ -60,6 +60,32 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
   - Geriye dönük uyumluluk: bu özelliğin ilk (v1, sabit `columnCount`/`ratio`) sürümüyle
     kaydedilmiş sayfalar bir sonraki WRITE'ta sessizce yeni şekle çevrilir (görsel oran
     korunur) — bkz. `ARCHITECTURE.md` §10.17.8.
+- **Admin kullanıcı yönetimi: yumuşak silme (soft-delete) ve geri yükleme.** `/admin/users`
+  altında iki yeni uç eklendi (bkz. `openapi.yaml` `AdminUsers` tag'i):
+  - `DELETE /admin/users/{userId}`: kullanıcıyı fiziksel olarak SİLMEZ — `status: DELETED`
+    yapar, `deletedAt` damgalar. Tek bir Serializable transaction içinde: kullanıcının TÜM
+    `RefreshToken`'ları iptal edilir (aktif oturumlar anında düşer), bekleyen TÜM
+    `PasswordResetToken`'ları geçersizleşir, `AuditLog`'a `user.delete` yazılır. İçerik/medya/
+    organizasyon yazarlık kayıtları DEĞİŞTİRİLMEZ. Fiziksel silme yerine yumuşak silme tercih
+    edildi çünkü `Organization.ownerId` zorunlu bir ilişkidir (Prisma varsayılanı `Restrict`)
+    ve `BlogPost`/`Page`/`Product`/`PortfolioItem`/`AuditLog` yazarlık alanları
+    `onDelete: SetNull`'dır.
+  - `POST /admin/users/{userId}/restore`: `DELETED` kullanıcıyı `status: ACTIVE`'e döndürür,
+    `deletedAt`'i `null`'a çeker, rolü silme öncesi değeriyle korur. Bilinçli olarak jenerik
+    `PATCH /status` üzerinden DEĞİL ayrı bir uç — kendi denetim aksiyonunu (`user.restore`)
+    alır ve `PATCH /status` gövdesi `ACTIVE|SUSPENDED` ile sınırlı kalır. İptal edilen
+    refresh token'lar geri GELMEZ; kullanıcı yeniden giriş yapmalıdır.
+  - Korumalar (mevcut `PATCH /role`/`PATCH /status` kurallarıyla tutarlı): kendi hesabını
+    silme engeli (`409`, "Kendi hesabınızı silemezsiniz."), son aktif admin koruması (`409`,
+    "Sistemde en az bir yönetici kalmalı.", `assertNotLastActiveAdmin`, TOCTOU'ya karşı silme
+    yazımıyla aynı transaction içinde kontrol edilir).
+  - `GET /admin/users` artık `includeDeleted` query param'ı destekliyor (varsayılan `false`)
+    — silinmiş kullanıcılar varsayılan listede GÖRÜNMEZ, admin panelini doldurmaz ama kayıt
+    geri alınabilir kalır.
+  - Frontend: kullanıcılar sayfasına "Sil"/"Geri Yükle" aksiyonları, "Silinen kullanıcıları
+    göster" toggle'ı, onay diyalogları eklendi.
+  - **KVKK/GDPR sınırı — bkz. "Known limitations".** Bu bir **yönetimsel silme**dir, KVKK
+    m.11/GDPR Art. 17 unutulma hakkını KARŞILAMAZ.
 
 ### Changed
 
@@ -75,6 +101,8 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
   güvenlik düzeltmesiydi, bkz. "Fixed").
 - `lib/seo-score.ts` sütun içine taşınan görsel/metni de SEO tamlık skoruna dahil ediyor
   (`flattenPageBlocks` üzerinden).
+- Şema: `SiteUserStatus` enum'una `DELETED` eklendi, `User.deletedAt` (nullable) alanı
+  eklendi — migration `20260818074116_add_user_soft_delete` (db-agent).
 
 ### Fixed
 
@@ -95,6 +123,15 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
 - **[security]** `POST /admin/notifications/templates/preview` ve `test-send` uçlarına
   route seviyesinde rate limit eklendi (önceden yalnızca genel/global limit vardı;
   security-agent denetimi).
+- **[security]** `middleware/authenticate.ts` ve `auth.service.ts`'deki login/refresh
+  akışları artık `status: DELETED` kullanıcıları da `SUSPENDED` ile birebir aynı şekilde
+  reddediyor — aksi hâlde soft-delete edilmiş bir kullanıcı, mevcut access token'ının ömrü
+  boyunca (15 dk) sistemi kullanmaya devam edebilirdi (security-agent denetimi).
+- **[security]** `PATCH /admin/users/{userId}/role`, hedef kullanıcı `DELETED` durumundaysa
+  artık `404` döndürüyor — önceden bu kontrolü **es geçiyordu** ve `PATCH /status`'ten
+  tutarsızdı; soft-delete edilmiş, varsayılan listede görünmeyen bir hesabın rolü sessizce
+  değiştirilip `POST /restore` ile geri alındığında fark edilmeyen bir ayrıcalık
+  değişikliğiyle geri dönebiliyordu (security-agent denetimi).
 - **[compliance]** Otomatik eklenen KVKK footer'ındaki hukuki sayfa bağlantıları
   düzeltildi — yayınlanan (`PUBLISHED`, silinmemiş) `isLegalDocument=true` sayfaların
   tamamı doğru, mutlak URL ile listeleniyor (compliance-agent).
@@ -121,6 +158,17 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
   konudur (yeni e-posta temizleyicisi `sanitizeEmailRichText`'i etkilemez — o zaten
   `target`/`rel` özniteliklerini ayrıca ele alır). security-agent bunu mimara iletilmesi
   gereken ayrı bir konu olarak işaretledi.
+- **Admin kullanıcı soft-delete KVKK m.11 / GDPR Art. 17 "unutulma hakkı"nı KARŞILAMAZ.**
+  `DELETE /admin/users/{userId}` bir **yönetimsel silmedir** ("bu kişi artık ekipte değil")
+  — hesap erişimini kapatır (oturumları iptal eder, girişi engeller) ama kullanıcının
+  ad/e-posta gibi kişisel verileri `User` satırında olduğu gibi durmaya devam eder,
+  fiziksel silme veya anonimleştirme YAPILMAZ (gerekçe: `Organization.ownerId` zorunlu
+  ilişkisi + içerik/audit-log yazarlık alanlarının `SetNull` bütünlüğü, bkz.
+  `openapi.yaml`'daki `DELETE /admin/users/{userId}` açıklaması). Gerçek, geri
+  döndürülemez anonimleştirme/erasure akışı ayrı, henüz yapılmamış bir backlog maddesidir
+  (sahibi: compliance-agent + db-agent, bkz. `ARCHITECTURE.md` §10.8.8 çevresindeki
+  saklama/PII deseni). Bu uç "kullanıcıyı KVKK kapsamında sildim" gerekçesiyle
+  SUNULMAMALIDIR.
 
 ---
 

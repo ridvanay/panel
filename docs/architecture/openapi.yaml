@@ -761,9 +761,22 @@ paths:
     get:
       tags: [AdminUsers]
       summary: Site kullanıcılarını listele (yalnızca ADMIN)
+      description: >
+        **Varsayılan olarak `status: DELETED` kullanıcılar DÖNMEZ** (yumuşak silme —
+        bkz. `DELETE /admin/users/{userId}`). Silinmiş kullanıcıları görmek (ve
+        `POST /admin/users/{userId}/restore` ile geri almak) için `includeDeleted=true`
+        gönderilmelidir. Bu, listenin admin panelde "silinmiş" kullanıcılarla dolmasını
+        engeller ama kaydın geri alınabilirliğini korur.
       parameters:
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
+        - name: includeDeleted
+          in: query
+          required: false
+          description: >
+            `true` ise `DELETED` durumundaki kullanıcılar da listeye dahil edilir.
+            Varsayılan `false`.
+          schema: { type: boolean, default: false }
       responses:
         "200":
           description: OK
@@ -789,6 +802,14 @@ paths:
         **Hız sınırı:** 20 istek / 1 dakika (route-level, `ADMIN_USERS_RATE_LIMIT`
         — savunma-derinliği, ele geçirilmiş bir admin oturumunun toplu istismarını
         sınırlar). Aşım → 429.
+
+
+        **Yumuşak silme etkileşimi:** silme `User` satırını KORUDUĞU ve `email`
+        benzersiz olduğu için, `DELETED` durumundaki bir kullanıcının e-postasıyla
+        yeni kullanıcı oluşturulamaz → `409 CONFLICT`
+        ("Bu e-posta silinmiş bir kullanıcıya ait. Önce kullanıcıyı geri alın."):
+        admin `includeDeleted=true` ile kullanıcıyı bulup
+        `POST /admin/users/{userId}/restore` çağırmalıdır.
       requestBody:
         required: true
         content:
@@ -805,6 +826,7 @@ paths:
                   - properties:
                       data: { $ref: "#/components/schemas/CreateAdminUserResponse" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
         "422": { $ref: "#/components/responses/ValidationError" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
 
@@ -820,6 +842,16 @@ paths:
       description: >
         Hedef kullanıcı sistemdeki tek aktif ADMIN ise ve yeni rol ADMIN değilse
         409 CONFLICT döner ("en az bir yönetici kalmalı" kuralı).
+
+
+        **Silme ile ilişkisi:** `PATCH /status` ile TUTARLI olarak, hâlihazırda
+        `DELETED` olan bir kullanıcının rolü bu uçla değiştirilemez → `404`
+        (kayıt silinmiş sayılır). Bu, soft-delete edilmiş ve varsayılan listede
+        görünmeyen bir hesabın rolünün sessizce değiştirilip, `POST
+        /admin/users/{userId}/restore` ile geri alındığında kimsenin fark
+        etmediği bir ayrıcalık değişikliğiyle geri dönmesini önler
+        (security-agent denetimi). Rol değişikliği için önce kullanıcı restore
+        edilmelidir.
 
 
         **Hız sınırı:** 20 istek / 1 dakika (route-level, `ADMIN_USERS_RATE_LIMIT`
@@ -840,7 +872,13 @@ paths:
                   - properties:
                       data: { $ref: "#/components/schemas/AdminUser" }
         "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
+        "404":
+          description: >
+            Kullanıcı bulunamadı (`NOT_FOUND`). `DELETED` olan bir kullanıcı
+            da 404 döner — bkz. yukarıdaki "Silme ile ilişkisi".
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
         "409": { $ref: "#/components/responses/Conflict" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
 
@@ -856,6 +894,14 @@ paths:
       description: >
         Kendi hesabınızı askıya alamazsınız (her zaman 409). Hedef kullanıcı
         sistemdeki tek aktif ADMIN ise ve yeni durum SUSPENDED ise de 409 döner.
+
+
+        **Silme ile ilişkisi:** gövde yalnızca `ACTIVE|SUSPENDED` kabul eder —
+        `DELETED` göndermek `422 VALIDATION_ERROR` verir; silme YALNIZCA
+        `DELETE /admin/users/{userId}` ile yapılır (silmenin oturum iptali gibi yan
+        etkileri bu uçta uygulanmaz). Simetrik olarak, hâlihazırda `DELETED` olan bir
+        kullanıcının durumu bu uçla değiştirilemez → `404` (kayıt silinmiş sayılır);
+        geri alma için `POST /admin/users/{userId}/restore` kullanılır.
 
 
         **Hız sınırı:** 20 istek / 1 dakika (route-level, `ADMIN_USERS_RATE_LIMIT`
@@ -878,6 +924,148 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /admin/users/{userId}:
+    parameters:
+      - name: userId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    delete:
+      tags: [AdminUsers]
+      summary: Kullanıcıyı sil — YUMUŞAK SİLME (yalnızca ADMIN)
+      description: >
+        Kullanıcıyı `status: DELETED` durumuna alır ve `deletedAt` damgasını yazar.
+        **Satır veritabanından FİZİKSEL OLARAK SİLİNMEZ** (architect kararı — gerekçe
+        aşağıda); işlem `POST /admin/users/{userId}/restore` ile geri alınabilir.
+
+
+        **Neden hard delete değil:** (1) `Organization.ownerId` ZORUNLU bir ilişkidir ve
+        `onDelete` tanımlı değildir (Prisma varsayılanı `Restrict`) — organizasyon sahibi
+        bir kullanıcının fiziksel silinmesi FK hatasıyla 500 üretirdi; (2) `BlogPost`,
+        `Page`, `Product`, `PortfolioItem` yazarlıkları `onDelete: SetNull`'dır — fiziksel
+        silme, yayındaki içeriğin yazar bilgisini geri dönüşsüz koparırdı; (3)
+        `AuditLog.actorId` de `SetNull`'dır — denetim izinin aktör bağı kopardı, oysa
+        ARCHITECTURE.md §10.8.8.1 madde 4 audit kayıtlarının silme talebiyle otomatik
+        kaybolmaMAsını şart koşar.
+
+
+        **Yan etkiler (atomik, tek Serializable transaction içinde):**
+
+        - `status = DELETED`, `deletedAt = now()`
+
+        - Kullanıcının TÜM `RefreshToken` kayıtları iptal edilir (aktif oturumlar anında düşer)
+
+        - Kullanıcının bekleyen TÜM `PasswordResetToken` kayıtları geçersizleşir
+
+        - `AuditLog`'a `user.delete` aksiyonu yazılır
+
+        - İçerik/medya/organizasyon kayıtları DEĞİŞTİRİLMEZ (yazarlık korunur)
+
+
+        **Kimlik doğrulama etkisi (backend-agent için ZORUNLU):** `DELETED` kullanıcı
+        `SUSPENDED` ile birebir aynı şekilde giriş yapamaz ve mevcut access token'ı
+        kabul edilmez — `middleware/authenticate.ts` ve `auth.service.ts` içindeki
+        `SUSPENDED` kontrolleri `DELETED`'ı da kapsayacak biçimde genişletilmelidir.
+        Aksi hâlde silinen kullanıcı token ömrü boyunca sistemi kullanmaya devam eder.
+
+
+        **KVKK/GDPR sınırı — DİKKAT:** Bu uç bir **yönetimsel silme**dir
+        ("bu kişi artık ekipte değil"); KVKK m.11 / GDPR Art. 17 **unutulma hakkını
+        KARŞILAMAZ**, çünkü ad/e-posta gibi kişisel veriler satırda durmaya devam eder.
+        Geri döndürülemez anonimleştirme ayrı bir akıştır (compliance-agent + db-agent,
+        ayrı görev — bkz. ARCHITECTURE.md §10.18.1) ve bu uç öyleymiş gibi
+        sunulMAMALIdır.
+
+
+        **Hız sınırı:** 20 istek / 1 dakika (route-level, `ADMIN_USERS_RATE_LIMIT`
+        — bkz. `POST /admin/users`). Aşım → 429.
+      responses:
+        "200":
+          description: >
+            Silindi (yumuşak). Güncel kullanıcı kaydı `status: DELETED` ve dolu
+            `deletedAt` ile döner — frontend listesini bu yanıtla günceller.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/AdminUser" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: >
+            Kullanıcı bulunamadı (`NOT_FOUND`, "Kullanıcı bulunamadı."). ZATEN
+            `DELETED` olan bir kullanıcı da 404 döner — silme idempotent DEĞİLDİR,
+            silinmiş kayıt yalnızca `includeDeleted=true` ile görünür.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "409":
+          description: >
+            `CONFLICT` — iki ayrı kural, ikisi de mevcut PATCH uçlarıyla BİREBİR tutarlı:
+
+            (a) "Kendi hesabınızı silemezsiniz." — hedef, isteği yapan admin'in kendisi
+            (`PATCH /status`'taki self-suspend yasağının aynısı);
+
+            (b) "Sistemde en az bir yönetici kalmalı." — hedef sistemdeki tek aktif
+            ADMIN (`assertNotLastActiveAdmin`, admin-users.routes.ts). Kontrol, TOCTOU
+            yarışını önlemek için silme yazımıyla AYNI Serializable transaction içinde
+            yapılmalıdır.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /admin/users/{userId}/restore:
+    parameters:
+      - name: userId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [AdminUsers]
+      summary: Silinmiş kullanıcıyı geri al (yalnızca ADMIN)
+      description: >
+        `DELETED` durumundaki kullanıcıyı `status: ACTIVE`'e döndürür ve `deletedAt`
+        alanını `null`'a çeker. Rolü silme öncesindeki değeriyle korunur (silme rolü
+        değiştirmez).
+
+
+        Geri alma, jenerik `PATCH /status` üzerinden DEĞİL ayrı bir uçla yapılır:
+        böylece kendi denetim aksiyonunu (`user.restore`) alır ve `PATCH /status`
+        gövdesi `ACTIVE|SUSPENDED` ile sınırlı kalır — yani bir admin, durum değiştirme
+        ucunu "yan etki" olarak kullanıp bir kullanıcıyı sessizce diriltemez.
+
+
+        Geri alınan kullanıcının oturumları geri GELMEZ (silme sırasında iptal edilen
+        refresh token'lar kalıcı olarak geçersizdir); kullanıcı yeniden giriş yapar.
+
+
+        **Hız sınırı:** 20 istek / 1 dakika (route-level, `ADMIN_USERS_RATE_LIMIT`).
+      responses:
+        "200":
+          description: >
+            Geri alındı — kayıt `status: ACTIVE` ve `deletedAt: null` ile döner.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/AdminUser" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: >
+            `CONFLICT` — "Bu kullanıcı silinmemiş." Hedef kullanıcı `DELETED`
+            durumunda değil (ACTIVE/SUSPENDED); geri alınacak bir şey yok.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /admin/logs:
@@ -7110,8 +7298,22 @@ components:
         - $ref: "#/components/schemas/User"
         - type: object
           properties:
-            status: { type: string, enum: [ACTIVE, SUSPENDED] }
+            status:
+              type: string
+              enum: [ACTIVE, SUSPENDED, DELETED]
+              description: >
+                `DELETED` yumuşak silmeyi ifade eder (bkz. `DELETE /admin/users/{userId}`).
+                Bu değer yalnızca DELETE/restore uçlarıyla oluşur — `PATCH /status`
+                gövdesinde KABUL EDİLMEZ. `DELETED` kullanıcılar listede yalnızca
+                `includeDeleted=true` ile görünür.
             lastLoginAt: { type: string, format: date-time, nullable: true }
+            deletedAt:
+              type: string
+              format: date-time
+              nullable: true
+              description: >
+                Yumuşak silme zaman damgası. `status: DELETED` ise dolu, aksi hâlde
+                `null`. Geri alma (`restore`) bu alanı tekrar `null` yapar.
 
     AuditLog:
       type: object
@@ -7154,7 +7356,12 @@ components:
       type: object
       required: [status]
       properties:
-        status: { type: string, enum: [ACTIVE, SUSPENDED] }
+        status:
+          type: string
+          enum: [ACTIVE, SUSPENDED]
+          description: >
+            `DELETED` BİLEREK dışarıda bırakılmıştır (bkz. `DELETE /admin/users/{userId}`)
+            — bu enum `AdminUser.status` okuma enum'undan DAR olmalıdır.
 
     PermissionsMatrix:
       type: object

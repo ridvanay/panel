@@ -14,7 +14,13 @@ export const PageStatusSchema = z.enum(["DRAFT", "PUBLISHED", "SCHEDULED"]);
 // `/admin/*` CMS uçları için org'dan bağımsız site-geneli rol/durum (bkz. middleware/site-rbac.ts).
 // MembershipRoleSchema (organizasyon bazlı) ile KARIŞTIRILMAMALI.
 export const SiteRoleSchema = z.enum(["ADMIN", "EDITOR", "VIEWER"]);
+// `PATCH /admin/users/{userId}/status` gövdesi (YAZMA) — BİLİNÇLİ OLARAK `DELETED` içermez,
+// silme YALNIZCA `DELETE /admin/users/{userId}` ile yapılır (bkz. AdminUserStatusSchema, OKUMA tarafı).
 export const SiteUserStatusSchema = z.enum(["ACTIVE", "SUSPENDED"]);
+// `AdminUser.status` (OKUMA) — `DELETED` (yumuşak silme) dahil, `SiteUserStatusSchema`'dan
+// DAHA GENİŞTİR. İkisi kasıtlı olarak AYRI tutulur (bkz. openapi.yaml `AdminUser` vs
+// `UpdateAdminUserStatusRequest`) — `PATCH /status` gövdesinde `DELETED` kabul edilmemeli.
+export const AdminUserStatusSchema = z.enum(["ACTIVE", "SUSPENDED", "DELETED"]);
 export const AuditStatusSchema = z.enum(["SUCCESS", "FAILURE", "FORBIDDEN"]);
 
 export const UserSchema = z.object({
@@ -32,8 +38,11 @@ export type UserDto = z.infer<typeof UserSchema>;
 
 /** `/admin/users` uçlarında dönen genişletilmiş kullanıcı DTO'su — yalnızca ADMIN görebilir. */
 export const AdminUserSchema = UserSchema.extend({
-  status: SiteUserStatusSchema,
+  status: AdminUserStatusSchema,
   lastLoginAt: z.string().nullable(),
+  // Yumuşak silme zaman damgası — `status: DELETED` ise dolu, aksi hâlde `null` (bkz.
+  // DELETE /admin/users/{userId}, POST /admin/users/{userId}/restore).
+  deletedAt: z.string().nullable(),
 });
 export type AdminUserDto = z.infer<typeof AdminUserSchema>;
 

@@ -49,7 +49,13 @@ export type SubscriptionStatus =
 // bağımsız site-geneli rol/durum. `MembershipRole` (organizasyon bazlı) ile
 // KARIŞTIRILMAMALI — tamamen ayrı bir yetkilendirme ekseni.
 export type SiteRole = "ADMIN" | "EDITOR" | "VIEWER";
-export type SiteUserStatus = "ACTIVE" | "SUSPENDED";
+/**
+ * `DELETED` = yumuşak silme (bkz. `DELETE /admin/users/{userId}`). Satır fiziksel olarak
+ * silinmez; `POST /admin/users/{userId}/restore` ile geri alınabilir. Bu değer YALNIZCA
+ * okuma tarafında (`AdminUser.status`) görülür — durum değiştirme isteğinde KABUL EDİLMEZ
+ * (bkz. `UpdateAdminUserStatusRequest`).
+ */
+export type SiteUserStatus = "ACTIVE" | "SUSPENDED" | "DELETED";
 export type AuditStatus = "SUCCESS" | "FAILURE" | "FORBIDDEN";
 export type SocialPlatform =
   | "TWITTER"
@@ -76,6 +82,8 @@ export interface User {
 export interface AdminUser extends User {
   status: SiteUserStatus;
   lastLoginAt: string | null; // ISO 8601
+  /** Yumuşak silme damgası — `status: "DELETED"` ise dolu, aksi hâlde `null`. */
+  deletedAt: string | null; // ISO 8601
 }
 
 export interface AuditLog {
@@ -235,7 +243,12 @@ export interface UpdateAdminUserRoleRequest {
 }
 
 export interface UpdateAdminUserStatusRequest {
-  status: SiteUserStatus;
+  /**
+   * `DELETED` BİLEREK dışarıda bırakılmıştır: silme yalnızca `DELETE /admin/users/{userId}`
+   * ile yapılır (oturum iptali gibi yan etkileri vardır), geri alma ise
+   * `POST /admin/users/{userId}/restore` ile.
+   */
+  status: Exclude<SiteUserStatus, "DELETED">;
 }
 
 export interface PermissionsMatrix {

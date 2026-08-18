@@ -27,7 +27,13 @@ export async function authenticate(request: FastifyRequest, _reply: FastifyReply
     select: { id: true, email: true, role: true, status: true },
   });
   if (!user) throw new UnauthorizedError();
-  if (user.status === "SUSPENDED") throw new ForbiddenError("Hesabınız askıya alınmış.");
+  // `DELETED` (yumuşak silme, bkz. DELETE /admin/users/{userId}) `SUSPENDED` ile BİREBİR aynı
+  // şekilde ele alınır: silinen bir kullanıcı, access token'ının ömrü boyunca sistemi kullanmaya
+  // devam edemesin diye (defense-in-depth — silme zaten refresh token'ları iptal eder, ama bu
+  // kontrol token iptali eksik/gecikmeli olsa dahi tek başına yeterli bir güvenlik katmanıdır).
+  if (user.status === "SUSPENDED" || user.status === "DELETED") {
+    throw new ForbiddenError("Hesabınız askıya alınmış.");
+  }
 
   request.user = { id: user.id, email: user.email, role: user.role };
 }
