@@ -16,6 +16,7 @@ import {
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
+  AlertTriangle,
   AlignCenterVertical,
   AlignEndVertical,
   AlignStartVertical,
@@ -25,30 +26,36 @@ import {
   Columns3,
   GripVertical,
   Info,
+  Minus,
+  Plus,
+  Square,
   Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { blockRegistry } from "@/lib/page-builder/registry";
+import { blockRegistry, createBlock, type PaletteBlockType } from "@/lib/page-builder/registry";
 import {
-  changeColumnCount,
+  addColumnToRow,
+  collapseColumnIfEmpty,
   countAllBlocks,
   findContainerId,
   findItemById,
   getContainerBlockIds,
   insertIntoContainer,
-  needsConfirmToShrink,
   needsConfirmToUnwrap,
   removeFromContainer,
+  resolveColumnWidth,
+  setColumnWidth,
   totalBlocksInColumns,
   unwrapColumns,
   updateColumnsData,
   wrapInColumns,
 } from "@/lib/page-builder/columns";
-import type { Block, BuilderContainerId, ColumnsBlock, LeafBlock, PageBlockGap, PageColumnCount, PageColumnVerticalAlign } from "@/lib/page-builder/types";
-import { MAX_BLOCKS_PER_COLUMN, MAX_TOTAL_BLOCKS } from "@/lib/page-builder/types";
-import { LayoutMenu, type LayoutValue } from "./layout-menu";
+import type { Block, BuilderContainerId, ColumnsBlock, LeafBlock, PageBlockGap, PageColumnVerticalAlign } from "@/lib/page-builder/types";
+import { COLUMN_READABILITY_WARNING_THRESHOLD, MAX_BLOCKS_PER_COLUMN, MAX_COLUMNS_PER_ROW, MAX_TOTAL_BLOCKS } from "@/lib/page-builder/types";
+import { LayoutMenu } from "./layout-menu";
 import { HeroBlockEditor } from "./blocks/hero-block";
 import { TextBlockEditor } from "./blocks/text-block";
 import { ImageBlockEditor } from "./blocks/image-block";
@@ -81,13 +88,11 @@ function LeafBlockBody({ block, onChange }: { block: LeafBlock; onChange: (block
   }
 }
 
-/** Bir "sarmalanabilir" bloğun düzen değeri — sütun içindeki blokların menüsü YOKTUR (derinlik 1 kısıtı). */
-function leafLayoutValue(): LayoutValue {
-  return "full";
-}
-
 interface DragCtx {
-  onLayoutChange: (blockId: string, value: LayoutValue) => void;
+  onWrapToRow: (blockId: string) => void;
+  onUnwrapRow: (columnsBlockId: string) => void;
+  onAddColumn: (columnsBlockId: string, type: PaletteBlockType) => void;
+  onColumnWidthChange: (columnsBlockId: string, columnId: string, width: number) => void;
   onMoveTopLevel: (blockId: string, direction: -1 | 1) => void;
   onMoveInColumn: (columnsBlockId: string, columnId: string, blockId: string, direction: -1 | 1) => void;
   onRemoveTopLevel: (blockId: string) => void;
@@ -144,7 +149,7 @@ function TopLevelBlockCard({ block, index, total, ctx }: { block: Block; index: 
           </button>
           <span className="truncate text-sm font-medium text-foreground">{blockLabel(block)}</span>
           {block.type !== "hero" && (
-            <LayoutMenu current={leafLayoutValue()} onSelect={(value) => ctx.onLayoutChange(block.id, value)} />
+            <LayoutMenu current="full" onSelect={(value) => value === "row" && ctx.onWrapToRow(block.id)} />
           )}
         </div>
         <div className="flex shrink-0 gap-1">
@@ -306,41 +311,76 @@ function VerticalAlignControl({ value, onChange }: { value: PageColumnVerticalAl
   );
 }
 
-function RatioIcon({ left, right }: { left: number; right: number }) {
+const MIN_COLUMN_WIDTH = 1;
+const MAX_COLUMN_WIDTH = 4;
+
+/**
+ * §10.17.3 v2 madde 1 "veya kullanıcı manuel oranlayabilsin" — her sütunun kendi göreli genişlik
+ * ağırlığı (1-4 arası). Yapısal değişikliklerde (sütun ekle/kaldır) otomatik eşitlemeyle
+ * ÜZERİNE YAZILIR (bkz. columns.ts::addColumnToRow/collapseColumnIfEmpty) — bu yüzden bu kontrol
+ * yalnızca "şu anki satır sabitken ince ayar" içindir.
+ */
+function ColumnWidthStepper({ width, onChange }: { width: number; onChange: (width: number) => void }) {
   return (
-    <span className="flex h-3.5 w-6 gap-0.5" aria-hidden>
-      <span className="rounded-[1px] bg-current" style={{ flex: left }} />
-      <span className="rounded-[1px] bg-current" style={{ flex: right }} />
-    </span>
+    <div className="flex items-center gap-0.5 rounded-md border border-border/50 bg-surface-muted/70 px-1 py-0.5 text-[10px] text-foreground/50">
+      <Button
+        type="button"
+        size="icon-xs"
+        variant="ghost"
+        aria-label="Genişliği azalt"
+        disabled={width <= MIN_COLUMN_WIDTH}
+        onClick={() => onChange(Math.max(MIN_COLUMN_WIDTH, width - 1))}
+      >
+        <Minus className="h-2.5 w-2.5" />
+      </Button>
+      <span className="min-w-[1.5ch] text-center tabular-nums" title="Göreli genişlik">
+        {width}×
+      </span>
+      <Button
+        type="button"
+        size="icon-xs"
+        variant="ghost"
+        aria-label="Genişliği artır"
+        disabled={width >= MAX_COLUMN_WIDTH}
+        onClick={() => onChange(Math.min(MAX_COLUMN_WIDTH, width + 1))}
+      >
+        <Plus className="h-2.5 w-2.5" />
+      </Button>
+    </div>
   );
 }
 
-const RATIO_OPTIONS: { value: "1-1" | "2-1" | "1-2"; label: string; left: number; right: number }[] = [
-  { value: "1-1", label: "Eşit", left: 1, right: 1 },
-  { value: "2-1", label: "Sol geniş", left: 2, right: 1 },
-  { value: "1-2", label: "Sağ geniş", left: 1, right: 2 },
-];
+/** "+" — satırın sağına yeni bir blok/sütun eklemek için blok türü seçen menü (§10.17.3 v2 madde 1). */
+const ADD_COLUMN_FORBIDDEN_TYPES = new Set<PaletteBlockType>(["hero"]);
 
-function RatioControl({ value, onChange }: { value: "1-1" | "2-1" | "1-2"; onChange: (v: "1-1" | "2-1" | "1-2") => void }) {
+function AddColumnMenu({ onAdd, disabled }: { onAdd: (type: PaletteBlockType) => void; disabled?: boolean }) {
+  const options = (Object.entries(blockRegistry) as [PaletteBlockType, { label: string }][]).filter(
+    ([type]) => !ADD_COLUMN_FORBIDDEN_TYPES.has(type)
+  );
   return (
-    <div className="flex items-center gap-0.5 rounded-md border border-border/60 bg-surface-muted p-0.5">
-      {RATIO_OPTIONS.map((opt) => {
-        const active = opt.value === value;
-        return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
           <Button
-            key={opt.value}
             type="button"
-            size="icon-xs"
-            variant={active ? "secondary" : "ghost"}
-            aria-pressed={active}
-            aria-label={opt.label}
-            onClick={() => onChange(opt.value)}
-          >
-            <RatioIcon left={opt.left} right={opt.right} />
-          </Button>
-        );
-      })}
-    </div>
+            variant="secondary"
+            size="icon-sm"
+            aria-label="Satıra blok ekle"
+            disabled={disabled}
+            title={disabled ? `Bir satırda en fazla ${MAX_COLUMNS_PER_ROW} sütun olabilir` : "Satıra blok ekle"}
+          />
+        }
+      >
+        <Plus className="h-4 w-4" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {options.map(([type, meta]) => (
+          <DropdownMenuItem key={type} onClick={() => onAdd(type)}>
+            {meta.label}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -357,30 +397,49 @@ function ColumnsContainerCard({
   ctx: DragCtx;
   dragHandle: ReactNode;
 }) {
-  const { columnCount, ratio, gap, verticalAlign, columns } = block.data;
-  const ColumnIcon = columnCount === 3 ? Columns3 : Columns2;
+  const { gap, verticalAlign, columns } = block.data;
+  const ColumnIcon = columns.length >= 3 ? Columns3 : Columns2;
+  const atMaxColumns = columns.length >= MAX_COLUMNS_PER_ROW;
+  const tooManyForReadability = columns.length >= COLUMN_READABILITY_WARNING_THRESHOLD;
+  // §10.17.5 v2 — mobilde `flex-col` (tek sütun) tabanı, `md:` üzerinde `display:grid`e geçer;
+  // sütun genişlikleri inline `gridTemplateColumns` (`fr` birimi) ile ayarlanır — arbitrary Tailwind
+  // sınıfı DEĞİL, çünkü sütun sayısı/ağırlığı çalışma anında (runtime) belirlenir. Editördeki "+"
+  // eklentisi (`minmax(80px,auto)`) yalnızca EDİTÖRE özgüdür, public render'da YOKTUR (bkz.
+  // components/site/blocks/columns-block.tsx — WYSIWYG sütun düzeni için birebir aynı fr mantığı,
+  // ancak add-tile'sız).
+  // `resolveColumnWidth` eski (v1) `ratio` şeklini de hesaba katar — bkz. columns.ts başlık yorumu.
+  const gridTemplate = [...columns.map((_, i) => `${resolveColumnWidth(block.data, i)}fr`), "minmax(96px,auto)"].join(" ");
 
   return (
     <div className="rounded-xl border-2 border-dashed border-border/70 bg-surface-muted/30 p-4 space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-1.5">
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
           {dragHandle}
           <ColumnIcon className="h-4 w-4 shrink-0 text-foreground/50" />
-          <span className="text-sm font-medium text-foreground">{columnCount} Sütun</span>
+          <span className="text-sm font-medium text-foreground">{columns.length} Sütun</span>
           <span className="text-xs text-foreground/50">· Boşluk: {GAP_LABEL[gap]}</span>
           <span title="Mobilde bu sütunlar alt alta sıralanır">
             <Info className="h-3.5 w-3.5 shrink-0 text-foreground/35" aria-hidden />
           </span>
+          {tooManyForReadability && (
+            <span className="flex items-center gap-1 rounded-full bg-warning/10 px-2 py-0.5 text-[11px] text-warning">
+              <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden />
+              Bu satırda çok fazla blok var, okunabilirlik azalabilir.
+            </span>
+          )}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           <VerticalAlignControl value={verticalAlign} onChange={(v) => ctx.onColumnsPatch(block.id, { verticalAlign: v })} />
-          {columnCount === 2 && (
-            <RatioControl
-              value={ratio as "1-1" | "2-1" | "1-2"}
-              onChange={(v) => ctx.onColumnsPatch(block.id, { ratio: v })}
-            />
-          )}
-          <LayoutMenu current={columnCount as LayoutValue} onSelect={(value) => ctx.onLayoutChange(block.id, value)} />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Tam Genişlik"
+            title="Tam Genişliğe Dönüştür"
+            onClick={() => ctx.onUnwrapRow(block.id)}
+          >
+            <Square className="h-4 w-4" />
+          </Button>
           <Button
             type="button"
             variant="ghost"
@@ -407,12 +466,18 @@ function ColumnsContainerCard({
         </div>
       </div>
 
-      <div className={cn("grid grid-cols-1", columnCount === 2 ? "md:grid-cols-2" : "md:grid-cols-3", "gap-3")}>
-        {columns.map((col) => {
+      <div className="flex flex-col gap-3 md:grid" style={{ gridTemplateColumns: gridTemplate }}>
+        {columns.map((col, colIndex) => {
           const containerId: BuilderContainerId = `col:${col.id}`;
           const ids = col.blocks.map((b) => b.id);
           return (
             <div key={col.id} className="min-w-0 space-y-2">
+              <div className="flex justify-end">
+                <ColumnWidthStepper
+                  width={resolveColumnWidth(block.data, colIndex)}
+                  onChange={(w) => ctx.onColumnWidthChange(block.id, col.id, w)}
+                />
+              </div>
               <SortableContext items={ids} strategy={verticalListSortingStrategy}>
                 {col.blocks.length === 0 ? (
                   <EmptyColumnDropZone containerId={containerId} />
@@ -435,6 +500,9 @@ function ColumnsContainerCard({
             </div>
           );
         })}
+        <div className="flex min-h-24 items-center justify-center">
+          <AddColumnMenu disabled={atMaxColumns} onAdd={(type) => ctx.onAddColumn(block.id, type)} />
+        </div>
       </div>
     </div>
   );
@@ -443,9 +511,6 @@ function ColumnsContainerCard({
 export function BuilderCanvas({ blocks, onChange }: { blocks: Block[]; onChange: (blocks: Block[]) => void }) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [pendingUnwrap, setPendingUnwrap] = useState<{ columnsBlockId: string; blockCount: number; columnCount: number } | null>(
-    null
-  );
-  const [pendingShrink, setPendingShrink] = useState<{ columnsBlockId: string; newCount: PageColumnCount; blockCount: number } | null>(
     null
   );
 
@@ -525,36 +590,40 @@ export function BuilderCanvas({ blocks, onChange }: { blocks: Block[]; onChange:
     const targetIds = getContainerBlockIds(afterRemove, toContainer);
     let insertIndex = targetIds.indexOf(overIdStr);
     if (insertIndex === -1) insertIndex = targetIds.length;
+    // §10.17.3 v2 madde 3 — otomatik sütun kaldırma/yeniden dengeleme SADECE bir bloğu SİLMENİN
+    // (bkz. aşağıdaki `removeInColumn`) sonucudur; bir bloğu SÜRÜKLEYEREK başka bir sütuna
+    // taşımak İÇERİĞİ SİLMEZ, bu yüzden kaynak sütun boşalsa bile (mevcut, test edilmiş v1
+    // davranışıyla birebir aynı şekilde) boş bir bırakma alanı olarak KALIR — kaldırılmaz.
     onChange(insertIntoContainer(afterRemove, toContainer, insertIndex, removed));
   }
 
-  function requestLayoutChange(blockId: string, value: LayoutValue) {
+  function wrapToRow(blockId: string) {
     const item = findItemById(blocks, blockId);
-    if (!item) return;
+    if (!item || item.type === "columns" || item.type === "hero") return;
+    if (countAllBlocks(blocks) >= MAX_TOTAL_BLOCKS) return;
+    onChange(wrapInColumns(blocks, blockId, 2));
+  }
 
-    if (item.type !== "columns") {
-      if (value === "full") return;
-      if (countAllBlocks(blocks) >= MAX_TOTAL_BLOCKS) return;
-      onChange(wrapInColumns(blocks, blockId, value));
+  function unwrapRow(columnsBlockId: string) {
+    const item = findItemById(blocks, columnsBlockId);
+    if (!item || item.type !== "columns") return;
+    if (needsConfirmToUnwrap(item)) {
+      setPendingUnwrap({ columnsBlockId: item.id, blockCount: totalBlocksInColumns(item), columnCount: item.data.columns.length });
       return;
     }
+    onChange(unwrapColumns(blocks, item.id));
+  }
 
-    if (value === "full") {
-      if (needsConfirmToUnwrap(item)) {
-        setPendingUnwrap({ columnsBlockId: item.id, blockCount: totalBlocksInColumns(item), columnCount: item.data.columnCount });
-        return;
-      }
-      onChange(unwrapColumns(blocks, item.id));
-      return;
-    }
+  function addColumn(columnsBlockId: string, type: PaletteBlockType) {
+    const item = findItemById(blocks, columnsBlockId);
+    if (!item || item.type !== "columns") return;
+    if (item.data.columns.length >= MAX_COLUMNS_PER_ROW) return;
+    if (countAllBlocks(blocks) >= MAX_TOTAL_BLOCKS) return;
+    onChange(addColumnToRow(blocks, columnsBlockId, createBlock(type) as LeafBlock));
+  }
 
-    if (value === item.data.columnCount) return;
-    if (needsConfirmToShrink(item, value)) {
-      const movedCount = item.data.columns.slice(value).reduce((sum, col) => sum + col.blocks.length, 0);
-      setPendingShrink({ columnsBlockId: item.id, newCount: value, blockCount: movedCount });
-      return;
-    }
-    onChange(changeColumnCount(blocks, item.id, value));
+  function columnWidthChange(columnsBlockId: string, columnId: string, width: number) {
+    onChange(setColumnWidth(blocks, columnsBlockId, columnId, width));
   }
 
   function moveTopLevel(blockId: string, direction: -1 | 1) {
@@ -589,15 +658,17 @@ export function BuilderCanvas({ blocks, onChange }: { blocks: Block[]; onChange:
   }
 
   function removeInColumn(columnsBlockId: string, columnId: string, blockId: string) {
-    onChange(
-      blocks.map((b) => {
-        if (b.id !== columnsBlockId || b.type !== "columns") return b;
-        const columns = b.data.columns.map((col) =>
-          col.id === columnId ? { ...col, blocks: col.blocks.filter((l) => l.id !== blockId) } : col
-        );
-        return { ...b, data: { ...b.data, columns } };
-      })
-    );
+    const next = blocks.map((b) => {
+      if (b.id !== columnsBlockId || b.type !== "columns") return b;
+      const columns = b.data.columns.map((col) =>
+        col.id === columnId ? { ...col, blocks: col.blocks.filter((l) => l.id !== blockId) } : col
+      );
+      return { ...b, data: { ...b.data, columns } };
+    });
+    // §10.17.3 v2 madde 3 — SİLİNEN bloğun sütunu bu işlemle boşaldıysa kaldırılır, kalanlar
+    // eşitlenir, tek sütun kalırsa satır otomatik "Tam Genişlik"e döner (onay GEREKMEZ, içerik
+    // kaybı yoktur). Satırdaki BAŞKA boş sütunlara (henüz doldurulmamış yer tutucular) dokunmaz.
+    onChange(collapseColumnIfEmpty(next, columnsBlockId, columnId));
   }
 
   function updateTopLevel(next: Block) {
@@ -621,7 +692,10 @@ export function BuilderCanvas({ blocks, onChange }: { blocks: Block[]; onChange:
   }
 
   const ctx: DragCtx = {
-    onLayoutChange: requestLayoutChange,
+    onWrapToRow: wrapToRow,
+    onUnwrapRow: unwrapRow,
+    onAddColumn: addColumn,
+    onColumnWidthChange: columnWidthChange,
     onMoveTopLevel: moveTopLevel,
     onMoveInColumn: moveInColumn,
     onRemoveTopLevel: removeTopLevel,
@@ -670,7 +744,7 @@ export function BuilderCanvas({ blocks, onChange }: { blocks: Block[]; onChange:
         title="Sütunlar tam genişliğe dönüştürülsün mü?"
         description={
           pendingUnwrap
-            ? `${pendingUnwrap.columnCount} sütundaki ${pendingUnwrap.blockCount} blok tek bir sütuna, sırasıyla alt alta taşınacak. İçerik SİLİNMEZ.`
+            ? `${pendingUnwrap.columnCount} sütundaki ${pendingUnwrap.blockCount} blok, sırasıyla alt alta tam genişlik bloklarına dönüştürülecek. İçerik SİLİNMEZ.`
             : undefined
         }
         confirmText="Tam Genişliğe Dönüştür"
@@ -681,23 +755,6 @@ export function BuilderCanvas({ blocks, onChange }: { blocks: Block[]; onChange:
         }}
       />
 
-      <ConfirmDialog
-        open={pendingShrink !== null}
-        onOpenChange={(open) => !open && setPendingShrink(null)}
-        tone="warning"
-        title="Sütun sayısı azaltılsın mı?"
-        description={
-          pendingShrink
-            ? `Kaldırılan sütun(lar)daki ${pendingShrink.blockCount} blok, son sütunun sonuna taşınacak. İçerik SİLİNMEZ.`
-            : undefined
-        }
-        confirmText="Daralt"
-        cancelText="Vazgeç"
-        onConfirm={() => {
-          if (pendingShrink) onChange(changeColumnCount(blocks, pendingShrink.columnsBlockId, pendingShrink.newCount));
-          setPendingShrink(null);
-        }}
-      />
     </>
   );
 }

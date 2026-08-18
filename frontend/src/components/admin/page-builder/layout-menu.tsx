@@ -1,26 +1,28 @@
-import { Check, Columns2, Columns3, Square } from "lucide-react";
+import { Check, Columns2, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
-export type LayoutValue = "full" | 2 | 3;
+/**
+ * §10.17.3 v2 — bir leaf bloğun sadece iki hali vardır: kendi başına ("full") ya da bir satırın
+ * İLK üyesi olarak ("row", 2 sütunlu bir `columns` konteynerine sarmalanır). Satırı 3, 4, 6…
+ * sütuna büyütmek artık bu menüden DEĞİL, satırın kendi "+" butonundan yapılır (bkz.
+ * builder-canvas.tsx::AddColumnMenu) — bu yüzden sabit bir "3 Sütun" seçeneği YOKTUR.
+ */
+export type LayoutValue = "full" | "row";
 
 const LAYOUT_ICON: Record<LayoutValue, typeof Square> = {
   full: Square,
-  2: Columns2,
-  3: Columns3,
+  row: Columns2,
 };
 
 const LAYOUT_LABEL: Record<LayoutValue, string> = {
   full: "Tam Genişlik",
-  2: "2 Sütun",
-  3: "3 Sütun",
+  row: "2 Sütun",
 };
 
 /**
  * §10.17.7 madde 1 — her blok/`columns` konteynerinin KENDİ başlık satırındaki bir
- * `DropdownMenu`. Üst seviyede tekil bir blokta "Tam Genişlik" aktif/check'li ve tıklanamaz;
- * `columns` konteynerinin başlığında "Tam Genişlik" seçilince unwrap tetiklenir (çağıran taraf
- * onay diyaloğunu yönetir, bkz. builder-canvas.tsx).
+ * `DropdownMenu`. Üst seviyede tekil bir blokta "Tam Genişlik" aktif/check'li ve tıklanamaz.
  */
 export function LayoutMenu({ current, onSelect }: { current: LayoutValue; onSelect: (value: LayoutValue) => void }) {
   const CurrentIcon = LAYOUT_ICON[current];
@@ -33,12 +35,12 @@ export function LayoutMenu({ current, onSelect }: { current: LayoutValue; onSele
         <CurrentIcon className="h-4 w-4" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start">
-        {(["full", 2, 3] as LayoutValue[]).map((value) => {
+        {(["full", "row"] as LayoutValue[]).map((value) => {
           const Icon = LAYOUT_ICON[value];
           const isCurrent = value === current;
           return (
             <DropdownMenuItem
-              key={String(value)}
+              key={value}
               disabled={isCurrent && value === "full"}
               onClick={() => {
                 if (!isCurrent) onSelect(value);

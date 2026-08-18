@@ -1,53 +1,112 @@
 import { newId } from "./registry";
-import type {
-  Block,
-  BuilderContainerId,
-  ColumnsBlock,
-  LeafBlock,
-  PageColumn,
-  PageColumnCount,
-  PageColumnRatio,
-} from "./types";
-
-/** columnCount=2 → "1-1"; columnCount=3 → yalnızca "1-1-1" (§10.17.3 uyum kuralı). */
-export function defaultRatioFor(count: PageColumnCount): PageColumnRatio {
-  return count === 3 ? "1-1-1" : "1-1";
-}
+import type { Block, BuilderContainerId, ColumnsBlock, LeafBlock, PageColumn } from "./types";
 
 export function isColumnsBlock(block: Block): block is ColumnsBlock {
   return block.type === "columns";
 }
 
+/**
+ * §10.17.8 (geriye dönük uyumluluk) — eski (v1, sabit `columnCount`/`ratio`) şeklinde
+ * kaydedilmiş bir sayfa bir sonraki WRITE'ta backend tarafından v2'ye çevrilir (bkz.
+ * `pages.schemas.ts::ColumnsBlockDataPreprocessed`), ama `GET` yanıtı ARA DÖNEMDE hâlâ eski
+ * şekli (her sütunda `width` YOK, üst seviyede `ratio` VAR) döndürebilir. Bu durumda salt
+ * `width ?? 1` ile hepsini eşit varsaymak, kaydedilmiş "2-1"/"1-2" oranını görsel olarak
+ * SESSİZCE BOZAR (bir sonraki kayda kadar). Bu fonksiyon aynı `ratio → width` çevrimini
+ * OKUMA tarafında da uygular ki eski bir sayfa dokunulmadan görüntülendiğinde bile orijinal
+ * görünümü KORUNSUN — hem admin editör önizlemesi (`builder-canvas.tsx`) hem public render
+ * (`components/site/blocks/columns-block.tsx`) bunu kullanır (WYSIWYG parite).
+ */
+export function resolveColumnWidth(data: { ratio?: unknown; columns: { width?: unknown }[] }, index: number): number {
+  const raw = data.columns[index]?.width;
+  if (typeof raw === "number" && raw > 0) return raw;
+  if (data.ratio === "2-1") return index === 0 ? 2 : 1;
+  if (data.ratio === "1-2") return index === 1 ? 2 : 1;
+  return 1;
+}
+
 function emptyColumn(): PageColumn {
-  return { id: newId(), blocks: [] };
+  return { id: newId(), width: 1, blocks: [] };
+}
+
+/** Bir satırdaki tüm sütunları eşit ağırlığa (1) sıfırlar — otomatik yeniden dengeleme (§10.17.3 v2). */
+function rebalanceEqual(columns: PageColumn[]): PageColumn[] {
+  return columns.map((c) => ({ ...c, width: 1 }));
 }
 
 /**
- * Sarmalama (`full → 2|3`, §10.17.3): blok, 0. sütunu kendisi olan yeni bir `ColumnsBlock` ile
- * değiştirilir; diğer sütun(lar) boş başlar.
+ * Sarmalama (`full → satır`, §10.17.3): blok, 0. sütunu kendisi olan yeni bir `ColumnsBlock` ile
+ * değiştirilir; diğer sütun(lar) boş başlar. `initialCount` her zaman 2'dir (v2'de büyüme "+"
+ * butonuyla `addColumnToRow` üzerinden yapılır, sabit bir 2/3 seçici YOKTUR).
  */
-export function wrapInColumns(blocks: Block[], blockId: string, columnCount: PageColumnCount): Block[] {
+export function wrapInColumns(blocks: Block[], blockId: string, initialCount = 2): Block[] {
   const index = blocks.findIndex((b) => b.id === blockId);
   if (index === -1) return blocks;
   const target = blocks[index]!;
   if (target.type === "columns" || target.type === "hero") return blocks; // 422'lik durumu istemci tarafında engelle
 
-  const columns: PageColumn[] = [{ id: newId(), blocks: [target as LeafBlock] }];
-  for (let i = 1; i < columnCount; i += 1) columns.push(emptyColumn());
+  const columns: PageColumn[] = [{ id: newId(), width: 1, blocks: [target as LeafBlock] }];
+  for (let i = 1; i < initialCount; i += 1) columns.push(emptyColumn());
 
   const wrapped: ColumnsBlock = {
     id: newId(),
     type: "columns",
-    data: {
-      columnCount,
-      ratio: defaultRatioFor(columnCount),
-      gap: "md",
-      verticalAlign: "top",
-      columns,
-    },
+    data: { gap: "md", verticalAlign: "top", columns },
   };
 
   return [...blocks.slice(0, index), wrapped, ...blocks.slice(index + 1)];
+}
+
+/**
+ * "+" — satırın sağına yeni bir sütun (verilen bloğu içeren) ekler. Sütun sayısı arttığı için
+ * TÜM sütunlar otomatik olarak eşit genişliğe sıfırlanır (§10.17.3 v2 madde 1).
+ */
+export function addColumnToRow(blocks: Block[], columnsBlockId: string, newBlock: LeafBlock): Block[] {
+  return blocks.map((b) => {
+    if (b.id !== columnsBlockId || b.type !== "columns") return b;
+    const columns = rebalanceEqual([...b.data.columns, { id: newId(), width: 1, blocks: [newBlock] }]);
+    return { ...b, data: { ...b.data, columns } };
+  });
+}
+
+/**
+ * Bir sütunun genişlik ağırlığını manuel ayarlar (kullanıcının manuel oranlama seçeneği,
+ * §10.17.3 v2 madde 1 "veya"). Yapısal bir değişiklik OLMADIĞI için diğer sütunları etkilemez.
+ */
+export function setColumnWidth(blocks: Block[], columnsBlockId: string, columnId: string, width: number): Block[] {
+  return blocks.map((b) => {
+    if (b.id !== columnsBlockId || b.type !== "columns") return b;
+    const columns = b.data.columns.map((c) => (c.id === columnId ? { ...c, width } : c));
+    return { ...b, data: { ...b.data, columns } };
+  });
+}
+
+/** Bir sütunun hangi `columns` konteynerine ait olduğunu bulur (dnd-kit'in `col:<id>` konteyner kimliğinden). */
+export function findColumnsBlockIdForColumn(blocks: Block[], columnId: string): string | null {
+  for (const b of blocks) {
+    if (b.type === "columns" && b.data.columns.some((c) => c.id === columnId)) return b.id;
+  }
+  return null;
+}
+
+/**
+ * Bir bloğun bir sütundan çıkarılması (silme VEYA sürükleyerek başka yere taşıma) sonrası çağrılır.
+ * YALNIZCA belirtilen `columnId` bu işlemle BOŞALDIYSA o sütunu satırdan kaldırır, kalanları eşit
+ * genişliğe yeniden dengeler ve tek sütuna düşerse satırı otomatik "Tam Genişlik"e döndürür
+ * (§10.17.3 v2 madde 3) — hiçbir onay DİYALOĞU gerekmez, içerik kaybı YOKTUR. Satırdaki BAŞKA,
+ * bu işlemden ÖNCE de zaten boş olan sütunlara (ör. henüz hiç doldurulmamış bir sürükle-bırak
+ * yer tutucusu, §10.17.6 "boş sütun tuzağı") KASITLI OLARAK dokunmaz — aksi halde ilgisiz bir
+ * kardeş bloğun silinmesi, kullanıcının doldurmayı beklediği boş bir sütunu sessizce yutardı.
+ */
+export function collapseColumnIfEmpty(blocks: Block[], columnsBlockId: string, columnId: string): Block[] {
+  const item = blocks.find((b) => b.id === columnsBlockId);
+  if (!item || item.type !== "columns") return blocks;
+  const target = item.data.columns.find((c) => c.id === columnId);
+  if (!target || target.blocks.length > 0) return blocks;
+
+  const remaining = rebalanceEqual(item.data.columns.filter((c) => c.id !== columnId));
+  let next = blocks.map((b) => (b.id === columnsBlockId && b.type === "columns" ? { ...b, data: { ...b.data, columns: remaining } } : b));
+  if (remaining.length <= 1) next = unwrapColumns(next, columnsBlockId);
+  return next;
 }
 
 /** Bir `ColumnsBlock`'un TÜM sütunlarındaki blok sayısı — onay diyaloğu metni için. */
@@ -60,15 +119,12 @@ export function needsConfirmToUnwrap(block: ColumnsBlock): boolean {
   return totalBlocksInColumns(block) > 0;
 }
 
-export function needsConfirmToShrink(block: ColumnsBlock, newCount: PageColumnCount): boolean {
-  if (newCount >= block.data.columnCount) return false;
-  return block.data.columns.slice(newCount).some((col) => col.blocks.length > 0);
-}
-
 /**
- * Kaldırma (`2|3 → full`, VERİ KAYBI TUZAĞI — §10.17.3): sütun bloklarının hepsi soldan sağa,
+ * Kaldırma (`satır → full`, VERİ KAYBI TUZAĞI — §10.17.3): sütun bloklarının hepsi soldan sağa,
  * sütun içi sırayla düzleştirilip konteynerin yerine konur. Sessizce silmek YASAK — çağıran
  * taraf (bkz. builder-canvas.tsx) `needsConfirmToUnwrap` doğruysa önce onay diyaloğu gösterir.
+ * (`collapseEmptyColumns`'un tek-sütuna-otomatik-düşme dalı da bunu çağırır — o durumda içerik
+ * zaten kaybolmadığı için onay GEREKMEZ.)
  */
 export function unwrapColumns(blocks: Block[], columnsBlockId: string): Block[] {
   const index = blocks.findIndex((b) => b.id === columnsBlockId);
@@ -78,31 +134,6 @@ export function unwrapColumns(blocks: Block[], columnsBlockId: string): Block[] 
 
   const flattened: Block[] = target.data.columns.flatMap((col) => col.blocks as Block[]);
   return [...blocks.slice(0, index), ...flattened, ...blocks.slice(index + 1)];
-}
-
-/**
- * Sütun sayısını değiştirir. Genişleme (`2 → 3`): yeni boş sütun eklenir, `ratio` varsayılana
- * döner. Daralma (`3 → 2`): son sütunun blokları yeni son sütunun sonuna eklenir (VERİ KAYBI
- * TUZAĞI — çağıran taraf `needsConfirmToShrink` doğruysa önce onay diyaloğu gösterir).
- */
-export function changeColumnCount(blocks: Block[], columnsBlockId: string, newCount: PageColumnCount): Block[] {
-  return blocks.map((b) => {
-    if (b.id !== columnsBlockId || b.type !== "columns") return b;
-    const current = b.data.columns;
-    let nextColumns: PageColumn[];
-    if (newCount > current.length) {
-      nextColumns = [...current];
-      while (nextColumns.length < newCount) nextColumns.push(emptyColumn());
-    } else if (newCount < current.length) {
-      const kept = current.slice(0, newCount);
-      const overflow = current.slice(newCount).flatMap((col) => col.blocks);
-      const lastIndex = kept.length - 1;
-      nextColumns = kept.map((col, i) => (i === lastIndex ? { ...col, blocks: [...col.blocks, ...overflow] } : col));
-    } else {
-      nextColumns = current;
-    }
-    return { ...b, data: { ...b.data, columnCount: newCount, ratio: defaultRatioFor(newCount), columns: nextColumns } };
-  });
 }
 
 export function updateColumnsData(blocks: Block[], columnsBlockId: string, patch: Partial<ColumnsBlock["data"]>): Block[] {

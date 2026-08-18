@@ -208,10 +208,10 @@ test("sayfa editöründe 2 sütunlu blok yerleşimi: sarmala → boş sütuna s�
   // akış YİNE DE bu adımı BİLEREK atlar ki geri kalan (wrap/boş-sütuna-bırak/unwrap/public-render)
   // ayrı bir sürükleme senaryosundaki olası bir regresyon yüzünden MASKELENMESİN.
 
-  // 8) Unwrap (tam genişliğe dön) — boş OLMAYAN sütun(lar) olduğu için onay diyaloğu çıkmalı;
-  // içerik SİLİNMEMELİ (§10.17.3).
-  await page.getByRole("button", { name: "Düzen" }).click();
-  await page.getByRole("menuitem", { name: "Tam Genişlik" }).click();
+  // 8) Unwrap (tam genişliğe dön) — satırın kendi "Tam Genişlik" ikon butonu (§10.17.3 v2'de artık
+  // "Düzen" açılır menüsü YOK — büyütme "+" ile, küçültme blok silmeyle, tam unwrap bu ayrı
+  // butonla yapılır). Boş OLMAYAN sütun(lar) olduğu için onay diyaloğu çıkmalı; içerik SİLİNMEMELİ.
+  await page.getByRole("button", { name: "Tam Genişlik", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Sütunlar tam genişliğe dönüştürülsün mü?" })).toBeVisible();
   await page.getByRole("button", { name: "Tam Genişliğe Dönüştür" }).click();
 
@@ -226,6 +226,71 @@ test("sayfa editöründe 2 sütunlu blok yerleşimi: sarmala → boş sütuna s�
   // 9) Son kaydet.
   await page.getByRole("button", { name: "Kaydet", exact: true }).click();
   await expect(page.getByText("Sayfa kaydedildi.").last()).toBeVisible({ timeout: 10_000 });
+});
+
+/**
+ * §10.17.3 v2 — esnek N-sütun: sabit 2/3 seçici KALDIRILDI, yerine satırın kendi "+" butonuyla
+ * sınırsız büyüme, bir bloğu silmenin YALNIZCA o sütunu (satırdaki BAŞKA, önceden zaten boş olan
+ * sütunlara DOKUNMADAN) kaldırıp kalanları eşit genişliğe dengelemesi ve 6+ sütunda engellemeyen
+ * bir okunabilirlik uyarısı geldi. Bu test sürükleme İÇERMEZ (yalnızca tıklama) — dosyanın geri
+ * kalanındaki kararsız sentetik pointer-olayı sorununa (bkz. `dragUntil` başlık yorumu) tabi
+ * DEĞİLDİR.
+ */
+test("+ ile satırı 2 → 4 sütuna büyütme, 6 sütunda okunabilirlik uyarısı, silme YALNIZCA o sütunu kaldırır", async () => {
+  test.setTimeout(60_000);
+  const unique = Date.now();
+  const growSlug = `qa-e2e-grid-grow-${unique}`;
+  const created = await createPageFixture(token, {
+    title: `${PAGE_TITLE_PREFIX}Grow ${unique}`,
+    slug: growSlug,
+    html: "<p>başlangıç</p>",
+    status: "DRAFT",
+  });
+  const growPageId = created.id as string;
+
+  try {
+    await page.goto(`/admin/pages/${growPageId}`);
+    await expect(page.getByRole("heading", { name: "İçerik blokları" })).toBeVisible({ timeout: 15_000 });
+    await page.waitForTimeout(500);
+
+    // 1) Fixture'ın tek Metin bloğunu 2 Sütuna sarmala.
+    await page.getByRole("button", { name: "Düzen" }).click();
+    await page.getByRole("menuitem", { name: "2 Sütun" }).click();
+    await expect(page.getByText("2 Sütun", { exact: true })).toBeVisible();
+    await expect(page.getByText("Buraya blok sürükleyin")).toBeVisible();
+
+    // 2) "+" ile 3. ve 4. sütunları ekle (her seferinde blok türü seçilir) — sabit bir üst sınır
+    // OLMADAN (§10.17.3 v2 madde 1 "3 sütunla sınırlama KALDIRILSIN").
+    await page.getByRole("button", { name: "Satıra blok ekle" }).click();
+    await page.getByRole("menuitem", { name: "Görsel", exact: true }).click();
+    await expect(page.getByText("3 Sütun", { exact: true })).toBeVisible();
+
+    await page.getByRole("button", { name: "Satıra blok ekle" }).click();
+    await page.getByRole("menuitem", { name: "Çağrı Butonu (CTA)" }).click();
+    await expect(page.getByText("4 Sütun", { exact: true })).toBeVisible();
+
+    // 3) Henüz 6'nın altında — okunabilirlik uyarısı GÖRÜNMEMELİ.
+    await expect(page.getByText("okunabilirlik azalabilir")).toHaveCount(0);
+
+    // 4) 5. ve 6. sütunları ekle — 6'da uyarı görünmeli ama EKLEMEYE İZİN VERMEYE devam etmeli
+    // (§10.17.3 v2 madde 2 "YİNE DE İZİN VERSİN, engellemesin").
+    await page.getByRole("button", { name: "Satıra blok ekle" }).click();
+    await page.getByRole("menuitem", { name: "Galeri", exact: true }).click();
+    await page.getByRole("button", { name: "Satıra blok ekle" }).click();
+    await page.getByRole("menuitem", { name: "Öne Çıkan Ürünler" }).click();
+    await expect(page.getByText("6 Sütun", { exact: true })).toBeVisible();
+    await expect(page.getByText("okunabilirlik azalabilir")).toBeVisible();
+
+    // 5) Son eklenen (Öne Çıkan Ürünler) bloğunu sil — satır 6 → 5 sütuna düşmeli, ama satırın
+    // BAŞTAN BERİ boş olan 2. sütunu ("Buraya blok sürükleyin") ETKİLENMEMELİ/KAYBOLMAMALI
+    // (ilgisiz bir kardeş bloğun silinmesi kullanıcının doldurmayı beklediği boş sütunu YUTMAMALI).
+    await page.getByRole("button", { name: "Bloğu sil" }).last().click();
+    await expect(page.getByText("5 Sütun", { exact: true })).toBeVisible();
+    await expect(page.getByText("Buraya blok sürükleyin")).toBeVisible();
+    await expect(page.getByText("okunabilirlik azalabilir")).toHaveCount(0);
+  } finally {
+    await deletePagePermanently(token, growPageId);
+  }
 });
 
 /**

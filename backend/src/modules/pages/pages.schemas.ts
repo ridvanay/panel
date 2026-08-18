@@ -28,6 +28,8 @@ const PAGE_COLUMNS_LEAF_FORBIDDEN_TYPES = new Set(["columns", "hero"]);
 const MAX_BLOCKS_PER_COLUMN = 20;
 /** Toplam blok sayısı (iç içe DAHİL) tavanı — §10.17.3, DoS koruması. */
 const MAX_TOTAL_PAGE_BLOCKS = 200;
+/** Bir satırdaki üst sınır — pratik bir UX sınırı DEĞİL, salt DoS koruması (§10.17.3 v2). */
+const MAX_COLUMNS_PER_ROW = 24;
 
 /** Bir sütunun İÇİNE konabilen bloklar — `columns`/`hero` HARİÇ, geri kalanı serbest kalır. */
 const PageColumnLeafBlockSchema = z.record(z.unknown()).superRefine((block, ctx) => {
@@ -42,48 +44,76 @@ const PageColumnLeafBlockSchema = z.record(z.unknown()).superRefine((block, ctx)
 
 const PageColumnSchema = z.object({
   id: z.string().min(1),
+  /** Göreli genişlik ağırlığı (grid `fr` birimi) — varsayılan 1 (eşit pay). §10.17.3 v2. */
+  width: z.number().positive().max(12).default(1),
   blocks: z.array(PageColumnLeafBlockSchema).max(MAX_BLOCKS_PER_COLUMN),
 });
 
-const ColumnsBlockSchema = z
-  .object({
-    id: z.string().min(1),
-    type: z.literal("columns"),
-    data: z.object({
-      columnCount: z.union([z.literal(2), z.literal(3)]),
-      ratio: z.enum(["1-1", "2-1", "1-2", "1-1-1"]),
-      gap: z.enum(["none", "sm", "md", "lg"]).default("md"),
-      verticalAlign: z.enum(["top", "center", "bottom"]).default("top"),
-      columns: z.array(PageColumnSchema).min(2).max(3),
-    }),
-  })
-  .superRefine((block, ctx) => {
-    const { columnCount, ratio, columns } = block.data;
-    if (columns.length !== columnCount) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["data", "columns"],
-        message: "columns dizisinin uzunluğu columnCount ile eşit olmalıdır.",
-      });
-    }
-    const allowedRatios = columnCount === 2 ? ["1-1", "2-1", "1-2"] : ["1-1-1"];
-    if (!allowedRatios.includes(ratio)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["data", "ratio"],
-        message: `ratio, columnCount=${columnCount} ile uyumlu değil.`,
-      });
-    }
-  });
+const ColumnsBlockDataSchema = z.object({
+  gap: z.enum(["none", "sm", "md", "lg"]).default("md"),
+  verticalAlign: z.enum(["top", "center", "bottom"]).default("top"),
+  columns: z.array(PageColumnSchema).min(2).max(MAX_COLUMNS_PER_ROW),
+});
 
-const BlockSchema = z.record(z.unknown()).superRefine((block, ctx) => {
-  if ((block as Record<string, unknown>).type !== "columns") return; // eski davranış aynen korunur
+/**
+ * §10.17.3 v2 — sabit `columnCount: 2|3` + `ratio` enum'u kaldırıldı, yerine her sütunun kendi
+ * `width` ağırlığı (varsayılan eşit pay) ve sınırsız (pratikte `MAX_COLUMNS_PER_ROW`) sütun
+ * sayısı geldi. GERİYE DÖNÜK UYUMLULUK: bu satırdan ÖNCE, eski şekilde (`data.columnCount`/
+ * `data.ratio` alanlarıyla) kaydedilmiş sayfalar hâlâ DB'de duruyor OLABİLİR — bu alan
+ * re-validate edilmeden ham JSON olarak GET ile döner (bkz. pages.routes.ts satır ~70), yalnızca
+ * bir sonraki WRITE bu şemadan geçer. Bu `z.preprocess`, herhangi bir WRITE'ta eski şekli
+ * SESSİZCE yeni şekle çevirir: `ratio`'nun görsel oranı (`2-1`→[2,1], `1-2`→[1,2], aksi halde
+ * eşit) her sütunun `width` ağırlığına taşınır, `columnCount`/`ratio` alanları düşürülür. Sonuç:
+ * eski bir sayfa dokunulmadan (örn. sayfanın başka bir alanı düzenlenip kaydedilirken) yeniden
+ * gönderilse bile veri KAYBOLMAZ/BOZULMAZ ve görsel oran KORUNUR.
+ */
+function legacyRatioToWidths(ratio: unknown, count: number): number[] {
+  if (ratio === "2-1") return [2, 1];
+  if (ratio === "1-2") return [1, 2];
+  return Array.from({ length: count }, () => 1);
+}
+
+const ColumnsBlockDataPreprocessed = z.preprocess((raw) => {
+  if (!raw || typeof raw !== "object") return raw;
+  const data = raw as Record<string, unknown>;
+  if (!("columnCount" in data) && !("ratio" in data)) return data; // zaten yeni (v2) şekil
+
+  const rawColumns = Array.isArray(data.columns) ? data.columns : [];
+  const widths = legacyRatioToWidths(data.ratio, rawColumns.length);
+  const { columnCount: _columnCount, ratio: _ratio, ...rest } = data;
+  return {
+    ...rest,
+    columns: rawColumns.map((col, i) => {
+      const c = col && typeof col === "object" ? (col as Record<string, unknown>) : {};
+      return { ...c, width: typeof c.width === "number" ? c.width : (widths[i] ?? 1) };
+    }),
+  };
+}, ColumnsBlockDataSchema);
+
+const ColumnsBlockSchema = z.object({
+  id: z.string().min(1),
+  type: z.literal("columns"),
+  data: ColumnsBlockDataPreprocessed,
+});
+
+/**
+ * `.transform()` (eskiden `.superRefine()`) — yalnızca doğrulamak YETMEZ, `type: "columns"`
+ * blokları `ColumnsBlockSchema`'nın (dolayısıyla `ColumnsBlockDataPreprocessed`'in) NORMALLEŞTİRİLMİŞ
+ * çıktısıyla DEĞİŞTİRİLMELİDİR — aksi halde eski (v1) şekildeki bir blok yalnızca "geçerli" sayılır
+ * ama DB'ye hâlâ eski `columnCount`/`ratio` alanlarıyla, `width` OLMADAN yazılır (geriye dönük
+ * uyumluluk göstermelik kalır). `ctx.addIssue` transform içinde de aynı şekilde parse'ı BAŞARISIZ
+ * kılar (dönüş değeri o durumda kullanılmaz).
+ */
+const BlockSchema = z.record(z.unknown()).transform((block, ctx) => {
+  if ((block as Record<string, unknown>).type !== "columns") return block; // eski davranış aynen korunur
   const parsed = ColumnsBlockSchema.safeParse(block);
   if (!parsed.success) {
     for (const issue of parsed.error.issues) {
       ctx.addIssue(issue);
     }
+    return block;
   }
+  return parsed.data;
 });
 
 /** §10.17.3 — sayfa başına (iç içe dahil) toplam en fazla 200 blok. */

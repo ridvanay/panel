@@ -8232,8 +8232,10 @@ components:
     PageColumnsBlockData:
       type: object
       description: >
-        §10.17 Grid/Kolon düzeni. "Tam Genişlik" bir DEĞER DEĞİL, bu bloğun YOKLUĞUDUR —
-        UI'daki "Düzen" seçicisi bir sarmalama/sarmalamayı-kaldırma işlemidir.
+        §10.17 Grid/Kolon düzeni (v2 — esnek N-sütun). "Tam Genişlik" bir DEĞER DEĞİL, bu
+        bloğun YOKLUĞUDUR. Sabit bir `columnCount`/`ratio` YOKTUR — sütun sayısı
+        `columns.length`'ten türetilir (en az 2, üst sınır 24 — salt DoS koruması, bir UX
+        sınırı DEĞİL), her sütun kendi göreli genişlik ağırlığını (`width`) taşır.
 
 
         **Derinlik en fazla 1:** bir sütunun içine `columns` KONULAMAZ; `hero` de
@@ -8241,33 +8243,32 @@ components:
         (`error.details.blocks`).
 
 
-        Mobil yığılma bir VERİ ALANI DEĞİLDİR — tamamen CSS'tir (`grid-cols-1` tabanı +
-        `md:` kırılma noktası, §10.17.5). `stackOnMobile` gibi her zaman `true` olan
-        gizli bir bayrak EKLENMEZ.
-      required: [columnCount, ratio, gap, verticalAlign, columns]
+        Mobil yığılma bir VERİ ALANI DEĞİLDİR — tamamen CSS'tir (`flex-col` tabanı +
+        `md:` kırılma noktasında `grid`e geçiş, §10.17.5). `stackOnMobile` gibi her zaman
+        `true` olan gizli bir bayrak EKLENMEZ.
+
+
+        **Geriye dönük uyumluluk (§10.17.8):** bu turdan ÖNCE kaydedilmiş sayfalar eski
+        (v1) `columnCount`/`ratio` alanlarıyla DB'de duruyor olabilir — bir `WRITE`
+        isteğinde bu şekil KABUL EDİLİR ve sessizce v2'ye çevrilir (ratio → per-column
+        `width`), `columnCount`/`ratio` düşürülür.
+      required: [gap, verticalAlign, columns]
       properties:
-        columnCount:
-          type: integer
-          enum: [2, 3]
-          description: "`columns` dizisinin uzunluğu buna EŞİT olmalıdır, aksi halde 422."
-        ratio:
-          type: string
-          enum: ["1-1", "2-1", "1-2", "1-1-1"]
-          description: >
-            `columnCount=2` → `1-1|2-1|1-2`; `columnCount=3` → yalnızca `1-1-1`.
-            Uyumsuzluk 422. Renderer TÜM değerleri desteklemek ZORUNDADIR; kontrolü
-            arayüzde açığa çıkarmak ui-designer'ın kararıdır (§10.17.7).
         gap: { type: string, enum: [none, sm, md, lg], default: md }
         verticalAlign: { type: string, enum: [top, center, bottom], default: top }
         columns:
           type: array
           minItems: 2
-          maxItems: 3
+          maxItems: 24
           items:
             type: object
             required: [id, blocks]
             properties:
               id: { type: string }
+              width:
+                type: number
+                default: 1
+                description: "Göreli genişlik ağırlığı (CSS grid `fr` birimi) — varsayılan 1 (eşit pay)."
               blocks:
                 type: array
                 maxItems: 20

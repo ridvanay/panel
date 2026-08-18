@@ -66,24 +66,21 @@ export type LeafBlock =
   | FeaturedProductsBlock
   | FeaturedPortfolioBlock;
 
-export type PageColumnCount = 2 | 3;
-/** columnCount=2 → "1-1"|"2-1"|"1-2"; columnCount=3 → yalnızca "1-1-1". Uyumsuzluk 422 (backend). */
-export type PageColumnRatio = "1-1" | "2-1" | "1-2" | "1-1-1";
 export type PageBlockGap = "none" | "sm" | "md" | "lg";
 export type PageColumnVerticalAlign = "top" | "center" | "bottom";
 
 export interface PageColumn {
   id: string;
+  /** Göreli genişlik ağırlığı (CSS grid `fr` birimi) — varsayılan 1 (eşit pay). §10.17.3 v2. */
+  width: number;
   /** En fazla 20 blok (§10.17.3). */
   blocks: LeafBlock[];
 }
 
 export interface ColumnsBlockData {
-  columnCount: PageColumnCount;
-  ratio: PageColumnRatio;
   gap: PageBlockGap;
   verticalAlign: PageColumnVerticalAlign;
-  /** Uzunluğu `columnCount` ile EŞİT olmalıdır (422). */
+  /** En az 2 sütun — üst sınır `MAX_COLUMNS_PER_ROW` (pratik bir UX sınırı değil, backend DoS koruması). */
   columns: PageColumn[];
 }
 
@@ -114,3 +111,7 @@ export type BuilderContainerId = "root" | `col:${string}`;
 
 export const MAX_BLOCKS_PER_COLUMN = 20;
 export const MAX_TOTAL_BLOCKS = 200;
+/** Bir satırdaki üst sınır — pratik bir UX sınırı değil, salt backend DoS koruması (§10.17.3 v2). */
+export const MAX_COLUMNS_PER_ROW = 24;
+/** Bu eşiğin üzerinde editör okunabilirlik uyarısı gösterir ama İZİN VERMEYE devam eder. */
+export const COLUMN_READABILITY_WARNING_THRESHOLD = 6;

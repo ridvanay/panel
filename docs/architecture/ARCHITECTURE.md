@@ -4731,7 +4731,14 @@ Kapsam DIŞI (mimar kararı, tasarımcıya sorulmaz): blok tipi anahtarları, `d
 
 ### 10.17 Sayfa içerik bloklarında Grid / Kolon düzeni
 
-Durum: v1 · Sahibi: Mimar.
+Durum: v2 (esnek N-sütun) · Sahibi: Mimar.
+
+**v2 değişikliği (bu turda):** v1'in sabit `columnCount: 2|3` + `ratio` enum'u KALDIRILDI.
+Bir satır artık "+" butonuyla sınırsız (pratikte `MAX_COLUMNS_PER_ROW=24`, salt DoS koruması)
+sayıda sütuna büyüyebilir; her sütun kendi göreli genişlik ağırlığını (`width`, varsayılan 1 =
+eşit pay) taşır. Ayrıntılar için bkz. §10.17.3 (güncellendi) ve §10.17.8 (yeni, v1→v2 geçiş
+notları). §10.17.4/§10.17.5/§10.17.6'nın geri kalanı (derinlik-1 kısıtı, sanitize, SEO,
+dnd-kit sözleşmesi, mobil tek kırılma noktası) DEĞİŞMEDİ.
 
 #### 10.17.1 Kapsam düzeltmesi — bu YALNIZCA `Page` içindir, Blog DEĞİL
 
@@ -4761,7 +4768,6 @@ açıktır, dnd-kit'in resmî "multiple containers" örneği doğrudan uygulanab
 sunucu doğrulaması yapısaldır.
 
 ```ts
-export type PageColumnRatio = "1-1" | "2-1" | "1-2" | "1-1-1";
 export type PageBlockGap = "none" | "sm" | "md" | "lg";
 export type PageColumnVerticalAlign = "top" | "center" | "bottom";
 
@@ -4770,15 +4776,21 @@ export type LeafBlock =
   | TextBlock | ImageBlock | GalleryBlock | CtaBlock
   | FeaturedProductsBlock | FeaturedPortfolioBlock;
 
+export interface PageColumn {
+  id: string;
+  /** Göreli genişlik ağırlığı (grid `fr` birimi) — varsayılan 1 (eşit pay). */
+  width: number;
+  blocks: LeafBlock[];
+}
+
 export interface ColumnsBlock {
   id: string;
   type: "columns";
   data: {
-    columnCount: 2 | 3;
-    ratio: PageColumnRatio;
     gap: PageBlockGap;
     verticalAlign: PageColumnVerticalAlign;
-    columns: { id: string; blocks: LeafBlock[] }[];
+    /** En az 2 — üst sınır `MAX_COLUMNS_PER_ROW` (24, salt DoS koruması, UX sınırı DEĞİL). */
+    columns: PageColumn[];
   };
 }
 
@@ -4786,9 +4798,11 @@ export type Block = HeroBlock | LeafBlock | ColumnsBlock;
 ```
 
 Bağlayıcı kurallar:
-- `columns.length === columnCount` (aksi halde 422).
-- `ratio` ↔ `columnCount` uyumu: `columnCount = 2` → `1-1 | 2-1 | 1-2`;
-  `columnCount = 3` → yalnızca `1-1-1`.
+- `columns.length >= 2` (tekil bir sütun anlamsızdır — "Tam Genişlik" zaten bunun
+  karşılığıdır, aşağı bakınız); üst sınır `MAX_COLUMNS_PER_ROW = 24` (422, DoS koruması —
+  kullanıcıya gösterilen bir "en fazla N sütun" mesajı DEĞİLDİR, pratikte hiç dokunulmaz).
+- Sütun sayısı sabit bir `columnCount` alanıyla AYRICA TUTULMAZ — her zaman `columns.length`
+  ile TÜRETİLİR (v1'deki "ikisi senkron kalmalı" kırılganlığı bu şekilde ORTADAN KALKAR).
 - **Derinlik en fazla 1:** bir sütunun içine `columns` KONULAMAZ. `hero` de
   konulamaz (tam-genişlik banner'dır, dar bir sütunda anlamsızdır). İkisi de
   422 + `details.blocks`.
@@ -4797,18 +4811,25 @@ Bağlayıcı kurallar:
 - **Mobil yığılma bir VERİ ALANI DEĞİLDİR.** `stackOnMobile` gibi her zaman `true`
   olan gizli bir bayrak eklenmez; yığılma tamamen CSS'tir (bkz. §10.17.5).
 
-**"Tam Genişlik" bir düzen değeri değil, `columns` bloğunun YOKLUĞUDUR.** UI'daki
-"Düzen: Tam Genişlik / 2 Sütun / 3 Sütun" seçicisi bir sarmalama (wrap) / sarmalamayı
-kaldırma (unwrap) işlemidir:
-- **Sarmalama** (`full → 2`): blok, 0. sütunu kendisi olan yeni bir `ColumnsBlock`
-  ile değiştirilir; diğer sütun(lar) boş başlar.
-- **Kaldırma** (`2 → full`): **VERİ KAYBI TUZAĞI.** Sütun 0 dışındaki sütunlarda blok
-  varsa, bunlar **atılmaz**; tüm sütunların blokları soldan sağa, sütun içi sırayla
-  düzleştirilip konteynerin yerine konur. Boş olmayan sütun varsa kullanıcıya onay
-  diyaloğu gösterilir ("2 sütundaki N blok alt alta taşınacak"). Sessizce silmek
-  YASAK.
-- **Daralma** (`3 → 2`): son sütunun blokları sütun 2'nin (yeni son sütunun) sonuna
-  eklenir. Aynı onay kuralı.
+**"Tam Genişlik" bir düzen değeri değil, `columns` bloğunun YOKLUĞUDUR.** Editördeki "Düzen"
+seçicisi (yalnızca sarmalanmamış tekil bloklarda görünür) bir sarmalama işlemidir; büyütme/
+küçültme/kaldırma artık ayrı, satırın kendi kontrolleridir (v2, aşağıdaki §10.17.8):
+- **Sarmalama** (`full → satır`): blok, 0. sütunu kendisi olan yeni, 2 sütunlu bir
+  `ColumnsBlock` ile değiştirilir; 2. sütun boş başlar.
+- **Büyütme** (satırın kendi "+" butonu): satırın sağına, seçilen türde yeni bir blok içeren
+  bir sütun daha eklenir; TÜM sütunlar otomatik olarak eşit genişliğe (`width: 1`) sıfırlanır.
+  Sabit bir üst sınır (eski "2 veya 3") YOKTUR.
+- **Küçültme** (bir sütundaki bloğu silmek): o sütun BOŞALIRSA satırdan tamamen kaldırılır,
+  kalan sütunlar eşit genişliğe yeniden dengelenir; **satırdaki BAŞKA, önceden zaten boş olan
+  bir sütuna (doldurulmamış bir sürükle-bırak yer tutucusu) DOKUNULMAZ**. Tek sütuna düşen bir
+  satır otomatik olarak Tam Genişliğe döner. İçerik kaybı YOK (silinen zaten kullanıcının
+  bilerek sildiği blok), bu yüzden onay diyaloğu GEREKMEZ. Bir bloğu SÜRÜKLEYEREK başka bir
+  sütuna taşımak bu otomatik küçültmeyi TETİKLEMEZ — kaynak sütun boşalsa bile boş bir bırakma
+  alanı olarak KALIR (taşımak silmek DEĞİLDİR).
+- **Kaldırma** (satırın kendi "Tam Genişlik" butonu, manuel unwrap): **VERİ KAYBI TUZAĞI.**
+  Sütun 0 dışındaki sütunlarda blok varsa, bunlar **atılmaz**; tüm sütunların blokları soldan
+  sağa, sütun içi sırayla düzleştirilip konteynerin yerine konur. Boş olmayan sütun varsa
+  kullanıcıya onay diyaloğu gösterilir. Sessizce silmek YASAK.
 
 #### 10.17.4 Backend — dokunulması ZORUNLU yerler
 
@@ -4856,17 +4877,22 @@ Yapılacaklar (backend-agent):
 bir kez özyineler** (sütun içindeki bloklar aynı `switch`'ten geçer; `columns` içinde
 `columns` şema düzeyinde imkânsız olduğu için sonsuz özyineleme riski yoktur).
 
-Grid eşlemesi (mimar kararı — tek bir kırılma noktası, `md` = 768px):
+Grid eşlemesi (mimar kararı — tek bir kırılma noktası, `md` = 768px; v2'de sabit
+`grid-cols-N` sınıfları YERİNE, sütun sayısı/ağırlığı çalışma anında (runtime) belirlendiği
+için inline `gridTemplateColumns` kullanılır — Tailwind arbitrary sınıfları derleme-zamanı
+statik taramaya dayanır, dinamik `N` için ÇALIŞMAZ):
 
-| `columnCount` / `ratio` | sınıflar |
-|---|---|
-| 2 / `1-1` | `grid grid-cols-1 md:grid-cols-2` |
-| 2 / `2-1` | `grid grid-cols-1 md:grid-cols-3` + 1. çocuk `md:col-span-2` |
-| 2 / `1-2` | `grid grid-cols-1 md:grid-cols-3` + 2. çocuk `md:col-span-2` |
-| 3 / `1-1-1` | `grid grid-cols-1 md:grid-cols-3` |
+```
+className="flex flex-col md:grid"
+style={{ gridTemplateColumns: columns.map(c => `${c.width}fr`).join(" ") }}
+```
 
-`grid-cols-1` tabanı sayesinde **mobilde sütunlar otomatik alt alta düşer** — ek bir
-alan/JS gerekmez. `verticalAlign` → `items-start | items-center | items-end`.
+Mobilde (`md` ALTI) `flex-col` tabanı geçerlidir — `display:grid` hiç aktifleşmediği için
+`gridTemplateColumns` görmezden gelinir, sütunlar doğal akışta alt alta dizilir; ek bir
+alan/JS gerekmez. `md` VE ÜZERİNDE `display:grid`e geçilir ve her sütun kendi `width`
+ağırlığı kadar (`fr` birimi) yer kaplar — 2 sütun eşit ağırlıkla `1fr 1fr` (v1'in `1-1`'i ile
+görsel olarak AYNI), `width:[2,1]` ise `2fr 1fr` (v1'in `2-1`'i ile AYNI oran, farklı
+temsil). `verticalAlign` → `items-start | items-center | items-end`.
 `gap` token'larının somut değerleri **ui-designer'ındır**; `md` kırılma noktası ve
 sınıf iskeleti mimarın kontratıdır (renderer ile editör önizlemesinin aynı sınıfları
 kullanması zorunludur, aksi halde WYSIWYG yalan söyler).
@@ -4894,30 +4920,52 @@ Konteyner kimliği sözleşmesi: kök liste `"root"`, her sütun `"col:<column.i
   ok butonları ekran okuyucu kullanıcıları için çok daha keşfedilebilir bir yoldur).
   Ayrıca sütunlar arası taşıma için ok butonlarının yanına "Sütuna taşı" menüsü
   eklenmesi **frontend-agent'ın takdirindedir**, zorunlu değildir.
-- `context/page-builder-context.tsx` şu yardımcılarla genişler:
-  `setBlockLayout(blockId, "full" | "2" | "3")` (§10.17.3 sarmala/kaldır kuralları,
-  onay gerektiren durumu çağırana bildirir), `moveBlock(activeId, from, to, index)`,
-  `updateBlockIn(containerId, blockId, next)`, `removeBlockIn(containerId, blockId)`.
+- `context/page-builder-context.tsx` (v1'de eklenmişti) **KALDIRILDI** — hiçbir yerden
+  import edilmiyordu (dead code, `builder-canvas.tsx` kendi yerel state'ini `blocks`/
+  `onChange` prop'ları üzerinden yönetir); v2'nin `wrapInColumns`/`addColumnToRow`/
+  `collapseColumnIfEmpty` API değişikliğiyle senkron TUTULMASI gereken kullanılmayan bir
+  kopya bırakmamak için silindi.
 - `lib/page-builder/registry.ts`'e `columns` **EKLENMEZ** — blok paletinde "Sütun"
   diye bir öğe yoktur; sütun, var olan bir bloğun "Düzen" seçiciyle sarmalanmasıyla
-  oluşur (istek metninin ifadesiyle birebir uyumlu).
+  ya da bir satırın kendi "+" butonuyla oluşur (istek metninin ifadesiyle birebir uyumlu).
 
 #### 10.17.7 ui-designer'dan beklenen kararlar
 
-1. **Sütun ikon seçici** (1/2/3 sütun) görsel dili: segment kontrolü mü ikon butonları
-   mı, seçili durum göstergesi (renk TEK BAŞINA olmaz — WCAG 1.4.1), ikonların çizimi.
+1. **Satırın "+" (blok/sütun ekle) butonu** görsel dili — editörde satırın sağına eklenen
+   bir uç, tıklanınca blok türü seçen bir açılır menü açar (v1'deki sabit "1/2/3 sütun ikon
+   seçici" MADDESİ v2'de GEÇERSİZ, kaldırıldı).
 2. `gap` token'larının (`none/sm/md/lg`) somut Tailwind karşılıkları.
-3. Editördeki sütun konteynerinin görsel çerçevesi (kesikli kenarlık? etiket?) ve
-   **boş sütun bırakma alanının** görünümü.
+3. Editördeki sütun konteynerinin görsel çerçevesi (kesikli kenarlık? etiket?),
+   **boş sütun bırakma alanının** görünümü ve `MAX_COLUMNS_PER_ROW`'a (24) yaklaşan/eşit
+   satırlarda **okunabilirlik uyarısının** (§10.17.3 v2 madde 2, non-blocking) görsel dili.
 4. Sürükleme sırasındaki bırakma göstergesi (`DropIndicator`) —
    `components/admin/navigation/nav-tree-row.tsx`'teki mevcut desen yeniden
    kullanılabilir mi?
-5. `verticalAlign` kontrolünün UI'da gösterilip gösterilmeyeceği ve `ratio`
-   (`2-1`/`1-2`) seçicisinin v1'de açılıp açılmayacağı. **Şema her ikisini de
-   destekler**; açığa çıkarma kararı ui-designer'ındır.
+5. `verticalAlign` kontrolünün UI'da gösterilip gösterilmeyeceği ve her sütunun manuel
+   genişlik ağırlığını (`width`) ayarlayan step control'ün görsel dili. **Şema ikisini de
+   destekler**; açığa çıkarma/incelik kararı ui-designer'ındır.
 
 Kapsam DIŞI (mimar kararı): `md` kırılma noktası, grid sınıf iskeleti, `columns` veri
-şeması, derinlik kısıtı.
+şeması, derinlik kısıtı, `MAX_COLUMNS_PER_ROW` sayısal değeri (24).
+
+#### 10.17.8 v1 → v2 geçiş notları (backward compatibility)
+
+Bu turdan ÖNCE kaydedilmiş sayfalar `data.columnCount`/`data.ratio` alanlarıyla (v1 şekli)
+DB'de duruyor olabilir. `GET` uçları bu alanı **yeniden doğrulamadan** ham JSON olarak döner
+(bkz. `pages.routes.ts`) — bu yüzden:
+- **Frontend (okuma):** hem admin editör (`builder-canvas.tsx::ColumnsContainerCard`) hem
+  public render (`components/site/blocks/columns-block.tsx`) her sütunun `width`'ini
+  SAVUNMACI okur (`c.width || 1`) — eski şekilde `width` hiç yoktur, sessizce 1 (eşit pay)
+  varsayılır. `columnCount`/`ratio` alanları varsa yalnızca YOK SAYILIR (okunmaz).
+- **Backend (yazma):** `modules/pages/pages.schemas.ts::BlockSchema` artık bir
+  `superRefine` DEĞİL, bir `.transform()`'dur — `type: "columns"` bloklarını
+  `ColumnsBlockDataPreprocessed` (bir `z.preprocess`) üzerinden geçirir: `columnCount`/
+  `ratio` alanları varsa, `ratio`'nun görsel oranı (`2-1`→`[2,1]`, `1-2`→`[1,2]`, aksi halde
+  eşit) her sütunun `width`'ine ÇEVRİLİR, `columnCount`/`ratio` DÜŞÜRÜLÜR. Sonuç: eski bir
+  sayfa dokunulmadan (örn. başka bir alanı düzenlenip kaydedilirken) yeniden gönderilse
+  bile veri KAYBOLMAZ, görsel oran KORUNUR ve bir sonraki yazımda otomatik olarak v2
+  şekline geçer. Ayrı bir migration script'i YAZILMADI (bilinçli — lazy/on-write geçiş,
+  INFRA.md'deki "additive, backward-compatible" DB migration felsefesiyle aynı ruh).
 
 ---
 

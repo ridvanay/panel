@@ -1397,9 +1397,6 @@ export type PageBlockType =
   | "featured-portfolio"
   | "columns";
 
-export type PageColumnCount = 2 | 3;
-/** columnCount=2 → "1-1"|"2-1"|"1-2"; columnCount=3 → yalnızca "1-1-1". Uyumsuzluk 422. */
-export type PageColumnRatio = "1-1" | "2-1" | "1-2" | "1-1-1";
 export type PageBlockGap = "none" | "sm" | "md" | "lg";
 export type PageColumnVerticalAlign = "top" | "center" | "bottom";
 
@@ -1408,26 +1405,33 @@ export type PageLeafBlockType = Exclude<PageBlockType, "columns" | "hero">;
 
 export interface PageColumn {
   id: string;
+  /** Göreli genişlik ağırlığı (grid `fr` birimi) — varsayılan 1 (eşit pay). §10.17.3 v2. */
+  width: number;
   /** En fazla 20 blok; `type` "columns"/"hero" OLAMAZ (422). */
   blocks: Array<{ id: string; type: PageLeafBlockType; data: Record<string, unknown> }>;
 }
 
 /**
- * "Tam Genişlik" bir DEĞER DEĞİL, bu bloğun YOKLUĞUDUR. UI'daki "Düzen" seçicisi bir
- * sarmalama/sarmalamayı-kaldırma işlemidir (§10.17.3).
+ * "Tam Genişlik" bir DEĞER DEĞİL, bu bloğun YOKLUĞUDUR. Editördeki "Düzen" seçicisi bir
+ * sarmalama işlemidir; büyütme satırın kendi "+" butonuyla (sınırsız, §10.17.3 v2),
+ * küçültme bir sütundaki bloğu silmekle (o sütun otomatik kalkar, kalanlar eşitlenir),
+ * tam kaldırma satırın kendi "Tam Genişlik" butonuyla yapılır.
  *
- * VERİ KAYBI TUZAĞI: `2 → full` veya `3 → 2` geçişinde kaybolan sütunlardaki bloklar
- * ATILMAZ — soldan sağa, sütun içi sırayla düzleştirilip hedefe taşınır ve kullanıcıya
- * onay diyaloğu gösterilir. Sessizce silmek YASAK.
+ * VERİ KAYBI TUZAĞI yalnızca MANUEL "Tam Genişlik" (unwrap) içindir: kaybolan sütunlardaki
+ * bloklar ATILMAZ — soldan sağa, sütun içi sırayla düzleştirilip hedefe taşınır ve
+ * kullanıcıya onay diyaloğu gösterilir. Bir bloğu silmek (otomatik küçültme) veya
+ * sürükleyerek taşımak İÇERİK KAYBETMEZ, bu yüzden onay GEREKMEZ.
  *
- * Mobil yığılma bir VERİ ALANI DEĞİLDİR — tamamen CSS (`grid-cols-1` tabanı + `md:`).
+ * Mobil yığılma bir VERİ ALANI DEĞİLDİR — tamamen CSS (`flex-col` tabanı + `md:`de `grid`).
+ *
+ * GERİYE DÖNÜK UYUMLULUK (§10.17.8): eski (v1) `columnCount`/`ratio` alanlı bir sayfa bir
+ * WRITE isteğinde sessizce bu şekle çevrilir (`ratio` → per-column `width`); `GET` yanıtı
+ * ara dönemde hâlâ eski şekli döndürebilir, tüketiciler `width`'i savunmacı okumalıdır.
  */
 export interface PageColumnsBlockData {
-  columnCount: PageColumnCount;
-  ratio: PageColumnRatio;
   gap: PageBlockGap;
   verticalAlign: PageColumnVerticalAlign;
-  /** Uzunluğu `columnCount` ile EŞİT olmalıdır (422). */
+  /** En az 2 — üst sınır 24 (salt DoS koruması, UX sınırı DEĞİL). */
   columns: PageColumn[];
 }
 

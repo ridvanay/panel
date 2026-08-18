@@ -44,12 +44,22 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
     Bkz. "Known limitations" (CAPTCHA yok).
 - **Sayfa editöründe Grid/Kolon düzeni** (§10.17). Yalnızca `Page` içeriği için (Blog
   kapsam dışı — blog içeriği hâlâ `contentHtml` TipTap zengin metnidir). Herhangi bir bloğu
-  2 veya 3 sütuna sarmalama/sarmalamayı kaldırma; 4 oran seçeneği (`1-1`, `2-1`, `1-2`,
-  `1-1-1`), sütun başı boşluk (`gap`) ve dikey hizalama (`verticalAlign`). Mobilde otomatik
-  alt alta düşme (`grid-cols-1` tabanı, saklı bir "mobilde yığıl" veri alanı YOKTUR — saf
+  2 sütuna sarmalama; satırın kendi "+" butonuyla **sınırsız** (pratikte `MAX_COLUMNS_PER_ROW`
+  = 24, salt DoS koruması) sayıda sütuna büyütme — sabit bir 2/3 seçici veya oran enum'u
+  (`1-1`/`2-1`/`1-2`/`1-1-1`) YOKTUR, her sütun kendi göreli genişlik ağırlığını (`width`,
+  varsayılan 1 = eşit pay) taşır ve yapısal değişikliklerde (sütun ekle/kaldır) otomatik
+  eşitlenir; ayrıca manuel ince ayar (per-sütun genişlik step control) mümkündür. Bir sütunu
+  boşaltan blok silme işlemi o sütunu otomatik kaldırıp kalanları dengeler (satırdaki BAŞKA,
+  önceden zaten boş sütunlara dokunmadan); tek sütuna düşen satır otomatik Tam Genişliğe
+  döner. 6+ sütunlu bir satırda engellemeyen bir okunabilirlik uyarısı gösterilir. Sütun başı
+  boşluk (`gap`) ve dikey hizalama (`verticalAlign`) korunur. Mobilde otomatik alt alta düşme
+  (`flex-col` tabanı, `md:`de `grid`e geçiş — saklı bir "mobilde yığıl" veri alanı YOKTUR, saf
   CSS). Derinlik en fazla 1 (bir sütunun içine sütun/hero konulamaz, 422).
   - Yeni `PageBlock` tipi: `columns` (bkz. `openapi.yaml::PageColumnsBlockData`).
   - db-agent tarafında migration **YOK** (`Page.blocks` zaten serbest `Json` alanı).
+  - Geriye dönük uyumluluk: bu özelliğin ilk (v1, sabit `columnCount`/`ratio`) sürümüyle
+    kaydedilmiş sayfalar bir sonraki WRITE'ta sessizce yeni şekle çevrilir (görsel oran
+    korunur) — bkz. `ARCHITECTURE.md` §10.17.8.
 
 ### Changed
 
