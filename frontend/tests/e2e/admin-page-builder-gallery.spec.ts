@@ -92,8 +92,18 @@ async function openEditorAndRemoveDefaultBlock(pageId: string) {
   await expect(page.locator('button[aria-label^="Sürükle: "]')).toHaveCount(0);
 }
 
+/**
+ * qa-agent GÜNCELLEMESİ — page-builder UI revizyonu içerik bloklarının doğrudan sayfa köküne
+ * eklenmesini KALDIRDI (bkz. `block-list.tsx`/`builder-canvas.tsx`): artık kökte yalnızca "Düzen"
+ * (Layout Picker) var, eski kök-seviyesi "+ Galeri" düğmesi ARTIK YOK. Galeri bloğu, diğer tüm
+ * içerik blokları gibi ÖNCE bir konteynere (burada "Tek Sütun") ihtiyaç duyar, SONRA o konteynerin
+ * kendi in-container ekleyicisi ("Konteynere blok ekle" → "Galeri" menü öğesi) üzerinden eklenir —
+ * bkz. `admin-page-builder-containers.spec.ts` senaryo 5'teki AYNI desen.
+ */
 async function addGalleryBlock() {
-  await page.getByRole("button", { name: "+ Galeri", exact: true }).click();
+  await page.getByRole("button", { name: "Tek Sütun" }).click();
+  await page.getByRole("button", { name: "Konteynere blok ekle" }).click();
+  await page.getByRole("menuitem", { name: "Galeri", exact: true }).click();
   await expect(page.getByText("Henüz görsel eklenmedi")).toBeVisible();
 }
 
