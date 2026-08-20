@@ -1,3 +1,17 @@
+import {
+  Heading as HeadingIcon,
+  Image as ImageIcon,
+  LayoutTemplate,
+  MousePointerClick,
+  SeparatorHorizontal,
+  ShoppingBag,
+  SquareStack,
+  Text as TextIcon,
+  Type,
+  Images,
+  Briefcase,
+  type LucideIcon,
+} from "lucide-react";
 import type { ContentBlock, ContentBlockType } from "./types";
 
 /**
@@ -6,14 +20,30 @@ import type { ContentBlock, ContentBlockType } from "./types";
  */
 export type PaletteBlockType = ContentBlockType;
 
-export const blockRegistry: Record<PaletteBlockType, { label: string }> = {
-  hero: { label: "Hero" },
-  text: { label: "Metin" },
-  image: { label: "Görsel" },
-  gallery: { label: "Galeri" },
-  cta: { label: "Çağrı Butonu (CTA)" },
-  "featured-products": { label: "Öne Çıkan Ürünler" },
-  "featured-portfolio": { label: "Öne Çıkan Projeler" },
+/** Kategorize blok seçici (§Faz 0) — sıra, kullanıcının kategorilendirmesiyle BİREBİR aynı. */
+export type PaletteBlockCategory = "basic" | "media" | "marketing" | "dynamic";
+
+export const PALETTE_CATEGORIES: PaletteBlockCategory[] = ["basic", "media", "marketing", "dynamic"];
+
+export const PALETTE_CATEGORY_LABEL: Record<PaletteBlockCategory, string> = {
+  basic: "Temel Elemanlar",
+  media: "Medya & İnteraktif",
+  marketing: "Pazarlama & Sosyal Kanıt",
+  dynamic: "Dinamik & CMS",
+};
+
+export const blockRegistry: Record<PaletteBlockType, { label: string; category: PaletteBlockCategory; icon: LucideIcon }> = {
+  heading: { label: "Başlık", category: "basic", icon: HeadingIcon },
+  text: { label: "Metin", category: "basic", icon: TextIcon },
+  button: { label: "Buton", category: "basic", icon: MousePointerClick },
+  "icon-box": { label: "İkon Kutusu", category: "basic", icon: SquareStack },
+  divider: { label: "Ayırıcı & Boşluk", category: "basic", icon: SeparatorHorizontal },
+  image: { label: "Görsel", category: "media", icon: ImageIcon },
+  gallery: { label: "Galeri", category: "media", icon: Images },
+  hero: { label: "Hero", category: "marketing", icon: LayoutTemplate },
+  cta: { label: "Çağrı Butonu (CTA)", category: "marketing", icon: Type },
+  "featured-products": { label: "Öne Çıkan Ürünler", category: "dynamic", icon: ShoppingBag },
+  "featured-portfolio": { label: "Öne Çıkan Projeler", category: "dynamic", icon: Briefcase },
 };
 
 export function newId(): string {
@@ -37,5 +67,13 @@ export function createBlock(type: PaletteBlockType): ContentBlock {
       return { id, type, data: { heading: "", limit: 4 } };
     case "featured-portfolio":
       return { id, type, data: { heading: "", limit: 4 } };
+    case "heading":
+      return { id, type, data: { text: "Başlık", level: 2, align: "left", underline: false } };
+    case "button":
+      return { id, type, data: { label: "Tıklayın", href: "/", style: "solid", size: "md", align: "left" } };
+    case "icon-box":
+      return { id, type, data: { icon: "Sparkles", heading: "Başlık", description: "" } };
+    case "divider":
+      return { id, type, data: { variant: "line", style: "solid", height: 32 } };
   }
 }

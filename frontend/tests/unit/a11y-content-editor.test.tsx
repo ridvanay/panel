@@ -52,11 +52,21 @@ describe("İçerik editörü — a11y", () => {
     expect(results).toHaveNoViolations();
   });
 
-  it("BuilderCanvas — her blok tipi (hero/text/image/gallery/cta) birlikte render edildiğinde kritik/ciddi a11y ihlali içermez", async () => {
+  it("BuilderCanvas — her blok tipi (hero/text/image/gallery/cta/heading/button/icon-box/divider) birlikte render edildiğinde kritik/ciddi a11y ihlali içermez", async () => {
     const galleryBlock = createBlock("gallery") as GalleryBlock;
     galleryBlock.data.images = [{ url: "https://example.com/a.png", alt: "Örnek" }];
 
-    const nodes: PageNode[] = [createBlock("hero"), createBlock("text"), createBlock("image"), galleryBlock, createBlock("cta")];
+    const nodes: PageNode[] = [
+      createBlock("hero"),
+      createBlock("text"),
+      createBlock("image"),
+      galleryBlock,
+      createBlock("cta"),
+      createBlock("heading"),
+      createBlock("button"),
+      createBlock("icon-box"),
+      createBlock("divider"),
+    ];
 
     const { container } = render(
       <BuilderCanvas nodes={nodes} onChange={() => {}} selectedContainerId={null} onSelectContainer={() => {}} />

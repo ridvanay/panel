@@ -7,6 +7,10 @@ import { CtaBlockView } from "./cta-block";
 import { FeaturedProductsBlockView } from "./featured-products-block";
 import { FeaturedPortfolioBlockView } from "./featured-portfolio-block";
 import { ContainerBlockView } from "./container-block";
+import { HeadingBlockView } from "./heading-block";
+import { ButtonBlockView } from "./button-block";
+import { IconBoxBlockView } from "./icon-box-block";
+import { DividerBlockView } from "./divider-block";
 
 /**
  * §6.3 mimar dokümanı — "chrome" sözleşmesi. Kök dizideki yaprak bloklar `chrome: "page"`
@@ -40,6 +44,14 @@ export function BlockRenderer({ nodes, chrome }: { nodes: PageNode[]; chrome: Bl
             return <FeaturedProductsBlockView key={node.id} block={node} chrome={chrome} />;
           case "featured-portfolio":
             return <FeaturedPortfolioBlockView key={node.id} block={node} chrome={chrome} />;
+          case "heading":
+            return <HeadingBlockView key={node.id} block={node} chrome={chrome} />;
+          case "button":
+            return <ButtonBlockView key={node.id} block={node} chrome={chrome} />;
+          case "icon-box":
+            return <IconBoxBlockView key={node.id} block={node} chrome={chrome} />;
+          case "divider":
+            return <DividerBlockView key={node.id} block={node} chrome={chrome} />;
           case "container":
             return <ContainerBlockView key={node.id} block={node} />;
           default:

@@ -238,6 +238,61 @@ const GalleryBlockSchema = z.object({
   data: GalleryBlockDataSchema,
 });
 
+/* ---------- §Faz "Temel Elemanlar" — Başlık/Buton/İkon Kutusu/Ayırıcı (yeni) ---------- */
+
+/**
+ * Buton/İkon Kutusu `href` alanı — `isSafeContainerBackgroundImageUrl` ile AYNI protokol
+ * güvenlik gerekçesi (yalnızca relative veya http(s) mutlak, `javascript:`/`vbscript:`/`data:`
+ * YASAK), ama CSS `url("…")` bağlamına YERLEŞMEDİĞİ için `CSS_URL_UNSAFE_RE` karakter kara
+ * listesi burada uygulanmaz (bir `href` boşluk/parantez İÇEREBİLİR, tırnak-kaçışı riski yok).
+ */
+function isSafeHref(value: string): boolean {
+  if (DANGEROUS_URL_SCHEME_RE.test(value)) return false;
+  return value.startsWith("/") || SAFE_ABSOLUTE_URL_RE.test(value);
+}
+const SafeHrefSchema = z.string().min(1).max(2048).refine(isSafeHref, "Bağlantı güvensiz bir protokol içeriyor.");
+
+const HeadingBlockDataSchema = z.object({
+  text: z.string().min(1).max(300),
+  level: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6)]).default(2),
+  align: z.enum(["left", "center", "right"]).default("left"),
+  underline: z.boolean().default(false),
+});
+const HeadingBlockSchema = z.object({ id: z.string().min(1), type: z.literal("heading"), data: HeadingBlockDataSchema });
+
+/**
+ * `icon` gevşek doğrulanır (`min(1).max(40)`) — frontend `lib/page-builder/icon-options.ts`deki
+ * kapalı allowlist'in İKİNCİ, "numaraca birebir aynı" tutulması gereken bir kopyası BURADA
+ * TUTULMAZ (senkron kayma riski); render tarafı zaten tanınmayan bir isim için güvenli bir
+ * varsayılana düşer (`resolveIcon`) — bu SADECE bir görsel seçim, dinamik import/require ASLA
+ * yapılmadığı için tanınmayan bir isim güvenlik açığı DEĞİLDİR.
+ */
+const ButtonBlockDataSchema = z.object({
+  label: z.string().min(1).max(120),
+  href: SafeHrefSchema,
+  style: z.enum(["solid", "outline", "ghost"]).default("solid"),
+  size: z.enum(["sm", "md", "lg"]).default("md"),
+  icon: z.string().min(1).max(40).optional(),
+  align: z.enum(["left", "center", "right"]).default("left"),
+});
+const ButtonBlockSchema = z.object({ id: z.string().min(1), type: z.literal("button"), data: ButtonBlockDataSchema });
+
+const IconBoxBlockDataSchema = z.object({
+  icon: z.string().min(1).max(40),
+  heading: z.string().min(1).max(200),
+  description: z.string().max(1000).default(""),
+  href: SafeHrefSchema.optional(),
+});
+const IconBoxBlockSchema = z.object({ id: z.string().min(1), type: z.literal("icon-box"), data: IconBoxBlockDataSchema });
+
+/** Ayırıcı VE Boşluk TEK blok tipi — `variant` ayrımlar (bkz. frontend `types.ts::DividerBlock`). */
+const DividerBlockDataSchema = z.object({
+  variant: z.enum(["line", "space"]).default("line"),
+  style: z.enum(["solid", "dashed"]).default("solid"),
+  height: z.number().min(0).max(400).default(32),
+});
+const DividerBlockSchema = z.object({ id: z.string().min(1), type: z.literal("divider"), data: DividerBlockDataSchema });
+
 /* ---------- özyinelemeli düğüm — §5.4 ---------- */
 
 function applySubSchema(schema: z.ZodTypeAny, node: unknown, ctx: z.RefinementCtx): unknown {
@@ -254,7 +309,9 @@ function applySubSchema(schema: z.ZodTypeAny, node: unknown, ctx: z.RefinementCt
  * çıktı DB'ye yazılmalıdır, aksi halde geriye dönük uyumluluk göstermelik kalır).
  *
  * `type` bilinmiyorsa blok SERBEST bırakılır (`z.record(z.unknown())`) — v2'deki
- * "minimum diff" kararı KORUNUR; yalnızca `container`/`columns`/`gallery` dar şemaya girer.
+ * "minimum diff" kararı KORUNUR; yalnızca `container`/`columns`/`gallery`/`heading`/`button`/
+ * `icon-box`/`divider` dar şemaya girer (diğerleri — `hero`/`text`/`image`/`cta`/`featured-*` —
+ * ÖNCEDEN VAR OLAN bir boşluk olarak doğrulanmadan geçer, bu turun kapsamı DEĞİL).
  *
  * ÖZYİNELEME GÜVENLİĞİ: bu şema `ContainerNodeSchema` üzerinden kendini çağırır. Derinlik
  * sınırı BURADA DEĞİL, `PageBlockListSchema` içindeki İTERATİF ön-taramada uygulanır (bkz.
@@ -273,6 +330,10 @@ const PageNodeSchema: z.ZodType<unknown, z.ZodTypeDef, unknown> = z.record(z.unk
   if (type === "container") return applySubSchema(ContainerNodeSchema, node, ctx);
   if (type === "columns") return applySubSchema(LegacyColumnsNodeSchema, node, ctx);
   if (type === "gallery") return applySubSchema(GalleryBlockSchema, node, ctx);
+  if (type === "heading") return applySubSchema(HeadingBlockSchema, node, ctx);
+  if (type === "button") return applySubSchema(ButtonBlockSchema, node, ctx);
+  if (type === "icon-box") return applySubSchema(IconBoxBlockSchema, node, ctx);
+  if (type === "divider") return applySubSchema(DividerBlockSchema, node, ctx);
   return node;
 });
 

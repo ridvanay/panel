@@ -113,6 +113,9 @@ async function openEditorAndRemoveDefaultBlock(pageId: string) {
 async function addGalleryBlock() {
   await page.getByRole("button", { name: "Tek Sütun" }).click();
   await page.getByRole("button", { name: "Konteynere blok ekle" }).click();
+  // "Galeri" "Medya & İnteraktif" kategorisinde, popover varsayılan olarak "Temel Elemanlar"
+  // sekmesini gösterir (bkz. `add-content-menu.tsx`) — önce kategori sekmesine geçilir.
+  await page.getByRole("tab", { name: "Medya & İnteraktif" }).click();
   await page.getByRole("menuitem", { name: "Galeri", exact: true }).click();
   await expect(page.getByText("Henüz görsel eklenmedi")).toBeVisible();
 }

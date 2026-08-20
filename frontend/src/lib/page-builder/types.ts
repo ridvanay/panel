@@ -16,7 +16,11 @@ export type ContentBlockType =
   | "gallery"
   | "cta"
   | "featured-products"
-  | "featured-portfolio";
+  | "featured-portfolio"
+  | "heading"
+  | "button"
+  | "icon-box"
+  | "divider";
 
 /** Kanonik konteyner düğümü. */
 export type ContainerNodeType = "container";
@@ -80,6 +84,41 @@ export interface FeaturedPortfolioBlock extends BaseNode {
   data: { heading?: string; limit: number; categoryId?: string };
 }
 
+/** §Faz "Temel Elemanlar" — H1-H6, hizalama, opsiyonel alt çizgi vurgusu. */
+export type HeadingLevel = 1 | 2 | 3 | 4 | 5 | 6;
+export type TextAlign = "left" | "center" | "right";
+
+export interface HeadingBlock extends BaseNode {
+  type: "heading";
+  data: { text: string; level: HeadingLevel; align: TextAlign; underline: boolean };
+}
+
+/**
+ * `style`/`size` HAM CSS DEĞERİ DEĞİL — `@/components/ui/link-button.tsx::LinkButton`'ın
+ * `buttonVariants`'ına eşlenen kısa isimler (bkz. `site/blocks/button-block.tsx`). `icon`
+ * VARSA `lib/page-builder/icon-options.ts::resolveIcon`'dan geçer — bilinmeyen/eski bir isim
+ * güvenli bir varsayılana düşer, ASLA dinamik import/require yapılmaz.
+ */
+export interface ButtonBlock extends BaseNode {
+  type: "button";
+  data: { label: string; href: string; style: "solid" | "outline" | "ghost"; size: "sm" | "md" | "lg"; icon?: string; align: TextAlign };
+}
+
+/** İkon Kutusu — `icon` aynı `icon-options.ts` allowlist'inden. */
+export interface IconBoxBlock extends BaseNode {
+  type: "icon-box";
+  data: { icon: string; heading: string; description: string; href?: string };
+}
+
+/**
+ * Ayırıcı VE Boşluk TEK blok tipi olarak modellenir (kullanıcı isteğinde "Ayırıcı & Boşluk"
+ * tek madde) — `variant` ayrımlar. `style` yalnızca `variant: "line"` iken anlamlıdır.
+ */
+export interface DividerBlock extends BaseNode {
+  type: "divider";
+  data: { variant: "line" | "space"; style: "solid" | "dashed"; height: number };
+}
+
 /**
  * `children` TAŞIMAYAN düğümler. v2'nin `LeafBlock`'undan farkı: `hero` ARTIK DAHİLDİR
  * (§3.4 mimar dokümanı — tam-genişlik ihtiyacı artık `container.settings.layout: "full-width"`
@@ -92,7 +131,11 @@ export type ContentBlock =
   | GalleryBlock
   | CtaBlock
   | FeaturedProductsBlock
-  | FeaturedPortfolioBlock;
+  | FeaturedPortfolioBlock
+  | HeadingBlock
+  | ButtonBlock
+  | IconBoxBlock
+  | DividerBlock;
 
 /** @deprecated v2 adı — yalnızca geçiş sırasında import kırılmasın diye. Yeni kodda `ContentBlock` kullanın. */
 export type LeafBlock = ContentBlock;

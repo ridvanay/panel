@@ -95,8 +95,11 @@ test.describe("Konteyner mimarisi — admin editörü", () => {
 
       const addToEmptyContainer = page.getByRole("button", { name: "Konteynere blok ekle" });
 
-      // İlk sütuna Görsel.
+      // İlk sütuna Görsel — "Görsel" "Medya & İnteraktif" kategorisinde, popover varsayılan
+      // olarak "Temel Elemanlar" sekmesini gösterir (bkz. `add-content-menu.tsx`) — önce
+      // kategori sekmesine geçilir.
       await addToEmptyContainer.nth(0).click();
+      await page.getByRole("tab", { name: "Medya & İnteraktif" }).click();
       await page.getByRole("menuitem", { name: "Görsel", exact: true }).click();
       await page.locator('[id$="-url"]').fill("https://example.com/qa-e2e-container-5050-a.png");
       await page.locator('[id$="-alt"]').fill("QA container 50/50 görsel A");
@@ -430,6 +433,7 @@ test.describe("Konteyner mimarisi — unwrap onayı", () => {
       await expect(page.getByText("Buraya blok sürükleyin")).toBeVisible();
 
       await page.getByRole("button", { name: "Konteynere blok ekle" }).click();
+      await page.getByRole("tab", { name: "Medya & İnteraktif" }).click();
       await page.getByRole("menuitem", { name: "Görsel", exact: true }).click();
       await page.locator('[id$="-url"]').fill("https://example.com/qa-e2e-unwrap-image.png");
       await page.locator('[id$="-alt"]').fill("QA unwrap görseli");

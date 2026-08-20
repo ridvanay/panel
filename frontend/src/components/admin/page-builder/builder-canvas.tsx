@@ -7,7 +7,6 @@ import {
   KeyboardSensor,
   PointerSensor,
   closestCorners,
-  useDroppable,
   useSensor,
   useSensors,
   type DragEndEvent,
@@ -20,29 +19,20 @@ import {
   ArrowDown,
   ArrowUp,
   ArrowUpToLine,
-  Briefcase,
   Columns2,
   Columns3,
   Columns4,
   Copy,
   GripVertical,
-  Image as ImageIcon,
-  Images,
   LayoutTemplate,
-  MousePointerClick,
   PanelTop,
-  Plus,
   Rows2,
   Settings2,
-  ShoppingBag,
   Trash2,
-  Type,
-  type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { blockRegistry, createBlock, type PaletteBlockType } from "@/lib/page-builder/registry";
 import {
@@ -77,6 +67,7 @@ import {
   type PageNode,
 } from "@/lib/page-builder/types";
 import { LayoutMenu } from "./layout-menu";
+import { AddContentMenu, EmptyContainerDropZone } from "./add-content-menu";
 import { HeroBlockEditor } from "./blocks/hero-block";
 import { TextBlockEditor } from "./blocks/text-block";
 import { ImageBlockEditor } from "./blocks/image-block";
@@ -84,6 +75,10 @@ import { GalleryBlockEditor } from "./blocks/gallery-block";
 import { CtaBlockEditor } from "./blocks/cta-block";
 import { FeaturedProductsBlockEditor } from "./blocks/featured-products-block";
 import { FeaturedPortfolioBlockEditor } from "./blocks/featured-portfolio-block";
+import { HeadingBlockEditor } from "./blocks/heading-block";
+import { ButtonBlockEditor } from "./blocks/button-block";
+import { IconBoxBlockEditor } from "./blocks/icon-box-block";
+import { DividerBlockEditor } from "./blocks/divider-block";
 
 /**
  * §2.4 mimar dokümanı — ÖZYİNELEMELİ editör ağacı. v2'nin iki-seviyeli (kök + sütun) sabit
@@ -112,6 +107,14 @@ function ContentBlockBody({ block, onChange }: { block: ContentBlock; onChange: 
       return <FeaturedProductsBlockEditor block={block} onChange={onChange} />;
     case "featured-portfolio":
       return <FeaturedPortfolioBlockEditor block={block} onChange={onChange} />;
+    case "heading":
+      return <HeadingBlockEditor block={block} onChange={onChange} />;
+    case "button":
+      return <ButtonBlockEditor block={block} onChange={onChange} />;
+    case "icon-box":
+      return <IconBoxBlockEditor block={block} onChange={onChange} />;
+    case "divider":
+      return <DividerBlockEditor block={block} onChange={onChange} />;
   }
 }
 
@@ -127,18 +130,6 @@ interface Ctx {
   onSelectContainer: (id: string) => void;
   selectedContainerId: string | null;
 }
-
-/** Palette "İçerik" ikon eşlemesi — in-container ekleyici (`AddContentMenu`) her tip için görsel
- *  bir ipucu taşısın diye (Elementor-tarzı ızgara, salt metin DEĞİL). */
-const BLOCK_TYPE_ICON: Record<PaletteBlockType, LucideIcon> = {
-  hero: LayoutTemplate,
-  text: Type,
-  image: ImageIcon,
-  gallery: Images,
-  cta: MousePointerClick,
-  "featured-products": ShoppingBag,
-  "featured-portfolio": Briefcase,
-};
 
 /** §5 ui-designer dokümanı — bir konteynerin İÇİNDEKİ yaprak bloklar için sessiz "bare" ipucu. */
 function BareChromeHint() {
@@ -224,86 +215,6 @@ const DEPTH_STYLE: Record<1 | 2 | 3 | 4, { border: string; accent: string; bg: s
 function depthStyle(depth: number) {
   const clamped = Math.min(Math.max(Math.round(depth), 1), 4) as 1 | 2 | 3 | 4;
   return DEPTH_STYLE[clamped];
-}
-
-function EmptyContainerDropZone({
-  containerId,
-  atMax,
-  onAdd,
-}: {
-  containerId: BuilderContainerId;
-  atMax: boolean;
-  onAdd: (type: PaletteBlockType) => void;
-}) {
-  const { isOver, setNodeRef } = useDroppable({ id: containerId });
-  return (
-    <div
-      ref={setNodeRef}
-      className={cn(
-        "flex min-h-28 flex-col items-center justify-center gap-2.5 rounded-lg border-2 border-dashed border-border/60 bg-surface-muted/20 text-center transition-colors",
-        isOver && "border-primary bg-primary/5"
-      )}
-    >
-      <AddContentMenu disabled={atMax} onAdd={onAdd} variant="prominent" />
-      <p className={cn("text-xs text-foreground/40", isOver && "text-primary")}>veya buraya blok sürükleyin</p>
-    </div>
-  );
-}
-
-function AddContentMenu({
-  onAdd,
-  disabled,
-  variant = "icon",
-}: {
-  onAdd: (type: PaletteBlockType) => void;
-  disabled?: boolean;
-  /** "icon" — DOLU bir konteynerin sonuna eklenen küçük "daha fazla blok ekle" düğmesi (kendi
-   *  aria-label'ı VARDIR — boş durumun "Konteynere blok ekle" düğmesiyle KARIŞTIRILMASIN, e2e
-   *  testleri (`admin-page-builder-containers.spec.ts`) o etiketi yalnızca BOŞ durum için sayar).
-   *  "prominent" — Elementor-tarzı boş durum "+ Eleman Ekle" düğmesi (§2 kullanıcı isteği). */
-  variant?: "icon" | "prominent";
-}) {
-  const options = Object.entries(blockRegistry) as [PaletteBlockType, { label: string }][];
-  const label = variant === "prominent" ? "Konteynere blok ekle" : "Konteynere daha fazla blok ekle";
-  const title = disabled ? `Bir konteynerde en fazla ${MAX_CHILDREN_PER_CONTAINER} öğe olabilir` : label;
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          variant === "prominent" ? (
-            <Button type="button" variant="secondary" size="sm" aria-label={label} disabled={disabled} title={title} />
-          ) : (
-            <Button type="button" variant="ghost" size="icon-sm" aria-label={label} disabled={disabled} title={title} />
-          )
-        }
-      >
-        <Plus className="h-4 w-4" />
-        {variant === "prominent" && "Eleman Ekle"}
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="center" className="w-64">
-        {/* DİKKAT: `DropdownMenuLabel` (base-ui `MenuPrimitive.GroupLabel`) BİLEREK KULLANILMAZ —
-            bir `MenuPrimitive.Group` ATASI OLMADAN kullanılınca runtime hatası fırlatıyor
-            (qa-agent bu turda e2e ile YAKALADI: menü açılınca sayfa çöküyordu). Salt görsel bir
-            başlık için düz bir `<p>` yeterli. */}
-        <p className="px-1.5 py-1 text-xs font-medium text-muted-foreground">İçerik bloğu seç</p>
-        <div className="grid grid-cols-2 gap-1 p-1 pt-0">
-          {options.map(([type, meta]) => {
-            const Icon = BLOCK_TYPE_ICON[type];
-            return (
-              <DropdownMenuItem
-                key={type}
-                onClick={() => onAdd(type)}
-                className="flex-col items-center gap-1.5 rounded-lg border border-transparent py-2.5 text-center hover:border-border hover:bg-surface-muted"
-              >
-                <Icon className="h-5 w-5 text-primary" aria-hidden />
-                <span className="text-xs leading-tight text-foreground/80">{meta.label}</span>
-              </DropdownMenuItem>
-            );
-          })}
-        </div>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
 }
 
 /** Bir satırdaki (`direction: "row"`) sütunların `widthFr` oranını, kullanıcıya dönük kısa bir
