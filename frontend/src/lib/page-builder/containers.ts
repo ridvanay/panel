@@ -323,3 +323,24 @@ export function duplicateNode(nodes: PageNode[], id: string): PageNode[] {
   next.splice(index + 1, 0, clone);
   return setContainerChildren(nodes, parentId, next);
 }
+
+/**
+ * Editör-seviyesi otomatik göç — "içerik her zaman bir konteyner içindedir" kuralı artık YENİ
+ * eklemeler için UI'dan zorlanıyor (kökte yalnızca Layout Picker var, bkz. `block-list.tsx`), ama
+ * BU KURALDAN ÖNCE kaydedilmiş sayfalar hâlâ kökte "çıplak" (bir konteynerin DIŞINDaki) düz
+ * bloklar taşıyabilir. Bu fonksiyon, editör sayfayı YÜKLERKEN (`page.tsx::load`) her kök-seviyesi
+ * çıplak bloğu KENDİ tek-sütunlu konteynerine sarar — böylece eski sayfalar da editörde yeni
+ * konteyner-öncelikli görünüme döner. Yalnızca KÖK seviyesinde uygulanır (bir konteynerin
+ * İÇİNDEKİ çıplak bloklar zaten GEÇERLİDİR, dokunulmaz). Salt admin editör state'i için — public
+ * render'ın da kullandığı `normalizePageNodes`'a KASITLI OLARAK EKLENMEZ, aksi halde HENÜZ
+ * kaydedilmemiş bir göç canlı sayfa görünümünü (padding/chrome farkı) sessizce değiştirirdi;
+ * değişiklik yalnızca admin bir sonraki "Kaydet"te kalıcı olur (legacy `columns`→`container`
+ * göçüyle AYNI, zaten kanıtlanmış desen — bkz. `normalize.ts` başlığı).
+ */
+export function wrapBareRootBlocks(nodes: PageNode[]): PageNode[] {
+  return nodes.map((node) =>
+    node.type === "container"
+      ? node
+      : { id: newId(), type: "container" as const, settings: { ...DEFAULT_CONTAINER_SETTINGS }, children: [node] }
+  );
+}

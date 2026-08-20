@@ -87,8 +87,18 @@ async function openEditorAndRemoveDefaultBlock(pageId: string) {
   await page.goto(`/admin/pages/${pageId}`);
   await expect(page.getByRole("heading", { name: "İçerik blokları" })).toBeVisible({ timeout: 15_000 });
   await page.waitForTimeout(500); // bkz. `admin-page-builder-columns.spec.ts` başlığındaki AYNI güvenlik payı notu
-  await expect(page.locator('button[aria-label^="Sürükle: "]')).toHaveCount(1);
-  await page.getByRole("button", { name: "Bloğu sil" }).first().click();
+  // Fixture'ın çıplak kök `text` bloğu ("b1") artık editör YÜKLENİRKEN otomatik olarak kendi
+  // tek-sütunlu konteynerine sarılıyor (bkz. `containers.ts::wrapBareRootBlocks`) — bu yüzden 2
+  // sürükle tutamacı (Konteyner + Metin) bekleniyor; konteyneri (içeriğiyle BİRLİKTE) silmek
+  // temiz/boş bir sayfa bırakır.
+  await expect(page.locator('button[aria-label^="Sürükle: "]')).toHaveCount(2);
+  // DİKKAT: `getByRole("button", { name: "Konteyneri sil" })` (substring/varsayılan) KULLANILMAZ
+  // — `admin-page-builder-containers.spec.ts`teki AYNI not — `ContainerCard`'ın seçim div'i de
+  // `role="button"` taşır ve aria adı olmadığı için TÜM iç metni/aria-label'ları (bu düğme dahil)
+  // birleştirip ad-içerikten hesaplıyor; `.first()` o zaman İÇ düğme yerine DIŞ seçim div'ini
+  // yakalar (tıklama hiçbir şeyi SİLMEZ, yalnızca seçer) — `[aria-label="..."]` öz-nitelik
+  // seçicisine geçilir.
+  await page.locator('button[aria-label="Konteyneri sil"]').first().click();
   await expect(page.locator('button[aria-label^="Sürükle: "]')).toHaveCount(0);
 }
 

@@ -20,6 +20,7 @@ import {
   subtreeDepth,
   toContainerId,
   updateContainerSettings,
+  wrapBareRootBlocks,
 } from "@/lib/page-builder/containers";
 import { createContainerFromPreset, type LayoutPreset } from "@/lib/page-builder/presets";
 import { useAutosave } from "@/hooks/use-autosave";
@@ -156,7 +157,10 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
     setTranslatedField(setTranslations, locale, key, value);
   }
 
-  const enBlocks = useMemo(() => normalizePageNodes(translations[locale]?.blocks ?? []), [translations, locale]);
+  const enBlocks = useMemo(
+    () => wrapBareRootBlocks(normalizePageNodes(translations[locale]?.blocks ?? [])),
+    [translations, locale]
+  );
 
   function setEnBlocks(nextBlocks: PageNode[]) {
     setTranslations((prev) => ({ ...prev, [locale]: { ...(prev[locale] ?? {}), blocks: nextBlocks as unknown as unknown[] } }));
@@ -192,7 +196,12 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
   const load = useCallback(async () => {
     try {
       const page = await pagesApi.getPage(pageId);
-      const loadedBlocks = normalizePageNodes(page.blocks);
+      // Editör-seviyesi otomatik göç (§3 kullanıcı isteği) — kökte "çıplak" (bir konteynerin
+      // DIŞINDaki) düz bloklar varsa, editör açılırken KENDİ tek-sütunlu konteynerlerine sarılır.
+      // Yalnızca admin görünümü içindir; `snapshot.blocks` de AYNI sarılmış değeri kullanır (bkz.
+      // aşağısı), bu yüzden sayfayı SADECE açmak "Kaydedilmemiş değişiklik" bildirimini TETİKLEMEZ
+      // — göç, admin başka bir şeyi kaydettiğinde sessizce kalıcı olur.
+      const loadedBlocks = wrapBareRootBlocks(normalizePageNodes(page.blocks));
       setTitle(page.title);
       setSlug(page.slug);
       setStatus(page.status);
