@@ -8,8 +8,21 @@ import * as pagesApi from "@/lib/api/pages";
 import * as revisionsApi from "@/lib/api/revisions";
 import * as localesApi from "@/lib/api/locales";
 import type { ContentStatus, ContentTranslations, Locale as LocaleDto } from "@/lib/api/types";
-import type { Block } from "@/lib/page-builder/types";
+import { MAX_CONTAINER_DEPTH, MAX_TOTAL_PAGE_NODES, type BuilderContainerId, type ContainerNode, type PageNode } from "@/lib/page-builder/types";
+import { normalizePageNodes } from "@/lib/page-builder/normalize";
 import { createBlock, type PaletteBlockType } from "@/lib/page-builder/registry";
+import {
+  containerDepth,
+  countNodes,
+  findNode,
+  getContainerChildren,
+  insertNode,
+  isContainerAtCapacity,
+  subtreeDepth,
+  toContainerId,
+  updateContainerSettings,
+} from "@/lib/page-builder/containers";
+import { createContainerFromPreset, type LayoutPreset } from "@/lib/page-builder/presets";
 import { useAutosave } from "@/hooks/use-autosave";
 import { useAuth } from "@/context/auth-context";
 import { Card } from "@/components/ui/card";
@@ -28,6 +41,7 @@ import { LocaleTabs } from "@/components/admin/locale-tabs";
 import { LocaleFallbackBadge, FALLBACK_FIELD_CLASSES } from "@/components/admin/locale-fallback-badge";
 import { BlockList } from "@/components/admin/page-builder/block-list";
 import { BuilderCanvas } from "@/components/admin/page-builder/builder-canvas";
+import { ContainerSettingsPanel } from "@/components/admin/page-builder/container-settings-panel";
 import { SeoPreview } from "@/components/admin/seo-preview";
 import { RevisionHistory } from "@/components/admin/revision-history";
 import { ImageUploadField } from "@/components/admin/media/image-upload-field";
@@ -53,7 +67,7 @@ interface PageSnapshot {
   scheduledAt: string;
   seoTitle: string;
   seoDescription: string;
-  blocks: Block[];
+  blocks: PageNode[];
   ogTitle: string;
   ogImageUrl: string;
   canonicalUrl: string;
@@ -100,7 +114,8 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
   const [scheduledAt, setScheduledAt] = useState("");
   const [seoTitle, setSeoTitle] = useState("");
   const [seoDescription, setSeoDescription] = useState("");
-  const [blocks, setBlocks] = useState<Block[]>([]);
+  const [blocks, setBlocks] = useState<PageNode[]>([]);
+  const [selectedContainerId, setSelectedContainerId] = useState<string | null>(null);
   const [ogTitle, setOgTitle] = useState("");
   const [ogImageUrl, setOgImageUrl] = useState("");
   const [canonicalUrl, setCanonicalUrl] = useState("");
@@ -142,16 +157,47 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
     setTranslatedField(setTranslations, locale, key, value);
   }
 
-  const enBlocks = (translations[locale]?.blocks as unknown as Block[] | undefined) ?? [];
+  const enBlocks = useMemo(() => normalizePageNodes(translations[locale]?.blocks ?? []), [translations, locale]);
 
-  function setEnBlocks(nextBlocks: Block[]) {
+  function setEnBlocks(nextBlocks: PageNode[]) {
     setTranslations((prev) => ({ ...prev, [locale]: { ...(prev[locale] ?? {}), blocks: nextBlocks as unknown as unknown[] } }));
+  }
+
+  const activeNodes = isDefaultLocale ? blocks : enBlocks;
+  const setActiveNodes = isDefaultLocale ? setBlocks : setEnBlocks;
+  const selectedContainer = selectedContainerId
+    ? ((findNode(activeNodes, selectedContainerId) as ContainerNode | null) ?? null)
+    : null;
+  const selectedContainerDepth = selectedContainer ? containerDepth(activeNodes, selectedContainer.id) : 0;
+  const targetLabel = selectedContainer ? `Konteyner (Seviye ${selectedContainerDepth})` : "Sayfa (kök)";
+  const layoutPickerDisabled = selectedContainer !== null && selectedContainerDepth >= MAX_CONTAINER_DEPTH;
+
+  /** Yeni bir düğümü (içerik bloğu veya Layout Picker ön ayarı) seçili konteynere (yoksa köke)
+   *  ekler — `MAX_TOTAL_PAGE_NODES`, `MAX_CHILDREN_PER_CONTAINER` (kök HARİÇ, bkz. types.ts) ve
+   *  `MAX_CONTAINER_DEPTH` sınırlarını burada, EKLEME ANINDA önleyici olarak uygular. */
+  function addNodeToTarget(node: PageNode) {
+    if (countNodes(activeNodes) >= MAX_TOTAL_PAGE_NODES) return;
+    const targetContainerId: BuilderContainerId = selectedContainer ? toContainerId(selectedContainer.id) : "root";
+    if (selectedContainer) {
+      if (isContainerAtCapacity(activeNodes, targetContainerId)) return;
+      if (selectedContainerDepth + subtreeDepth(node) > MAX_CONTAINER_DEPTH) return;
+    }
+    const children = getContainerChildren(activeNodes, targetContainerId);
+    setActiveNodes(insertNode(activeNodes, targetContainerId, children.length, node));
+  }
+
+  function addContentBlock(type: PaletteBlockType) {
+    addNodeToTarget(createBlock(type));
+  }
+
+  function addLayoutPreset(preset: LayoutPreset) {
+    addNodeToTarget(createContainerFromPreset(preset));
   }
 
   const load = useCallback(async () => {
     try {
       const page = await pagesApi.getPage(pageId);
-      const loadedBlocks = page.blocks as unknown as Block[];
+      const loadedBlocks = normalizePageNodes(page.blocks);
       setTitle(page.title);
       setSlug(page.slug);
       setStatus(page.status);
@@ -169,6 +215,7 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
       setViewCount(page.viewCount);
       setPublishedAt(page.publishedAt);
       setEditorGeneration((prev) => prev + 1);
+      setSelectedContainerId(null);
       setSnapshot({
         title: page.title,
         slug: page.slug,
@@ -250,14 +297,6 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
     enabled: loaded && isDefaultLocale,
     save: () => pagesApi.autosavePage(pageId, { title, blocks }),
   });
-
-  function addBlock(type: PaletteBlockType) {
-    if (isDefaultLocale) {
-      setBlocks((prev) => [...prev, createBlock(type)]);
-    } else {
-      setEnBlocks([...enBlocks, createBlock(type)]);
-    }
-  }
 
   async function handleSave() {
     setSaveError(null);
@@ -486,15 +525,35 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
             <h2 className="admin-h2">
               İçerik blokları {!isDefaultLocale && <span className="text-foreground/40">({locale.toUpperCase()})</span>}
             </h2>
-            <p className="mt-1 admin-text-secondary">Sayfaya blok ekleyin ve sırasını düzenleyin.</p>
+            <p className="mt-1 admin-text-secondary">Sayfaya blok/düzen ekleyin ve sırasını düzenleyin.</p>
             <div className="mt-4">
-              <BlockList onAdd={addBlock} />
+              <BlockList
+                onAddContent={addContentBlock}
+                onAddLayout={addLayoutPreset}
+                targetLabel={targetLabel}
+                layoutDisabled={layoutPickerDisabled}
+                layoutDisabledReason={layoutPickerDisabled ? "Maksimum iç içe geçme derinliğine ulaşıldı (4)" : undefined}
+              />
             </div>
-            <div className="mt-4">
-              {isDefaultLocale ? (
-                <BuilderCanvas key={`default-${editorGeneration}`} blocks={blocks} onChange={setBlocks} />
-              ) : (
-                <BuilderCanvas key={`${locale}-${editorGeneration}`} blocks={enBlocks} onChange={setEnBlocks} />
+            <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_320px]">
+              <div className="min-w-0">
+                <BuilderCanvas
+                  key={`${isDefaultLocale ? "default" : locale}-${editorGeneration}`}
+                  nodes={activeNodes}
+                  onChange={setActiveNodes}
+                  selectedContainerId={selectedContainer?.id ?? null}
+                  onSelectContainer={setSelectedContainerId}
+                />
+              </div>
+              {selectedContainer && (
+                <div className="lg:sticky lg:top-6 lg:self-start">
+                  <ContainerSettingsPanel
+                    container={selectedContainer}
+                    depth={selectedContainerDepth}
+                    onChange={(patch) => setActiveNodes(updateContainerSettings(activeNodes, selectedContainer.id, patch))}
+                    onClose={() => setSelectedContainerId(null)}
+                  />
+                </div>
               )}
             </div>
           </div>

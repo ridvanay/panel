@@ -1,13 +1,14 @@
+import { cn } from "@/lib/utils";
 import { isModuleEnabledServer } from "@/lib/api/server-modules";
 import { fetchProductsServer } from "@/lib/api/server-products";
 import { ProductCard } from "@/components/site/product-card";
-import type { FeaturedProductsBlock } from "@/lib/page-builder/types";
+import type { BlockChrome, FeaturedProductsBlock } from "@/lib/page-builder/types";
 
 /**
  * §Faz 4 Site Şablonu — `products` modülü kapalıysa SESSİZCE hiçbir şey render ETMEZ (`null`
  * döner), hata/boş state göstermez; sayfanın geri kalanı normal render olmaya devam eder.
  */
-export async function FeaturedProductsBlockView({ block }: { block: FeaturedProductsBlock }) {
+export async function FeaturedProductsBlockView({ block, chrome }: { block: FeaturedProductsBlock; chrome: BlockChrome }) {
   const enabled = await isModuleEnabledServer("products");
   if (!enabled) return null;
 
@@ -20,7 +21,7 @@ export async function FeaturedProductsBlockView({ block }: { block: FeaturedProd
   if (items.length === 0) return null;
 
   return (
-    <section className="px-4 py-16 sm:px-6">
+    <section className={cn(chrome === "page" && "px-4 py-16 sm:px-6")}>
       {block.data.heading && (
         <h2 className="text-center text-2xl font-semibold text-foreground">{block.data.heading}</h2>
       )}

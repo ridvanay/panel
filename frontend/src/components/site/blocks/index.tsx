@@ -1,4 +1,4 @@
-import type { Block } from "@/lib/page-builder/types";
+import type { BlockChrome, PageNode } from "@/lib/page-builder/types";
 import { HeroBlockView } from "./hero-block";
 import { TextBlockView } from "./text-block";
 import { ImageBlockView } from "./image-block";
@@ -6,34 +6,44 @@ import { GalleryBlockView } from "./gallery-block";
 import { CtaBlockView } from "./cta-block";
 import { FeaturedProductsBlockView } from "./featured-products-block";
 import { FeaturedPortfolioBlockView } from "./featured-portfolio-block";
-import { ColumnsBlockView } from "./columns-block";
+import { ContainerBlockView } from "./container-block";
 
 /**
- * §10.17.5 — `columns` dalı kendini bir kez özyineler (sütun içindeki bloklar AYNI switch'ten
- * geçer). `columns` şema düzeyinde `columns`/`hero` İÇEREMEZ (derinlik ≤1, backend zod ile
- * zorlanır), bu yüzden sonsuz özyineleme riski yoktur.
+ * §6.3 mimar dokümanı — "chrome" sözleşmesi. Kök dizideki yaprak bloklar `chrome: "page"`
+ * (bugünkü davranış BİREBİR korunur — kendi `mx-auto max-w-*`/`px-*`/`py-*` gutter'larını
+ * taşırlar). Bir `container`'ın İÇİNDEKİ yaprak bloklar `chrome: "bare"` — kendi dış
+ * gutter'larını BIRAKIRLAR, boşluk konteynerin `padding`/`gap`'inden gelir.
+ *
+ * `container` düğümleri kendi `chrome` sözleşmesine tabi DEĞİLDİR (yalnızca içerik bloklarının
+ * dış boşluğu bu prop'a bakar) — `ContainerBlockView` kendi çocuklarını her zaman
+ * `chrome="bare"` ile render eder (bkz. `container-block.tsx`).
+ *
+ * Bilinmeyen/tanınmayan `type` → sessizce `null` (ileri uyumluluk — `normalizePageNodes` bu
+ * düğümleri OLDUĞU GİBİ geçirir, burada güvenle atlanır).
  */
-export function BlockRenderer({ blocks }: { blocks: Block[] }) {
+export function BlockRenderer({ nodes, chrome }: { nodes: PageNode[]; chrome: BlockChrome }) {
   return (
     <>
-      {blocks.map((block) => {
-        switch (block.type) {
+      {nodes.map((node) => {
+        switch (node.type) {
           case "hero":
-            return <HeroBlockView key={block.id} block={block} />;
+            return <HeroBlockView key={node.id} block={node} chrome={chrome} />;
           case "text":
-            return <TextBlockView key={block.id} block={block} />;
+            return <TextBlockView key={node.id} block={node} chrome={chrome} />;
           case "image":
-            return <ImageBlockView key={block.id} block={block} />;
+            return <ImageBlockView key={node.id} block={node} chrome={chrome} />;
           case "gallery":
-            return <GalleryBlockView key={block.id} block={block} />;
+            return <GalleryBlockView key={node.id} block={node} chrome={chrome} />;
           case "cta":
-            return <CtaBlockView key={block.id} block={block} />;
+            return <CtaBlockView key={node.id} block={node} chrome={chrome} />;
           case "featured-products":
-            return <FeaturedProductsBlockView key={block.id} block={block} />;
+            return <FeaturedProductsBlockView key={node.id} block={node} chrome={chrome} />;
           case "featured-portfolio":
-            return <FeaturedPortfolioBlockView key={block.id} block={block} />;
-          case "columns":
-            return <ColumnsBlockView key={block.id} block={block} />;
+            return <FeaturedPortfolioBlockView key={node.id} block={node} chrome={chrome} />;
+          case "container":
+            return <ContainerBlockView key={node.id} block={node} />;
+          default:
+            return null;
         }
       })}
     </>

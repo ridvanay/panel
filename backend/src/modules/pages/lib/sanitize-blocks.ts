@@ -1,4 +1,5 @@
 import { sanitizeRichHtml } from "../../../lib/html-sanitize";
+import { MAX_CONTAINER_DEPTH } from "../../../lib/page-blocks";
 
 /**
  * Sayfa builder'ının `blocks` dizisindeki HER `type: "text"` block'unun `data.html` alanını
@@ -8,8 +9,8 @@ import { sanitizeRichHtml } from "../../../lib/html-sanitize";
  *
  * Diğer block türleri (`hero`/`image`/`gallery`/`cta`) HTML içermez (bkz.
  * `frontend/src/lib/page-builder/types.ts`) — dokunulmadan olduğu gibi döner. Beklenmedik/bilinmeyen
- * bir şekil (örn. `data.html` string değilse) sessizce atlanır; zod şeması zaten `blocks`'u
- * `z.record(z.unknown())[]` olarak serbest bırakıyor, bu yüzden burada savunmacı davranıyoruz.
+ * bir şekil (örn. `data.html` string değilse) sessizce atlanır; zod şeması zaten çoğu blok tipini
+ * serbest bırakıyor, bu yüzden burada savunmacı davranıyoruz.
  *
  * ---------------------------------------------------------------------------------------------
  * GÜVENLİK DÜZELTMESİ (§10.17.4, stored XSS) — 2026-08-17, backend-agent:
@@ -17,23 +18,46 @@ import { sanitizeRichHtml } from "../../../lib/html-sanitize";
  * eklenen `type: "columns"` konteyner bloğu, çocuk bloklarını `data.columns[].blocks` içinde
  * TUTAR — bu iç bloklar üst seviye `.map()` döngüsüne HİÇ UĞRAMIYORDU. Sonuç: bir sütunun içine
  * konan `text` bloğunun `data.html`'i `sanitizeRichHtml`'DEN GEÇMEDEN DB'ye yazılıyor ve public
- * sayfada `dangerouslySetInnerHTML` ile OLDUĞU GİBİ basılıyordu → STORED XSS (kötü niyetli/ele
- * geçirilmiş bir EDITOR hesabı sütun içine `<script>`/`onerror=` payload'ı yerleştirip TÜM
- * ziyaretçileri etkileyebilirdi).
+ * sayfada `dangerouslySetInnerHTML` ile OLDUĞU GİBİ basılıyordu → STORED XSS.
  *
- * Düzeltme: `sanitizePageBlocks` artık `type === "columns"` bloklarında her sütunun `blocks`
- * dizisini AYNI fonksiyondan (özyinelemeli) geçirir. Şema derinliği en fazla 1 ile sınırlı olsa
- * da (bir sütunun içine `columns` KONULAMAZ, bkz. `pages.schemas.ts::ColumnsBlockSchema`) bu
- * fonksiyon savunma amaçlı genel/özyinelemeli yazılmıştır.
+ * §10.19 (v3) GÜNCELLEMESİ — hiyerarşik `container` mimarisi (bkz.
+ * `.claude/design-notes-page-builder-containers.md` §5.6/§13.5, ZORUNLU/atlanamaz madde):
+ * `type: "container"` düğümleri `data.columns[].blocks` YERİNE `children` dizisinde çocuk
+ * taşır. Bu dal EKLENMEZSE §10.17.4'teki STORED XSS'İN AYNISI, bu kez `container.children`
+ * üzerinden YENİDEN AÇILIR — bir konteynerin içine konan `text` bloğu hiç sanitize edilmeden
+ * DB'ye yazılırdı. `type: "columns"` (legacy) dalı da AYNEN KORUNUR — eski `PageRevision`
+ * snapshot'ları hâlâ bu şekilde kayıtlı olabilir (bkz. pages.routes.ts:619, restore ENDPOINT'i
+ * bu fonksiyonu yeni şemadan HİÇ geçmemiş bir snapshot üzerinde çağırır).
  * ---------------------------------------------------------------------------------------------
  */
-export function sanitizePageBlocks(blocks: unknown[]): unknown[] {
-  return blocks.map(sanitizeSinglePageBlock);
+
+/**
+ * Savunma amaçlı depth-cutoff (§13.5 — security-agent onayı, ŞARTLI): bu fonksiyon
+ * `pages.routes.ts:619`'da bir `PageRevision` SNAPSHOT'ı üzerinde de çağrılır ve o veri YENİ
+ * şemadan (dolayısıyla `scanPageNodeStructure`'ın derinlik ≤ `MAX_CONTAINER_DEPTH`
+ * garantisinden) HİÇ geçmez — keyfi derinlikte/döngüsel bir snapshot mümkündür. Cutoff, HER
+ * çağrının EN BAŞINDA (children üzerinde herhangi bir `.map()`/iterasyon YAPILMADAN ÖNCE)
+ * uygulanır — böylece gerçek JS çağrı yığını, veri ne kadar derin/bozuk olursa olsun en fazla
+ * `MAX_CONTAINER_DEPTH + 2` kadar büyür (`scanPageNodeStructure`'dan bağımsız, kendi başına
+ * stack-safe bir savunma katmanı).
+ */
+const SANITIZE_DEPTH_CUTOFF = MAX_CONTAINER_DEPTH + 2;
+
+export function sanitizePageBlocks(blocks: unknown[], depth = 1): unknown[] {
+  // Depth-cutoff EN BAŞTA — map/iterasyondan ÖNCE (§13.5 zorunlu koşulu).
+  if (depth > SANITIZE_DEPTH_CUTOFF) return blocks;
+  return blocks.map((block) => sanitizeSinglePageBlock(block, depth));
 }
 
-function sanitizeSinglePageBlock(block: unknown): unknown {
+function sanitizeSinglePageBlock(block: unknown, depth: number): unknown {
   if (!block || typeof block !== "object") return block;
   const b = block as Record<string, unknown>;
+
+  if (b.type === "container") {
+    if (!Array.isArray(b.children)) return block;
+    // ÖZYİNELEME — bu dal olmadan konteyner içi text blokları sanitize edilmeden kalırdı.
+    return { ...b, children: sanitizePageBlocks(b.children as unknown[], depth + 1) };
+  }
 
   if (b.type === "columns") {
     if (!b.data || typeof b.data !== "object") return block;
@@ -45,7 +69,7 @@ function sanitizeSinglePageBlock(block: unknown): unknown {
       const col = column as Record<string, unknown>;
       if (!Array.isArray(col.blocks)) return column;
       // ÖZYİNELEME — bu satır olmadan sütun içi text blokları sanitize edilmeden kalırdı.
-      return { ...col, blocks: sanitizePageBlocks(col.blocks) };
+      return { ...col, blocks: sanitizePageBlocks(col.blocks as unknown[], depth + 1) };
     });
 
     return { ...b, data: { ...data, columns: sanitizedColumns } };

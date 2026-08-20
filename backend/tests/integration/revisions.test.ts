@@ -7,12 +7,13 @@ import { registerTestUser } from "../helpers/auth";
 describe("content revisions, SEO fields & i18n (§10.1, §10.2, §10.5)", () => {
   let app: FastifyInstance;
   let accessToken: string;
+  let userId: string;
 
   beforeAll(async () => {
     app = await buildTestApp();
     await resetDatabase(app.prisma);
     // İlk kayıt olan kullanıcı otomatik ADMIN olur (bkz. auth.service.ts).
-    ({ accessToken } = await registerTestUser(app));
+    ({ accessToken, userId } = await registerTestUser(app));
   });
 
   afterAll(async () => {
@@ -154,6 +155,150 @@ describe("content revisions, SEO fields & i18n (§10.1, §10.2, §10.5)", () => 
         headers: authHeader(),
       });
       expect(res.statusCode).toBe(404);
+    });
+
+    // Dalga 3.1 SON denetim — backend-agent bulgusu / security-agent düzeltmesi: revizyon
+    // geri-yükleme, `PageBlockListSchema`'dan hiç geçmemiş (örn. v3 container şeması devreye
+    // girmeden ÖNCE serbestçe kabul edilmiş) bir eski/kötü niyetli snapshot'ı artık YENİDEN
+    // doğrulamadan yazmaz. Snapshot doğrudan `ContentRevision` tablosuna (API'yi, dolayısıyla
+    // `PageBlockListSchema`'yı BYPASS ederek) eklenir — bu, tam olarak "şemadan hiç geçmemiş
+    // eski bir snapshot" senaryosunu simüle eder.
+    it("rejects (422) restoring a revision whose snapshot.blocks contains a 'javascript:' container background that never passed PageBlockListSchema", async () => {
+      const create = await app.inject({
+        method: "POST",
+        url: "/api/v1/admin/pages",
+        headers: authHeader(),
+        payload: { title: "Restore Güvenlik Testi" },
+      });
+      const pageId = create.json().data.id;
+      const pageBefore = await app.prisma.page.findUniqueOrThrow({ where: { id: pageId } });
+
+      const maliciousRevision = await app.prisma.contentRevision.create({
+        data: {
+          entityType: "PAGE",
+          entityId: pageId,
+          editedById: userId,
+          editedByName: "Test User",
+          snapshot: {
+            title: "Kötü Niyetli Snapshot",
+            slug: pageBefore.slug,
+            blocks: [
+              {
+                id: "c1",
+                type: "container",
+                // §v3 öncesi: bu şekil hiçbir zaman `PageBlockListSchema`/`ContainerBackgroundSchema`
+                // protokol beyaz listesinden (§13.3) geçmedi.
+                settings: { background: { type: "image", value: "javascript:alert(1)" } },
+                children: [],
+              },
+            ],
+            seoTitle: null,
+            seoDescription: null,
+            ogTitle: null,
+            ogImageUrl: null,
+            canonicalUrl: null,
+            noIndex: false,
+            isLegalDocument: false,
+            translations: {},
+          },
+        },
+      });
+
+      const restore = await app.inject({
+        method: "POST",
+        url: `/api/v1/admin/pages/${pageId}/revisions/${maliciousRevision.id}/restore`,
+        headers: authHeader(),
+      });
+      expect(restore.statusCode).toBe(422);
+      expect(restore.json().error.code).toBe("VALIDATION_ERROR");
+
+      // Reddedilen restore hiçbir şey YAZMAMALI — sayfa dokunulmadan kalır.
+      const pageAfter = await app.prisma.page.findUniqueOrThrow({ where: { id: pageId } });
+      expect(pageAfter.blocks).toEqual(pageBefore.blocks);
+      expect(pageAfter.title).toBe(pageBefore.title);
+    });
+
+    it("rejects (422) restoring a revision whose snapshot.translations.<LOCALE>.blocks contains a 'javascript:' container background", async () => {
+      const create = await app.inject({
+        method: "POST",
+        url: "/api/v1/admin/pages",
+        headers: authHeader(),
+        payload: { title: "Restore Çeviri Güvenlik Testi" },
+      });
+      const pageId = create.json().data.id;
+      const pageBefore = await app.prisma.page.findUniqueOrThrow({ where: { id: pageId } });
+
+      const maliciousRevision = await app.prisma.contentRevision.create({
+        data: {
+          entityType: "PAGE",
+          entityId: pageId,
+          editedById: userId,
+          editedByName: "Test User",
+          snapshot: {
+            title: pageBefore.title,
+            slug: pageBefore.slug,
+            blocks: [],
+            seoTitle: null,
+            seoDescription: null,
+            ogTitle: null,
+            ogImageUrl: null,
+            canonicalUrl: null,
+            noIndex: false,
+            isLegalDocument: false,
+            translations: {
+              EN: {
+                blocks: [
+                  {
+                    id: "c1",
+                    type: "container",
+                    settings: { background: { type: "image", value: "data:text/html,<script>alert(1)</script>" } },
+                    children: [],
+                  },
+                ],
+              },
+            },
+          },
+        },
+      });
+
+      const restore = await app.inject({
+        method: "POST",
+        url: `/api/v1/admin/pages/${pageId}/revisions/${maliciousRevision.id}/restore`,
+        headers: authHeader(),
+      });
+      expect(restore.statusCode).toBe(422);
+
+      const pageAfter = await app.prisma.page.findUniqueOrThrow({ where: { id: pageId } });
+      expect(pageAfter.blocks).toEqual(pageBefore.blocks);
+    });
+
+    it("still restores a legitimate legacy snapshot (no container settings) successfully (regression check)", async () => {
+      const create = await app.inject({
+        method: "POST",
+        url: "/api/v1/admin/pages",
+        headers: authHeader(),
+        payload: { title: "Legacy Restore V1" },
+      });
+      const pageId = create.json().data.id;
+
+      await app.inject({
+        method: "PATCH",
+        url: `/api/v1/admin/pages/${pageId}`,
+        headers: authHeader(),
+        payload: { title: "Legacy Restore V2" },
+      });
+
+      const revisions = (
+        await app.inject({ method: "GET", url: `/api/v1/admin/pages/${pageId}/revisions`, headers: authHeader() })
+      ).json().data;
+
+      const restore = await app.inject({
+        method: "POST",
+        url: `/api/v1/admin/pages/${pageId}/revisions/${revisions[0].id}/restore`,
+        headers: authHeader(),
+      });
+      expect(restore.statusCode).toBe(200);
+      expect(restore.json().data.title).toBe("Legacy Restore V1");
     });
 
     it("round-trips SEO fields (ogTitle, ogImageUrl, canonicalUrl, noIndex) via PATCH/GET", async () => {

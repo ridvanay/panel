@@ -68,7 +68,7 @@ describe("FeaturedProductsBlockView", () => {
   it("products modülü kapalıyken null render eder (fetchProductsServer HİÇ çağrılmaz)", async () => {
     vi.mocked(serverModulesApi.isModuleEnabledServer).mockResolvedValue(false);
 
-    const jsx = await FeaturedProductsBlockView({ block: makeBlock() });
+    const jsx = await FeaturedProductsBlockView({ block: makeBlock(), chrome: "page" });
     expect(jsx).toBeNull();
     expect(serverProductsApi.fetchProductsServer).not.toHaveBeenCalled();
   });
@@ -77,7 +77,7 @@ describe("FeaturedProductsBlockView", () => {
     vi.mocked(serverModulesApi.isModuleEnabledServer).mockResolvedValue(true);
     vi.mocked(serverProductsApi.fetchProductsServer).mockResolvedValue([]);
 
-    const jsx = await FeaturedProductsBlockView({ block: makeBlock() });
+    const jsx = await FeaturedProductsBlockView({ block: makeBlock(), chrome: "page" });
     expect(jsx).toBeNull();
   });
 
@@ -89,7 +89,7 @@ describe("FeaturedProductsBlockView", () => {
       makeProduct({ id: "p3", title: "Ürün 3", slug: "urun-3" }),
     ]);
 
-    const jsx = await FeaturedProductsBlockView({ block: makeBlock({ limit: 2 }) });
+    const jsx = await FeaturedProductsBlockView({ block: makeBlock({ limit: 2 }), chrome: "page" });
     render(jsx);
 
     expect(screen.getByText("Öne Çıkanlar")).toBeInTheDocument();
@@ -115,7 +115,7 @@ describe("FeaturedProductsBlockView", () => {
       }),
     ]);
 
-    const jsx = await FeaturedProductsBlockView({ block: makeBlock({ categoryId: "cat-1" }) });
+    const jsx = await FeaturedProductsBlockView({ block: makeBlock({ categoryId: "cat-1" }), chrome: "page" });
     render(jsx);
 
     expect(screen.getByText("Elektronik Ürün")).toBeInTheDocument();

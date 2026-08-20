@@ -17,44 +17,55 @@ import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalList
 import { CSS } from "@dnd-kit/utilities";
 import {
   AlertTriangle,
-  AlignCenterVertical,
-  AlignEndVertical,
-  AlignStartVertical,
   ArrowDown,
   ArrowUp,
+  ArrowUpToLine,
   Columns2,
   Columns3,
+  Columns4,
   GripVertical,
-  Info,
-  Minus,
+  PanelTop,
   Plus,
-  Square,
+  Rows2,
+  Settings2,
   Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { blockRegistry, createBlock, type PaletteBlockType } from "@/lib/page-builder/registry";
 import {
-  addColumnToRow,
-  collapseColumnIfEmpty,
-  countAllBlocks,
-  findContainerId,
-  findItemById,
-  getContainerBlockIds,
-  insertIntoContainer,
+  containerDepth,
+  containerIdOf,
+  countNodes,
+  findNode,
+  findParentId,
+  getContainerChildIds,
+  getContainerChildren,
+  insertNode,
+  isContainerAtCapacity,
+  moveNode,
   needsConfirmToUnwrap,
-  removeFromContainer,
-  resolveColumnWidth,
-  setColumnWidth,
-  totalBlocksInColumns,
-  unwrapColumns,
-  updateColumnsData,
-  wrapInColumns,
-} from "@/lib/page-builder/columns";
-import type { Block, BuilderContainerId, ColumnsBlock, LeafBlock, PageBlockGap, PageColumnVerticalAlign } from "@/lib/page-builder/types";
-import { COLUMN_READABILITY_WARNING_THRESHOLD, MAX_BLOCKS_PER_COLUMN, MAX_COLUMNS_PER_ROW, MAX_TOTAL_BLOCKS } from "@/lib/page-builder/types";
+  removeNode,
+  setContainerChildren,
+  subtreeDepth,
+  toContainerId,
+  unwrapContainer,
+  updateNode,
+  wrapInContainer,
+} from "@/lib/page-builder/containers";
+import {
+  MAX_CHILDREN_PER_CONTAINER,
+  MAX_CONTAINER_DEPTH,
+  MAX_TOTAL_PAGE_NODES,
+  ROW_CHILDREN_READABILITY_WARNING_THRESHOLD,
+  type BuilderContainerId,
+  type ContainerNode,
+  type ContentBlock,
+  type PageNode,
+} from "@/lib/page-builder/types";
 import { LayoutMenu } from "./layout-menu";
 import { HeroBlockEditor } from "./blocks/hero-block";
 import { TextBlockEditor } from "./blocks/text-block";
@@ -64,15 +75,21 @@ import { CtaBlockEditor } from "./blocks/cta-block";
 import { FeaturedProductsBlockEditor } from "./blocks/featured-products-block";
 import { FeaturedPortfolioBlockEditor } from "./blocks/featured-portfolio-block";
 
-const GAP_LABEL: Record<PageBlockGap, string> = { none: "Yok", sm: "Az", md: "Orta", lg: "Geniş" };
+/**
+ * §2.4 mimar dokümanı — ÖZYİNELEMELİ editör ağacı. v2'nin iki-seviyeli (kök + sütun) sabit
+ * yapısının yerini, herhangi bir derinlikte (`MAX_CONTAINER_DEPTH` = 4'e kadar) iç içe geçebilen
+ * `container` düğümleri alır. Tek `DndContext` en dışta kalır (`closestCorners` KORUNUR); her
+ * konteyner kendi `SortableContext`'ini + (yalnızca BOŞKEN) `useDroppable`'ını taşır.
+ */
 
-function blockLabel(block: Block): string {
-  if (block.type === "columns") return "Sütunlar";
-  return blockRegistry[block.type].label;
+function nodeLabel(node: PageNode): string {
+  return node.type === "container" ? "Konteyner" : blockRegistry[node.type].label;
 }
 
-function LeafBlockBody({ block, onChange }: { block: LeafBlock; onChange: (block: LeafBlock) => void }) {
+function ContentBlockBody({ block, onChange }: { block: ContentBlock; onChange: (block: ContentBlock) => void }) {
   switch (block.type) {
+    case "hero":
+      return <HeroBlockEditor block={block} onChange={onChange} />;
     case "text":
       return <TextBlockEditor block={block} onChange={onChange} />;
     case "image":
@@ -88,79 +105,67 @@ function LeafBlockBody({ block, onChange }: { block: LeafBlock; onChange: (block
   }
 }
 
-interface DragCtx {
-  onWrapToRow: (blockId: string) => void;
-  onUnwrapRow: (columnsBlockId: string) => void;
-  onAddColumn: (columnsBlockId: string, type: PaletteBlockType) => void;
-  onColumnWidthChange: (columnsBlockId: string, columnId: string, width: number) => void;
-  onMoveTopLevel: (blockId: string, direction: -1 | 1) => void;
-  onMoveInColumn: (columnsBlockId: string, columnId: string, blockId: string, direction: -1 | 1) => void;
-  onRemoveTopLevel: (blockId: string) => void;
-  onRemoveInColumn: (columnsBlockId: string, columnId: string, blockId: string) => void;
-  onUpdateTopLevel: (block: Block) => void;
-  onUpdateInColumn: (columnsBlockId: string, columnId: string, block: LeafBlock) => void;
-  onColumnsPatch: (columnsBlockId: string, patch: Partial<ColumnsBlock["data"]>) => void;
+interface Ctx {
+  onMove: (id: string, direction: -1 | 1) => void;
+  onMoveToParent: (id: string) => void;
+  onRemove: (id: string) => void;
+  onUpdateContent: (block: ContentBlock) => void;
+  onWrap: (id: string) => void;
+  onUnwrap: (containerId: string) => void;
+  onAddChild: (containerId: BuilderContainerId, type: PaletteBlockType) => void;
+  onSelectContainer: (id: string) => void;
+  selectedContainerId: string | null;
 }
 
-function TopLevelBlockCard({ block, index, total, ctx }: { block: Block; index: number; total: number; ctx: DragCtx }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: block.id });
-  const style = { transform: CSS.Transform.toString(transform), transition };
+/** §5 ui-designer dokümanı — bir konteynerin İÇİNDEKİ yaprak bloklar için sessiz "bare" ipucu. */
+function BareChromeHint() {
+  return (
+    <span title="Dış boşluk konteynerden geliyor (bu bloğun kendi sayfa dolgusu yok)">
+      <PanelTop className="h-3.5 w-3.5 shrink-0 text-foreground/30" aria-hidden />
+    </span>
+  );
+}
 
-  if (block.type === "columns") {
-    return (
-      <div ref={setNodeRef} style={style} className={cn(isDragging && "opacity-50")}>
-        <ColumnsContainerCard
-          block={block}
-          index={index}
-          total={total}
-          ctx={ctx}
-          dragHandle={
-            <button
-              type="button"
-              {...attributes}
-              {...listeners}
-              aria-label={`Sürükle: ${blockLabel(block)}`}
-              className="flex h-8 w-8 shrink-0 cursor-grab items-center justify-center rounded-md text-foreground/40 hover:bg-surface-muted hover:text-foreground/70 active:cursor-grabbing"
-            >
-              <GripVertical className="h-4 w-4" />
-            </button>
-          }
-        />
-      </div>
-    );
-  }
+function ContentBlockCard({
+  block,
+  parentId,
+  index,
+  total,
+  ctx,
+  dragHandle,
+}: {
+  block: ContentBlock;
+  parentId: BuilderContainerId;
+  index: number;
+  total: number;
+  ctx: Ctx;
+  dragHandle: ReactNode;
+}) {
+  const isBare = parentId !== "root";
 
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={cn("rounded-xl border border-border bg-card p-4 shadow-sm", isDragging && "opacity-50")}
-    >
+    <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
       <div className="flex items-center justify-between gap-2 border-b border-border pb-3">
-        <div className="flex min-w-0 items-center gap-1">
-          <button
-            type="button"
-            {...attributes}
-            {...listeners}
-            aria-label={`Sürükle: ${blockLabel(block)}`}
-            className="flex h-8 w-8 shrink-0 cursor-grab items-center justify-center rounded-md text-foreground/40 hover:bg-surface-muted hover:text-foreground/70 active:cursor-grabbing"
-          >
-            <GripVertical className="h-4 w-4" />
-          </button>
-          <span className="truncate text-sm font-medium text-foreground">{blockLabel(block)}</span>
-          {block.type !== "hero" && (
-            <LayoutMenu current="full" onSelect={(value) => value === "row" && ctx.onWrapToRow(block.id)} />
-          )}
+        <div className="flex min-w-0 flex-wrap items-center gap-1">
+          {dragHandle}
+          <span className="truncate text-sm font-medium text-foreground">{blockRegistry[block.type].label}</span>
+          {isBare && <BareChromeHint />}
+          <LayoutMenu mode="wrap" onSelect={() => ctx.onWrap(block.id)} />
         </div>
-        <div className="flex shrink-0 gap-1">
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Yukarı taşı"
-            onClick={() => ctx.onMoveTopLevel(block.id, -1)}
-            disabled={index === 0}
-          >
+        <div className="flex shrink-0 items-center gap-1">
+          {isBare && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Üst konteynere taşı"
+              title="Üst konteynere taşı"
+              onClick={() => ctx.onMoveToParent(block.id)}
+            >
+              <ArrowUpToLine />
+            </Button>
+          )}
+          <Button type="button" variant="ghost" size="icon-sm" aria-label="Yukarı taşı" onClick={() => ctx.onMove(block.id, -1)} disabled={index === 0}>
             <ArrowUp />
           </Button>
           <Button
@@ -168,195 +173,63 @@ function TopLevelBlockCard({ block, index, total, ctx }: { block: Block; index: 
             variant="ghost"
             size="icon-sm"
             aria-label="Aşağı taşı"
-            onClick={() => ctx.onMoveTopLevel(block.id, 1)}
+            onClick={() => ctx.onMove(block.id, 1)}
             disabled={index === total - 1}
           >
             <ArrowDown />
           </Button>
-          <Button type="button" variant="ghost" size="icon-sm" aria-label="Bloğu sil" onClick={() => ctx.onRemoveTopLevel(block.id)}>
+          <Button type="button" variant="ghost" size="icon-sm" aria-label="Bloğu sil" onClick={() => ctx.onRemove(block.id)}>
             <Trash2 />
           </Button>
         </div>
       </div>
       <div className="pt-4">
-        {block.type === "hero" ? (
-          <HeroBlockEditor block={block} onChange={(next) => ctx.onUpdateTopLevel(next)} />
-        ) : (
-          <LeafBlockBody block={block} onChange={(next) => ctx.onUpdateTopLevel(next)} />
-        )}
+        <ContentBlockBody block={block} onChange={ctx.onUpdateContent} />
       </div>
     </div>
   );
 }
 
-function EmptyColumnDropZone({ containerId }: { containerId: BuilderContainerId }) {
+/** §3.1 ui-designer dokümanı — 4 derinlik seviyesi, kenarlık yoğunluğu + sol vurgu çubuğu + rozet. */
+const DEPTH_STYLE: Record<1 | 2 | 3 | 4, { border: string; accent: string; bg: string; padding: string }> = {
+  1: { border: "border-border/70", accent: "border-l-primary/20", bg: "bg-surface-muted/30", padding: "p-4" },
+  2: { border: "border-border/60", accent: "border-l-primary/40", bg: "bg-surface-muted/20", padding: "p-3.5" },
+  3: { border: "border-border/50", accent: "border-l-primary/60", bg: "bg-surface-muted/15", padding: "p-3" },
+  4: { border: "border-border/40", accent: "border-l-primary/80", bg: "bg-surface-muted/10", padding: "p-2.5" },
+};
+
+function depthStyle(depth: number) {
+  const clamped = Math.min(Math.max(Math.round(depth), 1), 4) as 1 | 2 | 3 | 4;
+  return DEPTH_STYLE[clamped];
+}
+
+function EmptyContainerDropZone({
+  containerId,
+  atMax,
+  onAdd,
+}: {
+  containerId: BuilderContainerId;
+  atMax: boolean;
+  onAdd: (type: PaletteBlockType) => void;
+}) {
   const { isOver, setNodeRef } = useDroppable({ id: containerId });
   return (
     <div
       ref={setNodeRef}
       className={cn(
-        "flex min-h-24 items-center justify-center rounded-lg border-2 border-dashed border-border/50 text-center text-xs text-foreground/40 transition-colors",
+        "flex min-h-24 flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border/50 text-center text-xs text-foreground/40 transition-colors",
         isOver && "border-primary bg-primary/5 text-primary"
       )}
     >
-      Buraya blok sürükleyin
+      <p>Buraya blok sürükleyin</p>
+      <span className="text-foreground/30">veya</span>
+      <AddContentMenu disabled={atMax} onAdd={onAdd} />
     </div>
   );
 }
 
-function ColumnLeafCard({
-  block,
-  index,
-  total,
-  columnsBlockId,
-  columnId,
-  ctx,
-}: {
-  block: LeafBlock;
-  index: number;
-  total: number;
-  columnsBlockId: string;
-  columnId: string;
-  ctx: DragCtx;
-}) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: block.id });
-  const style = { transform: CSS.Transform.toString(transform), transition };
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={cn("rounded-lg border border-border bg-card p-3 shadow-sm", isDragging && "opacity-50")}
-    >
-      <div className="flex items-center justify-between gap-2 border-b border-border/60 pb-2">
-        <div className="flex min-w-0 items-center gap-1">
-          <button
-            type="button"
-            {...attributes}
-            {...listeners}
-            aria-label={`Sürükle: ${blockLabel(block)}`}
-            className="flex h-7 w-7 shrink-0 cursor-grab items-center justify-center rounded-md text-foreground/40 hover:bg-surface-muted hover:text-foreground/70 active:cursor-grabbing"
-          >
-            <GripVertical className="h-3.5 w-3.5" />
-          </button>
-          <span className="truncate text-xs font-medium text-foreground">{blockLabel(block)}</span>
-          {/* §10.17.7 madde 1 — sütun İÇİNDEKİ bloklarda Düzen kontrolü HİÇ gösterilmez (derinlik-1 kısıtı). */}
-        </div>
-        <div className="flex shrink-0 gap-0.5">
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-xs"
-            aria-label="Yukarı taşı"
-            onClick={() => ctx.onMoveInColumn(columnsBlockId, columnId, block.id, -1)}
-            disabled={index === 0}
-          >
-            <ArrowUp className="h-3 w-3" />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-xs"
-            aria-label="Aşağı taşı"
-            onClick={() => ctx.onMoveInColumn(columnsBlockId, columnId, block.id, 1)}
-            disabled={index === total - 1}
-          >
-            <ArrowDown className="h-3 w-3" />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-xs"
-            aria-label="Bloğu sil"
-            onClick={() => ctx.onRemoveInColumn(columnsBlockId, columnId, block.id)}
-          >
-            <Trash2 className="h-3 w-3" />
-          </Button>
-        </div>
-      </div>
-      <div className="pt-3">
-        <LeafBlockBody block={block} onChange={(next) => ctx.onUpdateInColumn(columnsBlockId, columnId, next)} />
-      </div>
-    </div>
-  );
-}
-
-const VERTICAL_ALIGN_ICON: Record<PageColumnVerticalAlign, typeof AlignStartVertical> = {
-  top: AlignStartVertical,
-  center: AlignCenterVertical,
-  bottom: AlignEndVertical,
-};
-
-function VerticalAlignControl({ value, onChange }: { value: PageColumnVerticalAlign; onChange: (v: PageColumnVerticalAlign) => void }) {
-  return (
-    <div className="flex items-center gap-0.5 rounded-md border border-border/60 bg-surface-muted p-0.5">
-      {(["top", "center", "bottom"] as PageColumnVerticalAlign[]).map((v) => {
-        const Icon = VERTICAL_ALIGN_ICON[v];
-        const active = v === value;
-        return (
-          <Button
-            key={v}
-            type="button"
-            size="icon-xs"
-            variant={active ? "secondary" : "ghost"}
-            aria-pressed={active}
-            aria-label={`Dikey hizalama: ${v === "top" ? "Üst" : v === "center" ? "Orta" : "Alt"}`}
-            onClick={() => onChange(v)}
-          >
-            <Icon className="h-3 w-3" />
-          </Button>
-        );
-      })}
-    </div>
-  );
-}
-
-const MIN_COLUMN_WIDTH = 1;
-const MAX_COLUMN_WIDTH = 4;
-
-/**
- * §10.17.3 v2 madde 1 "veya kullanıcı manuel oranlayabilsin" — her sütunun kendi göreli genişlik
- * ağırlığı (1-4 arası). Yapısal değişikliklerde (sütun ekle/kaldır) otomatik eşitlemeyle
- * ÜZERİNE YAZILIR (bkz. columns.ts::addColumnToRow/collapseColumnIfEmpty) — bu yüzden bu kontrol
- * yalnızca "şu anki satır sabitken ince ayar" içindir.
- */
-function ColumnWidthStepper({ width, onChange }: { width: number; onChange: (width: number) => void }) {
-  return (
-    <div className="flex items-center gap-0.5 rounded-md border border-border/50 bg-surface-muted/70 px-1 py-0.5 text-[10px] text-foreground/50">
-      <Button
-        type="button"
-        size="icon-xs"
-        variant="ghost"
-        aria-label="Genişliği azalt"
-        disabled={width <= MIN_COLUMN_WIDTH}
-        onClick={() => onChange(Math.max(MIN_COLUMN_WIDTH, width - 1))}
-      >
-        <Minus className="h-2.5 w-2.5" />
-      </Button>
-      <span className="min-w-[1.5ch] text-center tabular-nums" title="Göreli genişlik">
-        {width}×
-      </span>
-      <Button
-        type="button"
-        size="icon-xs"
-        variant="ghost"
-        aria-label="Genişliği artır"
-        disabled={width >= MAX_COLUMN_WIDTH}
-        onClick={() => onChange(Math.min(MAX_COLUMN_WIDTH, width + 1))}
-      >
-        <Plus className="h-2.5 w-2.5" />
-      </Button>
-    </div>
-  );
-}
-
-/** "+" — satırın sağına yeni bir blok/sütun eklemek için blok türü seçen menü (§10.17.3 v2 madde 1). */
-const ADD_COLUMN_FORBIDDEN_TYPES = new Set<PaletteBlockType>(["hero"]);
-
-function AddColumnMenu({ onAdd, disabled }: { onAdd: (type: PaletteBlockType) => void; disabled?: boolean }) {
-  const options = (Object.entries(blockRegistry) as [PaletteBlockType, { label: string }][]).filter(
-    ([type]) => !ADD_COLUMN_FORBIDDEN_TYPES.has(type)
-  );
+function AddContentMenu({ onAdd, disabled }: { onAdd: (type: PaletteBlockType) => void; disabled?: boolean }) {
+  const options = Object.entries(blockRegistry) as [PaletteBlockType, { label: string }][];
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -365,9 +238,9 @@ function AddColumnMenu({ onAdd, disabled }: { onAdd: (type: PaletteBlockType) =>
             type="button"
             variant="secondary"
             size="icon-sm"
-            aria-label="Satıra blok ekle"
+            aria-label="Konteynere blok ekle"
             disabled={disabled}
-            title={disabled ? `Bir satırda en fazla ${MAX_COLUMNS_PER_ROW} sütun olabilir` : "Satıra blok ekle"}
+            title={disabled ? `Bir konteynerde en fazla ${MAX_CHILDREN_PER_CONTAINER} öğe olabilir` : "Konteynere blok ekle"}
           />
         }
       >
@@ -384,68 +257,102 @@ function AddColumnMenu({ onAdd, disabled }: { onAdd: (type: PaletteBlockType) =>
   );
 }
 
-function ColumnsContainerCard({
-  block,
+function ContainerCard({
+  container,
+  parentId,
   index,
   total,
+  depth,
   ctx,
   dragHandle,
 }: {
-  block: ColumnsBlock;
+  container: ContainerNode;
+  parentId: BuilderContainerId;
   index: number;
   total: number;
-  ctx: DragCtx;
+  depth: number;
+  ctx: Ctx;
   dragHandle: ReactNode;
 }) {
-  const { gap, verticalAlign, columns } = block.data;
-  const ColumnIcon = columns.length >= 3 ? Columns3 : Columns2;
-  const atMaxColumns = columns.length >= MAX_COLUMNS_PER_ROW;
-  const tooManyForReadability = columns.length >= COLUMN_READABILITY_WARNING_THRESHOLD;
-  // §10.17.5 v2 — mobilde `flex-col` (tek sütun) tabanı, `md:` üzerinde `display:grid`e geçer;
-  // sütun genişlikleri inline `gridTemplateColumns` (`fr` birimi) ile ayarlanır — arbitrary Tailwind
-  // sınıfı DEĞİL, çünkü sütun sayısı/ağırlığı çalışma anında (runtime) belirlenir. Editördeki "+"
-  // eklentisi (`minmax(80px,auto)`) yalnızca EDİTÖRE özgüdür, public render'da YOKTUR (bkz.
-  // components/site/blocks/columns-block.tsx — WYSIWYG sütun düzeni için birebir aynı fr mantığı,
-  // ancak add-tile'sız).
-  // `resolveColumnWidth` eski (v1) `ratio` şeklini de hesaba katar — bkz. columns.ts başlık yorumu.
-  const gridTemplate = [...columns.map((_, i) => `${resolveColumnWidth(block.data, i)}fr`), "minmax(96px,auto)"].join(" ");
+  const ds = depthStyle(depth);
+  const isRow = container.settings.direction === "row";
+  const Icon = !isRow ? Rows2 : container.children.length >= 4 ? Columns4 : container.children.length === 3 ? Columns3 : Columns2;
+  const atMaxChildren = container.children.length >= MAX_CHILDREN_PER_CONTAINER;
+  const atMaxDepth = depth >= MAX_CONTAINER_DEPTH;
+  const tooManyForReadability = isRow && container.children.length >= ROW_CHILDREN_READABILITY_WARNING_THRESHOLD;
+  const isBare = parentId !== "root";
+  const selected = ctx.selectedContainerId === container.id;
+  const containerId = toContainerId(container.id);
+  const childIds = container.children.map((c) => c.id);
 
   return (
-    <div className="rounded-xl border-2 border-dashed border-border/70 bg-surface-muted/30 p-4 space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
+    <div
+      className={cn(
+        "space-y-3 rounded-xl border-2 border-dashed",
+        ds.border,
+        ds.bg,
+        ds.padding,
+        selected && "ring-2 ring-primary ring-offset-2 ring-offset-background"
+      )}
+    >
+      <div
+        role="button"
+        tabIndex={0}
+        aria-pressed={selected}
+        className={cn("flex flex-wrap items-center justify-between gap-2 rounded-r-md border-l-4 py-1 pl-2 cursor-pointer", ds.accent)}
+        onClick={() => ctx.onSelectContainer(container.id)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            ctx.onSelectContainer(container.id);
+          }
+        }}
+      >
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
           {dragHandle}
-          <ColumnIcon className="h-4 w-4 shrink-0 text-foreground/50" />
-          <span className="text-sm font-medium text-foreground">{columns.length} Sütun</span>
-          <span className="text-xs text-foreground/50">· Boşluk: {GAP_LABEL[gap]}</span>
-          <span title="Mobilde bu sütunlar alt alta sıralanır">
-            <Info className="h-3.5 w-3.5 shrink-0 text-foreground/35" aria-hidden />
-          </span>
+          <Icon className="h-4 w-4 shrink-0 text-foreground/50" />
+          <span className="text-sm font-medium text-foreground">{isRow ? `${container.children.length} Sütun` : "Konteyner"}</span>
+          <Badge tone="neutral" size="sm">
+            {atMaxDepth ? `Seviye ${depth} · Maks.` : `Seviye ${depth}`}
+          </Badge>
+          {isBare && <BareChromeHint />}
           {tooManyForReadability && (
             <span className="flex items-center gap-1 rounded-full bg-warning/10 px-2 py-0.5 text-[11px] text-warning">
               <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden />
-              Bu satırda çok fazla blok var, okunabilirlik azalabilir.
+              Bu satırda {container.children.length} öğe var — okunabilirlik azalabilir.
             </span>
           )}
         </div>
-        <div className="flex shrink-0 items-center gap-1.5">
-          <VerticalAlignControl value={verticalAlign} onChange={(v) => ctx.onColumnsPatch(block.id, { verticalAlign: v })} />
+        <div className="flex shrink-0 items-center gap-1" onClick={(e) => e.stopPropagation()}>
           <Button
             type="button"
             variant="ghost"
             size="icon-sm"
-            aria-label="Tam Genişlik"
-            title="Tam Genişliğe Dönüştür"
-            onClick={() => ctx.onUnwrapRow(block.id)}
+            aria-label="Konteyner ayarları"
+            title="Konteyner ayarları"
+            onClick={() => ctx.onSelectContainer(container.id)}
           >
-            <Square className="h-4 w-4" />
+            <Settings2 />
           </Button>
+          <LayoutMenu mode="unwrap" onSelect={() => ctx.onUnwrap(container.id)} />
+          {isBare && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Üst konteynere taşı"
+              title="Üst konteynere taşı"
+              onClick={() => ctx.onMoveToParent(container.id)}
+            >
+              <ArrowUpToLine />
+            </Button>
+          )}
           <Button
             type="button"
             variant="ghost"
             size="icon-sm"
             aria-label="Yukarı taşı"
-            onClick={() => ctx.onMoveTopLevel(block.id, -1)}
+            onClick={() => ctx.onMove(container.id, -1)}
             disabled={index === 0}
           >
             <ArrowUp />
@@ -455,96 +362,108 @@ function ColumnsContainerCard({
             variant="ghost"
             size="icon-sm"
             aria-label="Aşağı taşı"
-            onClick={() => ctx.onMoveTopLevel(block.id, 1)}
+            onClick={() => ctx.onMove(container.id, 1)}
             disabled={index === total - 1}
           >
             <ArrowDown />
           </Button>
-          <Button type="button" variant="ghost" size="icon-sm" aria-label="Sütunları sil" onClick={() => ctx.onRemoveTopLevel(block.id)}>
+          <Button type="button" variant="ghost" size="icon-sm" aria-label="Konteyneri sil" onClick={() => ctx.onRemove(container.id)}>
             <Trash2 />
           </Button>
         </div>
       </div>
 
-      <div className="flex flex-col gap-3 md:grid" style={{ gridTemplateColumns: gridTemplate }}>
-        {columns.map((col, colIndex) => {
-          const containerId: BuilderContainerId = `col:${col.id}`;
-          const ids = col.blocks.map((b) => b.id);
-          return (
-            <div key={col.id} className="min-w-0 space-y-2">
-              <div className="flex justify-end">
-                <ColumnWidthStepper
-                  width={resolveColumnWidth(block.data, colIndex)}
-                  onChange={(w) => ctx.onColumnWidthChange(block.id, col.id, w)}
-                />
+      <SortableContext items={childIds} strategy={verticalListSortingStrategy}>
+        {container.children.length === 0 ? (
+          <EmptyContainerDropZone containerId={containerId} atMax={atMaxChildren} onAdd={(type) => ctx.onAddChild(containerId, type)} />
+        ) : (
+          <div className={cn("flex gap-3", isRow ? "flex-col md:flex-row" : "flex-col")}>
+            {container.children.map((child, childIndex) => (
+              <div key={child.id} className={cn("min-w-0", isRow && "md:flex-1")}>
+                <NodeCard node={child} parentId={containerId} index={childIndex} total={container.children.length} depth={depth + 1} ctx={ctx} />
               </div>
-              <SortableContext items={ids} strategy={verticalListSortingStrategy}>
-                {col.blocks.length === 0 ? (
-                  <EmptyColumnDropZone containerId={containerId} />
-                ) : (
-                  <div className="space-y-2">
-                    {col.blocks.map((leaf, leafIndex) => (
-                      <ColumnLeafCard
-                        key={leaf.id}
-                        block={leaf}
-                        index={leafIndex}
-                        total={col.blocks.length}
-                        columnsBlockId={block.id}
-                        columnId={col.id}
-                        ctx={ctx}
-                      />
-                    ))}
-                  </div>
-                )}
-              </SortableContext>
-            </div>
-          );
-        })}
-        <div className="flex min-h-24 items-center justify-center">
-          <AddColumnMenu disabled={atMaxColumns} onAdd={(type) => ctx.onAddColumn(block.id, type)} />
-        </div>
-      </div>
+            ))}
+          </div>
+        )}
+      </SortableContext>
     </div>
   );
 }
 
-export function BuilderCanvas({ blocks, onChange }: { blocks: Block[]; onChange: (blocks: Block[]) => void }) {
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const [pendingUnwrap, setPendingUnwrap] = useState<{ columnsBlockId: string; blockCount: number; columnCount: number } | null>(
-    null
+function NodeCard({
+  node,
+  parentId,
+  index,
+  total,
+  depth,
+  ctx,
+}: {
+  node: PageNode;
+  parentId: BuilderContainerId;
+  index: number;
+  total: number;
+  depth: number;
+  ctx: Ctx;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: node.id });
+  const style = { transform: CSS.Transform.toString(transform), transition };
+
+  const dragHandle = (
+    <button
+      type="button"
+      {...attributes}
+      {...listeners}
+      aria-label={`Sürükle: ${nodeLabel(node)}`}
+      className="flex h-8 w-8 shrink-0 cursor-grab items-center justify-center rounded-md text-foreground/40 hover:bg-surface-muted hover:text-foreground/70 active:cursor-grabbing"
+    >
+      <GripVertical className="h-4 w-4" />
+    </button>
   );
+
+  return (
+    <div ref={setNodeRef} style={style} className={cn(isDragging && "opacity-50")}>
+      {node.type === "container" ? (
+        <ContainerCard container={node} parentId={parentId} index={index} total={total} depth={depth} ctx={ctx} dragHandle={dragHandle} />
+      ) : (
+        <ContentBlockCard block={node} parentId={parentId} index={index} total={total} ctx={ctx} dragHandle={dragHandle} />
+      )}
+    </div>
+  );
+}
+
+export function BuilderCanvas({
+  nodes,
+  onChange,
+  selectedContainerId,
+  onSelectContainer,
+}: {
+  nodes: PageNode[];
+  onChange: (nodes: PageNode[]) => void;
+  selectedContainerId: string | null;
+  onSelectContainer: (id: string | null) => void;
+}) {
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [pendingUnwrap, setPendingUnwrap] = useState<{ containerId: string; nodeCount: number } | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  const rootIds = useMemo(() => blocks.map((b) => b.id), [blocks]);
-  const activeItem = activeId ? findItemById(blocks, activeId) : null;
+  const rootIds = useMemo(() => nodes.map((n) => n.id), [nodes]);
+  const activeNode = activeId ? findNode(nodes, activeId) : null;
 
   function handleDragStart(event: DragStartEvent) {
     setActiveId(String(event.active.id));
   }
 
   /**
-   * BUG DÜZELTMESİ (qa-agent, `admin-page-builder-columns.spec.ts` "BUG (frontend-agent)" testi) —
-   * eskiden `onDragOver` her pointer hareketinde `blocks` state'ini MUTASYONA UĞRATIYORDU (canlı
-   * yeniden-sıralama önizlemesi için). DOLU bir sütuna bırakırken bu, bir GERİ BESLEME DÖNGÜSÜNE
-   * yol açıyordu: state değişir → hedef/kaynak listelerin DOM düzeni kayar → dnd-kit droppable
-   * dikdörtgenlerini yeniden ölçer (sürekli ölçüm varsayılan davranışıdır) → çarpışma sonucu
-   * DEĞİŞİR (kök liste ile sütun arasında) → `onDragOver` TEKRAR tetiklenir → state TEKRAR
-   * değişir → ... Blok bir "root" konumu ile bir "sütun" konumu arasında salınırken, React bu iki
-   * konumu FARKLI alt ağaçlar olarak görüyor (aynı `id` anahtarına rağmen), bu yüzden o bloğun
-   * (bir Metin bloğuysa) TipTap editörü ardı ardına unmount/mount ediliyor — yığın izinde görülen
-   * `PureEditorContent.componentDidMount → init → forceUpdate` TAM OLARAK budur ve sonunda React'in
-   * "Maximum update depth exceeded" güvenlik sınırını aşıyordu.
-   *
-   * DÜZELTME: `email-canvas.tsx`/`nav-tree-editor.tsx` ile AYNI, kanıtlanmış desen — sürükleme
-   * SIRASINDA state HİÇ mutasyona uğratılmaz (görsel geri bildirim `DragOverlay` + boş sütunun
-   * `useDroppable().isOver`'ı üzerinden, state'ten BAĞIMSIZ olarak zaten sağlanıyor); konteynerler
-   * arası taşıma VE aynı konteyner içi sıralama TEK SEFERDE, yalnızca bırakma anında (`onDragEnd`)
-   * hesaplanıp uygulanır. Sonuç: tam bir sürükleme hareketi başına state TAM OLARAK bir kez
-   * değişir — geri besleme döngüsü YAPISAL OLARAK imkânsız hale gelir.
+   * BUG DÜZELTMESİ (qa-agent, v2 `admin-page-builder-columns.spec.ts`) — state SÜRÜKLEME
+   * SIRASINDA (`onDragOver`) HİÇ mutasyona uğratılmaz (görsel geri bildirim `DragOverlay` +
+   * boş konteynerin `useDroppable().isOver`'ı üzerinden, state'ten BAĞIMSIZ sağlanır);
+   * konteynerler arası taşıma VE aynı konteyner içi sıralama TEK SEFERDE, yalnızca bırakma
+   * anında (`onDragEnd`) hesaplanıp uygulanır — bkz. v2 yorumundaki geri besleme döngüsü analizi
+   * (aynı desen, artık herhangi bir derinlikte).
    */
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
@@ -554,155 +473,108 @@ export function BuilderCanvas({ blocks, onChange }: { blocks: Block[]; onChange:
     const overIdStr = String(over.id);
     if (activeIdStr === overIdStr) return;
 
-    const fromContainer = findContainerId(blocks, activeIdStr);
-    if (!fromContainer) return;
+    const fromParentId = findParentId(nodes, activeIdStr);
+    if (!fromParentId) return;
 
-    let toContainer = findContainerId(blocks, overIdStr);
-    if (!toContainer && (overIdStr === "root" || overIdStr.startsWith("col:"))) toContainer = overIdStr as BuilderContainerId;
-    if (!toContainer) return;
+    let toParentId = findParentId(nodes, overIdStr);
+    if (!toParentId && (overIdStr === "root" || overIdStr.startsWith("container:"))) {
+      toParentId = overIdStr as BuilderContainerId;
+    }
+    if (!toParentId) return;
 
-    const item = findItemById(blocks, activeIdStr);
-    if (!item) return;
-    // Derinlik ≤1 kısıtı: `columns`/`hero` bir sütunun İÇİNE konulamaz (§10.17.3).
-    if (toContainer !== "root" && (item.type === "columns" || item.type === "hero")) return;
-
-    if (fromContainer === toContainer) {
-      // Aynı konteyner içinde sıralama.
-      const ids = getContainerBlockIds(blocks, fromContainer);
+    if (fromParentId === toParentId) {
+      const ids = getContainerChildIds(nodes, fromParentId);
       const oldIndex = ids.indexOf(activeIdStr);
       let newIndex = ids.indexOf(overIdStr);
       if (newIndex === -1) newIndex = ids.length > 0 ? ids.length - 1 : 0;
       if (oldIndex === -1 || oldIndex === newIndex) return;
-      const { blocks: afterRemove, removed } = removeFromContainer(blocks, fromContainer, activeIdStr);
-      if (!removed) return;
-      onChange(insertIntoContainer(afterRemove, fromContainer, newIndex, removed));
+      const children = getContainerChildren(nodes, fromParentId);
+      const next = [...children];
+      const [moved] = next.splice(oldIndex, 1);
+      next.splice(newIndex, 0, moved!);
+      onChange(setContainerChildren(nodes, fromParentId, next));
       return;
     }
 
-    // Konteynerler arası taşıma (root → sütun, sütun → root, sütun → sütun — DOLU sütun dahil).
-    if (toContainer.startsWith("col:")) {
-      const targetIds = getContainerBlockIds(blocks, toContainer);
-      if (targetIds.length >= MAX_BLOCKS_PER_COLUMN) return;
-    }
-
-    const { blocks: afterRemove, removed } = removeFromContainer(blocks, fromContainer, activeIdStr);
-    if (!removed) return;
-    const targetIds = getContainerBlockIds(afterRemove, toContainer);
+    // Konteynerler arası taşıma — `moveNode` KENDİ İÇİNDE `isDescendant` + kapasite + derinlik
+    // guard'larını uygular (bkz. `containers.ts`); herhangi bir ihlalde ağaç DEĞİŞMEDEN döner.
+    const targetIds = getContainerChildIds(nodes, toParentId);
     let insertIndex = targetIds.indexOf(overIdStr);
     if (insertIndex === -1) insertIndex = targetIds.length;
-    // §10.17.3 v2 madde 3 — otomatik sütun kaldırma/yeniden dengeleme SADECE bir bloğu SİLMENİN
-    // (bkz. aşağıdaki `removeInColumn`) sonucudur; bir bloğu SÜRÜKLEYEREK başka bir sütuna
-    // taşımak İÇERİĞİ SİLMEZ, bu yüzden kaynak sütun boşalsa bile (mevcut, test edilmiş v1
-    // davranışıyla birebir aynı şekilde) boş bir bırakma alanı olarak KALIR — kaldırılmaz.
-    onChange(insertIntoContainer(afterRemove, toContainer, insertIndex, removed));
+    onChange(moveNode(nodes, activeIdStr, toParentId, insertIndex));
   }
 
-  function wrapToRow(blockId: string) {
-    const item = findItemById(blocks, blockId);
-    if (!item || item.type === "columns" || item.type === "hero") return;
-    if (countAllBlocks(blocks) >= MAX_TOTAL_BLOCKS) return;
-    onChange(wrapInColumns(blocks, blockId, 2));
+  function move(id: string, direction: -1 | 1) {
+    const parentId = findParentId(nodes, id);
+    if (!parentId) return;
+    const siblings = getContainerChildren(nodes, parentId);
+    const index = siblings.findIndex((n) => n.id === id);
+    const target = index + direction;
+    if (index === -1 || target < 0 || target >= siblings.length) return;
+    const next = [...siblings];
+    [next[index], next[target]] = [next[target]!, next[index]!];
+    onChange(setContainerChildren(nodes, parentId, next));
   }
 
-  function unwrapRow(columnsBlockId: string) {
-    const item = findItemById(blocks, columnsBlockId);
-    if (!item || item.type !== "columns") return;
-    if (needsConfirmToUnwrap(item)) {
-      setPendingUnwrap({ columnsBlockId: item.id, blockCount: totalBlocksInColumns(item), columnCount: item.data.columns.length });
+  /** a11y yedeği (§2.4) — dnd-kit sürüklemesine eşdeğer, klavyeyle "bir üst konteynere kaç". */
+  function moveToParent(id: string) {
+    const parentId = findParentId(nodes, id);
+    if (!parentId || parentId === "root") return;
+    const parentRawId = containerIdOf(parentId)!;
+    const grandParentId = findParentId(nodes, parentRawId);
+    if (!grandParentId) return;
+    const grandSiblings = getContainerChildren(nodes, grandParentId);
+    const insertIndex = grandSiblings.findIndex((n) => n.id === parentRawId) + 1;
+    onChange(moveNode(nodes, id, grandParentId, insertIndex));
+  }
+
+  function remove(id: string) {
+    const { nodes: next, removed } = removeNode(nodes, id);
+    if (!removed) return;
+    onChange(next);
+    if (selectedContainerId === id) onSelectContainer(null);
+  }
+
+  function updateContent(block: ContentBlock) {
+    onChange(updateNode(nodes, block.id, () => block));
+  }
+
+  function wrap(id: string) {
+    if (countNodes(nodes) >= MAX_TOTAL_PAGE_NODES) return;
+    const target = findNode(nodes, id);
+    if (!target) return;
+    const ownDepth = containerDepth(nodes, id);
+    if (ownDepth === 0 || ownDepth + subtreeDepth(target) > MAX_CONTAINER_DEPTH) return;
+    onChange(wrapInContainer(nodes, id));
+  }
+
+  function requestUnwrap(containerId: string) {
+    const node = findNode(nodes, containerId);
+    if (!node || node.type !== "container") return;
+    if (needsConfirmToUnwrap(node)) {
+      setPendingUnwrap({ containerId, nodeCount: countNodes(node.children) });
       return;
     }
-    onChange(unwrapColumns(blocks, item.id));
+    onChange(unwrapContainer(nodes, containerId));
   }
 
-  function addColumn(columnsBlockId: string, type: PaletteBlockType) {
-    const item = findItemById(blocks, columnsBlockId);
-    if (!item || item.type !== "columns") return;
-    if (item.data.columns.length >= MAX_COLUMNS_PER_ROW) return;
-    if (countAllBlocks(blocks) >= MAX_TOTAL_BLOCKS) return;
-    onChange(addColumnToRow(blocks, columnsBlockId, createBlock(type) as LeafBlock));
+  function addChild(containerId: BuilderContainerId, type: PaletteBlockType) {
+    if (countNodes(nodes) >= MAX_TOTAL_PAGE_NODES) return;
+    if (isContainerAtCapacity(nodes, containerId)) return;
+    const children = getContainerChildren(nodes, containerId);
+    onChange(insertNode(nodes, containerId, children.length, createBlock(type)));
   }
 
-  function columnWidthChange(columnsBlockId: string, columnId: string, width: number) {
-    onChange(setColumnWidth(blocks, columnsBlockId, columnId, width));
-  }
-
-  function moveTopLevel(blockId: string, direction: -1 | 1) {
-    const index = blocks.findIndex((b) => b.id === blockId);
-    const target = index + direction;
-    if (index === -1 || target < 0 || target >= blocks.length) return;
-    const next = [...blocks];
-    [next[index], next[target]] = [next[target]!, next[index]!];
-    onChange(next);
-  }
-
-  function moveInColumn(columnsBlockId: string, columnId: string, blockId: string, direction: -1 | 1) {
-    onChange(
-      blocks.map((b) => {
-        if (b.id !== columnsBlockId || b.type !== "columns") return b;
-        const columns = b.data.columns.map((col) => {
-          if (col.id !== columnId) return col;
-          const index = col.blocks.findIndex((l) => l.id === blockId);
-          const target = index + direction;
-          if (index === -1 || target < 0 || target >= col.blocks.length) return col;
-          const next = [...col.blocks];
-          [next[index], next[target]] = [next[target]!, next[index]!];
-          return { ...col, blocks: next };
-        });
-        return { ...b, data: { ...b.data, columns } };
-      })
-    );
-  }
-
-  function removeTopLevel(blockId: string) {
-    onChange(blocks.filter((b) => b.id !== blockId));
-  }
-
-  function removeInColumn(columnsBlockId: string, columnId: string, blockId: string) {
-    const next = blocks.map((b) => {
-      if (b.id !== columnsBlockId || b.type !== "columns") return b;
-      const columns = b.data.columns.map((col) =>
-        col.id === columnId ? { ...col, blocks: col.blocks.filter((l) => l.id !== blockId) } : col
-      );
-      return { ...b, data: { ...b.data, columns } };
-    });
-    // §10.17.3 v2 madde 3 — SİLİNEN bloğun sütunu bu işlemle boşaldıysa kaldırılır, kalanlar
-    // eşitlenir, tek sütun kalırsa satır otomatik "Tam Genişlik"e döner (onay GEREKMEZ, içerik
-    // kaybı yoktur). Satırdaki BAŞKA boş sütunlara (henüz doldurulmamış yer tutucular) dokunmaz.
-    onChange(collapseColumnIfEmpty(next, columnsBlockId, columnId));
-  }
-
-  function updateTopLevel(next: Block) {
-    onChange(blocks.map((b) => (b.id === next.id ? next : b)));
-  }
-
-  function updateInColumn(columnsBlockId: string, columnId: string, next: LeafBlock) {
-    onChange(
-      blocks.map((b) => {
-        if (b.id !== columnsBlockId || b.type !== "columns") return b;
-        const columns = b.data.columns.map((col) =>
-          col.id === columnId ? { ...col, blocks: col.blocks.map((l) => (l.id === next.id ? next : l)) } : col
-        );
-        return { ...b, data: { ...b.data, columns } };
-      })
-    );
-  }
-
-  function columnsPatch(columnsBlockId: string, patch: Partial<ColumnsBlock["data"]>) {
-    onChange(updateColumnsData(blocks, columnsBlockId, patch));
-  }
-
-  const ctx: DragCtx = {
-    onWrapToRow: wrapToRow,
-    onUnwrapRow: unwrapRow,
-    onAddColumn: addColumn,
-    onColumnWidthChange: columnWidthChange,
-    onMoveTopLevel: moveTopLevel,
-    onMoveInColumn: moveInColumn,
-    onRemoveTopLevel: removeTopLevel,
-    onRemoveInColumn: removeInColumn,
-    onUpdateTopLevel: updateTopLevel,
-    onUpdateInColumn: updateInColumn,
-    onColumnsPatch: columnsPatch,
+  const ctx: Ctx = {
+    onMove: move,
+    onMoveToParent: moveToParent,
+    onRemove: remove,
+    onUpdateContent: updateContent,
+    onWrap: wrap,
+    onUnwrap: requestUnwrap,
+    onAddChild: addChild,
+    onSelectContainer,
+    selectedContainerId,
   };
 
   return (
@@ -714,24 +586,24 @@ export function BuilderCanvas({ blocks, onChange }: { blocks: Block[]; onChange:
         onDragEnd={handleDragEnd}
         onDragCancel={() => setActiveId(null)}
       >
-        {blocks.length === 0 ? (
+        {nodes.length === 0 ? (
           <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-foreground/50">
-            Henüz blok yok — yukarıdan bir blok ekleyin.
+            Henüz blok yok — yukarıdan bir blok veya düzen ekleyin.
           </div>
         ) : (
           <SortableContext items={rootIds} strategy={verticalListSortingStrategy}>
             <div className="space-y-4">
-              {blocks.map((block, index) => (
-                <TopLevelBlockCard key={block.id} block={block} index={index} total={blocks.length} ctx={ctx} />
+              {nodes.map((node, index) => (
+                <NodeCard key={node.id} node={node} parentId="root" index={index} total={nodes.length} depth={1} ctx={ctx} />
               ))}
             </div>
           </SortableContext>
         )}
         <DragOverlay>
-          {activeItem ? (
+          {activeNode ? (
             <div className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 shadow-lg ring-2 ring-primary/40">
               <GripVertical className="h-4 w-4 text-foreground/40" />
-              <span className="text-sm font-medium text-foreground">{blockLabel(activeItem as Block)}</span>
+              <span className="text-sm font-medium text-foreground">{nodeLabel(activeNode)}</span>
             </div>
           ) : null}
         </DragOverlay>
@@ -741,20 +613,19 @@ export function BuilderCanvas({ blocks, onChange }: { blocks: Block[]; onChange:
         open={pendingUnwrap !== null}
         onOpenChange={(open) => !open && setPendingUnwrap(null)}
         tone="warning"
-        title="Sütunlar tam genişliğe dönüştürülsün mü?"
+        title="Konteyner kaldırılsın mı?"
         description={
           pendingUnwrap
-            ? `${pendingUnwrap.columnCount} sütundaki ${pendingUnwrap.blockCount} blok, sırasıyla alt alta tam genişlik bloklarına dönüştürülecek. İçerik SİLİNMEZ.`
+            ? `İçindeki ${pendingUnwrap.nodeCount} öğe, sırasıyla üst seviyeye taşınacak. İçerik SİLİNMEZ.`
             : undefined
         }
-        confirmText="Tam Genişliğe Dönüştür"
+        confirmText="Konteyneri Kaldır"
         cancelText="Vazgeç"
         onConfirm={() => {
-          if (pendingUnwrap) onChange(unwrapColumns(blocks, pendingUnwrap.columnsBlockId));
+          if (pendingUnwrap) onChange(unwrapContainer(nodes, pendingUnwrap.containerId));
           setPendingUnwrap(null);
         }}
       />
-
     </>
   );
 }

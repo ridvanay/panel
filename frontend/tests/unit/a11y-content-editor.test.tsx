@@ -5,7 +5,7 @@ import { PostEditor } from "@/components/admin/blog/post-editor";
 import { BuilderCanvas } from "@/components/admin/page-builder/builder-canvas";
 import { BlockList } from "@/components/admin/page-builder/block-list";
 import { createBlock } from "@/lib/page-builder/registry";
-import type { Block, GalleryBlock } from "@/lib/page-builder/types";
+import type { GalleryBlock, PageNode } from "@/lib/page-builder/types";
 import type { Media } from "@/lib/api/types";
 
 vi.mock("@/lib/api/media", () => ({
@@ -44,8 +44,10 @@ describe("İçerik editörü — a11y", () => {
     expect(results).toHaveNoViolations();
   });
 
-  it("BlockList (blok ekleme düğmeleri) kritik/ciddi a11y ihlali içermez", async () => {
-    const { container } = render(<BlockList onAdd={() => {}} />);
+  it("BlockList (blok/düzen ekleme düğmeleri) kritik/ciddi a11y ihlali içermez", async () => {
+    const { container } = render(
+      <BlockList onAddContent={() => {}} onAddLayout={() => {}} targetLabel="Sayfa (kök)" />
+    );
     const results = await axe(container, axeOptions);
     expect(results).toHaveNoViolations();
   });
@@ -54,9 +56,11 @@ describe("İçerik editörü — a11y", () => {
     const galleryBlock = createBlock("gallery") as GalleryBlock;
     galleryBlock.data.images = [{ url: "https://example.com/a.png", alt: "Örnek" }];
 
-    const blocks: Block[] = [createBlock("hero"), createBlock("text"), createBlock("image"), galleryBlock, createBlock("cta")];
+    const nodes: PageNode[] = [createBlock("hero"), createBlock("text"), createBlock("image"), galleryBlock, createBlock("cta")];
 
-    const { container } = render(<BuilderCanvas blocks={blocks} onChange={() => {}} />);
+    const { container } = render(
+      <BuilderCanvas nodes={nodes} onChange={() => {}} selectedContainerId={null} onSelectContainer={() => {}} />
+    );
 
     expect(await screen.findByLabelText("Kalın")).toBeInTheDocument();
 
@@ -65,7 +69,9 @@ describe("İçerik editörü — a11y", () => {
   });
 
   it("BuilderCanvas — boş blok listesinde a11y ihlali içermez", async () => {
-    const { container } = render(<BuilderCanvas blocks={[]} onChange={() => {}} />);
+    const { container } = render(
+      <BuilderCanvas nodes={[]} onChange={() => {}} selectedContainerId={null} onSelectContainer={() => {}} />
+    );
     const results = await axe(container, axeOptions);
     expect(results).toHaveNoViolations();
   });

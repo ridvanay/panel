@@ -28,10 +28,16 @@ interface ColorFieldProps {
   onChange: (hex: string) => void;
   /** Kontrast kontrolü için karşılaştırılacak diğer renk (örn. buttonColor vs buttonTextColor). */
   checkAgainst?: string;
+  /**
+   * Hex `<Input>` alanının `maxLength`'i. Varsayılan `7` (`#rrggbb`). Alfa kanallı `#rrggbbaa`
+   * (9 karakter) kabul eden alanlar (bkz. `container-settings-panel.tsx::BackgroundControl` —
+   * mimar §5.2 `ContainerBackground` regex'i `#rgb|#rrggbb|#rrggbbaa` kabul eder) bunu `9` verir.
+   */
+  maxLength?: number;
 }
 
 /** Native `<input type="color">` (küçük kare swatch) + yanında hex `<Input>` (metin) + opsiyonel WCAG rozeti. */
-export function ColorField({ id, label, value, onChange, checkAgainst }: ColorFieldProps) {
+export function ColorField({ id, label, value, onChange, checkAgainst, maxLength = 7 }: ColorFieldProps) {
   return (
     <div className="space-y-1.5">
       <label htmlFor={id} className="block text-sm font-medium text-foreground">
@@ -50,7 +56,7 @@ export function ColorField({ id, label, value, onChange, checkAgainst }: ColorFi
           value={value}
           onChange={(e) => onChange(e.target.value)}
           className="font-mono uppercase"
-          maxLength={7}
+          maxLength={maxLength}
           aria-label={`${label} — hex kod`}
         />
       </div>

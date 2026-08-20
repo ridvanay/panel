@@ -52,4 +52,40 @@ describe("flattenPageBlocks", () => {
     const result = flattenPageBlocks([before, columnsBlock, after]);
     expect(result).toEqual([before, columnsBlock, after]);
   });
+
+  // §10.19 (v3) — `container.children`'ı da dolaşır (imza değişmez, gövde iteratif).
+  it("flattens a container's children in document order and keeps the container itself", () => {
+    const child0 = { id: "c0", type: "text", data: { html: "col0" } };
+    const child1 = { id: "c1", type: "image", data: { url: "https://x/y.png", alt: "x" } };
+    const containerBlock = { id: "container-1", type: "container", settings: {}, children: [child0, child1] };
+
+    const result = flattenPageBlocks([containerBlock]);
+
+    expect(result).toEqual([containerBlock, child0, child1]);
+  });
+
+  it("flattens DEEPLY nested containers (container within container) in document order", () => {
+    const leaf = { id: "leaf", type: "text", data: { html: "x" } };
+    const inner = { id: "inner", type: "container", settings: {}, children: [leaf] };
+    const outer = { id: "outer", type: "container", settings: {}, children: [inner] };
+
+    const result = flattenPageBlocks([outer]);
+
+    expect(result).toEqual([outer, inner, leaf]);
+  });
+
+  it("is defensive against malformed/garbage container shapes (does not throw)", () => {
+    expect(() =>
+      flattenPageBlocks([{ type: "container" }, { type: "container", children: "not-an-array" }, { type: "container", children: null }])
+    ).not.toThrow();
+  });
+
+  it("does not hang/crash on a pathologically deep (100,000-level) container chain — mutlak visit tavanı (ABSOLUTE_VISIT_CAP)", () => {
+    let node: unknown = { id: "leaf", type: "text", data: {} };
+    for (let i = 0; i < 150_000; i++) {
+      node = { id: `c${i}`, type: "container", settings: {}, children: [node] };
+    }
+
+    expect(() => flattenPageBlocks([node])).not.toThrow();
+  });
 });

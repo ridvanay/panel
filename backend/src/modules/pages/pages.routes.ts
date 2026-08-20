@@ -22,7 +22,7 @@ import {
   PageSchema,
 } from "../../schemas/entities";
 import { toContentRevisionDto, toContentRevisionSummaryDto, toPageDto } from "../../mappers";
-import { ConflictError, ForbiddenError, NotFoundError } from "../../lib/errors";
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "../../lib/errors";
 import { parseCursor, buildPageMetaWithCounts } from "../../lib/pagination";
 import { slugify } from "../../lib/slug";
 import { startOfUtcDay } from "../../lib/date";
@@ -53,6 +53,7 @@ import {
   AutosavePageRequestSchema,
   CreatePageRequestSchema,
   LocaleQuerySchema,
+  PageBlockListSchema,
   PageIdParamSchema,
   PageRevisionIdParamSchema,
   PageSlugParamSchema,
@@ -551,6 +552,85 @@ export async function adminPagesRoutes(app: FastifyInstance) {
     }
   );
 
+  /**
+   * SECURITY FIX (Dalga 3.1 SON denetim — backend-agent bulgusu, security-agent kararı):
+   * revizyon geri-yükleme, DB'den okunan bir `PageRevision.snapshot`'ı üzerinde çalışır. Bu
+   * snapshot, `Page.blocks`/`translations.<LOCALE>.blocks` için TEK giriş noktası olan
+   * `PageBlockListSchema`'dan (yeni container şeması — derinlik/çocuk/toplam-düğüm/byte
+   * tavanı VE `background`/`minHeight` regex+enum doğrulaması) HİÇ GEÇMEZ; yalnızca
+   * `sanitizePageBlocks`/`sanitizePageTranslations` çağrılır ve bunlar SADECE `data.html`'e
+   * bakar, `settings`'e HİÇ dokunmaz (bkz. tasarım notu §3.3/§13.5 son doğrulama isteği).
+   *
+   * Somut risk: v3 öncesinde (bu container mimarisi devreye girmeden ÖNCE) `PageNodeSchema`
+   * bilinmeyen `type` değerlerini SERBEST bırakıyordu (`z.record(z.unknown())` — "minimum
+   * diff" kararı, bkz. tasarım notu §5.4). Yani düşük yetkili bir EDITOR, o dönemde şemaya
+   * hiç uğramadan `{ type: "container", settings: { background: { type: "image", value:
+   * "javascript:alert(1)" } } }` gibi bir düğümü DB'ye yazdırabilir ve bu durum bir
+   * `PageRevision` anlık görüntüsüne (snapshot) girebilirdi. v3 devreye girdikten sonra o eski
+   * revizyon geri yüklenirse, `settings.background.value` YENİ protokol beyaz listesinden
+   * (§13.3) hiç geçmeden doğrudan canlı `Page.blocks`'a yazılır ve inline
+   * `style={{ backgroundImage: url("...") }}` üzerinden render edilir — CSS/URL enjeksiyonu.
+   * Aynı şekilde derinlik/çocuk-sayısı/toplam-düğüm/byte sınırlarını aşan eski bir snapshot da
+   * bu limitlerden hiç geçmeden geri yazılabilirdi (DoS yüzeyinin sessizce yeniden açılması).
+   *
+   * Düzeltme: restore, snapshot'ın `blocks`'unu (ve her `translations.<LOCALE>.blocks`'unu)
+   * YAZMA yolundaki TEK doğrulama kaynağı olan `PageBlockListSchema`'dan geçirir ve
+   * NORMALLEŞTİRİLMİŞ (`legacyColumnsToContainer` dahil) çıktısını kullanır. Geçersizse
+   * (bugünün kurallarını artık karşılamıyorsa) restore TAMAMEN reddedilir (422) — `blocks`
+   * sayfanın asıl içeriği olduğu için `isLegalDocument` gibi tek bir alanı atlayıp geri
+   * kalanını uygulamak (kısmi kabul) anlamlı değildir; ya tüm içerik güvenli ve tutarlı
+   * şekilde geri yüklenir ya da hiç yüklenmez. Transaction BAŞLAMADAN ÖNCE (herhangi bir yazma
+   * olmadan) fırlatılır.
+   */
+  function revalidateSnapshotBlocks(blocks: unknown): unknown {
+    if (!Array.isArray(blocks)) return blocks;
+    const parsed = PageBlockListSchema.safeParse(blocks);
+    if (!parsed.success) {
+      const details: Record<string, string[]> = {};
+      for (const issue of parsed.error.issues) {
+        const key = issue.path.length > 0 ? issue.path.map(String).join(".") : "blocks";
+        (details[key] ??= []).push(issue.message);
+      }
+      throw new ValidationError(
+        "Bu revizyondaki içerik artık geçerli güvenlik/yapı sınırlarını karşılamıyor; geri yükleme reddedildi.",
+        details
+      );
+    }
+    return parsed.data;
+  }
+
+  function revalidateSnapshotTranslations(
+    translations: unknown
+  ): Record<string, Record<string, unknown> | null> {
+    if (!translations || typeof translations !== "object") return {};
+    const result: Record<string, Record<string, unknown> | null> = {};
+    for (const [locale, fields] of Object.entries(translations as Record<string, unknown>)) {
+      if (fields === null) {
+        result[locale] = null;
+        continue;
+      }
+      if (!fields || typeof fields !== "object" || !Array.isArray((fields as Record<string, unknown>).blocks)) {
+        result[locale] = fields as Record<string, unknown>;
+        continue;
+      }
+      const fieldsRecord = fields as Record<string, unknown>;
+      const parsed = PageBlockListSchema.safeParse(fieldsRecord.blocks);
+      if (!parsed.success) {
+        const details: Record<string, string[]> = {};
+        for (const issue of parsed.error.issues) {
+          const key = ["translations", locale, "blocks", ...issue.path.map(String)].join(".");
+          (details[key] ??= []).push(issue.message);
+        }
+        throw new ValidationError(
+          "Bu revizyondaki çeviri içeriği artık geçerli güvenlik/yapı sınırlarını karşılamıyor; geri yükleme reddedildi.",
+          details
+        );
+      }
+      result[locale] = { ...fieldsRecord, blocks: parsed.data };
+    }
+    return result;
+  }
+
   server.post(
     "/:pageId/revisions/:revisionId/restore",
     {
@@ -567,9 +647,6 @@ export async function adminPagesRoutes(app: FastifyInstance) {
 
       const revision = await getContentRevisionOrThrow(app, "PAGE", request.params.pageId, request.params.revisionId);
 
-      // Geri dönüş de geri alınabilir olsun diye önce mevcut state'i yeni bir revizyon olarak kaydet.
-      await snapshotBeforeUpdate(app, "PAGE", existing.id, toPageSnapshot(existing), request.user!.id);
-
       const snapshot = revision.snapshot as {
         title: string;
         slug: string;
@@ -584,10 +661,19 @@ export async function adminPagesRoutes(app: FastifyInstance) {
         translations: unknown;
       };
 
+      // SECURITY FIX (bkz. yukarıdaki blok yorumu) — snapshot'ın `blocks`/`translations.<LOCALE>.blocks`
+      // alanları, herhangi bir DB yazımından ÖNCE, yazma yolundaki TEK doğrulama kaynağı olan
+      // `PageBlockListSchema`'dan yeniden geçirilir (derinlik/çocuk/toplam-düğüm/byte tavanı VE
+      // `background`/`minHeight` regex+enum doğrulaması dahil). Geçersizse restore hiçbir şey
+      // YAZMADAN (transaction başlamadan) reddedilir.
+      const revalidatedBlocks = revalidateSnapshotBlocks(snapshot.blocks);
+      const revalidatedTranslations = revalidateSnapshotTranslations(snapshot.translations);
+
+      // Geri dönüş de geri alınabilir olsun diye önce mevcut state'i yeni bir revizyon olarak kaydet.
+      await snapshotBeforeUpdate(app, "PAGE", existing.id, toPageSnapshot(existing), request.user!.id);
+
       const { enabled: enabledLocales } = await getLocaleSet(app);
-      const sanitizedTranslations = snapshot.translations
-        ? sanitizePageTranslations(snapshot.translations as Record<string, Record<string, unknown> | null>)
-        : {};
+      const sanitizedTranslations = sanitizePageTranslations(revalidatedTranslations);
 
       // §5.1/security-agent bulgusu (bkz. .claude/security-review-i18n.md) — bu route
       // `requireSiteRole("ADMIN", "EDITOR")` ile korunuyor, ama `isLegalDocument` alanı
@@ -615,9 +701,12 @@ export async function adminPagesRoutes(app: FastifyInstance) {
             slug: snapshot.slug,
             // Savunmada derinlik: bu sanitizasyon eklenmeden ÖNCE kaydedilmiş eski revizyonlar
             // temizlenmemiş HTML içerebilir — geri yükleme her zaman yeniden sanitize eder.
-            blocks: (Array.isArray(snapshot.blocks)
-              ? sanitizePageBlocks(snapshot.blocks)
-              : snapshot.blocks) as Prisma.InputJsonValue,
+            // `revalidatedBlocks` yukarıda `PageBlockListSchema`'dan zaten geçmiş/normalize
+            // edilmiştir (bkz. `revalidateSnapshotBlocks`) — `sanitizePageBlocks` burada YALNIZCA
+            // `data.html` alanlarını temizler, yapısal/`settings` doğrulaması ZATEN yapılmıştır.
+            blocks: (Array.isArray(revalidatedBlocks)
+              ? sanitizePageBlocks(revalidatedBlocks)
+              : revalidatedBlocks) as Prisma.InputJsonValue,
             seoTitle: snapshot.seoTitle,
             seoDescription: snapshot.seoDescription,
             ogTitle: snapshot.ogTitle,

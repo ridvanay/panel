@@ -1,11 +1,10 @@
-import type { Block, BlockType } from "./types";
+import type { ContentBlock, ContentBlockType } from "./types";
 
 /**
- * Palette blok tipleri — §10.17.6 mimar kararı: `registry.ts`'e `columns` EKLENMEZ, palette'te
- * "Sütun" diye bir öğe yoktur. Sütun, var olan bir bloğun "Düzen" seçiciyle sarmalanmasıyla
- * oluşur (bkz. `lib/page-builder/columns.ts`).
+ * Palette "İçerik" bölümü kaydı (§8.2/§8.3 mimar dokümanı — v3'te `container` BURAYA
+ * EKLENMEZ, kendi ayrı kaydı `presets.ts::LAYOUT_PRESETS`'tedir; "Düzen" bölümü onu kullanır).
  */
-export type PaletteBlockType = Exclude<BlockType, "columns">;
+export type PaletteBlockType = ContentBlockType;
 
 export const blockRegistry: Record<PaletteBlockType, { label: string }> = {
   hero: { label: "Hero" },
@@ -21,7 +20,7 @@ export function newId(): string {
   return typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : Math.random().toString(36).slice(2);
 }
 
-export function createBlock(type: PaletteBlockType): Block {
+export function createBlock(type: PaletteBlockType): ContentBlock {
   const id = newId();
   switch (type) {
     case "hero":
@@ -31,7 +30,7 @@ export function createBlock(type: PaletteBlockType): Block {
     case "image":
       return { id, type, data: { url: "", alt: "" } };
     case "gallery":
-      return { id, type, data: { images: [] } };
+      return { id, type, data: { images: [], layout: "grid" } };
     case "cta":
       return { id, type, data: { heading: "Harekete geçin", buttonLabel: "Tıklayın", buttonHref: "/" } };
     case "featured-products":

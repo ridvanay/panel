@@ -3,15 +3,18 @@ import { notFound } from "next/navigation";
 import { fetchPageBySlugServer } from "@/lib/api/server-pages";
 import { fetchSiteSettingsServer } from "@/lib/api/server-settings";
 import { fetchLocalesServer } from "@/lib/api/server-locales";
+import { fetchSiteAppearanceServer } from "@/lib/api/server-appearance";
 import { BlockRenderer } from "@/components/site/blocks";
 import { ViewTracker } from "@/components/site/view-tracker";
 import { ViewCount } from "@/components/site/view-count";
 import { SyncLocaleAlternates } from "@/components/site/sync-locale-alternates";
 import { LegalDocumentNotice } from "@/components/site/legal-document-notice";
+import { PageHeader } from "@/components/site/page-header";
+import { SocialShareButtons } from "@/components/site/social-share-buttons";
 import { redirectToCanonicalSlug } from "@/lib/i18n/canonical-slug";
 import { buildContentMetadata } from "@/lib/seo";
 import { SITE_URL } from "@/lib/env";
-import type { Block } from "@/lib/page-builder/types";
+import { normalizePageNodes } from "@/lib/page-builder/normalize";
 
 type PageProps = { params: Promise<{ lang: string; slug: string }> };
 
@@ -58,7 +61,12 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function DynamicPage({ params }: PageProps) {
   const { lang, slug } = await params;
-  const [page, locales] = await Promise.all([fetchPageBySlugServer(slug, lang), fetchLocalesServer()]);
+  const [page, locales, settings, appearance] = await Promise.all([
+    fetchPageBySlugServer(slug, lang),
+    fetchLocalesServer(),
+    fetchSiteSettingsServer(),
+    fetchSiteAppearanceServer(),
+  ]);
   if (!page) notFound();
 
   // §12.2 — `/en/<TR-kanonik-slug>` gibi istekler içeriği DOĞRU bulur (backend slug fallback'i)
@@ -80,6 +88,11 @@ export default async function DynamicPage({ params }: PageProps) {
   const showLegalNotice =
     page.isLegalDocument && lang !== defaultLocale?.code && activeLocalization?.translated === false;
 
+  const isHomePage = page.id === settings.homePageId;
+  const canonicalUrl = isHomePage
+    ? SITE_URL
+    : `${SITE_URL}${lang === defaultLocale?.code ? "" : `/${lang}`}/${slug}`;
+
   return (
     <>
       <SyncLocaleAlternates kind="page" items={page.localizations} />
@@ -87,6 +100,13 @@ export default async function DynamicPage({ params }: PageProps) {
       <div className="mx-auto max-w-3xl px-4 pt-4 sm:px-6">
         <ViewCount count={page.viewCount} />
       </div>
+      <PageHeader
+        title={page.title}
+        style={appearance.pageHeaderStyle}
+        backgroundColor={appearance.pageHeaderBackgroundColor}
+        backgroundUrl={appearance.pageHeaderBackgroundUrl}
+        overlayOpacity={appearance.pageHeaderOverlayOpacity}
+      />
       {showLegalNotice ? (
         <LegalDocumentNotice
           title={page.title}
@@ -94,7 +114,14 @@ export default async function DynamicPage({ params }: PageProps) {
           defaultLocaleLabel={defaultLocale?.nativeLabel ?? ""}
         />
       ) : (
-        <BlockRenderer blocks={page.blocks as unknown as Block[]} />
+        <>
+          <BlockRenderer nodes={normalizePageNodes(page.blocks)} chrome="page" />
+          {appearance.socialShareEnabled && appearance.socialShareNetworks.length > 0 && (
+            <div className="mx-auto max-w-3xl px-4 pb-10 sm:px-6">
+              <SocialShareButtons url={canonicalUrl} title={page.title} networks={appearance.socialShareNetworks} />
+            </div>
+          )}
+        </>
       )}
     </>
   );

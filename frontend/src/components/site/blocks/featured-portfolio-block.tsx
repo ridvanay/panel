@@ -1,13 +1,14 @@
+import { cn } from "@/lib/utils";
 import { isModuleEnabledServer } from "@/lib/api/server-modules";
 import { fetchPortfolioItemsServer } from "@/lib/api/server-portfolio";
 import { PortfolioCard } from "@/components/site/portfolio-card";
-import type { FeaturedPortfolioBlock } from "@/lib/page-builder/types";
+import type { BlockChrome, FeaturedPortfolioBlock } from "@/lib/page-builder/types";
 
 /**
  * §Faz 4 Site Şablonu — `portfolio` modülü kapalıysa SESSİZCE hiçbir şey render ETMEZ (`null`
  * döner), hata/boş state göstermez; sayfanın geri kalanı normal render olmaya devam eder.
  */
-export async function FeaturedPortfolioBlockView({ block }: { block: FeaturedPortfolioBlock }) {
+export async function FeaturedPortfolioBlockView({ block, chrome }: { block: FeaturedPortfolioBlock; chrome: BlockChrome }) {
   const enabled = await isModuleEnabledServer("portfolio");
   if (!enabled) return null;
 
@@ -20,7 +21,7 @@ export async function FeaturedPortfolioBlockView({ block }: { block: FeaturedPor
   if (visible.length === 0) return null;
 
   return (
-    <section className="px-4 py-16 sm:px-6">
+    <section className={cn(chrome === "page" && "px-4 py-16 sm:px-6")}>
       {block.data.heading && (
         <h2 className="text-center text-2xl font-semibold text-foreground">{block.data.heading}</h2>
       )}

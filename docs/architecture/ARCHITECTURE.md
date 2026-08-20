@@ -4741,7 +4741,14 @@ Kapsam DIŞI (mimar kararı, tasarımcıya sorulmaz): blok tipi anahtarları, `d
 
 ### 10.17 Sayfa içerik bloklarında Grid / Kolon düzeni
 
-Durum: v2 (esnek N-sütun) · Sahibi: Mimar.
+> **v3 ile SUPERSEDE edildi — bkz. §10.19.** Bu bölüm v1/v2'nin tarihsel karar kaydı olarak
+> KORUNUR (silinmedi), ancak §10.19 yazıldıktan sonra artık GÜNCEL kontrat DEĞİLDİR:
+> `type: "columns"` yeni kod tarafından bir daha ASLA üretilmez, yalnızca okunan/kabul
+> edilen bir legacy şekildir. Derinlik kısıtı ("en fazla 1"), `hero` yasağı ve
+> `MAX_COLUMNS_PER_ROW`/`MAX_BLOCKS_PER_COLUMN`/`MAX_TOTAL_BLOCKS` sabitleri §10.19'da
+> DEĞİŞTİ — güncel değerler için §10.19.3'e bakın.
+
+Durum: v2 (esnek N-sütun, **v3 tarafından supersede edildi**) · Sahibi: Mimar.
 
 **v2 değişikliği (bu turda):** v1'in sabit `columnCount: 2|3` + `ratio` enum'u KALDIRILDI.
 Bir satır artık "+" butonuyla sınırsız (pratikte `MAX_COLUMNS_PER_ROW=24`, salt DoS koruması)
@@ -5045,6 +5052,206 @@ tasarlamaz. Bu iş açılana kadar madde bu bölümde **açık** kalır.
    compliance-agent + db-agent'ındır.
 4. Yeni bir audit aksiyonu (`user.anonymize`) ve kendi hız sınırı/RBAC eşiği tanımlanmalı;
    security-agent akışı gözden geçirmelidir.
+
+### 10.19 Sayfa içerik bloklarında hiyerarşik konteyner (`container`) mimarisi — v3
+
+Durum: v3 · Sahibi: Mimar. Bağlayıcı kaynak: `.claude/design-notes-page-builder-containers.md`
+(tam gerekçe/kararlar) + `openapi.yaml` (`PageBlock`/`PageContainerNode`/
+`PageContainerSettings`/`PageContainerSpacing`/`PageContainerBackground`, tek doğru kaynak).
+**§10.17 (v1/v2) bu bölümle SUPERSEDE edilir** ama silinmez — tarihsel karar kaydı olarak
+kalır. Kapsam AYNI: **yalnızca `Page.blocks`** (ve `Page.translations.<LOCALE>.blocks`);
+`BlogPost`'un blok sistemi YOKTUR (§10.17.1 aynen geçerli).
+
+#### 10.19.1 Neden v2'den v3'e geçildi
+
+v2'de bir "sütun" (`columns` bloğu) yalnızca bir satırın İÇİNDE, en fazla 1 seviye derinlikte
+var olabilen, kendi başına görsel bir anlamı olmayan saf bir sarmalayıcıydı (arka plan/
+min-height/dolgu yoktu). Bu, Elementor/Gutenberg'deki "Section/Container" desenini
+karşılamıyordu ve `hero` gibi tam-genişlik bloklar bir sütunun içine hiç giremiyordu. v3
+bunu tek bir kanonik **`container`** düğümüyle değiştirir: kendi başına görsel bir varlıktır
+(layout/min-height/boşluk/arka plan), keyfi derinlikte iç içe geçebilir (sınırlı) ve `hero`
+dahil HERHANGİ bir içerik bloğunu barındırabilir.
+
+#### 10.19.2 db-agent için: **YAPILACAK HİÇBİR ŞEY YOK**
+
+`Page.blocks` zaten `Json @default("[]")`. Yeni tablo/kolon/migration/backfill job
+**GEREKMEZ** (§10.17.2 ile aynı gerekçe, yapısal derinliğe yükseltilmiş hali).
+
+#### 10.19.3 Veri modeli
+
+Kanonik hedef dosyalar: backend `pages.schemas.ts` (zod), frontend
+`lib/page-builder/types.ts` (TypeScript) — sayısal sabitler ARALARINDA BİREBİR AYNI olmak
+ZORUNDADIR (code-quality-agent PR checklist kalemidir).
+
+```ts
+export type PageNode = ContainerNode | ContentBlock;   // Page.blocks: PageNode[]
+
+export interface ContainerNode {
+  id: string;
+  type: "container";
+  settings: ContainerSettings;
+  children: PageNode[];        // en fazla MAX_CHILDREN_PER_CONTAINER (24)
+}
+
+export interface ContainerSettings {
+  layout: "boxed" | "full-width";     // boxed → ortalanmış + customWidth; full-width → w-full
+  customWidth?: number;               // yalnızca boxed; 320–1920, varsayılan 1170
+  minHeight?: { value: number; unit: "px" | "vh" };  // SERBEST STRING DEĞİL (§10.19.4)
+  direction: "row" | "column";
+  justifyContent: "start" | "center" | "end" | "between" | "around" | "evenly";
+  alignItems: "stretch" | "start" | "center" | "end";
+  gap: number;                        // px, 0–128
+  padding: { top: number; right: number; bottom: number; left: number };  // 0–200, negatif YASAK
+  margin: { top: number; right: number; bottom: number; left: number };   // 0–200, negatif YASAK
+  background:
+    | { type: "none" }
+    | { type: "color"; value: string }                          // hex regex
+    | { type: "image"; value: string; position; size; repeat };  // protokol beyaz listesi
+  widthFr?: number;   // yalnızca direction:"row" EBEVEYN içinde anlamlı — CSS flex-grow
+}
+```
+
+**Kök şekil DEĞİŞMEDİ:** `Page.blocks` hâlâ bir `PageNode[]` **dizisidir** — tek bir kök
+`Container` nesnesine GEÇİLMEDİ (bilinçli red, gerekçe: `pages.routes.ts::applyLocale`'in
+`PAGE_ARRAY_FIELDS` mekanizması, openapi'deki 5 ayrı `type: array` tanımı, mevcut DB
+satırlarının hepsinin `[]` olması — nesneye geçiş zorunlu bir migration üretirdi). Kök dizi
+**örtük (implicit) bir root container**'dır: `direction: "column"`, `layout: "full-width"`,
+`gap: 0`, `padding/margin: 0` sabittir ve HİÇBİR YERDE serileştirilmez. Kullanıcı sayfanın
+tamamına arka plan/genişlik vermek isterse kök diziye kendi `container`'ını ekler.
+
+`data` (içerik) ile `settings` (sunum) ayrımı bilinçlidir: içerik blokları (`hero`/`text`/
+`image`/`gallery`/`cta`/`featured-*`) `data` taşır, `container` düğümleri `settings`+
+`children` taşır — bir konteynerin `data`'sı, bir içerik bloğunun `settings`'i YOKTUR.
+
+#### 10.19.4 DoS / güvenlik sınırları
+
+| Sabit | Değer | Not |
+|---|---|---|
+| `MAX_CONTAINER_DEPTH` | **4** (kök=1) | Yaprak bloklar en fazla 5. seviyede. v2'nin "en fazla 1" kısıtından yükseltildi. |
+| `MAX_CHILDREN_PER_CONTAINER` | **24** | Yalnızca GERÇEK `container.children` dizilerine uygulanır — **kök `Page.blocks` dizisi bu sınıra TABİ DEĞİLDİR** (architect onaylı netleştirme, security-agent ön denetimi §13.2; v2'de de kökte ayrı bir "max children" YOKTU, bu davranış korunur). |
+| `MAX_TOTAL_PAGE_NODES` | **300** | Konteynerler DAHİL, sayfa başına toplam düğüm. v2'nin 200'ünden yükseltildi (bir legacy `columns` normalize edilince `1 + N + M` düğüme dönüşür; 200'de kalmak mevcut sınıra yakın sayfaların ilk kaydında sebepsiz 422 üretirdi). |
+| `MAX_PAGE_BLOCKS_BYTES` | **256 KB** | YENİ — §10.16'daki e-posta blokları tavanıyla aynı desen. Fastify'nin global `bodyLimit`'i (~5 MB) tek başına yeterli değildir. |
+
+**Bağlayıcı doğrulama sırası** (`backend/src/lib/page-blocks.ts::scanPageNodeStructure` +
+`pages.schemas.ts::PageBlockListSchema`):
+
+```
+1. Fastify bodyLimit (~5 MB, mevcut)
+2. scanPageNodeStructure(raw)   ← İTERATİF (explicit stack), ÖZYİNELEME YOK — derinlik/
+                                   toplam-düğüm/konteyner-başına-çocuk BURADA ölçülür/reddedilir
+3. JSON.stringify + byte tavanı (256 KB)   ← try/catch'e alınır (defense-in-depth)
+4. z.record(...).transform(...) özyinelemeli şema parse'ı   ← ARTIK GÜVENLİ (derinlik ≤4 garantili)
+5. sanitizePageBlocks (özyinelemeli, kendi bağımsız depth-cutoff'u MAX_CONTAINER_DEPTH+2 ile)
+```
+
+Bu sıra **kritik**: `scanPageNodeStructure` zod'un özyinelemeli parse'ından ÖNCE çalışmak
+ZORUNDADIR — aksi halde derinlik sınırının KENDİSİ zod'un parse'ı stack'i taşırarak bir
+`RangeError`'a (temiz 422 yerine crash'e) dönüşür. İlk tasarım taslağında bu sıra
+`JSON.stringify → scanPageNodeStructure` idi — security-agent ön denetimi (`.claude/
+design-notes-page-builder-containers.md` §13.1) bunun da aynı DoS'a açık olduğunu tespit
+etti (`JSON.stringify` V8'de özyinelemelidir), sıra düzeltilerek uygulandı. **İmza regresyon
+testi:** 10.000 seviye derinlikte bir payload `RangeError` fırlatmadan temiz `422` döner
+(`backend/tests/unit/pages-container-schema.test.ts`).
+
+**CSS enjeksiyonu kapatma:** `settings`'in tamamı render motorunda DOĞRUDAN inline `style`'a
+beslenir ve `sanitizePageBlocks` yalnızca `data.html`'e bakar, `settings`'e HİÇ bakmaz — bu
+yüzden HER `settings` alanı ya sayısal (aralık sınırlı) ya kapalı bir enum ya da dar bir
+regex/protokol-beyaz-listesidir, HİÇBİRİ serbest CSS string'i DEĞİLDİR:
+- `minHeight` kullanıcı isteğindeki serbest `string` yerine `{ value: number; unit: "px"|"vh" }` (mimar tarafından bilinçli red — §10.19.3).
+- `background.value` (renk) → `#rgb`/`#rrggbb`/`#rrggbbaa` regex'i.
+- `background.value` (görsel URL'i) → CSS-bağlamından-kaçış karakter kara listesi (`"'()\;{}<>`+boşluk) **VE** protokol beyaz listesi (`/`, `https://`, `http://` DIŞINDA HER ŞEY, özellikle `javascript:`/`vbscript:`/`data:`, reddedilir — kara liste tek başına `%` URL-encoding'i ile atlatılabilirdi, security-agent ön denetimi §13.3).
+- `padding`/`margin` negatif YASAK (0–200) — çift gerekçe: (1) editör içi UX-tuzağı, (2) güvenlik: düşük yetkili bir Editor'ün public sayfada bir elemanı başka bir elemanın üzerine görünmez taşıyıp UI-redressing/tıklama-tuzağı üretmesi (§13.4).
+
+#### 10.19.5 Render motoru (public + editör önizlemesi — AYNI sınıf/style tablosu, WYSIWYG için zorunlu)
+
+**Flexbox** (CSS Grid DEĞİL — v2'nin kararı tersine çevrildi): `direction`/`justifyContent`/
+`alignItems`/`gap` flexbox semantiğidir; `widthFr` → `flex: <n> 1 0%` (v2'nin `<n>fr`'ıyla
+matematiksel olarak birebir aynı sonuç). İç içe geçmede flex, grid'e göre çok daha
+öngörülebilirdir.
+
+Statik değerler → Tailwind sınıfı (JIT taranabilir sabit tablo); dinamik değerler (px/oran/
+renk/url) → inline `style` (Tailwind arbitrary class KULLANILMAZ — derleme-zamanı statik
+tarama dinamik `N` için çalışmaz, §10.17.5'teki `gridTemplateColumns` kararıyla aynı ilke).
+Gerçek implementasyon: `frontend/src/components/site/blocks/container-block.tsx`.
+
+Mobil davranış: `direction: "row"` HER ZAMAN `flex-col md:flex-row`'a çevrilir — `stackOnMobile`
+gibi bir veri alanı YOKTUR (§10.17.3'ün kararı aynen geçerli).
+
+**"Chrome" sözleşmesi (§6.3, gözden kaçırılması KOLAY):** yaprak bloklar (`text`/`hero`/`cta`/
+`gallery`) kendi dış gutter'larını (`px-4 py-8` vb.) taşır. `BlockRenderer({ nodes, chrome })`:
+kök dizideki yaprak bloklar `chrome: "page"` (bugünkü davranış birebir korunur); bir
+`container`'ın içindeki yaprak bloklar `chrome: "bare"` (kendi gutter'ını bırakır, boşluk
+konteynerin `padding`/`gap`'inden gelir). **Bilinçli, dokümante edilmiş görsel sapma:**
+legacy bir `columns` sütunundaki blokların birkaç piksellik iç dolgu farkı olabilir (satır/
+sütun geometrisi piksel-piksel korunur, yalnızca sütun-içi blokların kendi iç dolgusu
+değişir) — bu bir hata değil, çift-gutter'ın giderilmesidir.
+
+#### 10.19.6 Backend — dokunulması ZORUNLU yerler (özet, ayrıntı tasarım notu §5)
+
+1. **`backend/src/lib/page-blocks.ts`:** `scanPageNodeStructure` (YENİ, iteratif) +
+   `flattenPageBlocks` (özyinelemeliden **iteratife** çevrildi, imza DEĞİŞMEDİ —
+   `seo-score.ts` tüketicisi korunur, `container.children`'ı da düzleştirir).
+2. **`pages.schemas.ts`:** `PageBlockListSchema` (tek giriş noktası) + `PageNodeSchema` +
+   `ContainerNodeSchema` + `LegacyColumnsNodeSchema` (`z.preprocess` ile sessiz
+   `columns → container` çevrimi — 422 VERMEZ). `refineTotalBlockCount` KALDIRILDI (kontrol
+   artık `PageBlockListSchema` içinde, doğru sırada). `TranslationsSchema` AYNI şemaya bağlı.
+3. **`sanitize-blocks.ts`:** `container.children` özyineleme dalı (**ZORUNLU, atlanırsa
+   §10.17.4'teki stored XSS YENİDEN AÇILIR**) + `columns` (legacy) dalı AYNEN KORUNUR (eski
+   `PageRevision` snapshot'ları hâlâ bu şekilde olabilir) + bağımsız depth-cutoff
+   (`MAX_CONTAINER_DEPTH + 2`, snapshot'lar yeni şemadan hiç geçmediği için).
+4. `seo-score.ts` **değişmez** (flatten üzerinden otomatik kazanır — derinlikten bağımsız
+   sayım, bkz. openapi.yaml `SeoScoreIssue`).
+5. Mapper'lar (`mappers/index.ts::toPageDto`, `public-api.mappers.ts`) **değişmez** — `blocks`
+   olduğu gibi taşınır.
+
+#### 10.19.7 Geriye dönük uyumluluk / migration stratejisi
+
+**DB migration script'i YOK.** İki katmanlı BC (§10.17.8'in yapısal seviyeye yükseltilmiş
+hali): (a) backend `z.preprocess` ile **yazma anında** `columns → container`, (b) frontend
+`lib/page-builder/normalize.ts::normalizePageNodes()` ile **okuma anında** — GET yanıtı
+re-validate edilmeden ham JSON döndüğü için (`pages.routes.ts`) bu adım gereklidir. Admin
+editör ve public render kökü (sayfa bileşenleri) TAM OLARAK iki giriş noktasından bu
+fonksiyonu çağırır; aşağı akıştaki hiçbir bileşen legacy şekil GÖRMEZ.
+
+Neden batch backfill YAZILMADI: `Page.blocks` bir `Json` kolonudur, `PageRevision`
+snapshot'ları **tanım gereği geçmişin fotoğrafıdır** (topluca düzenlemek "geri yükle"nin
+verdiği sözü bozar) — okuma-anında normalizasyon HER KOŞULDA gereklidir, backfill onu ortadan
+KALDIRMAZ, yalnızca üstüne risk ekler. Çıkış stratejisi (deferred): telemetri/DB sorgusuna
+göre hiçbir canlı `Page.blocks`/son-N-revizyon `columns` içermediğinde ayrı bir turda şim
+kaldırılır — **bu turda YAPILMADI**.
+
+| Senaryo | Davranış |
+|---|---|
+| v1 sayfa (`columnCount`/`ratio`), dokunulmadan görüntülenir | `normalizePageNodes` görsel oranı korur |
+| v2 sayfa (`width`), dokunulmadan görüntülenir | `width → widthFr` birebir, piksel parite |
+| v1/v2 sayfa başka bir alanı düzenlenip kaydedilir | Editör normalize edilmiş ağacı gönderir → DB'ye `container` yazılır |
+| Eski istemci hâlâ `columns` gönderirse | Backend kabul eder, `container` olarak yazar — 422 VERMEZ |
+| Eski `PageRevision` geri yüklenirse | Restore yazma yolundan geçer → `container` olur |
+| `hero` bir konteyner içindeyken | Artık GEÇERLİ (v2 yasağı kaldırıldı) |
+
+#### 10.19.8 Frontend — editör, palette, dnd-kit (özet)
+
+- `lib/page-builder/types.ts`, `normalize.ts` (YENİ), `containers.ts` (YENİ — ağaç işlemleri:
+  `findNode`/`insertNode`/`removeNode`/`moveNode`/`wrapInContainer`/`unwrapContainer`/
+  `isDescendant` vb.), `presets.ts` (YENİ — 7 Layout Picker ön ayarı). `columns.ts` **SİLİNDİ**.
+- Palette **iki bölüme** ayrılır: **Düzen** (7 ızgara ön ayarı, `LAYOUT_PRESETS`) ve **İçerik**
+  (mevcut 7 blok, `blockRegistry` DEĞİŞMEDİ). §10.17.6'nın "columns palette'e EKLENMEZ" kararı
+  **GEÇERSİZ KILINDI** — bir konteyner artık kendi başına görsel bir varlık olduğu için boş
+  ekleyip doldurmak birincil akıştır.
+- dnd-kit konteyner kimliği v3: kök `"root"`, her konteyner `"container:<id>"` (v2'nin
+  `"col:<id>"` biçimi kaldırıldı). Tek `DndContext` + her konteyner kendi
+  `useDroppable`/`SortableContext`'i; `isDescendant` guard'ı bir konteynerin kendi torununun
+  içine bırakılmasını engeller. Yukarı/aşağı ok butonları KORUNUR (a11y yedeği).
+- `wrapInColumns`/`unwrapColumns` → `wrapInContainer`/`unwrapContainer`; veri kaybı
+  tuzağı koruması (`needsConfirmToUnwrap` + onay diyaloğu) AYNEN KORUNUR.
+
+#### 10.19.9 Kapsam dışı (bilinçle ertelendi, v4 adayı)
+
+Cihaz-bazlı (responsive) ayar setleri (Desktop/Tablet/Mobile sekmeleri), negatif margin,
+arka plan overlay/gradient/video, global "bölüm şablonu" (saved sections) kütüphanesi, legacy
+`columns` şiminin kaldırılması (çıkış koşulu §10.19.7'de tanımlı), blog'a konteyner getirmek
+(§10.17.1 kararı geçerli), `Page.blocks`'un JSON'dan ilişkisel tabloya taşınması. Ayrıntılı
+gerekçeler: `.claude/design-notes-page-builder-containers.md` §11.
 
 ---
 

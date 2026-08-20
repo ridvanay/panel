@@ -1,10 +1,7 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
 import { fetchHomepageServer, fetchSiteSettingsServer } from "@/lib/api/server-settings";
-import { fetchPageBySlugServer, fetchPublishedPagesServer } from "@/lib/api/server-pages";
+import { fetchPageBySlugServer } from "@/lib/api/server-pages";
 import { fetchLocalesServer } from "@/lib/api/server-locales";
-import { SiteHeader } from "@/components/site/site-header";
-import { SiteFooter } from "@/components/site/site-footer";
 import { BlockRenderer } from "@/components/site/blocks";
 import { ViewTracker } from "@/components/site/view-tracker";
 import { SyncLocaleAlternates } from "@/components/site/sync-locale-alternates";
@@ -12,7 +9,7 @@ import { LegalDocumentNotice } from "@/components/site/legal-document-notice";
 import { FallbackHome } from "@/components/marketing/fallback-home";
 import { buildContentMetadata } from "@/lib/seo";
 import { SITE_URL } from "@/lib/env";
-import type { Block } from "@/lib/page-builder/types";
+import { normalizePageNodes } from "@/lib/page-builder/normalize";
 
 type PageProps = { params: Promise<{ lang: string }> };
 
@@ -58,46 +55,40 @@ async function resolveLocalizedHome(slug: string, lang: string, fallback: NonNul
   return localized ?? fallback;
 }
 
+// `[lang]/(site)/layout.tsx` bu sayfayı sarmalar — ortak header/footer, `--site-*` renk/font
+// CSS değişkenleri, Özel CSS/JS enjeksiyonu ve navigasyon menüsü ORADAN gelir (bkz. layout.tsx).
+// Bu sayfa `(site)/[slug]/page.tsx` ile AYNI desende: sadece kendi içeriğini döndürür, header/
+// footer'ı KENDİSİ render ETMEZ — daha önce bu dosya `(site)/` grubunun DIŞINDA olduğu için
+// layout'u hiç almıyordu ve elle kendi header/footer'ını çiziyordu; bu da ana sayfanın Görünüm
+// (renk/font/özel CSS/navigasyon) ayarlarını hiç yansıtmamasına yol açıyordu.
 export default async function RootPage({ params }: PageProps) {
   const { lang } = await params;
   const [homePage, locales] = await Promise.all([fetchHomepageServer(), fetchLocalesServer()]);
-
-  const activeLocale = locales.find((l) => l.code === lang);
-  if (!activeLocale) notFound();
-  const defaultLocale = locales.find((l) => l.isDefault);
 
   if (!homePage) {
     return <FallbackHome />;
   }
 
+  const defaultLocale = locales.find((l) => l.isDefault);
   const page = lang === defaultLocale?.code ? homePage : await resolveLocalizedHome(homePage.slug, lang, homePage);
-  const [settings, pages] = await Promise.all([fetchSiteSettingsServer(), fetchPublishedPagesServer(lang)]);
 
   const activeLocalization = page.localizations.find((l) => l.locale === lang);
   const showLegalNotice =
     page.isLegalDocument && lang !== defaultLocale?.code && activeLocalization?.translated === false;
 
   return (
-    <div className="flex min-h-screen flex-col">
+    <>
       <SyncLocaleAlternates kind="page" items={page.localizations} />
-      <SiteHeader settings={settings} pages={pages} locales={locales} activeLocale={activeLocale} />
-      <main className="flex-1">
-        <ViewTracker kind="page" slug={page.slug} />
-        {showLegalNotice ? (
-          <LegalDocumentNotice
-            title={page.title}
-            defaultLocaleHref="/"
-            defaultLocaleLabel={defaultLocale?.nativeLabel ?? ""}
-          />
-        ) : (
-          <BlockRenderer blocks={page.blocks as unknown as Block[]} />
-        )}
-      </main>
-      <SiteFooter
-        siteName={settings.siteName}
-        activeLocaleCode={activeLocale.code}
-        defaultLocaleCode={defaultLocale?.code}
-      />
-    </div>
+      <ViewTracker kind="page" slug={page.slug} />
+      {showLegalNotice ? (
+        <LegalDocumentNotice
+          title={page.title}
+          defaultLocaleHref="/"
+          defaultLocaleLabel={defaultLocale?.nativeLabel ?? ""}
+        />
+      ) : (
+        <BlockRenderer nodes={normalizePageNodes(page.blocks)} chrome="page" />
+      )}
+    </>
   );
 }

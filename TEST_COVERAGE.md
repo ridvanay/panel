@@ -212,15 +212,13 @@ GERÇEK 229 blog yazısıyla.
 **+14 yeni frontend unit test** yeşil, mevcut **375 frontend unit + 642 backend test** kırılmadı
 (tamamı bu turda yeniden koşuldu, hepsi geçti).
 
-### Kapsam dışı bırakılan — Öncelik 3 (galeri bloğu e2e)
+### Öncelik 3 (galeri bloğu e2e) — KAPATILDI (bkz. "§Galeri Bloğu v2" bölümü aşağıda)
 
-Zaman kısıtı nedeniyle "Galeri Ekle" → MediaPicker çoklu seçim → içerikte render → kaydet/yeniden
-aç → korunma akışının TAM Playwright e2e'si eklenmedi. Bunun yerine `MediaPicker`'ın çoklu seçim
-davranışı (seçili işaret, "Seç (N)", maxSelection) component-seviyesinde (`tests/unit/
-media-picker-multiple.test.tsx`) doğrulandı; galeri bloğunun TipTap içine doğru serialize/
-deserialize edildiği ise frontend-agent'ın kendi unit testlerine bırakıldı (bu tur qa-agent
-tarafından ayrıca doğrulanmadı). **Sonraki tur için önerilir**: tam editörde "Galeri Ekle" →
-2-3 görsel seç → kaydet → sayfa yenile → galerinin korunduğunu doğrulayan bir Playwright testi.
+~~Zaman kısıtı nedeniyle "Galeri Ekle" → MediaPicker çoklu seçim → içerikte render → kaydet/yeniden
+aç → korunma akışının TAM Playwright e2e'si eklenmedi.~~ Galeri bloğu tek-görsel taklidinden gerçek
+çoklu-görsel/sürükle-sıralanabilir/3-stilli bir bileşene dönüştürüldüğünde bu boşluk kapatıldı —
+bkz. aşağıdaki "§Galeri Bloğu v2 (çoklu görsel, sürükle-sıralama, Grid/Carousel/Masonry) — E2E +
+component kapsamı" bölümü.
 
 ### qa-agent'ın KENDİ test altyapısında bulup düzelttiği bug'lar (bu turda)
 
@@ -346,6 +344,24 @@ posta kutusuna gitmez, bkz. `backend/src/lib/mail.ts`).
 | 15 (BUG) | Sütunlar arası taşıma: bloğu DOLU bir sütuna (mevcut öğenin üzerine) sürükleme | `admin-page-builder-columns.spec.ts` (`test.fail()`) | ❌ **Uygulama çöküyor** — bkz. bug 3 aşağıda |
 
 **13/13 "normal" senaryo yeşil + 1 bilinçli `test.fail()` (bug 3'ü izler).**
+
+> **RETİRE EDİLDİ (bu turda, §10.19 Dalga 3.3 kapsamında)** — yukarıdaki 8-12 ve 15 numaralı
+> satırların dayandığı `admin-page-builder-columns.spec.ts`, v2'nin sabit "Düzen" açılır menüsü
+> ("2 Sütun" öğesi, "Satıra blok ekle" butonu, "Tam Genişlik" butonu) üzerine yazılmıştı. v3
+> hiyerarşik `container` mimarisi bu UI'ı TAMAMEN supersede etti (bkz. `.claude/design-notes-page-
+> builder-containers.md` §8) — dosya çalıştırıldığında (bu turda doğrulandı) 3/3 gerçek testi artık
+> DOM'da var olmayan elemanları arayarak başarısız oluyordu (`admin uygulaması çökmez` testi hariç
+> tutulursa 2/2 canlı senaryo net biçimde kırık). Bu, bir regresyon DEĞİL — mimarın bilinçli "supersede"
+> kararının doğal sonucu. Dosya silindi (`git rm`); kapsadığı senaryoların (sarmalama, boş-sütuna-
+> ekleme, sütunlar-arası-taşıma, unwrap-onaylı, mobil yığılma) v3 karşılığı aşağıdaki **§10.19
+> Dalga 3.3** bölümündeki `admin-page-builder-containers.spec.ts`'e taşındı/genişletildi. Bug 3
+> ("sütunlar arası taşıma: DOLU bir sütuna sürükleme admin'i çökertiyor") **v3'te YENİDEN
+> DOĞRULANMADI** — kök nedeni gideren mimari desen (`onDragEnd`-only state mutasyonu) v3'ün
+> `builder-canvas.tsx`'inde AYNEN korundu (bkz. dosya başlığı yorumu), bu yüzden regresyon riski
+> düşük değerlendirildi, ancak "dolu bir konteynere sürükleyerek bırakma" senaryosu bu turun 6
+> maddelik bağlayıcı listesinde YOKTU ve zaman kısıtı nedeniyle ayrıca tekrarlanmadı — **sonraki
+> tur için önerilir** (frontend-agent'a değil, qa-agent'ın kendi backlog'una, çünkü bug zaten
+> önceden düzeltilmiş bir davranışın regresyon kanıtı).
 
 ### Bulunan ve raporlanan bug'lar (bu turda) — kural gereği qa-agent DÜZELTMEZ, ilgili ajana yönlendirir
 
@@ -504,6 +520,293 @@ kırılgan yapmamak için bilinçli bir tercih). Önerilen düzeltme: status but
 ifadesine `isSelf` eklensin (silme butonuyla TUTARLI hale getirilsin) VE/VEYA rol/durum
 hatalarının da (silme gibi) `toast` ile gösterilmesi sağlansın.
 
+## Ana sayfa `(site)` route-group parity — regresyon testi (bu turda eklendi)
+
+Kaynak: gerçek bir bug — `frontend/src/app/[lang]/page.tsx` (ana sayfa, `/`) yanlışlıkla
+`[lang]/(site)/layout.tsx` route-group'unun DIŞINDA duruyordu. Next.js'te `(site)` gibi
+parantezli klasörler URL'e segment EKLEMEZ ama SADECE kendi İÇİNDEKİ sayfaları sarar — bu
+grubun bir KARDEŞİ olarak duran `[lang]/page.tsx` ortak `SiteHeader`/`SiteFooter`'ı, admin
+panelinden yönetilen Navigasyon menüsünü, `--site-primary` vb. Görünüm CSS değişkenlerini ve
+Özel CSS/JS enjeksiyonunu HİÇ almıyordu — admin panelinde yapılan hiçbir değişiklik ana sayfada
+görünmüyordu (diğer TÜM public sayfalar zaten `(site)/` içinde oldukları için ETKİLENMEMİŞTİ).
+Düzeltme: sayfa `[lang]/(site)/page.tsx`'e taşındı, `(site)/[slug]/page.tsx` ile AYNI desene
+uyacak şekilde sadeleştirildi (header/footer'ı kendisi render ETMEZ). URL yapısı DEĞİŞMEDİ.
+
+| # | Senaryo | Dosya | Durum |
+|---|---|---|---|
+| 1 | Ana sayfa ile GERÇEK bir CMS sayfasının header/nav (`nav[aria-label="Site gezinme"]`) ve footer (`getByRole("contentinfo")`) DOM iskeleti BİREBİR aynı | `site-home-layout-parity.spec.ts` | ✅ Geçiyor |
+| 2 | Admin panelinden (API üzerinden) navigasyona eklenen BENZERSİZ etiketli link + değiştirilen `primaryColor`, hem ana sayfada HEM DE bir CMS sayfasında yansır | `site-home-layout-parity.spec.ts` | ✅ Geçiyor |
+
+**Regresyon kanıtı — kasıtlı olarak KIRILDI ve DOĞRULANDI:** `frontend/src/app/[lang]/(site)/
+page.tsx`, dosya sisteminde geçici olarak (git'e DOKUNMADAN, salt `mv` ile) eski/bug'lı konumuna
+(`frontend/src/app/[lang]/page.tsx`, `(site)/` DIŞINDA) taşınıp test tekrar çalıştırıldığında
+**her iki senaryo da (retry'lerle birlikte) başarısız oldu** — test 1 farklı bir `aria-label`
+("Ana gezinme", eski marketing `Navbar`'ından) yakaladı, test 2 `expect.poll` zaman aşımına
+uğradı (nav/appearance değişikliği hiç yansımadı, çünkü sayfa artık `(site)/layout.tsx`'i
+almıyordu). Dosya orijinal konumuna geri taşınıp (`diff` ile byte-birebir doğrulanarak) test
+tekrar çalıştırıldığında **3/3 yeşil** döndü. Bu, testin regresyonu GERÇEKTEN yakaladığının
+kanıtıdır.
+
+Tasarım notu — `homePageId` KASITLI OLARAK ayarlanmıyor: `SiteSettings.homePageId` boşken `/`
+kendi iç `Navbar`/`<footer>`'ı olan bir `FallbackHome` gösterir (bkz.
+`components/marketing/fallback-home.tsx`) ama bu içerik de `[lang]/(site)/page.tsx` İÇİNDE
+render edildiği için YİNE `(site)/layout.tsx`'in SiteHeader/SiteFooter/nav/appearance'ını
+ÜSTÜNE alır — bu senaryo regresyonu doğrulamak için zaten yeterlidir ve `fetchHomepageServer()`'ın
+`revalidate: 60` önbelleğinin gerçek bir "Ana Sayfa" atanmasından sonra tazelenmesini bekleyen
+(~60sn'lik, gereksiz) bir ek gecikmeden kaçınır. `FallbackHome`'un kendi `<footer>`'ı `(site)/
+layout.tsx`'in `<main>`'i İÇİNE nested olduğu için HTML5 spesine göre `contentinfo` rolünü
+ALMAZ (yalnızca üst düzey `<footer>` alır) — bu yüzden `getByRole("contentinfo")` genel `footer`
+etiket seçicisinden DAHA GÜVENİLİRDİR (ilk taslakta generic `footer` seçicisi 2 eşleşme
+buldu — strict-mode ihlali — bu yüzden değiştirildi).
+
+Bilinen zamanlama karakteristiği (yeni bulgu DEĞİL, `admin-locale-management.spec.ts` "madde 7"
+ile AYNI kategori): `(site)/layout.tsx`'in navigasyon/appearance fetch'leri `revalidate: 60` ile
+önbelleklidir; admin panelinden yapılan bir değişikliğin siteye yansıması anlık DEĞİL, en fazla
+~60sn sürebilir. Test 2 bu yüzden `expect.poll({ timeout: 90_000 })` kullanır ve dosya
+`test.describe.configure({ timeout: 150_000, retries: 2 })` ile genişletilmiştir (Playwright'ın
+varsayılan 30sn test/hook timeout'u bu pencereyi keser) — yerel koşumda test 2 tipik olarak
+~1 dakika sürer. CI'daki temiz bir Linux runner'da daha tutarlı/hızlı olması beklenir.
+
+Yeni fixture yardımcıları `frontend/tests/e2e/support/api.ts`'e eklendi: `getAdminAppearance`,
+`patchAppearance`, `getNavigationConfig`, `updateNavigationConfig` (tam-değiştirme/replace
+semantiğine dikkat — teardown orijinal DTO'yu AYNEN geri yazar) ve genel amaçlı `getAdminSettings`/
+`patchSiteSettings` (bu turda başka bir senaryoda kullanılmadı, ama `homePageId` gibi diğer
+`SiteSettings` alanlarını değiştirmesi gereken gelecekteki testler için hazır bırakıldı).
+
+## §Galeri Bloğu v2 (çoklu görsel, sürükle-sıralama, Grid/Carousel/Masonry) — E2E + component kapsamı (bu turda eklendi)
+
+Kaynak: page-builder'daki "Galeri" bloğu tek-görsel taklidi olan eski halinden gerçek çoklu-görsel,
+sürükle-sıralanabilir, 3 stil varyantlı (Grid/Carousel/Masonry) bir WordPress-tarzı galeriye
+dönüştürüldü (frontend `lib/page-builder/types.ts::GalleryBlock`/`GALLERY_MAX_IMAGES`,
+`components/admin/page-builder/blocks/gallery-block.tsx`, `components/site/blocks/gallery-block.tsx`;
+backend `pages.schemas.ts::GalleryBlockDataSchema`, zaten backend-agent'ın `backend/tests/unit/
+pages-gallery-schema.test.ts`'i ile unit-seviyesinde kapsanmıştı). Bu tur, projede daha önce
+"yalnızca admin süsü kalan özellik" diye adlandırılan hata sınıfını (bir özelliğin admin'de
+çalışıp public sitede GERÇEKTEN render edilmemesi) özellikle hedef alarak, gerçek backend +
+Postgres'e (`saas_e2e`) karşı hem admin editörü hem de public site render'ını doğrular.
+
+| # | Senaryo | Dosya | Durum |
+|---|---|---|---|
+| 1 | Boş durum (`EmptyState`) → "Görsel Ekle" → `MediaPicker` ÇOKLU seçim modunda açılır → 2 GERÇEK görsel (magic-byte doğrulamasından geçen PNG, `uploadTestMedia`) seçilir → thumbnail grid'inde ikisi de görünür, sayaç "2 / 30" | `admin-page-builder-gallery.spec.ts` | ✅ Geçiyor |
+| 2 | Klavye ile sürükle-sıralama (dnd-kit `KeyboardSensor`: tutamaca odaklan → Space → ArrowRight → Space) — 3 görselin ilk ikisi yer değiştirir, kaydedilip sayfa YENİDEN açıldığında (taze `GET`) sıra kalıcıdır | `admin-page-builder-gallery.spec.ts` | ✅ Geçiyor |
+| 3 | Alt metni eksik görselde uyarı rozeti (`title="Alt metin eksik"`) görünür, alt metin girilince kaybolur, tekrar boşaltılınca GERİ gelir (canlı doğrulama) | `admin-page-builder-gallery.spec.ts` | ✅ Geçiyor |
+| 4 | Grid ⇄ Carousel ⇄ Masonry geçişi (`aria-pressed`), kaydedilip sayfa yeniden açıldığında stil seçimi KORUNUR | `admin-page-builder-gallery.spec.ts` | ✅ Geçiyor |
+| 5 | 30 görsel limiti — **pragmatik, component-seviyesinde** (aşağıya bkz.): 30/30'da "Görsel Ekle" disabled + uyarı title'ı, 28/30'da `MediaPicker.maxSelection` doğru hesaplanır (2), 25/30 (`nearLimit` eşiği) sayaç `text-warning` stiline döner, 10/30'da dönmez | `frontend/tests/unit/gallery-block-editor-limit.test.tsx` | ✅ Geçiyor (4/4) |
+| 6 (KRİTİK) | Public render — Grid: `[class*="auto-fit"]` gerçekten DOM'da, doğru `<figure>` sayısı, Carousel/Masonry'ye özgü class'lar YOK (3 stilin GERÇEKTEN farklı DOM ürettiğinin kanıtı) | `admin-page-builder-gallery.spec.ts` | ✅ Geçiyor |
+| 7 (KRİTİK) | Public render — Carousel: `role="region" name="Galeri, kaydırmalı görünüm"` + `[class*="snap-x"]` + "Sonraki/Önceki görsel" okları gerçekten DOM'da | `admin-page-builder-gallery.spec.ts` | ✅ Geçiyor |
+| 8 (KRİTİK) | Public render — Masonry: `[class*="columns-2"]` gerçekten DOM'da | `admin-page-builder-gallery.spec.ts` | ✅ Geçiyor |
+| 9 (KRİTİK) | Public render — boş galeri (`images: []`) HİÇBİR ŞEY render ETMEZ: iki benzersiz metin bloğu arasına yerleştirilip aradaki DOM'da (blok-seviye `nextElementSibling`) sızmış boş bir konteyner OLMADIĞI doğrudan doğrulanır | `admin-page-builder-gallery.spec.ts` | ✅ Geçiyor |
+
+**9/9 Playwright senaryosu + 4/4 yeni unit test yeşil** (izole 4 kez, tam suite içinde 1 kez
+tekrar koşuldu — bkz. aşağıdaki "bilinen ortam sınırlaması" notu). Mevcut **460 frontend unit
+test** bu turda yeniden koşuldu, hepsi geçti (yeni dosya dahil 84 dosya).
+
+### Yöntem notları
+
+- **30 görsel limiti bilinçli olarak Playwright'ta test EDİLMEDİ** — 30 gerçek dosya
+  yükleme/seçme akışı hem yavaş hem de (30 kart arasından doğru olanları tıklama) kırılgan
+  olurdu. Bunun yerine `GalleryBlockEditor`'a doğrudan 30 öğelik bir `images` state'i verilen bir
+  component testiyle (`media-picker-multiple.test.tsx` ile AYNI mock deseni) "Görsel Ekle"
+  butonunun disabled davranışı ve `MediaPicker.maxSelection` hesaplaması doğrulandı — görev
+  tanımındaki "pragmatik ol" yönergesine uygun, gerekçesi yukarıda not edildi.
+- **Public-render testleri UI ÜZERİNDEN DEĞİL, `patchPageBlocks` (doğrudan `PATCH /admin/pages/
+  {id}`) ile kuruldu** — `admin-page-builder-columns.spec.ts`'teki AYNI desen (görev tanımı madde
+  7). `GalleryBlockDataSchema.images[].url` backend'de yalnızca `min(1)` string olduğu için (gerçek
+  bir URL formatı ZORUNLU değil) sabit `https://example.com/...` URL'leri yeterliydi, gerçek medya
+  yüklemeye GEREK yoktu.
+- **Reorder testinde GERÇEK bir dosya yükleme gerekti** (MediaPicker'ın kart tıklamalarını
+  tetikleyebilmek için) — `tests/e2e/support/api.ts`'e `uploadTestMedia` (geçerli magic-byte'lı
+  1x1 PNG, backend'in `detectImageMimeType` doğrulamasını GEÇER), `setTestMediaAltText`,
+  `deleteTestMedia` ve `patchPageBlocks` yardımcıları eklendi.
+
+### qa-agent'ın kendi test tasarımında bulup düzelttiği flaky kaynakları (bu turda)
+
+1. **dnd-kit `KeyboardSensor` — art arda, ARADA BEKLEME OLMADAN gönderilen tuş basışları
+   kaçırılıyordu.** `KeyboardSensor.attach()` (`node_modules/@dnd-kit/core/dist/core.esm.js`)
+   "kaldır" (Space) tuşunun AYNI keydown olayında sensörü başlatıyor ama hareket/"bırak"
+   tuşlarını işleyecek asıl dinleyiciyi `setTimeout(() => this.listeners.add(...))` İLE (bir
+   sonraki turda) ekliyor — `Space` hemen ardından `ArrowRight` gönderilince ikincisi bu
+   dinleyici henüz TAKILMADAN gelip SESSİZCE YUTULUYORDU (standalone bir betikle doğrulandı:
+   aradaki beklemeler kaldırılınca sıralama HİÇ değişmiyordu, 150-200ms eklenince HER SEFERİNDE
+   değişti). `dragUntil`/`dragByHandle` (pointer sensörü) başlığındaki "sentetik olay zamanlaması"
+   bulgusuyla AYNI kategoriden bir test-ortamı sınırlaması (uygulama kodu DEĞİL). Düzeltme: tuş
+   basışları arasına `page.waitForTimeout(150)` eklendi (bkz. dosyadaki uzun yorum).
+2. **Kendi test fixture slug'ları 48 karakter sınırını aşıyordu ve bu bir GERÇEK backend bug'ını
+   (aşağıya bkz.) tetikliyordu.** İlk taslakta `qa-e2e-gallery-<varyant>-<13hane-timestamp>-<4hane-
+   rastgele>` deseni 48-51 karakter arasında değişiyordu. Düzeltme: `createHostPage()` artık
+   taban-36 kompakt bir `unique` üretir (`qa-gal-<varyant>-<~11 karakter>`, her zaman < 40 karakter)
+   VE (savunma derinliği için) sayfanın ID'sini DEĞİL backend'in DÖNDÜRDÜĞÜ `created.slug`'ı
+   kaynak-doğruluk olarak kullanır (kendi ürettiği yerel `slug` değişkenini DEĞİL) — böylece
+   backend ileride slug'ı başka bir nedenle değiştirse bile test kendi kendini düzeltir.
+3. **Boş-galeri testinin ilk hâli yanlış DOM düğümünü ölçüyordu (test bug'ı, uygulama bug'ı
+   DEĞİL).** `getByText("QA_GALLERY_MARKER_BEFORE")` `TextBlockView`'ın kök `<div class="prose">`'u
+   DEĞİL, `dangerouslySetInnerHTML` ile basılan İÇTEKİ `<p>` düğümünü buluyordu — bu `<p>`'nin
+   `nextElementSibling`'i her zaman `null` (kendi `div`'i içinde TEK çocuk), blok-seviye kardeşlik
+   ile ilgisi yok. Düzeltme: `div.prose` seçicisiyle blok'un KÖK elemanı hedeflendi.
+4. Pre-existing, bu turdan BAĞIMSIZ doğrulanan flake: `support/admin-session.ts` başlığında
+   ÖNCEDEN belgelenmiş GERÇEK UI login zaman aşımı (refresh-token rotasyon yarışı) — 4 izole
+   koşumdan 1'inde `beforeAll` bu yüzden başarısız oldu (dosyadaki TÜM testler o koşumda
+   çalışmadı), hemen ardından yeniden çalıştırılınca 9/9 yeşil döndü. Yeni bir bulgu DEĞİL,
+   `retries: 1` ile kısmen telafi ediliyor; kalıcı düzeltme `admin-session.ts` başlığında zaten
+   frontend-agent'a yönlendirilmiş durumda.
+
+### Bulunan ve raporlanan bug — backend-agent'a yönlendirilecek (qa-agent DÜZELTMEDİ)
+
+**ORTA-YÜKSEK öncelik — `Page.slug` 48 karakterden uzun olduğunda SESSİZCE kırpılıyor (galeriye
+özgü değil, genel bir `slugify()` davranışı).** `backend/src/modules/pages/pages.routes.ts`
+(`POST /admin/pages` satır ~193: `slug: slug ? slugify(slug) : slugify(title)`; `PATCH` satır
+~277'de de aynı desen) istemcinin AÇIKÇA gönderdiği, zaten geçerli/URL-güvenli bir `slug` değerini
+BİLE `slugify()`'dan geçiriyor — bu fonksiyon (`backend/src/lib/slug.ts` satır 14) `.slice(0, 48)`
+ile SESSİZCE 48 karaktere kırpıyor. Reprodüksiyon: `POST /admin/pages` gövdesinde 49+ karakterlik
+bir `slug` gönderildiğinde, dönen `Page.slug` istemcinin gönderdiğinden FARKLI (son karakter(ler)
+eksik) oluyor — `GET /pages/{istemcinin-gönderdiği-orijinal-slug}` 404 veriyor, yalnızca kırpılmış
+hâli çalışıyor. HİÇBİR hata/uyarı YOK (422 DEĞİL, sessiz veri değişikliği). qa-agent bunu galeri
+public-render testleri hazırlanırken kendi 49-51 karakterlik fixture slug'larıyla YANLIŞLIKLA
+tetikledi (standalone bir Node betiğiyle izole tekrar üretildi ve doğrulandı — `backend/src/lib/
+slug.ts` ile `pages.routes.ts` okunarak kök nedene ulaşıldı). **Galeri özelliğine ÖZGÜ değil**,
+`slugify()`'ı aynı desenle kullanan TÜM `Page` slug işlemlerini (muhtemelen blog/portföy/ürün de
+benzer bir yol izliyorsa onları da) etkileyen genel bir davranış. Önerilen düzeltmelerden biri:
+(a) istemci `slug` alanını AÇIKÇA gönderdiyse `slugify()` TEKRAR uygulanmasın (yalnızca `title`'dan
+TÜRETİLİYORSA normalize edilsin), veya (b) 48 karakteri aşan bir `slug` sessizce kırpmak YERİNE
+422 ile REDDEDİLSİN. Ek risk: aynı 48-karakterlik önek paylaşan iki FARKLI uzun slug bu şekilde
+AYNI değere kırpılıp anlaşılmaz bir `409 CONFLICT`'e yol açabilir. qa-agent kendi testini bu
+davranışa karşı SAĞLAM hale getirdi (yukarıdaki "flaky kaynakları" madde 2) — bu, backend
+davranışını DÜZELTMEZ, yalnızca qa-agent'ın kendi test sonucunu bu bug'dan İZOLE eder.
+
+## §10.19 Sayfa içerik bloklarında hiyerarşik konteyner (`container`) mimarisi — unit kapsamı (Dalga 1/2, önceki turda eklendi)
+
+Kaynak: `.claude/design-notes-page-builder-containers.md` (Dalga 1.3/2.5 görev tanımları),
+`ARCHITECTURE.md` §10.19. **Not (kapsam netliği):** bu bölüm backend-agent/frontend-agent'ın
+Dalga 1–2'de eklediği **unit** test tabanını belgeler — documentation-agent tarafından
+dosya/senaryo envanteri olarak yazılmıştır (testler bizzat çalıştırılmadı, yalnızca kaynak
+okunarak doğrulandı). **Dalga 3 (qa-agent, e2e) bu turda TAMAMLANDI** — bkz. aşağıdaki
+"§10.19 Dalga 3.3" bölümü.
+
+| # | Kapsam | Dosya | Not |
+|---|---|---|---|
+| 1 | Derinlik sınırı (`MAX_CONTAINER_DEPTH=4`): tam sınırda kabul, +1 seviyede 422, **10.000 seviyelik patolojik payload'da `RangeError` FIRLAMADAN temiz 422** (imza regresyon testi, security-agent §13.1) | `backend/tests/unit/pages-container-schema.test.ts` | Yeni |
+| 2 | Konteyner başına çocuk sınırı (`MAX_CHILDREN_PER_CONTAINER=24`), toplam düğüm (`MAX_TOTAL_PAGE_NODES=300`), gövde-boyutu (256 KB) tavanları | `backend/tests/unit/pages-container-schema.test.ts` | Yeni |
+| 3 | Legacy `columns` → kanonik `container` dönüşümü (v1 `ratio`, v2 `width`, `gap`/`verticalAlign` eşlemesi) — v3'te bu dosya TAMAMEN yeniden yazıldı ("columns" artık hiç üretilmiyor, yalnızca kabul ediliyor) | `backend/tests/unit/pages-columns-schema.test.ts` | Yeniden yazıldı |
+| 4 | `container.children` içindeki `text` bloklarının sanitize edilmesi (§10.17.4 stored-XSS'in v3'te tekrar açılmaması regresyonu) + legacy `columns` dalının korunması | `backend/tests/unit/sanitize-page-blocks.test.ts` | Güncellendi |
+| 5 | Ağaç işlemleri: `findNode`/`findParentId`/`getContainerChildren`/`isDescendant` (kritik guard — bir konteyneri kendi torununa taşımayı/bırakmayı reddi), `containerDepth`/`subtreeDepth`, `countNodes`, `insertNode`/`removeNode`/`moveNode` (kök `MAX_CHILDREN_PER_CONTAINER`'a TABİ DEĞİL, gerçek konteynerler TABİ — mimarın §13.2 netleştirmesi doğrudan test ediliyor) | `frontend/tests/unit/page-builder-containers.test.ts` | Yeni (47 test) |
+| 6 | `normalizePageNodes` — v1/v2/v3 girdileri, eksik `settings` alanlarının `DEFAULT_CONTAINER_SETTINGS`'ten tamamlanması, bozuk/tanınmayan veri | `frontend/tests/unit/page-builder-normalize.test.ts` | Yeni (17 test) |
+
+Bu tur backend'de `backend/tests/unit/pages-container-schema.test.ts` (yeni) +
+`pages-columns-schema.test.ts` (yeniden yazıldı) + `sanitize-page-blocks.test.ts`
+(güncellendi) ile, frontend'de `page-builder-containers.test.ts` + `page-builder-normalize.test.ts`
+(ikisi de yeni) ile genişledi. Orkestratörün bildirdiği toplam koşum sayıları: **backend 306
+test, frontend 517 test** (bu turdan ÖNCEKİ turların birikimli toplamı dahil) — qa-agent bir
+sonraki oturumda gerçek bir koşumla bu sayıları teyit etmeli, documentation-agent bunu
+DOĞRULAMADAN aktarmaktadır.
+
+### Eksik bırakılanlar (Dalga 1/2 turu için bilinçli, gerekçeli)
+
+- **E2E (Dalga 3, qa-agent)** — bu turda (Dalga 1/2 turunda) YAPILMADI, sonraki turda (Dalga 3.3,
+  bkz. aşağıdaki bölüm) TAMAMLANDI.
+- **`presets.ts` (`createContainerFromPreset` × 7 ön ayar) ve editör tarafı bileşenleri
+  (`container-settings-panel.tsx`, `layout-picker.tsx`, `builder-canvas.tsx`'in özyinelemeli
+  hâli)** için component-seviyesi unit test bu envanterde GÖRÜLMEDİ — frontend-agent'a
+  Dalga 2.5'in geri kalanı olarak devredilir (bu bölüm yalnızca `types.ts`/`normalize.ts`/
+  `containers.ts` saf mantığını kapsayan dosyaları listeler).
+- **`scanPageNodeStructure`/`flattenPageBlocks`'un kendi doğrudan unit testleri**
+  (`backend/tests/unit/page-blocks.test.ts` gibi ayrı bir dosya) bu envanterde bulunamadı —
+  bu iki fonksiyon şu an yalnızca `pages-container-schema.test.ts`/`sanitize-page-blocks.test.ts`
+  üzerinden DOLAYLI olarak kapsanıyor; backend-agent'a doğrudan bir birim test dosyası
+  eklemesi önerilir (özellikle `flattenPageBlocks`'un `container.children`'ı derinlikten
+  bağımsız düzleştirdiğinin izole bir kanıtı için).
+
+## §10.19 Dalga 3.3 — hiyerarşik konteyner (`container`) mimarisi, e2e kapsamı (bu turda eklendi)
+
+Kaynak: `.claude/design-notes-page-builder-containers.md` §10 satır ~1027 "Dalga 3 (PR #3) — 3.3
+qa-agent" görev tanımı (bağlayıcı, birebir 6 senaryo) + `.claude/design-notes-page-builder-
+container-ui.md` (ui-designer spesifikasyonu, editör tarafı locator'ların kaynağı). Yukarıdaki
+"Eksik bırakılanlar" notunun kapattığı boşluk. Gerçek backend + Postgres'e (`saas_e2e`) karşı,
+gerçek tarayıcıda; dosya: `frontend/tests/e2e/admin-page-builder-containers.spec.ts` (YENİ).
+
+| # | Senaryo (mimarın bağlayıcı listesi) | Durum |
+|---|---|---|
+| 1 | Layout Picker'dan 50/50 ("İki Eşit Sütun") ekle → her sütuna blok koy (Görsel + Metin) → kaydet → public'te doğrula (sol/sağ konum + genişlik eşitliği) | ✅ Geçiyor |
+| 2 | 4 seviye iç içe konteyner kurulabilir (`settingsBtn` ile sırayla seç + "Tek Sütun" ekle), 5. seviyeyi denerken Layout Picker karoları TAMAMEN devre dışı (`disabled` + doğru `title`) — editör `MAX_CONTAINER_DEPTH=4`'ü ÖNLEYİCİ olarak uygular | ✅ Geçiyor |
+| 3 | Konteyneri kendi çocuğunun (boş) içine sürüklemeyi dene → `isDescendant` guard reddeder, ağaç DEĞİŞMEDEN kalır, editör KİLİTLENMEZ/çökmez (sürüklemenin bizzat gerçekten TETİKLENDİĞİ `DragOverlay` görünürlüğüyle kanıtlanır — aksi halde "değişmedi" iddiası sahte-pozitif olurdu) | ✅ Geçiyor |
+| 4 | Legacy fixture — v1 (`ratio`) + v2 (`width`) şeklinde DB'ye ham yazılmış (`setRawPageBlocksDirectly`, bkz. aşağıdaki not) bir sayfa: dokunmadan public render → piksel oranı korunur (görsel bounding-box genişlik oranı, v1 ~2:1, v2 ~3:1, toleranslı); sonra editör ÜZERİNDEN kaydedilince API yanıtı TAMAMEN `type: "container"` (6/6 düğüm, `columns` sıfır) | ✅ Geçiyor |
+| 5 | Unwrap onay diyaloğu — "Vazgeç" → hiçbir şey değişmez (içerik + konteyner SAĞLAM); "Konteyneri Kaldır" (onay) → konteyner kalkar, içerik (görsel URL/alt) KAYBOLMADAN üst seviyeye düzleşir, kalıcılık sayfa yeniden açılınca da korunur | ✅ Geçiyor |
+| 6 | Mobil viewport'ta (`375px`) `direction:"row"` konteyner alt alta yığılır (`flex-col` taban, masaüstünde `md:flex-row` yan yana) — konteyner şekli `patchPageBlocks` ile GERÇEK bir yazma yolundan (normal API) kurulur | ✅ Geçiyor |
+
+**6/6 senaryo yeşil** — dosya tek başına 3 kez, `admin-page-builder-gallery.spec.ts` ile birlikte
+(regresyon kontrolü) 1 kez olmak üzere ardışık 4 koşumda tutarlı geçti (senaryo 3'ün dnd-kit
+`PointerSensor` tabanlı adımı dahil — bkz. aşağıdaki flaky-kaynağı notu, gerçek bir kararsızlık
+DEĞİL, bir defalık bir test-tasarımı hatasıydı ve düzeltildi).
+
+### `frontend/tests/e2e/support/api.ts` genişletmesi (geriye dönük uyumlu, mevcut kullanımlar KIRILMADI)
+
+- **`getPage(token, pageId)`** — `GET /admin/pages/{id}`, senaryo 4'ün "önce/sonra" API-seviyesi
+  doğrulaması için.
+- **`setRawPageBlocksDirectly(pageId, blocks)`** — senaryo 4'ün TEK zor kısmı: mimarın §2.1
+  kararı gereği `PATCH /admin/pages/{id}` (dolayısıyla mevcut `patchPageBlocks`) her zaman
+  backend'in yazma-anındaki `z.preprocess`'inden geçer ve `columns`'ı ANINDA `container`'a çevirip
+  ÖYLE YAZAR — yani **normal API akışıyla "DB'de hâlâ columns duran" bir satır ÜRETİLEMEZ**
+  (qa-agent bunu bizzat, elle bir `curl`/`fetch` deneyiyle doğruladı: yalnızca `blocks` içeren bir
+  `PATCH` bile anında `container`'a dönüşüyor). v3 migration'ından ÖNCE kaydedilmiş, o zamandan
+  beri hiç dokunulmamış GERÇEK bir tarihi satırı simüle etmenin tek yolu, backend'in ZATEN kurulu
+  `prisma` CLI'ını (`npx prisma db execute --stdin --url=...`, **yeni npm bağımlılığı YOK**)
+  `child_process.execFileSync` ile çağırıp `Page.blocks` (`pages` tablosu) kolonuna ham SQL
+  `UPDATE ... SET blocks = '...'::jsonb` ile YAZMAKTIR — Zod şemasından hiç geçmeden. İçerik
+  tamamen bu test dosyasının kendi ürettiği veridir (kullanıcı girdisi değil), tek tırnak kaçışı
+  (`'` → `''`) bu bağlamda yeterlidir. `E2E_DATABASE_URL` ortam değişkeniyle override edilebilir
+  (CI'da devops-agent farklı bir host/port kullanabilir).
+
+### Bulunan ve DÜZELTİLEN bug'lar — qa-agent'ın KENDİ test tasarımında (uygulama kodu DEĞİL)
+
+Kural gereği (proje kökü CLAUDE.md madde 3) flaky/yanlış-pozitif testler tolere edilmedi, kaynağı
+bulunup düzeltildi — **ikisi de qa-agent'ın kendi locator seçimindeydi, `ContainerCard`/
+`ContainerSettingsPanel` kodunda DEĞİL**:
+
+1. **`getByRole("button", { name: "Konteyner ayarları" })` / `{ name: "Düzen" }` YANLIŞ-POZİTİF
+   ikinci eşleşme üretiyordu.** `builder-canvas.tsx::ContainerCard`'ın başlık şeridi (seçim için
+   tıklanabilir alan) kendisi de `role="button"` taşır ve kendi `aria-label`'ı YOKTUR — W3C
+   erişilebilir-ad-hesaplama algoritması bu durumda İÇERİĞİNDEN (tüm alt metin/etiketler, iç içe
+   butonların KENDİ `aria-label`'ları DAHİL) bir ad türetir. Sonuç: `getByRole` varsayılan alt-dize
+   eşleşmesi hem DIŞ seçim `div`'ini (adı "...Konteyner ayarları Düzen...") HEM de İÇ "Ayarlar"/
+   "Düzen" ikon butonunu birlikte yakalıyordu (`toHaveCount(1)` beklenirken `2` dönüyordu). Düzeltme:
+   `page.locator('button[aria-label="..."]')` öz-nitelik seçicisine geçildi (mevcut `Sürükle: X`
+   drag-handle deseniyle AYNI, kanıtlanmış yaklaşım).
+2. **`getByText("Seviye 1"/"Seviye 2")` (exact olmadan) iki AYRI (iç içe olmayan) eşleşme
+   üretebiliyordu** — bir konteyner SEÇİLİYKEN Layout Picker'ın "Ekleniyor: Konteyner (Seviye N)"
+   bağlam satırı da alt-dize olarak "Seviye N"i içeriyor. Düzeltme: `exact: true`. Ayrıca, bir
+   konteyner seçiliyken sağ panel (`ContainerSettingsPanel`) KENDİ "Seviye N" rozetini AYRICA
+   render ettiği için (canvas kartındakiyle birebir aynı metin/sınıf) `.first()` de eklendi —
+   bu ikinci durum bug DEĞİL, iki panelin bilinçli olarak aynı bilgiyi göstermesi.
+
+Bu ikisi dışında **uygulama kodunda bug BULUNMADI** — 6 senaryonun hepsi ilk mantıksal
+denemede (locator düzeltmeleri sonrası) beklenen davranışı sergiledi; `isDescendant` guard'ı,
+derinlik/çocuk sınırları, unwrap onay akışı, legacy fixture piksel-parite'si ve mobil yığılma
+mimarın/ui-designer'ın dokümante ettiği gibi çalışıyor.
+
+### `admin-page-builder-columns.spec.ts` retirement — ayrıntı
+
+Yukarıdaki "§10.16/§10.17" bölümündeki nota bkz. — bu dosya `git rm` ile SİLİNDİ (v2 UI'ın
+supersede edilmesiyle 3 gerçek testinin TAMAMI çalıştırıldığında (bu turda doğrulandı) DOM'da
+artık var olmayan elemanları arıyordu: "2 Sütun" `menuitem`'i, "Satıra blok ekle" butonu,
+"Tam Genişlik" butonu — hiçbiri v3 `LayoutMenu`/`LayoutPicker`'da YOK). Kapsadığı senaryolar bu
+bölümdeki yeni dosyaya taşındı/genişletildi.
+
+### A11y (axe-core) durumu — mevcut jest-axe deseni içinde KISMİ kapsam
+
+Proje a11y otomasyonu için Playwright `@axe-core/playwright` YERİNE bilinçli olarak **component-
+seviyesi `jest-axe`** deseni kullanıyor (bkz. `frontend/tests/unit/a11y-*.test.tsx`, ~20 dosya) —
+qa-agent bu turda yeni bir e2e-seviyesi axe bağımlılığı EKLEMEDİ (code-quality-agent'ın "yeni npm
+bağımlılığı beklenmiyor" kuralına saygıyla, ve mevcut mimariyle tutarlılık için). Doğrulandı:
+`frontend/tests/unit/a11y-content-editor.test.tsx` ZATEN `BlockList` (yeni `LayoutPicker`'ın 7
+ön ayar karosu DAHİL) ve `BuilderCanvas`'ı (v3'ün özyinelemeli hâli) kapsıyor ve bu turda yeniden
+koşulup 6/6 yeşil doğrulandı. **Boşluk:** `ContainerSettingsPanel` (Düzen/Boşluk/Arka Plan
+bölümleri, segmented toggle'lar, `SpacingBoxControl`, `BackgroundControl`) ve iç içe geçmiş bir
+`container` düğümünü (derinlik rozetleri, seçili-konteyner `ring` vurgusu) render eden
+`BuilderCanvas` senaryosu için ÖZEL bir a11y testi YOK — bu, unit-test katmanına ait olduğu için
+(frontend-agent'ın alanı, bkz. proje kökü CLAUDE.md ajan sınırları) qa-agent DÜZELTMEDİ,
+**frontend-agent'a önerilir**: `a11y-content-editor.test.tsx`'e (veya yeni bir
+`a11y-page-builder-containers.test.tsx`'e) `ContainerSettingsPanel` + iç içe `container` içeren
+bir `BuilderCanvas` senaryosu eklensin.
+
 ## CI entegrasyonu (devops-agent'a not)
 
 `frontend/playwright.config.ts` `webServer` ile frontend'i otomatik başlatır (`reuseExistingServer:
@@ -514,3 +817,13 @@ yalnızca veritabanı adı `saas_e2e` ve backend `DOTENV_CONFIG_PATH=backend/.en
 portta (4001) başlatılmalı. Test adımı **lint/build'den SONRA, deploy'dan ÖNCE** koşmalı (bkz.
 proje kökü CLAUDE.md kural #5). Bu, qa-agent'ın önerisidir — `ci.yml`'i düzenlemek
 devops-agent'ın sorumluluğundadır.
+
+**Ek not (§10.19 Dalga 3.3, bu turda eklendi):** `admin-page-builder-containers.spec.ts::
+setRawPageBlocksDirectly` çalışma zamanında `backend`'in `prisma` CLI'ını `npx prisma db execute
+--stdin` ile, `cwd` olarak `../backend`'i (frontend köküne göre GÖRECELİ) kullanarak çağırır —
+CI runner'ında `frontend/` ve `backend/` dizinlerinin AYNI checkout'ta, kardeş dizinler olarak
+bulunması ve `backend/node_modules` (dolayısıyla `prisma` devDependency'si) kurulu olması
+GEREKİR (zaten backend'in kendi test adımı için kurulu olacaktır, EK bir kurulum adımı
+gerekmez). `E2E_DATABASE_URL` ortam değişkeni (varsayılan `postgresql://postgres:postgres@
+localhost:5432/saas_e2e?schema=public`) CI'nin Postgres servisi farklı bir host/port
+kullanıyorsa override edilmelidir.

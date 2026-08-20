@@ -7236,7 +7236,12 @@ components:
           blocks:
             type: array
             items: { type: object }
-            description: "YALNIZCA Page — sanitize edilir (kanonik bloklarla AYNI kurallar)."
+            description: >
+              YALNIZCA Page — kanonik `blocks` alanıyla TAM OLARAK AYNI şemadan
+              (`PageBlockListSchema`, §10.19) geçer: derinlik ≤4, konteyner başına ≤24
+              çocuk, toplam ≤300 düğüm, gövde ≤256 KB, `container`/`columns`/`gallery`
+              şekil doğrulaması VE aynı sanitize kuralları. Bu, `translations` yolunun
+              ana `blocks` yolundan daha gevşek bir DoS/XSS yüzeyi açmaması içindir.
       example:
         en:
           title: About Us
@@ -7963,6 +7968,12 @@ components:
         blocks:
           type: array
           items: { $ref: "#/components/schemas/PageBlock" }
+          description: >
+            `GET`'ten HAM JSON olarak döner — sunucu bunu yeniden doğrulamaz/normalize
+            etmez (bkz. `pages.routes.ts`). **Legacy `columns` düğümleri içerebilir**
+            (bir sonraki WRITE'a kadar kanonik `container`'a çevrilmez); istemci
+            `normalizePageNodes()` ile normalize ETMELİDİR (§10.19.7 — okuma-anında
+            normalizasyon).
         seoTitle: { type: string, nullable: true }
         seoDescription: { type: string, nullable: true }
         ogTitle: { type: string, nullable: true }
@@ -8365,6 +8376,13 @@ components:
         alanlarının birleşimi. BlogPost metni: `contentHtml`.
 
 
+        **§10.19 not:** kriter 4/5 için Page taraması `flattenPageBlocks()` üzerinden
+        çalışır — bu fonksiyon `container.children`'ı (iç içe konteynerler DAHİL, KONTEYNER
+        DERİNLİĞİNDEN BAĞIMSIZ) ve legacy `columns.data.columns[].blocks`'u aynı iteratif
+        yürüyüşle düzleştirir. Yani bir konteynerin 3. seviyesine taşınan bir görsel/metin,
+        1. seviyedekiyle AYNI şekilde sayılır — derinlik SEO puanını sessizce düşürmez.
+
+
         Skor yalnızca TR/kanonik kolonlardan hesaplanır (`translations` v1'de dikkate
         alınmaz). Hesap saf ve senkron olmalıdır — liste yanıtında satır başına çalışır.
       type: object
@@ -8405,60 +8423,215 @@ components:
           items: { type: string, format: uuid }
           description: "Uygulanamayan id'ler (bulunamayan veya durumu uygun olmayan). Hata DEĞİLDİR."
 
-    # ---- §10.17 Sayfa içerik blokları + Grid/Kolon düzeni ----
+    # ---- §10.17 (v1/v2, SUPERSEDE edildi) → §10.19 (v3) Sayfa içerik bloklarında
+    # hiyerarşik `container` mimarisi ----
+    # Bağlayıcı kaynak: `.claude/design-notes-page-builder-containers.md` +
+    # ARCHITECTURE.md §10.19. `PageBlock` şema ADI KORUNDU (5 yerden `$ref` ediliyor);
+    # yalnızca `type` enum'u ve alan sözleşmesi genişledi (additive, kırıcı DEĞİL).
 
     PageBlock:
       type: object
       description: >
-        Sayfa içerik bloğu (`Page.blocks`, `Page.translations.<LOCALE>.blocks`).
+        Sayfa içerik/ağaç düğümü (`Page.blocks`, `Page.translations.<LOCALE>.blocks`).
         **YALNIZCA `Page` içindir — `BlogPost`'un blok sistemi YOKTUR** (blog içeriği
-        `contentHtml` TipTap zengin metnidir, bkz. ARCHITECTURE.md §10.17.1).
+        `contentHtml` TipTap zengin metnidir, bkz. ARCHITECTURE.md §10.17.1 — hâlâ geçerli).
 
 
         `type` değerleri: `hero` · `text` · `image` · `gallery` · `cta` ·
-        `featured-products` · `featured-portfolio` · **`columns` (YENİ, §10.17)**.
-        `data` şekli tipe göre değişir; backend `type != "columns"` için şemayı BİLİNÇLİ
-        olarak serbest bırakır (`z.record(z.unknown())` — mevcut davranış korunur) ve
-        yalnızca `columns` için DAR doğrulama uygular.
+        `featured-products` · `featured-portfolio` · **`container`** (kanonik konteyner
+        düğümü, §10.19) · `columns` (**deprecated**, salt okuma/geçiş, aşağıya bkz.).
+
+
+        **`data` alanı YALNIZCA içerik bloklarıdır** (`hero`/`text`/`image`/`gallery`/`cta`/
+        `featured-*`) — `type: "container"` düğümlerinde `data` YOKTUR, bunun yerine
+        `settings` (§`PageContainerSettings`) + `children` (`PageBlock[]`, kendi türünden,
+        iç içe) taşırlar. Bir içerik bloğunun `settings`'i, bir konteynerin `data`'sı YOKTUR —
+        bu ayrım bilinçlidir (bkz. tasarım notu §3.3): sanitize/`settings`↔`data` sorumluluğu
+        karışmaz.
+
+
+        Backend `type` ∉ {`container`, `columns`, `gallery`} için `data` şemasını BİLİNÇLİ
+        olarak serbest bırakır (`z.record(z.unknown())` — mevcut davranış korunur); yalnızca
+        `container`/`columns`/`gallery` DAR doğrulamadan geçer.
 
 
         `type: "text"` bloklarının `data.html`'i DB'ye yazılmadan önce
-        `lib/html-sanitize.ts::sanitizeRichHtml`'den geçer — **sütun İÇİNDEKİLER DAHİL**
-        (özyinelemeli, bkz. §10.17.4; bu özyineleme yapılmazsa stored XSS oluşur).
+        `lib/html-sanitize.ts::sanitizeRichHtml`'den geçer — **konteyner İÇİNDEKİLER DAHİL**
+        (iteratif tarama + özyinelemeli sanitize, derinlik `MAX_CONTAINER_DEPTH` ile
+        sınırlı; bu özyineleme yapılmazsa stored XSS oluşur, bkz. §10.19.6).
       required: [id, type, data]
       properties:
         id: { type: string }
         type:
           type: string
-          enum: [hero, text, image, gallery, cta, featured-products, featured-portfolio, columns]
+          enum:
+            [
+              hero,
+              text,
+              image,
+              gallery,
+              cta,
+              featured-products,
+              featured-portfolio,
+              container,
+              columns,
+            ]
         data:
           type: object
           additionalProperties: true
-          description: "`type: \"columns\"` için bkz. `PageColumnsBlockData`."
+          description: >
+            YALNIZCA içerik blokları için anlamlıdır (`type ∉ {container}`). `type:
+            "columns"` için bkz. `PageColumnsBlockData` (**deprecated**). `type:
+            "container"` düğümlerinde bu alan YOKTUR — bkz. `PageContainerNode`.
+
+    PageContainerSettings:
+      type: object
+      description: >
+        §10.19 (v3) — kanonik `container` düğümünün sunum ayarları. Render motorunda
+        DOĞRUDAN inline `style`'a beslendiği için TÜM sayısal/serbest görünen alanlar
+        BİLİNÇLİ olarak dar tiplerle (kapalı enum, sayısal aralık, regex/protokol beyaz
+        listesi) kilitlenmiştir — hiçbir alan serbest CSS string'i DEĞİLDİR (bkz. tasarım
+        notu §5.3, security-agent ön denetimi §13.3).
+      properties:
+        layout:
+          type: string
+          enum: [boxed, full-width]
+          default: boxed
+          description: "`boxed` = ortalanmış içerik kuyusu (+ `customWidth`); `full-width` = kenardan kenara."
+        customWidth:
+          type: integer
+          minimum: 320
+          maximum: 1920
+          description: >
+            YALNIZCA `layout: "boxed"` iken anlamlıdır. Verilmezse
+            `DEFAULT_CONTAINER_MAX_WIDTH` (1170) uygulanır. Inline `maxWidth` — Tailwind
+            arbitrary sınıfı DEĞİL (derleme-zamanı statik tarama dinamik değeri yakalayamaz).
+        minHeight:
+          type: object
+          nullable: true
+          description: >
+            KASITLI OLARAK serbest bir `string` DEĞİLDİR (mimarın kullanıcı isteğini
+            reddetmesi, §5.3) — `settings`'in tamamı inline `style`'a beslenir ve
+            `sanitizePageBlocks` yalnızca `data.html`'e bakar, `settings`'e HİÇ bakmaz;
+            serbest bir string CSS enjeksiyon yüzeyi olurdu. Sayısal değer + kapalı birim
+            enum'uyla enjeksiyon yapısal olarak imkânsız hale gelir.
+          required: [value, unit]
+          properties:
+            value: { type: number, minimum: 0, maximum: 5000 }
+            unit: { type: string, enum: [px, vh], default: px }
+        direction: { type: string, enum: [row, column], default: column }
+        justifyContent:
+          type: string
+          enum: [start, center, end, between, around, evenly]
+          default: start
+        alignItems:
+          type: string
+          enum: [stretch, start, center, end]
+          default: stretch
+        gap:
+          type: integer
+          minimum: 0
+          maximum: 128
+          default: 16
+          description: "Piksel. `gap-*` Tailwind sınıfı DEĞİL — dinamik değer, inline style."
+        padding: { $ref: "#/components/schemas/PageContainerSpacing" }
+        margin: { $ref: "#/components/schemas/PageContainerSpacing" }
+        background: { $ref: "#/components/schemas/PageContainerBackground" }
+        widthFr:
+          type: number
+          exclusiveMinimum: 0
+          maximum: 12
+          description: >
+            Bu konteynerin, `direction: "row"` olan EBEVEYNİ içindeki göreli genişlik
+            ağırlığı. CSS: `flex: <widthFr> 1 0%` — v2'deki `PageColumn.width` (`fr`) ile
+            sayısal olarak birebir aynı anlam. Ebeveyn `direction: "column"` ise veya
+            düğüm kökteyse YOK SAYILIR. `customWidth` ile KARIŞTIRILMAMALI (o, konteynerin
+            KENDİ dış max-width'idir).
+
+    PageContainerSpacing:
+      type: object
+      description: >
+        Dört kenar, piksel cinsinden tam sayı. **Negatif değer YASAK** (0–200) — iki
+        gerekçe: (1) editör içi UX-tuzağı (bir bloğun kendi ebeveyninin dışına taşıp
+        komşu kontrolleri örtmesi), (2) güvenlik: negatif margin, düşük yetkili bir
+        Editor'ün YAYINLANMIŞ/public sayfada bir elemanı başka bir elemanın üzerine
+        görünmez şekilde taşıyıp ziyaretçilere yönelik bir UI-redressing/tıklama-tuzağı
+        deseni üretmesine izin verirdi (security-agent ön denetimi §13.4).
+      properties:
+        top: { type: integer, minimum: 0, maximum: 200, default: 0 }
+        right: { type: integer, minimum: 0, maximum: 200, default: 0 }
+        bottom: { type: integer, minimum: 0, maximum: 200, default: 0 }
+        left: { type: integer, minimum: 0, maximum: 200, default: 0 }
+
+    PageContainerBackground:
+      type: object
+      description: >
+        Ayrık birlik (discriminated union, `type` alanına göre). `color`'ın `value`'su
+        `#rgb`/`#rrggbb`/`#rrggbbaa` regex'iyle sınırlıdır. `image`'ın `value`'su bir
+        protokol BEYAZ LİSTESİNDEN geçer — yalnızca `/` (relative) veya `https://`/`http://`
+        ile başlayabilir; `javascript:`/`vbscript:`/`data:` şemaları (baştaki boşluk/kontrol
+        karakteri toleranslı, case-insensitive) VE CSS-bağlamından-kaçış karakterleri
+        (`"'()\;{}<>` + boşluk) AÇIKÇA reddedilir — salt karakter kara listesi `%`
+        (URL-encoding) ile atlatılabileceği için (security-agent ön denetimi §13.3) protokol
+        beyaz listesi ayrı/bağımsız bir savunma katmanı olarak eklendi.
+      required: [type]
+      properties:
+        type: { type: string, enum: [none, color, image] }
+        value:
+          type: string
+          description: "`type: color` iken hex renk; `type: image` iken URL (yukarıdaki kısıtlarla)."
+        position: { type: string, enum: [center, top, bottom, left, right], default: center }
+        size: { type: string, enum: [cover, contain, auto], default: cover }
+        repeat: { type: string, enum: [no-repeat, repeat], default: no-repeat }
+
+    PageContainerNode:
+      type: object
+      description: >
+        Kanonik konteyner düğümü (§10.19, `PageNode` ağacındaki iç düğüm). `Page.blocks`
+        KÖK dizisi hâlâ `PageBlock[]`'tur (kök şekli DEĞİŞMEDİ — bkz. `CreatePageRequest.
+        blocks` açıklaması); bir `container`'ın kendisi bu dizinin bir ÖĞESİ ya da başka bir
+        `container`'ın `children`'ı olabilir.
+      required: [id, type, settings, children]
+      properties:
+        id: { type: string }
+        type: { type: string, enum: [container] }
+        settings: { $ref: "#/components/schemas/PageContainerSettings" }
+        children:
+          type: array
+          maxItems: 24
+          items: { $ref: "#/components/schemas/PageBlock" }
+          description: >
+            `MAX_CHILDREN_PER_CONTAINER = 24` — yalnızca GERÇEK `container.children`
+            dizilerine uygulanır (kök `Page.blocks` dizisi bir "konteyner" DEĞİLDİR, bu
+            sınıra TABİ DEĞİLDİR — yalnızca toplam düğüm (300) ve gövde-boyutu (256 KB)
+            tavanlarına tabidir, architect onaylı netleştirme).
 
     PageColumnsBlockData:
       type: object
+      deprecated: true
       description: >
-        §10.17 Grid/Kolon düzeni (v2 — esnek N-sütun). "Tam Genişlik" bir DEĞER DEĞİL, bu
-        bloğun YOKLUĞUDUR. Sabit bir `columnCount`/`ratio` YOKTUR — sütun sayısı
-        `columns.length`'ten türetilir (en az 2, üst sınır 24 — salt DoS koruması, bir UX
-        sınırı DEĞİL), her sütun kendi göreli genişlik ağırlığını (`width`) taşır.
+        **DEPRECATED (§10.17 v2 — §10.19/v3'te `PageContainerNode`'a normalize edilir).**
+        Yeni kod bu şekli ASLA üretmez; yalnızca ÖNCEDEN kaydedilmiş sayfaların okunması/
+        kabul edilmesi için desteklenir (`type: "columns"`, salt okuma/geçiş şekli).
 
 
-        **Derinlik en fazla 1:** bir sütunun içine `columns` KONULAMAZ; `hero` de
-        konulamaz (tam-genişlik banner). İhlal → `422 VALIDATION_ERROR`
-        (`error.details.blocks`).
+        Bir `WRITE` isteğinde (`POST`/`PATCH`/autosave) bu şekil sessizce kanonik bir
+        `container` ağacına çevrilir ve DB'ye **`container` olarak** yazılır — 422 VERİLMEZ.
+        Eşleme (mimarın `legacyColumnsToContainer`'ı, backend/frontend'de birebir aynı):
+        `gap` token'ı (`none/sm/md/lg`) → piksel (`0/8/16/32`), `verticalAlign` →
+        `alignItems` (`top→start`, `center→center`, `bottom→end`), her sütunun `width`'i →
+        alt konteynerin `widthFr`'i (v1 `ratio` da aynı ağırlık tablosundan geçer:
+        `2-1`→`[2,1]`, `1-2`→`[1,2]`, aksi halde eşit ağırlık). Dış sarmalayıcı `layout:
+        "boxed"`, `customWidth: 1024` (v2'nin `max-w-5xl`'i) ile eşdeğer geometriyi korur.
 
 
-        Mobil yığılma bir VERİ ALANI DEĞİLDİR — tamamen CSS'tir (`flex-col` tabanı +
-        `md:` kırılma noktasında `grid`e geçiş, §10.17.5). `stackOnMobile` gibi her zaman
-        `true` olan gizli bir bayrak EKLENMEZ.
+        **Derinlik en fazla `MAX_CONTAINER_DEPTH = 4`** (§10.19 — v2'nin "derinlik en fazla
+        1" kısıtı KALDIRILDI; `hero` dahil HERHANGİ bir içerik bloğu artık bir konteyner
+        içine konabilir, bkz. tasarım notu §3.4).
 
 
-        **Geriye dönük uyumluluk (§10.17.8):** bu turdan ÖNCE kaydedilmiş sayfalar eski
-        (v1) `columnCount`/`ratio` alanlarıyla DB'de duruyor olabilir — bir `WRITE`
-        isteğinde bu şekil KABUL EDİLİR ve sessizce v2'ye çevrilir (ratio → per-column
-        `width`), `columnCount`/`ratio` düşürülür.
+        Mobil yığılma bir VERİ ALANI DEĞİLDİR — tamamen CSS'tir (`flex-col` tabanı, §10.19.5).
+        `stackOnMobile` gibi her zaman `true` olan gizli bir bayrak YOKTUR.
       required: [gap, verticalAlign, columns]
       properties:
         gap: { type: string, enum: [none, sm, md, lg], default: md }
@@ -8475,12 +8648,15 @@ components:
               width:
                 type: number
                 default: 1
-                description: "Göreli genişlik ağırlığı (CSS grid `fr` birimi) — varsayılan 1 (eşit pay)."
+                description: "Göreli genişlik ağırlığı — normalize sonrası alt konteynerin `widthFr`'ine taşınır."
               blocks:
                 type: array
                 maxItems: 20
                 items: { $ref: "#/components/schemas/PageBlock" }
-                description: "`type` ∈ {`columns`, `hero`} OLAMAZ."
+                description: >
+                  v2'de `type` ∈ {`columns`, `hero`} OLAMAZ kısıtı vardı; bu kısıt normalize
+                  sonrası kanonik `container` modelinde YOKTUR (§10.19 — yalnızca derinlik
+                  sınırı geçerlidir).
 
     CreatePageRequest:
       type: object
@@ -8491,9 +8667,18 @@ components:
         status: { allOf: [{ $ref: "#/components/schemas/PageStatus" }], default: DRAFT }
         blocks:
           type: array
-          maxItems: 200
+          maxItems: 300
           items: { $ref: "#/components/schemas/PageBlock" }
-          description: "Üst sınır iç içe bloklar DAHİL sayılır (DoS koruması, §10.17.3)."
+          description: >
+            §10.19 (v3). Üst sınır (`MAX_TOTAL_PAGE_NODES = 300`, v2'nin 200'ünden
+            yükseltildi) İÇ İÇE konteynerler DAHİL sayılır (DoS koruması). Ayrıca:
+            konteyner iç içe geçme derinliği en fazla `MAX_CONTAINER_DEPTH = 4` (kök
+            seviye = 1), bir konteynerin doğrudan çocuk sayısı en fazla
+            `MAX_CHILDREN_PER_CONTAINER = 24`, `blocks`'un serileştirilmiş JSON gövdesi en
+            fazla **256 KB**. İhlal → `422 VALIDATION_ERROR` (`error.details.blocks`).
+            Doğrulama SIRASI bağlayıcıdır (iteratif yapı taraması → byte tavanı →
+            özyinelemeli şema parse'ı) — aksi halde derinlik sınırının kendisi bir
+            stack-overflow DoS'una dönüşür (bkz. ARCHITECTURE.md §10.19.4).
         seoTitle: { type: string }
         seoDescription: { type: string }
         ogTitle: { type: string, nullable: true }
@@ -8539,8 +8724,12 @@ components:
         status: { $ref: "#/components/schemas/PageStatus" }
         blocks:
           type: array
-          maxItems: 200
+          maxItems: 300
           items: { $ref: "#/components/schemas/PageBlock" }
+          description: >
+            `CreatePageRequest.blocks` ile AYNI doğrulama seti (§10.19): 300 düğüm tavanı,
+            derinlik ≤4, konteyner başına ≤24 çocuk, gövde ≤256 KB, aynı bağlayıcı
+            doğrulama sırası.
         seoTitle: { type: string, nullable: true }
         seoDescription: { type: string, nullable: true }
         ogTitle: { type: string, nullable: true }
@@ -8679,6 +8868,11 @@ components:
         blocks:
           type: array
           items: { type: object, additionalProperties: true }
+          description: >
+            Autosave "gevşek" bir doğrulama YOLU DEĞİLDİR (§10.19) — bu alan da tam
+            `CreatePageRequest.blocks` şemasından (300 düğüm tavanı, derinlik ≤4,
+            konteyner başına ≤24 çocuk, gövde ≤256 KB, `container`/`columns`/`gallery`
+            şekil doğrulaması) geçer; ihlal aynı şekilde `422 VALIDATION_ERROR` döner.
 
     AutosaveBlogPostRequest:
       description: >
@@ -8778,6 +8972,15 @@ components:
                 **Galeri (`images[]`) snapshot'a DAHİL DEĞİLDİR** — ayrı uçlardan
                 (`.../images`) yönetilen bir ilişki koleksiyonudur ve `PATCH` ile
                 değişmez; dolayısıyla revizyon geri yükleme galeriye DOKUNMAZ.
+
+
+                **Page `blocks` snapshot'ları (§10.19):** snapshot'lar **kaydedildikleri
+                dönemin şeklini** taşır — aynı sayfanın farklı revizyonları v1
+                (`columnCount`/`ratio`), v2 (`columns`+`width`) ve v3 (`container`) şekilleri
+                KARIŞIK içerebilir. Geri yükleme (`restore`) yazma yolundan (`PageBlockListSchema`)
+                geçtiği için sonuç her zaman kanonik `container` şekline normalize edilir; ancak
+                bir snapshot'ı restore ETMEDEN doğrudan görüntüleyen/önizleyen bir istemci
+                (ör. diff/karşılaştırma ekranı) legacy şekli kendisi normalize etmelidir.
               additionalProperties: true
 
     EmailTemplatePurpose:
@@ -11228,7 +11431,11 @@ components:
             slug: { type: string }
             blocks:
               type: array
-              description: "Page-builder blokları (§10.9.6). `?locale=` ile alan bazlı fallback uygulanmış hâlde döner."
+              description: >
+                Page-builder blokları (§10.9.6). `?locale=` ile alan bazlı fallback
+                uygulanmış hâlde döner. Ham JSON'dur — **legacy `columns` düğümleri
+                içerebilir**; istemci (headless dahil) `normalizePageNodes()` benzeri bir
+                adımla `container`'a normalize ETMELİDİR (§10.19.7).
               items: { type: object, additionalProperties: true }
             isLegalDocument:
               type: boolean

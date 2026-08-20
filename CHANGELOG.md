@@ -42,6 +42,44 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
     redaksiyonu, yapılandırılabilir saklama süresi (`retentionDays`, varsayılan 180 gün).
   - Kötüye kullanım koruması: honeypot alanı (`website`) + IP bazlı rate limit (5/dakika).
     Bkz. "Known limitations" (CAPTCHA yok).
+- **feat(pages): Sayfa içerik bloklarında hiyerarşik konteyner (Container) mimarisi (v3)**
+  (§10.19 — `Page` içeriğinin blok/düzen modelinin Elementor/Gutenberg tarzı bir "Container"
+  ağacına dönüşümü, önceki turdaki v2 "Grid/Kolon düzeni"ni **supersede eder**, bkz. aşağıdaki
+  eski madde ve `ARCHITECTURE.md` §10.17 başlığındaki "v3 ile SUPERSEDE edildi" notu). Yalnızca
+  `Page` içeriği için (Blog kapsam dışı — blog içeriği hâlâ `contentHtml` TipTap zengin
+  metnidir).
+  - Kanonik tek düğüm tipi **`container`**: kendi başına görsel bir varlıktır — `layout`
+    (boxed/full-width + 320–1920px özel genişlik, varsayılan 1170), `minHeight`
+    (`{value, unit: "px"|"vh"}`), flexbox `direction`/`justifyContent`/`alignItems`/`gap`,
+    4-kenar `padding`/`margin` (0–200px, negatif YASAK), `background` (yok/renk/görsel).
+    Konteynerler **keyfi derinlikte** (`MAX_CONTAINER_DEPTH = 4`, kök=1) iç içe geçebilir ve
+    **`hero` dahil HERHANGİ bir içerik bloğunu** barındırabilir (v2'nin "sütun içine
+    sütun/hero konulamaz" derinlik-1 kısıtı kaldırıldı).
+  - Editörde **Layout Picker**: 7 hazır ızgara ön ayarı (Tam Genişlik, 50/50, 33/66, 66/33,
+    33/33/33, 25/50/25, 25/25/25/25) — boş bir konteyner ekleyip doldurmak artık birincil akış
+    (önceki turun "columns palette'e eklenmez" kararı geçersiz kılındı). Mevcut bir bloğu tek
+    hamlede konteynere sarma ("Konteynere Sar") ve konteyner kaldırma (unwrap, veri kaybı
+    tuzağı koruması + onay diyaloğu AYNEN KORUNDU) da mevcuttur.
+  - `Page.blocks` KÖK şekli DEĞİŞMEDİ (hâlâ bir dizi — kök = "örtük root container",
+    ayarları serileştirilmez); bir tek kök `Container` nesnesine geçiş bilinçli olarak
+    REDDEDİLDİ (kırıcı olurdu).
+  - Sayısal sınırlar yükseltildi: sayfa başına toplam düğüm **200 → 300**, konteyner başına
+    çocuk **24** (v2'nin 20/24 ikilisinin birleşimi), YENİ **256 KB** gövde-boyutu tavanı.
+    Doğrulama sırası (iteratif yapı taraması → byte tavanı → şema parse'ı) bağlayıcıdır — 10
+    binlerce seviye derin bir payload artık `RangeError` fırlatmadan temiz `422` döner.
+  - Geriye dönük uyumluluk (DB migration **YOK**): `type: "columns"` (v1/v2) yeni kod
+    tarafından ASLA üretilmez ama okunmaya/kabul edilmeye devam eder — bir `WRITE`
+    isteğinde sessizce kanonik `container`'a çevrilir (görsel oran/genişlik/hizalama piksel-
+    piksel korunur), 422 VERİLMEZ. Okuma tarafında (`GET`, ham JSON) frontend
+    `normalizePageNodes()` aynı çevrimi uygular.
+  - `docs/architecture/openapi.yaml`: YENİ `PageContainerNode`/`PageContainerSettings`/
+    `PageContainerSpacing`/`PageContainerBackground` şemaları; `PageColumnsBlockData`
+    `deprecated: true` işaretlendi; `CreatePageRequest`/`UpdatePageRequest`/
+    `AutosavePageRequest.blocks` `maxItems: 200 → 300`.
+
+<details>
+<summary>Önceki tur (v2, artık supersede edildi) — orijinal changelog kaydı, tarihsel referans</summary>
+
 - **Sayfa editöründe Grid/Kolon düzeni** (§10.17). Yalnızca `Page` içeriği için (Blog
   kapsam dışı — blog içeriği hâlâ `contentHtml` TipTap zengin metnidir). Herhangi bir bloğu
   2 sütuna sarmalama; satırın kendi "+" butonuyla **sınırsız** (pratikte `MAX_COLUMNS_PER_ROW`
@@ -60,6 +98,8 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
   - Geriye dönük uyumluluk: bu özelliğin ilk (v1, sabit `columnCount`/`ratio`) sürümüyle
     kaydedilmiş sayfalar bir sonraki WRITE'ta sessizce yeni şekle çevrilir (görsel oran
     korunur) — bkz. `ARCHITECTURE.md` §10.17.8.
+
+</details>
 - **Admin kullanıcı yönetimi: yumuşak silme (soft-delete) ve geri yükleme.** `/admin/users`
   altında iki yeni uç eklendi (bkz. `openapi.yaml` `AdminUsers` tag'i):
   - `DELETE /admin/users/{userId}`: kullanıcıyı fiziksel olarak SİLMEZ — `status: DELETED`
@@ -101,6 +141,20 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
   güvenlik düzeltmesiydi, bkz. "Fixed").
 - `lib/seo-score.ts` sütun içine taşınan görsel/metni de SEO tamlık skoruna dahil ediyor
   (`flattenPageBlocks` üzerinden).
+- **(v3, §10.19)** `backend/src/lib/page-blocks.ts::flattenPageBlocks` özyinelemeliden
+  **iteratife** (explicit stack) çevrildi — imzası DEĞİŞMEDİ (`seo-score.ts` tüketicisi
+  korunur), artık `container.children`'ı da (konteyner derinliğinden bağımsız) düzleştiriyor.
+  YENİ `scanPageNodeStructure` (iteratif yapı tarayıcısı) eklendi — derinlik/toplam-düğüm/
+  konteyner-başına-çocuk sınırlarını zod'un özyinelemeli parse'ından ÖNCE, stack-safe şekilde
+  ölçer/reddeder.
+- **(v3, §10.19)** `pages.schemas.ts::refineTotalBlockCount` kaldırıldı — toplam düğüm
+  kontrolü artık tek giriş noktalı `PageBlockListSchema` içinde, doğru sırada
+  (`scanPageNodeStructure` → byte tavanı → şema parse'ı) yapılıyor.
+- **(v3, §10.19)** `frontend/src/lib/page-builder/columns.ts` silindi — ağaç işlemleri YENİ
+  `containers.ts`'e, legacy okuma dönüşümü YENİ `normalize.ts::normalizePageNodes()`'e
+  taşındı. `wrapInColumns`/`unwrapColumns` → `wrapInContainer`/`unwrapContainer` (veri kaybı
+  tuzağı koruması AYNEN KORUNDU). `components/site/blocks/columns-block.tsx` silindi, yerine
+  `container-block.tsx` geldi.
 - Şema: `SiteUserStatus` enum'una `DELETED` eklendi, `User.deletedAt` (nullable) alanı
   eklendi — migration `20260818074116_add_user_soft_delete` (db-agent).
 
@@ -109,6 +163,22 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
 - **[security]** Sütun (`columns`) bloğu içine konan `text` bloklarının `data.html`'i
   sanitize'den geçmeden DB'ye yazılabiliyordu → public sayfada stored XSS riski.
   `sanitizePageBlocks` bir seviye özyinelemeli hale getirildi (security-agent).
+- **[security] (v3, §10.19)** Hiyerarşik `container` mimarisine geçişte AYNI stored-XSS
+  sınıfının `container.children` üzerinden YENİDEN AÇILMAMASI için `sanitizePageBlocks`'a
+  ayrı bir özyineleme dalı eklendi (legacy `columns` dalı AYNEN KORUNDU — eski
+  `PageRevision` snapshot'ları hâlâ o şekilde olabilir); ayrıca snapshot'lar yeni şemadan
+  hiç geçmediği için bağımsız bir `depth-cutoff` (`MAX_CONTAINER_DEPTH + 2`) eklendi
+  (security-agent onayı, ön ve son denetim).
+- **[security] (v3, §10.19)** İlk tasarım taslağında `blocks` doğrulama sırası
+  (`JSON.stringify` byte tavanı → iteratif yapı taraması) `JSON.stringify`'ın V8'de
+  özyinelemeli olması nedeniyle kendi kendini baltalayan bir stack-overflow DoS vektörü
+  içeriyordu; sıra `scanPageNodeStructure` (iteratif) → byte tavanı olacak şekilde
+  düzeltildi ve `JSON.stringify` `try/catch`'e alındı (security-agent ön denetimi).
+- **[security] (v3, §10.19)** `container.settings.background` (görsel URL) doğrulaması
+  yalnızca bir karakter kara listesiyle (`%` URL-encoding'i ile atlatılabilir) sınırlıydı;
+  bir protokol BEYAZ LİSTESİ eklendi — yalnızca `/` (relative) veya `https://`/`http://`
+  kabul edilir, `javascript:`/`vbscript:`/`data:` şemaları açıkça reddedilir
+  (security-agent ön denetimi).
 - **[security]** E-posta HTML'i, blog/sayfa için kullanılan geniş allow-list
   (`sanitizeRichHtml`) yerine e-postaya özel, daha dar bir allow-list
   (`sanitizeEmailRichText` — `style`/`class`/`id` YOK) ile temizleniyor; satır-içi stiller

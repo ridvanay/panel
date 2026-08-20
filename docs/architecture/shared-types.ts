@@ -1383,71 +1383,150 @@ export interface CreateContactSubmissionResponse {
 }
 
 // ---------------------------------------------------------------------------
-// §10.17 Sayfa içerik bloklarında Grid / Kolon düzeni
-// (bkz. ARCHITECTURE.md §10.17, openapi.yaml `PageBlock`/`PageColumnsBlockData`)
+// §10.19 (v3) Sayfa içerik bloklarında hiyerarşik `container` mimarisi
+// (§10.17 v1/v2 "Grid / Kolon düzeni"nin SUPERSEDE edilmiş hâli — bkz. ARCHITECTURE.md
+// §10.19, openapi.yaml `PageBlock`/`PageContainerNode`/`PageContainerSettings`/
+// `PageColumnsBlockData` (deprecated). Kaynak: `.claude/design-notes-page-builder-
+// containers.md` §3 — frontend karşılığı `frontend/src/lib/page-builder/types.ts` ile
+// alan kümesi BİREBİR aynı olmak zorundadır, bu dosya onun birebir kopyası DEĞİL, aynı
+// sözleşmeyi belge amacıyla yansıtan bir özettir.)
 // ---------------------------------------------------------------------------
 
 // KAPSAM DÜZELTMESİ: bu YALNIZCA `Page.blocks` içindir. `BlogPost`'un blok sistemi
-// YOKTUR (blog içeriği `contentHtml` TipTap zengin metnidir) — §10.17.1.
+// YOKTUR (blog içeriği `contentHtml` TipTap zengin metnidir) — §10.17.1 (hâlâ geçerli).
 //
 // db-agent İÇİN: YAPILACAK HİÇBİR ŞEY YOK. `Page.blocks` zaten `Json @default("[]")`;
-// yeni tablo/kolon/migration GEREKMEZ.
+// yeni tablo/kolon/migration GEREKMEZ. Kök şekil DEĞİŞMEDİ — `Page.blocks` hâlâ bir
+// DİZİDİR (`PageNode[]`); kök dizi = "örtük root container" (ayarları serileştirilmez).
 //
-// KRİTİK GÜVENLİK (§10.17.4): `modules/pages/lib/sanitize-blocks.ts` bugün yalnızca ÜST
-// SEVİYEYİ dolaşır. Sütun içine konan bir `text` bloğu `sanitizeRichHtml`'i ATLAR ve
-// public sayfada `dangerouslySetInnerHTML` ile basılır → STORED XSS. `sanitizePageBlocks`
-// bir seviye ÖZYİNELEMELİ olmak ZORUNDADIR. Aynı şekilde `lib/seo-score.ts` de
-// `flattenPageBlocks()` üzerinden çalışmalıdır, aksi halde sütuna taşınan içerik SEO
-// skorunda sessizce yok sayılır.
+// KRİTİK GÜVENLİK: `modules/pages/lib/sanitize-blocks.ts::sanitizePageBlocks` bir
+// `container.children` dalı taşımak ZORUNDADIR — atlanırsa bir konteyner içine konan
+// `text` bloğu `sanitizeRichHtml`'i ATLAR → stored XSS (§10.17.4'ün tarihi bulgusunun
+// AYNISI, v3'te tekrar açılabilir). Aynı şekilde `lib/seo-score.ts` `flattenPageBlocks()`
+// üzerinden çalışır — bu fonksiyon artık İTERATİFTİR (özyineleme YOK) ve
+// `container.children`'ı KONTEYNER DERİNLİĞİNDEN BAĞIMSIZ düzleştirir.
+//
+// DoS SINIRLARI (backend `pages.schemas.ts` ile SAYISAL OLARAK BİREBİR AYNI olmak
+// ZORUNDADIR): derinlik ≤ `MAX_CONTAINER_DEPTH` (4, kök=1), konteyner başına çocuk ≤
+// `MAX_CHILDREN_PER_CONTAINER` (24 — yalnızca GERÇEK `container.children`, kök dizi HARİÇ),
+// sayfa başına toplam düğüm ≤ `MAX_TOTAL_PAGE_NODES` (300), gövde ≤ 256 KB. Doğrulama
+// SIRASI bağlayıcıdır: iteratif yapı taraması → byte tavanı → özyinelemeli şema parse'ı
+// (aksi halde derinlik sınırının KENDİSİ bir stack-overflow DoS'una dönüşür).
 
-export type PageBlockType =
+export type ContentBlockType =
   | "hero"
   | "text"
   | "image"
   | "gallery"
   | "cta"
   | "featured-products"
-  | "featured-portfolio"
-  | "columns";
+  | "featured-portfolio";
 
-export type PageBlockGap = "none" | "sm" | "md" | "lg";
-export type PageColumnVerticalAlign = "top" | "center" | "bottom";
+/** Kanonik konteyner düğümü tipi. */
+export type ContainerNodeType = "container";
 
-/** Bir sütunun İÇİNE konabilen bloklar — `columns` (derinlik en fazla 1) ve `hero` (tam-bleed) HARİÇ. */
-export type PageLeafBlockType = Exclude<PageBlockType, "columns" | "hero">;
+/** v1/v2'de üretilmiş, ARTIK ÜRETİLMEYEN salt okuma/geçiş şekli. */
+export type LegacyPageBlockType = "columns";
 
-export interface PageColumn {
-  id: string;
-  /** Göreli genişlik ağırlığı (grid `fr` birimi) — varsayılan 1 (eşit pay). §10.17.3 v2. */
-  width: number;
-  /** En fazla 20 blok; `type` "columns"/"hero" OLAMAZ (422). */
-  blocks: Array<{ id: string; type: PageLeafBlockType; data: Record<string, unknown> }>;
+export type PageBlockType = ContentBlockType | ContainerNodeType | LegacyPageBlockType;
+
+/** `boxed` = ortalanmış içerik kuyusu (+ `customWidth`); `full-width` = kenardan kenara. */
+export type ContainerLayout = "boxed" | "full-width";
+export type ContainerDirection = "row" | "column";
+export type ContainerJustify = "start" | "center" | "end" | "between" | "around" | "evenly";
+export type ContainerAlign = "stretch" | "start" | "center" | "end";
+export type ContainerLengthUnit = "px" | "vh";
+
+/** Sayısal, birimi kapalı bir enum — serbest CSS string'i DEĞİL (CSS enjeksiyonu yapısal olarak imkânsız). */
+export interface ContainerLength {
+  value: number;
+  unit: ContainerLengthUnit;
 }
+
+/** Dört kenar, piksel, tam sayı. Negatif değer YASAK (0–200) — UX-tuzağı + UI-redressing gerekçesi. */
+export interface ContainerSpacing {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}
+
+export type ContainerBackgroundPosition = "center" | "top" | "bottom" | "left" | "right";
+export type ContainerBackgroundSize = "cover" | "contain" | "auto";
+export type ContainerBackgroundRepeat = "no-repeat" | "repeat";
 
 /**
- * "Tam Genişlik" bir DEĞER DEĞİL, bu bloğun YOKLUĞUDUR. Editördeki "Düzen" seçicisi bir
- * sarmalama işlemidir; büyütme satırın kendi "+" butonuyla (sınırsız, §10.17.3 v2),
- * küçültme bir sütundaki bloğu silmekle (o sütun otomatik kalkar, kalanlar eşitlenir),
- * tam kaldırma satırın kendi "Tam Genişlik" butonuyla yapılır.
- *
- * VERİ KAYBI TUZAĞI yalnızca MANUEL "Tam Genişlik" (unwrap) içindir: kaybolan sütunlardaki
- * bloklar ATILMAZ — soldan sağa, sütun içi sırayla düzleştirilip hedefe taşınır ve
- * kullanıcıya onay diyaloğu gösterilir. Bir bloğu silmek (otomatik küçültme) veya
- * sürükleyerek taşımak İÇERİK KAYBETMEZ, bu yüzden onay GEREKMEZ.
- *
- * Mobil yığılma bir VERİ ALANI DEĞİLDİR — tamamen CSS (`flex-col` tabanı + `md:`de `grid`).
- *
- * GERİYE DÖNÜK UYUMLULUK (§10.17.8): eski (v1) `columnCount`/`ratio` alanlı bir sayfa bir
- * WRITE isteğinde sessizce bu şekle çevrilir (`ratio` → per-column `width`); `GET` yanıtı
- * ara dönemde hâlâ eski şekli döndürebilir, tüketiciler `width`'i savunmacı okumalıdır.
+ * `value` yalnızca `type: "color"` (hex regex) veya `type: "image"` (protokol
+ * beyaz-listeli URL — yalnızca `/`, `https://`, `http://`; `javascript:`/`vbscript:`/
+ * `data:` reddedilir) iken vardır.
  */
-export interface PageColumnsBlockData {
-  gap: PageBlockGap;
-  verticalAlign: PageColumnVerticalAlign;
-  /** En az 2 — üst sınır 24 (salt DoS koruması, UX sınırı DEĞİL). */
-  columns: PageColumn[];
+export type ContainerBackground =
+  | { type: "none" }
+  | { type: "color"; value: string }
+  | {
+      type: "image";
+      value: string;
+      position: ContainerBackgroundPosition;
+      size: ContainerBackgroundSize;
+      repeat: ContainerBackgroundRepeat;
+    };
+
+export interface ContainerSettings {
+  layout: ContainerLayout;
+  /** YALNIZCA `layout: "boxed"` iken anlamlı. Verilmezse varsayılan 1170px. */
+  customWidth?: number;
+  minHeight?: ContainerLength;
+  direction: ContainerDirection;
+  justifyContent: ContainerJustify;
+  alignItems: ContainerAlign;
+  /** Piksel — dinamik değer, inline style (Tailwind sınıfı DEĞİL). */
+  gap: number;
+  padding: ContainerSpacing;
+  margin: ContainerSpacing;
+  background: ContainerBackground;
+  /**
+   * Bu konteynerin, `direction: "row"` olan EBEVEYNİ içindeki göreli genişlik ağırlığı
+   * (CSS `flex: <widthFr> 1 0%`). Ebeveyn `direction: "column"` ise veya düğüm kökteyse
+   * YOK SAYILIR. `customWidth` ile KARIŞTIRILMAMALI.
+   */
+  widthFr?: number;
 }
 
+export interface PageContainerNode {
+  id: string;
+  type: "container";
+  settings: ContainerSettings;
+  /** En fazla 24 (`MAX_CHILDREN_PER_CONTAINER`) — kendi türünden, iç içe. */
+  children: PageNode[];
+}
+
+/** Ağaçtaki herhangi bir düğüm — bir `container` VEYA bir içerik bloğu (`type`, `data`). */
+export type PageNode = PageContainerNode | { id: string; type: ContentBlockType; data: Record<string, unknown> };
+
+/**
+ * @deprecated v1/v2 şekli — yalnızca ÖNCEDEN kaydedilmiş sayfaların OKUNMASI/kabulü için.
+ * Yeni kod ASLA üretmez; bir WRITE isteğinde sessizce `PageContainerNode`'a normalize edilir
+ * (`gap` token→px, `verticalAlign`→`alignItems`, `width`→`widthFr`). Derinlik kısıtı artık
+ * "en fazla 1" DEĞİL, `MAX_CONTAINER_DEPTH` (4) ile aynıdır; `hero` dahil her içerik bloğu
+ * bir sütunun/konteynerin içine konabilir (v2'nin `hero` yasağı KALDIRILDI).
+ */
+export interface LegacyPageColumn {
+  id: string;
+  /** Göreli genişlik ağırlığı — normalize sonrası alt konteynerin `widthFr`'ine taşınır. */
+  width?: number;
+  /** En fazla 20 blok. */
+  blocks: Array<{ id: string; type: PageBlockType; data: Record<string, unknown> }>;
+}
+
+/** @deprecated v1/v2 şekli — bkz. `LegacyPageColumn`. */
+export interface PageColumnsBlockData {
+  gap: "none" | "sm" | "md" | "lg";
+  verticalAlign: "top" | "center" | "bottom";
+  /** En az 2 — üst sınır 24 (salt DoS koruması). */
+  columns: LegacyPageColumn[];
+}
+
+/** @deprecated v1/v2 şekli. */
 export interface PageColumnsBlock {
   id: string;
   type: "columns";
@@ -1455,7 +1534,8 @@ export interface PageColumnsBlock {
 }
 
 /**
- * dnd-kit çok-konteynerli sürükle-bırak için konteyner kimliği SÖZLEŞMESİ:
- * kök liste "root", her sütun "col:<column.id>" (§10.17.6).
+ * dnd-kit çok-konteynerli sürükle-bırak için konteyner kimliği SÖZLEŞMESİ v3:
+ * kök liste `"root"`, her konteyner `"container:<node.id>"`. v2'nin `"col:<column.id>"`
+ * biçimi KALDIRILDI (sütun artık ayrı bir varlık değil, sıradan bir `container`).
  */
-export type PageBuilderContainerId = "root" | `col:${string}`;
+export type PageBuilderContainerId = "root" | `container:${string}`;

@@ -63,7 +63,7 @@ describe("FeaturedPortfolioBlockView", () => {
   it("portfolio modülü kapalıyken null render eder (fetchPortfolioItemsServer HİÇ çağrılmaz)", async () => {
     vi.mocked(serverModulesApi.isModuleEnabledServer).mockResolvedValue(false);
 
-    const jsx = await FeaturedPortfolioBlockView({ block: makeBlock() });
+    const jsx = await FeaturedPortfolioBlockView({ block: makeBlock(), chrome: "page" });
     expect(jsx).toBeNull();
     expect(serverPortfolioApi.fetchPortfolioItemsServer).not.toHaveBeenCalled();
   });
@@ -72,7 +72,7 @@ describe("FeaturedPortfolioBlockView", () => {
     vi.mocked(serverModulesApi.isModuleEnabledServer).mockResolvedValue(true);
     vi.mocked(serverPortfolioApi.fetchPortfolioItemsServer).mockResolvedValue([]);
 
-    const jsx = await FeaturedPortfolioBlockView({ block: makeBlock() });
+    const jsx = await FeaturedPortfolioBlockView({ block: makeBlock(), chrome: "page" });
     expect(jsx).toBeNull();
   });
 
@@ -84,7 +84,7 @@ describe("FeaturedPortfolioBlockView", () => {
       makePortfolioItem({ id: "i3", title: "Proje 3", slug: "proje-3" }),
     ]);
 
-    const jsx = await FeaturedPortfolioBlockView({ block: makeBlock({ limit: 2 }) });
+    const jsx = await FeaturedPortfolioBlockView({ block: makeBlock({ limit: 2 }), chrome: "page" });
     render(jsx);
 
     expect(screen.getByText("Projelerimiz")).toBeInTheDocument();
@@ -110,7 +110,7 @@ describe("FeaturedPortfolioBlockView", () => {
       }),
     ]);
 
-    const jsx = await FeaturedPortfolioBlockView({ block: makeBlock({ categoryId: "cat-1" }) });
+    const jsx = await FeaturedPortfolioBlockView({ block: makeBlock({ categoryId: "cat-1" }), chrome: "page" });
     render(jsx);
 
     expect(screen.getByText("Web Projesi")).toBeInTheDocument();

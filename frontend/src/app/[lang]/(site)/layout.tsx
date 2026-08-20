@@ -10,6 +10,8 @@ import { CartProvider } from "@/context/cart-context";
 import { LocaleAlternatesProvider } from "@/context/locale-alternates-context";
 import { SiteHeader } from "@/components/site/site-header";
 import { SiteFooter } from "@/components/site/site-footer";
+import { BackToTopButton } from "@/components/site/back-to-top-button";
+import { CookieConsentBanner } from "@/components/site/cookie-consent-banner";
 import { getFooterLogoHeight } from "@/lib/site-settings/logo";
 import { escapeEmbeddedClosingTags } from "@/lib/site-settings/appearance";
 import { SITE_FONT_FAMILY, SITE_FONT_VARIABLES } from "@/lib/site-settings/site-fonts";
@@ -86,6 +88,13 @@ export default async function SiteLayout({
             activeLocaleCode={activeLocale.code}
             defaultLocaleCode={defaultLocaleCode}
           />
+          {appearance.backToTopEnabled && <BackToTopButton />}
+          {appearance.cookieBannerEnabled && (
+            <CookieConsentBanner
+              text={appearance.cookieBannerText ?? ""}
+              policyHref={appearance.cookieBannerPolicyHref}
+            />
+          )}
         </div>
       </LocaleAlternatesProvider>
 
