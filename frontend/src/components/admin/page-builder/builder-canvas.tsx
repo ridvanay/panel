@@ -20,15 +20,24 @@ import {
   ArrowDown,
   ArrowUp,
   ArrowUpToLine,
+  Briefcase,
   Columns2,
   Columns3,
   Columns4,
+  Copy,
   GripVertical,
+  Image as ImageIcon,
+  Images,
+  LayoutTemplate,
+  MousePointerClick,
   PanelTop,
   Plus,
   Rows2,
   Settings2,
+  ShoppingBag,
   Trash2,
+  Type,
+  type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -40,6 +49,7 @@ import {
   containerDepth,
   containerIdOf,
   countNodes,
+  duplicateNode,
   findNode,
   findParentId,
   getContainerChildIds,
@@ -109,6 +119,7 @@ interface Ctx {
   onMove: (id: string, direction: -1 | 1) => void;
   onMoveToParent: (id: string) => void;
   onRemove: (id: string) => void;
+  onDuplicate: (id: string) => void;
   onUpdateContent: (block: ContentBlock) => void;
   onWrap: (id: string) => void;
   onUnwrap: (containerId: string) => void;
@@ -116,6 +127,18 @@ interface Ctx {
   onSelectContainer: (id: string) => void;
   selectedContainerId: string | null;
 }
+
+/** Palette "İçerik" ikon eşlemesi — in-container ekleyici (`AddContentMenu`) her tip için görsel
+ *  bir ipucu taşısın diye (Elementor-tarzı ızgara, salt metin DEĞİL). */
+const BLOCK_TYPE_ICON: Record<PaletteBlockType, LucideIcon> = {
+  hero: LayoutTemplate,
+  text: Type,
+  image: ImageIcon,
+  gallery: Images,
+  cta: MousePointerClick,
+  "featured-products": ShoppingBag,
+  "featured-portfolio": Briefcase,
+};
 
 /** §5 ui-designer dokümanı — bir konteynerin İÇİNDEKİ yaprak bloklar için sessiz "bare" ipucu. */
 function BareChromeHint() {
@@ -217,44 +240,83 @@ function EmptyContainerDropZone({
     <div
       ref={setNodeRef}
       className={cn(
-        "flex min-h-24 flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border/50 text-center text-xs text-foreground/40 transition-colors",
-        isOver && "border-primary bg-primary/5 text-primary"
+        "flex min-h-28 flex-col items-center justify-center gap-2.5 rounded-lg border-2 border-dashed border-border/60 bg-surface-muted/20 text-center transition-colors",
+        isOver && "border-primary bg-primary/5"
       )}
     >
-      <p>Buraya blok sürükleyin</p>
-      <span className="text-foreground/30">veya</span>
-      <AddContentMenu disabled={atMax} onAdd={onAdd} />
+      <AddContentMenu disabled={atMax} onAdd={onAdd} variant="prominent" />
+      <p className={cn("text-xs text-foreground/40", isOver && "text-primary")}>veya buraya blok sürükleyin</p>
     </div>
   );
 }
 
-function AddContentMenu({ onAdd, disabled }: { onAdd: (type: PaletteBlockType) => void; disabled?: boolean }) {
+function AddContentMenu({
+  onAdd,
+  disabled,
+  variant = "icon",
+}: {
+  onAdd: (type: PaletteBlockType) => void;
+  disabled?: boolean;
+  /** "icon" — DOLU bir konteynerin sonuna eklenen küçük "daha fazla blok ekle" düğmesi (kendi
+   *  aria-label'ı VARDIR — boş durumun "Konteynere blok ekle" düğmesiyle KARIŞTIRILMASIN, e2e
+   *  testleri (`admin-page-builder-containers.spec.ts`) o etiketi yalnızca BOŞ durum için sayar).
+   *  "prominent" — Elementor-tarzı boş durum "+ Eleman Ekle" düğmesi (§2 kullanıcı isteği). */
+  variant?: "icon" | "prominent";
+}) {
   const options = Object.entries(blockRegistry) as [PaletteBlockType, { label: string }][];
+  const label = variant === "prominent" ? "Konteynere blok ekle" : "Konteynere daha fazla blok ekle";
+  const title = disabled ? `Bir konteynerde en fazla ${MAX_CHILDREN_PER_CONTAINER} öğe olabilir` : label;
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
         render={
-          <Button
-            type="button"
-            variant="secondary"
-            size="icon-sm"
-            aria-label="Konteynere blok ekle"
-            disabled={disabled}
-            title={disabled ? `Bir konteynerde en fazla ${MAX_CHILDREN_PER_CONTAINER} öğe olabilir` : "Konteynere blok ekle"}
-          />
+          variant === "prominent" ? (
+            <Button type="button" variant="secondary" size="sm" aria-label={label} disabled={disabled} title={title} />
+          ) : (
+            <Button type="button" variant="ghost" size="icon-sm" aria-label={label} disabled={disabled} title={title} />
+          )
         }
       >
         <Plus className="h-4 w-4" />
+        {variant === "prominent" && "Eleman Ekle"}
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        {options.map(([type, meta]) => (
-          <DropdownMenuItem key={type} onClick={() => onAdd(type)}>
-            {meta.label}
-          </DropdownMenuItem>
-        ))}
+      <DropdownMenuContent align="center" className="w-64">
+        {/* DİKKAT: `DropdownMenuLabel` (base-ui `MenuPrimitive.GroupLabel`) BİLEREK KULLANILMAZ —
+            bir `MenuPrimitive.Group` ATASI OLMADAN kullanılınca runtime hatası fırlatıyor
+            (qa-agent bu turda e2e ile YAKALADI: menü açılınca sayfa çöküyordu). Salt görsel bir
+            başlık için düz bir `<p>` yeterli. */}
+        <p className="px-1.5 py-1 text-xs font-medium text-muted-foreground">İçerik bloğu seç</p>
+        <div className="grid grid-cols-2 gap-1 p-1 pt-0">
+          {options.map(([type, meta]) => {
+            const Icon = BLOCK_TYPE_ICON[type];
+            return (
+              <DropdownMenuItem
+                key={type}
+                onClick={() => onAdd(type)}
+                className="flex-col items-center gap-1.5 rounded-lg border border-transparent py-2.5 text-center hover:border-border hover:bg-surface-muted"
+              >
+                <Icon className="h-5 w-5 text-primary" aria-hidden />
+                <span className="text-xs leading-tight text-foreground/80">{meta.label}</span>
+              </DropdownMenuItem>
+            );
+          })}
+        </div>
       </DropdownMenuContent>
     </DropdownMenu>
   );
+}
+
+/** Bir satırdaki (`direction: "row"`) sütunların `widthFr` oranını, kullanıcıya dönük kısa bir
+ *  etikete çevirir (örn. `[1,1]` → `"50 / 50"`, `[1,2]` → `"33 / 67"`) — §3 kullanıcı isteği
+ *  ("Konteyner: 50 / 50"). Bir çocuk `container` değilse veya `widthFr` taşımıyorsa `null` döner
+ *  (oran belirsiz — etiket gösterilmez). */
+function rowRatioLabel(children: PageNode[]): string | null {
+  if (children.length < 2) return null;
+  const weights = children.map((c) => (c.type === "container" ? c.settings.widthFr : undefined));
+  if (weights.some((w) => w === undefined || w === null)) return null;
+  const total = (weights as number[]).reduce((sum, w) => sum + w, 0);
+  if (total <= 0) return null;
+  return (weights as number[]).map((w) => Math.round((w / total) * 100)).join(" / ");
 }
 
 function ContainerCard({
@@ -265,6 +327,7 @@ function ContainerCard({
   depth,
   ctx,
   dragHandle,
+  ratioLabel,
 }: {
   container: ContainerNode;
   parentId: BuilderContainerId;
@@ -273,6 +336,8 @@ function ContainerCard({
   depth: number;
   ctx: Ctx;
   dragHandle: ReactNode;
+  /** Bu konteynerin, `direction: "row"` olan EBEVEYNİ içindeki genişlik oranı (bkz. `rowRatioLabel`). */
+  ratioLabel?: string | null;
 }) {
   const ds = depthStyle(depth);
   const isRow = container.settings.direction === "row";
@@ -284,22 +349,33 @@ function ContainerCard({
   const selected = ctx.selectedContainerId === container.id;
   const containerId = toContainerId(container.id);
   const childIds = container.children.map((c) => c.id);
+  // Satır (`row`) konteyneri KENDİ sütun sayısını gösterir (`"2 Sütun"`, DEĞİŞMEZ — testlere bağlı);
+  // satırın İÇİNDEKİ bare bir sütun ise, mümkünse görece genişlik oranını gösterir (§3 isteği).
+  const headerLabel = isRow ? `${container.children.length} Sütun` : ratioLabel ? `Konteyner: ${ratioLabel}` : "Konteyner";
+  const childRatioLabel = isRow ? rowRatioLabel(container.children) : null;
 
   return (
     <div
       className={cn(
-        "space-y-3 rounded-xl border-2 border-dashed",
+        "group space-y-3 rounded-xl border-2 border-dashed transition-shadow",
         ds.border,
         ds.bg,
         ds.padding,
         selected && "ring-2 ring-primary ring-offset-2 ring-offset-background"
       )}
     >
+      {/* Konteyner Kontrol Barı — "hover'da beliren hızlı aksiyon barı" (§3 isteği): sessizken
+          hafifçe soluk, hover/seçili durumda tam opak + hafif kabartma. Erişilebilirlik/e2e
+          gereği düğmeler HER ZAMAN DOM'da ve tıklanabilir kalır — yalnızca görsel ağırlık değişir. */}
       <div
         role="button"
         tabIndex={0}
         aria-pressed={selected}
-        className={cn("flex flex-wrap items-center justify-between gap-2 rounded-r-md border-l-4 py-1 pl-2 cursor-pointer", ds.accent)}
+        className={cn(
+          "flex flex-wrap items-center justify-between gap-2 rounded-r-md border-l-4 py-1 pl-2 cursor-pointer transition-all",
+          ds.accent,
+          selected ? "opacity-100" : "opacity-75 hover:opacity-100 hover:bg-surface/60 hover:shadow-sm focus-within:opacity-100"
+        )}
         onClick={() => ctx.onSelectContainer(container.id)}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
@@ -311,7 +387,7 @@ function ContainerCard({
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
           {dragHandle}
           <Icon className="h-4 w-4 shrink-0 text-foreground/50" />
-          <span className="text-sm font-medium text-foreground">{isRow ? `${container.children.length} Sütun` : "Konteyner"}</span>
+          <span className="text-sm font-medium text-foreground">{headerLabel}</span>
           <Badge tone="neutral" size="sm">
             {atMaxDepth ? `Seviye ${depth} · Maks.` : `Seviye ${depth}`}
           </Badge>
@@ -335,6 +411,16 @@ function ContainerCard({
             <Settings2 />
           </Button>
           <LayoutMenu mode="unwrap" onSelect={() => ctx.onUnwrap(container.id)} />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Konteyneri çoğalt"
+            title="Çoğalt (Duplicate)"
+            onClick={() => ctx.onDuplicate(container.id)}
+          >
+            <Copy />
+          </Button>
           {isBare && (
             <Button
               type="button"
@@ -377,12 +463,27 @@ function ContainerCard({
         {container.children.length === 0 ? (
           <EmptyContainerDropZone containerId={containerId} atMax={atMaxChildren} onAdd={(type) => ctx.onAddChild(containerId, type)} />
         ) : (
-          <div className={cn("flex gap-3", isRow ? "flex-col md:flex-row" : "flex-col")}>
-            {container.children.map((child, childIndex) => (
-              <div key={child.id} className={cn("min-w-0", isRow && "md:flex-1")}>
-                <NodeCard node={child} parentId={containerId} index={childIndex} total={container.children.length} depth={depth + 1} ctx={ctx} />
+          <div className="space-y-3">
+            <div className={cn("flex gap-3", isRow ? "flex-col md:flex-row" : "flex-col")}>
+              {container.children.map((child, childIndex) => (
+                <div key={child.id} className={cn("min-w-0", isRow && "md:flex-1")}>
+                  <NodeCard
+                    node={child}
+                    parentId={containerId}
+                    index={childIndex}
+                    total={container.children.length}
+                    depth={depth + 1}
+                    ctx={ctx}
+                    ratioLabel={isRow ? childRatioLabel : null}
+                  />
+                </div>
+              ))}
+            </div>
+            {!atMaxChildren && (
+              <div className="flex justify-center">
+                <AddContentMenu onAdd={(type) => ctx.onAddChild(containerId, type)} />
               </div>
-            ))}
+            )}
           </div>
         )}
       </SortableContext>
@@ -397,6 +498,7 @@ function NodeCard({
   total,
   depth,
   ctx,
+  ratioLabel,
 }: {
   node: PageNode;
   parentId: BuilderContainerId;
@@ -404,6 +506,8 @@ function NodeCard({
   total: number;
   depth: number;
   ctx: Ctx;
+  /** Yalnızca `node` bir konteyner VE ebeveyni `direction: "row"` ise anlamlı — bkz. `rowRatioLabel`. */
+  ratioLabel?: string | null;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: node.id });
   const style = { transform: CSS.Transform.toString(transform), transition };
@@ -423,7 +527,16 @@ function NodeCard({
   return (
     <div ref={setNodeRef} style={style} className={cn(isDragging && "opacity-50")}>
       {node.type === "container" ? (
-        <ContainerCard container={node} parentId={parentId} index={index} total={total} depth={depth} ctx={ctx} dragHandle={dragHandle} />
+        <ContainerCard
+          container={node}
+          parentId={parentId}
+          index={index}
+          total={total}
+          depth={depth}
+          ctx={ctx}
+          dragHandle={dragHandle}
+          ratioLabel={ratioLabel}
+        />
       ) : (
         <ContentBlockCard block={node} parentId={parentId} index={index} total={total} ctx={ctx} dragHandle={dragHandle} />
       )}
@@ -565,10 +678,16 @@ export function BuilderCanvas({
     onChange(insertNode(nodes, containerId, children.length, createBlock(type)));
   }
 
+  /** Konteyner Kontrol Barı → "📋 Kopyala / Çoğalt (Duplicate)" (§3 kullanıcı isteği). */
+  function duplicate(id: string) {
+    onChange(duplicateNode(nodes, id));
+  }
+
   const ctx: Ctx = {
     onMove: move,
     onMoveToParent: moveToParent,
     onRemove: remove,
+    onDuplicate: duplicate,
     onUpdateContent: updateContent,
     onWrap: wrap,
     onUnwrap: requestUnwrap,
@@ -587,8 +706,16 @@ export function BuilderCanvas({
         onDragCancel={() => setActiveId(null)}
       >
         {nodes.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-foreground/50">
-            Henüz blok yok — yukarıdan bir blok veya düzen ekleyin.
+          <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-border/60 bg-surface-muted/20 px-8 py-16 text-center">
+            <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+              <LayoutTemplate className="h-7 w-7" aria-hidden />
+            </span>
+            <div className="space-y-1">
+              <h3 className="text-base font-semibold text-foreground">Sayfa Tasarımına Başlayın</h3>
+              <p className="max-w-sm text-sm text-foreground/60">
+                Yukarıdaki ızgara düzenlerinden birini seçerek ilk bölümünüzü oluşturun.
+              </p>
+            </div>
           </div>
         ) : (
           <SortableContext items={rootIds} strategy={verticalListSortingStrategy}>

@@ -46,7 +46,7 @@ describe("İçerik editörü — a11y", () => {
 
   it("BlockList (blok/düzen ekleme düğmeleri) kritik/ciddi a11y ihlali içermez", async () => {
     const { container } = render(
-      <BlockList onAddContent={() => {}} onAddLayout={() => {}} targetLabel="Sayfa (kök)" />
+      <BlockList onAddLayout={() => {}} targetLabel="Sayfa (kök)" />
     );
     const results = await axe(container, axeOptions);
     expect(results).toHaveNoViolations();

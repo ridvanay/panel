@@ -3,6 +3,7 @@ import {
   DEFAULT_CONTAINER_SETTINGS,
   MAX_CHILDREN_PER_CONTAINER,
   MAX_CONTAINER_DEPTH,
+  MAX_TOTAL_PAGE_NODES,
   type BuilderContainerId,
   type ContainerNode,
   type ContainerSettings,
@@ -289,4 +290,36 @@ export function unwrapContainer(nodes: PageNode[], containerId: string): PageNod
 /** Unwrap onayı gerekip gerekmediği — yalnızca konteynerin en az bir çocuğu varsa (içerik "yeniden akar"). */
 export function needsConfirmToUnwrap(node: PageNode): boolean {
   return node.type === "container" && node.children.length > 0;
+}
+
+/** Bir alt ağacı, HER düğüme (konteynerler DAHİL) YENİ bir id atayarak derinlemesine klonlar —
+ *  "Kopyala/Çoğalt" (§3 ui-designer dokümanı) orijinaliyle id ÇAKIŞMASIN diye. */
+function cloneWithNewIds(node: PageNode): PageNode {
+  if (node.type === "container") {
+    return { ...node, id: newId(), children: node.children.map(cloneWithNewIds) };
+  }
+  return { ...node, id: newId() };
+}
+
+/**
+ * "Kopyala/Çoğalt" — bir düğümü (yaprak blok veya konteyner alt ağacı) kendi konumunda,
+ * hemen ardına yeni bir kopya olarak ekler. `MAX_TOTAL_PAGE_NODES` aşılacaksa veya hedef
+ * ebeveyn (kök HARİÇ) `MAX_CHILDREN_PER_CONTAINER` doluysa SESSİZCE no-op.
+ */
+export function duplicateNode(nodes: PageNode[], id: string): PageNode[] {
+  const parentId = findParentId(nodes, id);
+  if (!parentId) return nodes;
+  const node = findNode(nodes, id);
+  if (!node) return nodes;
+  if (isContainerAtCapacity(nodes, parentId)) return nodes;
+  if (countNodes(nodes) + countNodes([node]) > MAX_TOTAL_PAGE_NODES) return nodes;
+
+  const siblings = getContainerChildren(nodes, parentId);
+  const index = siblings.findIndex((n) => n.id === id);
+  if (index === -1) return nodes;
+
+  const clone = cloneWithNewIds(node);
+  const next = [...siblings];
+  next.splice(index + 1, 0, clone);
+  return setContainerChildren(nodes, parentId, next);
 }

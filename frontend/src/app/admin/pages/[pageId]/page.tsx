@@ -10,7 +10,6 @@ import * as localesApi from "@/lib/api/locales";
 import type { ContentStatus, ContentTranslations, Locale as LocaleDto } from "@/lib/api/types";
 import { MAX_CONTAINER_DEPTH, MAX_TOTAL_PAGE_NODES, type BuilderContainerId, type ContainerNode, type PageNode } from "@/lib/page-builder/types";
 import { normalizePageNodes } from "@/lib/page-builder/normalize";
-import { createBlock, type PaletteBlockType } from "@/lib/page-builder/registry";
 import {
   containerDepth,
   countNodes,
@@ -184,10 +183,6 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
     }
     const children = getContainerChildren(activeNodes, targetContainerId);
     setActiveNodes(insertNode(activeNodes, targetContainerId, children.length, node));
-  }
-
-  function addContentBlock(type: PaletteBlockType) {
-    addNodeToTarget(createBlock(type));
   }
 
   function addLayoutPreset(preset: LayoutPreset) {
@@ -528,7 +523,6 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
             <p className="mt-1 admin-text-secondary">Sayfaya blok/düzen ekleyin ve sırasını düzenleyin.</p>
             <div className="mt-4">
               <BlockList
-                onAddContent={addContentBlock}
                 onAddLayout={addLayoutPreset}
                 targetLabel={targetLabel}
                 layoutDisabled={layoutPickerDisabled}
