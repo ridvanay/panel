@@ -20,7 +20,10 @@ export type ContentBlockType =
   | "heading"
   | "button"
   | "icon-box"
-  | "divider";
+  | "divider"
+  | "video"
+  | "accordion"
+  | "tabs";
 
 /** Kanonik konteyner düğümü. */
 export type ContainerNodeType = "container";
@@ -44,9 +47,21 @@ export interface TextBlock extends BaseNode {
   data: { html: string };
 }
 
+/** Görselin köşe yuvarlaklığı — sabit Tailwind sınıf tablosuna eşlenir (bkz. `site/blocks/image-block.tsx`). */
+export type ImageRadius = "none" | "sm" | "md" | "lg" | "full";
+
 export interface ImageBlock extends BaseNode {
   type: "image";
-  data: { url: string; alt: string };
+  data: {
+    url: string;
+    alt: string;
+    /** §Faz "Medya & İnteraktif" — YENİ alanlar, hepsi OPSİYONEL (geriye dönük uyumluluk: eski
+     *  kayıtlarda YOK, okuyan taraf `??` ile varsayılana düşer). */
+    caption?: string;
+    radius?: ImageRadius;
+    /** `true` ise görsele tıklamak `gallery-lightbox.tsx`'i TEK görsellik bir dizi ile açar. */
+    lightbox?: boolean;
+  };
 }
 
 /** Galeri bloğunun görsel düzeni — bkz. `.claude/design-notes-page-builder-gallery.md`. */
@@ -120,6 +135,53 @@ export interface DividerBlock extends BaseNode {
 }
 
 /**
+ * §Faz "Medya & İnteraktif" — Video Oynatıcı. `url` sağlayıcıya göre farklı biçimlerde olabilir
+ * (YouTube/Vimeo sayfa URL'i VEYA doğrudan `.mp4` dosya URL'i) — GERÇEK embed URL'i render
+ * anında `lib/page-builder/video-embed.ts::getVideoEmbedUrl` ile HESAPLANIR, ham `url` HİÇBİR
+ * ZAMAN doğrudan bir `<iframe src>`e YAZILMAZ (yalnızca sağlayıcının KENDİ domanindeki, id'si
+ * regex ile ÇIKARILMIŞ bir embed URL'i inşa edilir) — bu, gelecekteki "Özel HTML" bloğunun da
+ * izleyeceği "yapılandırılmış embed" güvenlik deseninin İLK örneğidir.
+ */
+export type VideoProvider = "youtube" | "vimeo" | "mp4";
+
+export interface VideoBlock extends BaseNode {
+  type: "video";
+  data: { provider: VideoProvider; url: string; autoplay: boolean; muted: boolean };
+}
+
+/** Bir konteynerdeki toplam öğe sınırlarından (§5) BAĞIMSIZ, bloğa ÖZGÜ üst sınırlar — backend
+ *  `pages.schemas.ts`teki `ACCORDION_MAX_ITEMS`/`TABS_MAX_ITEMS` ile SAYISAL OLARAK BİREBİR AYNI
+ *  olmak zorundadır (bkz. dosya başlığındaki §5 aynı uyarı). */
+export const ACCORDION_MAX_ITEMS = 20;
+export const TABS_MAX_ITEMS = 10;
+
+export interface AccordionQAItem {
+  id: string;
+  question: string;
+  /** KASITLI OLARAK düz metin (HTML DEĞİL) — hem yeni bir sanitizasyon yolu AÇMAMAK için hem de
+   *  Schema.org FAQPage JSON-LD çıktısının (bkz. site render) temiz/geçerli kalması için. */
+  answer: string;
+}
+
+/** Akordiyon / SSS — Schema.org FAQPage JSON-LD üretir (bkz. `site/blocks/accordion-block.tsx`). */
+export interface AccordionBlock extends BaseNode {
+  type: "accordion";
+  data: { items: AccordionQAItem[]; allowMultipleOpen: boolean };
+}
+
+export interface TabItem {
+  id: string;
+  label: string;
+  /** `answer` ile AYNI gerekçe — düz metin, satır sonları paragraf olarak render edilir. */
+  content: string;
+}
+
+export interface TabsBlock extends BaseNode {
+  type: "tabs";
+  data: { orientation: "horizontal" | "vertical"; items: TabItem[] };
+}
+
+/**
  * `children` TAŞIMAYAN düğümler. v2'nin `LeafBlock`'undan farkı: `hero` ARTIK DAHİLDİR
  * (§3.4 mimar dokümanı — tam-genişlik ihtiyacı artık `container.settings.layout: "full-width"`
  * ile karşılanıyor, tip seviyesinde yasaklamaya gerek kalmadı).
@@ -135,7 +197,10 @@ export type ContentBlock =
   | HeadingBlock
   | ButtonBlock
   | IconBoxBlock
-  | DividerBlock;
+  | DividerBlock
+  | VideoBlock
+  | AccordionBlock
+  | TabsBlock;
 
 /** @deprecated v2 adı — yalnızca geçiş sırasında import kırılmasın diye. Yeni kodda `ContentBlock` kullanın. */
 export type LeafBlock = ContentBlock;

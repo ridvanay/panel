@@ -52,7 +52,7 @@ describe("İçerik editörü — a11y", () => {
     expect(results).toHaveNoViolations();
   });
 
-  it("BuilderCanvas — her blok tipi (hero/text/image/gallery/cta/heading/button/icon-box/divider) birlikte render edildiğinde kritik/ciddi a11y ihlali içermez", async () => {
+  it("BuilderCanvas — her blok tipi (hero/text/image/gallery/cta/heading/button/icon-box/divider/video/accordion/tabs) birlikte render edildiğinde kritik/ciddi a11y ihlali içermez", async () => {
     const galleryBlock = createBlock("gallery") as GalleryBlock;
     galleryBlock.data.images = [{ url: "https://example.com/a.png", alt: "Örnek" }];
 
@@ -66,6 +66,9 @@ describe("İçerik editörü — a11y", () => {
       createBlock("button"),
       createBlock("icon-box"),
       createBlock("divider"),
+      createBlock("video"),
+      createBlock("accordion"),
+      createBlock("tabs"),
     ];
 
     const { container } = render(

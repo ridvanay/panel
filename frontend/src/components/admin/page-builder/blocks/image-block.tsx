@@ -1,7 +1,17 @@
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { ImageUploadField } from "@/components/admin/media/image-upload-field";
-import type { ImageBlock } from "@/lib/page-builder/types";
+import type { ImageBlock, ImageRadius } from "@/lib/page-builder/types";
+import { SegmentedToggle } from "./segmented-toggle";
+
+const RADIUS_OPTIONS: { value: ImageRadius; label: string }[] = [
+  { value: "none", label: "Yok" },
+  { value: "sm", label: "Küçük" },
+  { value: "md", label: "Orta" },
+  { value: "lg", label: "Büyük" },
+  { value: "full", label: "Tam" },
+];
 
 export function ImageBlockEditor({ block, onChange }: { block: ImageBlock; onChange: (block: ImageBlock) => void }) {
   return (
@@ -22,6 +32,33 @@ export function ImageBlockEditor({ block, onChange }: { block: ImageBlock; onCha
           />
         )}
       </Field>
+      <Field id={`${block.id}-caption`} label="Alt yazı (opsiyonel)">
+        {(inputProps) => (
+          <Input
+            {...inputProps}
+            value={block.data.caption ?? ""}
+            onChange={(e) => onChange({ ...block, data: { ...block.data, caption: e.target.value } })}
+          />
+        )}
+      </Field>
+      <div className="space-y-1.5">
+        <p className="text-sm font-medium text-foreground">Köşe yuvarlaklığı</p>
+        <SegmentedToggle
+          value={block.data.radius ?? "none"}
+          options={RADIUS_OPTIONS}
+          onChange={(radius) => onChange({ ...block, data: { ...block.data, radius } })}
+        />
+      </div>
+      <div className="flex items-center justify-between">
+        <label htmlFor={`${block.id}-lightbox`} className="text-sm font-medium text-foreground">
+          Tıklayınca büyüt (lightbox)
+        </label>
+        <Switch
+          id={`${block.id}-lightbox`}
+          checked={block.data.lightbox ?? false}
+          onCheckedChange={(lightbox) => onChange({ ...block, data: { ...block.data, lightbox } })}
+        />
+      </div>
     </div>
   );
 }

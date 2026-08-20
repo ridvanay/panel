@@ -293,6 +293,73 @@ const DividerBlockDataSchema = z.object({
 });
 const DividerBlockSchema = z.object({ id: z.string().min(1), type: z.literal("divider"), data: DividerBlockDataSchema });
 
+/* ---------- §Faz "Medya & İnteraktif" — Görsel (zenginleştirme)/Video/Akordiyon/Sekmeler ---------- */
+
+/**
+ * Görsel bloğu — daha önce (Gallery/Container dışındaki çoğu blok gibi) tamamen doğrulanmadan
+ * geçiyordu; bu turda `caption`/`radius`/`lightbox` alanları eklendiği için şema TANIMLANIR.
+ * Eski alanlar (`url`/`alt`) Gallery'nin `images[].url`/`alt`'iyle AYNI gerekçeyle katı bir
+ * format regex'i TAŞIMAZ. Yeni 3 alan OPSİYONEL — eski kayıtlarda YOK olabilir.
+ */
+const ImageBlockDataSchema = z.object({
+  url: z.string().min(1),
+  // `.default("")` — `alt` bu blok tipiyle YAŞIT olsa da (§0'dan beri zorunlu), bu şema
+  // BLOĞUN İLK KEZ doğrulandığı tur; savunma derinliği için Gallery'nin `layout` deseniyle
+  // AYNI şekilde eksikse SESSİZCE normalize edilir, 422 ile REDDEDİLMEZ.
+  alt: z.string().default(""),
+  caption: z.string().max(300).optional(),
+  radius: z.enum(["none", "sm", "md", "lg", "full"]).optional(),
+  lightbox: z.boolean().optional(),
+});
+const ImageBlockSchema = z.object({ id: z.string().min(1), type: z.literal("image"), data: ImageBlockDataSchema });
+
+/**
+ * Video bloğu — `url` `SafeHrefSchema` ile doğrulanır (relative veya http(s) mutlak,
+ * `javascript:`/`data:` YASAK). ID ÇIKARIMI/embed URL İNŞASI yalnızca frontend'de yapılır
+ * (`lib/page-builder/video-embed.ts`) — backend ham `url`i OLDUĞU GİBİ saklar, bir iframe'e
+ * DOĞRUDAN YAZILMAZ (bkz. o dosyanın başlığı, "yapılandırılmış embed" güvenlik deseni).
+ */
+const VideoBlockDataSchema = z.object({
+  provider: z.enum(["youtube", "vimeo", "mp4"]).default("youtube"),
+  url: SafeHrefSchema,
+  autoplay: z.boolean().default(false),
+  muted: z.boolean().default(false),
+});
+const VideoBlockSchema = z.object({ id: z.string().min(1), type: z.literal("video"), data: VideoBlockDataSchema });
+
+/** Frontend `types.ts::ACCORDION_MAX_ITEMS`/`TABS_MAX_ITEMS` ile SAYISAL OLARAK BİREBİR AYNI. */
+const ACCORDION_MAX_ITEMS = 20;
+const TABS_MAX_ITEMS = 10;
+
+/** Akordiyon / SSS — `answer` KASITLI OLARAK düz metin (HTML DEĞİL, bkz. frontend tip yorumu). */
+const AccordionBlockDataSchema = z.object({
+  items: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        question: z.string().min(1).max(300),
+        answer: z.string().max(3000),
+      })
+    )
+    .max(ACCORDION_MAX_ITEMS),
+  allowMultipleOpen: z.boolean().default(false),
+});
+const AccordionBlockSchema = z.object({ id: z.string().min(1), type: z.literal("accordion"), data: AccordionBlockDataSchema });
+
+const TabsBlockDataSchema = z.object({
+  orientation: z.enum(["horizontal", "vertical"]).default("horizontal"),
+  items: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        label: z.string().min(1).max(100),
+        content: z.string().max(5000),
+      })
+    )
+    .max(TABS_MAX_ITEMS),
+});
+const TabsBlockSchema = z.object({ id: z.string().min(1), type: z.literal("tabs"), data: TabsBlockDataSchema });
+
 /* ---------- özyinelemeli düğüm — §5.4 ---------- */
 
 function applySubSchema(schema: z.ZodTypeAny, node: unknown, ctx: z.RefinementCtx): unknown {
@@ -310,8 +377,9 @@ function applySubSchema(schema: z.ZodTypeAny, node: unknown, ctx: z.RefinementCt
  *
  * `type` bilinmiyorsa blok SERBEST bırakılır (`z.record(z.unknown())`) — v2'deki
  * "minimum diff" kararı KORUNUR; yalnızca `container`/`columns`/`gallery`/`heading`/`button`/
- * `icon-box`/`divider` dar şemaya girer (diğerleri — `hero`/`text`/`image`/`cta`/`featured-*` —
- * ÖNCEDEN VAR OLAN bir boşluk olarak doğrulanmadan geçer, bu turun kapsamı DEĞİL).
+ * `icon-box`/`divider`/`image`/`video`/`accordion`/`tabs` dar şemaya girer (diğerleri —
+ * `hero`/`text`/`cta`/`featured-*` — ÖNCEDEN VAR OLAN bir boşluk olarak doğrulanmadan geçer,
+ * bu turun kapsamı DEĞİL).
  *
  * ÖZYİNELEME GÜVENLİĞİ: bu şema `ContainerNodeSchema` üzerinden kendini çağırır. Derinlik
  * sınırı BURADA DEĞİL, `PageBlockListSchema` içindeki İTERATİF ön-taramada uygulanır (bkz.
@@ -334,6 +402,10 @@ const PageNodeSchema: z.ZodType<unknown, z.ZodTypeDef, unknown> = z.record(z.unk
   if (type === "button") return applySubSchema(ButtonBlockSchema, node, ctx);
   if (type === "icon-box") return applySubSchema(IconBoxBlockSchema, node, ctx);
   if (type === "divider") return applySubSchema(DividerBlockSchema, node, ctx);
+  if (type === "image") return applySubSchema(ImageBlockSchema, node, ctx);
+  if (type === "video") return applySubSchema(VideoBlockSchema, node, ctx);
+  if (type === "accordion") return applySubSchema(AccordionBlockSchema, node, ctx);
+  if (type === "tabs") return applySubSchema(TabsBlockSchema, node, ctx);
   return node;
 });
 

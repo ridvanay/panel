@@ -11,6 +11,9 @@ import { HeadingBlockView } from "./heading-block";
 import { ButtonBlockView } from "./button-block";
 import { IconBoxBlockView } from "./icon-box-block";
 import { DividerBlockView } from "./divider-block";
+import { VideoBlockView } from "./video-block";
+import { AccordionBlockView } from "./accordion-block";
+import { TabsBlockView } from "./tabs-block";
 
 /**
  * §6.3 mimar dokümanı — "chrome" sözleşmesi. Kök dizideki yaprak bloklar `chrome: "page"`
@@ -52,6 +55,12 @@ export function BlockRenderer({ nodes, chrome }: { nodes: PageNode[]; chrome: Bl
             return <IconBoxBlockView key={node.id} block={node} chrome={chrome} />;
           case "divider":
             return <DividerBlockView key={node.id} block={node} chrome={chrome} />;
+          case "video":
+            return <VideoBlockView key={node.id} block={node} chrome={chrome} />;
+          case "accordion":
+            return <AccordionBlockView key={node.id} block={node} chrome={chrome} />;
+          case "tabs":
+            return <TabsBlockView key={node.id} block={node} chrome={chrome} />;
           case "container":
             return <ContainerBlockView key={node.id} block={node} />;
           default:

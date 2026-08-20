@@ -2,7 +2,9 @@ import {
   Heading as HeadingIcon,
   Image as ImageIcon,
   LayoutTemplate,
+  ListCollapse,
   MousePointerClick,
+  PanelsTopLeft,
   SeparatorHorizontal,
   ShoppingBag,
   SquareStack,
@@ -10,6 +12,7 @@ import {
   Type,
   Images,
   Briefcase,
+  Video,
   type LucideIcon,
 } from "lucide-react";
 import type { ContentBlock, ContentBlockType } from "./types";
@@ -40,6 +43,9 @@ export const blockRegistry: Record<PaletteBlockType, { label: string; category: 
   divider: { label: "Ayırıcı & Boşluk", category: "basic", icon: SeparatorHorizontal },
   image: { label: "Görsel", category: "media", icon: ImageIcon },
   gallery: { label: "Galeri", category: "media", icon: Images },
+  video: { label: "Video Oynatıcı", category: "media", icon: Video },
+  accordion: { label: "Akordiyon / SSS", category: "media", icon: ListCollapse },
+  tabs: { label: "Sekmeler", category: "media", icon: PanelsTopLeft },
   hero: { label: "Hero", category: "marketing", icon: LayoutTemplate },
   cta: { label: "Çağrı Butonu (CTA)", category: "marketing", icon: Type },
   "featured-products": { label: "Öne Çıkan Ürünler", category: "dynamic", icon: ShoppingBag },
@@ -58,7 +64,7 @@ export function createBlock(type: PaletteBlockType): ContentBlock {
     case "text":
       return { id, type, data: { html: "<p>Metin girin…</p>" } };
     case "image":
-      return { id, type, data: { url: "", alt: "" } };
+      return { id, type, data: { url: "", alt: "", caption: "", radius: "none", lightbox: false } };
     case "gallery":
       return { id, type, data: { images: [], layout: "grid" } };
     case "cta":
@@ -75,5 +81,28 @@ export function createBlock(type: PaletteBlockType): ContentBlock {
       return { id, type, data: { icon: "Sparkles", heading: "Başlık", description: "" } };
     case "divider":
       return { id, type, data: { variant: "line", style: "solid", height: 32 } };
+    case "video":
+      return { id, type, data: { provider: "youtube", url: "", autoplay: false, muted: false } };
+    case "accordion":
+      return {
+        id,
+        type,
+        data: {
+          allowMultipleOpen: false,
+          items: [{ id: newId(), question: "Soru", answer: "" }],
+        },
+      };
+    case "tabs":
+      return {
+        id,
+        type,
+        data: {
+          orientation: "horizontal",
+          items: [
+            { id: newId(), label: "Sekme 1", content: "" },
+            { id: newId(), label: "Sekme 2", content: "" },
+          ],
+        },
+      };
   }
 }

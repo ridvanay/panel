@@ -79,6 +79,9 @@ import { HeadingBlockEditor } from "./blocks/heading-block";
 import { ButtonBlockEditor } from "./blocks/button-block";
 import { IconBoxBlockEditor } from "./blocks/icon-box-block";
 import { DividerBlockEditor } from "./blocks/divider-block";
+import { VideoBlockEditor } from "./blocks/video-block";
+import { AccordionBlockEditor } from "./blocks/accordion-block";
+import { TabsBlockEditor } from "./blocks/tabs-block";
 
 /**
  * §2.4 mimar dokümanı — ÖZYİNELEMELİ editör ağacı. v2'nin iki-seviyeli (kök + sütun) sabit
@@ -115,6 +118,12 @@ function ContentBlockBody({ block, onChange }: { block: ContentBlock; onChange: 
       return <IconBoxBlockEditor block={block} onChange={onChange} />;
     case "divider":
       return <DividerBlockEditor block={block} onChange={onChange} />;
+    case "video":
+      return <VideoBlockEditor block={block} onChange={onChange} />;
+    case "accordion":
+      return <AccordionBlockEditor block={block} onChange={onChange} />;
+    case "tabs":
+      return <TabsBlockEditor block={block} onChange={onChange} />;
   }
 }
 
