@@ -23,7 +23,10 @@ export type ContentBlockType =
   | "divider"
   | "video"
   | "accordion"
-  | "tabs";
+  | "tabs"
+  | "counter"
+  | "testimonial"
+  | "pricing-table";
 
 /** Kanonik konteyner düğümü. */
 export type ContainerNodeType = "container";
@@ -79,9 +82,32 @@ export interface GalleryBlock extends BaseNode {
   };
 }
 
+/**
+ * CTA kutusunun görsel tonu — HAM CSS/renk DEĞERİ DEĞİL, sabit bir sınıf tablosuna eşlenen kısa
+ * isimler (`ImageRadius`/`ButtonBlock.style` ile AYNI desen; konteynerin serbest `background`
+ * sistemi BURADA KASITLI OLARAK KULLANILMAZ — CTA yalnızca tema paletinden birkaç hazır tonu
+ * sunar, isteyen kullanıcı bloğu bir `container` içine koyup tam background kontrolü alır).
+ * `plain` = bugünkü kutusuz görünüm (eski kayıtların ve yeni blokların VARSAYILANI).
+ */
+export type CtaStyle = "plain" | "soft" | "solid" | "outline";
+
 export interface CtaBlock extends BaseNode {
   type: "cta";
-  data: { heading: string; buttonLabel: string; buttonHref: string };
+  data: {
+    heading: string; // MEVCUT şekil DEĞİŞMEZ — geriye dönük uyumluluk
+    buttonLabel: string;
+    buttonHref: string;
+    /** §Faz "Pazarlama & Sosyal Kanıt" — YENİ alanlar, hepsi OPSİYONEL (geriye dönük uyumluluk:
+     *  eski kayıtlarda YOK, okuyan taraf `??` ile varsayılana düşer — `ImageBlock` ile AYNI desen).
+     *  Varsayılanlar bugünkü render'ı BİREBİR korur: `align ?? "center"`, `style ?? "plain"`. */
+    description?: string;
+    align?: TextAlign;
+    style?: CtaStyle;
+    /** İkincil (düşük vurgulu) buton. İkisi de DOLU değilse buton HİÇ render EDİLMEZ —
+     *  yarım yapılandırma sessizce yok sayılır (etiketsiz/hedefsiz buton üretilmez). */
+    secondaryButtonLabel?: string;
+    secondaryButtonHref?: string;
+  };
 }
 
 /**
@@ -181,6 +207,81 @@ export interface TabsBlock extends BaseNode {
   data: { orientation: "horizontal" | "vertical"; items: TabItem[] };
 }
 
+/** §Faz "Pazarlama & Sosyal Kanıt" — bloğa ÖZGÜ üst sınırlar; `ACCORDION_MAX_ITEMS` ile AYNI
+ *  gerekçe ve AYNI kural: backend `pages.schemas.ts` ile SAYISAL OLARAK BİREBİR AYNI olmak
+ *  zorundadır (bkz. dosya başlığındaki §5 uyarısı). */
+export const COUNTER_MAX_ITEMS = 8;
+export const TESTIMONIAL_MAX_ITEMS = 12;
+export const PRICING_MAX_PLANS = 6;
+/** Plan BAŞINA özellik satırı sınırı (plan sayısından BAĞIMSIZ). */
+export const PRICING_MAX_FEATURES = 15;
+
+export interface CounterItem {
+  id: string;
+  /** KASITLI OLARAK sayı (string DEĞİL) — biçimlendirme (binlik ayracı) render anında
+   *  `Intl.NumberFormat("tr-TR")` ile yapılır, kullanıcı "500.000" yazıp ayracı elle KURGULAMAZ.
+   *  Metinsel varyasyonlar (`"500+"`, `"%98"`) `prefix`/`suffix` ile ifade edilir. */
+  value: number;
+  /** Sayının ÖNÜNE eklenen düz metin — ör. `"%"`, `"₺"`. */
+  prefix?: string;
+  /** Sayının ARKASINA eklenen düz metin — ör. `"+"`, `"K"`. */
+  suffix?: string;
+  label: string;
+}
+
+/** Sayaç / İstatistik — ör. "500+ Müşteri", "%98 Memnuniyet". */
+export interface CounterBlock extends BaseNode {
+  type: "counter";
+  data: { items: CounterItem[] };
+}
+
+/** 1–5 arası tam yıldız — yarım yıldız KASITLI OLARAK DESTEKLENMEZ (MVP). */
+export type TestimonialRating = 1 | 2 | 3 | 4 | 5;
+
+export interface TestimonialItem {
+  id: string;
+  /** `AccordionQAItem.answer` ile AYNI gerekçe — düz metin (HTML DEĞİL), yeni bir sanitizasyon
+   *  yolu açılmaz; satır sonları paragraf olarak render edilir. */
+  quote: string;
+  authorName: string;
+  authorRole?: string;
+  /** `ImageBlock.url`/`GalleryBlock.images[].url` ile AYNI serbestlik: göreli yol VEYA mutlak
+   *  http(s) URL. Backend'de konteyner background görseliyle AYNI katılıkta protokol beyaz
+   *  listesinden geçer (`SafeHrefSchema`) — `javascript:`/`data:` ASLA kabul edilmez. */
+  avatarUrl?: string;
+  rating?: TestimonialRating;
+}
+
+/** Müşteri Yorumları — sosyal kanıt kartları. */
+export interface TestimonialBlock extends BaseNode {
+  type: "testimonial";
+  data: { items: TestimonialItem[] };
+}
+
+export interface PricingPlan {
+  id: string;
+  name: string;
+  /** KASITLI OLARAK serbest metin (sayı DEĞİL) — `"₺299"`, `"Ücretsiz"`, `"Bize Sorun"` gibi
+   *  biçimlerin HEPSİ geçerlidir; para birimi/biçim kararı içerik yazarına aittir. */
+  price: string;
+  /** Fiyatın yanında küçük punto ile gösterilen dönem — ör. `"/ay"`, `"/yıl"`. */
+  period?: string;
+  description?: string;
+  /** Düz metin satırları; en fazla `PRICING_MAX_FEATURES` adet. */
+  features: string[];
+  /** `true` ise plan "öne çıkan" olarak vurgulanır. Birden fazla plan işaretlenebilir —
+   *  tip seviyesinde "tek highlight" kısıtı YOKTUR, editör bunu bir UYARI ile bildirir. */
+  highlighted?: boolean;
+  buttonLabel: string;
+  buttonHref: string;
+}
+
+/** Fiyatlandırma Tablosu — yan yana plan kartları. */
+export interface PricingTableBlock extends BaseNode {
+  type: "pricing-table";
+  data: { plans: PricingPlan[] };
+}
+
 /**
  * `children` TAŞIMAYAN düğümler. v2'nin `LeafBlock`'undan farkı: `hero` ARTIK DAHİLDİR
  * (§3.4 mimar dokümanı — tam-genişlik ihtiyacı artık `container.settings.layout: "full-width"`
@@ -200,7 +301,10 @@ export type ContentBlock =
   | DividerBlock
   | VideoBlock
   | AccordionBlock
-  | TabsBlock;
+  | TabsBlock
+  | CounterBlock
+  | TestimonialBlock
+  | PricingTableBlock;
 
 /** @deprecated v2 adı — yalnızca geçiş sırasında import kırılmasın diye. Yeni kodda `ContentBlock` kullanın. */
 export type LeafBlock = ContentBlock;

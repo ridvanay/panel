@@ -14,6 +14,9 @@ import { DividerBlockView } from "./divider-block";
 import { VideoBlockView } from "./video-block";
 import { AccordionBlockView } from "./accordion-block";
 import { TabsBlockView } from "./tabs-block";
+import { CounterBlockView } from "./counter-block";
+import { TestimonialBlockView } from "./testimonial-block";
+import { PricingTableBlockView } from "./pricing-table-block";
 
 /**
  * §6.3 mimar dokümanı — "chrome" sözleşmesi. Kök dizideki yaprak bloklar `chrome: "page"`
@@ -61,6 +64,12 @@ export function BlockRenderer({ nodes, chrome }: { nodes: PageNode[]; chrome: Bl
             return <AccordionBlockView key={node.id} block={node} chrome={chrome} />;
           case "tabs":
             return <TabsBlockView key={node.id} block={node} chrome={chrome} />;
+          case "counter":
+            return <CounterBlockView key={node.id} block={node} chrome={chrome} />;
+          case "testimonial":
+            return <TestimonialBlockView key={node.id} block={node} chrome={chrome} />;
+          case "pricing-table":
+            return <PricingTableBlockView key={node.id} block={node} chrome={chrome} />;
           case "container":
             return <ContainerBlockView key={node.id} block={node} />;
           default:

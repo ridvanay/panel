@@ -82,6 +82,9 @@ import { DividerBlockEditor } from "./blocks/divider-block";
 import { VideoBlockEditor } from "./blocks/video-block";
 import { AccordionBlockEditor } from "./blocks/accordion-block";
 import { TabsBlockEditor } from "./blocks/tabs-block";
+import { CounterBlockEditor } from "./blocks/counter-block";
+import { TestimonialBlockEditor } from "./blocks/testimonial-block";
+import { PricingTableBlockEditor } from "./blocks/pricing-table-block";
 
 /**
  * §2.4 mimar dokümanı — ÖZYİNELEMELİ editör ağacı. v2'nin iki-seviyeli (kök + sütun) sabit
@@ -124,6 +127,12 @@ function ContentBlockBody({ block, onChange }: { block: ContentBlock; onChange: 
       return <AccordionBlockEditor block={block} onChange={onChange} />;
     case "tabs":
       return <TabsBlockEditor block={block} onChange={onChange} />;
+    case "counter":
+      return <CounterBlockEditor block={block} onChange={onChange} />;
+    case "testimonial":
+      return <TestimonialBlockEditor block={block} onChange={onChange} />;
+    case "pricing-table":
+      return <PricingTableBlockEditor block={block} onChange={onChange} />;
   }
 }
 

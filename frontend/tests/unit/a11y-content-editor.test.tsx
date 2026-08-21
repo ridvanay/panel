@@ -52,7 +52,7 @@ describe("İçerik editörü — a11y", () => {
     expect(results).toHaveNoViolations();
   });
 
-  it("BuilderCanvas — her blok tipi (hero/text/image/gallery/cta/heading/button/icon-box/divider/video/accordion/tabs) birlikte render edildiğinde kritik/ciddi a11y ihlali içermez", async () => {
+  it("BuilderCanvas — her blok tipi (hero/text/image/gallery/cta/heading/button/icon-box/divider/video/accordion/tabs/counter/testimonial/pricing-table) birlikte render edildiğinde kritik/ciddi a11y ihlali içermez", async () => {
     const galleryBlock = createBlock("gallery") as GalleryBlock;
     galleryBlock.data.images = [{ url: "https://example.com/a.png", alt: "Örnek" }];
 
@@ -69,6 +69,9 @@ describe("İçerik editörü — a11y", () => {
       createBlock("video"),
       createBlock("accordion"),
       createBlock("tabs"),
+      createBlock("counter"),
+      createBlock("testimonial"),
+      createBlock("pricing-table"),
     ];
 
     const { container } = render(
@@ -79,7 +82,10 @@ describe("İçerik editörü — a11y", () => {
 
     const results = await axe(container, axeOptions);
     expect(results).toHaveNoViolations();
-  });
+  }, 20000); // Faz 3 ile blok sayısı 15'e çıktı — tüm paket paralel koşarken axe taraması
+  // varsayılan 5000ms'i CPU baskısı altında aşabiliyor (izole çalışınca ~4s); büyüyecek bu
+  // listeye kalıcı bir pay bırakılır (bkz. görev listesindeki eklenen counter/testimonial/
+  // pricing-table blokları).
 
   it("BuilderCanvas — boş blok listesinde a11y ihlali içermez", async () => {
     const { container } = render(

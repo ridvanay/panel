@@ -13,6 +13,23 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
 
 ### Added
 
+- **Page-builder — "Pazarlama & Sosyal Kanıt" blok kategorisi (Faz 3)**: CTA Box, Sayaç/
+  İstatistik, Müşteri Yorumları, Fiyatlandırma Tablosu.
+  - **CTA zenginleştirmesi** (`cta` bloğu, mevcut alanlar DEĞİŞMEDİ): opsiyonel açıklama,
+    hizalama, 4 hazır görünüm (`plain`/`soft`/`solid`/`outline`) ve opsiyonel ikincil buton.
+    Bu blok bu turda İLK KEZ backend'de Zod ile doğrulanıyor (daha önce `hero`/`text`/
+    `featured-*` gibi doğrulanmadan geçiyordu).
+  - **Sayaç / İstatistik** (`counter`, en fazla 8 öğe): önek/sonek + `Intl.NumberFormat("tr-TR")`
+    ile biçimlendirilmiş değer + etiket.
+  - **Müşteri Yorumları** (`testimonial`, en fazla 12 öğe): yorum metni, yazar adı/unvanı,
+    opsiyonel fotoğraf (yoksa baş harf rozetine düşer) ve 1-5 yıldız puan.
+  - **Fiyatlandırma Tablosu** (`pricing-table`, en fazla 6 plan, plan başına en fazla 15
+    özellik): plan adı, serbest metin fiyat (`"Ücretsiz"`/`"Bize Sorun"` gibi biçimler de
+    geçerli), özellik listesi, "öne çıkan plan" rozeti, buton.
+  - Tüm `href`/görsel URL alanları (`buttonHref`, `secondaryButtonHref`, `avatarUrl`,
+    `pricing.buttonHref`) `SafeHrefSchema` ile doğrulanır — konteyner arka plan URL'iyle AYNI
+    protokol beyaz listesi (`javascript:`/`vbscript:`/`data:` YASAK).
+
 - **E-posta şablonu blok editörü** (`docs/architecture/ARCHITECTURE.md` §10.16). Admin artık
   ham HTML yazmadan, sürükle-bırak bloklarla (logo/başlık, metin, buton, görsel, ayırıcı,
   footer) e-posta şablonu tasarlayabiliyor. HTML **her zaman sunucuda** üretilir

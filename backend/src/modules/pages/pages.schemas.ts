@@ -360,6 +360,106 @@ const TabsBlockDataSchema = z.object({
 });
 const TabsBlockSchema = z.object({ id: z.string().min(1), type: z.literal("tabs"), data: TabsBlockDataSchema });
 
+/* ---------- §Faz "Pazarlama & Sosyal Kanıt" — CTA (zenginleştirme)/Sayaç/Müşteri Yorumları/Fiyatlandırma Tablosu ---------- */
+
+/**
+ * CTA bloğu — daha önce (`hero`/`text`/`featured-*` gibi) tamamen doğrulanmadan geçiyordu; bu
+ * turda `description`/`align`/`style`/ikincil buton alanları eklendiği için şema İLK KEZ
+ * TANIMLANIR (`ImageBlockDataSchema`'nın yorumundaki AYNI desen — bkz. yukarısı). `heading`/
+ * `buttonLabel`/`buttonHref` MEVCUT davranışa uygun ZORUNLU kalır; yeni alanların HİÇBİRİ
+ * `.default()` TAŞIMAZ (mimar notu: default'lar eski kayıtları şişirir, varsayılana düşme
+ * render tarafında yapılır — bkz. frontend `types.ts::CtaBlock` yorumu). `buttonHref`/
+ * `secondaryButtonHref` `SafeHrefSchema` ile doğrulanır — `Button`/`IconBox`/`Video` ile AYNI
+ * protokol beyaz listesi.
+ */
+const CtaBlockDataSchema = z.object({
+  heading: z.string().min(1).max(200),
+  buttonLabel: z.string().min(1).max(120),
+  buttonHref: SafeHrefSchema,
+  description: z.string().max(500).optional(),
+  align: z.enum(["left", "center", "right"]).optional(),
+  style: z.enum(["plain", "soft", "solid", "outline"]).optional(),
+  secondaryButtonLabel: z.string().max(120).optional(),
+  secondaryButtonHref: SafeHrefSchema.optional(),
+});
+const CtaBlockSchema = z.object({ id: z.string().min(1), type: z.literal("cta"), data: CtaBlockDataSchema });
+
+/** Frontend `types.ts::COUNTER_MAX_ITEMS`/`TESTIMONIAL_MAX_ITEMS`/`PRICING_MAX_PLANS`/
+ *  `PRICING_MAX_FEATURES` ile SAYISAL OLARAK BİREBİR AYNI. */
+const COUNTER_MAX_ITEMS = 8;
+const TESTIMONIAL_MAX_ITEMS = 12;
+const PRICING_MAX_PLANS = 6;
+const PRICING_MAX_FEATURES = 15;
+
+/** Sayaç / İstatistik — `value` KASITLI OLARAK sayı (string DEĞİL), biçimlendirme render
+ *  anında yapılır (bkz. frontend `CounterItem.value` yorumu). */
+const CounterBlockDataSchema = z.object({
+  items: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        value: z.number().finite(),
+        prefix: z.string().max(8).optional(),
+        suffix: z.string().max(8).optional(),
+        label: z.string().min(1).max(120),
+      })
+    )
+    .min(1)
+    .max(COUNTER_MAX_ITEMS),
+});
+const CounterBlockSchema = z.object({ id: z.string().min(1), type: z.literal("counter"), data: CounterBlockDataSchema });
+
+/**
+ * Müşteri Yorumları — `quote` KASITLI OLARAK düz metin (HTML DEĞİL, `AccordionQAItem.answer`
+ * ile AYNI gerekçe). `avatarUrl` `SafeHrefSchema` ile doğrulanır (frontend tip yorumu: konteyner
+ * background görseliyle AYNI katılıkta protokol beyaz listesi — `javascript:`/`data:` YASAK).
+ */
+const TestimonialBlockDataSchema = z.object({
+  items: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        quote: z.string().min(1).max(1000),
+        authorName: z.string().min(1).max(120),
+        authorRole: z.string().max(150).optional(),
+        avatarUrl: SafeHrefSchema.optional(),
+        rating: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5)]).optional(),
+      })
+    )
+    .min(1)
+    .max(TESTIMONIAL_MAX_ITEMS),
+});
+const TestimonialBlockSchema = z.object({ id: z.string().min(1), type: z.literal("testimonial"), data: TestimonialBlockDataSchema });
+
+/**
+ * Fiyatlandırma Tablosu — `price` KASITLI OLARAK serbest metin (sayı DEĞİL); "Ücretsiz"/"Bize
+ * Sorun" gibi biçimler geçerlidir, sayısal doğrulama YAPILMAZ (bkz. frontend `PricingPlan.price`
+ * yorumu). `features` plan BAŞINA en fazla `PRICING_MAX_FEATURES` satır taşır.
+ */
+const PricingTableBlockDataSchema = z.object({
+  plans: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        name: z.string().min(1).max(80),
+        price: z.string().min(1).max(40),
+        period: z.string().max(30).optional(),
+        description: z.string().max(300).optional(),
+        features: z.array(z.string().min(1).max(200)).max(PRICING_MAX_FEATURES),
+        highlighted: z.boolean().optional(),
+        buttonLabel: z.string().min(1).max(120),
+        buttonHref: SafeHrefSchema,
+      })
+    )
+    .min(1)
+    .max(PRICING_MAX_PLANS),
+});
+const PricingTableBlockSchema = z.object({
+  id: z.string().min(1),
+  type: z.literal("pricing-table"),
+  data: PricingTableBlockDataSchema,
+});
+
 /* ---------- özyinelemeli düğüm — §5.4 ---------- */
 
 function applySubSchema(schema: z.ZodTypeAny, node: unknown, ctx: z.RefinementCtx): unknown {
@@ -377,9 +477,9 @@ function applySubSchema(schema: z.ZodTypeAny, node: unknown, ctx: z.RefinementCt
  *
  * `type` bilinmiyorsa blok SERBEST bırakılır (`z.record(z.unknown())`) — v2'deki
  * "minimum diff" kararı KORUNUR; yalnızca `container`/`columns`/`gallery`/`heading`/`button`/
- * `icon-box`/`divider`/`image`/`video`/`accordion`/`tabs` dar şemaya girer (diğerleri —
- * `hero`/`text`/`cta`/`featured-*` — ÖNCEDEN VAR OLAN bir boşluk olarak doğrulanmadan geçer,
- * bu turun kapsamı DEĞİL).
+ * `icon-box`/`divider`/`image`/`video`/`accordion`/`tabs`/`cta`/`counter`/`testimonial`/
+ * `pricing-table` dar şemaya girer (diğerleri — `hero`/`text`/`featured-*` — ÖNCEDEN VAR OLAN
+ * bir boşluk olarak doğrulanmadan geçer, bu turun kapsamı DEĞİL).
  *
  * ÖZYİNELEME GÜVENLİĞİ: bu şema `ContainerNodeSchema` üzerinden kendini çağırır. Derinlik
  * sınırı BURADA DEĞİL, `PageBlockListSchema` içindeki İTERATİF ön-taramada uygulanır (bkz.
@@ -406,6 +506,10 @@ const PageNodeSchema: z.ZodType<unknown, z.ZodTypeDef, unknown> = z.record(z.unk
   if (type === "video") return applySubSchema(VideoBlockSchema, node, ctx);
   if (type === "accordion") return applySubSchema(AccordionBlockSchema, node, ctx);
   if (type === "tabs") return applySubSchema(TabsBlockSchema, node, ctx);
+  if (type === "cta") return applySubSchema(CtaBlockSchema, node, ctx);
+  if (type === "counter") return applySubSchema(CounterBlockSchema, node, ctx);
+  if (type === "testimonial") return applySubSchema(TestimonialBlockSchema, node, ctx);
+  if (type === "pricing-table") return applySubSchema(PricingTableBlockSchema, node, ctx);
   return node;
 });
 
