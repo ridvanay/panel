@@ -108,6 +108,20 @@ test.describe("Konteyner mimarisi — admin editörü", () => {
       await addToEmptyContainer.nth(0).click();
       await page.getByRole("menuitem", { name: "Metin", exact: true }).click();
 
+      // qa-agent (bu turda düzeltildi) — Metin bloğu artık BOŞ (`data.html === ""`) başlıyor
+      // (bkz. `registry.ts::createBlock("text")`, frontend-agent'ın placeholder düzeltmesi);
+      // önceden buraya gerçek "<p>Metin girin…</p>" içeriği yazılıyordu ve bu test SADECE bu
+      // varsayılan (dokunulmamış) içeriği public sayfada arıyordu. Artık dokunulmamış bir blok
+      // public'te GÖRÜNÜR bir metin ÜRETMEZ (kasıtlı — bkz. registry.ts yorumu: eski davranış
+      // düzenlenmemiş bir bloğun placeholder-benzeri metni gerçek içerik gibi yayınlamasıydı).
+      // Test amacı (iki sütunun yan yana, eşit genişlikte render olduğunu görsel/DOM'dan
+      // doğrulamak) DEĞİŞMEDİ — ikinci sütuna GERÇEK bir metin YAZILIR, public'te O metin aranır.
+      const textBlockContent = "QA container 50/50 metin B";
+      const textEditor = page.locator(".ProseMirror").first();
+      await textEditor.click();
+      await textEditor.pressSequentially(textBlockContent);
+      await expect(textEditor).toContainText(textBlockContent);
+
       await expect(page.getByText("Buraya blok sürükleyin")).toHaveCount(0);
       await saveAndExpectSuccess();
 
@@ -117,7 +131,7 @@ test.describe("Konteyner mimarisi — admin editörü", () => {
         await publicPage.setViewportSize({ width: 1280, height: 900 });
         await publicPage.goto(`${FRONTEND_URL}/${slug}`);
         const img = publicPage.getByRole("img", { name: "QA container 50/50 görsel A" });
-        const text = publicPage.getByText("Metin girin…");
+        const text = publicPage.getByText(textBlockContent);
         await expect(img).toBeVisible({ timeout: 15_000 });
         await expect(text).toBeVisible();
 

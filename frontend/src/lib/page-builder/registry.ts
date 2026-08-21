@@ -82,7 +82,13 @@ export function createBlock(type: PaletteBlockType): ContentBlock {
     case "hero":
       return { id, type, data: { heading: "Başlık", subheading: "" } };
     case "text":
-      return { id, type, data: { html: "<p>Metin girin…</p>" } };
+      // BOŞ bırakılır — `TextBlockEditor` bunu `PostEditor`'a verir, `PostEditor`'daki
+      // `@tiptap/extension-placeholder` (bkz. post-editor.tsx) YALNIZCA içerik boşken tetiklenir.
+      // Önceden buraya gerçek metin ("<p>Metin girin…</p>") basılıyordu — bu placeholder'ı
+      // TAMAMEN devre dışı bırakıyordu (editör hep "12 karakter" gösteriyordu, kullanıcı elle
+      // silmek zorunda kalıyordu). Gerçek placeholder metni artık text-block.tsx'ten prop olarak
+      // geçiliyor.
+      return { id, type, data: { html: "" } };
     case "image":
       return { id, type, data: { url: "", alt: "", caption: "", radius: "none", lightbox: false } };
     case "gallery":

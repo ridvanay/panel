@@ -827,3 +827,109 @@ GEREKİR (zaten backend'in kendi test adımı için kurulu olacaktır, EK bir ku
 gerekmez). `E2E_DATABASE_URL` ortam değişkeni (varsayılan `postgresql://postgres:postgres@
 localhost:5432/saas_e2e?schema=public`) CI'nin Postgres servisi farklı bir host/port
 kullanıyorsa override edilmelidir.
+
+## On-demand revalidation webhook (backend↔frontend) + "Metin" bloğu düzeltmeleri — bu turda eklendi
+
+Kaynak: backend-agent'ın `triggerPublicPageRevalidation()` (`backend/src/lib/revalidate.ts`,
+`pages.routes.ts`'teki 7 çağrı noktası: create/update/trash/restore/bulk/revision-restore) ve
+frontend-agent'ın `POST /api/revalidate` webhook'u (`frontend/src/app/api/revalidate/route.ts`)
++ page-builder "Metin" bloğu düzeltmeleri (boş başlangıç içeriği, placeholder, çift-fokus-halkası
+düzeltmesi). Her iki backend-agent/frontend-agent tarafı da bu turda **kendi geçici script'leriyle
+(curl / ad-hoc Playwright) doğrulamış ama kalıcı bir test dosyası BIRAKMAMIŞTI** — qa-agent'ın
+görevi buydu.
+
+| # | Senaryo | Dosya | Durum |
+|---|---|---|---|
+| 1 | PUBLISHED sayfa oluşturma → doğru URL/`x-revalidate-secret` header/`{paths}` gövdesiyle webhook tetiklenir | `backend/tests/integration/revalidate.test.ts` | ✅ Geçiyor (yeni) |
+| 2 | DRAFT sayfa → webhook TETİKLENMEZ; DRAFT→DRAFT güncelleme → TETİKLENMEZ | `backend/tests/integration/revalidate.test.ts` | ✅ Geçiyor (yeni) |
+| 3 | DRAFT→PUBLISHED ve PUBLISHED→DRAFT (her iki yön) `PATCH` ile tetiklenir; zaten PUBLISHED bir sayfanın yalnızca içerik güncellemesi de tetikler | `backend/tests/integration/revalidate.test.ts` | ✅ Geçiyor (yeni) |
+| 4 | Çevirisi (en) olan yayındaki sayfa için TÜM etkin dillerin path'leri (`/tr/x`, `/en/y`) gönderilir; boş/silinmiş çeviri için path ÜRETİLMEZ | `backend/tests/integration/revalidate.test.ts` | ✅ Geçiyor (yeni) |
+| 5 | `SiteSettings.homePageId` ise path slug'sız (`/tr`) üretilir | `backend/tests/integration/revalidate.test.ts` | ✅ Geçiyor (yeni) |
+| 6 | Bulk trash/restore/publish aksiyonları (yalnızca yayındaki/geçiş yapan öğeler için) tetikler; bulk trash TASLAK sayfa için tetiklemez | `backend/tests/integration/revalidate.test.ts` | ✅ Geçiyor (yeni) |
+| 7 | Revizyon geri yükleme, sayfa YAYINDAYSA tetikler | `backend/tests/integration/revalidate.test.ts` | ✅ Geçiyor (yeni) |
+| 8 | Frontend webhook'u 500 dönse VEYA ağ hatası (ECONNREFUSED) verse dahi asıl admin isteği (create/update) BAŞARIYLA tamamlanır (best-effort tolerans) | `backend/tests/integration/revalidate.test.ts` | ✅ Geçiyor (yeni) |
+| 9 | `REVALIDATE_SECRET` yapılandırılmamışsa (boş) özellik SESSİZCE no-op — fetch hiç çağrılmaz | `backend/tests/integration/revalidate.test.ts` (ayrı `describe`, `vi.resetModules()` + taze `buildApp()` ile) | ✅ Geçiyor (yeni) |
+| 10 | `POST /api/revalidate` — doğru secret + geçerli path(ler) → 200 + `revalidatePath` her path için çağrılır | `frontend/tests/unit/api-revalidate-route.test.ts` | ✅ Geçiyor (yeni) |
+| 11 | Eksik/yanlış/farklı-uzunluktaki secret → 401, `revalidatePath` ÇAĞRILMAZ; `REVALIDATE_SECRET` env boşsa da 401 (fail-closed) | `frontend/tests/unit/api-revalidate-route.test.ts` | ✅ Geçiyor (yeni) |
+| 12 | Boş `paths`, `/` ile başlamayan bir path (karışık dizide bile TÜMÜ reddedilir), eksik/yanlış tip, bozuk JSON → 400 | `frontend/tests/unit/api-revalidate-route.test.ts` | ✅ Geçiyor (yeni) |
+| 13 | Yeni bir Metin bloğu GERÇEKTEN boş başlar ("0 karakter"), placeholder (`data-placeholder="Metin girin…"` + `is-editor-empty`) DOM'da görünür ve görsel olarak render edilir (`::before` computed style) | `frontend/tests/e2e/admin-page-builder-text-block.spec.ts` | ✅ Geçiyor (yeni) |
+| 14 | Editöre fokus verildiğinde `.ProseMirror`'ın KENDİ outline'ı `none` — tek görünür gösterge sarmalayıcının `focus-within:ring`'i (çift-halka düzeltmesi) | `frontend/tests/e2e/admin-page-builder-text-block.spec.ts` | ✅ Geçiyor (yeni) |
+| 15 | Editörün boş alt boşluğuna (min-height dolgu alanı) tıklamak editörü fokuslar | `frontend/tests/e2e/admin-page-builder-text-block.spec.ts` | ✅ Geçiyor (yeni) |
+| 16 (regresyon) | Blog yazı editörü hâlâ "İçeriğinizi buraya yazın…" placeholder'ını, 200px min-height'ı KULLANIR ve AYNI çift-halka düzeltmesinden (global `.ProseMirror` seçicisi) faydalanır | `frontend/tests/e2e/admin-page-builder-text-block.spec.ts` | ✅ Geçiyor (yeni) |
+
+**17 yeni backend entegrasyon testi + 10 yeni frontend unit testi + 5 yeni Playwright e2e senaryosu
+— hepsi yeşil.** Ayrıca regresyon: backend'in TAM suite'i (85 dosya / 818 test) ve frontend'in TAM
+`vitest` suite'i (86 dosya / 517 test, bu turdan ÖNCEKİ hâliyle baseline) bu turda yeniden koşuldu,
+kırılan YOK. Backend/frontend `tsc --noEmit` ve `eslint` (yeni dosyalar) temiz.
+
+### Yöntem notu — `REVALIDATE_SECRET` testte NEDEN gerçek `fetch()` çağrısına yol açıyordu
+
+`backend/.env.test` bu turda `REVALIDATE_SECRET=test-revalidate-secret` (boş değil) olarak
+eklendi — yani `revalidate.test.ts` DIŞINDAKİ TÜM backend entegrasyon testlerinde (`pages.test.ts`
+dahil) `triggerPublicPageRevalidation()` her PUBLISHED işlemde GERÇEK bir `fetch()` çağrısı
+deniyor, frontend test sırasında ayakta olmadığı için (`ECONNREFUSED`) bu her seferinde
+başarısız oluyor — ama `try/catch` içinde best-effort olduğu için testleri KIRMIYOR (yalnızca
+`app.log.warn`). qa-agent bunu doğruladı (`pages.test.ts` izole çalıştırıldı — 26/26 yeşil, ~6s,
+gözle görülür bir yavaşlama YOK, Windows'ta ECONNREFUSED hızlı döndüğü için). Bu bir **bug
+DEĞİL** — davranış dosya başlığındaki yorumla (`.env.test`) tutarlı ve bilinçli — ama gerçek bir
+ağ çağrısının testlerde sessizce denenmesi ideal değil; **backend-agent'a bilgi amaçlı not**:
+ileride bu testler yavaşlarsa (CI'da farklı bir ağ/DNS davranışı, ör. `ECONNREFUSED` yerine
+timeout) `tests/setup/env.ts`'e global bir `vi.stubGlobal("fetch", ...)` no-op mock'u eklemek
+(yalnızca `revalidate.test.ts` `vi.restoreAllMocks()` ile kendi spy'ını üstüne koyar) bu riski
+sıfıra indirir. Şu an için gözlemlenen bir performans/kararlılık sorunu YOK, bu yüzden qa-agent
+kendi başına böyle bir global değişiklik yapmadı (backend `tests/setup/` altyapısı backend-agent'ın
+alanı).
+
+### Uygulama kodunda bug BULUNMADI
+
+Hem backend'deki (`lib/revalidate.ts`, `pages.routes.ts` 7 çağrı noktası) hem frontend'deki
+(`app/api/revalidate/route.ts`) implementasyon incelendi ve yukarıdaki 17+10+5 test senaryosuyla
+doğrulandı: path formatı (`/${locale}` ana sayfa, `/${locale}/${slug}` diğerleri) doğru, secret
+karşılaştırması `timingSafeEqual` ile sabit-zamanlı (uzunluk uyuşmazlığında erken dönüş güvenli —
+sır uzunluğu gizli bilgi değildir), best-effort try/catch asıl admin isteğini hiçbir senaryoda
+etkilemiyor. "Metin" bloğu düzeltmelerinde de (boş `html`, placeholder prop'ları, `.ProseMirror:
+focus-visible` override'ı) davranış tam olarak dosya başlıklarındaki gerekçeyle eşleşiyor.
+
+### Regresyon taraması — TAM Playwright suite'i bu turda koşuldu, 1 GERÇEK kırılma bulundu ve qa-agent'ın KENDİ testinde düzeltildi (uygulama kodu DEĞİL)
+
+`npx playwright test` (18 dosya, tam suite) bu turda çalıştırıldı: **74 geçti, 4 kesin başarısız,
+2 "flaky" (retry sonrası geçti)**. Tek tek izole edilip kök nedenleri doğrulandı:
+
+1. **`admin-page-builder-containers.spec.ts` senaryo 1 — GERÇEK kırılma, qa-agent'ın KENDİ testi
+   düzeltildi.** Bu test, "İki Eşit Sütun" konteynerinin ikinci sütununa DOKUNULMAMIŞ (varsayılan)
+   bir Metin bloğu ekleyip public sayfada `getByText("Metin girin…")` arıyordu — bu, Metin
+   bloğunun ESKİ varsayılan içeriğiydi (`registry.ts`'in eski `<p>Metin girin…</p>`'i, GERÇEK
+   yayınlanan içerikti, yalnızca bir editör placeholder'ı DEĞİLDİ). frontend-agent'ın bu turki
+   düzeltmesiyle (`createBlock("text")` artık `html: ""`) dokunulmamış bir blok public'te ARTIK
+   hiçbir görünür metin ÜRETMİYOR — bu KASITLI ve DOĞRU (eski davranış, düzenlenmemiş bir bloğun
+   placeholder-benzeri metnini gerçek içerik gibi yayınlıyordu, gerçek bir UX kusuruydu). Test,
+   yalnızca eski (artık geçersiz) bir varsayılan-içerik varsayımına dayandığı için **qa-agent
+   tarafından güncellendi**: ikinci sütuna artık GERÇEK bir metin YAZILIYOR (`pressSequentially`),
+   public sayfada O metin aranıyor — testin asıl amacı (iki sütunun yan yana/eşit genişlikte
+   render olduğunun görsel doğrulaması) DEĞİŞMEDİ. Düzeltme sonrası dosyanın 7 testi de tek başına
+   yeşil (`31.4s`). **frontend-agent'a yönlendirilecek bir bug YOKTUR** — davranış kasıtlı ve
+   doğru, kırılan yalnızca eski bir test varsayımıydı.
+2. **`admin-blog-tags.spec.ts` madde 3 + madde 4 — pre-existing, bu turdan BAĞIMSIZ, ilgisiz bir
+   flake.** Hızlı Düzenle popover'ındaki "... etiketini kaldır" butonuna tıklarken "element is not
+   stable" / bir kart `div`'inin "intercepts pointer events" hatası (55+ retry denemesi sonrası
+   timeout) — dnd-kit `PointerSensor` için önceden belgelenmiş, bu depoda TEKRARLANAN bir Windows/
+   Playwright sentetik-pointer-olayı sınırlamasıyla AYNI kategori. Bu turun değişiklikleri (backend
+   revalidation webhook'u, page-builder Metin bloğu/CSS) blog listesi Hızlı Düzenle UI'ına HİÇ
+   dokunmuyor — izole tekrar koşulduğunda AYNI şekilde başarısız oldu (bu turdan bağımsız
+   doğrulandı). Kapsam/zaman kısıtı nedeniyle bu turda DÜZELTİLMEDİ — **qa-agent'ın kendi
+   backlog'una not**: ilgili "kaldır" butonu locator'ı için `admin-page-builder-containers.spec.ts`
+   §2'deki `attemptDragOntoAndConfirmStarted` retry-sarmalayıcı desenine benzer bir "gerçekten
+   stabil hale gelene kadar yeniden dene" yardımcısı eklenmeli.
+3. **`admin-locale-management.spec.ts` "madde 7" — pre-existing, ÖNCEDEN belgelenmiş, bu turdan
+   BAĞIMSIZ flake.** Bu dosyanın kendi bölümündeki ("Bilinen ortam sınırlaması — madde 7", yukarı
+   bkz.) tarayıcı-süreç-çökmesi sınırlamasıyla BİREBİR aynı hata (izole tekrar koşulduğunda aynı
+   noktada, `getByLabel('Kod')` doldurulurken çöktü). Bu turda dosyaya HİÇ dokunulmadı.
+4. **`admin-blog-pagination.spec.ts` + `admin-page-builder-widgets.spec.ts` (2 "flaky", retry'de
+   geçti) — giriş formu `waitForURL(/\/dashboard/)` zaman aşımı.** `support/admin-session.ts`
+   başlığında ÖNCEDEN belgelenmiş, refresh-token rotasyon yarışıyla ilişkili bilinen bir
+   sınırlama (`retries: 1` zaten telafi ediyor). İzole tekrar koşulduğunda HER İKİ dosya da (12/12
+   test) sorunsuz geçti — bu turun değişiklikleriyle İLGİSİZ.
+
+**Sonuç: bu turun değişiklikleri (revalidation webhook + Metin bloğu) yüzünden kırılan TEK gerçek
+test `admin-page-builder-containers.spec.ts` idi ve düzeltildi; geri kalan 3 kırılma/flake bu
+depoda ÖNCEDEN belgelenmiş, ilgisiz, ortam kaynaklı sorunlardır.**

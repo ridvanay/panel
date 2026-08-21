@@ -40,6 +40,16 @@ const EnvSchema = z.object({
   STRIPE_SECRET_KEY: z.string().default(""),
   STRIPE_WEBHOOK_SECRET: z.string().default(""),
 
+  // On-demand ISR — backend, frontend'den AYRI bir process olduğu için Next.js'in
+  // `revalidatePath`'ini DOĞRUDAN çağıramaz; bunun yerine kaydetme sonrası frontend'deki
+  // `POST /api/revalidate` webhook'unu bu paylaşılan sırla imzalayarak tetikler (bkz.
+  // lib/revalidate.ts). `STRIPE_SECRET_KEY` ile AYNI desen — boş bırakılırsa özellik
+  // sessizce devre dışı kalır (revalidation çağrısı hiç yapılmaz), sayfa kaydetme/yayınlama
+  // akışı bundan ETKİLENMEZ (ISR zaten 60sn'lik zaman-tabanlı revalidate ile geri düşer,
+  // bu yüzden ZORUNLU tutulmadı — `ENCRYPTION_KEY` gibi eksikliği güvenlik açığına yol
+  // açan bir alan DEĞİL, yalnızca bir gecikme/latency optimizasyonu).
+  REVALIDATE_SECRET: z.string().default(""),
+
   // Global (route-özel override edilmemiş) uçlar için istek limiti. 100/dk admin panelinin
   // normal kullanımında (10sn'de bir /admin/health polling'i, sayfa geçişlerinde paralel
   // GET'ler, dashboard grafikleri vb.) yanlışlıkla aşılıyordu — 300/dk bu trafiği rahatça

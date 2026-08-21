@@ -48,6 +48,7 @@ import {
 import { sanitizePageBlocks, sanitizePageTranslations } from "./lib/sanitize-blocks";
 import { SETTINGS_ID } from "../settings/settings.routes";
 import { emitWebhookEvent } from "../../lib/webhook-emitter";
+import { triggerPublicPageRevalidation } from "../../lib/revalidate";
 import { toPublicPageDto } from "../public-api/public-api.mappers";
 import {
   AutosavePageRequestSchema,
@@ -111,6 +112,22 @@ function assertLegalDocumentAuthorized(value: boolean | undefined, actorRole: "A
   if (value === undefined) return;
   if (actorRole !== "ADMIN") {
     throw new ForbiddenError("isLegalDocument alanını yalnızca ADMIN değiştirebilir.");
+  }
+}
+
+/**
+ * `page.id`, `SiteSettings.homePageId` ile eşleşiyor mu — on-demand revalidation'ın
+ * ana sayfayı slug'sız `/${locale}` mi yoksa `/${locale}/${slug}` mi olarak tetikleyeceğini
+ * belirlemek için kullanılır (bkz. lib/revalidate.ts). Kendi içinde try/catch'lidir: bir
+ * DB hatası olsa dahi (best-effort) `false` döner, asıl isteği ASLA etkilemez.
+ */
+async function isCurrentHomePage(app: FastifyInstance, pageId: string): Promise<boolean> {
+  try {
+    const settings = await app.prisma.siteSettings.findUnique({ where: { id: SETTINGS_ID }, select: { homePageId: true } });
+    return settings?.homePageId === pageId;
+  } catch (err) {
+    app.log.warn({ err, pageId }, "Ana sayfa kontrolü başarısız oldu (revalidation best-effort)");
+    return false;
   }
 }
 
@@ -232,6 +249,13 @@ export async function adminPagesRoutes(app: FastifyInstance) {
         });
       }
 
+      // Yeni oluşturulan bir sayfa HENÜZ ana sayfa OLAMAZ (`homePageId` yalnızca ayrı bir
+      // `/admin/settings` ucundan, VAR OLAN bir sayfaya işaret edecek şekilde ayarlanır) —
+      // bu yüzden `isCurrentHomePage` sorgusuna gerek yok, doğrudan `isHomePage: false`.
+      if (page.status === "PUBLISHED") {
+        await triggerPublicPageRevalidation(app, page, { isHomePage: false });
+      }
+
       return reply.code(201).send(ok(await toPageDtoLocalized(app, page)));
     }
   );
@@ -329,6 +353,15 @@ export async function adminPagesRoutes(app: FastifyInstance) {
         await emitWebhookEvent(app, "PAGE_PUBLISHED", toPublicPageDto(page));
       }
 
+      // On-demand ISR — `existing.status`/`page.status` PUBLISHED'DEN farklı yönlerde
+      // değişmiş OLABİLİR (yayına alma, yayından kaldırma, ya da zaten yayındaki bir sayfanın
+      // içerik/slug/çeviri güncellemesi) — hepsinde public çıktı DEĞİŞTİĞİ için ikisinden biri
+      // PUBLISHED ise tetiklenir (yalnızca "geçişte" tetiklenen `PAGE_PUBLISHED` webhook'undan
+      // BİLEREK daha geniş kapsamlı). Best-effort — bkz. lib/revalidate.ts.
+      if (existing.status === "PUBLISHED" || page.status === "PUBLISHED") {
+        await triggerPublicPageRevalidation(app, page, { isHomePage: await isCurrentHomePage(app, page.id) });
+      }
+
       return reply.send(ok(await toPageDtoLocalized(app, page)));
     }
   );
@@ -381,6 +414,11 @@ export async function adminPagesRoutes(app: FastifyInstance) {
       if (!existing) throw new NotFoundError("Sayfa bulunamadı.");
 
       if (!existing.deletedAt) {
+        // Transaction `homePageId`'i TEMİZLEYEBİLİR (aşağıdaki `updateMany`) — bu yüzden "ana
+        // sayfa mıydı" durumu, revalidation path'i doğru hesaplansın diye transaction'dan
+        // ÖNCE yakalanır (bkz. lib/revalidate.ts::triggerPublicPageRevalidation isHomePage).
+        const wasHomePage = await isCurrentHomePage(app, existing.id);
+
         await app.prisma.$transaction(async (tx) => {
           await tx.page.update({ where: { id: existing.id }, data: { deletedAt: new Date() } });
           await tx.siteSettings.updateMany({ where: { id: SETTINGS_ID, homePageId: existing.id }, data: { homePageId: null } });
@@ -394,6 +432,12 @@ export async function adminPagesRoutes(app: FastifyInstance) {
           targetId: existing.id,
           ipAddress: request.ip,
         });
+
+        // Çöpe taşınan sayfa yayındaysa public URL'i artık 404 dönmeli — cache'in bunu
+        // yansıtması için ANINDA revalidate edilir (best-effort, bkz. lib/revalidate.ts).
+        if (existing.status === "PUBLISHED") {
+          await triggerPublicPageRevalidation(app, existing, { isHomePage: wasHomePage });
+        }
       }
 
       return reply.code(204).send();
@@ -422,6 +466,13 @@ export async function adminPagesRoutes(app: FastifyInstance) {
           targetId: existing.id,
           ipAddress: request.ip,
         });
+        // Çöpten geri dönen bir sayfa yayındaysa public URL yeniden erişilebilir hale gelir —
+        // cache'in bunu yansıtması için ANINDA revalidate edilir (best-effort). `homePageId`
+        // trash sırasında zaten temizlenmiş/geri KONMAZ (bkz. üstteki route yorumu) — bu
+        // yüzden `isCurrentHomePage` her zaman güncel (restore SONRASI) durumu okur.
+        if (existing.status === "PUBLISHED") {
+          await triggerPublicPageRevalidation(app, existing, { isHomePage: await isCurrentHomePage(app, existing.id) });
+        }
       }
 
       const page = await app.prisma.page.findUnique({ where: { id: existing.id }, include: WITH_AUTHOR });
@@ -441,6 +492,11 @@ export async function adminPagesRoutes(app: FastifyInstance) {
       if (!existing) throw new NotFoundError("Sayfa bulunamadı.");
       if (!existing.deletedAt) throw new ConflictError("Kalıcı silmeden önce içeriği çöpe taşıyın.");
 
+      // NOT (revalidation kapsam dışı, kasıtlı): kayıt buraya ulaştığında ZATEN çöpte
+      // (`existing.deletedAt` dolu) — yani public tarafta ZATEN görünmüyordu (public route'lar
+      // `deletedAt: null` filtreler) ve bu görünürlük değişikliği "çöpe taşıma" adımında
+      // (`DELETE /:pageId`, yukarısı) zaten revalidate edildi. Kalıcı silme public çıktıda
+      // EK bir değişiklik yaratmaz, bu yüzden burada `triggerPublicPageRevalidation` ÇAĞRILMAZ.
       await app.prisma.$transaction(async (tx) => {
         await tx.contentRevision.deleteMany({ where: { entityType: "PAGE", entityId: existing.id } });
         // §9 backend-agent madde 7 — `ContentSlug`'ın içerik tablolarına FK'si YOKTUR (polimorfik),
@@ -485,6 +541,26 @@ export async function adminPagesRoutes(app: FastifyInstance) {
             ).map((row) => row.id)
           : [];
 
+      // On-demand ISR (best-effort, bkz. lib/revalidate.ts) — `trash`/`restore`/`draft`
+      // aksiyonları için gereken slug/translations/status/homePageId AKSİYONDAN ÖNCE
+      // yakalanır: `trash` aynı transaction'da `homePageId`'i temizleyebilir, `draft`
+      // `status`'u değiştirir — revalidation path'i doğru hesaplansın diye "önceki" durum
+      // gerekir (tekil `DELETE /:pageId` route'undaki AYNI gerekçe). `publish` aksiyonu
+      // zaten kendi `publishCandidateIds`/`transitionedIds` akışını (aşağısı) kullanır.
+      const revalidationLookupIds = request.body.action !== "publish" ? Array.from(new Set(request.body.ids)) : [];
+      const [revalidationRowsBefore, settingsBeforeAction] =
+        revalidationLookupIds.length > 0
+          ? await Promise.all([
+              app.prisma.page.findMany({
+                where: { id: { in: revalidationLookupIds } },
+                select: { id: true, slug: true, translations: true, status: true },
+              }),
+              app.prisma.siteSettings.findUnique({ where: { id: SETTINGS_ID }, select: { homePageId: true } }),
+            ])
+          : [[], null];
+      const revalidationRowById = new Map(revalidationRowsBefore.map((row) => [row.id, row]));
+      const homePageIdBeforeAction = settingsBeforeAction?.homePageId ?? null;
+
       const result = await runBulkContentAction(
         app,
         {
@@ -515,6 +591,26 @@ export async function adminPagesRoutes(app: FastifyInstance) {
           const publishedRows = await app.prisma.page.findMany({ where: { id: { in: transitionedIds } } });
           for (const row of publishedRows) {
             await emitWebhookEvent(app, "PAGE_PUBLISHED", toPublicPageDto(row));
+            // Toplu yayınlama da ANINDA public'e yansımalı — tekil `PATCH` ile AYNI best-effort
+            // tetikleyici (bkz. lib/revalidate.ts).
+            await triggerPublicPageRevalidation(app, row, { isHomePage: homePageIdBeforeAction === row.id });
+          }
+        }
+      }
+
+      // `trash`/`restore`/`draft` — hepsi public görünürlüğü DEĞİŞTİREBİLİR (yayındaki bir
+      // sayfa çöpe/taslağa gider ya da çöpten yayındaki haliyle geri döner). `permanent-delete`
+      // KASITLI OLARAK dışarıda bırakılır: kayıt zaten çöpteydi (public'te ZATEN görünmüyordu),
+      // görünürlük değişikliği trash adımında zaten revalidate edilmişti (bkz. tekil
+      // `DELETE /:pageId/permanent` route'undaki AYNI gerekçe).
+      if (revalidationRowById.size > 0 && (request.body.action === "trash" || request.body.action === "restore" || request.body.action === "draft")) {
+        const actedIds = revalidationLookupIds.filter((id) => !result.skippedIds.includes(id));
+        for (const id of actedIds) {
+          const before = revalidationRowById.get(id);
+          // `trash`/`draft`: sayfa AKSİYONDAN ÖNCE yayındaysa public çıktı bu aksiyonla kayboluyor.
+          // `restore`: `status` DEĞİŞMEZ — aksiyondan önce (= sonra da) yayındaysa public'e döner.
+          if (before && before.status === "PUBLISHED") {
+            await triggerPublicPageRevalidation(app, before, { isHomePage: homePageIdBeforeAction === id });
           }
         }
       }
@@ -765,6 +861,13 @@ export async function adminPagesRoutes(app: FastifyInstance) {
           },
           ipAddress: request.ip,
         });
+      }
+
+      // Revizyon geri yükleme `status`'a DOKUNMAZ (yalnızca içerik/SEO/çeviri alanları geri
+      // yazılır) — sayfa ZATEN yayındaysa geri yüklenen içerik ANINDA public'e yansımalı
+      // (best-effort, bkz. lib/revalidate.ts).
+      if (existing.status === "PUBLISHED") {
+        await triggerPublicPageRevalidation(app, page, { isHomePage: await isCurrentHomePage(app, page.id) });
       }
 
       return reply.send(ok(await toPageDtoLocalized(app, page)));

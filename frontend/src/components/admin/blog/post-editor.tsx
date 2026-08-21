@@ -73,7 +73,25 @@ function ToolbarButton({
   );
 }
 
-export function PostEditor({ content, onChange }: { content: string; onChange: (html: string) => void }) {
+export function PostEditor({
+  content,
+  onChange,
+  placeholder = "İçeriğinizi buraya yazın…",
+  minHeightClassName = "min-h-[200px]",
+}: {
+  content: string;
+  onChange: (html: string) => void;
+  /** Boş editörde gösterilen ipucu metni — `@tiptap/extension-placeholder` yalnızca içerik boşken
+   *  (`data.html === ""`) tetiklenir. Varsayılan blog editörünün mevcut metnidir; page-builder
+   *  Metin bloğu (`text-block.tsx`) kendi bağlamına özgü bir metin geçer. */
+  placeholder?: string;
+  /** Yazılabilir alanın (`.ProseMirror`) minimum yüksekliği — blog editörünün mevcut büyük
+   *  layout'unu (200px) KORUR, page-builder Metin bloğu gibi daha kompakt bağlamlar kendi
+   *  değerini geçebilir. Bilinçli olarak `.ProseMirror`'ın KENDİSİNE uygulanır (`EditorContent`
+   *  sarmalayıcısına DEĞİL) — aksi halde içerik kısaysa min-height alanının boş kısmı
+   *  `.ProseMirror`'ın DOM sınırları DIŞINDA kalır ve oraya tıklamak editörü fokuslamaz. */
+  minHeightClassName?: string;
+}) {
   const [mediaPickerOpen, setMediaPickerOpen] = useState(false);
   // a11y: editöre eklenecek her görsel için alt metin zorunlu — MediaPicker'dan seçim yapıldıktan
   // sonra doğrudan eklemek yerine bu ara onay adımından geçirilir (bkz. görev notu Faz 2).
@@ -103,7 +121,7 @@ export function PostEditor({ content, onChange }: { content: string; onChange: (
       TableCell,
       Highlight,
       CharacterCount,
-      Placeholder.configure({ placeholder: "İçeriğinizi buraya yazın…" }),
+      Placeholder.configure({ placeholder }),
     ],
     content,
     immediatelyRender: false,
@@ -112,7 +130,12 @@ export function PostEditor({ content, onChange }: { content: string; onChange: (
     // hiçbir kullanıcı etkileşiminden sonra güncellenmez (bkz. qa-agent bulgusu).
     shouldRerenderOnTransaction: true,
     editorProps: {
-      attributes: { class: "prose prose-sm max-w-none focus:outline-none" },
+      // `cursor-text`: min-height alanının boş (içeriksiz) kısmına tıklandığında da imleç
+      // metin moduna geçsin diye — `.ProseMirror` `minHeightClassName` ile KENDİSİ min-height
+      // alır (yukarıdaki prop yorumuna bkz.), bu yüzden tiptap tıklamayı kendi DOM sınırları
+      // içinde algılar ve caret'i otomatik en yakın konuma yerleştirir, ekstra `onClick` handler
+      // GEREKMEZ.
+      attributes: { class: `prose prose-sm max-w-none focus:outline-none cursor-text ${minHeightClassName}` },
     },
     onUpdate: ({ editor }) => onChange(editor.getHTML()),
   });
@@ -370,7 +393,10 @@ export function PostEditor({ content, onChange }: { content: string; onChange: (
           <Redo2 />
         </ToolbarButton>
       </div>
-      <EditorContent editor={editor} className="min-h-[200px] px-3 py-2" />
+      {/* min-height ARTIK `.ProseMirror`'ın kendisinde (`editorProps.attributes.class`,
+          `minHeightClassName`) — burada tekrarlanmıyor (bkz. prop yorumu, "tıklanabilir boş
+          alan" sorunu). */}
+      <EditorContent editor={editor} className="px-3 py-2" />
       <div className="border-t border-input px-3 py-1 text-right text-xs text-muted-foreground">
         {editor?.storage.characterCount.characters() ?? 0} karakter
       </div>

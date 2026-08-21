@@ -303,6 +303,29 @@
   outline-offset: 2px;
 }
 
+/*
+ * TipTap editör içerik alanı (`.ProseMirror`, bkz. `components/admin/blog/post-editor.tsx`)
+ * bu genel kuraldan İSTİSNADIR — kendi odak göstergesini `PostEditor`'ın KENDİ sarmalayıcısı
+ * üzerinden sağlar (`rounded-lg ... focus-within:ring-3 focus-within:ring-ring/50` — bkz.
+ * post-editor.tsx). Kök neden: yukarıdaki `:focus-visible` kuralı herhangi bir `@layer` İÇİNDE
+ * DEĞİL (bu dosyada `@layer base {...}` bloğu AŞAĞIDA, ayrı) — CSS Cascade Layers'ta katmansız
+ * (unlayered) stiller, specificity/kaynak sırası ne olursa olsun HER ZAMAN katmanlı stillerden
+ * (Tailwind'in TÜM utility'leri `@layer utilities` içindedir — `focus:outline-none`,
+ * `focus-visible:outline-none` dahil) önceliklidir. Bu yüzden `PostEditor`'daki
+ * `editorProps.attributes.class = "... focus:outline-none ..."` bu kuralı EZEMEZ; `.ProseMirror`
+ * mouse ile fokuslandığında bile (metin girişi alanları `:focus-visible`'ı mouse tıklamasında da
+ * eşleştirir — buton gibi değildir) tarayıcının kendi outline'ı GÖRÜNÜR kalır ve dış kartın
+ * `ring`'i ile ÜST ÜSTE binerek "çift halka" oluşturur (bkz. kullanıcı ekran görüntüsü).
+ * Çözüm: AYNI (katmansız) katmanda, DAHA SPESİFİK bir seçiciyle override — bu, blog editörü
+ * (`blog/[postId]/page.tsx`, `blog/new/page.tsx`) dahil `.ProseMirror` kullanan HER yerde aynı
+ * (var olan ama fark edilmemiş) çift-halka hatasını düzeltir; dış kartın kendi `ring`'i
+ * (`focus-within`, fokusun tıklama/klavye kaynağından bağımsız) tek/yeterli odak göstergesi
+ * olarak kalmaya devam eder — a11y kaybı YOKTUR.
+ */
+.ProseMirror:focus-visible {
+  outline: none;
+}
+
 .dark {
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);

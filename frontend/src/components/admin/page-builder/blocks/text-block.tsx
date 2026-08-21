@@ -6,6 +6,8 @@ export function TextBlockEditor({ block, onChange }: { block: TextBlock; onChang
     <PostEditor
       content={block.data.html}
       onChange={(html) => onChange({ ...block, data: { html } })}
+      placeholder="Metin girin…"
+      minHeightClassName="min-h-[140px]"
     />
   );
 }
