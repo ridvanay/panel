@@ -4,7 +4,17 @@ import { z } from "zod";
 const EnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().int().positive().default(4000),
+  // TARAYICININ eriştiği origin — CORS `origin` kontrolü (plugins/security.ts) VE e-posta/
+  // checkout/invitation gibi kullanıcıya gönderilen MUTLAK URL'lerin (reset-password, davet
+  // kabul, Stripe checkout success/cancel vb.) tümü bunu kullanır. Docker ağı içindeki servis
+  // adı ("frontend") BURAYA ASLA YAZILMAMALI — tarayıcı bu adı çözemez, hem CORS'u (login dahil
+  // TÜM istekler ağ hatası gibi görünerek başarısız olur) hem gönderilen e-posta linklerini kırar.
   FRONTEND_URL: z.string().url().default("http://localhost:3000"),
+  // Backend'in SUNUCUDAN SUNUCUYA çağırdığı tek uç: `lib/revalidate.ts`teki on-demand ISR
+  // webhook'u (`POST /api/revalidate`). Docker Compose ağında frontend servisine "frontend"
+  // adıyla erişilir (`FRONTEND_URL`'den KASITLI OLARAK AYRI — bkz. o alanın yorumu); tanımsızsa
+  // `FRONTEND_URL`'e düşer (bare-metal/tek-host geliştirmede ikisi zaten aynı adrestir).
+  INTERNAL_FRONTEND_URL: z.string().url().optional(),
   // Yüklenen medya URL'lerini mutlaklaştırmak için kullanılır (bkz. modules/media).
   PUBLIC_URL: z.string().url().default("http://localhost:4000"),
 

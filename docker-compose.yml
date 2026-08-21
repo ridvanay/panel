@@ -48,13 +48,19 @@ services:
       # (aksi halde production'a özgü zorunlu kontroller — bkz. src/lib/keys.ts JWT anahtarı,
       # SMTP zorunluluğu — devre dışı kalır ve her restart'ta geçici JWT anahtarı üretilir).
       NODE_ENV: production
-      # DATABASE_URL ile AYNI gerekçe: backend/.env'deki FRONTEND_URL (varsayılan
-      # localhost:3000) bu container'ın İÇİNDEN bakınca kendisini işaret eder, frontend
-      # servisini DEĞİL — src/lib/revalidate.ts'in on-demand ISR webhook'u (POST
-      # /api/revalidate) bu adrese ulaşamazsa sessizce no-op'a düşer (best-effort, sayfa
-      # kaydetmeyi bloklamaz) ama revalidation hiç ÇALIŞMAZ. Docker ağında frontend servisine
-      # adıyla erişilir.
-      FRONTEND_URL: http://frontend:3000
+      # KRİTİK: FRONTEND_URL BURADA OVERRIDE EDİLMEZ — bu değer CORS `origin` kontrolünü
+      # (plugins/security.ts) VE kullanıcıya giden e-posta/checkout/davet linklerini de besliyor,
+      # hepsi TARAYICININ eriştiği adrese (backend/.env'deki varsayılan http://localhost:3000)
+      # ihtiyaç duyar. Önceki bir turda bu buraya `http://frontend:3000` (Docker ağ adı) olarak
+      # set edilmişti — bu, revalidation webhook'unu düzeltirken CORS'u kırdı (tarayıcının
+      # Origin'i asla "http://frontend:3000" olamaz, dolayısıyla TÜM istekler — login DAHİL —
+      # preflight'ta reddedilip ağ hatası gibi görünüyordu). Doğru çözüm: aşağıdaki AYRI,
+      # SUNUCUDAN SUNUCUYA özel değişken.
+      #
+      # DATABASE_URL ile AYNI gerekçe: backend/.env'deki bu değer container'ın İÇİNDEN bakınca
+      # kendisini işaret eder, frontend servisini DEĞİL — src/lib/revalidate.ts'in on-demand ISR
+      # webhook'u (POST /api/revalidate) SADECE bunu kullanır, CORS/e-posta linklerini ETKİLEMEZ.
+      INTERNAL_FRONTEND_URL: http://frontend:3000
     ports:
       - "4000:4000"
     volumes:

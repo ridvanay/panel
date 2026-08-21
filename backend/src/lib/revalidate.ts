@@ -88,7 +88,7 @@ export async function triggerPublicPageRevalidation(
     const paths = await resolveAffectedPaths(app, page, options?.isHomePage ?? false);
     if (paths.length === 0) return;
 
-    const res = await fetch(`${env.FRONTEND_URL}/api/revalidate`, {
+    const res = await fetch(`${env.INTERNAL_FRONTEND_URL ?? env.FRONTEND_URL}/api/revalidate`, {
       method: "POST",
       headers: { "x-revalidate-secret": env.REVALIDATE_SECRET, "content-type": "application/json" },
       body: JSON.stringify({ paths }),
