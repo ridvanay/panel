@@ -19,7 +19,7 @@ describe("navigation — /admin/navigation (parentId hiyerarşisi)", () => {
     return { authorization: `Bearer ${token}` };
   }
 
-  function basePayload(navigationItems: unknown[]) {
+  function basePayload(navigationItems: unknown[]): Record<string, unknown> {
     return {
       navigationItems,
       socialLinks: [],
@@ -27,7 +27,7 @@ describe("navigation — /admin/navigation (parentId hiyerarşisi)", () => {
     };
   }
 
-  async function putNavigation(payload: unknown, token = adminToken) {
+  async function putNavigation(payload: Record<string, unknown>, token = adminToken) {
     return app.inject({
       method: "PUT",
       url: "/api/v1/admin/navigation",
@@ -142,7 +142,9 @@ describe("navigation — /admin/navigation (parentId hiyerarşisi)", () => {
 
   it("20 öğe limiti tüm seviyelerin toplamına uygulanır (regresyon)", async () => {
     const rootId = crypto.randomUUID();
-    const items = [{ id: rootId, label: "Kök", href: "/kok", order: 0, parentId: null }];
+    const items: Array<{ id: string; label: string; href: string; order: number; parentId: string | null }> = [
+      { id: rootId, label: "Kök", href: "/kok", order: 0, parentId: null },
+    ];
     // 20 kök + 1 alt öğe = 21 > limit.
     for (let i = 1; i < 20; i++) {
       items.push({ id: crypto.randomUUID(), label: `Kök ${i}`, href: `/kok-${i}`, order: i, parentId: null });

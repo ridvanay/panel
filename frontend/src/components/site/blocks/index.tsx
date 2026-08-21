@@ -1,4 +1,6 @@
+import { Fragment } from "react";
 import type { BlockChrome, PageNode } from "@/lib/page-builder/types";
+import { ScrollReveal } from "./scroll-reveal";
 import { HeroBlockView } from "./hero-block";
 import { TextBlockView } from "./text-block";
 import { ImageBlockView } from "./image-block";
@@ -38,64 +40,88 @@ import { TeamBlockView } from "./team-block";
  * Bilinmeyen/tanınmayan `type` → sessizce `null` (ileri uyumluluk — `normalizePageNodes` bu
  * düğümleri OLDUĞU GİBİ geçirir, burada güvenle atlanır).
  */
+function renderNodeBody(node: PageNode, chrome: BlockChrome) {
+  switch (node.type) {
+    case "hero":
+      return <HeroBlockView block={node} chrome={chrome} />;
+    case "text":
+      return <TextBlockView block={node} chrome={chrome} />;
+    case "image":
+      return <ImageBlockView block={node} chrome={chrome} />;
+    case "gallery":
+      return <GalleryBlockView block={node} chrome={chrome} />;
+    case "cta":
+      return <CtaBlockView block={node} chrome={chrome} />;
+    case "featured-products":
+      return <FeaturedProductsBlockView block={node} chrome={chrome} />;
+    case "featured-portfolio":
+      return <FeaturedPortfolioBlockView block={node} chrome={chrome} />;
+    case "heading":
+      return <HeadingBlockView block={node} chrome={chrome} />;
+    case "button":
+      return <ButtonBlockView block={node} chrome={chrome} />;
+    case "icon-box":
+      return <IconBoxBlockView block={node} chrome={chrome} />;
+    case "divider":
+      return <DividerBlockView block={node} chrome={chrome} />;
+    case "video":
+      return <VideoBlockView block={node} chrome={chrome} />;
+    case "accordion":
+      return <AccordionBlockView block={node} chrome={chrome} />;
+    case "tabs":
+      return <TabsBlockView block={node} chrome={chrome} />;
+    case "counter":
+      return <CounterBlockView block={node} chrome={chrome} />;
+    case "testimonial":
+      return <TestimonialBlockView block={node} chrome={chrome} />;
+    case "pricing-table":
+      return <PricingTableBlockView block={node} chrome={chrome} />;
+    case "latest-posts":
+      return <LatestPostsBlockView block={node} chrome={chrome} />;
+    case "contact-form":
+      return <ContactFormBlockView block={node} chrome={chrome} />;
+    case "custom-html":
+      return <CustomHtmlBlockView block={node} chrome={chrome} />;
+    case "before-after-slider":
+      return <BeforeAfterSliderBlockView block={node} chrome={chrome} />;
+    case "logo-marquee":
+      return <LogoMarqueeBlockView block={node} chrome={chrome} />;
+    case "skill-bar":
+      return <SkillBarBlockView block={node} chrome={chrome} />;
+    case "team":
+      return <TeamBlockView block={node} chrome={chrome} />;
+    case "container":
+      return <ContainerBlockView block={node} />;
+    default:
+      return null;
+  }
+}
+
 export function BlockRenderer({ nodes, chrome }: { nodes: PageNode[]; chrome: BlockChrome }) {
   return (
     <>
       {nodes.map((node) => {
-        switch (node.type) {
-          case "hero":
-            return <HeroBlockView key={node.id} block={node} chrome={chrome} />;
-          case "text":
-            return <TextBlockView key={node.id} block={node} chrome={chrome} />;
-          case "image":
-            return <ImageBlockView key={node.id} block={node} chrome={chrome} />;
-          case "gallery":
-            return <GalleryBlockView key={node.id} block={node} chrome={chrome} />;
-          case "cta":
-            return <CtaBlockView key={node.id} block={node} chrome={chrome} />;
-          case "featured-products":
-            return <FeaturedProductsBlockView key={node.id} block={node} chrome={chrome} />;
-          case "featured-portfolio":
-            return <FeaturedPortfolioBlockView key={node.id} block={node} chrome={chrome} />;
-          case "heading":
-            return <HeadingBlockView key={node.id} block={node} chrome={chrome} />;
-          case "button":
-            return <ButtonBlockView key={node.id} block={node} chrome={chrome} />;
-          case "icon-box":
-            return <IconBoxBlockView key={node.id} block={node} chrome={chrome} />;
-          case "divider":
-            return <DividerBlockView key={node.id} block={node} chrome={chrome} />;
-          case "video":
-            return <VideoBlockView key={node.id} block={node} chrome={chrome} />;
-          case "accordion":
-            return <AccordionBlockView key={node.id} block={node} chrome={chrome} />;
-          case "tabs":
-            return <TabsBlockView key={node.id} block={node} chrome={chrome} />;
-          case "counter":
-            return <CounterBlockView key={node.id} block={node} chrome={chrome} />;
-          case "testimonial":
-            return <TestimonialBlockView key={node.id} block={node} chrome={chrome} />;
-          case "pricing-table":
-            return <PricingTableBlockView key={node.id} block={node} chrome={chrome} />;
-          case "latest-posts":
-            return <LatestPostsBlockView key={node.id} block={node} chrome={chrome} />;
-          case "contact-form":
-            return <ContactFormBlockView key={node.id} block={node} chrome={chrome} />;
-          case "custom-html":
-            return <CustomHtmlBlockView key={node.id} block={node} chrome={chrome} />;
-          case "before-after-slider":
-            return <BeforeAfterSliderBlockView key={node.id} block={node} chrome={chrome} />;
-          case "logo-marquee":
-            return <LogoMarqueeBlockView key={node.id} block={node} chrome={chrome} />;
-          case "skill-bar":
-            return <SkillBarBlockView key={node.id} block={node} chrome={chrome} />;
-          case "team":
-            return <TeamBlockView key={node.id} block={node} chrome={chrome} />;
-          case "container":
-            return <ContainerBlockView key={node.id} block={node} />;
-          default:
-            return null;
+        const body = renderNodeBody(node, chrome);
+        if (body === null) return null;
+
+        // Giriş Animasyonu (Scroll Reveal) — `node.reveal` VARSA ve `effect !== "none"` ise,
+        // render edilen elemanı `ScrollReveal` ile sarar (§Yapılacaklar/5 orkestratör talimatı).
+        // `container` çocuğuysa (`row` yönlü bir ebeveynde) kendi `widthFr` flex-grow oranı
+        // sarmalayıcıya AYNEN devredilir — aksi halde asıl flex item bu sarmalayıcı olur ve
+        // `ContainerBlockView`nin kendi `flex` stili artık bir flex bağlamı taşımayan bir kutunun
+        // İÇİNDE anlamsızlaşır, satır içi genişlik oranı bozulur (bkz. `scroll-reveal.tsx`).
+        if (node.reveal && node.reveal.effect !== "none") {
+          const flexStyle = node.type === "container" && node.settings.widthFr ? { flex: `${node.settings.widthFr} 1 0%` } : undefined;
+          return (
+            <ScrollReveal key={node.id} effect={node.reveal.effect} delayMs={node.reveal.delayMs} style={flexStyle}>
+              {body}
+            </ScrollReveal>
+          );
         }
+
+        // Reveal YOKSA sıfır DOM/layout etkisi — `Fragment` gerçek bir kutu ÜRETMEZ (`span` +
+        // `display: contents`ten daha güvenli, hiçbir seçici/erişilebilirlik ağacı düğümü eklemez).
+        return <Fragment key={node.id}>{body}</Fragment>;
       })}
     </>
   );

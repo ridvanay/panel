@@ -45,8 +45,26 @@ export type LegacyBlockType = "columns";
 
 export type BlockType = ContentBlockType | ContainerNodeType;
 
+/**
+ * Giriş Animasyonu (Scroll Reveal) — orkestratör kararı (nihai veri modeli, mimar onaylı):
+ * `BaseNode`'a eklenir, böylece hem `ContainerNode` hem TÜM `ContentBlock` union üyeleri
+ * (23 blok) `data`/`settings` şemalarına DOKUNMADAN bu alanı otomatik kazanır. `"none"` efekti
+ * VEYA `reveal` alanının hiç OLMAMASI davranışsal olarak AYNI (animasyon uygulanmaz) — ikisi de
+ * geçerli "kapalı" hali (bkz. `site/blocks/scroll-reveal.tsx`).
+ */
+export type RevealEffect = "none" | "fade-in" | "fade-up" | "slide-left" | "zoom-in";
+/** Milisaniye — kapalı bir sayısal küme (serbest `number` DEĞİL), `SegmentedToggle` ile seçilir. */
+export type RevealDelay = 100 | 200 | 300 | 400 | 500;
+
+export interface RevealEffectSettings {
+  effect: RevealEffect;
+  delayMs: RevealDelay;
+}
+
 interface BaseNode {
   id: string;
+  /** Opsiyonel — verilmemişse (veya `effect: "none"`) hiçbir giriş animasyonu uygulanmaz. */
+  reveal?: RevealEffectSettings;
 }
 
 export interface HeroBlock extends BaseNode {
@@ -558,6 +576,23 @@ export type ContainerBackground =
   | { type: "animated"; variant: "dots"; patternColor: string }
   | { type: "animated"; variant: "grid"; patternColor: string };
 
+/**
+ * Şekilli Bölüm Ayırıcıları — orkestratör kararı (nihai veri modeli, mimar onaylı, bkz.
+ * `.claude/design-notes-page-builder-editing-tools.md` §2). Render motoru tam-genişlik SVG
+ * yollarını `site/blocks/container-block.tsx`teki sabit bir tabloya eşler (bkz. `SHAPE_DIVIDER_PATHS`).
+ */
+export type ShapeDividerType = "wave" | "slant" | "triangle" | "curve";
+
+export interface ShapeDividerSettings {
+  type: ShapeDividerType;
+  /** Hex `#rrggbb` — `ColorField` ile aynı doğrulama, alfa kanalı TAŞIMAZ. */
+  color: string;
+  /** px, `MIN_DIVIDER_HEIGHT`–`MAX_DIVIDER_HEIGHT` arası. */
+  height: number;
+  /** `true` iken ayırıcı dikey eksende ters çevrilir (render anında `transform: scaleY(-1)`). */
+  flip: boolean;
+}
+
 export interface ContainerSettings {
   /** `boxed` → ortalanmış + `maxWidth`; `full-width` → `w-full`. */
   layout: ContainerLayout;
@@ -583,6 +618,14 @@ export interface ContainerSettings {
    * `customWidth` ile KARIŞTIRILMAMALI: o, konteynerin KENDİ dış max-width'i (px).
    */
   widthFr?: number;
+
+  /**
+   * Şekilli Bölüm Ayırıcıları — opsiyonel, `undefined` = kapalı (`MinHeightField` ile AYNI
+   * nullable-alan deseni, bkz. `container-settings-panel.tsx::ShapeDividerField`).
+   * `DEFAULT_CONTAINER_SETTINGS` bu alanları İÇERMEZ.
+   */
+  topDivider?: ShapeDividerSettings;
+  bottomDivider?: ShapeDividerSettings;
 }
 
 export interface ContainerNode extends BaseNode {
@@ -642,6 +685,13 @@ export type PageColumn = LegacyPageColumn;
  */
 export type BuilderContainerId = "root" | `container:${string}`;
 
+/**
+ * Cihaz Önizleme Çubuğu — editörün KENDİ görsel simülasyonu (bkz.
+ * `.claude/design-notes-page-builder-editing-tools.md` §1). Kaydedilen veriyi ETKİLEMEZ,
+ * yalnızca `builder-canvas.tsx::BuilderCanvas`'ın yerel state'i olarak kullanılır.
+ */
+export type DeviceMode = "desktop" | "tablet" | "mobile";
+
 // ============================================================================
 // 5) SINIRLAR (backend `pages.schemas.ts` ile SAYISAL OLARAK AYNI OLMAK ZORUNDA)
 // ============================================================================
@@ -670,6 +720,12 @@ export const MAX_CONTAINER_MAX_WIDTH = 1920;
 /** Galeri bloğu başına en fazla görsel — DEĞİŞMEDİ. */
 export const GALLERY_MAX_IMAGES = 30;
 
+/** Şekilli Bölüm Ayırıcıları — `customWidth`in `MIN/MAX/DEFAULT_CONTAINER_MAX_WIDTH` üçlüsüyle
+ *  BİREBİR AYNI isimlendirme kalıbı (backend `pages.schemas.ts` ile SAYISAL OLARAK AYNI olmalı). */
+export const MIN_DIVIDER_HEIGHT = 0;
+export const MAX_DIVIDER_HEIGHT = 300;
+export const DEFAULT_DIVIDER_HEIGHT = 100;
+
 /** @deprecated v2 adları — geçiş süresince alias, sonra silinir. */
 export const MAX_BLOCKS_PER_COLUMN = MAX_CHILDREN_PER_CONTAINER;
 /** @deprecated v2 adı. */
@@ -692,6 +748,19 @@ export const DEFAULT_CONTAINER_SETTINGS: ContainerSettings = {
   padding: { top: 0, right: 0, bottom: 0, left: 0 },
   margin: { top: 0, right: 0, bottom: 0, left: 0 },
   background: { type: "none" },
+};
+
+/**
+ * Bir ayırıcı "eklendiğinde" (`MinHeightField` deseni, §2.2/§2.7 ui-designer dokümanı) verilen
+ * başlangıç değeri. `color: "#ffffff"` — §2.4 gerekçesi: konteynerin arka planı `background.type:
+ * "none"` iken saydamdır, ayırıcının "hangi rengin üstüne oturacağı" render motorunda hesaplanamaz;
+ * endüstri standardı (Elementor/Divi) beyazdır.
+ */
+export const DEFAULT_SHAPE_DIVIDER: ShapeDividerSettings = {
+  type: "wave",
+  color: "#ffffff",
+  height: DEFAULT_DIVIDER_HEIGHT,
+  flip: false,
 };
 
 /** `BlockRenderer`'a geçilen, bir düğümün "kendi dış boşluğunu taşıyıp taşımadığı" bilgisi (§6.3). */

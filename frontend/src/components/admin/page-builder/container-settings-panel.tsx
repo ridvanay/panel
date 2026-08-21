@@ -21,6 +21,7 @@ import {
   Circle,
   CircleDot,
   Columns2,
+  FlipVertical2,
   Grid3x3,
   Image as ImageIcon,
   Layers,
@@ -48,9 +49,13 @@ import { ImageUploadField } from "@/components/admin/media/image-upload-field";
 import { cn } from "@/lib/utils";
 import {
   DEFAULT_CONTAINER_MAX_WIDTH,
+  DEFAULT_DIVIDER_HEIGHT,
+  DEFAULT_SHAPE_DIVIDER,
   MAX_CONTAINER_DEPTH,
   MAX_CONTAINER_MAX_WIDTH,
+  MAX_DIVIDER_HEIGHT,
   MIN_CONTAINER_MAX_WIDTH,
+  MIN_DIVIDER_HEIGHT,
   ROW_CHILDREN_READABILITY_WARNING_THRESHOLD,
   type ContainerAlign,
   type ContainerAnimatedBackgroundVariant,
@@ -65,6 +70,8 @@ import {
   type ContainerSettings,
   type ContainerSpacing,
   type LinearGradientDirection,
+  type ShapeDividerSettings,
+  type ShapeDividerType,
 } from "@/lib/page-builder/types";
 
 /**
@@ -588,6 +595,118 @@ function BackgroundControl({ value, onChange }: { value: ContainerBackground; on
   );
 }
 
+/**
+ * Şekilli Bölüm Ayırıcıları — `.claude/design-notes-page-builder-editing-tools.md` §2 BİREBİR.
+ * 4 şablonun sıra/etiket/mini-SVG yolu §2.3 tablosuyla aynı; gerçek tam-genişlik render
+ * `site/blocks/container-block.tsx::SHAPE_DIVIDER_PATHS`tedir, buradaki yollar YALNIZCA
+ * dar bir önizleme karosu için (birebir aynı olmak ZORUNDA değil, §2.3).
+ */
+const SHAPE_DIVIDER_TYPES: ShapeDividerType[] = ["wave", "slant", "triangle", "curve"];
+
+const SHAPE_DIVIDER_LABEL: Record<ShapeDividerType, string> = {
+  wave: "Dalga",
+  slant: "Eğimli Çizgi",
+  triangle: "Üçgen",
+  curve: "Eğri",
+};
+
+const SHAPE_DIVIDER_MINI_PATH: Record<ShapeDividerType, string> = {
+  wave: "M0 6 Q 6 0 12 6 T 24 6",
+  slant: "M0 12 L24 0",
+  triangle: "M0 12 L12 0 L24 12",
+  curve: "M0 12 Q12 -2 24 12",
+};
+
+/** §2.3 — `LayoutPresetTile` prensibiyle AYNI kabuk, gerçek şekli çizen bir mini-SVG. */
+function ShapeDividerTile({ type, active, onClick }: { type: ShapeDividerType; active: boolean; onClick: () => void }) {
+  const label = SHAPE_DIVIDER_LABEL[type];
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      aria-pressed={active}
+      data-active={active}
+      className="flex flex-col items-center gap-1.5 rounded-lg border border-border/60 bg-surface-muted p-2 transition-colors hover:border-primary/50 hover:bg-primary/5 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 outline-none data-[active=true]:border-primary data-[active=true]:bg-primary/10"
+      onClick={onClick}
+    >
+      <svg viewBox="0 0 24 12" className="h-6 w-10 text-foreground/60" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
+        <path d={SHAPE_DIVIDER_MINI_PATH[type]} />
+      </svg>
+      <span className="text-[11px] font-medium text-foreground/70">{label}</span>
+    </button>
+  );
+}
+
+/** §2.2/§2.7 — nullable `topDivider`/`bottomDivider` alanı: kapalıyken "Ekle", açıkken
+ *  şablon/renk/yükseklik/flip + üstte "kaldır" butonu (`MinHeightField` ile AYNI desen). */
+function ShapeDividerField({
+  id,
+  label,
+  value,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: ShapeDividerSettings | undefined;
+  onChange: (v: ShapeDividerSettings | undefined) => void;
+}) {
+  if (!value) {
+    return (
+      <Button type="button" variant="ghost" size="sm" onClick={() => onChange(DEFAULT_SHAPE_DIVIDER)}>
+        <Plus className="h-3.5 w-3.5" />
+        {label} ekle
+      </Button>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <label className="text-sm font-medium text-foreground">{label}</label>
+        <Button type="button" variant="ghost" size="icon-xs" aria-label={`${label} kaldır`} onClick={() => onChange(undefined)}>
+          <X className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-4 gap-1.5">
+        {SHAPE_DIVIDER_TYPES.map((type) => (
+          <ShapeDividerTile key={type} type={type} active={value.type === type} onClick={() => onChange({ ...value, type })} />
+        ))}
+      </div>
+
+      <ColorField id={`${id}-color`} label="Renk" value={value.color} onChange={(color) => onChange({ ...value, color })} />
+
+      <div className="space-y-1.5">
+        <label htmlFor={`${id}-height`} className="block text-sm font-medium text-foreground">
+          Yükseklik ({value.height}px)
+        </label>
+        <input
+          type="range"
+          id={`${id}-height`}
+          min={MIN_DIVIDER_HEIGHT}
+          max={MAX_DIVIDER_HEIGHT}
+          step={5}
+          value={value.height}
+          onChange={(e) => onChange({ ...value, height: Number(e.target.value) })}
+          className="w-full accent-primary"
+        />
+        <p className="text-xs text-foreground/60">
+          Varsayılan: {DEFAULT_DIVIDER_HEIGHT}px. {MIN_DIVIDER_HEIGHT}–{MAX_DIVIDER_HEIGHT}px arası.
+        </p>
+      </div>
+
+      <div className="flex items-center justify-between">
+        <label htmlFor={`${id}-flip`} className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+          <FlipVertical2 className="h-3.5 w-3.5" />
+          Ters çevir
+        </label>
+        <Switch id={`${id}-flip`} checked={value.flip} onCheckedChange={(flip) => onChange({ ...value, flip })} />
+      </div>
+    </div>
+  );
+}
+
 export function ContainerSettingsPanel({
   container,
   depth,
@@ -724,6 +843,18 @@ export function ContainerSettingsPanel({
 
       <SettingsSection title="Arka Plan">
         <BackgroundControl value={settings.background} onChange={(background) => onChange({ background })} />
+      </SettingsSection>
+
+      <SettingsSection title="Ayırıcılar">
+        <ShapeDividerField id="top-divider" label="Üst Ayırıcı" value={settings.topDivider} onChange={(topDivider) => onChange({ topDivider })} />
+        <div className="border-t border-border/40 pt-3">
+          <ShapeDividerField
+            id="bottom-divider"
+            label="Alt Ayırıcı"
+            value={settings.bottomDivider}
+            onChange={(bottomDivider) => onChange({ bottomDivider })}
+          />
+        </div>
       </SettingsSection>
     </div>
   );

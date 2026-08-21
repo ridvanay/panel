@@ -179,6 +179,28 @@ const ContainerBackgroundSchema = z
  * YAPISAL OLARAK İMKÂNSIZ hale gelir. Aynı ilke `gap`/`padding`/`margin`/`customWidth` için de
  * geçerlidir — hiçbiri string değildir.
  */
+
+/** frontend `types.ts::MIN_DIVIDER_HEIGHT`/`MAX_DIVIDER_HEIGHT` ile SAYISAL OLARAK BİREBİR AYNI. */
+const MIN_DIVIDER_HEIGHT = 0;
+const MAX_DIVIDER_HEIGHT = 300;
+
+/**
+ * Şekilli Bölüm Ayırıcıları — frontend `types.ts::ShapeDividerSettings` yorumu: "Hex `#rrggbb` —
+ * `ColorField` ile aynı doğrulama, alfa kanalı TAŞIMAZ". `container-settings-panel.tsx`'teki
+ * `ShapeDividerField` içindeki `ColorField` çağrısı `maxLength` PROP'U GEÇMİYOR (varsayılan `7`
+ * = `#rrggbb`, bkz. `color-field.tsx::ColorFieldProps.maxLength` varsayılanı) — yani
+ * `ContainerBackgroundOverlaySchema`/`AnimatedBackgroundSchema` renkleriyle AYNI genişlik
+ * (`OVERLAY_HEX_RE`, 6 hane, alfasız). Genel amaçlı 3/6/8 haneli `HEX_COLOR_RE` BİLEREK
+ * KULLANILMAZ — frontend'in kabul ettiğinden DAHA GENİŞ bir regex burada gereksiz bir alfa-kanalı
+ * kabulüne (ve dolayısıyla render tarafında öngörülmeyen bir CSS değerine) izin verirdi.
+ */
+const ShapeDividerSettingsSchema = z.object({
+  type: z.enum(["wave", "slant", "triangle", "curve"]),
+  color: z.string().regex(OVERLAY_HEX_RE, "Geçersiz renk değeri."),
+  height: z.number().int().min(MIN_DIVIDER_HEIGHT).max(MAX_DIVIDER_HEIGHT),
+  flip: z.boolean().default(false),
+});
+
 const ContainerSettingsSchema = z
   .object({
     layout: z.enum(["boxed", "full-width"]).default("boxed"),
@@ -195,6 +217,12 @@ const ContainerSettingsSchema = z
     background: ContainerBackgroundSchema,
 
     widthFr: z.number().positive().max(12).optional(),
+
+    // Şekilli Bölüm Ayırıcıları — frontend `types.ts::ContainerSettings.topDivider/bottomDivider`
+    // ile BİREBİR (opsiyonel, `undefined` = kapalı; `DEFAULT_CONTAINER_SETTINGS` bu alanları
+    // İÇERMEZ, bu yüzden burada da `.default(...)` YOK).
+    topDivider: ShapeDividerSettingsSchema.optional(),
+    bottomDivider: ShapeDividerSettingsSchema.optional(),
   })
   // Bilinmeyen anahtarlar SESSİZCE DÜŞÜRÜLÜR (zod varsayılanı `strip`). `.passthrough()`
   // KULLANILMAZ: `settings` doğrudan inline style'a beslendiği için bilinmeyen alanın
@@ -265,6 +293,21 @@ function legacyColumnsToContainer(raw: unknown): unknown {
   };
 }
 
+/**
+ * Giriş Animasyonu (Scroll Reveal) — frontend `types.ts::RevealEffect`/`RevealDelay`/
+ * `RevealEffectSettings` ile SAYISAL/İSİM OLARAK BİREBİR AYNI. Frontend'de `BaseNode.reveal`
+ * TypeScript seviyesinde TÜM `PageNode` union üyelerine (23 içerik bloğu + `container`) otomatik
+ * uygulanır; burada (Zod'da paylaşılan bir base şema OLMADIĞI için) her blok şemasına AYRI AYRI
+ * `reveal: RevealEffectSettingsSchema.optional()` eklenir (bkz. aşağıdaki her blok tanımı).
+ * `effect: "none"` VE `reveal` alanının HİÇ olmaması davranışsal olarak AYNI ("kapalı") — ikisi de
+ * geçerli, bu yüzden `RevealEffectSettingsSchema`'nın kendisi `.optional()` DEĞİL, onu kullanan
+ * alan `.optional()`dur.
+ */
+const RevealEffectSettingsSchema = z.object({
+  effect: z.enum(["none", "fade-in", "fade-up", "slide-left", "zoom-in"]),
+  delayMs: z.union([z.literal(100), z.literal(200), z.literal(300), z.literal(400), z.literal(500)]),
+});
+
 /* ---------- galeri (v2'den DEĞİŞMEDEN devralınır) ---------- */
 
 /**
@@ -297,6 +340,7 @@ const GalleryBlockSchema = z.object({
   id: z.string().min(1),
   type: z.literal("gallery"),
   data: GalleryBlockDataSchema,
+  reveal: RevealEffectSettingsSchema.optional(),
 });
 
 /* ---------- §Faz "Temel Elemanlar" — Başlık/Buton/İkon Kutusu/Ayırıcı (yeni) ---------- */
@@ -319,7 +363,12 @@ const HeadingBlockDataSchema = z.object({
   align: z.enum(["left", "center", "right"]).default("left"),
   underline: z.boolean().default(false),
 });
-const HeadingBlockSchema = z.object({ id: z.string().min(1), type: z.literal("heading"), data: HeadingBlockDataSchema });
+const HeadingBlockSchema = z.object({
+  id: z.string().min(1),
+  type: z.literal("heading"),
+  data: HeadingBlockDataSchema,
+  reveal: RevealEffectSettingsSchema.optional(),
+});
 
 /**
  * `icon` gevşek doğrulanır (`min(1).max(40)`) — frontend `lib/page-builder/icon-options.ts`deki
@@ -336,7 +385,12 @@ const ButtonBlockDataSchema = z.object({
   icon: z.string().min(1).max(40).optional(),
   align: z.enum(["left", "center", "right"]).default("left"),
 });
-const ButtonBlockSchema = z.object({ id: z.string().min(1), type: z.literal("button"), data: ButtonBlockDataSchema });
+const ButtonBlockSchema = z.object({
+  id: z.string().min(1),
+  type: z.literal("button"),
+  data: ButtonBlockDataSchema,
+  reveal: RevealEffectSettingsSchema.optional(),
+});
 
 const IconBoxBlockDataSchema = z.object({
   icon: z.string().min(1).max(40),
@@ -344,7 +398,12 @@ const IconBoxBlockDataSchema = z.object({
   description: z.string().max(1000).default(""),
   href: SafeHrefSchema.optional(),
 });
-const IconBoxBlockSchema = z.object({ id: z.string().min(1), type: z.literal("icon-box"), data: IconBoxBlockDataSchema });
+const IconBoxBlockSchema = z.object({
+  id: z.string().min(1),
+  type: z.literal("icon-box"),
+  data: IconBoxBlockDataSchema,
+  reveal: RevealEffectSettingsSchema.optional(),
+});
 
 /** Ayırıcı VE Boşluk TEK blok tipi — `variant` ayrımlar (bkz. frontend `types.ts::DividerBlock`). */
 const DividerBlockDataSchema = z.object({
@@ -352,7 +411,12 @@ const DividerBlockDataSchema = z.object({
   style: z.enum(["solid", "dashed"]).default("solid"),
   height: z.number().min(0).max(400).default(32),
 });
-const DividerBlockSchema = z.object({ id: z.string().min(1), type: z.literal("divider"), data: DividerBlockDataSchema });
+const DividerBlockSchema = z.object({
+  id: z.string().min(1),
+  type: z.literal("divider"),
+  data: DividerBlockDataSchema,
+  reveal: RevealEffectSettingsSchema.optional(),
+});
 
 /* ---------- §Faz "Medya & İnteraktif" — Görsel (zenginleştirme)/Video/Akordiyon/Sekmeler ---------- */
 
@@ -372,7 +436,12 @@ const ImageBlockDataSchema = z.object({
   radius: z.enum(["none", "sm", "md", "lg", "full"]).optional(),
   lightbox: z.boolean().optional(),
 });
-const ImageBlockSchema = z.object({ id: z.string().min(1), type: z.literal("image"), data: ImageBlockDataSchema });
+const ImageBlockSchema = z.object({
+  id: z.string().min(1),
+  type: z.literal("image"),
+  data: ImageBlockDataSchema,
+  reveal: RevealEffectSettingsSchema.optional(),
+});
 
 /**
  * Video bloğu — `url` `SafeHrefSchema` ile doğrulanır (relative veya http(s) mutlak,
@@ -386,7 +455,12 @@ const VideoBlockDataSchema = z.object({
   autoplay: z.boolean().default(false),
   muted: z.boolean().default(false),
 });
-const VideoBlockSchema = z.object({ id: z.string().min(1), type: z.literal("video"), data: VideoBlockDataSchema });
+const VideoBlockSchema = z.object({
+  id: z.string().min(1),
+  type: z.literal("video"),
+  data: VideoBlockDataSchema,
+  reveal: RevealEffectSettingsSchema.optional(),
+});
 
 /** Frontend `types.ts::ACCORDION_MAX_ITEMS`/`TABS_MAX_ITEMS` ile SAYISAL OLARAK BİREBİR AYNI. */
 const ACCORDION_MAX_ITEMS = 20;
@@ -405,7 +479,12 @@ const AccordionBlockDataSchema = z.object({
     .max(ACCORDION_MAX_ITEMS),
   allowMultipleOpen: z.boolean().default(false),
 });
-const AccordionBlockSchema = z.object({ id: z.string().min(1), type: z.literal("accordion"), data: AccordionBlockDataSchema });
+const AccordionBlockSchema = z.object({
+  id: z.string().min(1),
+  type: z.literal("accordion"),
+  data: AccordionBlockDataSchema,
+  reveal: RevealEffectSettingsSchema.optional(),
+});
 
 const TabsBlockDataSchema = z.object({
   orientation: z.enum(["horizontal", "vertical"]).default("horizontal"),
@@ -419,7 +498,12 @@ const TabsBlockDataSchema = z.object({
     )
     .max(TABS_MAX_ITEMS),
 });
-const TabsBlockSchema = z.object({ id: z.string().min(1), type: z.literal("tabs"), data: TabsBlockDataSchema });
+const TabsBlockSchema = z.object({
+  id: z.string().min(1),
+  type: z.literal("tabs"),
+  data: TabsBlockDataSchema,
+  reveal: RevealEffectSettingsSchema.optional(),
+});
 
 /* ---------- §Faz "Pazarlama & Sosyal Kanıt" — CTA (zenginleştirme)/Sayaç/Müşteri Yorumları/Fiyatlandırma Tablosu ---------- */
 
@@ -443,7 +527,12 @@ const CtaBlockDataSchema = z.object({
   secondaryButtonLabel: z.string().max(120).optional(),
   secondaryButtonHref: SafeHrefSchema.optional(),
 });
-const CtaBlockSchema = z.object({ id: z.string().min(1), type: z.literal("cta"), data: CtaBlockDataSchema });
+const CtaBlockSchema = z.object({
+  id: z.string().min(1),
+  type: z.literal("cta"),
+  data: CtaBlockDataSchema,
+  reveal: RevealEffectSettingsSchema.optional(),
+});
 
 /** Frontend `types.ts::COUNTER_MAX_ITEMS`/`TESTIMONIAL_MAX_ITEMS`/`PRICING_MAX_PLANS`/
  *  `PRICING_MAX_FEATURES` ile SAYISAL OLARAK BİREBİR AYNI. */
@@ -468,7 +557,12 @@ const CounterBlockDataSchema = z.object({
     .min(1)
     .max(COUNTER_MAX_ITEMS),
 });
-const CounterBlockSchema = z.object({ id: z.string().min(1), type: z.literal("counter"), data: CounterBlockDataSchema });
+const CounterBlockSchema = z.object({
+  id: z.string().min(1),
+  type: z.literal("counter"),
+  data: CounterBlockDataSchema,
+  reveal: RevealEffectSettingsSchema.optional(),
+});
 
 /**
  * Müşteri Yorumları — `quote` KASITLI OLARAK düz metin (HTML DEĞİL, `AccordionQAItem.answer`
@@ -490,7 +584,12 @@ const TestimonialBlockDataSchema = z.object({
     .min(1)
     .max(TESTIMONIAL_MAX_ITEMS),
 });
-const TestimonialBlockSchema = z.object({ id: z.string().min(1), type: z.literal("testimonial"), data: TestimonialBlockDataSchema });
+const TestimonialBlockSchema = z.object({
+  id: z.string().min(1),
+  type: z.literal("testimonial"),
+  data: TestimonialBlockDataSchema,
+  reveal: RevealEffectSettingsSchema.optional(),
+});
 
 /**
  * Fiyatlandırma Tablosu — `price` KASITLI OLARAK serbest metin (sayı DEĞİL); "Ücretsiz"/"Bize
@@ -519,6 +618,7 @@ const PricingTableBlockSchema = z.object({
   id: z.string().min(1),
   type: z.literal("pricing-table"),
   data: PricingTableBlockDataSchema,
+  reveal: RevealEffectSettingsSchema.optional(),
 });
 
 /* ---------- §Faz 4 "Dinamik & CMS İçerikleri" — Son Blog Yazıları/İletişim Formu/Özel HTML ---------- */
@@ -538,7 +638,12 @@ const LatestPostsBlockDataSchema = z.object({
   categoryId: z.string().min(1).max(100).optional(),
   tagId: z.string().min(1).max(100).optional(),
 });
-const LatestPostsBlockSchema = z.object({ id: z.string().min(1), type: z.literal("latest-posts"), data: LatestPostsBlockDataSchema });
+const LatestPostsBlockSchema = z.object({
+  id: z.string().min(1),
+  type: z.literal("latest-posts"),
+  data: LatestPostsBlockDataSchema,
+  reveal: RevealEffectSettingsSchema.optional(),
+});
 
 /**
  * İletişim / Form Bloğu — kendi alan şemasını TAŞIMAZ, site genelindeki TEK `ContactForm`
@@ -548,7 +653,12 @@ const LatestPostsBlockSchema = z.object({ id: z.string().min(1), type: z.literal
 const ContactFormBlockDataSchema = z.object({
   showTitle: z.boolean().default(true),
 });
-const ContactFormBlockSchema = z.object({ id: z.string().min(1), type: z.literal("contact-form"), data: ContactFormBlockDataSchema });
+const ContactFormBlockSchema = z.object({
+  id: z.string().min(1),
+  type: z.literal("contact-form"),
+  data: ContactFormBlockDataSchema,
+  reveal: RevealEffectSettingsSchema.optional(),
+});
 
 /** Frontend `types.ts::CUSTOM_HTML_MAX_LENGTH` ile SAYISAL OLARAK BİREBİR AYNI. */
 const CUSTOM_HTML_MAX_LENGTH = 20000;
@@ -563,7 +673,12 @@ const CUSTOM_HTML_MAX_LENGTH = 20000;
 const CustomHtmlBlockDataSchema = z.object({
   html: z.string().max(CUSTOM_HTML_MAX_LENGTH),
 });
-const CustomHtmlBlockSchema = z.object({ id: z.string().min(1), type: z.literal("custom-html"), data: CustomHtmlBlockDataSchema });
+const CustomHtmlBlockSchema = z.object({
+  id: z.string().min(1),
+  type: z.literal("custom-html"),
+  data: CustomHtmlBlockDataSchema,
+  reveal: RevealEffectSettingsSchema.optional(),
+});
 
 /* ---------- Görsel widget'lar — Öncesi/Sonrası, Logo Bandı, İlerleme Çubuğu, Ekip ---------- */
 
@@ -583,6 +698,7 @@ const BeforeAfterSliderBlockSchema = z.object({
   id: z.string().min(1),
   type: z.literal("before-after-slider"),
   data: BeforeAfterSliderBlockDataSchema,
+  reveal: RevealEffectSettingsSchema.optional(),
 });
 
 /** Frontend `types.ts::LOGO_MARQUEE_MAX_ITEMS` ile SAYISAL OLARAK BİREBİR AYNI. */
@@ -604,7 +720,12 @@ const LogoMarqueeBlockDataSchema = z.object({
   speedSeconds: z.number().int().min(5).max(120).default(30),
   pauseOnHover: z.boolean().default(true),
 });
-const LogoMarqueeBlockSchema = z.object({ id: z.string().min(1), type: z.literal("logo-marquee"), data: LogoMarqueeBlockDataSchema });
+const LogoMarqueeBlockSchema = z.object({
+  id: z.string().min(1),
+  type: z.literal("logo-marquee"),
+  data: LogoMarqueeBlockDataSchema,
+  reveal: RevealEffectSettingsSchema.optional(),
+});
 
 /** Frontend `types.ts::SKILL_BAR_MAX_ITEMS` ile SAYISAL OLARAK BİREBİR AYNI. */
 const SKILL_BAR_MAX_ITEMS = 12;
@@ -622,7 +743,12 @@ const SkillBarBlockDataSchema = z.object({
     .min(1)
     .max(SKILL_BAR_MAX_ITEMS),
 });
-const SkillBarBlockSchema = z.object({ id: z.string().min(1), type: z.literal("skill-bar"), data: SkillBarBlockDataSchema });
+const SkillBarBlockSchema = z.object({
+  id: z.string().min(1),
+  type: z.literal("skill-bar"),
+  data: SkillBarBlockDataSchema,
+  reveal: RevealEffectSettingsSchema.optional(),
+});
 
 /** Frontend `types.ts::TEAM_MAX_MEMBERS`/`TEAM_MAX_SOCIAL_LINKS_PER_MEMBER` ile SAYISAL OLARAK
  *  BİREBİR AYNI. `socialLinks[].platform` — `SocialPlatformSchema` (`schemas/entities.ts`,
@@ -647,7 +773,12 @@ const TeamBlockDataSchema = z.object({
     .min(1)
     .max(TEAM_MAX_MEMBERS),
 });
-const TeamBlockSchema = z.object({ id: z.string().min(1), type: z.literal("team"), data: TeamBlockDataSchema });
+const TeamBlockSchema = z.object({
+  id: z.string().min(1),
+  type: z.literal("team"),
+  data: TeamBlockDataSchema,
+  reveal: RevealEffectSettingsSchema.optional(),
+});
 
 /* ---------- özyinelemeli düğüm — §5.4 ---------- */
 
@@ -715,6 +846,7 @@ const ContainerNodeSchema: z.ZodTypeAny = z.object({
   type: z.literal("container"),
   settings: ContainerSettingsSchema,
   children: z.array(PageNodeSchema).max(MAX_CHILDREN_PER_CONTAINER).default([]),
+  reveal: RevealEffectSettingsSchema.optional(),
 });
 
 const LegacyColumnsNodeSchema: z.ZodTypeAny = z.preprocess(legacyColumnsToContainer, ContainerNodeSchema);

@@ -1,5 +1,7 @@
 import {
   DEFAULT_CONTAINER_SETTINGS,
+  MAX_DIVIDER_HEIGHT,
+  MIN_DIVIDER_HEIGHT,
   type ContainerAlign,
   type ContainerBackground,
   type ContainerBackgroundOverlay,
@@ -13,6 +15,11 @@ import {
   type ContainerSpacing,
   type LinearGradientDirection,
   type PageNode,
+  type RevealDelay,
+  type RevealEffect,
+  type RevealEffectSettings,
+  type ShapeDividerSettings,
+  type ShapeDividerType,
 } from "./types";
 
 /**
@@ -83,12 +90,44 @@ function normalizeNode(raw: unknown, ctx: NormalizeCtx, depth: number): PageNode
   return { ...node, id } as PageNode;
 }
 
+/**
+ * Giriş Animasyonu (Scroll Reveal) — `BaseNode.reveal` normalizasyonu.
+ *
+ * BUG DÜZELTMESİ (qa-agent E2E, `admin-page-builder-editing-tools.spec.ts`): `normalizeContainerNode`
+ * döndürdüğü nesne `{ id, type: "container", settings, children }` idi — `reveal` HİÇ taşınmıyordu.
+ * Backend'e doğru kaydediliyor (round-trip doğrulandı) ama bu fonksiyon HEM admin-reload'da HEM
+ * public render kökünde çağrıldığı için (bkz. dosya başlığı), bir KONTEYNERE uygulanan efekt her
+ * reload'da/public'te sessizce KAYBOLUYORDU. İçerik blokları (`{...node, id}` generic spread yolu)
+ * bu hataya TABİ DEĞİLDİ — yalnızca konteyner düğümleri kendi alanlarını TEK TEK seçtiği için
+ * (`normalizeContainerSettings` ile AYNI "alanlar açıkça listelenir" deseni) etkilendi.
+ *
+ * `"none"` efekti `undefined` ile davranışsal olarak AYNI (bkz. `types.ts::RevealEffectSettings`
+ * yorumu) — burada da `undefined`'a normalize edilir, aşağı akıştaki "hasEffect" kontrollerini
+ * tek bir forma indirger.
+ */
+function isRevealEffect(v: unknown): v is RevealEffect {
+  return v === "none" || v === "fade-in" || v === "fade-up" || v === "slide-left" || v === "zoom-in";
+}
+
+function isRevealDelay(v: unknown): v is RevealDelay {
+  return v === 100 || v === 200 || v === 300 || v === 400 || v === 500;
+}
+
+function normalizeReveal(raw: unknown): RevealEffectSettings | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const r = raw as Record<string, unknown>;
+  if (!isRevealEffect(r.effect) || r.effect === "none") return undefined;
+  if (!isRevealDelay(r.delayMs)) return undefined;
+  return { effect: r.effect, delayMs: r.delayMs };
+}
+
 function normalizeContainerNode(node: Record<string, unknown>, ctx: NormalizeCtx, depth: number): ContainerNode {
   const id = typeof node.id === "string" && node.id.length > 0 ? node.id : fallbackId(ctx);
   const settings = normalizeContainerSettings(node.settings);
   const rawChildren = Array.isArray(node.children) ? node.children : [];
   const children = normalizeNodeList(rawChildren, ctx, depth + 1);
-  return { id, type: "container", settings, children };
+  const reveal = normalizeReveal(node.reveal);
+  return reveal ? { id, type: "container", settings, children, reveal } : { id, type: "container", settings, children };
 }
 
 // ---------------------------------------------------------------------------
@@ -212,6 +251,34 @@ function isHexColor6(v: unknown): v is string {
   return typeof v === "string" && HEX_COLOR_6_RE.test(v);
 }
 
+/**
+ * Şekilli Bölüm Ayırıcıları — `topDivider`/`bottomDivider` normalizasyonu.
+ *
+ * BUG DÜZELTMESİ (qa-agent E2E, `admin-page-builder-editing-tools.spec.ts`): `normalizeContainerSettings`
+ * bu iki alanı HİÇ okumuyordu — backend'e doğru kaydediliyor (round-trip doğrulandı) ama bu
+ * fonksiyon HEM admin-reload'da HEM public render kökünde çağrıldığı için (bkz. dosya başlığı),
+ * kullanıcının seçtiği ayırıcı HER reload'da/public'te sessizce SİLİNİYORDU (public'te SVG hiçbir
+ * zaman render edilmiyordu). `topDivider`/`bottomDivider` OPSİYONEL alanlardır (`undefined` =
+ * kapalı, bkz. `types.ts`) — diğer opsiyonel alanlarla (`minHeight`, `background.overlay`) AYNI
+ * "geçersiz/eksik → undefined" deseni: kısmi/bozuk bir ayırıcı nesnesi SESSİZCE yanlış render
+ * etmek yerine tamamen KAPALI sayılır (`normalizeContainerLength`/`normalizeOverlay` ile AYNI
+ * gerekçe).
+ */
+function isShapeDividerType(v: unknown): v is ShapeDividerType {
+  return v === "wave" || v === "slant" || v === "triangle" || v === "curve";
+}
+
+function normalizeShapeDivider(raw: unknown): ShapeDividerSettings | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const d = raw as Record<string, unknown>;
+  if (!isShapeDividerType(d.type)) return undefined;
+  if (!isHexColor6(d.color)) return undefined;
+  if (typeof d.height !== "number" || !Number.isFinite(d.height) || d.height < MIN_DIVIDER_HEIGHT || d.height > MAX_DIVIDER_HEIGHT) {
+    return undefined;
+  }
+  return { type: d.type, color: d.color, height: d.height, flip: d.flip === true };
+}
+
 const LINEAR_GRADIENT_DIRECTIONS = new Set<string>([
   "to-top",
   "to-top-right",
@@ -292,5 +359,7 @@ function normalizeContainerSettings(raw: unknown): ContainerSettings {
     margin: normalizeSpacing(s.margin),
     background: normalizeBackground(s.background),
     widthFr: typeof s.widthFr === "number" && Number.isFinite(s.widthFr) && s.widthFr > 0 ? s.widthFr : undefined,
+    topDivider: normalizeShapeDivider(s.topDivider),
+    bottomDivider: normalizeShapeDivider(s.bottomDivider),
   };
 }

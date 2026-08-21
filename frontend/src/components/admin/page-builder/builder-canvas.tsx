@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useId, useMemo, useState, type ReactNode } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -25,14 +25,22 @@ import {
   Copy,
   GripVertical,
   LayoutTemplate,
+  Monitor,
   PanelTop,
   Rows2,
   Settings2,
+  Smartphone,
+  Sparkles,
+  Tablet,
   Trash2,
+  type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Field } from "@/components/ui/field";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Select } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { blockRegistry, createBlock, type PaletteBlockType } from "@/lib/page-builder/registry";
 import {
@@ -64,8 +72,13 @@ import {
   type BuilderContainerId,
   type ContainerNode,
   type ContentBlock,
+  type DeviceMode,
   type PageNode,
+  type RevealDelay,
+  type RevealEffect,
+  type RevealEffectSettings,
 } from "@/lib/page-builder/types";
+import { SegmentedToggle } from "./blocks/segmented-toggle";
 import { LayoutMenu } from "./layout-menu";
 import { AddContentMenu, EmptyContainerDropZone } from "./add-content-menu";
 import { HeroBlockEditor } from "./blocks/hero-block";
@@ -102,6 +115,122 @@ import { TeamBlockEditor } from "./blocks/team-block";
 
 function nodeLabel(node: PageNode): string {
   return node.type === "container" ? "Konteyner" : blockRegistry[node.type].label;
+}
+
+/**
+ * Cihaz Önizleme Çubuğu — `.claude/design-notes-page-builder-editing-tools.md` §1 BİREBİR.
+ * `device` state'i `BuilderCanvas`'ın KENDİ yerel state'i (kayıtlı veriyi ETKİLEMEZ, bkz.
+ * `types.ts::DeviceMode`). Paylaşılan `SegmentedToggle` (`blocks/segmented-toggle.tsx`) import
+ * edilir — YENİ bir yerel kopya YAZILMAZ (§1.2).
+ */
+const DEVICE_OPTIONS: { value: DeviceMode; label: string; icon: LucideIcon }[] = [
+  { value: "desktop", label: "Masaüstü", icon: Monitor },
+  { value: "tablet", label: "Tablet", icon: Tablet },
+  { value: "mobile", label: "Mobil", icon: Smartphone },
+];
+
+function DevicePreviewBar({ device, onChange }: { device: DeviceMode; onChange: (d: DeviceMode) => void }) {
+  return (
+    <div className="mb-4 flex items-center justify-center gap-2">
+      <SegmentedToggle value={device} options={DEVICE_OPTIONS} onChange={onChange} />
+      {device !== "desktop" && <Badge tone="neutral" size="sm">{device === "tablet" ? "768px" : "375px"}</Badge>}
+    </div>
+  );
+}
+
+/** §1.6 — sade `max-width` + `mx-auto`, cihaz kenarlığı/gölge simülasyonu YOK (kesin karar). */
+function canvasWidthClass(device: DeviceMode) {
+  return cn(
+    "mx-auto w-full transition-all duration-300",
+    device === "tablet" && "max-w-[768px] border-x border-dashed border-border/40 px-2",
+    device === "mobile" && "max-w-[375px] border-x border-dashed border-border/40 px-2"
+  );
+}
+
+/** §3.5 — popover `Select`'teki UZUN etiketler. */
+const REVEAL_EFFECT_LABEL: Record<RevealEffect, string> = {
+  none: "Yok",
+  "fade-in": "Belirme (Fade In)",
+  "fade-up": "Yukarı Belirme (Fade Up)",
+  "slide-left": "Soldan Kayma (Slide In Left)",
+  "zoom-in": "Yakınlaşma (Zoom In)",
+};
+
+/** §3.4 — kart rozetindeki KISA etiketler (uzun `Select` etiketlerinden farklı, yer kazanmak için). */
+const REVEAL_SHORT_LABEL: Record<Exclude<RevealEffect, "none">, string> = {
+  "fade-in": "Belirme",
+  "fade-up": "Yukarı Belirme",
+  "slide-left": "Soldan Kayma",
+  "zoom-in": "Yakınlaşma",
+};
+
+const REVEAL_DELAY_OPTIONS: RevealDelay[] = [100, 200, 300, 400, 500];
+/** `blocks/segmented-toggle.tsx::SegmentedToggle`nin jeneriği `T extends string` — `RevealDelay`
+ *  sayısal bir birleşim olduğu için değerler string'e çevrilip sınırda geri dönüştürülür. */
+const REVEAL_DELAY_TOGGLE_OPTIONS = REVEAL_DELAY_OPTIONS.map((ms) => ({ value: String(ms), label: String(ms) }));
+
+/**
+ * Giriş Animasyonu (Scroll Reveal) — §3.1-3.5 ui-designer dokümanı BİREBİR. Hem `ContentBlockCard`
+ * hem `ContainerCard` tarafından paylaşılan tek bir kontrol; `Popover`/`Sparkles` tetikleyici,
+ * içinde `Select` (efekt) + (yalnızca `effect !== "none"` iken) `SegmentedToggle` (gecikme).
+ */
+function RevealEffectControl({
+  value,
+  onChange,
+}: {
+  value: RevealEffectSettings | undefined;
+  onChange: (next: RevealEffectSettings | undefined) => void;
+}) {
+  const fieldId = useId();
+  const effect = value?.effect ?? "none";
+  const delayMs = value?.delayMs ?? 300;
+  const hasEffect = effect !== "none";
+
+  function setEffect(next: RevealEffect) {
+    onChange(next === "none" ? undefined : { effect: next, delayMs });
+  }
+
+  function setDelay(next: RevealDelay) {
+    if (effect === "none") return;
+    onChange({ effect, delayMs: next });
+  }
+
+  return (
+    <Popover>
+      <PopoverTrigger
+        render={
+          <Button type="button" variant={hasEffect ? "secondary" : "ghost"} size="icon-sm" aria-label="Görünüm Efekti" title="Görünüm Efekti" />
+        }
+      >
+        <Sparkles className="h-4 w-4" />
+      </PopoverTrigger>
+      <PopoverContent className="w-64 space-y-3">
+        <Field id={fieldId} label="Görünüm Efekti">
+          {(p) => (
+            <Select {...p} value={effect} onChange={(e) => setEffect(e.target.value as RevealEffect)}>
+              {(Object.keys(REVEAL_EFFECT_LABEL) as RevealEffect[]).map((key) => (
+                <option key={key} value={key}>
+                  {REVEAL_EFFECT_LABEL[key]}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+        {effect !== "none" && (
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium text-foreground/70">Gecikme</p>
+            <SegmentedToggle value={String(delayMs)} options={REVEAL_DELAY_TOGGLE_OPTIONS} onChange={(v) => setDelay(Number(v) as RevealDelay)} />
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/** Bir düğümün kart rozetinde göstereceği "efekt · gecikme" kısa etiketi (`hasEffect` yoksa `null`). */
+function revealBadgeLabel(reveal: RevealEffectSettings | undefined): string | null {
+  if (!reveal || reveal.effect === "none") return null;
+  return `${REVEAL_SHORT_LABEL[reveal.effect]} · ${reveal.delayMs}ms`;
 }
 
 function ContentBlockBody({ block, onChange }: { block: ContentBlock; onChange: (block: ContentBlock) => void }) {
@@ -168,6 +297,7 @@ interface Ctx {
   onAddChild: (containerId: BuilderContainerId, type: PaletteBlockType) => void;
   onSelectContainer: (id: string) => void;
   selectedContainerId: string | null;
+  onUpdateReveal: (id: string, reveal: RevealEffectSettings | undefined) => void;
 }
 
 /** §5 ui-designer dokümanı — bir konteynerin İÇİNDEKİ yaprak bloklar için sessiz "bare" ipucu. */
@@ -195,6 +325,7 @@ function ContentBlockCard({
   dragHandle: ReactNode;
 }) {
   const isBare = parentId !== "root";
+  const revealBadge = revealBadgeLabel(block.reveal);
 
   return (
     <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
@@ -202,10 +333,16 @@ function ContentBlockCard({
         <div className="flex min-w-0 flex-wrap items-center gap-1">
           {dragHandle}
           <span className="truncate text-sm font-medium text-foreground">{blockRegistry[block.type].label}</span>
+          {revealBadge && (
+            <Badge tone="primary" size="sm">
+              {revealBadge}
+            </Badge>
+          )}
           {isBare && <BareChromeHint />}
           <LayoutMenu mode="wrap" onSelect={() => ctx.onWrap(block.id)} />
         </div>
         <div className="flex shrink-0 items-center gap-1">
+          <RevealEffectControl value={block.reveal} onChange={(reveal) => ctx.onUpdateReveal(block.id, reveal)} />
           {isBare && (
             <Button
               type="button"
@@ -299,6 +436,7 @@ function ContainerCard({
   const selected = ctx.selectedContainerId === container.id;
   const containerId = toContainerId(container.id);
   const childIds = container.children.map((c) => c.id);
+  const revealBadge = revealBadgeLabel(container.reveal);
   // Satır (`row`) konteyneri KENDİ sütun sayısını gösterir (`"2 Sütun"`, DEĞİŞMEZ — testlere bağlı);
   // satırın İÇİNDEKİ bare bir sütun ise, mümkünse görece genişlik oranını gösterir (§3 isteği).
   const headerLabel = isRow ? `${container.children.length} Sütun` : ratioLabel ? `Konteyner: ${ratioLabel}` : "Konteyner";
@@ -341,6 +479,11 @@ function ContainerCard({
           <Badge tone="neutral" size="sm">
             {atMaxDepth ? `Seviye ${depth} · Maks.` : `Seviye ${depth}`}
           </Badge>
+          {revealBadge && (
+            <Badge tone="primary" size="sm">
+              {revealBadge}
+            </Badge>
+          )}
           {isBare && <BareChromeHint />}
           {tooManyForReadability && (
             <span className="flex items-center gap-1 rounded-full bg-warning/10 px-2 py-0.5 text-[11px] text-warning">
@@ -360,6 +503,7 @@ function ContainerCard({
           >
             <Settings2 />
           </Button>
+          <RevealEffectControl value={container.reveal} onChange={(reveal) => ctx.onUpdateReveal(container.id, reveal)} />
           <LayoutMenu mode="unwrap" onSelect={() => ctx.onUnwrap(container.id)} />
           <Button
             type="button"
@@ -507,6 +651,8 @@ export function BuilderCanvas({
 }) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [pendingUnwrap, setPendingUnwrap] = useState<{ containerId: string; nodeCount: number } | null>(null);
+  /** §1.1 — editörün KENDİ görsel simülasyonu, kayıtlı `nodes`'u ETKİLEMEZ. */
+  const [device, setDevice] = useState<DeviceMode>("desktop");
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -633,6 +779,12 @@ export function BuilderCanvas({
     onChange(duplicateNode(nodes, id));
   }
 
+  /** Giriş Animasyonu (Scroll Reveal) — §Yapılacaklar/5 orkestratör talimatı, mevcut
+   *  `updateContent`/`wrap` fonksiyonlarının yanına eklenir. */
+  function updateReveal(id: string, reveal: RevealEffectSettings | undefined) {
+    onChange(updateNode(nodes, id, (node) => ({ ...node, reveal })));
+  }
+
   const ctx: Ctx = {
     onMove: move,
     onMoveToParent: moveToParent,
@@ -644,10 +796,12 @@ export function BuilderCanvas({
     onAddChild: addChild,
     onSelectContainer,
     selectedContainerId,
+    onUpdateReveal: updateReveal,
   };
 
   return (
     <>
+      <DevicePreviewBar device={device} onChange={setDevice} />
       <DndContext
         sensors={sensors}
         collisionDetection={closestCorners}
@@ -655,27 +809,29 @@ export function BuilderCanvas({
         onDragEnd={handleDragEnd}
         onDragCancel={() => setActiveId(null)}
       >
-        {nodes.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-border/60 bg-surface-muted/20 px-8 py-16 text-center">
-            <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-              <LayoutTemplate className="h-7 w-7" aria-hidden />
-            </span>
-            <div className="space-y-1">
-              <h3 className="text-base font-semibold text-foreground">Sayfa Tasarımına Başlayın</h3>
-              <p className="max-w-sm text-sm text-foreground/60">
-                Yukarıdaki ızgara düzenlerinden birini seçerek ilk bölümünüzü oluşturun.
-              </p>
+        <div className={canvasWidthClass(device)}>
+          {nodes.length === 0 ? (
+            <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-border/60 bg-surface-muted/20 px-8 py-16 text-center">
+              <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                <LayoutTemplate className="h-7 w-7" aria-hidden />
+              </span>
+              <div className="space-y-1">
+                <h3 className="text-base font-semibold text-foreground">Sayfa Tasarımına Başlayın</h3>
+                <p className="max-w-sm text-sm text-foreground/60">
+                  Yukarıdaki ızgara düzenlerinden birini seçerek ilk bölümünüzü oluşturun.
+                </p>
+              </div>
             </div>
-          </div>
-        ) : (
-          <SortableContext items={rootIds} strategy={verticalListSortingStrategy}>
-            <div className="space-y-4">
-              {nodes.map((node, index) => (
-                <NodeCard key={node.id} node={node} parentId="root" index={index} total={nodes.length} depth={1} ctx={ctx} />
-              ))}
-            </div>
-          </SortableContext>
-        )}
+          ) : (
+            <SortableContext items={rootIds} strategy={verticalListSortingStrategy}>
+              <div className="space-y-4">
+                {nodes.map((node, index) => (
+                  <NodeCard key={node.id} node={node} parentId="root" index={index} total={nodes.length} depth={1} ctx={ctx} />
+                ))}
+              </div>
+            </SortableContext>
+          )}
+        </div>
         <DragOverlay>
           {activeNode ? (
             <div className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 shadow-lg ring-2 ring-primary/40">

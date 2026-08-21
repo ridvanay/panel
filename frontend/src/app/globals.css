@@ -554,3 +554,47 @@
     width: var(--pb-skill-percent, 0%);
   }
 }
+
+/*
+ * Giriş Animasyonları (Scroll Reveal) — `site/blocks/scroll-reveal.tsx`. Başlangıç durumu
+ * (görünmez/kaydırılmış) + `.pb-revealed` eklendiğinde bitiş durumu (`opacity:1`,
+ * `transform:none`). `transition-delay` CSS'te SABİT OLAMAZ (5 farklı `RevealDelay` değeri var) —
+ * `scroll-reveal.tsx` bunu inline `style.transitionDelay` ile uygular, burada TANIMLANMAZ.
+ */
+.pb-reveal-fade-in,
+.pb-reveal-fade-up,
+.pb-reveal-slide-left,
+.pb-reveal-zoom-in {
+  opacity: 0;
+  transition:
+    opacity 0.6s ease,
+    transform 0.6s ease;
+}
+.pb-reveal-fade-up {
+  transform: translateY(24px);
+}
+.pb-reveal-slide-left {
+  transform: translateX(-40px);
+}
+.pb-reveal-zoom-in {
+  transform: scale(0.92);
+}
+
+.pb-reveal-fade-in.pb-revealed,
+.pb-reveal-fade-up.pb-revealed,
+.pb-reveal-slide-left.pb-revealed,
+.pb-reveal-zoom-in.pb-revealed {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pb-reveal-fade-in,
+  .pb-reveal-fade-up,
+  .pb-reveal-slide-left,
+  .pb-reveal-zoom-in {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+}

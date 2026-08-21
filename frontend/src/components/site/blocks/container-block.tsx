@@ -6,6 +6,8 @@ import {
   type ContainerJustify,
   type ContainerNode,
   type LinearGradientDirection,
+  type ShapeDividerSettings,
+  type ShapeDividerType,
 } from "@/lib/page-builder/types";
 import { BlockRenderer } from "./index";
 
@@ -32,6 +34,44 @@ const ALIGN_CLASS: Record<ContainerAlign, string> = {
   end: "items-end",
 };
 
+/**
+ * Şekilli Bölüm Ayırıcıları — tam-genişlik SVG render motoru (`.claude/design-notes-page-builder-
+ * editing-tools.md` §Yapılacaklar/4 — orkestratör talimatı). `viewBox="0 0 1200 120"` endüstri
+ * standardı ayırıcı oranı. Sabit bir `const` tablosu (component her render'da yeniden ÜRETMEZ).
+ * Her yol, dolgu alanının viewBox'ın ALT kenarına (`y=120`) doğru genişlediği TEK bir ortak
+ * yön kullanır — `top`/`bottom` konumu ve `flip` (dikey ters çevirme, CSS `transform`) birbirinden
+ * BAĞIMSIZDIR (aynı yol, konuma göre yalnızca CSS `top`/`bottom` ile yerleştirilir).
+ */
+const SHAPE_DIVIDER_VIEWBOX = "0 0 1200 120";
+
+const SHAPE_DIVIDER_PATHS: Record<ShapeDividerType, string> = {
+  wave: "M0,64 C200,120 400,0 600,64 C800,128 1000,0 1200,64 L1200,120 L0,120 Z",
+  slant: "M0,120 L1200,0 L1200,120 Z",
+  triangle: "M0,120 L600,0 L1200,120 Z",
+  curve: "M0,100 Q600,-20 1200,100 L1200,120 L0,120 Z",
+};
+
+/** Tek bir üst/alt ayırıcı katmanı — `position: absolute`, tıklamayı EMMEZ (`pointerEvents: "none"`). */
+function ShapeDivider({ position, settings }: { position: "top" | "bottom"; settings: ShapeDividerSettings }) {
+  const style: CSSProperties = {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: position === "top" ? 0 : undefined,
+    bottom: position === "bottom" ? 0 : undefined,
+    height: `${settings.height}px`,
+    pointerEvents: "none",
+    transform: settings.flip ? "scaleY(-1)" : undefined,
+  };
+  return (
+    <div aria-hidden style={style}>
+      <svg viewBox={SHAPE_DIVIDER_VIEWBOX} width="100%" height="100%" preserveAspectRatio="none" fill={settings.color}>
+        <path d={SHAPE_DIVIDER_PATHS[settings.type]} />
+      </svg>
+    </div>
+  );
+}
+
 export function ContainerBlockView({ block }: { block: ContainerNode }) {
   const { settings, children } = block;
 
@@ -42,6 +82,7 @@ export function ContainerBlockView({ block }: { block: ContainerNode }) {
   const animatedWaveClass = settings.background.type === "animated" && settings.background.variant === "gradient-wave" ? "pb-bg-gradient-wave" : undefined;
 
   const style: CSSProperties = {
+    position: "relative",
     maxWidth: settings.layout === "boxed" ? (settings.customWidth ?? DEFAULT_CONTAINER_MAX_WIDTH) : undefined,
     minHeight: settings.minHeight ? `${settings.minHeight.value}${settings.minHeight.unit}` : undefined,
     gap: `${settings.gap}px`,
@@ -56,9 +97,11 @@ export function ContainerBlockView({ block }: { block: ContainerNode }) {
       className={cn(layoutClass, directionClass, JUSTIFY_CLASS[settings.justifyContent], ALIGN_CLASS[settings.alignItems], animatedWaveClass)}
       style={style}
     >
+      {settings.topDivider && <ShapeDivider position="top" settings={settings.topDivider} />}
       {/* §6.3 "chrome" sözleşmesi — bir konteynerin İÇİNDEKİ yaprak bloklar HER ZAMAN "bare":
           kendi dış gutter'larını bırakırlar, boşluk bu konteynerin padding/gap'inden gelir. */}
       <BlockRenderer nodes={children} chrome="bare" />
+      {settings.bottomDivider && <ShapeDivider position="bottom" settings={settings.bottomDivider} />}
     </div>
   );
 }
