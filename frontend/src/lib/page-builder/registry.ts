@@ -19,6 +19,10 @@ import {
   Newspaper,
   Mail,
   Code2,
+  SplitSquareHorizontal,
+  Infinity as InfinityIcon,
+  SlidersHorizontal,
+  Users2,
   type LucideIcon,
 } from "lucide-react";
 import type { ContentBlock, ContentBlockType } from "./types";
@@ -52,11 +56,15 @@ export const blockRegistry: Record<PaletteBlockType, { label: string; category: 
   video: { label: "Video Oynatıcı", category: "media", icon: Video },
   accordion: { label: "Akordiyon / SSS", category: "media", icon: ListCollapse },
   tabs: { label: "Sekmeler", category: "media", icon: PanelsTopLeft },
+  "before-after-slider": { label: "Öncesi / Sonrası", category: "media", icon: SplitSquareHorizontal },
   hero: { label: "Hero", category: "marketing", icon: LayoutTemplate },
   cta: { label: "Çağrı Butonu (CTA)", category: "marketing", icon: Type },
   counter: { label: "Sayaç / İstatistik", category: "marketing", icon: TrendingUp },
   testimonial: { label: "Müşteri Yorumları", category: "marketing", icon: Quote },
   "pricing-table": { label: "Fiyatlandırma Tablosu", category: "marketing", icon: Tag },
+  "logo-marquee": { label: "Logo Bandı", category: "marketing", icon: InfinityIcon },
+  "skill-bar": { label: "İlerleme Çubuğu & Yetenekler", category: "marketing", icon: SlidersHorizontal },
+  team: { label: "Ekip Üyesi Kartı", category: "marketing", icon: Users2 },
   "featured-products": { label: "Öne Çıkan Ürünler", category: "dynamic", icon: ShoppingBag },
   "featured-portfolio": { label: "Öne Çıkan Projeler", category: "dynamic", icon: Briefcase },
   "latest-posts": { label: "Son Blog Yazıları", category: "dynamic", icon: Newspaper },
@@ -193,5 +201,32 @@ export function createBlock(type: PaletteBlockType): ContentBlock {
       return { id, type, data: { showTitle: true } };
     case "custom-html":
       return { id, type, data: { html: "" } };
+    case "before-after-slider":
+      return {
+        id,
+        type,
+        data: { beforeUrl: "", afterUrl: "", beforeLabel: "Önce", afterLabel: "Sonra", orientation: "horizontal" },
+      };
+    case "logo-marquee":
+      return { id, type, data: { items: [], speedSeconds: 30, pauseOnHover: true } };
+    case "skill-bar":
+      return {
+        id,
+        type,
+        data: {
+          items: [
+            { id: newId(), label: "Yetenek 1", percent: 80 },
+            { id: newId(), label: "Yetenek 2", percent: 60 },
+          ],
+        },
+      };
+    case "team":
+      return {
+        id,
+        type,
+        data: {
+          members: [{ id: newId(), name: "Ad Soyad", role: "Unvan", socialLinks: [] }],
+        },
+      };
   }
 }

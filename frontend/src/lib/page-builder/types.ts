@@ -1,3 +1,5 @@
+import type { SocialPlatform } from "@/lib/api/types";
+
 // ============================================================================
 // Page-builder hiyerarşik konteyner (container) veri modeli — v3.
 // Kaynak: `.claude/design-notes-page-builder-containers.md` §3 (BİREBİR uygulama).
@@ -29,7 +31,11 @@ export type ContentBlockType =
   | "pricing-table"
   | "latest-posts"
   | "contact-form"
-  | "custom-html";
+  | "custom-html"
+  | "before-after-slider"
+  | "logo-marquee"
+  | "skill-bar"
+  | "team";
 
 /** Kanonik konteyner düğümü. */
 export type ContainerNodeType = "container";
@@ -170,6 +176,94 @@ export const CUSTOM_HTML_MAX_LENGTH = 20000;
 export interface CustomHtmlBlock extends BaseNode {
   type: "custom-html";
   data: { html: string };
+}
+
+/**
+ * Öncesi / Sonrası Karşılaştırma — iki görsel, ortada sürüklenebilir bir tutamaç. `orientation`
+ * tutamacın hareket YÖNÜ: `"horizontal"` sol-sağ sürüklenir (dikey bölme çizgisi), `"vertical"`
+ * yukarı-aşağı sürüklenir (yatay bölme çizgisi) — kullanıcı isteğindeki "dikey/yatay tutamaç"
+ * ifadesiyle BİREBİR. `beforeUrl`/`afterUrl` `ImageBlock.url` ile AYNI serbestlik (yalnızca
+ * `<img src>`, `iframe`/CSS enjeksiyon yüzeyi YOK — protokol beyaz listesi GEREKMEZ).
+ */
+export type BeforeAfterOrientation = "horizontal" | "vertical";
+
+export interface BeforeAfterSliderBlock extends BaseNode {
+  type: "before-after-slider";
+  data: {
+    beforeUrl: string;
+    afterUrl: string;
+    beforeLabel: string;
+    afterLabel: string;
+    orientation: BeforeAfterOrientation;
+  };
+}
+
+/** Logo Bandı (Marquee) — kesintisiz akan yatay şerit, bkz. `globals.css::pb-marquee-track`. */
+export const LOGO_MARQUEE_MAX_ITEMS = 20;
+
+export interface LogoMarqueeItem {
+  id: string;
+  url: string;
+  alt: string;
+  /** Opsiyonel — verilirse logo tıklanabilir bir bağlantı olur (ör. partner sitesi). */
+  href?: string;
+}
+
+export interface LogoMarqueeBlock extends BaseNode {
+  type: "logo-marquee";
+  data: {
+    items: LogoMarqueeItem[];
+    /** Bir TAM döngünün saniye cinsinden süresi — küçük değer HIZLI akış demektir. */
+    speedSeconds: number;
+    pauseOnHover: boolean;
+  };
+}
+
+/** İlerleme Çubuğu & Yetenekler — `percent` KASITLI OLARAK sayı (0-100), serbest metin DEĞİL. */
+export const SKILL_BAR_MAX_ITEMS = 12;
+
+export interface SkillBarItem {
+  id: string;
+  label: string;
+  percent: number;
+  /** Opsiyonel — verilmezse site temasının `--site-primary` rengi kullanılır. */
+  color?: string;
+}
+
+export interface SkillBarBlock extends BaseNode {
+  type: "skill-bar";
+  data: { items: SkillBarItem[] };
+}
+
+/**
+ * Ekip Üyesi Kartı — birden fazla üye (`icon-box`/`testimonial` ile AYNI "tekrarlı liste"
+ * deseni). `socialLinks[].platform` `SocialPlatform` (bkz. `lib/api/types.ts` — site footer'ının
+ * "sosyal hesap linkleri" özelliğiyle AYNI kapalı platform kümesi, bu lucide-react sürümünde
+ * marka ikonu OLMADIĞI için `site-footer.tsx`teki AYNI anlamsal-yakın ikon eşlemesi
+ * `lib/social-platform-icons.ts`ten PAYLAŞILIR).
+ */
+export const TEAM_MAX_MEMBERS = 12;
+export const TEAM_MAX_SOCIAL_LINKS_PER_MEMBER = 5;
+
+export interface TeamMemberSocialLink {
+  id: string;
+  platform: SocialPlatform;
+  url: string;
+}
+
+export interface TeamMember {
+  id: string;
+  /** Opsiyonel — yoksa ad-soyaddan baş harf rozetine düşer (`testimonial` avatarıyla AYNI desen). */
+  photoUrl?: string;
+  name: string;
+  role?: string;
+  bio?: string;
+  socialLinks: TeamMemberSocialLink[];
+}
+
+export interface TeamBlock extends BaseNode {
+  type: "team";
+  data: { members: TeamMember[] };
 }
 
 /** §Faz "Temel Elemanlar" — H1-H6, hizalama, opsiyonel alt çizgi vurgusu. */
@@ -354,7 +448,11 @@ export type ContentBlock =
   | PricingTableBlock
   | LatestPostsBlock
   | ContactFormBlock
-  | CustomHtmlBlock;
+  | CustomHtmlBlock
+  | BeforeAfterSliderBlock
+  | LogoMarqueeBlock
+  | SkillBarBlock
+  | TeamBlock;
 
 /** @deprecated v2 adı — yalnızca geçiş sırasında import kırılmasın diye. Yeni kodda `ContentBlock` kullanın. */
 export type LeafBlock = ContentBlock;
@@ -399,9 +497,41 @@ export type ContainerBackgroundSize = "cover" | "contain" | "auto";
 export type ContainerBackgroundRepeat = "no-repeat" | "repeat";
 
 /**
- * Ayrık birlik (discriminated union) — `{ type: "color", value }` ile
- * `{ type: "image", value }` aynı `value` alanını PAYLAŞMAZ; şema seviyesinde
- * farklı doğrulama kuralları uygulanır (hex regex vs. protokol beyaz listeli URL kontrolü).
+ * Görsel/video arka planların ÜZERİNE opaklığı ayarlanabilir düz renk katmanı — okunabilirliği
+ * artırmak için (ör. koyu bir overlay + üstte beyaz metin). `color` `#rrggbb` (6 hane, `color`
+ * arka plan tipinin `#rgb|#rrggbb|#rrggbbaa` regex'inden BİLEREK DAR — alfa `opacity` alanından
+ * AYRI yönetilir, ikisinin karışması KAFA KARIŞTIRICI olurdu). `opacity` 0-100 (%), render
+ * anında `container-block.tsx::hexToRgba` ile `rgba()`'ya çevrilir.
+ */
+export interface ContainerBackgroundOverlay {
+  color: string;
+  opacity: number;
+}
+
+/** `gradientType: "linear"` iken yön — HAM CSS DEĞERİ DEĞİL, `container-block.tsx`teki sabit bir
+ *  sınıf/değer tablosuna eşlenir (`ContainerJustify`/`ButtonBlock.style` ile AYNI desen).
+ *  `custom-angle` seçilirse `angle` (0-360) kullanılır, aksi halde yön sabit tablodan gelir. */
+export type LinearGradientDirection =
+  | "to-top"
+  | "to-top-right"
+  | "to-right"
+  | "to-bottom-right"
+  | "to-bottom"
+  | "to-bottom-left"
+  | "to-left"
+  | "to-top-left"
+  | "custom-angle";
+
+/** "Floating / Gradient Wave" (yumuşak geçişli, hareketli) VEYA statik "Subtle Dots"/"Grid"
+ *  deseni — üçü de SAF CSS (keyframe/`background-image` gradient), harici kütüphane/JS YOK. */
+export type ContainerAnimatedBackgroundVariant = "gradient-wave" | "dots" | "grid";
+
+/**
+ * Ayrık birlik (discriminated union) — her `type` alanı için farklı doğrulama kuralları
+ * uygulanır (hex regex vs. protokol beyaz listeli URL kontrolü vb.). Tüm yeni renk alanları
+ * (`gradient`/`animated`) KASITLI OLARAK `#rrggbb` (6 hane) — `color` arka plan tipinin alfa
+ * kanallı regex'inden AYRI, daha dar bir kural (bkz. backend `pages.schemas.ts` "OVERLAY_HEX_RE"
+ * yorumu).
  */
 export type ContainerBackground =
   | { type: "none" }
@@ -412,7 +542,21 @@ export type ContainerBackground =
       position: ContainerBackgroundPosition;
       size: ContainerBackgroundSize;
       repeat: ContainerBackgroundRepeat;
-    };
+      overlay?: ContainerBackgroundOverlay;
+    }
+  | {
+      type: "gradient";
+      gradientType: "linear" | "radial";
+      colorFrom: string;
+      colorTo: string;
+      /** Yalnızca `gradientType: "linear"` iken anlamlı. */
+      direction?: LinearGradientDirection;
+      /** Yalnızca `direction: "custom-angle"` iken anlamlı, 0-360. */
+      angle?: number;
+    }
+  | { type: "animated"; variant: "gradient-wave"; colorFrom: string; colorTo: string }
+  | { type: "animated"; variant: "dots"; patternColor: string }
+  | { type: "animated"; variant: "grid"; patternColor: string };
 
 export interface ContainerSettings {
   /** `boxed` → ortalanmış + `maxWidth`; `full-width` → `w-full`. */

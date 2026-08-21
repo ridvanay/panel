@@ -51,6 +51,28 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
       anında zaten temizlenmiş HTML'i render eder (`text` bloğuyla AYNI "tek temizleme yolu"
       deseni).
 
+- **Page-builder — konteyner arka plan geliştirmeleri + 4 yeni görsel widget**.
+  - **Konteyner arka planı**: Gradient (doğrusal/dairesel, 2 renk + 8 sabit yön veya özel açı),
+    Animasyonlu (Floating/Gradient Wave — saf CSS `background-position` döngüsü; Subtle Dots/
+    Grid — statik CSS desen) ve mevcut Görsel arka planına opaklığı ayarlanabilir Overlay
+    (kaplama). Tümü tek bir `style` nesnesiyle ifade edilir (ek DOM öğesi YOK); tüm yeni renk
+    alanları `#rrggbb` (6 hane) regex ile doğrulanır, yön/varyant HAM CSS DEĞİL sabit bir
+    tablodan gelir.
+  - **Öncesi / Sonrası Karşılaştırma** (`before-after-slider`): iki görsel + `clip-path` ile
+    kırpılan, fare/dokunma (Pointer Events) VE ok tuşlarıyla sürüklenebilir bir tutamaç
+    (yatay/dikey), harici kütüphane kullanılmadan.
+  - **Logo Bandı** (`logo-marquee`, en fazla 20 logo): kesintisiz akan (marquee) yatay şerit —
+    içerik İKİ KEZ render edilip tam yarı genişlik kadar kaydırılarak dikişsiz döngü elde
+    edilir (ikinci kopya `aria-hidden`); hız ve "üzerine gelince durdur" ayarı.
+  - **İlerleme Çubuğu & Yetenekler** (`skill-bar`, en fazla 12 öğe): başlık, yüzde (0-100),
+    opsiyonel çubuk rengi, sayfa yüklenince BİR KEZ çalışan saf CSS dolma animasyonu.
+  - **Ekip Üyesi Kartı** (`team`, en fazla 12 üye, üye başına en fazla 5 sosyal bağlantı):
+    fotoğraf (yoksa baş harf rozeti), ad, unvan, biyografi, sosyal medya bağlantıları —
+    `SocialPlatform` (site footer'ının "sosyal hesap linkleri" ile AYNI kapalı platform kümesi,
+    `lib/social-platform-icons.ts` artık İKİSİ ARASINDA PAYLAŞILAN tek kaynak).
+  - Tüm animasyonlar (`globals.css`) `prefers-reduced-motion: reduce` ile devre dışı kalır;
+    harici animasyon/kaydırma kütüphanesi eklenmedi.
+
 - **E-posta şablonu blok editörü** (`docs/architecture/ARCHITECTURE.md` §10.16). Admin artık
   ham HTML yazmadan, sürükle-bırak bloklarla (logo/başlık, metin, buton, görsel, ayırıcı,
   footer) e-posta şablonu tasarlayabiliyor. HTML **her zaman sunucuda** üretilir

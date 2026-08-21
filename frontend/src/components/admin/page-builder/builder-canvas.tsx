@@ -88,6 +88,10 @@ import { PricingTableBlockEditor } from "./blocks/pricing-table-block";
 import { LatestPostsBlockEditor } from "./blocks/latest-posts-block";
 import { ContactFormBlockEditor } from "./blocks/contact-form-block";
 import { CustomHtmlBlockEditor } from "./blocks/custom-html-block";
+import { BeforeAfterSliderBlockEditor } from "./blocks/before-after-slider-block";
+import { LogoMarqueeBlockEditor } from "./blocks/logo-marquee-block";
+import { SkillBarBlockEditor } from "./blocks/skill-bar-block";
+import { TeamBlockEditor } from "./blocks/team-block";
 
 /**
  * §2.4 mimar dokümanı — ÖZYİNELEMELİ editör ağacı. v2'nin iki-seviyeli (kök + sütun) sabit
@@ -142,6 +146,14 @@ function ContentBlockBody({ block, onChange }: { block: ContentBlock; onChange: 
       return <ContactFormBlockEditor block={block} onChange={onChange} />;
     case "custom-html":
       return <CustomHtmlBlockEditor block={block} onChange={onChange} />;
+    case "before-after-slider":
+      return <BeforeAfterSliderBlockEditor block={block} onChange={onChange} />;
+    case "logo-marquee":
+      return <LogoMarqueeBlockEditor block={block} onChange={onChange} />;
+    case "skill-bar":
+      return <SkillBarBlockEditor block={block} onChange={onChange} />;
+    case "team":
+      return <TeamBlockEditor block={block} onChange={onChange} />;
   }
 }
 

@@ -20,6 +20,10 @@ import { PricingTableBlockView } from "./pricing-table-block";
 import { LatestPostsBlockView } from "./latest-posts-block";
 import { ContactFormBlockView } from "./contact-form-block";
 import { CustomHtmlBlockView } from "./custom-html-block";
+import { BeforeAfterSliderBlockView } from "./before-after-slider-block";
+import { LogoMarqueeBlockView } from "./logo-marquee-block";
+import { SkillBarBlockView } from "./skill-bar-block";
+import { TeamBlockView } from "./team-block";
 
 /**
  * §6.3 mimar dokümanı — "chrome" sözleşmesi. Kök dizideki yaprak bloklar `chrome: "page"`
@@ -79,6 +83,14 @@ export function BlockRenderer({ nodes, chrome }: { nodes: PageNode[]; chrome: Bl
             return <ContactFormBlockView key={node.id} block={node} chrome={chrome} />;
           case "custom-html":
             return <CustomHtmlBlockView key={node.id} block={node} chrome={chrome} />;
+          case "before-after-slider":
+            return <BeforeAfterSliderBlockView key={node.id} block={node} chrome={chrome} />;
+          case "logo-marquee":
+            return <LogoMarqueeBlockView key={node.id} block={node} chrome={chrome} />;
+          case "skill-bar":
+            return <SkillBarBlockView key={node.id} block={node} chrome={chrome} />;
+          case "team":
+            return <TeamBlockView key={node.id} block={node} chrome={chrome} />;
           case "container":
             return <ContainerBlockView key={node.id} block={node} />;
           default:

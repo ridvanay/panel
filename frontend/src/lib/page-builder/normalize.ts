@@ -2,6 +2,7 @@ import {
   DEFAULT_CONTAINER_SETTINGS,
   type ContainerAlign,
   type ContainerBackground,
+  type ContainerBackgroundOverlay,
   type ContainerBackgroundPosition,
   type ContainerBackgroundRepeat,
   type ContainerBackgroundSize,
@@ -10,6 +11,7 @@ import {
   type ContainerNode,
   type ContainerSettings,
   type ContainerSpacing,
+  type LinearGradientDirection,
   type PageNode,
 } from "./types";
 
@@ -204,6 +206,43 @@ function normalizeContainerLength(raw: unknown): ContainerLength | undefined {
   return { value: l.value, unit: l.unit === "vh" ? "vh" : "px" };
 }
 
+/** Gradient/animated/overlay renkleri için — backend `OVERLAY_HEX_RE` ile AYNI (6 hane, alfa YOK). */
+const HEX_COLOR_6_RE = /^#[0-9a-fA-F]{6}$/;
+function isHexColor6(v: unknown): v is string {
+  return typeof v === "string" && HEX_COLOR_6_RE.test(v);
+}
+
+const LINEAR_GRADIENT_DIRECTIONS = new Set<string>([
+  "to-top",
+  "to-top-right",
+  "to-right",
+  "to-bottom-right",
+  "to-bottom",
+  "to-bottom-left",
+  "to-left",
+  "to-top-left",
+  "custom-angle",
+]);
+function isLinearGradientDirection(v: unknown): v is LinearGradientDirection {
+  return typeof v === "string" && LINEAR_GRADIENT_DIRECTIONS.has(v);
+}
+
+function normalizeOverlay(raw: unknown): ContainerBackgroundOverlay | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const o = raw as Record<string, unknown>;
+  if (!isHexColor6(o.color)) return undefined;
+  const opacity = typeof o.opacity === "number" && Number.isFinite(o.opacity) ? Math.max(0, Math.min(100, Math.round(o.opacity))) : 0;
+  return { color: o.color, opacity };
+}
+
+/**
+ * GÜVENLİK/VERİ BÜTÜNLÜĞÜ DÜZELTMESİ — bu fonksiyon ÖNCEDEN yalnızca `"color"`/`"image"`
+ * tiplerini TANIYORDU (Faz "Konteyner Görsel Widget'ları" ÖNCESİ kalıntı). `"gradient"`/
+ * `"animated"` bilinmeyen sayılıp SESSİZCE `{ type: "none" }`e düşürülüyordu — hem admin
+ * editöründeki CANLI ÖNİZLEME hem PUBLIC RENDER bu fonksiyondan geçtiği için (bkz. dosya
+ * başlığı, "TAM OLARAK İKİ giriş noktası"), backend'in doğru kaydettiği bir gradient/animasyonlu
+ * arka plan HİÇBİR YERDE görünmüyordu.
+ */
 function normalizeBackground(raw: unknown): ContainerBackground {
   if (!raw || typeof raw !== "object") return { type: "none" };
   const b = raw as Record<string, unknown>;
@@ -215,7 +254,26 @@ function normalizeBackground(raw: unknown): ContainerBackground {
       position: isBgPosition(b.position) ? b.position : "center",
       size: isBgSize(b.size) ? b.size : "cover",
       repeat: isBgRepeat(b.repeat) ? b.repeat : "no-repeat",
+      overlay: normalizeOverlay(b.overlay),
     };
+  }
+  if (b.type === "gradient" && isHexColor6(b.colorFrom) && isHexColor6(b.colorTo)) {
+    return {
+      type: "gradient",
+      gradientType: b.gradientType === "radial" ? "radial" : "linear",
+      colorFrom: b.colorFrom,
+      colorTo: b.colorTo,
+      direction: isLinearGradientDirection(b.direction) ? b.direction : undefined,
+      angle: typeof b.angle === "number" && Number.isFinite(b.angle) ? Math.max(0, Math.min(360, Math.round(b.angle))) : undefined,
+    };
+  }
+  if (b.type === "animated") {
+    if (b.variant === "gradient-wave" && isHexColor6(b.colorFrom) && isHexColor6(b.colorTo)) {
+      return { type: "animated", variant: "gradient-wave", colorFrom: b.colorFrom, colorTo: b.colorTo };
+    }
+    if ((b.variant === "dots" || b.variant === "grid") && isHexColor6(b.patternColor)) {
+      return { type: "animated", variant: b.variant, patternColor: b.patternColor };
+    }
   }
   return { type: "none" };
 }

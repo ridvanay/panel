@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { AtSign, Briefcase, Camera, Globe, Play, Terminal, ThumbsUp, type LucideIcon } from "lucide-react";
+import { Globe } from "lucide-react";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
-import type { FooterColumnDto, SocialLinkDto, SocialPlatform } from "@/lib/api/types";
+import { SOCIAL_PLATFORM_ICONS, SOCIAL_PLATFORM_LABELS } from "@/lib/social-platform-icons";
+import type { FooterColumnDto, SocialLinkDto } from "@/lib/api/types";
 
 interface SiteFooterProps {
   siteName: string;
@@ -16,30 +17,6 @@ interface SiteFooterProps {
   activeLocaleCode?: string;
   defaultLocaleCode?: string;
 }
-
-/**
- * Bu lucide-react sürümünde marka ikonları (Twitter/GitHub/LinkedIn vb.) yok —
- * platform başına anlamsal olarak yakın genel ikonlar kullanılıyor.
- */
-const SOCIAL_ICONS: Record<SocialPlatform, LucideIcon> = {
-  TWITTER: AtSign,
-  GITHUB: Terminal,
-  LINKEDIN: Briefcase,
-  INSTAGRAM: Camera,
-  FACEBOOK: ThumbsUp,
-  YOUTUBE: Play,
-  OTHER: Globe,
-};
-
-const SOCIAL_LABELS: Record<SocialPlatform, string> = {
-  TWITTER: "Twitter / X",
-  GITHUB: "GitHub",
-  LINKEDIN: "LinkedIn",
-  INSTAGRAM: "Instagram",
-  FACEBOOK: "Facebook",
-  YOUTUBE: "YouTube",
-  OTHER: "Diğer",
-};
 
 export function SiteFooter({
   siteName,
@@ -86,14 +63,14 @@ export function SiteFooter({
             {hasSocial && (
               <div className="flex flex-wrap items-center gap-2">
                 {socialLinks!.map((link) => {
-                  const Icon = SOCIAL_ICONS[link.platform] ?? Globe;
+                  const Icon = SOCIAL_PLATFORM_ICONS[link.platform] ?? Globe;
                   return (
                     <a
                       key={link.id}
                       href={link.url}
                       target="_blank"
                       rel="noreferrer noopener"
-                      aria-label={SOCIAL_LABELS[link.platform] ?? link.platform}
+                      aria-label={SOCIAL_PLATFORM_LABELS[link.platform] ?? link.platform}
                       // §10.12.4 — `--site-link` (`.site-scope` altında satır-içi yazılır).
                       className="flex h-8 w-8 items-center justify-center rounded-full border border-border text-foreground/60 transition-colors hover:border-[var(--site-link)] hover:text-[var(--site-link)]"
                     >

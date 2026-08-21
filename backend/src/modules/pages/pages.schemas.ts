@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { PageStatusSchema } from "../../schemas/entities";
+import { PageStatusSchema, SocialPlatformSchema } from "../../schemas/entities";
 import { refineScheduledAt, SCHEDULED_AT_REFINEMENT } from "../../schemas/common";
 import { scanPageNodeStructure, MAX_CONTAINER_DEPTH, MAX_CHILDREN_PER_CONTAINER, MAX_TOTAL_PAGE_NODES } from "../../lib/page-blocks";
 
@@ -92,6 +92,48 @@ function isSafeContainerBackgroundImageUrl(value: string): boolean {
   return value.startsWith("/") || SAFE_ABSOLUTE_URL_RE.test(value);
 }
 
+/**
+ * Gradient/animated arka plan renkleri için — `HEX_COLOR_RE`'DEN BİLEREK DAR (yalnızca 6 hane,
+ * alfa kanalı YOK). Overlay'in kendi `opacity`si AYRI bir alan (bkz. frontend
+ * `types.ts::ContainerBackgroundOverlay` yorumu) — bir renk alanında hem `#rrggbbaa` alfası hem
+ * ayrı bir `opacity` alanı birlikte bulunması KAFA KARIŞTIRICI/çift-anlamlı olurdu.
+ */
+const OVERLAY_HEX_RE = /^#[0-9a-fA-F]{6}$/;
+
+const ContainerBackgroundOverlaySchema = z.object({
+  color: z.string().regex(OVERLAY_HEX_RE, "Geçersiz renk değeri."),
+  opacity: z.number().int().min(0).max(100),
+});
+
+const LINEAR_GRADIENT_DIRECTIONS = [
+  "to-top",
+  "to-top-right",
+  "to-right",
+  "to-bottom-right",
+  "to-bottom",
+  "to-bottom-left",
+  "to-left",
+  "to-top-left",
+  "custom-angle",
+] as const;
+
+/**
+ * "Animated" arka plan — `variant`e göre FARKLI alanlar taşır (`gradient-wave` iki renk,
+ * `dots`/`grid` tek desen rengi). Tüm alanlar BURADA (şemanın kendisinde) OPSİYONEL — "variant'a
+ * göre doğru alan(lar) zorunlu" kuralı dış `ContainerBackgroundSchema`nın SONUNA eklenen TEK bir
+ * `superRefine` ile uygulanır (bkz. aşağısı). GEREKÇE: `.superRefine()`/`.refine()` bir şemayı
+ * `ZodEffects`e SARAR — `z.discriminatedUnion`ın ARKADAŞ üyeleri `ZodObject` OLMAK ZORUNDADIR,
+ * `ZodEffects` sarmalı bu koşulu BOZAR (doğrulandı: `Animated.superRefine(...)`'ı doğrudan
+ * `discriminatedUnion` dizisine koymak `Cannot read properties of undefined` ile ÇÖKER).
+ */
+const AnimatedBackgroundSchema = z.object({
+  type: z.literal("animated"),
+  variant: z.enum(["gradient-wave", "dots", "grid"]),
+  colorFrom: z.string().regex(OVERLAY_HEX_RE, "Geçersiz renk değeri.").optional(),
+  colorTo: z.string().regex(OVERLAY_HEX_RE, "Geçersiz renk değeri.").optional(),
+  patternColor: z.string().regex(OVERLAY_HEX_RE, "Geçersiz renk değeri.").optional(),
+});
+
 const ContainerBackgroundSchema = z
   .discriminatedUnion("type", [
     z.object({ type: z.literal("none") }),
@@ -106,8 +148,27 @@ const ContainerBackgroundSchema = z
       position: z.enum(["center", "top", "bottom", "left", "right"]).default("center"),
       size: z.enum(["cover", "contain", "auto"]).default("cover"),
       repeat: z.enum(["no-repeat", "repeat"]).default("no-repeat"),
+      overlay: ContainerBackgroundOverlaySchema.optional(),
     }),
+    z.object({
+      type: z.literal("gradient"),
+      gradientType: z.enum(["linear", "radial"]).default("linear"),
+      colorFrom: z.string().regex(OVERLAY_HEX_RE, "Geçersiz renk değeri."),
+      colorTo: z.string().regex(OVERLAY_HEX_RE, "Geçersiz renk değeri."),
+      direction: z.enum(LINEAR_GRADIENT_DIRECTIONS).optional(),
+      angle: z.number().int().min(0).max(360).optional(),
+    }),
+    AnimatedBackgroundSchema,
   ])
+  .superRefine((val, ctx) => {
+    if (val.type !== "animated") return;
+    if (val.variant === "gradient-wave") {
+      if (!val.colorFrom) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "colorFrom zorunlu.", path: ["colorFrom"] });
+      if (!val.colorTo) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "colorTo zorunlu.", path: ["colorTo"] });
+    } else if (!val.patternColor) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "patternColor zorunlu.", path: ["patternColor"] });
+    }
+  })
   .default({ type: "none" });
 
 /**
@@ -504,6 +565,90 @@ const CustomHtmlBlockDataSchema = z.object({
 });
 const CustomHtmlBlockSchema = z.object({ id: z.string().min(1), type: z.literal("custom-html"), data: CustomHtmlBlockDataSchema });
 
+/* ---------- Görsel widget'lar — Öncesi/Sonrası, Logo Bandı, İlerleme Çubuğu, Ekip ---------- */
+
+/**
+ * Öncesi / Sonrası Karşılaştırma — `beforeUrl`/`afterUrl` yalnızca `<img src>` olarak render
+ * edilir (`ImageBlockDataSchema.url` ile AYNI gerekçe/serbestlik — `iframe`/CSS enjeksiyon
+ * yüzeyi YOK, `SafeHrefSchema` GEREKMEZ).
+ */
+const BeforeAfterSliderBlockDataSchema = z.object({
+  beforeUrl: z.string().min(1).max(2048),
+  afterUrl: z.string().min(1).max(2048),
+  beforeLabel: z.string().min(1).max(60),
+  afterLabel: z.string().min(1).max(60),
+  orientation: z.enum(["horizontal", "vertical"]).default("horizontal"),
+});
+const BeforeAfterSliderBlockSchema = z.object({
+  id: z.string().min(1),
+  type: z.literal("before-after-slider"),
+  data: BeforeAfterSliderBlockDataSchema,
+});
+
+/** Frontend `types.ts::LOGO_MARQUEE_MAX_ITEMS` ile SAYISAL OLARAK BİREBİR AYNI. */
+const LOGO_MARQUEE_MAX_ITEMS = 20;
+
+/** Logo Bandı — `items[].href` opsiyonel bir bağlantı, `SafeHrefSchema` ile doğrulanır
+ *  (`TestimonialItem.avatarUrl` ile AYNI desen: opsiyonel href alanı → protokol beyaz listesi). */
+const LogoMarqueeBlockDataSchema = z.object({
+  items: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        url: z.string().min(1).max(2048),
+        alt: z.string().max(200).default(""),
+        href: SafeHrefSchema.optional(),
+      })
+    )
+    .max(LOGO_MARQUEE_MAX_ITEMS),
+  speedSeconds: z.number().int().min(5).max(120).default(30),
+  pauseOnHover: z.boolean().default(true),
+});
+const LogoMarqueeBlockSchema = z.object({ id: z.string().min(1), type: z.literal("logo-marquee"), data: LogoMarqueeBlockDataSchema });
+
+/** Frontend `types.ts::SKILL_BAR_MAX_ITEMS` ile SAYISAL OLARAK BİREBİR AYNI. */
+const SKILL_BAR_MAX_ITEMS = 12;
+
+const SkillBarBlockDataSchema = z.object({
+  items: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        label: z.string().min(1).max(80),
+        percent: z.number().int().min(0).max(100),
+        color: z.string().regex(OVERLAY_HEX_RE, "Geçersiz renk değeri.").optional(),
+      })
+    )
+    .min(1)
+    .max(SKILL_BAR_MAX_ITEMS),
+});
+const SkillBarBlockSchema = z.object({ id: z.string().min(1), type: z.literal("skill-bar"), data: SkillBarBlockDataSchema });
+
+/** Frontend `types.ts::TEAM_MAX_MEMBERS`/`TEAM_MAX_SOCIAL_LINKS_PER_MEMBER` ile SAYISAL OLARAK
+ *  BİREBİR AYNI. `socialLinks[].platform` — `SocialPlatformSchema` (`schemas/entities.ts`,
+ *  site footer'ının "sosyal hesap linkleri" özelliğiyle AYNI kapalı küme, TEK kaynak). */
+const TEAM_MAX_MEMBERS = 12;
+const TEAM_MAX_SOCIAL_LINKS_PER_MEMBER = 5;
+
+const TeamBlockDataSchema = z.object({
+  members: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        photoUrl: z.string().min(1).max(2048).optional(),
+        name: z.string().min(1).max(120),
+        role: z.string().max(120).optional(),
+        bio: z.string().max(1000).optional(),
+        socialLinks: z
+          .array(z.object({ id: z.string().min(1), platform: SocialPlatformSchema, url: SafeHrefSchema }))
+          .max(TEAM_MAX_SOCIAL_LINKS_PER_MEMBER),
+      })
+    )
+    .min(1)
+    .max(TEAM_MAX_MEMBERS),
+});
+const TeamBlockSchema = z.object({ id: z.string().min(1), type: z.literal("team"), data: TeamBlockDataSchema });
+
 /* ---------- özyinelemeli düğüm — §5.4 ---------- */
 
 function applySubSchema(schema: z.ZodTypeAny, node: unknown, ctx: z.RefinementCtx): unknown {
@@ -522,9 +667,9 @@ function applySubSchema(schema: z.ZodTypeAny, node: unknown, ctx: z.RefinementCt
  * `type` bilinmiyorsa blok SERBEST bırakılır (`z.record(z.unknown())`) — v2'deki
  * "minimum diff" kararı KORUNUR; yalnızca `container`/`columns`/`gallery`/`heading`/`button`/
  * `icon-box`/`divider`/`image`/`video`/`accordion`/`tabs`/`cta`/`counter`/`testimonial`/
- * `pricing-table`/`latest-posts`/`contact-form`/`custom-html` dar şemaya girer (diğerleri —
- * `hero`/`text`/`featured-*` — ÖNCEDEN VAR OLAN bir boşluk olarak doğrulanmadan geçer, bu turun
- * kapsamı DEĞİL).
+ * `pricing-table`/`latest-posts`/`contact-form`/`custom-html`/`before-after-slider`/
+ * `logo-marquee`/`skill-bar`/`team` dar şemaya girer (diğerleri — `hero`/`text`/`featured-*` —
+ * ÖNCEDEN VAR OLAN bir boşluk olarak doğrulanmadan geçer, bu turun kapsamı DEĞİL).
  *
  * ÖZYİNELEME GÜVENLİĞİ: bu şema `ContainerNodeSchema` üzerinden kendini çağırır. Derinlik
  * sınırı BURADA DEĞİL, `PageBlockListSchema` içindeki İTERATİF ön-taramada uygulanır (bkz.
@@ -558,6 +703,10 @@ const PageNodeSchema: z.ZodType<unknown, z.ZodTypeDef, unknown> = z.record(z.unk
   if (type === "latest-posts") return applySubSchema(LatestPostsBlockSchema, node, ctx);
   if (type === "contact-form") return applySubSchema(ContactFormBlockSchema, node, ctx);
   if (type === "custom-html") return applySubSchema(CustomHtmlBlockSchema, node, ctx);
+  if (type === "before-after-slider") return applySubSchema(BeforeAfterSliderBlockSchema, node, ctx);
+  if (type === "logo-marquee") return applySubSchema(LogoMarqueeBlockSchema, node, ctx);
+  if (type === "skill-bar") return applySubSchema(SkillBarBlockSchema, node, ctx);
+  if (type === "team") return applySubSchema(TeamBlockSchema, node, ctx);
   return node;
 });
 

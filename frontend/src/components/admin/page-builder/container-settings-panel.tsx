@@ -15,9 +15,15 @@ import {
   AlignVerticalJustifyStart,
   AlignVerticalSpaceAround,
   AlignVerticalSpaceBetween,
+  ArrowRight,
   Ban,
+  Blend,
+  Circle,
+  CircleDot,
   Columns2,
+  Grid3x3,
   Image as ImageIcon,
+  Layers,
   Link2,
   Maximize2,
   Minimize2,
@@ -27,6 +33,7 @@ import {
   StretchHorizontal,
   StretchVertical,
   Unlink2,
+  Waves,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -34,6 +41,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Field } from "@/components/ui/field";
 import { Select } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { ColorField } from "@/components/admin/appearance/color-field";
 import { ImageUploadField } from "@/components/admin/media/image-upload-field";
@@ -45,7 +53,9 @@ import {
   MIN_CONTAINER_MAX_WIDTH,
   ROW_CHILDREN_READABILITY_WARNING_THRESHOLD,
   type ContainerAlign,
+  type ContainerAnimatedBackgroundVariant,
   type ContainerBackground,
+  type ContainerBackgroundOverlay,
   type ContainerBackgroundPosition,
   type ContainerBackgroundRepeat,
   type ContainerBackgroundSize,
@@ -54,6 +64,7 @@ import {
   type ContainerNode,
   type ContainerSettings,
   type ContainerSpacing,
+  type LinearGradientDirection,
 } from "@/lib/page-builder/types";
 
 /**
@@ -311,21 +322,201 @@ const BG_TYPE_OPTIONS: { value: ContainerBackground["type"]; label: string; icon
   { value: "none", label: "Yok", icon: Ban },
   { value: "color", label: "Renk", icon: PaletteIcon },
   { value: "image", label: "Görsel", icon: ImageIcon },
+  { value: "gradient", label: "Renk Geçişi", icon: Blend },
+  { value: "animated", label: "Animasyonlu", icon: Waves },
 ];
+
+const GRADIENT_DIRECTION_OPTIONS: { value: LinearGradientDirection; label: string }[] = [
+  { value: "to-top", label: "Yukarı" },
+  { value: "to-top-right", label: "Yukarı sağ" },
+  { value: "to-right", label: "Sağa" },
+  { value: "to-bottom-right", label: "Aşağı sağ" },
+  { value: "to-bottom", label: "Aşağı" },
+  { value: "to-bottom-left", label: "Aşağı sol" },
+  { value: "to-left", label: "Sola" },
+  { value: "to-top-left", label: "Yukarı sol" },
+  { value: "custom-angle", label: "Özel açı…" },
+];
+
+const ANIMATED_VARIANT_OPTIONS: { value: ContainerAnimatedBackgroundVariant; label: string; icon: LucideIcon }[] = [
+  { value: "gradient-wave", label: "Dalga", icon: Waves },
+  { value: "dots", label: "Noktalar", icon: CircleDot },
+  { value: "grid", label: "Izgara", icon: Grid3x3 },
+];
+
+/** Görsel arka plan üzerine opaklığı ayarlanabilir düz renk kaplaması (§1 "Overlay"). */
+function OverlayControl({
+  value,
+  onChange,
+}: {
+  value: ContainerBackgroundOverlay | undefined;
+  onChange: (next: ContainerBackgroundOverlay | undefined) => void;
+}) {
+  return (
+    <div className="space-y-2 rounded-lg border border-border/60 p-3">
+      <div className="flex items-center justify-between">
+        <label htmlFor="bg-overlay-enabled" className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+          <Layers className="h-3.5 w-3.5" />
+          Kaplama (overlay)
+        </label>
+        <Switch
+          id="bg-overlay-enabled"
+          checked={value !== undefined}
+          onCheckedChange={(enabled) => onChange(enabled ? { color: "#000000", opacity: 40 } : undefined)}
+        />
+      </div>
+      {value && (
+        <div className="grid grid-cols-2 gap-2">
+          <ColorField id="bg-overlay-color" label="Kaplama rengi" value={value.color} onChange={(color) => onChange({ ...value, color })} />
+          <Field id="bg-overlay-opacity" label="Opaklık (%)">
+            {(p) => (
+              <InputGroup>
+                <InputGroupInput
+                  {...p}
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={value.opacity}
+                  onChange={(e) => {
+                    const raw = Number(e.target.value);
+                    const clamped = Number.isFinite(raw) ? Math.max(0, Math.min(100, Math.round(raw))) : 0;
+                    onChange({ ...value, opacity: clamped });
+                  }}
+                />
+                <InputGroupAddon align="inline-end">%</InputGroupAddon>
+              </InputGroup>
+            )}
+          </Field>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** `gradient` arka plan tipi alt alanları. */
+function GradientBackgroundFields({
+  value,
+  onChange,
+}: {
+  value: Extract<ContainerBackground, { type: "gradient" }>;
+  onChange: (next: Extract<ContainerBackground, { type: "gradient" }>) => void;
+}) {
+  return (
+    <div className="space-y-3">
+      <div className="space-y-1.5">
+        <p className="text-sm font-medium text-foreground">Tip</p>
+        <SegmentedToggle
+          value={value.gradientType}
+          options={[
+            { value: "linear" as const, label: "Doğrusal (linear)", icon: ArrowRight },
+            { value: "radial" as const, label: "Dairesel (radial)", icon: Circle },
+          ]}
+          onChange={(gradientType) => onChange({ ...value, gradientType })}
+        />
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <ColorField id="bg-gradient-from" label="Renk 1" value={value.colorFrom} onChange={(colorFrom) => onChange({ ...value, colorFrom })} />
+        <ColorField id="bg-gradient-to" label="Renk 2" value={value.colorTo} onChange={(colorTo) => onChange({ ...value, colorTo })} />
+      </div>
+      {value.gradientType === "linear" && (
+        <>
+          <Field id="bg-gradient-direction" label="Yön">
+            {(p) => (
+              <Select
+                {...p}
+                value={value.direction ?? "to-right"}
+                onChange={(e) => onChange({ ...value, direction: e.target.value as LinearGradientDirection })}
+              >
+                {GRADIENT_DIRECTION_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+          {value.direction === "custom-angle" && (
+            <Field id="bg-gradient-angle" label="Açı">
+              {(p) => (
+                <InputGroup>
+                  <InputGroupInput
+                    {...p}
+                    type="number"
+                    min={0}
+                    max={360}
+                    value={value.angle ?? 90}
+                    onChange={(e) => {
+                      const raw = Number(e.target.value);
+                      const clamped = Number.isFinite(raw) ? Math.max(0, Math.min(360, Math.round(raw))) : 0;
+                      onChange({ ...value, angle: clamped });
+                    }}
+                  />
+                  <InputGroupAddon align="inline-end">°</InputGroupAddon>
+                </InputGroup>
+              )}
+            </Field>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+/** `animated` arka plan tipi alt alanları — "Floating / Gradient Wave" VEYA statik "Dots"/"Grid". */
+function AnimatedBackgroundFields({
+  value,
+  onChange,
+}: {
+  value: Extract<ContainerBackground, { type: "animated" }>;
+  onChange: (next: Extract<ContainerBackground, { type: "animated" }>) => void;
+}) {
+  function setVariant(variant: ContainerAnimatedBackgroundVariant) {
+    if (variant === "gradient-wave") onChange({ type: "animated", variant, colorFrom: "#4f46e5", colorTo: "#0ea5e9" });
+    else onChange({ type: "animated", variant, patternColor: "#94a3b8" });
+  }
+
+  return (
+    <div className="space-y-3">
+      <SegmentedToggle value={value.variant} options={ANIMATED_VARIANT_OPTIONS} onChange={setVariant} />
+      {value.variant === "gradient-wave" ? (
+        <div className="grid grid-cols-2 gap-2">
+          <ColorField id="bg-anim-from" label="Renk 1" value={value.colorFrom} onChange={(colorFrom) => onChange({ ...value, colorFrom })} />
+          <ColorField id="bg-anim-to" label="Renk 2" value={value.colorTo} onChange={(colorTo) => onChange({ ...value, colorTo })} />
+        </div>
+      ) : (
+        <ColorField
+          id="bg-anim-pattern-color"
+          label="Desen rengi"
+          value={value.patternColor}
+          onChange={(patternColor) => onChange({ ...value, patternColor })}
+        />
+      )}
+    </div>
+  );
+}
 
 /** §2.4 — arka plan tipi segmented toggle + tipe göre alt alanlar. */
 function BackgroundControl({ value, onChange }: { value: ContainerBackground; onChange: (next: ContainerBackground) => void }) {
   function setType(type: ContainerBackground["type"]) {
     if (type === "none") onChange({ type: "none" });
     else if (type === "color") onChange({ type: "color", value: value.type === "color" ? value.value : "#111827" });
-    else {
+    else if (type === "image") {
       onChange({
         type: "image",
         value: value.type === "image" ? value.value : "",
         position: value.type === "image" ? value.position : "center",
         size: value.type === "image" ? value.size : "cover",
         repeat: value.type === "image" ? value.repeat : "no-repeat",
+        overlay: value.type === "image" ? value.overlay : undefined,
       });
+    } else if (type === "gradient") {
+      onChange(
+        value.type === "gradient"
+          ? value
+          : { type: "gradient", gradientType: "linear", colorFrom: "#4f46e5", colorTo: "#0ea5e9", direction: "to-right" }
+      );
+    } else {
+      onChange(value.type === "animated" ? value : { type: "animated", variant: "gradient-wave", colorFrom: "#4f46e5", colorTo: "#0ea5e9" });
     }
   }
 
@@ -387,8 +578,12 @@ function BackgroundControl({ value, onChange }: { value: ContainerBackground; on
               </Select>
             )}
           </Field>
+          <OverlayControl value={value.overlay} onChange={(overlay) => onChange({ ...value, overlay })} />
         </div>
       )}
+
+      {value.type === "gradient" && <GradientBackgroundFields value={value} onChange={onChange} />}
+      {value.type === "animated" && <AnimatedBackgroundFields value={value} onChange={onChange} />}
     </div>
   );
 }

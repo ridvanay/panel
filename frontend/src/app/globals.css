@@ -455,3 +455,79 @@
 .site-scope h6 {
   font-family: var(--site-heading-font);
 }
+
+/*
+ * Page-builder — görsel widget'lar/konteyner arka planları için SAF CSS animasyonları (harici
+ * kütüphane YOK, "hafif tut" isteği). Renkler/hız gibi DİNAMİK değerler her zaman ilgili
+ * bileşenin inline `style`'ında (`container-block.tsx`, `logo-marquee-block.tsx`) kalır —
+ * buradaki sınıflar yalnızca ZAMANLAMA/keyframe'i sağlar.
+ *
+ * "Floating / Gradient Wave" konteyner arka planı — `background-position`i döngüsel kaydırarak
+ * yumuşak bir renk-geçiş dalgası izlenimi verir (bkz. `container-block.tsx::backgroundStyle`
+ * "animated"/"gradient-wave" dalı — `backgroundImage` inline style'da 3 renkli bir
+ * `linear-gradient` olarak kurulur, bu sınıf yalnızca `background-size`/`animation` ekler).
+ */
+@keyframes pb-gradient-wave {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+.pb-bg-gradient-wave {
+  background-size: 200% 200%;
+  animation: pb-gradient-wave 10s ease-in-out infinite;
+}
+
+/*
+ * Logo Bandı (Marquee) — kesintisiz akan yatay şerit. Şerit içeriği bileşen tarafında İKİ KEZ
+ * art arda render edilir (`logo-marquee-block.tsx`); bu animasyon tam olarak İLK kopyanın
+ * genişliği kadar (`-50%`) kayar — döngü noktasında görünmez bir "dikiş" bırakır. Hız,
+ * `--pb-marquee-duration` (inline style, blok verisindeki hız ayarından) ile kontrol edilir.
+ */
+@keyframes pb-marquee-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+.pb-marquee-track {
+  animation: pb-marquee-scroll var(--pb-marquee-duration, 30s) linear infinite;
+}
+
+/*
+ * İlerleme Çubuğu & Yetenekler — "animasyonlu dolma efekti". Hedef genişlik
+ * `--pb-skill-percent` (inline style, `skill-bar-block.tsx`) İLE bir CSS DEĞİŞKENİ olarak
+ * verilir — `@keyframes` içine DOĞRUDAN dinamik bir değer YAZILAMAZ, bu yüzden `to` durağı
+ * `var(...)`a işaret eder. Sayfa yüklenince BİR KEZ çalışır (scroll-tetiklemeli DEĞİL — JS/
+ * IntersectionObserver GEREKTİRMEZ, "hafif tut" isteğiyle AYNI gerekçe `counter` bloğunun
+ * MVP kararıyla — bkz. Faz 3 mimar notu).
+ */
+@keyframes pb-skillbar-fill {
+  from {
+    width: 0%;
+  }
+  to {
+    width: var(--pb-skill-percent, 0%);
+  }
+}
+.pb-skillbar-fill {
+  animation: pb-skillbar-fill 1.2s ease-out forwards;
+}
+
+/* Hareket hassasiyeti — `prefers-reduced-motion` işaretleyen ziyaretçilere HİÇBİR animasyon
+ * dayatılmaz (içerik yine de TAMAMEN görünür/okunabilir kalır, yalnızca hareketsiz). */
+@media (prefers-reduced-motion: reduce) {
+  .pb-bg-gradient-wave,
+  .pb-marquee-track {
+    animation: none;
+  }
+  .pb-skillbar-fill {
+    animation: none;
+    width: var(--pb-skill-percent, 0%);
+  }
+}
