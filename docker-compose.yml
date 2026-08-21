@@ -48,6 +48,13 @@ services:
       # (aksi halde production'a özgü zorunlu kontroller — bkz. src/lib/keys.ts JWT anahtarı,
       # SMTP zorunluluğu — devre dışı kalır ve her restart'ta geçici JWT anahtarı üretilir).
       NODE_ENV: production
+      # DATABASE_URL ile AYNI gerekçe: backend/.env'deki FRONTEND_URL (varsayılan
+      # localhost:3000) bu container'ın İÇİNDEN bakınca kendisini işaret eder, frontend
+      # servisini DEĞİL — src/lib/revalidate.ts'in on-demand ISR webhook'u (POST
+      # /api/revalidate) bu adrese ulaşamazsa sessizce no-op'a düşer (best-effort, sayfa
+      # kaydetmeyi bloklamaz) ama revalidation hiç ÇALIŞMAZ. Docker ağında frontend servisine
+      # adıyla erişilir.
+      FRONTEND_URL: http://frontend:3000
     ports:
       - "4000:4000"
     volumes:
@@ -72,6 +79,11 @@ services:
         # "backend" tarayıcıdan çözülemez) — bu yüzden localhost, docker network adı değil.
         NEXT_PUBLIC_API_URL: http://localhost:4000/api/v1
         NEXT_PUBLIC_SITE_URL: http://localhost:3000
+    # backend servisiyle AYNI desen (bkz. dosya başındaki NOT) — frontend/.dockerignore
+    # `.env*`'i imaja HİÇ almaz (bkz. src/app/api/revalidate/route.ts'in REVALIDATE_SECRET'ı),
+    # bu yüzden runtime env'i env_file ile enjekte etmek gerekiyor.
+    env_file:
+      - ./frontend/.env.local
     environment:
       # Next.js'in SUNUCU TARAFI kodu (Server Component'ler, proxy.ts, lib/api/server-*.ts)
       # frontend container'ının İÇİNDE Node.js runtime'ında çalışır — yukarıdaki
