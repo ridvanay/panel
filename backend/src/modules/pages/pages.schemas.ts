@@ -460,6 +460,50 @@ const PricingTableBlockSchema = z.object({
   data: PricingTableBlockDataSchema,
 });
 
+/* ---------- §Faz 4 "Dinamik & CMS İçerikleri" — Son Blog Yazıları/İletişim Formu/Özel HTML ---------- */
+
+/** Frontend `types.ts::LATEST_POSTS_MAX_LIMIT` ile SAYISAL OLARAK BİREBİR AYNI. */
+const LATEST_POSTS_MAX_LIMIT = 12;
+
+/**
+ * Son Blog Yazıları — `categoryId`/`tagId` yalnızca ŞEKİL doğrulanır (var olan bir
+ * `BlogCategory`/`BlogTag` id'sine karşılık gelip gelmediği KONTROL EDİLMEZ, `featured-products`
+ * `categoryId`'siyle AYNI gerekçe): geçersiz/silinmiş bir id public tarafta filtre eşleşmesi
+ * bulamayıp SESSİZCE boş sonuç üretir (`site/blocks/latest-posts-block.tsx`), 422 ÜRETMEZ.
+ */
+const LatestPostsBlockDataSchema = z.object({
+  heading: z.string().max(200).optional(),
+  limit: z.number().int().min(1).max(LATEST_POSTS_MAX_LIMIT).default(3),
+  categoryId: z.string().min(1).max(100).optional(),
+  tagId: z.string().min(1).max(100).optional(),
+});
+const LatestPostsBlockSchema = z.object({ id: z.string().min(1), type: z.literal("latest-posts"), data: LatestPostsBlockDataSchema });
+
+/**
+ * İletişim / Form Bloğu — kendi alan şemasını TAŞIMAZ, site genelindeki TEK `ContactForm`
+ * singleton'ını gömer (bkz. frontend `types.ts::ContactFormBlock` yorumu). `data` yalnızca bir
+ * görünüm anahtarı taşır, KVKK/onay/alan tanımları `/admin/contact` ucundan yönetilir.
+ */
+const ContactFormBlockDataSchema = z.object({
+  showTitle: z.boolean().default(true),
+});
+const ContactFormBlockSchema = z.object({ id: z.string().min(1), type: z.literal("contact-form"), data: ContactFormBlockDataSchema });
+
+/** Frontend `types.ts::CUSTOM_HTML_MAX_LENGTH` ile SAYISAL OLARAK BİREBİR AYNI. */
+const CUSTOM_HTML_MAX_LENGTH = 20000;
+
+/**
+ * Özel HTML / Kod Bloğu — `html` BURADA yalnızca ŞEKİL/UZUNLUK doğrulanır (ham, sanitize
+ * EDİLMEMİŞ hâliyle). Gerçek güvenlik temizliği `modules/pages/lib/sanitize-blocks.ts` içinde,
+ * Zod parse'ından SONRA, DB'ye yazılmadan HEMEN ÖNCE `lib/html-sanitize.ts::sanitizeCustomHtmlBlock`
+ * ile yapılır (bkz. o dosyanın başlığı — Zod SEKME/UZUNLUK katmanı, sanitize-blocks İÇERİK
+ * GÜVENLİĞİ katmanı, ikisi BAĞIMSIZ).
+ */
+const CustomHtmlBlockDataSchema = z.object({
+  html: z.string().max(CUSTOM_HTML_MAX_LENGTH),
+});
+const CustomHtmlBlockSchema = z.object({ id: z.string().min(1), type: z.literal("custom-html"), data: CustomHtmlBlockDataSchema });
+
 /* ---------- özyinelemeli düğüm — §5.4 ---------- */
 
 function applySubSchema(schema: z.ZodTypeAny, node: unknown, ctx: z.RefinementCtx): unknown {
@@ -478,8 +522,9 @@ function applySubSchema(schema: z.ZodTypeAny, node: unknown, ctx: z.RefinementCt
  * `type` bilinmiyorsa blok SERBEST bırakılır (`z.record(z.unknown())`) — v2'deki
  * "minimum diff" kararı KORUNUR; yalnızca `container`/`columns`/`gallery`/`heading`/`button`/
  * `icon-box`/`divider`/`image`/`video`/`accordion`/`tabs`/`cta`/`counter`/`testimonial`/
- * `pricing-table` dar şemaya girer (diğerleri — `hero`/`text`/`featured-*` — ÖNCEDEN VAR OLAN
- * bir boşluk olarak doğrulanmadan geçer, bu turun kapsamı DEĞİL).
+ * `pricing-table`/`latest-posts`/`contact-form`/`custom-html` dar şemaya girer (diğerleri —
+ * `hero`/`text`/`featured-*` — ÖNCEDEN VAR OLAN bir boşluk olarak doğrulanmadan geçer, bu turun
+ * kapsamı DEĞİL).
  *
  * ÖZYİNELEME GÜVENLİĞİ: bu şema `ContainerNodeSchema` üzerinden kendini çağırır. Derinlik
  * sınırı BURADA DEĞİL, `PageBlockListSchema` içindeki İTERATİF ön-taramada uygulanır (bkz.
@@ -510,6 +555,9 @@ const PageNodeSchema: z.ZodType<unknown, z.ZodTypeDef, unknown> = z.record(z.unk
   if (type === "counter") return applySubSchema(CounterBlockSchema, node, ctx);
   if (type === "testimonial") return applySubSchema(TestimonialBlockSchema, node, ctx);
   if (type === "pricing-table") return applySubSchema(PricingTableBlockSchema, node, ctx);
+  if (type === "latest-posts") return applySubSchema(LatestPostsBlockSchema, node, ctx);
+  if (type === "contact-form") return applySubSchema(ContactFormBlockSchema, node, ctx);
+  if (type === "custom-html") return applySubSchema(CustomHtmlBlockSchema, node, ctx);
   return node;
 });
 

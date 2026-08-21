@@ -26,7 +26,10 @@ export type ContentBlockType =
   | "tabs"
   | "counter"
   | "testimonial"
-  | "pricing-table";
+  | "pricing-table"
+  | "latest-posts"
+  | "contact-form"
+  | "custom-html";
 
 /** Kanonik konteyner düğümü. */
 export type ContainerNodeType = "container";
@@ -123,6 +126,50 @@ export interface FeaturedProductsBlock extends BaseNode {
 export interface FeaturedPortfolioBlock extends BaseNode {
   type: "featured-portfolio";
   data: { heading?: string; limit: number; categoryId?: string };
+}
+
+/**
+ * §Faz 4 "Dinamik & CMS İçerikleri" (bu turda — yukarıdaki "§Faz 4 Site Şablonu" yorumuyla
+ * KARIŞTIRILMASIN, o daha ÖNCEKİ bir tur) — Son Blog Yazıları. `featured-products`/
+ * `featured-portfolio` ile AYNI desen: public tarafta blog modülü fetch edilip bellekte
+ * filtrelenir/sıralanır/kırpılır (bkz. `site/blocks/latest-posts-block.tsx`), boş sonuç
+ * SESSİZCE hiçbir şey render ETMEZ. Blog, `products`/`portfolio`'nun aksine kapatılabilir bir
+ * modül DEĞİLDİR (`backend/lib/module-registry.ts`) — bu yüzden "modül kapalı" uyarısı YOK.
+ */
+export const LATEST_POSTS_MAX_LIMIT = 12;
+
+export interface LatestPostsBlock extends BaseNode {
+  type: "latest-posts";
+  /** `categoryId`/`tagId` İKİSİ DE verilirse VE (AND) mantığıyla birlikte uygulanır. */
+  data: { heading?: string; limit: number; categoryId?: string; tagId?: string };
+}
+
+/**
+ * İletişim / Form Bloğu — kendi alan şemasını TAŞIMAZ (ad/e-posta/konu/mesaj gibi alanları
+ * BURADA yeniden TANIMLAMAZ). Site genelinde TEK bir `ContactForm` (singleton, KVKK onayı/
+ * honeypot/bildirim e-postası zaten `/admin/contact`'ta yönetiliyor — bkz.
+ * `components/site/contact-form.tsx::ContactFormClient`) bu blokla sayfanın İSTENEN noktasına
+ * GÖMÜLÜR. `showTitle` yalnızca formun kendi `title`/`description`'ını bu blokta göster/gizle —
+ * sayfanın zaten kendi başlığı varsa yinelenmeyi önler.
+ */
+export interface ContactFormBlock extends BaseNode {
+  type: "contact-form";
+  data: { showTitle: boolean };
+}
+
+/**
+ * Özel HTML / Kod Bloğu — harici widget/harita (`iframe`) gömme. `html` DB'ye yazılmadan ÖNCE
+ * backend'de `lib/html-sanitize.ts::sanitizeCustomHtmlBlock` ile temizlenir (`text` bloğunun
+ * `sanitizeRichHtml`'inden AYRI, DAHA GENİŞ bir izin listesi — yalnızca bu blok `iframe`e izin
+ * verir, `script`/`style`/`object`/`embed`/`form` HİÇBİR ZAMAN). Frontend `text` bloğuyla AYNI
+ * "yazma-anında temizlenir, okuma-anında OLDUĞU GİBİ `dangerouslySetInnerHTML`" deseni — burada
+ * İKİNCİ bir sanitizasyon YAPILMAZ (tek temizleme yolu, bkz. `html-sanitize.ts` başlığı).
+ */
+export const CUSTOM_HTML_MAX_LENGTH = 20000;
+
+export interface CustomHtmlBlock extends BaseNode {
+  type: "custom-html";
+  data: { html: string };
 }
 
 /** §Faz "Temel Elemanlar" — H1-H6, hizalama, opsiyonel alt çizgi vurgusu. */
@@ -304,7 +351,10 @@ export type ContentBlock =
   | TabsBlock
   | CounterBlock
   | TestimonialBlock
-  | PricingTableBlock;
+  | PricingTableBlock
+  | LatestPostsBlock
+  | ContactFormBlock
+  | CustomHtmlBlock;
 
 /** @deprecated v2 adı — yalnızca geçiş sırasında import kırılmasın diye. Yeni kodda `ContentBlock` kullanın. */
 export type LeafBlock = ContentBlock;

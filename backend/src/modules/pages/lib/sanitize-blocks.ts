@@ -1,16 +1,19 @@
-import { sanitizeRichHtml } from "../../../lib/html-sanitize";
+import { sanitizeRichHtml, sanitizeCustomHtmlBlock } from "../../../lib/html-sanitize";
 import { MAX_CONTAINER_DEPTH } from "../../../lib/page-blocks";
 
 /**
- * Sayfa builder'ının `blocks` dizisindeki HER `type: "text"` block'unun `data.html` alanını
- * paylaşılan allow-list sanitizer'ından (`lib/html-sanitize.ts`) geçirir — DB'ye yazılmadan ÖNCE
- * çağrılmalıdır (bkz. public sitede `frontend/src/components/site/blocks/text-block.tsx`'in bunu
+ * Sayfa builder'ının `blocks` dizisindeki HER `type: "text"` VE `type: "custom-html"` block'unun
+ * `data.html` alanını KENDİ paylaşılan allow-list sanitizer'ından (`lib/html-sanitize.ts` —
+ * sırasıyla `sanitizeRichHtml`/`sanitizeCustomHtmlBlock`, İKİSİ FARKLI izin listesi) geçirir —
+ * DB'ye yazılmadan ÖNCE çağrılmalıdır (bkz. public sitede
+ * `frontend/src/components/site/blocks/{text,custom-html}-block.tsx`'in bunu
  * `dangerouslySetInnerHTML` ile DOĞRUDAN render ettiği güvenlik bulgusu).
  *
- * Diğer block türleri (`hero`/`image`/`gallery`/`cta`) HTML içermez (bkz.
- * `frontend/src/lib/page-builder/types.ts`) — dokunulmadan olduğu gibi döner. Beklenmedik/bilinmeyen
- * bir şekil (örn. `data.html` string değilse) sessizce atlanır; zod şeması zaten çoğu blok tipini
- * serbest bırakıyor, bu yüzden burada savunmacı davranıyoruz.
+ * Diğer block türleri (`hero`/`image`/`gallery`/`cta`/`counter`/`testimonial`/`pricing-table`/
+ * `latest-posts`/`contact-form` vb.) HTML içermez (bkz. `frontend/src/lib/page-builder/types.ts`)
+ * — dokunulmadan olduğu gibi döner. Beklenmedik/bilinmeyen bir şekil (örn. `data.html` string
+ * değilse) sessizce atlanır; zod şeması zaten çoğu blok tipini serbest bırakıyor, bu yüzden
+ * burada savunmacı davranıyoruz.
  *
  * ---------------------------------------------------------------------------------------------
  * GÜVENLİK DÜZELTMESİ (§10.17.4, stored XSS) — 2026-08-17, backend-agent:
@@ -73,6 +76,18 @@ function sanitizeSinglePageBlock(block: unknown, depth: number): unknown {
     });
 
     return { ...b, data: { ...data, columns: sanitizedColumns } };
+  }
+
+  // §Faz 4 "Dinamik & CMS İçerikleri" — Özel HTML / Kod Bloğu. `text` bloğuyla AYNI çift-yollu
+  // (container/columns özyinelemesi + üst seviye `.map()`) risk BURADA DA geçerli — bu dal
+  // eksik bırakılırsa bir konteynerin/sütunun İÇİNE konan `custom-html` bloğu `sanitizeCustomHtmlBlock`'DAN
+  // GEÇMEDEN DB'ye yazılır ve public sayfada `dangerouslySetInnerHTML` ile OLDUĞU GİBİ basılırdı
+  // (§10.17.4'teki stored-XSS bulgusunun AYNISI, yeni blok tipiyle YENİDEN AÇILIRDI).
+  if (b.type === "custom-html") {
+    if (!b.data || typeof b.data !== "object") return block;
+    const data = b.data as Record<string, unknown>;
+    if (typeof data.html !== "string") return block;
+    return { ...b, data: { ...data, html: sanitizeCustomHtmlBlock(data.html) } };
   }
 
   if (b.type !== "text") return block;

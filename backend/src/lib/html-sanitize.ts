@@ -152,3 +152,60 @@ export function sanitizeEmailRichText(html: string | null | undefined): string {
   if (!html) return "";
   return sanitizeHtml(html, EMAIL_RICH_TEXT_SANITIZE_OPTIONS);
 }
+
+/**
+ * §Faz 4 "Dinamik & CMS İçerikleri" — Özel HTML / Kod Bloğu (`page-builder` `type: "custom-html"`,
+ * bkz. `modules/pages/lib/sanitize-blocks.ts`). `sanitizeRichHtml`'DEN BİLEREK AYRI, DAHA GENİŞ
+ * bir izin listesi: AYNI taban (varsayılan `sanitize-html` etiketleri + `img`) ÜZERİNE `iframe`
+ * eklenir — bu bloğun TEK var oluş gerekçesi harici widget/harita gömme (video-embed.ts'nin
+ * "yapılandırılmış embed" deseninin GENELLEŞTİRİLMİŞ hâli, bkz. o dosyanın başlığındaki öngörü).
+ *
+ * `script`/`style`/`object`/`embed`/`form`/`link`/`meta`/`base` HİÇBİR KOŞULDA izin listesine
+ * ALINMAZ — "sanitize edilmiş güvenli kod alanı" ifadesi bunları KAPSAMAZ, aksi hâlde bu bir Özel
+ * HTML bloğu değil KEYFİ KOD ÇALIŞTIRMA birimi olurdu (bkz. dosya başlığındaki EDITOR tehdit
+ * modeli — bu blok da AYNI riske tabidir: ele geçirilmiş/kötü niyetli bir EDITOR hesabı, arbitrary
+ * `<script>`e izin verilseydi public site ziyaretçilerine karşı sınırsız stored-XSS elde ederdi).
+ *
+ * `iframe.src` yalnızca http(s) (`allowedSchemesByTag`, `img` ile AYNI desen) — `javascript:`/
+ * `data:`/`vbscript:` ASLA. `sandbox` KULLANICI GİRDİSİNDEN NE OLURSA OLSUN sabit, güvenli bir
+ * değere ZORLANIR (`enforceIframeSandbox`, aşağıdaki `enforceNoopenerOnBlankTarget` ile AYNI
+ * "güvenlik kullanıcı niyetinin üzerindedir" deseni) — `allow-same-origin` KASITLI OLARAK
+ * DIŞLANIR (well-known `allow-scripts`+`allow-same-origin` birlikte kullanımı, gömülü içerik
+ * kendi site'ımızla AYNI origin'den servis edilirse sandbox'ı fiilen etkisizleştirebilir);
+ * `allow-top-navigation` YOK — gömülü içerik üst pencereyi YÖNLENDİREMEZ, yalnızca kendi
+ * alt-çerçevesi içinde çalışabilir.
+ */
+function enforceIframeSandbox(tagName: string, attribs: sanitizeHtml.Attributes): sanitizeHtml.Tag {
+  return {
+    tagName,
+    attribs: { ...attribs, sandbox: "allow-scripts allow-popups allow-popups-to-escape-sandbox allow-forms" },
+  };
+}
+
+const CUSTOM_HTML_SANITIZE_OPTIONS: sanitizeHtml.IOptions = {
+  allowedTags: [...sanitizeHtml.defaults.allowedTags, "img", "iframe"],
+  allowedAttributes: {
+    ...sanitizeHtml.defaults.allowedAttributes,
+    img: ["src", "srcset", "alt", "title", "width", "height", "loading"],
+    iframe: ["src", "width", "height", "title", "allow", "allowfullscreen", "loading", "referrerpolicy", "frameborder", "sandbox"],
+    "*": ["id", "class"],
+  },
+  // Varsayılan: http/https/ftp/mailto/tel — `javascript:`/`data:`/`vbscript:` bilerek İZİN LİSTESİNDE DEĞİL.
+  allowedSchemes: sanitizeHtml.defaults.allowedSchemes,
+  allowedSchemesByTag: { img: ["http", "https"], iframe: ["http", "https"] },
+  // script/style/object/embed/form zaten allowedTags'te yok → etiket VE içeriği atılır.
+  disallowedTagsMode: "discard",
+  transformTags: {
+    iframe: enforceIframeSandbox,
+  },
+};
+
+/**
+ * Özel HTML / Kod Bloğunun `data.html`'ini temizler. `null`/boş girdi olduğu gibi (boş string)
+ * döner. `modules/pages/lib/sanitize-blocks.ts::sanitizeSinglePageBlock`'un `custom-html` dalı
+ * dışında BAŞKA HİÇBİR YERDEN çağrılmamalı — tek temizleme yolu (bkz. dosya başlığı).
+ */
+export function sanitizeCustomHtmlBlock(html: string | null | undefined): string {
+  if (!html) return "";
+  return sanitizeHtml(html, CUSTOM_HTML_SANITIZE_OPTIONS);
+}

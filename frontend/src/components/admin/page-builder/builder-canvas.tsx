@@ -85,6 +85,9 @@ import { TabsBlockEditor } from "./blocks/tabs-block";
 import { CounterBlockEditor } from "./blocks/counter-block";
 import { TestimonialBlockEditor } from "./blocks/testimonial-block";
 import { PricingTableBlockEditor } from "./blocks/pricing-table-block";
+import { LatestPostsBlockEditor } from "./blocks/latest-posts-block";
+import { ContactFormBlockEditor } from "./blocks/contact-form-block";
+import { CustomHtmlBlockEditor } from "./blocks/custom-html-block";
 
 /**
  * §2.4 mimar dokümanı — ÖZYİNELEMELİ editör ağacı. v2'nin iki-seviyeli (kök + sütun) sabit
@@ -133,6 +136,12 @@ function ContentBlockBody({ block, onChange }: { block: ContentBlock; onChange: 
       return <TestimonialBlockEditor block={block} onChange={onChange} />;
     case "pricing-table":
       return <PricingTableBlockEditor block={block} onChange={onChange} />;
+    case "latest-posts":
+      return <LatestPostsBlockEditor block={block} onChange={onChange} />;
+    case "contact-form":
+      return <ContactFormBlockEditor block={block} onChange={onChange} />;
+    case "custom-html":
+      return <CustomHtmlBlockEditor block={block} onChange={onChange} />;
   }
 }
 

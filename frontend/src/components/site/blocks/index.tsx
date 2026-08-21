@@ -17,6 +17,9 @@ import { TabsBlockView } from "./tabs-block";
 import { CounterBlockView } from "./counter-block";
 import { TestimonialBlockView } from "./testimonial-block";
 import { PricingTableBlockView } from "./pricing-table-block";
+import { LatestPostsBlockView } from "./latest-posts-block";
+import { ContactFormBlockView } from "./contact-form-block";
+import { CustomHtmlBlockView } from "./custom-html-block";
 
 /**
  * §6.3 mimar dokümanı — "chrome" sözleşmesi. Kök dizideki yaprak bloklar `chrome: "page"`
@@ -70,6 +73,12 @@ export function BlockRenderer({ nodes, chrome }: { nodes: PageNode[]; chrome: Bl
             return <TestimonialBlockView key={node.id} block={node} chrome={chrome} />;
           case "pricing-table":
             return <PricingTableBlockView key={node.id} block={node} chrome={chrome} />;
+          case "latest-posts":
+            return <LatestPostsBlockView key={node.id} block={node} chrome={chrome} />;
+          case "contact-form":
+            return <ContactFormBlockView key={node.id} block={node} chrome={chrome} />;
+          case "custom-html":
+            return <CustomHtmlBlockView key={node.id} block={node} chrome={chrome} />;
           case "container":
             return <ContainerBlockView key={node.id} block={node} />;
           default:

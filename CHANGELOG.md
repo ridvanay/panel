@@ -30,6 +30,27 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
     `pricing.buttonHref`) `SafeHrefSchema` ile doğrulanır — konteyner arka plan URL'iyle AYNI
     protokol beyaz listesi (`javascript:`/`vbscript:`/`data:` YASAK).
 
+- **Page-builder — "Dinamik & CMS" blok kategorisi (Faz 4)**: Son Blog Yazıları, İletişim
+  Formu, Özel HTML / Kod.
+  - **Son Blog Yazıları** (`latest-posts`, en fazla 12 yazı): kategori/etiket filtresi (AND
+    mantığı), yazı sayısı, `publishedAt` DESC sıralama, mevcut `BlogCard` grid kart düzeni.
+  - **İletişim Formu** (`contact-form`): kendi alan şemasını TAŞIMAZ — site genelindeki TEK
+    `ContactForm` singleton'ını (`/admin/contact`'ta yönetilen ad/e-posta/mesaj alanları, KVKK
+    onayı, honeypot, bildirim e-postası) sayfanın istenen noktasına gömer; yalnızca formun
+    kendi başlığını gösterme/gizleme seçeneği taşır.
+  - **Özel HTML / Kod** (`custom-html`, en fazla 20.000 karakter): harici widget/harita
+    gömme için `iframe` içeren sanitize edilmiş bir kod alanı.
+    - **Güvenlik**: `lib/html-sanitize.ts::sanitizeCustomHtmlBlock` — `text` bloğunun
+      sanitizer'ından AYRI, DAHA GENİŞ bir izin listesi (`iframe` eklenir), ama
+      `script`/`style`/`object`/`embed`/`form` HİÇBİR KOŞULDA izin listesine ALINMAZ.
+      `iframe.src` yalnızca `http(s)` (`javascript:`/`data:` YASAK); `sandbox` özniteliği
+      kullanıcı girdisinden BAĞIMSIZ, sabit güvenli bir değere ZORLANIR (`allow-same-origin`/
+      `allow-top-navigation` HARİÇ tutulur). `modules/pages/lib/sanitize-blocks.ts`
+      (container/columns içi bloklar dahil, önceki bir stored-XSS bulgusunun tekrarlanmaması
+      için özyinelemeli) DB'ye yazılmadan HEMEN ÖNCE bunu uygular; frontend yalnızca yazma-
+      anında zaten temizlenmiş HTML'i render eder (`text` bloğuyla AYNI "tek temizleme yolu"
+      deseni).
+
 - **E-posta şablonu blok editörü** (`docs/architecture/ARCHITECTURE.md` §10.16). Admin artık
   ham HTML yazmadan, sürükle-bırak bloklarla (logo/başlık, metin, buton, görsel, ayırıcı,
   footer) e-posta şablonu tasarlayabiliyor. HTML **her zaman sunucuda** üretilir

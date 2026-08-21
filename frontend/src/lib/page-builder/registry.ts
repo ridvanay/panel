@@ -16,6 +16,9 @@ import {
   TrendingUp,
   Quote,
   Tag,
+  Newspaper,
+  Mail,
+  Code2,
   type LucideIcon,
 } from "lucide-react";
 import type { ContentBlock, ContentBlockType } from "./types";
@@ -56,6 +59,9 @@ export const blockRegistry: Record<PaletteBlockType, { label: string; category: 
   "pricing-table": { label: "Fiyatlandırma Tablosu", category: "marketing", icon: Tag },
   "featured-products": { label: "Öne Çıkan Ürünler", category: "dynamic", icon: ShoppingBag },
   "featured-portfolio": { label: "Öne Çıkan Projeler", category: "dynamic", icon: Briefcase },
+  "latest-posts": { label: "Son Blog Yazıları", category: "dynamic", icon: Newspaper },
+  "contact-form": { label: "İletişim Formu", category: "dynamic", icon: Mail },
+  "custom-html": { label: "Özel HTML / Kod", category: "dynamic", icon: Code2 },
 };
 
 export function newId(): string {
@@ -181,5 +187,11 @@ export function createBlock(type: PaletteBlockType): ContentBlock {
           ],
         },
       };
+    case "latest-posts":
+      return { id, type, data: { heading: "Son Yazılar", limit: 3 } };
+    case "contact-form":
+      return { id, type, data: { showTitle: true } };
+    case "custom-html":
+      return { id, type, data: { html: "" } };
   }
 }
