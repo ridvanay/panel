@@ -43,6 +43,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { blockRegistry, createBlock, type PaletteBlockType } from "@/lib/page-builder/registry";
+import { createContainerFromPreset, type LayoutPreset } from "@/lib/page-builder/presets";
 import {
   containerDepth,
   containerIdOf,
@@ -81,6 +82,7 @@ import {
 import { SegmentedToggle } from "./blocks/segmented-toggle";
 import { LayoutMenu } from "./layout-menu";
 import { AddContentMenu, EmptyContainerDropZone } from "./add-content-menu";
+import { BetweenContainersInserter, LayoutPresetPopoverGrid, NewContainerInserter } from "./container-inserter";
 import { HeroBlockEditor } from "./blocks/hero-block";
 import { TextBlockEditor } from "./blocks/text-block";
 import { ImageBlockEditor } from "./blocks/image-block";
@@ -298,6 +300,10 @@ interface Ctx {
   onSelectContainer: (id: string) => void;
   selectedContainerId: string | null;
   onUpdateReveal: (id: string, reveal: RevealEffectSettings | undefined) => void;
+  /** Dinamik konteyner ekleme (§10 tasarım notları — imza frontend-agent'a bırakıldı) — kök-sonu
+   *  kutusu, aralar-arası inserter VE kontrol barındaki "+Alta" ÜÇÜ DE bu TEK callback'i kullanır;
+   *  "+Alta" için `parentId` = mevcut konteynerin ebeveyni, `index` = kendi index'i + 1. */
+  onInsertContainer: (parentId: BuilderContainerId, index: number, preset: LayoutPreset) => void;
 }
 
 /** §5 ui-designer dokümanı — bir konteynerin İÇİNDEKİ yaprak bloklar için sessiz "bare" ipucu. */
@@ -441,6 +447,14 @@ function ContainerCard({
   // satırın İÇİNDEKİ bare bir sütun ise, mümkünse görece genişlik oranını gösterir (§3 isteği).
   const headerLabel = isRow ? `${container.children.length} Sütun` : ratioLabel ? `Konteyner: ${ratioLabel}` : "Konteyner";
   const childRatioLabel = isRow ? rowRatioLabel(container.children) : null;
+  // §4.4 tasarım notları — bu konteynerin `children` listesindeki between-inserter'lar KENDİ
+  // `atMaxChildren`/`atMaxDepth`'ini aynen devralır (kök için bu iki sınır UYGULANMAZ, §4.4).
+  const childInsertDisabled = atMaxChildren || atMaxDepth;
+  const childInsertDisabledReason = atMaxDepth
+    ? "Maksimum iç içe geçme derinliğine ulaşıldı (4)"
+    : atMaxChildren
+      ? `Bir konteynerde en fazla ${MAX_CHILDREN_PER_CONTAINER} öğe olabilir`
+      : undefined;
 
   return (
     <div
@@ -515,6 +529,22 @@ function ContainerCard({
           >
             <Copy />
           </Button>
+          <Popover>
+            <PopoverTrigger
+              render={
+                <Button type="button" variant="ghost" size="icon-sm" aria-label="Alta yeni konteyner ekle" title="Alta yeni konteyner ekle" />
+              }
+            >
+              <LayoutTemplate className="h-4 w-4" />
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-80">
+              <LayoutPresetPopoverGrid
+                disabled={atMaxDepth}
+                disabledReason="Maksimum iç içe geçme derinliğine ulaşıldı (4)"
+                onSelect={(preset) => ctx.onInsertContainer(parentId, index + 1, preset)}
+              />
+            </PopoverContent>
+          </Popover>
           {isBare && (
             <Button
               type="button"
@@ -558,9 +588,22 @@ function ContainerCard({
           <EmptyContainerDropZone containerId={containerId} atMax={atMaxChildren} onAdd={(type) => ctx.onAddChild(containerId, type)} />
         ) : (
           <div className="space-y-3">
-            <div className={cn("flex gap-3", isRow ? "flex-col md:flex-row" : "flex-col")}>
+            {/* §4.3 tasarım notları — between-inserter YALNIZCA dikey akışta (`!isRow`) gösterilir;
+                `direction: "row"` sütunları arasına sokulmaz (bkz. dosya başlığındaki gerekçe).
+                Dikey listede `gap-3` YERİNE her çocuğun kendi wrapper'ının İÇİNE (2.+ çocuktan
+                itibaren) gömülü `BetweenContainersInserter` (`h-4`) araya girer — kesikli çizgi
+                spacing'i açık şekilde taşır. */}
+            <div className={cn("flex", isRow ? "flex-col gap-3 md:flex-row" : "flex-col")}>
               {container.children.map((child, childIndex) => (
                 <div key={child.id} className={cn("min-w-0", isRow && "md:flex-1")}>
+                  {!isRow && childIndex > 0 && (
+                    <BetweenContainersInserter
+                      index={childIndex}
+                      disabled={childInsertDisabled}
+                      disabledReason={childInsertDisabledReason}
+                      onInsert={(insertIndex, preset) => ctx.onInsertContainer(containerId, insertIndex, preset)}
+                    />
+                  )}
                   <NodeCard
                     node={child}
                     parentId={containerId}
@@ -779,6 +822,23 @@ export function BuilderCanvas({
     onChange(duplicateNode(nodes, id));
   }
 
+  /**
+   * Dinamik konteyner ekleme (`.claude/design-notes-page-builder-dynamic-container-insertion.md`
+   * §10) — kök-sonu kutusu, aralar-arası inserter VE kontrol barındaki "+Alta" ÜÇÜ DE bu fonksiyonu
+   * çağırır. `addChild`/`wrap` ile AYNI guard deseni: toplam düğüm sınırı + (kök HARİÇ) kapasite/
+   * derinlik kontrolü — herhangi biri ihlal edilirse SESSİZCE no-op.
+   */
+  function insertContainer(parentId: BuilderContainerId, index: number, preset: LayoutPreset) {
+    if (countNodes(nodes) >= MAX_TOTAL_PAGE_NODES) return;
+    const newContainer = createContainerFromPreset(preset);
+    if (parentId !== "root") {
+      if (isContainerAtCapacity(nodes, parentId)) return;
+      const parentDepth = containerDepth(nodes, containerIdOf(parentId)!);
+      if (parentDepth + subtreeDepth(newContainer) > MAX_CONTAINER_DEPTH) return;
+    }
+    onChange(insertNode(nodes, parentId, index, newContainer));
+  }
+
   /** Giriş Animasyonu (Scroll Reveal) — §Yapılacaklar/5 orkestratör talimatı, mevcut
    *  `updateContent`/`wrap` fonksiyonlarının yanına eklenir. */
   function updateReveal(id: string, reveal: RevealEffectSettings | undefined) {
@@ -797,6 +857,7 @@ export function BuilderCanvas({
     onSelectContainer,
     selectedContainerId,
     onUpdateReveal: updateReveal,
+    onInsertContainer: insertContainer,
   };
 
   return (
@@ -811,23 +872,23 @@ export function BuilderCanvas({
       >
         <div className={canvasWidthClass(device)}>
           {nodes.length === 0 ? (
-            <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-border/60 bg-surface-muted/20 px-8 py-16 text-center">
-              <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                <LayoutTemplate className="h-7 w-7" aria-hidden />
-              </span>
-              <div className="space-y-1">
-                <h3 className="text-base font-semibold text-foreground">Sayfa Tasarımına Başlayın</h3>
-                <p className="max-w-sm text-sm text-foreground/60">
-                  Yukarıdaki ızgara düzenlerinden birini seçerek ilk bölümünüzü oluşturun.
-                </p>
-              </div>
-            </div>
+            <NewContainerInserter variant="empty" onInsert={(preset) => insertContainer("root", 0, preset)} />
           ) : (
             <SortableContext items={rootIds} strategy={verticalListSortingStrategy}>
-              <div className="space-y-4">
+              {/* §4.5 tasarım notları — `space-y-4` (16px) YERİNE explicit interleave: her
+                  `BetweenContainersInserter`in kendi `h-4`'ü (16px) eski ritmi BİREBİR karşılar. */}
+              <div className="flex flex-col">
                 {nodes.map((node, index) => (
-                  <NodeCard key={node.id} node={node} parentId="root" index={index} total={nodes.length} depth={1} ctx={ctx} />
+                  <div key={node.id}>
+                    {index > 0 && (
+                      <BetweenContainersInserter index={index} onInsert={(insertIndex, preset) => insertContainer("root", insertIndex, preset)} />
+                    )}
+                    <NodeCard node={node} parentId="root" index={index} total={nodes.length} depth={1} ctx={ctx} />
+                  </div>
                 ))}
+                <div className="mt-4">
+                  <NewContainerInserter variant="appended" onInsert={(preset) => insertContainer("root", nodes.length, preset)} />
+                </div>
               </div>
             </SortableContext>
           )}

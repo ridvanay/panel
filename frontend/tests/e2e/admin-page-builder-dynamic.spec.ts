@@ -66,6 +66,10 @@ test.describe("Dinamik & CMS blokları — admin editörü (kategori/menü kayd�
     const { pageId } = await createHostPage("category-wiring");
     try {
       await openEditorAndRemoveDefaultBlock(pageId);
+      // Sabit "DÜZEN" paneli kaldırıldı (`.claude/design-notes-page-builder-dynamic-container-
+      // insertion.md`) — sayfa TAMAMEN boşken tetikleyici artık boş-durum hero'sunun İÇİNDEKİ
+      // "Yeni Konteyner Ekle" düğmesi, popover'ı açar; karo tıklaması aynen kalır.
+      await page.getByRole("button", { name: "Yeni Konteyner Ekle" }).click();
       await page.getByRole("button", { name: "Tek Sütun" }).click();
       await page.getByRole("button", { name: "Konteynere blok ekle" }).click();
       await page.getByRole("tab", { name: "Dinamik & CMS" }).click();

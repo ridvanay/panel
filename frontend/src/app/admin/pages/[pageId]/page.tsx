@@ -8,21 +8,9 @@ import * as pagesApi from "@/lib/api/pages";
 import * as revisionsApi from "@/lib/api/revisions";
 import * as localesApi from "@/lib/api/locales";
 import type { ContentStatus, ContentTranslations, Locale as LocaleDto } from "@/lib/api/types";
-import { MAX_CONTAINER_DEPTH, MAX_TOTAL_PAGE_NODES, type BuilderContainerId, type ContainerNode, type PageNode } from "@/lib/page-builder/types";
+import type { ContainerNode, PageNode } from "@/lib/page-builder/types";
 import { normalizePageNodes } from "@/lib/page-builder/normalize";
-import {
-  containerDepth,
-  countNodes,
-  findNode,
-  getContainerChildren,
-  insertNode,
-  isContainerAtCapacity,
-  subtreeDepth,
-  toContainerId,
-  updateContainerSettings,
-  wrapBareRootBlocks,
-} from "@/lib/page-builder/containers";
-import { createContainerFromPreset, type LayoutPreset } from "@/lib/page-builder/presets";
+import { containerDepth, findNode, updateContainerSettings, wrapBareRootBlocks } from "@/lib/page-builder/containers";
 import { useAutosave } from "@/hooks/use-autosave";
 import { useAuth } from "@/context/auth-context";
 import { Card } from "@/components/ui/card";
@@ -39,7 +27,6 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { LocaleTabs } from "@/components/admin/locale-tabs";
 import { LocaleFallbackBadge, FALLBACK_FIELD_CLASSES } from "@/components/admin/locale-fallback-badge";
-import { BlockList } from "@/components/admin/page-builder/block-list";
 import { BuilderCanvas } from "@/components/admin/page-builder/builder-canvas";
 import { ContainerSettingsPanel } from "@/components/admin/page-builder/container-settings-panel";
 import { SeoPreview } from "@/components/admin/seo-preview";
@@ -172,26 +159,6 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
     ? ((findNode(activeNodes, selectedContainerId) as ContainerNode | null) ?? null)
     : null;
   const selectedContainerDepth = selectedContainer ? containerDepth(activeNodes, selectedContainer.id) : 0;
-  const targetLabel = selectedContainer ? `Konteyner (Seviye ${selectedContainerDepth})` : "Sayfa (kök)";
-  const layoutPickerDisabled = selectedContainer !== null && selectedContainerDepth >= MAX_CONTAINER_DEPTH;
-
-  /** Yeni bir düğümü (içerik bloğu veya Layout Picker ön ayarı) seçili konteynere (yoksa köke)
-   *  ekler — `MAX_TOTAL_PAGE_NODES`, `MAX_CHILDREN_PER_CONTAINER` (kök HARİÇ, bkz. types.ts) ve
-   *  `MAX_CONTAINER_DEPTH` sınırlarını burada, EKLEME ANINDA önleyici olarak uygular. */
-  function addNodeToTarget(node: PageNode) {
-    if (countNodes(activeNodes) >= MAX_TOTAL_PAGE_NODES) return;
-    const targetContainerId: BuilderContainerId = selectedContainer ? toContainerId(selectedContainer.id) : "root";
-    if (selectedContainer) {
-      if (isContainerAtCapacity(activeNodes, targetContainerId)) return;
-      if (selectedContainerDepth + subtreeDepth(node) > MAX_CONTAINER_DEPTH) return;
-    }
-    const children = getContainerChildren(activeNodes, targetContainerId);
-    setActiveNodes(insertNode(activeNodes, targetContainerId, children.length, node));
-  }
-
-  function addLayoutPreset(preset: LayoutPreset) {
-    addNodeToTarget(createContainerFromPreset(preset));
-  }
 
   const load = useCallback(async () => {
     try {
@@ -530,14 +497,6 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
               İçerik blokları {!isDefaultLocale && <span className="text-foreground/40">({locale.toUpperCase()})</span>}
             </h2>
             <p className="mt-1 admin-text-secondary">Sayfaya blok/düzen ekleyin ve sırasını düzenleyin.</p>
-            <div className="mt-4">
-              <BlockList
-                onAddLayout={addLayoutPreset}
-                targetLabel={targetLabel}
-                layoutDisabled={layoutPickerDisabled}
-                layoutDisabledReason={layoutPickerDisabled ? "Maksimum iç içe geçme derinliğine ulaşıldı (4)" : undefined}
-              />
-            </div>
             <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_320px]">
               <div className="min-w-0">
                 <BuilderCanvas

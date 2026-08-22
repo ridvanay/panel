@@ -111,6 +111,10 @@ async function openEditorAndRemoveDefaultBlock(pageId: string) {
  * bkz. `admin-page-builder-containers.spec.ts` senaryo 5'teki AYNI desen.
  */
 async function addGalleryBlock() {
+  // Sabit "DÜZEN" paneli kaldırıldı (`.claude/design-notes-page-builder-dynamic-container-
+  // insertion.md`) — bu yardımcı her zaman TAMAMEN boş bir sayfada çağrılır (bkz. çağıranlar),
+  // tetikleyici artık boş-durum hero'sunun İÇİNDEKİ "Yeni Konteyner Ekle" düğmesi.
+  await page.getByRole("button", { name: "Yeni Konteyner Ekle" }).click();
   await page.getByRole("button", { name: "Tek Sütun" }).click();
   await page.getByRole("button", { name: "Konteynere blok ekle" }).click();
   // "Galeri" "Medya & İnteraktif" kategorisinde, popover varsayılan olarak "Temel Elemanlar"

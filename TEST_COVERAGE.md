@@ -725,8 +725,8 @@ gerçek tarayıcıda; dosya: `frontend/tests/e2e/admin-page-builder-containers.s
 
 | # | Senaryo (mimarın bağlayıcı listesi) | Durum |
 |---|---|---|
-| 1 | Layout Picker'dan 50/50 ("İki Eşit Sütun") ekle → her sütuna blok koy (Görsel + Metin) → kaydet → public'te doğrula (sol/sağ konum + genişlik eşitliği) | ✅ Geçiyor |
-| 2 | 4 seviye iç içe konteyner kurulabilir (`settingsBtn` ile sırayla seç + "Tek Sütun" ekle), 5. seviyeyi denerken Layout Picker karoları TAMAMEN devre dışı (`disabled` + doğru `title`) — editör `MAX_CONTAINER_DEPTH=4`'ü ÖNLEYİCİ olarak uygular | ✅ Geçiyor |
+| 1 | Boş-durum hero'sundaki "Yeni Konteyner Ekle" popover'ından 50/50 ("İki Eşit Sütun") ekle → her sütuna blok koy (Görsel + Metin) → kaydet → public'te doğrula (sol/sağ konum + genişlik eşitliği) | ✅ Geçiyor |
+| 2 | 4 seviye iç içe konteyner kurulabilir, 5. seviyeyi denerken preset grid'i TAMAMEN devre dışı (`disabled` + doğru `title`) — editör `MAX_CONTAINER_DEPTH=4`'ü ÖNLEYİCİ olarak uygular | ✅ Geçiyor |
 | 3 | Konteyneri kendi çocuğunun (boş) içine sürüklemeyi dene → `isDescendant` guard reddeder, ağaç DEĞİŞMEDEN kalır, editör KİLİTLENMEZ/çökmez (sürüklemenin bizzat gerçekten TETİKLENDİĞİ `DragOverlay` görünürlüğüyle kanıtlanır — aksi halde "değişmedi" iddiası sahte-pozitif olurdu) | ✅ Geçiyor |
 | 4 | Legacy fixture — v1 (`ratio`) + v2 (`width`) şeklinde DB'ye ham yazılmış (`setRawPageBlocksDirectly`, bkz. aşağıdaki not) bir sayfa: dokunmadan public render → piksel oranı korunur (görsel bounding-box genişlik oranı, v1 ~2:1, v2 ~3:1, toleranslı); sonra editör ÜZERİNDEN kaydedilince API yanıtı TAMAMEN `type: "container"` (6/6 düğüm, `columns` sıfır) | ✅ Geçiyor |
 | 5 | Unwrap onay diyaloğu — "Vazgeç" → hiçbir şey değişmez (içerik + konteyner SAĞLAM); "Konteyneri Kaldır" (onay) → konteyner kalkar, içerik (görsel URL/alt) KAYBOLMADAN üst seviyeye düzleşir, kalıcılık sayfa yeniden açılınca da korunur | ✅ Geçiyor |
@@ -736,6 +736,39 @@ gerçek tarayıcıda; dosya: `frontend/tests/e2e/admin-page-builder-containers.s
 (regresyon kontrolü) 1 kez olmak üzere ardışık 4 koşumda tutarlı geçti (senaryo 3'ün dnd-kit
 `PointerSensor` tabanlı adımı dahil — bkz. aşağıdaki flaky-kaynağı notu, gerçek bir kararsızlık
 DEĞİL, bir defalık bir test-tasarımı hatasıydı ve düzeltildi).
+
+### GÜNCELLEME (bu turda) — sabit "DÜZEN" panelinin kaldırılıp dinamik/pozisyonel konteyner
+ekleme mekanizmasına (Elementor/Gutenberg tarzı) geçilmesi (frontend-agent, `.claude/design-notes-
+page-builder-dynamic-container-insertion.md`)
+
+`block-list.tsx`/`layout-picker.tsx` silindi; yerine `container-inserter.tsx`
+(`NewContainerInserter` — canvas sonu/boş-durum, `BetweenContainersInserter` — dikey listelerde
+kardeşler arası, `ContainerCard`'ın kontrol barındaki "+Alta") geldi. Preset karolarının
+(`LayoutPresetTile`) `aria-label` semantiği DEĞİŞMEDİ, yalnızca artık bir `Popover` içinde —
+bu yüzden `getByRole("button", { name: preset.label })` sorgusu tek başına hâlâ çalışıyor, ama
+ÖNCE ilgili tetikleyiciye (`"Yeni Konteyner Ekle"` / `"Aralarına yeni konteyner ekle"` / `"Alta
+yeni konteyner ekle"`) tıklanıp popover açılmalı. `"Ekleniyor: Konteyner (Seviye N)"` bağlam
+satırı TAMAMEN kaldırıldı (pozisyonel modelde artık gerek yok) — bu metne dayanan tüm
+assertion'lar kaldırıldı.
+
+**Bulunan işlevsel boşluk (frontend-agent'a rapor edildi, qa-agent DÜZELTMEDİ):** yeni modelde
+BOŞ bir konteynerin (`children.length === 0`) İÇİNE tek tıkla yeni bir KONTEYNER eklemenin yolu
+YOK — `EmptyContainerDropZone` yalnızca İÇERİK BLOĞU ekletir (`PaletteBlockType`, `"container"`
+İÇERMEZ), `BetweenContainersInserter` yalnızca 2+ çocuklu dikey listelerde belirir, kontrol
+barındaki "+Alta" her zaman KARDEŞ ekler (aynı seviye, hedef konteynerin kendisi değil onun
+ebeveyni). Eski modelde "bir konteyneri seç, panelden preset'e tıkla → seçili konteynerin İÇİNE
+eklenir" akışı bunu çözüyordu; bu akış TAMAMEN kaldırıldı. Sonuç: sıfırdan derinlik inşa etmek
+(örn. tek-sütun konteynerleri art arda iç içe geçirmek) artık YALNIZCA (a) çok-sütunlu bir
+preset'in kendiliğinden ürettiği hazır alt konteynerler ÜZERİNDEN, (b) mevcut bir konteynerin
+içine önce 2 içerik bloğu ekleyip between-inserter'ı kullanarak, veya (c) sürükle-bırakla mümkün
+— tek tıkla "boş konteynerin içine boş bir konteyner ekle" YOK. `admin-page-builder-
+containers.spec.ts` senaryo 2 (derinlik sınırı) ve senaryo 3 (`isDescendant` guard) bu yüzden
+1-3. seviyelerin iskeletini `patchPageBlocks` fixture'ıyla kurup yalnızca senaryonun asıl iddiasını
+(4. seviyenin UI'dan eklenebilirliği / sürükle-bırak reddi) gerçek tıklama/sürüklemeyle doğruluyor
+— bu bir test-tasarımı ödünü, uygulamadaki bir bug'ı MASKELEMİYOR (yalnızca test kurulumunu
+fixture'a taşıyor), ama gerçek bir kullanıcının da aynı sınırlamayla karşılaşacağı anlamına gelir;
+frontend-agent'ın bunu kasıtlı bir tasarım kararı olarak mı yoksa kapatılması gereken bir boşluk
+olarak mı değerlendireceğine karar vermesi gerekir.
 
 ### `frontend/tests/e2e/support/api.ts` genişletmesi (geriye dönük uyumlu, mevcut kullanımlar KIRILMADI)
 

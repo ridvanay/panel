@@ -3,7 +3,6 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { axe } from "jest-axe";
 import { PostEditor } from "@/components/admin/blog/post-editor";
 import { BuilderCanvas } from "@/components/admin/page-builder/builder-canvas";
-import { BlockList } from "@/components/admin/page-builder/block-list";
 import { createBlock } from "@/lib/page-builder/registry";
 import type { GalleryBlock, PageNode } from "@/lib/page-builder/types";
 import type { Media } from "@/lib/api/types";
@@ -40,14 +39,6 @@ describe("İçerik editörü — a11y", () => {
     // TipTap async mount olur; araç çubuğu düğmelerinden biri render olana kadar bekle.
     expect(await screen.findByLabelText("Kalın")).toBeInTheDocument();
 
-    const results = await axe(container, axeOptions);
-    expect(results).toHaveNoViolations();
-  });
-
-  it("BlockList (blok/düzen ekleme düğmeleri) kritik/ciddi a11y ihlali içermez", async () => {
-    const { container } = render(
-      <BlockList onAddLayout={() => {}} targetLabel="Sayfa (kök)" />
-    );
     const results = await axe(container, axeOptions);
     expect(results).toHaveNoViolations();
   });

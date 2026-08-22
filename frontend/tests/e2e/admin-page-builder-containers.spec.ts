@@ -89,6 +89,12 @@ test.describe("Konteyner mimarisi — admin editörü", () => {
     try {
       await openEditorAndRemoveDefaultBlock(pageId);
 
+      // Sabit "DÜZEN" paneli kaldırıldı (`.claude/design-notes-page-builder-dynamic-container-
+      // insertion.md`) — sayfa TAMAMEN boşken tetikleyici artık boş-durum hero'sunun İÇİNDEKİ
+      // "Yeni Konteyner Ekle" düğmesi (`NewContainerInserter variant="empty"`), popover'ı açar;
+      // karo tıklaması ("İki Eşit Sütun") aynen kalır — `LayoutPresetTile`'ın aria-label semantiği
+      // DEĞİŞMEDİ (§2.2 tasarım notları).
+      await page.getByRole("button", { name: "Yeni Konteyner Ekle" }).click();
       await page.getByRole("button", { name: "İki Eşit Sütun" }).click();
       await expect(page.getByText("2 Sütun", { exact: true })).toBeVisible();
       await expect(page.getByText("Buraya blok sürükleyin")).toHaveCount(2);
@@ -155,51 +161,90 @@ test.describe("Konteyner mimarisi — admin editörü", () => {
     const { pageId } = await createHostPage("depth-limit", "DRAFT");
 
     try {
-      await openEditorAndRemoveDefaultBlock(pageId);
+      // Dinamik/pozisyonel ekleme modelinde (`.claude/design-notes-page-builder-dynamic-container-
+      // insertion.md`) BOŞ bir konteynerin İÇİNE yeni bir KONTEYNER eklemenin (yalnızca içerik
+      // bloğu değil) tek-tık yolu YOK — `BetweenContainersInserter` YALNIZCA 2+ çocuklu dikey
+      // listelerde belirir (§4.3), `Alta yeni konteyner ekle` her zaman KARDEŞ ekler (aynı seviye,
+      // §5.2), boş bir konteynerin içine yalnızca İÇERİK BLOĞU eklenebilir (`EmptyContainerDropZone`,
+      // konteyner DEĞİL). Eski "seç + Tek Sütun'a tekrar tıkla" (seçili konteyneri örtük hedef alan)
+      // akışı KALDIRILDI — bu, sıfırdan derinlik kurmanın artık TEK tıkla mümkün olmadığı anlamına
+      // gelir; bu bulgu orkestratöre raporlandı (frontend-agent'ın değerlendirmesi gerekir).
+      //
+      // Bu senaryonun asıl iddiası "4 seviye kurulabilir, 5. ENGELLENİR" — 1-3. seviyeler bu yüzden
+      // `patchPageBlocks` fixture'ıyla (senaryo 6 ile AYNI desen, production verisi DEĞİL) önceden
+      // kurulur; yalnızca en derin konteynerin (C3) İKİ metin bloğu vardır (between-inserter için
+      // gereken minimum), test asıl odağı olan "4. seviye UI'DAN GERÇEK bir tıklamayla eklenir, 5.
+      // seviye ÖNLEYİCİ engellenir" iddiasını GERÇEK tıklamalarla doğrular.
+      const col = {
+        layout: "boxed" as const,
+        direction: "column" as const,
+        justifyContent: "start" as const,
+        alignItems: "stretch" as const,
+        gap: 16,
+        padding: { top: 0, right: 0, bottom: 0, left: 0 },
+        margin: { top: 0, right: 0, bottom: 0, left: 0 },
+        background: { type: "none" as const },
+      };
+      await patchPageBlocks(token, pageId, [
+        {
+          id: "qa-depth-c1",
+          type: "container",
+          settings: col,
+          children: [
+            {
+              id: "qa-depth-c2",
+              type: "container",
+              settings: col,
+              children: [
+                {
+                  id: "qa-depth-c3",
+                  type: "container",
+                  settings: col,
+                  children: [
+                    { id: "qa-depth-tb-a", type: "text", data: { html: "<p>QA derinlik A</p>" } },
+                    { id: "qa-depth-tb-b", type: "text", data: { html: "<p>QA derinlik B</p>" } },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ]);
 
-      // DİKKAT: `getByRole("button", { name: "Konteyner ayarları" })` (substring/varsayılan)
-      // KULLANILMAZ — `ContainerCard`'ın başlık şeridi kendisi de `role="button"` taşır (seçim
-      // için tıklanabilir alan, bkz. `builder-canvas.tsx`) ve aria adı yok olduğu için tarayıcı
-      // BÜTÜN iç metni/etiketleri (sürükle tutamacının "Sürükle: Konteyner"'ı, "Konteyner ayarları"
-      // dahil) birleştirip ad-içerikten hesaplıyor — yani substring eşleşmesi HEM dış seçim div'ini
-      // HEM iç "Ayarlar" ikon butonunu birlikte YAKALAR (qa-agent'ın bu testi yazarken bizzat
-      // bulduğu yanlış-pozitif — bkz. `[aria-label="..."]` CSS öz-nitelik seçicisine geçiş).
-      const settingsBtn = page.locator('button[aria-label="Konteyner ayarları"]');
+      await page.goto(`/admin/pages/${pageId}`);
+      await expect(page.getByRole("heading", { name: "İçerik blokları" })).toBeVisible({ timeout: 15_000 });
+      await page.waitForTimeout(500);
+
+      // C1/C2 birer çocuğa sahip (between-inserter 2+ çocuk gerektirir, §4.3) — sayfadaki TEK
+      // between-inserter, C3'ün iki metin bloğu arasındakidir; strict-mode/konum belirsizliği YOK.
+      const betweenInserter = page.getByRole("button", { name: "Aralarına yeni konteyner ekle" });
+      await expect(betweenInserter).toHaveCount(1);
+
+      // Seviye 4 — UI'DAN GERÇEK bir tıklamayla, C3'ün (Seviye 3) çocukları arasına eklenir.
+      await betweenInserter.click();
+      await page.getByRole("button", { name: "Tek Sütun" }).click();
+      await page.keyboard.press("Escape"); // popover seçimden sonra otomatik KAPANMAZ (Popover, DropdownMenu DEĞİL — §2.1)
+
+      await expect(page.locator('button[aria-label="Konteyner ayarları"]')).toHaveCount(4);
+      const level4Badge = page.getByText("Seviye 4 · Maks.", { exact: true });
+      await expect(level4Badge).toBeVisible();
+
+      // Seviye 4 konteynerinin KENDİ "+Alta" grid'i (kendisi zaten derinlik 4'te, §5.3 tasarım
+      // notları — "onSelect" preset'i uygularsa alt konteynerler derinlik 5 olurdu) TAMAMEN devre
+      // dışı — editör 5. seviyeyi backend'in 422'sine güvenmeden ÖNLEYİCİ olarak engeller. En yakın
+      // `.group` atası (`ContainerCard`'ın kök div'i, `builder-canvas.tsx`) XPath ile bulunur — bu,
+      // C1/C2/C3'ün KENDİ "+Alta" düğmeleriyle (hepsi aynı aria-label'ı taşır) karışmayı önler.
+      const level4Card = level4Badge.locator(
+        "xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' group ')][1]"
+      );
+      await level4Card.locator('button[aria-label="Alta yeni konteyner ekle"]').click();
       const singleColumnTile = page.getByRole("button", { name: "Tek Sütun" });
-
-      // Seviye 1 — kök dizine.
-      await singleColumnTile.click();
-      await expect(settingsBtn).toHaveCount(1);
-      await settingsBtn.nth(0).click();
-      await expect(page.getByText("Ekleniyor: Konteyner (Seviye 1)")).toBeVisible();
-
-      // Seviye 2 — Seviye 1 seçiliyken içine.
-      await singleColumnTile.click();
-      await expect(settingsBtn).toHaveCount(2);
-      await settingsBtn.nth(1).click();
-      await expect(page.getByText("Ekleniyor: Konteyner (Seviye 2)")).toBeVisible();
-
-      // Seviye 3.
-      await singleColumnTile.click();
-      await expect(settingsBtn).toHaveCount(3);
-      await settingsBtn.nth(2).click();
-      await expect(page.getByText("Ekleniyor: Konteyner (Seviye 3)")).toBeVisible();
-
-      // Seviye 4 — maksimum.
-      await singleColumnTile.click();
-      await expect(settingsBtn).toHaveCount(4);
-      await settingsBtn.nth(3).click();
-      await expect(page.getByText("Ekleniyor: Konteyner (Seviye 4)")).toBeVisible();
-
-      await expect(page.getByText("Seviye 4 · Maks.", { exact: true }).first()).toBeVisible();
-
-      // Layout Picker karoları Seviye 4 konteyneri seçiliyken TAMAMI devre dışı — editör
-      // 5. seviyeyi backend'in 422'sine güvenmeden ÖNLEYİCİ olarak engeller (ui-designer §3.1).
       await expect(singleColumnTile).toBeDisabled();
       await expect(singleColumnTile).toHaveAttribute("title", "Maksimum iç içe geçme derinliğine ulaşıldı (4)");
+      await page.keyboard.press("Escape");
 
       // Devre dışı karo tıklanamaz (native `disabled`) — ağaç DEĞİŞMEDEN kaldığını doğrula.
-      await expect(settingsBtn).toHaveCount(4);
+      await expect(page.locator('button[aria-label="Konteyner ayarları"]')).toHaveCount(4);
 
       // Editör kilitlenmedi — normal işlem (kaydetme) sorunsuz çalışır.
       await saveAndExpectSuccess();
@@ -261,26 +306,39 @@ test.describe("Konteyner mimarisi — sürükle-bırak koruması", () => {
     const { pageId } = await createHostPage("descendant-guard", "DRAFT");
 
     try {
-      await openEditorAndRemoveDefaultBlock(pageId);
+      // Dinamik/pozisyonel ekleme modelinde (`.claude/design-notes-page-builder-dynamic-container-
+      // insertion.md`) BOŞ bir konteynerin İÇİNE yeni bir KONTEYNER eklemenin tek-tık yolu YOK —
+      // eski "seç + Tek Sütun'a tekrar tıkla" (seçili konteyneri hedef alan) akışı KALDIRILDI (bu
+      // bulgu orkestratöre raporlandı). Bu senaryonun asıl odağı sürükle-bırak `isDescendant`
+      // guard'ı olduğu için C1/C2 iskeleti `patchPageBlocks` fixture'ıyla (senaryo 6 ile AYNI desen)
+      // kurulur — production verisi DEĞİL, bu testin KENDİ ürettiği fixture'ı.
+      const col = {
+        layout: "boxed" as const,
+        direction: "column" as const,
+        justifyContent: "start" as const,
+        alignItems: "stretch" as const,
+        gap: 16,
+        padding: { top: 0, right: 0, bottom: 0, left: 0 },
+        margin: { top: 0, right: 0, bottom: 0, left: 0 },
+        background: { type: "none" as const },
+      };
+      await patchPageBlocks(token, pageId, [
+        {
+          id: "qa-descendant-c1",
+          type: "container",
+          settings: col,
+          children: [{ id: "qa-descendant-c2", type: "container", settings: col, children: [] }],
+        },
+      ]);
 
-      // bkz. yukarıdaki senaryo 2'deki AYNI not — `[aria-label="..."]` öz-nitelik seçicisi kullanılır.
-      const settingsBtn = page.locator('button[aria-label="Konteyner ayarları"]');
-      const singleColumnTile = page.getByRole("button", { name: "Tek Sütun" });
+      await page.goto(`/admin/pages/${pageId}`);
+      await expect(page.getByRole("heading", { name: "İçerik blokları" })).toBeVisible({ timeout: 15_000 });
+      await page.waitForTimeout(500);
 
-      // C1 (Seviye 1, kök) → seç → içine C2 (Seviye 2, boş) ekle.
-      await singleColumnTile.click();
-      await expect(settingsBtn).toHaveCount(1);
-      await settingsBtn.nth(0).click();
-      await singleColumnTile.click();
-      await expect(settingsBtn).toHaveCount(2);
-
-      // `exact: true` ZORUNLU — "Ekleniyor: Konteyner (Seviye 1)" bağlam satırı da alt dize
-      // olarak "Seviye 1"İ İÇERİR, exact olmadan iki AYRI (iç içe olmayan) eşleşme = strict-mode
-      // ihlali. `.first()` de GEREKLİ — C1 seçiliyken sağ panel (`ContainerSettingsPanel`) KENDİ
-      // "Seviye 1" rozetini AYRICA render eder (canvas kartındaki rozetle birebir aynı metin/sınıf),
-      // yani iki adet "Seviye 1" span'ı BEKLENEN bir durumdur.
-      await expect(page.getByText("Seviye 1", { exact: true }).first()).toBeVisible();
-      await expect(page.getByText("Seviye 2", { exact: true }).first()).toBeVisible();
+      // Hiçbir konteyner SEÇİLMEDİĞİ için (bu testte `onSelectContainer` hiç tetiklenmez)
+      // `ContainerSettingsPanel`'in AYRI bir "Seviye N" rozeti render ETMEZ — tek eşleşme beklenir.
+      await expect(page.getByText("Seviye 1", { exact: true })).toBeVisible();
+      await expect(page.getByText("Seviye 2", { exact: true })).toBeVisible();
       await expect(page.getByText("Buraya blok sürükleyin")).toHaveCount(1); // yalnızca C2 boş
 
       const c1Handle = page.locator('button[aria-label="Sürükle: Konteyner"]').first(); // DOM sırası: C1 önce
@@ -294,13 +352,8 @@ test.describe("Konteyner mimarisi — sürükle-bırak koruması", () => {
       // Guard (`isDescendant`, C2 → C1'in torunu) reddettiği için ağaç DEĞİŞMEDEN kaldı: C1 hâlâ
       // C2'yi sarmalıyor, C2 hâlâ boş, hiçbir düğüm kaybolmadı/kopyalanmadı.
       await expect(page.locator('button[aria-label="Sürükle: Konteyner"]')).toHaveCount(2);
-      // `exact: true` ZORUNLU — "Ekleniyor: Konteyner (Seviye 1)" bağlam satırı da alt dize
-      // olarak "Seviye 1"İ İÇERİR, exact olmadan iki AYRI (iç içe olmayan) eşleşme = strict-mode
-      // ihlali. `.first()` de GEREKLİ — C1 seçiliyken sağ panel (`ContainerSettingsPanel`) KENDİ
-      // "Seviye 1" rozetini AYRICA render eder (canvas kartındaki rozetle birebir aynı metin/sınıf),
-      // yani iki adet "Seviye 1" span'ı BEKLENEN bir durumdur.
-      await expect(page.getByText("Seviye 1", { exact: true }).first()).toBeVisible();
-      await expect(page.getByText("Seviye 2", { exact: true }).first()).toBeVisible();
+      await expect(page.getByText("Seviye 1", { exact: true })).toBeVisible();
+      await expect(page.getByText("Seviye 2", { exact: true })).toBeVisible();
       await expect(page.getByText("Buraya blok sürükleyin")).toHaveCount(1);
 
       // Editör kilitlenmedi/çökmedi — reddedilen sürüklemeden SONRA normal işlem sorunsuz çalışır.
@@ -443,6 +496,10 @@ test.describe("Konteyner mimarisi — unwrap onayı", () => {
     try {
       await openEditorAndRemoveDefaultBlock(pageId);
 
+      // Sabit "DÜZEN" paneli kaldırıldı (`.claude/design-notes-page-builder-dynamic-container-
+      // insertion.md`) — sayfa TAMAMEN boşken tetikleyici artık boş-durum hero'sunun İÇİNDEKİ
+      // "Yeni Konteyner Ekle" düğmesi, popover'ı açar; karo tıklaması aynen kalır.
+      await page.getByRole("button", { name: "Yeni Konteyner Ekle" }).click();
       await page.getByRole("button", { name: "Tek Sütun" }).click();
       await expect(page.getByText("Buraya blok sürükleyin")).toBeVisible();
 
