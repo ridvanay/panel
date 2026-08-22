@@ -42,7 +42,22 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             <AdminSidebar />
             <SidebarInset>
               <AdminTopbar />
-              <main className="flex-1 overflow-hidden bg-surface-muted p-4 md:p-6">
+              {/* `overflow-hidden` (dikey eksende) `<main>`'i CSS spec'ine göre bir "scroll container"
+                  yapıyordu — bu box GERÇEKTE hiç kaydırılmıyor (gerçek scroll `window` seviyesinde
+                  oluyor), bu yüzden `position: sticky` alt elemanları (ör. page-builder üst araç
+                  çubuğu) en yakın ata scroll container'a (bu `<main>`'e) bağlanıp fiilen static gibi
+                  davranıyordu.
+                  DİKKAT — `overflow-x-hidden` TEK BAŞINA YETERSİZ: CSS Overflow spec'inin "visible/
+                  non-visible eşleşme" kuralı gereği (bir eksen 'visible' DEĞİLKEN diğeri 'visible'
+                  ise, 'visible' olanın KULLANILAN değeri 'auto'ya zorlanır), `overflow-x: hidden` +
+                  belirtilmemiş `overflow-y` (varsayılan 'visible') kombinasyonunda tarayıcı
+                  `overflow-y`'nin kullanılan değerini YİNE 'auto' yapıyor — yani `<main>` YİNE bir
+                  scroll container oluyor, sticky YİNE bozuk kalıyor (canlı tarayıcıda
+                  `getComputedStyle` ile doğrulandı: `overflow-x-hidden` → `overflowY: "auto"`).
+                  `overflow-x-clip` bu zorlamadan MUAF (kural yalnızca 'visible'ı hedefliyor, 'clip'i
+                  DEĞİL) — `overflow-y` gerçekten 'visible' kalıyor, `<main>` hiçbir eksende scroll
+                  container OLMUYOR, `sticky` doğru şekilde `window`'a bağlanıyor (doğrulandı). */}
+              <main className="flex-1 overflow-x-clip bg-surface-muted p-4 md:p-6">
                 <AnimatePresence mode="wait">
                   <motion.div
                     key={pathname}

@@ -164,6 +164,18 @@ test.describe("Editör araçları — Şekilli Bölüm Ayırıcıları", () => {
       await slantTile.click();
       await expect(slantTile).toHaveAttribute("aria-pressed", "true");
 
+      // qa-agent (bu turda düzeltildi) — `.claude/design-notes-page-builder-sticky-panel-and-
+      // toolbar.md` §1.1: `ContainerSettingsPanel` artık sayfa akışının bir PARÇASI değil, sağdan
+      // kayan bağımsız bir `Sheet`/`Dialog` — kendi tam-ekran `backdrop`'ı (`data-slot="sheet-
+      // overlay"`, `fixed inset-0 z-50`) VAR. Panel AÇIK bırakılıp doğrudan üstteki "Kaydet"
+      // butonuna tıklanmaya çalışılırsa (eski inline/grid ikinci-sütun yerleşiminde sorun
+      // OLMAYAN bir sıra) tıklama backdrop'a TAKILIR — Playwright "actionability" kontrolü
+      // elemanın başka bir şeyin ARKASINDA olmadığını bekleyip 60s'de timeout verir (bu turda
+      // GERÇEKTEN gözlemlendi). Panel kapatılmadan kaydetmeye çalışmak YENİ yerleşimde artık
+      // GEÇERSİZ bir kullanıcı akışı değil — kapatma HER ZAMAN gerekli, bu yüzden test de kapatır.
+      await page.locator('button[aria-label="Paneli kapat"]').click();
+      await expect(page.getByRole("heading", { name: "Konteyner Ayarları", level: 3 })).toHaveCount(0);
+
       await saveAndExpectSuccess();
 
       const publicContext = await page.context().browser()!.newContext();

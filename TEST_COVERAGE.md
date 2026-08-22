@@ -966,3 +966,119 @@ focus-visible` override'ı) davranış tam olarak dosya başlıklarındaki gerek
 **Sonuç: bu turun değişiklikleri (revalidation webhook + Metin bloğu) yüzünden kırılan TEK gerçek
 test `admin-page-builder-containers.spec.ts` idi ve düzeltildi; geri kalan 3 kırılma/flake bu
 depoda ÖNCEDEN belgelenmiş, ilgisiz, ortam kaynaklı sorunlardır.**
+
+## Page Builder — sağ sabit ayar çekmecesi (`Sheet`) + sticky üst araç çubuğu (bu turda eklendi)
+
+Kaynak: `.claude/design-notes-page-builder-sticky-panel-and-toolbar.md` (ui-designer, bağlayıcı) +
+frontend-agent'ın buna göre yaptığı iki değişiklik: (1) `ContainerSettingsPanel` artık sayfa
+akışının bir parçası (grid ikinci sütunu) DEĞİL, `frontend/src/components/ui/sheet.tsx` tabanlı
+sağdan kayan bağımsız bir çekmece; (2) üst başlık satırı `sticky top-14 z-20` bir araç çubuğuna
+dönüştü (`Sil` / `Taslak Olarak Kaydet` / `Önizle` / `Kaydet`), eski `sticky bottom-6` alt çubuk
+(kendi `Kaydet` butonuyla) TAMAMEN kaldırıldı, `Ctrl+S`/`Cmd+S` kısayolu eklendi. Yeni dosya:
+`frontend/tests/e2e/admin-page-builder-sticky-panel-toolbar.spec.ts`.
+
+| # | Senaryo | Durum |
+|---|---|---|
+| 1 | Scroll gerektiren derin bir konteynerde "Ayarlar" paneli sağdan **sabit** (`position: fixed`) bir çekmece olarak açılır; pencere en üste geri kaydırılsa bile panelin konumu/boyutu DEĞİŞMEZ (sayfa akışının PARÇASI değil); backdrop'a tıklamak da kapatır | ✅ Geçiyor |
+| 2 | Panelde `gap` alanını değiştirmek state'e yansır; panel **kendi X'iyle** kapatılıp aynı konteyner yeniden açılınca değer KAYBOLMAZ; farklı bir konteynere geçilince kendi (dokunulmamış) değeri gösterilir (SIZDIRMAZ); geri dönülünce ilk konteynerin değeri hâlâ orada; `Kaydet` sonrası API'de her ikisi de doğru (64/16) | ✅ Geçiyor |
+| 3 | Üst araç çubuğu sayfa aşağı kaydırılınca da görünür/tıklanabilir KALIR (`sticky top-14`) | ✅ Geçiyor (bkz. aşağıdaki düzeltme notu) |
+| 4 | `Ctrl+S` kısayolu `handleSave()`'i (üstteki `Kaydet` ile AYNI `PATCH` isteğini) tetikler | ✅ Geçiyor |
+| 5 | DRAFT sayfa — `Taslak Olarak Kaydet` disabled + doğru `title`; `Önizle` disabled gerçek bir **`<button>`** (`<a>` DEĞİL) + doğru `title` | ✅ Geçiyor |
+| 6 | PUBLISHED sayfa — `Taslak Olarak Kaydet` aktif; `Önizle` gerçek bir `<a>` linki, doğru `href`/`target="_blank"`/`rel="noopener noreferrer"` | ✅ Geçiyor |
+
+**6/6 senaryo yeşil.** Dosya tek başına 2 kez ardışık çalıştırıldı, tutarlı.
+
+### DÜZELTİLDİ (frontend-agent) — sticky üst araç çubuğu FİİLEN HİÇ YAPIŞMIYORDU
+
+Bu turda önce şu şekilde bulunmuştu (qa-agent, `test.fail()` ile işaretlemişti): `sticky top-14
+z-20` sınıflı üst araç çubuğu (Sil/Taslak Olarak Kaydet/Önizle/Kaydet) kullanıcı sayfayı ~200px'ten
+fazla aşağı kaydırdığı ANDA ekranın ÜSTÜNE tamamen kaybolup **bir daha geri gelmiyordu** — geri
+kalan tüm scroll boyunca "Kaydet" butonuna (fare ile) erişilemiyordu. Bağımsız bir Playwright
+betiğiyle doğrulanmıştı: `Kaydet` butonunun `getBoundingClientRect().y` değeri, `scrollY` ile TAM
+`192 - scrollY` ilişkisiyle değişiyordu — yani `position: sticky` hiçbir zaman "yapışmıyordu",
+pratikte `position: static` gibi davranıyordu (yapışma etkisi sıfır).
+
+**Kök neden** — `frontend/src/app/admin/layout.tsx` satır ~45:
+`<main className="flex-1 overflow-hidden bg-surface-muted p-4 md:p-6">`. `overflow-hidden`, CSS
+açısından bu `<main>`'i `position: sticky`'nin "en yakın kaydırma bağlamı" atası yapıyordu — ama bu
+`<main>` KENDİSİ hiçbir zaman scroll olmuyordu (gerçek scroll `window` seviyesinde gerçekleşiyor,
+design-notes §2.1'in doğru tespit ettiği gibi). Bu çelişki sticky hesaplamasını tamamen bozuyordu.
+
+**Düzeltme denemesi #1 (koordinatörün önerisi) — YETERSİZ çıktı, canlı tarayıcıda ölçülerek
+reddedildi:** `overflow-hidden` → `overflow-x-hidden`. İlk bakışta doğru gibi görünse de, CSS
+Overflow spec'inin "visible/non-visible eşleşme" kuralı gereği (bir eksen 'visible' DEĞİLKEN diğeri
+'visible' ise, 'visible' olanın KULLANILAN değeri 'auto'ya zorlanır) `overflow-x: hidden` +
+belirtilmemiş `overflow-y` (varsayılan 'visible') kombinasyonunda tarayıcı `overflow-y`'nin
+kullanılan değerini YİNE 'auto' yapıyor. Bu, canlı bir `next dev` sunucusuna karşı
+`getComputedStyle(main)` ile doğrudan ölçüldü: `overflow-x-hidden` uygulandığında
+`overflowY: "auto"` çıktı (`overflowX: "hidden"`) — yani `<main>` YİNE bir scroll container
+oluyordu ve senaryo 3 testi AYNI `-208` hatasıyla YİNE KIRMIZI kaldı (sonuç `192 - scrollY` ile
+birebir aynı, sıfır düzelme).
+
+**Düzeltme #2 (frontend-agent, DOĞRULANDI) — `overflow-hidden` → `overflow-x-clip`:** `'clip'`
+değeri CSS spec'indeki bu "visible→auto zorlama" kuralından MUAF (kural yalnızca 'visible'ı
+hedefliyor, 'clip'i DEĞİL). Aynı canlı ölçümle doğrulandı: `overflow-x-clip` uygulandığında
+`overflowX: "clip"`, `overflowY: "visible"` (gerçekten visible, auto'ya zorlanmıyor) — `<main>`
+artık hiçbir eksende bir scroll container OLUŞTURMUYOR, `sticky` gerçek `window` scroll bağlamına
+doğru şekilde bağlanıyor, senaryo 3 testi YEŞİLE döndü. (`'clip'`, `'hidden'`den farklı olarak
+programatik `scrollLeft`/scroll event'lerini de DEVRE DIŞI bırakır — bu `<main>` için zaten hiç
+kullanılmayan bir davranıştı, fonksiyonel bir kayıp yok.)
+
+Bu global bir layout dosyası olduğundan (tüm admin sayfalarını etkiliyor) `/admin`, `/admin/pages`,
+`/admin/appearance` sayfalarında geçici bir e2e betiğiyle (`document.documentElement.scrollWidth`
+vs `window.innerWidth`, doğrulama sonrası SİLİNDİ) `overflow-x-clip`'e geçişin hiçbir YENİ yatay
+scrollbar/layout kırılmasına yol açmadığı doğrulandı (sayfa geçiş animasyonu `framer-motion` `y`
+translate kullanıyor, `x` değil — beklenen şekilde sorun yok). Yan etki: `appearance/page.tsx`'teki
+kendi `lg:sticky lg:top-6`/`sticky bottom-6` blokları da AYNI kök nedenden ÖNCEDEN çalışmıyordu; bu
+düzeltmeyle birlikte onlar da artık doğru şekilde yapışıyor (regresyon değil, aynı kök nedenin başka
+bir belirtisinin de düzelmesi). Test dosyasındaki `test.fail()` işareti kaldırıldı, senaryo 3 normal
+geçen bir test oldu (yukarıdaki tablo, canlı `next dev` sunucusuna karşı izole doğrulandı: 2/2 geçti).
+
+**Not (frontend-agent, bu turun kapsamı DIŞINDA, yeni bir bug DEĞİL):** `/admin/appearance`'ta
+~26px'lik ÖNCEDEN VAR OLAN bir yatay taşma (`scrollWidth: 1306` vs `innerWidth: 1280`) tespit
+edildi — hem eski `overflow-hidden` hem yeni `overflow-x-clip` ile BİREBİR AYNI ölçüldü (ikisi
+arasında geçiş yapılıp tekrar ölçülerek doğrulandı), yani bu turun değişikliğinin NEDEN OLDUĞU bir
+regresyon DEĞİL. Kaynağı bu görevin kapsamında araştırılmadı (appearance/page.tsx'in kendi bir
+bileşeni olabilir) — ayrı bir frontend-agent/qa-agent görevi olarak not düşülüyor.
+
+### Mevcut testler — güncelleme taraması sonucu
+
+`grep -r "sticky bottom|ContainerSettingsPanel|Konteyner Ayarları" frontend/tests` ile
+`admin-page-builder-containers.spec.ts`/`admin-page-builder-editing-tools.spec.ts`/
+`admin-page-builder-gallery.spec.ts` tarandı:
+
+- **`admin-page-builder-containers.spec.ts`, `admin-page-builder-gallery.spec.ts`** — panel
+  içeriğiyle yalnızca `getByText`/`getByRole` ile etkileşiyorlardı (kabuğun `Sheet`e taşınmasından
+  ETKİLENMEYEN bir şekilde) ve zaten TEK üstteki `Kaydet` butonunu kullanıyorlardı — GÜNCELLEME
+  GEREKMEDİ. İzole yeniden koşuldu: containers 7/7 (1 önceden belgelenmiş `hover` flake'i retry'de
+  geçti), gallery 9/9.
+- **`admin-page-builder-editing-tools.spec.ts` — GERÇEK bir kırılma bulundu ve qa-agent tarafından
+  DÜZELTİLDİ (senaryo 2, "Ayırıcılar").** Test, `ContainerSettingsPanel`i açıp bir ayırıcı şablonu
+  seçtikten SONRA paneli KAPATMADAN doğrudan üstteki `Kaydet`e tıklamaya çalışıyordu — eski
+  inline/grid-ikinci-sütun yerleşiminde bu sorun DEĞİLDİ (panel sayfa akışının bir parçasıydı,
+  hiçbir şeyi ENGELLEMİYORDU). Yeni yerleşimde panel bağımsız bir `Sheet`/`Dialog` — kendi tam-ekran
+  `backdrop`'ı (`data-slot="sheet-overlay"`, `fixed inset-0 z-50`) VAR ve arkadaki `Kaydet` butonuna
+  tıklamayı FİİLEN ENGELLİYOR; Playwright'ın "actionability" kontrolü elemanın başka bir şeyin
+  ARKASINDA olmadığını bekleyip **60 saniyede timeout veriyordu** (bu turda gerçekten gözlemlendi,
+  ayrı bir tarayıcı çökmesi DEĞİL). Düzeltme: panel `Kaydet`ten ÖNCE kendi X'iyle (`aria-label="Paneli
+  kapat"`) kapatılıyor artık — bu, gerçek bir kullanıcının da izlemesi gereken YENİ zorunlu bir adım
+  (uygulama davranışı DOĞRU, kırılan yalnızca eski test varsayımıydı). Düzeltme sonrası dosya izole
+  2 kez 7/7 yeşil.
+
+### Bulunan diğer flake'ler — bu turdan BAĞIMSIZ, ÖNCEDEN belgelenmiş
+
+Kombine koşumlarda (birden fazla dosya art arda, `workers: 1`) hem `admin-page-builder-containers.
+spec.ts` hem `admin-page-builder-gallery.spec.ts` en az bir kez `support/admin-session.ts`
+başlığında ÖNCEDEN belgelenmiş `waitForURL(/\/dashboard/)` giriş zaman aşımına (refresh-token
+rotasyon yarışı, `retries: 1` ile kısmen telafi edilir) takıldı — izole tekrar koşulduklarında
+sorunsuz geçtiler (yukarıdaki madde). Bu turun değişiklikleriyle İLGİSİZ, yeni bir aksiyon
+GEREKMİYOR.
+
+### A11y notu
+
+Proje a11y otomasyonu için bilinçli olarak Playwright `@axe-core/playwright` YERİNE component-
+seviyesi `jest-axe` deseni kullanıyor (bkz. "§10.19 Dalga 3.3" bölümündeki AYNI gerekçe) — bu turda
+da yeni bir e2e-seviyesi axe bağımlılığı EKLENMEDİ. **Boşluk (frontend-agent'a önerilir):** yeni
+`Sheet` tabanlı `ContainerSettingsPanel` kabuğu (`SheetHeader sr-only` + panelin kendi görünür
+`<h3>` başlığı, base-ui `Dialog` odak tuzağı/`Escape` davranışı) için `frontend/tests/unit/a11y-
+content-editor.test.tsx`'e (veya yeni bir dosyaya) `jest-axe` ile özel bir senaryo eklenmedi.

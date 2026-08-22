@@ -741,8 +741,8 @@ export function ContainerSettingsPanel({
   const alignIcon = isRow ? ALIGN_ICON_ROW : ALIGN_ICON_COLUMN;
 
   return (
-    <div className="space-y-4 rounded-xl border border-border bg-card p-4 shadow-sm">
-      <div className="flex items-center justify-between gap-2 border-b border-border pb-3">
+    <div className="flex h-full flex-col bg-card">
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-4 py-3">
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="text-sm font-semibold text-foreground">Konteyner Ayarları</h3>
           <Badge tone="neutral" size="sm">
@@ -754,139 +754,141 @@ export function ContainerSettingsPanel({
         </Button>
       </div>
 
-      {tooManyForReadability && (
-        <span className="flex w-fit items-center gap-1 rounded-full bg-warning/10 px-2 py-0.5 text-[11px] text-warning">
-          <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden />
-          Bu satırda {container.children.length} öğe var — okunabilirlik azalabilir.
-        </span>
-      )}
-
-      <SettingsSection title="Düzen" first>
-        <div className="space-y-1.5">
-          <p className="text-xs font-medium text-foreground/70">Genişlik</p>
-          <SegmentedToggle
-            value={settings.layout}
-            options={[
-              { value: "boxed", label: "Kutulu", icon: Minimize2 },
-              { value: "full-width", label: "Tam Genişlik", icon: Maximize2 },
-            ]}
-            onChange={(layout) => onChange({ layout })}
-          />
-        </div>
-
-        {settings.layout === "boxed" && (
-          <div className="space-y-1.5">
-            <label htmlFor="container-width" className="block text-sm font-medium text-foreground">
-              Genişlik ({settings.customWidth ?? DEFAULT_CONTAINER_MAX_WIDTH}px)
-            </label>
-            <input
-              type="range"
-              id="container-width"
-              min={MIN_CONTAINER_MAX_WIDTH}
-              max={MAX_CONTAINER_MAX_WIDTH}
-              step={10}
-              value={settings.customWidth ?? DEFAULT_CONTAINER_MAX_WIDTH}
-              onChange={(e) => onChange({ customWidth: Number(e.target.value) })}
-              className="w-full accent-primary"
-            />
-            <p className="text-xs text-foreground/60">
-              Varsayılan: {DEFAULT_CONTAINER_MAX_WIDTH}px. {MIN_CONTAINER_MAX_WIDTH}–{MAX_CONTAINER_MAX_WIDTH}px arası.
-            </p>
-          </div>
+      <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
+        {tooManyForReadability && (
+          <span className="flex w-fit items-center gap-1 rounded-full bg-warning/10 px-2 py-0.5 text-[11px] text-warning">
+            <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden />
+            Bu satırda {container.children.length} öğe var — okunabilirlik azalabilir.
+          </span>
         )}
 
-        <MinHeightField value={settings.minHeight} onChange={(minHeight) => onChange({ minHeight })} />
+        <SettingsSection title="Düzen" first>
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium text-foreground/70">Genişlik</p>
+            <SegmentedToggle
+              value={settings.layout}
+              options={[
+                { value: "boxed", label: "Kutulu", icon: Minimize2 },
+                { value: "full-width", label: "Tam Genişlik", icon: Maximize2 },
+              ]}
+              onChange={(layout) => onChange({ layout })}
+            />
+          </div>
 
-        <div className="space-y-1.5">
-          <p className="text-xs font-medium text-foreground/70">Yön</p>
-          <SegmentedToggle
-            value={settings.direction}
-            options={[
-              { value: "column", label: "Dikey (Sütun)", icon: Rows2 },
-              { value: "row", label: "Yatay (Satır)", icon: Columns2 },
-            ]}
-            onChange={(direction) => onChange({ direction })}
-          />
-          <p className="text-xs text-foreground/50">Yatay konteynerler mobilde otomatik olarak alt alta dizilir.</p>
-        </div>
-
-        <div className="space-y-1.5">
-          <p className="text-xs font-medium text-foreground/70">Ana eksen hizalama</p>
-          <IconToggleGroup
-            value={settings.justifyContent}
-            options={JUSTIFY_OPTIONS}
-            iconFor={(v) => justifyIcon[v]}
-            labelFor={(v) => JUSTIFY_LABEL[v]}
-            onChange={(justifyContent) => onChange({ justifyContent })}
-          />
-          {/* design-notes-page-builder-container-alignment-fix.md §2 Karar B — koşullu bilgi
-              ipucu, "hiçbir şey olmadı" hissini bug sanmayı önler (nötr ton, uyarı DEĞİL). */}
-          {!isRow && !settings.minHeight && (
-            <p className="text-xs text-foreground/50">
-              Bu ayarın görünür olması için konteynere bir Minimum Yükseklik değeri verin; aksi halde konteyner içeriğe göre daralır ve dikey boşluk oluşmaz.
-            </p>
-          )}
-          {isRow && settings.justifyContent !== "start" && (
-            <p className="text-xs text-foreground/50">Öğeler satırı zaten dolduruyorsa bu ayarın görsel bir etkisi olmayabilir.</p>
-          )}
-        </div>
-
-        <div className="space-y-1.5">
-          <p className="text-xs font-medium text-foreground/70">Çapraz eksen hizalama</p>
-          <IconToggleGroup
-            value={settings.alignItems}
-            options={ALIGN_OPTIONS}
-            iconFor={(v) => alignIcon[v]}
-            labelFor={(v) => ALIGN_LABEL[v]}
-            onChange={(alignItems) => onChange({ alignItems })}
-          />
-        </div>
-
-        <Field id="container-gap" label="Öğeler arası boşluk">
-          {(inputProps) => (
-            <InputGroup>
-              <InputGroupInput
-                {...inputProps}
-                type="number"
-                min={0}
-                max={128}
-                value={settings.gap}
-                onChange={(e) => onChange({ gap: Number(e.target.value) })}
+          {settings.layout === "boxed" && (
+            <div className="space-y-1.5">
+              <label htmlFor="container-width" className="block text-sm font-medium text-foreground">
+                Genişlik ({settings.customWidth ?? DEFAULT_CONTAINER_MAX_WIDTH}px)
+              </label>
+              <input
+                type="range"
+                id="container-width"
+                min={MIN_CONTAINER_MAX_WIDTH}
+                max={MAX_CONTAINER_MAX_WIDTH}
+                step={10}
+                value={settings.customWidth ?? DEFAULT_CONTAINER_MAX_WIDTH}
+                onChange={(e) => onChange({ customWidth: Number(e.target.value) })}
+                className="w-full accent-primary"
               />
-              <InputGroupAddon align="inline-end">px</InputGroupAddon>
-            </InputGroup>
+              <p className="text-xs text-foreground/60">
+                Varsayılan: {DEFAULT_CONTAINER_MAX_WIDTH}px. {MIN_CONTAINER_MAX_WIDTH}–{MAX_CONTAINER_MAX_WIDTH}px arası.
+              </p>
+            </div>
           )}
-        </Field>
-      </SettingsSection>
 
-      <SettingsSection title="Boşluk">
-        <SpacingBoxControl label="İç Boşluk (Padding)" value={settings.padding} onChange={(padding) => onChange({ padding })} />
-        <div className="border-t border-border/40 pt-3">
-          <SpacingBoxControl
-            label="Dış Boşluk (Margin)"
-            value={settings.margin}
-            onChange={(margin) => onChange({ margin })}
-            disabledSides={settings.layout === "boxed" ? ["left", "right"] : undefined}
-            hintForDisabled="Kutulu düzende yatay boşluk otomatik ortalanır; Sol/Sağ değerleri bu modda pasif."
-          />
-        </div>
-      </SettingsSection>
+          <MinHeightField value={settings.minHeight} onChange={(minHeight) => onChange({ minHeight })} />
 
-      <SettingsSection title="Arka Plan">
-        <BackgroundControl value={settings.background} onChange={(background) => onChange({ background })} />
-      </SettingsSection>
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium text-foreground/70">Yön</p>
+            <SegmentedToggle
+              value={settings.direction}
+              options={[
+                { value: "column", label: "Dikey (Sütun)", icon: Rows2 },
+                { value: "row", label: "Yatay (Satır)", icon: Columns2 },
+              ]}
+              onChange={(direction) => onChange({ direction })}
+            />
+            <p className="text-xs text-foreground/50">Yatay konteynerler mobilde otomatik olarak alt alta dizilir.</p>
+          </div>
 
-      <SettingsSection title="Ayırıcılar">
-        <ShapeDividerField id="top-divider" label="Üst Ayırıcı" value={settings.topDivider} onChange={(topDivider) => onChange({ topDivider })} />
-        <div className="border-t border-border/40 pt-3">
-          <ShapeDividerField
-            id="bottom-divider"
-            label="Alt Ayırıcı"
-            value={settings.bottomDivider}
-            onChange={(bottomDivider) => onChange({ bottomDivider })}
-          />
-        </div>
-      </SettingsSection>
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium text-foreground/70">Ana eksen hizalama</p>
+            <IconToggleGroup
+              value={settings.justifyContent}
+              options={JUSTIFY_OPTIONS}
+              iconFor={(v) => justifyIcon[v]}
+              labelFor={(v) => JUSTIFY_LABEL[v]}
+              onChange={(justifyContent) => onChange({ justifyContent })}
+            />
+            {/* design-notes-page-builder-container-alignment-fix.md §2 Karar B — koşullu bilgi
+                ipucu, "hiçbir şey olmadı" hissini bug sanmayı önler (nötr ton, uyarı DEĞİL). */}
+            {!isRow && !settings.minHeight && (
+              <p className="text-xs text-foreground/50">
+                Bu ayarın görünür olması için konteynere bir Minimum Yükseklik değeri verin; aksi halde konteyner içeriğe göre daralır ve dikey boşluk oluşmaz.
+              </p>
+            )}
+            {isRow && settings.justifyContent !== "start" && (
+              <p className="text-xs text-foreground/50">Öğeler satırı zaten dolduruyorsa bu ayarın görsel bir etkisi olmayabilir.</p>
+            )}
+          </div>
+
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium text-foreground/70">Çapraz eksen hizalama</p>
+            <IconToggleGroup
+              value={settings.alignItems}
+              options={ALIGN_OPTIONS}
+              iconFor={(v) => alignIcon[v]}
+              labelFor={(v) => ALIGN_LABEL[v]}
+              onChange={(alignItems) => onChange({ alignItems })}
+            />
+          </div>
+
+          <Field id="container-gap" label="Öğeler arası boşluk">
+            {(inputProps) => (
+              <InputGroup>
+                <InputGroupInput
+                  {...inputProps}
+                  type="number"
+                  min={0}
+                  max={128}
+                  value={settings.gap}
+                  onChange={(e) => onChange({ gap: Number(e.target.value) })}
+                />
+                <InputGroupAddon align="inline-end">px</InputGroupAddon>
+              </InputGroup>
+            )}
+          </Field>
+        </SettingsSection>
+
+        <SettingsSection title="Boşluk">
+          <SpacingBoxControl label="İç Boşluk (Padding)" value={settings.padding} onChange={(padding) => onChange({ padding })} />
+          <div className="border-t border-border/40 pt-3">
+            <SpacingBoxControl
+              label="Dış Boşluk (Margin)"
+              value={settings.margin}
+              onChange={(margin) => onChange({ margin })}
+              disabledSides={settings.layout === "boxed" ? ["left", "right"] : undefined}
+              hintForDisabled="Kutulu düzende yatay boşluk otomatik ortalanır; Sol/Sağ değerleri bu modda pasif."
+            />
+          </div>
+        </SettingsSection>
+
+        <SettingsSection title="Arka Plan">
+          <BackgroundControl value={settings.background} onChange={(background) => onChange({ background })} />
+        </SettingsSection>
+
+        <SettingsSection title="Ayırıcılar">
+          <ShapeDividerField id="top-divider" label="Üst Ayırıcı" value={settings.topDivider} onChange={(topDivider) => onChange({ topDivider })} />
+          <div className="border-t border-border/40 pt-3">
+            <ShapeDividerField
+              id="bottom-divider"
+              label="Alt Ayırıcı"
+              value={settings.bottomDivider}
+              onChange={(bottomDivider) => onChange({ bottomDivider })}
+            />
+          </div>
+        </SettingsSection>
+      </div>
     </div>
   );
 }

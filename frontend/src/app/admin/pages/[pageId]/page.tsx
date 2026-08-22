@@ -14,7 +14,7 @@ import { containerDepth, findNode, updateContainerSettings, wrapBareRootBlocks }
 import { useAutosave } from "@/hooks/use-autosave";
 import { useAuth } from "@/context/auth-context";
 import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -25,6 +25,8 @@ import { Alert } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import { cn } from "@/lib/utils";
 import { LocaleTabs } from "@/components/admin/locale-tabs";
 import { LocaleFallbackBadge, FALLBACK_FIELD_CLASSES } from "@/components/admin/locale-fallback-badge";
 import { BuilderCanvas } from "@/components/admin/page-builder/builder-canvas";
@@ -40,7 +42,16 @@ import {
   localeStatusDetail,
   isFallbackField,
 } from "@/lib/i18n/translation-helpers";
-import { AlertCircle, AlertTriangle, ChevronLeft, FileText, Scale, Search, History as HistoryIcon } from "lucide-react";
+import {
+  AlertCircle,
+  AlertTriangle,
+  ChevronLeft,
+  ExternalLink,
+  FileText,
+  Scale,
+  Search,
+  History as HistoryIcon,
+} from "lucide-react";
 import { motion } from "framer-motion";
 
 /** SEO sekmesindeki alan-bazlı çeviri durumunun hesaplandığı alan kümesi (§2.3). `blocks` İçerik
@@ -301,6 +312,54 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
     }
   }
 
+  /** Üst araç çubuğundaki "Taslak Olarak Kaydet" — mevcut `updatePage` çağrısını `status: "DRAFT"`
+   *  ile tetikler, YENİ bir backend endpoint'i gerektirmez. `status === "DRAFT"` iken çağrılabilir
+   *  DEĞİL (buton disabled), bu yüzden burada ek koruma gerekmiyor. */
+  async function handleSaveAsDraft() {
+    setSaveError(null);
+    setSaving(true);
+    try {
+      await pagesApi.updatePage(pageId, {
+        title,
+        slug,
+        status: "DRAFT",
+        scheduledAt: null,
+        seoTitle: seoTitle || null,
+        seoDescription: seoDescription || null,
+        blocks: blocks as unknown as Record<string, unknown>[],
+        ogTitle: ogTitle || null,
+        ogImageUrl: ogImageUrl || null,
+        canonicalUrl: canonicalUrl || null,
+        noIndex,
+        ...(isAdmin ? { isLegalDocument } : {}),
+        translations,
+      });
+      toast.success("Sayfa taslak olarak kaydedildi.");
+      setSavedTranslations(translations);
+      await load();
+    } catch (err) {
+      const message = friendlyErrorMessage(err);
+      setSaveError(message);
+      toast.error(message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // Ctrl+S / Cmd+S → handleSave() — tarayıcının varsayılan "Sayfayı Kaydet" iletişim kutusunu
+  // engeller (preventDefault). Salt davranışsal bir kısayol, görsel bir karar içermez.
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        handleSave();
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [title, slug, status, scheduledAt, seoTitle, seoDescription, blocks, ogTitle, ogImageUrl, canonicalUrl, noIndex, isLegalDocument, translations]);
+
   async function handleDelete() {
     setDeleting(true);
     try {
@@ -335,7 +394,7 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
   }
 
   return (
-    <div className="space-y-6 pb-24">
+    <div className="space-y-6 pb-6">
       <div>
         <Link
           href="/admin/pages"
@@ -346,35 +405,102 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
         </Link>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <div>
-            <h1 className="admin-h1">Sayfa Düzenleyici</h1>
-            <p className="mt-1 admin-text-secondary">
-              {viewCount.toLocaleString("tr-TR")} görüntülenme
-              {status === "SCHEDULED" && !publishedAt && scheduledAt && (
-                <>
-                  {" "}
-                  · Zamanlandı:{" "}
-                  {new Date(scheduledAt).toLocaleString("tr-TR", {
-                    dateStyle: "medium",
-                    timeStyle: "short",
-                  })}
-                </>
-              )}
-            </p>
+      {/* design-notes-page-builder-sticky-panel-and-toolbar.md §2.1 — `top-14` (56px), üstteki
+          `AdminTopbar`in `sticky top-0 z-10` yüksekliğine göre hizalanmış, çakışmayı önler. */}
+      <div className="sticky top-14 z-20 border-b border-border bg-surface/95 py-3 backdrop-blur">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <div>
+              <h1 className="admin-h1">Sayfa Düzenleyici</h1>
+              <p className="mt-1 admin-text-secondary">
+                {viewCount.toLocaleString("tr-TR")} görüntülenme
+                {status === "SCHEDULED" && !publishedAt && scheduledAt && (
+                  <>
+                    {" "}
+                    · Zamanlandı:{" "}
+                    {new Date(scheduledAt).toLocaleString("tr-TR", {
+                      dateStyle: "medium",
+                      timeStyle: "short",
+                    })}
+                  </>
+                )}
+              </p>
+            </div>
+            {hasUnsavedChanges && (
+              <Badge tone="primary">
+                <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-primary" />
+                Kaydedilmemiş değişiklik
+              </Badge>
+            )}
           </div>
-          {hasUnsavedChanges && (
-            <Badge tone="primary">
-              <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-primary" />
-              Kaydedilmemiş değişiklik
-            </Badge>
-          )}
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="ghost" onClick={() => setDeleteDialogOpen(true)}>
-            Sil
-          </Button>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {saving && <span className="text-xs text-foreground/60">Kaydediliyor…</span>}
+            {/* Autosave göstergesi — "Kaydediliyor…" (elle kaydetme) metniyle KARIŞTIRILMASIN diye
+                ayrı, göze batmayan bir stil kullanılır; ikisi aynı anda görünebilir. */}
+            {autosaveStatus === "saving" && (
+              <span className="text-xs text-foreground/40">Taslak kaydediliyor…</span>
+            )}
+            {autosaveStatus === "saved" && autosaveSavedAt && (
+              <span className="text-xs text-foreground/40">
+                Taslak kaydedildi{" "}
+                {new Date(autosaveSavedAt).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}
+              </span>
+            )}
+            {autosaveStatus === "error" && (
+              <span title="Taslak otomatik kaydedilemedi. 'Kaydet' butonuyla elle kaydedebilirsiniz.">
+                <AlertTriangle
+                  className="h-3.5 w-3.5 text-warning/70"
+                  aria-label="Taslak otomatik kaydedilemedi. 'Kaydet' butonuyla elle kaydedebilirsiniz."
+                />
+              </span>
+            )}
+
+            <Button variant="ghost" onClick={() => setDeleteDialogOpen(true)}>
+              Sil
+            </Button>
+
+            <span className="h-5 w-px bg-border" aria-hidden />
+
+            <Button
+              variant="secondary"
+              disabled={status === "DRAFT"}
+              title={status === "DRAFT" ? "Sayfa zaten taslak" : undefined}
+              onClick={handleSaveAsDraft}
+            >
+              Taslak Olarak Kaydet
+            </Button>
+
+            {/* design-notes-page-builder-sticky-panel-and-toolbar.md §2.2 dip not + `appearance/page.tsx`
+                satır ~770 — Base UI dokümantasyonu `<Button render={<Link/>}>` desenini a11y açısından
+                yanlış kabul ediyor (linkin gerçek `link` rolünü ezer). Proje bu yüzden zaten `Link`i
+                doğrudan `buttonVariants()` ile stillendirme kararını almış durumda; aynı konvansiyon
+                burada da uygulanıyor (yalnızca AKTİF durumda — disabled halde gerçek bir link
+                olmadığından, o dal normal bir `Button` kalıyor). */}
+            {status === "PUBLISHED" ? (
+              <Link
+                href={`/${slug}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={cn(buttonVariants({ variant: "outline" }))}
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                Önizle
+              </Link>
+            ) : (
+              <Button variant="outline" disabled title="Önizlemek için sayfa önce yayınlanmalı">
+                <ExternalLink className="h-3.5 w-3.5" />
+                Önizle
+              </Button>
+            )}
+
+            <Button className="relative" loading={saving} onClick={handleSave}>
+              {hasUnsavedChanges && (
+                <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-primary" aria-hidden />
+              )}
+              Kaydet
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -497,27 +623,37 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
               İçerik blokları {!isDefaultLocale && <span className="text-foreground/40">({locale.toUpperCase()})</span>}
             </h2>
             <p className="mt-1 admin-text-secondary">Sayfaya blok/düzen ekleyin ve sırasını düzenleyin.</p>
-            <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_320px]">
-              <div className="min-w-0">
-                <BuilderCanvas
-                  key={`${isDefaultLocale ? "default" : locale}-${editorGeneration}`}
-                  nodes={activeNodes}
-                  onChange={setActiveNodes}
-                  selectedContainerId={selectedContainer?.id ?? null}
-                  onSelectContainer={setSelectedContainerId}
-                />
-              </div>
-              {selectedContainer && (
-                <div className="lg:sticky lg:top-6 lg:self-start">
+            <div className="mt-4">
+              <BuilderCanvas
+                key={`${isDefaultLocale ? "default" : locale}-${editorGeneration}`}
+                nodes={activeNodes}
+                onChange={setActiveNodes}
+                selectedContainerId={selectedContainer?.id ?? null}
+                onSelectContainer={setSelectedContainerId}
+              />
+            </div>
+
+            <Sheet
+              open={selectedContainer !== null}
+              onOpenChange={(open) => {
+                if (!open) setSelectedContainerId(null);
+              }}
+            >
+              <SheetContent side="right" showCloseButton={false} className="p-0 sm:max-w-[420px]">
+                <SheetHeader className="sr-only">
+                  <SheetTitle>Konteyner Ayarları</SheetTitle>
+                  <SheetDescription>Seçili konteynerin düzen, boşluk, arka plan ve ayırıcı ayarları.</SheetDescription>
+                </SheetHeader>
+                {selectedContainer && (
                   <ContainerSettingsPanel
                     container={selectedContainer}
                     depth={selectedContainerDepth}
                     onChange={(patch) => setActiveNodes(updateContainerSettings(activeNodes, selectedContainer.id, patch))}
                     onClose={() => setSelectedContainerId(null)}
                   />
-                </div>
-              )}
-            </div>
+                )}
+              </SheetContent>
+            </Sheet>
           </div>
         </TabsContent>
 
@@ -640,34 +776,6 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
           />
         </TabsContent>
       </Tabs>
-
-      <div className="sticky bottom-6 z-10 flex justify-end">
-        <div className="flex items-center gap-3 rounded-xl border border-border bg-surface/95 px-4 py-3 shadow-lg backdrop-blur">
-          {saving && <span className="text-xs text-foreground/60">Kaydediliyor…</span>}
-          {/* Autosave göstergesi — "Kaydediliyor…" (elle kaydetme) metniyle KARIŞTIRILMASIN diye
-              ayrı, göze batmayan bir stil kullanılır; ikisi aynı anda görünebilir. */}
-          {autosaveStatus === "saving" && (
-            <span className="text-xs text-foreground/40">Taslak kaydediliyor…</span>
-          )}
-          {autosaveStatus === "saved" && autosaveSavedAt && (
-            <span className="text-xs text-foreground/40">
-              Taslak kaydedildi{" "}
-              {new Date(autosaveSavedAt).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}
-            </span>
-          )}
-          {autosaveStatus === "error" && (
-            <span title="Taslak otomatik kaydedilemedi. 'Kaydet' butonuyla elle kaydedebilirsiniz.">
-              <AlertTriangle
-                className="h-3.5 w-3.5 text-warning/70"
-                aria-label="Taslak otomatik kaydedilemedi. 'Kaydet' butonuyla elle kaydedebilirsiniz."
-              />
-            </span>
-          )}
-          <Button loading={saving} onClick={handleSave}>
-            Kaydet
-          </Button>
-        </div>
-      </div>
 
       <ConfirmDialog
         open={deleteDialogOpen}
