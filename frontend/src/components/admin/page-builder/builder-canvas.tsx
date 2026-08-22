@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -19,31 +19,52 @@ import {
   ArrowDown,
   ArrowUp,
   ArrowUpToLine,
+  Ban,
   Columns2,
   Columns3,
   Columns4,
   Copy,
+  Ellipsis,
+  Eye,
+  FlipVertical2,
+  FolderPlus,
   GripVertical,
   LayoutTemplate,
   Monitor,
+  MoveDown,
+  MoveLeft,
+  MoveRight,
+  MoveUp,
   PanelTop,
+  RotateCcw,
   Rows2,
   Settings2,
   Smartphone,
   Sparkles,
   Tablet,
   Trash2,
+  Unlink2,
+  ZoomIn,
   type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { Field } from "@/components/ui/field";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Select } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { blockRegistry, createBlock, type PaletteBlockType } from "@/lib/page-builder/registry";
-import { createContainerFromPreset, type LayoutPreset } from "@/lib/page-builder/presets";
+import { LAYOUT_PRESETS, createContainerFromPreset, type LayoutPreset } from "@/lib/page-builder/presets";
 import {
   containerDepth,
   containerIdOf,
@@ -76,6 +97,7 @@ import {
   type DeviceMode,
   type PageNode,
   type RevealDelay,
+  type RevealDuration,
   type RevealEffect,
   type RevealEffectSettings,
 } from "@/lib/page-builder/types";
@@ -149,83 +171,225 @@ function canvasWidthClass(device: DeviceMode) {
   );
 }
 
-/** §3.5 — popover `Select`'teki UZUN etiketler. */
+/** §3.9 — karoların `title`/`aria-label`'ı için "uzun etiket" kaynağı (v1'in `Select` etiketleri
+ *  buradan devraldı; veri YAPISI aynı kalır, amacı değişir — bkz. §3.2 not). */
 const REVEAL_EFFECT_LABEL: Record<RevealEffect, string> = {
   none: "Yok",
   "fade-in": "Belirme (Fade In)",
   "fade-up": "Yukarı Belirme (Fade Up)",
-  "slide-left": "Soldan Kayma (Slide In Left)",
+  "fade-down": "Aşağı Belirme (Fade Down)",
+  "slide-left": "Soldan Kayma (Slide Left)",
+  "slide-right": "Sağdan Kayma (Slide Right)",
   "zoom-in": "Yakınlaşma (Zoom In)",
+  "flip-up": "Çevirerek Belirme (Flip Up)",
 };
 
-/** §3.4 — kart rozetindeki KISA etiketler (uzun `Select` etiketlerinden farklı, yer kazanmak için). */
+/** §3.9 — kart rozetindeki KISA etiketler (uzun etiketlerden farklı, yer kazanmak için). */
 const REVEAL_SHORT_LABEL: Record<Exclude<RevealEffect, "none">, string> = {
   "fade-in": "Belirme",
   "fade-up": "Yukarı Belirme",
+  "fade-down": "Aşağı Belirme",
   "slide-left": "Soldan Kayma",
+  "slide-right": "Sağdan Kayma",
   "zoom-in": "Yakınlaşma",
+  "flip-up": "Çevirerek Belirme",
 };
 
-const REVEAL_DELAY_OPTIONS: RevealDelay[] = [100, 200, 300, 400, 500];
-/** `blocks/segmented-toggle.tsx::SegmentedToggle`nin jeneriği `T extends string` — `RevealDelay`
- *  sayısal bir birleşim olduğu için değerler string'e çevrilip sınırda geri dönüştürülür. */
-const REVEAL_DELAY_TOGGLE_OPTIONS = REVEAL_DELAY_OPTIONS.map((ms) => ({ value: String(ms), label: String(ms) }));
+/** §3.2 — 4×2 ikon-karo grid'in veri kaynağı: satır 1 opacity ailesi, satır 2 yön/dönüşüm ailesi. */
+const REVEAL_TILES: { value: RevealEffect; Icon: LucideIcon; shortLabel: string }[] = [
+  { value: "none", Icon: Ban, shortLabel: "Yok" },
+  { value: "fade-in", Icon: Eye, shortLabel: "Belirme" },
+  { value: "fade-up", Icon: MoveUp, shortLabel: "Yukarı" },
+  { value: "fade-down", Icon: MoveDown, shortLabel: "Aşağı" },
+  { value: "slide-left", Icon: MoveLeft, shortLabel: "Soldan" },
+  { value: "slide-right", Icon: MoveRight, shortLabel: "Sağdan" },
+  { value: "zoom-in", Icon: ZoomIn, shortLabel: "Yakınlaş" },
+  { value: "flip-up", Icon: FlipVertical2, shortLabel: "Çevir" },
+];
+
+const REVEAL_DURATION_OPTIONS: { value: string; label: string }[] = [
+  { value: "300", label: "Hızlı" },
+  { value: "600", label: "Normal" },
+  { value: "1000", label: "Yavaş" },
+];
+
+const REVEAL_DELAY_TICKS = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000];
 
 /**
- * Giriş Animasyonu (Scroll Reveal) — §3.1-3.5 ui-designer dokümanı BİREBİR. Hem `ContentBlockCard`
- * hem `ContainerCard` tarafından paylaşılan tek bir kontrol; `Popover`/`Sparkles` tetikleyici,
- * içinde `Select` (efekt) + (yalnızca `effect !== "none"` iken) `SegmentedToggle` (gecikme).
+ * Giriş Animasyonu (Scroll Reveal) — v2 tasarım notları §3.1-3.6 BİREBİR. Hem `ContentBlockCard`
+ * hem `ContainerCard` tarafından paylaşılan tek bir kontrol; `size` prop'u ile tetikleyici düğmenin
+ * boyutu çağırana bırakılır (`ContentBlockCard` bu turun KAPSAMI DIŞINDA — kendi `icon-sm` boyutunu
+ * `size` verilmeyerek KORUR; `ContainerCard` §1.2 gereği `icon-xs` geçer).
  */
 function RevealEffectControl({
   value,
   onChange,
+  size = "icon-sm",
 }: {
   value: RevealEffectSettings | undefined;
   onChange: (next: RevealEffectSettings | undefined) => void;
+  size?: "icon-sm" | "icon-xs";
 }) {
-  const fieldId = useId();
   const effect = value?.effect ?? "none";
   const delayMs = value?.delayMs ?? 300;
+  const durationMs = value?.durationMs ?? 600;
+  const once = value?.once ?? true;
   const hasEffect = effect !== "none";
 
+  // §3.6 — `previewKey` parametre değiştikçe OTOMATİK artar (React "render sırasında state
+  // ayarlama" deseni — bkz. `import-preview-panel.tsx`teki AYNI gerekçe — bir `useEffect` İÇİNDE
+  // senkron `setState` ÇAĞRILMAZ, `react-hooks/set-state-in-effect` kuralıyla UYUMLU); "Yeniden
+  // Oynat" tıklanınca da AYNI sayaç `replay()` ile artırılır. `previewKey` değiştiğinde altındaki
+  // `RevealPreviewBox` `key`iyle yeniden MOUNT olur, kendi `visible` state'i baştan başlar.
+  const [previewParams, setPreviewParams] = useState({ effect, delayMs, durationMs });
+  const [previewKey, setPreviewKey] = useState(0);
+  if (previewParams.effect !== effect || previewParams.delayMs !== delayMs || previewParams.durationMs !== durationMs) {
+    setPreviewParams({ effect, delayMs, durationMs });
+    setPreviewKey((k) => k + 1);
+  }
+
+  function replay() {
+    setPreviewKey((k) => k + 1);
+  }
+
   function setEffect(next: RevealEffect) {
-    onChange(next === "none" ? undefined : { effect: next, delayMs });
+    onChange(next === "none" ? undefined : { effect: next, delayMs, durationMs, once });
   }
 
   function setDelay(next: RevealDelay) {
     if (effect === "none") return;
-    onChange({ effect, delayMs: next });
+    onChange({ effect, delayMs: next, durationMs, once });
+  }
+
+  function setDuration(next: RevealDuration) {
+    if (effect === "none") return;
+    onChange({ effect, delayMs, durationMs: next, once });
+  }
+
+  function setOnce(next: boolean) {
+    if (effect === "none") return;
+    onChange({ effect, delayMs, durationMs, once: next });
   }
 
   return (
     <Popover>
       <PopoverTrigger
-        render={
-          <Button type="button" variant={hasEffect ? "secondary" : "ghost"} size="icon-sm" aria-label="Görünüm Efekti" title="Görünüm Efekti" />
-        }
+        render={<Button type="button" variant={hasEffect ? "secondary" : "ghost"} size={size} aria-label="Görünüm Efekti" title="Görünüm Efekti" />}
       >
-        <Sparkles className="h-4 w-4" />
+        <Sparkles />
       </PopoverTrigger>
-      <PopoverContent className="w-64 space-y-3">
-        <Field id={fieldId} label="Görünüm Efekti">
-          {(p) => (
-            <Select {...p} value={effect} onChange={(e) => setEffect(e.target.value as RevealEffect)}>
-              {(Object.keys(REVEAL_EFFECT_LABEL) as RevealEffect[]).map((key) => (
-                <option key={key} value={key}>
-                  {REVEAL_EFFECT_LABEL[key]}
-                </option>
-              ))}
-            </Select>
-          )}
-        </Field>
-        {effect !== "none" && (
-          <div className="space-y-1.5">
-            <p className="text-xs font-medium text-foreground/70">Gecikme</p>
-            <SegmentedToggle value={String(delayMs)} options={REVEAL_DELAY_TOGGLE_OPTIONS} onChange={(v) => setDelay(Number(v) as RevealDelay)} />
+      <PopoverContent className="w-80 space-y-3">
+        <div className="space-y-1.5">
+          <p className="text-xs font-medium text-foreground/70">Görünüm Efekti</p>
+          <div className="grid grid-cols-4 gap-1.5">
+            {REVEAL_TILES.map(({ value: tileValue, Icon, shortLabel }) => (
+              <button
+                key={tileValue}
+                type="button"
+                aria-label={REVEAL_EFFECT_LABEL[tileValue]}
+                title={REVEAL_EFFECT_LABEL[tileValue]}
+                aria-pressed={effect === tileValue}
+                data-active={effect === tileValue}
+                onClick={() => setEffect(tileValue)}
+                className="group flex flex-col items-center gap-1.5 rounded-lg border border-border/60 bg-surface-muted p-2 transition-colors hover:border-primary/50 hover:bg-primary/5 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 outline-none data-[active=true]:border-primary data-[active=true]:bg-primary/10"
+              >
+                <Icon className="h-4 w-4 text-foreground/60 group-data-[active=true]:text-primary" />
+                <span className="text-[11px] font-medium text-foreground/70">{shortLabel}</span>
+              </button>
+            ))}
           </div>
+        </div>
+
+        {hasEffect && (
+          <>
+            <div className="space-y-1.5">
+              <label htmlFor="reveal-delay" className="block text-xs font-medium text-foreground/70">
+                Gecikme ({delayMs}ms)
+              </label>
+              <input
+                type="range"
+                id="reveal-delay"
+                min={0}
+                max={1000}
+                step={100}
+                list="reveal-delay-ticks"
+                value={delayMs}
+                onChange={(e) => setDelay(Number(e.target.value) as RevealDelay)}
+                className="w-full accent-primary"
+              />
+              <datalist id="reveal-delay-ticks">
+                {REVEAL_DELAY_TICKS.map((ms) => (
+                  <option key={ms} value={ms} />
+                ))}
+              </datalist>
+            </div>
+
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium text-foreground/70">Süre</p>
+              <SegmentedToggle value={String(durationMs)} options={REVEAL_DURATION_OPTIONS} onChange={(v) => setDuration(Number(v) as RevealDuration)} />
+            </div>
+
+            <div className="flex items-center justify-between">
+              <label htmlFor="reveal-repeat" className="text-xs font-medium text-foreground/70">
+                Her görünüşte tekrarla
+              </label>
+              <Switch id="reveal-repeat" checked={!once} onCheckedChange={(checked) => setOnce(!checked)} />
+            </div>
+          </>
         )}
+
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-medium text-foreground/70">Önizleme</p>
+            <Button type="button" variant="ghost" size="icon-xs" aria-label="Yeniden oynat" title="Yeniden oynat" onClick={replay}>
+              <RotateCcw className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+          <div className="flex h-16 items-center justify-center rounded-md border border-dashed border-border/60 bg-surface-muted/30">
+            {hasEffect ? (
+              <RevealPreviewBox key={previewKey} effect={effect} delayMs={delayMs} durationMs={durationMs} />
+            ) : (
+              <p className="text-xs text-foreground/40">Önizlenecek efekt yok</p>
+            )}
+          </div>
+        </div>
       </PopoverContent>
     </Popover>
+  );
+}
+
+/**
+ * §3.6/§4 v2 tasarım notları — `RevealEffectControl`in canlı önizleme kutusu, KENDİ yerel
+ * `visible` state'i taşıyan ayrı bir bileşen (`key={previewKey}` her param değişiminde/"Yeniden
+ * Oynat"ta bu bileşeni TAM YENİDEN MOUNT eder — `visible` state'i baştan `false` başlar, mount
+ * effect'i BİR SEFERLİK, boş bağımlılık dizisiyle çalışır; `setState` çağrısı `requestAnimationFrame`
+ * CALLBACK'İ İÇİNDE, effect gövdesinde SENKRON DEĞİL — `react-hooks/set-state-in-effect` kuralıyla
+ * uyumlu). Scroll'dan BAĞIMSIZ — `site/blocks/scroll-reveal.tsx`teki gerçek `IntersectionObserver`
+ * mantığına PARALEL ama admin popover'ının kendi yerel mini-tetikleyicisi.
+ */
+function RevealPreviewBox({
+  effect,
+  delayMs,
+  durationMs,
+}: {
+  effect: Exclude<RevealEffect, "none">;
+  delayMs: RevealDelay;
+  durationMs: RevealDuration;
+}) {
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => setVisible(true));
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
+  return (
+    <div
+      className={cn(`pb-reveal-${effect}`, visible && "pb-revealed")}
+      style={{ transitionDelay: `${delayMs}ms`, transitionDuration: `${durationMs}ms` }}
+    >
+      <div className="h-8 w-20 rounded-md border border-primary/40 bg-primary/20" />
+    </div>
   );
 }
 
@@ -412,6 +576,110 @@ function rowRatioLabel(children: PageNode[]): string | null {
   return (weights as number[]).map((w) => Math.round((w / total) * 100)).join(" / ");
 }
 
+/**
+ * §2.2b v2 tasarım notları — kontrol çubuğunun 3. öğesi: "bu konteynerin İÇİNE" yeni bir alt
+ * konteyner ekler (`FolderPlus`, `Popover` — `DropdownMenu` DEĞİL, tekil bir buton). Yalnızca
+ * Tekli Konteyner / 2'li Sütun preset'leri (`LayoutPresetPopoverGrid`in `presets`/`columns`
+ * genişletmesi, bkz. `container-inserter.tsx`).
+ */
+function AddChildContainerControl({
+  disabled,
+  disabledReason,
+  onInsertContainer,
+}: {
+  disabled: boolean;
+  disabledReason?: string;
+  onInsertContainer: (preset: LayoutPreset) => void;
+}) {
+  return (
+    <Popover>
+      <PopoverTrigger render={<Button type="button" variant="ghost" size="icon-xs" aria-label="İç konteyner ekle" title="İç konteyner ekle" />}>
+        <FolderPlus className="h-3.5 w-3.5" />
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-56">
+        <LayoutPresetPopoverGrid
+          presets={LAYOUT_PRESETS.filter((p) => p.id === "100" || p.id === "50-50")}
+          columns={2}
+          disabled={disabled}
+          disabledReason={disabledReason}
+          onSelect={onInsertContainer}
+        />
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/**
+ * §1.3 v2 tasarım notları — "Daha Fazla" (`Ellipsis`) menüsü: Çoğalt/Yukarı/Aşağı, ardından
+ * "Alta Konteyner Ekle" (`DropdownMenuSub`, sibling-insert — mevcut `ctx.onInsertContainer(parentId,
+ * index+1, preset)` davranışı DEĞİŞMEDEN buraya TAŞINDI), yalnızca `isBare` ise "Üst Konteynere
+ * Taşı", en altta "Konteyneri Kaldır" (`Unlink2` — eski `LayoutMenu mode="unwrap"`in yerini alır).
+ */
+function ContainerMoreMenu({
+  container,
+  parentId,
+  index,
+  total,
+  isBare,
+  atMaxDepth,
+  ctx,
+}: {
+  container: ContainerNode;
+  parentId: BuilderContainerId;
+  index: number;
+  total: number;
+  isBare: boolean;
+  atMaxDepth: boolean;
+  ctx: Ctx;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger render={<Button type="button" variant="ghost" size="icon-xs" aria-label="Daha fazla işlem" title="Daha fazla işlem" />}>
+        <Ellipsis />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuItem onClick={() => ctx.onDuplicate(container.id)}>
+          <Copy className="h-4 w-4 text-foreground/50" />
+          Konteyneri Çoğalt
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => ctx.onMove(container.id, -1)} disabled={index === 0}>
+          <ArrowUp className="h-4 w-4 text-foreground/50" />
+          Yukarı Taşı
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => ctx.onMove(container.id, 1)} disabled={index === total - 1}>
+          <ArrowDown className="h-4 w-4 text-foreground/50" />
+          Aşağı Taşı
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger>
+            <LayoutTemplate className="h-4 w-4 text-foreground/50" />
+            Alta Konteyner Ekle
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent className="w-80">
+            <LayoutPresetPopoverGrid
+              disabled={atMaxDepth}
+              disabledReason="Maksimum iç içe geçme derinliğine ulaşıldı (4)"
+              onSelect={(preset) => ctx.onInsertContainer(parentId, index + 1, preset)}
+            />
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+        {isBare && (
+          <DropdownMenuItem onClick={() => ctx.onMoveToParent(container.id)}>
+            <ArrowUpToLine className="h-4 w-4 text-foreground/50" />
+            Üst Konteynere Taşı
+          </DropdownMenuItem>
+        )}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => ctx.onUnwrap(container.id)}>
+          <Unlink2 className="h-4 w-4 text-foreground/50" />
+          Konteyneri Kaldır
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 function ContainerCard({
   container,
   parentId,
@@ -506,78 +774,41 @@ function ContainerCard({
             </span>
           )}
         </div>
-        <div className="flex shrink-0 items-center gap-1" onClick={(e) => e.stopPropagation()}>
+        {/* §1.2 v2 tasarım notları — görünür 5'li sıra, `icon-xs` + `gap-0.5`. İkincil aksiyonlar
+            (Çoğalt/Yukarı/Aşağı/Alta Konteyner Ekle/Üst Konteynere Taşı/Konteyneri Kaldır) `•••`
+            (`ContainerMoreMenu`) içine taşındı — bkz. §1.3.
+            qa-agent bulgusu — 4'lü sütun + Mobil (375px) önizlemede seviye-2 sütun genişliği
+            (~71px dış / ~43px iç) 5×24px'lik sabit sıradan (128px) DAHA DAR: `shrink-0` bu grubu
+            kendi genişliğinde SABİT tutup kartın dışına TAŞIRIYORDU. `shrink-0` KALDIRILDI +
+            `flex-wrap` eklendi — grup artık kendi İÇİNDE satır kırabilir (gerekirse 1-2 buton/satır),
+            asla ebeveyn kartın sağ kenarını AŞMAZ; normal (dar OLMAYAN) genişliklerde davranış
+            DEĞİŞMEZ (128px onlarda zaten rahatça sığar, tek satırda kalır). */}
+        <div className="flex flex-wrap max-w-full items-center justify-end gap-0.5" onClick={(e) => e.stopPropagation()}>
           <Button
             type="button"
             variant="ghost"
-            size="icon-sm"
+            size="icon-xs"
             aria-label="Konteyner ayarları"
             title="Konteyner ayarları"
             onClick={() => ctx.onSelectContainer(container.id)}
           >
             <Settings2 />
           </Button>
-          <RevealEffectControl value={container.reveal} onChange={(reveal) => ctx.onUpdateReveal(container.id, reveal)} />
-          <LayoutMenu mode="unwrap" onSelect={() => ctx.onUnwrap(container.id)} />
+          <RevealEffectControl size="icon-xs" value={container.reveal} onChange={(reveal) => ctx.onUpdateReveal(container.id, reveal)} />
+          <AddChildContainerControl
+            disabled={childInsertDisabled}
+            disabledReason={childInsertDisabledReason}
+            onInsertContainer={(preset) => ctx.onInsertContainer(containerId, container.children.length, preset)}
+          />
+          <ContainerMoreMenu container={container} parentId={parentId} index={index} total={total} isBare={isBare} atMaxDepth={atMaxDepth} ctx={ctx} />
           <Button
             type="button"
             variant="ghost"
-            size="icon-sm"
-            aria-label="Konteyneri çoğalt"
-            title="Çoğalt (Duplicate)"
-            onClick={() => ctx.onDuplicate(container.id)}
+            size="icon-xs"
+            aria-label="Konteyneri sil"
+            className="hover:text-destructive"
+            onClick={() => ctx.onRemove(container.id)}
           >
-            <Copy />
-          </Button>
-          <Popover>
-            <PopoverTrigger
-              render={
-                <Button type="button" variant="ghost" size="icon-sm" aria-label="Alta yeni konteyner ekle" title="Alta yeni konteyner ekle" />
-              }
-            >
-              <LayoutTemplate className="h-4 w-4" />
-            </PopoverTrigger>
-            <PopoverContent align="start" className="w-80">
-              <LayoutPresetPopoverGrid
-                disabled={atMaxDepth}
-                disabledReason="Maksimum iç içe geçme derinliğine ulaşıldı (4)"
-                onSelect={(preset) => ctx.onInsertContainer(parentId, index + 1, preset)}
-              />
-            </PopoverContent>
-          </Popover>
-          {isBare && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Üst konteynere taşı"
-              title="Üst konteynere taşı"
-              onClick={() => ctx.onMoveToParent(container.id)}
-            >
-              <ArrowUpToLine />
-            </Button>
-          )}
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Yukarı taşı"
-            onClick={() => ctx.onMove(container.id, -1)}
-            disabled={index === 0}
-          >
-            <ArrowUp />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Aşağı taşı"
-            onClick={() => ctx.onMove(container.id, 1)}
-            disabled={index === total - 1}
-          >
-            <ArrowDown />
-          </Button>
-          <Button type="button" variant="ghost" size="icon-sm" aria-label="Konteyneri sil" onClick={() => ctx.onRemove(container.id)}>
             <Trash2 />
           </Button>
         </div>
@@ -585,7 +816,13 @@ function ContainerCard({
 
       <SortableContext items={childIds} strategy={verticalListSortingStrategy}>
         {container.children.length === 0 ? (
-          <EmptyContainerDropZone containerId={containerId} atMax={atMaxChildren} onAdd={(type) => ctx.onAddChild(containerId, type)} />
+          <EmptyContainerDropZone
+            containerId={containerId}
+            atMax={atMaxChildren}
+            atMaxDepth={atMaxDepth}
+            onAdd={(type) => ctx.onAddChild(containerId, type)}
+            onInsertContainer={(preset) => ctx.onInsertContainer(containerId, container.children.length, preset)}
+          />
         ) : (
           <div className="space-y-3">
             {/* §4.3 tasarım notları — between-inserter YALNIZCA dikey akışta (`!isRow`) gösterilir;
@@ -618,7 +855,11 @@ function ContainerCard({
             </div>
             {!atMaxChildren && (
               <div className="flex justify-center">
-                <AddContentMenu onAdd={(type) => ctx.onAddChild(containerId, type)} />
+                <AddContentMenu
+                  onAdd={(type) => ctx.onAddChild(containerId, type)}
+                  atMaxDepth={atMaxDepth}
+                  onInsertContainer={(preset) => ctx.onInsertContainer(containerId, container.children.length, preset)}
+                />
               </div>
             )}
           </div>

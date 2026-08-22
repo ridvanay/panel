@@ -113,7 +113,14 @@ export function BlockRenderer({ nodes, chrome }: { nodes: PageNode[]; chrome: Bl
         if (node.reveal && node.reveal.effect !== "none") {
           const flexStyle = node.type === "container" && node.settings.widthFr ? { flex: `${node.settings.widthFr} 1 0%` } : undefined;
           return (
-            <ScrollReveal key={node.id} effect={node.reveal.effect} delayMs={node.reveal.delayMs} style={flexStyle}>
+            <ScrollReveal
+              key={node.id}
+              effect={node.reveal.effect}
+              delayMs={node.reveal.delayMs}
+              durationMs={node.reveal.durationMs}
+              once={node.reveal.once}
+              style={flexStyle}
+            >
               {body}
             </ScrollReveal>
           );

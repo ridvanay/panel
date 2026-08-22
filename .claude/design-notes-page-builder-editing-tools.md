@@ -1,5 +1,7 @@
 # Tasarım Notları: Editör Araçları — Cihaz Önizleme, Şekilli Ayırıcılar, Giriş Animasyonları
 
+> **Not:** Bu dosyanın devamı niteliğinde `.claude/design-notes-page-builder-editing-tools-v2.md` eklendi — kontrol çubuğu taşma/kompaktlık düzeltmesi, iç içe (nested) konteyner ekleme ve Giriş Animasyonu panelinin genişletilmesi (8 efekt + slider + süre + tekrar) orada tanımlanır. Bu dosyanın içeriği DEĞİŞMEDİ, yalnızca bu referans notu eklendi.
+
 Ajan: **ui-designer** · Durum: **v1 (spesifikasyon, implementasyon bekliyor)** · Sahibi: ui-designer
 Kapsam: (1) Cihaz Önizleme Çubuğu, (2) Şekilli Bölüm Ayırıcıları (`container-settings-panel.tsx`), (3) Giriş Animasyonları (Scroll Reveal) — konteyner + 23 içerik bloğu ortak kontrolü. Bu doküman kod İÇERMEZ; `frontend-agent` bunu okuyup `builder-canvas.tsx` ve `container-settings-panel.tsx`'i buna göre kodlar.
 

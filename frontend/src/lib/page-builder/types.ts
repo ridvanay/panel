@@ -52,13 +52,28 @@ export type BlockType = ContentBlockType | ContainerNodeType;
  * VEYA `reveal` alanının hiç OLMAMASI davranışsal olarak AYNI (animasyon uygulanmaz) — ikisi de
  * geçerli "kapalı" hali (bkz. `site/blocks/scroll-reveal.tsx`).
  */
-export type RevealEffect = "none" | "fade-in" | "fade-up" | "slide-left" | "zoom-in";
-/** Milisaniye — kapalı bir sayısal küme (serbest `number` DEĞİL), `SegmentedToggle` ile seçilir. */
-export type RevealDelay = 100 | 200 | 300 | 400 | 500;
+export type RevealEffect =
+  | "none"
+  | "fade-in"
+  | "fade-up"
+  | "fade-down"
+  | "slide-left"
+  | "slide-right"
+  | "zoom-in"
+  | "flip-up";
+/** Milisaniye — kapalı bir sayısal küme (serbest `number` DEĞİL), native `<input type="range">`
+ *  slider ile 100ms adımlarla seçilir (bkz. `builder-canvas.tsx::RevealEffectControl`). */
+export type RevealDelay = 0 | 100 | 200 | 300 | 400 | 500 | 600 | 700 | 800 | 900 | 1000;
+/** Milisaniye — kapalı bir sayısal küme, `SegmentedToggle` ile seçilir (Hızlı/Normal/Yavaş). */
+export type RevealDuration = 300 | 600 | 1000;
 
 export interface RevealEffectSettings {
   effect: RevealEffect;
   delayMs: RevealDelay;
+  /** Opsiyonel — yoksa `600` (bugünkü sabit CSS değeriyle BİREBİR aynı varsayılan). */
+  durationMs?: RevealDuration;
+  /** Opsiyonel — yoksa `true` (bugünkü TEK-SEFERLİK davranışla BİREBİR aynı varsayılan). */
+  once?: boolean;
 }
 
 interface BaseNode {

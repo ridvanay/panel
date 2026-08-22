@@ -229,18 +229,36 @@ test.describe("Konteyner mimarisi — admin editörü", () => {
       const level4Badge = page.getByText("Seviye 4 · Maks.", { exact: true });
       await expect(level4Badge).toBeVisible();
 
-      // Seviye 4 konteynerinin KENDİ "+Alta" grid'i (kendisi zaten derinlik 4'te, §5.3 tasarım
-      // notları — "onSelect" preset'i uygularsa alt konteynerler derinlik 5 olurdu) TAMAMEN devre
-      // dışı — editör 5. seviyeyi backend'in 422'sine güvenmeden ÖNLEYİCİ olarak engeller. En yakın
-      // `.group` atası (`ContainerCard`'ın kök div'i, `builder-canvas.tsx`) XPath ile bulunur — bu,
-      // C1/C2/C3'ün KENDİ "+Alta" düğmeleriyle (hepsi aynı aria-label'ı taşır) karışmayı önler.
+      // qa-agent (bu turda düzeltildi) — sabit üst kontrol çubuğundaki "Alta yeni konteyner ekle"
+      // düğmesi ui-designer v2 tasarımıyla (`.claude/design-notes-page-builder-editing-tools-v2.md`
+      // §1.3) KALDIRILDI; aynı sibling-ekleme işlevi artık "•••" (`ContainerMoreMenu`, aria-label
+      // "Daha fazla işlem") içindeki `DropdownMenuSub` "Alta Konteyner Ekle" satırında. Seviye 4
+      // konteynerinin KENDİ "•••" menüsündeki bu alt-grid'i (`ContainerMoreMenu`'e geçilen
+      // `atMaxDepth`, konteynerin KENDİ derinliğinden hesaplı — bkz. `builder-canvas.tsx::
+      // ContainerCard`) TAMAMEN devre dışı — editör 5. seviyeyi backend'in 422'sine güvenmeden
+      // ÖNLEYİCİ olarak engeller. En yakın `.group` atası (`ContainerCard`'ın kök div'i,
+      // `builder-canvas.tsx`) XPath ile bulunur — bu, C1/C2/C3'ün KENDİ "•••" düğmeleriyle (hepsi
+      // aynı aria-label'ı taşır) karışmayı önler. `DropdownMenuSubTrigger` varsayılan olarak
+      // `openOnHover` (base-ui) — bir gerçek fare tıklaması `ignoreMouse: true` yüzünden YOK
+      // SAYILIR, bu yüzden `.hover()` kullanılır (`.click()` DEĞİL).
       const level4Card = level4Badge.locator(
         "xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' group ')][1]"
       );
-      await level4Card.locator('button[aria-label="Alta yeni konteyner ekle"]').click();
+      await level4Card.locator('button[aria-label="Daha fazla işlem"]').click();
+      const addBelowSubTrigger = page.getByRole("menuitem", { name: "Alta Konteyner Ekle" });
+      await expect(addBelowSubTrigger).toBeVisible();
+      // orkestratör bulgusu — ara sıra FLAKY: imleç `.click()`ten hemen sonra menünün civarında
+      // durabilir, bu da floating-ui'nin `allowMouseEnter` korumasını (menü imlecin ALTINDA
+      // açıldığında yanlışlıkla hover-açılmasını önler) bazen tetiklemeyebilir. İmleç önce menünün
+      // DIŞINA taşınıp GERİ getirilerek her seferinde gerçek bir giriş olayı üretilir (bkz.
+      // `admin-page-builder-editing-tools.spec.ts`teki AYNI düzeltme).
+      await page.mouse.move(0, 0);
+      await addBelowSubTrigger.hover();
       const singleColumnTile = page.getByRole("button", { name: "Tek Sütun" });
+      await expect(singleColumnTile).toBeVisible();
       await expect(singleColumnTile).toBeDisabled();
       await expect(singleColumnTile).toHaveAttribute("title", "Maksimum iç içe geçme derinliğine ulaşıldı (4)");
+      await page.keyboard.press("Escape");
       await page.keyboard.press("Escape");
 
       // Devre dışı karo tıklanamaz (native `disabled`) — ağaç DEĞİŞMEDEN kaldığını doğrula.
@@ -511,14 +529,16 @@ test.describe("Konteyner mimarisi — unwrap onayı", () => {
 
       await expect(page.locator('button[aria-label^="Sürükle: "]')).toHaveCount(2); // Konteyner + Görsel
 
-      // Konteynerin KENDİ "Düzen" tetikleyicisi DOM'da İLK sırada (çocuğundan ÖNCE render edilir).
-      // `[aria-label="Düzen"]` öz-nitelik seçicisi kullanılır — senaryo 2/3'teki AYNI gerekçe
-      // (`ContainerCard`'ın seçim div'i `role="button"`, ad-içerikten hesaplanan adı "Düzen"i
-      // alt dize olarak İÇERİR).
-      const layoutMenuTrigger = page.locator('button[aria-label="Düzen"]').first();
+      // qa-agent (bu turda düzeltildi) — `ContainerCard`'ın KENDİ "Düzen" (`LayoutMenu
+      // mode="unwrap"`) tetikleyicisi ui-designer v2 tasarımıyla (§1.3) KALDIRILDI; "Konteyneri
+      // Kaldır" artık doğrudan "•••" (`ContainerMoreMenu`, aria-label "Daha fazla işlem") içinde bir
+      // `DropdownMenuItem`. (`ContentBlockCard`'ın KENDİ `LayoutMenu mode="wrap"` "Düzen" tetikleyicisi
+      // DEĞİŞMEDİ — o burada KULLANILMIYOR, yalnızca konteyner kartının "•••" menüsü hedeflenir.)
+      // Sayfada tek konteyner olduğu için `.first()` yeterli/güvenli.
+      const moreMenuTrigger = page.locator('button[aria-label="Daha fazla işlem"]').first();
 
       // --- Vazgeç akışı — hiçbir şey değişmemeli ---
-      await layoutMenuTrigger.click();
+      await moreMenuTrigger.click();
       await page.getByRole("menuitem", { name: "Konteyneri Kaldır" }).click();
       await expect(page.getByRole("heading", { name: "Konteyner kaldırılsın mı?" })).toBeVisible();
       await expect(page.getByText("İçindeki 1 öğe, sırasıyla üst seviyeye taşınacak. İçerik SİLİNMEZ.")).toBeVisible();
@@ -530,7 +550,7 @@ test.describe("Konteyner mimarisi — unwrap onayı", () => {
       await expect(page.locator('[id$="-alt"]')).toHaveValue("QA unwrap görseli"); // içerik SAĞLAM
 
       // --- Onayla akışı — konteyner kalkar, İÇERİK KORUNUR (üst seviyeye düzleşir) ---
-      await layoutMenuTrigger.click();
+      await moreMenuTrigger.click();
       await page.getByRole("menuitem", { name: "Konteyneri Kaldır" }).click();
       await expect(page.getByRole("heading", { name: "Konteyner kaldırılsın mı?" })).toBeVisible();
       await page.getByRole("button", { name: "Konteyneri Kaldır" }).click(); // dialog'un ONAY butonu (role farklı, menuitem DEĞİL)

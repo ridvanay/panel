@@ -2,13 +2,24 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useDroppable } from "@dnd-kit/core";
-import { Plus, Search, X } from "lucide-react";
+import { FolderPlus, Plus, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { cn } from "@/lib/utils";
 import { blockRegistry, PALETTE_CATEGORIES, PALETTE_CATEGORY_LABEL, type PaletteBlockCategory, type PaletteBlockType } from "@/lib/page-builder/registry";
 import { MAX_CHILDREN_PER_CONTAINER, type BuilderContainerId } from "@/lib/page-builder/types";
+import type { LayoutPreset } from "@/lib/page-builder/presets";
+import { LayoutPresetPopoverGrid } from "./container-inserter";
 
 /**
  * §Faz 0 kullanıcı isteği — konteynerin boş durumu: Elementor-tarzı kesikli çizgili kutu,
@@ -17,11 +28,15 @@ import { MAX_CHILDREN_PER_CONTAINER, type BuilderContainerId } from "@/lib/page-
 export function EmptyContainerDropZone({
   containerId,
   atMax,
+  atMaxDepth,
   onAdd,
+  onInsertContainer,
 }: {
   containerId: BuilderContainerId;
   atMax: boolean;
+  atMaxDepth: boolean;
   onAdd: (type: PaletteBlockType) => void;
+  onInsertContainer: (preset: LayoutPreset) => void;
 }) {
   const { isOver, setNodeRef } = useDroppable({ id: containerId });
   return (
@@ -32,7 +47,7 @@ export function EmptyContainerDropZone({
         isOver && "border-primary bg-primary/5"
       )}
     >
-      <AddContentMenu disabled={atMax} onAdd={onAdd} variant="prominent" />
+      <AddContentMenu disabled={atMax} onAdd={onAdd} variant="prominent" atMaxDepth={atMaxDepth} onInsertContainer={onInsertContainer} />
       <p className={cn("text-xs text-foreground/40", isOver && "text-primary")}>veya buraya blok sürükleyin</p>
     </div>
   );
@@ -56,12 +71,20 @@ export function AddContentMenu({
   onAdd,
   disabled,
   variant = "icon",
+  atMaxDepth,
+  onInsertContainer,
 }: {
   onAdd: (type: PaletteBlockType) => void;
   disabled?: boolean;
   /** "icon" — DOLU bir konteynerin sonuna eklenen küçük "daha fazla blok ekle" düğmesi.
    *  "prominent" — Elementor-tarzı boş durum "+ Eleman Ekle" düğmesi. */
   variant?: "icon" | "prominent";
+  /** v2 tasarım notları §2.2a — menünün en başındaki pinned "İç Konteyner / Bölüm Ekle" satırının
+   *  `LayoutPresetPopoverGrid`'ini devre dışı bırakmak için (derinlik sınırına ulaşıldıysa). */
+  atMaxDepth: boolean;
+  /** v2 tasarım notları §2.2a — pinned satırda bir preset seçilince çağrılır (çağıran taraf
+   *  `ctx.onInsertContainer(containerId, children.length, preset)` closure'ını geçirir). */
+  onInsertContainer: (preset: LayoutPreset) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -106,6 +129,20 @@ export function AddContentMenu({
         {variant === "prominent" && "Eleman Ekle"}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="center" className="w-80">
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger className="bg-surface-muted/40 font-medium text-foreground hover:bg-primary/10">
+            <FolderPlus className="h-4 w-4 text-primary" />
+            İç Konteyner / Bölüm Ekle
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent className="w-80">
+            <LayoutPresetPopoverGrid
+              disabled={atMaxDepth}
+              disabledReason="Maksimum iç içe geçme derinliğine ulaşıldı (4)"
+              onSelect={(preset) => onInsertContainer(preset)}
+            />
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+        <DropdownMenuSeparator />
         <div className="space-y-2 p-1 pb-0">
           <InputGroup>
             <InputGroupAddon align="inline-start">

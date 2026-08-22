@@ -53,19 +53,28 @@ function LayoutPresetTile({
  * `DropdownMenu`ünden kasıtlı olarak hem kabuk hem karo görseli düzeyinde ayrışır). `disabled`
  * tüm grid'i kapatır (tek tek karo bazlı kısmi devre dışı bırakma YOK — §2.3, `container-ui.md`
  * §3.1'deki emsalle tutarlı).
+ *
+ * `presets`/`columns` — v2 tasarım notları §2.2b: iç konteyner ekleme butonu YALNIZCA "Tekli
+ * Konteyner"/"2'li Sütun" preset'lerini + 2'li grid'i sunar. Her iki prop da OPSİYONEL —
+ * verilmezse mevcut 7'li `LAYOUT_PRESETS` + `grid-cols-4` davranışı AYNEN korunur (geriye dönük
+ * uyumluluk, sibling-insert çağrıları ETKİLENMEZ).
  */
 export function LayoutPresetPopoverGrid({
+  presets = LAYOUT_PRESETS,
+  columns = 4,
   disabled,
   disabledReason,
   onSelect,
 }: {
+  presets?: LayoutPreset[];
+  columns?: number;
   disabled?: boolean;
   disabledReason?: string;
   onSelect: (preset: LayoutPreset) => void;
 }) {
   return (
-    <div className="grid grid-cols-4 gap-2">
-      {LAYOUT_PRESETS.map((preset) => (
+    <div className={cn("grid gap-2", columns === 2 ? "grid-cols-2" : "grid-cols-4")}>
+      {presets.map((preset) => (
         <LayoutPresetTile key={preset.id} preset={preset} disabled={!!disabled} disabledReason={disabledReason} onSelect={onSelect} />
       ))}
     </div>

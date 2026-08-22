@@ -558,32 +558,50 @@
 /*
  * Giriş Animasyonları (Scroll Reveal) — `site/blocks/scroll-reveal.tsx`. Başlangıç durumu
  * (görünmez/kaydırılmış) + `.pb-revealed` eklendiğinde bitiş durumu (`opacity:1`,
- * `transform:none`). `transition-delay` CSS'te SABİT OLAMAZ (5 farklı `RevealDelay` değeri var) —
- * `scroll-reveal.tsx` bunu inline `style.transitionDelay` ile uygular, burada TANIMLANMAZ.
+ * `transform:none`). `transition-delay`/`transition-duration` CSS'te SABİT DEĞİL (§3.3/§3.4 v2
+ * tasarım notları — gecikme/süre kullanıcı tarafından seçilebilir) — `scroll-reveal.tsx` bunları
+ * inline `style.transitionDelay`/`style.transitionDuration` ile uygular, burada yalnızca
+ * `transition-property`/`timing-function` TANIMLANIR (varsayılan süre `600ms`, mevcut kayıtlarda
+ * `durationMs` yoksa `?? 600` ile bugünkü görünüm KORUNUR).
  */
 .pb-reveal-fade-in,
 .pb-reveal-fade-up,
+.pb-reveal-fade-down,
 .pb-reveal-slide-left,
-.pb-reveal-zoom-in {
+.pb-reveal-slide-right,
+.pb-reveal-zoom-in,
+.pb-reveal-flip-up {
   opacity: 0;
-  transition:
-    opacity 0.6s ease,
-    transform 0.6s ease;
+  transition-property: opacity, transform;
+  transition-timing-function: ease;
 }
 .pb-reveal-fade-up {
   transform: translateY(24px);
 }
+.pb-reveal-fade-down {
+  transform: translateY(-24px);
+}
 .pb-reveal-slide-left {
   transform: translateX(-40px);
+}
+.pb-reveal-slide-right {
+  transform: translateX(40px);
 }
 .pb-reveal-zoom-in {
   transform: scale(0.92);
 }
+.pb-reveal-flip-up {
+  transform: perspective(600px) rotateX(-90deg);
+  transform-origin: bottom;
+}
 
 .pb-reveal-fade-in.pb-revealed,
 .pb-reveal-fade-up.pb-revealed,
+.pb-reveal-fade-down.pb-revealed,
 .pb-reveal-slide-left.pb-revealed,
-.pb-reveal-zoom-in.pb-revealed {
+.pb-reveal-slide-right.pb-revealed,
+.pb-reveal-zoom-in.pb-revealed,
+.pb-reveal-flip-up.pb-revealed {
   opacity: 1;
   transform: none;
 }
@@ -591,8 +609,11 @@
 @media (prefers-reduced-motion: reduce) {
   .pb-reveal-fade-in,
   .pb-reveal-fade-up,
+  .pb-reveal-fade-down,
   .pb-reveal-slide-left,
-  .pb-reveal-zoom-in {
+  .pb-reveal-slide-right,
+  .pb-reveal-zoom-in,
+  .pb-reveal-flip-up {
     opacity: 1 !important;
     transform: none !important;
     transition: none !important;

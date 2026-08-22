@@ -304,8 +304,31 @@ function legacyColumnsToContainer(raw: unknown): unknown {
  * alan `.optional()`dur.
  */
 const RevealEffectSettingsSchema = z.object({
-  effect: z.enum(["none", "fade-in", "fade-up", "slide-left", "zoom-in"]),
-  delayMs: z.union([z.literal(100), z.literal(200), z.literal(300), z.literal(400), z.literal(500)]),
+  effect: z.enum([
+    "none",
+    "fade-in",
+    "fade-up",
+    "fade-down",
+    "slide-left",
+    "slide-right",
+    "zoom-in",
+    "flip-up",
+  ]),
+  delayMs: z.union([
+    z.literal(0),
+    z.literal(100),
+    z.literal(200),
+    z.literal(300),
+    z.literal(400),
+    z.literal(500),
+    z.literal(600),
+    z.literal(700),
+    z.literal(800),
+    z.literal(900),
+    z.literal(1000),
+  ]),
+  durationMs: z.union([z.literal(300), z.literal(600), z.literal(1000)]).optional(),
+  once: z.boolean().optional(),
 });
 
 /* ---------- galeri (v2'den DEĞİŞMEDEN devralınır) ---------- */

@@ -16,6 +16,7 @@ import {
   type LinearGradientDirection,
   type PageNode,
   type RevealDelay,
+  type RevealDuration,
   type RevealEffect,
   type RevealEffectSettings,
   type ShapeDividerSettings,
@@ -105,12 +106,28 @@ function normalizeNode(raw: unknown, ctx: NormalizeCtx, depth: number): PageNode
  * yorumu) — burada da `undefined`'a normalize edilir, aşağı akıştaki "hasEffect" kontrollerini
  * tek bir forma indirger.
  */
+/** v2 tasarım notları §3.8 — `fade-down`/`slide-right`/`flip-up` YENİ üyeler (`types.ts::RevealEffect`). */
 function isRevealEffect(v: unknown): v is RevealEffect {
-  return v === "none" || v === "fade-in" || v === "fade-up" || v === "slide-left" || v === "zoom-in";
+  return (
+    v === "none" ||
+    v === "fade-in" ||
+    v === "fade-up" ||
+    v === "fade-down" ||
+    v === "slide-left" ||
+    v === "slide-right" ||
+    v === "zoom-in" ||
+    v === "flip-up"
+  );
 }
 
+/** v2 tasarım notları §3.3 — 0-1000ms, 100ms adım (11 durak, `<input type="range">`). */
 function isRevealDelay(v: unknown): v is RevealDelay {
-  return v === 100 || v === 200 || v === 300 || v === 400 || v === 500;
+  return v === 0 || v === 100 || v === 200 || v === 300 || v === 400 || v === 500 || v === 600 || v === 700 || v === 800 || v === 900 || v === 1000;
+}
+
+/** v2 tasarım notları §3.4 — Hızlı/Normal/Yavaş (opsiyonel alan, bkz. `normalizeReveal`). */
+function isRevealDuration(v: unknown): v is RevealDuration {
+  return v === 300 || v === 600 || v === 1000;
 }
 
 function normalizeReveal(raw: unknown): RevealEffectSettings | undefined {
@@ -118,7 +135,12 @@ function normalizeReveal(raw: unknown): RevealEffectSettings | undefined {
   const r = raw as Record<string, unknown>;
   if (!isRevealEffect(r.effect) || r.effect === "none") return undefined;
   if (!isRevealDelay(r.delayMs)) return undefined;
-  return { effect: r.effect, delayMs: r.delayMs };
+  const settings: RevealEffectSettings = { effect: r.effect, delayMs: r.delayMs };
+  // `durationMs`/`once` OPSİYONEL (§3.8) — geçersiz/eksikse SESSİZCE atlanır, `RevealEffectControl`/
+  // `ScrollReveal` KENDİ varsayılanlarına (`?? 600` / `?? true`) düşer, hata ÜRETİLMEZ.
+  if (isRevealDuration(r.durationMs)) settings.durationMs = r.durationMs;
+  if (typeof r.once === "boolean") settings.once = r.once;
+  return settings;
 }
 
 function normalizeContainerNode(node: Record<string, unknown>, ctx: NormalizeCtx, depth: number): ContainerNode {
