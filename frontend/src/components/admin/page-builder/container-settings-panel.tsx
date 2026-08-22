@@ -281,15 +281,22 @@ function LinkedSidesToggle({ linked, onToggle }: { linked: boolean; onToggle: ()
   );
 }
 
-/** §2.3 — 4-kenar (padding/margin) kompakt 2×2 ızgara + "bağlı kenarlar" editör kolaylığı. */
+/** §2.3 — 4-kenar (padding/margin) kompakt 2×2 ızgara + "bağlı kenarlar" editör kolaylığı.
+ *  `disabledSides`/`hintForDisabled` — design-notes-page-builder-container-alignment-fix.md §1:
+ *  boxed konteynerde Sol/Sağ margin `mx-auto` ile ortalandığı için elle düzenlenemez; bu iki
+ *  prop yalnızca ÇAĞIRAN taraf doluysa devreye girer (component `layout`tan habersiz kalır). */
 function SpacingBoxControl({
   label,
   value,
   onChange,
+  disabledSides,
+  hintForDisabled,
 }: {
   label: string;
   value: ContainerSpacing;
   onChange: (next: ContainerSpacing) => void;
+  disabledSides?: (keyof ContainerSpacing)[];
+  hintForDisabled?: string;
 }) {
   const [linked, setLinked] = useState(false);
 
@@ -305,22 +312,30 @@ function SpacingBoxControl({
         <LinkedSidesToggle linked={linked} onToggle={() => setLinked((v) => !v)} />
       </div>
       <div className="grid grid-cols-2 gap-2">
-        {(Object.keys(SIDE_LABEL) as (keyof ContainerSpacing)[]).map((side) => (
-          <div key={side} className="space-y-1">
-            <label className="text-[11px] text-foreground/50">{SIDE_LABEL[side]}</label>
-            <InputGroup>
-              <InputGroupInput
-                type="number"
-                min={0}
-                max={200}
-                value={value[side]}
-                onChange={(e) => changeSide(side, Number(e.target.value))}
-              />
-              <InputGroupAddon align="inline-end">px</InputGroupAddon>
-            </InputGroup>
-          </div>
-        ))}
+        {(Object.keys(SIDE_LABEL) as (keyof ContainerSpacing)[]).map((side) => {
+          const disabled = disabledSides?.includes(side) ?? false;
+          return (
+            <div key={side} className="space-y-1">
+              <label className="text-[11px] text-foreground/50">{SIDE_LABEL[side]}</label>
+              <InputGroup>
+                <InputGroupInput
+                  type="number"
+                  min={0}
+                  max={200}
+                  value={value[side]}
+                  disabled={disabled}
+                  className={disabled ? "opacity-50 cursor-not-allowed" : undefined}
+                  onChange={(e) => changeSide(side, Number(e.target.value))}
+                />
+                <InputGroupAddon align="inline-end">px</InputGroupAddon>
+              </InputGroup>
+            </div>
+          );
+        })}
       </div>
+      {disabledSides && disabledSides.length > 0 && hintForDisabled && (
+        <p className="text-[11px] text-foreground/50">{hintForDisabled}</p>
+      )}
     </div>
   );
 }
@@ -804,6 +819,16 @@ export function ContainerSettingsPanel({
             labelFor={(v) => JUSTIFY_LABEL[v]}
             onChange={(justifyContent) => onChange({ justifyContent })}
           />
+          {/* design-notes-page-builder-container-alignment-fix.md §2 Karar B — koşullu bilgi
+              ipucu, "hiçbir şey olmadı" hissini bug sanmayı önler (nötr ton, uyarı DEĞİL). */}
+          {!isRow && !settings.minHeight && (
+            <p className="text-xs text-foreground/50">
+              Bu ayarın görünür olması için konteynere bir Minimum Yükseklik değeri verin; aksi halde konteyner içeriğe göre daralır ve dikey boşluk oluşmaz.
+            </p>
+          )}
+          {isRow && settings.justifyContent !== "start" && (
+            <p className="text-xs text-foreground/50">Öğeler satırı zaten dolduruyorsa bu ayarın görsel bir etkisi olmayabilir.</p>
+          )}
         </div>
 
         <div className="space-y-1.5">
@@ -837,7 +862,13 @@ export function ContainerSettingsPanel({
       <SettingsSection title="Boşluk">
         <SpacingBoxControl label="İç Boşluk (Padding)" value={settings.padding} onChange={(padding) => onChange({ padding })} />
         <div className="border-t border-border/40 pt-3">
-          <SpacingBoxControl label="Dış Boşluk (Margin)" value={settings.margin} onChange={(margin) => onChange({ margin })} />
+          <SpacingBoxControl
+            label="Dış Boşluk (Margin)"
+            value={settings.margin}
+            onChange={(margin) => onChange({ margin })}
+            disabledSides={settings.layout === "boxed" ? ["left", "right"] : undefined}
+            hintForDisabled="Kutulu düzende yatay boşluk otomatik ortalanır; Sol/Sağ değerleri bu modda pasif."
+          />
         </div>
       </SettingsSection>
 

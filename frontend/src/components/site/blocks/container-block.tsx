@@ -87,7 +87,15 @@ export function ContainerBlockView({ block }: { block: ContainerNode }) {
     minHeight: settings.minHeight ? `${settings.minHeight.value}${settings.minHeight.unit}` : undefined,
     gap: `${settings.gap}px`,
     padding: `${settings.padding.top}px ${settings.padding.right}px ${settings.padding.bottom}px ${settings.padding.left}px`,
-    margin: `${settings.margin.top}px ${settings.margin.right}px ${settings.margin.bottom}px ${settings.margin.left}px`,
+    marginTop: `${settings.margin.top}px`,
+    marginBottom: `${settings.margin.bottom}px`,
+    // Boxed modda yatay margin her zaman otomatik ortalanır (`mx-auto` class'ıyla aynı niyet) —
+    // inline style class'ı ezdiği için burada da "auto" set edilmeli, aksi halde `layoutClass`daki
+    // `mx-auto` bu satırdaki px değeriyle her zaman geçersiz kılınır (bkz. design-notes §1).
+    // Kullanıcının girdiği sayısal değer `settings.margin.left/right`de saklı kalır, yalnızca
+    // görsel/render katmanında override edilir — moddan moda geçişte veri kaybı olmaz.
+    marginLeft: settings.layout === "boxed" ? "auto" : `${settings.margin.left}px`,
+    marginRight: settings.layout === "boxed" ? "auto" : `${settings.margin.right}px`,
     flex: settings.widthFr ? `${settings.widthFr} 1 0%` : undefined,
     ...backgroundStyle(settings.background),
   };
