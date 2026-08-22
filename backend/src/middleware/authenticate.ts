@@ -24,7 +24,10 @@ export async function authenticate(request: FastifyRequest, _reply: FastifyReply
 
   const user = await request.server.prisma.user.findUnique({
     where: { id: payload.sub },
-    select: { id: true, email: true, role: true, status: true },
+    // §10.20 — `advancedBuilderEnabled` de her istekte taze okunur (rol/durum ile AYNI gerekçe:
+    // bir ADMIN'in izni geri alması, o kullanıcının access token'ı süresi dolana kadar
+    // beklemeden bir sonraki istekte hemen etkili olmalı, bkz. `builder-capability.ts`).
+    select: { id: true, email: true, role: true, status: true, advancedBuilderEnabled: true },
   });
   if (!user) throw new UnauthorizedError();
   // `DELETED` (yumuşak silme, bkz. DELETE /admin/users/{userId}) `SUSPENDED` ile BİREBİR aynı
@@ -35,5 +38,5 @@ export async function authenticate(request: FastifyRequest, _reply: FastifyReply
     throw new ForbiddenError("Hesabınız askıya alınmış.");
   }
 
-  request.user = { id: user.id, email: user.email, role: user.role };
+  request.user = { id: user.id, email: user.email, role: user.role, advancedBuilderEnabled: user.advancedBuilderEnabled };
 }

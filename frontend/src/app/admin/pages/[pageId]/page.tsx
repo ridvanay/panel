@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import * as pagesApi from "@/lib/api/pages";
 import * as revisionsApi from "@/lib/api/revisions";
 import * as localesApi from "@/lib/api/locales";
-import type { ContentStatus, ContentTranslations, Locale as LocaleDto } from "@/lib/api/types";
+import type { ContentStatus, ContentTranslations, Locale as LocaleDto, PageEditMode } from "@/lib/api/types";
 import type { ContainerNode, PageNode } from "@/lib/page-builder/types";
 import { normalizePageNodes } from "@/lib/page-builder/normalize";
 import { containerDepth, findNode, updateContainerSettings, wrapBareRootBlocks } from "@/lib/page-builder/containers";
@@ -31,9 +31,11 @@ import { LocaleTabs } from "@/components/admin/locale-tabs";
 import { LocaleFallbackBadge, FALLBACK_FIELD_CLASSES } from "@/components/admin/locale-fallback-badge";
 import { BuilderCanvas } from "@/components/admin/page-builder/builder-canvas";
 import { ContainerSettingsPanel } from "@/components/admin/page-builder/container-settings-panel";
+import { TemplateEditorView } from "@/components/admin/page-builder/template-editor-view";
 import { SeoPreview } from "@/components/admin/seo-preview";
 import { RevisionHistory } from "@/components/admin/revision-history";
 import { ImageUploadField } from "@/components/admin/media/image-upload-field";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import {
   getTranslatedField,
@@ -48,6 +50,7 @@ import {
   ChevronLeft,
   ExternalLink,
   FileText,
+  LockKeyhole,
   Scale,
   Search,
   History as HistoryIcon,
@@ -96,6 +99,8 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
   const router = useRouter();
   const { user } = useAuth();
   const isAdmin = user?.role === "ADMIN";
+  // §10.20 — architect-scope §6.4 madde 3 formülü BİREBİR.
+  const canUseAdvancedBuilder = user?.canUseAdvancedBuilder ?? false;
 
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -108,6 +113,7 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
 
   const [title, setTitle] = useState("");
   const [slug, setSlug] = useState("");
+  const [editMode, setEditMode] = useState<PageEditMode>("FREEFORM");
   const [status, setStatus] = useState<ContentStatus>("DRAFT");
   const [scheduledAt, setScheduledAt] = useState("");
   const [seoTitle, setSeoTitle] = useState("");
@@ -155,9 +161,16 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
     setTranslatedField(setTranslations, locale, key, value);
   }
 
+  // §10.20/§4.2 — aynı gerekçe `load()`'daki `isSimpleModePage` ile birebir: standart kullanıcı
+  // (TEMPLATE sayfa, canUseAdvancedBuilder: false) kök yapıyı hiç DEĞİŞTİREMEDİĞİ için, çeviri
+  // blokları da sarma işleminden geçmemeli — aksi halde `translations.<locale>.blocks` üzerindeki
+  // yapısal diff guard'ı sarmayı "yapısal değişiklik" sayıp 403 döndürür.
   const enBlocks = useMemo(
-    () => wrapBareRootBlocks(normalizePageNodes(translations[locale]?.blocks ?? [])),
-    [translations, locale]
+    () =>
+      editMode === "TEMPLATE" && !canUseAdvancedBuilder
+        ? normalizePageNodes(translations[locale]?.blocks ?? [])
+        : wrapBareRootBlocks(normalizePageNodes(translations[locale]?.blocks ?? [])),
+    [translations, locale, editMode, canUseAdvancedBuilder]
   );
 
   function setEnBlocks(nextBlocks: PageNode[]) {
@@ -166,6 +179,8 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
 
   const activeNodes = isDefaultLocale ? blocks : enBlocks;
   const setActiveNodes = isDefaultLocale ? setBlocks : setEnBlocks;
+  // design-notes-page-builder-standard-mode.md §2.1 — `BuilderCanvas` bu durumda HİÇ mount edilmez.
+  const simpleMode = editMode === "TEMPLATE" && !canUseAdvancedBuilder;
   const selectedContainer = selectedContainerId
     ? ((findNode(activeNodes, selectedContainerId) as ContainerNode | null) ?? null)
     : null;
@@ -179,9 +194,21 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
       // Yalnızca admin görünümü içindir; `snapshot.blocks` de AYNI sarılmış değeri kullanır (bkz.
       // aşağısı), bu yüzden sayfayı SADECE açmak "Kaydedilmemiş değişiklik" bildirimini TETİKLEMEZ
       // — göç, admin başka bir şeyi kaydettiğinde sessizce kalıcı olur.
-      const loadedBlocks = wrapBareRootBlocks(normalizePageNodes(page.blocks));
+      // §10.20/§4.2 — standart kullanıcı (TEMPLATE sayfa, canUseAdvancedBuilder: false) için bu
+      // sarma İSTEMCİ TARAFINDA "yapısal değişiklik" üretir: kayıtlı kökler henüz bir container'a
+      // sarılı DEĞİLSE (örn. sayfa hiç gelişmiş kullanıcının "Kaydet"iyle "primed" edilmemişse),
+      // sarma sonrası ağaç backend'in yapısal diff guard'ına (`assertTemplateEditAllowed`) göre
+      // kayıtlıdan FARKLI sayılır ve 403 döner — standart kullanıcı zaten kök seviyesinde yapı
+      // DEĞİŞTİREMEDİĞİ için sarmanın ona hiçbir faydası yok. `editMode`/`canUseAdvancedBuilder`
+      // state'i bu satırda HENÜZ güncellenmediğinden (`simpleMode` bir önceki render'a ait), taze
+      // yüklenen `page.editMode` doğrudan kullanılır.
+      const isSimpleModePage = page.editMode === "TEMPLATE" && !canUseAdvancedBuilder;
+      const loadedBlocks = isSimpleModePage
+        ? normalizePageNodes(page.blocks)
+        : wrapBareRootBlocks(normalizePageNodes(page.blocks));
       setTitle(page.title);
       setSlug(page.slug);
+      setEditMode(page.editMode);
       setStatus(page.status);
       setScheduledAt(toDatetimeLocalValue(page.scheduledAt));
       setSeoTitle(page.seoTitle ?? "");
@@ -217,7 +244,7 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
     } catch (err) {
       setLoadError(friendlyErrorMessage(err));
     }
-  }, [pageId]);
+  }, [pageId, canUseAdvancedBuilder]);
 
   useEffect(() => {
     (async () => {
@@ -286,7 +313,6 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
     try {
       await pagesApi.updatePage(pageId, {
         title,
-        slug,
         status,
         scheduledAt: status === "SCHEDULED" ? new Date(scheduledAt).toISOString() : null,
         seoTitle: seoTitle || null,
@@ -298,6 +324,11 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
         noIndex,
         // §5.1 — yalnızca ADMIN gönderebilir (EDITOR → 403); EDITOR oturumunda alan HİÇ eklenmez.
         ...(isAdmin ? { isLegalDocument } : {}),
+        // §10.20/§4.2 — `slug` yalnızca gelişmiş kullanıcı için gönderilir; standart kullanıcı
+        // (TEMPLATE sayfa, canUseAdvancedBuilder: false) bu alanı hiç DEĞİŞTİRMEDEN dahi gövdeye
+        // eklerse backend `assertAdvancedFieldsAuthorized` VARLIK bazlı 403 döner (bkz. `isLegalDocument`
+        // ile AYNI koşullu-alan deseni).
+        ...(!simpleMode ? { slug } : {}),
         translations,
       });
       toast.success("Sayfa kaydedildi.");
@@ -321,7 +352,6 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
     try {
       await pagesApi.updatePage(pageId, {
         title,
-        slug,
         status: "DRAFT",
         scheduledAt: null,
         seoTitle: seoTitle || null,
@@ -332,6 +362,8 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
         canonicalUrl: canonicalUrl || null,
         noIndex,
         ...(isAdmin ? { isLegalDocument } : {}),
+        // §10.20/§4.2 — bkz. `handleSave` içindeki AYNI koşullu-alan yorumu.
+        ...(!simpleMode ? { slug } : {}),
         translations,
       });
       toast.success("Sayfa taslak olarak kaydedildi.");
@@ -432,6 +464,22 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
                 Kaydedilmemiş değişiklik
               </Badge>
             )}
+            {/* design-notes-page-builder-standard-mode.md §4.1 — YALNIZCA gelişmiş kullanıcı görür
+                (standart kullanıcı zaten TemplateEditorView'da, bu bağlam onun için gereksiz). */}
+            {editMode === "TEMPLATE" && canUseAdvancedBuilder && (
+              <Tooltip>
+                <TooltipTrigger render={<span tabIndex={0} className="inline-flex" />}>
+                  <Badge tone="warning">
+                    <LockKeyhole className="mr-1 h-3 w-3" />
+                    Şablon Modu
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Yapısal değişiklikleriniz (konteyner, düzen, stil) bu sayfayı düzenleyen standart
+                  kullanıcıların formunu ETKİLER. Standart kullanıcılar yalnızca içerik alanlarını görür.
+                </TooltipContent>
+              </Tooltip>
+            )}
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -456,9 +504,13 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
               </span>
             )}
 
-            <Button variant="ghost" onClick={() => setDeleteDialogOpen(true)}>
-              Sil
-            </Button>
+            {/* §4.1 — DELETE ucu artık `requireAdvancedBuilder` gerektiriyor; standart kullanıcıya
+                gösterilmez (backend zaten 403 döner, bu yalnızca UI temizliği içindir). */}
+            {canUseAdvancedBuilder && (
+              <Button variant="ghost" onClick={() => setDeleteDialogOpen(true)}>
+                Sil
+              </Button>
+            )}
 
             <span className="h-5 w-px bg-border" aria-hidden />
 
@@ -622,38 +674,60 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
             <h2 className="admin-h2">
               İçerik blokları {!isDefaultLocale && <span className="text-foreground/40">({locale.toUpperCase()})</span>}
             </h2>
-            <p className="mt-1 admin-text-secondary">Sayfaya blok/düzen ekleyin ve sırasını düzenleyin.</p>
-            <div className="mt-4">
-              <BuilderCanvas
-                key={`${isDefaultLocale ? "default" : locale}-${editorGeneration}`}
-                nodes={activeNodes}
-                onChange={setActiveNodes}
-                selectedContainerId={selectedContainer?.id ?? null}
-                onSelectContainer={setSelectedContainerId}
-              />
-            </div>
+            <p className="mt-1 admin-text-secondary">
+              {simpleMode ? "İçerik alanlarını doldurun — yapı bu şablonda sabittir." : "Sayfaya blok/düzen ekleyin ve sırasını düzenleyin."}
+            </p>
 
-            <Sheet
-              open={selectedContainer !== null}
-              onOpenChange={(open) => {
-                if (!open) setSelectedContainerId(null);
-              }}
-            >
-              <SheetContent side="right" showCloseButton={false} className="p-0 sm:max-w-[420px]">
-                <SheetHeader className="sr-only">
-                  <SheetTitle>Konteyner Ayarları</SheetTitle>
-                  <SheetDescription>Seçili konteynerin düzen, boşluk, arka plan ve ayırıcı ayarları.</SheetDescription>
-                </SheetHeader>
-                {selectedContainer && (
-                  <ContainerSettingsPanel
-                    container={selectedContainer}
-                    depth={selectedContainerDepth}
-                    onChange={(patch) => setActiveNodes(updateContainerSettings(activeNodes, selectedContainer.id, patch))}
-                    onClose={() => setSelectedContainerId(null)}
+            {/* design-notes-page-builder-standard-mode.md §4.2 — YALNIZCA gelişmiş kullanıcı + TEMPLATE
+                sayfa kombinasyonunda (aynı koşul, §4.1 rozetiyle tutarlı). */}
+            {editMode === "TEMPLATE" && canUseAdvancedBuilder && (
+              <Alert variant="warning" className="mt-4">
+                <span className="flex items-start gap-2">
+                  <LockKeyhole className="mt-0.5 h-4 w-4 shrink-0" />
+                  Bu sayfa <strong>şablon modunda</strong>. Buradaki yapısal değişiklikler (konteyner
+                  ekleme/silme, düzen, stil, animasyon) bu sayfayı düzenleyen standart kullanıcıların
+                  form ekranını etkiler; onlar yalnızca metin/görsel/buton gibi içerik alanlarını görür.
+                </span>
+              </Alert>
+            )}
+
+            <div className="mt-4">
+              {simpleMode ? (
+                <TemplateEditorView nodes={activeNodes} onChange={setActiveNodes} />
+              ) : (
+                <>
+                  <BuilderCanvas
+                    key={`${isDefaultLocale ? "default" : locale}-${editorGeneration}`}
+                    nodes={activeNodes}
+                    onChange={setActiveNodes}
+                    selectedContainerId={selectedContainer?.id ?? null}
+                    onSelectContainer={setSelectedContainerId}
                   />
-                )}
-              </SheetContent>
-            </Sheet>
+
+                  <Sheet
+                    open={selectedContainer !== null}
+                    onOpenChange={(open) => {
+                      if (!open) setSelectedContainerId(null);
+                    }}
+                  >
+                    <SheetContent side="right" showCloseButton={false} className="p-0 sm:max-w-[420px]">
+                      <SheetHeader className="sr-only">
+                        <SheetTitle>Konteyner Ayarları</SheetTitle>
+                        <SheetDescription>Seçili konteynerin düzen, boşluk, arka plan ve ayırıcı ayarları.</SheetDescription>
+                      </SheetHeader>
+                      {selectedContainer && (
+                        <ContainerSettingsPanel
+                          container={selectedContainer}
+                          depth={selectedContainerDepth}
+                          onChange={(patch) => setActiveNodes(updateContainerSettings(activeNodes, selectedContainer.id, patch))}
+                          onClose={() => setSelectedContainerId(null)}
+                        />
+                      )}
+                    </SheetContent>
+                  </Sheet>
+                </>
+              )}
+            </div>
           </div>
         </TabsContent>
 
@@ -773,6 +847,7 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
               await revisionsApi.restorePageRevision(pageId, revisionId);
               await load();
             }}
+            canRestore={canUseAdvancedBuilder}
           />
         </TabsContent>
       </Tabs>

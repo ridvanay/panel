@@ -16,7 +16,16 @@ const URL_HINT: Record<VideoProvider, string> = {
   mp4: "Doğrudan .mp4 dosya bağlantısı",
 };
 
-export function VideoBlockEditor({ block, onChange }: { block: VideoBlock; onChange: (block: VideoBlock) => void }) {
+export function VideoBlockEditor({
+  block,
+  onChange,
+  simple = false,
+}: {
+  block: VideoBlock;
+  onChange: (block: VideoBlock) => void;
+  /** §2.5 tablo B — şablon modunda `autoplay`/`muted` kilitlidir. */
+  simple?: boolean;
+}) {
   return (
     <div className="space-y-3">
       <div className="space-y-1.5">
@@ -36,28 +45,32 @@ export function VideoBlockEditor({ block, onChange }: { block: VideoBlock; onCha
           />
         )}
       </Field>
-      <div className="flex items-center justify-between">
-        <label htmlFor={`${block.id}-autoplay`} className="text-sm font-medium text-foreground">
-          Otomatik oynat
-        </label>
-        <Switch
-          id={`${block.id}-autoplay`}
-          checked={block.data.autoplay}
-          onCheckedChange={(autoplay) => onChange({ ...block, data: { ...block.data, autoplay } })}
-        />
-      </div>
-      <div className="flex items-center justify-between">
-        <label htmlFor={`${block.id}-muted`} className="text-sm font-medium text-foreground">
-          Sessiz başlat
-        </label>
-        <Switch
-          id={`${block.id}-muted`}
-          checked={block.data.muted}
-          onCheckedChange={(muted) => onChange({ ...block, data: { ...block.data, muted } })}
-        />
-      </div>
-      {block.data.autoplay && !block.data.muted && (
-        <p className="text-xs text-warning">Tarayıcılar çoğunlukla yalnızca sessiz videoların otomatik oynatılmasına izin verir.</p>
+      {!simple && (
+        <>
+          <div className="flex items-center justify-between">
+            <label htmlFor={`${block.id}-autoplay`} className="text-sm font-medium text-foreground">
+              Otomatik oynat
+            </label>
+            <Switch
+              id={`${block.id}-autoplay`}
+              checked={block.data.autoplay}
+              onCheckedChange={(autoplay) => onChange({ ...block, data: { ...block.data, autoplay } })}
+            />
+          </div>
+          <div className="flex items-center justify-between">
+            <label htmlFor={`${block.id}-muted`} className="text-sm font-medium text-foreground">
+              Sessiz başlat
+            </label>
+            <Switch
+              id={`${block.id}-muted`}
+              checked={block.data.muted}
+              onCheckedChange={(muted) => onChange({ ...block, data: { ...block.data, muted } })}
+            />
+          </div>
+          {block.data.autoplay && !block.data.muted && (
+            <p className="text-xs text-warning">Tarayıcılar çoğunlukla yalnızca sessiz videoların otomatik oynatılmasına izin verir.</p>
+          )}
+        </>
       )}
     </div>
   );

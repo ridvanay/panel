@@ -12,9 +12,12 @@ const ORIENTATION_OPTIONS: { value: BeforeAfterOrientation; label: string }[] = 
 export function BeforeAfterSliderBlockEditor({
   block,
   onChange,
+  simple = false,
 }: {
   block: BeforeAfterSliderBlock;
   onChange: (block: BeforeAfterSliderBlock) => void;
+  /** §2.5 tablo B — şablon modunda tutamaç yönü (`orientation`) kilitlidir. */
+  simple?: boolean;
 }) {
   return (
     <div className="space-y-3">
@@ -46,14 +49,16 @@ export function BeforeAfterSliderBlockEditor({
           )}
         </Field>
       </div>
-      <div className="space-y-1.5">
-        <p className="text-sm font-medium text-foreground">Tutamaç yönü</p>
-        <SegmentedToggle
-          value={block.data.orientation}
-          options={ORIENTATION_OPTIONS}
-          onChange={(orientation) => onChange({ ...block, data: { ...block.data, orientation } })}
-        />
-      </div>
+      {!simple && (
+        <div className="space-y-1.5">
+          <p className="text-sm font-medium text-foreground">Tutamaç yönü</p>
+          <SegmentedToggle
+            value={block.data.orientation}
+            options={ORIENTATION_OPTIONS}
+            onChange={(orientation) => onChange({ ...block, data: { ...block.data, orientation } })}
+          />
+        </div>
+      )}
     </div>
   );
 }

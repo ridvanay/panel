@@ -70,4 +70,22 @@ export const PERMISSIONS_MATRIX = {
       },
     },
   ],
+  /**
+   * §10.20 — ROLDEN TÜRETİLMEYEN, kullanıcı BAŞINA verilen yetenekler (bkz.
+   * `.claude/architect-scope-page-editor-roles.md` §1, openapi.yaml `PermissionsMatrix.capabilities`
+   * ile BİREBİR eşleşmesi gereken şekil). `modules` yalnızca rol × aksiyon eksenini anlatır; bu
+   * eksen olmasaydı "Yetkiler" ekranı eksik/yanıltıcı bilgi gösterirdi (aynı roldeki iki
+   * kullanıcının sayfa düzenleme kapsamı FARKLI olabilir). Bugün TEK yetenek vardır — ikinci bir
+   * bayrak eklemeden ÖNCE architect'e eskale edilir (§1.7).
+   */
+  capabilities: [
+    {
+      key: "advancedBuilder",
+      label: "Gelişmiş Düzenleyici",
+      // Depolanan izinden BAĞIMSIZ olarak her zaman etkin olduğu roller (§1.5, kilitlenme güvenliği).
+      alwaysGrantedTo: ["ADMIN"],
+      // Yöneticinin bu yeteneği kullanıcı başına açıp kapatabildiği roller.
+      grantableTo: ["EDITOR", "VIEWER"],
+    },
+  ],
 } as const;

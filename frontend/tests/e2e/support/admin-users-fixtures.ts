@@ -104,6 +104,22 @@ export async function adminUpdateStatus(
   return { status: res.status };
 }
 
+/** `PATCH /admin/users/{userId}/builder-access` (§10.20) — `adminUpdateRole`/`adminUpdateStatus`
+ * ile AYNI desen. `admin-page-editor-roles.spec.ts` tarafından kullanılır. */
+export async function adminUpdateBuilderAccess(
+  token: string,
+  userId: string,
+  advancedBuilderEnabled: boolean
+): Promise<{ status: number; body: FixtureAdminUser | { error: { code: string; message: string } } }> {
+  const res = await fetch(`${API_BASE_URL}/admin/users/${userId}/builder-access`, {
+    method: "PATCH",
+    headers: authHeaders(token),
+    body: JSON.stringify({ advancedBuilderEnabled }),
+  });
+  const body = await res.json();
+  return { status: res.status, body: (body.data ?? body) as FixtureAdminUser };
+}
+
 export async function adminRestoreUser(token: string, userId: string): Promise<{ status: number }> {
   const res = await fetch(`${API_BASE_URL}/admin/users/${userId}/restore`, {
     method: "POST",
@@ -135,5 +151,11 @@ export async function resetFixtureUserToBaseline(token: string, email: string): 
   }
   if (user.role !== "VIEWER") {
     await adminUpdateRole(token, user.id, "VIEWER");
+  }
+  // §10.20 — `advancedBuilderEnabled`'ı da temel duruma (false) döndürür (`admin-page-editor-
+  // roles.spec.ts`'in gelişmiş-yetenek testleri bir sonraki koşuma "gelişmiş" kalmış bir fixture
+  // kullanıcı BIRAKMAMALIDIR). VIEWER için teknik olarak anlamsız (§1.6) ama zararsız — idempotent.
+  if (user.advancedBuilderEnabled) {
+    await adminUpdateBuilderAccess(token, user.id, false);
   }
 }

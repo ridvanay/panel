@@ -47,6 +47,13 @@ interface ContentListTableProps<T extends ContentListEntity, Q extends QuickEdit
   viewHref: (item: T) => string;
 
   /**
+   * §10.20 — `Sayfalar`da `DELETE`/`restore` uçları artık `canUseAdvancedBuilder: true` gerektirir;
+   * standart kullanıcıya "Çöpe Taşı"/"Geri Yükle"/"Kalıcı Sil" aksiyonları gösterilmez. Varsayılan
+   * `true` — Blog/Ürün/Portföy listeleri (bu kısıta TABİ DEĞİL) DEĞİŞMEDEN çalışır.
+   */
+  canManageLifecycle?: boolean;
+
+  /**
    * Entity'ye özgü ek sütunlar (ör. Blog'un Kategori/Etiketler sütunu) — §10.7.2.
    * Sayfalar'da bu prop verilmez, ek sütun render edilmez.
    */
@@ -96,6 +103,7 @@ export function ContentListTable<T extends ContentListEntity, Q extends QuickEdi
   onRequestPermanentDelete,
   editHref,
   viewHref,
+  canManageLifecycle = true,
   extraColumns,
   quickEditExtraFields,
 }: ContentListTableProps<T, Q>) {
@@ -235,15 +243,17 @@ export function ContentListTable<T extends ContentListEntity, Q extends QuickEdi
                     <div className="mt-0.5 flex items-center gap-1.5 text-xs text-foreground/70 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
                       {isTrashed ? (
                         <>
-                          <button
-                            type="button"
-                            className="hover:text-foreground hover:underline disabled:pointer-events-none disabled:opacity-50"
-                            disabled={busy}
-                            onClick={() => onRestore(item)}
-                          >
-                            Geri Yükle
-                          </button>
-                          {isAdmin && (
+                          {canManageLifecycle && (
+                            <button
+                              type="button"
+                              className="hover:text-foreground hover:underline disabled:pointer-events-none disabled:opacity-50"
+                              disabled={busy}
+                              onClick={() => onRestore(item)}
+                            >
+                              Geri Yükle
+                            </button>
+                          )}
+                          {isAdmin && canManageLifecycle && (
                             <>
                               <span className="text-foreground/30" aria-hidden>
                                 |
@@ -276,17 +286,21 @@ export function ContentListTable<T extends ContentListEntity, Q extends QuickEdi
                           >
                             Hızlı Düzenle
                           </button>
-                          <span className="text-foreground/30" aria-hidden>
-                            |
-                          </span>
-                          <button
-                            type="button"
-                            className="hover:text-danger hover:underline disabled:pointer-events-none disabled:opacity-50"
-                            disabled={busy}
-                            onClick={() => onTrash(item)}
-                          >
-                            Çöpe Taşı
-                          </button>
+                          {canManageLifecycle && (
+                            <>
+                              <span className="text-foreground/30" aria-hidden>
+                                |
+                              </span>
+                              <button
+                                type="button"
+                                className="hover:text-danger hover:underline disabled:pointer-events-none disabled:opacity-50"
+                                disabled={busy}
+                                onClick={() => onTrash(item)}
+                              >
+                                Çöpe Taşı
+                              </button>
+                            </>
+                          )}
                           {item.status === "PUBLISHED" && (
                             <>
                               <span className="text-foreground/30" aria-hidden>
@@ -455,10 +469,12 @@ export function ContentListTable<T extends ContentListEntity, Q extends QuickEdi
                   <DropdownMenuContent align="end">
                     {isTrashed ? (
                       <>
-                        <DropdownMenuItem disabled={busy} onClick={() => onRestore(item)}>
-                          Geri Yükle
-                        </DropdownMenuItem>
-                        {isAdmin && (
+                        {canManageLifecycle && (
+                          <DropdownMenuItem disabled={busy} onClick={() => onRestore(item)}>
+                            Geri Yükle
+                          </DropdownMenuItem>
+                        )}
+                        {isAdmin && canManageLifecycle && (
                           <DropdownMenuItem
                             variant="destructive"
                             disabled={busy}
@@ -474,9 +490,11 @@ export function ContentListTable<T extends ContentListEntity, Q extends QuickEdi
                         <DropdownMenuItem disabled={busy} onClick={() => onStartQuickEdit(item)}>
                           Hızlı Düzenle
                         </DropdownMenuItem>
-                        <DropdownMenuItem variant="destructive" disabled={busy} onClick={() => onTrash(item)}>
-                          Çöpe Taşı
-                        </DropdownMenuItem>
+                        {canManageLifecycle && (
+                          <DropdownMenuItem variant="destructive" disabled={busy} onClick={() => onTrash(item)}>
+                            Çöpe Taşı
+                          </DropdownMenuItem>
+                        )}
                         {item.status === "PUBLISHED" && (
                           <DropdownMenuItem render={<Link href={viewHref(item)} target="_blank" rel="noopener noreferrer" />}>
                             Görüntüle

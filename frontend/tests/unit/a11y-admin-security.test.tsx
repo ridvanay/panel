@@ -58,6 +58,7 @@ function makeUser(overrides: Partial<User> = {}): User {
     avatarUrl: null,
     emailVerifiedAt: "2026-01-01T00:00:00.000Z",
     role: "ADMIN",
+    canUseAdvancedBuilder: true,
     createdAt: "2026-01-01T00:00:00.000Z",
     twoFactorEnabled: false,
     ...overrides,

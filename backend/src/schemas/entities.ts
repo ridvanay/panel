@@ -10,6 +10,9 @@ export const MembershipStatusSchema = z.enum(["ACTIVE", "INVITED", "SUSPENDED"])
 export const InvitationStatusSchema = z.enum(["PENDING", "ACCEPTED", "EXPIRED", "REVOKED"]);
 export const SubscriptionStatusSchema = z.enum(["TRIALING", "ACTIVE", "PAST_DUE", "CANCELED", "INCOMPLETE"]);
 export const PageStatusSchema = z.enum(["DRAFT", "PUBLISHED", "SCHEDULED"]);
+// §10.20 — bkz. `.claude/architect-scope-page-editor-roles.md` §2. `pages.schemas.ts`
+// (Create/UpdatePageRequestSchema) BU şemayı import eder — ikinci bir kopya YAZILMAZ.
+export const PageEditModeSchema = z.enum(["FREEFORM", "TEMPLATE"]);
 
 // `/admin/*` CMS uçları için org'dan bağımsız site-geneli rol/durum (bkz. middleware/site-rbac.ts).
 // MembershipRoleSchema (organizasyon bazlı) ile KARIŞTIRILMAMALI.
@@ -33,6 +36,9 @@ export const UserSchema = z.object({
   createdAt: z.string(),
   // §10.4 Güvenlik & 2FA — bkz. ARCHITECTURE.md §10.4.
   twoFactorEnabled: z.boolean(),
+  // §10.20 — TÜRETİLMİŞ + SALT-OKUNUR: `role === "ADMIN" || advancedBuilderEnabled` (bkz.
+  // lib/builder-capability.ts, .claude/architect-scope-page-editor-roles.md §1).
+  canUseAdvancedBuilder: z.boolean(),
 });
 export type UserDto = z.infer<typeof UserSchema>;
 
@@ -43,6 +49,9 @@ export const AdminUserSchema = UserSchema.extend({
   // Yumuşak silme zaman damgası — `status: DELETED` ise dolu, aksi hâlde `null` (bkz.
   // DELETE /admin/users/{userId}, POST /admin/users/{userId}/restore).
   deletedAt: z.string().nullable(),
+  // §10.20 — DEPOLANAN izin (`User.advancedBuilderEnabled` kolonu); `canUseAdvancedBuilder`
+  // ETKİN yetenektir ve ADMIN'de bu alandan BAĞIMSIZ olarak `true` döner (bkz. yukarısı).
+  advancedBuilderEnabled: z.boolean(),
 });
 export type AdminUserDto = z.infer<typeof AdminUserSchema>;
 
@@ -216,6 +225,9 @@ export const PageSchema = z.object({
   title: z.string(),
   slug: z.string(),
   status: PageStatusSchema,
+  // §10.20 — istemci standart moda geçip geçmeyeceğini şu ifadeyle türetir:
+  // `editMode === "TEMPLATE" && !user.canUseAdvancedBuilder` (bkz. openapi.yaml `Page.editMode`).
+  editMode: PageEditModeSchema,
   blocks: z.array(z.record(z.unknown())),
   seoTitle: z.string().nullable(),
   seoDescription: z.string().nullable(),

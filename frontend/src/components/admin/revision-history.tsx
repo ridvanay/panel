@@ -18,6 +18,12 @@ interface RevisionHistoryProps {
   entityLabel: string;
   loadRevisions: (cursor?: string) => Promise<Page<ContentRevisionSummary>>;
   onRestore: (revisionId: string) => Promise<void>;
+  /**
+   * §10.20 — `POST .../revisions/{id}/restore` sayfalarda artık `canUseAdvancedBuilder: true`
+   * gerektiriyor (Blog'da bu kısıt YOK). Varsayılan `true` — yalnızca `admin/pages/[pageId]/page.tsx`
+   * standart kullanıcı için `false` geçer; Blog kullanımı DEĞİŞMEDEN çalışmaya devam eder.
+   */
+  canRestore?: boolean;
 }
 
 /**
@@ -25,7 +31,7 @@ interface RevisionHistoryProps {
  * API'sini çağırmaz, `onRestore` callback'i alır (parent, hem page hem blog için
  * kendi `revisions.ts` fonksiyonunu bağlar ve restore sonrası formu tazeler).
  */
-export function RevisionHistory({ entityLabel, loadRevisions, onRestore }: RevisionHistoryProps) {
+export function RevisionHistory({ entityLabel, loadRevisions, onRestore, canRestore = true }: RevisionHistoryProps) {
   const [items, setItems] = useState<ContentRevisionSummary[] | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -109,15 +115,17 @@ export function RevisionHistory({ entityLabel, loadRevisions, onRestore }: Revis
                 {formatDistanceToNow(new Date(revision.createdAt), { addSuffix: true, locale: tr })}
               </p>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              loading={restoringId === revision.id}
-              onClick={() => setConfirmRevisionId(revision.id)}
-            >
-              <RotateCcw className="h-4 w-4" />
-              Bu Sürüme Geri Dön
-            </Button>
+            {canRestore && (
+              <Button
+                variant="outline"
+                size="sm"
+                loading={restoringId === revision.id}
+                onClick={() => setConfirmRevisionId(revision.id)}
+              >
+                <RotateCcw className="h-4 w-4" />
+                Bu Sürüme Geri Dön
+              </Button>
+            )}
           </div>
         ))}
       </Card>

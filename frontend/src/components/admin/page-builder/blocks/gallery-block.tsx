@@ -137,7 +137,16 @@ function GalleryImageCard({
  * `localIds` (index'e paralel, `crypto.randomUUID()`) tutulur; persisted şekle (`{url,alt}[]`)
  * asla sızmaz.
  */
-export function GalleryBlockEditor({ block, onChange }: { block: GalleryBlock; onChange: (block: GalleryBlock) => void }) {
+export function GalleryBlockEditor({
+  block,
+  onChange,
+  simple = false,
+}: {
+  block: GalleryBlock;
+  onChange: (block: GalleryBlock) => void;
+  /** §2.5 tablo B — şablon modunda düzen (`layout`) kontrolü kilitlidir. */
+  simple?: boolean;
+}) {
   const [localIds, setLocalIds] = useState<string[]>(() => block.data.images.map(() => newId()));
   const [pickerOpen, setPickerOpen] = useState(false);
 
@@ -205,7 +214,7 @@ export function GalleryBlockEditor({ block, onChange }: { block: GalleryBlock; o
       ) : (
         <>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <GalleryLayoutControl value={layout} onChange={handleLayoutChange} />
+            {!simple && <GalleryLayoutControl value={layout} onChange={handleLayoutChange} />}
             <div className="flex items-center gap-2">
               <span className={cn("text-xs tabular-nums", nearLimit ? "text-warning" : "text-foreground/60")}>
                 {images.length} / {GALLERY_MAX_IMAGES}

@@ -13,7 +13,16 @@ const RADIUS_OPTIONS: { value: ImageRadius; label: string }[] = [
   { value: "full", label: "Tam" },
 ];
 
-export function ImageBlockEditor({ block, onChange }: { block: ImageBlock; onChange: (block: ImageBlock) => void }) {
+export function ImageBlockEditor({
+  block,
+  onChange,
+  simple = false,
+}: {
+  block: ImageBlock;
+  onChange: (block: ImageBlock) => void;
+  /** §2.5 tablo B — şablon modunda köşe yuvarlaklığı/lightbox kilitlidir. */
+  simple?: boolean;
+}) {
   return (
     <div className="space-y-3">
       <ImageUploadField
@@ -41,24 +50,28 @@ export function ImageBlockEditor({ block, onChange }: { block: ImageBlock; onCha
           />
         )}
       </Field>
-      <div className="space-y-1.5">
-        <p className="text-sm font-medium text-foreground">Köşe yuvarlaklığı</p>
-        <SegmentedToggle
-          value={block.data.radius ?? "none"}
-          options={RADIUS_OPTIONS}
-          onChange={(radius) => onChange({ ...block, data: { ...block.data, radius } })}
-        />
-      </div>
-      <div className="flex items-center justify-between">
-        <label htmlFor={`${block.id}-lightbox`} className="text-sm font-medium text-foreground">
-          Tıklayınca büyüt (lightbox)
-        </label>
-        <Switch
-          id={`${block.id}-lightbox`}
-          checked={block.data.lightbox ?? false}
-          onCheckedChange={(lightbox) => onChange({ ...block, data: { ...block.data, lightbox } })}
-        />
-      </div>
+      {!simple && (
+        <>
+          <div className="space-y-1.5">
+            <p className="text-sm font-medium text-foreground">Köşe yuvarlaklığı</p>
+            <SegmentedToggle
+              value={block.data.radius ?? "none"}
+              options={RADIUS_OPTIONS}
+              onChange={(radius) => onChange({ ...block, data: { ...block.data, radius } })}
+            />
+          </div>
+          <div className="flex items-center justify-between">
+            <label htmlFor={`${block.id}-lightbox`} className="text-sm font-medium text-foreground">
+              Tıklayınca büyüt (lightbox)
+            </label>
+            <Switch
+              id={`${block.id}-lightbox`}
+              checked={block.data.lightbox ?? false}
+              onCheckedChange={(lightbox) => onChange({ ...block, data: { ...block.data, lightbox } })}
+            />
+          </div>
+        </>
+      )}
     </div>
   );
 }

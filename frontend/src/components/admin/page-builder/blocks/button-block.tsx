@@ -23,7 +23,16 @@ const ALIGN_OPTIONS: { value: TextAlign; label: string; icon: LucideIcon }[] = [
   { value: "right", label: "Sağ", icon: AlignRight },
 ];
 
-export function ButtonBlockEditor({ block, onChange }: { block: ButtonBlock; onChange: (block: ButtonBlock) => void }) {
+export function ButtonBlockEditor({
+  block,
+  onChange,
+  simple = false,
+}: {
+  block: ButtonBlock;
+  onChange: (block: ButtonBlock) => void;
+  /** §2.5 tablo B — şablon modunda stil/boyut/hizalama/ikon kilitlidir. */
+  simple?: boolean;
+}) {
   return (
     <div className="space-y-3">
       <Field id={`${block.id}-label`} label="Buton metni" required>
@@ -44,25 +53,29 @@ export function ButtonBlockEditor({ block, onChange }: { block: ButtonBlock; onC
           />
         )}
       </Field>
-      <div className="space-y-1.5">
-        <p className="text-sm font-medium text-foreground">Stil</p>
-        <SegmentedToggle value={block.data.style} options={STYLE_OPTIONS} onChange={(style) => onChange({ ...block, data: { ...block.data, style } })} />
-      </div>
-      <div className="space-y-1.5">
-        <p className="text-sm font-medium text-foreground">Boyut</p>
-        <SegmentedToggle value={block.data.size} options={SIZE_OPTIONS} onChange={(size) => onChange({ ...block, data: { ...block.data, size } })} />
-      </div>
-      <div className="space-y-1.5">
-        <p className="text-sm font-medium text-foreground">Hizalama</p>
-        <SegmentedToggle value={block.data.align} options={ALIGN_OPTIONS} onChange={(align) => onChange({ ...block, data: { ...block.data, align } })} />
-      </div>
-      <IconPickerField
-        id={`${block.id}-icon`}
-        label="İkon (opsiyonel)"
-        value={block.data.icon}
-        onChange={(icon) => onChange({ ...block, data: { ...block.data, icon } })}
-        allowNone
-      />
+      {!simple && (
+        <>
+          <div className="space-y-1.5">
+            <p className="text-sm font-medium text-foreground">Stil</p>
+            <SegmentedToggle value={block.data.style} options={STYLE_OPTIONS} onChange={(style) => onChange({ ...block, data: { ...block.data, style } })} />
+          </div>
+          <div className="space-y-1.5">
+            <p className="text-sm font-medium text-foreground">Boyut</p>
+            <SegmentedToggle value={block.data.size} options={SIZE_OPTIONS} onChange={(size) => onChange({ ...block, data: { ...block.data, size } })} />
+          </div>
+          <div className="space-y-1.5">
+            <p className="text-sm font-medium text-foreground">Hizalama</p>
+            <SegmentedToggle value={block.data.align} options={ALIGN_OPTIONS} onChange={(align) => onChange({ ...block, data: { ...block.data, align } })} />
+          </div>
+          <IconPickerField
+            id={`${block.id}-icon`}
+            label="İkon (opsiyonel)"
+            value={block.data.icon}
+            onChange={(icon) => onChange({ ...block, data: { ...block.data, icon } })}
+            allowNone
+          />
+        </>
+      )}
     </div>
   );
 }

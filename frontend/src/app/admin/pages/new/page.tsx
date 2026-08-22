@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { AlertCircle, ChevronDown, ChevronLeft, FileText, Search } from "lucide-react";
+import { AlertCircle, ChevronDown, ChevronLeft, FileText, Search, ShieldAlert } from "lucide-react";
 import * as pagesApi from "@/lib/api/pages";
 import * as usersAdminApi from "@/lib/api/users-admin";
 import type { AdminUser, ContentStatus } from "@/lib/api/types";
@@ -21,6 +21,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { InputGroup, InputGroupAddon, InputGroupInput, InputGroupText } from "@/components/ui/input-group";
 import { Alert } from "@/components/ui/alert";
 import { PageHeading } from "@/components/admin/page-heading";
+import { EmptyState } from "@/components/ui/empty-state";
 import { ImageUploadField } from "@/components/admin/media/image-upload-field";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { cn } from "@/lib/cn";
@@ -94,6 +95,9 @@ export default function NewPagePage() {
   const router = useRouter();
   const { user } = useAuth();
   const isAdmin = user?.role === "ADMIN";
+  // §10.20 — `POST /admin/pages` artık `canUseAdvancedBuilder: true` gerektiriyor (standart
+  // kullanıcı hiçbir yapısı olmayan bir sayfa oluşturamaz, bkz. architect-scope §4.1).
+  const canUseAdvancedBuilder = user?.canUseAdvancedBuilder ?? false;
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
   const [seoOpen, setSeoOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -135,6 +139,33 @@ export default function NewPagePage() {
       }
     })();
   }, [isAdmin]);
+
+  // §10.20 — `admin/reports/page.tsx` ile AYNI "rol/yetenek uyuşmuyorsa erişim mesajı göster"
+  // deseni; backend zaten 403 döner, ama doğrudan `/admin/pages/new`'e gidilirse UX için önceden
+  // anlamlı bir mesaj gösterilir (bkz. architect-scope §6.4 madde 5 — görünürlük/routing kararı).
+  if (!canUseAdvancedBuilder) {
+    return (
+      <div className="mx-auto max-w-xl space-y-6">
+        <Link
+          href="/admin/pages"
+          className="inline-flex items-center gap-1 text-sm text-foreground/60 transition-colors hover:text-foreground"
+        >
+          <ChevronLeft className="h-4 w-4" />
+          Sayfalar
+        </Link>
+        <PageHeading
+          icon={FileText}
+          title="Yeni Sayfa"
+          description="Başlığı girin, ardından içerik ve blokları düzenleme ekranında ekleyin."
+        />
+        <EmptyState
+          icon={ShieldAlert}
+          title="Bu bölüme erişiminiz yok"
+          description="Yeni sayfa oluşturmak yalnızca Gelişmiş Düzenleyici yeteneğine sahip kullanıcılara açıktır."
+        />
+      </div>
+    );
+  }
 
   function handleTitleChange(value: string) {
     if (!slugManuallyEdited) {

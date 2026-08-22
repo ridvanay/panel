@@ -32,6 +32,9 @@ const pageCsvColumns = buildContentCsvColumns<SitePage>();
 export default function AdminPagesListPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === "ADMIN";
+  // §10.20 — `POST /admin/pages`, `DELETE`, `restore`, `bulk` uçları artık `canUseAdvancedBuilder`
+  // gerektiriyor; standart kullanıcıya bu aksiyonlar hiç gösterilmez (backend zaten 403 döner).
+  const canUseAdvancedBuilder = user?.canUseAdvancedBuilder ?? false;
 
   const list = useContentList<SitePage>({
     fetchList: pagesApi.listPages,
@@ -71,7 +74,7 @@ export default function AdminPagesListPage() {
               <Download className="h-4 w-4" />
               Dışa Aktar
             </Button>
-            <LinkButton href="/admin/pages/new">Yeni Sayfa</LinkButton>
+            {canUseAdvancedBuilder && <LinkButton href="/admin/pages/new">Yeni Sayfa</LinkButton>}
           </div>
         }
       />
@@ -100,7 +103,7 @@ export default function AdminPagesListPage() {
             icon={FileText}
             title="Henüz sayfa yok"
             description="İlk sayfanızı oluşturarak başlayın."
-            action={<LinkButton href="/admin/pages/new">Yeni Sayfa</LinkButton>}
+            action={canUseAdvancedBuilder ? <LinkButton href="/admin/pages/new">Yeni Sayfa</LinkButton> : undefined}
           />
         </motion.div>
       ) : (
@@ -133,7 +136,7 @@ export default function AdminPagesListPage() {
             )}
           </div>
 
-          {list.selectedIds.size > 0 && (
+          {list.selectedIds.size > 0 && canUseAdvancedBuilder && (
             <ContentListBulkBar
               selectedCount={list.selectedIds.size}
               activeFilter={list.activeFilter}
@@ -178,6 +181,7 @@ export default function AdminPagesListPage() {
                 onRequestPermanentDelete={list.requestPermanentDelete}
                 editHref={(page) => `/admin/pages/${page.id}`}
                 viewHref={(page) => `/${page.slug}`}
+                canManageLifecycle={canUseAdvancedBuilder}
               />
             </motion.div>
           )}

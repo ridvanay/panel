@@ -23,7 +23,15 @@ describe("localization (§10.5)", () => {
     adminToken = admin.accessToken;
 
     const editor = await registerTestUser(app, { email: "i18n-editor@example.com" });
-    await app.prisma.user.update({ where: { id: editor.userId }, data: { role: "EDITOR" } });
+    // §10.20 — bu dosyanın testleri i18n/`isLegalDocument` davranışını hedefler, GELİŞMİŞ
+    // Düzenleyici eksenini DEĞİL; bu EDITOR'ü o eksende kısıtlı bırakmak (varsayılan `false`)
+    // `POST .../revisions/{revisionId}/restore` gibi ARTIK ayrıca gelişmiş yetenek isteyen
+    // uçlarda ilgisiz bir 403 üretip bu dosyadaki testlerin niyetini bozardı (bkz.
+    // `.claude/architect-scope-page-editor-roles.md` §4.1) — bu yüzden `advancedBuilderEnabled: true`.
+    await app.prisma.user.update({
+      where: { id: editor.userId },
+      data: { role: "EDITOR", advancedBuilderEnabled: true },
+    });
     editorToken = editor.accessToken;
   });
 

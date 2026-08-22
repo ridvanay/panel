@@ -28,7 +28,9 @@ vi.mock("@/lib/api/locales", () => ({
   ]),
 }));
 vi.mock("@/context/auth-context", () => ({
-  useAuth: () => ({ user: { id: "user-1", email: "admin@example.com", name: "Admin", avatarUrl: null, role: "ADMIN" } }),
+  useAuth: () => ({
+    user: { id: "user-1", email: "admin@example.com", name: "Admin", avatarUrl: null, role: "ADMIN", canUseAdvancedBuilder: true },
+  }),
 }));
 
 const pagesApi = await import("@/lib/api/pages");
@@ -40,6 +42,7 @@ function makePage(overrides: Partial<SitePage> = {}): SitePage {
     title: "Başlangıç Sayfası",
     slug: "baslangic-sayfasi",
     status: "DRAFT",
+    editMode: "FREEFORM",
     blocks: [],
     seoTitle: null,
     seoDescription: null,

@@ -21,6 +21,11 @@ export type ApiErrorCode =
   // openapi.yaml `#/components/responses/PayloadTooLarge` (413) — İçe aktarma dosya
   // yükleme ucunda kullanılır (bkz. lib/api/import.ts). Önceden bu union'da eksikti.
   | "PAYLOAD_TOO_LARGE"
+  // `.claude/architect-scope-page-editor-roles.md` §5 — `backend/src/lib/errors.ts`
+  // zaten üretiyordu, openapi.yaml `ApiErrorEnvelope.error.code` enum'ında eksikti;
+  // bu turda kontrata eklendi, frontend union'ı burada eşleniyor.
+  | "BAD_REQUEST"
+  | "EMAIL_DELIVERY_FAILED"
   | "INTERNAL_ERROR"
   | "NETWORK_ERROR";
 
@@ -45,6 +50,18 @@ export interface User {
   avatarUrl: string | null;
   emailVerifiedAt: string | null;
   role: SiteRole;
+  /**
+   * §10.20 — bu kullanıcının **Gelişmiş Düzenleyici** (advanced page builder) yeteneği var mı.
+   * TÜRETİLMİŞ ve SALT-OKUNUR bir alandır — doğrudan yazılamaz (izin vermek için bkz.
+   * `PATCH /admin/users/{userId}/builder-access`).
+   *
+   * `canUseAdvancedBuilder = (role === "ADMIN") || advancedBuilderEnabled`
+   *
+   * ADMIN için depolanan değere BAKILMAKSIZIN her zaman `true`'dur (kilitlenme güvenliği).
+   * **Bu alan yalnızca UI'ın doğru kontrolleri göstermesi içindir, bir güvenlik kontrolü
+   * DEĞİLDİR** — sunucu her yazma isteğinde yeteneği bağımsız olarak yeniden hesaplar.
+   */
+  readonly canUseAdvancedBuilder: boolean;
   createdAt: string;
   twoFactorEnabled: boolean;
 }
@@ -60,6 +77,18 @@ export interface AdminUser {
   avatarUrl: string | null;
   emailVerifiedAt: string | null;
   role: SiteRole;
+  /** Bkz. `User.canUseAdvancedBuilder` — aynı türetilmiş, salt-okunur alan. */
+  readonly canUseAdvancedBuilder: boolean;
+  /**
+   * §10.20 — DEPOLANAN izin (`User.advancedBuilderEnabled` kolonu), yani "yöneticinin bu
+   * hesaba açıkça verdiği yetki". `canUseAdvancedBuilder` ise ETKİN yetenektir ve ADMIN'ler
+   * için bu alandan BAĞIMSIZ olarak `true` döner. Yönetim ekranı anahtarı BU alana bağlanır
+   * (bkz. `PATCH /admin/users/{userId}/builder-access`).
+   *
+   * `role: VIEWER` olan bir kullanıcıda `true` olması KABUL EDİLİR ve 422 ÜRETMEZ (bkz.
+   * `.claude/architect-scope-page-editor-roles.md` §1.6).
+   */
+  advancedBuilderEnabled: boolean;
   createdAt: string;
   status: SiteUserStatus;
   lastLoginAt: string | null;
@@ -85,6 +114,15 @@ export interface UpdateUserRoleRequest {
 export interface UpdateUserStatusRequest {
   /** `DELETED` BİLEREK dışarıda bırakılmıştır — silme yalnızca `DELETE /admin/users/{userId}` ile yapılır. */
   status: Exclude<SiteUserStatus, "DELETED">;
+}
+
+/**
+ * §10.20 — `PATCH /admin/users/{userId}/builder-access` gövdesi. Kullanıcının **Gelişmiş
+ * Düzenleyici** yeteneğini açar/kapatır; `role` bu uçtan DEĞİŞTİRİLEMEZ (bkz.
+ * `UpdateUserRoleRequest`) — yetenek ve rol AYRI eksenlerdir. Yalnızca ADMIN çağırabilir.
+ */
+export interface UpdateAdminUserBuilderAccessRequest {
+  advancedBuilderEnabled: boolean;
 }
 
 export interface Organization {
@@ -341,6 +379,22 @@ export interface ContentLocalization {
   translated: boolean;
 }
 
+/**
+ * §10.20 — sayfanın DÜZENLEME MODU. Bir YAZMA/YETKİLENDİRME kavramıdır; ziyaretçiye giden
+ * public çıktıda hiçbir karşılığı YOKTUR (`GET /pages`, `GET /pages/{slug}` bu alandan
+ * ETKİLENMEZ).
+ *
+ * - `FREEFORM` — serbest tasarım. Yapıyı değiştirmek serbesttir. **Varsayılan.**
+ * - `TEMPLATE` — şablon. Yapı DONMUŞtur: `canUseAdvancedBuilder: false` olan bir kullanıcı
+ *   yalnızca izin verilen İÇERİK alanlarını düzenleyebilir (bkz.
+ *   `lib/page-builder/template-fields.ts::TEMPLATE_EDITABLE_FIELDS`).
+ *
+ * **`TEMPLATE`, sayfa geneli bir KİLİT DEĞİLDİR:** `canUseAdvancedBuilder: true` olan
+ * kullanıcılar `TEMPLATE` bir sayfada da kısıtsız çalışır — mod yalnızca standart kullanıcılar
+ * için bir politikadır.
+ */
+export type PageEditMode = "FREEFORM" | "TEMPLATE";
+
 // Not: `Page<T>` yukarıda sayfalama zarfı olarak kullanıldığı için site sayfası
 // varlığı çakışmasın diye `SitePage` adlandırıldı.
 export interface SitePage {
@@ -348,6 +402,11 @@ export interface SitePage {
   title: string;
   slug: string;
   status: ContentStatus;
+  /**
+   * §10.20. İstemci, standart moda geçip geçmeyeceğini şu ifadeyle türetir:
+   * `editMode === "TEMPLATE" && !user.canUseAdvancedBuilder`.
+   */
+  editMode: PageEditMode;
   blocks: Record<string, unknown>[];
   seoTitle: string | null;
   seoDescription: string | null;
@@ -382,6 +441,11 @@ export interface CreateSitePageRequest {
   title: string;
   slug?: string;
   status?: ContentStatus;
+  /**
+   * §10.20. Verilmezse `FREEFORM`. Bu ucun TAMAMI zaten `canUseAdvancedBuilder: true` şartına
+   * tabidir, bu yüzden burada ek bir alan-bazlı 403 kuralı YOKTUR.
+   */
+  editMode?: PageEditMode;
   /** `status === "SCHEDULED"` iken ZORUNLU ve gelecekte bir tarih olmalı (backend 422 ile reddeder). */
   scheduledAt?: string | null;
   blocks?: Record<string, unknown>[];
@@ -400,10 +464,27 @@ export interface CreateSitePageRequest {
 
 export interface UpdateSitePageRequest {
   title?: string;
+  /**
+   * §10.20 — `canUseAdvancedBuilder: false` olan bir kullanıcı, sayfa `editMode: TEMPLATE`
+   * iken bu alanı GÖNDEREMEZ (`403 FORBIDDEN`). Sayfanın URL'i yapısal bir özelliktir.
+   */
   slug?: string;
   status?: ContentStatus;
+  /**
+   * §10.20 — bu alanı yalnızca `canUseAdvancedBuilder: true` olan kullanıcılar gönderebilir;
+   * aksi halde `403 FORBIDDEN` (`isLegalDocument`/`authorId` ile AYNI alan-bazlı guard deseni).
+   * Değeri DEĞİŞTİREN her istek `content.edit_mode_change` audit kaydı üretir.
+   */
+  editMode?: PageEditMode;
   /** `status === "SCHEDULED"` iken ZORUNLU ve gelecekte bir tarih olmalı (backend 422 ile reddeder). */
   scheduledAt?: string | null;
+  /**
+   * §10.20 EK KURALI — şablon modu diff'i. Sayfa `editMode: TEMPLATE` VE çağıran
+   * `canUseAdvancedBuilder: false` ise, gelen ağaç kayıtlı ağaçla karşılaştırılır (backend
+   * `lib/page-template-guard.ts::assertTemplateEditAllowed`): düğüm sayısı/sıra/`type` aynı
+   * kalmalı, `container.settings`/`reveal` değişmemeli, içerik bloklarında yalnızca
+   * `TEMPLATE_EDITABLE_FIELDS[type]` alanları farklı olabilir. İhlal → `403 FORBIDDEN`.
+   */
   blocks?: Record<string, unknown>[];
   seoTitle?: string | null;
   seoDescription?: string | null;

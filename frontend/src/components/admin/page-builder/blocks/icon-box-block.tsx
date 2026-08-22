@@ -5,15 +5,26 @@ import type { IconBoxBlock } from "@/lib/page-builder/types";
 import { DEFAULT_ICON_NAME } from "@/lib/page-builder/icon-options";
 import { IconPickerField } from "./icon-picker";
 
-export function IconBoxBlockEditor({ block, onChange }: { block: IconBoxBlock; onChange: (block: IconBoxBlock) => void }) {
+export function IconBoxBlockEditor({
+  block,
+  onChange,
+  simple = false,
+}: {
+  block: IconBoxBlock;
+  onChange: (block: IconBoxBlock) => void;
+  /** §2.5 tablo B — şablon modunda ikon seçimi kilitlidir. */
+  simple?: boolean;
+}) {
   return (
     <div className="space-y-3">
-      <IconPickerField
-        id={`${block.id}-icon`}
-        label="İkon"
-        value={block.data.icon}
-        onChange={(icon) => onChange({ ...block, data: { ...block.data, icon: icon ?? DEFAULT_ICON_NAME } })}
-      />
+      {!simple && (
+        <IconPickerField
+          id={`${block.id}-icon`}
+          label="İkon"
+          value={block.data.icon}
+          onChange={(icon) => onChange({ ...block, data: { ...block.data, icon: icon ?? DEFAULT_ICON_NAME } })}
+        />
+      )}
       <Field id={`${block.id}-heading`} label="Başlık" required>
         {(inputProps) => (
           <Input

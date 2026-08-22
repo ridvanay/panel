@@ -23,5 +23,16 @@ export const PermissionsMatrixSchema = z.object({
       actions: z.record(z.array(z.string())),
     })
   ),
+  // §10.20 — bkz. openapi.yaml `PermissionsMatrix.capabilities`. Zod response şeması alanı
+  // TANIMAMAZSA fastify-type-provider-zod serileştirme sırasında SESSİZCE düşürür — bu yüzden
+  // `lib/permissions-matrix.ts::PERMISSIONS_MATRIX.capabilities` ile ŞEKİL PARİTESİ ZORUNLU.
+  capabilities: z.array(
+    z.object({
+      key: z.literal("advancedBuilder"),
+      label: z.string(),
+      alwaysGrantedTo: z.array(z.string()),
+      grantableTo: z.array(z.string()),
+    })
+  ),
 });
 export type PermissionsMatrixDto = z.infer<typeof PermissionsMatrixSchema>;

@@ -21,6 +21,7 @@ import {
   AdminUserIdParamSchema,
   CreateAdminUserRequestSchema,
   ListAdminUsersQuerySchema,
+  UpdateAdminUserBuilderAccessRequestSchema,
   UpdateAdminUserRoleRequestSchema,
   UpdateAdminUserStatusRequestSchema,
 } from "./admin-users.schemas";
@@ -230,6 +231,52 @@ export async function adminUsersRoutes(app: FastifyInstance) {
         targetType: "User",
         targetId: user.id,
         metadata: { from: previousStatus, to: status },
+        ipAddress: request.ip,
+      });
+
+      return reply.send(ok(toAdminUserDto(user)));
+    }
+  );
+
+  /**
+   * §10.20 — Gelişmiş Düzenleyici yetkisini aç/kapat (bkz.
+   * `.claude/architect-scope-page-editor-roles.md` §4.3). `/role`/`/status` ile BİREBİR AYNI
+   * desen: `ADMIN_USERS_RATE_LIMIT`, `DELETED` kullanıcıda 404, `user.builder_access_change`
+   * audit'i. TEK fark: `assertNotLastActiveAdmin` YOK — ADMIN için etkin yetenek depolanan
+   * değerden BAĞIMSIZ olarak zaten her zaman `true`'dur (§1.5), yani bu alan üzerinden bir
+   * kilitlenme senaryosu YAPISAL OLARAK imkânsızdır; bu yüzden `runSerializable`/TOCTOU
+   * korumasına da gerek YOKTUR (korunacak bir "son admin" değişmezi yok).
+   */
+  server.patch(
+    "/:userId/builder-access",
+    {
+      config: { rateLimit: ADMIN_USERS_RATE_LIMIT },
+      schema: {
+        params: AdminUserIdParamSchema,
+        body: UpdateAdminUserBuilderAccessRequestSchema,
+        response: { 200: ApiSuccessSchema(AdminUserSchema) },
+      },
+    },
+    async (request, reply) => {
+      const { advancedBuilderEnabled } = request.body;
+
+      const target = await app.prisma.user.findUnique({ where: { id: request.params.userId } });
+      // `/role`/`/status` ile TUTARLI: `DELETED` kullanıcılar var olmayan kayıt gibi davranılır.
+      if (!target || target.status === "DELETED") throw new NotFoundError("Kullanıcı bulunamadı.");
+
+      const previousValue = target.advancedBuilderEnabled;
+      const user = await app.prisma.user.update({
+        where: { id: target.id },
+        data: { advancedBuilderEnabled },
+      });
+
+      await logAudit(app, {
+        actorId: request.user!.id,
+        actorEmail: request.user!.email,
+        action: "user.builder_access_change",
+        targetType: "User",
+        targetId: user.id,
+        metadata: { from: previousValue, to: advancedBuilderEnabled },
         ipAddress: request.ip,
       });
 

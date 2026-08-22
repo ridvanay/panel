@@ -74,6 +74,33 @@ export async function ensureAdminSession(
   return session;
 }
 
+/**
+ * `ensureAdminSession()`'ın ADMIN'e ÖZGÜ OLMAYAN genel hali (§10.20) — bir fixture kullanıcının
+ * (standart/gelişmiş EDITOR, ikinci ADMIN…) access token'ını, DİSKE YAZMADAN döner. `POST
+ * /auth/register`/`/auth/login`'in sabit 5 istek/dk kotasına katkısı `ensureAdminSession()` ile
+ * AYNIDIR — çağıran dosya bunu göz önünde bulundurup çağrı sayısını (dosya başına birkaç fixture
+ * kullanıcı) sınırlı tutmalıdır. Kayıt zaten varsa (409) login'e düşer — `registerFixtureUser()`/
+ * `resetFixtureUserToBaseline()` (`support/admin-users-fixtures.ts`) ile İDEMPOTENT olarak birlikte kullanılır.
+ */
+export async function getFixtureUserToken(email: string, password: string, name: string): Promise<string> {
+  const registerRes = await fetch(`${API_BASE_URL}/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password, name }),
+  });
+  if (registerRes.ok) {
+    const body = (await registerRes.json()) as { data: { tokens: { accessToken: string } } };
+    return body.data.tokens.accessToken;
+  }
+  const loginRes = await fetch(`${API_BASE_URL}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  const body = await json<{ data: { tokens: { accessToken: string } } }>(loginRes);
+  return body.data.tokens.accessToken;
+}
+
 /** Diğer spec dosyalarının kullanması gereken yol — `auth.setup.ts`'in yazdığı token'ı okur. */
 export async function getCachedAdminSession(): Promise<AdminSession> {
   try {
@@ -130,6 +157,36 @@ export async function createPage(token: string, input: PageFixtureInput) {
       blocks: [{ id: "b1", type: "text", data: { html: input.html } }],
       ...(input.isLegalDocument !== undefined ? { isLegalDocument: input.isLegalDocument } : {}),
       ...(translations ? { translations } : {}),
+    }),
+  });
+  return json<{ data: Record<string, unknown> }>(res).then((b) => b.data);
+}
+
+export interface TemplatePageFixtureInput {
+  title: string;
+  slug: string;
+  status?: "PUBLISHED" | "DRAFT";
+  /** §10.20 — `admin-page-editor-roles.spec.ts` tarafından kullanılır. `blocks` `createPage()`'in
+   *  aksine SERBEST verilir (yalnızca tek bir `text` bloğu DEĞİL) — kök seviyede zaten bir
+   *  `container`'a SARILMIŞ olmalıdır (bkz. o dosyanın başlığındaki qa-agent bulgusu:
+   *  `frontend/src/lib/page-builder/containers.ts::wrapBareRootBlocks` editör YÜKLENİRKEN çıplak
+   *  kök blokları KENDİ container'ına sarar — bu fixture'ın kök bloğu ZATEN bir `container` İSE bu
+   *  sarma no-op'tur ve fixture'ın kayıtlı ağacıyla editörün ürettiği ağaç birebir eşleşir). */
+  blocks: unknown[];
+  editMode?: "FREEFORM" | "TEMPLATE";
+}
+
+/** `POST /admin/pages` — `createPage()`'in serbest-`blocks`/`editMode` alan hali (§10.20). */
+export async function createPageWithBlocks(token: string, input: TemplatePageFixtureInput) {
+  const res = await fetch(`${API_BASE_URL}/admin/pages`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({
+      title: input.title,
+      slug: input.slug,
+      status: input.status ?? "DRAFT",
+      blocks: input.blocks,
+      ...(input.editMode ? { editMode: input.editMode } : {}),
     }),
   });
   return json<{ data: Record<string, unknown> }>(res).then((b) => b.data);

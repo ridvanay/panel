@@ -18,7 +18,16 @@ const ALIGN_OPTIONS: { value: TextAlign; label: string; icon: LucideIcon }[] = [
   { value: "right", label: "Sağ", icon: AlignRight },
 ];
 
-export function CtaBlockEditor({ block, onChange }: { block: CtaBlock; onChange: (block: CtaBlock) => void }) {
+export function CtaBlockEditor({
+  block,
+  onChange,
+  simple = false,
+}: {
+  block: CtaBlock;
+  onChange: (block: CtaBlock) => void;
+  /** §2.5 tablo B — şablon modunda hizalama/görünüm (`style`) kilitlidir. */
+  simple?: boolean;
+}) {
   return (
     <div className="space-y-3">
       <Field id={`${block.id}-heading`} label="Başlık" required>
@@ -80,22 +89,26 @@ export function CtaBlockEditor({ block, onChange }: { block: CtaBlock; onChange:
           />
         )}
       </Field>
-      <div className="space-y-1.5">
-        <p className="text-sm font-medium text-foreground">Hizalama</p>
-        <SegmentedToggle
-          value={block.data.align ?? "center"}
-          options={ALIGN_OPTIONS}
-          onChange={(align) => onChange({ ...block, data: { ...block.data, align } })}
-        />
-      </div>
-      <div className="space-y-1.5">
-        <p className="text-sm font-medium text-foreground">Görünüm</p>
-        <SegmentedToggle
-          value={block.data.style ?? "plain"}
-          options={STYLE_OPTIONS}
-          onChange={(style) => onChange({ ...block, data: { ...block.data, style } })}
-        />
-      </div>
+      {!simple && (
+        <>
+          <div className="space-y-1.5">
+            <p className="text-sm font-medium text-foreground">Hizalama</p>
+            <SegmentedToggle
+              value={block.data.align ?? "center"}
+              options={ALIGN_OPTIONS}
+              onChange={(align) => onChange({ ...block, data: { ...block.data, align } })}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <p className="text-sm font-medium text-foreground">Görünüm</p>
+            <SegmentedToggle
+              value={block.data.style ?? "plain"}
+              options={STYLE_OPTIONS}
+              onChange={(style) => onChange({ ...block, data: { ...block.data, style } })}
+            />
+          </div>
+        </>
+      )}
     </div>
   );
 }

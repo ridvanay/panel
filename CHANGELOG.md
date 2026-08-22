@@ -13,6 +13,29 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
 
 ### Added
 
+- **Sayfa yönetiminde standart/gelişmiş düzenleyici mod ayrımı** (`ARCHITECTURE.md` §10.20,
+  bağlayıcı karar dokümanı `.claude/architect-scope-page-editor-roles.md`). Sayfalar artık
+  **Serbest Tasarım** (`FREEFORM`, mevcut davranış, varsayılan) veya **Şablon** (`TEMPLATE`)
+  modunda olabilir; şablon modundaki bir sayfada **Yazar (Standart Düzenleyici)** yetkisine
+  sahip bir kullanıcı yalnızca başlık/zengin metin/görsel/buton gibi içerik alanlarını
+  doldurabilir — konteyner ekleme/silme, düzen, CSS, giriş efekti ve özel HTML tamamen
+  kapalıdır; yapısal bir değişiklik denenirse (autosave dahil) sunucu **403** ile reddeder.
+  - `SiteRole` enum'ına yeni bir değer EKLENMEDİ. Bunun yerine kullanıcı başına
+    `advancedBuilderEnabled` yetenek bayrağı eklendi; etkin yetki
+    `canUseAdvancedBuilder = role === "ADMIN" || advancedBuilderEnabled` olarak sunucu
+    tarafında türetiliyor (ADMIN her zaman gelişmiş — kilitlenmeyi önlemek için).
+  - Yeni uç: `PATCH /admin/users/{userId}/builder-access` (yalnızca ADMIN) — `/admin/users`
+    sayfasına "Yetenek" sütunu eklendi.
+  - `POST /admin/pages`, sayfa silme/geri yükleme, toplu işlemler ve revizyon geri yükleme
+    artık gelişmiş yetenek gerektiriyor (`requireAdvancedBuilder`); `PATCH`/autosave uçları
+    açık kalıyor ama gövde, kayıtlı sayfa ağacıyla düğüm-düğüm karşılaştırılarak (iteratif
+    diff) alan seviyesinde denetleniyor.
+  - Standart kullanıcı için ayrı, sadeleştirilmiş bir düzenleyici görünümü eklendi (form +
+    salt-okunur canlı önizleme); sürükle-bırak, katman paneli ve konteyner ayar çekmecesi bu
+    modda hiç render edilmiyor.
+  - Migration `20260822154259_add_page_editor_roles`: mevcut ADMIN/EDITOR hesaplarının
+    yetkisi backfill ile korundu, davranış geriye dönük değişmedi.
+
 - **Page-builder — "Pazarlama & Sosyal Kanıt" blok kategorisi (Faz 3)**: CTA Box, Sayaç/
   İstatistik, Müşteri Yorumları, Fiyatlandırma Tablosu.
   - **CTA zenginleştirmesi** (`cta` bloğu, mevcut alanlar DEĞİŞMEDİ): opsiyonel açıklama,

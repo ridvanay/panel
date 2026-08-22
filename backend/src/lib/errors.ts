@@ -37,8 +37,15 @@ export class UnauthorizedError extends ApiError {
 }
 
 export class ForbiddenError extends ApiError {
-  constructor(message = "Bu işlem için yetkiniz yok.") {
-    super(403, "FORBIDDEN", message);
+  /**
+   * §10.20 — `details` opsiyonel olarak eklendi (`ValidationError` ile AYNI şekil) çünkü
+   * `page-template-guard.ts::assertTemplateEditAllowed` ihlal eden `nodeId`/alan listesini
+   * `error.details.blocks` altında taşımak zorunda (bkz.
+   * `.claude/architect-scope-page-editor-roles.md` §3.4). Diğer tüm `ForbiddenError` kullanım
+   * yerleri `details` GEÇMEZ ve davranış DEĞİŞMEZ (parametre opsiyonel).
+   */
+  constructor(message = "Bu işlem için yetkiniz yok.", details?: Record<string, string[]>) {
+    super(403, "FORBIDDEN", message, details);
   }
 }
 

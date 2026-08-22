@@ -43,6 +43,19 @@ enum PageStatus {
   SCHEDULED
 }
 
+// Sayfa düzenleyicide standart/gelişmiş mod ayrımı — bkz.
+// .claude/architect-scope-page-editor-roles.md §2 (bağlayıcı karar dokümanı). Bu bir
+// `CREATE TYPE`'dır, `ALTER TYPE ... ADD VALUE` DEĞİLDİR — SiteUserStatus/ImportJobType'taki
+// geri-alınamazlık uyarısı BU migration için GEÇERLİ DEĞİLDİR. FREEFORM = serbest tasarım
+// (bugünkü davranış, yapı değiştirmek serbest). TEMPLATE = yapı DONMUŞ; standart (gelişmiş
+// yeteneği olmayan) kullanıcı yalnızca §3.2'deki sabit alan haritasındaki içerik alanlarını
+// doldurabilir — uygulama backend-agent'ın `lib/page-template-guard.ts` diff'inde yapılır,
+// burada değil.
+enum PageEditMode {
+  FREEFORM
+  TEMPLATE
+}
+
 // `/admin/*` CMS uçları için org'dan bağımsız site-geneli rol/durum — MembershipRole ile
 // KARIŞTIRILMAMALI, tamamen ayrı bir yetkilendirme ekseni (bkz. middleware/site-rbac.ts).
 enum SiteRole {
@@ -234,6 +247,18 @@ model User {
   twoFactorSecret     String?
   twoFactorVerifiedAt DateTime?
 
+  // Sayfa düzenleyicide gelişmiş yapı düzenleme (konteyner ekleme/kaldırma/yapı değişikliği)
+  // izni — kullanıcı-başı TEK yetenek bayrağı (bkz. .claude/architect-scope-page-editor-roles.md
+  // §1, bağlayıcı karar dokümanı). Depolanan/yazılabilir "verilen izin"dir; etkin yetenek
+  // (`canUseAdvancedBuilder`) role=ADMIN için BU ALANA BAKMAKSIZIN her zaman true'dur (§1.5,
+  // kilitlenme güvenliği) — türetme backend-agent'ın `lib/builder-capability.ts` yardımcısında
+  // yapılır, burada KOPYALANMAZ. Varsayılan false (yeni hesap = en az ayrıcalık); mevcut
+  // ADMIN/EDITOR hesapları için bu migration'ın backfill adımı true'ya çeker (§6.1 madde 2) —
+  // aksi halde yayındaki editörlerin yetkisi sessizce daralırdı. İkinci bir `User.canX`
+  // bayrağı İCAT ETMEDEN önce architect'e eskale edilir (§1.7 — genel Permission tablosuna
+  // kadar spekülatif genelleme yapılmaz).
+  advancedBuilderEnabled Boolean @default(false)
+
   ownedOrganizations     Organization[]       @relation("OrganizationOwner")
   memberships            Membership[]
   refreshTokens          RefreshToken[]
@@ -401,48 +426,53 @@ model PasswordResetToken {
 
 // Tek site (global) kapsamında: organizationId yok, herhangi bir authenticated kullanıcı yönetir.
 model Page {
-  id              String     @id @default(uuid())
-  seq             Int        @unique @default(autoincrement())
+  id              String       @id @default(uuid())
+  seq             Int          @unique @default(autoincrement())
   title           String
   // §10.5 Çoklu Dil & Yerelleştirme — VARSAYILAN dilin (Locale.isDefault) kanonik
   // slug'ı. Diğer dillerin slug'ları BURADA DEĞİL, ContentSlug tablosundadır (bkz.
   // .claude/architect-scope-i18n.md §2.3, bağlayıcı karar dokümanı) — bu kolon
   // yapısal olarak DEĞİŞMEDİ, yalnızca anlamı netleştirildi.
-  slug            String     @unique
-  status          PageStatus @default(DRAFT)
+  slug            String       @unique
+  status          PageStatus   @default(DRAFT)
   // Sayfa builder blokları — sıralı JSON dizi, şekli frontend'de lib/page-builder/types.ts::Block ile eşleşir.
-  blocks          Json       @default("[]")
+  blocks          Json         @default("[]")
   seoTitle        String?
   seoDescription  String?
   // §10.2 Gelişmiş SEO & Social Card — bkz. ARCHITECTURE.md §10.2.
   ogTitle         String?
   ogImageUrl      String?
   canonicalUrl    String?
-  noIndex         Boolean    @default(false)
+  noIndex         Boolean      @default(false)
   // §10.5 Çoklu Dil & Yerelleştirme — varsayılan dil (Locale.isDefault) alanları TR
   // KOLONLARDA kanonik; diğer diller `{ [locale]: { title, ... } }` şeklinde küçük harf
   // BCP-47 anahtarlarla BURADA (ör. translations.en). Ayrı bir Translation tablosu
   // BİLİNÇLİ olarak AÇILMADI (gerekçe: .claude/architect-scope-i18n.md §1.2). Slug bu
   // JSON'da TUTULMAZ — bkz. ContentSlug modeli (§1.3).
-  translations    Json       @default("{}")
+  translations    Json         @default("{}")
   // §5 istisnası — hukuki belge (gizlilik politikası, KVKK aydınlatma metni, çerez
   // politikası, kullanım koşulları, mesafeli satış sözleşmesi...).
   // true ise SESSİZ ÇEVİRİ FALLBACK'İ UYGULANMAZ (KVKK m.10 / GDPR m.12) —
   // gerekçe ve tam davranış: .claude/architect-scope-i18n.md §5.1 (bkz. §2.3.1,
   // compliance-agent itirazı üzerine eklendi — alan adı DAVRANIŞ değil NİYET taşır).
   // YALNIZCA SiteRole=ADMIN değiştirebilir; her değişiklik denetlenir.
-  isLegalDocument Boolean    @default(false)
+  isLegalDocument Boolean      @default(false)
+  // Sayfa düzenleyicide standart/gelişmiş mod ayrımı — bkz.
+  // .claude/architect-scope-page-editor-roles.md §2 (bağlayıcı karar dokümanı). Yalnızca
+  // ADMIN veya gelişmiş yetenekli EDITOR değiştirebilir (§2.5); standart kullanıcı bu alanı
+  // gönderirse 403. Varsayılan FREEFORM = bugünkü davranışla birebir aynı, backfill GEREKMEZ.
+  editMode        PageEditMode @default(FREEFORM)
   publishedAt     DateTime?
   // Zamanlanmış yayın hedef tarihi — yalnızca status=SCHEDULED iken anlamlı; süreç-içi sweeper bu
   // tarihe ulaşınca status'u PUBLISHED'a çevirir (bkz. modules/{blog,pages}/*-publish-scheduler.ts).
   scheduledAt     DateTime?
   // Denormalize toplam sayaç — admin liste/detay ekranlarında ekstra sorgu gerektirmeden okunur.
-  viewCount       Int        @default(0)
+  viewCount       Int          @default(0)
   // §10.7 Soft-delete (çöp kutusu) — bkz. ARCHITECTURE.md §10.7.
   deletedAt       DateTime?
   authorId        String?
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
 
   author              User?          @relation(fields: [authorId], references: [id], onDelete: SetNull)
   views               PageView[]

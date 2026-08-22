@@ -28,15 +28,26 @@ import { ADMIN_EMAIL, ADMIN_PASSWORD } from "./api";
  * frontend-agent düzeltebilir), riski test tasarımında AZALTIR.
  */
 export async function createAuthenticatedPage(browser: Browser): Promise<{ page: Page; close: () => Promise<void> }> {
-  // NOT: `ensureAdminSession()` BURADA ÇAĞRILMAZ — kullanıcı zaten `auth.setup.ts` (Playwright
-  // "setup" projesi, `chromium` projesinin `dependencies`'i) tarafından bir kez oluşturuldu.
-  // Burada tekrar çağırmak `/auth/register|login`'in sabit 5 istek/dk limitine (§ bkz. üstteki
-  // not) gereksiz yere katkı yapardı — yalnızca GERÇEK UI login'i (aşağıda) yeterlidir.
+  return createAuthenticatedPageAs(browser, ADMIN_EMAIL, ADMIN_PASSWORD);
+}
+
+/**
+ * `createAuthenticatedPage()`'in keyfi kimlik bilgileriyle genel hali (§10.20) — standart/gelişmiş
+ * EDITOR ve ikinci bir ADMIN fixture kullanıcısı olarak GERÇEK UI login'i yapmak için
+ * (`admin-page-editor-roles.spec.ts`). Yukarıdaki fonksiyonun başlığındaki İKİ risk (refresh-token
+ * rotasyonu, biriken navigasyon) BURADA DA aynen geçerlidir — çağıran dosya AYNI "dosya başına bir
+ * context, `beforeAll`/`afterAll`" disiplinini uygulamalıdır.
+ */
+export async function createAuthenticatedPageAs(
+  browser: Browser,
+  email: string,
+  password: string
+): Promise<{ page: Page; close: () => Promise<void> }> {
   const context = await browser.newContext({ baseURL: process.env.E2E_FRONTEND_URL ?? "http://localhost:3100" });
   const page = await context.newPage();
   await page.goto("/login");
-  await page.getByLabel("E-posta").fill(ADMIN_EMAIL);
-  await page.getByLabel("Şifre").fill(ADMIN_PASSWORD);
+  await page.getByLabel("E-posta").fill(email);
+  await page.getByLabel("Şifre").fill(password);
   await page.getByRole("button", { name: "Giriş yap" }).click();
   await page.waitForURL(/\/dashboard/, { timeout: 15_000 });
 

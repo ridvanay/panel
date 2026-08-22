@@ -12,7 +12,16 @@ const ORIENTATION_OPTIONS: { value: TabsBlock["data"]["orientation"]; label: str
   { value: "vertical", label: "Dikey" },
 ];
 
-export function TabsBlockEditor({ block, onChange }: { block: TabsBlock; onChange: (block: TabsBlock) => void }) {
+export function TabsBlockEditor({
+  block,
+  onChange,
+  simple = false,
+}: {
+  block: TabsBlock;
+  onChange: (block: TabsBlock) => void;
+  /** §2.5 tablo B — şablon modunda `orientation` kilitlidir. */
+  simple?: boolean;
+}) {
   const items = block.data.items;
 
   function updateItem(id: string, patch: Partial<TabItem>) {
@@ -41,14 +50,16 @@ export function TabsBlockEditor({ block, onChange }: { block: TabsBlock; onChang
 
   return (
     <div className="space-y-3">
-      <div className="space-y-1.5">
-        <p className="text-sm font-medium text-foreground">Yön</p>
-        <SegmentedToggle
-          value={block.data.orientation}
-          options={ORIENTATION_OPTIONS}
-          onChange={(orientation) => onChange({ ...block, data: { ...block.data, orientation } })}
-        />
-      </div>
+      {!simple && (
+        <div className="space-y-1.5">
+          <p className="text-sm font-medium text-foreground">Yön</p>
+          <SegmentedToggle
+            value={block.data.orientation}
+            options={ORIENTATION_OPTIONS}
+            onChange={(orientation) => onChange({ ...block, data: { ...block.data, orientation } })}
+          />
+        </div>
+      )}
 
       <div className="space-y-3">
         {items.map((item, index) => (

@@ -106,6 +106,7 @@ import {
   computePortfolioItemSeoScore,
   computeProductSeoScore,
 } from "../lib/seo-score";
+import { canUseAdvancedBuilder } from "../lib/builder-capability";
 import { DUPLICATE_STRATEGY_FROM_PRISMA, SEVERITY_FROM_PRISMA } from "../modules/import/import.constants";
 import type { ModuleDefinition } from "../lib/module-registry";
 import { buildMaskedKey } from "../lib/api-key";
@@ -121,6 +122,8 @@ export function toUserDto(user: User): UserDto {
     createdAt: user.createdAt.toISOString(),
     // §10.4 Güvenlik & 2FA — bkz. ARCHITECTURE.md §10.4.
     twoFactorEnabled: user.twoFactorEnabled,
+    // §10.20 — TÜRETİLMİŞ + SALT-OKUNUR (bkz. lib/builder-capability.ts, TEK türetme kaynağı).
+    canUseAdvancedBuilder: canUseAdvancedBuilder(user),
   };
 }
 
@@ -130,6 +133,8 @@ export function toAdminUserDto(user: User): AdminUserDto {
     status: user.status,
     lastLoginAt: user.lastLoginAt ? user.lastLoginAt.toISOString() : null,
     deletedAt: user.deletedAt ? user.deletedAt.toISOString() : null,
+    // §10.20 — DEPOLANAN izin (`canUseAdvancedBuilder` ETKİN yetenektir, yukarıda zaten döner).
+    advancedBuilderEnabled: user.advancedBuilderEnabled,
   };
 }
 
@@ -240,6 +245,8 @@ export function toPageDto(page: PageWithAuthor, localizations: ContentLocalizati
     title: page.title,
     slug: page.slug,
     status: page.status,
+    // §10.20 — bkz. schemas/entities.ts::PageSchema, `.claude/architect-scope-page-editor-roles.md` §2.
+    editMode: page.editMode,
     blocks: (page.blocks as Record<string, unknown>[]) ?? [],
     seoTitle: page.seoTitle,
     seoDescription: page.seoDescription,

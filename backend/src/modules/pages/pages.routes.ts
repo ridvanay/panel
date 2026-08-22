@@ -1,10 +1,13 @@
 import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
-import type { Page } from "@prisma/client";
+import type { Page, PageEditMode } from "@prisma/client";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { authenticate } from "../../middleware/authenticate";
 import { requireSiteRole } from "../../middleware/site-rbac";
+import { requireAdvancedBuilder } from "../../middleware/advanced-builder";
+import { canUseAdvancedBuilder } from "../../lib/builder-capability";
+import { assertTemplateEditAllowed } from "../../lib/page-template-guard";
 import { ok } from "../../lib/envelope";
 import {
   ApiSuccessSchema,
@@ -116,6 +119,60 @@ function assertLegalDocumentAuthorized(value: boolean | undefined, actorRole: "A
 }
 
 /**
+ * §10.20/§4.2 — `slug`/`editMode` alanlarını standart kullanıcı (şablon sayfada, gelişmiş
+ * yeteneği OLMAYAN) gönderemez. `assertLegalDocumentAuthorized` ile AYNI desen — TEK farkı
+ * koşulun kendisi: bu kontrol YALNIZCA `existing.editMode === "TEMPLATE" && !canUseAdvancedBuilder(actor)`
+ * iken anlamlıdır (freeform sayfada ya da gelişmiş kullanıcı için bu alanlar HER ZAMAN serbest
+ * kalır — bkz. tasarım notu §2.5: bu alanı değiştirebilen kişi zaten gelişmiş yeteneğe
+ * sahiptir, ayrıcalık yükseltme riski YOKTUR).
+ */
+function assertAdvancedFieldsAuthorized(
+  body: { slug?: string; editMode?: PageEditMode },
+  isTemplateModeRestricted: boolean
+): void {
+  if (!isTemplateModeRestricted) return;
+  if (body.slug !== undefined) {
+    throw new ForbiddenError("slug alanını yalnızca Gelişmiş Düzenleyici yetkisi olan kullanıcılar değiştirebilir.");
+  }
+  if (body.editMode !== undefined) {
+    throw new ForbiddenError("editMode alanını yalnızca Gelişmiş Düzenleyici yetkisi olan kullanıcılar değiştirebilir.");
+  }
+}
+
+/**
+ * §10.20/§3.5 — `blocks` (varsa) VE her locale için `translations.<locale>.blocks` (varsa)
+ * kayıtlı ağaçla karşılaştırılır. Kayıtlı çeviri YOKSA (ilk çeviri), referans olarak KANONİK
+ * `existing.blocks` kullanılır (§4.2) — böylece çeviri eklemek "metin doldurmak" olur, "yapı
+ * klonlamak" değil. Yalnızca `existing.editMode === "TEMPLATE" && !canUseAdvancedBuilder(actor)`
+ * iken çağrılmalıdır (çağıran taraf sorumludur).
+ */
+function assertTemplateModeBodyAllowed(
+  existing: Pick<Page, "blocks" | "translations">,
+  body: { blocks?: unknown[]; translations?: Record<string, Record<string, unknown> | null> }
+): void {
+  const canonicalBlocks = Array.isArray(existing.blocks) ? (existing.blocks as unknown[]) : [];
+
+  if (body.blocks !== undefined) {
+    assertTemplateEditAllowed(canonicalBlocks, body.blocks);
+  }
+
+  if (body.translations !== undefined) {
+    const existingTranslations = (existing.translations as Record<string, Record<string, unknown>> | null) ?? {};
+    for (const [locale, fields] of Object.entries(body.translations)) {
+      if (!fields || !Array.isArray(fields.blocks)) continue;
+
+      const existingLocaleFields = existingTranslations[locale];
+      const referenceBlocks =
+        existingLocaleFields && Array.isArray(existingLocaleFields.blocks)
+          ? (existingLocaleFields.blocks as unknown[])
+          : canonicalBlocks;
+
+      assertTemplateEditAllowed(referenceBlocks, fields.blocks as unknown[]);
+    }
+  }
+}
+
+/**
  * `page.id`, `SiteSettings.homePageId` ile eşleşiyor mu — on-demand revalidation'ın
  * ana sayfayı slug'sız `/${locale}` mi yoksa `/${locale}/${slug}` mi olarak tetikleyeceğini
  * belirlemek için kullanılır (bkz. lib/revalidate.ts). Kendi içinde try/catch'lidir: bir
@@ -176,7 +233,9 @@ export async function adminPagesRoutes(app: FastifyInstance) {
   server.post(
     "/",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      // §10.20 — boş bir sayfanın yapısı yoktur; TEMPLATE modu "var olan yapının alanlarını
+      // doldur" demektir, bu yüzden bu uç GELİŞMİŞ yetenek gerektirir (bkz. tasarım notu §4.1).
+      preHandler: [requireSiteRole("ADMIN", "EDITOR"), requireAdvancedBuilder()],
       schema: { body: CreatePageRequestSchema, response: { 201: ApiSuccessSchema(PageSchema) } },
     },
     async (request, reply) => {
@@ -184,6 +243,7 @@ export async function adminPagesRoutes(app: FastifyInstance) {
         title,
         slug,
         status,
+        editMode,
         blocks,
         seoTitle,
         seoDescription,
@@ -210,6 +270,9 @@ export async function adminPagesRoutes(app: FastifyInstance) {
             title,
             slug: slug ? slugify(slug) : slugify(title),
             status: status ?? "DRAFT",
+            // §10.20 — verilmezse `FREEFORM` (Prisma kolon varsayılanıyla TUTARLI, bkz.
+            // pages.schemas.ts::CreatePageRequestSchema).
+            editMode: editMode ?? "FREEFORM",
             // Stored-XSS koruması: EDITOR de yazabildiği için (ADMIN'den daha az güvenilir bir rol)
             // "text" block'larının `data.html`'i DB'ye yazılmadan önce sanitize edilir — public
             // sitede `dangerouslySetInnerHTML` ile doğrudan render edilir (bkz. lib/html-sanitize.ts).
@@ -274,6 +337,8 @@ export async function adminPagesRoutes(app: FastifyInstance) {
   server.patch(
     "/:pageId",
     {
+      // §10.20 — uç seviyesinde EK bir yetenek şartı YOKTUR (kısıt ALAN seviyesindedir, bkz.
+      // aşağısı); `requireSiteRole` PATCH ile ilgili mevcut tek guard olarak kalır.
       preHandler: requireSiteRole("ADMIN", "EDITOR"),
       schema: { params: PageIdParamSchema, body: UpdatePageRequestSchema, response: { 200: ApiSuccessSchema(PageSchema) } },
     },
@@ -286,6 +351,16 @@ export async function adminPagesRoutes(app: FastifyInstance) {
       }
 
       assertLegalDocumentAuthorized(request.body.isLegalDocument, request.user!.role);
+
+      // §10.20 — standart kullanıcı (şablon sayfada, gelişmiş yeteneği OLMAYAN) `slug`/
+      // `editMode` gönderemez VE `blocks`/`translations.<locale>.blocks` şablon diff'inden
+      // GEÇER (bkz. tasarım notu §3.4/§3.5/§4.2, `lib/page-template-guard.ts`). Şema
+      // parse'ından SONRA, herhangi bir DB yazımından (revizyon snapshot'ı DAHİL) ÖNCE çalışır.
+      const isTemplateModeRestricted = existing.editMode === "TEMPLATE" && !canUseAdvancedBuilder(request.user!);
+      assertAdvancedFieldsAuthorized(request.body, isTemplateModeRestricted);
+      if (isTemplateModeRestricted) {
+        assertTemplateModeBodyAllowed(existing, request.body);
+      }
 
       await snapshotBeforeUpdate(app, "PAGE", existing.id, toPageSnapshot(existing), request.user!.id);
 
@@ -346,6 +421,21 @@ export async function adminPagesRoutes(app: FastifyInstance) {
         });
       }
 
+      // §10.20/§2.5 — `content.legal_flag_change` ile BİREBİR AYNI desen: değeri DEĞİŞTİREN
+      // her istek denetlenir (yalnızca ADMIN/gelişmiş EDITOR bu alanı gönderebildiği için
+      // ayrıcalık yükseltme riski YOKTUR — bkz. `assertAdvancedFieldsAuthorized`).
+      if (rest.editMode !== undefined && rest.editMode !== existing.editMode) {
+        await logAudit(app, {
+          actorId: request.user!.id,
+          actorEmail: request.user!.email,
+          action: "content.edit_mode_change",
+          targetType: "Page",
+          targetId: page.id,
+          metadata: { from: existing.editMode, to: rest.editMode },
+          ipAddress: request.ip,
+        });
+      }
+
       // §10.13.8 — `PAGE_PUBLISHED` YALNIZCA duruma GEÇİŞTE (`!existing.publishedAt` →
       // `page.publishedAt` dolu) tetiklenir; transaction COMMIT'inden SONRA, `emitWebhookEvent`
       // TEK giriş noktasıdır (route doğrudan `WebhookDelivery` OLUŞTURMAZ).
@@ -390,6 +480,13 @@ export async function adminPagesRoutes(app: FastifyInstance) {
 
       const { title, blocks } = request.body;
 
+      // §10.20/§3.5 — EN KRİTİK madde: autosave `PATCH`'ten AYRI bir kod yoludur ve `blocks`
+      // YAZAR. Burada unutulursa tüm kısıt 3sn'lik debounce üzerinden SESSİZCE baypas edilir
+      // (bkz. tasarım notu §3.5 uyarısı, qa-agent'ın zorunlu e2e senaryosu).
+      if (existing.editMode === "TEMPLATE" && !canUseAdvancedBuilder(request.user!) && blocks !== undefined) {
+        assertTemplateEditAllowed(Array.isArray(existing.blocks) ? (existing.blocks as unknown[]) : [], blocks);
+      }
+
       await app.prisma.page.update({
         where: { id: request.params.pageId },
         data: {
@@ -403,10 +500,11 @@ export async function adminPagesRoutes(app: FastifyInstance) {
   );
 
   // §10.7 İçerik Yönetim Listesi — ÇÖPE TAŞI (soft-delete), KALICI SİLMEZ. İdempotenttir.
+  // §10.20 — ayrıca GELİŞMİŞ yetenek gerektirir: yaşam döngüsü işlemleri standart kullanıcıya kapalıdır.
   server.delete(
     "/:pageId",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      preHandler: [requireSiteRole("ADMIN", "EDITOR"), requireAdvancedBuilder()],
       schema: { params: PageIdParamSchema, response: { 204: z.undefined() } },
     },
     async (request, reply) => {
@@ -445,10 +543,11 @@ export async function adminPagesRoutes(app: FastifyInstance) {
   );
 
   // §10.7 — çöpten geri yükle. `status` DEĞİŞMEZ. İdempotenttir (çöpte değilse de 200 + mevcut kayıt).
+  // §10.20 — ayrıca GELİŞMİŞ yetenek gerektirir.
   server.post(
     "/:pageId/restore",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      preHandler: [requireSiteRole("ADMIN", "EDITOR"), requireAdvancedBuilder()],
       schema: { params: PageIdParamSchema, response: { 200: ApiSuccessSchema(PageSchema) } },
     },
     async (request, reply) => {
@@ -519,10 +618,12 @@ export async function adminPagesRoutes(app: FastifyInstance) {
   );
 
   // §10.7 — toplu işlem. Kısmi başarı hata DEĞİLDİR (200 + skippedIds).
+  // §10.20 — ucun TAMAMI GELİŞMİŞ yetenek gerektirir (permanent-delete zaten ADMIN-only ile
+  // AYNI "hep ya da hiç" semantiği, kısmi uygulama yapılmaz).
   server.post(
     "/bulk",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      preHandler: [requireSiteRole("ADMIN", "EDITOR"), requireAdvancedBuilder()],
       schema: { body: BulkContentActionRequestSchema, response: { 200: ApiSuccessSchema(BulkContentActionResultSchema) } },
     },
     async (request, reply) => {
@@ -730,7 +831,10 @@ export async function adminPagesRoutes(app: FastifyInstance) {
   server.post(
     "/:pageId/revisions/:revisionId/restore",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      // §10.20 — bir revizyonu geri yüklemek `blocks` ağacının TAMAMINI değiştirir; tanımı
+      // gereği yapısal bir işlemdir ve şablon diff'i ile ifade EDİLEMEZ, bu yüzden GELİŞMİŞ
+      // yetenek gerektirir (revizyonları LİSTELEMEK/GÖRÜNTÜLEMEK standart kullanıcıya AÇIK kalır).
+      preHandler: [requireSiteRole("ADMIN", "EDITOR"), requireAdvancedBuilder()],
       schema: { params: PageRevisionIdParamSchema, response: { 200: ApiSuccessSchema(PageSchema) } },
     },
     async (request, reply) => {

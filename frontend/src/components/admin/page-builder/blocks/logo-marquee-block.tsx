@@ -8,7 +8,16 @@ import { ImageUploadField } from "@/components/admin/media/image-upload-field";
 import { newId } from "@/lib/page-builder/registry";
 import { LOGO_MARQUEE_MAX_ITEMS, type LogoMarqueeBlock, type LogoMarqueeItem } from "@/lib/page-builder/types";
 
-export function LogoMarqueeBlockEditor({ block, onChange }: { block: LogoMarqueeBlock; onChange: (block: LogoMarqueeBlock) => void }) {
+export function LogoMarqueeBlockEditor({
+  block,
+  onChange,
+  simple = false,
+}: {
+  block: LogoMarqueeBlock;
+  onChange: (block: LogoMarqueeBlock) => void;
+  /** §2.5 tablo B — şablon modunda hız/üzerine gelince durdur kilitlidir. */
+  simple?: boolean;
+}) {
   const items = block.data.items;
 
   function updateItem(id: string, patch: Partial<LogoMarqueeItem>) {
@@ -79,37 +88,39 @@ export function LogoMarqueeBlockEditor({ block, onChange }: { block: LogoMarquee
         Logo Ekle
       </Button>
 
-      <div className="space-y-2 border-t border-border/60 pt-3">
-        <Field id="logo-marquee-speed" label="Hız (bir tam döngü, saniye)">
-          {(p) => (
-            <InputGroup>
-              <InputGroupInput
-                {...p}
-                type="number"
-                min={5}
-                max={120}
-                value={block.data.speedSeconds}
-                onChange={(e) => {
-                  const raw = Number(e.target.value);
-                  const clamped = Number.isFinite(raw) ? Math.max(5, Math.min(120, Math.round(raw))) : 30;
-                  onChange({ ...block, data: { ...block.data, speedSeconds: clamped } });
-                }}
-              />
-              <InputGroupAddon align="inline-end">sn</InputGroupAddon>
-            </InputGroup>
-          )}
-        </Field>
-        <div className="flex items-center justify-between">
-          <label htmlFor="logo-marquee-pause" className="text-sm font-medium text-foreground">
-            Üzerine gelince durdur
-          </label>
-          <Switch
-            id="logo-marquee-pause"
-            checked={block.data.pauseOnHover}
-            onCheckedChange={(pauseOnHover) => onChange({ ...block, data: { ...block.data, pauseOnHover } })}
-          />
+      {!simple && (
+        <div className="space-y-2 border-t border-border/60 pt-3">
+          <Field id="logo-marquee-speed" label="Hız (bir tam döngü, saniye)">
+            {(p) => (
+              <InputGroup>
+                <InputGroupInput
+                  {...p}
+                  type="number"
+                  min={5}
+                  max={120}
+                  value={block.data.speedSeconds}
+                  onChange={(e) => {
+                    const raw = Number(e.target.value);
+                    const clamped = Number.isFinite(raw) ? Math.max(5, Math.min(120, Math.round(raw))) : 30;
+                    onChange({ ...block, data: { ...block.data, speedSeconds: clamped } });
+                  }}
+                />
+                <InputGroupAddon align="inline-end">sn</InputGroupAddon>
+              </InputGroup>
+            )}
+          </Field>
+          <div className="flex items-center justify-between">
+            <label htmlFor="logo-marquee-pause" className="text-sm font-medium text-foreground">
+              Üzerine gelince durdur
+            </label>
+            <Switch
+              id="logo-marquee-pause"
+              checked={block.data.pauseOnHover}
+              onCheckedChange={(pauseOnHover) => onChange({ ...block, data: { ...block.data, pauseOnHover } })}
+            />
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

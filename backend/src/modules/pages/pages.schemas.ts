@@ -1,7 +1,12 @@
 import { z } from "zod";
-import { PageStatusSchema, SocialPlatformSchema } from "../../schemas/entities";
+import { PageEditModeSchema, PageStatusSchema, SocialPlatformSchema } from "../../schemas/entities";
 import { refineScheduledAt, SCHEDULED_AT_REFINEMENT } from "../../schemas/common";
 import { scanPageNodeStructure, MAX_CONTAINER_DEPTH, MAX_CHILDREN_PER_CONTAINER, MAX_TOTAL_PAGE_NODES } from "../../lib/page-blocks";
+
+// §10.20 — `PageEditModeSchema` artık `schemas/entities.ts`'ten import edilir (bkz. `PageSchema`
+// alanı da AYNI kaynağı kullanır). YALNIZCA `CreatePageRequestSchema`/`UpdatePageRequestSchema`'ya
+// eklenir; `PageBlockListSchema` ve blok şemalarına DOKUNULMAZ (ikinci bir şema varyantı
+// YAZILMAZ — §3.4 bunu kesin yasaklıyor).
 
 export const PageIdParamSchema = z.object({
   pageId: z.string().uuid(),
@@ -980,6 +985,9 @@ export const CreatePageRequestSchema = z
     title: z.string().min(1),
     slug: z.string().min(1).optional(),
     status: PageStatusSchema.optional(),
+    // §10.20 — verilmezse `FREEFORM`. Bu ucun TAMAMI zaten `requireAdvancedBuilder()` şartına
+    // tabidir (bkz. pages.routes.ts), bu yüzden burada ayrıca bir yetki kontrolü YOK.
+    editMode: PageEditModeSchema.optional(),
     blocks: PageBlockListSchema.optional(),
     seoTitle: z.string().optional(),
     seoDescription: z.string().optional(),
@@ -1019,6 +1027,10 @@ export const UpdatePageRequestSchema = z
     title: z.string().min(1).optional(),
     slug: z.string().min(1).optional(),
     status: PageStatusSchema.optional(),
+    // §10.20 — yalnızca `canUseAdvancedBuilder: true` olan kullanıcılar gönderebilir; standart
+    // kullanıcı (`editMode: TEMPLATE` + gelişmiş DEĞİL) gönderirse route katmanında 403
+    // (bkz. pages.routes.ts::assertAdvancedFieldsAuthorized, `isLegalDocument` ile AYNI desen).
+    editMode: PageEditModeSchema.optional(),
     blocks: PageBlockListSchema.optional(),
     seoTitle: z.string().nullable().optional(),
     seoDescription: z.string().nullable().optional(),

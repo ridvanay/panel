@@ -5253,6 +5253,160 @@ arka plan overlay/gradient/video, global "bölüm şablonu" (saved sections) kü
 (§10.17.1 kararı geçerli), `Page.blocks`'un JSON'dan ilişkisel tabloya taşınması. Ayrıntılı
 gerekçeler: `.claude/design-notes-page-builder-containers.md` §11.
 
+### 10.20 Sayfa düzenleyicide standart/gelişmiş mod ayrımı
+
+Durum: v1 · Sahibi: Mimar. Bağlayıcı kaynak: `.claude/architect-scope-page-editor-roles.md`
+(tam gerekçe/kararlar, ajan görev dağılımı) + `openapi.yaml` (`User.canUseAdvancedBuilder`,
+`AdminUser.advancedBuilderEnabled`, `PageEditMode`, `Page.editMode`,
+`UpdateAdminUserBuilderAccessRequest`, `PermissionsMatrix.capabilities` — tek doğru kaynak).
+Kapsam: yalnızca sayfa yönetim sistemi (`Page.blocks`) — blog/ürün/portföy editörleri bu
+turun DIŞINDA (§10.19.1 ile aynı kapsam sınırı, ayrıca bkz. kaynak doküman §8).
+
+#### 10.20.1 Neden bu bölüm var
+
+Kullanıcı isteği "Admin/Editor tam yetkili, Standart/Yazar kısıtlı" idi, ama `SiteRole` =
+`ADMIN`\|`EDITOR`\|`VIEWER` — istenen "Yazar" rolü kod tabanında YOKTU ve istenen kısıt
+("başlığı değiştir, konteyner ekleme") **uç (endpoint) seviyesinde değil, tek bir isteğin
+gövdesi içindeki alan seviyesinde**. `requireSiteRole` bu granüleriteyi yapısal olarak
+çözemez — bu tespit aşağıdaki iki mimari kararın belirleyicisidir.
+
+#### 10.20.2 Rol modeli — yeni `SiteRole` değeri DEĞİL, kullanıcı-başı yetenek (capability) bayrağı
+
+```
+Depolanan (DB):    User.advancedBuilderEnabled  Boolean  @default(false)
+Türetilen (DTO):   User.canUseAdvancedBuilder    boolean  (salt-okunur)
+
+canUseAdvancedBuilder = (role === "ADMIN") || advancedBuilderEnabled === true
+```
+
+`SiteRole` enum'ına DOKUNULMADI, `AUTHOR` diye bir rol EKLENMEDİ. "Standart/Yazar" =
+`EDITOR` + `advancedBuilderEnabled: false`. Kısa gerekçe:
+
+1. **Yanlış granülarite.** `SiteRole` uçlara erişimi yönetir; istenen kısıt bir `PATCH`
+   gövdesinin İÇİNDE, düğüm bazında uygulanmak zorunda — enum değeri eklemek sorunun
+   `requireSiteRole` ile çözüldüğü yanılsamasını yaratırdı, gerçek iş yine gövde
+   seviyesinde ayrıca yazılırdı.
+2. **Patlama yarıçapı.** Kod tabanında ~40 ayrı `requireSiteRole("ADMIN","EDITOR")` çağrısı
+   var; yeni bir enum değeri her birinin tek tek gözden geçirilmesini gerektirirdi (unutulan
+   tek yer = sessiz ayrıcalık sızıntısı ya da kırık özellik).
+3. **Geri alınamazlık.** PostgreSQL'de `ALTER TYPE ... ADD VALUE` geri alınamaz
+   (`schema.prisma`'da zaten iki yerde not edilmiş); boolean bir kolon her iki yöne serbestçe
+   çevrilebilir.
+4. **"EDITOR'ü ikiye bölmek" de reddedildi** — yayındaki her EDITOR hesabının yetkisini
+   sessizce daraltırdı, kullanıcının açık isteğinin ("Editor tam yetkili") tersi olurdu.
+
+`advancedBuilderEnabled` (verilen izin, yazılabilir) ile `canUseAdvancedBuilder` (etkin
+yetenek, salt-okunur, türetilmiş) ayrı tutulur. **ADMIN için etkin değer DB'ye bakılmaksızın
+her zaman `true`'dur** — kilitlenme güvenliği (`assertNotLastActiveAdmin` ile aynı refleks):
+aksi halde bir yönetici kendi dahil tüm hesapların yeteneğini kapatıp geri dönüş yolu
+bırakmayabilirdi. Türetme **tek bir yardımcıda** yapılır: `backend/src/lib/builder-capability.ts`;
+hiçbir route kendi `role === "ADMIN" || ...` ifadesini kopyalamaz.
+
+Bu, projenin **tek** kullanıcı-başı yetenek bayrağıdır — ikinci bir `User.canX` ihtiyacı
+doğduğunda doğru cevap yeni bir boolean değil, gerçek bir `Permission` tablosudur; o karar
+architect'e eskale edilir.
+
+#### 10.20.3 `Page.editMode` — sayfa seviyesinde mod, blok bazlı kilit YOK
+
+```prisma
+enum PageEditMode {
+  FREEFORM  // Serbest tasarım — yapıyı değiştirmek serbest (bugünkü davranış)
+  TEMPLATE  // Şablon — yapı DONMUŞ; standart kullanıcı yalnızca içerik alanlarını doldurur
+}
+
+model Page {
+  editMode PageEditMode @default(FREEFORM)
+}
+```
+
+Varsayılan/backfill: kolon varsayılanı `FREEFORM`, mevcut TÜM sayfalar `FREEFORM` başlar →
+davranış değişikliği sıfır, veri migration'ı gerekmez.
+
+Blok/düğüm bazlı `isLocked: boolean` bu turda bilinçli olarak **eklenmedi**. Gerekçe
+(güvenlik, belirleyici): `isLocked` `Page.blocks` JSON'unun içinde yaşardı, ama `blocks`
+yetkilendirilmeye çalışılan isteğin **kendi gövdesidir** — standart kullanıcı kendisini
+kısıtlayan bayrağı `false` göndererek kendi kendini yetkilendirebilirdi. `editMode` ayrı bir
+kolon olduğu ve standart kullanıcının gönderebileceği şemada hiç yer almadığı için bu tuzağa
+düşmez. (Blok bazlı kilit ihtiyacı doğarsa: `feature/page-block-locking`, kapsam dışı.)
+
+`editMode`'u ADMIN veya gelişmiş yetenekli EDITOR değiştirebilir (yalnızca-ADMIN değil —
+şablon tasarlamak gelişmiş editörün işi). Ayrıcalık yükseltme riski yok: bunu değiştirebilen
+kişi zaten gelişmiş yeteneklidir, `TEMPLATE` modu onu hiç kısıtlamaz. Değişiklik audit'lenir
+(`content.edit_mode_change`, `content.legal_flag_change` ile birebir aynı desen).
+
+#### 10.20.4 Şablon modunda düzenlenebilir alanlar — sabit harita, kullanıcı gövdesi DEĞİL
+
+Alan kısıtı `block.settings.editableFields` gibi istekle taşınan bir liste ile DEĞİL, koddaki
+**sabit bir tip haritasıyla** uygulanır — aksi halde liste kendisi §10.20.3'teki kendi
+kendini yetkilendirme tuzağına düşerdi. Kaynak dosya (otorite):
+`backend/src/lib/page-template-fields.ts` → `TEMPLATE_EDITABLE_FIELDS: Record<string,
+readonly string[]>`; frontend aynası `frontend/src/lib/page-builder/template-fields.ts` —
+içerik BİREBİR aynı olmak zorundadır. **Fail-closed:** haritada olmayan her blok `type` için
+düzenlenebilir alan kümesi boştur (bilinmeyen/gelecek blok tipleri otomatik kilitli gelir).
+
+Özet (tam tablo kaynak dokümanda §3.2): başlık/zengin metin/görsel-url-alt-caption/buton
+metni-linki + dizi tabanlı içerik listeleri (galeri, SSS, yorum, plan…) düzenlenebilir;
+konteyner/layout/CSS/reveal tamamen kilitli. `custom-html.data.html` **hiçbir koşulda**
+standart kullanıcıya açılmaz — ham HTML yazmak tanım gereği gelişmiş bir eylemdir.
+
+**Uygulama katmanı: Zod DEĞİL, route seviyesi.** Kural mutlak değil görecelidir ("kayıtlı
+ağaca göre neyi değiştirdin?") — Zod gövdeyi izole doğrular, DB'deki mevcut ağaca erişimi
+yoktur. `PageBlockListSchema` ve blok şemaları DEĞİŞMEDİ, ikinci/dar bir şema varyantı
+yazılmadı (~1000 satırlık blok şemasını çatallamak kaçınılmaz drift demektir). Kısıt, şema
+parse'ından SONRA, mevcut kayıt yüklendikten sonra, DB yazımından ÖNCE tek bir yardımcıyla
+uygulanır:
+
+```
+backend/src/lib/page-template-guard.ts
+  → assertTemplateEditAllowed(existingBlocks: unknown[], incomingBlocks: unknown[]): void
+```
+
+İki ağaç **iteratif** (explicit stack, özyineleme YASAK — `lib/page-blocks.ts`'teki
+stack-overflow gerekçesiyle aynı) dolaşılır; düğüm sayısı/`id` dizisi/her `id` için `type`
+birebir aynı olmalı, `container` düğümlerinde `settings`+`reveal` derin eşit olmalı, içerik
+bloklarında haritanın dışındaki her alan derin eşit olmalı — herhangi bir fark **403
+FORBIDDEN** (`422` DEĞİL: gövde geçerlidir, sadece izin yoktur). `translations.<locale>.blocks`
+de aynı diff'e tabidir (kayıtlı çeviri yoksa referans kanonik `blocks`'tur).
+
+**Çağrıldığı yerler (atlanırsa güvenlik açığı):** `PATCH /admin/pages/{id}` ve **`POST
+/admin/pages/{id}/autosave`** — autosave ayrı bir kod yoludur ve `blocks` yazar; burada
+kontrol unutulursa 3 saniyelik debounce ile kısıtın tamamı sessizce baypas edilir (bu yüzden
+qa-agent'ın zorunlu e2e senaryosu autosave baypas testidir). Revizyon-restore ve
+`POST /admin/pages` bu guard'ı hiç görmez çünkü standart kullanıcıya uç seviyesinde zaten
+kapalıdır (§10.20.5).
+
+#### 10.20.5 Uç seviyesi yetki — `requireAdvancedBuilder`
+
+Yeni middleware `backend/src/middleware/advanced-builder.ts::requireAdvancedBuilder()`,
+`requireSiteRole(...)`'den SONRA çalışır (`site-rbac.ts` deseninin aynısı — 403 + audit).
+Standart kullanıcıya kapalı uçlar: `POST /admin/pages` (boş sayfanın yapısı yoktur, şablon
+modu "var olan yapıyı doldur" demektir), sayfa silme/geri yükleme, `bulk`, revizyon-restore.
+Okuma uçları (`GET`, revizyon listeleme) ve `PATCH`/`autosave` (alan seviyesinde kontrol
+edildiği için, §10.20.4) uç seviyesinde DEĞİŞMEDİ. `slug` ve `editMode` alanları `PATCH`
+gövdesinde standart kullanıcı için ayrıca 403'tür — sayfanın URL'i ve düzenleme modu yapısal
+kabul edilir.
+
+Yeni uç: `PATCH /admin/users/{userId}/builder-access` (yalnızca ADMIN,
+`{ advancedBuilderEnabled: boolean }`) — `/role`/`/status` uçlarıyla birebir aynı desen (rate
+limit, `DELETED` kullanıcıda 404, audit `user.builder_access_change`).
+
+#### 10.20.6 Sözleşme ve kapsam notları
+
+- `canUseAdvancedBuilder` istemciye yalnızca UI için verilir, karar mercii DEĞİLDİR — sunucu
+  her yazma isteğinde bağımsız yeniden hesaplar; frontend'in butonu gizlemesi bir kolaylıktır,
+  güvenlik kontrolü değil.
+- `editMode: TEMPLATE` gelişmiş kullanıcıyı KISITLAMAZ; mod yalnızca standart kullanıcı için
+  bir politikadır.
+- Public uçlar (`GET /pages`, `/pages/{slug}`) `editMode`'dan etkilenmez — bu tamamen bir
+  yazma/yetkilendirme kavramıdır.
+- Migration `20260822154259_add_page_editor_roles`, backfill ile mevcut ADMIN/EDITOR
+  hesaplarının yetkisini korur (`advanced_builder_enabled = true WHERE role IN
+  ('ADMIN','EDITOR')`) — kolon varsayılanı `false` olduğu için bu adım ZORUNLUDUR, aksi halde
+  yayındaki editörlerin yetkisi sessizce daralırdı.
+- Kapsam dışı (bilinçli, kaynak doküman §8): blok bazlı `isLocked`, şablondan sayfa kopyalama
+  (duplicate), editoryal onay/moderasyon akışı, genel `Permission`/`UserPermission` tablosu,
+  blog/ürün/portföy editörlerinde aynı ayrım, rol bazlı sayfa sahipliği.
+
 ---
 
 ### Bilinen Sorunlar / Backlog

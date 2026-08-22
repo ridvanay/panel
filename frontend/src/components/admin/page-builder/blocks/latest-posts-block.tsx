@@ -8,11 +8,23 @@ import { Select } from "@/components/ui/select";
 import type { BlogCategory, BlogTag } from "@/lib/api/types";
 import { LATEST_POSTS_MAX_LIMIT, type LatestPostsBlock } from "@/lib/page-builder/types";
 
-export function LatestPostsBlockEditor({ block, onChange }: { block: LatestPostsBlock; onChange: (block: LatestPostsBlock) => void }) {
+export function LatestPostsBlockEditor({
+  block,
+  onChange,
+  simple = false,
+}: {
+  block: LatestPostsBlock;
+  onChange: (block: LatestPostsBlock) => void;
+  /** §2.5 tablo B — şablon modunda kategori/etiket filtresi kilitlidir. */
+  simple?: boolean;
+}) {
   const [categories, setCategories] = useState<BlogCategory[]>([]);
   const [tags, setTags] = useState<BlogTag[]>([]);
 
+  // `simple` iken kategori/etiket `Select`leri hiç render edilmez (aşağıda) — gereksiz istek
+  // atmamak için veri de çekilmez.
   useEffect(() => {
+    if (simple) return;
     (async () => {
       try {
         setCategories(await listCategories());
@@ -20,9 +32,10 @@ export function LatestPostsBlockEditor({ block, onChange }: { block: LatestPosts
         setCategories([]);
       }
     })();
-  }, []);
+  }, [simple]);
 
   useEffect(() => {
+    if (simple) return;
     (async () => {
       try {
         setTags(await listTags());
@@ -30,7 +43,7 @@ export function LatestPostsBlockEditor({ block, onChange }: { block: LatestPosts
         setTags([]);
       }
     })();
-  }, []);
+  }, [simple]);
 
   return (
     <div className="space-y-3">
@@ -61,39 +74,43 @@ export function LatestPostsBlockEditor({ block, onChange }: { block: LatestPosts
         )}
       </Field>
 
-      <Field id={`${block.id}-category`} label="Kategori" hint="Seçilmezse tüm kategorilerden yazı gösterilir.">
-        {(inputProps) => (
-          <Select
-            {...inputProps}
-            value={block.data.categoryId ?? ""}
-            onChange={(e) => onChange({ ...block, data: { ...block.data, categoryId: e.target.value || undefined } })}
-          >
-            <option value="">Tüm kategoriler</option>
-            {categories.map((category) => (
-              <option key={category.id} value={category.id}>
-                {category.name}
-              </option>
-            ))}
-          </Select>
-        )}
-      </Field>
+      {!simple && (
+        <>
+          <Field id={`${block.id}-category`} label="Kategori" hint="Seçilmezse tüm kategorilerden yazı gösterilir.">
+            {(inputProps) => (
+              <Select
+                {...inputProps}
+                value={block.data.categoryId ?? ""}
+                onChange={(e) => onChange({ ...block, data: { ...block.data, categoryId: e.target.value || undefined } })}
+              >
+                <option value="">Tüm kategoriler</option>
+                {categories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
 
-      <Field id={`${block.id}-tag`} label="Etiket" hint="Seçilmezse tüm etiketlerden yazı gösterilir.">
-        {(inputProps) => (
-          <Select
-            {...inputProps}
-            value={block.data.tagId ?? ""}
-            onChange={(e) => onChange({ ...block, data: { ...block.data, tagId: e.target.value || undefined } })}
-          >
-            <option value="">Tüm etiketler</option>
-            {tags.map((tag) => (
-              <option key={tag.id} value={tag.id}>
-                {tag.name}
-              </option>
-            ))}
-          </Select>
-        )}
-      </Field>
+          <Field id={`${block.id}-tag`} label="Etiket" hint="Seçilmezse tüm etiketlerden yazı gösterilir.">
+            {(inputProps) => (
+              <Select
+                {...inputProps}
+                value={block.data.tagId ?? ""}
+                onChange={(e) => onChange({ ...block, data: { ...block.data, tagId: e.target.value || undefined } })}
+              >
+                <option value="">Tüm etiketler</option>
+                {tags.map((tag) => (
+                  <option key={tag.id} value={tag.id}>
+                    {tag.name}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+        </>
+      )}
     </div>
   );
 }

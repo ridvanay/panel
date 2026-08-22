@@ -18,14 +18,19 @@ import type { FeaturedProductsBlock } from "@/lib/page-builder/types";
 export function FeaturedProductsBlockEditor({
   block,
   onChange,
+  simple = false,
 }: {
   block: FeaturedProductsBlock;
   onChange: (block: FeaturedProductsBlock) => void;
+  /** §2.5 tablo B — şablon modunda kategori filtresi kilitlidir. */
+  simple?: boolean;
 }) {
   const { isModuleEnabled } = useModules();
   const [categories, setCategories] = useState<ProductCategory[]>([]);
 
+  // `simple` iken kategori `Select`i hiç render edilmez (aşağıda) — gereksiz istek atılmaz.
   useEffect(() => {
+    if (simple) return;
     (async () => {
       try {
         setCategories(await listProductCategories());
@@ -33,7 +38,7 @@ export function FeaturedProductsBlockEditor({
         setCategories([]);
       }
     })();
-  }, []);
+  }, [simple]);
 
   return (
     <div className="space-y-3">
@@ -74,24 +79,26 @@ export function FeaturedProductsBlockEditor({
         )}
       </Field>
 
-      <Field id={`${block.id}-category`} label="Kategori" hint="Seçilmezse tüm kategorilerden ürün gösterilir.">
-        {(inputProps) => (
-          <Select
-            {...inputProps}
-            value={block.data.categoryId ?? ""}
-            onChange={(e) =>
-              onChange({ ...block, data: { ...block.data, categoryId: e.target.value || undefined } })
-            }
-          >
-            <option value="">Tüm kategoriler</option>
-            {categories.map((category) => (
-              <option key={category.id} value={category.id}>
-                {category.name}
-              </option>
-            ))}
-          </Select>
-        )}
-      </Field>
+      {!simple && (
+        <Field id={`${block.id}-category`} label="Kategori" hint="Seçilmezse tüm kategorilerden ürün gösterilir.">
+          {(inputProps) => (
+            <Select
+              {...inputProps}
+              value={block.data.categoryId ?? ""}
+              onChange={(e) =>
+                onChange({ ...block, data: { ...block.data, categoryId: e.target.value || undefined } })
+              }
+            >
+              <option value="">Tüm kategoriler</option>
+              {categories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+      )}
     </div>
   );
 }

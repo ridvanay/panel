@@ -7,7 +7,16 @@ import { Switch } from "@/components/ui/switch";
 import { newId } from "@/lib/page-builder/registry";
 import { ACCORDION_MAX_ITEMS, type AccordionBlock, type AccordionQAItem } from "@/lib/page-builder/types";
 
-export function AccordionBlockEditor({ block, onChange }: { block: AccordionBlock; onChange: (block: AccordionBlock) => void }) {
+export function AccordionBlockEditor({
+  block,
+  onChange,
+  simple = false,
+}: {
+  block: AccordionBlock;
+  onChange: (block: AccordionBlock) => void;
+  /** §2.5 tablo B — şablon modunda `allowMultipleOpen` kilitlidir. */
+  simple?: boolean;
+}) {
   const items = block.data.items;
 
   function updateItem(id: string, patch: Partial<AccordionQAItem>) {
@@ -33,16 +42,18 @@ export function AccordionBlockEditor({ block, onChange }: { block: AccordionBloc
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <label htmlFor={`${block.id}-multi`} className="text-sm font-medium text-foreground">
-          Birden fazla panel aynı anda açık kalabilsin
-        </label>
-        <Switch
-          id={`${block.id}-multi`}
-          checked={block.data.allowMultipleOpen}
-          onCheckedChange={(allowMultipleOpen) => onChange({ ...block, data: { ...block.data, allowMultipleOpen } })}
-        />
-      </div>
+      {!simple && (
+        <div className="flex items-center justify-between">
+          <label htmlFor={`${block.id}-multi`} className="text-sm font-medium text-foreground">
+            Birden fazla panel aynı anda açık kalabilsin
+          </label>
+          <Switch
+            id={`${block.id}-multi`}
+            checked={block.data.allowMultipleOpen}
+            onCheckedChange={(allowMultipleOpen) => onChange({ ...block, data: { ...block.data, allowMultipleOpen } })}
+          />
+        </div>
+      )}
 
       <div className="space-y-3">
         {items.map((item, index) => (

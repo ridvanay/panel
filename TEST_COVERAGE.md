@@ -1082,3 +1082,87 @@ da yeni bir e2e-seviyesi axe bağımlılığı EKLENMEDİ. **Boşluk (frontend-a
 `Sheet` tabanlı `ContainerSettingsPanel` kabuğu (`SheetHeader sr-only` + panelin kendi görünür
 `<h3>` başlığı, base-ui `Dialog` odak tuzağı/`Escape` davranışı) için `frontend/tests/unit/a11y-
 content-editor.test.tsx`'e (veya yeni bir dosyaya) `jest-axe` ile özel bir senaryo eklenmedi.
+
+## §10.20 Sayfa düzenleyicide Standart/Gelişmiş mod ayrımı — E2E kapsamı (bu turda eklendi)
+
+Kaynak: `.claude/architect-scope-page-editor-roles.md` §6.6 "qa-agent" görev listesi (6 madde,
+bağlayıcı) + §6.6'nın 7. maddesi (security-agent'ın bıraktığı `PATCH /admin/users/{id}/builder-
+access` DELETED-kullanıcı kapsam notu — backend entegrasyon testine eklendi, aşağıya bkz.).
+
+Yeni dosya: `frontend/tests/e2e/admin-page-editor-roles.spec.ts`. Yeni fixture yardımcıları:
+`support/api.ts::createPageWithBlocks/getFixtureUserToken`, `support/admin-users-fixtures.ts::
+adminUpdateBuilderAccess` (+ `resetFixtureUserToBaseline` artık `advancedBuilderEnabled`'ı da
+temel duruma döndürür), `support/admin-session.ts::createAuthenticatedPageAs` (keyfi kimlik
+bilgileriyle UI login — `createAuthenticatedPage()` artık bunun ADMIN'e özel bir sarmalayıcısı).
+
+| # | Mimari madde | Test | Durum |
+|---|---|---|---|
+| 1 | Standart kullanıcı — metin düzenleme, "Kaydet" düğmesiyle → başarı | `1a` (UI, literal senaryo) | ✅ Geçiyor (`test.fail()` bu turda KALDIRILDI — bkz. aşağı) |
+| 1 | (kontrol) Standart mod DOM kanıtı + backend/guard'ın içerik-only PATCH'i kabul ettiği | `1b` | ✅ Geçiyor |
+| 2 | Standart kullanıcı — API seviyesinde yapısal değişiklik (ekle/sil/sırala) → 403 | `2` | ✅ Geçiyor |
+| 3 | **Autosave baypas testi (zorunlu)** — UI'da düzenle, debounce, backend autosave'i BAĞIMSIZ reddediyor | `3` | ✅ Geçiyor |
+| 4 | Gelişmiş EDITOR — aynı türde şablon sayfada tam serbestlik (BuilderCanvas, konteyner ekle, kaydet) | `4` | ✅ Geçiyor |
+| 5 | `advancedBuilderEnabled` kapatılınca AYNI token'ın bir SONRAKİ isteğinde kısıt ANINDA etkin | `5` | ✅ Geçiyor |
+| 6 | ADMIN — `advancedBuilderEnabled=false` olsa DAHİ şablon sayfada kısıtsız (§1.5) | `6` | ✅ Geçiyor |
+| 7 (backend) | `PATCH /admin/users/{id}/builder-access` + `DELETED` kullanıcı → 404 | `backend/tests/integration/admin-users-soft-delete.test.ts` ("PATCH /builder-access, DELETED bir kullanıcıya uygulanamaz") | ✅ Geçiyor |
+
+**7/7 madde kapsandı, tam dosya 3 ayrı koşuda (rate-limit soğuma aralıklarıyla) İSTİKRARLI: 8/8
+test "yeşil".** Madde 1'in literal UI senaryosu (`1a`) artık **GERÇEKTEN geçiyor** — bu turda
+`test.fail()` işareti KALDIRILDI (qa-agent kararı; bkz. aşağıdaki doğrulama notu). Regresyona
+dönerse (bir ajan `slug`'ı yeniden koşulsuz eklerse) bu test artık CI'ı KIRAR (istenen davranış).
+
+### ✅ DÜZELTİLDİ ve DOĞRULANDI — eski KRİTİK BULGU (A): standart kullanıcı "Kaydet" düğmesiyle kaydedemiyordu
+
+`frontend/src/app/admin/pages/[pageId]/page.tsx::handleSave()`/`handleSaveAsDraft()`, `PATCH`
+gövdesine `slug`'ı **KOŞULSUZ** ekliyordu (`isLegalDocument`in `...(isAdmin ? {isLegalDocument} :
+{})` deseninin AKSİNE, `slug` için hiçbir koşul YOKTU). Backend'in `assertAdvancedFieldsAuthorized()`
+(`backend/src/modules/pages/pages.routes.ts`) `body.slug !== undefined` olduğu AN 403 fırlatıyordu
+— bu bir **DEĞER-farkı** kontrolü DEĞİL, bir **VAR-OLMA** kontrolü olduğundan slug DEĞERİ aynı
+kalsa dahi standart kullanıcı "Kaydet"e bastığı AN HER ZAMAN 403 alıyordu.
+
+**Düzeltme (frontend-agent, bu turda):** `slug` artık `isLegalDocument` ile AYNI koşullu-alan
+desenini kullanıyor — `...(!simpleMode ? { slug } : {})` (hem `handleSave` hem `handleSaveAsDraft`
+içinde). **qa-agent doğrulaması:** `admin-page-editor-roles.spec.ts` testi `1a`, `test.fail()`
+işareti kaldırıldıktan sonra **gerçek bir tarayıcıda** ("Kaydet" tıkla → "Sayfa kaydedildi."
+toast'ı görünür) 3 ayrı koşuda İSTİKRARLI olarak geçiyor.
+
+### ✅ DÜZELTİLDİ ve DOĞRULANDI — eski İKİNCİL BULGU (B): `wrapBareRootBlocks` standart moda sızıyordu
+
+`page.tsx::load()` HER kullanıcı için (standart dahil) `wrapBareRootBlocks()` çağırıyordu — kökte
+"çıplak" (bir `container`'ın DIŞINDAKİ) blok varsa YENİ bir `container`'a sarıyordu. Bu sarma
+`TemplateEditorView`'a giden `activeNodes`'u da etkiliyordu: sayfa DB'de kökte çıplak bir blokla
+saklanmışsa, standart kullanıcı SALT bir metin alanını değiştirse bile gönderilen `blocks`
+kayıtlı ağaçtan YAPISAL olarak farklı hale geliyordu (yeni bir `container` düğümü) —
+`assertTemplateEditAllowed` bunu (doğru biçimde) 403'e düşürüyordu.
+
+**Düzeltme (frontend-agent, bu turda):** `load()` içinde `isSimpleModePage` (`page.editMode ===
+"TEMPLATE" && !canUseAdvancedBuilder`) hesaplanıp bu durumda `wrapBareRootBlocks` ATLANIYOR.
+**qa-agent doğrulaması:** diff incelemesiyle (`git diff` — desen `isLegalDocument`'inkiyle
+BİREBİR) VE `1a`/`1b` testlerinin (kök bloğu BİLE İSTEYE sarılmış fixture'larla) 3 koşuda
+istikrarlı geçmesiyle DOLAYLI olarak doğrulandı.
+
+### ✅ EK (orkestratör tarafından, aynı desenle) — çeviri blokları (`enBlocks`) için AYNI risk kapatıldı
+
+Bulgu (B) ile AYNI sınıftan bir "latent risk" — `enBlocks` `useMemo`'su
+(`translations.<locale>.blocks`, çeviri sekmesi) da `wrapBareRootBlocks`'u KOŞULSUZ çağırıyordu.
+Orkestratör bu turda AYNI deseni (`editMode === "TEMPLATE" && !canUseAdvancedBuilder` iken atla)
+`enBlocks`'a da uyguladı. **qa-agent doğrulaması:** `git diff` ile kod incelemesi YAPILDI (desen
+doğru uygulanmış); bu dosyada AYRI bir çeviri-sekmesi UI senaryosu YOK (kapsam dışı — mevcut
+suite varsayılan locale ile sınırlı). **EKSİK KALAN KAPSAM:** standart kullanıcının bir çeviri
+sekmesinde ("EN" gibi) kök blok çevirisini kaydettiği bir e2e senaryosu henüz yazılmadı — ileride
+eklenmeli (bkz. TODO altbölümü).
+
+### Auth kotası notu (test altyapısı, uygulama bug'ı DEĞİL)
+
+İlk taslak `STANDARD_EDITOR_EMAIL`/`ADVANCED_EDITOR_EMAIL`/... için KALICI (dosyalar arası
+paylaşılan) e-postalar kullanıyordu (`admin-user-management.spec.ts`'teki desenle aynı) — bu,
+`getFixtureUserToken()`'ın (her çağrıda register 409 → login'e düşme) `/auth/login`'in sabit
+5 istek/dk kotasını (`AUTH_RATE_LIMIT`) hızla tükettiğini ortaya çıkardı (429 gözlemlendi).
+Düzeltme: bu dosyadaki fixture kullanıcılar artık `RUN_SUFFIX` (`Date.now().toString(36)`) ile
+ÇALIŞTIRMA-BAŞINA-BENZERSİZ — `POST /auth/register` HER ZAMAN 201 döner, `/auth/login`'e HİÇ
+düşülmez (yalnızca genuine UI login'ler — `standardPage`/`advancedPage` — login kotasını kullanır,
+toplam 2 + `auth.setup.ts`'in kendi 2'si = 4, kotanın altında). Bu, `admin-user-management.spec.ts`
+gibi KİMLİK SÜREKLİLİĞİ gerektiren (ör. "tek admin" ön koşulu) dosyalardaki KALICI e-posta
+deseninden BİLİNÇLİ bir SAPMA — bu dosyanın fixture kullanıcıları yalnızca kendi içindeki
+testlerde kullanılıyor, sürekliliğe ihtiyaç yok. Yan etki: `saas_e2e`'de koşum başına 4 kalıcı
+`qa-e2e-per-*` kullanıcı birikir (zararsız — prod değil, disposable test DB).
