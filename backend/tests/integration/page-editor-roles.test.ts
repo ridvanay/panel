@@ -185,12 +185,62 @@ describe("page editor roles (§10.20)", () => {
     expect(res.statusCode).toBe(200);
   });
 
-  it("freeform sayfada aynı istekler 200 döner", async () => {
+  // SIKILAŞTIRMA (kullanıcı kararı, 2026-08-23, bağlayıcı — bkz.
+  // `.claude/architect-scope-page-editor-roles.md` §2.5/§4.2 GENİŞLETİLDİ): standart kullanıcı
+  // artık `editMode`'dan BAĞIMSIZ olarak asla blok yapısını değiştiremez — FREEFORM sayfada da
+  // yalnızca TEMPLATE_EDITABLE_FIELDS kapsamındaki `data.*` alanlarını değiştirebilir. Aşağıdaki
+  // iki test, önceki "freeform sayfada aynı istekler 200 döner" testinin YERİNİ ALIR.
+  it("standart kullanıcı: FREEFORM sayfada konteyner eklemeye çalışırsa 403", async () => {
     const page = await createFreeformPage([heading("h1", "Merhaba")]);
     const res = await app.inject({
       method: "PATCH",
       url: `/api/v1/admin/pages/${page.id}`,
       headers: auth(standardEditorToken),
+      payload: { blocks: [heading("h1", "Merhaba"), container("serbest-ekleme")] },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.code).toBe("FORBIDDEN");
+    expect(res.json().error.details.blocks).toContain("serbest-ekleme: yapı değiştirilemez");
+  });
+
+  it("standart kullanıcı: FREEFORM sayfada konteyner silmeye/sıralamayı değiştirmeye çalışırsa 403", async () => {
+    const page = await createFreeformPage([heading("h1", "Bir"), heading("h2", "İki")]);
+
+    const removed = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/admin/pages/${page.id}`,
+      headers: auth(standardEditorToken),
+      payload: { blocks: [heading("h1", "Bir")] },
+    });
+    expect(removed.statusCode).toBe(403);
+
+    const reordered = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/admin/pages/${page.id}`,
+      headers: auth(standardEditorToken),
+      payload: { blocks: [heading("h2", "İki"), heading("h1", "Bir")] },
+    });
+    expect(reordered.statusCode).toBe(403);
+  });
+
+  it("standart kullanıcı: FREEFORM sayfada izinli data alanı değişikliği 200 döner", async () => {
+    const page = await createFreeformPage([heading("h1", "Eski")]);
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/admin/pages/${page.id}`,
+      headers: auth(standardEditorToken),
+      payload: { blocks: [heading("h1", "Yeni")] },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.blocks[0].data.text).toBe("Yeni");
+  });
+
+  it("gelişmiş EDITOR: FREEFORM sayfada tam serbestlik korunur (yapısal değişiklik 200)", async () => {
+    const page = await createFreeformPage([heading("h1", "Merhaba")]);
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/admin/pages/${page.id}`,
+      headers: auth(advancedEditorToken),
       payload: { blocks: [heading("h1", "Merhaba"), container("serbest-ekleme")] },
     });
     expect(res.statusCode).toBe(200);
@@ -282,13 +332,35 @@ describe("page editor roles (§10.20)", () => {
       expect(editModeRes.statusCode).toBe(403);
     });
 
-    it("standart kullanıcı freeform sayfada slug/editMode DEĞİŞTİREBİLİR (kısıt yalnızca TEMPLATE'te anlamlı)", async () => {
+    // SIKILAŞTIRMA (kullanıcı kararı, 2026-08-23, bağlayıcı): standart kullanıcı için bu kısıt
+    // artık `editMode`'dan BAĞIMSIZDIR — FREEFORM sayfada da `slug`/`editMode` göndermek 403'tür.
+    it("standart kullanıcı FREEFORM sayfada da slug/editMode gönderirse 403", async () => {
       const page = await createFreeformPage([heading("h1", "x")]);
-      const res = await app.inject({
+
+      const slugRes = await app.inject({
         method: "PATCH",
         url: `/api/v1/admin/pages/${page.id}`,
         headers: auth(standardEditorToken),
         payload: { slug: `serbest-slug-${Math.floor(Math.random() * 100000)}` },
+      });
+      expect(slugRes.statusCode).toBe(403);
+
+      const editModeRes = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/admin/pages/${page.id}`,
+        headers: auth(standardEditorToken),
+        payload: { editMode: "TEMPLATE" },
+      });
+      expect(editModeRes.statusCode).toBe(403);
+    });
+
+    it("gelişmiş EDITOR FREEFORM sayfada slug DEĞİŞTİREBİLİR", async () => {
+      const page = await createFreeformPage([heading("h1", "x")]);
+      const res = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/admin/pages/${page.id}`,
+        headers: auth(advancedEditorToken),
+        payload: { slug: `gelismis-slug-${Math.floor(Math.random() * 100000)}` },
       });
       expect(res.statusCode).toBe(200);
     });

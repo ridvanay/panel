@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Page, type Locator } from "@playwright/test";
 import {
   getCachedAdminSession,
   getFixtureUserToken,
@@ -56,6 +56,32 @@ import {
  *     sınırlı) ama diff/kod incelemesiyle DOĞRULANDI; ileride bir çeviri-sekmesi senaryosu
  *     eklenmesi TEST_COVERAGE.md'de eksik olarak not edilir.
  * ============================================================================================
+ *
+ * SIKILAŞTIRMA (kullanıcı kararı, 2026-08-23, bağlayıcı — qa-agent turu) — standart kullanıcının
+ * yapısal kilidi artık `editMode`'dan TAMAMEN BAĞIMSIZ: `page.tsx::simpleMode = !canUseAdvancedBuilder`
+ * ve `pages.routes.ts::isStructureRestricted = !canUseAdvancedBuilder(request.user!)` (autosave'de
+ * aynı desen). Yukarıdaki 1/2/3/4 numaralı testler yalnızca `editMode: TEMPLATE` fixture'larıyla
+ * yazılmıştı (`createTemplatePage`); bu turda AYNI dört senaryonun `editMode: FREEFORM` eşlenikleri
+ * 7/8/9/10 numaralı testler olarak EKLENDİ (`createFreeformPage`, dosyanın alt kısmı, "FREEFORM
+ * eşlenikleri" başlıklı blok). Mevcut 1-6 numaralı testlere DOKUNULMADI. Backend'in kendi
+ * `backend/tests/integration/page-editor-roles.test.ts`'i de aynı FREEFORM senaryolarını zaten
+ * kapsıyordu (bkz. o dosyadaki "FREEFORM" aramalarıyla bulunan 6 test) — buradaki 7-10 numaralı
+ * testler o kapsamı GERÇEK bir tarayıcı + gerçek çalışan backend üzerinden (DOM kanıtı + gerçek
+ * autosave debounce döngüsü dahil) tekrar doğrular, backend'in `app.inject` katmanının atladığı
+ * "wiring" yüzeyini (bkz. `TEST_COVERAGE.md` başlığı) kapatır.
+ *
+ * qa-agent — KENDİ testinde bulduğu flaky kaynağını KENDİSİ düzeltti (proje kökü CLAUDE.md madde
+ * 3, "flaky testleri tolere etme"): test "10" ilk taslağında test "4" (PRE-EXISTING, bu turda
+ * DOKUNULMAYAN) ile BİREBİR aynı "•••" → hover → "Alta Konteyner Ekle" alt-menü etkileşim
+ * desenini kopyalıyordu; bu ortamda (yerel Windows/Playwright) ARA SIRA (floating-ui'nin
+ * `allowMouseEnter` koruması bir hover girişini kaçırdığında) menü açılmıyordu —
+ * `admin-page-builder-containers.spec.ts`'in KENDİ dosya içi yorumunda ZATEN "ara sıra FLAKY"
+ * olarak belgelenmiş, AYNI kategori. Test "4" (PRE-EXISTING) BİLEREK değiştirilmedi; bunun
+ * yerine YALNIZCA bu dosyanın YENİ kodunda kullanılan `openAddBelowSingleColumnTileUntilVisible()`
+ * yardımcısı eklendi — menüyü KAPAT → yeniden aç → yeniden hover ederek (sabit bir bekleme SÜRESİ
+ * değil, gerçek bir "koşul sağlanana kadar tekrarla" deseni, en fazla 4 deneme) kaçırılan hover'ı
+ * ezer. Doğrulama: `--grep "FREEFORM"` (testler 7-10) İZOLE olarak 3 ayrı koşuda İSTİKRARLI
+ * geçti (bkz. TEST_COVERAGE.md).
  */
 // NOT (retries KASITLI OLARAK ayarlanmaz, varsayılan 0'da bırakılır) — `/auth/register`/`/auth/login`
 // sabit 5 istek/dk kotası (`AUTH_RATE_LIMIT`, `auth.routes.ts`) BU DOSYADA zaten dar: `beforeAll`
@@ -126,6 +152,57 @@ async function createTemplatePage(prefix: string, blocks: unknown[]) {
     blocks,
   });
   return { pageId: created.id as string };
+}
+
+/** `createTemplatePage` ile AYNI desen, yalnızca `editMode: FREEFORM` — kullanıcı kararı (2026-08-23,
+ *  bağlayıcı, bkz. dosya başlığındaki §10.20 notu ve `page.tsx::simpleMode` tanımı): standart
+ *  kullanıcının yapısal kilidi artık `editMode`'dan BAĞIMSIZ, bu yüzden §10.20'nin 1-4 numaralı
+ *  TEMPLATE senaryolarının FREEFORM eşleniklerini üretmek için kullanılır (bkz. aşağıdaki 7-10
+ *  numaralı testler). */
+async function createFreeformPage(prefix: string, blocks: unknown[]) {
+  const unique = `${Date.now().toString(36)}${Math.floor(Math.random() * 46_656).toString(36)}`;
+  const slug = `qa-per-${prefix}-${unique}`;
+  const created = await createPageWithBlocks(adminToken, {
+    title: `QaE2ePageEditorRoles ${prefix} ${unique}`,
+    slug,
+    status: "DRAFT",
+    editMode: "FREEFORM",
+    blocks,
+  });
+  return { pageId: created.id as string };
+}
+
+/**
+ * qa-agent — flaky kaynağı bulundu ve düzeltildi (test "10", bu turda EKLENEN kod, kural gereği
+ * KENDİ testinde tolere edilmedi — bkz. proje kökü CLAUDE.md madde 3). "•••" (`Daha fazla işlem`)
+ * menüsünden `DropdownMenuSub` "Alta Konteyner Ekle" alt-grid'ini açan hover etkileşimi
+ * (`admin-page-builder-containers.spec.ts`'teki "ara sıra FLAKY" olarak belgelenmiş AYNI
+ * kategori — floating-ui'nin `allowMouseEnter` koruması bazen bir tek hover girişini kaçırıyor,
+ * imleç önce dışarı taşınıp geri getirilse BİLE) bu ortamda tek denemede güvenilir DEĞİL. O
+ * dosyanın/test "4"ün (PRE-EXISTING, bu görevde DOKUNULMAYAN TEMPLATE senaryosu) kendisi
+ * DEĞİŞTİRİLMEDİ; onun yerine bu YENİ yardımcı — menü her denemede baştan (KAPAT → "•••"e
+ * yeniden tıkla → yeniden hover) açılarak floating-ui'nin girişi kaçırdığı ender durumu birkaç
+ * deneme içinde EZER — yalnızca bu dosyanın YENİ (7-10) testlerinde kullanılır. */
+async function openAddBelowSingleColumnTileUntilVisible(page: Page, moreMenuTrigger: Locator): Promise<Locator> {
+  const maxAttempts = 4;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    await moreMenuTrigger.click();
+    const addBelowSubTrigger = page.getByRole("menuitem", { name: "Alta Konteyner Ekle" });
+    await expect(addBelowSubTrigger).toBeVisible();
+    await page.mouse.move(0, 0);
+    await addBelowSubTrigger.hover();
+    const singleColumnTile = page.getByRole("button", { name: "Tek Sütun" });
+    try {
+      await expect(singleColumnTile).toBeVisible({ timeout: 2_000 });
+      return singleColumnTile;
+    } catch {
+      if (attempt === maxAttempts) throw new Error('"Tek Sütun" karosu tekrarlı denemelere rağmen görünmedi.');
+      // Menü tam açılmadı (allowMouseEnter'ın kaçırdığı hover) — baştan dene.
+      await page.keyboard.press("Escape");
+      await page.keyboard.press("Escape");
+    }
+  }
+  throw new Error("Ulaşılamaz kod yolu.");
 }
 
 /** `PATCH /admin/pages/{id}` — durum kodunu FIRLATMADAN döner (403/200 iddiaları için). */
@@ -468,6 +545,190 @@ test.describe("Sayfa düzenleyici — Standart/Gelişmiş mod ayrımı (§10.20)
       const saved = await getPage(adminToken, pageId);
       const savedRoot = (saved.blocks as Array<{ children: unknown[] }>)[0];
       expect(savedRoot.children).toHaveLength(2);
+    } finally {
+      await deletePagePermanently(adminToken, pageId);
+    }
+  });
+
+  // ============================================================================================
+  // FREEFORM eşlenikleri (kullanıcı kararı, 2026-08-23, bağlayıcı — bkz. dosya başlığındaki §10.20
+  // notu) — yukarıdaki 1/2/3/4 numaralı testler yalnızca `editMode: TEMPLATE` sayfaları kapsıyordu.
+  // Kısıt artık `editMode`'dan BAĞIMSIZ olduğu için (`page.tsx::simpleMode = !canUseAdvancedBuilder`,
+  // `pages.routes.ts::isStructureRestricted`) AYNI dört senaryo `editMode: FREEFORM` sayfalarda da
+  // doğrulanır. Mevcut TEMPLATE testlerine DOKUNULMADI — bu bloğun tamamı EKtir.
+  // ============================================================================================
+
+  test("7) Standart kullanıcı: FREEFORM sayfada BuilderCanvas hiç render edilmez, yalnızca TemplateEditorView (form) görünür + içerik kaydı başarı", async () => {
+    // TEMPLATE testleri "1a"/"1b" ile AYNI çift kanıt deseni (DOM + gerçek "Kaydet" akışı) —
+    // yalnızca fixture'ın `editMode: FREEFORM` olması dışında.
+    const { pageId } = await createFreeformPage("freeform-standart-kaydet", [
+      { id: "qa-7-root", type: "container", settings: col, children: [heading("qa-7-heading", "Orijinal Başlık")] },
+    ]);
+    try {
+      await standardPage.goto(`/admin/pages/${pageId}`);
+      await expect(standardPage.getByRole("heading", { name: "İçerik blokları" })).toBeVisible({ timeout: 15_000 });
+      await standardPage.waitForTimeout(500);
+
+      // Standart mod DOM kanıtı — `simpleMode = !canUseAdvancedBuilder` (editMode'dan BAĞIMSIZ),
+      // `BuilderCanvas`/`ContainerSettingsPanel` FREEFORM sayfada da HİÇ mount edilmez.
+      await expect(standardPage.locator('button[aria-label^="Sürükle: "]')).toHaveCount(0);
+      await expect(standardPage.locator('button[aria-label="Konteyner ayarları"]')).toHaveCount(0);
+      await expect(standardPage.getByText("İçerik alanlarını doldurun — yapı bu şablonda sabittir.")).toBeVisible();
+      await expect(standardPage.getByText("Bölüm 1", { exact: true })).toBeVisible();
+
+      const headingField = standardPage.getByLabel("Başlık metni");
+      await expect(headingField).toHaveValue("Orijinal Başlık");
+      await headingField.fill("Standart kullanıcı tarafından değiştirildi (freeform)");
+
+      await standardPage.getByRole("button", { name: "Kaydet", exact: true }).click();
+      await expect(standardPage.getByText("Sayfa kaydedildi.").last()).toBeVisible({ timeout: 5_000 });
+
+      const saved = await getPage(adminToken, pageId);
+      const savedRoot = (saved.blocks as Array<{ children: Array<{ data: { text: string } }> }>)[0];
+      expect(savedRoot.children[0].data.text).toBe("Standart kullanıcı tarafından değiştirildi (freeform)");
+    } finally {
+      await deletePagePermanently(adminToken, pageId);
+    }
+  });
+
+  test("8) Standart kullanıcı: FREEFORM sayfada API seviyesinde yapısal değişiklik (ekleme/silme/sıralama) → 403 FORBIDDEN", async () => {
+    // Test "2" ile BİREBİR AYNI desen — yalnızca `editMode: FREEFORM`.
+    const { pageId } = await createFreeformPage("freeform-structural-403", [
+      {
+        id: "qa-8-root",
+        type: "container",
+        settings: col,
+        children: [heading("qa-8-h1", "Birinci Başlık"), heading("qa-8-h2", "İkinci Başlık")],
+      },
+    ]);
+    try {
+      const baseRoot = {
+        id: "qa-8-root",
+        type: "container",
+        settings: col,
+        children: [heading("qa-8-h1", "Birinci Başlık"), heading("qa-8-h2", "İkinci Başlık")],
+      };
+
+      // (a) EKLEME.
+      const withAdded = JSON.parse(JSON.stringify(baseRoot));
+      withAdded.children.push(heading("qa-8-injected", "Enjekte edilmiş"));
+      const addRes = await patchPageDirect(standardApiToken, pageId, { blocks: [withAdded] });
+      expect(addRes.status).toBe(403);
+      expect((addRes.body as { error: { code: string } }).error.code).toBe("FORBIDDEN");
+
+      // (b) SİLME.
+      const withRemoved = JSON.parse(JSON.stringify(baseRoot));
+      withRemoved.children = [withRemoved.children[0]];
+      const removeRes = await patchPageDirect(standardApiToken, pageId, { blocks: [withRemoved] });
+      expect(removeRes.status).toBe(403);
+
+      // (c) SIRALAMA.
+      const reordered = JSON.parse(JSON.stringify(baseRoot));
+      reordered.children = [reordered.children[1], reordered.children[0]];
+      const reorderRes = await patchPageDirect(standardApiToken, pageId, { blocks: [reordered] });
+      expect(reorderRes.status).toBe(403);
+
+      // Kontrol — YAPI AYNI kalırken İÇERİK değişikliği BAŞARILI olmalı (FREEFORM'da da §3.2
+      // haritasındaki içerik alanları serbesttir; kısıtlanan yalnızca YAPIdır).
+      const withContentEdit = JSON.parse(JSON.stringify(baseRoot));
+      withContentEdit.children[0].data.text = "API üzerinden içerik düzenlemesi (freeform)";
+      const contentRes = await patchPageDirect(standardApiToken, pageId, { blocks: [withContentEdit] });
+      expect(contentRes.status).toBe(200);
+    } finally {
+      await deletePagePermanently(adminToken, pageId);
+    }
+  });
+
+  test("9) Autosave baypas testi (FREEFORM): standart kullanıcı UI'da düzenler, backend autosave'i BAĞIMSIZ olarak REDDEDER (403)", async () => {
+    // Test "3" ile BİREBİR AYNI desen — yalnızca `editMode: FREEFORM`. `pages.routes.ts` autosave
+    // guard'ı da (`!canUseAdvancedBuilder(...) && blocks !== undefined`) `editMode`'a bakmıyor.
+    test.setTimeout(45_000);
+    const { pageId } = await createFreeformPage("freeform-autosave-bypass", [
+      { id: "qa-9-root", type: "container", settings: col, children: [heading("qa-9-heading", "Autosave Başlığı")] },
+    ]);
+    try {
+      await standardPage.goto(`/admin/pages/${pageId}`);
+      await expect(standardPage.getByRole("heading", { name: "İçerik blokları" })).toBeVisible({ timeout: 15_000 });
+      await standardPage.waitForTimeout(500);
+
+      let injectedAutosaveStatus: number | null = null;
+      let injectedAutosaveCount = 0;
+      await standardPage.route(`**/admin/pages/${pageId}/autosave`, async (route) => {
+        const request = route.request();
+        const payload = request.postDataJSON() as { title?: string; blocks?: Array<{ children?: unknown[] }> };
+        const mutatedBlocks = payload.blocks ? (JSON.parse(JSON.stringify(payload.blocks)) as Array<{ children?: unknown[] }>) : [];
+        if (mutatedBlocks[0] && Array.isArray(mutatedBlocks[0].children)) {
+          (mutatedBlocks[0].children as unknown[]).push(heading("qa-9-injected", "Enjekte edilmiş yapı"));
+        }
+        const response = await route.fetch({ postData: JSON.stringify({ ...payload, blocks: mutatedBlocks }) });
+        injectedAutosaveCount += 1;
+        injectedAutosaveStatus = response.status();
+        await route.fulfill({ response });
+      });
+
+      const headingField = standardPage.getByLabel("Başlık metni");
+      await headingField.fill("Autosave icin sadece metin degisikligi (freeform)");
+
+      await expect.poll(() => injectedAutosaveCount, { timeout: 8_000 }).toBeGreaterThan(0);
+      await expect.poll(() => injectedAutosaveStatus, { timeout: 5_000 }).toBe(403);
+
+      const afterReject = await getPage(adminToken, pageId);
+      const rootAfterReject = (afterReject.blocks as Array<{ children: unknown[] }>)[0];
+      expect(rootAfterReject.children).toHaveLength(1);
+
+      await standardPage.unroute(`**/admin/pages/${pageId}/autosave`);
+      await headingField.fill("Autosave sonrasi gercek icerik kaydi (freeform)");
+      await expect
+        .poll(
+          async () => {
+            const p = await getPage(adminToken, pageId);
+            const root = (p.blocks as Array<{ children: Array<{ data: { text: string } }> }>)[0];
+            return root.children[0].data.text;
+          },
+          { timeout: 8_000 }
+        )
+        .toBe("Autosave sonrasi gercek icerik kaydi (freeform)");
+    } finally {
+      await deletePagePermanently(adminToken, pageId);
+    }
+  });
+
+  test("10) Gelişmiş EDITOR: FREEFORM sayfada tam serbestlik (regresyon) — BuilderCanvas görünür, konteyner ekleyip kaydedebilir", async () => {
+    // Test "4" ile AYNI desen — yalnızca `editMode: FREEFORM`. Bu senaryo `simpleMode`'un
+    // yalnızca `canUseAdvancedBuilder`'a bağlı olduğunu, FREEFORM sayfada gelişmiş kullanıcı için
+    // HİÇBİR yeni kısıt getirmediğini kanıtlar (kısıt yalnızca standart kullanıcıya sıkılaştırıldı).
+    test.setTimeout(45_000);
+    const { pageId } = await createFreeformPage("freeform-advanced-freedom", [
+      { id: "qa-10-root", type: "container", settings: col, children: [heading("qa-10-heading", "Gelişmiş Kullanıcı Başlığı")] },
+    ]);
+    try {
+      await advancedPage.goto(`/admin/pages/${pageId}`);
+      await expect(advancedPage.getByRole("heading", { name: "İçerik blokları" })).toBeVisible({ timeout: 15_000 });
+      await advancedPage.waitForTimeout(500);
+
+      await expect(advancedPage.locator('button[aria-label^="Sürükle: "]')).toHaveCount(2); // konteyner + başlık
+      await expect(advancedPage.locator('button[aria-label="Konteyner ayarları"]')).toHaveCount(1);
+      // FREEFORM sayfada şablon modu rozeti (design-notes Karar 4) GÖRÜNMEMELİDİR — o gösterge
+      // yalnızca `editMode === "TEMPLATE" && canUseAdvancedBuilder` iken render edilir.
+      await expect(advancedPage.getByText("Şablon Modu", { exact: true })).not.toBeVisible();
+
+      // qa-agent — flaky kaynağı bulundu ve düzeltildi (bkz. `openAddBelowSingleColumnTileUntilVisible`
+      // başlığı): "Alta Konteyner Ekle" hover-alt-menüsü bu ortamda ARA SIRA tek denemede açılmıyor
+      // (floating-ui `allowMouseEnter` koruması) — birkaç deneme içinde EZİLİR, sabit bekleme
+      // süresi DEĞİL, gerçek bir "koşul sağlanana kadar tekrarla" deseni.
+      const moreMenuTrigger = advancedPage.locator('button[aria-label="Daha fazla işlem"]').first();
+      const singleColumnTile = await openAddBelowSingleColumnTileUntilVisible(advancedPage, moreMenuTrigger);
+      await singleColumnTile.click();
+      await advancedPage.keyboard.press("Escape");
+      await advancedPage.keyboard.press("Escape");
+
+      await expect(advancedPage.locator('button[aria-label="Konteyner ayarları"]')).toHaveCount(2);
+
+      await advancedPage.getByRole("button", { name: "Kaydet", exact: true }).click();
+      await expect(advancedPage.getByText("Sayfa kaydedildi.").last()).toBeVisible({ timeout: 10_000 });
+
+      const saved = await getPage(adminToken, pageId);
+      expect((saved.blocks as unknown[]).length).toBe(2);
     } finally {
       await deletePagePermanently(adminToken, pageId);
     }

@@ -119,18 +119,23 @@ function assertLegalDocumentAuthorized(value: boolean | undefined, actorRole: "A
 }
 
 /**
- * §10.20/§4.2 — `slug`/`editMode` alanlarını standart kullanıcı (şablon sayfada, gelişmiş
- * yeteneği OLMAYAN) gönderemez. `assertLegalDocumentAuthorized` ile AYNI desen — TEK farkı
- * koşulun kendisi: bu kontrol YALNIZCA `existing.editMode === "TEMPLATE" && !canUseAdvancedBuilder(actor)`
- * iken anlamlıdır (freeform sayfada ya da gelişmiş kullanıcı için bu alanlar HER ZAMAN serbest
- * kalır — bkz. tasarım notu §2.5: bu alanı değiştirebilen kişi zaten gelişmiş yeteneğe
- * sahiptir, ayrıcalık yükseltme riski YOKTUR).
+ * §10.20/§4.2 — `slug`/`editMode` alanlarını standart kullanıcı (gelişmiş yeteneği OLMAYAN)
+ * gönderemez. `assertLegalDocumentAuthorized` ile AYNI desen — TEK farkı koşulun kendisi: bu
+ * kontrol YALNIZCA `!canUseAdvancedBuilder(actor)` iken anlamlıdır (gelişmiş kullanıcı için bu
+ * alanlar HER ZAMAN serbest kalır — bkz. tasarım notu §2.5: bu alanı değiştirebilen kişi zaten
+ * gelişmiş yeteneğe sahiptir, ayrıcalık yükseltme riski YOKTUR).
+ *
+ * SIKILAŞTIRMA (kullanıcı kararı, 2026-08-23, bağlayıcı — bkz. `.claude/architect-scope-page-editor-roles.md`
+ * §2.5/§4.2 GENİŞLETİLDİ): bu kısıt artık `existing.editMode`'dan BAĞIMSIZ olarak, standart
+ * kullanıcının düzenlediği HER sayfada (FREEFORM dahil) uygulanır. `editMode` alanının kendisi
+ * (Page.editMode enum'ı, kimin değiştirebileceği) DEĞİŞMEDİ — yalnızca "yapısal kısıt ne zaman
+ * devreye girer" koşulu genişledi.
  */
 function assertAdvancedFieldsAuthorized(
   body: { slug?: string; editMode?: PageEditMode },
-  isTemplateModeRestricted: boolean
+  isStructureRestricted: boolean
 ): void {
-  if (!isTemplateModeRestricted) return;
+  if (!isStructureRestricted) return;
   if (body.slug !== undefined) {
     throw new ForbiddenError("slug alanını yalnızca Gelişmiş Düzenleyici yetkisi olan kullanıcılar değiştirebilir.");
   }
@@ -143,8 +148,10 @@ function assertAdvancedFieldsAuthorized(
  * §10.20/§3.5 — `blocks` (varsa) VE her locale için `translations.<locale>.blocks` (varsa)
  * kayıtlı ağaçla karşılaştırılır. Kayıtlı çeviri YOKSA (ilk çeviri), referans olarak KANONİK
  * `existing.blocks` kullanılır (§4.2) — böylece çeviri eklemek "metin doldurmak" olur, "yapı
- * klonlamak" değil. Yalnızca `existing.editMode === "TEMPLATE" && !canUseAdvancedBuilder(actor)`
- * iken çağrılmalıdır (çağıran taraf sorumludur).
+ * klonlamak" değil. Yalnızca `!canUseAdvancedBuilder(actor)` iken çağrılmalıdır (çağıran taraf
+ * sorumludur) — `existing.editMode`'dan BAĞIMSIZDIR (bkz. yukarıdaki SIKILAŞTIRMA notu):
+ * standart kullanıcı FREEFORM bir sayfada da blok yapısını değiştiremez, yalnızca
+ * `TEMPLATE_EDITABLE_FIELDS` kapsamındaki `data.*` alanlarını değiştirebilir.
  */
 function assertTemplateModeBodyAllowed(
   existing: Pick<Page, "blocks" | "translations">,
@@ -352,13 +359,18 @@ export async function adminPagesRoutes(app: FastifyInstance) {
 
       assertLegalDocumentAuthorized(request.body.isLegalDocument, request.user!.role);
 
-      // §10.20 — standart kullanıcı (şablon sayfada, gelişmiş yeteneği OLMAYAN) `slug`/
-      // `editMode` gönderemez VE `blocks`/`translations.<locale>.blocks` şablon diff'inden
-      // GEÇER (bkz. tasarım notu §3.4/§3.5/§4.2, `lib/page-template-guard.ts`). Şema
-      // parse'ından SONRA, herhangi bir DB yazımından (revizyon snapshot'ı DAHİL) ÖNCE çalışır.
-      const isTemplateModeRestricted = existing.editMode === "TEMPLATE" && !canUseAdvancedBuilder(request.user!);
-      assertAdvancedFieldsAuthorized(request.body, isTemplateModeRestricted);
-      if (isTemplateModeRestricted) {
+      // §10.20 — standart kullanıcı (gelişmiş yeteneği OLMAYAN) `slug`/`editMode` gönderemez
+      // VE `blocks`/`translations.<locale>.blocks` şablon diff'inden GEÇER (bkz. tasarım notu
+      // §3.4/§3.5/§4.2, `lib/page-template-guard.ts`). Şema parse'ından SONRA, herhangi bir DB
+      // yazımından (revizyon snapshot'ı DAHİL) ÖNCE çalışır.
+      //
+      // SIKILAŞTIRMA (kullanıcı kararı, 2026-08-23, bağlayıcı): bu koşul `existing.editMode`'a
+      // BAKMAZ — standart kullanıcı FREEFORM bir sayfada da yapıyı değiştiremez, yalnızca
+      // TEMPLATE_EDITABLE_FIELDS kapsamındaki alanları değiştirebilir. `editMode` alanının
+      // kendisi (kimin değiştirebileceği) DEĞİŞMEDİ, bkz. `assertAdvancedFieldsAuthorized`.
+      const isStructureRestricted = !canUseAdvancedBuilder(request.user!);
+      assertAdvancedFieldsAuthorized(request.body, isStructureRestricted);
+      if (isStructureRestricted) {
         assertTemplateModeBodyAllowed(existing, request.body);
       }
 
@@ -483,7 +495,11 @@ export async function adminPagesRoutes(app: FastifyInstance) {
       // §10.20/§3.5 — EN KRİTİK madde: autosave `PATCH`'ten AYRI bir kod yoludur ve `blocks`
       // YAZAR. Burada unutulursa tüm kısıt 3sn'lik debounce üzerinden SESSİZCE baypas edilir
       // (bkz. tasarım notu §3.5 uyarısı, qa-agent'ın zorunlu e2e senaryosu).
-      if (existing.editMode === "TEMPLATE" && !canUseAdvancedBuilder(request.user!) && blocks !== undefined) {
+      //
+      // SIKILAŞTIRMA (kullanıcı kararı, 2026-08-23, bağlayıcı): `existing.editMode`'dan
+      // BAĞIMSIZ — standart kullanıcı FREEFORM bir sayfada da autosave üzerinden yapıyı
+      // değiştiremez.
+      if (!canUseAdvancedBuilder(request.user!) && blocks !== undefined) {
         assertTemplateEditAllowed(Array.isArray(existing.blocks) ? (existing.blocks as unknown[]) : [], blocks);
       }
 

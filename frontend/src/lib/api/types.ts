@@ -403,8 +403,10 @@ export interface SitePage {
   slug: string;
   status: ContentStatus;
   /**
-   * §10.20. İstemci, standart moda geçip geçmeyeceğini şu ifadeyle türetir:
-   * `editMode === "TEMPLATE" && !user.canUseAdvancedBuilder`.
+   * §10.20 (2026-08-23 sıkılaştırması). İstemci, standart moda geçip geçmeyeceğini yalnızca
+   * `!user.canUseAdvancedBuilder` ile türetir — `editMode`'dan bağımsızdır (standart kullanıcı
+   * FREEFORM sayfada da asla BuilderCanvas'a erişemez). `editMode` artık yalnızca gelişmiş
+   * kullanıcıya gösterilen kozmetik bir rozet/ipucudur.
    */
   editMode: PageEditMode;
   blocks: Record<string, unknown>[];
@@ -465,8 +467,9 @@ export interface CreateSitePageRequest {
 export interface UpdateSitePageRequest {
   title?: string;
   /**
-   * §10.20 — `canUseAdvancedBuilder: false` olan bir kullanıcı, sayfa `editMode: TEMPLATE`
-   * iken bu alanı GÖNDEREMEZ (`403 FORBIDDEN`). Sayfanın URL'i yapısal bir özelliktir.
+   * §10.20 (2026-08-23 sıkılaştırması) — `canUseAdvancedBuilder: false` olan bir kullanıcı,
+   * sayfanın `editMode`'undan BAĞIMSIZ olarak bu alanı GÖNDEREMEZ (`403 FORBIDDEN`). Sayfanın
+   * URL'i yapısal bir özelliktir.
    */
   slug?: string;
   status?: ContentStatus;

@@ -225,8 +225,11 @@ export const PageSchema = z.object({
   title: z.string(),
   slug: z.string(),
   status: PageStatusSchema,
-  // §10.20 — istemci standart moda geçip geçmeyeceğini şu ifadeyle türetir:
-  // `editMode === "TEMPLATE" && !user.canUseAdvancedBuilder` (bkz. openapi.yaml `Page.editMode`).
+  // §10.20 — sunucu tarafı yapısal kısıt (blok/`data.*` dışı alan değişikliği) YALNIZCA
+  // `!user.canUseAdvancedBuilder`'a bağlıdır, `editMode`'dan BAĞIMSIZDIR (2026-08-23
+  // sıkılaştırması, bkz. `.claude/architect-scope-page-editor-roles.md`). `editMode` bu DTO'da
+  // rozet/ipucu (ör. "Şablon" etiketi) amaçlı, kimin değiştirebileceği ise ADMIN/gelişmiş
+  // EDITOR ile sınırlıdır (bkz. openapi.yaml `Page.editMode`).
   editMode: PageEditModeSchema,
   blocks: z.array(z.record(z.unknown())),
   seoTitle: z.string().nullable(),
