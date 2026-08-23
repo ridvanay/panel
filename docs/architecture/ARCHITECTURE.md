@@ -5255,12 +5255,27 @@ gerekçeler: `.claude/design-notes-page-builder-containers.md` §11.
 
 ### 10.20 Sayfa düzenleyicide standart/gelişmiş mod ayrımı
 
-Durum: v1 · Sahibi: Mimar. Bağlayıcı kaynak: `.claude/architect-scope-page-editor-roles.md`
+Durum: v1.1 (2026-08-23'te standart kullanıcı kilidi genişletildi — bkz. aşağıdaki güncelleme
+notu) · Sahibi: Mimar. Bağlayıcı kaynak: `.claude/architect-scope-page-editor-roles.md`
 (tam gerekçe/kararlar, ajan görev dağılımı) + `openapi.yaml` (`User.canUseAdvancedBuilder`,
 `AdminUser.advancedBuilderEnabled`, `PageEditMode`, `Page.editMode`,
 `UpdateAdminUserBuilderAccessRequest`, `PermissionsMatrix.capabilities` — tek doğru kaynak).
 Kapsam: yalnızca sayfa yönetim sistemi (`Page.blocks`) — blog/ürün/portföy editörleri bu
 turun DIŞINDA (§10.19.1 ile aynı kapsam sınırı, ayrıca bkz. kaynak doküman §8).
+
+> **GÜNCELLEME (2026-08-23, kullanıcı talebiyle kapsam genişletildi):** v1'de standart
+> kullanıcının yapısal kilidi yalnızca `Page.editMode === "TEMPLATE"` olan sayfalarda
+> uygulanıyordu (FREEFORM sayfada standart kullanıcı da yapıyı serbestçe değiştirebiliyordu).
+> Kullanıcı bunu YETERSİZ buldu: standart kullanıcının yapısal değişiklik yapamaması kuralı
+> artık `editMode` DEĞERİNDEN TAMAMEN BAĞIMSIZ — yalnızca `canUseAdvancedBuilder`
+> (§10.20.2) belirleyicidir. `editMode` alanının kendisi (FREEFORM/TEMPLATE, kim
+> değiştirebilir, backfill/migration) DEĞİŞMEDİ; yalnızca "standart kullanıcı ne zaman
+> kısıtlanır" kuralı genişledi. Aşağıdaki §10.20.3/§10.20.4/§10.20.6, bu genişletilmiş
+> davranışı yansıtacak şekilde güncellenmiştir. Kod tarafı: `backend/src/modules/pages/
+> pages.routes.ts` (`isStructureRestricted = !canUseAdvancedBuilder(request.user!)`, artık
+> `existing.editMode`'a bakmıyor) ve `frontend/src/app/admin/pages/[pageId]/page.tsx`
+> (`simpleMode = !canUseAdvancedBuilder`). Test kapsamı: `TEST_COVERAGE.md` §"10.20
+> GENİŞLETME" (FREEFORM e2e senaryoları 7-10).
 
 #### 10.20.1 Neden bu bölüm var
 
@@ -5310,8 +5325,8 @@ architect'e eskale edilir.
 
 ```prisma
 enum PageEditMode {
-  FREEFORM  // Serbest tasarım — yapıyı değiştirmek serbest (bugünkü davranış)
-  TEMPLATE  // Şablon — yapı DONMUŞ; standart kullanıcı yalnızca içerik alanlarını doldurur
+  FREEFORM  // Serbest tasarım (varsayılan)
+  TEMPLATE  // Şablon — "bu sayfa bir şablon olarak tasarlandı" etiketi
 }
 
 model Page {
@@ -5321,6 +5336,17 @@ model Page {
 
 Varsayılan/backfill: kolon varsayılanı `FREEFORM`, mevcut TÜM sayfalar `FREEFORM` başlar →
 davranış değişikliği sıfır, veri migration'ı gerekmez.
+
+> **GÜNCELLEME (2026-08-23):** yukarıdaki enum yorumu bilinçli olarak `TEMPLATE`'in eski
+> ("standart kullanıcı yalnızca içerik alanlarını doldurur") anlamını TAŞIMAZ hale
+> getirilmiştir — bu artık YANLIŞ olurdu. §10.20 girişindeki güncelleme notuna bkz: standart
+> kullanıcının yapısal kilidi `editMode`'dan TAMAMEN bağımsızdır (`canUseAdvancedBuilder`
+> tek belirleyici). `editMode` alanı artık salt **gelişmiş kullanıcıya gösterilen kozmetik
+> bir rozet/ipucu**dur — "bu sayfa bir şablon olarak tasarlandı, standart kullanıcılara
+> devredilebilir" bilgisini taşır, ama bu bilgiyi hiçbir yetkilendirme kararı OKUMAZ; alan
+> `TEMPLATE_EDITABLE_FIELDS` guard'ının (§10.20.4) çalışıp çalışmayacağını ETKİLEMEZ —
+> guard artık `editMode`'dan BAĞIMSIZ olarak, standart kullanıcının her `PATCH`/autosave
+> isteğinde çalışır.
 
 Blok/düğüm bazlı `isLocked: boolean` bu turda bilinçli olarak **eklenmedi**. Gerekçe
 (güvenlik, belirleyici): `isLocked` `Page.blocks` JSON'unun içinde yaşardı, ama `blocks`
@@ -5334,7 +5360,14 @@ düşmez. (Blok bazlı kilit ihtiyacı doğarsa: `feature/page-block-locking`, k
 kişi zaten gelişmiş yeteneklidir, `TEMPLATE` modu onu hiç kısıtlamaz. Değişiklik audit'lenir
 (`content.edit_mode_change`, `content.legal_flag_change` ile birebir aynı desen).
 
-#### 10.20.4 Şablon modunda düzenlenebilir alanlar — sabit harita, kullanıcı gövdesi DEĞİL
+#### 10.20.4 Standart kullanıcı için düzenlenebilir alanlar — sabit harita, kullanıcı gövdesi DEĞİL
+
+> **GÜNCELLEME (2026-08-23):** bu bölümün başlığı ve aşağıdaki metni v1'de "şablon modunda"
+> ifadesini taşıyordu çünkü guard yalnızca `editMode === "TEMPLATE"` sayfalarda çalışıyordu.
+> Artık guard `editMode`'dan bağımsız, `canUseAdvancedBuilder === false` olan HER kullanıcı
+> için HER sayfada (FREEFORM dahil) çalışır — "şablon modu" ifadesi aşağıda yalnızca haritanın
+> kendi adını (`TEMPLATE_EDITABLE_FIELDS`) korumak amacıyla geçer, işlevsel bir ön koşul
+> DEĞİLDİR.
 
 Alan kısıtı `block.settings.editableFields` gibi istekle taşınan bir liste ile DEĞİL, koddaki
 **sabit bir tip haritasıyla** uygulanır — aksi halde liste kendisi §10.20.3'teki kendi
@@ -5379,8 +5412,10 @@ kapalıdır (§10.20.5).
 
 Yeni middleware `backend/src/middleware/advanced-builder.ts::requireAdvancedBuilder()`,
 `requireSiteRole(...)`'den SONRA çalışır (`site-rbac.ts` deseninin aynısı — 403 + audit).
-Standart kullanıcıya kapalı uçlar: `POST /admin/pages` (boş sayfanın yapısı yoktur, şablon
-modu "var olan yapıyı doldur" demektir), sayfa silme/geri yükleme, `bulk`, revizyon-restore.
+Standart kullanıcıya kapalı uçlar: `POST /admin/pages` (boş sayfanın yapısı yoktur, standart
+kullanıcı yalnızca VAR OLAN bir sayfanın `TEMPLATE_EDITABLE_FIELDS` kapsamındaki alanlarını
+doldurabilir — bkz. 2026-08-23 güncellemesi, §10.20 girişi), sayfa silme/geri yükleme, `bulk`,
+revizyon-restore.
 Okuma uçları (`GET`, revizyon listeleme) ve `PATCH`/`autosave` (alan seviyesinde kontrol
 edildiği için, §10.20.4) uç seviyesinde DEĞİŞMEDİ. `slug` ve `editMode` alanları `PATCH`
 gövdesinde standart kullanıcı için ayrıca 403'tür — sayfanın URL'i ve düzenleme modu yapısal
@@ -5395,8 +5430,13 @@ limit, `DELETED` kullanıcıda 404, audit `user.builder_access_change`).
 - `canUseAdvancedBuilder` istemciye yalnızca UI için verilir, karar mercii DEĞİLDİR — sunucu
   her yazma isteğinde bağımsız yeniden hesaplar; frontend'in butonu gizlemesi bir kolaylıktır,
   güvenlik kontrolü değil.
-- `editMode: TEMPLATE` gelişmiş kullanıcıyı KISITLAMAZ; mod yalnızca standart kullanıcı için
-  bir politikadır.
+- **[2026-08-23 GÜNCEL]** `editMode` artık HİÇBİR yetkilendirme kararını ETKİLEMEZ. v1'de bu
+  madde "`editMode: TEMPLATE` gelişmiş kullanıcıyı kısıtlamaz; mod yalnızca standart kullanıcı
+  için bir politikadır" diyordu — bu artık YANLIŞ: standart kullanıcı için de `editMode`
+  ilgisizdir, kısıt tamamen `canUseAdvancedBuilder`'a bağlıdır (§10.20.2). `editMode` şu an
+  yalnızca gelişmiş kullanıcıya UI'da gösterilen kozmetik bir rozet/ipucudur ("bu sayfa şablon
+  olarak tasarlandı") — hiçbir route/guard bu değeri okuyup bir yetkilendirme kararı vermez
+  (bkz. §10.20.3 güncelleme notu, §10.20.4 güncelleme notu).
 - Public uçlar (`GET /pages`, `/pages/{slug}`) `editMode`'dan etkilenmez — bu tamamen bir
   yazma/yetkilendirme kavramıdır.
 - Migration `20260822154259_add_page_editor_roles`, backfill ile mevcut ADMIN/EDITOR

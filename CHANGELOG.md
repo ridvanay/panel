@@ -11,6 +11,21 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
 
 ## [Unreleased]
 
+### Changed
+
+- **Standart kullanıcı için sayfa düzenleme kilidi sıkılaştırıldı** (`ARCHITECTURE.md`
+  §10.20, güncelleme notu 2026-08-23). Daha önce **Yazar (Standart Düzenleyici)** yetkisine
+  sahip bir kullanıcı, yalnızca **Şablon** (`TEMPLATE`) modundaki sayfalarda yapısal
+  değişiklik yapamıyordu; **Serbest Tasarım** (`FREEFORM`) modundaki sayfalarda konteyner
+  ekleme/silme gibi yapısal işlemlere hâlâ erişebiliyordu. Artık bu kısıt sayfanın moduna
+  bakılmaksızın geçerli: standart kullanıcı hangi sayfada olursa olsun yalnızca başlık/zengin
+  metin/görsel/buton gibi içerik alanlarını düzenleyebilir, `BuilderCanvas`'a (sürükle-bırak
+  tuvaline) hiç erişemez — yapısal bir değişiklik denenirse (autosave dahil) sunucu **403**
+  ile reddeder.
+  - **Serbest Tasarım/Şablon** ayrımının kendisi kaldırılmadı; `editMode` alanı artık yalnızca
+    gelişmiş yetenekli kullanıcılara gösterilen kozmetik bir bilgi rozetidir, herhangi bir
+    yetkilendirme kararını etkilemez.
+
 ### Added
 
 - **Sayfa yönetiminde standart/gelişmiş düzenleyici mod ayrımı** (`ARCHITECTURE.md` §10.20,
