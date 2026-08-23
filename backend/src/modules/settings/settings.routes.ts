@@ -2,6 +2,8 @@ import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { authenticate } from "../../middleware/authenticate";
 import { requireSiteRole } from "../../middleware/site-rbac";
+import { requirePanelAccess } from "../../middleware/panel-access";
+import { ROLES_ADMIN } from "../../lib/site-roles";
 import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema } from "../../schemas/common";
 import { PageSchema, SiteSettingsSchema } from "../../schemas/entities";
@@ -57,10 +59,17 @@ export async function publicSettingsRoutes(app: FastifyInstance) {
   });
 }
 
-/** `/admin/settings` prefix'i altında bağlanır — authenticated. */
+/**
+ * `/admin/settings` prefix'i altında bağlanır.
+ * `.claude/architect-scope-rbac-5-tier.md` §5.3 satır 17 — `GET /`: ADMIN/MANAGER/EDITOR (panel
+ * kapısı yeterli); `PATCH /` ve `GET /permissions`: yalnızca ADMIN — (d)/(a).
+ * `/admin/settings/security/{2fa,sessions}` AYRI bir router'dadır (§4.3 istisnası, panel guard'ı
+ * BURADA/ORADA EKLENMEZ — bkz. modules/security).
+ */
 export async function adminSettingsRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
   server.addHook("preHandler", authenticate);
+  server.addHook("preHandler", requirePanelAccess());
 
   server.get("/", { schema: { response: { 200: ApiSuccessSchema(SiteSettingsSchema) } } }, async (_request, reply) => {
     return reply.send(ok(await readSettings(app)));
@@ -69,7 +78,7 @@ export async function adminSettingsRoutes(app: FastifyInstance) {
   server.patch(
     "/",
     {
-      preHandler: requireSiteRole("ADMIN"),
+      preHandler: requireSiteRole(...ROLES_ADMIN),
       schema: { body: UpdateSiteSettingsRequestSchema, response: { 200: ApiSuccessSchema(SiteSettingsSchema) } },
     },
     async (request, reply) => {
@@ -97,7 +106,7 @@ export async function adminSettingsRoutes(app: FastifyInstance) {
   // (frontend'in "Yetkiler" ekranında göstermesi için).
   server.get(
     "/permissions",
-    { preHandler: requireSiteRole("ADMIN"), schema: { response: { 200: ApiSuccessSchema(PermissionsMatrixSchema) } } },
+    { preHandler: requireSiteRole(...ROLES_ADMIN), schema: { response: { 200: ApiSuccessSchema(PermissionsMatrixSchema) } } },
     async (_request, reply) => {
       return reply.send(ok(PERMISSIONS_MATRIX as unknown as PermissionsMatrixDto));
     }

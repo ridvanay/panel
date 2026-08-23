@@ -7,6 +7,7 @@
  */
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
+import crypto from "node:crypto";
 import path from "node:path";
 
 const API_BASE_URL = process.env.E2E_API_URL ?? "http://localhost:4001/api/v1";
@@ -401,6 +402,138 @@ export function setRawPageBlocksDirectly(pageId: string, blocks: unknown[]): voi
     stdio: ["pipe", "pipe", "pipe"],
     shell: process.platform === "win32",
   });
+}
+
+// ---------------------------------------------------------------------------
+// `.claude/architect-scope-rbac-5-tier.md` §7.2/§10.5 madde 7 — ödeme akışı e2e fixture
+// yardımcıları (qa-agent, bu turda eklendi). `admin-rbac-5tier-critical-flows.spec.ts`
+// tarafından kullanılır.
+// ---------------------------------------------------------------------------
+
+/** `POST /admin/products` — testin ihtiyaç duyduğu minimal alanlarla bir `Product` oluşturur
+ * (`PUBLISHED`, yeterli stokla — webhook'un `insufficient_stock` dalına düşmemesi için). */
+export async function adminCreateProduct(
+  token: string,
+  input: { title: string; priceCents: number; stockQuantity?: number }
+) {
+  const res = await fetch(`${API_BASE_URL}/admin/products`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({
+      title: input.title,
+      priceCents: input.priceCents,
+      stockQuantity: input.stockQuantity ?? 10,
+      status: "PUBLISHED",
+    }),
+  });
+  return json<{ data: Record<string, unknown> }>(res).then((b) => b.data);
+}
+
+export async function adminDeleteProductPermanently(token: string, productId: string) {
+  await fetch(`${API_BASE_URL}/admin/products/${productId}`, { method: "DELETE", headers: authHeadersNoBody(token) });
+  await fetch(`${API_BASE_URL}/admin/products/${productId}/permanent`, {
+    method: "DELETE",
+    headers: authHeadersNoBody(token),
+  });
+}
+
+/**
+ * `POST /checkout/session` GERÇEK bir Stripe ağ çağrısı yapar (`stripe.checkout.sessions.create`)
+ * — e2e ortamında `STRIPE_SECRET_KEY=sk_test_e2e` SAHTE olduğundan (bkz. `backend/.env.e2e`) bu
+ * çağrı gerçek Stripe API'sine ulaşıp BAŞARISIZ olurdu (backend'in kendi `tests/integration/
+ * checkout.test.ts`'i bu adımı `vi.mock("../../src/lib/stripe")` ile atlıyor — e2e'de mock
+ * KATMANI yok). Bu yüzden PENDING `Order` + `OrderItem` satırı, `setRawPageBlocksDirectly`
+ * (bu dosyanın §10.19 bölümü) İLE AYNI desenle — `prisma db execute --stdin` — DOĞRUDAN
+ * oluşturulur; testin GERÇEKTEN doğruladığı adım (ödeme TAMAMLANMA webhook'u,
+ * `postStripeCheckoutSessionCompleted()`, aşağıda) buradan BAĞIMSIZ ve TAM olarak gerçek HTTP +
+ * gerçek Stripe imza doğrulama kod yolundan geçer.
+ */
+export function createPendingOrderDirect(input: {
+  siteUserId: string;
+  customerEmail: string;
+  productId: string;
+  productTitle: string;
+  unitPriceCents: number;
+  quantity?: number;
+}): { orderId: string; orderNumber: string } {
+  const orderId = crypto.randomUUID();
+  const orderItemId = crypto.randomUUID();
+  const orderNumber = `ORD-E2E-${Date.now().toString(36).toUpperCase()}`;
+  const quantity = input.quantity ?? 1;
+  const lineTotalCents = input.unitPriceCents * quantity;
+  const esc = (value: string) => value.replace(/'/g, "''");
+
+  const sql = `
+INSERT INTO "orders"
+  (id, "orderNumber", "siteUserId", "customerEmail", status, currency, "subtotalCents", "discountCents", "taxCents", "totalCents", "createdAt", "updatedAt")
+VALUES
+  ('${esc(orderId)}', '${esc(orderNumber)}', '${esc(input.siteUserId)}', '${esc(input.customerEmail)}', 'PENDING', 'TRY', ${lineTotalCents}, 0, 0, ${lineTotalCents}, now(), now());
+
+INSERT INTO "order_items"
+  (id, "orderId", "productId", "productTitle", "unitPriceCents", quantity, "lineTotalCents")
+VALUES
+  ('${esc(orderItemId)}', '${esc(orderId)}', '${esc(input.productId)}', '${esc(input.productTitle)}', ${input.unitPriceCents}, ${quantity}, ${lineTotalCents});
+`;
+
+  execFileSync("npx", ["prisma", "db", "execute", "--stdin", `--url=${E2E_DATABASE_URL}`], {
+    cwd: BACKEND_DIR,
+    input: sql,
+    stdio: ["pipe", "pipe", "pipe"],
+    shell: process.platform === "win32",
+  });
+
+  return { orderId, orderNumber };
+}
+
+/** `STRIPE_WEBHOOK_SECRET` — `backend/.env.e2e` ile AYNI OLMAK ZORUNDADIR (bkz. o dosyadaki
+ * `whsec_test_e2e` değeri). Ortam değişkeniyle override edilebilir (`E2E_DATABASE_URL` ile
+ * AYNI desen). */
+const E2E_STRIPE_WEBHOOK_SECRET = process.env.E2E_STRIPE_WEBHOOK_SECRET ?? "whsec_test_e2e";
+
+/** Stripe'ın belgelenmiş webhook imza şeması (`t=<unix-saniye>,v1=<hmac-sha256 hex>`,
+ * `signed_payload = "${t}.${rawBody}"`) — `stripe` SDK'sı KULLANILMADAN `node:crypto` ile
+ * ELLE üretilir (frontend'in bağımlılığı değil; backend'in `stripe.webhooks.constructEvent`'i
+ * AYNI algoritmayı doğrular, bkz. `backend/tests/integration/webhook-order.test.ts`
+ * `generateTestHeaderString` kullanımı — burada TAM OLARAK aynı sonucu üreten manuel karşılığı). */
+function buildStripeSignatureHeader(payload: string, secret: string): string {
+  const timestamp = Math.floor(Date.now() / 1000);
+  const signedPayload = `${timestamp}.${payload}`;
+  const signature = crypto.createHmac("sha256", secret).update(signedPayload, "utf8").digest("hex");
+  return `t=${timestamp},v1=${signature}`;
+}
+
+/**
+ * §7.2 — `checkout.session.completed` (mode: "payment") olayını GERÇEK HTTP isteğiyle, GEÇERLİ
+ * bir Stripe imzasıyla e2e backend'ine gönderir. Sipariş `PAID` olur, stok düşer,
+ * `Order.siteUserId` doluysa (ve rolü `USER` ise) `USER → CUSTOMER` terfisi tetiklenir
+ * (`stripe.routes.ts::promoteUserToCustomerIfNeeded`).
+ */
+export async function postStripeCheckoutSessionCompleted(orderId: string): Promise<{ status: number }> {
+  const event = {
+    id: `evt_e2e_${crypto.randomUUID()}`,
+    object: "event",
+    api_version: "2024-06-20",
+    created: Math.floor(Date.now() / 1000),
+    type: "checkout.session.completed",
+    data: {
+      object: {
+        id: `cs_test_e2e_${crypto.randomUUID()}`,
+        object: "checkout.session",
+        mode: "payment",
+        metadata: { kind: "order", orderId },
+      },
+    },
+  };
+  const payload = JSON.stringify(event);
+  const res = await fetch(`${API_BASE_URL}/webhooks/stripe`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Stripe-Signature": buildStripeSignatureHeader(payload, E2E_STRIPE_WEBHOOK_SECRET),
+    },
+    body: payload,
+  });
+  return { status: res.status };
 }
 
 export { API_BASE_URL };

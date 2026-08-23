@@ -24,7 +24,7 @@ import { signAccessToken } from "../../src/lib/jwt";
  * 2. Boşluk — `PATCH /role` ve `PATCH /status`'ün "admin olmayan bir kullanıcı" hedefinde
  *    BAŞARILI olma yolu (senaryo c) hiçbir testte doğrudan sınanmamıştı: mevcut testlerin tamamı
  *    ya ADMIN hedefler (`admin-users.test.ts`) ya da DELETED hedefler (`admin-users-soft-delete.test.ts`)
- *    üzerinde çalışıyordu. Bu dosya EDITOR/VIEWER hedefler üzerinde başarı yolunu doğrudan sınar.
+ *    üzerinde çalışıyordu. Bu dosya EDITOR/USER hedefler üzerinde başarı yolunu doğrudan sınar.
  */
 describe("admin-users — regresyon matrisi (a/b/c senaryoları, izole self-check + non-admin hedef)", () => {
   let app: FastifyInstance;
@@ -47,7 +47,7 @@ describe("admin-users — regresyon matrisi (a/b/c senaryoları, izole self-chec
     return signAccessToken({ sub: user.id, email: user.email }).token;
   }
 
-  async function createUserDirect(role: "ADMIN" | "EDITOR" | "VIEWER", status: "ACTIVE" | "SUSPENDED" = "ACTIVE") {
+  async function createUserDirect(role: "ADMIN" | "EDITOR" | "USER", status: "ACTIVE" | "SUSPENDED" = "ACTIVE") {
     const passwordHash = await hashPassword("Sifre12345!");
     return app.prisma.user.create({
       data: {
@@ -101,7 +101,7 @@ describe("admin-users — regresyon matrisi (a/b/c senaryoları, izole self-chec
   });
 
   describe("boşluk 2 — senaryo (c): admin olmayan bir hedefte PATCH /role ve PATCH /status başarı yolu", () => {
-    it("bir ADMIN, bir EDITOR'ün rolünü VIEWER'a düşürebilir (200) — hiçbir 'son admin' kısıtı YOKTUR", async () => {
+    it("bir ADMIN, bir EDITOR'ün rolünü USER'a düşürebilir (200) — hiçbir 'son admin' kısıtı YOKTUR", async () => {
       const admin = await createUserDirect("ADMIN");
       const target = await createUserDirect("EDITOR");
 
@@ -109,18 +109,18 @@ describe("admin-users — regresyon matrisi (a/b/c senaryoları, izole self-chec
         method: "PATCH",
         url: `/api/v1/admin/users/${target.id}/role`,
         headers: authHeader(tokenFor(admin)),
-        payload: { role: "VIEWER" },
+        payload: { role: "USER" },
       });
       expect(res.statusCode).toBe(200);
-      expect(res.json().data.role).toBe("VIEWER");
+      expect(res.json().data.role).toBe("USER");
 
       const dbUser = await app.prisma.user.findUnique({ where: { id: target.id } });
-      expect(dbUser?.role).toBe("VIEWER");
+      expect(dbUser?.role).toBe("USER");
     });
 
-    it("bir ADMIN, bir VIEWER'ı EDITOR'a yükseltebilir (200)", async () => {
+    it("bir ADMIN, bir USER'ı EDITOR'a yükseltebilir (200)", async () => {
       const admin = await createUserDirect("ADMIN");
-      const target = await createUserDirect("VIEWER");
+      const target = await createUserDirect("USER");
 
       const res = await app.inject({
         method: "PATCH",
@@ -156,9 +156,9 @@ describe("admin-users — regresyon matrisi (a/b/c senaryoları, izole self-chec
       expect(reactivate.json().data.status).toBe("ACTIVE");
     });
 
-    it("bir ADMIN, bir VIEWER'ı askıya alabilir (200)", async () => {
+    it("bir ADMIN, bir USER'ı askıya alabilir (200)", async () => {
       const admin = await createUserDirect("ADMIN");
-      const target = await createUserDirect("VIEWER");
+      const target = await createUserDirect("USER");
 
       const res = await app.inject({
         method: "PATCH",
@@ -171,7 +171,7 @@ describe("admin-users — regresyon matrisi (a/b/c senaryoları, izole self-chec
     });
   });
 
-  describe("tamamlayıcı — daha önce yalnızca EDITOR/VIEWER hedeflerle sınanan restore, bir ADMIN hedefte de çalışır", () => {
+  describe("tamamlayıcı — daha önce yalnızca EDITOR/USER hedeflerle sınanan restore, bir ADMIN hedefte de çalışır", () => {
     it("DELETED bir ADMIN restore edilince status=ACTIVE döner ve rolü ADMIN olarak korunur", async () => {
       const activeAdmin = await createUserDirect("ADMIN");
       // İkinci bir aktif admin daha ekliyoruz ki hedefin silinmesi 'son admin' kuralına takılmasın.

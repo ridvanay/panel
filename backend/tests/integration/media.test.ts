@@ -165,7 +165,7 @@ describe("media — /admin/media (magic-byte doğrulama)", () => {
       expect(res.json().data.altText).toBe("Editör tarafından girilen açıklama");
     });
 
-    it("VIEWER erişemez (403)", async () => {
+    it("USER erişemez (403)", async () => {
       const media = await createMediaRow("viewer");
       const res = await app.inject({
         method: "PATCH",
@@ -278,7 +278,7 @@ describe("media — /admin/media (magic-byte doğrulama)", () => {
         expect(childRes.json().data.parentId).toBe(root.id);
       });
 
-      it("VIEWER klasör oluşturamaz (403)", async () => {
+      it("USER klasör oluşturamaz (403)", async () => {
         const res = await app.inject({
           method: "POST",
           url: "/api/v1/admin/media/folders",
@@ -460,10 +460,10 @@ describe("media — /admin/media (magic-byte doğrulama)", () => {
         expect(res.statusCode).toBe(403);
       });
 
-      // qa-agent boşluk taraması — POST/DELETE için VIEWER/EDITOR negatif senaryoları vardı ama
+      // qa-agent boşluk taraması — POST/DELETE için USER/EDITOR negatif senaryoları vardı ama
       // PATCH (yeniden adlandırma/taşıma) hiç denenmemişti. Eşik §10.11.2 tablosuna göre POST ile
-      // AYNI (ADMIN, EDITOR) — VIEWER burada da 403 almalı ve klasör DEĞİŞMEMELİDİR.
-      it("VIEWER klasörü yeniden adlandıramaz (403), klasör değişmeden kalır", async () => {
+      // AYNI (ADMIN, EDITOR) — USER burada da 403 almalı ve klasör DEĞİŞMEMELİDİR.
+      it("USER klasörü yeniden adlandıramaz (403), klasör değişmeden kalır", async () => {
         const folder = (
           await app.inject({ method: "POST", url: "/api/v1/admin/media/folders", headers: authHeader(adminToken), payload: { name: "Viewer Patch" } })
         ).json().data;
@@ -532,8 +532,8 @@ describe("media — /admin/media (magic-byte doğrulama)", () => {
       });
 
       // qa-agent boşluk taraması — toplu taşıma ucunun RBAC eşiği (§10.11.2: ADMIN, EDITOR) hiç
-      // negatif test edilmemişti. VIEWER 403 almalı VE kayıt HİÇ güncellenmemelidir.
-      it("VIEWER taşıyamaz (403), hiçbir kayıt güncellenmez", async () => {
+      // negatif test edilmemişti. USER 403 almalı VE kayıt HİÇ güncellenmemelidir.
+      it("USER taşıyamaz (403), hiçbir kayıt güncellenmez", async () => {
         const folder = (
           await app.inject({ method: "POST", url: "/api/v1/admin/media/folders", headers: authHeader(adminToken), payload: { name: "Viewer Taşıyamaz" } })
         ).json().data;

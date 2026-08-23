@@ -10,8 +10,8 @@ import { ForbiddenError, ValidationError } from "./errors";
  * - Gövdede `authorId` yoksa (`undefined`) → dokunma, çağıran taraf varsayılanı uygular
  *   (create'te `request.user.id`, update'te alanı hiç değiştirme).
  * - Giriş yapmış kullanıcının kendi id'si gönderildiyse → serbest (herkes kendini atayabilir).
- * - `null` dahil, BAŞKA bir id yalnızca ADMIN tarafından gönderilebilir; EDITOR/VIEWER
- *   gönderirse 403.
+ * - `null` dahil, BAŞKA bir id yalnızca ADMIN tarafından gönderilebilir; MANAGER/EDITOR (veya
+ *   herhangi bir ADMIN-olmayan rol) gönderirse 403.
  * - Var olmayan bir kullanıcı id'si → 422 (VALIDATION_ERROR).
  */
 export async function resolveAuthorId(

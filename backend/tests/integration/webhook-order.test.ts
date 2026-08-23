@@ -42,13 +42,15 @@ describe("webhooks/stripe — sepet siparişi (order) akışı (§10.9.3, KRİT�
   async function createPendingOrder(
     product: { id: string; title: string; sku: string | null; priceCents: number; currency: string },
     quantity: number,
-    customerEmail = `buyer-${crypto.randomUUID()}@example.com`
+    customerEmail = `buyer-${crypto.randomUUID()}@example.com`,
+    siteUserId: string | null = null
   ) {
     const unitPriceCents = product.priceCents;
     const lineTotalCents = unitPriceCents * quantity;
     return app.prisma.order.create({
       data: {
         orderNumber: `ORD-TEST-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
+        siteUserId,
         customerEmail,
         customerName: "Test Müşteri",
         status: "PENDING",
@@ -308,5 +310,99 @@ describe("webhooks/stripe — sepet siparişi (order) akışı (§10.9.3, KRİT�
     expect(subscription?.stripeSubscriptionId).toBe(fakeStripeSubscription.id);
 
     retrieveSpy.mockRestore();
+  });
+
+  // `.claude/architect-scope-rbac-5-tier.md` §7.2 — `USER → CUSTOMER` terfisi, yalnızca
+  // kimliği doğrulanmış (siteUserId dolu) bir sipariş ÖDENDİĞİNDE tetiklenir.
+  describe("USER → CUSTOMER terfisi (§7.2)", () => {
+    it("siteUserId dolu ve rolü USER olan bir kullanıcı, siparişi ödendiğinde CUSTOMER'a terfi eder ve audit kaydı yazılır", async () => {
+      const buyer = await registerTestUser(app, { email: `promote-user-${crypto.randomUUID()}@example.com` });
+      const me = await app.inject({ method: "GET", url: "/api/v1/users/me", headers: { authorization: `Bearer ${buyer.accessToken}` } });
+      expect(me.json().data.role).toBe("USER");
+
+      const product = await createProduct({ stockQuantity: 5 });
+      const order = await createPendingOrder(product, 1, buyer.email, buyer.userId);
+
+      const res = await postWebhook(buildCheckoutSessionEvent(order.id));
+      expect(res.statusCode).toBe(200);
+
+      const updatedUser = await app.prisma.user.findUniqueOrThrow({ where: { id: buyer.userId } });
+      expect(updatedUser.role).toBe("CUSTOMER");
+
+      const auditRow = await app.prisma.auditLog.findFirst({
+        where: { action: "user.role_change", targetId: buyer.userId },
+        orderBy: { createdAt: "desc" },
+      });
+      expect(auditRow).not.toBeNull();
+      expect(auditRow?.actorId).toBeNull();
+      expect(auditRow?.metadata).toMatchObject({ from: "USER", to: "CUSTOMER", reason: "order_paid", orderId: order.id });
+    });
+
+    it("EDITOR'ün siparişi ödendiğinde rolü DEĞİŞMEZ (yalnızca USER → CUSTOMER terfi eder)", async () => {
+      const buyer = await registerTestUser(app, { email: `promote-editor-${crypto.randomUUID()}@example.com` });
+      await app.prisma.user.update({ where: { id: buyer.userId }, data: { role: "EDITOR" } });
+
+      const product = await createProduct({ stockQuantity: 5 });
+      const order = await createPendingOrder(product, 1, buyer.email, buyer.userId);
+
+      const res = await postWebhook(buildCheckoutSessionEvent(order.id));
+      expect(res.statusCode).toBe(200);
+
+      const updatedUser = await app.prisma.user.findUniqueOrThrow({ where: { id: buyer.userId } });
+      expect(updatedUser.role).toBe("EDITOR");
+
+      const auditRow = await app.prisma.auditLog.findFirst({
+        where: { action: "user.role_change", targetId: buyer.userId },
+      });
+      expect(auditRow).toBeNull();
+    });
+
+    it("ADMIN'in siparişi ödendiğinde rolü DEĞİŞMEZ (ayrıcalık kaybı OLMAZ)", async () => {
+      const buyer = await registerTestUser(app, { email: `promote-admin-${crypto.randomUUID()}@example.com` });
+      // İlk register otomatik ADMIN olur (bkz. auth.service.ts) — bu dosyanın diğer testleri
+      // zaten ADMIN olmayan kullanıcılar oluşturduğu için ilk kayıt olma garantisi yoktur,
+      // bu yüzden rol AÇIKÇA ADMIN'e ayarlanır.
+      await app.prisma.user.update({ where: { id: buyer.userId }, data: { role: "ADMIN" } });
+
+      const product = await createProduct({ stockQuantity: 5 });
+      const order = await createPendingOrder(product, 1, buyer.email, buyer.userId);
+
+      const res = await postWebhook(buildCheckoutSessionEvent(order.id));
+      expect(res.statusCode).toBe(200);
+
+      const updatedUser = await app.prisma.user.findUniqueOrThrow({ where: { id: buyer.userId } });
+      expect(updatedUser.role).toBe("ADMIN");
+    });
+
+    it("CUSTOMER zaten CUSTOMER iken siparişi ödendiğinde rolü değişmez ve ikinci bir audit kaydı YAZILMAZ (no-op)", async () => {
+      const buyer = await registerTestUser(app, { email: `promote-customer-${crypto.randomUUID()}@example.com` });
+      await app.prisma.user.update({ where: { id: buyer.userId }, data: { role: "CUSTOMER" } });
+
+      const product = await createProduct({ stockQuantity: 5 });
+      const order = await createPendingOrder(product, 1, buyer.email, buyer.userId);
+
+      const res = await postWebhook(buildCheckoutSessionEvent(order.id));
+      expect(res.statusCode).toBe(200);
+
+      const updatedUser = await app.prisma.user.findUniqueOrThrow({ where: { id: buyer.userId } });
+      expect(updatedUser.role).toBe("CUSTOMER");
+
+      const auditRow = await app.prisma.auditLog.findFirst({
+        where: { action: "user.role_change", targetId: buyer.userId },
+      });
+      expect(auditRow).toBeNull();
+    });
+
+    it("siteUserId boş olan (misafir) bir sipariş ödendiğinde hiçbir kullanıcı rolü ETKİLENMEZ", async () => {
+      const product = await createProduct({ stockQuantity: 5 });
+      const order = await createPendingOrder(product, 1); // siteUserId: null (varsayılan)
+
+      const res = await postWebhook(buildCheckoutSessionEvent(order.id));
+      expect(res.statusCode).toBe(200);
+
+      const updatedOrder = await app.prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+      expect(updatedOrder.status).toBe("PAID");
+      expect(updatedOrder.siteUserId).toBeNull();
+    });
   });
 });

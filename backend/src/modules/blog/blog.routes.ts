@@ -5,6 +5,8 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { authenticate } from "../../middleware/authenticate";
 import { requireSiteRole } from "../../middleware/site-rbac";
+import { requirePanelAccess } from "../../middleware/panel-access";
+import { ROLES_ADMIN_MANAGER, ROLES_PANEL } from "../../lib/site-roles";
 import { ok } from "../../lib/envelope";
 import {
   ApiSuccessSchema,
@@ -186,6 +188,7 @@ async function toBlogPostDtosLocalized(app: FastifyInstance, posts: Parameters<t
 export async function adminBlogPostsRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
   server.addHook("preHandler", authenticate);
+  server.addHook("preHandler", requirePanelAccess());
 
   server.get(
     "/",
@@ -217,7 +220,7 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
   server.post(
     "/",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      preHandler: requireSiteRole(...ROLES_PANEL),
       schema: { body: CreateBlogPostRequestSchema, response: { 201: ApiSuccessSchema(BlogPostSchema) } },
     },
     async (request, reply) => {
@@ -306,7 +309,7 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
   server.patch(
     "/:postId",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      preHandler: requireSiteRole(...ROLES_PANEL),
       schema: {
         params: PostIdParamSchema,
         body: UpdateBlogPostRequestSchema,
@@ -392,7 +395,7 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
   server.post(
     "/:postId/autosave",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      preHandler: requireSiteRole(...ROLES_PANEL),
       schema: {
         params: PostIdParamSchema,
         body: AutosaveBlogPostRequestSchema,
@@ -426,7 +429,7 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
   server.delete(
     "/:postId",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      preHandler: requireSiteRole(...ROLES_PANEL),
       schema: { params: PostIdParamSchema, response: { 204: z.undefined() } },
     },
     async (request, reply) => {
@@ -454,7 +457,7 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
   server.post(
     "/:postId/restore",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      preHandler: requireSiteRole(...ROLES_PANEL),
       schema: { params: PostIdParamSchema, response: { 200: ApiSuccessSchema(BlogPostSchema) } },
     },
     async (request, reply) => {
@@ -483,7 +486,7 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
   server.delete(
     "/:postId/permanent",
     {
-      preHandler: requireSiteRole("ADMIN"),
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
       schema: { params: PostIdParamSchema, response: { 204: z.undefined() } },
     },
     async (request, reply) => {
@@ -514,7 +517,7 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
   server.post(
     "/bulk",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      preHandler: requireSiteRole(...ROLES_PANEL),
       schema: { body: BulkContentActionRequestSchema, response: { 200: ApiSuccessSchema(BulkContentActionResultSchema) } },
     },
     async (request, reply) => {
@@ -564,7 +567,7 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
   server.get(
     "/:postId/revisions",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      preHandler: requireSiteRole(...ROLES_PANEL),
       schema: {
         params: PostIdParamSchema,
         querystring: CursorQuerySchema,
@@ -580,7 +583,7 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
   server.get(
     "/:postId/revisions/:revisionId",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      preHandler: requireSiteRole(...ROLES_PANEL),
       schema: { params: PostRevisionIdParamSchema, response: { 200: ApiSuccessSchema(ContentRevisionSchema) } },
     },
     async (request, reply) => {
@@ -592,7 +595,7 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
   server.post(
     "/:postId/revisions/:revisionId/restore",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      preHandler: requireSiteRole(...ROLES_PANEL),
       schema: { params: PostRevisionIdParamSchema, response: { 200: ApiSuccessSchema(BlogPostSchema) } },
     },
     async (request, reply) => {
@@ -679,6 +682,7 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
 export async function adminBlogCategoriesRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
   server.addHook("preHandler", authenticate);
+  server.addHook("preHandler", requirePanelAccess());
 
   server.get(
     "/",
@@ -692,7 +696,7 @@ export async function adminBlogCategoriesRoutes(app: FastifyInstance) {
   server.post(
     "/",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      preHandler: requireSiteRole(...ROLES_PANEL),
       schema: { body: CreateBlogCategoryRequestSchema, response: { 201: ApiSuccessSchema(BlogCategorySchema) } },
     },
     async (request, reply) => {
@@ -709,7 +713,7 @@ export async function adminBlogCategoriesRoutes(app: FastifyInstance) {
   server.patch(
     "/:categoryId",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      preHandler: requireSiteRole(...ROLES_PANEL),
       schema: {
         params: CategoryIdParamSchema,
         body: UpdateBlogCategoryRequestSchema,
@@ -733,7 +737,7 @@ export async function adminBlogCategoriesRoutes(app: FastifyInstance) {
   server.delete(
     "/:categoryId",
     {
-      preHandler: requireSiteRole("ADMIN"),
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
       schema: { params: CategoryIdParamSchema, response: { 204: z.undefined() } },
     },
     async (request, reply) => {
@@ -753,6 +757,7 @@ export async function adminBlogCategoriesRoutes(app: FastifyInstance) {
 export async function adminBlogTagsRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
   server.addHook("preHandler", authenticate);
+  server.addHook("preHandler", requirePanelAccess());
 
   server.get(
     "/",
@@ -771,7 +776,7 @@ export async function adminBlogTagsRoutes(app: FastifyInstance) {
   server.post(
     "/",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      preHandler: requireSiteRole(...ROLES_PANEL),
       schema: { body: CreateBlogTagRequestSchema, response: { 201: ApiSuccessSchema(BlogTagSchema) } },
     },
     async (request, reply) => {
@@ -789,7 +794,7 @@ export async function adminBlogTagsRoutes(app: FastifyInstance) {
   server.patch(
     "/:tagId",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      preHandler: requireSiteRole(...ROLES_PANEL),
       schema: {
         params: TagIdParamSchema,
         body: UpdateBlogTagRequestSchema,
@@ -813,7 +818,7 @@ export async function adminBlogTagsRoutes(app: FastifyInstance) {
   server.delete(
     "/:tagId",
     {
-      preHandler: requireSiteRole("ADMIN"),
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
       schema: { params: TagIdParamSchema, response: { 204: z.undefined() } },
     },
     async (request, reply) => {

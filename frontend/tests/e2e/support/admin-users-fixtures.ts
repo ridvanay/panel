@@ -33,11 +33,15 @@ async function json<T>(res: Response): Promise<T> {
   return body;
 }
 
+/** `.claude/architect-scope-rbac-5-tier.md` §1 — `VIEWER` KALDIRILDI, 5 kademeli role (bağlayıcı
+ * sıra: ADMIN → MANAGER → EDITOR → CUSTOMER → USER). */
+export type FixtureSiteRole = "ADMIN" | "MANAGER" | "EDITOR" | "CUSTOMER" | "USER";
+
 export interface FixtureAdminUser {
   id: string;
   email: string;
   name: string;
-  role: "ADMIN" | "EDITOR" | "VIEWER";
+  role: FixtureSiteRole;
   status: "ACTIVE" | "SUSPENDED" | "DELETED";
   deletedAt: string | null;
   [key: string]: unknown;
@@ -45,11 +49,11 @@ export interface FixtureAdminUser {
 
 /**
  * `POST /auth/register` — `saas_e2e`'de qa-e2e-admin ZATEN mevcut olduğundan (`userCount !== 0`)
- * yeni kayıt her zaman varsayılan role (VIEWER, bkz. `schema.prisma::User.role`) düşer — bu
- * yüzden bu fonksiyon, admin API'sinin (rastgele/erişilemez şifre üreten `POST /admin/users`
- * aksine) BİLİNEN bir şifreyle "admin olmayan" bir kullanıcı fixture'ı kurmanın tek yoludur.
- * `/auth/register`'ın 5 istek/dk sabit limiti nedeniyle (bkz. `support/api.ts` başlığı) bu
- * fonksiyon spec dosyası başına YALNIZCA BİR-İKİ KEZ çağrılmalıdır.
+ * yeni kayıt her zaman varsayılan role (§7.1 — `USER`, bkz. `schema.prisma::User.role`, eski:
+ * `VIEWER`) düşer — bu yüzden bu fonksiyon, admin API'sinin (rastgele/erişilemez şifre üreten
+ * `POST /admin/users` aksine) BİLİNEN bir şifreyle "panel erişimi olmayan" bir kullanıcı
+ * fixture'ı kurmanın tek yoludur. `/auth/register`'ın 5 istek/dk sabit limiti nedeniyle (bkz.
+ * `support/api.ts` başlığı) bu fonksiyon spec dosyası başına YALNIZCA BİR-İKİ KEZ çağrılmalıdır.
  *
  * İDEMPOTENT: `email` zaten kayıtlıysa (409) SESSİZCE başarılı sayılır. qa-agent bulgusu: bu
  * ZORUNLU — `auth.service.ts::register`'ın e-posta benzersizlik kontrolü kullanıcının `status`'una
@@ -57,7 +61,7 @@ export interface FixtureAdminUser {
  * alıyor) — yani bir e-posta BİR KEZ (yumuşak) silinince o e-postayla BİR DAHA ASLA register
  * OLUNAMIYOR. Bu fixture'lar test akışı gereği silinebildiğinden (bkz. senaryo (b)/(c) testleri),
  * `resetFixtureUserToBaseline()` (aşağıda) her koşum SONUNDA/BAŞINDA kullanıcıyı DELETED bırakmak
- * yerine geri yükleyip VIEWER/ACTIVE temel durumuna döndürür — bu fonksiyon o zemin üzerine
+ * yerine geri yükleyip USER/ACTIVE temel durumuna döndürür — bu fonksiyon o zemin üzerine
  * "yoksa oluştur" davranışını EKLER.
  */
 export async function registerFixtureUser(email: string, password: string, name: string): Promise<void> {
@@ -81,7 +85,7 @@ export async function adminGetUserByEmail(token: string, email: string): Promise
 export async function adminUpdateRole(
   token: string,
   userId: string,
-  role: "ADMIN" | "EDITOR" | "VIEWER"
+  role: FixtureSiteRole
 ): Promise<{ status: number }> {
   const res = await fetch(`${API_BASE_URL}/admin/users/${userId}/role`, {
     method: "PATCH",
@@ -104,22 +108,6 @@ export async function adminUpdateStatus(
   return { status: res.status };
 }
 
-/** `PATCH /admin/users/{userId}/builder-access` (§10.20) — `adminUpdateRole`/`adminUpdateStatus`
- * ile AYNI desen. `admin-page-editor-roles.spec.ts` tarafından kullanılır. */
-export async function adminUpdateBuilderAccess(
-  token: string,
-  userId: string,
-  advancedBuilderEnabled: boolean
-): Promise<{ status: number; body: FixtureAdminUser | { error: { code: string; message: string } } }> {
-  const res = await fetch(`${API_BASE_URL}/admin/users/${userId}/builder-access`, {
-    method: "PATCH",
-    headers: authHeaders(token),
-    body: JSON.stringify({ advancedBuilderEnabled }),
-  });
-  const body = await res.json();
-  return { status: res.status, body: (body.data ?? body) as FixtureAdminUser };
-}
-
 export async function adminRestoreUser(token: string, userId: string): Promise<{ status: number }> {
   const res = await fetch(`${API_BASE_URL}/admin/users/${userId}/restore`, {
     method: "POST",
@@ -129,9 +117,10 @@ export async function adminRestoreUser(token: string, userId: string): Promise<{
 }
 
 /**
- * Idempotent temel-durum sıfırlama — `email`'e ait fixture kullanıcıyı VIEWER/ACTIVE'e getirir
- * (bkz. `admin-user-management.spec.ts`'teki "tek admin" senaryosunun ÖN KOŞULU: qa-e2e-admin
- * DIŞINDA aktif ADMIN OLMAMALI). Kullanıcı yoksa (ilk koşum) hiçbir şey YAPMAZ —
+ * Idempotent temel-durum sıfırlama — `email`'e ait fixture kullanıcıyı USER/ACTIVE'e getirir
+ * (§7.1 — yeni şema varsayılanı ve en düşük ayrıcalık; eski: VIEWER). Bkz.
+ * `admin-user-management.spec.ts`'teki "tek admin" senaryosunun ÖN KOŞULU: qa-e2e-admin
+ * DIŞINDA aktif ADMIN OLMAMALI. Kullanıcı yoksa (ilk koşum) hiçbir şey YAPMAZ —
  * `registerFixtureUser()` sıfırdan oluşturacaktır.
  *
  * KASITLI OLARAK silmiyor (önceki bir tasarım — `cleanupFixtureUserByEmail` — silip
@@ -149,13 +138,7 @@ export async function resetFixtureUserToBaseline(token: string, email: string): 
   } else if (user.status === "SUSPENDED") {
     await adminUpdateStatus(token, user.id, "ACTIVE");
   }
-  if (user.role !== "VIEWER") {
-    await adminUpdateRole(token, user.id, "VIEWER");
-  }
-  // §10.20 — `advancedBuilderEnabled`'ı da temel duruma (false) döndürür (`admin-page-editor-
-  // roles.spec.ts`'in gelişmiş-yetenek testleri bir sonraki koşuma "gelişmiş" kalmış bir fixture
-  // kullanıcı BIRAKMAMALIDIR). VIEWER için teknik olarak anlamsız (§1.6) ama zararsız — idempotent.
-  if (user.advancedBuilderEnabled) {
-    await adminUpdateBuilderAccess(token, user.id, false);
+  if (user.role !== "USER") {
+    await adminUpdateRole(token, user.id, "USER");
   }
 }

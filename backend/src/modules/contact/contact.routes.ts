@@ -4,6 +4,8 @@ import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { authenticate } from "../../middleware/authenticate";
 import { requireSiteRole } from "../../middleware/site-rbac";
+import { requirePanelAccess } from "../../middleware/panel-access";
+import { ROLES_ADMIN_MANAGER } from "../../lib/site-roles";
 import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema } from "../../schemas/common";
 import {
@@ -77,16 +79,19 @@ async function assertValidConsentLegalPageId(app: FastifyInstance, id: string | 
 }
 
 /**
- * `/admin/contact` prefix'i altında bağlanır (bkz. app.ts). Form yapılandırması/alan yönetimi
- * yalnızca ADMIN; gönderim okuma ADMIN VEYA EDITOR (§10.16.8).
+ * `/admin/contact` prefix'i altında bağlanır (bkz. app.ts).
+ * `.claude/architect-scope-rbac-5-tier.md` §5.3 satır 4 — form yapılandırması, gönderim
+ * okuma/durum ve gönderim silme: ADMIN + MANAGER (EDITOR ziyaretçi PII'sine erişemez, tümü
+ * 403 alır).
  */
 export async function adminContactRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
   server.addHook("preHandler", authenticate);
+  server.addHook("preHandler", requirePanelAccess());
 
   server.get(
     "/form",
-    { preHandler: requireSiteRole("ADMIN"), schema: { response: { 200: ApiSuccessSchema(ContactFormSchema) } } },
+    { preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER), schema: { response: { 200: ApiSuccessSchema(ContactFormSchema) } } },
     async (_request, reply) => {
       return reply.send(ok(await readContactFormDto(app)));
     }
@@ -95,7 +100,7 @@ export async function adminContactRoutes(app: FastifyInstance) {
   server.patch(
     "/form",
     {
-      preHandler: requireSiteRole("ADMIN"),
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
       schema: { body: UpdateContactFormRequestSchema, response: { 200: ApiSuccessSchema(ContactFormSchema) } },
     },
     async (request, reply) => {
@@ -126,7 +131,7 @@ export async function adminContactRoutes(app: FastifyInstance) {
   server.put(
     "/form/fields",
     {
-      preHandler: requireSiteRole("ADMIN"),
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
       schema: { body: ReplaceContactFormFieldsRequestSchema, response: { 200: ApiSuccessSchema(z.array(ContactFormFieldSchema)) } },
     },
     async (request, reply) => {
@@ -187,7 +192,7 @@ export async function adminContactRoutes(app: FastifyInstance) {
   server.get(
     "/submissions",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
       schema: {
         querystring: ListContactSubmissionsQuerySchema,
         response: { 200: ApiSuccessSchema(z.array(ContactSubmissionSummarySchema)) },
@@ -215,7 +220,7 @@ export async function adminContactRoutes(app: FastifyInstance) {
   server.get(
     "/submissions/:submissionId",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
       schema: { params: SubmissionIdParamSchema, response: { 200: ApiSuccessSchema(ContactSubmissionSchema) } },
     },
     async (request, reply) => {
@@ -229,7 +234,7 @@ export async function adminContactRoutes(app: FastifyInstance) {
   server.patch(
     "/submissions/:submissionId",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
       schema: {
         params: SubmissionIdParamSchema,
         body: UpdateContactSubmissionRequestSchema,
@@ -267,7 +272,7 @@ export async function adminContactRoutes(app: FastifyInstance) {
 
   server.delete(
     "/submissions/:submissionId",
-    { preHandler: requireSiteRole("ADMIN"), schema: { params: SubmissionIdParamSchema, response: { 204: z.undefined() } } },
+    { preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER), schema: { params: SubmissionIdParamSchema, response: { 204: z.undefined() } } },
     async (request, reply) => {
       const existing = await app.prisma.contactSubmission.findUnique({ where: { id: request.params.submissionId } });
       if (!existing) throw new NotFoundError("Gönderim bulunamadı.");

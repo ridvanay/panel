@@ -5,6 +5,8 @@ import type { EmailTemplatePurpose, Prisma } from "@prisma/client";
 import { z } from "zod";
 import { authenticate } from "../../middleware/authenticate";
 import { requireSiteRole } from "../../middleware/site-rbac";
+import { requirePanelAccess } from "../../middleware/panel-access";
+import { ROLES_ADMIN_MANAGER } from "../../lib/site-roles";
 import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema } from "../../schemas/common";
 import { EmailTemplateSchema, EmailTemplateSummarySchema, EmailVariableDefinitionSchema } from "../../schemas/entities";
@@ -71,8 +73,8 @@ function collectTemplateTexts(subject: string, bodyHtml: string | undefined, blo
 }
 
 /**
- * `/admin/notifications/templates` prefix'i altında bağlanır (bkz. app.ts). §10.3 gereği bu
- * iletiler tüm kullanıcılara gidebildiği için tüm uçlar (GET dahil) yalnızca `SiteRole=ADMIN`.
+ * `/admin/notifications/templates` prefix'i altında bağlanır (bkz. app.ts).
+ * `.claude/architect-scope-rbac-5-tier.md` §5.3 satır 5 — tüm uçlar (GET dahil) ADMIN + MANAGER.
  *
  * BREAKING (§10.16.6): adresleme artık `{key}` DEĞİL `{templateId}` (uuid) — kullanıcı
  * şablonlarının `key`'i yoktur (`null`).
@@ -80,7 +82,8 @@ function collectTemplateTexts(subject: string, bodyHtml: string | undefined, blo
 export async function emailTemplatesRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
   server.addHook("preHandler", authenticate);
-  server.addHook("preHandler", requireSiteRole("ADMIN"));
+  server.addHook("preHandler", requirePanelAccess());
+  server.addHook("preHandler", requireSiteRole(...ROLES_ADMIN_MANAGER));
 
   server.get(
     "/",

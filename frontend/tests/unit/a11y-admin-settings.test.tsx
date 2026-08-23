@@ -32,8 +32,10 @@ const settings: SiteSettings = {
   headerLogoMaxWidth: null,
 };
 const permissions: PermissionsMatrix = {
-  roles: ["ADMIN", "EDITOR", "VIEWER"],
-  modules: [{ module: "pages", label: "Sayfalar", actions: { view: ["ADMIN", "EDITOR", "VIEWER"], edit: ["ADMIN", "EDITOR"] } }],
+  roles: ["ADMIN", "MANAGER", "EDITOR", "CUSTOMER", "USER"],
+  modules: [
+    { module: "pages", label: "Sayfalar", actions: { view: ["ADMIN", "MANAGER", "EDITOR"], edit: ["ADMIN", "MANAGER"] } },
+  ],
 };
 
 describe("AdminSettingsPage — a11y", () => {

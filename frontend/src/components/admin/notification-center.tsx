@@ -38,8 +38,10 @@ type LoadState = "idle" | "loading" | "loaded" | "error";
 
 /**
  * Topbar için bildirim çanı + popover. SADECE ADMIN rolündeki kullanıcılara görünür —
- * `/admin/users` ve `/admin/logs` uçları backend'de ADMIN-only olduğu için EDITOR/VIEWER'a
- * gösterilse dahi veri çekilemez, gereksiz 403 üretmemek için hiç render edilmez.
+ * `/admin/users` ve `/admin/logs` uçları backend'de ADMIN-only olduğu için MANAGER/EDITOR'e
+ * gösterilse dahi veri çekilemez, gereksiz 403 üretmemek için hiç render edilmez (§10.21,
+ * §8.4 — EDITOR için bu, "hiç fetch etmeme" gereksinimini de doğal olarak karşılar: erken
+ * `return null` fetch'ten ÖNCE gelir, `handleOpenChange` hiç tetiklenmez).
  *
  * Veri, popover İLK açıldığında tek seferlik çekilir (bkz. `handleOpenChange` + `loadState`
  * "idle" kontrolü) — her render'da tekrar istek atılmaz.

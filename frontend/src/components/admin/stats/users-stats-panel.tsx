@@ -15,16 +15,24 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { ChartTooltipContent } from "@/components/admin/stats/chart-tooltip";
 
+// `.claude/architect-scope-rbac-5-tier.md` §1.2 — bağlayıcı TR etiketler.
 const ROLE_LABELS: Record<SiteRole, string> = {
-  ADMIN: "Admin",
+  ADMIN: "Süper Yönetici",
+  MANAGER: "Yönetici",
   EDITOR: "Editör",
-  VIEWER: "Görüntüleyici",
+  CUSTOMER: "Müşteri",
+  USER: "Standart Üye",
 };
 
+// Yeni hardcoded renk eklemek yerine mevcut dinamik accent/viz token'ları kullanılıyor (bkz.
+// device-breakdown-chart.tsx'teki AYNI patern — 4/5 kategoriye çıkarken yeni bir renk İCAT
+// EDİLMEDİ, sırayla viz-series-1/2 → primary → accent-400 → accent-300 zincirine devam edildi).
 const ROLE_COLORS: Record<SiteRole, string> = {
   ADMIN: "var(--viz-series-1)",
-  EDITOR: "var(--viz-series-2)",
-  VIEWER: "var(--primary)",
+  MANAGER: "var(--viz-series-2)",
+  EDITOR: "var(--primary)",
+  CUSTOMER: "var(--accent-400, #818cf8)",
+  USER: "var(--accent-300, #a5b4fc)",
 };
 
 interface UsersStatsPanelProps {

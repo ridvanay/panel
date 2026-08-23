@@ -13,6 +13,28 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
 
 ### Changed
 
+- **[MİMARİ KARAR — implementasyon devam ediyor] Rol modeli 3 kademeden 5 kademeye
+  genişletildi** (`ARCHITECTURE.md` §10.21, bağlayıcı karar dokümanı
+  `.claude/architect-scope-rbac-5-tier.md`). Yeni roller: **Süper Yönetici** (`ADMIN`),
+  **Yönetici** (`MANAGER`), **Editör** (`EDITOR`), **Müşteri** (`CUSTOMER`), **Standart Üye**
+  (`USER`). Bu turda yalnızca kontrat ve mimari dokümanlar güncellendi
+  (`docs/architecture/openapi.yaml`, `docs/architecture/ARCHITECTURE.md`); şema, backend,
+  frontend ve testler sıradaki ajanlarda tamamlanacak ve bu madde o zaman
+  detaylandırılacaktır.
+  - **BREAKING:** `İzleyici` (`VIEWER`) rolü kaldırıldı; mevcut hesapları `Standart Üye`
+    (`USER`) olur ve **yönetim paneline erişimlerini tamamen kaybederler**. Panele ihtiyacı
+    olan hesaplar bir Süper Yönetici tarafından elle yükseltilmelidir.
+  - **BREAKING:** `Editör` rolünün kapsamı daraldı — artık yalnızca blog, medya ve sayfa
+    içeriği. Ürünler, portföy, iletişim gönderimleri ve istatistiklere erişemez.
+  - **BREAKING:** kullanıcı başına verilen `Gelişmiş Düzenleyici` yetkisi ve onu değiştiren
+    `PATCH /admin/users/{userId}/builder-access` ucu kaldırıldı; sayfa blok yapısını artık
+    yalnızca Süper Yönetici değiştirebilir.
+  - **Güvenlik:** `/admin/*` altındaki tüm uçlar için tek bir panel kapısı eklendi — Müşteri
+    ve Standart Üye hesapları 403 alır. Daha önce bazı yönetim okuma uçları yalnızca "giriş
+    yapmış olmak" ile korunuyordu.
+  - Yeni kayıtların varsayılan rolü `Standart Üye`; ilk siparişi ödendiğinde otomatik olarak
+    `Müşteri`'ye yükselir. Yeni uç: `GET /users/me/orders` (kendi sipariş geçmişi).
+
 - **Standart kullanıcı için sayfa düzenleme kilidi sıkılaştırıldı** (`ARCHITECTURE.md`
   §10.20, güncelleme notu 2026-08-23). Daha önce **Yazar (Standart Düzenleyici)** yetkisine
   sahip bir kullanıcı, yalnızca **Şablon** (`TEMPLATE`) modundaki sayfalarda yapısal

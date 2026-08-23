@@ -60,6 +60,12 @@ export interface NavItem {
    * Faz 1'de hiçbir mevcut item'a atanmaz — Products/Portfolio gibi sonraki fazlarda kullanılacak.
    */
   module?: string;
+  /**
+   * §10.21 §8.2 — bazı roller AYNI rotayı farklı bir etiketle görür (item gizlenmez, sadece
+   * metni değişir). Bugün tek örnek: `/admin/pages` için EDITOR "Sayfalar (Salt İçerik
+   * Düzenleme)" görür (blok yapısı EDITOR'e kapalı — bkz. `page-template-guard`).
+   */
+  roleLabelKeys?: Partial<Record<SiteRole, string>>;
 }
 
 /**
@@ -77,29 +83,47 @@ export function filterVisibleNavItems(
   );
 }
 
-const navItems: NavItem[] = [
-  { href: "/admin", labelKey: "nav.overview", icon: LayoutDashboard },
-  { href: "/admin/pages", labelKey: "nav.pages", icon: FileText },
+// `.claude/architect-scope-rbac-5-tier.md` §8.2 — bağlayıcı tablo. Yalnızca ADMIN/MANAGER/
+// EDITOR panele girebildiği için (`requirePanelAccess`), burada rol filtresi CUSTOMER/USER'ı
+// AYRICA saymaz — sunucu zaten onları kapıda 403'ler; bu liste sadece ADMIN/MANAGER/EDITOR
+// arasındaki GÖRÜNÜRLÜK farkını ifade eder (gizleme kullanılabilirlik amaçlıdır, güvenlik
+// önlemi DEĞİLDİR — sunucu her istekte bağımsız karar verir).
+// `filterVisibleNavItems` ile AYNI gerekçeyle dışa açılır — §8.2 tablosuna karşı doğrudan
+// (bileşeni render etmeden) birim testi yazılabilsin diye (bkz. tests/unit/sidebar-role-visibility.test.tsx).
+export const navItems: NavItem[] = [
+  // §8.4 — EDITOR girişte /admin/blog'a yönlendirilir, gösterge paneli EDITOR için hiç render
+  // edilmez (GET /admin/stats/* 403 verir) — bu yüzden sidebar'da da EDITOR'e gösterilmez.
+  { href: "/admin", labelKey: "nav.overview", icon: LayoutDashboard, roles: ["ADMIN", "MANAGER"] },
+  {
+    href: "/admin/pages",
+    labelKey: "nav.pages",
+    icon: FileText,
+    roleLabelKeys: { EDITOR: "nav.pagesEditorOnly" },
+  },
   { href: "/admin/blog", labelKey: "nav.blog", icon: Newspaper },
-  { href: "/admin/products", labelKey: "nav.products", icon: ShoppingBag, module: "products" },
-  { href: "/admin/orders", labelKey: "nav.orders", icon: Receipt, module: "products" },
-  { href: "/admin/portfolio", labelKey: "nav.portfolio", icon: Briefcase, module: "portfolio" },
-  { href: "/admin/stats", labelKey: "nav.stats", icon: BarChart3 },
-  // `/admin/reports/exports/*` backend'de TAMAMEN ADMIN-only (bkz. reports.routes.ts) —
-  // `/admin/import` ile AYNI `roles` deseni.
-  { href: "/admin/reports", labelKey: "nav.reports", icon: FileArchive, roles: ["ADMIN"] },
+  { href: "/admin/products", labelKey: "nav.products", icon: ShoppingBag, module: "products", roles: ["ADMIN", "MANAGER"] },
+  { href: "/admin/orders", labelKey: "nav.orders", icon: Receipt, module: "products", roles: ["ADMIN", "MANAGER"] },
+  { href: "/admin/portfolio", labelKey: "nav.portfolio", icon: Briefcase, module: "portfolio", roles: ["ADMIN", "MANAGER"] },
+  { href: "/admin/stats", labelKey: "nav.stats", icon: BarChart3, roles: ["ADMIN", "MANAGER"] },
+  // `/admin/reports/exports/*` backend'de SiteRole=ADMIN VEYA MANAGER (§5.3 satır 16).
+  { href: "/admin/reports", labelKey: "nav.reports", icon: FileArchive, roles: ["ADMIN", "MANAGER"] },
   { href: "/admin/media", labelKey: "nav.media", icon: ImageIcon },
-  { href: "/admin/navigation", labelKey: "nav.navigation", icon: LayoutTemplate },
-  { href: "/admin/appearance", labelKey: "nav.appearance", icon: Palette },
+  { href: "/admin/navigation", labelKey: "nav.navigation", icon: LayoutTemplate, roles: ["ADMIN", "MANAGER"] },
+  // Özel CSS/JS sekmesi (yalnızca ADMIN) sayfanın İÇİNDEDİR — sidebar seviyesinde ayrıştırma
+  // gerekmez, `/admin/appearance` sayfasının kendisi MANAGER'a görünür kalmalı (§8.2).
+  { href: "/admin/appearance", labelKey: "nav.appearance", icon: Palette, roles: ["ADMIN", "MANAGER"] },
   { href: "/admin/import", labelKey: "nav.import", icon: Upload, roles: ["ADMIN"] },
-  { href: "/admin/users", labelKey: "nav.users", icon: Users },
-  { href: "/admin/system", labelKey: "nav.system", icon: Activity },
-  { href: "/admin/notifications/templates", labelKey: "nav.emailTemplates", icon: Mail },
-  { href: "/admin/contact", labelKey: "nav.contact", icon: MessageSquare },
+  { href: "/admin/users", labelKey: "nav.users", icon: Users, roles: ["ADMIN"] },
+  { href: "/admin/system", labelKey: "nav.system", icon: Activity, roles: ["ADMIN"] },
+  { href: "/admin/notifications/templates", labelKey: "nav.emailTemplates", icon: Mail, roles: ["ADMIN", "MANAGER"] },
+  { href: "/admin/contact", labelKey: "nav.contact", icon: MessageSquare, roles: ["ADMIN", "MANAGER"] },
+  // Self-servis 2FA/oturumlar (§4.3 istisnası) — panele giren 3 rolün hepsine açık.
   { href: "/admin/settings/security", labelKey: "nav.security", icon: ShieldCheck },
-  { href: "/admin/logs", labelKey: "nav.logs", icon: ScrollText },
-  { href: "/admin/modules", labelKey: "nav.modules", icon: Blocks, roles: ["ADMIN"] },
-  { href: "/admin/settings", labelKey: "nav.settings", icon: Settings },
+  { href: "/admin/logs", labelKey: "nav.logs", icon: ScrollText, roles: ["ADMIN"] },
+  // `PATCH /admin/modules/:key` ADMIN-only ama `GET` ADMIN+MANAGER (§5.3 satır 18) —
+  // MANAGER item'ı salt-okunur görünümle görür (sayfanın kendisi PATCH'i ADMIN'e kilitler).
+  { href: "/admin/modules", labelKey: "nav.modules", icon: Blocks, roles: ["ADMIN", "MANAGER"] },
+  { href: "/admin/settings", labelKey: "nav.settings", icon: Settings, roles: ["ADMIN"] },
 ];
 
 export function AdminSidebar() {
@@ -146,7 +170,8 @@ export function AdminSidebar() {
               <SidebarMenu className="gap-1">
                 {visibleNavItems.map((item, index) => {
                   const active = item.href === "/admin" ? pathname === item.href : pathname.startsWith(item.href);
-                  const label = t(item.labelKey);
+                  const labelKey = (user && item.roleLabelKeys?.[user.role]) || item.labelKey;
+                  const label = t(labelKey);
                   return (
                     <SidebarMenuItem key={item.href}>
                       <motion.div

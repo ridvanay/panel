@@ -54,7 +54,12 @@ export async function register(
   }
 
   // Sıfırdan kurulan bir ortamda ilk kayıt olan kullanıcı otomatik ADMIN olur —
-  // aksi halde `/admin/*` uçlarına erişebilecek hiç kimse olmaz (kilitlenme).
+  // aksi halde `/admin/*` uçlarına erişebilecek hiç kimse olmaz (kilitlenme). Sonraki HER
+  // kayıt `role: undefined` bırakılır → şema varsayılanı devreye girer —
+  // `.claude/architect-scope-rbac-5-tier.md` §7.1 gereği bu artık `USER`'dır (eski: `VIEWER`).
+  // `POST /auth/register` PUBLIC'tir; varsayılanın panele erişimi olan bir role (EDITOR/MANAGER)
+  // düşmesi doğrudan bir güvenlik açığı olurdu — bu satırın kendisi DEĞİŞMEDİ, yalnızca şema
+  // varsayılanının anlamı değişti.
   const userCount = await app.prisma.user.count();
 
   const passwordHash = await hashPassword(input.password);

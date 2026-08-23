@@ -6,7 +6,6 @@ import type {
   Page,
   SiteRole,
   SiteUserStatus,
-  UpdateAdminUserBuilderAccessRequest,
 } from "./types";
 
 /**
@@ -49,18 +48,6 @@ export function updateUserStatus(
   status: Exclude<SiteUserStatus, "DELETED">
 ): Promise<AdminUser> {
   return apiFetch<AdminUser>(`/admin/users/${userId}/status`, { method: "PATCH", body: { status } });
-}
-
-/**
- * §10.20 — kullanıcının **Gelişmiş Düzenleyici** yeteneğini açar/kapatır. `/role`/`/status`
- * uçlarıyla BİREBİR aynı desen (ADMIN-only, rate limit, `DELETED` kullanıcıda 404). Bkz.
- * `PATCH /admin/users/{userId}/builder-access`.
- */
-export function updateUserBuilderAccess(
-  userId: string,
-  input: UpdateAdminUserBuilderAccessRequest
-): Promise<AdminUser> {
-  return apiFetch<AdminUser>(`/admin/users/${userId}/builder-access`, { method: "PATCH", body: input });
 }
 
 /**

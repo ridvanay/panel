@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { requireModuleEnabled } from "../../middleware/module-guard";
+import { authenticateOptional } from "../../middleware/authenticate";
 import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema } from "../../schemas/common";
 import { ConflictError } from "../../lib/errors";
@@ -26,10 +27,17 @@ function generateOrderNumber(): string {
   return `ORD-${timePart}-${randomPart}`;
 }
 
-/** `/checkout` prefix'i altında bağlanır (bkz. app.ts) — PUBLIC, `requireModuleEnabled("products")`. */
+/**
+ * `/checkout` prefix'i altında bağlanır (bkz. app.ts) — PUBLIC, `requireModuleEnabled("products")`.
+ * `.claude/architect-scope-rbac-5-tier.md` §7.2 — `POST /session` isteğe bağlı kimlik
+ * doğrulamalıdır: `Authorization: Bearer` header'ı VARSA ve geçerliyse `Order.siteUserId`
+ * dolar; YOKSA mevcut misafir akışı aynen çalışır (401 ÜRETİLMEZ, bkz.
+ * `middleware/authenticate.ts::authenticateOptional`).
+ */
 export async function checkoutRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
   server.addHook("preHandler", requireModuleEnabled("products"));
+  server.addHook("preHandler", authenticateOptional);
 
   server.post(
     "/session",
@@ -97,6 +105,9 @@ export async function checkoutRoutes(app: FastifyInstance) {
         data: {
           orderNumber: generateOrderNumber(),
           cartId: cart.id,
+          // §7.2 — yalnızca `Authorization: Bearer` başlığı geçerliyse dolar; misafir checkout'ta
+          // (mevcut, DEĞİŞMEYEN akış) `null` kalır.
+          siteUserId: request.user?.id ?? null,
           customerEmail,
           customerName: customerName ?? null,
           status: "PENDING",

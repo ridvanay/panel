@@ -3,6 +3,8 @@ import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
 import { authenticate } from "../../middleware/authenticate";
 import { requireSiteRole } from "../../middleware/site-rbac";
+import { requirePanelAccess } from "../../middleware/panel-access";
+import { ROLES_ADMIN } from "../../lib/site-roles";
 import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema } from "../../schemas/common";
 import {
@@ -50,7 +52,8 @@ import {
 export async function outboundWebhooksRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
   server.addHook("preHandler", authenticate);
-  server.addHook("preHandler", requireSiteRole("ADMIN"));
+  server.addHook("preHandler", requirePanelAccess());
+  server.addHook("preHandler", requireSiteRole(...ROLES_ADMIN));
 
   function actorFrom(request: { user?: { id: string; email: string }; ip: string }) {
     return { id: request.user!.id, email: request.user!.email, ip: request.ip };

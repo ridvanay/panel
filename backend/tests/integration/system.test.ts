@@ -12,7 +12,7 @@ describe("system health", () => {
   beforeAll(async () => {
     app = await buildTestApp();
     await resetDatabase(app.prisma);
-    // İlk kayıt olan kullanıcı otomatik ADMIN olur (bkz. auth.service.ts); ikincisi varsayılan VIEWER kalır.
+    // İlk kayıt olan kullanıcı otomatik ADMIN olur (bkz. auth.service.ts); ikincisi varsayılan USER kalır.
     ({ accessToken: adminAccessToken } = await registerTestUser(app));
     ({ accessToken: viewerAccessToken } = await registerTestUser(app));
   });

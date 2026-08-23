@@ -381,12 +381,12 @@ describe("blog posts (§10.7 çöp kutusu / toplu işlem / yazar / SEO skoru)", 
       expect(res.statusCode).toBe(401);
     });
 
-    it("VIEWER autosave ucuna erişemez (403)", async () => {
+    it("USER autosave ucuna erişemez (403)", async () => {
       const create = await app.inject({
         method: "POST",
         url: "/api/v1/admin/blog",
         headers: authHeader(),
-        payload: { title: "VIEWER Autosave Denemesi" },
+        payload: { title: "USER Autosave Denemesi" },
       });
       const postId = create.json().data.id;
 

@@ -131,3 +131,14 @@ export function useAuth(): AuthContextValue {
   if (!ctx) throw new Error("useAuth, <AuthProvider> içinde kullanılmalıdır.");
   return ctx;
 }
+
+/**
+ * `useCartOptional` (bkz. `context/cart-context.tsx`) ile AYNI desen — `<AuthProvider>` her ne
+ * kadar kök layout'ta global olsa da, bazı bileşenler (ör. `components/site/site-header.tsx`)
+ * `AdminAppearancePage` gibi test/canlı-önizleme bağlamlarında Provider OLMADAN da render
+ * edilebilir (`app/admin/appearance/page.tsx`'teki canlı önizleme + unit testler). `null` döner,
+ * hata FIRLATMAZ — çağıran taraf "giriş yapılmamış" durumuyla aynı şekilde ele alabilir.
+ */
+export function useAuthOptional(): AuthContextValue | null {
+  return useContext(AuthContext);
+}

@@ -16,7 +16,9 @@ export const PageEditModeSchema = z.enum(["FREEFORM", "TEMPLATE"]);
 
 // `/admin/*` CMS uçları için org'dan bağımsız site-geneli rol/durum (bkz. middleware/site-rbac.ts).
 // MembershipRoleSchema (organizasyon bazlı) ile KARIŞTIRILMAMALI.
-export const SiteRoleSchema = z.enum(["ADMIN", "EDITOR", "VIEWER"]);
+// `.claude/architect-scope-rbac-5-tier.md` §1 — 5 kademeli rol (ADMIN → USER, ayrıcalıktan
+// azalan sırada; sıra bağlayıcıdır). `VIEWER` KALDIRILDI.
+export const SiteRoleSchema = z.enum(["ADMIN", "MANAGER", "EDITOR", "CUSTOMER", "USER"]);
 // `PATCH /admin/users/{userId}/status` gövdesi (YAZMA) — BİLİNÇLİ OLARAK `DELETED` içermez,
 // silme YALNIZCA `DELETE /admin/users/{userId}` ile yapılır (bkz. AdminUserStatusSchema, OKUMA tarafı).
 export const SiteUserStatusSchema = z.enum(["ACTIVE", "SUSPENDED"]);
@@ -36,8 +38,9 @@ export const UserSchema = z.object({
   createdAt: z.string(),
   // §10.4 Güvenlik & 2FA — bkz. ARCHITECTURE.md §10.4.
   twoFactorEnabled: z.boolean(),
-  // §10.20 — TÜRETİLMİŞ + SALT-OKUNUR: `role === "ADMIN" || advancedBuilderEnabled` (bkz.
-  // lib/builder-capability.ts, .claude/architect-scope-page-editor-roles.md §1).
+  // `.claude/architect-scope-rbac-5-tier.md` §3 — TÜRETİLMİŞ + SALT-OKUNUR: saf rol türevi,
+  // yalnızca `role === "ADMIN"` iken `true` (bkz. lib/builder-capability.ts). Eski
+  // `User.advancedBuilderEnabled` bayrağı KALDIRILDI.
   canUseAdvancedBuilder: z.boolean(),
 });
 export type UserDto = z.infer<typeof UserSchema>;
@@ -49,9 +52,6 @@ export const AdminUserSchema = UserSchema.extend({
   // Yumuşak silme zaman damgası — `status: DELETED` ise dolu, aksi hâlde `null` (bkz.
   // DELETE /admin/users/{userId}, POST /admin/users/{userId}/restore).
   deletedAt: z.string().nullable(),
-  // §10.20 — DEPOLANAN izin (`User.advancedBuilderEnabled` kolonu); `canUseAdvancedBuilder`
-  // ETKİN yetenektir ve ADMIN'de bu alandan BAĞIMSIZ olarak `true` döner (bkz. yukarısı).
-  advancedBuilderEnabled: z.boolean(),
 });
 export type AdminUserDto = z.infer<typeof AdminUserSchema>;
 

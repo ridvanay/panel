@@ -11,6 +11,42 @@ servers:
   - url: http://localhost:4000/api/v1
     description: Local
 
+x-site-rbac:
+  description: >
+    **5 KADEMELİ SİTE-GENELİ RBAC (bağlayıcı — `.claude/architect-scope-rbac-5-tier.md`).**
+    `SiteRole` = `ADMIN` | `MANAGER` | `EDITOR` | `CUSTOMER` | `USER`. (`VIEWER` KALDIRILDI —
+    mevcut veri `USER`'a eşlendi.)
+
+
+    - **ADMIN** (Süper Yönetici): her şey. Sistem, ayarlar, kullanıcılar, kimlik bilgileri,
+      denetim izi ve **blok yapısını değiştirebilen TEK rol**.
+
+    - **MANAGER** (Yönetici): ADMIN'in tüm yetkileri EKSİ beş kategori — (a) ayrıcalık
+      yükseltme yüzeyi (`/admin/users`, `/admin/settings` PATCH, `/admin/settings/permissions`,
+      `/admin/import/*`), (b) kimlik bilgisi yüzeyi (`api-keys`, `webhooks`), (c) keyfi kod
+      yürütme (`/admin/appearance/custom-code/*`), (d) site-geneli kill switch
+      (`PATCH /admin/modules/{key}`, `GET /admin/health`), (f) denetim izi (`/admin/logs`) —
+      VE blok yapısı (`canUseAdvancedBuilder: false`).
+
+    - **EDITOR** (Editör): YALNIZCA `blog` (tam CRUD) + `media` + `pages` (yalnızca içerik
+      alanları). Diğer TÜM admin modüllerinde `403`.
+
+    - **CUSTOMER** (Müşteri) ve **USER** (Standart Üye): `/admin/*` altındaki HİÇBİR uca
+      erişemez → **`403`** (`requirePanelAccess()` kapısı). İkisi arasındaki fark API'de
+      YOKTUR, yalnızca ön yüz sunumundadır (bkz. `GET /users/me/orders`).
+
+
+    **`/admin/*` kapısı:** `ADMIN|MANAGER|EDITOR` dışındaki her rol 403 alır. Bu kapının
+    İKİ İSTİSNASI vardır ve liste genişletilemez: `/admin/settings/security/2fa` ve
+    `/admin/settings/security/sessions` — bunlar self-servis (kendi 2FA'n / kendi
+    oturumların) uçlarıdır, `authenticated` kalır ve 5 rolün hepsi erişir.
+
+
+    **Varsayılan rol:** `USER` (public `POST /auth/register` ile açılan her hesap; sıfırdan
+    kurulan bir ortamda İLK hesap `ADMIN`). `USER → CUSTOMER` terfisi, kimliği doğrulanmış
+    bir kullanıcının siparişi ÖDENDİĞİNDE otomatik gerçekleşir; başka hiçbir rol otomatik
+    değiştirilmez.
+
 tags:
   - name: Auth
   - name: Users
@@ -22,81 +58,118 @@ tags:
   - name: Webhooks
   - name: Health
   - name: AdminUsers
-    description: Org'dan bağımsız site-geneli kullanıcı/rol yönetimi (`/admin/users`) — yalnızca SiteRole=ADMIN.
+    description: >
+      Org'dan bağımsız site-geneli kullanıcı/rol yönetimi (`/admin/users`) — **yalnızca
+      SiteRole=ADMIN, OKUMA DAHİL.** MANAGER/EDITOR → 403. Gerekçe (tartışmaya kapalı):
+      bu uçlara yazabilen bir MANAGER kendini `ADMIN` yapabilirdi — dikey ayrıcalık
+      yükseltmesi; ayrıca kullanıcı listesi bütünüyle PII'dir.
   - name: Logs
-    description: Audit log (`/admin/logs`) — yalnızca SiteRole=ADMIN.
+    description: >
+      Audit log (`/admin/logs`) — **yalnızca SiteRole=ADMIN.** MANAGER bilinçli olarak
+      DIŞARIDA: denetim izi, ADMIN eylemlerinin kurcalanamaz kaydıdır (denetleyen ile
+      denetlenenin ayrılığı ilkesi).
   - name: Navigation
     description: >
       Site header/nav/footer yapılandırması (`/navigation`, `/admin/navigation`).
       `/navigation` public'tir (site header/nav/footer bunu okur); `/admin/navigation`
-      yönetim ekranı içindir, PUT yalnızca SiteRole=ADMIN.
+      yönetim ekranı içindir: `GET` SiteRole=ADMIN/MANAGER/EDITOR (panel kapısı),
+      `PUT` SiteRole=ADMIN veya MANAGER.
   - name: Pages
     description: >
-      CMS sayfa yönetimi (`/admin/pages`). Okuma authenticated, yazma SiteRole=ADMIN
-      veya EDITOR, kalıcı silme yalnızca ADMIN. Soft-delete (çöp kutusu), toplu işlem
+      CMS sayfa yönetimi (`/admin/pages`). Soft-delete (çöp kutusu), toplu işlem
       ve SEO tamlık skoru için bkz. ARCHITECTURE.md §10.7.
 
 
-      **§10.20 İKİNCİ YETKİ EKSENİ — Gelişmiş Düzenleyici.** Sayfa uçlarında `SiteRole`
-      TEK BAŞINA yeterli değildir; bazı uçlar ayrıca `User.canUseAdvancedBuilder: true`
-      şartına tabidir. Bu, roldan BAĞIMSIZ, kullanıcı başına verilen bir yetenektir
-      (`PATCH /admin/users/{userId}/builder-access`); "Standart/Yazar kullanıcı" =
-      `role: EDITOR` + `advancedBuilderEnabled: false`. Ayrı bir `AUTHOR` SiteRole'ü
-      YOKTUR — gerekçe: `.claude/architect-scope-page-editor-roles.md` §1.3.
+      **§10.21 ÜÇ KATMANLI YETKİ (bağlayıcı — `.claude/architect-scope-rbac-5-tier.md` §6).**
+      Sayfa modülü TEK bir rol eşiğiyle ifade EDİLEMEZ:
 
 
-      | Uç | SiteRole | Gelişmiş yetenek |
-      |---|---|---|
-      | `GET /admin/pages`, `GET /admin/pages/{pageId}` | authenticated | — |
-      | `POST /admin/pages` | ADMIN, EDITOR | **GEREKLİ** |
-      | `PATCH /admin/pages/{pageId}` | ADMIN, EDITOR | alan bazında (bkz. `UpdatePageRequest`) |
-      | `POST /admin/pages/{pageId}/autosave` | ADMIN, EDITOR | alan bazında (bkz. `AutosavePageRequest`) |
-      | `DELETE /admin/pages/{pageId}` | ADMIN, EDITOR | **GEREKLİ** |
-      | `POST /admin/pages/{pageId}/restore` | ADMIN, EDITOR | **GEREKLİ** |
-      | `DELETE /admin/pages/{pageId}/permanent` | ADMIN | — (zaten ADMIN) |
-      | `POST /admin/pages/bulk` | ADMIN, EDITOR | **GEREKLİ** |
-      | `GET .../revisions`, `GET .../revisions/{revisionId}` | ADMIN, EDITOR | — (okuma serbest) |
-      | `POST .../revisions/{revisionId}/restore` | ADMIN, EDITOR | **GEREKLİ** |
+      - **Katman 1 — Blok YAPISI: yalnızca `ADMIN`.** Blok ekleme/silme/taşıma/sıralama,
+        `container.settings`, `reveal`, `custom-html.data.html`, `isLegalDocument`,
+        `authorId`. Uç seviyesinde DEĞİL, `PATCH`/`autosave` gövdesinin İÇİNDE
+        (`assertTemplateEditAllowed` diff'i) uygulanır; ihlal → `403 FORBIDDEN`.
+        `editMode` değerinden BAĞIMSIZDIR.
+
+      - **Katman 2 — Sayfa YAŞAM DÖNGÜSÜ ve KİMLİĞİ: `ADMIN`, `MANAGER`.** Çöpe atma,
+        geri yükleme, kalıcı silme, `bulk`, revizyon-restore; gövdede `slug` ve `editMode`.
+
+      - **Katman 3 — Blok İÇERİĞİ ve sayfa META'sı: `ADMIN`, `MANAGER`, `EDITOR`.** Okuma,
+        `PATCH`, `autosave`, revizyon okuma; gövdede `title`/SEO alanları/`status`/
+        `scheduledAt`/`translations`.
 
 
-      İlke: *standart kullanıcı içeriği değiştirir; yapıyı ve geri alınamaz yaşam
-      döngüsü işlemlerini değiştirmez.* Yetenek şartı ihlali → `403 FORBIDDEN` +
-      `FORBIDDEN` statülü audit kaydı (`middleware/site-rbac.ts` ile aynı desen).
+      | Uç | SiteRole |
+      |---|---|
+      | `GET /admin/pages`, `GET /admin/pages/{pageId}` | ADMIN, MANAGER, EDITOR |
+      | `POST /admin/pages` | **ADMIN** (istisna — bkz. aşağıdaki not) |
+      | `PATCH /admin/pages/{pageId}` | ADMIN, MANAGER, EDITOR (+ Katman 1 gövde kontrolü) |
+      | `POST /admin/pages/{pageId}/autosave` | ADMIN, MANAGER, EDITOR (+ Katman 1 gövde kontrolü) |
+      | `DELETE /admin/pages/{pageId}` | ADMIN, MANAGER |
+      | `POST /admin/pages/{pageId}/restore` | ADMIN, MANAGER |
+      | `DELETE /admin/pages/{pageId}/permanent` | ADMIN, MANAGER |
+      | `POST /admin/pages/bulk` | ADMIN, MANAGER |
+      | `GET .../revisions`, `GET .../revisions/{revisionId}` | ADMIN, MANAGER, EDITOR |
+      | `POST .../revisions/{revisionId}/restore` | ADMIN, MANAGER |
+
+
+      **`POST /admin/pages` neden Katman 2 değil, yalnızca ADMIN:** Katman 1 gereği MANAGER
+      blok EKLEYEMEZ; oluşturduğu boş sayfayı asla dolduramaz. Yetkiyi vermek kırık bir akış
+      üretirdi. Anlamlı bir oluşturma yolu için takip kalemi:
+      `feature/page-duplicate-from-template`.
+
+
+      **`requireAdvancedBuilder()` middleware'i KALDIRILDI** —
+      `canUseAdvancedBuilder === (role === "ADMIN")` olduğu için uç seviyesinde artık düz rol
+      listeleri kullanılır; `canUseAdvancedBuilder` yalnızca Katman 1 gövde kararı ve UI için
+      kalır.
   - name: Blog
     description: >
-      Blog yazısı yönetimi (`/admin/blog`). Yetki eşikleri ve çöp/toplu işlem/SEO skoru
-      davranışı `Pages` ile BİREBİR AYNIDIR — bkz. ARCHITECTURE.md §10.7.
+      Blog yazısı yönetimi (`/admin/blog`, `/admin/blog/categories`, `/admin/blog/tags`).
+      Çöp/toplu işlem/SEO skoru davranışı `Pages` ile BİREBİR AYNIDIR (ARCHITECTURE.md §10.7),
+      **ama yetki eşiği FARKLIDIR:** blog, EDITOR'ün TAM CRUD sahibi olduğu tek içerik
+      modülüdür.
+
+
+      Oluşturma, güncelleme, **yayınlama**, çöpe atma, geri yükleme, toplu işlem, revizyon
+      (okuma + restore), kategori/etiket oluşturma-güncelleme → **SiteRole=ADMIN, MANAGER
+      veya EDITOR**. Kalıcı silme (`DELETE /admin/blog/{postId}/permanent`) ve kategori/etiket
+      silme → **ADMIN veya MANAGER** (geri alınamaz veri yıkımı EDITOR'e açılmaz).
   - name: ContentRevisions
     description: >
       İçerik sürüm kontrolü (`/admin/pages/{pageId}/revisions`,
-      `/admin/blog/{postId}/revisions`) — bkz. ARCHITECTURE.md §10.1. Yetki eşiği,
-      ilgili entity'nin (pages/blog) yazma eşiğiyle aynı (SiteRole=ADMIN veya EDITOR).
+      `/admin/blog/{postId}/revisions`) — bkz. ARCHITECTURE.md §10.1. Ayrı bir router
+      DEĞİLDİR; kapsayıcı entity'nin eşiğini MİRAS ALIR: blog → ADMIN/MANAGER/EDITOR (restore
+      dahil), pages → okuma ADMIN/MANAGER/EDITOR, **restore yalnızca ADMIN/MANAGER**
+      (`Pages` Katman 2).
   - name: Media
     description: >
       Editör içi görsel yönetimi (`/admin/media`) — blog/sayfa içerik bloklarına ve
-      kapak görsellerine BURADAN yüklenir. Okuma authenticated, yükleme/alt metin
-      güncelleme SiteRole=ADMIN veya EDITOR, kalıcı silme yalnızca ADMIN. `Page`/
+      kapak görsellerine BURADAN yüklenir. Okuma, yükleme ve alt metin güncelleme
+      **SiteRole=ADMIN, MANAGER veya EDITOR**; kalıcı silme **ADMIN veya MANAGER**. `Page`/
       `BlogPost`'un aksine soft-delete/çöp kutusu YOKTUR.
 
 
       **Klasör sistemi (`/admin/media/folders`, `/admin/media/move`)** — bkz.
-      ARCHITECTURE.md §10.11. Klasör okuma authenticated (admin medya sayfası VE
-      `MediaPicker` AYNI ucu paylaşır), oluşturma/yeniden adlandırma/taşıma
-      ADMIN veya EDITOR, klasör silme yalnızca ADMIN. Klasör silmek MEDYA SİLMEZ.
+      ARCHITECTURE.md §10.11. Klasör okuma/oluşturma/yeniden adlandırma/taşıma
+      ADMIN, MANAGER veya EDITOR (admin medya sayfası VE `MediaPicker` AYNI ucu paylaşır);
+      klasör silme ADMIN veya MANAGER. Klasör silmek MEDYA SİLMEZ.
   - name: ContactForms
     description: >
       §10.16 İletişim Formu — tek (singleton) form yapılandırması
       (`/admin/contact/form`, `/admin/contact/form/fields`), gönderim kutusu
       (`/admin/contact/submissions`) ve PUBLIC uçlar (`/contact/form`,
-      `/contact/submissions`). Form yapılandırması yalnızca SiteRole=ADMIN; gönderim
-      okuma/durum güncelleme ADMIN veya EDITOR; gönderim silme yalnızca ADMIN.
+      `/contact/submissions`). **TÜM admin uçları SiteRole=ADMIN veya MANAGER'dır**
+      (form yapılandırması, gönderim okuma/durum güncelleme ve gönderim silme dahil).
+      **EDITOR bu modülden ÇIKARILDI** (eskiden gönderim okuma/durum güncelleme yetkisi
+      vardı): gönderimler ziyaretçi PII'si taşır ve EDITOR'ün kapsamı blog+medya+sayfa
+      içeriğiyle sınırlıdır.
       Public gönderim ucu kimlik doğrulama İSTEMEZ, IP tabanlı rate limit + honeypot
       ile korunur (bkz. ARCHITECTURE.md §10.16.9).
   - name: EmailTemplates
     description: >
       E-posta & bildirim şablonu yönetimi (`/admin/notifications/templates`) — bkz.
       ARCHITECTURE.md §10.3 (temel) ve §10.16 (blok editörü genişletmesi). Tüm uçlar
-      yalnızca SiteRole=ADMIN (GET dahil).
+      SiteRole=ADMIN veya MANAGER (GET dahil); EDITOR → 403.
 
 
       **BREAKING (§10.16.6):** şablonlar artık `{key}` ile DEĞİL `{templateId}` (uuid)
@@ -110,9 +183,11 @@ tags:
       (CSV+JSON), WordPress WXR (XML), kullanıcı (CSV) ve medya (ZIP) içe aktarımı.
 
       **TÜM uçlar İSTİSNASIZ yalnızca SiteRole=ADMIN'dir** — içerik yazma eşiği normalde
-      ADMIN+EDITOR olsa da (bkz. `Pages`/`Blog`), toplu içe aktarma kayıt-bazlı incelemeyi
+      daha geniş olsa da (bkz. `Pages`/`Blog`), toplu içe aktarma kayıt-bazlı incelemeyi
       atlar, mevcut içeriğin ÜZERİNE yazabilir, keyfi `authorId` atayabilir ve (kullanıcı
-      içe aktarımında) hesap oluşturup rol verebilir. EDITOR/VIEWER → 403.
+      içe aktarımında) **hesap oluşturup ROL VEREBİLİR**. Bu son madde nedeniyle MANAGER da
+      bilinçli olarak DIŞARIDA bırakılmıştır (ayrıcalık yükseltme yüzeyi). MANAGER/EDITOR/
+      CUSTOMER/USER → 403.
 
       **Dışa aktarma için uç YOKTUR (karar):** CSV dışa aktarma tamamen client-side'dır
       (`frontend/src/lib/export-csv.ts::exportToCsv`) — admin listeleri zaten tüm kayıtları
@@ -123,23 +198,38 @@ tags:
   - name: Stats
     description: >
       Admin analitik/raporlama verisi (`/admin/stats/*`) — bkz. ARCHITECTURE.md §10.8.10.
-      RBAC UÇ-BAZLIDIR (modül genelinde tek bir eşik YOKTUR): içerik analitiği (`/views`,
-      `/breakdown`, `/top-content`, `/live-visitors`) SiteRole=ADMIN veya EDITOR; kullanıcı/
-      gelir verisi (`/summary`, `/users`, `/revenue`) yalnızca SiteRole=ADMIN (PII/gelir
-      riski nedeniyle).
+      **TÜM uçlar SiteRole=ADMIN veya MANAGER'dır** (içerik analitiği ve kullanıcı/gelir
+      verisi ayrımı YETKİ açısından KALDIRILDI — MANAGER siparişleri de görebildiği için
+      gelir verisini ondan saklamak tutarsız olurdu). **EDITOR bu modülden ÇIKARILDI**
+      (eskiden `/views`, `/breakdown`, `/top-content`, `/live-visitors` uçlarına erişiyordu).
+
+
+      **Frontend sonucu (atlanması kolay):** `/admin` gösterge paneli bu uçları çağırır →
+      EDITOR için render EDİLMEZ, EDITOR girişte `/admin/blog`'a yönlendirilir.
   - name: Reports
     description: >
       Analitik rapor dışa aktarma (`/admin/reports/exports`) — bkz. ARCHITECTURE.md
-      §10.8.10. **TÜM uçlar İSTİSNASIZ yalnızca SiteRole=ADMIN'dir** (rapor türü fark
-      etmeksizin — `Stats`'ın `/summary|/users|/revenue` kısıtlamasıyla AYNI gerekçe, ama
-      burada tip ayrımı bile YAPILMAZ). Süreç-içi worker ile asenkron üretilir (kuyruk
+      §10.8.10. **TÜM uçlar İSTİSNASIZ SiteRole=ADMIN veya MANAGER'dır** (rapor türü fark
+      etmeksizin — `Stats` ile AYNI eşik). EDITOR → 403. Süreç-içi worker ile asenkron üretilir (kuyruk
       altyapısı yok, §10.8.1 ile aynı desen); oluşturma ucu 10 istek/10 dakika ile
       sınırlıdır (429).
   - name: Settings
     description: >
       Site geneli tekil (singleton) ayarlar (`/settings`, `/admin/settings`) — bkz.
       ARCHITECTURE.md §10.9.5. `/settings` public'tir (site header/nav bunu okur),
-      `/admin/settings` yönetim ekranı içindir, PATCH yalnızca SiteRole=ADMIN.
+      `/admin/settings` yönetim ekranı içindir: `GET /admin/settings` SiteRole=ADMIN/MANAGER/
+      EDITOR (panel kapısı), **`PATCH /admin/settings` yalnızca SiteRole=ADMIN** (site-geneli
+      kill switch — `homePageId`, `siteTemplate`, entegrasyonlar; MANAGER bilinçli olarak
+      DIŞARIDA). `GET /admin/settings/permissions` de **yalnızca ADMIN**'dir (izin matrisi =
+      ayrıcalık yüzeyi haritası).
+
+
+      **`/admin/settings/security/2fa` ve `/admin/settings/security/sessions` bu eşiğe
+      TABİ DEĞİLDİR** — bunlar self-servis uçlardır (kullanıcının KENDİ 2FA'sı / KENDİ
+      oturumları), `authenticated` kalır ve **5 rolün hepsi (CUSTOMER/USER dahil) erişir**.
+      Bu, `/admin/*` panel kapısının İKİ istisnasından biridir ve liste genişletilemez;
+      `/users/me/security/*` altına taşınmaları takip kalemidir
+      (`chore/relocate-self-service-security-routes`).
 
 
       **Kapsam sınırı (§10.12):** `Settings` sitenin NASIL ÇALIŞTIĞINI tutar
@@ -154,10 +244,14 @@ tags:
       görünüm anahtarları (toggle), 404 sayfası ve özel CSS/JS.
 
 
-      **TÜM yazma uçları İSTİSNASIZ yalnızca SiteRole=ADMIN'dir** (okuma:
-      authenticated). EDITOR bilinçli olarak DIŞARIDA bırakılmıştır: bu ayarlar tek
-      bir satırda tüm siteyi etkiler, kayıt-bazlı değildir ve özel CSS/JS ile
-      keyfi kod yürütmeye kadar uzanır (gerekçe: ARCHITECTURE.md §10.12.6).
+      **Yetki (§10.21):** okuma (`GET /admin/appearance`, `/presets`, `/custom-code`)
+      SiteRole=ADMIN/MANAGER/EDITOR (panel kapısı); `PATCH /admin/appearance` ve
+      `POST /admin/appearance/reset` **ADMIN veya MANAGER**;
+      `PUT /admin/appearance/custom-code/css` ve `.../js` **yalnızca ADMIN**.
+      EDITOR tüm yazma uçlarında 403; MANAGER yalnızca özel CSS/JS'te 403.
+      Bu bölünmenin gerekçesi: renk/tipografi/tema bir SİTE YÖNETİMİ işidir (MANAGER),
+      ama özel CSS/JS **keyfi kod yürütmedir** ve MANAGER'ın dışında bırakıldığı beş
+      kategoriden biridir (ayrıca bkz. ARCHITECTURE.md §10.12.6).
 
 
       **Bu ayarlar YALNIZCA ziyaretçi (public) tarafını etkiler; admin panelinin
@@ -169,14 +263,18 @@ tags:
       Eklenti/Modül Yönetimi (`/admin/modules`, `/modules`) — bkz. ARCHITECTURE.md
       §10.9.1. Modül TANIMLARI (`key`/`label`/`description`/`recommendedFor`) kod içi
       statik bir registry'dir; yalnızca aktif/pasif DURUM DB'de tutulur. `GET
-      /admin/modules` SiteRole=ADMIN/EDITOR/VIEWER, `PATCH /admin/modules/{key}`
-      yalnızca ADMIN. `GET /modules` public'tir (site header/nav hangi modüllerin
-      aktif olduğunu buradan okur).
+      /admin/modules` SiteRole=ADMIN/MANAGER/EDITOR, **`PATCH /admin/modules/{key}`
+      yalnızca ADMIN** (bir modülü kapatmak ilgili TÜM public uçları 404'e düşürür — bu bir
+      site-geneli kill switch'tir, MANAGER bilinçli olarak DIŞARIDA). `GET /modules`
+      public'tir (site header/nav hangi modüllerin aktif olduğunu buradan okur).
   - name: Products
     description: >
       Ürünler modülü (`/admin/products`, `/products`) — bkz. ARCHITECTURE.md §10.9.2.
-      Yetki eşikleri ve çöp/SEO skoru davranışı `Pages`/`Blog` ile BİREBİR AYNIDIR
-      (§10.7), üzerine e-ticaret alanları (fiyat/stok/SKU) eklenmiştir. Public uçlar
+      Çöp/SEO skoru davranışı `Pages`/`Blog` ile BİREBİR AYNIDIR (§10.7), üzerine
+      e-ticaret alanları (fiyat/stok/SKU) eklenmiştir.
+      **Yetki (§10.21): TÜM admin uçları — okuma dahil — SiteRole=ADMIN veya MANAGER'dır.
+      EDITOR bu modülden ÇIKARILDI** (eskiden yazma yetkisi vardı); EDITOR'ün kapsamı
+      blog + medya + sayfa içeriğiyle sınırlıdır. Public uçlar
       (`/products*`) yalnızca `products` modülü AKTİFSE yanıt verir — kapalıyken TÜM
       public uçlar `404 NOT_FOUND` döner (bkz. `Modules` tag'i); admin uçları modül
       durumundan BAĞIMSIZDIR (veri korunumu).
@@ -184,7 +282,9 @@ tags:
     description: >
       Portföy modülü (`/admin/portfolio`, `/portfolio`) — bkz. ARCHITECTURE.md §10.9.4.
       `Products` ile BİREBİR AYNI patern (fiyat/stok/SKU yerine `clientName`/
-      `projectUrl`/`completedAt`/manuel `order` sıralaması). Public uçlar yalnızca
+      `projectUrl`/`completedAt`/manuel `order` sıralaması) — **yetki eşiği de aynı:
+      TÜM admin uçları (okuma dahil) SiteRole=ADMIN veya MANAGER; EDITOR → 403.**
+      Public uçlar yalnızca
       `portfolio` modülü AKTİFSE yanıt verir — kapalıyken 404 (bkz. `Modules` tag'i).
   - name: Cart
     description: >
@@ -199,7 +299,9 @@ tags:
   - name: Orders
     description: >
       Admin sipariş yönetimi (`/admin/orders`) — bkz. ARCHITECTURE.md §10.9.3. **TÜM
-      uçlar İSTİSNASIZ yalnızca SiteRole=ADMIN'dir.** Modül durumundan BAĞIMSIZDIR
+      uçlar İSTİSNASIZ SiteRole=ADMIN veya MANAGER'dır** (EDITOR/CUSTOMER/USER → 403).
+      Müşterinin KENDİ siparişlerini görmesi için ayrı bir uç vardır: `GET /users/me/orders`
+      (sahiplik filtresi, rol guard'ı YOK). Modül durumundan BAĞIMSIZDIR
       (`products` modülü kapatılsa dahi geçmiş siparişler görüntülenebilir — veri
       korunumu, `Products`/`Portfolio` admin uçlarıyla AYNI karar). `customerEmail`
       LİSTEDE maskelenir, DETAYDA maskesiz döner (bkz. uç açıklaması).
@@ -212,8 +314,9 @@ tags:
 
 
       `GET /locales` public'tir (site dil değiştirici ve `[lang]` rota doğrulaması
-      bunu okur); `/admin/locales` yönetim içindir ve yazma uçları yalnızca
-      SiteRole=ADMIN'dir (EDITOR dahi dil ekleyemez — dil eklemek sitenin URL
+      bunu okur); `/admin/locales` yönetim içindir: `GET` SiteRole=ADMIN/MANAGER/EDITOR
+      (çeviri editörü sekmelerini kurmak için EDITOR de okur), **yazma uçları
+      SiteRole=ADMIN veya MANAGER**'dır (EDITOR dahi dil ekleyemez — dil eklemek sitenin URL
       uzayını ve sitemap'ini genişleten yapısal bir karardır).
 
 
@@ -229,9 +332,10 @@ tags:
       anahtarlar burada üretilir/iptal edilir.
 
 
-      **TÜM uçlar İSTİSNASIZ yalnızca SiteRole=ADMIN'dir — OKUMA DAHİL.** EDITOR/VIEWER
-      → 403. Gerekçe: anahtar listesi (adlar, ön ekler, scope'lar) saldırı yüzeyi
-      haritasıdır (bkz. §10.13.10).
+      **TÜM uçlar İSTİSNASIZ yalnızca SiteRole=ADMIN'dir — OKUMA DAHİL.**
+      MANAGER/EDITOR/CUSTOMER/USER → 403. Gerekçe: anahtar listesi (adlar, ön ekler,
+      scope'lar) saldırı yüzeyi haritasıdır (bkz. §10.13.10); ayrıca kimlik bilgisi
+      yüzeyi, MANAGER'ın bilinçli olarak dışında bırakıldığı beş kategoriden biridir.
 
 
       **Ham anahtar YALNIZCA `POST` (201) yanıtında `plainKey` olarak BİR KEZ döner**;
@@ -249,7 +353,9 @@ tags:
       ne modül, ne tip, ne uç adı paylaşırlar.
 
 
-      **TÜM uçlar İSTİSNASIZ yalnızca SiteRole=ADMIN'dir — OKUMA DAHİL.** Secret
+      **TÜM uçlar İSTİSNASIZ yalnızca SiteRole=ADMIN'dir — OKUMA DAHİL.**
+      MANAGER/EDITOR/CUSTOMER/USER → 403 (kimlik bilgisi yüzeyi, `ApiKeys` ile aynı
+      gerekçe). Secret
       (`whsec_…`) yalnızca oluşturma (201) ve `rotate-secret` yanıtlarında
       `plainSecret` olarak BİR KEZ döner; DB'de AES-256-GCM ile ŞİFRELİ saklanır
       (hash DEĞİL — HMAC üretimi için geri çözülebilir olmak ZORUNDADIR, gerekçe
@@ -428,6 +534,53 @@ paths:
                   - $ref: "#/components/schemas/ApiSuccessEnvelope"
                   - properties:
                       data: { $ref: "#/components/schemas/AuthSession" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /users/me/orders:
+    get:
+      tags: [Users]
+      summary: Kendi siparişlerim (authenticated — TÜM roller)
+      description: >
+        §10.21 — ön yüzdeki `/siparislerim` ekranını besleyen uç. `Order.siteUserId = me`
+        filtresiyle cursor sayfalı liste döner (`seq desc`, en yeni önce).
+
+
+        **ROL GUARD'I YOKTUR ve EKLENMEYECEKTİR (bağlayıcı).** Yetkilendirmenin gerçek
+        kontrolü **sahipliktir** (`siteUserId = me`), rol değil. `requireSiteRole("CUSTOMER")`
+        eklemek ikinci ve gereksiz bir kontroldür; `USER → CUSTOMER` terfisi Stripe webhook'u
+        üzerinden gerçekleştiği için gecikirse kullanıcı kendi siparişini göremez hale
+        gelirdi. Bir `USER` bu ucu çağırırsa **boş liste** döner (403 değil).
+
+
+        `/siparislerim` bağlantısının navigasyonda görünmesi bir SUNUM kararıdır
+        (`role === "CUSTOMER"`), yetki kararı değil.
+
+
+        **`customerEmail` MASKELENMEZ** — kullanıcı zaten kendi verisini okuyor
+        (`GET /admin/orders` listesindeki maskeleme, üçüncü bir tarafın toplu göz atması
+        içindir; burada geçerli değildir).
+
+
+        **Misafir siparişleri BU LİSTEDE GÖRÜNMEZ:** `Order.siteUserId` yalnızca kimliği
+        doğrulanmış bir çağıranın `POST /checkout/session` isteğinde doldurulur. Geçmiş
+        misafir siparişlerini bir hesaba bağlamak KAPSAM DIŞIDIR
+        (takip: `feature/order-account-linking`).
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/Order" }
+                      meta: { $ref: "#/components/schemas/OrderListMeta" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
   /users/me:
@@ -909,64 +1062,11 @@ paths:
         "409": { $ref: "#/components/responses/Conflict" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
 
-  /admin/users/{userId}/builder-access:
-    parameters:
-      - name: userId
-        in: path
-        required: true
-        schema: { type: string, format: uuid }
-    patch:
-      tags: [AdminUsers]
-      summary: Gelişmiş Düzenleyici yetkisini aç/kapat (yalnızca ADMIN)
-      description: >
-        §10.20 — kullanıcının `advancedBuilderEnabled` iznini değiştirir. Bu, `SiteRole`'den
-        BAĞIMSIZ bir yetenek eksenidir: projede `AUTHOR` diye bir rol YOKTUR ve BİLİNÇLİ
-        olarak eklenmemiştir (gerekçe: `.claude/architect-scope-page-editor-roles.md` §1.3
-        — istenen kısıt uç değil ALAN seviyesindedir, `requireSiteRole` onu yapısal olarak
-        çözemez). "Standart/Yazar kullanıcı" = `role: EDITOR` + `advancedBuilderEnabled: false`.
-
-
-        **Kilitlenme güvenliği:** ADMIN hesaplarında bu değer `false` yapılsa dahi ETKİN
-        yetenek (`User.canUseAdvancedBuilder`) `true` kalır — dolayısıyla `/role` ve
-        `/status` uçlarındaki gibi bir "son yönetici" 409 kuralı GEREKMEZ ve TANIMLI DEĞİLDİR.
-
-
-        **`role: VIEWER` hedefte de kabul edilir** (422 üretilmez) — bkz.
-        `AdminUser.advancedBuilderEnabled`.
-
-
-        **Silme ile ilişkisi:** `/role` ve `/status` ile TUTARLI olarak, `DELETED` bir
-        kullanıcının yeteneği değiştirilemez → `404`.
-
-
-        Audit: `user.builder_access_change` (`metadata: { from, to }`).
-
-
-        **Hız sınırı:** 20 istek / 1 dakika (route-level, `ADMIN_USERS_RATE_LIMIT`). Aşım → 429.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/UpdateAdminUserBuilderAccessRequest" }
-      responses:
-        "200":
-          description: Güncellendi
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
-                  - properties:
-                      data: { $ref: "#/components/schemas/AdminUser" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404":
-          description: >
-            Kullanıcı bulunamadı (`NOT_FOUND`). `DELETED` olan bir kullanıcı da 404 döner.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
-        "422": { $ref: "#/components/responses/ValidationError" }
-        "429": { $ref: "#/components/responses/TooManyRequests" }
+  # KALDIRILDI (§10.21): `PATCH /admin/users/{userId}/builder-access`.
+  # `User.advancedBuilderEnabled` kolonu, bu uç ve `UpdateAdminUserBuilderAccessRequest`
+  # şeması 5 rollü modelde ölü kaldı — `canUseAdvancedBuilder` artık saf bir rol türevidir
+  # (`role === "ADMIN"`). Gerekçe: `.claude/architect-scope-rbac-5-tier.md` §3.
+  # İstemciler bu ucu çağırmayı BIRAKMALIDIR (404 döner).
 
   /admin/users/{userId}/status:
     parameters:
@@ -1235,7 +1335,7 @@ paths:
                       data: { $ref: "#/components/schemas/NavigationConfig" }
     put:
       tags: [Navigation]
-      summary: Navigasyon/header/footer yapılandırmasını değiştir (yalnızca ADMIN)
+      summary: Navigasyon/header/footer yapılandırmasını değiştir (ADMIN veya MANAGER)
       description: >
         Tam değiştirme (replace) semantiği: `navigationItems`/`socialLinks`/`footerColumns`
         gönderilen dizilerle DB'deki mevcut kayıtların tamamının yerini alır (delete-then-recreate,
@@ -1265,7 +1365,7 @@ paths:
   /admin/stats/views:
     get:
       tags: [Stats]
-      summary: Günlük sayfa/yazı görüntülenme zaman serisi (SiteRole=ADMIN veya EDITOR)
+      summary: Günlük sayfa/yazı görüntülenme zaman serisi (SiteRole=ADMIN veya MANAGER)
       description: >
         `granularity` bucket boyutunu belirler (varsayılan `day`). `compare` bu uçta
         KABUL EDİLİR ama YOK SAYILIR — karşılaştırma deltası yalnızca `GET .../summary`
@@ -1296,7 +1396,7 @@ paths:
     get:
       tags: [Stats]
       summary: >
-        Süreç-içi (in-memory) canlı ziyaretçi sayısı (SiteRole=ADMIN veya EDITOR) —
+        Süreç-içi (in-memory) canlı ziyaretçi sayısı (SiteRole=ADMIN veya MANAGER) —
         son 60 saniye içinde bir görüntülenme (view) endpoint'i çağıran benzersiz
         IP+User-Agent sayısı. Dağıtık DEĞİLDİR: çoklu instance dağıtımda her process
         kendi sayacını tutar.
@@ -1318,7 +1418,7 @@ paths:
       tags: [Stats]
       summary: >
         Belirtilen aralıktaki görüntülenmelerin cihaz türü ve ülkeye göre kırılımı
-        (SiteRole=ADMIN veya EDITOR)
+        (SiteRole=ADMIN veya MANAGER)
       description: >
         `compare` bu uçta KABUL EDİLİR ama YOK SAYILIR (bkz. `/views` açıklaması).
       parameters:
@@ -1344,7 +1444,7 @@ paths:
   /admin/stats/top-content:
     get:
       tags: [Stats]
-      summary: En çok görüntülenen sayfa/yazılar, azalan sırayla (SiteRole=ADMIN veya EDITOR)
+      summary: En çok görüntülenen sayfa/yazılar, azalan sırayla (SiteRole=ADMIN veya MANAGER)
       description: >
         Cursor sayfalı. `contentType` alanı `page`/`post` ayrımını verir, `id`/`slug`
         ilgili `Page`/`BlogPost` kaydına aittir.
@@ -1528,19 +1628,21 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
     post:
       tags: [Pages]
-      summary: Yeni sayfa oluştur (ADMIN/EDITOR + Gelişmiş Düzenleyici)
+      summary: Yeni sayfa oluştur (yalnızca SiteRole=ADMIN)
       description: >
         `slug` verilmezse `title`'dan üretilir. `authorId` verilmezse giriş yapmış
-        kullanıcı yazar olur; BAŞKA bir kullanıcıyı yazar atamak yalnızca ADMIN'e
-        açıktır (EDITOR gönderirse 403).
+        kullanıcı yazar olur; `authorId` alanı zaten yalnızca ADMIN'e açıktır.
 
 
-        **§10.20 — bu uç `canUseAdvancedBuilder: true` GEREKTİRİR** (aksi halde 403).
-        Gerekçe: boş bir sayfanın yapısı yoktur, `TEMPLATE` modu ise "var olan yapının
-        alanlarını doldur" demektir; standart kullanıcıya boş sayfa oluşturtmak onu
-        hiçbir şey ekleyemeyeceği bir çıkmaza sokardı. Standart kullanıcı, gelişmiş bir
-        kullanıcının hazırladığı sayfaları düzenler. (Şablondan kopyalayarak sayfa
-        üretme BİLİNÇLİ olarak KAPSAM DIŞIDIR — bugün bir "duplicate" ucu yoktur.)
+        **§10.21 — bu uç yalnızca `SiteRole=ADMIN`'dir. MANAGER ve EDITOR → 403.**
+        Bu, `Pages` üç katmanlı modelindeki tek istisnadır (diğer yaşam döngüsü uçları
+        ADMIN+MANAGER'dır). Gerekçe: Katman 1 gereği yalnızca ADMIN blok EKLEYEBİLİR;
+        boş bir sayfa oluşturan MANAGER onu asla dolduramaz — yetkiyi vermek kırık bir
+        akış üretirdi. İş gereksinimi sayfa oluşturmayı EDITOR için zaten açıkça
+        yasaklıyor; MANAGER için yasak `canUseAdvancedBuilder: false` kuralından zorunlu
+        olarak türer. (Şablondan kopyalayarak sayfa üretme — MANAGER'a anlamlı bir
+        oluşturma yolu — BİLİNÇLİ olarak KAPSAM DIŞIDIR, takip:
+        `feature/page-duplicate-from-template`.)
       requestBody:
         required: true
         content:
@@ -1584,7 +1686,7 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
     patch:
       tags: [Pages]
-      summary: Sayfayı güncelle — tam düzenleme VE hızlı düzenleme (ADMIN/EDITOR)
+      summary: Sayfayı güncelle — tam düzenleme VE hızlı düzenleme (ADMIN/MANAGER/EDITOR)
       description: >
         **Hızlı Düzenle (Quick Edit) için AYRI UÇ YOKTUR** — liste ekranındaki inline
         mini form da bu ucu kısmi gövdeyle çağırır: `{ title?, slug?, status? }`.
@@ -1601,13 +1703,20 @@ paths:
         - `status: PUBLISHED` ve `publishedAt` boşsa `publishedAt = now()` set edilir.
         Taslağa geri alma `publishedAt`'i TEMİZLEMEZ (ilk yayın tarihi kalıcıdır).
 
-        - `authorId` alanını yalnızca ADMIN değiştirebilir; EDITOR gönderirse 403.
+        - `authorId` alanını yalnızca ADMIN değiştirebilir; MANAGER/EDITOR gönderirse 403.
 
-        - **§10.20:** uç seviyesinde ek yetenek şartı YOKTUR — kısıt ALAN seviyesindedir.
-        Sayfa `editMode: TEMPLATE` VE çağıran `canUseAdvancedBuilder: false` ise:
-        `slug`/`editMode` alanları 403 verir ve `blocks`/`translations.<locale>.blocks`
-        şablon diff'inden geçer (bkz. `UpdatePageRequest`). Diğer alanlar (title, SEO,
-        status, scheduledAt) standart kullanıcıya AÇIKTIR.
+        - **§10.21 — uç eşiği `ADMIN`, `MANAGER`, `EDITOR` (Katman 3); asıl kısıt ALAN
+        seviyesindedir ve `editMode`'dan BAĞIMSIZDIR:**
+
+          - `blocks` ve `translations.<locale>.blocks` → çağıran ADMIN DEĞİLSE
+            (`canUseAdvancedBuilder === false`) kayıtlı ağaçla diff'lenir; yapısal her
+            fark **403** (bkz. `UpdatePageRequest.blocks`).
+
+          - `slug`, `editMode` → **Katman 2**: `ADMIN`/`MANAGER` serbest, `EDITOR` **403**.
+
+          - `isLegalDocument`, `authorId` → yalnızca `ADMIN`; MANAGER/EDITOR **403**.
+
+          - `title`, SEO alanları, `status`, `scheduledAt` → üç panel rolüne de AÇIK.
       requestBody:
         required: true
         content:
@@ -1636,10 +1745,10 @@ paths:
         "422": { $ref: "#/components/responses/ValidationError" }
     delete:
       tags: [Pages]
-      summary: Sayfayı ÇÖPE TAŞI — soft delete (ADMIN/EDITOR + Gelişmiş Düzenleyici)
+      summary: Sayfayı ÇÖPE TAŞI — soft delete (SiteRole=ADMIN veya MANAGER)
       description: >
         **DAVRANIŞ DEĞİŞİKLİĞİ:** bu uç artık kalıcı silmez, `deletedAt = now()` set eder.
-        Kalıcı silme için `DELETE /admin/pages/{pageId}/permanent` (yalnızca ADMIN).
+        Kalıcı silme için `DELETE /admin/pages/{pageId}/permanent` (ADMIN veya MANAGER).
 
 
         - İdempotenttir: zaten çöpte olan sayfa için de 204 döner.
@@ -1647,11 +1756,8 @@ paths:
         - Çöpe taşınan sayfa `SiteSettings.homePageId` ise, aynı transaction içinde
         `homePageId = null` yapılır (public site kırılmasın). Geri yükleme bunu GERİ ALMAZ.
 
-        - Yetki eşiği ADMIN-only'den ADMIN/EDITOR'e GENİŞLETİLMİŞTİR (çöp geri
-        alınabilir bir işlemdir); kalıcı silme ADMIN-only kalır.
-
-        - **§10.20: ayrıca `canUseAdvancedBuilder: true` GEREKTİRİR** (aksi halde 403) —
-        yaşam döngüsü işlemleri standart kullanıcıya kapalıdır.
+        - **§10.21 — yetki eşiği `ADMIN`, `MANAGER` (`Pages` Katman 2 — sayfa yaşam
+        döngüsü). `EDITOR` → 403** (iş gereksinimi: "yeni sayfa ekleyemez, silemez").
       responses:
         "204": { description: Çöpe taşındı }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -1663,11 +1769,12 @@ paths:
       - $ref: "#/components/parameters/PageId"
     post:
       tags: [Pages]
-      summary: Sayfayı otomatik kaydet — 3sn debounce (ADMIN/EDITOR)
+      summary: Sayfayı otomatik kaydet — 3sn debounce (ADMIN/MANAGER/EDITOR)
       x-security-note: >
-        §10.20 — bu uç `PATCH`'ten AYRI bir kod yoludur ve `blocks` YAZAR. Şablon modu
-        diff'i burada da uygulanmak ZORUNDADIR; unutulursa tüm kısıt debounce üzerinden
-        sessizce baypas edilir (qa-agent için zorunlu e2e senaryosu).
+        §10.21 — bu uç `PATCH`'ten AYRI bir kod yoludur ve `blocks` YAZAR. Katman 1
+        yapısal diff'i (`assertTemplateEditAllowed`) burada da uygulanmak ZORUNDADIR;
+        unutulursa ADMIN olmayan HER kullanıcı için tüm kısıt debounce üzerinden sessizce
+        baypas edilir (qa-agent için zorunlu e2e senaryosu).
       description: >
         Faz 3 (autosave). `PATCH /admin/pages/{pageId}`'ten BİLİNÇLİ olarak AYRIDIR:
         `ContentRevision` snapshot'ı ÜRETMEZ ve `AuditLog` YAZMAZ — aksi halde 3sn'lik
@@ -1713,14 +1820,14 @@ paths:
       - $ref: "#/components/parameters/PageId"
     post:
       tags: [Pages]
-      summary: Sayfayı çöpten geri yükle (ADMIN/EDITOR + Gelişmiş Düzenleyici)
+      summary: Sayfayı çöpten geri yükle (SiteRole=ADMIN veya MANAGER)
       description: >
         `deletedAt = null` yapar. `status` DEĞİŞTİRİLMEZ — sayfa çöpe taşındığındaki
         durumuna (DRAFT/PUBLISHED) geri döner. İdempotenttir: çöpte olmayan sayfa için
         de 200 ve mevcut kayıt döner.
 
 
-        **§10.20: ayrıca `canUseAdvancedBuilder: true` GEREKTİRİR** (aksi halde 403).
+        **§10.21 — `Pages` Katman 2: `ADMIN`, `MANAGER`. `EDITOR` → 403.**
       responses:
         "200":
           description: Geri yüklendi
@@ -1740,7 +1847,7 @@ paths:
       - $ref: "#/components/parameters/PageId"
     delete:
       tags: [Pages]
-      summary: Sayfayı KALICI sil — geri alınamaz (yalnızca ADMIN)
+      summary: Sayfayı KALICI sil — geri alınamaz (ADMIN veya MANAGER)
       description: >
         Güvenlik bariyeri: sayfa ÖNCE çöpte olmalıdır. `deletedAt IS NULL` ise
         `409 CONFLICT` (`"Kalıcı silmeden önce içeriği çöpe taşıyın."`).
@@ -1770,7 +1877,7 @@ paths:
   /admin/pages/bulk:
     post:
       tags: [Pages]
-      summary: Sayfalarda toplu işlem (ADMIN/EDITOR + Gelişmiş Düzenleyici; permanent-delete yalnızca ADMIN)
+      summary: Sayfalarda toplu işlem (SiteRole=ADMIN veya MANAGER)
       description: >
         Liste ekranındaki toplu işlem menüsü ve "Çöpü Boşalt" bu ucu kullanır —
         ayrı bir "çöpü boşalt" ucu YOKTUR (frontend çöpteki id'leri
@@ -1791,14 +1898,14 @@ paths:
         - `permanent-delete` → kayıt çöpte değil.
 
 
-        `permanent-delete` yalnızca ADMIN içindir; EDITOR gönderirse tüm istek 403 olur
-        (kısmi uygulama yapılmaz). Her toplu işlem tek bir `AuditLog` kaydı yazar
-        (`page.bulk_<action>`, metadata'da id listesi).
+        Her toplu işlem tek bir `AuditLog` kaydı yazar (`page.bulk_<action>`, metadata'da
+        id listesi).
 
 
-        **§10.20: ucun TAMAMI `canUseAdvancedBuilder: true` GEREKTİRİR** (aksi halde 403,
-        kısmi uygulama yapılmaz — `permanent-delete` ADMIN kuralıyla aynı "hep ya da hiç"
-        semantiği).
+        **§10.21: ucun TAMAMI `SiteRole=ADMIN` veya `MANAGER` gerektirir** (`Pages`
+        Katman 2). `EDITOR` → 403, kısmi uygulama YAPILMAZ ("hep ya da hiç" semantiği).
+        `permanent-delete` aksiyonu için ek bir daraltma YOKTUR — kalıcı silme de
+        ADMIN+MANAGER eşiğindedir (bkz. `DELETE /admin/pages/{pageId}/permanent`).
       requestBody:
         required: true
         content:
@@ -1846,7 +1953,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
     post:
       tags: [Blog]
-      summary: Yeni blog yazısı oluştur (ADMIN/EDITOR)
+      summary: Yeni blog yazısı oluştur (ADMIN/MANAGER/EDITOR)
       description: >
         `authorId` kuralı `POST /admin/pages` ile aynıdır: verilmezse giriş yapmış
         kullanıcı, başka kullanıcı atamak yalnızca ADMIN'e açıktır.
@@ -1890,7 +1997,7 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
     patch:
       tags: [Blog]
-      summary: Yazıyı güncelle — tam düzenleme VE hızlı düzenleme (ADMIN/EDITOR)
+      summary: Yazıyı güncelle — tam düzenleme VE hızlı düzenleme (ADMIN/MANAGER/EDITOR)
       description: >
         Kurallar `PATCH /admin/pages/{pageId}` ile BİREBİR AYNI — Hızlı Düzenle için ayrı
         uç yoktur, kısmi gövde `{ title?, slug?, status? }` bu uca gönderilir; çöpteki
@@ -1923,10 +2030,10 @@ paths:
         "422": { $ref: "#/components/responses/ValidationError" }
     delete:
       tags: [Blog]
-      summary: Yazıyı ÇÖPE TAŞI — soft delete (ADMIN/EDITOR)
+      summary: Yazıyı ÇÖPE TAŞI — soft delete (ADMIN/MANAGER/EDITOR)
       description: >
         `DELETE /admin/pages/{pageId}` ile aynı davranış (idempotent, `deletedAt = now()`,
-        yetki eşiği ADMIN/EDITOR). BlogPost'un `SiteSettings` bağı YOKTUR.
+        yetki eşiği ADMIN/MANAGER/EDITOR). BlogPost'un `SiteSettings` bağı YOKTUR.
       responses:
         "204": { description: Çöpe taşındı }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -1938,7 +2045,7 @@ paths:
       - $ref: "#/components/parameters/PostId"
     post:
       tags: [Blog]
-      summary: Yazıyı otomatik kaydet — 3sn debounce (ADMIN/EDITOR)
+      summary: Yazıyı otomatik kaydet — 3sn debounce (ADMIN/MANAGER/EDITOR)
       description: >
         Davranış `POST /admin/pages/{pageId}/autosave` ile BİREBİR AYNI — oradaki
         açıklama (revizyon/audit üretmez, çöpteki içerik 409) bağlayıcıdır. Gövde
@@ -1975,7 +2082,7 @@ paths:
       - $ref: "#/components/parameters/PostId"
     post:
       tags: [Blog]
-      summary: Yazıyı çöpten geri yükle (ADMIN/EDITOR)
+      summary: Yazıyı çöpten geri yükle (ADMIN/MANAGER/EDITOR)
       responses:
         "200":
           description: Geri yüklendi
@@ -1995,7 +2102,7 @@ paths:
       - $ref: "#/components/parameters/PostId"
     delete:
       tags: [Blog]
-      summary: Yazıyı KALICI sil — geri alınamaz (yalnızca ADMIN)
+      summary: Yazıyı KALICI sil — geri alınamaz (ADMIN veya MANAGER)
       description: >
         `DELETE /admin/pages/{pageId}/permanent` ile aynı kural: yazı ÖNCE çöpte olmalı,
         değilse 409. Aynı transaction'da `ContentRevision` satırları
@@ -2015,7 +2122,7 @@ paths:
   /admin/blog/bulk:
     post:
       tags: [Blog]
-      summary: Blog yazılarında toplu işlem (ADMIN/EDITOR; permanent-delete yalnızca ADMIN)
+      summary: Blog yazılarında toplu işlem (ADMIN/MANAGER/EDITOR; permanent-delete ADMIN/MANAGER)
       description: >
         `POST /admin/pages/bulk` ile BİREBİR AYNI gövde, aynı yanıt, aynı atlama kuralları.
         Audit action öneki `blog_post.bulk_<action>`.
@@ -2043,7 +2150,7 @@ paths:
       - $ref: "#/components/parameters/PageId"
     get:
       tags: [ContentRevisions]
-      summary: Sayfanın revizyon geçmişini listele (ADMIN/EDITOR)
+      summary: Sayfanın revizyon geçmişini listele (ADMIN/MANAGER/EDITOR)
       description: >
         Liste görünümü `snapshot` alanını İÇERMEZ (id, editedById, editedByName,
         createdAt) — tam snapshot için `GET .../revisions/{revisionId}`. En yeni
@@ -2073,7 +2180,7 @@ paths:
       - $ref: "#/components/parameters/RevisionId"
     get:
       tags: [ContentRevisions]
-      summary: Bir revizyonun tam snapshot'ını getir (ADMIN/EDITOR)
+      summary: Bir revizyonun tam snapshot'ını getir (ADMIN/MANAGER/EDITOR)
       responses:
         "200":
           description: OK
@@ -2094,16 +2201,18 @@ paths:
       - $ref: "#/components/parameters/RevisionId"
     post:
       tags: [ContentRevisions]
-      summary: Sayfayı bu revizyondaki hale geri döndür (ADMIN/EDITOR + Gelişmiş Düzenleyici)
+      summary: Sayfayı bu revizyondaki hale geri döndür (SiteRole=ADMIN veya MANAGER)
       description: >
         Geri dönüş de geri alınabilsin diye önce mevcut state yeni bir revizyon
         olarak kaydedilir, ardından hedef revizyonun snapshot'ı uygulanır.
 
 
-        **§10.20: `canUseAdvancedBuilder: true` GEREKTİRİR** (aksi halde 403). Bir
+        **§10.21 — `Pages` Katman 2: `ADMIN`, `MANAGER`. `EDITOR` → 403.** Bir
         revizyonu geri yüklemek `blocks` ağacının TAMAMINI değiştirir — tanımı gereği
-        yapısal bir işlemdir ve şablon diff'i ile ifade edilemez. Revizyonları
-        LİSTELEMEK ve GÖRÜNTÜLEMEK (`GET` uçları) standart kullanıcıya AÇIK kalır.
+        yapısal bir işlemdir ve şablon diff'i ile ifade edilemez. MANAGER'a açık olması
+        ayrıcalık yükseltmesi DEĞİLDİR: geri yüklenen yapı, geçmişte ADMIN tarafından
+        üretilmiş bir yapıdır; MANAGER serbest yapı KURAMAZ. Revizyonları LİSTELEMEK ve
+        GÖRÜNTÜLEMEK (`GET` uçları) `EDITOR`'e de AÇIK kalır (Katman 3).
 
 
         **Çöpteki bir sayfa revizyondan geri yüklenEMEZ → `409 CONFLICT`**
@@ -2161,7 +2270,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
     post:
       tags: [Blog]
-      summary: Yeni blog kategorisi oluştur (ADMIN/EDITOR)
+      summary: Yeni blog kategorisi oluştur (ADMIN/MANAGER/EDITOR)
       description: >
         Tam editördeki "+ Yeni Kategori Oluştur" satır-içi akışı (§10.14.5) da BU ucu
         kullanır — satır-içi oluşturma için AYRI bir uç yoktur.
@@ -2194,7 +2303,7 @@ paths:
       - $ref: "#/components/parameters/BlogCategoryId"
     patch:
       tags: [Blog]
-      summary: Blog kategorisini güncelle (ADMIN/EDITOR)
+      summary: Blog kategorisini güncelle (ADMIN/MANAGER/EDITOR)
       requestBody:
         required: true
         content:
@@ -2221,7 +2330,7 @@ paths:
         "422": { $ref: "#/components/responses/ValidationError" }
     delete:
       tags: [Blog]
-      summary: Blog kategorisini sil (yalnızca ADMIN)
+      summary: Blog kategorisini sil (ADMIN veya MANAGER)
       description: "Kategoriye bağlı yazılar `SetNull` ile kategorisiz kalır (silinmez)."
       responses:
         "204": { description: Silindi }
@@ -2252,7 +2361,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
     post:
       tags: [Blog]
-      summary: Yeni blog etiketi oluştur (ADMIN/EDITOR)
+      summary: Yeni blog etiketi oluştur (ADMIN/MANAGER/EDITOR)
       description: >
         Etiket yönetim ekranı VE editördeki satır-içi "yeni etiket" akışı (§10.14.5) aynı
         ucu kullanır. Frontend, satır-içi akışta POST'tan ÖNCE yerel listede slug eşleşmesi
@@ -2289,7 +2398,7 @@ paths:
       - $ref: "#/components/parameters/BlogTagId"
     patch:
       tags: [Blog]
-      summary: Blog etiketini güncelle (ADMIN/EDITOR)
+      summary: Blog etiketini güncelle (ADMIN/MANAGER/EDITOR)
       description: "`name` güncellenince `slug` OTOMATİK türetilmez — slug URL kimliğidir, sessizce değişmez."
       requestBody:
         required: true
@@ -2317,7 +2426,7 @@ paths:
         "422": { $ref: "#/components/responses/ValidationError" }
     delete:
       tags: [Blog]
-      summary: Blog etiketini sil (yalnızca ADMIN)
+      summary: Blog etiketini sil (ADMIN veya MANAGER)
       description: >
         §10.14.2 — `blog_post_tags` satırları FK cascade ile düşer; **yazılar SİLİNMEZ**,
         yalnızca bu etiketi kaybeder (`BlogCategory` silmenin `SetNull` davranışıyla aynı
@@ -2334,7 +2443,7 @@ paths:
       - $ref: "#/components/parameters/PostId"
     get:
       tags: [ContentRevisions]
-      summary: Yazının revizyon geçmişini listele (ADMIN/EDITOR)
+      summary: Yazının revizyon geçmişini listele (ADMIN/MANAGER/EDITOR)
       parameters:
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
@@ -2360,7 +2469,7 @@ paths:
       - $ref: "#/components/parameters/RevisionId"
     get:
       tags: [ContentRevisions]
-      summary: Bir revizyonun tam snapshot'ını getir (ADMIN/EDITOR)
+      summary: Bir revizyonun tam snapshot'ını getir (ADMIN/MANAGER/EDITOR)
       responses:
         "200":
           description: OK
@@ -2381,7 +2490,7 @@ paths:
       - $ref: "#/components/parameters/RevisionId"
     post:
       tags: [ContentRevisions]
-      summary: Yazıyı bu revizyondaki hale geri döndür (ADMIN/EDITOR)
+      summary: Yazıyı bu revizyondaki hale geri döndür (ADMIN/MANAGER/EDITOR)
       description: >
         Geri dönüş de geri alınabilsin diye önce mevcut state yeni bir revizyon
         olarak kaydedilir, ardından hedef revizyonun snapshot'ı uygulanır.
@@ -2452,7 +2561,7 @@ paths:
         "429": { $ref: "#/components/responses/TooManyRequests" }
     post:
       tags: [Media]
-      summary: Görsel yükle (ADMIN/EDITOR)
+      summary: Görsel yükle (ADMIN/MANAGER/EDITOR)
       description: >
         `multipart/form-data`, tek dosya. Editör (blog/sayfa) içerik bloklarına ve
         kapak görseline BURADAN eklenir.
@@ -2514,7 +2623,7 @@ paths:
       - $ref: "#/components/parameters/MediaId"
     patch:
       tags: [Media]
-      summary: Görselin alt metnini güncelle (ADMIN/EDITOR)
+      summary: Görselin alt metnini güncelle (ADMIN/MANAGER/EDITOR)
       description: >
         Faz 2 içerik editörü — editör içi görsellerde erişilebilirlik/SEO alt metni
         zorunluluğu. v1'de TEK güncellenebilir alan `altText`'tir; dosyanın kendisi,
@@ -2547,7 +2656,7 @@ paths:
         "422": { $ref: "#/components/responses/ValidationError" }
     delete:
       tags: [Media]
-      summary: Görseli KALICI sil — geri alınamaz (yalnızca ADMIN)
+      summary: Görseli KALICI sil — geri alınamaz (ADMIN veya MANAGER)
       description: >
         `Media` soft-delete DESTEKLEMEZ (Page/BlogPost'un aksine `deletedAt`/çöp kutusu
         YOKTUR) — bu uç DB kaydını VE depolanan dosyayı KALICI olarak siler. Dosya
@@ -2628,7 +2737,7 @@ paths:
         "429": { $ref: "#/components/responses/TooManyRequests" }
     post:
       tags: [Media]
-      summary: Klasör oluştur (ADMIN/EDITOR)
+      summary: Klasör oluştur (ADMIN/MANAGER/EDITOR)
       description: >
         Yetki eşiği `POST /admin/media` (yükleme) ile AYNI — klasör oluşturmak
         içerik düzenleme işidir, yıkıcı değildir.
@@ -2671,7 +2780,7 @@ paths:
       - $ref: "#/components/parameters/MediaFolderId"
     patch:
       tags: [Media]
-      summary: Klasörü yeniden adlandır / başka klasörün altına taşı (ADMIN/EDITOR)
+      summary: Klasörü yeniden adlandır / başka klasörün altına taşı (ADMIN/MANAGER/EDITOR)
       description: >
         En az bir alan gönderilmelidir (`name` ve/veya `parentId`); ikisi de yoksa `422`.
         `parentId: null` gönderilmesi "klasörü köke taşı" demektir — alanın HİÇ
@@ -2720,9 +2829,9 @@ paths:
         "422": { $ref: "#/components/responses/ValidationError" }
     delete:
       tags: [Media]
-      summary: Klasörü sil — içindeki medya SİLİNMEZ (yalnızca ADMIN)
+      summary: Klasörü sil — içindeki medya SİLİNMEZ (ADMIN veya MANAGER)
       description: >
-        Yetki eşiği `DELETE /admin/media/{mediaId}` ile AYNI (yalnızca ADMIN) — klasör
+        Yetki eşiği `DELETE /admin/media/{mediaId}` ile AYNI (ADMIN veya MANAGER) — klasör
         silmek medyayı yok etmese de organizasyon bilgisini geri alınamaz biçimde kaybeder.
 
 
@@ -2754,7 +2863,7 @@ paths:
   /admin/media/move:
     post:
       tags: [Media]
-      summary: Medyayı klasöre taşı — tekil ve toplu TEK uç (ADMIN/EDITOR)
+      summary: Medyayı klasöre taşı — tekil ve toplu TEK uç (ADMIN/MANAGER/EDITOR)
       description: >
         **Karar — ayrı bir `/move-bulk` ucu YOKTUR:** gövde her zaman `mediaIds` dizisi
         alır, tekil taşıma tek elemanlı dizidir. Gerekçe: taşıma mantığı (varlık kontrolü,
@@ -2807,7 +2916,7 @@ paths:
   /admin/notifications/templates:
     get:
       tags: [EmailTemplates]
-      summary: Tüm e-posta şablonlarını listele (yalnızca ADMIN)
+      summary: Tüm e-posta şablonlarını listele (ADMIN veya MANAGER)
       description: >
         Özet DTO döner — `blocks`/`bodyHtml` DÖNMEZ (liste görünümünde gereksiz, büyük
         olabilir). Sıralama `seq ASC`. Sayfalama YOKTUR (şablon sayısı doğası gereği azdır).
@@ -2836,7 +2945,7 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
     post:
       tags: [EmailTemplates]
-      summary: Yeni e-posta şablonu oluştur (yalnızca ADMIN)
+      summary: Yeni e-posta şablonu oluştur (ADMIN veya MANAGER)
       description: >
         `editorMode` her zaman `BLOCKS`'tur (yeni şablonlar RAW oluşturulamaz).
         Oluşturulan şablon `isActive=false`, `isSystem=false`, `key=null` başlar.
@@ -2863,7 +2972,7 @@ paths:
   /admin/notifications/templates/variables:
     get:
       tags: [EmailTemplates]
-      summary: Bir amaç için geçerli sistem değişkenlerini listele (yalnızca ADMIN)
+      summary: Bir amaç için geçerli sistem değişkenlerini listele (ADMIN veya MANAGER)
       description: >
         `lib/email-variables.ts` statik registry'sinden beslenir (DB tablosu DEĞİLDİR) —
         `lib/permissions-matrix.ts`/`lib/module-registry.ts` ile AYNI desen. Frontend
@@ -2903,7 +3012,7 @@ paths:
   /admin/notifications/templates/preview:
     post:
       tags: [EmailTemplates]
-      summary: Kaydedilmemiş taslağı render ederek önizle (yalnızca ADMIN, DURUMSUZ, DB'ye YAZMAZ)
+      summary: Kaydedilmemiş taslağı render ederek önizle (ADMIN veya MANAGER, DURUMSUZ, DB'ye YAZMAZ)
       description: >
         Editörde her değişiklikte (500 ms debounce) çağrılır; kaydetmeyi ZORUNLU KILMAZ.
         İki render motoru (istemci + sunucu) sürüklenme demektir — WYSIWYG'in tek
@@ -2949,7 +3058,7 @@ paths:
       - $ref: "#/components/parameters/EmailTemplateId"
     get:
       tags: [EmailTemplates]
-      summary: Bir e-posta şablonunu getir (yalnızca ADMIN)
+      summary: Bir e-posta şablonunu getir (ADMIN veya MANAGER)
       responses:
         "200":
           description: OK
@@ -2965,7 +3074,7 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
     patch:
       tags: [EmailTemplates]
-      summary: Bir e-posta şablonunu güncelle (yalnızca ADMIN)
+      summary: Bir e-posta şablonunu güncelle (ADMIN veya MANAGER)
       description: >
         `bodyHtml` YALNIZCA `editorMode=RAW` şablonlarda kabul edilir; `BLOCKS`
         şablonunda gönderilirse 422. `blocks` ise yalnızca `BLOCKS` modunda kabul edilir.
@@ -3011,7 +3120,7 @@ paths:
         "422": { $ref: "#/components/responses/ValidationError" }
     delete:
       tags: [EmailTemplates]
-      summary: Bir e-posta şablonunu sil (yalnızca ADMIN)
+      summary: Bir e-posta şablonunu sil (ADMIN veya MANAGER)
       description: >
         `isSystem=true` → 403 (seed'lenmiş çekirdek şablon silinemez).
         `isActive=true` → 409 (önce başka bir şablon aktifleştirilmeli; aksi halde ilgili
@@ -3036,7 +3145,7 @@ paths:
       - $ref: "#/components/parameters/EmailTemplateId"
     post:
       tags: [EmailTemplates]
-      summary: Şablonu amacının aktif şablonu yap (yalnızca ADMIN)
+      summary: Şablonu amacının aktif şablonu yap (ADMIN veya MANAGER)
       description: >
         Tek transaction içinde aynı `purpose`'a sahip diğer şablonlar pasifleştirilir,
         sonra hedef aktifleştirilir (§10.16.3). `purpose=CUSTOM` şablonlarda teklik kuralı
@@ -3061,7 +3170,7 @@ paths:
       - $ref: "#/components/parameters/EmailTemplateId"
     post:
       tags: [EmailTemplates]
-      summary: Şablonu kopyala (yalnızca ADMIN)
+      summary: Şablonu kopyala (ADMIN veya MANAGER)
       description: >
         Kopya `isSystem=false`, `isActive=false`, `key=null` ve adı `"<ad> (kopya)"`
         olarak oluşturulur. Sistem şablonlarını bozmadan denemek için birincil yol
@@ -3086,7 +3195,7 @@ paths:
       - $ref: "#/components/parameters/EmailTemplateId"
     post:
       tags: [EmailTemplates]
-      summary: KAYDEDİLMİŞ şablonu örnek verilerle admin'in KENDİ adresine gönder (yalnızca ADMIN)
+      summary: KAYDEDİLMİŞ şablonu örnek verilerle kendi adresine gönder (ADMIN veya MANAGER)
       description: >
         **Gövde `to` alanı KABUL ETMEZ** — alıcı her zaman isteği yapan kullanıcının
         e-posta adresidir. ADMIN arkasında bile "keyfi HTML'i keyfi adrese gönder" ucu bir
@@ -3130,7 +3239,7 @@ paths:
   /admin/contact/form:
     get:
       tags: [ContactForms]
-      summary: İletişim formu yapılandırmasını getir (yalnızca ADMIN)
+      summary: İletişim formu yapılandırmasını getir (ADMIN veya MANAGER)
       description: >
         Tek (singleton) kayıt — `SiteSettings`/`SiteAppearance` ile AYNI lazy-upsert
         deseni: satır yoksa varsayılanlar döner, DB'ye yazılmaz.
@@ -3148,7 +3257,7 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
     patch:
       tags: [ContactForms]
-      summary: İletişim formu yapılandırmasını güncelle (yalnızca ADMIN)
+      summary: İletişim formu yapılandırmasını güncelle (ADMIN veya MANAGER)
       description: "Audit log: `contact.form_update` (metadata: değişen alan ADLARI, DEĞERLERİ değil)."
       requestBody:
         required: true
@@ -3172,7 +3281,7 @@ paths:
   /admin/contact/form/fields:
     put:
       tags: [ContactForms]
-      summary: Form alanlarını TAM DEĞİŞTİR (yalnızca ADMIN)
+      summary: Form alanlarını TAM DEĞİŞTİR (ADMIN veya MANAGER)
       description: >
         `PUT /admin/navigation` ile AYNI tam-değiştirme (full replace) deseni — gövdedeki
         dizi mevcut alanların TAMAMININ yerine geçer, `order` dizideki indekstir.
@@ -3213,7 +3322,7 @@ paths:
   /admin/contact/submissions:
     get:
       tags: [ContactForms]
-      summary: Form gönderimlerini listele (ADMIN veya EDITOR)
+      summary: Form gönderimlerini listele (SiteRole=ADMIN veya MANAGER)
       description: >
         Cursor sayfalı, `seq DESC` (en yeni önce). `data` alanı liste yanıtında DÖNMEZ
         (detayda döner). `q` ad/e-posta üzerinde `contains` araması yapar.
@@ -3256,7 +3365,7 @@ paths:
       - $ref: "#/components/parameters/ContactSubmissionId"
     get:
       tags: [ContactForms]
-      summary: Bir gönderimin detayını getir (ADMIN veya EDITOR)
+      summary: Bir gönderimin detayını getir (SiteRole=ADMIN veya MANAGER)
       description: >
         Yan etkisizdir — okundu İŞARETLEMEZ (bunun için `PATCH .../{submissionId}`
         `status: READ`). Yan etkili GET, önyükleme/prefetch ile istem dışı tetiklenir.
@@ -3275,7 +3384,7 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
     patch:
       tags: [ContactForms]
-      summary: Gönderim durumunu güncelle (ADMIN veya EDITOR)
+      summary: Gönderim durumunu güncelle (SiteRole=ADMIN veya MANAGER)
       description: >
         `READ`'e geçişte `readAt`/`readById` doldurulur.
         Audit log: `contact.submission_status_change` (metadata'ya ziyaretçi
@@ -3301,7 +3410,7 @@ paths:
         "422": { $ref: "#/components/responses/ValidationError" }
     delete:
       tags: [ContactForms]
-      summary: Gönderimi kalıcı sil (yalnızca ADMIN)
+      summary: Gönderimi kalıcı sil (ADMIN veya MANAGER)
       description: >
         Geri alınamaz — çöp kutusu YOKTUR. KVKK silme talebinin (veri sahibi hakkı)
         karşılığıdır. Audit log: `contact.submission_delete`.
@@ -3979,11 +4088,12 @@ paths:
   /admin/appearance:
     get:
       tags: [Appearance]
-      summary: Site görünüm ayarlarını oku (authenticated)
+      summary: Site görünüm ayarlarını oku (SiteRole=ADMIN/MANAGER/EDITOR)
       description: >
-        Public yanıta EK olarak `presetKey` ve `updatedAt` döner. Okuma eşiği
-        authenticated'tır (VIEWER dahil) — panel salt-okunur görüntülenebilir,
-        yazma yalnızca ADMIN'dir.
+        Public yanıta EK olarak `presetKey` ve `updatedAt` döner. Okuma eşiği panel
+        kapısıdır (`ADMIN`/`MANAGER`/`EDITOR`; CUSTOMER/USER → 403) — panel salt-okunur
+        görüntülenebilir. Yazma: `PATCH` ADMIN veya MANAGER, özel CSS/JS yalnızca ADMIN
+        (bkz. `Appearance` tag'i).
       responses:
         "200":
           description: OK
@@ -4265,7 +4375,7 @@ paths:
   /admin/modules:
     get:
       tags: [Modules]
-      summary: Modül listesini oku — tanım + aktif/pasif durum (ADMIN/EDITOR/VIEWER)
+      summary: Modül listesini oku — tanım + aktif/pasif durum (ADMIN/MANAGER/EDITOR)
       description: >
         Kod içi statik `MODULE_REGISTRY`'deki HER modül tanımı (`key`/`label`/
         `description`/`recommendedFor`) `SiteModule` tablosundaki (varsa) durum
@@ -4374,7 +4484,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
     post:
       tags: [Products]
-      summary: Yeni ürün oluştur (ADMIN/EDITOR)
+      summary: Yeni ürün oluştur (SiteRole=ADMIN veya MANAGER)
       description: >
         `slug` verilmezse `title`'dan üretilir. `authorId` verilmezse giriş yapmış
         kullanıcı yazar olur (yalnızca ADMIN başka bir kullanıcı atayabilir — §10.7 ile
@@ -4422,7 +4532,7 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
     patch:
       tags: [Products]
-      summary: Ürünü güncelle (ADMIN/EDITOR)
+      summary: Ürünü güncelle (SiteRole=ADMIN veya MANAGER)
       description: >
         Her başarılı PATCH, güncellemeden önceki hali `ContentRevision` olarak kaydeder
         (`entityType: PRODUCT`, §10.1 ile AYNI mekanizma); revizyonlar
@@ -4458,8 +4568,8 @@ paths:
         "422": { $ref: "#/components/responses/ValidationError" }
     delete:
       tags: [Products]
-      summary: Ürünü ÇÖPE TAŞI — soft delete (ADMIN/EDITOR)
-      description: "`Pages`/`Blog` (§10.7) ile BİREBİR AYNI davranış. İdempotenttir. Kalıcı silme için `DELETE .../permanent` (yalnızca ADMIN)."
+      summary: Ürünü ÇÖPE TAŞI — soft delete (SiteRole=ADMIN veya MANAGER)
+      description: "`Pages`/`Blog` (§10.7) ile BİREBİR AYNI davranış. İdempotenttir. Kalıcı silme için `DELETE .../permanent` (ADMIN veya MANAGER)."
       responses:
         "204": { description: Çöpe taşındı }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -4471,7 +4581,7 @@ paths:
       - $ref: "#/components/parameters/ProductId"
     post:
       tags: [Products]
-      summary: Ürünü otomatik kaydet — 3sn debounce (ADMIN/EDITOR)
+      summary: Ürünü otomatik kaydet — 3sn debounce (SiteRole=ADMIN veya MANAGER)
       description: >
         Davranış `POST /admin/pages/{pageId}/autosave` ile BİREBİR AYNI — oradaki
         açıklama (`ContentRevision` ÜRETMEZ, `AuditLog` YAZMAZ, çöpteki içerik 409)
@@ -4509,10 +4619,10 @@ paths:
   /admin/products/bulk:
     post:
       tags: [Products]
-      summary: Ürünlerde toplu işlem (ADMIN/EDITOR; permanent-delete yalnızca ADMIN)
+      summary: Ürünlerde toplu işlem (SiteRole=ADMIN veya MANAGER)
       description: >
         `POST /admin/pages/bulk` ile BİREBİR AYNI gövde, aynı yanıt, aynı atlama
-        kuralları, aynı ADMIN-only `permanent-delete` eşiği (EDITOR gönderirse tüm
+        kuralları; ucun TAMAMI ADMIN/MANAGER eşiğindedir (EDITOR gönderirse tüm
         istek 403, kısmi uygulama YAPILMAZ). Audit action öneki `product.bulk_<action>`.
 
 
@@ -4545,7 +4655,7 @@ paths:
       - $ref: "#/components/parameters/ProductId"
     get:
       tags: [ContentRevisions]
-      summary: Ürünün revizyon geçmişini listele (ADMIN/EDITOR)
+      summary: Ürünün revizyon geçmişini listele (SiteRole=ADMIN veya MANAGER)
       description: >
         `GET /admin/pages/{pageId}/revisions` ile BİREBİR AYNI sözleşme — liste görünümü
         `snapshot` alanını İÇERMEZ, en yeni revizyon önce gelir. Kayıtlar
@@ -4575,7 +4685,7 @@ paths:
       - $ref: "#/components/parameters/RevisionId"
     get:
       tags: [ContentRevisions]
-      summary: Bir revizyonun tam snapshot'ını getir (ADMIN/EDITOR)
+      summary: Bir revizyonun tam snapshot'ını getir (SiteRole=ADMIN veya MANAGER)
       responses:
         "200":
           description: OK
@@ -4596,7 +4706,7 @@ paths:
       - $ref: "#/components/parameters/RevisionId"
     post:
       tags: [ContentRevisions]
-      summary: Ürünü bu revizyondaki hale geri döndür (ADMIN/EDITOR)
+      summary: Ürünü bu revizyondaki hale geri döndür (SiteRole=ADMIN veya MANAGER)
       description: >
         Geri dönüş de geri alınabilsin diye önce mevcut state yeni bir revizyon olarak
         kaydedilir, ardından hedef revizyonun snapshot'ı uygulanır.
@@ -4636,7 +4746,7 @@ paths:
       - $ref: "#/components/parameters/ProductId"
     post:
       tags: [Products]
-      summary: Ürünü çöpten geri yükle (ADMIN/EDITOR)
+      summary: Ürünü çöpten geri yükle (SiteRole=ADMIN veya MANAGER)
       description: "`status` DEĞİŞMEZ. İdempotenttir — çöpte olmayan ürün için de 200 ve mevcut kayıt döner."
       responses:
         "200":
@@ -4657,7 +4767,7 @@ paths:
       - $ref: "#/components/parameters/ProductId"
     delete:
       tags: [Products]
-      summary: Ürünü KALICI sil — geri alınamaz (yalnızca ADMIN)
+      summary: Ürünü KALICI sil — geri alınamaz (ADMIN veya MANAGER)
       description: >
         Ürün ÖNCE çöpte olmalıdır, değilse `409 CONFLICT`. Aynı transaction içinde
         `ContentRevision` satırları (polymorphic, FK YOK → elle silinir, `entityType:
@@ -4678,7 +4788,7 @@ paths:
       - $ref: "#/components/parameters/ProductId"
     patch:
       tags: [Products]
-      summary: Stoku ELLE düzelt (ADMIN/EDITOR)
+      summary: Stoku ELLE düzelt (SiteRole=ADMIN veya MANAGER)
       description: >
         Adminin manuel stok düzeltmesi içindir — checkout'un OTOMATİK stok düşürmesiyle
         (bkz. `Webhooks` tag'i, `handleOrderPaid`) KARIŞTIRILMAMALIDIR; bu uç Serializable
@@ -4709,7 +4819,7 @@ paths:
       - $ref: "#/components/parameters/ProductId"
     post:
       tags: [Products]
-      summary: Ürün galerisine görsel ekle (ADMIN/EDITOR)
+      summary: Ürün galerisine görsel ekle (SiteRole=ADMIN veya MANAGER)
       description: >
         `mediaId` galeride ZATEN varsa (`@@unique([productId, mediaId])`) `409
         CONFLICT`. Yeni satır mevcut en yüksek `order` değerinin bir fazlasına eklenir
@@ -4749,7 +4859,7 @@ paths:
       - $ref: "#/components/parameters/ImageId"
     delete:
       tags: [Products]
-      summary: Ürün galerisinden görsel kaldır (ADMIN/EDITOR)
+      summary: Ürün galerisinden görsel kaldır (SiteRole=ADMIN veya MANAGER)
       description: >
         `imageId`'nin GERÇEKTEN bu `productId`'ye ait olduğu doğrulanır (IDOR
         koruması) — eşleşmezse `404 NOT_FOUND`. Güncellenmiş `Product` DTO'sunu
@@ -4787,7 +4897,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
     post:
       tags: [Products]
-      summary: Yeni ürün kategorisi oluştur (ADMIN/EDITOR)
+      summary: Yeni ürün kategorisi oluştur (SiteRole=ADMIN veya MANAGER)
       requestBody:
         required: true
         content:
@@ -4812,7 +4922,7 @@ paths:
       - $ref: "#/components/parameters/ProductCategoryId"
     patch:
       tags: [Products]
-      summary: Ürün kategorisini güncelle (ADMIN/EDITOR)
+      summary: Ürün kategorisini güncelle (SiteRole=ADMIN veya MANAGER)
       requestBody:
         required: true
         content:
@@ -4834,7 +4944,7 @@ paths:
         "422": { $ref: "#/components/responses/ValidationError" }
     delete:
       tags: [Products]
-      summary: Ürün kategorisini sil (yalnızca ADMIN)
+      summary: Ürün kategorisini sil (ADMIN veya MANAGER)
       description: "Kategoriye bağlı ürünler `SetNull` ile kategorisiz kalır (silinmez)."
       responses:
         "204": { description: Silindi }
@@ -4935,7 +5045,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
     post:
       tags: [Portfolio]
-      summary: Yeni portföy öğesi oluştur (ADMIN/EDITOR)
+      summary: Yeni portföy öğesi oluştur (SiteRole=ADMIN veya MANAGER)
       description: >
         `slug` verilmezse `title`'dan üretilir. `order` manuel sıralama alanıdır
         (kullanıcı kararı) — `viewCount`/iç `seq` sayacıyla KARIŞTIRILMAMALIDIR, public
@@ -4980,7 +5090,7 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
     patch:
       tags: [Portfolio]
-      summary: Portföy öğesini güncelle (ADMIN/EDITOR)
+      summary: Portföy öğesini güncelle (SiteRole=ADMIN veya MANAGER)
       description: >
         `Product` (`PATCH /admin/products/{productId}`) ile BİREBİR AYNI davranış:
         güncellemeden önceki hal `ContentRevision` olarak yazılır (`entityType:
@@ -5012,8 +5122,8 @@ paths:
         "422": { $ref: "#/components/responses/ValidationError" }
     delete:
       tags: [Portfolio]
-      summary: Portföy öğesini ÇÖPE TAŞI — soft delete (ADMIN/EDITOR)
-      description: "İdempotenttir. Kalıcı silme için `DELETE .../permanent` (yalnızca ADMIN)."
+      summary: Portföy öğesini ÇÖPE TAŞI — soft delete (SiteRole=ADMIN veya MANAGER)
+      description: "İdempotenttir. Kalıcı silme için `DELETE .../permanent` (ADMIN veya MANAGER)."
       responses:
         "204": { description: Çöpe taşındı }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -5025,7 +5135,7 @@ paths:
       - $ref: "#/components/parameters/PortfolioItemId"
     post:
       tags: [Portfolio]
-      summary: Portföy öğesini otomatik kaydet — 3sn debounce (ADMIN/EDITOR)
+      summary: Portföy öğesini otomatik kaydet — 3sn debounce (SiteRole=ADMIN veya MANAGER)
       description: >
         `POST /admin/products/{productId}/autosave` ile BİREBİR AYNI davranış
         (`ContentRevision` ÜRETMEZ, `AuditLog` YAZMAZ, çöpteki içerik 409). Gövde
@@ -5060,7 +5170,7 @@ paths:
   /admin/portfolio/bulk:
     post:
       tags: [Portfolio]
-      summary: Portföy öğelerinde toplu işlem (ADMIN/EDITOR; permanent-delete yalnızca ADMIN)
+      summary: Portföy öğelerinde toplu işlem (SiteRole=ADMIN veya MANAGER)
       description: >
         `POST /admin/products/bulk` ile BİREBİR AYNI gövde, yanıt, atlama kuralları ve
         atomiklik garantisi (ortak helper, tek transaction); `permanent-delete` dalında
@@ -5090,7 +5200,7 @@ paths:
       - $ref: "#/components/parameters/PortfolioItemId"
     get:
       tags: [ContentRevisions]
-      summary: Portföy öğesinin revizyon geçmişini listele (ADMIN/EDITOR)
+      summary: Portföy öğesinin revizyon geçmişini listele (SiteRole=ADMIN veya MANAGER)
       description: >
         `GET /admin/products/{productId}/revisions` ile BİREBİR AYNI sözleşme; kayıtlar
         `entityType: PORTFOLIO_ITEM` filtresiyle okunur.
@@ -5119,7 +5229,7 @@ paths:
       - $ref: "#/components/parameters/RevisionId"
     get:
       tags: [ContentRevisions]
-      summary: Bir revizyonun tam snapshot'ını getir (ADMIN/EDITOR)
+      summary: Bir revizyonun tam snapshot'ını getir (SiteRole=ADMIN veya MANAGER)
       responses:
         "200":
           description: OK
@@ -5140,7 +5250,7 @@ paths:
       - $ref: "#/components/parameters/RevisionId"
     post:
       tags: [ContentRevisions]
-      summary: Portföy öğesini bu revizyondaki hale geri döndür (ADMIN/EDITOR)
+      summary: Portföy öğesini bu revizyondaki hale geri döndür (SiteRole=ADMIN veya MANAGER)
       description: >
         Geri dönüş de geri alınabilsin diye önce mevcut state yeni bir revizyon olarak
         kaydedilir, ardından hedef revizyonun snapshot'ı uygulanır.
@@ -5175,7 +5285,7 @@ paths:
       - $ref: "#/components/parameters/PortfolioItemId"
     post:
       tags: [Portfolio]
-      summary: Portföy öğesini çöpten geri yükle (ADMIN/EDITOR)
+      summary: Portföy öğesini çöpten geri yükle (SiteRole=ADMIN veya MANAGER)
       description: "`status` DEĞİŞMEZ. İdempotenttir."
       responses:
         "200":
@@ -5196,7 +5306,7 @@ paths:
       - $ref: "#/components/parameters/PortfolioItemId"
     delete:
       tags: [Portfolio]
-      summary: Portföy öğesini KALICI sil — geri alınamaz (yalnızca ADMIN)
+      summary: Portföy öğesini KALICI sil — geri alınamaz (ADMIN veya MANAGER)
       description: >
         Öğe ÖNCE çöpte olmalıdır, değilse `409 CONFLICT`. `ContentRevision` satırları
         (`entityType: PORTFOLIO_ITEM`) aynı transaction'da elle silinir. Audit log:
@@ -5217,7 +5327,7 @@ paths:
       - $ref: "#/components/parameters/PortfolioItemId"
     post:
       tags: [Portfolio]
-      summary: Portföy öğesi galerisine görsel ekle (ADMIN/EDITOR)
+      summary: Portföy öğesi galerisine görsel ekle (SiteRole=ADMIN veya MANAGER)
       description: >
         `Products` (`POST /admin/products/{productId}/images`) ile BİREBİR AYNI davranış:
         `mediaId` galeride ZATEN varsa (`@@unique([portfolioItemId, mediaId])`) `409
@@ -5258,7 +5368,7 @@ paths:
       - $ref: "#/components/parameters/ImageId"
     delete:
       tags: [Portfolio]
-      summary: Portföy öğesi galerisinden görsel kaldır (ADMIN/EDITOR)
+      summary: Portföy öğesi galerisinden görsel kaldır (SiteRole=ADMIN veya MANAGER)
       description: >
         `imageId`'nin GERÇEKTEN bu `itemId`'ye ait olduğu doğrulanır (IDOR koruması) —
         eşleşmezse `404 NOT_FOUND`. Güncellenmiş `PortfolioItem` DTO'sunu (galeri
@@ -5296,7 +5406,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
     post:
       tags: [Portfolio]
-      summary: Yeni portföy kategorisi oluştur (ADMIN/EDITOR)
+      summary: Yeni portföy kategorisi oluştur (SiteRole=ADMIN veya MANAGER)
       requestBody:
         required: true
         content:
@@ -5321,7 +5431,7 @@ paths:
       - $ref: "#/components/parameters/PortfolioCategoryId"
     patch:
       tags: [Portfolio]
-      summary: Portföy kategorisini güncelle (ADMIN/EDITOR)
+      summary: Portföy kategorisini güncelle (SiteRole=ADMIN veya MANAGER)
       requestBody:
         required: true
         content:
@@ -5343,7 +5453,7 @@ paths:
         "422": { $ref: "#/components/responses/ValidationError" }
     delete:
       tags: [Portfolio]
-      summary: Portföy kategorisini sil (yalnızca ADMIN)
+      summary: Portföy kategorisini sil (ADMIN veya MANAGER)
       description: "Kategoriye bağlı öğeler `SetNull` ile kategorisiz kalır (silinmez)."
       responses:
         "204": { description: Silindi }
@@ -7420,54 +7530,46 @@ components:
         name: { type: string }
         avatarUrl: { type: string, nullable: true }
         emailVerifiedAt: { type: string, format: date-time, nullable: true }
-        role: { type: string, enum: [ADMIN, EDITOR, VIEWER] }
+        role:
+          type: string
+          enum: [ADMIN, MANAGER, EDITOR, CUSTOMER, USER]
+          description: >
+            §10.21 — site-geneli rol. Panel erişimi olan roller: `ADMIN`, `MANAGER`,
+            `EDITOR`. `CUSTOMER` ve `USER` `/admin/*` altındaki hiçbir uca erişemez (403).
+            Yeni kayıtların varsayılanı `USER`'dır (sıfırdan kurulan ortamda İLK hesap
+            `ADMIN`). Tam yetki matrisi: kök seviyedeki `x-site-rbac` bloğu +
+            `.claude/architect-scope-rbac-5-tier.md` §5.
         canUseAdvancedBuilder:
           type: boolean
           readOnly: true
           description: >
-            §10.20 — bu kullanıcının **Gelişmiş Düzenleyici** (advanced page builder)
-            yeteneği var mı. TÜRETİLMİŞ ve SALT-OKUNUR bir alandır; doğrudan yazılamaz
-            (izin vermek için bkz. `PATCH /admin/users/{userId}/builder-access`).
+            §10.21 — bu kullanıcı sayfa bloklarının **YAPISINI** değiştirebilir mi
+            (ekleme/silme/taşıma, `container.settings`, `reveal`, `custom-html`).
+            TÜRETİLMİŞ ve SALT-OKUNUR; doğrudan yazılamaz ve **ayarlanamaz**.
 
 
-            `canUseAdvancedBuilder = (role === "ADMIN") || advancedBuilderEnabled`
+            `canUseAdvancedBuilder = (role === "ADMIN")`
 
 
-            ADMIN için depolanan değere BAKILMAKSIZIN her zaman `true`'dur — kilitlenme
-            güvenliği (`assertNotLastActiveAdmin` ile aynı refleks, bkz.
-            `.claude/architect-scope-page-editor-roles.md` §1.5).
+            **BREAKING (§10.21):** v1'de bu alan kullanıcı-başı bir bayraktan
+            (`User.advancedBuilderEnabled`) türüyordu. O kolon, o kolonu değiştiren uç
+            (`PATCH /admin/users/{userId}/builder-access`) ve `AdminUser.advancedBuilderEnabled`
+            DTO alanı **KALDIRILDI** — 5 rollü modelde ADMIN dışında hiçbir rol `true`
+            olamayacağı için bayrak ölü kolona dönüşmüştü
+            (gerekçe: `.claude/architect-scope-rbac-5-tier.md` §3).
 
 
             **Bu alan yalnızca UI'ın doğru kontrolleri göstermesi içindir, bir güvenlik
-            kontrolü DEĞİLDİR.** Sunucu her yazma isteğinde yeteneği bağımsız olarak
-            yeniden hesaplar; istemcinin kontrolleri gizlemesine GÜVENİLMEZ.
-
-
-            `false` olan bir EDITOR, panelde **"Yazar (Standart Düzenleyici)"** olarak
-            gösterilir — projede ayrı bir `AUTHOR` SiteRole'ü YOKTUR ve BİLİNÇLİ olarak
-            eklenmemiştir (gerekçe: aynı doküman §1.3).
+            kontrolü DEĞİLDİR.** Sunucu her yazma isteğinde bağımsız olarak yeniden
+            hesaplar; istemcinin kontrolleri gizlemesine GÜVENİLMEZ.
         createdAt: { type: string, format: date-time }
 
     AdminUser:
-      description: "`/admin/users` uçlarında dönen genişletilmiş kullanıcı DTO'su — yalnızca ADMIN görebilir."
+      description: "`/admin/users` uçlarında dönen genişletilmiş kullanıcı DTO'su — yalnızca SiteRole=ADMIN görebilir (MANAGER dahil hiç kimse)."
       allOf:
         - $ref: "#/components/schemas/User"
         - type: object
           properties:
-            advancedBuilderEnabled:
-              type: boolean
-              description: >
-                §10.20 — DEPOLANAN izin (`User.advancedBuilderEnabled` kolonu), yani
-                "yöneticinin bu hesaba açıkça verdiği yetki". `User.canUseAdvancedBuilder`
-                ise ETKİN yetenektir ve ADMIN'ler için bu alandan BAĞIMSIZ olarak `true`
-                döner. İkisi bilerek ayrı adlandırılmıştır — yönetim ekranı anahtarı BU
-                alana bağlanır (bkz. `PATCH /admin/users/{userId}/builder-access`).
-
-
-                `role: VIEWER` olan bir kullanıcıda `true` olması KABUL EDİLİR ve 422
-                ÜRETMEZ: VIEWER zaten tüm yazma uçlarından `requireSiteRole` ile önce
-                reddedilir, dolayısıyla değer etkisizdir (çapraz-alan doğrulaması
-                BİLİNÇLİ olarak eklenmemiştir — rol değişiminde tutarsızlık tuzağı yaratırdı).
             status:
               type: string
               enum: [ACTIVE, SUSPENDED, DELETED]
@@ -7508,7 +7610,14 @@ components:
       properties:
         name: { type: string, minLength: 1 }
         email: { type: string, format: email }
-        role: { type: string, enum: [ADMIN, EDITOR, VIEWER], default: EDITOR }
+        role:
+          type: string
+          enum: [ADMIN, MANAGER, EDITOR, CUSTOMER, USER]
+          default: EDITOR
+          description: >
+            Varsayılan `EDITOR` — panel rolleri içindeki EN DAR olanı (yalnızca blog +
+            medya + sayfa içeriği). `CUSTOMER`/`USER` da geçerli hedeflerdir (panel erişimi
+            OLMAYAN hesabı elle sağlamak için).
 
     CreateAdminUserResponse:
       type: object
@@ -7517,30 +7626,16 @@ components:
         setPasswordUrl: { type: string, format: uri }
 
     UpdateAdminUserRoleRequest:
+      description: >
+        §10.21 — `PATCH /admin/users/{userId}/role` gövdesi. **Yalnızca SiteRole=ADMIN
+        çağırabilir** (MANAGER dahil hiç kimse — dikey ayrıcalık yükseltmesi riski).
+        Hedef rol 5 değerin HERHANGİ biri olabilir; `CUSTOMER`/`USER`'a düşürmek panel
+        erişimini geri almanın (ban/downgrade) doğru aracıdır. Son aktif `ADMIN`'i başka
+        HERHANGİ bir role çekmek `409 CONFLICT` verir (`assertNotLastActiveAdmin`).
       type: object
       required: [role]
       properties:
-        role: { type: string, enum: [ADMIN, EDITOR, VIEWER] }
-
-    UpdateAdminUserBuilderAccessRequest:
-      description: >
-        §10.20 — `PATCH /admin/users/{userId}/builder-access` gövdesi. Kullanıcının
-        **Gelişmiş Düzenleyici** yeteneğini açar/kapatır. `role` BU UÇTAN
-        DEĞİŞTİRİLEMEZ (bkz. `/admin/users/{userId}/role`) — yetenek ve rol AYRI
-        eksenlerdir.
-      type: object
-      required: [advancedBuilderEnabled]
-      properties:
-        advancedBuilderEnabled:
-          type: boolean
-          description: >
-            `true` = gelişmiş düzenleyici (yapı/konteyner/düzen/efekt) açık.
-            `false` = standart mod — kullanıcı yalnızca `editMode: TEMPLATE` olan
-            sayfalarda içerik alanlarını doldurabilir (bkz. `PageEditMode`).
-
-
-            ADMIN hesaplarında bu değer `false` yapılsa dahi ETKİN yetenek `true`
-            kalır (`User.canUseAdvancedBuilder`) — kilitlenme güvenliği.
+        role: { type: string, enum: [ADMIN, MANAGER, EDITOR, CUSTOMER, USER] }
 
     UpdateAdminUserStatusRequest:
       type: object
@@ -7558,7 +7653,7 @@ components:
       properties:
         roles:
           type: array
-          items: { type: string, enum: [ADMIN, EDITOR, VIEWER] }
+          items: { type: string, enum: [ADMIN, MANAGER, EDITOR, CUSTOMER, USER] }
         modules:
           type: array
           items:
@@ -7570,31 +7665,33 @@ components:
                 type: object
                 additionalProperties:
                   type: array
-                  items: { type: string, enum: [ADMIN, EDITOR, VIEWER] }
+                  items: { type: string, enum: [ADMIN, MANAGER, EDITOR, CUSTOMER, USER] }
         capabilities:
           type: array
           description: >
-            §10.20 — ROLDEN TÜRETİLMEYEN, kullanıcı BAŞINA verilen yetenekler.
-            `modules` tablosu yalnızca rol × aksiyon eksenini anlatır; bu eksen
-            eklenmeseydi "Yetkiler" ekranı eksik/yanıltıcı bilgi gösterirdi (bir
-            EDITOR'ün sayfa düzenleme kapsamı, aynı rolde olan iki kullanıcı arasında
-            FARKLI olabilir).
+            ROLDEN TÜRETİLMEYEN yetenek ekseni. **§10.21 itibarıyla bu eksende
+            KULLANICI-BAŞI verilebilen HİÇBİR yetenek KALMAMIŞTIR** — tek üye olan
+            `advancedBuilder` artık saf bir rol türevidir (`alwaysGrantedTo: ["ADMIN"]`,
+            `grantableTo: []`). Dizi, şekli bozup "Yetkiler" ekranını kırmamak ve ileride
+            gerçek bir `Permission` tablosu geldiğinde sözleşme yerini hazır tutmak için
+            KORUNMUŞTUR. `grantableTo` boş olduğu için UI hiçbir yetenek anahtarı
+            (Switch) render etmez.
           items:
             type: object
             properties:
               key:
                 type: string
                 enum: [advancedBuilder]
-                description: "Bugün tek yetenek vardır — bkz. `.claude/architect-scope-page-editor-roles.md` §1.7 (ikinci bir bayrak eklemeden ÖNCE architect'e eskale edilir)."
+                description: "İkinci bir yetenek eklemeden ÖNCE architect'e eskale edilir — bkz. `.claude/architect-scope-page-editor-roles.md` §1.7 (kural §10.21'de de geçerlidir)."
               label: { type: string, example: "Gelişmiş Düzenleyici" }
               alwaysGrantedTo:
                 type: array
-                description: "Bu yeteneğin, depolanan izinden BAĞIMSIZ olarak her zaman etkin olduğu roller."
-                items: { type: string, enum: [ADMIN, EDITOR, VIEWER] }
+                description: "Bu yeteneğin rolden ötürü HER ZAMAN etkin olduğu roller. `advancedBuilder` için: `[\"ADMIN\"]`."
+                items: { type: string, enum: [ADMIN, MANAGER, EDITOR, CUSTOMER, USER] }
               grantableTo:
                 type: array
-                description: "Yöneticinin bu yeteneği kullanıcı başına açıp kapatabildiği roller."
-                items: { type: string, enum: [ADMIN, EDITOR, VIEWER] }
+                description: "Yöneticinin bu yeteneği kullanıcı başına açıp kapatabildiği roller. `advancedBuilder` için artık BOŞ dizidir (§10.21)."
+                items: { type: string, enum: [ADMIN, MANAGER, EDITOR, CUSTOMER, USER] }
 
     Organization:
       type: object
@@ -8024,7 +8121,7 @@ components:
     RoleDistributionEntry:
       type: object
       properties:
-        role: { type: string, enum: [ADMIN, EDITOR, VIEWER] }
+        role: { type: string, enum: [ADMIN, MANAGER, EDITOR, CUSTOMER, USER] }
         count: { type: integer }
 
     UsersStats:
@@ -8163,27 +8260,29 @@ components:
 
     PageEditMode:
       description: >
-        §10.20 — sayfanın DÜZENLEME MODU. Bu bir YAZMA/YETKİLENDİRME kavramıdır;
-        ziyaretçiye giden public çıktıda HİÇBİR karşılığı YOKTUR (`GET /pages`,
-        `GET /pages/{slug}` bu alandan ETKİLENMEZ).
+        Sayfanın tasarım niyetini belirten **KOZMETİK bir etikettir**. Ziyaretçiye giden
+        public çıktıda hiçbir karşılığı YOKTUR (`GET /pages`, `GET /pages/{slug}` bu
+        alandan ETKİLENMEZ).
 
 
-        - `FREEFORM` — serbest tasarım. Yapıyı (konteyner ekleme/silme/sıralama, düzen,
-          margin/padding, arka plan, CSS efektleri) değiştirmek serbesttir. **Varsayılan**
-          ve mevcut tüm sayfaların değeri — davranış değişikliği yoktur.
-        - `TEMPLATE` — şablon. Yapı DONMUŞtur: `canUseAdvancedBuilder: false` olan bir
-          kullanıcı yalnızca izin verilen İÇERİK alanlarını (başlık, zengin metin,
-          görsel, buton/link ve içerik dizileri) düzenleyebilir. İzin verilen alanların
-          blok tipi başına tam listesi backend'de tek bir sabittedir
-          (`lib/page-template-fields.ts::TEMPLATE_EDITABLE_FIELDS`) ve frontend onu
-          BİREBİR aynalar. Liste `blocks` JSON'unun İÇİNDE TUTULMAZ — orası isteğin
-          kendi gövdesidir ve kullanıcı kendi kendini yetkilendirebilirdi (gerekçe:
-          `.claude/architect-scope-page-editor-roles.md` §3.1).
+        - `FREEFORM` — serbest tasarım (**varsayılan**, mevcut tüm sayfaların değeri).
+        - `TEMPLATE` — "bu sayfa bir şablon olarak tasarlandı, içerik ekibine
+          devredilebilir" bilgisi.
 
 
-        **`TEMPLATE`, sayfa geneli bir KİLİT DEĞİLDİR:** `canUseAdvancedBuilder: true`
-        olan kullanıcılar (ADMIN ve yetkili EDITOR'ler) `TEMPLATE` bir sayfada da
-        kısıtsız çalışır. Mod yalnızca standart kullanıcılar için bir politikadır.
+        **HİÇBİR YETKİLENDİRME KARARI BU ALANI OKUMAZ (bağlayıcı).** 2026-08-23'teki
+        genişletmeden bu yana yapısal kilit `editMode`'dan TAMAMEN bağımsızdır: tek
+        belirleyici `canUseAdvancedBuilder`'dır, yani `role === "ADMIN"` (§10.21).
+        `TEMPLATE_EDITABLE_FIELDS` diff'i, ADMIN olmayan HER kullanıcının HER sayfadaki
+        (FREEFORM dahil) `PATCH`/`autosave` isteğinde çalışır. Alan yalnızca UI'da bir
+        rozet/ipucu olarak gösterilir.
+
+
+        İzin verilen içerik alanlarının blok tipi başına tam listesi backend'de tek bir
+        sabittedir (`lib/page-template-fields.ts::TEMPLATE_EDITABLE_FIELDS`) ve frontend
+        onu BİREBİR aynalar. Liste `blocks` JSON'unun İÇİNDE TUTULMAZ — orası isteğin
+        kendi gövdesidir ve kullanıcı kendi kendini yetkilendirebilirdi (gerekçe:
+        `.claude/architect-scope-page-editor-roles.md` §3.1).
       type: string
       enum: [FREEFORM, TEMPLATE]
       default: FREEFORM
@@ -8204,9 +8303,10 @@ components:
         editMode:
           allOf: [{ $ref: "#/components/schemas/PageEditMode" }]
           description: >
-            §10.20. İstemci, standart moda geçip geçmeyeceğini şu ifadeyle türetir:
-            `editMode === "TEMPLATE" && !user.canUseAdvancedBuilder`. AYRI bir yanıt
-            alanı YOKTUR — durum mevcut alanlardan türetilebilir.
+            Kozmetik rozet. **İstemci sade (standart) düzenleyiciye geçip geçmeyeceğini
+            BU ALANDAN TÜRETMEZ** — tek ifade `!user.canUseAdvancedBuilder`'dır (§10.21).
+            v1'deki `editMode === "TEMPLATE" && !user.canUseAdvancedBuilder` ifadesi
+            ARTIK YANLIŞTIR.
         blocks:
           type: array
           items: { $ref: "#/components/schemas/PageBlock" }
@@ -8250,7 +8350,7 @@ components:
             alanı YOKTUR — durum mevcut alanlardan türetilebilir.
 
 
-            **Yalnızca SiteRole=ADMIN değiştirebilir** (EDITOR dahi DEĞİL): bu bayrağı
+            **Yalnızca SiteRole=ADMIN değiştirebilir** (MANAGER/EDITOR dahi DEĞİL): bu bayrağı
             kaldırmak, hukuki metinlerde sessiz çeviri fallback'ini yeniden
             etkinleştirmek demektir — uyumluluk sonucu olan bir karardır ve
             denetlenir (`content.legal_flag_change`).
@@ -8651,7 +8751,7 @@ components:
           description: >
             `trash` = çöpe taşı; `restore` = geri yükle; `publish`/`draft` = durum
             değiştir (çöptekiler atlanır); `permanent-delete` = kalıcı sil
-            (yalnızca ADMIN, yalnızca çöptekiler).
+            (ADMIN veya MANAGER, yalnızca çöptekiler).
 
     BulkContentActionResult:
       type: object
@@ -8910,9 +9010,9 @@ components:
         editMode:
           allOf: [{ $ref: "#/components/schemas/PageEditMode" }]
           description: >
-            §10.20. Verilmezse `FREEFORM`. Bu ucun TAMAMI zaten
-            `canUseAdvancedBuilder: true` şartına tabidir (bkz. uç açıklaması), bu
-            yüzden burada ek bir alan-bazlı 403 kuralı YOKTUR.
+            Verilmezse `FREEFORM`. Bu ucun TAMAMI zaten `SiteRole=ADMIN` şartına tabidir
+            (§10.21, bkz. uç açıklaması), bu yüzden burada ek bir alan-bazlı 403 kuralı
+            YOKTUR.
         blocks:
           type: array
           maxItems: 300
@@ -8946,7 +9046,7 @@ components:
           nullable: true
           description: >
             §10.7 — verilmezse giriş yapmış kullanıcı atanır. Giriş yapmış kullanıcıdan
-            FARKLI bir id yalnızca ADMIN tarafından gönderilebilir (EDITOR → 403);
+            FARKLI bir id yalnızca SiteRole=ADMIN tarafından gönderilebilir (MANAGER/EDITOR → 403);
             var olmayan kullanıcı → 422.
         scheduledAt:
           type: string
@@ -8972,23 +9072,21 @@ components:
           type: string
           minLength: 1
           description: >
-            §10.20 — `canUseAdvancedBuilder: false` olan bir kullanıcı, sayfa
-            `editMode: TEMPLATE` iken bu alanı GÖNDEREMEZ (`403 FORBIDDEN`). Sayfanın
-            URL'i yapısal bir özelliktir. Diğer tüm alanlar (SEO, `status`, `title`,
-            `translations`) standart kullanıcıya AÇIKTIR.
+            **§10.21 — Katman 2 (sayfa kimliği): yalnızca `ADMIN` ve `MANAGER`
+            gönderebilir; `EDITOR` gönderirse `403 FORBIDDEN`.** Sayfanın URL'i yapısal
+            bir özelliktir. Kural `editMode`'dan BAĞIMSIZDIR.
         status: { $ref: "#/components/schemas/PageStatus" }
         editMode:
           allOf: [{ $ref: "#/components/schemas/PageEditMode" }]
           description: >
-            §10.20 — bu alanı yalnızca `canUseAdvancedBuilder: true` olan kullanıcılar
-            (ADMIN veya yetkili EDITOR) gönderebilir; aksi halde `403 FORBIDDEN`
-            (`isLegalDocument`/`authorId` ile AYNI alan-bazlı guard deseni).
+            **§10.21 — Katman 2: yalnızca `ADMIN` ve `MANAGER` gönderebilir; `EDITOR`
+            gönderirse `403 FORBIDDEN`** (`isLegalDocument`/`authorId` ile AYNI alan-bazlı
+            guard deseni, ama o ikisi ADMIN-only'dir).
 
 
-            AYRICALIK YÜKSELTMESİ YOKTUR: bu alanı değiştirebilen kişi zaten gelişmiş
-            yeteneğe sahiptir, yani `TEMPLATE` modu onu hiç kısıtlamıyordur — sayfayı
-            `FREEFORM`'a çevirmek ona yeni bir yetki KAZANDIRMAZ. Kısıtlanan taraf
-            (standart kullanıcı) bu alanı hiç gönderemez.
+            AYRICALIK YÜKSELTMESİ YOKTUR: `editMode` artık hiçbir yetkilendirme kararını
+            etkilemeyen kozmetik bir etikettir (bkz. `PageEditMode`), dolayısıyla değeri
+            değiştirmek hiç kimseye yeni bir yetki KAZANDIRMAZ.
 
 
             Değeri DEĞİŞTİREN her istek `content.edit_mode_change` audit kaydı üretir.
@@ -9002,8 +9100,9 @@ components:
             doğrulama sırası.
 
 
-            **§10.20 EK KURALI — şablon modu diff'i.** Sayfa `editMode: TEMPLATE` VE
-            çağıran `canUseAdvancedBuilder: false` ise, gelen ağaç kayıtlı ağaçla
+            **§10.21 EK KURALI — Katman 1, yapısal diff.** Çağıran **ADMIN DEĞİLSE**
+            (`canUseAdvancedBuilder === false`, yani MANAGER veya EDITOR), sayfanın
+            `editMode` değeri NE OLURSA OLSUN gelen ağaç kayıtlı ağaçla
             karşılaştırılır (`lib/page-template-guard.ts::assertTemplateEditAllowed`):
             düğüm sayısı, `id` sırası ve her düğümün `type`'ı AYNI kalmalı; `container`
             düğümlerinin `settings`/`reveal`'ı DEĞİŞMEMELİ; içerik bloklarında yalnızca
@@ -9032,16 +9131,16 @@ components:
           type: object
           additionalProperties: { type: object, additionalProperties: true }
           description: >
-            §10.20 — `translations.<locale>.blocks` de bir blok ağacıdır ve şablon modu
-            diff'ine (bkz. `blocks`) TABİDİR; aksi halde standart kullanıcı yapıyı çeviri
-            sekmesi üzerinden değiştirerek kısıtı baypas ederdi. Karşılaştırma referansı:
+            §10.21 — `translations.<locale>.blocks` de bir blok ağacıdır ve Katman 1
+            yapısal diff'ine (bkz. `blocks`) TABİDİR; aksi halde ADMIN olmayan bir
+            kullanıcı yapıyı çeviri sekmesi üzerinden değiştirerek kısıtı baypas ederdi. Karşılaştırma referansı:
             o locale'in KAYITLI `blocks`'u; kayıtlı çeviri henüz yoksa **kanonik**
             `blocks`. Böylece çeviri eklemek "metin doldurmak" olur, "yapı klonlamak" değil.
         authorId:
           type: string
           format: uuid
           nullable: true
-          description: "Yalnızca ADMIN değiştirebilir (EDITOR gönderirse 403). `null` = yazarı kaldır."
+          description: "Yalnızca SiteRole=ADMIN değiştirebilir (MANAGER/EDITOR gönderirse 403). `null` = yazarı kaldır."
         scheduledAt:
           type: string
           format: date-time
@@ -9167,7 +9266,7 @@ components:
             şekil doğrulaması) geçer; ihlal aynı şekilde `422 VALIDATION_ERROR` döner.
 
 
-            **§10.20 (ZORUNLU, atlanması bir güvenlik açığıdır):** şablon modu diff'i
+            **§10.21 (ZORUNLU, atlanması bir güvenlik açığıdır):** Katman 1 yapısal diff'i
             (`UpdatePageRequest.blocks`) BU YOLDA DA uygulanır. Autosave `PATCH`'ten
             AYRI bir kod yoludur ve `blocks` yazar; kontrol burada unutulursa 3 saniyelik
             debounce üzerinden TÜM şablon kısıtı sessizce baypas edilir. İhlal →
@@ -10280,7 +10379,7 @@ components:
       properties:
         role:
           type: string
-          enum: [ADMIN, EDITOR, VIEWER]
+          enum: [ADMIN, MANAGER, EDITOR, CUSTOMER, USER]
           description: "Yalnızca `type: USERS` için."
         subscriptionStatus:
           type: string
@@ -10879,7 +10978,7 @@ components:
           type: string
           format: uuid
           nullable: true
-          description: "§10.7 — verilmezse giriş yapmış kullanıcı atanır; BAŞKA bir kullanıcı yalnızca ADMIN tarafından atanabilir (EDITOR → 403)."
+          description: "§10.7 — verilmezse giriş yapmış kullanıcı atanır; BAŞKA bir kullanıcı yalnızca SiteRole=ADMIN tarafından atanabilir (MANAGER/EDITOR → 403)."
         scheduledAt:
           type: string
           format: date-time
@@ -11205,7 +11304,9 @@ components:
         lineTotalCents: { type: integer }
 
     Order:
-      description: "`/admin/orders` uçlarında dönen sipariş DTO'su."
+      description: >
+        `/admin/orders` (ADMIN/MANAGER) ve `GET /users/me/orders` (sahiplik filtresi,
+        tüm roller) uçlarında dönen sipariş DTO'su.
       type: object
       properties:
         id: { type: string, format: uuid }
@@ -11214,7 +11315,7 @@ components:
         customerEmail:
           type: string
           format: email
-          description: "LİSTEDE (`GET /admin/orders`) maskelenir (`a***@domain.com`); DETAYDA (`GET /admin/orders/{orderId}`) maskesiz döner."
+          description: "LİSTEDE (`GET /admin/orders`) maskelenir (`a***@domain.com`); DETAYDA (`GET /admin/orders/{orderId}`) maskesiz döner. `GET /users/me/orders`'ta MASKELENMEZ — kullanıcı kendi verisini okur."
         customerName: { type: string, nullable: true }
         currency: { type: string }
         subtotalCents: { type: integer }

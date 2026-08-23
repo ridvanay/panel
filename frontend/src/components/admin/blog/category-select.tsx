@@ -37,7 +37,7 @@ interface CategorySelectProps {
   /** Yeni kategori oluşturulduğunda `categories`'i güncellemek için (yerel liste, refetch YOK). */
   onCategoryCreated: (category: BlogCategory) => void;
   disabled?: boolean;
-  /** EDITOR altı roller (VIEWER) için satır-içi oluşturma tetikleyicisi RENDER EDİLMEZ. */
+  /** §10.21 — CUSTOMER/USER paneline giremediği için burada yalnızca ADMIN/MANAGER/EDITOR'e `true` gelir. */
   canCreate?: boolean;
 }
 

@@ -16,14 +16,15 @@ describe("appearance — /appearance ve /admin/appearance (public + authenticate
   let app: FastifyInstance;
   let adminToken: string;
   let adminId: string;
+  let managerToken: string;
   let editorToken: string;
-  let viewerToken: string;
+  let userToken: string;
 
   function authHeader(token: string) {
     return { authorization: `Bearer ${token}` };
   }
 
-  async function createUserDirect(role: "ADMIN" | "EDITOR" | "VIEWER") {
+  async function createUserDirect(role: "ADMIN" | "MANAGER" | "EDITOR" | "USER") {
     const passwordHash = await hashPassword("Sifre12345!");
     return app.prisma.user.create({
       data: {
@@ -51,11 +52,17 @@ describe("appearance — /appearance ve /admin/appearance (public + authenticate
     adminToken = admin.accessToken;
     adminId = admin.userId;
 
+    // `.claude/architect-scope-rbac-5-tier.md` §5.3 satır 2 — okuma (`GET /`, `/presets`,
+    // `/custom-code`): ADMIN/MANAGER/EDITOR; `PATCH /`, `POST /reset`: ADMIN+MANAGER;
+    // `PUT /custom-code/{css,js}`: yalnızca ADMIN.
+    const manager = await createUserDirect("MANAGER");
+    managerToken = await loginAs(manager.email);
+
     const editor = await createUserDirect("EDITOR");
     editorToken = await loginAs(editor.email);
 
-    const viewer = await createUserDirect("VIEWER");
-    viewerToken = await loginAs(viewer.email);
+    const standardUser = await createUserDirect("USER");
+    userToken = await loginAs(standardUser.email);
   });
 
   afterAll(async () => {
@@ -82,8 +89,11 @@ describe("appearance — /appearance ve /admin/appearance (public + authenticate
     expect(res.statusCode).toBe(401);
   });
 
-  it("GET /admin/appearance — VIEWER dahil authenticated HERKES okuyabilir, satır yoksa DEFAULTS + updatedAt: null", async () => {
-    const res = await app.inject({ method: "GET", url: "/api/v1/admin/appearance", headers: authHeader(viewerToken) });
+  it("GET /admin/appearance — ADMIN/MANAGER/EDITOR okuyabilir, USER panel kapısında 403 alır (satır yoksa DEFAULTS + updatedAt: null)", async () => {
+    const userRes = await app.inject({ method: "GET", url: "/api/v1/admin/appearance", headers: authHeader(userToken) });
+    expect(userRes.statusCode).toBe(403);
+
+    const res = await app.inject({ method: "GET", url: "/api/v1/admin/appearance", headers: authHeader(editorToken) });
     expect(res.statusCode).toBe(200);
     const data = res.json().data;
     expect(data.presetKey).toBeNull();
@@ -91,21 +101,29 @@ describe("appearance — /appearance ve /admin/appearance (public + authenticate
     expect(data.pageHeaderOverlayOpacity).toBe(40);
   });
 
-  it("PATCH /admin/appearance — EDITOR 403 döner (bilinçli sapma: bu panelde ADMIN/EDITOR YOK, yalnızca ADMIN, §10.12.6)", async () => {
-    const res = await app.inject({
+  it("PATCH /admin/appearance — EDITOR 403 döner, MANAGER 200 döner (§5.3 satır 2 — ADMIN+MANAGER)", async () => {
+    const editorRes = await app.inject({
       method: "PATCH",
       url: "/api/v1/admin/appearance",
       headers: authHeader(editorToken),
       payload: { primaryColor: "#123456" },
     });
-    expect(res.statusCode).toBe(403);
+    expect(editorRes.statusCode).toBe(403);
+
+    const managerRes = await app.inject({
+      method: "PATCH",
+      url: "/api/v1/admin/appearance",
+      headers: authHeader(managerToken),
+      payload: { primaryColor: "#654321" },
+    });
+    expect(managerRes.statusCode).toBe(200);
   });
 
-  it("PATCH /admin/appearance — VIEWER 403 döner", async () => {
+  it("PATCH /admin/appearance — USER 403 döner", async () => {
     const res = await app.inject({
       method: "PATCH",
       url: "/api/v1/admin/appearance",
-      headers: authHeader(viewerToken),
+      headers: authHeader(userToken),
       payload: { primaryColor: "#123456" },
     });
     expect(res.statusCode).toBe(403);
@@ -191,8 +209,11 @@ describe("appearance — /appearance ve /admin/appearance (public + authenticate
     expect(res.json().data.primaryColor).toBe("#ff0000");
   });
 
-  it("GET /admin/appearance/presets — statik registry döner, DB tablosu OLMADAN", async () => {
-    const res = await app.inject({ method: "GET", url: "/api/v1/admin/appearance/presets", headers: authHeader(viewerToken) });
+  it("GET /admin/appearance/presets — statik registry döner, DB tablosu OLMADAN (USER panel kapısında 403 alır)", async () => {
+    const userRes = await app.inject({ method: "GET", url: "/api/v1/admin/appearance/presets", headers: authHeader(userToken) });
+    expect(userRes.statusCode).toBe(403);
+
+    const res = await app.inject({ method: "GET", url: "/api/v1/admin/appearance/presets", headers: authHeader(editorToken) });
     expect(res.statusCode).toBe(200);
     const presets = res.json().data as Array<{ key: string; values: Record<string, unknown> }>;
     expect(presets.length).toBeGreaterThan(0);
@@ -201,7 +222,7 @@ describe("appearance — /appearance ve /admin/appearance (public + authenticate
     expect(presets.every((p) => p.values.maintenanceModeEnabled === undefined)).toBe(true);
   });
 
-  it("POST /admin/appearance/reset — EDITOR 403 döner", async () => {
+  it("POST /admin/appearance/reset — EDITOR 403 döner (§5.3 satır 2 — ADMIN+MANAGER)", async () => {
     // NOT: gövde şeması opsiyonel olsa da `payload` hiç verilmezse `light-my-request` gövdeyi
     // `null` gönderir — bu da preHandler (RBAC) çalışmadan ÖNCE preValidation aşamasında 422
     // üretir (bkz. ARCHITECTURE.md "Bilinen Sorunlar" — preValidation vs RBAC hook sıralaması,
@@ -248,8 +269,11 @@ describe("appearance — /appearance ve /admin/appearance (public + authenticate
   // §10.12.6 Özel CSS/JS — kontrattaki EN YÜKSEK RİSKLİ yüzey.
   // ---------------------------------------------------------------------------
 
-  it("GET /admin/appearance/custom-code — satır yoksa DEFAULTS (null/null), customCodeEnabled: true", async () => {
-    const res = await app.inject({ method: "GET", url: "/api/v1/admin/appearance/custom-code", headers: authHeader(viewerToken) });
+  it("GET /admin/appearance/custom-code — satır yoksa DEFAULTS (null/null), customCodeEnabled: true (USER panel kapısında 403 alır)", async () => {
+    const userRes = await app.inject({ method: "GET", url: "/api/v1/admin/appearance/custom-code", headers: authHeader(userToken) });
+    expect(userRes.statusCode).toBe(403);
+
+    const res = await app.inject({ method: "GET", url: "/api/v1/admin/appearance/custom-code", headers: authHeader(editorToken) });
     expect(res.statusCode).toBe(200);
     const data = res.json().data;
     expect(data.css).toBeNull();
@@ -277,14 +301,22 @@ describe("appearance — /appearance ve /admin/appearance (public + authenticate
     expect(res.statusCode).toBe(403);
   });
 
-  it("PUT /admin/appearance/custom-code/js — VIEWER 403 döner", async () => {
-    const res = await app.inject({
+  it("PUT /admin/appearance/custom-code/js — USER 403 döner, MANAGER de 403 döner ((c) — keyfi kod yürütme yalnızca ADMIN)", async () => {
+    const userRes = await app.inject({
       method: "PUT",
       url: "/api/v1/admin/appearance/custom-code/js",
-      headers: authHeader(viewerToken),
+      headers: authHeader(userToken),
       payload: { js: "console.log('merhaba');", acknowledged: true },
     });
-    expect(res.statusCode).toBe(403);
+    expect(userRes.statusCode).toBe(403);
+
+    const managerRes = await app.inject({
+      method: "PUT",
+      url: "/api/v1/admin/appearance/custom-code/js",
+      headers: authHeader(managerToken),
+      payload: { js: "console.log('merhaba');", acknowledged: true },
+    });
+    expect(managerRes.statusCode).toBe(403);
   });
 
   it("PUT /admin/appearance/custom-code/css — css boş DEĞİLKEN acknowledged: false ise 422 döner", async () => {

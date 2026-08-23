@@ -83,8 +83,8 @@ export default function EditBlogPostPage({ params }: { params: Promise<{ postId:
   const { postId } = use(params);
   const router = useRouter();
   const { user } = useAuth();
-  // §10.14.5 madde 4: EDITOR altı roller (VIEWER) için satır-içi oluşturma tetikleyicisi RENDER EDİLMEZ.
-  const canCreateTaxonomy = user?.role === "ADMIN" || user?.role === "EDITOR";
+  // §10.21 — blog kategori/etiket oluşturma-güncelleme SiteRole=ADMIN, MANAGER veya EDITOR'dür (§5.3 satır 3).
+  const canCreateTaxonomy = user?.role === "ADMIN" || user?.role === "MANAGER" || user?.role === "EDITOR";
 
   const [categories, setCategories] = useState<BlogCategory[]>([]);
   const [tags, setTags] = useState<BlogTag[]>([]);

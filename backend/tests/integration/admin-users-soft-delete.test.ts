@@ -46,7 +46,7 @@ describe("admin-users — yumuşak silme (soft-delete) ve geri alma", () => {
     return signAccessToken({ sub: user.id, email: user.email }).token;
   }
 
-  async function createUserDirect(role: "ADMIN" | "EDITOR" | "VIEWER", status: "ACTIVE" | "SUSPENDED" = "ACTIVE") {
+  async function createUserDirect(role: "ADMIN" | "EDITOR" | "USER", status: "ACTIVE" | "SUSPENDED" = "ACTIVE") {
     const passwordHash = await hashPassword("Sifre12345!");
     return app.prisma.user.create({
       data: {
@@ -189,7 +189,7 @@ describe("admin-users — yumuşak silme (soft-delete) ve geri alma", () => {
 
     it("silme idempotent DEĞİLDİR — zaten DELETED bir kullanıcıya tekrar DELETE atılırsa 404 döner", async () => {
       const activeAdmin = await createUserDirect("ADMIN");
-      const target = await createUserDirect("VIEWER");
+      const target = await createUserDirect("USER");
       const actorHeader = authHeader(tokenFor(activeAdmin));
 
       const first = await app.inject({ method: "DELETE", url: `/api/v1/admin/users/${target.id}`, headers: actorHeader });
@@ -283,44 +283,6 @@ describe("admin-users — yumuşak silme (soft-delete) ve geri alma", () => {
     });
   });
 
-  describe("PATCH /builder-access, DELETED bir kullanıcıya uygulanamaz", () => {
-    // qa-agent (§10.20 kapsamı) — security-agent'ın bıraktığı kapsam notu: implementasyon
-    // (`admin-users.routes.ts` satır ~264-265) doğru (`/role`/`/status` ile BİREBİR aynı
-    // "DELETED = yok sayılmış gibi 404" deseni), ama bunun için AYRI bir entegrasyon testi
-    // yoktu. Bu test, üstteki iki `describe` bloğuyla (PATCH /status, PATCH /role) AYNI
-    // kurulum/iddia şeklini `advancedBuilderEnabled` alanına uygular.
-    it("DELETED bir kullanıcıya PATCH /builder-access atılırsa 404 döner (yok sayılmış gibi) — sessiz yetenek değişikliği önlenir", async () => {
-      const activeAdmin = await createUserDirect("ADMIN");
-      const target = await createUserDirect("EDITOR");
-      const actorHeader = authHeader(tokenFor(activeAdmin));
-
-      // Silinmeden önceki durum bilinçli olarak `false` — 404 sonrası restore ile bu değerin
-      // DEĞİŞMEDİĞİNİ (sessizce `true` olmadığını) doğrulayabilmek için.
-      expect(target.advancedBuilderEnabled).toBe(false);
-
-      const del = await app.inject({ method: "DELETE", url: `/api/v1/admin/users/${target.id}`, headers: actorHeader });
-      expect(del.statusCode).toBe(200);
-
-      const patch = await app.inject({
-        method: "PATCH",
-        url: `/api/v1/admin/users/${target.id}/builder-access`,
-        headers: actorHeader,
-        payload: { advancedBuilderEnabled: true },
-      });
-      expect(patch.statusCode).toBe(404);
-      expect(patch.json().error.code).toBe("NOT_FOUND");
-
-      // Yetenek bayrağı gerçekten değişmemiş olmalı — restore sonrası eski (false) değeriyle geri döner.
-      const restore = await app.inject({
-        method: "POST",
-        url: `/api/v1/admin/users/${target.id}/restore`,
-        headers: actorHeader,
-      });
-      expect(restore.statusCode).toBe(200);
-      expect(restore.json().data.advancedBuilderEnabled).toBe(false);
-    });
-  });
-
   describe("restore akışı", () => {
     it("DELETED bir kullanıcı restore edilince status=ACTIVE, deletedAt=null döner, rolü korunur ve tekrar giriş yapabilir", async () => {
       const activeAdmin = await createUserDirect("ADMIN");
@@ -357,7 +319,7 @@ describe("admin-users — yumuşak silme (soft-delete) ve geri alma", () => {
 
     it("DELETED olmayan bir kullanıcı restore edilmeye çalışılırsa 409 döner", async () => {
       const activeAdmin = await createUserDirect("ADMIN");
-      const target = await createUserDirect("VIEWER");
+      const target = await createUserDirect("USER");
 
       const res = await app.inject({
         method: "POST",
@@ -383,7 +345,7 @@ describe("admin-users — yumuşak silme (soft-delete) ve geri alma", () => {
   describe("GET /admin/users — includeDeleted filtresi", () => {
     it("varsayılan olarak DELETED kullanıcılar listede görünmez, includeDeleted=true ile görünür", async () => {
       const activeAdmin = await createUserDirect("ADMIN");
-      const target = await createUserDirect("VIEWER");
+      const target = await createUserDirect("USER");
       const actorHeader = authHeader(tokenFor(activeAdmin));
 
       const del = await app.inject({ method: "DELETE", url: `/api/v1/admin/users/${target.id}`, headers: actorHeader });
@@ -414,7 +376,7 @@ describe("admin-users — yumuşak silme (soft-delete) ve geri alma", () => {
   describe("POST /admin/users — silinmiş kullanıcının e-postasıyla yeni kayıt engellenir", () => {
     it("DELETED bir kullanıcının e-postasıyla yeni kullanıcı oluşturulamaz (409 CONFLICT)", async () => {
       const activeAdmin = await createUserDirect("ADMIN");
-      const target = await createUserDirect("VIEWER");
+      const target = await createUserDirect("USER");
       const actorHeader = authHeader(tokenFor(activeAdmin));
 
       const del = await app.inject({ method: "DELETE", url: `/api/v1/admin/users/${target.id}`, headers: actorHeader });

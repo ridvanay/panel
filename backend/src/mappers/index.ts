@@ -122,7 +122,9 @@ export function toUserDto(user: User): UserDto {
     createdAt: user.createdAt.toISOString(),
     // §10.4 Güvenlik & 2FA — bkz. ARCHITECTURE.md §10.4.
     twoFactorEnabled: user.twoFactorEnabled,
-    // §10.20 — TÜRETİLMİŞ + SALT-OKUNUR (bkz. lib/builder-capability.ts, TEK türetme kaynağı).
+    // `.claude/architect-scope-rbac-5-tier.md` §3 — TÜRETİLMİŞ + SALT-OKUNUR (bkz.
+    // lib/builder-capability.ts, TEK türetme kaynağı; saf rol türevi, `advancedBuilderEnabled`
+    // bayrağı KALDIRILDI).
     canUseAdvancedBuilder: canUseAdvancedBuilder(user),
   };
 }
@@ -133,8 +135,6 @@ export function toAdminUserDto(user: User): AdminUserDto {
     status: user.status,
     lastLoginAt: user.lastLoginAt ? user.lastLoginAt.toISOString() : null,
     deletedAt: user.deletedAt ? user.deletedAt.toISOString() : null,
-    // §10.20 — DEPOLANAN izin (`canUseAdvancedBuilder` ETKİN yetenektir, yukarıda zaten döner).
-    advancedBuilderEnabled: user.advancedBuilderEnabled,
   };
 }
 

@@ -5,6 +5,8 @@ import Stripe from "stripe";
 import { z } from "zod";
 import { authenticate } from "../../middleware/authenticate";
 import { requireSiteRole } from "../../middleware/site-rbac";
+import { requirePanelAccess } from "../../middleware/panel-access";
+import { ROLES_ADMIN_MANAGER } from "../../lib/site-roles";
 import { stripe } from "../../lib/stripe";
 import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema, ApiSuccessWithMeta } from "../../schemas/common";
@@ -40,7 +42,8 @@ const ALLOWED_TRANSITIONS: Record<string, OrderStatus> = {
 };
 
 /**
- * `/admin/orders` prefix'i altında bağlanır (bkz. app.ts) — yalnızca ADMIN.
+ * `/admin/orders` prefix'i altında bağlanır (bkz. app.ts).
+ * `.claude/architect-scope-rbac-5-tier.md` §5.3 satır 11 — tüm uçlar ADMIN + MANAGER.
  *
  * PII maskeleme kararı: `customerEmail` LİSTEDE (`GET /`) maskelenir (`lib/pii-mask.ts::maskEmail`,
  * `a***@domain.com`), DETAYDA (`GET /:orderId`) maskesiz döner. Gerekçe: liste ekranı toplu
@@ -53,7 +56,8 @@ const ALLOWED_TRANSITIONS: Record<string, OrderStatus> = {
 export async function ordersRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
   server.addHook("preHandler", authenticate);
-  server.addHook("preHandler", requireSiteRole("ADMIN"));
+  server.addHook("preHandler", requirePanelAccess());
+  server.addHook("preHandler", requireSiteRole(...ROLES_ADMIN_MANAGER));
 
   server.get(
     "/",
@@ -132,8 +136,8 @@ export async function ordersRoutes(app: FastifyInstance) {
   );
 
   /**
-   * Manuel iade — yalnızca ADMIN (router seviyesindeki `requireSiteRole("ADMIN")` hook'u zaten
-   * uygulanıyor). Gerçek parayı Stripe üzerinden GERİ ÖDER (`stripe.refunds.create`,
+   * Manuel iade — ADMIN + MANAGER (router seviyesindeki `requireSiteRole(...ROLES_ADMIN_MANAGER)`
+   * hook'u zaten uygulanıyor). Gerçek parayı Stripe üzerinden GERİ ÖDER (`stripe.refunds.create`,
    * `Order.stripePaymentIntentId` üzerinden) — yalnızca DB durumunu değiştirip parayı olduğu
    * gibi bırakan "sahte" bir iade DEĞİLDİR.
    *

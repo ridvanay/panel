@@ -69,8 +69,10 @@ function actionLabel(key: string) {
 
 const ROLE_LETTERS: Record<SiteRole, string> = {
   ADMIN: "A",
+  MANAGER: "M",
   EDITOR: "E",
-  VIEWER: "V",
+  CUSTOMER: "C",
+  USER: "U",
 };
 
 interface GeneralSettingsSnapshot {

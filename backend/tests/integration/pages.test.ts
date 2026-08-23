@@ -550,12 +550,12 @@ describe("pages", () => {
       expect(res.statusCode).toBe(401);
     });
 
-    it("VIEWER autosave ucuna erişemez (403)", async () => {
+    it("USER autosave ucuna erişemez (403)", async () => {
       const create = await app.inject({
         method: "POST",
         url: "/api/v1/admin/pages",
         headers: authHeader(),
-        payload: { title: "VIEWER Autosave Denemesi" },
+        payload: { title: "USER Autosave Denemesi" },
       });
       const pageId = create.json().data.id;
 

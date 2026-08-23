@@ -66,8 +66,10 @@ function TagsCell({ tags }: { tags: BlogPost["tags"] }) {
 export default function AdminBlogListPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === "ADMIN";
-  // §10.14.5 madde 4: EDITOR altı roller (VIEWER) için satır-içi oluşturma tetikleyicisi RENDER EDİLMEZ.
-  const canCreateTaxonomy = user?.role === "ADMIN" || user?.role === "EDITOR";
+  // §10.21 — blog kategori/etiket oluşturma-güncelleme SiteRole=ADMIN, MANAGER veya EDITOR'dür
+  // (§5.3 satır 3); CUSTOMER/USER paneline zaten giremez, bu yüzden satır-içi oluşturma
+  // tetikleyicisi yalnızca bu üç rol için render edilir.
+  const canCreateTaxonomy = user?.role === "ADMIN" || user?.role === "MANAGER" || user?.role === "EDITOR";
 
   const [categories, setCategories] = useState<BlogCategory[]>([]);
   const [tags, setTags] = useState<BlogTag[]>([]);

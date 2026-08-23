@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import type { FastifyInstance } from "fastify";
-import type { Prisma } from "@prisma/client";
+import type { Prisma, SiteRole } from "@prisma/client";
 import { logAudit } from "../../lib/audit";
 import { hashPassword } from "../../lib/password";
 import { slugify } from "../../lib/slug";
@@ -736,7 +736,9 @@ async function writeBlogPost(app: FastifyInstance, input: WriteBlogPostInput): P
 // USERS (CSV) — §10.8.7. `duplicateStrategy` her zaman `skip`tir (start() ucunda garanti edilir).
 // ---------------------------------------------------------------------------
 
-const ALLOWED_ROLES = new Set(["ADMIN", "EDITOR", "VIEWER"]);
+// `.claude/architect-scope-rbac-5-tier.md` §1 — 5 kademeli rol (`VIEWER` KALDIRILDI). Bu uç
+// zaten yalnızca ADMIN tarafından çağrılabilir (§5.3 satır 6, (a): rol atayabilen içe aktarma).
+const ALLOWED_ROLES = new Set(["ADMIN", "MANAGER", "EDITOR", "CUSTOMER", "USER"]);
 let lastEmailSentAt = 0;
 
 /** E-posta gönderimini ~10/sn ile kısar (bkz. ARCHITECTURE.md §10.8.7 — SMTP sağlayıcı koruması). */
@@ -772,14 +774,14 @@ async function runUsersJob(app: FastifyInstance, ctx: JobRunContext, buffer: Buf
     }
 
     const roleRaw = typeof mapped.role === "string" ? mapped.role.trim().toUpperCase() : "";
-    let role: "ADMIN" | "EDITOR" | "VIEWER" = "EDITOR";
+    let role: SiteRole = "EDITOR";
     if (roleRaw) {
       if (!ALLOWED_ROLES.has(roleRaw)) {
         await ctx.recordRow({ severity: "error", rowNumber, code: "INVALID_ROLE", message: `Geçersiz rol: "${roleRaw}".`, field: "role", sourceRef: email, rawData: record });
         if (await ctx.maybeFlushAndCheckCancel(index, records.length)) break;
         continue;
       }
-      role = roleRaw as "ADMIN" | "EDITOR" | "VIEWER";
+      role = roleRaw as SiteRole;
     }
 
     const existing = await app.prisma.user.findUnique({ where: { email } });

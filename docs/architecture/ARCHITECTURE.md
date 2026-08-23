@@ -106,24 +106,41 @@ flowchart LR
   frontend yalnızca UI'ı role göre gizler/gösterir, gerçek yetki kontrolü asla
   istemciye güvenmez (bkz. mutfak konfigüratör projesindeki fiyat motoru
   deseni — istemci değeri her zaman sunucuda yeniden doğrulanır).
-- **Site-geneli RBAC (`/admin/*` CMS uçları)**: yukarıdaki organizasyon bazlı
-  RBAC'tan tamamen AYRI bir eksen — `pages`/`blog`/`media`/`settings`/`navigation`/
-  `users`/`logs` gibi tek-site CMS uçlarında `User.role` (`SiteRole`:
-  `ADMIN`/`EDITOR`/`VIEWER`) ve `User.status` (`SiteUserStatus`:
+- **Site-geneli RBAC (`/admin/*` CMS uçları) — 5 KADEMELİ MODEL (§10.21)**: yukarıdaki
+  organizasyon bazlı RBAC'tan tamamen AYRI bir eksen. `User.role` (`SiteRole`:
+  `ADMIN`/`MANAGER`/`EDITOR`/`CUSTOMER`/`USER`) ve `User.status` (`SiteUserStatus`:
   `ACTIVE`/`SUSPENDED`/`DELETED`) kullanılır. Rol/durum kasıtlı olarak JWT'ye GÖMÜLMEZ — her
   istekte `authenticate` middleware'i DB'den taze okur, böylece bir rol değişikliği
   veya askıya alma bir sonraki istekte hemen etkili olur (access token süresinin
-  dolmasını beklemeden). Guard: `requireSiteRole` (bkz. `middleware/site-rbac.ts`).
-  Yazma uçlarındaki (`POST`/`PATCH`/`PUT`/`DELETE`) rol eşiği: `pages`/`blog`
-  oluşturma-düzenleme → `ADMIN`+`EDITOR`, silme → yalnızca `ADMIN`; `media`
-  yükleme → `ADMIN`+`EDITOR`, silme → yalnızca `ADMIN`; `settings` güncelleme →
-  yalnızca `ADMIN`; `navigation` (header/footer/nav yapılandırması) güncelleme →
-  yalnızca `ADMIN`; `users`/`logs` → tüm uçlar yalnızca `ADMIN`.
-  Sistemde en az bir aktif `ADMIN` kalması zorunlu tutulur (son admin'i düşürmek/
-  askıya almak/silmek 409 CONFLICT döner); bir kullanıcı kendi hesabını askıya alamaz
-  veya silemez. Kullanıcı silme **yumuşak silmedir** (`status = DELETED` + `deletedAt`,
+  dolmasını beklemeden). Guard'lar: `requirePanelAccess` (panel kapısı) +
+  `requireSiteRole` (uç bazlı, bkz. `middleware/site-rbac.ts`).
+
+  - **Panel kapısı (bağlayıcı):** `/admin/*` altındaki her uca yalnızca `ADMIN`,
+    `MANAGER`, `EDITOR` erişebilir; `CUSTOMER` ve `USER` → **403**. Tek istisna,
+    self-servis `/admin/settings/security/2fa` ve `/admin/settings/security/sessions`
+    uçlarıdır (`authenticated`, 5 rolün hepsi). Bu, ön yüz kullanıcılarının kendi
+    kendine kayıt olabilmesi nedeniyle **zorunludur** — "authenticated" artık panel
+    için yeterli bir eşik DEĞİLDİR.
+  - **`ADMIN`** (Süper Yönetici): her şey; **sayfa blok YAPISINI değiştirebilen TEK rol**.
+  - **`MANAGER`** (Yönetici): ADMIN'in tüm yetkileri EKSİ beş kategori — (a) ayrıcalık
+    yükseltme yüzeyi (`/admin/users`, `PATCH /admin/settings`, `/admin/settings/permissions`,
+    `/admin/import/*`), (b) kimlik bilgisi yüzeyi (`api-keys`, `webhooks`), (c) keyfi kod
+    yürütme (`/admin/appearance/custom-code/*`), (d) site-geneli kill switch
+    (`PATCH /admin/modules/{key}`, `GET /admin/health`), (f) denetim izi (`/admin/logs`) —
+    ve blok yapısı.
+  - **`EDITOR`** (Editör): yalnızca `blog` (tam CRUD, kalıcı silme hariç) + `media`
+    (kalıcı silme hariç) + `pages` (yalnızca içerik alanları). Diğer tüm modüllerde 403.
+  - **`CUSTOMER`** / **`USER`**: panel yok. Aralarındaki fark API'de DEĞİL, ön yüz
+    sunumundadır (`/siparislerim` bağlantısı). Yeni kayıtların varsayılanı `USER`'dır;
+    `USER → CUSTOMER` terfisi, kimliği doğrulanmış bir siparişin ÖDENMESİYLE otomatik olur.
+
+  Sistemde en az bir aktif `ADMIN` kalması zorunlu tutulur (son admin'i BAŞKA HERHANGİ bir
+  role düşürmek/askıya almak/silmek 409 CONFLICT döner); bir kullanıcı kendi hesabını askıya
+  alamaz veya silemez. Kullanıcı silme **yumuşak silmedir** (`status = DELETED` + `deletedAt`,
   geri alınabilir); `DELETED` kullanıcı `SUSPENDED` ile birebir aynı şekilde giriş
   yapamaz ve mevcut access token'ı kabul edilmez — bkz. §10.18.
+  Tam modül × rol matrisi ve gerekçeler: **§10.21** +
+  `.claude/architect-scope-rbac-5-tier.md` (bağlayıcı karar dokümanı).
 - **Audit Log**: hassas/yetkilendirme aksiyonları (`auth.login` başarı/başarısızlık,
   `user.create`/`user.role_change`/`user.status_change`, `invitation.create`/
   `invitation.accept`, `settings.update`, ve `requireSiteRole` guard'ının
@@ -157,7 +174,7 @@ erDiagram
     string name
     string avatarUrl
     datetime emailVerifiedAt
-    enum role "SiteRole: ADMIN/EDITOR/VIEWER — org-RBAC'tan ayrı"
+    enum role "SiteRole: ADMIN/MANAGER/EDITOR/CUSTOMER/USER — org-RBAC'tan ayrı, §10.21"
     enum status "SiteUserStatus: ACTIVE/SUSPENDED/DELETED — §10.18"
     datetime lastLoginAt
     datetime deletedAt "nullable, yumuşak silme damgası, §10.18"
@@ -284,6 +301,7 @@ erDiagram
 | Auth | `POST /auth/forgot-password` / `POST /auth/reset-password` | public |
 | Auth | `GET /auth/me` | authenticated |
 | Users | `GET/PATCH /users/me` | authenticated |
+| Users | `GET /users/me/orders` | authenticated (sahiplik filtresi `siteUserId = me`; rol guard'ı YOK — §10.21) |
 | Orgs | `POST/GET /organizations`, `GET/PATCH/DELETE /organizations/{id}` | authenticated, rol bazlı |
 | Members | `GET /organizations/{id}/members`, `PATCH/DELETE /organizations/{id}/members/{userId}` | ADMIN/OWNER |
 | Invitations | `POST/GET /organizations/{id}/invitations`, `POST /invitations/{token}/accept` | ADMIN/OWNER (davet gönderme); token sahibi (kabul) |
@@ -291,15 +309,13 @@ erDiagram
 | Billing | `GET /organizations/{id}/subscription`, `POST .../checkout-session`, `POST .../portal-session` | OWNER |
 | Webhooks | `POST /webhooks/stripe` | Stripe imza doğrulaması |
 | Health | `GET /healthz` | public |
-| AdminUsers | `GET/POST /admin/users`, `PATCH /admin/users/{id}/role`, `PATCH /admin/users/{id}/status` | site-geneli `SiteRole=ADMIN` |
+| AdminUsers | `GET/POST /admin/users`, `PATCH /admin/users/{id}/role`, `PATCH /admin/users/{id}/status` | site-geneli `SiteRole=ADMIN` (okuma dahil — MANAGER'a da kapalı, §10.21) |
 | AdminUsers | `GET /admin/settings/permissions` | site-geneli `SiteRole=ADMIN` |
 | Logs | `GET /admin/logs` | site-geneli `SiteRole=ADMIN` |
 | Navigation | `GET /navigation` | public |
-| Navigation | `GET /admin/navigation` | authenticated |
-| Navigation | `PUT /admin/navigation` | site-geneli `SiteRole=ADMIN` |
-| Stats | `GET /admin/stats/views` | authenticated |
-| Stats | `GET /admin/stats/live-visitors` | authenticated |
-| Stats | `GET /admin/stats/breakdown` | authenticated |
+| Navigation | `GET /admin/navigation` | `SiteRole=ADMIN/MANAGER/EDITOR` (panel kapısı) |
+| Navigation | `PUT /admin/navigation` | site-geneli `SiteRole=ADMIN` veya `MANAGER` |
+| Stats | `GET /admin/stats/*` | site-geneli `SiteRole=ADMIN` veya `MANAGER` (§10.21 — EDITOR çıkarıldı) |
 | System | `GET /admin/health` | site-geneli `SiteRole=ADMIN` |
 | ApiKeys | `GET/POST /admin/settings/api-keys`, `PATCH/DELETE /admin/settings/api-keys/{keyId}`, `POST .../revoke` | site-geneli `SiteRole=ADMIN` (okuma dahil, §10.13.10) |
 | OutboundWebhooks | `GET/POST /admin/settings/webhooks`, `GET/PATCH/DELETE .../{webhookId}`, `POST .../rotate-secret`, `POST .../test`, `GET .../deliveries`, `POST .../deliveries/{id}/redeliver` | site-geneli `SiteRole=ADMIN` (okuma dahil, §10.13.10) |
@@ -310,16 +326,22 @@ erDiagram
 > tam sözleşmeleri için `openapi.yaml`'a bakın. Bu uçlardaki yazma işlemleri artık
 > yukarıdaki site-geneli `SiteRole` guard'ına da tabidir (bkz. §5).
 
-> Medya klasörleri: `GET /admin/media/folders` (authenticated),
+> **§10.21 UYARISI (bu tablo için bağlayıcı):** yukarıdaki ve aşağıdaki notlarda
+> "authenticated" yazan HER `/admin/*` ucu, artık ayrıca **panel kapısından**
+> (`ADMIN`/`MANAGER`/`EDITOR`) geçer — `CUSTOMER` ve `USER` 403 alır. Tek istisna
+> `/admin/settings/security/2fa` ve `/admin/settings/security/sessions`'tır.
+> Modül × rol matrisinin tamamı §10.21'dedir; çelişki durumunda §10.21 kazanır.
+
+> Medya klasörleri: `GET /admin/media/folders` (`ADMIN`/`MANAGER`/`EDITOR`),
 > `POST /admin/media/folders` + `PATCH /admin/media/folders/{folderId}` +
-> `POST /admin/media/move` (`SiteRole=ADMIN` veya `EDITOR`),
-> `DELETE /admin/media/folders/{folderId}` (yalnızca `SiteRole=ADMIN`). `Media.folderId`
+> `POST /admin/media/move` (`SiteRole=ADMIN`, `MANAGER` veya `EDITOR`),
+> `DELETE /admin/media/folders/{folderId}` (`SiteRole=ADMIN` veya `MANAGER`). `Media.folderId`
 > nullable (`null` = "Kategorisiz"), `GET /admin/media` `folderId` filtresi alır.
 > Bağlayıcı kararlar için bkz. §10.11.
 
 > Navigasyon/Header/Footer Yönetimi: `GET /navigation` (public — site
-> header/nav/footer bunu okur), `GET /admin/navigation` (authenticated),
-> `PUT /admin/navigation` (yalnızca `SiteRole=ADMIN`, tam değiştirme/replace
+> header/nav/footer bunu okur), `GET /admin/navigation` (`ADMIN`/`MANAGER`/`EDITOR`),
+> `PUT /admin/navigation` (`SiteRole=ADMIN` veya `MANAGER`, tam değiştirme/replace
 > semantiği — `navigationItems`/`socialLinks`/`footerColumns` dizileri tek bir
 > transaction içinde delete-then-recreate edilir). Modeller: `NavigationItem`,
 > `SocialLink` (`SocialPlatform` enum), `FooterColumn` → `FooterLink` (1-n,
@@ -1172,7 +1194,7 @@ kullanıcı girdi hatalarıyla gürültülenmez.
 #### 10.8.7 Tip bazlı özel kurallar
 
 **`USERS` (CSV):** sütunlar `name,email,role` (başlıklar Türkçe olabilir, eşleştirme
-`fieldMapping` ile). `role` ∈ `ADMIN|EDITOR|VIEWER` (büyük/küçük harf duyarsız); boşsa
+`fieldMapping` ile). `role` ∈ `ADMIN|MANAGER|EDITOR|CUSTOMER|USER` (büyük/küçük harf duyarsız, §10.21); boşsa
 `EDITOR` (`POST /admin/users` varsayılanıyla aynı). Kayıt akışı mevcut uçla BİREBİR
 AYNIDIR: rastgele kullanılamaz şifre + şifre belirleme token'ı + e-posta. E-posta
 gönderimi **satır bazında best-effort**'tur; başarısızlık kullanıcıyı SİLMEZ, satır
@@ -3274,7 +3296,7 @@ sıfır sapma. İstisnalar:
 #### 10.13.10 Uç noktalar, yetki eşikleri ve compliance notları
 
 **Yetki: `/admin/settings/api-keys*` ve `/admin/settings/webhooks*` altındaki TÜM
-uçlar İSTİSNASIZ yalnızca `SiteRole=ADMIN`'dir** — okuma dahil. EDITOR/VIEWER → 403.
+uçlar İSTİSNASIZ yalnızca `SiteRole=ADMIN`'dir** — okuma dahil. MANAGER/EDITOR/CUSTOMER/USER → 403 (§10.21: kimlik bilgisi yüzeyi, MANAGER'a da kapalıdır).
 Gerekçe: bir API anahtarı listesi (adlar, ön ekler, scope'lar) saldırı yüzeyi
 haritasıdır; bir webhook listesi ise dış entegrasyon topolojisidir. `Appearance`
 tag'indeki "EDITOR bilinçli olarak dışarıda" kararıyla aynı çizgide, ama burada
@@ -3817,7 +3839,7 @@ kullanılır. Akış:
    Frontend ayrıca **POST'tan ÖNCE** yerel listede slug eşleşmesi arar; varsa istek hiç
    gönderilmez. Böylece kullanıcı, hiçbir zaman kendi eyleminin sonucu olmayan bir hata
    görmez.
-4. **EDITOR altı roller** (VIEWER) için oluşturma tetikleyicisi RENDER EDİLMEZ — 403'ü
+4. **Blog yazma yetkisi OLMAYAN roller** (`CUSTOMER`/`USER`; ayrıca panele girebilse de blog dışı kalan hiçbir rol yoktur — §10.21'de blog eşiği `ADMIN`/`MANAGER`/`EDITOR`'dür) için oluşturma tetikleyicisi RENDER EDİLMEZ — 403'ü
    kullanıcıya hata olarak göstermek yerine eylem hiç sunulmaz.
 5. Oluşturma **yazının kaydedilmesini beklemez** (kategori/etiket bağımsız kaynaklardır)
    — ama seçim, yazı kaydedilene kadar yalnızca form state'idir.
@@ -5255,6 +5277,16 @@ gerekçeler: `.claude/design-notes-page-builder-containers.md` §11.
 
 ### 10.20 Sayfa düzenleyicide standart/gelişmiş mod ayrımı
 
+> **⚠ KISMEN YÜRÜRLÜKTEN KALDIRILDI (2026-08-23, §10.21).** Bu bölümün **mekanizma**
+> kısmı (`TEMPLATE_EDITABLE_FIELDS` haritası, `assertTemplateEditAllowed` iteratif diff'i,
+> 403 sözleşmesi, autosave/`translations` kapsaması) TAMAMEN GEÇERLİDİR ve değişmemiştir.
+> Ancak **yetenek modeli** değişmiştir:
+> `User.advancedBuilderEnabled` kolonu, `PATCH /admin/users/{userId}/builder-access` ucu ve
+> `requireAdvancedBuilder()` middleware'i **KALDIRILMIŞTIR**;
+> `canUseAdvancedBuilder` artık saf bir rol türevidir: **`role === "ADMIN"`**.
+> Aşağıda "gelişmiş yetenekli EDITOR", "yetenek bayrağı", "standart kullanıcı" geçen her
+> yeri §10.21'e göre okuyun. Çelişkide **§10.21 kazanır.**
+
 Durum: v1.1 (2026-08-23'te standart kullanıcı kilidi genişletildi — bkz. aşağıdaki güncelleme
 notu) · Sahibi: Mimar. Bağlayıcı kaynak: `.claude/architect-scope-page-editor-roles.md`
 (tam gerekçe/kararlar, ajan görev dağılımı) + `openapi.yaml` (`User.canUseAdvancedBuilder`,
@@ -5446,6 +5478,200 @@ limit, `DELETED` kullanıcıda 404, audit `user.builder_access_change`).
 - Kapsam dışı (bilinçli, kaynak doküman §8): blok bazlı `isLocked`, şablondan sayfa kopyalama
   (duplicate), editoryal onay/moderasyon akışı, genel `Permission`/`UserPermission` tablosu,
   blog/ürün/portföy editörlerinde aynı ayrım, rol bazlı sayfa sahipliği.
+
+---
+
+### 10.21 5 kademeli kurumsal RBAC (`SiteRole` genişletmesi)
+
+Durum: v1 (2026-08-23, mimari karar — implementasyon sıradaki ajanlarda) · Sahibi: Mimar.
+**Bağlayıcı kaynak:** `.claude/architect-scope-rbac-5-tier.md` (tam gerekçeler, 20 modüllük
+erişim tablosu, migration SQL'i, ajan görev dağılımı) + `openapi.yaml` (kök seviyedeki
+`x-site-rbac` bloğu — tek doğru kaynak). Bu bölüm o dokümanın ÖZETİDİR.
+**§10.20 ile ilişki:** §10.20'nin mekanizması korunur, yetenek modeli bu bölümle
+değiştirilir (bkz. §10.20 başındaki uyarı kutusu).
+
+#### 10.21.1 Neden bu bölüm var
+
+3 rollü `SiteRole` (`ADMIN`/`EDITOR`/`VIEWER`) kurumsal bir ekip yapısını ifade edemiyordu:
+(a) "panelin tamamına erişen ama sayfa tasarımını bozamayan yönetici" karşılığı yoktu,
+(b) ön yüz üyeleri (müşteri / standart üye) ile panel kullanıcıları **aynı enum'da**
+yaşıyordu ve `/admin/*` altındaki pek çok GET yalnızca `authenticated` korumalıydı — yani
+kendi kendine kayıt olan bir ziyaretçi admin listelerini okuyabilirdi. (b) maddesi bu
+turun **birinci sınıf güvenlik gerekçesidir.**
+
+#### 10.21.2 Enum ve migration
+
+```prisma
+enum SiteRole { ADMIN  MANAGER  EDITOR  CUSTOMER  USER }   // sıra = azalan ayrıcalık
+model User { role SiteRole @default(USER) }                // eski varsayılan: VIEWER
+```
+
+`VIEWER` **kaldırıldı.** Migration `CREATE TYPE` + `USING` cast + `DROP TYPE` + `RENAME`
+desenidir (`ALTER TYPE ... ADD VALUE` DEĞİL); `SiteRole` şemada yalnızca `users.role`
+kolonunda kullanıldığı için tek kolonu etkiler ve izole/tek başına gönderilir.
+
+| Eski | Yeni | Not |
+|---|---|---|
+| `ADMIN` | `ADMIN` | Etki yok |
+| `EDITOR` | `EDITOR` | **Kapsam daralır** — `products`/`portfolio`/`contact`/`stats` yetkilerini kaybeder |
+| `VIEWER` | `USER` | **Panel erişimini tamamen kaybeder** |
+
+`VIEWER → USER` bilinçli bir DARALTMADIR: yeni modelde "salt-okunur panel izleyicisi"
+kademesi yoktur ve `EDITOR`/`MANAGER`'a eşlemek sessiz bir yetki YÜKSELTMESİ olurdu — bir
+migration'ın asla yapmaması gereken şey. Panele gerçekten ihtiyacı olan eski `VIEWER` ve
+daralan `EDITOR` hesapları, deploy notundaki listeden **ADMIN tarafından elle** yükseltilir.
+
+Aynı migration `User.advancedBuilderEnabled` kolonunu **düşürür** (§10.21.4).
+
+#### 10.21.3 Panel kapısı — `requirePanelAccess()`
+
+`/admin/*` altındaki HER uç `ADMIN|MANAGER|EDITOR` gerektirir; `CUSTOMER`/`USER` → **403**
+(+ `FORBIDDEN` statülü audit). Guard `backend/src/middleware/panel-access.ts`'tedir ve
+her `/admin/*` plugin'inin kendi scope'unda `preHandler` hook'u olarak kaydedilir —
+URL string'ine bakan global bir hook YAZILMAZ.
+
+**İki istisna (liste genişletilemez):** `/admin/settings/security/2fa` ve
+`/admin/settings/security/sessions` self-servis uçlardır (kendi 2FA'n / kendi oturumların),
+`authenticated` kalır ve 5 rolün hepsi erişir. Bu prefix'lerin `/admin/*` altında olması
+bir adlandırma kazasıdır; `/users/me/security/*` altına taşınmaları takip kalemidir.
+
+**Zorlama testi (zorunlu, security-agent + qa-agent):** Fastify route tablosu üzerinden
+"`/api/v1/admin/` ile başlayan her route panel guard'ı taşıyor mu?" otomatik olarak
+doğrulanır. Manuel gözden geçirme yeterli kanıt DEĞİLDİR.
+
+#### 10.21.4 `canUseAdvancedBuilder` — saf rol türevi
+
+```ts
+canUseAdvancedBuilder(user) === (user.role === "ADMIN")
+```
+
+`User.advancedBuilderEnabled` kolonu, `PATCH /admin/users/{userId}/builder-access` ucu,
+`UpdateAdminUserBuilderAccessRequest` şeması, `AdminUser.advancedBuilderEnabled` DTO alanı
+ve `middleware/advanced-builder.ts::requireAdvancedBuilder()` **kaldırıldı**. Gerekçe: iş
+gereksinimi MANAGER ve EDITOR için yeteneği açıkça `false` yapıyor → bayrak hiçbir kullanıcı
+için `true` olamaz → ölü kolon → drift kaynağı. §10.20'de bayrağın var olma sebebi ("yeni bir
+`SiteRole` değeri eklememek") artık geçersizdir.
+
+`User.canUseAdvancedBuilder` DTO alanı **korunur** (7 frontend dosyası okuyor). Bunun bir
+yan faydası vardır: `simpleMode = !user.canUseAdvancedBuilder` ifadesi HİÇ DEĞİŞMEDEN,
+MANAGER ve EDITOR için `BuilderCanvas`'ı gizleyip `TemplateEditorView`'i açar — iş
+gereksinimindeki frontend kuralı **yeni bir koşul yazılmadan** karşılanır.
+
+`PermissionsMatrix.capabilities` dizisi şekil olarak korunur; `advancedBuilder` girdisi
+`alwaysGrantedTo: ["ADMIN"]`, `grantableTo: []` olur → UI hiçbir yetenek anahtarı çizmez.
+
+#### 10.21.5 Yetki türetme ilkesi (ezberlenmesi gereken tek kural)
+
+**MANAGER = ADMIN'in tüm yetkileri EKSİ beş kategori:** (a) ayrıcalık yükseltme yüzeyi,
+(b) kimlik bilgisi yüzeyi, (c) keyfi kod yürütme, (d) site-geneli kill switch,
+(f) denetim izi — VE blok yapısı.
+**EDITOR = yalnızca `blog` + `media` + `pages` (içerik).**
+**CUSTOMER/USER = `/admin/*`'ın tamamında 403.**
+
+> **İş gereksinimindeki çelişkinin hakemliği.** İstek hem "ADMIN: sistem, ayarlar,
+> kullanıcılar" hem "MANAGER: admin paneline tam erişir" diyordu. "Tam erişir" =
+> "kapıda engellenmez ve operasyonel/içerik alanlarının tamamına ulaşır" olarak okundu;
+> "ADMIN ile birebir aynı" okuması MANAGER'ı gereksiz kılardı. Belirleyici argüman
+> güvenliktir: `/admin/users`'a yazabilen bir MANAGER kendini `ADMIN` yapabilir.
+
+| Modül | ADMIN | MANAGER | EDITOR |
+|---|---|---|---|
+| `blog` (+kategori/etiket) — okuma/oluştur/güncelle/yayınla/çöp/geri yükle/bulk/revizyon | ✔ | ✔ | ✔ |
+| `blog` — kalıcı silme, kategori/etiket silme | ✔ | ✔ | ✖ |
+| `media` — okuma/yükleme/alt metin/klasör oluştur-yeniden adlandır-taşı | ✔ | ✔ | ✔ |
+| `media` — kalıcı silme, klasör silme | ✔ | ✔ | ✖ |
+| `pages` | üç katman — bkz. §10.21.6 |||
+| `products`, `portfolio` (okuma dahil) | ✔ | ✔ | ✖ |
+| `contact` (form yapılandırması + gönderimler) | ✔ | ✔ | ✖ |
+| `orders` | ✔ | ✔ | ✖ |
+| `stats`, `reports` | ✔ | ✔ | ✖ |
+| `navigation` `GET` / `PUT` | ✔ / ✔ | ✔ / ✔ | ✔ / ✖ |
+| `localization` `GET` / yazma | ✔ / ✔ | ✔ / ✔ | ✔ / ✖ |
+| `email-templates` (GET dahil) | ✔ | ✔ | ✖ |
+| `appearance` okuma / `PATCH`+`reset` / custom CSS-JS | ✔ / ✔ / ✔ | ✔ / ✔ / **✖** | ✔ / ✖ / ✖ |
+| `site-modules` `GET` / `PATCH` | ✔ / ✔ | ✔ / **✖** | ✔ / ✖ |
+| `settings` `GET` / `PATCH` / `permissions` | ✔ / ✔ / ✔ | ✔ / **✖** / **✖** | ✔ / ✖ / ✖ |
+| `system` (`/admin/health`) | ✔ | **✖** | ✖ |
+| `users` (`/admin/users`, okuma dahil) | ✔ | **✖** | ✖ |
+| `logs` | ✔ | **✖** | ✖ |
+| `api-keys`, `outbound-webhooks` (okuma dahil) | ✔ | **✖** | ✖ |
+| `import` | ✔ | **✖** | ✖ |
+| `/admin/settings/security/2fa`, `/sessions` | ✔ | ✔ | ✔ (+ CUSTOMER/USER — panel kapısı istisnası) |
+
+Rol listeleri elle yazılmaz; `ROLES_ADMIN` / `ROLES_ADMIN_MANAGER` / `ROLES_PANEL`
+sabitleri kullanılır (bir sonraki rol değişikliğinde ~100 çağrı yerinin tek tek triyajını
+önlemek için).
+
+#### 10.21.6 Sayfa modülü — üç katman
+
+| Katman | Kapsam | Roller |
+|---|---|---|
+| **1 — Blok YAPISI** | ekle/sil/taşı/sırala, `container.settings`, `reveal`, `custom-html.data.html`, `isLegalDocument`, `authorId` | **ADMIN** |
+| **2 — Yaşam döngüsü + kimlik** | çöpe at, geri yükle, kalıcı sil, `bulk`, revizyon-restore, `slug`, `editMode` | **ADMIN, MANAGER** |
+| **3 — Blok İÇERİĞİ + meta** | okuma, `PATCH`, `autosave`, revizyon okuma, `title`/SEO/`status`/`scheduledAt`/`translations` | **ADMIN, MANAGER, EDITOR** |
+
+**Tek istisna:** `POST /admin/pages` **yalnızca ADMIN**'dir. Katman 2 mantığına göre
+MANAGER'a verilmesi beklenirdi; verilmiyor çünkü Katman 1 gereği MANAGER blok EKLEYEMEZ —
+oluşturduğu boş sayfayı asla dolduramaz, yetkiyi vermek kırık bir akış üretirdi
+(`architect-scope-page-editor-roles.md` §4.1'deki gerekçenin aynısı). MANAGER'a anlamlı bir
+oluşturma yolu: `feature/page-duplicate-from-template` (takip kalemi).
+
+Katman 1 mekanizması §10.20.4'teki `assertTemplateEditAllowed` diff'idir, DEĞİŞMEDEN;
+artık `!canUseAdvancedBuilder` olan HER kullanıcı (MANAGER ve EDITOR) için, `editMode`'dan
+BAĞIMSIZ olarak, hem `PATCH` hem **autosave** yolunda çalışır.
+
+#### 10.21.7 Kayıt varsayılanı ve `CUSTOMER` terfisi
+
+Yeni kayıtların varsayılanı **`USER`**'dır (`POST /auth/register` PUBLIC'tir — varsayılanın
+panel erişimi olan bir role düşmesi doğrudan bir açıktır). Sıfırdan kurulan bir ortamda İLK
+hesap `ADMIN` olmaya devam eder (kilitlenme koruması).
+
+**`USER → CUSTOMER` terfisi:** `Order` ödendiğinde (Stripe `checkout.session.completed`) ve
+`Order.siteUserId` doluysa, kullanıcının rolü `USER` ise `CUSTOMER`'a yükseltilir. Başka
+hiçbir rol değiştirilmez; otomatik geri düşürme YOKTUR. Audit: `user.role_change`
+(`reason: "order_paid"`, `actorId: null`).
+Bunun mümkün olması için `POST /checkout/session` **isteğe bağlı kimlik doğrulamalı** hale
+gelir: `Authorization: Bearer` varsa `siteUserId` kaydedilir, yoksa misafir akışı aynen
+çalışır (401 üretilmez).
+
+Reddedilen alternatifler: kayıt formunda "müşteriyim" seçimi (kullanıcı kendi rolünü
+seçemez), `customerEmail` eşleşmesiyle terfi (misafir checkout'ta e-posta doğrulanmamıştır).
+Geçmiş misafir siparişlerini bir hesaba bağlamak KAPSAM DIŞIDIR
+(`feature/order-account-linking`).
+
+**`CUSTOMER` ile `USER`'ın API'de farkı YOKTUR.** Yeni uç `GET /users/me/orders`
+authenticated'tır ve `Order.siteUserId = me` filtresiyle çalışır; bir `USER` çağırırsa boş
+liste döner. Rol guard'ı **eklenmeyecektir** — gerçek kontrol sahipliktir, ve terfi
+webhook'la geldiği için rol kontrolü kullanıcının kendi siparişini görememesine yol açardı.
+Ayrım ön yüz sunumundadır: `/siparislerim` bağlantısı `role === "CUSTOMER"` iken gösterilir.
+
+#### 10.21.8 `/admin/users` rol değiştirme
+
+Yalnızca **ADMIN** (MANAGER dahil hiç kimse). Hedef rol **5 değerin herhangi biri**;
+`CUSTOMER`/`USER`'a düşürmek panel erişimini geri almanın (ban/downgrade) doğru aracıdır.
+`assertNotLastActiveAdmin` değişmeden geçerlidir: son aktif `ADMIN`'i BAŞKA HERHANGİ bir
+role çekmek `409 CONFLICT`. `POST /admin/users` varsayılanı `EDITOR` olarak KALIR (en dar
+panel rolü). `role: VIEWER` artık şema doğrulamasında **422**'dir.
+
+#### 10.21.9 Frontend sonuçları (atlanması kolay)
+
+- Sidebar görünürlüğü rol bazlıdır; EDITOR'de yalnızca "Blog Yazıları", "Medya" ve
+  "Sayfalar (Salt İçerik Düzenleme)" görünür — "Kullanıcılar", "Ayarlar", "Sistem Sağlığı"
+  gizlidir (tam tablo: kaynak doküman §8.2).
+- `/admin` gösterge paneli `/admin/stats/*` çağırdığı için **EDITOR girişte `/admin/blog`'a
+  yönlendirilir**; `notification-center` EDITOR için ilgili uçları hiç fetch etmez — aksi
+  halde panel her açılışta 403 gürültüsü üretir.
+- Gizleme bir güvenlik önlemi DEĞİLDİR; sunucu her istekte bağımsız karar verir.
+- Rol etiketleri: `Süper Yönetici` / `Yönetici` / `Editör` / `Müşteri` / `Standart Üye`.
+  Eski `Yazar (Standart Düzenleyici)` / `İzleyici` etiketleri KALDIRILIR.
+- Yeni ön yüz rotaları: `/hesabim` (5 rol) ve `/siparislerim` (CUSTOMER).
+
+#### 10.21.10 Kapsam dışı (bilinçli)
+
+Genel `Permission`/`UserPermission` tablosu; rol bazlı içerik sahipliği; MANAGER'a şablondan
+sayfa klonlama; geçmiş misafir siparişlerini hesaba bağlama; `/admin/settings/security/*`
+rotalarının taşınması; editoryal onay/moderasyon akışı; organizasyon bazlı `MembershipRole`
+ekseni (bu iş onu HİÇ etkilemez).
 
 ---
 

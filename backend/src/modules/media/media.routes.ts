@@ -5,6 +5,8 @@ import { z } from "zod";
 import { imageSize } from "image-size";
 import { authenticate } from "../../middleware/authenticate";
 import { requireSiteRole } from "../../middleware/site-rbac";
+import { requirePanelAccess } from "../../middleware/panel-access";
+import { ROLES_ADMIN_MANAGER, ROLES_PANEL } from "../../lib/site-roles";
 import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema } from "../../schemas/common";
 import { MediaFolderSchema, MediaSchema, MoveMediaResultSchema } from "../../schemas/entities";
@@ -72,15 +74,20 @@ async function assertNameAvailable(app: FastifyInstance, name: string, parentId:
   }
 }
 
-/** `/admin/media` prefix'i altında bağlanır (bkz. app.ts) — authenticated. */
+/**
+ * `/admin/media` prefix'i altında bağlanır (bkz. app.ts).
+ * `.claude/architect-scope-rbac-5-tier.md` §5.3 satır 9 — okuma/yükleme/altText/klasör
+ * oluştur-yeniden adlandır-taşı: ADMIN/MANAGER/EDITOR; kalıcı silme (medya/klasör): ADMIN+MANAGER.
+ */
 export async function adminMediaRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
   server.addHook("preHandler", authenticate);
+  server.addHook("preHandler", requirePanelAccess());
 
   server.post(
     "/",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      preHandler: requireSiteRole(...ROLES_PANEL),
       schema: { response: { 201: ApiSuccessSchema(MediaSchema) } },
     },
     async (request, reply) => {
@@ -242,7 +249,7 @@ export async function adminMediaRoutes(app: FastifyInstance) {
   server.post(
     "/folders",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      preHandler: requireSiteRole(...ROLES_PANEL),
       schema: { body: CreateMediaFolderRequestSchema, response: { 201: ApiSuccessSchema(MediaFolderSchema) } },
     },
     async (request, reply) => {
@@ -268,7 +275,7 @@ export async function adminMediaRoutes(app: FastifyInstance) {
   server.patch(
     "/folders/:folderId",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      preHandler: requireSiteRole(...ROLES_PANEL),
       schema: {
         params: MediaFolderIdParamSchema,
         body: UpdateMediaFolderRequestSchema,
@@ -331,7 +338,7 @@ export async function adminMediaRoutes(app: FastifyInstance) {
   server.delete(
     "/folders/:folderId",
     {
-      preHandler: requireSiteRole("ADMIN"),
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
       schema: { params: MediaFolderIdParamSchema, response: { 204: z.undefined() } },
     },
     async (request, reply) => {
@@ -351,7 +358,7 @@ export async function adminMediaRoutes(app: FastifyInstance) {
   server.post(
     "/move",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      preHandler: requireSiteRole(...ROLES_PANEL),
       schema: { body: MoveMediaRequestSchema, response: { 200: ApiSuccessSchema(MoveMediaResultSchema) } },
     },
     async (request, reply) => {
@@ -396,7 +403,7 @@ export async function adminMediaRoutes(app: FastifyInstance) {
   server.patch(
     "/:mediaId",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      preHandler: requireSiteRole(...ROLES_PANEL),
       schema: {
         params: MediaIdParamSchema,
         body: UpdateMediaAltTextRequestSchema,
@@ -419,7 +426,7 @@ export async function adminMediaRoutes(app: FastifyInstance) {
   server.delete(
     "/:mediaId",
     {
-      preHandler: requireSiteRole("ADMIN"),
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
       schema: { params: MediaIdParamSchema, response: { 204: z.undefined() } },
     },
     async (request, reply) => {

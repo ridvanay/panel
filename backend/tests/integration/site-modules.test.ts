@@ -29,14 +29,14 @@ describe("site-modules — /admin/modules ve /modules", () => {
   let app: FastifyInstance;
   let adminToken: string;
   let editorToken: string;
-  let viewerToken: string;
+  let userToken: string;
   let adminId: string;
 
   function authHeader(token: string) {
     return { authorization: `Bearer ${token}` };
   }
 
-  async function createUserDirect(role: "ADMIN" | "EDITOR" | "VIEWER") {
+  async function createUserDirect(role: "ADMIN" | "MANAGER" | "EDITOR" | "USER") {
     const passwordHash = await hashPassword("Sifre12345!");
     return app.prisma.user.create({
       data: {
@@ -67,8 +67,8 @@ describe("site-modules — /admin/modules ve /modules", () => {
     const editor = await createUserDirect("EDITOR");
     editorToken = await loginAs(editor.email);
 
-    const viewer = await createUserDirect("VIEWER");
-    viewerToken = await loginAs(viewer.email);
+    const standardUser = await createUserDirect("USER");
+    userToken = await loginAs(standardUser.email);
   });
 
   afterAll(async () => {
@@ -81,8 +81,11 @@ describe("site-modules — /admin/modules ve /modules", () => {
     expect(res.statusCode).toBe(401);
   });
 
-  it("authenticated her rol (VIEWER dahil) GET /admin/modules'ü görebilir ve registry+DB birleşimini döner", async () => {
-    const res = await app.inject({ method: "GET", url: "/api/v1/admin/modules", headers: authHeader(viewerToken) });
+  it("ADMIN/MANAGER/EDITOR GET /admin/modules'ü görebilir (panel kapısı, §5.3 satır 18); USER 403 alır", async () => {
+    const userRes = await app.inject({ method: "GET", url: "/api/v1/admin/modules", headers: authHeader(userToken) });
+    expect(userRes.statusCode).toBe(403);
+
+    const res = await app.inject({ method: "GET", url: "/api/v1/admin/modules", headers: authHeader(editorToken) });
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.data).toHaveLength(1);
@@ -97,7 +100,7 @@ describe("site-modules — /admin/modules ve /modules", () => {
     });
   });
 
-  it("EDITOR/VIEWER PATCH /admin/modules/:key ile değiştiremez (403)", async () => {
+  it("EDITOR/USER PATCH /admin/modules/:key ile değiştiremez (403 — yalnızca ADMIN, (d) kill switch)", async () => {
     const editorRes = await app.inject({
       method: "PATCH",
       url: `/api/v1/admin/modules/${TEST_MODULE.key}`,
@@ -106,13 +109,13 @@ describe("site-modules — /admin/modules ve /modules", () => {
     });
     expect(editorRes.statusCode).toBe(403);
 
-    const viewerRes = await app.inject({
+    const userRes = await app.inject({
       method: "PATCH",
       url: `/api/v1/admin/modules/${TEST_MODULE.key}`,
-      headers: authHeader(viewerToken),
+      headers: authHeader(userToken),
       payload: { enabled: false },
     });
-    expect(viewerRes.statusCode).toBe(403);
+    expect(userRes.statusCode).toBe(403);
   });
 
   it("olmayan bir key için PATCH 404 döner", async () => {

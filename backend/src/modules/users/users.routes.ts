@@ -3,16 +3,18 @@ import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
 import { authenticate } from "../../middleware/authenticate";
 import { ok } from "../../lib/envelope";
-import { ApiSuccessSchema } from "../../schemas/common";
-import { UserSchema } from "../../schemas/entities";
-import { toUserDto } from "../../mappers";
+import { ApiSuccessSchema, ApiSuccessWithMeta } from "../../schemas/common";
+import { OrderSchema, UserSchema } from "../../schemas/entities";
+import { toOrderDto, toUserDto } from "../../mappers";
 import { NotFoundError, UnauthorizedError, ValidationError } from "../../lib/errors";
 import { hashPassword, verifyPassword } from "../../lib/password";
 import { REFRESH_COOKIE_NAME } from "../../lib/cookies";
 import { hashToken } from "../../lib/tokens";
 import { logAudit } from "../../lib/audit";
 import { SENSITIVE_ACTION_RATE_LIMIT } from "../../lib/rate-limit";
+import { parseCursor, buildPageMeta } from "../../lib/pagination";
 import { UpdateUserRequestSchema, ChangePasswordRequestSchema } from "./users.schemas";
+import { ListOrdersQuerySchema } from "../orders/orders.schemas";
 
 export default async function usersRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
@@ -97,6 +99,39 @@ export default async function usersRoutes(app: FastifyInstance) {
       });
 
       return reply.code(204).send();
+    }
+  );
+
+  /**
+   * `.claude/architect-scope-rbac-5-tier.md` §7.4 — authenticated (5 rolün hepsi), ROL GUARD'I
+   * EKLENMEZ: gerçek yetkilendirme kontrolü sahipliktir (`Order.siteUserId = request.user.id`).
+   * Bir `USER`'ın çağırması boş liste döndürür (hard 403 DEĞİL) — terfi zamanlaması geciktiği an
+   * (webhook kuyruğu) kullanıcının kendi siparişini görememesine yol açmaması için bilinçli karar.
+   */
+  server.get(
+    "/me/orders",
+    {
+      schema: {
+        querystring: ListOrdersQuerySchema,
+        response: { 200: ApiSuccessWithMeta(z.array(OrderSchema), z.object({ nextCursor: z.string().nullable() })) },
+      },
+    },
+    async (request, reply) => {
+      const { cursor, limit, status } = request.query;
+      const cursorSeq = parseCursor(cursor);
+
+      const rows = await app.prisma.order.findMany({
+        where: {
+          siteUserId: request.user!.id,
+          ...(cursorSeq ? { seq: { gt: cursorSeq } } : {}),
+          ...(status ? { status } : {}),
+        },
+        orderBy: { seq: "asc" },
+        take: limit,
+        include: { items: true },
+      });
+
+      return reply.send(ok(rows.map(toOrderDto), buildPageMeta(rows, limit)));
     }
   );
 }

@@ -985,8 +985,9 @@ export const CreatePageRequestSchema = z
     title: z.string().min(1),
     slug: z.string().min(1).optional(),
     status: PageStatusSchema.optional(),
-    // §10.20 — verilmezse `FREEFORM`. Bu ucun TAMAMI zaten `requireAdvancedBuilder()` şartına
-    // tabidir (bkz. pages.routes.ts), bu yüzden burada ayrıca bir yetki kontrolü YOK.
+    // §10.20/§6.1 — verilmezse `FREEFORM`. Bu ucun TAMAMI zaten `requireSiteRole(...ROLES_ADMIN)`
+    // şartına tabidir (bkz. pages.routes.ts, `.claude/architect-scope-rbac-5-tier.md` §6.1),
+    // bu yüzden burada ayrıca bir yetki kontrolü YOK.
     editMode: PageEditModeSchema.optional(),
     blocks: PageBlockListSchema.optional(),
     seoTitle: z.string().optional(),
