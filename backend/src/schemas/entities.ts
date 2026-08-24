@@ -1133,11 +1133,20 @@ export const SiteFontSchema = z.enum([
   "LORA",
   "PLAYFAIR_DISPLAY",
   "SOURCE_SERIF_4",
+  "PLUS_JAKARTA_SANS",
+  "OUTFIT",
 ]);
 export type SiteFont = z.infer<typeof SiteFontSchema>;
 
 export const PageHeaderStyleSchema = z.enum(["PLAIN", "BANNER", "HIDDEN"]);
 export type PageHeaderStyle = z.infer<typeof PageHeaderStyleSchema>;
+
+// --- Bileşen Stilleri (§10.12.2 genişlemesi, bkz. .claude/architect-scope-theme-typography.md) ---
+export const SiteBorderRadiusSchema = z.enum(["NONE", "SM", "MD", "LG", "FULL"]);
+export type SiteBorderRadius = z.infer<typeof SiteBorderRadiusSchema>;
+
+export const SiteButtonStyleSchema = z.enum(["SOLID", "OUTLINE", "SOFT"]);
+export type SiteButtonStyle = z.infer<typeof SiteButtonStyleSchema>;
 
 // `SocialPlatformSchema`'dan (sitenin KENDİ hesap linkleri) BİLİNÇLİ olarak AYRIDIR — bkz.
 // ARCHITECTURE.md §10.12.1, iki liste zamanla farklı yönlere evrilir.
@@ -1163,10 +1172,18 @@ export const SiteAppearanceSchema = z.object({
   buttonColor: HexColorSchema,
   buttonTextColor: HexColorSchema,
   linkColor: HexColorSchema,
+  accentColor: HexColorSchema,
+  backgroundColor: HexColorSchema,
+  surfaceColor: HexColorSchema,
+  textColor: HexColorSchema,
+  mutedTextColor: HexColorSchema,
   // --- Yazı Tipi ---
   headingFont: SiteFontSchema,
   bodyFont: SiteFontSchema,
   baseFontSize: z.number().int().min(14).max(20),
+  // --- Bileşen Stilleri ---
+  borderRadius: SiteBorderRadiusSchema,
+  buttonStyle: SiteButtonStyleSchema,
   // --- Sosyal Medya Paylaşımı (hesap LİNKLERİ burada DEĞİL — bkz. SocialLink/Navigation) ---
   socialShareEnabled: z.boolean(),
   socialShareNetworks: z.array(SocialShareNetworkSchema),
@@ -1202,9 +1219,16 @@ export const PublicSiteAppearanceSchema = z.object({
   buttonColor: HexColorSchema,
   buttonTextColor: HexColorSchema,
   linkColor: HexColorSchema,
+  accentColor: HexColorSchema,
+  backgroundColor: HexColorSchema,
+  surfaceColor: HexColorSchema,
+  textColor: HexColorSchema,
+  mutedTextColor: HexColorSchema,
   headingFont: SiteFontSchema,
   bodyFont: SiteFontSchema,
   baseFontSize: z.number().int().min(14).max(20),
+  borderRadius: SiteBorderRadiusSchema,
+  buttonStyle: SiteButtonStyleSchema,
   socialShareEnabled: z.boolean(),
   socialShareNetworks: z.array(SocialShareNetworkSchema),
   backToTopEnabled: z.boolean(),

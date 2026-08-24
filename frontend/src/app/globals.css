@@ -462,10 +462,18 @@
   --site-button: #4f46e5;
   --site-button-text: #ffffff;
   --site-link: #4f46e5;
+  --site-accent: #f59e0b;
+  --site-background: #ffffff;
+  --site-surface: #f9fafb;
+  --site-text: #111827;
+  --site-muted-text: #6b7280;
+  --site-radius: 8px;
   --site-heading-font: inherit;
   --site-body-font: inherit;
   --site-base-font-size: 16px;
 
+  background-color: var(--site-background);
+  color: var(--site-text);
   font-family: var(--site-body-font);
   font-size: var(--site-base-font-size);
 }

@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
-import type { PageHeaderStyle, SiteFont, SocialShareNetwork } from "@prisma/client";
+import type { PageHeaderStyle, SiteBorderRadius, SiteButtonStyle, SiteFont, SocialShareNetwork } from "@prisma/client";
 import { z } from "zod";
 import { authenticate } from "../../middleware/authenticate";
 import { requireSiteRole } from "../../middleware/site-rbac";
@@ -45,9 +45,16 @@ export const DEFAULTS = {
   buttonColor: "#4f46e5",
   buttonTextColor: "#ffffff",
   linkColor: "#4f46e5",
+  accentColor: "#f59e0b",
+  backgroundColor: "#ffffff",
+  surfaceColor: "#f9fafb",
+  textColor: "#111827",
+  mutedTextColor: "#6b7280",
   headingFont: "SYSTEM" as SiteFont,
   bodyFont: "SYSTEM" as SiteFont,
   baseFontSize: 16,
+  borderRadius: "MD" as SiteBorderRadius,
+  buttonStyle: "SOLID" as SiteButtonStyle,
   socialShareEnabled: false,
   socialShareNetworks: [] as SocialShareNetwork[],
   backToTopEnabled: true,
@@ -75,9 +82,16 @@ const COLOR_TYPOGRAPHY_DEFAULTS = {
   buttonColor: DEFAULTS.buttonColor,
   buttonTextColor: DEFAULTS.buttonTextColor,
   linkColor: DEFAULTS.linkColor,
+  accentColor: DEFAULTS.accentColor,
+  backgroundColor: DEFAULTS.backgroundColor,
+  surfaceColor: DEFAULTS.surfaceColor,
+  textColor: DEFAULTS.textColor,
+  mutedTextColor: DEFAULTS.mutedTextColor,
   headingFont: DEFAULTS.headingFont,
   bodyFont: DEFAULTS.bodyFont,
   baseFontSize: DEFAULTS.baseFontSize,
+  borderRadius: DEFAULTS.borderRadius,
+  buttonStyle: DEFAULTS.buttonStyle,
 };
 
 const WITH_HEADER_MEDIA = { include: { pageHeaderBackgroundMedia: true } } as const;

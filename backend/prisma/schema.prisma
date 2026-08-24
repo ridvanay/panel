@@ -906,6 +906,22 @@ enum SiteFont {
   LORA
   PLAYFAIR_DISPLAY
   SOURCE_SERIF_4
+  PLUS_JAKARTA_SANS
+  OUTFIT
+}
+
+enum SiteBorderRadius {
+  NONE
+  SM
+  MD
+  LG
+  FULL
+}
+
+enum SiteButtonStyle {
+  SOLID
+  OUTLINE
+  SOFT
 }
 
 // Yazı/sayfa altındaki paylaşım butonları hedefi. `SocialPlatform`'dan (sitenin
@@ -956,12 +972,21 @@ model SiteAppearance {
   // türetimi orta tonlu zeminlerde AA kontrastını güvenilir biçimde sağlayamaz.
   buttonTextColor String @default("#ffffff")
   linkColor       String @default("#4f46e5")
+  accentColor     String @default("#f59e0b")
+  backgroundColor String @default("#ffffff")
+  surfaceColor    String @default("#f9fafb")
+  textColor       String @default("#111827")
+  mutedTextColor  String @default("#6b7280")
 
   // --- Yazı Tipi ---
   headingFont  SiteFont @default(SYSTEM)
   bodyFont     SiteFont @default(SYSTEM)
   // px, varsayılan 16. Alt sınır (Zod, backend-agent) 14 — okunabilirlik eşiği.
   baseFontSize Int      @default(16)
+
+  // --- Bileşen Stilleri ---
+  borderRadius SiteBorderRadius @default(MD)
+  buttonStyle  SiteButtonStyle  @default(SOLID)
 
   // --- Sosyal Medya Paylaşımı — SİTENİN KENDİ hesap LİNKLERİ BURADA DEĞİL (bkz.
   // SocialLink modeli / §10.12.1). socialShareEnabled=false iken de saklanır. ---

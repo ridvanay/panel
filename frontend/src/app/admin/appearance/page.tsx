@@ -18,6 +18,7 @@ import {
   EyeOff,
   FileQuestion,
   Image as ImageIcon,
+  Layers,
   LayoutTemplate,
   Link2,
   Mail,
@@ -46,6 +47,8 @@ import type {
   NavigationConfigDto,
   PageHeaderStyle,
   SiteAppearance,
+  SiteBorderRadius,
+  SiteButtonStyle,
   SiteCustomCode,
   SiteFont,
   SiteSettings,
@@ -76,6 +79,7 @@ import { DEFAULT_APPEARANCE } from "@/lib/api/server-appearance";
 import { getFooterLogoHeight } from "@/lib/site-settings/logo";
 import { SITE_FONT_OPTIONS } from "@/lib/site-settings/appearance";
 import { SITE_FONT_FAMILY, SITE_FONT_VARIABLES } from "@/lib/site-settings/site-fonts";
+import { SITE_BORDER_RADIUS_PX } from "@/lib/site-settings/site-radius";
 import { cn } from "@/lib/utils";
 import { useUnsavedChangesGuard } from "@/hooks/use-unsaved-changes-guard";
 
@@ -118,6 +122,22 @@ const PAGE_HEADER_STYLE_OPTIONS: { value: PageHeaderStyle; label: string; descri
   { value: "HIDDEN", label: "Gizli", description: "Başlık bloğu hiç gösterilmez", icon: EyeOff },
 ];
 
+/** design-notes-theme-typography.md §3.1 — 5 seçenek, gerçek px değeriyle inline çizilen önizleme karesi. */
+const BORDER_RADIUS_OPTIONS: { value: SiteBorderRadius; label: string; hint: string }[] = [
+  { value: "NONE", label: "Yok", hint: "0px" },
+  { value: "SM", label: "Küçük", hint: "4px" },
+  { value: "MD", label: "Orta", hint: "8px (varsayılan)" },
+  { value: "LG", label: "Büyük", hint: "16px" },
+  { value: "FULL", label: "Tam Yuvarlak", hint: "pill" },
+];
+
+/** design-notes-theme-typography.md §3.2 — 3 seçenek, canlı `buttonColor`/`buttonTextColor` ile render edilen mini buton mockup'ı. */
+const BUTTON_STYLE_OPTIONS: { value: SiteButtonStyle; label: string }[] = [
+  { value: "SOLID", label: "Dolu" },
+  { value: "OUTLINE", label: "Anahat" },
+  { value: "SOFT", label: "Yumuşak" },
+];
+
 const SOCIAL_SHARE_OPTIONS: { value: SocialShareNetwork; label: string; icon: typeof AtSign }[] = [
   { value: "TWITTER", label: "Twitter / X", icon: AtSign },
   { value: "FACEBOOK", label: "Facebook", icon: ThumbsUp },
@@ -143,9 +163,16 @@ interface AppearanceFormState {
   buttonColor: string;
   buttonTextColor: string;
   linkColor: string;
+  accentColor: string;
+  backgroundColor: string;
+  surfaceColor: string;
+  textColor: string;
+  mutedTextColor: string;
   headingFont: SiteFont;
   bodyFont: SiteFont;
   baseFontSize: number;
+  borderRadius: SiteBorderRadius;
+  buttonStyle: SiteButtonStyle;
   socialShareEnabled: boolean;
   socialShareNetworks: SocialShareNetwork[];
   backToTopEnabled: boolean;
@@ -173,9 +200,16 @@ function formFromDto(dto: SiteAppearance): AppearanceFormState {
     buttonColor: dto.buttonColor,
     buttonTextColor: dto.buttonTextColor,
     linkColor: dto.linkColor,
+    accentColor: dto.accentColor,
+    backgroundColor: dto.backgroundColor,
+    surfaceColor: dto.surfaceColor,
+    textColor: dto.textColor,
+    mutedTextColor: dto.mutedTextColor,
     headingFont: dto.headingFont,
     bodyFont: dto.bodyFont,
     baseFontSize: dto.baseFontSize,
+    borderRadius: dto.borderRadius,
+    buttonStyle: dto.buttonStyle,
     socialShareEnabled: dto.socialShareEnabled,
     socialShareNetworks: dto.socialShareNetworks,
     backToTopEnabled: dto.backToTopEnabled,
@@ -211,7 +245,20 @@ function toRequestValue(key: keyof AppearanceFormState, value: unknown): unknown
   return value;
 }
 
-const COLOR_FIELDS = ["primaryColor", "secondaryColor", "buttonColor", "buttonTextColor", "linkColor"] as const;
+const COLOR_FIELDS = [
+  "primaryColor",
+  "secondaryColor",
+  "buttonColor",
+  "buttonTextColor",
+  "linkColor",
+  "accentColor",
+  "backgroundColor",
+  "surfaceColor",
+  "textColor",
+  "mutedTextColor",
+] as const;
+/** design-notes-theme-typography.md §6 — "Bileşen Stilleri" `colors` sekminin İÇİNDE, ayrı bir sekme DEĞİL. */
+const COMPONENT_STYLE_FIELDS = ["borderRadius", "buttonStyle"] as const;
 const TYPOGRAPHY_FIELDS = ["headingFont", "bodyFont", "baseFontSize"] as const;
 
 /** §10.12.9 — Panelin 9 sekmesinden 8'i (`brand` dahil, salt-okunur olduğu için hiç dirty olmaz;
@@ -220,9 +267,9 @@ const TYPOGRAPHY_FIELDS = ["headingFont", "bodyFont", "baseFontSize"] as const;
  * olması için (yalnızca `presets` sekmesinden kaydedilseydi bu kural diğer iki sekmeden
  * kaydedildiğinde kaybolurdu). */
 const SECTION_FIELDS = {
-  presets: ["presetKey", ...COLOR_FIELDS, ...TYPOGRAPHY_FIELDS],
+  presets: ["presetKey", ...COLOR_FIELDS, ...TYPOGRAPHY_FIELDS, ...COMPONENT_STYLE_FIELDS],
   pageHeader: ["pageHeaderStyle", "pageHeaderBackgroundColor", "pageHeaderBackgroundMediaId", "pageHeaderOverlayOpacity"],
-  colors: ["presetKey", ...COLOR_FIELDS],
+  colors: ["presetKey", ...COLOR_FIELDS, ...COMPONENT_STYLE_FIELDS],
   social: ["socialShareEnabled", "socialShareNetworks"],
   typography: ["presetKey", ...TYPOGRAPHY_FIELDS],
   features: [
@@ -525,9 +572,16 @@ export default function AdminAppearancePage() {
             buttonColor: values.buttonColor ?? prev.buttonColor,
             buttonTextColor: values.buttonTextColor ?? prev.buttonTextColor,
             linkColor: values.linkColor ?? prev.linkColor,
+            accentColor: values.accentColor ?? prev.accentColor,
+            backgroundColor: values.backgroundColor ?? prev.backgroundColor,
+            surfaceColor: values.surfaceColor ?? prev.surfaceColor,
+            textColor: values.textColor ?? prev.textColor,
+            mutedTextColor: values.mutedTextColor ?? prev.mutedTextColor,
             headingFont: values.headingFont ?? prev.headingFont,
             bodyFont: values.bodyFont ?? prev.bodyFont,
             baseFontSize: values.baseFontSize ?? prev.baseFontSize,
+            borderRadius: values.borderRadius ?? prev.borderRadius,
+            buttonStyle: values.buttonStyle ?? prev.buttonStyle,
           }
         : prev
     );
@@ -663,6 +717,12 @@ export default function AdminAppearancePage() {
     "--site-button": form.buttonColor,
     "--site-button-text": form.buttonTextColor,
     "--site-link": form.linkColor,
+    "--site-accent": form.accentColor,
+    "--site-background": form.backgroundColor,
+    "--site-surface": form.surfaceColor,
+    "--site-text": form.textColor,
+    "--site-muted-text": form.mutedTextColor,
+    "--site-radius": SITE_BORDER_RADIUS_PX[form.borderRadius],
     "--site-heading-font": SITE_FONT_FAMILY[form.headingFont],
     "--site-body-font": SITE_FONT_FAMILY[form.bodyFont],
     "--site-base-font-size": `${form.baseFontSize}px`,
@@ -953,6 +1013,120 @@ export default function AdminAppearancePage() {
                     value={form.linkColor}
                     onChange={(hex) => updateColorOrTypographyField("linkColor", hex)}
                   />
+                  <div className="space-y-1.5">
+                    <ColorField
+                      id="accentColor"
+                      label="Vurgu Rengi"
+                      value={form.accentColor}
+                      onChange={(hex) => updateColorOrTypographyField("accentColor", hex)}
+                    />
+                    {/* design-notes-theme-typography.md §1 — otomatik kontrast rozeti YOK (bağlama göre değişir), metinsel uyarı yeterli. */}
+                    <p className="text-xs text-foreground/50">
+                      Bu renk genellikle rozet/vurgu zemini olarak kullanılır. Üzerine metin koyarken <strong>Metin Rengi</strong>&apos;ni
+                      (koyu) tercih edin; <strong>Buton Metni</strong> (genelde beyaz) accent zemininde düşük kontrast oluşturabilir.
+                    </p>
+                  </div>
+                  <ColorField
+                    id="backgroundColor"
+                    label="Sayfa Zemini"
+                    value={form.backgroundColor}
+                    onChange={(hex) => updateColorOrTypographyField("backgroundColor", hex)}
+                  />
+                  <ColorField
+                    id="surfaceColor"
+                    label="Yüzey / Kart Zemini"
+                    value={form.surfaceColor}
+                    onChange={(hex) => updateColorOrTypographyField("surfaceColor", hex)}
+                  />
+                  <ColorField
+                    id="textColor"
+                    label="Metin Rengi"
+                    value={form.textColor}
+                    checkAgainst={form.backgroundColor}
+                    onChange={(hex) => updateColorOrTypographyField("textColor", hex)}
+                  />
+                  <ColorField
+                    id="mutedTextColor"
+                    label="İkincil Metin Rengi"
+                    value={form.mutedTextColor}
+                    checkAgainst={form.backgroundColor}
+                    onChange={(hex) => updateColorOrTypographyField("mutedTextColor", hex)}
+                  />
+                </div>
+
+                {/* design-notes-theme-typography.md §6 — "Bileşen Stilleri" AYNI kart içinde, ayraçtan sonra. */}
+                <div className="space-y-4 border-t border-border/60 pt-4">
+                  <SectionHeader icon={Layers} title="Bileşen Stilleri" description="Buton ve kart köşelerinin görünümü." />
+
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-foreground">Köşe Yuvarlaklığı</p>
+                    <div className="grid grid-cols-5 gap-3" role="radiogroup" aria-label="Köşe yuvarlaklığı">
+                      {BORDER_RADIUS_OPTIONS.map((opt) => {
+                        const active = form.borderRadius === opt.value;
+                        return (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            role="radio"
+                            aria-checked={active}
+                            onClick={() => updateColorOrTypographyField("borderRadius", opt.value)}
+                            className={cn(
+                              "flex flex-col items-center gap-2 rounded-lg border p-3 text-center transition-all duration-300",
+                              active ? "border-primary bg-primary/5" : "border-border hover:bg-muted"
+                            )}
+                          >
+                            <span
+                              className="h-8 w-8 border border-primary/40 bg-primary/15"
+                              style={{ borderRadius: SITE_BORDER_RADIUS_PX[opt.value] }}
+                              aria-hidden="true"
+                            />
+                            <span className="text-sm font-medium text-foreground">{opt.label}</span>
+                            <span className="text-xs text-foreground/60">{opt.hint}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-foreground">Buton Stili</p>
+                    <div className="grid grid-cols-3 gap-3" role="radiogroup" aria-label="Buton stili">
+                      {BUTTON_STYLE_OPTIONS.map((opt) => {
+                        const active = form.buttonStyle === opt.value;
+                        return (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            role="radio"
+                            aria-checked={active}
+                            onClick={() => updateColorOrTypographyField("buttonStyle", opt.value)}
+                            style={{ borderRadius: SITE_BORDER_RADIUS_PX[form.borderRadius] }}
+                            className={cn(
+                              "flex flex-col items-center gap-2 border p-3 text-center transition-all duration-300",
+                              active ? "border-primary bg-primary/5" : "border-border hover:bg-muted"
+                            )}
+                          >
+                            <span
+                              className={cn(
+                                "pointer-events-none px-3 py-1 text-xs font-medium",
+                                opt.value === "OUTLINE" && "border-2"
+                              )}
+                              style={{
+                                borderRadius: SITE_BORDER_RADIUS_PX[form.borderRadius],
+                                backgroundColor:
+                                  opt.value === "SOLID" ? form.buttonColor : opt.value === "SOFT" ? `${form.buttonColor}1a` : "transparent",
+                                color: opt.value === "SOLID" ? form.buttonTextColor : form.buttonColor,
+                                borderColor: opt.value === "OUTLINE" ? form.buttonColor : undefined,
+                              }}
+                            >
+                              Örnek
+                            </span>
+                            <span className="text-sm font-medium text-foreground">{opt.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
               </Card>
               <SectionSaveButton
@@ -1097,6 +1271,20 @@ export default function AdminAppearancePage() {
                     onChange={(e) => updateColorOrTypographyField("baseFontSize", Number(e.target.value))}
                     className="w-full accent-primary"
                   />
+                </div>
+
+                {/* design-notes-theme-typography.md §4 — gerçek yüklü font (`SITE_FONT_FAMILY`), `cssFallback` DEĞİL. */}
+                <div
+                  className={`space-y-3 rounded-lg border border-border bg-surface-muted/30 p-6 ${SITE_FONT_VARIABLES}`}
+                >
+                  <p className="text-xs font-medium tracking-wide text-foreground/50 uppercase">Canlı Önizleme</p>
+                  <p className="text-2xl font-bold" style={{ fontFamily: SITE_FONT_FAMILY[form.headingFont] }}>
+                    Iğdır&apos;da çığ, üşüyen köpekler
+                  </p>
+                  <p style={{ fontFamily: SITE_FONT_FAMILY[form.bodyFont], fontSize: form.baseFontSize }}>
+                    Pijamalı hasta yağız şoföre çabucak güvendi. Bu örnek paragraf, seçtiğiniz gövde fontunun Türkçe
+                    karakterlerde (ç, ğ, ı, ö, ş, ü) nasıl göründüğünü gösterir.
+                  </p>
                 </div>
               </Card>
               <SectionSaveButton
@@ -1468,6 +1656,7 @@ export default function AdminAppearancePage() {
                     navigationItems={navigation.navigationItems}
                     ctaLabel={navigation.headerCtaLabel}
                     ctaHref={navigation.headerCtaHref}
+                    buttonStyle={form.buttonStyle}
                   />
                   <div className="flex min-h-32 flex-col items-center justify-center gap-2 bg-muted/30 px-4 py-10 text-center">
                     {form.pageHeaderStyle === "BANNER" && (

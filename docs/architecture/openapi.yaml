@@ -10563,7 +10563,23 @@ components:
         **Admin panelinin Geist fontu bu enum'dan BAĞIMSIZDIR ve bu ayarla
         DEĞİŞTİRİLEMEZ** (bkz. `app/layout.tsx`).
       type: string
-      enum: [SYSTEM, INTER, ROBOTO, OPEN_SANS, MONTSERRAT, POPPINS, LORA, PLAYFAIR_DISPLAY, SOURCE_SERIF_4]
+      enum: [SYSTEM, INTER, ROBOTO, OPEN_SANS, MONTSERRAT, POPPINS, LORA, PLAYFAIR_DISPLAY, SOURCE_SERIF_4, PLUS_JAKARTA_SANS, OUTFIT]
+
+    SiteBorderRadius:
+      description: >
+        Site genelinde (yalnızca ziyaretçi sitesi) köşe yuvarlaklığı token'ı — kapalı
+        enum, serbest px değeri DEĞİL (renk token'larıyla AYNI kapalı-küme ilkesi).
+        Render katmanında `--site-radius` CSS değişkenine (px) çözümlenir.
+      type: string
+      enum: [NONE, SM, MD, LG, FULL]
+
+    SiteButtonStyle:
+      description: >
+        Site genelinde (yalnızca ziyaretçi sitesi) buton görsel varyantı —
+        `SOLID` (dolu zemin), `OUTLINE` (kenarlıklı, şeffaf zemin), `SOFT` (düşük
+        opaklıklı zemin). CSS değişkeni DEĞİLDİR — yapısal bir sınıf varyantıdır.
+      type: string
+      enum: [SOLID, OUTLINE, SOFT]
 
     PageHeaderStyle:
       description: >
@@ -10653,6 +10669,11 @@ components:
           allOf: [{ $ref: "#/components/schemas/HexColor" }]
           description: "Buton zemini üzerindeki metin rengi — ayrı bir alandır çünkü otomatik türetim (siyah/beyaz seçimi) orta tonlu zeminlerde AA kontrastını güvenilir biçimde sağlayamaz."
         linkColor: { $ref: "#/components/schemas/HexColor" }
+        accentColor: { $ref: "#/components/schemas/HexColor" }
+        backgroundColor: { $ref: "#/components/schemas/HexColor" }
+        surfaceColor: { $ref: "#/components/schemas/HexColor" }
+        textColor: { $ref: "#/components/schemas/HexColor" }
+        mutedTextColor: { $ref: "#/components/schemas/HexColor" }
         # --- §6 Yazı Tipi ---
         headingFont: { $ref: "#/components/schemas/SiteFont" }
         bodyFont: { $ref: "#/components/schemas/SiteFont" }
@@ -10661,6 +10682,9 @@ components:
           minimum: 14
           maximum: 20
           description: "Gövde metni temel boyutu (px, varsayılan 16). Alt sınır 14'tür — daha küçüğü okunabilirlik/erişilebilirlik eşiğinin altına düşerdi."
+        # --- Bileşen Stilleri ---
+        borderRadius: { $ref: "#/components/schemas/SiteBorderRadius" }
+        buttonStyle: { $ref: "#/components/schemas/SiteButtonStyle" }
         # --- §5 Sosyal Medya Paylaşımı (HESAP LİNKLERİ BURADA DEĞİL — bkz. Navigation) ---
         socialShareEnabled:
           type: boolean
@@ -10710,9 +10734,16 @@ components:
         buttonColor: { $ref: "#/components/schemas/HexColor" }
         buttonTextColor: { $ref: "#/components/schemas/HexColor" }
         linkColor: { $ref: "#/components/schemas/HexColor" }
+        accentColor: { $ref: "#/components/schemas/HexColor" }
+        backgroundColor: { $ref: "#/components/schemas/HexColor" }
+        surfaceColor: { $ref: "#/components/schemas/HexColor" }
+        textColor: { $ref: "#/components/schemas/HexColor" }
+        mutedTextColor: { $ref: "#/components/schemas/HexColor" }
         headingFont: { $ref: "#/components/schemas/SiteFont" }
         bodyFont: { $ref: "#/components/schemas/SiteFont" }
         baseFontSize: { type: integer, minimum: 14, maximum: 20 }
+        borderRadius: { $ref: "#/components/schemas/SiteBorderRadius" }
+        buttonStyle: { $ref: "#/components/schemas/SiteButtonStyle" }
         socialShareEnabled: { type: boolean }
         socialShareNetworks:
           type: array
@@ -10760,9 +10791,16 @@ components:
         buttonColor: { $ref: "#/components/schemas/HexColor" }
         buttonTextColor: { $ref: "#/components/schemas/HexColor" }
         linkColor: { $ref: "#/components/schemas/HexColor" }
+        accentColor: { $ref: "#/components/schemas/HexColor" }
+        backgroundColor: { $ref: "#/components/schemas/HexColor" }
+        surfaceColor: { $ref: "#/components/schemas/HexColor" }
+        textColor: { $ref: "#/components/schemas/HexColor" }
+        mutedTextColor: { $ref: "#/components/schemas/HexColor" }
         headingFont: { $ref: "#/components/schemas/SiteFont" }
         bodyFont: { $ref: "#/components/schemas/SiteFont" }
         baseFontSize: { type: integer, minimum: 14, maximum: 20 }
+        borderRadius: { $ref: "#/components/schemas/SiteBorderRadius" }
+        buttonStyle: { $ref: "#/components/schemas/SiteButtonStyle" }
         socialShareEnabled: { type: boolean }
         socialShareNetworks:
           type: array

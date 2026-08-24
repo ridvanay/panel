@@ -15,6 +15,7 @@ import { CookieConsentBanner } from "@/components/site/cookie-consent-banner";
 import { getFooterLogoHeight } from "@/lib/site-settings/logo";
 import { escapeEmbeddedClosingTags } from "@/lib/site-settings/appearance";
 import { SITE_FONT_FAMILY, SITE_FONT_VARIABLES } from "@/lib/site-settings/site-fonts";
+import { SITE_BORDER_RADIUS_PX } from "@/lib/site-settings/site-radius";
 
 export default async function SiteLayout({
   children,
@@ -50,6 +51,12 @@ export default async function SiteLayout({
     "--site-button": appearance.buttonColor,
     "--site-button-text": appearance.buttonTextColor,
     "--site-link": appearance.linkColor,
+    "--site-accent": appearance.accentColor,
+    "--site-background": appearance.backgroundColor,
+    "--site-surface": appearance.surfaceColor,
+    "--site-text": appearance.textColor,
+    "--site-muted-text": appearance.mutedTextColor,
+    "--site-radius": SITE_BORDER_RADIUS_PX[appearance.borderRadius],
     "--site-heading-font": SITE_FONT_FAMILY[appearance.headingFont],
     "--site-body-font": SITE_FONT_FAMILY[appearance.bodyFont],
     "--site-base-font-size": `${appearance.baseFontSize}px`,
@@ -73,6 +80,7 @@ export default async function SiteLayout({
             navigationItems={navigation.navigationItems}
             ctaLabel={navigation.headerCtaLabel}
             ctaHref={navigation.headerCtaHref}
+            buttonStyle={appearance.buttonStyle}
             locales={locales}
             activeLocale={activeLocale}
           />

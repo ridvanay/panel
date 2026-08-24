@@ -1,4 +1,15 @@
-import { Inter, Lora, Montserrat, Open_Sans, Playfair_Display, Poppins, Roboto, Source_Serif_4 } from "next/font/google";
+import {
+  Inter,
+  Lora,
+  Montserrat,
+  Open_Sans,
+  Outfit,
+  Playfair_Display,
+  Plus_Jakarta_Sans,
+  Poppins,
+  Roboto,
+  Source_Serif_4,
+} from "next/font/google";
 import type { SiteFont } from "@/lib/api/types";
 
 /**
@@ -21,6 +32,8 @@ export const sitePoppins = Poppins({ subsets: ["latin"], weight: ["400", "500", 
 export const siteLora = Lora({ subsets: ["latin"], variable: "--font-site-lora", display: "swap" });
 export const sitePlayfairDisplay = Playfair_Display({ subsets: ["latin"], variable: "--font-site-playfair-display", display: "swap" });
 export const siteSourceSerif4 = Source_Serif_4({ subsets: ["latin"], variable: "--font-site-source-serif-4", display: "swap" });
+export const sitePlusJakartaSans = Plus_Jakarta_Sans({ subsets: ["latin"], variable: "--font-site-plus-jakarta-sans", display: "swap" });
+export const siteOutfit = Outfit({ subsets: ["latin"], variable: "--font-site-outfit", display: "swap" });
 
 /**
  * Tüm fontların `variable` çıktısını AYNI sarmalayıcıya (`.site-scope`) uygulamak gerekir —
@@ -38,6 +51,8 @@ export const SITE_FONT_VARIABLES = [
   siteLora.variable,
   sitePlayfairDisplay.variable,
   siteSourceSerif4.variable,
+  sitePlusJakartaSans.variable,
+  siteOutfit.variable,
 ].join(" ");
 
 export const SITE_FONT_FAMILY: Record<SiteFont, string> = {
@@ -50,4 +65,6 @@ export const SITE_FONT_FAMILY: Record<SiteFont, string> = {
   LORA: `var(${siteLora.variable})`,
   PLAYFAIR_DISPLAY: `var(${sitePlayfairDisplay.variable})`,
   SOURCE_SERIF_4: `var(${siteSourceSerif4.variable})`,
+  PLUS_JAKARTA_SANS: `var(${sitePlusJakartaSans.variable})`,
+  OUTFIT: `var(${siteOutfit.variable})`,
 };

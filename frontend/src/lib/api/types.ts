@@ -1979,9 +1979,17 @@ export type SiteFont =
   | "POPPINS"
   | "LORA"
   | "PLAYFAIR_DISPLAY"
-  | "SOURCE_SERIF_4";
+  | "SOURCE_SERIF_4"
+  | "PLUS_JAKARTA_SANS"
+  | "OUTFIT";
 
 export type PageHeaderStyle = "PLAIN" | "BANNER" | "HIDDEN";
+
+/** Buton/kart köşe yarıçapı — `SITE_BORDER_RADIUS_PX` (lib/site-settings/site-radius.ts) enum→px eşlemesini kullanır. */
+export type SiteBorderRadius = "NONE" | "SM" | "MD" | "LG" | "FULL";
+
+/** `.site-scope` içindeki CTA/buton render noktalarının yapısal varyantı — CSS custom property DEĞİLDİR. */
+export type SiteButtonStyle = "SOLID" | "OUTLINE" | "SOFT";
 
 /**
  * Yazı/sayfa altındaki paylaşım butonları — `SocialPlatform`'dan (site kimliğinin KENDİ hesap
@@ -2005,9 +2013,16 @@ export interface SiteAppearance {
   buttonColor: string;
   buttonTextColor: string;
   linkColor: string;
+  accentColor: string;
+  backgroundColor: string;
+  surfaceColor: string;
+  textColor: string;
+  mutedTextColor: string;
   headingFont: SiteFont;
   bodyFont: SiteFont;
   baseFontSize: number;
+  borderRadius: SiteBorderRadius;
+  buttonStyle: SiteButtonStyle;
   socialShareEnabled: boolean;
   socialShareNetworks: SocialShareNetwork[];
   backToTopEnabled: boolean;
@@ -2040,9 +2055,16 @@ export interface PublicSiteAppearance {
   buttonColor: string;
   buttonTextColor: string;
   linkColor: string;
+  accentColor: string;
+  backgroundColor: string;
+  surfaceColor: string;
+  textColor: string;
+  mutedTextColor: string;
   headingFont: SiteFont;
   bodyFont: SiteFont;
   baseFontSize: number;
+  borderRadius: SiteBorderRadius;
+  buttonStyle: SiteButtonStyle;
   socialShareEnabled: boolean;
   socialShareNetworks: SocialShareNetwork[];
   backToTopEnabled: boolean;
@@ -2077,9 +2099,16 @@ export interface UpdateSiteAppearanceRequest {
   buttonColor?: string;
   buttonTextColor?: string;
   linkColor?: string;
+  accentColor?: string;
+  backgroundColor?: string;
+  surfaceColor?: string;
+  textColor?: string;
+  mutedTextColor?: string;
   headingFont?: SiteFont;
   bodyFont?: SiteFont;
   baseFontSize?: number;
+  borderRadius?: SiteBorderRadius;
+  buttonStyle?: SiteButtonStyle;
   socialShareEnabled?: boolean;
   /** Tam değiştirme (replace) semantiği — gönderilen dizi mevcut seçimin YERİNE geçer. */
   socialShareNetworks?: SocialShareNetwork[];

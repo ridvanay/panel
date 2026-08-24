@@ -13,8 +13,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { LanguageSwitcher } from "@/components/site/language-switcher";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
-import type { Locale, NavigationItemDto, SitePage, SiteSettings } from "@/lib/api/types";
+import type { Locale, NavigationItemDto, SiteButtonStyle, SitePage, SiteSettings } from "@/lib/api/types";
 import { DEFAULT_HEADER_LOGO_HEIGHT } from "@/lib/site-settings/logo";
+import { cn } from "@/lib/utils";
 
 interface SiteHeaderProps {
   settings: SiteSettings;
@@ -23,10 +24,22 @@ interface SiteHeaderProps {
   navigationItems?: NavigationItemDto[];
   ctaLabel?: string | null;
   ctaHref?: string | null;
+  /** `.claude/architect-scope-theme-typography.md` — verilmezse mevcut SOLID görünüme düşer (geriye dönük uyumluluk). */
+  buttonStyle?: SiteButtonStyle;
   /** §9 frontend-agent madde 4 — verilmezse dil değiştirici gösterilmez (ör. admin canlı önizleme). */
   locales?: Locale[];
   activeLocale?: Locale;
 }
+
+/**
+ * design-notes-theme-typography.md §3.2 — `buttonStyle` CSS custom property DEĞİL, yapısal bir
+ * Tailwind sınıf varyantı. Köşe yuvarlaklığı her üçünde de ortak `rounded-[var(--site-radius)]`.
+ */
+const SITE_BUTTON_STYLE_CLASSES: Record<SiteButtonStyle, string> = {
+  SOLID: "bg-[var(--site-button)] text-[var(--site-button-text)]",
+  OUTLINE: "border-2 border-[var(--site-button)] text-[var(--site-button)] bg-transparent",
+  SOFT: "bg-[var(--site-button)]/10 text-[var(--site-button)]",
+};
 
 interface NavNode {
   id: string;
@@ -53,7 +66,16 @@ function buildNavTree(items: NavigationItemDto[]): NavNode[] {
   }));
 }
 
-export function SiteHeader({ settings, pages, navigationItems, ctaLabel, ctaHref, locales, activeLocale }: SiteHeaderProps) {
+export function SiteHeader({
+  settings,
+  pages,
+  navigationItems,
+  ctaLabel,
+  ctaHref,
+  buttonStyle = "SOLID",
+  locales,
+  activeLocale,
+}: SiteHeaderProps) {
   // `useCartOptional`: bu bileşen `admin/navigation/page.tsx`'teki canlı önizlemede
   // `CartProvider` OLMADAN da render edilir (admin layout'unda sepet KASTEN yok) — o durumda
   // rozet sessizce 0 gösterir, hata fırlatmaz.
@@ -141,10 +163,14 @@ export function SiteHeader({ settings, pages, navigationItems, ctaLabel, ctaHref
           {showCta && (
             // §10.12.4 — `--site-button`/`--site-button-text` (`.site-scope` altında satır-içi
             // yazılır, bkz. globals.css `.site-scope` fallback bloğu). Admin'in `--primary`
-            // token'ından KASITLI olarak bağımsız.
+            // token'ından KASITLI olarak bağımsız. `buttonStyle` yapısal bir sınıf varyantıdır
+            // (design-notes-theme-typography.md §3.2) — CSS custom property DEĞİLDİR.
             <Link
               href={localize(ctaHref as string)}
-              className="rounded-lg bg-[var(--site-button)] px-3.5 py-1.5 text-sm font-medium text-[var(--site-button-text)] transition-all hover:opacity-85"
+              className={cn(
+                "rounded-[var(--site-radius)] px-3.5 py-1.5 text-sm font-medium transition-all duration-300 hover:opacity-85",
+                SITE_BUTTON_STYLE_CLASSES[buttonStyle]
+              )}
             >
               {ctaLabel}
             </Link>
