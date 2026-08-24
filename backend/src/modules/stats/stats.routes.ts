@@ -3,6 +3,8 @@ import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
 import { authenticate } from "../../middleware/authenticate";
 import { requireSiteRole } from "../../middleware/site-rbac";
+import { requirePanelAccess } from "../../middleware/panel-access";
+import { ROLES_ADMIN_MANAGER } from "../../lib/site-roles";
 import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema, ApiSuccessWithMeta } from "../../schemas/common";
 import { countLiveVisitors } from "../../lib/live-visitors";
@@ -23,18 +25,19 @@ import {
 } from "./stats.schemas";
 
 /**
- * `/admin/stats` prefix'i altında bağlanır (bkz. app.ts). RBAC route-bazlıdır (§10.8.10,
- * kullanıcı tarafından onaylanmış karar) — modül-seviyesinde TEK bir `requireSiteRole`
- * hook'u YOK:
- *  - İçerik analitiği (`/views`, `/breakdown`, `/top-content`, `/live-visitors`): EDITOR + ADMIN.
- *  - Kullanıcı/gelir verisi (`/summary`, `/users`, `/revenue`): yalnızca ADMIN.
+ * `/admin/stats` prefix'i altında bağlanır (bkz. app.ts).
+ * `.claude/architect-scope-rbac-5-tier.md` §5.3 satır 19 — EDITOR TÜM istatistik uçlarından
+ * ÇIKARILDI (panel kapısı EDITOR'ü geçirse de her iki grup da ADMIN + MANAGER'a daraltılmıştır):
+ *  - İçerik analitiği (`/views`, `/breakdown`, `/top-content`, `/live-visitors`): ADMIN + MANAGER.
+ *  - Kullanıcı/gelir verisi (`/summary`, `/users`, `/revenue`): ADMIN + MANAGER.
  */
 export async function adminStatsRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
   server.addHook("preHandler", authenticate);
+  server.addHook("preHandler", requirePanelAccess());
 
-  const contentAnalytics = requireSiteRole("EDITOR", "ADMIN");
-  const restrictedAnalytics = requireSiteRole("ADMIN");
+  const contentAnalytics = requireSiteRole(...ROLES_ADMIN_MANAGER);
+  const restrictedAnalytics = requireSiteRole(...ROLES_ADMIN_MANAGER);
 
   server.get(
     "/views",

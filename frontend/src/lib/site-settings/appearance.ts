@@ -30,6 +30,8 @@ export const SITE_FONT_OPTIONS: { value: SiteFont; label: string; cssFallback: s
   { value: "LORA", label: "Lora", cssFallback: 'Georgia, "Times New Roman", serif' },
   { value: "PLAYFAIR_DISPLAY", label: "Playfair Display", cssFallback: "Georgia, serif" },
   { value: "SOURCE_SERIF_4", label: "Source Serif 4", cssFallback: '"Times New Roman", Times, serif' },
+  { value: "PLUS_JAKARTA_SANS", label: "Plus Jakarta Sans", cssFallback: '"Segoe UI", ui-sans-serif, sans-serif' },
+  { value: "OUTFIT", label: "Outfit", cssFallback: "Verdana, Geneva, sans-serif" },
 ];
 
 export function siteFontLabel(font: SiteFont): string {

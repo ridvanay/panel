@@ -6,14 +6,14 @@ describe("products (§10.9.2 Ürünler Modülü)", () => {
   let app: FastifyInstance;
   let adminToken: string;
   let adminId: string;
-  let editorToken: string;
-  let viewerToken: string;
+  let managerToken: string;
+  let blockedToken: string;
 
   function authHeader(token: string) {
     return { authorization: `Bearer ${token}` };
   }
 
-  async function createUserDirect(role: "ADMIN" | "EDITOR" | "VIEWER") {
+  async function createUserDirect(role: "ADMIN" | "MANAGER" | "EDITOR" | "USER") {
     const { hashPassword } = await import("../../src/lib/password");
     const passwordHash = await hashPassword("Sifre12345!");
     return app.prisma.user.create({
@@ -46,11 +46,15 @@ describe("products (§10.9.2 Ürünler Modülü)", () => {
     adminToken = admin.accessToken;
     adminId = admin.userId;
 
-    const editor = await createUserDirect("EDITOR");
-    editorToken = await loginAs(editor.email);
+    // `.claude/architect-scope-rbac-5-tier.md` §5.3 satır 15 — products ADMIN + MANAGER'a
+    // açıktır, EDITOR TAMAMEN çıkarıldı (eski davranış: ADMIN+EDITOR). `manager` bu testlerde
+    // eski "EDITOR" rolünün yerini alan İZİNLİ aktördür; `blockedToken` (USER) her uçta 403
+    // beklenen aktördür.
+    const manager = await createUserDirect("MANAGER");
+    managerToken = await loginAs(manager.email);
 
-    const viewer = await createUserDirect("VIEWER");
-    viewerToken = await loginAs(viewer.email);
+    const blockedUser = await createUserDirect("USER");
+    blockedToken = await loginAs(blockedUser.email);
   });
 
   afterAll(async () => {
@@ -59,11 +63,11 @@ describe("products (§10.9.2 Ürünler Modülü)", () => {
     await app.close();
   });
 
-  it("VIEWER ürün oluşturamaz (403), ama herkes listeleyip okuyabilir", async () => {
+  it("USER ürün oluşturamaz VE listeleyip okuyamaz (403); MANAGER oluşturabilir/listeleyebilir/okuyabilir", async () => {
     const forbidden = await app.inject({
       method: "POST",
       url: "/api/v1/admin/products",
-      headers: authHeader(viewerToken),
+      headers: authHeader(blockedToken),
       payload: { title: "Yetkisiz Ürün", priceCents: 1000 },
     });
     expect(forbidden.statusCode).toBe(403);
@@ -71,38 +75,50 @@ describe("products (§10.9.2 Ürünler Modülü)", () => {
     const create = await app.inject({
       method: "POST",
       url: "/api/v1/admin/products",
-      headers: authHeader(editorToken),
+      headers: authHeader(managerToken),
       payload: { title: "İlk Ürün", priceCents: 1000 },
     });
     expect(create.statusCode).toBe(201);
     const product = create.json().data;
     expect(product.slug).toBe("ilk-urun"); // aksan işaretleri NFKD ayrışması sonrası düşer (bkz. lib/slug.ts)
 
-    const list = await app.inject({ method: "GET", url: "/api/v1/admin/products", headers: authHeader(viewerToken) });
+    // §5.3 satır 15 — liste/okuma da ADMIN+MANAGER'a daraldı (EDITOR çıkarıldı); USER panel
+    // kapısında (§4) zaten 403 alır.
+    const listForbidden = await app.inject({ method: "GET", url: "/api/v1/admin/products", headers: authHeader(blockedToken) });
+    expect(listForbidden.statusCode).toBe(403);
+
+    const list = await app.inject({ method: "GET", url: "/api/v1/admin/products", headers: authHeader(managerToken) });
     expect(list.statusCode).toBe(200);
     expect(list.json().data.map((p: { id: string }) => p.id)).toContain(product.id);
+
+    const getForbidden = await app.inject({
+      method: "GET",
+      url: `/api/v1/admin/products/${product.id}`,
+      headers: authHeader(blockedToken),
+    });
+    expect(getForbidden.statusCode).toBe(403);
 
     const get = await app.inject({
       method: "GET",
       url: `/api/v1/admin/products/${product.id}`,
-      headers: authHeader(viewerToken),
+      headers: authHeader(managerToken),
     });
     expect(get.statusCode).toBe(200);
   });
 
-  it("VIEWER PATCH/DELETE ile ürünü değiştiremez (403)", async () => {
+  it("USER PATCH/DELETE ile ürünü değiştiremez (403)", async () => {
     const create = await app.inject({
       method: "POST",
       url: "/api/v1/admin/products",
-      headers: authHeader(editorToken),
-      payload: { title: "VIEWER Deneme Ürünü", priceCents: 500 },
+      headers: authHeader(managerToken),
+      payload: { title: "USER Deneme Ürünü", priceCents: 500 },
     });
     const productId = create.json().data.id;
 
     const patch = await app.inject({
       method: "PATCH",
       url: `/api/v1/admin/products/${productId}`,
-      headers: authHeader(viewerToken),
+      headers: authHeader(blockedToken),
       payload: { title: "Değişmemeli" },
     });
     expect(patch.statusCode).toBe(403);
@@ -110,7 +126,7 @@ describe("products (§10.9.2 Ürünler Modülü)", () => {
     const del = await app.inject({
       method: "DELETE",
       url: `/api/v1/admin/products/${productId}`,
-      headers: authHeader(viewerToken),
+      headers: authHeader(blockedToken),
     });
     expect(del.statusCode).toBe(403);
   });
@@ -119,7 +135,7 @@ describe("products (§10.9.2 Ürünler Modülü)", () => {
     const first = await app.inject({
       method: "POST",
       url: "/api/v1/admin/products",
-      headers: authHeader(editorToken),
+      headers: authHeader(managerToken),
       payload: { title: "Çakışan Ürün", slug: "cakisan-urun", priceCents: 1000 },
     });
     expect(first.statusCode).toBe(201);
@@ -127,7 +143,7 @@ describe("products (§10.9.2 Ürünler Modülü)", () => {
     const second = await app.inject({
       method: "POST",
       url: "/api/v1/admin/products",
-      headers: authHeader(editorToken),
+      headers: authHeader(managerToken),
       payload: { title: "Başka Başlık", slug: "cakisan-urun", priceCents: 2000 },
     });
     expect(second.statusCode).toBe(409);
@@ -152,7 +168,7 @@ describe("products (§10.9.2 Ürünler Modülü)", () => {
     const permanentBeforeRestore = await app.inject({
       method: "DELETE",
       url: `/api/v1/admin/products/${productId}/permanent`,
-      headers: authHeader(viewerToken),
+      headers: authHeader(blockedToken),
     });
     expect(permanentBeforeRestore.statusCode).toBe(403);
 
@@ -166,17 +182,12 @@ describe("products (§10.9.2 Ürünler Modülü)", () => {
 
     await app.inject({ method: "DELETE", url: `/api/v1/admin/products/${productId}`, headers: authHeader(adminToken) });
 
-    const permanentNotAdmin = await app.inject({
-      method: "DELETE",
-      url: `/api/v1/admin/products/${productId}/permanent`,
-      headers: authHeader(editorToken),
-    });
-    expect(permanentNotAdmin.statusCode).toBe(403);
-
+    // §5.3 satır 15 — "kalıcı silme, kategori silme -> A, M": MANAGER da kalıcı silebilir
+    // (eski davranış: ADMIN-only). USER (blockedToken) hâlâ 403 alır (yukarıda doğrulandı).
     const permanent = await app.inject({
       method: "DELETE",
       url: `/api/v1/admin/products/${productId}/permanent`,
-      headers: authHeader(adminToken),
+      headers: authHeader(managerToken),
     });
     expect(permanent.statusCode).toBe(204);
 
@@ -192,7 +203,7 @@ describe("products (§10.9.2 Ürünler Modülü)", () => {
     const create = await app.inject({
       method: "POST",
       url: "/api/v1/admin/products",
-      headers: authHeader(editorToken),
+      headers: authHeader(managerToken),
       payload: {
         title: "XSS Ürün Testi",
         priceCents: 999,
@@ -210,7 +221,7 @@ describe("products (§10.9.2 Ürünler Modülü)", () => {
     const update = await app.inject({
       method: "PATCH",
       url: `/api/v1/admin/products/${productId}`,
-      headers: authHeader(editorToken),
+      headers: authHeader(managerToken),
       payload: { descriptionHtml: '<p onclick="alert(1)">Merhaba</p><iframe src="evil.com"></iframe>' },
     });
     expect(update.statusCode).toBe(200);
@@ -224,7 +235,7 @@ describe("products (§10.9.2 Ürünler Modülü)", () => {
     const create = await app.inject({
       method: "POST",
       url: "/api/v1/admin/products",
-      headers: authHeader(editorToken),
+      headers: authHeader(managerToken),
       payload: { title: "Taslak Ürün", priceCents: 2500 },
     });
     const draft = create.json().data;
@@ -236,7 +247,7 @@ describe("products (§10.9.2 Ürünler Modülü)", () => {
     const publishedCreate = await app.inject({
       method: "POST",
       url: "/api/v1/admin/products",
-      headers: authHeader(editorToken),
+      headers: authHeader(managerToken),
       payload: { title: "Yayınlanan Ürün", priceCents: 3000, status: "PUBLISHED" },
     });
     const published = publishedCreate.json().data;
@@ -282,7 +293,7 @@ describe("products (§10.9.2 Ürünler Modülü)", () => {
     const create = await app.inject({
       method: "POST",
       url: "/api/v1/admin/products",
-      headers: authHeader(editorToken),
+      headers: authHeader(managerToken),
       payload: { title: "Negatif Stok Denemesi", priceCents: 1000, stockQuantity: -5 },
     });
     expect(create.statusCode).toBe(422);
@@ -290,7 +301,7 @@ describe("products (§10.9.2 Ürünler Modülü)", () => {
     const validProduct = await app.inject({
       method: "POST",
       url: "/api/v1/admin/products",
-      headers: authHeader(editorToken),
+      headers: authHeader(managerToken),
       payload: { title: "Stok Düzeltme Denemesi", priceCents: 1000 },
     });
     const productId = validProduct.json().data.id;
@@ -298,7 +309,7 @@ describe("products (§10.9.2 Ürünler Modülü)", () => {
     const adjust = await app.inject({
       method: "PATCH",
       url: `/api/v1/admin/products/${productId}/stock`,
-      headers: authHeader(editorToken),
+      headers: authHeader(managerToken),
       payload: { stockQuantity: -1 },
     });
     expect(adjust.statusCode).toBe(422);
@@ -308,7 +319,7 @@ describe("products (§10.9.2 Ürünler Modülü)", () => {
     const createInvalid = await app.inject({
       method: "POST",
       url: "/api/v1/admin/products",
-      headers: authHeader(editorToken),
+      headers: authHeader(managerToken),
       payload: { title: "İndirim Hatalı Ürün", priceCents: 1000, discountPriceCents: 1000 },
     });
     expect(createInvalid.statusCode).toBe(422);
@@ -316,7 +327,7 @@ describe("products (§10.9.2 Ürünler Modülü)", () => {
     const create = await app.inject({
       method: "POST",
       url: "/api/v1/admin/products",
-      headers: authHeader(editorToken),
+      headers: authHeader(managerToken),
       payload: { title: "İndirim Geçerli Ürün", priceCents: 1000, discountPriceCents: 500 },
     });
     expect(create.statusCode).toBe(201);
@@ -326,7 +337,7 @@ describe("products (§10.9.2 Ürünler Modülü)", () => {
     const updateInvalid = await app.inject({
       method: "PATCH",
       url: `/api/v1/admin/products/${productId}`,
-      headers: authHeader(editorToken),
+      headers: authHeader(managerToken),
       payload: { discountPriceCents: 1000 },
     });
     expect(updateInvalid.statusCode).toBe(422);
@@ -334,18 +345,18 @@ describe("products (§10.9.2 Ürünler Modülü)", () => {
     const updateValid = await app.inject({
       method: "PATCH",
       url: `/api/v1/admin/products/${productId}`,
-      headers: authHeader(editorToken),
+      headers: authHeader(managerToken),
       payload: { discountPriceCents: 800 },
     });
     expect(updateValid.statusCode).toBe(200);
     expect(updateValid.json().data.discountPriceCents).toBe(800);
   });
 
-  it("kategori CRUD: ADMIN/EDITOR oluşturabilir, yalnızca ADMIN silebilir", async () => {
+  it("kategori CRUD: ADMIN/MANAGER oluşturabilir VE silebilir; USER hiçbirini yapamaz (§5.3 satır 15)", async () => {
     const create = await app.inject({
       method: "POST",
       url: "/api/v1/admin/products/categories",
-      headers: authHeader(editorToken),
+      headers: authHeader(managerToken),
       payload: { name: "Elektronik" },
     });
     expect(create.statusCode).toBe(201);
@@ -355,14 +366,15 @@ describe("products (§10.9.2 Ürünler Modülü)", () => {
     const forbiddenDelete = await app.inject({
       method: "DELETE",
       url: `/api/v1/admin/products/categories/${category.id}`,
-      headers: authHeader(editorToken),
+      headers: authHeader(blockedToken),
     });
     expect(forbiddenDelete.statusCode).toBe(403);
 
+    // §5.3 satır 15 — MANAGER da kategori silebilir (eski davranış: ADMIN-only).
     const del = await app.inject({
       method: "DELETE",
       url: `/api/v1/admin/products/categories/${category.id}`,
-      headers: authHeader(adminToken),
+      headers: authHeader(managerToken),
     });
     expect(del.statusCode).toBe(204);
   });
@@ -370,19 +382,19 @@ describe("products (§10.9.2 Ürünler Modülü)", () => {
   // Faz 5 — §10.1/§10.7 toplu işlem. Ortak helper (bkz. lib/bulk-content-actions.ts); blog/pages
   // ile BİREBİR aynı davranış, burada yalnızca ürüne özgü audit action öneki (`product.bulk_*`) doğrulanır.
   describe("toplu işlem (Faz 5 — bulk)", () => {
-    it("publish/draft/trash/restore — EDITOR ile başarılı, karışık geçerli/geçersiz ID listesinde kısmi başarı (200 + skippedIds)", async () => {
+    it("publish/draft/trash/restore — MANAGER ile başarılı, karışık geçerli/geçersiz ID listesinde kısmi başarı (200 + skippedIds)", async () => {
       const missingId = "00000000-0000-0000-0000-000000000099";
 
       const create1 = await app.inject({
         method: "POST",
         url: "/api/v1/admin/products",
-        headers: authHeader(editorToken),
+        headers: authHeader(managerToken),
         payload: { title: "Bulk Ürün 1", priceCents: 1000 },
       });
       const create2 = await app.inject({
         method: "POST",
         url: "/api/v1/admin/products",
-        headers: authHeader(editorToken),
+        headers: authHeader(managerToken),
         payload: { title: "Bulk Ürün 2", priceCents: 1000 },
       });
       const id1 = create1.json().data.id;
@@ -391,7 +403,7 @@ describe("products (§10.9.2 Ürünler Modülü)", () => {
       const publish = await app.inject({
         method: "POST",
         url: "/api/v1/admin/products/bulk",
-        headers: authHeader(editorToken),
+        headers: authHeader(managerToken),
         payload: { ids: [id1, id2, missingId], action: "publish" },
       });
       expect(publish.statusCode).toBe(200);
@@ -401,14 +413,14 @@ describe("products (§10.9.2 Ürünler Modülü)", () => {
       const get1 = await app.inject({
         method: "GET",
         url: `/api/v1/admin/products/${id1}`,
-        headers: authHeader(editorToken),
+        headers: authHeader(managerToken),
       });
       expect(get1.json().data.status).toBe("PUBLISHED");
 
       const draft = await app.inject({
         method: "POST",
         url: "/api/v1/admin/products/bulk",
-        headers: authHeader(editorToken),
+        headers: authHeader(managerToken),
         payload: { ids: [id1, missingId], action: "draft" },
       });
       expect(draft.statusCode).toBe(200);
@@ -417,14 +429,14 @@ describe("products (§10.9.2 Ürünler Modülü)", () => {
       const afterDraft = await app.inject({
         method: "GET",
         url: `/api/v1/admin/products/${id1}`,
-        headers: authHeader(editorToken),
+        headers: authHeader(managerToken),
       });
       expect(afterDraft.json().data.status).toBe("DRAFT");
 
       const trash = await app.inject({
         method: "POST",
         url: "/api/v1/admin/products/bulk",
-        headers: authHeader(editorToken),
+        headers: authHeader(managerToken),
         payload: { ids: [id1, id2, missingId], action: "trash" },
       });
       expect(trash.statusCode).toBe(200);
@@ -434,7 +446,7 @@ describe("products (§10.9.2 Ürünler Modülü)", () => {
       const restore = await app.inject({
         method: "POST",
         url: "/api/v1/admin/products/bulk",
-        headers: authHeader(editorToken),
+        headers: authHeader(managerToken),
         payload: { ids: [id1, missingId], action: "restore" },
       });
       expect(restore.statusCode).toBe(200);
@@ -443,12 +455,12 @@ describe("products (§10.9.2 Ürünler Modülü)", () => {
       const afterRestore = await app.inject({
         method: "GET",
         url: `/api/v1/admin/products/${id1}`,
-        headers: authHeader(editorToken),
+        headers: authHeader(managerToken),
       });
       expect(afterRestore.json().data.deletedAt).toBeNull();
     });
 
-    it("permanent-delete — EDITOR'e 403, ADMIN'e 200 ve ContentRevision satırları da silinir", async () => {
+    it("permanent-delete — USER'a 403, ADMIN'e 200 ve ContentRevision satırları da silinir", async () => {
       const create = await app.inject({
         method: "POST",
         url: "/api/v1/admin/products",
@@ -477,15 +489,15 @@ describe("products (§10.9.2 Ürünler Modülü)", () => {
         payload: { ids: [productId], action: "trash" },
       });
 
-      const editorAttempt = await app.inject({
+      const blockedAttempt = await app.inject({
         method: "POST",
         url: "/api/v1/admin/products/bulk",
-        headers: authHeader(editorToken),
+        headers: authHeader(blockedToken),
         payload: { ids: [productId], action: "permanent-delete" },
       });
-      expect(editorAttempt.statusCode).toBe(403);
+      expect(blockedAttempt.statusCode).toBe(403);
 
-      // EDITOR'ün reddedilen isteği kısmi bile olsa UYGULANMAMALI.
+      // USER'ın reddedilen isteği kısmi bile olsa UYGULANMAMALI.
       const stillThere = await app.inject({
         method: "GET",
         url: `/api/v1/admin/products/${productId}`,
@@ -567,7 +579,7 @@ describe("products (§10.9.2 Ürünler Modülü)", () => {
       const create = await app.inject({
         method: "POST",
         url: "/api/v1/admin/products",
-        headers: authHeader(editorToken),
+        headers: authHeader(managerToken),
         payload: { title: "Autosave Öncesi Ürün", priceCents: 1000 },
       });
       const productId = create.json().data.id;
@@ -575,7 +587,7 @@ describe("products (§10.9.2 Ürünler Modülü)", () => {
       const revisionsBefore = await app.inject({
         method: "GET",
         url: `/api/v1/admin/products/${productId}/revisions`,
-        headers: authHeader(editorToken),
+        headers: authHeader(managerToken),
       });
       expect(revisionsBefore.json().data).toHaveLength(0);
 
@@ -584,7 +596,7 @@ describe("products (§10.9.2 Ürünler Modülü)", () => {
       const autosave = await app.inject({
         method: "POST",
         url: `/api/v1/admin/products/${productId}/autosave`,
-        headers: authHeader(editorToken),
+        headers: authHeader(managerToken),
         payload: {
           title: "Autosave Sonrası Ürün",
           excerpt: "Kısa özet",
@@ -597,7 +609,7 @@ describe("products (§10.9.2 Ürünler Modülü)", () => {
       const revisionsAfter = await app.inject({
         method: "GET",
         url: `/api/v1/admin/products/${productId}/revisions`,
-        headers: authHeader(editorToken),
+        headers: authHeader(managerToken),
       });
       expect(revisionsAfter.json().data).toHaveLength(0);
 
@@ -607,7 +619,7 @@ describe("products (§10.9.2 Ürünler Modülü)", () => {
       const get = await app.inject({
         method: "GET",
         url: `/api/v1/admin/products/${productId}`,
-        headers: authHeader(editorToken),
+        headers: authHeader(managerToken),
       });
       const dto = get.json().data;
       expect(dto.title).toBe("Autosave Sonrası Ürün");
@@ -620,20 +632,20 @@ describe("products (§10.9.2 Ürünler Modülü)", () => {
       const create = await app.inject({
         method: "POST",
         url: "/api/v1/admin/products",
-        headers: authHeader(editorToken),
+        headers: authHeader(managerToken),
         payload: { title: "Çöpteyken Autosave Ürünü", priceCents: 1000 },
       });
       const productId = create.json().data.id;
       await app.inject({
         method: "DELETE",
         url: `/api/v1/admin/products/${productId}`,
-        headers: authHeader(editorToken),
+        headers: authHeader(managerToken),
       });
 
       const autosave = await app.inject({
         method: "POST",
         url: `/api/v1/admin/products/${productId}/autosave`,
-        headers: authHeader(editorToken),
+        headers: authHeader(managerToken),
         payload: { title: "Değişmemeli" },
       });
       expect(autosave.statusCode).toBe(409);
@@ -647,7 +659,7 @@ describe("products (§10.9.2 Ürünler Modülü)", () => {
       const create = await app.inject({
         method: "POST",
         url: "/api/v1/admin/products",
-        headers: authHeader(editorToken),
+        headers: authHeader(managerToken),
         payload: { title: "Mass Assignment Ürünü", priceCents: 1000, sku: originalSku },
       });
       const productId = create.json().data.id;
@@ -655,7 +667,7 @@ describe("products (§10.9.2 Ürünler Modülü)", () => {
       const autosave = await app.inject({
         method: "POST",
         url: `/api/v1/admin/products/${productId}/autosave`,
-        headers: authHeader(editorToken),
+        headers: authHeader(managerToken),
         payload: {
           title: "Autosave İle Değişen Başlık",
           priceCents: 999999,
@@ -668,7 +680,7 @@ describe("products (§10.9.2 Ürünler Modülü)", () => {
       const get = await app.inject({
         method: "GET",
         url: `/api/v1/admin/products/${productId}`,
-        headers: authHeader(editorToken),
+        headers: authHeader(managerToken),
       });
       const dto = get.json().data;
       expect(dto.title).toBe("Autosave İle Değişen Başlık");

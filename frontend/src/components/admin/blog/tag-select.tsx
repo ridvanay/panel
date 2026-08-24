@@ -37,7 +37,7 @@ interface TagSelectProps {
   /** Yeni etiket oluşturulduğunda `availableTags`'i güncellemek için (yerel liste, refetch YOK). */
   onTagCreated: (tag: BlogTag) => void;
   disabled?: boolean;
-  /** EDITOR altı roller (VIEWER) için satır-içi oluşturma tetikleyicisi RENDER EDİLMEZ. */
+  /** §10.21 — CUSTOMER/USER paneline giremediği için burada yalnızca ADMIN/MANAGER/EDITOR'e `true` gelir. */
   canCreate?: boolean;
 }
 

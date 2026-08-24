@@ -1,10 +1,12 @@
 import crypto from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
-import type { PageHeaderStyle, SiteFont, SocialShareNetwork } from "@prisma/client";
+import type { PageHeaderStyle, SiteBorderRadius, SiteButtonStyle, SiteFont, SocialShareNetwork } from "@prisma/client";
 import { z } from "zod";
 import { authenticate } from "../../middleware/authenticate";
 import { requireSiteRole } from "../../middleware/site-rbac";
+import { requirePanelAccess } from "../../middleware/panel-access";
+import { ROLES_ADMIN, ROLES_ADMIN_MANAGER } from "../../lib/site-roles";
 import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema } from "../../schemas/common";
 import { PublicSiteAppearanceSchema, SiteAppearanceDto, SiteAppearanceSchema, SiteCustomCodeSchema } from "../../schemas/entities";
@@ -43,9 +45,16 @@ export const DEFAULTS = {
   buttonColor: "#4f46e5",
   buttonTextColor: "#ffffff",
   linkColor: "#4f46e5",
+  accentColor: "#f59e0b",
+  backgroundColor: "#ffffff",
+  surfaceColor: "#f9fafb",
+  textColor: "#111827",
+  mutedTextColor: "#6b7280",
   headingFont: "SYSTEM" as SiteFont,
   bodyFont: "SYSTEM" as SiteFont,
   baseFontSize: 16,
+  borderRadius: "MD" as SiteBorderRadius,
+  buttonStyle: "SOLID" as SiteButtonStyle,
   socialShareEnabled: false,
   socialShareNetworks: [] as SocialShareNetwork[],
   backToTopEnabled: true,
@@ -73,9 +82,16 @@ const COLOR_TYPOGRAPHY_DEFAULTS = {
   buttonColor: DEFAULTS.buttonColor,
   buttonTextColor: DEFAULTS.buttonTextColor,
   linkColor: DEFAULTS.linkColor,
+  accentColor: DEFAULTS.accentColor,
+  backgroundColor: DEFAULTS.backgroundColor,
+  surfaceColor: DEFAULTS.surfaceColor,
+  textColor: DEFAULTS.textColor,
+  mutedTextColor: DEFAULTS.mutedTextColor,
   headingFont: DEFAULTS.headingFont,
   bodyFont: DEFAULTS.bodyFont,
   baseFontSize: DEFAULTS.baseFontSize,
+  borderRadius: DEFAULTS.borderRadius,
+  buttonStyle: DEFAULTS.buttonStyle,
 };
 
 const WITH_HEADER_MEDIA = { include: { pageHeaderBackgroundMedia: true } } as const;
@@ -109,13 +125,17 @@ export async function publicAppearanceRoutes(app: FastifyInstance) {
   });
 }
 
-/** `/admin/appearance` prefix'i altında bağlanır (bkz. app.ts) — authenticated. */
+/**
+ * `/admin/appearance` prefix'i altında bağlanır (bkz. app.ts).
+ * `.claude/architect-scope-rbac-5-tier.md` §5.3 satır 2 — okuma (`GET /`, `/presets`,
+ * `/custom-code`): ADMIN/MANAGER/EDITOR (panel kapısı yeterli); `PATCH /`, `POST /reset`:
+ * ADMIN + MANAGER; `PUT /custom-code/{css,js}`: yalnızca ADMIN — (c) keyfi kod yürütme.
+ */
 export async function adminAppearanceRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
   server.addHook("preHandler", authenticate);
+  server.addHook("preHandler", requirePanelAccess());
 
-  // Okuma eşiği authenticated'tır (VIEWER dahil) — panel salt-okunur görüntülenebilir, yazma
-  // yalnızca ADMIN'dir (bkz. §10.12.6 hakemlik kararı).
   server.get("/", { schema: { response: { 200: ApiSuccessSchema(SiteAppearanceSchema) } } }, async (_request, reply) => {
     return reply.send(ok(await readAppearance(app)));
   });
@@ -123,7 +143,7 @@ export async function adminAppearanceRoutes(app: FastifyInstance) {
   server.patch(
     "/",
     {
-      preHandler: requireSiteRole("ADMIN"),
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
       schema: { body: UpdateSiteAppearanceRequestSchema, response: { 200: ApiSuccessSchema(SiteAppearanceSchema) } },
     },
     async (request, reply) => {
@@ -178,7 +198,7 @@ export async function adminAppearanceRoutes(app: FastifyInstance) {
   server.post(
     "/reset",
     {
-      preHandler: requireSiteRole("ADMIN"),
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
       schema: { body: ResetAppearanceRequestSchema.optional(), response: { 200: ApiSuccessSchema(SiteAppearanceSchema) } },
     },
     async (request, reply) => {
@@ -230,7 +250,7 @@ export async function adminAppearanceRoutes(app: FastifyInstance) {
   server.put(
     "/custom-code/css",
     {
-      preHandler: requireSiteRole("ADMIN"),
+      preHandler: requireSiteRole(...ROLES_ADMIN),
       config: { rateLimit: CUSTOM_CODE_RATE_LIMIT },
       schema: { body: UpdateCustomCssRequestSchema, response: { 200: ApiSuccessSchema(SiteCustomCodeSchema) } },
     },
@@ -270,7 +290,7 @@ export async function adminAppearanceRoutes(app: FastifyInstance) {
   server.put(
     "/custom-code/js",
     {
-      preHandler: requireSiteRole("ADMIN"),
+      preHandler: requireSiteRole(...ROLES_ADMIN),
       config: { rateLimit: CUSTOM_CODE_RATE_LIMIT },
       schema: { body: UpdateCustomJsRequestSchema, response: { 200: ApiSuccessSchema(SiteCustomCodeSchema) } },
     },

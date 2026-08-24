@@ -18,6 +18,7 @@ vi.mock("../../src/lib/stripe", () => ({
 
 import { buildTestApp } from "../helpers/build-test-app";
 import { resetDatabase } from "../helpers/reset-db";
+import { registerTestUser } from "../helpers/auth";
 
 describe("checkout — POST /checkout/session (session oluşturma + fiyat/stok bütünlüğü)", () => {
   let app: FastifyInstance;
@@ -142,6 +143,67 @@ describe("checkout — POST /checkout/session (session oluşturma + fiyat/stok b
       payload: { customerEmail: "gecersiz-eposta" },
     });
     expect(res.statusCode).toBe(422);
+  });
+
+  // `.claude/architect-scope-rbac-5-tier.md` §7.2 — isteğe bağlı kimlik doğrulama.
+  describe("isteğe bağlı kimlik doğrulama (§7.2)", () => {
+    it("Authorization header'ı YOKSA misafir akışı aynen çalışır — Order.siteUserId null kalır, 401 ÜRETİLMEZ", async () => {
+      const product = await createProduct();
+      const add = await addToCart(product.id, 1);
+      const cookie = cookieHeader(add);
+
+      stripeSessionsCreateMock.mockResolvedValue({ id: "cs_test_guest", url: "https://checkout.stripe.test/cs_test_guest" });
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/checkout/session",
+        headers: { cookie },
+        payload: { customerEmail: "misafir@example.com" },
+      });
+      expect(res.statusCode).toBe(201);
+
+      const order = await app.prisma.order.findFirst({ where: { customerEmail: "misafir@example.com" } });
+      expect(order?.siteUserId).toBeNull();
+    });
+
+    it("geçerli Authorization: Bearer header'ı VARSA Order.siteUserId doldurulur", async () => {
+      const buyer = await registerTestUser(app, { email: `checkout-auth-${crypto.randomUUID()}@example.com` });
+      const product = await createProduct();
+      const add = await addToCart(product.id, 1);
+      const cookie = cookieHeader(add);
+
+      stripeSessionsCreateMock.mockResolvedValue({ id: "cs_test_authed", url: "https://checkout.stripe.test/cs_test_authed" });
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/checkout/session",
+        headers: { cookie, authorization: `Bearer ${buyer.accessToken}` },
+        payload: { customerEmail: "kimlikli-alici@example.com" },
+      });
+      expect(res.statusCode).toBe(201);
+
+      const order = await app.prisma.order.findFirst({ where: { customerEmail: "kimlikli-alici@example.com" } });
+      expect(order?.siteUserId).toBe(buyer.userId);
+    });
+
+    it("geçersiz/süresi dolmuş Authorization header'ı 401 ÜRETMEZ — misafir gibi devam eder", async () => {
+      const product = await createProduct();
+      const add = await addToCart(product.id, 1);
+      const cookie = cookieHeader(add);
+
+      stripeSessionsCreateMock.mockResolvedValue({ id: "cs_test_bad_token", url: "https://checkout.stripe.test/cs_test_bad_token" });
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/checkout/session",
+        headers: { cookie, authorization: "Bearer not-a-real-token" },
+        payload: { customerEmail: "gecersiz-token@example.com" },
+      });
+      expect(res.statusCode).toBe(201);
+
+      const order = await app.prisma.order.findFirst({ where: { customerEmail: "gecersiz-token@example.com" } });
+      expect(order?.siteUserId).toBeNull();
+    });
   });
 });
 

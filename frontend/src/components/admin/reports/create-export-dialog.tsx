@@ -27,7 +27,7 @@ import {
 const EXPORT_TYPE_OPTIONS: ExportJobType[] = ["VIEWS", "BREAKDOWN", "SUMMARY", "TOP_CONTENT", "USERS", "REVENUE"];
 const FORMAT_OPTIONS: CreateExportJobRequest["format"][] = ["CSV", "PDF"];
 const GRANULARITY_OPTIONS: StatsGranularity[] = ["day", "week", "month"];
-const ROLE_OPTIONS: SiteRole[] = ["ADMIN", "EDITOR", "VIEWER"];
+const ROLE_OPTIONS: SiteRole[] = ["ADMIN", "MANAGER", "EDITOR", "CUSTOMER", "USER"];
 const SUBSCRIPTION_STATUS_OPTIONS: SubscriptionStatus[] = ["TRIALING", "ACTIVE", "PAST_DUE", "CANCELED", "INCOMPLETE"];
 
 function todayKey(): string {

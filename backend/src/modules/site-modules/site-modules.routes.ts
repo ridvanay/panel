@@ -3,6 +3,8 @@ import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
 import { authenticate } from "../../middleware/authenticate";
 import { requireSiteRole } from "../../middleware/site-rbac";
+import { requirePanelAccess } from "../../middleware/panel-access";
+import { ROLES_ADMIN, ROLES_PANEL } from "../../lib/site-roles";
 import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema } from "../../schemas/common";
 import { PublicSiteModuleSchema, SiteModuleSchema } from "../../schemas/entities";
@@ -13,17 +15,20 @@ import { MODULE_REGISTRY, getModuleDefinition } from "../../lib/module-registry"
 import { ModuleKeyParamSchema, UpdateModuleRequestSchema } from "./site-modules.schemas";
 
 /**
- * §10.9 Eklenti/Modül Yönetimi — `/admin/modules` prefix'i altında bağlanır (authenticated).
- * GET herkes (ADMIN/EDITOR/VIEWER) görebilir, PATCH yalnızca ADMIN.
+ * §10.9 Eklenti/Modül Yönetimi — `/admin/modules` prefix'i altında bağlanır.
+ * `.claude/architect-scope-rbac-5-tier.md` §5.3 satır 18 — `GET`: ADMIN/MANAGER/EDITOR
+ * (panel kapısı yeterli); `PATCH /:key`: yalnızca ADMIN — (d): modül kapatmak public siteyi
+ * 404'e düşürür.
  */
 export async function adminSiteModulesRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
   server.addHook("preHandler", authenticate);
+  server.addHook("preHandler", requirePanelAccess());
 
   server.get(
     "/",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR", "VIEWER"),
+      preHandler: requireSiteRole(...ROLES_PANEL),
       schema: { response: { 200: ApiSuccessSchema(z.array(SiteModuleSchema)) } },
     },
     async (_request, reply) => {
@@ -40,7 +45,7 @@ export async function adminSiteModulesRoutes(app: FastifyInstance) {
   server.patch(
     "/:key",
     {
-      preHandler: requireSiteRole("ADMIN"),
+      preHandler: requireSiteRole(...ROLES_ADMIN),
       schema: {
         params: ModuleKeyParamSchema,
         body: UpdateModuleRequestSchema,

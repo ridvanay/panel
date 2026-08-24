@@ -7,10 +7,9 @@ declare module "fastify" {
   }
 
   interface FastifyRequest {
-    // §10.20 — `advancedBuilderEnabled` (DEPOLANAN izin) burada taşınır ki
-    // `lib/builder-capability.ts::canUseAdvancedBuilder(request.user)` her route'ta AYNI
-    // türetmeyi kullanabilsin (bkz. `.claude/architect-scope-page-editor-roles.md` §1.5).
-    user?: { id: string; email: string; role: SiteRole; advancedBuilderEnabled: boolean };
+    // `.claude/architect-scope-rbac-5-tier.md` §3 — `advancedBuilderEnabled` alanı KALDIRILDI;
+    // `lib/builder-capability.ts::canUseAdvancedBuilder(request.user)` artık saf `role` türevidir.
+    user?: { id: string; email: string; role: SiteRole };
     membership?: { role: MembershipRole; organizationId: string };
     // §10.13.4 — Public API (`/api/v1/public/*`) kimlik doğrulaması, `middleware/api-key-auth.ts`
     // tarafından set edilir. `request.user` İLE ASLA BİRLİKTE set edilmez: bir API anahtarı bir

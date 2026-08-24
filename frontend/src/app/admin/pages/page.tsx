@@ -32,9 +32,15 @@ const pageCsvColumns = buildContentCsvColumns<SitePage>();
 export default function AdminPagesListPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === "ADMIN";
-  // §10.20 — `POST /admin/pages`, `DELETE`, `restore`, `bulk` uçları artık `canUseAdvancedBuilder`
-  // gerektiriyor; standart kullanıcıya bu aksiyonlar hiç gösterilmez (backend zaten 403 döner).
+  // §10.21 §6.1 — `POST /admin/pages` (yeni sayfa) İSTİSNAİ olarak yalnızca ADMIN'dir (MANAGER
+  // Katman 1 gereği blok ekleyemediği için boş bir kabuk sayfa üretirdi) — `canUseAdvancedBuilder`
+  // (`role === "ADMIN"`) bu tek eylem için doğru gate'tir.
   const canUseAdvancedBuilder = user?.canUseAdvancedBuilder ?? false;
+  // §10.21 §6 Katman 2 — sayfa YAŞAM DÖNGÜSÜ (çöpe taşı/geri yükle/toplu işlem) ADMIN VE MANAGER'a
+  // açıktır (`canUseAdvancedBuilder`'dan FARKLI bir eşik — o yalnızca Katman 1/blok yapısı ve
+  // §6.1 istisnası içindir). Bu ayrım olmadan MANAGER, backend'in izin verdiği çöpe taşıma/geri
+  // yükleme aksiyonlarını UI'da hiç GÖREMEZDİ.
+  const canManageLifecycle = user?.role === "ADMIN" || user?.role === "MANAGER";
 
   const list = useContentList<SitePage>({
     fetchList: pagesApi.listPages,
@@ -136,7 +142,7 @@ export default function AdminPagesListPage() {
             )}
           </div>
 
-          {list.selectedIds.size > 0 && canUseAdvancedBuilder && (
+          {list.selectedIds.size > 0 && canManageLifecycle && (
             <ContentListBulkBar
               selectedCount={list.selectedIds.size}
               activeFilter={list.activeFilter}
@@ -181,7 +187,7 @@ export default function AdminPagesListPage() {
                 onRequestPermanentDelete={list.requestPermanentDelete}
                 editHref={(page) => `/admin/pages/${page.id}`}
                 viewHref={(page) => `/${page.slug}`}
-                canManageLifecycle={canUseAdvancedBuilder}
+                canManageLifecycle={canManageLifecycle}
               />
             </motion.div>
           )}

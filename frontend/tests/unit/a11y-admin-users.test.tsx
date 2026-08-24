@@ -16,7 +16,6 @@ vi.mock("@/lib/api/users-admin", () => ({
   createAdminUser: vi.fn(),
   updateUserRole: vi.fn(),
   updateUserStatus: vi.fn(),
-  updateUserBuilderAccess: vi.fn(),
   deleteUser: vi.fn(),
   restoreUser: vi.fn(),
 }));
@@ -55,7 +54,6 @@ function makeAdminUser(overrides: Partial<AdminUser> = {}): AdminUser {
     emailVerifiedAt: "2026-01-01T00:00:00.000Z",
     role: "ADMIN",
     canUseAdvancedBuilder: true,
-    advancedBuilderEnabled: true,
     createdAt: "2026-01-01T00:00:00.000Z",
     status: "ACTIVE",
     lastLoginAt: "2026-08-01T10:00:00.000Z",
@@ -71,18 +69,17 @@ const adminUsers: AdminUser[] = [
     email: "editor@example.com",
     name: "Editor Kullanıcı",
     role: "EDITOR",
-    canUseAdvancedBuilder: true,
-    advancedBuilderEnabled: true,
+    canUseAdvancedBuilder: false,
     createdAt: "2026-01-02T00:00:00.000Z",
     lastLoginAt: null,
   }),
+  // §10.21 — `VIEWER` KALDIRILDI, migration eşlemesiyle tutarlı olarak `USER`'a taşındı.
   makeAdminUser({
     id: "user-3",
-    email: "viewer@example.com",
-    name: "Viewer Kullanıcı",
-    role: "VIEWER",
+    email: "standart@example.com",
+    name: "Standart Üye Kullanıcı",
+    role: "USER",
     canUseAdvancedBuilder: false,
-    advancedBuilderEnabled: false,
     emailVerifiedAt: null,
     createdAt: "2026-01-03T00:00:00.000Z",
     status: "SUSPENDED",
@@ -91,7 +88,7 @@ const adminUsers: AdminUser[] = [
 ];
 
 describe("AdminUsersPage — a11y", () => {
-  it("ADMIN/EDITOR/VIEWER rollerini ve aktif/askıda durumları içeren kullanıcı listesi yüklendikten sonra kritik/ciddi a11y ihlali içermez", async () => {
+  it("ADMIN/EDITOR/USER rollerini ve aktif/askıda durumları içeren kullanıcı listesi yüklendikten sonra kritik/ciddi a11y ihlali içermez", async () => {
     mockUser = makeUser();
     vi.mocked(usersAdminApi.listAdminUsers).mockResolvedValue({ items: adminUsers, meta: { nextCursor: null } });
 
@@ -99,7 +96,7 @@ describe("AdminUsersPage — a11y", () => {
 
     expect(await screen.findByText("Admin Kullanıcı")).toBeInTheDocument();
     expect(screen.getByText("Editor Kullanıcı")).toBeInTheDocument();
-    expect(screen.getByText("Viewer Kullanıcı")).toBeInTheDocument();
+    expect(screen.getByText("Standart Üye Kullanıcı")).toBeInTheDocument();
 
     const results = await axe(container, axeOptions);
     expect(results).toHaveNoViolations();
@@ -163,9 +160,9 @@ describe("AdminUsersPage — kullanıcı silme / geri yükleme", () => {
 
     const user = userEvent.setup();
     render(<AdminUsersPage />);
-    const viewerRow = (await screen.findByText("Viewer Kullanıcı")).closest("tr") as HTMLElement;
+    const standardUserRow = (await screen.findByText("Standart Üye Kullanıcı")).closest("tr") as HTMLElement;
 
-    await user.click(within(viewerRow).getByRole("button", { name: "Sil" }));
+    await user.click(within(standardUserRow).getByRole("button", { name: "Sil" }));
 
     const dialog = await screen.findByRole("dialog", { name: "Kullanıcıyı sil" });
     expect(within(dialog).getByText(/kalıcı bir silme DEĞİLDİR/)).toBeInTheDocument();
@@ -173,7 +170,7 @@ describe("AdminUsersPage — kullanıcı silme / geri yükleme", () => {
     await user.click(within(dialog).getByRole("button", { name: "Kullanıcıyı Sil" }));
 
     expect(usersAdminApi.deleteUser).toHaveBeenCalledWith("user-3");
-    expect(screen.queryByText("Viewer Kullanıcı")).not.toBeInTheDocument();
+    expect(screen.queryByText("Standart Üye Kullanıcı")).not.toBeInTheDocument();
   });
 
   it("409 hatası onay diyaloğu açıkken görünür şekilde gösterilir (dialog backdrop'ının arkasında kaybolmaz)", async () => {
@@ -185,9 +182,9 @@ describe("AdminUsersPage — kullanıcı silme / geri yükleme", () => {
 
     const user = userEvent.setup();
     render(<AdminUsersPage />);
-    const viewerRow = (await screen.findByText("Viewer Kullanıcı")).closest("tr") as HTMLElement;
+    const standardUserRow = (await screen.findByText("Standart Üye Kullanıcı")).closest("tr") as HTMLElement;
 
-    await user.click(within(viewerRow).getByRole("button", { name: "Sil" }));
+    await user.click(within(standardUserRow).getByRole("button", { name: "Sil" }));
     const dialog = await screen.findByRole("dialog", { name: "Kullanıcıyı sil" });
     await user.click(within(dialog).getByRole("button", { name: "Kullanıcıyı Sil" }));
 
@@ -208,7 +205,7 @@ describe("AdminUsersPage — kullanıcı silme / geri yükleme", () => {
       id: "user-4",
       email: "silinmis@example.com",
       name: "Silinmiş Kullanıcı",
-      role: "VIEWER",
+      role: "USER",
       status: "DELETED",
       deletedAt: "2026-08-10T00:00:00.000Z",
     });
@@ -258,9 +255,9 @@ describe("AdminUsersPage — toplu silme", () => {
     render(<AdminUsersPage />);
     await screen.findByText("Admin Kullanıcı");
 
-    // Editor ve Viewer — ikisi de ne self ne de son aktif admin.
+    // Editor ve Standart Üye — ikisi de ne self ne de son aktif admin.
     await user.click(screen.getByRole("checkbox", { name: "Editor Kullanıcı kullanıcısını seç" }));
-    await user.click(screen.getByRole("checkbox", { name: "Viewer Kullanıcı kullanıcısını seç" }));
+    await user.click(screen.getByRole("checkbox", { name: "Standart Üye Kullanıcı kullanıcısını seç" }));
 
     // Sayfada satır bazlı "Sil" butonları da bulunduğundan, toplu işlem çubuğuyla sınırlıyoruz
     // (bkz. "Rolü Uygula" ile aynı konteyner).
@@ -395,7 +392,7 @@ describe("AdminUsersPage — durum / rol değişikliği", () => {
     render(<AdminUsersPage />);
     const editorRow = (await screen.findByText("Editor Kullanıcı")).closest("tr") as HTMLElement;
 
-    await user.selectOptions(within(editorRow).getByRole("combobox", { name: /rolü/ }), "VIEWER");
+    await user.selectOptions(within(editorRow).getByRole("combobox", { name: /rolü/ }), "MANAGER");
     const dialog = await screen.findByRole("dialog", { name: "Rolü değiştir" });
     await user.click(within(dialog).getByRole("button", { name: "Rolü Değiştir" }));
 

@@ -4,6 +4,8 @@ import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { authenticate } from "../../middleware/authenticate";
 import { requireSiteRole } from "../../middleware/site-rbac";
+import { requirePanelAccess } from "../../middleware/panel-access";
+import { ROLES_ADMIN } from "../../lib/site-roles";
 import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema } from "../../schemas/common";
 import { env } from "../../config/env";
@@ -17,11 +19,12 @@ import { SystemHealthSchema } from "./system.schemas";
 export async function systemRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
   server.addHook("preHandler", authenticate);
+  server.addHook("preHandler", requirePanelAccess());
 
   server.get(
     "/health",
     {
-      preHandler: requireSiteRole("ADMIN"),
+      preHandler: requireSiteRole(...ROLES_ADMIN),
       schema: { response: { 200: ApiSuccessSchema(SystemHealthSchema) } },
     },
     async (_request, reply) => {

@@ -162,15 +162,17 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
   }
 
   // §10.20/§4.2 — aynı gerekçe `load()`'daki `isSimpleModePage` ile birebir: standart kullanıcı
-  // (TEMPLATE sayfa, canUseAdvancedBuilder: false) kök yapıyı hiç DEĞİŞTİREMEDİĞİ için, çeviri
-  // blokları da sarma işleminden geçmemeli — aksi halde `translations.<locale>.blocks` üzerindeki
-  // yapısal diff guard'ı sarmayı "yapısal değişiklik" sayıp 403 döndürür.
+  // (canUseAdvancedBuilder: false, editMode'dan BAĞIMSIZ — kullanıcı kararıyla sıkılaştırıldı,
+  // ks. `.claude/architect-scope-page-editor-roles.md` §2.5 nüansı bilinçli olarak DAHA DAR
+  // uygulanıyor) kök yapıyı hiç DEĞİŞTİREMEDİĞİ için, çeviri blokları da sarma işleminden
+  // geçmemeli — aksi halde `translations.<locale>.blocks` üzerindeki yapısal diff guard'ı
+  // sarmayı "yapısal değişiklik" sayıp 403 döndürür.
   const enBlocks = useMemo(
     () =>
-      editMode === "TEMPLATE" && !canUseAdvancedBuilder
+      !canUseAdvancedBuilder
         ? normalizePageNodes(translations[locale]?.blocks ?? [])
         : wrapBareRootBlocks(normalizePageNodes(translations[locale]?.blocks ?? [])),
-    [translations, locale, editMode, canUseAdvancedBuilder]
+    [translations, locale, canUseAdvancedBuilder]
   );
 
   function setEnBlocks(nextBlocks: PageNode[]) {
@@ -180,7 +182,10 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
   const activeNodes = isDefaultLocale ? blocks : enBlocks;
   const setActiveNodes = isDefaultLocale ? setBlocks : setEnBlocks;
   // design-notes-page-builder-standard-mode.md §2.1 — `BuilderCanvas` bu durumda HİÇ mount edilmez.
-  const simpleMode = editMode === "TEMPLATE" && !canUseAdvancedBuilder;
+  // Kullanıcı kararıyla sıkılaştırıldı: standart kullanıcı (canUseAdvancedBuilder: false)
+  // `editMode` NE OLURSA OLSUN (FREEFORM dahil) serbest tuvale erişemez, yalnızca
+  // TemplateEditorView görür. `editMode`'un artık bu koşulda yeri YOK.
+  const simpleMode = !canUseAdvancedBuilder;
   const selectedContainer = selectedContainerId
     ? ((findNode(activeNodes, selectedContainerId) as ContainerNode | null) ?? null)
     : null;
@@ -194,15 +199,16 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
       // Yalnızca admin görünümü içindir; `snapshot.blocks` de AYNI sarılmış değeri kullanır (bkz.
       // aşağısı), bu yüzden sayfayı SADECE açmak "Kaydedilmemiş değişiklik" bildirimini TETİKLEMEZ
       // — göç, admin başka bir şeyi kaydettiğinde sessizce kalıcı olur.
-      // §10.20/§4.2 — standart kullanıcı (TEMPLATE sayfa, canUseAdvancedBuilder: false) için bu
-      // sarma İSTEMCİ TARAFINDA "yapısal değişiklik" üretir: kayıtlı kökler henüz bir container'a
-      // sarılı DEĞİLSE (örn. sayfa hiç gelişmiş kullanıcının "Kaydet"iyle "primed" edilmemişse),
-      // sarma sonrası ağaç backend'in yapısal diff guard'ına (`assertTemplateEditAllowed`) göre
-      // kayıtlıdan FARKLI sayılır ve 403 döner — standart kullanıcı zaten kök seviyesinde yapı
-      // DEĞİŞTİREMEDİĞİ için sarmanın ona hiçbir faydası yok. `editMode`/`canUseAdvancedBuilder`
-      // state'i bu satırda HENÜZ güncellenmediğinden (`simpleMode` bir önceki render'a ait), taze
-      // yüklenen `page.editMode` doğrudan kullanılır.
-      const isSimpleModePage = page.editMode === "TEMPLATE" && !canUseAdvancedBuilder;
+      // §10.20/§4.2 — standart kullanıcı (canUseAdvancedBuilder: false, editMode'dan BAĞIMSIZ —
+      // bkz. `simpleMode` tanımındaki güncel karar) için bu sarma İSTEMCİ TARAFINDA "yapısal
+      // değişiklik" üretir: kayıtlı kökler henüz bir container'a sarılı DEĞİLSE (örn. sayfa hiç
+      // gelişmiş kullanıcının "Kaydet"iyle "primed" edilmemişse), sarma sonrası ağaç backend'in
+      // yapısal diff guard'ına (`assertTemplateEditAllowed`) göre kayıtlıdan FARKLI sayılır ve
+      // 403 döner — standart kullanıcı zaten kök seviyesinde yapı DEĞİŞTİREMEDİĞİ için sarmanın
+      // ona hiçbir faydası yok. `canUseAdvancedBuilder` bu satırda `useAuth()`'tan gelir (render
+      // state'i değil, dolayısıyla `simpleMode`'daki gecikme sorunu burada yoktur); yine de tutarlılık
+      // için doğrudan capability üzerinden hesaplanır.
+      const isSimpleModePage = !canUseAdvancedBuilder;
       const loadedBlocks = isSimpleModePage
         ? normalizePageNodes(page.blocks)
         : wrapBareRootBlocks(normalizePageNodes(page.blocks));
@@ -325,9 +331,9 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
         // §5.1 — yalnızca ADMIN gönderebilir (EDITOR → 403); EDITOR oturumunda alan HİÇ eklenmez.
         ...(isAdmin ? { isLegalDocument } : {}),
         // §10.20/§4.2 — `slug` yalnızca gelişmiş kullanıcı için gönderilir; standart kullanıcı
-        // (TEMPLATE sayfa, canUseAdvancedBuilder: false) bu alanı hiç DEĞİŞTİRMEDEN dahi gövdeye
-        // eklerse backend `assertAdvancedFieldsAuthorized` VARLIK bazlı 403 döner (bkz. `isLegalDocument`
-        // ile AYNI koşullu-alan deseni).
+        // (canUseAdvancedBuilder: false, editMode'dan BAĞIMSIZ) bu alanı hiç DEĞİŞTİRMEDEN dahi
+        // gövdeye eklerse backend `assertAdvancedFieldsAuthorized` VARLIK bazlı 403 döner (bkz.
+        // `isLegalDocument` ile AYNI koşullu-alan deseni).
         ...(!simpleMode ? { slug } : {}),
         translations,
       });

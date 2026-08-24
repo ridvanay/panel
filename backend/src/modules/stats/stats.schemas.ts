@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { CursorQuerySchema } from "../../schemas/common";
+import { SiteRoleSchema } from "../../schemas/entities";
 
 /** §10.8.10 — `PageView` günlük bucket'ından haftalık/aylık'a kadar toplama seçeneği. */
 export const GranularitySchema = z.enum(["day", "week", "month"]);
@@ -139,7 +140,7 @@ export const UsersStatsSchema = z.object({
   /** Dönemle SINIRLI DEĞİL — kullanıcı tablosunun ANLIK rol dağılımı. */
   roleDistribution: z.array(
     z.object({
-      role: z.enum(["ADMIN", "EDITOR", "VIEWER"]),
+      role: SiteRoleSchema,
       count: z.number().int(),
     })
   ),

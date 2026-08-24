@@ -6,14 +6,15 @@ import { registerTestUser } from "../helpers/auth";
 
 /**
  * §10.8.10 Analitik Rapor Dışa Aktarma — RBAC (security-agent denetimi, 2026-08-06).
- * `/admin/reports/exports/*` TÜM uçlar yalnızca ADMIN (bkz. reports.routes.ts üstündeki not) —
- * bu dosyanın var olmaması RBAC boşluğuydu (backend-agent'ın raporunda geçmiyordu), eklendi.
+ * `.claude/architect-scope-rbac-5-tier.md` §5.3 satır 16 — TÜM uçlar ADMIN + MANAGER (eski:
+ * ADMIN-only). EDITOR ve USER (eski: VIEWER) hâlâ TÜM uçlarda 403 alır.
  */
 describe("reports/exports (§10.8.10)", () => {
   let app: FastifyInstance;
   let adminToken: string;
+  let managerToken: string;
   let editorToken: string;
-  let viewerToken: string;
+  let userToken: string;
 
   beforeAll(async () => {
     app = await buildTestApp();
@@ -21,12 +22,16 @@ describe("reports/exports (§10.8.10)", () => {
     // İlk kayıt otomatik ADMIN olur (bkz. auth.service.ts::register).
     ({ accessToken: adminToken } = await registerTestUser(app, { email: "reports-admin1@example.com" }));
 
+    const manager = await registerTestUser(app, { email: "reports-manager1@example.com" });
+    await app.prisma.user.update({ where: { id: manager.userId }, data: { role: "MANAGER" } });
+    managerToken = manager.accessToken;
+
     const editor = await registerTestUser(app, { email: "reports-editor1@example.com" });
     await app.prisma.user.update({ where: { id: editor.userId }, data: { role: "EDITOR" } });
     editorToken = editor.accessToken;
 
-    const viewer = await registerTestUser(app, { email: "reports-viewer1@example.com" });
-    viewerToken = viewer.accessToken;
+    const standardUser = await registerTestUser(app, { email: "reports-user1@example.com" });
+    userToken = standardUser.accessToken;
   });
 
   afterAll(async () => {
@@ -48,9 +53,9 @@ describe("reports/exports (§10.8.10)", () => {
     expect(create.statusCode).toBe(401);
   });
 
-  describe("RBAC guard (requireSiteRole(\"ADMIN\")) — TÜM uçlar", () => {
-    it("VIEWER hiçbir export ucuna erişemez (403)", async () => {
-      const headers = authHeader(viewerToken);
+  describe("RBAC guard (requireSiteRole(...ROLES_ADMIN_MANAGER)) — TÜM uçlar", () => {
+    it("USER hiçbir export ucuna erişemez (403)", async () => {
+      const headers = authHeader(userToken);
 
       const list = await app.inject({ method: "GET", url: "/api/v1/admin/reports/exports", headers });
       expect(list.statusCode).toBe(403);
@@ -82,6 +87,21 @@ describe("reports/exports (§10.8.10)", () => {
       const create = await app.inject({ method: "POST", url: "/api/v1/admin/reports/exports", headers, payload: VALID_BODY });
       expect(create.statusCode).toBe(403);
     });
+  });
+
+  it("MANAGER bir export job oluşturabilir, listeleyebilir ve detayını görebilir (§5.3 satır 16 — ADMIN+MANAGER)", async () => {
+    const headers = authHeader(managerToken);
+
+    const create = await app.inject({ method: "POST", url: "/api/v1/admin/reports/exports", headers, payload: VALID_BODY });
+    expect(create.statusCode).toBe(202);
+    const job = create.json().data;
+
+    const detail = await app.inject({ method: "GET", url: `/api/v1/admin/reports/exports/${job.id}`, headers });
+    expect(detail.statusCode).toBe(200);
+
+    const list = await app.inject({ method: "GET", url: "/api/v1/admin/reports/exports", headers });
+    expect(list.statusCode).toBe(200);
+    expect(list.json().data.some((j: { id: string }) => j.id === job.id)).toBe(true);
   });
 
   it("ADMIN bir export job oluşturabilir, listeleyebilir ve detayını görebilir", async () => {

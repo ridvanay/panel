@@ -24,7 +24,7 @@ describe("outbound-webhooks — admin CRUD + SSRF doğrulaması", () => {
     await resetDatabase(app.prisma);
     const admin = await registerTestUser(app, { email: "webhooks-admin@example.com" });
     adminToken = admin.accessToken;
-    // İkinci kayıt VIEWER olur (şema varsayılanı, bkz. admin-users.test.ts::"kayıt akışı" notu).
+    // İkinci kayıt USER olur (şema varsayılanı, bkz. admin-users.test.ts::"kayıt akışı" notu).
     const viewer = await registerTestUser(app, { email: "webhooks-viewer@example.com" });
     viewerToken = viewer.accessToken;
   });
@@ -42,7 +42,7 @@ describe("outbound-webhooks — admin CRUD + SSRF doğrulaması", () => {
     expect(events).toContain("BLOG_POST_PUBLISHED");
   });
 
-  it("ADMIN olmayan (VIEWER) okuma dahil 403 alır", async () => {
+  it("ADMIN olmayan (USER) okuma dahil 403 alır", async () => {
     const res = await app.inject({ method: "GET", url: "/api/v1/admin/settings/webhooks", headers: authHeader(viewerToken) });
     expect(res.statusCode).toBe(403);
   });

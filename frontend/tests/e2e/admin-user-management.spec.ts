@@ -55,7 +55,7 @@ let adminSelfId: string;
 let adminSelfEmail: string;
 
 async function cleanupFixtures() {
-  // İdempotent zemin — önceki başarısız/tamamlanmış bir koşumdan kalmış olabilir. VIEWER/ACTIVE
+  // İdempotent zemin — önceki başarısız/tamamlanmış bir koşumdan kalmış olabilir. USER/ACTIVE
   // temel durumuna SIFIRLAR (SİLMEZ) — bkz. `resetFixtureUserToBaseline()` başlığı: bir e-posta
   // BİR KEZ silinince `POST /auth/register`'a bir daha kabul edilmiyor, bu yüzden "sil ve
   // unut" yerine "geri yükle + sıfırla" gerekiyor.
@@ -126,7 +126,9 @@ test("senaryo (c): admin olmayan bir kullanıcının rolü ve durumu panelden ba
 
   await page.goto("/admin/users");
   let row = await rowFor(page, EDITOR_EMAIL);
-  await expect(row.getByRole("combobox", { name: /rolü/ })).toHaveValue("VIEWER");
+  // §7.1 — yeni kayıt varsayılan rolü `USER`'dır (eski: `VIEWER`, `.claude/architect-scope-
+  // rbac-5-tier.md`).
+  await expect(row.getByRole("combobox", { name: /rolü/ })).toHaveValue("USER");
   await expect(row.getByText("aktif", { exact: true })).toBeVisible();
 
   // Rol değişikliği — gerçek Select + onay diyaloğu.
@@ -193,7 +195,7 @@ test("senaryo (b): 2+ admin varken biri diğerinin rolünü/durumunu değiştire
   await page.goto("/admin/users");
   let row = await rowFor(page, ADMIN_CANDIDATE_EMAIL);
 
-  // Önce VIEWER'dan ADMIN'e yükseltiyoruz (bu ADIM, senaryo (c)'nin rol-değişikliği başarı
+  // Önce USER'dan ADMIN'e yükseltiyoruz (bu ADIM, senaryo (c)'nin rol-değişikliği başarı
   // yolunu BİR KEZ DAHA, farklı bir hedef rolle sınıyor VE bu testin geri kalanı için "2 aktif
   // admin" ön koşulunu kurar).
   await row.getByRole("combobox", { name: /rolü/ }).selectOption("ADMIN");

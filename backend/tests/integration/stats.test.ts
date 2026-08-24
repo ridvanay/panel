@@ -29,44 +29,45 @@ describe("stats", () => {
     expect(res.statusCode).toBe(401);
   });
 
-  describe("RBAC guard (requireSiteRole) — route-bazlı (d616d9f)", () => {
-    // İçerik analitiği: EDITOR + ADMIN. Kullanıcı/gelir verisi: yalnızca ADMIN.
+  describe("RBAC guard (requireSiteRole) — route-bazlı (.claude/architect-scope-rbac-5-tier.md §5.3 satır 19)", () => {
+    // §5.3 satır 19 — hem içerik analitiği hem kullanıcı/gelir verisi artık ADMIN + MANAGER'dır;
+    // EDITOR TÜM istatistik uçlarından çıkarıldı (eski davranış: içerik analitiği EDITOR+ADMIN).
     const CONTENT_ANALYTICS_ROUTES = ["/views", "/live-visitors", "/breakdown", "/top-content"];
     const RESTRICTED_ANALYTICS_ROUTES = ["/summary", "/users", "/revenue"];
 
-    it("ADMIN olmayan, EDITOR de olmayan (VIEWER) bir kullanıcı içerik analitiği uçlarına da erişemez (403)", async () => {
+    it("ADMIN olmayan, MANAGER de olmayan (USER) bir kullanıcı hiçbir analitik ucuna erişemez (403)", async () => {
       // İlk kayıt (admin1) zaten ADMIN oldu; ikinci register: userCount artık 0 değil
-      // -> şema varsayılanı VIEWER (bkz. schema.prisma::User.role).
-      const viewer = await registerTestUser(app, { email: "stats-viewer1@example.com" });
-      const headers = authHeader(viewer.accessToken);
+      // -> şema varsayılanı USER (bkz. schema.prisma::User.role, eski: VIEWER).
+      const standardUser = await registerTestUser(app, { email: "stats-user1@example.com" });
+      const headers = authHeader(standardUser.accessToken);
 
       for (const route of [...CONTENT_ANALYTICS_ROUTES, ...RESTRICTED_ANALYTICS_ROUTES]) {
         const res = await app.inject({ method: "GET", url: `/api/v1/admin/stats${route}`, headers });
-        expect(res.statusCode, `VIEWER -> ${route}`).toBe(403);
+        expect(res.statusCode, `USER -> ${route}`).toBe(403);
         expect(res.json().error.code).toBe("FORBIDDEN");
       }
     });
 
-    it("EDITOR içerik analitiği uçlarına (views/live-visitors/breakdown/top-content) erişebilir (200)", async () => {
+    it("EDITOR hiçbir analitik ucuna erişemez (403) — içerik analitiğinden de ÇIKARILDI", async () => {
       const editor = await registerTestUser(app, { email: "stats-editor1@example.com" });
       await app.prisma.user.update({ where: { id: editor.userId }, data: { role: "EDITOR" } });
       const headers = authHeader(editor.accessToken);
 
-      for (const route of CONTENT_ANALYTICS_ROUTES) {
-        const res = await app.inject({ method: "GET", url: `/api/v1/admin/stats${route}`, headers });
-        expect(res.statusCode, `EDITOR -> ${route}`).toBe(200);
-      }
-    });
-
-    it("EDITOR kısıtlı (ADMIN-only) analitik uçlarına (summary/users/revenue) ERİŞEMEZ (403)", async () => {
-      const editor = await registerTestUser(app, { email: "stats-editor2@example.com" });
-      await app.prisma.user.update({ where: { id: editor.userId }, data: { role: "EDITOR" } });
-      const headers = authHeader(editor.accessToken);
-
-      for (const route of RESTRICTED_ANALYTICS_ROUTES) {
+      for (const route of [...CONTENT_ANALYTICS_ROUTES, ...RESTRICTED_ANALYTICS_ROUTES]) {
         const res = await app.inject({ method: "GET", url: `/api/v1/admin/stats${route}`, headers });
         expect(res.statusCode, `EDITOR -> ${route}`).toBe(403);
         expect(res.json().error.code).toBe("FORBIDDEN");
+      }
+    });
+
+    it("MANAGER TÜM analitik uçlarına erişebilir (200) — içerik analitiği VE kısıtlı uçlar dahil", async () => {
+      const manager = await registerTestUser(app, { email: "stats-manager1@example.com" });
+      await app.prisma.user.update({ where: { id: manager.userId }, data: { role: "MANAGER" } });
+      const headers = authHeader(manager.accessToken);
+
+      for (const route of [...CONTENT_ANALYTICS_ROUTES, ...RESTRICTED_ANALYTICS_ROUTES]) {
+        const res = await app.inject({ method: "GET", url: `/api/v1/admin/stats${route}`, headers });
+        expect(res.statusCode, `MANAGER -> ${route}`).toBe(200);
       }
     });
 

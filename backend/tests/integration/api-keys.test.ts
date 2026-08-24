@@ -25,7 +25,7 @@ describe("api-keys — admin CRUD + X-Api-Key doğrulaması", () => {
     adminToken = admin.accessToken;
     const editor = await registerTestUser(app, { email: "api-keys-editor@example.com" });
     editorToken = editor.accessToken;
-    // İkinci kayıt VIEWER olur (şema varsayılanı) — EDITOR'a yükseltmek için doğrudan Prisma.
+    // İkinci kayıt USER olur (şema varsayılanı) — EDITOR'a yükseltmek için doğrudan Prisma.
     await app.prisma.user.update({ where: { email: "api-keys-editor@example.com" }, data: { role: "EDITOR" } });
   });
 

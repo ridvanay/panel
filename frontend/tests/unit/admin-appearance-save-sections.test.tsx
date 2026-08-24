@@ -56,9 +56,16 @@ const appearance: SiteAppearance = {
   buttonColor: "#4f46e5",
   buttonTextColor: "#ffffff",
   linkColor: "#4f46e5",
+  accentColor: "#f59e0b",
+  backgroundColor: "#ffffff",
+  surfaceColor: "#f9fafb",
+  textColor: "#111827",
+  mutedTextColor: "#6b7280",
   headingFont: "SYSTEM",
   bodyFont: "SYSTEM",
   baseFontSize: 16,
+  borderRadius: "MD",
+  buttonStyle: "SOLID",
   socialShareEnabled: false,
   socialShareNetworks: [],
   backToTopEnabled: true,
@@ -194,6 +201,13 @@ describe("AdminAppearancePage — bölüm başına Kaydet payload'ları (PATCH /
       buttonColor: "#4f46e5",
       buttonTextColor: "#ffffff",
       linkColor: "#4f46e5",
+      accentColor: "#f59e0b",
+      backgroundColor: "#ffffff",
+      surfaceColor: "#f9fafb",
+      textColor: "#111827",
+      mutedTextColor: "#6b7280",
+      borderRadius: "MD",
+      buttonStyle: "SOLID",
     });
   });
 
@@ -324,9 +338,18 @@ describe("AdminAppearancePage — bölüm başına Kaydet payload'ları (PATCH /
       buttonColor: "#0f172a",
       buttonTextColor: "#ffffff",
       linkColor: "#0f172a",
+      // Mock preset'in `values` alanı yeni 5 rengi/borderRadius/buttonStyle'ı TAŞIMIYOR — `applyPreset`
+      // bu durumda mevcut form değerine (yüklenen `appearance` fixture'ının varsayılanlarına) düşer.
+      accentColor: "#f59e0b",
+      backgroundColor: "#ffffff",
+      surfaceColor: "#f9fafb",
+      textColor: "#111827",
+      mutedTextColor: "#6b7280",
       headingFont: "SYSTEM",
       bodyFont: "SYSTEM",
       baseFontSize: 18,
+      borderRadius: "MD",
+      buttonStyle: "SOLID",
     });
   });
 });
@@ -426,6 +449,13 @@ describe("AdminAppearancePage — 'Tümünü Kaydet' yapışkan çubuğu", () =>
         "buttonColor",
         "buttonTextColor",
         "linkColor",
+        "accentColor",
+        "backgroundColor",
+        "surfaceColor",
+        "textColor",
+        "mutedTextColor",
+        "borderRadius",
+        "buttonStyle",
         "socialShareEnabled",
         "socialShareNetworks",
         "headingFont",

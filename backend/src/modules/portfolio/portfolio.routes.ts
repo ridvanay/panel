@@ -6,6 +6,8 @@ import { z } from "zod";
 import { authenticate } from "../../middleware/authenticate";
 import { requireSiteRole } from "../../middleware/site-rbac";
 import { requireModuleEnabled } from "../../middleware/module-guard";
+import { requirePanelAccess } from "../../middleware/panel-access";
+import { ROLES_ADMIN_MANAGER } from "../../lib/site-roles";
 import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema, ApiSuccessWithMeta, AutosaveResponseSchema, CursorQuerySchema } from "../../schemas/common";
 import {
@@ -122,6 +124,7 @@ async function toPortfolioItemDtosLocalized(app: FastifyInstance, items: Paramet
 export async function adminPortfolioRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
   server.addHook("preHandler", authenticate);
+  server.addHook("preHandler", requirePanelAccess());
 
   server.get(
     "/",
@@ -161,7 +164,7 @@ export async function adminPortfolioRoutes(app: FastifyInstance) {
   server.post(
     "/",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
       schema: { body: CreatePortfolioItemRequestSchema, response: { 201: ApiSuccessSchema(PortfolioItemSchema) } },
     },
     async (request, reply) => {
@@ -199,7 +202,7 @@ export async function adminPortfolioRoutes(app: FastifyInstance) {
             title,
             slug: slug ? slugify(slug) : slugify(title),
             summary,
-            // Stored-XSS koruması: EDITOR de yazabildiği için (ADMIN'den daha az güvenilir bir rol)
+            // Stored-XSS koruması: MANAGER de yazabildiği için (ADMIN'den daha az güvenilir bir rol)
             // içerik DB'ye yazılmadan önce sanitize edilir — public sitede `dangerouslySetInnerHTML`
             // ile doğrudan render edilir (bkz. lib/html-sanitize.ts).
             contentHtml: sanitizeRichHtml(contentHtml),
@@ -252,7 +255,7 @@ export async function adminPortfolioRoutes(app: FastifyInstance) {
   server.patch(
     "/:itemId",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
       schema: {
         params: PortfolioItemIdParamSchema,
         body: UpdatePortfolioItemRequestSchema,
@@ -323,7 +326,7 @@ export async function adminPortfolioRoutes(app: FastifyInstance) {
   server.post(
     "/:itemId/autosave",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
       schema: {
         params: PortfolioItemIdParamSchema,
         body: AutosavePortfolioItemRequestSchema,
@@ -357,7 +360,7 @@ export async function adminPortfolioRoutes(app: FastifyInstance) {
   server.delete(
     "/:itemId",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
       schema: { params: PortfolioItemIdParamSchema, response: { 204: z.undefined() } },
     },
     async (request, reply) => {
@@ -385,7 +388,7 @@ export async function adminPortfolioRoutes(app: FastifyInstance) {
   server.post(
     "/:itemId/restore",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
       schema: { params: PortfolioItemIdParamSchema, response: { 200: ApiSuccessSchema(PortfolioItemSchema) } },
     },
     async (request, reply) => {
@@ -410,11 +413,11 @@ export async function adminPortfolioRoutes(app: FastifyInstance) {
     }
   );
 
-  // §10.7 — KALICI sil (yalnızca ADMIN). Kayıt ÖNCE çöpte olmalı, değilse 409.
+  // §10.7 — KALICI sil (ADMIN + MANAGER). Kayıt ÖNCE çöpte olmalı, değilse 409.
   server.delete(
     "/:itemId/permanent",
     {
-      preHandler: requireSiteRole("ADMIN"),
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
       schema: { params: PortfolioItemIdParamSchema, response: { 204: z.undefined() } },
     },
     async (request, reply) => {
@@ -445,7 +448,7 @@ export async function adminPortfolioRoutes(app: FastifyInstance) {
   server.post(
     "/:itemId/images",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
       schema: {
         params: PortfolioItemIdParamSchema,
         body: AddPortfolioImageRequestSchema,
@@ -482,7 +485,7 @@ export async function adminPortfolioRoutes(app: FastifyInstance) {
   server.delete(
     "/:itemId/images/:imageId",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
       schema: { params: PortfolioImageIdParamSchema, response: { 200: ApiSuccessSchema(PortfolioItemSchema) } },
     },
     async (request, reply) => {
@@ -503,7 +506,7 @@ export async function adminPortfolioRoutes(app: FastifyInstance) {
   server.post(
     "/bulk",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
       schema: { body: BulkContentActionRequestSchema, response: { 200: ApiSuccessSchema(BulkContentActionResultSchema) } },
     },
     async (request, reply) => {
@@ -548,12 +551,12 @@ export async function adminPortfolioRoutes(app: FastifyInstance) {
     }
   );
 
-  // §10.1 İçerik Sürüm Kontrolü — yetki eşiği öğe düzenleme ile aynı (ADMIN+EDITOR). `Product`
+  // §10.1 İçerik Sürüm Kontrolü — yetki eşiği öğe düzenleme ile aynı (ADMIN+MANAGER). `Product`
   // ile BİREBİR AYNI sözleşme (bkz. lib/content-revisions.ts::listContentRevisions).
   server.get(
     "/:itemId/revisions",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
       schema: {
         params: PortfolioItemIdParamSchema,
         querystring: CursorQuerySchema,
@@ -569,7 +572,7 @@ export async function adminPortfolioRoutes(app: FastifyInstance) {
   server.get(
     "/:itemId/revisions/:revisionId",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
       schema: { params: PortfolioRevisionIdParamSchema, response: { 200: ApiSuccessSchema(ContentRevisionSchema) } },
     },
     async (request, reply) => {
@@ -584,7 +587,7 @@ export async function adminPortfolioRoutes(app: FastifyInstance) {
   server.post(
     "/:itemId/revisions/:revisionId/restore",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
       schema: { params: PortfolioRevisionIdParamSchema, response: { 200: ApiSuccessSchema(PortfolioItemSchema) } },
     },
     async (request, reply) => {
@@ -666,6 +669,7 @@ export async function adminPortfolioRoutes(app: FastifyInstance) {
 export async function adminPortfolioCategoriesRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
   server.addHook("preHandler", authenticate);
+  server.addHook("preHandler", requirePanelAccess());
 
   server.get(
     "/",
@@ -679,7 +683,7 @@ export async function adminPortfolioCategoriesRoutes(app: FastifyInstance) {
   server.post(
     "/",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
       schema: { body: CreatePortfolioCategoryRequestSchema, response: { 201: ApiSuccessSchema(PortfolioCategorySchema) } },
     },
     async (request, reply) => {
@@ -696,7 +700,7 @@ export async function adminPortfolioCategoriesRoutes(app: FastifyInstance) {
   server.patch(
     "/:categoryId",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
       schema: {
         params: PortfolioCategoryIdParamSchema,
         body: UpdatePortfolioCategoryRequestSchema,
@@ -720,7 +724,7 @@ export async function adminPortfolioCategoriesRoutes(app: FastifyInstance) {
   server.delete(
     "/:categoryId",
     {
-      preHandler: requireSiteRole("ADMIN"),
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
       schema: { params: PortfolioCategoryIdParamSchema, response: { 204: z.undefined() } },
     },
     async (request, reply) => {

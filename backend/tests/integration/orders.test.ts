@@ -10,14 +10,15 @@ describe("admin orders — /admin/orders (§10.9.3 Sepet + Stripe Checkout)", ()
   let app: FastifyInstance;
   let adminToken: string;
   let adminId: string;
+  let managerToken: string;
   let editorToken: string;
-  let viewerToken: string;
+  let userToken: string;
 
   function authHeader(token: string) {
     return { authorization: `Bearer ${token}` };
   }
 
-  async function createUserDirect(role: "ADMIN" | "EDITOR" | "VIEWER") {
+  async function createUserDirect(role: "ADMIN" | "MANAGER" | "EDITOR" | "USER") {
     const passwordHash = await hashPassword("Sifre12345!");
     return app.prisma.user.create({
       data: {
@@ -68,11 +69,14 @@ describe("admin orders — /admin/orders (§10.9.3 Sepet + Stripe Checkout)", ()
     adminToken = admin.accessToken;
     adminId = admin.userId;
 
+    const manager = await createUserDirect("MANAGER");
+    managerToken = await loginAs(manager.email);
+
     const editor = await createUserDirect("EDITOR");
     editorToken = await loginAs(editor.email);
 
-    const viewer = await createUserDirect("VIEWER");
-    viewerToken = await loginAs(viewer.email);
+    const standardUser = await createUserDirect("USER");
+    userToken = await loginAs(standardUser.email);
   });
 
   afterAll(async () => {
@@ -85,12 +89,15 @@ describe("admin orders — /admin/orders (§10.9.3 Sepet + Stripe Checkout)", ()
     expect(res.statusCode).toBe(401);
   });
 
-  it("EDITOR/VIEWER 403 döner (yalnızca ADMIN)", async () => {
+  it("EDITOR/USER 403 döner, MANAGER 200 döner (.claude/architect-scope-rbac-5-tier.md §5.3 satır 11 — ADMIN + MANAGER)", async () => {
     const editorRes = await app.inject({ method: "GET", url: "/api/v1/admin/orders", headers: authHeader(editorToken) });
     expect(editorRes.statusCode).toBe(403);
 
-    const viewerRes = await app.inject({ method: "GET", url: "/api/v1/admin/orders", headers: authHeader(viewerToken) });
-    expect(viewerRes.statusCode).toBe(403);
+    const userRes = await app.inject({ method: "GET", url: "/api/v1/admin/orders", headers: authHeader(userToken) });
+    expect(userRes.statusCode).toBe(403);
+
+    const managerRes = await app.inject({ method: "GET", url: "/api/v1/admin/orders", headers: authHeader(managerToken) });
+    expect(managerRes.statusCode).toBe(200);
   });
 
   it("GET /admin/orders listede customerEmail MASKELENİR, GET /:orderId detayda MASKESİZ döner", async () => {
@@ -193,7 +200,7 @@ describe("admin orders — /admin/orders (§10.9.3 Sepet + Stripe Checkout)", ()
     expect(res2.statusCode).toBe(409);
   });
 
-  it("EDITOR/VIEWER durum değiştiremez (403)", async () => {
+  it("EDITOR durum değiştiremez (403)", async () => {
     const order = await createOrder("PAID");
     const res = await app.inject({
       method: "PATCH",

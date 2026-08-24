@@ -1,5 +1,12 @@
 import { z } from "zod";
-import { HexColorSchema, PageHeaderStyleSchema, SiteFontSchema, SocialShareNetworkSchema } from "../../schemas/entities";
+import {
+  HexColorSchema,
+  PageHeaderStyleSchema,
+  SiteBorderRadiusSchema,
+  SiteButtonStyleSchema,
+  SiteFontSchema,
+  SocialShareNetworkSchema,
+} from "../../schemas/entities";
 
 /**
  * `PATCH /admin/appearance` gövdesi — TÜM alanlar opsiyoneldir, yalnızca gönderilenler yazılır
@@ -23,9 +30,16 @@ export const UpdateSiteAppearanceRequestSchema = z
     buttonColor: HexColorSchema.optional(),
     buttonTextColor: HexColorSchema.optional(),
     linkColor: HexColorSchema.optional(),
+    accentColor: HexColorSchema.optional(),
+    backgroundColor: HexColorSchema.optional(),
+    surfaceColor: HexColorSchema.optional(),
+    textColor: HexColorSchema.optional(),
+    mutedTextColor: HexColorSchema.optional(),
     headingFont: SiteFontSchema.optional(),
     bodyFont: SiteFontSchema.optional(),
     baseFontSize: z.number().int().min(14).max(20).optional(),
+    borderRadius: SiteBorderRadiusSchema.optional(),
+    buttonStyle: SiteButtonStyleSchema.optional(),
     socialShareEnabled: z.boolean().optional(),
     // Tam değiştirme (replace) semantiği — gönderilen dizi mevcut seçimin YERİNE geçer,
     // birleştirilmez. Yinelenen değerler sunucuda tekilleştirilir (bkz. appearance.routes.ts).

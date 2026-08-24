@@ -32,12 +32,3 @@ export const UpdateAdminUserRoleRequestSchema = z.object({
 export const UpdateAdminUserStatusRequestSchema = z.object({
   status: SiteUserStatusSchema,
 });
-
-/**
- * §10.20 — `PATCH /admin/users/{userId}/builder-access` gövdesi. `role` BU UÇTAN
- * DEĞİŞTİRİLEMEZ (bkz. `.claude/architect-scope-page-editor-roles.md` §4.3) — yetenek ve rol
- * AYRI eksenlerdir. `role: VIEWER` hedefte de `true` kabul edilir (422 üretilmez, §1.6).
- */
-export const UpdateAdminUserBuilderAccessRequestSchema = z.object({
-  advancedBuilderEnabled: z.boolean(),
-});

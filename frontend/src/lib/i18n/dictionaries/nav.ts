@@ -10,6 +10,9 @@ export const navDictionary: NamespaceDictionary = {
     "nav.version": "Sürüm",
     "nav.overview": "Genel Bakış",
     "nav.pages": "Sayfalar",
+    // §10.21 §8.2 — EDITOR sidebar'da bu etiketi görür (aynı /admin/pages rotası, salt içerik
+    // düzenleme — blok yapısı EDITOR'e KAPALI, bkz. lib/page-builder/template-fields.ts).
+    "nav.pagesEditorOnly": "Sayfalar (Salt İçerik Düzenleme)",
     "nav.blog": "Blog",
     "nav.products": "Ürünler",
     "nav.orders": "Siparişler",
@@ -37,6 +40,7 @@ export const navDictionary: NamespaceDictionary = {
     "nav.version": "Version",
     "nav.overview": "Overview",
     "nav.pages": "Pages",
+    "nav.pagesEditorOnly": "Pages (Content Only)",
     "nav.blog": "Blog",
     "nav.products": "Products",
     "nav.orders": "Orders",

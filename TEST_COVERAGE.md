@@ -1166,3 +1166,82 @@ gibi KİMLİK SÜREKLİLİĞİ gerektiren (ör. "tek admin" ön koşulu) dosyala
 deseninden BİLİNÇLİ bir SAPMA — bu dosyanın fixture kullanıcıları yalnızca kendi içindeki
 testlerde kullanılıyor, sürekliliğe ihtiyaç yok. Yan etki: `saas_e2e`'de koşum başına 4 kalıcı
 `qa-e2e-per-*` kullanıcı birikir (zararsız — prod değil, disposable test DB).
+
+## §10.20 GENİŞLETME — standart kullanıcı kilidi `editMode`'dan bağımsız (kullanıcı sıkılaştırması,
+## 2026-08-23) — FREEFORM e2e eşlenikleri eklendi (bu turda)
+
+Bağlam: backend-agent (`pages.routes.ts::isStructureRestricted = !canUseAdvancedBuilder(...)`,
+artık `editMode`'a BAKMIYOR) ve frontend-agent (`page.tsx::simpleMode = !canUseAdvancedBuilder`)
+standart kullanıcının yapısal kilidini `Page.editMode === "TEMPLATE"` koşulundan TAMAMEN
+bağımsız hale getirdi — standart kullanıcı artık FREEFORM bir sayfada da yapıyı değiştiremez.
+security-agent baypas yüzeyi taraması yaptı, kritik bulgu yok. Yukarıdaki §10.20 bölümündeki 1-6
+numaralı testler yalnızca `editMode: TEMPLATE` fixture'larını (`createTemplatePage`) kapsıyordu —
+bu turda AYNI dört senaryonun (1/2/3/4) `editMode: FREEFORM` eşlenikleri EKLENDİ.
+
+Değişen tek dosya: `frontend/tests/e2e/admin-page-editor-roles.spec.ts` (mevcut 1-6 numaralı
+TEMPLATE testlerine DOKUNULMADI, yalnızca `createFreeformPage()` yardımcısı + 7/8/9/10 numaralı
+testler EKLENDİ).
+
+| # | Senaryo (TEMPLATE eşleniği) | Test | Durum |
+|---|---|---|---|
+| 7 | Standart kullanıcı — FREEFORM sayfada `BuilderCanvas` HİÇ render edilmez, yalnızca `TemplateEditorView` (form) görünür + "Kaydet" ile içerik kaydı başarı (1a/1b'nin FREEFORM birleşimi) | `7` | ✅ Geçiyor |
+| 8 | Standart kullanıcı — FREEFORM sayfada API seviyesinde yapısal değişiklik (ekle/sil/sırala) → 403; içerik-only PATCH → 200 (2'nin FREEFORM eşleniği) | `8` | ✅ Geçiyor |
+| 9 | **Autosave baypas testi (FREEFORM)** — UI'da düzenle, backend autosave'i BAĞIMSIZ reddediyor (3'ün FREEFORM eşleniği) | `9` | ✅ Geçiyor |
+| 10 | Gelişmiş EDITOR — FREEFORM sayfada tam serbestlik (regresyon kontrolü: kısıt yalnızca standart kullanıcıya sıkılaştırıldı, gelişmiş kullanıcı FREEFORM'da hep serbestti) (4'ün FREEFORM eşleniği) | `10` | ✅ Geçiyor |
+
+Backend'in kendi `backend/tests/integration/page-editor-roles.test.ts`'i (backend-agent, bu
+turdan önce) aynı FREEFORM senaryolarını zaten `app.inject` seviyesinde kapsıyordu — buradaki
+7-10 numaralı testler bu kapsamı GERÇEK bir tarayıcı + gerçek çalışan backend üzerinden (DOM
+kanıtı: `BuilderCanvas` mount edilmediğinin kanıtı, gerçek "Kaydet" tıklaması, gerçek 3sn'lik
+autosave debounce döngüsü dahil) tekrar doğrular — backend'in `app.inject` katmanının atladığı
+"wiring" yüzeyini kapatır (bkz. bu dosyanın başlığındaki katman tablosu).
+
+**Doğrulama (kararlılık):** `npx playwright test admin-page-editor-roles --grep "FREEFORM"`
+(testler 7-10, `beforeAll` dahil) **3 ayrı ardışık koşuda İSTİKRARLI: 3/3 koşum, koşum başına
+5/5 test (1 setup + 4 yeni) yeşil, toplam 15/15 — sıfır flake.**
+
+### qa-agent'ın KENDİ testinde bulup düzelttiği flaky kaynağı (bu turda)
+
+Test "10" ilk taslağında, test "4" (PRE-EXISTING, bu turda DOKUNULMAYAN TEMPLATE senaryosu) ile
+BİREBİR aynı "•••" (`Daha fazla işlem`) → hover → `DropdownMenuSub` "Alta Konteyner Ekle"
+alt-grid'ini açan etkileşim desenini kopyalıyordu. İlk izole koşumda bu adım ARA SIRA başarısız
+oldu (`getByRole('button', { name: 'Tek Sütun' })` 5000ms'de görünmüyor) —
+`admin-page-builder-containers.spec.ts`'in KENDİ dosya içi yorumunda ZATEN "ara sıra FLAKY"
+olarak belgelenmiş, floating-ui'nin `allowMouseEnter` korumasının bir hover girişini kaçırdığı
+AYNI kategori (o dosyanın "imleç önce dışarı taşınıp geri getirilsin" düzeltmesi test "10"da da
+UYGULANMIŞTI ama tek başına yeterli değildi). Kural gereği (proje kökü CLAUDE.md madde 3, "flaky
+testleri tolere etme") qa-agent bunu KENDİ yeni kodunda tolere ETMEDİ ve düzeltti: yeni bir
+yardımcı `openAddBelowSingleColumnTileUntilVisible()` eklendi — sabit bir bekleme SÜRESİ değil,
+menüyü KAPAT → "•••"e yeniden tıkla → yeniden hover eden, en fazla 4 denemelik gerçek bir "koşul
+sağlanana kadar tekrarla" deseni (`admin-page-builder-containers.spec.ts::dragUntil()`'in dnd-kit
+flakiness'i için kullandığı desenin AYNISI, farklı bir etkileşim türüne uygulanmış). Düzeltmeden
+SONRA test "10" izole olarak 3/3 koşuda (yukarı bkz.) istikrarlı geçti, hiçbir koşumda retry
+döngüsü 1'den fazla denemeye ihtiyaç duymadı (ilk denemede geçti).
+
+**Test "4" (PRE-EXISTING, bu turda BİLEREK DEĞİŞTİRİLMEDİ) KENDİSİ değiştirilmedi** — görev
+tanımı açıkça "mevcut TEMPLATE senaryolarına dokunma" diyordu. Ancak bu turki gözlem
+ÖNEMLİDİR: test "4" AYNI (düzeltilmemiş) desenle 4 tam-paket (`admin-page-editor-roles`, 12
+testin tamamı) koşumunun 3'ünde başarısız oldu — dosyanın kendi yorumundaki "ara sıra" nitelemesi
+bu yerel ortamda daha sık (yaklaşık %75) gerçekleşiyor. Ayrıca test "4" başarısız olduğunda
+Playwright worker'ı (görünüşe göre) yeniden başlatıyor — bu da `beforeAll`'ın YENİDEN
+çalışmasına ve akabinde bir sonraki testin (`5`, gerçekte `beforeAll`'ın kendi `advancedPage` UI
+login adımı) `waitForURL` zaman aşımına uğramasına yol açıyor (kotayla İLGİSİZ — backend
+loglarında 429 YOK); bu da 6-12 arası testlerin o koşumda hiç çalışmamasına neden oluyor. **Bulgu
+qa-agent'ın kendi backlog'una not edilir** (kod değişikliği DEĞİL, kendi test-altyapısı kararı):
+aynı `openAddBelowSingleColumnTileUntilVisible()` deseninin test "4"e de uygulanması önerilir —
+bu, testin KENDİSİNİ (iddialarını) DEĞİL, yalnızca etkileşim GÜVENİLİRLİĞİNİ değiştirir; ancak bu
+turda kapsam dışı bırakıldı (görev açıkça test "4"e dokunulmamasını istedi). İzole `--grep
+"FREEFORM"` koşumlarında bu worker-restart kaskadı hiç GÖZLENMEDİ (test "4" hiç çalışmadığı
+için) — 7-10 numaralı testlerin kendi 3/3 istikrar kanıtı bu kaskaddan BAĞIMSIZDIR.
+
+### Doküman drift'i (documentation-agent'a bilgi amaçlı, qa-agent DEĞİŞTİRMEDİ)
+
+`docs/architecture/ARCHITECTURE.md` §10.20.6 hâlâ "`editMode: TEMPLATE` gelişmiş kullanıcıyı
+KISITLAMAZ; mod yalnızca standart kullanıcı için bir politikadır" cümlesini taşıyor — bu artık
+YANILTICI: standart kullanıcı için politika `editMode`'dan TAMAMEN bağımsız hale geldi (yalnızca
+gelişmiş kullanıcı için "mod onu kısıtlamaz" cümlesi hâlâ doğru). §10.20.3 de aynı şekilde eski
+("standart kullanıcı yalnızca TEMPLATE'te içerik alanlarını doldurur" ima eden) hâliyle duruyor.
+Kaynak kodun kendi yorumları (`pages.routes.ts` satır 367-370, `page.tsx` satır 185-188) yeni
+kararı doğru şekilde BAĞLAYICI olarak belgeliyor — yalnızca `ARCHITECTURE.md`'nin ilgili
+paragrafları güncel değil. documentation-agent'a yönlendirilir (qa-agent kendi dokümantasyon
+alanı DIŞINA çıkmaz).

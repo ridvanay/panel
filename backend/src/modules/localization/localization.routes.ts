@@ -3,6 +3,8 @@ import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
 import { authenticate } from "../../middleware/authenticate";
 import { requireSiteRole } from "../../middleware/site-rbac";
+import { requirePanelAccess } from "../../middleware/panel-access";
+import { ROLES_ADMIN_MANAGER } from "../../lib/site-roles";
 import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema } from "../../schemas/common";
 import { LocaleSchema } from "../../schemas/entities";
@@ -13,13 +15,14 @@ import { LOCALE_CODE_PATTERN, listAllLocales, normalizeLocaleCode } from "../../
 import { LocaleCodeParamSchema, LocaleUpdateRequestSchema, LocaleUpsertRequestSchema } from "./localization.schemas";
 
 /**
- * §10.5 Çoklu Dil & Yerelleştirme — `/admin/locales` prefix'i altında bağlanır (authenticated).
- * GET herhangi bir SiteRole (çeviri editörü sekmelerini kurmak için EDITOR de okur), yazma
- * uçları yalnızca ADMIN (bkz. openapi.yaml `Localization` tag'i).
+ * §10.5 Çoklu Dil & Yerelleştirme — `/admin/locales` prefix'i altında bağlanır.
+ * `.claude/architect-scope-rbac-5-tier.md` §5.3 satır 7 — GET: ADMIN/MANAGER/EDITOR (panel
+ * kapısı yeterli), yazma uçları (POST/PATCH/DELETE): ADMIN + MANAGER.
  */
 export async function adminLocalesRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
   server.addHook("preHandler", authenticate);
+  server.addHook("preHandler", requirePanelAccess());
 
   server.get("/", { schema: { response: { 200: ApiSuccessSchema(z.array(LocaleSchema)) } } }, async (_request, reply) => {
     const [locales, counts] = await Promise.all([
@@ -37,7 +40,7 @@ export async function adminLocalesRoutes(app: FastifyInstance) {
   server.post(
     "/",
     {
-      preHandler: requireSiteRole("ADMIN"),
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
       schema: { body: LocaleUpsertRequestSchema, response: { 201: ApiSuccessSchema(LocaleSchema) } },
     },
     async (request, reply) => {
@@ -89,7 +92,7 @@ export async function adminLocalesRoutes(app: FastifyInstance) {
   server.patch(
     "/:code",
     {
-      preHandler: requireSiteRole("ADMIN"),
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
       schema: { params: LocaleCodeParamSchema, body: LocaleUpdateRequestSchema, response: { 200: ApiSuccessSchema(LocaleSchema) } },
     },
     async (request, reply) => {
@@ -157,7 +160,7 @@ export async function adminLocalesRoutes(app: FastifyInstance) {
   server.delete(
     "/:code",
     {
-      preHandler: requireSiteRole("ADMIN"),
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
       schema: { params: LocaleCodeParamSchema, response: { 204: z.undefined() } },
     },
     async (request, reply) => {

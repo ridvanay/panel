@@ -18,15 +18,15 @@ import { hashPassword } from "../../src/lib/password";
 describe("stats — gerçek veri doğruluğu (§10.8.10)", () => {
   let app: FastifyInstance;
   let adminToken: string;
-  let editorToken: string;
+  let managerToken: string;
 
   beforeAll(async () => {
     app = await buildTestApp();
     await resetDatabase(app.prisma);
     ({ accessToken: adminToken } = await registerTestUser(app, { email: "accuracy-admin@example.com" }));
-    const editor = await registerTestUser(app, { email: "accuracy-editor@example.com" });
-    await app.prisma.user.update({ where: { id: editor.userId }, data: { role: "EDITOR" } });
-    editorToken = editor.accessToken;
+    const manager = await registerTestUser(app, { email: "accuracy-manager@example.com" });
+    await app.prisma.user.update({ where: { id: manager.userId }, data: { role: "MANAGER" } });
+    managerToken = manager.accessToken;
   });
 
   afterAll(async () => {
@@ -228,7 +228,7 @@ describe("stats — gerçek veri doğruluğu (§10.8.10)", () => {
       const res = await app.inject({
         method: "GET",
         url: "/api/v1/admin/stats/views?from=2026-07-06&to=2026-07-13&granularity=week",
-        headers: authHeader(editorToken),
+        headers: authHeader(managerToken),
       });
       expect(res.statusCode).toBe(200);
       const series = res.json().data;
@@ -261,7 +261,7 @@ describe("stats — gerçek veri doğruluğu (§10.8.10)", () => {
       const res = await app.inject({
         method: "GET",
         url: "/api/v1/admin/stats/views?from=2026-08-01&to=2026-09-02&granularity=month",
-        headers: authHeader(editorToken),
+        headers: authHeader(managerToken),
       });
       expect(res.statusCode).toBe(200);
       const series = res.json().data;
@@ -278,7 +278,7 @@ describe("stats — gerçek veri doğruluğu (§10.8.10)", () => {
       const res = await app.inject({
         method: "GET",
         url: "/api/v1/admin/stats/views?from=2026-01-01",
-        headers: authHeader(editorToken),
+        headers: authHeader(managerToken),
       });
       expect(res.statusCode).toBe(422);
       expect(res.json().error.code).toBe("VALIDATION_ERROR");
@@ -288,7 +288,7 @@ describe("stats — gerçek veri doğruluğu (§10.8.10)", () => {
       const res = await app.inject({
         method: "GET",
         url: "/api/v1/admin/stats/views?from=2026-03-01&to=2026-03-02&days=5",
-        headers: authHeader(editorToken),
+        headers: authHeader(managerToken),
       });
       expect(res.statusCode).toBe(200);
       const series = res.json().data;
@@ -299,7 +299,7 @@ describe("stats — gerçek veri doğruluğu (§10.8.10)", () => {
       const res = await app.inject({
         method: "GET",
         url: "/api/v1/admin/stats/views?from=2020-01-01&to=2026-01-01",
-        headers: authHeader(editorToken),
+        headers: authHeader(managerToken),
       });
       expect(res.statusCode).toBe(422);
       expect(res.json().error.code).toBe("VALIDATION_ERROR");
@@ -309,7 +309,7 @@ describe("stats — gerçek veri doğruluğu (§10.8.10)", () => {
       const res = await app.inject({
         method: "GET",
         url: "/api/v1/admin/stats/views?from=not-a-real-date&to=2026-01-01",
-        headers: authHeader(editorToken),
+        headers: authHeader(managerToken),
       });
       expect(res.statusCode).toBe(422);
       expect(res.json().error.code).toBe("VALIDATION_ERROR");

@@ -6,6 +6,8 @@ import { z } from "zod";
 import { authenticate } from "../../middleware/authenticate";
 import { requireSiteRole } from "../../middleware/site-rbac";
 import { requireModuleEnabled } from "../../middleware/module-guard";
+import { requirePanelAccess } from "../../middleware/panel-access";
+import { ROLES_ADMIN_MANAGER } from "../../lib/site-roles";
 import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema, ApiSuccessWithMeta, AutosaveResponseSchema, CursorQuerySchema } from "../../schemas/common";
 import {
@@ -140,6 +142,7 @@ async function toProductDtosLocalized(app: FastifyInstance, products: Parameters
 export async function adminProductsRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
   server.addHook("preHandler", authenticate);
+  server.addHook("preHandler", requirePanelAccess());
 
   server.get(
     "/",
@@ -179,7 +182,7 @@ export async function adminProductsRoutes(app: FastifyInstance) {
   server.post(
     "/",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
       schema: { body: CreateProductRequestSchema, response: { 201: ApiSuccessSchema(ProductSchema) } },
     },
     async (request, reply) => {
@@ -280,7 +283,7 @@ export async function adminProductsRoutes(app: FastifyInstance) {
   server.patch(
     "/:productId",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
       schema: {
         params: ProductIdParamSchema,
         body: UpdateProductRequestSchema,
@@ -353,7 +356,7 @@ export async function adminProductsRoutes(app: FastifyInstance) {
   server.post(
     "/:productId/autosave",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
       schema: {
         params: ProductIdParamSchema,
         body: AutosaveProductRequestSchema,
@@ -387,7 +390,7 @@ export async function adminProductsRoutes(app: FastifyInstance) {
   server.delete(
     "/:productId",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
       schema: { params: ProductIdParamSchema, response: { 204: z.undefined() } },
     },
     async (request, reply) => {
@@ -415,7 +418,7 @@ export async function adminProductsRoutes(app: FastifyInstance) {
   server.post(
     "/:productId/restore",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
       schema: { params: ProductIdParamSchema, response: { 200: ApiSuccessSchema(ProductSchema) } },
     },
     async (request, reply) => {
@@ -444,7 +447,7 @@ export async function adminProductsRoutes(app: FastifyInstance) {
   server.delete(
     "/:productId/permanent",
     {
-      preHandler: requireSiteRole("ADMIN"),
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
       schema: { params: ProductIdParamSchema, response: { 204: z.undefined() } },
     },
     async (request, reply) => {
@@ -480,7 +483,7 @@ export async function adminProductsRoutes(app: FastifyInstance) {
   server.patch(
     "/:productId/stock",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
       schema: {
         params: ProductIdParamSchema,
         body: AdjustProductStockRequestSchema,
@@ -515,7 +518,7 @@ export async function adminProductsRoutes(app: FastifyInstance) {
   server.post(
     "/:productId/images",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
       schema: {
         params: ProductIdParamSchema,
         body: AddProductImageRequestSchema,
@@ -552,7 +555,7 @@ export async function adminProductsRoutes(app: FastifyInstance) {
   server.delete(
     "/:productId/images/:imageId",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
       schema: { params: ProductImageIdParamSchema, response: { 200: ApiSuccessSchema(ProductSchema) } },
     },
     async (request, reply) => {
@@ -573,7 +576,7 @@ export async function adminProductsRoutes(app: FastifyInstance) {
   server.post(
     "/bulk",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
       schema: { body: BulkContentActionRequestSchema, response: { 200: ApiSuccessSchema(BulkContentActionResultSchema) } },
     },
     async (request, reply) => {
@@ -602,7 +605,7 @@ export async function adminProductsRoutes(app: FastifyInstance) {
   server.get(
     "/:productId/revisions",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
       schema: {
         params: ProductIdParamSchema,
         querystring: CursorQuerySchema,
@@ -618,7 +621,7 @@ export async function adminProductsRoutes(app: FastifyInstance) {
   server.get(
     "/:productId/revisions/:revisionId",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
       schema: { params: ProductRevisionIdParamSchema, response: { 200: ApiSuccessSchema(ContentRevisionSchema) } },
     },
     async (request, reply) => {
@@ -633,7 +636,7 @@ export async function adminProductsRoutes(app: FastifyInstance) {
   server.post(
     "/:productId/revisions/:revisionId/restore",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
       schema: { params: ProductRevisionIdParamSchema, response: { 200: ApiSuccessSchema(ProductSchema) } },
     },
     async (request, reply) => {
@@ -723,6 +726,7 @@ export async function adminProductsRoutes(app: FastifyInstance) {
 export async function adminProductCategoriesRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
   server.addHook("preHandler", authenticate);
+  server.addHook("preHandler", requirePanelAccess());
 
   server.get(
     "/",
@@ -736,7 +740,7 @@ export async function adminProductCategoriesRoutes(app: FastifyInstance) {
   server.post(
     "/",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
       schema: { body: CreateProductCategoryRequestSchema, response: { 201: ApiSuccessSchema(ProductCategorySchema) } },
     },
     async (request, reply) => {
@@ -753,7 +757,7 @@ export async function adminProductCategoriesRoutes(app: FastifyInstance) {
   server.patch(
     "/:categoryId",
     {
-      preHandler: requireSiteRole("ADMIN", "EDITOR"),
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
       schema: {
         params: ProductCategoryIdParamSchema,
         body: UpdateProductCategoryRequestSchema,
@@ -777,7 +781,7 @@ export async function adminProductCategoriesRoutes(app: FastifyInstance) {
   server.delete(
     "/:categoryId",
     {
-      preHandler: requireSiteRole("ADMIN"),
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
       schema: { params: ProductCategoryIdParamSchema, response: { 204: z.undefined() } },
     },
     async (request, reply) => {

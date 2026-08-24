@@ -62,7 +62,7 @@ describe("blog tags (§10.14 çoka-çok sınıflandırma)", () => {
       expect(dup.statusCode).toBe(409);
     });
 
-    it("VIEWER etiket oluşturamaz (403)", async () => {
+    it("USER etiket oluşturamaz (403)", async () => {
       const res = await createTag("Yasak Etiket", viewerToken);
       expect(res.statusCode).toBe(403);
     });

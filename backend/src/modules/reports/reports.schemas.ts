@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { CursorQuerySchema } from "../../schemas/common";
-import { ExportFileFormatSchema, ExportJobStatusSchema, ExportJobTypeSchema } from "../../schemas/entities";
+import { ExportFileFormatSchema, ExportJobStatusSchema, ExportJobTypeSchema, SiteRoleSchema } from "../../schemas/entities";
 import { GranularitySchema } from "../stats/stats.schemas";
 
 const isoDateStringSchema = z.string().refine((value) => !Number.isNaN(Date.parse(value)), {
@@ -23,7 +23,7 @@ export const ListExportJobsQuerySchema = CursorQuerySchema.extend({
  */
 export const ExportFiltersSchema = z
   .object({
-    role: z.enum(["ADMIN", "EDITOR", "VIEWER"]).optional(),
+    role: SiteRoleSchema.optional(),
     subscriptionStatus: z.enum(["TRIALING", "ACTIVE", "PAST_DUE", "CANCELED", "INCOMPLETE"]).optional(),
   })
   .default({});

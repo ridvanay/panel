@@ -5,7 +5,6 @@ import { motion } from "framer-motion";
 import { toast } from "sonner";
 import {
   AlertCircle,
-  AlertTriangle,
   Download,
   RotateCcw,
   Search,
@@ -16,7 +15,6 @@ import {
 } from "lucide-react";
 import * as usersAdminApi from "@/lib/api/users-admin";
 import type { AdminUser, SiteRole, SiteUserStatus } from "@/lib/api/types";
-import { getRoleBadgeInfo } from "@/lib/role-badge";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select } from "@/components/ui/select";
@@ -38,16 +36,20 @@ import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { exportToCsv, type CsvColumn } from "@/lib/export-csv";
 import { useFilteredList } from "@/hooks/use-filtered-list";
 import { useAuth } from "@/context/auth-context";
-import { cn } from "@/lib/cn";
 
 function matchesUser(user: AdminUser, query: string): boolean {
   return user.name.toLowerCase().includes(query) || user.email.toLowerCase().includes(query);
 }
 
+// `.claude/architect-scope-rbac-5-tier.md` §1.2 — dropdown/CSV/onay diyaloğu için ÇIPLAK rol
+// adı (rozet için bkz. `lib/role-badge.ts::getRoleBadgeInfo`, ikon/ton taşıyan zenginleştirilmiş
+// versiyon — BU sabitin yerine geçmez, onu tamamlar).
 const roleLabels: Record<SiteRole, string> = {
-  ADMIN: "Admin",
-  EDITOR: "Editor",
-  VIEWER: "Viewer",
+  ADMIN: "Süper Yönetici",
+  MANAGER: "Yönetici",
+  EDITOR: "Editör",
+  CUSTOMER: "Müşteri",
+  USER: "Standart Üye",
 };
 
 const statusLabels: Record<SiteUserStatus, string> = {
@@ -65,49 +67,6 @@ const statusBadgeTone: Record<SiteUserStatus, "success" | "danger" | "neutral"> 
 interface PendingRoleChange {
   user: AdminUser;
   newRole: SiteRole;
-}
-
-/**
- * design-notes-page-builder-standard-mode.md Karar 6.1 — üç davranış durumu: ADMIN
- * (`disabled`+tooltip), EDITOR (tam işlevsel, optimistik rozet), VIEWER (`opacity-60` +
- * uyarı ikonu, `disabled` DEĞİL — architect §1.6: teknik olarak serbest, backend 422 üretmez).
- */
-function BuilderAccessCell({
-  user,
-  onChange,
-}: {
-  user: AdminUser;
-  onChange: (user: AdminUser, next: boolean) => void;
-}) {
-  const badge = getRoleBadgeInfo(user);
-  const isAdmin = user.role === "ADMIN";
-  const isViewer = user.role === "VIEWER";
-
-  return (
-    <div className={cn("flex items-center gap-2", isViewer && "opacity-60")}>
-      <Switch
-        aria-label={`${user.name} için gelişmiş düzenleyici erişimi`}
-        checked={user.advancedBuilderEnabled}
-        disabled={isAdmin || user.status === "DELETED"}
-        title={isAdmin ? "Yöneticiler her zaman gelişmiş düzenleyiciye sahiptir." : undefined}
-        onCheckedChange={(checked) => onChange(user, checked)}
-      />
-      <Badge tone={badge.tone} solid={badge.solid} size="sm">
-        <badge.icon className="mr-1 h-3 w-3" />
-        {badge.label}
-      </Badge>
-      {isViewer && (
-        <Tooltip>
-          <TooltipTrigger render={<span tabIndex={0} className="inline-flex" />}>
-            <AlertTriangle className="h-3.5 w-3.5 text-warning/70" />
-          </TooltipTrigger>
-          <TooltipContent>
-            İzleyici rolü sayfa yazma uçlarına hiç erişemez; bu ayarın görünür bir etkisi olmaz.
-          </TooltipContent>
-        </Tooltip>
-      )}
-    </div>
-  );
 }
 
 export default function AdminUsersPage() {
@@ -169,30 +128,6 @@ export default function AdminUsersPage() {
 
   function handleUserCreated(user: AdminUser) {
     setUsers((prev) => (prev ? [user, ...prev] : [user]));
-  }
-
-  /**
-   * design-notes-page-builder-standard-mode.md Karar 6.1/6.2 — optimistik güncelleme: rozet
-   * (`getRoleBadgeInfo`) `advancedBuilderEnabled`in DEĞİL, türetilmiş `canUseAdvancedBuilder`in
-   * girdisidir, bu yüzden yerel state anında güncellenince rozet de ANINDA değişir. Hata
-   * durumunda AYNI toast+friendlyErrorMessage deseni (`handleConfirmRoleChange` ile BİREBİR).
-   */
-  async function handleBuilderAccessChange(user: AdminUser, advancedBuilderEnabled: boolean) {
-    const previousUsers = users;
-    setUsers((prev) =>
-      prev
-        ? prev.map((u) =>
-            u.id === user.id ? { ...u, advancedBuilderEnabled, canUseAdvancedBuilder: u.role === "ADMIN" || advancedBuilderEnabled } : u
-          )
-        : prev
-    );
-    try {
-      const updated = await usersAdminApi.updateUserBuilderAccess(user.id, { advancedBuilderEnabled });
-      setUsers((prev) => (prev ? prev.map((u) => (u.id === updated.id ? updated : u)) : prev));
-    } catch (err) {
-      setUsers(previousUsers);
-      toast.error(friendlyErrorMessage(err));
-    }
   }
 
   async function handleConfirmRoleChange() {
@@ -558,11 +493,13 @@ export default function AdminUsersPage() {
               aria-label="Toplu rol seç"
               value={bulkRole}
               onChange={(e) => setBulkRole(e.target.value as SiteRole)}
-              className="w-32"
+              className="w-36"
             >
-              <option value="ADMIN">Admin</option>
-              <option value="EDITOR">Editor</option>
-              <option value="VIEWER">Viewer</option>
+              <option value="ADMIN">{roleLabels.ADMIN}</option>
+              <option value="MANAGER">{roleLabels.MANAGER}</option>
+              <option value="EDITOR">{roleLabels.EDITOR}</option>
+              <option value="CUSTOMER">{roleLabels.CUSTOMER}</option>
+              <option value="USER">{roleLabels.USER}</option>
             </Select>
             <Button variant="outline" size="sm" onClick={() => setBulkRoleConfirmOpen(true)}>
               Rolü Uygula
@@ -660,8 +597,7 @@ export default function AdminUsersPage() {
                     <TableHead className="w-14">Profil</TableHead>
                     <TableHead className="w-auto">İsim</TableHead>
                     <TableHead className="w-56">E-posta</TableHead>
-                    <TableHead className="w-32">Rol</TableHead>
-                    <TableHead className="w-48">Yetenek</TableHead>
+                    <TableHead className="w-36">Rol</TableHead>
                     <TableHead className="w-28">Durum</TableHead>
                     <TableHead className="w-32 text-right">İşlemler</TableHead>
                     <TableHead className="w-40 text-right">Son Giriş Tarihi</TableHead>
@@ -710,7 +646,7 @@ export default function AdminUsersPage() {
                         </TableCell>
                         <TableCell className="w-auto font-medium text-foreground">{user.name}</TableCell>
                         <TableCell className="w-56 text-foreground/60">{user.email}</TableCell>
-                        <TableCell className="w-32">
+                        <TableCell className="w-36">
                           <Select
                             aria-label={`${user.name} rolü`}
                             value={user.role}
@@ -719,15 +655,14 @@ export default function AdminUsersPage() {
                             }
                             disabled={isLastActiveAdmin || isDeleted}
                             title={isLastActiveAdmin ? LAST_ADMIN_MESSAGE : isDeleted ? "Silinmiş kullanıcı — önce geri yükleyin." : undefined}
-                            className="w-32"
+                            className="w-36"
                           >
-                            <option value="ADMIN">Admin</option>
-                            <option value="EDITOR">Editor</option>
-                            <option value="VIEWER">Viewer</option>
+                            <option value="ADMIN">{roleLabels.ADMIN}</option>
+                            <option value="MANAGER">{roleLabels.MANAGER}</option>
+                            <option value="EDITOR">{roleLabels.EDITOR}</option>
+                            <option value="CUSTOMER">{roleLabels.CUSTOMER}</option>
+                            <option value="USER">{roleLabels.USER}</option>
                           </Select>
-                        </TableCell>
-                        <TableCell className="w-48">
-                          <BuilderAccessCell user={user} onChange={handleBuilderAccessChange} />
                         </TableCell>
                         <TableCell className="w-28">
                           <Badge tone={statusBadgeTone[user.status]}>{statusLabels[user.status]}</Badge>

@@ -7,6 +7,7 @@ import { runSerializable } from "../../lib/serializable-tx";
 import { sendTemplateEmail } from "../email-templates/email-templates.service";
 import { emitWebhookEvent } from "../../lib/webhook-emitter";
 import { buildWebhookOrderPayload } from "../../lib/webhook-order-payload";
+import { logAudit } from "../../lib/audit";
 
 function mapStatus(status: Stripe.Subscription.Status): SubscriptionStatus {
   switch (status) {
@@ -92,6 +93,31 @@ function formatMoney(cents: number, currency: string): string {
   return `${(cents / 100).toFixed(2)} ${currency}`;
 }
 
+/**
+ * `.claude/architect-scope-rbac-5-tier.md` §7.2 — `USER → CUSTOMER` terfisi. Yalnızca `USER`
+ * rolündeki kullanıcılar terfi eder; `CUSTOMER` zaten hedef durumdadır (no-op) ve
+ * `ADMIN`/`MANAGER`/`EDITOR` hiçbir koşulda değiştirilmez (panel yetkisi bir ayrıcalık
+ * kaybına dönüştürülmez). Otomatik GERİ DÜŞÜRME YOKTUR — bu fonksiyon yalnızca ileri yönde
+ * çağrılır. Koşullu `updateMany` ile atomik "yalnızca hâlâ USER ise" claim edilir; audit
+ * yalnızca gerçekten bir geçiş olduğunda yazılır (`actorId: null` — sistem aktörü).
+ */
+async function promoteUserToCustomerIfNeeded(app: FastifyInstance, siteUserId: string, orderId: string): Promise<void> {
+  const promoted = await app.prisma.user.updateMany({
+    where: { id: siteUserId, role: "USER" },
+    data: { role: "CUSTOMER" },
+  });
+  if (promoted.count === 0) return;
+
+  await logAudit(app, {
+    actorId: null,
+    actorEmail: null,
+    action: "user.role_change",
+    targetType: "User",
+    targetId: siteUserId,
+    metadata: { from: "USER", to: "CUSTOMER", reason: "order_paid", orderId },
+  });
+}
+
 type OrderWithItems = Order & { items: OrderItem[] };
 
 /**
@@ -158,6 +184,19 @@ async function handleOrderPaid(app: FastifyInstance, session: Stripe.Checkout.Se
   // Transaction SONRASI, best-effort: e-posta gönderimi asıl webhook isteğini BOZMAZ (mevcut
   // admin-users.routes.ts::sendPasswordResetEmail catch paterniyle AYNI yaklaşım).
   const order = outcome.order;
+
+  // `.claude/architect-scope-rbac-5-tier.md` §7.2 — `USER → CUSTOMER` terfisi, yalnızca
+  // kimliği doğrulanmış (siteUserId dolu) bir sipariş ÖDENDİĞİNDE tetiklenir. Yalnızca `USER`
+  // rolü değişir; `EDITOR`/`MANAGER`/`ADMIN`/`CUSTOMER` hiçbir koşulda değiştirilmez (bir ADMIN
+  // alışveriş yaparsa rolü düşürülemez). Best-effort — bu adımın başarısız olması ödeme/sipariş
+  // akışını ASLA bozmaz.
+  if (order.siteUserId) {
+    try {
+      await promoteUserToCustomerIfNeeded(app, order.siteUserId, order.id);
+    } catch (err) {
+      app.log.error({ err, orderId: order.id, siteUserId: order.siteUserId }, "USER -> CUSTOMER terfisi başarısız oldu");
+    }
+  }
 
   // §10.13.8 — `ORDER_PAID`, sipariş `PAID`'e geçtikten SONRA (§10.13's giden webhook sistemi;
   // Stripe'ın BİZE gönderdiği GELEN webhook'la KARIŞTIRILMAMALI).

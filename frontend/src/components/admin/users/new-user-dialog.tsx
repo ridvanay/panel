@@ -138,9 +138,11 @@ export function NewUserDialog({ open, onOpenChange, onCreated }: NewUserDialogPr
             <Field id="new-user-role" label="Rol">
               {(inputProps) => (
                 <Select {...inputProps} value={role} onChange={(e) => setRole(e.target.value as SiteRole)}>
-                  <option value="ADMIN">Admin</option>
-                  <option value="EDITOR">Editor</option>
-                  <option value="VIEWER">Viewer</option>
+                  <option value="ADMIN">Süper Yönetici</option>
+                  <option value="MANAGER">Yönetici</option>
+                  <option value="EDITOR">Editör</option>
+                  <option value="CUSTOMER">Müşteri</option>
+                  <option value="USER">Standart Üye</option>
                 </Select>
               )}
             </Field>

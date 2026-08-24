@@ -5,6 +5,8 @@ import { Prisma, type SiteRole, type SiteUserStatus } from "@prisma/client";
 import { z } from "zod";
 import { authenticate } from "../../middleware/authenticate";
 import { requireSiteRole } from "../../middleware/site-rbac";
+import { requirePanelAccess } from "../../middleware/panel-access";
+import { ROLES_ADMIN } from "../../lib/site-roles";
 import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema } from "../../schemas/common";
 import { AdminUserSchema } from "../../schemas/entities";
@@ -21,7 +23,6 @@ import {
   AdminUserIdParamSchema,
   CreateAdminUserRequestSchema,
   ListAdminUsersQuerySchema,
-  UpdateAdminUserBuilderAccessRequestSchema,
   UpdateAdminUserRoleRequestSchema,
   UpdateAdminUserStatusRequestSchema,
 } from "./admin-users.schemas";
@@ -33,7 +34,7 @@ const CreateAdminUserResponseSchema = z.object({
 
 // Diğer admin uçlarıyla paylaşılan global limitten (env.RATE_LIMIT_MAX) bağımsız, hassas
 // kullanıcı yönetimi işlemlerine (oluşturma/rol/durum değişikliği) özel savunma-derinliği
-// üst sınırı — bu uçlar zaten requireSiteRole("ADMIN") ile korunuyor, düşük risk ama
+// üst sınırı — bu uçlar zaten requireSiteRole(...ROLES_ADMIN) ile korunuyor, düşük risk ama
 // ele geçirilmiş bir admin oturumunun toplu istismarını sınırlar (bkz. security-agent denetimi).
 const ADMIN_USERS_RATE_LIMIT = { max: 20, timeWindow: "1 minute" };
 
@@ -56,11 +57,16 @@ async function assertNotLastActiveAdmin(tx: Prisma.TransactionClient, excludeUse
   }
 }
 
-/** `/admin/users` prefix'i altında bağlanır (bkz. app.ts) — tüm uçlar yalnızca ADMIN. */
+/**
+ * `/admin/users` prefix'i altında bağlanır (bkz. app.ts).
+ * `.claude/architect-scope-rbac-5-tier.md` §5.3 satır 21 — tüm uçlar (okuma dahil) yalnızca
+ * ADMIN — (a): MANAGER GET'te de 403 alır (kullanıcı listesi = PII + ayrıcalık yükseltme yüzeyi).
+ */
 export async function adminUsersRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
   server.addHook("preHandler", authenticate);
-  server.addHook("preHandler", requireSiteRole("ADMIN"));
+  server.addHook("preHandler", requirePanelAccess());
+  server.addHook("preHandler", requireSiteRole(...ROLES_ADMIN));
 
   server.get(
     "/",
@@ -231,52 +237,6 @@ export async function adminUsersRoutes(app: FastifyInstance) {
         targetType: "User",
         targetId: user.id,
         metadata: { from: previousStatus, to: status },
-        ipAddress: request.ip,
-      });
-
-      return reply.send(ok(toAdminUserDto(user)));
-    }
-  );
-
-  /**
-   * §10.20 — Gelişmiş Düzenleyici yetkisini aç/kapat (bkz.
-   * `.claude/architect-scope-page-editor-roles.md` §4.3). `/role`/`/status` ile BİREBİR AYNI
-   * desen: `ADMIN_USERS_RATE_LIMIT`, `DELETED` kullanıcıda 404, `user.builder_access_change`
-   * audit'i. TEK fark: `assertNotLastActiveAdmin` YOK — ADMIN için etkin yetenek depolanan
-   * değerden BAĞIMSIZ olarak zaten her zaman `true`'dur (§1.5), yani bu alan üzerinden bir
-   * kilitlenme senaryosu YAPISAL OLARAK imkânsızdır; bu yüzden `runSerializable`/TOCTOU
-   * korumasına da gerek YOKTUR (korunacak bir "son admin" değişmezi yok).
-   */
-  server.patch(
-    "/:userId/builder-access",
-    {
-      config: { rateLimit: ADMIN_USERS_RATE_LIMIT },
-      schema: {
-        params: AdminUserIdParamSchema,
-        body: UpdateAdminUserBuilderAccessRequestSchema,
-        response: { 200: ApiSuccessSchema(AdminUserSchema) },
-      },
-    },
-    async (request, reply) => {
-      const { advancedBuilderEnabled } = request.body;
-
-      const target = await app.prisma.user.findUnique({ where: { id: request.params.userId } });
-      // `/role`/`/status` ile TUTARLI: `DELETED` kullanıcılar var olmayan kayıt gibi davranılır.
-      if (!target || target.status === "DELETED") throw new NotFoundError("Kullanıcı bulunamadı.");
-
-      const previousValue = target.advancedBuilderEnabled;
-      const user = await app.prisma.user.update({
-        where: { id: target.id },
-        data: { advancedBuilderEnabled },
-      });
-
-      await logAudit(app, {
-        actorId: request.user!.id,
-        actorEmail: request.user!.email,
-        action: "user.builder_access_change",
-        targetType: "User",
-        targetId: user.id,
-        metadata: { from: previousValue, to: advancedBuilderEnabled },
         ipAddress: request.ip,
       });
 

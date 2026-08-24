@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import type { SiteRole } from "@prisma/client";
 import { addUtcDays, bucketDateKey, startOfUtcDay, toDateKey, type StatsGranularity } from "./date";
 import { ValidationError } from "./errors";
 
@@ -284,7 +285,7 @@ export interface UserSeriesPoint {
 
 export interface UsersStatsResult {
   series: UserSeriesPoint[];
-  roleDistribution: { role: "ADMIN" | "EDITOR" | "VIEWER"; count: number }[];
+  roleDistribution: { role: SiteRole; count: number }[];
 }
 
 export async function getUsersStats(app: FastifyInstance, range: DateRange, granularity: StatsGranularity): Promise<UsersStatsResult> {

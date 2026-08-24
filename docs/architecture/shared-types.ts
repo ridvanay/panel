@@ -45,10 +45,25 @@ export type SubscriptionStatus =
   | "CANCELED"
   | "INCOMPLETE";
 
-// `/admin/*` CMS uçları (pages, blog, media, settings, users, logs) için org'dan
-// bağımsız site-geneli rol/durum. `MembershipRole` (organizasyon bazlı) ile
-// KARIŞTIRILMAMALI — tamamen ayrı bir yetkilendirme ekseni.
-export type SiteRole = "ADMIN" | "EDITOR" | "VIEWER";
+/**
+ * Site-geneli rol — org'dan bağımsız. `MembershipRole` (organizasyon bazlı) ile
+ * KARIŞTIRILMAMALI, tamamen ayrı bir yetkilendirme eksenidir.
+ *
+ * §10.21 — 5 kademeli model (bağlayıcı: `.claude/architect-scope-rbac-5-tier.md`):
+ * - `ADMIN`    Süper Yönetici — her şey; sayfa blok YAPISINI değiştirebilen TEK rol.
+ * - `MANAGER`  Yönetici — ADMIN'in tümü EKSİ: kullanıcı/ayar yönetimi, API anahtarı,
+ *              webhook, özel CSS/JS, modül aç-kapat, sistem sağlığı, loglar, içe aktarma
+ *              — ve blok yapısı.
+ * - `EDITOR`   Editör — yalnızca blog (tam CRUD) + medya + sayfa İÇERİĞİ.
+ * - `CUSTOMER` Müşteri — panel YOK (403); ön yüzde hesap + sipariş geçmişi.
+ * - `USER`     Standart Üye — panel YOK (403); yalnızca temel profil. **Yeni kayıtların
+ *              varsayılanı.**
+ *
+ * **BREAKING:** `VIEWER` KALDIRILDI; mevcut verisi `USER`'a eşlendi (panel erişimini
+ * kaybeder). `/admin/*` altındaki HER uç `ADMIN|MANAGER|EDITOR` gerektirir; tek istisna
+ * self-servis `/admin/settings/security/{2fa,sessions}` uçlarıdır.
+ */
+export type SiteRole = "ADMIN" | "MANAGER" | "EDITOR" | "CUSTOMER" | "USER";
 /**
  * `DELETED` = yumuşak silme (bkz. `DELETE /admin/users/{userId}`). Satır fiziksel olarak
  * silinmez; `POST /admin/users/{userId}/restore` ile geri alınabilir. Bu değer YALNIZCA
@@ -76,34 +91,32 @@ export interface User {
   emailVerifiedAt: string | null; // ISO 8601
   role: SiteRole;
   /**
-   * §10.20 — Gelişmiş Düzenleyici yeteneği. TÜRETİLMİŞ + SALT-OKUNUR:
-   * `role === "ADMIN" || advancedBuilderEnabled`. ADMIN'de depolanan değere BAKILMAZ
-   * (kilitlenme güvenliği). İzin vermek için: `PATCH /admin/users/{userId}/builder-access`.
+   * §10.21 — sayfa bloklarının YAPISINI değiştirebilme yeteneği. TÜRETİLMİŞ + SALT-OKUNUR:
+   *
+   *   canUseAdvancedBuilder === (role === "ADMIN")
+   *
+   * **BREAKING (§10.21):** v1'de bu alan kullanıcı-başı `User.advancedBuilderEnabled`
+   * bayrağından türüyordu. O kolon, `PATCH /admin/users/{userId}/builder-access` ucu ve
+   * `AdminUser.advancedBuilderEnabled` alanı KALDIRILDI — 5 rollü modelde ADMIN dışında
+   * hiçbir rol `true` olamayacağı için bayrak ölü kolona dönüşmüştü.
    *
    * Bu alan YALNIZCA UI içindir, güvenlik kontrolü DEĞİLDİR — sunucu her yazma isteğinde
-   * bağımsız olarak yeniden hesaplar.
-   *
-   * `false` olan bir EDITOR panelde "Yazar (Standart Düzenleyici)" olarak gösterilir;
-   * ayrı bir `AUTHOR` SiteRole'ü BİLİNÇLİ olarak YOKTUR
-   * (bkz. .claude/architect-scope-page-editor-roles.md §1).
+   * bağımsız olarak yeniden hesaplar. Sade düzenleyiciye geçiş ifadesi:
+   * `simpleMode = !canUseAdvancedBuilder` (sayfanın `editMode`'una BAKILMAZ).
    */
   canUseAdvancedBuilder: boolean;
   createdAt: string;
 }
 
-/** `/admin/users` uçlarında dönen genişletilmiş kullanıcı DTO'su — yalnızca ADMIN görebilir. */
+/**
+ * `/admin/users` uçlarında dönen genişletilmiş kullanıcı DTO'su — yalnızca
+ * `SiteRole=ADMIN` görebilir (MANAGER dahil hiç kimse, §10.21).
+ */
 export interface AdminUser extends User {
   status: SiteUserStatus;
   lastLoginAt: string | null; // ISO 8601
   /** Yumuşak silme damgası — `status: "DELETED"` ise dolu, aksi hâlde `null`. */
   deletedAt: string | null; // ISO 8601
-  /**
-   * §10.20 — DEPOLANAN izin (`User.advancedBuilderEnabled` kolonu). `canUseAdvancedBuilder`
-   * ETKİN yetenektir ve ADMIN'de bu alandan BAĞIMSIZ olarak `true` döner. Yönetim
-   * ekranındaki anahtar BU alana bağlanır. `role: "VIEWER"` iken `true` olması kabul
-   * edilir (etkisizdir, 422 üretmez).
-   */
-  advancedBuilderEnabled: boolean;
 }
 
 export interface AuditLog {
@@ -258,18 +271,19 @@ export interface CreateAdminUserResponse {
   setPasswordUrl: string;
 }
 
+/**
+ * §10.21 — `PATCH /admin/users/{userId}/role`. **Yalnızca `SiteRole=ADMIN` çağırabilir**
+ * (MANAGER dahil hiç kimse — dikey ayrıcalık yükseltmesi riski). Hedef rol 5 değerin
+ * herhangi biri olabilir; `CUSTOMER`/`USER`'a düşürmek panel erişimini geri almanın
+ * (ban/downgrade) doğru aracıdır. Son aktif `ADMIN`'i başka bir role çekmek `409`.
+ */
 export interface UpdateAdminUserRoleRequest {
   role: SiteRole;
 }
 
-/**
- * §10.20 — `PATCH /admin/users/{userId}/builder-access`. Gelişmiş Düzenleyici yeteneğini
- * açar/kapatır. `role` BU UÇTAN DEĞİŞTİRİLEMEZ: yetenek ve rol AYRI eksenlerdir.
- * "Standart/Yazar kullanıcı" = `role: "EDITOR"` + `advancedBuilderEnabled: false`.
- */
-export interface UpdateAdminUserBuilderAccessRequest {
-  advancedBuilderEnabled: boolean;
-}
+// KALDIRILDI (§10.21): `UpdateAdminUserBuilderAccessRequest` ve
+// `PATCH /admin/users/{userId}/builder-access`. `canUseAdvancedBuilder` artık saf bir rol
+// türevidir (`role === "ADMIN"`), kullanıcı başına verilebilen bir yetenek DEĞİLDİR.
 
 export interface UpdateAdminUserStatusRequest {
   /**
@@ -288,18 +302,20 @@ export interface PermissionsMatrix {
     actions: Record<string, readonly SiteRole[]>;
   }>;
   /**
-   * §10.20 — ROLDEN TÜRETİLMEYEN, kullanıcı BAŞINA verilen yetenekler. `modules` yalnızca
-   * rol × aksiyon eksenini anlatır; bu eksen olmadan "Yetkiler" ekranı yanıltıcı olurdu
-   * (aynı roldeki iki kullanıcının sayfa düzenleme kapsamı FARKLI olabilir).
-   * Bugün tek yetenek vardır — ikinci bir bayrak eklemeden ÖNCE architect'e eskale edilir
+   * ROLDEN TÜRETİLMEYEN yetenek ekseni. **§10.21 itibarıyla bu eksende kullanıcı-başı
+   * verilebilen HİÇBİR yetenek KALMAMIŞTIR** — tek üye `advancedBuilder` artık saf rol
+   * türevidir (`alwaysGrantedTo: ["ADMIN"]`, `grantableTo: []`). Dizi, "Yetkiler" ekranının
+   * şeklini bozmamak ve ileride gerçek bir `Permission` tablosu geldiğinde sözleşme yerini
+   * hazır tutmak için KORUNMUŞTUR; `grantableTo` boş olduğu için UI hiçbir yetenek anahtarı
+   * çizmez. İkinci bir yetenek eklemeden ÖNCE architect'e eskale edilir
    * (bkz. .claude/architect-scope-page-editor-roles.md §1.7).
    */
   capabilities: ReadonlyArray<{
     key: "advancedBuilder";
     label: string;
-    /** Depolanan izinden BAĞIMSIZ olarak her zaman etkin olduğu roller. */
+    /** Rolden ötürü HER ZAMAN etkin olduğu roller. `advancedBuilder` için: `["ADMIN"]`. */
     alwaysGrantedTo: readonly SiteRole[];
-    /** Kullanıcı başına açılıp kapatılabildiği roller. */
+    /** Kullanıcı başına açılıp kapatılabildiği roller. `advancedBuilder` için BOŞ. */
     grantableTo: readonly SiteRole[];
   }>;
 }

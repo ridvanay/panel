@@ -58,10 +58,19 @@ enum PageEditMode {
 
 // `/admin/*` CMS uçları için org'dan bağımsız site-geneli rol/durum — MembershipRole ile
 // KARIŞTIRILMAMALI, tamamen ayrı bir yetkilendirme ekseni (bkz. middleware/site-rbac.ts).
+// 5 kademeli kurumsal RBAC (bkz. .claude/architect-scope-rbac-5-tier.md §1, bağlayıcı karar
+// dokümanı) — eski enum ADMIN/EDITOR/VIEWER idi, VIEWER KALDIRILDI. Değer SIRASI bağlayıcıdır
+// (ADMIN → USER, ayrıcalıktan azalan; PostgreSQL enum tanım sırası ORDER BY role davranışını
+// belirler, bkz. §1). ADMIN = süper yönetici (sistem/ayarlar/kullanıcılar, serbest Page
+// Builder). MANAGER = panelin tamamı, blok YAPISINI değiştiremez (§6). EDITOR = yalnızca
+// blog + medya + sayfa İÇERİĞİ (§5.3). CUSTOMER = panel YOK, ödeme tamamlanınca USER'dan
+// otomatik terfi edilir (§7.2). USER = varsayılan/standart üye, panel YOK (§7.1).
 enum SiteRole {
   ADMIN
+  MANAGER
   EDITOR
-  VIEWER
+  CUSTOMER
+  USER
 }
 
 // §10.7 benzeri soft-delete (çöp kutusu) deseni, kullanıcılar için — DELETED durumundaki
@@ -231,7 +240,7 @@ model User {
   name            String
   avatarUrl       String?
   emailVerifiedAt DateTime?
-  role            SiteRole       @default(VIEWER)
+  role            SiteRole       @default(USER)
   status          SiteUserStatus @default(ACTIVE)
   lastLoginAt     DateTime?
   // Soft-delete (çöp kutusu) — status=DELETED ile birlikte set edilir; sadece silindiyse
@@ -247,17 +256,13 @@ model User {
   twoFactorSecret     String?
   twoFactorVerifiedAt DateTime?
 
-  // Sayfa düzenleyicide gelişmiş yapı düzenleme (konteyner ekleme/kaldırma/yapı değişikliği)
-  // izni — kullanıcı-başı TEK yetenek bayrağı (bkz. .claude/architect-scope-page-editor-roles.md
-  // §1, bağlayıcı karar dokümanı). Depolanan/yazılabilir "verilen izin"dir; etkin yetenek
-  // (`canUseAdvancedBuilder`) role=ADMIN için BU ALANA BAKMAKSIZIN her zaman true'dur (§1.5,
-  // kilitlenme güvenliği) — türetme backend-agent'ın `lib/builder-capability.ts` yardımcısında
-  // yapılır, burada KOPYALANMAZ. Varsayılan false (yeni hesap = en az ayrıcalık); mevcut
-  // ADMIN/EDITOR hesapları için bu migration'ın backfill adımı true'ya çeker (§6.1 madde 2) —
-  // aksi halde yayındaki editörlerin yetkisi sessizce daralırdı. İkinci bir `User.canX`
-  // bayrağı İCAT ETMEDEN önce architect'e eskale edilir (§1.7 — genel Permission tablosuna
-  // kadar spekülatif genelleme yapılmaz).
-  advancedBuilderEnabled Boolean @default(false)
+  // NOT: `advancedBuilderEnabled` kolonu KALDIRILDI (bkz.
+  // .claude/architect-scope-rbac-5-tier.md §3, bağlayıcı karar dokümanı — bu doküman
+  // .claude/architect-scope-page-editor-roles.md §1'i revize eder). Gelişmiş Page Builder
+  // yeteneği artık saf rol türevidir: `canUseAdvancedBuilder(user) = user.role === "ADMIN"`
+  // (backend-agent'ın `lib/builder-capability.ts` yardımcısında türetilir, DB'de saklanmaz).
+  // MANAGER ve EDITOR için bu değer HER ZAMAN false'tur — kullanıcı-başı bir "verilen izin"
+  // kolonu artık gerekmiyor (ölü kolon riski, bkz. §3.2).
 
   ownedOrganizations     Organization[]       @relation("OrganizationOwner")
   memberships            Membership[]
@@ -901,6 +906,22 @@ enum SiteFont {
   LORA
   PLAYFAIR_DISPLAY
   SOURCE_SERIF_4
+  PLUS_JAKARTA_SANS
+  OUTFIT
+}
+
+enum SiteBorderRadius {
+  NONE
+  SM
+  MD
+  LG
+  FULL
+}
+
+enum SiteButtonStyle {
+  SOLID
+  OUTLINE
+  SOFT
 }
 
 // Yazı/sayfa altındaki paylaşım butonları hedefi. `SocialPlatform`'dan (sitenin
@@ -951,12 +972,21 @@ model SiteAppearance {
   // türetimi orta tonlu zeminlerde AA kontrastını güvenilir biçimde sağlayamaz.
   buttonTextColor String @default("#ffffff")
   linkColor       String @default("#4f46e5")
+  accentColor     String @default("#f59e0b")
+  backgroundColor String @default("#ffffff")
+  surfaceColor    String @default("#f9fafb")
+  textColor       String @default("#111827")
+  mutedTextColor  String @default("#6b7280")
 
   // --- Yazı Tipi ---
   headingFont  SiteFont @default(SYSTEM)
   bodyFont     SiteFont @default(SYSTEM)
   // px, varsayılan 16. Alt sınır (Zod, backend-agent) 14 — okunabilirlik eşiği.
   baseFontSize Int      @default(16)
+
+  // --- Bileşen Stilleri ---
+  borderRadius SiteBorderRadius @default(MD)
+  buttonStyle  SiteButtonStyle  @default(SOLID)
 
   // --- Sosyal Medya Paylaşımı — SİTENİN KENDİ hesap LİNKLERİ BURADA DEĞİL (bkz.
   // SocialLink modeli / §10.12.1). socialShareEnabled=false iken de saklanır. ---

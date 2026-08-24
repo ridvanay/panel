@@ -19,10 +19,13 @@ import { PageHeading } from "@/components/admin/page-heading";
 import { ImageUploadField } from "@/components/admin/media/image-upload-field";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 
+// `.claude/architect-scope-rbac-5-tier.md` §1.2 — bağlayıcı TR etiketler.
 const roleLabels: Record<SiteRole, string> = {
-  ADMIN: "Admin",
-  EDITOR: "Editor",
-  VIEWER: "Viewer",
+  ADMIN: "Süper Yönetici",
+  MANAGER: "Yönetici",
+  EDITOR: "Editör",
+  CUSTOMER: "Müşteri",
+  USER: "Standart Üye",
 };
 
 const MIN_PASSWORD_LENGTH = 8;

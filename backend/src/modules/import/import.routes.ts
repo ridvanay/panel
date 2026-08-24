@@ -4,6 +4,8 @@ import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { authenticate } from "../../middleware/authenticate";
 import { requireSiteRole } from "../../middleware/site-rbac";
+import { requirePanelAccess } from "../../middleware/panel-access";
+import { ROLES_ADMIN } from "../../lib/site-roles";
 import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema, ApiSuccessWithMeta, CursorQuerySchema } from "../../schemas/common";
 import { ImportJobErrorListMetaSchema, ImportJobErrorSchema, ImportJobPreviewDto, ImportJobSchema, ImportJobSummarySchema } from "../../schemas/entities";
@@ -51,11 +53,15 @@ async function sweepStalePendingJobs(app: FastifyInstance): Promise<void> {
   await app.prisma.importJob.deleteMany({ where: { id: { in: stale.map((j) => j.id) } } });
 }
 
-/** `/admin/import/jobs` prefix'i altında bağlanır (bkz. app.ts) — TÜM uçlar yalnızca ADMIN. */
+/**
+ * `/admin/import/jobs` prefix'i altında bağlanır (bkz. app.ts) — TÜM uçlar yalnızca ADMIN
+ * (`.claude/architect-scope-rbac-5-tier.md` §5.3 satır 6 — (a): USERS içe aktarma rol atayabilir).
+ */
 export async function adminImportRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
   server.addHook("preHandler", authenticate);
-  server.addHook("preHandler", requireSiteRole("ADMIN"));
+  server.addHook("preHandler", requirePanelAccess());
+  server.addHook("preHandler", requireSiteRole(...ROLES_ADMIN));
 
   server.get(
     "/",

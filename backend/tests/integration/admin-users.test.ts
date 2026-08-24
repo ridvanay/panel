@@ -30,7 +30,10 @@ describe("admin-users — RBAC ve son-admin koruması", () => {
   }
 
   /** Rate limit'e takılmadan (register/login API'lerini yormadan) doğrudan Prisma ile kullanıcı oluşturur. */
-  async function createUserDirect(role: "ADMIN" | "EDITOR" | "VIEWER", status: "ACTIVE" | "SUSPENDED" = "ACTIVE") {
+  async function createUserDirect(
+    role: "ADMIN" | "MANAGER" | "EDITOR" | "CUSTOMER" | "USER",
+    status: "ACTIVE" | "SUSPENDED" = "ACTIVE"
+  ) {
     const passwordHash = await hashPassword("Sifre12345!");
     return app.prisma.user.create({
       data: {
@@ -65,25 +68,26 @@ describe("admin-users — RBAC ve son-admin koruması", () => {
   });
 
   describe("RBAC guard (requireSiteRole)", () => {
-    it("ADMIN olmayan (VIEWER) bir kullanıcı /admin/users uçlarına erişemez (403)", async () => {
-      // İkinci register: userCount artık 0 değil -> şema varsayılanı VIEWER (bkz. schema.prisma::User.role).
-      const viewer = await registerTestUser(app, { email: "viewer1@example.com" });
+    it("ADMIN olmayan (USER) bir kullanıcı /admin/users uçlarına erişemez (403)", async () => {
+      // İkinci register: userCount artık 0 değil -> şema varsayılanı USER (bkz. schema.prisma::User.role,
+      // `.claude/architect-scope-rbac-5-tier.md` §7.1 — eski: VIEWER).
+      const standardUser = await registerTestUser(app, { email: "standarduser1@example.com" });
 
-      const me = await app.inject({ method: "GET", url: "/api/v1/users/me", headers: authHeader(viewer.accessToken) });
-      expect(me.json().data.role).toBe("VIEWER");
+      const me = await app.inject({ method: "GET", url: "/api/v1/users/me", headers: authHeader(standardUser.accessToken) });
+      expect(me.json().data.role).toBe("USER");
 
       const res = await app.inject({
         method: "GET",
         url: "/api/v1/admin/users",
-        headers: authHeader(viewer.accessToken),
+        headers: authHeader(standardUser.accessToken),
       });
       expect(res.statusCode).toBe(403);
       expect(res.json().error.code).toBe("FORBIDDEN");
 
       const patchRole = await app.inject({
         method: "PATCH",
-        url: `/api/v1/admin/users/${viewer.userId}/role`,
-        headers: authHeader(viewer.accessToken),
+        url: `/api/v1/admin/users/${standardUser.userId}/role`,
+        headers: authHeader(standardUser.accessToken),
         payload: { role: "ADMIN" },
       });
       expect(patchRole.statusCode).toBe(403);
@@ -161,10 +165,10 @@ describe("admin-users — RBAC ve son-admin koruması", () => {
         method: "PATCH",
         url: `/api/v1/admin/users/${admin4.id}/role`,
         headers: authHeader(admin4Token),
-        payload: { role: "VIEWER" },
+        payload: { role: "EDITOR" },
       });
       expect(res.statusCode).toBe(200);
-      expect(res.json().data.role).toBe("VIEWER");
+      expect(res.json().data.role).toBe("EDITOR");
     });
   });
 

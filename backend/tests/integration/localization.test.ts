@@ -13,6 +13,7 @@ import { registerTestUser } from "../helpers/auth";
 describe("localization (§10.5)", () => {
   let app: FastifyInstance;
   let adminToken: string;
+  let managerToken: string;
   let editorToken: string;
 
   beforeAll(async () => {
@@ -22,16 +23,16 @@ describe("localization (§10.5)", () => {
     const admin = await registerTestUser(app, { email: "i18n-admin@example.com" });
     adminToken = admin.accessToken;
 
+    // `.claude/architect-scope-rbac-5-tier.md` §6 — Katman 1 (blok yapısı/isLegalDocument)
+    // artık saf rol türevidir (`canUseAdvancedBuilder = role === "ADMIN"`, bayrak KALDIRILDI).
+    // MANAGER, Katman 2 uçlarına (ör. revizyon restore) erişebilen ama Katman 1'de KISITLI
+    // kalan roldür — bu dosyanın "eski EDITOR" senaryolarının çoğu artık MANAGER'ı hedefler.
+    const manager = await registerTestUser(app, { email: "i18n-manager@example.com" });
+    await app.prisma.user.update({ where: { id: manager.userId }, data: { role: "MANAGER" } });
+    managerToken = manager.accessToken;
+
     const editor = await registerTestUser(app, { email: "i18n-editor@example.com" });
-    // §10.20 — bu dosyanın testleri i18n/`isLegalDocument` davranışını hedefler, GELİŞMİŞ
-    // Düzenleyici eksenini DEĞİL; bu EDITOR'ü o eksende kısıtlı bırakmak (varsayılan `false`)
-    // `POST .../revisions/{revisionId}/restore` gibi ARTIK ayrıca gelişmiş yetenek isteyen
-    // uçlarda ilgisiz bir 403 üretip bu dosyadaki testlerin niyetini bozardı (bkz.
-    // `.claude/architect-scope-page-editor-roles.md` §4.1) — bu yüzden `advancedBuilderEnabled: true`.
-    await app.prisma.user.update({
-      where: { id: editor.userId },
-      data: { role: "EDITOR", advancedBuilderEnabled: true },
-    });
+    await app.prisma.user.update({ where: { id: editor.userId }, data: { role: "EDITOR" } });
     editorToken = editor.accessToken;
   });
 
@@ -42,6 +43,9 @@ describe("localization (§10.5)", () => {
 
   function adminHeader() {
     return { authorization: `Bearer ${adminToken}` };
+  }
+  function managerHeader() {
+    return { authorization: `Bearer ${managerToken}` };
   }
   function editorHeader() {
     return { authorization: `Bearer ${editorToken}` };
@@ -68,7 +72,7 @@ describe("localization (§10.5)", () => {
       );
     });
 
-    it("only ADMIN can create a new locale; EDITOR gets 403", async () => {
+    it("ADMIN/MANAGER can create a new locale (§5.3 satır 7); EDITOR gets 403", async () => {
       const forbidden = await app.inject({
         method: "POST",
         url: "/api/v1/admin/locales",
@@ -406,10 +410,11 @@ describe("localization (§10.5)", () => {
 
     // security-agent bulgusu (bkz. .claude/security-review-i18n.md, ORTA-YÜKSEK) — revizyon
     // geri yükleme yolu, ADMIN-only `isLegalDocument` kuralını ve `content.legal_flag_change`
-    // audit'ini ATLAYABİLİYORDU. Regresyon: EDITOR, `isLegalDocument` alanı FARKLI olan eski bir
-    // revizyonu geri yükleyince bu alan sessizce DEĞİŞMEMELİ (restore'un geri kalanı bloklanmaz),
-    // ve sahte bir "SUCCESS" audit kaydı üretilmemeli.
-    it("restoring a revision never lets an EDITOR silently flip isLegalDocument (field is skipped, no fabricated audit); ADMIN can and it is audited", async () => {
+    // audit'ini ATLAYABİLİYORDU. Regresyon: MANAGER (§6 Katman 2'ye erişebilen ama Katman 1'de
+    // kısıtlı rol — bkz. `.claude/architect-scope-rbac-5-tier.md` §6), `isLegalDocument` alanı
+    // FARKLI olan eski bir revizyonu geri yükleyince bu alan sessizce DEĞİŞMEMELİ (restore'un
+    // geri kalanı bloklanmaz), ve sahte bir "SUCCESS" audit kaydı üretilmemeli.
+    it("restoring a revision never lets a MANAGER silently flip isLegalDocument (field is skipped, no fabricated audit); ADMIN can and it is audited", async () => {
       const create = await app.inject({
         method: "POST",
         url: "/api/v1/admin/pages",
@@ -472,33 +477,33 @@ describe("localization (§10.5)", () => {
 
       // `toTrue`/`toFalse` PATCH'leri (ADMIN, meşru) zaten 2 SUCCESS kaydı üretti — bu sayı
       // aşağıdaki delta karşılaştırmalarının başlangıç noktasıdır.
-      const logsBeforeEditorRestore = await legalFlagLogsForPage();
-      expect(logsBeforeEditorRestore.length).toBe(2);
-      expect(logsBeforeEditorRestore.every((log) => log.status === "SUCCESS")).toBe(true);
+      const logsBeforeManagerRestore = await legalFlagLogsForPage();
+      expect(logsBeforeManagerRestore.length).toBe(2);
+      expect(logsBeforeManagerRestore.every((log) => log.status === "SUCCESS")).toBe(true);
 
-      // Mevcut durum isLegalDocument=false; EDITOR bu (isLegalDocument=true İÇEREN) revizyonu
-      // geri yükler.
-      const editorRestore = await app.inject({
+      // Mevcut durum isLegalDocument=false; MANAGER (§6 Katman 2 uçlarına erişebilen, ADMIN
+      // olmayan rol) bu (isLegalDocument=true İÇEREN) revizyonu geri yükler.
+      const managerRestore = await app.inject({
         method: "POST",
         url: `/api/v1/admin/pages/${page.id}/revisions/${revisionWithLegalTrue}/restore`,
-        headers: editorHeader(),
+        headers: managerHeader(),
       });
       // Restore'un TAMAMI reddedilmez (403 DEĞİL) — yalnızca `isLegalDocument` alanı atlanır.
-      expect(editorRestore.statusCode).toBe(200);
+      expect(managerRestore.statusCode).toBe(200);
       // KRİTİK: bayrak SESSİZCE true'ya dönmedi.
-      expect(editorRestore.json().data.isLegalDocument).toBe(false);
+      expect(managerRestore.json().data.isLegalDocument).toBe(false);
       // Geri kalan alanlar (title vb.) normal şekilde geri yüklendi (restore engellenmedi).
-      expect(editorRestore.json().data.title).toBe("Mesafeli Satış Sözleşmesi v2");
+      expect(managerRestore.json().data.title).toBe("Mesafeli Satış Sözleşmesi v2");
 
       const dbPage = await app.prisma.page.findUniqueOrThrow({ where: { id: page.id } });
       expect(dbPage.isLegalDocument).toBe(false);
 
       // Sahte bir SUCCESS audit kaydı OLUŞMADI — tam olarak BİR yeni kayıt eklendi ve o da
       // FORBIDDEN statüsünde (reddedilen deneme görünür, ama restore'u bloklamadı).
-      const logsAfterEditorRestore = await legalFlagLogsForPage();
-      expect(logsAfterEditorRestore.length).toBe(logsBeforeEditorRestore.length + 1);
-      const newestAfterEditor = logsAfterEditorRestore[0]!; // en yeni önce
-      expect(newestAfterEditor.status).toBe("FORBIDDEN");
+      const logsAfterManagerRestore = await legalFlagLogsForPage();
+      expect(logsAfterManagerRestore.length).toBe(logsBeforeManagerRestore.length + 1);
+      const newestAfterManager = logsAfterManagerRestore[0]!; // en yeni önce
+      expect(newestAfterManager.status).toBe("FORBIDDEN");
 
       // ADMIN AYNI revizyonu geri yüklerse bayrak GERÇEKTEN değişir ve normal (SUCCESS) audit üretilir.
       const adminRestore = await app.inject({
@@ -510,7 +515,7 @@ describe("localization (§10.5)", () => {
       expect(adminRestore.json().data.isLegalDocument).toBe(true);
 
       const logsAfterAdminRestore = await legalFlagLogsForPage();
-      expect(logsAfterAdminRestore.length).toBe(logsAfterEditorRestore.length + 1);
+      expect(logsAfterAdminRestore.length).toBe(logsAfterManagerRestore.length + 1);
       const newestAfterAdmin = logsAfterAdminRestore[0]!;
       expect(newestAfterAdmin.status).toBe("SUCCESS");
     });

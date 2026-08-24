@@ -27,6 +27,8 @@ vi.mock("next/font/google", () => {
     Lora: mockFont,
     Playfair_Display: mockFont,
     Source_Serif_4: mockFont,
+    Plus_Jakarta_Sans: mockFont,
+    Outfit: mockFont,
   };
 });
 

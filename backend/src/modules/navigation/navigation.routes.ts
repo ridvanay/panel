@@ -2,6 +2,8 @@ import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { authenticate } from "../../middleware/authenticate";
 import { requireSiteRole } from "../../middleware/site-rbac";
+import { requirePanelAccess } from "../../middleware/panel-access";
+import { ROLES_ADMIN_MANAGER } from "../../lib/site-roles";
 import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema } from "../../schemas/common";
 import { NavigationConfigSchema } from "../../schemas/entities";
@@ -33,10 +35,15 @@ export async function publicNavigationRoutes(app: FastifyInstance) {
   });
 }
 
-/** `/admin/navigation` prefix'i altında bağlanır — authenticated. */
+/**
+ * `/admin/navigation` prefix'i altında bağlanır.
+ * `.claude/architect-scope-rbac-5-tier.md` §5.3 satır 10 — `GET`: ADMIN/MANAGER/EDITOR (panel
+ * kapısı yeterli); `PUT`: ADMIN + MANAGER.
+ */
 export async function adminNavigationRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
   server.addHook("preHandler", authenticate);
+  server.addHook("preHandler", requirePanelAccess());
 
   server.get("/", { schema: { response: { 200: ApiSuccessSchema(NavigationConfigSchema) } } }, async (_request, reply) => {
     return reply.send(ok(await readNavigationConfig(app)));
@@ -45,7 +52,7 @@ export async function adminNavigationRoutes(app: FastifyInstance) {
   server.put(
     "/",
     {
-      preHandler: requireSiteRole("ADMIN"),
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
       schema: { body: UpdateNavigationConfigRequestSchema, response: { 200: ApiSuccessSchema(NavigationConfigSchema) } },
     },
     async (request, reply) => {

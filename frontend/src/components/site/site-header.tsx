@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronDown, ShoppingCart } from "lucide-react";
+import { usePathname } from "next/navigation";
+import { ChevronDown, Receipt, ShoppingCart, User as UserIcon } from "lucide-react";
 import { useCartOptional } from "@/context/cart-context";
+import { useAuthOptional } from "@/context/auth-context";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,8 +13,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { LanguageSwitcher } from "@/components/site/language-switcher";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
-import type { Locale, NavigationItemDto, SitePage, SiteSettings } from "@/lib/api/types";
+import type { Locale, NavigationItemDto, SiteButtonStyle, SitePage, SiteSettings } from "@/lib/api/types";
 import { DEFAULT_HEADER_LOGO_HEIGHT } from "@/lib/site-settings/logo";
+import { cn } from "@/lib/utils";
 
 interface SiteHeaderProps {
   settings: SiteSettings;
@@ -21,10 +24,22 @@ interface SiteHeaderProps {
   navigationItems?: NavigationItemDto[];
   ctaLabel?: string | null;
   ctaHref?: string | null;
+  /** `.claude/architect-scope-theme-typography.md` — verilmezse mevcut SOLID görünüme düşer (geriye dönük uyumluluk). */
+  buttonStyle?: SiteButtonStyle;
   /** §9 frontend-agent madde 4 — verilmezse dil değiştirici gösterilmez (ör. admin canlı önizleme). */
   locales?: Locale[];
   activeLocale?: Locale;
 }
+
+/**
+ * design-notes-theme-typography.md §3.2 — `buttonStyle` CSS custom property DEĞİL, yapısal bir
+ * Tailwind sınıf varyantı. Köşe yuvarlaklığı her üçünde de ortak `rounded-[var(--site-radius)]`.
+ */
+const SITE_BUTTON_STYLE_CLASSES: Record<SiteButtonStyle, string> = {
+  SOLID: "bg-[var(--site-button)] text-[var(--site-button-text)]",
+  OUTLINE: "border-2 border-[var(--site-button)] text-[var(--site-button)] bg-transparent",
+  SOFT: "bg-[var(--site-button)]/10 text-[var(--site-button)]",
+};
 
 interface NavNode {
   id: string;
@@ -51,11 +66,27 @@ function buildNavTree(items: NavigationItemDto[]): NavNode[] {
   }));
 }
 
-export function SiteHeader({ settings, pages, navigationItems, ctaLabel, ctaHref, locales, activeLocale }: SiteHeaderProps) {
+export function SiteHeader({
+  settings,
+  pages,
+  navigationItems,
+  ctaLabel,
+  ctaHref,
+  buttonStyle = "SOLID",
+  locales,
+  activeLocale,
+}: SiteHeaderProps) {
   // `useCartOptional`: bu bileşen `admin/navigation/page.tsx`'teki canlı önizlemede
   // `CartProvider` OLMADAN da render edilir (admin layout'unda sepet KASTEN yok) — o durumda
   // rozet sessizce 0 gösterir, hata fırlatmaz.
   const itemCount = useCartOptional()?.itemCount ?? 0;
+  // `useAuthOptional`: `useCartOptional` ile AYNI gerekçe — bu bileşen admin canlı önizlemesinde
+  // ve bazı unit testlerde `AuthProvider` OLMADAN render edilir; o durumda "giriş yapılmamış"
+  // gibi davranır (hesap widget'ı "Giriş Yap" gösterir), hata FIRLATMAZ.
+  const auth = useAuthOptional();
+  const status = auth?.status ?? "unauthenticated";
+  const user = auth?.user ?? null;
+  const pathname = usePathname();
   const navTree: NavNode[] =
     navigationItems && navigationItems.length > 0
       ? buildNavTree(navigationItems)
@@ -132,15 +163,61 @@ export function SiteHeader({ settings, pages, navigationItems, ctaLabel, ctaHref
           {showCta && (
             // §10.12.4 — `--site-button`/`--site-button-text` (`.site-scope` altında satır-içi
             // yazılır, bkz. globals.css `.site-scope` fallback bloğu). Admin'in `--primary`
-            // token'ından KASITLI olarak bağımsız.
+            // token'ından KASITLI olarak bağımsız. `buttonStyle` yapısal bir sınıf varyantıdır
+            // (design-notes-theme-typography.md §3.2) — CSS custom property DEĞİLDİR.
             <Link
               href={localize(ctaHref as string)}
-              className="rounded-lg bg-[var(--site-button)] px-3.5 py-1.5 text-sm font-medium text-[var(--site-button-text)] transition-all hover:opacity-85"
+              className={cn(
+                "rounded-[var(--site-radius)] px-3.5 py-1.5 text-sm font-medium transition-all duration-300 hover:opacity-85",
+                SITE_BUTTON_STYLE_CLASSES[buttonStyle]
+              )}
             >
               {ctaLabel}
             </Link>
           )}
           {locales && activeLocale && <LanguageSwitcher locales={locales} activeLocale={activeLocale} />}
+
+          {/* §10.21 §8.3 — `/hesabim` HERKESE (5 rol) açık; `/siparislerim` bağlantısı yalnızca
+              `role === "CUSTOMER"` iken gösterilir (SUNUM kararı, yetki kararı DEĞİL — bkz.
+              `app/[lang]/(site)/siparislerim/page.tsx` üst notu). */}
+          {status === "authenticated" && user ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <button
+                    type="button"
+                    aria-label={`Hesabım, ${user.name}`}
+                    className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-foreground/70 outline-none transition-colors hover:bg-surface-muted hover:text-foreground focus-visible:text-foreground"
+                  />
+                }
+              >
+                <UserIcon className="h-4 w-4" aria-hidden="true" />
+                <span className="hidden max-w-[8rem] truncate sm:inline">{user.name}</span>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem render={<Link href={localize("/hesabim")} />}>
+                  <UserIcon className="h-4 w-4" aria-hidden="true" />
+                  Hesabım
+                </DropdownMenuItem>
+                {user.role === "CUSTOMER" && (
+                  <DropdownMenuItem render={<Link href={localize("/siparislerim")} />}>
+                    <Receipt className="h-4 w-4" aria-hidden="true" />
+                    Siparişlerim
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <Link
+              href={`/login?next=${encodeURIComponent(pathname)}`}
+              aria-label="Giriş yap"
+              className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-foreground/70 transition-colors hover:bg-surface-muted hover:text-foreground"
+            >
+              <UserIcon className="h-4.5 w-4.5" aria-hidden="true" />
+              <span className="hidden sm:inline">Giriş Yap</span>
+            </Link>
+          )}
+
           <Link
             href={localize("/cart")}
             aria-label={`Sepet, ${itemCount} ürün`}

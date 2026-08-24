@@ -6,14 +6,14 @@ describe("portfolio (§10.9.4 Portföy Modülü)", () => {
   let app: FastifyInstance;
   let adminToken: string;
   let adminId: string;
-  let editorToken: string;
-  let viewerToken: string;
+  let managerToken: string;
+  let blockedToken: string;
 
   function authHeader(token: string) {
     return { authorization: `Bearer ${token}` };
   }
 
-  async function createUserDirect(role: "ADMIN" | "EDITOR" | "VIEWER") {
+  async function createUserDirect(role: "ADMIN" | "MANAGER" | "EDITOR" | "USER") {
     const { hashPassword } = await import("../../src/lib/password");
     const passwordHash = await hashPassword("Sifre12345!");
     return app.prisma.user.create({
@@ -46,11 +46,15 @@ describe("portfolio (§10.9.4 Portföy Modülü)", () => {
     adminToken = admin.accessToken;
     adminId = admin.userId;
 
-    const editor = await createUserDirect("EDITOR");
-    editorToken = await loginAs(editor.email);
+    // `.claude/architect-scope-rbac-5-tier.md` §5.3 satır 14 — portfolio ADMIN + MANAGER'a
+    // açıktır, EDITOR TAMAMEN çıkarıldı (eski davranış: ADMIN+EDITOR). `manager` bu testlerde
+    // eski "EDITOR" rolünün yerini alan İZİNLİ aktördür; `blockedToken` (USER) her uçta 403
+    // beklenen aktördür.
+    const manager = await createUserDirect("MANAGER");
+    managerToken = await loginAs(manager.email);
 
-    const viewer = await createUserDirect("VIEWER");
-    viewerToken = await loginAs(viewer.email);
+    const blockedUser = await createUserDirect("USER");
+    blockedToken = await loginAs(blockedUser.email);
   });
 
   afterAll(async () => {
@@ -59,11 +63,11 @@ describe("portfolio (§10.9.4 Portföy Modülü)", () => {
     await app.close();
   });
 
-  it("VIEWER portföy öğesi oluşturamaz (403), ama herkes listeleyip okuyabilir", async () => {
+  it("USER portföy öğesi oluşturamaz VE listeleyip okuyamaz (403); MANAGER oluşturabilir/listeleyebilir/okuyabilir", async () => {
     const forbidden = await app.inject({
       method: "POST",
       url: "/api/v1/admin/portfolio",
-      headers: authHeader(viewerToken),
+      headers: authHeader(blockedToken),
       payload: { title: "Yetkisiz Proje" },
     });
     expect(forbidden.statusCode).toBe(403);
@@ -71,38 +75,50 @@ describe("portfolio (§10.9.4 Portföy Modülü)", () => {
     const create = await app.inject({
       method: "POST",
       url: "/api/v1/admin/portfolio",
-      headers: authHeader(editorToken),
+      headers: authHeader(managerToken),
       payload: { title: "İlk Proje" },
     });
     expect(create.statusCode).toBe(201);
     const item = create.json().data;
     expect(item.slug).toBe("ilk-proje"); // aksan işaretleri NFKD ayrışması sonrası düşer (bkz. lib/slug.ts)
 
-    const list = await app.inject({ method: "GET", url: "/api/v1/admin/portfolio", headers: authHeader(viewerToken) });
+    // §5.3 satır 14 — liste/okuma da ADMIN+MANAGER'a daraldı (EDITOR çıkarıldı); USER panel
+    // kapısında (§4) zaten 403 alır.
+    const listForbidden = await app.inject({ method: "GET", url: "/api/v1/admin/portfolio", headers: authHeader(blockedToken) });
+    expect(listForbidden.statusCode).toBe(403);
+
+    const list = await app.inject({ method: "GET", url: "/api/v1/admin/portfolio", headers: authHeader(managerToken) });
     expect(list.statusCode).toBe(200);
     expect(list.json().data.map((p: { id: string }) => p.id)).toContain(item.id);
+
+    const getForbidden = await app.inject({
+      method: "GET",
+      url: `/api/v1/admin/portfolio/${item.id}`,
+      headers: authHeader(blockedToken),
+    });
+    expect(getForbidden.statusCode).toBe(403);
 
     const get = await app.inject({
       method: "GET",
       url: `/api/v1/admin/portfolio/${item.id}`,
-      headers: authHeader(viewerToken),
+      headers: authHeader(managerToken),
     });
     expect(get.statusCode).toBe(200);
   });
 
-  it("VIEWER PATCH/DELETE ile portföy öğesini değiştiremez (403)", async () => {
+  it("USER PATCH/DELETE ile portföy öğesini değiştiremez (403)", async () => {
     const create = await app.inject({
       method: "POST",
       url: "/api/v1/admin/portfolio",
-      headers: authHeader(editorToken),
-      payload: { title: "VIEWER Deneme Projesi" },
+      headers: authHeader(managerToken),
+      payload: { title: "USER Deneme Projesi" },
     });
     const itemId = create.json().data.id;
 
     const patch = await app.inject({
       method: "PATCH",
       url: `/api/v1/admin/portfolio/${itemId}`,
-      headers: authHeader(viewerToken),
+      headers: authHeader(blockedToken),
       payload: { title: "Değişmemeli" },
     });
     expect(patch.statusCode).toBe(403);
@@ -110,7 +126,7 @@ describe("portfolio (§10.9.4 Portföy Modülü)", () => {
     const del = await app.inject({
       method: "DELETE",
       url: `/api/v1/admin/portfolio/${itemId}`,
-      headers: authHeader(viewerToken),
+      headers: authHeader(blockedToken),
     });
     expect(del.statusCode).toBe(403);
   });
@@ -119,7 +135,7 @@ describe("portfolio (§10.9.4 Portföy Modülü)", () => {
     const first = await app.inject({
       method: "POST",
       url: "/api/v1/admin/portfolio",
-      headers: authHeader(editorToken),
+      headers: authHeader(managerToken),
       payload: { title: "Çakışan Proje", slug: "cakisan-proje" },
     });
     expect(first.statusCode).toBe(201);
@@ -127,7 +143,7 @@ describe("portfolio (§10.9.4 Portföy Modülü)", () => {
     const second = await app.inject({
       method: "POST",
       url: "/api/v1/admin/portfolio",
-      headers: authHeader(editorToken),
+      headers: authHeader(managerToken),
       payload: { title: "Başka Başlık", slug: "cakisan-proje" },
     });
     expect(second.statusCode).toBe(409);
@@ -152,7 +168,7 @@ describe("portfolio (§10.9.4 Portföy Modülü)", () => {
     const permanentBeforeRestore = await app.inject({
       method: "DELETE",
       url: `/api/v1/admin/portfolio/${itemId}/permanent`,
-      headers: authHeader(viewerToken),
+      headers: authHeader(blockedToken),
     });
     expect(permanentBeforeRestore.statusCode).toBe(403);
 
@@ -166,17 +182,12 @@ describe("portfolio (§10.9.4 Portföy Modülü)", () => {
 
     await app.inject({ method: "DELETE", url: `/api/v1/admin/portfolio/${itemId}`, headers: authHeader(adminToken) });
 
-    const permanentNotAdmin = await app.inject({
-      method: "DELETE",
-      url: `/api/v1/admin/portfolio/${itemId}/permanent`,
-      headers: authHeader(editorToken),
-    });
-    expect(permanentNotAdmin.statusCode).toBe(403);
-
+    // §5.3 satır 14 — "kalıcı silme, kategori silme -> A, M": MANAGER da kalıcı silebilir
+    // (eski davranış: ADMIN-only). USER (blockedToken) hâlâ 403 alır (yukarıda doğrulandı).
     const permanent = await app.inject({
       method: "DELETE",
       url: `/api/v1/admin/portfolio/${itemId}/permanent`,
-      headers: authHeader(adminToken),
+      headers: authHeader(managerToken),
     });
     expect(permanent.statusCode).toBe(204);
 
@@ -192,7 +203,7 @@ describe("portfolio (§10.9.4 Portföy Modülü)", () => {
     const create = await app.inject({
       method: "POST",
       url: "/api/v1/admin/portfolio",
-      headers: authHeader(editorToken),
+      headers: authHeader(managerToken),
       payload: {
         title: "XSS Proje Testi",
         contentHtml: '<p>Merhaba <b>dünya</b></p><script>alert(1)</script><a href="javascript:alert(2)">tıkla</a>',
@@ -209,7 +220,7 @@ describe("portfolio (§10.9.4 Portföy Modülü)", () => {
     const update = await app.inject({
       method: "PATCH",
       url: `/api/v1/admin/portfolio/${itemId}`,
-      headers: authHeader(editorToken),
+      headers: authHeader(managerToken),
       payload: { contentHtml: '<p onclick="alert(1)">Merhaba</p><iframe src="evil.com"></iframe>' },
     });
     expect(update.statusCode).toBe(200);
@@ -223,7 +234,7 @@ describe("portfolio (§10.9.4 Portföy Modülü)", () => {
     const create = await app.inject({
       method: "POST",
       url: "/api/v1/admin/portfolio",
-      headers: authHeader(editorToken),
+      headers: authHeader(managerToken),
       payload: { title: "Taslak Proje" },
     });
     const draft = create.json().data;
@@ -235,7 +246,7 @@ describe("portfolio (§10.9.4 Portföy Modülü)", () => {
     const publishedCreate = await app.inject({
       method: "POST",
       url: "/api/v1/admin/portfolio",
-      headers: authHeader(editorToken),
+      headers: authHeader(managerToken),
       payload: { title: "Yayınlanan Proje", status: "PUBLISHED" },
     });
     const published = publishedCreate.json().data;
@@ -250,11 +261,11 @@ describe("portfolio (§10.9.4 Portföy Modülü)", () => {
     expect(afterView.json().data.viewCount).toBe(1);
   });
 
-  it("kategori CRUD: ADMIN/EDITOR oluşturabilir, yalnızca ADMIN silebilir", async () => {
+  it("kategori CRUD: ADMIN/MANAGER oluşturabilir VE silebilir; USER hiçbirini yapamaz (§5.3 satır 14)", async () => {
     const create = await app.inject({
       method: "POST",
       url: "/api/v1/admin/portfolio/categories",
-      headers: authHeader(editorToken),
+      headers: authHeader(managerToken),
       payload: { name: "Web Sitesi" },
     });
     expect(create.statusCode).toBe(201);
@@ -264,14 +275,15 @@ describe("portfolio (§10.9.4 Portföy Modülü)", () => {
     const forbiddenDelete = await app.inject({
       method: "DELETE",
       url: `/api/v1/admin/portfolio/categories/${category.id}`,
-      headers: authHeader(editorToken),
+      headers: authHeader(blockedToken),
     });
     expect(forbiddenDelete.statusCode).toBe(403);
 
+    // §5.3 satır 14 — MANAGER da kategori silebilir (eski davranış: ADMIN-only).
     const del = await app.inject({
       method: "DELETE",
       url: `/api/v1/admin/portfolio/categories/${category.id}`,
-      headers: authHeader(adminToken),
+      headers: authHeader(managerToken),
     });
     expect(del.statusCode).toBe(204);
   });
@@ -279,19 +291,19 @@ describe("portfolio (§10.9.4 Portföy Modülü)", () => {
   // Faz 5 — §10.1/§10.7 toplu işlem. Ortak helper (bkz. lib/bulk-content-actions.ts); products.test.ts
   // ile BİREBİR aynı davranış, burada yalnızca öğeye özgü audit action öneki (`portfolio_item.bulk_*`) doğrulanır.
   describe("toplu işlem (Faz 5 — bulk)", () => {
-    it("publish/draft/trash/restore — EDITOR ile başarılı, karışık geçerli/geçersiz ID listesinde kısmi başarı (200 + skippedIds)", async () => {
+    it("publish/draft/trash/restore — MANAGER ile başarılı, karışık geçerli/geçersiz ID listesinde kısmi başarı (200 + skippedIds)", async () => {
       const missingId = "00000000-0000-0000-0000-000000000099";
 
       const create1 = await app.inject({
         method: "POST",
         url: "/api/v1/admin/portfolio",
-        headers: authHeader(editorToken),
+        headers: authHeader(managerToken),
         payload: { title: "Bulk Proje 1" },
       });
       const create2 = await app.inject({
         method: "POST",
         url: "/api/v1/admin/portfolio",
-        headers: authHeader(editorToken),
+        headers: authHeader(managerToken),
         payload: { title: "Bulk Proje 2" },
       });
       const id1 = create1.json().data.id;
@@ -300,7 +312,7 @@ describe("portfolio (§10.9.4 Portföy Modülü)", () => {
       const publish = await app.inject({
         method: "POST",
         url: "/api/v1/admin/portfolio/bulk",
-        headers: authHeader(editorToken),
+        headers: authHeader(managerToken),
         payload: { ids: [id1, id2, missingId], action: "publish" },
       });
       expect(publish.statusCode).toBe(200);
@@ -310,14 +322,14 @@ describe("portfolio (§10.9.4 Portföy Modülü)", () => {
       const get1 = await app.inject({
         method: "GET",
         url: `/api/v1/admin/portfolio/${id1}`,
-        headers: authHeader(editorToken),
+        headers: authHeader(managerToken),
       });
       expect(get1.json().data.status).toBe("PUBLISHED");
 
       const draft = await app.inject({
         method: "POST",
         url: "/api/v1/admin/portfolio/bulk",
-        headers: authHeader(editorToken),
+        headers: authHeader(managerToken),
         payload: { ids: [id1, missingId], action: "draft" },
       });
       expect(draft.statusCode).toBe(200);
@@ -326,14 +338,14 @@ describe("portfolio (§10.9.4 Portföy Modülü)", () => {
       const afterDraft = await app.inject({
         method: "GET",
         url: `/api/v1/admin/portfolio/${id1}`,
-        headers: authHeader(editorToken),
+        headers: authHeader(managerToken),
       });
       expect(afterDraft.json().data.status).toBe("DRAFT");
 
       const trash = await app.inject({
         method: "POST",
         url: "/api/v1/admin/portfolio/bulk",
-        headers: authHeader(editorToken),
+        headers: authHeader(managerToken),
         payload: { ids: [id1, id2, missingId], action: "trash" },
       });
       expect(trash.statusCode).toBe(200);
@@ -343,7 +355,7 @@ describe("portfolio (§10.9.4 Portföy Modülü)", () => {
       const restore = await app.inject({
         method: "POST",
         url: "/api/v1/admin/portfolio/bulk",
-        headers: authHeader(editorToken),
+        headers: authHeader(managerToken),
         payload: { ids: [id1, missingId], action: "restore" },
       });
       expect(restore.statusCode).toBe(200);
@@ -352,12 +364,12 @@ describe("portfolio (§10.9.4 Portföy Modülü)", () => {
       const afterRestore = await app.inject({
         method: "GET",
         url: `/api/v1/admin/portfolio/${id1}`,
-        headers: authHeader(editorToken),
+        headers: authHeader(managerToken),
       });
       expect(afterRestore.json().data.deletedAt).toBeNull();
     });
 
-    it("permanent-delete — EDITOR'e 403, ADMIN'e 200 ve ContentRevision satırları da silinir", async () => {
+    it("permanent-delete — USER'a 403, ADMIN'e 200 ve ContentRevision satırları da silinir", async () => {
       const create = await app.inject({
         method: "POST",
         url: "/api/v1/admin/portfolio",
@@ -384,13 +396,13 @@ describe("portfolio (§10.9.4 Portföy Modülü)", () => {
         payload: { ids: [itemId], action: "trash" },
       });
 
-      const editorAttempt = await app.inject({
+      const blockedAttempt = await app.inject({
         method: "POST",
         url: "/api/v1/admin/portfolio/bulk",
-        headers: authHeader(editorToken),
+        headers: authHeader(blockedToken),
         payload: { ids: [itemId], action: "permanent-delete" },
       });
-      expect(editorAttempt.statusCode).toBe(403);
+      expect(blockedAttempt.statusCode).toBe(403);
 
       const stillThere = await app.inject({
         method: "GET",
@@ -471,7 +483,7 @@ describe("portfolio (§10.9.4 Portföy Modülü)", () => {
       const create = await app.inject({
         method: "POST",
         url: "/api/v1/admin/portfolio",
-        headers: authHeader(editorToken),
+        headers: authHeader(managerToken),
         payload: { title: "Autosave Öncesi Proje" },
       });
       const itemId = create.json().data.id;
@@ -479,7 +491,7 @@ describe("portfolio (§10.9.4 Portföy Modülü)", () => {
       const revisionsBefore = await app.inject({
         method: "GET",
         url: `/api/v1/admin/portfolio/${itemId}/revisions`,
-        headers: authHeader(editorToken),
+        headers: authHeader(managerToken),
       });
       expect(revisionsBefore.json().data).toHaveLength(0);
 
@@ -488,7 +500,7 @@ describe("portfolio (§10.9.4 Portföy Modülü)", () => {
       const autosave = await app.inject({
         method: "POST",
         url: `/api/v1/admin/portfolio/${itemId}/autosave`,
-        headers: authHeader(editorToken),
+        headers: authHeader(managerToken),
         payload: {
           title: "Autosave Sonrası Proje",
           summary: "Kısa özet",
@@ -501,7 +513,7 @@ describe("portfolio (§10.9.4 Portföy Modülü)", () => {
       const revisionsAfter = await app.inject({
         method: "GET",
         url: `/api/v1/admin/portfolio/${itemId}/revisions`,
-        headers: authHeader(editorToken),
+        headers: authHeader(managerToken),
       });
       expect(revisionsAfter.json().data).toHaveLength(0);
 
@@ -511,7 +523,7 @@ describe("portfolio (§10.9.4 Portföy Modülü)", () => {
       const get = await app.inject({
         method: "GET",
         url: `/api/v1/admin/portfolio/${itemId}`,
-        headers: authHeader(editorToken),
+        headers: authHeader(managerToken),
       });
       const dto = get.json().data;
       expect(dto.title).toBe("Autosave Sonrası Proje");
@@ -524,20 +536,20 @@ describe("portfolio (§10.9.4 Portföy Modülü)", () => {
       const create = await app.inject({
         method: "POST",
         url: "/api/v1/admin/portfolio",
-        headers: authHeader(editorToken),
+        headers: authHeader(managerToken),
         payload: { title: "Çöpteyken Autosave Projesi" },
       });
       const itemId = create.json().data.id;
       await app.inject({
         method: "DELETE",
         url: `/api/v1/admin/portfolio/${itemId}`,
-        headers: authHeader(editorToken),
+        headers: authHeader(managerToken),
       });
 
       const autosave = await app.inject({
         method: "POST",
         url: `/api/v1/admin/portfolio/${itemId}/autosave`,
-        headers: authHeader(editorToken),
+        headers: authHeader(managerToken),
         payload: { title: "Değişmemeli" },
       });
       expect(autosave.statusCode).toBe(409);
@@ -549,7 +561,7 @@ describe("portfolio (§10.9.4 Portföy Modülü)", () => {
       const create = await app.inject({
         method: "POST",
         url: "/api/v1/admin/portfolio",
-        headers: authHeader(editorToken),
+        headers: authHeader(managerToken),
         payload: { title: "Mass Assignment Projesi", clientName: "Orijinal Müşteri", order: 1 },
       });
       const itemId = create.json().data.id;
@@ -557,7 +569,7 @@ describe("portfolio (§10.9.4 Portföy Modülü)", () => {
       const autosave = await app.inject({
         method: "POST",
         url: `/api/v1/admin/portfolio/${itemId}/autosave`,
-        headers: authHeader(editorToken),
+        headers: authHeader(managerToken),
         payload: {
           title: "Autosave İle Değişen Başlık",
           status: "PUBLISHED",
@@ -570,7 +582,7 @@ describe("portfolio (§10.9.4 Portföy Modülü)", () => {
       const get = await app.inject({
         method: "GET",
         url: `/api/v1/admin/portfolio/${itemId}`,
-        headers: authHeader(editorToken),
+        headers: authHeader(managerToken),
       });
       const dto = get.json().data;
       expect(dto.title).toBe("Autosave İle Değişen Başlık");

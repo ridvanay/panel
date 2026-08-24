@@ -16,7 +16,7 @@ import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
-  const { status } = useAuth();
+  const { status, user } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
 
@@ -26,7 +26,23 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     }
   }, [status, router, pathname]);
 
-  if (status !== "authenticated") {
+  // §10.21 §8.4 — gösterge paneli (`/admin`) `GET /admin/stats/*` çağırır ve EDITOR orada 403
+  // alır (§5.3 satır 19: views/breakdown/live-visitors yalnızca ADMIN/MANAGER). EDITOR bu
+  // rotaya HİÇ render edilmeden `/admin/blog`'a yönlendirilir — dashboard bileşenleri EDITOR
+  // için hiç mount edilmez, gereksiz 403 gürültüsü üretilmez.
+  useEffect(() => {
+    if (status === "authenticated" && user?.role === "EDITOR" && pathname === "/admin") {
+      router.replace("/admin/blog");
+    }
+  }, [status, user, pathname, router]);
+
+  // Yönlendirme tamamlanana kadar (yukarıdaki effect) dashboard içeriğini/veri çekimini HİÇ
+  // mount etme — `router.replace` bir sonraki render'a kadar `pathname`'i değiştirmez, bu
+  // guard olmadan `AdminDashboardPage` en az bir kez render olup `/admin/stats/*` isteklerini
+  // ateşlerdi.
+  const redirectingEditorFromDashboard = status === "authenticated" && user?.role === "EDITOR" && pathname === "/admin";
+
+  if (status !== "authenticated" || redirectingEditorFromDashboard) {
     return (
       <main className="flex min-h-screen items-center justify-center">
         <Spinner className="h-6 w-6 text-primary" />

@@ -16,14 +16,15 @@ describe("appearance — /appearance ve /admin/appearance (public + authenticate
   let app: FastifyInstance;
   let adminToken: string;
   let adminId: string;
+  let managerToken: string;
   let editorToken: string;
-  let viewerToken: string;
+  let userToken: string;
 
   function authHeader(token: string) {
     return { authorization: `Bearer ${token}` };
   }
 
-  async function createUserDirect(role: "ADMIN" | "EDITOR" | "VIEWER") {
+  async function createUserDirect(role: "ADMIN" | "MANAGER" | "EDITOR" | "USER") {
     const passwordHash = await hashPassword("Sifre12345!");
     return app.prisma.user.create({
       data: {
@@ -51,11 +52,17 @@ describe("appearance — /appearance ve /admin/appearance (public + authenticate
     adminToken = admin.accessToken;
     adminId = admin.userId;
 
+    // `.claude/architect-scope-rbac-5-tier.md` §5.3 satır 2 — okuma (`GET /`, `/presets`,
+    // `/custom-code`): ADMIN/MANAGER/EDITOR; `PATCH /`, `POST /reset`: ADMIN+MANAGER;
+    // `PUT /custom-code/{css,js}`: yalnızca ADMIN.
+    const manager = await createUserDirect("MANAGER");
+    managerToken = await loginAs(manager.email);
+
     const editor = await createUserDirect("EDITOR");
     editorToken = await loginAs(editor.email);
 
-    const viewer = await createUserDirect("VIEWER");
-    viewerToken = await loginAs(viewer.email);
+    const standardUser = await createUserDirect("USER");
+    userToken = await loginAs(standardUser.email);
   });
 
   afterAll(async () => {
@@ -82,8 +89,11 @@ describe("appearance — /appearance ve /admin/appearance (public + authenticate
     expect(res.statusCode).toBe(401);
   });
 
-  it("GET /admin/appearance — VIEWER dahil authenticated HERKES okuyabilir, satır yoksa DEFAULTS + updatedAt: null", async () => {
-    const res = await app.inject({ method: "GET", url: "/api/v1/admin/appearance", headers: authHeader(viewerToken) });
+  it("GET /admin/appearance — ADMIN/MANAGER/EDITOR okuyabilir, USER panel kapısında 403 alır (satır yoksa DEFAULTS + updatedAt: null)", async () => {
+    const userRes = await app.inject({ method: "GET", url: "/api/v1/admin/appearance", headers: authHeader(userToken) });
+    expect(userRes.statusCode).toBe(403);
+
+    const res = await app.inject({ method: "GET", url: "/api/v1/admin/appearance", headers: authHeader(editorToken) });
     expect(res.statusCode).toBe(200);
     const data = res.json().data;
     expect(data.presetKey).toBeNull();
@@ -91,21 +101,29 @@ describe("appearance — /appearance ve /admin/appearance (public + authenticate
     expect(data.pageHeaderOverlayOpacity).toBe(40);
   });
 
-  it("PATCH /admin/appearance — EDITOR 403 döner (bilinçli sapma: bu panelde ADMIN/EDITOR YOK, yalnızca ADMIN, §10.12.6)", async () => {
-    const res = await app.inject({
+  it("PATCH /admin/appearance — EDITOR 403 döner, MANAGER 200 döner (§5.3 satır 2 — ADMIN+MANAGER)", async () => {
+    const editorRes = await app.inject({
       method: "PATCH",
       url: "/api/v1/admin/appearance",
       headers: authHeader(editorToken),
       payload: { primaryColor: "#123456" },
     });
-    expect(res.statusCode).toBe(403);
+    expect(editorRes.statusCode).toBe(403);
+
+    const managerRes = await app.inject({
+      method: "PATCH",
+      url: "/api/v1/admin/appearance",
+      headers: authHeader(managerToken),
+      payload: { primaryColor: "#654321" },
+    });
+    expect(managerRes.statusCode).toBe(200);
   });
 
-  it("PATCH /admin/appearance — VIEWER 403 döner", async () => {
+  it("PATCH /admin/appearance — USER 403 döner", async () => {
     const res = await app.inject({
       method: "PATCH",
       url: "/api/v1/admin/appearance",
-      headers: authHeader(viewerToken),
+      headers: authHeader(userToken),
       payload: { primaryColor: "#123456" },
     });
     expect(res.statusCode).toBe(403);
@@ -191,8 +209,98 @@ describe("appearance — /appearance ve /admin/appearance (public + authenticate
     expect(res.json().data.primaryColor).toBe("#ff0000");
   });
 
-  it("GET /admin/appearance/presets — statik registry döner, DB tablosu OLMADAN", async () => {
-    const res = await app.inject({ method: "GET", url: "/api/v1/admin/appearance/presets", headers: authHeader(viewerToken) });
+  it("PATCH /admin/appearance — yeni tema token'ları (accent/background/surface/text/mutedText/borderRadius/buttonStyle) kısmi güncellenebilir", async () => {
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/api/v1/admin/appearance",
+      headers: authHeader(adminToken),
+      payload: {
+        accentColor: "#22c55e",
+        backgroundColor: "#0f172a",
+        surfaceColor: "#1e293b",
+        textColor: "#f8fafc",
+        mutedTextColor: "#94a3b8",
+        borderRadius: "LG",
+        buttonStyle: "OUTLINE",
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const data = res.json().data;
+    expect(data.accentColor).toBe("#22c55e");
+    expect(data.backgroundColor).toBe("#0f172a");
+    expect(data.surfaceColor).toBe("#1e293b");
+    expect(data.textColor).toBe("#f8fafc");
+    expect(data.mutedTextColor).toBe("#94a3b8");
+    expect(data.borderRadius).toBe("LG");
+    expect(data.buttonStyle).toBe("OUTLINE");
+    // Kısmi PATCH — bu istekte gönderilmeyen alanlar (ör. primaryColor) DEĞİŞMEMİŞ olmalı.
+    expect(data.primaryColor).toBe("#ff0000");
+
+    const getRes = await app.inject({ method: "GET", url: "/api/v1/admin/appearance", headers: authHeader(adminToken) });
+    const getData = getRes.json().data;
+    expect(getData.accentColor).toBe("#22c55e");
+    expect(getData.borderRadius).toBe("LG");
+    expect(getData.buttonStyle).toBe("OUTLINE");
+  });
+
+  it("PATCH /admin/appearance — geçersiz hex renk (accentColor) 422 döner", async () => {
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/api/v1/admin/appearance",
+      headers: authHeader(adminToken),
+      payload: { accentColor: "not-a-color" },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("PATCH /admin/appearance — geçersiz enum değeri (borderRadius) 422 döner", async () => {
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/api/v1/admin/appearance",
+      headers: authHeader(adminToken),
+      payload: { borderRadius: "HUGE" },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("PATCH /admin/appearance — yeni tema token'larında da EDITOR 403, MANAGER 200 döner (RBAC eşiği değişmedi)", async () => {
+    const editorRes = await app.inject({
+      method: "PATCH",
+      url: "/api/v1/admin/appearance",
+      headers: authHeader(editorToken),
+      payload: { buttonStyle: "SOFT" },
+    });
+    expect(editorRes.statusCode).toBe(403);
+
+    const managerRes = await app.inject({
+      method: "PATCH",
+      url: "/api/v1/admin/appearance",
+      headers: authHeader(managerToken),
+      payload: { buttonStyle: "SOFT" },
+    });
+    expect(managerRes.statusCode).toBe(200);
+    expect(managerRes.json().data.buttonStyle).toBe("SOFT");
+  });
+
+  it("GET /appearance (public) — yeni tema token'larını da yansıtır", async () => {
+    const res = await app.inject({ method: "GET", url: "/api/v1/appearance" });
+    const data = res.json().data;
+    expect(data.accentColor).toBe("#22c55e");
+    expect(data.backgroundColor).toBe("#0f172a");
+    expect(data.surfaceColor).toBe("#1e293b");
+    expect(data.textColor).toBe("#f8fafc");
+    expect(data.mutedTextColor).toBe("#94a3b8");
+    expect(data.borderRadius).toBe("LG");
+    expect(data.buttonStyle).toBe("SOFT");
+  });
+
+  it("GET /admin/appearance/presets — statik registry döner, DB tablosu OLMADAN (USER panel kapısında 403 alır)", async () => {
+    const userRes = await app.inject({ method: "GET", url: "/api/v1/admin/appearance/presets", headers: authHeader(userToken) });
+    expect(userRes.statusCode).toBe(403);
+
+    const res = await app.inject({ method: "GET", url: "/api/v1/admin/appearance/presets", headers: authHeader(editorToken) });
     expect(res.statusCode).toBe(200);
     const presets = res.json().data as Array<{ key: string; values: Record<string, unknown> }>;
     expect(presets.length).toBeGreaterThan(0);
@@ -201,7 +309,7 @@ describe("appearance — /appearance ve /admin/appearance (public + authenticate
     expect(presets.every((p) => p.values.maintenanceModeEnabled === undefined)).toBe(true);
   });
 
-  it("POST /admin/appearance/reset — EDITOR 403 döner", async () => {
+  it("POST /admin/appearance/reset — EDITOR 403 döner (§5.3 satır 2 — ADMIN+MANAGER)", async () => {
     // NOT: gövde şeması opsiyonel olsa da `payload` hiç verilmezse `light-my-request` gövdeyi
     // `null` gönderir — bu da preHandler (RBAC) çalışmadan ÖNCE preValidation aşamasında 422
     // üretir (bkz. ARCHITECTURE.md "Bilinen Sorunlar" — preValidation vs RBAC hook sıralaması,
@@ -244,12 +352,55 @@ describe("appearance — /appearance ve /admin/appearance (public + authenticate
     expect(data.primaryColor).toBe("#4f46e5");
   });
 
+  // qa-agent — `.claude/design-notes-theme-typography.md` §2'nin 4 yeni ön ayarı (`modern-blue`,
+  // `corporate-navy`, `emerald`, `warm-terracotta`). Yukarıdaki "modern" testi YALNIZCA eski
+  // 5 renk + tipografiyi doğruluyordu — bu test presetin GERÇEKTEN `AppearancePresetValues`'ın
+  // TAMAMINI (5 eski + 5 yeni renk + borderRadius + buttonStyle) yazdığını, DB'ye kalıcı olarak
+  // işlendiğini VE public `GET /appearance`'a yansıdığını doğrular (önceki testte sadece
+  // `primaryColor` kontrol edilmişti, yeni tema token'ları için reset ucu HİÇ doğrulanmamıştı).
+  it.each(["modern-blue", "corporate-navy", "emerald", "warm-terracotta"] as const)(
+    "POST /admin/appearance/reset — '%s' ön ayarı TÜM yeni tema token'larını (accent/background/surface/text/mutedText/borderRadius/buttonStyle) uygular ve public GET'e yansır",
+    async (presetKey) => {
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/admin/appearance/reset",
+        headers: authHeader(adminToken),
+        payload: { presetKey },
+      });
+      expect(res.statusCode).toBe(200);
+      const data = res.json().data;
+      expect(data.presetKey).toBe(presetKey);
+      // §10.12.3 — reset ucu SADECE renk/tipografiyi etkiler, anahtarlar (404/bakım modu) dokunulmaz.
+      expect(data.maintenanceModeEnabled).toBeDefined();
+
+      const { APPEARANCE_PRESETS } = await import("../../src/lib/appearance-presets");
+      const preset = APPEARANCE_PRESETS.find((p) => p.key === presetKey)!;
+      expect(preset).toBeDefined();
+      for (const [key, value] of Object.entries(preset.values)) {
+        expect(data[key]).toBe(value);
+      }
+
+      const publicRes = await app.inject({ method: "GET", url: "/api/v1/appearance" });
+      const publicData = publicRes.json().data;
+      expect(publicData.accentColor).toBe(preset.values.accentColor);
+      expect(publicData.backgroundColor).toBe(preset.values.backgroundColor);
+      expect(publicData.surfaceColor).toBe(preset.values.surfaceColor);
+      expect(publicData.textColor).toBe(preset.values.textColor);
+      expect(publicData.mutedTextColor).toBe(preset.values.mutedTextColor);
+      expect(publicData.borderRadius).toBe(preset.values.borderRadius);
+      expect(publicData.buttonStyle).toBe(preset.values.buttonStyle);
+    }
+  );
+
   // ---------------------------------------------------------------------------
   // §10.12.6 Özel CSS/JS — kontrattaki EN YÜKSEK RİSKLİ yüzey.
   // ---------------------------------------------------------------------------
 
-  it("GET /admin/appearance/custom-code — satır yoksa DEFAULTS (null/null), customCodeEnabled: true", async () => {
-    const res = await app.inject({ method: "GET", url: "/api/v1/admin/appearance/custom-code", headers: authHeader(viewerToken) });
+  it("GET /admin/appearance/custom-code — satır yoksa DEFAULTS (null/null), customCodeEnabled: true (USER panel kapısında 403 alır)", async () => {
+    const userRes = await app.inject({ method: "GET", url: "/api/v1/admin/appearance/custom-code", headers: authHeader(userToken) });
+    expect(userRes.statusCode).toBe(403);
+
+    const res = await app.inject({ method: "GET", url: "/api/v1/admin/appearance/custom-code", headers: authHeader(editorToken) });
     expect(res.statusCode).toBe(200);
     const data = res.json().data;
     expect(data.css).toBeNull();
@@ -277,14 +428,22 @@ describe("appearance — /appearance ve /admin/appearance (public + authenticate
     expect(res.statusCode).toBe(403);
   });
 
-  it("PUT /admin/appearance/custom-code/js — VIEWER 403 döner", async () => {
-    const res = await app.inject({
+  it("PUT /admin/appearance/custom-code/js — USER 403 döner, MANAGER de 403 döner ((c) — keyfi kod yürütme yalnızca ADMIN)", async () => {
+    const userRes = await app.inject({
       method: "PUT",
       url: "/api/v1/admin/appearance/custom-code/js",
-      headers: authHeader(viewerToken),
+      headers: authHeader(userToken),
       payload: { js: "console.log('merhaba');", acknowledged: true },
     });
-    expect(res.statusCode).toBe(403);
+    expect(userRes.statusCode).toBe(403);
+
+    const managerRes = await app.inject({
+      method: "PUT",
+      url: "/api/v1/admin/appearance/custom-code/js",
+      headers: authHeader(managerToken),
+      payload: { js: "console.log('merhaba');", acknowledged: true },
+    });
+    expect(managerRes.statusCode).toBe(403);
   });
 
   it("PUT /admin/appearance/custom-code/css — css boş DEĞİLKEN acknowledged: false ise 422 döner", async () => {

@@ -4,6 +4,8 @@ import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { authenticate } from "../../middleware/authenticate";
 import { requireSiteRole } from "../../middleware/site-rbac";
+import { requirePanelAccess } from "../../middleware/panel-access";
+import { ROLES_ADMIN_MANAGER } from "../../lib/site-roles";
 import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema, ApiSuccessWithMeta } from "../../schemas/common";
 import { ExportJobSchema } from "../../schemas/entities";
@@ -35,15 +37,15 @@ const ListExportJobsMetaSchema = z.object({ nextCursor: z.string().nullable().op
 const EXPORT_CREATE_RATE_LIMIT = { max: 10, timeWindow: "10 minutes" };
 
 /**
- * `/admin/reports/exports` prefix'i altında bağlanır (bkz. app.ts) — kullanıcı tarafından
- * onaylanmış karar: TÜM uçlar yalnızca ADMIN (export'ta PII/gelir riski var, rapor türü fark
- * etmeksizin — `/admin/stats/{summary,users,revenue}` ile AYNI kısıtlama, ama burada tip
- * ayrımı bile YAPILMAZ).
+ * `/admin/reports/exports` prefix'i altında bağlanır (bkz. app.ts).
+ * `.claude/architect-scope-rbac-5-tier.md` §5.3 satır 16 — TÜM uçlar ADMIN + MANAGER
+ * (export'ta PII/gelir riski var, rapor türü fark etmeksizin).
  */
 export async function adminReportsRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
   server.addHook("preHandler", authenticate);
-  server.addHook("preHandler", requireSiteRole("ADMIN"));
+  server.addHook("preHandler", requirePanelAccess());
+  server.addHook("preHandler", requireSiteRole(...ROLES_ADMIN_MANAGER));
 
   server.get(
     "/",

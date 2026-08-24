@@ -9,7 +9,7 @@ import type {
   UpdateSiteAppearanceRequest,
 } from "./types";
 
-/** `GET /admin/appearance` — okuma eşiği authenticated'tır (VIEWER dahil), yazma yalnızca ADMIN. */
+/** `GET /admin/appearance` — SiteRole=ADMIN/MANAGER/EDITOR (panel kapısı), yazma (`PATCH`) ADMIN veya MANAGER; özel CSS/JS yalnızca ADMIN. */
 export function getAdminAppearance(): Promise<SiteAppearance> {
   return apiFetch<SiteAppearance>("/admin/appearance");
 }

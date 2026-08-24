@@ -34,7 +34,14 @@ export type MembershipStatus = "ACTIVE" | "INVITED" | "SUSPENDED";
 export type InvitationStatus = "PENDING" | "ACCEPTED" | "EXPIRED" | "REVOKED";
 export type SubscriptionStatus = "TRIALING" | "ACTIVE" | "PAST_DUE" | "CANCELED" | "INCOMPLETE";
 
-export type SiteRole = "ADMIN" | "EDITOR" | "VIEWER";
+/**
+ * §10.21 (`.claude/architect-scope-rbac-5-tier.md`) — site-geneli rol, azalan ayrıcalık
+ * sırasıyla. Panel erişimi olan roller: `ADMIN`, `MANAGER`, `EDITOR`. `CUSTOMER` ve `USER`
+ * `/admin/*` altındaki hiçbir uca erişemez (403, iki self-servis güvenlik istisnası hariç:
+ * `/admin/settings/security/2fa`, `/admin/settings/security/sessions`). Yeni kayıtların
+ * varsayılanı `USER`'dır. **BREAKING:** `VIEWER` KALDIRILDI (migration: `VIEWER → USER`).
+ */
+export type SiteRole = "ADMIN" | "MANAGER" | "EDITOR" | "CUSTOMER" | "USER";
 /**
  * `DELETED` = yumuşak silme (bkz. `DELETE /admin/users/{userId}`). Satır fiziksel olarak
  * silinmez; `POST /admin/users/{userId}/restore` ile geri alınabilir. Bu değer YALNIZCA
@@ -51,13 +58,18 @@ export interface User {
   emailVerifiedAt: string | null;
   role: SiteRole;
   /**
-   * §10.20 — bu kullanıcının **Gelişmiş Düzenleyici** (advanced page builder) yeteneği var mı.
-   * TÜRETİLMİŞ ve SALT-OKUNUR bir alandır — doğrudan yazılamaz (izin vermek için bkz.
-   * `PATCH /admin/users/{userId}/builder-access`).
+   * §10.21 — bu kullanıcı sayfa bloklarının **YAPISINI** değiştirebilir mi (ekleme/silme/
+   * taşıma, `container.settings`, `reveal`, `custom-html`). TÜRETİLMİŞ ve SALT-OKUNUR bir
+   * alandır — doğrudan yazılamaz ve ayarlanamaz.
    *
-   * `canUseAdvancedBuilder = (role === "ADMIN") || advancedBuilderEnabled`
+   * `canUseAdvancedBuilder = (role === "ADMIN")`
    *
-   * ADMIN için depolanan değere BAKILMAKSIZIN her zaman `true`'dur (kilitlenme güvenliği).
+   * **BREAKING (§10.21):** v1'de bu alan kullanıcı-başı bir bayraktan
+   * (`User.advancedBuilderEnabled`) türüyordu. O kolon, o kolonu değiştiren uç
+   * (`PATCH /admin/users/{userId}/builder-access`) ve `AdminUser.advancedBuilderEnabled` DTO
+   * alanı KALDIRILDI — 5 rollü modelde ADMIN dışında hiçbir rol `true` olamayacağı için bayrak
+   * ölü kolona dönüşmüştü.
+   *
    * **Bu alan yalnızca UI'ın doğru kontrolleri göstermesi içindir, bir güvenlik kontrolü
    * DEĞİLDİR** — sunucu her yazma isteğinde yeteneği bağımsız olarak yeniden hesaplar.
    */
@@ -68,7 +80,8 @@ export interface User {
 
 /**
  * `/admin/users` uçlarının döndürdüğü kullanıcı kaydı — `User`'dan farklı olarak
- * yönetim listesine özgü `status` ve `lastLoginAt` alanlarını da içerir.
+ * yönetim listesine özgü `status` ve `lastLoginAt` alanlarını da içerir. Yalnızca
+ * SiteRole=ADMIN görebilir (MANAGER dahil hiç kimse).
  */
 export interface AdminUser {
   id: string;
@@ -79,16 +92,6 @@ export interface AdminUser {
   role: SiteRole;
   /** Bkz. `User.canUseAdvancedBuilder` — aynı türetilmiş, salt-okunur alan. */
   readonly canUseAdvancedBuilder: boolean;
-  /**
-   * §10.20 — DEPOLANAN izin (`User.advancedBuilderEnabled` kolonu), yani "yöneticinin bu
-   * hesaba açıkça verdiği yetki". `canUseAdvancedBuilder` ise ETKİN yetenektir ve ADMIN'ler
-   * için bu alandan BAĞIMSIZ olarak `true` döner. Yönetim ekranı anahtarı BU alana bağlanır
-   * (bkz. `PATCH /admin/users/{userId}/builder-access`).
-   *
-   * `role: VIEWER` olan bir kullanıcıda `true` olması KABUL EDİLİR ve 422 ÜRETMEZ (bkz.
-   * `.claude/architect-scope-page-editor-roles.md` §1.6).
-   */
-  advancedBuilderEnabled: boolean;
   createdAt: string;
   status: SiteUserStatus;
   lastLoginAt: string | null;
@@ -99,6 +102,7 @@ export interface AdminUser {
 export interface CreateAdminUserRequest {
   name: string;
   email: string;
+  /** Verilmezse `EDITOR` — panel rolleri içindeki EN DAR olanı. `CUSTOMER`/`USER` de geçerli hedeflerdir. */
   role?: SiteRole;
 }
 
@@ -114,15 +118,6 @@ export interface UpdateUserRoleRequest {
 export interface UpdateUserStatusRequest {
   /** `DELETED` BİLEREK dışarıda bırakılmıştır — silme yalnızca `DELETE /admin/users/{userId}` ile yapılır. */
   status: Exclude<SiteUserStatus, "DELETED">;
-}
-
-/**
- * §10.20 — `PATCH /admin/users/{userId}/builder-access` gövdesi. Kullanıcının **Gelişmiş
- * Düzenleyici** yeteneğini açar/kapatır; `role` bu uçtan DEĞİŞTİRİLEMEZ (bkz.
- * `UpdateUserRoleRequest`) — yetenek ve rol AYRI eksenlerdir. Yalnızca ADMIN çağırabilir.
- */
-export interface UpdateAdminUserBuilderAccessRequest {
-  advancedBuilderEnabled: boolean;
 }
 
 export interface Organization {
@@ -403,8 +398,10 @@ export interface SitePage {
   slug: string;
   status: ContentStatus;
   /**
-   * §10.20. İstemci, standart moda geçip geçmeyeceğini şu ifadeyle türetir:
-   * `editMode === "TEMPLATE" && !user.canUseAdvancedBuilder`.
+   * §10.20 (2026-08-23 sıkılaştırması). İstemci, standart moda geçip geçmeyeceğini yalnızca
+   * `!user.canUseAdvancedBuilder` ile türetir — `editMode`'dan bağımsızdır (standart kullanıcı
+   * FREEFORM sayfada da asla BuilderCanvas'a erişemez). `editMode` artık yalnızca gelişmiş
+   * kullanıcıya gösterilen kozmetik bir rozet/ipucudur.
    */
   editMode: PageEditMode;
   blocks: Record<string, unknown>[];
@@ -465,8 +462,9 @@ export interface CreateSitePageRequest {
 export interface UpdateSitePageRequest {
   title?: string;
   /**
-   * §10.20 — `canUseAdvancedBuilder: false` olan bir kullanıcı, sayfa `editMode: TEMPLATE`
-   * iken bu alanı GÖNDEREMEZ (`403 FORBIDDEN`). Sayfanın URL'i yapısal bir özelliktir.
+   * §10.20 (2026-08-23 sıkılaştırması) — `canUseAdvancedBuilder: false` olan bir kullanıcı,
+   * sayfanın `editMode`'undan BAĞIMSIZ olarak bu alanı GÖNDEREMEZ (`403 FORBIDDEN`). Sayfanın
+   * URL'i yapısal bir özelliktir.
    */
   slug?: string;
   status?: ContentStatus;
@@ -1981,9 +1979,17 @@ export type SiteFont =
   | "POPPINS"
   | "LORA"
   | "PLAYFAIR_DISPLAY"
-  | "SOURCE_SERIF_4";
+  | "SOURCE_SERIF_4"
+  | "PLUS_JAKARTA_SANS"
+  | "OUTFIT";
 
 export type PageHeaderStyle = "PLAIN" | "BANNER" | "HIDDEN";
+
+/** Buton/kart köşe yarıçapı — `SITE_BORDER_RADIUS_PX` (lib/site-settings/site-radius.ts) enum→px eşlemesini kullanır. */
+export type SiteBorderRadius = "NONE" | "SM" | "MD" | "LG" | "FULL";
+
+/** `.site-scope` içindeki CTA/buton render noktalarının yapısal varyantı — CSS custom property DEĞİLDİR. */
+export type SiteButtonStyle = "SOLID" | "OUTLINE" | "SOFT";
 
 /**
  * Yazı/sayfa altındaki paylaşım butonları — `SocialPlatform`'dan (site kimliğinin KENDİ hesap
@@ -2007,9 +2013,16 @@ export interface SiteAppearance {
   buttonColor: string;
   buttonTextColor: string;
   linkColor: string;
+  accentColor: string;
+  backgroundColor: string;
+  surfaceColor: string;
+  textColor: string;
+  mutedTextColor: string;
   headingFont: SiteFont;
   bodyFont: SiteFont;
   baseFontSize: number;
+  borderRadius: SiteBorderRadius;
+  buttonStyle: SiteButtonStyle;
   socialShareEnabled: boolean;
   socialShareNetworks: SocialShareNetwork[];
   backToTopEnabled: boolean;
@@ -2042,9 +2055,16 @@ export interface PublicSiteAppearance {
   buttonColor: string;
   buttonTextColor: string;
   linkColor: string;
+  accentColor: string;
+  backgroundColor: string;
+  surfaceColor: string;
+  textColor: string;
+  mutedTextColor: string;
   headingFont: SiteFont;
   bodyFont: SiteFont;
   baseFontSize: number;
+  borderRadius: SiteBorderRadius;
+  buttonStyle: SiteButtonStyle;
   socialShareEnabled: boolean;
   socialShareNetworks: SocialShareNetwork[];
   backToTopEnabled: boolean;
@@ -2079,9 +2099,16 @@ export interface UpdateSiteAppearanceRequest {
   buttonColor?: string;
   buttonTextColor?: string;
   linkColor?: string;
+  accentColor?: string;
+  backgroundColor?: string;
+  surfaceColor?: string;
+  textColor?: string;
+  mutedTextColor?: string;
   headingFont?: SiteFont;
   bodyFont?: SiteFont;
   baseFontSize?: number;
+  borderRadius?: SiteBorderRadius;
+  buttonStyle?: SiteButtonStyle;
   socialShareEnabled?: boolean;
   /** Tam değiştirme (replace) semantiği — gönderilen dizi mevcut seçimin YERİNE geçer. */
   socialShareNetworks?: SocialShareNetwork[];
