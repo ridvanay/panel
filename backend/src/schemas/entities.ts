@@ -1201,6 +1201,12 @@ export type SiteFont = z.infer<typeof SiteFontSchema>;
 export const PageHeaderStyleSchema = z.enum(["PLAIN", "BANNER", "HIDDEN"]);
 export type PageHeaderStyle = z.infer<typeof PageHeaderStyleSchema>;
 
+// `pageHeaderStyle`'dan BAĞIMSIZ bir alandır — yalnızca `pageHeaderStyle=BANNER` iken sitede
+// etkilidir, ama bu iş kuralı BİLİNÇLİ olarak backend'de ZORLANMAZ (frontend uygular): BANNER→PLAIN
+// geçişinde kullanıcının seçtiği düzeni kaybetmemesi gerekir.
+export const PageHeaderLayoutSchema = z.enum(["CENTERED", "LEFT_OVERLAY", "MINIMAL_LINE", "SPLIT"]);
+export type PageHeaderLayout = z.infer<typeof PageHeaderLayoutSchema>;
+
 // --- Bileşen Stilleri (§10.12.2 genişlemesi, bkz. .claude/architect-scope-theme-typography.md) ---
 export const SiteBorderRadiusSchema = z.enum(["NONE", "SM", "MD", "LG", "FULL"]);
 export type SiteBorderRadius = z.infer<typeof SiteBorderRadiusSchema>;
@@ -1222,6 +1228,7 @@ export const SiteAppearanceSchema = z.object({
   presetKey: z.string().nullable(),
   // --- Sayfa Başlığı Düzeni ---
   pageHeaderStyle: PageHeaderStyleSchema,
+  pageHeaderLayout: PageHeaderLayoutSchema,
   pageHeaderBackgroundColor: HexColorSchema.nullable(),
   pageHeaderBackgroundMediaId: z.string().uuid().nullable(),
   pageHeaderBackgroundUrl: z.string().nullable(),
@@ -1271,6 +1278,7 @@ export type SiteAppearanceDto = z.infer<typeof SiteAppearanceSchema>;
  */
 export const PublicSiteAppearanceSchema = z.object({
   pageHeaderStyle: PageHeaderStyleSchema,
+  pageHeaderLayout: PageHeaderLayoutSchema,
   pageHeaderBackgroundColor: HexColorSchema.nullable(),
   pageHeaderBackgroundUrl: z.string().nullable(),
   pageHeaderOverlayOpacity: z.number().int().min(0).max(100),

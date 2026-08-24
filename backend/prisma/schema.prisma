@@ -908,6 +908,16 @@ enum PageHeaderStyle {
   HIDDEN
 }
 
+// 4 görsel şablon: ortalı klasik / sola yaslı karartmalı / minimal çizgili /
+// bölünmüş görsel-metin. PageHeaderStyle'dan BAĞIMSIZDIR, yalnızca
+// pageHeaderStyle=BANNER iken anlamlıdır (uygulama mantığı frontend-agent'ta).
+enum PageHeaderLayout {
+  CENTERED
+  LEFT_OVERLAY
+  MINIMAL_LINE
+  SPLIT
+}
+
 // `next/font/google` derleme zamanında font adını bilmek ZORUNDA olduğundan kapalı
 // enum — serbest metin DEĞİL (bkz. ARCHITECTURE.md §10.12.3). SYSTEM = harici istek
 // YOK, işletim sistemi font yığını (varsayılan). Admin panelinin Geist fontu bu
@@ -971,13 +981,14 @@ model SiteAppearance {
   presetKey String?
 
   // --- Sayfa Başlığı Düzeni ---
-  pageHeaderStyle             PageHeaderStyle @default(PLAIN)
+  pageHeaderStyle             PageHeaderStyle  @default(PLAIN)
+  pageHeaderLayout            PageHeaderLayout @default(CENTERED)
   // Yalnızca pageHeaderStyle=BANNER iken kullanılır; görsel de doluysa GÖRSEL kazanır,
   // bu renk görsel yüklenene kadarki yedek zemindir.
   pageHeaderBackgroundColor   String?
   pageHeaderBackgroundMediaId String?
   // Banner görselinin üzerine binen koyu katmanın yüzdesi (0-100), varsayılan 40.
-  pageHeaderOverlayOpacity    Int             @default(40)
+  pageHeaderOverlayOpacity    Int              @default(40)
 
   // --- Renkler (SADECE ziyaretçi sitesi — admin teması AccentProvider'dan gelir,
   // bu alanlarla ASLA karışmaz, bkz. ARCHITECTURE.md §10.12.4) ---

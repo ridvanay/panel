@@ -78,6 +78,7 @@ export default async function PortfolioDetailPage({ params }: PageProps) {
       <PageHeader
         title={item.title}
         style={appearance.pageHeaderStyle}
+        layout={appearance.pageHeaderLayout}
         backgroundColor={appearance.pageHeaderBackgroundColor}
         backgroundUrl={appearance.pageHeaderBackgroundUrl}
         overlayOpacity={appearance.pageHeaderOverlayOpacity}

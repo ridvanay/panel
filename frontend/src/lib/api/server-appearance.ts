@@ -9,6 +9,7 @@ import type { PublicSiteAppearance } from "./types";
  */
 const DEFAULT_APPEARANCE: PublicSiteAppearance = {
   pageHeaderStyle: "PLAIN",
+  pageHeaderLayout: "CENTERED",
   pageHeaderBackgroundColor: null,
   pageHeaderBackgroundUrl: null,
   pageHeaderOverlayOpacity: 40,

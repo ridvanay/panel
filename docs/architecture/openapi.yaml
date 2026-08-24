@@ -10814,6 +10814,19 @@ components:
       type: string
       enum: [PLAIN, BANNER, HIDDEN]
 
+    PageHeaderLayout:
+      description: >
+        Sayfa başlığı bloğunun iç düzeni — `pageHeaderStyle`'dan BAĞIMSIZ bir
+        alandır, sadece `pageHeaderStyle: BANNER` iken sitede etkilidir. Bu iş
+        kuralı BİLİNÇLİ olarak backend'de ZORLANMAZ (frontend uygular): `BANNER`→
+        `PLAIN` geçişinde kullanıcının seçtiği düzen kaybedilmez, sadece geçici
+        olarak etkisizdir. `CENTERED` = ortalanmış klasik başlık (varsayılan),
+        `LEFT_OVERLAY` = sola yaslı, görsel üzerine bindirilmiş metin,
+        `MINIMAL_LINE` = ince bir çizgiyle ayrılan sade başlık, `SPLIT` = başlık
+        ve görsel yan yana bölünmüş düzen.
+      type: string
+      enum: [CENTERED, LEFT_OVERLAY, MINIMAL_LINE, SPLIT]
+
     SocialShareNetwork:
       description: >
         Yazı/sayfa altındaki paylaşım butonları. **`SocialPlatform` enum'undan
@@ -10862,6 +10875,9 @@ components:
           description: "En son uygulanan ön ayarın anahtarı; `null` = özel (kullanıcı alanları elle değiştirdi). CANLI BİR BAĞ DEĞİLDİR — bkz. `PATCH /admin/appearance` açıklaması."
         # --- §3 Sayfa Başlığı Düzeni ---
         pageHeaderStyle: { $ref: "#/components/schemas/PageHeaderStyle" }
+        pageHeaderLayout:
+          allOf: [{ $ref: "#/components/schemas/PageHeaderLayout" }]
+          description: "Sadece `pageHeaderStyle=BANNER` iken sitede etkilidir."
         pageHeaderBackgroundColor:
           allOf: [{ $ref: "#/components/schemas/HexColor" }]
           nullable: true
@@ -10945,6 +10961,9 @@ components:
       type: object
       properties:
         pageHeaderStyle: { $ref: "#/components/schemas/PageHeaderStyle" }
+        pageHeaderLayout:
+          allOf: [{ $ref: "#/components/schemas/PageHeaderLayout" }]
+          description: "Sadece `pageHeaderStyle=BANNER` iken sitede etkilidir."
         pageHeaderBackgroundColor: { allOf: [{ $ref: "#/components/schemas/HexColor" }], nullable: true }
         pageHeaderBackgroundUrl: { type: string, nullable: true }
         pageHeaderOverlayOpacity: { type: integer, minimum: 0, maximum: 100 }
@@ -11002,6 +11021,9 @@ components:
       properties:
         presetKey: { type: string, nullable: true }
         pageHeaderStyle: { $ref: "#/components/schemas/PageHeaderStyle" }
+        pageHeaderLayout:
+          allOf: [{ $ref: "#/components/schemas/PageHeaderLayout" }]
+          description: "Sadece `pageHeaderStyle=BANNER` iken sitede etkilidir."
         pageHeaderBackgroundColor: { allOf: [{ $ref: "#/components/schemas/HexColor" }], nullable: true }
         pageHeaderBackgroundMediaId: { type: string, format: uuid, nullable: true, description: "Var olmayan bir medya id'si → `404 NOT_FOUND` (kısmi yazma YAPILMAZ)." }
         pageHeaderOverlayOpacity: { type: integer, minimum: 0, maximum: 100 }

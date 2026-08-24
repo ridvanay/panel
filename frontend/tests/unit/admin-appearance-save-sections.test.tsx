@@ -47,6 +47,7 @@ const navigationApi = await import("@/lib/api/navigation");
 const appearance: SiteAppearance = {
   presetKey: null,
   pageHeaderStyle: "PLAIN",
+  pageHeaderLayout: "CENTERED",
   pageHeaderBackgroundColor: null,
   pageHeaderBackgroundMediaId: null,
   pageHeaderBackgroundUrl: null,
@@ -226,6 +227,7 @@ describe("AdminAppearancePage — bölüm başına Kaydet payload'ları (PATCH /
     await waitFor(() => expect(appearanceApi.updateAppearance).toHaveBeenCalledTimes(1));
     expect(appearanceApi.updateAppearance).toHaveBeenCalledWith({
       pageHeaderStyle: "BANNER",
+      pageHeaderLayout: "CENTERED",
       pageHeaderBackgroundColor: "#ffffff",
       pageHeaderBackgroundMediaId: null,
       pageHeaderOverlayOpacity: 40,
@@ -441,6 +443,7 @@ describe("AdminAppearancePage — 'Tümünü Kaydet' yapışkan çubuğu", () =>
       [
         "presetKey",
         "pageHeaderStyle",
+        "pageHeaderLayout",
         "pageHeaderBackgroundColor",
         "pageHeaderBackgroundMediaId",
         "pageHeaderOverlayOpacity",

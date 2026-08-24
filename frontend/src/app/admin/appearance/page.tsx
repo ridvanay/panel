@@ -7,12 +7,14 @@ import { toast } from "sonner";
 import {
   AlertCircle,
   AlertTriangle,
+  AlignCenter,
   AlignLeft,
   ArrowUpCircle,
   AtSign,
   Briefcase,
   CheckCircle2,
   Code2,
+  Columns2,
   Cookie,
   ExternalLink,
   EyeOff,
@@ -27,6 +29,8 @@ import {
   Paintbrush,
   Palette,
   PanelTop,
+  RotateCw,
+  SeparatorHorizontal,
   Share2,
   ShieldAlert,
   Smartphone,
@@ -45,6 +49,7 @@ import type {
   AppearancePreset,
   Media,
   NavigationConfigDto,
+  PageHeaderLayout,
   PageHeaderStyle,
   SiteAppearance,
   SiteBorderRadius,
@@ -76,10 +81,14 @@ import { SiteHeader } from "@/components/site/site-header";
 import { SiteFooter } from "@/components/site/site-footer";
 import { fieldErrorsFrom, friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { DEFAULT_APPEARANCE } from "@/lib/api/server-appearance";
+import { SITE_URL } from "@/lib/env";
 import { getFooterLogoHeight } from "@/lib/site-settings/logo";
 import { SITE_FONT_OPTIONS } from "@/lib/site-settings/appearance";
 import { SITE_FONT_FAMILY, SITE_FONT_VARIABLES } from "@/lib/site-settings/site-fonts";
 import { SITE_BORDER_RADIUS_PX } from "@/lib/site-settings/site-radius";
+import { CORPORATE_COLOR_PALETTES } from "@/lib/site-settings/corporate-palettes";
+import type { CorporateColorPalette, CorporateColorPaletteValues } from "@/lib/site-settings/corporate-palettes";
+import { FONT_PAIRINGS } from "@/lib/site-settings/font-pairings";
 import { cn } from "@/lib/utils";
 import { useUnsavedChangesGuard } from "@/hooks/use-unsaved-changes-guard";
 
@@ -122,6 +131,64 @@ const PAGE_HEADER_STYLE_OPTIONS: { value: PageHeaderStyle; label: string; descri
   { value: "HIDDEN", label: "Gizli", description: "Başlık bloğu hiç gösterilmez", icon: EyeOff },
 ];
 
+/** design-notes-appearance-studio.md §4.5 — 4 mockup, sahte gri-tonlu bloklarla düzeni TEMSİL EDER (gerçek ekran görüntüsü DEĞİL). */
+const MOCKUP_FRAME_CLASS = "h-14 w-full overflow-hidden rounded-md border border-border/40 pointer-events-none";
+
+function CenteredLayoutMockup() {
+  return (
+    <div className={cn(MOCKUP_FRAME_CLASS, "flex items-center justify-center bg-neutral-500")}>
+      <span className="mx-auto h-1.5 w-1/2 rounded-full bg-white/80" />
+    </div>
+  );
+}
+
+function LeftOverlayLayoutMockup() {
+  return (
+    <div className={cn(MOCKUP_FRAME_CLASS, "relative bg-neutral-700")}>
+      <span className="absolute bottom-1.5 left-1.5 h-1.5 w-1/3 rounded-full bg-white/80" />
+    </div>
+  );
+}
+
+function MinimalLineLayoutMockup() {
+  return (
+    <div className={cn(MOCKUP_FRAME_CLASS, "flex flex-col items-start justify-center gap-1 bg-surface-muted px-2")}>
+      <span className="h-1.5 w-1/4 rounded-full bg-foreground/70" />
+      <span className="h-0.5 w-1/6 bg-primary" />
+    </div>
+  );
+}
+
+function SplitLayoutMockup() {
+  return (
+    <div className={cn(MOCKUP_FRAME_CLASS, "flex")}>
+      <span className="h-full flex-1 bg-neutral-400" />
+      <span className="flex h-full flex-1 items-center justify-center bg-surface">
+        <span className="h-1.5 w-2/3 rounded-full bg-foreground/70" />
+      </span>
+    </div>
+  );
+}
+
+const PAGE_HEADER_LAYOUT_OPTIONS: {
+  value: PageHeaderLayout;
+  label: string;
+  icon: typeof AlignCenter;
+  mockup: React.ComponentType;
+}[] = [
+  { value: "CENTERED", label: "Ortalı Klasik", icon: AlignCenter, mockup: CenteredLayoutMockup },
+  { value: "LEFT_OVERLAY", label: "Sola Yaslı & Karartmalı", icon: AlignLeft, mockup: LeftOverlayLayoutMockup },
+  { value: "MINIMAL_LINE", label: "Minimal Çizgili", icon: SeparatorHorizontal, mockup: MinimalLineLayoutMockup },
+  { value: "SPLIT", label: "Bölünmüş Görsel & Metin", icon: Columns2, mockup: SplitLayoutMockup },
+];
+
+/** design-notes-appearance-studio.md §3.2 — mevcut `baseFontSize` sürgüsünün YANINDA, 3 hızlı-atlama preseti. */
+const FONT_SIZE_PRESETS: { key: string; label: string; px: number }[] = [
+  { key: "small", label: "Küçük", px: 14 },
+  { key: "balanced", label: "Dengeli", px: 16 },
+  { key: "large", label: "Büyük", px: 18 },
+];
+
 /** design-notes-theme-typography.md §3.1 — 5 seçenek, gerçek px değeriyle inline çizilen önizleme karesi. */
 const BORDER_RADIUS_OPTIONS: { value: SiteBorderRadius; label: string; hint: string }[] = [
   { value: "NONE", label: "Yok", hint: "0px" },
@@ -155,6 +222,7 @@ const MAINTENANCE_MESSAGE_PLACEHOLDER = "Sitemizde bakım çalışması yapıyor
 interface AppearanceFormState {
   presetKey: string | null;
   pageHeaderStyle: PageHeaderStyle;
+  pageHeaderLayout: PageHeaderLayout;
   pageHeaderBackgroundColor: string;
   pageHeaderBackgroundMediaId: string | null;
   pageHeaderOverlayOpacity: number;
@@ -192,6 +260,7 @@ function formFromDto(dto: SiteAppearance): AppearanceFormState {
   return {
     presetKey: dto.presetKey,
     pageHeaderStyle: dto.pageHeaderStyle,
+    pageHeaderLayout: dto.pageHeaderLayout,
     pageHeaderBackgroundColor: dto.pageHeaderBackgroundColor ?? "#ffffff",
     pageHeaderBackgroundMediaId: dto.pageHeaderBackgroundMediaId,
     pageHeaderOverlayOpacity: dto.pageHeaderOverlayOpacity,
@@ -268,7 +337,13 @@ const TYPOGRAPHY_FIELDS = ["headingFont", "bodyFont", "baseFontSize"] as const;
  * kaydedildiğinde kaybolurdu). */
 const SECTION_FIELDS = {
   presets: ["presetKey", ...COLOR_FIELDS, ...TYPOGRAPHY_FIELDS, ...COMPONENT_STYLE_FIELDS],
-  pageHeader: ["pageHeaderStyle", "pageHeaderBackgroundColor", "pageHeaderBackgroundMediaId", "pageHeaderOverlayOpacity"],
+  pageHeader: [
+    "pageHeaderStyle",
+    "pageHeaderLayout",
+    "pageHeaderBackgroundColor",
+    "pageHeaderBackgroundMediaId",
+    "pageHeaderOverlayOpacity",
+  ],
   colors: ["presetKey", ...COLOR_FIELDS, ...COMPONENT_STYLE_FIELDS],
   social: ["socialShareEnabled", "socialShareNetworks"],
   typography: ["presetKey", ...TYPOGRAPHY_FIELDS],
@@ -331,6 +406,16 @@ function fieldsEqual(a: AppearanceFormState, b: AppearanceFormState, keys: reado
   return keys.every((key) => JSON.stringify(a[key]) === JSON.stringify(b[key]));
 }
 
+/** design-notes-appearance-studio.md §2.2 a11y düzeltmesi — kurumsal paletler için kalıcı bir
+ * "seçili palet" state'i YOK (bkz. `applyCorporatePalette`, sadece 10 renk alanını doldurur ve
+ * `presetKey`'i null'lar). Bu yüzden "aktif" durumu, `presets` sekmesindeki `active`/`aria-checked`
+ * deseniyle TUTARLI biçimde, ANLIK `form` değerleriyle palet `values`'ının 10 alanının BİREBİR
+ * eşleşip eşleşmediğine bakılarak türetilir (`fieldsEqual`'a benzer JSON.stringify karşılaştırması). */
+function corporatePaletteMatchesForm(form: AppearanceFormState, palette: CorporateColorPalette): boolean {
+  const keys = Object.keys(palette.values) as (keyof CorporateColorPaletteValues)[];
+  return keys.every((key) => JSON.stringify(form[key]) === JSON.stringify(palette.values[key]));
+}
+
 function SectionHeader({ icon: Icon, title, description }: { icon: typeof Palette; title: string; description: string }) {
   return (
     <div className="flex items-start gap-3">
@@ -377,15 +462,77 @@ function SectionSaveButton({ dirty, saving, onClick }: { dirty: boolean; saving:
   );
 }
 
+/**
+ * design-notes-appearance-studio.md §4.5 kontrol listesi — admin canlı önizleme panelindeki mini
+ * banner, `pageHeaderLayout`'un 4 değerini de (CENTERED/LEFT_OVERLAY/MINIMAL_LINE/SPLIT) temsil
+ * eder. Gerçek `frontend/src/components/site/page-header.tsx`'in KÜÇÜLTÜLMÜŞ bir yansımasıdır —
+ * aynı spacing/tipografi kararları BİREBİR değil (kompakt önizleme kutusu), ama aynı görsel mantık.
+ */
 function PreviewPageHeaderBanner({
+  layout,
   backgroundColor,
   backgroundUrl,
   overlayOpacity,
 }: {
+  layout: PageHeaderLayout;
   backgroundColor: string;
   backgroundUrl: string | null;
   overlayOpacity: number;
 }) {
+  if (layout === "LEFT_OVERLAY") {
+    const ratio = overlayOpacity / 100;
+    return (
+      <div
+        className="relative flex h-20 w-full items-end justify-start overflow-hidden rounded-md"
+        style={{
+          backgroundColor,
+          backgroundImage: backgroundUrl ? `url(${backgroundUrl})` : undefined,
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+        }}
+      >
+        <div
+          className="absolute inset-0"
+          style={{
+            background: `linear-gradient(to top, rgb(0 0 0 / ${0.8 * ratio}), rgb(0 0 0 / ${0.35 * ratio}) 55%, transparent)`,
+          }}
+          aria-hidden="true"
+        />
+        <span className="relative m-2 rounded-md bg-black/60 px-3 py-1 text-xs font-medium text-white backdrop-blur-sm">
+          Örnek Sayfa Başlığı
+        </span>
+      </div>
+    );
+  }
+
+  if (layout === "MINIMAL_LINE") {
+    return (
+      <div className="flex w-full flex-col items-start gap-1.5 rounded-md bg-surface-muted px-4 py-4">
+        <span className="text-sm font-semibold text-foreground">Örnek Sayfa Başlığı</span>
+        <span className="h-0.5 w-10 rounded-full" style={{ backgroundColor: "var(--site-primary)" }} aria-hidden="true" />
+      </div>
+    );
+  }
+
+  if (layout === "SPLIT") {
+    return (
+      <div className="flex h-16 w-full overflow-hidden rounded-md">
+        {backgroundUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element -- kompakt admin önizlemesi, site-header.tsx ile AYNI gerekçe
+          <img src={backgroundUrl} alt="" className="h-full w-1/2 object-cover" />
+        ) : (
+          <div className="flex h-full w-1/2 items-center justify-center bg-muted">
+            <ImageIcon className="h-4 w-4 text-foreground/30" aria-hidden="true" />
+          </div>
+        )}
+        <div className="flex h-full w-1/2 items-center justify-center bg-surface px-2">
+          <span className="text-xs font-semibold text-foreground">Örnek Sayfa Başlığı</span>
+        </div>
+      </div>
+    );
+  }
+
+  // CENTERED (varsayılan)
   return (
     <div
       className="relative flex h-16 w-full items-center justify-center overflow-hidden rounded-md"
@@ -424,6 +571,15 @@ export default function AdminAppearancePage() {
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [previewDevice, setPreviewDevice] = useState<PreviewDevice>("desktop");
+  /** design-notes-appearance-studio.md §1.2 — "Yenile" kozmetik güven sinyali, önizleme HER ZAMAN
+   * güncel (doğrudan React state'inden render edilir); 300ms opacity-pulse DOM içeriğini DEĞİŞTİRMEZ. */
+  const [isRefreshingPreview, setIsRefreshingPreview] = useState(false);
+  /** design-notes-appearance-studio.md §3.1 — tipografi sekmesindeki canlı örnek metin, kullanıcı
+   * tarafından düzenlenebilir (local state, KAYDEDİLMEZ, sadece önizleme). */
+  const [typographyPreviewHeading, setTypographyPreviewHeading] = useState("Iğdır'da çığ, üşüyen köpekler");
+  const [typographyPreviewBody, setTypographyPreviewBody] = useState(
+    "Pijamalı hasta yağız şoföre çabucak güvendi. Bu örnek paragraf, seçtiğiniz gövde fontunun Türkçe karakterlerde (ç, ğ, ı, ö, ş, ü) nasıl göründüğünü gösterir."
+  );
 
   const [form, setForm] = useState<AppearanceFormState | null>(null);
   const [snapshot, setSnapshot] = useState<AppearanceFormState | null>(null);
@@ -546,6 +702,28 @@ export default function AdminAppearancePage() {
       if (!confirmDiscard()) return;
     }
     setActiveTab(next);
+  }
+
+  /** design-notes-appearance-studio.md §1.2 — kozmetik güven sinyali, 300ms opacity-pulse; önizleme
+   * zaten her zaman güncel olduğu için DOM içeriğini değiştirmez. */
+  function handleRefreshPulse() {
+    setIsRefreshingPreview(true);
+    setTimeout(() => setIsRefreshingPreview(false), 300);
+  }
+
+  /** design-notes-appearance-studio.md §2.2 — kurumsal palet tıklaması SADECE 10 renk alanını
+   * doldurur (font/border-radius/button-style DOKUNULMAZ), mevcut "elle değişiklik → presetKey: null"
+   * kuralı aynı şekilde tetiklenir. */
+  function applyCorporatePalette(palette: (typeof CORPORATE_COLOR_PALETTES)[number]) {
+    setForm((prev) => (prev ? { ...prev, ...palette.values, presetKey: null } : prev));
+  }
+
+  /** design-notes-appearance-studio.md §3.1 — bir eşleşmeye tıklamak HEM `headingFont` HEM
+   * `bodyFont`'u aynı anda değiştirir (`baseFontSize`/renkler DOKUNULMAZ). */
+  function applyFontPairing(pairing: (typeof FONT_PAIRINGS)[number]) {
+    setForm((prev) =>
+      prev ? { ...prev, headingFont: pairing.headingFont, bodyFont: pairing.bodyFont, presetKey: null } : prev
+    );
   }
 
   function updateField<K extends keyof AppearanceFormState>(key: K, value: AppearanceFormState[K]) {
@@ -710,6 +888,13 @@ export default function AdminAppearancePage() {
       </div>
     );
   }
+
+  // design-notes-appearance-studio.md §4.3/§4.4 — `MINIMAL_LINE` arka plan görseli/renk/overlay HİÇBİRİNİ
+  // kullanmaz; `SPLIT` görsel kolonu (`pageHeaderBackgroundMediaId`) kullanır ama zemin rengi/overlay
+  // KULLANMAZ (görsel kolonu ya doludur ya da nötr placeholder).
+  const pageHeaderOverlayDisabled = form.pageHeaderLayout === "MINIMAL_LINE" || form.pageHeaderLayout === "SPLIT";
+  const pageHeaderBackgroundColorDisabled = form.pageHeaderLayout === "MINIMAL_LINE" || form.pageHeaderLayout === "SPLIT";
+  const pageHeaderBackgroundMediaDisabled = form.pageHeaderLayout === "MINIMAL_LINE";
 
   const previewCssVars = {
     "--site-primary": form.primaryColor,
@@ -929,24 +1114,75 @@ export default function AdminAppearancePage() {
 
                 {form.pageHeaderStyle === "BANNER" && (
                   <div className="mt-4 space-y-4 rounded-lg border border-border/60 bg-surface-muted/50 p-4 animate-in fade-in-0 slide-in-from-top-1 duration-200">
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                      <ColorField
-                        id="pageHeaderBackgroundColor"
-                        label="Zemin rengi (yedek)"
-                        value={form.pageHeaderBackgroundColor}
-                        onChange={(hex) => updateField("pageHeaderBackgroundColor", hex)}
-                      />
-                      <MediaSelectField
-                        id="pageHeaderBackgroundMedia"
-                        label="Arka plan görseli"
-                        value={pageHeaderBackgroundMedia}
-                        onChange={(media) => {
-                          setPageHeaderBackgroundMedia(media);
-                          updateField("pageHeaderBackgroundMediaId", media?.id ?? null);
-                        }}
-                      />
+                    {/* design-notes-appearance-studio.md §4.5 — 4 şablon radyo-kartı, alt-panelin EN ÜSTÜNDE. */}
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium text-foreground">Şablon</p>
+                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4" role="radiogroup" aria-label="Sayfa başlığı şablonu">
+                        {PAGE_HEADER_LAYOUT_OPTIONS.map((opt) => {
+                          const active = form.pageHeaderLayout === opt.value;
+                          return (
+                            <button
+                              key={opt.value}
+                              type="button"
+                              role="radio"
+                              aria-checked={active}
+                              onClick={() => updateField("pageHeaderLayout", opt.value)}
+                              className={cn(
+                                "flex flex-col gap-2 rounded-lg border p-2.5 text-center transition-all duration-300",
+                                active ? "border-primary bg-primary/5" : "border-border hover:bg-muted"
+                              )}
+                            >
+                              <opt.mockup />
+                              <span className="flex items-center justify-center gap-1 text-xs font-medium text-foreground">
+                                <opt.icon className="h-3 w-3" /> {opt.label}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
-                    <div className="space-y-1.5">
+
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <div
+                        className={cn("space-y-1.5", pageHeaderBackgroundColorDisabled && "pointer-events-none opacity-40")}
+                        aria-disabled={pageHeaderBackgroundColorDisabled}
+                      >
+                        <ColorField
+                          id="pageHeaderBackgroundColor"
+                          label="Zemin rengi (yedek)"
+                          value={form.pageHeaderBackgroundColor}
+                          onChange={(hex) => updateField("pageHeaderBackgroundColor", hex)}
+                        />
+                        {pageHeaderBackgroundColorDisabled && (
+                          <p className="text-xs text-foreground/50">
+                            {form.pageHeaderLayout === "MINIMAL_LINE"
+                              ? "Bu şablon arka plan görseli kullanmaz."
+                              : "Bu şablonda zemin rengi kullanılmaz; görsel kolonu boşsa nötr bir yer tutucu gösterilir."}
+                          </p>
+                        )}
+                      </div>
+                      <div
+                        className={cn(pageHeaderBackgroundMediaDisabled && "pointer-events-none opacity-40")}
+                        aria-disabled={pageHeaderBackgroundMediaDisabled}
+                      >
+                        <MediaSelectField
+                          id="pageHeaderBackgroundMedia"
+                          label="Arka plan görseli"
+                          value={pageHeaderBackgroundMedia}
+                          onChange={(media) => {
+                            setPageHeaderBackgroundMedia(media);
+                            updateField("pageHeaderBackgroundMediaId", media?.id ?? null);
+                          }}
+                        />
+                        {pageHeaderBackgroundMediaDisabled && (
+                          <p className="mt-1.5 text-xs text-foreground/50">Bu şablon arka plan görseli kullanmaz.</p>
+                        )}
+                      </div>
+                    </div>
+                    <div
+                      className={cn("space-y-1.5", pageHeaderOverlayDisabled && "opacity-40")}
+                      aria-disabled={pageHeaderOverlayDisabled}
+                    >
                       <label htmlFor="pageHeaderOverlayOpacity" className="block text-sm font-medium text-foreground">
                         Karartma yoğunluğu (%{form.pageHeaderOverlayOpacity})
                       </label>
@@ -956,11 +1192,14 @@ export default function AdminAppearancePage() {
                         min={0}
                         max={100}
                         value={form.pageHeaderOverlayOpacity}
+                        disabled={pageHeaderOverlayDisabled}
                         onChange={(e) => updateField("pageHeaderOverlayOpacity", Number(e.target.value))}
-                        className="w-full accent-primary"
+                        className="w-full accent-primary disabled:cursor-not-allowed"
                       />
                       <p className="text-xs text-foreground/60">
-                        Görselin üzerine binen koyu katman — başlık metninin okunabilirliğini korur.
+                        {pageHeaderOverlayDisabled
+                          ? "Bu şablon karartma kullanmaz."
+                          : "Görselin üzerine binen koyu katman — başlık metninin okunabilirliğini korur."}
                       </p>
                     </div>
                     <p className="text-xs text-foreground/50">
@@ -980,78 +1219,127 @@ export default function AdminAppearancePage() {
             <TabsContent value="colors" className="mt-0 space-y-4 outline-none">
               <Card className="space-y-4">
                 <SectionHeader icon={Paintbrush} title="Stil / Renk" description="Sitenizin genel renk paleti." />
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <ColorField
-                    id="primaryColor"
-                    label="Birincil Renk"
-                    value={form.primaryColor}
-                    onChange={(hex) => updateColorOrTypographyField("primaryColor", hex)}
-                  />
-                  <ColorField
-                    id="secondaryColor"
-                    label="İkincil Renk"
-                    value={form.secondaryColor}
-                    onChange={(hex) => updateColorOrTypographyField("secondaryColor", hex)}
-                  />
-                  <ColorField
-                    id="buttonColor"
-                    label="Buton Zemini"
-                    value={form.buttonColor}
-                    checkAgainst={form.buttonTextColor}
-                    onChange={(hex) => updateColorOrTypographyField("buttonColor", hex)}
-                  />
-                  <ColorField
-                    id="buttonTextColor"
-                    label="Buton Metni"
-                    value={form.buttonTextColor}
-                    checkAgainst={form.buttonColor}
-                    onChange={(hex) => updateColorOrTypographyField("buttonTextColor", hex)}
-                  />
-                  <ColorField
-                    id="linkColor"
-                    label="Bağlantı Rengi"
-                    value={form.linkColor}
-                    onChange={(hex) => updateColorOrTypographyField("linkColor", hex)}
-                  />
-                  <div className="space-y-1.5">
-                    <ColorField
-                      id="accentColor"
-                      label="Vurgu Rengi"
-                      value={form.accentColor}
-                      onChange={(hex) => updateColorOrTypographyField("accentColor", hex)}
-                    />
-                    {/* design-notes-theme-typography.md §1 — otomatik kontrast rozeti YOK (bağlama göre değişir), metinsel uyarı yeterli. */}
-                    <p className="text-xs text-foreground/50">
-                      Bu renk genellikle rozet/vurgu zemini olarak kullanılır. Üzerine metin koyarken <strong>Metin Rengi</strong>&apos;ni
-                      (koyu) tercih edin; <strong>Buton Metni</strong> (genelde beyaz) accent zemininde düşük kontrast oluşturabilir.
-                    </p>
+
+                {/* design-notes-appearance-studio.md §2.2 — 8 kurumsal palet, `colors` sekmesinin EN
+                    ÜSTÜNDE, kompakt "hızlı başlangıç" şeridi. SADECE 10 renk alanını doldurur —
+                    `presetKey` sistemiyle (Tasarım Ön Ayarları sekmesi) KARIŞTIRILMAZ. */}
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-foreground">Kurumsal Renk Paletleri</p>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" role="radiogroup" aria-label="Kurumsal renk paleti">
+                    {CORPORATE_COLOR_PALETTES.map((palette) => {
+                      const active = corporatePaletteMatchesForm(form, palette);
+                      return (
+                        <button
+                          key={palette.key}
+                          type="button"
+                          role="radio"
+                          aria-checked={active}
+                          title={palette.description}
+                          onClick={() => applyCorporatePalette(palette)}
+                          className={cn(
+                            "flex flex-col gap-2 rounded-lg border p-2.5 text-left transition-all duration-300",
+                            active ? "border-primary bg-primary/5 ring-1 ring-primary/30" : "border-border hover:bg-muted"
+                          )}
+                        >
+                          <div className="flex h-5 overflow-hidden rounded-md">
+                            <span className="flex-1" style={{ backgroundColor: palette.values.primaryColor }} />
+                            <span className="flex-1" style={{ backgroundColor: palette.values.secondaryColor }} />
+                            <span className="flex-1" style={{ backgroundColor: palette.values.buttonColor }} />
+                            <span className="flex-1" style={{ backgroundColor: palette.values.accentColor }} />
+                          </div>
+                          <span className="flex items-center gap-1 text-xs font-medium text-foreground">
+                            {palette.label}
+                            {active && <CheckCircle2 className="h-3 w-3 text-primary" aria-hidden="true" />}
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
-                  <ColorField
-                    id="backgroundColor"
-                    label="Sayfa Zemini"
-                    value={form.backgroundColor}
-                    onChange={(hex) => updateColorOrTypographyField("backgroundColor", hex)}
-                  />
-                  <ColorField
-                    id="surfaceColor"
-                    label="Yüzey / Kart Zemini"
-                    value={form.surfaceColor}
-                    onChange={(hex) => updateColorOrTypographyField("surfaceColor", hex)}
-                  />
-                  <ColorField
-                    id="textColor"
-                    label="Metin Rengi"
-                    value={form.textColor}
-                    checkAgainst={form.backgroundColor}
-                    onChange={(hex) => updateColorOrTypographyField("textColor", hex)}
-                  />
-                  <ColorField
-                    id="mutedTextColor"
-                    label="İkincil Metin Rengi"
-                    value={form.mutedTextColor}
-                    checkAgainst={form.backgroundColor}
-                    onChange={(hex) => updateColorOrTypographyField("mutedTextColor", hex)}
-                  />
+                </div>
+
+                {/* design-notes-appearance-studio.md §2.1 — Grup A "Marka & Yüzey Renkleri" (6 alan). */}
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-foreground">Marka &amp; Yüzey Renkleri</p>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <ColorField
+                      id="primaryColor"
+                      label="Birincil Renk"
+                      value={form.primaryColor}
+                      onChange={(hex) => updateColorOrTypographyField("primaryColor", hex)}
+                    />
+                    <ColorField
+                      id="secondaryColor"
+                      label="İkincil Renk"
+                      value={form.secondaryColor}
+                      onChange={(hex) => updateColorOrTypographyField("secondaryColor", hex)}
+                    />
+                    <ColorField
+                      id="backgroundColor"
+                      label="Sayfa Zemini"
+                      value={form.backgroundColor}
+                      onChange={(hex) => updateColorOrTypographyField("backgroundColor", hex)}
+                    />
+                    <ColorField
+                      id="surfaceColor"
+                      label="Yüzey / Kart Zemini"
+                      value={form.surfaceColor}
+                      onChange={(hex) => updateColorOrTypographyField("surfaceColor", hex)}
+                    />
+                    <ColorField
+                      id="textColor"
+                      label="Başlık Metni"
+                      value={form.textColor}
+                      checkAgainst={form.backgroundColor}
+                      onChange={(hex) => updateColorOrTypographyField("textColor", hex)}
+                    />
+                    <ColorField
+                      id="mutedTextColor"
+                      label="Gövde Metni"
+                      value={form.mutedTextColor}
+                      checkAgainst={form.backgroundColor}
+                      onChange={(hex) => updateColorOrTypographyField("mutedTextColor", hex)}
+                    />
+                  </div>
+                </div>
+
+                {/* design-notes-appearance-studio.md §2.1 — Grup B "Bileşen Renkleri" (4 alan). */}
+                <div className="space-y-2 border-t border-border/60 pt-4">
+                  <p className="text-sm font-medium text-foreground">Bileşen Renkleri</p>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <ColorField
+                      id="buttonColor"
+                      label="Buton Zemini"
+                      value={form.buttonColor}
+                      checkAgainst={form.buttonTextColor}
+                      onChange={(hex) => updateColorOrTypographyField("buttonColor", hex)}
+                    />
+                    <ColorField
+                      id="buttonTextColor"
+                      label="Buton Metni"
+                      value={form.buttonTextColor}
+                      checkAgainst={form.buttonColor}
+                      onChange={(hex) => updateColorOrTypographyField("buttonTextColor", hex)}
+                    />
+                    <ColorField
+                      id="linkColor"
+                      label="Bağlantı Rengi"
+                      value={form.linkColor}
+                      onChange={(hex) => updateColorOrTypographyField("linkColor", hex)}
+                    />
+                    <div className="space-y-1.5">
+                      <ColorField
+                        id="accentColor"
+                        label="Vurgu Rengi"
+                        value={form.accentColor}
+                        onChange={(hex) => updateColorOrTypographyField("accentColor", hex)}
+                      />
+                      {/* design-notes-theme-typography.md §1 — otomatik kontrast rozeti YOK (bağlama göre değişir), metinsel uyarı yeterli. */}
+                      <p className="text-xs text-foreground/50">
+                        Bu renk genellikle rozet/vurgu zemini olarak kullanılır. Üzerine metin koyarken <strong>Başlık Metni</strong>&apos;ni
+                        (koyu) tercih edin; <strong>Buton Metni</strong> (genelde beyaz) accent zemininde düşük kontrast oluşturabilir.
+                      </p>
+                    </div>
+                  </div>
                 </div>
 
                 {/* design-notes-theme-typography.md §6 — "Bileşen Stilleri" AYNI kart içinde, ayraçtan sonra. */}
@@ -1201,6 +1489,43 @@ export default function AdminAppearancePage() {
               <Card className="space-y-5">
                 <SectionHeader icon={Type} title="Yazı Tipi" description="Başlık ve gövde metni için fontlar." />
 
+                {/* design-notes-appearance-studio.md §3.1 — 15 kürasyonlu eşleşme, mevcut font
+                    gridlerinin ÜSTÜNDE. Tıklama HEM headingFont HEM bodyFont'u birlikte değiştirir. */}
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-foreground">Hazır Font Eşleşmeleri</p>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    {FONT_PAIRINGS.map((pairing) => {
+                      const active = form.headingFont === pairing.headingFont && form.bodyFont === pairing.bodyFont;
+                      const headingFallback = SITE_FONT_OPTIONS.find((o) => o.value === pairing.headingFont)?.cssFallback;
+                      const bodyFallback = SITE_FONT_OPTIONS.find((o) => o.value === pairing.bodyFont)?.cssFallback;
+                      return (
+                        <button
+                          key={pairing.key}
+                          type="button"
+                          role="radio"
+                          aria-checked={active}
+                          onClick={() => applyFontPairing(pairing)}
+                          className={cn(
+                            "rounded-lg border p-3 text-left transition-all duration-300",
+                            active ? "border-primary bg-primary/5" : "border-border hover:bg-muted"
+                          )}
+                        >
+                          <span className="flex items-baseline gap-2">
+                            <span className="text-lg" style={{ fontFamily: headingFallback }}>
+                              Aa
+                            </span>
+                            <span className="text-sm text-foreground/60" style={{ fontFamily: bodyFallback }}>
+                              Aa
+                            </span>
+                          </span>
+                          <span className="mt-1 block text-xs font-medium text-foreground">{pairing.label}</span>
+                          <span className="block text-[11px] text-foreground/50">{pairing.description}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
                 <div className="space-y-2">
                   <p className="text-sm font-medium text-foreground">Başlık Fontu</p>
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-3" role="radiogroup" aria-label="Başlık fontu">
@@ -1258,6 +1583,24 @@ export default function AdminAppearancePage() {
                 </div>
 
                 <div className="space-y-1.5">
+                  <p className="text-sm font-medium text-foreground">Yazı Boyutu Ölçeği</p>
+                  {/* design-notes-appearance-studio.md §3.2 — 3 hızlı-atlama preseti, sürgünün YANINDA (sürgüyü DEĞİŞTİRMEZ). */}
+                  <div className="flex items-center gap-1.5">
+                    {FONT_SIZE_PRESETS.map((p) => (
+                      <Button
+                        key={p.key}
+                        type="button"
+                        size="sm"
+                        variant={form.baseFontSize === p.px ? "default" : "outline"}
+                        onClick={() => updateColorOrTypographyField("baseFontSize", p.px)}
+                      >
+                        {p.label} ({p.px}px)
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
                   <label htmlFor="baseFontSize" className="block text-sm font-medium text-foreground">
                     Gövde metni temel boyutu (%{form.baseFontSize}px)
                   </label>
@@ -1273,18 +1616,30 @@ export default function AdminAppearancePage() {
                   />
                 </div>
 
-                {/* design-notes-theme-typography.md §4 — gerçek yüklü font (`SITE_FONT_FAMILY`), `cssFallback` DEĞİL. */}
+                {/* design-notes-theme-typography.md §4 — gerçek yüklü font (`SITE_FONT_FAMILY`), `cssFallback` DEĞİL.
+                    design-notes-appearance-studio.md §3.1 — örnek metin KULLANICI DÜZENLEYEBİLİR (local state, KAYDEDİLMEZ). */}
                 <div
                   className={`space-y-3 rounded-lg border border-border bg-surface-muted/30 p-6 ${SITE_FONT_VARIABLES}`}
                 >
                   <p className="text-xs font-medium tracking-wide text-foreground/50 uppercase">Canlı Önizleme</p>
-                  <p className="text-2xl font-bold" style={{ fontFamily: SITE_FONT_FAMILY[form.headingFont] }}>
-                    Iğdır&apos;da çığ, üşüyen köpekler
-                  </p>
-                  <p style={{ fontFamily: SITE_FONT_FAMILY[form.bodyFont], fontSize: form.baseFontSize }}>
-                    Pijamalı hasta yağız şoföre çabucak güvendi. Bu örnek paragraf, seçtiğiniz gövde fontunun Türkçe
-                    karakterlerde (ç, ğ, ı, ö, ş, ü) nasıl göründüğünü gösterir.
-                  </p>
+                  <input
+                    type="text"
+                    value={typographyPreviewHeading}
+                    onChange={(e) => setTypographyPreviewHeading(e.target.value)}
+                    aria-label="Önizleme başlık metni"
+                    maxLength={120}
+                    className="w-full border-0 bg-transparent p-0 text-2xl font-bold text-foreground outline-none focus-visible:ring-1 focus-visible:ring-primary"
+                    style={{ fontFamily: SITE_FONT_FAMILY[form.headingFont] }}
+                  />
+                  <textarea
+                    value={typographyPreviewBody}
+                    onChange={(e) => setTypographyPreviewBody(e.target.value)}
+                    aria-label="Önizleme gövde metni"
+                    rows={2}
+                    maxLength={400}
+                    className="w-full resize-none border-0 bg-transparent p-0 text-foreground outline-none focus-visible:ring-1 focus-visible:ring-primary"
+                    style={{ fontFamily: SITE_FONT_FAMILY[form.bodyFont], fontSize: form.baseFontSize }}
+                  />
                 </div>
               </Card>
               <SectionSaveButton
@@ -1631,6 +1986,17 @@ export default function AdminAppearancePage() {
                       </Button>
                     ))}
                   </div>
+                  {/* design-notes-appearance-studio.md §1.2 — cihaz toggle'ı ile "yeni sekmede aç" arasında ayraç + Yenile. */}
+                  <span className="h-4 w-px bg-border/60" aria-hidden="true" />
+                  <Button
+                    type="button"
+                    size="icon-xs"
+                    variant="ghost"
+                    onClick={handleRefreshPulse}
+                    aria-label="Önizlemeyi yenile"
+                  >
+                    <RotateCw className="h-3 w-3" />
+                  </Button>
                   <a
                     href="/"
                     target="_blank"
@@ -1647,36 +2013,52 @@ export default function AdminAppearancePage() {
                 style={{ maxWidth: DEVICE_MAX_WIDTH[previewDevice] }}
               >
                 <div
-                  className={`site-scope overflow-hidden rounded-xl border border-border ${SITE_FONT_VARIABLES}`}
-                  style={previewCssVars}
+                  className={cn(
+                    "overflow-hidden rounded-xl border border-border transition-opacity duration-300",
+                    isRefreshingPreview ? "opacity-40" : "opacity-100"
+                  )}
                 >
-                  <SiteHeader
-                    settings={siteSettings}
-                    pages={publishedPages}
-                    navigationItems={navigation.navigationItems}
-                    ctaLabel={navigation.headerCtaLabel}
-                    ctaHref={navigation.headerCtaHref}
-                    buttonStyle={form.buttonStyle}
-                  />
-                  <div className="flex min-h-32 flex-col items-center justify-center gap-2 bg-muted/30 px-4 py-10 text-center">
-                    {form.pageHeaderStyle === "BANNER" && (
-                      <PreviewPageHeaderBanner
-                        backgroundColor={form.pageHeaderBackgroundColor}
-                        backgroundUrl={pageHeaderBackgroundMedia?.url ?? null}
-                        overlayOpacity={form.pageHeaderOverlayOpacity}
-                      />
-                    )}
-                    <p className="text-xs text-foreground/40">Sayfa içeriği</p>
+                  {/* design-notes-appearance-studio.md §1.1 — minimal/flat tarayıcı kabuğu (skeuomorfik DEĞİL). */}
+                  <div className="flex h-9 items-center gap-2 rounded-t-xl border-b border-border/60 bg-surface-muted px-3">
+                    <span className="flex items-center gap-1.5" aria-hidden="true">
+                      <span className="h-2 w-2 rounded-full bg-[#ff5f57]" />
+                      <span className="h-2 w-2 rounded-full bg-[#febc2e]" />
+                      <span className="h-2 w-2 rounded-full bg-[#28c840]" />
+                    </span>
+                    <span className="pointer-events-none ml-1.5 flex h-6 flex-1 items-center truncate rounded-md bg-surface px-3 font-mono text-[11px] text-foreground/45">
+                      {SITE_URL.replace(/^https?:\/\//, "")}
+                    </span>
                   </div>
-                  <SiteFooter
-                    siteName={siteSettings.siteName}
-                    logoUrl={siteSettings.logoUrl}
-                    logoHeight={getFooterLogoHeight(siteSettings.headerLogoHeight)}
-                    tagline={siteSettings.tagline}
-                    socialLinks={navigation.socialLinks}
-                    footerColumns={navigation.footerColumns}
-                    copyrightText={navigation.footerCopyrightText}
-                  />
+                  <div className={`site-scope ${SITE_FONT_VARIABLES}`} style={previewCssVars}>
+                    <SiteHeader
+                      settings={siteSettings}
+                      pages={publishedPages}
+                      navigationItems={navigation.navigationItems}
+                      ctaLabel={navigation.headerCtaLabel}
+                      ctaHref={navigation.headerCtaHref}
+                      buttonStyle={form.buttonStyle}
+                    />
+                    <div className="flex min-h-32 flex-col items-center justify-center gap-2 bg-muted/30 px-4 py-10 text-center">
+                      {form.pageHeaderStyle === "BANNER" && (
+                        <PreviewPageHeaderBanner
+                          layout={form.pageHeaderLayout}
+                          backgroundColor={form.pageHeaderBackgroundColor}
+                          backgroundUrl={pageHeaderBackgroundMedia?.url ?? null}
+                          overlayOpacity={form.pageHeaderOverlayOpacity}
+                        />
+                      )}
+                      <p className="text-xs text-foreground/40">Sayfa içeriği</p>
+                    </div>
+                    <SiteFooter
+                      siteName={siteSettings.siteName}
+                      logoUrl={siteSettings.logoUrl}
+                      logoHeight={getFooterLogoHeight(siteSettings.headerLogoHeight)}
+                      tagline={siteSettings.tagline}
+                      socialLinks={navigation.socialLinks}
+                      footerColumns={navigation.footerColumns}
+                      copyrightText={navigation.footerCopyrightText}
+                    />
+                  </div>
                 </div>
               </div>
               <p className="text-xs text-foreground/50">

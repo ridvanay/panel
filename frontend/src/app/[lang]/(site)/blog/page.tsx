@@ -21,6 +21,7 @@ export default async function BlogIndexPage({ params }: { params: Promise<{ lang
       <PageHeader
         title="Blog"
         style={appearance.pageHeaderStyle}
+        layout={appearance.pageHeaderLayout}
         backgroundColor={appearance.pageHeaderBackgroundColor}
         backgroundUrl={appearance.pageHeaderBackgroundUrl}
         overlayOpacity={appearance.pageHeaderOverlayOpacity}
