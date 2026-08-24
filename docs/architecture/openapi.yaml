@@ -300,10 +300,11 @@ tags:
     description: >
       Admin sipariş yönetimi (`/admin/orders`) — bkz. ARCHITECTURE.md §10.9.3. **TÜM
       uçlar İSTİSNASIZ SiteRole=ADMIN veya MANAGER'dır** (EDITOR/CUSTOMER/USER → 403).
-      Müşterinin KENDİ siparişlerini görmesi için ayrı bir uç vardır: `GET /users/me/orders`
-      (sahiplik filtresi, rol guard'ı YOK). Modül durumundan BAĞIMSIZDIR
-      (`products` modülü kapatılsa dahi geçmiş siparişler görüntülenebilir — veri
-      korunumu, `Products`/`Portfolio` admin uçlarıyla AYNI karar). `customerEmail`
+      Müşterinin KENDİ siparişlerini görmesi için ayrı uçlar vardır: `GET /users/me/orders`
+      ve `GET /users/me/orders/{orderId}` (sahiplik filtresi, rol guard'ı YOK). Modül
+      durumundan BAĞIMSIZDIR (`products` modülü kapatılsa dahi geçmiş siparişler
+      görüntülenebilir — veri korunumu, `Products`/`Portfolio` admin uçlarıyla AYNI
+      karar, bkz. `.claude/architect-scope-customer-portal.md` §3). `customerEmail`
       LİSTEDE maskelenir, DETAYDA maskesiz döner (bkz. uç açıklaması).
   - name: Localization
     description: >
@@ -565,9 +566,16 @@ paths:
         doğrulanmış bir çağıranın `POST /checkout/session` isteğinde doldurulur. Geçmiş
         misafir siparişlerini bir hesaba bağlamak KAPSAM DIŞIDIR
         (takip: `feature/order-account-linking`).
+
+
+        **`products` modülü kapalıyken de 200 döner (bilinçli sapma, bkz.
+        `.claude/architect-scope-customer-portal.md` §3):** ödenmiş bir sipariş bir
+        "modül içeriği" değil, bir sözleşme/mali kayıttır (KVKK m.5/2-c + VUK saklama
+        yükümlülüğü) — modül kill switch'i yalnızca SUNUM anahtarıdır, bu ucu KAPATMAZ.
       parameters:
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/OrderStatusFilter"
       responses:
         "200":
           description: OK
@@ -582,6 +590,210 @@ paths:
                         items: { $ref: "#/components/schemas/Order" }
                       meta: { $ref: "#/components/schemas/OrderListMeta" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /users/me/orders/{orderId}:
+    parameters:
+      - $ref: "#/components/parameters/OrderId"
+    get:
+      tags: [Users]
+      summary: Kendi sipariş detayım / faturam (authenticated — TÜM roller)
+      description: >
+        §customer-portal §2.1 — `/hesabim/siparislerim/{orderId}` fatura/kargo detay
+        ekranını besleyen uç. `Order.siteUserId = me` filtresiyle bulunur; başka bir
+        kullanıcının siparişi VEYA var olmayan bir id → **404** (403 DEĞİL — sipariş
+        id'sinin VARLIĞI dahi sızdırılmaz). `customerEmail` MASKELENMEZ,
+        `trackingNumber`/`shippingCarrier`/`shippedAt`/`deliveredAt` dahil tüm alanlar
+        döner. Modül guard'ı YOK (`GET /users/me/orders` ile AYNI §3 kararı). PDF
+        fatura/e-Arşiv üretimi KAPSAM DIŞIDIR (takip: `feature/order-invoice-pdf`).
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Order" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /users/me/addresses:
+    get:
+      tags: [Users]
+      summary: Adres defterimi listele (authenticated — TÜM roller)
+      description: >
+        §customer-portal §2.2 — sahiplik filtresi (`userId = me`), rol guard'ı YOK,
+        modül guard'ı YOK ("her zaman açık" sekme). Sayfalama YOK — üst sınır zaten
+        20 adres (bkz. `POST` 409). `seq asc` sıralı (oluşturulma sırası).
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/Address" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [Users]
+      summary: Yeni adres ekle (authenticated — TÜM roller)
+      description: >
+        Kullanıcı başına en fazla **20** adres — aşımda `409`. İlk adres OTOMATİK
+        varsayılandır. `isDefault: true` gönderilirse aynı kullanıcının diğer
+        adresleri tek transaction içinde `isDefault: false` yapılır (kısmi unique
+        index KULLANILMAZ, bkz. plan §2.2).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateAddressRequest" }
+      responses:
+        "201":
+          description: Oluşturuldu
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Address" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409":
+          description: "20 adres sınırı aşıldı (`error.code: CONFLICT`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /users/me/addresses/{addressId}:
+    parameters:
+      - $ref: "#/components/parameters/AddressId"
+    patch:
+      tags: [Users]
+      summary: Adresimi güncelle (authenticated — TÜM roller)
+      description: >
+        Başkasının `addressId`'siyle çağrılırsa **404** (403 DEĞİL). Kısmi güncelleme
+        — yalnızca gönderilen alanlar değişir. `isDefault: true` gönderilirse diğer
+        adresler `isDefault: false` yapılır (bkz. `POST` ile AYNI transaction kuralı).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateAddressRequest" }
+      responses:
+        "200":
+          description: Güncellendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Address" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+    delete:
+      tags: [Users]
+      summary: Adresimi sil (authenticated — TÜM roller)
+      description: >
+        Başkasının `addressId`'siyle çağrılırsa **404**. Silinen adres varsayılansa,
+        `seq` en küçük kalan adres OTOMATİK varsayılan olur (kalan adres yoksa hiçbir
+        şey yapılmaz).
+      responses:
+        "204": { description: Silindi }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /users/me/wishlist:
+    get:
+      tags: [Users]
+      summary: Favori ürünlerimi listele (authenticated — TÜM roller)
+      description: >
+        §customer-portal §2.3 — `requireModuleEnabled("products")`: `products` modülü
+        kapalıyken **404** döner (favoriler türetilmiş/katalog-bağımlı veridir,
+        siparişlerin AKSİNE — bkz. plan §3). Yalnızca GÖRÜNÜR ürünler döner
+        (`status: PUBLISHED`, `deletedAt: null`); silinmiş/taslak ürünün favori
+        satırı DB'de kalır ama listede/sayaçta görünmez (yeniden yayınlanırsa favori
+        geri gelir). `seq desc` sıralı (en son eklenen önce).
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/WishlistItem" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      tags: [Users]
+      summary: Ürünü favorilere ekle (authenticated — TÜM roller)
+      description: >
+        `requireModuleEnabled("products")`. Ürün yoksa/`PUBLISHED` değilse **404**.
+        Ürün zaten favorideyse **200** ile mevcut kayıt döner (İDEMPOTENT — 409
+        DEĞİL, kalp ikonuna iki kez basmak hata değildir). Kullanıcı başına en fazla
+        **100** favori — aşımda `409`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AddWishlistItemRequest" }
+      responses:
+        "200":
+          description: "Zaten favorideydi (İDEMPOTENT)"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/WishlistItem" }
+        "201":
+          description: Favorilere eklendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/WishlistItem" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: "Modül kapalı VEYA ürün yok/yayında değil"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "409":
+          description: "100 favori sınırı aşıldı (`error.code: CONFLICT`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /users/me/wishlist/{productId}:
+    parameters:
+      - $ref: "#/components/parameters/ProductId"
+    delete:
+      tags: [Users]
+      summary: Ürünü favorilerimden çıkar (authenticated — TÜM roller)
+      description: >
+        `requireModuleEnabled("products")`. Anahtar `productId`'dir
+        (`wishlistItemId` DEĞİL) — ön yüz ürün kartında elinde `productId` tutar.
+        Kayıt yoksa da **204** döner (İDEMPOTENT).
+      responses:
+        "204": { description: Favorilerden çıkarıldı (kayıt yoksa da) }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /users/me:
     get:
@@ -5743,10 +5955,12 @@ paths:
       tags: [Orders]
       summary: Sipariş durumunu değiştir (yalnızca SiteRole=ADMIN)
       description: >
-        **Yalnızca İKİ geçişe izin verilir:** `PAID -> FULFILLED` (kargoya
-        verildi/teslim edildi) ve `PENDING -> CANCELLED` (admin ödeme beklenmeden
-        manuel iptal eder). Başka HER durum kombinasyonu (ör. `FAILED -> FULFILLED`,
-        `CANCELLED -> PAID`) `409 CONFLICT` ile reddedilir.
+        **İzin verilen geçişler:** `PENDING -> CANCELLED` (admin ödeme beklenmeden
+        manuel iptal eder), `PAID -> SHIPPED` (kargo takip no'suyla, `trackingNumber`
+        ZORUNLU), `PAID -> FULFILLED` (dijital/kargosuz ürün akışı — `SHIPPED`
+        atlanabilir) ve `SHIPPED -> FULFILLED` (teslim edildi). Başka HER durum
+        kombinasyonu (ör. `FAILED -> FULFILLED`, `CANCELLED -> PAID`) `409 CONFLICT`
+        ile reddedilir.
 
 
         **Bu uç `-> REFUNDED` hedef durumunu KABUL ETMEZ** — manuel iade AYRI bir uçtan
@@ -5784,15 +5998,15 @@ paths:
       tags: [Orders]
       summary: Siparişi manuel iade et (yalnızca SiteRole=ADMIN)
       description: >
-        Yalnızca `PAID`/`FULFILLED` durumundaki siparişlerde çalışır — başka bir
-        durumdaysa VEYA `Order.stripePaymentIntentId` yoksa `409 CONFLICT`. **Gerçek
+        Yalnızca `PAID`/`SHIPPED`/`FULFILLED` durumundaki siparişlerde çalışır — başka
+        bir durumdaysa VEYA `Order.stripePaymentIntentId` yoksa `409 CONFLICT`. **Gerçek
         parayı Stripe üzerinden geri öder** (`stripe.refunds.create`,
         `stripePaymentIntentId` üzerinden) — yalnızca `Order.status`'u değiştirip
         parayı olduğu gibi bırakan "sahte" bir iade DEĞİLDİR.
 
 
         **Çifte iade / race koruması:** durum geçişi `updateMany({ where: { status: {
-        in: [PAID, FULFILLED] } } })` ile ATOMİK olarak "claim" edilir — iki eşzamanlı
+        in: [PAID, SHIPPED, FULFILLED] } } })` ile ATOMİK olarak "claim" edilir — iki eşzamanlı
         istekten yalnızca BİRİ Stripe'a gerçek iade isteği gönderebilir, diğeri
         `claim.count === 0` ile `409 CONFLICT` alır ve Stripe'a HİÇ gitmez. Ayrıca
         `stripe.refunds.create`'e siparişe göre DETERMİNİSTİK bir `idempotencyKey`
@@ -7187,6 +7401,11 @@ components:
       in: query
       required: false
       schema: { $ref: "#/components/schemas/OrderStatus" }
+    AddressId:
+      name: addressId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
     LocaleCode:
       name: code
       in: path
@@ -11314,17 +11533,22 @@ components:
     OrderStatus:
       description: >
         `Order.status` yaşam döngüsü — `PENDING` (checkout session açıldı, ödeme
-        bekleniyor) → `PAID` (webhook onayladı) → `FULFILLED` (admin elle işaretler).
-        `FAILED` = webhook'ta stok yetersiz çıktı (para alınmış olabilir, admin manuel
-        müdahale eder); `CANCELLED` = admin `PENDING`'ken elle iptal etti; `EXPIRED` =
-        Stripe Checkout Session'ı ödeme tamamlanmadan süresi doldu (webhook otomatik
+        bekleniyor) → `PAID` (webhook onayladı) → `SHIPPED` (admin kargo takip
+        no'suyla işaretler) → `FULFILLED` (teslim edildi/tamamlandı; `PAID`'den
+        DOĞRUDAN da ulaşılabilir — dijital/kargosuz ürün akışı). `DELIVERED` BİLİNÇLİ
+        OLARAK YOKTUR: `FULFILLED` zaten terminal başarı durumudur, ikisini birlikte
+        tutmak "hangisi bitmiş?" belirsizliği üretirdi (bkz.
+        `.claude/architect-scope-customer-portal.md` §6). `FAILED` = webhook'ta stok
+        yetersiz çıktı (para alınmış olabilir, admin manuel müdahale eder);
+        `CANCELLED` = admin `PENDING`'ken elle iptal etti; `EXPIRED` = Stripe
+        Checkout Session'ı ödeme tamamlanmadan süresi doldu (webhook otomatik
         işler). `REFUNDED` = admin `POST /admin/orders/{orderId}/refund` ile manuel
-        iade etti (yalnızca `PAID`/`FULFILLED` kaynak durumlardan ulaşılabilir, bkz.
-        ARCHITECTURE.md §10.9.3 "manuel iade akışı") — `PATCH
+        iade etti (yalnızca `PAID`/`SHIPPED`/`FULFILLED` kaynak durumlardan
+        ulaşılabilir, bkz. ARCHITECTURE.md §10.9.3 "manuel iade akışı") — `PATCH
         /admin/orders/{orderId}/status` bu uçtan HEDEF DEĞER OLARAK KABUL ETMEZ,
         yalnızca ayrı `refund` ucundan ulaşılır.
       type: string
-      enum: [PENDING, PAID, FAILED, CANCELLED, EXPIRED, REFUNDED, FULFILLED]
+      enum: [PENDING, PAID, SHIPPED, FAILED, CANCELLED, EXPIRED, REFUNDED, FULFILLED]
 
     OrderItem:
       type: object
@@ -11362,6 +11586,13 @@ components:
         totalCents: { type: integer }
         errorSummary: { type: string, nullable: true, description: "Yalnızca `status: FAILED` iken anlamlı (ör. `insufficient_stock`)." }
         paidAt: { type: string, format: date-time, nullable: true }
+        trackingNumber:
+          type: string
+          nullable: true
+          description: "Kargo takip numarası — `status: SHIPPED`'a geçişte ZORUNLU doldurulur (uygulama katmanı, bkz. `UpdateOrderStatusRequest`)."
+        shippingCarrier: { type: string, nullable: true, description: "ör. \"Yurtiçi Kargo\" — serbest metin, enum v1'de AÇILMAZ." }
+        shippedAt: { type: string, format: date-time, nullable: true, description: "`SHIPPED`'e İLK geçişte otomatik doldurulur (`paidAt` ile AYNI desen)." }
+        deliveredAt: { type: string, format: date-time, nullable: true, description: "`FULFILLED`'a İLK geçişte otomatik doldurulur." }
         createdAt: { type: string, format: date-time }
         items:
           type: array
@@ -11369,15 +11600,18 @@ components:
 
     UpdateOrderStatusRequest:
       description: >
-        `PATCH /admin/orders/{orderId}/status` gövdesi — yalnızca hedef durum olarak
-        `FULFILLED` (kaynak `PAID` olmalı) veya `CANCELLED` (kaynak `PENDING` olmalı)
-        kabul edilir; şema seviyesinde diğer `OrderStatus` değerleri (`REFUNDED` dahil)
-        zaten REDDEDİLİR (422). Kaynak/hedef eşleşmezse route handler `409 CONFLICT`
-        döner.
+        `PATCH /admin/orders/{orderId}/status` gövdesi — hedef durum olarak `SHIPPED`
+        (kaynak `PAID`), `FULFILLED` (kaynak `PAID` veya `SHIPPED`) veya `CANCELLED`
+        (kaynak `PENDING`) kabul edilir; şema seviyesinde diğer `OrderStatus` değerleri
+        (`REFUNDED` dahil) zaten REDDEDİLİR (422). Kaynak/hedef eşleşmezse route
+        handler `409 CONFLICT` döner. **`status: SHIPPED` iken `trackingNumber`
+        ZORUNLUDUR** (eksikse 422) — `shippingCarrier` her zaman opsiyoneldir.
       type: object
       required: [status]
       properties:
-        status: { type: string, enum: [FULFILLED, CANCELLED] }
+        status: { type: string, enum: [SHIPPED, FULFILLED, CANCELLED] }
+        trackingNumber: { type: string, minLength: 1, maxLength: 100 }
+        shippingCarrier: { type: string, minLength: 1, maxLength: 100 }
 
     RefundOrderRequest:
       description: >
@@ -11393,6 +11627,102 @@ components:
       type: object
       properties:
         nextCursor: { type: string, nullable: true }
+
+    # -------------------------------------------------------------------------
+    # Müşteri & E-Ticaret Alanı (Customer Portal) — bkz.
+    # `.claude/architect-scope-customer-portal.md` §2.2/§2.3 (bağlayıcı karar dokümanı).
+    # -------------------------------------------------------------------------
+
+    Address:
+      description: >
+        `/users/me/addresses*` DTO'su — sahiplik `userId = me` ile korunur, rol
+        guard'ı YOK. `Order` ile FK ile BAĞLI DEĞİLDİR (checkout adresi Stripe
+        tarafından toplanır, v1'de bu model onu ETKİLEMEZ — bkz. plan §5.1).
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string, example: "Ev", description: "Kullanıcı etiketi." }
+        fullName: { type: string }
+        phone: { type: string }
+        country: { type: string, example: "TR", description: "İki harfli ülke kodu." }
+        city: { type: string }
+        district: { type: string }
+        neighborhood: { type: string, nullable: true }
+        addressLine1: { type: string }
+        addressLine2: { type: string, nullable: true }
+        postalCode: { type: string, nullable: true }
+        isDefault:
+          type: boolean
+          description: "Kullanıcının en fazla BİR varsayılan adresi olabilir — bkz. `POST`/`PATCH` transaction kuralı."
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    CreateAddressRequest:
+      type: object
+      required: [title, fullName, phone, city, district, addressLine1]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 60 }
+        fullName: { type: string, minLength: 1, maxLength: 120 }
+        phone: { type: string, minLength: 7, maxLength: 20 }
+        country: { type: string, minLength: 2, maxLength: 2, default: "TR" }
+        city: { type: string, minLength: 1, maxLength: 100 }
+        district: { type: string, minLength: 1, maxLength: 100 }
+        neighborhood: { type: string, minLength: 1, maxLength: 100, nullable: true }
+        addressLine1: { type: string, minLength: 1, maxLength: 200 }
+        addressLine2: { type: string, minLength: 1, maxLength: 200, nullable: true }
+        postalCode: { type: string, minLength: 1, maxLength: 20, nullable: true }
+        isDefault:
+          type: boolean
+          default: false
+          description: "İlk adres bu alan gönderilmese de OTOMATİK varsayılan olur."
+
+    UpdateAddressRequest:
+      description: Kısmi güncelleme — TÜM alanlar opsiyoneldir.
+      type: object
+      properties:
+        title: { type: string, minLength: 1, maxLength: 60 }
+        fullName: { type: string, minLength: 1, maxLength: 120 }
+        phone: { type: string, minLength: 7, maxLength: 20 }
+        country: { type: string, minLength: 2, maxLength: 2 }
+        city: { type: string, minLength: 1, maxLength: 100 }
+        district: { type: string, minLength: 1, maxLength: 100 }
+        neighborhood: { type: string, minLength: 1, maxLength: 100, nullable: true }
+        addressLine1: { type: string, minLength: 1, maxLength: 200 }
+        addressLine2: { type: string, minLength: 1, maxLength: 200, nullable: true }
+        postalCode: { type: string, minLength: 1, maxLength: 20, nullable: true }
+        isDefault: { type: boolean }
+
+    WishlistItemProduct:
+      description: >
+        `CartItem.product` İLE AYNI hafif özet — tam `Product` DEĞİLDİR (`author`/
+        `seoScore`/`translations` gibi yönetim alanları favori kartında GEREKMEZ).
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        slug: { type: string }
+        coverImageUrl: { type: string, nullable: true }
+        priceCents: { type: integer }
+        discountPriceCents: { type: integer, nullable: true }
+        currency: { type: string }
+        stockQuantity: { type: integer }
+
+    WishlistItem:
+      description: >
+        `/users/me/wishlist*` DTO'su — sahiplik `userId = me`, `requireModuleEnabled("products")`
+        ile korunur (modül kapalıyken 404, bkz. `Modules` tag'i).
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        productId: { type: string, format: uuid }
+        product: { $ref: "#/components/schemas/WishlistItemProduct" }
+        createdAt: { type: string, format: date-time }
+
+    AddWishlistItemRequest:
+      type: object
+      required: [productId]
+      properties:
+        productId: { type: string, format: uuid }
 
     # -------------------------------------------------------------------------
     # §10.13 Üçüncü Parti Entegrasyon — API Anahtarları
@@ -11806,6 +12136,11 @@ components:
         taxCents: { type: integer }
         totalCents: { type: integer }
         paidAt: { type: string, format: date-time, nullable: true }
+        trackingNumber:
+          type: string
+          nullable: true
+          description: "§customer-portal §2.4 — kargo takip numarası, `Order.trackingNumber` ile AYNI."
+        shippingCarrier: { type: string, nullable: true }
         createdAt: { type: string, format: date-time }
         items:
           type: array

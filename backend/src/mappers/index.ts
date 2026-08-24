@@ -34,6 +34,8 @@ import type {
   CartItem,
   Order,
   OrderItem,
+  Address,
+  WishlistItem,
   SiteAppearance,
   SiteCustomCode,
   Locale,
@@ -89,6 +91,8 @@ import type {
   CartItemDto,
   OrderDto,
   OrderItemDto,
+  AddressDto,
+  WishlistItemDto,
   SiteAppearanceDto,
   PublicSiteAppearanceDto,
   SiteCustomCodeDto,
@@ -760,8 +764,66 @@ export function toOrderDto(order: OrderWithItems): OrderDto {
     totalCents: order.totalCents,
     errorSummary: order.errorSummary,
     paidAt: order.paidAt ? order.paidAt.toISOString() : null,
+    trackingNumber: order.trackingNumber,
+    shippingCarrier: order.shippingCarrier,
+    shippedAt: order.shippedAt ? order.shippedAt.toISOString() : null,
+    deliveredAt: order.deliveredAt ? order.deliveredAt.toISOString() : null,
     createdAt: order.createdAt.toISOString(),
     items: order.items.map(toOrderItemDto),
+  };
+}
+
+// ---------- Müşteri & E-Ticaret Alanı (Customer Portal) — bkz.
+// `.claude/architect-scope-customer-portal.md` §2.2/§2.3.
+
+export function toAddressDto(address: Address): AddressDto {
+  return {
+    id: address.id,
+    title: address.title,
+    fullName: address.fullName,
+    phone: address.phone,
+    country: address.country,
+    city: address.city,
+    district: address.district,
+    neighborhood: address.neighborhood,
+    addressLine1: address.addressLine1,
+    addressLine2: address.addressLine2,
+    postalCode: address.postalCode,
+    isDefault: address.isDefault,
+    createdAt: address.createdAt.toISOString(),
+    updatedAt: address.updatedAt.toISOString(),
+  };
+}
+
+type WishlistItemWithProduct = WishlistItem & {
+  product: {
+    id: string;
+    title: string;
+    slug: string;
+    coverMedia: Media | null;
+    priceCents: number;
+    discountPriceCents: number | null;
+    currency: string;
+    stockQuantity: number;
+  };
+};
+
+/** `WishlistItemProductSchema` ile AYNI hafif seçim — `toCartItemDto`'daki `coverImageUrl` çözümlemesiyle AYNI desen. */
+export function toWishlistItemDto(item: WishlistItemWithProduct): WishlistItemDto {
+  return {
+    id: item.id,
+    productId: item.productId,
+    product: {
+      id: item.product.id,
+      title: item.product.title,
+      slug: item.product.slug,
+      coverImageUrl: item.product.coverMedia ? absolutizeMediaUrl(item.product.coverMedia.url) : null,
+      priceCents: item.product.priceCents,
+      discountPriceCents: item.product.discountPriceCents,
+      currency: item.product.currency,
+      stockQuantity: item.product.stockQuantity,
+    },
+    createdAt: item.createdAt.toISOString(),
   };
 }
 

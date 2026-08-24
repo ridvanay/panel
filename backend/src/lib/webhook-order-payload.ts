@@ -32,6 +32,8 @@ export async function buildWebhookOrderPayload(
     taxCents: order.taxCents,
     totalCents: order.totalCents,
     paidAt: order.paidAt ? order.paidAt.toISOString() : null,
+    trackingNumber: order.trackingNumber,
+    shippingCarrier: order.shippingCarrier,
     createdAt: order.createdAt.toISOString(),
     items: order.items.map((item) => ({
       productSlug: item.productId ? (slugById.get(item.productId) ?? null) : null,

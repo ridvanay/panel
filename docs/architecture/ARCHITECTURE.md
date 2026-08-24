@@ -5665,6 +5665,13 @@ panel rolü). `role: VIEWER` artık şema doğrulamasında **422**'dir.
 - Rol etiketleri: `Süper Yönetici` / `Yönetici` / `Editör` / `Müşteri` / `Standart Üye`.
   Eski `Yazar (Standart Düzenleyici)` / `İzleyici` etiketleri KALDIRILIR.
 - Yeni ön yüz rotaları: `/hesabim` (5 rol) ve `/siparislerim` (CUSTOMER).
+  > **GÜNCELLENDİ (2026-08-24 — Müşteri & E-Ticaret Alanı kapsam kararı).** `/hesabim` artık TEK sayfa
+  > değil, sekmeli bir kabuktur: `/hesabim/profil`, `/hesabim/adreslerim`, `/hesabim/siparislerim`,
+  > `/hesabim/favorilerim` (`/hesabim` → `/hesabim/profil`'e yönlenir). Üst seviye `/siparislerim`
+  > **kalıcı yönlendirme** ile `/hesabim/siparislerim`'e taşınmıştır (geriye dönük uyumluluk).
+  > Sipariş/favori sekmelerinin görünürlüğü artık `role === "CUSTOMER"` koşuluna DEĞİL,
+  > `products` modülünün açık olmasına bağlıdır (§10.21.7'nin "rol değil sahiplik" ilkesiyle
+  > tutarlı). Bağlayıcı kaynak: `.claude/architect-scope-customer-portal.md`.
 
 #### 10.21.10 Kapsam dışı (bilinçli)
 

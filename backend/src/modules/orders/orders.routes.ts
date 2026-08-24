@@ -25,20 +25,26 @@ import {
   UpdateOrderStatusRequestSchema,
 } from "./orders.schemas";
 
-/** Manuel iade ile hedeflenebilecek kaynak durumlar — bkz. orders.routes.ts::server.post("/:orderId/refund"). */
-const REFUNDABLE_STATUSES: OrderStatus[] = ["PAID", "FULFILLED"];
+/**
+ * Manuel iade ile hedeflenebilecek kaynak durumlar — bkz. orders.routes.ts::server.post("/:orderId/refund").
+ * `.claude/architect-scope-customer-portal.md` §6 — `SHIPPED` eklendi (kargoya verilmiş ama
+ * henüz teslim edilmemiş bir sipariş de iade edilebilmelidir).
+ */
+const REFUNDABLE_STATUSES: OrderStatus[] = ["PAID", "SHIPPED", "FULFILLED"];
 
 const WITH_ITEMS = { items: true } as const;
 
 /**
- * `PENDING -> CANCELLED` ve `PAID -> FULFILLED` DIŞINDA hiçbir geçişe izin verilmez (bkz.
- * orders.schemas.ts::UpdateOrderStatusRequestSchema notu) — ör. `FAILED`/`EXPIRED`/`REFUNDED`
- * durumundaki bir siparişin durumu bu uçtan DEĞİŞTİRİLEMEZ (iade/manuel düzeltme bu fazın
- * kapsamı DIŞINDA, bkz. görev notu).
+ * `.claude/architect-scope-customer-portal.md` §6 — geçiş tablosu (bkz.
+ * orders.schemas.ts::UpdateOrderStatusRequestSchema notu): `PENDING -> CANCELLED`,
+ * `PAID -> SHIPPED|FULFILLED`, `SHIPPED -> FULFILLED`. Listede OLMAYAN bir kaynak durum
+ * (ör. `FAILED`/`EXPIRED`/`REFUNDED`) hiçbir hedefe İZİN VERMEZ — bu uçtan DEĞİŞTİRİLEMEZ
+ * (iade/manuel düzeltme bu fazın kapsamı DIŞINDA, bkz. görev notu).
  */
-const ALLOWED_TRANSITIONS: Record<string, OrderStatus> = {
-  PAID: "FULFILLED",
-  PENDING: "CANCELLED",
+const ALLOWED_TRANSITIONS: Partial<Record<OrderStatus, OrderStatus[]>> = {
+  PENDING: ["CANCELLED"],
+  PAID: ["SHIPPED", "FULFILLED"],
+  SHIPPED: ["FULFILLED"],
 };
 
 /**
@@ -107,14 +113,22 @@ export async function ordersRoutes(app: FastifyInstance) {
       const existing = await app.prisma.order.findUnique({ where: { id: request.params.orderId } });
       if (!existing) throw new NotFoundError("Sipariş bulunamadı.");
 
-      const { status: targetStatus } = request.body;
-      if (ALLOWED_TRANSITIONS[existing.status] !== targetStatus) {
+      const { status: targetStatus, trackingNumber, shippingCarrier } = request.body;
+      if (!(ALLOWED_TRANSITIONS[existing.status] ?? []).includes(targetStatus)) {
         throw new ConflictError(`"${existing.status}" durumundaki bir sipariş "${targetStatus}" durumuna geçirilemez.`);
       }
 
       const order = await app.prisma.order.update({
         where: { id: existing.id },
-        data: { status: targetStatus },
+        data: {
+          status: targetStatus,
+          ...(trackingNumber !== undefined ? { trackingNumber } : {}),
+          ...(shippingCarrier !== undefined ? { shippingCarrier } : {}),
+          // `paidAt` ile AYNI desen — ilgili duruma İLK geçişte doldurulur, tekrar geçilse
+          // (teorik olarak bu route'tan mümkün değil ama savunmacı) ÜZERİNE YAZILMAZ.
+          ...(targetStatus === "SHIPPED" && !existing.shippedAt ? { shippedAt: new Date() } : {}),
+          ...(targetStatus === "FULFILLED" && !existing.deliveredAt ? { deliveredAt: new Date() } : {}),
+        },
         include: WITH_ITEMS,
       });
 

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChevronDown, Receipt, ShoppingCart, User as UserIcon } from "lucide-react";
+import { ChevronDown, Heart, Receipt, ShoppingCart, User as UserIcon } from "lucide-react";
 import { useCartOptional } from "@/context/cart-context";
 import { useAuthOptional } from "@/context/auth-context";
 import {
@@ -29,6 +29,12 @@ interface SiteHeaderProps {
   /** §9 frontend-agent madde 4 — verilmezse dil değiştirici gösterilmez (ör. admin canlı önizleme). */
   locales?: Locale[];
   activeLocale?: Locale;
+  /**
+   * §customer-portal §4.4 — `false` iken sepet ikonu, favori ikonu ve hesap menüsündeki
+   * "Siparişlerim" öğesi render EDİLMEZ. Verilmezse `true` kabul edilir (geriye dönük
+   * uyumluluk — admin canlı önizleme/unit testler bu prop'u vermez).
+   */
+  productsModuleEnabled?: boolean;
 }
 
 /**
@@ -75,6 +81,7 @@ export function SiteHeader({
   buttonStyle = "SOLID",
   locales,
   activeLocale,
+  productsModuleEnabled = true,
 }: SiteHeaderProps) {
   // `useCartOptional`: bu bileşen `admin/navigation/page.tsx`'teki canlı önizlemede
   // `CartProvider` OLMADAN da render edilir (admin layout'unda sepet KASTEN yok) — o durumda
@@ -177,9 +184,10 @@ export function SiteHeader({
           )}
           {locales && activeLocale && <LanguageSwitcher locales={locales} activeLocale={activeLocale} />}
 
-          {/* §10.21 §8.3 — `/hesabim` HERKESE (5 rol) açık; `/siparislerim` bağlantısı yalnızca
-              `role === "CUSTOMER"` iken gösterilir (SUNUM kararı, yetki kararı DEĞİL — bkz.
-              `app/[lang]/(site)/siparislerim/page.tsx` üst notu). */}
+          {/* §10.21 §8.3 — `/hesabim` HERKESE (5 rol) açık. `/hesabim/siparislerim` bağlantısı
+              `products` modülü açıkken gösterilir (SUNUM kararı, yetki kararı DEĞİL —
+              `role === "CUSTOMER"` koşulu §10.21.7 gereği KALDIRILDI, bkz.
+              `.claude/architect-scope-customer-portal.md` §4.4). */}
           {status === "authenticated" && user ? (
             <DropdownMenu>
               <DropdownMenuTrigger
@@ -199,8 +207,8 @@ export function SiteHeader({
                   <UserIcon className="h-4 w-4" aria-hidden="true" />
                   Hesabım
                 </DropdownMenuItem>
-                {user.role === "CUSTOMER" && (
-                  <DropdownMenuItem render={<Link href={localize("/siparislerim")} />}>
+                {productsModuleEnabled && (
+                  <DropdownMenuItem render={<Link href={localize("/hesabim/siparislerim")} />}>
                     <Receipt className="h-4 w-4" aria-hidden="true" />
                     Siparişlerim
                   </DropdownMenuItem>
@@ -218,21 +226,35 @@ export function SiteHeader({
             </Link>
           )}
 
-          <Link
-            href={localize("/cart")}
-            aria-label={`Sepet, ${itemCount} ürün`}
-            className="relative inline-flex h-9 w-9 items-center justify-center rounded-lg text-foreground/70 transition-colors hover:bg-surface-muted hover:text-foreground"
-          >
-            <ShoppingCart className="h-5 w-5" />
-            {itemCount > 0 && (
-              <span
-                aria-hidden="true"
-                className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--site-button)] px-1 text-[10px] font-semibold text-[var(--site-button-text)]"
-              >
-                {itemCount > 99 ? "99+" : itemCount}
-              </span>
-            )}
-          </Link>
+          {/* design-notes-customer-portal.md §6 — rozet (adet sayacı) BİLEREK yok; favori adedi
+              işlem hızını etkilemez. */}
+          {productsModuleEnabled && status === "authenticated" && (
+            <Link
+              href={localize("/hesabim/favorilerim")}
+              aria-label="Favorilerim"
+              className="relative inline-flex h-9 w-9 items-center justify-center rounded-lg text-foreground/70 transition-colors hover:bg-surface-muted hover:text-foreground"
+            >
+              <Heart className="h-5 w-5" />
+            </Link>
+          )}
+
+          {productsModuleEnabled && (
+            <Link
+              href={localize("/cart")}
+              aria-label={`Sepet, ${itemCount} ürün`}
+              className="relative inline-flex h-9 w-9 items-center justify-center rounded-lg text-foreground/70 transition-colors hover:bg-surface-muted hover:text-foreground"
+            >
+              <ShoppingCart className="h-5 w-5" />
+              {itemCount > 0 && (
+                <span
+                  aria-hidden="true"
+                  className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--site-button)] px-1 text-[10px] font-semibold text-[var(--site-button-text)]"
+                >
+                  {itemCount > 99 ? "99+" : itemCount}
+                </span>
+              )}
+            </Link>
+          )}
         </div>
       </nav>
     </header>

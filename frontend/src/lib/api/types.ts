@@ -1061,7 +1061,12 @@ export interface CreateCartCheckoutSessionRequest {
   customerName?: string;
 }
 
-export type OrderStatus = "PENDING" | "PAID" | "FAILED" | "CANCELLED" | "EXPIRED" | "REFUNDED" | "FULFILLED";
+/**
+ * §customer-portal §6 — `PENDING` → `PAID` → `SHIPPED` (admin kargo takip no'suyla işaretler) →
+ * `FULFILLED` (`PAID`'den DOĞRUDAN da ulaşılabilir — dijital/kargosuz ürün akışı). `DELIVERED`
+ * BİLİNÇLİ OLARAK YOKTUR (bkz. `.claude/architect-scope-customer-portal.md` §6).
+ */
+export type OrderStatus = "PENDING" | "PAID" | "SHIPPED" | "FAILED" | "CANCELLED" | "EXPIRED" | "REFUNDED" | "FULFILLED";
 
 export interface OrderItem {
   id: string;
@@ -1087,18 +1092,119 @@ export interface Order {
   totalCents: number;
   errorSummary: string | null;
   paidAt: string | null;
+  /** Kargo takip numarası — `status: SHIPPED`'a geçişte ZORUNLU doldurulur (uygulama katmanı). */
+  trackingNumber: string | null;
+  /** ör. "Yurtiçi Kargo" — serbest metin, enum v1'de AÇILMAZ. */
+  shippingCarrier: string | null;
+  /** `SHIPPED`'e İLK geçişte otomatik doldurulur (`paidAt` ile AYNI desen). */
+  shippedAt: string | null;
+  /** `FULFILLED`'a İLK geçişte otomatik doldurulur. */
+  deliveredAt: string | null;
   createdAt: string;
   items: OrderItem[];
 }
 
-/** `PATCH /admin/orders/:orderId/status` — sadece `PENDING→CANCELLED`, `PAID→FULFILLED` izinli. */
+/**
+ * `PATCH /admin/orders/:orderId/status` — hedef durum olarak `SHIPPED`/`FULFILLED`/`CANCELLED`
+ * kabul edilir (bkz. `ALLOWED_TRANSITIONS`, `.claude/architect-scope-customer-portal.md` §6).
+ */
 export interface UpdateOrderStatusRequest {
   status: OrderStatus;
+  /** `status: SHIPPED` iken ZORUNLU (eksikse 422). */
+  trackingNumber?: string;
+  shippingCarrier?: string;
 }
 
-/** `POST /admin/orders/:orderId/refund` — sadece `PAID`/`FULFILLED` siparişler için, aksi halde 409. */
+/** `POST /admin/orders/:orderId/refund` — sadece `PAID`/`SHIPPED`/`FULFILLED` siparişler için, aksi halde 409. */
 export interface RefundOrderRequest {
   reason?: string;
+}
+
+/**
+ * §customer-portal §2.2/§5.1 — `/users/me/addresses*` DTO'su. Sahiplik `userId = me` ile
+ * korunur; rol/modül guard'ı YOK ("her zaman açık" sekme). `Order` ile FK ile BAĞLI DEĞİLDİR
+ * (checkout adresi Stripe tarafından toplanır, v1'de bu model onu ETKİLEMEZ — bkz.
+ * `.claude/architect-scope-customer-portal.md` §5.1).
+ */
+export interface Address {
+  id: string;
+  title: string;
+  fullName: string;
+  phone: string;
+  /** İki harfli ülke kodu, varsayılan "TR". */
+  country: string;
+  city: string;
+  district: string;
+  neighborhood: string | null;
+  addressLine1: string;
+  addressLine2: string | null;
+  postalCode: string | null;
+  /** Kullanıcının en fazla BİR varsayılan adresi olabilir. */
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** `POST /users/me/addresses` gövdesi — `country` verilmezse backend "TR" varsayar. */
+export interface CreateAddressRequest {
+  title: string;
+  fullName: string;
+  phone: string;
+  country?: string;
+  city: string;
+  district: string;
+  neighborhood?: string | null;
+  addressLine1: string;
+  addressLine2?: string | null;
+  postalCode?: string | null;
+  /** İlk adres bu alan gönderilmese de OTOMATİK varsayılan olur. */
+  isDefault?: boolean;
+}
+
+/** `PATCH /users/me/addresses/{addressId}` gövdesi — kısmi güncelleme, TÜM alanlar opsiyonel. */
+export interface UpdateAddressRequest {
+  title?: string;
+  fullName?: string;
+  phone?: string;
+  country?: string;
+  city?: string;
+  district?: string;
+  neighborhood?: string | null;
+  addressLine1?: string;
+  addressLine2?: string | null;
+  postalCode?: string | null;
+  isDefault?: boolean;
+}
+
+/**
+ * §customer-portal §2.3 — `CartItem.product` ile AYNI hafif özet; tam `Product` DEĞİLDİR
+ * (`author`/`seoScore`/`translations` gibi yönetim alanları favori kartında gerekmez).
+ */
+export interface WishlistItemProduct {
+  id: string;
+  title: string;
+  slug: string;
+  coverImageUrl: string | null;
+  priceCents: number;
+  discountPriceCents: number | null;
+  currency: string;
+  stockQuantity: number;
+}
+
+/**
+ * §customer-portal §2.3 — `/users/me/wishlist*` DTO'su. Sahiplik `userId = me`,
+ * `requireModuleEnabled("products")` ile korunur (modül kapalıyken 404).
+ */
+export interface WishlistItem {
+  id: string;
+  productId: string;
+  product: WishlistItemProduct;
+  createdAt: string;
+}
+
+/** `POST /users/me/wishlist` gövdesi. */
+export interface AddWishlistItemRequest {
+  productId: string;
 }
 
 /**

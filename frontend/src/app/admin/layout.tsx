@@ -3,7 +3,9 @@
 import { useEffect, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
+import { toast } from "sonner";
 import { useAuth } from "@/context/auth-context";
+import type { SiteRole } from "@/lib/api/types";
 import { AccentProvider } from "@/context/accent-context";
 import { ModulesProvider } from "@/context/modules-context";
 import { CommandPaletteProvider } from "@/context/command-palette-context";
@@ -15,6 +17,9 @@ import { KeyboardShortcutsModal } from "@/components/admin/keyboard-shortcuts-mo
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
 
+/** §10.21 §7.4 — panel erişimi olan roller; backend `requirePanelAccess()` ile AYNI küme. */
+const ROLES_PANEL = new Set<SiteRole>(["ADMIN", "MANAGER", "EDITOR"]);
+
 export default function AdminLayout({ children }: { children: ReactNode }) {
   const { status, user } = useAuth();
   const router = useRouter();
@@ -25,6 +30,17 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
       router.replace(`/login?next=${encodeURIComponent(pathname)}`);
     }
   }, [status, router, pathname]);
+
+  // §customer-portal §7.1 — backend'de `requirePanelAccess()` zaten CUSTOMER/USER'ı 403'ler
+  // (`admin-panel-guard-route-table.test.ts`), ama frontend'de rol kontrolü YOKTU: giriş yapmış
+  // bir CUSTOMER/USER `/admin`'e giderse admin kabuğu render edilip her panel isteği 403
+  // dönüyordu (kırık ekran + gürültü). Derinlemesine savunma — sunucu kararının YERİNE geçmez.
+  useEffect(() => {
+    if (status === "authenticated" && user && !ROLES_PANEL.has(user.role)) {
+      toast.error("Bu alana erişim yetkiniz yok, hesap sayfanıza yönlendirildiniz.");
+      router.replace("/hesabim/profil");
+    }
+  }, [status, user, router]);
 
   // §10.21 §8.4 — gösterge paneli (`/admin`) `GET /admin/stats/*` çağırır ve EDITOR orada 403
   // alır (§5.3 satır 19: views/breakdown/live-visitors yalnızca ADMIN/MANAGER). EDITOR bu
@@ -41,8 +57,9 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   // guard olmadan `AdminDashboardPage` en az bir kez render olup `/admin/stats/*` isteklerini
   // ateşlerdi.
   const redirectingEditorFromDashboard = status === "authenticated" && user?.role === "EDITOR" && pathname === "/admin";
+  const redirectingNonPanelRole = status === "authenticated" && user !== null && !ROLES_PANEL.has(user.role);
 
-  if (status !== "authenticated" || redirectingEditorFromDashboard) {
+  if (status !== "authenticated" || redirectingEditorFromDashboard || redirectingNonPanelRole) {
     return (
       <main className="flex min-h-screen items-center justify-center">
         <Spinner className="h-6 w-6 text-primary" />

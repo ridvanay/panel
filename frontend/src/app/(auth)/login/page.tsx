@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
+import { isSafeInternalPath } from "@/lib/safe-redirect";
 
 interface TwoFactorChallenge {
   challengeToken: string;
@@ -29,7 +30,7 @@ function LoginForm() {
   const [submitting, setSubmitting] = useState(false);
 
   function goToDestination() {
-    router.replace(next && next.startsWith("/") ? next : "/dashboard");
+    router.replace(isSafeInternalPath(next) ? next : "/dashboard");
   }
 
   async function handleSubmit(event: FormEvent) {

@@ -172,9 +172,18 @@ enum ExportJobStatus {
   FAILED
 }
 
+// Değer sırası bağlayıcıdır (bkz. .claude/architect-scope-customer-portal.md §6, bağlayıcı
+// karar dokümanı). `SHIPPED` PAID ile FULFILLED arasına eklendi — `DELIVERED` EKLENMEDİ:
+// FULFILLED zaten terminal başarı durumudur, ikisini birlikte tutmak "hangisi bitmiş?"
+// belirsizliği üretirdi. FULFILLED'ın görünen (TR) etiketi "Teslim Edildi" olarak
+// yeniden adlandırıldı (tek sözlük: frontend/src/lib/order-status.ts) — enum DEĞERİ
+// DEĞİŞMEDİ, yalnızca etiket. Bu değer kendi izole migration'ında eklendi (ALTER TYPE
+// ... ADD VALUE PostgreSQL'de kendi transaction'ı dışında kullanılamaz) — bkz.
+// migrations/*_add_order_status_shipped.
 enum OrderStatus {
   PENDING
   PAID
+  SHIPPED
   FAILED
   CANCELLED
   EXPIRED
@@ -289,6 +298,10 @@ model User {
   // kullanıcısı (ör. ADMIN test amaçlı) teorik olarak sepet/sipariş sahibi olabilir.
   carts                  Cart[]               @relation("CartOwner")
   orders                 Order[]              @relation("OrderCustomer")
+  // Müşteri & E-Ticaret Alanı (Customer Portal) — bkz.
+  // .claude/architect-scope-customer-portal.md §5.1/§5.2.
+  addresses              Address[]            @relation("AddressOwner")
+  wishlistItems          WishlistItem[]       @relation("WishlistOwner")
   // §10.12.6 Özel CSS/JS denetim izi — SiteCustomCode.cssUpdatedById/jsUpdatedById
   // için zorunlu karşı-ilişki alanları (ContentRevision/EmailTemplate ile AYNI desen).
   cssCodeUpdates         SiteCustomCode[]     @relation("SiteCustomCodeCssUpdater")
@@ -644,13 +657,16 @@ model Product {
   createdAt          DateTime   @default(now())
   updatedAt          DateTime   @updatedAt
 
-  category   ProductCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  coverMedia Media?           @relation("ProductCoverMedia", fields: [coverMediaId], references: [id], onDelete: SetNull)
-  author     User?            @relation("ProductAuthor", fields: [authorId], references: [id], onDelete: SetNull)
-  images     ProductImage[]
+  category      ProductCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  coverMedia    Media?           @relation("ProductCoverMedia", fields: [coverMediaId], references: [id], onDelete: SetNull)
+  author        User?            @relation("ProductAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  images        ProductImage[]
   // §10.9.3 Sepet + Stripe Checkout — bkz. Cart/Order modelleri altındaki not.
-  cartItems  CartItem[]       @relation("CartItemProduct")
-  orderItems OrderItem[]      @relation("OrderItemProduct")
+  cartItems     CartItem[]       @relation("CartItemProduct")
+  orderItems    OrderItem[]      @relation("OrderItemProduct")
+  // Müşteri & E-Ticaret Alanı (Customer Portal) — bkz.
+  // .claude/architect-scope-customer-portal.md §5.2.
+  wishlistItems WishlistItem[]   @relation("WishlistItemProduct")
 
   @@index([categoryId])
   @@index([deletedAt, status])
@@ -1656,6 +1672,14 @@ model Order {
   // Yalnızca ödeme/işlemi tamamıyla başarısız kılan hata (ImportJob.errorSummary ile AYNI desen).
   errorSummary            String?
   paidAt                  DateTime?
+  // §customer-portal §5.3 — kargo alanları. `trackingNumber`: SHIPPED'a geçişte ZORUNLU
+  // (uygulama katmanı, backend-agent doğrular — DB'de CHECK constraint YOK).
+  // `shippingCarrier`: serbest metin, enum v1'de AÇILMAZ (kargo firması listesi site
+  // sahibine göre değişir). `shippedAt`/`deliveredAt`: `paidAt` ile AYNI desen.
+  trackingNumber          String?
+  shippingCarrier         String?
+  shippedAt               DateTime?
+  deliveredAt             DateTime?
   createdAt               DateTime    @default(now())
   updatedAt               DateTime    @updatedAt
 
@@ -1684,6 +1708,67 @@ model OrderItem {
   @@index([orderId])
   @@index([productId])
   @@map("order_items")
+}
+
+// Müşteri & E-Ticaret Alanı (Customer Portal) — bkz. .claude/architect-scope-customer-portal.md
+// §5.1 (bağlayıcı karar dokümanı). Adres defteri SALT müşteri profiline aittir. `Order` ile FK
+// ile BAĞLANMAZ: sipariş anındaki adres, `OrderItem`'daki fiyat/başlık snapshot mantığıyla aynı
+// gerekçeyle (adres sonradan değişse/silinse bile sipariş bozulmasın) ileride `Order`'a
+// DENORMALİZE kopyalanacaktır — v1'de checkout adresi Stripe tarafından toplanır, bu model onu
+// ETKİLEMEZ (bkz. kapsam dışı: feature/checkout-address-from-book).
+model Address {
+  id           String   @id @default(uuid())
+  // Sıralı, dış dünyaya sızmayan iç sayaç — cursor sayfalamada stabil sıralama ve "varsayılan
+  // adres silinince en küçük seq'li kalan adres varsayılan olur" kuralı için (bkz. §2.2).
+  seq          Int      @unique @default(autoincrement())
+  userId       String
+  // `onDelete: Cascade` (bilinçli, `Order.siteUser`'ın `SetNull`'undan FARKLI): adres saf
+  // kişisel veridir, muhasebe değeri YOKTUR; kullanıcı kalıcı silindiğinde birlikte gitmesi
+  // KVKK veri minimizasyonuyla uyumludur. Sipariş ise mali kayıttır, bu yüzden orada SetNull
+  // doğrudur — bu asimetri kasıtlıdır.
+  user         User     @relation("AddressOwner", fields: [userId], references: [id], onDelete: Cascade)
+  title        String // "Ev", "İş" — kullanıcı etiketi
+  fullName     String
+  phone        String
+  country      String   @default("TR")
+  city         String
+  district     String
+  neighborhood String?
+  addressLine1 String
+  addressLine2 String?
+  postalCode   String?
+  isDefault    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Kullanıcı başına en fazla 20 adres — bu sınır backend-agent'ın route seviyesinde
+  // uyguladığı bir İŞ KURALIDIR (409), DB'de CHECK/trigger constraint YOK.
+  @@index([userId])
+  @@map("addresses")
+}
+
+// Müşteri & E-Ticaret Alanı (Customer Portal) — bkz. .claude/architect-scope-customer-portal.md
+// §5.2 (bağlayıcı karar dokümanı). Tek tablo — kapsayıcı `Wishlist` tablosu YOK: favori
+// misafir/expiry/para taşımaz, `Cart`'ın ayrı kapsayıcıya ihtiyacı `tokenHash`/`currency`/
+// `expiresAt` yüzündendir; favori oturum gerektirir ve süresi dolmaz → sahibi doğrudan `User`.
+model WishlistItem {
+  id        String   @id @default(uuid())
+  seq       Int      @unique @default(autoincrement())
+  userId    String
+  user      User     @relation("WishlistOwner", fields: [userId], references: [id], onDelete: Cascade)
+  productId String
+  // `onDelete: Cascade` (ürün silinince favori satırı gider) — `OrderItem`'ın `SetNull` +
+  // snapshot deseninden FARKLIDIR ve bilinçlidir: favori bir işaretçidir, tarihsel kanıt
+  // değildir, snapshot ALINMAZ.
+  product   Product  @relation("WishlistItemProduct", fields: [productId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  // Aynı ürün iki kez favorilenemez — POST idempotent davranışının (zaten varsa 200) DB temeli.
+  // Kullanıcı başına en fazla 100 favori — backend-agent'ın route seviyesinde uyguladığı bir
+  // İŞ KURALIDIR (409), DB'de CHECK constraint YOK.
+  @@unique([userId, productId])
+  @@index([productId])
+  @@map("wishlist_items")
 }
 
 // §10.13 Üçüncü Parti Entegrasyon: API Anahtarları — bkz. ARCHITECTURE.md §10.13.2/§10.13.3.

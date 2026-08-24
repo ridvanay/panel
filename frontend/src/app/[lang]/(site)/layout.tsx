@@ -6,7 +6,9 @@ import { fetchPublishedPagesServer } from "@/lib/api/server-pages";
 import { fetchNavigationConfigServer } from "@/lib/api/server-navigation";
 import { fetchSiteAppearanceServer } from "@/lib/api/server-appearance";
 import { fetchLocalesServer } from "@/lib/api/server-locales";
+import { isModuleEnabledServer } from "@/lib/api/server-modules";
 import { CartProvider } from "@/context/cart-context";
+import { WishlistProvider } from "@/context/wishlist-context";
 import { LocaleAlternatesProvider } from "@/context/locale-alternates-context";
 import { SiteHeader } from "@/components/site/site-header";
 import { SiteFooter } from "@/components/site/site-footer";
@@ -35,11 +37,12 @@ export default async function SiteLayout({
   const activeLocale = locales.find((l) => l.code === lang);
   if (!activeLocale) notFound();
 
-  const [settings, pages, navigation, appearance] = await Promise.all([
+  const [settings, pages, navigation, appearance, productsModuleEnabled] = await Promise.all([
     fetchSiteSettingsServer(),
     fetchPublishedPagesServer(lang),
     fetchNavigationConfigServer(),
     fetchSiteAppearanceServer(),
+    isModuleEnabledServer("products"),
   ]);
 
   // §10.12.4 render sözleşmesi — BU değişkenler `:root`'a DEĞİL, yalnızca bu `.site-scope`
@@ -66,9 +69,8 @@ export default async function SiteLayout({
 
   const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? activeLocale.code;
 
-  return (
-    // Sepet SADECE public site'ta yönetilir — admin layout'a KASTEN eklenmedi.
-    <CartProvider>
+  const content = (
+    <>
       {/* §9 frontend-agent madde 4 — dil değiştiricinin "aynı içeriğin başka dildeki karşılığı"na
           gidebilmesi için alt sayfaların `localizations`'ı header'a bu Provider üzerinden akar
           (bkz. context/locale-alternates-context.tsx). */}
@@ -83,6 +85,7 @@ export default async function SiteLayout({
             buttonStyle={appearance.buttonStyle}
             locales={locales}
             activeLocale={activeLocale}
+            productsModuleEnabled={productsModuleEnabled}
           />
           <main className="flex-1">{children}</main>
           <SiteFooter
@@ -123,6 +126,20 @@ export default async function SiteLayout({
           {escapeEmbeddedClosingTags(appearance.customJs)}
         </Script>
       )}
+    </>
+  );
+
+  // §customer-portal §4.4 — `products` kapalıyken `CartProvider` ağaca HİÇ eklenmez (kapalı
+  // modülde `/cart` uçları 404 döner, gereksiz hata gürültüsü önlenir). Sepet SADECE public
+  // site'ta yönetilir — admin layout'a KASTEN eklenmedi. `WishlistProvider` AYNI gerekçeyle
+  // `products` kapalıyken eklenmez (`/users/me/wishlist*` da modül kapalıyken 404 döner, bkz.
+  // `lib/api/users.ts`), `CartProvider`'ın İÇİNDE mount edilir (ikisi de sadece kimlik
+  // doğrulanmış kullanıcı için anlamlı, sıralama önemli değildir).
+  return productsModuleEnabled ? (
+    <CartProvider>
+      <WishlistProvider>{content}</WishlistProvider>
     </CartProvider>
+  ) : (
+    content
   );
 }

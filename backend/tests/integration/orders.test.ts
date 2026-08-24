@@ -210,4 +210,71 @@ describe("admin orders — /admin/orders (§10.9.3 Sepet + Stripe Checkout)", ()
     });
     expect(res.statusCode).toBe(403);
   });
+
+  /**
+   * `.claude/architect-scope-customer-portal.md` §6 — genişletilmiş geçiş tablosu +
+   * `trackingNumber` zorunluluğu. Bkz. plan §9 madde 11/12.
+   */
+  it("PATCH /:orderId/status → SHIPPED (takip no'suz) 422 döner", async () => {
+    const order = await createOrder("PAID");
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/admin/orders/${order.id}/status`,
+      headers: authHeader(adminToken),
+      payload: { status: "SHIPPED" },
+    });
+    expect(res.statusCode).toBe(422);
+  });
+
+  it("PAID -> SHIPPED -> FULFILLED zinciri çalışır (shippedAt/deliveredAt/trackingNumber dolar) + SHIPPED -> PAID denemesi 409", async () => {
+    const order = await createOrder("PAID");
+
+    const shipRes = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/admin/orders/${order.id}/status`,
+      headers: authHeader(adminToken),
+      payload: { status: "SHIPPED", trackingNumber: "TRK-999", shippingCarrier: "Aras Kargo" },
+    });
+    expect(shipRes.statusCode).toBe(200);
+    expect(shipRes.json().data).toMatchObject({ status: "SHIPPED", trackingNumber: "TRK-999", shippingCarrier: "Aras Kargo" });
+    expect(shipRes.json().data.shippedAt).not.toBeNull();
+    expect(shipRes.json().data.deliveredAt).toBeNull();
+
+    const fulfillRes = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/admin/orders/${order.id}/status`,
+      headers: authHeader(adminToken),
+      payload: { status: "FULFILLED" },
+    });
+    expect(fulfillRes.statusCode).toBe(200);
+    expect(fulfillRes.json().data.status).toBe("FULFILLED");
+    expect(fulfillRes.json().data.deliveredAt).not.toBeNull();
+    // Kargo bilgisi FULFILLED'a geçişte KORUNUR (üzerine yazılmaz).
+    expect(fulfillRes.json().data.trackingNumber).toBe("TRK-999");
+
+    // Sipariş artık FULFILLED (terminal) — plan §9 madde 12'deki "SHIPPED -> PAID denemesi"nin
+    // ruhu: geriye/yana doğru bir geçiş denemesi 409 almalı. `status: "PAID"` şema seviyesinde
+    // (`UpdateOrderStatusRequestSchema`) zaten geçerli bir HEDEF DEĞİLDİR (yalnızca
+    // SHIPPED/FULFILLED/CANCELLED kabul edilir); bu yüzden geçerli ama İZİN VERİLMEYEN bir
+    // hedefle (`SHIPPED`) test edilir — `ALLOWED_TRANSITIONS["FULFILLED"]` tanımsızdır.
+    const invalidTransitionRes = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/admin/orders/${order.id}/status`,
+      headers: authHeader(adminToken),
+      payload: { status: "SHIPPED", trackingNumber: "TRK-000" },
+    });
+    expect(invalidTransitionRes.statusCode).toBe(409); // FULFILLED -> SHIPPED izinli değil.
+  });
+
+  it("PAID -> FULFILLED (SHIPPED atlanarak) hâlâ çalışır — dijital/kargosuz ürün akışı", async () => {
+    const order = await createOrder("PAID");
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/admin/orders/${order.id}/status`,
+      headers: authHeader(adminToken),
+      payload: { status: "FULFILLED" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.status).toBe("FULFILLED");
+  });
 });

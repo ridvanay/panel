@@ -536,4 +536,50 @@ export async function postStripeCheckoutSessionCompleted(orderId: string): Promi
   return { status: res.status };
 }
 
+// ---------------------------------------------------------------------------
+// `.claude/architect-scope-customer-portal.md` §9 — Müşteri & E-Ticaret Alanı e2e fixture
+// yardımcıları (qa-agent, bu turda eklendi). `customer-portal-module-toggle.spec.ts` tarafından
+// kullanılır.
+// ---------------------------------------------------------------------------
+
+/** `PATCH /admin/modules/{key}` — `{ enabled }` gövdesiyle bir modülü açar/kapatır
+ * (yalnızca ADMIN, bkz. `site-modules.routes.ts`). Testler ÖNCEKİ durumu okuyup (`GET
+ * /admin/modules`) `afterAll`'da geri yazmalıdır — bu fonksiyon o okumayı yapmaz. */
+export async function patchSiteModule(token: string, key: string, enabled: boolean) {
+  const res = await fetch(`${API_BASE_URL}/admin/modules/${key}`, {
+    method: "PATCH",
+    headers: authHeaders(token),
+    body: JSON.stringify({ enabled }),
+  });
+  return json<{ data: Record<string, unknown> }>(res).then((b) => b.data);
+}
+
+/** `GET /admin/modules` — mevcut modül listesi, bir `key` için `enabled` durumunu okumak için
+ * (teardown'da orijinal değeri geri yazabilmek amacıyla `patchSiteModule()`'dan ÖNCE çağrılmalı,
+ * `getAdminAppearance()`/`patchAppearance()` ile AYNI desen). */
+export async function getSiteModules(token: string) {
+  const res = await fetch(`${API_BASE_URL}/admin/modules`, { headers: authHeadersNoBody(token) });
+  return json<{ data: Array<{ key: string; enabled: boolean }> }>(res).then((b) => b.data);
+}
+
+/** `PATCH /admin/orders/{orderId}/status` — `.claude/architect-scope-customer-portal.md` §2.4:
+ * `status: SHIPPED` iken `trackingNumber` ZORUNLUDUR. Admin sipariş detay UI'sı
+ * `admin-order-detail-ship.test.tsx` (mock API) ile zaten unit test'li; bu fonksiyon e2e'de
+ * gerçek bir sipariş üzerinde kargo bilgisini API'den doğrudan set etmek için kullanılır (müşteri
+ * tarafının `/hesabim/siparislerim/{orderId}` sayfasında takip no görünürlüğünü doğrulamak için). */
+export async function adminUpdateOrderStatus(
+  token: string,
+  orderId: string,
+  body: { status: string; trackingNumber?: string; shippingCarrier?: string }
+): Promise<{ status: number; data?: Record<string, unknown> }> {
+  const res = await fetch(`${API_BASE_URL}/admin/orders/${orderId}/status`, {
+    method: "PATCH",
+    headers: authHeaders(token),
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) return { status: res.status };
+  const parsed = (await res.json()) as { data: Record<string, unknown> };
+  return { status: res.status, data: parsed.data };
+}
+
 export { API_BASE_URL };

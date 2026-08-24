@@ -1060,7 +1060,10 @@ export const CartSchema = z.object({
 });
 export type CartDto = z.infer<typeof CartSchema>;
 
-export const OrderStatusSchema = z.enum(["PENDING", "PAID", "FAILED", "CANCELLED", "EXPIRED", "REFUNDED", "FULFILLED"]);
+// `.claude/architect-scope-customer-portal.md` §6 — `SHIPPED` eklendi (`PAID -> SHIPPED -> FULFILLED`).
+// `DELIVERED` BİLİNÇLİ OLARAK eklenmedi: `FULFILLED` zaten terminal başarı durumudur, ikisini
+// birlikte tutmak "hangisi bitmiş?" belirsizliği üretirdi (bkz. plan §6).
+export const OrderStatusSchema = z.enum(["PENDING", "PAID", "SHIPPED", "FAILED", "CANCELLED", "EXPIRED", "REFUNDED", "FULFILLED"]);
 export type OrderStatus = z.infer<typeof OrderStatusSchema>;
 
 export const OrderItemSchema = z.object({
@@ -1088,10 +1091,67 @@ export const OrderSchema = z.object({
   totalCents: z.number().int(),
   errorSummary: z.string().nullable(),
   paidAt: z.string().nullable(),
+  // `.claude/architect-scope-customer-portal.md` §5.3/§2.4 — kargo alanları. `trackingNumber`
+  // `status: SHIPPED` iken ZORUNLU olarak dolar (uygulama katmanı, DB'de CHECK YOK).
+  // `shippingCarrier` serbest metin (enum v1'de açılmaz). `shippedAt`/`deliveredAt` `paidAt`
+  // ile AYNI desen — ilgili duruma geçişte route handler tarafından otomatik doldurulur.
+  trackingNumber: z.string().nullable(),
+  shippingCarrier: z.string().nullable(),
+  shippedAt: z.string().nullable(),
+  deliveredAt: z.string().nullable(),
   createdAt: z.string(),
   items: z.array(OrderItemSchema),
 });
 export type OrderDto = z.infer<typeof OrderSchema>;
+
+// ---------- Müşteri & E-Ticaret Alanı (Customer Portal) — bkz.
+// `.claude/architect-scope-customer-portal.md` §2.2/§2.3 (bağlayıcı karar dokümanı).
+
+/** `GET/POST/PATCH/DELETE /users/me/addresses*` DTO'su — sahiplik `userId = me` ile korunur. */
+export const AddressSchema = z.object({
+  id: z.string().uuid(),
+  title: z.string(),
+  fullName: z.string(),
+  phone: z.string(),
+  country: z.string(),
+  city: z.string(),
+  district: z.string(),
+  neighborhood: z.string().nullable(),
+  addressLine1: z.string(),
+  addressLine2: z.string().nullable(),
+  postalCode: z.string().nullable(),
+  isDefault: z.boolean(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type AddressDto = z.infer<typeof AddressSchema>;
+
+/**
+ * `WishlistItem.product` gömülü özeti — `CartItemSchema.product` İLE AYNI hafif şekil
+ * (tam `ProductSchema` DEĞİL: `author`/`seoScore`/`translations` gibi yönetim alanları
+ * favori kartında GEREKMEZ). Fiyat alanları burada DOĞRUDAN taşınır (cart'ın aksine favori
+ * bir fiyat DONDURMAZ — `CartItem.frozenUnitPriceCents` benzeri bir alan YOKTUR).
+ */
+export const WishlistItemProductSchema = z.object({
+  id: z.string().uuid(),
+  title: z.string(),
+  slug: z.string(),
+  coverImageUrl: z.string().nullable(),
+  priceCents: z.number().int(),
+  discountPriceCents: z.number().int().nullable(),
+  currency: z.string(),
+  stockQuantity: z.number().int(),
+});
+export type WishlistItemProductDto = z.infer<typeof WishlistItemProductSchema>;
+
+/** `GET/POST /users/me/wishlist`, `DELETE /users/me/wishlist/{productId}` DTO'su. */
+export const WishlistItemSchema = z.object({
+  id: z.string().uuid(),
+  productId: z.string().uuid(),
+  product: WishlistItemProductSchema,
+  createdAt: z.string(),
+});
+export type WishlistItemDto = z.infer<typeof WishlistItemSchema>;
 
 export const ExportJobSchema = z.object({
   id: z.string().uuid(),
@@ -1468,6 +1528,10 @@ export const WebhookOrderPayloadSchema = z.object({
   taxCents: z.number().int(),
   totalCents: z.number().int(),
   paidAt: z.string().nullable(),
+  // `.claude/architect-scope-customer-portal.md` §2.4 — kargo bilgisi giden webhook
+  // sözleşmesine eklendi (`ORDER_STATUS_CHANGED` alıcıları kargo takip no'sunu görebilsin diye).
+  trackingNumber: z.string().nullable(),
+  shippingCarrier: z.string().nullable(),
   createdAt: z.string(),
   items: z.array(
     z.object({

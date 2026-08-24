@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
 import { fieldErrorsFrom, friendlyErrorMessage } from "@/lib/api/friendly-error";
+import { isSafeInternalPath } from "@/lib/safe-redirect";
 
 function RegisterForm() {
   const { register } = useAuth();
@@ -31,7 +32,7 @@ function RegisterForm() {
     setSubmitting(true);
     try {
       await register({ name, email, password });
-      router.replace(next && next.startsWith("/") ? next : "/dashboard");
+      router.replace(isSafeInternalPath(next) ? next : "/dashboard");
     } catch (err) {
       setFieldErrors(fieldErrorsFrom(err));
       setError(friendlyErrorMessage(err));

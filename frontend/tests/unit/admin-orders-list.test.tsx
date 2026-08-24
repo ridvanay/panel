@@ -26,6 +26,10 @@ function makeOrder(overrides: Partial<Order> = {}): Order {
     totalCents: 15000,
     errorSummary: null,
     paidAt: "2026-08-01T10:00:00.000Z",
+    trackingNumber: null,
+    shippingCarrier: null,
+    shippedAt: null,
+    deliveredAt: null,
     createdAt: "2026-08-01T09:00:00.000Z",
     items: [],
     ...overrides,
@@ -59,8 +63,8 @@ describe("AdminOrdersPage", () => {
     // Durum rozeti metinleri filtre dropdown'undaki `<option>` metinleriyle ÇAKIŞTIĞI için
     // sorguyu tabloyla sınırlıyoruz.
     const table = screen.getByRole("table");
-    expect(within(table).getByText("Ödendi")).toBeInTheDocument();
-    expect(within(table).getByText("Beklemede")).toBeInTheDocument();
+    expect(within(table).getByText("Hazırlanıyor")).toBeInTheDocument();
+    expect(within(table).getByText("Ödeme Bekleniyor")).toBeInTheDocument();
     expect(within(table).getByText("Başarısız")).toBeInTheDocument();
   });
 

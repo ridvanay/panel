@@ -1,4 +1,5 @@
 import { SERVER_API_BASE_URL } from "../env";
+import { withLocalePrefix } from "../i18n/site-path";
 import type { Locale } from "./types";
 
 /**
@@ -30,6 +31,17 @@ export async function fetchLocalesServer(): Promise<Locale[]> {
 export async function fetchDefaultLocaleServer(): Promise<Locale> {
   const locales = await fetchLocalesServer();
   return locales.find((l) => l.isDefault) ?? locales[0] ?? FALLBACK_LOCALES[0]!;
+}
+
+/**
+ * `redirect()`/`permanentRedirect()` çağıran Server Component'lerin tekrarladığı kalıbı
+ * tekilleştirir: kök-göreceli bir yolu, o isteğin `[lang]` segmentine göre doğru şekilde
+ * öneklenmiş hale getirir (varsayılan dil prefix ALMAZ, bkz. `withLocalePrefix`).
+ */
+export async function localizePathServer(lang: string, path: string): Promise<string> {
+  const locales = await fetchLocalesServer();
+  const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? lang;
+  return withLocalePrefix(path, lang, defaultLocaleCode);
 }
 
 export { FALLBACK_LOCALES };

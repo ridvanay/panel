@@ -1245,3 +1245,118 @@ Kaynak kodun kendi yorumları (`pages.routes.ts` satır 367-370, `page.tsx` sat�
 kararı doğru şekilde BAĞLAYICI olarak belgeliyor — yalnızca `ARCHITECTURE.md`'nin ilgili
 paragrafları güncel değil. documentation-agent'a yönlendirilir (qa-agent kendi dokümantasyon
 alanı DIŞINA çıkmaz).
+
+## Müşteri & E-Ticaret Alanı (Customer Portal) — doğrulama (bu turda eklendi)
+
+Kaynak: `.claude/architect-scope-customer-portal.md` (BAĞLAYICI plan, özellikle §9 qa-agent test
+matrisi) + `.claude/design-notes-customer-portal.md`. Bu doğrulama db-agent → backend-agent →
+ui-designer → frontend-agent (2 tur) → security-agent zincirinin ÜSTÜNE eklendi; kullanıcının
+orijinal istek metnindeki 4 doğrulama maddesinin tamamı kapsandı.
+
+**Backend `npm test`: 945/945 geçti** (93 dosya). **Frontend `npx vitest run`: 552/552 geçti**
+(93 dosya — bu turda `safe-redirect.test.ts` eklendi, 92→93). **Yeni Playwright e2e dosyası:
+`customer-portal-module-toggle.spec.ts`, 11/11 geçti** (gerçek backend `:4001` + `saas_e2e` +
+`next dev :3100`'e karşı, izole 2 kez koşuldu, tutarlı).
+
+### Backend entegrasyon — §9 matrisinin okunması
+
+`backend/tests/integration/customer-portal.test.ts` OKUNDU ve doğrulandı: madde 1-9, 13
+(adres CRUD + IDOR 404, favori ekle/tekrar/sil/tekrar-sil idempotent, 20/100 sınırları,
+soft-delete/taslak ürün favoriden gizlenir) birebir kapsanıyor. **§3'ün "mimari kararın
+bekçisi" testi GERÇEKTEN VAR**: `"products KAPALI: GET /users/me/orders ve /orders/{id} 200
+döner (§3 — bu test kararın bekçisidir)"` — modül kapalıyken sipariş uçlarının 200 döndüğünü
+doğruluyor, KVKK/VUK gerekçeli bilinçli sapmayı regresyona karşı korur. Madde 10-12 (CUSTOM
+`/admin/*` 403, `SHIPPED` takip-no zorunluluğu 422, `PAID→SHIPPED→FULFILLED` zinciri + geçersiz
+geçiş 409) bu dosyada DEĞİL ama `orders.test.ts` (`PATCH /:orderId/status → SHIPPED
+(takip no'suz) 422 döner`, `PAID -> SHIPPED -> FULFILLED zinciri...`) ve
+`admin-panel-guard-route-table.test.ts` (introspeksiyonla TÜM `/admin/*` route'larında panel
+guard'ı zorunlu kılan genel test) tarafından kapsanıyor — doğrulandı.
+
+### Frontend — kod incelemesi (mimari plana uygunluk)
+
+Aşağıdaki dosyalar okunup plana birebir uygunluğu doğrulandı: `hesabim/layout.tsx` (sunucu
+tarafı `isModuleEnabledServer` + `HesabimShell`), `hesabim-shell.tsx` (4→2 sekme filtresi,
+`role` koşulu YOK), `siparislerim/page.tsx` + `favorilerim/page.tsx` (`redirectIfModuleDisabledServer`
+→ `/hesabim/profil`), `admin/layout.tsx` (§7.1 rol guard'ı — `ROLES_PANEL` dışı roller
+`/hesabim/profil`'e yönlenir, admin kabuğu HİÇ mount edilmez), `safe-redirect.ts`
+(`isSafeInternalPath` — `//evil.com`/`/\evil.com`/mutlak URL reddi), `site-header.tsx`
+(`productsModuleEnabled` koşullu sepet/favori ikonları), `adreslerim/page.tsx`,
+`order-detail-client.tsx` (kargo takip bloğu), `product-card.tsx`/`favorite-button.tsx`.
+Hepsi mimari/tasarım dokümanlarıyla TUTARLI bulundu — kod incelemesinde regresyon YOK.
+
+### Eklenen testler
+
+1. **`frontend/tests/unit/safe-redirect.test.ts` (YENİ)** — security-agent'ın open-redirect
+   düzeltmesi (`isSafeInternalPath`) için birim test EKSİKTİ (yalnızca `login/page.tsx`/
+   `register/page.tsx` içinde dolaylı kullanılıyordu, doğrudan test edilmiyordu). 6 senaryo:
+   site-içi path kabul, `//evil.com`/`/\evil.com` reddi, mutlak `http(s)://`/şemasız `evil.com`
+   reddi, boş/null/undefined reddi. **6/6 geçiyor.**
+2. **`frontend/tests/e2e/customer-portal-module-toggle.spec.ts` (YENİ)** — mevcut
+   `admin-user-management.spec.ts`/`admin-rbac-5tier-critical-flows` desenlerini referans alan,
+   gerçek backend+DB'ye bağlanan 11 senaryo (`test.describe.configure({ mode: "serial" })`,
+   dosya başına tek gerçek UI login'i):
+   - madde 14/22: `/hesabim` → 4 sekme, sipariş kargoya verilince (`PATCH /admin/orders/{id}/status`
+     GERÇEK bir HTTP isteğiyle) `/hesabim/siparislerim/{orderId}`'de takip no/taşıyıcı görünür.
+   - madde 1: `/hesabim/adreslerim` tam CRUD turu (ekle/varsayılan/düzenle/sil, boş durum).
+   - madde 21: ürün detay sayfasından favoriye ekle → `/hesabim/favorilerim`'de görünür →
+     "Sepete Ekle" → header sepet rozeti `+1` → favoriden çıkar → boş durum.
+   - madde 20: CUSTOMER `/admin`'e giderse `/hesabim/profil`'e yönlenir, admin kabuğu (`[data-sidebar]`)
+     HİÇ mount edilmez.
+   - madde 19: eski `/siparislerim` → kalıcı yönlendirme → `/hesabim/siparislerim`.
+   - madde 18: oturumsuz `/hesabim/adreslerim` → `/login?next=%2Fhesabim%2Fadreslerim`.
+   - **security-agent'ın open-redirect fix'i** — `/login?next=%2F%2Fevil.com` ile giriş yapılır,
+     `evil.com`'a GİTMEDİĞİ, güvenli varsayılan `/dashboard`'a düştüğü doğrulanır.
+   - `products` KAPALI (3 test): header sepet/favori ikonu yok + 2 sekme; `/hesabim/siparislerim`
+     ve `/hesabim/favorilerim` doğrudan girilince `/hesabim/profil`'e yönlenir; **§3 mimari
+     kararının regresyon bekçisi** — `GET /users/me/orders(/{id})` GERÇEK bir tarayıcı isteğiyle
+     200, `wishlist*` 404.
+   - Kullanıcı `USER→CUSTOMER` terfisi `createPendingOrderDirect` + gerçek Stripe webhook imzasıyla
+     (`postStripeCheckoutSessionCompleted`) tetiklenir — madde 20 GERÇEK bir CUSTOMER rolüyle çalışır.
+
+### qa-agent'ın kendi test tasarımında bulup düzelttiği flaky kaynakları (bu turda)
+
+1. **`getByLabel("İl", { exact: true })` süresiz asılı kalıyordu** (30s test timeout'una kadar,
+   sonra "target page closed" ikincil hatası) — `getByLabel` "İl"i "İlçe" ile substring eşleştiği
+   için `exact: true` eklendi ama YİNE hang etti (accessible-name eşleşmesiyle ilgili bir
+   Playwright/Base-UI tuhaflığı, kök neden tam izlenemedi). Düzeltme: `id` bazlı kesin locator'lara
+   geçildi (`#city`/`#district`, `Field id="city"`/`id="district"`).
+2. **Favori ekleme sonrası hemen `goto()` ile race condition.** `WishlistContext.toggle()`
+   OPTIMISTIC günceller — buton etiketi ("Favorilerden çıkar") POST tamamlanmadan DEĞİŞİR. Test
+   ilk taslakta yalnızca buton etiketini bekleyip hemen `/hesabim/favorilerim`'e `goto()`
+   yapıyordu; bu TAM SAYFA navigasyonu devam eden `POST /wishlist` isteğini İPTAL EDEBİLİYORDU
+   (favoriler listesi boş geliyordu). Düzeltme: buton etiketi yerine GERÇEK başarı toast'ı
+   ("Ürün favorilere eklendi.") beklenir hale getirildi.
+3. **`/products` listesinde `.first()` ile favori butonuna tıklamak YANLIŞ ürünü hedefleyebilirdi**
+   (diğer e2e dosyalarının bıraktığı fixture ürünleri de listede olabilir) — test kendi ürününün
+   `/products/{slug}` detay sayfasına DOĞRUDAN gidecek şekilde değiştirildi.
+
+### Bulunan ve raporlanan gerçek bulgu (bu turda) — backend-agent/frontend-agent'a yönlendirilir
+
+**Modül önbelleği ~60 saniyeye kadar bayat kalabiliyor, `PATCH /admin/modules/{key}` tetiklemiyor.**
+`frontend/src/lib/api/server-modules.ts::fetchPublicModulesServer()` `GET /modules` yanıtını
+`next: { revalidate: 60 }` ile önbellekler (bu desen customer-portal işinden ÖNCE de vardı —
+`(site)/products/layout.tsx` zaten aynı fonksiyonu kullanıyordu). Sayfa yayınlamanın aksine
+(`backend` → `POST /api/revalidate` webhook'u, bkz. `frontend/src/app/api/revalidate/route.ts`),
+`backend/src/modules/site-modules/site-modules.routes.ts`'teki `PATCH /:key` bu webhook'u HİÇ
+ÇAĞIRMIYOR. Sonuç: bir admin `products` modülünü kapattığında/açtığında storefront (header
+sepet/favori ikonları, `/hesabim/siparislerim`/`/hesabim/favorilerim` guard'ları, `/products`
+404 gating) en fazla 60 saniye ESKİ durumu göstermeye devam edebilir. Kritik bir güvenlik açığı
+DEĞİL (yalnızca gecikmeli tutarlılık, veri sızıntısı yok) ama gerçek bir UX/kabul-kriteri
+riskidir — bir admin modülü kapatıp "hemen" doğrulamaya çalışırsa yanıltıcı davranış gözlemler.
+`customer-portal-module-toggle.spec.ts`'teki "products KAPALI › madde 15" testi bu gecikmeyi
+`expect(...).toPass({ timeout: 75_000 })` ile TOLERE eder (test doğru ama görece yavaş, ~59sn).
+**Önerilen düzeltme:** `site-modules.routes.ts::PATCH /:key`'e, sayfa yayınlamayla AYNI
+`REVALIDATE_SECRET` + `POST {FRONTEND_URL}/api/revalidate` çağrısı eklenmesi (paths: `/` ve
+`/hesabim`'in ilgili locale varyantları) — backend-agent'ın (webhook çağrısı) ve frontend-agent'ın
+(zaten var olan `/api/revalidate` alıcısını genişletme, gerek yoksa) koordineli bir işidir. qa-agent
+kendi kod tabanı dışında değişiklik YAPMADI (CLAUDE.md madde 6).
+
+### Kapsam dışı / sonraki tur için önerilir
+
+- `a11y-*.test.tsx` paketine `/hesabim/*` sayfaları için özel bir a11y senaryosu bu turda
+  EKLENMEDİ (mevcut genel a11y taban testleri admin ekranlarını kapsıyor, storefront `/hesabim`
+  sayfaları için ayrı bir axe-core taraması yok) — frontend-agent'a önerilir.
+- `PATCH /admin/orders/{orderId}/status` admin UI'sının (`admin-order-detail-ship.test.tsx`)
+  GERÇEK bir tarayıcı e2e'si (yalnızca mock API'li component testi var) bu turda eklenmedi —
+  zaman kısıtı; kritik akış zaten `customer-portal-module-toggle.spec.ts` madde 14/22
+  içinde API seviyesinde (gerçek `PATCH` isteği) ve unit seviyesinde (mock UI) çift kapsanıyor.

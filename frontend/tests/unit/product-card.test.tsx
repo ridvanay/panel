@@ -1,8 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { ProductCard } from "@/components/site/product-card";
 import { formatPriceFromCents } from "@/lib/format-price";
 import type { Product } from "@/lib/api/types";
+
+// `ProductCard` artık `FavoriteButton`'ı render eder (bkz. `product-card.tsx`), o da
+// `useRouter`/`usePathname` kullanır — bir Next.js app router olmadan bu hook'lar fırlatır.
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/",
+  useRouter: () => ({ push: vi.fn() }),
+}));
 
 /**
  * §10.9.2/§10.9.3 — "Tükendi" rozetinin `stockQuantity` alanına göre doğru yansıdığını

@@ -7,6 +7,7 @@ import { fetchSiteAppearanceServer } from "@/lib/api/server-appearance";
 import { ViewTracker } from "@/components/site/view-tracker";
 import { ViewCount } from "@/components/site/view-count";
 import { AddToCartButton } from "@/components/site/add-to-cart-button";
+import { FavoriteButton } from "@/components/site/favorite-button";
 import { SyncLocaleAlternates } from "@/components/site/sync-locale-alternates";
 import { PageHeader } from "@/components/site/page-header";
 import { SocialShareButtons } from "@/components/site/social-share-buttons";
@@ -94,6 +95,7 @@ export default async function ProductDetailPage({ params }: PageProps) {
           {soldOut && (
             <span className="rounded-full bg-danger px-2 py-0.5 text-xs font-medium text-danger-foreground">Tükendi</span>
           )}
+          <FavoriteButton productId={product.id} className="ml-auto border border-border" />
         </div>
 
         {product.coverMedia && (

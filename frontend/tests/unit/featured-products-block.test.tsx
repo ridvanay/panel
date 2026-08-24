@@ -4,6 +4,13 @@ import { FeaturedProductsBlockView } from "@/components/site/blocks/featured-pro
 import type { FeaturedProductsBlock } from "@/lib/page-builder/types";
 import type { Product } from "@/lib/api/types";
 
+// `ProductCard` artık `FavoriteButton`'ı render eder (bkz. `product-card.tsx`), o da
+// `useRouter`/`usePathname` kullanır — bir Next.js app router olmadan bu hook'lar fırlatır.
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/",
+  useRouter: () => ({ push: vi.fn() }),
+}));
+
 /**
  * §Faz 4 Site Şablonu — `products` modülü kapalıyken bu blok public tarafta SESSİZCE hiçbir şey
  * render ETMEMELİ (hata/boş state YOK, sayfanın geri kalanı normal render olmaya devam eder).

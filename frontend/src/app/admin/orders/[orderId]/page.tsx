@@ -3,7 +3,10 @@
 import { use, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { AlertCircle, CheckCircle2, ChevronLeft, RotateCcw, XCircle } from "lucide-react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { AlertCircle, CheckCircle2, ChevronLeft, Copy, RotateCcw, Truck, XCircle } from "lucide-react";
 import * as ordersApi from "@/lib/api/orders";
 import type { Order, OrderStatus } from "@/lib/api/types";
 import { Card } from "@/components/ui/card";
@@ -11,14 +14,24 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert } from "@/components/ui/alert";
 import { Field } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Spinner } from "@/components/ui/spinner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { friendlyErrorMessage } from "@/lib/api/friendly-error";
+import { fieldErrorsFrom, friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { formatPriceFromCents } from "@/lib/format-price";
 import { ORDER_STATUS_LABELS, ORDER_STATUS_TONE } from "@/lib/order-status";
+
+// `UpdateOrderStatusRequest` (openapi) — `status: "SHIPPED"` iken `trackingNumber` ZORUNLU
+// (backend eksikse 422 döner, bkz. `lib/api/types.ts`). `shippingCarrier` opsiyonel serbest metin.
+const shipFormSchema = z.object({
+  trackingNumber: z.string().trim().min(1, "Kargo takip numarası gerekli.").max(100, "En fazla 100 karakter olabilir."),
+  shippingCarrier: z.string().trim().max(100, "En fazla 100 karakter olabilir.").optional(),
+});
+
+type ShipFormValues = z.infer<typeof shipFormSchema>;
 
 const dateFormatter = new Intl.DateTimeFormat("tr-TR", { dateStyle: "medium", timeStyle: "short" });
 
@@ -32,6 +45,18 @@ export default function AdminOrderDetailPage({ params }: { params: Promise<{ ord
   const [refundDialogOpen, setRefundDialogOpen] = useState(false);
   const [refundReason, setRefundReason] = useState("");
   const [refunding, setRefunding] = useState(false);
+  const [shipDialogOpen, setShipDialogOpen] = useState(false);
+
+  const {
+    register: registerShip,
+    handleSubmit: handleShipSubmit,
+    reset: resetShipForm,
+    setError: setShipFieldError,
+    formState: { errors: shipErrors, isSubmitting: shipping },
+  } = useForm<ShipFormValues>({
+    resolver: zodResolver(shipFormSchema),
+    defaultValues: { trackingNumber: "", shippingCarrier: "" },
+  });
 
   const load = useCallback(async () => {
     setError(null);
@@ -60,6 +85,41 @@ export default function AdminOrderDetailPage({ params }: { params: Promise<{ ord
     } finally {
       setUpdating(false);
     }
+  }
+
+  function openShipDialog() {
+    resetShipForm({ trackingNumber: "", shippingCarrier: "" });
+    setShipDialogOpen(true);
+  }
+
+  async function onShipSubmit(values: ShipFormValues) {
+    try {
+      const updated = await ordersApi.updateOrderStatus(orderId, {
+        status: "SHIPPED",
+        trackingNumber: values.trackingNumber,
+        shippingCarrier: values.shippingCarrier || undefined,
+      });
+      setOrder(updated);
+      toast.success("Sipariş kargoya verildi.");
+      setShipDialogOpen(false);
+    } catch (err) {
+      const fieldErrors = fieldErrorsFrom(err);
+      if (fieldErrors.trackingNumber) {
+        setShipFieldError("trackingNumber", { message: fieldErrors.trackingNumber });
+      } else if (fieldErrors.shippingCarrier) {
+        setShipFieldError("shippingCarrier", { message: fieldErrors.shippingCarrier });
+      } else {
+        toast.error(friendlyErrorMessage(err));
+      }
+    }
+  }
+
+  function copyTracking() {
+    if (!order?.trackingNumber) return;
+    navigator.clipboard.writeText(order.trackingNumber).then(
+      () => toast.success("Takip numarası panoya kopyalandı."),
+      () => toast.error("Panoya kopyalanamadı.")
+    );
   }
 
   async function handleRefund() {
@@ -131,12 +191,20 @@ export default function AdminOrderDetailPage({ params }: { params: Promise<{ ord
             </Button>
           )}
           {order.status === "PAID" && (
+            <Button variant="outline" onClick={openShipDialog}>
+              <Truck className="h-4 w-4" />
+              Kargoya Ver
+            </Button>
+          )}
+          {(order.status === "PAID" || order.status === "SHIPPED") && (
             <Button loading={updating} onClick={() => handleStatusChange("FULFILLED")}>
               <CheckCircle2 className="h-4 w-4" />
               Tamamlandı Olarak İşaretle
             </Button>
           )}
-          {(order.status === "PAID" || order.status === "FULFILLED") && (
+          {/* `RefundOrderRequest`/`Order` (lib/api/types.ts) — iade `PAID`/`SHIPPED`/`FULFILLED`
+              siparişler için izinlidir. */}
+          {(order.status === "PAID" || order.status === "SHIPPED" || order.status === "FULFILLED") && (
             <Button variant="outline" onClick={() => setRefundDialogOpen(true)}>
               <RotateCcw className="h-4 w-4" />
               İade Et
@@ -159,6 +227,43 @@ export default function AdminOrderDetailPage({ params }: { params: Promise<{ ord
         <p className="text-sm text-foreground">{order.customerName ?? "—"}</p>
         <p className="text-sm text-foreground/60">{order.customerEmail}</p>
       </Card>
+
+      {/* `/hesabim/siparislerim/[orderId]` müşteri görünümündeki kargo takip bloğuyla BİREBİR
+          AYNI desen (bkz. `order-detail-client.tsx`) — tek kaynak: `Order.trackingNumber`. */}
+      {order.trackingNumber && (
+        <Card>
+          <div>
+            <p className="mb-1.5 text-sm font-medium text-foreground">Kargo Takip Numarası</p>
+            <div className="flex items-center gap-2">
+              <div className="break-all rounded-lg border border-border bg-surface-muted p-3 font-mono text-sm text-foreground/90">
+                {order.trackingNumber}
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={copyTracking}
+                aria-label="Takip numarasını kopyala"
+              >
+                <Copy className="h-4 w-4" />
+              </Button>
+            </div>
+            {order.shippingCarrier && (
+              <p className="mt-1.5 text-sm text-foreground/60">Taşıyıcı: {order.shippingCarrier}</p>
+            )}
+            {order.shippedAt && (
+              <p className="mt-1.5 text-sm text-foreground/60">
+                Kargoya verildi: {dateFormatter.format(new Date(order.shippedAt))}
+              </p>
+            )}
+            {order.deliveredAt && (
+              <p className="mt-1.5 text-sm text-foreground/60">
+                Teslim edildi: {dateFormatter.format(new Date(order.deliveredAt))}
+              </p>
+            )}
+          </div>
+        </Card>
+      )}
 
       <Card className="overflow-hidden p-0">
         <Table>
@@ -250,6 +355,45 @@ export default function AdminOrderDetailPage({ params }: { params: Promise<{ ord
               İade Et
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={shipDialogOpen}
+        onOpenChange={(next) => {
+          if (!shipping) setShipDialogOpen(next);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Siparişi kargoya ver</DialogTitle>
+            <DialogDescription>
+              {`"${order.orderNumber}" numaralı sipariş için kargo takip numarasını girin. Sipariş durumu "Kargoda" olarak güncellenir.`}
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleShipSubmit(onShipSubmit)} noValidate className="space-y-4">
+            <Field id="trackingNumber" label="Kargo Takip Numarası" error={shipErrors.trackingNumber?.message} required>
+              {(inputProps) => (
+                <Input {...inputProps} maxLength={100} placeholder="ör. TR123456789" {...registerShip("trackingNumber")} />
+              )}
+            </Field>
+            <Field id="shippingCarrier" label="Kargo Firması" error={shipErrors.shippingCarrier?.message} hint="Opsiyonel.">
+              {(inputProps) => (
+                <Input {...inputProps} maxLength={100} placeholder="ör. Yurtiçi Kargo" {...registerShip("shippingCarrier")} />
+              )}
+            </Field>
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setShipDialogOpen(false)} disabled={shipping}>
+                Vazgeç
+              </Button>
+              <Button type="submit" loading={shipping}>
+                <Truck className="h-4 w-4" />
+                Kargoya Ver
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>
