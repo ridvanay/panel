@@ -2091,6 +2091,13 @@ export type SiteFont =
 
 export type PageHeaderStyle = "PLAIN" | "BANNER" | "HIDDEN";
 
+/**
+ * Sayfa başlığı bloğunun iç düzeni — `pageHeaderStyle`'dan BAĞIMSIZ bir alandır, sadece
+ * `pageHeaderStyle: BANNER` iken sitede etkilidir. Bu iş kuralı BİLİNÇLİ olarak backend'de
+ * ZORLANMAZ (frontend uygular).
+ */
+export type PageHeaderLayout = "CENTERED" | "LEFT_OVERLAY" | "MINIMAL_LINE" | "SPLIT";
+
 /** Buton/kart köşe yarıçapı — `SITE_BORDER_RADIUS_PX` (lib/site-settings/site-radius.ts) enum→px eşlemesini kullanır. */
 export type SiteBorderRadius = "NONE" | "SM" | "MD" | "LG" | "FULL";
 
@@ -2108,6 +2115,8 @@ export interface SiteAppearance {
   /** En son uygulanan ön ayarın anahtarı; `null` = özel (kullanıcı alanları elle değiştirdi). CANLI BİR BAĞ DEĞİLDİR. */
   presetKey: string | null;
   pageHeaderStyle: PageHeaderStyle;
+  /** Sadece `pageHeaderStyle=BANNER` iken sitede etkilidir. */
+  pageHeaderLayout: PageHeaderLayout;
   pageHeaderBackgroundColor: string | null;
   /** Medya kütüphanesinden seçilir (mevcut `coverMediaId` paterni) — serbest URL alanı DEĞİL. */
   pageHeaderBackgroundMediaId: string | null;
@@ -2153,6 +2162,8 @@ export interface SiteAppearance {
  */
 export interface PublicSiteAppearance {
   pageHeaderStyle: PageHeaderStyle;
+  /** Sadece `pageHeaderStyle=BANNER` iken sitede etkilidir. */
+  pageHeaderLayout: PageHeaderLayout;
   pageHeaderBackgroundColor: string | null;
   pageHeaderBackgroundUrl: string | null;
   pageHeaderOverlayOpacity: number;
@@ -2197,6 +2208,8 @@ export interface PublicSiteAppearance {
 export interface UpdateSiteAppearanceRequest {
   presetKey?: string | null;
   pageHeaderStyle?: PageHeaderStyle;
+  /** Sadece `pageHeaderStyle=BANNER` iken sitede etkilidir. */
+  pageHeaderLayout?: PageHeaderLayout;
   pageHeaderBackgroundColor?: string | null;
   pageHeaderBackgroundMediaId?: string | null;
   pageHeaderOverlayOpacity?: number;

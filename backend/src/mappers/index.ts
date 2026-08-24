@@ -953,6 +953,7 @@ export function toSiteAppearanceDto(appearance: SiteAppearanceWithMedia): SiteAp
   return {
     presetKey: appearance.presetKey,
     pageHeaderStyle: appearance.pageHeaderStyle,
+    pageHeaderLayout: appearance.pageHeaderLayout,
     pageHeaderBackgroundColor: appearance.pageHeaderBackgroundColor,
     pageHeaderBackgroundMediaId: appearance.pageHeaderBackgroundMediaId,
     pageHeaderBackgroundUrl: appearance.pageHeaderBackgroundMedia ? absolutizeMediaUrl(appearance.pageHeaderBackgroundMedia.url) : null,
@@ -998,6 +999,7 @@ export function toSiteAppearanceDto(appearance: SiteAppearanceWithMedia): SiteAp
 export function toPublicSiteAppearanceDto(appearance: SiteAppearanceDto, customCss: string | null, customJs: string | null): PublicSiteAppearanceDto {
   return {
     pageHeaderStyle: appearance.pageHeaderStyle,
+    pageHeaderLayout: appearance.pageHeaderLayout,
     pageHeaderBackgroundColor: appearance.pageHeaderBackgroundColor,
     pageHeaderBackgroundUrl: appearance.pageHeaderBackgroundUrl,
     pageHeaderOverlayOpacity: appearance.pageHeaderOverlayOpacity,

@@ -74,6 +74,7 @@ export default async function BlogPostPage({ params }: PageProps) {
       <PageHeader
         title={post.title}
         style={appearance.pageHeaderStyle}
+        layout={appearance.pageHeaderLayout}
         backgroundColor={appearance.pageHeaderBackgroundColor}
         backgroundUrl={appearance.pageHeaderBackgroundUrl}
         overlayOpacity={appearance.pageHeaderOverlayOpacity}

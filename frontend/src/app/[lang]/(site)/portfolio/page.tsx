@@ -21,6 +21,7 @@ export default async function PortfolioIndexPage({ params }: { params: Promise<{
       <PageHeader
         title="Portföy"
         style={appearance.pageHeaderStyle}
+        layout={appearance.pageHeaderLayout}
         backgroundColor={appearance.pageHeaderBackgroundColor}
         backgroundUrl={appearance.pageHeaderBackgroundUrl}
         overlayOpacity={appearance.pageHeaderOverlayOpacity}

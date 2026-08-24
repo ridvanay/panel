@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   HexColorSchema,
+  PageHeaderLayoutSchema,
   PageHeaderStyleSchema,
   SiteBorderRadiusSchema,
   SiteButtonStyleSchema,
@@ -20,6 +21,7 @@ export const UpdateSiteAppearanceRequestSchema = z
   .object({
     presetKey: z.string().nullable().optional(),
     pageHeaderStyle: PageHeaderStyleSchema.optional(),
+    pageHeaderLayout: PageHeaderLayoutSchema.optional(),
     pageHeaderBackgroundColor: HexColorSchema.nullable().optional(),
     // Var olmayan bir medya id'si → 404 NOT_FOUND (route handler'da kontrol edilir, kısmi
     // yazma YAPILMAZ — bkz. appearance.routes.ts).

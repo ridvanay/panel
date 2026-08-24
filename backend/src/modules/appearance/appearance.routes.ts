@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
-import type { PageHeaderStyle, SiteBorderRadius, SiteButtonStyle, SiteFont, SocialShareNetwork } from "@prisma/client";
+import type { PageHeaderLayout, PageHeaderStyle, SiteBorderRadius, SiteButtonStyle, SiteFont, SocialShareNetwork } from "@prisma/client";
 import { z } from "zod";
 import { authenticate } from "../../middleware/authenticate";
 import { requireSiteRole } from "../../middleware/site-rbac";
@@ -37,6 +37,7 @@ const CUSTOM_CODE_RATE_LIMIT = { max: 10, timeWindow: "1 minute" };
 export const DEFAULTS = {
   presetKey: null as string | null,
   pageHeaderStyle: "PLAIN" as PageHeaderStyle,
+  pageHeaderLayout: "CENTERED" as PageHeaderLayout,
   pageHeaderBackgroundColor: null as string | null,
   pageHeaderBackgroundMediaId: null as string | null,
   pageHeaderOverlayOpacity: 40,

@@ -39,6 +39,7 @@ const axeOptions = { rules: { region: { enabled: false } } };
 const appearance: SiteAppearance = {
   presetKey: "modern",
   pageHeaderStyle: "PLAIN",
+  pageHeaderLayout: "CENTERED",
   pageHeaderBackgroundColor: null,
   pageHeaderBackgroundMediaId: null,
   pageHeaderBackgroundUrl: null,

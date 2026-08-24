@@ -21,6 +21,7 @@ export default async function ProductsIndexPage({ params }: { params: Promise<{ 
       <PageHeader
         title="Ürünler"
         style={appearance.pageHeaderStyle}
+        layout={appearance.pageHeaderLayout}
         backgroundColor={appearance.pageHeaderBackgroundColor}
         backgroundUrl={appearance.pageHeaderBackgroundUrl}
         overlayOpacity={appearance.pageHeaderOverlayOpacity}

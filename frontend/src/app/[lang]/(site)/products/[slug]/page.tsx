@@ -80,6 +80,7 @@ export default async function ProductDetailPage({ params }: PageProps) {
       <PageHeader
         title={product.title}
         style={appearance.pageHeaderStyle}
+        layout={appearance.pageHeaderLayout}
         backgroundColor={appearance.pageHeaderBackgroundColor}
         backgroundUrl={appearance.pageHeaderBackgroundUrl}
         overlayOpacity={appearance.pageHeaderOverlayOpacity}
