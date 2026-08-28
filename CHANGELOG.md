@@ -50,6 +50,30 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
 
 ### Added
 
+- **Gelişmiş Slider / Hero Studio** (`sliders` modülü, bağlayıcı karar dokümanları
+  `.claude/architect-scope-advanced-slider.md` ve `.claude/ui-designer-scope-advanced-slider.md`).
+  Slider Revolution benzeri, çok katmanlı, cihaza göre geçersiz kılınabilen bir hero/slider
+  düzenleyicisi.
+  - **Yeni model:** `Slider` + `Slide` (ilişkisel) + `Slide.layers` (JSON, en fazla 20 katman /
+    64 KB) — slider bir "içerik" DEĞİL, sayfalara `advanced-slider` bloğuyla REFERANS verilen
+    yeniden kullanılabilir bir bileşen; kendi `status`/yayın alanı yok, yayın kararı gömen
+    sayfaya ait. `ContentEntityType` enum'ına değer EKLENMEDİ.
+  - Katman tipleri: başlık, metin, buton, görsel, rozet — her biri yüzde + 9'lu hizalama
+    noktası (`origin`) ile konumlanır; **masaüstü kanoniktir**, tablet/mobil yalnızca
+    değişen alan grubunu basamaklı olarak geçersiz kılar (`content` override edilemez).
+  - Yeni admin ekranı `/admin/sliders/[id]` (Hero Studio): sürüklenebilir tuval, slayt şeridi,
+    sekmeli müfettiş (Slayt/Katman/Animasyon/Slider), `delayMs`/`durationMs` zaman çizelgesi.
+  - Ön yüz render motoru mevcut `framer-motion` üzerine kuruldu (Swiper.js gibi yeni bir
+    bağımlılık EKLENMEDİ) — sıfır CLS (`100svh`/`aspect-ratio` sunucu HTML'inde belirli),
+    `prefers-reduced-motion: reduce` altında otomatik oynatma/Ken Burns/geçiş efektleri kapanır.
+  - `SafeHrefSchema`/`isSafeHref` `pages.schemas.ts`'ten `schemas/common.ts`'e taşınıp
+    ortaklaştırıldı (davranış değişikliği yok); slider katmanlarının `href`/`linkHref`/
+    `bgVideoUrl` alanları aynı protokol beyaz listesini kullanır.
+  - Yetki: okuma (`GET /admin/sliders*`) ADMIN/MANAGER/**EDITOR**, yazma yalnızca
+    ADMIN/MANAGER; public `GET /sliders/{sliderId}` kimlik doğrulama gerektirmez.
+  - Silme öncesi referans koruması: kullanılan bir slider `409` + kullanan sayfa listesi
+    döner, `?force=true` ile geçilebilir.
+
 - **Sayfa yönetiminde standart/gelişmiş düzenleyici mod ayrımı** (`ARCHITECTURE.md` §10.20,
   bağlayıcı karar dokümanı `.claude/architect-scope-page-editor-roles.md`). Sayfalar artık
   **Serbest Tasarım** (`FREEFORM`, mevcut davranış, varsayılan) veya **Şablon** (`TEMPLATE`)
