@@ -35,7 +35,8 @@ export type ContentBlockType =
   | "before-after-slider"
   | "logo-marquee"
   | "skill-bar"
-  | "team";
+  | "team"
+  | "advanced-slider";
 
 /** Kanonik konteyner düğümü. */
 export type ContainerNodeType = "container";
@@ -299,6 +300,22 @@ export interface TeamBlock extends BaseNode {
   data: { members: TeamMember[] };
 }
 
+/**
+ * Gelişmiş Slider / Hero Studio — blok İÇERİK TAŞIMAZ, yalnızca var olan bir
+ * `Slider` kaydına REFERANS tutar (bkz. .claude/architect-scope-advanced-slider.md
+ * §6.1). Slayt/katman verisi `/admin/sliders` ile yönetilir, `Page.blocks` içinde
+ * ÇOĞALTILMAZ.
+ *
+ * `sliderId` OPSİYONEL — yeni eklenen blok henüz seçim yapılmamış haldedir
+ * (`createBlock` bu alanı hiç EKLEMEZ; boş string backend'de `.uuid()`e takılırdı,
+ * `CtaBlock.secondaryButton*` ile AYNI "omit et" deseni). Seçim yapılmamış VEYA
+ * silinmiş bir slider → public tarafta SESSİZCE hiçbir şey render edilmez.
+ */
+export interface AdvancedSliderBlock extends BaseNode {
+  type: "advanced-slider";
+  data: { sliderId?: string };
+}
+
 /** §Faz "Temel Elemanlar" — H1-H6, hizalama, opsiyonel alt çizgi vurgusu. */
 export type HeadingLevel = 1 | 2 | 3 | 4 | 5 | 6;
 export type TextAlign = "left" | "center" | "right";
@@ -485,7 +502,8 @@ export type ContentBlock =
   | BeforeAfterSliderBlock
   | LogoMarqueeBlock
   | SkillBarBlock
-  | TeamBlock;
+  | TeamBlock
+  | AdvancedSliderBlock;
 
 /** @deprecated v2 adı — yalnızca geçiş sırasında import kırılmasın diye. Yeni kodda `ContentBlock` kullanın. */
 export type LeafBlock = ContentBlock;

@@ -23,6 +23,7 @@ import {
   Infinity as InfinityIcon,
   SlidersHorizontal,
   Users2,
+  GalleryHorizontal,
   type LucideIcon,
 } from "lucide-react";
 import type { ContentBlock, ContentBlockType } from "./types";
@@ -58,6 +59,7 @@ export const blockRegistry: Record<PaletteBlockType, { label: string; category: 
   tabs: { label: "Sekmeler", category: "media", icon: PanelsTopLeft },
   "before-after-slider": { label: "Öncesi / Sonrası", category: "media", icon: SplitSquareHorizontal },
   hero: { label: "Hero", category: "marketing", icon: LayoutTemplate },
+  "advanced-slider": { label: "Gelişmiş Slider", category: "marketing", icon: GalleryHorizontal },
   cta: { label: "Çağrı Butonu (CTA)", category: "marketing", icon: Type },
   counter: { label: "Sayaç / İstatistik", category: "marketing", icon: TrendingUp },
   testimonial: { label: "Müşteri Yorumları", category: "marketing", icon: Quote },
@@ -234,5 +236,9 @@ export function createBlock(type: PaletteBlockType): ContentBlock {
           members: [{ id: newId(), name: "Ad Soyad", role: "Unvan", socialLinks: [] }],
         },
       };
+    case "advanced-slider":
+      // `sliderId` KASITLI OLARAK eklenmez (undefined) — bkz. types.ts yorumu ve
+      // `cta` case'indeki AYNI gerekçe (boş string backend doğrulamasına takılır).
+      return { id, type, data: {} };
   }
 }

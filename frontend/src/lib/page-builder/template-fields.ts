@@ -44,6 +44,9 @@ export const TEMPLATE_EDITABLE_FIELDS: Record<string, readonly string[]> = {
   "logo-marquee": ["data.items"],
   "skill-bar": ["data.items"],
   team: ["data.members"],
+  // Standart kullanıcı hangi slider'ın gösterileceğini DEĞİŞTİREBİLİR (içerik seçimi),
+  // ama slider'ın kendisini düzenleyemez (o /admin/sliders yetkisidir).
+  "advanced-slider": ["data.sliderId"],
   // Saf düzen elemanları — şablon modunda tamamen kilitli.
   divider: [],
   // §3.3 — KESİN istisna: ham HTML yazmak tanım gereği "gelişmiş" bir eylemdir, `data.html`

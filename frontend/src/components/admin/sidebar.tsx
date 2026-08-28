@@ -25,6 +25,7 @@ import {
   Briefcase,
   Palette,
   MessageSquare,
+  GalleryHorizontal,
 } from "lucide-react";
 import {
   Sidebar,
@@ -109,6 +110,10 @@ export const navItems: NavItem[] = [
   { href: "/admin/reports", labelKey: "nav.reports", icon: FileArchive, roles: ["ADMIN", "MANAGER"] },
   { href: "/admin/media", labelKey: "nav.media", icon: ImageIcon },
   { href: "/admin/navigation", labelKey: "nav.navigation", icon: LayoutTemplate, roles: ["ADMIN", "MANAGER"] },
+  // Hero Studio (Gelişmiş Slider) — §1.7 architect-scope-advanced-slider.md: yazma ADMIN/MANAGER'a
+  // kapalı, EDITOR yalnızca `GET /admin/sliders*` okur (page-builder blok seçicisi için) — bu tam
+  // yönetim ekranına sidebar bağlantısı `/admin/navigation` ile AYNI görünürlük kuralını izler.
+  { href: "/admin/sliders", labelKey: "nav.sliders", icon: GalleryHorizontal, roles: ["ADMIN", "MANAGER"] },
   // Özel CSS/JS sekmesi (yalnızca ADMIN) sayfanın İÇİNDEDİR — sidebar seviyesinde ayrıştırma
   // gerekmez, `/admin/appearance` sayfasının kendisi MANAGER'a görünür kalmalı (§8.2).
   { href: "/admin/appearance", labelKey: "nav.appearance", icon: Palette, roles: ["ADMIN", "MANAGER"] },

@@ -627,3 +627,101 @@
     transition: none !important;
   }
 }
+
+/*
+ * Gelişmiş Slider / Hero Studio — ui-designer tasarım tokenleri (2026-08-25, ui-designer).
+ * Bağlayıcı karar dokümanı: `.claude/architect-scope-advanced-slider.md` §6.6 (devir) ve bu
+ * tokenlerin kullanım haritası `.claude/ui-designer-scope-advanced-slider.md`. Kod
+ * implementasyonu YOK — bu blok yalnızca token TANIMI, tüketimi frontend-agent'a aittir.
+ *
+ * Üç grup:
+ *  (1) `SliderLayerStyle.shadow` (`none|sm|md|lg`, backend Zod enum) → gerçek `box-shadow`.
+ *      Değerler Tailwind'in PROJEDE ZATEN KULLANILAN shadow-sm/md/lg ölçeğiyle BİREBİR (bkz.
+ *      `components/ui/card.tsx`: "shadow-sm ... hover:shadow-md") — yeni bir elevation sistemi
+ *      İCAT EDİLMEDİ, sadece Tailwind class'ı üretemeyeceğimiz yerlerde (katman JSON'undan gelen
+ *      dinamik inline `style.boxShadow`) aynı görsel sonucu veren literal CSS.
+ *  (2) Slider navigasyon kroması (ok/bullet/ilerleme çubuğu). `SliderNavigationTheme` (LIGHT/DARK)
+ *      SLAYT ZEMİNİNİN açık/koyu olduğunu adlandırır, kromanın kendi rengini DEĞİL (bkz. Prisma
+ *      şema yorumu, architect-scope §2.5): `LIGHT` = açık zemin → kroma KOYU (`onlight-*` token'ları);
+ *      `DARK` = koyu zemin → kroma AÇIK (`ondark-*` token'ları). Görsel dil `page-header.tsx`nin
+ *      zaten kullandığı "görsel üzerine yarı saydam + blur okunabilirlik" desenidir
+ *      (`.claude/design-notes-appearance-studio.md` §1.1 — `bg-black/60 backdrop-blur-sm`), yeni
+ *      bir glassmorphism yönü İCAT EDİLMEDİ; yalnızca fotoğraf/video üzerinde duran yüzen kontroller
+ *      için mevcut projede zaten onaylı olan tek istisnadır (bkz. tasarım notu §2 gerekçesi).
+ *  (3) Hero Studio (`/admin/sliders/[id]`) tuval + zaman çizelgesi kromu — `.hero-studio-stage`
+ *      kapsamlı, next-themes'in `.dark` class'ından BAĞIMSIZ sabit koyu değerler. Gerekçe:
+ *      `accent-color-picker.tsx`nin `bg-[#14141d] text-white` sabit-koyu popover'ı ile AYNI —
+ *      medya/renk değerlendirmesi yapılan araç yüzeyleri (video/foto düzenleyicilerin tuval+
+ *      zaman çizelgesi paneli gibi) uygulamanın açık/koyu temasından ETKİLENMEZ; bu evrensel bir
+ *      araç konvansiyonudur, projede zaten bir emsali var. Değerler KEYFİ DEĞİL — `.dark
+ *      .admin-shell`in (yukarıda) --background/--surface/--surface-muted/--border değerleriyle
+ *      BİREBİR aynı hex'lerdir (aşağıda not edildi) — ikinci bir "icat edilmiş" koyu palet YOK.
+ *  (4) Katman tipi renk kodlaması — Hero Studio'da hem tuval üzerindeki seçim etiketi hem de alt
+ *      zaman çizelgesi çubuğu AYNI 5 rengi kullanır (tek kaynak, iki görünüm arasında tutarlılık).
+ *      Palet: mevcut --danger/--warning/--success semantik tonlarından KASITLI OLARAK farklı
+ *      Tailwind 500 tonları — semantik anlam (hata/uyarı/başarı) ile karışmasın diye.
+ */
+:root {
+  /* (1) SliderLayerStyle.shadow — none|sm|md|lg → box-shadow (Tailwind shadow-sm/md/lg ile birebir) */
+  --slider-layer-shadow-none: none;
+  --slider-layer-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --slider-layer-shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --slider-layer-shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -2px rgb(0 0 0 / 0.1);
+
+  /* (2) Slider navigasyon kroması — bkz. ui-designer-scope-advanced-slider.md §2 */
+  /* navigationTheme=LIGHT (açık slayt zemini) → KOYU kroma */
+  --slider-nav-onlight-bg: rgb(255 255 255 / 0.85);
+  --slider-nav-onlight-bg-hover: rgb(255 255 255 / 1);
+  --slider-nav-onlight-fg: #18181b;
+  --slider-nav-onlight-border: rgb(0 0 0 / 0.08);
+  --slider-nav-onlight-track-bg: rgb(0 0 0 / 0.12);
+  /* navigationTheme=DARK (koyu slayt zemini) → AÇIK kroma */
+  --slider-nav-ondark-bg: rgb(0 0 0 / 0.35);
+  --slider-nav-ondark-bg-hover: rgb(0 0 0 / 0.55);
+  --slider-nav-ondark-fg: #ffffff;
+  --slider-nav-ondark-border: rgb(255 255 255 / 0.15);
+  --slider-nav-ondark-track-bg: rgb(255 255 255 / 0.25);
+  /* İlerleme/bullet AKTİF rengi her iki temada da site markasına bağlanır (var(--site-primary)
+     zaten `.site-scope` içinde tanımlı — bu bileşen her zaman o kapsamda render edilir, §5.6). */
+  --slider-nav-active-fallback: #ffffff;
+
+  /* Medya üzerindeki TÜM yüzen kontroller (ok/bullet/progress-bar + katman içi buton) için ortak
+     "halo" odak halkası — koyu VE açık fotoğraf üzerinde de görünür kalması için iki katmanlı
+     (koyu iç halka + açık dış halka), tek bir sabit renge güvenmez. */
+  --slider-media-focus-ring: 0 0 0 2px rgb(0 0 0 / 0.45), 0 0 0 4px rgb(255 255 255 / 0.9);
+
+  /* Hizalama/snap kılavuz çizgisi (Hero Studio tuvali) — mevcut semantik renklerden (danger/
+     warning/success) kasıtlı olarak farklı bir ton, karışıklığı önler. */
+  --slider-snap-guide: #ec4899; /* pink-500 */
+
+  /* (4) Katman tipi renk kodlaması — seçim etiketi + zaman çizelgesi çubuğu ORTAK kaynağı */
+  --slider-layer-type-heading: #6366f1; /* indigo-500 */
+  --slider-layer-type-text: #0ea5e9; /* sky-500 */
+  --slider-layer-type-button: #10b981; /* emerald-500 */
+  --slider-layer-type-image: #f59e0b; /* amber-500 */
+  --slider-layer-type-badge: #d946ef; /* fuchsia-500 */
+}
+
+/* (3) Hero Studio tuval + zaman çizelgesi kromu — sabit koyu, `.dark .admin-shell` ile BİREBİR
+   aynı hex'ler (bkz. dosya başındaki gerekçe). Yalnızca `hero-studio-stage.tsx`/timeline
+   bileşenlerinin KÖK sarmalayıcısına uygulanır — inspector/slide-strip/topbar bu kapsamın
+   DIŞINDADIR, onlar normal `bg-surface`/`border-border` admin token'larını (next-themes ile
+   birlikte açık/koyu) kullanmaya devam eder. */
+.hero-studio-stage {
+  --hs-stage-bg: #0a0a10; /* == .dark .admin-shell --background */
+  --hs-panel-bg: #12121a; /* == .dark .admin-shell --surface */
+  --hs-panel-muted-bg: #1a1a24; /* == .dark .admin-shell --surface-muted */
+  --hs-panel-border: #262633; /* == .dark .admin-shell --border */
+  --hs-text: #f2f2f7;
+  --hs-text-muted: rgb(255 255 255 / 0.45);
+}
+
+/* ui-designer-scope-advanced-slider.md §2.1 — medya üzerindeki yüzen kontrollerin (ok/bullet/
+   progress/katman butonu) odak halkası HER YERDE `--slider-media-focus-ring` kullanır; global
+   `:focus-visible { outline: 2px solid var(--primary); }` kuralına GÜVENİLMEZ (admin --primary
+   fotoğraf üzerinde kaybolabilir). Bu, frontend-agent implementasyon detayıdır — renk/gölge
+   değerleri ui-designer'ın yukarıdaki :root token'larından gelir. */
+.advanced-slider :focus-visible {
+  outline: none;
+  box-shadow: var(--slider-media-focus-ring);
+}
