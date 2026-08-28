@@ -286,6 +286,35 @@ tags:
       TÜM admin uçları (okuma dahil) SiteRole=ADMIN veya MANAGER; EDITOR → 403.**
       Public uçlar yalnızca
       `portfolio` modülü AKTİFSE yanıt verir — kapalıyken 404 (bkz. `Modules` tag'i).
+  - name: Sliders
+    description: >
+      **Gelişmiş Slider / Hero Studio** (`/admin/sliders`, `/sliders`) — çok katmanlı slayt
+      motoru. Bağlayıcı karar dokümanı: `.claude/architect-scope-advanced-slider.md`.
+
+
+      **Veri modeli:** `Slider` (1) → `Slide` (N, ilişkisel satır, `order` ile sıralı) →
+      `layers` (Slide üzerinde **JSON dizi**, ayrı tablo YOK — gerekçe §2.2). Katman başına
+      cihaz override'ı (`responsive.tablet` / `responsive.mobile`) SEYREK/KISMİ bir nesnedir;
+      masaüstü kanoniktir, `tablet` masaüstünden, `mobile` `tablet`+masaüstü birleşiminden
+      MİRAS ALIR (§2.4).
+
+
+      **Slider bir "içerik" DEĞİL, yeniden kullanılabilir bir BİLEŞENDİR:** `status`/
+      `scheduledAt`/`translations`/`ContentRevision`/`viewCount` alanları BİLİNÇLİ OLARAK
+      YOKTUR. Yayın kararı, slider'ı gömen `Page`'in kendi `status`'una aittir (§1.4).
+      Ana sayfa entegrasyonu da AYRI bir mekanizma DEĞİLDİR — `SiteSettings.homePageId`'nin
+      gösterdiği sayfaya `advanced-slider` bloğu eklenir (§1.5).
+
+
+      **Yetki (bağlayıcı):** `GET /admin/sliders`, `GET /admin/sliders/{sliderId}` →
+      **ADMIN, MANAGER, EDITOR** (sayfa düzenleyicideki slider seçicisi bu okumaya
+      ihtiyaç duyar). Diğer TÜM admin uçları (yazma/silme/kopyalama/sıralama) →
+      **ADMIN veya MANAGER**; EDITOR → 403. `/sliders/{sliderId}` public'tir.
+
+
+      **Modül anahtarı YOKTUR** — `MODULE_REGISTRY`'ye EKLENMEZ (`products`/`portfolio`
+      gibi kapatılabilir DEĞİL). Gerekçe: kapatıldığında yayındaki sayfaların hero alanı
+      sessizce boşalırdı (§1.6).
   - name: Cart
     description: >
       Misafir alışveriş sepeti (`/cart`) — bkz. ARCHITECTURE.md §10.9.3. Kimlik
@@ -5735,6 +5764,413 @@ paths:
         "204": { description: Sayıldı }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  # ==========================================================================
+  # Gelişmiş Slider / Hero Studio — bkz. `Sliders` tag'i ve
+  # `.claude/architect-scope-advanced-slider.md` (bağlayıcı karar dokümanı).
+  # ==========================================================================
+
+  /admin/sliders:
+    get:
+      tags: [Sliders]
+      summary: Slider'ları listele — çöp filtresi + arama (ADMIN, MANAGER veya EDITOR)
+      description: >
+        **`slides` DÖNMEZ** — yalnızca `SliderSummary` (liste/seçici için). Slayt sayısı
+        `slideCount` olarak denormalize edilir. Cursor sayfalama `Portfolio` ile BİREBİR
+        aynı semantiktir. `search` — `name`/`slug` üzerinde büyük/küçük harf duyarsız.
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/TrashedFilter"
+        - $ref: "#/components/parameters/SearchQuery"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/SliderSummary" }
+                      meta: { $ref: "#/components/schemas/SliderListMeta" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [Sliders]
+      summary: Yeni slider oluştur (ADMIN veya MANAGER)
+      description: >
+        `slug` verilmezse `name`'den üretilir (`lib/slug.ts::slugify`, çakışmada `-2`
+        eki). Slider **slayt olmadan** oluşturulur; ilk slayt `POST .../slides` ile eklenir.
+        Diğer tüm ayarlar Zod `.default()` değerleriyle dolar (bkz. `Slider` şeması).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateSliderRequest" }
+      responses:
+        "201":
+          description: Slider oluşturuldu
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Slider" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409":
+          description: "`slug` çakışması (`error.code: CONFLICT`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/sliders/{sliderId}:
+    parameters:
+      - $ref: "#/components/parameters/SliderId"
+    get:
+      tags: [Sliders]
+      summary: Slider detayı — slaytlar ve katmanlar DAHİL (ADMIN, MANAGER veya EDITOR)
+      description: >
+        Editörün TEK okuma ucu — `slides[]` `order asc` sıralı, her slaytın `layers[]`
+        JSON dizisi HAM haliyle döner (pasif slaytlar DA döner; `isActive` filtresi
+        YALNIZCA public uçtadır). Çöpteki slider da döner (geri yükleme ekranı için).
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Slider" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [Sliders]
+      summary: Slider ayarlarını güncelle (ADMIN veya MANAGER)
+      description: >
+        YALNIZCA slider seviyesi ayarlar (ad/slug/otomatik oynatma/geçiş/yükseklik/
+        navigasyon). Slaytlar bu uçtan DEĞİŞTİRİLEMEZ (şemada YOKTUR) — slayt yazma
+        yolu `.../slides*` uçlarıdır. Çöpteki slider düzenlenemez → `409 CONFLICT`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateSliderRequest" }
+      responses:
+        "200":
+          description: Güncellendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Slider" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "Çöpteki slider'ı düzenleme girişimi VEYA `slug` çakışması (`error.code: CONFLICT`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+    delete:
+      tags: [Sliders]
+      summary: Slider'ı ÇÖPE TAŞI — soft delete + referans koruması (ADMIN veya MANAGER)
+      description: >
+        **Referans koruması (bağlayıcı):** slider herhangi bir sayfanın `blocks` JSON'ında
+        `advanced-slider` bloğu olarak KULLANILIYORSA `409 CONFLICT` döner ve `error.details`
+        içinde kullanan sayfaların listesi gelir. `?force=true` ile zorlanabilir (o zaman
+        bloklar public tarafta SESSİZCE hiçbir şey render etmez — `featured-*` bloklarının
+        "geçersiz id → boş sonuç" deseniyle AYNI). İdempotenttir.
+      parameters:
+        - name: force
+          in: query
+          required: false
+          schema: { type: boolean, default: false }
+          description: "`true` ise kullanımda olsa bile çöpe taşır."
+      responses:
+        "204": { description: Çöpe taşındı }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "Slider bir veya daha fazla sayfada kullanılıyor (`error.code: CONFLICT`, `error.details.usedBy: SliderUsage[]`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+
+  /admin/sliders/{sliderId}/restore:
+    parameters:
+      - $ref: "#/components/parameters/SliderId"
+    post:
+      tags: [Sliders]
+      summary: Slider'ı çöpten geri yükle (ADMIN veya MANAGER)
+      responses:
+        "200":
+          description: Geri yüklendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Slider" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/sliders/{sliderId}/permanent:
+    parameters:
+      - $ref: "#/components/parameters/SliderId"
+    delete:
+      tags: [Sliders]
+      summary: Slider'ı KALICI sil (ADMIN veya MANAGER)
+      description: >
+        Yalnızca ÇÖPTEKİ (`deletedAt != null`) bir slider kalıcı silinebilir → aksi halde
+        `409 CONFLICT` (`Portfolio` ile AYNI kural). Slaytlar `onDelete: Cascade` ile gider;
+        `Media` kayıtları ASLA silinmez.
+      responses:
+        "204": { description: Kalıcı olarak silindi }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "Çöpte olmayan slider'ı kalıcı silme girişimi (`error.code: CONFLICT`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+
+  /admin/sliders/{sliderId}/duplicate:
+    parameters:
+      - $ref: "#/components/parameters/SliderId"
+    post:
+      tags: [Sliders]
+      summary: Slider'ı slaytlarıyla birlikte kopyala (ADMIN veya MANAGER)
+      description: >
+        DERİN kopya — slaytlar ve `layers` JSON'ları dahil. Yeni `name` `"<ad> (kopya)"`,
+        yeni `slug` çakışmasız türetilir. **Katman `id`'leri YENİDEN ÜRETİLİR** (kopyada
+        eski id'ler kalırsa iki slider aynı `layerId`'yi taşır ve editör/animasyon anahtarları
+        çakışır — bağlayıcı).
+      responses:
+        "201":
+          description: Kopyalandı
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Slider" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/sliders/{sliderId}/usage:
+    parameters:
+      - $ref: "#/components/parameters/SliderId"
+    get:
+      tags: [Sliders]
+      summary: Bu slider'ı kullanan sayfalar (ADMIN, MANAGER veya EDITOR)
+      description: >
+        `pages.blocks` JSON'ında `{"type":"advanced-slider", ...,"sliderId":"<uuid>"}` geçen
+        sayfaları döner. Uygulama notu (backend-agent): Postgres tarafında
+        `blocks::text ILIKE '%<uuid>%'` ön filtresi + uygulama içinde ağaç taraması
+        (`lib/page-blocks.ts::scanPageNodeStructure` ile AYNI iteratif yaklaşım) — ham
+        `LIKE` sonucuna GÜVENİLMEZ, yalnızca aday kümesini daraltır. Çöpteki sayfalar
+        `page.deletedAt` ile işaretlenir ama listeden ÇIKARILMAZ.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/SliderUsage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/sliders/{sliderId}/slides:
+    parameters:
+      - $ref: "#/components/parameters/SliderId"
+    post:
+      tags: [Sliders]
+      summary: Slayt ekle (ADMIN veya MANAGER)
+      description: >
+        `order` verilmezse mevcut en yüksek `order + 1` atanır (sona eklenir).
+        `MAX_SLIDES_PER_SLIDER` (20) aşılırsa `422`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateSlideRequest" }
+      responses:
+        "201":
+          description: Slayt eklendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Slide" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/sliders/{sliderId}/slides/order:
+    parameters:
+      - $ref: "#/components/parameters/SliderId"
+    put:
+      tags: [Sliders]
+      summary: Slaytları yeniden sırala — TAM liste ile (ADMIN veya MANAGER)
+      description: >
+        `Navigation` PUT'u ile AYNI "tam durum gönder" deseni: `slideIds` bu slider'ın
+        TÜM slaytlarını, istenen sırada, EKSİKSİZ içermelidir. Eksik/fazla/yabancı id →
+        `422`. Sunucu `order` değerlerini `0..n-1` olarak YENİDEN YAZAR (tek transaction).
+        Kısmi (`PATCH slide.order`) sıralama BİLİNÇLİ olarak DESTEKLENMEZ — sürükle-bırakta
+        yarış koşulu ve çift `order` üretirdi.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ReorderSlidesRequest" }
+      responses:
+        "200":
+          description: Sıralandı — güncel slayt listesi döner
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/Slide" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/sliders/{sliderId}/slides/{slideId}:
+    parameters:
+      - $ref: "#/components/parameters/SliderId"
+      - $ref: "#/components/parameters/SlideId"
+    patch:
+      tags: [Sliders]
+      summary: Slaytı güncelle — arka plan + KATMANLAR (ADMIN veya MANAGER)
+      description: >
+        Katman editörünün ANA yazma ucu. `layers` gönderilirse **TAMAMEN DEĞİŞTİRİLİR**
+        (kısmi katman yaması YOK — istemci tuvalin tam durumunu tutar; `Page.blocks`
+        deseniyle AYNI). `order` bu uçtan DEĞİŞTİRİLEMEZ (bkz. `.../slides/order`).
+        Doğrulama sırası (bağlayıcı, `PageBlockListSchema` ile AYNI gerekçe):
+        (1) `layers.length <= MAX_SLIDE_LAYERS` (20) → (2) `JSON.stringify` byte tavanı
+        `MAX_SLIDE_LAYERS_BYTES` (64 KB) → (3) katman-başına Zod ayrık birliği.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateSlideRequest" }
+      responses:
+        "200":
+          description: Güncellendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Slide" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "413":
+          description: "`layers` JSON'ı `MAX_SLIDE_LAYERS_BYTES` (64 KB) sınırını aşıyor (`error.code: PAYLOAD_TOO_LARGE`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+    delete:
+      tags: [Sliders]
+      summary: Slaytı sil (ADMIN veya MANAGER)
+      description: >
+        **Soft-delete YOKTUR** — slayt bir "içerik" değil, slider'ın bir parçasıdır;
+        kalan slaytların `order` değerleri `0..n-1` olarak sıkıştırılır. Bir slider'ın
+        SON slaytı da silinebilir (slider boş kalır, public tarafta hiçbir şey render
+        edilmez).
+      responses:
+        "204": { description: Silindi }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/sliders/{sliderId}/slides/{slideId}/duplicate:
+    parameters:
+      - $ref: "#/components/parameters/SliderId"
+      - $ref: "#/components/parameters/SlideId"
+    post:
+      tags: [Sliders]
+      summary: Slaytı kopyala (ADMIN veya MANAGER)
+      description: >
+        Kopya, kaynağın HEMEN ARDINA eklenir; sonraki slaytların `order` değerleri kaydırılır.
+        Katman `id`'leri YENİDEN ÜRETİLİR (bkz. slider `duplicate`).
+      responses:
+        "201":
+          description: Kopyalandı
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Slide" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /sliders/{sliderId}:
+    parameters:
+      - $ref: "#/components/parameters/SliderId"
+    get:
+      tags: [Sliders]
+      security: []
+      summary: Slider'ı render için getir (public)
+      description: >
+        `advanced-slider` bloğunun sunucu bileşeni bu ucu çağırır
+        (`fetchSliderServer`, `next: { revalidate: 60 }`). **Slug ile DEĞİL, `sliderId`
+        (uuid) ile erişilir** — blok `data.sliderId` tutar, ad/slug değişince bağ kopmaz.
+
+
+        Filtre: `deletedAt = null` VE yalnızca `isActive: true` slaytlar, `order asc`.
+        Çöpteki/bulunamayan slider → `404` (blok sessizce hiçbir şey render etmez).
+        `Slide.label` (yalnızca panel içi tanımlayıcı) bu yanıtta **DÖNMEZ**.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/PublicSlider" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /cart:
     get:
       tags: [Cart]
@@ -7373,6 +7809,16 @@ components:
       schema: { type: string, format: uuid }
     PortfolioItemId:
       name: itemId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    SliderId:
+      name: sliderId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    SlideId:
+      name: slideId
       in: path
       required: true
       schema: { type: string, format: uuid }
@@ -12319,3 +12765,510 @@ components:
               nullable: true
             publishedAt: { type: string, format: date-time, nullable: true }
             updatedAt: { type: string, format: date-time }
+
+    # ========================================================================
+    # Gelişmiş Slider / Hero Studio — şemalar.
+    # Bağlayıcı karar dokümanı: `.claude/architect-scope-advanced-slider.md`.
+    # Backend karşılığı: `backend/src/modules/sliders/sliders.schemas.ts` (Zod).
+    # Frontend karşılığı: `frontend/src/lib/sliders/types.ts` (TS tipleri) —
+    # sayısal sabitler ÜÇÜ ARASINDA BİREBİR AYNI olmak ZORUNDADIR.
+    # ========================================================================
+
+    SliderTransitionEffect:
+      type: string
+      description: >
+        Slaytlar arası geçiş. `slide` yatay kaydırma, `fade` çapraz solma, `cube` 3B
+        küp dönüşü (CSS `transform: rotateY` + `perspective`), `zoom` ölçek+solma.
+        HAM CSS DEĞERİ DEĞİL — render motorundaki sabit bir varyant tablosuna eşlenir
+        (`ContainerJustify`/`ButtonBlock.style` ile AYNI desen).
+      enum: [slide, fade, cube, zoom]
+
+    SliderHeightMode:
+      type: string
+      description: >
+        `full-screen` → `100svh` (`100vh` DEĞİL — mobil tarayıcı çubuğu zıplamasını
+        önler). `custom-px` → `heightPx`. `aspect-ratio` → `aspectRatioWidth /
+        aspectRatioHeight`. **Sıfır CLS'in tek kaynağı budur**: dış kutunun yüksekliği
+        sunucu HTML'inde HESAPLANABİLİR olmak zorundadır, JS ile ölçülemez.
+      enum: [full-screen, custom-px, aspect-ratio]
+
+    SlideBackgroundType:
+      type: string
+      description: >
+        Düz renk için AYRI bir tip YOKTUR — `gradient` ile `bgGradientFrom ==
+        bgGradientTo` verilir (branş sayısını azaltmak için bilinçli karar).
+      enum: [image, video, gradient]
+
+    SliderNavigationTheme:
+      type: string
+      description: >
+        Ok/bullet/ilerleme çubuğunun kontrast teması. Gerçek görsel dil (boyut, kenarlık,
+        gölge, hover) **ui-designer**'ın tasarım tokenlerine aittir — bu alan yalnızca
+        "açık zemin mi koyu zemin mi" ayrımını taşır.
+      enum: [light, dark]
+
+    SliderLayerType:
+      type: string
+      enum: [heading, text, button, image, badge]
+
+    SliderLayerOrigin:
+      type: string
+      description: >
+        Katmanın HANGİ noktasının `xPercent`/`yPercent` koordinatına oturacağı
+        (CSS `transform-origin` benzeri 9'lu ızgara). Hizalama ön ayarları (sol-üst,
+        orta, sağ-alt…) editörde bu üçlüyü (`origin` + `xPercent` + `yPercent`) topluca
+        yazan kısayollardır — AYRI bir "alignment" alanı YOKTUR (tek temsil kuralı).
+      enum:
+        [
+          top-left,
+          top-center,
+          top-right,
+          middle-left,
+          middle-center,
+          middle-right,
+          bottom-left,
+          bottom-center,
+          bottom-right,
+        ]
+
+    SliderLayerPosition:
+      type: object
+      description: >
+        Yüzde tabanlı, çözünürlükten BAĞIMSIZ konumlandırma — sabit bir "tasarım tuvali"
+        (ör. 1920×900) piksel ızgarası BİLİNÇLİ OLARAK REDDEDİLDİ (ölçekleme faktörü
+        taşımak, her kırılma noktasında yeniden hesap ve yuvarlama kayması demektir).
+        Render: `left: {xPercent}%; top: {yPercent}%;
+        transform: translate(-{ox}%, -{oy}%) translate({offsetX}px, {offsetY}px)`.
+      required: [xPercent, yPercent, origin]
+      properties:
+        xPercent: { type: number, minimum: 0, maximum: 100 }
+        yPercent: { type: number, minimum: 0, maximum: 100 }
+        origin: { $ref: "#/components/schemas/SliderLayerOrigin" }
+        offsetX:
+          type: integer
+          minimum: -400
+          maximum: 400
+          description: "px — hizalama ön ayarından sonra ince ayar. Varsayılan 0."
+        offsetY: { type: integer, minimum: -400, maximum: 400 }
+        widthPercent:
+          type: number
+          minimum: 1
+          maximum: 100
+          description: "Katman genişliği, slayt genişliğinin yüzdesi. Verilmezse içerik kadar (`auto`)."
+        zIndex:
+          type: integer
+          minimum: 0
+          maximum: 99
+          description: "Katman yığın sırası. Verilmezse dizideki indeks kullanılır."
+
+    SliderLayerStyle:
+      type: object
+      description: >
+        **HAM CSS KABUL EDİLMEZ.** Renkler `#rrggbb` (6 hane, `ContainerBackgroundOverlay`
+        ile AYNI dar kural — alfa AYRI `opacity` alanından), yazı tipi ailesi serbest
+        string DEĞİL bir token'dır (site temasından çözülür), gölge sabit bir tablodan
+        gelir. Tüm alanlar opsiyoneldir; verilmeyen alan için render motoru kendi
+        varsayılanını kullanır.
+      properties:
+        color: { type: string, pattern: "^#[0-9a-fA-F]{6}$" }
+        backgroundColor: { type: string, pattern: "^#[0-9a-fA-F]{6}$" }
+        backgroundOpacity: { type: integer, minimum: 0, maximum: 100 }
+        fontFamily:
+          type: string
+          description: "`SiteAppearance.headingFont`/`bodyFont`'a çözülür — serbest font adı YASAK."
+          enum: [inherit, heading, body]
+        fontSize: { type: integer, minimum: 8, maximum: 200, description: "px" }
+        fontWeight: { type: integer, enum: [300, 400, 500, 600, 700, 800, 900] }
+        lineHeight: { type: number, minimum: 0.8, maximum: 3, description: "Birimsiz çarpan." }
+        letterSpacing: { type: number, minimum: -5, maximum: 20, description: "px" }
+        textAlign: { type: string, enum: [left, center, right] }
+        textTransform: { type: string, enum: [none, uppercase] }
+        padding:
+          type: object
+          description: "px, negatif YASAK (`ContainerSpacing` ile AYNI kural)."
+          properties:
+            top: { type: integer, minimum: 0, maximum: 200 }
+            right: { type: integer, minimum: 0, maximum: 200 }
+            bottom: { type: integer, minimum: 0, maximum: 200 }
+            left: { type: integer, minimum: 0, maximum: 200 }
+        borderRadius: { type: integer, minimum: 0, maximum: 200, description: "px" }
+        opacity: { type: integer, minimum: 0, maximum: 100 }
+        shadow: { type: string, enum: [none, sm, md, lg] }
+        maxWidthPx: { type: integer, minimum: 40, maximum: 1600 }
+
+    SliderLayerInEffect:
+      type: string
+      description: >
+        `RevealEffect` (page-builder scroll reveal) ile ADI benzer ama AYRI bir kümedir —
+        slider katmanları yatay giriş yönlerine (`slide-in-left/right`) ihtiyaç duyar,
+        scroll-reveal ise dikey akışa göre tasarlanmıştır. İkisi BİRLEŞTİRİLMEZ.
+      enum: [none, fade, fade-up, fade-down, slide-in-left, slide-in-right, zoom-in, flip-up]
+
+    SliderLayerAnimation:
+      type: object
+      description: >
+        **Zamanlama sözleşmesi (bağlayıcı):** `delayMs` slaytın AKTİF OLDUĞU AN'dan
+        (`t=0`) itibaren ölçülür — önceki slaytın çıkış animasyonundan DEĞİL. Bu, admin
+        zaman çizelgesindeki (timeline) çubuk konumuyla ön yüzdeki gerçek gecikmenin
+        BİREBİR aynı olmasını garanti eder.
+
+
+        **Çıkış animasyonu VERİ DEĞİLDİR:** tüm katmanlar `SLIDER_LAYER_OUT_DURATION_MS`
+        (300 ms) `fade` ile çıkar (kod sabiti). Gerekçe: 20 katmanın çıkış koreografisini
+        ayrı ayrı ayarlamak, geçiş süresini (`transitionDurationMs`) aşan ve kullanıcıya
+        "takılıyor" hissi veren yapılandırmalar üretiyordu.
+      required: [inEffect, delayMs, durationMs]
+      properties:
+        inEffect: { $ref: "#/components/schemas/SliderLayerInEffect" }
+        delayMs:
+          type: integer
+          minimum: 0
+          maximum: 10000
+          multipleOf: 50
+          description: "50 ms adımlarla (zaman çizelgesi çözünürlüğü)."
+        durationMs: { type: integer, minimum: 100, maximum: 3000, multipleOf: 50 }
+        easing:
+          type: string
+          description: "Verilmezse `ease-out`. `spring` framer-motion yay fiziğine eşlenir."
+          enum: [linear, ease-out, ease-in-out, spring]
+
+    SliderLayerResponsiveOverride:
+      type: object
+      description: >
+        **SEYREK/KISMİ override.** Masaüstü (katmanın kök alanları) KANONİKTİR;
+        `tablet` masaüstünden, `mobile` `tablet`+masaüstü BİRLEŞİMİNDEN miras alır
+        (CSS basamaklandırmasıyla AYNI zihinsel model). Override'ı "kaldırmak" = anahtarı
+        SİLMEK.
+
+
+        **`content` BİLİNÇLİ OLARAK override EDİLEMEZ (v1 sınırı).** Gerekçe: aynı metnin
+        üç kopyası, i18n/SEO/yazım düzeltmelerinde sessizce ayrışır. Mobilde farklı bir
+        metin isteyen kullanıcı, masaüstü katmanını `hidden: true` yapıp mobil-özel ikinci
+        bir katman ekler (tek yazma yolu korunur).
+      properties:
+        hidden:
+          type: boolean
+          description: "`true` → katman bu cihazda HİÇ render edilmez (DOM'a da girmez)."
+        position: { $ref: "#/components/schemas/SliderLayerPosition" }
+        style: { $ref: "#/components/schemas/SliderLayerStyle" }
+        animation: { $ref: "#/components/schemas/SliderLayerAnimation" }
+
+    SliderLayerResponsive:
+      type: object
+      description: "Masaüstü için ANAHTAR YOKTUR — kök alanlar masaüstüdür."
+      properties:
+        tablet: { $ref: "#/components/schemas/SliderLayerResponsiveOverride" }
+        mobile: { $ref: "#/components/schemas/SliderLayerResponsiveOverride" }
+
+    SliderLayer:
+      type: object
+      description: >
+        `type` üzerinden AYRIK BİRLİK (discriminated union) — `content` şekli tipe göre
+        değişir, Zod tarafında `z.discriminatedUnion("type", [...])` ile doğrulanır.
+
+
+        | `type` | `content` alanları |
+        |---|---|
+        | `heading` | `text` (düz metin, ≤200), `level` (1\|2\|3 — SEO: sayfada TEK `h1`, varsayılan 2) |
+        | `text` | `text` (düz metin, ≤600; satır sonları `<p>`'ye çevrilir — **HTML DEĞİL**, `AccordionQAItem.answer` ile AYNI gerekçe: yeni sanitizasyon yolu açılmaz) |
+        | `button` | `label` (≤60), `href` (`SafeHrefSchema` — protokol beyaz listesi), `variant` (`solid\|outline\|ghost`), `size` (`sm\|md\|lg`), `icon?` (`icon-options.ts` allowlist) |
+        | `image` | `url` (≤2048), `alt` (≤200, ZORUNLU — a11y) |
+        | `badge` | `text` (≤60) |
+      required: [id, type, content, position, animation]
+      properties:
+        id:
+          type: string
+          description: >
+            İstemcide üretilen kararlı kimlik (`registry.ts::newId` deseni). Slider/slayt
+            KOPYALANIRKEN yeniden üretilir.
+        type: { $ref: "#/components/schemas/SliderLayerType" }
+        content:
+          type: object
+          description: "Tipe göre ayrık — yukarıdaki tabloya bakınız."
+          additionalProperties: true
+        position: { $ref: "#/components/schemas/SliderLayerPosition" }
+        style: { $ref: "#/components/schemas/SliderLayerStyle" }
+        animation: { $ref: "#/components/schemas/SliderLayerAnimation" }
+        responsive: { $ref: "#/components/schemas/SliderLayerResponsive" }
+
+    Slide:
+      type: object
+      description: "Admin DTO — `label` ve pasif slaytlar DAHİL (public DTO için bkz. `PublicSlide`)."
+      required: [id, order, isActive, bgType, layers, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        order: { type: integer, description: "0..n-1, `PUT .../slides/order` tarafından yeniden yazılır." }
+        isActive:
+          type: boolean
+          description: "`false` → public uçta DÖNMEZ; panelde görünür (kampanya slaytını geçici kapatma)."
+        label:
+          type: string
+          nullable: true
+          description: "Yalnızca PANEL İÇİ tanımlayıcı (slayt şeridinde gösterilir) — public yanıtta YOK, hiçbir yerde render EDİLMEZ."
+        bgType: { $ref: "#/components/schemas/SlideBackgroundType" }
+        bgMedia:
+          allOf:
+            - $ref: "#/components/schemas/Media"
+          nullable: true
+          description: "`bgType: image` (ve kütüphaneden yüklenmiş `video`) için medya kaydı."
+        bgVideoUrl:
+          type: string
+          nullable: true
+          description: "`bgType: video` VE `bgMedia` yokken kullanılan HARİCİ `.mp4` URL'i (`SafeHrefSchema`)."
+        bgVideoPosterMedia:
+          allOf:
+            - $ref: "#/components/schemas/Media"
+          nullable: true
+          description: >
+            Poster karesi. **`bgType: video` iken güçlü tavsiye** — yoksa video yüklenene
+            kadar boş/siyah bir kutu görünür ve LCP ölçümü videoya kayar.
+        bgPositionX: { type: integer, minimum: 0, maximum: 100, description: "Odak noktası %, CSS `object-position`. Varsayılan 50." }
+        bgPositionY: { type: integer, minimum: 0, maximum: 100 }
+        bgOverlayColor: { type: string, nullable: true, pattern: "^#[0-9a-fA-F]{6}$" }
+        bgOverlayOpacity: { type: integer, minimum: 0, maximum: 100, description: "0 = katman hiç render edilmez." }
+        bgGradientFrom: { type: string, nullable: true, pattern: "^#[0-9a-fA-F]{6}$" }
+        bgGradientTo: { type: string, nullable: true, pattern: "^#[0-9a-fA-F]{6}$" }
+        bgGradientAngle: { type: integer, minimum: 0, maximum: 360, description: "Varsayılan 180 (yukarıdan aşağı)." }
+        bgKenBurns:
+          type: boolean
+          description: >
+            Yavaş yakınlaşma efekti. **`prefers-reduced-motion: reduce` altında ZORUNLU
+            OLARAK devre dışıdır** (kullanıcı ayarı veriyi geçersiz kılar).
+        durationMs:
+          type: integer
+          nullable: true
+          minimum: 1000
+          maximum: 60000
+          description: "Bu slayta özgü otomatik oynatma süresi. `null` → `Slider.intervalMs`."
+        linkHref: { type: string, nullable: true, description: "Tüm slaytı tıklanabilir yapar (`SafeHrefSchema`)." }
+        linkNewTab: { type: boolean }
+        layers:
+          type: array
+          maxItems: 20
+          items: { $ref: "#/components/schemas/SliderLayer" }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    SliderSettings:
+      type: object
+      description: "Slider seviyesi davranış/görünüm ayarları — `Slider` ve `PublicSlider` bunu PAYLAŞIR."
+      required:
+        [
+          autoplay,
+          intervalMs,
+          loop,
+          pauseOnHover,
+          transitionEffect,
+          transitionDurationMs,
+          heightMode,
+          aspectRatioWidth,
+          aspectRatioHeight,
+          showArrows,
+          showBullets,
+          showProgressBar,
+          navigationTheme,
+        ]
+      properties:
+        autoplay:
+          type: boolean
+          description: >
+            **WCAG 2.2.2 (bağlayıcı):** `autoplay: true` iken ön yüz HER ZAMAN görünür bir
+            duraklat/oynat düğmesi render eder. Bu bir ayar DEĞİLDİR, kapatılamaz.
+        intervalMs: { type: integer, minimum: 1000, maximum: 60000, description: "Varsayılan 6000." }
+        loop: { type: boolean, description: "Varsayılan true. `false` iken son slaytta otomatik oynatma durur." }
+        pauseOnHover: { type: boolean, description: "Varsayılan true. Klavye odağı slider içindeyken de duraklar." }
+        transitionEffect: { $ref: "#/components/schemas/SliderTransitionEffect" }
+        transitionDurationMs: { type: integer, minimum: 100, maximum: 3000, description: "Varsayılan 700." }
+        heightMode: { $ref: "#/components/schemas/SliderHeightMode" }
+        heightPx: { type: integer, nullable: true, minimum: 120, maximum: 2000 }
+        aspectRatioWidth: { type: integer, minimum: 1, maximum: 64, description: "Varsayılan 16." }
+        aspectRatioHeight: { type: integer, minimum: 1, maximum: 64, description: "Varsayılan 9." }
+        mobileHeightMode:
+          allOf:
+            - $ref: "#/components/schemas/SliderHeightMode"
+          nullable: true
+          description: >
+            `null` → masaüstüyle AYNI. Tablet için AYRI override YOKTUR (masaüstünü
+            miras alır) — üç kırılma noktası için üç yükseklik seti, kazandığından
+            fazla karmaşıklık üretiyordu.
+        mobileHeightPx: { type: integer, nullable: true, minimum: 120, maximum: 2000 }
+        mobileAspectRatioWidth: { type: integer, nullable: true, minimum: 1, maximum: 64 }
+        mobileAspectRatioHeight: { type: integer, nullable: true, minimum: 1, maximum: 64 }
+        showArrows: { type: boolean }
+        showBullets: { type: boolean }
+        showProgressBar: { type: boolean }
+        navigationTheme: { $ref: "#/components/schemas/SliderNavigationTheme" }
+
+    SliderSummary:
+      type: object
+      description: "Liste/seçici DTO — `slides` YOKTUR."
+      required: [id, name, slug, slideCount, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+        slideCount: { type: integer }
+        previewImageUrl:
+          type: string
+          nullable: true
+          description: "İlk aktif slaytın arka plan görseli — seçicide küçük önizleme için türetilir (DB kolonu DEĞİL)."
+        deletedAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    Slider:
+      description: "Admin detay DTO — ayarlar + TÜM slaytlar (pasifler dahil)."
+      allOf:
+        - $ref: "#/components/schemas/SliderSummary"
+        - $ref: "#/components/schemas/SliderSettings"
+        - type: object
+          required: [slides]
+          properties:
+            slides:
+              type: array
+              items: { $ref: "#/components/schemas/Slide" }
+
+    PublicSlide:
+      description: >
+        `Slide` ile AYNI şekil EKSİ `x-omitted-properties`. OpenAPI "alan çıkarma"yı
+        ifade edemediği için `allOf` + bu uzantı kullanılır; **mapper'da (`toPublicSliderDto`)
+        bu iki alan MUTLAKA düşürülür** — `label` panel içi bir not olabilir (sızdırılmaz),
+        `isActive` public'te her zaman `true` olurdu (anlamsız alan).
+      x-omitted-properties: [label, isActive]
+      allOf:
+        - $ref: "#/components/schemas/Slide"
+
+    PublicSlider:
+      type: object
+      description: "`GET /sliders/{sliderId}` yanıtı — render için gereken MİNİMUM veri."
+      required: [id, name, slides]
+      properties:
+        id: { type: string, format: uuid }
+        name:
+          type: string
+          description: "`aria-label` olarak kullanılır (`role=\"region\"` + `aria-roledescription=\"carousel\"`)."
+        slides:
+          type: array
+          items: { $ref: "#/components/schemas/PublicSlide" }
+      allOf:
+        - $ref: "#/components/schemas/SliderSettings"
+
+    SliderUsage:
+      type: object
+      description: "`GET /admin/sliders/{sliderId}/usage` ve `409` gövdesindeki `error.details.usedBy` öğesi."
+      required: [pageId, pageTitle, pageSlug, blockId]
+      properties:
+        pageId: { type: string, format: uuid }
+        pageTitle: { type: string }
+        pageSlug: { type: string }
+        blockId: { type: string, description: "Sayfa ağacındaki `advanced-slider` düğümünün `id`'si." }
+        isHomePage: { type: boolean, description: "`SiteSettings.homePageId` bu sayfayı gösteriyorsa `true` — uyarı metnini sertleştirmek için." }
+        pageDeletedAt: { type: string, format: date-time, nullable: true }
+
+    SliderListMeta:
+      type: object
+      description: "`GET /admin/sliders` `meta` zarfı."
+      required: [counts]
+      properties:
+        nextCursor: { type: string, nullable: true }
+        counts:
+          type: object
+          required: [active, trashed]
+          properties:
+            active: { type: integer }
+            trashed: { type: integer }
+
+    CreateSliderRequest:
+      type: object
+      required: [name]
+      description: "Ayar alanlarının HEPSİ opsiyoneldir — verilmeyenler Zod `.default()` ile dolar."
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        slug: { type: string, minLength: 1, maxLength: 140 }
+      additionalProperties: false
+
+    UpdateSliderRequest:
+      description: >
+        `CreateSliderRequest` + TÜM `SliderSettings` alanları, hepsi opsiyonel (PATCH
+        semantiği). `slides` BURADA KABUL EDİLMEZ.
+      allOf:
+        - type: object
+          properties:
+            name: { type: string, minLength: 1, maxLength: 120 }
+            slug: { type: string, minLength: 1, maxLength: 140 }
+        - $ref: "#/components/schemas/SliderSettings"
+
+    CreateSlideRequest:
+      description: >
+        Tüm alanlar opsiyoneldir — "boş slayt" (varsayılan gradient arka plan, katmansız)
+        oluşturmak GEÇERLİ bir akıştır (editör önce slaytı yaratır, sonra tuvale katman
+        bırakır). `order` verilmezse sona eklenir.
+      allOf:
+        - $ref: "#/components/schemas/UpdateSlideRequest"
+        - type: object
+          properties:
+            order: { type: integer, minimum: 0 }
+
+    UpdateSlideRequest:
+      type: object
+      description: >
+        `order` alanı YOKTUR (bkz. `PUT .../slides/order`). `layers` gönderilirse dizi
+        TAMAMEN DEĞİŞTİRİLİR.
+      properties:
+        isActive: { type: boolean }
+        label: { type: string, maxLength: 120, nullable: true }
+        bgType: { $ref: "#/components/schemas/SlideBackgroundType" }
+        bgMediaId: { type: string, format: uuid, nullable: true }
+        bgVideoUrl: { type: string, maxLength: 2048, nullable: true }
+        bgVideoPosterMediaId: { type: string, format: uuid, nullable: true }
+        bgPositionX: { type: integer, minimum: 0, maximum: 100 }
+        bgPositionY: { type: integer, minimum: 0, maximum: 100 }
+        bgOverlayColor: { type: string, nullable: true, pattern: "^#[0-9a-fA-F]{6}$" }
+        bgOverlayOpacity: { type: integer, minimum: 0, maximum: 100 }
+        bgGradientFrom: { type: string, nullable: true, pattern: "^#[0-9a-fA-F]{6}$" }
+        bgGradientTo: { type: string, nullable: true, pattern: "^#[0-9a-fA-F]{6}$" }
+        bgGradientAngle: { type: integer, minimum: 0, maximum: 360 }
+        bgKenBurns: { type: boolean }
+        durationMs: { type: integer, nullable: true, minimum: 1000, maximum: 60000 }
+        linkHref: { type: string, maxLength: 2048, nullable: true }
+        linkNewTab: { type: boolean }
+        layers:
+          type: array
+          maxItems: 20
+          items: { $ref: "#/components/schemas/SliderLayer" }
+      additionalProperties: false
+
+    ReorderSlidesRequest:
+      type: object
+      required: [slideIds]
+      properties:
+        slideIds:
+          type: array
+          minItems: 1
+          maxItems: 20
+          description: "Bu slider'ın TÜM slayt id'leri, istenen sırada. Eksik/fazla/yabancı → 422."
+          items: { type: string, format: uuid }
+      additionalProperties: false
+
+    AdvancedSliderBlockData:
+      type: object
+      description: >
+        `Page.blocks` ağacındaki `advanced-slider` düğümünün `data` şekli (bkz.
+        `frontend/src/lib/page-builder/types.ts::AdvancedSliderBlock` ve backend
+        `pages.schemas.ts::AdvancedSliderBlockSchema`).
+
+
+        **Blok İÇERİK TAŞIMAZ, yalnızca REFERANS taşır.** Slayt/katman verisi `Slider`
+        tablolarındadır. Gerekçe: (a) aynı slider birden fazla sayfada yeniden kullanılır,
+        (b) `Page.blocks` 256 KB tavanı çok katmanlı slayt JSON'unu kaldıramaz,
+        (c) slider'ı güncellemek sayfa revizyonu üretmemelidir.
+
+
+        `sliderId` **OPSİYONELDİR** — yeni eklenen blok henüz seçim yapılmamış haldedir
+        (`createBlock` bu alanı hiç EKLEMEZ, `""` göndermez; `CtaBlock.secondaryButtonHref`
+        ile AYNI "boş string yerine alanı omit et" deseni). Seçim yapılmamış VEYA silinmiş
+        bir slider → public tarafta SESSİZCE hiçbir şey render edilmez (`featured-*`
+        bloklarıyla AYNI davranış).
+      properties:
+        sliderId: { type: string, format: uuid }
+      additionalProperties: false
