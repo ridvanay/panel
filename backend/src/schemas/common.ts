@@ -126,3 +126,29 @@ export const SCHEDULED_AT_REFINEMENT: { message: string; path: (string | number)
 export const LocaleQuerySchema = z.object({
   locale: z.string().min(1).optional(),
 });
+
+/**
+ * Protokol beyaz listesi — relative (`/...`) veya mutlak `http(s)://` bir `href`i kabul
+ * eder, `javascript:`/`vbscript:`/`data:` gibi tehlikeli şemaları (baştaki boşluk/kontrol
+ * karakteri toleranslı, case-insensitive) REDDEDER.
+ *
+ * ÖNCEDEN `modules/pages/pages.schemas.ts` içinde YEREL/DIŞA AKTARILMAYAN bir kopyaydı;
+ * BURAYA taşındı (`.claude/architect-scope-advanced-slider.md` §3.2.1, bağlayıcı ön koşul) —
+ * `sliders` modülünün katman `href`/`linkHref`/`bgVideoUrl` alanları AYNI beyaz listeye tabi
+ * olduğu için kopyalamak YERİNE tek bir kaynak paylaşılır (iki ayrı beyaz listenin zamanla
+ * ayrışması — biri güncellenirken diğerinin unutulması — bir güvenlik açığı sınıfıdır).
+ * Davranış BİREBİR AYNI kalır — saf refactor, `pages.schemas.ts` bu sembolleri buradan
+ * import eder.
+ */
+// KASITLI: baştaki kontrol karakterlerini (0x00-0x1f) tolerans olarak eşleştirmek bu
+// regex'in güvenlik amacıdır (§13.3) — devre dışı BIRAKILAMAZ.
+// eslint-disable-next-line no-control-regex
+export const DANGEROUS_URL_SCHEME_RE = /^[\s\u0000-\u001f]*(javascript|vbscript|data):/i;
+export const SAFE_ABSOLUTE_URL_RE = /^https?:\/\//i;
+
+export function isSafeHref(value: string): boolean {
+  if (DANGEROUS_URL_SCHEME_RE.test(value)) return false;
+  return value.startsWith("/") || SAFE_ABSOLUTE_URL_RE.test(value);
+}
+
+export const SafeHrefSchema = z.string().min(1).max(2048).refine(isSafeHref, "Bağlantı güvensiz bir protokol içeriyor.");

@@ -56,8 +56,8 @@ export class NotFoundError extends ApiError {
 }
 
 export class ConflictError extends ApiError {
-  constructor(message = "Kaynak çakışması.") {
-    super(409, "CONFLICT", message);
+  constructor(message = "Kaynak çakışması.", details?: Record<string, string[]>) {
+    super(409, "CONFLICT", message, details);
   }
 }
 
@@ -71,6 +71,23 @@ export class ValidationError extends ApiError {
 export class PayloadTooLargeError extends ApiError {
   constructor(message = "İstek gövdesi çok büyük.", details?: Record<string, string[]>) {
     super(413, "PAYLOAD_TOO_LARGE", message, details);
+  }
+}
+
+/**
+ * `DELETE /admin/sliders/{sliderId}` referans koruması (§4.3, bağlayıcı) — openapi.yaml bu
+ * ucun 409 gövdesinde `error.details.usedBy: SliderUsage[]` (ZENGİN nesne dizisi) taşır.
+ * Genel `ConflictError`/`ApiError.details` alanı `Record<string, string[]>`e SABİTTİR (diğer
+ * TÜM 30+ kullanım yerini etkileyecek bir genişletme YAPILMAZ) — bu yüzden BU TEK uç için
+ * `usedBy` AYRI, tip-güvenli bir alanda taşınır ve `plugins/error-handler.ts` bunu özel bir
+ * dalda (`instanceof SliderInUseError`) serileştirir.
+ */
+export class SliderInUseError extends ApiError {
+  usedBy: unknown[];
+
+  constructor(message: string, usedBy: unknown[]) {
+    super(409, "CONFLICT", message);
+    this.usedBy = usedBy;
   }
 }
 

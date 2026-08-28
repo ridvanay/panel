@@ -31,6 +31,8 @@ import type {
   PortfolioCategory,
   PortfolioItem,
   PortfolioImage,
+  Slider,
+  Slide,
   CartItem,
   Order,
   OrderItem,
@@ -87,6 +89,12 @@ import type {
   PortfolioCategoryDto,
   PortfolioItemDto,
   PortfolioImageDto,
+  SliderSummaryDto,
+  SliderDto,
+  SlideDto,
+  PublicSliderDto,
+  PublicSlideDto,
+  SliderUsageDto,
   CartDto,
   CartItemDto,
   OrderDto,
@@ -112,6 +120,13 @@ import {
 } from "../lib/seo-score";
 import { canUseAdvancedBuilder } from "../lib/builder-capability";
 import { DUPLICATE_STRATEGY_FROM_PRISMA, SEVERITY_FROM_PRISMA } from "../modules/import/import.constants";
+import {
+  TRANSITION_EFFECT_FROM_PRISMA,
+  HEIGHT_MODE_FROM_PRISMA,
+  BACKGROUND_TYPE_FROM_PRISMA,
+  NAVIGATION_THEME_FROM_PRISMA,
+  heightModeFromPrisma,
+} from "../modules/sliders/lib/enum-maps";
 import type { ModuleDefinition } from "../lib/module-registry";
 import { buildMaskedKey } from "../lib/api-key";
 
@@ -1156,4 +1171,131 @@ export function toWebhookDeliveryDto(delivery: WebhookDelivery): WebhookDelivery
     payload: delivery.payload as WebhookDeliveryDto["payload"],
     responseBodySnippet: delivery.responseBodySnippet,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Gelişmiş Slider / Hero Studio — bkz. .claude/architect-scope-advanced-slider.md
+// (bağlayıcı karar dokümanı) ve modules/sliders/*. `Slider` bir "içerik" DEĞİLDİR (§1.1) —
+// `Product`/`PortfolioItem` mapper'larının aksine SEO skoru/yayın/çeviri alanı TAŞIMAZ.
+// ---------------------------------------------------------------------------
+
+type SlideWithRelations = Slide & { bgMedia: Media | null; bgVideoPosterMedia: Media | null };
+
+/** `SliderSchema`/`PublicSliderSchema`'nın PAYLAŞTIĞI ayar alanları (bkz. schemas/entities.ts::SliderSettingsSchema). */
+function toSliderSettingsFields(slider: Slider) {
+  return {
+    autoplay: slider.autoplay,
+    intervalMs: slider.intervalMs,
+    loop: slider.loop,
+    pauseOnHover: slider.pauseOnHover,
+    transitionEffect: TRANSITION_EFFECT_FROM_PRISMA[slider.transitionEffect],
+    transitionDurationMs: slider.transitionDurationMs,
+    heightMode: HEIGHT_MODE_FROM_PRISMA[slider.heightMode],
+    heightPx: slider.heightPx,
+    aspectRatioWidth: slider.aspectRatioWidth,
+    aspectRatioHeight: slider.aspectRatioHeight,
+    mobileHeightMode: heightModeFromPrisma(slider.mobileHeightMode),
+    mobileHeightPx: slider.mobileHeightPx,
+    mobileAspectRatioWidth: slider.mobileAspectRatioWidth,
+    mobileAspectRatioHeight: slider.mobileAspectRatioHeight,
+    showArrows: slider.showArrows,
+    showBullets: slider.showBullets,
+    showProgressBar: slider.showProgressBar,
+    navigationTheme: NAVIGATION_THEME_FROM_PRISMA[slider.navigationTheme],
+  };
+}
+
+export function toSlideDto(slide: SlideWithRelations): SlideDto {
+  return {
+    id: slide.id,
+    order: slide.order,
+    isActive: slide.isActive,
+    label: slide.label,
+    bgType: BACKGROUND_TYPE_FROM_PRISMA[slide.bgType],
+    bgMedia: slide.bgMedia ? toMediaDto(slide.bgMedia) : null,
+    bgVideoUrl: slide.bgVideoUrl,
+    bgVideoPosterMedia: slide.bgVideoPosterMedia ? toMediaDto(slide.bgVideoPosterMedia) : null,
+    bgPositionX: slide.bgPositionX,
+    bgPositionY: slide.bgPositionY,
+    bgOverlayColor: slide.bgOverlayColor,
+    bgOverlayOpacity: slide.bgOverlayOpacity,
+    bgGradientFrom: slide.bgGradientFrom,
+    bgGradientTo: slide.bgGradientTo,
+    bgGradientAngle: slide.bgGradientAngle,
+    bgKenBurns: slide.bgKenBurns,
+    durationMs: slide.durationMs,
+    linkHref: slide.linkHref,
+    linkNewTab: slide.linkNewTab,
+    // §2.2 — `layers` bilinçli olarak Json'dur; yazma anında `lib/layers.ts::parseSlideLayers`
+    // ile doğrulanmış hâliyle DB'ye yazılır, burada olduğu gibi geri döner.
+    layers: Array.isArray(slide.layers) ? (slide.layers as Record<string, unknown>[]) : [],
+    createdAt: slide.createdAt.toISOString(),
+    updatedAt: slide.updatedAt.toISOString(),
+  };
+}
+
+/** `Slide` ile AYNI şekil EKSİ `label`/`isActive` (bkz. `GET /sliders/{sliderId}`). */
+function toPublicSlideDto(slide: SlideWithRelations): PublicSlideDto {
+  const { label: _label, isActive: _isActive, ...rest } = toSlideDto(slide);
+  return rest;
+}
+
+/**
+ * `İlk aktif slaytın arka plan görseli` — seçicide küçük önizleme için türetilir (DB kolonu
+ * DEĞİL, bkz. openapi.yaml `SliderSummary.previewImageUrl`). Yalnızca `bgType: image` VE
+ * `bgMedia` dolu olan İLK (`order asc`) aktif slayt dikkate alınır.
+ */
+function computePreviewImageUrl(slides: SlideWithRelations[]): string | null {
+  const first = slides.find((slide) => slide.isActive && slide.bgType === "IMAGE" && slide.bgMedia);
+  return first?.bgMedia ? absolutizeMediaUrl(first.bgMedia.url) : null;
+}
+
+/** `GET /admin/sliders` satırı — `slides` TAŞIMAZ, `slideCount`/`previewImageUrl` çağıran tarafta hesaplanır. */
+export function toSliderSummaryDto(slider: Slider, slideCount: number, previewImageUrl: string | null): SliderSummaryDto {
+  return {
+    id: slider.id,
+    name: slider.name,
+    slug: slider.slug,
+    slideCount,
+    previewImageUrl,
+    deletedAt: slider.deletedAt ? slider.deletedAt.toISOString() : null,
+    createdAt: slider.createdAt.toISOString(),
+    updatedAt: slider.updatedAt.toISOString(),
+  };
+}
+
+type SliderWithSlides = Slider & { slides: SlideWithRelations[] };
+
+/** Admin detay DTO — ayarlar + TÜM slaytlar (pasifler dahil, `order asc` sıralı beklenir). */
+export function toSliderDto(slider: SliderWithSlides): SliderDto {
+  return {
+    ...toSliderSummaryDto(slider, slider.slides.length, computePreviewImageUrl(slider.slides)),
+    ...toSliderSettingsFields(slider),
+    slides: slider.slides.map(toSlideDto),
+  };
+}
+
+/**
+ * `GET /sliders/{sliderId}` yanıtı — çağıran taraf `slides`'ı ZATEN `isActive: true` VE
+ * `order asc` filtresiyle sorgulamış olmalıdır (bkz. sliders.routes.ts::publicSlidersRoutes).
+ */
+export function toPublicSliderDto(slider: SliderWithSlides): PublicSliderDto {
+  return {
+    id: slider.id,
+    name: slider.name,
+    ...toSliderSettingsFields(slider),
+    slides: slider.slides.map(toPublicSlideDto),
+  };
+}
+
+/** `GET /admin/sliders/{sliderId}/usage` ve `409` gövdesindeki `error.details.usedBy`. */
+export function toSliderUsageDto(entry: {
+  pageId: string;
+  pageTitle: string;
+  pageSlug: string;
+  blockId: string;
+  isHomePage: boolean;
+  pageDeletedAt: string | null;
+}): SliderUsageDto {
+  return { ...entry };
 }

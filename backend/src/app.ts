@@ -25,6 +25,7 @@ import { adminPagesRoutes, publicPagesRoutes } from "./modules/pages/pages.route
 import { adminBlogCategoriesRoutes, adminBlogPostsRoutes, adminBlogTagsRoutes, publicBlogRoutes } from "./modules/blog/blog.routes";
 import { adminProductCategoriesRoutes, adminProductsRoutes, publicProductsRoutes } from "./modules/products/products.routes";
 import { adminPortfolioCategoriesRoutes, adminPortfolioRoutes, publicPortfolioRoutes } from "./modules/portfolio/portfolio.routes";
+import { adminSlidersRoutes, publicSlidersRoutes } from "./modules/sliders/sliders.routes";
 import { adminMediaRoutes } from "./modules/media/media.routes";
 import { adminStatsRoutes } from "./modules/stats/stats.routes";
 import { adminSettingsRoutes, publicSettingsRoutes } from "./modules/settings/settings.routes";
@@ -167,6 +168,11 @@ export function buildApp() {
       api.register(publicPortfolioRoutes, { prefix: "/portfolio" });
       api.register(adminPortfolioRoutes, { prefix: "/admin/portfolio" });
       api.register(adminPortfolioCategoriesRoutes, { prefix: "/admin/portfolio/categories" });
+      // Gelişmiş Slider / Hero Studio — bkz. .claude/architect-scope-advanced-slider.md §1.6:
+      // `MODULE_REGISTRY`'ye EKLENMEZ (çekirdek bir araçtır), admin uçları da `requireModuleEnabled`
+      // GEREKTİRMEZ. Public uç slug DEĞİL `sliderId` (uuid) ile erişilir.
+      api.register(publicSlidersRoutes, { prefix: "/sliders" });
+      api.register(adminSlidersRoutes, { prefix: "/admin/sliders" });
       api.register(adminMediaRoutes, { prefix: "/admin/media" });
       api.register(adminStatsRoutes, { prefix: "/admin/stats" });
       api.register(publicSettingsRoutes, { prefix: "/settings" });

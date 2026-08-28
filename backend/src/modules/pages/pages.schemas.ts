@@ -1,6 +1,12 @@
 import { z } from "zod";
 import { PageEditModeSchema, PageStatusSchema, SocialPlatformSchema } from "../../schemas/entities";
-import { refineScheduledAt, SCHEDULED_AT_REFINEMENT } from "../../schemas/common";
+import {
+  refineScheduledAt,
+  SCHEDULED_AT_REFINEMENT,
+  DANGEROUS_URL_SCHEME_RE,
+  SAFE_ABSOLUTE_URL_RE,
+  SafeHrefSchema,
+} from "../../schemas/common";
 import { scanPageNodeStructure, MAX_CONTAINER_DEPTH, MAX_CHILDREN_PER_CONTAINER, MAX_TOTAL_PAGE_NODES } from "../../lib/page-blocks";
 
 // §10.20 — `PageEditModeSchema` artık `schemas/entities.ts`'ten import edilir (bkz. `PageSchema`
@@ -81,11 +87,10 @@ const CSS_URL_UNSAFE_RE = /["'()\\;{}<>\s]/;
  * kapatır): `javascript:`/`vbscript:`/`data:` şemaları — baştaki boşluk/kontrol karakteri
  * toleranslı, case-insensitive — AÇIKÇA reddedilir.
  */
-// KASITLI: baştaki kontrol karakterlerini (0x00-0x1f) tolerans olarak eşleştirmek bu
-// regex'in güvenlik amacıdır (§13.3) — devre dışı BIRAKILAMAZ.
-// eslint-disable-next-line no-control-regex
-const DANGEROUS_URL_SCHEME_RE = /^[\s\u0000-\u001f]*(javascript|vbscript|data):/i;
-const SAFE_ABSOLUTE_URL_RE = /^https?:\/\//i;
+// `DANGEROUS_URL_SCHEME_RE`/`SAFE_ABSOLUTE_URL_RE` artik `schemas/common.ts`'te tanimlidir
+// (bkz. o dosyanin `isSafeHref`/`SafeHrefSchema` yorumu,
+// `.claude/architect-scope-advanced-slider.md` SS3.2.1 baglayici on kosulu) -- buradan
+// IMPORT edilir, ikinci bir kopya YOKTUR.
 
 /**
  * `value` yalnızca `/` ile başlayan (relative) ya da `https://`/`http://` ile başlayan bir URL
@@ -378,12 +383,9 @@ const GalleryBlockSchema = z.object({
  * güvenlik gerekçesi (yalnızca relative veya http(s) mutlak, `javascript:`/`vbscript:`/`data:`
  * YASAK), ama CSS `url("…")` bağlamına YERLEŞMEDİĞİ için `CSS_URL_UNSAFE_RE` karakter kara
  * listesi burada uygulanmaz (bir `href` boşluk/parantez İÇEREBİLİR, tırnak-kaçışı riski yok).
+ * `isSafeHref`/`SafeHrefSchema` artık `schemas/common.ts`'te tanımlıdır (§backend-agent ön
+ * koşulu, `.claude/architect-scope-advanced-slider.md` §3.2.1) — buradan İMPORT edilir.
  */
-function isSafeHref(value: string): boolean {
-  if (DANGEROUS_URL_SCHEME_RE.test(value)) return false;
-  return value.startsWith("/") || SAFE_ABSOLUTE_URL_RE.test(value);
-}
-const SafeHrefSchema = z.string().min(1).max(2048).refine(isSafeHref, "Bağlantı güvensiz bir protokol içeriyor.");
 
 const HeadingBlockDataSchema = z.object({
   text: z.string().min(1).max(300),
@@ -808,6 +810,26 @@ const TeamBlockSchema = z.object({
   reveal: RevealEffectSettingsSchema.optional(),
 });
 
+/* ---------- Gelişmiş Slider / Hero Studio — bkz. .claude/architect-scope-advanced-slider.md §3.5/§6.1 ---------- */
+
+/**
+ * Gelişmiş Slider bloğu — İÇERİK TAŞIMAZ, yalnızca REFERANS taşır (gerekçe:
+ * `.claude/architect-scope-advanced-slider.md` §6.1). `sliderId` OPSİYONELDİR: yeni
+ * eklenen blok henüz seçim yapılmamış haldedir (`CtaBlock.secondaryButtonHref` ile
+ * AYNI "boş string yerine alanı omit et" deseni). Var olmayan/silinmiş bir id
+ * doğrulanmaz (`featured-products.categoryId` ile AYNI gerekçe) — public tarafta
+ * sessizce boş render edilir, 422 ÜRETMEZ.
+ */
+const AdvancedSliderBlockDataSchema = z.object({
+  sliderId: z.string().uuid().optional(),
+});
+const AdvancedSliderBlockSchema = z.object({
+  id: z.string().min(1),
+  type: z.literal("advanced-slider"),
+  data: AdvancedSliderBlockDataSchema,
+  reveal: RevealEffectSettingsSchema.optional(),
+});
+
 /* ---------- özyinelemeli düğüm — §5.4 ---------- */
 
 function applySubSchema(schema: z.ZodTypeAny, node: unknown, ctx: z.RefinementCtx): unknown {
@@ -827,8 +849,9 @@ function applySubSchema(schema: z.ZodTypeAny, node: unknown, ctx: z.RefinementCt
  * "minimum diff" kararı KORUNUR; yalnızca `container`/`columns`/`gallery`/`heading`/`button`/
  * `icon-box`/`divider`/`image`/`video`/`accordion`/`tabs`/`cta`/`counter`/`testimonial`/
  * `pricing-table`/`latest-posts`/`contact-form`/`custom-html`/`before-after-slider`/
- * `logo-marquee`/`skill-bar`/`team` dar şemaya girer (diğerleri — `hero`/`text`/`featured-*` —
- * ÖNCEDEN VAR OLAN bir boşluk olarak doğrulanmadan geçer, bu turun kapsamı DEĞİL).
+ * `logo-marquee`/`skill-bar`/`team`/`advanced-slider` dar şemaya girer (diğerleri — `hero`/
+ * `text`/`featured-*` — ÖNCEDEN VAR OLAN bir boşluk olarak doğrulanmadan geçer, bu turun
+ * kapsamı DEĞİL).
  *
  * ÖZYİNELEME GÜVENLİĞİ: bu şema `ContainerNodeSchema` üzerinden kendini çağırır. Derinlik
  * sınırı BURADA DEĞİL, `PageBlockListSchema` içindeki İTERATİF ön-taramada uygulanır (bkz.
@@ -866,6 +889,7 @@ const PageNodeSchema: z.ZodType<unknown, z.ZodTypeDef, unknown> = z.record(z.unk
   if (type === "logo-marquee") return applySubSchema(LogoMarqueeBlockSchema, node, ctx);
   if (type === "skill-bar") return applySubSchema(SkillBarBlockSchema, node, ctx);
   if (type === "team") return applySubSchema(TeamBlockSchema, node, ctx);
+  if (type === "advanced-slider") return applySubSchema(AdvancedSliderBlockSchema, node, ctx);
   return node;
 });
 

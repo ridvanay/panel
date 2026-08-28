@@ -1,7 +1,7 @@
 import fp from "fastify-plugin";
 import type { FastifyInstance, FastifyError, FastifyRequest } from "fastify";
 import { Prisma } from "@prisma/client";
-import { ApiError, ApiErrorCode } from "../lib/errors";
+import { ApiError, ApiErrorCode, SliderInUseError } from "../lib/errors";
 import { Sentry, sentryEnabled } from "../lib/sentry";
 
 interface ZodLikeIssue {
@@ -59,6 +59,13 @@ export default fp(async function errorHandlerPlugin(app: FastifyInstance) {
   });
 
   app.setErrorHandler((error: FastifyError | Error, request, reply) => {
+    // `sliders` modülü — `usedBy: SliderUsage[]` genel `ApiError.details` (`Record<string,
+    // string[]>`) şekline SIĞMAZ, bu yüzden AYRI serileştirilir (bkz. lib/errors.ts::SliderInUseError).
+    // `instanceof ApiError` dalından ÖNCE gelmelidir (SliderInUseError onun bir alt sınıfıdır).
+    if (error instanceof SliderInUseError) {
+      return reply.code(error.statusCode).send({ error: { code: error.code, message: error.message, details: { usedBy: error.usedBy } } });
+    }
+
     if (error instanceof ApiError) {
       return sendError(reply, error.statusCode, error.code, error.message, error.details);
     }

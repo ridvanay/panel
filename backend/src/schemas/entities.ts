@@ -483,6 +483,137 @@ export const PortfolioItemSchema = z.object({
 });
 export type PortfolioItemDto = z.infer<typeof PortfolioItemSchema>;
 
+// ---------- Gelişmiş Slider / Hero Studio — bkz. `.claude/architect-scope-advanced-slider.md`
+// (bağlayıcı karar dokümanı) ve openapi.yaml `Sliders` tag'i. `Slider`/`Slide` bir "içerik"
+// DEĞİLDİR (§1.1) — `status`/`translations`/`viewCount`/SEO alanları BİLİNÇLİ OLARAK YOKTUR.
+//
+// Enum DEĞERLERİ openapi.yaml ile BİREBİR (küçük harf/kebab-case) — Prisma tarafındaki
+// SCREAMING_SNAKE karşılıkları (`SliderTransitionEffect` vb.) `modules/sliders/lib/enum-maps.ts`
+// içinde İKİ YÖNLÜ eşlenir (`import.constants.ts::DUPLICATE_STRATEGY_TO_PRISMA` ile AYNI desen).
+// `ContainerJustify`/`ButtonBlock.style` gibi render-motoru varyant tablolarıyla AYNI ilke:
+// HAM CSS/Prisma değeri DEĞİL, sabit bir varyant kümesi dışa verilir.
+
+export const SliderTransitionEffectSchema = z.enum(["slide", "fade", "cube", "zoom"]);
+export type SliderTransitionEffect = z.infer<typeof SliderTransitionEffectSchema>;
+
+export const SliderHeightModeSchema = z.enum(["full-screen", "custom-px", "aspect-ratio"]);
+export type SliderHeightMode = z.infer<typeof SliderHeightModeSchema>;
+
+export const SlideBackgroundTypeSchema = z.enum(["image", "video", "gradient"]);
+export type SlideBackgroundType = z.infer<typeof SlideBackgroundTypeSchema>;
+
+export const SliderNavigationThemeSchema = z.enum(["light", "dark"]);
+export type SliderNavigationTheme = z.infer<typeof SliderNavigationThemeSchema>;
+
+/** Slider seviyesi davranış/görünüm ayarları — `SliderSchema` ve `PublicSliderSchema` PAYLAŞIR. */
+export const SliderSettingsSchema = z.object({
+  autoplay: z.boolean(),
+  intervalMs: z.number().int(),
+  loop: z.boolean(),
+  pauseOnHover: z.boolean(),
+  transitionEffect: SliderTransitionEffectSchema,
+  transitionDurationMs: z.number().int(),
+  heightMode: SliderHeightModeSchema,
+  heightPx: z.number().int().nullable(),
+  aspectRatioWidth: z.number().int(),
+  aspectRatioHeight: z.number().int(),
+  mobileHeightMode: SliderHeightModeSchema.nullable(),
+  mobileHeightPx: z.number().int().nullable(),
+  mobileAspectRatioWidth: z.number().int().nullable(),
+  mobileAspectRatioHeight: z.number().int().nullable(),
+  showArrows: z.boolean(),
+  showBullets: z.boolean(),
+  showProgressBar: z.boolean(),
+  navigationTheme: SliderNavigationThemeSchema,
+});
+export type SliderSettingsDto = z.infer<typeof SliderSettingsSchema>;
+
+/** Liste/seçici DTO — `slides` YOKTUR (bkz. `GET /admin/sliders`). */
+export const SliderSummarySchema = z.object({
+  id: z.string().uuid(),
+  name: z.string(),
+  slug: z.string(),
+  slideCount: z.number().int(),
+  // İlk aktif slaytın arka plan görseli — seçicide küçük önizleme için türetilir (DB kolonu DEĞİL).
+  previewImageUrl: z.string().nullable(),
+  deletedAt: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type SliderSummaryDto = z.infer<typeof SliderSummarySchema>;
+
+/**
+ * Bir slaytın arka planı + KATMANLARI. `layers` DTO'da (Page.blocks ile AYNI model, bkz.
+ * `PageSchema.blocks`) BİLİNÇLİ OLARAK gevşek (`z.record(z.unknown())`) doğrulanır — asıl
+ * katman-şekli doğrulaması YAZMA anında `modules/sliders/lib/layers.ts::parseSlideLayers`
+ * ile yapılır; response DTO'su ikinci/ayrışabilir bir kopya TAŞIMAZ.
+ */
+export const SlideSchema = z.object({
+  id: z.string().uuid(),
+  order: z.number().int(),
+  isActive: z.boolean(),
+  // Yalnızca PANEL İÇİ tanımlayıcı — public yanıtta YOK (bkz. PublicSlideSchema).
+  label: z.string().nullable(),
+  bgType: SlideBackgroundTypeSchema,
+  bgMedia: MediaSchema.nullable(),
+  bgVideoUrl: z.string().nullable(),
+  bgVideoPosterMedia: MediaSchema.nullable(),
+  bgPositionX: z.number().int(),
+  bgPositionY: z.number().int(),
+  bgOverlayColor: z.string().nullable(),
+  bgOverlayOpacity: z.number().int(),
+  bgGradientFrom: z.string().nullable(),
+  bgGradientTo: z.string().nullable(),
+  bgGradientAngle: z.number().int(),
+  bgKenBurns: z.boolean(),
+  durationMs: z.number().int().nullable(),
+  linkHref: z.string().nullable(),
+  linkNewTab: z.boolean(),
+  layers: z.array(z.record(z.unknown())),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type SlideDto = z.infer<typeof SlideSchema>;
+
+/** `Slide` ile AYNI şekil EKSİ `label`/`isActive` (bkz. `GET /sliders/{sliderId}`). */
+export const PublicSlideSchema = SlideSchema.omit({ label: true, isActive: true });
+export type PublicSlideDto = z.infer<typeof PublicSlideSchema>;
+
+/** Admin detay DTO — ayarlar + TÜM slaytlar (pasifler dahil), bkz. `GET /admin/sliders/{sliderId}`. */
+export const SliderSchema = SliderSummarySchema.merge(SliderSettingsSchema).extend({
+  slides: z.array(SlideSchema),
+});
+export type SliderDto = z.infer<typeof SliderSchema>;
+
+/** `GET /sliders/{sliderId}` yanıtı — render için gereken MİNİMUM veri. */
+export const PublicSliderSchema = SliderSettingsSchema.extend({
+  id: z.string().uuid(),
+  // `aria-label` olarak kullanılır (`role="region"` + `aria-roledescription="carousel"`).
+  name: z.string(),
+  slides: z.array(PublicSlideSchema),
+});
+export type PublicSliderDto = z.infer<typeof PublicSliderSchema>;
+
+/** `GET /admin/sliders/{sliderId}/usage` ve `409` gövdesindeki `error.details.usedBy` öğesi. */
+export const SliderUsageSchema = z.object({
+  pageId: z.string().uuid(),
+  pageTitle: z.string(),
+  pageSlug: z.string(),
+  // Sayfa ağacındaki `advanced-slider` düğümünün `id`'si.
+  blockId: z.string(),
+  // `SiteSettings.homePageId` bu sayfayı gösteriyorsa `true` — uyarı metnini sertleştirmek için.
+  isHomePage: z.boolean(),
+  pageDeletedAt: z.string().nullable(),
+});
+export type SliderUsageDto = z.infer<typeof SliderUsageSchema>;
+
+/** `GET /admin/sliders` `meta` zarfı — `SliderListMeta` (openapi.yaml). */
+export const SliderListMetaSchema = z.object({
+  nextCursor: z.string().nullable(),
+  counts: z.object({ active: z.number().int(), trashed: z.number().int() }),
+});
+export type SliderListMetaDto = z.infer<typeof SliderListMetaSchema>;
+
 export const SiteTemplateSchema = z.enum(["SHOWCASE", "COMMERCE", "PORTFOLIO"]);
 export type SiteTemplate = z.infer<typeof SiteTemplateSchema>;
 

@@ -53,4 +53,8 @@ export const TEMPLATE_EDITABLE_FIELDS: Record<string, readonly string[]> = {
   // Konteynerin KENDİSİ içerik alanı taşımaz — `settings` bütünüyle, `children`, `reveal` kilitli
   // (yapısal eşitlik `assertTemplateEditAllowed` içinde AYRICA kontrol edilir).
   container: [],
+  // Gelişmiş Slider / Hero Studio — bkz. .claude/architect-scope-advanced-slider.md §3.5.
+  // Standart kullanıcı hangi slider'ın gösterileceğini DEĞİŞTİREBİLİR (içerik seçimi), ama
+  // slider'ın kendisini düzenleyemez (o /admin/sliders yetkisidir).
+  "advanced-slider": ["data.sliderId"],
 };
