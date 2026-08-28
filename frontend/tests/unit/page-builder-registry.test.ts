@@ -60,4 +60,20 @@ describe("createBlock", () => {
       expect(block.data.categoryId).toBeUndefined();
     }
   });
+
+  // .claude/architect-scope-advanced-slider.md §6.3 — `sliderId` KASITLI OLARAK omit edilir
+  // (boş string backend `.uuid()`e takılırdı, `cta` case'iyle AYNI desen).
+  it("creates an advanced-slider block without a sliderId", () => {
+    const block = createBlock("advanced-slider");
+    expect(block.type).toBe("advanced-slider");
+    if (block.type === "advanced-slider") {
+      expect(block.data.sliderId).toBeUndefined();
+      expect("sliderId" in block.data).toBe(false);
+    }
+  });
+
+  it("registers advanced-slider in the marketing category with a label", () => {
+    expect(blockRegistry["advanced-slider"].category).toBe("marketing");
+    expect(blockRegistry["advanced-slider"].label.length).toBeGreaterThan(0);
+  });
 });
