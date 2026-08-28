@@ -773,6 +773,123 @@ model PortfolioImage {
   @@map("portfolio_images")
 }
 
+// Gelişmiş Slider / Hero Studio — bkz. .claude/architect-scope-advanced-slider.md
+// (bağlayıcı karar dokümanı) ve docs/architecture/openapi.yaml `Sliders` tag'i.
+
+// Yeniden kullanılabilir çok katmanlı slayt gösterisi. Bir "içerik" DEĞİLDİR
+// (§1.1) — status/publishedAt/scheduledAt/translations/viewCount/SEO alanları
+// BİLİNÇLİ OLARAK YOKTUR; yayın kararı gömen Page'e aittir.
+model Slider {
+  id   String @id @default(uuid())
+  seq  Int    @unique @default(autoincrement())
+  name String
+  // Panel içi okunabilir kimlik. Public erişim slug ile DEĞİL, id ile yapılır
+  // (advanced-slider bloğu `data.sliderId` tutar) — slug yeniden adlandırmada bağ
+  // koparmasın diye. Yine de @unique: admin URL'i ve elle referans için.
+  slug String @unique
+
+  // --- Otomatik oynatma ---
+  autoplay     Boolean @default(true)
+  intervalMs   Int     @default(6000)
+  loop         Boolean @default(true)
+  pauseOnHover Boolean @default(true)
+
+  // --- Geçiş ---
+  transitionEffect     SliderTransitionEffect @default(SLIDE)
+  transitionDurationMs Int                    @default(700)
+
+  // --- Yükseklik (sıfır CLS) ---
+  heightMode              SliderHeightMode  @default(ASPECT_RATIO)
+  heightPx                Int? // yalnızca heightMode=CUSTOM_PX iken anlamlı
+  aspectRatioWidth        Int               @default(16)
+  aspectRatioHeight       Int               @default(9)
+  // Mobil override — null = masaüstüyle AYNI. TABLET için ayrı override YOKTUR
+  // (masaüstünü miras alır); üç kırılma noktası için üç yükseklik seti, kazandığından
+  // fazla karmaşıklık üretiyordu.
+  mobileHeightMode        SliderHeightMode?
+  mobileHeightPx          Int?
+  mobileAspectRatioWidth  Int?
+  mobileAspectRatioHeight Int?
+
+  // --- Navigasyon ---
+  showArrows      Boolean               @default(true)
+  showBullets     Boolean               @default(true)
+  showProgressBar Boolean               @default(false)
+  navigationTheme SliderNavigationTheme @default(LIGHT)
+
+  // §10.7 Soft-delete (çöp kutusu) deseni — silme öncesi referans koruması için
+  // bkz. GET /admin/sliders/{id}/usage.
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  slides Slide[]
+
+  @@index([deletedAt])
+  @@map("sliders")
+}
+
+// Bir slaytın arka planı + KATMANLARI. `layers` bilinçli olarak Json'dur (gerekçe:
+// tasarım notu §2.2) — ayrı bir SliderLayer tablosu AÇILMAZ. Şekli
+// frontend/src/lib/sliders/types.ts::SliderLayer ile eşleşir ve
+// backend/src/modules/sliders/sliders.schemas.ts'te Zod ayrık birliğiyle doğrulanır.
+model Slide {
+  id       String  @id @default(uuid())
+  sliderId String
+  // 0..n-1, PUT /admin/sliders/{id}/slides/order tarafından TOPLUCA yeniden yazılır.
+  order    Int     @default(0)
+  isActive Boolean @default(true)
+  // YALNIZCA panel içi tanımlayıcı (slayt şeridinde gösterilir) — public DTO'da YOK,
+  // hiçbir yerde render EDİLMEZ.
+  label    String?
+
+  // --- Arka plan ---
+  bgType               SlideBackgroundType @default(GRADIENT)
+  // Medya kütüphanesinden seçim — serbest URL DEĞİL (coverMediaId paterniyle AYNI).
+  // Görsel silinirse SetNull ile boşalır, slayt gradient'e düşer (500 vermez).
+  bgMediaId            String?
+  // bgType=VIDEO VE bgMediaId yokken kullanılan HARİCİ .mp4 URL'i (SafeHrefSchema).
+  bgVideoUrl           String?
+  // Poster karesi — bgType=VIDEO iken güçlü tavsiye (yoksa video yüklenene kadar
+  // siyah kutu görünür ve LCP ölçümü videoya kayar).
+  bgVideoPosterMediaId String?
+  // Odak noktası (%), CSS object-position — kırpma kontrolü.
+  bgPositionX          Int                 @default(50)
+  bgPositionY          Int                 @default(50)
+  // ContainerBackgroundOverlay ile AYNI desen: renk 6 haneli hex, alfa AYRI alanda.
+  bgOverlayColor       String?
+  bgOverlayOpacity     Int                 @default(0)
+  bgGradientFrom       String?
+  bgGradientTo         String?
+  bgGradientAngle      Int                 @default(180)
+  // Yavaş yakınlaşma. prefers-reduced-motion: reduce altında ZORUNLU OLARAK kapalıdır
+  // (kullanıcı ayarı veriyi geçersiz kılar) — bkz. §5.5.
+  bgKenBurns           Boolean             @default(false)
+
+  // Bu slayta özgü otomatik oynatma süresi; null → Slider.intervalMs.
+  durationMs Int?
+  // Tüm slaytı tıklanabilir yapar (SafeHrefSchema).
+  linkHref   String?
+  linkNewTab Boolean @default(false)
+
+  // Katmanlar — sıralı JSON dizi. En fazla MAX_SLIDE_LAYERS (20) öğe ve
+  // MAX_SLIDE_LAYERS_BYTES (64 KB); ikisi de backend Zod katmanında zorlanır.
+  layers Json @default("[]")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  slider             Slider @relation(fields: [sliderId], references: [id], onDelete: Cascade)
+  bgMedia            Media? @relation("SlideBackgroundMedia", fields: [bgMediaId], references: [id], onDelete: SetNull)
+  bgVideoPosterMedia Media? @relation("SlideVideoPosterMedia", fields: [bgVideoPosterMediaId], references: [id], onDelete: SetNull)
+
+  @@unique([sliderId, order])
+  @@index([sliderId])
+  @@index([bgMediaId])
+  @@index([bgVideoPosterMediaId])
+  @@map("slides")
+}
+
 // §10.5 Çoklu Dil & Yerelleştirme — desteklenen diller VERİDİR, kod sabiti DEĞİL.
 // Yeni dil eklemek = yeni SATIR. Migration/deploy GEREKTİRMEZ (kabul kriteri, bkz.
 // .claude/architect-scope-i18n.md §2.1, bağlayıcı karar dokümanı).
@@ -960,6 +1077,38 @@ enum SocialShareNetwork {
   WHATSAPP
   EMAIL
   COPY_LINK
+}
+
+// Gelişmiş Slider / Hero Studio — bkz. .claude/architect-scope-advanced-slider.md
+// (bağlayıcı karar dokümanı) ve docs/architecture/openapi.yaml `Sliders` tag'i.
+enum SliderTransitionEffect {
+  SLIDE
+  FADE
+  CUBE
+  ZOOM
+}
+
+// FULL_SCREEN = 100svh (100vh DEĞİL — mobil tarayıcı çubuğu zıplaması). Sıfır CLS'in
+// tek kaynağı budur: dış kutunun yüksekliği sunucu HTML'inde hesaplanabilir olmalıdır.
+enum SliderHeightMode {
+  FULL_SCREEN
+  CUSTOM_PX
+  ASPECT_RATIO
+}
+
+// Düz renk için AYRI tip YOK — GRADIENT ile from == to verilir (branş sayısını azaltmak
+// için bilinçli karar).
+enum SlideBackgroundType {
+  IMAGE
+  VIDEO
+  GRADIENT
+}
+
+// Ok/bullet/ilerleme çubuğunun kontrast teması. Gerçek görsel dil ui-designer'ın
+// tasarım tokenlerine aittir; bu alan yalnızca "açık zemin mi koyu zemin mi" ayrımıdır.
+enum SliderNavigationTheme {
+  LIGHT
+  DARK
 }
 
 // §10.12 Site Özelleştirme (WordPress Customizer benzeri görünüm paneli) — bkz.
@@ -1193,6 +1342,9 @@ model Media {
   // §10.12.2 Site Özelleştirme — SiteAppearance.pageHeaderBackgroundMediaId için
   // zorunlu karşı-ilişki alanı.
   pageHeaderBackgrounds SiteAppearance[] @relation("SiteAppearancePageHeaderBackground")
+  // Gelişmiş Slider — Slide.bgMediaId / Slide.bgVideoPosterMediaId karşı-ilişkileri.
+  slideBackgrounds      Slide[]          @relation("SlideBackgroundMedia")
+  slideVideoPosters     Slide[]          @relation("SlideVideoPosterMedia")
 
   @@index([folderId])
   @@map("media")
