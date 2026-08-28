@@ -1,25 +1,27 @@
 "use client";
 
-import { Heading, ImageIcon, MousePointerClick, Tag, Trash2, Type } from "lucide-react";
+import { Eye, EyeOff, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import type { DeviceMode } from "@/lib/page-builder/types";
-import type { SliderLayer, SliderLayerOrigin, SliderLayerType } from "@/lib/sliders/types";
+import type { SliderLayer, SliderLayerOrigin } from "@/lib/sliders/types";
 import { SLIDER_LAYER_TYPE_COLOR, SLIDER_LAYER_TYPE_LABEL } from "@/lib/sliders/design-tokens";
 import { DeviceOverrideBadge } from "./device-override-badge";
-import { patchLayerGroup, removeLayerGroupOverride, resolveGroupForEditing, type ResponsiveDevice } from "../layer-mutations";
+import {
+  isLayerHiddenOnDevice,
+  patchLayerGroup,
+  removeLayerGroupOverride,
+  resolveGroupForEditing,
+  setLayerHidden,
+  type ResponsiveDevice,
+} from "../layer-mutations";
 
-const LAYER_TYPE_ICON: Record<SliderLayerType, typeof Heading> = {
-  heading: Heading,
-  text: Type,
-  button: MousePointerClick,
-  image: ImageIcon,
-  badge: Tag,
-};
+const DEVICE_LABEL: Record<ResponsiveDevice, string> = { tablet: "Tablet", mobile: "Mobil" };
 
 const ORIGIN_OPTIONS: { value: SliderLayerOrigin; label: string }[] = [
   { value: "top-left", label: "Üst Sol" },
@@ -120,37 +122,21 @@ export function LayerInspectorTab({
   device,
   onUpdateLayer,
   onDeleteLayer,
-  onAddLayer,
 }: {
   layer: SliderLayer | null;
   device: DeviceMode;
   onUpdateLayer: (updater: (layer: SliderLayer) => SliderLayer) => void;
   onDeleteLayer: () => void;
-  onAddLayer: (type: SliderLayerType) => void;
 }) {
-  return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap gap-1.5">
-        {(Object.keys(LAYER_TYPE_ICON) as SliderLayerType[]).map((type) => {
-          const Icon = LAYER_TYPE_ICON[type];
-          return (
-            <Button key={type} type="button" variant="outline" size="sm" onClick={() => onAddLayer(type)}>
-              <Icon className="h-3.5 w-3.5" style={{ color: SLIDER_LAYER_TYPE_COLOR[type] }} />
-              {SLIDER_LAYER_TYPE_LABEL[type]}
-            </Button>
-          );
-        })}
-      </div>
-
-      {!layer ? (
-        <p className="rounded-md border border-dashed border-border p-4 text-center text-sm text-foreground/50">
-          Tuvalde veya zaman çizelgesinde bir katman seçin, ya da yukarıdan yeni bir katman ekleyin.
-        </p>
-      ) : (
-        <LayerFields layer={layer} device={device} onUpdate={onUpdateLayer} onDelete={onDeleteLayer} />
-      )}
-    </div>
-  );
+  if (!layer) {
+    return (
+      <p className="rounded-md border border-dashed border-border p-4 text-center text-sm text-foreground/50">
+        Tuvalde veya zaman çizelgesinde bir katman seçin, ya da tuvalin üstündeki &quot;Katman Ekle&quot;
+        çubuğundan yeni bir katman ekleyin.
+      </p>
+    );
+  }
+  return <LayerFields layer={layer} device={device} onUpdate={onUpdateLayer} onDelete={onDeleteLayer} />;
 }
 
 function LayerFields({
@@ -294,6 +280,23 @@ function LayerFields({
           )}
         </Field>
       </div>
+
+      {isResponsiveDevice && (
+        <div className="space-y-2 rounded-md border border-dashed border-border p-3">
+          <p className="text-xs font-medium uppercase tracking-wide text-foreground/50">Cihaz Görünürlüğü</p>
+          <label className="flex items-center justify-between gap-2 text-sm text-foreground">
+            <span className="inline-flex items-center gap-1.5">
+              {isLayerHiddenOnDevice(layer, device) ? <EyeOff className="h-3.5 w-3.5 text-foreground/50" /> : <Eye className="h-3.5 w-3.5 text-foreground/50" />}
+              {DEVICE_LABEL[device as ResponsiveDevice]}&apos;de göster
+            </span>
+            <Switch
+              checked={!isLayerHiddenOnDevice(layer, device)}
+              onCheckedChange={(checked) => onUpdate((l) => setLayerHidden(l, device as ResponsiveDevice, !checked))}
+              aria-label={`${DEVICE_LABEL[device as ResponsiveDevice]}'de göster/gizle`}
+            />
+          </label>
+        </div>
+      )}
     </div>
   );
 }

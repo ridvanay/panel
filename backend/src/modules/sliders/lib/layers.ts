@@ -62,7 +62,7 @@ const LayerStyleSchema = z.object({
 });
 
 const LayerAnimationSchema = z.object({
-  inEffect: z.enum(["none", "fade", "fade-up", "fade-down", "slide-in-left", "slide-in-right", "zoom-in", "flip-up"]),
+  inEffect: z.enum(["none", "fade", "fade-up", "fade-down", "slide-in-left", "slide-in-right", "zoom-in", "flip-up", "elastic-bounce"]),
   delayMs: z.number().int().min(0).max(10_000).multipleOf(50),
   durationMs: z.number().int().min(100).max(3000).multipleOf(50),
   easing: z.enum(["linear", "ease-out", "ease-in-out", "spring"]).optional(),

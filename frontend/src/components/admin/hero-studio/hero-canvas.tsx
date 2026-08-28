@@ -1,24 +1,14 @@
 "use client";
 
-import { useRef, type PointerEvent as ReactPointerEvent } from "react";
+import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { motion } from "framer-motion";
 import { EyeOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { DeviceMode } from "@/lib/page-builder/types";
-import type { Slide, Slider, SliderLayer, SliderLayerOrigin } from "@/lib/sliders/types";
-import { SLIDER_LAYER_TYPE_COLOR } from "@/lib/sliders/design-tokens";
+import type { Slide, Slider, SliderLayer } from "@/lib/sliders/types";
+import { SLIDER_BUTTON_SIZE_CLASS, SLIDER_BUTTON_VARIANT_CLASS } from "@/lib/sliders/design-tokens";
+import { ORIGIN_PERCENT, IN_EFFECT_VARIANTS, buildLayerContentStyle, buildLayerTransition } from "@/lib/sliders/layer-render";
 import { isLayerHiddenOnDevice, patchLayerGroup, resolveGroupForEditing } from "./layer-mutations";
-
-const ORIGIN_PERCENT: Record<SliderLayerOrigin, { x: number; y: number }> = {
-  "top-left": { x: 0, y: 0 },
-  "top-center": { x: 50, y: 0 },
-  "top-right": { x: 100, y: 0 },
-  "middle-left": { x: 0, y: 50 },
-  "middle-center": { x: 50, y: 50 },
-  "middle-right": { x: 100, y: 50 },
-  "bottom-left": { x: 0, y: 100 },
-  "bottom-center": { x: 50, y: 100 },
-  "bottom-right": { x: 100, y: 100 },
-};
 
 /** §4.3 ui-designer — admin tuvali stage'e SIĞDIRILMIŞ bir ÖNİZLEMEDİR, gerçek `100svh` DEĞİL. */
 function canvasBoxStyle(slider: Slider, device: DeviceMode): React.CSSProperties {
@@ -71,28 +61,170 @@ function SlideBackgroundPreview({ slide }: { slide: Slide }) {
   return <div className="absolute inset-0" style={{ background: `linear-gradient(${slide.bgGradientAngle}deg, ${from}, ${to})` }} />;
 }
 
+/** Katman tipine göre GERÇEK stilli içerik — WYSIWYG. `SlideLayerView` (public render, bkz.
+ *  `components/site/advanced-slider/slide-layer.tsx`) ile AYNI `buildLayerContentStyle` kaynağını
+ *  kullanır; buton/rozet burada gerçek `<a>` DEĞİLDİR (editörde tıklanınca sayfadan
+ *  çıkılmasın diye) — yalnızca görsel olarak AYNI sınıflarla render edilir. */
+function LayerContentBody({ layer }: { layer: SliderLayer }) {
+  const contentStyle = buildLayerContentStyle(layer.style);
+  if (layer.type === "heading") {
+    const Tag = (`h${layer.content.level ?? 2}`) as "h1" | "h2" | "h3";
+    return (
+      <Tag className="m-0" style={contentStyle}>
+        {layer.content.text || "(boş başlık)"}
+      </Tag>
+    );
+  }
+  if (layer.type === "text") {
+    return (
+      <p className="m-0 whitespace-pre-line" style={contentStyle}>
+        {layer.content.text || "(boş metin)"}
+      </p>
+    );
+  }
+  if (layer.type === "badge") {
+    return (
+      <span className="inline-block rounded-full bg-[var(--site-primary)] px-3 py-1 text-xs font-semibold text-white" style={contentStyle}>
+        {layer.content.text || "(boş rozet)"}
+      </span>
+    );
+  }
+  if (layer.type === "image") {
+    return layer.content.url ? (
+      // eslint-disable-next-line @next/next/no-img-element -- katman görseli serbest URL, admin canvas önizlemesi
+      <img src={layer.content.url} alt={layer.content.alt} className="block max-w-full" style={contentStyle} />
+    ) : (
+      <div className="flex h-16 w-32 items-center justify-center rounded border border-dashed border-white/30 text-[11px] text-white/50">Görsel yok</div>
+    );
+  }
+  // button
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center font-semibold",
+        SLIDER_BUTTON_VARIANT_CLASS[layer.content.variant],
+        SLIDER_BUTTON_SIZE_CLASS[layer.content.size]
+      )}
+      style={{ ...contentStyle, borderRadius: "var(--site-radius)" }}
+    >
+      {layer.content.label || "(boş buton)"}
+    </span>
+  );
+}
+
+const EDITABLE_TEXT_TYPES = new Set<SliderLayer["type"]>(["heading", "text", "badge", "button"]);
+const MULTILINE_TYPES = new Set<SliderLayer["type"]>(["text"]);
+
+function layerText(layer: SliderLayer): string {
+  if (layer.type === "button") return layer.content.label;
+  if (layer.type === "image") return "";
+  return layer.content.text;
+}
+
+function withText(layer: SliderLayer, text: string): SliderLayer {
+  if (layer.type === "button") return { ...layer, content: { ...layer.content, label: text } };
+  if (layer.type === "image") return layer;
+  return { ...layer, content: { ...layer.content, text } };
+}
+
+/** Çift tıklama ile yerinde metin düzenleme — Escape değişikliği İPTAL eder (blur commit etmez),
+ *  Enter (metin katmanı DIŞINDA) veya blur COMMIT eder. */
+function InlineTextEditor({ layer, onCommit, onCancel }: { layer: SliderLayer; onCommit: (text: string) => void; onCancel: () => void }) {
+  const cancelledRef = useRef(false);
+  const multiline = MULTILINE_TYPES.has(layer.type);
+  const contentStyle = buildLayerContentStyle(layer.style);
+  const commonProps = {
+    autoFocus: true,
+    defaultValue: layerText(layer),
+    onFocus: (e: React.FocusEvent<HTMLTextAreaElement | HTMLInputElement>) => e.currentTarget.select(),
+    onPointerDown: (e: React.PointerEvent) => e.stopPropagation(),
+    onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement | HTMLInputElement>) => {
+      if (e.key === "Escape") {
+        cancelledRef.current = true;
+        e.currentTarget.blur();
+      } else if (e.key === "Enter" && !multiline && !e.shiftKey) {
+        e.preventDefault();
+        e.currentTarget.blur();
+      }
+    },
+    onBlur: (e: React.FocusEvent<HTMLTextAreaElement | HTMLInputElement>) => {
+      if (cancelledRef.current) {
+        onCancel();
+        return;
+      }
+      onCommit(e.currentTarget.value);
+    },
+    className: "min-w-[80px] resize-none border border-dashed border-white bg-black/40 px-1 py-0.5 outline-none",
+    style: contentStyle,
+  };
+  return multiline ? <textarea rows={3} {...commonProps} /> : <input type="text" {...commonProps} />;
+}
+
+const RESIZABLE_TYPES = new Set<SliderLayer["type"]>(["heading", "text", "button", "image", "badge"]);
+
+function ResizeHandles({
+  onResizeStart,
+}: {
+  onResizeStart: (e: ReactPointerEvent<HTMLDivElement>) => void;
+}) {
+  const corners: { top: string; left: string; cursor: string }[] = [
+    { top: "-4px", left: "-4px", cursor: "nwse-resize" },
+    { top: "-4px", left: "calc(100% - 4px)", cursor: "nesw-resize" },
+    { top: "calc(100% - 4px)", left: "-4px", cursor: "nesw-resize" },
+    { top: "calc(100% - 4px)", left: "calc(100% - 4px)", cursor: "nwse-resize" },
+  ];
+  return (
+    <>
+      {corners.map((c, i) => (
+        <div
+          key={i}
+          className="absolute z-10 h-2 w-2 rounded-[1px] border-[1.5px] bg-white"
+          style={{ top: c.top, left: c.left, cursor: c.cursor, borderColor: "var(--accent-500, #6366f1)", boxShadow: "var(--slider-layer-shadow-sm)" }}
+          onPointerDown={onResizeStart}
+        />
+      ))}
+    </>
+  );
+}
+
 function LayerBox({
   layer,
   device,
   selected,
+  editing,
+  playing,
+  playKey,
   onSelect,
+  onStartEdit,
+  onCommitEdit,
+  onCancelEdit,
   onDrag,
+  onResize,
   canvasRef,
 }: {
   layer: SliderLayer;
   device: DeviceMode;
   selected: boolean;
+  editing: boolean;
+  playing: boolean;
+  playKey: number;
   onSelect: () => void;
+  onStartEdit: () => void;
+  onCommitEdit: (text: string) => void;
+  onCancelEdit: () => void;
   onDrag: (xPercent: number, yPercent: number) => void;
+  onResize: (widthPercent: number) => void;
   canvasRef: React.RefObject<HTMLDivElement | null>;
 }) {
   const { value: position } = resolveGroupForEditing(layer, "position", device);
-  const { value: style } = resolveGroupForEditing(layer, "style", device);
+  const { value: animation } = resolveGroupForEditing(layer, "animation", device);
   const hidden = isLayerHiddenOnDevice(layer, device);
   const origin = ORIGIN_PERCENT[position.origin];
   const draggingRef = useRef(false);
+  const resizingRef = useRef(false);
 
   function onPointerDown(e: ReactPointerEvent<HTMLDivElement>) {
+    if (playing || editing) return;
     e.stopPropagation();
     onSelect();
     draggingRef.current = true;
@@ -112,38 +244,75 @@ function LayerBox({
     (e.target as HTMLElement).releasePointerCapture(e.pointerId);
   }
 
-  const previewLabel =
-    layer.type === "heading" || layer.type === "text" || layer.type === "badge"
-      ? layer.content.text
-      : layer.type === "button"
-        ? layer.content.label
-        : "Görsel";
+  function onResizeStart(e: ReactPointerEvent<HTMLDivElement>) {
+    if (playing || editing || !canvasRef.current) return;
+    e.stopPropagation();
+    onSelect();
+    resizingRef.current = true;
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  }
+
+  function onResizeMove(e: ReactPointerEvent<HTMLDivElement>) {
+    if (!resizingRef.current || !canvasRef.current) return;
+    const rect = canvasRef.current.getBoundingClientRect();
+    const mouseXPercent = ((e.clientX - rect.left) / rect.width) * 100;
+    // Sembolik "merkezden yeniden boyutlandırma": 4 tutamaç da AYNI davranır — katmanın
+    // konum çapasından (xPercent) uzaklaşan mesafe, yeni genişliğin YARISI kabul edilir.
+    const deltaPercent = Math.abs(mouseXPercent - position.xPercent) * 2;
+    onResize(Math.max(1, Math.min(100, Math.round(deltaPercent))));
+  }
+
+  function onResizeEnd(e: ReactPointerEvent<HTMLDivElement>) {
+    resizingRef.current = false;
+    (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+  }
+
+  const variant = IN_EFFECT_VARIANTS[animation.inEffect];
+  const showResizeHandles = selected && !editing && !playing && RESIZABLE_TYPES.has(layer.type);
+  const canEdit = EDITABLE_TEXT_TYPES.has(layer.type);
 
   return (
     <div
-      className="absolute cursor-grab select-none active:cursor-grabbing"
+      className={cn("absolute select-none", playing ? "pointer-events-none" : editing ? "cursor-text" : "cursor-grab active:cursor-grabbing")}
       style={{
         left: `${position.xPercent}%`,
         top: `${position.yPercent}%`,
         transform: `translate(-${origin.x}%, -${origin.y}%)`,
+        width: position.widthPercent ? `${position.widthPercent}%` : undefined,
         zIndex: position.zIndex ?? 1,
         opacity: hidden ? 0.35 : 1,
       }}
       onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
+      onPointerMove={(e) => {
+        onPointerMove(e);
+        onResizeMove(e);
+      }}
+      onPointerUp={(e) => {
+        onPointerUp(e);
+        onResizeEnd(e);
+      }}
+      onDoubleClick={() => canEdit && !playing && onStartEdit()}
     >
       <div
-        className="max-w-[240px] truncate rounded-md px-2 py-1 text-xs font-medium text-white"
-        style={{
-          backgroundColor: SLIDER_LAYER_TYPE_COLOR[layer.type],
-          boxShadow: selected ? "0 0 0 1px rgb(0 0 0 / 0.45), 0 0 0 3px var(--accent-500, #6366f1)" : undefined,
-          color: style.color ?? "#ffffff",
-          fontWeight: style.fontWeight,
-        }}
+        className="relative inline-block max-w-full"
+        style={{ boxShadow: selected && !playing ? "0 0 0 1px rgb(0 0 0 / 0.45), 0 0 0 3px var(--accent-500, #6366f1)" : undefined }}
       >
-        {hidden && <EyeOff className="mr-1 inline-block h-3 w-3" />}
-        {previewLabel || "(boş)"}
+        {hidden && <EyeOff className="absolute -left-5 top-0 h-3.5 w-3.5 text-white" />}
+        {editing ? (
+          <InlineTextEditor layer={layer} onCommit={onCommitEdit} onCancel={onCancelEdit} />
+        ) : playing ? (
+          <motion.div
+            key={`play-${playKey}`}
+            initial={variant.initial}
+            animate={variant.animate}
+            transition={buildLayerTransition(animation, false)}
+          >
+            <LayerContentBody layer={layer} />
+          </motion.div>
+        ) : (
+          <LayerContentBody layer={layer} />
+        )}
+        {showResizeHandles && <ResizeHandles onResizeStart={onResizeStart} />}
       </div>
     </div>
   );
@@ -154,6 +323,8 @@ export function HeroCanvas({
   slide,
   device,
   selectedLayerId,
+  playing,
+  playKey,
   onSelectLayer,
   onUpdateLayer,
 }: {
@@ -161,15 +332,25 @@ export function HeroCanvas({
   slide: Slide;
   device: DeviceMode;
   selectedLayerId: string | null;
+  playing: boolean;
+  playKey: number;
   onSelectLayer: (id: string | null) => void;
   onUpdateLayer: (layerId: string, updater: (layer: SliderLayer) => SliderLayer) => void;
 }) {
   const canvasRef = useRef<HTMLDivElement>(null);
+  const [editingLayerId, setEditingLayerId] = useState<string | null>(null);
 
   return (
     <div className="hero-studio-stage flex flex-1 items-center justify-center overflow-auto p-8" style={{ background: "var(--hs-stage-bg)" }}>
       <div className={canvasWidthClass(device)} style={canvasBoxStyle(slider, device)}>
-        <div ref={canvasRef} className="absolute inset-0" onPointerDown={() => onSelectLayer(null)}>
+        <div
+          ref={canvasRef}
+          className="site-scope absolute inset-0"
+          onPointerDown={() => {
+            if (editingLayerId) return;
+            onSelectLayer(null);
+          }}
+        >
           <SlideBackgroundPreview slide={slide} />
           {slide.bgOverlayColor && slide.bgOverlayOpacity > 0 && (
             <div
@@ -187,16 +368,29 @@ export function HeroCanvas({
               layer={layer}
               device={device}
               selected={layer.id === selectedLayerId}
+              editing={layer.id === editingLayerId}
+              playing={playing}
+              playKey={playKey}
               onSelect={() => onSelectLayer(layer.id)}
+              onStartEdit={() => {
+                onSelectLayer(layer.id);
+                setEditingLayerId(layer.id);
+              }}
+              onCommitEdit={(text) => {
+                onUpdateLayer(layer.id, (current) => withText(current, text));
+                setEditingLayerId(null);
+              }}
+              onCancelEdit={() => setEditingLayerId(null)}
               onDrag={(xPercent, yPercent) =>
                 onUpdateLayer(layer.id, (current) => patchLayerGroup(current, device, "position", { xPercent, yPercent }))
               }
+              onResize={(widthPercent) => onUpdateLayer(layer.id, (current) => patchLayerGroup(current, device, "position", { widthPercent }))}
               canvasRef={canvasRef}
             />
           ))}
           {slide.layers.length === 0 && (
             <div className="absolute inset-0 flex items-center justify-center text-sm text-white/40">
-              Sağdaki &quot;Katman&quot; sekmesinden bu slayta katman ekleyin.
+              Üstteki &quot;Katman Ekle&quot; çubuğundan bu slayta katman ekleyin.
             </div>
           )}
         </div>

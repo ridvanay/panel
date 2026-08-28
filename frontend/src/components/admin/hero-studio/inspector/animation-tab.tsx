@@ -19,6 +19,7 @@ const IN_EFFECT_OPTIONS: { value: SliderLayerInEffect; label: string }[] = [
   { value: "slide-in-right", label: "Sağdan Kayma" },
   { value: "zoom-in", label: "Yakınlaşma" },
   { value: "flip-up", label: "Çevirerek Belirme" },
+  { value: "elastic-bounce", label: "Esnek Sıçrama" },
 ];
 
 export function AnimationInspectorTab({
@@ -78,9 +79,18 @@ export function AnimationInspectorTab({
         </Field>
       </div>
 
-      <Field id="anim-easing" label="Yumuşatma (easing)">
+      <Field
+        id="anim-easing"
+        label="Yumuşatma (easing)"
+        hint={animation.inEffect === "elastic-bounce" ? "Esnek Sıçrama kendi yay eğrisini kullanır, bu ayar yok sayılır." : undefined}
+      >
         {(p) => (
-          <Select {...p} value={animation.easing ?? "ease-out"} onChange={(e) => patch({ easing: e.target.value as typeof animation.easing })}>
+          <Select
+            {...p}
+            disabled={animation.inEffect === "elastic-bounce"}
+            value={animation.easing ?? "ease-out"}
+            onChange={(e) => patch({ easing: e.target.value as typeof animation.easing })}
+          >
             <option value="ease-out">Ease Out</option>
             <option value="linear">Linear</option>
             <option value="ease-in-out">Ease In Out</option>

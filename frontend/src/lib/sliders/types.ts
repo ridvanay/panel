@@ -76,7 +76,8 @@ export type SliderLayerInEffect =
   | "slide-in-left"
   | "slide-in-right"
   | "zoom-in"
-  | "flip-up";
+  | "flip-up"
+  | "elastic-bounce";
 
 export interface SliderLayerAnimation {
   inEffect: SliderLayerInEffect;

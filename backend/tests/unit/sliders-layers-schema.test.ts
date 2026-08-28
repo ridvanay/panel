@@ -105,6 +105,12 @@ describe("parseSlideLayers — SlideLayersSchema/lib/layers.ts", () => {
     expect(result).toHaveLength(1);
   });
 
+  it("accepts the 'elastic-bounce' giriş efekti (Hero Studio genişletmesi)", () => {
+    const layers = [headingLayer("l1", { animation: { inEffect: "elastic-bounce", delayMs: 0, durationMs: 600 } })];
+    const result = parseSlideLayers(layers);
+    expect(result[0]!.animation.inEffect).toBe("elastic-bounce");
+  });
+
   it("rejects an unknown layer 'type'", () => {
     const parsed = SliderLayerSchema.safeParse({
       id: "x",

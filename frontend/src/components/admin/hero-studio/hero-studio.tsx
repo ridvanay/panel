@@ -29,7 +29,8 @@ import { AdvancedSlider } from "@/components/site/advanced-slider/advanced-slide
 import { SlideStrip } from "./slide-strip";
 import { HeroCanvas } from "./hero-canvas";
 import { HeroStudioTimeline } from "./timeline";
-import { HeroStudioInspector } from "./inspector";
+import { HeroStudioInspector, type InspectorTabValue } from "./inspector";
+import { QuickAddToolbar } from "./quick-add-toolbar";
 import { SegmentedToggle } from "@/components/admin/page-builder/blocks/segmented-toggle";
 
 const DEVICE_OPTIONS: { value: DeviceMode; label: string; icon: typeof Monitor }[] = [
@@ -44,15 +45,20 @@ function defaultPosition(): SliderLayerPosition {
 function defaultAnimation(): SliderLayerAnimation {
   return { inEffect: "fade-up", delayMs: 0, durationMs: 600, easing: "ease-out" };
 }
-function defaultStyle(): SliderLayerStyle {
-  return {};
+/** Varsayılan slayt arka planı koyu bir renk geçişidir (§ `Slide.bgGradientFrom/To` varsayılanı
+ *  `#111827`) — `heading`/`text` katmanının `style.color`'ı boş bırakılırsa `.site-scope`'un
+ *  varsayılan `--site-text` (#111827, koyu) rengini miras alır ve koyu zemin üzerinde
+ *  GÖRÜNMEZ olur. Yeni katmanlar bu yüzden beyazla başlar — kullanıcı bunu her zaman
+ *  değiştirebilir, ama "ekle ve hiçbir şey görünmüyor" ilk izlenimi engellenir. */
+function defaultStyle(type: SliderLayerType): SliderLayerStyle {
+  return type === "heading" || type === "text" ? { color: "#ffffff" } : {};
 }
 
 function createDefaultLayer(type: SliderLayerType): SliderLayer {
   const id = newId();
   const position = defaultPosition();
   const animation = defaultAnimation();
-  const style = defaultStyle();
+  const style = defaultStyle(type);
   switch (type) {
     case "heading":
       return { id, type, content: { text: "Yeni Başlık", level: 2 }, position, style, animation };
@@ -172,6 +178,9 @@ export function HeroStudio({ sliderId }: { sliderId: string }) {
   const [device, setDevice] = useState<DeviceMode>("desktop");
   const [selectedSlideId, setSelectedSlideId] = useState<string | null>(null);
   const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
+  const [inspectorTab, setInspectorTab] = useState<InspectorTabValue>("slide");
+  const [playing, setPlaying] = useState(false);
+  const [playKey, setPlayKey] = useState(0);
   const [saving, setSaving] = useState(false);
   const [busySlideId, setBusySlideId] = useState<string | null>(null);
   const [addingSlide, setAddingSlide] = useState(false);
@@ -201,6 +210,24 @@ export function HeroStudio({ sliderId }: { sliderId: string }) {
   function selectSlide(id: string) {
     setSelectedSlideId(id);
     setSelectedLayerId(null);
+    setInspectorTab("slide");
+  }
+
+  /** ui-designer kararı — "Akıllı Sağ Panel" (bkz. `.claude/ui-designer-scope-advanced-slider.md`
+   *  §7.2): bir katman seçilince müfettiş ANINDA "Katman" sekmesine, seçim kalkınca "Slayt"
+   *  (arka plan) sekmesine geçer. Kullanıcı sonrasında "Animasyon"/"Slider" sekmesine elle
+   *  geçebilir — bu yalnızca seçim DEĞİŞTİĞİ ANDA bir kerelik otomatik yönlendirmedir. */
+  function selectLayer(id: string | null) {
+    setSelectedLayerId(id);
+    setInspectorTab(id ? "layer" : "slide");
+  }
+
+  function handlePlay() {
+    setPlaying(false);
+    requestAnimationFrame(() => {
+      setPlayKey((k) => k + 1);
+      setPlaying(true);
+    });
   }
 
   function updateSliderLocal(patch: Partial<Slider>) {
@@ -230,13 +257,13 @@ export function HeroStudio({ sliderId }: { sliderId: string }) {
     }
     const layer = createDefaultLayer(type);
     updateSlideLocal(selectedSlide.id, { layers: [...selectedSlide.layers, layer] });
-    setSelectedLayerId(layer.id);
+    selectLayer(layer.id);
   }
 
   function handleDeleteLayer() {
     if (!selectedSlide || !selectedLayerId) return;
     updateSlideLocal(selectedSlide.id, { layers: selectedSlide.layers.filter((l) => l.id !== selectedLayerId) });
-    setSelectedLayerId(null);
+    selectLayer(null);
   }
 
   async function handleAddSlide() {
@@ -276,7 +303,7 @@ export function HeroStudio({ sliderId }: { sliderId: string }) {
       setDeleteSlideTarget(null);
       await load();
       setSelectedSlideId(null);
-      setSelectedLayerId(null);
+      selectLayer(null);
       toast.success("Slayt silindi.");
     } catch (err) {
       toast.error(friendlyErrorMessage(err));
@@ -338,7 +365,14 @@ export function HeroStudio({ sliderId }: { sliderId: string }) {
 
   return (
     <div className="flex h-[calc(100vh-56px)] flex-col overflow-hidden">
-      <div className="sticky top-14 z-20 flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border bg-surface/95 px-4 backdrop-blur">
+      {/* `pages/[pageId]/page.tsx`'in AYNI kromu — orada iç içe bir kaydırma bölgesi içinde
+          gerçekten "sticky" (kaydırınca yapışır) gerekir; burada dış sarmalayıcı
+          (`h-[calc(100vh-56px)] overflow-hidden`) HİÇ kaymadığı için `position: sticky`
+          gereksizdi VE zararlıydı — statik konumu (AdminTopbar'ın hemen altı) ile "yapışık"
+          konumu (`top-14`) arasındaki fark, akıştaki bir SONRAKİ kardeşle (bu turda eklenen
+          Katman Ekle çubuğuyla) aynı dikey bölgede boyanmasına, dolayısıyla onu görünmez
+          kılmasına yol açıyordu. Düz `relative` yeterli — bu konteynerde kaydırma YOK. */}
+      <div className="relative z-20 flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border bg-surface/95 px-4 backdrop-blur">
         <div className="flex min-w-0 items-center gap-3">
           <Link href="/admin/sliders" className="flex items-center gap-1 text-sm text-foreground/60 hover:text-foreground" aria-label="Slider listesine dön">
             <ChevronLeft className="h-4 w-4" />
@@ -385,12 +419,20 @@ export function HeroStudio({ sliderId }: { sliderId: string }) {
         <div className="flex flex-1 flex-col overflow-hidden">
           {selectedSlide ? (
             <>
+              <QuickAddToolbar
+                selectedLayer={selectedLayer}
+                device={device}
+                onAddLayer={handleAddLayer}
+                onUpdateLayer={(updater) => selectedLayerId && updateLayerLocal(selectedSlide.id, selectedLayerId, updater)}
+              />
               <HeroCanvas
                 slider={slider}
                 slide={selectedSlide}
                 device={device}
                 selectedLayerId={selectedLayerId}
-                onSelectLayer={setSelectedLayerId}
+                playing={playing}
+                playKey={playKey}
+                onSelectLayer={selectLayer}
                 onUpdateLayer={(layerId, updater) => updateLayerLocal(selectedSlide.id, layerId, updater)}
               />
               <HeroStudioTimeline
@@ -398,8 +440,12 @@ export function HeroStudio({ sliderId }: { sliderId: string }) {
                 slide={selectedSlide}
                 device={device}
                 selectedLayerId={selectedLayerId}
-                onSelectLayer={setSelectedLayerId}
+                playing={playing}
+                playKey={playKey}
+                onSelectLayer={selectLayer}
                 onUpdateLayer={(layerId, updater) => updateLayerLocal(selectedSlide.id, layerId, updater)}
+                onPlay={handlePlay}
+                onPlayComplete={() => setPlaying(false)}
               />
             </>
           ) : (
@@ -414,11 +460,12 @@ export function HeroStudio({ sliderId }: { sliderId: string }) {
           slide={selectedSlide}
           layer={selectedLayer}
           device={device}
+          tab={inspectorTab}
+          onTabChange={setInspectorTab}
           onUpdateSlider={updateSliderLocal}
           onUpdateSlide={(patch) => selectedSlide && updateSlideLocal(selectedSlide.id, patch)}
           onUpdateLayer={(updater) => selectedSlide && selectedLayerId && updateLayerLocal(selectedSlide.id, selectedLayerId, updater)}
           onDeleteLayer={handleDeleteLayer}
-          onAddLayer={handleAddLayer}
         />
       </div>
 

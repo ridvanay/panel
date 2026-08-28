@@ -486,3 +486,123 @@ azaltılmış hareket kuralı yalnızca PUBLIC render'a bağlayıcıdır).
   `--slider-nav-*`, `--slider-media-focus-ring`, `--slider-snap-guide`, `--slider-layer-type-*`)
   ve `.hero-studio-stage` blok DEĞİŞTİRİLMEDEN kullanılır — yeni ham renk/gölge değeri İCAT
   EDİLMEZ, hepsi bu iki kaynaktan (`globals.css` + bu doküman) gelir.
+
+---
+
+## §7 Hero Studio'yu "tam görsel katman/animasyon stüdyosu"na genişletme (2026-08-28, ui-designer)
+
+Kapsam: kullanıcı isteği "Slider Revolution düzeyinde tam görsel katman yönetimi ve animasyon
+stüdyosu". Bu bölüm §4-§6'yı KIRMAZ — orada tanımlı Hero Studio iskeleti/tuval/zaman çizelgesi
+kromu AYNEN korunur; burada yalnızca YENİ etkileşim kalıpları eklenir.
+
+### §7.1 "Katman Ekle" çubuğu — tuvalin HEMEN ÜSTÜ, tek ve DAİMA görünür yer
+
+Sağ panelin "Katman" sekmesine gömülü quick-add butonları KALDIRILIR — yalnızca o sekme açıkken
+görünür olmaları keşfedilebilirliği düşürüyordu. Tek konum: orta sütunda, tuvalin (Bölge 3) HEMEN
+ÜSTÜNDE, `border-b border-border bg-surface` (standart admin-shell chrome — `hero-studio-stage`
+sabit-koyu kroma DEĞİL, çünkü bu bir ARAÇ ÇUBUĞU, tuvalin kendisi değil). Aynı çubukta, sağda,
+hizalama butonları (§7.2) yer alır — ikisi "tuvalle ilgili DAİMA erişilebilir eylemler" ailesindedir.
+
+Katman tipi butonları §6.4'teki `SLIDER_LAYER_TYPE_COLOR` ikonlarını KORUR (`outline` varyant,
+`sm` boyut) — yalnızca YERİ değişti, görsel dili AYNI.
+
+### §7.2 Hizalama butonları
+
+4 buton (kullanıcının istediği BİREBİR küme): Sola Yasla, Yatayda Ortala, Sağa Yasla, Dikeyde
+Ortala. `lucide-react`: `AlignHorizontalJustifyStart/Center/End`, `AlignVerticalJustifyCenter`
+(v1.28'de MEVCUT). `variant="ghost" size="icon-sm"`, seçili katman YOKKEN `disabled` (tamamen
+gizlemek yerine görünür-ama-pasif — kullanıcı "neden yok" değil "neden pasif" sorar, ikincisi
+daha az şaşırtıcıdır). Bir dikey ayraç (`h-4 w-px bg-border`) yatay/dikey grupları ayırır.
+
+Davranış: seçili katmanın `position.origin`'inin YALNIZCA ilgili ekseni değişir (diğer eksen
+KORUNUR — `layer-render.ts::splitOrigin`/`joinOrigin`), `xPercent`/`yPercent` buna eşlenir
+(`left→0`, `center→50`, `right→100`; `top→0`, `middle→50`, `bottom→100`). Cihaz override kuralı
+(§6.5 architect, mevcut) AYNEN geçerlidir — tablet/mobil görünümdeyken yalnızca `responsive.
+<device>.position` yazılır.
+
+### §7.3 Tuval artık WYSIWYG — gerçek stilli içerik, etiket-pilli DEĞİL
+
+Önceki tuval her katmanı küçük renkli bir "etiket pili" (yalnızca tip rengi + kısaltılmış metin)
+olarak gösteriyordu. Artık katmanın GERÇEK stilini (`buildLayerContentStyle` — font boyutu/
+rengi/kalınlığı/hizalaması/padding/gölge, `frontend/src/lib/sliders/layer-render.ts`, public
+render ile PAYLAŞILAN kaynak) taşıyan gerçek `h1-3`/`p`/`span`/`img` render edilir — kullanıcı
+tuvalde GERÇEKTEN nasıl görüneceğini görür. Buton/rozet public render'daki AYNI
+`SLIDER_BUTTON_VARIANT_CLASS`/`SLIDER_BUTTON_SIZE_CLASS` sınıflarını kullanır (ama admin'de
+gerçek `<a>` DEĞİLDİR — tıklanınca sayfadan çıkılmasın diye salt görsel bir `<span>`).
+
+**Site teması sadakati:** tuval `.site-scope` class'ı içinde render edilir — bu, `globals.css`
+`.site-scope` bloğundaki VARSAYILAN (`--site-primary: #4f46e5` vb.) değerleri devreye sokar.
+Kullanıcının GERÇEK `SiteAppearance` ayarlarını canlı çekmek (appearance önizlemesinin yaptığı
+gibi) BİLİNÇLİ OLARAK kapsam DIŞI bırakıldı — Hero Studio zaten "stage'e sığdırılmış bir
+önizleme" (§4.3), pozisyon/tipografi/animasyon DOĞRULUĞU asıl amaç; marka rengi sadakati mevcut
+"Önizle" (gerçek `AdvancedSlider` bileşeniyle tam ekran) modunda zaten sağlanıyor. İkisini
+birleştirmek (SiteAppearance fetch'i) yeni bir admin API çağrısı + yükleme durumu eklerdi —
+kazancı (tuvalde marka rengi doğru görünür) bu turun kapsamına göre orantısız.
+
+### §7.4 Seçim halosu + yeniden boyutlandırma tutamaçları
+
+§5.1/§5.2'de ZATEN speslenmiş halo (`0 0 0 1px rgb(0 0 0/0.45), 0 0 0 3px var(--accent-500,
+#6366f1)`) ve 4 köşe tutamacı (8×8px beyaz kare, 1.5px accent kenarlık) AYNEN kullanılır — yeni
+bir görsel dil YOK, yalnızca artık gerçek içerik kutusunun etrafında (etiket pili yerine).
+
+**Yeniden boyutlandırma davranışı (basitleştirilmiş, bağlayıcı):** şema yalnızca `widthPercent`
+taşır (bkz. architect §2.3, YENİ bir yükseklik/sol-sağ-ofset alanı EKLENMEZ). 4 tutamaç da AYNI
+davranır — "merkezden simetrik yeniden boyutlandırma": tutamaç konumdan (`xPercent`) uzaklaştıkça
+`widthPercent = |fare_x% - xPercent| × 2` olur. Bu, Figma/Photoshop'un tam serbest 2 eksenli
+yeniden boyutlandırmasından BASİTTİR ama mevcut şemayla (tek `widthPercent` alanı) tutarlıdır —
+yeni alan eklemek migration/API kontrat değişikliği gerektirirdi, bu turun kapsamı DIŞINDA.
+
+### §7.5 Çift tıklama ile yerinde metin düzenleme
+
+`heading`/`text`/`badge`/`button` (etiket) katmanları çift tıklamada `<input>`/`<textarea>`
+(çok satırlı yalnızca `text` tipi) overlay'ine döner — overlay `buildLayerContentStyle` ile AYNI
+tipografi stilini taşır (düzenleme sırasında da görsel tutarlılık) + `border border-dashed
+border-white` (düzenleme modunu işaretleyen tek ek çizgi). Odaklanınca metin TAMAMI seçili
+(hızlı değiştirme). **Enter** (çok satırlı `text` HARİÇ) veya **blur** COMMIT eder, **Escape**
+İPTAL eder (blur'u tetikler ama değeri YAZMAZ — orijinal içerik korunur). `image` katmanının
+`content.url`u inline düzenlenemez (serbest metin değil, URL) — çift tıklama yalnızca seçer
+(sağ panelin "Katman" sekmesi zaten o anda otomatik açılır, bkz. §7.6).
+
+### §7.6 Akıllı sağ panel — otomatik sekme geçişi
+
+Tam "arka plan ⇄ katman müfettişi" moduna GEÇİŞ değil (4 sekme YAPISI korunur — Slayt/Katman/
+Animasyon/Slider, mevcut zengin animasyon sekmesini tek bir dev sekmeye eritmek riskli bir
+yeniden yazımdı, kazancı düşük) — bunun yerine SEÇİM ANINDA otomatik yönlendirme: bir katman
+seçilince müfettiş aktif sekmesi ANINDA "Katman"a, seçim kalkınca (tuval boşluğuna tıklama,
+katman silme, slayt değiştirme) "Slayt"a döner. Kullanıcı sonrasında "Animasyon"/"Slider"
+sekmesine ELLE geçebilir — bu yalnızca seçim DEĞİŞTİĞİ ANDA bir kerelik yönlendirmedir, sekmeyi
+manuel olarak kilitlemez.
+
+**Cihaz Görünürlüğü:** "Katman" sekmesine, Stil grubunun ALTINA, tablet/mobil görünümdeyken
+görünen yeni bir bölüm eklendi — `Eye`/`EyeOff` ikonlu tek bir `Switch` ("{Cihaz}'de göster").
+Bu, ZATEN var olan `layer-mutations.ts::isLayerHiddenOnDevice`/`setLayerHidden` fonksiyonlarının
+(daha önce yalnızca tuvalde soluk gösterge olarak TÜKETİLİYORDU, YAZMA arayüzü YOKTU) ilk gerçek
+UI kontrolüdür — yeni bir veri alanı EKLENMEDİ, yalnızca eksik kalan kontrol tamamlandı.
+
+### §7.7 "Esnek Sıçrama" (Elastic Bounce) — yeni giriş efekti
+
+`SliderLayerInEffect` enum'ına (frontend `types.ts`, backend `layers.ts` Zod, openapi.yaml —
+ÜÇÜ de) `elastic-bounce` eklendi — `Slide.layers` JSON alanı olduğu için bu bir Postgres
+migration'ı GEREKTİRMEZ, salt kod-seviyeli bir Zod enum genişlemesidir (bkz. architect §2.5
+"JSON alanı — şema evrimi migration gerektirmez" gerekçesiyle AYNI).
+
+**`easing` alanıyla KARIŞTIRILMAZ:** `easing` bir TRANSITION eğrisidir (mevcut giriş şeklinin
+NASIL hareket ettiği), `elastic-bounce` bir giriş ŞEKLİDİR (`fade-up`/`zoom-in` ailesinin yeni
+bir üyesi — büyük ölçekten taşarak oturma: `initial: {opacity:0, scale:0.3}` →
+`animate: {opacity:1, scale:1}`). Seçildiğinde render katmanı `easing` alanını NE OLURSA OLSUN
+yüksek "bounce" (0.6) değerli bir `spring` transition'a zorlar — aksi halde "esnek" hissi
+kaybolurdu. Admin müfettişinde (`animation-tab.tsx`) bu net olsun diye `easing` seçici
+`elastic-bounce` seçiliyken `disabled` + açıklayıcı `hint` gösterir.
+
+### §7.8 Zaman çizelgesi "Oynat" artık tuvali de canlandırır
+
+Önceden "Oynat" yalnızca zaman çizelgesindeki beyaz playhead çizgisini süpürüyordu — tuval
+DEĞİŞMİYORDU. Artık `playing`/`playKey` durumu `HeroStudio`'ya TAŞINDI (Timeline'ın kendi yerel
+state'i DEĞİL) ve HEM playhead'i HEM tuvali besler: "Oynat" tıklanınca tuvaldeki HER katman aynı
+anda (public render'daki `IN_EFFECT_VARIANTS`/`buildLayerTransition` — §7.3'teki AYNI paylaşılan
+kaynak) kendi `delayMs`'i kadar bekleyip giriş animasyonuyla belirir — "tuval sıfırlanıp
+zamanlamalara göre akması" budur. Oynatma SÜRESİNCE tuval etkileşimi (sürükleme/yeniden
+boyutlandırma/çift-tıklama) KİLİTLENİR (`pointer-events: none` + handler'larda erken çıkış) —
+düzenleme ile önizleme aynı anda karışmasın diye. Zaman çizelgesindeki playhead süpürmesi bitince
+(`onAnimationComplete`) `playing` `false`'a döner, tuval otomatik olarak düzenlenebilir/statik
+görünüme geri döner.

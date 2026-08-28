@@ -12902,7 +12902,13 @@ components:
         `RevealEffect` (page-builder scroll reveal) ile ADI benzer ama AYRI bir kümedir —
         slider katmanları yatay giriş yönlerine (`slide-in-left/right`) ihtiyaç duyar,
         scroll-reveal ise dikey akışa göre tasarlanmıştır. İkisi BİRLEŞTİRİLMEZ.
-      enum: [none, fade, fade-up, fade-down, slide-in-left, slide-in-right, zoom-in, flip-up]
+
+
+        `elastic-bounce`, `SliderLayerAnimation.easing`'teki `spring` (bir TRANSITION
+        eğrisi) ile KARIŞTIRILMAZ — bu bir giriş ŞEKLİDİR (ölçekten taşarak oturma), `easing`
+        alanı ne olursa olsun render tarafı bunun için her zaman yüksek "bounce" değerli
+        bir spring transition'a zorlar.
+      enum: [none, fade, fade-up, fade-down, slide-in-left, slide-in-right, zoom-in, flip-up, elastic-bounce]
 
     SliderLayerAnimation:
       type: object

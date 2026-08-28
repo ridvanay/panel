@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useRef, type PointerEvent as ReactPointerEvent } from "react";
 import { motion } from "framer-motion";
 import { Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -119,28 +119,26 @@ export function HeroStudioTimeline({
   slide,
   device,
   selectedLayerId,
+  playing,
+  playKey,
   onSelectLayer,
   onUpdateLayer,
+  onPlay,
+  onPlayComplete,
 }: {
   slider: Slider;
   slide: Slide;
   device: DeviceMode;
   selectedLayerId: string | null;
+  playing: boolean;
+  playKey: number;
   onSelectLayer: (id: string | null) => void;
   onUpdateLayer: (layerId: string, updater: (layer: SliderLayer) => SliderLayer) => void;
+  onPlay: () => void;
+  onPlayComplete: () => void;
 }) {
   const totalMs = slide.durationMs ?? slider.intervalMs;
   const trackRef = useRef<HTMLDivElement>(null);
-  const [playKey, setPlayKey] = useState(0);
-  const [playing, setPlaying] = useState(false);
-
-  function handlePlay() {
-    setPlaying(false);
-    requestAnimationFrame(() => {
-      setPlayKey((k) => k + 1);
-      setPlaying(true);
-    });
-  }
 
   return (
     <div className="hero-studio-stage flex h-48 shrink-0 flex-col overflow-hidden border-t" style={{ background: "var(--hs-panel-bg)", borderColor: "var(--hs-panel-border)" }}>
@@ -148,7 +146,7 @@ export function HeroStudioTimeline({
         <span className="text-xs font-medium" style={{ color: "var(--hs-text)" }}>
           Zaman Çizelgesi — {slide.layers.length} katman · {(totalMs / 1000).toFixed(1)}s
         </span>
-        <Button type="button" variant="secondary" size="sm" onClick={handlePlay} disabled={slide.layers.length === 0}>
+        <Button type="button" variant="secondary" size="sm" onClick={onPlay} disabled={slide.layers.length === 0}>
           <Play className="h-3.5 w-3.5" />
           Oynat
         </Button>
@@ -178,7 +176,7 @@ export function HeroStudioTimeline({
             initial={{ left: "0%" }}
             animate={{ left: "100%" }}
             transition={{ duration: totalMs / 1000, ease: "linear" }}
-            onAnimationComplete={() => setPlaying(false)}
+            onAnimationComplete={onPlayComplete}
           />
         )}
       </div>

@@ -13,6 +13,36 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
 
 ### Changed
 
+- **Hero Studio — tam görsel katman/animasyon stüdyosuna genişletildi** (bağlayıcı karar eki
+  `.claude/ui-designer-scope-advanced-slider.md` §7). "Gelişmiş Slider" özelliğinin bir önceki
+  turda eklenen düzenleyicisini Slider Revolution düzeyine taşır:
+  - **Katman Ekle çubuğu** artık tuvalin HEMEN ÜSTÜNDE, sağ panelden BAĞIMSIZ, daima görünür
+    (Başlık/Metin/Buton/Görsel/Rozet); aynı çubukta 4 hizalama butonu (Sola Yasla, Yatayda
+    Ortala, Sağa Yasla, Dikeyde Ortala) — seçili katmanın `origin`'inin yalnızca ilgili eksenini
+    değiştirir, diğer eksen korunur.
+  - **Tuval artık WYSIWYG**: katmanlar önceki "renkli etiket pili" yerine public render'la AYNI
+    kaynaktan (yeni `lib/sliders/layer-render.ts`, `slide-layer.tsx` ile PAYLAŞILIR) gerçek
+    stilli içerik olarak render edilir; seçili katmanda 4 köşe tutamacıyla (§5.2, sembolik
+    "merkezden simetrik" mantıkla `widthPercent` yazar) yeniden boyutlandırma. Çift tıklama
+    metin katmanlarını (başlık/metin/rozet/buton etiketi) yerinde düzenler (Enter/blur kaydeder,
+    Escape iptal eder).
+  - **Akıllı sağ panel**: bir katman seçilince müfettiş ANINDA "Katman" sekmesine, seçim
+    kalkınca "Slayt" (arka plan) sekmesine döner — 4 sekme yapısı (Slayt/Katman/Animasyon/
+    Slider) korunur. "Katman" sekmesine, tablet/mobil görünümünde, daha önce yalnızca tuvalde
+    soluk bir gösterge olarak tüketilen cihaz-bazlı gizleme için ilk gerçek yazma kontrolü
+    (`Eye`/`EyeOff` anahtarı) eklendi.
+  - **Zaman çizelgesindeki "Oynat" artık tuvali de canlandırır** (önceki turda yalnızca
+    çizelgenin kendi playhead'ini süpürüyordu, `HeroCanvas`'a bağlı DEĞİLDİ — bu tur
+    düzeltildi): tıklanınca tuvaldeki her katman kendi `delayMs`/`durationMs`'i ile giriş
+    animasyonuyla belirir, oynatma boyunca tuval düzenlemesi kilitlenir.
+  - **Yeni giriş efekti — "Esnek Sıçrama" (`elastic-bounce`)**: `SliderLayerInEffect`
+    enum'ına eklendi (Zod/TS/openapi.yaml üçü birden, JSON alanı olduğu için migration
+    GEREKMEZ); seçildiğinde `easing` alanı ne olursa olsun yüksek "bounce" değerli bir
+    `spring` transition'a zorlanır.
+  - **Düzeltme:** Hero Studio üst çubuğunun gereksiz `position: sticky`'si (bu konteyner hiç
+    kaymadığı için) akıştaki bir sonraki elemanla (bu turda eklenen Katman Ekle çubuğu dahil)
+    aynı dikey bölgede boyanıp onu görünmez kılıyordu — `relative`'e çevrildi.
+
 - **[MİMARİ KARAR — implementasyon devam ediyor] Rol modeli 3 kademeden 5 kademeye
   genişletildi** (`ARCHITECTURE.md` §10.21, bağlayıcı karar dokümanı
   `.claude/architect-scope-rbac-5-tier.md`). Yeni roller: **Süper Yönetici** (`ADMIN`),

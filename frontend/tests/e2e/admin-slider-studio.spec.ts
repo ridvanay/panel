@@ -388,17 +388,16 @@ test.describe("Hero Studio — admin akışları", () => {
     }
   });
 
-  test("6) Zaman çizelgesinde 'Oynat' → katmanlar delayMs sırasına göre görünür oluyor (Önizle — gerçek AdvancedSlider render motoru)", async () => {
-    // NOT (qa-agent bulgusu, frontend-agent'a yönlendirilecek) — `HeroStudioTimeline.handlePlay()`
-    // (`components/admin/hero-studio/timeline.tsx`) yalnızca zaman çizelgesi içindeki bir
-    // ilerleme çizgisini animasyonlu gösterir; `HeroCanvas`'a (`hero-canvas.tsx::LayerBox`) HİÇBİR
-    // state/prop AKTARMAZ, dolayısıyla tuvaldeki katmanlar "Oynat" tıklanınca GÖRSEL OLARAK
-        // delayMs sırasına göre belirmiyor (mimar §6.5 madde 5: "'Oynat' TUVALDE koreografiyi baştan
-    // çalıştırır" — bu bağ EKSİK). Bu test bu yüzden gerçek zamanlama sözleşmesini (§3.3), Hero
-    // Studio'nun "Önizle" düğmesinin açtığı GERÇEK `AdvancedSlider` render motoru (aynı kod yolu,
-    // `toPreviewPublicSlider()`) üzerinden doğrular — bu, "katmanlar delayMs sırasına göre görünür
-    // oluyor" sözleşmesinin GERÇEKTEN çalıştığının kanıtıdır. Timeline "Oynat" düğmesinin kendisi
-    // ayrıca bir duman testiyle (ilerleme çizgisinin DOM'a girdiği) kapsanır.
+  test("6) Zaman çizelgesinde 'Oynat' → katmanlar delayMs sırasına göre görünür oluyor (hem tuvalde hem Önizle'de)", async () => {
+    // (2026-08-28 düzeltmesi) — `playing`/`playKey` durumu artık `HeroStudioTimeline`'ın kendi
+    // yerel state'i DEĞİL, `HeroStudio`'ya taşındı ve HEM zaman çizelgesindeki playhead'i HEM
+    // `HeroCanvas`'taki katmanları besler (bkz. `hero-canvas.tsx::LayerBox` — `playing` iken
+    // `motion.div` ile `IN_EFFECT_VARIANTS`/`buildLayerTransition`'ı, public render'la PAYLAŞILAN
+    // `lib/sliders/layer-render.ts` kaynağından uygular). Bu test önce TUVALDE (gerçek "Oynat"
+    // tıklaması), sonra AYRICA "Önizle"nin açtığı gerçek `AdvancedSlider` render motorunda
+    // (`toPreviewPublicSlider()`, bağımsız bir kod yolu) aynı zamanlama sözleşmesini (§3.3)
+    // doğrular — ikisi de aynı paylaşılan kaynağı kullandığı için ikisinin de doğru olması
+    // gerekir, biri kırılırsa diğeri onu YAKALAMAZ.
     const created = await createSlider(adminToken, { name: uniqueName("QA Timeline Slider") });
     await createSlide(adminToken, created.id, {
       layers: [
@@ -425,11 +424,25 @@ test.describe("Hero Studio — admin akışları", () => {
       await adminPage.goto(`/admin/sliders/${created.id}`);
       await expect(adminPage.getByRole("button", { name: /^Sürükle: Slayt 1$/ })).toBeVisible({ timeout: 15_000 });
 
-      // Timeline "Oynat" duman testi — ilerleme çizgisi DOM'a giriyor (çubuklar render edildi).
+      // Timeline "Oynat" → TUVALDE gerçek koreografi (bu turda eklenen bağ).
       await expect(adminPage.getByText(/Zaman Çizelgesi — 2 katman/)).toBeVisible();
       await adminPage.getByRole("button", { name: "Oynat" }).click();
 
-      // Gerçek koreografi — "Önizle" (gerçek `AdvancedSlider`).
+      async function heroCanvasLayerOpacity(text: string): Promise<number> {
+        const handle = await canvasLayer(adminPage, text).elementHandle();
+        if (!handle) return NaN;
+        // hero-canvas.tsx::LayerContentBody hiçbir katman tipinde ek sarmalayıcı <div> KOYMAZ
+        // (public `slide-layer.tsx`'in aksine) — animasyon opaklığı doğrudan bir üst düzeyde.
+        return handle.evaluate((el) => {
+          const wrapper = (el as HTMLElement).parentElement;
+          return wrapper ? Number.parseFloat(getComputedStyle(wrapper).opacity) : NaN;
+        });
+      }
+      await expect.poll(() => heroCanvasLayerOpacity("Gecikmeli Gorunen Katman"), { timeout: 800, intervals: [100] }).toBeLessThan(0.3);
+      await expect.poll(() => heroCanvasLayerOpacity("Hemen Gorunen Katman"), { timeout: 2_000 }).toBeGreaterThan(0.9);
+      await expect.poll(() => heroCanvasLayerOpacity("Gecikmeli Gorunen Katman"), { timeout: 4_000 }).toBeGreaterThan(0.9);
+
+      // Gerçek koreografi — AYRICA "Önizle" (gerçek `AdvancedSlider`, bağımsız kod yolu).
       await adminPage.getByRole("button", { name: "Önizle" }).click();
       const previewRoot = adminPage.locator("div.fixed.inset-0.bg-black");
       await expect(previewRoot).toBeVisible();
@@ -566,6 +579,79 @@ test.describe("Hero Studio — admin akışları", () => {
       expect(afterForce.deletedAt).not.toBeNull();
     } finally {
       await deletePagePermanently(adminToken, hostPage.id as string);
+      await cleanupSlider(adminToken, created.id);
+    }
+  });
+
+  test("10) Katman Ekle çubuğu (tuval üstü) + hizalama + çift tık düzenleme + Esnek Sıçrama + cihaz görünürlüğü → kaydet → kalıcı", async () => {
+    // (2026-08-28) Slider Revolution düzeyinde katman/animasyon stüdyosu genişletmesi —
+    // bkz. `.claude/ui-designer-scope-advanced-slider.md` §7. Önceki testler (1-9) katmanı sağ
+    // panelin "Katman" sekmesine GÖMÜLÜ eski quick-add düğmelerinden ekliyordu; bu buton tuvalin
+    // üstüne taşındı ve "Katman" sekmesine artık MANUEL tıklamaya gerek yok (seçim anında oraya
+    // geçiyor) — bu test o yeni akışı BAŞTAN SONA kullanır.
+    const created = await createSlider(adminToken, { name: uniqueName("QA Toolbar Slider") });
+    await createSlide(adminToken, created.id, { layers: [] });
+
+    try {
+      await adminPage.goto(`/admin/sliders/${created.id}`);
+      await expect(adminPage.getByRole("button", { name: /^Sürükle: Slayt 1$/ })).toBeVisible({ timeout: 15_000 });
+      await resetScroll(adminPage);
+
+      // Tuval üstü "Katman Ekle" çubuğu — sağ panelin "Katman" sekmesine gömülü DEĞİL, cihaz
+      // görünümünden/seçimden BAĞIMSIZ HER ZAMAN görünür.
+      const toolbar = adminPage.getByText("Katman Ekle", { exact: true }).locator("..");
+      await toolbar.getByRole("button", { name: "Başlık", exact: true }).click();
+
+      // Akıllı panel — katman eklenince müfettiş ANINDA "Katman" sekmesine geçti (manuel sekme
+      // tıklaması YOK, "1)" testinin aksine).
+      await expect(adminPage.getByRole("tab", { name: "Katman", selected: true })).toBeVisible();
+
+      const headingText = adminPage.locator("#layer-heading-text");
+      await headingText.fill("QA Toolbar Basligi");
+
+      // Hizalama çubuğu — "Sola Yasla" yalnızca X eksenini/hizalama noktasını değiştirir.
+      await resetScroll(adminPage);
+      await clickViaDom(adminPage.getByRole("button", { name: "Sola yasla" }));
+      await expect(adminPage.getByLabel("X (%)")).toHaveValue("0");
+      await expect(adminPage.getByLabel("Hizalama noktası")).toHaveValue("middle-left");
+
+      // Tuvalde çift tıklama ile yerinde metin düzenleme.
+      await canvasLayer(adminPage, "QA Toolbar Basligi").dblclick();
+      const inlineEditor = adminPage.locator(".hero-studio-stage input[type='text']");
+      await expect(inlineEditor).toBeFocused();
+      await inlineEditor.fill("QA Toolbar Basligi Duzenlendi");
+      await inlineEditor.press("Enter");
+      await expect(adminPage.locator("#layer-heading-text")).toHaveValue("QA Toolbar Basligi Duzenlendi");
+
+      // "Esnek Sıçrama" (elastic-bounce) — seçilince "Yumuşatma (easing)" devre dışı kalır.
+      await clickViaDom(adminPage.getByRole("tab", { name: "Animasyon" }));
+      await adminPage.getByLabel("Giriş efekti").selectOption({ label: "Esnek Sıçrama" });
+      await expect(adminPage.getByLabel("Yumuşatma (easing)")).toBeDisabled();
+
+      // Cihaz Görünürlüğü — mobil görünümde bu katmanı gizle.
+      await resetScroll(adminPage);
+      await clickViaDom(adminPage.getByRole("button", { name: "Mobil", exact: true }));
+      await clickViaDom(adminPage.getByRole("tab", { name: "Katman" }));
+      await clickViaDom(adminPage.getByRole("switch", { name: "Mobil'de göster/gizle" }));
+
+      await saveStudio(adminPage);
+      await adminPage.reload();
+      await expect(adminPage.getByRole("button", { name: /^Sürükle: Slayt 1$/ })).toBeVisible({ timeout: 15_000 });
+
+      // Backend seviyesinde de doğrula.
+      const persisted = await getSlider(adminToken, created.id);
+      const layer = persisted.slides[0]!.layers[0] as {
+        content: { text: string };
+        position: { xPercent: number; origin: string };
+        animation: { inEffect: string };
+        responsive?: { mobile?: { hidden?: boolean } };
+      };
+      expect(layer.content.text).toBe("QA Toolbar Basligi Duzenlendi");
+      expect(layer.position.xPercent).toBe(0);
+      expect(layer.position.origin).toBe("middle-left");
+      expect(layer.animation.inEffect).toBe("elastic-bounce");
+      expect(layer.responsive?.mobile?.hidden).toBe(true);
+    } finally {
       await cleanupSlider(adminToken, created.id);
     }
   });
