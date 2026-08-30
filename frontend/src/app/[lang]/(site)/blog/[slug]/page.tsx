@@ -9,6 +9,7 @@ import { ViewCount } from "@/components/site/view-count";
 import { SyncLocaleAlternates } from "@/components/site/sync-locale-alternates";
 import { PageHeader } from "@/components/site/page-header";
 import { SocialShareButtons } from "@/components/site/social-share-buttons";
+import { RichContentWithShortcodes } from "@/components/site/blocks/rich-content-with-shortcodes";
 import { redirectToCanonicalSlug } from "@/lib/i18n/canonical-slug";
 import { buildContentMetadata } from "@/lib/seo";
 import { SITE_URL } from "@/lib/env";
@@ -91,7 +92,7 @@ export default async function BlogPostPage({ params }: PageProps) {
           // eslint-disable-next-line @next/next/no-img-element -- kapak URL'si medya kütüphanesinden gelecek, next/image remotePatterns henüz tanımlı değil
           <img src={post.coverImageUrl} alt="" className="mt-6 w-full rounded-lg object-cover" />
         )}
-        <div className="prose mt-6 max-w-none" dangerouslySetInnerHTML={{ __html: post.contentHtml }} />
+        <RichContentWithShortcodes html={post.contentHtml} className="prose mt-6 max-w-none" />
         {appearance.socialShareEnabled && appearance.socialShareNetworks.length > 0 && (
           <div className="mt-8">
             <SocialShareButtons url={canonicalUrl} title={post.title} networks={appearance.socialShareNetworks} />

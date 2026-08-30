@@ -10,6 +10,7 @@ import { ViewCount } from "@/components/site/view-count";
 import { SyncLocaleAlternates } from "@/components/site/sync-locale-alternates";
 import { PageHeader } from "@/components/site/page-header";
 import { SocialShareButtons } from "@/components/site/social-share-buttons";
+import { RichContentWithShortcodes } from "@/components/site/blocks/rich-content-with-shortcodes";
 import { redirectToCanonicalSlug } from "@/lib/i18n/canonical-slug";
 import { LinkButton } from "@/components/ui/link-button";
 import { buildContentMetadata } from "@/lib/seo";
@@ -132,7 +133,7 @@ export default async function PortfolioDetailPage({ params }: PageProps) {
           </LinkButton>
         )}
 
-        <div className="prose mt-6 max-w-none" dangerouslySetInnerHTML={{ __html: item.contentHtml }} />
+        <RichContentWithShortcodes html={item.contentHtml} className="prose mt-6 max-w-none" />
         {appearance.socialShareEnabled && appearance.socialShareNetworks.length > 0 && (
           <div className="mt-8">
             <SocialShareButtons url={canonicalUrl} title={item.title} networks={appearance.socialShareNetworks} />

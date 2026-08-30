@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { ChevronLeft, Monitor, Play, Save, Smartphone, Tablet, X } from "lucide-react";
+import { ChevronLeft, Code2, Monitor, Play, Save, Smartphone, Tablet, X } from "lucide-react";
 import * as slidersApi from "@/lib/api/sliders";
 import { newId } from "@/lib/page-builder/registry";
+import { buildSliderShortcode } from "@/lib/sliders/shortcode";
 import type { DeviceMode } from "@/lib/page-builder/types";
 import type {
   PublicSlider,
@@ -114,6 +115,7 @@ function toUpdateSliderRequest(slider: Slider): UpdateSliderRequest {
     mobileHeightPx: slider.mobileHeightPx,
     mobileAspectRatioWidth: slider.mobileAspectRatioWidth,
     mobileAspectRatioHeight: slider.mobileAspectRatioHeight,
+    widthMode: slider.widthMode,
     showArrows: slider.showArrows,
     showBullets: slider.showBullets,
     showProgressBar: slider.showProgressBar,
@@ -139,6 +141,7 @@ function toPreviewPublicSlider(slider: Slider): PublicSlider {
     mobileHeightPx: slider.mobileHeightPx,
     mobileAspectRatioWidth: slider.mobileAspectRatioWidth,
     mobileAspectRatioHeight: slider.mobileAspectRatioHeight,
+    widthMode: slider.widthMode,
     showArrows: slider.showArrows,
     showBullets: slider.showBullets,
     showProgressBar: slider.showProgressBar,
@@ -323,6 +326,18 @@ export function HeroStudio({ sliderId }: { sliderId: string }) {
     });
   }
 
+  /** §9.2.8 architect — `navigator.clipboard` güvensiz kaynakta (HTTP) tanımsız olabilir; Hero
+   *  Studio yerel/staging'de düz HTTP üzerinden açılabildiği için korumasız `await` (bkz.
+   *  `app/admin/media/page.tsx`) BURADA KULLANILMAZ — `app/admin/settings/security/page.tsx`
+   *  deseniyle AYNI iki-geri-çağırmalı `.then(onOk, onErr)`. */
+  function handleCopyShortcode() {
+    if (!slider) return;
+    navigator.clipboard.writeText(buildSliderShortcode(slider.id)).then(
+      () => toast.success("Kısa kod kopyalandı! Bu kodu herhangi bir sayfada veya blog yazısında metin içine yapıştırabilirsiniz."),
+      () => toast.error("Kısa kod panoya kopyalanamadı.")
+    );
+  }
+
   async function handleSave() {
     if (!slider) return;
     setSaving(true);
@@ -388,6 +403,10 @@ export function HeroStudio({ sliderId }: { sliderId: string }) {
         <SegmentedToggle value={device} options={DEVICE_OPTIONS} onChange={setDevice} />
 
         <div className="flex shrink-0 items-center gap-2">
+          <Button type="button" variant="ghost" size="sm" onClick={handleCopyShortcode}>
+            <Code2 className="h-3.5 w-3.5" />
+            Kısa Kod
+          </Button>
           <Button type="button" variant="ghost" size="sm" onClick={() => setPreviewOpen(true)} disabled={slider.slides.every((s) => !s.isActive)}>
             <Play className="h-3.5 w-3.5" />
             Önizle

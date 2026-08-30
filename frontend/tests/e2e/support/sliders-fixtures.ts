@@ -139,6 +139,9 @@ export interface SliderUsageEntry {
   blockId: string;
   isHomePage: boolean;
   pageDeletedAt: string | null;
+  /** §9.2.7 architect eklentisi — `advanced-slider` bloğu ("block") mi yoksa bir `text`/
+   *  `custom-html` bloğu içindeki `[slider id="…"]` kısa kodu ("shortcode") mu referans verdiği. */
+  usageType: "block" | "shortcode";
 }
 
 export async function getSliderUsage(token: string, sliderId: string): Promise<SliderUsageEntry[]> {
@@ -171,4 +174,15 @@ export async function reorderSlides(token: string, sliderId: string, slideIds: s
     body: JSON.stringify({ slideIds }),
   });
   return json<{ data: AdminSlide[] }>(res).then((b) => b.data);
+}
+
+/**
+ * §9.2.1 architect eklentisi — kanonik kısa kod biçiminin TEST tarafındaki tek üretim noktası.
+ * Kaynak doğrulama `frontend/src/lib/sliders/shortcode.ts::buildSliderShortcode`'dur (frontend
+ * birim testleri o dosyayı doğrudan import eder); e2e testleri modül çözümleme/`@/` takma ad
+ * karmaşasından kaçınmak için burada BİREBİR AYNI biçimi (`[slider id="<uuid>"]`) yeniden üretir
+ * — biçim değişirse İKİ yer (kaynak + burası) birlikte güncellenmelidir.
+ */
+export function buildSliderShortcode(id: string): string {
+  return `[slider id="${id}"]`;
 }

@@ -11,6 +11,7 @@ import { FavoriteButton } from "@/components/site/favorite-button";
 import { SyncLocaleAlternates } from "@/components/site/sync-locale-alternates";
 import { PageHeader } from "@/components/site/page-header";
 import { SocialShareButtons } from "@/components/site/social-share-buttons";
+import { RichContentWithShortcodes } from "@/components/site/blocks/rich-content-with-shortcodes";
 import { redirectToCanonicalSlug } from "@/lib/i18n/canonical-slug";
 import { buildContentMetadata } from "@/lib/seo";
 import { formatPriceFromCents } from "@/lib/format-price";
@@ -140,7 +141,7 @@ export default async function ProductDetailPage({ params }: PageProps) {
 
         <AddToCartButton productId={product.id} stockQuantity={product.stockQuantity} />
 
-        <div className="prose mt-6 max-w-none" dangerouslySetInnerHTML={{ __html: product.descriptionHtml }} />
+        <RichContentWithShortcodes html={product.descriptionHtml} className="prose mt-6 max-w-none" />
         {appearance.socialShareEnabled && appearance.socialShareNetworks.length > 0 && (
           <div className="mt-8">
             <SocialShareButtons url={canonicalUrl} title={product.title} networks={appearance.socialShareNetworks} />

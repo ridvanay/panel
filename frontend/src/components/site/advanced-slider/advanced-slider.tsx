@@ -5,6 +5,7 @@ import { AnimatePresence, motion, useReducedMotion, type PanInfo } from "framer-
 import { ChevronLeft, ChevronRight, Pause, Play } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { PublicSlide, PublicSlider, SliderHeightMode, SliderNavigationTheme, SliderTransitionEffect } from "@/lib/sliders/types";
+import { DEFAULT_CONTAINER_MAX_WIDTH, type BlockChrome } from "@/lib/page-builder/types";
 import { SlideLayerView } from "./slide-layer";
 import { usePointerSwipe } from "./use-pointer-swipe";
 import { useResolvedLayers } from "./resolve-responsive";
@@ -213,7 +214,7 @@ function crossfadeMotionProps(
  * bu bileşenin İLK render'ında (SSR HTML'inde) satır içi stil ile belirlenir, JS ile
  * ÖLÇÜLMEZ (bkz. §5.2).
  */
-export function AdvancedSlider({ slider }: { slider: PublicSlider }) {
+export function AdvancedSlider({ slider, chrome = "page" }: { slider: PublicSlider; chrome?: BlockChrome }) {
   const rawId = useId();
   const rootId = `adv-slider-${rawId.replace(/[^a-zA-Z0-9]/g, "")}`;
   const slides = slider.slides;
@@ -337,7 +338,11 @@ export function AdvancedSlider({ slider }: { slider: PublicSlider }) {
 
   if (slides.length === 0) return null;
 
-  return (
+  // §9.1.3/§9.1.4 architect — `boxed` yerleşimi YALNIZCA `chrome === "page"` iken sarmalayıcı
+  // DOM üretir (page-builder `container` bloğunun "boxed" kuralının BİREBİR yeniden kullanımı,
+  // bkz. §9.1.2). `full-width` HER ZAMAN ve `boxed` bağlamında `chrome === "bare"` iken kök
+  // <div> DEĞİŞMEDEN, hiçbir ek DOM olmadan render edilir — geriye dönük uyumluluk kanıtı.
+  const root = (
     <div
       id={rootId}
       ref={rootRef}
@@ -466,4 +471,14 @@ export function AdvancedSlider({ slider }: { slider: PublicSlider }) {
       )}
     </div>
   );
+
+  if (slider.widthMode === "boxed" && chrome === "page") {
+    return (
+      <div className="mx-auto w-full px-4 sm:px-6" style={{ maxWidth: DEFAULT_CONTAINER_MAX_WIDTH }}>
+        {root}
+      </div>
+    );
+  }
+
+  return root;
 }

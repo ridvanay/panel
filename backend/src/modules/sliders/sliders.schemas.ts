@@ -4,6 +4,7 @@ import {
   SliderHeightModeSchema,
   SlideBackgroundTypeSchema,
   SliderNavigationThemeSchema,
+  SliderWidthModeSchema,
 } from "../../schemas/entities";
 import { CursorQuerySchema, TrashedFilterSchema, SafeHrefSchema } from "../../schemas/common";
 import { MAX_SLIDES_PER_SLIDER } from "./lib/constants";
@@ -47,6 +48,7 @@ export const DeleteSliderQuerySchema = z.object({
 export const CreateSliderRequestSchema = z.object({
   name: z.string().min(1).max(120),
   slug: z.string().min(1).max(140).optional(),
+  widthMode: SliderWidthModeSchema.optional(),
 });
 
 /**
@@ -72,6 +74,7 @@ export const UpdateSliderRequestSchema = z.object({
   mobileHeightPx: z.number().int().min(120).max(2000).nullable().optional(),
   mobileAspectRatioWidth: z.number().int().min(1).max(64).nullable().optional(),
   mobileAspectRatioHeight: z.number().int().min(1).max(64).nullable().optional(),
+  widthMode: SliderWidthModeSchema.optional(),
   showArrows: z.boolean().optional(),
   showBullets: z.boolean().optional(),
   showProgressBar: z.boolean().optional(),

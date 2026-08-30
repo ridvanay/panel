@@ -846,3 +846,521 @@ Dosya: `frontend/tests/e2e/admin-slider-studio.spec.ts` (+ public taraf için
 - [ ] Sıfır CLS ve a11y testleri yeşil (qa-agent)
 - [ ] `CHANGELOG.md` (repo kökü) + README güncel (documentation-agent)
 - [ ] Lint/format/bağımlılık politikası (Swiper eklenmedi) doğrulandı (code-quality-agent)
+
+---
+
+## §9 Genişlik Modu ve Kısa Kod / Embed Mekanizması (architect eklentisi)
+
+**Tarih:** 2026-08-30. **Durum:** BAĞLAYICI. Bu bölüm §1–§8'i **KIRMAZ** — orada tanımlı
+veri modeli, `chrome` sözleşmesi, sıfır-CLS kuralları ve "silinmiş slider sessizce boş
+render edilir" davranışı AYNEN korunur. Burada yalnızca iki YENİ yetenek eklenir. Çelişki
+olursa yine **`docs/architecture/openapi.yaml` kazanır** (bu turda `SliderWidthMode`,
+`SliderSettings.widthMode`, `CreateSliderRequest.widthMode`, `SliderUsageType` ve
+`SliderUsage.usageType` oraya EKLENDİ — kontrat güncel).
+
+**Bu turda DOKUNULMAYACAK (zaten tamamlanmış, doğrulandı):** `heightMode` + mobil override
+ailesi, `hero-canvas.tsx::canvasBoxStyle` ölçekleme, `advanced-slider` page-builder blok
+entegrasyonu (admin editör + public render), glassmorphic nav kroması (ui-designer §2).
+
+---
+
+### §9.1 Genişlik Modu — `Slider.widthMode`
+
+#### §9.1.1 Karar: `heightMode` ile AYNI aile, yeni bir Prisma enum + kolon
+
+| Seçenek | Karar |
+|---|---|
+| (A) `Slide.layers` gibi bir JSON ayarına gömmek | **RED** — `widthMode` bir *slider seviyesi* yerleşim ayarıdır, `heightMode`'un birebir kardeşidir; farklı bir taşıyıcıya koymak iki ayrı okuma/yazma yolu üretirdi. |
+| (B) Blok tarafında (`AdvancedSliderBlock.data.fullWidth`) tutmak | **RED** — aynı slider farklı sayfalarda farklı genişlikte görünürdü; ayrıca kısa kod (§9.2) ile gömülen slider'ın hiçbir blok `data`'sı YOKTUR, karar edilecek yer kalmazdı. Yerleşim kararı **slider'ın kendisine** aittir. |
+| (C) `enum SliderWidthMode { FULL_WIDTH, BOXED }` + `Slider.widthMode` kolonu | **SEÇİLDİ.** |
+
+İsimlendirme `SliderHeightMode` ailesiyle BİREBİR simetriktir: Prisma
+`SCREAMING_SNAKE` (`FULL_WIDTH`/`BOXED`), API kebab-case (`full-width`/`boxed`),
+dönüşüm TEK noktada (`modules/sliders/lib/enum-maps.ts`). Yeni bir isimlendirme kuralı
+İCAT EDİLMEZ.
+
+#### §9.1.2 "Boxed" ölçüsü — YENİ bir genişlik token'ı İCAT EDİLMEZ
+
+`boxed`, projede **zaten var olan** page-builder `container` bloğunun `layout: "boxed"`
+kuralını BİREBİR yeniden kullanır (`frontend/src/components/site/blocks/container-block.tsx`
+satır 78 + 86):
+
+```
+className: "mx-auto w-full px-4 sm:px-6"
+style:     { maxWidth: DEFAULT_CONTAINER_MAX_WIDTH }   // = 1170 (page-builder/types.ts:750)
+```
+
+Gerekçe: kullanıcı "sayfanın normal içerik genişliği" derken zaten sayfada gördüğü boxed
+konteynerlerin genişliğini kastediyor. `text-block.tsx`'in `max-w-3xl`'i **KULLANILMAZ** —
+o okunabilirlik için daraltılmış bir *makale sütunu* ölçüsüdür, sayfanın içerik genişliği
+değildir; bir hero yüzeyini 768px'e sıkıştırmak yanlış olurdu.
+
+**ui-designer'a devredilecek görsel karar YOKTUR** — bu, mevcut bir ölçünün yeniden
+kullanımıdır (bkz. §9.6).
+
+#### §9.1.3 `chrome` artık KULLANILIYOR — `advanced-slider-block.tsx` yorumu güncellenir
+
+Bugünkü kod `chrome`'u KASITLI OLARAK yok sayıyor ("slider her zaman kenardan kenara").
+Bu karar **artık `widthMode: "full-width"` için geçerli, genel kural olarak DEĞİL.** Yeni
+bağlayıcı matris:
+
+| `widthMode` | `chrome` | Render |
+|---|---|---|
+| `full-width` | `page` | Bugünkü davranış **BİREBİR** — sarmalayıcı YOK, kenardan kenara |
+| `full-width` | `bare` | Sarmalayıcı YOK (konteyner kendi padding'ini zaten uyguluyor) |
+| `boxed` | `page` | `mx-auto w-full px-4 sm:px-6` + `max-width: 1170px` sarmalayıcı |
+| `boxed` | `bare` | Sarmalayıcı **YOK** — §6.3 `chrome` sözleşmesi: bir konteynerin İÇİNDEKİ yaprak blok kendi dış gutter'ını BIRAKIR, boşluk konteynerden gelir. Çift gutter üretmek sözleşmeyi kırardı. |
+
+Yani `bare` bağlamında iki mod görsel olarak aynıdır — bu bir kusur değil, `chrome`
+sözleşmesinin doğrudan sonucudur ve slider'a özel bir istisna DEĞİLDİR.
+
+**Sarmalayıcı NEREDE yaşar:** `AdvancedSlider` bileşeninin İÇİNDE (yeni opsiyonel
+`chrome?: BlockChrome` prop'u, varsayılan `"page"`), `advanced-slider-block.tsx`'te değil.
+Gerekçe: `AdvancedSlider` üç yerden tüketiliyor (page-builder bloğu, Hero Studio "Önizle"
+modalı, §9.2 kısa kod render'ı) — sarmalayıcıyı çağıranlara dağıtmak üç kopya üretirdi.
+Prop adı `chrome`, tipi `BlockChrome` (`page-builder/types.ts`'ten **yeniden kullanılır**,
+yeni tip İCAT EDİLMEZ — CLAUDE.md "ortak terminoloji" kuralı).
+
+#### §9.1.4 Geriye dönük uyumluluk (BAĞLAYICI)
+
+- Prisma `@default(FULL_WIDTH)` + migration'da `NOT NULL DEFAULT 'FULL_WIDTH'` → **mevcut
+  TÜM sliderlar AYNEN eskisi gibi render edilir.** Bu, bu maddenin kabul kriteridir.
+- `AdvancedSlider`'da `chrome` prop'unun varsayılanı `"page"`, `widthMode`'un okunmadığı
+  hiçbir yol kalmaz; `widthMode === "full-width"` dalı **hiç sarmalayıcı DOM'u eklemez**
+  (boş bir `<div>` bile eklenmez — sıfır-CLS ve mevcut e2e `boundingBox` testleri korunur).
+
+#### §9.1.5 KAPSAM DIŞI (bilinçli sınırlar — frontend-agent bunları KENDİ KARARIYLA EKLEMEZ)
+
+1. **Mobil/tablet `widthMode` override YOK.** `boxed` zaten dar ekranda `px-4` gutter'ına
+   düşer; `full-width` mobilde de doğrudur. Cihaz başına ikinci bir genişlik seti,
+   kazandığından fazla karmaşıklık üretirdi (`heightMode`'un mobil override gerekçesi
+   burada GEÇERSİZ — orada `100svh` mobilde gerçekten yanlış olabiliyordu).
+2. **Köşe yuvarlaklığı (`border-radius`) YOK.** Boxed bir slider'a `var(--site-radius)`
+   vermek YENİ bir görsel karardır → ui-designer'ın alanı. v1'de her iki mod da köşesizdir.
+3. **Dikey boşluk (`py-*`) YOK.** Bugün slider'ın dikey padding'i sıfır; `boxed` yalnızca
+   YATAY ekseni değiştirir. Komşu blokların kendi `py-*`'ları (chrome=`page` iken) zaten
+   ritmi sağlar.
+4. **Hero Studio tuvali (`hero-canvas.tsx`) `widthMode`'u YOK SAYAR.** Tuval bir *cihaz
+   çerçevesi* önizlemesidir, sayfa bağlamı değildir; katman `xPercent` koordinatları slayt
+   kutusuna GÖRELİDİR ve genişlik modundan etkilenmez. Gerçek yerleşim üst çubuktaki
+   **"Önizle"** modalında görünür (o `AdvancedSlider`'ı `chrome="page"` ile render eder).
+
+---
+
+### §9.2 Kısa Kod / Embed Mekanizması (`[slider id="<uuid>"]`)
+
+#### §9.2.1 Kanonik biçim ve TEK üretim noktası
+
+```
+[slider id="8f14e45f-ceea-4d0f-9c1b-0b2c3d4e5f60"]
+```
+
+Üretim ve ayrıştırma **tek bir yeni dosyada** toplanır:
+`frontend/src/lib/sliders/shortcode.ts`. İki kopyalama düğmesi (§9.2.8) string'i elle
+kurmaz, `buildSliderShortcode(id)` çağırır — biçim değişirse tek yerden değişir.
+
+`slug` DEĞİL `id` kullanılır: `advanced-slider` bloğunun `data.sliderId` kararıyla (§2.5
+Prisma yorumu) AYNI gerekçe — slug yeniden adlandırıldığında bağ kopmaz.
+
+#### §9.2.2 KRİTİK MİMARİ SORUN ve çözümü
+
+`TextBlockView`/`CustomHtmlBlockView` bugün `dangerouslySetInnerHTML` ile **düz string**
+basıyor. `AdvancedSlider` ise `"use client"` + framer-motion'dır ve sunucuda
+`fetchSliderServer` ile beslenmek zorundadır (§5.2 sıfır-CLS: dış kutu yüksekliği SSR
+HTML'inde belirli olmalı). Bir React ağacı bir string'in içine GÖMÜLEMEZ.
+
+**Karar:** HTML string'i kısa kod deseninde **parçalara böl**, metin parçalarını
+`dangerouslySetInnerHTML` ile, slider parçalarını gerçek React düğümü olarak
+**araya serpiştir**. Paylaşılan sunucu bileşeni:
+`frontend/src/components/site/blocks/rich-content-with-shortcodes.tsx` (**YENİ**).
+
+**Asenkronluk tuzağı ve çözümü (bağlayıcı):** dış bileşen `RichContentWithShortcodes`
+**SENKRON kalır**; yalnızca dosya içindeki küçük `ShortcodeSliderView` alt bileşeni
+`async`'tir. React, senkron bir sunucu bileşeninin döndürdüğü ağaçtaki async çocuğu kendisi
+bekler. Böylece `TextBlockView`/`CustomHtmlBlockView` de **senkron kalır** ve mevcut
+`BlockRenderer` sözleşmesi bozulmaz.
+
+```tsx
+// frontend/src/components/site/blocks/rich-content-with-shortcodes.tsx  (YENİ, "use client" YOK)
+async function ShortcodeSliderView({ sliderId }: { sliderId: string }) {
+  const slider = await fetchSliderServer(sliderId);
+  // §6.2 ile BİREBİR AYNI davranış: yok/çöpte/slaytsız → SESSİZCE null, hata YOK.
+  if (!slider || slider.slides.length === 0) return null;
+  // Kısa kod her zaman bir metin akışının İÇİNDEDİR → ev sahibi kap gutter'ı zaten var.
+  return <AdvancedSlider slider={slider} chrome="bare" />;
+}
+
+export function RichContentWithShortcodes({ html, className }: { html: string; className?: string }) {
+  const segments = splitSliderShortcodes(html);
+  // HIZLI YOL (bağlayıcı): kısa kod YOKSA bugünkü DOM'un BİREBİR aynısı üretilir —
+  // tek bir div + dangerouslySetInnerHTML. Sıfır regresyon garantisi budur.
+  if (segments.length === 1 && segments[0]!.kind === "html") {
+    return <div className={className} dangerouslySetInnerHTML={{ __html: html }} />;
+  }
+  return (
+    <div className={className}>
+      {segments.map((seg, i) =>
+        seg.kind === "html"
+          ? <div key={i} dangerouslySetInnerHTML={{ __html: seg.html }} />
+          : <ShortcodeSliderView key={i} sliderId={seg.sliderId} />
+      )}
+    </div>
+  );
+}
+```
+
+**Ek `<div>` sarmalayıcı notu (doğrulandı):** bu projede `@tailwindcss/typography`
+eklentisi KURULU DEĞİLDİR ve `globals.css`'te hiçbir `.prose` kuralı yoktur — `prose`
+şu an salt anlamsal bir işaretleyici sınıftır, dolayısıyla metin parçalarını ek div'lere
+sarmak hiçbir stili bozmaz. **Eğer ileride typography eklentisi eklenirse**, `className`
+aynı anda html parça sarmalayıcılarına da verilmelidir (tek satırlık değişiklik) — bu not
+o günün sürprizini önlemek için buradadır.
+
+#### §9.2.3 Regex ve güvenlik (security-agent kapsamı)
+
+```ts
+const QUOTE = `"|'|&quot;|&#39;`;
+const UUID  = `[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}`;
+/** Açılış ve kapanış tırnağı AYNI olmak ZORUNDA (\1 geri referansı). */
+export const SLIDER_SHORTCODE_RE = new RegExp(
+  `\\[slider\\s+id\\s*=\\s*(${QUOTE})(${UUID})\\1\\s*\\]`, "g"
+);
+```
+
+Bağlayıcı kurallar:
+
+1. **Yalnızca UUID.** Serbest metin/serbest id KABUL EDİLMEZ. `SafeHrefSchema` benzeri
+   ikinci bir beyaz listeye GEREK YOKTUR — desen zaten kapalı bir karakter kümesidir.
+   Dört tırnak varyantı (`"`, `'`, `&quot;`, `&#39;`) kabul edilir çünkü Tiptap/sanitizer
+   zinciri metin düğümlerindeki tırnağı bugün olduğu gibi bırakır ama bu bir *uygulama
+   detayıdır*, kontrat değildir — varyantları kabul etmek kırılganlığı ortadan kaldırır.
+2. **Sanitizasyondan SONRA, render anında ayrıştırılır.** `data.html` DB'ye yazılırken
+   zaten `sanitizeRichHtml`/`sanitizeCustomHtmlBlock`'tan geçmiştir. **İKİNCİ bir
+   sanitizasyon yolu AÇILMAZ** (`custom-html-block.tsx`'in dosya başlığındaki "tek yazar"
+   ilkesi korunur). Kısa kod ayrıştırması sanitizasyon DEĞİLDİR, salt bir bölme işlemidir.
+3. **Bölme noktası asla bir etiketin/özniteliğin İÇİNE düşemez.** `splitSliderShortcodes`
+   önce `/(<[^>]*>)/` ile etiket/metin parçalarına ayırır ve kısa kod regex'ini **yalnızca
+   metin parçalarına** uygular. Gerekçe: aksi halde `<img alt='[slider id="…"]'>` gibi
+   patolojik bir girdide bölme etiketi ortadan ikiye keserdi. (Sanitize edilmiş çıktıda
+   öznitelik değerlerindeki `>` zaten `&gt;`'dir, bu yüzden bu tokenizasyon güvenilirdir.)
+4. **Enjeksiyon yüzeyi YOK:** eşleşen metin tamamen SİLİNİR ve yerine React düğümü konur;
+   yakalanan `sliderId` HTML'e geri yazılmaz, yalnızca `fetchSliderServer`'a URL yol
+   parçası olarak geçer.
+5. **DoS/aşırı çağrı tavanı:** `MAX_SHORTCODE_SLIDERS_PER_FIELD = 5` (yeni sabit,
+   `shortcode.ts`). Bu sayıyı aşan kısa kodlar `{ kind: "slider" }` yerine **sessizce
+   düşürülür** (metin olarak da basılmaz). Gerekçe: tek bir zengin metin alanına 50 kısa
+   kod yapıştıran bir editör 50 paralel `GET /sliders/{id}` üretirdi.
+
+#### §9.2.4 Yeni endpoint GEREKMEZ (doğrulandı, karara bağlandı)
+
+`fetchSliderServer(sliderId)` (`frontend/src/lib/api/server-sliders.ts`) zaten public
+`GET /sliders/{sliderId}` ucunu `next: { revalidate: 60 }` ile çağırıyor ve hata → `null`
+davranışını uyguluyor. Kısa kod render'ı **AYNI fonksiyonu** tüketir. **Backend'e yeni bir
+uç EKLENMEZ.** Aynı sayfada aynı slider'a birden fazla kısa kod varsa Next.js `fetch`
+tekilleştirmesi (aynı render geçişinde aynı URL) ikinci isteği zaten önler.
+
+#### §9.2.5 Nerede ÇALIŞIR — tüketim noktaları (doğrulandı)
+
+`TextBlockView` yalnızca `BlockRenderer` üzerinden çağrılıyor; blog/portfolyo/ürün detay
+sayfaları rich text'i **doğrudan** `dangerouslySetInnerHTML` ile basıyor. Yani "blog
+yazısında da çalışsın" isteği için o üç sayfa **AYRICA** güncellenmelidir:
+
+| Dosya | Bugün | Sonra |
+|---|---|---|
+| `components/site/blocks/text-block.tsx` | `<div className={cn(...)} dangerouslySetInnerHTML>` | `<RichContentWithShortcodes html={block.data.html} className={cn(...)} />` (cn ifadesi AYNEN korunur) |
+| `components/site/blocks/custom-html-block.tsx` | aynı desen | aynı dönüşüm |
+| `app/[lang]/(site)/blog/[slug]/page.tsx` (~satır 94) | `post.contentHtml` | `<RichContentWithShortcodes html={post.contentHtml} className="prose mt-6 max-w-none" />` |
+| `app/[lang]/(site)/portfolio/[slug]/page.tsx` (~satır 135) | `item.contentHtml` | aynı dönüşüm |
+| `app/[lang]/(site)/products/[slug]/page.tsx` (~satır 143) | `product.descriptionHtml` | aynı dönüşüm |
+
+Üçü de sunucu bileşenidir → async çocuk sorunsuz. **`layout.tsx`'teki
+`site-custom-css` `dangerouslySetInnerHTML`'i DEĞİŞMEZ** (CSS, zengin metin değil).
+
+#### §9.2.6 ZORUNLU yan düzeltme — istemci önizlemesi (`template-editor-view.tsx`)
+
+`TemplateEditorView` `"use client"`tir ve `BlockRenderer`'ı doğrudan çağırır; async sunucu
+bileşenlerini `SERVER_ONLY_PREVIEW_LABELS` ile statik yer tutucuya çevirerek çalışır.
+İki sorun:
+
+1. **Mevcut (bu tur ÖNCESİ) hata:** `advanced-slider` bu listede **YOK** — şablon
+   önizlemesinde bir `advanced-slider` bloğu varsa çalışma zamanı hatası verir
+   ("Creating promises inside a Client Component…"). Bu turda **DÜZELTİLİR**:
+   `"advanced-slider": "Gelişmiş Slider"` listeye eklenir.
+2. **Bu turun getirdiği yeni risk:** `text`/`custom-html` blokları artık kısa kod
+   içerebilir → önizlemede async çocuk doğar. **Çözüm mevcut desenle AYNI kalır** (ağaca
+   ULAŞMADAN ÖNCE değiştir): `toPreviewSafeNodes`, `text`/`custom-html` düğümlerinin
+   `data.html`'inde `splitSliderShortcodes` çalıştırıp her kısa kodu **sabit, kendi
+   ürettiğimiz** yer tutucu HTML'iyle değiştirir (mevcut yer tutucu markup'ı BİREBİR
+   yeniden kullanılır; `sliderId` veya herhangi bir kullanıcı verisi **ASLA** enterpole
+   edilmez). Düğüm TİPİ değişmez, metin içeriği korunur.
+
+#### §9.2.7 Referans koruması genişler — `SliderUsageType`
+
+Kısa kod, `advanced-slider` bloğunun yanında **ikinci bir referans yüzeyi** açar. Silme
+öncesi `409` koruması (§4.3) bunu görmezse, kullanılan bir slider "kullanılmıyor" diye
+silinir. Karar: `lib/slider-usage.ts` taraması genişletilir.
+
+- Aday daraltma (`blocks::text ILIKE '%<uuid>%'`) **DEĞİŞMEZ** — uuid her iki durumda da
+  `blocks::text` içinde geçtiği için aynı ön filtre ikisini de yakalar.
+- Kesin tarama (`findAdvancedSliderBlockIds`) genişler: `advanced-slider` düğümüne EK
+  OLARAK, `type === "text" || type === "custom-html"` düğümlerinin `data.html`'inde
+  §9.2.3'teki AYNI regex aranır (backend'de **ikinci bir kopya değil**, `sliders`
+  modülünde tek bir `SLIDER_SHORTCODE_RE` sabiti — frontend'deki ile birebir aynı desen,
+  §2.6'daki "üç yerde birebir" disiplininin aynısı).
+- `SliderUsage` DTO'suna `usageType: "block" | "shortcode"` eklenir (openapi.yaml'da
+  `required`).
+- **Kapsam sınırı (bağlayıcı):** tarama YALNIZCA `pages` tablosunu kapsar.
+  `BlogPost.contentHtml`/`PortfolioItem.contentHtml`/`Product.descriptionHtml` içine
+  yapıştırılan kısa kodlar bu listede **görünmez** — `SliderUsage` sayfa-merkezli bir
+  DTO'dur (`pageId`/`pageSlug`), üç içerik türünü taşımak ayrı bir kontrat turudur.
+  Backlog: `feature/slider-usage-content-entities`. Sonucu bozuk bir sayfa DEĞİL, yalnızca
+  eksik bir uyarıdır (silinen slider her yerde sessizce boş render edilir).
+
+#### §9.2.8 Kopyalama arayüzü (iki nokta, tek davranış)
+
+| Yer | Kontrol |
+|---|---|
+| `components/admin/hero-studio/hero-studio.tsx` üst çubuk | `<Button variant="ghost" size="sm">` + `lucide-react` `Code2` ikonu, etiket **"Kısa Kod"**, "Önizle"nin SOLUNA |
+| `app/admin/sliders/page.tsx` satır dropdown'ı (`tab === "active"` dalı) | `<DropdownMenuItem>` + `Code2`, etiket **"Kısa Kodu Kopyala"**, "Hero Studio'da Aç" ile "Kopyala" arasına |
+
+- Kopyalanan değer: `buildSliderShortcode(slider.id)` — elle string kurulmaz.
+- **Başarı toast'ı (metin BAĞLAYICI):**
+  `"Kısa kod kopyalandı! Bu kodu herhangi bir sayfada veya blog yazısında metin içine yapıştırabilirsiniz."`
+- **Hata dalı ZORUNLU.** `navigator.clipboard` güvensiz kaynakta (HTTP) tanımsızdır;
+  `app/admin/settings/security/page.tsx`'teki iki-geri-çağırmalı desen
+  (`navigator.clipboard.writeText(x).then(onOk, onErr)`) kullanılır — `app/admin/media/page.tsx`'teki
+  korumasız `await` deseni BURADA kullanılmaz (Hero Studio yerel/staging'de düz HTTP üzerinden
+  açılabiliyor).
+- Çöp sekmesindeki (`deletedAt != null`) sliderlarda bu eylem **gösterilmez** (kopyalanan
+  kod hiçbir şey render etmezdi).
+
+#### §9.2.9 KAPSAM DIŞI (bilinçli sınırlar)
+
+1. **`100vw` full-bleed "breakout" YOK.** Kısa kodla gömülen slider **akış içinde** render
+   edilir ve genişliği ev sahibi kabın genişliğidir (blog yazısında makale sütunu kadar).
+   Negatif margin / `100vw` kaçış teknikleri yatay kaydırma çubuğu, RTL ve scrollbar
+   genişliği hataları üretir. Kenardan kenara hero isteyen kullanıcı page-builder'ın
+   `advanced-slider` **bloğunu** kullanır — mekanizmalar bilinçli olarak ayrıdır.
+2. **Başka kısa kod tipi YOK.** `[gallery]`, `[form]` vb. genel bir kısa kod motoru bu
+   turun kapsamı dışındadır; `shortcode.ts` yalnızca slider'ı bilir.
+3. **Tiptap'ta canlı önizleme/otomatik tamamlama YOK.** Editörde kısa kod düz metindir.
+4. **Kısa kod parametresi YOK** (`[slider id="…" height="400"]` gibi). Tüm ayarlar
+   slider'ın kendisine aittir (§9.1.1 (B) seçeneğiyle AYNI gerekçe).
+
+---
+
+### §9.3 db-agent talimatları
+
+**Tek bir YENİ migration.** `20260825052846_add_advanced_slider_studio` **DÜZENLENMEZ**
+(uygulanmış migration'ın checksum'ı kırılır) — yeni klasör, `heightMode` migration'ının
+YANINA.
+
+1. `backend/prisma/schema.prisma` — enum bloğuna, `SliderHeightMode`'un (satır ~1093-1097)
+   HEMEN ARDINA:
+   ```prisma
+   // Slider'ın YATAY yerleşimi. FULL_WIDTH = kenardan kenara (bu alan eklenmeden önceki
+   // TEK davranış, bu yüzden varsayılan). BOXED = page-builder `container` bloğunun
+   // "boxed" kuralı (max-width 1170px + px-4/sm:px-6) — bkz. architect §9.1.2.
+   // Mobil override YOKTUR (heightMode'dan bilinçli SAPMA, gerekçe §9.1.5).
+   enum SliderWidthMode {
+     FULL_WIDTH
+     BOXED
+   }
+   ```
+2. `model Slider` (satır ~782) — "--- Yükseklik ---" bloğunun ARDINA, "--- Navigasyon ---"
+   bloğundan ÖNCE:
+   ```prisma
+     // --- Genişlik (yerleşim) ---
+     widthMode SliderWidthMode @default(FULL_WIDTH)
+   ```
+3. Migration: `backend/prisma/migrations/<ts>_add_slider_width_mode/migration.sql`
+   ```sql
+   -- CreateEnum
+   CREATE TYPE "SliderWidthMode" AS ENUM ('FULL_WIDTH', 'BOXED');
+
+   -- AlterTable
+   ALTER TABLE "sliders" ADD COLUMN "widthMode" "SliderWidthMode" NOT NULL DEFAULT 'FULL_WIDTH';
+   ```
+   `CREATE TYPE`'dır, `ALTER TYPE ... ADD VALUE` DEĞİLDİR → §2.5'teki "izole migration"
+   uyarısı GEÇERSİZ, tek migration yeterlidir. `ADD COLUMN NOT NULL DEFAULT` Postgres 11+
+   üzerinde tabloyu yeniden yazmaz (metadata-only), kilit süresi ihmal edilebilir.
+4. **`Slide` modeline, `ContentEntityType`'a, `WebhookEvent`'e DOKUNULMAZ.** Kısa kod
+   mekanizması **hiçbir şema değişikliği gerektirmez** (salt render katmanı).
+5. Commit: `feat(sliders): add widthMode column and enum` (Conventional Commits).
+
+---
+
+### §9.4 backend-agent talimatları
+
+Şema **tasarlanmaz**, §9.3'ün ürettiği kolon TÜKETİLİR.
+
+| Dosya | Değişiklik |
+|---|---|
+| `src/schemas/entities.ts` | `SliderWidthModeSchema = z.enum(["full-width","boxed"])` + `type SliderWidthMode` (satır ~499 `SliderHeightModeSchema`'nın ardına). `SliderSettingsSchema`'ya `widthMode: SliderWidthModeSchema` (satır ~523 `mobileAspectRatioHeight`'ın ardına). `SliderUsageSchema`'ya `usageType: z.enum(["block","shortcode"])`. |
+| `src/modules/sliders/lib/enum-maps.ts` | `WIDTH_MODE_TO_PRISMA` / `WIDTH_MODE_FROM_PRISMA` (`HEIGHT_MODE_*` ile BİREBİR desen). `widthModeToPrisma`/`FromPrisma` yardımcıları **GEREKMEZ** (alan nullable DEĞİL). |
+| `src/modules/sliders/sliders.schemas.ts` | `CreateSliderRequestSchema` → `widthMode: SliderWidthModeSchema.optional()`. `UpdateSliderRequestSchema` → `widthMode: SliderWidthModeSchema.optional()` (satır ~74 `mobileAspectRatioHeight`'ın ardına). |
+| `src/modules/sliders/sliders.routes.ts` | (a) `buildSliderSettingsData` (satır ~92 civarı): `if (body.widthMode !== undefined) data.widthMode = WIDTH_MODE_TO_PRISMA[body.widthMode];` (b) `POST /` handler (satır ~185-191): `widthMode`'u body'den al, `prisma.slider.create({ data: { name, slug, ...(widthMode && { widthMode: WIDTH_MODE_TO_PRISMA[widthMode] }) } })` (c) `duplicate` handler (satır ~384 civarı): kopyalanan alanlara `widthMode: source.widthMode` EKLE — **unutulursa kopya sessizce full-width'e düşer.** |
+| `src/mappers/index.ts` | `toSliderSettingsFields` (satır ~1185): `widthMode: WIDTH_MODE_FROM_PRISMA[slider.widthMode]`. `toSliderUsageDto` (satır ~1292): `usageType` alanını geçir. |
+| `src/modules/sliders/lib/slider-usage.ts` | §9.2.7: `SLIDER_SHORTCODE_RE` sabitini bu modülde tanımla; `findAdvancedSliderBlockIds` → `findSliderReferences` olarak genişlet, `{ blockId, usageType }[]` dönsün. `text`/`custom-html` düğümlerinde `typeof n.data?.html === "string"` ise regex ile `sliderId` eşleşmesi ara. İTERATİF tarama (explicit stack) ve `ABSOLUTE_VISIT_CAP` **AYNEN korunur**. `container.children` inişi değişmez. |
+
+**Birim test (backend-agent, `backend/tests/unit/`):**
+- `sliders-shortcode-usage.test.ts` (**YENİ**): `text` bloğu html'inde kısa kod → tespit
+  edilir (`usageType: "shortcode"`); `custom-html` içinde → tespit; `container` içindeki
+  `text` → tespit; **yanlış uuid / eksik tırnak / `[slider id=abc]` → tespit EDİLMEZ**;
+  aynı sayfada hem blok hem kısa kod → İKİ ayrı kayıt.
+- Mevcut `sliders-layers-schema.test.ts` DEĞİŞMEZ.
+
+**openapi.yaml'a DOKUNULMAZ** — kontrat bu turda architect tarafından zaten güncellendi;
+backend ona UYAR.
+
+---
+
+### §9.5 frontend-agent talimatları
+
+Görsel/stil kararı ÜRETİLMEZ — §9.1.2'deki ölçüler ve §9.1.5'teki "yok" maddeleri
+BAĞLAYICIDIR.
+
+**A) Genişlik modu**
+
+| Dosya | Değişiklik |
+|---|---|
+| `src/lib/sliders/types.ts` | `export type SliderWidthMode = "full-width" \| "boxed";` (satır ~12 `SliderHeightMode`'un ardına). `SliderSettings`'e `widthMode: SliderWidthMode`. `CreateSliderRequest`'e `widthMode?: SliderWidthMode`. `SliderUsage`'a `usageType: "block" \| "shortcode"`. |
+| `src/components/site/advanced-slider/advanced-slider.tsx` | Yeni opsiyonel prop `chrome?: BlockChrome` (varsayılan `"page"`). Mevcut kök `<div>` **DEĞİŞMEZ**; `widthMode === "boxed" && chrome === "page"` iken kökü `<div className="mx-auto w-full px-4 sm:px-6" style={{ maxWidth: DEFAULT_CONTAINER_MAX_WIDTH }}>` ile SAR. Diğer tüm durumlarda **hiçbir ek DOM üretme** (§9.1.4). `DEFAULT_CONTAINER_MAX_WIDTH` `@/lib/page-builder/types`'tan import edilir, sayı elle yazılmaz. |
+| `src/components/site/blocks/advanced-slider-block.tsx` | `chrome` artık KULLANILIR: `<AdvancedSlider slider={slider} chrome={chrome} />`. **Dosya başlığındaki "chrome KASITLI OLARAK kullanılmaz" yorumu SİLİNİR** ve yerine §9.1.3 matrisine atıf yapan yeni bir yorum yazılır. |
+| `src/components/admin/hero-studio/inspector/slider-tab.tsx` | "Geçiş" ile "Yükseklik" grupları ARASINA yeni bir grup: başlık **"Yerleşim"**, tek `Field id="slider-widthMode" label="Genişlik modu"` → `Select`: `full-width` = **"Tam genişlik"**, `boxed` = **"Kutulu (içerik genişliği)"**. Cihaz moduna DUYARLI DEĞİL (her cihazda görünür ve aynı değeri yazar — §9.1.5/1). `widthMode === "boxed" && heightMode === "full-screen"` iken `Field`'ın `hint`'i: `"Kutulu yerleşimde tam ekran yüksekliği genellikle istenmez."` (engelleyici DEĞİL). |
+| `src/components/admin/hero-studio/hero-studio.tsx` | `toUpdateSliderRequest`'e `widthMode: slider.widthMode` EKLE — **unutulursa kullanıcının seçimi kaydedilmez.** |
+| `src/components/admin/hero-studio/hero-canvas.tsx` | **DEĞİŞMEZ** (§9.1.5/4). |
+
+**B) Kısa kod**
+
+| Dosya | Değişiklik |
+|---|---|
+| `src/lib/sliders/shortcode.ts` | **YENİ.** `buildSliderShortcode(id)`, `SLIDER_SHORTCODE_RE`, `MAX_SHORTCODE_SLIDERS_PER_FIELD = 5`, `RichContentSegment` tipi, `splitSliderShortcodes(html)`. §9.2.3'teki tokenizasyon kuralı (önce `/(<[^>]*>)/`, kısa kod YALNIZCA metin parçalarında) ZORUNLU. Saf/senkron — React importu YOK. |
+| `src/components/site/blocks/rich-content-with-shortcodes.tsx` | **YENİ.** §9.2.2'deki iskelet. Sunucu bileşeni (`"use client"` YOK). Hızlı yol (kısa kod yoksa BİREBİR bugünkü DOM) BAĞLAYICI. |
+| `src/components/site/blocks/text-block.tsx` | `cn(...)` ifadesi AYNEN korunur, sadece render `RichContentWithShortcodes`'a devredilir. |
+| `src/components/site/blocks/custom-html-block.tsx` | Aynı dönüşüm. Dosya başlığındaki "İKİNCİ bir sanitizasyon YAPILMAZ" yorumu **KORUNUR** + §9.2.3/2'ye atıf eklenir. |
+| `src/app/[lang]/(site)/blog/[slug]/page.tsx` (~94), `.../portfolio/[slug]/page.tsx` (~135), `.../products/[slug]/page.tsx` (~143) | `dangerouslySetInnerHTML` → `<RichContentWithShortcodes html={...} className="prose mt-6 max-w-none" />`. |
+| `src/components/admin/page-builder/template-editor-view.tsx` | §9.2.6: `SERVER_ONLY_PREVIEW_LABELS`'a `"advanced-slider": "Gelişmiş Slider"`; `toPreviewSafeNodes` `text`/`custom-html` düğümlerinin html'indeki kısa kodları sabit yer tutucuyla değiştirir (kullanıcı verisi enterpole EDİLMEZ). |
+| `src/components/admin/hero-studio/hero-studio.tsx` | §9.2.8 üst çubuk "Kısa Kod" düğmesi. |
+| `src/app/admin/sliders/page.tsx` | §9.2.8 dropdown eylemi (yalnızca `tab === "active"`); ayrıca `UsageConflict` diyalogunda her satırın yanına `usageType === "shortcode"` ise küçük bir `Badge` (**"kısa kod"**), `"block"` ise **"blok"** — mevcut `Badge tone="neutral" size="sm"` bileşeni, YENİ görsel dil yok. |
+
+**Birim test (frontend-agent, `frontend/tests/unit/`):** `sliders-shortcode.test.ts`
+(**YENİ**) — `splitSliderShortcodes` için: kısa kod yok → tek segment; başta/ortada/sonda
+kısa kod; iki kısa kod arka arkaya; geçersiz uuid → bölme YOK; `&quot;` varyantı; etiket
+özniteliği içindeki sahte kısa kod → bölme YOK; 6 kısa kod → yalnızca ilk 5'i slider
+segmenti.
+
+---
+
+### §9.6 ui-designer — bu turda GÖREV YOK (netleştirme)
+
+Her iki özellik de **mevcut** görsel kararları yeniden kullanır, yeni bir görsel dil
+gerektirmez:
+
+- **Genişlik modu:** ölçü kaynağı `container-block.tsx`'in zaten onaylı boxed kuralıdır
+  (`max-width: 1170px` + `px-4 sm:px-6`). Yeni token, yeni breakpoint, yeni spacing YOK.
+  §9.1.5'te **köşe yuvarlaklığı ve dikey boşluk açıkça KAPSAM DIŞI** bırakıldı — böylece
+  frontend-agent'ın "boxed güzel görünsün diye" kendi kararıyla `rounded-lg`/`py-8` ekleme
+  ihtimali kapatıldı. İleride istenirse bu ayrı bir ui-designer işidir.
+- **Kısa kod:** kontroller mevcut `Button`/`DropdownMenuItem`/`Badge`/`sonner` bileşenleri
+  ve `lucide-react` `Code2` ikonudur. Şablon önizlemesindeki yer tutucu, `template-editor-view.tsx`'te
+  ZATEN var olan markup'ın birebir yeniden kullanımıdır.
+
+ui-designer'ın §1-§7'deki tüm kararları (nav kroması, gölge tablosu, Hero Studio düzeni)
+**DEĞİŞMEDEN** geçerlidir.
+
+---
+
+### §9.7 qa-agent talimatları
+
+Mevcut `frontend/tests/e2e/admin-slider-studio.spec.ts` ve `advanced-slider-public.spec.ts`
+dosyalarına **eklenir** (yeni dosya açılmaz).
+
+**Genişlik modu:**
+1. Hero Studio → "Yerleşim" → "Kutulu" seç → Kaydet → sayfayı yenile → seçim korunuyor.
+2. Public sayfada `widthMode: "boxed"` slider'ın `boundingBox().width` **viewport
+   genişliğinden KÜÇÜK** ve `≤ 1170px`; `full-width` slider'ın genişliği **viewport'a eşit**.
+3. **Geriye dönük uyumluluk (kritik):** `widthMode` alanına HİÇ dokunulmamış bir slider
+   (varsayılan `full-width`) public sayfada bugünkü genişlikte render ediliyor.
+4. Boxed slider bir `container` bloğunun İÇİNE konduğunda (`chrome="bare"`) **çift gutter
+   oluşmuyor** — slider genişliği konteynerin iç genişliğine eşit.
+5. Slider'ı kopyala (`duplicate`) → kopyanın `widthMode`'u kaynakla AYNI.
+6. **Sıfır CLS korunuyor:** boxed modda da hidrasyon öncesi/sonrası `boundingBox` aynı.
+
+**Kısa kod:**
+7. `/admin/sliders` satır menüsünden "Kısa Kodu Kopyala" → toast görünüyor; panodaki değer
+   `[slider id="<slider uuid>"]` biçiminde (Playwright `clipboard-read` izniyle).
+8. Hero Studio üst çubuğundaki "Kısa Kod" düğmesi AYNI değeri kopyalıyor.
+9. Bir sayfaya `text` bloğu ekle, içine kısa kodu yapıştır, yayınla → public sayfada
+   slider CANLI render ediliyor (slayt görünür, oklar tıklanabilir).
+10. `custom-html` bloğunda AYNI davranış.
+11. Blog yazısının içeriğine kısa kod → blog detay sayfasında slider render ediliyor.
+12. **Var olmayan uuid** ile kısa kod → sayfa **200** dönüyor, hiçbir şey render edilmiyor,
+    konsol hatası YOK; kısa kodun ham metni de **ekranda görünmüyor**.
+13. Bozuk kısa kod (`[slider id=abc]`) → **düz metin olarak aynen görünüyor** (bölme yok).
+14. Kısa kodlu bir slider'ı silmeye çalış → `409` ve kullanan sayfa listesinde satır
+    **"kısa kod"** rozetiyle görünüyor.
+15. Kısa kodlu bir `text` bloğu içeren şablonu `/admin/pages` şablon düzenleyicisinde aç →
+    **çalışma zamanı hatası YOK**, kısa kod yerine yer tutucu görünüyor, metnin geri kalanı
+    okunuyor.
+16. Kısa kodla gömülü slider **akış içinde** kalıyor: yatay kaydırma çubuğu OLUŞMUYOR
+    (`document.documentElement.scrollWidth <= clientWidth`).
+
+---
+
+### §9.8 security-agent / compliance-agent notu
+
+- **security-agent:** inceleme yüzeyi yalnızca §9.2.3'tür. Doğrulanacaklar: (a) regex
+  UUID'e kilitli mi, (b) bölme yalnızca metin parçalarında mı yapılıyor, (c) `sliderId`
+  HTML'e geri yazılmıyor mu, (d) **ikinci bir sanitizasyon yolu açılmamış** mı, (e)
+  `MAX_SHORTCODE_SLIDERS_PER_FIELD` tavanı hem frontend hem (usage taramasında) backend
+  tarafında mı uygulanıyor. Yeni endpoint/yetki değişikliği YOK → §1.7 yetki tablosu
+  DEĞİŞMEZ.
+- **compliance-agent:** etki YOK. `widthMode` bir yerleşim tercihi, kısa kod bir referans;
+  ikisi de PII taşımaz (§1.3 değerlendirmesi aynen geçerli).
+
+---
+
+### §9.9 Definition of Done ve uygulama sırası (bağlayıcı)
+
+Sıra ZORUNLUDUR — her adım bir öncekinin çıktısını tüketir.
+
+1. **db-agent** — `schema.prisma` (enum + kolon) + TEK yeni migration
+   (`add_slider_width_mode`). `prisma generate` sonrası `PrismaClient` tipinde
+   `SliderWidthMode` görünür olmalı.
+   Commit: `feat(sliders): add widthMode column and enum`
+2. **backend-agent** — §9.4 (entities/enum-maps/schemas/routes/mappers/slider-usage) +
+   birim testler. `POST`/`PATCH`/`duplicate`/`GET` yanıtları openapi.yaml ile BİREBİR.
+   Commit'ler: `feat(sliders): expose widthMode through slider API`,
+   `feat(sliders): detect shortcode references in slider usage scan`
+3. **ui-designer** — **ATLANIR** (§9.6, gerekçeli). Release-coordinator bu adımı planına
+   koymaz.
+4. **frontend-agent** — §9.5 A (genişlik) → §9.5 B (kısa kod) sırasıyla; ikisi ayrı
+   commit. A tamamlanmadan B'ye geçilmez (B'nin `chrome="bare"` çağrısı A'daki prop'a
+   bağımlıdır).
+   Commit'ler: `feat(sliders): add full-width/boxed width mode`,
+   `feat(sliders): render [slider id] shortcodes in rich text and html blocks`
+5. **qa-agent** — §9.7'deki 16 senaryo mevcut iki spec dosyasına eklenir.
+   Commit: `test(sliders): cover width mode and shortcode embedding`
+6. **documentation-agent** — `CHANGELOG.md` + kullanıcıya dönük kısa "Kısa kod nasıl
+   kullanılır" notu.
+   Commit: `docs(sliders): document width mode and shortcode embedding`
+
+**Bitmiş sayılma kriterleri:**
+- [ ] `widthMode` migration uygulandı; mevcut sliderlar `FULL_WIDTH` (db-agent)
+- [ ] `Slider`/`PublicSlider`/`UpdateSliderRequest`/`CreateSliderRequest` yanıtları
+      openapi.yaml ile BİREBİR; `duplicate` `widthMode`'u taşıyor (backend-agent)
+- [ ] `AdvancedSlider` `full-width` dalında **hiç ek DOM üretmiyor** (geriye dönük
+      uyumluluk kanıtı — qa senaryo 3) (frontend-agent)
+- [ ] `advanced-slider-block.tsx`'in "chrome kullanılmaz" yorumu güncellendi (frontend-agent)
+- [ ] `toUpdateSliderRequest` `widthMode` gönderiyor (frontend-agent)
+- [ ] Kısa kod 5 tüketim noktasında da çalışıyor: `text`, `custom-html`, blog, portfolyo,
+      ürün (frontend-agent)
+- [ ] `template-editor-view.tsx` istemci önizlemesi kısa kodlu/`advanced-slider` içeren
+      şablonda **hata vermiyor** (frontend-agent)
+- [ ] `usage` taraması kısa kod referanslarını buluyor; `409` diyalogu türü gösteriyor
+      (backend-agent + frontend-agent)
+- [ ] Regex/sanitizasyon denetimi geçti (security-agent, §9.8)
+- [ ] 16 e2e senaryo yeşil; yatay kaydırma çubuğu oluşmuyor (qa-agent)
+- [ ] Lint/format geçiyor, yeni bağımlılık EKLENMEDİ (code-quality-agent)
+- [ ] `CHANGELOG.md` güncel (documentation-agent)

@@ -74,12 +74,36 @@ export async function registerFixtureUser(email: string, password: string, name:
   await json(res);
 }
 
+/**
+ * qa-agent BULGUSU (bu ajan tarafından kendi test altyapısında bulunup DÜZELTİLDİ — proje kökü
+ * CLAUDE.md madde 3 "flaky testleri tolere etme, kaynağını bul ve düzelt") — bu fonksiyon
+ * ÖNCEDEN yalnızca İLK sayfayı (`limit=100`, cursor'sız) okuyordu. `saas_e2e` paylaşılan test
+ * veritabanında kullanıcılar `DELETE /admin/users/{id}`'de YALNIZCA yumuşak silinir (backend'de
+ * `User` için bir `/permanent` ucu YOKTUR — `Slider`/`Page`/`BlogPost`'un aksine); dolayısıyla
+ * TÜM ajanların TÜM koşumlarındaki fixture kullanıcıları (`includeDeleted=true` sorgusunda) bu
+ * paylaşımlı veritabanında KALICI olarak birikir. Toplam kullanıcı sayısı 100'ü geçtiği an, İLK
+ * sayfa yalnızca EN ESKİ kayıtları döndürüyordu (bkz. `admin-users.routes.ts` — varsayılan sıra)
+ * ve YENİ oluşturulan (her koşumda benzersiz e-postalı) fixture kullanıcıları asla BULUNAMIYORDU
+ * — `resetFixtureUserToBaseline()`/RBAC testlerindeki "... fixture kullanıcısı oluşturulamadı"
+ * hatasının GERÇEK kök nedeni buydu (rastgele bir yarış durumu DEĞİL, deterministik bir sayfalama
+ * hatasıydı — veritabanı büyüdükçe her koşumda daha da kötüleşirdi). Düzeltme: `listAllAdminBlogPosts`
+ * (`support/blog-fixtures.ts`) İLE AYNI cursor-döngüsü deseni — TÜM sayfalar taranır.
+ */
 export async function adminGetUserByEmail(token: string, email: string): Promise<FixtureAdminUser | undefined> {
-  const res = await fetch(`${API_BASE_URL}/admin/users?limit=100&includeDeleted=true`, {
-    headers: authHeadersNoBody(token),
-  });
-  const body = await json<{ data: FixtureAdminUser[] }>(res);
-  return body.data.find((u) => u.email.toLowerCase() === email.toLowerCase());
+  const target = email.toLowerCase();
+  let cursor: string | undefined;
+  while (true) {
+    const url = new URL(`${API_BASE_URL}/admin/users`);
+    url.searchParams.set("limit", "100");
+    url.searchParams.set("includeDeleted", "true");
+    if (cursor) url.searchParams.set("cursor", cursor);
+    const res = await fetch(url, { headers: authHeadersNoBody(token) });
+    const body = await json<{ data: FixtureAdminUser[]; meta: { nextCursor?: string | null } }>(res);
+    const found = body.data.find((u) => u.email.toLowerCase() === target);
+    if (found) return found;
+    if (!body.meta.nextCursor) return undefined;
+    cursor = body.meta.nextCursor;
+  }
 }
 
 export async function adminUpdateRole(

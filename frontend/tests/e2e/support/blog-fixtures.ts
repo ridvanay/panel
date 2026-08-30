@@ -69,6 +69,18 @@ export async function createBlogPost(token: string, input: CreateBlogPostFixture
   return json<{ data: AdminBlogPost }>(res).then((b) => b.data);
 }
 
+/** `PATCH /admin/blog/{id}` — yalnızca `contentHtml`. qa-agent — `[slider id="…"]` kısa kod
+ *  (bkz. `.claude/architect-scope-advanced-slider.md` §9.2.5) blog yazısı içeriğinde de
+ *  çalıştığını doğrulamak için `createBlogPost`'un sabit fixture içeriğini DEĞİŞTİRİR. */
+export async function updateBlogPostContentHtml(token: string, postId: string, contentHtml: string): Promise<AdminBlogPost> {
+  const res = await fetch(`${API_BASE_URL}/admin/blog/${postId}`, {
+    method: "PATCH",
+    headers: authHeaders(token),
+    body: JSON.stringify({ contentHtml }),
+  });
+  return json<{ data: AdminBlogPost }>(res).then((b) => b.data);
+}
+
 /**
  * `count` adet yazıyı `titlePrefix` + sıra numarasıyla oluşturur — §10.7.1 pagination
  * regresyonu için gerçek veri hacmi üretir (ör. 229). Concurrency SINIRLI (20) — backend'i

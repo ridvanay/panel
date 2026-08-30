@@ -2,7 +2,16 @@ import { test, expect, type Page, type Locator } from "@playwright/test";
 import { getCachedAdminSession, getFixtureUserToken, createPageWithBlocks, deletePagePermanently } from "./support/api";
 import { createAuthenticatedPage, createAuthenticatedPageAs } from "./support/admin-session";
 import { registerFixtureUser, resetFixtureUserToBaseline, adminGetUserByEmail, adminUpdateRole } from "./support/admin-users-fixtures";
-import { createSlider, getSlider, cleanupSlider, createSlide } from "./support/sliders-fixtures";
+import {
+  createSlider,
+  getSlider,
+  cleanupSlider,
+  createSlide,
+  updateSlider,
+  duplicateSlider,
+  getSliderUsage,
+  buildSliderShortcode,
+} from "./support/sliders-fixtures";
 
 /**
  * qa-agent — `.claude/architect-scope-advanced-slider.md` §7 "QA kapsamı" (Admin, 9 senaryo).
@@ -519,7 +528,10 @@ test.describe("Hero Studio — admin akışları", () => {
       const row = adminPage.getByRole("row", { name: new RegExp(created.name) });
       await expect(row).toBeVisible({ timeout: 10_000 });
       await row.getByRole("button", { name: `${created.name} için işlemler` }).click();
-      await adminPage.getByRole("menuitem", { name: "Kopyala" }).click();
+      // qa-agent DÜZELTMESİ (bu turda bulundu) — §9.2.8 architect eklentisiyle gelen YENİ "Kısa
+      // Kodu Kopyala" satır eylemi de "Kopyala" alt dizesini İÇERİYOR; `exact: true` OLMADAN bu
+      // seçici artık İKİ menü öğesiyle eşleşip `strict mode violation` üretiyordu.
+      await adminPage.getByRole("menuitem", { name: "Kopyala", exact: true }).click();
 
       await expect(adminPage.getByText("Slider kopyalandı.")).toBeVisible({ timeout: 10_000 });
       await adminPage.waitForURL(/\/admin\/sliders\/[0-9a-f-]{36}$/, { timeout: 10_000 });
@@ -656,6 +668,172 @@ test.describe("Hero Studio — admin akışları", () => {
     }
   });
 
+  /**
+   * qa-agent — `.claude/architect-scope-advanced-slider.md` §9.7 "Genişlik Modu ve Kısa Kod"
+   * eklentisi (2026-08-30). Testler 11-15 bu bölümün admin-taraflı 6 senaryosunu (§9.7-1, -5,
+   * -7, -8, -14) kapsar; kalanı (`advanced-slider-public.spec.ts`) public render tarafındadır.
+   * Regresyon testi ("EDITOR: kısa kodlu..." — §9.2.6) aşağıdaki RBAC describe bloğunun İÇİNDE,
+   * zaten oturum açmış `editorPage`'i YENİDEN KULLANIR (dosya başlığındaki "dosya başına TEK
+   * gerçek UI login'i" kısıtı — yeni bir EDITOR oturumu AÇILMAZ).
+   */
+  test("11) Hero Studio → 'Slider' sekmesi → 'Yerleşim' → 'Kutulu (içerik genişliği)' seç → Kaydet → sayfa yenile → seçim korunuyor", async () => {
+    const created = await createSlider(adminToken, { name: uniqueName("QA WidthMode Slider") });
+    await createSlide(adminToken, created.id, { layers: [] });
+
+    try {
+      await adminPage.goto(`/admin/sliders/${created.id}`);
+      await expect(adminPage.getByRole("button", { name: /^Sürükle: Slayt 1$/ })).toBeVisible({ timeout: 15_000 });
+      await resetScroll(adminPage); // bkz. `resetScroll` başlığı
+      await clickViaDom(adminPage.getByRole("tab", { name: "Slider", exact: true }));
+
+      const widthModeSelect = adminPage.getByLabel("Genişlik modu");
+      await expect(widthModeSelect).toHaveValue("full-width");
+      await widthModeSelect.selectOption("boxed");
+      await expect(widthModeSelect).toHaveValue("boxed");
+
+      await saveStudio(adminPage);
+      await adminPage.reload();
+
+      await expect(adminPage.getByRole("button", { name: /^Sürükle: Slayt 1$/ })).toBeVisible({ timeout: 15_000 });
+      await resetScroll(adminPage);
+      await clickViaDom(adminPage.getByRole("tab", { name: "Slider", exact: true }));
+      await expect(adminPage.getByLabel("Genişlik modu")).toHaveValue("boxed");
+
+      // Backend seviyesinde de doğrula — DOM tek başına güvenilmez.
+      const persisted = await getSlider(adminToken, created.id);
+      expect(persisted.widthMode).toBe("boxed");
+    } finally {
+      await cleanupSlider(adminToken, created.id);
+    }
+  });
+
+  test("12) Slider'ı kopyala (duplicate) → kopyanın genişlik modu (widthMode) kaynakla AYNI", async () => {
+    // §9.7-5 architect eklentisi — backend-agent talimatı §9.4'teki uyarı: `duplicate` handler'ı
+    // `widthMode`'u kopyalanan alanlara eklemeyi UNUTURSA kopya SESSİZCE full-width'e düşer.
+    // Duplicate mekaniğinin kendisi (slayt/katman sayısı, katman id yeniden üretimi) zaten test
+    // "7"de UI üzerinden kapsanmış — burada API üzerinden YALNIZCA `widthMode` alanı doğrulanır.
+    const created = await createSlider(adminToken, { name: uniqueName("QA WidthMode Duplicate Slider") });
+    await updateSlider(adminToken, created.id, { widthMode: "boxed" });
+    await createSlide(adminToken, created.id, { layers: [] });
+
+    let duplicateId: string | undefined;
+    try {
+      const source = await getSlider(adminToken, created.id);
+      expect(source.widthMode).toBe("boxed");
+
+      const duplicate = await duplicateSlider(adminToken, created.id);
+      duplicateId = duplicate.id;
+      expect(duplicateId).not.toBe(created.id);
+
+      const persistedDuplicate = await getSlider(adminToken, duplicateId);
+      expect(persistedDuplicate.widthMode).toBe("boxed");
+    } finally {
+      await cleanupSlider(adminToken, created.id);
+      if (duplicateId) await cleanupSlider(adminToken, duplicateId);
+    }
+  });
+
+  test("13) /admin/sliders satır menüsünden 'Kısa Kodu Kopyala' → toast görünüyor; pano değeri '[slider id=\"<uuid>\"]' biçiminde", async () => {
+    // §9.7-7 architect eklentisi — Playwright'a `clipboard-read`/`clipboard-write` izni.
+    await adminPage.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+    const created = await createSlider(adminToken, { name: uniqueName("QA Shortcode List Slider") });
+
+    try {
+      await adminPage.goto("/admin/sliders");
+      await expect(adminPage.getByRole("heading", { name: "Slider'lar" })).toBeVisible({ timeout: 15_000 });
+      await adminPage.getByLabel("Slider ara").fill(created.name);
+
+      const row = adminPage.getByRole("row", { name: new RegExp(created.name) });
+      await expect(row).toBeVisible({ timeout: 10_000 });
+      await row.getByRole("button", { name: `${created.name} için işlemler` }).click();
+      await adminPage.getByRole("menuitem", { name: "Kısa Kodu Kopyala" }).click();
+
+      await expect(
+        adminPage.getByText("Kısa kod kopyalandı! Bu kodu herhangi bir sayfada veya blog yazısında metin içine yapıştırabilirsiniz.")
+      ).toBeVisible({ timeout: 10_000 });
+
+      const clipboardText = await adminPage.evaluate(() => navigator.clipboard.readText());
+      expect(clipboardText).toBe(buildSliderShortcode(created.id));
+    } finally {
+      await cleanupSlider(adminToken, created.id);
+    }
+  });
+
+  test("14) Hero Studio üst çubuğundaki 'Kısa Kod' düğmesi AYNI değeri kopyalıyor", async () => {
+    // §9.7-8 architect eklentisi.
+    await adminPage.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+    const created = await createSlider(adminToken, { name: uniqueName("QA Shortcode Studio Slider") });
+    await createSlide(adminToken, created.id, { layers: [] });
+
+    try {
+      await adminPage.goto(`/admin/sliders/${created.id}`);
+      await expect(adminPage.getByRole("button", { name: /^Sürükle: Slayt 1$/ })).toBeVisible({ timeout: 15_000 });
+      await resetScroll(adminPage);
+      await adminPage.getByRole("button", { name: "Kısa Kod", exact: true }).click();
+
+      await expect(
+        adminPage.getByText("Kısa kod kopyalandı! Bu kodu herhangi bir sayfada veya blog yazısında metin içine yapıştırabilirsiniz.")
+      ).toBeVisible({ timeout: 10_000 });
+
+      const clipboardText = await adminPage.evaluate(() => navigator.clipboard.readText());
+      expect(clipboardText).toBe(buildSliderShortcode(created.id));
+    } finally {
+      await cleanupSlider(adminToken, created.id);
+    }
+  });
+
+  test("15) Kısa kodla referans verilen bir slider'ı silmeye çalış → 409 + kullanım diyaloğunda 'kısa kod' rozeti", async () => {
+    // §9.7-14 architect eklentisi — `test 8`in ("advanced-slider" bloğu referansı) kısa kod
+    // eşleniği: burada REFERANS bir `advanced-slider` bloğu DEĞİL, bir `text` bloğunun
+    // `data.html`'ine yapıştırılmış `[slider id="…"]` kısa kodudur (`usageType: "shortcode"`).
+    const created = await createSlider(adminToken, { name: uniqueName("QA Shortcode InUse Slider") });
+    const hostPageTitle = uniqueName("QA Slider Kısa Kod Kullanan Sayfa");
+    const hostPage = await createPageWithBlocks(adminToken, {
+      title: hostPageTitle,
+      slug: `qa-slider-shortcode-inuse-${Date.now().toString(36)}`,
+      status: "DRAFT",
+      blocks: [
+        {
+          id: "qa-shortcode-inuse-block",
+          type: "text",
+          data: { html: `<p>Once metin ${buildSliderShortcode(created.id)} sonra metin</p>` },
+        },
+      ],
+    });
+
+    try {
+      // Backend seviyesinde de doğrula — `usageType: "shortcode"` (`GET .../usage`).
+      const usage = await getSliderUsage(adminToken, created.id);
+      expect(usage.some((u) => u.usageType === "shortcode")).toBe(true);
+
+      await adminPage.goto("/admin/sliders");
+      await expect(adminPage.getByRole("heading", { name: "Slider'lar" })).toBeVisible({ timeout: 15_000 });
+      await adminPage.getByLabel("Slider ara").fill(created.name);
+
+      const row = adminPage.getByRole("row", { name: new RegExp(created.name) });
+      await expect(row).toBeVisible({ timeout: 10_000 });
+      await row.getByRole("button", { name: `${created.name} için işlemler` }).click();
+      await adminPage.getByRole("menuitem", { name: "Çöpe Taşı" }).click();
+      await adminPage.getByRole("dialog", { name: "Slider'ı çöpe taşı" }).getByRole("button", { name: "Çöpe Taşı" }).click();
+
+      const usageDialog = adminPage.getByRole("dialog", { name: "Slider kullanımda" });
+      await expect(usageDialog).toBeVisible({ timeout: 10_000 });
+      await expect(usageDialog.getByRole("link", { name: hostPageTitle as string })).toBeVisible();
+      // §9.2.7 architect — kullanım satırında "kısa kod" rozeti ("block" için "blok" olurdu).
+      await expect(usageDialog.getByText("kısa kod", { exact: true })).toBeVisible();
+
+      await usageDialog.getByRole("button", { name: "Yine de Çöpe Taşı" }).click();
+      await expect(adminPage.getByText("Slider çöpe taşındı.")).toBeVisible({ timeout: 10_000 });
+      await expect(usageDialog).not.toBeVisible();
+
+      const afterForce = await getSlider(adminToken, created.id);
+      expect(afterForce.deletedAt).not.toBeNull();
+    } finally {
+      await deletePagePermanently(adminToken, hostPage.id as string);
+      await cleanupSlider(adminToken, created.id);
+    }
+  });
+
   test.describe("9) RBAC — EDITOR okuma+403 yazma, USER/CUSTOMER 403 (panel dışı)", () => {
     const RUN_SUFFIX = Date.now().toString(36);
     const EDITOR_EMAIL = `qa-e2e-slider-editor-${RUN_SUFFIX}@example.com`;
@@ -717,6 +895,74 @@ test.describe("Hero Studio — admin akışları", () => {
 
       const stillOriginal = await getSlider(adminToken, rbacSliderId);
       expect(stillOriginal.name).not.toBe("EDITOR tarafından denenen isim değişikliği");
+    });
+
+    test("EDITOR: kısa kodlu 'text' bloğu + 'advanced-slider' bloğu içeren şablon, TemplateEditorView önizlemesinde çalışma zamanı hatası VERMEDEN açılıyor (§9.2.6 regresyon düzeltmesi)", async () => {
+      // §9.7-15 architect eklentisi. `TemplateEditorView` YALNIZCA ADMIN-olmayan roller için
+      // (`simpleMode = role !== "ADMIN"`) mount edilir — bu yüzden zaten oturum açmış
+      // `editorPage`'i (dosya başlığındaki "dosya başına TEK gerçek UI login'i" kısıtı gereği bu
+      // describe bloğunda ZATEN mevcut) kullanır, YENİ bir oturum AÇMAZ.
+      const templateSlider = await createSlider(adminToken, { name: uniqueName("QA Template Preview Slider") });
+      await createSlide(adminToken, templateSlider.id, { layers: [] });
+
+      const pageErrors: Error[] = [];
+      const onPageError = (err: Error) => pageErrors.push(err);
+      editorPage.on("pageerror", onPageError);
+
+      const hostPage = await createPageWithBlocks(adminToken, {
+        title: uniqueName("QA Slider Template Preview Page"),
+        slug: `qa-slider-template-preview-${Date.now().toString(36)}`,
+        status: "DRAFT",
+        editMode: "TEMPLATE",
+        blocks: [
+          {
+            id: "qa-tpl-text",
+            type: "text",
+            data: { html: `<p>Once metin ${buildSliderShortcode(templateSlider.id)} sonra metin</p>` },
+          },
+          { id: "qa-tpl-advslider", type: "advanced-slider", data: { sliderId: templateSlider.id } },
+        ],
+      });
+
+      try {
+        await editorPage.goto(`/admin/pages/${hostPage.id as string}`);
+        // simpleMode yükleme kanıtı (`admin-page-editor-roles.spec.ts` test "6"daki AYNI metin) —
+        // ADMIN-olmayan roller için BuilderCanvas DEĞİL, TemplateEditorView (form) render edilir.
+        await expect(editorPage.getByText("İçerik alanlarını doldurun — yapı bu şablonda sabittir.")).toBeVisible({
+          timeout: 15_000,
+        });
+        await expect(editorPage.getByText("Canlı Önizleme")).toBeVisible();
+
+        // Sol sütun (düzenlenebilir form alanları) `text` bloğunun HAM html'ini (kısa kodun
+        // KENDİSİYLE birlikte) bir metin alanında gösterir — bu BEKLENEN ve doğrudur (editör tam
+        // olarak ne yazdığını görmeli). Aşağıdaki iddialar bu yüzden YALNIZCA sağ sütundaki
+        // `TemplatePreviewFrame`'in (`div.pointer-events-none.select-none` — `template-editor-
+        // view.tsx::TemplatePreviewFrame` işaretleyicisi) İÇİNE kapsanır; aksi halde sol sütundaki
+        // ham metinle "strict mode violation" (birden çok eşleşme) üretirdi.
+        const previewFrame = editorPage.locator("div.pointer-events-none.select-none");
+        await expect(previewFrame).toBeVisible();
+
+        // Kısa kodun yerine yer tutucu — metnin GERİ KALANI okunabilir kalıyor. `previewPlaceholderHtml`
+        // blok-seviyeli bir `<div>` döndürdüğü için tarayıcı, `<p>...</p>` içine gömülü bu div'i
+        // ayrıştırırken `<p>`yi ÖNCE kapatır; div'den SONRAKİ metin (" sonra metin") kendi
+        // `<p>`sine SARILMAZ, `prose` sarmalayıcısının doğrudan çıplak bir metin düğümü olarak
+        // kalır (doğrulandı: gerçek DOM dump'ı). Bu yüzden `getByText(...).toBeVisible()` (TEK bir
+        // elemente eşleşme ister) DEĞİL, `toContainText` (sarmalayıcının TOPLAM metnini kontrol
+        // eder, düğüm sınırlarından BAĞIMSIZ) kullanılır.
+        await expect(previewFrame).toContainText("Once metin");
+        await expect(previewFrame).toContainText("sonra metin");
+        // İKİ ayrı yer tutucu görünür: biri `text` bloğu içindeki kısa kod İÇİN (§9.2.6 madde 2),
+        // diğeri `advanced-slider` bloğunun KENDİSİ İÇİN (§9.2.6 madde 1 — bu turda düzeltilen,
+        // önceden "Creating promises inside a Client Component…" hatası veren regresyon).
+        await expect(previewFrame.getByText("Gelişmiş Slider", { exact: true })).toHaveCount(2);
+
+        await editorPage.waitForTimeout(500); // olası gecikmeli/async çalışma zamanı hatalarını yakalamak için güvenlik payı
+        expect(pageErrors).toEqual([]);
+      } finally {
+        editorPage.off("pageerror", onPageError);
+        await deletePagePermanently(adminToken, hostPage.id as string);
+        await cleanupSlider(adminToken, templateSlider.id);
+      }
     });
 
     test("USER: /admin/sliders'a giderse admin kabuğu render EDİLMEDEN /hesabim/profil'e yönlenir (403 eşleniği)", async () => {

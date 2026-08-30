@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import type { DeviceMode } from "@/lib/page-builder/types";
-import type { Slider, SliderHeightMode, SliderNavigationTheme, SliderTransitionEffect } from "@/lib/sliders/types";
+import type { Slider, SliderHeightMode, SliderNavigationTheme, SliderTransitionEffect, SliderWidthMode } from "@/lib/sliders/types";
 
 export function SliderInspectorTab({ slider, device, onUpdate }: { slider: Slider; device: DeviceMode; onUpdate: (patch: Partial<Slider>) => void }) {
   return (
@@ -64,6 +64,26 @@ export function SliderInspectorTab({ slider, device, onUpdate }: { slider: Slide
               value={slider.transitionDurationMs}
               onChange={(e) => onUpdate({ transitionDurationMs: Number(e.target.value) })}
             />
+          )}
+        </Field>
+      </div>
+
+      <div className="space-y-3 border-t border-border pt-4">
+        <p className="text-xs font-medium uppercase tracking-wide text-foreground/50">Yerleşim</p>
+        <Field
+          id="slider-widthMode"
+          label="Genişlik modu"
+          hint={
+            slider.widthMode === "boxed" && slider.heightMode === "full-screen"
+              ? "Kutulu yerleşimde tam ekran yüksekliği genellikle istenmez."
+              : undefined
+          }
+        >
+          {(p) => (
+            <Select {...p} value={slider.widthMode} onChange={(e) => onUpdate({ widthMode: e.target.value as SliderWidthMode })}>
+              <option value="full-width">Tam genişlik</option>
+              <option value="boxed">Kutulu (içerik genişliği)</option>
+            </Select>
           )}
         </Field>
       </div>

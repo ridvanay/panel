@@ -499,6 +499,13 @@ export type SliderTransitionEffect = z.infer<typeof SliderTransitionEffectSchema
 export const SliderHeightModeSchema = z.enum(["full-screen", "custom-px", "aspect-ratio"]);
 export type SliderHeightMode = z.infer<typeof SliderHeightModeSchema>;
 
+// Slider'ın YATAY yerleşimi — bkz. `.claude/architect-scope-advanced-slider.md` §9.1.
+// `full-width` = kenardan kenara (bu alan eklenmeden ÖNCEKİ TEK davranış, varsayılan).
+// `boxed` = page-builder `container` bloğunun "boxed" kuralını (max-width 1170px +
+// px-4/sm:px-6) BİREBİR yeniden kullanır. Mobil override YOKTUR (heightMode'dan sapma).
+export const SliderWidthModeSchema = z.enum(["full-width", "boxed"]);
+export type SliderWidthMode = z.infer<typeof SliderWidthModeSchema>;
+
 export const SlideBackgroundTypeSchema = z.enum(["image", "video", "gradient"]);
 export type SlideBackgroundType = z.infer<typeof SlideBackgroundTypeSchema>;
 
@@ -521,6 +528,7 @@ export const SliderSettingsSchema = z.object({
   mobileHeightPx: z.number().int().nullable(),
   mobileAspectRatioWidth: z.number().int().nullable(),
   mobileAspectRatioHeight: z.number().int().nullable(),
+  widthMode: SliderWidthModeSchema,
   showArrows: z.boolean(),
   showBullets: z.boolean(),
   showProgressBar: z.boolean(),
@@ -599,8 +607,12 @@ export const SliderUsageSchema = z.object({
   pageId: z.string().uuid(),
   pageTitle: z.string(),
   pageSlug: z.string(),
-  // Sayfa ağacındaki `advanced-slider` düğümünün `id`'si.
+  // Referansı TAŞIYAN düğümün `id`'si. `usageType: "block"` iken `advanced-slider`
+  // düğümü, `usageType: "shortcode"` iken kısa kodu metninde barındıran `text`/
+  // `custom-html` düğümü.
   blockId: z.string(),
+  // Referansın TÜRÜ — bkz. `.claude/architect-scope-advanced-slider.md` §9.2.7.
+  usageType: z.enum(["block", "shortcode"]),
   // `SiteSettings.homePageId` bu sayfayı gösteriyorsa `true` — uyarı metnini sertleştirmek için.
   isHomePage: z.boolean(),
   pageDeletedAt: z.string().nullable(),

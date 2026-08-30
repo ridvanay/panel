@@ -11,6 +11,13 @@ export type SliderTransitionEffect = "slide" | "fade" | "cube" | "zoom";
 /** `full-screen` → `100svh` (`100vh` DEĞİL). Sıfır CLS'in tek kaynağı — bkz. architect §5.2. */
 export type SliderHeightMode = "full-screen" | "custom-px" | "aspect-ratio";
 
+/**
+ * Slider'ın YATAY yerleşimi (bkz. architect §9.1). `full-width` = kenardan kenara (bu alan
+ * eklenmeden önceki TEK davranış, bu yüzden varsayılan). `boxed` = page-builder `container`
+ * bloğunun "boxed" kuralı (`max-width: 1170px` + `px-4 sm:px-6`). Mobil override YOKTUR.
+ */
+export type SliderWidthMode = "full-width" | "boxed";
+
 /** Düz renk için AYRI tip YOK — `gradient` ile `bgGradientFrom == bgGradientTo` verilir. */
 export type SlideBackgroundType = "image" | "video" | "gradient";
 
@@ -186,6 +193,7 @@ export interface SliderSettings {
   mobileHeightPx?: number | null;
   mobileAspectRatioWidth?: number | null;
   mobileAspectRatioHeight?: number | null;
+  widthMode: SliderWidthMode;
   showArrows: boolean;
   showBullets: boolean;
   showProgressBar: boolean;
@@ -221,6 +229,9 @@ export interface SliderUsage {
   pageTitle: string;
   pageSlug: string;
   blockId: string;
+  /** `block` → sayfa ağacındaki bir `advanced-slider` düğümü. `shortcode` → bir `text`/
+   *  `custom-html` bloğunun `data.html` metnine gömülü `[slider id="<uuid>"]` kısa kodu. */
+  usageType: "block" | "shortcode";
   isHomePage?: boolean;
   pageDeletedAt?: string | null;
 }
@@ -233,6 +244,7 @@ export interface SliderListMeta {
 export interface CreateSliderRequest {
   name: string;
   slug?: string;
+  widthMode?: SliderWidthMode;
 }
 
 export interface UpdateSliderRequest extends Partial<SliderSettings> {

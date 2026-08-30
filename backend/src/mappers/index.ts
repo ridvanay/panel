@@ -125,6 +125,7 @@ import {
   HEIGHT_MODE_FROM_PRISMA,
   BACKGROUND_TYPE_FROM_PRISMA,
   NAVIGATION_THEME_FROM_PRISMA,
+  WIDTH_MODE_FROM_PRISMA,
   heightModeFromPrisma,
 } from "../modules/sliders/lib/enum-maps";
 import type { ModuleDefinition } from "../lib/module-registry";
@@ -1198,6 +1199,7 @@ function toSliderSettingsFields(slider: Slider) {
     mobileHeightPx: slider.mobileHeightPx,
     mobileAspectRatioWidth: slider.mobileAspectRatioWidth,
     mobileAspectRatioHeight: slider.mobileAspectRatioHeight,
+    widthMode: WIDTH_MODE_FROM_PRISMA[slider.widthMode],
     showArrows: slider.showArrows,
     showBullets: slider.showBullets,
     showProgressBar: slider.showProgressBar,
@@ -1294,6 +1296,7 @@ export function toSliderUsageDto(entry: {
   pageTitle: string;
   pageSlug: string;
   blockId: string;
+  usageType: "block" | "shortcode";
   isHomePage: boolean;
   pageDeletedAt: string | null;
 }): SliderUsageDto {

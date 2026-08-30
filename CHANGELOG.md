@@ -13,6 +13,22 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
 
 ### Changed
 
+- **Gelişmiş Slider — genişlik modu ve kısa kod/embed mekanizması** (bağlayıcı karar eki
+  `.claude/architect-scope-advanced-slider.md` §9). "Gelişmiş Slider" özelliğine iki yeni
+  yerleşim/dağıtım yeteneği eklendi:
+  - **Genişlik modu (`Slider.widthMode`):** `Tam Genişlik` (varsayılan, mevcut kenardan
+    kenara davranışla BİREBİR aynı, geriye dönük uyumluluk için hiç ek DOM üretmez) veya
+    `Kutulu` (page-builder `container` bloğunun zaten onaylı "boxed" ölçüsünü — `max-width:
+    1170px` + `px-4 sm:px-6` — yeniden kullanır). Hero Studio "Slider" sekmesinde "Yerleşim"
+    grubundan ayarlanır.
+  - **Kısa kod / embed (`[slider id="..."]`):** Hero Studio üst çubuğunda ve
+    `/admin/sliders` liste satırlarında tek tıkla panoya kopyalanan bir kısa kod artık
+    zengin metin (Tiptap) ve genel HTML bloklarına, ayrıca blog/portfolyo/ürün detay
+    içeriklerine yapıştırılarak slider'ı canlı gömebiliyor — yeni bir backend ucu
+    EKLENMEDİ (mevcut public `GET /sliders/{sliderId}` tüketiliyor), ikinci bir HTML
+    sanitizasyon yolu AÇILMADI. Silme öncesi referans koruması (`409`) artık kısa kod
+    referanslarını da görüyor (`SliderUsage.usageType: "block" | "shortcode"`).
+
 - **Hero Studio — tam görsel katman/animasyon stüdyosuna genişletildi** (bağlayıcı karar eki
   `.claude/ui-designer-scope-advanced-slider.md` §7). "Gelişmiş Slider" özelliğinin bir önceki
   turda eklenen düzenleyicisini Slider Revolution düzeyine taşır:

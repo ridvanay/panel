@@ -811,6 +811,9 @@ model Slider {
   mobileAspectRatioWidth  Int?
   mobileAspectRatioHeight Int?
 
+  // --- Genişlik (yerleşim) ---
+  widthMode SliderWidthMode @default(FULL_WIDTH)
+
   // --- Navigasyon ---
   showArrows      Boolean               @default(true)
   showBullets     Boolean               @default(true)
@@ -1094,6 +1097,15 @@ enum SliderHeightMode {
   FULL_SCREEN
   CUSTOM_PX
   ASPECT_RATIO
+}
+
+// Slider'ın YATAY yerleşimi. FULL_WIDTH = kenardan kenara (bu alan eklenmeden önceki
+// TEK davranış, bu yüzden varsayılan). BOXED = page-builder `container` bloğunun
+// "boxed" kuralı (max-width 1170px + px-4/sm:px-6) — bkz. architect §9.1.2.
+// Mobil override YOKTUR (heightMode'dan bilinçli SAPMA, gerekçe §9.1.5).
+enum SliderWidthMode {
+  FULL_WIDTH
+  BOXED
 }
 
 // Düz renk için AYRI tip YOK — GRADIENT ile from == to verilir (branş sayısını azaltmak

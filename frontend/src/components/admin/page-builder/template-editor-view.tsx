@@ -10,6 +10,7 @@ import { blockRegistry } from "@/lib/page-builder/registry";
 import { TEMPLATE_EDITABLE_FIELDS } from "@/lib/page-builder/template-fields";
 import { updateNode } from "@/lib/page-builder/containers";
 import type { ContentBlock, PageNode } from "@/lib/page-builder/types";
+import { splitSliderShortcodes } from "@/lib/sliders/shortcode";
 import { BlockRenderer } from "@/components/site/blocks";
 import { TemplateBlockFields } from "./template-block-fields";
 
@@ -106,7 +107,27 @@ const SERVER_ONLY_PREVIEW_LABELS: Partial<Record<ContentBlock["type"], string>> 
   "featured-products": "Öne Çıkan Ürünler",
   "featured-portfolio": "Öne Çıkan Projeler",
   "latest-posts": "Son Blog Yazıları",
+  // §9.2.6 architect — bu turdan ÖNCE bu listede YOKTU: bir `advanced-slider` bloğu içeren
+  // şablonun önizlemesi "Creating promises inside a Client Component…" çalışma zamanı
+  // hatası veriyordu (`AdvancedSliderBlockView` de async bir sunucu bileşenidir). Düzeltildi.
+  "advanced-slider": "Gelişmiş Slider",
 };
+
+function previewPlaceholderHtml(label: string): string {
+  return `<div class="flex flex-col items-center justify-center gap-1 rounded-md border border-dashed border-border/60 bg-surface-muted/30 px-4 py-6 text-center"><span class="text-xs font-medium text-foreground/50">${label}</span><span class="text-xs text-foreground/40">Canlı sitede gerçek veriyle gösterilir</span></div>`;
+}
+
+/**
+ * §9.2.6 architect — `text`/`custom-html` blokları artık `[slider id="…"]` kısa kodu
+ * içerebilir → önizlemede async çocuk (`ShortcodeSliderView`) doğar. Ağaca ULAŞMADAN ÖNCE,
+ * her kısa kod eşleşmesi SABİT (kullanıcı verisi/`sliderId` ASLA enterpole edilmeyen) bir yer
+ * tutucu HTML'iyle değiştirilir — yukarıdaki yer tutucu markup'ı BİREBİR yeniden kullanılır.
+ */
+function replaceShortcodesWithPreviewPlaceholder(html: string): string {
+  const segments = splitSliderShortcodes(html);
+  if (segments.length === 1 && segments[0]!.kind === "html") return html;
+  return segments.map((seg) => (seg.kind === "html" ? seg.html : previewPlaceholderHtml("Gelişmiş Slider"))).join("");
+}
 
 function toPreviewSafeNodes(nodes: PageNode[]): PageNode[] {
   return nodes.map((node) => {
@@ -114,15 +135,21 @@ function toPreviewSafeNodes(nodes: PageNode[]): PageNode[] {
       return { ...node, children: toPreviewSafeNodes(node.children) };
     }
     const label = SERVER_ONLY_PREVIEW_LABELS[node.type];
-    if (!label) return node;
-    return {
-      id: node.id,
-      type: "custom-html",
-      reveal: node.reveal,
-      data: {
-        html: `<div class="flex flex-col items-center justify-center gap-1 rounded-md border border-dashed border-border/60 bg-surface-muted/30 px-4 py-6 text-center"><span class="text-xs font-medium text-foreground/50">${label}</span><span class="text-xs text-foreground/40">Canlı sitede gerçek veriyle gösterilir</span></div>`,
-      },
-    };
+    if (label) {
+      return {
+        id: node.id,
+        type: "custom-html",
+        reveal: node.reveal,
+        data: { html: previewPlaceholderHtml(label) },
+      };
+    }
+    if (node.type === "text" || node.type === "custom-html") {
+      const safeHtml = replaceShortcodesWithPreviewPlaceholder(node.data.html);
+      if (safeHtml !== node.data.html) {
+        return { ...node, data: { ...node.data, html: safeHtml } };
+      }
+    }
+    return node;
   });
 }
 

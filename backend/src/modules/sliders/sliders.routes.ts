@@ -23,6 +23,7 @@ import {
   HEIGHT_MODE_TO_PRISMA,
   BACKGROUND_TYPE_TO_PRISMA,
   NAVIGATION_THEME_TO_PRISMA,
+  WIDTH_MODE_TO_PRISMA,
   heightModeToPrisma,
 } from "./lib/enum-maps";
 import {
@@ -90,6 +91,7 @@ function buildSliderSettingsData(body: z.infer<typeof UpdateSliderRequestSchema>
   if (body.mobileHeightPx !== undefined) data.mobileHeightPx = body.mobileHeightPx;
   if (body.mobileAspectRatioWidth !== undefined) data.mobileAspectRatioWidth = body.mobileAspectRatioWidth;
   if (body.mobileAspectRatioHeight !== undefined) data.mobileAspectRatioHeight = body.mobileAspectRatioHeight;
+  if (body.widthMode !== undefined) data.widthMode = WIDTH_MODE_TO_PRISMA[body.widthMode];
   if (body.showArrows !== undefined) data.showArrows = body.showArrows;
   if (body.showBullets !== undefined) data.showBullets = body.showBullets;
   if (body.showProgressBar !== undefined) data.showProgressBar = body.showProgressBar;
@@ -182,13 +184,19 @@ export async function adminSlidersRoutes(app: FastifyInstance) {
       schema: { body: CreateSliderRequestSchema, response: { 201: ApiSuccessSchema(SliderSchema) } },
     },
     async (request, reply) => {
-      const { name, slug } = request.body;
+      const { name, slug, widthMode } = request.body;
       // Açık `slug` çakışırsa DB `@unique` kısıtı P2002 fırlatır → merkezi hata işleyici 409'a
       // çevirir (bkz. plugins/error-handler.ts). YALNIZCA `name`'den TÜRETİLEN slug otomatik
       // `-2`/`-3` eki ile çakışmasız hale getirilir (openapi.yaml açıklamasıyla BİREBİR).
       const resolvedSlug = slug ? slugify(slug) : await findAvailableSliderSlug(app, slugify(name));
 
-      const created = await app.prisma.slider.create({ data: { name, slug: resolvedSlug } });
+      const created = await app.prisma.slider.create({
+        data: {
+          name,
+          slug: resolvedSlug,
+          ...(widthMode !== undefined && { widthMode: WIDTH_MODE_TO_PRISMA[widthMode] }),
+        },
+      });
 
       await logAudit(app, {
         actorId: request.user!.id,
@@ -389,6 +397,7 @@ export async function adminSlidersRoutes(app: FastifyInstance) {
             mobileHeightPx: source.mobileHeightPx,
             mobileAspectRatioWidth: source.mobileAspectRatioWidth,
             mobileAspectRatioHeight: source.mobileAspectRatioHeight,
+            widthMode: source.widthMode,
             showArrows: source.showArrows,
             showBullets: source.showBullets,
             showProgressBar: source.showProgressBar,

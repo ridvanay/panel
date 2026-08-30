@@ -5,9 +5,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
-import { AlertCircle, AlertTriangle, Copy, ExternalLink, GalleryHorizontal, MoreVertical, Plus, RotateCcw, Search, Trash2 } from "lucide-react";
+import { AlertCircle, AlertTriangle, Code2, Copy, ExternalLink, GalleryHorizontal, MoreVertical, Plus, RotateCcw, Search, Trash2 } from "lucide-react";
 import * as slidersApi from "@/lib/api/sliders";
 import type { SliderSummary, SliderUsage } from "@/lib/sliders/types";
+import { buildSliderShortcode } from "@/lib/sliders/shortcode";
 import { ApiClientError } from "@/lib/api/error";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
@@ -110,6 +111,15 @@ export default function AdminSlidersListPage() {
       toast.error(friendlyErrorMessage(err));
       setCreating(false);
     }
+  }
+
+  /** §9.2.8 architect — Hero Studio üst çubuğundaki "Kısa Kod" düğmesiyle AYNI kopyalama/toast
+   *  davranışı (`app/admin/settings/security/page.tsx` iki-geri-çağırmalı deseni). */
+  function handleCopyShortcode(slider: SliderSummary) {
+    navigator.clipboard.writeText(buildSliderShortcode(slider.id)).then(
+      () => toast.success("Kısa kod kopyalandı! Bu kodu herhangi bir sayfada veya blog yazısında metin içine yapıştırabilirsiniz."),
+      () => toast.error("Kısa kod panoya kopyalanamadı.")
+    );
   }
 
   async function handleDuplicate(slider: SliderSummary) {
@@ -319,6 +329,10 @@ export default function AdminSlidersListPage() {
                                     <ExternalLink className="h-3.5 w-3.5" />
                                     Hero Studio&apos;da Aç
                                   </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => handleCopyShortcode(slider)}>
+                                    <Code2 className="h-3.5 w-3.5" />
+                                    Kısa Kodu Kopyala
+                                  </DropdownMenuItem>
                                   <DropdownMenuItem onClick={() => void handleDuplicate(slider)}>
                                     <Copy className="h-3.5 w-3.5" />
                                     Kopyala
@@ -424,6 +438,9 @@ export default function AdminSlidersListPage() {
                   {usage.pageTitle}
                 </Link>
                 <span className="flex shrink-0 items-center gap-1.5">
+                  <Badge tone="neutral" size="sm">
+                    {usage.usageType === "shortcode" ? "kısa kod" : "blok"}
+                  </Badge>
                   {usage.isHomePage && (
                     <Badge tone="warning" size="sm">
                       Ana sayfa

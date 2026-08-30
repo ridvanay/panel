@@ -5981,12 +5981,20 @@ paths:
       tags: [Sliders]
       summary: Bu slider'ı kullanan sayfalar (ADMIN, MANAGER veya EDITOR)
       description: >
-        `pages.blocks` JSON'ında `{"type":"advanced-slider", ...,"sliderId":"<uuid>"}` geçen
-        sayfaları döner. Uygulama notu (backend-agent): Postgres tarafında
-        `blocks::text ILIKE '%<uuid>%'` ön filtresi + uygulama içinde ağaç taraması
+        `pages.blocks` JSON'ında bu slider'a referans veren sayfaları döner. İKİ referans
+        türü taranır (bkz. `SliderUsageType`): (1) `{"type":"advanced-slider", ...,
+        "sliderId":"<uuid>"}` düğümü, (2) bir `text`/`custom-html` düğümünün `data.html`
+        metnine gömülü `[slider id="<uuid>"]` kısa kodu.
+
+        Uygulama notu (backend-agent): Postgres tarafında `blocks::text ILIKE '%<uuid>%'`
+        ön filtresi + uygulama içinde ağaç taraması
         (`lib/page-blocks.ts::scanPageNodeStructure` ile AYNI iteratif yaklaşım) — ham
-        `LIKE` sonucuna GÜVENİLMEZ, yalnızca aday kümesini daraltır. Çöpteki sayfalar
-        `page.deletedAt` ile işaretlenir ama listeden ÇIKARILMAZ.
+        `LIKE` sonucuna GÜVENİLMEZ, yalnızca aday kümesini daraltır (aynı ön filtre HER
+        İKİ referans türünü de yakalar, çünkü uuid iki durumda da `blocks::text` içinde
+        geçer). Çöpteki sayfalar `page.deletedAt` ile işaretlenir ama listeden ÇIKARILMAZ.
+
+        Blog/portfolyo/ürün içeriklerine yapıştırılmış kısa kodlar KAPSAM DIŞIDIR —
+        gerekçe `SliderUsageType` açıklamasında.
       responses:
         "200":
           description: OK
@@ -12792,6 +12800,31 @@ components:
         sunucu HTML'inde HESAPLANABİLİR olmak zorundadır, JS ile ölçülemez.
       enum: [full-screen, custom-px, aspect-ratio]
 
+    SliderWidthMode:
+      type: string
+      description: >
+        Slider'ın YATAY yerleşimi. `full-width` → kenardan kenara (full-bleed), sayfa
+        gutter'ına TABİ DEĞİL — bu, bu alan eklenmeden ÖNCEKİ TEK davranıştır ve
+        **varsayılandır** (geriye dönük uyumluluk: mevcut tüm sliderlar AYNEN eskisi gibi
+        render edilir). `boxed` → sayfanın normal içerik genişliğine sınırlanır; render
+        katmanı `container` bloğunun ZATEN var olan "boxed" kuralını BİREBİR yeniden
+        kullanır (`mx-auto w-full px-4 sm:px-6` + `max-width:
+        DEFAULT_CONTAINER_MAX_WIDTH` = 1170px, bkz.
+        `frontend/src/components/site/blocks/container-block.tsx`) — YENİ bir genişlik
+        token'ı/ölçüsü İCAT EDİLMEZ.
+
+        **Yalnızca kök seviyede (chrome = `page`) etkilidir.** Bir `container`ın İÇİNDEKİ
+        (`chrome = "bare"`) veya kısa kod (`[slider id="…"]`) ile zengin metin akışına
+        gömülü slider, kendi dış gutter'ını BIRAKIR — genişliği ev sahibi kabın
+        (`container` / makale sütunu) genişliğidir. Bu, page-builder `chrome`
+        sözleşmesinin (bkz. `frontend/src/components/site/blocks/index.tsx`) doğrudan
+        sonucudur, slider'a özel bir istisna DEĞİLDİR.
+
+        Dikey boşluk ve köşe yuvarlaklığı bu alandan ETKİLENMEZ (her iki modda da yok) —
+        yeni bir görsel karar üretmemek için bilinçli sınır; gerekirse ui-designer'a ayrı
+        bir iş olarak açılır.
+      enum: [full-width, boxed]
+
     SlideBackgroundType:
       type: string
       description: >
@@ -13069,6 +13102,7 @@ components:
           heightMode,
           aspectRatioWidth,
           aspectRatioHeight,
+          widthMode,
           showArrows,
           showBullets,
           showProgressBar,
@@ -13100,6 +13134,15 @@ components:
         mobileHeightPx: { type: integer, nullable: true, minimum: 120, maximum: 2000 }
         mobileAspectRatioWidth: { type: integer, nullable: true, minimum: 1, maximum: 64 }
         mobileAspectRatioHeight: { type: integer, nullable: true, minimum: 1, maximum: 64 }
+        widthMode:
+          allOf:
+            - $ref: "#/components/schemas/SliderWidthMode"
+          description: >
+            Varsayılan `full-width` — bu alanı hiç göndermeyen/DB'de eski kayıt olan
+            sliderlar BUGÜNKÜ davranışı AYNEN korur. Mobil override YOKTUR (yükseklikten
+            FARKLI olarak): `boxed` zaten dar ekranda `px-4` gutter'ına düşer,
+            `full-width` ise mobilde de kenardan kenara doğrudur — cihaz başına ikinci
+            bir genişlik seti kazandığından fazla karmaşıklık üretirdi.
         showArrows: { type: boolean }
         showBullets: { type: boolean }
         showProgressBar: { type: boolean }
@@ -13159,15 +13202,38 @@ components:
       allOf:
         - $ref: "#/components/schemas/SliderSettings"
 
+    SliderUsageType:
+      type: string
+      description: >
+        Referansın TÜRÜ. `block` → sayfa ağacındaki bir `advanced-slider` düğümü.
+        `shortcode` → bir `text`/`custom-html` bloğunun `data.html` metnine gömülü
+        `[slider id="<uuid>"]` kısa kodu.
+
+        **Kapsam sınırı (bağlayıcı, en iyi çaba garantisi):** tarama YALNIZCA `pages`
+        tablosunu kapsar. `BlogPost.contentHtml`, `PortfolioItem.contentHtml` ve
+        `Product.descriptionHtml` içine yapıştırılmış kısa kodlar bu listede GÖRÜNMEZ —
+        `SliderUsage` DTO'su sayfa-merkezlidir (`pageId`/`pageSlug`), üç ayrı içerik
+        türünü taşıyacak şekilde genişletmek ayrı bir kontrat turudur (backlog:
+        `feature/slider-usage-content-entities`). Silinen slider zaten HER ZAMAN sessizce
+        boş render edilir (hata YOK), bu yüzden kapsam dışı kalan durumun sonucu
+        bozulmuş bir sayfa değil, yalnızca eksik bir uyarıdır.
+      enum: [block, shortcode]
+
     SliderUsage:
       type: object
       description: "`GET /admin/sliders/{sliderId}/usage` ve `409` gövdesindeki `error.details.usedBy` öğesi."
-      required: [pageId, pageTitle, pageSlug, blockId]
+      required: [pageId, pageTitle, pageSlug, blockId, usageType]
       properties:
         pageId: { type: string, format: uuid }
         pageTitle: { type: string }
         pageSlug: { type: string }
-        blockId: { type: string, description: "Sayfa ağacındaki `advanced-slider` düğümünün `id`'si." }
+        blockId:
+          type: string
+          description: >
+            Referansı TAŞIYAN düğümün `id`'si. `usageType: "block"` iken
+            `advanced-slider` düğümü, `usageType: "shortcode"` iken kısa kodu metninde
+            barındıran `text`/`custom-html` düğümü.
+        usageType: { $ref: "#/components/schemas/SliderUsageType" }
         isHomePage: { type: boolean, description: "`SiteSettings.homePageId` bu sayfayı gösteriyorsa `true` — uyarı metnini sertleştirmek için." }
         pageDeletedAt: { type: string, format: date-time, nullable: true }
 
@@ -13187,10 +13253,22 @@ components:
     CreateSliderRequest:
       type: object
       required: [name]
-      description: "Ayar alanlarının HEPSİ opsiyoneldir — verilmeyenler Zod `.default()` ile dolar."
+      description: >
+        Ayar alanlarının HEPSİ opsiyoneldir — verilmeyenler Zod `.default()` ile dolar.
+
+        `widthMode` BURADA kabul edilen TEK `SliderSettings` alanıdır (`heightMode` ve
+        diğerleri PATCH-only kalır): "bu slider sayfanın tamamını mı kaplayacak, içerik
+        sütununa mı oturacak" kararı oluşturma anında bilinir ve liste ekranındaki "Yeni
+        slider" akışının tek anlamlı ön ayarıdır. `additionalProperties: false` olduğu
+        için bu alanın burada AÇIKÇA tanımlanması ZORUNLUDUR — aksi halde alanı gönderen
+        istemci `422` alırdı.
       properties:
         name: { type: string, minLength: 1, maxLength: 120 }
         slug: { type: string, minLength: 1, maxLength: 140 }
+        widthMode:
+          allOf:
+            - $ref: "#/components/schemas/SliderWidthMode"
+          description: "Verilmezse `full-width` (Prisma `@default(FULL_WIDTH)`)."
       additionalProperties: false
 
     UpdateSliderRequest:
