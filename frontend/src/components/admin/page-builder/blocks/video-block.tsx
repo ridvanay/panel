@@ -1,13 +1,19 @@
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import type { VideoBlock, VideoProvider } from "@/lib/page-builder/types";
+import { ImageUploadField } from "@/components/admin/media/image-upload-field";
+import type { VideoBlock, VideoPlayStyle, VideoProvider } from "@/lib/page-builder/types";
 import { SegmentedToggle } from "./segmented-toggle";
 
 const PROVIDER_OPTIONS: { value: VideoProvider; label: string }[] = [
   { value: "youtube", label: "YouTube" },
   { value: "vimeo", label: "Vimeo" },
   { value: "mp4", label: "MP4 dosyası" },
+];
+
+const PLAY_STYLE_OPTIONS: { value: VideoPlayStyle; label: string }[] = [
+  { value: "inline", label: "Gömülü oynatıcı" },
+  { value: "lightbox", label: "Kapak + tam ekran" },
 ];
 
 const URL_HINT: Record<VideoProvider, string> = {
@@ -69,6 +75,34 @@ export function VideoBlockEditor({
           </div>
           {block.data.autoplay && !block.data.muted && (
             <p className="text-xs text-warning">Tarayıcılar çoğunlukla yalnızca sessiz videoların otomatik oynatılmasına izin verir.</p>
+          )}
+          <div className="flex items-center justify-between">
+            <label htmlFor={`${block.id}-loop`} className="text-sm font-medium text-foreground">
+              Döngüde oynat
+            </label>
+            <Switch
+              id={`${block.id}-loop`}
+              checked={block.data.loop ?? false}
+              onCheckedChange={(loop) => onChange({ ...block, data: { ...block.data, loop } })}
+            />
+          </div>
+          <div className="space-y-1.5 border-t border-border/60 pt-3">
+            <p className="text-sm font-medium text-foreground">Oynatma stili</p>
+            <SegmentedToggle
+              value={block.data.playStyle ?? "inline"}
+              options={PLAY_STYLE_OPTIONS}
+              onChange={(playStyle) => onChange({ ...block, data: { ...block.data, playStyle } })}
+            />
+          </div>
+          {(block.data.playStyle ?? "inline") === "lightbox" && (
+            // ui-designer §6.4 — `ImageUploadField`'ın KENDİ `h-32` önizlemesi zaten mimar §4.3'ün
+            // istediği "kart içi mini önizleme"yi karşılar, AYRI bir bileşen GEREKMEZ.
+            <ImageUploadField
+              id={`${block.id}-cover-url`}
+              label="Kapak görseli"
+              value={block.data.coverUrl ?? ""}
+              onChange={(coverUrl) => onChange({ ...block, data: { ...block.data, coverUrl } })}
+            />
           )}
         </>
       )}

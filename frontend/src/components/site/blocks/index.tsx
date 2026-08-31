@@ -27,6 +27,7 @@ import { LogoMarqueeBlockView } from "./logo-marquee-block";
 import { SkillBarBlockView } from "./skill-bar-block";
 import { TeamBlockView } from "./team-block";
 import { AdvancedSliderBlockView } from "./advanced-slider-block";
+import { GoogleMapBlockView } from "./google-map-block";
 
 /**
  * §6.3 mimar dokümanı — "chrome" sözleşmesi. Kök dizideki yaprak bloklar `chrome: "page"`
@@ -93,6 +94,8 @@ function renderNodeBody(node: PageNode, chrome: BlockChrome) {
       return <TeamBlockView block={node} chrome={chrome} />;
     case "advanced-slider":
       return <AdvancedSliderBlockView block={node} chrome={chrome} />;
+    case "google-map":
+      return <GoogleMapBlockView block={node} chrome={chrome} />;
     case "container":
       return <ContainerBlockView block={node} />;
     default:

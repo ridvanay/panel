@@ -478,12 +478,21 @@ const ImageBlockSchema = z.object({
  * `javascript:`/`data:` YASAK). ID ÇIKARIMI/embed URL İNŞASI yalnızca frontend'de yapılır
  * (`lib/page-builder/video-embed.ts`) — backend ham `url`i OLDUĞU GİBİ saklar, bir iframe'e
  * DOĞRUDAN YAZILMAZ (bkz. o dosyanın başlığı, "yapılandırılmış embed" güvenlik deseni).
+ *
+ * `coverUrl` YENİ, OPSİYONEL (google-map-corporate-blocks turu, mimar §2.6, security-review §5
+ * "ONAYLANDI") — `<img src>` bağlamında kullanılacağı için `BeforeAfterSliderBlockDataSchema.
+ * beforeUrl` ile AYNI serbestlik sınıfı (`SafeHrefSchema` GEREKMEZ: `<img>` bağlamı
+ * `javascript:` şemasını yürütmez, iframe/CSS enjeksiyon yüzeyi yok). `playStyle ?? "inline"`
+ * (bugünkü davranış), `loop ?? false`.
  */
 const VideoBlockDataSchema = z.object({
   provider: z.enum(["youtube", "vimeo", "mp4"]).default("youtube"),
   url: SafeHrefSchema,
   autoplay: z.boolean().default(false),
   muted: z.boolean().default(false),
+  coverUrl: z.string().min(1).max(2048).optional(),
+  playStyle: z.enum(["inline", "lightbox"]).optional(),
+  loop: z.boolean().optional(),
 });
 const VideoBlockSchema = z.object({
   id: z.string().min(1),
@@ -496,7 +505,12 @@ const VideoBlockSchema = z.object({
 const ACCORDION_MAX_ITEMS = 20;
 const TABS_MAX_ITEMS = 10;
 
-/** Akordiyon / SSS — `answer` KASITLI OLARAK düz metin (HTML DEĞİL, bkz. frontend tip yorumu). */
+/**
+ * Akordiyon / SSS — `answer` KASITLI OLARAK düz metin (HTML DEĞİL, bkz. frontend tip yorumu).
+ * `layoutStyle`/`items[].isOpenDefault` YENİ, OPSİYONEL alanlar (google-map-corporate-blocks
+ * turu, mimar §2.2/§5/7) — `.default()` TAŞIMAZLAR, yoksa render tarafı `layoutStyle ?? "bordered"`
+ * ile bugünkü görünümle piksel-eş davranır (§1.2 geriye dönük uyumluluk sözleşmesi).
+ */
 const AccordionBlockDataSchema = z.object({
   items: z
     .array(
@@ -504,10 +518,12 @@ const AccordionBlockDataSchema = z.object({
         id: z.string().min(1),
         question: z.string().min(1).max(300),
         answer: z.string().max(3000),
+        isOpenDefault: z.boolean().optional(),
       })
     )
     .max(ACCORDION_MAX_ITEMS),
   allowMultipleOpen: z.boolean().default(false),
+  layoutStyle: z.enum(["bordered", "card", "minimal"]).optional(),
 });
 const AccordionBlockSchema = z.object({
   id: z.string().min(1),
@@ -643,6 +659,11 @@ const PricingTableBlockDataSchema = z.object({
     )
     .min(1)
     .max(PRICING_MAX_PLANS),
+  // YENİ, OPSİYONEL (google-map-corporate-blocks turu, mimar §2.4) — v1'de SALT GÖRSEL bir
+  // etikettir ("Aylık"/"Yıllık" rozeti); interaktif geçiş anahtarı KAPSAM DIŞI (mimar gerekçesi:
+  // gerçek bir toggle `plans[].priceYearly` gerektirirdi, bu turda yok). Yoksa hiçbir ek etiket
+  // render EDİLMEZ.
+  billingInterval: z.enum(["monthly", "yearly"]).optional(),
 });
 const PricingTableBlockSchema = z.object({
   id: z.string().min(1),
@@ -723,6 +744,9 @@ const BeforeAfterSliderBlockDataSchema = z.object({
   beforeLabel: z.string().min(1).max(60),
   afterLabel: z.string().min(1).max(60),
   orientation: z.enum(["horizontal", "vertical"]).default("horizontal"),
+  // YENİ, OPSİYONEL (google-map-corporate-blocks turu, mimar §2.3) — tam sayı 0..100, yoksa
+  // render `useState(initialSliderPosition ?? 50)` ile bugünkü sabit %50 davranışı korunur.
+  initialSliderPosition: z.number().int().min(0).max(100).optional(),
 });
 const BeforeAfterSliderBlockSchema = z.object({
   id: z.string().min(1),
@@ -749,6 +773,13 @@ const LogoMarqueeBlockDataSchema = z.object({
     .max(LOGO_MARQUEE_MAX_ITEMS),
   speedSeconds: z.number().int().min(5).max(120).default(30),
   pauseOnHover: z.boolean().default(true),
+  // YENİ, OPSİYONEL alanlar (google-map-corporate-blocks turu, mimar §2.5). `grayscale` bugün
+  // KOD İÇİNDE SABİT (`logo-marquee-block.tsx` — hard-code `grayscale hover:grayscale-0` sınıfı) —
+  // render tarafı `grayscale ?? true` KULLANMAK ZORUNDADIR (mimar §1.2/R1: `?? false` yazılırsa
+  // TÜM mevcut logo bantlarının görünümü sessizce değişir, bu KESİNLİKLE YASAK). `displayMode`
+  // yoksa `?? "marquee"` (bugünkü tek davranış).
+  displayMode: z.enum(["marquee", "grid"]).optional(),
+  grayscale: z.boolean().optional(),
 });
 const LogoMarqueeBlockSchema = z.object({
   id: z.string().min(1),
@@ -830,6 +861,109 @@ const AdvancedSliderBlockSchema = z.object({
   reveal: RevealEffectSettingsSchema.optional(),
 });
 
+/* ---------- Google Harita — bkz. .claude/architect-scope-google-map-corporate-blocks.md §2.1/§5
+ * (mimar, BAĞLAYICI) ve .claude/security-review-google-map-corporate-blocks.md §2/§3/§7
+ * (security-agent, mimarın §3.2/§3.4 önerisini SIKILAŞTIRIR/DEĞİŞTİRİR — çakışmada bu doküman
+ * kazanır, bkz. .claude/CLAUDE.md "Çakışma Çözümü"). ---------- */
+
+/**
+ * Frontend `types.ts::GOOGLE_MAP_*` sabitleriyle SAYISAL OLARAK BİREBİR AYNI (mimar §2.1).
+ * `GOOGLE_MAP_MIN_HEIGHT_PX`/`GOOGLE_MAP_DEFAULT_HEIGHT_PX`/`GOOGLE_MAP_DEFAULT_ZOOM` bu şemada
+ * bir `.min()`/`.max()`/`.default()` argümanı olarak KULLANILMAZ (mimar §5/3 ve security-review
+ * §3 ile tutarlı: `.default()` YASAK — bkz. §1.2 "geriye dönük uyumluluk sözleşmesi"; teknik
+ * doğrulama tavanı `value.min(1).max(GOOGLE_MAP_MAX_HEIGHT_PX)`dir, `120` yalnızca frontend
+ * editöründeki ÖNERİLEN/UX minimumudur) — burada yalnızca frontend'le sayısal parite ve
+ * dokümantasyon amacıyla TANIMLANIRLAR.
+ */
+const GOOGLE_MAP_MIN_ZOOM = 1;
+const GOOGLE_MAP_MAX_ZOOM = 20;
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- frontend `types.ts` ile sayısal parite dokümantasyonu (mimar §2.1); şemada `.default()` olarak KULLANILMAZ.
+const GOOGLE_MAP_DEFAULT_ZOOM = 15;
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- frontend'deki ÖNERİLEN/UX minimumu (mimar §2.1); Zod'un teknik tavanı `.min(1)`dir, bkz. yukarıdaki yorum.
+const GOOGLE_MAP_MIN_HEIGHT_PX = 120;
+const GOOGLE_MAP_MAX_HEIGHT_PX = 2000;
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- frontend `types.ts` ile sayısal parite dokümantasyonu (mimar §2.1); şemada `.default()` olarak KULLANILMAZ.
+const GOOGLE_MAP_DEFAULT_HEIGHT_PX = 400;
+const GOOGLE_MAP_MAX_HEIGHT_VH = 100;
+const GOOGLE_MAP_MAX_ADDRESS_LENGTH = 300;
+const GOOGLE_MAP_MAX_MARKER_TITLE_LENGTH = 120;
+
+/**
+ * `embedUrl` beyaz listesi — NİHAİ regex (`security-review-google-map-corporate-blocks.md` §2,
+ * mimarın §3.2 taslağını SIKILAŞTIRIR: query karakter kara listesine backtick/backslash EKLENDİ).
+ * AYNEN, karakter karakter, frontend `map-embed.ts`'teki kopyayla UYUMLU olmalıdır — TEK kaynak
+ * budur. Case-insensitive DEĞİL (`i` bayrağı YOK) — BİLİNÇLİ, security-review §2 "Not" bölümü:
+ * `i` bayrağı `HTTPS://GOOGLE.COM/...` gibi girdileri de kabul ederdi, bu sessizce genişleyen bir
+ * saldırı yüzeyi olurdu. Yalnızca `google.com`/`www.google.com` host'u, yalnızca `https:`,
+ * yalnızca `/maps/embed` (+ 5 sabit `/v1/<mod>` yolu) kabul edilir; bölgesel domainler
+ * (`google.com.tr`), `maps.google.com`, `goo.gl`, userinfo-trick (`google.com@evil.com`), port
+ * enjeksiyonu, backslash normalizasyonu, enum-prefix bypass (`/v1/placeholder`) hepsi REDDEDİLİR
+ * (security-review §2'deki denetlenmiş senaryo listesi). `SafeHrefSchema` BURADA KULLANILMAZ —
+ * o şema relative yol ve keyfi https host'u kabul eder, bir `<iframe src>` için YETERSİZDİR.
+ */
+const GOOGLE_MAP_EMBED_URL_RE =
+  /^https:\/\/(?:www\.)?google\.com\/maps\/embed(?:\/v1\/(?:place|view|directions|search|streetview))?\?[^\s"'<>`\\]+$/;
+
+const GoogleMapEmbedUrlSchema = z
+  .string()
+  .min(1)
+  .max(2048)
+  .regex(
+    GOOGLE_MAP_EMBED_URL_RE,
+    "Yalnızca Google'ın \"Haritayı paylaş → Haritayı yerleştir\" panelinden alınan https://www.google.com/maps/embed... bağlantıları kabul edilir."
+  );
+
+/**
+ * `{ value, unit }` — `ContainerLengthSchema`'nın YENİDEN KULLANILMAMASI bilinçli (mimar §5/3): o
+ * şema `min(0).max(5000)` taşır ve `vh` tavanı YOKTUR. `unit === "vh"` iken `value`
+ * `GOOGLE_MAP_MAX_HEIGHT_VH`'yi (100) AŞAMAZ — bu bir `.superRefine` ile uygulanır (Zod'da
+ * çapraz-alan kısıtı `.max()` ile ifade edilemez).
+ */
+const GoogleMapHeightSchema = z
+  .object({
+    value: z.number().int().min(1).max(GOOGLE_MAP_MAX_HEIGHT_PX),
+    unit: z.enum(["px", "vh"]).default("px"),
+  })
+  .superRefine((val, ctx) => {
+    if (val.unit === "vh" && val.value > GOOGLE_MAP_MAX_HEIGHT_VH) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `"vh" birimiyle yükseklik en fazla ${GOOGLE_MAP_MAX_HEIGHT_VH} olabilir.`,
+        path: ["value"],
+      });
+    }
+  });
+
+/**
+ * Google Harita bloğu — YENİ (mimar §2.1). TÜM alanlar `.optional()`; `.superRefine` İLE
+ * `embedUrl`/`address` ikisinin de zorunlu olması YOK — mimar §5/4: yeni eklenen boş blok anında
+ * autosave edilir, 422 üretmek `advanced-slider`'ın "seçim yapılmamış blok" desenini kırardı.
+ *
+ * `apiKey` alanı KASITLI OLARAK YOKTUR ve EKLENMEYECEKTİR (mimar §3.1, security-review §1
+ * "ONAYLANDI"): `Page.blocks` her `EDITOR` rolü tarafından yazılabilir/okunabilir VE public
+ * `GET /pages/:slug` yanıtında ham JSON olarak döner — bu yüzeyde hiçbir sır tutulamaz. Anahtar
+ * gerektiren embed URL'leri (`...&key=...`) `embedUrl`e OLDUĞU GİBİ yapıştırılır (Google'ın
+ * "referrer-restricted public key" modeli zaten buna göre tasarlanmıştır).
+ *
+ * `zoom` aralık dışıysa 422 İLE REDDEDİLİR, CLAMP EDİLMEZ (security-review §3 — mimarın §3.3
+ * metnindeki "clamp" ifadesiyle §5/4'teki `min/max` arasındaki çelişkiyi BAĞLAYICI şekilde çözer:
+ * yazma anı = reddet, okuma/render anı = frontend `map-embed.ts`'te savunma amaçlı clamp).
+ */
+const GoogleMapBlockDataSchema = z.object({
+  embedUrl: GoogleMapEmbedUrlSchema.optional(),
+  address: z.string().max(GOOGLE_MAP_MAX_ADDRESS_LENGTH).optional(),
+  zoom: z.number().int().min(GOOGLE_MAP_MIN_ZOOM).max(GOOGLE_MAP_MAX_ZOOM).optional(),
+  height: GoogleMapHeightSchema.optional(),
+  mapStyle: z.enum(["standard", "dark", "silver", "retro"]).optional(),
+  markerTitle: z.string().max(GOOGLE_MAP_MAX_MARKER_TITLE_LENGTH).optional(),
+});
+const GoogleMapBlockSchema = z.object({
+  id: z.string().min(1),
+  type: z.literal("google-map"),
+  data: GoogleMapBlockDataSchema,
+  reveal: RevealEffectSettingsSchema.optional(),
+});
+
 /* ---------- özyinelemeli düğüm — §5.4 ---------- */
 
 function applySubSchema(schema: z.ZodTypeAny, node: unknown, ctx: z.RefinementCtx): unknown {
@@ -849,8 +983,8 @@ function applySubSchema(schema: z.ZodTypeAny, node: unknown, ctx: z.RefinementCt
  * "minimum diff" kararı KORUNUR; yalnızca `container`/`columns`/`gallery`/`heading`/`button`/
  * `icon-box`/`divider`/`image`/`video`/`accordion`/`tabs`/`cta`/`counter`/`testimonial`/
  * `pricing-table`/`latest-posts`/`contact-form`/`custom-html`/`before-after-slider`/
- * `logo-marquee`/`skill-bar`/`team`/`advanced-slider` dar şemaya girer (diğerleri — `hero`/
- * `text`/`featured-*` — ÖNCEDEN VAR OLAN bir boşluk olarak doğrulanmadan geçer, bu turun
+ * `logo-marquee`/`skill-bar`/`team`/`advanced-slider`/`google-map` dar şemaya girer (diğerleri —
+ * `hero`/`text`/`featured-*` — ÖNCEDEN VAR OLAN bir boşluk olarak doğrulanmadan geçer, bu turun
  * kapsamı DEĞİL).
  *
  * ÖZYİNELEME GÜVENLİĞİ: bu şema `ContainerNodeSchema` üzerinden kendini çağırır. Derinlik
@@ -890,6 +1024,10 @@ const PageNodeSchema: z.ZodType<unknown, z.ZodTypeDef, unknown> = z.record(z.unk
   if (type === "skill-bar") return applySubSchema(SkillBarBlockSchema, node, ctx);
   if (type === "team") return applySubSchema(TeamBlockSchema, node, ctx);
   if (type === "advanced-slider") return applySubSchema(AdvancedSliderBlockSchema, node, ctx);
+  // KRİTİK (mimar §5/6 + §9 R2, security-review §7/5): bu dal EKSİK kalırsa `google-map` bloğu
+  // HİÇ DOĞRULANMADAN geçer ve §2'deki `embedUrl` beyaz listesi TAMAMEN BAYPAS EDİLİR — bu
+  // eklemenin en kritik satırıdır, bir regresyon testiyle AYRICA doğrulanır.
+  if (type === "google-map") return applySubSchema(GoogleMapBlockSchema, node, ctx);
   return node;
 });
 

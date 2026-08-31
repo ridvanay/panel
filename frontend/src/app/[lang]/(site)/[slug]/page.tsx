@@ -15,6 +15,8 @@ import { redirectToCanonicalSlug } from "@/lib/i18n/canonical-slug";
 import { buildContentMetadata } from "@/lib/seo";
 import { SITE_URL } from "@/lib/env";
 import { normalizePageNodes } from "@/lib/page-builder/normalize";
+import { buildFaqPageJsonLd, buildMapPlaceJsonLd } from "@/lib/page-builder/structured-data";
+import { JsonLdScript } from "@/components/site/json-ld-script";
 
 type PageProps = { params: Promise<{ lang: string; slug: string }> };
 
@@ -87,6 +89,10 @@ export default async function DynamicPage({ params }: PageProps) {
   // !localizations[locale].translated ile türetir").
   const showLegalNotice =
     page.isLegalDocument && lang !== defaultLocale?.code && activeLocalization?.translated === false;
+  // `generateMetadata`teki `noIndex` hesabıyla BİREBİR aynı (`isUntranslatedLegalNotice` ===
+  // `showLegalNotice`) — yapılandırılmış veri bastırma kararı (Boşluk 2) bu TEK değeri kullanır.
+  const noIndexEffective = page.noIndex || showLegalNotice;
+  const normalizedNodes = normalizePageNodes(page.blocks);
 
   const isHomePage = page.id === settings.homePageId;
   const canonicalUrl = isHomePage
@@ -116,11 +122,21 @@ export default async function DynamicPage({ params }: PageProps) {
         />
       ) : (
         <>
-          <BlockRenderer nodes={normalizePageNodes(page.blocks)} chrome="page" />
+          <BlockRenderer nodes={normalizedNodes} chrome="page" />
           {appearance.socialShareEnabled && appearance.socialShareNetworks.length > 0 && (
             <div className="mx-auto max-w-3xl px-4 pb-10 sm:px-6">
               <SocialShareButtons url={canonicalUrl} title={page.title} networks={appearance.socialShareNetworks} />
             </div>
+          )}
+          {/* İndekslenmeyen sayfada yapılandırılmış veri BASILMAZ (mimar §7.5 Boşluk 2) — `noIndex`
+              burada `generateMetadata`teki AYNI hesapla (`page.noIndex || isUntranslatedLegalNotice`)
+              tutarlı tutulur, TEK kaynak `page.noIndex`. Boş/veri yoksa `JsonLdScript` zaten hiçbir
+              şey render ETMEZ. */}
+          {!noIndexEffective && (
+            <>
+              <JsonLdScript json={buildFaqPageJsonLd(normalizedNodes)} />
+              <JsonLdScript json={buildMapPlaceJsonLd(normalizedNodes)} />
+            </>
           )}
         </>
       )}

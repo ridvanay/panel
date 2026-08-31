@@ -11,6 +11,22 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
 
 ## [Unreleased]
 
+### Added
+
+- **Page Builder — Google Harita bloğu ve kurumsal blok genişletmeleri** (bağlayıcı karar
+  dokümanları `.claude/architect-scope-google-map-corporate-blocks.md` ve
+  `.claude/security-review-google-map-corporate-blocks.md`). Yeni `google-map` bloğu: hazır
+  Google Maps "Harita yerleştir" embed URL'i (sıkı domain beyaz listesiyle doğrulanır) veya
+  serbest adres metninden inşa edilen harita, 4 sabit `mapStyle` filtresi (standart/koyu/
+  gümüş/retro), sıfır-CLS yükseklik rezervasyonu, `sandbox`/`referrerPolicy` ile sertleştirilmiş
+  iframe. Ayrıca 5 mevcut blok geriye dönük uyumlu opsiyonel alanlarla genişletildi: `accordion`
+  (`layoutStyle`, öğe başına `isOpenDefault`), `before-after-slider` (`initialSliderPosition`),
+  `pricing-table` (`billingInterval` rozeti), `logo-marquee` (`displayMode: grid`, `grayscale`),
+  `video` (`coverUrl` + lightbox oynatma stili + `loop`). FAQPage JSON-LD üretimi blok
+  seviyesinden sayfa seviyesine taşındı (sayfa başına birden fazla SSS bloğu artık tek
+  `FAQPage` script'inde birleşiyor, `noIndex` sayfalarda bastırılıyor); adresi olan harita
+  blokları için opsiyonel `Place` yapılandırılmış verisi eklendi.
+
 ### Changed
 
 - **Gelişmiş Slider — genişlik modu ve kısa kod/embed mekanizması** (bağlayıcı karar eki

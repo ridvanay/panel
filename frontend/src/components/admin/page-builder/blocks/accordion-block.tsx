@@ -5,7 +5,14 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { newId } from "@/lib/page-builder/registry";
-import { ACCORDION_MAX_ITEMS, type AccordionBlock, type AccordionQAItem } from "@/lib/page-builder/types";
+import { ACCORDION_MAX_ITEMS, type AccordionBlock, type AccordionLayoutStyle, type AccordionQAItem } from "@/lib/page-builder/types";
+import { SegmentedToggle } from "./segmented-toggle";
+
+const LAYOUT_STYLE_OPTIONS: { value: AccordionLayoutStyle; label: string }[] = [
+  { value: "bordered", label: "Çerçeveli" },
+  { value: "card", label: "Kart" },
+  { value: "minimal", label: "Minimal" },
+];
 
 export function AccordionBlockEditor({
   block,
@@ -40,19 +47,43 @@ export function AccordionBlockEditor({
     onChange({ ...block, data: { ...block.data, items: [...items, { id: newId(), question: "Soru", answer: "" }] } });
   }
 
+  // §2.2 mimar dokümanı — `allowMultipleOpen === false` iken birden fazla öğe `isOpenDefault`
+  // işaretliyse render tarafı yalnızca İLKİNİ açar; editör bunu bir UYARI ile bildirir, engellemez
+  // (`featured-products-block.tsx`teki AYNI uyarı kutusu deseni).
+  const openByDefaultCount = items.filter((item) => item.isOpenDefault).length;
+  const showMultipleOpenWarning = !block.data.allowMultipleOpen && openByDefaultCount > 1;
+
   return (
     <div className="space-y-3">
       {!simple && (
-        <div className="flex items-center justify-between">
-          <label htmlFor={`${block.id}-multi`} className="text-sm font-medium text-foreground">
-            Birden fazla panel aynı anda açık kalabilsin
-          </label>
-          <Switch
-            id={`${block.id}-multi`}
-            checked={block.data.allowMultipleOpen}
-            onCheckedChange={(allowMultipleOpen) => onChange({ ...block, data: { ...block.data, allowMultipleOpen } })}
-          />
-        </div>
+        <>
+          <div className="flex items-center justify-between">
+            <label htmlFor={`${block.id}-multi`} className="text-sm font-medium text-foreground">
+              Birden fazla panel aynı anda açık kalabilsin
+            </label>
+            <Switch
+              id={`${block.id}-multi`}
+              checked={block.data.allowMultipleOpen}
+              onCheckedChange={(allowMultipleOpen) => onChange({ ...block, data: { ...block.data, allowMultipleOpen } })}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <p className="text-sm font-medium text-foreground">Görünüm</p>
+            <SegmentedToggle
+              value={block.data.layoutStyle ?? "bordered"}
+              options={LAYOUT_STYLE_OPTIONS}
+              onChange={(layoutStyle) => onChange({ ...block, data: { ...block.data, layoutStyle } })}
+            />
+          </div>
+          {showMultipleOpenWarning && (
+            <div className="flex items-start gap-1.5 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
+              <span>
+                Birden fazla panel &quot;varsayılan olarak açık&quot; işaretli, ama &quot;birden fazla panel açık
+                kalabilsin&quot; kapalı — yalnızca İLK işaretli panel açık gelecek.
+              </span>
+            </div>
+          )}
+        </>
       )}
 
       <div className="space-y-3">
@@ -103,6 +134,18 @@ export function AccordionBlockEditor({
                 <Textarea {...inputProps} rows={3} value={item.answer} onChange={(e) => updateItem(item.id, { answer: e.target.value })} />
               )}
             </Field>
+            {!simple && (
+              <div className="flex items-center justify-between">
+                <label htmlFor={`${item.id}-open-default`} className="text-sm font-medium text-foreground">
+                  Varsayılan olarak açık
+                </label>
+                <Switch
+                  id={`${item.id}-open-default`}
+                  checked={item.isOpenDefault ?? false}
+                  onCheckedChange={(isOpenDefault) => updateItem(item.id, { isOpenDefault })}
+                />
+              </div>
+            )}
           </div>
         ))}
       </div>

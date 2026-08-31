@@ -12,7 +12,9 @@ interface GalleryLightboxProps {
   onIndexChange: (index: number | null) => void;
 }
 
-const CONTROL_BUTTON_CLASS =
+// `export` — `video-block.tsx`'in lightbox modal kapat butonu ui-designer §4.2 gereği BU sabiti
+// yeniden kullanır (kopyalamak yerine), iki ayrı kaynak drift riskini önler.
+export const CONTROL_BUTTON_CLASS =
   "flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-black text-white shadow-sm outline-none transition-colors hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black";
 
 /**

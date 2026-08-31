@@ -57,4 +57,11 @@ export const TEMPLATE_EDITABLE_FIELDS: Record<string, readonly string[]> = {
   // Standart kullanıcı hangi slider'ın gösterileceğini DEĞİŞTİREBİLİR (içerik seçimi), ama
   // slider'ın kendisini düzenleyemez (o /admin/sliders yetkisidir).
   "advanced-slider": ["data.sliderId"],
+  // Google Harita — bkz. .claude/architect-scope-google-map-corporate-blocks.md §4.5 (bağlayıcı
+  // karar, boş küme AÇIKÇA yazıldı). 3. parti bir iframe kaynağını (`embedUrl`) veya bir adresi
+  // belirlemek `custom-html` ile AYNI sınıfta "gelişmiş" bir eylemdir — haritayı standart
+  // kullanıcıya açmak, dolaylı olarak ona bir iframe src'si yazma yetkisi verirdi. Fail-closed
+  // kural zaten boş küme üretirdi; AÇIKÇA yazılması bunun bir unutkanlık değil karar olduğunu
+  // belgeler.
+  "google-map": [],
 };

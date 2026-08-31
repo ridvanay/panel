@@ -1430,3 +1430,95 @@ oluyor ama hiçbir bloğa bağlı değil (ölü/kullanılmayan varlık). İşlev
 11'in "6 görsel" sayımını etkilemiyor, görsel yine de medya kütüphanesinde görünüp seçilebiliyor)
 ama muhtemelen bir önceki refactor'da bir bloğun kaldırılmasının artığı. backend-agent'a
 (§8 tablosuna bir görsel bölüm eklemek veya `assets[]`'ten çıkarmak) bilgi amaçlı iletilir.
+
+## Google Harita bloğu (`google-map`, YENİ) + 5 kurumsal blok genişletmesi — E2E kapsamı (bu turda eklendi)
+
+Kaynak: `.claude/architect-scope-google-map-corporate-blocks.md` §7.6 (BAĞLAYICI qa-agent görev
+listesi) + `.claude/security-review-google-map-corporate-blocks.md` §2 negatif matrisinin bir
+örneği (tam matris backend Vitest'te — `pages.schemas.test.ts` — zaten kapsanıyor). Zincirin SON
+adımı: architect → db-agent (no-op) → security-agent → backend-agent → ui-designer →
+frontend-agent → seo-agent hepsi tamamlandı (backend 1045/1045, frontend unit 579/579, Vitest
+yeşil; typecheck/lint temiz).
+
+**Yeni Playwright e2e dosyası: `frontend/tests/e2e/admin-page-builder-corporate-blocks.spec.ts`,
+12/12 senaryo yeşil** (3 bağımsız koşumda tutarlı — `admin-page-builder-widgets.spec.ts`/
+`admin-page-builder-marketing.spec.ts`teki AYNI iki katmanlı desen, gerçek backend `:4001` +
+`saas_e2e` + `next dev :3100`'e karşı). Mevcut `support/api.ts` (`patchPageBlocks`/`createPage`/
+`deletePagePermanently`) ve `support/admin-session.ts` yardımcıları AYNEN kullanıldı, YENİDEN
+YAZILMADI.
+
+| Katman | Senaryo | Durum |
+|---|---|---|
+| 1 — admin UI | `google-map` "Medya & İnteraktif" kategorisinden eklenir; palet araması `map`/`harita`/`faq`/`fiyat`/`video` doğru bloğa eşlenir (§4.2 `keywords`) | ✅ Geçiyor |
+| 2a — round-trip | `google-map`(Mod B)+`accordion`+`before-after-slider`+`pricing-table`+`logo-marquee`+`video` — TÜM yeni alanlar (`embedUrl`/`address`/`zoom`/`mapStyle`/`markerTitle`, `layoutStyle`/`isOpenDefault`, `initialSliderPosition`, `billingInterval`, `displayMode`/`grayscale`, `coverUrl`/`playStyle`/`loop`) `patchPageBlocks` → editör yeniden yükleme sonrası KAYBOLMUYOR | ✅ Geçiyor |
+| 2a — round-trip | `google-map` Mod A (`embedUrl`/"Yerleştirme Kodu") — kaynak sekmesi + metin yeniden yüklemede korunuyor | ✅ Geçiyor |
+| 2b — public render | `google-map` iframe doğru `src` (Mod B şablonu) + rezerve yükseklik (CLS=0) + `sandbox`/`referrerPolicy`/`title`/`loading="lazy"` + `mapStyle` filter — security-review §4.1/§4.2 BAĞLAYICI değerleriyle BİREBİR | ✅ Geçiyor |
+| 2b — public render | 2+ `accordion` bloğu → sayfada TEK `FAQPage` JSON-LD `<script>` (seo-agent Boşluk 1 çözümü), tüm sorular `mainEntity`de birleşiyor, geçerli JSON | ✅ Geçiyor |
+| 2b — public render | `pricing-table.billingInterval` ("Yıllık") rozeti render oluyor | ✅ Geçiyor |
+| 2b — public render | `logo-marquee.displayMode: "grid"` → TEKİL render (marquee'nin 2x kopyası YOK), `grayscale: false` → opasite sınıfı | ✅ Geçiyor |
+| 2b — public render | `before-after-slider.initialSliderPosition` public ARIA `aria-valuenow`e yansıyor | ✅ Geçiyor |
+| 2b — public render | `video.playStyle: "lightbox"` kapak+oynat tetikleyicisi, tıklanınca `loop=1&playlist=<id>` parametreli embed açılıyor (`video-embed.ts` R5) | ✅ Geçiyor |
+| 3 — geriye uyumluluk | 5 genişletilmiş bloğun ESKİ veri şekli (yeni alan YOK) kabul edilir, BUGÜNKÜ davranışla render olur; `logo-marquee` R1 ÖZELLİKLE doğrulandı: `grayscale` alanı YOKKEN hâlâ `grayscale` sınıfı (2 kopya, `?? true`) | ✅ Geçiyor |
+| 4 — güvenlik (negatif, smoke) | `embedUrl`: `evil.com`, `http://www.google.com/...`, `maps.google.com` (bölgesel alt-domain), `javascript:alert(1)` → hepsi API'den `422` | ✅ Geçiyor |
+
+### Yöntem notu — `wrapBareRootBlocks` sayesinde `containerWith()` helper'ı GEREKMEDİ
+
+`admin-page-builder-widgets.spec.ts`/`-containers.spec.ts`teki `containerWith()` yerel
+helper'ının BU dosyada YENİDEN YAZILMASINA gerek kalmadı: round-trip testinde `patchPageBlocks`e
+çıplak (container'sız) kök bloklar veriliyor — admin editörü YÜKLENİRKEN
+`containers.ts::wrapBareRootBlocks` her kök bloğu KENDİ tek-sütunlu konteynerine sarıyor
+(`admin-page-editor-roles.spec.ts` başlığındaki AYNI mekanizma), public render ise zaten
+container'sız düz kök blokları da destekliyor (`admin-page-builder-widgets/marketing.spec.ts`teki
+mevcut desenle BİREBİR).
+
+### Bulunan ve DÜZELTİLEN flake kaynağı — qa-agent'ın KENDİ test tasarımında (uygulama kodu DEĞİL)
+
+İlk taslakta `google-map` public render testi ham `page.on("console", type==="error")` ile "sıfır
+konsol hatası" bekliyordu ve TUTARLI biçimde `Failed to load resource: 401 (Unauthorized)` ile
+kırılıyordu. Kök neden izlendi (`response` event listener'ıyla URL'i loglayarak): kök layout,
+**anonim/çerezsiz bir ziyaretçide bile** sessizce `POST /api/v1/auth/refresh` deniyor, refresh-
+token çerezi olmadığı için `401` dönüyor ve tarayıcı bunu genel "Failed to load resource" konsol
+hatası olarak logluyor. Bu, `google-map`/kurumsal bloklarla **İLGİSİZ** — TAMAMEN unrelated bir
+sayfada (`/`, hiçbir yeni blok İÇERMEYEN) da AYNEN reprodüksiyon edildi (bkz. bu turun geçici debug
+spec'i, koşum sonrası SİLİNDİ). Test, uygulama kodu DEĞİŞTİRİLMEDEN, bu BİLİNEN/unrelated 401'i
+`response` event'i üzerinden (URL bazlı, `/auth/refresh` hariç) filtreleyecek şekilde YENİDEN
+tasarlandı — `pageerror` (gerçek JS hatası) denetimi TAM kapsamlı bırakıldı. Bu, CLAUDE.md madde 3
+("flaky testleri tolere etme, kaynağını bul ve düzelt") gereğidir; TEST GEVŞETİLMEDİ, kapsam DIŞI
+bir sinyal doğru şekilde AYRIŞTIRILDI.
+
+### Bulunan bulgu — bilgi amaçlı, engelleyici DEĞİL (frontend-agent'a yönlendirilecek)
+
+Yukarıdaki flake araştırması sırasında ortaya çıkan bulgu: kök layout, kimliği doğrulanmamış HER
+ziyaretçide (anonim, hiçbir oturum çerezi olmadan) sayfa yüklenirken `POST /api/v1/auth/refresh`
+deniyor ve beklendiği gibi `401` alıyor. İşlevsel bir hata DEĞİL (kullanıcıya görünür bir sorun
+YOK, oturum durumunu doğru şekilde "giriş yapılmamış" olarak çözüyor) ama HER public sayfa
+yüklemesinde gereksiz bir ağ isteği + tarayıcı konsolunda gürültülü bir hata satırı üretiyor.
+Öneri: refresh çağrısını yalnızca bir refresh-token/oturum ipucu çerezi MEVCUTSA tetiklemek.
+qa-agent kendi test kapsamını (bu bulguyla İLGİSİZ olan asıl "google-map" doğrulamasını)
+etkilemeyecek şekilde bunu ayrıştırdı; düzeltme kararı frontend-agent'a bırakılır.
+
+### Regresyon taraması — `admin-page-builder-widgets.spec.ts` + `admin-page-builder-marketing.spec.ts`
+
+Bu tur `frontend/` altında SADECE yeni bir spec dosyası EKLEDİ; hiçbir ürün kodu/mevcut spec
+DEĞİŞTİRİLMEDİ. İki dosya da ayrıca çalıştırıldı; gözlemlenen ara sıra başarısızlıklar (bir UI
+login akışının `/dashboard`a 15sn içinde yönlenmemesi, `POST /auth/login`in `5/dk` IP kotasına
+takılması — bu OTURUMDA arka arkaya çok sayıda Playwright koşumu tetiklendiği için) temiz bir
+koşumda TEKRARLANMADI ve kaynağı (paylaşılan `saas_e2e` + auth rate limit, bu turun DEĞİŞİKLİĞİYLE
+İLİŞKİSİZ) doğrulandı — gerçek bir regresyon DEĞİL. Ayrı bir gözlem: `admin-page-builder-
+marketing.spec.ts`teki "CTA solid" testinde `getByRole("link", { name: "Bize Ulaşın" })` bazen
+BİRDEN FAZLA eşleşme buluyor (footer/nav'da AYNI etiketli başka bir link) — paylaşılan `saas_e2e`
+veritabanında başka bir spec'in temizlemediği navigasyon/footer verisinden kaynaklanan ÖNCEDEN VAR
+OLAN bir test-izolasyon sorunu (bu turun ürün/spec değişikliğiyle İLGİSİZ); ilgili spec dosyasının
+sahibi tarafından ayrıca değerlendirilmesi önerilir.
+
+### Kapsam dışı / sonraki tur için önerilir
+
+- `mapStyle`in 4 varyantının (standard/dark/silver/retro) TAMAMI için ayrı bir public-render
+  assertion'ı YAZILMADI (yalnızca `dark` doğrulandı) — `MAP_STYLE_FILTER` sabit obje look-up'ı
+  zaten backend/frontend birim testlerinde (mimar §5/3, güvenlik denetimi) dolaylı kapsanıyor;
+  burada bir örnek yeterli görüldü (test sayısını şişirmemek için).
+- `google-map`in `noIndex` sayfada `Place` JSON-LD'sinin BASILMADIĞI (seo-agent Boşluk 2) ayrı bir
+  e2e ile doğrulanmadı — mimar §7.6 listesinde açıkça istenmiyor, seo-agent'ın kendi kapsamı.
+- A11y (axe-core) otomasyonu bu dosyaya EKLENMEDİ — mevcut `jest-axe` deseni (bkz. yukarıdaki "A11y
+  notu" bölümleri) zaten `Field`/`Switch`/`SegmentedToggle` gibi paylaşılan bileşenleri component
+  seviyesinde kapsıyor; bu turda YENİ bir a11y paterni (özel semantik) eklenmedi.

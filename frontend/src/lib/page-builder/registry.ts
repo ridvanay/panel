@@ -2,7 +2,7 @@ import {
   Heading as HeadingIcon,
   Image as ImageIcon,
   LayoutTemplate,
-  ListCollapse,
+  HelpCircle,
   MousePointerClick,
   PanelsTopLeft,
   SeparatorHorizontal,
@@ -15,18 +15,19 @@ import {
   Video,
   TrendingUp,
   Quote,
-  Tag,
+  CreditCard,
   Newspaper,
   Mail,
   Code2,
-  SplitSquareHorizontal,
-  Infinity as InfinityIcon,
+  Columns2,
+  Building2,
   SlidersHorizontal,
   Users2,
   GalleryHorizontal,
+  MapPin,
   type LucideIcon,
 } from "lucide-react";
-import type { ContentBlock, ContentBlockType } from "./types";
+import { GOOGLE_MAP_DEFAULT_HEIGHT_PX, GOOGLE_MAP_DEFAULT_ZOOM, type ContentBlock, type ContentBlockType } from "./types";
 
 /**
  * Palette "İçerik" bölümü kaydı (§8.2/§8.3 mimar dokümanı — v3'te `container` BURAYA
@@ -46,7 +47,10 @@ export const PALETTE_CATEGORY_LABEL: Record<PaletteBlockCategory, string> = {
   dynamic: "Dinamik & CMS",
 };
 
-export const blockRegistry: Record<PaletteBlockType, { label: string; category: PaletteBlockCategory; icon: LucideIcon }> = {
+export const blockRegistry: Record<
+  PaletteBlockType,
+  { label: string; category: PaletteBlockCategory; icon: LucideIcon; keywords?: string[] }
+> = {
   heading: { label: "Başlık", category: "basic", icon: HeadingIcon },
   text: { label: "Metin", category: "basic", icon: TextIcon },
   button: { label: "Buton", category: "basic", icon: MousePointerClick },
@@ -54,17 +58,38 @@ export const blockRegistry: Record<PaletteBlockType, { label: string; category: 
   divider: { label: "Ayırıcı & Boşluk", category: "basic", icon: SeparatorHorizontal },
   image: { label: "Görsel", category: "media", icon: ImageIcon },
   gallery: { label: "Galeri", category: "media", icon: Images },
-  video: { label: "Video Oynatıcı", category: "media", icon: Video },
-  accordion: { label: "Akordiyon / SSS", category: "media", icon: ListCollapse },
+  video: { label: "Video Oynatıcı", category: "media", icon: Video, keywords: ["video", "youtube", "vimeo", "oynatıcı"] },
+  accordion: { label: "Akordiyon / SSS", category: "media", icon: HelpCircle, keywords: ["faq", "sss", "soru", "cevap", "akordiyon"] },
   tabs: { label: "Sekmeler", category: "media", icon: PanelsTopLeft },
-  "before-after-slider": { label: "Öncesi / Sonrası", category: "media", icon: SplitSquareHorizontal },
+  "before-after-slider": {
+    label: "Öncesi / Sonrası",
+    category: "media",
+    icon: Columns2,
+    keywords: ["öncesi", "sonrası", "before", "after", "karşılaştır"],
+  },
+  "google-map": {
+    label: "Google Harita",
+    category: "media",
+    icon: MapPin,
+    keywords: ["map", "harita", "konum", "adres", "google", "iletişim"],
+  },
   hero: { label: "Hero", category: "marketing", icon: LayoutTemplate },
   "advanced-slider": { label: "Gelişmiş Slider", category: "marketing", icon: GalleryHorizontal },
   cta: { label: "Çağrı Butonu (CTA)", category: "marketing", icon: Type },
   counter: { label: "Sayaç / İstatistik", category: "marketing", icon: TrendingUp },
   testimonial: { label: "Müşteri Yorumları", category: "marketing", icon: Quote },
-  "pricing-table": { label: "Fiyatlandırma Tablosu", category: "marketing", icon: Tag },
-  "logo-marquee": { label: "Logo Bandı", category: "marketing", icon: InfinityIcon },
+  "pricing-table": {
+    label: "Fiyatlandırma Tablosu",
+    category: "marketing",
+    icon: CreditCard,
+    keywords: ["fiyat", "pricing", "paket", "plan", "tarife"],
+  },
+  "logo-marquee": {
+    label: "Logo Bandı",
+    category: "marketing",
+    icon: Building2,
+    keywords: ["logo", "referans", "müşteri", "marka", "partner"],
+  },
   "skill-bar": { label: "İlerleme Çubuğu & Yetenekler", category: "marketing", icon: SlidersHorizontal },
   team: { label: "Ekip Üyesi Kartı", category: "marketing", icon: Users2 },
   "featured-products": { label: "Öne Çıkan Ürünler", category: "dynamic", icon: ShoppingBag },
@@ -240,5 +265,10 @@ export function createBlock(type: PaletteBlockType): ContentBlock {
       // `sliderId` KASITLI OLARAK eklenmez (undefined) — bkz. types.ts yorumu ve
       // `cta` case'indeki AYNI gerekçe (boş string backend doğrulamasına takılır).
       return { id, type, data: {} };
+    case "google-map":
+      // `embedUrl`/`markerTitle` KASITLI OLARAK hiç eklenmez (undefined) — mimar §2.1: URL/başlık
+      // türü opsiyonel alanlar `cta`/`advanced-slider` case'leriyle AYNI gerekçeyle omit edilir
+      // (`GoogleMapEmbedUrlSchema.min(1)` boş string'i reddeder).
+      return { id, type, data: { address: "", zoom: GOOGLE_MAP_DEFAULT_ZOOM, height: { value: GOOGLE_MAP_DEFAULT_HEIGHT_PX, unit: "px" }, mapStyle: "standard" } };
   }
 }

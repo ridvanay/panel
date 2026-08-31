@@ -9,11 +9,23 @@ function gridColsClass(count: number): string {
   return "grid-cols-1 sm:grid-cols-2 lg:grid-cols-4";
 }
 
+/** `billingInterval` — YENİ, SALT GÖRSEL bir rozet (mimar §2.4); yoksa hiç render EDİLMEZ. */
+const BILLING_INTERVAL_LABEL: Record<"monthly" | "yearly", string> = {
+  monthly: "Aylık",
+  yearly: "Yıllık",
+};
+
 export function PricingTableBlockView({ block, chrome }: { block: PricingTableBlock; chrome: BlockChrome }) {
   const plans = block.data.plans;
+  const billingInterval = block.data.billingInterval;
 
   return (
     <section className={cn(chrome === "page" && "px-4 py-12 sm:px-6")}>
+      {billingInterval && (
+        <p className="mx-auto mb-4 w-fit rounded-full border border-border bg-surface-muted px-3 py-1 text-center text-xs font-medium text-foreground/70">
+          {BILLING_INTERVAL_LABEL[billingInterval]}
+        </p>
+      )}
       <div className={cn("mx-auto grid max-w-6xl items-stretch gap-6", gridColsClass(plans.length))}>
         {plans.map((plan) => (
           <div

@@ -102,7 +102,11 @@ export function AddContentMenu({
   const allEntries = Object.entries(blockRegistry) as [PaletteBlockType, (typeof blockRegistry)[PaletteBlockType]][];
   const normalizedQuery = normalizeSearch(query);
   const visible = normalizedQuery
-    ? allEntries.filter(([, meta]) => normalizeSearch(meta.label).includes(normalizedQuery))
+    ? allEntries.filter(
+        ([, meta]) =>
+          normalizeSearch(meta.label).includes(normalizedQuery) ||
+          (meta.keywords ?? []).some((keyword) => normalizeSearch(keyword).includes(normalizedQuery))
+      )
     : allEntries.filter(([, meta]) => meta.category === category);
 
   const label = variant === "prominent" ? "Konteynere blok ekle" : "Konteynere daha fazla blok ekle";

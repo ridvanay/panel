@@ -8,10 +8,11 @@ import type { BeforeAfterSliderBlock, BlockChrome } from "@/lib/page-builder/typ
 const KEYBOARD_STEP = 5;
 
 export function BeforeAfterSliderBlockView({ block, chrome }: { block: BeforeAfterSliderBlock; chrome: BlockChrome }) {
-  const { beforeUrl, afterUrl, beforeLabel, afterLabel, orientation } = block.data;
+  const { beforeUrl, afterUrl, beforeLabel, afterLabel, orientation, initialSliderPosition } = block.data;
   const containerRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef(false);
-  const [percent, setPercent] = useState(50);
+  // YENİ, OPSİYONEL (mimar §2.3) — yoksa bugünkü sabit %50 davranışı korunur.
+  const [percent, setPercent] = useState(initialSliderPosition ?? 50);
 
   const updateFromPointer = useCallback(
     (clientX: number, clientY: number) => {

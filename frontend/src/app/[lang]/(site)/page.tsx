@@ -10,6 +10,8 @@ import { FallbackHome } from "@/components/marketing/fallback-home";
 import { buildContentMetadata } from "@/lib/seo";
 import { SITE_URL } from "@/lib/env";
 import { normalizePageNodes } from "@/lib/page-builder/normalize";
+import { buildFaqPageJsonLd, buildMapPlaceJsonLd } from "@/lib/page-builder/structured-data";
+import { JsonLdScript } from "@/components/site/json-ld-script";
 
 type PageProps = { params: Promise<{ lang: string }> };
 
@@ -75,6 +77,10 @@ export default async function RootPage({ params }: PageProps) {
   const activeLocalization = page.localizations.find((l) => l.locale === lang);
   const showLegalNotice =
     page.isLegalDocument && lang !== defaultLocale?.code && activeLocalization?.translated === false;
+  // `generateMetadata`teki `noIndex` hesabıyla tutarlı (`page.noIndex` TEK kaynak) — mimar §7.5
+  // Boşluk 2: `noIndex`teki sayfada yapılandırılmış veri BASILMAZ.
+  const noIndexEffective = page.noIndex || showLegalNotice;
+  const normalizedNodes = normalizePageNodes(page.blocks);
 
   return (
     <>
@@ -87,7 +93,17 @@ export default async function RootPage({ params }: PageProps) {
           defaultLocaleLabel={defaultLocale?.nativeLabel ?? ""}
         />
       ) : (
-        <BlockRenderer nodes={normalizePageNodes(page.blocks)} chrome="page" />
+        <>
+          <BlockRenderer nodes={normalizedNodes} chrome="page" />
+          {/* Sayfa başına TEK `FAQPage`/`Place` script — mimar §7.5 Boşluk 1/3, bkz.
+              `lib/page-builder/structured-data.ts`. */}
+          {!noIndexEffective && (
+            <>
+              <JsonLdScript json={buildFaqPageJsonLd(normalizedNodes)} />
+              <JsonLdScript json={buildMapPlaceJsonLd(normalizedNodes)} />
+            </>
+          )}
+        </>
       )}
     </>
   );

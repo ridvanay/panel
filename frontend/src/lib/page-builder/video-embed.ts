@@ -19,15 +19,32 @@ export function extractVimeoId(url: string): string | null {
   return url.match(VIMEO_ID_RE)?.[1] ?? null;
 }
 
-/** `mp4` sağlayıcısı için `null` döner — o durumda `<video src>` doğrudan (URL zaten backend'in
- *  güvenli-URL doğrulamasından geçmiş bir dosya bağlantısı) kullanılır, embed URL'i GEREKMEZ. */
-export function getVideoEmbedUrl(provider: VideoProvider, url: string, options: { autoplay: boolean; muted: boolean }): string | null {
+/**
+ * `mp4` sağlayıcısı için `null` döner — o durumda `<video src>` doğrudan (URL zaten backend'in
+ *  güvenli-URL doğrulamasından geçmiş bir dosya bağlantısı) kullanılır, embed URL'i GEREKMEZ.
+ *
+ * `loop` — YENİ (mimar §2.6/R5). Sağlayıcıya göre FARKLI uygulanır: YouTube `loop=1` TEK BAŞINA
+ * ÇALIŞMAZ, `playlist=<videoId>` de gerekir (aksi halde video yalnızca BİR KEZ döngüye girer);
+ * Vimeo `loop=1` tek başına yeterlidir. `mp4` için bu fonksiyon zaten `null` döner — `loop`
+ * `<video loop>` niteliğiyle çağıran taraf (`video-block.tsx`) tarafından uygulanır.
+ */
+export function getVideoEmbedUrl(
+  provider: VideoProvider,
+  url: string,
+  options: { autoplay: boolean; muted: boolean; loop?: boolean }
+): string | null {
   if (provider === "youtube") {
     const id = extractYouTubeId(url);
     if (!id) return null;
     const params = new URLSearchParams({ rel: "0" });
     if (options.autoplay) params.set("autoplay", "1");
     if (options.muted || options.autoplay) params.set("mute", "1");
+    if (options.loop) {
+      params.set("loop", "1");
+      // YouTube embed API kısıtı: `loop=1` yalnızca `playlist` parametresi AYNI video id'sini
+      // içerdiğinde tek video döngüsü yapar (bkz. fonksiyon başlığı).
+      params.set("playlist", id);
+    }
     return `https://www.youtube-nocookie.com/embed/${id}?${params.toString()}`;
   }
   if (provider === "vimeo") {
@@ -36,6 +53,7 @@ export function getVideoEmbedUrl(provider: VideoProvider, url: string, options: 
     const params = new URLSearchParams();
     if (options.autoplay) params.set("autoplay", "1");
     if (options.muted || options.autoplay) params.set("muted", "1");
+    if (options.loop) params.set("loop", "1");
     return `https://player.vimeo.com/video/${id}${params.size > 0 ? `?${params.toString()}` : ""}`;
   }
   return null;

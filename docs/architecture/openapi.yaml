@@ -9649,22 +9649,32 @@ components:
         `contentHtml` TipTap zengin metnidir, bkz. ARCHITECTURE.md §10.17.1 — hâlâ geçerli).
 
 
-        `type` değerleri: `hero` · `text` · `image` · `gallery` · `cta` ·
-        `featured-products` · `featured-portfolio` · **`container`** (kanonik konteyner
-        düğümü, §10.19) · `columns` (**deprecated**, salt okuma/geçiş, aşağıya bkz.).
+        `type` değerleri (26 içerik bloğu + `container` + `columns`, tam liste aşağıdaki
+        `enum`'dadır — bkz. `.claude/architect-scope-google-map-corporate-blocks.md` §0 madde 8
+        için bu enum'un daha önce yalnızca 9 tip listeleyip BAYAT olduğu tespiti, bu turda
+        düzeltildi): `hero` · `text` · `image` · `gallery` · `cta` · `featured-products` ·
+        `featured-portfolio` · `heading` · `button` · `icon-box` · `divider` · `video` ·
+        `accordion` · `tabs` · `counter` · `testimonial` · `pricing-table` · `latest-posts` ·
+        `contact-form` · `custom-html` · `before-after-slider` · `logo-marquee` · `skill-bar` ·
+        `team` · `advanced-slider` · `google-map` · **`container`** (kanonik konteyner düğümü,
+        §10.19) · `columns` (**deprecated**, salt okuma/geçiş, aşağıya bkz.).
 
 
-        **`data` alanı YALNIZCA içerik bloklarıdır** (`hero`/`text`/`image`/`gallery`/`cta`/
-        `featured-*`) — `type: "container"` düğümlerinde `data` YOKTUR, bunun yerine
-        `settings` (§`PageContainerSettings`) + `children` (`PageBlock[]`, kendi türünden,
-        iç içe) taşırlar. Bir içerik bloğunun `settings`'i, bir konteynerin `data`'sı YOKTUR —
-        bu ayrım bilinçlidir (bkz. tasarım notu §3.3): sanitize/`settings`↔`data` sorumluluğu
-        karışmaz.
+        **`data` alanı YALNIZCA içerik bloklarıdır** (`type: "container"` DIŞINDAKİ HER TİP) —
+        `type: "container"` düğümlerinde `data` YOKTUR, bunun yerine `settings`
+        (§`PageContainerSettings`) + `children` (`PageBlock[]`, kendi türünden, iç içe)
+        taşırlar. Bir içerik bloğunun `settings`'i, bir konteynerin `data`'sı YOKTUR — bu ayrım
+        bilinçlidir (bkz. tasarım notu §3.3): sanitize/`settings`↔`data` sorumluluğu karışmaz.
 
 
-        Backend `type` ∉ {`container`, `columns`, `gallery`} için `data` şemasını BİLİNÇLİ
-        olarak serbest bırakır (`z.record(z.unknown())` — mevcut davranış korunur); yalnızca
-        `container`/`columns`/`gallery` DAR doğrulamadan geçer.
+        Backend `type` ∈ {`hero`, `text`, `featured-products`, `featured-portfolio`} için `data`
+        şemasını BİLİNÇLİ olarak serbest bırakır (`z.record(z.unknown())` — mevcut davranış
+        korunur, bu turun kapsamı DEĞİL); enum'daki DİĞER TÜM tipler (`container`/`columns`/
+        `gallery` ve bu turda genişletilen `heading`/`button`/`icon-box`/`divider`/`video`/
+        `accordion`/`tabs`/`cta`/`counter`/`testimonial`/`pricing-table`/`latest-posts`/
+        `contact-form`/`custom-html`/`before-after-slider`/`logo-marquee`/`skill-bar`/`team`/
+        `advanced-slider`/**`google-map`** dahil) kendi DAR Zod şemalarından geçer (bkz.
+        `pages.schemas.ts::PageNodeSchema` dispatch'i).
 
 
         `type: "text"` bloklarının `data.html`'i DB'ye yazılmadan önce
@@ -9685,6 +9695,25 @@ components:
               cta,
               featured-products,
               featured-portfolio,
+              heading,
+              button,
+              icon-box,
+              divider,
+              video,
+              accordion,
+              tabs,
+              counter,
+              testimonial,
+              pricing-table,
+              latest-posts,
+              contact-form,
+              custom-html,
+              before-after-slider,
+              logo-marquee,
+              skill-bar,
+              team,
+              advanced-slider,
+              google-map,
               container,
               columns,
             ]
@@ -9694,7 +9723,10 @@ components:
           description: >
             YALNIZCA içerik blokları için anlamlıdır (`type ∉ {container}`). `type:
             "columns"` için bkz. `PageColumnsBlockData` (**deprecated**). `type:
-            "container"` düğümlerinde bu alan YOKTUR — bkz. `PageContainerNode`.
+            "advanced-slider"` için bkz. `AdvancedSliderBlockData`. `type: "google-map"` için
+            bkz. `GoogleMapBlockData` (embed URL beyaz listesi + `apiKey` alanının KASITLI
+            olarak yokluğu orada belgelenir). `type: "container"` düğümlerinde bu alan
+            YOKTUR — bkz. `PageContainerNode`.
 
     PageContainerSettings:
       type: object
@@ -9869,6 +9901,83 @@ components:
                   v2'de `type` ∈ {`columns`, `hero`} OLAMAZ kısıtı vardı; bu kısıt normalize
                   sonrası kanonik `container` modelinde YOKTUR (§10.19 — yalnızca derinlik
                   sınırı geçerlidir).
+
+    GoogleMapBlockData:
+      type: object
+      description: >
+        `Page.blocks` ağacındaki `google-map` düğümünün `data` şekli (bkz.
+        `.claude/architect-scope-google-map-corporate-blocks.md` §2.1 [mimar, bağlayıcı] ve
+        `.claude/security-review-google-map-corporate-blocks.md` §2/§3 [security-agent —
+        çakışmada bu doküman kazanır, bkz. `.claude/CLAUDE.md` "Çakışma Çözümü"], backend
+        `pages.schemas.ts::GoogleMapBlockSchema`).
+
+
+        **Tüm alanlar OPSİYONELDİR** — boş bir blok autosave edilebilir, 422 üretmez.
+
+
+        **İki kaynak modu:** `embedUrl` doluysa VE aşağıdaki beyaz listeyi geçiyorsa aynen
+        kullanılır (`address`/`zoom` bu durumda URL inşasında KULLANILMAZ). Aksi halde `address`
+        doluysa embed URL'i render anında sabit bir şablondan
+        (`https://www.google.com/maps?q=<encodeURIComponent(address)>&z=<zoom>&hl=<locale>&output=embed`)
+        inşa edilir. İkisi de yoksa/geçersizse hiçbir şey render EDİLMEZ (hata fırlatılmaz).
+
+
+        **`apiKey` alanı KASITLI OLARAK YOKTUR ve tanımlanamaz** (mimar §3.1, security-review §1
+        "ONAYLANDI"): `Page.blocks` her `EDITOR` rolü tarafından yazılabilir/okunabilir VE
+        public `GET /pages/:slug` yanıtında ham JSON olarak döner — bu yüzeyde hiçbir sır
+        tutulamaz. Anahtar gerektiren Google Maps Embed API URL'leri (`.../maps/embed/v1/...
+        &key=...`) doğrudan `embedUrl`e gömülür; admin editörü bu durumda "anahtarı Google
+        Cloud Console'da HTTP referrer kısıtıyla sınırlandırın" uyarısı gösterir.
+      properties:
+        embedUrl:
+          type: string
+          minLength: 1
+          maxLength: 2048
+          pattern: '^https:\/\/(?:www\.)?google\.com\/maps\/embed(?:\/v1\/(?:place|view|directions|search|streetview))?\?[^\s"''<>`\\]+$'
+          description: >
+            **NİHAİ beyaz liste regex'i** (security-review §2 — mimarın taslağını SIKILAŞTIRIR:
+            query karakter kara listesine backtick/backslash EKLENDİ, case-insensitive DEĞİL).
+            Yalnızca `https://google.com/...` veya `https://www.google.com/...` host'u, yalnızca
+            `/maps/embed` yolu (+ `/v1/place`, `/v1/view`, `/v1/directions`, `/v1/search`,
+            `/v1/streetview` alt-yolları) kabul edilir. Bölgesel domainler (`google.com.tr`),
+            `maps.google.com`, `goo.gl` kısaltılmış linkler, `http://` (yalnızca `https:`),
+            userinfo-trick (`google.com@evil.com`), port enjeksiyonu, `<script>`/backtick/
+            backslash içeren query REDDEDİLİR → **422**. Yazma anında doğrulama başarısız
+            olursa sessizce düşürülmez, kullanıcı bilgilendirilir; okuma/render anında (eski/
+            bozuk kayıt ihtimaline karşı) regex'i geçemeyen bir değer sessizce `null` döner.
+            `SafeHrefSchema` BURADA KULLANILMAZ (o şema relative yol ve keyfi https host'u kabul
+            eder, bir `<iframe src>` için yetersizdir).
+        address:
+          type: string
+          maxLength: 300
+          description: "Mod B (tercih edilen) — serbest adres metni, `encodeURIComponent` ile kodlanıp sabit şablona yerleştirilir; ham enjeksiyon yüzeyi yoktur."
+        zoom:
+          type: integer
+          minimum: 1
+          maximum: 20
+          description: >
+            Yalnızca Mod B'de (adres) anlamlıdır — Mod A'da (`embedUrl`) zoom `pb=` parametresinin
+            içine gömülüdür, bu alan etkisizdir. Aralık dışı değer **422** ile reddedilir, CLAMP
+            EDİLMEZ (security-review §3 — yazma anı reddet, okuma/render anı savunma amaçlı
+            clamp eder).
+        height:
+          type: object
+          required: [value, unit]
+          description: >
+            `ContainerLengthSchema` YENİDEN KULLANILMAZ (o `min(0).max(5000)` taşır, `vh` tavanı
+            yoktur). `unit: "vh"` iken `value` en fazla 100 olabilir (çapraz-alan kısıtı).
+          properties:
+            value: { type: number, minimum: 1, maximum: 2000 }
+            unit: { type: string, enum: [px, vh], default: px }
+        mapStyle:
+          type: string
+          enum: [standard, dark, silver, retro]
+          description: "Sabit bir CSS `filter` tablosundan look-up edilir — kullanıcı girdisi ASLA CSS'e enterpole edilmez."
+        markerTitle:
+          type: string
+          maxLength: 120
+          description: "iframe `title` niteliği + görsel etiket. Boş `title` yasağı gereği render tarafı `markerTitle || address || \"Harita\"` düşer."
+      additionalProperties: false
 
     CreatePageRequest:
       type: object

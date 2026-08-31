@@ -47,6 +47,11 @@ export const TEMPLATE_EDITABLE_FIELDS: Record<string, readonly string[]> = {
   // Standart kullanıcı hangi slider'ın gösterileceğini DEĞİŞTİREBİLİR (içerik seçimi),
   // ama slider'ın kendisini düzenleyemez (o /admin/sliders yetkisidir).
   "advanced-slider": ["data.sliderId"],
+  // Google Harita — bkz. .claude/architect-scope-google-map-corporate-blocks.md §4.5 (bağlayıcı
+  // karar, boş küme AÇIKÇA yazıldı) — backend `page-template-fields.ts` ile BİREBİR aynı. 3.
+  // parti bir iframe kaynağını (`embedUrl`) veya bir adresi belirlemek `custom-html` ile AYNI
+  // sınıfta "gelişmiş" bir eylemdir.
+  "google-map": [],
   // Saf düzen elemanları — şablon modunda tamamen kilitli.
   divider: [],
   // §3.3 — KESİN istisna: ham HTML yazmak tanım gereği "gelişmiş" bir eylemdir, `data.html`

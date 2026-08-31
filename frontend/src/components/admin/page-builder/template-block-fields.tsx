@@ -47,8 +47,6 @@ export function TemplateBlockFields({
       return <TextBlockEditor block={block} onChange={onChange} />;
     case "team":
       return <TeamBlockEditor block={block} onChange={onChange} />;
-    case "pricing-table":
-      return <PricingTableBlockEditor block={block} onChange={onChange} />;
     case "contact-form":
       return <ContactFormBlockEditor block={block} onChange={onChange} />;
     case "counter":
@@ -81,6 +79,10 @@ export function TemplateBlockFields({
       return <BeforeAfterSliderBlockEditor block={block} onChange={onChange} simple />;
     case "logo-marquee":
       return <LogoMarqueeBlockEditor block={block} onChange={onChange} simple />;
+    case "pricing-table":
+      // google-map-corporate-blocks turu, mimar §4.5 — `billingInterval` YENİ "gelişmiş" alanı
+      // eklendiği için bu blok artık "tablo A" (kısıtsız) DEĞİL, `simple` bayrağı gerektiriyor.
+      return <PricingTableBlockEditor block={block} onChange={onChange} simple />;
     case "latest-posts":
       return <LatestPostsBlockEditor block={block} onChange={onChange} simple />;
     case "featured-products":

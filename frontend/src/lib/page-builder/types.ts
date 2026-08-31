@@ -36,7 +36,8 @@ export type ContentBlockType =
   | "logo-marquee"
   | "skill-bar"
   | "team"
-  | "advanced-slider";
+  | "advanced-slider"
+  | "google-map";
 
 /** Kanonik konteyner düğümü. */
 export type ContainerNodeType = "container";
@@ -229,6 +230,9 @@ export interface BeforeAfterSliderBlock extends BaseNode {
     beforeLabel: string;
     afterLabel: string;
     orientation: BeforeAfterOrientation;
+    /** YENİ, OPSİYONEL (google-map-corporate-blocks turu, mimar §2.3) — tam sayı 0..100, yoksa
+     *  render `useState(initialSliderPosition ?? 50)` ile bugünkü sabit %50 davranışı korunur. */
+    initialSliderPosition?: number;
   };
 }
 
@@ -243,6 +247,10 @@ export interface LogoMarqueeItem {
   href?: string;
 }
 
+/** `logo-marquee.displayMode` — YENİ (mimar §2.5). `displayMode: "grid"` iken `speedSeconds`/
+ *  `pauseOnHover` ANLAMSIZDIR; veri modelinde KALIR (mod değiştirip geri dönünce ayar kaybolmasın). */
+export type LogoDisplayMode = "marquee" | "grid";
+
 export interface LogoMarqueeBlock extends BaseNode {
   type: "logo-marquee";
   data: {
@@ -250,6 +258,12 @@ export interface LogoMarqueeBlock extends BaseNode {
     /** Bir TAM döngünün saniye cinsinden süresi — küçük değer HIZLI akış demektir. */
     speedSeconds: number;
     pauseOnHover: boolean;
+    /** YENİ, OPSİYONEL — yoksa `displayMode ?? "marquee"` (bugünkü tek davranış). */
+    displayMode?: LogoDisplayMode;
+    /** YENİ, OPSİYONEL — **`grayscale ?? true` KULLANILMAK ZORUNDADIR** (mimar §1.2/R1: bugün KOD
+     *  İÇİNDE SABİT hard-code `grayscale hover:grayscale-0`; `?? false` yazılırsa TÜM mevcut logo
+     *  bantlarının görünümü sessizce değişir — bu KESİNLİKLE YASAK). */
+    grayscale?: boolean;
   };
 }
 
@@ -361,9 +375,29 @@ export interface DividerBlock extends BaseNode {
  */
 export type VideoProvider = "youtube" | "vimeo" | "mp4";
 
+/** `video.playStyle` — YENİ (mimar §2.6). `inline` = bugünkü davranış (doğrudan gömülü oynatıcı).
+ *  `lightbox` = kapak görseli + oynat rozeti tetikleyicisi, tıklanınca `gallery-lightbox.tsx`
+ *  desenindeki tam ekran modalde oynatılır. */
+export type VideoPlayStyle = "inline" | "lightbox";
+
 export interface VideoBlock extends BaseNode {
   type: "video";
-  data: { provider: VideoProvider; url: string; autoplay: boolean; muted: boolean };
+  data: {
+    provider: VideoProvider;
+    url: string;
+    autoplay: boolean;
+    muted: boolean;
+    /** YENİ, OPSİYONEL — yalnızca `<img src>` bağlamında kullanılır (security-review §5): asla
+     *  `<a href>`/CSS `background-image`/`<iframe src>` DEĞİL. `playStyle: "lightbox"` iken
+     *  tetikleyici kartın kapak görseli; yoksa düz siyah kutu + oynat simgesi (boş render EDİLMEZ). */
+    coverUrl?: string;
+    /** YENİ, OPSİYONEL — yoksa `playStyle ?? "inline"` (bugünkü davranış). */
+    playStyle?: VideoPlayStyle;
+    /** YENİ, OPSİYONEL — yoksa `loop ?? false`. Sağlayıcıya göre farklı uygulanır (bkz.
+     *  `video-embed.ts::getVideoEmbedUrl`): YouTube `loop=1` TEK BAŞINA ÇALIŞMAZ, `playlist=<id>`
+     *  de gerekir; Vimeo `loop=1`; `mp4` → `<video loop>`. */
+    loop?: boolean;
+  };
 }
 
 /** Bir konteynerdeki toplam öğe sınırlarından (§5) BAĞIMSIZ, bloğa ÖZGÜ üst sınırlar — backend
@@ -378,12 +412,25 @@ export interface AccordionQAItem {
   /** KASITLI OLARAK düz metin (HTML DEĞİL) — hem yeni bir sanitizasyon yolu AÇMAMAK için hem de
    *  Schema.org FAQPage JSON-LD çıktısının (bkz. site render) temiz/geçerli kalması için. */
   answer: string;
+  /** YENİ, OPSİYONEL (google-map-corporate-blocks turu, mimar §2.2). `allowMultipleOpen === false`
+   *  iken birden fazla öğe işaretliyse render tarafı YALNIZCA İLKİNİ açar (`Accordion defaultValue`
+   *  tek elemanlı dizi alır) — editör bunu bir UYARI ile bildirir, engellemez. */
+  isOpenDefault?: boolean;
 }
+
+/** `accordion.layoutStyle` — sabit sınıf tablosuna eşlenir (bkz. `site/blocks/accordion-block.tsx`
+ *  `ACCORDION_LAYOUT_CLASSES`, ui-designer §2). `bordered` = bugünkü görünüm, PİKSEL-EŞ. */
+export type AccordionLayoutStyle = "bordered" | "card" | "minimal";
 
 /** Akordiyon / SSS — Schema.org FAQPage JSON-LD üretir (bkz. `site/blocks/accordion-block.tsx`). */
 export interface AccordionBlock extends BaseNode {
   type: "accordion";
-  data: { items: AccordionQAItem[]; allowMultipleOpen: boolean };
+  data: {
+    items: AccordionQAItem[];
+    allowMultipleOpen: boolean;
+    /** YENİ, OPSİYONEL — yoksa `layoutStyle ?? "bordered"` bugünkü görünümle piksel-eş davranır. */
+    layoutStyle?: AccordionLayoutStyle;
+  };
 }
 
 export interface TabItem {
@@ -467,10 +514,56 @@ export interface PricingPlan {
   buttonHref: string;
 }
 
+/** `pricing-table.billingInterval` — YENİ (mimar §2.4). v1'de SALT GÖRSEL bir etikettir
+ *  ("Aylık"/"Yıllık" rozeti); interaktif geçiş anahtarı KAPSAM DIŞIDIR. Yoksa hiçbir ek etiket
+ *  render EDİLMEZ. */
+export type PricingBillingInterval = "monthly" | "yearly";
+
 /** Fiyatlandırma Tablosu — yan yana plan kartları. */
 export interface PricingTableBlock extends BaseNode {
   type: "pricing-table";
-  data: { plans: PricingPlan[] };
+  data: { plans: PricingPlan[]; billingInterval?: PricingBillingInterval };
+}
+
+/**
+ * Google Harita — YENİ (mimar §2.1, `.claude/architect-scope-google-map-corporate-blocks.md`).
+ * Backend karşılığı: `backend/src/modules/pages/pages.schemas.ts::GoogleMapBlockDataSchema` —
+ * alan adları/opsiyonellik BİREBİR aynı olmak ZORUNDADIR.
+ *
+ * İki kaynak modu (bağlayıcı davranış, bkz. `lib/page-builder/map-embed.ts::getMapEmbedUrl`):
+ * `embedUrl` DOLU ve security-review §2 NİHAİ regex'inden GEÇİYORSA → aynen kullanılır. Aksi
+ * halde `address` DOLU ise sabit bir şablondan embed URL'i İNŞA EDİLİR. İkisi de yoksa/geçersizse
+ * `getMapEmbedUrl` `null` döner, hiçbir şey render EDİLMEZ (throw YOK).
+ *
+ * `apiKey` alanı KASITLI OLARAK YOKTUR (mimar §3.1, security-review §1 ONAYLANDI) — `Page.blocks`
+ * public API'de ham JSON döner, bu yüzeyde hiçbir sır tutulamaz.
+ */
+export type GoogleMapStyle = "standard" | "dark" | "silver" | "retro";
+
+export interface GoogleMapHeight {
+  value: number;
+  unit: "px" | "vh";
+}
+
+export interface GoogleMapBlock extends BaseNode {
+  type: "google-map";
+  data: {
+    /** Mod A. Google'ın "Haritayı paylaş → Haritayı yerleştir" iframe src'i. security-review §2
+     *  beyaz listesinden GEÇMEK ZORUNDA. Doluysa `address`/`zoom` URL inşasında KULLANILMAZ. */
+    embedUrl?: string;
+    /** Mod B (TERCİH EDİLEN). Serbest adres metni — embed URL'i render anında `map-embed.ts`
+     *  tarafından SABİT bir şablondan İNŞA EDİLİR (`video-embed.ts` ile AYNI desen). */
+    address?: string;
+    /** Yalnızca Mod B'de anlamlıdır (Mod A'da zoom, `pb=` parametresinin içine gömülüdür).
+     *  1..20, yoksa render `zoom ?? GOOGLE_MAP_DEFAULT_ZOOM` (15). */
+    zoom?: number;
+    /** Yoksa render `{ value: GOOGLE_MAP_DEFAULT_HEIGHT_PX, unit: "px" }` (400px). */
+    height?: GoogleMapHeight;
+    /** Yoksa `mapStyle ?? "standard"`. */
+    mapStyle?: GoogleMapStyle;
+    /** iframe `title` niteliği + görsel etiket. */
+    markerTitle?: string;
+  };
 }
 
 /**
@@ -503,7 +596,8 @@ export type ContentBlock =
   | LogoMarqueeBlock
   | SkillBarBlock
   | TeamBlock
-  | AdvancedSliderBlock;
+  | AdvancedSliderBlock
+  | GoogleMapBlock;
 
 /** @deprecated v2 adı — yalnızca geçiş sırasında import kırılmasın diye. Yeni kodda `ContentBlock` kullanın. */
 export type LeafBlock = ContentBlock;
@@ -752,6 +846,27 @@ export const MIN_CONTAINER_MAX_WIDTH = 320;
 export const MAX_CONTAINER_MAX_WIDTH = 1920;
 /** Galeri bloğu başına en fazla görsel — DEĞİŞMEDİ. */
 export const GALLERY_MAX_IMAGES = 30;
+
+/**
+ * Google Harita — backend `pages.schemas.ts` ile SAYISAL OLARAK BİREBİR AYNI (mimar §2.1,
+ * dosya başlığındaki §5 uyarısı bağlayıcıdır). Şemada `.min()`/`.max()`/`.default()` argümanı
+ * olarak KULLANILMAYAN (`GOOGLE_MAP_DEFAULT_ZOOM`/`GOOGLE_MAP_MIN_HEIGHT_PX`/
+ * `GOOGLE_MAP_DEFAULT_HEIGHT_PX`) sabitler de dahil — burada render-time `??` varsayılanları ve
+ * editör UI sınırları için kullanılır.
+ */
+export const GOOGLE_MAP_MIN_ZOOM = 1;
+export const GOOGLE_MAP_MAX_ZOOM = 20;
+export const GOOGLE_MAP_DEFAULT_ZOOM = 15;
+export const GOOGLE_MAP_MIN_HEIGHT_PX = 120;
+export const GOOGLE_MAP_MAX_HEIGHT_PX = 2000;
+export const GOOGLE_MAP_DEFAULT_HEIGHT_PX = 400;
+export const GOOGLE_MAP_MAX_HEIGHT_VH = 100;
+export const GOOGLE_MAP_MAX_ADDRESS_LENGTH = 300;
+export const GOOGLE_MAP_MAX_MARKER_TITLE_LENGTH = 120;
+/** UI-ONLY sabit — backend'de TANIMLI DEĞİLDİR (ui-designer §1.1). `vh` biriminde editör input'unun
+ *  alt sınırı; backend'in teknik tavanı `value.min(1)`dir, bu yalnızca kullanılamaz bir harita
+ *  üretmeyi engelleyen bir UX sınırıdır. */
+export const GOOGLE_MAP_UI_MIN_HEIGHT_VH = 10;
 
 /** Şekilli Bölüm Ayırıcıları — `customWidth`in `MIN/MAX/DEFAULT_CONTAINER_MAX_WIDTH` üçlüsüyle
  *  BİREBİR AYNI isimlendirme kalıbı (backend `pages.schemas.ts` ile SAYISAL OLARAK AYNI olmalı). */

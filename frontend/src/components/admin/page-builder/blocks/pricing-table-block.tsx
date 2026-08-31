@@ -5,7 +5,25 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { newId } from "@/lib/page-builder/registry";
-import { PRICING_MAX_FEATURES, PRICING_MAX_PLANS, type PricingPlan, type PricingTableBlock } from "@/lib/page-builder/types";
+import {
+  PRICING_MAX_FEATURES,
+  PRICING_MAX_PLANS,
+  type PricingBillingInterval,
+  type PricingPlan,
+  type PricingTableBlock,
+} from "@/lib/page-builder/types";
+import { SegmentedToggle } from "./segmented-toggle";
+
+/** `"none"` — UI-ONLY sentinel, `billingInterval`in HİÇ olmaması (`undefined`) hâline eşlenir
+ *  (mimar §2.4: yoksa hiçbir ek etiket render EDİLMEZ). Veri modelinde `"none"` diye bir değer
+ *  YOKTUR (`PricingBillingInterval` yalnızca `"monthly" | "yearly"`). */
+type BillingIntervalOption = PricingBillingInterval | "none";
+
+const BILLING_INTERVAL_OPTIONS: { value: BillingIntervalOption; label: string }[] = [
+  { value: "none", label: "Yok" },
+  { value: "monthly", label: "Aylık" },
+  { value: "yearly", label: "Yıllık" },
+];
 
 function newPlan(): PricingPlan {
   return {
@@ -24,9 +42,13 @@ function newPlan(): PricingPlan {
 export function PricingTableBlockEditor({
   block,
   onChange,
+  simple = false,
 }: {
   block: PricingTableBlock;
   onChange: (block: PricingTableBlock) => void;
+  /** §2.5 tablo B — şablon modunda `billingInterval` (görsel rozet) kilitlidir (mimar §4.5,
+   *  "İstisna yok"). */
+  simple?: boolean;
 }) {
   const plans = block.data.plans;
 
@@ -217,6 +239,19 @@ export function PricingTableBlockEditor({
         <Plus className="h-4 w-4" />
         Plan Ekle
       </Button>
+
+      {!simple && (
+        <div className="space-y-1.5 border-t border-border/60 pt-3">
+          <p className="text-sm font-medium text-foreground">Fatura dönemi rozeti (salt görsel)</p>
+          <SegmentedToggle
+            value={block.data.billingInterval ?? "none"}
+            options={BILLING_INTERVAL_OPTIONS}
+            onChange={(value) =>
+              onChange({ ...block, data: { ...block.data, billingInterval: value === "none" ? undefined : value } })
+            }
+          />
+        </div>
+      )}
     </div>
   );
 }
