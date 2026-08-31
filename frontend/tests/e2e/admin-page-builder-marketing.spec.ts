@@ -146,7 +146,14 @@ test.describe("Pazarlama blokları — public site render (gerçek public URL, a
         await expect(publicPage.getByRole("heading", { name: "Planınızı yükseltin" })).toBeVisible({ timeout: 15_000 });
         await expect(publicPage.getByText("Tüm özelliklere sınırsız erişim.")).toBeVisible();
         await expect(publicPage.getByRole("link", { name: "Planları Gör" })).toHaveAttribute("href", "/fiyatlandirma");
-        await expect(publicPage.getByRole("link", { name: "Bize Ulaşın" })).toHaveAttribute("href", "/iletisim");
+        // `main`e SCOPE EDİLİR — demo şablonun site-geneli header/footer navigasyon CTA'sı
+        // (`backend/src/modules/demo-templates/templates/modern-architecture.ts::headerCtaLabel`)
+        // TESADÜFEN AYNI metni ("Bize Ulaşın") taşıyor; scope'suz sorgu 3 eşleşme (header+CTA+footer)
+        // bulup strict-mode ihlaliyle patlıyordu — bu bloğun KENDİ linki yalnızca `<main>` içinde.
+        await expect(publicPage.getByRole("main").getByRole("link", { name: "Bize Ulaşın" })).toHaveAttribute(
+          "href",
+          "/iletisim"
+        );
       } finally {
         await publicContext.close();
       }
