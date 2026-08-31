@@ -69,6 +69,26 @@ function clampZoom(zoom: number | undefined): number {
 }
 
 /**
+ * Kullanıcının Google Haritalar → Paylaş → "Haritayı yerleştir" panelinden kopyaladığı TÜM
+ * `<iframe src="...">` HTML snippet'inden çıplak embed URL'ini çıkarır. Backend
+ * `pages.schemas.ts::extractGoogleMapEmbedUrlFromInput` ile AYNEN, karakter karakter senkron
+ * tutulmalıdır — TEK kaynak budur, davranış farklılığı istemci/sunucu arasında tutarsız
+ * doğrulamaya yol açar. Bulunan aday yine de yukarıdaki değişmeyen beyaz liste regex'inden
+ * geçmek ZORUNDADIR — bu fonksiyon yalnızca çıkarım yapar, doğrulamayı gevşetmez.
+ */
+export function extractGoogleMapEmbedUrlFromInput(raw: string): string {
+  const trimmed = raw.trim();
+  if (!/<iframe/i.test(trimmed)) return trimmed;
+  const match = trimmed.match(/<iframe[^>]*\ssrc=["']([^"']+)["']/i);
+  const srcValue = match?.[1];
+  if (!srcValue) return trimmed;
+  // Yalnızca `&amp;` çözülür (Google'ın snippet'i çoklu query param'da `&`'yi bu şekilde kaçırır);
+  // genel HTML-entity decode'u (`&lt;`, `&quot;`, sayısal varlıklar vb.) yukarıdaki beyaz liste
+  // regex'i için yeni bir bypass yüzeyi açar, bu yüzden BİLİNÇLİ olarak yapılmaz.
+  return srcValue.replace(/&amp;/g, "&").trim();
+}
+
+/**
  * İki kaynak modu (mimar §2.1, bağlayıcı davranış):
  * - `embedUrl` DOLU ve yukarıdaki NİHAİ regex'ten GEÇİYORSA → aynen kullanılır.
  * - Aksi halde `address` DOLU ise → sabit şablon: `https://www.google.com/maps?q=<address>&z=<zoom>&hl=<locale>&output=embed`

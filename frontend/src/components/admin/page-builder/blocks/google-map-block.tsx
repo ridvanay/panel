@@ -4,7 +4,13 @@ import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
-import { getMapEmbedUrl, MAP_IFRAME_REFERRER_POLICY, MAP_IFRAME_SANDBOX, MAP_STYLE_FILTER } from "@/lib/page-builder/map-embed";
+import {
+  extractGoogleMapEmbedUrlFromInput,
+  getMapEmbedUrl,
+  MAP_IFRAME_REFERRER_POLICY,
+  MAP_IFRAME_SANDBOX,
+  MAP_STYLE_FILTER,
+} from "@/lib/page-builder/map-embed";
 import {
   GOOGLE_MAP_DEFAULT_HEIGHT_PX,
   GOOGLE_MAP_DEFAULT_ZOOM,
@@ -146,7 +152,14 @@ export function GoogleMapBlockEditor({
                 rows={3}
                 className="text-xs"
                 value={block.data.embedUrl ?? ""}
-                onChange={(e) => updateData({ embedUrl: e.target.value })}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  // Kullanıcı tüm `<iframe>` snippet'ini yapıştırdıysa çıplak embed URL'i çıkarılır
+                  // ve state'e ÇIKARILMIŞ hâli yazılır (textarea temiz URL'i gösterir — geri bildirim).
+                  // Bare bir URL yazılıyor/düzenleniyorsa davranış DEĞİŞMEZ.
+                  const value = /<iframe/i.test(raw) ? extractGoogleMapEmbedUrlFromInput(raw) : raw;
+                  updateData({ embedUrl: value });
+                }}
               />
             )}
           </Field>

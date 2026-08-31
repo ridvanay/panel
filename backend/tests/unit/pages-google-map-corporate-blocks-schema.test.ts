@@ -55,6 +55,72 @@ describe("google-map — embedUrl beyaz listesi (mimar §2/§3.2, security-revie
   });
 });
 
+describe("google-map — embedUrl iframe snippet çıkarımı (extractGoogleMapEmbedUrlFromInput ~L913-923, z.preprocess ile şemaya bağlı)", () => {
+  it("tam Google 'Haritayı yerleştir' iframe snippet'i kabul edilir, normalize edilmiş embedUrl ham HTML DEĞİL, çıkarılmış çıplak URL'dir", () => {
+    const iframeSnippet =
+      '<iframe src="https://www.google.com/maps/embed?pb=!1m18!2m0" width="600" height="450" style="border:0;" allowfullscreen="" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>';
+    const result = CreatePageRequestSchema.safeParse(pageWithBlock(googleMapBlock({ embedUrl: iframeSnippet })));
+    expect(result.success).toBe(true);
+    if (result.success) {
+      const block = result.data.blocks?.[0] as unknown as { data: Record<string, unknown> };
+      expect(block.data.embedUrl).toBe("https://www.google.com/maps/embed?pb=!1m18!2m0");
+    }
+  });
+
+  it("tek tırnaklı src='...' varyantı kabul edilir", () => {
+    const iframeSnippet = "<iframe src='https://www.google.com/maps/embed?pb=!1m18!2m0' width=\"600\" height=\"450\"></iframe>";
+    const result = CreatePageRequestSchema.safeParse(pageWithBlock(googleMapBlock({ embedUrl: iframeSnippet })));
+    expect(result.success).toBe(true);
+    if (result.success) {
+      const block = result.data.blocks?.[0] as unknown as { data: Record<string, unknown> };
+      expect(block.data.embedUrl).toBe("https://www.google.com/maps/embed?pb=!1m18!2m0");
+    }
+  });
+
+  it("&amp; ile kaçırılmış çoklu query param'lı /v1/place URL'i kabul edilir, çıkarılan embedUrl'de GERÇEK & karakterleri vardır (&amp; DEĞİL)", () => {
+    const iframeSnippet =
+      '<iframe src="https://www.google.com/maps/embed/v1/place?key=x&amp;q=Istanbul&amp;zoom=12" width="600" height="450"></iframe>';
+    const result = CreatePageRequestSchema.safeParse(pageWithBlock(googleMapBlock({ embedUrl: iframeSnippet })));
+    expect(result.success).toBe(true);
+    if (result.success) {
+      const block = result.data.blocks?.[0] as unknown as { data: Record<string, unknown> };
+      expect(block.data.embedUrl).toBe("https://www.google.com/maps/embed/v1/place?key=x&q=Istanbul&zoom=12");
+    }
+  });
+
+  it("KRİTİK regresyon: iframe içine sarılmış beyaz liste DIŞI bir URL çıkarımdan SONRA da reddedilir (extraction whitelist'i BYPASS ETMEZ)", () => {
+    const iframeSnippet = '<iframe src="https://evil.com/maps/embed?x=1"></iframe>';
+    const result = CreatePageRequestSchema.safeParse(pageWithBlock(googleMapBlock({ embedUrl: iframeSnippet })));
+    expect(result.success).toBe(false);
+  });
+
+  it("src niteliği olmayan bir <iframe> etiketi reddedilir (orijinal çöp metin regex'i geçemez)", () => {
+    const iframeSnippet = '<iframe width="600" height="450" allowfullscreen=""></iframe>';
+    const result = CreatePageRequestSchema.safeParse(pageWithBlock(googleMapBlock({ embedUrl: iframeSnippet })));
+    expect(result.success).toBe(false);
+  });
+
+  it("yalnızca '<iframe' alt dizisini içeren ama geçerli src= taşımayan bozuk metin reddedilir", () => {
+    const brokenSnippet = "<iframe this is not real html no src attribute at all";
+    const result = CreatePageRequestSchema.safeParse(pageWithBlock(googleMapBlock({ embedUrl: brokenSnippet })));
+    expect(result.success).toBe(false);
+  });
+
+  it("regresyon: iframe sarmalayıcısı OLMADAN çıplak URL hâlâ eskisi gibi davranır — kabul", () => {
+    const result = CreatePageRequestSchema.safeParse(
+      pageWithBlock(googleMapBlock({ embedUrl: "https://www.google.com/maps/embed?pb=!1m18!2m0" }))
+    );
+    expect(result.success).toBe(true);
+  });
+
+  it("regresyon: iframe sarmalayıcısı OLMADAN çıplak URL hâlâ eskisi gibi davranır — ret", () => {
+    const result = CreatePageRequestSchema.safeParse(
+      pageWithBlock(googleMapBlock({ embedUrl: "https://evil.com/maps/embed?x=1" }))
+    );
+    expect(result.success).toBe(false);
+  });
+});
+
 describe("google-map — zoom (security-review §3: aralık dışı → 422, CLAMP YOK)", () => {
   it("zoom = 1 (alt sınır) kabul edilir", () => {
     const result = CreatePageRequestSchema.safeParse(pageWithBlock(googleMapBlock({ zoom: 1 })));

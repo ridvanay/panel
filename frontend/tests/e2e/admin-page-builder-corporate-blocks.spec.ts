@@ -248,6 +248,41 @@ test.describe("Round-trip — yeni alanlar admin editöründe kaybolmuyor (regre
       await deletePagePermanently(token, pageId);
     }
   });
+
+  test("google-map (Mod A) — 'Yerleştirme Kodu' alanına TAM iframe HTML snippet'i yapıştırılınca alan anında temizlenmiş çıplak URL'i gösterir ve bu hâliyle kaydedilip yeniden yüklemede korunur", async () => {
+    test.setTimeout(60_000);
+    const { pageId } = await createHostPage("iframe-paste");
+    try {
+      await openEditorAndRemoveDefaultBlock(pageId);
+      await page.getByRole("button", { name: "Yeni Konteyner Ekle" }).click();
+      await page.getByRole("button", { name: "Tek Sütun" }).click();
+      await page.getByRole("button", { name: "Konteynere blok ekle" }).click();
+      await page.getByRole("tab", { name: "Medya & İnteraktif" }).click();
+      await page.getByRole("menuitem", { name: "Google Harita", exact: true }).click();
+
+      await page.getByRole("button", { name: "Yerleştirme Kodu", exact: true }).click();
+      const embedTextbox = page.getByRole("textbox", { name: "Google Haritayı Yerleştir kodu" });
+      const iframeSnippet =
+        '<iframe src="https://www.google.com/maps/embed?pb=!1m18!2m0" width="600" height="450" style="border:0;" allowfullscreen="" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>';
+      await embedTextbox.fill(iframeSnippet);
+      // Bileşenin `onChange`'i (`google-map-block.tsx` ~L160) yapıştırılan değeri ANINDA
+      // `extractGoogleMapEmbedUrlFromInput` ile temizler — textarea ham HTML'i DEĞİL, çıkarılmış
+      // çıplak URL'i göstermeli (kullanıcı geri bildirimi, mimar §2.1 yorumu).
+      await expect(embedTextbox).toHaveValue("https://www.google.com/maps/embed?pb=!1m18!2m0");
+
+      // Açıkça "Kaydet" (bu editör autosave DEĞİL — `admin-page-builder-containers.spec.ts::
+      // saveAndExpectSuccess` ile AYNI desen), sonra sayfayı yeniden yükle (kalıcılık kanıtı).
+      await page.getByRole("button", { name: "Kaydet", exact: true }).click();
+      await expect(page.getByText("Sayfa kaydedildi.").last()).toBeVisible({ timeout: 10_000 });
+      await openEditor(pageId);
+      await expect(page.getByRole("button", { name: "Yerleştirme Kodu", exact: true })).toHaveAttribute("aria-pressed", "true");
+      await expect(page.getByRole("textbox", { name: "Google Haritayı Yerleştir kodu" })).toHaveValue(
+        "https://www.google.com/maps/embed?pb=!1m18!2m0"
+      );
+    } finally {
+      await deletePagePermanently(token, pageId);
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------

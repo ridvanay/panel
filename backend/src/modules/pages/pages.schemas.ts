@@ -904,14 +904,35 @@ const GOOGLE_MAP_MAX_MARKER_TITLE_LENGTH = 120;
 const GOOGLE_MAP_EMBED_URL_RE =
   /^https:\/\/(?:www\.)?google\.com\/maps\/embed(?:\/v1\/(?:place|view|directions|search|streetview))?\?[^\s"'<>`\\]+$/;
 
-const GoogleMapEmbedUrlSchema = z
-  .string()
-  .min(1)
-  .max(2048)
-  .regex(
-    GOOGLE_MAP_EMBED_URL_RE,
-    "Yalnızca Google'ın \"Haritayı paylaş → Haritayı yerleştir\" panelinden alınan https://www.google.com/maps/embed... bağlantıları kabul edilir."
-  );
+/**
+ * Kullanıcılar çoğunlukla Google'ın "Haritayı yerleştir" panelinden bare URL yerine tüm
+ * `<iframe src="...">` HTML snippet'ini yapıştırıyor — bu yardımcı fonksiyon yalnızca `src`
+ * değerini çıkarır, NİHAİ doğrulamayı DEĞİŞTİRMEZ: çıkarılan aday hâlâ aşağıdaki
+ * `GOOGLE_MAP_EMBED_URL_RE` ile aynen doğrulanır.
+ */
+function extractGoogleMapEmbedUrlFromInput(raw: string): string {
+  const trimmed = raw.trim();
+  if (!/<iframe/i.test(trimmed)) return trimmed;
+  const match = trimmed.match(/<iframe[^>]*\ssrc=["']([^"']+)["']/i);
+  const srcValue = match?.[1];
+  if (!srcValue) return trimmed;
+  // Yalnızca `&amp;` çözülür (Google'ın snippet'i çoklu query param'da `&`'yi bu şekilde kaçırır);
+  // genel HTML-entity decode'u (`&lt;`, `&quot;`, sayısal varlıklar vb.) aşağıdaki beyaz liste
+  // regex'i için yeni bir bypass yüzeyi açar, bu yüzden BİLİNÇLİ olarak yapılmaz.
+  return srcValue.replace(/&amp;/g, "&").trim();
+}
+
+const GoogleMapEmbedUrlSchema = z.preprocess(
+  (val) => (typeof val === "string" ? extractGoogleMapEmbedUrlFromInput(val) : val),
+  z
+    .string()
+    .min(1)
+    .max(2048)
+    .regex(
+      GOOGLE_MAP_EMBED_URL_RE,
+      "Yalnızca Google'ın \"Haritayı paylaş → Haritayı yerleştir\" panelinden alınan https://www.google.com/maps/embed... bağlantıları kabul edilir."
+    )
+);
 
 /**
  * `{ value, unit }` — `ContainerLengthSchema`'nın YENİDEN KULLANILMAMASI bilinçli (mimar §5/3): o
