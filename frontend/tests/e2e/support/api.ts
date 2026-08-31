@@ -102,15 +102,60 @@ export async function getFixtureUserToken(email: string, password: string, name:
   return body.data.tokens.accessToken;
 }
 
-/** Diğer spec dosyalarının kullanması gereken yol — `auth.setup.ts`'in yazdığı token'ı okur. */
+/**
+ * JWT `exp` claim'ini (saniye, epoch) İMZA DOĞRULAMADAN okur — yalnızca test fixture'ının kendi
+ * önbelleklediği, zaten backend'in ürettiği token'ın süresini kontrol etmek için (bkz.
+ * `getCachedAdminSession()` başlığı); güvenlik kararı VERMEZ, yalnızca "yeniden login gerekiyor
+ * mu" sorusuna cevap arar. Ayrıştırılamazsa (beklenmedik biçim) `null` döner — çağıran taraf bunu
+ * "süresi dolmuş" gibi ele alıp güvenli tarafta kalır (yeniden login olur).
+ */
+function decodeJwtExpirySeconds(token: string): number | null {
+  try {
+    const payloadSegment = token.split(".")[1];
+    if (!payloadSegment) return null;
+    const json = Buffer.from(payloadSegment, "base64url").toString("utf-8");
+    const payload = JSON.parse(json) as { exp?: number };
+    return typeof payload.exp === "number" ? payload.exp : null;
+  } catch {
+    return null;
+  }
+}
+
+/** `getCachedAdminSession()`'ın süre kontrolü için güvenlik payı — `backend/.env.e2e`deki
+ *  `ACCESS_TOKEN_TTL_MIN=15`e göre KÜÇÜK tutulur (yalnızca gerçekten süresi dolmaya yakın bir
+ *  token'ı erken yenilemek içindir, her çağrıda gereksiz yeniden-login TETİKLEMEZ). */
+const TOKEN_REFRESH_SAFETY_MARGIN_SEC = 120;
+
+/**
+ * Diğer spec dosyalarının kullanması gereken yol — `auth.setup.ts`'in yazdığı token'ı okur.
+ *
+ * qa-agent bulgusu: tüm suite TEK bir worker'da SIRAYLA çalışır (`playwright.config.ts`,
+ * `workers: 1`) ve `auth.setup.ts` yalnızca BİR KEZ, en başta login olur. Suite'in toplam süresi
+ * (`backend/.env.e2e`deki `ACCESS_TOKEN_TTL_MIN=15`i aşan ~16dk+) `ensureAdminSession()`'ın
+ * yazdığı access token'ın SESSİZCE süresinin dolmasına, ardından her fixture çağrısının
+ * `401 Geçersiz veya süresi dolmuş erişim token'ı` ile başarısız olmasına yol açıyordu (suite
+ * büyüdükçe daha da kötüleşir — TTL'i artırmak yalnızca sorunu ERTELER). Bu fonksiyon artık
+ * önbellekteki token'ın `exp`ini okuyup süresi dolmaya yakınsa (`TOKEN_REFRESH_SAFETY_MARGIN_SEC`
+ * içinde) VEYA ayrıştırılamıyorsa `ensureAdminSession()` ile SESSİZCE yeniden login olup önbelleği
+ * tazeler — `/auth/login`in sabit 5 istek/dk kotasına (bkz. dosya başı) katkısı, yalnızca gerçekten
+ * süresi dolmaya yakın olduğunda tetiklendiği için ihmal edilebilir düzeydedir.
+ */
 export async function getCachedAdminSession(): Promise<AdminSession> {
+  let cached: AdminSession;
   try {
     const raw = await readFile(TOKEN_CACHE_PATH, "utf-8");
-    return JSON.parse(raw) as AdminSession;
+    cached = JSON.parse(raw) as AdminSession;
   } catch {
     // "setup" projesi hiç çalışmadıysa (örn. dosya tek başına çalıştırıldıysa) — fallback.
     return ensureAdminSession();
   }
+
+  const expSeconds = decodeJwtExpirySeconds(cached.accessToken);
+  const nowSeconds = Date.now() / 1000;
+  const isExpiringSoon = expSeconds === null || expSeconds - nowSeconds <= TOKEN_REFRESH_SAFETY_MARGIN_SEC;
+  if (!isExpiringSoon) return cached;
+
+  return ensureAdminSession(cached.email, cached.password);
 }
 
 function authHeaders(token: string) {
