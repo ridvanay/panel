@@ -69,6 +69,17 @@ const EnvSchema = z.object({
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
   RATE_LIMIT_WINDOW: z.string().default("1 minute"),
 
+  // `auth.routes.ts::AUTH_RATE_LIMIT` — login/register/2FA/parola sıfırlama gibi hassas uçlara
+  // özel, `RATE_LIMIT_MAX`'tan BAĞIMSIZ dakikalık limit. Varsayılan (5) bugünkü sabit değerle
+  // BİREBİR AYNI — prod/dev/`.env.example` bu değişkeni HİÇ tanımlamaz, davranış değişmez.
+  // Yalnızca `backend/.env.e2e` (security-agent onayı, `.claude/...` — qa-agent bulgusu: 28
+  // spec dosyasının `beforeAll`'da yaptığı gerçek UI login'ler 17dk'lık sıralı bir koşuda 5/dk
+  // sınırını aşıp `429` ile testleri zincirleme başarısız kılıyordu) bunu 50'ye yükseltir —
+  // mekanizmanın kendisi yine gözlemlenebilir kalsın diye "asla tetiklenmeyecek" bir değere
+  // DEĞİL, yalnızca gerçekçi test yüküne yetecek kadar yükseltilir. `.max(1000)` — yanlışlıkla
+  // aşırı büyük bir değer (`999999` gibi) yazılıp kontrolün fiilen etkisiz kılınmasına karşı üst sınır.
+  AUTH_RATE_LIMIT_MAX: z.coerce.number().int().positive().max(1000).default(5),
+
   // Medya depolama — "local" (varsayılan, diske yazar) veya "s3" (S3/MinIO/R2 uyumlu nesne depolama).
   STORAGE_DRIVER: z.enum(["local", "s3"]).default("local"),
   S3_BUCKET: z.string().optional(),

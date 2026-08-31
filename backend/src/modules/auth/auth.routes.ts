@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
+import { env } from "../../config/env";
 import { authenticate } from "../../middleware/authenticate";
 import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema } from "../../schemas/common";
@@ -30,7 +31,9 @@ import {
 // "XXXX-XXXX" biçimli yedek kod deseni (bkz. lib/backup-codes.ts).
 const BACKUP_CODE_PATTERN = /^[A-Z0-9]{4}-[A-Z0-9]{4}$/i;
 
-const AUTH_RATE_LIMIT = { max: 5, timeWindow: "1 minute" };
+// `max` — bkz. `config/env.ts::AUTH_RATE_LIMIT_MAX` (varsayılan 5, prod/dev'de bugünkü sabit
+// değerle BİREBİR AYNI; yalnızca `backend/.env.e2e` test amaçlı yükseltir — security-agent onaylı).
+const AUTH_RATE_LIMIT = { max: env.AUTH_RATE_LIMIT_MAX, timeWindow: "1 minute" };
 
 export default async function authRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
