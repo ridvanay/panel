@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="900" viewBox="0 0 1200 900">
+  <title>Modern Mimarlık – Portföy Kapağı 3 (Kolonat)</title>
+  <defs>
+    <radialGradient id="bg3" cx="50%" cy="45%" r="75%">
+      <stop offset="0%" stop-color="#2B2E32"/>
+      <stop offset="100%" stop-color="#1F2124"/>
+    </radialGradient>
+  </defs>
+  <rect x="0" y="0" width="1200" height="900" fill="url(#bg3)"/>
+  <!-- ince çizgi bina siluet motifu: kolonat / sütun sırası -->
+  <g stroke="#C9A227" stroke-width="2" fill="none" opacity="0.5" stroke-linejoin="round" stroke-linecap="round">
+    <line x1="330" y1="330" x2="870" y2="330"/>
+    <line x1="330" y1="330" x2="330" y2="700"/>
+    <line x1="440" y1="330" x2="440" y2="700"/>
+    <line x1="550" y1="330" x2="550" y2="700"/>
+    <line x1="650" y1="330" x2="650" y2="700"/>
+    <line x1="760" y1="330" x2="760" y2="700"/>
+    <line x1="870" y1="330" x2="870" y2="700"/>
+    <line x1="300" y1="700" x2="900" y2="700"/>
+    <line x1="300" y1="300" x2="900" y2="300"/>
+  </g>
+</svg>

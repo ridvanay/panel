@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="720" viewBox="0 0 1920 720">
+  <title>Modern Mimarlık – CTA Banner</title>
+  <defs>
+    <linearGradient id="ctaRight" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#1F2124"/>
+      <stop offset="100%" stop-color="#2B2E32"/>
+    </linearGradient>
+  </defs>
+  <!-- sol/alt taraf TAMAMEN düz koyu (secondaryColor) — üstüne beyaz başlık/pill buton binecek -->
+  <rect x="0" y="0" width="1920" height="720" fill="#1F2124"/>
+  <!-- sağ üçte bir: hafif ton geçişli panel + ince çizgi skyline motifi -->
+  <rect x="1280" y="0" width="640" height="720" fill="url(#ctaRight)"/>
+  <g stroke="#C9A227" stroke-width="2" fill="none" opacity="0.4" stroke-linejoin="round" stroke-linecap="round">
+    <rect x="1400" y="260" width="90" height="380"/>
+    <rect x="1510" y="180" width="110" height="460"/>
+    <rect x="1640" y="320" width="90" height="320"/>
+    <rect x="1750" y="380" width="100" height="260"/>
+    <line x1="1400" y1="320" x2="1490" y2="320"/>
+    <line x1="1400" y1="380" x2="1490" y2="380"/>
+    <line x1="1400" y1="440" x2="1490" y2="440"/>
+    <line x1="1400" y1="500" x2="1490" y2="500"/>
+    <line x1="1400" y1="560" x2="1490" y2="560"/>
+    <line x1="1510" y1="240" x2="1620" y2="240"/>
+    <line x1="1510" y1="300" x2="1620" y2="300"/>
+    <line x1="1510" y1="360" x2="1620" y2="360"/>
+    <line x1="1510" y1="420" x2="1620" y2="420"/>
+    <line x1="1510" y1="480" x2="1620" y2="480"/>
+    <line x1="1510" y1="540" x2="1620" y2="540"/>
+    <line x1="1370" y1="640" x2="1860" y2="640"/>
+  </g>
+  <!-- ince altın vurgu çizgisi: banner'ı ikiye ayıran zarif ayraç -->
+  <line x1="1280" y1="0" x2="1280" y2="720" stroke="#C9A227" stroke-width="1" opacity="0.3"/>
+</svg>

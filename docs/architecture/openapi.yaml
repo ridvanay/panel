@@ -315,6 +315,45 @@ tags:
       **Modül anahtarı YOKTUR** — `MODULE_REGISTRY`'ye EKLENMEZ (`products`/`portfolio`
       gibi kapatılabilir DEĞİL). Gerekçe: kapatıldığında yayındaki sayfaların hero alanı
       sessizce boşalırdı (§1.6).
+  - name: DemoTemplates
+    description: >
+      **1 Tıkla Hazır Demo / Şablon İçe Aktarıcı** (`/admin/demo-templates`) —
+      önceden tanımlı bir "demo şablonunu" (görünüm + site ayarları + navigasyon +
+      footer + sosyal linkler + portföy + slider + sayfa) tek istekte veritabanına
+      uygular. Bağlayıcı karar dokümanı:
+      `.claude/architect-scope-demo-template-import.md`.
+
+
+      **`Import` tag'i ile KARIŞTIRILMAZ (farklı kavram):** `/admin/import/*`
+      KULLANICI VERİSİ içe aktarır (WXR/CSV/ZIP, `ImportJob` kuyruğu, dosya yükleme,
+      retention). Bu modül ise **kod içi statik bir tanımı** DB'ye uygular — yükleme
+      yok, kuyruk yok, kullanıcı dosyası yok. `ImportJobType` enum'ına değer
+      EKLENMEZ (§1.2). Ayrıca `SiteTemplate` enum'u (`SHOWCASE`/`COMMERCE`/
+      `PORTFOLIO`, yalnızca modül ÖNERİSİ ipucu), `PageEditMode.TEMPLATE` (sayfa
+      düzenleyici standart modu) ve `EmailTemplate` ile de İLGİSİZDİR — bu yüzden
+      yol `/admin/templates` DEĞİL, `/admin/demo-templates`tir (§1.1).
+
+
+      **Şablon TANIMI DB'de DEĞİL, kod içi statik bir registry'dedir**
+      (`modules/demo-templates/registry.ts`) — `MODULE_REGISTRY` /
+      `APPEARANCE_PRESETS` ile AYNI patern. DB'de yalnızca **uygulanmışlık işareti**
+      tutulur (`DemoTemplateImport`, tek tablo).
+
+
+      **Yıkıcılık (bağlayıcı, §6.1):** `SiteAppearance` ve `SiteSettings`'in 5 alanı
+      ÜZERİNE YAZILIR; `NavigationItem`, `FooterColumn`+`FooterLink`, `SocialLink`
+      **TAMAMEN DEĞİŞTİRİLİR** (`PUT /admin/navigation` ile aynı tam-replace
+      semantiği). `Page`/`Slider`/`PortfolioItem`/`Media` ise yalnızca **EKLENİR** —
+      bir demo şablonu kullanıcı içeriğini ASLA SİLMEZ.
+
+
+      **Yetki (bağlayıcı):** `GET /admin/demo-templates` panel kapısıdır
+      (ADMIN/MANAGER/EDITOR — yanıt statik registry'dir, sıfır kullanıcı verisi
+      taşır; emsal `GET /admin/appearance/presets`). **`POST .../import` yalnızca
+      ADMIN'dir**: işlem `SiteSettings.homePageId`'yi yazar ve `PATCH /admin/settings`
+      zaten `x-site-rbac`'te MANAGER'ın dışlandığı **(a) ayrıcalık yükseltme yüzeyi**
+      kategorisindedir — MANAGER'a bu ucu vermek kapalı bir kapıyı yan pencereden
+      açmak olurdu.
   - name: Cart
     description: >
       Misafir alışveriş sepeti (`/cart`) — bkz. ARCHITECTURE.md §10.9.3. Kimlik
@@ -6179,6 +6218,155 @@ paths:
                       data: { $ref: "#/components/schemas/PublicSlider" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /admin/demo-templates:
+    get:
+      tags: [DemoTemplates]
+      summary: Hazır demo şablonlarını listele — statik registry (SiteRole=ADMIN/MANAGER/EDITOR)
+      description: >
+        Kod içi statik `modules/demo-templates/registry.ts` listesi + her şablon için
+        DB'deki uygulanmışlık işareti (`DemoTemplateImport`). `MODULE_REGISTRY` ve
+        `APPEARANCE_PRESETS` ile AYNI patern: TANIM kodda, DURUM veritabanında.
+
+
+        **Şablonun TAM içeriği (blok ağacı, katmanlar, metinler) bu yanıtta DÖNMEZ** —
+        yalnızca panelde kart göstermeye yetecek özet + `contents` sayıları döner.
+        Yüzlerce KB'lık blok JSON'unu panele göndermek hiçbir arayüz ihtiyacına
+        karşılık gelmezdi. Ayrı bir "detay" ucu da YOKTUR (aynı statik nesne için
+        ikinci bir serileştirme yolu üretirdi).
+
+
+        Okuma eşiği panel kapısıdır: yanıt statik tanımdır, sıfır kullanıcı verisi
+        taşır. `/admin/import/*`'ın "okuma dahil yalnızca ADMIN" kuralı BURAYA
+        UYGULANMAZ (orada okunan şey kullanıcının yüklediği veridir). Arayüz, ADMIN
+        olmayan kullanıcıya ekranı salt-okunur gösterir ve "Uygula" düğmesini
+        devre dışı bırakır.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/DemoTemplateSummary" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/demo-templates/{templateKey}/import:
+    parameters:
+      - $ref: "#/components/parameters/DemoTemplateKey"
+    post:
+      tags: [DemoTemplates]
+      summary: Demo şablonunu siteye uygula (yalnızca SiteRole=ADMIN)
+      description: >
+        Şablonu **tek istekte** veritabanına işler. SENKRONDUR — `ImportJob` kuyruğu
+        KULLANILMAZ (iş yükü sabit ve küçüktür: ~50 satır + ~6 küçük dosya; kuyruk,
+        durum yoklama UI'ı ve iptal semantiği kazandırdığından fazlasını maliyet
+        yazardı).
+
+
+        **İki fazlı çalışır (bağlayıcı, §5.2).** Faz 1: paketlenmiş görseller
+        `storage.save()` ile diske/S3'e yazılır (transaction DIŞINDA, DB'ye HİÇBİR
+        `Media` satırı yazılmaz). Faz 2: `Media` satırları DAHİL tüm DB yazmaları TEK
+        `$transaction` içinde yapılır. Faz 2 herhangi bir noktada başarısız olursa
+        **kısmi durum KALMAZ**: transaction geri alınır ve telafi adımı Faz 1'de
+        yazılan her dosyayı `storage.remove()` ile siler (best-effort; silinemeyen
+        dosya yalnızca `warn` loglanır, hata istemciye olduğu gibi döner). Böylece ne
+        yetim `Media` satırı ne yetim dosya kalır.
+
+
+        **Yıkıcı bölüm (kullanıcı verisi SİLİNİR):** `NavigationItem`,
+        `FooterColumn`+`FooterLink`, `SocialLink` tamamen değiştirilir;
+        `SiteAppearance` ve `SiteSettings`'in beş alanı (`siteName`, `tagline`,
+        `headerCtaLabel`, `headerCtaHref`, `footerCopyrightText`) üzerine yazılır.
+        `siteTemplate`/`logoUrl` YAZILMAZ. **Additive bölüm:** `Page`, `Slider`+`Slide`,
+        `PortfolioCategory`/`PortfolioItem`/`PortfolioImage`, `Media` yalnızca eklenir.
+
+
+        **`confirm: true` ZORUNLUDUR** (eksikse `422`). Yıkıcı ve tek tıkla
+        tetiklenen bir işlemde sunucu tarafı açık niyet ister; arayüzdeki onay
+        diyaloğunun tek başına yeterli sayılmaması bilinçlidir.
+
+
+        **İdempotency:** şablon daha önce uygulanmışsa varsayılan olarak `409
+        CONFLICT` döner (`error.details` = `templateKey`/`importedAt`/`importedBy`/
+        `version`/`pageId`). `force: true` ile geçilir — bu, `DELETE
+        /admin/sliders/{sliderId}?force=true` ile AYNI "409 + force" idiyomudur.
+        `force` ile yeniden uygulandığında yıkıcı bölüm TEKRAR uygulanır, additive
+        bölüm ise **ikinci bir kopya** üretir (slug'lar `-2`, `-3` … ile
+        benzersizleştirilir). **Önceki import'un ürettiği içerik SİLİNMEZ** — o
+        kayıtlar bu arada kullanıcı tarafından düzenlenmiş olabilir ve
+        "şablondan gelen" ile "kullanıcının yazdığı" arasında güvenilir bir ayrım
+        YOKTUR; sessizce silmek veri kaybı olurdu.
+
+
+        **Slug çakışması `409` DEĞİLDİR:** `page`/`slider`/`portfolio` slug'ları
+        çakışırsa otomatik olarak `-2`, `-3` … ile benzersizleştirilir ve durum
+        `warnings[]` ile bildirilir. Kullanıcının sitesinde zaten `anasayfa` adlı bir
+        sayfa olması tamamen normaldir; bunun için import'u reddetmek düşmanca olurdu.
+
+
+        **Modül durumu DEĞİŞTİRİLMEZ:** `portfolio` modülü kapalıysa uç bunu
+        `warnings[]` ile bildirir ama `SiteModule`'a DOKUNMAZ — modül aç/kapa
+        site-geneli bir kill switch'tir (`PATCH /admin/modules/{key}`, ADMIN-only)
+        ve bir şablonun sessizce tetikleyeceği bir şey değildir.
+
+
+        **Hız sınırı: 5 istek / 1 dakika.** Her çağrı ~6 dosya yazar ve uzun bir
+        transaction açar; çift tıklama/otomatik retry `force` ile birlikte N kopya
+        içerik üretebilirdi.
+
+
+        Audit log: `demo_template.import` — `metadata` içinde `templateKey`,
+        `version`, `force`, `createdPageId`, `createdSliderId`, **`previousHomePageId`**
+        (kullanıcının eski ana sayfasını geri alabilmesinin TEK kaydı), `counts` ve
+        `warnings`. Başarısız denemeler de `status: FAILURE` ile loglanır. Başarıdan
+        sonra frontend on-demand ISR revalidation tetiklenir (best-effort).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ImportDemoTemplateRequest" }
+      responses:
+        "201":
+          description: Şablon uygulandı (uyarılar `warnings[]` içinde olabilir — uyarı BAŞARISIZLIK DEĞİLDİR)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/DemoTemplateImportResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: "Registry'de böyle bir `templateKey` yok (`error.code: NOT_FOUND`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "409":
+          description: >
+            Şablon daha önce uygulanmış ve `force: true` gönderilmemiş
+            (`error.code: CONFLICT`). `error.details`: `templateKey`, `importedAt`,
+            `importedBy`, `version`, `pageId`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422":
+          description: >
+            `confirm` eksik/false, VEYA şablon içeriği doğrulamadan geçemedi
+            (`error.code: VALIDATION_ERROR`). Şablon içi `asset:`/`ref:` token'ı
+            çözülemediyse `error.details.unresolvedTokens: string[]` döner —
+            çözülmemiş bir token DB'ye ASLA yazılmaz (yayındaki sitede
+            `<img src="asset:...">` bırakırdı).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
   /cart:
     get:
       tags: [Cart]
@@ -7790,6 +7978,15 @@ components:
       required: true
       description: "ör. products, portfolio (bkz. lib/module-registry.ts::MODULE_REGISTRY)"
       schema: { type: string }
+    DemoTemplateKey:
+      name: templateKey
+      in: path
+      required: true
+      description: >
+        Kod içi statik registry anahtarı (bkz.
+        `modules/demo-templates/registry.ts::DEMO_TEMPLATE_REGISTRY`) — uuid DEĞİL,
+        `ModuleKey` ile AYNI "statik registry'ye referans" paterni.
+      schema: { type: string, pattern: "^[a-z0-9]+(-[a-z0-9]+)*$", example: modern-architecture }
     ProductId:
       name: productId
       in: path
@@ -13356,3 +13553,163 @@ components:
       properties:
         sliderId: { type: string, format: uuid }
       additionalProperties: false
+
+    # -------------------------------------------------------------------------
+    # DemoTemplates — 1 Tıkla Hazır Demo / Şablon İçe Aktarıcı
+    # (bkz. .claude/architect-scope-demo-template-import.md)
+    # -------------------------------------------------------------------------
+
+    DemoTemplateSummary:
+      description: >
+        `GET /admin/demo-templates` öğesi — kod içi statik registry kaydı + DB'deki
+        uygulanmışlık işareti (`DemoTemplateImport`). `AppearancePreset` ile AYNI
+        "statik tanımı API üzerinden sun" paterni.
+
+
+        Şablonun TAM içeriği (blok ağacı/katmanlar/metinler) BU YANITTA DÖNMEZ —
+        panelde kart göstermeye yetecek özet + `contents` sayıları döner.
+      type: object
+      required: [key, version, name, description, previewImageUrl, tags, palette, contents, appliedAt]
+      properties:
+        key: { type: string, example: modern-architecture }
+        version:
+          type: string
+          description: "Semver. Şablon içeriği değişince artırılır; `appliedVersion` ile karşılaştırılarak panelde 'yeni sürüm mevcut' gösterilebilir."
+          example: "1.0.0"
+        name: { type: string, example: "Modern Mimarlık & İnşaat" }
+        description: { type: string, example: "Koyu antrasit + krem paletli, geniş boşluklu kurumsal mimarlık/inşaat sitesi." }
+        previewImageUrl:
+          type: string
+          description: >
+            **Frontend statiği, `Media` DEĞİL** — admin panelinin kendi kromudur:
+            medya kütüphanesine girmez, kullanıcı silemez, import'la yaratılmaz.
+            Göreli yol döner; frontend kendi origin'iyle çözer.
+          example: "/demo-templates/modern-architecture/preview.webp"
+        tags:
+          type: array
+          items: { type: string }
+          example: ["mimarlık", "inşaat", "kurumsal"]
+        palette:
+          type: array
+          description: "Kartta gösterilecek renk örnekleri (hex). Yalnızca SUNUM amaçlıdır — uygulanan gerçek değerler şablonun `appearance` bölümündedir."
+          items: { $ref: "#/components/schemas/HexColor" }
+        contents:
+          type: object
+          description: "Şablon uygulandığında OLUŞACAK kayıt sayıları — onay diyaloğunda gösterilir."
+          required: [pages, sliders, slides, portfolioCategories, portfolioItems, navigationItems, footerColumns, mediaAssets]
+          properties:
+            pages: { type: integer, example: 1 }
+            sliders: { type: integer, example: 1 }
+            slides: { type: integer, example: 3 }
+            portfolioCategories: { type: integer, example: 2 }
+            portfolioItems: { type: integer, example: 4 }
+            navigationItems: { type: integer, example: 9 }
+            footerColumns: { type: integer, example: 4 }
+            mediaAssets: { type: integer, example: 6 }
+        replaces:
+          type: array
+          description: >
+            **Yıkıcılık matrisi (§6.1)** — bu şablon uygulandığında MEVCUT verinin
+            SİLİNECEĞİ/ÜZERİNE YAZILACAĞI alanlar. Arayüz bunu onay diyaloğunda madde
+            madde göstermek ZORUNDADIR. Burada OLMAYAN her şey yalnızca EKLENİR.
+          items:
+            type: string
+            enum: [appearance, siteSettings, navigation, footer, socialLinks, homePage]
+        appliedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: "`null` = bu şablon hiç uygulanmadı. Dolu ise `POST .../import` `force` olmadan `409` döner."
+        appliedVersion:
+          type: string
+          nullable: true
+          description: "En son uygulanan sürüm; `version`'dan küçükse panelde 'şablon güncellendi' rozeti gösterilir."
+        appliedById:
+          type: string
+          format: uuid
+          nullable: true
+        appliedByName:
+          type: string
+          nullable: true
+          description: "Uygulayan kullanıcının görünen adı; kullanıcı silinmişse `null` (FK `onDelete: SetNull`)."
+        appliedPageId:
+          type: string
+          format: uuid
+          nullable: true
+          description: "Şablonun oluşturduğu sayfa — panelde 'Oluşturulan sayfayı aç' bağlantısı için. Sayfa silinirse `null`'a düşer."
+
+    ImportDemoTemplateRequest:
+      type: object
+      required: [confirm]
+      properties:
+        confirm:
+          type: boolean
+          enum: [true]
+          description: >
+            **ZORUNLU ve `true` olmak ZORUNDA** (aksi hâlde `422`). Bu, yıkıcı ve tek
+            tıkla tetiklenen bir işlemdir; arayüzdeki onay diyaloğu tek başına yeterli
+            sayılmaz — sunucu açık niyet ister.
+        force:
+          type: boolean
+          default: false
+          description: >
+            Şablon daha önce uygulanmışsa `409`'u geçer. Yıkıcı bölüm TEKRAR uygulanır;
+            additive bölüm İKİNCİ BİR KOPYA üretir (slug'lar `-2`, `-3` … ile
+            benzersizleştirilir). **Önceki import'un ürettiği içerik SİLİNMEZ** —
+            o kayıtlar bu arada düzenlenmiş olabilir ve "şablondan gelen" ile
+            "kullanıcının yazdığı" güvenilir biçimde ayırt edilemez.
+        setAsHomePage:
+          type: boolean
+          default: true
+          description: >
+            `true` iken `SiteSettings.homePageId` oluşturulan sayfaya yazılır; eski
+            değer `AuditLog.metadata.previousHomePageId`'ye düşer (geri almanın TEK
+            kaydı). `false` iken sayfa oluşturulur ama ana sayfa değiştirilmez.
+      additionalProperties: false
+
+    DemoTemplateImportResult:
+      description: >
+        `POST /admin/demo-templates/{templateKey}/import` yanıtı. Oluşturulan
+        kayıtların ID'lerini ve sayılarını döner; arayüz bunlarla doğrudan
+        `/admin/pages/{pageId}` ve `/admin/sliders/{sliderId}` bağlantıları kurar.
+      type: object
+      required: [templateKey, version, importedAt, pageId, counts, warnings]
+      properties:
+        templateKey: { type: string, example: modern-architecture }
+        version: { type: string, example: "1.0.0" }
+        importedAt: { type: string, format: date-time }
+        pageId:
+          type: string
+          format: uuid
+          description: "Oluşturulan sayfanın id'si."
+        pageSlug:
+          type: string
+          description: "Çakışma nedeniyle benzersizleştirilmiş OLABİLİR (bkz. `warnings`)."
+          example: anasayfa-2
+        setAsHomePage: { type: boolean }
+        sliderId:
+          type: string
+          format: uuid
+          nullable: true
+          description: "Şablon slider getirmiyorsa `null`."
+        counts:
+          type: object
+          description: "Bu çağrıda GERÇEKTEN oluşturulan kayıt sayıları (`DemoTemplateSummary.contents` beklenen sayılardır; bu alan gerçekleşendir)."
+          required: [media, portfolioCategories, portfolioItems, navigationItems, footerColumns, footerLinks, socialLinks, slides]
+          properties:
+            media: { type: integer }
+            portfolioCategories: { type: integer }
+            portfolioItems: { type: integer }
+            navigationItems: { type: integer }
+            footerColumns: { type: integer }
+            footerLinks: { type: integer }
+            socialLinks: { type: integer }
+            slides: { type: integer }
+        warnings:
+          type: array
+          description: >
+            **ENGELLEMEYEN** uyarılar (Türkçe, kullanıcıya olduğu gibi gösterilir).
+            Uyarı BAŞARISIZLIK DEĞİLDİR — yanıt yine `201`'dir. Bilinen üreteçler:
+            `portfolio` modülü kapalı, slug benzersizleştirildi, `force` ile ikinci
+            kopya üretildi.
+          items: { type: string }

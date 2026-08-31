@@ -1360,3 +1360,73 @@ kendi kod tabanı dışında değişiklik YAPMADI (CLAUDE.md madde 6).
   GERÇEK bir tarayıcı e2e'si (yalnızca mock API'li component testi var) bu turda eklenmedi —
   zaman kısıtı; kritik akış zaten `customer-portal-module-toggle.spec.ts` madde 14/22
   içinde API seviyesinde (gerçek `PATCH` isteği) ve unit seviyesinde (mock UI) çift kapsanıyor.
+
+## "1 Tıkla Hazır Demo / Şablon İçe Aktarıcı" (`demo-templates` modülü) — E2E kapsamı (bu turda eklendi)
+
+Kaynak: `.claude/architect-scope-demo-template-import.md` §12 "QA kapsamı" madde 6-14 (BAĞLAYICI
+karar dokümanı, özellikle §6 API sözleşmesi, §6.1 yıkıcılık matrisi, §6.4 idempotency/force).
+Backend'in kendi birim testleri (`backend/tests/unit/demo-templates-importer.test.ts`,
+`demo-templates-schema.test.ts`, 10/10 geçiyor) şablonun Zod doğrulamasını ve Faz 2 telafi
+(rollback) davranışını ZATEN kapsıyor — burada TEKRARLANMADI. Bu tur security/compliance/seo/
+performance denetimlerinden geçmiş implementasyonun ÜSTÜNE eklendi (kurgusal firma adı "Kütle
+Yapı", kırık `/hakkimizda`/`/hizmetlerimiz`/`/iletisim`/`/portfoy` linkleri `/` ve
+`/portfolio`'ya düzeltildi — bkz. seo-agent notu, bu düzeltme sonrası testler yeniden koşulup
+doğrulandı).
+
+**Yeni Playwright e2e dosyası: `frontend/tests/e2e/admin-demo-template-import.spec.ts`, 9/9
+senaryo yeşil** (`test.describe.configure({ mode: "serial" })`, gerçek backend `:4001` +
+`saas_e2e` + `next dev :3100`'e karşı, iki kez bağımsız koşuldu, ikisinde de tutarlı ve tam
+temizlik doğrulandı — `demo_template_imports`/`media`/`pages`/`sliders`/`portfolio_*` tabloları
+koşum sonunda sıfır satıra dönüyor). Yeni fixture dosyası:
+`frontend/tests/e2e/support/demo-templates-fixtures.ts`.
+
+| Madde | Senaryo | Durum |
+|---|---|---|
+| 6 | ADMIN uygular → `201` → ana sayfa şablonun sayfası olur; public `/` yeni içeriği (site adı + ilk slayt başlığı) gösterir | ✅ Geçiyor |
+| 7 | Aynı şablonu tekrar uygula (force olmadan) → `409`; `importedAt` konflikt diyaloğunda görünür | ✅ Geçiyor |
+| 8 | `force: true` → `201`, sayfa slug'ı `<önceki>-2` ile oluşur, önceki sayfa SİLİNMEZ | ✅ Geçiyor |
+| 9 | `confirm` gönderilmeden POST → `422 VALIDATION_ERROR` | ✅ Geçiyor |
+| 10 | RBAC: MANAGER/EDITOR `GET`i görür ama `POST`ta `403`; USER/CUSTOMER `GET`te `403` | ✅ Geçiyor |
+| 11 | Import sonrası medya kütüphanesinde 6 yeni görsel (dosya adı + altText bütünlüğü) var ve gerçek bir `MediaPicker` akışıyla (Görsel bloğu → "Kütüphaneden Seç" → ara → seç) değiştirilebiliyor | ✅ Geçiyor |
+| 12 | `portfolio` modülü kapalıyken import → `201` + beklenen `warnings[]` metni birebir | ✅ Geçiyor |
+| 13 | Hız sınırı: 6. istek `429` | ✅ Geçiyor |
+| 14 | `/admin/logs`'ta `demo_template.import` satırı (API + UI) ve `metadata.previousHomePageId` mevcut ve doğru | ✅ Geçiyor |
+
+### Hız sınırı izolasyonu — tasarım notu (flaky kaynağı bulundu ve önlendi, CLAUDE.md madde 3)
+
+`POST /admin/demo-templates/{key}/import` route-seviyesinde `{ max: 5, timeWindow: "1 minute" }`
+ile sınırlıdır ve `@fastify/rate-limit`'in route-level `config.rateLimit`'i **`onRequest`**
+aşamasında çalışır (`authenticate`/RBAC/body-doğrulamadan ÖNCE) — varsayılan `keyGenerator`
+(`request.ip`) ile bu dosyadaki TÜM isteklerin (token'dan BAĞIMSIZ) AYNI sayaca yazdığı anlamına
+gelir. Madde 6/7/8/9/10/12'nin TOPLAM gerçek çağrı sayısı 5'i aşıyor — bu yüzden:
+
+1. Madde 13 EN BAŞTA, tamamen izole (kimlik doğrulaması OLMAYAN, içerik ÜRETMEYEN 6 istekle)
+   çalıştırılır — diğer senaryoların gerçek import çağrılarıyla ASLA karışmaz.
+2. O 6 istek sonrası pencerenin TAMAMEN sıfırlanmasını bekleyen açık bir bekleme (~65sn) vardır.
+3. Madde 6/7/8/9 (4 gerçek çağrı) TEK pencerede gruplanır; madde 10/12 (3 gerçek çağrı) başka bir
+   bekleme sonrası İKİNCİ bir pencerede gruplanır — hiçbir grup 5'i aşmaz.
+
+Bu tasarım olmadan test dosyası ardışık çalıştırıldığında (hatta TEK bir koşumda) senaryolar
+birbirinin `429`'una çarpıyordu — kaynağı izlendi ve yukarıdaki gruplama/bekleme ile GİDERİLDİ
+(retry ile MASKELENMEDİ).
+
+### Temizlik stratejisi — tasarım notu
+
+`DemoTemplateImport` tablosunun (idempotency işareti) silme ucu YOKTUR (architect §10.1 bağlayıcı
+kararı) — `demo-templates-fixtures.ts::resetDemoTemplateImportRow()` tek istisna olarak ham SQL
+kullanır (`support/api.ts::setRawPageBlocksDirectly` İLE AYNI `prisma db execute --stdin` deseni).
+Sayfa/slider/medya/portföy temizliği İSE HER ZAMAN gerçek permanent-delete API uçları üzerinden
+yapılır (kendi cascade/revizyon/slug temizlikleri zaten var, ham SQL ile YENİDEN ÜRETİLMEDİ).
+Medya için "hangi 6 satır bizim" sorusu bir `id -> filename` tam-küme farkı (diff, import
+öncesi/sonrası) ile kesin olarak çözülür — dosya adına göre filtreleme TEK BAŞINA yeterli
+DEĞİLDİR çünkü `force` aynı 6 dosya adını TEKRAR üretir.
+
+### Bulunan bulgu — bilgi amaçlı, engelleyici DEĞİL
+
+`templates/modern-architecture.ts::assets` içindeki `about-image` varlığı (§4.4 "1 hakkımızda
+görseli") şablonun `page.blocks` ağacında HİÇBİR YERDE referans edilmiyor (`asset:about-image`
+token'ı hiç geçmiyor) — 6. görsel her import'ta gerçek bir `Media` satırı olarak materyalize
+oluyor ama hiçbir bloğa bağlı değil (ölü/kullanılmayan varlık). İşlevsel bir hata DEĞİL (madde
+11'in "6 görsel" sayımını etkilemiyor, görsel yine de medya kütüphanesinde görünüp seçilebiliyor)
+ama muhtemelen bir önceki refactor'da bir bloğun kaldırılmasının artığı. backend-agent'a
+(§8 tablosuna bir görsel bölüm eklemek veya `assets[]`'ten çıkarmak) bilgi amaçlı iletilir.

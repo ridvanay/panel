@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="900" viewBox="0 0 1200 900">
+  <title>Modern Mimarlık – Portföy Kapağı 4 (Silüet Kümesi)</title>
+  <defs>
+    <linearGradient id="bg4" x1="0%" y1="0%" x2="100%" y2="100%" gradientTransform="rotate(45 0.5 0.5)">
+      <stop offset="0%" stop-color="#1C4B42"/>
+      <stop offset="100%" stop-color="#1F2124"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="1200" height="900" fill="url(#bg4)"/>
+  <!-- ince çizgi bina siluet motifu: farklı yükseklikte düz-çatılı bina kümesi -->
+  <g stroke="#C9A227" stroke-width="2" fill="none" opacity="0.55" stroke-linejoin="round" stroke-linecap="round">
+    <rect x="700" y="560" width="140" height="240"/>
+    <rect x="860" y="460" width="110" height="340"/>
+    <rect x="990" y="620" width="120" height="180"/>
+    <line x1="700" y1="620" x2="840" y2="620"/>
+    <line x1="700" y1="680" x2="840" y2="680"/>
+    <line x1="700" y1="740" x2="840" y2="740"/>
+    <line x1="860" y1="520" x2="970" y2="520"/>
+    <line x1="860" y1="580" x2="970" y2="580"/>
+    <line x1="860" y1="640" x2="970" y2="640"/>
+    <line x1="860" y1="700" x2="970" y2="700"/>
+    <line x1="990" y1="670" x2="1110" y2="670"/>
+    <line x1="990" y1="720" x2="1110" y2="720"/>
+    <line x1="660" y1="800" x2="1130" y2="800"/>
+  </g>
+</svg>

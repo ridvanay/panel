@@ -96,6 +96,31 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
 
 ### Added
 
+- **feat(demo-templates): 1 tıkla hazır demo şablon içe aktarıcı eklendi** (`demo-templates`
+  modülü, `ARCHITECTURE.md` §10.22, bağlayıcı karar dokümanı
+  `.claude/architect-scope-demo-template-import.md`). Bir ADMIN, tek bir onaylı istekle
+  sitenin görünümünü, ayarlarını, navigasyon/footer/sosyal linklerini, örnek bir portföyü, bir
+  Hero Studio slider'ını ve bir anasayfayı hazır bir demo içerikle doldurabiliyor.
+  - **İlk şablon:** `modern-architecture` ("Modern Mimarlık & İnşaat", kurgusal firma
+    "Kütle Yapı") — tek istekte `SiteAppearance`, `SiteSettings` (5 alan), `NavigationItem`,
+    `FooterColumn`/`FooterLink`, `SocialLink`, `PortfolioCategory`/`PortfolioItem`,
+    `Slider`/`Slide` ve tek bir anasayfa `Page` oluşturuyor; 6 gerçek `Media` kaydı paket PNG
+    varlıklarından materyalize ediliyor (medya kütüphanesinden değiştirilebilir).
+  - Yeni uçlar: `GET /admin/demo-templates` (panel erişimi: ADMIN/MANAGER/EDITOR) ve
+    `POST /admin/demo-templates/{templateKey}/import` (yalnızca ADMIN, 5 istek/dk hız sınırı,
+    gövdede `confirm: true` zorunlu, `force` ile idempotent yeniden-uygulama — önceki içerik
+    silinmez, additive kayıtlar ikinci bir kopya olarak eklenir).
+  - İşlem iki fazlıdır: dosya/varlık materyalizasyonu transaction DIŞINDA yapılır, ardından
+    tek bir Prisma transaction'ında (`timeout: 30_000`) DB'ye yazılır; transaction hata
+    verirse Faz 1'de yazılan dosyalar best-effort geri alınır (telafi).
+  - Yeni model `DemoTemplateImport` (migration `add_demo_template_imports`) yalnızca
+    idempotency işaretini tutar, içerik taşımaz.
+  - Yeni admin ekranı `/admin/demo-templates` (şablon galerisi, onay diyaloğu, yıkıcılık
+    matrisi uyarısı).
+  - Telif/KVKK: gerçek firma/logo/fotoğraf kullanılmadı; tüm görseller depoda üretilen soyut
+    PNG'ler, iletişim bilgileri RFC-rezerve/jenerik yer tutucular (`info@example.com`,
+    `+90 212 000 00 00`, jenerik adres); şablon PII taşımaz.
+
 - **Gelişmiş Slider / Hero Studio** (`sliders` modülü, bağlayıcı karar dokümanları
   `.claude/architect-scope-advanced-slider.md` ve `.claude/ui-designer-scope-advanced-slider.md`).
   Slider Revolution benzeri, çok katmanlı, cihaza göre geçersiz kılınabilen bir hero/slider

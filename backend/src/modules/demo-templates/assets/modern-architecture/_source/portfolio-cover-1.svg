@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="900" viewBox="0 0 1200 900">
+  <title>Modern Mimarlık – Portföy Kapağı 1 (İkiz Kule)</title>
+  <defs>
+    <linearGradient id="bg1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1C4B42"/>
+      <stop offset="100%" stop-color="#12312B"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="1200" height="900" fill="url(#bg1)"/>
+  <!-- ince çizgi bina siluet motifi: ikiz kule -->
+  <g stroke="#C9A227" stroke-width="2" fill="none" opacity="0.55" stroke-linejoin="round" stroke-linecap="round">
+    <rect x="640" y="300" width="130" height="480" />
+    <line x1="640" y1="360" x2="770" y2="360"/>
+    <line x1="640" y1="430" x2="770" y2="430"/>
+    <line x1="640" y1="500" x2="770" y2="500"/>
+    <line x1="640" y1="570" x2="770" y2="570"/>
+    <line x1="640" y1="640" x2="770" y2="640"/>
+    <line x1="640" y1="710" x2="770" y2="710"/>
+    <rect x="800" y="380" width="100" height="400" />
+    <line x1="800" y1="440" x2="900" y2="440"/>
+    <line x1="800" y1="500" x2="900" y2="500"/>
+    <line x1="800" y1="560" x2="900" y2="560"/>
+    <line x1="800" y1="620" x2="900" y2="620"/>
+    <line x1="800" y1="680" x2="900" y2="680"/>
+    <line x1="600" y1="780" x2="960" y2="780"/>
+  </g>
+</svg>

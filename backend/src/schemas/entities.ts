@@ -1793,3 +1793,65 @@ export const PublicPortfolioItemSchema = PublicSeoFieldsSchema.extend({
 });
 export type PublicPortfolioItemDto = z.infer<typeof PublicPortfolioItemSchema>;
 export type ExportJobDto = z.infer<typeof ExportJobSchema>;
+
+// -------------------------------------------------------------------------
+// DemoTemplates — 1 Tıkla Hazır Demo / Şablon İçe Aktarıcı
+// (bkz. .claude/architect-scope-demo-template-import.md, docs/architecture/openapi.yaml
+// `DemoTemplates` tag'i — bu iki şema o dosyadaki `DemoTemplateSummary`/
+// `DemoTemplateImportResult` ile BİREBİR aynı şekli taşır.)
+// -------------------------------------------------------------------------
+
+export const DemoTemplateContentsSchema = z.object({
+  pages: z.number().int(),
+  sliders: z.number().int(),
+  slides: z.number().int(),
+  portfolioCategories: z.number().int(),
+  portfolioItems: z.number().int(),
+  navigationItems: z.number().int(),
+  footerColumns: z.number().int(),
+  mediaAssets: z.number().int(),
+});
+
+export const DemoTemplateReplacesSchema = z.enum(["appearance", "siteSettings", "navigation", "footer", "socialLinks", "homePage"]);
+
+export const DemoTemplateSummarySchema = z.object({
+  key: z.string(),
+  version: z.string(),
+  name: z.string(),
+  description: z.string(),
+  previewImageUrl: z.string(),
+  tags: z.array(z.string()),
+  palette: z.array(HexColorSchema),
+  contents: DemoTemplateContentsSchema,
+  replaces: z.array(DemoTemplateReplacesSchema).optional(),
+  appliedAt: z.string().datetime().nullable(),
+  appliedVersion: z.string().nullable().optional(),
+  appliedById: z.string().uuid().nullable().optional(),
+  appliedByName: z.string().nullable().optional(),
+  appliedPageId: z.string().uuid().nullable().optional(),
+});
+export type DemoTemplateSummaryDto = z.infer<typeof DemoTemplateSummarySchema>;
+
+export const DemoTemplateImportCountsSchema = z.object({
+  media: z.number().int(),
+  portfolioCategories: z.number().int(),
+  portfolioItems: z.number().int(),
+  navigationItems: z.number().int(),
+  footerColumns: z.number().int(),
+  footerLinks: z.number().int(),
+  socialLinks: z.number().int(),
+  slides: z.number().int(),
+});
+
+export const DemoTemplateImportResultSchema = z.object({
+  templateKey: z.string(),
+  version: z.string(),
+  importedAt: z.string().datetime(),
+  pageId: z.string().uuid(),
+  pageSlug: z.string().optional(),
+  setAsHomePage: z.boolean().optional(),
+  sliderId: z.string().uuid().nullable().optional(),
+  counts: DemoTemplateImportCountsSchema,
+  warnings: z.array(z.string()),
+});
+export type DemoTemplateImportResultDto = z.infer<typeof DemoTemplateImportResultSchema>;

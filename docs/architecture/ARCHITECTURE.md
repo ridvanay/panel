@@ -5680,6 +5680,95 @@ sayfa klonlama; geçmiş misafir siparişlerini hesaba bağlama; `/admin/setting
 rotalarının taşınması; editoryal onay/moderasyon akışı; organizasyon bazlı `MembershipRole`
 ekseni (bu iş onu HİÇ etkilemez).
 
+### 10.22 1 Tıkla Hazır Demo / Şablon İçe Aktarıcı (`demo-templates` modülü)
+
+Durum: v1 (2026-08-31 — implemente edildi; backend unit + Playwright e2e testleri yeşil,
+security/compliance/SEO/performance denetimlerinden geçti) · Sahibi: Mimar.
+**Bağlayıcı kaynak:** `.claude/architect-scope-demo-template-import.md` (tam gerekçeler,
+şablon şeması, telif/PII kontrol listesi) + `docs/architecture/openapi.yaml` (`DemoTemplates`
+tag'i, `/admin/demo-templates*` yolları, `DemoTemplateSummary`/`ImportDemoTemplateRequest`/
+`DemoTemplateImportResult` şemaları — tek doğruluk kaynağı). Bu bölüm o dokümanın
+ÖZETİDİR; çelişkide kaynak doküman/openapi.yaml kazanır.
+
+#### 10.22.1 Amaç
+
+Bir admin, sıfırdan içerik girmeden, tek bir "Uygula" tıklamasıyla sitenin görünümünü
+(renk/tipografi), site ayarlarını, navigasyon/footer/sosyal linkleri, örnek bir portföy, bir
+Hero Studio slider'ı ve bir anasayfayı gerçekçi ama kurgusal bir demo içerikle doldurabilir.
+İlk ve tek şablon: `modern-architecture` ("Modern Mimarlık & İnşaat", kurgusal firma
+"Kütle Yapı").
+
+Bu modül `backend/src/modules/import/` (kullanıcı verisi WXR/CSV/ZIP içe aktarma, kuyruklu
+`ImportJob`) İLE KARIŞTIRILMAZ — burada kuyruk/dosya yükleme yok, kod içi sabit bir tanım
+DB'ye senkron olarak uygulanıyor. `backend/src/lib/appearance-presets.ts` (yalnızca
+istemciye değer döner, DB'ye yazmaz) ile de karıştırılmaz.
+
+#### 10.22.2 Mimari özet
+
+- **Şablon tanımı kod içi statik registry'dir** (`DEMO_TEMPLATE_REGISTRY`,
+  `MODULE_REGISTRY`/`APPEARANCE_PRESETS` paterniyle aynı sınıf) — çalışma zamanında okunan bir
+  `.json` dosyası DEĞİL, TypeScript modülü (`templates/modern-architecture.ts`);
+  `page.blocks` ve `slider.slides[].layers` DB'ye yazılmadan önce API'nin kullandığı AYNI Zod
+  şemalarından (`PageBlockListSchema`, `SlideLayersSchema`) geçirilir.
+- **İki fazlı, telafili işlem modeli** (dosya sistemi işlemleri bir transaction'a dahil
+  edilemediği için):
+  - **Faz 0 — doğrulama:** şablon anahtarı var mı, daha önce uygulanmış mı (`force` yoksa
+    `409`), `asset:`/`ref:` token'ları çözülebiliyor mu (çözülemeyen → `422`), slug çakışmaları
+    benzersizleştiriliyor.
+  - **Faz 1 — varlık materyalizasyonu (transaction DIŞINDA):** paketlenmiş PNG'ler
+    `storage.save()` ile depolanır (`fs.copyFile` KULLANILMAZ — S3 sürücüsünde kırılırdı);
+    henüz hiçbir `Media` satırı yazılmaz.
+  - **Faz 2 — tek transaction** (`$transaction(fn, { timeout: 30_000, maxWait: 10_000 })`):
+    `Media` satırları, `SiteAppearance`/`SiteSettings` (yıkıcı üzerine yazma),
+    navigasyon/footer/sosyal linkler (tam değiştirme), portföy/slider/sayfa (ekleme),
+    gerekirse `homePageId`, son olarak `DemoTemplateImport` upsert.
+  - **Telafi:** Faz 2 herhangi bir noktada hata verirse Faz 1'de yazılan dosyalar best-effort
+    silinir (`storage.remove`), hata olduğu gibi istemciye döner.
+- **Idempotency modeli:** `DemoTemplateImport.templateKey` `@unique` — ikinci uygulama
+  `force: false` (varsayılan) ile `409 CONFLICT` + önceki uygulama bilgisi döner. `force: true`
+  ile yıkıcı bölümler (görünüm/ayarlar/nav/footer/sosyal) yeniden uygulanır, additive bölümler
+  (sayfa/slider/portföy/medya) **ikinci bir kopya** olarak eklenir (slug'lar `-2`, `-3` ile
+  benzersizleştirilir); önceki içerik ASLA silinmez (kullanıcı düzenlemiş olabilir).
+- **Varlık materyalizasyon stratejisi:** paketlenmiş görseller SVG DEĞİL PNG'dir (SVG
+  `mime-detect.ts` tarafından her zaman reddedilir — depolanmış XSS riski); tüm görseller
+  istisnasız gerçek `Media` satırına dönüşür ki kullanıcı onları mevcut `MediaPicker` ile kendi
+  fotoğraflarıyla değiştirebilsin. Hero slaydının arkaplanı görsel değil `GRADIENT`'tır;
+  `logoUrl` boş bırakılır — net sonuç ~6 PNG.
+- **Yıkıcılık matrisi** kullanıcıya onay diyaloğunda madde madde gösterilir ve sunucu ayrıca
+  `confirm: true` ister (çift kapı).
+
+#### 10.22.3 API uçları
+
+| Metot | Yol | SiteRole | Hız sınırı |
+|---|---|---|---|
+| GET | `/admin/demo-templates` | ADMIN, MANAGER, EDITOR (panel kapısı — yanıt kod içi statik registry, sıfır kullanıcı verisi) | — |
+| POST | `/admin/demo-templates/{templateKey}/import` | **yalnızca ADMIN** (`SiteSettings.homePageId` yazıyor + nav/footer/sosyal siliyor — ayrıcalık yükseltme yüzeyi) | 5 istek / 1 dk |
+
+`POST` gövdesi `confirm: true` zorunlu tutar (eksikse `422`); `force: true` idempotent
+yeniden-uygulamaya izin verir (yukarıdaki madde). Başarılı yanıt `201` +
+`DemoTemplateImportResult` (`warnings[]` dahil, engellemeyen uyarılar — ör. `portfolio` modülü
+kapalıysa). Tam şema: `openapi.yaml` `DemoTemplates` tag'i.
+
+#### 10.22.4 Veri modeli
+
+Yeni model `DemoTemplateImport` (migration `add_demo_template_imports`, salt-ekleme) —
+içerik tutmaz, yalnızca "hangi şablon ne zaman kim tarafından uygulandı" işaretini ve
+idempotency kısıtını taşır (`templateKey @unique`). Ayrıntı:
+`.claude/architect-scope-demo-template-import.md` §10.
+
+#### 10.22.5 Telif/PII
+
+Gerçek firma/logo/fotoğraf kullanılmaz; tüm görseller depoda üretilen soyut PNG'ler, iletişim
+bilgileri RFC-rezerve/jenerik yer tutucular (`info@example.com`, `+90 212 000 00 00`, jenerik
+adres), `SocialLink` boş dizi. PII taşımaz — KVKK saklama/silme etkisi yoktur. Tam kontrol
+listesi: `.claude/architect-scope-demo-template-import.md` §9.
+
+#### 10.22.6 Kapsam dışı (backlog)
+
+`SiteFont.WORK_SANS`, `SiteAppearance.buttonRadius` (pill/kare ayrımı), slider'da sekme
+navigasyonu, bülten aboneliği, çok dilli demo şablonu, "şablonu geri al" (undo). Ayrıntı:
+kaynak doküman §14.
+
 ---
 
 ### Bilinen Sorunlar / Backlog

@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="900" viewBox="0 0 1200 900">
+  <title>Modern Mimarlık – Portföy Kapağı 2 (Kademeli Yapı)</title>
+  <defs>
+    <linearGradient id="bg2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1F2124"/>
+      <stop offset="100%" stop-color="#1C4B42"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="1200" height="900" fill="url(#bg2)"/>
+  <!-- ince çizgi bina siluet motifu: kademeli/teraslı yapı -->
+  <g stroke="#C9A227" stroke-width="2" fill="none" opacity="0.55" stroke-linejoin="round" stroke-linecap="round">
+    <rect x="260" y="620" width="260" height="180"/>
+    <rect x="320" y="480" width="200" height="140"/>
+    <rect x="380" y="360" width="140" height="120"/>
+    <rect x="420" y="270" width="80" height="90"/>
+    <line x1="260" y1="670" x2="520" y2="670"/>
+    <line x1="260" y1="720" x2="520" y2="720"/>
+    <line x1="320" y1="530" x2="520" y2="530"/>
+    <line x1="380" y1="410" x2="520" y2="410"/>
+    <line x1="230" y1="800" x2="560" y2="800"/>
+  </g>
+</svg>

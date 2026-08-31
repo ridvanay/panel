@@ -1,7 +1,7 @@
 import fp from "fastify-plugin";
 import type { FastifyInstance, FastifyError, FastifyRequest } from "fastify";
 import { Prisma } from "@prisma/client";
-import { ApiError, ApiErrorCode, SliderInUseError } from "../lib/errors";
+import { ApiError, ApiErrorCode, SliderInUseError, DemoTemplateAlreadyImportedError } from "../lib/errors";
 import { Sentry, sentryEnabled } from "../lib/sentry";
 
 interface ZodLikeIssue {
@@ -64,6 +64,24 @@ export default fp(async function errorHandlerPlugin(app: FastifyInstance) {
     // `instanceof ApiError` dalından ÖNCE gelmelidir (SliderInUseError onun bir alt sınıfıdır).
     if (error instanceof SliderInUseError) {
       return reply.code(error.statusCode).send({ error: { code: error.code, message: error.message, details: { usedBy: error.usedBy } } });
+    }
+
+    // `demo-templates` idempotency çakışması — bkz. lib/errors.ts::DemoTemplateAlreadyImportedError
+    // yorumu. `instanceof ApiError` dalından ÖNCE gelmelidir (alt sınıfı).
+    if (error instanceof DemoTemplateAlreadyImportedError) {
+      return reply.code(error.statusCode).send({
+        error: {
+          code: error.code,
+          message: error.message,
+          details: {
+            templateKey: error.templateKey,
+            importedAt: error.importedAt,
+            importedBy: error.importedBy,
+            version: error.version,
+            pageId: error.pageId,
+          },
+        },
+      });
     }
 
     if (error instanceof ApiError) {

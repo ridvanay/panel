@@ -30,6 +30,7 @@ import { adminMediaRoutes } from "./modules/media/media.routes";
 import { adminStatsRoutes } from "./modules/stats/stats.routes";
 import { adminSettingsRoutes, publicSettingsRoutes } from "./modules/settings/settings.routes";
 import { adminAppearanceRoutes, publicAppearanceRoutes } from "./modules/appearance/appearance.routes";
+import { adminDemoTemplatesRoutes } from "./modules/demo-templates/demo-templates.routes";
 import { adminSiteModulesRoutes, publicModulesRoutes } from "./modules/site-modules/site-modules.routes";
 import { adminNavigationRoutes, publicNavigationRoutes } from "./modules/navigation/navigation.routes";
 import { adminLocalesRoutes, publicLocalesRoutes } from "./modules/localization/localization.routes";
@@ -181,6 +182,9 @@ export function buildApp() {
       // bu ise NASIL GÖRÜNDÜĞÜ (rota sınırı §10.12.1).
       api.register(publicAppearanceRoutes, { prefix: "/appearance" });
       api.register(adminAppearanceRoutes, { prefix: "/admin/appearance" });
+      // 1 Tıkla Hazır Demo / Şablon İçe Aktarıcı — bkz.
+      // .claude/architect-scope-demo-template-import.md §1.4 (appearance kayıtlarından SONRA).
+      api.register(adminDemoTemplatesRoutes, { prefix: "/admin/demo-templates" });
       api.register(publicNavigationRoutes, { prefix: "/navigation" });
       api.register(adminNavigationRoutes, { prefix: "/admin/navigation" });
       // §10.5 Çoklu Dil & Yerelleştirme — bkz. .claude/architect-scope-i18n.md.

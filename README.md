@@ -114,6 +114,7 @@ dosyalarının kendisine bakın.
 │       ├── modules/            # her domain kendi klasöründe: *.routes.ts, *.schemas.ts, *.service.ts
 │       │   ├── email-templates/    # §10.16 e-posta şablonu blok editörü
 │       │   ├── contact/            # §10.16 iletişim formu
+│       │   ├── demo-templates/     # §10.22 1 tıkla hazır demo şablon içe aktarıcı
 │       │   └── pages/              # §10.17 sayfa Grid/Kolon düzeni burada (pages.schemas.ts, lib/sanitize-blocks.ts)
 │       ├── lib/                 # paylaşılan yardımcılar (email-renderer.ts, html-sanitize.ts, rate-limit.ts, ...)
 │       └── plugins/             # Fastify plugin'leri (prisma, auth, vb.)

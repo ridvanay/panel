@@ -117,6 +117,11 @@ export const navItems: NavItem[] = [
   // Özel CSS/JS sekmesi (yalnızca ADMIN) sayfanın İÇİNDEDİR — sidebar seviyesinde ayrıştırma
   // gerekmez, `/admin/appearance` sayfasının kendisi MANAGER'a görünür kalmalı (§8.2).
   { href: "/admin/appearance", labelKey: "nav.appearance", icon: Palette, roles: ["ADMIN", "MANAGER"] },
+  // §11 architect-scope-demo-template-import.md — okuma (GET) panel kapısına (ADMIN/MANAGER/EDITOR)
+  // açık olsa da, sidebar girdisi yalnızca ADMIN'e gösterilir: yazma (POST .../import) ADMIN-only
+  // ve gizleme yalnızca kullanılabilirlik amaçlıdır (güvenlik sınırı DEĞİL, bkz. üstteki not) —
+  // MANAGER/EDITOR doğrudan URL ile erişirse sayfa salt-okunur render edilir, sunucu bağımsız karar verir.
+  { href: "/admin/demo-templates", labelKey: "nav.demoTemplates", icon: LayoutTemplate, roles: ["ADMIN"] },
   { href: "/admin/import", labelKey: "nav.import", icon: Upload, roles: ["ADMIN"] },
   { href: "/admin/users", labelKey: "nav.users", icon: Users, roles: ["ADMIN"] },
   { href: "/admin/system", labelKey: "nav.system", icon: Activity, roles: ["ADMIN"] },

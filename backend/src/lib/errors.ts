@@ -92,6 +92,29 @@ export class SliderInUseError extends ApiError {
 }
 
 /**
+ * `POST /admin/demo-templates/{templateKey}/import` idempotency çakışması (§6.4, bağlayıcı) —
+ * openapi.yaml `error.details = { templateKey, importedAt, importedBy, version, pageId }`
+ * genel `ApiError.details` (`Record<string, string[]>`) şekline SIĞMAZ, bu yüzden
+ * `SliderInUseError` ile AYNI desende AYRI serileştirilir (bkz. plugins/error-handler.ts).
+ */
+export class DemoTemplateAlreadyImportedError extends ApiError {
+  templateKey: string;
+  importedAt: string;
+  importedBy: string | null;
+  version: string;
+  pageId: string | null;
+
+  constructor(info: { templateKey: string; importedAt: string; importedBy: string | null; version: string; pageId: string | null }) {
+    super(409, "CONFLICT", "Bu demo şablonu daha önce uygulanmış. Yeniden uygulamak için `force: true` gönderin.");
+    this.templateKey = info.templateKey;
+    this.importedAt = info.importedAt;
+    this.importedBy = info.importedBy;
+    this.version = info.version;
+    this.pageId = info.pageId;
+  }
+}
+
+/**
  * SMTP gönderimi (bkz. lib/mail.ts::sendMail) başarısız olduğunda fırlatılır — 502 (Bad Gateway):
  * istemcinin isteği geçersiz değil, bizim upstream bağımlılığımız (SMTP sağlayıcısı) başarısız oldu.
  * `forgotPassword` gibi akışlarda kullanıcı bulunamadığında hâlâ sessizce 202 dönülür (e-posta

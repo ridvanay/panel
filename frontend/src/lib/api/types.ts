@@ -2658,3 +2658,91 @@ export interface PublicPortfolioItem extends PublicSeoFields {
   publishedAt: string | null;
   updatedAt: string;
 }
+
+/**
+ * 1 Tıkla Hazır Demo / Şablon İçe Aktarıcı — bkz. `.claude/architect-scope-demo-template-import.md`
+ * ve `openapi.yaml` `DemoTemplates` tag'i (tek doğruluk kaynağı). Şablonun TAM içeriği (blok ağacı,
+ * katmanlar, metinler) backend'de kod içi statik bir registry'dedir ve HİÇBİR API yanıtında dönmez —
+ * bu tipler yalnızca panel kartı + içe aktarma sonucu için gereken ÖZET şekli yansıtır.
+ */
+export type DemoTemplateReplacesField = "appearance" | "siteSettings" | "navigation" | "footer" | "socialLinks" | "homePage";
+
+export interface DemoTemplateContents {
+  pages: number;
+  sliders: number;
+  slides: number;
+  portfolioCategories: number;
+  portfolioItems: number;
+  navigationItems: number;
+  footerColumns: number;
+  mediaAssets: number;
+}
+
+/** `GET /admin/demo-templates` öğesi. */
+export interface DemoTemplateSummary {
+  key: string;
+  version: string;
+  name: string;
+  description: string;
+  /** Frontend statiği (`Media` DEĞİL) — göreli yol, frontend kendi origin'iyle çözer. */
+  previewImageUrl: string;
+  tags: string[];
+  /** Kartta gösterilecek renk örnekleri (hex) — yalnızca SUNUM amaçlı. */
+  palette: string[];
+  /** Şablon uygulandığında OLUŞACAK kayıt sayıları — onay diyaloğunda gösterilir. */
+  contents: DemoTemplateContents;
+  /** Yıkıcılık matrisi — bu şablon uygulandığında ÜZERİNE YAZILACAK/SİLİNECEK alanlar. Onay
+   *  diyaloğunda madde madde gösterilmesi ZORUNLUDUR. */
+  replaces?: DemoTemplateReplacesField[];
+  /** `null` = bu şablon hiç uygulanmadı. */
+  appliedAt: string | null;
+  appliedVersion?: string | null;
+  appliedById?: string | null;
+  appliedByName?: string | null;
+  appliedPageId?: string | null;
+}
+
+export interface ImportDemoTemplateRequest {
+  /** ZORUNLU ve `true` olmak ZORUNDA (aksi hâlde `422`). */
+  confirm: true;
+  /** Şablon daha önce uygulanmışsa `409`'u geçer. Varsayılan: `false`. */
+  force?: boolean;
+  /** `true` iken oluşturulan sayfa `SiteSettings.homePageId` olur. Varsayılan: `true`. */
+  setAsHomePage?: boolean;
+}
+
+export interface DemoTemplateImportCounts {
+  media: number;
+  portfolioCategories: number;
+  portfolioItems: number;
+  navigationItems: number;
+  footerColumns: number;
+  footerLinks: number;
+  socialLinks: number;
+  slides: number;
+}
+
+/** `POST /admin/demo-templates/{templateKey}/import` (`201`) yanıtı. */
+export interface DemoTemplateImportResult {
+  templateKey: string;
+  version: string;
+  importedAt: string;
+  pageId: string;
+  /** Slug çakışması nedeniyle benzersizleştirilmiş OLABİLİR (bkz. `warnings`). */
+  pageSlug?: string;
+  setAsHomePage?: boolean;
+  /** Şablon slider getirmiyorsa `null`. */
+  sliderId?: string | null;
+  counts: DemoTemplateImportCounts;
+  /** ENGELLEMEYEN uyarılar — başarısızlık DEĞİLDİR, yanıt yine `201`'dir. */
+  warnings: string[];
+}
+
+/** `409 CONFLICT` gövdesindeki `error.details` şekli (bkz. openapi.yaml §6.4). */
+export interface DemoTemplateConflictDetails {
+  templateKey: string;
+  importedAt: string;
+  importedBy: string | null;
+  version: string;
+  pageId: string | null;
+}

@@ -294,6 +294,9 @@ model User {
   exportJobs             ExportJob[]          @relation("ExportJobCreator")
   // §10.9 Eklenti/Modül Yönetimi — bkz. ARCHITECTURE.md §10.9.
   siteModuleUpdates      SiteModule[]         @relation("SiteModuleUpdater")
+  // 1 Tıkla Hazır Demo / Şablon İçe Aktarıcı — bkz.
+  // .claude/architect-scope-demo-template-import.md §10.2.
+  demoTemplateImports    DemoTemplateImport[] @relation("DemoTemplateImporter")
   // §10.9.3 Sepet + Stripe Checkout — genelde NULL kalır (misafir checkout); SiteRole
   // kullanıcısı (ör. ADMIN test amaçlı) teorik olarak sepet/sipariş sahibi olabilir.
   carts                  Cart[]               @relation("CartOwner")
@@ -497,6 +500,9 @@ model Page {
   siteSettings        SiteSettings[]
   // §10.16.7 İletişim formu — ContactForm.consentLegalPageId için zorunlu karşı-ilişki alanı.
   contactFormConsents ContactForm[]  @relation("ContactFormConsentPage")
+  // 1 Tıkla Hazır Demo / Şablon İçe Aktarıcı — bkz.
+  // .claude/architect-scope-demo-template-import.md §10.2.
+  demoTemplateImports DemoTemplateImport[] @relation("DemoTemplateImportedPage")
 
   @@index([deletedAt, status])
   @@index([authorId])
@@ -1750,6 +1756,38 @@ model SiteModule {
 
   @@index([updatedById])
   @@map("site_modules")
+}
+
+// 1 Tıkla Hazır Demo / Şablon İçe Aktarıcı — bkz.
+// .claude/architect-scope-demo-template-import.md (bağlayıcı karar dokümanı) ve
+// docs/architecture/openapi.yaml `DemoTemplates` tag'i.
+//
+// Bu tablo İÇERİK TUTMAZ; yalnızca "hangi demo şablonu, ne zaman, kim tarafından
+// uygulandı" işaretini tutar (idempotency + panelde 'uygulandı' rozeti). Şablon
+// TANIMI kod içi statik registry'dedir (SiteModule ↔ MODULE_REGISTRY ile AYNI
+// patern): `templateKey` bir FK DEĞİL, o registry'ye referanstır.
+//
+// Oluşturulan kayıtların TAM listesi BURADA TUTULMAZ (§6.4): kullanıcı onları
+// oluşturulduktan sonra düzenleyebilir/silebilir ve sahte bir referans grafiği
+// yalan söylerdi. Yalnızca `pageId` tutulur — panelde "Oluşturulan sayfayı aç"
+// bağlantısı için; sayfa silinirse SetNull ile boşalır.
+model DemoTemplateImport {
+  id          String   @id @default(uuid())
+  templateKey String   @unique
+  // Registry'deki semver. Şablon güncellenirse panel "yeni sürüm mevcut" gösterebilir.
+  version     String
+  importedAt  DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  // Kullanıcı silinse de işaret korunur (SiteModule.updatedById ile AYNI desen).
+  importedById String?
+  pageId       String?
+
+  importedBy User? @relation("DemoTemplateImporter", fields: [importedById], references: [id], onDelete: SetNull)
+  page       Page? @relation("DemoTemplateImportedPage", fields: [pageId], references: [id], onDelete: SetNull)
+
+  @@index([importedById])
+  @@index([pageId])
+  @@map("demo_template_imports")
 }
 
 // §10.9.3 Sepet + Stripe Checkout (Eklenti/Modül Yönetimi) — bkz. ARCHITECTURE.md. Misafir
