@@ -398,6 +398,9 @@ test.describe("Public render — google-map + kurumsal bloklar (CLS=0, JSON-LD, 
         await expect(boxedOuterWrapper).toHaveCount(1);
         const boxedInnerWrapper = publicPage.locator("div.overflow-hidden.rounded-2xl.shadow-lg").filter({ has: iframe });
         await expect(boxedInnerWrapper).toHaveCount(1);
+        // `overflow-x-hidden` sarmalayıcı `<section>`e YALNIZCA full-width modda eklenir (aşağıdaki
+        // full-width regresyon testiyle simetrik) — `boxed` modda bulunmamalı.
+        await expect(publicPage.locator("section").filter({ has: iframe })).not.toHaveClass(/overflow-x-hidden/);
 
         // --- Adım 2: aynı bloğu `widthMode: "full-width"` olarak güncelle, sayfayı yeniden yükle.
         await patchPageBlocks(token, pageId, [
@@ -420,6 +423,18 @@ test.describe("Public render — google-map + kurumsal bloklar (CLS=0, JSON-LD, 
         const fullWidthInnerWrapper = publicPage.locator("div.overflow-hidden").filter({ has: iframe });
         await expect(fullWidthInnerWrapper).not.toHaveClass(/rounded-2xl/);
         await expect(fullWidthInnerWrapper).not.toHaveClass(/shadow-lg/);
+
+        // Regresyon (tarayıcıda manuel doğrulamada bulunup düzeltildi, bkz. `google-map-block.tsx`):
+        // `-mx-[50vw]` breakout deseni kaydırma çubuğu genişliğini SAYAR, `document`'ın gerçek client
+        // genişliğini SAYMAZ — bu fark sarmalayıcıyı birkaç piksel taşırıp sayfada yatay kaydırma
+        // çubuğu oluşturuyordu. Sarmalayıcı `<section>` full-width modda `overflow-x-hidden` taşımalı
+        // VE sayfanın kendisinde yatay taşma OLMAMALI (`scrollWidth` <= `clientWidth`).
+        const fullWidthSection = publicPage.locator("section.overflow-x-hidden").filter({ has: iframe });
+        await expect(fullWidthSection).toHaveCount(1);
+        const fullWidthOverflow = await publicPage.evaluate(
+          () => document.documentElement.scrollWidth - document.documentElement.clientWidth
+        );
+        expect(fullWidthOverflow, "full-width modda sayfa yatay taşma taşımamalı (scrollWidth - clientWidth)").toBeLessThanOrEqual(0);
       } finally {
         await publicContext.close();
       }
