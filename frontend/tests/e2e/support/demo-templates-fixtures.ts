@@ -36,14 +36,25 @@ function runRawSql(sql: string): void {
 /** `templates/modern-architecture.ts` — architect-scope §9 madde 3/§4.3 ile BİREBİR (bağlayıcı). */
 export const DEMO_TEMPLATE_KEY = "modern-architecture";
 
-/** `templates/modern-architecture.ts::assets` — §4.4 "net sonuç: ~6 PNG varlık". */
+/**
+ * `templates/modern-architecture.ts::assets` — v2 (kontrast düzeltme + gerçek fotoğraf turu,
+ * bkz. `DESIGN-NOTES.md` §7.2) — artık 12 gerçek `.jpg` varlık (eskiden 6 üretilmiş `.png`
+ * illüstrasyon). qa-agent tarafından bu turda güncellendi (kod DEĞİL, kendi test-fixture
+ * bakım sorumluluğu — bkz. `.claude/CLAUDE.md` qa-agent alanı).
+ */
 export const KNOWN_ASSET_FILENAMES = [
-  "portfolio-cover-1.png",
-  "portfolio-cover-2.png",
-  "portfolio-cover-3.png",
-  "portfolio-cover-4.png",
-  "cta-banner.png",
-  "about-image.png",
+  "hero-bg-1.jpg",
+  "hero-bg-2.jpg",
+  "hero-bg-3.jpg",
+  "service-design.jpg",
+  "service-construction.jpg",
+  "service-management.jpg",
+  "portfolio-cover-1.jpg",
+  "portfolio-cover-2.jpg",
+  "portfolio-cover-3.jpg",
+  "portfolio-cover-4.jpg",
+  "cta-banner.jpg",
+  "about-image.jpg",
 ];
 
 /** `templates/modern-architecture.ts::portfolio.items[].title` — BİREBİR. */

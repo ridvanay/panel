@@ -1,4 +1,5 @@
 import {
+  ArrowUpRight,
   Award,
   BarChart3,
   Bell,
@@ -58,6 +59,7 @@ export const ICON_OPTIONS: Record<string, LucideIcon> = {
   ThumbsUp,
   CheckCircle2,
   Award,
+  ArrowUpRight,
   Rocket,
   Gift,
   Gem,

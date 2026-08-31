@@ -206,7 +206,7 @@ test("madde 6: ADMIN olarak uygula → 201, ana sayfa şablonun sayfası olur, p
   firstImportSliderId = result.sliderId;
   firstImportedAt = result.importedAt;
 
-  expect(result.counts.media).toBe(6);
+  expect(result.counts.media).toBe(12);
   // Portföy modülü açık + ilk uygulama → beklenmeyen bir uyarı ÜRETİLMEMELİ (madde 12'nin negatif kontrolü).
   expect(result.warnings).toEqual([]);
 
@@ -217,7 +217,7 @@ test("madde 6: ADMIN olarak uygula → 201, ana sayfa şablonun sayfası olur, p
   // temel verisi burada yakalanır).
   const mediaAfter = await listAllAdminMediaIds(adminToken);
   firstImportMediaIds = [...mediaAfter.keys()].filter((id) => !mediaBefore.has(id));
-  expect(firstImportMediaIds.length).toBe(6);
+  expect(firstImportMediaIds.length).toBe(12);
   const newFilenames = firstImportMediaIds.map((id) => mediaAfter.get(id)).sort();
   expect(newFilenames).toEqual([...KNOWN_ASSET_FILENAMES].sort());
 
@@ -327,11 +327,11 @@ test("madde 9: confirm gönderilmeden POST → 422", async () => {
   expect(res.error?.code).toBe("VALIDATION_ERROR");
 });
 
-test("madde 11: import sonrası medya kütüphanesinde 6 yeni görsel var ve medya seçiciyle değiştirilebiliyor", async () => {
+test("madde 11: import sonrası medya kütüphanesinde 12 yeni görsel var ve medya seçiciyle değiştirilebiliyor", async () => {
   test.setTimeout(60_000);
   // Sayaç zaten madde 6'da doğrulandı — burada AYRICA altText/dosya adı bütünlüğü (§3.2
   // `DemoTemplateAsset.altText` a11y için ZORUNLU) teyit edilir.
-  expect(firstImportMediaIds.length).toBe(6);
+  expect(firstImportMediaIds.length).toBe(12);
   const mediaNow = await listAllAdminMediaIds(adminToken);
   for (const id of firstImportMediaIds) {
     expect(mediaNow.has(id)).toBe(true);
@@ -367,15 +367,15 @@ test("madde 11: import sonrası medya kütüphanesinde 6 yeni görsel var ve med
     await adminPage.getByRole("button", { name: "Kütüphaneden Seç" }).click();
     await expect(adminPage.getByRole("heading", { name: "Görsel Seç" })).toBeVisible();
 
-    await adminPage.getByLabel("Dosya adına göre ara").fill("cta-banner.png");
-    // Bu noktada kütüphanede İKİ "cta-banner.png" olabilir (madde 6 + madde 8'in `force` kopyası,
+    await adminPage.getByLabel("Dosya adına göre ara").fill("cta-banner.jpg");
+    // Bu noktada kütüphanede İKİ "cta-banner.jpg" olabilir (madde 6 + madde 8'in `force` kopyası,
     // §6.4 additive kural — ikisi de GEÇERLİ, ayırt etmemiz GEREKMEZ) — `.first()` yeterli.
-    const result = adminPage.getByRole("button", { name: /^cta-banner\.png/ }).first();
+    const result = adminPage.getByRole("button", { name: /^cta-banner\.jpg/ }).first();
     await expect(result).toBeVisible();
     await result.click();
 
     await expect(adminPage.getByRole("heading", { name: "Görsel Seç" })).not.toBeVisible();
-    // `Media.filename` ("cta-banner.png") arama/seçim İÇİN kullanılır (yukarıda doğrulandı — kart
+    // `Media.filename` ("cta-banner.jpg") arama/seçim İÇİN kullanılır (yukarıda doğrulandı — kart
     // GÖRÜNÜR ve TIKLANABİLİR OLDU), ama diskteki depolanmış `url` `storage.save()`'in çakışma-
     // önleyici BENZERSİZ adıdır (`lib/local-storage.ts`) — dosya adını KORUMAZ. Bu yüzden burada
     // yalnızca alanın DOLDUĞU (boştan gerçek bir `/uploads/...` URL'ine geçtiği) doğrulanır.

@@ -198,6 +198,26 @@
 }
 
 /*
+ * Metin bloğu (`text`) html'i içinde gömülü "rozet/pill" — sanitizer yalnızca `class`
+ * özniteliğine izin verdiği için (`html-sanitize.ts`, `style` YASAK) renk/boşluk DEĞERLERİ
+ * burada, sabit bir sınıfta tanımlanır. `.blog-gallery` ile AYNI desen. `var(--site-*)`
+ * kullanır — o an aktif SiteAppearance'a göre otomatik uyarlanır, tek bir şablona ÖZEL DEĞİLDİR.
+ */
+.pb-badge-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 18px;
+  border-radius: 999px;
+  background-color: var(--site-accent);
+  color: var(--site-text);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  line-height: 1;
+}
+
+/*
  * (2026-07-31, frontend-agent — J.1 bug fix) Burada eskiden `@media (prefers-color-scheme: dark)`
  * içinde `:root`'u OS/tarayıcı tercihine göre koyu değerlere zorlayan bir blok vardı. O blok
  * next-themes'in yönettiği `.dark` class'ından (aşağıdaki `.dark .admin-shell` bloğu — admin
@@ -476,6 +496,28 @@
   color: var(--site-text);
   font-family: var(--site-body-font);
   font-size: var(--site-base-font-size);
+
+  /* Admin/dark-mode token köprüsü — bkz. DESIGN-NOTES.md (modern-architecture) §0.3. `.dark`
+     atasından TAMAMEN bağımsız: bu div'in KENDİ --* tanımı, inherit edilen değerden her zaman
+     önceliklidir. */
+  --foreground: var(--site-text);
+  --primary: var(--site-primary);
+  --primary-foreground: var(--site-button-text);
+  --primary-hover: color-mix(in oklch, var(--site-primary) 85%, black 15%);
+  --secondary: var(--site-surface);
+  --secondary-foreground: var(--site-text);
+  --muted: color-mix(in oklch, var(--site-text) 6%, var(--site-background) 94%);
+  --muted-foreground: var(--site-muted-text);
+  --accent: var(--site-accent);
+  --accent-foreground: var(--site-text);
+  --card: var(--site-surface);
+  --card-foreground: var(--site-text);
+  --popover: var(--site-surface);
+  --popover-foreground: var(--site-text);
+  --border: color-mix(in oklch, var(--site-text) 15%, transparent);
+  --input: color-mix(in oklch, var(--site-text) 20%, transparent);
+  --background: var(--site-background);
+  --ring: var(--site-primary);
 }
 
 .site-scope h1,

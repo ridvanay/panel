@@ -25,6 +25,7 @@ import { slugify } from "../../lib/slug";
 import { logAudit } from "../../lib/audit";
 import { triggerPublicPageRevalidation } from "../../lib/revalidate";
 import { NotFoundError, ValidationError, DemoTemplateAlreadyImportedError } from "../../lib/errors";
+import { absolutizeMediaUrl } from "../../mappers";
 import type { ImportDemoTemplateRequest } from "./demo-templates.schemas";
 import type { DemoTemplateImportResultDto } from "../../schemas/entities";
 
@@ -469,7 +470,11 @@ export async function importDemoTemplate(app: FastifyInstance, params: ImportDem
   // ---- Faz 1 — varlık materyalizasyonu (transaction DIŞINDA, DB yazma YOK) --------------------
   const savedAssets = await materializeTemplateAssets(template.key, template.assets);
   const assetKeyToMediaId = new Map(savedAssets.map((asset) => [asset.key, crypto.randomUUID()]));
-  const assetUrlByKey = new Map(savedAssets.map((asset) => [asset.key, asset.url]));
+  // `page.blocks` JSON'una token-replacement ile GÖMÜLEN URL'ler (ör. `container.background.value`)
+  // gerçek `Media` FK ilişkilerinin AKSİNE okuma anında `absolutizeMediaUrl` ile geçmez — DB'ye
+  // olduğu gibi yazılır ve frontend'e servis edilir. Bu yüzden burada, yazma anında absolutize
+  // edilmesi ZORUNLU (bkz. `mappers/index.ts::absolutizeMediaUrl`, aynı `env.PUBLIC_URL` mantığı).
+  const assetUrlByKey = new Map(savedAssets.map((asset) => [asset.key, absolutizeMediaUrl(asset.url)]));
 
   const assetResolved = resolvePageBlockTokens(template.page.blocks as unknown[], assetUrlByKey, null);
   if (assetResolved.unresolvedTokens.length > 0) {

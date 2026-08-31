@@ -12,6 +12,15 @@ import type { DemoTemplateDefinition, PageNode } from "../types";
  * gerekçe: "Mimarist", TMMOB Mimarlar Odası'nın Türkiye'de aktif/tanınan mimarlık dergisiyle
  * aynı sektörde marka karışıklığı riski taşıyordu; e-posta/telefon/adres RFC 2606/atanmamış-
  * santral/jenerik yer tutucular; `socialLinks: []`; gerçek görsel/logo/proje adı YOK).
+ *
+ * v2 (bu tur, DESIGN-NOTES.md §0 v2 notu — orkestratörün açık istisnasıyla YETKİLENDİRİLMİŞ,
+ * bkz. `.claude/architect-scope-demo-template-import.md` §9 madde 3'ün bu tur için bilerek
+ * DELİNDİĞİ kapsam genişletmesi): SVG-türevi düz renk placeholder görselleri gerçek stok mimari
+ * fotoğrafla (Unsplash, özgür lisans, gerçek marka/logo/tanınabilir yüz YOK) değiştirildi — hero
+ * artık `bgType:"image"` (gradient DEĞİL), 3 hizmet kartı fotoğraf+rozet+"İncele" butonu
+ * kompozisyonuna geçti (§6.2), iletişim sağ paneli `about-image` fotoğrafını ağır krem overlay'le
+ * arka plan olarak kullanıyor (§6.7). Diğer bölümler (`portfolioSection`/`differenceSection`/
+ * `countersSection`/`newsletterSection`) DEĞİŞMEDİ.
  */
 
 const HERO_BODY_TEXT =
@@ -90,14 +99,93 @@ const ZERO_SPACING = { top: 0, right: 0, bottom: 0, left: 0 };
  * Sayfa bölümleri — architect §8 tablosu + DESIGN-NOTES.md §6 (satır-satır uygulama)
  * ------------------------------------------------------------------------------------------- */
 
-// §6.2 — 3'lü hizmet kartları.
+// §6.2 — 3'lü hizmet kartları — YENİDEN TASARLANDI (fotoğraf şeridi + rozet / içerik paneli).
 // SEO düzeltme: hiyerarşi atlaması — sayfada hero'nun tek `H1`inden (Hero Studio katmanı,
 // `buildHeroLayers` → level 1) sonra gelen İLK bölüm bu bölümdü ve doğrudan `icon-box`
 // bloklarının sabit `<h3>`sine (`icon-box-block.tsx`) düşüyordu (H1 → H3, H2 YOK). Diğer tüm
 // bölümler (`portfolioSection`/`differenceSection`/`contactSection`) kendi `H2` başlıklarını
 // taşıyor; bu bölüm de AYNI paterne (dış `column` konteyner → `heading` (level 2) → kartları
-// taşıyan iç `row` konteyner — bkz. aşağıdaki `differenceSection`) getirildi. Kart konteynerlerinin
-// kendisi ve iç `icon-box` verileri DEĞİŞMEDİ, yalnızca bir üst seviye + başlık eklendi.
+// taşıyan iç `row` konteyner — bkz. aşağıdaki `differenceSection`) getirildi.
+// v2 (DESIGN-NOTES.md §6.2): her kart artık İKİ çocuk taşır — (1) fotoğraf şeridi (metin YOK,
+// yalnızca kendi renk çiftini taşıyan `.pb-badge-pill` rozeti, §1.2 madde 4 gereği), (2) beyaz
+// zeminli içerik paneli (`icon-box` AYNEN korunur + yeni "İncele" `button`, §4.3 kompromisi).
+// Kart arka planları artık HER ÜÇÜ DE `#FFFFFF` (fotoğraflar zaten birbirinden farklı olduğu
+// için `#EFE6CE` alternatifi kaldırıldı).
+function buildServiceCard(input: {
+  id: string;
+  assetKey: string;
+  badgeText: string;
+  icon: string;
+  heading: string;
+  description: string;
+}): PageNode {
+  return {
+    id: input.id,
+    type: "container",
+    settings: {
+      layout: "full-width",
+      direction: "column",
+      justifyContent: "start",
+      alignItems: "stretch",
+      gap: 0,
+      padding: ZERO_SPACING,
+      margin: ZERO_SPACING,
+      background: { type: "color", value: "#FFFFFF" },
+      widthFr: 1,
+    },
+    children: [
+      {
+        id: `${input.id}-photo`,
+        type: "container",
+        settings: {
+          layout: "full-width",
+          direction: "row",
+          justifyContent: "start",
+          alignItems: "start",
+          gap: 0,
+          padding: { top: 24, right: 24, bottom: 24, left: 24 },
+          margin: ZERO_SPACING,
+          minHeight: { value: 220, unit: "px" },
+          background: { type: "image", value: `asset:${input.assetKey}`, position: "center", size: "cover", repeat: "no-repeat" },
+        },
+        children: [
+          {
+            id: `${input.id}-badge`,
+            type: "text",
+            data: { html: `<span class="pb-badge-pill">${input.badgeText}</span>` },
+          },
+        ],
+      },
+      {
+        id: `${input.id}-content`,
+        type: "container",
+        settings: {
+          layout: "full-width",
+          direction: "column",
+          justifyContent: "start",
+          alignItems: "start",
+          gap: 16,
+          padding: { top: 32, right: 32, bottom: 32, left: 32 },
+          margin: ZERO_SPACING,
+          background: { type: "none" },
+        },
+        children: [
+          {
+            id: `${input.id}-icon`,
+            type: "icon-box",
+            data: { icon: input.icon, heading: input.heading, description: input.description },
+          },
+          {
+            id: `${input.id}-cta`,
+            type: "button",
+            data: { label: "İncele", href: "/", style: "ghost", size: "sm", icon: "ArrowUpRight", align: "right" },
+          },
+        ],
+      },
+    ],
+  };
+}
+
 const servicesSection: PageNode = {
   id: "ma-services",
   type: "container",
@@ -127,84 +215,30 @@ const servicesSection: PageNode = {
         background: { type: "none" },
       },
       children: [
-        {
+        buildServiceCard({
           id: "ma-service-1",
-          type: "container",
-          settings: {
-            layout: "full-width",
-            direction: "column",
-            justifyContent: "start",
-            alignItems: "center",
-            gap: 16,
-            padding: { top: 40, right: 32, bottom: 40, left: 32 },
-            margin: ZERO_SPACING,
-            background: { type: "color", value: "#FFFFFF" },
-            widthFr: 1,
-          },
-          children: [
-            {
-              id: "ma-service-1-icon",
-              type: "icon-box",
-              data: {
-                icon: "Compass",
-                heading: "Mimari Tasarım",
-                description: "Konsept tasarımdan uygulama projesine, mekanın ihtiyaçlarına özel bütünsel bir mimari yaklaşım.",
-              },
-            },
-          ],
-        },
-        {
+          assetKey: "service-design",
+          badgeText: "MİMARİ TASARIM",
+          icon: "Compass",
+          heading: "Mimari Tasarım",
+          description: "Konsept tasarımdan uygulama projesine, mekanın ihtiyaçlarına özel bütünsel bir mimari yaklaşım.",
+        }),
+        buildServiceCard({
           id: "ma-service-2",
-          type: "container",
-          settings: {
-            layout: "full-width",
-            direction: "column",
-            justifyContent: "start",
-            alignItems: "center",
-            gap: 16,
-            padding: { top: 40, right: 32, bottom: 40, left: 32 },
-            margin: ZERO_SPACING,
-            background: { type: "color", value: "#EFE6CE" },
-            widthFr: 1,
-          },
-          children: [
-            {
-              id: "ma-service-2-icon",
-              type: "icon-box",
-              data: {
-                icon: "Wrench",
-                heading: "İnşaat & Uygulama",
-                description: "Sahada disiplinli süreç yönetimi ve kaliteli işçilikle projeyi eksiksiz hayata geçiriyoruz.",
-              },
-            },
-          ],
-        },
-        {
+          assetKey: "service-construction",
+          badgeText: "İNŞAAT & UYGULAMA",
+          icon: "Wrench",
+          heading: "İnşaat & Uygulama",
+          description: "Sahada disiplinli süreç yönetimi ve kaliteli işçilikle projeyi eksiksiz hayata geçiriyoruz.",
+        }),
+        buildServiceCard({
           id: "ma-service-3",
-          type: "container",
-          settings: {
-            layout: "full-width",
-            direction: "column",
-            justifyContent: "start",
-            alignItems: "center",
-            gap: 16,
-            padding: { top: 40, right: 32, bottom: 40, left: 32 },
-            margin: ZERO_SPACING,
-            background: { type: "color", value: "#FFFFFF" },
-            widthFr: 1,
-          },
-          children: [
-            {
-              id: "ma-service-3-icon",
-              type: "icon-box",
-              data: {
-                icon: "Target",
-                heading: "Proje Yönetimi",
-                description: "Bütçe ve takvime bağlı kalarak, tasarımdan teslime tüm süreci uçtan uca yönetiyoruz.",
-              },
-            },
-          ],
-        },
+          assetKey: "service-management",
+          badgeText: "PROJE YÖNETİMİ",
+          icon: "Target",
+          heading: "Proje Yönetimi",
+          description: "Bütçe ve takvime bağlı kalarak, tasarımdan teslime tüm süreci uçtan uca yönetiyoruz.",
+        }),
       ],
     },
   ],
@@ -403,6 +437,11 @@ const contactSection: PageNode = {
       ],
     },
     {
+      // v2 (DESIGN-NOTES.md §6.7): sağ panel artık `about-image` fotoğrafını arka plan olarak
+      // taşır — ağır (%85) krem overlay ile, efektif zemin pratikte `backgroundColor`'a eşdeğer
+      // (§1.2 madde 4 istisnasının ZORLANMASI, gevşemesi DEĞİL — `icon-box`/`text` bu yüzden
+      // GÜVENLİDİR). Gerçek koyu zemin (`#EFE6CE` → `secondaryColor`) KULLANILMAZ, gerekçe §6.4
+      // ile AYNI (blok metin renkleri lokal zemine duyarlı değildir).
       id: "ma-contact-right",
       type: "container",
       settings: {
@@ -413,7 +452,14 @@ const contactSection: PageNode = {
         gap: 24,
         padding: { top: 96, right: 64, bottom: 96, left: 64 },
         margin: ZERO_SPACING,
-        background: { type: "color", value: "#EFE6CE" },
+        background: {
+          type: "image",
+          value: "asset:about-image",
+          position: "center",
+          size: "cover",
+          repeat: "no-repeat",
+          overlay: { color: "#F6F5F2", opacity: 85 },
+        },
         widthFr: 1,
       },
       children: [
@@ -422,7 +468,13 @@ const contactSection: PageNode = {
           type: "icon-box",
           data: { icon: "Building2", heading: "Ofisimiz", description: "Örnek Mah. Örnek Cad. No: 1, Kadıköy / İstanbul" },
         },
-        { id: "ma-contact-details", type: "text", data: { html: "<p>+90 212 000 00 00</p><p>info@example.com</p>" } },
+        {
+          id: "ma-contact-details",
+          type: "text",
+          data: {
+            html: '<span class="pb-badge-pill">+90 212 000 00 00</span> <span class="pb-badge-pill">info@example.com</span>',
+          },
+        },
       ],
     },
   ],
@@ -464,7 +516,7 @@ const newsletterSection: PageNode = {
 
 export const MODERN_ARCHITECTURE_TEMPLATE: DemoTemplateDefinition = {
   key: "modern-architecture",
-  version: "1.0.0",
+  version: "1.1.0",
   name: "Modern Mimarlık & İnşaat",
   description: "Koyu antrasit + krem paletli, geniş boşluklu kurumsal mimarlık/inşaat sitesi.",
   // NOT (backend-agent → devir teslim notu, DESIGN-NOTES.md §8): WEBP encoder bu depoda YOK
@@ -476,17 +528,25 @@ export const MODERN_ARCHITECTURE_TEMPLATE: DemoTemplateDefinition = {
   previewImageUrl: "/demo-templates/modern-architecture/preview.svg",
   tags: ["mimarlık", "inşaat", "kurumsal"],
 
+  // DESIGN-NOTES.md §7.2 — TAM liste, 12 varlık, hepsi gerçek JPEG (Unsplash, özgür lisans).
+  // §7.1: eski `_source/*.svg` + `build-template-assets.ts` üretim akışı BU varlıklar için
+  // artık kullanılmaz (gerçek fotoğraf bir SVG desenden render edilemez) — `_source/*.svg`
+  // dosyaları depoda tarihsel referans olarak kalır, `assets[]`'te REFERANS EDİLMEZ.
   assets: [
-    { key: "portfolio-cover-1", file: "portfolio-cover-1.png", altText: "Kütle Yapı — konut projesi kapak görseli, ikiz kule silueti" },
-    { key: "portfolio-cover-2", file: "portfolio-cover-2.png", altText: "Kütle Yapı — ticari proje kapak görseli, kademeli yapı silueti" },
-    { key: "portfolio-cover-3", file: "portfolio-cover-3.png", altText: "Kütle Yapı — kurumsal proje kapak görseli, kolonat silueti" },
-    { key: "portfolio-cover-4", file: "portfolio-cover-4.png", altText: "Kütle Yapı — karma kullanım proje kapak görseli, yapı kümesi silueti" },
-    { key: "cta-banner", file: "cta-banner.png", altText: "Kütle Yapı ofis binası siluet illüstrasyonu, koyu zemin üzerinde altın çizgi motif" },
-    // DESIGN-NOTES.md §6 bölüm kompozisyonunda BU varlığı hiçbir bloğa BAĞLAMAZ (yalnızca §7
-    // varlık tablosunda tanımlanır) — yine de §4.2 gerekçesiyle (kullanıcının medya
-    // kütüphanesinde HER paketlenmiş görseli değiştirebilmesi) `assets[]`'te tutulur ve
-    // Faz 1/2'de gerçek bir `Media` satırına dönüştürülür; sayfa ağacında REFERANS EDİLMEZ.
-    { key: "about-image", file: "about-image.png", altText: "Kütle Yapı — mimari kat planı çizim illüstrasyonu" },
+    { key: "hero-bg-1", file: "hero-bg-1.jpg", altText: "Kütle Yapı — modern mimari bina cephesi, hero görseli 1" },
+    { key: "hero-bg-2", file: "hero-bg-2.jpg", altText: "Kütle Yapı — inşaat sahası, hero görseli 2" },
+    { key: "hero-bg-3", file: "hero-bg-3.jpg", altText: "Kütle Yapı — sürdürülebilir cam cephe bina, hero görseli 3" },
+    { key: "service-design", file: "service-design.jpg", altText: "Kütle Yapı — mimari tasarım stüdyosu" },
+    { key: "service-construction", file: "service-construction.jpg", altText: "Kütle Yapı — inşaat sahası uygulama çalışması" },
+    { key: "service-management", file: "service-management.jpg", altText: "Kütle Yapı — proje yönetimi ekip toplantısı" },
+    { key: "portfolio-cover-1", file: "portfolio-cover-1.jpg", altText: "Kütle Yapı — konut projesi kapak görseli" },
+    { key: "portfolio-cover-2", file: "portfolio-cover-2.jpg", altText: "Kütle Yapı — ticari proje kapak görseli" },
+    { key: "portfolio-cover-3", file: "portfolio-cover-3.jpg", altText: "Kütle Yapı — kurumsal proje kapak görseli" },
+    { key: "portfolio-cover-4", file: "portfolio-cover-4.jpg", altText: "Kütle Yapı — karma kullanım proje kapak görseli" },
+    { key: "cta-banner", file: "cta-banner.jpg", altText: "Kütle Yapı — akşam ışığında bina cephesi, iletişim çağrısı görseli" },
+    // DESIGN-NOTES.md §6.7 gereği bu tur `about-image` artık iletişim sağ panelinin ARKA
+    // PLANIDIR (ağır krem overlay ile) — sayfa ağacında `contactSection`'a bağlıdır.
+    { key: "about-image", file: "about-image.jpg", altText: "Kütle Yapı — mimarlık ofisi iç mekan görseli" },
   ],
 
   appearance: {
@@ -650,16 +710,16 @@ export const MODERN_ARCHITECTURE_TEMPLATE: DemoTemplateDefinition = {
       {
         label: "Hero 1",
         isActive: true,
-        bgType: "gradient",
-        bgAssetKey: null,
+        bgType: "image",
+        bgAssetKey: "hero-bg-1",
         bgPositionX: 50,
         bgPositionY: 50,
-        bgOverlayColor: null,
-        bgOverlayOpacity: 0,
-        bgGradientFrom: "#1C4B42",
-        bgGradientTo: "#1F2124",
-        bgGradientAngle: 135,
-        bgKenBurns: false,
+        bgOverlayColor: "#1F2124",
+        bgOverlayOpacity: 58,
+        bgGradientFrom: null,
+        bgGradientTo: null,
+        bgGradientAngle: 0,
+        bgKenBurns: true,
         durationMs: null,
         linkHref: null,
         linkNewTab: false,
@@ -673,16 +733,16 @@ export const MODERN_ARCHITECTURE_TEMPLATE: DemoTemplateDefinition = {
       {
         label: "Hero 2",
         isActive: true,
-        bgType: "gradient",
-        bgAssetKey: null,
+        bgType: "image",
+        bgAssetKey: "hero-bg-2",
         bgPositionX: 50,
         bgPositionY: 50,
-        bgOverlayColor: null,
-        bgOverlayOpacity: 0,
-        bgGradientFrom: "#1F2124",
-        bgGradientTo: "#1C4B42",
-        bgGradientAngle: 225,
-        bgKenBurns: false,
+        bgOverlayColor: "#1F2124",
+        bgOverlayOpacity: 58,
+        bgGradientFrom: null,
+        bgGradientTo: null,
+        bgGradientAngle: 0,
+        bgKenBurns: true,
         durationMs: null,
         linkHref: null,
         linkNewTab: false,
@@ -696,16 +756,16 @@ export const MODERN_ARCHITECTURE_TEMPLATE: DemoTemplateDefinition = {
       {
         label: "Hero 3",
         isActive: true,
-        bgType: "gradient",
-        bgAssetKey: null,
+        bgType: "image",
+        bgAssetKey: "hero-bg-3",
         bgPositionX: 50,
         bgPositionY: 50,
-        bgOverlayColor: null,
-        bgOverlayOpacity: 0,
-        bgGradientFrom: "#1C4B42",
-        bgGradientTo: "#1F2124",
-        bgGradientAngle: 315,
-        bgKenBurns: false,
+        bgOverlayColor: "#1F2124",
+        bgOverlayOpacity: 58,
+        bgGradientFrom: null,
+        bgGradientTo: null,
+        bgGradientAngle: 0,
+        bgKenBurns: true,
         durationMs: null,
         linkHref: null,
         linkNewTab: false,
