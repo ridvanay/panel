@@ -44,7 +44,22 @@ compose up` doğrulaması" bölümündeki adım adım komut ve kalıcı çözüm
   doğrular).
 - `.github/workflows/deploy.yml` — production/staging deploy şablonu (bkz. aşağıda).
 - `backend/eslint.config.mjs` — backend'de daha önce hiç lint kurulumu yoktu, CI'daki lint
-  adımı için minimal bir flat config eklendi (bkz. "Bilinen sınırlamalar").
+  adımı için minimal bir flat config eklendi (bkz. "Bilinen sınırlamalar"). Ayrıca
+  `scripts/**/*.js` için Node/CommonJS globals override'ı içerir (`copy-static-assets.js`
+  bkz. aşağıdaki madde).
+- `backend/scripts/copy-static-assets.js` — `tsc` yalnızca `.ts` dosyalarını derlediği için
+  `src/**` altına commit edilmiş görsel varlıklar (örn.
+  `src/modules/demo-templates/assets/modern-architecture/*.png`) `dist/`e otomatik
+  kopyalanmıyordu; bu, prod/Docker çalışma zamanında (`lib/assets.ts::templateAssetsDir()`
+  `__dirname` = `dist/...` üzerinden dosya aradığı için) "şablon varlığı bulunamadı" hatasına
+  yol açıyordu (`npm run dev`/vitest bunu yakalamaz, çünkü ikisi de `src/`den çalışır).
+  Düzeltme: `backend/package.json`'daki `"build"` script'i artık `tsc -p tsconfig.json &&
+  node scripts/copy-static-assets.js` — bu script `src/**` altındaki `.png/.jpg/.jpeg/.webp/.gif`
+  dosyalarını aynı göreli yola `dist/`e kopyalar (genel amaçlı, yalnızca demo-templates'e
+  hardcode değil). `backend/Dockerfile`'ın `build` stage'ine `COPY scripts ./scripts` eklendi
+  (önceden yalnızca `src/` kopyalanıyordu, script çalışamazdı). Doğrulama: hem lokal
+  `npm run build` hem `docker build --target build` ile `dist/modules/demo-templates/assets/
+  modern-architecture/` altında 6 PNG'nin de oluştuğu teyit edildi.
 
 ## İçe aktarma dosya deposu (`storage/imports`)
 

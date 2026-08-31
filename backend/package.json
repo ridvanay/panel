@@ -6,7 +6,7 @@
   "type": "commonjs",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node scripts/copy-static-assets.js",
     "start": "node dist/server.js",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.test.json --noEmit",
@@ -60,6 +60,7 @@
     "@types/yauzl": "^2.10.3",
     "@types/yazl": "^3.3.1",
     "eslint": "^9.39.5",
+    "globals": "^14.0.0",
     "prisma": "^5.19.1",
     "tsx": "^4.16.5",
     "typescript": "^5.5.4",

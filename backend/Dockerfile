@@ -23,6 +23,9 @@ RUN npx prisma generate
 FROM deps AS build
 COPY tsconfig.json ./
 COPY src ./src
+# `npm run build` = `tsc` + scripts/copy-static-assets.js (statik görsel varlıkları dist/'e
+# kopyalar, bkz. o script'in başındaki açıklama) — bu yüzden scripts/ de burada gerekli.
+COPY scripts ./scripts
 RUN npm run build
 
 # ---- prod-deps: sadece production bağımlılıkları + üretilen Prisma client ----
