@@ -91,8 +91,14 @@ export function extractGoogleMapEmbedUrlFromInput(raw: string): string {
 /**
  * İki kaynak modu (mimar §2.1, bağlayıcı davranış):
  * - `embedUrl` DOLU ve yukarıdaki NİHAİ regex'ten GEÇİYORSA → aynen kullanılır.
- * - Aksi halde `address` DOLU ise → sabit şablon: `https://www.google.com/maps?q=<address>&z=<zoom>&hl=<locale>&output=embed`
- *   (`encodeURIComponent` ile kodlanır — enjeksiyon yüzeyi yok, security-review §3).
+ * - Aksi halde `address` DOLU ise → "classic embed" şablonu (bilinçli seçim — `/maps?q=` +
+ *   `output=embed` yeni-format bazı geniş/şehir seviyesi sorgularda kırmızı pin GÖSTERMİYORDU,
+ *   `maps.google.com/maps?...&iwloc=&output=embed` şablonu güvenilir biçimde pin gösterir):
+ *   `https://maps.google.com/maps?q=<address>&t=&z=<zoom>&ie=UTF8&iwloc=&hl=<locale>&output=embed`
+ *   (`address` HALA `encodeURIComponent` ile kodlanır — enjeksiyon yüzeyi yok, security-review §3;
+ *   `zoom` HALA `clampZoom` ile sınırlanır; bu URL şirket-içi inşa edilir, kullanıcı girdisinden
+ *   GELMEZ, dolayısıyla `GOOGLE_MAP_EMBED_URL_RE` beyaz listesini KULLANMAZ/ETKİLEMEZ — o regex
+ *   yalnızca Mod A'nın kullanıcı-yapıştırdığı `embedUrl`'i içindir).
  * - İkisi de boş / `embedUrl` beyaz listeyi geçemiyor → `null` (hata fırlatılmaz, hiçbir şey
  *   render EDİLMEZ — `video-embed.ts`'in `null` dönme deseniyle birebir).
  */
@@ -107,8 +113,9 @@ export function getMapEmbedUrl(data: GoogleMapBlock["data"], locale?: string | n
 
   const resolvedLocale = resolveLocale(locale);
   const zoom = clampZoom(data.zoom);
-  // Sabit şablon (mimar §2.1/§3.3) — `address` HİÇBİR ZAMAN ham olarak yazılmaz, `encodeURIComponent`
-  // ile kodlanır. `zoom` sayıdır (clamp edilmiş), `locale` kapalı listeye karşı doğrulanmıştır —
-  // enjeksiyon yapısal olarak imkânsız.
-  return `https://www.google.com/maps?q=${encodeURIComponent(address)}&z=${zoom}&hl=${resolvedLocale}&output=embed`;
+  // Sabit "classic embed" şablonu (mimar §2.1/§3.3, güncelleme: kırmızı pin güvenilirliği) —
+  // `address` HİÇBİR ZAMAN ham olarak yazılmaz, `encodeURIComponent` ile kodlanır. `zoom` sayıdır
+  // (clamp edilmiş), `locale` kapalı listeye karşı doğrulanmıştır — enjeksiyon yapısal olarak
+  // imkânsız.
+  return `https://maps.google.com/maps?q=${encodeURIComponent(address)}&t=&z=${zoom}&ie=UTF8&iwloc=&hl=${resolvedLocale}&output=embed`;
 }

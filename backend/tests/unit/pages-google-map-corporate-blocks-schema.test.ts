@@ -231,6 +231,27 @@ describe("google-map — boş blok autosave edilebilir (mimar §5/4: .superRefin
   });
 });
 
+describe("google-map — widthMode (frontend `types.ts::GoogleMapBlock.data.widthMode` ile BİREBİR aynı alan, `ContainerLayout` ile AYNI isimlendirme kalıbı)", () => {
+  it("widthMode olmadan (eski kayıt şekli) hâlâ geçerli — regresyon", () => {
+    const result = CreatePageRequestSchema.safeParse(pageWithBlock(googleMapBlock({})));
+    expect(result.success).toBe(true);
+  });
+
+  it.each(["boxed", "full-width"] as const)("widthMode: %s kabul edilir", (widthMode) => {
+    const result = CreatePageRequestSchema.safeParse(pageWithBlock(googleMapBlock({ widthMode })));
+    expect(result.success).toBe(true);
+    if (result.success) {
+      const block = result.data.blocks?.[0] as unknown as { data: Record<string, unknown> };
+      expect(block.data.widthMode).toBe(widthMode);
+    }
+  });
+
+  it("widthMode kapalı enum dışı bir değer (örn. 'center') için 422", () => {
+    const result = CreatePageRequestSchema.safeParse(pageWithBlock(googleMapBlock({ widthMode: "center" })));
+    expect(result.success).toBe(false);
+  });
+});
+
 describe("PageNodeSchema dispatch — google-map dalı gerçekten doğruluyor (mimar §9 R2, KRİTİK regresyon testi)", () => {
   it("geçersiz google-map verisi (kötü embedUrl) 422 ÜRETİR — dispatch dalı unutulsaydı bu SESSİZCE geçerdi", () => {
     const result = CreatePageRequestSchema.safeParse(

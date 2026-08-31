@@ -977,6 +977,12 @@ const GoogleMapBlockDataSchema = z.object({
   height: GoogleMapHeightSchema.optional(),
   mapStyle: z.enum(["standard", "dark", "silver", "retro"]).optional(),
   markerTitle: z.string().max(GOOGLE_MAP_MAX_MARKER_TITLE_LENGTH).optional(),
+  // YENİ, OPSİYONEL (google-map-corporate-blocks turu). Frontend karşılığı:
+  // `frontend/src/lib/page-builder/types.ts::GoogleMapBlock["data"]["widthMode"]` — alan adı,
+  // tipi ve opsiyonelliği BİREBİR aynı olmak ZORUNDADIR (`ContainerLayout` ile AYNI isimlendirme
+  // kalıbı). Yoksa render `widthMode ?? "boxed"`e düşer; backend bu varsayılanı UYGULAMAZ, sadece
+  // değeri kabul/saklar.
+  widthMode: z.enum(["boxed", "full-width"]).optional(),
 });
 const GoogleMapBlockSchema = z.object({
   id: z.string().min(1),

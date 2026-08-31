@@ -124,6 +124,7 @@ test.describe("Round-trip — yeni alanlar admin editöründe kaybolmuyor (regre
             height: { value: 350, unit: "px" },
             mapStyle: "dark",
             markerTitle: "Merkez Ofis",
+            widthMode: "full-width",
           },
         },
         {
@@ -203,6 +204,7 @@ test.describe("Round-trip — yeni alanlar admin editöründe kaybolmuyor (regre
       await expect(page.getByRole("button", { name: "px", exact: true })).toHaveAttribute("aria-pressed", "true");
       await expect(page.getByRole("button", { name: "Koyu", exact: true })).toHaveAttribute("aria-pressed", "true");
       await expect(page.getByRole("textbox", { name: "Harita başlığı (opsiyonel)" })).toHaveValue("Merkez Ofis");
+      await expect(page.getByRole("button", { name: "Tam Genişlik", exact: true })).toHaveAttribute("aria-pressed", "true");
 
       // accordion — layoutStyle + isOpenDefault.
       await expect(page.getByRole("button", { name: "Kart", exact: true })).toHaveAttribute("aria-pressed", "true");
@@ -327,9 +329,11 @@ test.describe("Public render — google-map + kurumsal bloklar (CLS=0, JSON-LD, 
       try {
         await publicPage.goto(`${FRONTEND_URL}/${slug}`);
 
-        // `getMapEmbedUrl` (Mod B, `map-embed.ts`) — SABİT şablon, `encodeURIComponent(address)`,
-        // `locale` bu render yolunda geçilmiyor → kapalı listenin varsayılanı `hl=tr`ye düşer.
-        const expectedSrc = `https://www.google.com/maps?q=${encodeURIComponent(address)}&z=12&hl=tr&output=embed`;
+        // `getMapEmbedUrl` (Mod B, `map-embed.ts`) — SABİT "classic embed" şablonu (kırmızı pin
+        // güvenilirliği için `maps.google.com/maps?q=...&iwloc=&output=embed`),
+        // `encodeURIComponent(address)`, `locale` bu render yolunda geçilmiyor → kapalı listenin
+        // varsayılanı `hl=tr`ye düşer.
+        const expectedSrc = `https://maps.google.com/maps?q=${encodeURIComponent(address)}&t=&z=12&ie=UTF8&iwloc=&hl=tr&output=embed`;
         const iframe = publicPage.locator(`iframe[src="${expectedSrc}"]`);
         await expect(iframe).toHaveCount(1, { timeout: 15_000 });
         await expect(iframe).toHaveAttribute("title", "Merkez Ofis");
@@ -350,6 +354,72 @@ test.describe("Public render — google-map + kurumsal bloklar (CLS=0, JSON-LD, 
 
         expect(unexpectedFailedRequests, `Beklenmeyen başarısız istekler: ${unexpectedFailedRequests.join(" | ")}`).toEqual([]);
         expect(pageErrors, `Sayfa hataları: ${pageErrors.map((e) => e.message).join(" | ")}`).toEqual([]);
+      } finally {
+        await publicContext.close();
+      }
+    } finally {
+      await deletePagePermanently(token, pageId);
+    }
+  });
+
+  test("Google Harita — widthMode 'boxed' <-> 'full-width' geçişinde sarmalayıcı genişlik/köşe/gölge sınıfları değişir", async () => {
+    // `server-pages.ts::getPageBySlug` `next: { revalidate: 60 }` ile önbelleklenir. Backend'in
+    // `PATCH` sonrası tetiklediği on-demand revalidation (`lib/revalidate.ts`) best-effort'tur —
+    // bu yerel/CI e2e ortamında `webServer` süreci `REVALIDATE_SECRET` OLMADAN başlatıldığından
+    // (`playwright.config.ts`) her zaman 401 ile başarısız olur (`admin-page-builder-dynamic.
+    // spec.ts`teki AYNI, önceden var olan/kabul edilen ISR-penceresi deseni — flake DEĞİL,
+    // `toPass` + periyodik `reload` ile ~90sn boyunca beklenir).
+    test.setTimeout(150_000);
+    const { pageId, slug } = await createHostPage("map-widthmode", "PUBLISHED");
+    try {
+      const baseData = {
+        address: "İstanbul, Beşiktaş",
+        zoom: 12,
+        height: { value: 350, unit: "px" as const },
+        mapStyle: "standard" as const,
+        markerTitle: "Merkez Ofis",
+      };
+
+      // --- Adım 1: `widthMode: "boxed"` (varsayılan/açık) ile yayınla.
+      await patchPageBlocks(token, pageId, [
+        { id: "qa-map-widthmode", type: "google-map", data: { ...baseData, widthMode: "boxed" } },
+      ]);
+
+      const publicContext = await page.context().browser()!.newContext();
+      const publicPage = await publicContext.newPage();
+      try {
+        await publicPage.goto(`${FRONTEND_URL}/${slug}`);
+        const iframe = publicPage.locator('iframe[title="Merkez Ofis"]');
+        await expect(iframe).toHaveCount(1, { timeout: 15_000 });
+
+        // `google-map-block.tsx` (public) — `boxed`: dış sarmalayıcı `mx-auto max-w-7xl px-4`,
+        // iç sarmalayıcı (iframe'i saran) `overflow-hidden rounded-2xl shadow-lg`.
+        const boxedOuterWrapper = publicPage.locator("div.mx-auto.max-w-7xl.px-4").filter({ has: iframe });
+        await expect(boxedOuterWrapper).toHaveCount(1);
+        const boxedInnerWrapper = publicPage.locator("div.overflow-hidden.rounded-2xl.shadow-lg").filter({ has: iframe });
+        await expect(boxedInnerWrapper).toHaveCount(1);
+
+        // --- Adım 2: aynı bloğu `widthMode: "full-width"` olarak güncelle, sayfayı yeniden yükle.
+        await patchPageBlocks(token, pageId, [
+          { id: "qa-map-widthmode", type: "google-map", data: { ...baseData, widthMode: "full-width" } },
+        ]);
+        // `toPass` + periyodik `reload` — ISR penceresi kapanana kadar bekle (yukarıdaki not).
+        await expect(async () => {
+          await publicPage.reload();
+          await expect(publicPage.locator("div.mx-auto.max-w-7xl.px-4").filter({ has: iframe })).toHaveCount(0, { timeout: 5_000 });
+        }).toPass({ timeout: 90_000, intervals: [5_000, 10_000] });
+
+        // `full-width`: dış sarmalayıcı ARTIK `max-w-7xl` TAŞIMAZ, breakout sınıflarını taşır;
+        // iç sarmalayıcı `rounded-2xl`/`shadow-lg` KAYBOLUR (yalnızca `overflow-hidden` kalır).
+        await expect(iframe).toHaveCount(1, { timeout: 15_000 });
+        const fullWidthOuterWrapper = publicPage
+          .locator("div.relative.left-1\\/2.right-1\\/2.-mx-\\[50vw\\].w-screen")
+          .filter({ has: iframe });
+        await expect(fullWidthOuterWrapper).toHaveCount(1);
+        await expect(publicPage.locator("div.overflow-hidden.rounded-2xl.shadow-lg").filter({ has: iframe })).toHaveCount(0);
+        const fullWidthInnerWrapper = publicPage.locator("div.overflow-hidden").filter({ has: iframe });
+        await expect(fullWidthInnerWrapper).not.toHaveClass(/rounded-2xl/);
+        await expect(fullWidthInnerWrapper).not.toHaveClass(/shadow-lg/);
       } finally {
         await publicContext.close();
       }

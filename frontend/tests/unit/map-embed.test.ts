@@ -75,7 +75,14 @@ describe("getMapEmbedUrl — extractGoogleMapEmbedUrlFromInput ile birlikte uçt
     const iframeSnippet = '<iframe src="https://evil.com/maps/embed?x=1"></iframe>';
     const extracted = extractGoogleMapEmbedUrlFromInput(iframeSnippet);
     const url = getMapEmbedUrl(baseData({ embedUrl: extracted, address: "İstanbul" }), "tr");
-    expect(url).toContain("https://www.google.com/maps?q=");
+    expect(url).toContain("https://maps.google.com/maps?q=");
     expect(url).not.toContain("evil.com");
+  });
+
+  it("adres modunda güvenilir kırmızı pin için 'classic embed' şablonunu (maps.google.com) kullanır", () => {
+    const url = getMapEmbedUrl(baseData({ address: "İstanbul", zoom: 12 }), "tr");
+    expect(url).toBe(
+      `https://maps.google.com/maps?q=${encodeURIComponent("İstanbul")}&t=&z=12&ie=UTF8&iwloc=&hl=tr&output=embed`
+    );
   });
 });

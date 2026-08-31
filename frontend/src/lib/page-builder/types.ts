@@ -563,6 +563,11 @@ export interface GoogleMapBlock extends BaseNode {
     mapStyle?: GoogleMapStyle;
     /** iframe `title` niteliği + görsel etiket. */
     markerTitle?: string;
+    /** YENİ, OPSİYONEL. `ContainerLayout` (satır ~610) ile AYNI isimlendirme kalıbı — geriye
+     *  dönük uyumluluk için opsiyonel, yoksa render `widthMode ?? "boxed"` (mevcut/eski
+     *  kayıtlarla en yakın davranış). `"full-width"` viewport kenarına dayanan breakout deseni
+     *  uygular (bkz. `site/blocks/google-map-block.tsx`). */
+    widthMode?: "boxed" | "full-width";
   };
 }
 

@@ -47,6 +47,11 @@ const MAP_STYLE_OPTIONS: { value: GoogleMapStyle; label: string }[] = [
   { value: "retro", label: "Retro" },
 ];
 
+const WIDTH_MODE_OPTIONS: { value: NonNullable<GoogleMapBlock["data"]["widthMode"]>; label: string }[] = [
+  { value: "boxed", label: "Kutulu" },
+  { value: "full-width", label: "Tam Genişlik" },
+];
+
 export function GoogleMapBlockEditor({
   block,
   onChange,
@@ -200,6 +205,17 @@ export function GoogleMapBlockEditor({
           value={block.data.mapStyle ?? "standard"}
           options={MAP_STYLE_OPTIONS}
           onChange={(mapStyle) => updateData({ mapStyle })}
+        />
+      </div>
+
+      {/* 180px'lik önizleme kutusu (yukarıda) sabit boyutludur, genişlik modundan ETKİLENMEZ —
+          WYSIWYG yalnızca gerçek canvas/public render'da (`GoogleMapBlockView`) gerçekleşir. */}
+      <div className="space-y-1.5">
+        <p className="text-sm font-medium text-foreground">Genişlik</p>
+        <SegmentedToggle
+          value={block.data.widthMode ?? "boxed"}
+          options={WIDTH_MODE_OPTIONS}
+          onChange={(widthMode) => updateData({ widthMode })}
         />
       </div>
 

@@ -9918,8 +9918,11 @@ components:
         **İki kaynak modu:** `embedUrl` doluysa VE aşağıdaki beyaz listeyi geçiyorsa aynen
         kullanılır (`address`/`zoom` bu durumda URL inşasında KULLANILMAZ). Aksi halde `address`
         doluysa embed URL'i render anında sabit bir şablondan
-        (`https://www.google.com/maps?q=<encodeURIComponent(address)>&z=<zoom>&hl=<locale>&output=embed`)
-        inşa edilir. İkisi de yoksa/geçersizse hiçbir şey render EDİLMEZ (hata fırlatılmaz).
+        (`https://maps.google.com/maps?q=<encodeURIComponent(address)>&t=&z=<zoom>&ie=UTF8&iwloc=&hl=<locale>&output=embed`
+        — `maps.google.com` host'u kırmızı pin göstermek için kullanılır, `www.google.com` DEĞİL)
+        inşa edilir. İkisi de yoksa/geçersizse hiçbir şey render EDİLMEZ (hata fırlatılmaz). Bu
+        URL inşası salt frontend render-time hesaplamasıdır (`map-embed.ts::getMapEmbedUrl`);
+        backend bu URL'i üretmez/doğrulamaz.
 
 
         **`apiKey` alanı KASITLI OLARAK YOKTUR ve tanımlanamaz** (mimar §3.1, security-review §1
@@ -9977,6 +9980,10 @@ components:
           type: string
           maxLength: 120
           description: "iframe `title` niteliği + görsel etiket. Boş `title` yasağı gereği render tarafı `markerTitle || address || \"Harita\"` düşer."
+        widthMode:
+          type: string
+          enum: [boxed, "full-width"]
+          description: "Ön yüzdeki genişlik modu — `boxed` (varsayılan, max-w-7xl ortalanmış) veya `full-width` (viewport kenarına dayanan tam genişlik). Yoksa `widthMode ?? \"boxed\"` düşer."
       additionalProperties: false
 
     CreatePageRequest:
