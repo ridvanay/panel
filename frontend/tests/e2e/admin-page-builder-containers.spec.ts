@@ -273,6 +273,379 @@ test.describe("Konteyner mimarisi — admin editörü", () => {
 });
 
 /**
+ * qa-agent — koordinat sapması düzeltmesi (`builder-canvas.tsx`: `DragOverlay`
+ * `createPortal(..., document.body)` ile portal edildi + `DragOverlay`'e ÖZEL
+ * `modifiers={[restrictToVerticalAxis, restrictToWindowEdges]}` eklendi). Piksel-hassasiyetinde
+ * offset ölçmek yerine (kırılgan) portal'ın GERÇEKTEN `document.body`'nin doğrudan altına
+ * yerleştiğini doğrular — aynı desen `admin-navigation-editor.spec.ts` test "4"te de kullanıldı
+ * (nav-tree-editor.tsx AYNI koordinat sapması düzeltmesini aldı).
+ */
+test.describe("Konteyner mimarisi — DragOverlay portal (koordinat sapması düzeltmesi)", () => {
+  test("7) Sürükleme sırasında DragOverlay document.body'nin DOĞRUDAN altına portal edilir", async () => {
+    test.setTimeout(60_000);
+    const { pageId } = await createHostPage("overlay-portal", "DRAFT");
+
+    try {
+      await openEditorAndRemoveDefaultBlock(pageId);
+      await page.getByRole("button", { name: "Yeni Konteyner Ekle" }).click();
+      await page.getByRole("button", { name: "İki Eşit Sütun" }).click();
+      await expect(page.getByText("2 Sütun", { exact: true })).toBeVisible();
+
+      const handle = page.locator('button[aria-label^="Sürükle: "]').first();
+      const box = await handle.boundingBox();
+      if (!box) throw new Error("Sürükleme tutamacı bounding box'ı bulunamadı.");
+      const startX = box.x + box.width / 2;
+      const startY = box.y + box.height / 2;
+
+      await page.mouse.move(startX, startY);
+      await page.mouse.down();
+      // `PointerSensor` aktivasyon eşiğini (`activationConstraint: { distance: 6 }`) aşacak kadar hareket.
+      await page.mouse.move(startX + 15, startY + 25);
+
+      const overlay = page.locator('[class*="ring-primary/40"]').first();
+      await expect(overlay).toBeVisible({ timeout: 5_000 });
+
+      const portaledDirectlyUnderBody = await overlay.evaluate((el) => {
+        // En yakın `position: fixed` atayı (dnd-kit'in `PositionedOverlay`'i) bulup ONUN
+        // `document.body`'nin DOĞRUDAN çocuğu olduğunu doğrula — iç içerik yapısından bağımsız,
+        // sağlam bir kontrol (bkz. `admin-navigation-editor.spec.ts` test "4"teki AYNI gerekçe).
+        let node: HTMLElement | null = el as HTMLElement;
+        while (node && node !== document.body) {
+          if (getComputedStyle(node).position === "fixed") {
+            return node.parentElement === document.body;
+          }
+          node = node.parentElement;
+        }
+        return false;
+      });
+      expect(portaledDirectlyUnderBody).toBe(true);
+
+      await page.mouse.up();
+    } finally {
+      await deletePagePermanently(token, pageId);
+    }
+  });
+});
+
+/**
+ * qa-agent — koordinat sapması düzeltmesi (portal + `DragOverlay`'e özel `modifiers`) sonrası
+ * regresyon kontrolü: kök seviyede İKİ konteynerin normal (guard'a takılmayan) bir sürükle-bırakla
+ * BAŞARIYLA yeniden sıralanabildiğini doğrular. Bu dosyada önceden yalnızca "guard reddeder"
+ * (senaryo 3) ve buton/insert-tabanlı akışlar kapsanıyordu — kök seviyede BAŞARILI bir sürükle-
+ * bırak sıralamasının ucu uca (`onDragEnd` state güncellemesi → kaydet → kalıcılık) hiç test
+ * edilmemişti; bu, tam da portal/`modifiers` değişikliğinin bozabileceği yol olduğu için eklendi.
+ */
+test.describe("Konteyner mimarisi — sürükle-bırak ile BAŞARILI yeniden sıralama", () => {
+  test("8) Aynı konteyner içindeki iki kardeş bloğu sürükle-bırakla yeniden sırala → DOM sırası değişir → kaydet → sayfa yenile → KALICI", async () => {
+    // KAPSAM NOTU (qa-agent) — kök seviyede iki KONTEYNERİ birbirinin üzerine sürüklemek DENENDİ
+    // ama kararsız/güvenilmez çıktı: her konteynerin KENDİ `useSortable` çarpışma dikdörtgeni,
+    // İÇİNDEKİ çocuk bloğun (`Metin`) çarpışma dikdörtgenini de KAPSIYOR; `closestCorners` bu
+    // yüzden pointer konteynerin KENDİ üst-bilgi (header) şeridinde olsa BİLE çoğu zaman en yakın
+        // adayı DIŞ konteyner yerine İÇTEKİ çocuk bloğu seçiyordu — bu da `handleDragEnd`'in
+    // konteyneri kardeşiyle YER DEĞİŞTİRMEK yerine onu HEDEF konteynerin İÇİNE (torun) taşımasına
+    // yol açıyordu (aynı-ebeveyn swap dalı DEĞİL, konteynerler-arası taşıma dalı — bkz.
+    // `builder-canvas.tsx::handleDragEnd`). Bu, DÜZELTMENİN (portal/`modifiers`) bir regresyonu
+    // DEĞİL — nested `SortableContext` + `closestCorners` kombinasyonunun kendi bilinen
+    // belirsizliği (bu bulgu frontend-agent'a raporlanmalı, bkz. görev özeti). Bu testte bunun
+    // yerine AYNI konteyner İÇİNDEKİ iki KARDEŞ (yaprak, çocuksuz) bloğu sürükleyerek — nav-tree
+    // testleriyle AYNI, belirsizlikten ARINDIRILMIŞ senaryo — `onDragEnd`'in "aynı ebeveyn" swap
+    // dalının portal/`modifiers` değişikliğinden SONRA da doğru çalıştığı doğrulanır.
+    test.setTimeout(60_000);
+    const { pageId } = await createHostPage("sibling-reorder", "DRAFT");
+
+    try {
+      const col = {
+        layout: "boxed" as const,
+        direction: "column" as const,
+        justifyContent: "start" as const,
+        alignItems: "stretch" as const,
+        gap: 16,
+        padding: { top: 0, right: 0, bottom: 0, left: 0 },
+        margin: { top: 0, right: 0, bottom: 0, left: 0 },
+        background: { type: "none" as const },
+      };
+      const unique = Date.now().toString(36);
+      const textAlpha = `QA kardes siralama Alpha ${unique}`;
+      const textBeta = `QA kardes siralama Beta ${unique}`;
+      await patchPageBlocks(token, pageId, [
+        {
+          id: "qa-sibling-reorder-c1",
+          type: "container",
+          settings: col,
+          children: [
+            { id: "qa-sibling-reorder-tb-a", type: "text", data: { html: `<p>${textAlpha}</p>` } },
+            { id: "qa-sibling-reorder-tb-b", type: "text", data: { html: `<p>${textBeta}</p>` } },
+          ],
+        },
+      ]);
+
+      await page.goto(`/admin/pages/${pageId}`);
+      await expect(page.getByRole("heading", { name: "İçerik blokları" })).toBeVisible({ timeout: 15_000 });
+      await page.waitForTimeout(500);
+
+      const domTextOrder = () => page.locator(".ProseMirror").allTextContents();
+      await expect(await domTextOrder()).toEqual([textAlpha, textBeta]);
+
+      const gripA = page.locator('button[aria-label="Sürükle: Metin"]').nth(0);
+      const gripB = page.locator('button[aria-label="Sürükle: Metin"]').nth(1);
+
+      // dnd-kit `PointerSensor` bu ortamda ara sıra sentetik imleç olaylarını kaçırır (bkz. bu
+      // dosyadaki `attemptDragOntoAndConfirmStarted` başlığındaki AYNI not) — kanıtlanmış manuel
+      // adım-adım imleç hareketi + "değişene kadar tekrar dene" deseni (`admin-navigation-editor.
+      // spec.ts` test "3"teki AYNI desen).
+      let reordered = false;
+      for (let attempt = 1; attempt <= 4 && !reordered; attempt++) {
+        const src = await gripA.boundingBox();
+        const dst = await gripB.boundingBox();
+        if (!src || !dst) throw new Error("Sürükleme tutamacı bounding box'ı bulunamadı.");
+        const startX = src.x + src.width / 2;
+        const startY = src.y + src.height / 2;
+        const endX = dst.x + dst.width / 2;
+        const endY = dst.y + dst.height + 10; // B'nin biraz altına bırak — A, B'nin ardına gitsin
+
+        await page.mouse.move(startX, startY);
+        await page.mouse.down();
+        const steps = 12;
+        for (let i = 1; i <= steps; i++) {
+          const t = i / steps;
+          await page.mouse.move(startX + (endX - startX) * t, startY + (endY - startY) * t);
+          await page.waitForTimeout(35);
+        }
+        await page.mouse.up();
+        await page.waitForTimeout(300);
+
+        const order = await domTextOrder();
+        reordered = order.join("|") !== [textAlpha, textBeta].join("|");
+      }
+
+      const orderAfterDrag = await domTextOrder();
+      expect(orderAfterDrag).toEqual([textBeta, textAlpha]);
+
+      await saveAndExpectSuccess();
+      await page.reload();
+      await expect(page.getByRole("heading", { name: "İçerik blokları" })).toBeVisible({ timeout: 15_000 });
+      await page.waitForTimeout(500);
+      await expect(await domTextOrder()).toEqual([textBeta, textAlpha]);
+
+      // Backend seviyesinde de doğrula — id'ler ön uç kaydında yeniden üretilebileceğinden, sıralamayı
+      // serileştirilmiş JSON'daki GÖRELİ metin konumuyla doğrula (id KARARLILIĞINA bağımlı OLMAYAN,
+      // daha sağlam bir kontrol — `getPage` sonucu).
+      const persisted = await getPage(token, pageId);
+      const serialized = JSON.stringify(persisted.blocks);
+      const idxAlpha = serialized.indexOf(textAlpha);
+      const idxBeta = serialized.indexOf(textBeta);
+      expect(idxAlpha).toBeGreaterThan(-1);
+      expect(idxBeta).toBeGreaterThan(-1);
+      expect(idxBeta).toBeLessThan(idxAlpha);
+    } finally {
+      await deletePagePermanently(token, pageId);
+    }
+  });
+});
+
+/**
+ * qa-agent — `collisionDetectionStrategy` düzeltmesi (`builder-canvas.tsx`: `pointerWithin`
+ * ÖNCELİKLİ, `closestCorners` yedekli — bkz. dosyanın o fonksiyonun HEMEN üstündeki "BUG
+ * DÜZELTMESİ" yorumu). Bu turda frontend-agent tarafından DÜZELTİLDİ (önceki tur bu dosyaya "8)"
+ * testini eklerken KAPSAM DIŞI bırakmıştı, bkz. o testin başlığındaki "KAPSAM NOTU" — kök seviyede
+ * iki KONTEYNERİ birbirinin üzerine sürüklemek `closestCorners` TEK BAŞINA kullanıldığında
+ * güvenilmezdi: her konteynerin KENDİ `useSortable` çarpışma dikdörtgeni İÇİNDEKİ çocuklarının
+ * dikdörtgenini de KAPSIYOR, ama `closestCorners` KAPSAMA'yı değil yalnızca köşe MESAFESİNİ dikkate
+ * alıyordu — imleç hedef konteynerin KENDİ üst-bilgi (header) şeridinde olsa BİLE en yakın aday
+ * çoğu zaman İÇTEKİ çocuk/alt-konteyner seçiliyor, `handleDragEnd` "aynı ebeveyn" swap dalı YERİNE
+ * "konteynerler arası taşıma" dalına girip konteyneri kardeşiyle YER DEĞİŞTİRMEK yerine hedefin
+ * İÇİNE (torun olarak) taşıyordu. Düzeltme: ÖNCE `pointerWithin` (imlecin GERÇEKTEN içinde
+ * bulunduğu droppable'ları KAPSAMA'ya göre bulur — header'ın Y aralığı çocukların Y aralığını
+ * KAPSAMADIĞI için imleç header'dayken YALNIZCA konteynerin kendisi eşleşir), hiçbir droppable
+ * imleci KAPSAMIYORSA `closestCorners`'a DÜŞÜLÜR.
+ */
+test.describe("Konteyner mimarisi — kök seviyede konteyner↔konteyner sürükle-bırak (collisionDetectionStrategy düzeltmesi)", () => {
+  test("9) Kök seviyede, ikisi de kendi alt-sütunlarını barındıran iki konteynerin tutamacını diğerinin ÜST-BİLGİ şeridine bırakmak KARDEŞ yer değiştirir, TORUN olmaz → kaydet → sayfa yenile → KALICI", async () => {
+    test.setTimeout(60_000);
+    const { pageId } = await createHostPage("root-container-swap", "DRAFT");
+
+    try {
+      const rowSettings = {
+        layout: "boxed" as const,
+        direction: "row" as const,
+        justifyContent: "start" as const,
+        alignItems: "stretch" as const,
+        gap: 16,
+        padding: { top: 0, right: 0, bottom: 0, left: 0 },
+        margin: { top: 0, right: 0, bottom: 0, left: 0 },
+        background: { type: "none" as const },
+      };
+      const columnSettings = {
+        layout: "boxed" as const,
+        direction: "column" as const,
+        justifyContent: "start" as const,
+        alignItems: "stretch" as const,
+        gap: 16,
+        padding: { top: 0, right: 0, bottom: 0, left: 0 },
+        margin: { top: 0, right: 0, bottom: 0, left: 0 },
+        background: { type: "none" as const },
+        widthFr: 1,
+      };
+
+      const unique = Date.now().toString(36);
+      const textC1A = `QA kok-swap C1 SutunA ${unique}`;
+      const textC1B = `QA kok-swap C1 SutunB ${unique}`;
+      const textC2A = `QA kok-swap C2 SutunA ${unique}`;
+      const textC2B = `QA kok-swap C2 SutunB ${unique}`;
+
+      // Her biri "İki Eşit Sütun" preset'inden gelene BENZER şekilde 2 alt-sütun (sub-container)
+      // barındıran, KÖK SEVİYEDE iki konteyner (C1, C2) — bu tam olarak yukarıdaki bug notundaki
+      // "her konteynerin KENDİ çarpışma dikdörtgeni İÇİNDEKİ alt-konteynerin dikdörtgenini de
+      // kapsıyor" senaryosu.
+      await patchPageBlocks(token, pageId, [
+        {
+          id: "qa-root-swap-c1",
+          type: "container",
+          settings: rowSettings,
+          children: [
+            {
+              id: "qa-root-swap-c1-cola",
+              type: "container",
+              settings: columnSettings,
+              children: [{ id: "qa-root-swap-c1-cola-tb", type: "text", data: { html: `<p>${textC1A}</p>` } }],
+            },
+            {
+              id: "qa-root-swap-c1-colb",
+              type: "container",
+              settings: columnSettings,
+              children: [{ id: "qa-root-swap-c1-colb-tb", type: "text", data: { html: `<p>${textC1B}</p>` } }],
+            },
+          ],
+        },
+        {
+          id: "qa-root-swap-c2",
+          type: "container",
+          settings: rowSettings,
+          children: [
+            {
+              id: "qa-root-swap-c2-cola",
+              type: "container",
+              settings: columnSettings,
+              children: [{ id: "qa-root-swap-c2-cola-tb", type: "text", data: { html: `<p>${textC2A}</p>` } }],
+            },
+            {
+              id: "qa-root-swap-c2-colb",
+              type: "container",
+              settings: columnSettings,
+              children: [{ id: "qa-root-swap-c2-colb-tb", type: "text", data: { html: `<p>${textC2B}</p>` } }],
+            },
+          ],
+        },
+      ]);
+
+      // qa-agent bulgusu (bu testi yazarken keşfedildi) — C1/C2'nin her biri KENDİ 2 alt-sütununu
+      // (her biri TAM bir zengin metin editörü/araç çubuğu taşıyan `TextBlockEditor`) barındırdığı
+      // için sayfa varsayılan viewport (1280×720) yüksekliğini FAZLASIYLA aşıyor; C1 ve C2'nin
+      // header'ları farklı SCROLL konumlarına düşüyor. `page.mouse.move(x, y)` ELEMAN'a değil HAM
+      // VIEWPORT koordinatına gider (Playwright otomatik SCROLL ETMEZ, `locator.click()`'in aksine)
+      // — viewport dışındaki bir noktaya "sürüklemek" hiçbir elemente isabet ETMEZ, sürükleme sensörü
+      // HİÇ AKTİVE OLMAZ (`ring-primary/40` overlay hiç görünmez, `handleDragEnd` hiç TETİKLENMEZ,
+      // sessizce "hiçbir şey değişmedi" gibi görünürdü — sahte-negatif). C1'in header'ı VE C2'nin
+      // header'ı (aralarındaki TÜM içerikle birlikte) TEK bir viewport'ta AYNI ANDA görünecek kadar
+      // yüksek bir viewport ayarlanır — gerçek bir kullanıcının aynı hedefe ulaşmak için önce
+      // SCROLL edip SONRA sürüklemesiyle davranışsal olarak eşdeğer (yalnızca test kurulumunu
+      // basitleştirir).
+      await page.setViewportSize({ width: 1280, height: 3000 });
+      await page.goto(`/admin/pages/${pageId}`);
+      await expect(page.getByRole("heading", { name: "İçerik blokları" })).toBeVisible({ timeout: 15_000 });
+      await page.waitForTimeout(500);
+
+      const domTextOrder = () => page.locator(".ProseMirror").allTextContents();
+      const initialOrder = [textC1A, textC1B, textC2A, textC2B];
+      const swappedOrder = [textC2A, textC2B, textC1A, textC1B];
+      await expect(await domTextOrder()).toEqual(initialOrder);
+
+      // İkisi de KÖK (Seviye 1) konteyner, her biri kendi 2 alt-sütununu (Seviye 2) barındırıyor —
+      // "her ikisi de çocuk barındıran" ön koşulu (görev talimatı madde 1).
+      const level1Badges = page.getByText("Seviye 1", { exact: true });
+      const level2Badges = page.getByText("Seviye 2", { exact: true });
+      await expect(level1Badges).toHaveCount(2);
+      await expect(level2Badges).toHaveCount(4);
+      await expect(page.getByText("Seviye 3", { exact: true })).toHaveCount(0);
+
+      // Her kök konteynerin KENDİ üst-bilgi şeridi (`role="button"`, "Seviye 1" rozetini içeren en
+      // yakın ata) + ONUN İÇİNDEKİ sürükleme tutamacı — global `nth()` İLE KARIŞTIRILMAZ, her biri
+      // KENDİ header'ına scope'lu (bkz. senaryo 2'deki AYNI xpath deseni).
+      const c1Header = level1Badges.nth(0).locator("xpath=ancestor::div[@role='button'][1]");
+      const c2Header = level1Badges.nth(1).locator("xpath=ancestor::div[@role='button'][1]");
+      const c1Grip = c1Header.locator('button[aria-label="Sürükle: Konteyner"]');
+
+      // dnd-kit `PointerSensor` bu ortamda ara sıra sentetik imleç olaylarını kaçırır (bkz.
+      // `attemptDragOntoAndConfirmStarted` başlığındaki / test "8"deki AYNI not) — kanıtlanmış
+      // manuel adım-adım imleç hareketi + "değişene kadar tekrar dene" deseni.
+      let reordered = false;
+      for (let attempt = 1; attempt <= 4 && !reordered; attempt++) {
+        const srcBox = await c1Grip.boundingBox();
+        const dstBox = await c2Header.boundingBox();
+        if (!srcBox || !dstBox) throw new Error("Sürükleme tutamacı/hedef üst-bilgi bounding box'ı bulunamadı.");
+        const startX = srcBox.x + srcBox.width / 2;
+        const startY = srcBox.y + srcBox.height / 2;
+        // C2'nin üst-bilgi ŞERİDİ içinde, sağdaki aksiyon düğmeleri grubundan UZAK (sol taraf,
+        // tutamaç/ikon/etiket/rozet civarı) bir nokta — imlecin GERÇEKTEN header'ın Y aralığında
+        // (ve altındaki alt-konteynerlerin/blokların Y aralığının DIŞINDA) kalmasını garantiler —
+        // bu netlik `pointerWithin`in DOĞRU adayı, C2'nin KENDİSİNİ, seçmesi için gerekli (bkz.
+        // dosya başlığındaki bug notu).
+        const endX = dstBox.x + Math.min(60, dstBox.width / 4);
+        const endY = dstBox.y + dstBox.height / 2;
+
+        await page.mouse.move(startX, startY);
+        await page.mouse.down();
+        const steps = 12;
+        for (let i = 1; i <= steps; i++) {
+          const t = i / steps;
+          await page.mouse.move(startX + (endX - startX) * t, startY + (endY - startY) * t);
+          await page.waitForTimeout(35);
+        }
+        await page.mouse.up();
+        await page.waitForTimeout(300);
+
+        const order = await domTextOrder();
+        reordered = order.join("|") !== initialOrder.join("|");
+      }
+
+      // --- Asıl iddia: KARDEŞ yer değiştirme, TORUN olma DEĞİL ---
+      // 1) DOM metin sırası tam olarak TERS ÇEVRİLDİ — C2'nin İKİ alt-sütunu BİRLİKTE, C1'in İKİ
+      //    alt-sütunu BİRLİKTE (hiçbiri BÖLÜNMEDİ/KARIŞMADI). C1, C2'nin İÇİNE torun olarak
+      //    taşınsaydı (eski bug) sıra BUNDAN FARKLI olurdu (C1'in alt-sütunları C2'nin KENDİ iki
+      //    alt-sütununun ARASINA değil, C2'nin çocuk listesinin İÇİNE gömülü bir yere düşerdi).
+      await expect(await domTextOrder()).toEqual(swappedOrder);
+
+      // 2) Seviye sayıları AYNI kaldı — C1 torun olsaydı (Seviye 2'ye düşerdi) "Seviye 1" sayısı
+      //    1'e düşer, kendi alt-sütunları (eskiden Seviye 2) Seviye 3'e kayardı.
+      await expect(level1Badges).toHaveCount(2);
+      await expect(level2Badges).toHaveCount(4);
+      await expect(page.getByText("Seviye 3", { exact: true })).toHaveCount(0);
+
+      await saveAndExpectSuccess();
+      await page.reload();
+      await expect(page.getByRole("heading", { name: "İçerik blokları" })).toBeVisible({ timeout: 15_000 });
+      await page.waitForTimeout(500);
+      await expect(await domTextOrder()).toEqual(swappedOrder);
+      await expect(page.getByText("Seviye 1", { exact: true })).toHaveCount(2);
+      await expect(page.getByText("Seviye 2", { exact: true })).toHaveCount(4);
+      await expect(page.getByText("Seviye 3", { exact: true })).toHaveCount(0);
+
+      // Backend seviyesinde de doğrula — kök dizi TAM OLARAK 2 elemanlı kalmalı (C1, C2'nin İÇİNE
+      // taşınsaydı kök 1 elemana düşerdi), sıra C2 → C1, her biri KENDİ 2 alt-sütununu (children)
+      // KORUYARAK.
+      const persisted = await getPage(token, pageId);
+      const rootBlocks = persisted.blocks as Array<{ id: string; children?: Array<{ id: string }> }>;
+      expect(rootBlocks).toHaveLength(2);
+      expect(rootBlocks.map((b) => b.id)).toEqual(["qa-root-swap-c2", "qa-root-swap-c1"]);
+      expect(rootBlocks[0]!.children?.map((c) => c.id)).toEqual(["qa-root-swap-c2-cola", "qa-root-swap-c2-colb"]);
+      expect(rootBlocks[1]!.children?.map((c) => c.id)).toEqual(["qa-root-swap-c1-cola", "qa-root-swap-c1-colb"]);
+    } finally {
+      await deletePagePermanently(token, pageId);
+    }
+  });
+});
+
+/**
  * dnd-kit `PointerSensor` bu ortamda ara sıra (~%30) sentetik imleç olaylarını kaçırır — bkz.
  * eski (retire edilmiş) `admin-page-builder-columns.spec.ts`'te ÖNCEDEN belgelenmiş, uygulama
  * kodu DEĞİL bir yerel Windows/Playwright sınırlaması. Aşağıdaki yardımcı AYNI kanıtlanmış

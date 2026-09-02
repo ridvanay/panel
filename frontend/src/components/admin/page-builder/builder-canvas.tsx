@@ -1,14 +1,17 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import {
   DndContext,
   DragOverlay,
   KeyboardSensor,
   PointerSensor,
   closestCorners,
+  pointerWithin,
   useSensor,
   useSensors,
+  type CollisionDetection,
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
@@ -136,8 +139,10 @@ import { GoogleMapBlockEditor } from "./blocks/google-map-block";
 /**
  * §2.4 mimar dokümanı — ÖZYİNELEMELİ editör ağacı. v2'nin iki-seviyeli (kök + sütun) sabit
  * yapısının yerini, herhangi bir derinlikte (`MAX_CONTAINER_DEPTH` = 4'e kadar) iç içe geçebilen
- * `container` düğümleri alır. Tek `DndContext` en dışta kalır (`closestCorners` KORUNUR); her
- * konteyner kendi `SortableContext`'ini + (yalnızca BOŞKEN) `useDroppable`'ını taşır.
+ * `container` düğümleri alır. Tek `DndContext` en dışta kalır (çarpışma tespiti artık
+ * `collisionDetectionStrategy` — `pointerWithin` öncelikli, `closestCorners` yedekli, bkz. aşağıdaki
+ * fonksiyon tanımı ve qa-agent bug notu); her konteyner kendi `SortableContext`'ini + (yalnızca
+ * BOŞKEN) `useDroppable`'ını taşır.
  */
 
 function nodeLabel(node: PageNode): string {
@@ -929,6 +934,33 @@ function NodeCard({
   );
 }
 
+/**
+ * BUG DÜZELTMESİ (qa-agent bulgusu, `TEST_COVERAGE.md` "YENİ bulgu — frontend-agent'a
+ * yönlendirilecek" — "Panel drag & drop ergonomisi" bölümü, satır ~1656) — tek başına
+ * `closestCorners` iç içe `SortableContext`'lerde yanıltıcı: her konteynerin KENDİ `useSortable`
+ * çarpışma dikdörtgeni (header + TÜM çocukları kapsar) İÇİNDEKİ çocuk bloğun dikdörtgenini de
+ * barındırır, ama `closestCorners` KAPSAMA'yı değil yalnızca (indeks-eşleşmeli) köşe MESAFESİNİ
+ * dikkate alır — bu yüzden imleç hedef konteynerin KENDİ üst-bilgi (header) şeridinde olsa BİLE
+ * en yakın aday çoğu zaman İÇTEKİ çocuk bloğu seçiliyordu; `handleDragEnd` böylece "aynı ebeveyn"
+ * swap dalı YERİNE "konteynerler arası taşıma" dalına girip konteyneri kardeşiyle yer değiştirmek
+ * YERİNE hedefin İÇİNE (torun olarak) taşıyordu.
+ *
+ * Düzeltme: ÖNCE `pointerWithin` — imlecin GERÇEKTEN içinde bulunduğu droppable'ları KAPSAMA'ya
+ * göre bulur. Header'ın ALTINDAKİ çocuk bloklar header'ın Y aralığını KAPSAMAZ, bu yüzden imleç
+ * header'dayken YALNIZCA konteynerin kendisi eşleşir — kapsama netliği, köşe-mesafesi
+ * belirsizliğini baştan ORTADAN KALDIRIR (aynı-ebeveyn swap dalına doğru şekilde girilir). İmleç
+ * doğrudan bir ÇOCUĞUN üzerindeyse hem çocuk hem onu saran konteyner eşleşir; `pointerWithin`
+ * bunları imlece EN YAKIN köşe mesafesine göre sıralar (en küçük/en içteki aday ÖNCE) — bu da
+ * "çocuğun tam üzerine bırakınca konteynerin İÇİNE yerleş" niyetini KORUR (test 8: aynı-konteyner
+ * kardeş sıralaması; mevcut boş-konteyner drop-zone testleri — bkz. `EmptyContainerDropZone`).
+ * Hiçbir droppable imleci KAPSAMIYORSA (hızlı sürükleme, between-inserter boşlukları vb.)
+ * `closestCorners`'a DÜŞÜLÜR — o durumdaki eski davranış AYNEN KORUNUR.
+ */
+function collisionDetectionStrategy(args: Parameters<CollisionDetection>[0]): ReturnType<CollisionDetection> {
+  const pointerCollisions = pointerWithin(args);
+  return pointerCollisions.length > 0 ? pointerCollisions : closestCorners(args);
+}
+
 export function BuilderCanvas({
   nodes,
   onChange,
@@ -944,6 +976,15 @@ export function BuilderCanvas({
   const [pendingUnwrap, setPendingUnwrap] = useState<{ containerId: string; nodeCount: number } | null>(null);
   /** §1.1 — editörün KENDİ görsel simülasyonu, kayıtlı `nodes`'u ETKİLEMEZ. */
   const [device, setDevice] = useState<DeviceMode>("desktop");
+  // `DragOverlay`'ı `document.body`'ye portal etmek için — SSR/hydration güvenliği (bkz. koordinat
+  // sapması düzeltmesi): `document` yalnızca istemcide mevcut, bu yüzden mount SONRASI true olur.
+  // `setState` senkron DEĞİL, `requestAnimationFrame` callback'i İÇİNDE — `react-hooks/set-state-in-effect`
+  // kuralıyla uyumlu (bkz. `RevealPreviewBox`teki AYNI desen, yukarıda bu dosyada).
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(raf);
+  }, []);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -1113,7 +1154,7 @@ export function BuilderCanvas({
       <DevicePreviewBar device={device} onChange={setDevice} />
       <DndContext
         sensors={sensors}
-        collisionDetection={closestCorners}
+        collisionDetection={collisionDetectionStrategy}
         modifiers={[restrictToVerticalAxis, restrictToWindowEdges]}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
@@ -1142,14 +1183,18 @@ export function BuilderCanvas({
             </SortableContext>
           )}
         </div>
-        <DragOverlay>
-          {activeNode ? (
-            <div className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 shadow-lg ring-2 ring-primary/40">
-              <GripVertical className="h-4 w-4 text-foreground/40" />
-              <span className="text-sm font-medium text-foreground">{nodeLabel(activeNode)}</span>
-            </div>
-          ) : null}
-        </DragOverlay>
+        {mounted &&
+          createPortal(
+            <DragOverlay modifiers={[restrictToVerticalAxis, restrictToWindowEdges]}>
+              {activeNode ? (
+                <div className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 shadow-lg ring-2 ring-primary/40">
+                  <GripVertical className="h-4 w-4 text-foreground/40" />
+                  <span className="text-sm font-medium text-foreground">{nodeLabel(activeNode)}</span>
+                </div>
+              ) : null}
+            </DragOverlay>,
+            document.body
+          )}
       </DndContext>
 
       <ConfirmDialog

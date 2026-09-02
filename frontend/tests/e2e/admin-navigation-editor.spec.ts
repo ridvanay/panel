@@ -5,25 +5,25 @@ import { createAuthenticatedPage } from "./support/admin-session";
 
 /**
  * qa-agent — Navigasyon Yönetimi panelinin (`/admin/navigation`, `NavTreeEditor`/`NavTreeRow`)
- * İLK e2e kapsamı. Bu turda eklenen fail-safe Yukarı/Aşağı taşı düğmeleri (Karar 5.6 —
- * `nav-tree-row.tsx::NavTreeRow`) VE `DndContext`'e eklenen `restrictToVerticalAxis`/
- * `restrictToWindowEdges` modifier'larını (bkz. görev bağlamı) doğrular.
+ * e2e kapsamı. Fail-safe Yukarı/Aşağı taşı düğmelerini (Karar 5.6 — `nav-tree-row.tsx::NavTreeRow`),
+ * `DndContext`'e eklenen `restrictToWindowEdges` modifier'ını VE `DragOverlay`'in koordinat
+ * sapması düzeltmesini (`createPortal(..., document.body)` + `DragOverlay`'e ÖZEL
+ * `modifiers={[restrictToVerticalAxis, restrictToWindowEdges]}`) doğrular.
  *
- * qa-agent BULGUSU (frontend-agent'a yönlendirilecek — bu dosyada TEKRARLANMAZ/kodlanmaz, bkz.
- * görev özeti): `restrictToVerticalAxis`, dnd-kit'in `DndContext` seviyesinde `onDragMove`/
- * `onDragEnd` event'lerinin `delta.x`'ini KAYNAKTA sıfırlar (`applyModifiers` render transform'una
- * DEĞİL, `scrollAdjustedTranslate`'e — yani event payload'ına — uygulanır; bkz.
- * `node_modules/@dnd-kit/core/dist/core.esm.js`, `onDragMove`/`createHandler(Action.DragEnd)`).
- * `nav-tree-editor.tsx::handleDragMove` tam olarak bu `event.delta.x`'i `offsetLeft`'e yazıp
- * `previewProjection`/`moveItem`'ın yatay-sürükleme-ile-girinti (Karar 5.3, "sağa sürükleyerek alt
- * öğe yap") mantığına besliyor — modifier eklendiğinden beri `offsetLeft` HER ZAMAN 0, yani
- * SÜRÜKLEYEREK girintileme artık SESSİZCE çalışmıyor (yalnızca aynı derinlikte yeniden sıralama
- * çalışıyor). Girinti artır/azalt düğmeleri (`ChevronRight`/`ChevronLeft`) fail-safe olarak hâlâ
- * çalıştığından kullanıcı tamamen kilitli KALMIYOR, ama bu YİNE DE gerçek bir regresyon — sayfadaki
- * "sağa sürükleyerek ... bir üst öğenin altına taşıyın" ipucu artık YANLIŞ. Bu dosyadaki testler
- * SADECE aynı derinlikte (root-seviye kardeşler arası) sürükleme/buton akışlarını kapsar — bunlar
- * bu regresyondan ETKİLENMEZ, bu yüzden aşağıda "PASS" olmaları modifier'ın güvenli olduğu
- * anlamına GELMEZ.
+ * qa-agent GEÇMİŞ BULGUSU — GÜNCEL DURUM İÇİN DÜZELTİLDİ (bkz. test "5"): önceki bir turda
+ * `restrictToVerticalAxis` `DndContext` SEVİYESİNDE eklenmişti; bu, `onDragMove`/`onDragEnd`
+ * event'lerinin `delta.x`'ini KAYNAKTA sıfırlıyordu (`applyModifiers`'ın `scrollAdjustedTranslate`
+ * hesabına uygulanması — bkz. `node_modules/@dnd-kit/core/dist/core.esm.js` ~satır 2957-2976) ve
+ * `nav-tree-editor.tsx::handleDragMove`'daki `offsetLeft`'i (dolayısıyla sağa-sürükleyerek-girintileme,
+ * Karar 5.3) SESSİZCE bozuyordu. Bu regresyon `DndContext`'ten `restrictToVerticalAxis`'ı çıkarıp
+ * SADECE `restrictToWindowEdges` bırakarak düzeltildi. Bu turdaki koordinat-sapması fix'i
+ * `restrictToVerticalAxis`'ı GERİ getiriyor ama BU SEFER yalnızca `DragOverlay` bileşeninin KENDİ
+ * `modifiers` prop'unda — bu, dnd-kit'te AYRI bir kod yolu (`DragOverlay` kendi `applyModifiers`
+ * çağrısını SADECE render edilen overlay'in GÖRSEL `transform`'u için yapar, bkz. aynı dosya ~satır
+ * 3897-3937/3925) ve `DndContext`'in `translate`/`delta` hesabına (dolayısıyla `event.delta.x`'e)
+ * HİÇ katkı vermez — `nav-tree-editor.tsx`'teki `<DndContext modifiers={[restrictToWindowEdges]}>`
+ * (yalnızca) DEĞİŞMEDİ. Yani sağa-sürükleyerek-girintileme YENİDEN ÇALIŞIYOR OLMALI — test "5" bunu
+ * GERÇEK bir sürükleme ile doğrular (yalnızca varsayımla bırakılmaz).
  */
 test.describe.configure({ timeout: 120_000, retries: 0 });
 
@@ -257,5 +257,125 @@ test.describe("Navigasyon Yönetimi — menü ağacı", () => {
       .sort((a, b) => a.order - b.order)
       .map((item) => item.label);
     expect(persistedOrder).toEqual(orderAfterDrag);
+  });
+
+  test("4) Sürükleme sırasında DragOverlay document.body'nin DOĞRUDAN altına portal edilir (koordinat sapması düzeltmesi)", async () => {
+    // Kaynak: `nav-tree-editor.tsx` — `createPortal(<DragOverlay ...>, document.body)`. dnd-kit'in
+    // `DragOverlay` implementasyonu (`PositionedOverlay`, bkz. `core.esm.js` ~satır 3640-3676) TEK
+    // bir `position: fixed` `div` render eder, ara sarmalayıcı YOKTUR (`NullifiedContextProvider`/
+    // `AnimationManager` yalnızca React context/Fragment, DOM düğümü EKLEMEZ) — bu yüzden bu div'in
+    // `parentElement`'i `document.body`'nin TA KENDİSİ olmalı. Piksel-hassasiyetinde offset ölçmek
+    // yerine (kırılgan) DOM'un GERÇEKTEN portal edildiğini doğrulamak, düzeltmenin amacını (üst
+    // kapsayıcıların `transform`/`relative`/`overflow`'undan etkilenmemesi) doğrudan kanıtlar.
+    const [labelJ, labelK, labelL] = [
+      `QA Nav Portal J ${Date.now().toString(36)}`,
+      `QA Nav Portal K ${Date.now().toString(36)}`,
+      `QA Nav Portal L ${Date.now().toString(36)}`,
+    ];
+    await setFixtureNavItems([labelJ, labelK, labelL]);
+
+    await adminPage.goto("/admin/navigation");
+    await waitForMenuLoaded(adminPage, labelJ);
+
+    const gripJ = adminPage.getByRole("button", { name: `Sürükle: ${labelJ}` });
+    const box = await gripJ.boundingBox();
+    if (!box) throw new Error("Sürükleme tutamacı bounding box'ı bulunamadı.");
+    const startX = box.x + box.width / 2;
+    const startY = box.y + box.height / 2;
+
+    await adminPage.mouse.move(startX, startY);
+    await adminPage.mouse.down();
+    // `PointerSensor` aktivasyon eşiğini (`activationConstraint: { distance: 6 }`) aşacak kadar hareket.
+    await adminPage.mouse.move(startX + 15, startY + 25);
+
+    const overlay = adminPage.locator('[class*="ring-primary/40"]').first();
+    await expect(overlay).toBeVisible({ timeout: 5_000 });
+    await expect(overlay).toContainText(labelJ);
+
+    const portaledDirectlyUnderBody = await overlay.evaluate((el) => {
+      // `[class*="ring-primary/40"]` `NavTreeRowOverlay`'in KENDİ iç div'ini eşleştirir —
+      // dnd-kit'in `position: fixed` uyguladığı ASIL sarmalayıcı (`PositionedOverlay`) bunun
+      // BİR ÜSTÜNDEKİ ebeveyndir. En yakın `position: fixed` atayı bulup ONUN `document.body`'nin
+      // DOĞRUDAN çocuğu olduğunu doğrula — iç içerik yapısından (kaç seviye `div` sardığından)
+      // BAĞIMSIZ, sağlam bir kontrol.
+      let node: HTMLElement | null = el as HTMLElement;
+      while (node && node !== document.body) {
+        if (getComputedStyle(node).position === "fixed") {
+          return node.parentElement === document.body;
+        }
+        node = node.parentElement;
+      }
+      return false;
+    });
+    expect(portaledDirectlyUnderBody).toBe(true);
+
+    await adminPage.mouse.up();
+  });
+
+  test("5) Menü öğesini sağa sürüklemek bir önceki kök öğenin ALTINA iç içe geçirir (drag-to-indent, offsetLeft/delta.x KORUNUYOR)", async () => {
+    // Bu test, dosya başlığındaki "geçmiş bulgu" notunun GÜNCEL kodda artık geçerli olmadığını
+    // kanıtlar: `DragOverlay`'e özel `modifiers` prop'u `DndContext`'in `delta.x`'ini SIFIRLAMAZ
+    // (bkz. başlık yorumu) — bu yüzden sağa-sürükleyerek-girintileme (Karar 5.3) hâlâ çalışmalı.
+    const [labelP, labelQ, labelR] = [
+      `QA Nav Indent P ${Date.now().toString(36)}`,
+      `QA Nav Indent Q ${Date.now().toString(36)}`,
+      `QA Nav Indent R ${Date.now().toString(36)}`,
+    ];
+    await setFixtureNavItems([labelP, labelQ, labelR]);
+
+    await adminPage.goto("/admin/navigation");
+    await waitForMenuLoaded(adminPage, labelP);
+
+    // Q'nun (orta kök öğe) "Girinti azalt" düğmesi — `canOutdent` SADECE `depth === 1`'de aktif
+    // olur (bkz. `nav-tree-utils.ts::canOutdent`), bu yüzden başlangıçta (kök seviye) disabled
+    // olması beklenir; sürükleme sonrası ENABLED olması Q'nun artık bir üst öğenin ÇOCUĞU olduğunun
+    // (yani sürükleyerek-girintilemenin GERÇEKTEN çalıştığının) DOM kanıtıdır.
+    const gripQ = adminPage.getByRole("button", { name: `Sürükle: ${labelQ}` });
+    const gripR = adminPage.getByRole("button", { name: `Sürükle: ${labelR}` });
+    const rowQ = gripQ.locator("xpath=ancestor::div[contains(@class,'rounded-lg')][1]");
+    const outdentQ = rowQ.getByRole("button", { name: "Girinti azalt (üst seviyeye taşı)" });
+    await expect(outdentQ).toBeDisabled();
+
+    // Q'yu R'nin biraz altına VE sağa (INDENTATION_WIDTH=32px'i aşacak kadar) sürükle — `over` R'ye
+    // düşünce, Q'dan önceki kök öğe (P) `previousItem` olur ve `computeProjection` Q'yu P'nin
+    // ÇOCUĞU yapar (bkz. `nav-tree-utils.ts::computeProjection`/`moveItem`).
+    let indented = false;
+    for (let attempt = 1; attempt <= 4 && !indented; attempt++) {
+      const src = await gripQ.boundingBox();
+      const dst = await gripR.boundingBox();
+      if (!src || !dst) throw new Error("Sürükleme tutamacı bounding box'ı bulunamadı.");
+      const startX = src.x + src.width / 2;
+      const startY = src.y + src.height / 2;
+      const endX = startX + 80; // sağa >32px
+      const endY = dst.y + dst.height + 10; // R'nin biraz altına
+
+      await adminPage.mouse.move(startX, startY);
+      await adminPage.mouse.down();
+      const steps = 12;
+      for (let i = 1; i <= steps; i++) {
+        const t = i / steps;
+        await adminPage.mouse.move(startX + (endX - startX) * t, startY + (endY - startY) * t);
+        await adminPage.waitForTimeout(35);
+      }
+      await adminPage.mouse.up();
+      await adminPage.waitForTimeout(300);
+
+      indented = await outdentQ.isDisabled().then((disabled) => !disabled);
+    }
+
+    await expect(outdentQ).toBeEnabled();
+
+    await saveNavigation(adminPage);
+    await adminPage.reload();
+    await waitForMenuLoaded(adminPage, labelP);
+    await expect(outdentQ).toBeEnabled();
+
+    const persisted = (await getNavigationConfig(adminToken)) as unknown as NavConfigDto;
+    const p = persisted.navigationItems.find((item) => item.label === labelP);
+    const q = persisted.navigationItems.find((item) => item.label === labelQ);
+    const r = persisted.navigationItems.find((item) => item.label === labelR);
+    expect(p && q && r).toBeTruthy();
+    expect(q!.parentId).toBe(p!.id); // Q artık P'nin çocuğu — sunucuda KALICI
+    expect(r!.parentId).toBeNull(); // R hâlâ kök seviyede
   });
 });

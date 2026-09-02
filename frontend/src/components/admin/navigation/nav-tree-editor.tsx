@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   DndContext,
   DragOverlay,
@@ -14,7 +15,7 @@ import {
   type DragOverEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import { restrictToWindowEdges } from "@dnd-kit/modifiers";
+import { restrictToVerticalAxis, restrictToWindowEdges } from "@dnd-kit/modifiers";
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { ListTree } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -51,6 +52,15 @@ export function NavTreeEditor({ items, onChange, hrefHint }: NavTreeEditorProps)
   const [activeId, setActiveId] = useState<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
   const [offsetLeft, setOffsetLeft] = useState(0);
+  // `DragOverlay`'ı `document.body`'ye portal etmek için — SSR/hydration güvenliği (bkz. koordinat
+  // sapması düzeltmesi): `document` yalnızca istemcide mevcut, bu yüzden mount SONRASI true olur.
+  // `setState` senkron DEĞİL, `requestAnimationFrame` callback'i İÇİNDE — `react-hooks/set-state-in-effect`
+  // kuralıyla uyumlu (bkz. `RevealPreviewBox`teki AYNI desen, builder-canvas.tsx).
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(raf);
+  }, []);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -189,7 +199,13 @@ export function NavTreeEditor({ items, onChange, hrefHint }: NavTreeEditorProps)
           {activeId && overId === null && projection && <DropIndicator depth={projection.depth} />}
         </div>
       </SortableContext>
-      <DragOverlay>{activeItem ? <NavTreeRowOverlay item={activeItem} /> : null}</DragOverlay>
+      {mounted &&
+        createPortal(
+          <DragOverlay modifiers={[restrictToVerticalAxis, restrictToWindowEdges]}>
+            {activeItem ? <NavTreeRowOverlay item={activeItem} /> : null}
+          </DragOverlay>,
+          document.body
+        )}
     </DndContext>
   );
 }

@@ -1619,3 +1619,87 @@ GERÇEKTEN anlık revalidation tetikliyor (aksi halde bu testler hâlâ ~60sn be
   senaryoları bu turda e2e ile kapsanmadı (mevcut saf mantık zaten `nav-tree-utils.ts`'e karşı
   birim test edilmiş olabilir — kontrol edilmedi, frontend-agent'ın alanı; bu tur SADECE görev
   talimatındaki 3 senaryoya — yukarı/aşağı buton, sürükleme, ilk/son disabled — odaklandı).
+
+## `DragOverlay` koordinat sapması düzeltmesi (`createPortal(..., document.body)` + `DragOverlay`'e ÖZEL `modifiers`) — E2E kapsamı (bu turda eklendi)
+
+Kaynak: frontend-agent'ın `nav-tree-editor.tsx` ve `builder-canvas.tsx`'te `DragOverlay`'i
+`createPortal` ile `document.body`'ye taşıması (önceden ebeveyn CSS kapsayıcılarının
+`transform`/`relative`/`overflow`'undan etkilenip imleç-eleman arasında offset/koordinat sapmasına
+yol açıyordu) VE `DragOverlay`'e (artık `DndContext`'e DEĞİL) özel
+`modifiers={[restrictToVerticalAxis, restrictToWindowEdges]}` eklemesi.
+
+| # | Senaryo | Dosya | Durum |
+|---|---|---|---|
+| 4 | Navigasyon ağacı — sürükleme sırasında `DragOverlay` `document.body`'nin DOĞRUDAN altına (en yakın `position: fixed` ata → `parentElement === document.body`) portal edilir | `frontend/tests/e2e/admin-navigation-editor.spec.ts` | ✅ Geçiyor (yeni) |
+| 5 | Navigasyon ağacı — menü öğesini sağa sürüklemek bir önceki kök öğenin ALTINA iç içe geçirir (drag-to-indent, `offsetLeft`/`delta.x` KORUNUYOR) | `frontend/tests/e2e/admin-navigation-editor.spec.ts` | ✅ Geçiyor (yeni) |
+| 7 | Sayfa Düzenleyici (page builder) — sürükleme sırasında `DragOverlay` `document.body`'nin DOĞRUDAN altına portal edilir | `frontend/tests/e2e/admin-page-builder-containers.spec.ts` | ✅ Geçiyor (yeni) |
+| 8 | Sayfa Düzenleyici — aynı konteyner içindeki iki kardeş bloğu sürükle-bırakla yeniden sırala → DOM sırası değişir → kaydet → sayfa yenile → KALICI | `frontend/tests/e2e/admin-page-builder-containers.spec.ts` | ✅ Geçiyor (yeni) |
+| 9 | Sayfa Düzenleyici — **kök seviyede iki KONTEYNERİ** (ikisi de kendi alt-sütunlarını barındırır) birbirinin üzerine sürüklemek KARDEŞ yer değiştirir (TORUN olmaz — `Seviye 1` sayısı 2'de sabit kalır) → kaydet → sayfa yenile → KALICI (bkz. aşağıdaki "ÇÖZÜLDÜ" bölümü — `collisionDetectionStrategy` düzeltmesinin regresyon testi) | `frontend/tests/e2e/admin-page-builder-containers.spec.ts` | ✅ Geçiyor (yeni, 4× tekrar + tam suite 2× — flaky DEĞİL) |
+
+### ÖNCEKİ regresyon bulgusu ARTIK GEÇERSİZ — bu turda ÇÖZÜLDÜĞÜ doğrulandı (test "5")
+
+Yukarıdaki "Bulunan ve raporlanan bug" bölümü (`nav-tree-editor.tsx`'e `restrictToVerticalAxis`
+eklenmesinin sağa-sürükleyerek-girintilemeyi — Karar 5.3 — sessizce bozduğu bulgusu) **bu turdaki
+düzeltmeyle ARTIK GEÇERLİ DEĞİL**. Kaynak kodu incelemesiyle doğrulandı
+(`node_modules/@dnd-kit/core/dist/core.esm.js`): dnd-kit'te `DragOverlay`'in KENDİ `modifiers`
+prop'u (~satır 3897-3937, `applyModifiers` çağrısı SADECE render edilen overlay'in GÖRSEL
+`transform`'u için) `DndContext`'in `translate`/`delta` hesabından (~satır 2957-2976, `onDragMove`/
+`onDragEnd` event payload'ının KAYNAĞI) TAMAMEN AYRI bir kod yoludur. Bu turdaki düzeltme
+`restrictToVerticalAxis`'ı SADECE `<DragOverlay modifiers={...}>`'a ekliyor —
+`nav-tree-editor.tsx`'teki `<DndContext modifiers={[restrictToWindowEdges]}>` (yalnızca)
+DEĞİŞMEDİ. Test "5" bunu GERÇEK bir sürükleme ile ampirik olarak doğruladı: 3 kök öğeden ortadakini
+sağa (+80px) VE bir alt satıra sürüklemek, onu bir önceki kök öğenin ÇOCUĞU yaptı (`canOutdent`
+düğmesi `disabled`'dan `enabled`'a geçti, sunucuya kaydedilip sayfa yenilendikten SONRA da
+`parentId` KALICI olarak doğru kaldı) — sağa-sürükleyerek-girintileme ÇALIŞIYOR.
+
+### ÇÖZÜLDÜ (bu turda) — kök seviyede konteyner↔konteyner sürükleme artık GÜVENİLİR (`collisionDetectionStrategy`)
+
+**Önceki durum (artık geçersiz):** `builder-canvas.tsx`'te KÖK SEVİYEDE iki KONTEYNERİ birbirinin
+üzerine sürükleyerek yeniden sıralamak — kardeşleri OLMAYAN (çocuksuz/yaprak) bloklarla
+karşılaştırıldığında — GÜVENİLMEZDİ: her konteynerin KENDİ `useSortable` çarpışma dikdörtgeni
+İÇİNDEKİ çocuk bloğun (`Metin` vb.) çarpışma dikdörtgenini de KAPSIYORDU; `DndContext`'in TEK BAŞINA
+`closestCorners` çarpışma tespiti bu yüzden imleç hedef konteynerin KENDİ üst-bilgi (header)
+şeridinde olsa BİLE çoğu zaman en yakın adayı DIŞ konteyner yerine İÇTEKİ çocuk bloğu/alt-konteyneri
+seçiyordu — bu da `handleDragEnd`'in konteyneri kardeşiyle YER DEĞİŞTİRMEK yerine hedef konteynerin
+İÇİNE (torun olarak) taşımasına yol açıyordu (aynı-ebeveyn swap dalı yerine konteynerler-arası taşıma
+dalı, bkz. `builder-canvas.tsx::handleDragEnd`). Bu, o turdaki düzeltmenin (portal/`DragOverlay`
+`modifiers`) bir REGRESYONU DEĞİLDİ — nested `SortableContext` + `closestCorners` kombinasyonunun
+ÖNCEDEN VAR OLAN, bağımsız bir belirsizliğiydi; test "8" o yüzden BİLEREK kök-seviye konteyner-
+konteyner sürüklemesi YERİNE aynı konteyner içindeki İKİ KARDEŞ (çocuksuz) bloğu sürükleyerek
+`onDragEnd`'in aynı-ebeveyn swap dalını doğruluyordu — bu bulgu frontend-agent'a yönlendirilmişti.
+
+**Düzeltme (frontend-agent, bu turda):** `DndContext`'in tek başına `closestCorners`'ı YERİNE, yeni
+bir `collisionDetectionStrategy(args)` fonksiyonu (`builder-canvas.tsx`, `DndContext`'e
+`collisionDetection` prop'u olarak bağlı) — ÖNCE `pointerWithin` (imlecin GERÇEKTEN içinde bulunduğu
+droppable'ları KAPSAMA'ya göre bulur, mesafe DEĞİL) dener; header'ın Y aralığı altındaki
+çocuk/alt-konteynerlerin Y aralığını KAPSAMADIĞI için imleç header'dayken YALNIZCA konteynerin
+KENDİSİ eşleşiyor artık — kapsama netliği, eski köşe-mesafesi belirsizliğini ORTADAN KALDIRIYOR.
+Hiçbir droppable imleci KAPSAMIYORSA (hızlı sürükleme, between-inserter boşlukları vb.)
+`closestCorners`'a DÜŞÜLÜYOR — o durumdaki eski davranış AYNEN KORUNUYOR.
+
+**qa-agent doğrulaması (bu turda, KALICI test eklendi — test "9"):** kök seviyede, ikisi de kendi 2
+alt-sütununu (2-sütunlu preset benzeri, her biri Seviye 2) barındıran iki konteyner (C1, C2) kurulur;
+C1'in tutamacı C2'nin ÜST-BİLGİ şeridine bırakılır. Doğrulanan iddialar: (1) DOM metin sırası TAM
+TERS ÇEVRİLİYOR — C2'nin iki alt-sütunu BİRLİKTE, C1'in iki alt-sütunu BİRLİKTE (hiçbiri
+BÖLÜNMÜYOR); (2) `Seviye 1` rozet sayısı sürükleme ÖNCESİ/SONRASI 2'de SABİT kalıyor (C1 torun
+olsaydı 1'e düşerdi) — hiçbir yeni `Seviye 3` belirmiyor; (3) kaydet → sayfa yenile → backend'de
+kök dizi TAM 2 elemanlı, sıra `[C2, C1]`, her biri KENDİ 2 alt-sütununu (children id'leri) KORUYARAK
+KALICI. Test 4× arka arkaya + tam dosya suite'i 2× TEKRARLANDI — flaky DEĞİL (bkz. dosyadaki qa-agent
+notu: viewport'un varsayılan 720px yüksekliği C1/C2'nin header'larını (her biri TAM bir zengin metin
+editörü taşıyan alt-sütunlar YÜZÜNDEN) farklı scroll konumlarına düşürüyordu — `page.mouse.move`
+viewport DIŞINDAKİ bir noktaya sessizce ISABET ETMİYORDU, bu ilk denemede SAHTE-NEGATİF bir
+başarısızlığa yol açmıştı; test artık her iki header'ı da AYNI ANDA görecek kadar yüksek bir viewport
+ayarlıyor). Konteynerin KENDİ "•••" menüsündeki fail-safe "Yukarı Taşı"/"Aşağı Taşı" düğmeleri
+(`ContainerMoreMenu`, `builder-canvas.tsx::move()`, index tabanlı) zaten bu sorundan hiç
+ETKİLENMEMİŞTİ — bu turda regresyon testi test "3"teki (isDescendant guard) ve test "8"deki (aynı-
+ebeveyn kardeş sıralama) davranışların da DEĞİŞMEDEN geçtiğini yeniden doğruladı.
+
+### Kapsam dışı bırakılan (bu tur)
+
+- `slide-strip.tsx` (Hero Stüdyosu) ve `email-canvas.tsx` (E-posta Editörü) bu turda AYNI koordinat
+  sapması düzeltmesini ALMADI (görev tanımında açıkça kapsam dışı bırakıldı) — bu iki dosya için
+  test değişikliği YAPILMADI.
+- KeyboardSensor (klavye ile sürükleme) için AYRI bir regresyon testi eklenmedi — ne öncesinde ne
+  şimdi bu iki dosya için mevcut bir kapsam yoktu; kaynak inceleme (dnd-kit `applyModifiers`'ın
+  sensör TÜRÜNDEN bağımsız, her ikisi için de AYNI kod yolu olduğu doğrulandı) düşük risk gösteriyor
+  ama ampirik DOĞRULAMA YAPILMADI — sonraki bir turda eklenmesi önerilir.
