@@ -1522,3 +1522,100 @@ sahibi tarafından ayrıca değerlendirilmesi önerilir.
 - A11y (axe-core) otomasyonu bu dosyaya EKLENMEDİ — mevcut `jest-axe` deseni (bkz. yukarıdaki "A11y
   notu" bölümleri) zaten `Field`/`Switch`/`SegmentedToggle` gibi paylaşılan bileşenleri component
   seviyesinde kapsıyor; bu turda YENİ bir a11y paterni (özel semantik) eklenmedi.
+
+## Panel drag & drop ergonomisi (fail-safe Yukarı/Aşağı düğmeleri + `@dnd-kit/modifiers`) + anlık (on-demand) `layout` revalidation — E2E kapsamı (bu turda eklendi)
+
+Kaynak: frontend-agent'ın üç `DndContext`'e (`builder-canvas.tsx`, `nav-tree-editor.tsx`,
+`slide-strip.tsx`) `restrictToVerticalAxis`/`restrictToWindowEdges` eklemesi + navigasyon ağacı/
+slider stüdyosu satırlarına YENİ fail-safe `Yukarı taşı`/`Aşağı taşı` düğmeleri eklemesi, VE
+backend-agent'ın `triggerGlobalRevalidation()`i (`backend/src/lib/revalidate.ts`) appearance (4 uç)
++ navigasyon (1 uç) başarılı yazmalarından SONRA `{ paths: ["/"], type: "layout" }` ile tetiklemesi
+(önceki turdaki `triggerPublicPageRevalidation` YALNIZCA tekil sayfa path'lerini biliyordu — bu
+uçlar öncesinde HİÇ revalidation tetiklemiyordu).
+
+| # | Senaryo | Dosya | Durum |
+|---|---|---|---|
+| 1 | Navigasyon paneli — Aşağı taşı butonu sırayı değiştirir (DOM), kaydedilir, sayfa yenilenince backend'de KALICI | `frontend/tests/e2e/admin-navigation-editor.spec.ts` | ✅ Geçiyor (yeni) |
+| 2 | Navigasyon paneli — ilk öğede Yukarı taşı, son öğede Aşağı taşı `disabled`; orta öğenin hiçbiri değil | `frontend/tests/e2e/admin-navigation-editor.spec.ts` | ✅ Geçiyor (yeni) |
+| 3 | Navigasyon paneli — sürükle-bırakla (manuel `mouse.move` sekansı) yeniden sıralama, kaydedilir, sayfa yenilenince backend'de KALICI | `frontend/tests/e2e/admin-navigation-editor.spec.ts` | ✅ Geçiyor (yeni) |
+| 4 | Appearance — Birincil Renk panelde değiştirilip kaydedildikten SONRA public site'a TEK `page.reload()` ile (60sn `expect.poll` GEREKMEDEN) anlık yansır; public `GET /appearance` de aynı değeri döner | `frontend/tests/e2e/admin-appearance-instant-revalidation.spec.ts` | ✅ Geçiyor (yeni) |
+
+**Bu dosya §10.10 (navigasyon menü editörü) panelinin İLK e2e kapsamıdır** — `/admin/navigation`
+sayfası için önceden hiçbir Playwright spec'i yoktu.
+
+### Altyapı düzeltmesi — `playwright.config.ts`'in `webServer`ı `REVALIDATE_SECRET` GEÇİRMİYORDU (qa-agent bulup düzeltti, kendi test altyapısı — uygulama kodu DEĞİL)
+
+`frontend/.env.local`'daki `REVALIDATE_SECRET` (`dev-revalidate-secret-change-me`, `next dev`
+tarafından otomatik yüklenir) `backend/.env.e2e`'deki değerle (`e2e-revalidate-secret`) EŞLEŞMİYORDU.
+`playwright.config.ts`'in `webServer.command`'ı (e2e frontend'ini `next dev -p 3100` ile başlatan
+komut) bu değişkeni override ETMİYORDU — yani e2e backend'inin `triggerGlobalRevalidation()`
+çağrısı frontend'in `POST /api/revalidate`'inden HER ZAMAN `401` alıyordu (best-effort try/catch
+sayesinde admin isteği BOZULMUYORDU, ama anlık yansıma da GERÇEKLEŞMİYORDU — sessiz bir
+`app.log.warn`). **Ampirik olarak doğrulandı**: `REVALIDATE_SECRET=wrong-secret-value` ile
+başlatılan bir frontend sürecine karşı test "4" (`admin-appearance-instant-revalidation.spec.ts`)
+BEKLENDİĞİ GİBİ fail etti (tek reload sonrası eski renk `#1C4B42` görünmeye devam etti, yeni renk
+`#ff2d78` YANSIMADI) — doğru secret'a geri dönülünce aynı test tekrar geçti. Düzeltme:
+`playwright.config.ts`'e `E2E_REVALIDATE_SECRET` (varsayılan `backend/.env.e2e` ile BİREBİR aynı)
+env değişkeni eklendi, `webServer.command`'a `REVALIDATE_SECRET=...` olarak enjekte edilir (process
+env, Next.js'te `.env.local` dosya değerinin ÖNÜNE geçer). Bu, CI'da devops-agent'ın backend/
+frontend'i AYRI süreçler olarak başlatacağı gerçek pipeline için de geçerli bir uyarı: iki tarafın
+`REVALIDATE_SECRET`'ı MUTLAKA eşleşmeli.
+
+### Bulunan ve raporlanan bug — frontend-agent'a yönlendirilecek (qa-agent DÜZELTMEDİ)
+
+`nav-tree-editor.tsx`'e eklenen `restrictToVerticalAxis` modifier'ı, dnd-kit'in `DndContext`
+seviyesinde `onDragMove`/`onDragEnd` event'lerinin `delta.x`'ini KAYNAKTA (render transform'undan
+ÖNCE, `scrollAdjustedTranslate` — yani event payload'ının kendisi) sıfırlıyor (doğrulandı:
+`node_modules/@dnd-kit/core/dist/core.esm.js`, `onDragMove` effect'i ve
+`createHandler(Action.DragEnd)` — ikisi de `delta`yı `modifiedTranslate`'ten türetilen
+`scrollAdjustedTranslate`'ten okuyor). `nav-tree-editor.tsx::handleDragMove` tam olarak bu
+`event.delta.x`'i `offsetLeft`'e yazıp `previewProjection`/`moveItem`'ın yatay-sürükleme-ile-girinti
+mantığına (Karar 5.3 — "sağa sürükleyerek bir üst öğenin altına taşıyın") besliyor. Modifier
+eklendiğinden beri `offsetLeft` HER ZAMAN 0 — yani **sürükleyerek girintileme artık SESSİZCE
+çalışmıyor** (yalnızca aynı derinlikte yeniden sıralama çalışıyor, girinti artır/azalt düğmeleri
+fail-safe olarak hâlâ çalıştığından kullanıcı TAMAMEN kilitli KALMIYOR). Sayfadaki "Sürükleyerek
+sıralayın; sağa sürükleyerek (veya girinti butonlarıyla) bir üst öğenin altına taşıyın" ipucu
+(`app/admin/navigation/page.tsx`) artık YANLIŞ. `slide-strip.tsx`/`builder-canvas.tsx` bu
+regresyondan ETKİLENMEZ (`delta.x`/yatay ofset kullanmıyorlar, saf `over.id` tabanlı yeniden
+sıralama). Bu dosyadaki testler BİLEREK yalnızca aynı derinlikte (root-seviye kardeşler arası)
+sürükleme/buton akışlarını kapsar — testlerin PASS olması modifier'ın güvenli olduğu anlamına
+GELMEZ, yalnızca test edilen alt kümenin etkilenmediği anlamına gelir.
+
+### Regresyon — `admin-slider-studio.spec.ts` test "5" GERÇEKTEN KIRILDI, qa-agent'ın KENDİ testinde düzeltildi (uygulama kodu DEĞİL)
+
+`slide-strip.tsx`'e eklenen YENİ `Yukarı taşı: Slayt A`/`Aşağı taşı: Slayt A` fail-safe düğmeleri,
+mevcut testin `adminPage.getByRole("button", { name: "Slayt A" })` (Playwright varsayılanı:
+`exact: false`, alt dize eşleşmesi) seçicisiyle ÇAKIŞTI — "Yukarı taşı: Slayt A" "Slayt A" alt
+dizesini İÇERDİĞİ için seçici artık ÜÇ elemanla eşleşip `strict mode violation` ile fail ediyordu
+(doğrulandı: tam suite koşumunda gerçek kırılma). Düzeltme (qa-agent'ın KENDİ test dosyasında,
+`admin-slider-studio.spec.ts` test "5"in İKİ satırına `exact: true` eklendi) — bu, `admin-slider-
+studio.spec.ts` test "13"teki AYNI kategori kök nedenin (kısa kod menü öğesi eklentisinin ÖNCEKİ bir
+turda AYNI şekilde `getByRole("menuitem", { name: "Kopyala" })`yı kırması) TEKRARIdır; frontend-
+agent'ın yeni erişilebilir isim EKLEYEN her UI değişikliği bu sınıf regresyona açıktır. Düzeltme
+sonrası TAM `admin-slider-studio.spec.ts` (19 test) + `admin-appearance-studio.spec.ts` (6 test) +
+`admin-appearance-theme-tokens.spec.ts` (3 test) + `admin-page-builder-editing-tools.spec.ts` (6
+test) + `admin-page-builder-containers.spec.ts` (6 test) yeniden koşuldu — hepsi yeşil.
+
+### Yöntem notu — appearance dosyalarındaki eski 60sn `expect.poll`ların artık NEDEN gereksiz olduğu doğrudan gözlemlendi
+
+`admin-appearance-studio.spec.ts`/`admin-appearance-theme-tokens.spec.ts`teki mevcut testler
+(`expect.poll(..., { timeout: 90_000, intervals: [2_000] })` ile public yansımayı bekliyordu) bu
+turda DEĞİŞTİRİLMEDİ (hâlâ geçerli/gerekli — hâlâ eski tekil-sayfa `revalidate: 60` yoluna
+güveniyorlar) ama backend'in `triggerGlobalRevalidation()`i sayesinde artık İLK poll denemesinde
+geçiyorlar — tüm dosya (9 test) önceki turlarda dakikalarca sürerken bu turda ~1 dakikada tamamlandı
+(gözlemlenen gerçek koşum süresi). Bu, bağımsız bir DOLAYLI doğrulamadır: appearance uçları
+GERÇEKTEN anlık revalidation tetikliyor (aksi halde bu testler hâlâ ~60sn beklerdi).
+
+### Bilinçli olarak KAPSAM DIŞI bırakılan
+
+- `builder-canvas.tsx`'in ÖNCEDEN var olan `ArrowUp`/`ArrowDown` düğmeleri (`aria-label="Yukarı
+  taşı"`/`"Aşağı taşı"`, kardeş-etiketsiz) bu turda DEĞİŞMEDİ ve zaten `admin-page-builder-
+  editing-tools.spec.ts`/`admin-page-builder-containers.spec.ts` içinde dolaylı olarak kapsanan
+  konteyner sürükleme akışlarıyla birlikte test ediliyor — bu turda AYRI bir buton testi
+  eklenmedi (görev talimatı zaten "bu turda değişmedi, mevcut kapsamı zaten var olabilir kontrol
+  et" diyordu; kontrol edildi, `restrictToVerticalAxis` bu bileşende `delta.x` kullanılmadığı için
+  zararsız).
+- Navigasyon ağacında girinti/çıkıntı (indent/outdent) düğmeleri VE 2-seviye iç-içe geçirme
+  senaryoları bu turda e2e ile kapsanmadı (mevcut saf mantık zaten `nav-tree-utils.ts`'e karşı
+  birim test edilmiş olabilir — kontrol edilmedi, frontend-agent'ın alanı; bu tur SADECE görev
+  talimatındaki 3 senaryoya — yukarı/aşağı buton, sürükleme, ilk/son disabled — odaklandı).

@@ -14,6 +14,7 @@ import {
   type DragOverEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
+import { restrictToWindowEdges } from "@dnd-kit/modifiers";
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { ListTree } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -21,10 +22,13 @@ import { DropIndicator, NavTreeRow, NavTreeRowOverlay } from "./nav-tree-row";
 import {
   buildTree,
   canIndent,
+  canMoveDownSibling,
+  canMoveUpSibling,
   canOutdent,
   flattenDepthFirst,
   indentItem,
   moveItem,
+  moveSibling,
   outdentItem,
   previewProjection,
   removeItemCascade,
@@ -95,6 +99,8 @@ export function NavTreeEditor({ items, onChange, hrefHint }: NavTreeEditorProps)
   // satırların yeniden render olmasına yol açıyordu (gerçek ölçüm: PERFORMANCE_NOTES.md).
   const handleIndent = useCallback((id: string) => onChange(indentItem(items, id)), [items, onChange]);
   const handleOutdent = useCallback((id: string) => onChange(outdentItem(items, id)), [items, onChange]);
+  const handleMoveUp = useCallback((id: string) => onChange(moveSibling(items, id, -1)), [items, onChange]);
+  const handleMoveDown = useCallback((id: string) => onChange(moveSibling(items, id, 1)), [items, onChange]);
   const handleUpdate = useCallback(
     (id: string, patch: { label?: string; href?: string }) => onChange(updateItem(items, id, patch)),
     [items, onChange]
@@ -127,6 +133,7 @@ export function NavTreeEditor({ items, onChange, hrefHint }: NavTreeEditorProps)
     <DndContext
       sensors={sensors}
       collisionDetection={closestCenter}
+      modifiers={[restrictToWindowEdges]}
       onDragStart={handleDragStart}
       onDragMove={handleDragMove}
       onDragOver={handleDragOver}
@@ -142,8 +149,12 @@ export function NavTreeEditor({ items, onChange, hrefHint }: NavTreeEditorProps)
                 item={node.item}
                 canIndentItem={canIndent(items, node.item.id)}
                 canOutdentItem={canOutdent(items, node.item.id)}
+                canMoveUp={canMoveUpSibling(items, node.item.id)}
+                canMoveDown={canMoveDownSibling(items, node.item.id)}
                 onIndent={handleIndent}
                 onOutdent={handleOutdent}
+                onMoveUp={handleMoveUp}
+                onMoveDown={handleMoveDown}
                 onUpdate={handleUpdate}
                 onRemove={handleRemove}
                 hrefHint={hrefHint}
@@ -157,8 +168,12 @@ export function NavTreeEditor({ items, onChange, hrefHint }: NavTreeEditorProps)
                         item={child}
                         canIndentItem={canIndent(items, child.id)}
                         canOutdentItem={canOutdent(items, child.id)}
+                        canMoveUp={canMoveUpSibling(items, child.id)}
+                        canMoveDown={canMoveDownSibling(items, child.id)}
                         onIndent={handleIndent}
                         onOutdent={handleOutdent}
+                        onMoveUp={handleMoveUp}
+                        onMoveDown={handleMoveDown}
                         onUpdate={handleUpdate}
                         onRemove={handleRemove}
                         hrefHint={hrefHint}

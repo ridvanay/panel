@@ -9,6 +9,7 @@ import { ApiSuccessSchema } from "../../schemas/common";
 import { NavigationConfigSchema } from "../../schemas/entities";
 import { toNavigationConfigDto } from "../../mappers";
 import { logAudit } from "../../lib/audit";
+import { triggerGlobalRevalidation } from "../../lib/revalidate";
 import { DEFAULTS, SETTINGS_ID } from "../settings/settings.routes";
 import { UpdateNavigationConfigRequestSchema } from "./navigation.schemas";
 
@@ -105,6 +106,10 @@ export async function adminNavigationRoutes(app: FastifyInstance) {
         },
         ipAddress: request.ip,
       });
+
+      // Navigasyon (header/footer/social) TÜM public layout'u (her locale) etkiler — best-effort
+      // global revalidation (bkz. lib/revalidate.ts).
+      await triggerGlobalRevalidation(app);
 
       return reply.send(ok(await readNavigationConfig(app)));
     }

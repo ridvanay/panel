@@ -63,6 +63,50 @@ export function canOutdent(items: FlatNavItem[], id: string): boolean {
   return Boolean(item) && getDepth(item!) === 1;
 }
 
+/** Aynı ebeveyne (`parentId`) sahip kardeşleri, kanonik derinlik-önce sıradaki GÖRELİ sırayla döner. */
+function siblingsOf(items: FlatNavItem[], id: string): FlatNavItem[] {
+  const item = items.find((i) => i.id === id);
+  if (!item) return [];
+  return items.filter((i) => i.parentId === item.parentId);
+}
+
+/** Yukarı ok butonu için — kardeşleri arasında zaten ilk sıradaysa (ya da öğe yoksa) false döner. */
+export function canMoveUpSibling(items: FlatNavItem[], id: string): boolean {
+  const siblings = siblingsOf(items, id);
+  const index = siblings.findIndex((i) => i.id === id);
+  return index > 0;
+}
+
+/** Aşağı ok butonu için — kardeşleri arasında zaten son sıradaysa (ya da öğe yoksa) false döner. */
+export function canMoveDownSibling(items: FlatNavItem[], id: string): boolean {
+  const siblings = siblingsOf(items, id);
+  const index = siblings.findIndex((i) => i.id === id);
+  return index !== -1 && index < siblings.length - 1;
+}
+
+/**
+ * Fail-safe yukarı/aşağı ok butonları — Karar 5.6'nın sürükle-bırak alternatifidir. Öğeyi AYNI
+ * ebeveyne sahip bir komşu kardeşle yer değiştirir (indent/outdent'ten farklı olarak `parentId`
+ * DEĞİŞMEZ). `flattenDepthFirst` ile normalize edilerek kanonik derinlik-önce sıra korunur.
+ */
+export function moveSibling(items: FlatNavItem[], id: string, direction: -1 | 1): FlatNavItem[] {
+  const canMove = direction === -1 ? canMoveUpSibling(items, id) : canMoveDownSibling(items, id);
+  if (!canMove) return items;
+
+  const item = items.find((i) => i.id === id)!;
+  const siblings = siblingsOf(items, id);
+  const siblingIndex = siblings.findIndex((i) => i.id === id);
+  const targetSibling = siblings[siblingIndex + direction]!;
+
+  const index = items.findIndex((i) => i.id === id);
+  const targetIndex = items.findIndex((i) => i.id === targetSibling.id);
+  const swapped = [...items];
+  swapped[index] = items[targetIndex]!;
+  swapped[targetIndex] = item;
+
+  return flattenDepthFirst(swapped);
+}
+
 /** Öğeyi, kendisinden önceki en yakın kök öğenin çocuk listesinin SONUNA taşır (Karar 3). */
 export function indentItem(items: FlatNavItem[], id: string): FlatNavItem[] {
   if (!canIndent(items, id)) return items;

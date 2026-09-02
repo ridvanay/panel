@@ -22,6 +22,17 @@ import { timingSafeEqual } from "node:crypto";
  * path'i (route dosya konumu, örn. `/tr/hakkimizda`) vermek gerekir, tarayıcıda görünen kaynak
  * path (`/hakkimizda`) DEĞİL. Bu yüzden gelen path'ler dönüştürülmeden OLDUĞU GİBİ
  * `revalidatePath`'e geçirilir.
+ *
+ * **`type` alanı (opsiyonel, varsayılan `"page"`):** backend `lib/revalidate.ts`'teki
+ * `triggerPublicPageRevalidation` (tekil sayfa kaydı) `type` GÖNDERMEZ/`"page"` gönderir — bu,
+ * `revalidatePath(path)` (Next varsayılanı: sadece o path'in kendi segment'i) ile AYNI davranışı
+ * korur, GERİYE DÖNÜK UYUMLULUK bozulmaz. `triggerGlobalRevalidation` (appearance/navigation gibi
+ * TÜM sitenin layout'unu — header/footer/renkler — etkileyen değişiklikler) `{ paths: ["/"], type:
+ * "layout" }` gönderir; bu durumda `revalidatePath(path, "layout")` çağrılır — dokümana göre
+ * ("Revalidating all data") bu, o path'in ÜSTÜNDEKİ (layout dahil) TÜM segment'lerin cache'ini
+ * temizler (bkz. `node_modules/next/dist/docs/01-app/03-api-reference/04-functions/
+ * revalidatePath.md`, "Revalidating all data" bölümü — `revalidatePath('/', 'layout')` ile TÜM
+ * cache temizlenir). `type` "page"/"layout" DIŞINDA bir değerse 400 döner.
  */
 export async function POST(request: NextRequest) {
   const secret = process.env.REVALIDATE_SECRET;
@@ -38,13 +49,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Geçersiz JSON gövdesi" }, { status: 400 });
   }
 
-  const paths = (body as { paths?: unknown } | null)?.paths;
+  const { paths, type } = (body as { paths?: unknown; type?: unknown } | null) ?? {};
   if (!Array.isArray(paths) || paths.length === 0 || !paths.every((p): p is string => typeof p === "string" && p.startsWith("/"))) {
     return NextResponse.json({ error: "`paths` alanı '/' ile başlayan en az bir string içeren bir dizi olmalı" }, { status: 400 });
   }
+  if (type !== undefined && type !== "page" && type !== "layout") {
+    return NextResponse.json({ error: "`type` alanı belirtilirse 'page' veya 'layout' olmalı" }, { status: 400 });
+  }
 
+  const isLayout = type === "layout";
   for (const path of paths) {
-    revalidatePath(path);
+    if (isLayout) {
+      revalidatePath(path, "layout");
+    } else {
+      revalidatePath(path);
+    }
   }
 
   return NextResponse.json({ revalidated: true, paths }, { status: 200 });

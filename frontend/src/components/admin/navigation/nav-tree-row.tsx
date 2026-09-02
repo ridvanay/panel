@@ -3,7 +3,7 @@
 import { memo, useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ChevronDown, ChevronLeft, ChevronRight, GripVertical, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown, ChevronLeft, ChevronRight, GripVertical, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -13,11 +13,17 @@ interface NavTreeRowProps {
   item: FlatNavItem;
   canIndentItem: boolean;
   canOutdentItem: boolean;
+  // Sürükle-bırağın fail-safe alternatifi (Karar 5.6) — aynı ebeveyne sahip komşu kardeşle yer
+  // değiştirir, girinti seviyesini DEĞİŞTİRMEZ (bkz. nav-tree-utils.ts::moveSibling).
+  canMoveUp: boolean;
+  canMoveDown: boolean;
   // `id` parametresi alır (kendi id'sine bağlı bir closure DEĞİL) — böylece NavTreeEditor bu
   // callback'leri `useCallback` ile TEK SEFER oluşturup her satıra AYNI referansı geçebilir.
   // Gerekçe: bkz. PERFORMANCE_NOTES.md — gerçek ölçümle doğrulanmış re-render bug'ı.
   onIndent: (id: string) => void;
   onOutdent: (id: string) => void;
+  onMoveUp: (id: string) => void;
+  onMoveDown: (id: string) => void;
   onUpdate: (id: string, patch: { label?: string; href?: string }) => void;
   onRemove: (id: string) => void;
   hrefHint: string;
@@ -38,8 +44,12 @@ export const NavTreeRow = memo(function NavTreeRow({
   item,
   canIndentItem,
   canOutdentItem,
+  canMoveUp,
+  canMoveDown,
   onIndent,
   onOutdent,
+  onMoveUp,
+  onMoveDown,
   onUpdate,
   onRemove,
   hrefHint,
@@ -74,6 +84,26 @@ export const NavTreeRow = memo(function NavTreeRow({
         </button>
         <span className="flex-1 truncate text-sm font-medium text-foreground">{item.label || "Adsız öğe"}</span>
         <span className="hidden max-w-[160px] truncate text-xs text-foreground/40 sm:inline">{item.href}</span>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          aria-label={`Yukarı taşı: ${item.label || "Adsız öğe"}`}
+          disabled={!canMoveUp}
+          onClick={() => onMoveUp(item.id)}
+        >
+          <ArrowUp className="h-3.5 w-3.5" />
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          aria-label={`Aşağı taşı: ${item.label || "Adsız öğe"}`}
+          disabled={!canMoveDown}
+          onClick={() => onMoveDown(item.id)}
+        >
+          <ArrowDown className="h-3.5 w-3.5" />
+        </Button>
         <Button
           type="button"
           variant="ghost"

@@ -12,6 +12,7 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
+import { restrictToVerticalAxis, restrictToWindowEdges } from "@dnd-kit/modifiers";
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
@@ -1113,6 +1114,7 @@ export function BuilderCanvas({
       <DndContext
         sensors={sensors}
         collisionDetection={closestCorners}
+        modifiers={[restrictToVerticalAxis, restrictToWindowEdges]}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
         onDragCancel={() => setActiveId(null)}

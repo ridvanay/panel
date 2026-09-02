@@ -1,17 +1,21 @@
 "use client";
 
+import { useState } from "react";
 import {
   DndContext,
+  DragOverlay,
   KeyboardSensor,
   PointerSensor,
   closestCenter,
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragStartEvent,
 } from "@dnd-kit/core";
+import { restrictToVerticalAxis, restrictToWindowEdges } from "@dnd-kit/modifiers";
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Copy, GripVertical, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Copy, GripVertical, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
@@ -34,21 +38,27 @@ function SlideThumb({ slide }: { slide: Slide }) {
 function SlideCard({
   slide,
   index,
+  total,
   selected,
   busy,
   onSelect,
   onDuplicate,
   onDelete,
   onToggleActive,
+  onMoveUp,
+  onMoveDown,
 }: {
   slide: Slide;
   index: number;
+  total: number;
   selected: boolean;
   busy: boolean;
   onSelect: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
   onToggleActive: (next: boolean) => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: slide.id });
   const style = { transform: CSS.Transform.toString(transform), transition };
@@ -92,6 +102,26 @@ function SlideCard({
           Aktif
         </label>
         <div className="flex items-center gap-0.5">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            aria-label={`Yukarı taşı: ${slide.label || `Slayt ${index + 1}`}`}
+            onClick={onMoveUp}
+            disabled={busy || index === 0}
+          >
+            <ArrowUp className="h-3 w-3" />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            aria-label={`Aşağı taşı: ${slide.label || `Slayt ${index + 1}`}`}
+            onClick={onMoveDown}
+            disabled={busy || index === total - 1}
+          >
+            <ArrowDown className="h-3 w-3" />
+          </Button>
           <Button type="button" variant="ghost" size="icon-xs" aria-label="Slaytı kopyala" onClick={onDuplicate} disabled={busy}>
             <Copy className="h-3 w-3" />
           </Button>
@@ -100,6 +130,20 @@ function SlideCard({
           </Button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** `DragOverlay` içeriği — sürüklenen slaytın küçük görsel kopyası (bkz. nav-tree-row.tsx::NavTreeRowOverlay paterni). */
+function SlideCardOverlay({ slide, index }: { slide: Slide; index: number }) {
+  return (
+    <div className="flex items-center gap-2 rounded-lg border border-border bg-surface p-2 shadow-lg ring-2 ring-primary/40">
+      <div className="h-8 w-12 shrink-0 overflow-hidden rounded-md border border-border/60">
+        <SlideThumb slide={slide} />
+      </div>
+      <span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground">
+        {slide.label || `Slayt ${index + 1}`}
+      </span>
     </div>
   );
 }
@@ -127,13 +171,19 @@ export function SlideStrip({
   onToggleActive: (id: string, next: boolean) => void;
   adding: boolean;
 }) {
+  const [activeId, setActiveId] = useState<string | null>(null);
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
+  function handleDragStart(event: DragStartEvent) {
+    setActiveId(String(event.active.id));
+  }
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
+    setActiveId(null);
     if (!over || active.id === over.id) return;
     const ids = slides.map((s) => s.id);
     const oldIndex = ids.indexOf(String(active.id));
@@ -141,6 +191,24 @@ export function SlideStrip({
     if (oldIndex === -1 || newIndex === -1) return;
     onReorder(arrayMove(ids, oldIndex, newIndex));
   }
+  function handleDragCancel() {
+    setActiveId(null);
+  }
+
+  /** Sürükle-bırağın fail-safe alternatifi — komşu slaytla yer değiştirir. */
+  function handleMoveUp(index: number) {
+    if (index <= 0) return;
+    const ids = slides.map((s) => s.id);
+    onReorder(arrayMove(ids, index, index - 1));
+  }
+  function handleMoveDown(index: number) {
+    if (index >= slides.length - 1) return;
+    const ids = slides.map((s) => s.id);
+    onReorder(arrayMove(ids, index, index + 1));
+  }
+
+  const activeSlide = activeId ? slides.find((s) => s.id === activeId) ?? null : null;
+  const activeSlideIndex = activeSlide ? slides.indexOf(activeSlide) : -1;
 
   const atLimit = slides.length >= MAX_SLIDES_PER_SLIDER;
 
@@ -152,7 +220,14 @@ export function SlideStrip({
         </span>
       </div>
 
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        modifiers={[restrictToVerticalAxis, restrictToWindowEdges]}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onDragCancel={handleDragCancel}
+      >
         <SortableContext items={slides.map((s) => s.id)} strategy={verticalListSortingStrategy}>
           <div className="space-y-2">
             {slides.map((slide, index) => (
@@ -160,16 +235,22 @@ export function SlideStrip({
                 key={slide.id}
                 slide={slide}
                 index={index}
+                total={slides.length}
                 selected={slide.id === selectedSlideId}
                 busy={busySlideId === slide.id}
                 onSelect={() => onSelect(slide.id)}
                 onDuplicate={() => onDuplicate(slide.id)}
                 onDelete={() => onDelete(slide.id)}
                 onToggleActive={(next) => onToggleActive(slide.id, next)}
+                onMoveUp={() => handleMoveUp(index)}
+                onMoveDown={() => handleMoveDown(index)}
               />
             ))}
           </div>
         </SortableContext>
+        <DragOverlay>
+          {activeSlide ? <SlideCardOverlay slide={activeSlide} index={activeSlideIndex} /> : null}
+        </DragOverlay>
       </DndContext>
 
       <Button type="button" variant="outline" size="sm" className="mt-2 w-full" onClick={onAdd} disabled={atLimit} loading={adding} title={atLimit ? "En fazla 20 slayt eklenebilir." : undefined}>

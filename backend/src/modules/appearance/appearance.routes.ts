@@ -13,6 +13,7 @@ import { PublicSiteAppearanceSchema, SiteAppearanceDto, SiteAppearanceSchema, Si
 import { toPublicSiteAppearanceDto, toSiteAppearanceDto, toSiteCustomCodeDto } from "../../mappers";
 import { ForbiddenError, NotFoundError } from "../../lib/errors";
 import { logAudit } from "../../lib/audit";
+import { triggerGlobalRevalidation } from "../../lib/revalidate";
 import { env } from "../../config/env";
 import { APPEARANCE_PRESETS, getAppearancePreset } from "../../lib/appearance-presets";
 import {
@@ -186,6 +187,10 @@ export async function adminAppearanceRoutes(app: FastifyInstance) {
         ipAddress: request.ip,
       });
 
+      // Renk/tipografi/görünüm ayarları TÜM public layout'u (her locale) etkiler — tek bir sayfa
+      // path'i değil, best-effort global revalidation (bkz. lib/revalidate.ts).
+      await triggerGlobalRevalidation(app);
+
       return reply.send(ok(toSiteAppearanceDto(row)));
     }
   );
@@ -232,6 +237,8 @@ export async function adminAppearanceRoutes(app: FastifyInstance) {
         metadata: { presetKey },
         ipAddress: request.ip,
       });
+
+      await triggerGlobalRevalidation(app);
 
       return reply.send(ok(toSiteAppearanceDto(row)));
     }
@@ -284,6 +291,8 @@ export async function adminAppearanceRoutes(app: FastifyInstance) {
         ipAddress: request.ip,
       });
 
+      await triggerGlobalRevalidation(app);
+
       return reply.send(ok(toSiteCustomCodeDto(row, env.CUSTOM_CODE_ENABLED)));
     }
   );
@@ -319,6 +328,8 @@ export async function adminAppearanceRoutes(app: FastifyInstance) {
         metadata: { length: value.length, sha256: sha256(value), acknowledged },
         ipAddress: request.ip,
       });
+
+      await triggerGlobalRevalidation(app);
 
       return reply.send(ok(toSiteCustomCodeDto(row, env.CUSTOM_CODE_ENABLED)));
     }

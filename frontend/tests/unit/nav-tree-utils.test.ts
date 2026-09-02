@@ -3,10 +3,13 @@ import {
   appendRootItems,
   buildTree,
   canIndent,
+  canMoveDownSibling,
+  canMoveUpSibling,
   canOutdent,
   computeProjection,
   indentItem,
   moveItem,
+  moveSibling,
   outdentItem,
   removeItemCascade,
   toNavigationItemsPayload,
@@ -172,6 +175,53 @@ describe("nav-tree-utils", () => {
         ["a", null],
         ["b", null],
       ]);
+    });
+  });
+
+  describe("canMoveUpSibling / canMoveDownSibling / moveSibling", () => {
+    it("ilk kök öğe yukarı taşınamaz, son kök öğe aşağı taşınamaz", () => {
+      const items = [item("a"), item("b"), item("c")];
+      expect(canMoveUpSibling(items, "a")).toBe(false);
+      expect(canMoveDownSibling(items, "c")).toBe(false);
+      expect(canMoveUpSibling(items, "b")).toBe(true);
+      expect(canMoveDownSibling(items, "b")).toBe(true);
+    });
+
+    it("olmayan bir id için her ikisi de false döner", () => {
+      const items = [item("a")];
+      expect(canMoveUpSibling(items, "yok")).toBe(false);
+      expect(canMoveDownSibling(items, "yok")).toBe(false);
+    });
+
+    it("iki kök öğeyi yer değiştirir, parentId DEĞİŞMEZ", () => {
+      const items = [item("a"), item("b"), item("c")];
+      const next = moveSibling(items, "b", -1);
+      expect(next.map((i) => i.id)).toEqual(["b", "a", "c"]);
+      expect(next.every((i) => i.parentId === null)).toBe(true);
+    });
+
+    it("bir kök öğeyi çocuklarıyla BİRLİKTE taşır (blok bütünlüğü korunur)", () => {
+      const items = [item("a"), item("a1", "a"), item("b")];
+      const next = moveSibling(items, "b", -1);
+      expect(next.map((i) => i.id)).toEqual(["b", "a", "a1"]);
+      expect(next.find((i) => i.id === "a1")!.parentId).toBe("a");
+    });
+
+    it("aynı ebeveyne sahip iki çocuğu (kardeşi) yer değiştirir, kök seviye ETKİLENMEZ", () => {
+      const items = [item("a"), item("a1", "a"), item("a2", "a"), item("b")];
+      const next = moveSibling(items, "a1", 1);
+      expect(next.map((i) => [i.id, i.parentId])).toEqual([
+        ["a", null],
+        ["a2", "a"],
+        ["a1", "a"],
+        ["b", null],
+      ]);
+    });
+
+    it("hareket mümkün değilse (canMove false) diziyi DEĞİŞTİRMEDEN döner", () => {
+      const items = [item("a"), item("b")];
+      expect(moveSibling(items, "a", -1)).toEqual(items);
+      expect(moveSibling(items, "b", 1)).toEqual(items);
     });
   });
 

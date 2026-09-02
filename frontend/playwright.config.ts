@@ -22,6 +22,19 @@ import { defineConfig, devices } from "@playwright/test";
  * Bu dosya CI'a devops-agent tarafından entegre edilmelidir (`.github/workflows/ci.yml`) —
  * qa-agent kendi ci.yml'i DEĞİŞTİRMEZ (bkz. proje kökü CLAUDE.md ajan sınırları).
  */
+/**
+ * `.env.local`'daki `REVALIDATE_SECRET` (dev sabiti, `dev-revalidate-secret-change-me`)
+ * `backend/.env.e2e`'deki değerle (`e2e-revalidate-secret`) EŞLEŞMEZ — Next.js `next dev`'in
+ * kendisi `.env.local`'i otomatik yükler, bu yüzden aşağıdaki `webServer.command`'a env değişkeni
+ * olarak ENJEKTE EDİLMEDİĞİ sürece e2e backend'inin `triggerGlobalRevalidation()` çağrısı (bkz.
+ * `backend/src/lib/revalidate.ts`) frontend'in `POST /api/revalidate`'inden HER ZAMAN 401 alır
+ * (sessizce `warn` loglanır, admin isteği bozulmaz — ama anlık yansıma da GERÇEKLEŞMEZ). qa-agent
+ * bulgusu — bu turda düzeltildi: `E2E_REVALIDATE_SECRET` (varsayılan `backend/.env.e2e` ile
+ * BİREBİR aynı) process env olarak geçirilir; process env `.env.local` dosya değerinin ÖNÜNE
+ * geçer (Next.js önceliği).
+ */
+const E2E_REVALIDATE_SECRET = process.env.E2E_REVALIDATE_SECRET ?? "e2e-revalidate-secret";
+
 export default defineConfig({
   testDir: "./tests/e2e",
   fullyParallel: false, // paylaşılan saas_e2e veritabanı — testler arası veri çakışmasını önlemek için sıralı
@@ -56,7 +69,7 @@ export default defineConfig({
     ? undefined
     : {
         command:
-          "npx cross-env NEXT_PUBLIC_API_URL=http://localhost:4001/api/v1 NEXT_PUBLIC_SITE_URL=http://localhost:3100 next dev -p 3100",
+          `npx cross-env NEXT_PUBLIC_API_URL=http://localhost:4001/api/v1 NEXT_PUBLIC_SITE_URL=http://localhost:3100 REVALIDATE_SECRET=${E2E_REVALIDATE_SECRET} next dev -p 3100`,
         url: "http://localhost:3100",
         reuseExistingServer: !process.env.CI,
         timeout: 60_000,

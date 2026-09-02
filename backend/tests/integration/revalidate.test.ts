@@ -294,6 +294,108 @@ describe("on-demand revalidation webhook tetikleyicisi (lib/revalidate.ts)", () 
 });
 
 /**
+ * Global (layout) revalidation tetikleyicisi (bkz. `lib/revalidate.ts::triggerGlobalRevalidation`,
+ * appearance.routes.ts/navigation.routes.ts çağrı noktaları). Yukarıdaki sayfa-bazlı testlerin
+ * AKSİNE burada path hesaplaması YOK — sabit `{ paths: ["/"], type: "layout" }` gönderildiği
+ * doğrulanır. Kapsamlı bir appearance/navigation test suite'i DEĞİLDİR (bkz. appearance.test.ts,
+ * navigation.test.ts) — yalnızca bu yeni davranışın regresyona karşı bir birim testi.
+ */
+describe("global (layout) revalidation tetikleyicisi — appearance ve navigation (lib/revalidate.ts::triggerGlobalRevalidation)", () => {
+  let app: FastifyInstance;
+  let accessToken: string;
+  let fetchSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeAll(async () => {
+    app = await buildTestApp();
+    await resetDatabase(app.prisma);
+    // İlk kayıt olan kullanıcı otomatik ADMIN olur — appearance custom-code (ADMIN-only) ve
+    // navigation PUT (ADMIN+MANAGER) uçlarının hepsine erişebilsin diye.
+    ({ accessToken } = await registerTestUser(app));
+  });
+
+  afterAll(async () => {
+    await resetDatabase(app.prisma);
+    await app.close();
+  });
+
+  beforeEach(() => {
+    fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 200 }));
+  });
+
+  afterEach(() => {
+    fetchSpy.mockRestore();
+  });
+
+  function authHeader() {
+    return { authorization: `Bearer ${accessToken}` };
+  }
+
+  function lastCallBody(): { paths: string[]; type?: string } {
+    const init = fetchSpy.mock.calls[fetchSpy.mock.calls.length - 1]?.[1] as RequestInit;
+    return JSON.parse(init.body as string);
+  }
+
+  it("PATCH /admin/appearance webhook'u sabit { paths: ['/'], type: 'layout' } ile tetikler", async () => {
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/api/v1/admin/appearance",
+      headers: authHeader(),
+      payload: { primaryColor: "#123456" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(lastCallBody()).toEqual({ paths: ["/"], type: "layout" });
+  });
+
+  it("POST /admin/appearance/reset global revalidation'ı tetikler", async () => {
+    fetchSpy.mockClear();
+    const res = await app.inject({ method: "POST", url: "/api/v1/admin/appearance/reset", headers: authHeader(), payload: {} });
+    expect(res.statusCode).toBe(200);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(lastCallBody()).toEqual({ paths: ["/"], type: "layout" });
+  });
+
+  it("PUT /admin/appearance/custom-code/css global revalidation'ı tetikler", async () => {
+    fetchSpy.mockClear();
+    const res = await app.inject({
+      method: "PUT",
+      url: "/api/v1/admin/appearance/custom-code/css",
+      headers: authHeader(),
+      payload: { css: "body { color: red; }", acknowledged: true },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(lastCallBody()).toEqual({ paths: ["/"], type: "layout" });
+  });
+
+  it("PUT /admin/appearance/custom-code/js global revalidation'ı tetikler", async () => {
+    fetchSpy.mockClear();
+    const res = await app.inject({
+      method: "PUT",
+      url: "/api/v1/admin/appearance/custom-code/js",
+      headers: authHeader(),
+      payload: { js: "console.log('hi')", acknowledged: true },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(lastCallBody()).toEqual({ paths: ["/"], type: "layout" });
+  });
+
+  it("PUT /admin/navigation global revalidation'ı tetikler", async () => {
+    fetchSpy.mockClear();
+    const res = await app.inject({
+      method: "PUT",
+      url: "/api/v1/admin/navigation",
+      headers: authHeader(),
+      payload: { headerCtaLabel: null, headerCtaHref: null, footerCopyrightText: null, navigationItems: [], socialLinks: [], footerColumns: [] },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(lastCallBody()).toEqual({ paths: ["/"], type: "layout" });
+  });
+});
+
+/**
  * `REVALIDATE_SECRET` boşken (yapılandırılmamışken) özellik SESSİZCE devre dışı kalmalı — `env`
  * modülü process başına BİR KEZ `process.env`'den okunduğu için (bkz. config/env.ts) taze bir
  * uygulama grafiği elde etmek üzere `vi.resetModules()` + dinamik `import()` kullanılır

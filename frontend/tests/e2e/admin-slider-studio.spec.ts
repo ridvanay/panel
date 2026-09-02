@@ -333,7 +333,12 @@ test.describe("Hero Studio — admin akışları", () => {
 
     try {
       await adminPage.goto(`/admin/sliders/${created.id}`);
-      await expect(adminPage.getByRole("button", { name: "Slayt A" })).toBeVisible({ timeout: 15_000 });
+      // qa-agent DÜZELTMESİ (bu turda bulundu) — §"Panel drag & drop ergonomisi" eklentisiyle
+      // gelen YENİ "Yukarı taşı: Slayt A"/"Aşağı taşı: Slayt A" fail-safe düğmeleri de "Slayt A"
+      // alt dizesini İÇERİYOR; `exact: true` OLMADAN bu seçici artık ÜÇ elemanla eşleşip
+      // `strict mode violation` üretiyordu (`admin-slider-studio.spec.ts` test "13"teki AYNI
+      // kategori kök neden — kısa kod menü öğesi eklentisi, bkz. o testteki yorum).
+      await expect(adminPage.getByRole("button", { name: "Slayt A", exact: true })).toBeVisible({ timeout: 15_000 });
 
       async function currentOrderLabels(): Promise<string[]> {
         const slider = await getSlider(adminToken, created.id);
@@ -378,7 +383,8 @@ test.describe("Hero Studio — admin akışları", () => {
       expect(orderAfterDrag.slice().sort()).toEqual(["Slayt A", "Slayt B", "Slayt C"]);
 
       await adminPage.reload();
-      await expect(adminPage.getByRole("button", { name: "Slayt A" })).toBeVisible({ timeout: 15_000 });
+      // Aynı gerekçe — bkz. bu testin başındaki qa-agent DÜZELTMESİ yorumu.
+      await expect(adminPage.getByRole("button", { name: "Slayt A", exact: true })).toBeVisible({ timeout: 15_000 });
 
       // Sayfa yenilendikten SONRA DOM sırası da backend sırasıyla eşleşiyor mu? Her slayt
       // kartının etiket düğmesi `min-w-0 flex-1 truncate` sınıfıyla ayırt edilir (sürükleme

@@ -102,3 +102,32 @@ export async function triggerPublicPageRevalidation(
     app.log.warn({ err, pageId: page.id }, "Frontend on-demand revalidation isteği gönderilemedi");
   }
 }
+
+/**
+ * Görünüm (appearance) ve navigasyon (navigation) gibi TEK bir sayfayı değil TÜM public site
+ * layout'unu (header/footer, renkler/tipografi, özel CSS-JS, her locale) etkileyen admin
+ * işlemlerinden sonra çağrılır. `triggerPublicPageRevalidation`'ın AKSİNE burada path hesaplaması
+ * YOK — hangi sayfaların etkilendiğini tek tek çıkarmak yerine sabit `{ paths: ["/"], type:
+ * "layout" }` gönderilir; frontend tarafı `revalidatePath("/", "layout")` çağırır ki bu Next.js'in
+ * "tüm cache'i temizle" paterni olduğundan her locale/route otomatik kapsanır (bkz. frontend
+ * `src/app/api/revalidate/route.ts`). Guard/try-catch/log deseni `triggerPublicPageRevalidation`
+ * ile BİREBİR aynıdır (tek doğrulama kaynağı orası — bkz. dosya başlığı).
+ */
+export async function triggerGlobalRevalidation(app: FastifyInstance): Promise<void> {
+  if (!env.REVALIDATE_SECRET) return; // yapılandırılmamış — özellik sessizce devre dışı (bkz. config/env.ts)
+
+  try {
+    const res = await fetch(`${env.INTERNAL_FRONTEND_URL ?? env.FRONTEND_URL}/api/revalidate`, {
+      method: "POST",
+      headers: { "x-revalidate-secret": env.REVALIDATE_SECRET, "content-type": "application/json" },
+      body: JSON.stringify({ paths: ["/"], type: "layout" }),
+    });
+
+    if (!res.ok) {
+      app.log.warn({ status: res.status }, "Frontend global (layout) on-demand revalidation isteği başarısız oldu");
+    }
+  } catch (err) {
+    // Asıl admin isteğini ASLA bozmaz — bkz. dosya başlığı (`lib/mail.ts` ile AYNI tolerans deseni).
+    app.log.warn({ err }, "Frontend global (layout) on-demand revalidation isteği gönderilemedi");
+  }
+}
