@@ -1255,8 +1255,10 @@ paths:
       summary: Yeni site kullanıcısı oluştur (yalnızca ADMIN)
       description: >
         Kullanılamaz rastgele bir şifreyle oluşturulur; kullanıcı gerçek şifresini
-        dönen `setPasswordUrl` üzerinden belirler (MVP/dev-only: e-posta sağlayıcısı
-        entegre edilene kadar bağlantı doğrudan response'ta döner).
+        e-postayla gönderilen tek kullanımlık bağlantı üzerinden belirler. Bağlantı
+        response'ta DÖNMEZ (bkz. `CreateAdminUserResponse`); gönderim sonucu
+        `emailStatus` ile bildirilir. Bağlantıyı yeniden göndermek için
+        `POST /admin/users/{userId}/reset-password` kullanılır.
 
 
         **Hız sınırı:** 20 istek / 1 dakika (route-level, `ADMIN_USERS_RATE_LIMIT`
@@ -1533,6 +1535,123 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /admin/users/{userId}/reset-password:
+    parameters:
+      - name: userId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [AdminUsers]
+      summary: Hedef kullanıcı için şifre sıfırlama başlat (yalnızca ADMIN)
+      description: >
+        Admin'in **başkası adına** şifre sıfırlama akışını tetiklemesini sağlar
+        (destek senaryosu: "kullanıcı sıfırlama e-postasını alamadı / hesabı ele
+        geçirilmiş olabilir"). Gövde YOKTUR. Uç, `POST /admin/users` ile BİREBİR
+        aynı deseni yeniden kullanır: `createPasswordResetToken` → 1 saat geçerli
+        tek kullanımlık token → `sendPasswordResetEmail`.
+
+
+        **Admin şifreyi GÖRMEZ ve BELİRLEMEZ (architect kararı).** Bu uç yeni bir
+        şifre kabul etmez, döndürmez ve ham token / sıfırlama URL'i ne yanıtta ne
+        log'da yer alır — admin'in başka bir kullanıcının hesabına doğrudan
+        girebileceği bir "şifreyi ben belirleyeyim" yolu BİLEREK açılmamıştır
+        (inkâr edilemezlik + `POST /admin/users`'taki security-agent kararıyla
+        tutarlılık). Kontrol her zaman e-posta kutusu sahibindedir.
+
+
+        **Mevcut token'lar geçersizleşir:** hedef kullanıcının kullanılmamış ve
+        süresi dolmamış TÜM `PasswordResetToken` kayıtları, yeni token'ın
+        üretimiyle AYNI transaction içinde `usedAt = now()` ile kapatılır. Yani
+        bir kullanıcı için aynı anda **en fazla bir** geçerli sıfırlama bağlantısı
+        bulunur; daha önce gönderilmiş (ve muhtemelen sızmış) bağlantılar anında
+        ölür. Bu davranış bu uca ÖZGÜDÜR — `POST /auth/forgot-password`'ün mevcut
+        semantiği DEĞİŞTİRİLMEZ (ayrı karar, kapsam dışı).
+
+
+        **Oturum etkisi yok:** token üretmek hedefin aktif oturumlarını DÜŞÜRMEZ;
+        refresh token iptali yalnızca sıfırlama fiilen tamamlandığında
+        (`POST /auth/reset-password`) veya `DELETE /admin/users/{userId}` ile olur.
+        Bir hesabı acilen kesmek için `PATCH /status` (SUSPENDED) kullanılmalıdır.
+
+
+        **Kendi hesabına izin VARDIR (architect kararı):** admin kendi `userId`'si
+        için bu ucu çağırabilir — ayrıcalık yükseltmesi yoktur (admin zaten kendi
+        hesabının sahibidir) ve akış `POST /auth/forgot-password`'ün yapabildiğinden
+        fazlasını vermez. `PATCH /status` ve `DELETE`'teki self-yasakların gerekçesi
+        (sistemi yönetimsiz bırakma) burada geçerli değildir. Denetim kaydında
+        `metadata.self = true` ile ayırt edilir.
+
+
+        **Denetim (audit):** aksiyon adı `user.password_reset_initiated`
+        (`targetType: "User"`, `targetId: <userId>`,
+        `metadata: { email, emailStatus, self, invalidatedTokenCount }`). Kayıt,
+        e-posta gönderimi başarısız olsa DA yazılır — token üretimi gerçekleşmiştir
+        ve denetim izi bunu yansıtmalıdır. `user.` önekiyle mevcut
+        `GET /admin/logs?action=user.` filtresine dahil olur. Metadata'ya ham token,
+        token hash'i veya sıfırlama URL'i YAZILMAZ.
+
+
+        **Hız sınırı (bu uca ÖZEL, daha SIKI — architect + security-agent kararı):**
+        diğer `/admin/users` uçlarından farklı olarak `ADMIN_USERS_RATE_LIMIT`
+        (20/dk) DEĞİL, `ADMIN_PASSWORD_RESET_RATE_LIMIT = 5 istek / 1 dakika`
+        uygulanır; gerekçe: bu, admin oturumuyla tetiklenen **giden e-posta**
+        üreten tek `/admin/users` ucudur — ele geçirilmiş bir admin oturumu ya da
+        dikkatsiz bir panel, kullanıcı posta kutularını bombalayıp gönderici
+        itibarını (SMTP reputation) yakabilir. Ek olarak **hedef bazlı 60 saniyelik
+        bekleme** vardır (aşağıdaki 429'a bakınız); route limiti kaynağa (IP/oturum),
+        bekleme kuralı ise kurbana göre koruma sağlar.
+      responses:
+        "200":
+          description: >
+            Sıfırlama başlatıldı. `emailStatus` gönderimin sonucunu bildirir;
+            `failed` olsa bile token üretilmiş ve eski token'lar geçersiz
+            kılınmıştır (yanıt yine 200).
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/AdminResetPasswordResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: >
+            Kullanıcı bulunamadı (`NOT_FOUND`, "Kullanıcı bulunamadı."). `DELETED`
+            durumundaki kullanıcı da 404 döner — diğer tüm `/admin/users/{userId}/*`
+            uçlarıyla tutarlı olarak silinmiş kayıt "yok" sayılır; silinmiş bir
+            hesaba sessizce çalışan bir giriş bağlantısı üretilemez. Önce
+            `POST /admin/users/{userId}/restore` çağrılmalıdır.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "409":
+          description: >
+            `CONFLICT` — "Askıya alınmış kullanıcı için şifre sıfırlama
+            başlatılamaz." Hedef `SUSPENDED`: sıfırlasa bile giriş yapamayacağı
+            için bağlantı çıkmaz sokaktır ve askıya alınmış bir hesabın posta
+            kutusuna sistem e-postası göndermek yanıltıcıdır. Admin önce
+            `PATCH /admin/users/{userId}/status` ile hesabı `ACTIVE` yapmalıdır.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "429":
+          description: >
+            `TOO_MANY_REQUESTS` — iki ayrı kaynaktan gelebilir:
+
+            (a) route-level `ADMIN_PASSWORD_RESET_RATE_LIMIT` (5 istek / 1 dakika,
+            çağıran bazlı);
+
+            (b) **hedef bazlı bekleme:** aynı kullanıcı için son 60 saniye içinde
+            zaten bir sıfırlama token'ı üretilmişse ("Bu kullanıcı için az önce bir
+            sıfırlama bağlantısı gönderildi. Lütfen 1 dakika sonra tekrar deneyin.").
+            Bu kural, farklı admin oturumları/IP'ler üzerinden tek bir kurbanın
+            posta kutusunun bombalanmasını engeller.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
 
   /admin/logs:
     get:
@@ -8490,10 +8609,49 @@ components:
             OLMAYAN hesabı elle sağlamak için).
 
     CreateAdminUserResponse:
+      description: >
+        `POST /admin/users` yanıtı. **`setPasswordUrl` KALDIRILDI** (security-agent
+        kararı — token sızıntısı temizliği): şifre belirleme bağlantısı ne response'ta
+        ne de log'da düz metin döner, yalnızca e-postayla gider. İstemci gönderimin
+        sonucunu `emailStatus` üzerinden öğrenir.
       type: object
+      required: [user, emailStatus]
       properties:
         user: { $ref: "#/components/schemas/AdminUser" }
-        setPasswordUrl: { type: string, format: uri }
+        emailStatus:
+          type: string
+          enum: [sent, failed]
+          description: >
+            E-posta gönderimi **best-effort**'tur: `failed` olsa bile kullanıcı kaydı
+            oluşturulmuştur ve 201 döner (geri alınmaz). Bu durumda admin, kullanıcıyı
+            `POST /auth/forgot-password` akışına yönlendirebilir veya
+            `POST /admin/users/{userId}/reset-password` ile yeniden deneyebilir.
+
+    AdminResetPasswordResponse:
+      description: >
+        `POST /admin/users/{userId}/reset-password` yanıtı. `CreateAdminUserResponse`
+        ile BİLEREK aynı deseni izler (aynı `createPasswordResetToken` +
+        `sendPasswordResetEmail` akışı paylaşılır). Ham token / sıfırlama URL'i
+        HİÇBİR koşulda burada dönmez.
+      type: object
+      required: [user, emailStatus, expiresAt]
+      properties:
+        user: { $ref: "#/components/schemas/AdminUser" }
+        emailStatus:
+          type: string
+          enum: [sent, failed]
+          description: >
+            Gönderim best-effort'tur: `failed` olsa bile token ÜRETİLMİŞ ve hedefin
+            önceki token'ları geçersiz kılınmıştır (yazma işlemi geri alınmaz), yanıt
+            yine 200'dür. Admin panelinde uyarı gösterilmeli, işlem tekrarlanabilir
+            (per-target 60 sn bekleme kuralına tabidir).
+        expiresAt:
+          type: string
+          format: date-time
+          description: >
+            Üretilen sıfırlama token'ının son geçerlilik anı (üretimden +1 saat,
+            `createPasswordResetToken`). Gizli bilgi DEĞİLDİR; admin panelin
+            "bağlantı 1 saat geçerli" bilgisini göstermesi içindir.
 
     UpdateAdminUserRoleRequest:
       description: >

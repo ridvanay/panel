@@ -18,6 +18,7 @@ vi.mock("@/lib/api/users-admin", () => ({
   updateUserStatus: vi.fn(),
   deleteUser: vi.fn(),
   restoreUser: vi.fn(),
+  resetUserPassword: vi.fn(),
 }));
 
 let mockUser: User;
@@ -400,5 +401,124 @@ describe("AdminUsersPage — durum / rol değişikliği", () => {
       expect(toast.error).toHaveBeenCalledWith("Sistemde en az bir yönetici kalmalı.");
     });
     expect(screen.getByRole("dialog", { name: "Rolü değiştir" })).toBeInTheDocument();
+  });
+});
+
+describe("AdminUsersPage — şifre sıfırlama gönder", () => {
+  it("aktif kullanıcı satırında 'Şifre Sıfırlama Gönder' butonu görünür ve tıklanınca onay diyaloğu açılır", async () => {
+    mockUser = makeUser({ id: "user-1" });
+    vi.mocked(usersAdminApi.listAdminUsers).mockResolvedValue({ items: adminUsers, meta: { nextCursor: null } });
+
+    const user = userEvent.setup();
+    render(<AdminUsersPage />);
+    const editorRow = (await screen.findByText("Editor Kullanıcı")).closest("tr") as HTMLElement;
+
+    const resetButton = within(editorRow).getByRole("button", { name: "Şifre Sıfırlama Gönder" });
+    expect(resetButton).toBeEnabled();
+    await user.click(resetButton);
+
+    const dialog = await screen.findByRole("dialog", { name: "Şifre sıfırlama gönder" });
+    expect(
+      within(dialog).getByText('"Editor Kullanıcı" kullanıcısına şifre sıfırlama e-postası göndermek istediğinize emin misiniz?')
+    ).toBeInTheDocument();
+    expect(usersAdminApi.resetUserPassword).not.toHaveBeenCalled();
+  });
+
+  it("onaylanınca resetUserPassword çağrılır; emailStatus 'sent' ise başarı toast'ı gösterilir", async () => {
+    mockUser = makeUser({ id: "user-1" });
+    vi.mocked(usersAdminApi.listAdminUsers).mockResolvedValue({ items: adminUsers, meta: { nextCursor: null } });
+    vi.mocked(usersAdminApi.resetUserPassword).mockResolvedValue({
+      user: adminUsers[1],
+      emailStatus: "sent",
+      expiresAt: "2026-08-18T13:00:00.000Z",
+    });
+
+    const user = userEvent.setup();
+    render(<AdminUsersPage />);
+    const editorRow = (await screen.findByText("Editor Kullanıcı")).closest("tr") as HTMLElement;
+
+    await user.click(within(editorRow).getByRole("button", { name: "Şifre Sıfırlama Gönder" }));
+    const dialog = await screen.findByRole("dialog", { name: "Şifre sıfırlama gönder" });
+    await user.click(within(dialog).getByRole("button", { name: "Gönder" }));
+
+    await waitFor(() => {
+      expect(usersAdminApi.resetUserPassword).toHaveBeenCalledWith("user-2");
+    });
+    await waitFor(() => {
+      expect(toast.success).toHaveBeenCalledWith("Şifre sıfırlama e-postası gönderildi.");
+    });
+    expect(screen.queryByRole("dialog", { name: "Şifre sıfırlama gönder" })).not.toBeInTheDocument();
+  });
+
+  it("emailStatus 'failed' ise hata FIRLATILMAZ ama toast.error ile bilgilendirme gösterilir", async () => {
+    mockUser = makeUser({ id: "user-1" });
+    vi.mocked(usersAdminApi.listAdminUsers).mockResolvedValue({ items: adminUsers, meta: { nextCursor: null } });
+    vi.mocked(usersAdminApi.resetUserPassword).mockResolvedValue({
+      user: adminUsers[1],
+      emailStatus: "failed",
+      expiresAt: "2026-08-18T13:00:00.000Z",
+    });
+
+    const user = userEvent.setup();
+    render(<AdminUsersPage />);
+    const editorRow = (await screen.findByText("Editor Kullanıcı")).closest("tr") as HTMLElement;
+
+    await user.click(within(editorRow).getByRole("button", { name: "Şifre Sıfırlama Gönder" }));
+    const dialog = await screen.findByRole("dialog", { name: "Şifre sıfırlama gönder" });
+    await user.click(within(dialog).getByRole("button", { name: "Gönder" }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("E-posta gönderilemedi, kullanıcıya bilgi verin.");
+    });
+  });
+
+  it("409 (SUSPENDED) hatası onay diyaloğu açıkken toast ile gösterilir, diyalog kapanmaz", async () => {
+    mockUser = makeUser({ id: "user-1" });
+    vi.mocked(usersAdminApi.listAdminUsers).mockResolvedValue({ items: adminUsers, meta: { nextCursor: null } });
+    vi.mocked(usersAdminApi.resetUserPassword).mockRejectedValue(
+      new ApiClientError(409, {
+        code: "CONFLICT",
+        message: "Askıya alınmış kullanıcı için şifre sıfırlama başlatılamaz.",
+      })
+    );
+
+    const user = userEvent.setup();
+    render(<AdminUsersPage />);
+    const editorRow = (await screen.findByText("Editor Kullanıcı")).closest("tr") as HTMLElement;
+
+    await user.click(within(editorRow).getByRole("button", { name: "Şifre Sıfırlama Gönder" }));
+    const dialog = await screen.findByRole("dialog", { name: "Şifre sıfırlama gönder" });
+    await user.click(within(dialog).getByRole("button", { name: "Gönder" }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("Askıya alınmış kullanıcı için şifre sıfırlama başlatılamaz.");
+    });
+    expect(screen.getByRole("dialog", { name: "Şifre sıfırlama gönder" })).toBeInTheDocument();
+  });
+
+  it("SUSPENDED kullanıcıda buton devre dışıdır ve nedeni tooltip/aria-label'da belirtilir", async () => {
+    mockUser = makeUser({ id: "user-1" });
+    vi.mocked(usersAdminApi.listAdminUsers).mockResolvedValue({ items: adminUsers, meta: { nextCursor: null } });
+
+    render(<AdminUsersPage />);
+    // adminUsers[2] (Standart Üye Kullanıcı) status: SUSPENDED.
+    const suspendedRow = (await screen.findByText("Standart Üye Kullanıcı")).closest("tr") as HTMLElement;
+
+    const resetButton = within(suspendedRow).getByRole("button", {
+      name: "Askıya alınmış kullanıcı için şifre sıfırlama gönderilemez.",
+    });
+    expect(resetButton).toBeDisabled();
+  });
+
+  it("kendi hesabına (isSelf) şifre sıfırlama gönderme YASAKLANMAZ — buton etkin kalır", async () => {
+    // Self-reset backend tarafından İZİN VERİLDİĞİ için (architect kararı), giriş yapan
+    // kullanıcının kendi satırındaki buton `isSelf` nedeniyle DEVRE DIŞI BIRAKILMAMALI.
+    mockUser = makeUser({ id: "user-1" });
+    vi.mocked(usersAdminApi.listAdminUsers).mockResolvedValue({ items: adminUsers, meta: { nextCursor: null } });
+
+    render(<AdminUsersPage />);
+    const selfRow = (await screen.findByText("Admin Kullanıcı")).closest("tr") as HTMLElement;
+
+    expect(within(selfRow).getByRole("button", { name: "Şifre Sıfırlama Gönder" })).toBeEnabled();
   });
 });

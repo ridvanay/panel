@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import {
   AlertCircle,
   Download,
+  KeyRound,
   RotateCcw,
   Search,
   Trash2,
@@ -86,6 +87,9 @@ export default function AdminUsersPage() {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [pendingRestoreUser, setPendingRestoreUser] = useState<AdminUser | null>(null);
   const [restoreLoading, setRestoreLoading] = useState(false);
+
+  const [pendingResetPasswordUser, setPendingResetPasswordUser] = useState<AdminUser | null>(null);
+  const [resetPasswordLoading, setResetPasswordLoading] = useState(false);
 
   // Toplu işlemler için seçim durumu.
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -212,6 +216,30 @@ export default function AdminUsersPage() {
     }
   }
 
+  // Backend hata FIRLATMAZ (200 döner) — başarı/başarısızlık `emailStatus` alanına bakılarak
+  // ayırt edilir; bkz. `NewUserDialog`'daki AYNI desen (`createAdminUser` → `emailStatus`).
+  // Gerçek hata durumları (404/409/429) `catch` bloğunda diğer aksiyonlarla AYNI şekilde
+  // `toast.error` + `friendlyErrorMessage(err)` ile gösterilir.
+  async function handleConfirmResetPassword() {
+    if (!pendingResetPasswordUser) return;
+    const target = pendingResetPasswordUser;
+    setResetPasswordLoading(true);
+    try {
+      const result = await usersAdminApi.resetUserPassword(target.id);
+      setUsers((prev) => (prev ? prev.map((u) => (u.id === result.user.id ? result.user : u)) : prev));
+      if (result.emailStatus === "sent") {
+        toast.success("Şifre sıfırlama e-postası gönderildi.");
+      } else {
+        toast.error("E-posta gönderilemedi, kullanıcıya bilgi verin.");
+      }
+      setPendingResetPasswordUser(null);
+    } catch (err) {
+      toast.error(friendlyErrorMessage(err));
+    } finally {
+      setResetPasswordLoading(false);
+    }
+  }
+
   function formatLastLogin(lastLoginAt: string | null): string {
     if (!lastLoginAt) return "Hiç giriş yapmadı";
     return new Date(lastLoginAt).toLocaleString("tr-TR");
@@ -309,6 +337,11 @@ export default function AdminUsersPage() {
   // (askıya alma VEYA aktifleştirme, ikisi de) koşulsuz reddeder — bkz.
   // `backend/src/modules/users/admin-users.routes.ts` satır ~204.
   const SELF_STATUS_MESSAGE = "Kendi hesabınızın durumunu değiştiremezsiniz.";
+  // Backend `POST /admin/users/{userId}/reset-password` `SUSPENDED` hedefi 409 ile reddeder
+  // ("Askıya alınmış kullanıcı için şifre sıfırlama başlatılamaz.") — istemci tarafında
+  // ÖNGÖRÜLÜR (diğer `isLastActiveAdmin`/`isSelf` desenleriyle tutarlı). Self-reset İZİNLİDİR
+  // (architect kararı), bu yüzden burada `isSelf` kontrolü BİLEREK YOKTUR.
+  const RESET_PASSWORD_SUSPENDED_MESSAGE = "Askıya alınmış kullanıcı için şifre sıfırlama gönderilemez.";
 
   async function handleConfirmBulkRoleChange() {
     const ids = Array.from(selectedIds);
@@ -599,7 +632,7 @@ export default function AdminUsersPage() {
                     <TableHead className="w-56">E-posta</TableHead>
                     <TableHead className="w-36">Rol</TableHead>
                     <TableHead className="w-28">Durum</TableHead>
-                    <TableHead className="w-32 text-right">İşlemler</TableHead>
+                    <TableHead className="w-40 text-right">İşlemler</TableHead>
                     <TableHead className="w-40 text-right">Son Giriş Tarihi</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -631,6 +664,10 @@ export default function AdminUsersPage() {
                       : isLastActiveAdmin
                         ? LAST_ADMIN_MESSAGE
                         : "Sil";
+                    const isSuspended = user.status === "SUSPENDED";
+                    const resetPasswordTooltipLabel = isSuspended
+                      ? RESET_PASSWORD_SUSPENDED_MESSAGE
+                      : "Şifre Sıfırlama Gönder";
 
                     return (
                       <TableRow key={user.id}>
@@ -667,7 +704,7 @@ export default function AdminUsersPage() {
                         <TableCell className="w-28">
                           <Badge tone={statusBadgeTone[user.status]}>{statusLabels[user.status]}</Badge>
                         </TableCell>
-                        <TableCell className="w-32 text-right">
+                        <TableCell className="w-40 text-right">
                           <div className="flex items-center justify-end gap-1">
                             {isDeleted ? (
                               <Tooltip>
@@ -702,6 +739,20 @@ export default function AdminUsersPage() {
                                     </Button>
                                   </TooltipTrigger>
                                   <TooltipContent>{tooltipLabel}</TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                  <TooltipTrigger render={<span tabIndex={0} className="inline-flex" />}>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon-sm"
+                                      aria-label={resetPasswordTooltipLabel}
+                                      disabled={isSuspended}
+                                      onClick={() => setPendingResetPasswordUser(user)}
+                                    >
+                                      <KeyRound className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>{resetPasswordTooltipLabel}</TooltipContent>
                                 </Tooltip>
                                 <Tooltip>
                                   <TooltipTrigger render={<span tabIndex={0} className="inline-flex" />}>
@@ -856,6 +907,22 @@ export default function AdminUsersPage() {
         confirmText="Geri Yükle"
         loading={restoreLoading}
         onConfirm={handleConfirmRestore}
+      />
+
+      <ConfirmDialog
+        open={pendingResetPasswordUser !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingResetPasswordUser(null);
+        }}
+        title="Şifre sıfırlama gönder"
+        description={
+          pendingResetPasswordUser
+            ? `"${pendingResetPasswordUser.name}" kullanıcısına şifre sıfırlama e-postası göndermek istediğinize emin misiniz?`
+            : undefined
+        }
+        confirmText="Gönder"
+        loading={resetPasswordLoading}
+        onConfirm={handleConfirmResetPassword}
       />
     </div>
   );

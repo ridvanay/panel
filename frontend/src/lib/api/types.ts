@@ -111,6 +111,20 @@ export interface CreateAdminUserResponse {
   emailStatus: "sent" | "failed";
 }
 
+/**
+ * `POST /admin/users/{userId}/reset-password` yanıtı — `CreateAdminUserResponse` ile BİLEREK
+ * aynı deseni izler (aynı `createPasswordResetToken` + `sendPasswordResetEmail` akışı
+ * paylaşılır). `emailStatus: "failed"` olsa bile token üretilmiş ve hedefin önceki
+ * token'ları geçersiz kılınmıştır (yazma işlemi geri alınmaz) — bkz. openapi.yaml
+ * `AdminResetPasswordResponse`.
+ */
+export interface AdminResetPasswordResponse {
+  user: AdminUser;
+  emailStatus: "sent" | "failed";
+  /** Üretilen sıfırlama token'ının son geçerlilik anı (ISO datetime, üretimden +1 saat). */
+  expiresAt: string;
+}
+
 export interface UpdateUserRoleRequest {
   role: SiteRole;
 }

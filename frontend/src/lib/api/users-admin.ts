@@ -1,5 +1,6 @@
 import { apiFetch, apiFetchPage } from "./client";
 import type {
+  AdminResetPasswordResponse,
   AdminUser,
   CreateAdminUserRequest,
   CreateAdminUserResponse,
@@ -67,4 +68,16 @@ export function deleteUser(userId: string): Promise<AdminUser> {
  */
 export function restoreUser(userId: string): Promise<AdminUser> {
   return apiFetch<AdminUser>(`/admin/users/${userId}/restore`, { method: "POST" });
+}
+
+/**
+ * Hedef kullanıcı için (admin adına) şifre sıfırlama e-postası tetikler — gövde YOKTUR.
+ * `emailStatus: "failed"` olsa bile token üretilmiş ve önceki token'lar geçersiz kılınmıştır
+ * (yanıt yine 200 döner, hata FIRLATILMAZ) — bkz. `NewUserDialog`'daki `emailStatus`
+ * kullanım deseni. Olası hatalar: 404 (kullanıcı yok/silinmiş), 409 (SUSPENDED), 429
+ * (60sn içinde tekrar istek veya route limiti aşımı). Bkz. openapi.yaml
+ * `POST /admin/users/{userId}/reset-password` / `AdminResetPasswordResponse`.
+ */
+export function resetUserPassword(userId: string): Promise<AdminResetPasswordResponse> {
+  return apiFetch<AdminResetPasswordResponse>(`/admin/users/${userId}/reset-password`, { method: "POST" });
 }

@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import type { User } from "@prisma/client";
+import type { Prisma, User } from "@prisma/client";
 import { hashPassword, verifyPassword } from "../../lib/password";
 import { generateOpaqueToken, hashToken } from "../../lib/tokens";
 import { signAccessToken, signChallengeToken } from "../../lib/jwt";
@@ -200,12 +200,25 @@ export async function logout(app: FastifyInstance, rawRefreshToken: string | und
 
 /**
  * Şifre sıfırlama token'ı üretir ve DB'ye (hash'lenmiş) kaydeder. `forgotPassword`
- * (kullanıcı kendi başlatır) ve admin-users modülündeki yeni kullanıcı oluşturma akışı
- * (admin başlatır, kullanıcı ilk şifresini böyle belirler) bu fonksiyonu paylaşır.
+ * (kullanıcı kendi başlatır), admin-users modülündeki yeni kullanıcı oluşturma akışı
+ * (admin başlatır, kullanıcı ilk şifresini böyle belirler) VE
+ * `POST /admin/users/{userId}/reset-password` (admin başkası adına tetikler) bu
+ * fonksiyonu paylaşır.
+ *
+ * `tx` — OPSİYONEL: verilirse `app.prisma` yerine bu transaction client'ı kullanılır.
+ * `POST /admin/users/{userId}/reset-password`, hedefin mevcut token'larını geçersiz
+ * kılmakla (bkz. admin-users.routes.ts) AYNI Serializable transaction içinde token
+ * üretebilmek için bunu kullanır. Parametre verilmezse davranış ESKİSİYLE BİREBİR
+ * AYNIDIR (forgotPassword/POST /admin/users çağrı yerleri DEĞİŞMEDİ).
  */
-export async function createPasswordResetToken(app: FastifyInstance, userId: string): Promise<string> {
+export async function createPasswordResetToken(
+  app: FastifyInstance,
+  userId: string,
+  tx?: Prisma.TransactionClient
+): Promise<string> {
+  const client = tx ?? app.prisma;
   const rawToken = generateOpaqueToken();
-  await app.prisma.passwordResetToken.create({
+  await client.passwordResetToken.create({
     data: {
       userId,
       tokenHash: hashToken(rawToken),

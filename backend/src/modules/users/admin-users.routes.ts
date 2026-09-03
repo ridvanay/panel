@@ -11,9 +11,10 @@ import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema } from "../../schemas/common";
 import { AdminUserSchema } from "../../schemas/entities";
 import { toAdminUserDto } from "../../mappers";
-import { ConflictError, NotFoundError } from "../../lib/errors";
+import { ApiError, ConflictError, NotFoundError } from "../../lib/errors";
 import { parseCursor, buildPageMeta } from "../../lib/pagination";
 import { hashPassword } from "../../lib/password";
+import { hashToken } from "../../lib/tokens";
 import { createPasswordResetToken } from "../auth/auth.service";
 import { sendPasswordResetEmail } from "../email-templates/email-templates.service";
 import { logAudit } from "../../lib/audit";
@@ -32,11 +33,27 @@ const CreateAdminUserResponseSchema = z.object({
   emailStatus: z.enum(["sent", "failed"]),
 });
 
+// `POST /:userId/reset-password` yanıtı — openapi.yaml `AdminResetPasswordResponse` ile
+// BİREBİR (bkz. o şemanın açıklaması). `CreateAdminUserResponseSchema`'dan tek farkı
+// `expiresAt` — admin panelin "bağlantı 1 saat geçerli" bilgisini gösterebilmesi için.
+const AdminResetPasswordResponseSchema = z.object({
+  user: AdminUserSchema,
+  emailStatus: z.enum(["sent", "failed"]),
+  expiresAt: z.string(),
+});
+
 // Diğer admin uçlarıyla paylaşılan global limitten (env.RATE_LIMIT_MAX) bağımsız, hassas
 // kullanıcı yönetimi işlemlerine (oluşturma/rol/durum değişikliği) özel savunma-derinliği
 // üst sınırı — bu uçlar zaten requireSiteRole(...ROLES_ADMIN) ile korunuyor, düşük risk ama
 // ele geçirilmiş bir admin oturumunun toplu istismarını sınırlar (bkz. security-agent denetimi).
 const ADMIN_USERS_RATE_LIMIT = { max: 20, timeWindow: "1 minute" };
+
+// `POST /:userId/reset-password`'a ÖZEL, daha SIKI limit (openapi.yaml açıklaması, architect +
+// security-agent kararı) — bu uç `/admin/users` altındaki TEK giden e-posta üreten uçtur; ele
+// geçirilmiş bir admin oturumunun kullanıcı posta kutularını bombalayıp gönderici itibarını
+// yakmasını önler. Bununla BİRLİKTE hedef-bazlı 60sn bekleme kuralı (bkz. route body) ayrı,
+// tamamlayıcı bir korumadır — biri çağırana (rate limit), diğeri kurbana (60sn) göre sınırlar.
+const ADMIN_PASSWORD_RESET_RATE_LIMIT = { max: 5, timeWindow: "1 minute" };
 
 /**
  * Bir kullanıcının hâlâ en az bir aktif ADMIN'in kalıp kalmayacağını kontrol eder.
@@ -337,6 +354,102 @@ export async function adminUsersRoutes(app: FastifyInstance) {
       });
 
       return reply.send(ok(toAdminUserDto(user)));
+    }
+  );
+
+  server.post(
+    "/:userId/reset-password",
+    {
+      config: { rateLimit: ADMIN_PASSWORD_RESET_RATE_LIMIT },
+      schema: {
+        params: AdminUserIdParamSchema,
+        response: { 200: ApiSuccessSchema(AdminResetPasswordResponseSchema) },
+      },
+    },
+    async (request, reply) => {
+      // Gövde YOKTUR — admin yeni şifreyi GÖRMEZ/BELİRLEMEZ (bkz. openapi.yaml açıklaması).
+      // Self-reset İZİNLİDİR (ayrıcalık yükseltmesi yok, admin zaten kendi hesabının sahibi) —
+      // `PATCH /status`/`DELETE`'teki self-yasakların gerekçesi (sistemi yönetimsiz bırakma)
+      // burada geçerli değil.
+      const { target, rawToken, invalidatedTokenCount } = await runSerializable(app, async (tx) => {
+        const targetUser = await tx.user.findUnique({ where: { id: request.params.userId } });
+        // Diğer `/:userId/*` uçlarıyla TUTARLI: `DELETED` kullanıcı yok sayılmış gibi 404 döner —
+        // silinmiş bir hesaba sessizce çalışan bir giriş bağlantısı üretilemez (önce restore).
+        if (!targetUser || targetUser.status === "DELETED") throw new NotFoundError("Kullanıcı bulunamadı.");
+        // Askıya alınmış hesap: sıfırlasa bile giriş yapamayacağı için bağlantı çıkmaz sokaktır —
+        // admin önce PATCH /status ile ACTIVE yapmalı.
+        if (targetUser.status === "SUSPENDED") {
+          throw new ConflictError("Askıya alınmış kullanıcı için şifre sıfırlama başlatılamaz.");
+        }
+
+        // Hedef-bazlı 60 saniyelik bekleme — farklı admin oturumları/IP'ler üzerinden TEK bir
+        // kurbanın posta kutusunun bombalanmasını engeller (route-level rate limit çağırana göre
+        // sınırlar, bu kural kurbana göre sınırlar). Invalidasyondan ÖNCE kontrol edilir ki henüz
+        // hiç geçersiz kılınmamış "gerçek" son üretim zamanı görülsün.
+        const recentCount = await tx.passwordResetToken.count({
+          where: { userId: targetUser.id, createdAt: { gte: new Date(Date.now() - 60_000) } },
+        });
+        if (recentCount > 0) {
+          throw new ApiError(
+            429,
+            "RATE_LIMITED",
+            "Bu kullanıcı için az önce bir şifre sıfırlama bağlantısı gönderildi, lütfen 60 saniye bekleyin."
+          );
+        }
+
+        // Hedefin kullanılmamış + süresi dolmamış TÜM önceki token'ları, yeni token'ın üretimiyle
+        // AYNI transaction'da geçersiz kılınır — aynı anda en fazla BİR geçerli bağlantı olur,
+        // daha önce gönderilmiş (muhtemelen sızmış) bağlantılar anında ölür. Bu davranış BU UCA
+        // ÖZGÜDÜR — `createPasswordResetToken`'ın forgotPassword/POST / tarafından kullanılan
+        // varsayılan davranışı DEĞİŞTİRİLMEDİ.
+        const invalidated = await tx.passwordResetToken.updateMany({
+          where: { userId: targetUser.id, usedAt: null, expiresAt: { gt: new Date() } },
+          data: { usedAt: new Date() },
+        });
+
+        const raw = await createPasswordResetToken(app, targetUser.id, tx);
+        return { target: targetUser, rawToken: raw, invalidatedTokenCount: invalidated.count };
+      });
+
+      const resetUrl = `${env.FRONTEND_URL}/reset-password?token=${rawToken}`;
+      // Transaction zaten commit edilmiş durumda — üretilen satırın gerçek `expiresAt`'ını (DB'de
+      // yazılan değer) response'a yansıtmak için hash'ten okunur (ayrı bir sabit hesaplamak yerine
+      // tek doğru kaynak DB'deki satırdır).
+      const resetTokenRow = await app.prisma.passwordResetToken.findUnique({ where: { tokenHash: hashToken(rawToken) } });
+
+      // `POST /admin/users` ile BİREBİR aynı best-effort desen: gönderim başarısız olsa bile token
+      // ÜRETİLMİŞ ve eski token'lar geçersiz kılınmıştır (geri alınmaz) — hata FIRLATILMAZ, yanıt
+      // yine 200 + emailStatus:"failed".
+      let emailStatus: "sent" | "failed";
+      try {
+        await sendPasswordResetEmail(app, { email: target.email, name: target.name }, resetUrl);
+        emailStatus = "sent";
+      } catch (err) {
+        app.log.error({ err, userId: target.id }, "Admin tarafından başlatılan şifre sıfırlama e-postası gönderilemedi");
+        emailStatus = "failed";
+      }
+
+      const isSelf = target.id === request.user!.id;
+
+      // emailStatus "failed" olsa DA yazılır — token üretimi gerçekleşmiştir ve denetim izi bunu
+      // yansıtmalı. Token/hash/URL metadata'ya YAZILMAZ.
+      await logAudit(app, {
+        actorId: request.user!.id,
+        actorEmail: request.user!.email,
+        action: "user.password_reset_initiated",
+        targetType: "User",
+        targetId: target.id,
+        metadata: { email: target.email, emailStatus, self: isSelf, invalidatedTokenCount },
+        ipAddress: request.ip,
+      });
+
+      return reply.send(
+        ok({
+          user: toAdminUserDto(target),
+          emailStatus,
+          expiresAt: resetTokenRow!.expiresAt.toISOString(),
+        })
+      );
     }
   );
 }

@@ -3,6 +3,7 @@ import { API_BASE_URL, getCachedAdminSession } from "./support/api";
 import { createAuthenticatedPage } from "./support/admin-session";
 import {
   adminGetUserByEmail,
+  adminUpdateStatus,
   registerFixtureUser,
   resetFixtureUserToBaseline,
   type FixtureAdminUser,
@@ -265,4 +266,118 @@ test("senaryo (b): 2+ admin varken biri diğerinin rolünü/durumunu değiştire
 
   await page.getByLabel("İsim veya e-posta ara").fill(ADMIN_CANDIDATE_EMAIL);
   await expect(page.getByText(ADMIN_CANDIDATE_EMAIL)).not.toBeVisible();
+});
+
+/**
+ * qa-agent — "Şifre Sıfırlama Gönder" aksiyonu (`app/admin/users/page.tsx`
+ * `pendingResetPasswordUser`/`handleConfirmResetPassword`/`KeyRound`, backend
+ * `POST /admin/users/{userId}/reset-password`) için 3 regresyon senaryosu. Backend'in kendi
+ * `tests/integration/admin-users-reset-password.test.ts`'i (app.inject, HTTP katmanı/tarayıcı YOK)
+ * ve frontend'in `tests/unit/a11y-admin-users.test.tsx`'i (component testi, `usersAdminApi` MOCK'lı)
+ * ile KAPSANMAYAN tek katman: gerçek buton tıklaması → gerçek `ConfirmDialog` → gerçek `fetch` →
+ * gerçek route handler → (dev-fallback Ethereal SMTP üzerinden) gerçek e-posta gönderim denemesi →
+ * gerçek toast.
+ *
+ * E-posta gönderimi backend'in dev-fallback'i ile GERÇEK bir ağ çağrısıyla Ethereal'a gider
+ * (`backend/src/lib/mail.ts` — `.env.e2e`'de `SMTP_HOST` boş + `NODE_ENV=development`) — sahte/prod
+ * SMTP KULLANILMAZ. Bu, projenin var olan deseniyle AYNI (bkz.
+ * `admin-email-template-editor.spec.ts` satır ~214 "dev-fallback Ethereal SMTP'ye gider" testi,
+ * AYNI 15sn zaman aşımı payı).
+ *
+ * qa-agent BULGUSU (bu 3 senaryo yazılırken keşfedildi, `page.tsx`'te DÜZELTİLMEDİ — frontend-agent'a
+ * yönlendirilmeli): `load()` (`page.tsx` ~118) yalnızca `listAdminUsers()`'ın TEK sayfasını
+ * (`limit: 100`, `orderBy: { seq: "asc" }` — bkz. `admin-users.routes.ts` `GET /`) çeker; arama kutusu
+ * SADECE bu tek sayfa üzerinde İSTEMCİ tarafında filtreler, sunucuya YENİ bir sorgu ATMAZ. Paylaşımlı
+ * `saas_e2e` veritabanında kullanıcılar HİÇBİR ZAMAN kalıcı silinmediğinden (bkz.
+ * `admin-users-fixtures.ts` başlığı) toplam kullanıcı sayısı bu koşumda 174'e ulaşmış durumda — bu
+ * yüzden BUGÜN `registerFixtureUser()` ile oluşturulan HERHANGİ bir YENİ e-posta (en yüksek `seq`,
+ * `asc` sıralamada 100. sıradan SONRA) admin panelinde ARANAMAZ/BULUNAMAZ ("Sonuç bulunamadı" — ilk
+ * denemede gözlemlendi). Bu 3 senaryo bu yüzden YENİ bir e-posta OLUŞTURMAK yerine, dosyanın geri
+ * kalanında ZATEN kullanılan ve garantili şekilde ilk sayfada kalan `EDITOR_EMAIL` fixture'ını
+ * (senaryo (c)/(c) devamı tarafından bu noktada ACTIVE/EDITOR durumuna getirilmiş olarak) yeniden
+ * kullanır — dosyanın kendi "tek worker, sıralı çalışma" disipliniyle TUTARLI (bkz. dosya başlığı).
+ */
+test("şifre sıfırlama: ADMIN aktif bir kullanıcıya gönderir → onay diyaloğu → başarı toast'ı", async () => {
+  // İzole çalıştırma güvencesi (dosya tek başına/kısmi filtreyle koşulursa) — zaten var olan
+  // fixture için idempotent (409 sessizce yutulur, bkz. `registerFixtureUser()` başlığı).
+  await registerFixtureUser(EDITOR_EMAIL, FIXTURE_PASSWORD, "QA E2E Editor Target");
+
+  await page.goto("/admin/users");
+  const row = await rowFor(page, EDITOR_EMAIL);
+  await expect(row.getByText("aktif", { exact: true })).toBeVisible();
+
+  const resetButton = row.getByRole("button", { name: "Şifre Sıfırlama Gönder" });
+  await expect(resetButton).toBeEnabled();
+  await resetButton.click();
+
+  const dialog = page.getByRole("dialog", { name: "Şifre sıfırlama gönder" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText(/şifre sıfırlama e-postası göndermek istediğinize emin misiniz/i)).toBeVisible();
+
+  await dialog.getByRole("button", { name: "Gönder" }).click();
+
+  // Gerçek Ethereal ağ çağrısı nedeniyle (bkz. dosya başlığı) generous timeout — AYNI pay
+  // `admin-email-template-editor.spec.ts`'teki karşılığıyla tutarlı.
+  await expect(page.getByText("Şifre sıfırlama e-postası gönderildi.")).toBeVisible({ timeout: 15_000 });
+  await expect(dialog).not.toBeVisible();
+});
+
+test("şifre sıfırlama: SUSPENDED kullanıcıda buton devre dışıdır ve tooltip doğru mesajı gösterir", async () => {
+  const target = (await adminGetUserByEmail(adminToken, EDITOR_EMAIL)) as FixtureAdminUser;
+  expect(target).toBeDefined();
+  const { status } = await adminUpdateStatus(adminToken, target.id, "SUSPENDED");
+  expect(status).toBe(200);
+
+  try {
+    await page.goto("/admin/users");
+    const row = await rowFor(page, EDITOR_EMAIL);
+    await expect(row.getByText("askıda", { exact: true })).toBeVisible();
+
+    const resetButton = row.getByRole("button", {
+      name: "Askıya alınmış kullanıcı için şifre sıfırlama gönderilemez.",
+    });
+    await expect(resetButton).toBeDisabled();
+
+    // Backend'e doğrudan (UI atlanarak) istek atıp defense-in-depth'i doğruluyoruz — senaryo
+    // (a)/(b) testlerindeki AYNI desen.
+    const directAttempt = await page.request.post(
+      `${API_BASE_URL}/admin/users/${target.id}/reset-password`,
+      { headers: { Authorization: `Bearer ${adminToken}` } }
+    );
+    expect(directAttempt.status()).toBe(409);
+  } finally {
+    // Bir sonraki (DELETED) senaryonun ön koşulu ACTIVE bir kullanıcı olduğundan burada geri alınır
+    // (yalnızca `afterAll`'daki nihai temizliğe güvenmek yerine — testler arası durum sızıntısını
+    // önler, `senaryo (b)` testindeki "tekrar aktifleştir" adımlarıyla AYNI disiplin).
+    await adminUpdateStatus(adminToken, target.id, "ACTIVE");
+  }
+});
+
+test("şifre sıfırlama: DELETED (silinmiş) kullanıcı satırında buton hiç görünmez", async () => {
+  await page.goto("/admin/users");
+  let row = await rowFor(page, EDITOR_EMAIL);
+
+  await row.getByRole("button", { name: "Sil" }).click();
+  await page.getByRole("dialog", { name: "Kullanıcıyı sil" }).getByRole("button", { name: "Kullanıcıyı Sil" }).click();
+  await expect(page.getByText(/silindi\. Gerekirse/)).toBeVisible();
+
+  // "Silinen kullanıcıları göster" açılmadan varsayılan listede satır artık hiç yok.
+  await page.getByLabel("İsim veya e-posta ara").fill(EDITOR_EMAIL);
+  await expect(page.getByText(EDITOR_EMAIL)).not.toBeVisible();
+
+  await page.getByRole("switch", { name: "Silinen kullanıcıları göster" }).click();
+  row = await rowFor(page, EDITOR_EMAIL);
+  await expect(row.getByText("silindi", { exact: true })).toBeVisible();
+
+  // DELETED satırında yalnızca "Geri Yükle" render edilir (bkz. `page.tsx` `isDeleted` dalı) —
+  // şifre sıfırlama butonu bu satırda hiç YOKTUR (disabled değil, tamamen render edilmiyor).
+  await expect(row.getByRole("button", { name: "Şifre Sıfırlama Gönder" })).toHaveCount(0);
+  await expect(
+    row.getByRole("button", { name: "Askıya alınmış kullanıcı için şifre sıfırlama gönderilemez." })
+  ).toHaveCount(0);
+  await expect(row.getByRole("button", { name: "Geri Yükle" })).toBeVisible();
+
+  await row.getByRole("button", { name: "Geri Yükle" }).click();
+  await page.getByRole("dialog", { name: "Kullanıcıyı geri yükle" }).getByRole("button", { name: "Geri Yükle" }).click();
+  await expect(page.getByText(/geri yüklendi\./)).toBeVisible();
 });

@@ -13,6 +13,34 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
 
 ### Added
 
+- **Admin panelinden başka bir kullanıcı için şifre sıfırlama e-postası tetikleme**
+  (`AdminUsers` tag'i, bkz. `openapi.yaml` `AdminResetPasswordResponse`). Süper Yönetici
+  (`SiteRole=ADMIN`), `/admin/users` sayfasından bir kullanıcının şifresini kendisi
+  belirlemeden/görmeden yalnızca bir sıfırlama bağlantısı e-postası tetikleyebiliyor —
+  destek senaryosu: "kullanıcı sıfırlama e-postasını alamadı / hesabı ele geçirilmiş
+  olabilir".
+  - Yeni uç: `POST /admin/users/{userId}/reset-password` (gövde yok). `POST /admin/users`
+    ile BİREBİR aynı deseni yeniden kullanır: `createPasswordResetToken` (1 saat geçerli,
+    tek kullanımlık token) → `sendPasswordResetEmail`; hedef kullanıcının kullanılmamış ve
+    süresi dolmamış TÜM önceki `PasswordResetToken` kayıtları aynı transaction içinde
+    geçersiz kılınır (aynı anda en fazla bir geçerli sıfırlama bağlantısı).
+  - **Admin şifreyi görmez ve belirlemez** — ham token / sıfırlama URL'i ne yanıtta ne
+    log'da yer alır, kontrol her zaman e-posta kutusu sahibindedir.
+  - **Kendi hesabına (self-reset) izin vardır** — ayrıcalık yükseltmesi riski yoktur;
+    denetim kaydında `metadata.self = true` ile ayırt edilir.
+  - Hedef kullanıcı `SUSPENDED` ise `409` (`CONFLICT`, "Askıya alınmış kullanıcı için
+    şifre sıfırlama başlatılamaz."); `DELETED` durumundaysa veya hiç yoksa `404`
+    (diğer tüm `/admin/users/{userId}/*` uçlarıyla tutarlı — önce
+    `POST /admin/users/{userId}/restore` gerekir).
+  - Hız sınırı: `ADMIN_PASSWORD_RESET_RATE_LIMIT` (5 istek/dakika, çağıran bazlı, diğer
+    `/admin/users` uçlarının 20/dk limitinden daha sıkı) + **hedef bazlı 60 saniyelik
+    bekleme** (aynı kurbanın posta kutusunun farklı admin oturumları/IP'lerden
+    bombalanmasını önler) — her iki aşım da `429` döner.
+  - Oturum etkisi yok: token üretimi hedefin aktif oturumlarını düşürmez; refresh token
+    iptali yalnızca sıfırlama fiilen tamamlandığında (`POST /auth/reset-password`) veya
+    `DELETE /admin/users/{userId}` ile olur. Denetim aksiyonu: `user.password_reset_initiated`
+    (`GET /admin/logs?action=user.` filtresine dahildir).
+
 - **Page Builder — Google Harita bloğu ve kurumsal blok genişletmeleri** (bağlayıcı karar
   dokümanları `.claude/architect-scope-google-map-corporate-blocks.md` ve
   `.claude/security-review-google-map-corporate-blocks.md`). Yeni `google-map` bloğu: hazır
