@@ -20,7 +20,7 @@ import {
   PortfolioItemSchema,
 } from "../../schemas/entities";
 import { toContentRevisionDto, toContentRevisionSummaryDto, toPortfolioCategoryDto, toPortfolioItemDto } from "../../mappers";
-import { ConflictError, NotFoundError } from "../../lib/errors";
+import { ConflictError, NotFoundError, ValidationError } from "../../lib/errors";
 import { parseCursor, buildPageMeta, buildPageMetaWithCounts } from "../../lib/pagination";
 import { slugify } from "../../lib/slug";
 import { snapshotBeforeUpdate, listContentRevisions, getContentRevisionOrThrow } from "../../lib/content-revisions";
@@ -29,6 +29,7 @@ import { getPortfolioItemContentCounts } from "../../lib/content-counts";
 import { resolveAuthorId } from "../../lib/content-author";
 import { logAudit } from "../../lib/audit";
 import { sanitizeRichHtml } from "../../lib/html-sanitize";
+import { isImageMimeType } from "../../lib/mime-detect";
 import {
   applyFieldLocalization,
   attachLocalizations,
@@ -58,6 +59,24 @@ import {
   UpdatePortfolioCategoryRequestSchema,
   UpdatePortfolioItemRequestSchema,
 } from "./portfolio.schemas";
+
+/**
+ * §2.2 madde 5 (.claude/architect-scope-ecommerce-pro-template.md, bağlayıcı) ve
+ * openapi.yaml `POST /admin/media` açıklaması ("Görsel bekleyen FK slotları (`coverMediaId`,
+ * ürün/portföy galerisi, `Slide.bgMediaId`, `SiteAppearance.pageHeaderBackgroundMediaId`)
+ * `image/*` DIŞINDAKİ medyayı `422` ile REDDEDER") — `products.routes.ts::assertImageMedia`
+ * ile AYNI kural, `PortfolioItem.coverMediaId`/`PortfolioImage.mediaId` için.
+ */
+async function assertImageMedia(app: FastifyInstance, mediaId: string) {
+  const media = await app.prisma.media.findUnique({ where: { id: mediaId } });
+  if (!media) throw new NotFoundError("Medya bulunamadı.");
+  if (!isImageMimeType(media.mimeType)) {
+    throw new ValidationError("Bu alan yalnızca görsel medya kabul eder.", {
+      mediaId: ["Seçilen dosya bir görsel değil."],
+    });
+  }
+  return media;
+}
 
 /** Portföy öğesi detay/liste sorgularında kategori + kapak görseli + galeri + yazar özetini de dönmek için. */
 const WITH_RELATIONS = {
@@ -190,6 +209,10 @@ export async function adminPortfolioRoutes(app: FastifyInstance) {
         scheduledAt,
       } = request.body;
 
+      if (coverMediaId) {
+        await assertImageMedia(app, coverMediaId);
+      }
+
       const resolvedAuthorId = await resolveAuthorId(app, request.body.authorId, request.user!);
       const authorId = resolvedAuthorId === undefined ? request.user!.id : resolvedAuthorId;
 
@@ -273,6 +296,11 @@ export async function adminPortfolioRoutes(app: FastifyInstance) {
       await snapshotBeforeUpdate(app, "PORTFOLIO_ITEM", existing.id, toPortfolioItemSnapshot(existing), request.user!.id);
 
       const { slug, translations, authorId: requestedAuthorId, scheduledAt, completedAt, ...rest } = request.body;
+
+      if (rest.coverMediaId) {
+        await assertImageMedia(app, rest.coverMediaId);
+      }
+
       const resolvedAuthorId = await resolveAuthorId(app, requestedAuthorId, request.user!);
 
       // Stored-XSS koruması: gelen çeviriler merge'den ÖNCE sanitize edilir (mevcut kayıttaki
@@ -459,8 +487,7 @@ export async function adminPortfolioRoutes(app: FastifyInstance) {
       const item = await app.prisma.portfolioItem.findUnique({ where: { id: request.params.itemId } });
       if (!item) throw new NotFoundError("Portföy öğesi bulunamadı.");
 
-      const media = await app.prisma.media.findUnique({ where: { id: request.body.mediaId } });
-      if (!media) throw new NotFoundError("Medya bulunamadı.");
+      const media = await assertImageMedia(app, request.body.mediaId);
 
       const existingImage = await app.prisma.portfolioImage.findUnique({
         where: { portfolioItemId_mediaId: { portfolioItemId: item.id, mediaId: media.id } },

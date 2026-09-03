@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type MouseEvent } from "react";
 import { toast } from "sonner";
-import { Check, Image as ImageIcon, Search, UploadCloud } from "lucide-react";
+import { Check, FileText, Image as ImageIcon, Search, UploadCloud } from "lucide-react";
 import * as mediaApi from "@/lib/api/media";
-import type { Media, MediaFolder } from "@/lib/api/types";
+import type { Media, MediaFolder, MediaTypeFilter } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
@@ -27,6 +27,12 @@ const DEFAULT_MAX_SELECTION = 24;
 type MediaPickerProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /**
+   * §2.2 madde 6 (`.claude/architect-scope-ecommerce-pro-template.md`) — varsayılan `"image"`:
+   * yalnızca `image/*` gösterir/yükler (mevcut TÜM çağrı yerlerinin davranışı BİT DÜZEYİNDE
+   * korunur). `"document"` → yalnızca `application/pdf` (ör. ürün teknik döküman paneli).
+   */
+  mediaType?: MediaTypeFilter;
 } & (
   | { multiple?: false; onSelect: (media: Media) => void }
   | { multiple: true; onSelect: (media: Media[]) => void; maxSelection?: number }
@@ -43,9 +49,11 @@ type MediaPickerProps = {
  * DÜZEYİNDE korunur (mevcut çağrı yerleri değişmez).
  */
 export function MediaPicker(props: MediaPickerProps) {
-  const { open, onOpenChange } = props;
+  const { open, onOpenChange, mediaType = "image" } = props;
   const isMultiple = props.multiple === true;
   const maxSelection = props.multiple === true ? (props.maxSelection ?? DEFAULT_MAX_SELECTION) : 1;
+  const isDocumentMode = mediaType === "document";
+  const uploadAccept = isDocumentMode ? "application/pdf" : "image/*";
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [items, setItems] = useState<Media[] | null>(null);
@@ -86,21 +94,24 @@ export function MediaPicker(props: MediaPickerProps) {
     return map;
   }, [isMultiple, multiSelect.selectedIds, mediaCache]);
 
-  const load = useCallback(async (folderId: MediaFolderSelection) => {
-    setLoadError(null);
-    try {
-      const page = await mediaApi.listMedia({ folderId: toMediaFolderQueryParam(folderId) });
-      setItems(page.items);
-      if (folderId === ALL_FILES_SELECTION) setLibraryMedia(page.items);
-      setMediaCache((prev) => {
-        const next = new Map(prev);
-        for (const m of page.items) next.set(m.id, m);
-        return next;
-      });
-    } catch (err) {
-      setLoadError(friendlyErrorMessage(err));
-    }
-  }, []);
+  const load = useCallback(
+    async (folderId: MediaFolderSelection) => {
+      setLoadError(null);
+      try {
+        const page = await mediaApi.listMedia({ folderId: toMediaFolderQueryParam(folderId), type: mediaType });
+        setItems(page.items);
+        if (folderId === ALL_FILES_SELECTION) setLibraryMedia(page.items);
+        setMediaCache((prev) => {
+          const next = new Map(prev);
+          for (const m of page.items) next.set(m.id, m);
+          return next;
+        });
+      } catch (err) {
+        setLoadError(friendlyErrorMessage(err));
+      }
+    },
+    [mediaType]
+  );
 
   const loadFolders = useCallback(async () => {
     try {
@@ -160,11 +171,11 @@ export function MediaPicker(props: MediaPickerProps) {
           multiSelect.setSelectedIds((prev) => new Set(prev).add(media.id));
         }
         await load(selectedFolderId);
-        toast.success("Görsel yüklendi ve seçime eklendi.");
+        toast.success(isDocumentMode ? "Döküman yüklendi ve seçime eklendi." : "Görsel yüklendi ve seçime eklendi.");
       } else {
         props.onSelect(media);
         onOpenChange(false);
-        toast.success("Görsel yüklendi.");
+        toast.success(isDocumentMode ? "Döküman yüklendi." : "Görsel yüklendi.");
       }
     } catch (err) {
       const message = friendlyErrorMessage(err);
@@ -202,11 +213,13 @@ export function MediaPicker(props: MediaPickerProps) {
       <DialogContent className="max-w-4xl p-0 gap-0">
         <div className="flex max-h-[85vh] flex-col">
           <DialogHeader className="p-4 pb-3">
-            <DialogTitle>Görsel Seç</DialogTitle>
+            <DialogTitle>{isDocumentMode ? "Döküman Seç" : "Görsel Seç"}</DialogTitle>
             <DialogDescription>
-              {isMultiple
-                ? `Kütüphaneden birden çok görsel seçin (en fazla ${maxSelection}) veya yeni bir görsel yükleyin.`
-                : "Kütüphaneden bir görsel seçin veya yeni bir görsel yükleyin."}
+              {isDocumentMode
+                ? "Kütüphaneden bir PDF seçin veya yeni bir PDF yükleyin."
+                : isMultiple
+                  ? `Kütüphaneden birden çok görsel seçin (en fazla ${maxSelection}) veya yeni bir görsel yükleyin.`
+                  : "Kütüphaneden bir görsel seçin veya yeni bir görsel yükleyin."}
             </DialogDescription>
           </DialogHeader>
 
@@ -234,8 +247,8 @@ export function MediaPicker(props: MediaPickerProps) {
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*"
-              aria-label="Bilgisayardan görsel yükle"
+              accept={uploadAccept}
+              aria-label={isDocumentMode ? "Bilgisayardan PDF yükle" : "Bilgisayardan görsel yükle"}
               className="hidden"
               onChange={handleFileChange}
             />
@@ -291,12 +304,12 @@ export function MediaPicker(props: MediaPickerProps) {
                 </div>
               ) : items.length === 0 ? (
                 <EmptyState
-                  icon={ImageIcon}
-                  title="Henüz görsel yüklenmedi"
-                  description="Bilgisayarınızdan bir görsel yükleyerek başlayın."
+                  icon={isDocumentMode ? FileText : ImageIcon}
+                  title={isDocumentMode ? "Henüz döküman yüklenmedi" : "Henüz görsel yüklenmedi"}
+                  description={`Bilgisayarınızdan bir ${isDocumentMode ? "PDF" : "görsel"} yükleyerek başlayın.`}
                   action={
                     <Button type="button" onClick={() => fileInputRef.current?.click()}>
-                      Görsel Yükle
+                      {isDocumentMode ? "PDF Yükle" : "Görsel Yükle"}
                     </Button>
                   }
                 />
@@ -328,8 +341,17 @@ export function MediaPicker(props: MediaPickerProps) {
                           disabledByLimit && "cursor-not-allowed opacity-40 hover:scale-100 hover:ring-0"
                         )}
                       >
-                        {/* eslint-disable-next-line @next/next/no-img-element -- yüklenen/harici görsel URL'si, next/image remotePatterns henüz tanımlı değil */}
-                        <img src={media.url} alt="" className="h-full w-full object-cover" />
+                        {isDocumentMode ? (
+                          <div className="flex h-full w-full flex-col items-center justify-center gap-1 bg-surface-muted p-1.5 text-center">
+                            <FileText className="h-6 w-6 shrink-0 text-foreground/40" aria-hidden="true" />
+                            <span className="line-clamp-2 w-full text-[10px] leading-tight break-all text-foreground/60">
+                              {media.filename}
+                            </span>
+                          </div>
+                        ) : (
+                          // eslint-disable-next-line @next/next/no-img-element -- yüklenen/harici görsel URL'si, next/image remotePatterns henüz tanımlı değil
+                          <img src={media.url} alt="" className="h-full w-full object-cover" />
+                        )}
                         {selected && (
                           <span className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
                             <Check className="h-3.5 w-3.5" />

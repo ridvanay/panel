@@ -22,6 +22,10 @@ export const DEFAULTS = {
   headerLogoMaxWidth: null as number | null,
   homePageId: null as string | null,
   siteTemplate: "SHOWCASE" as const,
+  // §3 (.claude/architect-scope-ecommerce-pro-template.md, bağlayıcı) — `null` = kargo hiç
+  // hesaplanmaz/eşik yok (bugünkü davranışın birebir aynısı).
+  shippingFlatFeeCents: null as number | null,
+  freeShippingThresholdCents: null as number | null,
 };
 
 async function readSettings(app: FastifyInstance) {

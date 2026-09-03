@@ -55,11 +55,62 @@ compose up` doğrulaması" bölümündeki adım adım komut ve kalıcı çözüm
   yol açıyordu (`npm run dev`/vitest bunu yakalamaz, çünkü ikisi de `src/`den çalışır).
   Düzeltme: `backend/package.json`'daki `"build"` script'i artık `tsc -p tsconfig.json &&
   node scripts/copy-static-assets.js` — bu script `src/**` altındaki `.png/.jpg/.jpeg/.webp/.gif`
-  dosyalarını aynı göreli yola `dist/`e kopyalar (genel amaçlı, yalnızca demo-templates'e
-  hardcode değil). `backend/Dockerfile`'ın `build` stage'ine `COPY scripts ./scripts` eklendi
-  (önceden yalnızca `src/` kopyalanıyordu, script çalışamazdı). Doğrulama: hem lokal
-  `npm run build` hem `docker build --target build` ile `dist/modules/demo-templates/assets/
-  modern-architecture/` altında 6 PNG'nin de oluştuğu teyit edildi.
+  (ve **`.pdf`**, bkz. aşağıdaki `ecommerce-pro` maddesi) dosyalarını aynı göreli yola `dist/`e
+  kopyalar (genel amaçlı, yalnızca demo-templates'e hardcode değil). `backend/Dockerfile`'ın
+  `build` stage'ine `COPY scripts ./scripts` eklendi (önceden yalnızca `src/` kopyalanıyordu,
+  script çalışamazdı). Doğrulama: hem lokal `npm run build` hem `docker build --target build`
+  ile `dist/modules/demo-templates/assets/modern-architecture/` altında 6 PNG'nin de oluştuğu
+  teyit edildi.
+- **`ecommerce-pro` şablonu (PNG + PDF varlıkları) — `dist`/Docker imajı kapsamı genişletildi
+  (2026-09-03, `.claude/architect-scope-ecommerce-pro-template.md` §9.10)**:
+  `backend/src/modules/demo-templates/assets/ecommerce-pro/**` altına 20 PNG + 2 PDF
+  (`tech-doc-1.pdf`, `tech-doc-2.pdf` — §2.2 teknik döküman kartları) eklendi.
+  `copy-static-assets.js`'in `STATIC_ASSET_EXTENSIONS` seti **yalnızca görsel uzantıları**
+  kapsıyordu, `.pdf` dahil DEĞİLDİ — bu, PDF'lerin `dist/`e (ve dolayısıyla Docker runtime
+  imajına) hiç kopyalanmaması, prod'da PDF import'unun "varlık bulunamadı" hatasıyla
+  patlaması anlamına gelirdi. **Düzeltme**: `.pdf`, `STATIC_ASSET_EXTENSIONS`'a eklendi (tek
+  satırlık genişletme, script'in geri kalanı DEĞİŞMEDİ — hâlâ genel amaçlı, dosya adına göre
+  DEĞİL uzantıya göre çalışıyor). `_source/*.svg` dosyaları bilinçli olarak bu listeye dahil
+  edilmedi (çalışma zamanında hiçbir kod onları okumaz — [DTI] §4.4) ama zaten `.svg` bir
+  görsel format değil, çalışma zamanı varlığı da değil; imaja girmemesinin bir zararı yok.
+  **Doğrulama (gerçekten çalıştırıldı)**: lokal `npm run build` → `dist/modules/demo-templates/
+  assets/ecommerce-pro/` altında 20 PNG + 2 PDF (toplam 22 dosya) oluştu; `docker build -f
+  backend/Dockerfile backend` ile tam imaj build edildi ve `docker run --rm <imaj> ls
+  /app/dist/modules/demo-templates/assets/ecommerce-pro/` ile `tech-doc-1.pdf`/`tech-doc-2.pdf`
+  runtime imajında (doğru `nodejs` kullanıcı sahipliğiyle) **mevcut** olduğu teyit edildi.
+
+## S3/CDN depolama başlıkları — bilinen sınırlama (`X-Content-Type-Options: nosniff`)
+
+**Durum: dokümante edilmiş bilinen sınırlama, düzeltilmedi — yeni bir CDN/Response Headers
+Policy altyapısı bu turda İCAT EDİLMEDİ** (security-agent bulgusu, 2026-09-03).
+
+`backend/src/lib/storage/s3.storage.ts` (`STORAGE_DRIVER=s3`), PDF gibi görsel-olmayan medya
+için `PutObjectCommand`'a `ContentDisposition: "attachment"` metadata'sını başarıyla yazıyor —
+bu S3'ün native desteklediği bir alan. Ancak `plugins/uploads.ts`'in yerel (`STORAGE_DRIVER=
+local`) sürücüde `/uploads/*` için eklediği `X-Content-Type-Options: nosniff` HTTP yanıt
+başlığının **S3 tarafında bir karşılığı yoktur** — `PutObjectCommand`, whitelist'li birkaç
+metadata alanı (`ContentType`, `ContentDisposition`, `CacheControl` vb.) dışında keyfi HTTP
+yanıt başlığı ayarlamaya izin vermez; `nosniff`, S3'ün nesne meta verisi olarak
+saklayabileceği/objeye eklenip her `GetObject` yanıtında geri döneceği bir alan DEĞİLDİR.
+
+**Bu turda projede zaten mevcut bir CloudFront/CDN/Terraform/CDK yapılandırması bulunmadığı**
+doğrulandı (`INFRA.md`, kök `docker-compose.yml`, `backend/docker-compose.yml` içinde
+CloudFront/CDN/Response-Headers-Policy referansı yok) — bu yüzden devops-agent bu turda **yeni
+bir CDN katmanı kurmadı** (görev kapsamı: mevcut altyapıyı genişletmek, yeni bulut kaynağı
+icat etmemek).
+
+**Risk değerlendirmesi**: düşük. `ContentDisposition: attachment` zaten tarayıcının dosyayı
+satır içi render etmesini (ve dolayısıyla MIME-sniffing tabanlı bir XSS/phishing yüzeyini)
+engelliyor — `nosniff` burada **ikinci bir savunma katmanı** (defense-in-depth), tek başına
+kritik değil.
+
+**İleride bir CDN katmanı eklenirse (mimari karar/backlog maddesi)**: `S3_PUBLIC_URL` zaten bir
+CloudFront/CDN önü destekliyor (`s3.storage.ts::buildUrl`) — CloudFront kullanılacaksa, bir
+**Response Headers Policy** (`X-Content-Type-Options: nosniff` dahil, mevcut AWS-managed
+`SecurityHeadersPolicy` veya özel bir policy) o dağıtıma eklenmelidir. Bu iş mimari bir karardır
+(hangi CDN, hangi IaC aracı — Terraform/CDK/console) ve **architect**'in onayı olmadan
+devops-agent tarafından tek taraflı açılmayacaktır; şimdilik yalnızca bu not backlog'a
+düşülmüştür.
 
 ## İçe aktarma dosya deposu (`storage/imports`)
 
@@ -164,6 +215,20 @@ Production/staging secret'ları (GitHub Environment secrets, repoya asla girmez 
   konfigürasyon değişikliği gerekmeden mevcut `npm test` (backend job'ının "Test" adımı)
   tarafından otomatik olarak toplanıp çalıştırılıyor. **Doğrulandı, ekstra değişiklik
   gerekmedi.**
+- **`ecommerce-pro` migration + `demo-templates-ecommerce-pro.test.ts` (2026-09-03,
+  `.claude/architect-scope-ecommerce-pro-template.md` §9.10)**: yeni
+  `20260903085735_add_product_variants_documents_shipping/migration.sql` standart
+  `backend/prisma/migrations/` klasöründe — `prisma migrate deploy` klasördeki tüm migration'ları
+  timestamp sırasına göre otomatik uygular, CI'da ayrıca listelenmesi/adlandırılması GEREKMEZ.
+  `demo-templates-ecommerce-pro.test.ts` da `vitest.config.ts`'in varsayılan glob'una girer,
+  gerçek DB'ye (global-setup'ın oluşturduğu `saas_test`) karşı çalışır — yukarıdaki maddeyle
+  AYNI mekanizma. **Doğrulama (gerçekten çalıştırıldı)**: geçici, boş bir `postgres:16-alpine`
+  container'ı (CI'daki `postgres` service container'ıyla birebir aynı imaj/kimlik bilgileri)
+  ayağa kaldırılıp `DATABASE_URL=postgresql://postgres:postgres@localhost:15432/postgres
+  ?schema=public npx prisma migrate deploy` çalıştırıldı — yeni migration dahil TÜM migration'lar
+  ("All migrations have been successfully applied.") hatasız uygulandı. Bu, CI'ın "Prisma
+  migrate deploy (sanity check)" adımının aynen geçeceğini doğrular; **hiçbir yeni env
+  değişkeni/secret veya CI YAML değişikliği gerekmedi.**
 
 ### Branch protection (manuel — GitHub UI, sen açmalısın)
 

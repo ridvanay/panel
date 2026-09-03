@@ -359,10 +359,220 @@ function buildAboutImage(): Buffer {
 }
 
 /* ---------------------------------------------------------------------------------------------
+ * `ecommerce-pro` — `.claude/architect-scope-ecommerce-pro-template.md` §9.3/§7.2 +
+ * `.claude/design-notes-ecommerce-storefront.md` §9-11. AYNI bağımlılıksız yaklaşım: kategori
+ * kartları + ürün kapak/galeri görselleri `node:zlib` ile PNG, teknik dökümanlar düz PDF
+ * sözdizimiyle (bağımlılık YOK) üretilir. Palet §9 ile BİREBİR.
+ * ------------------------------------------------------------------------------------------- */
+
+const EP_PRIMARY = hexToRgb("#1E3A8A");
+const EP_SECONDARY = hexToRgb("#0F172A");
+const EP_ACCENT = hexToRgb("#047857");
+const EP_BACKGROUND = hexToRgb("#F8FAFC");
+const EP_SURFACE = hexToRgb("#FFFFFF");
+
+type EpMotif = "rings" | "curve" | "grid" | "dots";
+
+/** design-notes §11 — 4 kategori motifi, deterministik (seed'e bağlı, `Math.random()` YOK). */
+function drawEpMotif(canvas: Canvas, motif: EpMotif, color: Rgb, opacityPercent: number, seed: number): void {
+  const { width, height } = canvas;
+  switch (motif) {
+    case "rings": {
+      const cx = width * 0.52;
+      const cy = height * 0.44;
+      for (let radius = 70; radius <= 380; radius += 70) {
+        canvas.drawCircleOutline(cx, cy, radius + seed * 12, color, opacityPercent, 2);
+      }
+      break;
+    }
+    case "curve": {
+      const amplitude = height * 0.12;
+      const baseY = height * 0.56;
+      for (let x = 0; x < width; x += 2) {
+        const y = Math.round(baseY + Math.sin((x / width) * Math.PI * 1.4 + seed) * amplitude);
+        canvas.blendPixel(x, y, color, opacityPercent);
+        canvas.blendPixel(x, y + 1, color, opacityPercent);
+      }
+      break;
+    }
+    case "grid": {
+      const marginX = width * 0.16;
+      const marginY = height * 0.2;
+      const colStep = (width - marginX * 2) / 6;
+      const rowStep = (height - marginY * 2) / 5;
+      for (let i = 0; i <= 6; i++) {
+        canvas.drawVLine(Math.round(marginX + i * colStep), marginY, height - marginY, color, opacityPercent, 2);
+      }
+      for (let i = 0; i <= 5; i++) {
+        canvas.drawHLine(Math.round(marginY + i * rowStep), marginX, width - marginX, color, opacityPercent, 2);
+      }
+      break;
+    }
+    case "dots": {
+      let state = (seed + 1) * 7919; // deterministik LCG — dosya her koşuda AYNI çıktıyı üretir
+      const next = () => {
+        state = (state * 1103515245 + 12345) & 0x7fffffff;
+        return state / 0x7fffffff;
+      };
+      for (let i = 0; i < 70; i++) {
+        const x = Math.round(next() * width);
+        const y = Math.round(next() * height);
+        const r = 4 + Math.round(next() * 10);
+        canvas.drawCircleOutline(x, y, r, color, opacityPercent, 2);
+      }
+      break;
+    }
+  }
+}
+
+/** design-notes §11 tablosu — kategori kartı: neredeyse düz zemin + %15-25 opaklık ince motif. */
+function buildEpCategoryCard(motif: EpMotif, motifColor: Rgb): Buffer {
+  const width = 1200;
+  const height = 900;
+  const canvas = new Canvas(width, height);
+  canvas.fill((x, y) => linearGradientAt(width, height, x, y, 135, EP_BACKGROUND, EP_SURFACE));
+  drawEpMotif(canvas, motif, motifColor, 20, 0);
+  return canvas.toPngBuffer();
+}
+
+/**
+ * §7.2 — ürün kapak/galeri görselleri: GERÇEK ürün fotoğrafı DEĞİL, kategori motifini düşük
+ * opaklıkla yineleyen soyut bir "ürün kartı" silüeti (telif-güvenli, [DTI] §9 ile aynı disiplin).
+ * `seed` kapak/galeri farkını verir (0=kapak, 1=galeri) — İKİSİ de aynı üretim fonksiyonundan.
+ */
+function buildEpProductPlaceholder(motif: EpMotif, motifColor: Rgb, seed: number): Buffer {
+  const width = 1200;
+  const height = 900;
+  const canvas = new Canvas(width, height);
+  canvas.fill((x, y) => linearGradientAt(width, height, x, y, seed === 0 ? 135 : 45, EP_BACKGROUND, EP_SURFACE));
+  drawEpMotif(canvas, motif, motifColor, 12, seed);
+  canvas.drawRectOutline(240, 190, 960, 770, motifColor, 35, 3);
+  return canvas.toPngBuffer();
+}
+
+const EP_CATEGORY_GENERATORS: { file: string; build: () => Buffer }[] = [
+  { file: "category-aydinlatma.png", build: () => buildEpCategoryCard("rings", EP_ACCENT) },
+  { file: "category-oturma-grubu.png", build: () => buildEpCategoryCard("curve", EP_PRIMARY) },
+  { file: "category-depolama.png", build: () => buildEpCategoryCard("grid", EP_SECONDARY) },
+  { file: "category-aksesuar.png", build: () => buildEpCategoryCard("dots", EP_ACCENT) },
+];
+
+const EP_PRODUCT_MOTIFS: { slug: string; motif: EpMotif; color: Rgb }[] = [
+  { slug: "silindirik-metal-masa-lambasi", motif: "rings", color: EP_ACCENT },
+  { slug: "ayarlanabilir-lambader", motif: "rings", color: EP_ACCENT },
+  { slug: "kadife-dosemeli-berjer-koltuk", motif: "curve", color: EP_PRIMARY },
+  { slug: "katlanabilir-bahce-sandalyesi", motif: "curve", color: EP_PRIMARY },
+  { slug: "moduler-raf-sistemi", motif: "grid", color: EP_SECONDARY },
+  { slug: "ahsap-ayakkabilik-dolabi", motif: "grid", color: EP_SECONDARY },
+  { slug: "desenli-dekoratif-yastik-seti", motif: "dots", color: EP_ACCENT },
+  { slug: "cam-aromaterapi-difuzoru", motif: "dots", color: EP_ACCENT },
+];
+
+const EP_PRODUCT_GENERATORS: { file: string; build: () => Buffer }[] = EP_PRODUCT_MOTIFS.flatMap(({ slug, motif, color }) => [
+  { file: `${slug}-cover.png`, build: () => buildEpProductPlaceholder(motif, color, 0) },
+  { file: `${slug}-gallery-1.png`, build: () => buildEpProductPlaceholder(motif, color, 1) },
+]);
+
+/* ---------------------------------------------------------------------------------------------
+ * §2.2/§7.2 — teknik döküman PDF'leri. Bağımlılıksız, düz PDF sözdizimi (klasik xref tablosu,
+ * FlateDecode YOK — içerik zaten çok küçük, sıkıştırma gerektirmiyor). Görünür sayfa metni
+ * BİLİNÇLİ OLARAK ASCII'dir (Türkçe "İ" gibi karakterler base-14 Helvetica/WinAnsiEncoding'de
+ * güvenilir şekilde temsil edilemez); belgenin GERÇEK Türkçe başlığı `/Title` meta verisinde
+ * UTF-16BE olarak taşınır (PDF spesifikasyonunun standart mekanizması) — böylece hem evrensel
+ * görüntülenebilirlik hem doğru başlık aynı anda sağlanır.
+ * ------------------------------------------------------------------------------------------- */
+
+function pdfEscapeText(text: string): string {
+  return text.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+}
+
+function utf16BeHexString(text: string): string {
+  const bytes: number[] = [0xfe, 0xff]; // BOM — PDF metin dizgisini UTF-16BE olarak işaretler.
+  for (const ch of text) {
+    const codePoint = ch.codePointAt(0)!;
+    if (codePoint > 0xffff) {
+      const high = Math.floor((codePoint - 0x10000) / 0x400) + 0xd800;
+      const low = ((codePoint - 0x10000) % 0x400) + 0xdc00;
+      bytes.push(high >> 8, high & 0xff, low >> 8, low & 0xff);
+    } else {
+      bytes.push(codePoint >> 8, codePoint & 0xff);
+    }
+  }
+  return bytes.map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** Tek sayfalık, bağımsız (harici font/görsel gömme YOK) yer tutucu teknik döküman PDF'i üretir. */
+function buildPlaceholderPdf(input: { titleAscii: string; bodyLines: string[]; metaTitleTurkish: string }): Buffer {
+  let contentStream = "BT\n/F1 20 Tf\n60 780 Td\n";
+  contentStream += `(${pdfEscapeText(input.titleAscii)}) Tj\n`;
+  contentStream += "/F1 11 Tf\n";
+  for (const line of input.bodyLines) {
+    contentStream += `0 -22 Td\n(${pdfEscapeText(line)}) Tj\n`;
+  }
+  contentStream += "ET\n";
+
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
+    `<< /Length ${Buffer.byteLength(contentStream, "utf8")} >>\nstream\n${contentStream}endstream`,
+    `<< /Title <${utf16BeHexString(input.metaTitleTurkish)}> /Producer (ecommerce-pro demo sablonu uretici script) >>`,
+  ];
+
+  const header = "%PDF-1.4\n";
+  let body = header;
+  const offsets: number[] = [];
+  objects.forEach((obj, index) => {
+    offsets.push(Buffer.byteLength(body, "utf8"));
+    body += `${index + 1} 0 obj\n${obj}\nendobj\n`;
+  });
+
+  const xrefStart = Buffer.byteLength(body, "utf8");
+  let xref = `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  for (const offset of offsets) {
+    xref += `${offset.toString().padStart(10, "0")} 00000 n \n`;
+  }
+  const trailer = `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R /Info 6 0 R >>\nstartxref\n${xrefStart}\n%%EOF`;
+
+  return Buffer.from(body + xref + trailer, "utf8");
+}
+
+const EP_PDF_GENERATORS: { file: string; build: () => Buffer }[] = [
+  {
+    file: "tech-doc-1.pdf",
+    build: () =>
+      buildPlaceholderPdf({
+        titleAscii: "ORNEK TEKNIK DOKUMAN - YER TUTUCU",
+        bodyLines: [
+          "Bu belge bir DEMO SABLONU yer tutucusudur.",
+          "Gercek bir urune ait teknik icerik ICERMEZ.",
+          "Sablon: ecommerce-pro | Magaza: Ferah Ev Yasam",
+        ],
+        metaTitleTurkish: "ÖRNEK TEKNİK DÖKÜMAN — YER TUTUCU 1",
+      }),
+  },
+  {
+    file: "tech-doc-2.pdf",
+    build: () =>
+      buildPlaceholderPdf({
+        titleAscii: "ORNEK TEKNIK DOKUMAN - YER TUTUCU",
+        bodyLines: [
+          "Bu belge bir DEMO SABLONU yer tutucusudur.",
+          "Gercek bir urune ait teknik icerik ICERMEZ.",
+          "Sablon: ecommerce-pro | Magaza: Ferah Ev Yasam",
+        ],
+        metaTitleTurkish: "ÖRNEK TEKNİK DÖKÜMAN — YER TUTUCU 2",
+      }),
+  },
+];
+
+/* ---------------------------------------------------------------------------------------------
  * main
  * ------------------------------------------------------------------------------------------- */
 
 const OUTPUT_DIR = path.join(__dirname, "..", "src", "modules", "demo-templates", "assets", "modern-architecture");
+const EP_OUTPUT_DIR = path.join(__dirname, "..", "src", "modules", "demo-templates", "assets", "ecommerce-pro");
 
 const GENERATORS: { file: string; build: () => Buffer }[] = [
   { file: "portfolio-cover-1.png", build: buildPortfolioCover1 },
@@ -373,18 +583,32 @@ const GENERATORS: { file: string; build: () => Buffer }[] = [
   { file: "about-image.png", build: buildAboutImage },
 ];
 
-function main(): void {
-  fs.mkdirSync(OUTPUT_DIR, { recursive: true });
-
-  for (const { file, build } of GENERATORS) {
+function writePngAssets(outputDir: string, generators: { file: string; build: () => Buffer }[]): void {
+  fs.mkdirSync(outputDir, { recursive: true });
+  for (const { file, build } of generators) {
     const buffer = build();
-    const outPath = path.join(OUTPUT_DIR, file);
-    fs.writeFileSync(outPath, buffer);
+    fs.writeFileSync(path.join(outputDir, file), buffer);
 
     const dimensions = imageSize(buffer);
     const sizeKb = (buffer.byteLength / 1024).toFixed(1);
     console.log(`✓ ${file} — ${dimensions.width}×${dimensions.height}, ${sizeKb} KB`);
   }
+}
+
+function writePdfAssets(outputDir: string, generators: { file: string; build: () => Buffer }[]): void {
+  fs.mkdirSync(outputDir, { recursive: true });
+  for (const { file, build } of generators) {
+    const buffer = build();
+    fs.writeFileSync(path.join(outputDir, file), buffer);
+    const sizeKb = (buffer.byteLength / 1024).toFixed(1);
+    console.log(`✓ ${file} — ${sizeKb} KB (PDF)`);
+  }
+}
+
+function main(): void {
+  writePngAssets(OUTPUT_DIR, GENERATORS);
+  writePngAssets(EP_OUTPUT_DIR, [...EP_CATEGORY_GENERATORS, ...EP_PRODUCT_GENERATORS]);
+  writePdfAssets(EP_OUTPUT_DIR, EP_PDF_GENERATORS);
 }
 
 main();

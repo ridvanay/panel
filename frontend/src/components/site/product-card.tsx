@@ -3,6 +3,8 @@ import type { Product } from "@/lib/api/types";
 import { formatPriceFromCents } from "@/lib/format-price";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
 import { FavoriteButton } from "@/components/site/favorite-button";
+import { Badge } from "@/components/ui/badge";
+import { computeDiscountPercent } from "@/lib/discount";
 
 interface ProductCardProps {
   product: Product;
@@ -35,10 +37,21 @@ export function ProductCard({ product, activeLocaleCode, defaultLocaleCode }: Pr
               loading="lazy"
             />
           )}
-          {soldOut && (
+          {/* İndirim rozeti AYNI `right-2 top-2` slotunu paylaşır; ürün tükendiyse "Tükendi"
+              ÖNCELİKLİDİR ve indirim rozeti gizlenir (indirimli ama satılamayan bir ürünü
+              reklam etmek yanıltıcıdır) — bkz. `.claude/design-notes-ecommerce-storefront.md` §3. */}
+          {soldOut ? (
             <span className="absolute right-2 top-2 rounded-full bg-danger px-2 py-0.5 text-xs font-medium text-danger-foreground">
               Tükendi
             </span>
+          ) : (
+            product.discountPriceCents !== null && (
+              <span className="absolute right-2 top-2">
+                <Badge tone="danger" solid>
+                  %{computeDiscountPercent(product.priceCents, product.discountPriceCents)}
+                </Badge>
+              </span>
+            )
           )}
         </div>
         <div className="p-4">

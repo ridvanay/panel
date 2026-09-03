@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
-import type { Product } from "@prisma/client";
+import type { Media, Product } from "@prisma/client";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { authenticate } from "../../middleware/authenticate";
@@ -29,6 +29,8 @@ import { getProductContentCounts } from "../../lib/content-counts";
 import { resolveAuthorId } from "../../lib/content-author";
 import { logAudit } from "../../lib/audit";
 import { sanitizeRichHtml } from "../../lib/html-sanitize";
+import { isImageMimeType } from "../../lib/mime-detect";
+import { resolveEffectivePrice } from "../../lib/product-pricing";
 import {
   applyFieldLocalization,
   attachLocalizations,
@@ -41,31 +43,83 @@ import {
   syncContentSlugs,
 } from "../../lib/localization";
 import { sanitizeProductTranslations } from "./lib/sanitize-content";
+import {
+  assertOptionValuesMatchAxes,
+  assertVariantCountWithinLimit,
+  deriveVariantKey,
+  type ProductVariantOption,
+} from "./lib/variants";
 import { emitWebhookEvent } from "../../lib/webhook-emitter";
 import { toPublicProductDto } from "../public-api/public-api.mappers";
 import {
+  AddProductDocumentRequestSchema,
   AddProductImageRequestSchema,
   AdjustProductStockRequestSchema,
   AutosaveProductRequestSchema,
   CreateProductCategoryRequestSchema,
   CreateProductRequestSchema,
+  CreateProductVariantRequestSchema,
   ListProductsQuerySchema,
   LocaleQuerySchema,
   ProductCategoryIdParamSchema,
+  ProductDocumentIdParamSchema,
   ProductIdParamSchema,
   ProductImageIdParamSchema,
   ProductRevisionIdParamSchema,
   ProductSlugParamSchema,
+  ProductVariantIdParamSchema,
   UpdateProductCategoryRequestSchema,
   UpdateProductRequestSchema,
+  UpdateProductVariantRequestSchema,
 } from "./products.schemas";
 
-/** Ürün detay/liste sorgularında kategori + kapak görseli + galeri + yazar özetini de dönmek için. */
+/**
+ * §2.2 madde 5 (.claude/architect-scope-ecommerce-pro-template.md, bağlayıcı) — görsel bekleyen
+ * FK slotu (`Product.coverMediaId`, `ProductImage.mediaId`, `ProductVariant.mediaId`)
+ * `mimeType` `image/` ile başlamıyorsa 422. `mediaId` bulunamazsa 404.
+ */
+async function assertImageMedia(app: FastifyInstance, mediaId: string): Promise<void> {
+  const media = await app.prisma.media.findUnique({ where: { id: mediaId } });
+  if (!media) throw new NotFoundError("Medya bulunamadı.");
+  if (!isImageMimeType(media.mimeType)) {
+    throw new ValidationError("Bu alan yalnızca görsel medya kabul eder.", {
+      mediaId: ["Seçilen dosya bir görsel değil."],
+    });
+  }
+}
+
+/** `ProductDocument.mediaId` `application/pdf` DEĞİLSE 422 (§2.2 madde 5). Bulunan `Media` satırını döner. */
+async function assertPdfMedia(app: FastifyInstance, mediaId: string): Promise<Media> {
+  const media = await app.prisma.media.findUnique({ where: { id: mediaId } });
+  if (!media) throw new NotFoundError("Medya bulunamadı.");
+  if (media.mimeType !== "application/pdf") {
+    throw new ValidationError("Bu alan yalnızca PDF döküman kabul eder.", {
+      mediaId: ["Seçilen dosya bir PDF değil."],
+    });
+  }
+  return media;
+}
+
+/** `discountPriceCents` (varsa) etkin `priceCents`'ten (miras/mutlak kuralı uygulanmış) KÜÇÜK olmalı (openapi.yaml::ProductVariant notu). */
+function assertVariantDiscountBelowPrice(product: Product, finalPriceCents: number | null, finalDiscountPriceCents: number | null): void {
+  if (finalDiscountPriceCents === null) return;
+  const { priceCents: effectivePriceCents } = resolveEffectivePrice(product, { priceCents: finalPriceCents, discountPriceCents: null });
+  if (finalDiscountPriceCents >= effectivePriceCents) {
+    throw new ValidationError("discountPriceCents, etkin priceCents değerinden küçük olmalıdır.", {
+      discountPriceCents: ["discountPriceCents, etkin priceCents değerinden küçük olmalıdır."],
+    });
+  }
+}
+
+/** Ürün detay/liste sorgularında kategori + kapak görseli + galeri + yazar özetini de dönmek için.
+ * §1/§2 (.claude/architect-scope-ecommerce-pro-template.md) — varyasyon + döküman de AYNI şekilde eklenir. */
 const WITH_RELATIONS = {
   category: true,
   coverMedia: true,
   author: true,
   images: { include: { media: true }, orderBy: { order: "asc" as const } },
+  variants: { include: { media: true }, orderBy: { order: "asc" as const } },
+  documents: { include: { media: true }, orderBy: { order: "asc" as const } },
 } as const;
 
 /** Güncellemeden HEMEN ÖNCEKİ alan setini döner (bkz. blog.routes.ts::toBlogPostSnapshot). */
@@ -197,6 +251,7 @@ export async function adminProductsRoutes(app: FastifyInstance) {
         discountPriceCents,
         sku,
         stockQuantity,
+        variantOptions,
         status,
         categoryId,
         coverMediaId,
@@ -211,6 +266,11 @@ export async function adminProductsRoutes(app: FastifyInstance) {
       } = request.body;
 
       assertDiscountBelowPrice(priceCents, discountPriceCents ?? null);
+
+      // §2.2 madde 5 — kapak görseli slotu görsel DIŞINDAKİ medyayı reddeder (422).
+      if (coverMediaId) {
+        await assertImageMedia(app, coverMediaId);
+      }
 
       const resolvedAuthorId = await resolveAuthorId(app, request.body.authorId, request.user!);
       const authorId = resolvedAuthorId === undefined ? request.user!.id : resolvedAuthorId;
@@ -234,6 +294,8 @@ export async function adminProductsRoutes(app: FastifyInstance) {
             discountPriceCents: discountPriceCents ?? undefined,
             sku: sku ?? undefined,
             stockQuantity: stockQuantity ?? undefined,
+            // §1 — verilmezse Prisma `@default("[]")` kolonu kullanır.
+            variantOptions: (variantOptions ?? []) as Prisma.InputJsonValue,
             status: status ?? "DRAFT",
             categoryId: categoryId ?? undefined,
             coverMediaId: coverMediaId ?? undefined,
@@ -304,9 +366,32 @@ export async function adminProductsRoutes(app: FastifyInstance) {
         discountPriceCents !== undefined ? discountPriceCents : existing.discountPriceCents;
       assertDiscountBelowPrice(finalPriceCents, finalDiscountPriceCents);
 
+      // §2.2 madde 5 — kapak görseli slotu görsel DIŞINDAKİ medyayı reddeder (422). `null`
+      // (kapağı kaldır) doğrulama GEREKTİRMEZ.
+      if (request.body.coverMediaId) {
+        await assertImageMedia(app, request.body.coverMediaId);
+      }
+
+      const { slug, translations, authorId: requestedAuthorId, scheduledAt, variantOptions, ...rest } = request.body;
+
+      // §1 — eksen tanımları TAMAMEN DEĞİŞTİRİLİYORSA (tam-replace), mevcut `ProductVariant`
+      // satırlarından herhangi biri yeni tanımla UYUŞMUYORSA 409 (sessizce yetim varyasyon
+      // BIRAKILMAZ — openapi.yaml::UpdateProductRequest.variantOptions notu).
+      if (variantOptions !== undefined) {
+        const existingVariants = await app.prisma.productVariant.findMany({ where: { productId: existing.id } });
+        for (const variant of existingVariants) {
+          try {
+            assertOptionValuesMatchAxes(variant.optionValues as Record<string, string>, variantOptions as ProductVariantOption[]);
+          } catch {
+            throw new ConflictError(
+              "Mevcut varyasyonlardan en az biri yeni `variantOptions` tanımıyla uyuşmuyor. Önce ilgili varyasyonları silin."
+            );
+          }
+        }
+      }
+
       await snapshotBeforeUpdate(app, "PRODUCT", existing.id, toProductSnapshot(existing), request.user!.id);
 
-      const { slug, translations, authorId: requestedAuthorId, scheduledAt, ...rest } = request.body;
       const resolvedAuthorId = await resolveAuthorId(app, requestedAuthorId, request.user!);
 
       // Stored-XSS koruması: gelen çeviriler merge'den ÖNCE sanitize edilir (mevcut kayıttaki
@@ -325,6 +410,7 @@ export async function adminProductsRoutes(app: FastifyInstance) {
             ...(rest.descriptionHtml !== undefined ? { descriptionHtml: sanitizeRichHtml(rest.descriptionHtml) } : {}),
             ...(slug !== undefined ? { slug: slugify(slug) } : {}),
             ...(mergedTranslations !== undefined ? { translations: mergedTranslations as Prisma.InputJsonValue } : {}),
+            ...(variantOptions !== undefined ? { variantOptions: variantOptions as Prisma.InputJsonValue } : {}),
             ...(rest.status === "PUBLISHED" && !existing.publishedAt ? { publishedAt: new Date() } : {}),
             // Faz 4 (zamanlanmış yayın) — yalnızca bu istekte `status` GÖNDERİLMİŞSE dokunulur.
             ...(rest.status !== undefined
@@ -494,6 +580,16 @@ export async function adminProductsRoutes(app: FastifyInstance) {
       const existing = await app.prisma.product.findUnique({ where: { id: request.params.productId } });
       if (!existing) throw new NotFoundError("Ürün bulunamadı.");
 
+      // §1.2 (bağlayıcı) — varyasyonlu üründe ürün seviyesi stok SALT-OKUNURDUR; stok
+      // varyasyondan okunur/yönetilir (bkz. `POST/PATCH .../variants`). Sessizce yok sayılan bir
+      // yazma yerine 409 CONFLICT.
+      const variantCount = await app.prisma.productVariant.count({ where: { productId: existing.id } });
+      if (variantCount > 0) {
+        throw new ConflictError(
+          "Bu ürün varyasyonlu — stok varyasyon seviyesinde yönetilir. Ürün seviyesi stok salt-okunurdur."
+        );
+      }
+
       const product = await app.prisma.product.update({
         where: { id: existing.id },
         data: { stockQuantity: request.body.stockQuantity },
@@ -532,6 +628,13 @@ export async function adminProductsRoutes(app: FastifyInstance) {
       const media = await app.prisma.media.findUnique({ where: { id: request.body.mediaId } });
       if (!media) throw new NotFoundError("Medya bulunamadı.");
 
+      // §2.2 madde 5 — galeri yalnızca görsel kabul eder (422).
+      if (!isImageMimeType(media.mimeType)) {
+        throw new ValidationError("Galeriye yalnızca görsel medya eklenebilir.", {
+          mediaId: ["Seçilen dosya bir görsel değil."],
+        });
+      }
+
       const existingImage = await app.prisma.productImage.findUnique({
         where: { productId_mediaId: { productId: product.id, mediaId: media.id } },
       });
@@ -564,6 +667,219 @@ export async function adminProductsRoutes(app: FastifyInstance) {
       if (!image || image.productId !== productId) throw new NotFoundError("Galeri görseli bulunamadı.");
 
       await app.prisma.productImage.delete({ where: { id: imageId } });
+
+      const updated = await app.prisma.product.findUnique({ where: { id: productId }, include: WITH_RELATIONS });
+      if (!updated) throw new NotFoundError("Ürün bulunamadı.");
+      return reply.send(ok(await toProductDtoLocalized(app, updated)));
+    }
+  );
+
+  // ---------------------------------------------------------------------------
+  // §1 (.claude/architect-scope-ecommerce-pro-template.md, bağlayıcı) — varyasyon CRUD.
+  // `optionValues` sunucu tarafından `Product.variantOptions` eksen tanımına göre doğrulanır,
+  // `variantKey` sunucu türetir (istemci ASLA göndermez).
+  // ---------------------------------------------------------------------------
+
+  server.post(
+    "/:productId/variants",
+    {
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
+      schema: {
+        params: ProductIdParamSchema,
+        body: CreateProductVariantRequestSchema,
+        response: { 201: ApiSuccessSchema(ProductSchema) },
+      },
+    },
+    async (request, reply) => {
+      const product = await app.prisma.product.findUnique({ where: { id: request.params.productId } });
+      if (!product) throw new NotFoundError("Ürün bulunamadı.");
+
+      const axes = (product.variantOptions as ProductVariantOption[] | null) ?? [];
+      if (axes.length === 0) {
+        throw new ValidationError("Bu ürünün varyasyon ekseni tanımlı değil. Önce `variantOptions` tanımlayın.", {
+          optionValues: ["Ürünün `variantOptions` tanımı boş."],
+        });
+      }
+
+      assertOptionValuesMatchAxes(request.body.optionValues, axes);
+      const variantKey = deriveVariantKey(request.body.optionValues);
+
+      const currentCount = await app.prisma.productVariant.count({ where: { productId: product.id } });
+      assertVariantCountWithinLimit(currentCount);
+
+      // `@@unique([productId, variantKey])` — özel ön kontrol, genel P2002 fallback'inden daha
+      // anlamlı bir mesaj verir (bkz. plugins/error-handler.ts).
+      const existingByKey = await app.prisma.productVariant.findUnique({
+        where: { productId_variantKey: { productId: product.id, variantKey } },
+      });
+      if (existingByKey) throw new ConflictError("Bu eksen kombinasyonu zaten mevcut.");
+
+      if (request.body.sku) {
+        const skuClash = await app.prisma.productVariant.findUnique({ where: { sku: request.body.sku } });
+        if (skuClash) throw new ConflictError("Bu SKU başka bir varyasyonda kullanılıyor.");
+      }
+
+      if (request.body.mediaId) {
+        await assertImageMedia(app, request.body.mediaId);
+      }
+
+      const finalPriceCents = request.body.priceCents ?? null;
+      const finalDiscountPriceCents = request.body.discountPriceCents ?? null;
+      assertVariantDiscountBelowPrice(product, finalPriceCents, finalDiscountPriceCents);
+
+      await app.prisma.productVariant.create({
+        data: {
+          productId: product.id,
+          variantKey,
+          optionValues: request.body.optionValues,
+          sku: request.body.sku ?? null,
+          priceCents: finalPriceCents,
+          discountPriceCents: finalDiscountPriceCents,
+          stockQuantity: request.body.stockQuantity ?? 0,
+          mediaId: request.body.mediaId ?? null,
+          order: request.body.order ?? 0,
+          isActive: request.body.isActive ?? true,
+        },
+      });
+
+      const updated = await app.prisma.product.findUnique({ where: { id: product.id }, include: WITH_RELATIONS });
+      return reply.code(201).send(ok(await toProductDtoLocalized(app, updated!)));
+    }
+  );
+
+  server.patch(
+    "/:productId/variants/:variantId",
+    {
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
+      schema: {
+        params: ProductVariantIdParamSchema,
+        body: UpdateProductVariantRequestSchema,
+        response: { 200: ApiSuccessSchema(ProductSchema) },
+      },
+    },
+    async (request, reply) => {
+      const { productId, variantId } = request.params;
+      const product = await app.prisma.product.findUnique({ where: { id: productId } });
+      if (!product) throw new NotFoundError("Ürün bulunamadı.");
+
+      // IDOR koruması — `variantId`'nin GERÇEKTEN bu `productId`'ye ait olduğu doğrulanır
+      // (`.../images/{imageId}` ile AYNI kural).
+      const variant = await app.prisma.productVariant.findUnique({ where: { id: variantId } });
+      if (!variant || variant.productId !== productId) throw new NotFoundError("Varyasyon bulunamadı.");
+
+      const { sku, priceCents, discountPriceCents, stockQuantity, mediaId, order, isActive } = request.body;
+
+      if (sku) {
+        const skuClash = await app.prisma.productVariant.findFirst({ where: { sku, id: { not: variant.id } } });
+        if (skuClash) throw new ConflictError("Bu SKU başka bir varyasyonda kullanılıyor.");
+      }
+
+      if (mediaId) {
+        await assertImageMedia(app, mediaId);
+      }
+
+      const finalPriceCents = priceCents !== undefined ? priceCents : variant.priceCents;
+      const finalDiscountPriceCents = discountPriceCents !== undefined ? discountPriceCents : variant.discountPriceCents;
+      assertVariantDiscountBelowPrice(product, finalPriceCents, finalDiscountPriceCents);
+
+      await app.prisma.productVariant.update({
+        where: { id: variant.id },
+        data: {
+          ...(sku !== undefined ? { sku } : {}),
+          ...(priceCents !== undefined ? { priceCents } : {}),
+          ...(discountPriceCents !== undefined ? { discountPriceCents } : {}),
+          ...(stockQuantity !== undefined ? { stockQuantity } : {}),
+          ...(mediaId !== undefined ? { mediaId } : {}),
+          ...(order !== undefined ? { order } : {}),
+          ...(isActive !== undefined ? { isActive } : {}),
+        },
+      });
+
+      const updated = await app.prisma.product.findUnique({ where: { id: productId }, include: WITH_RELATIONS });
+      return reply.send(ok(await toProductDtoLocalized(app, updated!)));
+    }
+  );
+
+  server.delete(
+    "/:productId/variants/:variantId",
+    {
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
+      schema: { params: ProductVariantIdParamSchema, response: { 200: ApiSuccessSchema(ProductSchema) } },
+    },
+    async (request, reply) => {
+      const { productId, variantId } = request.params;
+      const variant = await app.prisma.productVariant.findUnique({ where: { id: variantId } });
+      if (!variant || variant.productId !== productId) throw new NotFoundError("Varyasyon bulunamadı.");
+
+      // `CartItem` satırları `Cascade` ile silinir; `OrderItem.variantId` `SetNull` olur ve
+      // `variantLabel` SNAPSHOT'ı KALIR — sipariş geçmişi BOZULMAZ (bkz. schema.prisma notu).
+      await app.prisma.productVariant.delete({ where: { id: variant.id } });
+
+      const updated = await app.prisma.product.findUnique({ where: { id: productId }, include: WITH_RELATIONS });
+      if (!updated) throw new NotFoundError("Ürün bulunamadı.");
+      return reply.send(ok(await toProductDtoLocalized(app, updated)));
+    }
+  );
+
+  // ---------------------------------------------------------------------------
+  // §2 (.claude/architect-scope-ecommerce-pro-template.md, bağlayıcı) — teknik döküman (PDF) CRUD.
+  // `POST .../images` ile BİREBİR AYNI davranış; EK KURAL: `mediaId` `application/pdf` DEĞİLSE 422.
+  // ---------------------------------------------------------------------------
+
+  server.post(
+    "/:productId/documents",
+    {
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
+      schema: {
+        params: ProductIdParamSchema,
+        body: AddProductDocumentRequestSchema,
+        response: { 201: ApiSuccessSchema(ProductSchema) },
+      },
+    },
+    async (request, reply) => {
+      const product = await app.prisma.product.findUnique({ where: { id: request.params.productId } });
+      if (!product) throw new NotFoundError("Ürün bulunamadı.");
+
+      const media = await assertPdfMedia(app, request.body.mediaId);
+
+      const existingDoc = await app.prisma.productDocument.findUnique({
+        where: { productId_mediaId: { productId: product.id, mediaId: media.id } },
+      });
+      if (existingDoc) throw new ConflictError("Bu döküman zaten ürüne ekli.");
+
+      const lastDoc = await app.prisma.productDocument.findFirst({
+        where: { productId: product.id },
+        orderBy: { order: "desc" },
+      });
+
+      await app.prisma.productDocument.create({
+        data: {
+          productId: product.id,
+          mediaId: media.id,
+          // Boş bırakılırsa `media.filename` kullanılır (openapi.yaml::ProductDocument.title notu).
+          title: request.body.title?.trim() || media.filename,
+          order: lastDoc ? lastDoc.order + 1 : 0,
+        },
+      });
+
+      const updated = await app.prisma.product.findUnique({ where: { id: product.id }, include: WITH_RELATIONS });
+      return reply.code(201).send(ok(await toProductDtoLocalized(app, updated!)));
+    }
+  );
+
+  server.delete(
+    "/:productId/documents/:documentId",
+    {
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
+      schema: { params: ProductDocumentIdParamSchema, response: { 200: ApiSuccessSchema(ProductSchema) } },
+    },
+    async (request, reply) => {
+      const { productId, documentId } = request.params;
+      const doc = await app.prisma.productDocument.findUnique({ where: { id: documentId } });
+      if (!doc || doc.productId !== productId) throw new NotFoundError("Döküman bulunamadı.");
+
+      // Yalnızca BAĞ kaldırılır — `Media` satırı ve diskteki dosya SİLİNMEZ (§10.11.3 ile aynı ilke).
+      await app.prisma.productDocument.delete({ where: { id: doc.id } });
 
       const updated = await app.prisma.product.findUnique({ where: { id: productId }, include: WITH_RELATIONS });
       if (!updated) throw new NotFoundError("Ürün bulunamadı.");

@@ -6,18 +6,22 @@ import { fetchLocalesServer } from "@/lib/api/server-locales";
 import { fetchSiteAppearanceServer } from "@/lib/api/server-appearance";
 import { ViewTracker } from "@/components/site/view-tracker";
 import { ViewCount } from "@/components/site/view-count";
-import { AddToCartButton } from "@/components/site/add-to-cart-button";
 import { FavoriteButton } from "@/components/site/favorite-button";
 import { SyncLocaleAlternates } from "@/components/site/sync-locale-alternates";
 import { PageHeader } from "@/components/site/page-header";
 import { SocialShareButtons } from "@/components/site/social-share-buttons";
 import { RichContentWithShortcodes } from "@/components/site/blocks/rich-content-with-shortcodes";
+import { ProductPurchasePanel } from "@/components/site/product/product-purchase-panel";
+import { ProductDocuments } from "@/components/site/product/product-documents";
 import { redirectToCanonicalSlug } from "@/lib/i18n/canonical-slug";
 import { buildContentMetadata } from "@/lib/seo";
-import { formatPriceFromCents } from "@/lib/format-price";
 import { SITE_URL } from "@/lib/env";
 
-type PageProps = { params: Promise<{ lang: string; slug: string }> };
+type PageProps = {
+  params: Promise<{ lang: string; slug: string }>;
+  /** `?variant=<id>` — PDP varyasyon seçici burada okunur (bkz. `product-purchase-panel.tsx`); `useSearchParams`/Suspense KULLANILMAZ. */
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+};
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { lang, slug } = await params;
@@ -52,14 +56,18 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   );
 }
 
-export default async function ProductDetailPage({ params }: PageProps) {
+export default async function ProductDetailPage({ params, searchParams }: PageProps) {
   const { lang, slug } = await params;
-  const [product, locales, appearance] = await Promise.all([
+  const [product, locales, appearance, resolvedSearchParams] = await Promise.all([
     fetchProductBySlugServer(slug, lang),
     fetchLocalesServer(),
     fetchSiteAppearanceServer(),
+    searchParams,
   ]);
   if (!product) notFound();
+
+  const variantParam = resolvedSearchParams.variant;
+  const initialVariantId = typeof variantParam === "string" ? variantParam : null;
 
   // §12.2 — duplicate content önleme, bkz. `[slug]/page.tsx` AYNI mantık.
   redirectToCanonicalSlug({
@@ -73,9 +81,6 @@ export default async function ProductDetailPage({ params }: PageProps) {
   const defaultLocale = locales.find((l) => l.isDefault);
   const canonicalUrl = `${SITE_URL}${lang === defaultLocale?.code ? "" : `/${lang}`}/products/${slug}`;
 
-  const soldOut = product.stockQuantity === 0;
-  const gallery = product.images.length > 0 ? product.images : [];
-
   return (
     <>
       <PageHeader
@@ -87,61 +92,22 @@ export default async function ProductDetailPage({ params }: PageProps) {
         overlayOpacity={appearance.pageHeaderOverlayOpacity}
         containerClassName="mx-auto max-w-4xl px-4 sm:px-6"
       />
-      <article className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
+      <article className="mx-auto max-w-4xl px-4 py-10 pb-24 sm:px-6 lg:pb-10">
         <SyncLocaleAlternates kind="product" items={product.localizations} />
         <ViewTracker kind="product" slug={slug} />
 
         {product.category && <p className="text-sm font-medium text-primary">{product.category.name}</p>}
         <div className="mt-2 flex items-center gap-3">
           <ViewCount count={product.viewCount} />
-          {soldOut && (
-            <span className="rounded-full bg-danger px-2 py-0.5 text-xs font-medium text-danger-foreground">Tükendi</span>
-          )}
           <FavoriteButton productId={product.id} className="ml-auto border border-border" />
         </div>
 
-        {product.coverMedia && (
-          // eslint-disable-next-line @next/next/no-img-element -- kapak URL'si medya kütüphanesinden gelir, next/image remotePatterns henüz tanımlı değil
-          <img
-            src={product.coverMedia.url}
-            alt={product.coverMedia.altText ?? ""}
-            className="mt-6 w-full rounded-lg object-cover"
-          />
-        )}
-
-        {gallery.length > 0 && (
-          <div className="mt-3 grid grid-cols-4 gap-2">
-            {gallery.map((image) => (
-              // eslint-disable-next-line @next/next/no-img-element -- galeri URL'si medya kütüphanesinden gelir, next/image remotePatterns henüz tanımlı değil
-              <img
-                key={image.id}
-                src={image.media.url}
-                alt={image.media.altText ?? ""}
-                className="aspect-square w-full rounded-md object-cover"
-                loading="lazy"
-              />
-            ))}
-          </div>
-        )}
-
-        <div className="mt-6 text-2xl font-semibold text-foreground">
-          {product.discountPriceCents !== null ? (
-            <>
-              <span className="mr-3 text-base font-normal text-foreground/40 line-through">
-                {formatPriceFromCents(product.priceCents, product.currency)}
-              </span>
-              {formatPriceFromCents(product.discountPriceCents, product.currency)}
-            </>
-          ) : (
-            formatPriceFromCents(product.priceCents, product.currency)
-          )}
-        </div>
-
-        {product.excerpt && <p className="mt-2 text-sm text-foreground/60">{product.excerpt}</p>}
-
-        <AddToCartButton productId={product.id} stockQuantity={product.stockQuantity} />
+        <ProductPurchasePanel product={product} initialVariantId={initialVariantId} />
 
         <RichContentWithShortcodes html={product.descriptionHtml} className="prose mt-6 max-w-none" />
+
+        <ProductDocuments documents={product.documents} />
+
         {appearance.socialShareEnabled && appearance.socialShareNetworks.length > 0 && (
           <div className="mt-8">
             <SocialShareButtons url={canonicalUrl} title={product.title} networks={appearance.socialShareNetworks} />

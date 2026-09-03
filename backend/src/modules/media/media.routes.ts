@@ -14,7 +14,7 @@ import { toMediaDto, toMediaFolderDto } from "../../mappers";
 import { ConflictError, NotFoundError, ValidationError } from "../../lib/errors";
 import { parseCursor, buildPageMeta } from "../../lib/pagination";
 import { storage } from "../../lib/storage";
-import { detectImageMimeType } from "../../lib/mime-detect";
+import { detectUploadMimeType } from "../../lib/mime-detect";
 import {
   CreateMediaFolderRequestSchema,
   MediaFolderIdParamSchema,
@@ -28,7 +28,10 @@ import {
 // SVG kasıtlı olarak allow-list'te YOK: metin tabanlıdır, magic byte imzası yoktur ve içine
 // `<script>` gömülebildiği için depolanmış XSS riski taşır — import modülü (§10.8.7,
 // `import.worker.ts`::`UNSUPPORTED_MIME`/`entry.isSvg`) ile AYNI politika burada da uygulanır.
-const ALLOWED_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+// §2.2 (.claude/architect-scope-ecommerce-pro-template.md, bağlayıcı) — `application/pdf` ürün
+// teknik dökümanları için EK OLARAK kabul edilir (görsel allow-list'i DEĞİŞMEDİ, yalnızca
+// genişledi).
+const ALLOWED_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "application/pdf"]);
 
 // Diğer admin listeleme uçlarıyla paylaşılan global limitten (env.RATE_LIMIT_MAX) bağımsız,
 // bu uca özel orta seviye üst sınır — hem savunma derinliği (hızlı veri dökümü/scraping'e karşı)
@@ -146,12 +149,14 @@ export async function adminMediaRoutes(app: FastifyInstance) {
       // GÜVENLİK: `part.mimetype` istemcinin (multipart Content-Type başlığı üzerinden) BEYAN
       // ettiği değerdir, doğrulanmamıştır — sahte bir Content-Type ile keyfi içerik (örn. HTML/JS)
       // yüklenip diskte servis edilebilir (stored-XSS). Gerçek tür, buffer'ın ilk baytlarından
-      // (magic byte) `detectImageMimeType` ile tespit edilir; beyan edilenle uyuşmuyorsa ya da
-      // tanınmıyorsa/SVG ise istek reddedilir. import.worker.ts (§10.8.7) ile aynı kod yolu.
-      const detected = detectImageMimeType(buffer);
+      // (magic byte) `detectUploadMimeType` (görsel + PDF, §2.2) ile tespit edilir; beyan
+      // edilenle uyuşmuyorsa ya da tanınmıyorsa/SVG ise istek reddedilir. import.worker.ts
+      // (§10.8.7) ile aynı kod yolu (o modül yalnızca görsel bekler, `detectImageMimeType`'ı
+      // DEĞİŞMEDEN kullanmaya devam eder).
+      const detected = detectUploadMimeType(buffer);
       if (!detected.mimeType || detected.isSvg) {
-        throw new ValidationError("Dosya içeriği geçerli bir görsel değil.", {
-          file: ["Dosya içeriği tanınan bir görsel biçimiyle (JPEG/PNG/WEBP/GIF) eşleşmiyor."],
+        throw new ValidationError("Dosya içeriği geçerli bir görsel veya PDF değil.", {
+          file: ["Dosya içeriği tanınan bir görsel (JPEG/PNG/WEBP/GIF) ya da PDF biçimiyle eşleşmiyor."],
         });
       }
       if (detected.mimeType !== mimetype) {
@@ -166,18 +171,20 @@ export async function adminMediaRoutes(app: FastifyInstance) {
         mimeType: detected.mimeType,
       });
 
-      // Piksel boyutu (width/height) yalnızca EK metadata'dır — asıl doğrulama zaten yukarıda
-      // `detectImageMimeType` ile yapıldı. Hesaplama başarısız olursa (bozuk dosya, kütüphanenin
-      // desteklemediği bir edge-case) isteği reddetmek yerine sessizce null bırakılır.
+      // Piksel boyutu (width/height) yalnızca GÖRSEL için anlamlıdır. §2.2 madde 1 — PDF için
+      // `imageSize()` HİÇ ÇAĞRILMAZ, `width`/`height` `null` kalır (bozuk dosya/kütüphanenin
+      // desteklemediği bir edge-case için de aynı sessiz-null davranışı korunur).
       let width: number | null = null;
       let height: number | null = null;
-      try {
-        const dimensions = imageSize(buffer);
-        width = dimensions.width;
-        height = dimensions.height;
-      } catch {
-        width = null;
-        height = null;
+      if (detected.mimeType.startsWith("image/")) {
+        try {
+          const dimensions = imageSize(buffer);
+          width = dimensions.width;
+          height = dimensions.height;
+        } catch {
+          width = null;
+          height = null;
+        }
       }
 
       const media = await app.prisma.media.create({
@@ -204,7 +211,7 @@ export async function adminMediaRoutes(app: FastifyInstance) {
       schema: { querystring: MediaListQuerySchema, response: { 200: ApiSuccessSchema(z.array(MediaSchema)) } },
     },
     async (request, reply) => {
-      const { cursor, limit, folderId } = request.query;
+      const { cursor, limit, folderId, type } = request.query;
       const cursorSeq = parseCursor(cursor);
 
       // §10.11 — `folderId` filtresi SUNUCU taraflıdır ve ÖZYİNELEMELİ DEĞİLDİR: `none` =
@@ -212,8 +219,13 @@ export async function adminMediaRoutes(app: FastifyInstance) {
       // klasörlerdekiler DAHİL EDİLMEZ). Var olmayan bir UUID → boş liste + 200 (404 DEĞİL).
       const folderWhere: Prisma.MediaWhereInput = folderId === undefined ? {} : folderId === "none" ? { folderId: null } : { folderId };
 
+      // §2.2 madde 6 — `image` = `mimeType LIKE 'image/%'`, `document` = `mimeType =
+      // 'application/pdf'`. Verilmezse filtre uygulanmaz (bkz. openapi.yaml::MediaTypeFilter).
+      const typeWhere: Prisma.MediaWhereInput =
+        type === "image" ? { mimeType: { startsWith: "image/" } } : type === "document" ? { mimeType: "application/pdf" } : {};
+
       const rows = await app.prisma.media.findMany({
-        where: { ...(cursorSeq ? { seq: { gt: cursorSeq } } : {}), ...folderWhere },
+        where: { ...(cursorSeq ? { seq: { gt: cursorSeq } } : {}), ...folderWhere, ...typeWhere },
         orderBy: { seq: "asc" },
         take: limit,
       });

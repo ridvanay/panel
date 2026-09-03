@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { PageStatusSchema } from "../../schemas/entities";
 import { ContentListQuerySchema, refineScheduledAt, SCHEDULED_AT_REFINEMENT } from "../../schemas/common";
+import { ProductVariantOptionsSchema } from "./lib/variants";
 
 export const ProductIdParamSchema = z.object({
   productId: z.string().uuid(),
@@ -19,6 +20,16 @@ export const ProductImageIdParamSchema = z.object({
   imageId: z.string().uuid(),
 });
 
+export const ProductVariantIdParamSchema = z.object({
+  productId: z.string().uuid(),
+  variantId: z.string().uuid(),
+});
+
+export const ProductDocumentIdParamSchema = z.object({
+  productId: z.string().uuid(),
+  documentId: z.string().uuid(),
+});
+
 export const ProductRevisionIdParamSchema = z.object({
   productId: z.string().uuid(),
   revisionId: z.string().uuid(),
@@ -27,6 +38,42 @@ export const ProductRevisionIdParamSchema = z.object({
 /** `POST /:productId/images` — galeriye tek bir Media ekler (bkz. products.routes.ts). */
 export const AddProductImageRequestSchema = z.object({
   mediaId: z.string().uuid(),
+});
+
+/** `POST /:productId/variants` gövdesi — `optionValues` ZORUNLU (bkz. lib/variants.ts). */
+export const CreateProductVariantRequestSchema = z.object({
+  optionValues: z.record(z.string(), z.string()),
+  sku: z.string().min(1).max(64).nullable().optional(),
+  priceCents: z.number().int().positive().nullable().optional(),
+  discountPriceCents: z.number().int().positive().nullable().optional(),
+  stockQuantity: z.number().int().min(0).optional(),
+  mediaId: z.string().uuid().nullable().optional(),
+  order: z.number().int().min(0).optional(),
+  isActive: z.boolean().optional(),
+});
+
+/**
+ * `PATCH /:productId/variants/:variantId` gövdesi — `optionValues` BURADAN DEĞİŞTİRİLEMEZ:
+ * kombinasyon değişecekse satır silinip yeniden oluşturulmalıdır (openapi.yaml notu). `.strict()`
+ * — gövdeye `optionValues` (ya da başka bilinmeyen bir alan) eklenirse 422 döner (`UpdateMediaAlt
+ * TextRequestSchema` ile AYNI kontrat hakemliği kararı).
+ */
+export const UpdateProductVariantRequestSchema = z
+  .object({
+    sku: z.string().min(1).max(64).nullable().optional(),
+    priceCents: z.number().int().positive().nullable().optional(),
+    discountPriceCents: z.number().int().positive().nullable().optional(),
+    stockQuantity: z.number().int().min(0).optional(),
+    mediaId: z.string().uuid().nullable().optional(),
+    order: z.number().int().min(0).optional(),
+    isActive: z.boolean().optional(),
+  })
+  .strict("`optionValues` bu uçtan değiştirilemez — kombinasyon değişecekse satır silinip yeniden oluşturulmalıdır.");
+
+/** `POST /:productId/documents` gövdesi — `mediaId` `application/pdf` DEĞİLSE 422 (route handler). */
+export const AddProductDocumentRequestSchema = z.object({
+  mediaId: z.string().uuid(),
+  title: z.string().min(1).max(160).optional(),
 });
 
 /**
@@ -75,6 +122,9 @@ export const CreateProductRequestSchema = z
     discountPriceCents: z.number().int().positive().nullable().optional(),
     sku: z.string().min(1).nullable().optional(),
     stockQuantity: z.number().int().min(0).optional(),
+    // §1 (.claude/architect-scope-ecommerce-pro-template.md, bağlayıcı) — verilmezse boş dizi
+    // (varyasyonsuz ürün). Varyasyon SATIRLARI ayrı uçtan eklenir: `POST .../variants`.
+    variantOptions: ProductVariantOptionsSchema.optional(),
     status: PageStatusSchema.optional(),
     categoryId: z.string().uuid().nullable().optional(),
     coverMediaId: z.string().uuid().nullable().optional(),
@@ -121,6 +171,10 @@ export const UpdateProductRequestSchema = z
     authorId: z.string().uuid().nullable().optional(),
     // Faz 4 (zamanlanmış yayın) — bkz. schemas/common.ts::refineScheduledAt açıklaması.
     scheduledAt: z.string().datetime().nullable().optional(),
+    // §1 — eksen tanımlarını TAMAMEN DEĞİŞTİRİR (tam-replace). Mevcut `ProductVariant`
+    // satırlarından herhangi birinin `optionValues`'ı yeni tanımla uyuşmuyorsa 409 CONFLICT
+    // (route handler, önce varyasyonları silmek gerekir — sessizce yetim varyasyon BIRAKILMAZ).
+    variantOptions: ProductVariantOptionsSchema.optional(),
   })
   .refine(refineScheduledAt, SCHEDULED_AT_REFINEMENT)
   .refine(refineDiscountBelowPrice, DISCOUNT_REFINEMENT);

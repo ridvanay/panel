@@ -5,6 +5,7 @@ import fs from "node:fs";
 import multipart from "@fastify/multipart";
 import fastifyStatic from "@fastify/static";
 import { UPLOADS_RATE_LIMIT } from "../lib/rate-limit";
+import { IMAGE_EXTENSIONS } from "../lib/mime-detect";
 
 export const UPLOAD_DIR = path.join(process.cwd(), "uploads");
 export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024; // 5 MB
@@ -31,6 +32,21 @@ export default fp(async function uploadsPlugin(app: FastifyInstance) {
     await scope.register(fastifyStatic, {
       root: UPLOAD_DIR,
       prefix: "/uploads/",
+      // §2.2 madde 3 (.claude/architect-scope-ecommerce-pro-template.md, bağlayıcı) — görsel
+      // OLMAYAN türler (şu an yalnızca PDF) tarayıcı içinde satır içi AÇILMAZ: `Content-
+      // Disposition: attachment` indirmeye zorlar, `X-Content-Type-Options: nosniff` MIME
+      // sniffing'i kapatır. Gerekçe: PDF JavaScript taşıyabilir; API origin'inde satır içi açılan
+      // bir dosya phishing/içerik yürütme yüzeyi üretir (security-agent politikası). Diskteki
+      // dosya adının uzantısı `local.storage.ts`'te DAİMA `extensionForMimeType` (tespit edilen
+      // gerçek tür) ile yazıldığı için burada uzantıya bakmak beyan edilen değil TESPİT EDİLEN
+      // türe güvenmek demektir.
+      setHeaders: (reply, filePath) => {
+        const ext = path.extname(filePath).toLowerCase();
+        if (!IMAGE_EXTENSIONS.has(ext)) {
+          reply.header("Content-Disposition", "attachment");
+          reply.header("X-Content-Type-Options", "nosniff");
+        }
+      },
     });
   });
 });

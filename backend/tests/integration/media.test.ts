@@ -118,9 +118,25 @@ describe("media — /admin/media (magic-byte doğrulama)", () => {
     expect(res.statusCode).toBe(422);
   });
 
-  it("tanınmayan bir dosya türünü REDDEDER (örn. PDF)", async () => {
+  // §2.2 (.claude/architect-scope-ecommerce-pro-template.md, bağlayıcı) — PDF, ürün teknik
+  // dökümanları için EK OLARAK kabul edilir (`%PDF-` magic byte, `lib/mime-detect.ts::
+  // detectUploadMimeType`). `imageSize()` PDF için ÇAĞRILMAZ, width/height null kalır.
+  it("gerçek bir PDF dosyasını kabul eder, .pdf uzantısıyla saklar, width/height null kalır", async () => {
     const pdf = Buffer.from("%PDF-1.4\n%some fake pdf content");
     const res = await upload("application/pdf", pdf, "doc.pdf");
+    expect(res.statusCode).toBe(201);
+
+    const media = res.json().data;
+    expect(media.mimeType).toBe("application/pdf");
+    createdStoredPaths.push(new URL(media.url, "http://localhost").pathname.replace(/^\/uploads\//, ""));
+    expect(media.url).toMatch(/\.pdf$/);
+    expect(media.width).toBeNull();
+    expect(media.height).toBeNull();
+  });
+
+  it("tanınmayan bir dosya türünü REDDEDER (ne görsel ne PDF imzası)", async () => {
+    const unknown = Buffer.from("this is neither an image nor a pdf");
+    const res = await upload("application/octet-stream", unknown, "mystery.bin");
     expect(res.statusCode).toBe(422);
   });
 

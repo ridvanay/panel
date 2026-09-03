@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="750" viewBox="0 0 1200 750">
+  <title>Modern Storefront / E-Ticaret — Şablon Önizleme Mockup'ı</title>
+  <desc>
+    Admin paneli "Hazır Şablonlar" galeri kartı için soyut kompozit mockup. Gerçek metin/görsel
+    içermez; yalnızca şablonun bölüm ritmini (koyu lacivert→zümrüt hero, kategori kartları
+    şeridi, ürün ızgarası) palet renkleriyle temsil eder — bkz.
+    `.claude/design-notes-ecommerce-storefront.md` §10. Bu SVG çalışma zamanında Media boru
+    hattından GEÇMEZ, doğrudan statik olarak servis edilir (WEBP encoder depoda YOK —
+    `modern-architecture/preview.svg` ile AYNI devir-teslim kararı).
+  </desc>
+  <defs>
+    <linearGradient id="heroGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1E3A8A"/>
+      <stop offset="100%" stop-color="#047857"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Sayfa zemini -->
+  <rect x="0" y="0" width="1200" height="750" fill="#F8FAFC"/>
+
+  <!-- Hero (0-35%: ~0-262px) -->
+  <rect x="0" y="0" width="1200" height="262" fill="url(#heroGrad)"/>
+  <rect x="48" y="150" width="110" height="20" rx="10" fill="#FFFFFF" opacity="0.18"/>
+  <rect x="48" y="184" width="440" height="24" rx="3" fill="#FFFFFF"/>
+  <rect x="48" y="216" width="300" height="12" rx="2" fill="#FFFFFF" opacity="0.7"/>
+  <rect x="48" y="238" width="150" height="26" rx="13" fill="#2563EB"/>
+
+  <!-- 4 kategori kartı (35-55%: ~262-412px) -->
+  <g>
+    <rect x="48" y="286" width="258" height="102" rx="8" fill="#FFFFFF" stroke="#E2E8F0"/>
+    <rect x="322" y="286" width="258" height="102" rx="8" fill="#FFFFFF" stroke="#E2E8F0"/>
+    <rect x="596" y="286" width="258" height="102" rx="8" fill="#FFFFFF" stroke="#E2E8F0"/>
+    <rect x="870" y="286" width="258" height="102" rx="8" fill="#FFFFFF" stroke="#E2E8F0"/>
+    <g fill="none" stroke="#047857" stroke-width="1.5" opacity="0.4">
+      <circle cx="177" cy="322" r="18"/>
+      <path d="M 340 340 C 400 320, 460 360, 520 330" />
+      <line x1="626" y1="310" x2="626" y2="360"/>
+      <line x1="654" y1="310" x2="654" y2="360"/>
+      <line x1="682" y1="310" x2="682" y2="360"/>
+      <circle cx="920" cy="316" r="4"/>
+      <circle cx="960" cy="330" r="3"/>
+      <circle cx="1000" cy="312" r="5"/>
+    </g>
+    <rect x="72" y="358" width="90" height="10" rx="2" fill="#0F172A" opacity="0.7"/>
+    <rect x="346" y="358" width="90" height="10" rx="2" fill="#0F172A" opacity="0.7"/>
+    <rect x="620" y="358" width="90" height="10" rx="2" fill="#0F172A" opacity="0.7"/>
+    <rect x="894" y="358" width="90" height="10" rx="2" fill="#0F172A" opacity="0.7"/>
+  </g>
+
+  <!-- 2x3 ürün ızgarası (55-100%: ~412-750px) -->
+  <g>
+    <rect x="480" y="410" width="240" height="14" rx="3" fill="#0F172A" opacity="0.8"/>
+    <!-- satır 1 -->
+    <rect x="48" y="444" width="258" height="140" rx="6" fill="#FFFFFF" stroke="#E2E8F0"/>
+    <rect x="322" y="444" width="258" height="140" rx="6" fill="#FFFFFF" stroke="#E2E8F0"/>
+    <rect x="596" y="444" width="258" height="140" rx="6" fill="#FFFFFF" stroke="#E2E8F0"/>
+    <!-- satır 2 -->
+    <rect x="48" y="596" width="258" height="140" rx="6" fill="#FFFFFF" stroke="#E2E8F0"/>
+    <rect x="322" y="596" width="258" height="140" rx="6" fill="#FFFFFF" stroke="#E2E8F0"/>
+    <rect x="596" y="596" width="258" height="140" rx="6" fill="#FFFFFF" stroke="#E2E8F0"/>
+    <!-- her kartta açık gri placeholder görsel alanı -->
+    <rect x="60" y="456" width="234" height="86" rx="4" fill="#F1F5F9"/>
+    <rect x="334" y="456" width="234" height="86" rx="4" fill="#F1F5F9"/>
+    <rect x="608" y="456" width="234" height="86" rx="4" fill="#F1F5F9"/>
+    <rect x="60" y="608" width="234" height="86" rx="4" fill="#F1F5F9"/>
+    <rect x="334" y="608" width="234" height="86" rx="4" fill="#F1F5F9"/>
+    <rect x="608" y="608" width="234" height="86" rx="4" fill="#F1F5F9"/>
+    <!-- başlık/fiyat ipucu şeritleri -->
+    <rect x="60" y="552" width="140" height="9" rx="2" fill="#0F172A" opacity="0.6"/>
+    <rect x="60" y="566" width="70" height="9" rx="2" fill="#1E3A8A" opacity="0.8"/>
+    <rect x="334" y="552" width="140" height="9" rx="2" fill="#0F172A" opacity="0.6"/>
+    <rect x="334" y="566" width="70" height="9" rx="2" fill="#1E3A8A" opacity="0.8"/>
+    <rect x="608" y="552" width="140" height="9" rx="2" fill="#0F172A" opacity="0.6"/>
+    <rect x="608" y="566" width="70" height="9" rx="2" fill="#1E3A8A" opacity="0.8"/>
+    <rect x="60" y="704" width="140" height="9" rx="2" fill="#0F172A" opacity="0.6"/>
+    <rect x="60" y="718" width="70" height="9" rx="2" fill="#1E3A8A" opacity="0.8"/>
+    <rect x="334" y="704" width="140" height="9" rx="2" fill="#0F172A" opacity="0.6"/>
+    <rect x="334" y="718" width="70" height="9" rx="2" fill="#1E3A8A" opacity="0.8"/>
+    <rect x="608" y="704" width="140" height="9" rx="2" fill="#0F172A" opacity="0.6"/>
+    <rect x="608" y="718" width="70" height="9" rx="2" fill="#1E3A8A" opacity="0.8"/>
+    <!-- köşede küçük indirim rozeti (özelliği önizlemede bile sergiler) -->
+    <rect x="252" y="452" width="34" height="18" rx="9" fill="#B91C1C"/>
+    <text x="269" y="465" font-family="Arial, sans-serif" font-size="10" fill="#FFFFFF" text-anchor="middle">%20</text>
+  </g>
+</svg>

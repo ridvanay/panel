@@ -1,17 +1,23 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
+import type { ProductVariant } from "@prisma/client";
 import { z } from "zod";
 import { requireModuleEnabled } from "../../middleware/module-guard";
 import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema } from "../../schemas/common";
 import { CartSchema } from "../../schemas/entities";
 import { toCartDto } from "../../mappers";
-import { ConflictError, NotFoundError } from "../../lib/errors";
+import { ConflictError, NotFoundError, ValidationError } from "../../lib/errors";
 import { generateOpaqueToken, hashToken } from "../../lib/tokens";
 import { CART_COOKIE_NAME, CART_TOKEN_TTL_DAYS, cartCookieOptions } from "../../lib/cookies";
+import { resolveUnitPriceCents } from "../../lib/product-pricing";
+import { computeShipping, type ShippingSettingsInput } from "../../lib/shipping";
+import { SETTINGS_ID } from "../settings/settings.routes";
 import { AddCartItemRequestSchema, CartItemIdParamSchema, UpdateCartItemRequestSchema } from "./cart.schemas";
 
-/** `GET /cart`/`POST /cart/items` yanıtlarında ürün join'i için ortak `include` şekli. */
+/** `GET /cart`/`POST /cart/items` yanıtlarında ürün join'i için ortak `include` şekli.
+ * `variantOptions` (product) + `variant` (item) — CartItemDto.variantLabel/stok TÜRETİMİ için
+ * (bkz. mappers/index.ts::toCartItemDto, CartItem'da AYRICA saklanmaz). */
 const WITH_ITEMS = {
   items: {
     include: {
@@ -25,14 +31,32 @@ const WITH_ITEMS = {
           discountPriceCents: true,
           currency: true,
           coverMedia: true,
+          variantOptions: true,
         },
       },
+      variant: true,
     },
   },
 } as const;
 
 function cartExpiresAt(): Date {
   return new Date(Date.now() + CART_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000);
+}
+
+/**
+ * §3 (.claude/architect-scope-ecommerce-pro-template.md, bağlayıcı) — kargo hesabının TEK girdi
+ * kaynağı. Ayar satırı hiç yoksa (henüz `PATCH /admin/settings` çağrılmadı) her iki alan da
+ * `null` — bugünkü davranışın (kargo hesaplanmaz) birebir aynısıdır.
+ */
+async function readShippingSettings(app: FastifyInstance): Promise<ShippingSettingsInput> {
+  const settings = await app.prisma.siteSettings.findUnique({
+    where: { id: SETTINGS_ID },
+    select: { shippingFlatFeeCents: true, freeShippingThresholdCents: true },
+  });
+  return {
+    shippingFlatFeeCents: settings?.shippingFlatFeeCents ?? null,
+    freeShippingThresholdCents: settings?.freeShippingThresholdCents ?? null,
+  };
 }
 
 /**
@@ -60,9 +84,14 @@ export async function cartRoutes(app: FastifyInstance) {
     { schema: { response: { 200: ApiSuccessSchema(CartSchema) } } },
     async (request, reply) => {
       const cart = await findCartFromCookie(app, request);
-      if (!cart) return reply.send(ok({ items: [], currency: null, subtotalCents: 0 }));
+      const shippingSettings = await readShippingSettings(app);
 
-      return reply.send(ok(toCartDto(cart.items, cart.currency)));
+      if (!cart) {
+        const shipping = computeShipping(0, shippingSettings);
+        return reply.send(ok({ items: [], currency: null, subtotalCents: 0, shipping, totalCents: 0 }));
+      }
+
+      return reply.send(ok(toCartDto(cart.items, cart.currency, shippingSettings)));
     }
   );
 
@@ -71,12 +100,39 @@ export async function cartRoutes(app: FastifyInstance) {
     { schema: { body: AddCartItemRequestSchema, response: { 201: ApiSuccessSchema(CartSchema) } } },
     async (request, reply) => {
       const { productId, quantity } = request.body;
+      const variantIdInput = request.body.variantId ?? null;
 
       const product = await app.prisma.product.findFirst({
         where: { id: productId, status: "PUBLISHED", deletedAt: null },
+        include: { variants: true },
       });
       if (!product) throw new NotFoundError("Ürün bulunamadı.");
-      if (product.stockQuantity === 0) throw new ConflictError("Ürün tükendi.");
+
+      // §1.2/§1.3 (.claude/architect-scope-ecommerce-pro-template.md, bağlayıcı) — ürünün EN AZ
+      // BİR varyasyonu varsa satın alınabilir birim VARYASYONDUR; `variantId` ZORUNLUDUR.
+      // Varyasyonsuz üründe `variantId` gönderilirse 422 (openapi.yaml::AddCartItemRequest).
+      const hasVariants = product.variants.length > 0;
+      if (hasVariants && !variantIdInput) {
+        throw new ValidationError("Bu ürünün varyasyonları var; `variantId` zorunludur.", {
+          variantId: ["Bu ürün için bir varyasyon seçmelisiniz."],
+        });
+      }
+      if (!hasVariants && variantIdInput) {
+        throw new ValidationError("Bu ürünün varyasyonu yok; `variantId` gönderilmemelidir.", {
+          variantId: ["Bu ürünün varyasyonu yok."],
+        });
+      }
+
+      let variant: ProductVariant | null = null;
+      if (variantIdInput) {
+        variant = product.variants.find((row) => row.id === variantIdInput) ?? null;
+        // Varyasyon başka bir ürüne aitse/pasifse/stoksuzsa 409 CONFLICT (openapi.yaml notu).
+        if (!variant) throw new ConflictError("Seçilen varyasyon bu ürüne ait değil.");
+        if (!variant.isActive) throw new ConflictError("Bu varyasyon artık satışta değil.");
+        if (variant.stockQuantity === 0) throw new ConflictError("Bu varyasyon tükendi.");
+      } else if (product.stockQuantity === 0) {
+        throw new ConflictError("Ürün tükendi.");
+      }
 
       let cart = await findCartFromCookie(app, request);
       let rawToken: string | undefined;
@@ -94,15 +150,24 @@ export async function cartRoutes(app: FastifyInstance) {
         await app.prisma.cart.update({ where: { id: cart.id }, data: { currency: product.currency } });
       }
 
-      const unitPriceCents = product.discountPriceCents ?? product.priceCents;
-      const existingItem = cart.items.find((item) => item.productId === productId);
+      // §1.5 — fiyat DONDURMA: sepete eklerken TEK üretim noktasından (resolveUnitPriceCents)
+      // okunur, variant varsa onun miras/mutlak kuralı uygulanır.
+      const unitPriceCents = resolveUnitPriceCents(product, variant);
+
+      // §1.4 (bağlayıcı, ATLANIRSA SESSİZ HATA) — dedupe anahtarı `(productId, variantId ?? null)`.
+      // `@@unique([cartId, productId, variantId])` NULL'ları birbirine eşit SAYMADIĞI için bu
+      // uygulama katmanı kontrolü, varyasyonsuz üründe eski `(cartId, productId)` korumasının
+      // yerini alır (bkz. schema.prisma::CartItem notu).
+      const existingItem = cart.items.find(
+        (item) => item.productId === productId && (item.variantId ?? null) === variantIdInput
+      );
 
       if (existingItem) {
         const newQuantity = Math.min(existingItem.quantity + quantity, 99);
         await app.prisma.cartItem.update({ where: { id: existingItem.id }, data: { quantity: newQuantity } });
       } else {
         await app.prisma.cartItem.create({
-          data: { cartId: cart.id, productId, quantity, unitPriceCents },
+          data: { cartId: cart.id, productId, variantId: variantIdInput, quantity, unitPriceCents },
         });
       }
 
@@ -112,7 +177,8 @@ export async function cartRoutes(app: FastifyInstance) {
         reply.setCookie(CART_COOKIE_NAME, rawToken, cartCookieOptions());
       }
 
-      return reply.code(201).send(ok(toCartDto(finalCart.items, finalCart.currency)));
+      const shippingSettings = await readShippingSettings(app);
+      return reply.code(201).send(ok(toCartDto(finalCart.items, finalCart.currency, shippingSettings)));
     }
   );
 
@@ -133,7 +199,8 @@ export async function cartRoutes(app: FastifyInstance) {
       await app.prisma.cartItem.update({ where: { id: item.id }, data: { quantity: request.body.quantity } });
 
       const finalCart = await app.prisma.cart.findUniqueOrThrow({ where: { id: cart.id }, include: WITH_ITEMS });
-      return reply.send(ok(toCartDto(finalCart.items, finalCart.currency)));
+      const shippingSettings = await readShippingSettings(app);
+      return reply.send(ok(toCartDto(finalCart.items, finalCart.currency, shippingSettings)));
     }
   );
 

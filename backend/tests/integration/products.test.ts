@@ -1027,6 +1027,92 @@ describe("products (§10.9.2 Ürünler Modülü)", () => {
   });
 });
 
+/**
+ * REGRESYON (qa-agent bulgusu) — `TEXT` tipinde bir varyasyon ekseninde `swatchHex`
+ * gönderilmeden (§1.1 kuralı: `TEXT` eksende `swatchHex` YASAK) ürün + varyasyon oluşturmak,
+ * yazma şemasınca (`modules/products/lib/variants.ts`) kabul edilir ve DB'ye `swatchHex`
+ * ANAHTARI OLMADAN yazılır. Bu test, o satırı GERİ OKUYAN uçların (`GET /admin/products`,
+ * `GET /admin/products/{id}`, `GET /products`, `GET /products/{slug}`) `500
+ * FST_ERR_RESPONSE_SERIALIZATION` ile PATLAMADIĞINI doğrudan doğrular — daha önce okuma şeması
+ * (`schemas/entities.ts::ProductVariantOptionSchema`) `swatchHex`'i `.optional()` OLMADAN
+ * modellediği için bu uçların TAMAMI kalıcı olarak 500 dönüyordu (bkz.
+ * `templates/ecommerce-pro.ts`'teki "Modüler Raf Sistemi" ürününün "Ölçü" ekseni, gerçek
+ * tetikleyici veri).
+ */
+describe("products — REGRESYON: TEXT eksende swatchHex olmadan oluşturulan varyasyon GERİ OKUNABİLİR (500 vermez)", () => {
+  let app: FastifyInstance;
+  let adminToken: string;
+
+  function authHeader(token: string) {
+    return { authorization: `Bearer ${token}` };
+  }
+
+  beforeAll(async () => {
+    const { buildTestApp } = await import("../helpers/build-test-app");
+    const { resetDatabase } = await import("../helpers/reset-db");
+    const { registerTestUser } = await import("../helpers/auth");
+
+    app = await buildTestApp();
+    await resetDatabase(app.prisma);
+
+    const admin = await registerTestUser(app, { email: "products-text-axis-regression-admin@example.com" });
+    adminToken = admin.accessToken;
+  });
+
+  afterAll(async () => {
+    const { resetDatabase } = await import("../helpers/reset-db");
+    await resetDatabase(app.prisma);
+    await app.close();
+  });
+
+  it("TEXT ekseni (swatchHex YOK) + varyasyon oluştur → liste/detay/public uçları 200 döner ve swatchHex null/undefined güvenle serileşir", async () => {
+    const create = await app.inject({
+      method: "POST",
+      url: "/api/v1/admin/products",
+      headers: authHeader(adminToken),
+      payload: {
+        title: "Modüler Raf Sistemi (Regresyon)",
+        priceCents: 219900,
+        status: "PUBLISHED",
+        // §1.1 — TEXT eksende `swatchHex` HİÇ gönderilmez (bkz. templates/ecommerce-pro.ts
+        // "Ölçü" ekseniyle BİREBİR aynı şekil — gerçek tetikleyici veri).
+        variantOptions: [{ name: "Ölçü", type: "TEXT", values: [{ value: "120 cm" }, { value: "180 cm" }] }],
+      },
+    });
+    expect(create.statusCode).toBe(201);
+    const product = create.json().data;
+    expect(product.variantOptions[0].values[0]).not.toHaveProperty("swatchHex");
+
+    const addVariant = await app.inject({
+      method: "POST",
+      url: `/api/v1/admin/products/${product.id}/variants`,
+      headers: authHeader(adminToken),
+      payload: { optionValues: { Ölçü: "120 cm" }, stockQuantity: 5 },
+    });
+    expect(addVariant.statusCode).toBe(201);
+
+    // Regresyonun ASIL kanıtı: bu dört okuma ucunun HİÇBİRİ 500 FST_ERR_RESPONSE_SERIALIZATION
+    // ile patlamamalı (önceki hatalı şemada TÜMÜ kalıcı olarak 500 dönüyordu).
+    const adminList = await app.inject({ method: "GET", url: "/api/v1/admin/products", headers: authHeader(adminToken) });
+    expect(adminList.statusCode).toBe(200);
+
+    const adminDetail = await app.inject({
+      method: "GET",
+      url: `/api/v1/admin/products/${product.id}`,
+      headers: authHeader(adminToken),
+    });
+    expect(adminDetail.statusCode).toBe(200);
+    expect(adminDetail.json().data.variantOptions[0].values[0].value).toBe("120 cm");
+
+    const publicList = await app.inject({ method: "GET", url: "/api/v1/products" });
+    expect(publicList.statusCode).toBe(200);
+
+    const publicDetail = await app.inject({ method: "GET", url: `/api/v1/products/${product.slug}` });
+    expect(publicDetail.statusCode).toBe(200);
+    expect(publicDetail.json().data.variants[0].optionValues).toEqual({ Ölçü: "120 cm" });
+  });
+});
+
 describe("products — modül kapalıyken (§10.9 Eklenti/Modül Yönetimi)", () => {
   let app: FastifyInstance;
   let adminToken: string;

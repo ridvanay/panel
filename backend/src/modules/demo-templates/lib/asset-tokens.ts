@@ -26,11 +26,19 @@
 
 export const ASSET_TOKEN_PREFIX = "asset:";
 export const SLIDER_REF_TOKEN = "ref:slider";
+// `.claude/architect-scope-ecommerce-pro-template.md` §4.2 — YENİ token ailesi (bağlayıcı,
+// [DTI] §3.4'e ek): `ref:product-category:<slug>` → import sırasında oluşturulan
+// `ProductCategory.id`. AYNI çözümleyici, AYNI dosya (§3.4 madde 4 — tek üretim noktası).
+export const PRODUCT_CATEGORY_REF_PREFIX = "ref:product-category:";
 
 const ABSOLUTE_VISIT_CAP = 100_000;
 
 export function buildAssetToken(key: string): string {
   return `${ASSET_TOKEN_PREFIX}${key}`;
+}
+
+export function buildProductCategoryRefToken(slug: string): string {
+  return `${PRODUCT_CATEGORY_REF_PREFIX}${slug}`;
 }
 
 function isAssetToken(value: string): value is `asset:${string}` {
@@ -39,6 +47,14 @@ function isAssetToken(value: string): value is `asset:${string}` {
 
 function assetKeyFromToken(value: string): string {
   return value.slice(ASSET_TOKEN_PREFIX.length);
+}
+
+function isProductCategoryRefToken(value: string): value is `ref:product-category:${string}` {
+  return value.startsWith(PRODUCT_CATEGORY_REF_PREFIX) && value.length > PRODUCT_CATEGORY_REF_PREFIX.length;
+}
+
+function productCategorySlugFromToken(value: string): string {
+  return value.slice(PRODUCT_CATEGORY_REF_PREFIX.length);
 }
 
 export interface ResolveTokensResult {
@@ -74,8 +90,19 @@ interface StackFrame {
  *
  * İTERATİF (explicit stack, `lib/page-blocks.ts::scanPageNodeStructure` ile AYNI disiplin) —
  * ÖZYİNELEME YOK.
+ *
+ * `productCategoryIdBySlug` — `sliderId` ile BİREBİR AYNI iki-fazlı erteleme deseni:
+ * `null` ise `ref:product-category:<slug>` token'ları bilinçli olarak DOKUNULMADAN bırakılır
+ * (ERTELENİR, unresolved SAYILMAZ — ürün kategorileri henüz oluşturulmamıştır). Bir `Map`
+ * verildiğinde (Faz 0 kuru koşuda PLACEHOLDER_UUID'lerle, Faz 2 son çözümlemede gerçek
+ * `ProductCategory.id`'lerle) haritada KARŞILIĞI OLMAYAN her slug FATAL/unresolved sayılır.
  */
-export function resolvePageBlockTokens(blocks: unknown[], assetUrlByKey: ReadonlyMap<string, string>, sliderId: string | null): ResolveTokensResult {
+export function resolvePageBlockTokens(
+  blocks: unknown[],
+  assetUrlByKey: ReadonlyMap<string, string>,
+  sliderId: string | null,
+  productCategoryIdBySlug: ReadonlyMap<string, string> | null = null
+): ResolveTokensResult {
   const root: unknown[] = deepCloneJson(blocks) as unknown[];
   const unresolvedTokens = new Set<string>();
 
@@ -101,6 +128,19 @@ export function resolvePageBlockTokens(blocks: unknown[], assetUrlByKey: Readonl
           (frame.container as Record<string | number, unknown>)[key] = sliderId;
         }
         // sliderId === null → bilinçli olarak dokunulmadan bırakılır (bkz. yukarıdaki yorum).
+        continue;
+      }
+      if (isProductCategoryRefToken(value)) {
+        if (productCategoryIdBySlug !== null) {
+          const slug = productCategorySlugFromToken(value);
+          const id = productCategoryIdBySlug.get(slug);
+          if (id !== undefined) {
+            (frame.container as Record<string | number, unknown>)[key] = id;
+          } else {
+            unresolvedTokens.add(value);
+          }
+        }
+        // productCategoryIdBySlug === null → ERTELENİR (bkz. fonksiyon başlığı).
         continue;
       }
       if (isAssetToken(value)) {

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="900" viewBox="0 0 1200 900">
+  <title>Ferah Ev Yaşam – Aydınlatma Kategori Kartı (Eşmerkezli Işın Halkaları)</title>
+  <desc>Üretim kaynağı — çalışma zamanında OKUNMAZ/servis EDİLMEZ. Çıktı build-template-assets.ts::buildEpCategoryCard("rings", ...) ile PNG'ye render edilir.</desc>
+  <defs>
+    <linearGradient id="bg-aydinlatma" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F8FAFC"/>
+      <stop offset="100%" stop-color="#FFFFFF"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="1200" height="900" fill="url(#bg-aydinlatma)"/>
+  <!-- merkezden dışa yayılan ince eşmerkezli daireler — ışın soyutlaması, accentColor -->
+  <g stroke="#047857" stroke-width="2" fill="none" opacity="0.2">
+    <circle cx="624" cy="396" r="70"/>
+    <circle cx="624" cy="396" r="140"/>
+    <circle cx="624" cy="396" r="210"/>
+    <circle cx="624" cy="396" r="280"/>
+    <circle cx="624" cy="396" r="350"/>
+  </g>
+</svg>

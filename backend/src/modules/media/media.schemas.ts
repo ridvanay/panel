@@ -36,6 +36,9 @@ export const MediaListQuerySchema = CursorQuerySchema.extend({
       message: "folderId `none` sabiti ya da geçerli bir UUID olmalıdır.",
     })
     .optional(),
+  // §2.2 madde 6 (.claude/architect-scope-ecommerce-pro-template.md, bağlayıcı) —
+  // openapi.yaml#/components/parameters/MediaTypeFilter. Verilmezse filtre uygulanmaz.
+  type: z.enum(["image", "document"]).optional(),
 });
 
 // `POST /admin/media/folders` gövdesi.

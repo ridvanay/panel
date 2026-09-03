@@ -11,7 +11,8 @@ import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema } from "../../schemas/common";
 import { PublicSiteAppearanceSchema, SiteAppearanceDto, SiteAppearanceSchema, SiteCustomCodeSchema } from "../../schemas/entities";
 import { toPublicSiteAppearanceDto, toSiteAppearanceDto, toSiteCustomCodeDto } from "../../mappers";
-import { ForbiddenError, NotFoundError } from "../../lib/errors";
+import { ForbiddenError, NotFoundError, ValidationError } from "../../lib/errors";
+import { isImageMimeType } from "../../lib/mime-detect";
 import { logAudit } from "../../lib/audit";
 import { triggerGlobalRevalidation } from "../../lib/revalidate";
 import { env } from "../../config/env";
@@ -157,6 +158,14 @@ export async function adminAppearanceRoutes(app: FastifyInstance) {
       if (body.pageHeaderBackgroundMediaId) {
         const media = await app.prisma.media.findUnique({ where: { id: body.pageHeaderBackgroundMediaId } });
         if (!media) throw new NotFoundError("`pageHeaderBackgroundMediaId` ile gönderilen medya bulunamadı.");
+        // §2.2 madde 5 (.claude/architect-scope-ecommerce-pro-template.md, bağlayıcı) ve
+        // openapi.yaml `POST /admin/media` açıklaması — görsel bekleyen FK slotları `image/*`
+        // DIŞINDAKİ medyayı `422` ile reddeder (`products.routes.ts::assertImageMedia` ile AYNI kural).
+        if (!isImageMimeType(media.mimeType)) {
+          throw new ValidationError("Bu alan yalnızca görsel medya kabul eder.", {
+            pageHeaderBackgroundMediaId: ["Seçilen dosya bir görsel değil."],
+          });
+        }
       }
 
       // Tam değiştirme (replace) semantiği — gönderilen dizi mevcut seçimin YERİNE geçer;

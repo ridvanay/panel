@@ -45,7 +45,14 @@ describe("cart (§10.9.3 Sepet + Stripe Checkout)", () => {
   it("cookie yokken GET /cart boş sepet döner", async () => {
     const res = await app.inject({ method: "GET", url: "/api/v1/cart" });
     expect(res.statusCode).toBe(200);
-    expect(res.json().data).toEqual({ items: [], currency: null, subtotalCents: 0 });
+    expect(res.json().data).toEqual({
+      items: [],
+      currency: null,
+      subtotalCents: 0,
+      // §3 — SiteSettings satırı yokken/shippingFlatFeeCents null iken kargo hiç hesaplanmaz.
+      shipping: { configured: false, feeCents: 0, thresholdCents: null, remainingCents: null, isFree: false },
+      totalCents: 0,
+    });
   });
 
   it("olmayan/taslak bir ürün için POST /cart/items 404 döner", async () => {

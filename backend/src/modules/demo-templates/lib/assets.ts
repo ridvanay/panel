@@ -2,7 +2,7 @@ import path from "node:path";
 import fs from "node:fs/promises";
 import { imageSize } from "image-size";
 import { storage } from "../../../lib/storage";
-import { detectImageMimeType } from "../../../lib/mime-detect";
+import { detectImageMimeType, detectPdfMimeType } from "../../../lib/mime-detect";
 import { ValidationError } from "../../../lib/errors";
 import { MAX_TEMPLATE_ASSET_BYTES, type DemoTemplateAsset } from "../types";
 
@@ -86,26 +86,33 @@ export async function materializeTemplateAssets(templateKey: string, assets: Dem
         });
       }
 
-      // SVG dahil tanınmayan/güvensiz içerik KESİN reddedilir — paketlenmiş varlık da AYNI
-      // kapıdan geçer, istisna YOK (§4.1/§4.2).
-      const detected = detectImageMimeType(buffer);
+      // `.claude/architect-scope-ecommerce-pro-template.md` §2.2/§4.1 — `kind: "document"`
+      // varlıklar `application/pdf` bekler (AYNI dosyadaki `detectPdfMimeType`, ikinci bir
+      // tespit modülü YOK — bkz. `lib/mime-detect.ts` başlığı). SVG dahil tanınmayan/güvensiz
+      // içerik KESİN reddedilir — paketlenmiş varlık da AYNI kapıdan geçer, istisna YOK.
+      const isDocument = asset.kind === "document";
+      const detected = isDocument ? detectPdfMimeType(buffer) : detectImageMimeType(buffer);
       if (!detected.mimeType || detected.isSvg) {
-        throw new ValidationError(`Şablon varlığı geçerli bir görsel değil: "${asset.file}".`, {
-          assets: [`"${asset.key}" tanınan bir görsel biçimiyle (JPEG/PNG/WEBP/GIF) eşleşmiyor.`],
+        throw new ValidationError(`Şablon varlığı geçerli bir ${isDocument ? "PDF" : "görsel"} değil: "${asset.file}".`, {
+          assets: [`"${asset.key}" tanınan bir ${isDocument ? "PDF" : "görsel (JPEG/PNG/WEBP/GIF)"} biçimiyle eşleşmiyor.`],
         });
       }
 
       const { path: storedPath, url } = await storage.save({ buffer, filename: asset.file, mimeType: detected.mimeType });
 
+      // §4.1 — "document" için `imageSize()` ÇAĞRILMAZ (PDF, image-size için parse edilebilir
+      // bir raster değildir; width/height `null` kalır, `Media` şeması bunu zaten nullable kabul eder).
       let width: number | null = null;
       let height: number | null = null;
-      try {
-        const dimensions = imageSize(buffer);
-        width = dimensions.width;
-        height = dimensions.height;
-      } catch {
-        width = null;
-        height = null;
+      if (!isDocument) {
+        try {
+          const dimensions = imageSize(buffer);
+          width = dimensions.width;
+          height = dimensions.height;
+        } catch {
+          width = null;
+          height = null;
+        }
       }
 
       saved.push({

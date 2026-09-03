@@ -12,6 +12,7 @@ import { ApiSuccessSchema, ApiSuccessWithMeta } from "../../schemas/common";
 import { SliderSchema, SlideSchema, PublicSliderSchema, SliderListMetaSchema, SliderSummarySchema, SliderUsageSchema } from "../../schemas/entities";
 import { toSliderDto, toSliderSummaryDto, toSlideDto, toPublicSliderDto, toSliderUsageDto, toMediaDto } from "../../mappers";
 import { ConflictError, NotFoundError, SliderInUseError, ValidationError } from "../../lib/errors";
+import { isImageMimeType } from "../../lib/mime-detect";
 import { parseCursor, buildPageMetaWithCounts } from "../../lib/pagination";
 import { slugify } from "../../lib/slug";
 import { logAudit } from "../../lib/audit";
@@ -37,6 +38,21 @@ import {
   UpdateSlideRequestSchema,
   ReorderSlidesRequestSchema,
 } from "./sliders.schemas";
+
+/**
+ * §2.2 madde 5 (.claude/architect-scope-ecommerce-pro-template.md, bağlayıcı) ve openapi.yaml
+ * `POST /admin/media` açıklaması — `Slide.bgMediaId`/`bgVideoPosterMediaId` `image/*` DIŞINDAKİ
+ * medyayı `422` ile REDDEDER (`products.routes.ts::assertImageMedia` ile AYNI kural).
+ */
+async function assertImageMedia(app: FastifyInstance, mediaId: string): Promise<void> {
+  const media = await app.prisma.media.findUnique({ where: { id: mediaId } });
+  if (!media) throw new NotFoundError("Medya bulunamadı.");
+  if (!isImageMimeType(media.mimeType)) {
+    throw new ValidationError("Bu alan yalnızca görsel medya kabul eder.", {
+      mediaId: ["Seçilen dosya bir görsel değil."],
+    });
+  }
+}
 
 /** Slayt detay/liste sorgularında arka plan medyalarını da dönmek için (bkz. portfolio.routes.ts::WITH_RELATIONS). */
 const WITH_SLIDE_RELATIONS = { bgMedia: true, bgVideoPosterMedia: true } as const;
@@ -481,6 +497,9 @@ export async function adminSlidersRoutes(app: FastifyInstance) {
       const { order, layers, ...rest } = request.body;
       const parsedLayers = layers !== undefined ? parseSlideLayers(layers) : undefined;
 
+      if (rest.bgMediaId) await assertImageMedia(app, rest.bgMediaId);
+      if (rest.bgVideoPosterMediaId) await assertImageMedia(app, rest.bgVideoPosterMediaId);
+
       const currentCount = await app.prisma.slide.count({ where: { sliderId: slider.id } });
       if (currentCount >= MAX_SLIDES_PER_SLIDER) {
         throw new ValidationError(`Bir slider en fazla ${MAX_SLIDES_PER_SLIDER} slayt içerebilir.`, {
@@ -578,6 +597,9 @@ export async function adminSlidersRoutes(app: FastifyInstance) {
 
       const { layers, ...rest } = request.body;
       const parsedLayers = layers !== undefined ? parseSlideLayers(layers) : undefined;
+
+      if (rest.bgMediaId) await assertImageMedia(app, rest.bgMediaId);
+      if (rest.bgVideoPosterMediaId) await assertImageMedia(app, rest.bgVideoPosterMediaId);
 
       const data = buildSlideWriteData(rest);
       if (parsedLayers !== undefined) data.layers = parsedLayers as unknown as Prisma.InputJsonValue;

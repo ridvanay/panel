@@ -21,6 +21,7 @@ import { resetDatabase } from "../helpers/reset-db";
 import { registerTestUser } from "../helpers/auth";
 import { stripe } from "../../src/lib/stripe";
 import { env } from "../../src/config/env";
+import { deriveVariantKey } from "../../src/modules/products/lib/variants";
 
 describe("webhooks/stripe — sepet siparişi (order) akışı (§10.9.3, KRİTİK)", () => {
   let app: FastifyInstance;
@@ -403,6 +404,122 @@ describe("webhooks/stripe — sepet siparişi (order) akışı (§10.9.3, KRİT�
       const updatedOrder = await app.prisma.order.findUniqueOrThrow({ where: { id: order.id } });
       expect(updatedOrder.status).toBe("PAID");
       expect(updatedOrder.siteUserId).toBeNull();
+    });
+  });
+
+  // .claude/architect-scope-ecommerce-pro-template.md §1.6/§9.4 — integration-agent görevi:
+  // `runSerializable` bloğunda `item.variantId` doluysa hedef `tx.productVariant`'a dallanır.
+  describe("varyasyonlu sipariş stok düşürme (§1.6)", () => {
+    async function createProductWithVariant(variantStock = 5) {
+      const optionValues = { Renk: "Antrasit", Beden: "L" };
+      const product = await app.prisma.product.create({
+        data: {
+          title: `Webhook Varyasyonlu Ürün ${crypto.randomUUID()}`,
+          slug: `webhook-varyasyonlu-urun-${crypto.randomUUID()}`,
+          priceCents: 10000,
+          currency: "TRY",
+          stockQuantity: 0, // §1.2 — varyasyonlu üründe YOK SAYILIR.
+          status: "PUBLISHED",
+          publishedAt: new Date(),
+          variantOptions: [
+            { name: "Renk", type: "SWATCH", values: [{ value: "Antrasit", swatchHex: "#333333" }] },
+            { name: "Beden", type: "TEXT", values: [{ value: "L" }] },
+          ],
+        },
+      });
+      const variant = await app.prisma.productVariant.create({
+        data: {
+          productId: product.id,
+          variantKey: deriveVariantKey(optionValues),
+          optionValues,
+          sku: `VAR-${crypto.randomUUID().slice(0, 6).toUpperCase()}`,
+          priceCents: 15000,
+          stockQuantity: variantStock,
+        },
+      });
+      return { product, variant };
+    }
+
+    async function createPendingVariantOrder(
+      product: { id: string; title: string },
+      variant: { id: string; sku: string | null; priceCents: number | null },
+      quantity: number,
+      customerEmail = `buyer-${crypto.randomUUID()}@example.com`
+    ) {
+      const unitPriceCents = variant.priceCents ?? 0;
+      const lineTotalCents = unitPriceCents * quantity;
+      return app.prisma.order.create({
+        data: {
+          orderNumber: `ORD-TEST-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
+          customerEmail,
+          customerName: "Test Müşteri",
+          status: "PENDING",
+          currency: "TRY",
+          subtotalCents: lineTotalCents,
+          discountCents: 0,
+          taxCents: 0,
+          totalCents: lineTotalCents,
+          items: {
+            create: [
+              {
+                productId: product.id,
+                variantId: variant.id,
+                variantLabel: "Antrasit / L",
+                productTitle: product.title,
+                productSku: variant.sku,
+                unitPriceCents,
+                quantity,
+                lineTotalCents,
+              },
+            ],
+          },
+        },
+        include: { items: true },
+      });
+    }
+
+    it("checkout.session.completed → VARYASYON stoku düşer (Product.stockQuantity DEĞİŞMEZ), Order PAID olur", async () => {
+      const { product, variant } = await createProductWithVariant(5);
+      const order = await createPendingVariantOrder(product, variant, 2);
+
+      const res = await postWebhook(buildCheckoutSessionEvent(order.id));
+      expect(res.statusCode).toBe(200);
+
+      const updatedVariant = await app.prisma.productVariant.findUniqueOrThrow({ where: { id: variant.id } });
+      expect(updatedVariant.stockQuantity).toBe(3);
+
+      const updatedProduct = await app.prisma.product.findUniqueOrThrow({ where: { id: product.id } });
+      expect(updatedProduct.stockQuantity).toBe(0); // §1.2 — ürün-seviyesi stok YOK SAYILIR, DEĞİŞMEZ.
+
+      const updatedOrder = await app.prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+      expect(updatedOrder.status).toBe("PAID");
+    });
+
+    it("AYNI event 2 kez gönderilirse varyasyon stoku SADECE 1 kez düşer (idempotency)", async () => {
+      const { product, variant } = await createProductWithVariant(5);
+      const order = await createPendingVariantOrder(product, variant, 1);
+      const event = buildCheckoutSessionEvent(order.id);
+
+      await postWebhook(event);
+      await postWebhook(event);
+
+      const updatedVariant = await app.prisma.productVariant.findUniqueOrThrow({ where: { id: variant.id } });
+      expect(updatedVariant.stockQuantity).toBe(4); // 5 - 1, ikinci kez düşmedi.
+    });
+
+    it("varyasyon stoku yetersizken webhook gelirse Order FAILED olur, varyasyon stoku DEĞİŞMEZ", async () => {
+      const { product, variant } = await createProductWithVariant(1);
+      const order = await createPendingVariantOrder(product, variant, 3);
+
+      const res = await postWebhook(buildCheckoutSessionEvent(order.id));
+      expect(res.statusCode).toBe(200);
+
+      const updatedOrder = await app.prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+      expect(updatedOrder.status).toBe("FAILED");
+      expect(updatedOrder.errorSummary).toBe("insufficient_stock");
+
+      const updatedVariant = await app.prisma.productVariant.findUniqueOrThrow({ where: { id: variant.id } });
+      expect(updatedVariant.stockQuantity).toBe(1);
     });
   });
 });

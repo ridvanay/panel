@@ -9,10 +9,23 @@ interface CartContextValue {
   loading: boolean;
   /** Sepetteki tüm satırların adet toplamı — header rozeti bunu kullanır. */
   itemCount: number;
-  addItem: (productId: string, quantity: number) => Promise<void>;
+  /**
+   * `variantId` — ürünün varyasyonu varsa ZORUNLU (backend eksikse 422 döner); `undefined`
+   * bırakılırsa istek gövdesine HİÇ eklenmez (varyasyonsuz ürün akışı, geriye dönük uyumlu).
+   */
+  addItem: (productId: string, quantity: number, variantId?: string | null) => Promise<void>;
   updateItem: (itemId: string, quantity: number) => Promise<void>;
   removeItem: (itemId: string) => Promise<void>;
   refetch: () => Promise<void>;
+  /**
+   * Sepet çekmecesi (slide-over) açık/kapalı durumu — `.claude/design-notes-ecommerce-storefront.md`
+   * §6. `addItem` KENDİSİ çekmeceyi AÇMAZ (ör. `/hesabim/favorilerim`'deki "Sepete Ekle" akışı
+   * bunu istemez, sadece toast gösterir) — açma kararı ÇAĞIRAN tarafa aittir (bkz. PDP
+   * `AddToCartButton`'ın `onAdded` callback'i).
+   */
+  isDrawerOpen: boolean;
+  openDrawer: () => void;
+  closeDrawer: () => void;
 }
 
 const CartContext = createContext<CartContextValue | null>(null);
@@ -21,6 +34,7 @@ const CartContext = createContext<CartContextValue | null>(null);
 export function CartProvider({ children }: { children: ReactNode }) {
   const [cart, setCart] = useState<Cart | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
   const refetch = useCallback(async () => {
     try {
@@ -43,8 +57,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   // Ekleme/güncelleme/kaldırma hataları BİLEREK yutulmuyor — çağıran taraf (sepete ekle butonu,
   // sepet sayfası) 409 (stok yetersiz vb.) gibi durumları kullanıcıya göstermelidir.
-  const addItem = useCallback(async (productId: string, quantity: number) => {
-    const nextCart = await cartApi.addCartItem({ productId, quantity });
+  const addItem = useCallback(async (productId: string, quantity: number, variantId?: string | null) => {
+    const nextCart = await cartApi.addCartItem(
+      variantId !== undefined ? { productId, quantity, variantId } : { productId, quantity }
+    );
     setCart(nextCart);
   }, []);
 
@@ -60,7 +76,21 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   const itemCount = useMemo(() => cart?.items.reduce((sum, item) => sum + item.quantity, 0) ?? 0, [cart]);
 
-  const value: CartContextValue = { cart, loading, itemCount, addItem, updateItem, removeItem, refetch };
+  const openDrawer = useCallback(() => setIsDrawerOpen(true), []);
+  const closeDrawer = useCallback(() => setIsDrawerOpen(false), []);
+
+  const value: CartContextValue = {
+    cart,
+    loading,
+    itemCount,
+    addItem,
+    updateItem,
+    removeItem,
+    refetch,
+    isDrawerOpen,
+    openDrawer,
+    closeDrawer,
+  };
 
   return <CartContext value={value}>{children}</CartContext>;
 }

@@ -378,6 +378,59 @@ export const ProductImageSchema = z.object({
 });
 export type ProductImageDto = z.infer<typeof ProductImageSchema>;
 
+// ---------- §1/§2 (.claude/architect-scope-ecommerce-pro-template.md, bağlayıcı) — varyasyon
+// (ProductVariant) + teknik döküman (ProductDocument). Bu OKUMA (response) DTO'ları — YAZMA
+// (request) doğrulaması/kısıtları `modules/products/lib/variants.ts`'te ayrı tutulur (istek
+// şemaları refine/superRefine ile zenginleştirilir, yanıt şemaları DB'den zaten geçerli veriyi
+// taşır).
+
+export const ProductVariantOptionValueSchema = z.object({
+  value: z.string(),
+  // `TEXT` eksenlerinde swatchHex kavramsal olarak ANLAMSIZDIR ve DB'de HİÇ yazılmaz (bkz.
+  // modules/products/lib/variants.ts::ProductVariantOptionValueSchema — TEXT için superRefine
+  // `swatchHex` gönderilmesini zaten REDDEDER, dolayısıyla obje bu alanı hiç taşımadan Json
+  // kolonuna yazılır). `.optional()` OLMADAN bu şema `TEXT` eksenli her satırda response
+  // serialization'ı `FST_ERR_RESPONSE_SERIALIZATION` (500) ile KALICI olarak kırar — hem yazma
+  // şemasıyla (yukarıdaki dosya) hem openapi.yaml::ProductVariantOption.values (`required:
+  // [value]`, swatchHex listede YOK) sözleşmesiyle TUTARLI olması için `.optional()` ZORUNLUDUR
+  // (qa-agent regresyon bulgusu — bkz. tests/unit/product-variants.test.ts).
+  swatchHex: z.string().nullable().optional(),
+});
+export type ProductVariantOptionValueDto = z.infer<typeof ProductVariantOptionValueSchema>;
+
+/** Bir varyasyon EKSENİ (ör. "Renk") — `Product.variantOptions` JSON kolonu. */
+export const ProductVariantOptionSchema = z.object({
+  name: z.string(),
+  type: z.enum(["SWATCH", "TEXT"]),
+  values: z.array(ProductVariantOptionValueSchema),
+});
+export type ProductVariantOptionDto = z.infer<typeof ProductVariantOptionSchema>;
+
+/** Tek bir eksen kombinasyonu (ör. Renk=Antrasit + Beden=L) — bkz. `ProductVariant` tablosu. */
+export const ProductVariantSchema = z.object({
+  id: z.string().uuid(),
+  variantKey: z.string(),
+  optionValues: z.record(z.string(), z.string()),
+  label: z.string(),
+  sku: z.string().nullable(),
+  priceCents: z.number().int().nullable(),
+  discountPriceCents: z.number().int().nullable(),
+  stockQuantity: z.number().int(),
+  media: MediaSchema.nullable(),
+  order: z.number().int(),
+  isActive: z.boolean(),
+});
+export type ProductVariantDto = z.infer<typeof ProductVariantSchema>;
+
+/** Ürüne bağlı teknik döküman (PDF) — `ProductImage` ile AYNI sıralı join tablosu deseni. */
+export const ProductDocumentSchema = z.object({
+  id: z.string().uuid(),
+  title: z.string(),
+  media: MediaSchema,
+  order: z.number().int(),
+});
+export type ProductDocumentDto = z.infer<typeof ProductDocumentSchema>;
+
 export const ProductSchema = z.object({
   id: z.string().uuid(),
   title: z.string(),
@@ -396,6 +449,13 @@ export const ProductSchema = z.object({
   category: ProductCategorySchema.nullable(),
   coverMedia: MediaSchema.nullable(),
   images: z.array(ProductImageSchema),
+  // §1 (.claude/architect-scope-ecommerce-pro-template.md, bağlayıcı) — varyasyon EKSENLERİ
+  // tanımı. BOŞ dizi = ürün varyasyonsuzdur.
+  variantOptions: z.array(ProductVariantOptionSchema).max(2),
+  // Eksen kombinasyonları — BOŞ DEĞİLSE satın alınabilir birim VARYASYONDUR ve stok/fiyat
+  // varyasyondan okunur; `stockQuantity` o ürün için YOK SAYILIR (§1.2, bağlayıcı).
+  variants: z.array(ProductVariantSchema),
+  documents: z.array(ProductDocumentSchema),
   seoTitle: z.string().nullable(),
   seoDescription: z.string().nullable(),
   // §10.2 Gelişmiş SEO & Social Card — bkz. ARCHITECTURE.md §10.2.
@@ -639,6 +699,11 @@ export const SiteSettingsSchema = z.object({
   homePageId: z.string().uuid().nullable(),
   // §Faz 4 Site Şablonu — bkz. prisma/schema.prisma::SiteSettings.siteTemplate (db-agent).
   siteTemplate: SiteTemplateSchema,
+  // §3 (.claude/architect-scope-ecommerce-pro-template.md, bağlayıcı) — mağaza geneli SABİT
+  // kargo bedeli + ücretsiz kargo eşiği. `shippingFlatFeeCents: null` = kargo hiç hesaplanmaz
+  // (bugünkü davranışın birebir aynısı). Hesaplama TEK yerde: lib/shipping.ts::computeShipping.
+  shippingFlatFeeCents: z.number().int().nullable(),
+  freeShippingThresholdCents: z.number().int().nullable(),
 });
 export type SiteSettingsDto = z.infer<typeof SiteSettingsSchema>;
 
@@ -1183,14 +1248,35 @@ export const CartItemSchema = z.object({
     title: z.string(),
     slug: z.string(),
     coverImageUrl: z.string().nullable(),
+    // Satır varyasyonluysa (variantId != null) BU ALAN ilgili VARYASYONUN stoğudur — satın
+    // alınabilir birimin stoğu döner (§1.2, bağlayıcı).
     stockQuantity: z.number().int(),
   }),
+  // Ürünün varyasyonu varsa ZORUNLU; yoksa daima `null`.
+  variantId: z.string().uuid().nullable(),
+  // CartItem'da AYRICA saklanmaz — her okumada `variant.optionValues` + `product.variantOptions`
+  // eksen sırasından TÜRETİLİR (bkz. modules/products/lib/variants.ts::buildVariantLabel).
+  variantLabel: z.string().nullable(),
   quantity: z.number().int(),
   frozenUnitPriceCents: z.number().int(),
   currentPriceCents: z.number().int(),
   lineTotalCents: z.number().int(),
 });
 export type CartItemDto = z.infer<typeof CartItemSchema>;
+
+/**
+ * §3 (.claude/architect-scope-ecommerce-pro-template.md, bağlayıcı) — kargo hesabı SUNUCUDA, TEK
+ * bir yardımcıda (`lib/shipping.ts::computeShipping`) yapılır. `configured: false` ise arayüz
+ * kargo satırı/çubuğu HİÇ GÖSTERMEZ.
+ */
+export const CartShippingSchema = z.object({
+  configured: z.boolean(),
+  feeCents: z.number().int(),
+  thresholdCents: z.number().int().nullable(),
+  remainingCents: z.number().int().nullable(),
+  isFree: z.boolean(),
+});
+export type CartShippingDto = z.infer<typeof CartShippingSchema>;
 
 /** Cookie yoksa/geçersizse (henüz hiçbir şey eklenmemiş) boş sepet döner — `currency: null`. */
 export const CartSchema = z.object({
@@ -1200,6 +1286,9 @@ export const CartSchema = z.object({
   // hesaplayacağı nihai tutarla AYNI mantık, ama checkout DB'den TEKRAR taze okuyup kendi
   // hesabını yapar (bkz. checkout.routes.ts) — burası yalnızca gösterim amaçlıdır.
   subtotalCents: z.number().int(),
+  shipping: CartShippingSchema,
+  // `subtotalCents + shipping.feeCents` — kargo yapılandırılmamışsa `subtotalCents`'e EŞİTTİR.
+  totalCents: z.number().int(),
 });
 export type CartDto = z.infer<typeof CartSchema>;
 
@@ -1214,7 +1303,12 @@ export const OrderItemSchema = z.object({
   productId: z.string().uuid().nullable(),
   // Ürün silinse/değişse bile sipariş geçmişi bozulmasın diye SNAPSHOT (bkz. prisma/schema.prisma::OrderItem).
   productTitle: z.string(),
+  // SATILAN BİRİMİN SKU'su — satır varyasyonluysa `ProductVariant.sku`, değilse `Product.sku`.
+  // AYRI bir `variantSku` alanı BİLİNÇLİ olarak eklenmedi (§1.3, bağlayıcı).
   productSku: z.string().nullable(),
+  // Varyasyon kalıcı silinirse `SetNull`; `variantLabel` SNAPSHOT'ı KALIR.
+  variantId: z.string().uuid().nullable(),
+  variantLabel: z.string().nullable(),
   unitPriceCents: z.number().int(),
   quantity: z.number().int(),
   lineTotalCents: z.number().int(),
@@ -1231,6 +1325,10 @@ export const OrderSchema = z.object({
   subtotalCents: z.number().int(),
   discountCents: z.number().int(),
   taxCents: z.number().int(),
+  // §3 (.claude/architect-scope-ecommerce-pro-template.md, bağlayıcı) — checkout anında
+  // `computeShipping()` ile hesaplanan kargo bedelinin SNAPSHOT'ı. Kargo hiç yapılandırılmamışsa
+  // 0 kalır (bugünkü davranışla birebir aynı).
+  shippingCents: z.number().int(),
   totalCents: z.number().int(),
   errorSummary: z.string().nullable(),
   paidAt: z.string().nullable(),

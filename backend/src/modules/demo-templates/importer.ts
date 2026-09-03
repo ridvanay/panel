@@ -5,6 +5,7 @@ import { z } from "zod";
 import { DEMO_TEMPLATE_REGISTRY, getDemoTemplate } from "./registry";
 import { countNavItemsTotal, type DemoTemplateDefinition } from "./types";
 import { resolvePageBlockTokens } from "./lib/asset-tokens";
+import { deriveVariantKey, assertOptionValuesMatchAxes } from "../products/lib/variants";
 import { assertTemplateAssetFilesReadable, materializeTemplateAssets, removeSavedTemplateAssets, type SavedTemplateAsset } from "./lib/assets";
 import { PageBlockListSchema } from "../pages/pages.schemas";
 import { sanitizePageBlocks } from "../pages/lib/sanitize-blocks";
@@ -74,6 +75,11 @@ interface SlugPlan {
   sliderSlug: string | null;
   categorySlugByTemplateSlug: Map<string, string>;
   itemSlugByTemplateSlug: Map<string, string>;
+  // `.claude/architect-scope-ecommerce-pro-template.md` §4.4 — YENİ (ecommerce-pro genişlemesi).
+  // `commerce`/`extraPages` boşsa (`modern-architecture`) bu haritalar boş kalır, DAVRANIŞ DEĞİŞMEZ.
+  productCategorySlugByTemplateSlug: Map<string, string>;
+  productSlugByTemplateSlug: Map<string, string>;
+  extraPageSlugByTemplateSlug: Map<string, string>;
 }
 
 /**
@@ -128,7 +134,58 @@ async function resolveSlugPlan(app: FastifyInstance, template: DemoTemplateDefin
     itemSlugByTemplateSlug.set(item.slug, resolved);
   }
 
-  return { plan: { pageSlug, sliderSlug, categorySlugByTemplateSlug, itemSlugByTemplateSlug }, slugWarnings };
+  // §4.4 — ürün kategorileri/ürünler EKLENİR (mevcut kullanıcı içeriği asla silinmez, §6.5
+  // benzersizleştirmesi AYNI desen). `template.commerce === null` ise döngüler hiç çalışmaz.
+  const productCategorySlugByTemplateSlug = new Map<string, string>();
+  for (const category of template.commerce?.categories ?? []) {
+    const resolved = await findAvailableSlug(
+      async (candidate) => Boolean(await app.prisma.productCategory.findFirst({ where: { slug: candidate }, select: { id: true } })),
+      category.slug
+    );
+    if (resolved !== slugify(category.slug)) {
+      slugWarnings.push(`"${slugify(category.slug)}" zaten kullanılıyordu, ürün kategorisi "${resolved}" olarak oluşturuldu.`);
+    }
+    productCategorySlugByTemplateSlug.set(category.slug, resolved);
+  }
+
+  const productSlugByTemplateSlug = new Map<string, string>();
+  for (const product of template.commerce?.products ?? []) {
+    const resolved = await findAvailableSlug(
+      async (candidate) => Boolean(await app.prisma.product.findFirst({ where: { slug: candidate }, select: { id: true } })),
+      product.slug
+    );
+    if (resolved !== slugify(product.slug)) {
+      slugWarnings.push(`"${slugify(product.slug)}" zaten kullanılıyordu, ürün "${resolved}" olarak oluşturuldu.`);
+    }
+    productSlugByTemplateSlug.set(product.slug, resolved);
+  }
+
+  // §4.3 — ek (yasal/kurumsal) sayfalar da `Page` tablosunu paylaşır, ana sayfayla AYNI
+  // slug alanı/kuralı (§6.5).
+  const extraPageSlugByTemplateSlug = new Map<string, string>();
+  for (const extraPage of template.extraPages ?? []) {
+    const resolved = await findAvailableSlug(
+      async (candidate) => Boolean(await app.prisma.page.findFirst({ where: { slug: candidate }, select: { id: true } })),
+      extraPage.slug
+    );
+    if (resolved !== slugify(extraPage.slug)) {
+      slugWarnings.push(`"${slugify(extraPage.slug)}" zaten kullanılıyordu, sayfa "${resolved}" olarak oluşturuldu.`);
+    }
+    extraPageSlugByTemplateSlug.set(extraPage.slug, resolved);
+  }
+
+  return {
+    plan: {
+      pageSlug,
+      sliderSlug,
+      categorySlugByTemplateSlug,
+      itemSlugByTemplateSlug,
+      productCategorySlugByTemplateSlug,
+      productSlugByTemplateSlug,
+      extraPageSlugByTemplateSlug,
+    },
+    slugWarnings,
+  };
 }
 
 interface TransactionOutcome {
@@ -147,6 +204,18 @@ interface TransactionOutcome {
     socialLinks: number;
     slides: number;
   };
+  // §4.4 — ecommerce-pro genişlemesi. `DemoTemplateImportResultSchema`'nın (openapi/§6) parçası
+  // DEĞİLDİR — yalnızca audit metadata'sında kullanılır (bkz. `importDemoTemplate` sonu).
+  commerceCounts: {
+    productCategories: number;
+    products: number;
+    productVariants: number;
+    productDocuments: number;
+    extraPages: number;
+  };
+  // §4.4 — `commerce != null` ise `SiteSettings` kargo alanları ÜZERİNE YAZILIR; eski değerler
+  // burada taşınır (audit `metadata.previousShipping`). `commerce === null` ise `null`.
+  previousShipping: { shippingFlatFeeCents: number | null; freeShippingThresholdCents: number | null } | null;
 }
 
 /** §5.2 Faz 2 — TEK transaction, sıra BAĞLAYICI (2.1 → 2.11). */
@@ -188,20 +257,33 @@ async function writeTemplateInTransaction(
     update: { ...template.appearance },
   });
 
-  // 2.3 — §6.2, YALNIZCA bu 5 alan. `homePageId` BURADA DOKUNULMAZ (2.10'da, koşullu).
+  // 2.3 — §6.2, YALNIZCA bu 5 alan (+ §4.4: `commerce != null` ise 2 kargo alanı, 7'ye çıkar).
+  // "Önce" anlık görüntüsü YAZMADAN ÖNCE alınır — `homePageId` bu upsert'te DOKUNULMAZ (2.10'da,
+  // koşullu) ve kargo alanları YALNIZCA `template.commerce` doluysa `settingsFields`'e girer;
+  // bu yüzden upsert'ten önce/sonra okumak `homePageId` için EŞDEĞERDİR, kargo için ise ÖNCEKİ
+  // değeri (audit `metadata.previousShipping`, §4.4) kaybetmemek için ÖNCE okunması ZORUNLUDUR.
+  const settingsBeforeHome = await tx.siteSettings.findUnique({
+    where: { id: SETTINGS_ID },
+    select: { homePageId: true, shippingFlatFeeCents: true, freeShippingThresholdCents: true },
+  });
   const settingsFields = {
     siteName: template.settings.siteName,
     tagline: template.settings.tagline,
     headerCtaLabel: template.settings.headerCtaLabel,
     headerCtaHref: template.settings.headerCtaHref,
     footerCopyrightText: template.settings.footerCopyrightText,
+    ...(template.commerce
+      ? {
+          shippingFlatFeeCents: template.commerce.shippingFlatFeeCents,
+          freeShippingThresholdCents: template.commerce.freeShippingThresholdCents,
+        }
+      : {}),
   };
   await tx.siteSettings.upsert({
     where: { id: SETTINGS_ID },
     create: { id: SETTINGS_ID, ...SETTINGS_DEFAULTS, ...settingsFields },
     update: settingsFields,
   });
-  const settingsBeforeHome = await tx.siteSettings.findUnique({ where: { id: SETTINGS_ID }, select: { homePageId: true } });
 
   // 2.4 — NavigationItem TAMAMEN DEĞİŞTİRİLİR (kök → çocuk sırası ZORUNLU, FK ihlalini önler).
   await tx.navigationItem.deleteMany({});
@@ -288,6 +370,115 @@ async function writeTemplateInTransaction(
     }
   }
 
+  // 2.7a — Ürün kategorileri. EKLENİR (§4.4). `template.commerce === null` ise (modern-architecture)
+  // bu blok TAMAMEN atlanır — DAVRANIŞ DEĞİŞMEZ.
+  const productCategoryIdByTemplateSlug = new Map<string, string>();
+  let productCount = 0;
+  let productVariantCount = 0;
+  let productDocumentCount = 0;
+  if (template.commerce) {
+    for (const category of template.commerce.categories) {
+      const created = await tx.productCategory.create({
+        data: { name: category.name, slug: plan.productCategorySlugByTemplateSlug.get(category.slug)! },
+      });
+      productCategoryIdByTemplateSlug.set(category.slug, created.id);
+    }
+
+    // 2.7b — Ürünler + galeri + varyasyon + döküman. EKLENİR — `Order`/`OrderItem`/`User`/
+    // `siteUser` hiçbir satırı YAZILMAZ (§4.5, bilinçli KAPSAM DIŞI).
+    for (const product of template.commerce.products) {
+      const coverMediaId = product.coverAssetKey ? (assetKeyToMediaId.get(product.coverAssetKey) ?? null) : null;
+      const categoryId = product.categorySlug ? (productCategoryIdByTemplateSlug.get(product.categorySlug) ?? null) : null;
+
+      const createdProduct = await tx.product.create({
+        data: {
+          title: product.title,
+          slug: plan.productSlugByTemplateSlug.get(product.slug)!,
+          excerpt: product.excerpt,
+          descriptionHtml: sanitizeRichHtml(product.descriptionHtml),
+          priceCents: product.priceCents,
+          currency: product.currency,
+          discountPriceCents: product.discountPriceCents,
+          sku: product.sku,
+          stockQuantity: product.stockQuantity,
+          variantOptions: product.variantOptions as unknown as Prisma.InputJsonValue,
+          status: "PUBLISHED",
+          publishedAt: new Date(),
+          categoryId,
+          coverMediaId,
+          seoTitle: product.seoTitle,
+          seoDescription: product.seoDescription,
+          authorId: actorId,
+        },
+        select: { id: true, slug: true, translations: true },
+      });
+      productCount += 1;
+
+      await syncContentSlugs(tx, enabledLocales, "PRODUCT", createdProduct.id, createdProduct.slug, createdProduct.translations);
+
+      const galleryMediaIds = product.galleryAssetKeys.map((key) => assetKeyToMediaId.get(key)).filter((id): id is string => Boolean(id));
+      if (galleryMediaIds.length > 0) {
+        await tx.productImage.createMany({
+          data: galleryMediaIds.map((mediaId, order) => ({ productId: createdProduct.id, mediaId, order })),
+        });
+      }
+
+      for (let i = 0; i < product.variants.length; i++) {
+        const variant = product.variants[i]!;
+        const variantMediaId = variant.imageAssetKey ? (assetKeyToMediaId.get(variant.imageAssetKey) ?? null) : null;
+        await tx.productVariant.create({
+          data: {
+            productId: createdProduct.id,
+            variantKey: deriveVariantKey(variant.optionValues),
+            optionValues: variant.optionValues as unknown as Prisma.InputJsonValue,
+            sku: variant.sku,
+            priceCents: variant.priceCents,
+            discountPriceCents: variant.discountPriceCents,
+            stockQuantity: variant.stockQuantity,
+            mediaId: variantMediaId,
+            order: i,
+            isActive: variant.isActive,
+          },
+        });
+        productVariantCount += 1;
+      }
+
+      for (let i = 0; i < product.documents.length; i++) {
+        const doc = product.documents[i]!;
+        const mediaId = assetKeyToMediaId.get(doc.assetKey);
+        if (!mediaId) continue; // Faz 0'da zaten doğrulanmış olmalı — savunma derinliği.
+        await tx.productDocument.create({ data: { productId: createdProduct.id, mediaId, title: doc.title, order: i } });
+        productDocumentCount += 1;
+      }
+    }
+  }
+
+  // 2.7c — Ek (yasal/kurumsal) sayfalar. EKLENİR (§4.3/§4.4). Bu sayfaların `blocks`'u
+  // `asset:`/`ref:` token'ı TAŞIMAZ (şablon yazım kararı) — bu yüzden `resolvePageBlockTokens`
+  // ÇAĞRILMAZ, doğrudan §2 madde 3'ün iki katmanlı disiplini (Zod doğrula → sanitize → yaz)
+  // uygulanır.
+  let extraPageCount = 0;
+  for (const extraPage of template.extraPages ?? []) {
+    const validatedExtraBlocks = PageBlockListSchema.parse(extraPage.blocks);
+    const sanitizedExtraBlocks = sanitizePageBlocks(validatedExtraBlocks as unknown[]);
+    const createdExtraPage = await tx.page.create({
+      data: {
+        title: extraPage.title,
+        slug: plan.extraPageSlugByTemplateSlug.get(extraPage.slug)!,
+        status: "PUBLISHED",
+        blocks: sanitizedExtraBlocks as Prisma.InputJsonValue,
+        seoTitle: extraPage.seoTitle,
+        seoDescription: extraPage.seoDescription,
+        isLegalDocument: extraPage.isLegalDocument,
+        publishedAt: new Date(),
+        authorId: actorId,
+      },
+      select: { id: true, slug: true, translations: true },
+    });
+    await syncContentSlugs(tx, enabledLocales, "PAGE", createdExtraPage.id, createdExtraPage.slug, createdExtraPage.translations);
+    extraPageCount += 1;
+  }
+
   // 2.8 — Slider + Slide (order 0..n-1). EKLENİR.
   let sliderId: string | null = null;
   let slideCount = 0;
@@ -345,9 +536,10 @@ async function writeTemplateInTransaction(
     }
   }
 
-  // 2.9 — `ref:slider` çözümlemesi (gerçek `Slider.id` artık BİLİNİYOR) → Zod ile SON kez
-  // doğrula (§3.4 madde 2: (a) çöz → (b) doğrula → (c) yaz, TAM olarak bu noktada) → page.create.
-  const finalResolve = resolvePageBlockTokens(assetResolvedBlocks, EMPTY_ASSET_MAP, sliderId);
+  // 2.9 — `ref:slider`/`ref:product-category:<slug>` çözümlemesi (gerçek `Slider.id` VE
+  // `ProductCategory.id`'ler artık BİLİNİYOR) → Zod ile SON kez doğrula (§3.4 madde 2: (a) çöz
+  // → (b) doğrula → (c) yaz, TAM olarak bu noktada) → page.create.
+  const finalResolve = resolvePageBlockTokens(assetResolvedBlocks, EMPTY_ASSET_MAP, sliderId, productCategoryIdByTemplateSlug);
   if (finalResolve.unresolvedTokens.length > 0) {
     // Teorik olarak Faz 0'da yakalanmış olmalıydı — savunma derinliği.
     throw new ValidationError("Şablon içeriğinde çözülemeyen token bulundu.", { unresolvedTokens: finalResolve.unresolvedTokens });
@@ -404,6 +596,19 @@ async function writeTemplateInTransaction(
       socialLinks: template.socialLinks.length,
       slides: slideCount,
     },
+    commerceCounts: {
+      productCategories: productCategoryIdByTemplateSlug.size,
+      products: productCount,
+      productVariants: productVariantCount,
+      productDocuments: productDocumentCount,
+      extraPages: extraPageCount,
+    },
+    previousShipping: template.commerce
+      ? {
+          shippingFlatFeeCents: settingsBeforeHome?.shippingFlatFeeCents ?? null,
+          freeShippingThresholdCents: settingsBeforeHome?.freeShippingThresholdCents ?? null,
+        }
+      : null,
   };
 }
 
@@ -433,10 +638,17 @@ export async function importDemoTemplate(app: FastifyInstance, params: ImportDem
 
   // ---- Faz 0.3/0.4 — token "kuru koşu" (yalnızca ŞEKİL doğrulaması, gerçek değer YOK) --------
   const placeholderAssetMap = new Map(template.assets.map((asset) => [asset.key, PLACEHOLDER_ASSET_URL]));
+  // §4.2 — `ref:product-category:<slug>` FATAL/unresolved doğrulaması, `ref:slider` ile AYNI
+  // "kuru koşu" mantığı: yalnızca TEMPLATE'İN KENDİ `commerce.categories`'inde TANIMLI slug'lar
+  // placeholder UUID'ye çözülür; tanımsız bir slug (yazım hatası) burada YAKALANIR (422).
+  const placeholderCategoryMap = template.commerce
+    ? new Map(template.commerce.categories.map((category) => [category.slug, PLACEHOLDER_UUID]))
+    : null;
   const dryRun = resolvePageBlockTokens(
     template.page.blocks as unknown[],
     placeholderAssetMap,
-    template.slider ? PLACEHOLDER_UUID : null
+    template.slider ? PLACEHOLDER_UUID : null,
+    placeholderCategoryMap
   );
   if (dryRun.unresolvedTokens.length > 0) {
     throw new ValidationError("Şablon içeriğinde çözülemeyen token bulundu.", { unresolvedTokens: dryRun.unresolvedTokens });
@@ -456,6 +668,23 @@ export async function importDemoTemplate(app: FastifyInstance, params: ImportDem
     }
   }
 
+  // §4.3 — ek (yasal/kurumsal) sayfaların `blocks`'u da AYNI iki katmanlı disiplinden (§2 madde
+  // 3) geçirilir; bu sayfalar `asset:`/`ref:` token'ı TAŞIMADIĞI için token çözümlemesi GEREKMEZ.
+  for (const extraPage of template.extraPages ?? []) {
+    const extraShapeCheck = PageBlockListSchema.safeParse(extraPage.blocks);
+    if (!extraShapeCheck.success) {
+      throw new ValidationError(`Şablon ek sayfa ("${extraPage.slug}") içeriği doğrulamadan geçemedi.`, flattenZodIssues(extraShapeCheck.error.issues));
+    }
+  }
+
+  // §1.1/§1.4 — her varyasyonun `optionValues`'ı ürünün `variantOptions` eksen tanımıyla
+  // BİREBİR eşleşmeli (yazım hatası/eksik eksen değeri burada FATAL — 422, hiçbir yazma YOK).
+  for (const product of template.commerce?.products ?? []) {
+    for (const variant of product.variants) {
+      assertOptionValuesMatchAxes(variant.optionValues, product.variantOptions);
+    }
+  }
+
   // ---- Faz 0 (ek) — paket varlık dosyalarının varlığı/boyutu (yazma YOK) ----------------------
   await assertTemplateAssetFilesReadable(template.key, template.assets);
 
@@ -463,8 +692,18 @@ export async function importDemoTemplate(app: FastifyInstance, params: ImportDem
   if (template.portfolio.items.length > 0 && !(await isModuleEnabled(app, "portfolio"))) {
     warnings.push("Portföy modülü kapalı olduğu için içe aktarılan projeler sitede görünmeyecek. /admin/modules üzerinden açabilirsiniz.");
   }
+  // §4.4 son paragraf, [DTI] §6.6 deseni.
+  if ((template.commerce?.products.length ?? 0) > 0 && !(await isModuleEnabled(app, "products"))) {
+    warnings.push("Ürünler modülü kapalı olduğu için içe aktarılan ürünler sitede görünmeyecek. /admin/modules üzerinden açabilirsiniz.");
+  }
   if (existingImport && params.body.force) {
     warnings.push("Şablon daha önce uygulanmıştı; `force` ile ikinci bir kopya oluşturuldu. Önceki içerik SİLİNMEDİ.");
+  }
+  // §4.3 — compliance-agent'a bağlayıcı: yasal yer tutucu sayfa üreten şablonlarda kullanıcı
+  // AÇIKÇA uyarılmalı, "sessizce yayınlanan sahte hukuki metin" riskini önler.
+  const legalPageCount = (template.extraPages ?? []).filter((page) => page.isLegalDocument).length;
+  if (legalPageCount > 0) {
+    warnings.push(`${legalPageCount} yasal sayfa YER TUTUCU olarak oluşturuldu; yayına almadan önce içeriklerini doldurun.`);
   }
 
   // ---- Faz 1 — varlık materyalizasyonu (transaction DIŞINDA, DB yazma YOK) --------------------
@@ -476,7 +715,10 @@ export async function importDemoTemplate(app: FastifyInstance, params: ImportDem
   // edilmesi ZORUNLU (bkz. `mappers/index.ts::absolutizeMediaUrl`, aynı `env.PUBLIC_URL` mantığı).
   const assetUrlByKey = new Map(savedAssets.map((asset) => [asset.key, absolutizeMediaUrl(asset.url)]));
 
-  const assetResolved = resolvePageBlockTokens(template.page.blocks as unknown[], assetUrlByKey, null);
+  // `ref:product-category:` ERTELENİR (`null`) — gerçek `ProductCategory.id`'ler yalnızca Faz
+  // 2'de (transaction içinde, kategoriler oluşturulduktan SONRA) bilinir; `ref:slider` ile AYNI
+  // erteleme deseni (bkz. `lib/asset-tokens.ts::resolvePageBlockTokens` başlığı).
+  const assetResolved = resolvePageBlockTokens(template.page.blocks as unknown[], assetUrlByKey, null, null);
   if (assetResolved.unresolvedTokens.length > 0) {
     await removeSavedTemplateAssets(savedAssets, (paths) => app.log.warn({ paths }, "Demo şablon telafi: dosya silinemedi (Faz 1)"));
     throw new ValidationError("Şablon içeriğinde çözülemeyen token bulundu.", { unresolvedTokens: assetResolved.unresolvedTokens });
@@ -557,6 +799,9 @@ export async function importDemoTemplate(app: FastifyInstance, params: ImportDem
       createdSliderId: finalOutcome.sliderId,
       previousHomePageId: finalOutcome.previousHomePageId,
       counts: finalOutcome.counts,
+      // §4.4 — ecommerce-pro genişlemesi (audit-only, DemoTemplateImportResultSchema'nın DIŞINDA).
+      commerceCounts: finalOutcome.commerceCounts,
+      previousShipping: finalOutcome.previousShipping,
       warnings,
     },
     ipAddress: params.ip ?? null,

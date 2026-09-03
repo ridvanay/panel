@@ -1,5 +1,13 @@
 import { apiFetch, apiFetchPage } from "./client";
-import type { CreateMediaFolderRequest, Media, MediaFolder, MoveMediaResult, Page, UpdateMediaFolderRequest } from "./types";
+import type {
+  CreateMediaFolderRequest,
+  Media,
+  MediaFolder,
+  MediaTypeFilter,
+  MoveMediaResult,
+  Page,
+  UpdateMediaFolderRequest,
+} from "./types";
 
 /** `folderId` verilirse yükleme doğrudan o klasöre düşer (§10.11.4) — verilmezse "Kategorisiz". */
 export function uploadMedia(file: File, folderId?: string | null): Promise<Media> {
@@ -14,9 +22,14 @@ export function uploadMedia(file: File, folderId?: string | null): Promise<Media
  * = yalnızca "Kategorisiz", bir klasör UUID'si = yalnızca o klasördeki medya (özyinelemeli değil),
  * verilmezse filtre uygulanmaz (tüm kütüphane).
  */
-export function listMedia(params?: { cursor?: string; folderId?: string }): Promise<Page<Media>> {
+/**
+ * `type` — `.claude/architect-scope-ecommerce-pro-template.md` §2.2 madde 6: `MediaPicker`
+ * görsel modunda PDF göstermez, döküman modunda yalnızca PDF gösterir. Verilmezse (mevcut
+ * çağrı yerleri) filtre uygulanmaz — geriye dönük uyumluluk.
+ */
+export function listMedia(params?: { cursor?: string; folderId?: string; type?: MediaTypeFilter }): Promise<Page<Media>> {
   return apiFetchPage<Media>("/admin/media", {
-    query: { cursor: params?.cursor, limit: 100, folderId: params?.folderId },
+    query: { cursor: params?.cursor, limit: 100, folderId: params?.folderId, type: params?.type },
   });
 }
 

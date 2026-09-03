@@ -3,6 +3,15 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AddToCartButton } from "@/components/site/add-to-cart-button";
 import { CartProvider } from "@/context/cart-context";
+import type { Cart } from "@/lib/api/types";
+
+const NOT_CONFIGURED_SHIPPING: Cart["shipping"] = {
+  configured: false,
+  feeCents: 0,
+  thresholdCents: null,
+  remainingCents: null,
+  isFree: false,
+};
 
 /**
  * §10.9.3 Sepet + Stripe Checkout — "Stokta olmayan ürün sepete eklenemiyor / 'Tükendi' durumu
@@ -29,7 +38,13 @@ function renderButton(props: { productId: string; stockQuantity: number }) {
 
 describe("AddToCartButton", () => {
   it("stockQuantity 0 iken buton devre dışıdır, 'Tükendi' yazar ve tıklanamaz", async () => {
-    vi.mocked(cartApi.getCart).mockResolvedValue({ items: [], currency: null, subtotalCents: 0 });
+    vi.mocked(cartApi.getCart).mockResolvedValue({
+      items: [],
+      currency: null,
+      subtotalCents: 0,
+      shipping: NOT_CONFIGURED_SHIPPING,
+      totalCents: 0,
+    });
 
     renderButton({ productId: "product-1", stockQuantity: 0 });
 
@@ -42,13 +57,21 @@ describe("AddToCartButton", () => {
   });
 
   it("stokta varken buton aktiftir ve tıklanınca addCartItem çağrılır", async () => {
-    vi.mocked(cartApi.getCart).mockResolvedValue({ items: [], currency: null, subtotalCents: 0 });
+    vi.mocked(cartApi.getCart).mockResolvedValue({
+      items: [],
+      currency: null,
+      subtotalCents: 0,
+      shipping: NOT_CONFIGURED_SHIPPING,
+      totalCents: 0,
+    });
     vi.mocked(cartApi.addCartItem).mockResolvedValue({
       items: [
         {
           id: "item-1",
           productId: "product-1",
           product: { id: "product-1", title: "Ürün", slug: "urun", coverImageUrl: null, stockQuantity: 5 },
+          variantId: null,
+          variantLabel: null,
           quantity: 1,
           frozenUnitPriceCents: 1000,
           currentPriceCents: 1000,
@@ -57,6 +80,8 @@ describe("AddToCartButton", () => {
       ],
       currency: "TRY",
       subtotalCents: 1000,
+      shipping: NOT_CONFIGURED_SHIPPING,
+      totalCents: 1000,
     });
 
     renderButton({ productId: "product-1", stockQuantity: 5 });
@@ -71,7 +96,13 @@ describe("AddToCartButton", () => {
   });
 
   it("addCartItem hata fırlatırsa (ör. eş zamanlı stok tükenmesi) kullanıcıya hata mesajı gösterilir", async () => {
-    vi.mocked(cartApi.getCart).mockResolvedValue({ items: [], currency: null, subtotalCents: 0 });
+    vi.mocked(cartApi.getCart).mockResolvedValue({
+      items: [],
+      currency: null,
+      subtotalCents: 0,
+      shipping: NOT_CONFIGURED_SHIPPING,
+      totalCents: 0,
+    });
     vi.mocked(cartApi.addCartItem).mockRejectedValue(new Error("Ürün tükendi."));
 
     renderButton({ productId: "product-1", stockQuantity: 1 });

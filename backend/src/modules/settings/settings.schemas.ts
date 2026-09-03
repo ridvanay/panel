@@ -11,6 +11,10 @@ export const UpdateSiteSettingsRequestSchema = z.object({
   homePageId: z.string().uuid().nullable().optional(),
   // §Faz 4 Site Şablonu — bkz. prisma/schema.prisma::SiteSettings.siteTemplate (db-agent).
   siteTemplate: z.enum(["SHOWCASE", "COMMERCE", "PORTFOLIO"]).optional(),
+  // §3 (.claude/architect-scope-ecommerce-pro-template.md, bağlayıcı) — mağaza geneli SABİT
+  // kargo bedeli + ücretsiz kargo eşiği. `null` = kargo hiç hesaplanmaz/eşik yok.
+  shippingFlatFeeCents: z.number().int().min(0).max(100_000_000).nullable().optional(),
+  freeShippingThresholdCents: z.number().int().min(0).max(100_000_000).nullable().optional(),
 });
 
 /** `lib/permissions-matrix.ts::PERMISSIONS_MATRIX` şeklinin gevşek (literal'e bağlı olmayan) Zod karşılığı. */
