@@ -41,11 +41,37 @@ export function detectImageMimeType(buffer: Buffer): DetectedMimeType {
   return { mimeType: null, isSvg: false };
 }
 
+// §2.2 (.claude/architect-scope-ecommerce-pro-template.md, bağlayıcı) — PDF magic byte'ı
+// (`%PDF-`, ilk 5 bayt). Görsel tespiti (`detectImageMimeType`) ile AYNI dosyada, AYNI desende:
+// içerikten tespit, beyandan DEĞİL. `detectImageMimeType`'ın adı/sözleşmesi DEĞİŞMEDİ — PDF
+// desteği aşağıdaki `detectUploadMimeType()` sarmalayıcısıyla eklendi.
+const PDF_MAGIC_BYTES = Buffer.from([0x25, 0x50, 0x44, 0x46, 0x2d]);
+
+export function detectPdfMimeType(buffer: Buffer): DetectedMimeType {
+  if (buffer.length >= PDF_MAGIC_BYTES.length && buffer.subarray(0, PDF_MAGIC_BYTES.length).equals(PDF_MAGIC_BYTES)) {
+    return { mimeType: "application/pdf", isSvg: false };
+  }
+  return { mimeType: null, isSvg: false };
+}
+
+/**
+ * Görsel + PDF ikisini birden tespit eden TEK sarmalayıcı — `POST /admin/media` gibi hem görsel
+ * hem döküman kabul eden uçlar bunu çağırır. `detectImageMimeType`'ın kendisi ve mevcut
+ * çağıranları (ör. `import.worker.ts`, yalnızca görsel bekler) DEĞİŞMEDEN kalır — ikinci bir
+ * tespit modülü YAZILMADI, aynı dosyadan geçen tek kod yolu korunur (bkz. dosya başı açıklaması).
+ */
+export function detectUploadMimeType(buffer: Buffer): DetectedMimeType {
+  const image = detectImageMimeType(buffer);
+  if (image.mimeType) return image;
+  return detectPdfMimeType(buffer);
+}
+
 const MIME_TO_EXTENSION: Record<string, string> = {
   "image/jpeg": ".jpg",
   "image/png": ".png",
   "image/gif": ".gif",
   "image/webp": ".webp",
+  "application/pdf": ".pdf",
 };
 
 /**
@@ -58,4 +84,15 @@ const MIME_TO_EXTENSION: Record<string, string> = {
  */
 export function extensionForMimeType(mimeType: string): string {
   return MIME_TO_EXTENSION[mimeType] ?? "";
+}
+
+/** Bir uzantının (`extensionForMimeType`'tan gelen, ör. `.jpg`) GÖRSEL bir türe mi ait olduğunu
+ * söyler — `plugins/uploads.ts`'in görsel OLMAYAN türlerde (şu an yalnızca `.pdf`) `Content-
+ * Disposition: attachment`/`X-Content-Type-Options: nosniff` başlıklarını eklemesi için kullanılır. */
+export const IMAGE_EXTENSIONS = new Set([".jpg", ".png", ".gif", ".webp"]);
+
+/** `Media.mimeType`nin görsel öneki (`image/`) taşıyıp taşımadığını söyler — görsel bekleyen FK
+ * slotlarının (ör. `Product.coverMediaId`, `ProductImage.mediaId`) tür karışması kapısı. */
+export function isImageMimeType(mimeType: string): boolean {
+  return mimeType.startsWith("image/");
 }

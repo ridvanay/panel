@@ -744,6 +744,9 @@ export interface MoveMediaRequest {
   folderId: string | null;
 }
 
+/** `GET /admin/media?type=...` — `"image"` sadece `image/*`, `"document"` sadece `application/pdf` döner. */
+export type MediaTypeFilter = "image" | "document";
+
 export interface MoveMediaResult {
   folderId: string | null;
   requestedCount: number;
@@ -791,6 +794,80 @@ export interface AddProductImageRequest {
   mediaId: string;
 }
 
+/**
+ * Varyasyon EKSENİ tanımı (ör. "Renk") — `Product.variantOptions` JSON kolonu. Bkz.
+ * `.claude/architect-scope-ecommerce-pro-template.md` §1.1: eksen tanımı JSON, kombinasyon
+ * (`ProductVariant`) TABLO. En fazla 2 eksen, eksen başına en fazla 12 değer (backend Zod ile
+ * zorlar, burada TEKRARLANMAZ).
+ */
+export interface ProductVariantOptionValue {
+  value: string;
+  /** `type: "SWATCH"` ise dolu, `"TEXT"` ise `null`. */
+  swatchHex: string | null;
+}
+
+export interface ProductVariantOption {
+  name: string;
+  type: "SWATCH" | "TEXT";
+  values: ProductVariantOptionValue[];
+}
+
+/**
+ * Tek bir eksen kombinasyonu (ör. Renk=Antrasit + Beden=L) — stok/fiyat/FK taşıdığı için
+ * `ProductVariant` TABLOSUNDAN gelir (§1.1). `variantKey`/`label` sunucu türetir, istemci
+ * ASLA göndermez.
+ */
+export interface ProductVariant {
+  id: string;
+  /** Sunucu türetir (ör. "beden:l|renk:antrasit") — istekte GÖNDERİLMEZ. */
+  variantKey: string;
+  /** Anahtarlar `Product.variantOptions[].name` ile BİREBİR eşleşir. */
+  optionValues: Record<string, string>;
+  /** Sunucu türetir (ör. "Antrasit / L"). */
+  label: string;
+  sku: string | null;
+  /** `null` = `Product.priceCents` MİRAS ALINIR (mutlak fiyat, delta DEĞİL). */
+  priceCents: number | null;
+  discountPriceCents: number | null;
+  /** Varyasyonlu üründe TEK stok doğruluk kaynağı. */
+  stockQuantity: number;
+  media: Media | null;
+  order: number;
+  /** `false` → PDP'de seçici üstü çizili gösterilir ve sepete eklenemez (409). */
+  isActive: boolean;
+}
+
+/** `POST/PATCH /admin/products/:productId/variants[/:variantId]` gövdesi. */
+export interface UpsertProductVariantRequest {
+  /** Yalnızca `POST`'ta ZORUNLU — `PATCH`'te değiştirilemez (gönderilirse 422). */
+  optionValues?: Record<string, string>;
+  sku?: string | null;
+  priceCents?: number | null;
+  discountPriceCents?: number | null;
+  stockQuantity?: number;
+  mediaId?: string | null;
+  order?: number;
+  isActive?: boolean;
+}
+
+/**
+ * Ürüne bağlı teknik döküman (PDF) — `ProductImage` ile AYNI sıralı join tablosu deseni; URL/
+ * boyut burada KOPYALANMAZ, `media`'dan okunur.
+ */
+export interface ProductDocument {
+  id: string;
+  /** Boşsa `media.filename` kullanılır. */
+  title: string;
+  media: Media;
+  order: number;
+}
+
+/** `POST /admin/products/:productId/documents` gövdesi — `mediaId` `application/pdf` DEĞİLSE 422. */
+export interface AddProductDocumentRequest {
+  mediaId: string;
+  title?: string;
+}
+
 export interface Product {
   id: string;
   title: string;
@@ -809,6 +886,18 @@ export interface Product {
   category: ProductCategory | null;
   coverMedia: Media | null;
   images: ProductImage[];
+  /**
+   * Varyasyon EKSENLERİ tanımı. BOŞ dizi = ürün varyasyonsuzdur. Bkz.
+   * `.claude/architect-scope-ecommerce-pro-template.md` §1.
+   */
+  variantOptions: ProductVariantOption[];
+  /**
+   * Eksen kombinasyonları. **BOŞ DEĞİLSE satın alınabilir birim VARYASYONDUR** ve stok/fiyat
+   * varyasyondan okunur; `stockQuantity` bu ürün için YOK SAYILIR (§1.2).
+   */
+  variants: ProductVariant[];
+  /** Teknik döküman (PDF) listesi. */
+  documents: ProductDocument[];
   seoTitle: string | null;
   seoDescription: string | null;
   ogTitle: string | null;
@@ -843,6 +932,8 @@ export interface CreateProductRequest {
   discountPriceCents?: number | null;
   sku?: string | null;
   stockQuantity?: number;
+  /** Verilmezse boş dizi (varyasyonsuz ürün). Varyasyon SATIRLARI ayrı uçtan eklenir. */
+  variantOptions?: ProductVariantOption[];
   status?: ContentStatus;
   categoryId?: string | null;
   coverMediaId?: string | null;
@@ -882,6 +973,11 @@ export interface UpdateProductRequest {
   translations?: ContentTranslations;
   authorId?: string | null;
   scheduledAt?: string | null;
+  /**
+   * Eksen tanımlarını TAMAMEN DEĞİŞTİRİR (tam-replace). Mevcut `ProductVariant` satırlarından
+   * herhangi birinin `optionValues`'ı yeni tanımla uyuşmuyorsa istek `409 CONFLICT` döner.
+   */
+  variantOptions?: ProductVariantOption[];
 }
 
 /** Admin'in elle stok düzeltmesi — `PATCH /admin/products/:productId/stock`. */
@@ -1031,6 +1127,10 @@ export interface CartItem {
   id: string;
   productId: string;
   product: CartProduct;
+  /** Ürünün varyasyonu varsa ZORUNLU; yoksa daima `null`. */
+  variantId: string | null;
+  /** SNAPSHOT (ör. "Antrasit / L") — `variantId` `null` iken de `null`. */
+  variantLabel: string | null;
   quantity: number;
   /** Sepete eklendiği andaki birim fiyat — güncel fiyattan (`currentPriceCents`) farklıysa UI uyarı gösterir. */
   frozenUnitPriceCents: number;
@@ -1038,15 +1138,38 @@ export interface CartItem {
   lineTotalCents: number;
 }
 
+/**
+ * Kargo hesabı SUNUCUDA, TEK bir yardımcıda (`backend/src/lib/shipping.ts`) yapılır — frontend
+ * para matematiğini TEKRARLAMAZ. `configured: false` ise arayüz kargo satırı/çubuğu HİÇ
+ * göstermez (bkz. `.claude/design-notes-ecommerce-storefront.md` §5).
+ */
+export interface CartShipping {
+  configured: boolean;
+  /** Uygulanacak kargo bedeli — eşik aşıldıysa 0. */
+  feeCents: number;
+  thresholdCents: number | null;
+  /** Ücretsiz kargoya kalan tutar (kuruş) — eşik aşıldıysa 0, eşik tanımsızsa `null`. */
+  remainingCents: number | null;
+  isFree: boolean;
+}
+
 export interface Cart {
   items: CartItem[];
   /** Sepet boşken `null` olabilir. */
   currency: string | null;
   subtotalCents: number;
+  shipping: CartShipping;
+  /** `subtotalCents + shipping.feeCents`. Kargo yapılandırılmamışsa `subtotalCents`'e EŞİTTİR. */
+  totalCents: number;
 }
 
 export interface AddCartItemRequest {
   productId: string;
+  /**
+   * Ürünün EN AZ BİR varyasyonu varsa ZORUNLUDUR (eksikse 422); varyasyonsuz üründe
+   * gönderilirse 422.
+   */
+  variantId?: string | null;
   /** 1-99 aralığı — backend `AddCartItemSchema.quantity`. */
   quantity: number;
 }

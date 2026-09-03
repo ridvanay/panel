@@ -9,6 +9,7 @@ import type {
 import type { SocialPlatform } from "@prisma/client";
 import type { SliderLayer } from "../sliders/lib/layers";
 import type { UpdateSiteAppearanceRequest } from "../appearance/appearance.schemas";
+import type { ProductVariantOption } from "../products/lib/variants";
 
 /**
  * `.claude/architect-scope-demo-template-import.md` §3 — `DemoTemplateDefinition` şeması
@@ -29,11 +30,19 @@ import type { UpdateSiteAppearanceRequest } from "../appearance/appearance.schem
  * §3.3 — üretilecek kayıt hacmi üst sınırları (bağlayıcı)
  * ------------------------------------------------------------------------------------------- */
 
-export const MAX_TEMPLATE_ASSETS = 24;
+// `.claude/architect-scope-ecommerce-pro-template.md` §4.6 — [DTI]'ye resmi tadilat: 24 → 40
+// (8 ürün × kapak+galeri + varyasyon görselleri + PDF'ler + kategori kartları).
+// `MAX_TEMPLATE_ASSET_BYTES` (512 KB/dosya) DEĞİŞMEDİ.
+export const MAX_TEMPLATE_ASSETS = 40;
 export const MAX_TEMPLATE_ASSET_BYTES = 512 * 1024; // dosya BAŞINA
 export const MAX_TEMPLATE_PORTFOLIO_ITEMS = 12;
 export const MAX_TEMPLATE_NAV_ITEMS = 30; // kök + alt, TOPLAM
 export const MAX_TEMPLATE_FOOTER_COLUMNS = 6;
+// §4.6 — YENİ tavanlar (ecommerce-pro genişlemesi).
+export const MAX_TEMPLATE_PRODUCTS = 12;
+export const MAX_TEMPLATE_PRODUCT_VARIANTS = 12;
+export const MAX_TEMPLATE_PRODUCT_DOCUMENTS = 3;
+export const MAX_TEMPLATE_EXTRA_PAGES = 8;
 
 /* ---------------------------------------------------------------------------------------------
  * §3 — `DemoTemplateAsset`
@@ -46,6 +55,14 @@ export interface DemoTemplateAsset {
   file: string;
   /** `Media.altText` — a11y için ZORUNLU, boş olamaz. */
   altText: string;
+  /**
+   * `.claude/architect-scope-ecommerce-pro-template.md` §4.1 — varsayılan `"image"`.
+   * `"document"` → dosya `application/pdf` olarak tespit edilir (`detectPdfMimeType`),
+   * `imageSize()` ÇAĞRILMAZ (width/height `null` kalır). Görsel bekleyen FK slotları
+   * (`coverAssetKey`/`galleryAssetKeys`/`variants[].imageAssetKey`) `kind: "document"`
+   * varlıklara referans VEREMEZ — bkz. `assertDemoTemplateCaps` doğrulaması.
+   */
+  kind?: "image" | "document";
 }
 
 /* ---------------------------------------------------------------------------------------------
@@ -189,6 +206,32 @@ export interface DemoFeaturedPortfolioNode extends DemoBaseNode {
   data: { heading?: string; limit: number; categoryId?: string };
 }
 
+/**
+ * `.claude/architect-scope-ecommerce-pro-template.md` §4.2 — frontend `FeaturedProductsBlock`
+ * (mevcut, `lib/page-builder/types.ts`) ile BİREBİR yapısal kopya. YENİ bir blok tipi DEĞİL.
+ * `categoryId` `ref:product-category:<slug>` token'ı kabul eder — importer bunu gerçek
+ * `ProductCategory.id`'ye çözer (bkz. `lib/asset-tokens.ts`).
+ */
+export interface DemoFeaturedProductsNode extends DemoBaseNode {
+  type: "featured-products";
+  data: { heading?: string; limit: number; categoryId?: string };
+}
+
+/**
+ * §4.2 — frontend `ImageBlock` (mevcut) ile BİREBİR yapısal kopya. `url` `asset:<key>` token'ı
+ * kabul eder (§3.4 [DTI] genel mekanizması, `container.background.value` ile AYNI çözümleyici).
+ */
+export interface DemoImageNode extends DemoBaseNode {
+  type: "image";
+  data: {
+    url: string;
+    alt: string;
+    caption?: string;
+    radius?: "none" | "sm" | "md" | "lg" | "full";
+    lightbox?: boolean;
+  };
+}
+
 /** Ağaçtaki herhangi bir düğüm — bu registry'nin FİİLEN kullandığı alt küme (bkz. dosya başlığı). */
 export type PageNode =
   | DemoContainerNode
@@ -200,7 +243,61 @@ export type PageNode =
   | DemoCounterNode
   | DemoCtaNode
   | DemoContactFormNode
-  | DemoFeaturedPortfolioNode;
+  | DemoFeaturedPortfolioNode
+  | DemoFeaturedProductsNode
+  | DemoImageNode;
+
+/* ---------------------------------------------------------------------------------------------
+ * `.claude/architect-scope-ecommerce-pro-template.md` §4.1 — `DemoTemplateProduct` /
+ * `DemoTemplateExtraPage` (bağlayıcı, [DTI]'nin BİREBİR genişlemesi).
+ * ------------------------------------------------------------------------------------------- */
+
+export interface DemoTemplateProduct {
+  title: string;
+  slug: string;
+  excerpt: string | null;
+  descriptionHtml: string;
+  priceCents: number;
+  currency: string;
+  discountPriceCents: number | null;
+  sku: string | null;
+  /** Varyasyonsuz üründe stok; varyasyonlu üründe 0 yazılır ve YOK SAYILIR (§1.2). */
+  stockQuantity: number;
+  categorySlug: string | null;
+  /** `assets[].key` referansı → `Product.coverMediaId` (GERÇEK Media FK). */
+  coverAssetKey: string | null;
+  /** `assets[].key` referansları → `ProductImage.mediaId` (GERÇEK Media FK). */
+  galleryAssetKeys: string[];
+  /** [] = varyasyonsuz. `Product.variantOptions` — eksen TANIMI (§1.1). */
+  variantOptions: ProductVariantOption[];
+  variants: {
+    optionValues: Record<string, string>;
+    sku: string | null;
+    /** null = ürünün fiyatını MİRAS AL (§1.5). */
+    priceCents: number | null;
+    discountPriceCents: number | null;
+    stockQuantity: number;
+    /** `assets[].key` referansı → `ProductVariant.mediaId` (GERÇEK Media FK). */
+    imageAssetKey: string | null;
+    isActive: boolean;
+  }[];
+  /** `assets[].key` referansı `kind: "document"` bir varlığa işaret ETMELİDİR. */
+  documents: { title: string; assetKey: string }[];
+  seoTitle: string | null;
+  seoDescription: string | null;
+  /** [DTI] §6.5 — şablon YALNIZCA PUBLISHED üretir. */
+  status: "PUBLISHED";
+}
+
+export interface DemoTemplateExtraPage {
+  title: string;
+  slug: string;
+  seoTitle: string | null;
+  seoDescription: string | null;
+  blocks: PageNode[];
+  /** true → `Page.isLegalDocument`. §4.3'teki ZORUNLU yer tutucu uyarı cümlesi kuralı geçerli olur. */
+  isLegalDocument: boolean;
+}
 
 /* ---------------------------------------------------------------------------------------------
  * §3 — `DemoTemplateDefinition` (ana şema)
@@ -308,6 +405,22 @@ export interface DemoTemplateDefinition {
      *  ile BİRLİKTE değerlendirilir — bkz. `importer.ts`, ikisi de true ise ana sayfa olur). */
     setAsHomePage: boolean;
   };
+
+  /**
+   * `.claude/architect-scope-ecommerce-pro-template.md` §4.1 — `null` = bu şablon ticaret
+   * verisi getirmiyor (`modern-architecture: null`, DAVRANIŞ DEĞİŞMEZ — bu dal hiçbir yeni
+   * satır YAZMAZ). `shippingFlatFeeCents`/`freeShippingThresholdCents` §3.2 — `SiteSettings`'e
+   * YAZILIR (§4.4: yıkıcılık matrisi eki, commerce != null ise ÜZERİNE YAZILIR).
+   */
+  commerce: {
+    shippingFlatFeeCents: number | null;
+    freeShippingThresholdCents: number | null;
+    categories: { name: string; slug: string }[];
+    products: DemoTemplateProduct[];
+  } | null;
+
+  /** §4.3 — ana sayfa DIŞINDAKİ sayfalar (yasal yer tutucular + kurumsal sayfalar). `modern-architecture` için []. */
+  extraPages: DemoTemplateExtraPage[];
 }
 
 /* ---------------------------------------------------------------------------------------------
@@ -347,15 +460,22 @@ export const DemoTemplateCapsSchema = z.object({
   }),
   footerColumns: z.array(z.unknown()).max(MAX_TEMPLATE_FOOTER_COLUMNS, `En fazla ${MAX_TEMPLATE_FOOTER_COLUMNS} footer sütunu olabilir.`),
   portfolioItems: z.array(z.unknown()).max(MAX_TEMPLATE_PORTFOLIO_ITEMS, `En fazla ${MAX_TEMPLATE_PORTFOLIO_ITEMS} portföy öğesi olabilir.`),
+  // `.claude/architect-scope-ecommerce-pro-template.md` §4.6 — YENİ tavanlar.
+  products: z.array(z.unknown()).max(MAX_TEMPLATE_PRODUCTS, `En fazla ${MAX_TEMPLATE_PRODUCTS} ürün olabilir.`),
+  extraPages: z.array(z.unknown()).max(MAX_TEMPLATE_EXTRA_PAGES, `En fazla ${MAX_TEMPLATE_EXTRA_PAGES} ek sayfa olabilir.`),
 });
 
 /** `registry.ts` her tanımı module-yükleme anında BUNUNLA doğrular — ihlal, uygulamanın açılışında/ilk importta patlar ("derlenmez/testten geçmez", §3.3). */
 export function assertDemoTemplateCaps(definition: DemoTemplateDefinition): void {
+  const products = definition.commerce?.products ?? [];
+
   const result = DemoTemplateCapsSchema.safeParse({
     assets: definition.assets,
     navigation: definition.navigation,
     footerColumns: definition.footer.columns,
     portfolioItems: definition.portfolio.items,
+    products,
+    extraPages: definition.extraPages,
   });
   if (!result.success) {
     const messages = result.error.issues.map((issue) => issue.message).join("; ");
@@ -368,5 +488,45 @@ export function assertDemoTemplateCaps(definition: DemoTemplateDefinition): void
       throw new Error(`Demo şablon tanımı "${definition.key}": yinelenen assets[].key: "${asset.key}".`);
     }
     keys.add(asset.key);
+  }
+
+  // §4.6 — ürün BAŞINA varyasyon/döküman tavanları (toplam ürün sayısı üstteki Zod şemasında).
+  for (const product of products) {
+    if (product.variants.length > MAX_TEMPLATE_PRODUCT_VARIANTS) {
+      throw new Error(
+        `Demo şablon tanımı "${definition.key}": ürün "${product.slug}" en fazla ${MAX_TEMPLATE_PRODUCT_VARIANTS} varyasyona sahip olabilir.`
+      );
+    }
+    if (product.documents.length > MAX_TEMPLATE_PRODUCT_DOCUMENTS) {
+      throw new Error(
+        `Demo şablon tanımı "${definition.key}": ürün "${product.slug}" en fazla ${MAX_TEMPLATE_PRODUCT_DOCUMENTS} dökümana sahip olabilir.`
+      );
+    }
+  }
+
+  // Tür karışması güvenlik denetimi (§2.2 madde 5'in şablon-yazım-zamanı yansıması): görsel
+  // bekleyen FK slotları `kind: "document"` bir varlığa, `documents[].assetKey` ise
+  // `kind !== "document"` bir varlığa işaret EDEMEZ.
+  if (definition.commerce) {
+    const assetKindByKey = new Map(definition.assets.map((asset) => [asset.key, asset.kind ?? "image"]));
+    for (const product of products) {
+      const imageKeys = [
+        product.coverAssetKey,
+        ...product.galleryAssetKeys,
+        ...product.variants.map((variant) => variant.imageAssetKey),
+      ].filter((key): key is string => Boolean(key));
+      for (const key of imageKeys) {
+        if (assetKindByKey.get(key) === "document") {
+          throw new Error(`Demo şablon tanımı "${definition.key}": "${key}" bir döküman varlığıdır, görsel FK alanında kullanılamaz.`);
+        }
+      }
+      for (const doc of product.documents) {
+        if (assetKindByKey.get(doc.assetKey) !== "document") {
+          throw new Error(
+            `Demo şablon tanımı "${definition.key}": "${doc.assetKey}" bir döküman varlığı değil (documents[] yalnızca kind:"document" kabul eder).`
+          );
+        }
+      }
+    }
   }
 }

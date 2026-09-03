@@ -1833,6 +1833,78 @@ ayrıca sıralı bir galeri join tablosu (`ProductImage`/`PortfolioImage`,
   (drag-drop reorder) ucu bu fazda hâlâ YOKTUR — yalnızca ekleme/kaldırma
   desteklenir, mevcut sıra korunur.
 
+**Varyasyon modeli (v2, `ecommerce-pro` genişletmesi) — eksen tanımı JSON, kombinasyon
+TABLO (melez karar):** bağlayıcı kaynak `.claude/architect-scope-ecommerce-pro-template.md`
+§1. Eksen TANIMI (`Product.variantOptions Json`, ör. `[{name:"Renk",type:"SWATCH",
+values:[...]}]`, en fazla **2 eksen**, eksen başına en fazla **12 değer**) `Product`'ın diğer
+serbest-biçimli JSON alanlarıyla (`translations`, `Page.blocks`) AYNI sınıftır — kimse ona
+FK vermez, sorgulanmaz. Satılabilir KOMBİNASYON ise ayrı bir tablodur, `ProductVariant`
+(`variantKey`: eksen adları slugify + alfabetik sıralı DETERMİNİSTİK anahtar,
+`@@unique([productId, variantKey])`; `optionValues Json`; `sku`/`priceCents`/
+`discountPriceCents`/`stockQuantity`/`mediaId`) — bu satır stok tutar, para taşır, FK ile
+referans edilir (`CartItem`/`OrderItem`) ve transaction içinde ATOMİK güncellenir; JSON'da
+stok tutmak webhook stok düşürme akışının Serializable korumasını (aşağıda) doğrudan
+bozardı. Ürün başına en fazla **60 varyasyon** kabul edilir. **Denormalize
+`Product.hasVariants` bayrağı BİLİNÇLİ olarak YOKTUR** — "varyasyonu var mı" bilgisi
+`variants`/`_count.variants`'tan TÜRETİLİR.
+
+Stok **"satılan seviyede"** yaşar (bağlayıcı, tek cümlelik değişmez): bir ürünün en az bir
+`ProductVariant` satırı varsa satın alınabilir birim VARYASYONDUR, stok/fiyat VARYASYONDAN
+okunur ve `Product.stockQuantity` o ürün için YOK SAYILIR; hiç varyasyonu yoksa mevcut
+davranış BİREBİR korunur. Varyasyonlu üründe admin arayüzü ürün-seviyesi stok alanını
+salt-okunur gösterir; `PATCH /admin/products/{id}/stock` böyle bir üründe **`409
+CONFLICT`** döner (sessizce yok sayılan bir yazma yerine). Fiyat çözümlemesi TEK üretim
+noktasındadır: `backend/src/lib/product-pricing.ts::resolveUnitPriceCents` —
+`ProductVariant.priceCents = null` ürünün fiyatını MİRAS ALIR, dolu ise MUTLAK fiyattır
+(fark/delta DEĞİL, indirimli fiyatla birleşince negatif tutar üretebilirdi); sepete ekleme
+(fiyat dondurma), sepet DTO'su (`currentPriceCents`) ve checkout'un taze okuması **ÜÇÜ DE**
+bu tek fonksiyonu çağırır. Stok düşürme, mevcut `runSerializable` (§10.9.3) paterni İÇİNDE
+dallanır — okuma ve düşürme AYNI transaction'da kalır: `variantId` doluysa
+`ProductVariant.stockQuantity`, boşsa mevcut `Product.stockQuantity` düşer.
+
+`CartItem`/`OrderItem` `variantId String?` taşır (sırasıyla `onDelete: Cascade`/`SetNull`);
+sepet benzersizliği `@@unique([cartId, productId])`'den `@@unique([cartId, productId,
+variantId])`'e genişledi. PostgreSQL'de `NULL` değerler unique kısıtında birbirine eşit
+SAYILMADIĞI için (varyasyonsuz bir ürünün iki kez sepete yazılabilmesi riski), bu zayıflama
+BİLİNÇLİ kabul edildi ve UYGULAMA katmanında telafi edilir: `POST /cart/items` arama
+anahtarı `(productId, variantId ?? null)` olur. Kısmi (partial) unique index BİLİNÇLİ
+olarak EKLENMEDİ — depoda elle yazılmış SQL migration'ı yoktur, bu disiplin bir demo
+şablonu uğruna bozulmadı. `OrderItem.variantLabel String?` SNAPSHOT'tır (ör.
+`"Antrasit / L"`); `OrderItem.productSku` **satılan birimin** (varsa varyasyonun) SKU'sunu
+taşır — ayrı bir `variantSku` kolonu YOKTUR.
+
+**Ürün teknik dökümanları (PDF) — `ProductDocument` tablosu, `Product.documents Json`
+DEĞİL:** `ProductImage`'ın AYNI sıralı join-tablo paterni (`@@unique([productId,
+mediaId])`, `onDelete: Cascade`) — döküman yüklenmiş bir dosyaya (`Media`) işaret eder,
+URL/boyut KOPYALANMAZ, `Media.url`/`Media.sizeBytes`'tan okunur. PDF, medya boru hattına
+TEK kapıdan girer: `lib/mime-detect.ts` içindeki tespit `%PDF-` magic byte'ıyla (dosya
+UZANTI BEYANINDAN DEĞİL, içerikten tespit) genişletildi (`detectUploadMimeType()`
+sarmalayıcısı; `detectImageMimeType`'ın adı/sözleşmesi DEĞİŞMEDİ), SVG reddi ([DTI] §4.1)
+DELİNMEDİ. Görsel bekleyen HİÇBİR FK slotu (`coverMediaId`, `ProductImage`, `PortfolioItem`/
+`PortfolioImage`, `Slide.bgMediaId`, `ProductVariant.mediaId` vb.) PDF kabul ETMEZ (mime
+`image/` ile başlamıyorsa `422`); `ProductDocument.mediaId` ise `application/pdf` DEĞİLSE
+`422`. `/uploads/*` görsel-olmayan türleri (PDF) **`Content-Disposition: attachment` +
+`X-Content-Type-Options: nosniff`** başlıklarıyla servis eder — PDF JavaScript taşıyabildiği
+için API origin'inde satır içi açılan bir dosyanın phishing/içerik yüzeyini kapatır; global
+5 MB yükleme tavanı (`MAX_UPLOAD_BYTES`) DEĞİŞMEDEN kullanılır. `GET /admin/media?
+type=image|document` filtresi `MediaPicker`'ın görsel modunda PDF göstermemesini sağlar.
+
+**Kargo bedeli — ayrı bir `ShippingRule` tablosu YOK, `SiteSettings`'te iki nullable
+kolon:** `shippingFlatFeeCents` (mağaza geneli SABİT kargo bedeli) +
+`freeShippingThresholdCents`. `shippingFlatFeeCents = null` → kargo HİÇ hesaplanmaz,
+hiçbir yerde gösterilmez — bugünkü (bu alanlardan ÖNCEKİ) davranışın BİREBİR aynısıdır,
+varsayılan kurulumda hiçbir şey değişmez. Eşik `null` iken bedel HER ZAMAN uygulanır; eşik
+doluyken `subtotal >= threshold` ise bedel 0'a düşer (EŞİT dahil). Hesaplama TEK yerdedir:
+`backend/src/lib/shipping.ts::computeShipping(subtotalCents, settings)`; sepet DTO'su,
+checkout ve `Order.shippingCents` snapshot'ı **ÜÇÜ DE** AYNI fonksiyonu çağırır — frontend
+para matematiğini TEKRARLAMAZ ("ücretsiz kargoya son X TL" metni sunucudan gelen
+`remainingCents`'ten üretilir). Kargo bedeli sepette gösteriliyorsa Stripe oturumuna ayrı
+bir "Kargo" `price_data` satırı olarak eklenir ve TAHSİL edilir (`totalCents = subtotal -
+discount + shipping`) — gösterilen tutar ile tahsil edilen tutarın farklı olması hem güven
+hem Mesafeli Satış mevzuatı açısından kabul edilemez. Çok kurallı kargo (bölge/ağırlık/
+kargo firması, sıra/çakışma çözümü, admin CRUD ekranı) BİLİNÇLİ olarak KAPSAM DIŞI
+bırakıldı — backlog: `feature/shipping-rules`.
+
 #### 10.9.3 Sepet + Stripe Checkout + Siparişler
 
 **Guest cart — opak token + `sameSite: lax`:** Sepet, kimlik doğrulaması
@@ -5684,19 +5756,36 @@ ekseni (bu iş onu HİÇ etkilemez).
 
 Durum: v1 (2026-08-31 — implemente edildi; backend unit + Playwright e2e testleri yeşil,
 security/compliance/SEO/performance denetimlerinden geçti) · Sahibi: Mimar.
-**Bağlayıcı kaynak:** `.claude/architect-scope-demo-template-import.md` (tam gerekçeler,
-şablon şeması, telif/PII kontrol listesi) + `docs/architecture/openapi.yaml` (`DemoTemplates`
-tag'i, `/admin/demo-templates*` yolları, `DemoTemplateSummary`/`ImportDemoTemplateRequest`/
-`DemoTemplateImportResult` şemaları — tek doğruluk kaynağı). Bu bölüm o dokümanın
-ÖZETİDİR; çelişkide kaynak doküman/openapi.yaml kazanır.
+**Bağlayıcı kaynak:** `.claude/architect-scope-demo-template-import.md` (**[DTI]**, tam
+gerekçeler, şablon şeması, telif/PII kontrol listesi) + `.claude/architect-scope-
+ecommerce-pro-template.md` (ikinci şablon `ecommerce-pro` + storefront varyasyon/döküman/
+kargo genişlemesi, [DTI]'yi GENİŞLETİR/DEĞİŞTİRMEZ) + `docs/architecture/openapi.yaml`
+(`DemoTemplates` tag'i, `/admin/demo-templates*` yolları, `DemoTemplateSummary`/
+`ImportDemoTemplateRequest`/`DemoTemplateImportResult` şemaları — tek doğruluk kaynağı). Bu
+bölüm o dokümanların ÖZETİDİR; çelişkide kaynak doküman/openapi.yaml kazanır.
 
 #### 10.22.1 Amaç
 
 Bir admin, sıfırdan içerik girmeden, tek bir "Uygula" tıklamasıyla sitenin görünümünü
-(renk/tipografi), site ayarlarını, navigasyon/footer/sosyal linkleri, örnek bir portföy, bir
+(renk/tipografi), site ayarlarını, navigasyon/footer/sosyal linkleri, örnek içerik(ler)i, bir
 Hero Studio slider'ı ve bir anasayfayı gerçekçi ama kurgusal bir demo içerikle doldurabilir.
-İlk ve tek şablon: `modern-architecture` ("Modern Mimarlık & İnşaat", kurgusal firma
-"Kütle Yapı").
+İki şablon vardır:
+
+- **`modern-architecture`** ("Modern Mimarlık & İnşaat", kurgusal firma "Kütle Yapı") —
+  portföy odaklı ilk şablon; ticaret verisi (`commerce`) taşımaz.
+- **`ecommerce-pro`** ("Modern Storefront / E-Ticaret", kurgusal mağaza "Ferah Ev Yaşam") —
+  4 kategori + 8 varyasyonlu/dökümanlı ürün + 4 yasal yer tutucu sayfa (KVKK Aydınlatma
+  Metni, Mesafeli Satış Sözleşmesi, Ön Bilgilendirme Formu, İptal & İade Koşulları) üreten,
+  ürün varyasyonu/PDF döküman/kargo eşiği (§10.9.2) yeteneklerini SERGİLEYEN ikinci şablon.
+  `SiteSettings.shippingFlatFeeCents`/`freeShippingThresholdCents`'i de yazar. **Örnek/sahte
+  sipariş üretmez** (bilinçli ret, gerekçe: `Order` PII taşır, silinemez, muhasebe/ödeme
+  değişmezlerini bozar — `.claude/architect-scope-ecommerce-pro-template.md` §4.5); importer
+  kaynak kodunda `order`/`orderItem`/`siteUser` yazan HİÇBİR çağrı YOKTUR. Şablonun ürün/
+  varyasyon/döküman verisi `DemoTemplateDefinition.commerce` alanı ([DTI] §3'e ek, §4.1)
+  üzerinden taşınır; sayfa dışı yasal sayfalar `extraPages` alanıyla (§4.1) eklenir.
+  Storefront tarafındaki varyasyon seçici/sepet çekmecesi/kargo ilerleme çubuğu şablonun
+  KENDİSİNE AİT DEĞİLDİR — mevcut storefront'un kalıcı yeteneğidir, hiçbir bileşen
+  `templateKey`/`ecommerce-pro`'yu bilmez (şablon silinse dahi PDP/sepet aynen çalışır).
 
 Bu modül `backend/src/modules/import/` (kullanıcı verisi WXR/CSV/ZIP içe aktarma, kuyruklu
 `ImportJob`) İLE KARIŞTIRILMAZ — burada kuyruk/dosya yükleme yok, kod içi sabit bir tanım

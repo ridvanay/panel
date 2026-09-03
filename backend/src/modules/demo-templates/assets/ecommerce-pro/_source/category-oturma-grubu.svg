@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="900" viewBox="0 0 1200 900">
+  <title>Ferah Ev Yaşam – Oturma Grubu Kategori Kartı (Yumuşak Tek Eğri)</title>
+  <desc>Üretim kaynağı — çalışma zamanında OKUNMAZ/servis EDİLMEZ. Çıktı build-template-assets.ts::buildEpCategoryCard("curve", ...) ile PNG'ye render edilir.</desc>
+  <defs>
+    <linearGradient id="bg-oturma" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F8FAFC"/>
+      <stop offset="100%" stop-color="#FFFFFF"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="1200" height="900" fill="url(#bg-oturma)"/>
+  <!-- yumuşak, kesintisiz tek eğri çizgi — koltuk sırtı silüetinin soyutlanmışı, primaryColor -->
+  <path d="M 0 540 C 300 380, 600 700, 900 460 S 1200 500, 1200 500" fill="none" stroke="#1E3A8A" stroke-width="3" opacity="0.2"/>
+</svg>

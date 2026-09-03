@@ -1,5 +1,6 @@
 import { apiFetch, apiFetchPage } from "./client";
 import type {
+  AddProductDocumentRequest,
   AddProductImageRequest,
   AdjustProductStockRequest,
   BulkContentAction,
@@ -12,6 +13,7 @@ import type {
   TrashedFilter,
   UpdateProductCategoryRequest,
   UpdateProductRequest,
+  UpsertProductVariantRequest,
 } from "./types";
 
 export interface ListProductsParams {
@@ -72,6 +74,31 @@ export function addProductImage(productId: string, mediaId: string) {
 /** `DELETE /admin/products/:productId/images/:imageId` — güncellenmiş `Product` DTO'sunu döner. */
 export function removeProductImage(productId: string, imageId: string) {
   return apiFetch<Product>(`/admin/products/${productId}/images/${imageId}`, { method: "DELETE" });
+}
+
+/** `POST /admin/products/:productId/variants` — güncellenmiş `Product` DTO'sunu (`variants` dahil) döner. */
+export function addProductVariant(productId: string, input: UpsertProductVariantRequest) {
+  return apiFetch<Product>(`/admin/products/${productId}/variants`, { method: "POST", body: input });
+}
+
+/** `PATCH /admin/products/:productId/variants/:variantId` — `optionValues` BURADAN değiştirilemez. */
+export function updateProductVariant(productId: string, variantId: string, input: UpsertProductVariantRequest) {
+  return apiFetch<Product>(`/admin/products/${productId}/variants/${variantId}`, { method: "PATCH", body: input });
+}
+
+/** `DELETE /admin/products/:productId/variants/:variantId` — sepet satırları Cascade ile silinir. */
+export function deleteProductVariant(productId: string, variantId: string) {
+  return apiFetch<Product>(`/admin/products/${productId}/variants/${variantId}`, { method: "DELETE" });
+}
+
+/** `POST /admin/products/:productId/documents` — `mediaId` zaten ekliyse 409. */
+export function addProductDocument(productId: string, input: AddProductDocumentRequest) {
+  return apiFetch<Product>(`/admin/products/${productId}/documents`, { method: "POST", body: input });
+}
+
+/** `DELETE /admin/products/:productId/documents/:documentId` — yalnızca BAĞ kaldırılır, `Media` silinmez. */
+export function removeProductDocument(productId: string, documentId: string) {
+  return apiFetch<Product>(`/admin/products/${productId}/documents/${documentId}`, { method: "DELETE" });
 }
 
 export function listProductCategories() {

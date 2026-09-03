@@ -797,4 +797,10 @@ export const MODERN_ARCHITECTURE_TEMPLATE: DemoTemplateDefinition = {
     ],
     setAsHomePage: true,
   },
+
+  // `.claude/architect-scope-ecommerce-pro-template.md` §4.1/§4.6 — bu şablon ticaret verisi
+  // GETİRMİYOR; `commerce: null` dalı importer'da hiçbir yeni satır YAZMAZ (davranış birebir
+  // korunur, regresyon kontrolü). Ek (yasal/kurumsal) sayfa da üretmiyor.
+  commerce: null,
+  extraPages: [],
 };

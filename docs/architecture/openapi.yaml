@@ -2825,6 +2825,7 @@ paths:
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
         - $ref: "#/components/parameters/MediaFolderFilter"
+        - $ref: "#/components/parameters/MediaTypeFilter"
       responses:
         "200":
           description: OK
@@ -2847,7 +2848,20 @@ paths:
         kapak görseline BURADAN eklenir.
 
 
-        **Güvenlik — çift doğrulama:** yalnızca JPEG/PNG/WEBP/GIF kabul edilir. SVG
+        **PDF (döküman) desteği:** JPEG/PNG/WEBP/GIF'e EK OLARAK `application/pdf`
+        kabul edilir (ürün teknik dökümanları için — bkz.
+        `.claude/architect-scope-ecommerce-pro-template.md` §2.2). Tespit AYNI tek
+        kapıdan (`lib/mime-detect.ts`) yapılır: `%PDF-` magic byte'ı. PDF için
+        `width`/`height` `null` kalır (`imageSize()` ÇAĞRILMAZ). PDF'ler
+        `/uploads/*` üzerinden `Content-Disposition: attachment` +
+        `X-Content-Type-Options: nosniff` ile servis edilir (tarayıcı içi
+        yürütmeyi/aynı-origin phishing yüzeyini kapatmak için — security-agent
+        politikası). Görsel bekleyen FK slotları (`coverMediaId`, ürün/portföy
+        galerisi, `Slide.bgMediaId`, `SiteAppearance.pageHeaderBackgroundMediaId`)
+        `image/*` DIŞINDAKİ medyayı `422` ile REDDEDER.
+
+
+        **Güvenlik — çift doğrulama:** görseller için yalnızca JPEG/PNG/WEBP/GIF kabul edilir. SVG
         kasıtlı olarak allow-list'te YOKTUR: metin tabanlıdır, magic byte imzası
         taşımaz ve içine `<script>` gömülebildiği için depolanmış-XSS riski taşır.
         `file`'ın beyan ettiği `Content-Type` GÜVENİLMEZ — gerçek tür, dosya
@@ -5147,6 +5161,163 @@ paths:
       responses:
         "200":
           description: Galeriden kaldırıldı
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Product" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/products/{productId}/variants:
+    parameters:
+      - $ref: "#/components/parameters/ProductId"
+    post:
+      tags: [Products]
+      summary: Ürüne varyasyon ekle (SiteRole=ADMIN veya MANAGER)
+      description: >
+        `optionValues`, ürünün `variantOptions` eksen tanımıyla BİREBİR eşleşmelidir
+        (eksik/fazla eksen ya da tanımsız değer → `422`). Sunucu `variantKey`'i türetir;
+        aynı kombinasyon zaten varsa `@@unique([productId, variantKey])` gereği `409
+        CONFLICT`. Güncellenmiş `Product` DTO'sunu (varyasyonlar dahil) döner —
+        `POST .../images` ile AYNI yanıt deseni.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpsertProductVariantRequest" }
+      responses:
+        "201":
+          description: Varyasyon eklendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Product" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "Kombinasyon zaten var VEYA `sku` başka bir varyasyonda kullanılıyor (`error.code: CONFLICT`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/products/{productId}/variants/{variantId}:
+    parameters:
+      - $ref: "#/components/parameters/ProductId"
+      - $ref: "#/components/parameters/VariantId"
+    patch:
+      tags: [Products]
+      summary: Varyasyonu güncelle (SiteRole=ADMIN veya MANAGER)
+      description: >
+        `optionValues` BURADAN DEĞİŞTİRİLEMEZ (gönderilirse `422`) — kombinasyon
+        değişecekse satır silinip yeniden oluşturulur; aksi halde sepetteki/siparişteki
+        referanslar sessizce başka bir ürünü işaret ederdi. `variantId`'nin GERÇEKTEN
+        bu `productId`'ye ait olduğu doğrulanır (IDOR koruması, `.../images/{imageId}`
+        ile AYNI kural).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpsertProductVariantRequest" }
+      responses:
+        "200":
+          description: Güncellendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Product" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "`sku` çakışması (`error.code: CONFLICT`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+    delete:
+      tags: [Products]
+      summary: Varyasyonu sil (SiteRole=ADMIN veya MANAGER)
+      description: >
+        `CartItem` satırları `Cascade` ile silinir (sepetteki fiyat/stok referansı
+        artık geçersizdir); `OrderItem.variantId` `SetNull` olur ve `variantLabel`
+        SNAPSHOT'ı KALIR — sipariş geçmişi BOZULMAZ.
+      responses:
+        "200":
+          description: Silindi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Product" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/products/{productId}/documents:
+    parameters:
+      - $ref: "#/components/parameters/ProductId"
+    post:
+      tags: [Products]
+      summary: Ürüne teknik döküman (PDF) ekle (SiteRole=ADMIN veya MANAGER)
+      description: >
+        `POST /admin/products/{productId}/images` ile BİREBİR AYNI davranış ve
+        gerekçeler: `mediaId` zaten ekliyse `409`, yeni satır listenin SONUNA eklenir,
+        güncellenmiş `Product` DTO'su döner. EK KURAL: `Media.mimeType`
+        `application/pdf` DEĞİLSE `422` (görsel bir medyayı döküman olarak eklemek
+        engellenir; tersi de geçerlidir — `coverMediaId`/galeri/`Slide.bgMediaId`
+        slotları `image/*` DIŞINDAKİ medyayı reddeder).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AddProductDocumentRequest" }
+      responses:
+        "201":
+          description: Döküman eklendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Product" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "Döküman zaten ekli (`error.code: CONFLICT`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/products/{productId}/documents/{documentId}:
+    parameters:
+      - $ref: "#/components/parameters/ProductId"
+      - $ref: "#/components/parameters/DocumentId"
+    delete:
+      tags: [Products]
+      summary: Ürün dökümanını kaldır (SiteRole=ADMIN veya MANAGER)
+      description: >
+        IDOR koruması `.../images/{imageId}` ile AYNI. Yalnızca BAĞ kaldırılır —
+        `Media` satırı ve diskteki dosya SİLİNMEZ (§10.11.3 ile aynı ilke).
+      responses:
+        "200":
+          description: Kaldırıldı
           content:
             application/json:
               schema:
@@ -7837,6 +8008,19 @@ components:
       in: path
       required: true
       schema: { type: string, format: uuid }
+    MediaTypeFilter:
+      name: type
+      in: query
+      required: false
+      description: >
+        Medya TÜRÜ filtresi. Kütüphane artık görsel OLMAYAN medya da (PDF döküman)
+        taşıdığı için ZORUNLU hâle geldi: görsel seçici (`MediaPicker`) `type=image`,
+        döküman seçici `type=document` gönderir. Verilmezse filtre uygulanmaz.
+        `image` = `mimeType LIKE 'image/%'`, `document` = `mimeType = 'application/pdf'`.
+        Bkz. `.claude/architect-scope-ecommerce-pro-template.md` §2.2.
+      schema:
+        type: string
+        enum: [image, document]
     MediaFolderFilter:
       name: folderId
       in: query
@@ -7997,6 +8181,18 @@ components:
       in: path
       required: true
       schema: { type: string }
+    VariantId:
+      name: variantId
+      in: path
+      required: true
+      description: "`ProductVariant` satır id'si. Route handler `variantId`'nin GERÇEKTEN o `productId`'ye ait olduğunu doğrular (IDOR koruması, `ImageId` ile AYNI kural) — eşleşmezse `404 NOT_FOUND`."
+      schema: { type: string, format: uuid }
+    DocumentId:
+      name: documentId
+      in: path
+      required: true
+      description: "`ProductDocument` satır id'si — `VariantId` ile AYNI IDOR kuralı."
+      schema: { type: string, format: uuid }
     ProductCategoryId:
       name: categoryId
       in: path
@@ -11468,6 +11664,25 @@ components:
         headerLogoMaxWidth: { type: integer, nullable: true, minimum: 40, maximum: 400, description: "Header logo maks. genişliği (px) — null ise genişlik tavanı yok (sınırsız)." }
         homePageId: { type: string, format: uuid, nullable: true }
         siteTemplate: { $ref: "#/components/schemas/SiteTemplate" }
+        shippingFlatFeeCents:
+          type: integer
+          nullable: true
+          minimum: 0
+          description: >
+            Mağaza geneli SABİT kargo bedeli (kuruş). `null` = kargo bedeli
+            HESAPLANMAZ ve hiçbir yerde gösterilmez — bu, mevcut (bu alanlardan
+            ÖNCEKİ) davranışın BİREBİR aynısıdır, dolayısıyla varsayılan kurulumda
+            hiçbir şey değişmez. Bölge/ağırlık/kargo firması bazlı çoklu kural
+            (`ShippingRule` tablosu) BİLİNÇLİ OLARAK YOKTUR — bkz.
+            `.claude/architect-scope-ecommerce-pro-template.md` §3.
+        freeShippingThresholdCents:
+          type: integer
+          nullable: true
+          minimum: 0
+          description: >
+            Ücretsiz kargo eşiği (kuruş). Sepet ara toplamı bu değere EŞİT VEYA
+            BÜYÜKSE kargo bedeli 0'a düşer. `shippingFlatFeeCents` null iken bu
+            alanın hiçbir etkisi YOKTUR (eşik çubuğu da gösterilmez).
 
     UpdateSiteSettingsRequest:
       description: "`PATCH /admin/settings` gövdesi — tüm alanlar opsiyoneldir, satır yoksa `DEFAULTS` ile birlikte oluşturulur (upsert)."
@@ -11483,6 +11698,8 @@ components:
         headerLogoMaxWidth: { type: integer, nullable: true, minimum: 40, maximum: 400, description: "Header logo maks. genişliği (px) — null ise genişlik tavanı yok (sınırsız)." }
         homePageId: { type: string, format: uuid, nullable: true }
         siteTemplate: { $ref: "#/components/schemas/SiteTemplate" }
+        shippingFlatFeeCents: { type: integer, nullable: true, minimum: 0, maximum: 100000000 }
+        freeShippingThresholdCents: { type: integer, nullable: true, minimum: 0, maximum: 100000000 }
 
     SiteModule:
       description: >
@@ -11913,6 +12130,104 @@ components:
         media: { $ref: "#/components/schemas/Media" }
         order: { type: integer }
 
+    ProductVariantOption:
+      description: >
+        Bir varyasyon EKSENİ (ör. "Renk"). `Product.variantOptions` JSON kolonunda
+        saklanır — ayrı bir `ProductOption` tablosu BİLİNÇLİ olarak AÇILMADI
+        (gerekçe: `.claude/architect-scope-ecommerce-pro-template.md` §1.1; aynı
+        "JSON + Zod" tercihi `Product.translations` ve `Page.blocks` ile AYNI sınıf).
+        En fazla 2 eksen, eksen başına en fazla 12 değer.
+      type: object
+      required: [name, type, values]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 40, example: "Renk" }
+        type:
+          type: string
+          enum: [SWATCH, TEXT]
+          description: "`SWATCH` → renk kutucuğu olarak render edilir (`swatchHex` ZORUNLU); `TEXT` → etiket/beden butonu."
+        values:
+          type: array
+          minItems: 1
+          maxItems: 12
+          items:
+            type: object
+            required: [value]
+            properties:
+              value: { type: string, minLength: 1, maxLength: 40, example: "Antrasit" }
+              swatchHex:
+                type: string
+                nullable: true
+                pattern: "^#[0-9a-fA-F]{6}$"
+                description: "`type: SWATCH` ise ZORUNLU, `TEXT` ise gönderilmemelidir (422)."
+
+    ProductVariant:
+      description: >
+        Tek bir eksen kombinasyonu (ör. Renk=Antrasit + Beden=L). `variantKey`
+        normalize edilmiş, deterministik kombinasyon anahtarıdır
+        (`beden:l|renk:antrasit` — eksen adları alfabetik, slugify edilmiş) ve
+        `@@unique([productId, variantKey])` ile aynı kombinasyonun iki kez
+        oluşturulmasını DB seviyesinde engeller.
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        variantKey: { type: string, example: "beden:l|renk:antrasit", description: "Sunucu türetir — istekte GÖNDERİLMEZ." }
+        optionValues:
+          type: object
+          additionalProperties: { type: string }
+          example: { "Renk": "Antrasit", "Beden": "L" }
+          description: "Anahtarlar `Product.variantOptions[].name` ile, değerler o eksenin `values[].value` kümesiyle BİREBİR eşleşmek ZORUNDADIR (aksi halde 422)."
+        label: { type: string, example: "Antrasit / L", description: "Sunucu türetir: eksen sırasına göre `değer / değer`. `OrderItem.variantLabel` snapshot'ı BUNDAN yazılır." }
+        sku: { type: string, nullable: true, description: "Global `@unique` — `Product.sku` ile AYNI ad alanını PAYLAŞMAZ (ayrı tablo), ama varyasyonlar arasında benzersizdir." }
+        priceCents:
+          type: integer
+          nullable: true
+          description: "`null` = ürünün `priceCents` değeri MİRAS ALINIR. Dolu ise mutlak fiyattır (fark/delta DEĞİL)."
+        discountPriceCents: { type: integer, nullable: true, description: "Dolu ise etkin `priceCents`'ten (varyasyonunki ya da miras alınan) KÜÇÜK olmalıdır." }
+        stockQuantity: { type: integer, description: "Varyasyonlu üründe TEK stok doğruluk kaynağı." }
+        media:
+          allOf:
+            - $ref: "#/components/schemas/Media"
+          nullable: true
+          description: "Varyasyon seçilince PDP galerisinde öne çıkarılan görsel. Yalnızca `image/*` mime türü kabul edilir (422)."
+        order: { type: integer }
+        isActive: { type: boolean, description: "`false` → PDP'de seçici ÜSTÜ ÇİZİLİ gösterilir ve sepete eklenemez (409)." }
+
+    ProductDocument:
+      description: >
+        Ürüne bağlı teknik döküman (PDF). `ProductImage` ile AYNI sıralı join tablosu
+        desenidir: dosyanın kendisi bir `Media` satırıdır (`application/pdf`), URL ve
+        boyut BURADA KOPYALANMAZ — `media`'dan okunur (JSON kolonu tercih EDİLMEDİ,
+        gerekçe: §2).
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string, description: "Kullanıcıya gösterilen başlık (ör. \"Teknik Çizim — PDF\"). Boş bırakılırsa `media.filename` kullanılır." }
+        media: { $ref: "#/components/schemas/Media" }
+        order: { type: integer }
+
+    UpsertProductVariantRequest:
+      description: "`POST /admin/products/{productId}/variants` ve `PATCH .../variants/{variantId}` gövdesi. `POST`'ta `optionValues` ZORUNLU, `PATCH`'te değiştirilemez (kombinasyon değişecekse satır silinip yeniden oluşturulur)."
+      type: object
+      properties:
+        optionValues:
+          type: object
+          additionalProperties: { type: string }
+        sku: { type: string, minLength: 1, maxLength: 64, nullable: true }
+        priceCents: { type: integer, minimum: 1, nullable: true }
+        discountPriceCents: { type: integer, minimum: 1, nullable: true }
+        stockQuantity: { type: integer, minimum: 0 }
+        mediaId: { type: string, format: uuid, nullable: true }
+        order: { type: integer, minimum: 0 }
+        isActive: { type: boolean }
+
+    AddProductDocumentRequest:
+      description: "`POST /admin/products/{productId}/documents` gövdesi — `mediaId` `application/pdf` DEĞİLSE 422."
+      type: object
+      required: [mediaId]
+      properties:
+        mediaId: { type: string, format: uuid }
+        title: { type: string, minLength: 1, maxLength: 160 }
+
     Product:
       description: >
         `/admin/products` ve `/products` uçlarında dönen ürün DTO'su. `BlogCategory`/
@@ -11952,6 +12267,25 @@ components:
         images:
           type: array
           items: { $ref: "#/components/schemas/ProductImage" }
+        variantOptions:
+          type: array
+          maxItems: 2
+          description: >
+            Varyasyon EKSENLERİ tanımı (ör. Renk, Beden) — `Product.variantOptions`
+            JSON kolonu. BOŞ dizi = ürün varyasyonsuzdur. Bkz.
+            `.claude/architect-scope-ecommerce-pro-template.md` §1.
+          items: { $ref: "#/components/schemas/ProductVariantOption" }
+        variants:
+          type: array
+          description: >
+            Eksen kombinasyonları. **BOŞ DEĞİLSE satın alınabilir birim VARYASYONDUR**
+            ve stok/fiyat varyasyondan okunur; `Product.stockQuantity` o ürün için
+            YOK SAYILIR (bkz. §1.2 — bağlayıcı "stok satılan seviyede yaşar" kuralı).
+          items: { $ref: "#/components/schemas/ProductVariant" }
+        documents:
+          type: array
+          description: "Teknik döküman (PDF) listesi — `ProductImage` ile AYNI sıralı join tablosu deseni."
+          items: { $ref: "#/components/schemas/ProductDocument" }
         seoTitle: { type: string, nullable: true }
         seoDescription: { type: string, nullable: true }
         ogTitle: { type: string, nullable: true }
@@ -12008,6 +12342,11 @@ components:
           description: "Verilmişse `priceCents`'ten KÜÇÜK olmalı, aksi halde 422 (`error.details.discountPriceCents`)."
         sku: { type: string, minLength: 1, nullable: true }
         stockQuantity: { type: integer, minimum: 0, default: 0 }
+        variantOptions:
+          type: array
+          maxItems: 2
+          items: { $ref: "#/components/schemas/ProductVariantOption" }
+          description: "Verilmezse boş dizi (varyasyonsuz ürün). Varyasyon SATIRLARI ayrı uçtan eklenir: `POST /admin/products/{productId}/variants`."
         status: { allOf: [{ $ref: "#/components/schemas/PageStatus" }], default: DRAFT }
         categoryId: { type: string, format: uuid, nullable: true }
         coverMediaId: { type: string, format: uuid, nullable: true }
@@ -12066,6 +12405,15 @@ components:
           additionalProperties: { type: object, additionalProperties: true }
         authorId: { type: string, format: uuid, nullable: true, description: "Yalnızca ADMIN değiştirebilir." }
         scheduledAt: { type: string, format: date-time, nullable: true }
+        variantOptions:
+          type: array
+          maxItems: 2
+          items: { $ref: "#/components/schemas/ProductVariantOption" }
+          description: >
+            Eksen tanımlarını TAMAMEN DEĞİŞTİRİR (tam-replace, `PUT /admin/navigation`
+            ile aynı semantik). Mevcut `ProductVariant` satırlarından herhangi birinin
+            `optionValues`'ı yeni tanımla UYUŞMUYORSA istek `409 CONFLICT` döner
+            (önce varyasyonları silmek gerekir) — sessizce yetim varyasyon BIRAKILMAZ.
 
     AdjustProductStockRequest:
       description: "`PATCH /admin/products/{productId}/stock` gövdesi — adminin ELLE stok düzeltmesi, checkout'un otomatik düşürmesiyle KARIŞTIRILMAMALIDIR."
@@ -12274,11 +12622,32 @@ components:
             title: { type: string }
             slug: { type: string }
             coverImageUrl: { type: string, nullable: true }
-            stockQuantity: { type: integer }
+            stockQuantity:
+              type: integer
+              description: "Satır varyasyonluysa (`variantId != null`) BU ALAN ilgili VARYASYONUN stoğudur — satın alınabilir birimin stoğu döner (bkz. `.claude/architect-scope-ecommerce-pro-template.md` §1.2)."
+        variantId: { type: string, format: uuid, nullable: true, description: "Ürünün varyasyonu varsa ZORUNLU; yoksa daima `null`." }
+        variantLabel: { type: string, nullable: true, example: "Antrasit / L" }
         quantity: { type: integer }
         frozenUnitPriceCents: { type: integer }
         currentPriceCents: { type: integer }
         lineTotalCents: { type: integer }
+
+    CartShipping:
+      description: >
+        Kargo hesabı SUNUCUDA, TEK bir yardımcıda (`backend/src/lib/shipping.ts`)
+        yapılır — frontend para matematiğini TEKRARLAMAZ (ilerleme çubuğu bu
+        alanlardan beslenir). `SiteSettings.shippingFlatFeeCents` null ise
+        `configured: false` döner ve arayüz kargo satırı/çubuğu GÖSTERMEZ.
+      type: object
+      properties:
+        configured: { type: boolean }
+        feeCents: { type: integer, description: "Uygulanacak kargo bedeli. Eşik aşıldıysa 0." }
+        thresholdCents: { type: integer, nullable: true }
+        remainingCents:
+          type: integer
+          nullable: true
+          description: "Ücretsiz kargoya kalan tutar (kuruş). Eşik aşıldıysa 0, eşik tanımsızsa null. \"Ücretsiz kargoya son X TL\" metni BUNDAN üretilir."
+        isFree: { type: boolean }
 
     Cart:
       description: "Cookie yoksa/geçersizse (henüz hiçbir şey eklenmemiş) boş sepet döner (`currency: null`)."
@@ -12291,12 +12660,24 @@ components:
         subtotalCents:
           type: integer
           description: "Dondurulmuş fiyatlar (`frozenUnitPriceCents * quantity`) üzerinden toplam — checkout'un hesaplayacağı nihai tutarla AYNI mantık, ama checkout kendi hesabını yeniden yapar."
+        shipping: { $ref: "#/components/schemas/CartShipping" }
+        totalCents:
+          type: integer
+          description: "`subtotalCents + shipping.feeCents`. Kargo yapılandırılmamışsa `subtotalCents`'e EŞİTTİR."
 
     AddCartItemRequest:
       type: object
       required: [productId, quantity]
       properties:
         productId: { type: string, format: uuid }
+        variantId:
+          type: string
+          format: uuid
+          nullable: true
+          description: >
+            Ürünün EN AZ BİR varyasyonu varsa ZORUNLUDUR (eksikse `422`); varyasyonsuz
+            üründe gönderilirse `422`. Varyasyon başka bir ürüne aitse/pasifse/stoksuzsa
+            `409 CONFLICT`.
         quantity: { type: integer, minimum: 1, maximum: 99 }
 
     UpdateCartItemRequest:
@@ -12349,7 +12730,12 @@ components:
           nullable: true
           description: "Ürün kalıcı silinirse `SetNull` ile `null` olur — sipariş geçmişi BOZULMAZ (aşağıdaki alanlar zaten SNAPSHOT)."
         productTitle: { type: string, description: "SNAPSHOT — ürün silinse/değişse bile sipariş geçmişi bozulmasın diye." }
-        productSku: { type: string, nullable: true }
+        productSku:
+          type: string
+          nullable: true
+          description: "SATILAN BİRİMİN SKU'su — satır varyasyonluysa `ProductVariant.sku`, değilse `Product.sku`. AYRI bir `variantSku` alanı BİLİNÇLİ olarak eklenmedi (tek satılan birim = tek SKU)."
+        variantId: { type: string, format: uuid, nullable: true, description: "Varyasyon kalıcı silinirse `SetNull`; `variantLabel` snapshot'ı KALIR." }
+        variantLabel: { type: string, nullable: true, example: "Antrasit / L", description: "SNAPSHOT — `productTitle` ile AYNI gerekçe." }
         unitPriceCents: { type: integer }
         quantity: { type: integer }
         lineTotalCents: { type: integer }
@@ -12372,7 +12758,14 @@ components:
         subtotalCents: { type: integer }
         discountCents: { type: integer }
         taxCents: { type: integer, description: "KDV fiyata DAHİLDİR — sadece fatura/gösterim amaçlı ayrıştırma, `totalCents`'e AYRICA eklenmez." }
-        totalCents: { type: integer }
+        shippingCents:
+          type: integer
+          description: >
+            Sipariş anında SUNUCUDA hesaplanan kargo bedeli SNAPSHOT'ı (`taxCents`'in
+            AKSİNE `totalCents`'e EKLENİR ve Stripe oturumuna AYRI bir satır olarak
+            gider — gösterilen tutarla tahsil edilen tutar birebir aynı olmak
+            zorundadır). Kargo yapılandırılmamışsa/eşik aşıldıysa 0.
+        totalCents: { type: integer, description: "`subtotalCents - discountCents + shippingCents`." }
         errorSummary: { type: string, nullable: true, description: "Yalnızca `status: FAILED` iken anlamlı (ör. `insufficient_stock`)." }
         paidAt: { type: string, format: date-time, nullable: true }
         trackingNumber:

@@ -28,6 +28,8 @@ import type {
   ProductCategory,
   Product,
   ProductImage,
+  ProductVariant,
+  ProductDocument,
   PortfolioCategory,
   PortfolioItem,
   PortfolioImage,
@@ -86,6 +88,9 @@ import type {
   ProductCategoryDto,
   ProductDto,
   ProductImageDto,
+  ProductVariantDto,
+  ProductDocumentDto,
+  ProductVariantOptionDto,
   PortfolioCategoryDto,
   PortfolioItemDto,
   PortfolioImageDto,
@@ -97,6 +102,7 @@ import type {
   SliderUsageDto,
   CartDto,
   CartItemDto,
+  CartShippingDto,
   OrderDto,
   OrderItemDto,
   AddressDto,
@@ -130,6 +136,9 @@ import {
 } from "../modules/sliders/lib/enum-maps";
 import type { ModuleDefinition } from "../lib/module-registry";
 import { buildMaskedKey } from "../lib/api-key";
+import { resolveUnitPriceCents } from "../lib/product-pricing";
+import { computeShipping, type ShippingSettingsInput } from "../lib/shipping";
+import { buildVariantLabel } from "../modules/products/lib/variants";
 
 export function toUserDto(user: User): UserDto {
   return {
@@ -367,6 +376,8 @@ export function toSiteSettingsDto(settings: SiteSettings): SiteSettingsDto {
     headerLogoMaxWidth: settings.headerLogoMaxWidth,
     homePageId: settings.homePageId,
     siteTemplate: settings.siteTemplate,
+    shippingFlatFeeCents: settings.shippingFlatFeeCents,
+    freeShippingThresholdCents: settings.freeShippingThresholdCents,
   };
 }
 
@@ -490,14 +501,52 @@ function toProductImageDto(image: ProductImageWithMedia): ProductImageDto {
   };
 }
 
+// §1/§2 (.claude/architect-scope-ecommerce-pro-template.md, bağlayıcı) — varyasyon + döküman.
+
+type ProductVariantWithMedia = ProductVariant & { media: Media | null };
+
+/** `label` her okumada `product.variantOptions` eksen SIRASINA göre TÜRETİLİR — DB'de saklanmaz. */
+function toProductVariantDto(variant: ProductVariantWithMedia, axes: ProductVariantOptionDto[]): ProductVariantDto {
+  const optionValues = (variant.optionValues as Record<string, string>) ?? {};
+  return {
+    id: variant.id,
+    variantKey: variant.variantKey,
+    optionValues,
+    label: buildVariantLabel(optionValues, axes),
+    sku: variant.sku,
+    priceCents: variant.priceCents,
+    discountPriceCents: variant.discountPriceCents,
+    stockQuantity: variant.stockQuantity,
+    media: variant.media ? toMediaDto(variant.media) : null,
+    order: variant.order,
+    isActive: variant.isActive,
+  };
+}
+
+type ProductDocumentWithMedia = ProductDocument & { media: Media };
+
+function toProductDocumentDto(doc: ProductDocumentWithMedia): ProductDocumentDto {
+  return {
+    id: doc.id,
+    // Boş bırakılırsa `media.filename` kullanılır (yazma anında zaten çözülür, bkz.
+    // products.routes.ts — burası ek bir savunma/geriye dönük uyumluluk katmanıdır).
+    title: doc.title || doc.media.filename,
+    media: toMediaDto(doc.media),
+    order: doc.order,
+  };
+}
+
 type ProductWithRelations = Product & {
   category: ProductCategory | null;
   coverMedia: Media | null;
   author?: User | null;
   images?: ProductImageWithMedia[];
+  variants?: ProductVariantWithMedia[];
+  documents?: ProductDocumentWithMedia[];
 };
 
 export function toProductDto(product: ProductWithRelations, localizations: ContentLocalizationDto[] = []): ProductDto {
+  const axes = ((product.variantOptions as ProductVariantOptionDto[] | null) ?? []) as ProductVariantOptionDto[];
   const { score, issues } = computeProductSeoScore({
     seoTitle: product.seoTitle,
     seoDescription: product.seoDescription,
@@ -522,6 +571,9 @@ export function toProductDto(product: ProductWithRelations, localizations: Conte
     category: product.category ? toProductCategoryDto(product.category) : null,
     coverMedia: product.coverMedia ? toMediaDto(product.coverMedia) : null,
     images: (product.images ?? []).map(toProductImageDto),
+    variantOptions: axes,
+    variants: (product.variants ?? []).map((variant) => toProductVariantDto(variant, axes)),
+    documents: (product.documents ?? []).map(toProductDocumentDto),
     seoTitle: product.seoTitle,
     seoDescription: product.seoDescription,
     ogTitle: product.ogTitle,
@@ -716,15 +768,20 @@ export function toExportJobDto(job: ExportJobWithCreator): ExportJobDto {
 // ---------- §10.9.3 Sepet + Stripe Checkout ----------
 
 type CartItemWithProduct = CartItem & {
-  product: Pick<Product, "id" | "title" | "slug" | "stockQuantity" | "priceCents" | "discountPriceCents"> & {
+  product: Pick<Product, "id" | "title" | "slug" | "stockQuantity" | "priceCents" | "discountPriceCents" | "variantOptions"> & {
     coverMedia: Media | null;
   };
+  variant: ProductVariant | null;
 };
 
-/** `frozenUnitPriceCents` (sepete eklenme anı) ile `currentPriceCents` (DB'den taze, indirimliyse
- * indirim fiyatı) AYRI döner — bkz. schemas/entities.ts::CartItemSchema notu. */
+/** `frozenUnitPriceCents` (sepete eklenme anı) ile `currentPriceCents` (DB'den taze, `variant`
+ * varsa §1.5 miras/mutlak kuralıyla, yoksa üründen) AYRI döner — bkz. schemas/entities.ts::
+ * CartItemSchema notu. `product.stockQuantity` satır varyasyonluysa VARYASYONUN stoğudur (§1.2). */
 export function toCartItemDto(item: CartItemWithProduct): CartItemDto {
-  const currentPriceCents = item.product.discountPriceCents ?? item.product.priceCents;
+  const currentPriceCents = resolveUnitPriceCents(item.product, item.variant);
+  const axes = (item.product.variantOptions as ProductVariantOptionDto[] | null) ?? [];
+  const variantLabel = item.variant ? buildVariantLabel(item.variant.optionValues as Record<string, string>, axes) : null;
+  const stockQuantity = item.variant ? item.variant.stockQuantity : item.product.stockQuantity;
 
   return {
     id: item.id,
@@ -734,8 +791,10 @@ export function toCartItemDto(item: CartItemWithProduct): CartItemDto {
       title: item.product.title,
       slug: item.product.slug,
       coverImageUrl: item.product.coverMedia ? absolutizeMediaUrl(item.product.coverMedia.url) : null,
-      stockQuantity: item.product.stockQuantity,
+      stockQuantity,
     },
+    variantId: item.variantId,
+    variantLabel,
     quantity: item.quantity,
     frozenUnitPriceCents: item.unitPriceCents,
     currentPriceCents,
@@ -743,12 +802,17 @@ export function toCartItemDto(item: CartItemWithProduct): CartItemDto {
   };
 }
 
-export function toCartDto(items: CartItemWithProduct[], currency: string | null): CartDto {
+export function toCartDto(items: CartItemWithProduct[], currency: string | null, shippingSettings: ShippingSettingsInput): CartDto {
   const mapped = items.map(toCartItemDto);
+  const subtotalCents = mapped.reduce((sum, item) => sum + item.lineTotalCents, 0);
+  const shipping: CartShippingDto = computeShipping(subtotalCents, shippingSettings);
+
   return {
     items: mapped,
     currency,
-    subtotalCents: mapped.reduce((sum, item) => sum + item.lineTotalCents, 0),
+    subtotalCents,
+    shipping,
+    totalCents: subtotalCents + shipping.feeCents,
   };
 }
 
@@ -758,6 +822,8 @@ export function toOrderItemDto(item: OrderItem): OrderItemDto {
     productId: item.productId,
     productTitle: item.productTitle,
     productSku: item.productSku,
+    variantId: item.variantId,
+    variantLabel: item.variantLabel,
     unitPriceCents: item.unitPriceCents,
     quantity: item.quantity,
     lineTotalCents: item.lineTotalCents,
@@ -777,6 +843,7 @@ export function toOrderDto(order: OrderWithItems): OrderDto {
     subtotalCents: order.subtotalCents,
     discountCents: order.discountCents,
     taxCents: order.taxCents,
+    shippingCents: order.shippingCents,
     totalCents: order.totalCents,
     errorSummary: order.errorSummary,
     paidAt: order.paidAt ? order.paidAt.toISOString() : null,

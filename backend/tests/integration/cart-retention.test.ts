@@ -107,6 +107,12 @@ describe("sepet saklama süresi taraması (cart-retention, §10.9.3)", () => {
 
     const res = await app.inject({ method: "GET", url: "/api/v1/cart", headers: { cookie: `cart_token=${rawToken}` } });
     expect(res.statusCode).toBe(200);
-    expect(res.json().data).toEqual({ items: [], currency: null, subtotalCents: 0 });
+    expect(res.json().data).toEqual({
+      items: [],
+      currency: null,
+      subtotalCents: 0,
+      shipping: { configured: false, feeCents: 0, thresholdCents: null, remainingCents: null, isFree: false },
+      totalCents: 0,
+    });
   });
 });

@@ -7,7 +7,17 @@ import { toast } from "sonner";
 import * as productsApi from "@/lib/api/products";
 import * as revisionsApi from "@/lib/api/revisions";
 import * as localesApi from "@/lib/api/locales";
-import type { ContentStatus, ContentTranslations, Locale as LocaleDto, Media, ProductCategory, ProductImage } from "@/lib/api/types";
+import type {
+  ContentStatus,
+  ContentTranslations,
+  Locale as LocaleDto,
+  Media,
+  ProductCategory,
+  ProductDocument,
+  ProductImage,
+  ProductVariant,
+  ProductVariantOption,
+} from "@/lib/api/types";
 import { useAutosave } from "@/hooks/use-autosave";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -27,9 +37,12 @@ import { MediaSelectField } from "@/components/admin/media/media-select-field";
 import { GalleryField } from "@/components/admin/media/gallery-field";
 import { SeoPreview } from "@/components/admin/seo-preview";
 import { RevisionHistory } from "@/components/admin/revision-history";
+import { VariantAxesEditor } from "@/components/admin/products/variant-axes-editor";
+import { ProductVariantsPanel } from "@/components/admin/products/product-variants-panel";
+import { ProductDocumentsPanel } from "@/components/admin/products/product-documents-panel";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { computeLocaleStatus, getTranslatedField, isFallbackField, localeStatusDetail, setTranslatedField } from "@/lib/i18n/translation-helpers";
-import { AlertCircle, AlertTriangle, ChevronLeft, FileText, Search, History as HistoryIcon } from "lucide-react";
+import { AlertCircle, AlertTriangle, ChevronLeft, FileText, Layers, Search, History as HistoryIcon } from "lucide-react";
 
 const CURRENCIES = ["TRY", "USD", "EUR", "GBP"] as const;
 
@@ -58,6 +71,7 @@ interface ProductSnapshot {
   canonicalUrl: string;
   noIndex: boolean;
   translations: string;
+  variantOptions: string;
 }
 
 /** ISO datetime string'i `datetime-local` input'unun beklediği `YYYY-MM-DDTHH:mm` biçimine çevirir. */
@@ -132,6 +146,12 @@ export default function EditProductPage({ params }: { params: Promise<{ productI
   const [categoryId, setCategoryId] = useState("");
   const [coverMedia, setCoverMedia] = useState<Media | null>(null);
   const [images, setImages] = useState<ProductImage[]>([]);
+  const [variantOptions, setVariantOptions] = useState<ProductVariantOption[]>([]);
+  // `variantOptions`'ın SUNUCUDA KAYITLI hali — `ProductVariantsPanel`'in "yeni varyasyon ekle"
+  // formuna kaynaklık eder (backend `POST .../variants`'ı BUNA göre doğrular, yerel taslağa değil).
+  const [savedVariantOptions, setSavedVariantOptions] = useState<ProductVariantOption[]>([]);
+  const [variants, setVariants] = useState<ProductVariant[]>([]);
+  const [documents, setDocuments] = useState<ProductDocument[]>([]);
   const [status, setStatus] = useState<ContentStatus>("DRAFT");
   const [scheduledAt, setScheduledAt] = useState("");
   const [seoTitle, setSeoTitle] = useState("");
@@ -172,6 +192,7 @@ export default function EditProductPage({ params }: { params: Promise<{ productI
         canonicalUrl: product.canonicalUrl ?? "",
         noIndex: product.noIndex,
         translations: JSON.stringify(product.translations ?? {}),
+        variantOptions: JSON.stringify(product.variantOptions ?? []),
       };
       setTitle(nextSnapshot.title);
       setSlug(nextSnapshot.slug);
@@ -186,6 +207,10 @@ export default function EditProductPage({ params }: { params: Promise<{ productI
       setCategoryId(nextSnapshot.categoryId);
       setCoverMedia(product.coverMedia);
       setImages(product.images);
+      setVariantOptions(product.variantOptions ?? []);
+      setSavedVariantOptions(product.variantOptions ?? []);
+      setVariants(product.variants ?? []);
+      setDocuments(product.documents ?? []);
       setStatus(nextSnapshot.status);
       setScheduledAt(nextSnapshot.scheduledAt);
       setSeoTitle(nextSnapshot.seoTitle);
@@ -235,7 +260,8 @@ export default function EditProductPage({ params }: { params: Promise<{ productI
       ogImageUrl !== snapshot.ogImageUrl ||
       canonicalUrl !== snapshot.canonicalUrl ||
       noIndex !== snapshot.noIndex ||
-      JSON.stringify(translations) !== snapshot.translations
+      JSON.stringify(translations) !== snapshot.translations ||
+      JSON.stringify(variantOptions) !== snapshot.variantOptions
     );
   }, [
     title,
@@ -249,6 +275,7 @@ export default function EditProductPage({ params }: { params: Promise<{ productI
     sku,
     stockQuantity,
     categoryId,
+    variantOptions,
     coverMedia,
     status,
     scheduledAt,
@@ -329,6 +356,9 @@ export default function EditProductPage({ params }: { params: Promise<{ productI
         stockQuantity: Number(stockQuantity),
         categoryId: categoryId || null,
         coverMediaId: coverMedia?.id ?? null,
+        // §1.4 — tam-replace; mevcut varyasyonlardan biri yeni tanımla uyuşmuyorsa backend 409 döner
+        // (`ProductVariantsPanel`'in üstündeki uyarı bunu önceden bildirir).
+        variantOptions,
         status,
         scheduledAt: status === "SCHEDULED" ? new Date(scheduledAt).toISOString() : null,
         seoTitle: seoTitle || null,
@@ -452,6 +482,10 @@ export default function EditProductPage({ params }: { params: Promise<{ productI
           <TabsTrigger value="content">
             <FileText className="h-3.5 w-3.5" />
             İçerik
+          </TabsTrigger>
+          <TabsTrigger value="variants">
+            <Layers className="h-3.5 w-3.5" />
+            Varyasyon &amp; Döküman
           </TabsTrigger>
           <TabsTrigger value="seo">
             <Search className="h-3.5 w-3.5" />
@@ -588,15 +622,25 @@ export default function EditProductPage({ params }: { params: Promise<{ productI
               <Field id="sku" label="SKU" hint="Opsiyonel.">
                 {(inputProps) => <Input {...inputProps} value={sku} onChange={(e) => setSku(e.target.value)} />}
               </Field>
-              <Field id="stockQuantity" label="Stok adedi" required>
+              <Field
+                id="stockQuantity"
+                label="Stok adedi"
+                required={variants.length === 0}
+                hint={
+                  variants.length > 0
+                    ? `Bu ürün varyasyonlu — stok varyasyon seviyesinde yönetilir. Toplam: Σ ${variants.reduce((sum, v) => sum + v.stockQuantity, 0)}`
+                    : undefined
+                }
+              >
                 {(inputProps) => (
                   <Input
                     {...inputProps}
                     type="number"
                     step="1"
                     min="0"
-                    required
-                    value={stockQuantity}
+                    required={variants.length === 0}
+                    disabled={variants.length > 0}
+                    value={variants.length > 0 ? String(variants.reduce((sum, v) => sum + v.stockQuantity, 0)) : stockQuantity}
                     onChange={(e) => setStockQuantity(e.target.value)}
                   />
                 )}
@@ -651,6 +695,45 @@ export default function EditProductPage({ params }: { params: Promise<{ productI
                 </Field>
               )}
             </div>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="variants" className="mt-6 space-y-6 outline-none">
+          <Card className="space-y-4">
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">Varyasyon eksenleri</h2>
+              <p className="mt-1 text-xs text-foreground/60">
+                Renk/Beden gibi eksenler tanımlayın (en fazla 2 eksen, eksen başına en fazla 12 değer). Değişiklikler
+                yalnızca sayfanın üstündeki &quot;Kaydet&quot; butonuyla kalıcı olur.
+              </p>
+            </div>
+            <VariantAxesEditor value={variantOptions} onChange={setVariantOptions} />
+          </Card>
+
+          <Card className="space-y-4">
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">Varyasyon kombinasyonları</h2>
+              <p className="mt-1 text-xs text-foreground/60">
+                Her satır (sku/fiyat/stok/görsel) kendi &quot;Kaydet&quot; butonuyla ANINDA kaydedilir.
+              </p>
+            </div>
+            <ProductVariantsPanel
+              productId={productId}
+              savedAxes={savedVariantOptions}
+              axesDirty={JSON.stringify(variantOptions) !== JSON.stringify(savedVariantOptions)}
+              variants={variants}
+              onVariantsChange={setVariants}
+            />
+          </Card>
+
+          <Card className="space-y-4">
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">Teknik dökümanlar (PDF)</h2>
+              <p className="mt-1 text-xs text-foreground/60">
+                Ürün detay sayfasında indirilebilir PDF kartları olarak gösterilir. Ekleme/kaldırma ANINDA kaydedilir.
+              </p>
+            </div>
+            <ProductDocumentsPanel productId={productId} documents={documents} onDocumentsChange={setDocuments} />
           </Card>
         </TabsContent>
 

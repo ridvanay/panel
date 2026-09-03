@@ -11,6 +11,7 @@ import { Card } from "@/components/ui/card";
 import { Alert } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
 import { EmptyState } from "@/components/ui/empty-state";
+import { FreeShippingProgress } from "@/components/site/free-shipping-progress";
 import { formatPriceFromCents } from "@/lib/format-price";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 
@@ -89,6 +90,10 @@ export default function CartPage() {
     <div className="mx-auto max-w-3xl space-y-6 px-4 py-10 sm:px-6">
       <h1 className="text-2xl font-semibold text-foreground">Sepetim</h1>
 
+      {cart.shipping.configured && (
+        <FreeShippingProgress shipping={cart.shipping} subtotalCents={cart.subtotalCents} currency={cart.currency ?? "TRY"} />
+      )}
+
       {error && (
         <Alert variant="error">
           <span className="flex items-center gap-2">
@@ -116,6 +121,7 @@ export default function CartPage() {
 
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-foreground">{item.product.title}</p>
+                {item.variantLabel && <p className="text-xs text-foreground/60">{item.variantLabel}</p>}
                 <p className="mt-0.5 text-sm text-foreground/60">
                   {formatPriceFromCents(item.frozenUnitPriceCents, cart.currency ?? "TRY")}
                 </p>
@@ -172,11 +178,27 @@ export default function CartPage() {
         })}
       </Card>
 
-      <Card className="flex items-center justify-between">
-        <span className="text-sm font-medium text-foreground/70">Ara Toplam</span>
-        <span className="text-xl font-semibold text-foreground">
-          {formatPriceFromCents(cart.subtotalCents, cart.currency ?? "TRY")}
-        </span>
+      <Card className="space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-medium text-foreground/70">Ara Toplam</span>
+          <span className="text-base font-medium text-foreground">
+            {formatPriceFromCents(cart.subtotalCents, cart.currency ?? "TRY")}
+          </span>
+        </div>
+        {cart.shipping.configured && (
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-foreground/70">Kargo</span>
+            <span className="text-base font-medium text-foreground">
+              {cart.shipping.feeCents === 0 ? "Ücretsiz" : formatPriceFromCents(cart.shipping.feeCents, cart.currency ?? "TRY")}
+            </span>
+          </div>
+        )}
+        <div className="flex items-center justify-between border-t border-border pt-2">
+          <span className="text-sm font-medium text-foreground/70">Toplam</span>
+          <span className="text-xl font-semibold text-foreground">
+            {formatPriceFromCents(cart.totalCents, cart.currency ?? "TRY")}
+          </span>
+        </div>
       </Card>
 
       <div className="flex justify-end">

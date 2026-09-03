@@ -147,13 +147,24 @@ async function handleOrderPaid(app: FastifyInstance, session: Stripe.Checkout.Se
     if (!order) return { order: null as OrderWithItems | null, justPaid: false };
     if (order.status !== "PENDING") return { order, justPaid: false };
 
+    // §1.6 (.claude/architect-scope-ecommerce-pro-template.md, bağlayıcı) — Serializable paterni
+    // AYNI kalır; içindeki tek satır genelleşir: `item.variantId` doluysa `tx.productVariant`
+    // (satılan birim VARYASYON — §1.2), boşsa mevcut `tx.product` akışı (DEĞİŞMEDEN). Okuma ve
+    // düşürme AYNI transaction içinde kalır (yarış koşulu koruması buradan gelir).
     let insufficientProductTitle: string | null = null;
     for (const item of order.items) {
-      if (!item.productId) continue;
-      const product = await tx.product.findUnique({ where: { id: item.productId } });
-      if (!product || product.stockQuantity < item.quantity) {
-        insufficientProductTitle = item.productTitle;
-        break;
+      if (item.variantId) {
+        const variant = await tx.productVariant.findUnique({ where: { id: item.variantId } });
+        if (!variant || variant.stockQuantity < item.quantity) {
+          insufficientProductTitle = item.productTitle;
+          break;
+        }
+      } else if (item.productId) {
+        const product = await tx.product.findUnique({ where: { id: item.productId } });
+        if (!product || product.stockQuantity < item.quantity) {
+          insufficientProductTitle = item.productTitle;
+          break;
+        }
       }
     }
 
@@ -167,8 +178,14 @@ async function handleOrderPaid(app: FastifyInstance, session: Stripe.Checkout.Se
     }
 
     for (const item of order.items) {
-      if (!item.productId) continue;
-      await tx.product.update({ where: { id: item.productId }, data: { stockQuantity: { decrement: item.quantity } } });
+      if (item.variantId) {
+        await tx.productVariant.update({
+          where: { id: item.variantId },
+          data: { stockQuantity: { decrement: item.quantity } },
+        });
+      } else if (item.productId) {
+        await tx.product.update({ where: { id: item.productId }, data: { stockQuantity: { decrement: item.quantity } } });
+      }
     }
 
     const paid = await tx.order.update({
@@ -205,7 +222,15 @@ async function handleOrderPaid(app: FastifyInstance, session: Stripe.Checkout.Se
     await sendTemplateEmail(app, "ORDER_CONFIRMATION", order.customerEmail, {
       order_number: order.orderNumber,
       customer_name: order.customerName ?? order.customerEmail,
-      items_summary: order.items.map((item) => `${item.productTitle} x${item.quantity}`).join(", "),
+      // §1.3/§3.3 (.claude/architect-scope-ecommerce-pro-template.md) — varyasyon etiketi VARSA
+      // özet metnine yansıtılır (`items_summary` MEVCUT sistem değişkenidir, e-posta şablon
+      // sözleşmesine YENİ bir değişken EKLENMEZ — bkz. lib/email-variables.ts, architect/
+      // documentation-agent onayı gerektirir). Kargo bedeli AYRICA satırlanmaz: `total_formatted`
+      // zaten `order.totalCents`'ten (`subtotal - discount + shipping`) üretilir, dolayısıyla
+      // tahsil edilen tutarla e-postada gösterilen tutar HER ZAMAN birebir tutarlıdır.
+      items_summary: order.items
+        .map((item) => `${item.productTitle}${item.variantLabel ? ` (${item.variantLabel})` : ""} x${item.quantity}`)
+        .join(", "),
       total_formatted: formatMoney(order.totalCents, order.currency),
     });
   } catch (err) {

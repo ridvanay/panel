@@ -14,6 +14,7 @@ import { SiteHeader } from "@/components/site/site-header";
 import { SiteFooter } from "@/components/site/site-footer";
 import { BackToTopButton } from "@/components/site/back-to-top-button";
 import { CookieConsentBanner } from "@/components/site/cookie-consent-banner";
+import { CartDrawer } from "@/components/site/cart-drawer";
 import { getFooterLogoHeight } from "@/lib/site-settings/logo";
 import { escapeEmbeddedClosingTags } from "@/lib/site-settings/appearance";
 import { SITE_FONT_FAMILY, SITE_FONT_VARIABLES } from "@/lib/site-settings/site-fonts";
@@ -106,6 +107,11 @@ export default async function SiteLayout({
               policyHref={appearance.cookieBannerPolicyHref}
             />
           )}
+          {/* `.claude/design-notes-ecommerce-storefront.md` §6 — `.site-scope` İÇİNDE mount
+              edilir ki `--site-primary`/`--site-radius` token'larını miras alsın. Yalnızca
+              `productsModuleEnabled` iken (bu `content` her iki dalda da render edildiği için
+              burada AYRICA kontrol edilir) — `CartProvider` kapalı modülde ağaca hiç eklenmez. */}
+          {productsModuleEnabled && <CartDrawer />}
         </div>
       </LocaleAlternatesProvider>
 

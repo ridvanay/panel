@@ -13,6 +13,52 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
 
 ### Added
 
+- **`ecommerce-pro` demo şablonu + ürün varyasyonu/teknik döküman/kargo eşiği (storefront
+  kalıcı genişlemesi)** (bağlayıcı karar dokümanı
+  `.claude/architect-scope-ecommerce-pro-template.md`, `ARCHITECTURE.md` §10.9.2/§10.22).
+  İki ayrı iş: (A) storefront'un kalıcı yetenek genişlemesi, (B) bunu sergileyen ikinci demo
+  şablonu.
+  - **(A) Ürün varyasyonu:** yeni `ProductVariant` tablosu (renk/beden gibi en fazla 2 eksen,
+    eksen başına en fazla 12 değer, ürün başına en fazla 60 kombinasyon) + `Product.
+    variantOptions` (eksen tanımı, JSON). Bir ürünün en az bir varyasyonu varsa stok/fiyat
+    **varyasyondan** okunur, `Product.stockQuantity` o ürün için yok sayılır (`PATCH
+    /admin/products/{id}/stock` varyasyonlu üründe artık `409`). Fiyat çözümlemesi tek yerde:
+    `lib/product-pricing.ts::resolveUnitPriceCents` (miras/mutlak fiyat + indirim matrisi) —
+    sepete ekleme, sepet DTO'su ve checkout'un taze okuması aynı fonksiyonu çağırıyor.
+    `CartItem`/`OrderItem` artık `variantId` taşıyor; sepet benzersizliği `@@unique([cartId,
+    productId, variantId])`'e genişledi (NULL-eşitsizlik zayıflaması uygulama katmanında —
+    `(productId, variantId ?? null)` arama anahtarıyla — telafi edildi).
+  - **(A) Teknik döküman (PDF):** yeni `ProductDocument` tablosu (`ProductImage` ile aynı
+    sıralı join-tablo deseni). Medya boru hattı ilk kez PDF kabul ediyor: `%PDF-` magic byte
+    tespiti (`lib/mime-detect.ts::detectUploadMimeType`), görsel bekleyen hiçbir FK slotunun
+    (kapak/galeri/varyasyon görseli vb.) PDF kabul etmemesi (`422`), `/uploads/*`'ta
+    görsel-olmayan dosyalar için `Content-Disposition: attachment` + `X-Content-Type-Options:
+    nosniff`, `GET /admin/media?type=image|document` filtresi.
+  - **(A) Kargo:** ayrı bir kural tablosu yerine `SiteSettings`'e iki alan —
+    `shippingFlatFeeCents` (mağaza geneli sabit kargo bedeli, `null` = kargo hiç hesaplanmaz,
+    mevcut davranış birebir korunur) + `freeShippingThresholdCents`. Tek hesaplama noktası
+    `lib/shipping.ts::computeShipping`; sepet DTO'su, checkout ve yeni `Order.shippingCents`
+    snapshot'ı aynı fonksiyonu kullanıyor. Kargo bedeli sepette gösteriliyorsa Stripe
+    oturumuna ayrı bir satır olarak eklenip **tahsil ediliyor** (gösterilen ile tahsil edilen
+    tutar her zaman birebir aynı).
+  - **(B) `ecommerce-pro` demo şablonu** ("Modern Storefront / E-Ticaret", kurgusal mağaza
+    "Ferah Ev Yaşam"): 4 kategori + 8 varyasyonlu/dökümanlı ürün + 4 yasal **yer tutucu**
+    sayfa (KVKK Aydınlatma Metni, Mesafeli Satış Sözleşmesi, Ön Bilgilendirme Formu, İptal &
+    İade Koşulları — gerçek hukuki metin İÇERMEZ, hukuk danışmanı onayı gerektiren açık uyarı
+    metniyle işaretli) oluşturuyor. **Örnek/sahte sipariş üretilmiyor** (bilinçli ret —
+    `Order` PII taşır, silinemez, muhasebe/ödeme değişmezlerini bozar); admin "Siparişler"
+    ekranı import sonrası boş kalıyor. `DemoTemplateDefinition` yeni `commerce` (ürün/
+    kategori/kargo verisi) ve `extraPages` (ana sayfa dışı sayfalar) alanlarıyla genişledi;
+    yeni sayfa-blok token'ı `ref:product-category:<slug>`. Yeni tavanlar:
+    `MAX_TEMPLATE_ASSETS=40`, `MAX_TEMPLATE_PRODUCTS=12`, `MAX_TEMPLATE_PRODUCT_VARIANTS=12`,
+    `MAX_TEMPLATE_PRODUCT_DOCUMENTS=3`, `MAX_TEMPLATE_EXTRA_PAGES=8`.
+  - Yeni admin arayüzü: ürün düzenleyicide varyasyon + döküman panelleri; PDP'de renk/beden
+    seçici (URL'de durum, `?variant=<id>`), stok uyarısı ("Son N ürün!"), PDF indirme
+    kartları; sepet çekmecesi (`cart-drawer`) ve ücretsiz kargoya kalan tutarı gösteren
+    ilerleme çubuğu (`free-shipping-progress`) — para matematiği her zaman sunucudan gelir,
+    frontend'de tekrarlanmaz.
+  - Migration: `add_product_variants_documents_shipping` (salt-ekleme + tek kısıt değişimi).
+
 - **Page Builder — Google Harita bloğu ve kurumsal blok genişletmeleri** (bağlayıcı karar
   dokümanları `.claude/architect-scope-google-map-corporate-blocks.md` ve
   `.claude/security-review-google-map-corporate-blocks.md`). Yeni `google-map` bloğu: hazır

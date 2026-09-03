@@ -19,14 +19,26 @@ vi.mock("@/lib/api/checkout", () => ({
 const cartApi = await import("@/lib/api/cart");
 const checkoutApi = await import("@/lib/api/checkout");
 
+const NOT_CONFIGURED_SHIPPING: Cart["shipping"] = {
+  configured: false,
+  feeCents: 0,
+  thresholdCents: null,
+  remainingCents: null,
+  isFree: false,
+};
+
 const cartWithItems: Cart = {
   currency: "TRY",
   subtotalCents: 15000,
+  shipping: NOT_CONFIGURED_SHIPPING,
+  totalCents: 15000,
   items: [
     {
       id: "item-1",
       productId: "product-1",
       product: { id: "product-1", title: "Örnek Ürün", slug: "ornek-urun", coverImageUrl: null, stockQuantity: 5 },
+      variantId: null,
+      variantLabel: null,
       quantity: 1,
       frozenUnitPriceCents: 15000,
       currentPriceCents: 15000,
@@ -58,7 +70,13 @@ describe("CheckoutPage — form doğrulaması", () => {
   });
 
   it("sepet boşken ödeme formu yerine boş sepet mesajı gösterir", async () => {
-    vi.mocked(cartApi.getCart).mockResolvedValue({ currency: null, subtotalCents: 0, items: [] });
+    vi.mocked(cartApi.getCart).mockResolvedValue({
+      currency: null,
+      subtotalCents: 0,
+      items: [],
+      shipping: NOT_CONFIGURED_SHIPPING,
+      totalCents: 0,
+    });
 
     renderCheckout();
 

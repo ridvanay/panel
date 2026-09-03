@@ -1703,3 +1703,174 @@ ebeveyn kardeş sıralama) davranışların da DEĞİŞMEDEN geçtiğini yeniden
   şimdi bu iki dosya için mevcut bir kapsam yoktu; kaynak inceleme (dnd-kit `applyModifiers`'ın
   sensör TÜRÜNDEN bağımsız, her ikisi için de AYNI kod yolu olduğu doğrulandı) düşük risk gösteriyor
   ama ampirik DOĞRULAMA YAPILMADI — sonraki bir turda eklenmesi önerilir.
+
+## `ecommerce-pro` demo şablonu + varyasyon/döküman/kargo storefront genişlemesi — E2E kapsamı (bu turda eklendi)
+
+Kaynak: `.claude/architect-scope-ecommerce-pro-template.md` §9.9 (bağlayıcı qa-agent görev
+listesi) + üst doküman `.claude/architect-scope-demo-template-import.md` §12 (RBAC/idempotency/
+confirm/force/hız sınırı — MİRAS ALINDI, yeniden yazılmadı). Üç yeni dosya:
+
+| Dosya | Kapsadığı madde(ler) |
+|---|---|
+| `frontend/tests/e2e/product-pdp-variants.spec.ts` | 1 (renk seçimi → görsel+fiyat), 2 (düşük stok uyarısı), 4 (PDF indirme) |
+| `frontend/tests/e2e/cart-dedupe-drawer-shipping.spec.ts` | 3 (sepet dedupe — KRİTİK regresyon), 5 (kargo eşiği), 6 (sepet çekmecesi) |
+| `frontend/tests/e2e/ecommerce-pro-template-import.spec.ts` | 7 (şablon import), 8 (products modülü kapalı), 9 ([DTI] §12 mirası, `ecommerce-pro` ile parametrize) + SKU-çakışma repro |
+
+**Tasarım kararı — 1/2/3/4/5/6 `ecommerce-pro`'nun KENDİ verisiyle DEĞİL, izole fixture ürünleriyle
+test edildi** (`support/product-variants-fixtures.ts`, `POST /admin/products`+`.../variants`+
+`.../documents` ile ADMIN token'ıyla kurulur). Gerekçe: `templates/ecommerce-pro.ts`teki HİÇBİR
+varyasyonun `imageAssetKey`'i dolu değil (hepsi `null`) — yani şablonun kendi verisiyle "renk
+seçimi GÖRSELİ değiştiriyor" iddiası doğrulanamazdı. Yalnızca 7/8/9 (şablon import'un kendisi)
+`ecommerce-pro`'nun gerçek verisiyle test edildi (`support/ecommerce-pro-fixtures.ts`).
+
+| # | Senaryo | Dosya | Durum |
+|---|---|---|---|
+| 1 | Renk seçimi ana görseli + fiyatı değiştiriyor (miras/mutlak override); stoksuz değer disabled+aria-label "Stokta yok" | `product-pdp-variants.spec.ts` | ✅ Geçiyor |
+| 2 | 0<stok≤3 iken "Son N ürün!"; yüksek stokta YOK | `product-pdp-variants.spec.ts` | ✅ Geçiyor |
+| 3 | Varyasyonsuz aynı ürün 2 kez → TEK satır miktar 2; 2 farklı varyasyon → İKİ satır (§1.4 KRİTİK regresyon) | `cart-dedupe-drawer-shipping.spec.ts` | ✅ Geçiyor |
+| 4 | PDF kartından indirme → 200 + `content-type: application/pdf` + `content-disposition: attachment` | `product-pdp-variants.spec.ts` | ✅ Geçiyor |
+| 5a | `shippingFlatFeeCents=null` iken kargo satırı/çubuğu HİÇ render edilmiyor (regresyon) | `cart-dedupe-drawer-shipping.spec.ts` | ✅ Geçiyor |
+| 5b | Eşik altı → kargo>0 + doğru "son X ₺" metni; eşiğe ulaşınca kargo 0 + Toplam=Ara Toplam | `cart-dedupe-drawer-shipping.spec.ts` | ✅ Geçiyor |
+| 6 | Sepete ekleme çekmeceyi otomatik açıyor; miktar güncelleme Toplam'ı değiştiriyor | `cart-dedupe-drawer-shipping.spec.ts` | ✅ Geçiyor |
+| 7 | ADMIN `ecommerce-pro` uygula → 201; audit `commerceCounts` TAM olarak {kategori:4, ürün:8, varyasyon:14, döküman:4, sayfa:4}; 4 yasal sayfa `isLegalDocument:true` + yer tutucu metin; `Order` satırı sayısı DEĞİŞMEDİ (delta=0) | `ecommerce-pro-template-import.spec.ts` | ✅ Geçiyor |
+| 8 | `products` modülü kapalıyken import → 201 + "Ürünler modülü kapalı..." UYARISI + "4 yasal sayfa YER TUTUCU..." uyarısı BİRLİKTE | `ecommerce-pro-template-import.spec.ts` | ✅ Geçiyor |
+| 9 | [DTI] §12 mirası, `ecommerce-pro` ile parametrize: hız sınırı (6. istek 429), idempotency (force:false → 409), `confirm` zorunluluğu (422), RBAC (MANAGER/EDITOR GET 200/POST 403, USER GET 403/POST 403) | `ecommerce-pro-template-import.spec.ts` | ✅ Geçiyor |
+| SKU-çakışma | `force:true` ile İKİNCİ import — `Product.sku` global `@unique` çakışması | `ecommerce-pro-template-import.spec.ts` | ✅ Geçiyor — **409 CONFLICT (kontrollü), ham 500 DEĞİL** (aşağıya bkz.) |
+
+**14/14 senaryo yeşil.** Üç dosya birbirinden bağımsız + tam suite içinde art arda (izole VE
+birleşik) koşuldu, tutarlı geçti.
+
+### Backend unit/entegrasyon testleri (backend-agent, bu turda eklendi — documentation-agent envanteri)
+
+E2E'den bağımsız, saf fonksiyon/şema/route seviyesinde dört yeni `backend/tests/unit/` dosyası
++ bir güncellenen `backend/tests/integration/` dosyası:
+
+| Dosya | Kapsam |
+|---|---|
+| `backend/tests/unit/product-pricing.test.ts` | `resolveEffectivePrice`/`resolveUnitPriceCents` — miras/mutlak fiyat + indirim BAĞIMSIZ override matrisi (§1.5) |
+| `backend/tests/unit/shipping.test.ts` | `computeShipping` — `shippingFlatFeeCents=null` (kargo hesaplanmaz), eşik `null`/eşiğin 1 kuruş altı/tam eşiti/üstü, `remainingCents` 0'a kırpma (§3.3) |
+| `backend/tests/unit/product-variants.test.ts` | `deriveVariantKey` (deterministik, slugify+alfabetik sıralı), `assertOptionValuesMatchAxes` (eksik/fazla/tanımsız eksen `422`), `buildVariantLabel`, `assertVariantCountWithinLimit`, `ProductVariantOptionSchema` (SWATCH/TEXT `swatchHex` kuralları) + **REGRESYON**: yazma (`variants.ts`) ile okuma (`entities.ts`) şemalarının `TEXT` eksende `swatchHex` tutarlılığı (aşağıdaki kritik bug'ın kök nedeni testle sabitlendi) |
+| `backend/tests/unit/demo-templates-ecommerce-pro.test.ts` | `ecommerce-pro` tanımının `PageBlockListSchema`/`SlideLayersSchema`'dan geçmesi, `asset:`/`ref:`/`ref:product-category:` token çözümlemesi, §4.6 tavanları (8 ürün ≤12, varyasyon/döküman/sayfa tavanları), gerçek importer çağrısıyla **hiçbir `Order` satırı yaratılmadığının** doğrulanması + kaynak kodda `order`/`orderItem`/`siteUser` yazan çağrı olmadığının statik denetimi (§4.5 kabul kriteri) |
+| `backend/tests/integration/products.test.ts` (güncellendi) | Yeni REGRESYON bloğu: `TEXT` ekseninde `swatchHex` olmadan oluşturulan varyasyonun liste/detay/public uçlarında (`GET /admin/products`, `GET /products`, `GET /products/{slug}`) 200 dönmesi — aşağıdaki kritik bug'ın kalıcı regresyon koruması |
+
+### SKU-çakışma bulgusu — backend-agent'ın bildirdiği bilinen sınır, GERÇEKTEN doğrulandı: KABUL EDİLEBİLİR
+
+Üst koordinatörün talebi üzerine gerçekten tetiklendi: `ecommerce-pro`'yu bir kez import edip
+ardından `force:true` ile TEKRAR import etmek `Product.sku`/`ProductVariant.sku`'nun global
+`@unique` kısıtına (importer `force`'ta yalnızca sayfa/kategori/ürün SLUG'larını benzersizleştirir,
+§6.5 — SKU'ya dokunmaz) çarpıyor. Backend'in genel hata işleyicisi
+(`plugins/error-handler.ts`, `Prisma.PrismaClientKnownRequestError.code === "P2002"`) bunu
+**409 CONFLICT'e YAKALIYOR** — importer'ın kendi 2 denemelik retry döngüsü (`MAX_TRANSACTION_
+RETRIES`) tükendikten sonra hatayı OLDUĞU GİBİ fırlatıyor ama bu, global handler tarafından ham bir
+500'e DÜŞMEDEN önce kontrollü 409'a çevriliyor. **Ham bir 500/unhandled crash DEĞİL** — bu yüzden
+task tanımındaki kritere göre bu davranış test içinde `expect` edildi (KABUL EDİLEBİLİR bilinen
+sınırlama), backend-agent'a bug olarak YÖNLENDİRİLMEDİ. Mimari not (architect'e bilgi amaçlı):
+SKU'ların da slug gibi otomatik benzersizleştirilip benzersizleştirilmeyeceği (ya da `force`'ta
+SKU'nun tamamen atlanıp uyarı üretilmesi) bir sonraki turda ele alınabilecek bir tasarım kararıdır.
+
+### KRİTİK BUG (backend-agent'a yönlendirildi) — `type: "TEXT"` varyasyon ekseninde `swatchHex` omit edilince `GET /admin/products` VE `GET /products` KALICI OLARAK 500'e düşüyor
+
+Bu turda qa-agent tarafından GERÇEKTEN tetiklenip doğrulandı — **`ecommerce-pro`'nun KENDİ
+verisini doğrudan etkileyen, yayına engel bir bug:**
+
+**Repro (bağımsız olarak doğrulandı, backend gerçek Postgres'e karşı):**
+```
+POST /admin/products
+{
+  "title": "...", "priceCents": 1000, "stockQuantity": 0,
+  "variantOptions": [{ "name": "Ölçü", "type": "TEXT", "values": [{ "value": "120 cm" }] }]
+}
+→ 500 INTERNAL_ERROR (FST_ERR_RESPONSE_SERIALIZATION)
+```
+Backend log'undaki gerçek Zod hatası:
+```
+ZodError: [{ "code": "invalid_type", "expected": "string", "received": "undefined",
+  "path": ["data","variantOptions",0,"values",0,"swatchHex"], "message": "Required" }]
+```
+
+**Kök neden — yazma/okuma şeması ÇELİŞKİSİ:**
+- YAZMA şeması (`backend/src/modules/products/lib/variants.ts::ProductVariantOptionValueSchema`)
+  `type: "TEXT"` eksenlerinde `swatchHex`'in **GÖNDERİLMEMESİNİ** zorunlu kılıyor (`superRefine`:
+  dolu bir `swatchHex` TEXT'te REDDEDİLİYOR).
+- OKUMA (yanıt) şeması (`backend/src/schemas/entities.ts::ProductVariantOptionValueSchema`) ise
+  `swatchHex: z.string().nullable()` — **`.optional()` YOK.** Yani alan `null` OLABİLİR ama
+  TAMAMEN OMİT (undefined) OLAMAZ.
+- Write path, `swatchHex` gönderilmediğinde bu alanı DB JSON'una `null` olarak DEFAULT'LAMIYOR —
+  olduğu gibi (anahtar bile yok) yazıyor. Satır DB'ye YAZILIYOR (create başarılı), ama HEMEN
+  ARDINDAN aynı isteğin YANITINI serialize ederken Zod validasyonu PATLIYOR → **`500`** ve satır
+  DB'de "zehirli" (poisoned) kalıyor.
+
+**Etki — KATASTROFİK, ürün listesini TAMAMEN kilitliyor:** Satır bir kez oluşunca (create sırasında
+DB write serialization hatasından ÖNCE commit oluyor), bu satırı İÇEREN her sonraki istek —
+`GET /admin/products` (liste), `GET /admin/products/{id}`, `GET /products` (public liste),
+`GET /products/{slug}` — AYNI Zod hatasıyla **500** döner. Liste uçları TEK bir kayıt yüzünden
+TÜM sayfayı kilitliyor; admin panelinden bu satırı düzeltmenin/silmenin bir yolu YOK (ürün listesi
+zaten açılamıyor) — kurtarma yalnızca doğrudan veritabanı erişimiyle mümkün (qa-agent bunu
+`DELETE FROM products WHERE id = '...'` ile ELLE kurtardı, ayrıntı aşağıda).
+
+**`ecommerce-pro`'yu DOĞRUDAN etkiliyor:** `templates/ecommerce-pro.ts`teki **"Modüler Raf
+Sistemi"** ürününün "Ölçü" (TEXT) ekseni (`values: [{value:"120 cm"},{value:"180 cm"}]`) TAM
+OLARAK bu şekli taşıyor. İçe aktarma çağrısının KENDİSİ etkilenmiyor (importer `ProductSchema`
+üzerinden SERİLEŞTİRME yapmıyor, ham Prisma `create` kullanıyor — bu yüzden qa-agent'ın madde 7/8
+testleri 201 ile geçti) ama **import SONRASI** admin "Ürünler" listesi VE storefront `/products`
+listesi (ve `/products/moduler-raf-sistemi` sayfasının kendisi) KALICI olarak kırılacaktır — bu,
+demo şablonu canlıya alan HER kurulumda garanti olarak tetiklenecek bir P0 bug'dır.
+
+**qa-agent'ın kendi test/fixture'larında aldığı önlem:** `cart-dedupe-drawer-shipping.spec.ts`teki
+TEXT eksen fixture'ı bu bug'ı BİLEREK tetiklemeyecek şekilde yazıldı — `swatchHex: null` AÇIKÇA
+gönderiliyor (yazma şeması TEXT için dolu bir `swatchHex`'i reddediyor ama `null`'ı kabul ediyor).
+`ecommerce-pro-template-import.spec.ts`teki `purgeKnownEcommerceProContent` artık `GET
+/admin/products`'a GÜVENMİYOR — ürünler doğrudan SQL ile silinir (bkz. `ecommerce-pro-
+fixtures.ts::deleteKnownProductsSql` başlığındaki NOT).
+
+**Yönlendirme:** backend-agent'a — `schemas/entities.ts::ProductVariantOptionValueSchema.swatchHex`
+ya `.optional()` yapılmalı (okuma tarafı `undefined`'ı kabul etsin) YA DA write path (`products.
+routes.ts`/`lib/variants.ts`) `TEXT` eksenlerinde `swatchHex`'i DAİMA `null` olarak normalize edip
+öyle yazmalı (JSON'a HER ZAMAN anahtar yazılsın). İkinci seçenek muhtemelen daha güvenli (yazma
+şemasının "TEXT'te swatchHex GÖNDERİLMEMELİ" kuralı frontend sözleşmesini bozmadan, DB'de tutarlı
+bir şekil garanti eder). **Bu, `ecommerce-pro` özelliğinin YAYINA HAZIR OLMADIĞI anlamına gelir** —
+bkz. final değerlendirme.
+
+### İkinci fixture bug'ı — qa-agent'ın KENDİ temizlik betiğinde bulunup düzeltildi (ürün kodu DEĞİL)
+
+`purgeKnownEcommerceProContent`'in ürünleri HAM SQL ile silmesi (yukarıdaki bug'dan kaçınmak için
+zorunlu hale geldi) `content_slugs` (§10.5 i18n) tablosundaki karşılık gelen satırları YETİM
+bıraktı — bu tablo `products`'a DB-seviyesi bir FK İLE bağlı DEĞİL (yalnızca `DELETE /admin/
+products/{id}/permanent` → `deleteContentSlugsForEntity` ile uygulama katmanında temizleniyor).
+Sonuç: bir sonraki import denemesi gerçek bir bug DEĞİL, "slug X başka bir içerik tarafından
+kullanılıyor" 409'una çarpıyordu. Düzeltme: `deleteKnownProductsSql()` artık ÖNCE `content_slugs`
+(`entityType='PRODUCT'`), SONRA `products` satırlarını siliyor (bkz. `ecommerce-pro-fixtures.ts`).
+Bu ürün kodunu ETKİLEMEZ — yalnızca qa-agent'ın kendi fixture/temizlik betiğindeydi, kural gereği
+(`.claude/CLAUDE.md` madde 3) qa-agent bunu kendisi düzeltti.
+
+### Genel değerlendirme — bu özellik YAYINA HAZIR DEĞİL
+
+`ecommerce-pro` şablonunun storefront tarafı (varyasyon seçici/görsel-fiyat geçişi/düşük stok/PDF
+indirme/sepet dedupe/kargo eşiği/sepet çekmecesi) VE şablon import akışının RBAC/idempotency/confirm/
+force/hız sınırı/audit/legal-sayfa/sipariş-yaratmama sözleşmesi **BAŞARIYLA doğrulandı, hepsi
+kontrata uygun.** Ancak yukarıdaki **KRİTİK bug** (`TEXT` eksen + omit edilmiş `swatchHex` →
+kalıcı 500), şablonun KENDİ ürün verisinden biri ("Modüler Raf Sistemi") tarafından GARANTİ olarak
+tetikleneceği için, bu özellik **backend-agent'ın düzeltmesi olmadan yayına ALINMAMALIDIR** —
+düzeltme küçük (tek satırlık şema/normalizasyon değişikliği) ama etkisi (ürün listesinin TAMAMEN
+kilitlenmesi) çok yüksek.
+
+### Güncelleme — kritik `swatchHex` bug'ı ÇÖZÜLDÜ (documentation-agent, kaynak kod üzerinden doğrulandı)
+
+Yukarıdaki "YAYINA HAZIR DEĞİL" bulgusundan sonraki turda backend-agent düzeltmeyi uyguladı;
+bu turda documentation-agent, doğrudan kaynağı okuyarak teyit etti (uydurma değildir):
+
+- `backend/src/schemas/entities.ts::ProductVariantOptionValueSchema.swatchHex` artık
+  `z.string().nullable().optional()` — okuma (yanıt) şeması `TEXT` eksende alanın hiç
+  gönderilmediği (`undefined`) durumu kabul ediyor; yazma şemasıyla (`variants.ts`) çelişki
+  kalmadı.
+- Regresyon iki katmanda testle sabitlendi: `backend/tests/unit/product-variants.test.ts`
+  ("REGRESYON — yazma şeması ile okuma şeması TEXT eksen swatchHex tutarlılığı" bloğu) ve
+  `backend/tests/integration/products.test.ts` ("REGRESYON: TEXT eksende swatchHex olmadan
+  oluşturulan varyasyon GERİ OKUNABİLİR (500 vermez)" bloğu — `GET /admin/products`, `GET
+  /products`, `GET /products/{slug}` uçlarının 200 döndüğünü doğruluyor).
+- Üst koordinatörün bildirdiğine göre bu turda tam backend suite (102 dosya/1126 test) ve
+  frontend suite (97 dosya/600 test) yeşil; bu belge güncellendiği anda qa-agent'ın kendisi
+  YENİDEN koşup "Genel değerlendirme"yi resmi olarak revize etmedi — yukarıdaki "YAYINA HAZIR
+  DEĞİL" başlığı **tarihseldir** (bug'ın bulunduğu andaki durumu yansıtır) ve bilinçli olarak
+  SİLİNMEDİ; yeni doğrulama bu ek not olarak eklendi. Yayın kararı için qa-agent'ın resmi
+  yeniden-onayı önerilir.

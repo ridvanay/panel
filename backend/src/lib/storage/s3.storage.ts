@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { env } from "../../config/env";
-import { extensionForMimeType } from "../mime-detect";
+import { extensionForMimeType, isImageMimeType } from "../mime-detect";
 import type { MediaStorage, SaveMediaInput, SaveMediaResult } from "./types";
 
 /**
@@ -47,6 +47,10 @@ export class S3Storage implements MediaStorage {
         Key: key,
         Body: buffer,
         ContentType: mimeType,
+        // §2.2 madde 3 ile AYNI gerekçe (bkz. plugins/uploads.ts::setHeaders) — S3/CDN sürücüsü
+        // `/uploads/*` yerel statik servisinin DIŞINDADIR, bu yüzden görsel OLMAYAN türler için
+        // indirme zorlaması burada, PutObject anında ayarlanır.
+        ContentDisposition: isImageMimeType(mimeType) ? undefined : "attachment",
       })
     );
 

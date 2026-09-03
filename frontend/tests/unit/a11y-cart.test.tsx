@@ -20,14 +20,27 @@ const cartApi = await import("@/lib/api/cart");
 
 const axeOptions = { rules: { region: { enabled: false } } };
 
+/** Kargo yapılandırılmamış varsayılan durum (`shippingFlatFeeCents = null`) — regresyon testi §9.9 madde 5. */
+const NOT_CONFIGURED_SHIPPING: Cart["shipping"] = {
+  configured: false,
+  feeCents: 0,
+  thresholdCents: null,
+  remainingCents: null,
+  isFree: false,
+};
+
 const cartWithItems: Cart = {
   currency: "TRY",
   subtotalCents: 35000,
+  shipping: NOT_CONFIGURED_SHIPPING,
+  totalCents: 35000,
   items: [
     {
       id: "item-1",
       productId: "product-1",
       product: { id: "product-1", title: "Örnek Ürün", slug: "ornek-urun", coverImageUrl: null, stockQuantity: 5 },
+      variantId: null,
+      variantLabel: null,
       quantity: 2,
       frozenUnitPriceCents: 10000,
       currentPriceCents: 12000,
@@ -37,6 +50,8 @@ const cartWithItems: Cart = {
       id: "item-2",
       productId: "product-2",
       product: { id: "product-2", title: "İkinci Ürün", slug: "ikinci-urun", coverImageUrl: null, stockQuantity: 5 },
+      variantId: null,
+      variantLabel: null,
       quantity: 1,
       frozenUnitPriceCents: 15000,
       currentPriceCents: 15000,
@@ -55,7 +70,13 @@ function renderCartPage() {
 
 describe("CartPage — a11y", () => {
   it("boş sepet durumunda kritik/ciddi a11y ihlali içermez", async () => {
-    vi.mocked(cartApi.getCart).mockResolvedValue({ currency: null, subtotalCents: 0, items: [] });
+    vi.mocked(cartApi.getCart).mockResolvedValue({
+      currency: null,
+      subtotalCents: 0,
+      items: [],
+      shipping: NOT_CONFIGURED_SHIPPING,
+      totalCents: 0,
+    });
 
     const { container } = renderCartPage();
 

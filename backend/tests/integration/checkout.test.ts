@@ -19,6 +19,8 @@ vi.mock("../../src/lib/stripe", () => ({
 import { buildTestApp } from "../helpers/build-test-app";
 import { resetDatabase } from "../helpers/reset-db";
 import { registerTestUser } from "../helpers/auth";
+import { deriveVariantKey } from "../../src/modules/products/lib/variants";
+import { SETTINGS_ID, DEFAULTS as SETTINGS_DEFAULTS } from "../../src/modules/settings/settings.routes";
 
 describe("checkout — POST /checkout/session (session oluşturma + fiyat/stok bütünlüğü)", () => {
   let app: FastifyInstance;
@@ -42,8 +44,12 @@ describe("checkout — POST /checkout/session (session oluşturma + fiyat/stok b
     });
   }
 
-  async function addToCart(productId: string, quantity: number) {
-    return app.inject({ method: "POST", url: "/api/v1/cart/items", payload: { productId, quantity } });
+  async function addToCart(productId: string, quantity: number, variantId?: string) {
+    return app.inject({
+      method: "POST",
+      url: "/api/v1/cart/items",
+      payload: variantId ? { productId, quantity, variantId } : { productId, quantity },
+    });
   }
 
   beforeAll(async () => {
@@ -203,6 +209,286 @@ describe("checkout — POST /checkout/session (session oluşturma + fiyat/stok b
 
       const order = await app.prisma.order.findFirst({ where: { customerEmail: "gecersiz-token@example.com" } });
       expect(order?.siteUserId).toBeNull();
+    });
+  });
+});
+
+// AYRI `describe`/`app` — CHECKOUT_RATE_LIMIT (10/dakika, IP bazlı, bkz. "checkout — rate limit"
+// bloğu) yukarıdaki ana describe'da BİLE aşılabiliyor; her yeni senaryo grubunun kendi (temiz
+// sayaçlı) app örneğinde çalışması bu YAN ETKİYİ önler.
+describe("checkout — varyasyonlu ürün (§1.2/§1.5/§1.6)", () => {
+  let app: FastifyInstance;
+
+  function cookieHeader(res: { cookies: { name: string; value: string }[] }): string {
+    return res.cookies.map((c) => `${c.name}=${c.value}`).join("; ");
+  }
+
+  async function addToCart(productId: string, quantity: number, variantId?: string) {
+    return app.inject({
+      method: "POST",
+      url: "/api/v1/cart/items",
+      payload: variantId ? { productId, quantity, variantId } : { productId, quantity },
+    });
+  }
+
+  beforeAll(async () => {
+    app = await buildTestApp();
+    await resetDatabase(app.prisma);
+  });
+
+  afterEach(() => {
+    stripeSessionsCreateMock.mockReset();
+  });
+
+  afterAll(async () => {
+    await resetDatabase(app.prisma);
+    await app.close();
+  });
+
+  // .claude/architect-scope-ecommerce-pro-template.md §1.6/§9.4 — integration-agent görevi.
+  describe("varyasyonlu ürün checkout'u (§1.2/§1.5/§1.6)", () => {
+    async function createProductWithVariant(overrides: Partial<{ productPriceCents: number; variantPriceCents: number | null; variantStock: number; variantActive: boolean }> = {}) {
+      const optionValues = { Renk: "Antrasit", Beden: "L" };
+      const product = await app.prisma.product.create({
+        data: {
+          title: `Varyasyonlu Ürün ${crypto.randomUUID()}`,
+          slug: `varyasyonlu-urun-${crypto.randomUUID()}`,
+          priceCents: overrides.productPriceCents ?? 10000,
+          currency: "TRY",
+          stockQuantity: 0, // §1.2 — varyasyonlu üründe YOK SAYILIR.
+          sku: `URUN-${crypto.randomUUID().slice(0, 6).toUpperCase()}`,
+          status: "PUBLISHED",
+          publishedAt: new Date(),
+          variantOptions: [
+            { name: "Renk", type: "SWATCH", values: [{ value: "Antrasit", swatchHex: "#333333" }] },
+            { name: "Beden", type: "TEXT", values: [{ value: "L" }] },
+          ],
+        },
+      });
+      const variant = await app.prisma.productVariant.create({
+        data: {
+          productId: product.id,
+          variantKey: deriveVariantKey(optionValues),
+          optionValues,
+          sku: `VAR-${crypto.randomUUID().slice(0, 6).toUpperCase()}`,
+          priceCents: overrides.variantPriceCents === undefined ? 15000 : overrides.variantPriceCents,
+          stockQuantity: overrides.variantStock ?? 5,
+          isActive: overrides.variantActive ?? true,
+        },
+      });
+      return { product, variant };
+    }
+
+    it("varyasyon fiyatı MUTLAK olarak kullanılır (ürün fiyatı DEĞİL), variantId/variantLabel/productSku snapshot'lanır", async () => {
+      const { product, variant } = await createProductWithVariant({ productPriceCents: 10000, variantPriceCents: 15000 });
+      const add = await addToCart(product.id, 2, variant.id);
+      const cookie = cookieHeader(add);
+
+      stripeSessionsCreateMock.mockResolvedValue({ id: "cs_test_variant", url: "https://checkout.stripe.test/cs_test_variant" });
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/checkout/session",
+        headers: { cookie },
+        payload: { customerEmail: "varyasyon@example.com" },
+      });
+      expect(res.statusCode).toBe(201);
+
+      const callArgs = stripeSessionsCreateMock.mock.calls[0]![0];
+      expect(callArgs.line_items[0].price_data.unit_amount).toBe(15000);
+      expect(callArgs.line_items[0].price_data.product_data.name).toContain("Antrasit / L");
+
+      const order = await app.prisma.order.findFirst({ where: { customerEmail: "varyasyon@example.com" }, include: { items: true } });
+      expect(order?.items[0]?.unitPriceCents).toBe(15000);
+      expect(order?.items[0]?.variantId).toBe(variant.id);
+      expect(order?.items[0]?.variantLabel).toBe("Antrasit / L");
+      expect(order?.items[0]?.productSku).toBe(variant.sku);
+      expect(order?.subtotalCents).toBe(30000);
+    });
+
+    it("varyasyon fiyatı null ise ürün fiyatı MİRAS ALINIR (§1.5)", async () => {
+      const { product, variant } = await createProductWithVariant({ productPriceCents: 12000, variantPriceCents: null });
+      const add = await addToCart(product.id, 1, variant.id);
+      const cookie = cookieHeader(add);
+
+      stripeSessionsCreateMock.mockResolvedValue({ id: "cs_test_variant_inherit", url: "https://checkout.stripe.test/cs_test_variant_inherit" });
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/checkout/session",
+        headers: { cookie },
+        payload: { customerEmail: "varyasyon-miras@example.com" },
+      });
+      expect(res.statusCode).toBe(201);
+
+      const order = await app.prisma.order.findFirst({ where: { customerEmail: "varyasyon-miras@example.com" }, include: { items: true } });
+      expect(order?.items[0]?.unitPriceCents).toBe(12000);
+    });
+
+    it("varyasyon stoku sepete eklendikten SONRA yetersiz kalırsa 409 döner, Order oluşmaz", async () => {
+      const { product, variant } = await createProductWithVariant({ variantStock: 1 });
+      const add = await addToCart(product.id, 1, variant.id);
+      const cookie = cookieHeader(add);
+
+      await app.prisma.productVariant.update({ where: { id: variant.id }, data: { stockQuantity: 0 } });
+
+      const before = await app.prisma.order.count();
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/checkout/session",
+        headers: { cookie },
+        payload: { customerEmail: "varyasyon-stoksuz@example.com" },
+      });
+
+      expect(res.statusCode).toBe(409);
+      expect(stripeSessionsCreateMock).not.toHaveBeenCalled();
+      expect(await app.prisma.order.count()).toBe(before);
+    });
+
+    it("varyasyon sepete eklendikten SONRA pasife alınırsa 409 döner", async () => {
+      const { product, variant } = await createProductWithVariant();
+      const add = await addToCart(product.id, 1, variant.id);
+      const cookie = cookieHeader(add);
+
+      await app.prisma.productVariant.update({ where: { id: variant.id }, data: { isActive: false } });
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/checkout/session",
+        headers: { cookie },
+        payload: { customerEmail: "varyasyon-pasif@example.com" },
+      });
+      expect(res.statusCode).toBe(409);
+      expect(stripeSessionsCreateMock).not.toHaveBeenCalled();
+    });
+  });
+});
+
+// .claude/architect-scope-ecommerce-pro-template.md §3.3/§9.4 — integration-agent görevi.
+// AYRI `describe`/`app` — CHECKOUT_RATE_LIMIT gerekçesi yukarıdaki blokla AYNI.
+describe("checkout — kargo tahsilatı (§3.3)", () => {
+  let app: FastifyInstance;
+
+  function cookieHeader(res: { cookies: { name: string; value: string }[] }): string {
+    return res.cookies.map((c) => `${c.name}=${c.value}`).join("; ");
+  }
+
+  async function createProduct(overrides: Partial<{ priceCents: number }> = {}) {
+    return app.prisma.product.create({
+      data: {
+        title: `Kargo Ürünü ${crypto.randomUUID()}`,
+        slug: `kargo-urun-${crypto.randomUUID()}`,
+        priceCents: overrides.priceCents ?? 10000,
+        currency: "TRY",
+        stockQuantity: 10,
+        status: "PUBLISHED",
+        publishedAt: new Date(),
+      },
+    });
+  }
+
+  async function addToCart(productId: string, quantity: number) {
+    return app.inject({ method: "POST", url: "/api/v1/cart/items", payload: { productId, quantity } });
+  }
+
+  beforeAll(async () => {
+    app = await buildTestApp();
+    await resetDatabase(app.prisma);
+  });
+
+  afterEach(async () => {
+    stripeSessionsCreateMock.mockReset();
+    await app.prisma.siteSettings.deleteMany({ where: { id: SETTINGS_ID } });
+  });
+
+  afterAll(async () => {
+    await resetDatabase(app.prisma);
+    await app.close();
+  });
+
+  describe("kargo tahsilatı (§3.3)", () => {
+    it("shippingFlatFeeCents null iken (varsayılan) kargo hesaplanmaz — bugünkü davranış birebir korunur", async () => {
+      const product = await createProduct({ priceCents: 10000 });
+      const add = await addToCart(product.id, 1);
+      const cookie = cookieHeader(add);
+
+      stripeSessionsCreateMock.mockResolvedValue({ id: "cs_test_no_shipping", url: "https://checkout.stripe.test/cs_test_no_shipping" });
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/checkout/session",
+        headers: { cookie },
+        payload: { customerEmail: "kargosuz@example.com" },
+      });
+      expect(res.statusCode).toBe(201);
+
+      const callArgs = stripeSessionsCreateMock.mock.calls[0]![0];
+      expect(callArgs.line_items).toHaveLength(1); // "Kargo" satırı YOK.
+
+      const order = await app.prisma.order.findFirst({ where: { customerEmail: "kargosuz@example.com" } });
+      expect(order?.shippingCents).toBe(0);
+      expect(order?.totalCents).toBe(10000);
+    });
+
+    it("eşik altındayken kargo bedeli Order.shippingCents'e yazılır VE Stripe oturumuna AYRI bir 'Kargo' satırı olarak eklenir", async () => {
+      await app.prisma.siteSettings.upsert({
+        where: { id: SETTINGS_ID },
+        create: { id: SETTINGS_ID, ...SETTINGS_DEFAULTS, shippingFlatFeeCents: 2500, freeShippingThresholdCents: 50000 },
+        update: { shippingFlatFeeCents: 2500, freeShippingThresholdCents: 50000 },
+      });
+
+      const product = await createProduct({ priceCents: 10000 });
+      const add = await addToCart(product.id, 1);
+      const cookie = cookieHeader(add);
+
+      stripeSessionsCreateMock.mockResolvedValue({ id: "cs_test_shipping", url: "https://checkout.stripe.test/cs_test_shipping" });
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/checkout/session",
+        headers: { cookie },
+        payload: { customerEmail: "kargoli@example.com" },
+      });
+      expect(res.statusCode).toBe(201);
+
+      const callArgs = stripeSessionsCreateMock.mock.calls[0]![0];
+      expect(callArgs.line_items).toHaveLength(2);
+      const shippingLine = callArgs.line_items[1];
+      expect(shippingLine.price_data.unit_amount).toBe(2500);
+      expect(shippingLine.price_data.product_data.name).toBe("Kargo");
+
+      const order = await app.prisma.order.findFirst({ where: { customerEmail: "kargoli@example.com" } });
+      expect(order?.shippingCents).toBe(2500);
+      expect(order?.totalCents).toBe(12500); // 10000 + 2500 — gösterilen = tahsil edilen (§3.3).
+    });
+
+    it("eşiğe ULAŞILDIĞINDA (subtotal >= threshold) kargo 0'a düşer, 'Kargo' satırı Stripe'a EKLENMEZ", async () => {
+      await app.prisma.siteSettings.upsert({
+        where: { id: SETTINGS_ID },
+        create: { id: SETTINGS_ID, ...SETTINGS_DEFAULTS, shippingFlatFeeCents: 2500, freeShippingThresholdCents: 50000 },
+        update: { shippingFlatFeeCents: 2500, freeShippingThresholdCents: 50000 },
+      });
+
+      const product = await createProduct({ priceCents: 50000 });
+      const add = await addToCart(product.id, 1);
+      const cookie = cookieHeader(add);
+
+      stripeSessionsCreateMock.mockResolvedValue({ id: "cs_test_free_shipping", url: "https://checkout.stripe.test/cs_test_free_shipping" });
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/checkout/session",
+        headers: { cookie },
+        payload: { customerEmail: "ucretsiz-kargo@example.com" },
+      });
+      expect(res.statusCode).toBe(201);
+
+      const callArgs = stripeSessionsCreateMock.mock.calls[0]![0];
+      expect(callArgs.line_items).toHaveLength(1); // eşik dolu, kargo satırı yok.
+
+      const order = await app.prisma.order.findFirst({ where: { customerEmail: "ucretsiz-kargo@example.com" } });
+      expect(order?.shippingCents).toBe(0);
+      expect(order?.totalCents).toBe(50000);
     });
   });
 });

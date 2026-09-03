@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="900" viewBox="0 0 1200 900">
+  <title>Ferah Ev Yaşam – Aksesuar Kategori Kartı (Dağınık Nokta Kümesi)</title>
+  <desc>Üretim kaynağı — çalışma zamanında OKUNMAZ/servis EDİLMEZ. Çıktı build-template-assets.ts::buildEpCategoryCard("dots", ...) ile PNG'ye render edilir (nokta konumları script'te deterministik bir üreteçle hesaplanır, burada temsili gösterilmiştir).</desc>
+  <defs>
+    <linearGradient id="bg-aksesuar" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F8FAFC"/>
+      <stop offset="100%" stop-color="#FFFFFF"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="1200" height="900" fill="url(#bg-aksesuar)"/>
+  <!-- dağınık küçük nokta/eşkenar dörtgen kümesi — minimal "confetti" dokusu, accentColor -->
+  <g stroke="#047857" stroke-width="2" fill="none" opacity="0.2">
+    <circle cx="220" cy="210" r="8"/>
+    <circle cx="410" cy="150" r="5"/>
+    <circle cx="560" cy="260" r="10"/>
+    <circle cx="720" cy="180" r="6"/>
+    <circle cx="880" cy="240" r="9"/>
+    <circle cx="980" cy="140" r="5"/>
+    <circle cx="300" cy="420" r="7"/>
+    <circle cx="500" cy="480" r="6"/>
+    <circle cx="680" cy="440" r="11"/>
+    <circle cx="860" cy="500" r="5"/>
+    <circle cx="1000" cy="420" r="8"/>
+    <circle cx="240" cy="640" r="6"/>
+    <circle cx="420" cy="700" r="9"/>
+    <circle cx="620" cy="660" r="5"/>
+    <circle cx="800" cy="720" r="7"/>
+    <circle cx="960" cy="660" r="10"/>
+  </g>
+</svg>
