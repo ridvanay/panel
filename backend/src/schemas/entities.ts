@@ -366,6 +366,9 @@ export const ProductCategorySchema = z.object({
   id: z.string().uuid(),
   name: z.string(),
   slug: z.string(),
+  // Katalog kenar çubuğu hiyerarşisi — EN FAZLA 2 SEVİYE (kök → alt). `null` = kök kategori
+  // (bkz. `.claude/architect-scope-products-catalog.md` §2.1, bağlayıcı).
+  parentId: z.string().uuid().nullable(),
   createdAt: z.string(),
 });
 export type ProductCategoryDto = z.infer<typeof ProductCategorySchema>;
@@ -445,6 +448,11 @@ export const ProductSchema = z.object({
   discountPriceCents: z.number().int().nullable(),
   sku: z.string().nullable(),
   stockQuantity: z.number().int(),
+  // Denormalize satış adedi — `sort=bestselling`'in kaynağı; hiçbir istek gövdesinden
+  // YAZILAMAZ, salt-okunur (bkz. `.claude/architect-scope-products-catalog.md` §2.3).
+  salesCount: z.number().int(),
+  // Denormalize indirim yüzdesi — `sort=discount`'un kaynağı; salt-okunur, istekten SET EDİLEMEZ.
+  discountPercent: z.number().int().min(0).max(99),
   status: PageStatusSchema,
   category: ProductCategorySchema.nullable(),
   coverMedia: MediaSchema.nullable(),
@@ -481,6 +489,108 @@ export const ProductSchema = z.object({
   seoScoreIssues: z.array(SeoScoreIssueSchema),
 });
 export type ProductDto = z.infer<typeof ProductSchema>;
+
+/**
+ * `GET /products` (public katalog) liste öğesi — tam `ProductSchema`'nın ALT KÜMESİ (bkz.
+ * `.claude/architect-scope-products-catalog.md` §3.2, bağlayıcı). İkinci bir elle yazılmış şema
+ * DEĞİL, `.omit()` ile türetilir — alan seti `Product`'tan sapamaz. Yalnızca detay/admin alanları
+ * (`descriptionHtml`/`documents`/`translations`/`author`/`authorId`/`status`/`taxRatePercent`/
+ * SEO-OG alanları/`scheduledAt`/`deletedAt`/`seoScore`/`seoScoreIssues`) dışarıda bırakılır.
+ * `localizations`/`updatedAt` (sitemap.ts okuyor), `images`, `variantOptions`/`variants`,
+ * `salesCount`/`discountPercent` KASITLI olarak TUTULUR.
+ */
+export const ProductListItemSchema = ProductSchema.omit({
+  descriptionHtml: true,
+  documents: true,
+  translations: true,
+  authorId: true,
+  author: true,
+  status: true,
+  taxRatePercent: true,
+  seoTitle: true,
+  seoDescription: true,
+  ogTitle: true,
+  ogImageUrl: true,
+  canonicalUrl: true,
+  noIndex: true,
+  scheduledAt: true,
+  deletedAt: true,
+  seoScore: true,
+  seoScoreIssues: true,
+});
+export type ProductListItemDto = z.infer<typeof ProductListItemSchema>;
+
+/** Katalog kenar çubuğu kategori ağacı (en fazla 2 seviye) + ürün sayacı — bkz. §3.4. */
+export interface ProductCategoryFacetDto {
+  id: string;
+  name: string;
+  slug: string;
+  productCount: number;
+  children: ProductCategoryFacetDto[];
+}
+// Öz-referanslı (recursive) şema — `z.lazy` + açık tip anotasyonu gerektirir (zod recursive tip
+// çıkarımı yapamaz). `children[].children` sözleşme gereği HER ZAMAN boş dizidir (en fazla 1
+// seviye derinlik), ama şema TİPİ bunu zorlamaz — uygulama katmanı (catalog-query.ts) zorlar.
+export const ProductCategoryFacetSchema: z.ZodType<ProductCategoryFacetDto> = z.lazy(() =>
+  z.object({
+    id: z.string().uuid(),
+    name: z.string(),
+    slug: z.string(),
+    productCount: z.number().int(),
+    children: z.array(ProductCategoryFacetSchema),
+  })
+);
+
+export const ProductOptionFacetValueSchema = z.object({
+  token: z.string(),
+  value: z.string(),
+  swatchHex: z.string().nullable(),
+  count: z.number().int(),
+});
+export type ProductOptionFacetValueDto = z.infer<typeof ProductOptionFacetValueSchema>;
+
+/** Bir varyasyon EKSENİ ve o eksende seçilebilir değerler + sayaçlar (bkz. §3.4). */
+export const ProductOptionFacetSchema = z.object({
+  axisSlug: z.string(),
+  axisName: z.string(),
+  type: z.enum(["SWATCH", "TEXT"]),
+  values: z.array(ProductOptionFacetValueSchema),
+});
+export type ProductOptionFacetDto = z.infer<typeof ProductOptionFacetSchema>;
+
+/**
+ * Sayaç semantiği (bağlayıcı) — her facet boyutu, DİĞER tüm filtreler uygulanmış AMA KENDİ
+ * boyutunun filtresi kaldırılmış küme üzerinde hesaplanır (disjunctive faceting, bkz. §3.4).
+ */
+export const ProductCatalogFacetsSchema = z.object({
+  categories: z.array(ProductCategoryFacetSchema),
+  price: z.object({
+    minCents: z.number().int().nullable(),
+    maxCents: z.number().int().nullable(),
+  }),
+  // Eksen sırası: ürünlerdeki görülme sıklığına göre azalan; eşitlikte `axisSlug` alfabetik.
+  options: z.array(ProductOptionFacetSchema),
+  availability: z.object({
+    inStockCount: z.number().int(),
+    totalCount: z.number().int(),
+  }),
+  // `true` ise `options` facet'i `PRODUCT_FACET_SCAN_LIMIT` tavanı yüzünden İLK N ürün
+  // üzerinden hesaplanmıştır (tam DEĞİLDİR); kategori/fiyat/stok HER ZAMAN tamdır.
+  truncated: z.boolean().optional(),
+});
+export type ProductCatalogFacetsDto = z.infer<typeof ProductCatalogFacetsSchema>;
+
+export const ProductCatalogMetaSchema = z.object({
+  pagination: z.object({
+    page: z.number().int().min(1),
+    perPage: z.number().int(),
+    total: z.number().int(),
+    totalPages: z.number().int(),
+  }),
+  // Yalnızca `?facets=true` iken döner; aksi halde alan HİÇ BULUNMAZ (`.optional()`).
+  facets: ProductCatalogFacetsSchema.optional(),
+});
+export type ProductCatalogMetaDto = z.infer<typeof ProductCatalogMetaSchema>;
 
 // ---------- §10.9.4 Portföy Modülü (Eklenti/Modül Yönetimi) — `Product`'ın (§10.9.2)
 // BİREBİR paterni, ticari alanlar (fiyat/stok/SKU) yerine `clientName`/`projectUrl`/`completedAt`/
@@ -704,6 +814,11 @@ export const SiteSettingsSchema = z.object({
   // (bugünkü davranışın birebir aynısı). Hesaplama TEK yerde: lib/shipping.ts::computeShipping.
   shippingFlatFeeCents: z.number().int().nullable(),
   freeShippingThresholdCents: z.number().int().nullable(),
+  // Tahmini teslimat süresi (iş günü) — İKİSİ de null iken PDP bu satırı HİÇ render etmez
+  // (bkz. `.claude/architect-scope-products-catalog.md` §2.5; ticari taahhüt, sabit metin
+  // koda gömülmez).
+  shippingEstimatedDaysMin: z.number().int().nullable(),
+  shippingEstimatedDaysMax: z.number().int().nullable(),
 });
 export type SiteSettingsDto = z.infer<typeof SiteSettingsSchema>;
 

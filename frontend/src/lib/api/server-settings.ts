@@ -9,6 +9,10 @@ const DEFAULT_SETTINGS: SiteSettings = {
   siteTemplate: "SHOWCASE",
   headerLogoHeight: null,
   headerLogoMaxWidth: null,
+  shippingFlatFeeCents: null,
+  freeShippingThresholdCents: null,
+  shippingEstimatedDaysMin: null,
+  shippingEstimatedDaysMax: null,
 };
 
 /** Sunucu bileşenlerinden çağrılır — bkz. server-plans.ts'teki apiFetch kullanılmama gerekçesi. */

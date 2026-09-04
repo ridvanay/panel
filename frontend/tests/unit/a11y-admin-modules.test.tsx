@@ -73,6 +73,10 @@ describe("AdminModulesPage — a11y", () => {
       siteTemplate: "SHOWCASE",
       headerLogoHeight: null,
       headerLogoMaxWidth: null,
+      shippingFlatFeeCents: null,
+      freeShippingThresholdCents: null,
+      shippingEstimatedDaysMin: null,
+      shippingEstimatedDaysMax: null,
     });
   });
 

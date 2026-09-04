@@ -611,6 +611,15 @@ model ProductCategory {
 
   products Product[]
 
+  // Katalog kenar çubuğu hiyerarşisi — EN FAZLA 2 SEVİYE (kök → alt). Derinlik tavanı DB'de
+  // DEĞİL uygulama katmanında zorlanır (bkz. architect-scope-products-catalog.md §2.1).
+  // onDelete: SetNull — üst kategori silinince alt kategoriler KÖK olur, ürünleriyle birlikte
+  // sessizce kaybolmazlar (Cascade burada veri kaybı olurdu).
+  parentId String?
+  parent   ProductCategory?  @relation("ProductCategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children ProductCategory[] @relation("ProductCategoryTree")
+
+  @@index([parentId])
   @@map("product_categories")
 }
 
@@ -668,6 +677,15 @@ model Product {
   createdAt          DateTime   @default(now())
   updatedAt          DateTime   @updatedAt
 
+  // Katalog sıralama/filtreleme kolonları — TÜRETİLMİŞTİR, elle YAZILMAZ. Tek üretim
+  // noktası: lib/product-pricing.ts::derivePriceColumns (bkz.
+  // architect-scope-products-catalog.md §2.3/§2.4).
+  effectivePriceCents Int @default(0)
+  discountPercent     Int @default(0)
+  // PAID/SHIPPED/FULFILLED siparişlerdeki OrderItem.quantity toplamı — `sort=bestselling`
+  // kaynağı. REFUNDED/CANCELLED DÜŞÜLMEZ (v1, bkz. openapi `ProductListItem.salesCount`).
+  salesCount          Int @default(0)
+
   category      ProductCategory?  @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   coverMedia    Media?            @relation("ProductCoverMedia", fields: [coverMediaId], references: [id], onDelete: SetNull)
   author        User?             @relation("ProductAuthor", fields: [authorId], references: [id], onDelete: SetNull)
@@ -687,6 +705,11 @@ model Product {
   @@index([deletedAt, status])
   @@index([authorId])
   @@index([coverMediaId])
+  // Katalog listeleme/sıralama için — bkz. architect-scope-products-catalog.md §2.3.
+  @@index([status, deletedAt, effectivePriceCents])
+  @@index([status, deletedAt, salesCount])
+  @@index([status, deletedAt, discountPercent])
+  @@index([status, deletedAt, publishedAt])
   @@map("products")
 }
 
@@ -732,6 +755,11 @@ model ProductVariant {
   isActive           Boolean  @default(true)
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
+  // `variantKey`'in ("beden:l|renk:antrasit") parçalarının DİZİ hâli — TAM OLARAK
+  // `variantKey.split("|")`. Katalog filtresi (`?option=renk:antrasit`) bunun üzerinde
+  // `hasSome` ile çalışır; JSON `optionValues` üzerinde SQL filtresi mümkün DEĞİLDİR
+  // (eksen adı mağazaya/dile göre değişir). Sunucu türetir — istemci ASLA göndermez.
+  optionValueSlugs   String[]
 
   product    Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
   media      Media?      @relation("ProductVariantImage", fields: [mediaId], references: [id], onDelete: SetNull)
@@ -741,6 +769,7 @@ model ProductVariant {
   @@unique([productId, variantKey])
   @@index([productId])
   @@index([mediaId])
+  @@index([optionValueSlugs(ops: ArrayOps)], type: Gin)
   @@map("product_variants")
 }
 
@@ -1091,6 +1120,10 @@ model SiteSettings {
   shippingFlatFeeCents       Int?
   // null iken bedel HER ZAMAN uygulanır; doluyken subtotal >= threshold ise kargo 0 olur.
   freeShippingThresholdCents Int?
+  // Tahmini teslimat süresi (iş günü) — İKİSİ de null iken PDP bu satırı HİÇ render etmez
+  // (bkz. architect-scope-products-catalog.md §2.5; ticari taahhüt, sabit metin yazılmaz).
+  shippingEstimatedDaysMin   Int?
+  shippingEstimatedDaysMax   Int?
   updatedAt                  DateTime     @updatedAt
 
   // Kök `/` rotasında render edilecek sayfa. Sayfa silinirse otomatik null'a düşer

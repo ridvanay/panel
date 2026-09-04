@@ -53,3 +53,39 @@ export function resolveUnitPriceCents(product: PriceableProduct, variant: Pricea
   const { priceCents, discountPriceCents } = resolveEffectivePrice(product, variant);
   return discountPriceCents ?? priceCents;
 }
+
+export interface PriceColumnsInput {
+  priceCents: number;
+  discountPriceCents: number | null;
+}
+
+export interface DerivedPriceColumns {
+  effectivePriceCents: number;
+  discountPercent: number;
+}
+
+/**
+ * `Product.effectivePriceCents`/`Product.discountPercent` — katalog sıralama/filtreleme
+ * kolonlarının TEK üretim noktası (bkz. `.claude/architect-scope-products-catalog.md` §2.3/§2.4,
+ * bağlayıcı karar). `effectivePriceCents = discountPriceCents ?? priceCents`,
+ * `discountPercent = round((1 - discountPriceCents/priceCents) * 100)` (indirim yoksa veya
+ * `priceCents <= 0` ise `0`).
+ *
+ * ÇAĞRILMASI ZORUNLU 5 yazma yeri (biri atlanırsa katalog SESSİZCE yanlış sıralar):
+ * 1. `modules/products/products.routes.ts` — `POST /admin/products`
+ * 2. `modules/products/products.routes.ts` — `PATCH /admin/products/:productId` (fiyat/indirim gövdede varsa)
+ * 3. `modules/demo-templates/importer.ts` — `tx.product.create`
+ * 4. `modules/import/import.worker.ts` — CSV içe aktarma (`writeProduct`, create VE overwrite dalları)
+ * (`PATCH /admin/products/:productId/stock` HARİÇTİR — fiyat değişmez, bkz. §2.4 madde 3.)
+ */
+export function derivePriceColumns(input: PriceColumnsInput): DerivedPriceColumns {
+  const { priceCents, discountPriceCents } = input;
+  const effectivePriceCents = discountPriceCents ?? priceCents;
+
+  if (discountPriceCents === null || discountPriceCents === undefined || priceCents <= 0) {
+    return { effectivePriceCents, discountPercent: 0 };
+  }
+
+  const discountPercent = Math.round((1 - discountPriceCents / priceCents) * 100);
+  return { effectivePriceCents, discountPercent };
+}

@@ -16,12 +16,20 @@ import {
   ContentListMetaSchema,
   ContentRevisionSchema,
   ContentRevisionSummarySchema,
+  ProductCatalogMetaSchema,
   ProductCategorySchema,
+  ProductListItemSchema,
   ProductSchema,
 } from "../../schemas/entities";
-import { toContentRevisionDto, toContentRevisionSummaryDto, toProductCategoryDto, toProductDto } from "../../mappers";
+import {
+  toContentRevisionDto,
+  toContentRevisionSummaryDto,
+  toProductCategoryDto,
+  toProductDto,
+  toProductListItemDto,
+} from "../../mappers";
 import { ConflictError, NotFoundError, ValidationError } from "../../lib/errors";
-import { parseCursor, buildPageMeta, buildPageMetaWithCounts } from "../../lib/pagination";
+import { parseCursor, buildPageMetaWithCounts } from "../../lib/pagination";
 import { slugify } from "../../lib/slug";
 import { snapshotBeforeUpdate, listContentRevisions, getContentRevisionOrThrow } from "../../lib/content-revisions";
 import { runBulkContentAction, type BulkContentDelegate } from "../../lib/bulk-content-actions";
@@ -30,7 +38,7 @@ import { resolveAuthorId } from "../../lib/content-author";
 import { logAudit } from "../../lib/audit";
 import { sanitizeRichHtml } from "../../lib/html-sanitize";
 import { isImageMimeType } from "../../lib/mime-detect";
-import { resolveEffectivePrice } from "../../lib/product-pricing";
+import { derivePriceColumns, resolveEffectivePrice } from "../../lib/product-pricing";
 import {
   applyFieldLocalization,
   attachLocalizations,
@@ -46,9 +54,12 @@ import { sanitizeProductTranslations } from "./lib/sanitize-content";
 import {
   assertOptionValuesMatchAxes,
   assertVariantCountWithinLimit,
+  deriveOptionValueSlugs,
   deriveVariantKey,
   type ProductVariantOption,
 } from "./lib/variants";
+import { assertValidCategoryParent } from "./lib/categories";
+import { queryCatalog } from "./lib/catalog-query";
 import { emitWebhookEvent } from "../../lib/webhook-emitter";
 import { toPublicProductDto } from "../public-api/public-api.mappers";
 import {
@@ -59,6 +70,7 @@ import {
   CreateProductCategoryRequestSchema,
   CreateProductRequestSchema,
   CreateProductVariantRequestSchema,
+  ListCatalogProductsQuerySchema,
   ListProductsQuerySchema,
   LocaleQuerySchema,
   ProductCategoryIdParamSchema,
@@ -278,6 +290,13 @@ export async function adminProductsRoutes(app: FastifyInstance) {
       const { enabled: enabledLocales } = await getLocaleSet(app);
       const sanitizedTranslations = translations ? sanitizeProductTranslations(translations) : {};
 
+      // §2.3/§2.4 (.claude/architect-scope-products-catalog.md, bağlayıcı) — katalog sıralama/
+      // filtreleme kolonlarının TEK üretim noktası. Atlanırsa katalog SESSİZCE yanlış sıralar.
+      const { effectivePriceCents, discountPercent } = derivePriceColumns({
+        priceCents,
+        discountPriceCents: discountPriceCents ?? null,
+      });
+
       const product = await app.prisma.$transaction(async (tx) => {
         const created = await tx.product.create({
           data: {
@@ -292,6 +311,8 @@ export async function adminProductsRoutes(app: FastifyInstance) {
             currency: currency ?? undefined,
             taxRatePercent: taxRatePercent ?? undefined,
             discountPriceCents: discountPriceCents ?? undefined,
+            effectivePriceCents,
+            discountPercent,
             sku: sku ?? undefined,
             stockQuantity: stockQuantity ?? undefined,
             // §1 — verilmezse Prisma `@default("[]")` kolonu kullanır.
@@ -402,6 +423,15 @@ export async function adminProductsRoutes(app: FastifyInstance) {
 
       const { enabled: enabledLocales } = await getLocaleSet(app);
 
+      // §2.3/§2.4 (.claude/architect-scope-products-catalog.md, bağlayıcı) — yalnızca fiyat/
+      // indirim GÖVDEDE VARSA yeniden türetilir (stok-only PATCH gibi ilgisiz güncellemelerde
+      // gereksiz yazma yapılmaz). `finalPriceCents`/`finalDiscountPriceCents` YUKARIDA zaten
+      // istekte gönderilmemişse mevcut kayıttan miras alınarak hesaplanmıştı.
+      const derivedPriceColumns =
+        priceCents !== undefined || discountPriceCents !== undefined
+          ? derivePriceColumns({ priceCents: finalPriceCents, discountPriceCents: finalDiscountPriceCents })
+          : undefined;
+
       const product = await app.prisma.$transaction(async (tx) => {
         const updated = await tx.product.update({
           where: { id: request.params.productId },
@@ -417,6 +447,7 @@ export async function adminProductsRoutes(app: FastifyInstance) {
               ? { scheduledAt: rest.status === "SCHEDULED" && scheduledAt ? new Date(scheduledAt) : null }
               : {}),
             ...(resolvedAuthorId !== undefined ? { authorId: resolvedAuthorId } : {}),
+            ...(derivedPriceColumns ?? {}),
           },
           include: WITH_RELATIONS,
         });
@@ -731,6 +762,10 @@ export async function adminProductsRoutes(app: FastifyInstance) {
         data: {
           productId: product.id,
           variantKey,
+          // §2.2 (.claude/architect-scope-products-catalog.md, bağlayıcı) — `variantKey`'in DİZİ
+          // hâli, katalog `?option=` filtresinin `hasSome` ile okuduğu kolon. `PATCH`'te
+          // `optionValues` değiştirilemediği için yeniden türetme YALNIZCA burada ZORUNLUDUR.
+          optionValueSlugs: deriveOptionValueSlugs(request.body.optionValues),
           optionValues: request.body.optionValues,
           sku: request.body.sku ?? null,
           priceCents: finalPriceCents,
@@ -991,6 +1026,14 @@ export async function adminProductsRoutes(app: FastifyInstance) {
       // şey yazılmaz (henüz hiçbir write yapılmadı) ve 422 döner.
       assertDiscountBelowPrice(snapshot.priceCents, snapshot.discountPriceCents);
 
+      // §2.3/§2.4 — restore de priceCents/discountPriceCents'i DOĞRUDAN yazan bir yoldur; §2.4'ün
+      // listelediği 5 yazma yerine EK bir savunma katmanı (o liste normal PATCH/create akışları
+      // içindir) — atlanırsa restore sonrası katalog sıralaması eski (silinmiş) değerlerde donar.
+      const { effectivePriceCents, discountPercent } = derivePriceColumns({
+        priceCents: snapshot.priceCents,
+        discountPriceCents: snapshot.discountPriceCents,
+      });
+
       // Geri dönüş de geri alınabilir olsun diye önce mevcut state'i yeni bir revizyon olarak kaydet.
       await snapshotBeforeUpdate(app, "PRODUCT", existing.id, toProductSnapshot(existing), request.user!.id);
 
@@ -1013,6 +1056,8 @@ export async function adminProductsRoutes(app: FastifyInstance) {
             currency: snapshot.currency,
             taxRatePercent: snapshot.taxRatePercent,
             discountPriceCents: snapshot.discountPriceCents,
+            effectivePriceCents,
+            discountPercent,
             sku: snapshot.sku,
             stockQuantity: snapshot.stockQuantity,
             categoryId: snapshot.categoryId,
@@ -1060,10 +1105,16 @@ export async function adminProductCategoriesRoutes(app: FastifyInstance) {
       schema: { body: CreateProductCategoryRequestSchema, response: { 201: ApiSuccessSchema(ProductCategorySchema) } },
     },
     async (request, reply) => {
+      // §2.1 (.claude/architect-scope-products-catalog.md, bağlayıcı) — EN FAZLA 2 seviye.
+      if (request.body.parentId) {
+        await assertValidCategoryParent(app, { parentId: request.body.parentId });
+      }
+
       const category = await app.prisma.productCategory.create({
         data: {
           name: request.body.name,
           slug: request.body.slug ? slugify(request.body.slug) : slugify(request.body.name),
+          parentId: request.body.parentId ?? undefined,
         },
       });
       return reply.code(201).send(ok(toProductCategoryDto(category)));
@@ -1081,11 +1132,21 @@ export async function adminProductCategoriesRoutes(app: FastifyInstance) {
       },
     },
     async (request, reply) => {
-      const { slug, ...rest } = request.body;
+      const { slug, parentId, ...rest } = request.body;
+
+      // §2.1 — kendisi (422), 3. seviye/döngü (409), altında çocuk varken taşınma (409).
+      if (parentId !== undefined) {
+        await assertValidCategoryParent(app, { categoryId: request.params.categoryId, parentId });
+      }
+
       const category = await app.prisma.productCategory
         .update({
           where: { id: request.params.categoryId },
-          data: { ...rest, ...(slug !== undefined ? { slug: slugify(slug) } : {}) },
+          data: {
+            ...rest,
+            ...(slug !== undefined ? { slug: slugify(slug) } : {}),
+            ...(parentId !== undefined ? { parentId } : {}),
+          },
         })
         .catch(() => {
           throw new NotFoundError("Kategori bulunamadı.");
@@ -1118,34 +1179,50 @@ export async function publicProductsRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
   server.addHook("preHandler", requireModuleEnabled("products"));
 
+  // §3 (.claude/architect-scope-products-catalog.md, bağlayıcı) — katalog filtre/sıralama/
+  // sayfalama/facet. `cursor` bu uçta TANINMAZ (offset sayfalama, §3.1); `limit` geriye dönük
+  // uyumluluk ALIAS'ıdır (`sitemap.ts`/`featured-products-block.tsx` DEĞİŞMEDEN çalışır).
   server.get(
     "/",
     {
       schema: {
-        querystring: CursorQuerySchema.merge(LocaleQuerySchema),
-        response: { 200: ApiSuccessSchema(z.array(ProductSchema)) },
+        querystring: ListCatalogProductsQuerySchema,
+        response: { 200: ApiSuccessWithMeta(z.array(ProductListItemSchema), ProductCatalogMetaSchema) },
       },
     },
     async (request, reply) => {
-      const { cursor, limit } = request.query;
-      const cursorSeq = parseCursor(cursor);
+      const { page, perPage, limit, search, category, minPrice, maxPrice, option, inStock, sort, facets, locale } = request.query;
+      const effectivePerPage = perPage ?? limit ?? 12;
 
-      const rows = await app.prisma.product.findMany({
-        where: { status: "PUBLISHED", deletedAt: null, ...(cursorSeq ? { seq: { gt: cursorSeq } } : {}) },
-        orderBy: { seq: "asc" },
-        take: limit,
-        include: WITH_RELATIONS,
+      const { rows, total, facets: computedFacets } = await queryCatalog(app, {
+        search,
+        category,
+        minPrice,
+        maxPrice,
+        option,
+        inStock,
+        sort,
+        page,
+        perPage: effectivePerPage,
+        withFacets: facets,
       });
 
       const localeSet = await getLocaleSet(app);
-      const effectiveLocale = resolveEffectiveLocaleCode(localeSet, request.query.locale);
+      const effectiveLocale = resolveEffectiveLocaleCode(localeSet, locale);
       const localizationsByEntity = await attachLocalizations(app, "PRODUCT", rows);
 
       const dtos = rows.map((row) =>
-        toProductDto(applyProductLocale(row, effectiveLocale), localizationsByEntity.get(row.id) ?? [])
+        toProductListItemDto(applyProductLocale(row, effectiveLocale), localizationsByEntity.get(row.id) ?? [])
       );
 
-      return reply.send(ok(dtos, buildPageMeta(rows, limit)));
+      const totalPages = total === 0 ? 0 : Math.ceil(total / effectivePerPage);
+
+      return reply.send(
+        ok(dtos, {
+          pagination: { page, perPage: effectivePerPage, total, totalPages },
+          ...(computedFacets ? { facets: computedFacets } : {}),
+        })
+      );
     }
   );
 

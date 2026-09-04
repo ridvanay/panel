@@ -9,14 +9,18 @@ import { cn } from "@/lib/utils";
  * `/uploads/*` altında görsel-olmayan türler için zaten `Content-Disposition: attachment`
  * döndürüyor ([DTI-genişleme] §2.2 madde 3) — frontend ek bir şey YAPMAZ, native `<a download>`
  * davranışı yeterlidir.
+ *
+ * `showHeading` — varsayılan `true` (admin/eski kullanım). PDP artık bunu `product-tabs.tsx`
+ * içindeki "Teknik Dökümanlar" SEKMESİNDE render ediyor; sekme başlığı zaten aynı bilgiyi
+ * taşıdığı için orada `false` verilir (çift başlık YAZILMAZ — `.claude/design-notes-products-catalog.md` §4.4).
  */
-export function ProductDocuments({ documents }: { documents: ProductDocument[] }) {
+export function ProductDocuments({ documents, showHeading = true }: { documents: ProductDocument[]; showHeading?: boolean }) {
   if (documents.length === 0) return null;
 
   return (
-    <div className="mt-8">
-      <h3 className="text-base font-semibold text-foreground">Teknik Dökümanlar</h3>
-      <div className="mt-3 space-y-2">
+    <div className={showHeading ? "mt-8" : undefined}>
+      {showHeading && <h3 className="text-base font-semibold text-foreground">Teknik Dökümanlar</h3>}
+      <div className={showHeading ? "mt-3 space-y-2" : "space-y-2"}>
         {documents.map((doc) => (
           <div
             key={doc.id}

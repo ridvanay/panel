@@ -140,6 +140,12 @@ const EnvSchema = z.object({
     .enum(["true", "false"])
     .default("true")
     .transform((v) => v === "true"),
+
+  // Katalog varyasyon (option) facet'inin taradığı EN FAZLA ürün sayısı — bkz.
+  // `.claude/architect-scope-products-catalog.md` §3.4. Aşılırsa
+  // `meta.facets.truncated: true` döner; kategori/fiyat/stok facet'leri SQL toplama
+  // olduğu için bundan ETKİLENMEZ, HER ZAMAN tamdır.
+  PRODUCT_FACET_SCAN_LIMIT: z.coerce.number().int().positive().default(2000),
 });
 
 const parsed = EnvSchema.safeParse(process.env);

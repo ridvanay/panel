@@ -30,6 +30,10 @@ const settings: SiteSettings = {
   siteTemplate: "SHOWCASE",
   headerLogoHeight: null,
   headerLogoMaxWidth: null,
+  shippingFlatFeeCents: null,
+  freeShippingThresholdCents: null,
+  shippingEstimatedDaysMin: null,
+  shippingEstimatedDaysMax: null,
 };
 const permissions: PermissionsMatrix = {
   roles: ["ADMIN", "MANAGER", "EDITOR", "CUSTOMER", "USER"],

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { PageStatusSchema } from "../../schemas/entities";
 import { ContentListQuerySchema, refineScheduledAt, SCHEDULED_AT_REFINEMENT } from "../../schemas/common";
 import { ProductVariantOptionsSchema } from "./lib/variants";
+import { CATALOG_SORT_VALUES } from "./lib/catalog-query";
 
 export const ProductIdParamSchema = z.object({
   productId: z.string().uuid(),
@@ -201,9 +202,53 @@ export const AdjustProductStockRequestSchema = z.object({
 export const CreateProductCategoryRequestSchema = z.object({
   name: z.string().min(1),
   slug: z.string().min(1).optional(),
+  // Katalog kenar çubuğu hiyerarşisi — EN FAZLA 2 SEVİYE (bkz.
+  // `.claude/architect-scope-products-catalog.md` §2.1). Var olmayan id → 422; ZATEN alt
+  // kategori olan bir kategori seçilirse (3. seviye) → 409 (route handler, `lib/categories.ts`).
+  parentId: z.string().uuid().nullable().optional(),
 });
 
 export const UpdateProductCategoryRequestSchema = z.object({
   name: z.string().min(1).optional(),
   slug: z.string().min(1).optional(),
+  // `null` = kök kategori yap. Kendisi (422), 3. seviye/döngü (409) ve altında çocuk varken
+  // taşınma (409) route handler'da (`lib/categories.ts::assertValidCategoryParent`) reddedilir.
+  parentId: z.string().uuid().nullable().optional(),
 });
+
+const OPTION_TOKEN_PATTERN = /^[a-z0-9-]+:[a-z0-9-]+$/;
+
+/**
+ * `GET /products` (public katalog) — `.claude/architect-scope-products-catalog.md` §3 (bağlayıcı,
+ * openapi.yaml BİREBİR). Bu uçta `cursor` YOK (§3.1) — offset (`page`/`perPage`) sayfalama;
+ * `limit` geriye dönük uyumluluk ALIAS'ı olarak KALIR (`perPage` verilmezse `limit` kullanılır,
+ * `sitemap.ts`/`featured-products-block.tsx` DEĞİŞMEDEN çalışmaya devam eder).
+ */
+export const ListCatalogProductsQuerySchema = z
+  .object({
+    page: z.coerce.number().int().min(1).max(10000).default(1),
+    perPage: z.coerce.number().int().min(1).max(100).optional(),
+    limit: z.coerce.number().int().min(1).max(100).optional(),
+    locale: z.string().min(1).optional(),
+    search: z.string().min(1).max(100).optional(),
+    category: z.string().min(1).max(100).optional(),
+    minPrice: z.coerce.number().int().min(0).optional(),
+    maxPrice: z.coerce.number().int().min(0).optional(),
+    // Tekrarlanabilir (`?option=renk:antrasit&option=beden:l`) — fastify'nin querystring
+    // ayrıştırıcısı TEK değerde ÇIPLAK bir string üretir, bu yüzden diziye normalize edilir.
+    option: z
+      .preprocess(
+        (value) => (value === undefined ? undefined : Array.isArray(value) ? value : [value]),
+        z.array(z.string().regex(OPTION_TOKEN_PATTERN)).max(20)
+      )
+      .optional(),
+    // `z.coerce.boolean()` BİLİNÇLİ OLARAK KULLANILMAZ — boş olmayan HER string'i (ör. "false")
+    // true'ya çevirir (bkz. sliders.schemas.ts::force AYNI desen).
+    inStock: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
+    sort: z.enum(CATALOG_SORT_VALUES).default("newest"),
+    facets: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
+  })
+  .refine((data) => data.minPrice === undefined || data.maxPrice === undefined || data.minPrice <= data.maxPrice, {
+    message: "minPrice, maxPrice değerinden büyük olamaz.",
+    path: ["minPrice"],
+  });

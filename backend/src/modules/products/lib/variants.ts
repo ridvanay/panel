@@ -80,6 +80,18 @@ export function deriveVariantKey(optionValues: Record<string, string>): string {
 }
 
 /**
+ * `ProductVariant.optionValueSlugs` — `variantKey`'in DİZİ hâli, TAM OLARAK
+ * `deriveVariantKey(optionValues).split("|")` (bkz.
+ * `.claude/architect-scope-products-catalog.md` §2.2, bağlayıcı). Katalog filtresi
+ * (`?option=renk:antrasit`) bu diziye `hasSome` ile bakar — ikinci bir normalizasyon mantığı
+ * YAZILMAZ, TEK üretim noktası `deriveVariantKey`'in üzerine kuruludur. Sunucu türetir —
+ * istemci ASLA göndermez.
+ */
+export function deriveOptionValueSlugs(optionValues: Record<string, string>): string[] {
+  return deriveVariantKey(optionValues).split("|").filter(Boolean);
+}
+
+/**
  * `optionValues`'un ürünün `variantOptions` eksen tanımıyla BİREBİR eşleştiğini doğrular —
  * eksik/fazla eksen ya da o eksende tanımsız bir değer varsa `422 VALIDATION_ERROR` fırlatır
  * (bkz. openapi.yaml `POST .../variants` açıklaması).

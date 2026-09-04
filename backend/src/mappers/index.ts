@@ -87,6 +87,7 @@ import type {
   SiteModuleDto,
   ProductCategoryDto,
   ProductDto,
+  ProductListItemDto,
   ProductImageDto,
   ProductVariantDto,
   ProductDocumentDto,
@@ -378,6 +379,8 @@ export function toSiteSettingsDto(settings: SiteSettings): SiteSettingsDto {
     siteTemplate: settings.siteTemplate,
     shippingFlatFeeCents: settings.shippingFlatFeeCents,
     freeShippingThresholdCents: settings.freeShippingThresholdCents,
+    shippingEstimatedDaysMin: settings.shippingEstimatedDaysMin,
+    shippingEstimatedDaysMax: settings.shippingEstimatedDaysMax,
   };
 }
 
@@ -487,6 +490,7 @@ export function toProductCategoryDto(category: ProductCategory): ProductCategory
     id: category.id,
     name: category.name,
     slug: category.slug,
+    parentId: category.parentId,
     createdAt: category.createdAt.toISOString(),
   };
 }
@@ -567,6 +571,8 @@ export function toProductDto(product: ProductWithRelations, localizations: Conte
     discountPriceCents: product.discountPriceCents,
     sku: product.sku,
     stockQuantity: product.stockQuantity,
+    salesCount: product.salesCount,
+    discountPercent: product.discountPercent,
     status: product.status,
     category: product.category ? toProductCategoryDto(product.category) : null,
     coverMedia: product.coverMedia ? toMediaDto(product.coverMedia) : null,
@@ -594,6 +600,36 @@ export function toProductDto(product: ProductWithRelations, localizations: Conte
     seoScore: score,
     seoScoreIssues: issues,
   };
+}
+
+/**
+ * `GET /products` (public katalog) liste öğesi — `toProductDto`'yu SARAR ve detay/admin
+ * alanlarını çıkarır (§3.2, bağlayıcı). İki mapper arasında alan KOPYALAMA YASAKTIR — bu yüzden
+ * `toProductDto`'nun ÜRETTİĞİ objeden destructure edilir, DB satırından yeniden okunmaz.
+ */
+export function toProductListItemDto(product: ProductWithRelations, localizations: ContentLocalizationDto[] = []): ProductListItemDto {
+  const full = toProductDto(product, localizations);
+  const {
+    descriptionHtml: _descriptionHtml,
+    documents: _documents,
+    translations: _translations,
+    authorId: _authorId,
+    author: _author,
+    status: _status,
+    taxRatePercent: _taxRatePercent,
+    seoTitle: _seoTitle,
+    seoDescription: _seoDescription,
+    ogTitle: _ogTitle,
+    ogImageUrl: _ogImageUrl,
+    canonicalUrl: _canonicalUrl,
+    noIndex: _noIndex,
+    scheduledAt: _scheduledAt,
+    deletedAt: _deletedAt,
+    seoScore: _seoScore,
+    seoScoreIssues: _seoScoreIssues,
+    ...listItem
+  } = full;
+  return listItem;
 }
 
 export function toPortfolioCategoryDto(category: PortfolioCategory): PortfolioCategoryDto {

@@ -379,6 +379,157 @@ describe("products (§10.9.2 Ürünler Modülü)", () => {
     expect(del.statusCode).toBe(204);
   });
 
+  // §2.1 (.claude/architect-scope-products-catalog.md, bağlayıcı) — kategori hiyerarşisi EN
+  // FAZLA 2 SEVİYE, DB'de DEĞİL uygulama katmanında zorlanır.
+  describe("kategori hiyerarşisi (§2.1 — en fazla 2 seviye)", () => {
+    it("var olmayan parentId ile oluşturma 422 döner", async () => {
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/admin/products/categories",
+        headers: authHeader(adminToken),
+        payload: { name: "Hayalet Üst Kategori Denemesi", parentId: "00000000-0000-0000-0000-000000000099" },
+      });
+      expect(res.statusCode).toBe(422);
+    });
+
+    it("2. seviye kategori oluşturulabilir; 3. seviye (alt kategorinin altına) 409 döner", async () => {
+      const root = await app.inject({
+        method: "POST",
+        url: "/api/v1/admin/products/categories",
+        headers: authHeader(adminToken),
+        payload: { name: "Giyim" },
+      });
+      expect(root.statusCode).toBe(201);
+      const rootId = root.json().data.id;
+      expect(root.json().data.parentId).toBeNull();
+
+      const child = await app.inject({
+        method: "POST",
+        url: "/api/v1/admin/products/categories",
+        headers: authHeader(adminToken),
+        payload: { name: "Erkek Giyim", parentId: rootId },
+      });
+      expect(child.statusCode).toBe(201);
+      const childId = child.json().data.id;
+      expect(child.json().data.parentId).toBe(rootId);
+
+      const grandchild = await app.inject({
+        method: "POST",
+        url: "/api/v1/admin/products/categories",
+        headers: authHeader(adminToken),
+        payload: { name: "Tişört", parentId: childId },
+      });
+      expect(grandchild.statusCode).toBe(409);
+    });
+
+    it("update: kendisini üst kategori yapmaya çalışmak 422 döner", async () => {
+      const category = await app.inject({
+        method: "POST",
+        url: "/api/v1/admin/products/categories",
+        headers: authHeader(adminToken),
+        payload: { name: "Kendine Referans Denemesi" },
+      });
+      const categoryId = category.json().data.id;
+
+      const res = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/admin/products/categories/${categoryId}`,
+        headers: authHeader(adminToken),
+        payload: { parentId: categoryId },
+      });
+      expect(res.statusCode).toBe(422);
+    });
+
+    it("update: zaten çocuklu bir kategoriyi başka bir kategorinin altına taşımak 409 döner (2 seviye tavanı)", async () => {
+      const rootA = await app.inject({
+        method: "POST",
+        url: "/api/v1/admin/products/categories",
+        headers: authHeader(adminToken),
+        payload: { name: "Elektronik Root A" },
+      });
+      const rootAId = rootA.json().data.id;
+
+      const rootB = await app.inject({
+        method: "POST",
+        url: "/api/v1/admin/products/categories",
+        headers: authHeader(adminToken),
+        payload: { name: "Mobilya Root B" },
+      });
+      const rootBId = rootB.json().data.id;
+
+      // rootA'nın altında bir çocuk oluştur — artık rootA "çocuklu".
+      await app.inject({
+        method: "POST",
+        url: "/api/v1/admin/products/categories",
+        headers: authHeader(adminToken),
+        payload: { name: "Telefon", parentId: rootAId },
+      });
+
+      // rootA'yı rootB'nin altına taşımaya çalış — reddedilmeli (çocukları 3. seviyeye düşerdi).
+      const move = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/admin/products/categories/${rootAId}`,
+        headers: authHeader(adminToken),
+        payload: { parentId: rootBId },
+      });
+      expect(move.statusCode).toBe(409);
+    });
+
+    it("update: bir alt kategoriyi kendi üst kategorisinin ÜSTÜNE taşımaya çalışmak (döngü) 409 döner", async () => {
+      const root = await app.inject({
+        method: "POST",
+        url: "/api/v1/admin/products/categories",
+        headers: authHeader(adminToken),
+        payload: { name: "Döngü Root" },
+      });
+      const rootId = root.json().data.id;
+
+      const child = await app.inject({
+        method: "POST",
+        url: "/api/v1/admin/products/categories",
+        headers: authHeader(adminToken),
+        payload: { name: "Döngü Child", parentId: rootId },
+      });
+      const childId = child.json().data.id;
+
+      // root'u kendi çocuğunun ALTINA taşımaya çalış — döngü.
+      const cycle = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/admin/products/categories/${rootId}`,
+        headers: authHeader(adminToken),
+        payload: { parentId: childId },
+      });
+      expect(cycle.statusCode).toBe(409);
+    });
+
+    it("update: parentId: null göndermek kategoriyi köke taşır (geçerli)", async () => {
+      const root = await app.inject({
+        method: "POST",
+        url: "/api/v1/admin/products/categories",
+        headers: authHeader(adminToken),
+        payload: { name: "Kök Yapma Root" },
+      });
+      const rootId = root.json().data.id;
+
+      const child = await app.inject({
+        method: "POST",
+        url: "/api/v1/admin/products/categories",
+        headers: authHeader(adminToken),
+        payload: { name: "Kök Yapma Child", parentId: rootId },
+      });
+      const childId = child.json().data.id;
+
+      const toRoot = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/admin/products/categories/${childId}`,
+        headers: authHeader(adminToken),
+        payload: { parentId: null },
+      });
+      expect(toRoot.statusCode).toBe(200);
+      expect(toRoot.json().data.parentId).toBeNull();
+    });
+  });
+
   // Faz 5 — §10.1/§10.7 toplu işlem. Ortak helper (bkz. lib/bulk-content-actions.ts); blog/pages
   // ile BİREBİR aynı davranış, burada yalnızca ürüne özgü audit action öneki (`product.bulk_*`) doğrulanır.
   describe("toplu işlem (Faz 5 — bulk)", () => {
@@ -1165,5 +1316,298 @@ describe("products — modül kapalıyken (§10.9 Eklenti/Modül Yönetimi)", ()
     });
     expect(adminGet.statusCode).toBe(200);
     expect(adminGet.json().data.id).toBe(product.id);
+  });
+});
+
+/**
+ * `GET /products` (public katalog) — `.claude/architect-scope-products-catalog.md` §3 (bağlayıcı).
+ */
+describe("GET /products (katalog — filtre/sıralama/sayfalama/facet)", () => {
+  let app: FastifyInstance;
+  let adminToken: string;
+
+  function authHeader(token: string) {
+    return { authorization: `Bearer ${token}` };
+  }
+
+  async function createPublishedProduct(overrides: Record<string, unknown>) {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/admin/products",
+      headers: authHeader(adminToken),
+      payload: { status: "PUBLISHED", priceCents: 1000, ...overrides },
+    });
+    expect(res.statusCode).toBe(201);
+    return res.json().data;
+  }
+
+  beforeAll(async () => {
+    const { buildTestApp } = await import("../helpers/build-test-app");
+    const { resetDatabase } = await import("../helpers/reset-db");
+    const { registerTestUser } = await import("../helpers/auth");
+
+    app = await buildTestApp();
+    await resetDatabase(app.prisma);
+
+    const admin = await registerTestUser(app, { email: "products-catalog-admin@example.com" });
+    adminToken = admin.accessToken;
+  });
+
+  afterAll(async () => {
+    const { resetDatabase } = await import("../helpers/reset-db");
+    await resetDatabase(app.prisma);
+    await app.close();
+  });
+
+  it("yalnızca PUBLISHED ürünleri döner, ApiSuccessWithMeta zarfını (data + meta.pagination) kullanır", async () => {
+    await createPublishedProduct({ title: "Katalog Ürünü A" });
+    await app.inject({
+      method: "POST",
+      url: "/api/v1/admin/products",
+      headers: authHeader(adminToken),
+      payload: { title: "Katalog Taslak Ürünü", priceCents: 1000, status: "DRAFT" },
+    });
+
+    const res = await app.inject({ method: "GET", url: "/api/v1/products" });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(Array.isArray(body.data)).toBe(true);
+    expect(body.data.every((p: { title: string }) => p.title !== "Katalog Taslak Ürünü")).toBe(true);
+    expect(body.meta.pagination).toMatchObject({ page: 1 });
+    expect(typeof body.meta.pagination.total).toBe("number");
+    expect(typeof body.meta.pagination.totalPages).toBe("number");
+    expect(body.meta.facets).toBeUndefined();
+  });
+
+  it("ProductListItem yalnızca izin verilen alt kümeyi döner — descriptionHtml/translations/author/status YOK", async () => {
+    await createPublishedProduct({ title: "Alan Seti Ürünü" });
+    const res = await app.inject({ method: "GET", url: `/api/v1/products?search=${encodeURIComponent("Alan Seti Ürünü")}` });
+    const item = res.json().data[0];
+    expect(item).not.toHaveProperty("descriptionHtml");
+    expect(item).not.toHaveProperty("translations");
+    expect(item).not.toHaveProperty("author");
+    expect(item).not.toHaveProperty("authorId");
+    expect(item).not.toHaveProperty("status");
+    expect(item).not.toHaveProperty("seoScore");
+    expect(item).not.toHaveProperty("deletedAt");
+    // Tutulması ZORUNLU alanlar (§3.2).
+    expect(item).toHaveProperty("localizations");
+    expect(item).toHaveProperty("updatedAt");
+    expect(item).toHaveProperty("images");
+    expect(item).toHaveProperty("variantOptions");
+    expect(item).toHaveProperty("variants");
+    expect(item).toHaveProperty("salesCount");
+    expect(item).toHaveProperty("discountPercent");
+  });
+
+  it("`limit` geriye dönük uyumluluk ALIAS'ıdır (`perPage` gönderilmezse `limit` kullanılır)", async () => {
+    for (let i = 0; i < 3; i++) {
+      await createPublishedProduct({ title: `Limit Alias Ürünü ${i}-${Date.now()}` });
+    }
+    const res = await app.inject({ method: "GET", url: "/api/v1/products?limit=2" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.length).toBeLessThanOrEqual(2);
+    expect(res.json().meta.pagination.perPage).toBe(2);
+  });
+
+  it("page > totalPages iken 404 DEĞİL, boş data döner", async () => {
+    const res = await app.inject({ method: "GET", url: "/api/v1/products?page=9999&perPage=12" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data).toEqual([]);
+  });
+
+  it("page üst sınırı (10000) aşılırsa 422 döner", async () => {
+    const res = await app.inject({ method: "GET", url: "/api/v1/products?page=10001" });
+    expect(res.statusCode).toBe(422);
+  });
+
+  it("option dizisi üst sınırı (20) aşılırsa 422 döner", async () => {
+    const options = Array.from({ length: 21 }, (_, i) => `option=renk:varyant-${i}`).join("&");
+    const res = await app.inject({ method: "GET", url: `/api/v1/products?${options}` });
+    expect(res.statusCode).toBe(422);
+  });
+
+  it("category slug üst sınırı (100 karakter) aşılırsa 422 döner", async () => {
+    const res = await app.inject({ method: "GET", url: `/api/v1/products?category=${"a".repeat(101)}` });
+    expect(res.statusCode).toBe(422);
+  });
+
+  it("minPrice > maxPrice ise 422 döner", async () => {
+    const res = await app.inject({ method: "GET", url: "/api/v1/products?minPrice=5000&maxPrice=1000" });
+    expect(res.statusCode).toBe(422);
+  });
+
+  it("minPrice/maxPrice EFFECTIVE (indirimli) fiyata göre filtreler", async () => {
+    const discounted = await createPublishedProduct({
+      title: `İndirimli Filtre Ürünü ${Date.now()}`,
+      priceCents: 20000,
+      discountPriceCents: 5000,
+    });
+
+    // Liste fiyatı (20000) aralık DIŞINDA kalsa da indirimli fiyat (5000) aralık İÇİNDE.
+    const res = await app.inject({ method: "GET", url: "/api/v1/products?minPrice=4000&maxPrice=6000" });
+    expect(res.statusCode).toBe(200);
+    const ids = res.json().data.map((p: { id: string }) => p.id);
+    expect(ids).toContain(discounted.id);
+
+    // Liste fiyatı aralığında ama indirimli fiyat aralık DIŞINDA — dönmemeli.
+    const excluded = await app.inject({ method: "GET", url: "/api/v1/products?minPrice=15000&maxPrice=25000" });
+    const excludedIds = excluded.json().data.map((p: { id: string }) => p.id);
+    expect(excludedIds).not.toContain(discounted.id);
+  });
+
+  it("sort=price_asc fiyata göre artan sıralar (effectivePriceCents)", async () => {
+    const marker = `Fiyat Sıra ${Date.now()}`;
+    await createPublishedProduct({ title: `${marker} Pahalı`, priceCents: 9000 });
+    await createPublishedProduct({ title: `${marker} Ucuz`, priceCents: 1000 });
+    await createPublishedProduct({ title: `${marker} Orta`, priceCents: 5000 });
+
+    const res = await app.inject({ method: "GET", url: `/api/v1/products?search=${encodeURIComponent(marker)}&sort=price_asc&perPage=50` });
+    const prices = res.json().data.map((p: { priceCents: number }) => p.priceCents);
+    const sorted = [...prices].sort((a, b) => a - b);
+    expect(prices).toEqual(sorted);
+  });
+
+  it("sort=discount → discountPercent DESC, indirimsiz ürünler sona düşer", async () => {
+    const marker = `İndirim Sıra ${Date.now()}`;
+    const noDiscount = await createPublishedProduct({ title: `${marker} İndirimsiz`, priceCents: 1000 });
+    const bigDiscount = await createPublishedProduct({
+      title: `${marker} Büyük İndirim`,
+      priceCents: 10000,
+      discountPriceCents: 2000,
+    });
+
+    const res = await app.inject({ method: "GET", url: `/api/v1/products?search=${encodeURIComponent(marker)}&sort=discount&perPage=50` });
+    const ids = res.json().data.map((p: { id: string }) => p.id);
+    expect(ids.indexOf(bigDiscount.id)).toBeLessThan(ids.indexOf(noDiscount.id));
+  });
+
+  it("category filtresi: alt kategori seçilince yalnızca o kategori; ÜST kategori seçilince alt kategori ürünleri de DAHİL", async () => {
+    const root = await app.inject({
+      method: "POST",
+      url: "/api/v1/admin/products/categories",
+      headers: authHeader(adminToken),
+      payload: { name: `Kat Root ${Date.now()}` },
+    });
+    const rootId = root.json().data.id;
+    const rootSlug = root.json().data.slug;
+
+    const child = await app.inject({
+      method: "POST",
+      url: "/api/v1/admin/products/categories",
+      headers: authHeader(adminToken),
+      payload: { name: `Kat Child ${Date.now()}`, parentId: rootId },
+    });
+    const childId = child.json().data.id;
+    const childSlug = child.json().data.slug;
+
+    const rootProduct = await createPublishedProduct({ title: `Kök Kategori Ürünü ${Date.now()}`, categoryId: rootId });
+    const childProduct = await createPublishedProduct({ title: `Alt Kategori Ürünü ${Date.now()}`, categoryId: childId });
+
+    const childOnly = await app.inject({ method: "GET", url: `/api/v1/products?category=${childSlug}` });
+    const childOnlyIds = childOnly.json().data.map((p: { id: string }) => p.id);
+    expect(childOnlyIds).toContain(childProduct.id);
+    expect(childOnlyIds).not.toContain(rootProduct.id);
+
+    const rootAll = await app.inject({ method: "GET", url: `/api/v1/products?category=${rootSlug}` });
+    const rootAllIds = rootAll.json().data.map((p: { id: string }) => p.id);
+    expect(rootAllIds).toContain(rootProduct.id);
+    expect(rootAllIds).toContain(childProduct.id);
+  });
+
+  it("bilinmeyen kategori slug'ı → boş sonuç (404 DEĞİL)", async () => {
+    const res = await app.inject({ method: "GET", url: "/api/v1/products?category=hic-var-olmayan-kategori-slug" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data).toEqual([]);
+  });
+
+  it("option filtresi: aynı eksende OR, farklı eksende AND", async () => {
+    const marker = `Option Ürün ${Date.now()}`;
+    const variantOptions = [
+      { name: "Renk", type: "SWATCH", values: [{ value: "Antrasit", swatchHex: "#111111" }, { value: "Bej", swatchHex: "#eeeeee" }] },
+      { name: "Beden", type: "TEXT", values: [{ value: "L" }, { value: "S" }] },
+    ];
+
+    const productAntrasitL = await createPublishedProduct({ title: `${marker} Antrasit-L`, variantOptions });
+    await app.inject({
+      method: "POST",
+      url: `/api/v1/admin/products/${productAntrasitL.id}/variants`,
+      headers: authHeader(adminToken),
+      payload: { optionValues: { Renk: "Antrasit", Beden: "L" }, stockQuantity: 5 },
+    });
+
+    const productBejS = await createPublishedProduct({ title: `${marker} Bej-S`, variantOptions });
+    await app.inject({
+      method: "POST",
+      url: `/api/v1/admin/products/${productBejS.id}/variants`,
+      headers: authHeader(adminToken),
+      payload: { optionValues: { Renk: "Bej", Beden: "S" }, stockQuantity: 5 },
+    });
+
+    // Aynı eksende iki renk → OR: her iki ürün de dönmeli.
+    const orRes = await app.inject({
+      method: "GET",
+      url: `/api/v1/products?search=${encodeURIComponent(marker)}&option=renk:antrasit&option=renk:bej`,
+    });
+    const orIds = orRes.json().data.map((p: { id: string }) => p.id);
+    expect(orIds).toContain(productAntrasitL.id);
+    expect(orIds).toContain(productBejS.id);
+
+    // Farklı eksenlerden token (renk:antrasit + beden:s) → AND: HİÇBİRİ eşleşmemeli (antrasit L'de, bej S'de).
+    const andRes = await app.inject({
+      method: "GET",
+      url: `/api/v1/products?search=${encodeURIComponent(marker)}&option=renk:antrasit&option=beden:s`,
+    });
+    const andIds = andRes.json().data.map((p: { id: string }) => p.id);
+    expect(andIds).not.toContain(productAntrasitL.id);
+    expect(andIds).not.toContain(productBejS.id);
+
+    // renk:antrasit + beden:l → AND eşleşir (aynı üründe).
+    const matchRes = await app.inject({
+      method: "GET",
+      url: `/api/v1/products?search=${encodeURIComponent(marker)}&option=renk:antrasit&option=beden:l`,
+    });
+    const matchIds = matchRes.json().data.map((p: { id: string }) => p.id);
+    expect(matchIds).toContain(productAntrasitL.id);
+    expect(matchIds).not.toContain(productBejS.id);
+  });
+
+  it("inStock=true: varyasyonsuz üründe stockQuantity>0, varyasyonlu üründe en az bir aktif+stoklu varyasyon arar", async () => {
+    const marker = `Stok Filtre ${Date.now()}`;
+    const inStockNoVariant = await createPublishedProduct({ title: `${marker} Stoklu`, stockQuantity: 5 });
+    const outOfStockNoVariant = await createPublishedProduct({ title: `${marker} Stoksuz`, stockQuantity: 0 });
+
+    const res = await app.inject({ method: "GET", url: `/api/v1/products?search=${encodeURIComponent(marker)}&inStock=true` });
+    const ids = res.json().data.map((p: { id: string }) => p.id);
+    expect(ids).toContain(inStockNoVariant.id);
+    expect(ids).not.toContain(outOfStockNoVariant.id);
+  });
+
+  it("facets=true iken meta.facets (categories/price/options/availability) döner", async () => {
+    await createPublishedProduct({ title: `Facet Ürünü ${Date.now()}` });
+    const res = await app.inject({ method: "GET", url: "/api/v1/products?facets=true&perPage=1" });
+    expect(res.statusCode).toBe(200);
+    const facets = res.json().meta.facets;
+    expect(facets).toBeDefined();
+    expect(Array.isArray(facets.categories)).toBe(true);
+    expect(facets.price).toHaveProperty("minCents");
+    expect(facets.price).toHaveProperty("maxCents");
+    expect(Array.isArray(facets.options)).toBe(true);
+    expect(facets.availability).toHaveProperty("inStockCount");
+    expect(facets.availability).toHaveProperty("totalCount");
+  });
+
+  it("aynı ürün sayfa 1 ve sayfa 2'de TEKRAR ETMEZ (seq DESC eş-değer kırıcısı)", async () => {
+    const marker = `Sayfalama Tekrar ${Date.now()}`;
+    for (let i = 0; i < 5; i++) {
+      await createPublishedProduct({ title: `${marker} ${i}`, priceCents: 1000 });
+    }
+
+    const page1 = await app.inject({ method: "GET", url: `/api/v1/products?search=${encodeURIComponent(marker)}&perPage=3&page=1` });
+    const page2 = await app.inject({ method: "GET", url: `/api/v1/products?search=${encodeURIComponent(marker)}&perPage=3&page=2` });
+    const ids1 = page1.json().data.map((p: { id: string }) => p.id);
+    const ids2 = page2.json().data.map((p: { id: string }) => p.id);
+    const overlap = ids1.filter((id: string) => ids2.includes(id));
+    expect(overlap).toEqual([]);
   });
 });

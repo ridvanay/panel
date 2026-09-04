@@ -5,7 +5,8 @@ import { z } from "zod";
 import { DEMO_TEMPLATE_REGISTRY, getDemoTemplate } from "./registry";
 import { countNavItemsTotal, type DemoTemplateDefinition } from "./types";
 import { resolvePageBlockTokens } from "./lib/asset-tokens";
-import { deriveVariantKey, assertOptionValuesMatchAxes } from "../products/lib/variants";
+import { deriveOptionValueSlugs, deriveVariantKey, assertOptionValuesMatchAxes } from "../products/lib/variants";
+import { derivePriceColumns } from "../../lib/product-pricing";
 import { assertTemplateAssetFilesReadable, materializeTemplateAssets, removeSavedTemplateAssets, type SavedTemplateAsset } from "./lib/assets";
 import { PageBlockListSchema } from "../pages/pages.schemas";
 import { sanitizePageBlocks } from "../pages/lib/sanitize-blocks";
@@ -390,6 +391,13 @@ async function writeTemplateInTransaction(
       const coverMediaId = product.coverAssetKey ? (assetKeyToMediaId.get(product.coverAssetKey) ?? null) : null;
       const categoryId = product.categorySlug ? (productCategoryIdByTemplateSlug.get(product.categorySlug) ?? null) : null;
 
+      // §2.3/§2.4 (.claude/architect-scope-products-catalog.md, bağlayıcı) — katalog sıralama/
+      // filtreleme kolonlarının TEK üretim noktası.
+      const { effectivePriceCents, discountPercent } = derivePriceColumns({
+        priceCents: product.priceCents,
+        discountPriceCents: product.discountPriceCents,
+      });
+
       const createdProduct = await tx.product.create({
         data: {
           title: product.title,
@@ -399,6 +407,8 @@ async function writeTemplateInTransaction(
           priceCents: product.priceCents,
           currency: product.currency,
           discountPriceCents: product.discountPriceCents,
+          effectivePriceCents,
+          discountPercent,
           sku: product.sku,
           stockQuantity: product.stockQuantity,
           variantOptions: product.variantOptions as unknown as Prisma.InputJsonValue,
@@ -430,6 +440,8 @@ async function writeTemplateInTransaction(
           data: {
             productId: createdProduct.id,
             variantKey: deriveVariantKey(variant.optionValues),
+            // §2.2 — katalog `?option=` filtresinin okuduğu dizi kolon (bkz. yukarıdaki not).
+            optionValueSlugs: deriveOptionValueSlugs(variant.optionValues),
             optionValues: variant.optionValues as unknown as Prisma.InputJsonValue,
             sku: variant.sku,
             priceCents: variant.priceCents,

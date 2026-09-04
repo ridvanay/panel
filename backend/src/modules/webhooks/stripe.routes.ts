@@ -186,6 +186,12 @@ async function handleOrderPaid(app: FastifyInstance, session: Stripe.Checkout.Se
       } else if (item.productId) {
         await tx.product.update({ where: { id: item.productId }, data: { stockQuantity: { decrement: item.quantity } } });
       }
+      // `.claude/architect-scope-products-catalog.md` §5.2 — architect'in bu tek satır için
+      // yazılı istisna verdiği canlı `salesCount` artırımı (`sort=bestselling`'in kaynağı).
+      // Ürün seviyesinde tutulur — satılan birim varyasyon olsa BİLE `Product.salesCount` artar.
+      if (item.productId) {
+        await tx.product.update({ where: { id: item.productId }, data: { salesCount: { increment: item.quantity } } });
+      }
     }
 
     const paid = await tx.order.update({

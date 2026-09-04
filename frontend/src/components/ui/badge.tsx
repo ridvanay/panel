@@ -21,15 +21,24 @@ export function Badge({
   tone = "neutral",
   size = "sm",
   solid = false,
+  className,
   children,
 }: {
   tone?: Tone;
   size?: Size;
   solid?: boolean;
+  className?: string;
   children: ReactNode;
 }) {
   return (
-    <span className={cn("inline-flex items-center rounded-full", sizeClasses[size], solid ? toneClasses[tone].solid : toneClasses[tone].soft)}>
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full",
+        sizeClasses[size],
+        solid ? toneClasses[tone].solid : toneClasses[tone].soft,
+        className
+      )}
+    >
       {children}
     </span>
   );

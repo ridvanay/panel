@@ -10,6 +10,7 @@ import { PageSchema, SiteSettingsSchema } from "../../schemas/entities";
 import { toPageDto, toSiteSettingsDto } from "../../mappers";
 import { attachLocalizationsOne } from "../../lib/localization";
 import { logAudit } from "../../lib/audit";
+import { ValidationError } from "../../lib/errors";
 import { PERMISSIONS_MATRIX } from "../../lib/permissions-matrix";
 import { PermissionsMatrixDto, PermissionsMatrixSchema, UpdateSiteSettingsRequestSchema } from "./settings.schemas";
 
@@ -26,7 +27,26 @@ export const DEFAULTS = {
   // hesaplanmaz/eşik yok (bugünkü davranışın birebir aynısı).
   shippingFlatFeeCents: null as number | null,
   freeShippingThresholdCents: null as number | null,
+  // §2.5 (.claude/architect-scope-products-catalog.md, bağlayıcı) — İKİSİ de null iken PDP
+  // tahmini teslimat satırını HİÇ render etmez.
+  shippingEstimatedDaysMin: null as number | null,
+  shippingEstimatedDaysMax: null as number | null,
 };
+
+/**
+ * `shippingEstimatedDaysMax`, nihai (istekte gönderilmemişse mevcut kayıttaki)
+ * `shippingEstimatedDaysMin`'den KÜÇÜK olamaz. Şemadaki `refine` yalnızca AYNI istekte iki alan
+ * da gönderildiğinde kontrol edebiliyor (bkz. settings.schemas.ts) — `products.routes.ts::
+ * assertDiscountBelowPrice` ile AYNI desen.
+ */
+function assertShippingEstimateRange(finalMin: number | null, finalMax: number | null): void {
+  if (finalMin === null || finalMax === null) return;
+  if (finalMax < finalMin) {
+    throw new ValidationError("shippingEstimatedDaysMax, shippingEstimatedDaysMin değerinden küçük olamaz.", {
+      shippingEstimatedDaysMax: ["shippingEstimatedDaysMax, shippingEstimatedDaysMin değerinden küçük olamaz."],
+    });
+  }
+}
 
 async function readSettings(app: FastifyInstance) {
   const row = await app.prisma.siteSettings.findUnique({ where: { id: SETTINGS_ID } });
@@ -86,6 +106,19 @@ export async function adminSettingsRoutes(app: FastifyInstance) {
       schema: { body: UpdateSiteSettingsRequestSchema, response: { 200: ApiSuccessSchema(SiteSettingsSchema) } },
     },
     async (request, reply) => {
+      const existing = await app.prisma.siteSettings.findUnique({ where: { id: SETTINGS_ID } });
+      const existingOrDefaults = existing ?? DEFAULTS;
+
+      const finalShippingMin =
+        request.body.shippingEstimatedDaysMin !== undefined
+          ? request.body.shippingEstimatedDaysMin
+          : existingOrDefaults.shippingEstimatedDaysMin;
+      const finalShippingMax =
+        request.body.shippingEstimatedDaysMax !== undefined
+          ? request.body.shippingEstimatedDaysMax
+          : existingOrDefaults.shippingEstimatedDaysMax;
+      assertShippingEstimateRange(finalShippingMin, finalShippingMax);
+
       const settings = await app.prisma.siteSettings.upsert({
         where: { id: SETTINGS_ID },
         create: { id: SETTINGS_ID, ...DEFAULTS, ...request.body },

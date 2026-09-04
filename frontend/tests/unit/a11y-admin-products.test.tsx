@@ -50,6 +50,8 @@ function makeProduct(overrides: Partial<Product> = {}): Product {
     discountPriceCents: null,
     sku: "SKU-1",
     stockQuantity: 10,
+    salesCount: 0,
+    discountPercent: 0,
     status: "PUBLISHED",
     category: null,
     coverMedia: null,

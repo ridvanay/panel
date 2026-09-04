@@ -5407,31 +5407,61 @@ paths:
     get:
       tags: [Products]
       security: []
-      summary: Yayınlanmış ürünleri listele (public)
+      summary: Yayınlanmış ürünleri listele — katalog filtresi/sıralama/sayfalama (public)
       description: >
         Yalnızca `status: PUBLISHED` ve çöpte olmayan (`deletedAt: null`) ürünler döner.
         `products` modülü kapalıysa `404 NOT_FOUND` (bkz. `Modules` tag'i).
+
+
+        **SAYFALAMA — bu uç `cursor` KULLANMAZ (bilinçli sapma).** Depodaki diğer liste
+        uçları `seq` tabanlı cursor kullanır; katalog `price_asc`/`bestselling` gibi
+        `seq`'ten BAĞIMSIZ sıralamalar sunduğu ve arayüz "37 ürün bulundu" + sayfa
+        numarası + paylaşılabilir `?page=2` URL'i gerektirdiği için burada **offset
+        (`page`/`perPage`) sayfalama** kullanılır. `cursor` parametresi bu uçta
+        TANINMAZ. Geriye dönük uyumluluk: `limit` gönderilirse `perPage` gibi davranır
+        (mevcut `sitemap.ts` / `featured-products-block` çağrıları BOZULMAZ).
+
+
+        **`data` artık `ProductListItem`'dır (tam `Product` DEĞİL)** —
+        `descriptionHtml`/`documents`/`translations`/`author`/SEO skoru gibi
+        yalnızca detay sayfasının ve admin'in kullandığı alanlar listede DÖNMEZ
+        (bkz. `ProductListItem`). Alan seti tam `Product`'ın ALT KÜMESİ olduğu için
+        mevcut tüketiciler (ürün kartı, sitemap) DEĞİŞMEDEN çalışır.
+
+
+        Bkz. `.claude/architect-scope-products-catalog.md` (bağlayıcı karar dokümanı).
       parameters:
-        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/PageNumber"
+        - $ref: "#/components/parameters/PerPage"
         - $ref: "#/components/parameters/Limit"
         - $ref: "#/components/parameters/LocaleQuery"
+        - $ref: "#/components/parameters/CatalogSearch"
+        - $ref: "#/components/parameters/CatalogCategory"
+        - $ref: "#/components/parameters/CatalogMinPrice"
+        - $ref: "#/components/parameters/CatalogMaxPrice"
+        - $ref: "#/components/parameters/CatalogOption"
+        - $ref: "#/components/parameters/CatalogInStock"
+        - $ref: "#/components/parameters/CatalogSort"
+        - $ref: "#/components/parameters/CatalogFacets"
       responses:
         "200":
           description: OK
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
-                  - properties:
-                      data:
-                        type: array
-                        items: { $ref: "#/components/schemas/Product" }
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/ProductListItem" }
+                  meta: { $ref: "#/components/schemas/ProductCatalogMeta" }
         "404":
           description: "Modül kapalı VEYA kaynak yok (`error.code: NOT_FOUND`)"
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
 
   /products/{slug}:
     parameters:
@@ -7983,6 +8013,111 @@ components:
       in: query
       required: false
       schema: { type: integer, default: 20, maximum: 100 }
+    PageNumber:
+      name: page
+      in: query
+      required: false
+      description: "Offset sayfalama — 1 tabanlı. Yalnızca `GET /products` (katalog) kullanır; diğer liste uçları `cursor` ile sayfalanır."
+      schema: { type: integer, minimum: 1, default: 1 }
+    PerPage:
+      name: perPage
+      in: query
+      required: false
+      description: >
+        Sayfa başına kayıt. `GET /products` katalog ızgarası 12/24/48 sunar.
+        Verilmezse ve `limit` verilmişse `limit` kullanılır (geriye dönük uyumluluk).
+      schema: { type: integer, minimum: 1, maximum: 100, default: 12 }
+    CatalogSearch:
+      name: search
+      in: query
+      required: false
+      description: >
+        Serbest metin araması — `title`, `excerpt` ve `sku` üzerinde büyük/küçük harf
+        duyarsız `contains`. **Yalnızca kanonik (varsayılan dil) kolonlarda arar;**
+        `translations` JSON'u TARANMAZ (admin `GET /admin/products?search=` ile AYNI
+        bilinçli sınır — çeviri araması ayrı bir iştir).
+      schema: { type: string, minLength: 1, maxLength: 100 }
+    CatalogCategory:
+      name: category
+      in: query
+      required: false
+      description: >
+        Kategori **slug**'ı (id DEĞİL — paylaşılabilir/okunabilir URL). Kategorinin
+        ALT kategorileri de DAHİL edilir (hiyerarşi en fazla 2 seviye — bkz.
+        `ProductCategory.parentId`). Bilinmeyen slug → boş sonuç (`404` DEĞİL).
+      schema: { type: string, minLength: 1 }
+    CatalogMinPrice:
+      name: minPrice
+      in: query
+      required: false
+      description: "Alt fiyat sınırı (KURUŞ, dahil). `Product.effectivePriceCents` (= `discountPriceCents ?? priceCents`) ile karşılaştırılır."
+      schema: { type: integer, minimum: 0 }
+    CatalogMaxPrice:
+      name: maxPrice
+      in: query
+      required: false
+      description: "Üst fiyat sınırı (KURUŞ, dahil). `minPrice > maxPrice` ise `422`."
+      schema: { type: integer, minimum: 0 }
+    CatalogOption:
+      name: option
+      in: query
+      required: false
+      description: >
+        Varyasyon filtresi — **tekrarlanabilir** (`?option=renk:antrasit&option=beden:l`).
+        Değer, facet yanıtındaki `token` ile BİREBİR aynı, sunucunun ürettiği
+        `<eksenSlug>:<değerSlug>` biçimidir (`ProductVariant.variantKey`'in tek
+        parçasıyla AYNI normalizasyon). Eşleşme: ürünün **aktif** bir varyasyonunun
+        `optionValueSlugs` dizisi token'ı İÇERİYORSA. AYNI eksenden birden çok token
+        **VEYA** (OR), FARKLI eksenlerden token'lar **VE** (AND) ile birleşir.
+
+
+        **`color`/`size` diye AYRI parametre YOKTUR (bağlayıcı, gerekçeli):** eksen
+        adları mağaza sahibi tarafından serbestçe belirlenir ve çok dillidir
+        ("Renk"/"Colour"/"Kumaş"/"Malzeme") — sabit bir `color` parametresi bu
+        eksenlerin hiçbirinde çalışmazdı. Renk filtresi `type: SWATCH` eksenin
+        token'ları ile yapılır; arayüz hangi eksenin renk olduğunu facet'teki
+        `type` alanından bilir.
+      schema:
+        type: array
+        items: { type: string, pattern: "^[a-z0-9-]+:[a-z0-9-]+$" }
+      style: form
+      explode: true
+    CatalogInStock:
+      name: inStock
+      in: query
+      required: false
+      description: >
+        `true` → yalnızca satın alınabilir ürünler. "Stokta" tanımı **satılan
+        seviyededir**: varyasyonu olan üründe `isActive: true` VE `stockQuantity > 0`
+        olan EN AZ BİR varyasyon; varyasyonsuz üründe `Product.stockQuantity > 0`
+        (bkz. `.claude/architect-scope-ecommerce-pro-template.md` §1.2). `false`
+        gönderilmesi filtre uygulanmamasıyla AYNIDIR.
+      schema: { type: boolean, default: false }
+    CatalogSort:
+      name: sort
+      in: query
+      required: false
+      description: >
+        Sıralama. Her seçenekte deterministik bir eş-değer kırıcı (`seq DESC`)
+        uygulanır — aksi halde offset sayfalamada aynı ürün iki sayfada görünebilir.
+
+        * `newest` (varsayılan) — `publishedAt DESC NULLS LAST`
+        * `price_asc` / `price_desc` — `effectivePriceCents` (indirimli fiyat dahil)
+        * `bestselling` — `Product.salesCount DESC` (satılan adet, bkz. `ProductListItem`)
+        * `discount` — `Product.discountPercent DESC`; indirimsiz ürünler (0) sona düşer
+      schema:
+        type: string
+        enum: [newest, price_asc, price_desc, bestselling, discount]
+        default: newest
+    CatalogFacets:
+      name: facets
+      in: query
+      required: false
+      description: >
+        `true` → `meta.facets` hesaplanır ve döner (filtre kenar çubuğu bunu ister).
+        **Varsayılan `false`** — facet hesabı 4 ek sorgudur ve `sitemap.ts` /
+        `featured-products-block` gibi tüketicilerin işine yaramaz.
+      schema: { type: boolean, default: false }
     PageId:
       name: pageId
       in: path
@@ -11683,6 +11818,24 @@ components:
             Ücretsiz kargo eşiği (kuruş). Sepet ara toplamı bu değere EŞİT VEYA
             BÜYÜKSE kargo bedeli 0'a düşer. `shippingFlatFeeCents` null iken bu
             alanın hiçbir etkisi YOKTUR (eşik çubuğu da gösterilmez).
+        shippingEstimatedDaysMin:
+          type: integer
+          nullable: true
+          minimum: 0
+          maximum: 90
+          description: >
+            Tahmini teslimat süresinin alt sınırı (İŞ GÜNÜ). Ürün detay sayfasındaki
+            "Tahmini teslimat: 2-4 iş günü" bildirimi YALNIZCA `Min` ve `Max`
+            İKİSİ DE doluyken gösterilir — sabit/varsayılan bir süre metnini koda
+            gömmek, mağaza sahibinin vermediği bir **ticari taahhüt** üretirdi
+            (Mesafeli Satış; bkz.
+            `.claude/architect-scope-ecommerce-pro-template.md` §7.3).
+        shippingEstimatedDaysMax:
+          type: integer
+          nullable: true
+          minimum: 0
+          maximum: 90
+          description: "Üst sınır (iş günü). `Min`'den KÜÇÜK olamaz (`422`). `Min === Max` ise arayüz tek sayı gösterir."
 
     UpdateSiteSettingsRequest:
       description: "`PATCH /admin/settings` gövdesi — tüm alanlar opsiyoneldir, satır yoksa `DEFAULTS` ile birlikte oluşturulur (upsert)."
@@ -11700,6 +11853,8 @@ components:
         siteTemplate: { $ref: "#/components/schemas/SiteTemplate" }
         shippingFlatFeeCents: { type: integer, nullable: true, minimum: 0, maximum: 100000000 }
         freeShippingThresholdCents: { type: integer, nullable: true, minimum: 0, maximum: 100000000 }
+        shippingEstimatedDaysMin: { type: integer, nullable: true, minimum: 0, maximum: 90 }
+        shippingEstimatedDaysMax: { type: integer, nullable: true, minimum: 0, maximum: 90, description: "`shippingEstimatedDaysMin`'den küçükse `422` (çapraz-alan kuralı; yalnızca ikisi de gönderildiğinde ŞEMA seviyesinde, tek başına gönderildiğinde mevcut satıra karşı route handler'da doğrulanır — `discountPriceCents` ile AYNI desen)." }
 
     SiteModule:
       description: >
@@ -12115,6 +12270,17 @@ components:
         id: { type: string, format: uuid }
         name: { type: string }
         slug: { type: string }
+        parentId:
+          type: string
+          format: uuid
+          nullable: true
+          description: >
+            Üst kategori — **en fazla 2 seviye** (kök → alt). Bir kategorinin
+            `parentId`'si kendisi ZATEN bir alt kategori olan bir kategoriye
+            işaret edemez (`409 CONFLICT`), kendisi olamaz (`422`). Blog
+            kategorilerinde bilinçli olarak YOKTUR — yalnızca ürün katalogu
+            kenar çubuğu hiyerarşi ister (bkz.
+            `.claude/architect-scope-products-catalog.md` §2.1).
         createdAt: { type: string, format: date-time }
 
     ProductImage:
@@ -12228,9 +12394,164 @@ components:
         mediaId: { type: string, format: uuid }
         title: { type: string, minLength: 1, maxLength: 160 }
 
+    ProductListItem:
+      description: >
+        `GET /products` (public katalog) liste öğesi — tam `Product` DTO'sunun
+        **ALT KÜMESİ**. Kartın ve `sitemap.ts`'in ihtiyaç duyduğu her alan
+        buradadır; yalnızca detay/admin alanları (`descriptionHtml`, `documents`,
+        `translations`, `author`/`authorId`, `status`, `taxRatePercent`, tüm SEO/OG
+        alanları, `scheduledAt`, `deletedAt`, `seoScore`, `seoScoreIssues`)
+        DIŞARIDA bırakılmıştır. Alt küme olduğu için `Product` bu şemaya
+        yapısal olarak UYUMLUDUR — mevcut tüketiciler değişmeden çalışır.
+
+
+        `variants`/`variantOptions` listede DE döner: ürün kartındaki tıklanabilir
+        renk noktaları, "stokta yok" durumu ve varyasyon görseline geçiş bunlardan
+        beslenir.
+      type: object
+      required: [id, title, slug, priceCents, currency, discountPriceCents, stockQuantity, category, coverMedia, images, variantOptions, variants, localizations]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        slug: { type: string }
+        excerpt: { type: string, nullable: true }
+        priceCents: { type: integer, description: "Liste fiyatı (kuruş)." }
+        currency: { type: string }
+        discountPriceCents: { type: integer, nullable: true }
+        sku: { type: string, nullable: true }
+        stockQuantity:
+          type: integer
+          description: "Ürün seviyesi stok. **Ürünün `variants` dizisi BOŞ DEĞİLSE bu alan YOK SAYILIR** — stok varyasyondan okunur (§1.2, bağlayıcı)."
+        salesCount:
+          type: integer
+          description: >
+            Bugüne kadar satılan toplam adet (denormalize, `sort=bestselling`'in
+            kaynağı). `PAID`/`SHIPPED`/`FULFILLED` siparişlerdeki
+            `OrderItem.quantity` toplamıdır; `REFUNDED`/`CANCELLED` DÜŞÜLMEZ (v1).
+            Vitrin bunu "Çok satan" rozetinde kullanabilir.
+        discountPercent:
+          type: integer
+          minimum: 0
+          maximum: 99
+          description: "Denormalize indirim yüzdesi (`sort=discount` kaynağı). İndirim yoksa `0`. İstemci ayrıca hesaplamamalıdır."
+        category:
+          allOf: [{ $ref: "#/components/schemas/ProductCategory" }]
+          nullable: true
+        coverMedia:
+          allOf: [{ $ref: "#/components/schemas/Media" }]
+          nullable: true
+        images:
+          type: array
+          items: { $ref: "#/components/schemas/ProductImage" }
+          description: "Sıralı galeri. Kart hover'ındaki İKİNCİ görsel `images[0]`'dır (kapak `coverMedia`'dır)."
+        variantOptions:
+          type: array
+          items: { $ref: "#/components/schemas/ProductVariantOption" }
+        variants:
+          type: array
+          items: { $ref: "#/components/schemas/ProductVariant" }
+        localizations:
+          type: array
+          items: { $ref: "#/components/schemas/ContentLocalization" }
+        publishedAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        viewCount: { type: integer }
+
+    ProductCategoryFacet:
+      description: "Katalog kenar çubuğu kategori ağacı (en fazla 2 seviye) + ürün sayacı."
+      type: object
+      required: [id, name, slug, productCount, children]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+        productCount:
+          type: integer
+          description: "Bu kategorideki ürün sayısı — **alt kategorilerin sayıları DAHİL** (kök satırda toplam gösterilir, `category=` filtresi de alt ağacı kapsar, iki taraf TUTARLIDIR)."
+        children:
+          type: array
+          items: { $ref: "#/components/schemas/ProductCategoryFacet" }
+          description: "En fazla 1 seviye derinlik — `children[].children` HER ZAMAN boş dizidir."
+
+    ProductOptionFacet:
+      description: >
+        Bir varyasyon EKSENİ ve o eksende seçilebilir değerler + sayaçlar. Değerin
+        `token`'ı doğrudan `?option=` parametresine verilir — istemci token ÜRETMEZ.
+      type: object
+      required: [axisSlug, axisName, type, values]
+      properties:
+        axisSlug: { type: string, example: "renk" }
+        axisName: { type: string, example: "Renk", description: "Kullanıcıya gösterilen eksen başlığı. Aynı `axisSlug`'a sahip ürünlerde farklı yazımlar varsa EN SIK kullanılan yazım döner." }
+        type: { type: string, enum: [SWATCH, TEXT], description: "`SWATCH` → renk noktası, `TEXT` → beden/etiket butonu (bkz. `.claude/design-notes-ecommerce-storefront.md` §1/§2)." }
+        values:
+          type: array
+          items:
+            type: object
+            required: [token, value, swatchHex, count]
+            properties:
+              token: { type: string, example: "renk:antrasit" }
+              value: { type: string, example: "Antrasit" }
+              swatchHex: { type: string, nullable: true, example: "#3a3a3a" }
+              count: { type: integer, description: "Bu değeri taşıyan (aktif varyasyonu olan) ürün sayısı." }
+
+    ProductCatalogFacets:
+      description: >
+        **Sayaç semantiği (bağlayıcı):** her facet boyutu, `?facets=true` isteğindeki
+        DİĞER tüm filtreler uygulanmış, AMA KENDİ boyutunun filtresi kaldırılmış
+        küme üzerinde hesaplanır (disjunctive faceting). Böylece "Antrasit" seçiliyken
+        "Bej (3)" hâlâ görünür ve tıklanabilir olur; aksi halde kullanıcı seçtiği
+        filtreyi genişletemez.
+      type: object
+      required: [categories, price, options, availability]
+      properties:
+        categories:
+          type: array
+          items: { $ref: "#/components/schemas/ProductCategoryFacet" }
+        price:
+          type: object
+          required: [minCents, maxCents]
+          properties:
+            minCents: { type: integer, nullable: true, description: "Sonuç kümesindeki EN DÜŞÜK `effectivePriceCents`. Küme boşsa `null` (slider render EDİLMEZ)." }
+            maxCents: { type: integer, nullable: true }
+        options:
+          type: array
+          items: { $ref: "#/components/schemas/ProductOptionFacet" }
+          description: "Eksen sırası: ürünlerdeki görülme sıklığına göre azalan; eşitlikte `axisSlug` alfabetik."
+        availability:
+          type: object
+          required: [inStockCount, totalCount]
+          properties:
+            inStockCount: { type: integer }
+            totalCount: { type: integer }
+        truncated:
+          type: boolean
+          description: >
+            `true` ise facet sayaçları TAM DEĞİLDİR: eşleşen ürün sayısı sunucu
+            tavanını (`PRODUCT_FACET_SCAN_LIMIT`, varsayılan 2000) aştığı için
+            varyasyon (`options`) facet'i ilk N ürün üzerinden hesaplanmıştır.
+            Kategori/fiyat/stok sayaçları SQL toplama olduğu için HER ZAMAN tamdır.
+            Arayüz bu bayrağı görürse sayaçları gizleyebilir; filtreleme yine doğrudur.
+
+    ProductCatalogMeta:
+      type: object
+      required: [pagination]
+      properties:
+        pagination:
+          type: object
+          required: [page, perPage, total, totalPages]
+          properties:
+            page: { type: integer, minimum: 1 }
+            perPage: { type: integer }
+            total: { type: integer, description: "Filtrelere UYAN toplam ürün sayısı (\"37 ürün bulundu\")." }
+            totalPages: { type: integer, description: "`total === 0` ise `0`. `page > totalPages` ise `data` boş dizidir — `404` DEĞİL." }
+        facets:
+          allOf: [{ $ref: "#/components/schemas/ProductCatalogFacets" }]
+          description: "Yalnızca `?facets=true` iken döner; aksi halde alan HİÇ BULUNMAZ."
+
     Product:
       description: >
-        `/admin/products` ve `/products` uçlarında dönen ürün DTO'su. `BlogCategory`/
+        `/admin/products` ve `/products/{slug}` uçlarında dönen ürün DTO'su. `BlogCategory`/
         `BlogPost` (§10.7) ile BİREBİR AYNI çöp kutusu/yazar/SEO skoru alan seti +
         e-ticaret alanları (fiyat/stok/SKU). `translations.EN` yalnızca override'ları
         taşır (bkz. ARCHITECTURE.md §10.5).
@@ -12255,6 +12576,24 @@ components:
           description: "Doluysa `priceCents`'ten KÜÇÜKTÜR (create/update sırasında sunucu tarafında doğrulanır)."
         sku: { type: string, nullable: true }
         stockQuantity: { type: integer }
+        salesCount:
+          type: integer
+          readOnly: true
+          description: >
+            Denormalize satış adedi — `PAID`/`SHIPPED`/`FULFILLED` siparişlerdeki
+            `OrderItem.quantity` toplamı. `sort=bestselling`'in kaynağıdır; hiçbir
+            istek gövdesinden YAZILAMAZ (bkz.
+            `.claude/architect-scope-products-catalog.md` §2.3).
+        discountPercent:
+          type: integer
+          readOnly: true
+          minimum: 0
+          maximum: 99
+          description: >
+            Denormalize indirim yüzdesi — `discountPriceCents` doluyken
+            `round((1 - discountPriceCents / priceCents) * 100)`, aksi halde `0`.
+            `priceCents`/`discountPriceCents` ile BİRLİKTE, tek bir sunucu
+            yardımcısı tarafından yazılır; istekten SET EDİLEMEZ.
         status: { $ref: "#/components/schemas/PageStatus" }
         category:
           allOf:
@@ -12428,12 +12767,22 @@ components:
       properties:
         name: { type: string, minLength: 1 }
         slug: { type: string, minLength: 1, description: "verilmezse name'den slugify edilir" }
+        parentId:
+          type: string
+          format: uuid
+          nullable: true
+          description: "Üst kategori. Var olmayan id → `422`; ZATEN alt kategori olan bir kategori seçilirse (3. seviye) → `409`."
 
     UpdateProductCategoryRequest:
       type: object
       properties:
         name: { type: string, minLength: 1 }
         slug: { type: string, minLength: 1 }
+        parentId:
+          type: string
+          format: uuid
+          nullable: true
+          description: "`null` = kök kategori yap. Kendisi (`422`), kendi alt ağacı (`409`, döngü) ve 3. seviye (`409`) reddedilir. Bu kategorinin ALTINDA çocuk varken bir üst kategoriye taşınması da `409` (2 seviye tavanı)."
 
     AddProductImageRequest:
       description: "`POST /admin/products/{productId}/images` gövdesi — galeriye tek bir `Media` ekler."

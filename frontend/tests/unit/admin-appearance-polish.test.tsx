@@ -120,6 +120,10 @@ const settings: SiteSettings = {
   siteTemplate: "SHOWCASE",
   headerLogoHeight: null,
   headerLogoMaxWidth: null,
+  shippingFlatFeeCents: null,
+  freeShippingThresholdCents: null,
+  shippingEstimatedDaysMin: null,
+  shippingEstimatedDaysMax: null,
 };
 
 const navConfig: NavigationConfigDto = {

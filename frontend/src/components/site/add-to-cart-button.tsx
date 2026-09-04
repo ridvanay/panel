@@ -3,15 +3,18 @@
 import { useState } from "react";
 import { Check, ShoppingCart } from "lucide-react";
 import { useCart } from "@/context/cart-context";
-import { Button } from "@/components/ui/button";
+import { Button, type buttonVariants } from "@/components/ui/button";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { cn } from "@/lib/utils";
+import type { VariantProps } from "class-variance-authority";
 
 interface AddToCartButtonProps {
   productId: string;
   /** Ürünün varyasyonu varsa satılabilir birimi belirtir — yoksa `undefined` bırakılır. */
   variantId?: string | null;
   stockQuantity: number;
+  /** Varsayılan `1` — PDP adet seçicisi (`quantity-selector.tsx`) bunu değiştirir. */
+  quantity?: number;
   /**
    * Dıştan zorlanan devre dışı bırakma — varyasyonlu üründe hiçbir eksen seçilmediğinde
    * (`.claude/design-notes-ecommerce-storefront.md` §2). `stockQuantity`'den BAĞIMSIZDIR:
@@ -23,17 +26,21 @@ interface AddToCartButtonProps {
   disabledHint?: string;
   /** Sepete ekleme başarıyla tamamlanınca çağrılır (ör. sepet çekmecesini açmak için). */
   onAdded?: () => void;
+  /** Varsayılan `Button`'ın kendi varsayılanı — PDP `"lg"` verir (`.claude/design-notes-products-catalog.md` §4.3), kart varsayılanı bırakır. */
+  size?: VariantProps<typeof buttonVariants>["size"];
   className?: string;
 }
 
-/** Ürün detay sayfasındaki "Sepete Ekle" — `product-card.tsx`/`page.tsx` sunucu bileşen olduğu için ayrı bir istemci alt bileşeni. */
+/** Ürün detay sayfasındaki/kartındaki "Sepete Ekle" — sunucu bileşenlerinden çağrıldığı için ayrı bir istemci alt bileşeni. */
 export function AddToCartButton({
   productId,
   variantId,
   stockQuantity,
+  quantity = 1,
   disabled = false,
   disabledHint,
   onAdded,
+  size,
   className,
 }: AddToCartButtonProps) {
   const { addItem } = useCart();
@@ -49,7 +56,7 @@ export function AddToCartButton({
     setError(null);
     setAdding(true);
     try {
-      await addItem(productId, 1, variantId);
+      await addItem(productId, quantity, variantId);
       setAdded(true);
       onAdded?.();
       setTimeout(() => setAdded(false), 2000);
@@ -66,6 +73,7 @@ export function AddToCartButton({
         onClick={handleClick}
         disabled={isDisabled}
         loading={adding}
+        size={size}
         aria-label={isSoldOut ? "Tükendi" : "Sepete ekle"}
         className={cn("rounded-[var(--site-radius)]", className)}
       >

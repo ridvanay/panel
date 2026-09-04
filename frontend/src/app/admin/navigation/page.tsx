@@ -530,6 +530,10 @@ function AdminNavigationPageContent() {
     siteTemplate: "SHOWCASE" as const,
     headerLogoHeight,
     headerLogoMaxWidth,
+    shippingFlatFeeCents: null,
+    freeShippingThresholdCents: null,
+    shippingEstimatedDaysMin: null,
+    shippingEstimatedDaysMax: null,
   };
   // Henüz label/href doldurulmamış yeni eklenen satırlar önizlemeye YANSITILMAZ — aksi halde
   // SiteHeader/SiteFooter bunları `<a href="">` (erişilebilir ismi olmayan link, axe-core

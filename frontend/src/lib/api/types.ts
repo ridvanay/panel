@@ -765,6 +765,11 @@ export interface ProductCategory {
   id: string;
   name: string;
   slug: string;
+  /**
+   * Üst kategori — en fazla 2 seviye (kök → alt). Bkz.
+   * `.claude/architect-scope-products-catalog.md` §2.1. Blog kategorilerinde YOKTUR.
+   */
+  parentId: string | null;
   createdAt: string;
 }
 
@@ -882,6 +887,17 @@ export interface Product {
   discountPriceCents: number | null;
   sku: string | null;
   stockQuantity: number;
+  /**
+   * Denormalize satış adedi (`sort=bestselling` kaynağı) — `PAID`/`SHIPPED`/`FULFILLED`
+   * siparişlerdeki `OrderItem.quantity` toplamı. Salt-okunur, istekten SET EDİLEMEZ. Bkz.
+   * `.claude/architect-scope-products-catalog.md` §2.3.
+   */
+  readonly salesCount: number;
+  /**
+   * Denormalize indirim yüzdesi — indirim yoksa `0`. Salt-okunur, `priceCents`/
+   * `discountPriceCents` ile birlikte sunucuda türetilir.
+   */
+  readonly discountPercent: number;
   status: ContentStatus;
   category: ProductCategory | null;
   coverMedia: Media | null;
@@ -919,6 +935,102 @@ export interface Product {
   author: UserSummary | null;
   seoScore: number;
   seoScoreIssues: SeoScoreIssue[];
+}
+
+/**
+ * `GET /products` (public katalog) liste öğesi — tam `Product`'ın ALT KÜMESİ (detay/admin-only
+ * alanlar — `descriptionHtml`/`documents`/`translations`/`author`/SEO/`status` vb. — DIŞARIDA
+ * bırakılmıştır). `Product`, bu şemanın alanlarının TAMAMINI içerdiği için yapısal olarak
+ * `ProductListItem`'a UYUMLUDUR — `ProductCard` gibi ortak tüketiciler her iki tipi de kabul
+ * edebilir. Bkz. `.claude/architect-scope-products-catalog.md` §3.2.
+ */
+export interface ProductListItem {
+  id: string;
+  title: string;
+  slug: string;
+  excerpt: string | null;
+  priceCents: number;
+  currency: string;
+  discountPriceCents: number | null;
+  sku: string | null;
+  /** Ürünün `variants` dizisi BOŞ DEĞİLSE bu alan YOK SAYILIR — stok varyasyondan okunur. */
+  stockQuantity: number;
+  readonly salesCount: number;
+  readonly discountPercent: number;
+  category: ProductCategory | null;
+  coverMedia: Media | null;
+  images: ProductImage[];
+  variantOptions: ProductVariantOption[];
+  variants: ProductVariant[];
+  localizations: ContentLocalization[];
+  publishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  viewCount: number;
+}
+
+/** Katalog kenar çubuğu kategori ağacı (en fazla 2 seviye) + ürün sayacı — `?facets=true`. */
+export interface ProductCategoryFacet {
+  id: string;
+  name: string;
+  slug: string;
+  /** Bu kategorideki ürün sayısı — alt kategorilerin sayıları DAHİL. */
+  productCount: number;
+  /** En fazla 1 seviye derinlik — `children[].children` HER ZAMAN boş dizidir. */
+  children: ProductCategoryFacet[];
+}
+
+export interface ProductOptionFacetValue {
+  /** `?option=` parametresine DOĞRUDAN verilir — istemci token ÜRETMEZ. */
+  token: string;
+  value: string;
+  swatchHex: string | null;
+  /** Bu değeri taşıyan (aktif varyasyonu olan) ürün sayısı. */
+  count: number;
+}
+
+/** Bir varyasyon EKSENİ ve o eksende seçilebilir değerler + sayaçlar. */
+export interface ProductOptionFacet {
+  axisSlug: string;
+  axisName: string;
+  type: "SWATCH" | "TEXT";
+  values: ProductOptionFacetValue[];
+}
+
+/**
+ * Disjunctive faceting (bağlayıcı): her boyut, DİĞER filtreler uygulanmış AMA KENDİ boyutunun
+ * filtresi KALDIRILMIŞ küme üzerinde hesaplanır — bkz. `.claude/architect-scope-products-catalog.md` §3.4.
+ */
+export interface ProductCatalogFacets {
+  categories: ProductCategoryFacet[];
+  price: {
+    /** Sonuç kümesindeki EN DÜŞÜK `effectivePriceCents`. Küme boşsa `null` (slider render EDİLMEZ). */
+    minCents: number | null;
+    maxCents: number | null;
+  };
+  /** Eksen sırası: ürünlerdeki görülme sıklığına göre azalan; eşitlikte `axisSlug` alfabetik. */
+  options: ProductOptionFacet[];
+  availability: {
+    inStockCount: number;
+    totalCount: number;
+  };
+  /** `true` ise `options` sayaçları `PRODUCT_FACET_SCAN_LIMIT` tavanı yüzünden TAM DEĞİLDİR. */
+  truncated?: boolean;
+}
+
+export interface ProductCatalogPagination {
+  page: number;
+  perPage: number;
+  /** Filtrelere UYAN toplam ürün sayısı ("37 ürün bulundu"). */
+  total: number;
+  /** `total === 0` ise `0`. `page > totalPages` ise `data` boş dizidir — `404` DEĞİL. */
+  totalPages: number;
+}
+
+export interface ProductCatalogMeta {
+  pagination: ProductCatalogPagination;
+  /** Yalnızca `?facets=true` iken döner; aksi halde alan HİÇ BULUNMAZ. */
+  facets?: ProductCatalogFacets;
 }
 
 export interface CreateProductRequest {
@@ -1346,6 +1458,17 @@ export interface SiteSettings {
   headerLogoHeight: number | null;
   /** px, 40-400. `null` ise genişlik sınırsızdır (yalnızca doğal en-boy oranı geçerlidir). */
   headerLogoMaxWidth: number | null;
+  /** Mağaza geneli SABİT kargo bedeli (kuruş). `null` = kargo bedeli HESAPLANMAZ/gösterilmez. */
+  shippingFlatFeeCents: number | null;
+  /** Ücretsiz kargo eşiği (kuruş). `shippingFlatFeeCents` null iken etkisizdir. */
+  freeShippingThresholdCents: number | null;
+  /**
+   * Tahmini teslimat süresi (iş günü) alt/üst sınırı — PDP bildirimi YALNIZCA ikisi de
+   * doluyken gösterilir (sabit bir süre metni bir ticari taahhüttür, koda GÖMÜLMEZ). Bkz.
+   * `.claude/architect-scope-products-catalog.md` §2.5.
+   */
+  shippingEstimatedDaysMin: number | null;
+  shippingEstimatedDaysMax: number | null;
 }
 
 export interface UpdateSiteSettingsRequest {
@@ -1356,6 +1479,10 @@ export interface UpdateSiteSettingsRequest {
   siteTemplate?: SiteTemplate;
   headerLogoHeight?: number | null;
   headerLogoMaxWidth?: number | null;
+  shippingFlatFeeCents?: number | null;
+  freeShippingThresholdCents?: number | null;
+  shippingEstimatedDaysMin?: number | null;
+  shippingEstimatedDaysMax?: number | null;
 }
 
 export interface UpdateBlogPostRequest {

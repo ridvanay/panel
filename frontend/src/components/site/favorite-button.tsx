@@ -6,12 +6,17 @@ import { toast } from "sonner";
 import { Heart } from "lucide-react";
 import { useAuthOptional } from "@/context/auth-context";
 import { useWishlistOptional } from "@/context/wishlist-context";
-import { Button } from "@/components/ui/button";
+import { Button, type buttonVariants } from "@/components/ui/button";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { cn } from "@/lib/utils";
+import type { VariantProps } from "class-variance-authority";
 
 interface FavoriteButtonProps {
   productId: string;
+  /** Varsayılan `"ghost"` (kart/yüzen halinin mevcut görünümü). PDP `"outline"` verir. */
+  variant?: VariantProps<typeof buttonVariants>["variant"];
+  /** Varsayılan `"icon"`. PDP `"icon-lg"` verir (`.claude/design-notes-products-catalog.md` §4.3). */
+  size?: VariantProps<typeof buttonVariants>["size"];
   className?: string;
 }
 
@@ -26,7 +31,7 @@ interface FavoriteButtonProps {
  * favori ekleyebilir/çıkarabilir — `HesabimShell`/`SiteHeader`'daki favori sekmesi/ikonuyla AYNI
  * ilke). Yalnızca `status !== "authenticated"` durumunda `/login?next=` yönlendirmesi yapılır.
  */
-export function FavoriteButton({ productId, className }: FavoriteButtonProps) {
+export function FavoriteButton({ productId, variant = "ghost", size = "icon", className }: FavoriteButtonProps) {
   const router = useRouter();
   const pathname = usePathname();
   const auth = useAuthOptional();
@@ -66,8 +71,8 @@ export function FavoriteButton({ productId, className }: FavoriteButtonProps) {
   return (
     <Button
       type="button"
-      variant="ghost"
-      size="icon"
+      variant={variant}
+      size={size}
       loading={pending}
       aria-label={favorited ? "Favorilerden çıkar" : "Favorilere ekle"}
       aria-pressed={authenticated ? favorited : undefined}

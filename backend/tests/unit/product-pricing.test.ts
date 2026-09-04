@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveEffectivePrice, resolveUnitPriceCents } from "../../src/lib/product-pricing";
+import { derivePriceColumns, resolveEffectivePrice, resolveUnitPriceCents } from "../../src/lib/product-pricing";
 
 /**
  * §1.5 (.claude/architect-scope-ecommerce-pro-template.md, bağlayıcı) — fiyat çözümleme matrisi:
@@ -71,5 +71,58 @@ describe("resolveUnitPriceCents", () => {
     // kritik/şaşırtıcı sonucudur.
     const variant = { priceCents: 15000, discountPriceCents: null };
     expect(resolveUnitPriceCents(product, variant)).toBe(8000);
+  });
+});
+
+/**
+ * §2.3/§2.4 (.claude/architect-scope-products-catalog.md, bağlayıcı) — katalog sıralama/
+ * filtreleme kolonlarının TEK üretim noktası: `effectivePriceCents = discountPriceCents ??
+ * priceCents`, `discountPercent = round((1 - discountPriceCents/priceCents) * 100)` (indirim
+ * yoksa veya `priceCents <= 0` ise `0`).
+ */
+describe("derivePriceColumns", () => {
+  it("indirim yoksa (null) effectivePriceCents = priceCents, discountPercent = 0", () => {
+    expect(derivePriceColumns({ priceCents: 10000, discountPriceCents: null })).toEqual({
+      effectivePriceCents: 10000,
+      discountPercent: 0,
+    });
+  });
+
+  it("indirim varsa effectivePriceCents = discountPriceCents, discountPercent hesaplanır", () => {
+    expect(derivePriceColumns({ priceCents: 10000, discountPriceCents: 8000 })).toEqual({
+      effectivePriceCents: 8000,
+      discountPercent: 20,
+    });
+  });
+
+  it("yüzde tam sayıya YUVARLANIR (round)", () => {
+    // 1 - 6999/10000 = 0.3001 -> %30.01 -> round -> %30
+    expect(derivePriceColumns({ priceCents: 10000, discountPriceCents: 6999 })).toEqual({
+      effectivePriceCents: 6999,
+      discountPercent: 30,
+    });
+    // 1 - 6666/10000 = 0.3334 -> %33.34 -> round -> %33
+    expect(derivePriceColumns({ priceCents: 10000, discountPriceCents: 6666 })).toEqual({
+      effectivePriceCents: 6666,
+      discountPercent: 33,
+    });
+  });
+
+  it("priceCents <= 0 kenar durumunda discountPercent HER ZAMAN 0 döner (bölme hatası YOK)", () => {
+    expect(derivePriceColumns({ priceCents: 0, discountPriceCents: 0 })).toEqual({
+      effectivePriceCents: 0,
+      discountPercent: 0,
+    });
+    expect(derivePriceColumns({ priceCents: -100, discountPriceCents: -50 })).toEqual({
+      effectivePriceCents: -50,
+      discountPercent: 0,
+    });
+  });
+
+  it("indirim priceCents'e çok yakınsa discountPercent 0'a yakın (ama sıfır değil) döner", () => {
+    expect(derivePriceColumns({ priceCents: 10000, discountPriceCents: 9999 })).toEqual({
+      effectivePriceCents: 9999,
+      discountPercent: 0, // round(0.01 * 100) = round(0.99...) hayır: (1-9999/10000)=0.0001 -> %0.01 -> round -> 0
+    });
   });
 });

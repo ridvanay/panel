@@ -97,6 +97,8 @@ describe("NewProductPage — form validasyonu", () => {
       discountPriceCents: null,
       sku: null,
       stockQuantity: 0,
+      salesCount: 0,
+      discountPercent: 0,
       status: "DRAFT",
       category: null,
       coverMedia: null,

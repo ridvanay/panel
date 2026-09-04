@@ -3,6 +3,7 @@ import {
   assertOptionValuesMatchAxes,
   assertVariantCountWithinLimit,
   buildVariantLabel,
+  deriveOptionValueSlugs,
   deriveVariantKey,
   MAX_VARIANTS_PER_PRODUCT,
   ProductVariantOptionSchema,
@@ -46,6 +47,31 @@ describe("deriveVariantKey", () => {
     const key1 = deriveVariantKey({ Renk: "Antrasit", Beden: "L" });
     const key2 = deriveVariantKey({ Renk: "Beyaz", Beden: "S" });
     expect(key1).not.toBe(key2);
+  });
+});
+
+/**
+ * §2.2 (.claude/architect-scope-products-catalog.md, bağlayıcı) — `optionValueSlugs`, TAM OLARAK
+ * `deriveVariantKey(optionValues).split("|")` olmalı; ikinci bir normalizasyon mantığı YOK.
+ */
+describe("deriveOptionValueSlugs ↔ deriveVariantKey tutarlılığı", () => {
+  it("deriveVariantKey'in `|` ile ayrılmış hâlini üretir", () => {
+    expect(deriveOptionValueSlugs({ Renk: "Antrasit", Beden: "L" })).toEqual(["beden:l", "renk:antrasit"]);
+  });
+
+  it("her zaman deriveVariantKey(optionValues).split(\"|\") ile BİREBİR aynıdır", () => {
+    const optionValues = { Renk: "Kırmızı", "Ayak Numarası": "42" };
+    expect(deriveOptionValueSlugs(optionValues)).toEqual(deriveVariantKey(optionValues).split("|"));
+  });
+
+  it("tek eksenli bir kombinasyonda tek elemanlı dizi döner", () => {
+    expect(deriveOptionValueSlugs({ Ölçü: "120 cm" })).toEqual(["olcu:120-cm"]);
+  });
+
+  it("giriş sırası DEĞİŞSE bile aynı diziyi (alfabetik sıralı) üretir", () => {
+    const a = deriveOptionValueSlugs({ Renk: "Antrasit", Beden: "L" });
+    const b = deriveOptionValueSlugs({ Beden: "L", Renk: "Antrasit" });
+    expect(a).toEqual(b);
   });
 });
 

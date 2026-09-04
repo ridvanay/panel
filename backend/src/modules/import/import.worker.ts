@@ -18,6 +18,7 @@ import { parseTabular } from "./parsers/tabular.parser";
 import { parseWxr, type WxrItem } from "./parsers/wxr.parser";
 import { parseMediaZip } from "./parsers/zip.parser";
 import { parsePriceToCents } from "./lib/price-parse";
+import { derivePriceColumns } from "../../lib/product-pricing";
 import type { StartImportJobRequest } from "./import.schemas";
 
 // ---------------------------------------------------------------------------
@@ -1012,6 +1013,15 @@ async function writeProduct(app: FastifyInstance, input: WriteProductInput): Pro
     ? await app.prisma.product.findUnique({ where: { sku: input.sku } })
     : await app.prisma.product.findUnique({ where: { slug: input.baseSlug } });
 
+  // §2.3/§2.4 (.claude/architect-scope-products-catalog.md, bağlayıcı) — katalog sıralama/
+  // filtreleme kolonlarının TEK üretim noktası. `baseData` HEM create (2 dal) HEM overwrite
+  // update dalında kullanılır — burada TEK yerde hesaplamak §2.4'ün "3 yazma yeri" (create ×2,
+  // overwrite update) gereksinimini tek satırla karşılar.
+  const { effectivePriceCents, discountPercent } = derivePriceColumns({
+    priceCents: input.priceCents,
+    discountPriceCents: input.discountPriceCents,
+  });
+
   const baseData = {
     title: input.title,
     status: input.status,
@@ -1019,6 +1029,8 @@ async function writeProduct(app: FastifyInstance, input: WriteProductInput): Pro
     excerpt: input.excerpt,
     priceCents: input.priceCents,
     discountPriceCents: input.discountPriceCents,
+    effectivePriceCents,
+    discountPercent,
     currency: input.currency,
     sku: input.sku,
     taxRatePercent: null,
