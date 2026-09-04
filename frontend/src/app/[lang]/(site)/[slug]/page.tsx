@@ -106,14 +106,16 @@ export default async function DynamicPage({ params }: PageProps) {
       <div className="mx-auto max-w-3xl px-4 pt-4 sm:px-6">
         <ViewCount count={page.viewCount} />
       </div>
-      <PageHeader
-        title={page.title}
-        style={appearance.pageHeaderStyle}
-        layout={appearance.pageHeaderLayout}
-        backgroundColor={appearance.pageHeaderBackgroundColor}
-        backgroundUrl={appearance.pageHeaderBackgroundUrl}
-        overlayOpacity={appearance.pageHeaderOverlayOpacity}
-      />
+      {!isHomePage && (
+        <PageHeader
+          title={page.title}
+          style={appearance.pageHeaderStyle}
+          layout={appearance.pageHeaderLayout}
+          backgroundColor={appearance.pageHeaderBackgroundColor}
+          backgroundUrl={appearance.pageHeaderBackgroundUrl}
+          overlayOpacity={appearance.pageHeaderOverlayOpacity}
+        />
+      )}
       {showLegalNotice ? (
         <LegalDocumentNotice
           title={page.title}

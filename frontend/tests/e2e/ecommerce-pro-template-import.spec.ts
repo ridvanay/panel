@@ -5,11 +5,14 @@ import { getDemoTemplatesRaw, importDemoTemplateRaw, listAuditLogsRaw } from "./
 import {
   ECOMMERCE_TEMPLATE_KEY,
   EXPECTED_COMMERCE_COUNTS,
+  HOME_PAGE_SLUG,
   KNOWN_EXTRA_PAGE_SLUGS,
   countAdminOrders,
+  getEcommerceProSliderId,
   getPublicPage,
   purgeKnownEcommerceProContent,
 } from "./support/ecommerce-pro-fixtures";
+import { getSlider } from "./support/sliders-fixtures";
 
 /**
  * qa-agent — `.claude/architect-scope-ecommerce-pro-template.md` §9.9 madde 7/8/9 (bağlayıcı E2E
@@ -35,6 +38,8 @@ import {
  * ============================================================================================
  */
 test.describe.configure({ mode: "serial" });
+
+const FRONTEND_URL = process.env.E2E_FRONTEND_URL ?? "http://localhost:3100";
 
 const RUN_SUFFIX = Date.now().toString(36);
 const MANAGER_EMAIL = `qa-e2e-ecom-manager-${RUN_SUFFIX}@example.com`;
@@ -143,6 +148,78 @@ test("madde 7: ADMIN olarak ecommerce-pro uygula → 201, 8 ürün+4 kategori+14
   // §4.5 kabul kriteri — hiçbir Order satırı YARATILMADI (DELTA karşılaştırması, bkz. dosya başlığı).
   const ordersAfter = await countAdminOrders(adminToken);
   expect(ordersAfter).toBe(ordersBefore);
+});
+
+/**
+ * qa-agent — Fix 1 + Fix 2 + Fix 3 doğrulaması (üst koordinatörün görev talimatı). "madde 7"nin
+ * ürettiği içerik `madde 8`teki `purgeKnownEcommerceProContent` çağrısına KADAR ayaktadır — bu
+ * yüzden bu test BİLEREK o testten HEMEN SONRA, `madde 9a/9b/SKU-çakışma` testlerinin (hiçbiri
+ * içeriği SİLMEZ, yalnızca 409/422/500 döner — bkz. kendi yorumları) ARASINA eklendi.
+ */
+test("Fix 1/2/3: hero slaytları bgType:image + geçerli bgMedia.url taşıyor; anasayfada (kök VE kendi slug'ı) arka plan <img> GERÇEKTEN yükleniyor, 'Ana Sayfa' H1 sızıntısı YOK, okunabilirlik gradyanı DOM'da", async ({
+  page,
+}) => {
+  test.setTimeout(150_000);
+
+  // Fix 1 — backend: 3 hero slaydı `bgType: "image"` + geçerli `bgMedia.url` taşıyor (admin API).
+  const sliderId = await getEcommerceProSliderId(adminToken);
+  const slider = await getSlider(adminToken, sliderId);
+  const heroSlides = [...slider.slides].sort((a, b) => a.order - b.order);
+  expect(heroSlides.length).toBe(3);
+
+  for (const slide of heroSlides) {
+    expect(slide.bgType).toBe("image");
+    const bgMedia = slide.bgMedia as { url?: string } | null | undefined;
+    expect(bgMedia?.url, `slayt "${slide.label}" bgMedia.url taşımalı`).toBeTruthy();
+
+    // Backend'in servis ettiği gerçek dosya HTTP 200 + `image/*` content-type ile dönüyor mu —
+    // eski `bgType: "gradient"` regresyonunda bu URL hiç YOKTU (bgMedia null idi).
+    const mediaRes = await fetch(bgMedia!.url as string);
+    expect(mediaRes.status, `bgMedia.url beklenen 200: ${bgMedia!.url}`).toBe(200);
+    expect(mediaRes.headers.get("content-type") ?? "").toMatch(/^image\//);
+  }
+
+  // Fix 2 — kök `/` VE kendi slug'ı (`/anasayfa`) ÜZERİNDEN ziyaret: page-header/H1 "Ana Sayfa"
+  // İKİSİNDE DE render EDİLMİYOR (kök route'la tutarlı), slider doğrudan üstte + arka plan görsel
+  // tarayıcıda GERÇEKTEN yükleniyor (naturalWidth > 0) + Fix 3 okunabilirlik gradyanı DOM'da.
+  //
+  // qa-agent BULGUSU (frontend-agent'a raporlanmalı, bkz. final özet) — `[slug]/page.tsx`teki
+  // `isHomePage = page.id === settings.homePageId` hesaplaması `fetchPageBySlugServer` VE
+  // `fetchSiteSettingsServer`in (ikisi de BAĞIMSIZ `next:{revalidate:60}` önbellekli, `Promise.all`
+  // ile PARALEL) İKİ AYRI fetch'ine dayanır. Bir sayfa YENİ ana sayfa yapıldıktan SONRA o sayfanın
+  // KENDİ slug route'una gelen tarayıcı-soğuk (bu Next.js instance'ında o route'a İLK KEZ gelen)
+  // istekte GÖZLEMLENEN (yeniden üretilebilir ama DETERMİNİSTİK DEĞİL — bazı soğuk denemelerde
+  // OLUŞMUYOR) bir yarış durumu var: `PageHeader` ("Ana Sayfa" H1) bir SONRAKİ (aynı route'a
+  // gelen) istekte HER ZAMAN kendiliğinden düzeliyor/kayboluyor — kalıcı bir REGRESYON değil, geçici
+  // bir tutarlılık penceresi. Bu yüzden (proje hafızası "60s staleness — eventual consistency, poll
+  // +reload ile ele alınır, reaktif FIX YAPILMAZ" ile AYNI felsefe) her iki assertion da (H1
+  // YOKLUĞU DAHİL) `toPass` içine, HER denemede `reload` ile alınır — tek seferlik `goto` bu
+  // geçici pencereyi YANLIŞLIKLA bir test hatası olarak raporlayabilir.
+  for (const homePath of ["/", `/${HOME_PAGE_SLUG}`]) {
+    await expect(async () => {
+      await page.goto(`${FRONTEND_URL}${homePath}`, { waitUntil: "domcontentloaded" });
+      await expect(page.getByRole("heading", { name: "Evinize Yeni Bir Karakter Katın" })).toBeVisible({ timeout: 5_000 });
+      await expect(page.getByRole("heading", { name: "Ana Sayfa", exact: true })).not.toBeVisible();
+    }).toPass({ timeout: 70_000, intervals: [2_000, 5_000, 10_000] });
+
+    const heroImg = page.locator(".advanced-slider img").first();
+    await expect(heroImg).toBeVisible();
+    await expect
+      .poll(async () => heroImg.evaluate((el: HTMLImageElement) => el.naturalWidth), {
+        message: `${homePath} — hero <img> naturalWidth > 0 olmalı (görsel GERÇEKTEN yüklenmeli)`,
+        timeout: 15_000,
+      })
+      .toBeGreaterThan(0);
+
+    // Fix 3 — `bgType: "image"` iken HER ZAMAN render edilen okunabilirlik gradyanı.
+    await expect(page.locator(".advanced-slider .bg-gradient-to-r")).toHaveCount(heroSlides.length);
+  }
+
+  // Regresyon kontrolü — normal (ana sayfa OLMAYAN) bir sayfanın slug route'unda page-header HÂLÂ
+  // NORMAL ŞEKİLDE render ediliyor (Fix 2 SADECE ana sayfayı etkilemeli). Aynı importun ürettiği
+  // yasal yer tutucu sayfalardan biri (`kvkk-aydinlatma-metni`) kullanılır.
+  await page.goto(`${FRONTEND_URL}/kvkk-aydinlatma-metni`);
+  await expect(page.getByRole("heading", { name: "KVKK Aydınlatma Metni", level: 1 })).toBeVisible({ timeout: 15_000 });
 });
 
 test("madde 9a: aynı şablonu tekrar uygula (force olmadan) → 409 (idempotency)", async () => {

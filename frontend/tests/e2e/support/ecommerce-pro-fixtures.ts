@@ -218,6 +218,24 @@ export async function getPublicPage(slug: string): Promise<{ status: number; dat
   return { status: res.status, data: body.data };
 }
 
+/**
+ * qa-agent — Fix 1 doğrulaması (`.claude/architect-scope-ecommerce-pro-template.md` görev
+ * talimatı). `templates/ecommerce-pro.ts::slider.slug` (`SLIDER_SLUG`) ile içe aktarılan CANLI
+ * (çöpte OLMAYAN) slider'ın id'sini bulur — `purgeKnownEcommerceProContent`teki AYNI arama
+ * deseni (`GET /admin/sliders?search=...`), ama `matchesKnownSlug` eşleşmesi ile `deletedAt`
+ * filtresi BİRLEŞTİRİLİR (import [DTI] §6.5 "-N" son ekli benzersizleştirmeyle bile doğru
+ * satırı bulur).
+ */
+export async function getEcommerceProSliderId(token: string): Promise<string> {
+  const res = await fetch(`${API_BASE_URL}/admin/sliders?search=${encodeURIComponent(SLIDER_SLUG)}`, {
+    headers: authHeadersNoBody(token),
+  });
+  const body = await json<{ data: Array<{ id: string; slug: string; deletedAt: string | null }> }>(res, "getEcommerceProSliderId");
+  const found = body.data.find((s) => matchesKnownSlug(s.slug, [SLIDER_SLUG]) && !s.deletedAt);
+  if (!found) throw new Error(`ecommerce-pro slider'ı bulunamadı (arama: "${SLIDER_SLUG}").`);
+  return found.id;
+}
+
 // NOT: `adminGetProductBySlug`/`listAllAdminProducts` (GET /admin/products tabanlı) BİLİNÇLİ
 // olarak buradan KALDIRILDI — bkz. `deleteKnownProductsSql` başlığındaki BUG NOTU: bu uç
 // `ecommerce-pro` içe aktarıldıktan sonra 500 döner. Tekil ürün doğrulaması gereken testler

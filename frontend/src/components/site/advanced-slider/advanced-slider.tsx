@@ -152,6 +152,9 @@ function SlideStage({
       className="relative h-full w-full"
     >
       <SlideBackgroundView slide={slide} isActive={isActive} priority={index === 0} reducedMotion={reducedMotion} />
+      {slide.bgType === "image" && (
+        <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/40 to-transparent" aria-hidden />
+      )}
       <SlideOverlay slide={slide} />
       {slide.linkHref && (
         <a
