@@ -1986,3 +1986,39 @@ doğru varsayılan davranıştır, yalnızca doğrulanması önerilir).
 - a11y otomasyonu (axe-core) katalog/PDP sayfalarına bu turda EKLENMEDİ — zaman kısıtı, kullanıcının
   istediği 4 maddede yoktu. **Sonraki tur için önerilir**, özellikle YENİ slider primitive'i
   (`components/ui/slider.tsx`) ve çoklu-seçim swatch/checkbox grupları için.
+
+## Gelişmiş Slider / Hero Studio — 2 bug fix doğrulaması (bu turda eklendi)
+
+Kaynak: `.claude/architect-scope-advanced-slider.md`. Bu tur qa-agent görevi, backend-agent/
+frontend-agent tarafından zaten UYGULANMIŞ iki düzeltmeyi (kendi kod tabanı DEĞİŞTİRİLMEDEN)
+e2e seviyesinde doğrulamak ve kalıcı regresyon testi olarak eklemekti. Mevcut 26 senaryolu
+`admin-slider-studio.spec.ts` (15+RBAC) + `advanced-slider-public.spec.ts` (17) suit'i bu turdan
+ÖNCE de vardı (önceki turlarda eklenmiş, bu dosyaya o zaman bir özet girilmemiş — bu girdi yalnızca
+bu turun İKİ yeni testini belgeler, geriye dönük tam envanter çıkarmaz).
+
+| # | Senaryo | Dosya | Durum |
+|---|---|---|---|
+| Fix 1 | `hero-studio.tsx::defaultPosition/defaultAnimation` — art arda "Katman Ekle" çubuğuyla eklenen 3 farklı tipte katman (Başlık→Metin→Buton), HİÇBİRİ hiçbir alanı elle doldurulmadan, backend'den dönen `layers[].position.yPercent` DEĞERLERİ birbirinden FARKLI (`[38,50,62]` merdiveni) ve `animation.delayMs` kademeleniyor (`[0,150,300]`) — üst üste binme YOK | `admin-slider-studio.spec.ts` test "16" (yeni) | ✅ Geçiyor |
+| Fix 2 | `sliders.routes.ts::revalidateSliderPages` — kullanılan bir slider'ın slaydı `PATCH .../slides/{slideId}` ile güncellenince, o slider'ı gömen YAYINDAKİ sayfa `next:{revalidate:60}` ISR penceresini (60sn) BEKLEMEDEN (~kısa `toPass` penceresi, 20sn) güncel içeriği gösteriyor; eski içerik artık görünmüyor | `advanced-slider-public.spec.ts` test "27" (yeni, `On-demand revalidation (Fix 2)` describe bloğu) | ✅ Geçiyor |
+
+### Yöntem notları
+
+- **Fix 1** DOM'a değil backend'den `getSlider()` ile dönen kalıcı veriye (`layers[].position.yPercent`)
+  güvenir — mevcut testlerdeki "DOM tek başına güvenilmez" ilkesiyle AYNI.
+- **Fix 2** için altyapı ÖNCEDEN doğru kuruluydu ve gerçekten AKTİF: `backend/.env.e2e` içindeki
+  `REVALIDATE_SECRET=e2e-revalidate-secret`, `frontend/playwright.config.ts`'in `webServer.command`'ına
+  `E2E_REVALIDATE_SECRET` ile BİREBİR aynı değerle enjekte ediliyor (önceki bir turda qa-agent'ın
+  bulup düzelttiği altyapı — bkz. bu dosyada "Panel drag & drop ergonomisi... + anlık (on-demand)
+  `layout` revalidation" başlıklı bölüm). Bu yüzden test 27 gerçek bir no-op/smoke test DEĞİL,
+  gerçek `revalidatePath` çağrısının ETKİSİNİ (60sn beklemeden taze içerik) doğrular; görev
+  talimatındaki "REVALIDATE_SECRET yoksa sadece hata-fırlatmama smoke testi yeterli" koşulu bu
+  ortamda GEÇERLİ DEĞİLDİ çünkü secret zaten yapılandırılıydı ve doğrulandı.
+- Her iki test dosyası da AYRI AYRI (tam suit) ve test "16"/"27" tek başına en az bir kez
+  ÇALIŞTIRILDI, hepsi tutarlı geçti. Tam suit koşumunda (`admin-slider-studio.spec.ts`, 20 test)
+  MEVCUT (bu turda DOKUNULMAMIŞ) test "9 RBAC alt-testi USER: /admin/sliders'a giderse..." BİR
+  koşumda flake verdi (`toBeVisible` 5sn timeout), hemen ardından hem izole hem tam-suit
+  tekrarında SORUNSUZ geçti — kaynağı bu turda ARAŞTIRILMADI (bu turun kapsamındaki iki fix'le
+  İLGİSİZ, dosyaya bu turda hiç dokunulmayan bir test) ve **frontend-agent'a** bir sonraki turda
+  incelenmesi için işaretlendi (olası kategori: RBAC redirect testinin `/hesabim/profil` toast'ının
+  sıralı-koşu kaynak baskısı altında geç render olması — `resetScroll`/sticky-header bulgularıyla
+  AYNI ortam kısıtı ailesinden olabilir, KESİN DEĞİL).

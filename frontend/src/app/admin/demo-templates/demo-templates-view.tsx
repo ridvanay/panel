@@ -236,7 +236,16 @@ export function DemoTemplatesView() {
                 <Card className="flex h-full flex-col overflow-hidden p-0">
                   <div className="relative aspect-video w-full overflow-hidden bg-muted">
                     {/* eslint-disable-next-line @next/next/no-img-element -- küçük statik önizleme, next/image gerekmez (frontend/public statiği, Media DEĞİL) */}
-                    <img src={template.previewImageUrl} alt="" loading="lazy" className="h-full w-full object-cover" />
+                    <img
+                      src={template.previewImageUrl}
+                      alt=""
+                      loading="lazy"
+                      className="h-full w-full object-cover"
+                      onError={(e) => {
+                        e.currentTarget.onerror = null;
+                        e.currentTarget.src = "/placeholders/template-fallback.svg";
+                      }}
+                    />
                     {applied && (
                       <span className="absolute right-2 top-2">
                         <Badge tone="success" solid>

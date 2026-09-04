@@ -840,6 +840,56 @@ test.describe("Hero Studio — admin akışları", () => {
     }
   });
 
+  /**
+   * qa-agent — Fix 1 doğrulaması (`hero-studio.tsx::defaultPosition`/`defaultAnimation`, bkz.
+   * görev talimatı "Katman üst üste binme"). Art arda eklenen katmanlar artık kademelenmiş
+   * varsayılan `yPercent` (`DEFAULT_LAYER_Y_STEPS = [38,50,62,72,82]`) ve `delayMs`
+   * (`existingLayerCount*150`, tavan 2000) alıyor — bu test tuval üstü "Katman Ekle" çubuğuyla
+   * ARKA ARKAYA üç farklı tipte katman ekler (hiçbirinin alanını doldurmadan, YALNIZCA varsayılan
+   * konum/gecikmeyi test eder) ve backend'den dönen `layers[].position.yPercent` değerlerinin
+   * BİRBİRİNDEN FARKLI olduğunu (aynı noktaya düşüp üst üste binmediğini) doğrular.
+   */
+  test("16) Art arda birden fazla katman eklendiğinde (Katman Ekle çubuğu) varsayılan konumlar KADEMELİ farklı yPercent'e düşüyor (üst üste binmiyor)", async () => {
+    const created = await createSlider(adminToken, { name: uniqueName("QA Stagger Slider") });
+    await createSlide(adminToken, created.id, { layers: [] });
+
+    try {
+      await adminPage.goto(`/admin/sliders/${created.id}`);
+      await expect(adminPage.getByRole("button", { name: /^Sürükle: Slayt 1$/ })).toBeVisible({ timeout: 15_000 });
+      await resetScroll(adminPage); // bkz. `resetScroll` başlığı
+
+      // Tuval üstü "Katman Ekle" çubuğu — cihaz görünümünden/seçimden BAĞIMSIZ HER ZAMAN görünür
+      // (bkz. test "10"daki AYNI toolbar deseni). Üç FARKLI katman tipi arka arkaya eklenir.
+      const toolbar = adminPage.getByText("Katman Ekle", { exact: true }).locator("..");
+      await toolbar.getByRole("button", { name: "Başlık", exact: true }).click();
+      await resetScroll(adminPage); // yeni katman seçimi müfettiş panelini açıp kaydırabilir
+      await toolbar.getByRole("button", { name: "Metin", exact: true }).click();
+      await resetScroll(adminPage);
+      await toolbar.getByRole("button", { name: "Buton", exact: true }).click();
+
+      await saveStudio(adminPage);
+
+      // Backend seviyesinde doğrula — DOM tek başına güvenilmez.
+      const persisted = await getSlider(adminToken, created.id);
+      const layers = persisted.slides[0]!.layers as Array<{
+        position: { yPercent: number; xPercent: number };
+        animation: { delayMs: number };
+      }>;
+      expect(layers.length).toBe(3);
+
+      const yPercents = layers.map((l) => l.position.yPercent);
+      // KRİTİK — Fix 1'in ispatı: hiçbir katman AYNI yPercent'e düşmüyor (üst üste binme yok).
+      expect(new Set(yPercents).size).toBe(yPercents.length);
+      expect(yPercents).toEqual([38, 50, 62]); // `DEFAULT_LAYER_Y_STEPS`'in ilk üç basamağı
+
+      // Zamanlama koreografisi de kademeleniyor (`existingLayerCount * 150`) — ek kanıt.
+      const delays = layers.map((l) => l.animation.delayMs);
+      expect(delays).toEqual([0, 150, 300]);
+    } finally {
+      await cleanupSlider(adminToken, created.id);
+    }
+  });
+
   test.describe("9) RBAC — EDITOR okuma+403 yazma, USER/CUSTOMER 403 (panel dışı)", () => {
     const RUN_SUFFIX = Date.now().toString(36);
     const EDITOR_EMAIL = `qa-e2e-slider-editor-${RUN_SUFFIX}@example.com`;

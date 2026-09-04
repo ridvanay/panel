@@ -40,11 +40,17 @@ const DEVICE_OPTIONS: { value: DeviceMode; label: string; icon: typeof Monitor }
   { value: "mobile", label: "Mobil", icon: Smartphone },
 ];
 
-function defaultPosition(): SliderLayerPosition {
-  return { xPercent: 50, yPercent: 50, origin: "middle-center", offsetX: 0, offsetY: 0 };
+/** Art arda eklenen katmanlar aynı `yPercent`e düşüp üst üste binmesin diye mevcut katman
+ *  sayısına göre dikey olarak kademelendirilir — `position: absolute` mimarisi korunur,
+ *  sadece varsayılan konum değişir (kullanıcı sonrasında elle sürükleyebilir). */
+const DEFAULT_LAYER_Y_STEPS = [38, 50, 62, 72, 82];
+
+function defaultPosition(existingLayerCount: number): SliderLayerPosition {
+  const index = Math.min(existingLayerCount, DEFAULT_LAYER_Y_STEPS.length - 1);
+  return { xPercent: 50, yPercent: DEFAULT_LAYER_Y_STEPS[index], origin: "middle-center", offsetX: 0, offsetY: 0 };
 }
-function defaultAnimation(): SliderLayerAnimation {
-  return { inEffect: "fade-up", delayMs: 0, durationMs: 600, easing: "ease-out" };
+function defaultAnimation(existingLayerCount: number): SliderLayerAnimation {
+  return { inEffect: "fade-up", delayMs: Math.min(existingLayerCount * 150, 2000), durationMs: 600, easing: "ease-out" };
 }
 /** Varsayılan slayt arka planı koyu bir renk geçişidir (§ `Slide.bgGradientFrom/To` varsayılanı
  *  `#111827`) — `heading`/`text` katmanının `style.color`'ı boş bırakılırsa `.site-scope`'un
@@ -55,10 +61,10 @@ function defaultStyle(type: SliderLayerType): SliderLayerStyle {
   return type === "heading" || type === "text" ? { color: "#ffffff" } : {};
 }
 
-function createDefaultLayer(type: SliderLayerType): SliderLayer {
+function createDefaultLayer(type: SliderLayerType, existingLayerCount: number): SliderLayer {
   const id = newId();
-  const position = defaultPosition();
-  const animation = defaultAnimation();
+  const position = defaultPosition(existingLayerCount);
+  const animation = defaultAnimation(existingLayerCount);
   const style = defaultStyle(type);
   switch (type) {
     case "heading":
@@ -258,7 +264,7 @@ export function HeroStudio({ sliderId }: { sliderId: string }) {
       toast.error(`Bir slaytta en fazla ${MAX_SLIDE_LAYERS} katman olabilir.`);
       return;
     }
-    const layer = createDefaultLayer(type);
+    const layer = createDefaultLayer(type, selectedSlide.layers.length);
     updateSlideLocal(selectedSlide.id, { layers: [...selectedSlide.layers, layer] });
     selectLayer(layer.id);
   }

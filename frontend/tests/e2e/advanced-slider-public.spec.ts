@@ -8,7 +8,16 @@ import {
   deleteTestMedia,
 } from "./support/api";
 import { createAuthenticatedPage } from "./support/admin-session";
-import { createSlider, cleanupSlider, createSlide, updateSlider, deleteSliderRaw, getSlider, buildSliderShortcode } from "./support/sliders-fixtures";
+import {
+  createSlider,
+  cleanupSlider,
+  createSlide,
+  updateSlider,
+  updateSlide,
+  deleteSliderRaw,
+  getSlider,
+  buildSliderShortcode,
+} from "./support/sliders-fixtures";
 import { createBlogPost, updateBlogPostContentHtml, deleteBlogPostPermanently } from "./support/blog-fixtures";
 
 /**
@@ -761,6 +770,66 @@ test.describe("Gelişmiş Slider — page-builder entegrasyonu + public render",
           () => document.documentElement.scrollWidth <= document.documentElement.clientWidth
         );
         expect(noHorizontalScroll).toBe(true);
+      } finally {
+        await deletePagePermanently(adminToken, hostPage.id as string);
+        await cleanupSlider(adminToken, slider.id);
+      }
+    });
+  });
+
+  /**
+   * qa-agent — Fix 2 doğrulaması (`backend/src/modules/sliders/sliders.routes.ts::
+   * revalidateSliderPages`, bkz. görev talimatı "On-demand revalidation"). `server-sliders.ts::
+   * fetchSliderServer` `next: { revalidate: 60 }` ile önbellekler; bu test o pencereyi BEKLEMEDEN
+   * on-demand webhook'un (`lib/revalidate.ts::triggerPublicPageRevalidation`) gerçekten sayfayı
+   * TAZELEDİĞİNİ kanıtlar. Altyapı notu: `playwright.config.ts`'in `webServer`ı `REVALIDATE_SECRET`
+   * (`E2E_REVALIDATE_SECRET`, varsayılan `backend/.env.e2e`teki `e2e-revalidate-secret` ile BİREBİR
+   * aynı) enjekte eder — yani bu e2e ortamında özellik NO-OP DEĞİL, gerçekten aktiftir (bkz.
+   * `admin-demo-template-import.spec.ts`teki AYNI kısa-poll tolerans felsefesi: `toPass` ile
+   * ~20sn, 60sn'lik tam ISR penceresi DEĞİL — yavaşsa/hiç çalışmıyorsa bu test TIMEOUT ile
+   * yakalar ve backend-agent'a yönlendirilecek bir regresyon olarak raporlanır).
+   */
+  test.describe("On-demand revalidation (Fix 2)", () => {
+    test("27) Kullanılan bir slider'ın slaytı güncellenince, yayındaki sayfa 60sn'lik ISR penceresini BEKLEMEDEN güncel içeriği gösteriyor", async ({
+      page,
+    }) => {
+      const slider = await createSlider(adminToken, { name: uniqueName("QA Revalidate Slider") });
+      const beforeText = `QA Revalidate Once ${Date.now()}`;
+      const afterText = `QA Revalidate Sonra ${Date.now()}`;
+      const slide = await createSlide(adminToken, slider.id, { layers: [headingLayer("qa-revalidate-heading", beforeText)] });
+
+      const hostPage = await createPageWithBlocks(adminToken, {
+        title: uniqueName("QA Slider Revalidate Page"),
+        slug: uniqueSlug("qa-slider-revalidate"),
+        status: "PUBLISHED",
+        blocks: [{ id: "qa-revalidate-block", type: "advanced-slider", data: { sliderId: slider.id } }],
+      });
+
+      try {
+        const url = `${FRONTEND_URL}/${hostPage.slug as string}`;
+
+        // İlk ziyaret — Next.js fetch cache'ini ISITIR (`next: { revalidate: 60 }`), hem sayfa
+        // hem de bu sayfanın render'ı İÇİNDE çağrılan `fetchSliderServer` cache'e girer.
+        await page.goto(url, { waitUntil: "domcontentloaded" });
+        await expect(page.getByText(beforeText)).toBeVisible({ timeout: 15_000 });
+
+        // Slaytı güncelle — `PATCH /admin/sliders/{id}/slides/{slideId}` başarıyla dönerse (fetch
+        // helper'ı `!res.ok` durumunda FIRLATIR) backend'in `revalidateSliderPages` çağrısı asıl
+        // isteği BOZMAMIŞ demektir (görev talimatındaki "hata fırlatmıyor" smoke-kontrolü de bu
+        // satırla zımnen kapsanır).
+        await updateSlide(adminToken, slider.id, slide.id, {
+          layers: [headingLayer("qa-revalidate-heading", afterText)],
+        });
+
+        // 60sn'lik ISR penceresi BEKLENMEDEN — on-demand revalidation neredeyse ANINDA olmalı.
+        await expect(async () => {
+          await page.goto(url, { waitUntil: "domcontentloaded" });
+          await expect(page.getByText(afterText)).toBeVisible();
+        }).toPass({ timeout: 20_000, intervals: [1_000, 2_000, 4_000] });
+
+        // Eski içerik artık YOK — gerçek bir güncelleme, eski/yeni metnin BİRLİKTE render edilmiş
+        // olma ihtimalini (ör. hydration/cache karışıklığı) ekarte eder.
+        await expect(page.getByText(beforeText)).not.toBeVisible();
       } finally {
         await deletePagePermanently(adminToken, hostPage.id as string);
         await cleanupSlider(adminToken, slider.id);

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360">
+  <title>Şablon önizlemesi yüklenemedi</title>
+  <desc>
+    "Hazır Şablonlar" galeri kartındaki `img` `onError` yedeği — gerçek önizleme dosyası
+    eksik/yeniden adlandırılmışsa kırık ikon yerine gösterilen nötr, soyut yer tutucu.
+  </desc>
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#E2E8F0"/>
+      <stop offset="100%" stop-color="#C7D2FE"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="0" y="0" width="640" height="360" fill="url(#bgGrad)"/>
+
+  <g transform="translate(320 180)" opacity="0.9">
+    <rect x="-56" y="-56" width="112" height="112" rx="12" fill="#FFFFFF" stroke="#818CF8" stroke-width="2"/>
+    <rect x="-38" y="-38" width="76" height="24" rx="4" fill="#C7D2FE"/>
+    <rect x="-38" y="-6" width="34" height="34" rx="4" fill="#818CF8"/>
+    <rect x="4" y="-6" width="34" height="16" rx="3" fill="#C7D2FE"/>
+    <rect x="4" y="14" width="34" height="14" rx="3" fill="#E0E7FF"/>
+  </g>
+</svg>
