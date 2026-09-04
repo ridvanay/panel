@@ -12,8 +12,7 @@ import { ActiveFilterChips } from "@/components/site/catalog/active-filter-chips
 import { CatalogPagination } from "@/components/site/catalog/catalog-pagination";
 import { buildClearAllHref, hasActiveCatalogFilters, parseCatalogFilters, type RawSearchParams } from "@/lib/catalog-search-params";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
-
-export const metadata: Metadata = { title: "Ürünler" };
+import { SITE_URL } from "@/lib/env";
 
 interface ProductsIndexPageProps {
   params: Promise<{ lang: string }>;
@@ -24,6 +23,32 @@ interface ProductsIndexPageProps {
    * `router.replace` ile günceller — `[slug]/page.tsx`'in `?variant=` deseniyle AYNI.
    */
   searchParams: Promise<RawSearchParams>;
+}
+
+/**
+ * §5.6 — sonsuz filtre/sayfa kombinasyonu (`?minPrice=`/`?category=`/`?page=2` vb.) duplicate
+ * content üretir: `canonical` HER ZAMAN filtresiz temel `/products`'a işaret eder (sayfalama
+ * DAHİL — `page.tsx`'in `title`/`ogTitle` alanları admin panelden yönetilmiyor, bu route'un
+ * TEK "içeriği" temel ürün kümesidir). `page>1` VEYA herhangi bir filtre/arama aktifse
+ * `robots: noindex, follow` — indekslenmesin ama linkler takip edilsin, kategori/facet
+ * URL'lerinden ürün detaylarına erişim KOPMASIN. Bu sayfanın `title`/`description` alanları
+ * `Page`/`Product` gibi admin'den yönetilen bir SEO alanına bağlı DEĞİLDİR (mevcut `/blog`
+ * index'iyle AYNI emsal: `blog/page.tsx::metadata`) — statik başlık DB alanı yerine geçmiyor,
+ * yalnızca dinamik olması gereken `canonical`/`robots` bu fonksiyona taşındı.
+ */
+export async function generateMetadata({ params, searchParams }: ProductsIndexPageProps): Promise<Metadata> {
+  const { lang } = await params;
+  const [rawSearchParams, locales] = await Promise.all([searchParams, fetchLocalesServer()]);
+  const filters = parseCatalogFilters(rawSearchParams);
+  const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? lang;
+  const canonical = `${SITE_URL}${withLocalePrefix("/products", lang, defaultLocaleCode)}`;
+  const isFiltered = filters.page > 1 || hasActiveCatalogFilters(filters);
+
+  return {
+    title: "Ürünler",
+    alternates: { canonical },
+    ...(isFiltered ? { robots: { index: false, follow: true } } : {}),
+  };
 }
 
 export default async function ProductsIndexPage({ params, searchParams }: ProductsIndexPageProps) {
@@ -51,6 +76,12 @@ export default async function ProductsIndexPage({ params, searchParams }: Produc
 
   return (
     <>
+      {/* `PageHeader` `style==="HIDDEN"` iken `null` döner (bkz. page-header.tsx:51) — PDP'deki
+          "boş render" kök nedeniyle (`.claude/architect-scope-products-catalog.md` §4.1) AYNI sınıf
+          sorun burada da vardı: sayfada hiç `<h1>` kalmıyordu. PageHeader diğer stillerde zaten kendi
+          `<h1>`'ini render ettiği için burada yalnızca HIDDEN durumunda, görsel olarak gizli bir
+          fallback ekleniyor (çift `<h1>` oluşmasın diye). */}
+      {appearance.pageHeaderStyle === "HIDDEN" && <h1 className="sr-only">Ürünler</h1>}
       <PageHeader
         title="Ürünler"
         style={appearance.pageHeaderStyle}

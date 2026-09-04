@@ -133,12 +133,19 @@ export interface LocalizableEntity {
 export async function attachLocalizations<T extends LocalizableEntity>(
   app: FastifyInstance,
   entityType: ContentEntityType,
-  items: T[]
+  items: T[],
+  /**
+   * Çağıran zaten `getLocaleSet(app)`'i kendi ihtiyacı için (ör. `resolveEffectiveLocaleCode`)
+   * çağırmışsa, burada AYNI sorguyu tekrarlamamak için sonucu geçirebilir (performans denetimi —
+   * `.claude/architect-scope-products-catalog.md` §5.5; katalog listesi ucu bu yolu kullanır).
+   * Verilmezse davranış DEĞİŞMEDEN önceki gibi kendi `getLocaleSet` çağrısını yapar.
+   */
+  preloadedLocaleSet?: LocaleSet
 ): Promise<Map<string, ContentLocalizationDto[]>> {
   const result = new Map<string, ContentLocalizationDto[]>();
   if (items.length === 0) return result;
 
-  const { enabled } = await getLocaleSet(app);
+  const { enabled } = preloadedLocaleSet ?? (await getLocaleSet(app));
   const rows = await app.prisma.contentSlug.findMany({
     where: { entityType, entityId: { in: items.map((item) => item.id) } },
   });
@@ -165,13 +172,14 @@ export async function attachLocalizations<T extends LocalizableEntity>(
   return result;
 }
 
-/** Tek bir içerik için `attachLocalizations`'ın kısayolu. */
+/** Tek bir içerik için `attachLocalizations`'ın kısayolu. `preloadedLocaleSet` — bkz. `attachLocalizations`. */
 export async function attachLocalizationsOne<T extends LocalizableEntity>(
   app: FastifyInstance,
   entityType: ContentEntityType,
-  item: T
+  item: T,
+  preloadedLocaleSet?: LocaleSet
 ): Promise<ContentLocalizationDto[]> {
-  const map = await attachLocalizations(app, entityType, [item]);
+  const map = await attachLocalizations(app, entityType, [item], preloadedLocaleSet);
   return map.get(item.id) ?? [];
 }
 

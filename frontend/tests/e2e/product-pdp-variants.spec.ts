@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Locator } from "@playwright/test";
 import { getCachedAdminSession } from "./support/api";
 import {
   adminCreateProductFull,
@@ -42,6 +42,34 @@ let pdfProduct: FixtureProduct;
 
 const createdProductIds: string[] = [];
 const createdMediaIds: string[] = [];
+
+/**
+ * qa-agent güncellemesi — performance-agent'ın (bu turda, henüz commit edilmemiş) PDP galerisini
+ * `next/image`'a taşıması `<img src>`'i ham medya URL'inden Next'in optimize edici proxy'sine
+ * (`/_next/image?url=<encodeURIComponent(rawUrl)>&w=...&q=...`) çevirdi — `.claude/architect-scope-products-catalog.md`
+ * §6.1'in bilinçli/dokümante edilmiş sonucu, bir regresyon DEĞİL. Bu yardımcı, testin asıl
+ * doğrulamak istediği şeyi (ana görsel HANGİ medyaya işaret ediyor) `next/image`'ın URL
+ * biçiminden BAĞIMSIZ olarak doğrular (ilk render `next/image` proxy'sini, sonraki
+ * varyasyon-değişimi render'ları ham `<img>` fallback'ini kullanıyor — bkz. BUG NOTU altta,
+ * `src` ÖZNİTELİĞİ her iki dalda da doğru dosyaya işaret ediyor, bu yüzden `toHaveAttribute`
+ * güvenilir kalıyor; `currentSrc` GÜVENİLMEZ, kullanılmıyor).
+ *
+ * BUG NOTU (performance-agent'a raporlandı, bkz. final qa-agent özeti) — `SafeImage`
+ * (`src/components/site/safe-image.tsx`) SUNUCUDA (`isOptimizableImageUrl`) `next/image`'ı
+ * seçiyor (hydration'da `data-nimg="fill"` + `/_next/image?url=...` görülüyor) ama AYNI URL
+ * için İSTEMCİDE (herhangi bir client-side re-render'da, ör. varyasyon seçimi) HAM `<img>`
+ * dalına düşüyor — konsolda HER PDP yüklemesinde bir React hydration mismatch uyarısı var.
+ * `src` özniteliği yine de HER İKİ dalda da doğru dosyayı gösteriyor (yalnızca biçim farklı,
+ * optimize/ham) — bu yüzden bu test bunu bir REGRESYON olarak işaretlemiyor (asıl doğrulanan
+ * şey, "hangi görsel" — hâlâ doğru), ama next/image'ın optimizasyon faydası (responsive
+ * srcset/lazy/blur) varyasyon değişiminde SESSİZCE kayboluyor.
+ */
+function expectMainImageUrl(locator: Locator, rawUrl: string) {
+  const escaped = rawUrl.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const encodedEscaped = encodeURIComponent(rawUrl).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(`^${escaped}$|url=${encodedEscaped}(&|$)`);
+  return expect(locator).toHaveAttribute("src", pattern);
+}
 
 test.beforeAll(async () => {
   const session = await getCachedAdminSession();
@@ -150,7 +178,7 @@ test("madde 1: renk seçimi görseli ve fiyatı değiştiriyor; stoksuz varyasyo
   const mainPrice = page.locator("div.text-2xl.font-semibold.text-foreground");
 
   // Henüz hiçbir varyasyon seçilmedi — ana görsel ürün kapak görseli.
-  await expect(mainImage).toHaveAttribute("src", coverMedia.url);
+  await expectMainImageUrl(mainImage, coverMedia.url);
   await expect(mainPrice).toHaveText(formatPriceFromCentsTRY(10000));
 
   // "Sepete Ekle" varyasyon seçilmeden PASİF olmalı (design-notes §2).
@@ -159,7 +187,7 @@ test("madde 1: renk seçimi görseli ve fiyatı değiştiriyor; stoksuz varyasyo
 
   await redRadio.click();
   await expect(redRadio).toHaveAttribute("aria-checked", "true");
-  await expect(mainImage).toHaveAttribute("src", redMedia.url);
+  await expectMainImageUrl(mainImage, redMedia.url);
   // Kırmızı: priceCents null → ürün fiyatını miras alır — DEĞİŞMEMELİ.
   await expect(mainPrice).toHaveText(formatPriceFromCentsTRY(10000));
   await expect(page.getByRole("button", { name: "Sepete ekle" })).toBeEnabled();
@@ -168,7 +196,7 @@ test("madde 1: renk seçimi görseli ve fiyatı değiştiriyor; stoksuz varyasyo
   const greenRadio = page.getByRole("radio", { name: "Yeşil" });
   await greenRadio.click();
   await expect(greenRadio).toHaveAttribute("aria-checked", "true");
-  await expect(mainImage).toHaveAttribute("src", greenMedia.url);
+  await expectMainImageUrl(mainImage, greenMedia.url);
   await expect(mainPrice).toHaveText(formatPriceFromCentsTRY(15000));
 
   // Stoksuz "Mavi"ye TIKLAMA DENEMESİ no-op olmalı (disabled buton) — seçim Yeşil'de kalır.
@@ -188,7 +216,14 @@ test("madde 2: düşük stokta 'Son N ürün!' görünüyor, yüksek stokta gör
 
 test("madde 4: PDF döküman kartından indirme — 200 + application/pdf + Content-Disposition: attachment", async ({ page }) => {
   await page.goto(`/products/${pdfProduct.slug}`);
-  await expect(page.getByRole("heading", { name: "Teknik Dökümanlar" })).toBeVisible();
+  // qa-agent güncellemesi — PDP artık sekmeli (`product-tabs.tsx`): "Teknik Dökümanlar" bir
+  // `<h3>` DEĞİL, `role="tab"` sekme başlığı (`.claude/design-notes-products-catalog.md` §4.4
+  // "sekme başlığı zaten aynı bilgiyi taşıyor, çift başlık YAZILMAZ" — bilinçli/dokümante
+  // kaldırma, regresyon DEĞİL). Panel `keepMounted` olduğu için sekmeye TIKLAMADAN da DOM'da
+  // (yalnızca `hidden` ile gizli) — ama gerçek kullanıcı akışını izlemek için yine de tıklanır.
+  const documentsTab = page.getByRole("tab", { name: "Teknik Dökümanlar" });
+  await expect(documentsTab).toBeVisible();
+  await documentsTab.click();
 
   const downloadLink = page.getByRole("link", { name: /Kullanım Kılavuzu QA.*dosyasını indir/ });
   await expect(downloadLink).toBeVisible();

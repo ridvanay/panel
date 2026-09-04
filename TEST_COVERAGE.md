@@ -1874,3 +1874,115 @@ bu turda documentation-agent, doğrudan kaynağı okuyarak teyit etti (uydurma d
   DEĞİL" başlığı **tarihseldir** (bug'ın bulunduğu andaki durumu yansıtır) ve bilinçli olarak
   SİLİNMEDİ; yeni doğrulama bu ek not olarak eklendi. Yayın kararı için qa-agent'ın resmi
   yeniden-onayı önerilir.
+
+## Ürün Katalogu (filtreleme/sıralama) + PDP yeniden inşası — E2E kapsamı (bu turda eklendi)
+
+Kaynak: `.claude/architect-scope-products-catalog.md` §5.7 (qa-agent görev listesi) + kullanıcının
+açıkça istediği dört akış: (1) kategori/fiyat/renk filtreleri, (2) PDP varyasyon değişiminde fiyat/
+stok senkronu, (3) PDF teknik döküman indirme, (4) sepete ekleme (adet seçici + katalog kartı hızlı-
+ekle). db-agent→backend-agent→ui-designer/frontend-agent→performance-agent→seo-agent zincirinin SON
+adımı; performance-agent'ın `next/image` geçişi ve küçük h1 düzeltmesi bu turda HENÜZ commit
+edilmemişti (working tree), qa-agent bunlara karşı da test etti.
+
+| # | Senaryo | Dosya | Durum |
+|---|---|---|---|
+| 1 | Kategori filtresi — alt kategori SADECE kendi ürünü, üst kategori kendisi+çocukları, "Tümü" sıfırlar | `product-catalog-filters.spec.ts` | ✅ Geçiyor |
+| 2 | Fiyat aralığı (manuel giriş, `aria-label="Minimum/Maksimum fiyat"`) — **indirimli ürün EFFECTIVE (indirimli) fiyata göre filtreleniyor**, orijinal liste fiyatına göre DEĞİL (§2.3 sözleşmesi) | `product-catalog-filters.spec.ts` | ✅ Geçiyor |
+| 3 | Fiyat aralığı (slider, `Base UI` `input[type=range]` → `getByRole("slider")`, klavye ile taşıma) | `product-catalog-filters.spec.ts` | ✅ Geçiyor |
+| 4 | Renk (option) facet filtresi — tek renk seçilince o renk, iki renk seçilince İKİSİ DE (eksen içi OR, `?option=renk:kirmizi&option=renk:mavi`) | `product-catalog-filters.spec.ts` | ✅ Geçiyor |
+| 5 | "Filtreleri Temizle" — kategori+fiyat+renk'in TAMAMINI sıfırlıyor | `product-catalog-filters.spec.ts` | ✅ Geçiyor |
+| 6 | PDP: adet seçici (`quantity-selector.tsx`, salt stepper) ile miktar artırılıp Sepete Ekle'ye basılınca sepete SEÇİLEN miktar (1 değil) ekleniyor; header rozeti aynı toplamı gösteriyor | `product-catalog-add-to-cart.spec.ts` | ✅ Geçiyor |
+| 7 | Katalog kartı: varyasyonsuz ürünün hızlı-sepete-ekle butonu DOĞRUDAN ekliyor (buton onay durumu + header rozeti + `/cart` sayfası çapraz kontrolü) | `product-catalog-add-to-cart.spec.ts` | ✅ Geçiyor |
+| 8 | Katalog kartı: varyasyonlu ürünün hızlı-ekle alanı "Seçenekleri Gör"e dönüşüyor, PDP'ye yönlendiriyor, sepete DİREKT eklemiyor/çekmece açmıyor | `product-catalog-add-to-cart.spec.ts` | ✅ Geçiyor |
+| 9 (regresyon) | PDP varyasyon senkronu (renk→görsel+fiyat, stoksuz→disabled), düşük stok rozeti, PDF indirme (artık sekme İÇİNDE) | `product-pdp-variants.spec.ts` (mevcut, bu turda 2 yerde güncellendi — aşağıya bkz.) | ✅ Geçiyor |
+| 10 (regresyon) | Sepet dedupe/çekmece/kargo eşiği (PDP `Sepete ekle` akışı) | `cart-dedupe-drawer-shipping.spec.ts` (mevcut, DOKUNULMADI) | ✅ Geçiyor |
+
+**Toplam bu turda: 8 yeni senaryo (2 yeni dosya) + 7 mevcut regresyon senaryosu (2 mevcut dosya,
+biri güncellendi) — hepsi yeşil.** Dört dosya birlikte (`product-catalog-filters.spec.ts`,
+`product-catalog-add-to-cart.spec.ts`, `product-pdp-variants.spec.ts`,
+`cart-dedupe-drawer-shipping.spec.ts`) art arda 2 kez tam koşuldu, 16/16 tutarlı geçti.
+
+### Mevcut `product-pdp-variants.spec.ts`'te bulunan 2 REGRESYON — qa-agent kendi test dosyasını güncelledi (uygulama kodu DEĞİL)
+
+Kural gereği (`.claude/CLAUDE.md` madde 3 "flaky testleri düzelt", bu ikisi flaky değil ama AYNI
+ilke — qa-agent kendi test altyapısını düzeltir) ve çünkü ikisi de **bilinçli/dokümante edilmiş
+tasarım değişikliklerinin doğal sonucu**, uygulama bug'ı DEĞİL:
+
+1. **`next/image` geçişi `<img src>` biçimini değiştirdi.** Performance-agent'ın (henüz commit
+   edilmemiş) `next/image` geçişi sonrası ana galeri görselinin `src` özniteliği ham medya
+   URL'inden `/_next/image?url=<encoded>&w=...&q=...` biçimine döndü — eski test tam URL eşitliği
+   bekliyordu. Düzeltme: `expectMainImageUrl()` yardımcı fonksiyonu — hem ham hem `next/image`
+   proxy biçimini kabul eden bir regex (`toHaveAttribute("src", pattern)`).
+2. **"Teknik Dökümanlar" artık bir sekme, `<h3>` DEĞİL.** PDP'nin yeni `ProductTabs` yapısında
+   döküman listesi `showHeading={false}` ile render ediliyor (`.claude/design-notes-products-catalog.md`
+   §4.4 "sekme başlığı zaten aynı bilgiyi taşıyor, çift başlık YAZILMAZ") — eski test
+   `getByRole("heading", {name: "Teknik Dökümanlar"})` arıyordu, artık `getByRole("tab", ...)`.
+
+### Bulunan GERÇEK bug'lar (bu turda) — kural gereği qa-agent DÜZELTMEZ, ilgili ajana yönlendirir
+
+**1. frontend-agent — KRİTİK: PDP galerisi HER yüklemede bir React hydration mismatch üretiyor ve
+varyasyon değişiminde `next/image` optimizasyonunu sessizce kaybediyor.** `src/components/site/safe-image.tsx::isOptimizableImageUrl`
+SUNUCUDA (SSR) `next/image`'i (`<Image>`, `data-nimg="fill"`, `/_next/image?url=...` proxy) seçiyor
+ama AYNI URL için İSTEMCİDE (herhangi bir client-side re-render'da — ör. PDP'de renk/beden
+varyasyonu seçimi) ham `<img>` dalına düşüyor. Sonuç: (a) tarayıcı konsolunda PDP'nin HER
+yüklemesinde "A tree hydrated but some attributes of the server rendered HTML didn't match the
+client properties" hydration mismatch uyarısı (React "won't be patched up" diyor — DOM SSR halinde
+kalıyor ta ki bir client re-render'a kadar), (b) varyasyon seçildiğinde ana görsel next/image'ın
+responsive `srcset`/lazy/blur faydalarını KAYBEDİP ham/optimize-edilmemiş `<img>`'e düşüyor. Doğru
+dosyayı GÖSTERMEYE devam ediyor (bu yüzden qa-agent'ın kendi testi bunu bir "yanlış görsel"
+regresyonu olarak işaretlemedi — yalnızca biçim/optimizasyon kaybı), ama SSR/CSR host-listesi
+tutarsızlığı gerçek ve tekrarlanabilir (elle, bağımsız bir Playwright betiğiyle `.next` TAMAMEN
+temizlenmiş taze bir sunucuda bile doğrulandı — dev-cache artefaktı DEĞİL). Kök neden adayı:
+`ALLOWED_IMAGE_HOSTS` (`src/lib/image-hosts.ts`), `NEXT_PUBLIC_API_URL`/`NEXT_PUBLIC_MEDIA_URL`'i
+modül-yükleme anında okuyor — istemci paketine gömülen değer SUNUCUNUNKİYLE senkron değil
+görünüyor. Repro: herhangi bir PDP'yi aç, DevTools konsolunu izle (ilk yüklemede mismatch), sonra
+bir varyasyon seç ve ana görselin `<img>` özniteliklerini (`data-nimg` kayboluyor) karşılaştır.
+
+**2. frontend-agent — ORTA öncelik: `price-range-filter.tsx`'te hızlı ardışık Min→Max girişinde Min
+sessizce kayboluyor.** `commit()` DİĞER (henüz commit edilmemiş) alanın değerini `range` LOKAL
+state'inden okuyor; bu state yalnızca sunucudan dönen YENİ `filters` prop'u (bir önceki
+`router.replace` TAMAMLANDIKTAN SONRA) ile senkronize oluyor. Kullanıcı Min alanını doldurup
+sunucu turu tamamlanmadan HEMEN Max alanına geçip onu da commit ederse, Max'ın commit çağrısı
+`range[0]`'ı hâlâ ESKİ/sınır değeriyle okuyup Min'i SESSİZCE sıfırlıyor (elle doğrulandı: URL'de
+yalnızca `maxPrice` kalıyor, `minPrice` DÜŞÜYOR). Düzeltme önerisi: `commit()` DİĞER alanın
+güncel/bekleyen değerini `range` prop-senkron state'i yerine bir `ref`/optimistik güncelleme ile
+okumalı. qa-agent'ın kendi testi bunu ATLATMAK için commit'ler arasına `toHaveURL` beklemesi ekledi
+(bkz. `product-catalog-filters.spec.ts` madde 2 yorum bloğu) — gerçek/dikkatli kullanıcı akışını
+izliyor, ama hızlı-tab senaryosu hâlâ kırık.
+
+### qa-agent'ın KENDİ test/geliştirme ortamında bulup atlattığı bir ortam sorunu (uygulama kodu DEĞİL)
+
+**Next.js/Turbopack'in dev-modu KALICI disk önbelleği (`.next/dev/cache`, gözlemlenen boyut 3+ GB)
+`next dev` süreç YENİDEN BAŞLATMALARI arasında `fetch(..., {next:{revalidate:60}})` sonuçlarını
+(en azından `GET /products` unfiltered gibi ROTA-seviyesi verileri) hayatta tutuyor** — bu,
+`revalidate: 60`'ın "60 saniye sonra taze veri" garantisinin AKSİNE, sunucu TAMAMEN yeniden
+başlatılıp veritabanı o 60 saniyelik pencerenin ÇOK dışında değişmiş olsa bile ESKİ bir anlık
+görüntü döndürülebildiği anlamına geliyor (elle, tekrarlanan `rm -rf .next/cache` + süreç
+yeniden başlatmalarıyla bile İLK ÖNCE YANLIŞLIKLA doğrulanamadı — gerçek kök neden yalnızca
+`.next` TAMAMEN silindiğinde, yani `.next/dev/cache` da dahil olmak üzere, ortadan kalktı).
+`.next/cache` (üretim/ISR önbelleği) BOŞTU — bu farklı, Turbopack'e özgü bir dev-modu dizini. Bu
+qa-agent'ın kendi yerel yineleme (iteration) döngüsünü ETKİLEDİ (birkaç saat süren yanlış
+"regresyon" izlenimi), CI'da (her çalıştırma taze bir checkout/`.next` olmadan başladığı için)
+BEKLENMEZ, ama **yerel geliştirme sırasında `next dev`'i sık sık yeniden başlatan herhangi bir
+ajan/geliştirici için gerçek bir tuzak** — devops-agent'a bilgi amaçlı iletiliyor (CI'ın kendi
+`.next` dizinini her çalıştırmada temiz tuttuğundan emin olunması önerilir; bu zaten muhtemelen
+doğru varsayılan davranıştır, yalnızca doğrulanması önerilir).
+
+### Kapsam dışı bırakılanlar (bu turda, gerekçeli)
+
+- Mobil "Filtrele" bottom sheet'in (`catalog-mobile-filters.tsx`) kendi UI akışı — masaüstü
+  sidebar'la AYNI `CatalogFilterGroups` bileşenini paylaştığı (`.claude/design-notes-products-catalog.md`
+  §0 "TEK bileşen") ve filtre MANTIĞI zaten masaüstü testleriyle kapsandığı için, yalnızca Sheet'in
+  açılma/kapanma mekaniği test EDİLMEDİ — kullanıcının istediği 4 maddede yoktu, zaman kısıtı.
+  **Sonraki tur için önerilir.**
+- Sıralama (`sort=price_asc` vb.) ve sayfalama eş-değer-kırıcı regresyonu (architect §5.7 madde 4)
+  — kullanıcının istediği 4 maddede YOKTU, bu turda test EDİLMEDİ. **Sonraki tur için önerilir.**
+- PDP başlık regresyon koruması (architect §5.7 madde 9, `pageHeaderStyle: HIDDEN` iken tam olarak
+  bir `<h1>`) — dolaylı olarak HER PDP testinde `getByRole("heading", {level:1, ...})` ile zaten
+  doğrulanıyor (bu locator'lar `HIDDEN` DIŞINDA bir `pageHeaderStyle` varsayımıyla çalışır; bu
+  turun test ortamında `appearance.pageHeaderStyle` varsayılanı `HIDDEN` DEĞİLDİ, yani asıl "boş
+  render" kök nedeni burada AYRICA izole doğrulanmadı) — **sonraki tur için önerilir**: appearance
+  ayarını AÇIKÇA `HIDDEN`'a çekip tek bir `<h1>` regresyon testi eklemek.
+- a11y otomasyonu (axe-core) katalog/PDP sayfalarına bu turda EKLENMEDİ — zaman kısıtı, kullanıcının
+  istediği 4 maddede yoktu. **Sonraki tur için önerilir**, özellikle YENİ slider primitive'i
+  (`components/ui/slider.tsx`) ve çoklu-seçim swatch/checkbox grupları için.

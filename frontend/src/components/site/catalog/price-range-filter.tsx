@@ -67,22 +67,33 @@ export function PriceRangeFilter({ filters, minCents, maxCents }: PriceRangeFilt
     commit(value[0], value[1]);
   }
 
+  // `range[0]`/`range[1]` YALNIZCA slider'ın son sürükleme konumunu tutar ve sunucu turu
+  // (router.replace → props güncellenmesi → yukarıdaki useEffect) tamamlanana kadar STALE
+  // kalabilir. Manuel giriş alanlarından biri commit edilirken "diğer" alanın değeri bu yüzden
+  // `range`den DEĞİL, o alanın kendi `minText`/`maxText` state'inden okunur — bu ikisi her tuş
+  // vuruşunda senkron güncellenir, dolayısıyla Min→Max (veya tersi) hızlı geçişte önceki alanın
+  // henüz sunucudan onaylanmamış değeri kaybolmaz (race condition düzeltmesi).
+  function parseUnitOrFallback(text: string, fallbackCents: number): number {
+    const parsed = Number(text);
+    return Number.isFinite(parsed) ? unitToCents(parsed) : fallbackCents;
+  }
+
   function handleMinBlur() {
-    const parsed = Number(minText);
-    if (!Number.isFinite(parsed)) {
+    const parsedMin = Number(minText);
+    if (!Number.isFinite(parsedMin)) {
       setMinText(String(centsToUnit(range[0])));
       return;
     }
-    commit(unitToCents(parsed), range[1]);
+    commit(unitToCents(parsedMin), parseUnitOrFallback(maxText, range[1]));
   }
 
   function handleMaxBlur() {
-    const parsed = Number(maxText);
-    if (!Number.isFinite(parsed)) {
+    const parsedMax = Number(maxText);
+    if (!Number.isFinite(parsedMax)) {
       setMaxText(String(centsToUnit(range[1])));
       return;
     }
-    commit(range[0], unitToCents(parsed));
+    commit(parseUnitOrFallback(minText, range[0]), unitToCents(parsedMax));
   }
 
   function commitOnEnter(event: KeyboardEvent<HTMLInputElement>) {

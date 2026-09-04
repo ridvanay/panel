@@ -17,6 +17,8 @@ import { redirectToCanonicalSlug } from "@/lib/i18n/canonical-slug";
 import { resolveReturnsPolicyPage } from "@/lib/legal-pages";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
 import { buildContentMetadata } from "@/lib/seo";
+import { buildProductJsonLd, buildProductBreadcrumbJsonLd } from "@/lib/product-json-ld";
+import { JsonLdScript } from "@/components/site/json-ld-script";
 import { SITE_URL } from "@/lib/env";
 import { buttonVariants } from "@/components/ui/button";
 import { ArrowRight } from "lucide-react";
@@ -42,8 +44,11 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
   return buildContentMetadata(
     {
-      title: product.title,
-      description: product.excerpt,
+      // `Page`/`[slug]/page.tsx`'teki AYNI öncelik: `seoTitle`/`seoDescription` doluysa esas
+      // alınır, boşsa görünen ürün adı/özet fallback olur (`.claude/CLAUDE.md` — sabit metin YOK,
+      // her iki alan da DB'den).
+      title: product.seoTitle || product.title,
+      description: product.seoDescription || product.excerpt,
       ogTitle: product.ogTitle,
       ogImageUrl: product.ogImageUrl,
       canonicalUrl: product.canonicalUrl,
@@ -134,6 +139,24 @@ export default async function ProductDetailPage({ params, searchParams }: PagePr
         <div className="mt-8">
           <SocialShareButtons url={canonicalUrl} title={product.title} networks={appearance.socialShareNetworks} />
         </div>
+      )}
+
+      {/* İndekslenmeyen üründe yapılandırılmış veri BASILMAZ (`[slug]/page.tsx`'teki (site) sayfa
+          emsaliyle AYNI "Boşluk 2" ilkesi) — `noIndex` burada `generateMetadata`teki `product.noIndex`
+          ile BİREBİR aynı, ikinci bir hesap YOK. */}
+      {!product.noIndex && (
+        <>
+          <JsonLdScript json={buildProductJsonLd(product, canonicalUrl)} />
+          <JsonLdScript
+            json={buildProductBreadcrumbJsonLd({
+              activeLocaleCode: lang,
+              defaultLocaleCode,
+              category: product.category,
+              productTitle: product.title,
+              productUrl: canonicalUrl,
+            })}
+          />
+        </>
       )}
     </article>
   );

@@ -1194,22 +1194,27 @@ export async function publicProductsRoutes(app: FastifyInstance) {
       const { page, perPage, limit, search, category, minPrice, maxPrice, option, inStock, sort, facets, locale } = request.query;
       const effectivePerPage = perPage ?? limit ?? 12;
 
-      const { rows, total, facets: computedFacets } = await queryCatalog(app, {
-        search,
-        category,
-        minPrice,
-        maxPrice,
-        option,
-        inStock,
-        sort,
-        page,
-        perPage: effectivePerPage,
-        withFacets: facets,
-      });
+      // Performans denetimi (§5.5) — `getLocaleSet` `queryCatalog`'un sonucuna bağımlı DEĞİLDİR,
+      // bu yüzden ikisi ayrı `await` zinciri yerine PARALEL çalıştırılır; `localeSet` daha sonra
+      // `attachLocalizations`'a geçirilerek AYNI sorgunun (`locale.findMany`) tekrarlanması önlenir.
+      const [{ rows, total, facets: computedFacets }, localeSet] = await Promise.all([
+        queryCatalog(app, {
+          search,
+          category,
+          minPrice,
+          maxPrice,
+          option,
+          inStock,
+          sort,
+          page,
+          perPage: effectivePerPage,
+          withFacets: facets,
+        }),
+        getLocaleSet(app),
+      ]);
 
-      const localeSet = await getLocaleSet(app);
       const effectiveLocale = resolveEffectiveLocaleCode(localeSet, locale);
-      const localizationsByEntity = await attachLocalizations(app, "PRODUCT", rows);
+      const localizationsByEntity = await attachLocalizations(app, "PRODUCT", rows, localeSet);
 
       const dtos = rows.map((row) =>
         toProductListItemDto(applyProductLocale(row, effectiveLocale), localizationsByEntity.get(row.id) ?? [])
@@ -1251,7 +1256,7 @@ export async function publicProductsRoutes(app: FastifyInstance) {
         }));
       if (!resolvedProduct) throw new NotFoundError("Ürün bulunamadı.");
 
-      const localizations = await attachLocalizationsOne(app, "PRODUCT", resolvedProduct);
+      const localizations = await attachLocalizationsOne(app, "PRODUCT", resolvedProduct, localeSet);
       return reply.send(ok(toProductDto(applyProductLocale(resolvedProduct, effectiveLocale), localizations)));
     }
   );

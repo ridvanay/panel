@@ -48,6 +48,8 @@ export interface CreateFixtureProductInput {
   status?: "PUBLISHED" | "DRAFT";
   coverMediaId?: string | null;
   variantOptions?: FixtureProductVariantOption[];
+  /** `.claude/architect-scope-products-catalog.md` §2.1 — katalog kategori filtresi fixture'ı için. */
+  categoryId?: string | null;
 }
 
 export interface FixtureProductVariant {
@@ -87,9 +89,41 @@ export async function adminCreateProductFull(token: string, input: CreateFixture
       status: input.status ?? "PUBLISHED",
       coverMediaId: input.coverMediaId ?? null,
       variantOptions: input.variantOptions ?? [],
+      ...(input.categoryId !== undefined ? { categoryId: input.categoryId } : {}),
     }),
   });
   return json<{ data: FixtureProduct }>(res, "adminCreateProductFull").then((b) => b.data);
+}
+
+export interface FixtureProductCategory {
+  id: string;
+  name: string;
+  slug: string;
+  parentId: string | null;
+}
+
+/** `POST /admin/products/categories` — `.claude/architect-scope-products-catalog.md` §2.1 (en fazla 2 seviye). */
+export async function adminCreateProductCategory(
+  token: string,
+  input: { name: string; slug?: string; parentId?: string | null }
+): Promise<FixtureProductCategory> {
+  const res = await fetch(`${API_BASE_URL}/admin/products/categories`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({
+      name: input.name,
+      ...(input.slug ? { slug: input.slug } : {}),
+      ...(input.parentId !== undefined ? { parentId: input.parentId } : {}),
+    }),
+  });
+  return json<{ data: FixtureProductCategory }>(res, "adminCreateProductCategory").then((b) => b.data);
+}
+
+export async function adminDeleteProductCategory(token: string, categoryId: string): Promise<void> {
+  await fetch(`${API_BASE_URL}/admin/products/categories/${categoryId}`, {
+    method: "DELETE",
+    headers: authHeadersNoBody(token),
+  });
 }
 
 export interface CreateFixtureVariantInput {
