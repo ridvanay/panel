@@ -71,6 +71,21 @@ async function findAvailableSlug(existsCheck: (candidate: string) => Promise<boo
   return candidate;
 }
 
+/**
+ * `findAvailableSlug` ile AYNI benzersizleştirme deseni, TEK fark: `slugify(base)` YOK — SKU'lar
+ * zaten şablonda düz, insan-okunur bir formatta (`slugify` uygulanırsa mevcut SKU deseni bozulur),
+ * bu yüzden `base` OLDUĞU GİBİ kullanılır.
+ */
+async function findAvailableSku(existsCheck: (candidate: string) => Promise<boolean>, base: string): Promise<string> {
+  let candidate = base;
+  let suffix = 2;
+  while (await existsCheck(candidate)) {
+    candidate = `${base}-${suffix}`;
+    suffix += 1;
+  }
+  return candidate;
+}
+
 interface SlugPlan {
   pageSlug: string;
   sliderSlug: string | null;
@@ -81,6 +96,11 @@ interface SlugPlan {
   productCategorySlugByTemplateSlug: Map<string, string>;
   productSlugByTemplateSlug: Map<string, string>;
   extraPageSlugByTemplateSlug: Map<string, string>;
+  // Bugfix — ürün/varyant SKU'ları da slug'lar gibi yeniden uygulamada (force re-apply) otomatik
+  // benzersizleştirilmeli (409 P2002 DEĞİL). `sku` OPSİYONEL olduğu için yalnızca dolu SKU'lar
+  // haritaya girer; tüketim tarafında `null`/`undefined` OLDUĞU GİBİ korunur.
+  productSkuByTemplateSku: Map<string, string>;
+  variantSkuByTemplateSku: Map<string, string>;
 }
 
 /**
@@ -161,6 +181,37 @@ async function resolveSlugPlan(app: FastifyInstance, template: DemoTemplateDefin
     productSlugByTemplateSlug.set(product.slug, resolved);
   }
 
+  // Bugfix — `Product.sku`/`ProductVariant.sku` (`schema.prisma` `@unique`) slug'lar gibi AYNI
+  // benzersizleştirme desenine tabi tutulur; yoksa yeniden uygulamada (force) `P2002` ile
+  // transaction patlar (409'a yanlış eşlenir). `sku` OPSİYONEL — boşsa hiç dokunulmaz.
+  const productSkuByTemplateSku = new Map<string, string>();
+  for (const p of template.commerce?.products ?? []) {
+    if (!p.sku) continue;
+    const resolved = await findAvailableSku(
+      async (candidate) => Boolean(await app.prisma.product.findFirst({ where: { sku: candidate }, select: { id: true } })),
+      p.sku
+    );
+    if (resolved !== p.sku) {
+      slugWarnings.push(`"${p.sku}" SKU'su zaten kullanılıyordu, ürün "${resolved}" SKU'suyla oluşturuldu.`);
+    }
+    productSkuByTemplateSku.set(p.sku, resolved);
+  }
+
+  const variantSkuByTemplateSku = new Map<string, string>();
+  for (const p of template.commerce?.products ?? []) {
+    for (const v of p.variants) {
+      if (!v.sku) continue;
+      const resolved = await findAvailableSku(
+        async (candidate) => Boolean(await app.prisma.productVariant.findFirst({ where: { sku: candidate }, select: { id: true } })),
+        v.sku
+      );
+      if (resolved !== v.sku) {
+        slugWarnings.push(`"${v.sku}" SKU'su zaten kullanılıyordu, varyant "${resolved}" SKU'suyla oluşturuldu.`);
+      }
+      variantSkuByTemplateSku.set(v.sku, resolved);
+    }
+  }
+
   // §4.3 — ek (yasal/kurumsal) sayfalar da `Page` tablosunu paylaşır, ana sayfayla AYNI
   // slug alanı/kuralı (§6.5).
   const extraPageSlugByTemplateSlug = new Map<string, string>();
@@ -184,6 +235,8 @@ async function resolveSlugPlan(app: FastifyInstance, template: DemoTemplateDefin
       productCategorySlugByTemplateSlug,
       productSlugByTemplateSlug,
       extraPageSlugByTemplateSlug,
+      productSkuByTemplateSku,
+      variantSkuByTemplateSku,
     },
     slugWarnings,
   };
@@ -409,7 +462,7 @@ async function writeTemplateInTransaction(
           discountPriceCents: product.discountPriceCents,
           effectivePriceCents,
           discountPercent,
-          sku: product.sku,
+          sku: product.sku ? plan.productSkuByTemplateSku.get(product.sku)! : null,
           stockQuantity: product.stockQuantity,
           variantOptions: product.variantOptions as unknown as Prisma.InputJsonValue,
           status: "PUBLISHED",
@@ -443,7 +496,7 @@ async function writeTemplateInTransaction(
             // §2.2 — katalog `?option=` filtresinin okuduğu dizi kolon (bkz. yukarıdaki not).
             optionValueSlugs: deriveOptionValueSlugs(variant.optionValues),
             optionValues: variant.optionValues as unknown as Prisma.InputJsonValue,
-            sku: variant.sku,
+            sku: variant.sku ? plan.variantSkuByTemplateSku.get(variant.sku)! : null,
             priceCents: variant.priceCents,
             discountPriceCents: variant.discountPriceCents,
             stockQuantity: variant.stockQuantity,

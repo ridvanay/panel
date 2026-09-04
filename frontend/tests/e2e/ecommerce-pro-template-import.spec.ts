@@ -23,10 +23,13 @@ import { getSlider } from "./support/sliders-fixtures";
  * `listAuditLogsRaw`) o dosyanın da kullandığı `support/demo-templates-fixtures.ts`'ten aynen
  * import edilir.
  *
- * EK GÖREV (üst koordinatörün talebi) — backend-agent'ın bildirdiği bilinen sınır: `force:true` ile
+ * BUGFIX DOĞRULAMASI (üst koordinatörün talebi, backend-agent fix'i) — eskiden `force:true` ile
  * İKİNCİ bir `ecommerce-pro` içe aktarımı, `Product.sku`/`ProductVariant.sku` GLOBAL `@unique`
- * kısıtına (otomatik benzersizleştirme YOK) çarpabilir. Bu dosya bunu GERÇEKTEN tetikleyip
- * gözlemlenen davranışı (409 kontrollü hata VEYA ham 500) assert eder — bkz. "madde SKU-çakışma" testi.
+ * kısıtına (otomatik benzersizleştirme YOK) çarparak 409/500 ile SONUÇLANIYORDU. `importer.ts`
+ * `resolveSlugPlan` artık `findAvailableSku` ile SKU'ları da slug'lar GİBİ `-2`/`-3` son ekiyle
+ * otomatik benzersizleştiriyor (satır ~187-211) — bu dosya YENİ (düzeltilmiş) davranışı, yani
+ * ikinci import'un `201` DÖNDÜĞÜNÜ ve SKU'ların benzersizleştirildiğini assert eder — bkz.
+ * "SKU-benzersizleştirme" testi.
  *
  * ============================================================================================
  * HIZ SINIRI İZOLASYONU — `admin-demo-template-import.spec.ts` başlığındaki AYNI bulgu/gerekçe:
@@ -34,7 +37,7 @@ import { getSlider } from "./support/sliders-fixtures";
  * ile TÜM templateKey'ler için ORTAK bir sayaca (aynı route, `request.ip` anahtarlı) yazar.
  * Bu dosyanın çağrıları 3 pencereye BÖLÜNÜR: (1) hız sınırı testi — kimlik doğrulamasız 6 istek,
  * İZOLE; (2) "iş mantığı" penceresi — TAM 5 gerçek çağrı (happy-path, idempotency-409,
- * missing-confirm-422, force-SKU-çakışma, module-off-import); (3) RBAC penceresi — 3 çağrı.
+ * missing-confirm-422, force-SKU-benzersizleştirme, module-off-import); (3) RBAC penceresi — 3 çağrı.
  * ============================================================================================
  */
 test.describe.configure({ mode: "serial" });
@@ -234,10 +237,12 @@ test("madde 9b: confirm gönderilmeden POST → 422", async () => {
   expect(res.error?.code).toBe("VALIDATION_ERROR");
 });
 
-test("SKU-çakışma: force:true ile İKİNCİ import — Product.sku global @unique otomatik benzersizleştirilmediği için gözlemlenen davranış", async () => {
+test("SKU-benzersizleştirme: force:true ile İKİNCİ import → 201, ürün/varyant SKU'ları '-2' son ekiyle otomatik benzersizleştirilir (bugfix doğrulaması)", async () => {
+  test.setTimeout(60_000);
   // DELTA karşılaştırılır (mutlak sayı DEĞİL) — paylaşımlı `saas_e2e` DB'nin `audit_logs` tablosu
-  // önceki (bu turdaki manuel hata ayıklama denemeleri dahil) koşumlardan kalan SUCCESS satırları
-  // barındırabilir; bu test yalnızca BU çağrının YENİ bir başarılı satır ÜRETMEDİĞİNİ doğrular.
+  // önceki koşumlardan kalan SUCCESS satırları barındırabilir; bu test yalnızca BU çağrının YENİ
+  // bir başarılı satır ÜRETTİĞİNİ doğrular (fix ÖNCESİ: P2002 → transaction geri alınıyor, YENİ
+  // bir SUCCESS satırı HİÇ üretilmiyordu).
   const logsBefore = await listAuditLogsRaw(adminToken, { action: "demo_template.import", limit: 20 });
   const successCountBefore = logsBefore.filter(
     (l) => l.status === "SUCCESS" && (l.metadata as Record<string, unknown> | null)?.templateKey === ECOMMERCE_TEMPLATE_KEY
@@ -245,35 +250,59 @@ test("SKU-çakışma: force:true ile İKİNCİ import — Product.sku global @un
 
   const res = await importDemoTemplateRaw(adminToken, ECOMMERCE_TEMPLATE_KEY, { confirm: true, force: true });
 
-  // Backend'in genel hata işleyicisi (`plugins/error-handler.ts`) Prisma P2002'yi (`Product.sku`
-  // çakışması, importer.ts'in 2 kez retry ettikten SONRA OLDUĞU GİBİ fırlattığı hata) YAKALAR ve
-  // 409 CONFLICT'e çevirir — bu YÖNETİLEN/kontrollü bir hatadır, ham bir 500 DEĞİLDİR. Bu, bilinen
-  // bir sınırlamadır (SKU'lar sayfa/sayfa/kategori slug'ları gibi "-2" ile otomatik
-  // benzersizleştirilMEZ) ve burada BİLEREK/açıkça `expect` edilir — architect'e mimari bir karar
-  // olarak (SKU'ları da benzersizleştirmek mi, yoksa force'ta SKU'yu tamamen atlamak/uyarmak mı)
-  // eskale edilmesi ÖNERİLİR, ama bu test onu bir REGRESYONMUŞ gibi ele almaz.
-  expect([409, 500]).toContain(res.status);
-  if (res.status === 409) {
-    expect(res.error?.code).toBe("CONFLICT");
-  } else {
-    // Ham 500 — bu BEKLENMEYEN bir durum, koordinatöre BUG olarak raporlanmalı (bkz. final özet).
-    console.error("BUG REPRO — force:true reimport 500 döndü:", JSON.stringify(res.error));
-  }
+  // Bugfix doğrulaması — `importer.ts::resolveSlugPlan` artık `Product.sku`/`ProductVariant.sku`'yu
+  // `findAvailableSku` ile slug'lar İLE AYNI desende (`-2`/`-3` son eki) otomatik benzersizleştiriyor;
+  // P2002 artık FIRLATILMIYOR, transaction BAŞARIYLA commit ediliyor (201, ham 500/409 YOK).
+  expect(res.status).toBe(201);
+  const result = res.data as { pageId: string; pageSlug: string; warnings: string[] };
+  expect(result.pageId).not.toBe(firstImportPageId);
 
-  // Ne olursa olsun: transaction TÜMÜYLE geri alınmış olmalı — bu çağrı YENİ bir başarılı
-  // (SUCCESS) audit satırı ÜRETMEMİŞ olmalı (ikinci bir kopya YARATILMAMIŞ).
+  expect(result.warnings).toContain(
+    "Şablon daha önce uygulanmıştı; `force` ile ikinci bir kopya oluşturuldu. Önceki içerik SİLİNMEDİ."
+  );
+
+  // Ürün SKU'ları — şablonun 8 ürününün TAMAMI `sku` taşır (bkz. `templates/ecommerce-pro.ts`) ve
+  // ilk import'ta zaten kullanılmış durumdadır; bu yüzden TAMAMI "-2" son ekiyle benzersizleştirilir.
+  // Tek bir örnek TAM METİN olarak, kalanı desen + sayı ile doğrulanır (23 ayrı literal SKU'yu
+  // tek tek yazmak kırılgan/gereksiz tekrar olurdu).
+  expect(result.warnings).toContain('"DEMO-AYD-001" SKU\'su zaten kullanılıyordu, ürün "DEMO-AYD-001-2" SKU\'suyla oluşturuldu.');
+  const productSkuWarnings = result.warnings.filter((w) => w.includes("SKU'su zaten kullanılıyordu, ürün "));
+  expect(productSkuWarnings).toHaveLength(8);
+  expect(productSkuWarnings.every((w) => /^"[^"]+" SKU'su zaten kullanılıyordu, ürün "[^"]+-2" SKU'suyla oluşturuldu\.$/.test(w))).toBe(
+    true
+  );
+
+  // Varyant SKU'ları — 14 varyantın (EXPECTED_COMMERCE_COUNTS.productVariants) TAMAMI `sku` taşır,
+  // AYNI şekilde "-2" son ekiyle benzersizleştirilir.
+  expect(result.warnings).toContain(
+    '"DEMO-AYD-001-SIY" SKU\'su zaten kullanılıyordu, varyant "DEMO-AYD-001-SIY-2" SKU\'suyla oluşturuldu.'
+  );
+  const variantSkuWarnings = result.warnings.filter((w) => w.includes("SKU'su zaten kullanılıyordu, varyant "));
+  expect(variantSkuWarnings).toHaveLength(14);
+  expect(
+    variantSkuWarnings.every((w) => /^"[^"]+" SKU'su zaten kullanılıyordu, varyant "[^"]+-2" SKU'suyla oluşturuldu\.$/.test(w))
+  ).toBe(true);
+
+  // Audit log — bu çağrı YENİ (ikinci) bir SUCCESS satırı üretti (yeni `pageId` hedefli);
+  // `commerceCounts` ilk import İLE AYNI şekle sahip (ikinci kopya da 8 ürün+4 kategori+14
+  // varyasyon+4 döküman üretti — hiçbir satır SKU çakışması yüzünden "kayıp" gitmedi).
   const logsAfter = await listAuditLogsRaw(adminToken, { action: "demo_template.import", limit: 20 });
-  const successCountAfter = logsAfter.filter(
+  const successEntriesAfter = logsAfter.filter(
     (l) => l.status === "SUCCESS" && (l.metadata as Record<string, unknown> | null)?.templateKey === ECOMMERCE_TEMPLATE_KEY
-  ).length;
-  expect(successCountAfter).toBe(successCountBefore);
+  );
+  expect(successEntriesAfter.length).toBe(successCountBefore + 1);
+  const entry = successEntriesAfter.find((l) => l.targetId === result.pageId);
+  expect(entry).toBeTruthy();
+  expect((entry!.metadata as Record<string, unknown>).commerceCounts).toEqual(EXPECTED_COMMERCE_COUNTS);
 });
 
 test("madde 8: products modülü kapalıyken (temiz zeminde) import → 201 + 'Ürünler modülü kapalı' + yasal sayfa uyarıları", async () => {
   test.setTimeout(60_000);
-  // Önceki testlerin (madde 7 + SKU-çakışma denemesi) bıraktığı içerik TEMİZLENİR — aksi halde bu
-  // çağrı da AYNI SKU çakışmasına düşer (force:false kullanılacağı için önce idempotency işareti de
-  // sıfırlanmalı, `purgeKnownEcommerceProContent` ikisini birden yapar).
+  // Önceki testlerin (madde 7 + Fix 1/2/3 + SKU-benzersizleştirme testinin ürettiği İKİNCİ kopya)
+  // bıraktığı TÜM içerik TEMİZLENİR — aksi halde bu çağrı da (force:false, bu kez BİLEREK) idempotency
+  // 409'una düşer; `purgeKnownEcommerceProContent` hem içeriği hem idempotency işaretini sıfırlar.
+  // `matchesKnownSlug`/`deleteKnownProductsSql` regex'leri "-N" son ekli (force ile üretilmiş) satırları
+  // da kapsadığı için SKU-benzersizleştirme testinin ürettiği "-2" kopyası da burada temizlenir.
   await purgeKnownEcommerceProContent(adminToken);
   await patchSiteModule(adminToken, "products", false);
   try {

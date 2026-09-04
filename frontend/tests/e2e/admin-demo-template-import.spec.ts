@@ -93,6 +93,24 @@ function importUrlMatcher(res: { url: () => string; request: () => { method: () 
   return res.url().includes(`/admin/demo-templates/${DEMO_TEMPLATE_KEY}/import`) && res.request().method() === "POST";
 }
 
+/**
+ * qa-agent BULGUSU (bu turda düzeltildi, kendi test-dosyası bakım sorumluluğu — bkz.
+ * `.claude/CLAUDE.md` qa-agent alanı) — `ecommerce-pro` demo şablonu registry'ye EKLENDİKTEN
+ * SONRA `/admin/demo-templates` sayfasında artık BİRDEN FAZLA şablon kartı var; kart içi
+ * "Uygula"/"Yeniden Uygula" düğmesi ve "Uygulandı" rozeti sayfa GENELİNDE (`adminPage.getByRole(...)`
+ * / `adminPage.getByText(...)`) aranırsa, `ecommerce-pro` da AYNI durumda (uygulanmamış/uygulanmış)
+ * olduğunda `strict mode violation` (2 eşleşme) ile İKİ template'in state'i birbirine KARIŞIR —
+ * paylaşımlı `saas_e2e` DB'de hangi şablonun hangi sırada/durumda olduğu bu dosyanın KONTROLÜ
+ * DIŞINDA (ör. `ecommerce-pro-template-import.spec.ts`'in kendi `afterAll`'ı `ecommerce-pro`'yu
+ * HER ZAMAN "uygulanmamış" durumuna sıfırlar). Bu yüzden kart-içi doğrulamalar `.claude/CLAUDE.md`
+ * madde 3 (flaky kaynağını bul, düzelt) gereği `demo-templates-view.tsx`teki `Card` bileşeninin
+ * (`className="flex h-full flex-col overflow-hidden p-0"`) `hasText` ile "Modern Mimarlık & İnşaat"a
+ * DARALTILMIŞ örneğine (bu dosyanın TEK ilgilendiği şablon) SCOPE edilir.
+ */
+function modernArchitectureCard(page: Page) {
+  return page.locator(".flex.h-full.flex-col.overflow-hidden.p-0").filter({ hasText: "Modern Mimarlık & İnşaat" });
+}
+
 test.beforeAll(async ({ browser }, testInfo) => {
   testInfo.setTimeout(120_000);
   const session = await getCachedAdminSession();
@@ -176,9 +194,11 @@ test("madde 6: ADMIN olarak uygula → 201, ana sayfa şablonun sayfası olur, p
   await adminPage.goto("/admin/demo-templates");
   await expect(adminPage.getByRole("heading", { name: "Modern Mimarlık & İnşaat" })).toBeVisible({ timeout: 15_000 });
   // Temiz zemin (`beforeAll` idempotency satırını sıfırladı) → kart "Uygula" gösterir, henüz
-  // "Uygulandı" rozeti/"Yeniden Uygula" YOK.
-  await expect(adminPage.getByText("Uygulandı", { exact: true })).toHaveCount(0);
-  await adminPage.getByRole("button", { name: "Uygula", exact: true }).click();
+  // "Uygulandı" rozeti/"Yeniden Uygula" YOK. Kart-scope'lu (bkz. `modernArchitectureCard` başlığı) —
+  // `ecommerce-pro` kartının KENDİ (bu dosyanın kontrolü DIŞINDaki) durumundan ETKİLENMEZ.
+  const card = modernArchitectureCard(adminPage);
+  await expect(card.getByText("Uygulandı", { exact: true })).toHaveCount(0);
+  await card.getByRole("button", { name: "Uygula", exact: true }).click();
 
   const confirmDialog = adminPage.getByRole("dialog", { name: /şablonunu uygula/ });
   await expect(confirmDialog).toBeVisible();
@@ -261,9 +281,12 @@ test("madde 14: /admin/logs'ta demo_template.import satırı ve metadata.previou
 
 test("madde 7: aynı şablonu tekrar uygula (force olmadan) → 409, importedAt diyalogda görünür", async () => {
   await adminPage.goto("/admin/demo-templates");
-  await expect(adminPage.getByRole("button", { name: "Yeniden Uygula" })).toBeVisible({ timeout: 15_000 });
-  await expect(adminPage.getByText("Uygulandı", { exact: true })).toBeVisible();
-  await adminPage.getByRole("button", { name: "Yeniden Uygula" }).click();
+  // Kart-scope'lu (bkz. `modernArchitectureCard` başlığı) — `ecommerce-pro` kartı da AYNI anda
+  // "uygulanmış" durumda olabilir, sayfa-geneli arama İKİ eşleşmeyle strict-mode ihlaline düşer.
+  const card = modernArchitectureCard(adminPage);
+  await expect(card.getByRole("button", { name: "Yeniden Uygula" })).toBeVisible({ timeout: 15_000 });
+  await expect(card.getByText("Uygulandı", { exact: true })).toBeVisible();
+  await card.getByRole("button", { name: "Yeniden Uygula" }).click();
 
   const confirmDialog = adminPage.getByRole("dialog", { name: /şablonunu uygula/ });
   await expect(confirmDialog).toBeVisible();
