@@ -150,6 +150,22 @@ export async function adminCreateProductVariant(
   return json<{ data: FixtureProduct }>(res, "adminCreateProductVariant").then((b) => b.data);
 }
 
+/**
+ * `POST /admin/products/{productId}/images` — ürünün ek galeri görsellerine ekler (kapak DEĞİL,
+ * `ProductGallery`'nin `images` prop'undaki kapak-SONRASI listeye karşılık gelir, bkz.
+ * `product-purchase-panel.tsx::images` türetimi). qa-agent — Fix 3 (PDP galeri kırık-görsel
+ * placeholder) regresyon/yeni-özellik testleri için, ana görsel/thumbnail'ı BAĞIMSIZ (kapaktan
+ * farklı) bir medyayla test edebilmek amacıyla eklendi.
+ */
+export async function adminAddProductImage(token: string, productId: string, mediaId: string): Promise<FixtureProduct> {
+  const res = await fetch(`${API_BASE_URL}/admin/products/${productId}/images`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ mediaId }),
+  });
+  return json<{ data: FixtureProduct }>(res, "adminAddProductImage").then((b) => b.data);
+}
+
 /** `POST /admin/products/{productId}/documents` — güncellenmiş `Product` (tüm dökümanlarla) döner. */
 export async function adminAddProductDocument(
   token: string,

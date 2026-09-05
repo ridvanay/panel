@@ -2168,3 +2168,67 @@ DIŞI (genelde 0'a yuvarlanan) bir değer üretiyor; bu, next/image'in responsiv
 `<img>`e verildiğinde `naturalWidth` doğru şekilde `1` dönüyor). Bunun yerine "görsel GERÇEKTEN
 yüklendi mi" sorusu ağ seviyesinde (`okMedia.url` isteğinin GERÇEKTEN 200 döndüğü) + DOM seviyesinde
 (yer tutucu YOK, `<img>` VAR) doğrulanır — daha güvenilir ve isteğin amacına daha sadık bir sinyal.
+
+## Ürün varyasyon görselleri "kayboluyor/kırık görünüyor" şikayeti — regresyon + yeni fallback/persistans kapsamı (bu turda eklendi)
+
+Bağlam: backend-agent (`backend/tests/integration/products.test.ts`, varyasyon `mediaId` PATCH
+round-trip — set/null-temizle/geçersiz-id/PDF-mediaId, 3 yeni entegrasyon testi, 78/78 yeşil,
+**backend'de gerçek bug BULUNAMADI**) ve frontend-agent (`safe-image.tsx` — `onError` prop'unun
+host-allowlist-DIŞI düz `<img>` dalında SESSİZCE düşmesi düzeltildi; `product-gallery.tsx` — PDP
+galerisine `product-card-media.tsx`teki desenle AYNI `failedUrls`/placeholder mantığı eklendi) bu
+turda paralel çalıştı. qa-agent görevi: mevcut PDP testinin regresyona uğramadığını doğrulamak,
+YENİ bir kırık-görsel e2e testi eklemek, ve admin varyasyon-görseli kalıcılığının GERÇEK bir
+tarayıcı UI'ından da kanıtlanıp kanıtlanamayacağını değerlendirmek.
+
+| # | Senaryo | Dosya | Durum |
+|---|---|---|---|
+| Regresyon | `product-pdp-variants.spec.ts` madde 1 (varyasyon seçimi görsel+fiyat değiştiriyor) — galeri bileşenine eklenen `failedUrls` state'i davranışı KIRMADI | `product-pdp-variants.spec.ts` (dokunulmadı, olduğu gibi çalıştırıldı) | ✅ Geçiyor (izole + `product-pdp-variants`+`product-pdp-image-fallback`+`admin-product-variant-media-persistence` birlikte de denendi, bkz. aşağıdaki rate-limit notu) |
+| Yeni | PDP'de 404 dönen kapak görseli artık native kırık ikon DEĞİL, "Görsel yüklenemedi" (ana) / küçük `ImageIcon` (thumbnail) placeholder'ı gösteriyor; kırık thumbnail TIKLANABİLİR kalıyor; sağlıklı görsele geçiş normal `<img>` render ediyor; kırığa geri dönüş placeholder'ı yeniden gösteriyor | `product-pdp-image-fallback.spec.ts` (yeni dosya) | ✅ Geçiyor |
+| Yeni | Admin `ProductVariantsPanel` UI'ında GERÇEK tıklama akışı: "Görsel Seç" → `MediaPicker` (Yükle) → satırın KENDİ "Kaydet"i → tam sayfa yeniden yükleme (F5 eşleniği) → hâlâ seçili; "Kaldır" → "Kaydet" → yeniden yükleme → hâlâ boş | `admin-product-variant-media-persistence.spec.ts` (yeni dosya) | ✅ Geçiyor |
+
+### Yöntem notu — admin testi neden API-fixture medyası yerine `MediaPicker`'ın KENDİ "Yükle" akışını kullanıyor
+
+Bkz. `admin-product-variant-media-persistence.spec.ts` dosya başlığındaki tam BULGU notu (özet):
+`MediaPicker::load` `GET /admin/media`yı sabit `limit:100`, TEK sayfa (cursor ilerletme YOK) çeker;
+backend bunu `orderBy:{seq:"asc"}` (EN ESKİDEN yeniye) döndürür (`media.routes.ts`). Paylaşımlı
+`saas_e2e` DB'sinde (onlarca spec dosyasının biriktirdiği fixture medyası, bu turda ölçülen: 100+)
+YENİ yüklenen bir medya İLK SAYFADA HİÇ görünmüyor — arama kutusu da yalnızca ZATEN yüklenmiş
+`items`'ı istemci tarafında filtrelediği için (sunucuya yeni sorgu ATMIYOR) "en eski 100" dışındaki
+hiçbir dosya arama ile de BULUNAMIYOR. qa-agent bunu API-fixture'la (`uploadTestImageMedia` +
+kütüphaneden seç) yazdığı İLK denemede YANLIŞLIKLA tetikledi (test 30sn timeout'a düştü, seçilecek
+öğe listede YOKTU) — bu **frontend-agent'a yönlendirilecek GERÇEK bir bulgu** (100+ medyalı gerçek/
+büyük bir sitede admin, arama ile bile YENİ yüklenmiş görseli MediaPicker'da asla bulamaz; önerilen
+düzeltme: `load()` sunucu-taraflı arama sorgusu ATMALI VEYA "daha fazla yükle"/cursor ilerletme
+eklenmeli), qa-agent DÜZELTMEDİ. Test bu sınırlamadan ETKİLENMEYECEK şekilde yeniden tasarlandı:
+kütüphaneden HAZIR bir öğe seçmek yerine `MediaPicker`in "Yükle" (gizli `<input type=file>`,
+`aria-label="Bilgisayardan görsel yükle"`) akışı kullanılıyor — tekli-seçim modunda yüklenen medya
+`onSelect`e ANINDA/senkron geçip modalı kapatıyor, liste sayfalamasına HİÇ bağımlı değil; yüklenen
+medyanın `id`/`url`si `POST /admin/media` ağ yanıtından yakalanıp hem assertion hem `afterAll`
+temizliği için kullanılıyor.
+
+### Rate-limit kaynaklı test-suite etkileşimi (uygulama bug'ı DEĞİL, devops-agent/security-agent'a bilgi amaçlı) — backend-agent/frontend-agent'ın bu turki değişikliğiyle İLGİSİZ
+
+Bu üç dosya (`product-pdp-variants.spec.ts`, `product-pdp-image-fallback.spec.ts`,
+`product-card-image-fallback.spec.ts`) TEK BAŞINA çalıştırıldığında HER ZAMAN yeşil; ama art arda 4
+dosya (yukarıdaki üçü + `admin-product-variant-media-persistence.spec.ts`) aynı Playwright
+koşumunda ZİNCİRLENİNCE `/uploads/*` isteklerinden bazıları `429` dönmeye başladı (backend
+loglarında `upstream image response failed ... 429`). Kök neden: `backend/src/lib/rate-limit.ts::UPLOADS_RATE_LIMIT
+= { max: 60, timeWindow: "1 minute" }` — `AUTH_RATE_LIMIT_MAX`in aksine env'den AYARLANAMAZ, sabit
+kodlanmış; paylaşımlı `saas_e2e` DB'sinde biriken 100+ ürün/medyanın katalog/PDP sayfalarında
+render edilmesi (her next/image isteği backend'e bir `/uploads/*` çağrısı yapıyor) birden fazla
+image-ağırlıklı spec dosyası AYNI 60sn pencerede zincirlenince bu sabit limiti aşıyor — testler TEK
+TEK (veya limit sıfırlandıktan sonra) çalıştırıldığında SORUNSUZ (doğrulandı: her 4 dosya da İZOLE
+çalıştırıldığında 100% yeşil). **Öneri (backend-agent/security-agent kararı, `AUTH_RATE_LIMIT_MAX`
+ile AYNI hazır emsal):** `UPLOADS_RATE_LIMIT`e de `AUTH_RATE_LIMIT_MAX` gibi bir env override
+(ör. `UPLOADS_RATE_LIMIT_MAX`, varsayılan `60`) eklenip `backend/.env.e2e`de yükseltilmesi, CI'da
+(devops-agent) birçok image-ağırlıklı spec dosyası art arda koşulduğunda benzer sahte-429
+kırılmalarını önler.
+
+### Sonuç
+
+Backend-agent'ın entegrasyon testleri + frontend-agent'ın `safe-image.tsx`/`product-gallery.tsx`
+değişiklikleri üzerinde qa-agent GERÇEK bir uygulama bug'ı BULAMADI — tek bulgu yukarıdaki
+`MediaPicker` sayfalama/arama sınırlaması (frontend-agent'a yönlendirilir, bu turun ürün-varyasyon
+görseli düzeltmesini ENGELLEMEZ) ve `UPLOADS_RATE_LIMIT`in test-altyapısı etkileşimi (devops-agent/
+security-agent'a bilgi amaçlı, uygulama bug'ı DEĞİL). Üç dosya (1 mevcut regresyon + 2 yeni) izole
+koşumlarda TUTARLI yeşil.

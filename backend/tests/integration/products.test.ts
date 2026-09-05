@@ -1264,6 +1264,200 @@ describe("products — REGRESYON: TEXT eksende swatchHex olmadan oluşturulan va
   });
 });
 
+/**
+ * REGRESYON DOĞRULAMASI (kullanıcı bulgusu: "varyasyon görselleri kaydedilip sayfa yenilenince
+ * kayboluyor") — `ProductVariant.mediaId` PATCH round-trip'i: set → GET'te dolu okunuyor mu,
+ * `null` ile temizleme → GET'te gerçekten null dönüyor mu (bkz. products.routes.ts::PATCH
+ * /:productId/variants/:variantId, `mediaId !== undefined` yazma kuralı ve
+ * mappers/index.ts::toProductVariantDto). Bu test yazılana kadar bu akış için HİÇBİR
+ * integration test yoktu.
+ */
+describe("products — REGRESYON: varyasyon mediaId PATCH round-trip (set/GET/null-temizle/GET)", () => {
+  let app: FastifyInstance;
+  let adminToken: string;
+
+  function authHeader(token: string) {
+    return { authorization: `Bearer ${token}` };
+  }
+
+  async function createMediaRow(mimeType: string, suffix: string) {
+    return app.prisma.media.create({
+      data: {
+        path: `variant-media-test-${suffix}.png`,
+        url: `/uploads/variant-media-test-${suffix}.png`,
+        filename: `variant-media-test-${suffix}.png`,
+        mimeType,
+        sizeBytes: 100,
+      },
+    });
+  }
+
+  beforeAll(async () => {
+    const { buildTestApp } = await import("../helpers/build-test-app");
+    const { resetDatabase } = await import("../helpers/reset-db");
+    const { registerTestUser } = await import("../helpers/auth");
+
+    app = await buildTestApp();
+    await resetDatabase(app.prisma);
+
+    const admin = await registerTestUser(app, { email: "products-variant-media-regression-admin@example.com" });
+    adminToken = admin.accessToken;
+  });
+
+  afterAll(async () => {
+    const { resetDatabase } = await import("../helpers/reset-db");
+    await resetDatabase(app.prisma);
+    await app.close();
+  });
+
+  it("varyasyona mediaId PATCH edilir → GET'te media dolu döner → mediaId:null ile temizlenir → GET'te media null döner", async () => {
+    const media = await createMediaRow("image/png", crypto.randomUUID());
+
+    const create = await app.inject({
+      method: "POST",
+      url: "/api/v1/admin/products",
+      headers: authHeader(adminToken),
+      payload: {
+        title: "Varyasyon Görseli Regresyonu",
+        priceCents: 15000,
+        status: "PUBLISHED",
+        variantOptions: [{ name: "Renk", type: "TEXT", values: [{ value: "Antrasit" }] }],
+      },
+    });
+    expect(create.statusCode).toBe(201);
+    const product = create.json().data;
+
+    const addVariant = await app.inject({
+      method: "POST",
+      url: `/api/v1/admin/products/${product.id}/variants`,
+      headers: authHeader(adminToken),
+      payload: { optionValues: { Renk: "Antrasit" }, stockQuantity: 5 },
+    });
+    expect(addVariant.statusCode).toBe(201);
+    const variantId = addVariant.json().data.variants[0].id;
+    expect(addVariant.json().data.variants[0].media).toBeNull();
+
+    // 1) mediaId set edilir.
+    const patchSet = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/admin/products/${product.id}/variants/${variantId}`,
+      headers: authHeader(adminToken),
+      payload: { mediaId: media.id },
+    });
+    expect(patchSet.statusCode).toBe(200);
+    const variantAfterSet = patchSet.json().data.variants.find((v: { id: string }) => v.id === variantId);
+    expect(variantAfterSet.media).not.toBeNull();
+    expect(variantAfterSet.media.id).toBe(media.id);
+
+    // 2) Sayfa "yenileniyor" — taze bir GET ile round-trip doğrulanır (PATCH cevabındaki
+    // memory state'e değil, DB'den okunan gerçek veriye bakılır).
+    const getAfterSet = await app.inject({
+      method: "GET",
+      url: `/api/v1/admin/products/${product.id}`,
+      headers: authHeader(adminToken),
+    });
+    expect(getAfterSet.statusCode).toBe(200);
+    const variantAfterGet = getAfterSet.json().data.variants.find((v: { id: string }) => v.id === variantId);
+    expect(variantAfterGet.media).not.toBeNull();
+    expect(variantAfterGet.media.id).toBe(media.id);
+    expect(variantAfterGet.media.url).toContain(media.url);
+
+    // 3) mediaId: null ile temizlenir.
+    const patchClear = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/admin/products/${product.id}/variants/${variantId}`,
+      headers: authHeader(adminToken),
+      payload: { mediaId: null },
+    });
+    expect(patchClear.statusCode).toBe(200);
+    const variantAfterClear = patchClear.json().data.variants.find((v: { id: string }) => v.id === variantId);
+    expect(variantAfterClear.media).toBeNull();
+
+    // 4) Taze GET ile temizlemenin GERÇEKTEN kalıcı olduğu doğrulanır.
+    const getAfterClear = await app.inject({
+      method: "GET",
+      url: `/api/v1/admin/products/${product.id}`,
+      headers: authHeader(adminToken),
+    });
+    expect(getAfterClear.statusCode).toBe(200);
+    const variantAfterClearGet = getAfterClear.json().data.variants.find((v: { id: string }) => v.id === variantId);
+    expect(variantAfterClearGet.media).toBeNull();
+
+    const stored = await app.prisma.productVariant.findUniqueOrThrow({ where: { id: variantId } });
+    expect(stored.mediaId).toBeNull();
+  });
+
+  it("olmayan bir mediaId ile PATCH 404 döner, mevcut mediaId DEĞİŞMEDEN kalır", async () => {
+    const media = await createMediaRow("image/png", crypto.randomUUID());
+
+    const create = await app.inject({
+      method: "POST",
+      url: "/api/v1/admin/products",
+      headers: authHeader(adminToken),
+      payload: {
+        title: "Varyasyon Görseli 404 Regresyonu",
+        priceCents: 15000,
+        variantOptions: [{ name: "Renk", type: "TEXT", values: [{ value: "Bej" }] }],
+      },
+    });
+    const product = create.json().data;
+
+    const addVariant = await app.inject({
+      method: "POST",
+      url: `/api/v1/admin/products/${product.id}/variants`,
+      headers: authHeader(adminToken),
+      payload: { optionValues: { Renk: "Bej" }, mediaId: media.id },
+    });
+    const variantId = addVariant.json().data.variants[0].id;
+
+    const patchInvalid = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/admin/products/${product.id}/variants/${variantId}`,
+      headers: authHeader(adminToken),
+      payload: { mediaId: "00000000-0000-0000-0000-000000000099" },
+    });
+    expect(patchInvalid.statusCode).toBe(404);
+
+    const stored = await app.prisma.productVariant.findUniqueOrThrow({ where: { id: variantId } });
+    expect(stored.mediaId).toBe(media.id);
+  });
+
+  it("mimeType görsel OLMAYAN bir mediaId ile PATCH 422 döner", async () => {
+    const pdfMedia = await createMediaRow("application/pdf", crypto.randomUUID());
+
+    const create = await app.inject({
+      method: "POST",
+      url: "/api/v1/admin/products",
+      headers: authHeader(adminToken),
+      payload: {
+        title: "Varyasyon Görseli 422 Regresyonu",
+        priceCents: 15000,
+        variantOptions: [{ name: "Renk", type: "TEXT", values: [{ value: "Beyaz" }] }],
+      },
+    });
+    const product = create.json().data;
+
+    const addVariant = await app.inject({
+      method: "POST",
+      url: `/api/v1/admin/products/${product.id}/variants`,
+      headers: authHeader(adminToken),
+      payload: { optionValues: { Renk: "Beyaz" } },
+    });
+    const variantId = addVariant.json().data.variants[0].id;
+
+    const patchInvalid = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/admin/products/${product.id}/variants/${variantId}`,
+      headers: authHeader(adminToken),
+      payload: { mediaId: pdfMedia.id },
+    });
+    expect(patchInvalid.statusCode).toBe(422);
+
+    const stored = await app.prisma.productVariant.findUniqueOrThrow({ where: { id: variantId } });
+    expect(stored.mediaId).toBeNull();
+  });
+});
+
 describe("products — modül kapalıyken (§10.9 Eklenti/Modül Yönetimi)", () => {
   let app: FastifyInstance;
   let adminToken: string;

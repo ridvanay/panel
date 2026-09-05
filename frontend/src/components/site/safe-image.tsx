@@ -14,10 +14,13 @@ type SafeImageProps = Omit<ImageProps, "src" | "alt"> & { src: string; alt: stri
  * bileşenlerinde de kullanılabilir (tarayıcı API'si GEREKMEZ), bu turda YALNIZCA ürün kartı ve
  * PDP galerisi bunu kullanır (§6.1 kapsam sınırı).
  */
-export function SafeImage({ src, alt, className, style, fill, ...rest }: SafeImageProps) {
+export function SafeImage({ src, alt, className, style, fill, onError, ...rest }: SafeImageProps) {
   if (!isOptimizableImageUrl(src)) {
     // `fill` next/image'e özgüdür — düz `<img>`de AYNI "kapsayıcıyı doldur" görünümü `absolute
     // inset-0 h-full w-full` ile taklit edilir (kapsayıcı zaten `relative` — bkz. çağıranlar).
+    // `onError` de `fill` gibi AYRIYETEN destructure edilip İKİ dalda da iletilir — aksi halde
+    // host allowlist dışındayken (bu dal) çağıranın kırık-görsel/placeholder mantığı (bkz.
+    // `product-card-media.tsx`) sessizce düşer, kullanıcı native kırık resim ikonu görür.
     return (
       // eslint-disable-next-line @next/next/no-img-element -- host next.config.ts remotePatterns dışında, next/image ÇALIŞMA ZAMANINDA hata fırlatırdı
       <img
@@ -26,8 +29,9 @@ export function SafeImage({ src, alt, className, style, fill, ...rest }: SafeIma
         className={cn(fill && "absolute inset-0 h-full w-full", className)}
         style={style}
         loading={rest.priority ? "eager" : "lazy"}
+        onError={onError}
       />
     );
   }
-  return <Image src={src} alt={alt} className={className} style={style} fill={fill} {...rest} />;
+  return <Image src={src} alt={alt} className={className} style={style} fill={fill} onError={onError} {...rest} />;
 }
