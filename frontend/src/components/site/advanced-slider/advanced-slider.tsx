@@ -32,10 +32,13 @@ function heightStyle(
   }
 }
 
+/** `!important` ZORUNLU — bu bildirimler kök elemanın KENDİ `style={desktopHeight}` satır-içi
+ *  stiliyle AYNI elemanı hedefler; CSS cascade'inde satır-içi stil `!important` OLMAYAN her
+ *  stylesheet kuralını (medya sorgusu/ID seçici fark etmez) HER ZAMAN yener. */
 function cssDeclarations(style: CSSProperties): string {
   return Object.entries(style)
     .filter(([, v]) => v !== undefined)
-    .map(([k, v]) => `${k.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`)}: ${v};`)
+    .map(([k, v]) => `${k.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`)}: ${v} !important;`)
     .join(" ");
 }
 

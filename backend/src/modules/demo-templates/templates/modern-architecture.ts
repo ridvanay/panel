@@ -33,7 +33,11 @@ function buildHeroLayers(input: { badge: string; heading: string; buttonLabel: s
       id: "badge",
       type: "badge",
       content: { text: input.badge },
-      position: { xPercent: 8, yPercent: 62, origin: "bottom-left", offsetX: 0, offsetY: 0 },
+      // Masaüstünde de `heading` (ör. "Mekanı Anlamlı Yapıya Dönüştürüyoruz") 2 satıra sarıyor
+      // (~15% yükseklik) — eski 8 puanlık boşluk (62→70) yetersizdi; qa-agent'in ecommerce-pro'da
+      // bulduğu AYNI kök nedenden (bkz. `button` yorumu), badge 52'ye çekilerek 18 puanlık pay
+      // bırakıldı.
+      position: { xPercent: 8, yPercent: 52, origin: "bottom-left", offsetX: 0, offsetY: 0 },
       style: {
         color: "#C9A227",
         backgroundColor: "#C9A227",
@@ -48,6 +52,12 @@ function buildHeroLayers(input: { badge: string; heading: string; buttonLabel: s
         shadow: "none",
       },
       animation: { inEffect: "fade-down", delayMs: 0, durationMs: 500, easing: "ease-out" },
+      // `ecommerce-pro.ts::buildHeroLayers` ile AYNI gerekçe/bütçe (bkz. oradaki yorum) —
+      // badge tablet/mobilde yükseğe taşınır ki sarmalanan başlığın üstüne binmesin.
+      responsive: {
+        tablet: { position: { yPercent: 24 } },
+        mobile: { position: { yPercent: 24 }, style: { fontSize: 11, padding: { top: 6, right: 14, bottom: 6, left: 14 } } },
+      },
     },
     {
       id: "heading",
@@ -65,6 +75,13 @@ function buildHeroLayers(input: { badge: string; heading: string; buttonLabel: s
         padding: { top: 0, right: 0, bottom: 0, left: 0 },
       },
       animation: { inEffect: "fade-up", delayMs: 150, durationMs: 600, easing: "ease-out" },
+      // `ecommerce-pro.ts::buildHeroLayers` ile AYNI gerekçe — `widthPercent` genişletilir,
+      // `fontSize` küçültülür, `maxWidthPx` 960'a çıkarılır (geniş `widthPercent` ile
+      // çakışmasın) ve en kötü (3 satırlı) sarma varsayımıyla cömert boşluk payı bırakılır.
+      responsive: {
+        tablet: { position: { yPercent: 51, widthPercent: 82 }, style: { fontSize: 38, maxWidthPx: 960 } },
+        mobile: { position: { yPercent: 52, widthPercent: 92 }, style: { fontSize: 28, lineHeight: 1.1, maxWidthPx: 960 } },
+      },
     },
     {
       id: "text",
@@ -73,12 +90,20 @@ function buildHeroLayers(input: { badge: string; heading: string; buttonLabel: s
       position: { xPercent: 8, yPercent: 83, origin: "bottom-left", widthPercent: 42, offsetX: 0, offsetY: 0 },
       style: { color: "#F6F5F2", fontFamily: "body", fontSize: 17, lineHeight: 1.6, fontWeight: 400, opacity: 90 },
       animation: { inEffect: "fade-up", delayMs: 300, durationMs: 600, easing: "ease-out" },
+      responsive: {
+        tablet: { position: { yPercent: 70, widthPercent: 70 } },
+        mobile: { position: { yPercent: 72, widthPercent: 90 }, style: { fontSize: 12, lineHeight: 1.4 } },
+      },
     },
     {
       id: "button",
       type: "button",
       content: { label: input.buttonLabel, href: input.buttonHref, variant: "solid", size: "lg" },
-      position: { xPercent: 8, yPercent: 92, origin: "bottom-left", offsetX: 0, offsetY: 0 },
+      // qa-agent bulgusu (ecommerce-pro masaüstü regresyon testi, AYNI `buildHeroLayers` deseni) —
+      // `size:"lg"` düğmesinin gerçek yüksekliği (~%8.3) eski 9 puanlık boşlukla (83→92) DAR
+      // marjda çakışıyordu; 92→95 ile boşluk 12 puana çıkarılır (bülten/ilerleme çubuğuyla hâlâ
+      // çakışmaz).
+      position: { xPercent: 8, yPercent: 95, origin: "bottom-left", offsetX: 0, offsetY: 0 },
       style: {
         color: "#FFFFFF",
         backgroundColor: "#1F2124",
@@ -89,6 +114,14 @@ function buildHeroLayers(input: { badge: string; heading: string; buttonLabel: s
         shadow: "md",
       },
       animation: { inEffect: "fade-up", delayMs: 450, durationMs: 600, easing: "ease-out" },
+      // Mobil `yPercent:88` — `ecommerce-pro.ts`teki AYNI hesap (slider'ın mobilde 4:5, ~488px
+      // yüksekliği ÜZERİNDEN): buton alt kenarı ~429px, nokta göstergesinin üst kenarı (~464px)
+      // ile arasında ~35px pay bırakır. Eski `yPercent:99` neredeyse slaydın alt kenarındaydı —
+      // hem `text` hem nokta göstergesiyle KESİN çakışırdı.
+      responsive: {
+        tablet: { position: { yPercent: 88 } },
+        mobile: { position: { yPercent: 88 }, style: { fontSize: 13, padding: { top: 8, right: 20, bottom: 8, left: 20 } } },
+      },
     },
   ];
 }
@@ -701,6 +734,13 @@ export const MODERN_ARCHITECTURE_TEMPLATE: DemoTemplateDefinition = {
     heightPx: null,
     aspectRatioWidth: 16,
     aspectRatioHeight: 9,
+    // `ecommerce-pro.ts::slider` ile AYNI gerekçe (qa-agent bulgusu) — masaüstü 16:9'un mobilde
+    // ürettiği dar yükseklik (~219px @390px) 4 katmanlı yığın + SABİT piksel nokta göstergesi için
+    // yetersizdi. 4:5 ~488px verir (bkz. `buildHeroLayers` mobil `yPercent` yorumları).
+    mobileHeightMode: "aspect-ratio",
+    mobileHeightPx: null,
+    mobileAspectRatioWidth: 4,
+    mobileAspectRatioHeight: 5,
     widthMode: "full-width",
     showArrows: true,
     showBullets: true,

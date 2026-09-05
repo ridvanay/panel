@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, ImageOff } from "lucide-react";
 import { SafeImage } from "@/components/site/safe-image";
 import { FavoriteButton } from "@/components/site/favorite-button";
 import { AddToCartButton } from "@/components/site/add-to-cart-button";
@@ -75,35 +75,58 @@ export function ProductCardMedia({
   children,
 }: ProductCardMediaProps) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [failedUrls, setFailedUrls] = useState<Set<string>>(new Set());
   const activeUrl = previewUrl ?? coverUrl;
+  const activeUrlFailed = Boolean(activeUrl) && failedUrls.has(activeUrl as string);
   const showHoverSwap = previewUrl === null && Boolean(secondaryUrl);
+  const secondaryUrlFailed = Boolean(secondaryUrl) && failedUrls.has(secondaryUrl as string);
   const visibleColors = colors.slice(0, 5);
   const overflowCount = colors.length - visibleColors.length;
+
+  const markUrlFailed = (url: string) => {
+    setFailedUrls((previous) => {
+      if (previous.has(url)) return previous;
+      const next = new Set(previous);
+      next.add(url);
+      return next;
+    });
+  };
+
+  /** "Görsel yok" boş durumuyla, yüklenemeyen görsel durumu AYNI görsel dili paylaşır (bkz. görev tanımı §3-4). */
+  const renderImagePlaceholder = (variant: "empty" | "error") => (
+    <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-surface-muted to-surface-muted/50 text-foreground/30">
+      {variant === "error" ? (
+        <ImageOff className="h-6 w-6" aria-hidden="true" />
+      ) : (
+        <span className="text-xs">Görsel yok</span>
+      )}
+    </div>
+  );
 
   return (
     <>
       <div className={cn("group/media relative aspect-square w-full overflow-hidden bg-surface-muted", mediaClassName)}>
         <Link href={href} aria-label={title} className="absolute inset-0 z-0 block">
-          {activeUrl ? (
+          {activeUrl && !activeUrlFailed ? (
             <SafeImage
               src={activeUrl}
               alt={coverAlt}
               fill
               sizes={sizes}
               priority={priority}
+              onError={() => markUrlFailed(activeUrl)}
               className={cn("object-cover transition-opacity duration-300 ease-out", showHoverSwap && "group-hover/media:opacity-0")}
             />
           ) : (
-            <div className="flex h-full w-full items-center justify-center text-foreground/30">
-              <span className="text-xs">Görsel yok</span>
-            </div>
+            renderImagePlaceholder(activeUrl ? "error" : "empty")
           )}
-          {showHoverSwap && secondaryUrl && (
+          {showHoverSwap && secondaryUrl && !secondaryUrlFailed && (
             <SafeImage
               src={secondaryUrl}
               alt={secondaryAlt}
               fill
               sizes={sizes}
+              onError={() => markUrlFailed(secondaryUrl)}
               className="absolute inset-0 object-cover opacity-0 transition-opacity duration-300 ease-out group-hover/media:opacity-100"
             />
           )}

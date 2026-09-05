@@ -37,7 +37,11 @@ function buildHeroLayers(input: { badge: string; heading: string; text: string; 
       id: "badge",
       type: "badge",
       content: { text: input.badge },
-      position: { xPercent: 8, yPercent: 60, origin: "bottom-left", offsetX: 0, offsetY: 0 },
+      // Masaüstünde de (tablet/mobil override'larından BAĞIMSIZ) `heading` en uzun slaytta
+      // (bkz. "1.500 TL Üzeri Siparişlerde Kargo Bedava") 2 satıra sarıyor (~15.3% yükseklik) —
+      // eski 8 puanlık boşluk (60→68) yetersizdi; badge 50'ye çekilerek 18 puanlık pay bırakıldı
+      // (qa-agent bulgusu, bkz. `button` yorumu — AYNI kök neden ailesi).
+      position: { xPercent: 8, yPercent: 50, origin: "bottom-left", offsetX: 0, offsetY: 0 },
       style: {
         color: "#FFFFFF",
         backgroundColor: ACCENT,
@@ -52,6 +56,16 @@ function buildHeroLayers(input: { badge: string; heading: string; text: string; 
         shadow: "none",
       },
       animation: { inEffect: "fade-down", delayMs: 0, durationMs: 500, easing: "ease-out" },
+      // Tablet/mobil'de badge, sarmalanan (2-3 satırlı) başlığın üstüne binmesin diye daha
+      // yükseğe (küçük yPercent) taşınır — aşağıdaki heading/text/button override'larıyla
+      // BİRLİKTE okunmalı (dördü de aynı kademeli boşluk bütçesini paylaşır). Mobil değerler,
+      // slider'ın mobilde 4:5 (`mobileAspectRatioWidth`/`mobileAspectRatioHeight`, ~488px @390px
+      // genişlik) yüksekliği ÜZERİNDEN hesaplanmıştır (qa-agent'ın 16:9/~219px'te bulduğu metin/
+      // buton VE buton/nokta-göstergesi çakışmasının kökü dar yükseklikti — bkz. slider tanımı).
+      responsive: {
+        tablet: { position: { yPercent: 24 } },
+        mobile: { position: { yPercent: 26 }, style: { fontSize: 11, padding: { top: 6, right: 14, bottom: 6, left: 14 } } },
+      },
     },
     {
       id: "heading",
@@ -69,6 +83,16 @@ function buildHeroLayers(input: { badge: string; heading: string; text: string; 
         padding: ZERO_SPACING,
       },
       animation: { inEffect: "fade-up", delayMs: 150, durationMs: 600, easing: "ease-out" },
+      // `widthPercent` tablet/mobilde belirgin biçimde ARTIRILIR (55 → 82/92) — dar kutu daha
+      // fazla satıra sarmayı zorluyordu (bkz. "1.500 TL Üzeri Siparişlerde Kargo Bedava" en uzun
+      // başlık örneği, mobilde 3 satıra kadar sarabilir). `fontSize` küçültülür ve `maxWidthPx`
+      // 960'a çıkarılır ki geniş `widthPercent` masaüstü 640px tavanıyla ÇAKIŞMASIN. Badge/text/
+      // button ile arasındaki `yPercent` boşluğu, EN KÖTÜ (3 satırlı) sarma varsayımıyla
+      // hesaplanıp cömert pay bırakılarak seçilmiştir.
+      responsive: {
+        tablet: { position: { yPercent: 50, widthPercent: 82 }, style: { fontSize: 36, maxWidthPx: 960 } },
+        mobile: { position: { yPercent: 54, widthPercent: 92 }, style: { fontSize: 26, lineHeight: 1.1, maxWidthPx: 960 } },
+      },
     },
     {
       id: "text",
@@ -77,12 +101,22 @@ function buildHeroLayers(input: { badge: string; heading: string; text: string; 
       position: { xPercent: 8, yPercent: 81, origin: "bottom-left", widthPercent: 42, offsetX: 0, offsetY: 0 },
       style: { color: "#E2E8F0", fontFamily: "body", fontSize: 16, lineHeight: 1.6, fontWeight: 400, opacity: 92 },
       animation: { inEffect: "fade-up", delayMs: 300, durationMs: 600, easing: "ease-out" },
+      responsive: {
+        tablet: { position: { yPercent: 68, widthPercent: 70 } },
+        mobile: { position: { yPercent: 74, widthPercent: 90 }, style: { fontSize: 12, lineHeight: 1.4 } },
+      },
     },
     {
       id: "button",
       type: "button",
       content: { label: input.buttonLabel, href: input.buttonHref, variant: "solid", size: "lg" },
-      position: { xPercent: 8, yPercent: 91, origin: "bottom-left", offsetX: 0, offsetY: 0 },
+      // qa-agent bulgusu (masaüstü regresyon testi) — `size:"lg"` düğmesinin GERÇEK yüksekliği
+      // `SLIDER_BUTTON_SIZE_CLASS.lg`ten miras kalan `text-lg` satır-yüksekliği (28px) + 32px
+      // dikey padding ⇒ ~60px (%8.3), eski 10 puanlık boşluk (81→91) bunu karşılıyor GÖRÜNSE de
+      // ölçülen gerçek DOM'da `text` (2 satıra sarıyor) ile 4px çakışıyordu. 91→95 ile boşluk 14
+      // puana çıkarılır (bülten/ilerleme çubuğu ile de HÂLÂ çakışmaz, bkz. `AdvancedSlider`
+      // `bottom-4`/`bottom-6` kontrolleri).
+      position: { xPercent: 8, yPercent: 95, origin: "bottom-left", offsetX: 0, offsetY: 0 },
       style: {
         color: "#FFFFFF",
         backgroundColor: BUTTON,
@@ -93,6 +127,15 @@ function buildHeroLayers(input: { badge: string; heading: string; text: string; 
         shadow: "md",
       },
       animation: { inEffect: "fade-up", delayMs: 450, durationMs: 600, easing: "ease-out" },
+      // Mobil `yPercent:90` — slider'ın mobilde 4:5 (`mobileAspectRatioWidth`/Height, bkz. slider
+      // tanımı) ile ~488px yüksekliği ÜZERİNDEN: buton alt kenarı ~439px'te, `AdvancedSlider`ın
+      // SABİT piksel `bottom-4` (16px) + `h-2` (8px) nokta göstergesinin üst kenarı (~464px)
+      // arasında ~25px pay bırakır — eski 16:9/~219px yükseklikte (yPercent:96) bu pay YOKTU
+      // (qa-agent bulgusu: buton hem `text` hem nokta göstergesiyle çakışıyordu).
+      responsive: {
+        tablet: { position: { yPercent: 86 } },
+        mobile: { position: { yPercent: 90 }, style: { fontSize: 13, padding: { top: 8, right: 20, bottom: 8, left: 20 } } },
+      },
     },
   ];
 }
@@ -815,6 +858,15 @@ export const ECOMMERCE_PRO_TEMPLATE: DemoTemplateDefinition = {
     heightPx: null,
     aspectRatioWidth: 16,
     aspectRatioHeight: 9,
+    // qa-agent bulgusu — masaüstü 16:9'un mobilde (390px genişlik) ürettiği ~219px yükseklik,
+    // 4 katmanlı (rozet/başlık/metin/buton) yığın + alt nokta göstergesi (`AdvancedSlider`
+    // `bottom-4`/`h-2`, SABİT piksel) için yetersizdi — metin/buton çakışıyor VE buton noktalarla
+    // çakışıyordu. 4:5 oranı mobilde ~488px yükseklik verir (bkz. `buildHeroLayers` mobil
+    // `yPercent` yorumları — o yükseklik ÜZERİNDEN yeniden hesaplandı).
+    mobileHeightMode: "aspect-ratio",
+    mobileHeightPx: null,
+    mobileAspectRatioWidth: 4,
+    mobileAspectRatioHeight: 5,
     widthMode: "full-width",
     showArrows: true,
     showBullets: true,

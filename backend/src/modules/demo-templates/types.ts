@@ -367,6 +367,11 @@ export interface DemoTemplateDefinition {
     heightPx: number | null;
     aspectRatioWidth: number;
     aspectRatioHeight: number;
+    /** Opsiyonel — verilmezse mobilde masaüstüyle AYNI yükseklik/oran kullanılır (bkz. `Slider.mobileHeightMode` Prisma alanı). */
+    mobileHeightMode?: SliderHeightMode | null;
+    mobileHeightPx?: number | null;
+    mobileAspectRatioWidth?: number | null;
+    mobileAspectRatioHeight?: number | null;
     widthMode: SliderWidthMode;
     showArrows: boolean;
     showBullets: boolean;

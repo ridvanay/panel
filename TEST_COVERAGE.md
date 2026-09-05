@@ -2022,3 +2022,149 @@ bu turun İKİ yeni testini belgeler, geriye dönük tam envanter çıkarmaz).
   incelenmesi için işaretlendi (olası kategori: RBAC redirect testinin `/hesabim/profil` toast'ının
   sıralı-koşu kaynak baskısı altında geç render olması — `resetScroll`/sticky-header bulgularıyla
   AYNI ortam kısıtı ailesinden olabilir, KESİN DEĞİL).
+
+## Hero slaydı rozet/başlık üst üste binmesi (ecommerce-pro/modern-architecture) + ürün kartı kırık görsel yer tutucusu — 2 bug fix doğrulaması (bu turda eklendi)
+
+Kaynak: üst koordinatörün doğrudan görev talimatı. Bu turda backend-agent/frontend-agent tarafından
+ZATEN uygulanmış (commit edilmemiş) iki düzeltmeyi (kendi kod tabanı DEĞİŞTİRİLMEDEN) e2e
+seviyesinde doğrulamak ve kalıcı regresyon testi olarak eklemek. NOT: bu bölümdeki "Fix 1"/"Fix 2"
+numaraları yukarıdaki "Gelişmiş Slider / Hero Studio — 2 bug fix doğrulaması" bölümündeki Fix 1/Fix 2
+İLE AYNI DEĞİL — farklı bir görev turunun farklı düzeltmeleri, isim çakışması tesadüfi.
+
+| # | Senaryo | Dosya | Durum |
+|---|---|---|---|
+| Fix 1 | `templates/ecommerce-pro.ts::buildHeroLayers` — masaüstü/tablet/mobilde rozet/başlık/metin/buton hiçbiri birbirine VE alt kontrol çubuğuna (bültenler/oynat-duraklat) dikey/2B olarak BİNMİYOR | `ecommerce-pro-template-import.spec.ts` (yeni test, "Fix 1/2/3" testinin hemen ardına eklendi) | ✅ **TÜM viewport'larda GEÇİYOR (3. tur, NİHAİ)** — bkz. aşağıdaki "3. TUR" bölümü |
+| Fix 2 | `product-card-media.tsx` — kapak görseli 404 dönünce `<SafeImage>` DOM'dan kaldırılıp `ImageOff` (lucide) ikonlu yer tutucu render ediliyor; rozet/favori butonu KARDEŞLERİ etkilenmiyor; müdahale edilmeyen bir kart normal yükleniyor | `product-card-image-fallback.spec.ts` (yeni dosya) | ✅ Geçiyor |
+
+### GÜNCELLEME — backend-agent'ın takip düzeltmesi (desktop `yPercent` ayarı) doğrulandı, ÇÖZDÜ
+
+backend-agent takip commit'inde `ecommerce-pro.ts`/`modern-architecture.ts`teki masaüstü `badge`
+(`yPercent` 60→50 / 62→52) ve `button` (`yPercent` 91→95 / 92→95) değerlerini ayarladı. qa-agent
+DOĞRULADI (aşağıdaki "flakiness düzeltmesi"nden SONRAKİ, deterministik ölçümle, 2 ayrı koşumda
+TUTARLI): **masaüstünde artık metin/buton çakışması YOK** (`text` alt kenarı `y≈680`, `button` üst
+kenarı `y≈705`, ~25px boşluk) ve **tablet de temiz**. Ayrıca koordinatörün istediği EK kontrol
+(CTA butonunun alt kontrol çubuğuna — bültenler/oynat-duraklat — BİNİP BİNMEDİĞİ, yeni
+`expectNoBoxOverlap` testiyle kod tabanına eklendi) masaüstünde VE tablette **TEMİZ** — buton
+`xPercent:8` ile SOLA yaslı, kontroller ORTA/SAĞA yaslı olduğu için `yPercent:95`e rağmen yatayda
+hiç kesişmiyorlar.
+
+### KRİTİK BULGU (2. TUR SONRASI GÜNCEL) — Fix 1 MOBİLDE HÂLÂ kırık; kök neden artık şablon `yPercent`i DEĞİL, `AdvancedSlider`in kendi CSS özgüllüğü hatası (frontend-agent'a yönlendirilecek, qa-agent DÜZELTMEDİ)
+
+**1. tur bulgusu** (yukarıda, ilk metin): mobil `responsive.mobile` override'ları (`text.yPercent:77`,
+`button.yPercent:96`) mobil hero'nun KISA (`aspect-ratio:16/9` × 390px genişlik ≈ 219px) yüksekliğinde
+yetersizdi — metin/buton ~24px, buton/bültenler de ayrıca çakışıyordu.
+
+**2. tur** — backend-agent bunun YAPISAL olduğunu tespit etti: `DemoTemplateDefinition.slider`
+şeması `mobileHeightMode`/`mobileAspectRatioWidth/Height` alanlarını HİÇ TAŞIMIYORDU (Prisma
+modeli/`AdvancedSlider` renderer'ı zaten destekliyordu). `types.ts`+`importer.ts` bu alanları
+`tx.slider.create()`'a kadar akıtacak şekilde genişletildi, `ecommerce-pro.ts`/`modern-architecture.ts`
+mobilde `mobileHeightMode:"aspect-ratio"` + 4:5 oran (390px'te ~488px, eskiden ~219px) ayarladı ve
+`yPercent`leri buna göre yeniden türetti (`text.yPercent:74`, `button.yPercent:90`).
+
+**qa-agent doğrulaması (2. tur, backend restart edilip TEKRAR koşuldu)** — `madde 7` importu SORUNSUZ
+201 döndü (yeni Prisma alanları `tx.slider.create()`a EKLENMESİ mevcut importu KIRMADI, sanity-check
+geçti), masaüstü/tablet HÂLÂ ✅ (bkz. yukarıdaki "ÇÖZDÜ" notu, bu turda da DOĞRULANDI), AMA **mobil
+YİNE metin/buton çakışması veriyor** — bu kez `y=339.328125` (metin altı) vs `y=308.4375` (buton
+üstü), ~31px, 2 ayrı koşumda TUTARLI. Admin API + PUBLIC `/sliders/{id}` uç noktası ikisi de
+`mobileHeightMode:"aspect-ratio"`/`4`/`5`yi DOĞRU döndürüyor (backend UÇTAN UCA doğru) — sorun
+backend'de DEĞİL.
+
+**Kök neden BULUNDU (izole doğrulandı, `advanced-slider.tsx` DEĞİŞTİRİLMEDEN)** —
+`AdvancedSlider`teki mobil yükseklik override mekanizması ÇALIŞMIYOR: kök `<div>` masaüstü
+yüksekliğini SATIR İÇİ (`style={desktopHeight}` → `style="aspect-ratio:16 / 9"`) alırken, mobil
+override AYRI bir `<style>` etiketiyle (`@media (max-width:767px){ #${rootId}{ aspect-ratio:4/5; } }`,
+bkz. `cssDeclarations()`) enjekte ediliyor — HİÇBİR bildirimde `!important` YOK. CSS cascade
+kuralı gereği SATIR İÇİ `style` özniteliği, `!important` OLMAYAN bir sayfa-içi `<style>` kuralını
+(id seçicisi bile olsa) HER ZAMAN YENER — yani mobil override tarayıcıda ASLA uygulanmıyor,
+`getComputedStyle` HER ZAMAN `16/9`i (masaüstü) döndürüyor, `mobileHeightMode` verisi doğru aksa
+BİLE görsel etkisi SIFIR. İzole doğrulama: `getComputedStyle(slider).aspectRatio` → `"16 / 9"`
+(hatalı), enjekte edilen `<style>` içeriği `aspect-ratio: 4 / 5;` (important YOK) — aynı kurala
+manuel olarak `!important` eklenip DOM'a enjekte edildiğinde `slider.boundingBox().height` `219.375`
+→ `487.5`e (BEKLENEN 4:5 oranı) DÜZELİYOR, bu da hem teşhisi hem düzeltme yönünü kanıtlıyor. Bu,
+demo şablonuna/backend-agent'ın turuna ÖZGÜ DEĞİL — `mobileHeightMode` kullanan HERHANGİ bir slider
+(admin Hero Studio'dan elle yapılandırılmış olanlar dahil) AYNI şekilde etkilenir.
+
+**Önerilen düzeltme (frontend-agent kararı):** `frontend/src/components/site/advanced-slider/advanced-slider.tsx::cssDeclarations()`
+(veya enjekte edilen `<style>` şablonu) her bildirime `!important` eklemeli, YA DA kök yüksekliği
+satır içi yerine bir CSS DEĞİŞKENİ (`--slider-height-desktop`) + sınıf tabanlı medya sorgusu ile
+uygulamalı (satır içi/`!important` çakışmasını baştan ortadan kaldırır). Bu düzeltilene KADAR
+`ecommerce-pro.ts`/`modern-architecture.ts`teki mobil 4:5 oran + yeniden türetilmiş `yPercent`
+ayarları TEORİDE doğru ama PRATİKTE etkisiz kalır — mobil metin/buton çakışması bu üst-katman
+(renderer) hatası düzelmeden şablon tarafında ÇÖZÜLEMEZ.
+
+### 3. TUR (NİHAİ) — frontend-agent `cssDeclarations()`e `!important` ekledi, DOĞRULANDI, Fix 1 TAMAMEN KAPANDI
+
+frontend-agent önerilen düzeltmenin BİRİNCİ seçeneğini uyguladı — `cssDeclarations()`in ürettiği
+HER bildirime `!important` eklendi (tek çağrı noktası, başka bir yere sızma riski YOK — frontend-agent
+kendi doğrulaması, `tsc --noEmit` + `advanced-slider-resolve-responsive` birim testleri 6/6 yeşil).
+qa-agent backend'i TEKRAR yeniden başlatıp (üçüncü kez — `tsx` hot-reload YAPMIYOR, bu turun tekrar
+eden notu) TAM `ecommerce-pro-template-import.spec.ts` suitini (10 test, `hız sınırı`dahil) BAŞTAN
+SONA koştu: **10/10 GEÇTİ** — `Fix 1 regresyon` masaüstü/tablet/mobil ÜÇÜNDE de (rozet/başlık,
+başlık/metin, metin/buton, buton/alt-kontrol-çubuğu dahil TÜM 2. boyutlu çakışma kontrolleri)
+TEMİZ. `madde 7` importu yeni `mobileHeightMode`/`mobileAspectRatioWidth/Height` alanlarıyla
+SORUNSUZ 201 döndü (Prisma `tx.slider.create()` genişlemesi mevcut importu KIRMADI).
+
+**Yan not — qa-agent'ın KENDİ test tasarımında bulup düzelttiği ÜÇÜNCÜ bir kırılganlık** (uygulama
+kodu DEĞİL): bu çok-turlu doğrulama sürecinde (aynı `saas_e2e` DB'ye onlarca gerçek import çağrısı)
+"SKU-benzersizleştirme" testinin `audit_logs` DELTA karşılaştırması, sabit `limit:20` penceresi
+paylaşımlı DB'nin birikmiş geçmişini (44+ `demo_template.import` satırı) artık KAPSAMADIĞI için
+YANLIŞLIKLA kırıldı (`21` beklenirken `20` döndü — pencerenin en eski ucundaki bir satır yeni
+satırla BİRLİKTE pencereden düştü). `limit` `20`→`100`ye çıkarıldı (backend `CursorQuerySchema`nın
+sabit `max(100)` tavanı, bkz. `backend/src/schemas/common.ts`) — asıl doğrulama zaten `entry`/
+`commerceCounts` kontrolleridir, bu yalnızca EK bir sağlık kontrolüydü. Düzeltmeden SONRA aynı tam
+suit koşumunda 10/10 TUTARLI geçti.
+
+**Sonuç: bu görevin kapsamındaki Fix 1 (hero katman/alt-kontrol çakışması) VE Fix 2 (kırık ürün
+görseli yer tutucusu) İKİSİ DE tam suit + izole koşumlarda TEKRARLANABİLİR şekilde YEŞİL. Açık kalan
+TEK bulgu, aşağıdaki ayrı a11y regresyonudur (Fix 1/Fix 2 İLE İLGİSİZ, frontend-agent'a yönlendirilir,
+bu görevi ENGELLEMEZ).**
+
+### Ayrı bir a11y bulgusu (frontend-agent'a yönlendirilecek, Fix 1/Fix 2 İLE İLGİSİZ, doğrulama sırasında rastlanmıştır)
+
+`components/site/advanced-slider/slide-layer.tsx` — `prefers-reduced-motion: reduce` ayarlı bir
+kullanıcı için SSR (her zaman `reducedMotion=false` varsayar) ile istemcinin (media query anında
+`true` okur) hydration ANLAŞMAZLIĞI oluşuyor; framer-motion'ın reduced-motion dalı (`reducedMotion ?
+{opacity:1} : variant.initial/animate`) yalnızca `opacity`yi normalize ediyor, `IN_EFFECT_VARIANTS`
+kaynaklı `y`/`x`/`scale`/`rotateX` giriş-efekti ofsetleri HİÇBİR ZAMAN sıfırlanmıyor — katman KALICI
+bir `translateY(28px)` gibi bir hizalama hatasıyla kalıyor (React konsolunda "hydration mismatch,
+won't be patched up" uyarısı + `getComputedStyle` ile doğrulandı). `prefers-reduced-motion: reduce`
+ayarlı gerçek kullanıcılar hero katmanlarını HER SAYFA yüklemesinde bu kalıcı ofsetle görür. qa-agent
+bu yüzden regresyon testinde `page.emulateMedia({reducedMotion:"reduce"})` KULLANMADI (bkz. test
+dosyasındaki yorumlar) — CSS `!important` enjeksiyonu (`page.addInitScript`) ile animasyonu tamamen
+BAY-PAS ederek nihai statik konumu deterministik ölçtü.
+
+### Yöntem notları — animasyon ölçüm flakiness'i (qa-agent'ın KENDİ test tasarımında bulup düzelttiği, uygulama kodu DEĞİL)
+
+İlk deneme sabit bir `waitForTimeout` (animasyon süre sabitlerine dayalı) kullandı — bu Next DEV
+sunucusunda (bu e2e paketinin çalıştığı mod) React StrictMode'un çift-effect-çalıştırması yüzünden
+framer-motion'ın zamanlayıcılarını ara sıra yeniden tetikleyip katmanın ARA bir ofsette "asılı"
+kalmasına yol açtı — aynı kod/viewport'ta bir koşumda geçen, bir koşumda ~90px'lik SAHTE bir çakışma
+ölçen kararsız bir test üretti. Kaynak bulunup `page.addInitScript` ile enjekte edilen bir
+`!important` CSS katmanıyla (animasyonu HİÇ olmamış gibi nihai duruma anında geçiren) DÜZELTİLDİ —
+5 ardışık tam-suit koşumunda TUTARLI olarak AYNI sayıları (`y=680.1875` / `676.1875`) ölçtü.
+
+**İKİNCİ bir kendi-test-hatası** (backend-agent'ın takip düzeltmesini doğrularken bulundu) — enjekte
+edilen CSS seçicisinin İLK sürümü (`.advanced-slider .absolute > div`) hem HEDEFLENEN iç animasyon
+`div`ini HEM DE `slide-layer.tsx`teki DIŞ katman konumlandırma sarmalayıcısını (`origin`-tabanlı
+`translate(...)` transform'unu taşıyan `<div className="absolute" style={{left,top,transform}}>`)
+eşleştiriyordu — ikisi de yalnızca `absolute` sınıflı bir üst `div`in DOĞRUDAN çocuğu. Sonuç:
+`transform:none!important` yanlışlıkla katmanın KENDİ statik konumlandırmasını da SİLİYOR, bazı
+koşumlarda (özellikle daha önce hiç ulaşılmamış olan mobil viewport'ta) tutarsız/anlamsız kutu
+boyutları (`heading` yüksekliği 220px gibi) ürettiği GÖRSEL OLARAK doğrulandı. Seçici
+`.advanced-slider div.absolute:not(.inset-0) > div` olarak DARALTILDI (Tailwind `inset-0` sınıfı
+yalnızca `SlideStage`in PAYLAŞILAN katman-konteyner `motion.div`inde/arka plan-gradyan katmanlarında
+bulunur, katman-başına konumlandırma `div`inde YOKTUR) — düzeltmeden SONRA 2 ardışık koşumda AYNI
+sayılar (`y=345.90625`/`321.59375`, mobil metin/buton) deterministik olarak tekrarlandı.
+
+### `product-card-image-fallback.spec.ts` — yöntem notu (naturalWidth yerine ağ yanıtı doğrulaması)
+
+Görev tanımının önerdiği `naturalWidth > 0` sağlık kontrolü BİLEREK kullanılmadı: bu depo
+`uploadTestImageMedia`'nın sabit 1×1 piksel PNG fixture'ını kullanıyor ve next/image bu boyuttaki
+kaynağı `srcset`teki hiçbir `w` tanımlayıcısı için büyütmüyor (kasıtlı "enlargement yok" davranışı) —
+tarayıcı `naturalWidth`i `w` tanımlayıcısına göre yoğunluk-düzeltmesi yaparak yorumluyor ve GERÇEK
+DIŞI (genelde 0'a yuvarlanan) bir değer üretiyor; bu, next/image'in responsive `srcset` davranışıyla
+ölçüsüz küçük bir test fixture'ının ETKİLEŞİMİDİR, `product-card-media.tsx`'teki Fix 2 koduyla
+İLGİSİZ (harici bir Playwright betiğiyle izole doğrulandı — AYNI kaynak `srcset` OLMADAN tek bir
+`<img>`e verildiğinde `naturalWidth` doğru şekilde `1` dönüyor). Bunun yerine "görsel GERÇEKTEN
+yüklendi mi" sorusu ağ seviyesinde (`okMedia.url` isteğinin GERÇEKTEN 200 döndüğü) + DOM seviyesinde
+(yer tutucu YOK, `<img>` VAR) doğrulanır — daha güvenilir ve isteğin amacına daha sadık bir sinyal.

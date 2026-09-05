@@ -225,6 +225,171 @@ test("Fix 1/2/3: hero slaytları bgType:image + geçerli bgMedia.url taşıyor; 
   await expect(page.getByRole("heading", { name: "KVKK Aydınlatma Metni", level: 1 })).toBeVisible({ timeout: 15_000 });
 });
 
+/** İki kutunun 2 BOYUTLU (x VE y) olarak kesişip kesişmediğini kontrol eder — `expectNoVerticalOverlap`
+ *  (yalnızca dikey/aynı-sütun istifleme varsayar) İLE KARIŞTIRILMAZ: koordinatörün istediği "CTA
+ *  butonu alt kontrol çubuğuna (ilerleme çubuğu/bültenler/oynat-duraklat) BİNİYOR mu" kontrolü, bu
+ *  öğeler AYNI sütunda DEĞİL (buton `xPercent:8` ile SOLA yaslı, kontroller ORTA/SAĞA yaslı) —
+ *  gerçek bir görsel çakışma yalnızca HEM x HEM y aralıkları kesişirse oluşur. */
+function expectNoBoxOverlap(
+  boxA: { x: number; y: number; width: number; height: number },
+  boxB: { x: number; y: number; width: number; height: number },
+  label: string
+) {
+  const xOverlap = boxA.x < boxB.x + boxB.width && boxB.x < boxA.x + boxA.width;
+  const yOverlap = boxA.y < boxB.y + boxB.height && boxB.y < boxA.y + boxA.height;
+  expect(xOverlap && yOverlap, label).toBe(false);
+}
+
+/** Bir katmanın diğerinin ALTINDA olduğunu (dikey olarak) doğrular — hangisinin üstte olduğu
+ *  ÖNCEDEN VARSAYILMAZ (iki kutu da argüman sırasından BAĞIMSIZ karşılaştırılır), yalnızca üstteki
+ *  kutunun alt kenarının alttaki kutunun üst kenarını AŞMADIĞI (birkaç px toleransla) kontrol edilir. */
+function expectNoVerticalOverlap(
+  boxA: { y: number; height: number },
+  boxB: { y: number; height: number },
+  label: string
+) {
+  const OVERLAP_TOLERANCE_PX = 2;
+  const [upper, lower] = boxA.y <= boxB.y ? [boxA, boxB] : [boxB, boxA];
+  expect(upper.y + upper.height, label).toBeLessThanOrEqual(lower.y + OVERLAP_TOLERANCE_PX);
+}
+
+/**
+ * qa-agent — Fix 1 (hero katmanı rozet/başlık üst üste binmesi, backend-agent fix'i) regresyon
+ * testi. `buildHeroLayers` (`templates/ecommerce-pro.ts` ~satır 34-122) artık tablet/mobilde
+ * (`resolve-responsive.ts::TABLET_QUERY`/`MOBILE_QUERY` İLE AYNI eşikler, ≤1023px/≤767px) rozet/
+ * başlık/metin/buton için `responsive.tablet`/`responsive.mobile` override'ları (küçük fontSize,
+ * geniş widthPercent, kademeli yPercent boşluğu) taşıyor — fix ÖNCESİ sarmalanan (2-3 satırlı)
+ * başlık kutusu üstteki rozete BİNİYORDU (her katman bağımsız `origin: "bottom-left"` ile
+ * konumlandığı için). Bu test "Fix 1/2/3" testinin ÜRETTİĞİ import'un HÂLÂ ayakta olduğu
+ * PENCEREDE (madde 8'in purge'ına KADAR) çalışır — YENİ bir import ÇAĞRISI YAPMAZ (rate-limit
+ * bütçesi zaten dolu, bkz. dosya başlığı).
+ *
+ * Katman animasyonlarının ölçümü NASIL deterministik hale getirildiği için (framer-motion +
+ * `prefers-reduced-motion` etkileşimindeki iki AYRI bulgu dahil) test gövdesindeki YORUMLARA bkz.
+ */
+test("Fix 1 regresyon: hero katmanları (rozet/başlık/metin/buton) desktop/tablet/mobilde DİKEY ÇAKIŞMIYOR", async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+
+  // qa-agent BULGUSU #1 (frontend-agent'a raporlanmalı, bkz. final qa-agent özeti) —
+  // `page.emulateMedia({ reducedMotion: "reduce" })` (framer-motion animasyonlarını sıfır süreye
+  // indirmenin "doğru" yolu) BİLEREK KULLANILMIYOR: bu bayrak SSR (her zaman `reducedMotion=false`
+  // varsayar) İLE istemcinin (`emulateMedia` sayesinde ANINDA `true` okuyan) hydration
+  // ANLAŞMAZLIĞINA yol açıyor — React bu stil çakışmasını "won't be patched up" diye loglayıp
+  // VAZGEÇİYOR, framer-motion'ın kendi imperatif motion-value sistemi de yalnızca `animate`
+  // nesnesinde AÇIKÇA listelenen alanları (`slide-layer.tsx`teki `reducedMotion ? {opacity:1} : ...`
+  // dalında SADECE `opacity`) hedef değere getiriyor — `y`/`x`/`scale`/`rotateX` GİBİ giriş-efekti
+  // offset'leri (`lib/sliders/layer-render.ts::IN_EFFECT_VARIANTS`teki `y:28` vb.) HİÇBİR ZAMAN
+  // sıfırlanmıyor, katman KALICI olarak `translateY(28px)` gibi bir hizalama hatasıyla KALIYOR.
+  // Yani `prefers-reduced-motion: reduce` ayarlı GERÇEK bir kullanıcı, hero katmanlarını HER SAYFA
+  // yüklemesinde bu kalıcı ofsetle görür — bu ayrı, gerçek bir a11y regresyonu (BU görevin
+  // kapsamındaki Fix 1/Fix 2 İLE İLGİSİZ, doğrulama sırasında rastlanmıştır).
+  //
+  // qa-agent BULGUSU #2 — sabit bir `waitForTimeout` (animasyon süre sabitlerine dayalı, "en geç
+  // katman oturur" varsayımıyla) DA yeterli DEĞİL: Next dev sunucusunda React'in geliştirme-modu
+  // çift-effect-çalıştırması (StrictMode) framer-motion'ın imperatif animasyon zamanlayıcılarını
+  // ARA SIRA yeniden tetikleyip katmanın GEÇİCİ ofsetli konumda "asılı" kalmasına yol açabiliyor —
+  // bu YALNIZCA dev sunucusunda (bu e2e paketinin ÇALIŞTIĞI mod, bkz. `playwright.config.ts`
+  // `webServer.command`) gözlemlenen, KARARSIZ (aynı kod/viewport'ta bazen geçen bazen `~90px`lik
+  // sahte bir çakışma ölçen) bir davranış — proje kuralı "flaky testi tolere etme, kaynağını
+  // düzelt" gereği sabit bekleme YERİNE aşağıdaki DETERMİNİSTİK yol seçildi.
+  //
+  // Çözüm — `page.addInitScript` ile HER navigasyondan ÖNCE enjekte edilen bir `<style>` katmanın
+  // KENDİ animasyon durumundan (framer-motion'ın `style` özniteliğine yazdığı `opacity`/`transform`)
+  // BAĞIMSIZ olarak nihai (`animate` hedefindeki) görsel durumu `!important` ile ZORLAR — CSS
+  // cascade'de yazar sayfasındaki `!important` kural satır-içi (`style=`) özniteliği YENER. Bu,
+  // "animasyonun bitmesini beklemek" yerine "animasyon HİÇ olmamış gibi nihai duruma anında geç"
+  // anlamına gelir — ölçülen, backend-agent'ın Fix 1'inde tanımladığı STATİK `yPercent`/`widthPercent`
+  // yerleşimidir, framer-motion'ın (bu görevin kapsamı DIŞINDAki) zamanlama/StrictMode
+  // davranışından TAMAMEN izole.
+  await page.addInitScript(() => {
+    const style = document.createElement("style");
+    // qa-agent DÜZELTMESİ — İLK sürüm `.advanced-slider .absolute > div` kullanıyordu, ama bu
+    // hem HEDEFLENEN iç `motion.div`i (animasyon: opacity/transform) HEM DE `slide-layer.tsx`teki
+    // DIŞ katman konumlandırma sarmalayıcısını (`<div className="absolute" style={{left,top,
+    // transform: translate(-origin%) translate(offset)}}>`) EŞLEŞTİRİYORDU — ikisi de sadece "absolute"
+    // sınıfını taşıyan bir `div`in DOĞRUDAN ÇOCUĞU (dış sarmalayıcı `SlideStage`teki
+    // `motion.div className="absolute inset-0"`nin çocuğu, iç sarmalayıcı YİNE bu dış katman
+    // konumlandırma div'inin çocuğu). Sonuç: `transform:none!important` YANLIŞLIKLA katmanın
+    // KENDİ statik `origin`-tabanlı konumlandırma transform'unu da SİLİYOR, ölçümleri BOZUYORDU
+    // (masaüstünde tesadüfen makul görünen ama aslında yanlış/kaydırılmış sayılar üretti — bkz.
+    // final qa-agent özeti). Düzeltme: yalnızca DIŞ katman sarmalayıcısını (`div.absolute`, AMA
+    // Tailwind `inset-0` sınıfı OLMAYAN — o yalnızca `SlideStage`in paylaşılan `motion.div`
+    // sarmalayıcısında/arka plan/gradyan katmanlarında bulunur) HEDEFLEYİP onun ÇOCUĞUNU
+    // (framer-motion'ın animasyonlu `motion.div`i) etkile.
+    style.textContent = `
+      .advanced-slider div.absolute:not(.inset-0) > div {
+        transition: none !important;
+        animation: none !important;
+        opacity: 1 !important;
+        transform: none !important;
+      }
+    `;
+    (document.head ?? document.documentElement).appendChild(style);
+  });
+
+  const VIEWPORTS = [
+    { name: "desktop", width: 1280, height: 800 },
+    { name: "tablet", width: 820, height: 1180 },
+    { name: "mobile", width: 390, height: 844 },
+  ] as const;
+
+  for (const viewport of VIEWPORTS) {
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+
+    // Aynı 60s eventual-consistency uyarısı ("Fix 1/2/3" testindeki YORUM ile AYNI gerekçe) —
+    // `toPass` + `reload` ile alınır, tek seferlik `goto` geçici bir tutarlılık penceresini
+    // YANLIŞLIKLA test hatası olarak raporlayabilir.
+    await expect(async () => {
+      await page.goto(`${FRONTEND_URL}/`, { waitUntil: "domcontentloaded" });
+      await expect(page.getByRole("heading", { name: "Evinize Yeni Bir Karakter Katın" })).toBeVisible({ timeout: 5_000 });
+    }).toPass({ timeout: 70_000, intervals: [2_000, 5_000, 10_000] });
+
+    // İlk (aktif) hero slaydının dört katmanı — yalnızca AKTİF slaydın katmanları DOM'a yazılır
+    // (`SlideStage`teki `AnimatePresence` + `isActive` koşulu), bu yüzden tekil eşleşme garantidir.
+    const slider = page.locator(".advanced-slider");
+    const badge = slider.getByText("Yeni Sezon", { exact: true });
+    const heading = slider.getByRole("heading", { name: "Evinize Yeni Bir Karakter Katın" });
+    const text = slider.locator("p", { hasText: "Aydınlatmadan" });
+    const button = slider.getByRole("link", { name: "Koleksiyonu Keşfedin" });
+
+    await expect(badge, `[${viewport.name}] rozet görünür olmalı`).toBeVisible();
+    await expect(heading, `[${viewport.name}] başlık görünür olmalı`).toBeVisible();
+    await expect(text, `[${viewport.name}] metin görünür olmalı`).toBeVisible();
+    await expect(button, `[${viewport.name}] buton görünür olmalı`).toBeVisible();
+
+    const [badgeBox, headingBox, textBox, buttonBox] = await Promise.all([
+      badge.boundingBox(),
+      heading.boundingBox(),
+      text.boundingBox(),
+      button.boundingBox(),
+    ]);
+    if (!badgeBox || !headingBox || !textBox || !buttonBox) {
+      throw new Error(`[${viewport.name}] hero katmanlarından biri boundingBox() döndürmedi (görünmez/layout dışı olabilir).`);
+    }
+
+    // Asıl regresyon kontrolü — fix ÖNCESİ tablet/mobilde sarmalanan başlık kutusu rozete BİNERDİ.
+    expectNoVerticalOverlap(badgeBox, headingBox, `[${viewport.name}] rozet/başlık dikey olarak çakışıyor`);
+    expectNoVerticalOverlap(headingBox, textBox, `[${viewport.name}] başlık/metin dikey olarak çakışıyor`);
+    expectNoVerticalOverlap(textBox, buttonBox, `[${viewport.name}] metin/buton dikey olarak çakışıyor`);
+
+    // Koordinatörün istediği EK kontrol — backend-agent'ın masaüstü düzeltmesi (`button` `yPercent`
+    // 91→95) CTA butonunu slider'ın ALT kontrol çubuğuna (bültenler/oynat-duraklat; `showProgressBar:
+    // false` olduğu için ilerleme çubuğu YOK) İTMİŞ Mİ — bu, `expectNoVerticalOverlap`İLE
+    // YAKALANMAZ (buton `xPercent:8` SOLA yaslı, kontroller ORTA/SAĞA yaslı, aynı sütunda DEĞİLLER),
+    // bu yüzden TAM 2 boyutlu kutu kesişimi (`expectNoBoxOverlap`) kullanılır.
+    const playPause = slider.getByRole("button", { name: /Otomatik oynatmayı/ });
+    const firstBullet = slider.getByRole("button", { name: "1. slayta git" });
+    const [playPauseBox, bulletBox] = await Promise.all([playPause.boundingBox(), firstBullet.boundingBox()]);
+    if (!playPauseBox || !bulletBox) {
+      throw new Error(`[${viewport.name}] alt kontrol çubuğu (oynat-duraklat/bültenler) boundingBox() döndürmedi.`);
+    }
+    expectNoBoxOverlap(buttonBox, playPauseBox, `[${viewport.name}] CTA butonu oynat/duraklat düğmesine BİNİYOR`);
+    expectNoBoxOverlap(buttonBox, bulletBox, `[${viewport.name}] CTA butonu slayt bültenlerine (bullets) BİNİYOR`);
+  }
+});
+
 test("madde 9a: aynı şablonu tekrar uygula (force olmadan) → 409 (idempotency)", async () => {
   const res = await importDemoTemplateRaw(adminToken, ECOMMERCE_TEMPLATE_KEY, { confirm: true, force: false });
   expect(res.status).toBe(409);
@@ -243,7 +408,14 @@ test("SKU-benzersizleştirme: force:true ile İKİNCİ import → 201, ürün/va
   // önceki koşumlardan kalan SUCCESS satırları barındırabilir; bu test yalnızca BU çağrının YENİ
   // bir başarılı satır ÜRETTİĞİNİ doğrular (fix ÖNCESİ: P2002 → transaction geri alınıyor, YENİ
   // bir SUCCESS satırı HİÇ üretilmiyordu).
-  const logsBefore = await listAuditLogsRaw(adminToken, { action: "demo_template.import", limit: 20 });
+  // qa-agent DÜZELTMESİ — `limit:20` DAR sabiti, koordinatörle bu turdaki çok-turlu e2e doğrulama
+  // koşumları BİRİKTİKÇE (paylaşımlı `saas_e2e` DB'nin `audit_logs` geçmişi 20'nin ÇOK ÜSTÜNE
+  // çıkınca, bkz. final qa-agent özeti) bu DELTA karşılaştırmasını YANLIŞLIKLA kırdı — pencerenin
+  // EN ESKİ ucundaki bir satır YENİ satırla birlikte pencereden DÜŞTÜĞÜNDE `successCountBefore`/
+  // `successCountAfter` her ikisi de PENCERE BOYUTUYLA sınırlanıp gerçek delta'yı YANSITMAZ.
+  // `limit` cömertçe artırılır (uygulama kodu DEĞİL, yalnızca test sorgusu) — asıl doğrulama zaten
+  // aşağıdaki `entry`/`commerceCounts` kontrolleridir, bu sayı yalnızca EK bir sağlık kontrolü.
+  const logsBefore = await listAuditLogsRaw(adminToken, { action: "demo_template.import", limit: 100 });
   const successCountBefore = logsBefore.filter(
     (l) => l.status === "SUCCESS" && (l.metadata as Record<string, unknown> | null)?.templateKey === ECOMMERCE_TEMPLATE_KEY
   ).length;
@@ -286,7 +458,7 @@ test("SKU-benzersizleştirme: force:true ile İKİNCİ import → 201, ürün/va
   // Audit log — bu çağrı YENİ (ikinci) bir SUCCESS satırı üretti (yeni `pageId` hedefli);
   // `commerceCounts` ilk import İLE AYNI şekle sahip (ikinci kopya da 8 ürün+4 kategori+14
   // varyasyon+4 döküman üretti — hiçbir satır SKU çakışması yüzünden "kayıp" gitmedi).
-  const logsAfter = await listAuditLogsRaw(adminToken, { action: "demo_template.import", limit: 20 });
+  const logsAfter = await listAuditLogsRaw(adminToken, { action: "demo_template.import", limit: 100 });
   const successEntriesAfter = logsAfter.filter(
     (l) => l.status === "SUCCESS" && (l.metadata as Record<string, unknown> | null)?.templateKey === ECOMMERCE_TEMPLATE_KEY
   );
