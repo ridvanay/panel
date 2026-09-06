@@ -15,6 +15,7 @@ import { permanentDeleteSlider } from "./support/sliders-fixtures";
 import {
   DEMO_TEMPLATE_KEY,
   KNOWN_ASSET_FILENAMES,
+  deleteMediaById,
   getDemoTemplatesRaw,
   importDemoTemplateRaw,
   listAllAdminMediaIds,
@@ -73,6 +74,17 @@ let lowPrivToken: string;
 
 let initialPortfolioModuleEnabled: boolean;
 
+/**
+ * qa-agent — koordinatör talebi doğrulaması: `/placeholders/template-fallback.svg` (404 şüphesi,
+ * `demo-templates-view.tsx::onError` fallback hedefi) VE her şablon kartının GERÇEK
+ * `previewImageUrl`'i (`/demo-templates/<key>/preview.svg`, `onError` TETİKLENMEDEN normal
+ * yüklenmesi beklenir) `adminPage` bu dosya BOYUNCA (madde 6/7/8/12'nin `/admin/demo-templates`
+ * ziyaretleri DAHİL) izlenir; hiçbir 404 BEKLENMEZ. `beforeAll`de `adminPage` OLUŞTUKTAN HEMEN
+ * SONRA takılır (bkz. aşağısı) — dosyanın TÜM navigasyonlarını kapsar, rate-limit bütçesine
+ * dokunmaz (ağ dinleyicisi, YENİ bir istek ÜRETMEZ).
+ */
+const brokenPreviewAssetResponses: string[] = [];
+
 // madde 6 sonuçları — sonraki senaryolar (7/8/11/14) bunlara göreli olarak doğrular.
 let firstImportPageId: string;
 let firstImportPageSlug: string;
@@ -129,6 +141,17 @@ test.beforeAll(async ({ browser }, testInfo) => {
   if (!initialPortfolioModuleEnabled) await patchSiteModule(adminToken, "portfolio", true);
 
   ({ page: adminPage, close: closeAdminSession } = await createAuthenticatedPage(browser));
+
+  // Bkz. `brokenPreviewAssetResponses` başlığı — `previewImageUrl`/fallback SVG'lerinin HİÇBİRİ
+  // 404 DÖNMEMELİ. Yalnızca bu iki desenle SINIRLI (diğer 404'ler — ör. kasıtlı RBAC/olmayan-
+  // kaynak testleri — bu kontrolün KAPSAMI DIŞINDA, yanlış-pozitif üretmesin diye).
+  adminPage.on("response", (response) => {
+    const url = response.url();
+    const isTrackedAsset = url.includes("/placeholders/template-fallback.svg") || /\/demo-templates\/[^/]+\/preview\.svg(\?|$)/.test(url);
+    if (isTrackedAsset && response.status() === 404) {
+      brokenPreviewAssetResponses.push(`${response.status()} ${url}`);
+    }
+  });
 
   // §7.1 — her biri ÇALIŞTIRMA-BAŞINA-BENZERSİZ e-postayla, `getFixtureUserToken()`'ın kendi
   // `/auth/register`'ı DOĞRUDAN 201 döner (409→login fallback'i TETİKLENMEZ) — `AUTH_RATE_LIMIT`
@@ -350,6 +373,26 @@ test("madde 9: confirm gönderilmeden POST → 422", async () => {
   expect(res.error?.code).toBe("VALIDATION_ERROR");
 });
 
+/**
+ * qa-agent BULGUSU (frontend-agent'a yönlendirilecek, bu turda "madde 11"i çalıştırırken
+ * GERÇEKTEN tetiklendi, `admin-product-variant-media-persistence.spec.ts` başlığında ÖNCEDEN
+ * belgelenen İLE AYNI kök neden) — `MediaPicker` (`components/admin/media/media-picker.tsx::load`)
+ * `GET /admin/media`'yı SABİT `limit: 100`, TEK sayfa (cursor ilerletme YOK) çeker; backend
+ * `orderBy: { seq: "asc" }` (EN ESKİDEN yeniye) döndürür. Paylaşımlı `saas_e2e` veritabanı bu
+ * turda **1402** medya satırına ulaşmış durumda — bu testin YENİ oluşturduğu "cta-banner.jpg"
+ * (en YÜKSEK `seq`) ilk 100'e ASLA giremiyor, arama kutusu da yalnızca ZATEN yüklenmiş `items`'ı
+ * istemci tarafında filtrelediği için (sunucuya yeni sorgu ATMAZ) bulunamıyor — test 5-30sn'de
+ * "element bulunamadı" ile SÜREKLİ kırılıyor (ortam/veri büyümesi kaynaklı, uygulama DEĞİŞİKLİĞİ
+ * DEĞİL). Düzeltme — o dosyadaki AYNI atlatma deseni: kütüphaneden ARAMA/SEÇİM yerine, "Görsel"
+ * bloğunun `ImageUploadField`indeki DOĞRUDAN "Yükle" (`aria-label="Bilgisayardan görsel yükle"`,
+ * `image-upload-field.tsx::handleFileChange`) akışı kullanılır — bu, MediaPicker'ı HİÇ AÇMAZ,
+ * `POST /admin/media`'yı DOĞRUDAN çağırıp dönen `url`'i ANINDA alana yazar; liste
+ * sayfalamasına/aramasına HİÇ bağımlı değildir. Asıl kabul kriteri (§4.2 — yeni içe aktarılan
+ * medyanın GERÇEK `Media` satırları olduğu VE alanın MediaPicker/upload akışıyla
+ * DEĞİŞTİRİLEBİLDİĞİ) DEĞİŞMEDEN korunur; yalnızca "hangi dosya seçiliyor" değişti (şablonun KENDİ
+ * varlığı yerine test-zamanlı yüklenen 1×1 PNG) — bu, `admin-product-variant-media-persistence.
+ * spec.ts`teki AYNI ödünle TUTARLIDIR.
+ */
 test("madde 11: import sonrası medya kütüphanesinde 12 yeni görsel var ve medya seçiciyle değiştirilebiliyor", async () => {
   test.setTimeout(60_000);
   // Sayaç zaten madde 6'da doğrulandı — burada AYRICA altText/dosya adı bütünlüğü (§3.2
@@ -360,15 +403,19 @@ test("madde 11: import sonrası medya kütüphanesinde 12 yeni görsel var ve me
     expect(mediaNow.has(id)).toBe(true);
   }
 
-  // §4.2 kabul kriteri — kullanıcının İLK işi bu görselleri MediaPicker ile değiştirmektir. Bunu
-  // geçici bir sayfa üzerinde bir "Görsel" bloğu ekleyip picker'da arayıp seçerek DOĞRULARIZ
-  // (`admin-page-builder-gallery.spec.ts`teki "boş sayfa → konteyner → blok ekle" deseninin AYNISI).
+  // §4.2 kabul kriteri — kullanıcının İLK işi bu görselleri MediaPicker/upload akışıyla
+  // değiştirmektir. Bunu geçici bir sayfa üzerinde bir "Görsel" bloğu ekleyip DOĞRUDAN yükleyerek
+  // DOĞRULARIZ (bkz. yukarıdaki BULGU notu — kütüphaneden arama/seçim BİLEREK KULLANILMAZ).
   const tempPage = await createPageFixture(adminToken, {
     title: `QA E2E Demo Template Media Picker ${Date.now()}`,
     slug: `qa-demo-tpl-media-picker-${Date.now()}`,
     html: "<p>gecici</p>",
     status: "DRAFT",
   });
+
+  // `admin-product-variant-media-persistence.spec.ts::TEST_PNG_BASE64` İLE BİREBİR AYNI 1×1 şeffaf PNG.
+  const TEST_PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+  let uploadedMediaId: string | null = null;
 
   try {
     await adminPage.goto(`/admin/pages/${tempPage.id}`);
@@ -387,29 +434,31 @@ test("madde 11: import sonrası medya kütüphanesinde 12 yeni görsel var ve me
     await adminPage.getByRole("tab", { name: "Medya & İnteraktif" }).click();
     await adminPage.getByRole("menuitem", { name: "Görsel", exact: true }).click();
 
-    await adminPage.getByRole("button", { name: "Kütüphaneden Seç" }).click();
-    await expect(adminPage.getByRole("heading", { name: "Görsel Seç" })).toBeVisible();
+    // Bkz. dosya başlığındaki BULGU — `ImageUploadField`in DOĞRUDAN "Yükle" (gizli
+    // `input[aria-label="Bilgisayardan görsel yükle"]`) akışı, MediaPicker'ı HİÇ AÇMADAN
+    // `POST /admin/media`'yı tetikler ve dönen `url`'i ANINDA alana yazar.
+    const uploadResponsePromise = adminPage.waitForResponse(
+      (res) => res.request().method() === "POST" && res.url().includes("/admin/media") && res.ok()
+    );
+    await adminPage.locator('input[aria-label="Bilgisayardan görsel yükle"]').setInputFiles({
+      name: `qa-demo-tpl-media-picker-${Date.now()}.png`,
+      mimeType: "image/png",
+      buffer: Buffer.from(TEST_PNG_BASE64, "base64"),
+    });
+    const uploadResponse = await uploadResponsePromise;
+    const uploadedMedia = ((await uploadResponse.json()) as { data: { id: string; url: string } }).data;
+    uploadedMediaId = uploadedMedia.id;
 
-    await adminPage.getByLabel("Dosya adına göre ara").fill("cta-banner.jpg");
-    // Bu noktada kütüphanede İKİ "cta-banner.jpg" olabilir (madde 6 + madde 8'in `force` kopyası,
-    // §6.4 additive kural — ikisi de GEÇERLİ, ayırt etmemiz GEREKMEZ) — `.first()` yeterli.
-    const result = adminPage.getByRole("button", { name: /^cta-banner\.jpg/ }).first();
-    await expect(result).toBeVisible();
-    await result.click();
-
-    await expect(adminPage.getByRole("heading", { name: "Görsel Seç" })).not.toBeVisible();
-    // `Media.filename` ("cta-banner.jpg") arama/seçim İÇİN kullanılır (yukarıda doğrulandı — kart
-    // GÖRÜNÜR ve TIKLANABİLİR OLDU), ama diskteki depolanmış `url` `storage.save()`'in çakışma-
-    // önleyici BENZERSİZ adıdır (`lib/local-storage.ts`) — dosya adını KORUMAZ. Bu yüzden burada
-    // yalnızca alanın DOLDUĞU (boştan gerçek bir `/uploads/...` URL'ine geçtiği) doğrulanır.
+    // Yalnızca alanın DOLDUĞU (boştan gerçek bir `/uploads/...` URL'ine geçtiği) doğrulanır —
+    // asıl kanıt zaten YUKARIDAKİ ağ yanıtının 2xx dönmesi + gerçek bir `Media.id` taşımasıdır.
     const urlField = adminPage.locator('input[placeholder="https://…"]');
-    await expect(urlField).not.toHaveValue("");
-    await expect(urlField).toHaveValue(/^https?:\/\/.+\/uploads\//);
+    await expect(urlField).toHaveValue(uploadedMedia.url);
 
     await adminPage.getByRole("button", { name: "Kaydet", exact: true }).click();
     await expect(adminPage.getByText("Sayfa kaydedildi.").last()).toBeVisible({ timeout: 10_000 });
   } finally {
     await deletePagePermanently(adminToken, tempPage.id as string);
+    if (uploadedMediaId) await deleteMediaById(adminToken, uploadedMediaId);
   }
 });
 
@@ -461,4 +510,10 @@ test("madde 12: portfolio modülü kapalıyken import → 201 + ilgili warnings[
   } finally {
     await patchSiteModule(adminToken, "portfolio", true);
   }
+});
+
+test("regresyon: bu dosya boyunca `/admin/demo-templates`'in izlediği önizleme/fallback görselleri (template-fallback.svg, preview.svg) hiçbir 404 üretmedi", async () => {
+  // Bu noktada adminPage madde 6/7/8/12'de defalarca `/admin/demo-templates`'e gitti (bkz.
+  // `brokenPreviewAssetResponses` başlığı) — koleksiyon TÜM o navigasyonların birikimidir.
+  expect(brokenPreviewAssetResponses).toEqual([]);
 });

@@ -26,7 +26,7 @@ import { getLocaleSet, syncContentSlugs } from "../../lib/localization";
 import { slugify } from "../../lib/slug";
 import { logAudit } from "../../lib/audit";
 import { triggerPublicPageRevalidation } from "../../lib/revalidate";
-import { NotFoundError, ValidationError, DemoTemplateAlreadyImportedError } from "../../lib/errors";
+import { NotFoundError, ValidationError, ConflictError, DemoTemplateAlreadyImportedError } from "../../lib/errors";
 import { absolutizeMediaUrl } from "../../mappers";
 import type { ImportDemoTemplateRequest } from "./demo-templates.schemas";
 import type { DemoTemplateImportResultDto } from "../../schemas/entities";
@@ -41,7 +41,7 @@ const EMPTY_ASSET_MAP = new Map<string, string>();
 /** Faz 0 "kuru koşu" — gerçek değerler henüz yok, yalnızca ŞEKLİN Zod'dan geçeceğini kanıtlamak için. */
 const PLACEHOLDER_ASSET_URL = "/__demo-template-placeholder__";
 const PLACEHOLDER_UUID = "00000000-0000-0000-0000-000000000000";
-const MAX_TRANSACTION_RETRIES = 2; // §5.2 — Faz 2'de P2002 yakalanırsa yeniden dene (§6.5).
+const MAX_TRANSACTION_RETRIES = 2; // §5.2 — Faz 2'de P2002/ConflictError (slug/SKU çakışması) yakalanırsa yeniden dene (§6.5).
 
 export interface ImportDemoTemplateParams {
   templateKey: string;
@@ -104,15 +104,41 @@ interface SlugPlan {
 }
 
 /**
+ * Bugfix (409 slug çakışması) — `ContentSlug.@@unique([locale, slug])` `entityType`'ı
+ * KAPSAMAZ (`schema.prisma` ~1045-1047 yorumu: "/en/about hem bir Page hem bir Product
+ * olamaz"). `page`/`extraPage`/`portfolioItem`/`product` içeriği `syncContentSlugs` ile bu
+ * tabloya YAZAR (bkz. bu dosyada `syncContentSlugs(...)` çağrılan 4 yer), bu yüzden
+ * benzersizlik kontrolü SADECE kendi tablosuna bakarsa BAŞKA bir entity tipinin (özellikle
+ * çöp kutusundaki — soft-delete `ContentSlug` satırını KORUR, bkz.
+ * `lib/localization.ts::deleteContentSlugsForEntity` yorumu) aynı slug'ı zaten kullandığı
+ * durumu KAÇIRIR ve Faz 2'de `syncContentSlugs` → `upsertContentSlug` P2002 → `ConflictError`
+ * (409) ile patlar. `existsAnyLocaleSlug`, varsayılan dil için bu ikinci kontrolü ekler
+ * (şablon içeriği HİÇBİR ZAMAN `translations` doldurmadığı için yalnızca varsayılan dilin
+ * `ContentSlug` satırı üretilir — diğer diller boş kalır, bkz. `syncContentSlugs` "hasTranslation"
+ * dalı — bu yüzden yalnızca varsayılan dil kontrolü YETERLİ ve DOĞRUdur).
+ */
+function existsAnyLocaleSlug(app: FastifyInstance, defaultLocaleCode: string, candidate: string): Promise<boolean> {
+  return app.prisma.contentSlug
+    .findUnique({ where: { locale_slug: { locale: defaultLocaleCode, slug: candidate } } })
+    .then((row) => Boolean(row));
+}
+
+/**
  * §6.5 — slug çakışması OTOMATİK benzersizleştirilir (409 DEĞİL). Salt-okunur (yazma YOK) — her
  * çağrı DB'yi TAZE okur, bu yüzden `$transaction` P2002 ile başarısız olursa (gerçek eşzamanlı
  * yarış) TEKRAR çağrılması güncel durumu yansıtır.
  */
-async function resolveSlugPlan(app: FastifyInstance, template: DemoTemplateDefinition): Promise<{ plan: SlugPlan; slugWarnings: string[] }> {
+async function resolveSlugPlan(
+  app: FastifyInstance,
+  template: DemoTemplateDefinition,
+  defaultLocaleCode: string
+): Promise<{ plan: SlugPlan; slugWarnings: string[] }> {
   const slugWarnings: string[] = [];
 
   const pageSlug = await findAvailableSlug(
-    async (candidate) => Boolean(await app.prisma.page.findFirst({ where: { slug: candidate }, select: { id: true } })),
+    async (candidate) =>
+      Boolean(await app.prisma.page.findFirst({ where: { slug: candidate }, select: { id: true } })) ||
+      (await existsAnyLocaleSlug(app, defaultLocaleCode, candidate)),
     template.page.slug
   );
   if (pageSlug !== slugify(template.page.slug)) {
@@ -146,7 +172,9 @@ async function resolveSlugPlan(app: FastifyInstance, template: DemoTemplateDefin
   const itemSlugByTemplateSlug = new Map<string, string>();
   for (const item of template.portfolio.items) {
     const resolved = await findAvailableSlug(
-      async (candidate) => Boolean(await app.prisma.portfolioItem.findFirst({ where: { slug: candidate }, select: { id: true } })),
+      async (candidate) =>
+        Boolean(await app.prisma.portfolioItem.findFirst({ where: { slug: candidate }, select: { id: true } })) ||
+        (await existsAnyLocaleSlug(app, defaultLocaleCode, candidate)),
       item.slug
     );
     if (resolved !== slugify(item.slug)) {
@@ -172,7 +200,9 @@ async function resolveSlugPlan(app: FastifyInstance, template: DemoTemplateDefin
   const productSlugByTemplateSlug = new Map<string, string>();
   for (const product of template.commerce?.products ?? []) {
     const resolved = await findAvailableSlug(
-      async (candidate) => Boolean(await app.prisma.product.findFirst({ where: { slug: candidate }, select: { id: true } })),
+      async (candidate) =>
+        Boolean(await app.prisma.product.findFirst({ where: { slug: candidate }, select: { id: true } })) ||
+        (await existsAnyLocaleSlug(app, defaultLocaleCode, candidate)),
       product.slug
     );
     if (resolved !== slugify(product.slug)) {
@@ -217,7 +247,9 @@ async function resolveSlugPlan(app: FastifyInstance, template: DemoTemplateDefin
   const extraPageSlugByTemplateSlug = new Map<string, string>();
   for (const extraPage of template.extraPages ?? []) {
     const resolved = await findAvailableSlug(
-      async (candidate) => Boolean(await app.prisma.page.findFirst({ where: { slug: candidate }, select: { id: true } })),
+      async (candidate) =>
+        Boolean(await app.prisma.page.findFirst({ where: { slug: candidate }, select: { id: true } })) ||
+        (await existsAnyLocaleSlug(app, defaultLocaleCode, candidate)),
       extraPage.slug
     );
     if (resolved !== slugify(extraPage.slug)) {
@@ -793,14 +825,14 @@ export async function importDemoTemplate(app: FastifyInstance, params: ImportDem
     throw new ValidationError("Şablon içeriğinde çözülemeyen token bulundu.", { unresolvedTokens: assetResolved.unresolvedTokens });
   }
 
-  const { enabled: enabledLocales } = await getLocaleSet(app);
+  const { enabled: enabledLocales, default: defaultLocale } = await getLocaleSet(app);
 
-  // ---- Faz 2 — TEK transaction (P2002 → sınırlı yeniden deneme, §5.2/§6.5) --------------------
+  // ---- Faz 2 — TEK transaction (P2002/ConflictError → sınırlı yeniden deneme, §5.2/§6.5) ------
   let outcome: TransactionOutcome | undefined;
   let slugWarnings: string[] = [];
   let attempt = 0;
   for (;;) {
-    const resolved = await resolveSlugPlan(app, template);
+    const resolved = await resolveSlugPlan(app, template, defaultLocale.code);
     slugWarnings = resolved.slugWarnings;
     try {
       outcome = await app.prisma.$transaction(
@@ -821,7 +853,17 @@ export async function importDemoTemplate(app: FastifyInstance, params: ImportDem
       break;
     } catch (err) {
       attempt += 1;
-      const isSlugRace = err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002";
+      // Bugfix — `resolveSlugPlan`'ın (salt-okunur, kendi transaction'ı DIŞINDA) kontrolü ile
+      // gerçek yazma anı arasında YENİ bir eşzamanlı istek AYNI slug'ı alırsa, `syncContentSlugs`
+      // → `upsertContentSlug` (`lib/localization.ts`) P2002'yi YAKALAYIP `ConflictError`'a çevirir
+      // (409 sözleşmesi — DİĞER tüm çağıranlar için BOZULMAZ, bu yalnızca importer'ın KENDİ
+      // transaction fonksiyonundan (`writeTemplateInTransaction`) gelen hatayı yorumlama şekli).
+      // O yüzden ham `P2002` (ör. `Page.slug`/`Product.sku` `@unique` ihlali) YANINDA
+      // `ConflictError`'ı da (yalnızca bu transaction'ın kendi hata yolu — başka hiçbir yerden
+      // gelmez) yeniden deneme kapsamına alıyoruz; §6.5 bağlayıcı kararı: "409 DEĞİL, otomatik
+      // benzersizleştirme".
+      const isSlugRace =
+        (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") || err instanceof ConflictError;
       if (isSlugRace && attempt <= MAX_TRANSACTION_RETRIES) continue;
 
       // TELAFİ — Faz 1'de kaydedilen HER dosya best-effort silinir (§5.2).

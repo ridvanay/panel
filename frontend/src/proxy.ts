@@ -28,10 +28,22 @@ import type { PublicSiteAppearance, Locale } from "@/lib/api/types";
  * (`/login`, `/dashboard` vb. — bu monorepo'nun site-DIŞI SaaS yüzeyi) negatif lookahead ile
  * hariç tutar; yönetici kendini asla kilitleyemez (bağlayıcı kural). Admin panelinin dili
  * URL'de DEĞİL, `localStorage`'dadır (§7) — bu proxy admin rotalarını HİÇ görmez.
+ *
+ * **`public/` altındaki statik dosyalar (`.*\..*`):** Bu proxy TÜM istekleri (yukarıdaki
+ * negatif liste hariç) `/${locale}/...`'a rewrite eder — `_next/static`, `favicon.ico`,
+ * `robots.txt`, `sitemap.xml` gibi tek tek isim isim hariç tutulanların ÖTESİNDE, `public/`
+ * klasörüne SONRADAN eklenen HERHANGİ bir statik dosya (ör. `/placeholders/template-fallback.svg`,
+ * `/demo-templates/<slug>/preview.svg`) da bu rewrite'a yakalanıp `/tr/placeholders/...` gibi var
+ * olmayan bir sanal yola gönderiliyor, statik dosya çözümlenemediği için 404 dönüyordu (dosyanın
+ * kendisi `frontend/public/` altında GERÇEKTEN var olsa bile). Kalıcı çözüm: nokta içeren (dosya
+ * uzantılı) TÜM yolları genel bir kuralla hariç tut — böylece gelecekte `public/`'a eklenecek her
+ * yeni asset için matcher'ı güncellemeye gerek kalmaz. Sitede uzantılı, locale-rewrite'a ihtiyaç
+ * duyan başka bir route YOK (app/ altında yalnızca `robots.ts`/`sitemap.ts`/`api/health` var, hepsi
+ * zaten ayrıca hariç).
  */
 export const config = {
   matcher: [
-    "/((?!admin|api|login|register|forgot-password|reset-password|invitations|pricing|dashboard|_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml).*)",
+    "/((?!admin|api|login|register|forgot-password|reset-password|invitations|pricing|dashboard|_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|.*\\..*).*)",
   ],
 };
 

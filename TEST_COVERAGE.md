@@ -2232,3 +2232,58 @@ değişiklikleri üzerinde qa-agent GERÇEK bir uygulama bug'ı BULAMADI — tek
 görseli düzeltmesini ENGELLEMEZ) ve `UPLOADS_RATE_LIMIT`in test-altyapısı etkileşimi (devops-agent/
 security-agent'a bilgi amaçlı, uygulama bug'ı DEĞİL). Üç dosya (1 mevcut regresyon + 2 yeni) izole
 koşumlarda TUTARLI yeşil.
+
+## "Hazır Şablonlar" — çöp kutusundaki BAŞKA-entity-tipi slug çakışması (409) bugfix doğrulaması (bu turda eklendi)
+
+Bağlam: `anasayfa` slug'ı (özellikle çöp kutusundaki bir `BlogPost`/başka entity tipinin
+`ContentSlug` satırı — bu tablo `@@unique([locale, slug])`i `entityType`'tan BAĞIMSIZ uygular)
+zaten DOLUYKEN şablon uygulaması/yeniden uygulaması `409 CONFLICT` ile kırılıyordu. backend-agent
+kök nedeni `demo-templates/importer.ts::resolveSlugPlan`de düzeltti (`existsAnyLocaleSlug` artık
+`ContentSlug` tablosunu da tarıyor + Faz 2 transaction retry `ConflictError`'ı da kapsıyor,
+§6.5 — "409 DEĞİL, otomatik benzersizleştirme"). qa-agent görevi: mevcut birim/e2e testlerinin bu
+fix'i (özellikle `force` + cross-entity BİRLİKTE) yeterince kapsayıp kapsamadığını denetlemek,
+eksikleri kapatmak, ve `/placeholders/template-fallback.svg` + `preview.svg` 404 şüphesini
+gerçek bir tarayıcı ağ-izleme testiyle kapatmak.
+
+| # | Senaryo | Dosya | Durum |
+|---|---|---|---|
+| Mevcut (denetlendi) | `ContentSlug(BLOG_POST, "anasayfa")` doluyken force:false import → 409 DEĞİL, `anasayfa-2` | `backend/tests/unit/demo-templates-importer.test.ts` (backend-agent, mevcut) | ✅ Geçiyor — kapsam YETERLİ bulundu |
+| **YENİ** | AYNI ANDA hem cross-entity `ContentSlug` ("anasayfa") HEM DE önceki gerçek `Page.slug` ("anasayfa-2") doluyken `force:true` (İKİNCİ kopya) → 201, `anasayfa-3`; önceki sayfa SİLİNMEDİ; orijinal `ContentSlug(BLOG_POST)` satırına DOKUNULMADI | `backend/tests/unit/demo-templates-importer.test.ts` (qa-agent, bu turda eklendi — yalnızca test dosyasına dokunuldu, `importer.ts` DEĞİŞMEDİ) | ✅ Geçiyor (5/5 dosya genelinde) |
+| Mevcut (denetlendi) | `ecommerce-pro`nun kendi `force:true` ikinci-import'u (SKU-benzersizleştirme) art arda çalıştırıldığında hiçbir 409/500'e ÇARPMIYOR | `ecommerce-pro-template-import.spec.ts` (mevcut, "SKU-benzersizleştirme" testi) | ✅ Geçiyor (10/10, bu turda GERÇEKTEN yeniden koşuldu) |
+| Mevcut (denetlendi) | "Modern Mimarlık & İnşaat" art arda uygula/yeniden uygula (madde 6→7→8→12) — hiçbir slug çakışma hatası, hepsi 201/409(beklenen idempotency)/201 | `admin-demo-template-import.spec.ts` (mevcut) | ✅ Geçiyor (11/11, bu turda GERÇEKTEN yeniden koşuldu) |
+| **YENİ** | `/admin/demo-templates` sayfasının bu dosya BOYUNCA (madde 6/7/8/12'nin TÜM ziyaretleri dahil) izlenen `previewImageUrl`/`template-fallback.svg` istekleri hiçbir 404 ÜRETMEDİ (gerçek tarayıcı ağ-izleme, `page.on("response")`) | `admin-demo-template-import.spec.ts` (qa-agent, bu turda eklendi) | ✅ Geçiyor |
+
+### Değerlendirme — mevcut kapsam neden YETERLİ bulundu (yeni bir e2e "cross-entity slug" testi neden EKLENMEDİ)
+
+`admin-demo-template-import.spec.ts` dosya başlığı ZATEN bilinçli bir sınır çiziyor: backend'in
+Faz 2 telafi/rollback ve slug-çözümleme İÇ mantığı (`resolveSlugPlan`, `existsAnyLocaleSlug`)
+`backend/tests/unit/demo-templates-importer.test.ts`de KAPSANIYOR, Playwright katmanı bunu
+TEKRARLAMAZ — yalnızca "ADMIN düğmeye basar → gerçek POST → gerçek transaction → DOM'a/public
+siteye yansıma" zincirini test eder. Cross-entity `ContentSlug` çakışması SALT bir slug-çözümleme
+iç detayıdır (backend'in DÖNDÜĞÜ sonuç — 201 + `-2` son ekli slug + warning — madde 6/8'in ZATEN
+doğruladığı "normal başarılı import" ile DOM/ağ seviyesinde AYIRT EDİLEMEZ, tek fark backend'in
+İÇERİDE hangi tabloyu sorguladığıdır) — bu yüzden qa-agent bunu e2e'de TEKRARLAMAK yerine (i)
+birim testin YETERLİLİĞİNİ denetledi ve TEK eksik kombinasyonu (`force:true` + cross-entity
+BİRLİKTE) kapattı, (ii) `ecommerce-pro-fixtures.ts`teki İLGİLİ tarihsel BUG NOTUnu (satır ~116-136,
+`content_slugs`/`products` silme SIRASININ önemi — kendi test-fixture temizliğinde daha önce
+BULUNUP DÜZELTİLMİŞ bir sorun) GÖZDEN GEÇİRDİ ve GÜNCEL/DOĞRU olduğunu doğruladı (fixture zaten
+`content_slugs` satırlarını ÖNCE, `products` satırlarını SONRA siliyor — güncelleme GEREKMEDİ).
+
+### qa-agent'ın KENDİ test tasarımında bulup düzelttiği bir flaky kaynağı (bu turda, `admin-demo-template-import.spec.ts` "madde 11")
+
+Bu dosyanın "madde 11" testi ("MediaPicker ile değiştirilebiliyor") kütüphanede `cta-banner.jpg`
+dosya adını ARAYIP seçiyordu — `admin-product-variant-media-persistence.spec.ts` başlığında
+ÖNCEDEN belgelenen kök nedenin (`MediaPicker::load` sabit `limit:100`, TEK sayfa, `orderBy:
+seq:"asc"`; arama kutusu sunucuya sorgu ATMAZ, yalnızca zaten-yüklenmiş `items`'ı filtreler)
+BİREBİR AYNISI bu testte de GERÇEKTEN tetiklendi — paylaşımlı `saas_e2e` bu turda **1402** medya
+satırına ulaşmış, yeni yüklenen `cta-banner.jpg` (en yüksek `seq`) ilk 100'e hiç GİREMİYOR, testin
+kendisi "element bulunamadı" ile tutarlı biçimde KIRILDI (uygulama kodu DEĞİL, ortam/veri
+büyümesi). Düzeltme — o dosyadaki AYNI atlatma deseni: kütüphaneden arama/seçim yerine `Görsel`
+bloğunun `ImageUploadField`indeki DOĞRUDAN "Yükle" (`input[aria-label="Bilgisayardan görsel
+yükle"]`) akışı kullanıldı — `MediaPicker`i hiç AÇMAZ, sayfalama/aramaya bağımlı DEĞİLDİR.
+Düzeltmeden SONRA dosya 3 kez (izole + art arda iki tam koşum) TUTARLI 11/11 yeşil.
+
+**Sonuç: 5/5 backend unit + 11/11 + 10/10 e2e (toplam 26 test) yeşil. Backend/frontend tarafında
+YENİ bir uygulama bug'ı BULUNMADI** — bu turun tek "düzeltmesi" qa-agent'ın kendi test-altyapısında
+(yukarıdaki flaky kaynağı), kural gereği (proje kökü CLAUDE.md madde 3) doğrudan qa-agent tarafından
+giderildi.

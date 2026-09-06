@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { describe, expect, it, vi, beforeAll, afterAll } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { buildTestApp } from "../helpers/build-test-app";
@@ -162,5 +163,93 @@ describe("demo-templates importer — §12 madde 5: Faz 2 hata enjeksiyonu → d
 
     transactionSpy.mockRestore();
     removeSpy.mockRestore();
+  });
+});
+
+describe("demo-templates importer — bugfix: BAŞKA bir entity tipinin (çöp kutusundaki) ContentSlug'ı slug'ı kilitlerse 409 DEĞİL, otomatik benzersizleştirme (§6.5)", () => {
+  let app: FastifyInstance;
+  let actorId: string;
+  let actorEmail: string;
+
+  beforeAll(async () => {
+    app = await buildTestApp();
+    await resetDatabase(app.prisma);
+    const admin = await registerTestUser(app, { email: "demo-template-cross-entity-slug-admin@example.com" });
+    actorId = admin.userId;
+    actorEmail = "demo-template-cross-entity-slug-admin@example.com";
+  });
+
+  afterAll(async () => {
+    await resetDatabase(app.prisma);
+    await app.close();
+  });
+
+  it("`ContentSlug(locale=tr, slug=anasayfa)` bir BlogPost'a (kendi tablosu Page DEĞİL) aitken şablon uygulaması 409 ile patlamaz, sayfa `anasayfa-2` olarak oluşturulur", async () => {
+    const { importDemoTemplate } = await import("../../src/modules/demo-templates/importer");
+
+    // `ContentSlug`'ın `entityId`'sine FK YOKTUR (polimorfik) — çöp kutusundaki bir BlogPost'un
+    // slug'ı SONSUZA DEK tutması (bkz. `lib/localization.ts::deleteContentSlugsForEntity`
+    // yorumu: "Soft-delete BUNU ÇAĞIRMAZ") gerçek bir Page satırı OLMADAN da simüle edilebilir.
+    await app.prisma.contentSlug.create({
+      data: { entityType: "BLOG_POST", entityId: crypto.randomUUID(), locale: "tr", slug: "anasayfa" },
+    });
+
+    const result = await importDemoTemplate(app, {
+      templateKey: "modern-architecture",
+      body: { confirm: true, force: false, setAsHomePage: true },
+      actorId,
+      actorEmail,
+    });
+
+    expect(result.pageSlug).toBe("anasayfa-2");
+    expect(result.warnings.some((w) => w.includes("anasayfa-2"))).toBe(true);
+
+    const createdPage = await app.prisma.page.findUnique({ where: { id: result.pageId } });
+    expect(createdPage?.slug).toBe("anasayfa-2");
+    expect(await app.prisma.contentSlug.count({ where: { locale: "tr", slug: "anasayfa-2" } })).toBe(1);
+  });
+
+  /**
+   * qa-agent — koordinatör talebinin madde 4'ü ("force:true ile ikinci kopya + aynı anda
+   * cross-entity çakışma birlikte test edilmiş mi"). Yukarıdaki test zaten `anasayfa`yı bir
+   * BlogPost'un `ContentSlug`'ına KİLİTLEDİ ve İLK importu `anasayfa-2`'ye çözdü — bu test AYNI
+   * `app` durumunun (bilinçli olarak `beforeAll`de SIFIRLANMAZ, testler sırayla ÇALIŞIR) ÜZERİNE
+   * `force:true` ile İKİNCİ bir kopya uygular. Beklenen: `resolveSlugPlan` HEM cross-entity
+   * `ContentSlug` satırını (`anasayfa`) HEM DE önceki gerçek `Page.slug`'ı (`anasayfa-2`) TARAR ve
+   * `anasayfa-3`'e atlar — 409/P2002 YOK, önceki (`anasayfa-2`) sayfa SİLİNMEZ (§6.4 additive kural).
+   */
+  it("aynı anda hem cross-entity ContentSlug ('anasayfa') hem de önceki gerçek Page.slug ('anasayfa-2') doluyken force:true → 201, `anasayfa-3`", async () => {
+    const { importDemoTemplate } = await import("../../src/modules/demo-templates/importer");
+
+    const previousPage = await app.prisma.page.findFirst({ where: { slug: "anasayfa-2" } });
+    expect(previousPage).not.toBeNull();
+
+    const result = await importDemoTemplate(app, {
+      templateKey: "modern-architecture",
+      body: { confirm: true, force: true, setAsHomePage: true },
+      actorId,
+      actorEmail,
+    });
+
+    expect(result.pageSlug).toBe("anasayfa-3");
+    expect(result.warnings.some((w) => w.includes("anasayfa-3"))).toBe(true);
+    expect(result.warnings).toContain(
+      "Şablon daha önce uygulanmıştı; `force` ile ikinci bir kopya oluşturuldu. Önceki içerik SİLİNMEDİ."
+    );
+
+    const createdPage = await app.prisma.page.findUnique({ where: { id: result.pageId } });
+    expect(createdPage?.slug).toBe("anasayfa-3");
+    expect(await app.prisma.contentSlug.count({ where: { locale: "tr", slug: "anasayfa-3" } })).toBe(1);
+
+    // §6.4 — önceki (madde 4'ün ürettiği) sayfa hâlâ var, SİLİNMEDİ.
+    const stillThere = await app.prisma.page.findUnique({ where: { id: previousPage!.id } });
+    expect(stillThere?.deletedAt ?? null).toBeNull();
+    expect(stillThere?.slug).toBe("anasayfa-2");
+
+    // Orijinal cross-entity `ContentSlug` (BLOG_POST, "anasayfa") HİÇ dokunulmadı — polimorfik
+    // tablo, importer'ın YAZMA yetkisi olmayan bir satırı.
+    expect(
+      await app.prisma.contentSlug.count({ where: { locale: "tr", slug: "anasayfa", entityType: "BLOG_POST" } })
+    ).toBe(1);
   });
 });
