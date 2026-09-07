@@ -18,12 +18,26 @@
  * her iki env değişkenine de STATİK olarak erişilir (`next.config.ts::buildImageRemotePatterns`
  * ile AYNI desen).
  */
-export const IMAGE_HOST_ENV_KEYS = ["NEXT_PUBLIC_API_URL", "NEXT_PUBLIC_MEDIA_URL"] as const;
+export const IMAGE_HOST_ENV_KEYS = [
+  "NEXT_PUBLIC_API_URL",
+  "NEXT_PUBLIC_MEDIA_URL",
+  // Docker'da server component'ler `lib/env.ts::toInternalMediaUrl` ile medya `src`'ini bu host'a
+  // çevirir (next/image'in KENDİ sunucu-taraflı optimize fetch'i `localhost`'a ulaşamadığı için,
+  // bkz. `lib/env.ts::INTERNAL_MEDIA_ORIGIN` yorumu) — SafeImage bunu next/image'e VERMEDEN önce
+  // burada da "izinli" sayması gerekir, aksi halde next/image'e hiç gitmeyip düz `<img>`'e düşer ve
+  // tarayıcı "backend" host'unu (yalnızca Docker ağında çözülür) DOĞRUDAN çözmeye çalışıp başarısız
+  // olur. Sunucu ve tarayıcı bundle'ı AYNI statik değeri görmeli (yukarıdaki hydration-mismatch notu).
+  "NEXT_PUBLIC_INTERNAL_MEDIA_URL",
+] as const;
 
 function collectAllowedHosts(): string[] {
   const hosts = new Set<string>();
   // Static erişim ZORUNLU (bkz. yukarıdaki not) — `IMAGE_HOST_ENV_KEYS` sırasıyla eşleşir.
-  for (const raw of [process.env.NEXT_PUBLIC_API_URL, process.env.NEXT_PUBLIC_MEDIA_URL]) {
+  for (const raw of [
+    process.env.NEXT_PUBLIC_API_URL,
+    process.env.NEXT_PUBLIC_MEDIA_URL,
+    process.env.NEXT_PUBLIC_INTERNAL_MEDIA_URL,
+  ]) {
     if (!raw) continue;
     try {
       hosts.add(new URL(raw).hostname);

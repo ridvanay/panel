@@ -85,6 +85,15 @@ services:
         # "backend" tarayıcıdan çözülemez) — bu yüzden localhost, docker network adı değil.
         NEXT_PUBLIC_API_URL: http://localhost:4000/api/v1
         NEXT_PUBLIC_SITE_URL: http://localhost:3000
+        # DİĞER İKİSİNİN TAM TERSİ: bu SADECE next/image'in KENDİ sunucu-taraflı optimize fetch'i
+        # (frontend container'ının İÇİNDE çalışır, `/_next/image` route'u) içindir — backend'in
+        # `Media.url`'i tarayıcıya göre mutlaklaştırdığı `localhost:4000`'e o container'dan
+        # ULAŞILAMAZ (INTERNAL_API_URL'in server-fetch için çözdüğü AYNI sorun, bkz. o satırın notu
+        # ve frontend/src/lib/env.ts::INTERNAL_MEDIA_ORIGIN). Tarayıcı bu host'u HİÇBİR ZAMAN
+        # doğrudan çözmeye çalışmaz (next/image optimize edilen görseller için DAİMA aynı-origin
+        # `/_next/image?url=...` ister) — bu yüzden `INTERNAL_API_URL`'in aksine NEXT_PUBLIC_*
+        # build-arg'ı olması güvenlidir/gereklidir (bkz. frontend/src/lib/image-hosts.ts notu).
+        NEXT_PUBLIC_INTERNAL_MEDIA_URL: http://backend:4000
     # backend servisiyle AYNI desen (bkz. dosya başındaki NOT) — frontend/.dockerignore
     # `.env*`'i imaja HİÇ almaz (bkz. src/app/api/revalidate/route.ts'in REVALIDATE_SECRET'ı),
     # bu yüzden runtime env'i env_file ile enjekte etmek gerekiyor.

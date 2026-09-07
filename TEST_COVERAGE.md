@@ -2287,3 +2287,61 @@ Düzeltmeden SONRA dosya 3 kez (izole + art arda iki tam koşum) TUTARLI 11/11 y
 YENİ bir uygulama bug'ı BULUNMADI** — bu turun tek "düzeltmesi" qa-agent'ın kendi test-altyapısında
 (yukarıdaki flaky kaynağı), kural gereği (proje kökü CLAUDE.md madde 3) doğrudan qa-agent tarafından
 giderildi.
+
+## Ürün detay sayfasında admin-yüklü görsellerin 404/"Görsel yüklenemedi" kalması — GERÇEK kök neden bulundu ve düzeltildi (bu turda)
+
+Bağlam: bir önceki turda ("kırık ürün görsellerine placeholder", yukarıya bkz.) bu semptom için
+"gerçek bir backend bug'ı bulunmadı" sonucuna varılmış, yalnızca `SafeImage`/`ProductGallery`'ye
+kullanıcı dostu bir placeholder eklenmişti — 404'ün KENDİSİ düzeltilmemişti. Bu turda çalışan
+docker-compose yığınına (`db`+`backend`+`frontend`, hepsi healthy) karşı canlı repro yapıldı:
+
+- `curl http://localhost:4000/uploads/<dosya>` → **200** (backend statik servis, CORS, dosya —
+  hepsi zaten DOĞRU; ilk ticket'ın varsaydığı "eksik fiziksel dosya/rewrite" teşhisi YANLIŞTI).
+- PDP HTML'i (`curl http://localhost:3000/products/<slug>`) → görsel `src`'i next/image'in
+  `/_next/image?url=http%3A%2F%2Flocalhost%3A4000%2Fuploads%2F...` optimize rotasına gidiyor.
+- Bu rotayı DOĞRUDAN curl'lemek → **500**, frontend container loglarında
+  `TypeError: fetch failed ... ECONNREFUSED`.
+
+**Kök neden:** `next/image`'in KENDİ sunucu-taraflı optimize fetch'i (`/_next/image`, frontend
+container'ının İÇİNDE çalışır) backend'in TARAYICIYA göre mutlaklaştırdığı medya URL'sine
+(`mappers/index.ts::absolutizeMediaUrl`, `env.PUBLIC_URL=http://localhost:4000`) erişmeye çalışıyor
+— ama o container'ın KENDİ "localhost"u backend DEĞİL, kendisidir (`ECONNREFUSED`). Bu, projenin
+API çağrıları için ZATEN çözdüğü `INTERNAL_API_URL` vs `NEXT_PUBLIC_API_URL` ayrımıyla (bkz.
+`frontend/src/lib/env.ts`) BİREBİR AYNI Docker ağı sorunu — yalnızca API JSON'unun İÇİNDEKİ medya
+URL'leri için eksikti. Dosya 404 DEĞİL, shared volume eksikliği DEĞİL (frontend zaten uploads'a
+hiç ihtiyaç duymuyor, backend tek başına servis ediyor) — optimize edicinin erişemediği bir host.
+
+**Düzeltme (architect + backend-agent + frontend-agent + devops-agent, tek commit):**
+- backend-agent: `absolutizeMediaUrl`/statik servis/CORS DENETLENDİ, DEĞİŞİKLİK GEREKMEDİ (zaten
+  doğru — yukarıdaki curl kanıtı).
+- frontend-agent: `lib/env.ts::toInternalMediaUrl` — server component'lerin fetch ettiği ham API
+  JSON metnindeki public medya host'unu (varsa) `NEXT_PUBLIC_INTERNAL_MEDIA_URL`'e çevirir;
+  `lib/api/server-products.ts`'in üç fetcher'ında (`fetchProductsServer`,
+  `fetchProductCatalogServer`, `fetchProductBySlugServer`) uygulandı. `next.config.ts` `remotePatterns`
+  ve `lib/image-hosts.ts` allowlist'i yeni host'u TANIYACAK şekilde güncellendi (aksi halde
+  next/image bu host'u reddeder VEYA SafeImage düz `<img>`'e düşüp tarayıcının "backend" host'unu
+  DOĞRUDAN çözmeye çalışmasına yol açardı — next/image optimize ettiği görseller için tarayıcı
+  DAİMA aynı-origin `/_next/image` ister, bu yüzden `NEXT_PUBLIC_*` olması GÜVENLİDİR).
+- devops-agent: `docker-compose.yml` frontend `build.args`'a `NEXT_PUBLIC_INTERNAL_MEDIA_URL:
+  http://backend:4000` eklendi; `frontend/Dockerfile`e karşılık gelen `ARG`/`ENV`. Docker DIŞINDA
+  (`npm run dev`) bu değişken tanımsız kalır → no-op, mevcut davranış BOZULMAZ.
+
+**Doğrulama:** `docker compose build frontend` + `up -d frontend` ile GERÇEK imaj yeniden
+oluşturuldu. Düzeltmeden ÖNCE/SONRA AYNI ürün+görsel üzerinde:
+
+| Adım | Önce | Sonra |
+|---|---|---|
+| PDP HTML'deki `/_next/image?url=` değeri | `...url=http%3A%2F%2Flocalhost%3A4000%2Fuploads%2F...` | `...url=http%3A%2F%2Fbackend%3A4000%2Fuploads%2F...` |
+| O URL'in DOĞRUDAN curl'lenmesi | **500** (`ECONNREFUSED`) | **200**, `image/png`, doğru boyutlandırılmış (384×288) |
+| `/products` katalog sayfası (ürün kartları) | aynı 500 deseni | **200** — aynı düzeltme kart görselleri için de geçerli (aynı `server-products.ts`) |
+| İlgisiz, DOKUNULMAMIŞ görsel (site header logosu, düz `<img>`) | `http://localhost:4000/...` | DEĞİŞMEDİ — hâlâ `localhost:4000`, regresyon YOK |
+| `curl http://localhost:4000/uploads/<dosya>` (ham backend) | 200 | 200 — DEĞİŞMEDİ |
+
+Frontend birim testleri: **633/633 geçti** (101 dosya, `npx vitest run`, `internal-media-url.test.ts`
+YENİ eklenen 3 test dahil — `toInternalMediaUrl`'in no-op/rewrite/farklı-origin'e-dokunmama
+davranışlarını env-stub ile izole doğrular). Backend'e KOD DEĞİŞİKLİĞİ yapılmadığından backend test
+paketi bu turda yeniden koşulmadı (davranışı zaten canlı curl ile doğrulandı).
+
+**Kapsam notu:** Düzeltme `server-products.ts` (PDP + katalog) ile sınırlı tutuldu — ticket'ın
+kapsamı ürün görselleri; blog/portfolio/slider'ların server-* fetcher'ları AYNI kök nedeni
+taşıyabilir ama bu turda DOKUNULMADI (ayrı bir takip görevi olmalı, spekülatif genişletme YAPILMADI).

@@ -14,7 +14,16 @@ import { withSentryConfig } from "@sentry/nextjs";
 function buildImageRemotePatterns(): NonNullable<NextConfig["images"]>["remotePatterns"] {
   const patterns: NonNullable<NextConfig["images"]>["remotePatterns"] = [];
   const seenHosts = new Set<string>();
-  for (const raw of [process.env.NEXT_PUBLIC_API_URL, process.env.NEXT_PUBLIC_MEDIA_URL]) {
+  for (const raw of [
+    process.env.NEXT_PUBLIC_API_URL,
+    process.env.NEXT_PUBLIC_MEDIA_URL,
+    // Docker'da `next/image`'in KENDİ sunucu-taraflı optimize fetch'i (`/_next/image` route'u,
+    // frontend container'ının İÇİNDE çalışır) yukarıdaki iki host'a (tarayıcı-taraflı, `localhost`)
+    // ULAŞAMAZ — bkz. `lib/env.ts::INTERNAL_MEDIA_ORIGIN` yorumu. `toInternalMediaUrl` server
+    // component'lerde `src`'i bu host'a çevirir; `next/image` bu host'u remotePatterns'te GÖRMEZSE
+    // optimize isteği 400 ile reddedilir.
+    process.env.NEXT_PUBLIC_INTERNAL_MEDIA_URL,
+  ]) {
     if (!raw) continue;
     try {
       const url = new URL(raw);
