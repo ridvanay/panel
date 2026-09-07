@@ -157,10 +157,27 @@ describe("modül toggle → veri korunumu (gerçek registry, mock YOK)", () => {
     });
     expect(cartRes.statusCode).toBe(404);
 
+    // `.claude/architect-scope-checkout-redesign.md` §5.2 (bağlayıcı) — gövde artık `shippingAddress`/
+    // `billing`/iki yasal onay ZORUNLU alanları içeriyor (bkz. checkout.schemas.ts). Fastify şema
+    // doğrulamasını `preHandler` hook'larından (module guard dahil) ÖNCE çalıştırır — bu yüzden bu
+    // testin AMACI (module guard'ın 404 döndüğünü kanıtlamak) için gövde GEÇERLİ olmak ZORUNDADIR,
+    // aksi halde istek guard'a hiç ulaşmadan 422 ile döner ve test asıl davranışı ÖLÇEMEZ.
     const checkoutRes = await app.inject({
       method: "POST",
       url: "/api/v1/checkout/session",
-      payload: { customerEmail: "guard@example.com" },
+      payload: {
+        customerEmail: "guard@example.com",
+        shippingAddress: {
+          fullName: "Guard Test",
+          phone: "+90 555 111 22 33",
+          city: "İstanbul",
+          district: "Kadıköy",
+          addressLine1: "Test Mahallesi No:1",
+        },
+        billing: { billingType: "INDIVIDUAL" },
+        distanceSalesApproved: true,
+        preliminaryInfoApproved: true,
+      },
     });
     expect(checkoutRes.statusCode).toBe(404);
 

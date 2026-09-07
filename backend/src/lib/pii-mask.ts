@@ -14,6 +14,19 @@ export function maskEmail(email: string): string {
 }
 
 /**
+ * `.claude/architect-scope-checkout-redesign.md` §5.5 — `123*****901` biçimi (ilk 3 + son 3
+ * hane açık, ortası `*`), `maskEmail` ile AYNI desen. `GET /admin/orders` (liste) yanıtında
+ * `billing.nationalId`'yi maskelemek için kullanılır — `GET /admin/orders/{orderId}` (detay) VE
+ * `GET /users/me/orders*` maskesiz döner (bkz. orders.routes.ts).
+ */
+export function maskNationalId(nationalId: string): string {
+  if (nationalId.length !== 11) return "***";
+  const first = nationalId.slice(0, 3);
+  const last = nationalId.slice(-3);
+  return `${first}*****${last}`;
+}
+
+/**
  * IPv4: son oktet `0`'lanır (ör. `8.8.8.8` -> `8.8.8.0`). IPv6: son grup `0`'lanır (yaklaşık
  * eşdeğer davranış — şu anki export rapor türlerinden (VIEWS/BREAKDOWN/SUMMARY/TOP_CONTENT/
  * USERS/REVENUE) HİÇBİRİ ham IP alanı içermiyor; bu fonksiyon ileride IP taşıyan bir rapor

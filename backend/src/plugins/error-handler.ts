@@ -118,7 +118,17 @@ export default fp(async function errorHandlerPlugin(app: FastifyInstance) {
     if (fastifyErr.validation) {
       const details: Record<string, string[]> = {};
       for (const v of fastifyErr.validation) {
-        const key = (v.instancePath || v.params?.["missingProperty"] || "_").toString().replace(/^\//, "") || "_";
+        const rawKey = (v.instancePath || v.params?.["missingProperty"] || "_").toString().replace(/^\//, "");
+        // `fastify-type-provider-zod` (bkz. node_modules/fastify-type-provider-zod/dist/src/
+        // errors.js::createValidationError) her zod `issue`'sunu ajv-benzeri bir nesneye
+        // (`instancePath: "/" + issue.path.join("/")`) çevirir — bu yüzden NESTED alanlarda
+        // (ör. `body.billing.taxNumber`) `instancePath` "/" AYRAÇLI gelir ("billing/taxNumber").
+        // Bu, `.claude/architect-scope-checkout-redesign.md` §5.2 + openapi.yaml (bağlayıcı,
+        // `issue.path.join(".")`/`flattenZodIssues` ile TUTARLI olması gereken) sözleşmesiyle
+        // ÇELİŞİRDİ — frontend react-hook-form alan adları `.` ayraçlı anahtar BEKLER. Aşağıdaki
+        // dönüşüm bu iki yolu (`isZodError` dalındaki `flattenZodIssues` VE bu dal) TUTARLI hale
+        // getirir; tek segmentli anahtarlarda (mevcut TÜM testler) davranış DEĞİŞMEZ.
+        const key = (rawKey.includes("/") ? rawKey.split("/").join(".") : rawKey) || "_";
         (details[key] ??= []).push(v.message ?? "Geçersiz değer.");
       }
       return sendError(reply, 422, "VALIDATION_ERROR", "Girdi doğrulama hatası.", details);

@@ -73,7 +73,19 @@ export async function checkoutRoutes(app: FastifyInstance) {
       },
     },
     async (request, reply) => {
-      const { customerEmail, customerName } = request.body;
+      // `distanceSalesApproved`/`preliminaryInfoApproved` gövdede yalnızca `z.literal(true)` olarak
+      // DOĞRULANIR (bkz. checkout.schemas.ts) — değerlerinin kendisi burada KULLANILMAZ, onay ANI
+      // her zaman sunucuda `new Date()` olarak üretilir (§3.5/§5.3 madde 4, bağlayıcı — istekten
+      // gelen bir zaman damgası ASLA kabul edilmez).
+      const { customerEmail, customerName, shippingAddress, billing } = request.body;
+      // §5.3 madde 2 — `customerName` gönderilmediyse teslimat adresindeki ad soyad kullanılır
+      // (iki ayrı "kim aldı?" kaynağının ayrışmasını önlemek için).
+      const resolvedCustomerName = customerName ?? shippingAddress.fullName;
+
+      // §3.4/§5.3 madde 3 — `sameAsShipping !== false` (true VEYA gönderilmediyse varsayılan true)
+      // ise sunucu teslimat adresini fatura adresi kolonlarına MATERYALİZE eder (kopyalar).
+      // `sameAsShipping` bayrağının kendisi DB'ye YAZILMAZ.
+      const billingAddress = billing.sameAsShipping !== false ? shippingAddress : billing.address!;
 
       const rawToken = request.cookies?.[CART_COOKIE_NAME];
       const cart = rawToken
@@ -161,6 +173,11 @@ export async function checkoutRoutes(app: FastifyInstance) {
       const shipping = computeShipping(subtotalCents, shippingSettings);
       const totalCents = subtotalCents + shipping.feeCents;
 
+      // §3.5/§5.3 madde 4 (bağlayıcı) — onay ANI, isteğin İÇİNDEN gelen herhangi bir zaman damgası
+      // KABUL EDİLMEDEN, sunucuda ÜRETİLİR. Zod `z.literal(true)` zaten `true` DIŞINDA bir değeri
+      // 422 ile eledi (bkz. checkout.schemas.ts) — buraya ulaşıldıysa ikisi de onaylanmış demektir.
+      const legalApprovedAt = new Date();
+
       const order = await app.prisma.order.create({
         data: {
           orderNumber: generateOrderNumber(),
@@ -169,7 +186,7 @@ export async function checkoutRoutes(app: FastifyInstance) {
           // (mevcut, DEĞİŞMEYEN akış) `null` kalır.
           siteUserId: request.user?.id ?? null,
           customerEmail,
-          customerName: customerName ?? null,
+          customerName: resolvedCustomerName,
           status: "PENDING",
           currency,
           subtotalCents,
@@ -178,6 +195,39 @@ export async function checkoutRoutes(app: FastifyInstance) {
           shippingCents: shipping.feeCents,
           totalCents,
           items: { create: orderItemsData },
+
+          // .claude/architect-scope-checkout-redesign.md §3.3/§4.2 — teslimat adresi SNAPSHOT'ı.
+          shippingAddressFullName: shippingAddress.fullName,
+          shippingAddressPhone: shippingAddress.phone,
+          shippingAddressCountry: shippingAddress.country,
+          shippingAddressCity: shippingAddress.city,
+          shippingAddressDistrict: shippingAddress.district,
+          shippingAddressNeighborhood: shippingAddress.neighborhood ?? null,
+          shippingAddressLine1: shippingAddress.addressLine1,
+          shippingAddressLine2: shippingAddress.addressLine2 ?? null,
+          shippingAddressPostalCode: shippingAddress.postalCode ?? null,
+
+          // §3.4 — fatura bilgisi SNAPSHOT'ı. `sameAsShipping` bayrağının kendisi SAKLANMAZ; adres
+          // yukarıda hesaplanan `billingAddress`'ten (materyalize edilmiş ya da doğrudan gönderilmiş)
+          // MATERYALİZE edilir.
+          billingType: billing.billingType,
+          billingCompanyName: billing.companyName ?? null,
+          billingTaxOffice: billing.taxOffice ?? null,
+          billingTaxNumber: billing.taxNumber ?? null,
+          billingNationalId: billing.nationalId ?? null,
+          billingAddressFullName: billingAddress.fullName,
+          billingAddressPhone: billingAddress.phone,
+          billingAddressCountry: billingAddress.country,
+          billingAddressCity: billingAddress.city,
+          billingAddressDistrict: billingAddress.district,
+          billingAddressNeighborhood: billingAddress.neighborhood ?? null,
+          billingAddressLine1: billingAddress.addressLine1,
+          billingAddressLine2: billingAddress.addressLine2 ?? null,
+          billingAddressPostalCode: billingAddress.postalCode ?? null,
+
+          // §3.5 — yasal onay KANITI, boolean değil zaman damgası.
+          distanceSalesApprovedAt: legalApprovedAt,
+          preliminaryInfoApprovedAt: legalApprovedAt,
         },
         include: { items: true },
       });

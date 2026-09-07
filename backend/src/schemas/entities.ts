@@ -1413,6 +1413,47 @@ export type CartDto = z.infer<typeof CartSchema>;
 export const OrderStatusSchema = z.enum(["PENDING", "PAID", "SHIPPED", "FAILED", "CANCELLED", "EXPIRED", "REFUNDED", "FULFILLED"]);
 export type OrderStatus = z.infer<typeof OrderStatusSchema>;
 
+// `.claude/architect-scope-checkout-redesign.md` §4.1/§5.5 — Prisma `enum BillingType` ile
+// birebir aynı. `Order.billingType` eski (bu özellikten ÖNCE oluşmuş) siparişlerde `null`'dur.
+export const BillingTypeSchema = z.enum(["INDIVIDUAL", "CORPORATE"]);
+export type BillingType = z.infer<typeof BillingTypeSchema>;
+
+/**
+ * `Order` üzerindeki DENORMALİZE adres kolonlarının DTO görünümü — teslimat VE fatura adresi
+ * ORTAK şekli (`checkout.schemas.ts::CheckoutAddressInputSchema` ile alan adları BİREBİR aynı).
+ * Düz Prisma kolonları → iç içe DTO eşlemesi `mappers/index.ts::toOrderAddressSnapshotDto`'da
+ * TEK yerde yapılır (bkz. §5.5, bağlayıcı).
+ */
+export const OrderAddressSnapshotSchema = z.object({
+  fullName: z.string(),
+  phone: z.string().nullable(),
+  country: z.string(),
+  city: z.string(),
+  district: z.string(),
+  neighborhood: z.string().nullable(),
+  addressLine1: z.string(),
+  addressLine2: z.string().nullable(),
+  postalCode: z.string().nullable(),
+});
+export type OrderAddressSnapshotDto = z.infer<typeof OrderAddressSnapshotSchema>;
+
+/**
+ * Fatura bilgisi SNAPSHOT'ı. `nationalId` — `GET /admin/orders` LİSTESİNDE
+ * `lib/pii-mask.ts::maskNationalId` ile maskelenir, `GET /admin/orders/{orderId}` DETAYINDA VE
+ * `GET /users/me/orders*`'ta maskesiz döner (bkz. orders.routes.ts, §5.5).
+ */
+export const OrderBillingSnapshotSchema = z.object({
+  billingType: BillingTypeSchema,
+  companyName: z.string().nullable(),
+  taxOffice: z.string().nullable(),
+  taxNumber: z.string().nullable(),
+  nationalId: z.string().nullable(),
+  // `sameAsShipping: true` gönderildiyse teslimat adresinin BİREBİR KOPYASIDIR — bayrağın
+  // kendisi saklanmadığı için bu alan HER ZAMAN dolu döner (`Order.billingType` null DEĞİLSE).
+  address: OrderAddressSnapshotSchema,
+});
+export type OrderBillingSnapshotDto = z.infer<typeof OrderBillingSnapshotSchema>;
+
 export const OrderItemSchema = z.object({
   id: z.string().uuid(),
   productId: z.string().uuid().nullable(),
@@ -1456,6 +1497,11 @@ export const OrderSchema = z.object({
   shippedAt: z.string().nullable(),
   deliveredAt: z.string().nullable(),
   createdAt: z.string(),
+  // `.claude/architect-scope-checkout-redesign.md` §3.3/§4.2/§5.5 — bu özellikten ÖNCE oluşmuş
+  // siparişlerde adres/fatura hiç YOKTUR (Stripe Hosted Checkout'ta toplanıyordu); tüketiciler
+  // `null` durumunu ELE ALMAK ZORUNDADIR.
+  shippingAddress: OrderAddressSnapshotSchema.nullable(),
+  billing: OrderBillingSnapshotSchema.nullable(),
   items: z.array(OrderItemSchema),
 });
 export type OrderDto = z.infer<typeof OrderSchema>;

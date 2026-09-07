@@ -1290,10 +1290,70 @@ export interface UpdateCartItemRequest {
   quantity: number;
 }
 
-/** `POST /checkout/session` — sepetten Stripe Checkout oturumu başlatır. */
+/**
+ * `.claude/architect-scope-checkout-redesign.md` §4.1/§5.1 — Prisma `enum BillingType` ile
+ * birebir. `INDIVIDUAL` = bireysel (TCKN OPSİYONEL), `CORPORATE` = kurumsal (firma unvanı +
+ * vergi numarası ZORUNLU). `Order.billing.billingType` bu özellikten ÖNCE oluşmuş siparişlerde
+ * `null`'dur (bkz. `Order.billing`).
+ */
+export type BillingType = "INDIVIDUAL" | "CORPORATE";
+
+/**
+ * Checkout sırasında toplanan adres girdisi — alan adları/uzunlukları `Address` (adres defteri)
+ * modeliyle BİREBİR aynıdır (§4, `CheckoutAddressInput` openapi şeması). `title`/`isDefault`
+ * BİLİNÇLİ olarak YOKTUR (adres defteri metadata'sı, sipariş snapshot'ının parçası değil).
+ */
+export interface CheckoutAddressInput {
+  fullName: string;
+  phone: string;
+  /** İki harfli ülke kodu — verilmezse backend `"TR"` varsayar; formda GÖSTERİLMEZ (v1 tek ülke). */
+  country?: string;
+  city: string;
+  district: string;
+  neighborhood?: string | null;
+  addressLine1: string;
+  addressLine2?: string | null;
+  /** `country: "TR"` iken gönderilirse tam 5 rakam olmalıdır (aksi halde 422). */
+  postalCode?: string | null;
+}
+
+/**
+ * Fatura bilgisi girdisi — koşullu zorunluluk kuralları (backend `superRefine`, 422, §5.2):
+ * `CORPORATE` → `companyName` + `taxNumber` ZORUNLU, `nationalId` YASAK; `INDIVIDUAL` →
+ * `companyName`/`taxOffice`/`taxNumber` YASAK. `address`, `sameAsShipping: true` iken hiç
+ * GÖNDERİLMEZ — sunucu teslimat adresini fatura adresi kolonlarına kopyalar.
+ */
+export interface CheckoutBillingInput {
+  billingType: BillingType;
+  /** Verilmezse backend `true` varsayar. */
+  sameAsShipping?: boolean;
+  /** Firma unvanı — `CORPORATE` iken ZORUNLU, `INDIVIDUAL` iken YASAK. */
+  companyName?: string;
+  /** Vergi dairesi — `CORPORATE` iken opsiyonel, `INDIVIDUAL` iken YASAK. */
+  taxOffice?: string;
+  /** VKN — `CORPORATE` iken ZORUNLU (10 haneli, checksum YOK), `INDIVIDUAL` iken YASAK. */
+  taxNumber?: string;
+  /** TCKN — `INDIVIDUAL` iken OPSİYONEL (11 hane + resmi checksum), `CORPORATE` iken YASAK. */
+  nationalId?: string;
+  /** Yalnızca `sameAsShipping: false` iken gönderilir (gönderilirse `sameAsShipping !== false` ile 422). */
+  address?: CheckoutAddressInput;
+}
+
+/**
+ * `POST /checkout/session` — sepetten Stripe Checkout oturumu başlatır. Sepet içeriği/fiyat/
+ * kargo bu gövdede GÖNDERİLMEZ (sunucuda türetilir) — bkz.
+ * `.claude/architect-scope-checkout-redesign.md` §5.1.
+ */
 export interface CreateCartCheckoutSessionRequest {
   customerEmail: string;
+  /** Opsiyonel — gönderilmezse sunucu `shippingAddress.fullName` değerini kullanır. */
   customerName?: string;
+  shippingAddress: CheckoutAddressInput;
+  billing: CheckoutBillingInput;
+  /** Mesafeli Satış Sözleşmesi onayı — `true` DIŞINDA bir değer 422 (Zod `z.literal(true)`). */
+  distanceSalesApproved: true;
+  /** Ön Bilgilendirme Formu onayı — `distanceSalesApproved` ile AYNI kural. */
+  preliminaryInfoApproved: true;
 }
 
 /**
@@ -1311,6 +1371,44 @@ export interface OrderItem {
   unitPriceCents: number;
   quantity: number;
   lineTotalCents: number;
+}
+
+/**
+ * `Order` üzerindeki denormalize adres kolonlarının DTO görünümü (§4.2, §5.5) — `Order` FK ile
+ * `Address`'e BAĞLI DEĞİLDİR, bu SNAPSHOT'tır (adres sonradan değişse/silinse bile sipariş
+ * geçmişi bozulmaz).
+ */
+export interface OrderAddressSnapshot {
+  fullName: string;
+  phone: string | null;
+  country: string;
+  city: string;
+  district: string;
+  neighborhood: string | null;
+  addressLine1: string;
+  addressLine2: string | null;
+  postalCode: string | null;
+}
+
+/**
+ * Fatura bilgisi SNAPSHOT'ı — `nationalId`, `GET /admin/orders` LİSTESİNDE maskelenir
+ * (`123*****901`), `GET /admin/orders/{orderId}` DETAYINDA ve `GET /users/me/orders*`'ta
+ * maskesizdir (§5.5).
+ */
+export interface OrderBillingSnapshot {
+  billingType: BillingType;
+  /** Yalnızca `CORPORATE`'te dolu. */
+  companyName: string | null;
+  taxOffice: string | null;
+  /** VKN — yalnızca `CORPORATE`'te dolu. */
+  taxNumber: string | null;
+  /** TCKN — yalnızca `INDIVIDUAL` + kullanıcı GÖNDERDİYSE dolu. */
+  nationalId: string | null;
+  /**
+   * Fatura adresi. İstek gövdesinde `sameAsShipping: true` gönderildiyse teslimat adresinin
+   * BİREBİR KOPYASIDIR — bayrak saklanmadığı için bu alan HER ZAMAN doludur.
+   */
+  address: OrderAddressSnapshot;
 }
 
 export interface Order {
@@ -1336,6 +1434,14 @@ export interface Order {
   /** `FULFILLED`'a İLK geçişte otomatik doldurulur. */
   deliveredAt: string | null;
   createdAt: string;
+  /**
+   * Sipariş anında alınan teslimat adresi SNAPSHOT'ı — bu özellikten ÖNCE oluşmuş siparişlerde
+   * `null`'dur (adres o dönemde Stripe tarafında toplanıyordu), tüketiciler bu durumu ele almak
+   * ZORUNDADIR (§4.2).
+   */
+  shippingAddress: OrderAddressSnapshot | null;
+  /** Fatura bilgisi SNAPSHOT'ı — `shippingAddress` ile AYNI kural (eski siparişlerde `null`). */
+  billing: OrderBillingSnapshot | null;
   items: OrderItem[];
 }
 

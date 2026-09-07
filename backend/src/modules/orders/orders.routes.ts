@@ -14,7 +14,7 @@ import { OrderSchema } from "../../schemas/entities";
 import { toOrderDto } from "../../mappers";
 import { ConflictError, NotFoundError } from "../../lib/errors";
 import { parseCursor, buildPageMeta } from "../../lib/pagination";
-import { maskEmail } from "../../lib/pii-mask";
+import { maskEmail, maskNationalId } from "../../lib/pii-mask";
 import { logAudit } from "../../lib/audit";
 import { emitWebhookEvent } from "../../lib/webhook-emitter";
 import { buildWebhookOrderPayload } from "../../lib/webhook-order-payload";
@@ -58,6 +58,10 @@ const ALLOWED_TRANSITIONS: Partial<Record<OrderStatus, OrderStatus[]>> = {
  * iletişime geçmesi (ör. teslimat sorunu) için tam adrese ihtiyacı vardır — maskeli bir adresle
  * bu iş akışı imkânsız hale gelir. Bu, mevcut RBAC hardening turundaki "liste maskeli, detay
  * açık" kararıyla AYNI yaklaşımdır.
+ *
+ * `.claude/architect-scope-checkout-redesign.md` §5.5 — `billing.nationalId` (TCKN) AYNI kararla
+ * LİSTEDE `lib/pii-mask.ts::maskNationalId` (`123*****901`) ile maskelenir, DETAYDA maskesiz
+ * döner (admin fatura kesmek için gerçek numaraya ihtiyaç duyar).
  */
 export async function ordersRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
@@ -84,7 +88,14 @@ export async function ordersRoutes(app: FastifyInstance) {
         include: WITH_ITEMS,
       });
 
-      const dtos = rows.map((row) => ({ ...toOrderDto(row), customerEmail: maskEmail(row.customerEmail) }));
+      const dtos = rows.map((row) => {
+        const dto = toOrderDto(row);
+        return {
+          ...dto,
+          customerEmail: maskEmail(row.customerEmail),
+          billing: dto.billing && dto.billing.nationalId ? { ...dto.billing, nationalId: maskNationalId(dto.billing.nationalId) } : dto.billing,
+        };
+      });
       return reply.send(ok(dtos, buildPageMeta(rows, limit)));
     }
   );

@@ -6677,7 +6677,7 @@ paths:
     post:
       tags: [Checkout]
       security: []
-      summary: Stripe Checkout oturumu oluştur (public, kimliksiz)
+      summary: Stripe Checkout oturumu oluştur (public, isteğe bağlı kimlikli)
       description: >
         **Hız sınırı: 10 istek/dakika (IP bazlı, route-level override)** — para hareketi
         başlatan bu uca özel sıkı bir üst sınırdır (bkz. ARCHITECTURE.md §10.9.3).
@@ -6691,6 +6691,18 @@ paths:
         yeterli stok yok."`) — sipariş HİÇ oluşturulmaz.
 
 
+        **Checkout yeniden tasarımı (bkz. `.claude/architect-scope-checkout-redesign.md`,
+        bağlayıcı):** teslimat adresi, fatura bilgisi (bireysel/kurumsal) ve yasal onaylar
+        artık BU gövdede toplanır — Stripe'ın kendi adres toplama özelliği
+        (`shipping_address_collection`) KULLANILMAZ ve AÇILMAZ. Adres/fatura alanları
+        `Order` üzerine DENORMALİZE SNAPSHOT olarak yazılır (`OrderItem`'daki
+        fiyat/başlık snapshot mantığıyla AYNI gerekçe); `Address` (adres defteri)
+        tablosuna FK ile BAĞLANMAZ. Bu uç **TEK ADIMLIDIR** — ayrı bir "sipariş taslağı
+        oluştur + onayla" akışı BİLİNÇLİ olarak eklenmemiştir (gerekçe: iki adım,
+        adres doğrulaması ile fiyat/stok dondurma arasında bir TOCTOU penceresi ve
+        sahipsiz taslak temizleme (sweeper) yükü üretirdi).
+
+
         Doğrulama geçerse: `status: PENDING` bir `Order` (+ `OrderItem` satırları,
         `productTitle`/`productSku`/`unitPriceCents` SNAPSHOT olarak) oluşturulur, ardından
         Stripe'ta `mode: payment` bir Checkout Session açılır. **Fiyatlar HER ZAMAN
@@ -6700,6 +6712,17 @@ paths:
         DB'mizde yönetilir. `success_url`/`cancel_url` `FRONTEND_URL`'e göre üretilir.
         `checkoutUrl` alanına yönlendirme sonrası ödemenin ASIL sonucu webhook (`Webhooks`
         tag'i, `checkout.session.completed`) ile işlenir — bu uç YALNIZCA oturumu açar.
+
+
+        `Authorization: Bearer` başlığı VARSA ve geçerliyse `Order.siteUserId` dolar
+        (`authenticateOptional`); YOKSA misafir checkout aynen çalışır (401 ÜRETİLMEZ).
+        Adres defterinden seçim (`GET /users/me/addresses`) bu uca AİT DEĞİLDİR — üye
+        kullanıcı için de adres alanları gövdede AÇIKÇA gönderilir.
+
+
+        **Yanıt BİLİNÇLİ olarak `orderId`/`orderNumber` DÖNDÜRMEZ** (yalnızca
+        `checkoutUrl`): bu uç PUBLIC + kimliksizdir, ödeme tamamlanmadan sipariş
+        tanımlayıcısı sızdırmak numaralandırma yüzeyi açar.
       requestBody:
         required: true
         content:
@@ -6725,7 +6748,65 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
-        "422": { $ref: "#/components/responses/ValidationError" }
+              examples:
+                emptyCart:
+                  summary: Sepet boş/süresi dolmuş
+                  value:
+                    error: { code: CONFLICT, message: "Sepetiniz boş." }
+                outOfStock:
+                  summary: Stok yetersiz (taze okumada)
+                  value:
+                    error: { code: CONFLICT, message: "\"Antrasit Koltuk\" için yeterli stok yok." }
+                variantGone:
+                  summary: Seçilen varyasyon artık satışta değil
+                  value:
+                    error: { code: CONFLICT, message: "\"Antrasit Koltuk\" için seçilen varyasyon artık satışta değil." }
+        "422":
+          description: >
+            Girdi doğrulama hatası (`error.code: VALIDATION_ERROR`). Koşullu zorunlu
+            alanlar (kurumsal fatura üçlüsü, `sameAsShipping: false` iken fatura adresi)
+            de BU kod ile reddedilir — 409 DEĞİL. `error.details` anahtarları Zod
+            `issue.path.join(".")` ile üretilir (bkz. `plugins/error-handler.ts::
+            flattenZodIssues`), bu yüzden iç içe alanlarda nokta notasyonu kullanılır —
+            frontend `react-hook-form` alan adları BU anahtarlarla BİREBİR eşleşmelidir.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+              examples:
+                corporateMissing:
+                  summary: "billingType: CORPORATE iken firma unvanı/vergi no eksik"
+                  value:
+                    error:
+                      code: VALIDATION_ERROR
+                      message: "Girdi doğrulama hatası."
+                      details:
+                        billing.companyName: ["Kurumsal fatura için firma unvanı zorunludur."]
+                        billing.taxNumber: ["Vergi numarası 10 haneli olmalıdır."]
+                invalidNationalId:
+                  summary: TC kimlik numarası algoritma doğrulamasından geçmedi
+                  value:
+                    error:
+                      code: VALIDATION_ERROR
+                      message: "Girdi doğrulama hatası."
+                      details:
+                        billing.nationalId: ["Geçerli bir T.C. kimlik numarası giriniz."]
+                consentMissing:
+                  summary: Yasal onay kutuları işaretlenmemiş
+                  value:
+                    error:
+                      code: VALIDATION_ERROR
+                      message: "Girdi doğrulama hatası."
+                      details:
+                        distanceSalesApproved: ["Mesafeli Satış Sözleşmesi'ni onaylamanız gerekir."]
+                        preliminaryInfoApproved: ["Ön Bilgilendirme Formu'nu onaylamanız gerekir."]
+                invalidPostalCode:
+                  summary: TR posta kodu 5 haneli değil
+                  value:
+                    error:
+                      code: VALIDATION_ERROR
+                      message: "Girdi doğrulama hatası."
+                      details:
+                        shippingAddress.postalCode: ["Posta kodu 5 haneli olmalıdır."]
         "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /admin/orders:
@@ -13035,19 +13116,148 @@ components:
       properties:
         quantity: { type: integer, minimum: 1, maximum: 99 }
 
+    CheckoutAddressInput:
+      description: >
+        Checkout sırasında toplanan adres girdisi — alan adları/uzunlukları `Address`
+        (adres defteri) modeliyle BİREBİR aynıdır (`.claude/architect-scope-checkout-redesign.md`
+        §4, bağlayıcı). Gerekçe: ileride "adres defterinden seç" özelliği geldiğinde
+        `Address` kaydı EK BİR DÖNÜŞÜM OLMADAN bu şekle map'lenebilmelidir; farklı
+        isimlendirme/kural seçilseydi o özellik doğrulama hatasına düşerdi.
+        `title`/`isDefault` BİLİNÇLİ olarak YOKTUR (bunlar adres defteri metadata'sıdır,
+        sipariş snapshot'ının parçası değildir).
+      type: object
+      required: [fullName, phone, city, district, addressLine1]
+      properties:
+        fullName: { type: string, minLength: 1, maxLength: 120 }
+        phone:
+          type: string
+          minLength: 7
+          maxLength: 20
+          description: >
+            `CreateAddressRequest.phone` ile AYNI serbest format (`^[0-9+()\-\s]{7,20}$`).
+            Katı bir TR/E.164 kuralı BİLİNÇLİ olarak uygulanmaz — adres defteriyle
+            kural ayrışması, ileride oradan doldurulan adreslerin reddedilmesine yol açardı.
+        country: { type: string, minLength: 2, maxLength: 2, default: "TR", description: "İki harfli ülke kodu, büyük harfe normalize edilir." }
+        city: { type: string, minLength: 1, maxLength: 100 }
+        district: { type: string, minLength: 1, maxLength: 100 }
+        neighborhood: { type: string, minLength: 1, maxLength: 100, nullable: true }
+        addressLine1: { type: string, minLength: 1, maxLength: 200 }
+        addressLine2: { type: string, minLength: 1, maxLength: 200, nullable: true }
+        postalCode:
+          type: string
+          minLength: 1
+          maxLength: 20
+          nullable: true
+          description: >
+            Opsiyonel. **`country: "TR"` iken gönderilirse tam 5 rakam olmalıdır**
+            (`^\d{5}$`, aksi halde 422); diğer ülkelerde yalnızca uzunluk sınırı
+            uygulanır (ülke başına posta kodu formatı tablosu tutulmaz).
+
+    BillingType:
+      description: >
+        Fatura tipi. `INDIVIDUAL` = bireysel (TCKN OPSİYONEL), `CORPORATE` = kurumsal
+        (firma unvanı + vergi numarası ZORUNLU). Prisma `enum BillingType` ile birebir
+        aynıdır. `Order.billingType` eski (bu özellikten ÖNCE oluşmuş) siparişlerde
+        `null`'dur.
+      type: string
+      enum: [INDIVIDUAL, CORPORATE]
+
+    CheckoutBillingInput:
+      description: >
+        Fatura bilgisi girdisi. **Koşullu zorunluluk (Zod `superRefine`, 422):**
+        `billingType: CORPORATE` iken `companyName` + `taxNumber` ZORUNLU, `nationalId`
+        gönderilirse REDDEDİLİR; `billingType: INDIVIDUAL` iken `companyName`/`taxOffice`/
+        `taxNumber` gönderilirse REDDEDİLİR. Bu "yalnızca zorunlu değil, karşı taraf
+        alanları YASAK" kuralı bilinçlidir — aksi halde kurumsal bir siparişte anlamsız
+        bir TCKN sessizce saklanır (KVKK veri minimizasyonu ihlali).
+
+
+        `address` alanı `sameAsShipping: true` iken GÖNDERİLMEZ; sunucu teslimat adresini
+        fatura adresi kolonlarına KOPYALAR (bkz. `Order` snapshot alanları).
+      type: object
+      required: [billingType]
+      properties:
+        billingType: { $ref: "#/components/schemas/BillingType" }
+        sameAsShipping:
+          type: boolean
+          default: true
+          description: >
+            `true` ise `address` gönderilmemelidir (gönderilirse 422). **Bu alan
+            KALICI OLARAK SAKLANMAZ** — sunucu adresi materyalize eder, böylece her
+            tüketici (admin ekranı, fatura, e-posta şablonu) koşullu kopyalama
+            mantığını TEKRAR ETMEK zorunda kalmaz.
+        companyName:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: "Firma unvanı — `CORPORATE` iken ZORUNLU, `INDIVIDUAL` iken YASAK."
+        taxOffice:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: "Vergi dairesi — `CORPORATE` iken opsiyonel, `INDIVIDUAL` iken YASAK."
+        taxNumber:
+          type: string
+          pattern: "^\\d{10}$"
+          description: >
+            Vergi kimlik numarası (VKN) — `CORPORATE` iken ZORUNLU, `INDIVIDUAL` iken
+            YASAK. **Yalnızca 10 haneli rakam formatı doğrulanır, checksum (VKN algoritması)
+            UYGULANMAZ** — istisnai/eski numaralarda yanlış reddetme riski, kazanılan
+            faydadan büyüktür (TCKN'den FARKLI karar, bkz. `nationalId`).
+        nationalId:
+          type: string
+          pattern: "^[1-9]\\d{10}$"
+          description: >
+            T.C. kimlik numarası — `INDIVIDUAL` iken **OPSİYONEL** (e-arşiv fatura
+            isteyen kullanıcılar için), `CORPORATE` iken YASAK. 11 hane + resmi
+            checksum algoritması doğrulanır. **KVKK: özel nitelikli olmayan ama yüksek
+            hassasiyetli kimlik verisidir** — Stripe metadata'sına, giden webhook
+            payload'ına ve e-posta şablonlarına ASLA gönderilmez; `GET /admin/orders`
+            LİSTESİNDE maskelenir (bkz. `Order.billingNationalId`).
+        address: { $ref: "#/components/schemas/CheckoutAddressInput" }
+
     CartCheckoutSessionRequest:
       description: >
         `CreateCheckoutSessionRequest` (abonelik/`Billing` akışı, `planId`/`billingCycle`
         tabanlı) İLE KARIŞTIRILMAMALI — bu, sepet/ürün tabanlı tek seferlik ödeme akışına
         özgü AYRI bir şemadır. GÜVENLİK: bu uç PUBLIC + kimliksiz — üst sınırsız string
         alanlar DB'ye/Stripe'a/e-posta şablonuna aşırı büyük payload sızdırabilir (kaba bir
-        DoS vektörü), bu yüzden `customerEmail`/`customerName` üst sınırlıdır (RFC 5321
-        e-posta üst sınırı 254 karakter).
+        DoS vektörü), bu yüzden TÜM string alanlar üst sınırlıdır (RFC 5321 e-posta üst
+        sınırı 254 karakter).
+
+
+        **Sepet içeriği/fiyat/kargo bu gövdede GÖNDERİLMEZ** — sepet `cart_token`
+        çerezinden, fiyat `Product`/`ProductVariant`'tan, kargo
+        `lib/shipping.ts::computeShipping`'ten SUNUCUDA türetilir. İstemcinin gönderdiği
+        hiçbir tutar KABUL EDİLMEZ.
       type: object
-      required: [customerEmail]
+      required: [customerEmail, shippingAddress, billing, distanceSalesApproved, preliminaryInfoApproved]
       properties:
         customerEmail: { type: string, format: email, maxLength: 254 }
-        customerName: { type: string, minLength: 1, maxLength: 200 }
+        customerName:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: >
+            Opsiyonel — GÖNDERİLMEZSE sunucu `shippingAddress.fullName` değerini
+            `Order.customerName`'e yazar (iki ayrı "kim aldı?" kaynağının ayrışmasını
+            önlemek için).
+        shippingAddress: { $ref: "#/components/schemas/CheckoutAddressInput" }
+        billing: { $ref: "#/components/schemas/CheckoutBillingInput" }
+        distanceSalesApproved:
+          type: boolean
+          enum: [true]
+          description: >
+            Mesafeli Satış Sözleşmesi onayı — `true` DIŞINDA bir değer 422 ile
+            reddedilir (Zod `z.literal(true)`). Onay anı `Order.distanceSalesApprovedAt`
+            olarak SAKLANIR (ispat yükü satıcıdadır).
+        preliminaryInfoApproved:
+          type: boolean
+          enum: [true]
+          description: >
+            Ön Bilgilendirme Formu onayı — `distanceSalesApproved` ile AYNI kural,
+            `Order.preliminaryInfoApprovedAt` olarak saklanır. **İki onay TEK bir
+            checkbox'ta BİRLEŞTİRİLMEZ** (mevzuat ikisini ayrı ayrı ister).
 
     OrderStatus:
       description: >
@@ -13125,9 +13335,67 @@ components:
         shippedAt: { type: string, format: date-time, nullable: true, description: "`SHIPPED`'e İLK geçişte otomatik doldurulur (`paidAt` ile AYNI desen)." }
         deliveredAt: { type: string, format: date-time, nullable: true, description: "`FULFILLED`'a İLK geçişte otomatik doldurulur." }
         createdAt: { type: string, format: date-time }
+        shippingAddress:
+          allOf:
+            - $ref: "#/components/schemas/OrderAddressSnapshot"
+          nullable: true
+          description: >
+            Sipariş anında alınan teslimat adresi SNAPSHOT'ı. **`Address` (adres defteri)
+            kaydına FK ile BAĞLI DEĞİLDİR** — adres sonradan değişse/silinse bile sipariş
+            geçmişi bozulmaz (`OrderItem.productTitle` ile AYNI gerekçe). Bu özellikten
+            ÖNCE oluşmuş siparişlerde `null`'dur (adres o dönemde Stripe tarafında
+            toplanıyordu) — tüketiciler bu durumu ele almak ZORUNDADIR.
+        billing:
+          allOf:
+            - $ref: "#/components/schemas/OrderBillingSnapshot"
+          nullable: true
+          description: "Fatura bilgisi SNAPSHOT'ı — `shippingAddress` ile AYNI kurallar (eski siparişlerde `null`)."
         items:
           type: array
           items: { $ref: "#/components/schemas/OrderItem" }
+
+    OrderAddressSnapshot:
+      description: >
+        `Order` üzerindeki DENORMALİZE adres kolonlarının DTO görünümü. Prisma tarafında
+        düz kolonlar olarak (`shippingAddressCity`, `billingAddressCity`, ...) tutulur,
+        API'de okunabilirlik için iç içe nesne olarak sunulur — eşleme backend-agent'ın
+        `toOrderDto` fonksiyonunda yapılır (bkz. `.claude/architect-scope-checkout-redesign.md` §4.3).
+      type: object
+      properties:
+        fullName: { type: string }
+        phone: { type: string, nullable: true }
+        country: { type: string, example: "TR" }
+        city: { type: string }
+        district: { type: string }
+        neighborhood: { type: string, nullable: true }
+        addressLine1: { type: string }
+        addressLine2: { type: string, nullable: true }
+        postalCode: { type: string, nullable: true }
+
+    OrderBillingSnapshot:
+      type: object
+      properties:
+        billingType: { $ref: "#/components/schemas/BillingType" }
+        companyName: { type: string, nullable: true, description: "Yalnızca `CORPORATE`'te dolu." }
+        taxOffice: { type: string, nullable: true }
+        taxNumber: { type: string, nullable: true, description: "VKN — yalnızca `CORPORATE`'te dolu." }
+        nationalId:
+          type: string
+          nullable: true
+          description: >
+            TCKN — yalnızca `INDIVIDUAL` + kullanıcı GÖNDERDİYSE dolu. **PII maskeleme
+            (mevcut `customerEmail` kararıyla AYNI desen): `GET /admin/orders` LİSTESİNDE
+            `lib/pii-mask.ts::maskNationalId` ile maskelenir (`123*****901`), `GET
+            /admin/orders/{orderId}` DETAYINDA maskesiz döner** (admin fatura kesmek için
+            gerçek numaraya ihtiyaç duyar). `GET /users/me/orders*` kullanıcının KENDİ
+            verisidir — maskelenmez.
+        address:
+          allOf:
+            - $ref: "#/components/schemas/OrderAddressSnapshot"
+          description: >
+            Fatura adresi. İstek gövdesinde `sameAsShipping: true` gönderildiyse
+            teslimat adresinin BİREBİR KOPYASIDIR — `sameAsShipping` bayrağı
+            SAKLANMADIĞI için bu alan HER ZAMAN doludur (koşullu okuma gerekmez).
 
     UpdateOrderStatusRequest:
       description: >
@@ -13167,8 +13435,12 @@ components:
     Address:
       description: >
         `/users/me/addresses*` DTO'su — sahiplik `userId = me` ile korunur, rol
-        guard'ı YOK. `Order` ile FK ile BAĞLI DEĞİLDİR (checkout adresi Stripe
-        tarafından toplanır, v1'de bu model onu ETKİLEMEZ — bkz. plan §5.1).
+        guard'ı YOK. `Order` ile FK ile BAĞLI DEĞİLDİR ve BAĞLANMAYACAKTIR: checkout
+        adresi `Order` üzerine DENORMALİZE SNAPSHOT olarak yazılır (bkz.
+        `Order.shippingAddress` ve `.claude/architect-scope-checkout-redesign.md` §4).
+        Alan adları/doğrulama kuralları `CheckoutAddressInput` ile BİREBİR aynı
+        tutulur — ileride eklenecek "adres defterinden seç" özelliğinin dönüşüm
+        katmanı GEREKTİRMEMESİ için (o özellik bu fazın kapsamı DIŞINDADIR).
       type: object
       properties:
         id: { type: string, format: uuid }

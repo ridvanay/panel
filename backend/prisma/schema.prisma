@@ -191,6 +191,14 @@ enum OrderStatus {
   FULFILLED
 }
 
+// .claude/architect-scope-checkout-redesign.md §4.1 (bağlayıcı) — `Order.billingType`
+// alanında kullanılır; fatura bireysel mi kurumsal mı toplandığına göre hangi ek alanların
+// (VKN/unvan vs. TCKN) zorunlu olduğunu belirler (uygulama katmanında, bkz. §5.2).
+enum BillingType {
+  INDIVIDUAL
+  CORPORATE
+}
+
 // --- §10.13 Üçüncü Parti Entegrasyon: API Anahtarları (§10.13.3) ---
 
 // İLERİYE DÖNÜK: public katman v1'de salt-okunurdur, ama scope kontrolü ŞİMDİDEN
@@ -495,11 +503,11 @@ model Page {
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 
-  author              User?          @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  author              User?                @relation(fields: [authorId], references: [id], onDelete: SetNull)
   views               PageView[]
   siteSettings        SiteSettings[]
   // §10.16.7 İletişim formu — ContactForm.consentLegalPageId için zorunlu karşı-ilişki alanı.
-  contactFormConsents ContactForm[]  @relation("ContactFormConsentPage")
+  contactFormConsents ContactForm[]        @relation("ContactFormConsentPage")
   // 1 Tıkla Hazır Demo / Şablon İçe Aktarıcı — bkz.
   // .claude/architect-scope-demo-template-import.md §10.2.
   demoTemplateImports DemoTemplateImport[] @relation("DemoTemplateImportedPage")
@@ -1881,12 +1889,12 @@ model SiteModule {
 // yalan söylerdi. Yalnızca `pageId` tutulur — panelde "Oluşturulan sayfayı aç"
 // bağlantısı için; sayfa silinirse SetNull ile boşalır.
 model DemoTemplateImport {
-  id          String   @id @default(uuid())
-  templateKey String   @unique
+  id           String   @id @default(uuid())
+  templateKey  String   @unique
   // Registry'deki semver. Şablon güncellenirse panel "yeni sürüm mevcut" gösterebilir.
-  version     String
-  importedAt  DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  version      String
+  importedAt   DateTime @default(now())
+  updatedAt    DateTime @updatedAt
   // Kullanıcı silinse de işaret korunur (SiteModule.updatedById ile AYNI desen).
   importedById String?
   pageId       String?
@@ -2028,8 +2036,64 @@ model Order {
   shippingCarrier         String?
   shippedAt               DateTime?
   deliveredAt             DateTime?
-  createdAt               DateTime    @default(now())
-  updatedAt               DateTime    @updatedAt
+
+  // .claude/architect-scope-checkout-redesign.md §3.3/§4.2 (bağlayıcı) — teslimat adresi
+  // ve fatura bilgisi artık checkout sırasında BİZİM `/checkout` sayfamızda toplanır (önceden
+  // Stripe Hosted Checkout'ta toplanıyordu) ve `Order` üzerine DENORMALİZE SNAPSHOT olarak
+  // yazılır — `OrderItem`'daki fiyat/başlık snapshot felsefesiyle aynı gerekçeyle (adres
+  // defterinden bağımsız: adres sonradan değişse/silinse bile sipariş bozulmamalı; bkz.
+  // `Address` modelinin üstündeki not). `Address` tablosuna FK verilmez, JSON blob da
+  // kullanılmaz (Prisma tip güvenliği + admin filtreleme/sıralama için düz kolonlar tercih
+  // edildi, bkz. §3.3 gerekçe).
+  //
+  // TÜMÜ nullable: bu özellikten ÖNCE oluşmuş siparişlerde adres hiç yoktur (Stripe'ta
+  // toplanıyordu); `NOT NULL` + backfill, gerçekte var olmayan bir veriyi uydurmak demektir.
+  // Zorunluluk uygulama katmanında (Zod, `checkout.schemas.ts`) uygulanır — bu, mevcut
+  // `trackingNumber` desenidir (yukarıda: SHIPPED'de zorunlu, DB'de nullable, CHECK
+  // constraint YOK). Yeni index EKLENMEDİ: hiçbir sorgu bu alanlar üzerinden filtrelemiyor
+  // (§4.2), index eklemek boşuna yazma maliyeti üretirdi.
+  //
+  // Alt-alan adları `Address` modelinin alan adlarıyla BİREBİR eşleşir (`fullName` →
+  // `shippingAddressFullName`), böylece ileride "adres defterinden seç" (bu fazın DIŞINDA,
+  // bkz. §1) geldiğinde dönüşüm katmanı gerekmez. `shippingCents`/`shippingCarrier`/
+  // `shippedAt` ile karışmaması için adres kolonları istisnasız `shippingAddress` önekiyle
+  // yazılır.
+  shippingAddressFullName     String?
+  shippingAddressPhone        String?
+  shippingAddressCountry      String? // 2 harf, "TR"
+  shippingAddressCity         String?
+  shippingAddressDistrict     String?
+  shippingAddressNeighborhood String?
+  shippingAddressLine1        String?
+  shippingAddressLine2        String?
+  shippingAddressPostalCode   String?
+
+  // Fatura bilgisi SNAPSHOT'ı (§4.2). `sameAsShipping` bayrağının kendisi SAKLANMAZ — sunucu
+  // teslimat adresini fatura adresine MATERYALİZE eder (kopyalar); bkz. §3.4 gerekçe.
+  billingType                BillingType?
+  billingCompanyName         String? // yalnızca CORPORATE
+  billingTaxOffice           String? // yalnızca CORPORATE, opsiyonel
+  billingTaxNumber           String? // VKN, yalnızca CORPORATE
+  billingNationalId          String? // TCKN, yalnızca INDIVIDUAL + opsiyonel — PII, bkz. §7.2 (compliance-agent BLOKLAYICI)
+  billingAddressFullName     String?
+  billingAddressPhone        String?
+  billingAddressCountry      String?
+  billingAddressCity         String?
+  billingAddressDistrict     String?
+  billingAddressNeighborhood String?
+  billingAddressLine1        String?
+  billingAddressLine2        String?
+  billingAddressPostalCode   String?
+
+  // Yasal onay KANITI — boolean değil zaman damgası: onayın ispat yükü satıcıdadır,
+  // "onaylandı mı?" `!= null`, "ne zaman?" aynı kolonda durur (bkz. §3.5). İki ayrı checkbox
+  // (mevzuat ikisini ayrı ister) tek kutuda BİRLEŞTİRİLMEZ. İstekten gelen bir zaman damgası
+  // KABUL EDİLMEZ — backend `new Date()` yazar (bkz. §5.3).
+  distanceSalesApprovedAt   DateTime?
+  preliminaryInfoApprovedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   items OrderItem[]
 
@@ -2071,9 +2135,13 @@ model OrderItem {
 // Müşteri & E-Ticaret Alanı (Customer Portal) — bkz. .claude/architect-scope-customer-portal.md
 // §5.1 (bağlayıcı karar dokümanı). Adres defteri SALT müşteri profiline aittir. `Order` ile FK
 // ile BAĞLANMAZ: sipariş anındaki adres, `OrderItem`'daki fiyat/başlık snapshot mantığıyla aynı
-// gerekçeyle (adres sonradan değişse/silinse bile sipariş bozulmasın) ileride `Order`'a
-// DENORMALİZE kopyalanacaktır — v1'de checkout adresi Stripe tarafından toplanır, bu model onu
-// ETKİLEMEZ (bkz. kapsam dışı: feature/checkout-address-from-book).
+// gerekçeyle (adres sonradan değişse/silinse bile sipariş bozulmasın) `Order` üzerinde
+// DENORMALİZE kolonlar olarak SNAPSHOT'lanır (bkz. `Order` modelindeki `shippingAddress*`/
+// `billingAddress*` alanları ve .claude/architect-scope-checkout-redesign.md §3.3/§4.2 —
+// bağlayıcı karar dokümanı, güncel durum). Bu model (adres defteri) bundan AYRI ve
+// ETKİLENMEMİŞ kalır: checkout artık kendi adresini bağımsız olarak topluyor, "adres
+// defterinden seç" entegrasyonu ileride ayrı bir faz olarak eklenecektir (kapsam dışı,
+// bkz. §1 "DIŞINDA").
 model Address {
   id           String   @id @default(uuid())
   // Sıralı, dış dünyaya sızmayan iç sayaç — cursor sayfalamada stabil sıralama ve "varsayılan

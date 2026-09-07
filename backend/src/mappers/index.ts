@@ -106,6 +106,8 @@ import type {
   CartShippingDto,
   OrderDto,
   OrderItemDto,
+  OrderAddressSnapshotDto,
+  OrderBillingSnapshotDto,
   AddressDto,
   WishlistItemDto,
   SiteAppearanceDto,
@@ -868,6 +870,69 @@ export function toOrderItemDto(item: OrderItem): OrderItemDto {
 
 type OrderWithItems = Order & { items: OrderItem[] };
 
+/**
+ * `.claude/architect-scope-checkout-redesign.md` §5.5 (bağlayıcı) — düz `Order.shippingAddress*`
+ * kolonlarının iç içe DTO görünümü. `fullName` `null`sa bu özellikten ÖNCE oluşmuş bir sipariştir
+ * → `null` döner (§4.2, tüketiciler ele almak zorunda).
+ */
+function toOrderShippingAddressSnapshotDto(order: Order): OrderAddressSnapshotDto | null {
+  if (order.shippingAddressFullName === null) return null;
+  return {
+    fullName: order.shippingAddressFullName,
+    phone: order.shippingAddressPhone,
+    country: order.shippingAddressCountry ?? "TR",
+    city: order.shippingAddressCity ?? "",
+    district: order.shippingAddressDistrict ?? "",
+    neighborhood: order.shippingAddressNeighborhood,
+    addressLine1: order.shippingAddressLine1 ?? "",
+    addressLine2: order.shippingAddressLine2,
+    postalCode: order.shippingAddressPostalCode,
+  };
+}
+
+/** `Order.billingAddress*` kolonlarının iç içe DTO görünümü — `toOrderShippingAddressSnapshotDto` ile AYNI desen. */
+function toOrderBillingAddressSnapshotDto(order: Order): OrderAddressSnapshotDto | null {
+  if (order.billingAddressFullName === null) return null;
+  return {
+    fullName: order.billingAddressFullName,
+    phone: order.billingAddressPhone,
+    country: order.billingAddressCountry ?? "TR",
+    city: order.billingAddressCity ?? "",
+    district: order.billingAddressDistrict ?? "",
+    neighborhood: order.billingAddressNeighborhood,
+    addressLine1: order.billingAddressLine1 ?? "",
+    addressLine2: order.billingAddressLine2,
+    postalCode: order.billingAddressPostalCode,
+  };
+}
+
+/** `Order.billingType` (+ diğer fatura snapshot kolonları) → iç içe DTO — `null` ise eski sipariş. */
+function toOrderBillingSnapshotDto(order: Order): OrderBillingSnapshotDto | null {
+  if (order.billingType === null) return null;
+  return {
+    billingType: order.billingType,
+    companyName: order.billingCompanyName,
+    taxOffice: order.billingTaxOffice,
+    taxNumber: order.billingTaxNumber,
+    nationalId: order.billingNationalId,
+    // `billingType` doluysa checkout.routes.ts HER ZAMAN billingAddress* kolonlarını da
+    // materyalize eder (bkz. §3.4) — `toOrderBillingAddressSnapshotDto`'nun `null` dönmesi
+    // fiilen ulaşılmaz bir kod yoludur; yine de `OrderAddressSnapshotSchema`'nın zorunlu
+    // alanlarını KIRMAMAK için savunmacı bir boş iskelet ile karşılanır.
+    address: toOrderBillingAddressSnapshotDto(order) ?? {
+      fullName: "",
+      phone: null,
+      country: "TR",
+      city: "",
+      district: "",
+      neighborhood: null,
+      addressLine1: "",
+      addressLine2: null,
+      postalCode: null,
+    },
+  };
+}
+
 export function toOrderDto(order: OrderWithItems): OrderDto {
   return {
     id: order.id,
@@ -888,6 +953,8 @@ export function toOrderDto(order: OrderWithItems): OrderDto {
     shippedAt: order.shippedAt ? order.shippedAt.toISOString() : null,
     deliveredAt: order.deliveredAt ? order.deliveredAt.toISOString() : null,
     createdAt: order.createdAt.toISOString(),
+    shippingAddress: toOrderShippingAddressSnapshotDto(order),
+    billing: toOrderBillingSnapshotDto(order),
     items: order.items.map(toOrderItemDto),
   };
 }

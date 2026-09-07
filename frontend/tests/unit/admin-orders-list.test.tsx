@@ -31,6 +31,8 @@ function makeOrder(overrides: Partial<Order> = {}): Order {
     shippedAt: null,
     deliveredAt: null,
     createdAt: "2026-08-01T09:00:00.000Z",
+    shippingAddress: null,
+    billing: null,
     items: [],
     ...overrides,
   };
