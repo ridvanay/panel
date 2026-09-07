@@ -1360,14 +1360,20 @@ export interface CreateCartCheckoutSessionRequest {
  * §customer-portal §6 — `PENDING` → `PAID` → `SHIPPED` (admin kargo takip no'suyla işaretler) →
  * `FULFILLED` (`PAID`'den DOĞRUDAN da ulaşılabilir — dijital/kargosuz ürün akışı). `DELIVERED`
  * BİLİNÇLİ OLARAK YOKTUR (bkz. `.claude/architect-scope-customer-portal.md` §6).
+ *
+ * `ON_HOLD` — `.claude/architect-scope-order-management-pro.md` §3.1/§4.1 — TEK YENİ değer;
+ * mevcut 8 değer YENİDEN ADLANDIRILMAZ. `ON_HOLD` YALNIZCA `PAID`'den ulaşılır (`PAID → ON_HOLD →
+ * PAID | CANCELLED`).
  */
-export type OrderStatus = "PENDING" | "PAID" | "SHIPPED" | "FAILED" | "CANCELLED" | "EXPIRED" | "REFUNDED" | "FULFILLED";
+export type OrderStatus = "PENDING" | "PAID" | "ON_HOLD" | "SHIPPED" | "FAILED" | "CANCELLED" | "EXPIRED" | "REFUNDED" | "FULFILLED";
 
 export interface OrderItem {
   id: string;
-  productId: string;
+  productId: string | null;
   productTitle: string;
   productSku: string | null;
+  variantId: string | null;
+  variantLabel: string | null;
   unitPriceCents: number;
   quantity: number;
   lineTotalCents: number;
@@ -1422,6 +1428,7 @@ export interface Order {
   subtotalCents: number;
   discountCents: number;
   taxCents: number;
+  shippingCents: number;
   totalCents: number;
   errorSummary: string | null;
   paidAt: string | null;
@@ -1446,17 +1453,66 @@ export interface Order {
 }
 
 /**
- * `PATCH /admin/orders/:orderId/status` — hedef durum olarak `SHIPPED`/`FULFILLED`/`CANCELLED`
- * kabul edilir (bkz. `ALLOWED_TRANSITIONS`, `.claude/architect-scope-customer-portal.md` §6).
+ * `PATCH /admin/orders/:orderId/status` — hedef durum olarak `PAID`/`ON_HOLD`/`SHIPPED`/
+ * `FULFILLED`/`CANCELLED` kabul edilir (bkz. `ALLOWED_TRANSITIONS`,
+ * `.claude/architect-scope-order-management-pro.md` §4.1/§5.2). `ON_HOLD`/`PAID`/`CANCELLED`
+ * hedefleri YALNIZCA ADMIN'e açıktır (§3.2) — MANAGER 403 alır.
  */
 export interface UpdateOrderStatusRequest {
-  status: OrderStatus;
+  status: "PAID" | "ON_HOLD" | "SHIPPED" | "FULFILLED" | "CANCELLED";
   /** `status: SHIPPED` iken ZORUNLU (eksikse 422). */
   trackingNumber?: string;
   shippingCarrier?: string;
+  /** `status: CANCELLED` iken ZORUNLU, 1..500 — müşteriye giden iptal e-postasında AYNEN yer alır. */
+  cancellationReason?: string;
+  /** Yalnızca `status: CANCELLED` ile anlamlı — varsayılan `true`. */
+  sendCustomerEmail?: boolean;
+  /** `status: CANCELLED` + ödemesi alınmış sipariş iken ZORUNLU `true` — aksi halde 409 (§3.5). */
+  confirmWithoutRefund?: boolean;
 }
 
-/** `POST /admin/orders/:orderId/refund` — sadece `PAID`/`SHIPPED`/`FULFILLED` siparişler için, aksi halde 409. */
+/**
+ * `PATCH /admin/orders/:orderId` — YENİ, yalnızca ADMIN (§5.3). Tüm alanlar opsiyonel ama hiçbiri
+ * gönderilmezse 422. `shippingAddress`/`billing` TAM NESNEDİR — kısmi (alan bazlı) yama KABUL
+ * EDİLMEZ; `sameAsShipping` bayrağı bu bağlamda YOKTUR, istemci iki formu ayrı gönderir.
+ */
+export interface UpdateOrderRequest {
+  customerEmail?: string;
+  customerName?: string | null;
+  shippingAddress?: OrderAddressSnapshot;
+  billing?: OrderBillingSnapshot;
+  /** Her durumda düzenlenebilir — status ön koşuluna tabi DEĞİL. 0..5000 veya null. */
+  adminNotes?: string | null;
+}
+
+/**
+ * `.claude/architect-scope-order-management-pro.md` §3.7/§5.1 — `/admin/orders*` uçlarının
+ * (`GET /`, `GET /{id}`, `PATCH /{id}`, `PATCH /{id}/status`, `POST /{id}/refund`) TAMAMI bunu
+ * döner. `Order` (müşteri yüzeyi, `/users/me/orders*`) bu iki alanı ASLA taşımaz.
+ */
+export interface AdminOrder extends Order {
+  /** Yalnızca `status=CANCELLED`'a geçişte doldurulur — müşteriye giden iptal e-postasında AYNEN yer alır. */
+  cancellationReason: string | null;
+  /** Yalnızca panele görünen serbest dahili not — `Order`'a (müşteri yüzeyi) ASLA eklenmez. */
+  adminNotes: string | null;
+}
+
+/**
+ * `GET /admin/orders/{orderId}/activity` yanıt öğesi (§5.4) — `AuditLog` DEĞİL, amaca özel bir
+ * görünüm: `ipAddress` BİLİNÇLİ OLARAK TAŞINMAZ (bu uç ADMIN+MANAGER'a açık, `/admin/logs`'un
+ * ADMIN-only kalmasıyla çelişmez). `metadata` sabit bir allow-list'ten geçirilir.
+ */
+export interface OrderActivityEntry {
+  id: string;
+  /** "order.status_change" | "order.refund" | "order.update" | "order.cancel_email" */
+  action: string;
+  status: AuditStatus;
+  actorEmail: string | null;
+  createdAt: string;
+  metadata: Record<string, unknown> | null;
+}
+
+/** `POST /admin/orders/:orderId/refund` — sadece `PAID`/`SHIPPED`/`FULFILLED`/`ON_HOLD` siparişler için, aksi halde 409. */
 export interface RefundOrderRequest {
   reason?: string;
 }
@@ -1841,6 +1897,8 @@ export type EmailTemplatePurpose =
   | "PASSWORD_RESET"
   | "SYSTEM_ANNOUNCEMENT"
   | "ORDER_CONFIRMATION"
+  // `.claude/architect-scope-order-management-pro.md` §4.4/§6.1 — YENİ, iptal e-postası tetikleyicisi.
+  | "ORDER_CANCELLATION"
   | "ORG_INVITATION"
   | "CONTACT_FORM_NOTIFICATION"
   | "CUSTOM";

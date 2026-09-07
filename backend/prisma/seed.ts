@@ -105,6 +105,25 @@ async function main() {
     },
   });
 
+  // Sipariş iptali — ORDER_CONFIRMATION ile aynı akışın karşıt yönü (bkz. backend-agent'ın
+  // modules/orders/orders.routes.ts içinden tetikleyeceği sendTemplateEmail çağrısı).
+  await prisma.emailTemplate.upsert({
+    where: { key: "ORDER_CANCELLATION" },
+    update: {},
+    create: {
+      key: "ORDER_CANCELLATION",
+      name: "Sipariş İptal E-postası",
+      purpose: "ORDER_CANCELLATION",
+      editorMode: "RAW",
+      isSystem: true,
+      isActive: true,
+      subject: "Siparişiniz iptal edildi — {{order_number}}",
+      bodyHtml:
+        "<p>Merhaba {{customer_name}},</p><p><strong>{{order_number}}</strong> numaralı siparişiniz iptal edilmiştir.</p><p>Sipariş içeriği: {{items_summary}}</p><p>Toplam: {{total_formatted}}</p><p>İptal nedeni: {{cancellation_reason}}</p><p>Herhangi bir tahsilat yapılmışsa iadesi ilgili ödeme yönteminize yapılacaktır. Sorularınız için bizimle iletişime geçebilirsiniz.</p>",
+      availableVariables: ["order_number", "customer_name", "items_summary", "total_formatted", "cancellation_reason"],
+    },
+  });
+
   // Organizasyon daveti — bkz. modules/invitations/invitations.routes.ts::orgInvitationsRoutes.
   // Ham davet bağlantısı artık ne response'ta ne de log'da düz metin dönmez (bkz. security-agent
   // kararı — token sızıntısı temizliği); bunun yerine bu şablon üzerinden gerçekten gönderilir.

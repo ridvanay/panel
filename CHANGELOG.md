@@ -13,6 +13,55 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
 
 ### Added
 
+- **Sipariş yönetimi profesyonelleştirildi: askıya alma, hedefe göre daralan RBAC,
+  düzenleme paneli, iptal e-postası ve sipariş bazlı aktivite günlüğü** (bağlayıcı
+  karar dokümanı `.claude/architect-scope-order-management-pro.md`, `ARCHITECTURE.md`
+  §10.9.3, `docs/architecture/openapi.yaml` `Orders` tag'i).
+  - **Yeni durum — `ON_HOLD` ("Askıya Alındı"):** `OrderStatus` enumuna eklenen TEK
+    yeni değer (mevcut 8 değer yeniden adlandırılmadı — geri alınamaz veri
+    migration'ı + dış webhook tüketicilerinin sessizce kırılması riski). Yalnızca
+    `PAID`'den ulaşılır; "Siparişi Onayla" butonu askıdaki bir siparişi yeniden
+    `PAID` ("Hazırlanıyor") durumuna döndürür. Ödemesi alınmış bir sipariş artık
+    tek adımda iptal edilemez — admin önce **Askıya Al**, sonra (para iade
+    edilmediyse `confirmWithoutRefund` onay kutusuyla) **İptal Et** adımlarını
+    izler; `ON_HOLD` ayrıca doğrudan iade edilebilir durumlar listesine eklendi.
+  - **Hedefe göre daralan yetki:** sevkiyat işaretleme (`SHIPPED`/`FULFILLED`)
+    ADMIN+MANAGER'da kalırken, istisnai/geri alınamaz eylemler (`ON_HOLD`/`PAID`/
+    `CANCELLED` hedefli durum değişikliği ve yeni düzenleme ucu) **yalnızca ADMIN**'e
+    daraltıldı. Yeni bir `SUPER_ADMIN` rolü İCAT EDİLMEDİ — mevcut 5 kademeli rol
+    modeli (§10.21) korunarak "en üst yetki" isteği `ADMIN`'e eşlendi. Reddedilen
+    denemeler `403` yanıtına ek olarak siparişe özel bir audit kaydına da düşer.
+  - **Yeni uç — `PATCH /admin/orders/{orderId}`** (yalnızca ADMIN): müşteri
+    e-posta/adı, teslimat/fatura adresi (tam nesne, kısmi yama yok) ve dahili
+    `adminNotes` düzenlenebilir; sipariş `SHIPPED` sonrası iletişim/adres bilgisi
+    artık değiştirilemez (409 — kargo etiketi fiilen kullanılmış olur). Sipariş
+    kalemi (ürün/adet) düzenleme bilinçli olarak kapsam dışıdır — ürün tablosu
+    panelde salt okunur kalır.
+  - **Yeni uç — `GET /admin/orders/{orderId}/activity`** (ADMIN+MANAGER): mevcut
+    denetim izinden (`AuditLog`) türeyen, sipariş bazlı bir olay akışı (durum
+    değişikliği, düzenleme, iade, iptal e-postası). `ipAddress` bu uçtan asla
+    dönmez.
+  - **İptal e-postası:** yeni `EmailTemplatePurpose.ORDER_CANCELLATION` sistem
+    şablonu — sipariş iptalinde (aksi belirtilmedikçe) müşteriye otomatik
+    gönderilir; admin'in girdiği iptal nedeni e-postada aynen yer alır. Gönderim
+    hatası sipariş güncellemesini asla bozmaz (best-effort, ayrıca denetlenir).
+  - `AdminOrder` — `/admin/orders*` uçları artık `cancellationReason`/`adminNotes`
+    içeren ayrı bir DTO döner; müşteri yüzeyi (`/users/me/orders*`) bu alanları
+    ASLA görmez.
+  - **Denetimde bulunup düzeltilen bulgular:** security-agent, aynı siparişe
+    eşzamanlı gelen iki durum-değişikliği isteğinin (ör. onaylama + iptal) ikisinin
+    de işlenebildiği bir race condition tespit etti; atomik "claim" deseniyle
+    (mevcut iade ucuyla aynı desen) kapatıldı — yalnızca biri kazanır, diğeri 409
+    alır. qa-agent, admin düzenleme formunun kaydet akışının fatura tipinden
+    bağımsız her durumda 422 ile başarısız olduğu bir regresyonu buldu (form,
+    kullanılmayan fatura alt-alanlarına `null` gönderiyordu; checkout formunun
+    aksine anahtarı hiç omit etmiyordu) — form artık checkout ile aynı deseni
+    kullanıyor, kayıt akışı çalışıyor. İki bulgu da yayına çıkmadan kapatıldı.
+  - Testler: backend 1237, frontend 637 birim test + 8 yeni Playwright e2e
+    senaryosu (askıya alma/onaylama, iptal + e-posta tetikleme, ödenmiş sipariş
+    iptalinde para koruması, MANAGER yetkisizliği, düzenleme paneli kalıcılığı,
+    aktivite günlüğünde `ipAddress` sızdırmaması) geçiyor.
+
 - **`ecommerce-pro` demo şablonu + ürün varyasyonu/teknik döküman/kargo eşiği (storefront
   kalıcı genişlemesi)** (bağlayıcı karar dokümanı
   `.claude/architect-scope-ecommerce-pro-template.md`, `ARCHITECTURE.md` §10.9.2/§10.22).

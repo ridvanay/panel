@@ -62,6 +62,13 @@ const SYSTEM_VARIABLES_BY_PURPOSE: Record<EmailTemplatePurpose, EmailVariableDef
     { key: "items_summary", label: "Sipariş İçeriği", sampleValue: "Ürün A x1, Ürün B x2", source: "system" },
     { key: "total_formatted", label: "Toplam Tutar", sampleValue: "₺1.250,00", source: "system" },
   ],
+  ORDER_CANCELLATION: [
+    { key: "order_number", label: "Sipariş Numarası", sampleValue: "ORD-1024", source: "system" },
+    { key: "customer_name", label: "Müşteri Adı", sampleValue: "Ayşe Yılmaz", source: "system" },
+    { key: "items_summary", label: "Sipariş İçeriği", sampleValue: "Ürün A x1, Ürün B (Antrasit / L) x2", source: "system" },
+    { key: "total_formatted", label: "Toplam Tutar", sampleValue: "₺1.250,00", source: "system" },
+    { key: "cancellation_reason", label: "İptal Nedeni", sampleValue: "Stok tükendi", source: "system" },
+  ],
   ORG_INVITATION: [
     { key: "inviter_name", label: "Davet Eden", sampleValue: "Ayşe Yılmaz", source: "system" },
     { key: "organization_name", label: "Organizasyon Adı", sampleValue: "Örnek Organizasyon", source: "system" },

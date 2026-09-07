@@ -1978,25 +1978,111 @@ eşzamanlılık testiyle doğrular. Adminin `PATCH /admin/products/{id}/stock` i
 stok düzeltmesi bu mekanizmayı KULLANMAZ (basit doğrudan `UPDATE`) — kasıtlı olarak
 ayrı tutulur, tek kullanıcılı bir admin işlemidir, race riski yoktur.
 
-**Sipariş durumu — kısıtlı geçiş kümesi:** `PATCH /admin/orders/{orderId}/status`
-yalnızca `PAID -> FULFILLED` ve `PENDING -> CANCELLED` geçişlerine izin verir; başka
-HER kombinasyon `409 CONFLICT`. `-> REFUNDED` bu uçtan HEDEF DURUM OLARAK KABUL
-EDİLMEZ — iade AYRI bir uçtan yapılır (aşağıda). `customerEmail` liste ucunda
-maskelenir (`lib/pii-mask.ts::maskEmail`), detay ucunda maskesiz döner — gerekçe uç
-açıklamalarında ve `openapi.yaml`'da detaylıdır.
+**Sipariş durumu — geçiş tablosu (`.claude/architect-scope-order-management-pro.md`
+§4.1/§5.2 ile GENİŞLETİLDİ):** `PATCH /admin/orders/{orderId}/status`:
 
-**Manuel iade — `POST /admin/orders/{orderId}/refund`:** yalnızca ADMIN, yalnızca
-`PAID`/`FULFILLED` durumundaki siparişlerde çalışır (`REFUNDABLE_STATUSES`, bkz.
-`orders.routes.ts`) — başka bir durumdaysa VEYA `Order.stripePaymentIntentId` yoksa
-`409 CONFLICT`. Stripe Dashboard üzerinden elle iade edip `Order.status`'u DB'de
-senkronsuz bırakan eski yaklaşımın YERİNE geçti: `stripe.refunds.create`
-(`stripePaymentIntentId` üzerinden) ile **gerçek parayı Stripe üzerinden geri öder**
-— yalnızca DB durumunu değiştiren "sahte" bir iade DEĞİLDİR.
+| Kaynak | İzinli hedefler |
+|---|---|
+| `PENDING` | `CANCELLED` |
+| `PAID` | `ON_HOLD`, `SHIPPED` (`trackingNumber` ZORUNLU), `FULFILLED` |
+| `ON_HOLD` | `PAID` ("Siparişi Onayla"), `CANCELLED` |
+| `SHIPPED` | `FULFILLED` |
+| `FAILED`, `EXPIRED`, `CANCELLED`, `REFUNDED`, `FULFILLED` | (hiçbiri — terminal) |
+
+Listede olmayan HER kombinasyon `409 CONFLICT`. `-> REFUNDED` bu uçtan HEDEF DURUM
+OLARAK KABUL EDİLMEZ — iade AYRI bir uçtan yapılır (aşağıda). `customerEmail` liste
+ucunda maskelenir (`lib/pii-mask.ts::maskEmail`), detay ucunda maskesiz döner —
+gerekçe uç açıklamalarında ve `openapi.yaml`'da detaylıdır.
+
+**`ON_HOLD` — geçici askıya alma (YENİ, tek eklenen `OrderStatus` değeri):** mevcut
+8 değer BİLİNÇLİ OLARAK yeniden adlandırılmadı — enum yeniden adlandırmak geri
+alınamaz bir veri migration'ı gerektirirdi ve `WebhookEvent.ORDER_STATUS_CHANGED`
+payload'ı durumu wire'da enum adıyla birebir taşıdığı için dış abonelerin
+entegrasyonunu sessizce kırardı (bkz. `.claude/architect-scope-order-management-pro.md`
+§3.1). `ON_HOLD` **YALNIZCA `PAID`'den ulaşılır**; `PENDING -> ON_HOLD` YASAKTIR,
+çünkü `handleOrderPaid` idempotency'yi `order.status !== "PENDING"` ile kurar —
+bu geçişe izin verilseydi askıya alınmış bir `PENDING` siparişe eşzamanlı gelen bir
+Stripe webhook'u parayı tahsil edip stok düşürme/onay e-postası adımlarını atlar,
+sipariş sonsuza dek `ON_HOLD` kalırdı (sessiz para kaybı). `ON_HOLD -> PAID`
+("Siparişi Onayla" — sipariş yeniden "Hazırlanıyor"a döner) `paidAt`'in üzerine
+YAZMAZ (zaten doludur, `shippedAt`/`deliveredAt` ile AYNI ilke).
+
+**Ödenmiş bir siparişi iptal etmek iki adımlıdır (§3.5):** `PAID -> CANCELLED`
+DOĞRUDAN AÇILMAZ — admin önce **Askıya Al** (`PAID -> ON_HOLD`, geri alınabilir),
+sonra **İptal Et** adımlarını izler. `-> CANCELLED` isteğinde `order.paidAt != null`
+ise gövdede `confirmWithoutRefund: true` ZORUNLUDUR, aksi halde `409 CONFLICT`
+("parayı OTOMATİK İADE ETMEZ" uyarısıyla) — bu sürtünme kasıtlıdır, tek tıkla para
+kaybı üretilemez. `ON_HOLD` ayrıca `REFUNDABLE_STATUSES`'a eklendi (aşağıda) —
+askıya alınmış bir sipariş için doğru kapanış yolu doğrudan iadedir.
+
+**Hedef durum bazlı RBAC daraltması (§3.2, bağlayıcı):** router kapısı TÜM
+`/admin/orders*` uçlarında `SiteRole=ADMIN|MANAGER`'dır (panel kapısı, değişmedi);
+ancak `PATCH .../status` hedefi `ON_HOLD`, `PAID` veya `CANCELLED` İSE handler
+içinde **ADMIN şartı** aranır — bu üçü İSTİSNAİ/geri alınamaz eylemlerdir (para/stok
+mutabakatını etkiler, `CANCELLED` müşteriye e-posta tetikler). `SHIPPED`/`FULFILLED`
+hedefleri günlük operasyondur (kargo/teslim işaretleme), MANAGER bunları serbestçe
+kullanır. `SUPER_ADMIN` gibi yeni bir rol kademesi İCAT EDİLMEDİ — 5 kademeli
+`SiteRole` modeli (§10.21) değişmez; "yalnızca en üst yetki" isteği mevcut en yüksek
+kademe olan `ADMIN`'e daraltılarak karşılanır. Reddedilen bir deneme yalnızca `403`
+döndürmekle kalmaz, `targetId` taşıyan AYRI bir `order.status_change`/
+`status: FORBIDDEN` audit kaydına da düşer — böylece reddedilen denemeler de
+sipariş bazlı aktivite akışında (aşağıda) görünür (`requireSiteRole`'ün kendi
+FORBIDDEN kaydı `targetId` taşımadığı için orada görünmez).
+
+Yeni `PATCH /admin/orders/{orderId}` ucu (müşteri iletişim + teslimat/fatura adresi
++ dahili `adminNotes` düzenleme) route seviyesinde **yalnızca ADMIN**'e kilitlenir
+(`requireSiteRole(...ROLES_ADMIN)`, `appearance.routes.ts` ile AYNI desen) — MANAGER
+bu uçtan HER KOŞULDA 403 alır. `shippingAddress`/`billing` TAM NESNEDİR (kısmi yama
+KABUL EDİLMEZ, adres bir snapshot'tır) ve yalnızca sipariş `PENDING`/`PAID`/`ON_HOLD`
+iken düzenlenebilir — `SHIPPED` sonrası adres fiilen kullanılmış kargo etiketi
+olduğu için 409. Sipariş kalemi (ürün/adet) düzenleme BİLİNÇLİ OLARAK
+desteklenmez — `OrderItem` bir mali snapshot'tır, adet değişimi Stripe'ta tahsil
+edilmiş tutardan bağımsızlaşır; ürün tablosu panelde salt okunur kalır.
+
+**Sipariş bazlı aktivite günlüğü — `GET /admin/orders/{orderId}/activity`
+(ADMIN+MANAGER):** yeni bir "olay" tablosu AÇILMADI — mevcut `AuditLog`'un
+`targetType: "Order", targetId, action: { startsWith: "order." }` filtresiyle
+okunmasıdır (yeni indeks: `@@index([targetType, targetId])`). Cursor sayfalama
+YOK (`take: 50`) — bir siparişin olay sayısı doğal olarak küçüktür. Yanıt `AuditLog`
+DEĞİL, amaca özel `OrderActivityEntry`'dir: **`ipAddress` DÖNMEZ** (bu uç MANAGER'a
+da açık; `/admin/logs`'un ADMIN-only kalmasıyla çelişmez — IP'nin operasyonel değeri
+sıfır, PII yükü yüksektir) ve `metadata` sabit bir allow-list'ten geçirilir.
+
+**İptal e-postası — `EmailTemplatePurpose.ORDER_CANCELLATION` (notification-agent
+sözleşmesi):** `PATCH .../status` ile `-> CANCELLED` VE `sendCustomerEmail !== false`
+ise, DB commit'i ve `ORDER_STATUS_CHANGED` webhook emisyonundan SONRA,
+`sendTemplateEmail(app, "ORDER_CANCELLATION", ...)` best-effort tetiklenir
+(`ORDER_CONFIRMATION` ile AYNI değişken adları + tek yeni değişken:
+`cancellation_reason` — admin'in girdiği neden, müşteriye gönderilen e-postada
+AYNEN yer alır, `lib/template-render.ts` tarafından HTML-escape edilir). **E-posta
+hatası API'yi ASLA kırmaz** — istek yine `200` döner, hata `app.log.error` ile
+loglanır ve `order.cancel_email` (`status: SUCCESS|FAILURE`, `metadata:
+{ emailDelivered }`) audit kaydı yazılır. Alıcı adresi audit metadata'sına
+YAZILMAZ (KVKK minimizasyonu). `sendCustomerEmail: false` gönderilirse e-posta hiç
+denenmez ve bu audit kaydı da OLUŞMAZ.
+
+**`AdminOrder` — ayrı admin DTO'su (§3.7):** `toOrderDto`/`OrderSchema` (müşteri
+yüzeyi, `/users/me/orders*`) BİLİNÇLİ OLARAK DEĞİŞMEDİ. Yeni `cancellationReason`/
+`adminNotes` alanları YALNIZCA `AdminOrderSchema`/`toAdminOrderDto`'da bulunur ve
+`/admin/orders*` uçlarının TAMAMI (liste, detay, durum, düzenleme, iade) artık bunu
+döner — varsayılan reddetmedir (default-deny), bir alan admin DTO'suna
+eklenmedikçe müşteri yüzeyinde hiç görünmez.
+
+**Manuel iade — `POST /admin/orders/{orderId}/refund`:** ADMIN+MANAGER (bu turda
+RBAC/davranış AÇISINDAN DEĞİŞMEDİ — bilinen boşluk, `.claude/architect-scope-order-management-pro.md`
+§8.2), `PAID`/`SHIPPED`/`FULFILLED`/**`ON_HOLD`**'da (`ON_HOLD` bu turda eklendi)
+çalışır (`REFUNDABLE_STATUSES`, bkz. `orders.routes.ts`) — başka bir durumdaysa VEYA
+`Order.stripePaymentIntentId` yoksa `409 CONFLICT`. Stripe Dashboard üzerinden elle
+iade edip `Order.status`'u DB'de senkronsuz bırakan eski yaklaşımın YERİNE geçti:
+`stripe.refunds.create` (`stripePaymentIntentId` üzerinden) ile **gerçek parayı
+Stripe üzerinden geri öder** — yalnızca DB durumunu değiştiren "sahte" bir iade
+DEĞİLDİR.
 
 - **Çifte iade / race koruması — atomik "claim" deseni:** iki eşzamanlı `POST
   /refund` isteğinin İKİSİNİN DE Stripe'a gerçek iade göndermesini önlemek için,
-  durum geçişi ÖNCE `updateMany({ where: { id, status: { in: [PAID, FULFILLED] } },
-  data: { status: "REFUNDED" } })` ile ATOMİK olarak "claim" edilir — standart satır
+  durum geçişi ÖNCE `updateMany({ where: { id, status: { in: [PAID, SHIPPED,
+  FULFILLED, ON_HOLD] } }, data: { status: "REFUNDED" } })` ile ATOMİK olarak
+  "claim" edilir — standart satır
   kilidi semantiği sayesinde aynı satıra eşzamanlı gelen ikinci `UPDATE`, birincinin
   commit'ini bekler ve `WHERE`'i YENİDEN değerlendirir. `claim.count === 0` ise
   sipariş durumu zaten değişmiş demektir → `409 CONFLICT`, Stripe'a HİÇ gidilmez.

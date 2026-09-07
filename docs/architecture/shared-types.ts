@@ -821,6 +821,133 @@ export interface WebhookPayloadEnvelope<TData = unknown> {
   data: TData;
 }
 
+// ---------- Siparişler (Orders) — bkz. `.claude/architect-scope-customer-portal.md` §2.2/§2.3,
+// `.claude/architect-scope-checkout-redesign.md` §4.1/§5.5 ve
+// `.claude/architect-scope-order-management-pro.md` (bağlayıcı, bu turun kaynağı). `Order`
+// (müşteri yüzeyi — `/users/me/orders*`) ile `AdminOrder` (`/admin/orders*`) KASITLI OLARAK
+// AYRI tiplerdir: `adminNotes`/`cancellationReason` YALNIZCA `AdminOrder`de bulunur ve
+// `Order`'a ASLA eklenmez (§3.7, kritik regresyon kuralı).
+
+// `ON_HOLD` — `.claude/architect-scope-order-management-pro.md` §3.1/§4.1 — TEK YENİ değer;
+// mevcut 8 değer YENİDEN ADLANDIRILMAZ. `ON_HOLD` YALNIZCA `PAID`'den ulaşılır.
+export type OrderStatus = "PENDING" | "PAID" | "ON_HOLD" | "SHIPPED" | "FAILED" | "CANCELLED" | "EXPIRED" | "REFUNDED" | "FULFILLED";
+
+export type BillingType = "INDIVIDUAL" | "CORPORATE";
+
+/** Teslimat VE fatura adresi ORTAK şekli — `CheckoutAddressInput` ile alan adları BİREBİR aynı. */
+export interface OrderAddressSnapshot {
+  fullName: string;
+  phone: string | null;
+  country: string;
+  city: string;
+  district: string;
+  neighborhood: string | null;
+  addressLine1: string;
+  addressLine2: string | null;
+  postalCode: string | null;
+}
+
+export interface OrderBillingSnapshot {
+  billingType: BillingType;
+  companyName: string | null;
+  taxOffice: string | null;
+  taxNumber: string | null;
+  /** LİSTEDE (`GET /admin/orders`) maskelenir (`123*****901`), DETAYDA maskesiz döner. */
+  nationalId: string | null;
+  address: OrderAddressSnapshot;
+}
+
+export interface OrderItem {
+  id: string;
+  productId: string | null;
+  productTitle: string;
+  productSku: string | null;
+  variantId: string | null;
+  variantLabel: string | null;
+  unitPriceCents: number;
+  quantity: number;
+  lineTotalCents: number;
+}
+
+/** Müşteri yüzeyi DTO'su (`/users/me/orders*`) — `adminNotes`/`cancellationReason` TAŞIMAZ. */
+export interface Order {
+  id: string;
+  orderNumber: string;
+  status: OrderStatus;
+  /** LİSTEDE maskelenir (`a***@domain.com`), DETAYDA maskesiz döner. */
+  customerEmail: string;
+  customerName: string | null;
+  currency: string;
+  subtotalCents: number;
+  discountCents: number;
+  taxCents: number;
+  shippingCents: number;
+  totalCents: number;
+  errorSummary: string | null;
+  paidAt: string | null;
+  trackingNumber: string | null;
+  shippingCarrier: string | null;
+  shippedAt: string | null;
+  deliveredAt: string | null;
+  createdAt: string;
+  /** Bu özellikten ÖNCE oluşmuş siparişlerde `null` — tüketiciler ELE ALMAK ZORUNDADIR. */
+  shippingAddress: OrderAddressSnapshot | null;
+  billing: OrderBillingSnapshot | null;
+  items: OrderItem[];
+}
+
+/**
+ * `.claude/architect-scope-order-management-pro.md` §3.7/§5.1 (bağlayıcı) — `/admin/orders*`
+ * uçlarının (`GET /`, `GET /{orderId}`, `PATCH /{orderId}`, `PATCH /{orderId}/status`,
+ * `POST /{orderId}/refund`) TAMAMI bunu döner. Varsayılan reddetmedir (default-deny).
+ */
+export interface AdminOrder extends Order {
+  /** Yalnızca `status=CANCELLED`'a geçişte doldurulur; MÜŞTERİYE GİDEN iptal e-postasında AYNEN yer alır. */
+  cancellationReason: string | null;
+  /** Yalnızca panele görünen serbest dahili not — `Order`'a (müşteri yüzeyi) ASLA eklenmez. */
+  adminNotes: string | null;
+}
+
+/**
+ * `GET /admin/orders/{orderId}/activity` yanıt öğesi (§5.4) — `AuditLog` DEĞİL, amaca özel bir
+ * görünüm: `ipAddress` BİLİNÇLİ OLARAK TAŞINMAZ (bu uç ADMIN+MANAGER'a açık, `/admin/logs`'un
+ * ADMIN-only kalmasıyla çelişmez). `metadata` sabit bir allow-list'ten (`from`, `to`, `reason`,
+ * `cancellationReason`, `customerEmailRequested`, `fields`, `emailDelivered`, `stripeRefundId`)
+ * geçirilir.
+ */
+export interface OrderActivityEntry {
+  id: string;
+  action: string; // "order.status_change" | "order.refund" | "order.update" | "order.cancel_email"
+  status: AuditStatus;
+  actorEmail: string | null;
+  createdAt: string;
+  metadata: Record<string, unknown> | null;
+}
+
+/** `PATCH /admin/orders/{orderId}/status` gövdesi (§5.2, genişletildi). */
+export interface UpdateOrderStatusRequest {
+  status: "PAID" | "ON_HOLD" | "SHIPPED" | "FULFILLED" | "CANCELLED";
+  trackingNumber?: string; // status=SHIPPED iken ZORUNLU
+  shippingCarrier?: string;
+  cancellationReason?: string; // status=CANCELLED iken ZORUNLU, 1..500
+  sendCustomerEmail?: boolean; // varsayılan true — yalnızca status=CANCELLED ile anlamlı
+  confirmWithoutRefund?: boolean; // varsayılan false
+}
+
+/**
+ * `PATCH /admin/orders/{orderId}` gövdesi (§5.3, YENİ, yalnızca ADMIN) — tüm alanlar opsiyonel
+ * ama HİÇBİRİ gönderilmezse 422. `shippingAddress`/`billing` TAM NESNEDİR, kısmi yama KABUL
+ * EDİLMEZ. `OrderAddressInput`/`OrderBillingInput`, checkout'un adres/fatura şekliyle BİREBİR
+ * aynıdır (`sameAsShipping` bayrağı bu bağlamda YOKTUR — istemci adresi HER ZAMAN tam gönderir).
+ */
+export interface UpdateOrderRequest {
+  customerEmail?: string;
+  customerName?: string | null;
+  shippingAddress?: OrderAddressSnapshot;
+  billing?: OrderBillingSnapshot;
+  adminNotes?: string | null;
+}
+
 /**
  * `ORDER_*` olaylarının `data`'sı. `Order` (admin DTO) İLE KARIŞTIRILMAMALI:
  * burada `customerEmail` MASKELENMEZ — alıcının siparişi kendi sisteminde
@@ -1092,6 +1219,8 @@ export type EmailTemplatePurpose =
   | "PASSWORD_RESET"
   | "SYSTEM_ANNOUNCEMENT"
   | "ORDER_CONFIRMATION"
+  // `.claude/architect-scope-order-management-pro.md` §4.4/§6.1 — YENİ, iptal e-postası tetikleyicisi.
+  | "ORDER_CANCELLATION"
   | "ORG_INVITATION"
   | "CONTACT_FORM_NOTIFICATION"
   | "CUSTOM";

@@ -22,6 +22,12 @@ const buttonVariants = cva(
         // token'ıyla. "Silme kadar tehlikeli değil ama önemli" ayrımı (ör. varsayılan dil değişimi).
         warning:
           "bg-warning/10 text-warning hover:bg-warning/20 focus-visible:border-warning/40 focus-visible:ring-warning/20 dark:bg-warning/20 dark:hover:bg-warning/30 dark:focus-visible:ring-warning/40",
+        // design-notes-order-management-pro.md §1 — `destructive`/`warning` ile BİREBİR aynı desen,
+        // `--success` token'ıyla. Olumlu-ama-geri-alınabilir onay eylemleri için (ör. "Siparişi
+        // Onayla"). `default` (primary) KASITLI OLARAK kullanılmaz: primary yönetici tarafından
+        // değiştirilebilen site aksan rengidir, "onay = yeşil" semantiği garanti edilemez.
+        success:
+          "bg-success/10 text-success hover:bg-success/20 focus-visible:border-success/40 focus-visible:ring-success/20 dark:bg-success/20 dark:hover:bg-success/30 dark:focus-visible:ring-success/40",
         link: "text-primary underline-offset-4 hover:underline",
       },
       size: {

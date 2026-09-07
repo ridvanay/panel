@@ -2382,3 +2382,59 @@ OPSİYONEL olarak sundu. Backend testi bug'ın KÖK NEDENİNİ (href'in DB'deki 
 çözülmesi) zaten uçtan-uca (gerçek transaction + gerçek DB okuması) kapsadığından, e2e suite'in
 çalışma süresini gereksiz şişirmemek için EKLENMEDİ — mevcut `ecommerce-pro-template-import.spec.ts`
 zaten `force:true` ikinci-import senaryosunu (SKU-benzersizleştirme açısından) kapsıyor.
+
+## Sipariş yönetimi profesyonelleştirme (RBAC + ON_HOLD + iptal e-postası + düzenleme paneli) — E2E kapsamı (bu turda eklendi)
+
+Kaynak: `.claude/architect-scope-order-management-pro.md` §9 (bağlayıcı, 6 madde). Backend
+(`PATCH /admin/orders/{id}/status` genişlemesi, YENİ `PATCH /admin/orders/{id}`, YENİ
+`GET /admin/orders/{id}/activity`) ve frontend (`/admin/orders/[orderId]` üst eylem çubuğu, iptal
+modalı, düzenleme modu, `adminNotes` kartı, aktivite kartı, rol kapısı) implementasyonu tamamlandı;
+security-agent/compliance-agent denetimlerini geçti. Fixture altyapısı ZATEN VARDI
+(`support/api.ts::createPendingOrderDirect`/`postStripeCheckoutSessionCompleted`,
+`admin-users-fixtures.ts`, `support/admin-session.ts::createAuthenticatedPageAs`) — YENİ bir
+fixture mekanizması İCAT EDİLMEDİ; `adminUpdateOrderStatus()` `cancellationReason`/
+`sendCustomerEmail`/`confirmWithoutRefund` alanlarıyla GENİŞLETİLDİ (geriye dönük uyumlu, mevcut
+çağıranlar etkilenmedi) ve `adminUpdateOrderDirect`/`adminGetOrder`/`adminGetOrderActivity` bu
+turda EKLENDİ (hepsi `support/api.ts`).
+
+| # | Mimari madde (§9) | Dosya | Durum |
+|---|---|---|---|
+| 1 | ADMIN: `PAID` → "Askıya Al" → rozet "Askıya Alındı" → "Siparişi Onayla" → rozet "Hazırlanıyor" | `admin-order-management-pro.spec.ts` | ✅ Geçiyor |
+| 2 | `PENDING` sipariş iptali — e-posta kutusu işaretli bırakılır; doğrulama `GET .../activity`'deki `order.cancel_email` kaydı + `order.status_change` metadata'sında `customerEmailRequested:true` üzerinden (e-posta kutusundan DEĞİL, §8 madde 5) | `admin-order-management-pro.spec.ts` | ✅ Geçiyor |
+| 3 | Ödenmiş sipariş (`ON_HOLD`) iptalinde para koruması — ikinci onay kutusu işaretlenmeden hem istemci guard'ı (submit disabled) HEM backend'in KENDİSİ (doğrudan API, 409, durum `ON_HOLD` kalır) doğrulanır; kutu işaretlenince başarılı | `admin-order-management-pro.spec.ts` | ✅ Geçiyor |
+| 4 | MANAGER — UI'da Askıya Al/İptal Et/Düzenle görünmez, Kargoya Ver görünür; doğrudan API `PATCH .../status` (CANCELLED) ve `PATCH /admin/orders/{id}` ikisi de 403 | `admin-order-management-pro.spec.ts` | ✅ Geçiyor |
+| 5 | ADMIN düzenleme — telefon + adres satırı değişikliği kalıcı, sayfa yenilendiğinde korunur, `order.update` aktivite kaydı görünür, değişmeyen alanlar (TAM nesne semantiği) bozulmaz | `admin-order-management-pro.spec.ts` | ✅ Geçiyor (bkz. **bulunan bug**, aşağıda — mutasyon gerçek API'ye karşı `adminUpdateOrderDirect` ile tetiklendi, "Düzenle→Kaydet" tıklaması AYRI bir testte, bkz. madde 5b) |
+| 6 | `GET /admin/orders/{id}/activity` yanıtının ham JSON'unda `ipAddress` anahtarı YOK | `admin-order-management-pro.spec.ts` | ✅ Geçiyor |
+
+**7/7 test yeşil** (6 gerçek senaryo + 1 bilinçli `test.fail()` bug-regresyon testi — aşağıya bkz.),
+üç kez art arda tekrar koşuldu, tutarlı geçti. Ayrıca dosyanın eklediği paylaşımlı fixture
+değişikliğinin (`adminUpdateOrderStatus()` imza genişlemesi) mevcut çağıranları KIRMADIĞI
+`customer-portal-module-toggle.spec.ts` (11/11) yeniden koşularak doğrulandı.
+
+### Bulunan ve raporlanan bug (bu turda) — kural gereği qa-agent DÜZELTMEZ, frontend-agent'a yönlendirilir
+
+**KRİTİK — `/admin/orders/[orderId]` "Düzenle" formunun KENDİ "Kaydet" düğmesi, fatura tipinden
+BAĞIMSIZ olarak HER durumda 422 ile başarısız oluyor; düzenleme özelliği fiilen gerçek tarayıcıda
+KULLANILAMIYOR.** Kök neden: `onEditSubmit()` gönderdiği `billing` nesnesinde uygulanmayan
+alt-alanlara `value?.trim() || null` deseniyle AÇIKÇA `null` yazıyor —
+`billingType: "INDIVIDUAL"` iken `companyName`/`taxOffice`/`taxNumber` HER ZAMAN `null`,
+`billingType: "CORPORATE"` iken `nationalId` HER ZAMAN `null`. Backend'in
+`OrderBillingInputSchema`'sı (`checkout.schemas.ts::CheckoutBillingInputSchema` İLE AYNI desen) bu
+alanları YALNIZCA `z.string().optional()` — yani `undefined` (OMİT edilmiş) — kabul eder, `null`
+DEĞİL: INDIVIDUAL'da temel zod tip hatası ("Expected string, received null"), CORPORATE'te ise
+`superRefine`'ın "`nationalId !== undefined` ise reddedilir" kuralı (`null !== undefined` TRUE
+olduğu için) tetiklenir — **her iki fatura tipinde de 422**. Doğrudan `curl` ile backend'e karşı da
+bağımsızca doğrulandı (UI'a özgü bir yanlış kullanım DEĞİL, gövdenin kendisi geçersiz):
+```
+curl -X PATCH .../admin/orders/{id} -d '{"billing":{"billingType":"INDIVIDUAL","companyName":null,"taxOffice":null,"taxNumber":null,"nationalId":"...","address":{...}}}'
+→ {"error":{"code":"VALIDATION_ERROR","details":{"billing.companyName":["Expected string, received null"], ...}}}
+```
+Checkout'un KENDİ formu bu tuzağa DÜŞMEZ (`checkout-address-billing.spec.ts` madde 1 — "TCKN boş
+bırakılınca `body.billing` HİÇ `nationalId` anahtarı TAŞIMAZ") çünkü anahtarı TAMAMEN OMİT eder;
+sipariş düzenleme formu bu convention'dan SAPMIŞTIR. **Etki:** "Düzenle → Kaydet", kullanıcı
+yalnızca TEK bir alanı (ör. teslimat telefonu) değiştirse BİLE, fatura tipi/dolu-alan durumu FARK
+ETMEKSİZİN sessizce 422 ile başarısız olur. Test `admin-order-management-pro.spec.ts` içinde
+`test.fail()` ile işaretli, ayrı bir regresyon testinde ("5b") belgeleniyor — bug düzeltilirse bu
+test beklenmedik biçimde geçip işaretin kaldırılması gerektiğini haber verecek. **Düzeltme
+frontend-agent'ın:** `onEditSubmit()`'te uygulanmayan billing alt-alanları `null` yazmak yerine
+gövdeden TAMAMEN OMİT edilmeli (checkout'un kendi deseniyle aynı).

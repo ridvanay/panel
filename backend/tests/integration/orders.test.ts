@@ -1,6 +1,18 @@
 import crypto from "node:crypto";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
+
+/**
+ * `.claude/architect-scope-order-management-pro.md` §6.2 — iptal e-postası tetikleyicisi
+ * testleri için `sendMail()` mock'lanır (bkz. tests/integration/webhook-order.test.ts İLE AYNI
+ * patern). Gerçek SMTP'ye hiç dokunulmaz.
+ */
+const sendMailMock = vi.hoisted(() => vi.fn(async () => ({ messageId: "mocked-message-id" })));
+
+vi.mock("../../src/lib/mail", () => ({
+  sendMail: sendMailMock,
+}));
+
 import { buildTestApp } from "../helpers/build-test-app";
 import { resetDatabase } from "../helpers/reset-db";
 import { registerTestUser } from "../helpers/auth";
@@ -37,7 +49,11 @@ describe("admin orders — /admin/orders (§10.9.3 Sepet + Stripe Checkout)", ()
     return res.json().data.tokens.accessToken as string;
   }
 
-  async function createOrder(status: "PENDING" | "PAID" | "FAILED" | "CANCELLED" | "EXPIRED" | "FULFILLED", customerEmail?: string) {
+  async function createOrder(
+    status: "PENDING" | "PAID" | "FAILED" | "CANCELLED" | "EXPIRED" | "FULFILLED" | "ON_HOLD" | "SHIPPED",
+    customerEmail?: string,
+    opts?: { siteUserId?: string }
+  ) {
     const email = customerEmail ?? `musteri-${crypto.randomUUID()}@example.com`;
     return app.prisma.order.create({
       data: {
@@ -50,7 +66,8 @@ describe("admin orders — /admin/orders (§10.9.3 Sepet + Stripe Checkout)", ()
         discountCents: 0,
         taxCents: 0,
         totalCents: 10000,
-        ...(status === "PAID" || status === "FULFILLED" ? { paidAt: new Date() } : {}),
+        ...(status === "PAID" || status === "FULFILLED" || status === "ON_HOLD" || status === "SHIPPED" ? { paidAt: new Date() } : {}),
+        ...(opts?.siteUserId ? { siteUserId: opts.siteUserId } : {}),
         items: {
           create: [
             { productTitle: "Test Ürün", productSku: "SKU-1", unitPriceCents: 10000, quantity: 1, lineTotalCents: 10000 },
@@ -77,6 +94,27 @@ describe("admin orders — /admin/orders (§10.9.3 Sepet + Stripe Checkout)", ()
 
     const standardUser = await createUserDirect("USER");
     userToken = await loginAs(standardUser.email);
+
+    // `prisma/seed.ts`'in kurduğu `ORDER_CANCELLATION` şablonunun bir kopyası — global test
+    // setup'ı seed script'ini çalıştırmıyor (bkz. tests/integration/webhook-order.test.ts notu).
+    await app.prisma.emailTemplate.create({
+      data: {
+        key: "ORDER_CANCELLATION",
+        name: "Sipariş İptal E-postası",
+        purpose: "ORDER_CANCELLATION",
+        editorMode: "RAW",
+        isSystem: true,
+        isActive: true,
+        subject: "Siparişiniz iptal edildi — {{order_number}}",
+        bodyHtml:
+          "<p>{{customer_name}}, {{order_number}} numaralı siparişiniz iptal edildi. Neden: {{cancellation_reason}}. Toplam: {{total_formatted}}. {{items_summary}}</p>",
+        availableVariables: ["order_number", "customer_name", "items_summary", "total_formatted", "cancellation_reason"],
+      },
+    });
+  });
+
+  afterEach(() => {
+    sendMailMock.mockClear();
   });
 
   afterAll(async () => {
@@ -167,17 +205,18 @@ describe("admin orders — /admin/orders (§10.9.3 Sepet + Stripe Checkout)", ()
     expect(auditRow?.metadata).toMatchObject({ from: "PAID", to: "FULFILLED" });
   });
 
-  it("PENDING -> CANCELLED geçişi çalışır", async () => {
+  it("PENDING -> CANCELLED geçişi çalışır (cancellationReason zorunlu, ödenmemiş sipariş confirmWithoutRefund gerektirmez)", async () => {
     const order = await createOrder("PENDING");
 
     const res = await app.inject({
       method: "PATCH",
       url: `/api/v1/admin/orders/${order.id}/status`,
       headers: authHeader(adminToken),
-      payload: { status: "CANCELLED" },
+      payload: { status: "CANCELLED", cancellationReason: "Müşteri talebi", sendCustomerEmail: false },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().data.status).toBe("CANCELLED");
+    expect(res.json().data.cancellationReason).toBe("Müşteri talebi");
   });
 
   it("izin verilmeyen geçişler 409 döner (ör. PENDING -> FULFILLED, FAILED -> FULFILLED)", async () => {
@@ -254,9 +293,9 @@ describe("admin orders — /admin/orders (§10.9.3 Sepet + Stripe Checkout)", ()
 
     // Sipariş artık FULFILLED (terminal) — plan §9 madde 12'deki "SHIPPED -> PAID denemesi"nin
     // ruhu: geriye/yana doğru bir geçiş denemesi 409 almalı. `status: "PAID"` şema seviyesinde
-    // (`UpdateOrderStatusRequestSchema`) zaten geçerli bir HEDEF DEĞİLDİR (yalnızca
-    // SHIPPED/FULFILLED/CANCELLED kabul edilir); bu yüzden geçerli ama İZİN VERİLMEYEN bir
-    // hedefle (`SHIPPED`) test edilir — `ALLOWED_TRANSITIONS["FULFILLED"]` tanımsızdır.
+    // geçerli bir hedeftir (§4.1, `ON_HOLD -> PAID` için) ama `ALLOWED_TRANSITIONS["FULFILLED"]`
+    // tanımsız olduğu için HİÇBİR hedefe izin vermez; bu yüzden geçerli-şemalı ama İZİN
+    // VERİLMEYEN bir hedefle (`SHIPPED`) test edilir.
     const invalidTransitionRes = await app.inject({
       method: "PATCH",
       url: `/api/v1/admin/orders/${order.id}/status`,
@@ -276,5 +315,470 @@ describe("admin orders — /admin/orders (§10.9.3 Sepet + Stripe Checkout)", ()
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().data.status).toBe("FULFILLED");
+  });
+
+  // ---------------------------------------------------------------------------------------
+  // `.claude/architect-scope-order-management-pro.md` — ON_HOLD, RBAC daraltması, iptal
+  // e-postası, düzenleme paneli, aktivite günlüğü (§4.1/§3.2/§3.5/§5.2/§5.3/§5.4).
+  // ---------------------------------------------------------------------------------------
+
+  describe("ON_HOLD geçiş tablosu (§4.1)", () => {
+    it("PAID -> ON_HOLD (ADMIN) çalışır", async () => {
+      const order = await createOrder("PAID");
+      const res = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/admin/orders/${order.id}/status`,
+        headers: authHeader(adminToken),
+        payload: { status: "ON_HOLD" },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().data.status).toBe("ON_HOLD");
+    });
+
+    it("ON_HOLD -> PAID (ADMIN, 'Siparişi Onayla') çalışır ve paidAt ÜZERİNE YAZILMAZ", async () => {
+      const order = await createOrder("PAID");
+      const originalPaidAt = order.paidAt?.toISOString();
+
+      const holdRes = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/admin/orders/${order.id}/status`,
+        headers: authHeader(adminToken),
+        payload: { status: "ON_HOLD" },
+      });
+      expect(holdRes.statusCode).toBe(200);
+
+      const confirmRes = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/admin/orders/${order.id}/status`,
+        headers: authHeader(adminToken),
+        payload: { status: "PAID" },
+      });
+      expect(confirmRes.statusCode).toBe(200);
+      expect(confirmRes.json().data.status).toBe("PAID");
+      expect(confirmRes.json().data.paidAt).toBe(originalPaidAt);
+    });
+
+    it("ON_HOLD -> CANCELLED: ödenmiş sipariş confirmWithoutRefund olmadan 409, onaylanınca 200", async () => {
+      const order = await createOrder("ON_HOLD");
+
+      const withoutConfirm = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/admin/orders/${order.id}/status`,
+        headers: authHeader(adminToken),
+        payload: { status: "CANCELLED", cancellationReason: "Stok tükendi", sendCustomerEmail: false },
+      });
+      expect(withoutConfirm.statusCode).toBe(409);
+
+      // Durum hâlâ ON_HOLD — reddedilen istek durumu DEĞİŞTİRMEMİŞ olmalı.
+      const stillOnHold = await app.inject({
+        method: "GET",
+        url: `/api/v1/admin/orders/${order.id}`,
+        headers: authHeader(adminToken),
+      });
+      expect(stillOnHold.json().data.status).toBe("ON_HOLD");
+
+      const withConfirm = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/admin/orders/${order.id}/status`,
+        headers: authHeader(adminToken),
+        payload: {
+          status: "CANCELLED",
+          cancellationReason: "Stok tükendi",
+          sendCustomerEmail: false,
+          confirmWithoutRefund: true,
+        },
+      });
+      expect(withConfirm.statusCode).toBe(200);
+      expect(withConfirm.json().data.status).toBe("CANCELLED");
+      expect(withConfirm.json().data.cancellationReason).toBe("Stok tükendi");
+    });
+
+    it("race condition — aynı ON_HOLD siparişe eşzamanlı PAID ve CANCELLED istekleri: yalnızca biri kazanır (atomik claim)", async () => {
+      const order = await createOrder("ON_HOLD");
+
+      const [resToPaid, resToCancelled] = await Promise.all([
+        app.inject({
+          method: "PATCH",
+          url: `/api/v1/admin/orders/${order.id}/status`,
+          headers: authHeader(adminToken),
+          payload: { status: "PAID" },
+        }),
+        app.inject({
+          method: "PATCH",
+          url: `/api/v1/admin/orders/${order.id}/status`,
+          headers: authHeader(adminToken),
+          payload: {
+            status: "CANCELLED",
+            cancellationReason: "Stok tükendi",
+            sendCustomerEmail: false,
+            confirmWithoutRefund: true,
+          },
+        }),
+      ]);
+
+      // Prisma'nın satır kilidi semantiği (bkz. POST /:orderId/refund'daki AYNI desen) sayesinde
+      // her iki istek de aynı `existing.status` (ON_HOLD) görüntüsüyle geçiş kontrolünü geçebilir,
+      // ama koşullu `updateMany({ where: { id, status: existing.status } })` yalnızca BİRİNİ
+      // "kazandırır" — diğeri `claim.count === 0` ile 409 alır. "Son yazan kazanır" YOKTUR.
+      const statusCodes = [resToPaid.statusCode, resToCancelled.statusCode].sort();
+      expect(statusCodes).toEqual([200, 409]);
+
+      const winnerBody = resToPaid.statusCode === 200 ? resToPaid.json().data : resToCancelled.json().data;
+      const expectedWinnerStatus = resToPaid.statusCode === 200 ? "PAID" : "CANCELLED";
+      expect(winnerBody.status).toBe(expectedWinnerStatus);
+
+      // Nihai DB durumu kazananla TUTARLI olmalı — iki yazının "karışıp" tutarsız bir ara duruma
+      // (ör. trackingNumber PAID'den ama status CANCELLED gibi) düşmediğini doğrular.
+      const finalRes = await app.inject({
+        method: "GET",
+        url: `/api/v1/admin/orders/${order.id}`,
+        headers: authHeader(adminToken),
+      });
+      expect(finalRes.json().data.status).toBe(expectedWinnerStatus);
+
+      // Kaybeden istek hiçbir yan etkiye yol açmamalı — yalnızca kazanan tarafın
+      // `order.status_change` audit kaydı oluşmalı, kaybedenden İKİNCİ bir kayıt OLUŞMAMALI.
+      const statusChangeAuditCount = await app.prisma.auditLog.count({
+        where: { targetType: "Order", targetId: order.id, action: "order.status_change" },
+      });
+      expect(statusChangeAuditCount).toBe(1);
+    });
+
+    it("PENDING -> ON_HOLD YASAKTIR (409) — §3.4", async () => {
+      const order = await createOrder("PENDING");
+      const res = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/admin/orders/${order.id}/status`,
+        headers: authHeader(adminToken),
+        payload: { status: "ON_HOLD" },
+      });
+      expect(res.statusCode).toBe(409);
+    });
+
+    it("PAID -> CANCELLED DOĞRUDAN AÇILMAZ (409) — önce Askıya Al gerekir (§3.5)", async () => {
+      const order = await createOrder("PAID");
+      const res = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/admin/orders/${order.id}/status`,
+        headers: authHeader(adminToken),
+        payload: { status: "CANCELLED", cancellationReason: "x", sendCustomerEmail: false, confirmWithoutRefund: true },
+      });
+      expect(res.statusCode).toBe(409);
+    });
+  });
+
+  describe("hedef-durum RBAC daraltması (§3.2)", () => {
+    it("MANAGER, ON_HOLD/PAID/CANCELLED hedeflerine geçiremez (403) — SHIPPED/FULFILLED'a geçirebilir", async () => {
+      const orderForHold = await createOrder("PAID");
+      const holdRes = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/admin/orders/${orderForHold.id}/status`,
+        headers: authHeader(managerToken),
+        payload: { status: "ON_HOLD" },
+      });
+      expect(holdRes.statusCode).toBe(403);
+
+      const orderForCancel = await createOrder("PENDING");
+      const cancelRes = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/admin/orders/${orderForCancel.id}/status`,
+        headers: authHeader(managerToken),
+        payload: { status: "CANCELLED", cancellationReason: "x" },
+      });
+      expect(cancelRes.statusCode).toBe(403);
+
+      const orderForConfirm = await createOrder("ON_HOLD");
+      const confirmRes = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/admin/orders/${orderForConfirm.id}/status`,
+        headers: authHeader(managerToken),
+        payload: { status: "PAID" },
+      });
+      expect(confirmRes.statusCode).toBe(403);
+
+      const orderForShip = await createOrder("PAID");
+      const shipRes = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/admin/orders/${orderForShip.id}/status`,
+        headers: authHeader(managerToken),
+        payload: { status: "SHIPPED", trackingNumber: "TRK-1" },
+      });
+      expect(shipRes.statusCode).toBe(200);
+    });
+
+    it("MANAGER'ın reddedilen hedef-durum denemesi sipariş aktivite akışında FORBIDDEN olarak görünür (targetId taşır)", async () => {
+      const order = await createOrder("PENDING");
+      const res = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/admin/orders/${order.id}/status`,
+        headers: authHeader(managerToken),
+        payload: { status: "CANCELLED", cancellationReason: "x" },
+      });
+      expect(res.statusCode).toBe(403);
+
+      const activityRes = await app.inject({
+        method: "GET",
+        url: `/api/v1/admin/orders/${order.id}/activity`,
+        headers: authHeader(adminToken),
+      });
+      expect(activityRes.statusCode).toBe(200);
+      const forbiddenEntry = activityRes
+        .json()
+        .data.find((e: { action: string; status: string }) => e.action === "order.status_change" && e.status === "FORBIDDEN");
+      expect(forbiddenEntry).toBeDefined();
+      expect(forbiddenEntry.metadata).toMatchObject({ from: "PENDING", to: "CANCELLED" });
+    });
+  });
+
+  describe("status=CANCELLED gövde doğrulaması (§5.2)", () => {
+    it("cancellationReason eksikse 422", async () => {
+      const order = await createOrder("PENDING");
+      const res = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/admin/orders/${order.id}/status`,
+        headers: authHeader(adminToken),
+        payload: { status: "CANCELLED" },
+      });
+      expect(res.statusCode).toBe(422);
+    });
+
+    it("status !== CANCELLED iken cancellationReason/sendCustomerEmail/confirmWithoutRefund gönderilirse 422", async () => {
+      const order = await createOrder("PAID");
+      const res = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/admin/orders/${order.id}/status`,
+        headers: authHeader(adminToken),
+        payload: { status: "SHIPPED", trackingNumber: "TRK-1", cancellationReason: "x" },
+      });
+      expect(res.statusCode).toBe(422);
+    });
+  });
+
+  describe("iptal e-postası tetikleyicisi (§6.2)", () => {
+    it("sendCustomerEmail varsayılan true iken order.cancel_email SUCCESS audit kaydı oluşur, sendMail çağrılır", async () => {
+      const order = await createOrder("PENDING");
+      const res = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/admin/orders/${order.id}/status`,
+        headers: authHeader(adminToken),
+        payload: { status: "CANCELLED", cancellationReason: "Müşteri talebi" },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(sendMailMock).toHaveBeenCalledTimes(1);
+
+      const activityRes = await app.inject({
+        method: "GET",
+        url: `/api/v1/admin/orders/${order.id}/activity`,
+        headers: authHeader(adminToken),
+      });
+      const emailEntry = activityRes
+        .json()
+        .data.find((e: { action: string }) => e.action === "order.cancel_email");
+      expect(emailEntry).toBeDefined();
+      expect(emailEntry.status).toBe("SUCCESS");
+      expect(emailEntry.metadata).toMatchObject({ emailDelivered: true });
+
+      const statusChangeEntry = activityRes
+        .json()
+        .data.find((e: { action: string }) => e.action === "order.status_change");
+      expect(statusChangeEntry.metadata).toMatchObject({ customerEmailRequested: true, cancellationReason: "Müşteri talebi" });
+    });
+
+    it("sendCustomerEmail: false iken e-posta HİÇ denenmez ve order.cancel_email kaydı OLUŞMAZ", async () => {
+      const order = await createOrder("PENDING");
+      const res = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/admin/orders/${order.id}/status`,
+        headers: authHeader(adminToken),
+        payload: { status: "CANCELLED", cancellationReason: "Müşteri talebi", sendCustomerEmail: false },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(sendMailMock).not.toHaveBeenCalled();
+
+      const activityRes = await app.inject({
+        method: "GET",
+        url: `/api/v1/admin/orders/${order.id}/activity`,
+        headers: authHeader(adminToken),
+      });
+      const emailEntry = activityRes
+        .json()
+        .data.find((e: { action: string }) => e.action === "order.cancel_email");
+      expect(emailEntry).toBeUndefined();
+    });
+
+    it("e-posta gönderimi başarısız olsa bile PATCH .../status 200 döner (best-effort)", async () => {
+      sendMailMock.mockImplementationOnce(async () => {
+        throw new Error("SMTP bağlantısı başarısız");
+      });
+      const order = await createOrder("PENDING");
+      const res = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/admin/orders/${order.id}/status`,
+        headers: authHeader(adminToken),
+        payload: { status: "CANCELLED", cancellationReason: "Müşteri talebi" },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().data.status).toBe("CANCELLED");
+    });
+  });
+
+  describe("PATCH /admin/orders/:orderId — düzenleme paneli (§5.3)", () => {
+    it("ADMIN müşteri iletişim/adres bilgisini günceller, adminNotes'u yazar, aktivite akışında order.update görünür", async () => {
+      const order = await createOrder("PENDING");
+      const res = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/admin/orders/${order.id}`,
+        headers: authHeader(adminToken),
+        payload: {
+          customerName: "Yeni İsim",
+          adminNotes: "Müşteri telefon ile aradı.",
+          shippingAddress: {
+            fullName: "Yeni İsim",
+            phone: "+905551234567",
+            country: "TR",
+            city: "İstanbul",
+            district: "Kadıköy",
+            addressLine1: "Örnek Mahallesi No:1",
+            postalCode: "34710",
+          },
+        },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().data.customerName).toBe("Yeni İsim");
+      expect(res.json().data.adminNotes).toBe("Müşteri telefon ile aradı.");
+      expect(res.json().data.shippingAddress).toMatchObject({ city: "İstanbul", district: "Kadıköy" });
+
+      const activityRes = await app.inject({
+        method: "GET",
+        url: `/api/v1/admin/orders/${order.id}/activity`,
+        headers: authHeader(adminToken),
+      });
+      const updateEntry = activityRes.json().data.find((e: { action: string }) => e.action === "order.update");
+      expect(updateEntry).toBeDefined();
+      expect(updateEntry.metadata.fields).toEqual(expect.arrayContaining(["customerName", "adminNotes", "shippingAddress"]));
+    });
+
+    it("hiçbir alan gönderilmezse 422", async () => {
+      const order = await createOrder("PENDING");
+      const res = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/admin/orders/${order.id}`,
+        headers: authHeader(adminToken),
+        payload: {},
+      });
+      expect(res.statusCode).toBe(422);
+    });
+
+    it("MANAGER PATCH /:orderId çağıramaz (403)", async () => {
+      const order = await createOrder("PENDING");
+      const res = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/admin/orders/${order.id}`,
+        headers: authHeader(managerToken),
+        payload: { adminNotes: "deneme" },
+      });
+      expect(res.statusCode).toBe(403);
+    });
+
+    it("SHIPPED/kapanmış siparişte iletişim/adres alanı değiştirilemez (409), adminNotes hâlâ düzenlenebilir", async () => {
+      const order = await createOrder("SHIPPED");
+      const blockedRes = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/admin/orders/${order.id}`,
+        headers: authHeader(adminToken),
+        payload: { customerName: "Yeni İsim" },
+      });
+      expect(blockedRes.statusCode).toBe(409);
+
+      const notesRes = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/admin/orders/${order.id}`,
+        headers: authHeader(adminToken),
+        payload: { adminNotes: "Yalnızca not güncellemesi" },
+      });
+      expect(notesRes.statusCode).toBe(200);
+      expect(notesRes.json().data.adminNotes).toBe("Yalnızca not güncellemesi");
+    });
+  });
+
+  describe("GET /admin/orders/:orderId/activity (§5.4)", () => {
+    it("ipAddress alanı yanıt gövdesinde HİÇ bulunmaz", async () => {
+      const order = await createOrder("PAID");
+      await app.inject({
+        method: "PATCH",
+        url: `/api/v1/admin/orders/${order.id}/status`,
+        headers: authHeader(adminToken),
+        payload: { status: "SHIPPED", trackingNumber: "TRK-ACT-1" },
+      });
+
+      const res = await app.inject({
+        method: "GET",
+        url: `/api/v1/admin/orders/${order.id}/activity`,
+        headers: authHeader(adminToken),
+      });
+      expect(res.statusCode).toBe(200);
+      const raw = res.payload;
+      expect(raw.includes("ipAddress")).toBe(false);
+    });
+
+    it("var olmayan sipariş için 404 döner", async () => {
+      const res = await app.inject({
+        method: "GET",
+        url: `/api/v1/admin/orders/${crypto.randomUUID()}/activity`,
+        headers: authHeader(adminToken),
+      });
+      expect(res.statusCode).toBe(404);
+    });
+
+    it("MANAGER aktivite akışını okuyabilir (salt okunur, ADMIN+MANAGER)", async () => {
+      const order = await createOrder("PAID");
+      const res = await app.inject({
+        method: "GET",
+        url: `/api/v1/admin/orders/${order.id}/activity`,
+        headers: authHeader(managerToken),
+      });
+      expect(res.statusCode).toBe(200);
+    });
+  });
+
+  describe("§3.7 kritik regresyon — adminNotes/cancellationReason müşteri yüzeyine SIZMAZ", () => {
+    it("GET /users/me/orders ve /users/me/orders/:orderId adminNotes/cancellationReason TAŞIMAZ", async () => {
+      const customer = await registerTestUser(app, { email: "orders-customer-leak-check@example.com" });
+      const order = await createOrder("CANCELLED", undefined, { siteUserId: customer.userId });
+      await app.prisma.order.update({
+        where: { id: order.id },
+        data: { adminNotes: "GİZLİ dahili not", cancellationReason: "Stok tükendi" },
+      });
+
+      const listRes = await app.inject({
+        method: "GET",
+        url: "/api/v1/users/me/orders",
+        headers: authHeader(customer.accessToken),
+      });
+      expect(listRes.statusCode).toBe(200);
+      expect(listRes.payload.includes("adminNotes")).toBe(false);
+      expect(listRes.payload.includes("cancellationReason")).toBe(false);
+      expect(listRes.payload.includes("GİZLİ dahili not")).toBe(false);
+
+      const detailRes = await app.inject({
+        method: "GET",
+        url: `/api/v1/users/me/orders/${order.id}`,
+        headers: authHeader(customer.accessToken),
+      });
+      expect(detailRes.statusCode).toBe(200);
+      expect(detailRes.payload.includes("adminNotes")).toBe(false);
+      expect(detailRes.payload.includes("cancellationReason")).toBe(false);
+      expect(detailRes.payload.includes("GİZLİ dahili not")).toBe(false);
+
+      // Admin uçları AYNI siparişte bu alanları GÖRMEYE devam eder (default-deny yalnızca
+      // müşteri yüzeyi içindir).
+      const adminRes = await app.inject({
+        method: "GET",
+        url: `/api/v1/admin/orders/${order.id}`,
+        headers: authHeader(adminToken),
+      });
+      expect(adminRes.json().data.adminNotes).toBe("GİZLİ dahili not");
+      expect(adminRes.json().data.cancellationReason).toBe("Stok tükendi");
+    });
   });
 });

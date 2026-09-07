@@ -611,11 +611,23 @@ export async function getSiteModules(token: string) {
  * `status: SHIPPED` iken `trackingNumber` ZORUNLUDUR. Admin sipariş detay UI'sı
  * `admin-order-detail-ship.test.tsx` (mock API) ile zaten unit test'li; bu fonksiyon e2e'de
  * gerçek bir sipariş üzerinde kargo bilgisini API'den doğrudan set etmek için kullanılır (müşteri
- * tarafının `/hesabim/siparislerim/{orderId}` sayfasında takip no görünürlüğünü doğrulamak için). */
+ * tarafının `/hesabim/siparislerim/{orderId}` sayfasında takip no görünürlüğünü doğrulamak için).
+ *
+ * `.claude/architect-scope-order-management-pro.md` §5.2 — gövde `cancellationReason`/
+ * `sendCustomerEmail`/`confirmWithoutRefund` alanlarıyla GENİŞLETİLDİ (`admin-order-management-
+ * pro.spec.ts` tarafından kullanılır) — mevcut çağıranlar (yalnızca `status`/`trackingNumber`/
+ * `shippingCarrier` gönderenler) ETKİLENMEZ, yeni alanlar opsiyoneldir. */
 export async function adminUpdateOrderStatus(
   token: string,
   orderId: string,
-  body: { status: string; trackingNumber?: string; shippingCarrier?: string }
+  body: {
+    status: string;
+    trackingNumber?: string;
+    shippingCarrier?: string;
+    cancellationReason?: string;
+    sendCustomerEmail?: boolean;
+    confirmWithoutRefund?: boolean;
+  }
 ): Promise<{ status: number; data?: Record<string, unknown> }> {
   const res = await fetch(`${API_BASE_URL}/admin/orders/${orderId}/status`, {
     method: "PATCH",
@@ -625,6 +637,52 @@ export async function adminUpdateOrderStatus(
   if (!res.ok) return { status: res.status };
   const parsed = (await res.json()) as { data: Record<string, unknown> };
   return { status: res.status, data: parsed.data };
+}
+
+// ---------------------------------------------------------------------------
+// `.claude/architect-scope-order-management-pro.md` §9 — sipariş yönetimi profesyonelleştirme
+// e2e fixture yardımcıları (qa-agent, bu turda eklendi). `admin-order-management-pro.spec.ts`
+// tarafından kullanılır.
+// ---------------------------------------------------------------------------
+
+/** `PATCH /admin/orders/{orderId}` — YENİ (§5.3), yalnızca ADMIN. Durum kodunu FIRLATMADAN döner
+ * (403/409/200 iddiaları için) — `adminUpdateOrderStatus()` ile AYNI desen. */
+export async function adminUpdateOrderDirect(
+  token: string,
+  orderId: string,
+  body: Record<string, unknown>
+): Promise<{ status: number; data?: Record<string, unknown> }> {
+  const res = await fetch(`${API_BASE_URL}/admin/orders/${orderId}`, {
+    method: "PATCH",
+    headers: authHeaders(token),
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) return { status: res.status };
+  const parsed = (await res.json()) as { data: Record<string, unknown> };
+  return { status: res.status, data: parsed.data };
+}
+
+/** `GET /admin/orders/{orderId}` — `AdminOrder` DTO'sunu döner (200 bekleyen çağıranlar için,
+ * FIRLATIR). */
+export async function adminGetOrder(token: string, orderId: string): Promise<Record<string, unknown>> {
+  const res = await fetch(`${API_BASE_URL}/admin/orders/${orderId}`, { headers: authHeadersNoBody(token) });
+  return json<{ data: Record<string, unknown> }>(res).then((b) => b.data);
+}
+
+/** `GET /admin/orders/{orderId}/activity` — YENİ (§5.4). Hem ayrıştırılmış `entries`'i HEM ham
+ * yanıt metnini (`rawText`) döner — ikincisi `ipAddress` sızıntı kontrolü içindir (§9 madde 6):
+ * DTO tipi zaten `ipAddress` taşımaz, ama testin gerçek tel-üstü JSON'u (ekstra/beklenmedik bir
+ * alan sunucu tarafında yanlışlıkla eklenmiş olabilir ihtimaline karşı) DOĞRUDAN denetlemesi,
+ * yalnızca TypeScript tipine güvenmekten daha güçlü bir garantidir. */
+export async function adminGetOrderActivity(
+  token: string,
+  orderId: string
+): Promise<{ status: number; rawText: string; entries: Array<Record<string, unknown>> }> {
+  const res = await fetch(`${API_BASE_URL}/admin/orders/${orderId}/activity`, { headers: authHeadersNoBody(token) });
+  const rawText = await res.text();
+  if (!res.ok) return { status: res.status, rawText, entries: [] };
+  const parsed = JSON.parse(rawText) as { data: Array<Record<string, unknown>> };
+  return { status: res.status, rawText, entries: parsed.data };
 }
 
 export { API_BASE_URL };

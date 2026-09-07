@@ -961,6 +961,8 @@ export const EmailTemplatePurposeSchema = z.enum([
   "PASSWORD_RESET",
   "SYSTEM_ANNOUNCEMENT",
   "ORDER_CONFIRMATION",
+  // `.claude/architect-scope-order-management-pro.md` §4.4/§6.1 — YENİ, iptal e-postası tetikleyicisi.
+  "ORDER_CANCELLATION",
   "ORG_INVITATION",
   "CONTACT_FORM_NOTIFICATION",
   "CUSTOM",
@@ -1410,7 +1412,20 @@ export type CartDto = z.infer<typeof CartSchema>;
 // `.claude/architect-scope-customer-portal.md` §6 — `SHIPPED` eklendi (`PAID -> SHIPPED -> FULFILLED`).
 // `DELIVERED` BİLİNÇLİ OLARAK eklenmedi: `FULFILLED` zaten terminal başarı durumudur, ikisini
 // birlikte tutmak "hangisi bitmiş?" belirsizliği üretirdi (bkz. plan §6).
-export const OrderStatusSchema = z.enum(["PENDING", "PAID", "SHIPPED", "FAILED", "CANCELLED", "EXPIRED", "REFUNDED", "FULFILLED"]);
+// `.claude/architect-scope-order-management-pro.md` §3.1/§4.1 — `ON_HOLD` EKLENDİ (tek yeni
+// değer; mevcut 8 değer YENİDEN ADLANDIRILMAZ). `ON_HOLD` YALNIZCA `PAID`'den ulaşılır;
+// `PENDING -> ON_HOLD` YASAKTIR (bkz. orders.routes.ts::ALLOWED_TRANSITIONS, §3.4).
+export const OrderStatusSchema = z.enum([
+  "PENDING",
+  "PAID",
+  "ON_HOLD",
+  "SHIPPED",
+  "FAILED",
+  "CANCELLED",
+  "EXPIRED",
+  "REFUNDED",
+  "FULFILLED",
+]);
 export type OrderStatus = z.infer<typeof OrderStatusSchema>;
 
 // `.claude/architect-scope-checkout-redesign.md` §4.1/§5.5 — Prisma `enum BillingType` ile
@@ -1505,6 +1520,39 @@ export const OrderSchema = z.object({
   items: z.array(OrderItemSchema),
 });
 export type OrderDto = z.infer<typeof OrderSchema>;
+
+/**
+ * `.claude/architect-scope-order-management-pro.md` §3.7/§5.1 (bağlayıcı) — YALNIZCA
+ * `/admin/orders*` uçları bu DTO'yu döner. `OrderSchema`/`toOrderDto` BİLİNÇLİ OLARAK
+ * DEĞİŞMEZ (müşteri yüzeyine — `/users/me/orders*` — sızma riski, kritik regresyon kuralı).
+ * Varsayılan reddetmedir (default-deny): bir alan bu şemaya eklenmedikçe hiçbir yerde görünmez.
+ */
+export const AdminOrderSchema = OrderSchema.extend({
+  // Yalnızca `status = CANCELLED`'a geçişte doldurulur; MÜŞTERİYE GİDEN iptal e-postasında
+  // AYNEN yer alır (§6.2) — dahili not için `adminNotes` kullanılır.
+  cancellationReason: z.string().nullable(),
+  // Yalnızca panele görünen serbest dahili not — `OrderDto`'ya ASLA eklenmez.
+  adminNotes: z.string().nullable(),
+});
+export type AdminOrderDto = z.infer<typeof AdminOrderSchema>;
+
+/**
+ * `GET /admin/orders/{orderId}/activity` yanıt öğesi (§5.4, bağlayıcı) — `AuditLogSchema` DEĞİL,
+ * amaca özel bir görünüm: `ipAddress` BİLİNÇLİ OLARAK TAŞINMAZ (bu uç MANAGER'a da açık; IP'nin
+ * operasyonel değeri sıfır, PII yükü yüksektir — `/admin/logs`'un ADMIN-only kalmasıyla çelişmez).
+ * `metadata` ÇAĞRI YERİNDE (bkz. mappers/index.ts::toOrderActivityEntryDto) sabit bir
+ * allow-list'ten geçirilir; ileride başka bir ajanın audit metadata'sına ekleyeceği alanların
+ * buradan sızması engellenir.
+ */
+export const OrderActivityEntrySchema = z.object({
+  id: z.string().uuid(),
+  action: z.string(),
+  status: AuditStatusSchema,
+  actorEmail: z.string().nullable(),
+  createdAt: z.string(),
+  metadata: z.record(z.unknown()).nullable(),
+});
+export type OrderActivityEntryDto = z.infer<typeof OrderActivityEntrySchema>;
 
 // ---------- Müşteri & E-Ticaret Alanı (Customer Portal) — bkz.
 // `.claude/architect-scope-customer-portal.md` §2.2/§2.3 (bağlayıcı karar dokümanı).

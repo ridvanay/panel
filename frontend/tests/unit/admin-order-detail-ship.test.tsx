@@ -1,13 +1,28 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import AdminOrderDetailPage from "@/app/admin/orders/[orderId]/page";
-import type { Order } from "@/lib/api/types";
+import type { AdminOrder } from "@/lib/api/types";
 
 vi.mock("@/lib/api/orders", () => ({
   getOrder: vi.fn(),
   updateOrderStatus: vi.fn(),
+  updateOrder: vi.fn(),
+  getOrderActivity: vi.fn(),
   refundOrder: vi.fn(),
+}));
+
+vi.mock("@/context/auth-context", () => ({
+  useAuth: () => ({
+    status: "authenticated",
+    user: { id: "user-1", email: "admin@example.com", name: "Admin", role: "ADMIN", avatarUrl: null, emailVerifiedAt: null, canUseAdvancedBuilder: true, createdAt: "2026-01-01T00:00:00.000Z", twoFactorEnabled: false },
+    memberships: [],
+    login: vi.fn(),
+    register: vi.fn(),
+    logout: vi.fn(),
+    refreshSession: vi.fn(),
+    verifyTwoFactor: vi.fn(),
+  }),
 }));
 
 const ordersApi = await import("@/lib/api/orders");
@@ -23,7 +38,7 @@ function resolvedParamsPromise<T>(value: T): Promise<T> {
   return promise;
 }
 
-function makeOrder(overrides: Partial<Order> = {}): Order {
+function makeOrder(overrides: Partial<AdminOrder> = {}): AdminOrder {
   return {
     id: "order-1",
     orderNumber: "ORD-0001",
@@ -34,6 +49,7 @@ function makeOrder(overrides: Partial<Order> = {}): Order {
     subtotalCents: 15000,
     discountCents: 0,
     taxCents: 0,
+    shippingCents: 0,
     totalCents: 15000,
     errorSummary: null,
     paidAt: "2026-08-01T10:00:00.000Z",
@@ -45,6 +61,8 @@ function makeOrder(overrides: Partial<Order> = {}): Order {
     shippingAddress: null,
     billing: null,
     items: [],
+    cancellationReason: null,
+    adminNotes: null,
     ...overrides,
   };
 }
@@ -55,6 +73,10 @@ async function renderPage() {
 }
 
 describe("AdminOrderDetailPage — SHIPPED geçişi", () => {
+  beforeEach(() => {
+    vi.mocked(ordersApi.getOrderActivity).mockResolvedValue([]);
+  });
+
   it("PAID sipariş için 'Kargoya Ver' butonu gösterilir, dialog kargo takip no ZORUNLU alanıyla açılır", async () => {
     vi.mocked(ordersApi.getOrder).mockResolvedValue(makeOrder({ status: "PAID" }));
     const user = userEvent.setup();

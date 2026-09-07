@@ -105,6 +105,8 @@ import type {
   CartItemDto,
   CartShippingDto,
   OrderDto,
+  AdminOrderDto,
+  OrderActivityEntryDto,
   OrderItemDto,
   OrderAddressSnapshotDto,
   OrderBillingSnapshotDto,
@@ -956,6 +958,57 @@ export function toOrderDto(order: OrderWithItems): OrderDto {
     shippingAddress: toOrderShippingAddressSnapshotDto(order),
     billing: toOrderBillingSnapshotDto(order),
     items: order.items.map(toOrderItemDto),
+  };
+}
+
+/**
+ * `.claude/architect-scope-order-management-pro.md` §3.7/§5.1 (bağlayıcı) — YALNIZCA
+ * `/admin/orders*` uçları bunu kullanır. `toOrderDto` KASITLI OLARAK değiştirilmedi (kritik
+ * regresyon kuralı: `adminNotes`/`cancellationReason` `/users/me/orders*`'a SIZMAMALI).
+ */
+export function toAdminOrderDto(order: OrderWithItems): AdminOrderDto {
+  return {
+    ...toOrderDto(order),
+    cancellationReason: order.cancellationReason,
+    adminNotes: order.adminNotes,
+  };
+}
+
+/**
+ * `.claude/architect-scope-order-management-pro.md` §5.4 (bağlayıcı) — `GET
+ * /admin/orders/{orderId}/activity` yanıt öğesi. `ipAddress` BİLİNÇLİ OLARAK TAŞINMAZ.
+ * `metadata` sabit bir allow-list'ten geçirilir — listede OLMAYAN anahtarlar DÜŞÜRÜLÜR (ileride
+ * başka bir ajanın audit metadata'sına ekleyeceği bir alanın buradan sızmasını engeller).
+ */
+const ORDER_ACTIVITY_METADATA_ALLOW_LIST = [
+  "from",
+  "to",
+  "reason",
+  "cancellationReason",
+  "customerEmailRequested",
+  "fields",
+  "emailDelivered",
+  "stripeRefundId",
+] as const;
+
+export function toOrderActivityEntryDto(log: AuditLog): OrderActivityEntryDto {
+  const rawMetadata = log.metadata as Record<string, unknown> | null;
+  let metadata: Record<string, unknown> | null = null;
+  if (rawMetadata) {
+    const filtered: Record<string, unknown> = {};
+    for (const key of ORDER_ACTIVITY_METADATA_ALLOW_LIST) {
+      if (key in rawMetadata) filtered[key] = rawMetadata[key];
+    }
+    metadata = Object.keys(filtered).length > 0 ? filtered : null;
+  }
+
+  return {
+    id: log.id,
+    action: log.action,
+    status: log.status,
+    actorEmail: log.actorEmail,
+    createdAt: log.createdAt.toISOString(),
+    metadata,
   };
 }
 

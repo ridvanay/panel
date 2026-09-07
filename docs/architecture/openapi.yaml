@@ -366,14 +366,35 @@ tags:
       verir — kapalıyken 404. Route-level hız sınırı: 10 istek/dakika (IP bazlı).
   - name: Orders
     description: >
-      Admin sipariş yönetimi (`/admin/orders`) — bkz. ARCHITECTURE.md §10.9.3. **TÜM
-      uçlar İSTİSNASIZ SiteRole=ADMIN veya MANAGER'dır** (EDITOR/CUSTOMER/USER → 403).
-      Müşterinin KENDİ siparişlerini görmesi için ayrı uçlar vardır: `GET /users/me/orders`
-      ve `GET /users/me/orders/{orderId}` (sahiplik filtresi, rol guard'ı YOK). Modül
+      Admin sipariş yönetimi (`/admin/orders`) — bkz. ARCHITECTURE.md §10.9.3 ve
+      `.claude/architect-scope-order-management-pro.md` (bağlayıcı, bu turun kaynağı).
+      **Router kapısı TÜM uçlarda `SiteRole=ADMIN` veya `MANAGER`'dır**
+      (EDITOR/CUSTOMER/USER → 403); ancak **istisnai/geri alınamaz eylemler bunun
+      ÜZERİNE `ADMIN`'e daraltılır** (§3.2, aşağıdaki tablo). Müşterinin KENDİ
+      siparişlerini görmesi için ayrı uçlar vardır: `GET /users/me/orders` ve
+      `GET /users/me/orders/{orderId}` (sahiplik filtresi, rol guard'ı YOK). Modül
       durumundan BAĞIMSIZDIR (`products` modülü kapatılsa dahi geçmiş siparişler
       görüntülenebilir — veri korunumu, `Products`/`Portfolio` admin uçlarıyla AYNI
       karar, bkz. `.claude/architect-scope-customer-portal.md` §3). `customerEmail`
       LİSTEDE maskelenir, DETAYDA maskesiz döner (bkz. uç açıklaması).
+
+
+      **Hedef duruma/eyleme göre yetki kademesi (bağlayıcı, §3.2):**
+
+
+      | Uç / hedef | SiteRole | Gerekçe |
+      |---|---|---|
+      | `GET /admin/orders`, `GET /admin/orders/{orderId}` | ADMIN, MANAGER | Salt okuma — operasyonu yürütmek için MANAGER görmek ZORUNDA |
+      | `GET /admin/orders/{orderId}/activity` | ADMIN, MANAGER | Salt okuma, `ipAddress` DÖNMEZ — `/admin/logs`'un ADMIN-only kalmasıyla çelişmez |
+      | `PATCH .../status` → `SHIPPED`, `FULFILLED` | ADMIN, MANAGER | Günlük operasyon (kargo/teslim işaretleme), geri alınabilir, para/ilişki riski yok |
+      | `PATCH .../status` → `ON_HOLD`, `PAID`, `CANCELLED` | **yalnızca ADMIN** | İstisnai — `CANCELLED` terminaldir, müşteriye e-posta tetikler, para/stok mutabakatını etkiler; handler içinde kontrol edilir (router kapısı MANAGER'ı da içeri alır), ihlalde `403` + `targetId` taşıyan bir `order.status_change`/`FORBIDDEN` audit kaydı |
+      | `PATCH /admin/orders/{orderId}` (iletişim/adres/`adminNotes` düzenleme) | **yalnızca ADMIN** | Route seviyesinde `requireSiteRole` — mali kaydın kimlik/teslimat snapshot'ını değiştirir |
+      | `POST .../refund` | ADMIN, MANAGER | Bu turda DEĞİŞMEDİ (bilinen boşluk, `.claude/architect-scope-order-management-pro.md` §8.2) |
+
+
+      **`SUPER_ADMIN` rolü İCAT EDİLMEDİ** — 5 kademeli rol modeli (bkz. kök `x-site-rbac`)
+      değişmez; "yalnızca en üst yetki" isteği projenin mevcut en yüksek kademesi olan
+      `ADMIN`'e daraltılarak karşılanır.
   - name: Localization
     description: >
       Çoklu dil yapılandırması (`/locales`, `/admin/locales`) — bkz. ARCHITECTURE.md
@@ -6812,12 +6833,14 @@ paths:
   /admin/orders:
     get:
       tags: [Orders]
-      summary: Siparişleri listele (yalnızca SiteRole=ADMIN)
+      summary: Siparişleri listele (SiteRole=ADMIN veya MANAGER)
       description: >
-        Cursor sayfalı, `seq asc`. `status` ile filtrelenebilir. **`customerEmail`
-        MASKELENİR** (`lib/pii-mask.ts::maskEmail`, ör. `a***@domain.com`) — gerekçe:
-        liste ekranı toplu göz atma/triage amaçlıdır, tam e-posta burada gerekli
-        değildir (bkz. detay ucundaki maskesiz davranışla karşıtlık).
+        Cursor sayfalı, `seq asc`. `status` ile filtrelenebilir (`ON_HOLD` dahil).
+        **`customerEmail` MASKELENİR** (`lib/pii-mask.ts::maskEmail`, ör.
+        `a***@domain.com`) — gerekçe: liste ekranı toplu göz atma/triage amaçlıdır,
+        tam e-posta burada gerekli değildir (bkz. detay ucundaki maskesiz davranışla
+        karşıtlık). Yanıt `Order` DEĞİL, **`AdminOrder`** döner (`cancellationReason`/
+        `adminNotes` dahil) — bkz. `.claude/architect-scope-order-management-pro.md` §3.7/§5.1.
       parameters:
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
@@ -6833,7 +6856,7 @@ paths:
                   - properties:
                       data:
                         type: array
-                        items: { $ref: "#/components/schemas/Order" }
+                        items: { $ref: "#/components/schemas/AdminOrder" }
                       meta: { $ref: "#/components/schemas/OrderListMeta" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
@@ -6843,11 +6866,12 @@ paths:
       - $ref: "#/components/parameters/OrderId"
     get:
       tags: [Orders]
-      summary: Sipariş detayı (yalnızca SiteRole=ADMIN)
+      summary: Sipariş detayı (SiteRole=ADMIN veya MANAGER)
       description: >
         **`customerEmail` MASKELENMEZ** (listeden farklı olarak) — detay ekranı fiilen
         kargo/iletişim amacıyla açılır, admin'in müşteriyle iletişime geçmesi (ör.
-        teslimat sorunu) için tam adrese ihtiyacı vardır.
+        teslimat sorunu) için tam adrese ihtiyacı vardır. Yanıt **`AdminOrder`**
+        döner (bkz. `GET /admin/orders` açıklaması).
       responses:
         "200":
           description: OK
@@ -6857,29 +6881,191 @@ paths:
                 allOf:
                   - $ref: "#/components/schemas/ApiSuccessEnvelope"
                   - properties:
-                      data: { $ref: "#/components/schemas/Order" }
+                      data: { $ref: "#/components/schemas/AdminOrder" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [Orders]
+      summary: Sipariş iletişim/adres/dahili not düzenle (yalnızca SiteRole=ADMIN)
+      description: >
+        `.claude/architect-scope-order-management-pro.md` §5.3 — YENİ uç. Router
+        seviyesindeki ADMIN+MANAGER kapısına EK OLARAK route seviyesinde
+        `requireSiteRole(ADMIN)` uygulanır — **MANAGER bu uçtan her koşulda 403 alır.**
+
+
+        Tüm gövde alanları opsiyoneldir ama **hiçbiri gönderilmezse 422**.
+        `shippingAddress`/`billing` **TAM NESNEDİR** — kısmi (alan bazlı) yama KABUL
+        EDİLMEZ (adres bir snapshot'tır; istemci mevcut değerlerle dolu formu tam
+        gönderir). `OrderAddressInput`, checkout'un `CheckoutAddressInput` şemasıyla
+        BİREBİR AYNIDIR (import edilir, yeniden yazılmaz).
+
+
+        **Ön koşul (409):** `customerEmail`/`customerName`/`shippingAddress`/`billing`
+        yalnızca sipariş `PENDING`, `PAID` veya `ON_HOLD` iken düzenlenebilir —
+        `SHIPPED`/`FULFILLED`/terminal durumlarda 409 (adres snapshot'ı fiilen
+        kullanılmış kargo etiketidir, değiştirmek paketin nereye gittiğinin kaydını
+        yok eder). `adminNotes` **her durumda** düzenlenebilir.
+
+
+        Bu uç `ORDER_STATUS_CHANGED` webhook'unu **YAYMAZ** (durum değişmedi). Audit
+        log: `action: "order.update"`, `metadata: { fields: string[] }` — **yalnızca
+        değişen alan ADLARI**; eski/yeni değerler (adres, e-posta, TCKN) audit
+        metadata'sına ASLA yazılmaz (KVKK veri minimizasyonu).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateOrderRequest" }
+      responses:
+        "200":
+          description: Güncellendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/AdminOrder" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: "MANAGER bu uçtan HER ZAMAN 403 alır (`error.code: FORBIDDEN`) — yalnızca ADMIN."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+              examples:
+                managerForbidden:
+                  summary: MANAGER rolüyle çağrıldı
+                  value:
+                    error: { code: FORBIDDEN, message: "Bu işlem için yetkiniz yok." }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "Kargoya verilmiş/kapanmış bir siparişin iletişim/adres bilgisi değiştirilmeye çalışıldı (`error.code: CONFLICT`)."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+              examples:
+                notEditable:
+                  summary: Sipariş SHIPPED/FULFILLED gibi düzenlenemez bir durumda
+                  value:
+                    error:
+                      code: CONFLICT
+                      message: "Kargoya verilmiş veya kapanmış bir siparişin iletişim/adres bilgisi değiştirilemez."
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/orders/{orderId}/activity:
+    parameters:
+      - $ref: "#/components/parameters/OrderId"
+    get:
+      tags: [Orders]
+      summary: Sipariş bazlı aktivite günlüğü (SiteRole=ADMIN veya MANAGER)
+      description: >
+        `.claude/architect-scope-order-management-pro.md` §5.4 — YENİ uç. Mevcut
+        `AuditLog`'un `targetType: "Order", targetId: orderId, action: { startsWith:
+        "order." }` filtresiyle okunmasıdır — ikinci bir "olay" tablosu AÇILMADI.
+        Cursor sayfalama YOK (`take: 50`, `orderBy: seq desc`) — bir siparişin olay
+        sayısı doğal olarak küçüktür. Sipariş yoksa **404** (boş liste DEĞİL — var
+        olmayan bir `orderId` için boş liste dönmek kafa karıştırıcı olurdu).
+
+
+        Yanıt `AuditLog` DEĞİL, amaca özel **`OrderActivityEntry`**'dir:
+        **`ipAddress` DÖNMEZ** (bu uç MANAGER'a da açık; `/admin/logs`'un ADMIN-only
+        kalmasıyla çelişmez — IP'nin operasyonel değeri sıfır, PII yükü yüksektir).
+        `metadata` sabit bir allow-list'ten (`from`, `to`, `reason`,
+        `cancellationReason`, `customerEmailRequested`, `fields`, `emailDelivered`,
+        `stripeRefundId`) geçirilir; listede olmayan anahtarlar düşürülür.
+
+
+        Olası `action` değerleri: `order.status_change`, `order.update`,
+        `order.refund`, `order.cancel_email`. Hız sınırı: 120 istek/dakika
+        (`logs.routes.ts` ile AYNI savunma).
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/OrderActivityEntry" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /admin/orders/{orderId}/status:
     parameters:
       - $ref: "#/components/parameters/OrderId"
     patch:
       tags: [Orders]
-      summary: Sipariş durumunu değiştir (yalnızca SiteRole=ADMIN)
+      summary: Sipariş durumunu değiştir (SiteRole=ADMIN veya MANAGER — hedefe göre daraltılır)
       description: >
-        **İzin verilen geçişler:** `PENDING -> CANCELLED` (admin ödeme beklenmeden
-        manuel iptal eder), `PAID -> SHIPPED` (kargo takip no'suyla, `trackingNumber`
-        ZORUNLU), `PAID -> FULFILLED` (dijital/kargosuz ürün akışı — `SHIPPED`
-        atlanabilir) ve `SHIPPED -> FULFILLED` (teslim edildi). Başka HER durum
-        kombinasyonu (ör. `FAILED -> FULFILLED`, `CANCELLED -> PAID`) `409 CONFLICT`
-        ile reddedilir.
+        `.claude/architect-scope-order-management-pro.md` §4.1/§5.2 (bağlayıcı) —
+        geçiş tablosu genişledi:
 
 
-        **Bu uç `-> REFUNDED` hedef durumunu KABUL ETMEZ** — manuel iade AYRI bir uçtan
-        (`POST /admin/orders/{orderId}/refund`) yapılır, bkz. aşağıda. Audit log:
-        `order.status_change` (`metadata: { from, to }`).
+        | Kaynak | İzinli hedefler |
+        |---|---|
+        | `PENDING` | `CANCELLED` |
+        | `PAID` | `ON_HOLD`, `SHIPPED` (`trackingNumber` ZORUNLU), `FULFILLED` |
+        | `ON_HOLD` | `PAID` ("Siparişi Onayla" — yeniden **Hazırlanıyor**'a döner), `CANCELLED` |
+        | `SHIPPED` | `FULFILLED` |
+        | `FAILED`, `EXPIRED`, `CANCELLED`, `REFUNDED`, `FULFILLED` | (hiçbiri — terminal) |
+
+
+        Listede olmayan bir kombinasyon `409 CONFLICT`. **Bu uç `-> REFUNDED` hedef
+        durumunu KABUL ETMEZ** — manuel iade AYRI bir uçtan (`POST
+        /admin/orders/{orderId}/refund`) yapılır.
+
+
+        **RBAC (§3.2, bağlayıcı) — hedef durum bazlı daraltma:** router kapısı
+        ADMIN+MANAGER'dır, ancak hedef `ON_HOLD`, `PAID` veya `CANCELLED` ise handler
+        içinde **ADMIN şartı** aranır; MANAGER bu üç hedeften herhangi birini
+        denerse `403` alır VE bu deneme `targetId` taşıyan ayrı bir
+        `order.status_change`/`status: FORBIDDEN` audit kaydına düşer (sipariş
+        aktivite akışında da görünür — `requireSiteRole`'ün kendi FORBIDDEN kaydı
+        `targetId` taşımadığı için orada görünmez). `SHIPPED`/`FULFILLED` hedefleri
+        günlük operasyondur, MANAGER serbestçe kullanır.
+
+
+        **`PENDING -> ON_HOLD` YASAKTIR** ve **`PAID -> CANCELLED` DOĞRUDAN AÇILMAZ**
+        (ödenmiş bir siparişi iptal etmek için admin önce **Askıya Al**, sonra
+        **İptal Et** adımlarını izler — tek tıkla para kaybı üretilemez).
+
+
+        **`-> CANCELLED` için ek kurallar:**
+        - `cancellationReason` (1..500 karakter) **ZORUNLUDUR** — eksikse 422.
+          Bu metin **müşteriye giden iptal e-postasında AYNEN yer alır.**
+        - `order.paidAt != null` iken (yani sipariş zaten ödenmişti) istek gövdesinde
+          `confirmWithoutRefund: true` **ZORUNLUDUR**; yoksa `409 CONFLICT` (para
+          otomatik iade edilmez uyarısı).
+        - `sendCustomerEmail` (varsayılan `true`) `false` gönderilirse iptal
+          e-postası HİÇ denenmez.
+        - `cancellationReason`/`sendCustomerEmail`/`confirmWithoutRefund` **yalnızca**
+          `status: CANCELLED` iken gönderilebilir; başka bir hedefte gönderilirse
+          422 (sessizce yutulmaz).
+
+
+        **Çifte durum geçişi / race koruması:** durum güncellemesi
+        `updateMany({ where: { id, status: existing.status } })` ile ATOMİK olarak
+        "claim" edilir — aynı siparişe eşzamanlı gelen iki geçiş isteğinden yalnızca
+        BİRİ kazanır, diğeri `claim.count === 0` ile `409 CONFLICT` alır ve hiçbir
+        yan etkiye (audit log, webhook, iptal e-postası) yol açmaz (security-agent
+        denetiminde bulunup düzeltilen bir race condition, bkz. CHANGELOG).
+
+
+        **Yan etkiler (sıra bağlayıcı, DB commit'inden SONRA):** audit log
+        (`order.status_change`, `metadata: { from, to, ...(CANCELLED ise
+        cancellationReason + customerEmailRequested) }`) → `ORDER_STATUS_CHANGED`
+        webhook'u → (yalnızca `-> CANCELLED` ve `sendCustomerEmail !== false`)
+        best-effort iptal e-postası (`ORDER_CANCELLATION` şablonu, bkz.
+        ARCHITECTURE.md §10.9.3). **E-posta gönderimi başarısız olursa istek YİNE
+        DE 200 döner** — hata yalnızca loglanır, ayrıca `order.cancel_email`
+        (`status: SUCCESS|FAILURE`) audit kaydı yazılır. `paidAt` bu uçta **HİÇBİR
+        KOŞULDA** yazılmaz/silinmez.
       requestBody:
         required: true
         content:
@@ -6894,15 +7080,38 @@ paths:
                 allOf:
                   - $ref: "#/components/schemas/ApiSuccessEnvelope"
                   - properties:
-                      data: { $ref: "#/components/schemas/Order" }
+                      data: { $ref: "#/components/schemas/AdminOrder" }
         "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "409":
-          description: "İzin verilmeyen durum geçişi (`error.code: CONFLICT`)"
+        "403":
+          description: >
+            Hedef durum (`ON_HOLD`/`PAID`/`CANCELLED`) İSTİSNAİ listesinde ve aktör
+            ADMIN DEĞİL (`error.code: FORBIDDEN`) — bu deneme AYRICA sipariş
+            aktivite akışına (`GET .../activity`) `targetId` ile düşer.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+              examples:
+                managerTargetsCancelled:
+                  summary: MANAGER, hedef=CANCELLED ile çağırdı
+                  value:
+                    error: { code: FORBIDDEN, message: "Bu durum değişikliği için ADMIN yetkisi gerekir." }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "İzin verilmeyen durum geçişi VEYA ödenmiş bir siparişin `confirmWithoutRefund` olmadan iptali (`error.code: CONFLICT`)."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+              examples:
+                invalidTransition:
+                  summary: "İzinli olmayan geçiş (ör. FULFILLED -> SHIPPED)"
+                  value:
+                    error: { code: CONFLICT, message: "\"FULFILLED\" durumundaki bir sipariş \"SHIPPED\" durumuna geçirilemez." }
+                paidCancelWithoutConfirm:
+                  summary: "Ödemesi alınmış sipariş, confirmWithoutRefund GÖNDERİLMEDEN iptal edilmeye çalışıldı"
+                  value:
+                    error:
+                      code: CONFLICT
+                      message: "Bu siparişin ödemesi alınmış. İptal etmek parayı OTOMATİK İADE ETMEZ — önce 'İade Et' ile Stripe iadesi yapın (durum REFUNDED olur) veya iadeyi kendiniz yürüteceğinizi onaylayın."
         "422": { $ref: "#/components/responses/ValidationError" }
 
   /admin/orders/{orderId}/refund:
@@ -6910,19 +7119,26 @@ paths:
       - $ref: "#/components/parameters/OrderId"
     post:
       tags: [Orders]
-      summary: Siparişi manuel iade et (yalnızca SiteRole=ADMIN)
+      summary: Siparişi manuel iade et (SiteRole=ADMIN veya MANAGER)
       description: >
-        Yalnızca `PAID`/`SHIPPED`/`FULFILLED` durumundaki siparişlerde çalışır — başka
-        bir durumdaysa VEYA `Order.stripePaymentIntentId` yoksa `409 CONFLICT`. **Gerçek
-        parayı Stripe üzerinden geri öder** (`stripe.refunds.create`,
-        `stripePaymentIntentId` üzerinden) — yalnızca `Order.status`'u değiştirip
-        parayı olduğu gibi bırakan "sahte" bir iade DEĞİLDİR.
+        Yalnızca `PAID`/`SHIPPED`/`FULFILLED`/**`ON_HOLD`** durumundaki siparişlerde
+        çalışır (`ON_HOLD` bu turda eklendi — askıya alınmış bir sipariş için doğru
+        kapanış yolu iadedir) — başka bir durumdaysa VEYA
+        `Order.stripePaymentIntentId` yoksa `409 CONFLICT`. **Gerçek parayı Stripe
+        üzerinden geri öder** (`stripe.refunds.create`, `stripePaymentIntentId`
+        üzerinden) — yalnızca `Order.status`'u değiştirip parayı olduğu gibi bırakan
+        "sahte" bir iade DEĞİLDİR.
+
+
+        **Bu uç bu turda RBAC/davranış AÇISINDAN DEĞİŞMEDİ** (bilinen boşluk,
+        `.claude/architect-scope-order-management-pro.md` §8.2 — yeni hedef-durum
+        kademelemesiyle tam tutarlı değil, ayrı bir security-agent kararı gerektirir).
 
 
         **Çifte iade / race koruması:** durum geçişi `updateMany({ where: { status: {
-        in: [PAID, SHIPPED, FULFILLED] } } })` ile ATOMİK olarak "claim" edilir — iki eşzamanlı
-        istekten yalnızca BİRİ Stripe'a gerçek iade isteği gönderebilir, diğeri
-        `claim.count === 0` ile `409 CONFLICT` alır ve Stripe'a HİÇ gitmez. Ayrıca
+        in: [PAID, SHIPPED, FULFILLED, ON_HOLD] } } })` ile ATOMİK olarak "claim" edilir —
+        iki eşzamanlı istekten yalnızca BİRİ Stripe'a gerçek iade isteği gönderebilir,
+        diğeri `claim.count === 0` ile `409 CONFLICT` alır ve Stripe'a HİÇ gitmez. Ayrıca
         `stripe.refunds.create`'e siparişe göre DETERMİNİSTİK bir `idempotencyKey`
         (`order-refund-{orderId}`) verilir — bir retry (ağ hatası/timeout sonrası)
         AYNI Stripe iade kaydını döner, ikinci bir gerçek para hareketi TETİKLEMEZ.
@@ -6944,15 +7160,15 @@ paths:
                 allOf:
                   - $ref: "#/components/schemas/ApiSuccessEnvelope"
                   - properties:
-                      data: { $ref: "#/components/schemas/Order" }
+                      data: { $ref: "#/components/schemas/AdminOrder" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409":
           description: >
-            Sipariş `PAID`/`FULFILLED` durumunda değil, Stripe ödeme kaydı yok, sipariş
-            durumu claim sırasında değişti VEYA Stripe iade isteğini reddetti
-            (`error.code: CONFLICT`).
+            Sipariş `PAID`/`SHIPPED`/`FULFILLED`/`ON_HOLD` durumunda değil, Stripe
+            ödeme kaydı yok, sipariş durumu claim sırasında değişti VEYA Stripe iade
+            isteğini reddetti (`error.code: CONFLICT`).
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
@@ -10785,12 +11001,17 @@ components:
         Şablonun KULLANILDIĞI YER. `CUSTOM` dışındaki her amaç için en fazla BİR şablon
         `isActive=true` olabilir (§10.16.3 — kısmi unique index + servis transaction'ı ile
         iki katmanda zorlanır). Gönderim tetikleyicileri şablonu ANAHTARA göre değil
-        AMACA göre çözer.
+        AMACA göre çözer. `ORDER_CANCELLATION` —
+        `.claude/architect-scope-order-management-pro.md` §4.4/§6.1 — YENİ, sipariş
+        iptal e-postası tetikleyicisi (`PATCH /admin/orders/{orderId}/status` →
+        `CANCELLED`, `sendCustomerEmail !== false`). `ORDER_CONFIRMATION` ile AYNI
+        değişken adları + tek yeni değişken: `cancellation_reason`.
       enum:
         - WELCOME
         - PASSWORD_RESET
         - SYSTEM_ANNOUNCEMENT
         - ORDER_CONFIRMATION
+        - ORDER_CANCELLATION
         - ORG_INVITATION
         - CONTACT_FORM_NOTIFICATION
         - CUSTOM
@@ -13269,15 +13490,28 @@ components:
         tutmak "hangisi bitmiş?" belirsizliği üretirdi (bkz.
         `.claude/architect-scope-customer-portal.md` §6). `FAILED` = webhook'ta stok
         yetersiz çıktı (para alınmış olabilir, admin manuel müdahale eder);
-        `CANCELLED` = admin `PENDING`'ken elle iptal etti; `EXPIRED` = Stripe
-        Checkout Session'ı ödeme tamamlanmadan süresi doldu (webhook otomatik
+        `CANCELLED` = admin `PENDING`'ken (ödeme hiç alınmamış) VEYA `ON_HOLD`'ken
+        (ödeme alınmış, `confirmWithoutRefund` onayıyla) elle iptal etti; `EXPIRED` =
+        Stripe Checkout Session'ı ödeme tamamlanmadan süresi doldu (webhook otomatik
         işler). `REFUNDED` = admin `POST /admin/orders/{orderId}/refund` ile manuel
-        iade etti (yalnızca `PAID`/`SHIPPED`/`FULFILLED` kaynak durumlardan
+        iade etti (`PAID`/`SHIPPED`/`FULFILLED`/`ON_HOLD` kaynak durumlardan
         ulaşılabilir, bkz. ARCHITECTURE.md §10.9.3 "manuel iade akışı") — `PATCH
         /admin/orders/{orderId}/status` bu uçtan HEDEF DEĞER OLARAK KABUL ETMEZ,
         yalnızca ayrı `refund` ucundan ulaşılır.
+
+
+        **`ON_HOLD`** — `.claude/architect-scope-order-management-pro.md` §3.1/§4.1
+        (bağlayıcı). TEK yeni değer; mevcut 8 değer YENİDEN ADLANDIRILMADI (gerekçe:
+        geri alınamaz veri migration'ı + dış API/webhook tüketicilerinin sessizce
+        kırılması — bkz. bağlayıcı doküman §3.1). Admin bir siparişi geçici olarak
+        "askıya alır" (ör. stok/dolandırıcılık kontrolü); **YALNIZCA `PAID`'den
+        ulaşılır** — `PENDING -> ON_HOLD` YASAKTIR, çünkü Stripe webhook idempotency'si
+        `status !== "PENDING"` ile kurulur ve bu geçişe izin verilseydi eşzamanlı bir
+        ödeme onayı "parayı tahsil et ama stoğu/e-postayı hiç işleme" sessiz para
+        kaybına yol açardı. `ON_HOLD -> PAID` ("Siparişi Onayla") `paidAt`'in ÜZERİNE
+        YAZMAZ (zaten doludur).
       type: string
-      enum: [PENDING, PAID, SHIPPED, FAILED, CANCELLED, EXPIRED, REFUNDED, FULFILLED]
+      enum: [PENDING, PAID, ON_HOLD, SHIPPED, FAILED, CANCELLED, EXPIRED, REFUNDED, FULFILLED]
 
     OrderItem:
       type: object
@@ -13301,8 +13535,12 @@ components:
 
     Order:
       description: >
-        `/admin/orders` (ADMIN/MANAGER) ve `GET /users/me/orders` (sahiplik filtresi,
-        tüm roller) uçlarında dönen sipariş DTO'su.
+        Müşteri yüzeyi sipariş DTO'su — `GET /users/me/orders` ve
+        `GET /users/me/orders/{orderId}` (sahiplik filtresi, tüm roller) uçlarında
+        döner. **`/admin/orders*` uçları bunu DEĞİL, aşağıdaki `AdminOrder`'ı döner**
+        (`.claude/architect-scope-order-management-pro.md` §3.7/§5.1, bağlayıcı) —
+        `cancellationReason`/`adminNotes` gibi dahili alanların müşteri yüzeyine
+        sızmaması için BİLİNÇLİ OLARAK ayrı tutulur.
       type: object
       properties:
         id: { type: string, format: uuid }
@@ -13397,20 +13635,148 @@ components:
             teslimat adresinin BİREBİR KOPYASIDIR — `sameAsShipping` bayrağı
             SAKLANMADIĞI için bu alan HER ZAMAN doludur (koşullu okuma gerekmez).
 
+    AdminOrder:
+      description: >
+        `.claude/architect-scope-order-management-pro.md` §3.7/§5.1 (bağlayıcı) —
+        `/admin/orders*` uçlarının (`GET /`, `GET /{orderId}`, `PATCH /{orderId}`,
+        `PATCH /{orderId}/status`, `POST /{orderId}/refund`, `GET /{orderId}/activity`
+        HARİÇ — o ayrı bir `OrderActivityEntry` listesi döner) TAMAMI bunu döner.
+        Varsayılan reddetmedir (default-deny): bir alan bu şemaya EKLENMEDİKÇE hiçbir
+        yerde görünmez; `Order`/`toOrderDto` (müşteri yüzeyi) BİLİNÇLİ OLARAK
+        DEĞİŞMEMİŞTİR.
+      allOf:
+        - $ref: "#/components/schemas/Order"
+        - type: object
+          properties:
+            cancellationReason:
+              type: string
+              nullable: true
+              description: >
+                Yalnızca `status = CANCELLED`'a geçişte doldurulur; **müşteriye
+                giden iptal e-postasında AYNEN yer alır** (§6.2). Dahili not için
+                `adminNotes` kullanılır. Uzunluk sınırı (yazma tarafında): 1..500.
+            adminNotes:
+              type: string
+              nullable: true
+              description: >
+                Yalnızca panele görünen serbest dahili not — `Order`'a (müşteri
+                yüzeyi) ASLA eklenmez. Uzunluk sınırı (yazma tarafında): 0..5000.
+
+    OrderActivityEntry:
+      description: >
+        `GET /admin/orders/{orderId}/activity` yanıt öğesi (§5.4, bağlayıcı) —
+        `AuditLog` DEĞİL, amaca özel bir görünüm: `ipAddress` BİLİNÇLİ OLARAK
+        TAŞINMAZ (bu uç ADMIN+MANAGER'a açık; IP'nin operasyonel değeri sıfır, PII
+        yükü yüksektir — `/admin/logs`'un ADMIN-only kalmasıyla çelişmez). `metadata`
+        sabit bir allow-list'ten geçirilir; listede olmayan anahtarlar düşürülür.
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        action:
+          type: string
+          example: order.status_change
+          description: "`order.status_change` | `order.update` | `order.refund` | `order.cancel_email`"
+        status: { type: string, enum: [SUCCESS, FAILURE, FORBIDDEN] }
+        actorEmail: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        metadata:
+          type: object
+          nullable: true
+          additionalProperties: true
+          description: >
+            Allow-list: `from`, `to`, `reason`, `cancellationReason`,
+            `customerEmailRequested`, `fields`, `emailDelivered`, `stripeRefundId`.
+
     UpdateOrderStatusRequest:
       description: >
-        `PATCH /admin/orders/{orderId}/status` gövdesi — hedef durum olarak `SHIPPED`
-        (kaynak `PAID`), `FULFILLED` (kaynak `PAID` veya `SHIPPED`) veya `CANCELLED`
-        (kaynak `PENDING`) kabul edilir; şema seviyesinde diğer `OrderStatus` değerleri
-        (`REFUNDED` dahil) zaten REDDEDİLİR (422). Kaynak/hedef eşleşmezse route
-        handler `409 CONFLICT` döner. **`status: SHIPPED` iken `trackingNumber`
-        ZORUNLUDUR** (eksikse 422) — `shippingCarrier` her zaman opsiyoneldir.
+        `PATCH /admin/orders/{orderId}/status` gövdesi (§5.2, genişletildi) — hedef
+        durum olarak `PAID` (kaynak `ON_HOLD`), `ON_HOLD` (kaynak `PAID`), `SHIPPED`
+        (kaynak `PAID`), `FULFILLED` (kaynak `PAID`/`SHIPPED`) veya `CANCELLED`
+        (kaynak `PENDING`/`ON_HOLD`) kabul edilir; şema seviyesinde diğer
+        `OrderStatus` değerleri (`REFUNDED` dahil) zaten REDDEDİLİR (422).
+        Kaynak/hedef eşleşmezse route handler `409 CONFLICT` döner (bkz. uç
+        açıklamasındaki tam geçiş tablosu). **`status: SHIPPED` iken
+        `trackingNumber` ZORUNLUDUR** (eksikse 422) — `shippingCarrier` her zaman
+        opsiyoneldir.
+
+
+        **`status: CANCELLED` için ek kurallar:** `cancellationReason` ZORUNLUDUR
+        (1..500 karakter, eksikse 422) ve müşteriye giden e-postada AYNEN kullanılır;
+        `sendCustomerEmail` (varsayılan `true`) `false` ise e-posta hiç denenmez;
+        `confirmWithoutRefund` sipariş zaten ödenmişse (`paidAt != null`) ZORUNLUDUR
+        (`true`), aksi halde `409`. Bu üç alan **YALNIZCA** `status: CANCELLED`
+        iken gönderilebilir — başka bir hedefte gönderilirse 422.
       type: object
       required: [status]
       properties:
-        status: { type: string, enum: [SHIPPED, FULFILLED, CANCELLED] }
+        status: { type: string, enum: [PAID, ON_HOLD, SHIPPED, FULFILLED, CANCELLED] }
         trackingNumber: { type: string, minLength: 1, maxLength: 100 }
         shippingCarrier: { type: string, minLength: 1, maxLength: 100 }
+        cancellationReason:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: "`status: CANCELLED` iken ZORUNLU; müşteriye giden iptal e-postasında AYNEN yer alır."
+        sendCustomerEmail:
+          type: boolean
+          default: true
+          description: "Yalnızca `status: CANCELLED` ile anlamlı. `false` ise iptal e-postası hiç denenmez."
+        confirmWithoutRefund:
+          type: boolean
+          default: false
+          description: >
+            Yalnızca `status: CANCELLED` ile anlamlı. Sipariş zaten ödenmişse
+            (`paidAt != null`) `true` gönderilmezse `409 CONFLICT` — para otomatik
+            iade edilmediği için bilinçli bir onay istenir.
+
+    OrderAddressInput:
+      description: >
+        `PATCH /admin/orders/{orderId}` gövdesindeki `shippingAddress` — checkout'un
+        `CheckoutAddressInput` şemasıyla **BİREBİR AYNIDIR** (backend `orders.schemas.ts`
+        bunu doğrudan import eder, ikinci bir kopya YAZMAZ). Kısmi (alan bazlı) yama
+        KABUL EDİLMEZ — adres bir snapshot'tır, istemci mevcut değerlerle dolu formu
+        HER ZAMAN tam gönderir.
+      allOf:
+        - $ref: "#/components/schemas/CheckoutAddressInput"
+
+    OrderBillingInput:
+      description: >
+        `PATCH /admin/orders/{orderId}` gövdesindeki `billing` — `CheckoutBillingInput`
+        ile AYNI koşullu zorunluluk kuralları (INDIVIDUAL/CORPORATE, TCKN checksum),
+        **TEK FARKLA:** `sameAsShipping` bayrağı BURADA YOKTUR — istemci düzenleme
+        formunda adresi HER ZAMAN tam gönderir, bu yüzden `address` burada
+        (checkout'un aksine) **HER ZAMAN ZORUNLUDUR**.
+      type: object
+      required: [billingType, address]
+      properties:
+        billingType: { $ref: "#/components/schemas/BillingType" }
+        companyName: { type: string, minLength: 1, maxLength: 200, description: "`CORPORATE` iken ZORUNLU, `INDIVIDUAL` iken YASAK." }
+        taxOffice: { type: string, minLength: 1, maxLength: 100, description: "`CORPORATE` iken opsiyonel, `INDIVIDUAL` iken YASAK." }
+        taxNumber: { type: string, pattern: "^\\d{10}$", description: "VKN — `CORPORATE` iken ZORUNLU, `INDIVIDUAL` iken YASAK." }
+        nationalId: { type: string, description: "TCKN — `INDIVIDUAL` iken opsiyonel (checksum doğrulanır), `CORPORATE` iken YASAK." }
+        address: { $ref: "#/components/schemas/OrderAddressInput" }
+
+    UpdateOrderRequest:
+      description: >
+        `PATCH /admin/orders/{orderId}` gövdesi (§5.3, YENİ uç, yalnızca ADMIN) — tüm
+        alanlar opsiyoneldir ama **hiçbiri gönderilmezse 422**. `shippingAddress`/
+        `billing` TAM NESNEDİR, kısmi yama KABUL EDİLMEZ. `customerEmail`/
+        `customerName`/`shippingAddress`/`billing` yalnızca sipariş `PENDING`/`PAID`/
+        `ON_HOLD` iken düzenlenebilir (aksi halde 409) — `adminNotes` her durumda
+        düzenlenebilir. `Order.siteUser` ilişkisine DOKUNULMAZ (`customerEmail`
+        değişimi bir `User` kaydını güncellemez/eşleştirmez).
+      type: object
+      properties:
+        customerEmail: { type: string, format: email, maxLength: 254 }
+        customerName: { type: string, minLength: 1, maxLength: 200, nullable: true }
+        shippingAddress: { $ref: "#/components/schemas/OrderAddressInput" }
+        billing: { $ref: "#/components/schemas/OrderBillingInput" }
+        adminNotes:
+          type: string
+          minLength: 0
+          maxLength: 5000
+          nullable: true
+          description: "Yalnızca panele görünen serbest dahili not — müşteri yüzeyine ASLA eklenmez."
 
     RefundOrderRequest:
       description: >

@@ -2,17 +2,20 @@ import { describe, expect, it, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import AdminOrdersPage from "@/app/admin/orders/page";
-import type { Order } from "@/lib/api/types";
+import type { AdminOrder } from "@/lib/api/types";
 
 vi.mock("@/lib/api/orders", () => ({
   listOrders: vi.fn(),
   getOrder: vi.fn(),
   updateOrderStatus: vi.fn(),
+  updateOrder: vi.fn(),
+  getOrderActivity: vi.fn(),
+  refundOrder: vi.fn(),
 }));
 
 const ordersApi = await import("@/lib/api/orders");
 
-function makeOrder(overrides: Partial<Order> = {}): Order {
+function makeOrder(overrides: Partial<AdminOrder> = {}): AdminOrder {
   return {
     id: "order-1",
     orderNumber: "ORD-0001",
@@ -23,6 +26,7 @@ function makeOrder(overrides: Partial<Order> = {}): Order {
     subtotalCents: 15000,
     discountCents: 0,
     taxCents: 0,
+    shippingCents: 0,
     totalCents: 15000,
     errorSummary: null,
     paidAt: "2026-08-01T10:00:00.000Z",
@@ -34,6 +38,8 @@ function makeOrder(overrides: Partial<Order> = {}): Order {
     shippingAddress: null,
     billing: null,
     items: [],
+    cancellationReason: null,
+    adminNotes: null,
     ...overrides,
   };
 }

@@ -180,9 +180,18 @@ enum ExportJobStatus {
 // DEĞİŞMEDİ, yalnızca etiket. Bu değer kendi izole migration'ında eklendi (ALTER TYPE
 // ... ADD VALUE PostgreSQL'de kendi transaction'ı dışında kullanılamaz) — bkz.
 // migrations/*_add_order_status_shipped.
+// `ON_HOLD` .claude/architect-scope-order-management-pro.md §3.1/§4.1 (bağlayıcı) ile
+// eklendi — mevcut 8 değer YENİDEN ADLANDIRILMADI (blast-radius gerekçesi orada). `ON_HOLD`
+// YALNIZCA `PAID`'den ulaşılır; `PENDING → ON_HOLD` YASAKTIR çünkü
+// `stripe.routes.ts::handleOrderPaid` idempotency'yi `status !== "PENDING"` ile kurar (bkz.
+// aynı doküman §3.4). Değer okunabilirlik için `PAID`'in ARKASINA yazıldı; migration'da
+// PostgreSQL'in `ALTER TYPE ... ADD VALUE`'su değeri fiilen SONA ekler (aynı sapma `SHIPPED`
+// için de geçerlidir, bkz. migrations/*_add_order_status_shipped) — projede `ORDER BY status`
+// yapan hiçbir sorgu yoktur, zararsızdır.
 enum OrderStatus {
   PENDING
   PAID
+  ON_HOLD
   SHIPPED
   FAILED
   CANCELLED
@@ -1539,6 +1548,10 @@ model AuditLog {
   @@index([status])
   @@index([action])
   @@index([actorId])
+  // .claude/architect-scope-order-management-pro.md §4.3 (bağlayıcı) — GET
+  // /admin/orders/{id}/activity için (§5.4). Mevcut indeksler `targetId` filtresini karşılamıyor;
+  // audit_logs en hızlı büyüyen tablolardan biridir, indekssiz seq-scan kabul edilemez.
+  @@index([targetType, targetId])
   @@map("audit_logs")
 }
 
@@ -1574,6 +1587,9 @@ enum EmailTemplatePurpose {
   ORDER_CONFIRMATION
   ORG_INVITATION
   CONTACT_FORM_NOTIFICATION
+  // .claude/architect-scope-order-management-pro.md §4.4/§6 (bağlayıcı) — sipariş iptal
+  // e-postası. Mevcut kısmi unique indeks (`email_templates_active_purpose_key`) otomatik kapsar.
+  ORDER_CANCELLATION
   CUSTOM
 }
 
@@ -2091,6 +2107,16 @@ model Order {
   // KABUL EDİLMEZ — backend `new Date()` yazar (bkz. §5.3).
   distanceSalesApprovedAt   DateTime?
   preliminaryInfoApprovedAt DateTime?
+
+  // .claude/architect-scope-order-management-pro.md §4.2 (bağlayıcı).
+  /// Yalnızca `status = CANCELLED`'a geçişte doldurulur; `PATCH /admin/orders/{id}/status`
+  /// gövdesinde ZORUNLUDUR (uygulama katmanı, DB'de CHECK YOK — `trackingNumber`/SHIPPED ile
+  /// AYNI desen). Bu metin MÜŞTERİYE GİDEN iptal e-postasında AYNEN yer alır (§6.2) — dahili
+  /// not için `adminNotes` kullanılır. Uzunluk sınırı Zod'da: 1..500.
+  cancellationReason String?
+  /// Yalnızca panele görünen serbest dahili not. `OrderDto`'ya (müşteri yüzeyi) ASLA
+  /// eklenmez — yalnızca `AdminOrderDto` taşır (§3.7). Zod sınırı: 0..5000.
+  adminNotes         String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

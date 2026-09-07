@@ -8,6 +8,8 @@ import type { OrderStatus } from "@/lib/api/types";
 export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
   PENDING: "Ödeme Bekleniyor",
   PAID: "Hazırlanıyor",
+  // `.claude/architect-scope-order-management-pro.md` §3.1/§4.1 — YENİ, TEK eklenen değer.
+  ON_HOLD: "Askıya Alındı",
   SHIPPED: "Kargoda",
   FULFILLED: "Teslim Edildi",
   FAILED: "Başarısız",
@@ -20,10 +22,14 @@ export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
  * `.claude/design-notes-customer-portal.md` §4 — `Badge` bileşeninin `Tone` union'ında `"info"`
  * YOKTUR; `SHIPPED` mevcut `"primary"` tonunu kullanır (yeni bir renk İCAT EDİLMEZ). `PAID`
  * tonu `success`→`warning` DEĞİŞTİ: "Hazırlanıyor" artık bitmiş bir eylem değil, sürüyor.
+ *
+ * `.claude/design-notes-order-management-pro.md` §2 — `ON_HOLD: "warning"`: `PENDING`/`PAID` ile
+ * aynı "sürüyor, admin takibi altında" ailesi.
  */
 export const ORDER_STATUS_TONE: Record<OrderStatus, "neutral" | "primary" | "success" | "danger" | "warning"> = {
   PENDING: "warning",
   PAID: "warning",
+  ON_HOLD: "warning",
   SHIPPED: "primary",
   FULFILLED: "success",
   FAILED: "danger",
