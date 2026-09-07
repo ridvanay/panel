@@ -637,10 +637,19 @@ async function writeTemplateInTransaction(
     }
   }
 
-  // 2.9 — `ref:slider`/`ref:product-category:<slug>` çözümlemesi (gerçek `Slider.id` VE
-  // `ProductCategory.id`'ler artık BİLİNİYOR) → Zod ile SON kez doğrula (§3.4 madde 2: (a) çöz
-  // → (b) doğrula → (c) yaz, TAM olarak bu noktada) → page.create.
-  const finalResolve = resolvePageBlockTokens(assetResolvedBlocks, EMPTY_ASSET_MAP, sliderId, productCategoryIdByTemplateSlug);
+  // 2.9 — `ref:slider`/`ref:product-category:<slug>`/`ref:product-category-slug:<slug>`
+  // çözümlemesi (gerçek `Slider.id`, `ProductCategory.id`'ler VE `resolveSlugPlan`'ın ürettiği
+  // benzersizleştirilmiş kategori slug'ları artık BİLİNİYOR) → Zod ile SON kez doğrula (§3.4
+  // madde 2: (a) çöz → (b) doğrula → (c) yaz, TAM olarak bu noktada) → page.create. Bugfix —
+  // `plan.productCategorySlugByTemplateSlug` (`resolveSlugPlan`'da ZATEN üretiliyor, burada
+  // YENİDEN HESAPLANMAZ) "Keşfet" butonunun `href`'ini gerçek/benzersizleştirilmiş slug'a çözer.
+  const finalResolve = resolvePageBlockTokens(
+    assetResolvedBlocks,
+    EMPTY_ASSET_MAP,
+    sliderId,
+    productCategoryIdByTemplateSlug,
+    plan.productCategorySlugByTemplateSlug
+  );
   if (finalResolve.unresolvedTokens.length > 0) {
     // Teorik olarak Faz 0'da yakalanmış olmalıydı — savunma derinliği.
     throw new ValidationError("Şablon içeriğinde çözülemeyen token bulundu.", { unresolvedTokens: finalResolve.unresolvedTokens });
@@ -745,11 +754,18 @@ export async function importDemoTemplate(app: FastifyInstance, params: ImportDem
   const placeholderCategoryMap = template.commerce
     ? new Map(template.commerce.categories.map((category) => [category.slug, PLACEHOLDER_UUID]))
     : null;
+  // Bugfix — `ref:product-category-slug:<slug>` (href token) da AYNI "kuru koşu" ŞEKİL
+  // doğrulamasına tabidir: `ref:product-category:` ile AYNI placeholder deseni, TEK farkla
+  // haritanın değeri bir UUID değil bir slug metnidir (çözümleyici URL'i kendisi inşa eder).
+  const placeholderCategorySlugMap = template.commerce
+    ? new Map(template.commerce.categories.map((c) => [c.slug, "placeholder-slug"]))
+    : null;
   const dryRun = resolvePageBlockTokens(
     template.page.blocks as unknown[],
     placeholderAssetMap,
     template.slider ? PLACEHOLDER_UUID : null,
-    placeholderCategoryMap
+    placeholderCategoryMap,
+    placeholderCategorySlugMap
   );
   if (dryRun.unresolvedTokens.length > 0) {
     throw new ValidationError("Şablon içeriğinde çözülemeyen token bulundu.", { unresolvedTokens: dryRun.unresolvedTokens });
@@ -816,10 +832,11 @@ export async function importDemoTemplate(app: FastifyInstance, params: ImportDem
   // edilmesi ZORUNLU (bkz. `mappers/index.ts::absolutizeMediaUrl`, aynı `env.PUBLIC_URL` mantığı).
   const assetUrlByKey = new Map(savedAssets.map((asset) => [asset.key, absolutizeMediaUrl(asset.url)]));
 
-  // `ref:product-category:` ERTELENİR (`null`) — gerçek `ProductCategory.id`'ler yalnızca Faz
-  // 2'de (transaction içinde, kategoriler oluşturulduktan SONRA) bilinir; `ref:slider` ile AYNI
-  // erteleme deseni (bkz. `lib/asset-tokens.ts::resolvePageBlockTokens` başlığı).
-  const assetResolved = resolvePageBlockTokens(template.page.blocks as unknown[], assetUrlByKey, null, null);
+  // `ref:product-category:`/`ref:product-category-slug:` ERTELENİR (`null`) — gerçek
+  // `ProductCategory.id`'ler VE benzersizleştirilmiş slug'lar yalnızca Faz 2'de (transaction
+  // içinde, kategoriler oluşturulduktan/`resolveSlugPlan` çalıştıktan SONRA) bilinir; `ref:slider`
+  // ile AYNI erteleme deseni (bkz. `lib/asset-tokens.ts::resolvePageBlockTokens` başlığı).
+  const assetResolved = resolvePageBlockTokens(template.page.blocks as unknown[], assetUrlByKey, null, null, null);
   if (assetResolved.unresolvedTokens.length > 0) {
     await removeSavedTemplateAssets(savedAssets, (paths) => app.log.warn({ paths }, "Demo şablon telafi: dosya silinemedi (Faz 1)"));
     throw new ValidationError("Şablon içeriğinde çözülemeyen token bulundu.", { unresolvedTokens: assetResolved.unresolvedTokens });

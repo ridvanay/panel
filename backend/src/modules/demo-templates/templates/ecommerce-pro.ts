@@ -1,4 +1,5 @@
 import type { SliderLayer } from "../../sliders/lib/layers";
+import { buildProductCategorySlugHrefRefToken } from "../lib/asset-tokens";
 import type { DemoTemplateDefinition, DemoTemplateProduct, PageNode } from "../types";
 
 /**
@@ -146,6 +147,10 @@ function buildHeroLayers(input: { badge: string; heading: string; text: string; 
  * ------------------------------------------------------------------------------------------- */
 
 // §4.2 — "Öne çıkan kategoriler": container(row) → 4 × container → image(asset:) + heading + button.
+// Bugfix — buton `href`'i artık `ref:product-category-slug:<slug>` TOKEN'I taşır (ham
+// `input.slug` DEĞİL); force-reapply'de `resolveSlugPlan` kategori slug'ını benzersizleştirirse
+// (§4.4, `depolama` → `depolama-2`) buton hâlâ DOĞRU/gerçek slug'a işaret eder (bkz.
+// `lib/asset-tokens.ts::buildProductCategorySlugHrefRefToken`).
 function buildCategoryCard(input: { slug: string; name: string; assetKey: string; altText: string }): PageNode {
   return {
     id: `ep-category-${input.slug}`,
@@ -166,7 +171,7 @@ function buildCategoryCard(input: { slug: string; name: string; assetKey: string
       {
         id: `ep-category-${input.slug}-button`,
         type: "button",
-        data: { label: "Keşfet", href: `/products?category=${input.slug}`, style: "outline", size: "sm", align: "center" },
+        data: { label: "Keşfet", href: buildProductCategorySlugHrefRefToken(input.slug), style: "outline", size: "sm", align: "center" },
       },
     ],
   };

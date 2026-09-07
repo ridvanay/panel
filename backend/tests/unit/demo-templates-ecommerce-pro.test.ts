@@ -19,11 +19,16 @@ describe("ecommerce-pro demo şablonu — şema uygunluğu", () => {
   function resolveWithPlaceholders() {
     const assetMap = new Map(ECOMMERCE_PRO_TEMPLATE.assets.map((asset) => [asset.key, `/uploads/${asset.key}.png`]));
     const categoryMap = new Map((ECOMMERCE_PRO_TEMPLATE.commerce?.categories ?? []).map((c) => [c.slug, PLACEHOLDER_UUID]));
+    // Bugfix — `ref:product-category-slug:<slug>` (href token, "Keşfet" butonu) `importer.ts`
+    // Faz 0 kuru koşusuyla AYNI beşinci argümanı gerektirir; yoksa token unresolved SAYILMAZ
+    // (ERTELENİR) ama çözülmemiş `href` değeri şema doğrulamasını ("güvensiz protokol") KIRAR.
+    const categorySlugMap = new Map((ECOMMERCE_PRO_TEMPLATE.commerce?.categories ?? []).map((c) => [c.slug, "placeholder-slug"]));
     return resolvePageBlockTokens(
       ECOMMERCE_PRO_TEMPLATE.page.blocks as unknown[],
       assetMap,
       ECOMMERCE_PRO_TEMPLATE.slider ? PLACEHOLDER_UUID : null,
-      categoryMap
+      categoryMap,
+      categorySlugMap
     );
   }
 

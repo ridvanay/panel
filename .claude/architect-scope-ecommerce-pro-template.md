@@ -395,7 +395,7 @@ eşitliğiyle** uyguluyor ve şablon yazım anında bu uuid mevcut değil. Çöz
 | İstenen bölüm | Karşılığı |
 |---|---|
 | Hero kampanya slider'ı | `advanced-slider` + `ref:slider` (mevcut, [DTI] §3.1 ile aynı) |
-| Öne çıkan kategoriler | `container(row)` → 4 × `container` → `image`(`asset:`) + `heading` + `button`(`/products?category=<slug>`) |
+| Öne çıkan kategoriler | `container(row)` → 4 × `container` → `image`(`asset:`) + `heading` + `button`(`href: ref:product-category-slug:<slug>`, Faz 2'de gerçek/benzersizleştirilmiş slug'a — `/products?category=<gerçek-slug>` — çözülür; bkz. bugfix kararı, ham `/products?category=<slug>` DEĞİL) |
 | Ürün ızgaraları | 2 × `featured-products` (biri `categoryId: "ref:product-category:<slug>"`) |
 | Güvenlik/kargo rozet barı | `container(row)` → 4 × `icon-box` |
 | "Çok Satanlar" sekmesi | **KAPSAM DIŞI** — bkz. §8 |

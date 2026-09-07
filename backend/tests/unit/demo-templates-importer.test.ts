@@ -253,3 +253,110 @@ describe("demo-templates importer — bugfix: BAŞKA bir entity tipinin (çöp k
     ).toBe(1);
   });
 });
+
+/**
+ * qa-agent — regresyon: `ecommerce-pro` anasayfasındaki "Öne Çıkan Kategoriler" bloğunun
+ * "Keşfet" butonu (`buildCategoryCard`, `templates/ecommerce-pro.ts`), şablon `force: true` ile
+ * İKİNCİ kez uygulandığında (`resolveSlugPlan` kategori slug çakışmasını `depolama` →
+ * `depolama-2` gibi otomatik benzersizleştirdiğinde) YANLIŞ/eski kategoriye işaret edip 0 ürün
+ * döndürüyordu — kök neden href'in HAM `input.slug`'ı taşıması, backend-agent'ın düzeltmesi
+ * `ref:product-category-slug:<templateSlug>` token ailesi (`lib/asset-tokens.ts`). Bu blok o
+ * düzeltmeyi DEĞİL, gerçek DB import akışı üzerinden SONUCUNU doğrular (dokunma: `asset-tokens.ts`,
+ * `importer.ts`, `templates/ecommerce-pro.ts` backend-agent'ın kapsamındadır).
+ */
+describe("demo-templates importer — bugfix: ecommerce-pro force-reapply sonrası 'Keşfet' butonu GERÇEK/ürünlü kategoriye işaret eder", () => {
+  let app: FastifyInstance;
+  let actorId: string;
+  let actorEmail: string;
+
+  beforeAll(async () => {
+    app = await buildTestApp();
+    await resetDatabase(app.prisma);
+    const admin = await registerTestUser(app, { email: "ecommerce-pro-reapply-admin@example.com" });
+    actorId = admin.userId;
+    actorEmail = "ecommerce-pro-reapply-admin@example.com";
+  });
+
+  afterAll(async () => {
+    await resetDatabase(app.prisma);
+    await app.close();
+  });
+
+  /**
+   * `page.blocks` ağacında (container/button/... herhangi bir tip, herhangi bir derinlik) verilen
+   * `id`'ye sahip İLK düğümü bulur — `lib/asset-tokens.ts::resolvePageBlockTokens`in dolaşım
+   * disiplinini TAKLİT ETMEZ (bilerek basit tutulur, bu test yalnızca sonucu okur): sadece
+   * `children` alanını izler — `buildCategoryCard`'ın ürettiği ağaç şekli bunu yeterli kılar.
+   */
+  function findBlockById(blocks: unknown, id: string): Record<string, unknown> | null {
+    const stack: unknown[] = [blocks];
+    while (stack.length > 0) {
+      const node = stack.pop();
+      if (Array.isArray(node)) {
+        for (const item of node) stack.push(item);
+        continue;
+      }
+      if (node && typeof node === "object") {
+        const obj = node as Record<string, unknown>;
+        if (obj.id === id) return obj;
+        if (Array.isArray(obj.children)) stack.push(obj.children);
+      }
+    }
+    return null;
+  }
+
+  it("1. import → force:true ile 2. import → 'Depolama' Keşfet butonu İKİNCİ importun KENDİ (ürünlü) kategorisine işaret eder, eskinin (ürünsüz kalacak) 'depolama'sına DEĞİL", async () => {
+    const { importDemoTemplate } = await import("../../src/modules/demo-templates/importer");
+
+    const first = await importDemoTemplate(app, {
+      templateKey: "ecommerce-pro",
+      body: { confirm: true, force: false, setAsHomePage: false },
+      actorId,
+      actorEmail,
+    });
+
+    const second = await importDemoTemplate(app, {
+      templateKey: "ecommerce-pro",
+      body: { confirm: true, force: true, setAsHomePage: false },
+      actorId,
+      actorEmail,
+    });
+
+    expect(second.pageId).not.toBe(first.pageId);
+
+    // §4.4 benzersizleştirme — iki "Depolama" kategorisi oluşmuş olmalı: `depolama` (1. import)
+    // ve `depolama-2` (2., force-reapply).
+    const depolamaCategories = await app.prisma.productCategory.findMany({
+      where: { slug: { startsWith: "depolama" } },
+      orderBy: { createdAt: "asc" },
+    });
+    expect(depolamaCategories.map((c) => c.slug)).toEqual(["depolama", "depolama-2"]);
+    const [staleFirstCategory, freshSecondCategory] = depolamaCategories;
+
+    const secondPage = await app.prisma.page.findUnique({ where: { id: second.pageId } });
+    expect(secondPage).not.toBeNull();
+
+    const button = findBlockById(secondPage!.blocks, "ep-category-depolama-button");
+    expect(button).not.toBeNull();
+    const data = button!.data as Record<string, unknown>;
+    const href = data.href as string;
+
+    // Bug'ın eski hali: href her zaman `/products?category=depolama` (ilk/HAM slug) idi — 2.
+    // importta bu ARTIK yanlış kategoridir (o kategorinin ürünleri 1. importa ait, 2. importun
+    // KENDİ ürünlerine değil). Doğrusu: `/products?category=depolama-2`.
+    expect(href).toBe(`/products?category=${freshSecondCategory!.slug}`);
+
+    const match = href.match(/^\/products\?category=(.+)$/);
+    expect(match).not.toBeNull();
+    const linkedSlug = match![1]!;
+
+    // `resolveCategoryIds`/ürün listeleme uç noktasıyla AYNI sorgu şekli — href'teki slug'a göre
+    // DB'de gerçekten sorgulanan kategori.
+    const linkedCategory = await app.prisma.productCategory.findUnique({ where: { slug: linkedSlug } });
+    expect(linkedCategory).not.toBeNull();
+    expect(linkedCategory!.id).not.toBe(staleFirstCategory!.id);
+
+    const linkedProductCount = await app.prisma.product.count({ where: { categoryId: linkedCategory!.id } });
+    expect(linkedProductCount).toBeGreaterThan(0);
+  });
+});

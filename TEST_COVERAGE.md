@@ -2345,3 +2345,40 @@ paketi bu turda yeniden koşulmadı (davranışı zaten canlı curl ile doğrula
 **Kapsam notu:** Düzeltme `server-products.ts` (PDP + katalog) ile sınırlı tutuldu — ticket'ın
 kapsamı ürün görselleri; blog/portfolio/slider'ların server-* fetcher'ları AYNI kök nedeni
 taşıyabilir ama bu turda DOKUNULMADI (ayrı bir takip görevi olmalı, spekülatif genişletme YAPILMADI).
+
+## `ecommerce-pro` anasayfası "Öne Çıkan Kategoriler" — force-reapply'de "Keşfet" linkinin YANLIŞ/ürünsüz kategoriye işaret etmesi bugfix'i — regresyon testi (bu turda eklendi)
+
+Bağlam: anasayfadaki "Öne Çıkan Kategoriler" bloğunun "Keşfet" butonu (`/products?category=<slug>`)
+şablon `force: true` ile birden fazla kez uygulandığında (`resolveSlugPlan` kategori slug
+çakışmasını `depolama` → `depolama-2` gibi otomatik benzersizleştirdiği için) YANLIŞ/eski
+kategoriye işaret edip 0 ürün döndürüyordu. backend-agent kök nedeni düzeltti: buton `href`'i artık
+`ref:product-category-slug:<templateSlug>` token'ı üzerinden, import anında üretilen
+GERÇEK/benzersizleştirilmiş `ProductCategory.slug`'a çözülüyor (`lib/asset-tokens.ts` yeni token
+ailesi, `importer.ts` 3 çağrı noktası, `templates/ecommerce-pro.ts::buildCategoryCard`). qa-agent
+görevi: bu SPESİFİK bug için, backend-agent'ın kodunu DEĞİL sonucunu doğrulayan bir regresyon
+testi eklemek.
+
+**Strateji kararı:** İki seçenek değerlendirildi — (1) gerçek Prisma test-DB'siyle uçtan uca "1.
+import → force:true 2. import → oluşan sayfayı DB'den oku → href'i çöz → o slug'a bağlı ürün var
+mı" testi, (2) `resolvePageBlockTokens`i izole eden birim testi. Mevcut
+`backend/tests/unit/demo-templates-importer.test.ts` dosyasının ZATEN AYNI stratejiyi (gerçek
+`buildTestApp`/`resetDatabase`/`importDemoTemplate` çağrısı, art arda iki import — bkz. dosyadaki
+"anasayfa"/"anasayfa-2"/"anasayfa-3" cross-entity-slug testi) kullandığı görülünce (1) seçildi —
+bug'ın TAM ZİNCİRİNİ (`resolveSlugPlan` → token çözümleme → DB'ye yazılan gerçek `Page.blocks`)
+gerçek veriyle doğrular, yeni bir test altyapısı İCAT EDİLMEDİ.
+
+| Senaryo | Dosya | Durum |
+|---|---|---|
+| `ecommerce-pro` 1. import (force:false) → 2. import (force:true) → İKİ "Depolama" `ProductCategory` satırı (`depolama`, `depolama-2`) oluşur; 2. importun sayfasındaki `ep-category-depolama-button` düğümünün `href`'i (`/products?category=depolama-2`) 2. importun KENDİ (ürünlü) kategorisine işaret eder, 1. importun (o linkin eskiden hedeflediği, o kategoriye göre ürünsüz kalacak) `depolama` kategorisine DEĞİL; href'teki slug'a göre DB'de sorgulanan kategoriye bağlı ürün sayısı > 0 | `backend/tests/unit/demo-templates-importer.test.ts` (qa-agent, bu turda eklendi — yalnızca test dosyasına dokunuldu; `asset-tokens.ts`/`importer.ts`/`templates/ecommerce-pro.ts` backend-agent'ın kapsamında, DEĞİŞTİRİLMEDİ) | ✅ Geçiyor |
+
+**Doğrulama:** `npx vitest run tests/unit/demo-templates-importer.test.ts` → 6/6 geçti (5 mevcut +
+1 yeni). Regresyon kontrolü: `npx vitest run tests/unit/demo-templates-ecommerce-pro.test.ts` →
+11/11 geçti, DEĞİŞİKLİKSİZ (bu dosyaya dokunulmadı, sadece komşu dosyanın etkilenmediği teyit
+edildi).
+
+**Kapsam dışı bırakılan (opsiyonel) e2e adımı:** Görev talimatı `admin-demo-template-import.spec.ts`e
+"force-reapply sonrası anasayfayı ziyaret et → Keşfet'e tıkla → ürün listelendiğini doğrula" adımını
+OPSİYONEL olarak sundu. Backend testi bug'ın KÖK NEDENİNİ (href'in DB'deki gerçek/ürünlü kategoriye
+çözülmesi) zaten uçtan-uca (gerçek transaction + gerçek DB okuması) kapsadığından, e2e suite'in
+çalışma süresini gereksiz şişirmemek için EKLENMEDİ — mevcut `ecommerce-pro-template-import.spec.ts`
+zaten `force:true` ikinci-import senaryosunu (SKU-benzersizleştirme açısından) kapsıyor.

@@ -30,6 +30,17 @@ export const SLIDER_REF_TOKEN = "ref:slider";
 // [DTI] §3.4'e ek): `ref:product-category:<slug>` → import sırasında oluşturulan
 // `ProductCategory.id`. AYNI çözümleyici, AYNI dosya (§3.4 madde 4 — tek üretim noktası).
 export const PRODUCT_CATEGORY_REF_PREFIX = "ref:product-category:";
+// Bugfix (§4.3 revizyonu, `.claude/architect-scope-ecommerce-pro-template.md`) — ÜÇÜNCÜ token
+// ailesi: `ref:product-category-slug:<templateSlug>` → `PRODUCT_CATEGORY_REF_PREFIX`'in AKSİNE
+// ham bir id'ye DEĞİL, doğrudan KULLANILABİLİR bir `href`'e (`/products?category=<gerçek-slug>`)
+// çözülür. Kök neden: "Keşfet" butonlarının `href`'i şablon yazım anındaki HAM slug'ı
+// (`input.slug`) taşıyordu; ama `resolveSlugPlan` (§4.4, DEĞİŞTİRİLEMEZ) force-reapply'de
+// kategori slug çakışmasını `depolama` → `depolama-2` gibi otomatik benzersizleştirir — bu
+// yüzden buton her zaman İLK import'un slug'ına işaret ediyor, reapply sonrası 0 ürün dönüyordu.
+// Çözüm `ref:product-category:` ile AYNI iki-fazlı erteleme desenini kullanır, tek fark: harita
+// `id` değil `resolvedSlug` taşır ve çözümleyici URL'i kendisi inşa eder (`ref:slider`'ın alana
+// doğrudan kullanılabilir `sliderId` koyması ile AYNI desen).
+export const PRODUCT_CATEGORY_SLUG_REF_PREFIX = "ref:product-category-slug:";
 
 const ABSOLUTE_VISIT_CAP = 100_000;
 
@@ -39,6 +50,11 @@ export function buildAssetToken(key: string): string {
 
 export function buildProductCategoryRefToken(slug: string): string {
   return `${PRODUCT_CATEGORY_REF_PREFIX}${slug}`;
+}
+
+/** `templateSlug` — şablonun statik tanımındaki HAM (henüz benzersizleştirilmemiş) kategori slug'ı. */
+export function buildProductCategorySlugHrefRefToken(templateSlug: string): string {
+  return `${PRODUCT_CATEGORY_SLUG_REF_PREFIX}${templateSlug}`;
 }
 
 function isAssetToken(value: string): value is `asset:${string}` {
@@ -55,6 +71,14 @@ function isProductCategoryRefToken(value: string): value is `ref:product-categor
 
 function productCategorySlugFromToken(value: string): string {
   return value.slice(PRODUCT_CATEGORY_REF_PREFIX.length);
+}
+
+function isProductCategorySlugHrefRefToken(value: string): value is `ref:product-category-slug:${string}` {
+  return value.startsWith(PRODUCT_CATEGORY_SLUG_REF_PREFIX) && value.length > PRODUCT_CATEGORY_SLUG_REF_PREFIX.length;
+}
+
+function productCategorySlugHrefTemplateSlugFromToken(value: string): string {
+  return value.slice(PRODUCT_CATEGORY_SLUG_REF_PREFIX.length);
 }
 
 export interface ResolveTokensResult {
@@ -96,12 +120,23 @@ interface StackFrame {
  * (ERTELENİR, unresolved SAYILMAZ — ürün kategorileri henüz oluşturulmamıştır). Bir `Map`
  * verildiğinde (Faz 0 kuru koşuda PLACEHOLDER_UUID'lerle, Faz 2 son çözümlemede gerçek
  * `ProductCategory.id`'lerle) haritada KARŞILIĞI OLMAYAN her slug FATAL/unresolved sayılır.
+ *
+ * `productCategorySlugByTemplateSlug` — YUKARIDAKİ İKİSİYLE (`sliderId`/`productCategoryIdBySlug`)
+ * BİREBİR AYNI iki-fazlı erteleme deseni, TEK farkla: `productCategoryIdBySlug`'ın AKSİNE harita
+ * ham bir `id` değil `resolveSlugPlan`'ın ürettiği BENZERSİZLEŞTİRİLMİŞ gerçek slug'ı taşır ve
+ * çözümleyici bu slug'dan doğrudan KULLANILABİLİR bir `href` (`/products?category=<gerçek-slug>`)
+ * İNŞA EDER — `ref:slider`'ın alana doğrudan kullanılabilir `sliderId` koyması ile AYNI desen
+ * (bkz. `PRODUCT_CATEGORY_SLUG_REF_PREFIX` yorumu, bugfix: "Keşfet" butonu force-reapply'de eski/
+ * yanlış slug'a işaret ediyordu). `null` ise `ref:product-category-slug:<templateSlug>` token'ları
+ * DOKUNULMADAN ERTELENİR (unresolved SAYILMAZ); bir `Map` verildiğinde haritada KARŞILIĞI OLMAYAN
+ * her `templateSlug` FATAL/unresolved sayılır.
  */
 export function resolvePageBlockTokens(
   blocks: unknown[],
   assetUrlByKey: ReadonlyMap<string, string>,
   sliderId: string | null,
-  productCategoryIdBySlug: ReadonlyMap<string, string> | null = null
+  productCategoryIdBySlug: ReadonlyMap<string, string> | null = null,
+  productCategorySlugByTemplateSlug: ReadonlyMap<string, string> | null = null
 ): ResolveTokensResult {
   const root: unknown[] = deepCloneJson(blocks) as unknown[];
   const unresolvedTokens = new Set<string>();
@@ -141,6 +176,19 @@ export function resolvePageBlockTokens(
           }
         }
         // productCategoryIdBySlug === null → ERTELENİR (bkz. fonksiyon başlığı).
+        continue;
+      }
+      if (isProductCategorySlugHrefRefToken(value)) {
+        if (productCategorySlugByTemplateSlug !== null) {
+          const templateSlug = productCategorySlugHrefTemplateSlugFromToken(value);
+          const resolvedSlug = productCategorySlugByTemplateSlug.get(templateSlug);
+          if (resolvedSlug !== undefined) {
+            (frame.container as Record<string | number, unknown>)[key] = `/products?category=${resolvedSlug}`;
+          } else {
+            unresolvedTokens.add(value);
+          }
+        }
+        // productCategorySlugByTemplateSlug === null → ERTELENİR (bkz. fonksiyon başlığı).
         continue;
       }
       if (isAssetToken(value)) {
