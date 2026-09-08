@@ -10,6 +10,7 @@ import type {
   Page,
   Product,
   ProductCategory,
+  ProductSearchResult,
   TrashedFilter,
   UpdateProductCategoryRequest,
   UpdateProductRequest,
@@ -99,6 +100,16 @@ export function addProductDocument(productId: string, input: AddProductDocumentR
 /** `DELETE /admin/products/:productId/documents/:documentId` — yalnızca BAĞ kaldırılır, `Media` silinmez. */
 export function removeProductDocument(productId: string, documentId: string) {
   return apiFetch<Product>(`/admin/products/${productId}/documents/${documentId}`, { method: "DELETE" });
+}
+
+/**
+ * `.claude/architect-scope-search-and-order-emails.md` §1 — header canlı ürün arama. `term`
+ * ZATEN `.trim().length >= 2` olmalıdır (çağıran — `header-search.tsx` — bu kontrolü yapar,
+ * burada TEKRARLANMAZ); backend `< 2` karakterde 422 döner. `signal` verilirse önceki isteği
+ * iptal etmek için kullanılabilir (bkz. `client.ts::RequestOptions.signal`).
+ */
+export function searchProducts(term: string, signal?: AbortSignal): Promise<ProductSearchResult> {
+  return apiFetch<ProductSearchResult>("/products/search", { query: { search: term }, signal });
 }
 
 export function listProductCategories() {

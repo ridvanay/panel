@@ -22,6 +22,10 @@ export const UpdateSiteSettingsRequestSchema = z
     // çapraz kontrol edilir (`discountPriceCents` ile AYNI desen).
     shippingEstimatedDaysMin: z.number().int().min(0).max(90).nullable().optional(),
     shippingEstimatedDaysMax: z.number().int().min(0).max(90).nullable().optional(),
+    // `.claude/architect-scope-search-and-order-emails.md` §2.3 (bağlayıcı) — `contact.schemas.ts
+    // ::notifyEmail` İLE AYNI doğrulama. Boş string KABUL EDİLMEZ (422); bildirimi kapatmak için
+    // `null` gönderilir.
+    orderNotificationEmail: z.string().email().max(254).nullable().optional(),
   })
   .refine(
     (data) =>

@@ -4273,6 +4273,9 @@ paths:
     get:
       tags: [Settings]
       summary: Site ayarlarını oku (authenticated)
+      description: >
+        `data` **`AdminSiteSettings`**'tir (public `GET /settings`'in döndüğü
+        `SiteSettings`'in ÜST KÜMESİ) — `orderNotificationEmail` yalnızca burada döner.
       responses:
         "200":
           description: OK
@@ -4282,7 +4285,7 @@ paths:
                 allOf:
                   - $ref: "#/components/schemas/ApiSuccessEnvelope"
                   - properties:
-                      data: { $ref: "#/components/schemas/SiteSettings" }
+                      data: { $ref: "#/components/schemas/AdminSiteSettings" }
         "401": { $ref: "#/components/responses/Unauthorized" }
     patch:
       tags: [Settings]
@@ -4297,6 +4300,11 @@ paths:
         yalnızca frontend kurulum sihirbazının hangi modülleri/blok tiplerini
         ÖNERECEĞİNİ belirler (bkz. `SiteModule.recommendedFor`). Modül açma/kapama
         HER ZAMAN `PATCH /admin/modules/{key}` ile ayrı bir işlemdir.
+
+
+        `orderNotificationEmail` — yeni sipariş bildiriminin alıcısı; `null`
+        gönderilerek bildirim kapatılır (bkz. `AdminSiteSettings`). Yanıt
+        **`AdminSiteSettings`**'tir.
       requestBody:
         required: true
         content:
@@ -4311,7 +4319,7 @@ paths:
                 allOf:
                   - $ref: "#/components/schemas/ApiSuccessEnvelope"
                   - properties:
-                      data: { $ref: "#/components/schemas/SiteSettings" }
+                      data: { $ref: "#/components/schemas/AdminSiteSettings" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationError" }
@@ -5484,6 +5492,79 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
         "422": { $ref: "#/components/responses/ValidationError" }
+
+  /products/search:
+    get:
+      tags: [Products]
+      security: []
+      summary: Canlı ürün/kategori araması — header autocomplete (public)
+      description: >
+        Header'daki anlık arama (instant search) kutusunun TEK veri kaynağı. Yalnızca
+        `status: PUBLISHED` ve çöpte olmayan (`deletedAt: null`) ürünler ile en az bir
+        yayınlanmış ürünü olan kategoriler döner. `products` modülü kapalıysa `404
+        NOT_FOUND` (router seviyesindeki `requireModuleEnabled("products")`).
+
+
+        **Yol çakışması YOKTUR:** `/products/search` statik segmenttir ve Fastify radix
+        router'ında `/products/{slug}`'ın ÖNÜNDE değerlendirilir. Kabul edilen tek yan
+        etki: slug'ı birebir `search` olan bir ürünün detay sayfası erişilemez
+        (rezerve-slug listesi v1'de bilinçli olarak açılmadı).
+
+
+        **Eşleşme:** `search` terimi `Product.title`, `Product.sku` ve ürünün
+        `ProductCategory.name` alanlarında büyük/küçük harf duyarsız `contains`
+        (`OR`) olarak aranır. `excerpt` BİLİNÇLİ OLARAK taranmaz (açılır kutuda
+        eşleşmenin nedeni kullanıcıya gösterilemez, "alakasız sonuç" hissi yaratır).
+        Kategoriler ayrıca `ProductCategory.name` üzerinde aranır ve **yalnızca
+        kendisinde VEYA alt kategorilerinde yayınlanmış ürünü olanlar** döner (çıkmaz
+        sokak sonuç üretilmez; hiyerarşi en fazla 2 seviye olduğu için özyineleme
+        gerekmez).
+
+
+        **Sıralama (deterministik):** ürünler `salesCount` azalan, eşitlikte `seq`
+        azalan. Alaka düzeyi/`pg_trgm` benzerlik sıralaması v1'de YOKTUR (ham SQL
+        açmamak için bilinçli ret).
+
+
+        **Sabit tavan:** en fazla **5 ürün** ve **3 kategori**. `limit`/`page`/`cursor`
+        parametreleri bu uçta YOKTUR (istemci sonuç sayısını büyütemez). Toplam sonuç
+        sayısı (`meta.total`) DÖNMEZ — her tuş vuruşunda ikinci bir `COUNT` sorgusu
+        çalıştırmamak için; istemcinin "tüm sonuçlar" bağlantısı koşulsuz olarak
+        `GET /products?search=` katalog sayfasına gider.
+
+
+        **`locale` DESTEKLENMEZ.** Arama yalnızca kanonik (varsayılan dil) kolonlarda
+        yapılır; `translations` JSON'u TARANMAZ — `GET /products?search=` ile AYNI
+        bilinçli sınır.
+
+
+        **Önbellek başlığı YOKTUR** (`Cache-Control`/`s-maxage` set edilmez) — depodaki
+        hiçbir uç önbellek başlığı üretmez ve önde paylaşılan bir CDN yoktur; önbellek
+        sorumluluğu istemcidedir (≥250 ms debounce + `AbortController` + terim bazlı
+        bellek içi önbellek).
+
+
+        Bkz. `.claude/architect-scope-search-and-order-emails.md` §1 (bağlayıcı karar
+        dokümanı) ve ARCHITECTURE.md §10.23.1.
+      parameters:
+        - $ref: "#/components/parameters/ProductSearchTerm"
+      responses:
+        "200":
+          description: "OK — eşleşme yoksa `{ products: [], categories: [] }` (404 DEĞİL)"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/ProductSearchResult" }
+        "404":
+          description: "`products` modülü kapalı (`error.code: NOT_FOUND`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /products/{slug}:
     parameters:
@@ -7045,9 +7126,19 @@ paths:
           otomatik iade edilmez uyarısı).
         - `sendCustomerEmail` (varsayılan `true`) `false` gönderilirse iptal
           e-postası HİÇ denenmez.
-        - `cancellationReason`/`sendCustomerEmail`/`confirmWithoutRefund` **yalnızca**
-          `status: CANCELLED` iken gönderilebilir; başka bir hedefte gönderilirse
-          422 (sessizce yutulmaz).
+        - `cancellationReason`/`confirmWithoutRefund` **yalnızca** `status: CANCELLED`
+          iken gönderilebilir; başka bir hedefte gönderilirse 422 (sessizce yutulmaz).
+          `sendCustomerEmail` ise `CANCELLED` **veya** `SHIPPED` ile gönderilebilir.
+
+
+        **`-> SHIPPED` için ek kural** (`.claude/architect-scope-search-and-order-
+        emails.md` §2.4B, bağlayıcı): `trackingNumber` zaten ZORUNLUDUR; geçiş
+        commit'inden sonra `sendCustomerEmail !== false` ise **best-effort kargo
+        bildirimi** (`ORDER_SHIPPED` şablonu) müşteriye gönderilir ve
+        `order.shipped_email` (`status: SUCCESS|FAILURE`) audit kaydı yazılır.
+        E-posta hatası isteği **YİNE DE 200** bırakır. Bu e-posta yalnızca DURUM
+        GEÇİŞİNDE tetiklenir — takip numarası sonradan `PATCH
+        /admin/orders/{orderId}` ile değiştirilirse YENİDEN GÖNDERİLMEZ.
 
 
         **Çifte durum geçişi / race koruması:** durum güncellemesi
@@ -7060,13 +7151,17 @@ paths:
 
         **Yan etkiler (sıra bağlayıcı, DB commit'inden SONRA):** audit log
         (`order.status_change`, `metadata: { from, to, ...(CANCELLED ise
-        cancellationReason + customerEmailRequested) }`) → `ORDER_STATUS_CHANGED`
-        webhook'u → (yalnızca `-> CANCELLED` ve `sendCustomerEmail !== false`)
-        best-effort iptal e-postası (`ORDER_CANCELLATION` şablonu, bkz.
-        ARCHITECTURE.md §10.9.3). **E-posta gönderimi başarısız olursa istek YİNE
-        DE 200 döner** — hata yalnızca loglanır, ayrıca `order.cancel_email`
-        (`status: SUCCESS|FAILURE`) audit kaydı yazılır. `paidAt` bu uçta **HİÇBİR
-        KOŞULDA** yazılmaz/silinmez.
+        cancellationReason; CANCELLED veya SHIPPED ise customerEmailRequested) }`) →
+        `ORDER_STATUS_CHANGED` webhook'u → (yalnızca `-> CANCELLED` ve
+        `sendCustomerEmail !== false`) best-effort iptal e-postası
+        (`ORDER_CANCELLATION` şablonu, bkz. ARCHITECTURE.md §10.9.3) → (yalnızca
+        `-> SHIPPED` ve `sendCustomerEmail !== false`) best-effort kargo bildirimi
+        (`ORDER_SHIPPED` şablonu, §10.23.2). **E-posta gönderimi başarısız olursa
+        istek YİNE DE 200 döner** — hata yalnızca loglanır, ayrıca
+        `order.cancel_email` / `order.shipped_email` (`status: SUCCESS|FAILURE`)
+        audit kaydı yazılır (her ikisi de `order.` önekli olduğu için
+        `GET .../activity` akışında görünür). `paidAt` bu uçta **HİÇBİR KOŞULDA**
+        yazılmaz/silinmez.
       requestBody:
         required: true
         content:
@@ -8335,6 +8430,20 @@ components:
         `translations` JSON'u TARANMAZ (admin `GET /admin/products?search=` ile AYNI
         bilinçli sınır — çeviri araması ayrı bir iştir).
       schema: { type: string, minLength: 1, maxLength: 100 }
+    ProductSearchTerm:
+      name: search
+      in: query
+      required: true
+      description: >
+        `GET /products/search` arama terimi — **ZORUNLU** ve **en az 2 karakter**
+        (kırpıldıktan sonra). Daha kısa bir değer `422 VALIDATION_ERROR`
+        (`error.details.search`) döner; "boş sonuç" DÖNMEZ — istemci zaten 2 karakter
+        altında istek atmamakla yükümlüdür, 422 bu sözleşme ihlalini görünür kılar.
+
+
+        Parametre adı `CatalogSearch` ile bilinçli olarak AYNIDIR (`q` gibi ikinci bir
+        kısaltma icat edilmez); farkı **zorunlu** olması ve `minLength: 2`'dir.
+      schema: { type: string, minLength: 2, maxLength: 100 }
     CatalogCategory:
       name: category
       in: query
@@ -11025,12 +11134,34 @@ components:
         iptal e-postası tetikleyicisi (`PATCH /admin/orders/{orderId}/status` →
         `CANCELLED`, `sendCustomerEmail !== false`). `ORDER_CONFIRMATION` ile AYNI
         değişken adları + tek yeni değişken: `cancellation_reason`.
+
+
+        `.claude/architect-scope-search-and-order-emails.md` §2.2 (bağlayıcı) —
+        **İKİ YENİ AMAÇ:**
+
+        - **`ORDER_SHIPPED`** (müşteriye): `PATCH /admin/orders/{orderId}/status` →
+          `SHIPPED`, `sendCustomerEmail !== false` VE `trackingNumber` dolu iken
+          best-effort gönderilir. Değişkenler: `order_number`, `customer_name`,
+          `items_summary`, `total_formatted`, `tracking_number`, `shipping_carrier`.
+          `shipping_carrier` BOŞ STRING olabilir (`Order.shippingCarrier` opsiyonel
+          serbest metindir) — şablon motorunda şartlı render YOKTUR, bu yüzden
+          seed'lenen VARSAYILAN gövde bu değişkeni kullanmaz. Harici kargo takip
+          bağlantısı ÜRETİLMEZ (`shippingCarrier` kapalı bir enum değil; firma adından
+          URL uydurmak yanlış link riskidir) — takip numarası düz metin basılır.
+        - **`ORDER_ADMIN_NOTIFICATION`** (mağaza yöneticisine): sipariş `PENDING ->
+          PAID`'e geçtiğinde (Stripe webhook'u) `SiteSettings.orderNotificationEmail`
+          adresine best-effort gönderilir; adres boşsa bildirim KAPALIDIR ve sessizce
+          atlanır (bu bir HATA DEĞİLDİR — `ContactForm.notifyEmail` ile AYNI semantik).
+          Değişkenler: `order_number`, `customer_name`, `customer_email`,
+          `items_summary`, `total_formatted`, `placed_at`, `order_admin_url`.
       enum:
         - WELCOME
         - PASSWORD_RESET
         - SYSTEM_ANNOUNCEMENT
         - ORDER_CONFIRMATION
         - ORDER_CANCELLATION
+        - ORDER_SHIPPED
+        - ORDER_ADMIN_NOTIFICATION
         - ORG_INVITATION
         - CONTACT_FORM_NOTIFICATION
         - CUSTOM
@@ -12108,7 +12239,10 @@ components:
       enum: [SHOWCASE, COMMERCE, PORTFOLIO]
 
     SiteSettings:
-      description: "`/settings` ve `/admin/settings` uçlarında dönen tekil (singleton) site ayarları DTO'su."
+      description: >
+        **PUBLIC** `/settings` ucunda dönen tekil (singleton) site ayarları DTO'su.
+        `/admin/settings` bunun ÜST KÜMESİNİ (`AdminSiteSettings`) döner — yönetici-özel
+        alanlar buraya EKLENMEZ.
       type: object
       properties:
         siteName:
@@ -12158,6 +12292,33 @@ components:
           maximum: 90
           description: "Üst sınır (iş günü). `Min`'den KÜÇÜK olamaz (`422`). `Min === Max` ise arayüz tek sayı gösterir."
 
+    AdminSiteSettings:
+      description: >
+        `GET /admin/settings` ve `PATCH /admin/settings` yanıtı — `SiteSettings`'in
+        ÜST KÜMESİ. Fark: yalnızca kimliği doğrulanmış panel kullanıcılarının görmesi
+        gereken alanlar.
+
+
+        **Neden ayrı bir şema (bağlayıcı, `.claude/architect-scope-search-and-order-emails.md`
+        §2.3):** `GET /settings` PUBLIC'tir ve `SiteSettings`'in TAMAMINI döner.
+        `orderNotificationEmail` oraya eklenseydi mağaza sahibinin e-posta adresi
+        kimliksiz herkese açılırdı (spam/harvest + gereksiz PII ifşası). Emsal:
+        `PublicContactForm` de `notifyEmail`'i bilinçli olarak DÖNMEZ.
+      allOf:
+        - $ref: "#/components/schemas/SiteSettings"
+        - type: object
+          required: [orderNotificationEmail]
+          properties:
+            orderNotificationEmail:
+              type: string
+              format: email
+              nullable: true
+              description: >
+                Yeni sipariş bildiriminin (`ORDER_ADMIN_NOTIFICATION`) gideceği adres.
+                `null` = bildirim KAPALI — sipariş ödendiğinde e-posta hiç denenmez ve
+                bu bir HATA DEĞİLDİR (`ContactForm.notifyEmail` ile AYNI semantik).
+                **PUBLIC `GET /settings` yanıtında BULUNMAZ.**
+
     UpdateSiteSettingsRequest:
       description: "`PATCH /admin/settings` gövdesi — tüm alanlar opsiyoneldir, satır yoksa `DEFAULTS` ile birlikte oluşturulur (upsert)."
       type: object
@@ -12176,6 +12337,15 @@ components:
         freeShippingThresholdCents: { type: integer, nullable: true, minimum: 0, maximum: 100000000 }
         shippingEstimatedDaysMin: { type: integer, nullable: true, minimum: 0, maximum: 90 }
         shippingEstimatedDaysMax: { type: integer, nullable: true, minimum: 0, maximum: 90, description: "`shippingEstimatedDaysMin`'den küçükse `422` (çapraz-alan kuralı; yalnızca ikisi de gönderildiğinde ŞEMA seviyesinde, tek başına gönderildiğinde mevcut satıra karşı route handler'da doğrulanır — `discountPriceCents` ile AYNI desen)." }
+        orderNotificationEmail:
+          type: string
+          format: email
+          maxLength: 254
+          nullable: true
+          description: >
+            Yeni sipariş bildirimi alıcısı. Doğrulama `ContactForm.notifyEmail` ile
+            BİREBİR AYNIDIR: geçerli bir e-posta VEYA `null`. **Boş string KABUL
+            EDİLMEZ** (`422`) — bildirimi kapatmak için `null` gönderilir.
 
     SiteModule:
       description: >
@@ -12824,6 +12994,59 @@ components:
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
         viewCount: { type: integer }
+
+    ProductSearchHit:
+      description: >
+        `GET /products/search` (header canlı arama) ürün satırı — açılır kutuda bir
+        satır çizmek için gereken **asgari** alan seti. `ProductListItem`'ın da ALT
+        KÜMESİDİR, ancak ondan TÜRETİLMEZ: bu uç `images`/`variants`/`documents`/
+        `localizations` join'lerini bilinçli olarak yapmaz (her tuş vuruşunda çalışan
+        bir sorgu), sunucu dar bir `select` projeksiyonu okur.
+
+
+        **Alan adları `ProductListItem` ile BİREBİR AYNIDIR** (`price`/`salePrice`/
+        `coverImage` gibi kısaltmalar architect tarafından REDDEDİLDİ) — aynı ürün iki
+        uçtan iki farklı adla dönerse istemcide ikinci bir fiyat/görsel formatlayıcı
+        doğar. Para HER ZAMAN kuruş cinsinden `integer`'dır.
+
+
+        `coverMedia` düz bir URL string'i DEĞİL tam `Media` DTO'sudur: URL
+        mutlaklaştırması (`absolutizeMediaUrl`) tek bir mapper'da kalsın ve
+        `width`/`height`/`altText` olmadan `next/image` doğru render edemesin diye.
+      type: object
+      required: [id, title, slug, priceCents, discountPriceCents, currency, sku, coverMedia]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        slug: { type: string, description: "Kanonik (varsayılan dil) slug — istemci ürün bağlantısını bundan kurar." }
+        priceCents: { type: integer, description: "Liste fiyatı (kuruş)." }
+        discountPriceCents: { type: integer, nullable: true, description: "İndirimli fiyat (kuruş) — doluysa istemci `priceCents`'i üstü çizili gösterir." }
+        currency: { type: string }
+        sku: { type: string, nullable: true, description: "SKU ile arandığında eşleşmenin nedenini göstermek için döner." }
+        coverMedia:
+          allOf: [{ $ref: "#/components/schemas/Media" }]
+          nullable: true
+
+    ProductSearchResult:
+      description: >
+        `GET /products/search` `data` gövdesi. İki liste AYNI terim için PARALEL iki
+        sorgudan gelir; eşleşme yoksa ikisi de **boş dizidir** (`404` DEĞİL).
+      type: object
+      required: [products, categories]
+      properties:
+        products:
+          type: array
+          maxItems: 5
+          items: { $ref: "#/components/schemas/ProductSearchHit" }
+        categories:
+          type: array
+          maxItems: 3
+          items: { $ref: "#/components/schemas/ProductCategory" }
+          description: >
+            Yeni bir "kategori arama sonucu" tipi AÇILMADI — mevcut `ProductCategory`
+            DTO'su ve `toProductCategoryDto` aynen yeniden kullanılır. Yalnızca
+            kendisinde VEYA (en fazla 2 seviyelik hiyerarşide) alt kategorilerinde
+            yayınlanmış ürünü olan kategoriler döner.
 
     ProductCategoryFacet:
       description: "Katalog kenar çubuğu kategori ağacı (en fazla 2 seviye) + ürün sayacı."
@@ -13769,8 +13992,16 @@ components:
         (1..500 karakter, eksikse 422) ve müşteriye giden e-postada AYNEN kullanılır;
         `sendCustomerEmail` (varsayılan `true`) `false` ise e-posta hiç denenmez;
         `confirmWithoutRefund` sipariş zaten ödenmişse (`paidAt != null`) ZORUNLUDUR
-        (`true`), aksi halde `409`. Bu üç alan **YALNIZCA** `status: CANCELLED`
-        iken gönderilebilir — başka bir hedefte gönderilirse 422.
+        (`true`), aksi halde `409`. `cancellationReason` ve `confirmWithoutRefund`
+        **YALNIZCA** `status: CANCELLED` iken gönderilebilir — başka bir hedefte
+        gönderilirse 422.
+
+
+        **`sendCustomerEmail` kapsamı GENİŞLETİLDİ** (`.claude/architect-scope-search-
+        and-order-emails.md` §2.5): artık `status: CANCELLED` **VEYA** `status: SHIPPED`
+        ile gönderilebilir; diğer hedeflerde hâlâ 422. `SHIPPED` hedefinde `false` ise
+        `ORDER_SHIPPED` (kargo bildirimi) e-postası hiç denenmez. Alan gönderilmezse
+        varsayılan `true`'dur — mevcut istemciler DEĞİŞMEDEN çalışır.
       type: object
       required: [status]
       properties:
@@ -13785,7 +14016,11 @@ components:
         sendCustomerEmail:
           type: boolean
           default: true
-          description: "Yalnızca `status: CANCELLED` ile anlamlı. `false` ise iptal e-postası hiç denenmez."
+          description: >
+            Yalnızca `status: CANCELLED` (iptal e-postası, `ORDER_CANCELLATION`) veya
+            `status: SHIPPED` (kargo bildirimi, `ORDER_SHIPPED`) ile gönderilebilir;
+            başka bir hedefte 422. `false` ise ilgili e-posta HİÇ denenmez ve
+            `order.cancel_email`/`order.shipped_email` audit kaydı da OLUŞMAZ.
         confirmWithoutRefund:
           type: boolean
           default: false

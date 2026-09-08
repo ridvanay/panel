@@ -109,6 +109,7 @@ export default function EmailTemplatesListPage() {
       setTemplates(items);
       setLoaded(true);
     } catch (err) {
+      console.error("E-posta şablonları yüklenemedi:", err);
       setLoadError(friendlyErrorMessage(err));
     }
   }, []);

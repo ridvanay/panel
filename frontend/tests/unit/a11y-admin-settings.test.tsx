@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { axe } from "jest-axe";
 import AdminSettingsPage from "@/app/admin/settings/page";
 import { I18nProvider } from "@/context/i18n-context";
-import type { PermissionsMatrix, SiteSettings } from "@/lib/api/types";
+import type { AdminSiteSettings, PermissionsMatrix } from "@/lib/api/types";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/admin/settings",
@@ -22,7 +22,7 @@ const pagesApi = await import("@/lib/api/pages");
 
 const axeOptions = { rules: { region: { enabled: false } } };
 
-const settings: SiteSettings = {
+const settings: AdminSiteSettings = {
   siteName: "Örnek Site",
   logoUrl: null,
   tagline: null,
@@ -34,6 +34,7 @@ const settings: SiteSettings = {
   freeShippingThresholdCents: null,
   shippingEstimatedDaysMin: null,
   shippingEstimatedDaysMax: null,
+  orderNotificationEmail: null,
 };
 const permissions: PermissionsMatrix = {
   roles: ["ADMIN", "MANAGER", "EDITOR", "CUSTOMER", "USER"],

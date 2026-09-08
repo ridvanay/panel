@@ -85,6 +85,17 @@ export const ListProductsQuerySchema = ContentListQuerySchema.extend({
   search: z.string().min(1).optional(),
 });
 
+/**
+ * `GET /products/search` (header canlı arama) — `.claude/architect-scope-search-and-order-emails.md`
+ * §1.2 (bağlayıcı). Parametre adı `search`'tür (`q` DEĞİL — depo genelinde ORTAK terminoloji).
+ * ZORUNLU ve `min(2)`'dir (katalogdaki `min(1).optional()`'dan bilinçli sapma): 1 karakter → 422.
+ * `.trim()` `min` kontrolünden ÖNCE uygulanır. `limit`/`page`/`cursor`/`locale` TANINMAZ — şema
+ * `.strict()` DEĞİLDİR, gönderilirlerse sessizce yok sayılırlar.
+ */
+export const SearchProductsQuerySchema = z.object({
+  search: z.string().trim().min(2).max(100),
+});
+
 // §9 backend-agent madde 5 — locale bazında `null` = çeviriyi SİL.
 const TranslationsSchema = z.record(z.string(), z.record(z.string(), z.unknown()).nullable());
 

@@ -80,6 +80,7 @@ interface GeneralSettingsSnapshot {
   logoUrl: string;
   homePageId: string;
   siteTemplate: SiteTemplate;
+  orderNotificationEmail: string;
 }
 
 function RoleBadge({ role, active }: { role: SiteRole; active: boolean }) {
@@ -132,6 +133,7 @@ export default function AdminSettingsPage() {
   const [logoUrl, setLogoUrl] = useState("");
   const [homePageId, setHomePageId] = useState("");
   const [siteTemplate, setSiteTemplate] = useState<SiteTemplate>("SHOWCASE");
+  const [orderNotificationEmail, setOrderNotificationEmail] = useState("");
   const [publishedPages, setPublishedPages] = useState<SitePage[]>([]);
   const [snapshot, setSnapshot] = useState<GeneralSettingsSnapshot | null>(null);
 
@@ -152,12 +154,14 @@ export default function AdminSettingsPage() {
       setLogoUrl(settings.logoUrl ?? "");
       setHomePageId(settings.homePageId ?? "");
       setSiteTemplate(settings.siteTemplate);
+      setOrderNotificationEmail(settings.orderNotificationEmail ?? "");
       setPublishedPages(pages.items.filter((page) => page.status === "PUBLISHED"));
       setSnapshot({
         siteName: settings.siteName,
         logoUrl: settings.logoUrl ?? "",
         homePageId: settings.homePageId ?? "",
         siteTemplate: settings.siteTemplate,
+        orderNotificationEmail: settings.orderNotificationEmail ?? "",
       });
       setLoaded(true);
     } catch (err) {
@@ -177,9 +181,10 @@ export default function AdminSettingsPage() {
       siteName !== snapshot.siteName ||
       logoUrl !== snapshot.logoUrl ||
       homePageId !== snapshot.homePageId ||
-      siteTemplate !== snapshot.siteTemplate
+      siteTemplate !== snapshot.siteTemplate ||
+      orderNotificationEmail !== snapshot.orderNotificationEmail
     );
-  }, [siteName, logoUrl, homePageId, siteTemplate, snapshot]);
+  }, [siteName, logoUrl, homePageId, siteTemplate, orderNotificationEmail, snapshot]);
 
   // §10.12.8 — ortak hook: beforeunload + `/admin` linklerine capture-phase tıklama uyarısı
   // (davranış öncekiyle AYNI, sadece kod paylaşılıyor).
@@ -239,9 +244,10 @@ export default function AdminSettingsPage() {
         logoUrl: logoUrl || null,
         homePageId: homePageId || null,
         siteTemplate,
+        orderNotificationEmail: orderNotificationEmail || null,
       });
       setSaved(true);
-      setSnapshot({ siteName, logoUrl, homePageId, siteTemplate });
+      setSnapshot({ siteName, logoUrl, homePageId, siteTemplate, orderNotificationEmail });
       toast.success("Ayarlar kaydedildi.");
     } catch (err) {
       const message = friendlyErrorMessage(err);
@@ -442,6 +448,30 @@ export default function AdminSettingsPage() {
               <Card className="space-y-4">
                 <SectionHeader icon={ImageIcon} title="Görünüm" description="Sitenizin logosu ve marka görseli." />
                 <ImageUploadField id="logoUrl" label="Logo" value={logoUrl} onChange={setLogoUrl} />
+              </Card>
+            </motion.div>
+
+            <motion.div variants={cardVariants} className="lg:col-span-3">
+              <Card className="space-y-4">
+                <SectionHeader
+                  icon={Mail}
+                  title="Sipariş Bildirimleri"
+                  description="Yeni bir sipariş ödendiğinde mağaza yöneticisine e-posta ile bildirim gönderilir."
+                />
+                <Field
+                  id="orderNotificationEmail"
+                  label="Yeni sipariş bildirim e-postası"
+                  hint="Boş bırakılırsa bildirim gönderilmez."
+                >
+                  {(inputProps) => (
+                    <Input
+                      {...inputProps}
+                      type="email"
+                      value={orderNotificationEmail}
+                      onChange={(e) => setOrderNotificationEmail(e.target.value)}
+                    />
+                  )}
+                </Field>
               </Card>
             </motion.div>
           </motion.div>

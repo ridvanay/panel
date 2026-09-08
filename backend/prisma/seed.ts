@@ -124,6 +124,50 @@ async function main() {
     },
   });
 
+  // Kargoya verildi — ORDER_CANCELLATION ile aynı akışın kargo yönü (bkz. backend-agent'ın
+  // modules/orders/orders.routes.ts::PATCH /:orderId/status içinden tetikleyeceği
+  // sendTemplateEmail çağrısı). `{{shipping_carrier}}` bilinçli olarak KULLANILMAZ (mağaza
+  // sahibi doldurmazsa "Kargonuz  ile yola çıktı" gibi bozuk bir cümle oluşurdu) — bkz.
+  // architect-scope §2.2c/§2.2a. Kargo takip linki de İCAT EDİLMEZ, `tracking_number` düz
+  // metin olarak basılır.
+  await prisma.emailTemplate.upsert({
+    where: { key: "ORDER_SHIPPED" },
+    update: {},
+    create: {
+      key: "ORDER_SHIPPED",
+      name: "Kargoya Verildi E-postası",
+      purpose: "ORDER_SHIPPED",
+      editorMode: "RAW",
+      isSystem: true,
+      isActive: true,
+      subject: "Siparişiniz Kargoya Verildi — {{order_number}}",
+      bodyHtml:
+        "<p>Merhaba {{customer_name}},</p><p><strong>{{order_number}}</strong> numaralı siparişiniz kargoya verilmiştir.</p><p>Sipariş içeriği: {{items_summary}}</p><p>Toplam: {{total_formatted}}</p><p>Kargo takip numaranız: <strong>{{tracking_number}}</strong></p><p>Bizi tercih ettiğiniz için teşekkür ederiz.</p>",
+      availableVariables: ["order_number", "customer_name", "items_summary", "total_formatted", "tracking_number", "shipping_carrier"],
+    },
+  });
+
+  // Yeni sipariş — mağaza yöneticisine bildirim (bkz. modules/webhooks/stripe.routes.ts
+  // ::handleOrderPaid, ORDER_CONFIRMATION try/catch bloğundan hemen sonra). Alıcı
+  // SiteSettings.orderNotificationEmail'dir; null/boş ise bildirim best-effort atlanır
+  // (bkz. architect-scope §2.3/§2.4A).
+  await prisma.emailTemplate.upsert({
+    where: { key: "ORDER_ADMIN_NOTIFICATION" },
+    update: {},
+    create: {
+      key: "ORDER_ADMIN_NOTIFICATION",
+      name: "Yeni Sipariş Bildirimi",
+      purpose: "ORDER_ADMIN_NOTIFICATION",
+      editorMode: "RAW",
+      isSystem: true,
+      isActive: true,
+      subject: "Yeni Sipariş: {{order_number}}",
+      bodyHtml:
+        "<p>Merhaba,</p><p>Yeni bir siparişiniz var!</p><p><strong>Sipariş No:</strong> {{order_number}}</p><p><strong>Müşteri:</strong> {{customer_name}} ({{customer_email}})</p><p><strong>Sipariş İçeriği:</strong> {{items_summary}}</p><p><strong>Toplam:</strong> {{total_formatted}}</p><p><strong>Sipariş Tarihi:</strong> {{placed_at}}</p><p><a href=\"{{order_admin_url}}\">Siparişi İncele</a></p>",
+      availableVariables: ["order_number", "customer_name", "customer_email", "items_summary", "total_formatted", "placed_at", "order_admin_url"],
+    },
+  });
+
   // Organizasyon daveti — bkz. modules/invitations/invitations.routes.ts::orgInvitationsRoutes.
   // Ham davet bağlantısı artık ne response'ta ne de log'da düz metin dönmez (bkz. security-agent
   // kararı — token sızıntısı temizliği); bunun yerine bu şablon üzerinden gerçekten gönderilir.

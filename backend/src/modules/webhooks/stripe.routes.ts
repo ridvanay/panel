@@ -8,6 +8,7 @@ import { sendTemplateEmail } from "../email-templates/email-templates.service";
 import { emitWebhookEvent } from "../../lib/webhook-emitter";
 import { buildWebhookOrderPayload } from "../../lib/webhook-order-payload";
 import { logAudit } from "../../lib/audit";
+import { SETTINGS_ID } from "../settings/settings.routes";
 
 function mapStatus(status: Stripe.Subscription.Status): SubscriptionStatus {
   switch (status) {
@@ -242,6 +243,44 @@ async function handleOrderPaid(app: FastifyInstance, session: Stripe.Checkout.Se
   } catch (err) {
     app.log.error({ err, orderId: order.id }, "Sipariş onay e-postası gönderilemedi");
   }
+
+  // `.claude/architect-scope-search-and-order-emails.md` §2.4A (bağlayıcı) — mağaza yöneticisine
+  // "yeni sipariş" bildirimi. Müşteriye giden e-posta HER ZAMAN önce denenir (yukarıda). Alıcı
+  // boşsa (bildirim kapalı) sessizce atlanır — bu bir HATA DEĞİLDİR (`contact.service.ts::
+  // sendNotificationBestEffort` ile AYNI sözleşme). Gönderim hatası webhook yanıtını ASLA bozmaz.
+  const settings = await app.prisma.siteSettings.findUnique({
+    where: { id: SETTINGS_ID },
+    select: { orderNotificationEmail: true },
+  });
+  const to = settings?.orderNotificationEmail;
+  if (!to) return;
+
+  let delivered = false;
+  try {
+    await sendTemplateEmail(app, "ORDER_ADMIN_NOTIFICATION", to, {
+      order_number: order.orderNumber,
+      customer_name: order.customerName ?? order.customerEmail,
+      customer_email: order.customerEmail,
+      items_summary: order.items
+        .map((item) => `${item.productTitle}${item.variantLabel ? ` (${item.variantLabel})` : ""} x${item.quantity}`)
+        .join(", "),
+      total_formatted: formatMoney(order.totalCents, order.currency),
+      placed_at: order.createdAt.toLocaleString("tr-TR"),
+      order_admin_url: `${env.FRONTEND_URL}/admin/orders/${order.id}`,
+    });
+    delivered = true;
+  } catch (err) {
+    app.log.error({ err, orderId: order.id }, "Yeni sipariş bildirimi gönderilemedi");
+  }
+
+  // Alıcı adresi metadata'ya YAZILMAZ (KVKK veri minimizasyonu) — `order.cancel_email` ile AYNI ilke.
+  await logAudit(app, {
+    action: "order.admin_notify_email",
+    status: delivered ? "SUCCESS" : "FAILURE",
+    targetType: "Order",
+    targetId: order.id,
+    metadata: { emailDelivered: delivered },
+  });
 }
 
 /**

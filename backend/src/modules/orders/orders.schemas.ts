@@ -21,8 +21,10 @@ export const OrderIdParamSchema = z.object({
  * `status: SHIPPED` iken `trackingNumber` ZORUNLUDUR (§2.4, önceki tur) — eksikse 422.
  * `shippingCarrier` her zaman opsiyoneldir (serbest metin, enum v1'de açılmaz).
  * `status: CANCELLED` iken `cancellationReason` ZORUNLUDUR (§5.2) — eksikse 422.
- * `cancellationReason`/`sendCustomerEmail`/`confirmWithoutRefund` YALNIZCA `status: CANCELLED`
- * iken gönderilebilir; başka bir hedefte gönderilirse 422 (sessizce yutulmaz).
+ * `cancellationReason`/`confirmWithoutRefund` YALNIZCA `status: CANCELLED` iken gönderilebilir;
+ * başka bir hedefte gönderilirse 422 (sessizce yutulmaz).
+ * `.claude/architect-scope-search-and-order-emails.md` §2.5 (bağlayıcı) — `sendCustomerEmail`
+ * artık `CANCELLED` VEYA `SHIPPED` hedeflerinde gönderilebilir; başka bir hedefte 422.
  */
 export const UpdateOrderStatusRequestSchema = z
   .object({
@@ -61,13 +63,6 @@ export const UpdateOrderStatusRequestSchema = z
           message: "cancellationReason yalnızca status=CANCELLED iken gönderilebilir.",
         });
       }
-      if (data.sendCustomerEmail !== undefined) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["sendCustomerEmail"],
-          message: "sendCustomerEmail yalnızca status=CANCELLED iken gönderilebilir.",
-        });
-      }
       if (data.confirmWithoutRefund !== undefined) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -75,6 +70,16 @@ export const UpdateOrderStatusRequestSchema = z
           message: "confirmWithoutRefund yalnızca status=CANCELLED iken gönderilebilir.",
         });
       }
+    }
+
+    // `.claude/architect-scope-search-and-order-emails.md` §2.5 (bağlayıcı) — `sendCustomerEmail`
+    // artık `CANCELLED` VEYA `SHIPPED` hedeflerinde gönderilebilir; diğer hedeflerde hâlâ 422.
+    if (data.sendCustomerEmail !== undefined && data.status !== "CANCELLED" && data.status !== "SHIPPED") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["sendCustomerEmail"],
+        message: "sendCustomerEmail yalnızca status=CANCELLED veya status=SHIPPED iken gönderilebilir.",
+      });
     }
   });
 

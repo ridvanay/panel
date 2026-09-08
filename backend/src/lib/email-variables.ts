@@ -69,6 +69,23 @@ const SYSTEM_VARIABLES_BY_PURPOSE: Record<EmailTemplatePurpose, EmailVariableDef
     { key: "total_formatted", label: "Toplam Tutar", sampleValue: "₺1.250,00", source: "system" },
     { key: "cancellation_reason", label: "İptal Nedeni", sampleValue: "Stok tükendi", source: "system" },
   ],
+  ORDER_SHIPPED: [
+    { key: "order_number", label: "Sipariş Numarası", sampleValue: "ORD-1024", source: "system" },
+    { key: "customer_name", label: "Müşteri Adı", sampleValue: "Ayşe Yılmaz", source: "system" },
+    { key: "items_summary", label: "Sipariş İçeriği", sampleValue: "Ürün A x1, Ürün B (Antrasit / L) x2", source: "system" },
+    { key: "total_formatted", label: "Toplam Tutar", sampleValue: "₺1.250,00", source: "system" },
+    { key: "tracking_number", label: "Kargo Takip Numarası", sampleValue: "TR123456789", source: "system" },
+    { key: "shipping_carrier", label: "Kargo Firması", sampleValue: "Yurtiçi Kargo", source: "system" },
+  ],
+  ORDER_ADMIN_NOTIFICATION: [
+    { key: "order_number", label: "Sipariş Numarası", sampleValue: "ORD-1024", source: "system" },
+    { key: "customer_name", label: "Müşteri Adı", sampleValue: "Ayşe Yılmaz", source: "system" },
+    { key: "customer_email", label: "Müşteri E-postası", sampleValue: "ayse@example.com", source: "system" },
+    { key: "items_summary", label: "Sipariş İçeriği", sampleValue: "Ürün A x1, Ürün B x2", source: "system" },
+    { key: "total_formatted", label: "Toplam Tutar", sampleValue: "₺1.250,00", source: "system" },
+    { key: "placed_at", label: "Sipariş Tarihi", sampleValue: "08.09.2026 14:30", source: "system" },
+    { key: "order_admin_url", label: "Yönetim Paneli Bağlantısı", sampleValue: "https://example.com/admin/orders/abc", source: "system" },
+  ],
   ORG_INVITATION: [
     { key: "inviter_name", label: "Davet Eden", sampleValue: "Ayşe Yılmaz", source: "system" },
     { key: "organization_name", label: "Organizasyon Adı", sampleValue: "Örnek Organizasyon", source: "system" },

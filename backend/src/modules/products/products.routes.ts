@@ -20,6 +20,7 @@ import {
   ProductCategorySchema,
   ProductListItemSchema,
   ProductSchema,
+  ProductSearchResultSchema,
 } from "../../schemas/entities";
 import {
   toContentRevisionDto,
@@ -27,6 +28,7 @@ import {
   toProductCategoryDto,
   toProductDto,
   toProductListItemDto,
+  toProductSearchHitDto,
 } from "../../mappers";
 import { ConflictError, NotFoundError, ValidationError } from "../../lib/errors";
 import { parseCursor, buildPageMetaWithCounts } from "../../lib/pagination";
@@ -80,10 +82,18 @@ import {
   ProductRevisionIdParamSchema,
   ProductSlugParamSchema,
   ProductVariantIdParamSchema,
+  SearchProductsQuerySchema,
   UpdateProductCategoryRequestSchema,
   UpdateProductRequestSchema,
   UpdateProductVariantRequestSchema,
 } from "./products.schemas";
+
+// `.claude/architect-scope-search-and-order-emails.md` §1.5 (bağlayıcı) — `checkout.routes.ts::
+// CHECKOUT_RATE_LIMIT` ile AYNI route-level override deseni. Public + kimliksiz + her tuş
+// vuruşunda tetiklenebilen + iki DB sorgusu çalıştıran bir uç; global taban (`env.RATE_LIMIT_MAX`)
+// TÜM uçlar için ortaktır, arama tek başına o bütçeyi tüketip gerçek sayfa isteklerini 429'a
+// düşürmemelidir.
+const PRODUCT_SEARCH_RATE_LIMIT = { max: 60, timeWindow: "1 minute" };
 
 /**
  * §2.2 madde 5 (.claude/architect-scope-ecommerce-pro-template.md, bağlayıcı) — görsel bekleyen
@@ -1226,6 +1236,71 @@ export async function publicProductsRoutes(app: FastifyInstance) {
         ok(dtos, {
           pagination: { page, perPage: effectivePerPage, total, totalPages },
           ...(computedFacets ? { facets: computedFacets } : {}),
+        })
+      );
+    }
+  );
+
+  /**
+   * `.claude/architect-scope-search-and-order-emails.md` §1 (bağlayıcı) — header canlı ürün arama
+   * (instant search autocomplete). Statik `/search` segmenti find-my-way tarafından `/:slug`
+   * parametrik segmentinden ÖNCE değerlendirilir, bu yüzden ayrı bir rezerve-slug listesi
+   * GEREKMEZ (§1.1 madde 2, bilinçli kabul edilmiş ihmal edilebilir risk). Cache header EKLENMEZ
+   * (§1.5) — önbellek sorumluluğu istemcidedir.
+   */
+  server.get(
+    "/search",
+    {
+      config: { rateLimit: PRODUCT_SEARCH_RATE_LIMIT },
+      schema: {
+        querystring: SearchProductsQuerySchema,
+        response: { 200: ApiSuccessSchema(ProductSearchResultSchema) },
+      },
+    },
+    async (request, reply) => {
+      const term = request.query.search;
+
+      const [products, categories] = await Promise.all([
+        app.prisma.product.findMany({
+          where: {
+            status: "PUBLISHED",
+            deletedAt: null,
+            OR: [
+              { title: { contains: term, mode: "insensitive" } },
+              { sku: { contains: term, mode: "insensitive" } },
+              { category: { name: { contains: term, mode: "insensitive" } } },
+            ],
+          },
+          select: {
+            id: true,
+            title: true,
+            slug: true,
+            priceCents: true,
+            discountPriceCents: true,
+            currency: true,
+            sku: true,
+            coverMedia: true,
+          },
+          orderBy: [{ salesCount: "desc" }, { seq: "desc" }],
+          take: 5,
+        }),
+        app.prisma.productCategory.findMany({
+          where: {
+            name: { contains: term, mode: "insensitive" },
+            OR: [
+              { products: { some: { status: "PUBLISHED", deletedAt: null } } },
+              { children: { some: { products: { some: { status: "PUBLISHED", deletedAt: null } } } } },
+            ],
+          },
+          orderBy: { seq: "asc" },
+          take: 3,
+        }),
+      ]);
+
+      return reply.send(
+        ok({
+          products: products.map(toProductSearchHitDto),
+          categories: categories.map(toProductCategoryDto),
         })
       );
     }

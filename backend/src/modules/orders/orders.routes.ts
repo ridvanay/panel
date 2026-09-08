@@ -251,8 +251,11 @@ export async function ordersRoutes(app: FastifyInstance) {
         metadata: {
           from: existing.status,
           to: targetStatus,
-          ...(targetStatus === "CANCELLED"
-            ? { cancellationReason, customerEmailRequested: sendCustomerEmail ?? true }
+          ...(targetStatus === "CANCELLED" ? { cancellationReason } : {}),
+          // `.claude/architect-scope-search-and-order-emails.md` §2.4B — artık `CANCELLED` VEYA
+          // `SHIPPED` hedeflerinde yazılır (önceki tur yalnızca `CANCELLED`'daydı).
+          ...(targetStatus === "CANCELLED" || targetStatus === "SHIPPED"
+            ? { customerEmailRequested: sendCustomerEmail ?? true }
             : {}),
         },
         ipAddress: request.ip,
@@ -284,6 +287,38 @@ export async function ordersRoutes(app: FastifyInstance) {
         // dolayısıyla bu kayıt da OLUŞMAZ (§6.2 bağlayıcı kural).
         await logAudit(app, {
           action: "order.cancel_email",
+          status: delivered ? "SUCCESS" : "FAILURE",
+          targetType: "Order",
+          targetId: order.id,
+          metadata: { emailDelivered: delivered },
+        });
+      }
+
+      // `.claude/architect-scope-search-and-order-emails.md` §2.4B (bağlayıcı) — "kargoya
+      // verildi" e-postası, yukarıdaki `order.cancel_email` bloğunun yapısı BİREBİR taklit
+      // edilir. `order.trackingNumber` koşulu savunmacıdır: şema `SHIPPED` hedefinde zaten
+      // zorunlu kılar (422), ama takip numarasız bir e-posta hiçbir koşulda gitmemelidir.
+      // Yalnızca durum GEÇİŞİNDE tetiklenir — `PATCH /admin/orders/{orderId}` ile takip numarası
+      // sonradan değiştirilirse e-posta YENİDEN GÖNDERİLMEZ.
+      if (targetStatus === "SHIPPED" && sendCustomerEmail !== false && order.trackingNumber) {
+        let delivered = false;
+        try {
+          await sendTemplateEmail(app, "ORDER_SHIPPED", order.customerEmail, {
+            order_number: order.orderNumber,
+            customer_name: order.customerName ?? order.customerEmail,
+            items_summary: order.items
+              .map((item) => `${item.productTitle}${item.variantLabel ? ` (${item.variantLabel})` : ""} x${item.quantity}`)
+              .join(", "),
+            total_formatted: formatMoney(order.totalCents, order.currency),
+            tracking_number: order.trackingNumber,
+            shipping_carrier: order.shippingCarrier ?? "",
+          });
+          delivered = true;
+        } catch (err) {
+          app.log.error({ err, orderId: order.id }, "Kargo bildirim e-postası gönderilemedi");
+        }
+        await logAudit(app, {
+          action: "order.shipped_email",
           status: delivered ? "SUCCESS" : "FAILURE",
           targetType: "Order",
           targetId: order.id,

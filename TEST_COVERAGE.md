@@ -2516,3 +2516,71 @@ sürükleme kapsamı) hem `demo-templates-importer.test.ts`/`tests/integration/n
 (28/28, backend-agent'ın topolojik sıralama paylaşımı) yeniden koşuldu — kırılma YOK. Frontend
 birim testleri (`nav-tree-utils.test.ts`/`nav-tree-editor.test.tsx`/`site-header-nested-nav.test.tsx`,
 toplam 54 test) de yeşil.
+
+## Header canlı ürün arama + sipariş yaşam döngüsü e-postaları — E2E kapsamı (bu turda eklendi)
+
+Kaynak: `.claude/architect-scope-search-and-order-emails.md` §1.6 + §2.7 (qa-agent görev
+listesi, bağlayıcı).
+
+**Ortam notu (`admin-navigation-deep-nesting` bölümüyle AYNI sınıf sorun):** e2e backend süreci
+(port 4001, `tsx src/server.ts`, watch MODU YOK) db-agent'ın `20260908111444_add_order_shipped_
+admin_notification_purposes` migration'ından SONRA yeniden başlatılmamıştı. `saas_e2e`
+veritabanına migration (`prisma migrate deploy`) + seed (`prisma/seed.ts` — yeni `ORDER_SHIPPED`/
+`ORDER_ADMIN_NOTIFICATION`/`ORDER_CANCELLATION` sistem şablonları) uygulandıktan sonra,
+ÇALIŞMAKTA OLAN eski backend süreci `GET /admin/notifications/templates`'te
+`PrismaClientUnknownRequestError` ile 500 vermeye devam etti (bellekteki Prisma Client yeni enum
+değerlerini tanımıyordu — Docker container'ın yeniden build edilmesi gerektiği ana bug'la BİREBİR
+AYNI kök neden sınıfı, farklı bir çalışan süreç için). qa-agent süreci sonlandırıp
+`DOTENV_CONFIG_PATH=.env.e2e npx tsx src/server.ts` ile yeniden başlattı; ardından TÜM testler
+geçti. **Not devops-agent'a:** `admin-navigation-deep-nesting` bölümündeki AYNI tavsiye geçerli —
+e2e backend süreci `tsx --watch` ile veya CI'da her koşumda taze başlatılırsa bu sınıf "ortam
+staleness" sorunu tekrar yaşanmaz.
+
+### İş 1 — `frontend/tests/e2e/header-instant-search.spec.ts` (YENİ dosya)
+
+İzole fixture verisi (RUN_SUFFIX ile benzersiz terim — paylaşımlı `saas_e2e` DB'deki başka
+spec'lerin ürün/kategori adlarıyla ÇAKIŞMAZ, bkz. dosya başlığı).
+
+| # | Senaryo | Durum |
+|---|---|---|
+| 1 | 1 karakterde `GET /products/search` isteği ATILMAZ (network interception ile doğrulandı), açılır kutu görünmez | ✅ Geçiyor |
+| 2 | ≥2 karakterde açılır kutuda "Ürünler" + "Kategoriler" grupları (sıra: Ürünler önce) doğru içerikle görünür; ürün sonucuna tıklayınca `/products/{slug}` sayfasına gider | ✅ Geçiyor |
+| 3 | Bulunamayan terimde boş durum metni (`"..." için sonuç bulunamadı`) gösterilir | ✅ Geçiyor |
+| 4 | "Tüm sonuçları gör" `/products?search=...` katalog sayfasına geçer, ürün orada da görünür | ✅ Geçiyor |
+
+### İş 1 — Sipariş yaşam döngüsü e-postaları: `frontend/tests/e2e/order-lifecycle-emails.spec.ts` (YENİ dosya)
+
+`admin-order-management-pro.spec.ts`'in test "2"siyle AYNI gerekçe: e2e ortamında gerçek SMTP
+yok (backend dev-fallback Ethereal hesabına düşer, ağ bağımlı) — e-posta gönderim SONUCU DEĞİL,
+best-effort audit KAYDININ oluşup oluşmadığı doğrulanır. UI sınırı: "Kargoya ver" diyaloğu
+`sendCustomerEmail` alanını hiç göndermez, bu yüzden `sendCustomerEmail:false` senaryosu yalnızca
+doğrudan API ile test edilebilir.
+
+| # | Senaryo | Durum |
+|---|---|---|
+| 1 | PAID → SHIPPED (admin panel, gerçek "Kargoya Ver" diyaloğu) — activity akışında `order.shipped_email` + `order.status_change` (`customerEmailRequested:true`) görünür | ✅ Geçiyor |
+| 2 | `sendCustomerEmail:false` ile SHIPPED (doğrudan API) — `order.shipped_email` HİÇ OLUŞMAZ, `customerEmailRequested:false` | ✅ Geçiyor |
+| 3 | Admin ayarlar sayfasında "Yeni sipariş bildirim e-postası" alanı doldurulup kaydedilir, sayfa yenilemesinde (`reload()`) geri okunur; API çapraz kontrolü + public `GET /settings`'te alanın SIZMADIĞI doğrulanır | ✅ Geçiyor |
+| 4 | Bildirim adresi ayarlıyken yeni ödenmiş sipariş (PENDING→PAID, gerçek Stripe webhook imzasıyla) — activity'de `order.admin_notify_email` (alıcı adresi metadata'ya YAZILMADAN) görünür | ✅ Geçiyor |
+
+Teardown: fixture ürün/sipariş silinir, `orderNotificationEmail` testten ÖNCEKİ orijinal değerine
+(`null`) geri yazılır — doğrulandı.
+
+### İş 2 — `/admin/notifications/templates` 500 regresyonu: `frontend/tests/e2e/admin-notifications-templates-500-fix.spec.ts` (YENİ dosya)
+
+Kök neden bu oturumda ZATEN düzeltildi (Docker `backend` container `--build` ile yeniden
+oluşturuldu — bkz. görev tanımı); qa-agent yalnızca doğruladı, KOD DEĞİŞTİRMEDİ.
+
+| # | Senaryo | Durum |
+|---|---|---|
+| 1 | `GET /admin/notifications/templates` 200 döner, `ORDER_SHIPPED`/`ORDER_ADMIN_NOTIFICATION` dahil TÜM sistem amaçları listede mevcut | ✅ Geçiyor |
+| 2 | Gerçek tarayıcıda sayfa açılışında `<main>` içinde hata `Alert`i (`role="alert"`) YOK, "Kargo Bildirimi"/"Yeni Sipariş Bildirimi" Türkçe etiketleriyle tabloda görünür, `GET /admin/notifications/templates` ağ isteği 200 | ✅ Geçiyor |
+
+**Regresyon:** `admin-order-management-pro.spec.ts` (8/8) bu turun ortam yeniden başlatmasından
+etkilenmediği doğrulanmak için yeniden koşuldu — kırılma YOK.
+
+**Eksik/bilinçli dışarıda bırakılan kapsam:** §1'in SKU/kategori-adı eşleşmesi, 5/3 tavanı,
+taslak/çöp ürün sızıntısı gibi sunucu tarafı kuralları backend-agent'ın kendi birim testlerinde
+zaten kapsanıyor (§1.6) — burada TEKRAR EDİLMEDİ. §2'nin SMTP hata/başarı, `sendCustomerEmail`
+şema daraltması (422), public `GET /settings` alan listesi gibi kombinasyonları da AYNI şekilde
+`backend/tests/integration/{orders,settings,webhook-order}.test.ts`'te zaten var.

@@ -6,8 +6,8 @@ import { requirePanelAccess } from "../../middleware/panel-access";
 import { ROLES_ADMIN } from "../../lib/site-roles";
 import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema } from "../../schemas/common";
-import { PageSchema, SiteSettingsSchema } from "../../schemas/entities";
-import { toPageDto, toSiteSettingsDto } from "../../mappers";
+import { PageSchema, SiteSettingsSchema, AdminSiteSettingsSchema } from "../../schemas/entities";
+import { toPageDto, toAdminSiteSettingsDto } from "../../mappers";
 import { attachLocalizationsOne } from "../../lib/localization";
 import { logAudit } from "../../lib/audit";
 import { ValidationError } from "../../lib/errors";
@@ -31,6 +31,9 @@ export const DEFAULTS = {
   // tahmini teslimat satırını HİÇ render etmez.
   shippingEstimatedDaysMin: null as number | null,
   shippingEstimatedDaysMax: null as number | null,
+  // `.claude/architect-scope-search-and-order-emails.md` §2.3 (bağlayıcı) — `null`/boş = yeni
+  // sipariş bildirimi (ORDER_ADMIN_NOTIFICATION) KAPALI (best-effort atlanır, hata DEĞİLDİR).
+  orderNotificationEmail: null as string | null,
 };
 
 /**
@@ -48,9 +51,15 @@ function assertShippingEstimateRange(finalMin: number | null, finalMax: number |
   }
 }
 
+/**
+ * `.claude/architect-scope-search-and-order-emails.md` §2.3 (bağlayıcı) — TEK okuma yardımcısı,
+ * `orderNotificationEmail` DAHİL tüm alanları döner. `publicSettingsRoutes`'un yanıt şeması
+ * (`SiteSettingsSchema`) `.strict()` DEĞİLDİR — fastify-type-provider-zod serileştirmesi bu
+ * fazladan alanı SESSİZCE STRIP EDER, dolayısıyla public uçtan asla SIZMAZ (§2.3 sızıntı kararı).
+ */
 async function readSettings(app: FastifyInstance) {
   const row = await app.prisma.siteSettings.findUnique({ where: { id: SETTINGS_ID } });
-  return row ? toSiteSettingsDto(row) : DEFAULTS;
+  return row ? toAdminSiteSettingsDto(row) : DEFAULTS;
 }
 
 /** `/settings` prefix'i altında bağlanır — herkese açık, site header/nav'ı bunu okur. */
@@ -95,7 +104,7 @@ export async function adminSettingsRoutes(app: FastifyInstance) {
   server.addHook("preHandler", authenticate);
   server.addHook("preHandler", requirePanelAccess());
 
-  server.get("/", { schema: { response: { 200: ApiSuccessSchema(SiteSettingsSchema) } } }, async (_request, reply) => {
+  server.get("/", { schema: { response: { 200: ApiSuccessSchema(AdminSiteSettingsSchema) } } }, async (_request, reply) => {
     return reply.send(ok(await readSettings(app)));
   });
 
@@ -103,7 +112,7 @@ export async function adminSettingsRoutes(app: FastifyInstance) {
     "/",
     {
       preHandler: requireSiteRole(...ROLES_ADMIN),
-      schema: { body: UpdateSiteSettingsRequestSchema, response: { 200: ApiSuccessSchema(SiteSettingsSchema) } },
+      schema: { body: UpdateSiteSettingsRequestSchema, response: { 200: ApiSuccessSchema(AdminSiteSettingsSchema) } },
     },
     async (request, reply) => {
       const existing = await app.prisma.siteSettings.findUnique({ where: { id: SETTINGS_ID } });
@@ -135,7 +144,7 @@ export async function adminSettingsRoutes(app: FastifyInstance) {
         ipAddress: request.ip,
       });
 
-      return reply.send(ok(toSiteSettingsDto(settings)));
+      return reply.send(ok(toAdminSiteSettingsDto(settings)));
     }
   );
 

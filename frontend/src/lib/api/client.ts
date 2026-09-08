@@ -14,6 +14,12 @@ interface RequestOptions {
   query?: Record<string, string | number | boolean | undefined>;
   /** /auth/* uçlarının kendisi için true: 401'de sonsuz refresh döngüsünü engeller. */
   skipAuthRetry?: boolean;
+  /**
+   * `.claude/architect-scope-search-and-order-emails.md` §1.6 — çağıranın isteği iptal
+   * edebilmesi için (ör. header canlı arama: yeni tuş vuruşunda önceki isteği iptal etme).
+   * Geriye dönük uyumlu, opsiyonel — verilmezse davranış DEĞİŞMEZ.
+   */
+  signal?: AbortSignal;
 }
 
 function buildUrl(path: string, query?: RequestOptions["query"]): string {
@@ -88,8 +94,15 @@ async function doFetch(path: string, options: RequestOptions, requestId: string)
       headers,
       credentials: "include",
       body: options.body === undefined ? undefined : isFormData ? (options.body as FormData) : JSON.stringify(options.body),
+      signal: options.signal,
     });
   } catch (err) {
+    // İptal edilen istek (ör. header canlı arama'nın önceki `AbortController`'ı) gerçek bir ağ
+    // hatası DEĞİLDİR — çağıran kod bunu sessizce yutmalıdır (bkz. `header-search.tsx`). Orijinal
+    // `AbortError`'ı olduğu gibi fırlatıyoruz: Sentry'ye raporlanmaz, `networkError()`e sarılmaz.
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw err;
+    }
     // Ağ hatası (DNS/CORS/sunucu tamamen erişilemez) — backend'e hiç ulaşmadığı için orada
     // loglanmaz/Sentry'ye gitmez; bu yüzden burada, elimizdeki tek yerde raporlanır.
     Sentry.captureException(err, { tags: { requestId }, contexts: { request: { path, method: options.method ?? "GET" } } });

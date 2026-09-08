@@ -77,6 +77,7 @@ describe("AdminModulesPage — a11y", () => {
       freeShippingThresholdCents: null,
       shippingEstimatedDaysMin: null,
       shippingEstimatedDaysMax: null,
+      orderNotificationEmail: null,
     });
   });
 

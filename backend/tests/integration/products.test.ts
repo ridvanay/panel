@@ -1510,6 +1510,12 @@ describe("products — modül kapalıyken (§10.9 Eklenti/Modül Yönetimi)", ()
     });
     expect(adminGet.statusCode).toBe(200);
     expect(adminGet.json().data.id).toBe(product.id);
+
+    // `.claude/architect-scope-search-and-order-emails.md` §1.1 madde 1 — `/search` `products`
+    // modülünün ALT kaynağıdır, router seviyesindeki `requireModuleEnabled` guard'ı sayesinde
+    // modül kapalıyken AYRI bir kod GEREKMEDEN 404 döner.
+    const publicSearch = await app.inject({ method: "GET", url: "/api/v1/products/search?search=deneme" });
+    expect(publicSearch.statusCode).toBe(404);
   });
 });
 
@@ -1803,5 +1809,186 @@ describe("GET /products (katalog — filtre/sıralama/sayfalama/facet)", () => {
     const ids2 = page2.json().data.map((p: { id: string }) => p.id);
     const overlap = ids1.filter((id: string) => ids2.includes(id));
     expect(overlap).toEqual([]);
+  });
+});
+
+/**
+ * `GET /products/search` (header canlı ürün arama) — `.claude/architect-scope-search-and-order-emails.md`
+ * §1 (bağlayıcı). Birim testler §1.6 backend-agent listesi BİREBİR.
+ */
+describe("GET /products/search (header canlı ürün arama — §1)", () => {
+  let app: FastifyInstance;
+  let adminToken: string;
+
+  function authHeader(token: string) {
+    return { authorization: `Bearer ${token}` };
+  }
+
+  async function createProduct(overrides: Record<string, unknown>) {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/admin/products",
+      headers: authHeader(adminToken),
+      payload: { status: "PUBLISHED", priceCents: 1000, ...overrides },
+    });
+    expect(res.statusCode).toBe(201);
+    return res.json().data;
+  }
+
+  async function createCategory(overrides: Record<string, unknown>) {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/admin/products/categories",
+      headers: authHeader(adminToken),
+      payload: overrides,
+    });
+    expect(res.statusCode).toBe(201);
+    return res.json().data;
+  }
+
+  beforeAll(async () => {
+    const { buildTestApp } = await import("../helpers/build-test-app");
+    const { resetDatabase } = await import("../helpers/reset-db");
+    const { registerTestUser } = await import("../helpers/auth");
+
+    app = await buildTestApp();
+    await resetDatabase(app.prisma);
+
+    const admin = await registerTestUser(app, { email: "products-search-admin@example.com" });
+    adminToken = admin.accessToken;
+  });
+
+  afterAll(async () => {
+    const { resetDatabase } = await import("../helpers/reset-db");
+    await resetDatabase(app.prisma);
+    await app.close();
+  });
+
+  it("2 karakterin altında 422 döner (VALIDATION_ERROR)", async () => {
+    const res = await app.inject({ method: "GET", url: "/api/v1/products/search?search=a" });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.details).toHaveProperty("search");
+  });
+
+  it("trim SONRASI 2 karakterin altında kalırsa da 422 döner", async () => {
+    const res = await app.inject({ method: "GET", url: `/api/v1/products/search?search=${encodeURIComponent("  a ")}` });
+    expect(res.statusCode).toBe(422);
+  });
+
+  it("search parametresi hiç gönderilmezse 422 döner", async () => {
+    const res = await app.inject({ method: "GET", url: "/api/v1/products/search" });
+    expect(res.statusCode).toBe(422);
+  });
+
+  it("bulunamayan terimde 404 DEĞİL, boş {products:[],categories:[]} döner", async () => {
+    const marker = `HicbirYerdeYok${Date.now()}`;
+    const res = await app.inject({ method: "GET", url: `/api/v1/products/search?search=${marker}` });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data).toEqual({ products: [], categories: [] });
+  });
+
+  it("taslak (DRAFT) ve çöpteki ürün sonuçta DÖNMEZ, yayınlanan ürün döner", async () => {
+    const marker = `AramaGizlilik${Date.now()}`;
+    const draft = await createProduct({ title: `${marker} Taslak`, status: "DRAFT" });
+    const published = await createProduct({ title: `${marker} Yayında` });
+    const trashed = await createProduct({ title: `${marker} Çöpte` });
+    await app.inject({
+      method: "DELETE",
+      url: `/api/v1/admin/products/${trashed.id}`,
+      headers: authHeader(adminToken),
+    });
+
+    const res = await app.inject({ method: "GET", url: `/api/v1/products/search?search=${encodeURIComponent(marker)}` });
+    expect(res.statusCode).toBe(200);
+    const ids = res.json().data.products.map((p: { id: string }) => p.id);
+    expect(ids).toContain(published.id);
+    expect(ids).not.toContain(draft.id);
+    expect(ids).not.toContain(trashed.id);
+  });
+
+  it("SKU ile eşleşir", async () => {
+    const sku = `SKU-ARAMA-${Date.now()}`;
+    const product = await createProduct({ title: "Alakasız Başlık", sku });
+    const res = await app.inject({ method: "GET", url: `/api/v1/products/search?search=${sku}` });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.products.map((p: { id: string }) => p.id)).toContain(product.id);
+  });
+
+  it("kategori adıyla eşleşir (ürünün kendi title/sku'sunda terim GEÇMESE bile)", async () => {
+    const marker = `AramaKategori${Date.now()}`;
+    const category = await createCategory({ name: `${marker} Kategori` });
+    const product = await createProduct({ title: "Bambaşka Bir Ürün Adı", categoryId: category.id });
+
+    const res = await app.inject({ method: "GET", url: `/api/v1/products/search?search=${encodeURIComponent(marker)}` });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.products.map((p: { id: string }) => p.id)).toContain(product.id);
+    expect(res.json().data.categories.map((c: { id: string }) => c.id)).toContain(category.id);
+  });
+
+  it("5 ürün / 3 kategori tavanı aşılmaz", async () => {
+    const marker = `AramaTavan${Date.now()}`;
+    for (let i = 0; i < 7; i++) {
+      await createProduct({ title: `${marker} Ürün ${i}` });
+    }
+    for (let i = 0; i < 5; i++) {
+      await createCategory({ name: `${marker} Kategori ${i}-${crypto.randomUUID()}` });
+    }
+
+    const res = await app.inject({ method: "GET", url: `/api/v1/products/search?search=${encodeURIComponent(marker)}` });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.products.length).toBeLessThanOrEqual(5);
+    // Kategoriler ürünsüz oluşturuldu — hiçbiri dönmemeli (ayrı testte doğrulanıyor), burada
+    // yalnızca ürün tavanı doğrulanır (kategori tavanı ayrı testte).
+  });
+
+  it("hiçbir yayınlanmış ürünü olmayan kategori DÖNMEZ", async () => {
+    const marker = `AramaBosKategori${Date.now()}`;
+    const emptyCategory = await createCategory({ name: `${marker} Boş Kategori` });
+
+    const res = await app.inject({ method: "GET", url: `/api/v1/products/search?search=${encodeURIComponent(marker)}` });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.categories.map((c: { id: string }) => c.id)).not.toContain(emptyCategory.id);
+  });
+
+  it("yalnızca ALT kategorisinde yayınlanmış ürünü olan KÖK kategori DÖNER", async () => {
+    const marker = `AramaKokAlt${Date.now()}`;
+    const root = await createCategory({ name: `${marker} Kök` });
+    const child = await createCategory({ name: `${marker} Çocuk`, parentId: root.id });
+    await createProduct({ title: `${marker} Alt Kategori Ürünü`, categoryId: child.id });
+
+    const res = await app.inject({ method: "GET", url: `/api/v1/products/search?search=${encodeURIComponent(marker)}` });
+    expect(res.statusCode).toBe(200);
+    const categoryIds = res.json().data.categories.map((c: { id: string }) => c.id);
+    expect(categoryIds).toContain(root.id);
+  });
+
+  it("3 kategori tavanı aşılmaz", async () => {
+    const marker = `AramaKategoriTavan${Date.now()}`;
+    for (let i = 0; i < 5; i++) {
+      const category = await createCategory({ name: `${marker} ${i}` });
+      await createProduct({ title: `${marker} Ürünü ${i}`, categoryId: category.id });
+    }
+
+    const res = await app.inject({ method: "GET", url: `/api/v1/products/search?search=${encodeURIComponent(marker)}` });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.categories.length).toBeLessThanOrEqual(3);
+  });
+
+  it("yanıt zarfında meta ALANI YOKTUR, ürün alan adları priceCents/discountPriceCents/currency/sku/coverMedia'dır", async () => {
+    const marker = `AramaSekil${Date.now()}`;
+    await createProduct({ title: marker, discountPriceCents: 500 });
+
+    const res = await app.inject({ method: "GET", url: `/api/v1/products/search?search=${encodeURIComponent(marker)}` });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).not.toHaveProperty("meta");
+    const hit = res.json().data.products[0];
+    expect(hit).toHaveProperty("priceCents");
+    expect(hit).toHaveProperty("discountPriceCents");
+    expect(hit).toHaveProperty("currency");
+    expect(hit).toHaveProperty("sku");
+    expect(hit).toHaveProperty("coverMedia");
+    expect(hit).not.toHaveProperty("price");
+    expect(hit).not.toHaveProperty("salePrice");
+    expect(hit).not.toHaveProperty("coverImage");
   });
 });

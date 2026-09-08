@@ -111,6 +111,31 @@ describe("admin orders — /admin/orders (§10.9.3 Sepet + Stripe Checkout)", ()
         availableVariables: ["order_number", "customer_name", "items_summary", "total_formatted", "cancellation_reason"],
       },
     });
+
+    // `.claude/architect-scope-search-and-order-emails.md` §2.2a — `ORDER_SHIPPED` şablonunun
+    // test kopyası (`prisma/seed.ts`'in seed ettiği gerçek şablonun aynısı, global test setup'ı
+    // seed script'ini çalıştırmıyor — yukarıdaki ORDER_CANCELLATION İLE AYNI gerekçe).
+    await app.prisma.emailTemplate.create({
+      data: {
+        key: "ORDER_SHIPPED",
+        name: "Kargo Bildirim E-postası",
+        purpose: "ORDER_SHIPPED",
+        editorMode: "RAW",
+        isSystem: true,
+        isActive: true,
+        subject: "Siparişiniz kargoya verildi — {{order_number}}",
+        bodyHtml:
+          "<p>{{customer_name}}, {{order_number}} numaralı siparişiniz kargoya verildi. Takip numarası: {{tracking_number}}. Toplam: {{total_formatted}}. {{items_summary}}</p>",
+        availableVariables: [
+          "order_number",
+          "customer_name",
+          "items_summary",
+          "total_formatted",
+          "tracking_number",
+          "shipping_carrier",
+        ],
+      },
+    });
   });
 
   afterEach(() => {
@@ -619,6 +644,88 @@ describe("admin orders — /admin/orders (§10.9.3 Sepet + Stripe Checkout)", ()
       });
       expect(res.statusCode).toBe(200);
       expect(res.json().data.status).toBe("CANCELLED");
+    });
+  });
+
+  describe("kargo bildirim e-postası tetikleyicisi (§2.4B)", () => {
+    it("SHIPPED + trackingNumber → sendMail çağrılır, order.shipped_email SUCCESS audit kaydı oluşur", async () => {
+      const order = await createOrder("PAID");
+      const res = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/admin/orders/${order.id}/status`,
+        headers: authHeader(adminToken),
+        payload: { status: "SHIPPED", trackingNumber: "TRK-SHIPPED-1" },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(sendMailMock).toHaveBeenCalledTimes(1);
+
+      const activityRes = await app.inject({
+        method: "GET",
+        url: `/api/v1/admin/orders/${order.id}/activity`,
+        headers: authHeader(adminToken),
+      });
+      const emailEntry = activityRes.json().data.find((e: { action: string }) => e.action === "order.shipped_email");
+      expect(emailEntry).toBeDefined();
+      expect(emailEntry.status).toBe("SUCCESS");
+      expect(emailEntry.metadata).toMatchObject({ emailDelivered: true });
+
+      const statusChangeEntry = activityRes.json().data.find((e: { action: string }) => e.action === "order.status_change");
+      expect(statusChangeEntry.metadata).toMatchObject({ customerEmailRequested: true });
+    });
+
+    it("sendCustomerEmail: false iken SHIPPED geçişinde e-posta HİÇ denenmez ve order.shipped_email kaydı OLUŞMAZ", async () => {
+      const order = await createOrder("PAID");
+      const res = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/admin/orders/${order.id}/status`,
+        headers: authHeader(adminToken),
+        payload: { status: "SHIPPED", trackingNumber: "TRK-SHIPPED-2", sendCustomerEmail: false },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(sendMailMock).not.toHaveBeenCalled();
+
+      const activityRes = await app.inject({
+        method: "GET",
+        url: `/api/v1/admin/orders/${order.id}/activity`,
+        headers: authHeader(adminToken),
+      });
+      const emailEntry = activityRes.json().data.find((e: { action: string }) => e.action === "order.shipped_email");
+      expect(emailEntry).toBeUndefined();
+    });
+
+    it("e-posta gönderimi başarısız olsa bile PATCH .../status 200 döner ve FAILURE audit kaydı yazılır (best-effort)", async () => {
+      sendMailMock.mockImplementationOnce(async () => {
+        throw new Error("SMTP bağlantısı başarısız");
+      });
+      const order = await createOrder("PAID");
+      const res = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/admin/orders/${order.id}/status`,
+        headers: authHeader(adminToken),
+        payload: { status: "SHIPPED", trackingNumber: "TRK-SHIPPED-3" },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().data.status).toBe("SHIPPED");
+
+      const activityRes = await app.inject({
+        method: "GET",
+        url: `/api/v1/admin/orders/${order.id}/activity`,
+        headers: authHeader(adminToken),
+      });
+      const emailEntry = activityRes.json().data.find((e: { action: string }) => e.action === "order.shipped_email");
+      expect(emailEntry.status).toBe("FAILURE");
+      expect(emailEntry.metadata).toMatchObject({ emailDelivered: false });
+    });
+
+    it("sendCustomerEmail, status=FULFILLED ile gönderilirse 422 döner", async () => {
+      const order = await createOrder("SHIPPED");
+      const res = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/admin/orders/${order.id}/status`,
+        headers: authHeader(adminToken),
+        payload: { status: "FULFILLED", sendCustomerEmail: true },
+      });
+      expect(res.statusCode).toBe(422);
     });
   });
 

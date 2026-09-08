@@ -4647,6 +4647,9 @@ Amaca göre sistem değişkenleri (bağlayıcı — mevcut `seed.ts` ve çağrı
 | `PASSWORD_RESET` | `user_name`, `reset_link` |
 | `SYSTEM_ANNOUNCEMENT` | `user_name`, `announcement_title`, `announcement_body` |
 | `ORDER_CONFIRMATION` | `order_number`, `customer_name`, `items_summary`, `total_formatted` |
+| `ORDER_CANCELLATION` | `ORDER_CONFIRMATION` ile aynılar + `cancellation_reason` (§10.9.3) |
+| `ORDER_SHIPPED` | `ORDER_CONFIRMATION` ile aynılar + `tracking_number`, `shipping_carrier` (§10.23.2) |
+| `ORDER_ADMIN_NOTIFICATION` | `ORDER_CONFIRMATION` ile aynılar + `customer_email`, `placed_at`, `order_admin_url` (§10.23.2) |
 | `ORG_INVITATION` | `inviter_name`, `organization_name`, `accept_url` |
 | `CONTACT_FORM_NOTIFICATION` | `form_title`, `submitted_at`, `submission_url` + **iletişim formunun her alanı için `{{<field.key>}}`** |
 | `CUSTOM` | yalnızca global + kullanıcının özel değişkenleri |
@@ -6054,6 +6057,126 @@ listesi: `.claude/architect-scope-demo-template-import.md` §9.
 `SiteFont.WORK_SANS`, `SiteAppearance.buttonRadius` (pill/kare ayrımı), slider'da sekme
 navigasyonu, bülten aboneliği, çok dilli demo şablonu, "şablonu geri al" (undo). Ayrıntı:
 kaynak doküman §14.
+
+---
+
+### 10.23 Header canlı ürün araması + sipariş yaşam döngüsü e-postaları
+
+Durum: kontrat kesinleşti (2026-09-08) · Sahibi: Mimar.
+**Bağlayıcı kaynak:** `.claude/architect-scope-search-and-order-emails.md` (tam gerekçeler,
+ajan bazlı iş bölümü) + `docs/architecture/openapi.yaml` (`GET /products/search`,
+`ProductSearchHit`/`ProductSearchResult`/`AdminSiteSettings` şemaları,
+`EmailTemplatePurpose` enum'u — tek doğruluk kaynağı). Bu bölüm o dokümanların ÖZETİDİR;
+çelişkide openapi.yaml kazanır.
+
+#### 10.23.1 Canlı arama ucu (`GET /products/search`)
+
+Header'daki anlık arama kutusunun tek veri kaynağı. `publicProductsRoutes` içinde,
+router seviyesindeki `requireModuleEnabled("products")` guard'ının altında yaşar — ayrı bir
+`/search` prefix'i açmak bu guard'ı ikinci kez kopyalamayı gerektirirdi. `/products/search`
+statik segmenti, Fastify radix router'ında `/products/{slug}`'ın önünde değerlendirilir
+(çakışma yok; slug'ı birebir `search` olan ürünün erişilemez olması kabul edilmiş yan etkidir).
+
+Bağlayıcı kararlar:
+
+- **Query parametresi `search`'tür** (`q` DEĞİL) — depodaki tüm serbest metin aramalarıyla
+  aynı ad. `trim().min(2).max(100)`, **ZORUNLU**; 2 karakterin altı `422` döner ("boş sonuç"
+  değil — sözleşme ihlali görünür kalmalıdır).
+- **Yanıt `{ products, categories }`**; `meta` yoktur. Sabit tavan **5 ürün / 3 kategori**;
+  `limit`/`page`/`cursor` bu uçta açılmaz. Toplam sonuç sayısı DÖNMEZ — her tuş vuruşunda
+  ikinci bir `COUNT` sorgusu reddedildi; "tüm sonuçlar" bağlantısı katalog sayfasına gider.
+- **Alan adları `ProductListItem` ile birebir aynıdır**: `priceCents`, `discountPriceCents`,
+  `currency`, `sku`, `coverMedia` (`Media` DTO'su). `price`/`salePrice`/`coverImage`
+  kısaltmaları **reddedildi** — aynı ürünün iki uçtan iki farklı adla dönmesi istemcide ikinci
+  bir fiyat/görsel formatlayıcı doğurur. Kategori için yeni tip açılmaz, mevcut
+  `ProductCategory` + `toProductCategoryDto` yeniden kullanılır.
+- **Eşleşme:** `title` / `sku` / kategori `name` üzerinde `contains` + `insensitive`.
+  `excerpt` bilinçli olarak taranmaz. Kategoriler yalnızca kendisinde VEYA (en fazla 2
+  seviyelik hiyerarşide) alt kategorisinde yayınlanmış ürünü varsa döner — çıkmaz sokak
+  sonuç üretilmez. Sıralama deterministiktir: `salesCount desc`, eşitlikte `seq desc`.
+- **`locale` desteklenmez** — yalnızca kanonik kolonlar aranır (`GET /products?search=` ile
+  aynı bilinçli sınır).
+- **Rate limit VAR:** `{ max: 60, timeWindow: "1 minute" }`, `CHECKOUT_RATE_LIMIT` ile aynı
+  route-level override deseni. Public + kimliksiz + tuş başına tetiklenen + iki DB sorgulu bir
+  uç, ortak 300/dk bütçesini tek başına tüketip gerçek sayfa isteklerini 429'a düşürmemelidir.
+- **Cache header EKLENMEZ.** İnceleme bulgusu: `backend/src/` içinde `Cache-Control`/`s-maxage`
+  hiç kullanılmıyor (`GET /products` dahil). "Mevcut deseni uygula" talimatının sonucu bu
+  yüzden header eklememektir; önde paylaşılan bir CDN de yoktur. Önbellek sorumluluğu
+  istemcidedir: **≥250 ms debounce + `AbortController` ile önceki isteği iptal + terim bazlı
+  bellek içi önbellek** (bağlayıcı frontend kuralları).
+- **Yeni indeks/`pg_trgm` EKLENMEZ (v1).** `contains + insensitive` B-tree'den yararlanamaz;
+  işe yaraması `CREATE EXTENSION` gerektirir ve mevcut veri hacmi için orantısızdır. db-agent'a
+  bu özellik için indeks görevi YOKTUR. Yeniden değerlendirme tetikleyicisi: ölçülmüş
+  p95 > 200 ms (sahibi performance-agent).
+
+#### 10.23.2 Sipariş e-postaları — gerçek akışa hizalama
+
+Bu projede **`POST /api/orders` diye bir uç yoktur ve açılmayacaktır.** Sipariş
+`POST /checkout/session`'da `PENDING` yaratılır, ödeme onayı Stripe'ın gelen webhook'undadır.
+Dolayısıyla "yeni sipariş" olayının tek doğru karşılığı **`PENDING -> PAID`** geçişidir;
+`checkout/session` anında bildirim göndermek, hiç ödenmeyecek siparişler için mağaza sahibine
+çöp bildirim üretirdi (reddedildi).
+
+İki yeni `EmailTemplatePurpose` (mevcut kısmi unique indeks `email_templates_active_purpose_key`
+bunları otomatik kapsar — yeni indeks yok):
+
+| purpose | alıcı | tetikleyici | değişkenler |
+|---|---|---|---|
+| `ORDER_SHIPPED` | müşteri | `PATCH /admin/orders/{orderId}/status` → `SHIPPED`, `sendCustomerEmail !== false`, `trackingNumber` dolu | `order_number`, `customer_name`, `items_summary`, `total_formatted`, `tracking_number`, `shipping_carrier` |
+| `ORDER_ADMIN_NOTIFICATION` | mağaza yöneticisi | `stripe.routes.ts::handleOrderPaid` (`PENDING -> PAID`), `SiteSettings.orderNotificationEmail` dolu | `order_number`, `customer_name`, `customer_email`, `items_summary`, `total_formatted`, `placed_at`, `order_admin_url` |
+
+`§10.16.5` değişken tablosu bu iki satırla genişletilir; `items_summary`/`total_formatted`
+türetme ifadeleri `ORDER_CONFIRMATION`/`ORDER_CANCELLATION` ile **birebir aynıdır** (üç
+e-posta arasında sipariş özeti farklılaşamaz).
+
+Bağlayıcı kararlar:
+
+- **Kargo takip linki üretilmez.** `Order.shippingCarrier` kapalı bir enum değil 100
+  karakterlik serbest metindir; firma adından URL türetmek yanlış link riskidir.
+  `{{tracking_number}}` düz metin basılır. Kapalı `ShippingCarrier` enum'u + URL şablonu
+  ayrı bir iştir (§10.23.4).
+- **`shipping_carrier` boş olabilir** ve şablon motorunda şartlı render YOKTUR — bu yüzden
+  seed'lenen VARSAYILAN `ORDER_SHIPPED` gövdesi bu değişkeni kullanmaz (aksi hâlde
+  "Kargonuz  ile yola çıktı." gibi bozuk cümleler oluşurdu). Değişken registry'de kalır.
+- Her iki e-posta da **best-effort**tur: hata isteği/webhook'u ASLA düşürmez, yalnızca
+  loglanır. Yönetici bildirimi için alıcı adresi boşsa **sessizce atlanır ve bu bir hata
+  değildir** — `ContactForm.notifyEmail` (`sendNotificationBestEffort`) ile aynı semantik.
+- Audit: `order.shipped_email` ve `order.admin_notify_email` (`status: SUCCESS|FAILURE`,
+  `metadata: { emailDelivered }`). `order.` önekli oldukları için
+  `GET /admin/orders/{orderId}/activity` akışında ek kod olmadan görünürler. **Alıcı adresi
+  metadata'ya yazılmaz** (veri minimizasyonu — `order.cancel_email` kuralı aynen geçerli).
+- `ORDER_SHIPPED` yalnızca **durum geçişinde** tetiklenir; takip numarası sonradan
+  `PATCH /admin/orders/{orderId}` ile değiştirilirse yeniden gönderilmez.
+- `ORDER_CONFIRMATION` akışı **değişmez** (audit kaydı olmaması bilinen asimetridir → §10.23.4).
+- `sendCustomerEmail` artık `CANCELLED` **veya** `SHIPPED` hedeflerinde gönderilebilir
+  (diğerlerinde hâlâ 422). `cancellationReason`/`confirmWithoutRefund` daraltmaları
+  değişmez. Geriye dönük uyumludur.
+
+#### 10.23.3 `SiteSettings.orderNotificationEmail` ve public/admin DTO ayrımı
+
+Yeni kolon: `orderNotificationEmail String?` — `null` = bildirim kapalı. Yazma doğrulaması
+`ContactForm.notifyEmail` ile birebir (`z.string().email().max(254).nullable().optional()`);
+boş string kabul edilmez, kapatmak için `null` gönderilir.
+
+**Bağlayıcı güvenlik kararı:** `GET /settings` **PUBLIC**tir ve bugüne kadar tüm
+`SiteSettingsSchema`'yı dönüyordu. Bu alan oraya eklenseydi mağaza sahibinin e-posta adresi
+kimliksiz herkese açılırdı (spam/harvest + gereksiz PII ifşası). Emsal: `PublicContactForm`
+de `notifyEmail`'i bilinçli olarak döndürmez. Bu yüzden:
+
+- `SiteSettings` (public DTO) **değişmez**; `toSiteSettingsDto` **değişmez**.
+- Yeni `AdminSiteSettings = SiteSettings + orderNotificationEmail` +
+  `toAdminSiteSettingsDto`; yalnızca `GET`/`PATCH /admin/settings` bunu döner.
+- **Kural (ileriye dönük):** `SiteSettings`'e eklenecek her yeni alan için önce "bu, kimliksiz
+  bir ziyaretçinin görmesi gereken bir veri mi?" sorusu yanıtlanır; hayırsa alan
+  `AdminSiteSettings`'e gider.
+
+#### 10.23.4 Kapsam dışı (backlog)
+
+Alaka düzeyine göre sıralama / `pg_trgm` benzerlik araması; çeviri (`translations`) içinde
+arama; arama sonuçlarında blog/sayfa gibi diğer içerik türleri; kapalı `ShippingCarrier`
+enum'u + kargo takip URL şablonu; `ORDER_CONFIRMATION` için audit kaydı (mevcut asimetri);
+`Order` üzerinde `ContactSubmission.notifiedAt` muadili bir bildirim durumu kolonu (aktivite
+akışı yeterli görüldü).
 
 ---
 

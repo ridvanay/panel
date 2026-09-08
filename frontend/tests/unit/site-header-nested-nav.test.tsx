@@ -1,9 +1,20 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { axe } from "jest-axe";
 import { SiteHeader } from "@/components/site/site-header";
 import type { NavigationItemDto, SiteSettings } from "@/lib/api/types";
+
+// `HeaderSearch` (`productsModuleEnabled` varsayılan `true`) `useRouter` kullanır — gerçek
+// `next/navigation`'ın `useRouter`'ı App Router bağlamı DIŞINDA (bu test ortamı) fırlatır;
+// `usePathname` ise zaten sorunsuz `null` döner, bu yüzden yalnızca `useRouter` override edilir.
+vi.mock("next/navigation", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("next/navigation")>();
+  return {
+    ...actual,
+    useRouter: () => ({ push: vi.fn(), replace: vi.fn(), prefetch: vi.fn(), back: vi.fn(), forward: vi.fn(), refresh: vi.fn() }),
+  };
+});
 
 const settings: SiteSettings = {
   siteName: "Örnek Site",

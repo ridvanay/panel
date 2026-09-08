@@ -520,6 +520,33 @@ export const ProductListItemSchema = ProductSchema.omit({
 });
 export type ProductListItemDto = z.infer<typeof ProductListItemSchema>;
 
+/**
+ * `.claude/architect-scope-search-and-order-emails.md` §1.3 (bağlayıcı) — `GET /products/search`
+ * ürün eşleşmesi. Bu bir PROJEKSİYON DTO'sudur (dar bir `select`, `ProductSchema`/`toProductDto`
+ * ÜRETİMİNDEN geçmez) — ama HER alan `ProductListItem`/`Product` ile AYNI adı ve tipi taşır
+ * (`priceCents`/`discountPriceCents`/`currency`/`sku`/`coverMedia`) — `price`/`salePrice`/
+ * `coverImage` gibi ikinci bir adlandırma İCAT EDİLMEZ.
+ */
+export const ProductSearchHitSchema = z.object({
+  id: z.string().uuid(),
+  title: z.string(),
+  slug: z.string(),
+  priceCents: z.number().int(),
+  discountPriceCents: z.number().int().nullable(),
+  currency: z.string(),
+  sku: z.string().nullable(),
+  coverMedia: MediaSchema.nullable(),
+});
+export type ProductSearchHitDto = z.infer<typeof ProductSearchHitSchema>;
+
+/** `GET /products/search` yanıt gövdesi — `meta` YOKTUR (§1.3, bağlayıcı). Kategori tipi mevcut
+ * `ProductCategorySchema`'nın AYNEN yeniden kullanımıdır — yeni bir `CategorySearchHit` İCAT EDİLMEZ. */
+export const ProductSearchResultSchema = z.object({
+  products: z.array(ProductSearchHitSchema),
+  categories: z.array(ProductCategorySchema),
+});
+export type ProductSearchResultDto = z.infer<typeof ProductSearchResultSchema>;
+
 /** Katalog kenar çubuğu kategori ağacı (en fazla 2 seviye) + ürün sayacı — bkz. §3.4. */
 export interface ProductCategoryFacetDto {
   id: string;
@@ -822,6 +849,14 @@ export const SiteSettingsSchema = z.object({
 });
 export type SiteSettingsDto = z.infer<typeof SiteSettingsSchema>;
 
+// `.claude/architect-scope-search-and-order-emails.md` §2.3 (bağlayıcı) — `orderNotificationEmail`
+// public `GET /settings`'te SIZMAZ (PII/spam-harvest riski); yalnızca admin uçları bu genişletilmiş
+// DTO'yu döner. `SiteSettingsSchema` bilinçli olarak DEĞİŞTİRİLMEDİ.
+export const AdminSiteSettingsSchema = SiteSettingsSchema.extend({
+  orderNotificationEmail: z.string().nullable(),
+});
+export type AdminSiteSettingsDto = z.infer<typeof AdminSiteSettingsSchema>;
+
 // ---------- §10.9 Eklenti/Modül Yönetimi — modül TANIMI lib/module-registry.ts'te statik, burada
 // SADECE aktif/pasif durum + kim/ne zaman değiştirdiği görünür (bkz. prisma/schema.prisma::SiteModule).
 
@@ -963,6 +998,10 @@ export const EmailTemplatePurposeSchema = z.enum([
   "ORDER_CONFIRMATION",
   // `.claude/architect-scope-order-management-pro.md` §4.4/§6.1 — YENİ, iptal e-postası tetikleyicisi.
   "ORDER_CANCELLATION",
+  // `.claude/architect-scope-search-and-order-emails.md` §2.2a — müşteriye "kargoya verildi" bildirimi.
+  "ORDER_SHIPPED",
+  // `.claude/architect-scope-search-and-order-emails.md` §2.2b — mağaza yöneticisine "yeni sipariş" bildirimi.
+  "ORDER_ADMIN_NOTIFICATION",
   "ORG_INVITATION",
   "CONTACT_FORM_NOTIFICATION",
   "CUSTOM",

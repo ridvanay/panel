@@ -1,12 +1,13 @@
 import { apiFetch } from "./client";
-import type { PermissionsMatrix, SiteSettings, UpdateSiteSettingsRequest } from "./types";
+import type { AdminSiteSettings, PermissionsMatrix, UpdateSiteSettingsRequest } from "./types";
 
-export function getSettings(): Promise<SiteSettings> {
-  return apiFetch<SiteSettings>("/admin/settings");
+/** `GET /admin/settings` — ADMIN-only, public `GET /settings`'ten farklı olarak `orderNotificationEmail` de döner (bkz. `AdminSiteSettings`). */
+export function getSettings(): Promise<AdminSiteSettings> {
+  return apiFetch<AdminSiteSettings>("/admin/settings");
 }
 
-export function updateSettings(input: UpdateSiteSettingsRequest): Promise<SiteSettings> {
-  return apiFetch<SiteSettings>("/admin/settings", { method: "PATCH", body: input });
+export function updateSettings(input: UpdateSiteSettingsRequest): Promise<AdminSiteSettings> {
+  return apiFetch<AdminSiteSettings>("/admin/settings", { method: "PATCH", body: input });
 }
 
 /**

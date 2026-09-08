@@ -116,3 +116,87 @@ describe("settings — shippingEstimatedDaysMin/Max (§2.5)", () => {
     expect(res.statusCode).toBe(422);
   });
 });
+
+/**
+ * `.claude/architect-scope-search-and-order-emails.md` §2.3 (bağlayıcı) — `orderNotificationEmail`
+ * public `GET /settings`'te SIZMAZ, yalnızca `/admin/settings` uçları döner.
+ */
+describe("settings — orderNotificationEmail (§2.3)", () => {
+  let app: FastifyInstance;
+  let accessToken: string;
+
+  beforeAll(async () => {
+    app = await buildTestApp();
+    await resetDatabase(app.prisma);
+    ({ accessToken } = await registerTestUser(app, { email: "settings-order-notify-admin@example.com" }));
+  });
+
+  afterAll(async () => {
+    await resetDatabase(app.prisma);
+    await app.close();
+  });
+
+  function authHeader() {
+    return { authorization: `Bearer ${accessToken}` };
+  }
+
+  it("public GET /settings yanıtında orderNotificationEmail alanı HİÇ bulunmaz", async () => {
+    await app.inject({
+      method: "PATCH",
+      url: "/api/v1/admin/settings",
+      headers: authHeader(),
+      payload: { orderNotificationEmail: "magaza-sahibi@example.com" },
+    });
+
+    const res = await app.inject({ method: "GET", url: "/api/v1/settings" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data).not.toHaveProperty("orderNotificationEmail");
+    expect(res.payload.includes("orderNotificationEmail")).toBe(false);
+  });
+
+  it("admin GET/PATCH /admin/settings orderNotificationEmail'i döner ve günceller", async () => {
+    const getBefore = await app.inject({ method: "GET", url: "/api/v1/admin/settings", headers: authHeader() });
+    expect(getBefore.statusCode).toBe(200);
+    expect(getBefore.json().data.orderNotificationEmail).toBe("magaza-sahibi@example.com");
+
+    const patch = await app.inject({
+      method: "PATCH",
+      url: "/api/v1/admin/settings",
+      headers: authHeader(),
+      payload: { orderNotificationEmail: "yeni-adres@example.com" },
+    });
+    expect(patch.statusCode).toBe(200);
+    expect(patch.json().data.orderNotificationEmail).toBe("yeni-adres@example.com");
+  });
+
+  it("geçersiz e-posta formatı 422 döner", async () => {
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/api/v1/admin/settings",
+      headers: authHeader(),
+      payload: { orderNotificationEmail: "gecersiz-adres" },
+    });
+    expect(res.statusCode).toBe(422);
+  });
+
+  it("boş string KABUL EDİLMEZ (422) — bildirimi kapatmak için null gönderilmelidir", async () => {
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/api/v1/admin/settings",
+      headers: authHeader(),
+      payload: { orderNotificationEmail: "" },
+    });
+    expect(res.statusCode).toBe(422);
+  });
+
+  it("null göndermek bildirimi kapatır", async () => {
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/api/v1/admin/settings",
+      headers: authHeader(),
+      payload: { orderNotificationEmail: null },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.orderNotificationEmail).toBeNull();
+  });
+});

@@ -22,6 +22,7 @@ import { registerTestUser } from "../helpers/auth";
 import { stripe } from "../../src/lib/stripe";
 import { env } from "../../src/config/env";
 import { deriveVariantKey } from "../../src/modules/products/lib/variants";
+import { SETTINGS_ID } from "../../src/modules/settings/settings.routes";
 
 describe("webhooks/stripe — sepet siparişi (order) akışı (§10.9.3, KRİTİK)", () => {
   let app: FastifyInstance;
@@ -128,6 +129,31 @@ describe("webhooks/stripe — sepet siparişi (order) akışı (§10.9.3, KRİT�
         subject: "Siparişiniz alındı — {{order_number}}",
         bodyHtml: "<p>{{customer_name}}, {{order_number}} numaralı siparişiniz alındı. Toplam: {{total_formatted}}. {{items_summary}}</p>",
         availableVariables: ["order_number", "customer_name", "items_summary", "total_formatted"],
+      },
+    });
+
+    // `.claude/architect-scope-search-and-order-emails.md` §2.2b — `ORDER_ADMIN_NOTIFICATION`
+    // şablonunun test kopyası (yukarıdaki ORDER_CONFIRMATION İLE AYNI gerekçe).
+    await app.prisma.emailTemplate.create({
+      data: {
+        key: "ORDER_ADMIN_NOTIFICATION",
+        name: "Yeni Sipariş Bildirimi",
+        purpose: "ORDER_ADMIN_NOTIFICATION",
+        editorMode: "RAW",
+        isSystem: true,
+        isActive: true,
+        subject: "Yeni sipariş — {{order_number}}",
+        bodyHtml:
+          "<p>{{customer_name}} ({{customer_email}}) {{order_number}} numaralı siparişi verdi. Toplam: {{total_formatted}}. {{items_summary}}. Tarih: {{placed_at}}. <a href=\"{{order_admin_url}}\">Görüntüle</a></p>",
+        availableVariables: [
+          "order_number",
+          "customer_name",
+          "customer_email",
+          "items_summary",
+          "total_formatted",
+          "placed_at",
+          "order_admin_url",
+        ],
       },
     });
   });
@@ -520,6 +546,84 @@ describe("webhooks/stripe — sepet siparişi (order) akışı (§10.9.3, KRİT�
 
       const updatedVariant = await app.prisma.productVariant.findUniqueOrThrow({ where: { id: variant.id } });
       expect(updatedVariant.stockQuantity).toBe(1);
+    });
+  });
+
+  // `.claude/architect-scope-search-and-order-emails.md` §2.4A (bağlayıcı) — "yeni sipariş"
+  // yönetici bildirimi. `contact.service.ts::sendNotificationBestEffort` İLE AYNI sözleşme.
+  describe("yeni sipariş yönetici bildirimi (§2.4A)", () => {
+    it("orderNotificationEmail null iken (varsayılan) hiç yönetici e-postası/audit kaydı OLUŞMAZ", async () => {
+      const product = await createProduct({ stockQuantity: 5 });
+      const order = await createPendingOrder(product, 1);
+
+      const res = await postWebhook(buildCheckoutSessionEvent(order.id));
+      expect(res.statusCode).toBe(200);
+
+      // Yalnızca müşteri onay e-postası gönderilir — yönetici bildirimi YOK.
+      expect(sendMailMock).toHaveBeenCalledTimes(1);
+
+      const auditRow = await app.prisma.auditLog.findFirst({
+        where: { action: "order.admin_notify_email", targetId: order.id },
+      });
+      expect(auditRow).toBeNull();
+    });
+
+    it("orderNotificationEmail doluysa yönetici bildirimi gönderilir ve order.admin_notify_email SUCCESS audit kaydı oluşur (alıcı adresi metadata'ya YAZILMAZ)", async () => {
+      await app.prisma.siteSettings.upsert({
+        where: { id: SETTINGS_ID },
+        create: { id: SETTINGS_ID, orderNotificationEmail: "magaza-sahibi@example.com" },
+        update: { orderNotificationEmail: "magaza-sahibi@example.com" },
+      });
+
+      const product = await createProduct({ stockQuantity: 5 });
+      const order = await createPendingOrder(product, 1);
+
+      const res = await postWebhook(buildCheckoutSessionEvent(order.id));
+      expect(res.statusCode).toBe(200);
+
+      // Müşteri onayı + yönetici bildirimi — toplam 2 e-posta.
+      expect(sendMailMock).toHaveBeenCalledTimes(2);
+      const [, adminMailInput] = sendMailMock.mock.calls[1] as unknown as [unknown, { to: string; subject: string }];
+      expect(adminMailInput.to).toBe("magaza-sahibi@example.com");
+      expect(adminMailInput.subject).toContain(order.orderNumber);
+
+      const auditRow = await app.prisma.auditLog.findFirst({
+        where: { action: "order.admin_notify_email", targetId: order.id },
+      });
+      expect(auditRow).not.toBeNull();
+      expect(auditRow?.status).toBe("SUCCESS");
+      expect(auditRow?.metadata).toEqual({ emailDelivered: true });
+
+      await app.prisma.siteSettings.update({ where: { id: SETTINGS_ID }, data: { orderNotificationEmail: null } });
+    });
+
+    it("yönetici bildirim e-postası başarısız olsa bile webhook 200 döner, FAILURE audit yazılır ve müşteri onay e-postası ETKİLENMEZ", async () => {
+      await app.prisma.siteSettings.upsert({
+        where: { id: SETTINGS_ID },
+        create: { id: SETTINGS_ID, orderNotificationEmail: "magaza-sahibi-hata@example.com" },
+        update: { orderNotificationEmail: "magaza-sahibi-hata@example.com" },
+      });
+      sendMailMock.mockImplementationOnce(async () => ({ messageId: "customer-confirmation-ok" }));
+      sendMailMock.mockImplementationOnce(async () => {
+        throw new Error("SMTP bağlantısı başarısız");
+      });
+
+      const product = await createProduct({ stockQuantity: 5 });
+      const order = await createPendingOrder(product, 1);
+
+      const res = await postWebhook(buildCheckoutSessionEvent(order.id));
+      expect(res.statusCode).toBe(200);
+
+      const updatedOrder = await app.prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+      expect(updatedOrder.status).toBe("PAID");
+
+      const auditRow = await app.prisma.auditLog.findFirst({
+        where: { action: "order.admin_notify_email", targetId: order.id },
+      });
+      expect(auditRow?.status).toBe("FAILURE");
+      expect(auditRow?.metadata).toEqual({ emailDelivered: false });
+
+      await app.prisma.siteSettings.update({ where: { id: SETTINGS_ID }, data: { orderNotificationEmail: null } });
     });
   });
 });

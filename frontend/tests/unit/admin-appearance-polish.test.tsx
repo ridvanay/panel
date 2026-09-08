@@ -9,7 +9,7 @@ import type {
   SiteAppearance,
   SiteCustomCode,
   SitePage,
-  SiteSettings,
+  AdminSiteSettings,
 } from "@/lib/api/types";
 
 /**
@@ -23,6 +23,8 @@ import type {
  */
 vi.mock("next/navigation", () => ({
   usePathname: () => "/admin/appearance",
+  // `HeaderSearch` (canlı önizlemedeki `SiteHeader` içinde) `useRouter` kullanır.
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), prefetch: vi.fn(), back: vi.fn(), forward: vi.fn(), refresh: vi.fn() }),
 }));
 vi.mock("@/lib/api/appearance", () => ({
   getAdminAppearance: vi.fn(),
@@ -118,7 +120,7 @@ const customCode: SiteCustomCode = {
   customCodeEnabled: true,
 };
 
-const settings: SiteSettings = {
+const settings: AdminSiteSettings = {
   siteName: "Örnek Site",
   logoUrl: null,
   tagline: "Kaliteli ürünler",
@@ -130,6 +132,7 @@ const settings: SiteSettings = {
   freeShippingThresholdCents: null,
   shippingEstimatedDaysMin: null,
   shippingEstimatedDaysMax: null,
+  orderNotificationEmail: null,
 };
 
 const navConfig: NavigationConfigDto = {

@@ -66,6 +66,7 @@ import type {
   MediaDto,
   MediaFolderDto,
   SiteSettingsDto,
+  AdminSiteSettingsDto,
   NavigationConfigDto,
   ContentRevisionSummaryDto,
   ContentRevisionDto,
@@ -88,6 +89,7 @@ import type {
   ProductCategoryDto,
   ProductDto,
   ProductListItemDto,
+  ProductSearchHitDto,
   ProductImageDto,
   ProductVariantDto,
   ProductDocumentDto,
@@ -389,6 +391,18 @@ export function toSiteSettingsDto(settings: SiteSettings): SiteSettingsDto {
 }
 
 /**
+ * `.claude/architect-scope-search-and-order-emails.md` §2.3 (bağlayıcı) — YALNIZCA
+ * `/admin/settings` uçları bunu kullanır. `toSiteSettingsDto` KASITLI OLARAK değiştirilmedi:
+ * `orderNotificationEmail` public `GET /settings`'e SIZMAMALI (PII/spam-harvest riski).
+ */
+export function toAdminSiteSettingsDto(settings: SiteSettings): AdminSiteSettingsDto {
+  return {
+    ...toSiteSettingsDto(settings),
+    orderNotificationEmail: settings.orderNotificationEmail,
+  };
+}
+
+/**
  * §10.9 Eklenti/Modül Yönetimi — statik registry TANIMINI (`ModuleDefinition`) `SiteModule`
  * tablosundaki durum satırıyla (varsa) birleştirir. `row` YOKSA (henüz hiç toggle edilmemiş)
  * `definition.defaultEnabled` fallback olur, `updatedAt`/`updatedBy` `null` döner.
@@ -634,6 +648,30 @@ export function toProductListItemDto(product: ProductWithRelations, localization
     ...listItem
   } = full;
   return listItem;
+}
+
+/**
+ * `.claude/architect-scope-search-and-order-emails.md` §1.3 (bağlayıcı) — `GET /products/search`
+ * ürün eşleşmesi PROJEKSİYON mapper'ı. `toProductListItemDto`'nun "`toProductDto`'nun ÜRETTİĞİ
+ * objeden destructure et" kuralı BURADA UYGULANAMAZ (o kural tam `WITH_RELATIONS` join'ini
+ * gerektirir; bu uç bilinçli olarak dar bir `select` kullanır, bkz. products.routes.ts::GET
+ * /search) — bu yüzden alanlar DB satırından DOĞRUDAN okunur.
+ */
+type ProductSearchHitRow = Pick<Product, "id" | "title" | "slug" | "priceCents" | "discountPriceCents" | "currency" | "sku"> & {
+  coverMedia: Media | null;
+};
+
+export function toProductSearchHitDto(row: ProductSearchHitRow): ProductSearchHitDto {
+  return {
+    id: row.id,
+    title: row.title,
+    slug: row.slug,
+    priceCents: row.priceCents,
+    discountPriceCents: row.discountPriceCents,
+    currency: row.currency,
+    sku: row.sku,
+    coverMedia: row.coverMedia ? toMediaDto(row.coverMedia) : null,
+  };
 }
 
 export function toPortfolioCategoryDto(category: PortfolioCategory): PortfolioCategoryDto {

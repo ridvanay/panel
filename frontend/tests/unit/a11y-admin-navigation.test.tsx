@@ -4,13 +4,15 @@ import userEvent from "@testing-library/user-event";
 import { axe } from "jest-axe";
 import AdminNavigationPage from "@/app/admin/navigation/page";
 import { ModulesProvider } from "@/context/modules-context";
-import type { NavigationConfigDto, Page, SitePage, SiteSettings } from "@/lib/api/types";
+import type { AdminSiteSettings, NavigationConfigDto, Page, SitePage } from "@/lib/api/types";
 
 // `useSearchParams` (`?tab=` derin link desteği, §10.12.1) + `useUnsavedChangesGuard`'ın
 // kullandığı `usePathname` — bkz. a11y-admin-stats.test.tsx ile AYNI mock deseni.
 vi.mock("next/navigation", () => ({
   usePathname: () => "/admin/navigation",
   useSearchParams: () => new URLSearchParams(""),
+  // `HeaderSearch` (canlı önizlemedeki `SiteHeader` içinde) `useRouter` kullanır.
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), prefetch: vi.fn(), back: vi.fn(), forward: vi.fn(), refresh: vi.fn() }),
 }));
 vi.mock("@/lib/api/settings", () => ({
   getSettings: vi.fn(),
@@ -36,7 +38,7 @@ const modulesApi = await import("@/lib/api/modules");
 
 const axeOptions = { rules: { region: { enabled: false } } };
 
-const settings: SiteSettings = {
+const settings: AdminSiteSettings = {
   siteName: "Örnek Site",
   logoUrl: null,
   tagline: null,
@@ -48,6 +50,7 @@ const settings: SiteSettings = {
   freeShippingThresholdCents: null,
   shippingEstimatedDaysMin: null,
   shippingEstimatedDaysMax: null,
+  orderNotificationEmail: null,
 };
 
 const publishedPages: SitePage[] = [

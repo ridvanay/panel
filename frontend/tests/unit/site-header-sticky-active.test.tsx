@@ -10,6 +10,8 @@ import type { NavigationItemDto, SiteSettings } from "@/lib/api/types";
 const usePathnameMock = vi.fn<() => string>();
 vi.mock("next/navigation", () => ({
   usePathname: () => usePathnameMock(),
+  // `HeaderSearch` (canlı önizlemedeki `SiteHeader` içinde) `useRouter` kullanır.
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), prefetch: vi.fn(), back: vi.fn(), forward: vi.fn(), refresh: vi.fn() }),
 }));
 
 const settings: SiteSettings = {

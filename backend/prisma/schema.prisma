@@ -1141,6 +1141,9 @@ model SiteSettings {
   // (bkz. architect-scope-products-catalog.md §2.5; ticari taahhüt, sabit metin yazılmaz).
   shippingEstimatedDaysMin   Int?
   shippingEstimatedDaysMax   Int?
+  /// Yeni sipariş bildirimi (ORDER_ADMIN_NOTIFICATION) alıcısı. null/boş = bildirim KAPALI
+  /// (best-effort atlanır, hata DEĞİLDİR).
+  orderNotificationEmail     String?
   updatedAt                  DateTime     @updatedAt
 
   // Kök `/` rotasında render edilecek sayfa. Sayfa silinirse otomatik null'a düşer
@@ -1604,6 +1607,12 @@ enum EmailTemplatePurpose {
   // .claude/architect-scope-order-management-pro.md §4.4/§6 (bağlayıcı) — sipariş iptal
   // e-postası. Mevcut kısmi unique indeks (`email_templates_active_purpose_key`) otomatik kapsar.
   ORDER_CANCELLATION
+  /// .claude/architect-scope-search-and-order-emails.md §2.2a (bağlayıcı) — müşteriye
+  /// "kargoya verildi" bildirimi. Aynı kısmi unique indeks otomatik kapsar.
+  ORDER_SHIPPED
+  /// .claude/architect-scope-search-and-order-emails.md §2.2b (bağlayıcı) — mağaza
+  /// yöneticisine "yeni sipariş" bildirimi (`SiteSettings.orderNotificationEmail` alıcısı).
+  ORDER_ADMIN_NOTIFICATION
   CUSTOM
 }
 

@@ -1033,6 +1033,28 @@ export interface ProductCatalogMeta {
   facets?: ProductCatalogFacets;
 }
 
+/**
+ * `.claude/architect-scope-search-and-order-emails.md` §1.3 — `GET /products/search` sonuç
+ * satırı. `ProductListItem`/`Product` DTO'sundaki AYNI ad/tipteki alanların dar bir projeksiyonu
+ * (bilinçli sapma: `price`/`salePrice`/`coverImage` İCAT EDİLMEZ, backend hakemliği bağlayıcıdır).
+ */
+export interface ProductSearchHit {
+  id: string;
+  title: string;
+  slug: string;
+  priceCents: number;
+  discountPriceCents: number | null;
+  currency: string;
+  sku: string | null;
+  coverMedia: Media | null;
+}
+
+/** `GET /products/search?search=` yanıtı — `meta` YOKTUR (bkz. §1.3/§1.4 madde 5). */
+export interface ProductSearchResult {
+  products: ProductSearchHit[];
+  categories: ProductCategory[];
+}
+
 export interface CreateProductRequest {
   title: string;
   slug?: string;
@@ -1645,6 +1667,22 @@ export interface UpdateSiteSettingsRequest {
   freeShippingThresholdCents?: number | null;
   shippingEstimatedDaysMin?: number | null;
   shippingEstimatedDaysMax?: number | null;
+  /**
+   * `.claude/architect-scope-search-and-order-emails.md` §2.3 — yeni sipariş bildirimi
+   * (`ORDER_ADMIN_NOTIFICATION`) alıcısı. `null`/verilmemesi = bildirim KAPALI (hata DEĞİL,
+   * best-effort atlanır) — `ContactForm.notifyEmail` ile AYNI semantik. Boş string `""` KABUL
+   * EDİLMEZ (422); kapatmak için `null` gönderilir.
+   */
+  orderNotificationEmail?: string | null;
+}
+
+/**
+ * §2.3 — `GET/PATCH /admin/settings` yanıtı. Public `GET /settings` (`SiteSettings`) `null`
+ * `orderNotificationEmail` alanını ASLA döndürmez (PII sızıntısı riski) — bu yüzden `SiteSettings`
+ * DEĞİŞMEDİ, bu ADMIN-ONLY genişletilmiş tip yeni eklendi.
+ */
+export interface AdminSiteSettings extends SiteSettings {
+  orderNotificationEmail: string | null;
 }
 
 export interface UpdateBlogPostRequest {
@@ -1899,6 +1937,10 @@ export type EmailTemplatePurpose =
   | "ORDER_CONFIRMATION"
   // `.claude/architect-scope-order-management-pro.md` §4.4/§6.1 — YENİ, iptal e-postası tetikleyicisi.
   | "ORDER_CANCELLATION"
+  // `.claude/architect-scope-search-and-order-emails.md` §2.2 — YENİ: müşteriye "kargoya verildi".
+  | "ORDER_SHIPPED"
+  // §2.2b — YENİ: mağaza yöneticisine "yeni sipariş" bildirimi (`orderNotificationEmail`).
+  | "ORDER_ADMIN_NOTIFICATION"
   | "ORG_INVITATION"
   | "CONTACT_FORM_NOTIFICATION"
   | "CUSTOM";

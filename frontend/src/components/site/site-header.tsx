@@ -18,6 +18,7 @@ import {
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Accordion, AccordionItem, AccordionPanel, AccordionTrigger } from "@/components/ui/accordion";
 import { LanguageSwitcher } from "@/components/site/language-switcher";
+import { HeaderSearch } from "@/components/site/header-search";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
 import { NAVIGATION_MAX_DEPTH } from "@/lib/navigation-constants";
 import type { Locale, NavigationItemDto, SiteButtonStyle, SitePage, SiteSettings } from "@/lib/api/types";
@@ -497,6 +498,10 @@ export function SiteHeader({
             );
           })}
         </div>
+
+        {/* design-notes-instant-search.md §1(a) — nav-link kümesinin kapanışından HEMEN SONRA,
+            hesap eylemleri kümesinin İÇİNDE DEĞİL; `productsModuleEnabled` sepet/favori ile AYNI koşul. */}
+        {productsModuleEnabled && <HeaderSearch localize={localize} />}
 
         <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
           {showCta && (
