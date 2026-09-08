@@ -23,6 +23,13 @@ const DEFAULT_APPEARANCE: PublicSiteAppearance = {
   surfaceColor: "#f9fafb",
   textColor: "#111827",
   mutedTextColor: "#6b7280",
+  // design-notes-header-colors.md §1 — backend DEFAULTS ile birebir aynı olmalı.
+  headerBgColor: "#ffffffcc",
+  headerStickyBgColor: "#fffffff2",
+  headerStickyBlurEnabled: true,
+  headerLinkColor: "#111827b3",
+  headerLinkHoverColor: "#111827",
+  headerLinkActiveColor: "#4f46e5",
   headingFont: "SYSTEM",
   bodyFont: "SYSTEM",
   baseFontSize: 16,

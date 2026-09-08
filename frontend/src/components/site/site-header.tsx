@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronDown, Heart, Receipt, ShoppingCart, User as UserIcon } from "lucide-react";
@@ -35,6 +36,20 @@ interface SiteHeaderProps {
    * uyumluluk — admin canlı önizleme/unit testler bu prop'u vermez).
    */
   productsModuleEnabled?: boolean;
+  /**
+   * design-notes-header-colors.md §3 / görev tanımı GÖREV A — `SiteAppearance.stickyHeaderEnabled`.
+   * `false` (varsayılan) iken header eskisi gibi STATİK kalır (position sticky YOK, scroll mantığı
+   * hiç çalışmaz) — geriye dönük uyumluluk. Verilmezse `false` kabul edilir (admin canlı
+   * önizlemeleri — `admin/appearance` ve `admin/navigation` — bu prop'u KASITLI olarak vermez,
+   * önizleme kutuları sabit yükseklikte statik, gerçek sayfa scroll'u yok — bilinen sınırlama).
+   */
+  stickyHeaderEnabled?: boolean;
+  /**
+   * design-notes-header-colors.md §3 — yapışkan (sticky) durumdayken backdrop-blur uygulanır mı.
+   * Varsayılan `true` (`buttonStyle = "SOLID"` paterniyle AYNI geriye-dönük-uyumlu varsayılan).
+   * İdle (kaydırılmamış) durumda blur KOŞULSUZ kalır, bu prop'tan ETKİLENMEZ.
+   */
+  headerStickyBlurEnabled?: boolean;
 }
 
 /**
@@ -72,6 +87,83 @@ function buildNavTree(items: NavigationItemDto[]): NavNode[] {
   }));
 }
 
+/** Sondaki `/`'i kaldırır (kök `/` hariç) — `withLocalePrefix`'in prefixli kök yol için ürettiği
+ * `/en/` gibi bir değer ile `usePathname()`'in döndürdüğü `/en` arasındaki farkı normalize eder. */
+function normalizeNavPath(path: string): string {
+  if (path.length > 1 && path.endsWith("/")) return path.slice(0, -1);
+  return path;
+}
+
+/**
+ * design-notes-header-colors.md §3 "Aktif sayfa durumu" — kök `/` için TAM eşleşme, alt sayfalar
+ * için `startsWith` (bir sonraki path segmentinin sınırında, `/products` linkinin `/products-eski`
+ * gibi alakasız bir yolu yanlışlıkla "aktif" işaretlememesi için `/`'lı sınır kontrolü yapılır).
+ */
+function isNavLinkActive(pathname: string | null, href: string): boolean {
+  if (!pathname) return false;
+  const normalizedPathname = normalizeNavPath(pathname);
+  const normalizedHref = normalizeNavPath(href);
+  if (normalizedHref === "" || normalizedHref === "/") {
+    return normalizedPathname === "/" || normalizedPathname === "";
+  }
+  return normalizedPathname === normalizedHref || normalizedPathname.startsWith(`${normalizedHref}/`);
+}
+
+/** İdle/hover/aktif durumları arasında geçiş yapan nav link/tetikleyici metin rengi sınıfları. */
+const NAV_LINK_TEXT_CLASSES =
+  "text-[var(--site-header-link)] hover:text-[var(--site-header-link-hover)] focus-visible:text-[var(--site-header-link-hover)]";
+const NAV_LINK_ACTIVE_TEXT_CLASS = "text-[var(--site-header-link-active)]";
+
+/** Hesap/favori/sepet ikonlarının paylaştığı metin/ikon rengi sınıfları — `headerLinkActiveColor` BURAYA UYGULANMAZ. */
+const ICON_LINK_TEXT_CLASSES = "text-[var(--site-header-link)] hover:text-[var(--site-header-link-hover)]";
+
+/**
+ * GÖREV A — akıllı yapışkan (smart sticky) menü davranışı. `back-to-top-button.tsx`'teki
+ * `useEffect` + `window.addEventListener("scroll", ..., { passive: true })` paternini örnek alır.
+ * `stickyHeaderEnabled=false` iken bu hook HİÇBİR listener eklemez (early return) — statik header,
+ * sıfır davranış değişikliği.
+ */
+function useSmartSticky(enabled: boolean) {
+  const [hidden, setHidden] = useState(false);
+  const [isSticky, setIsSticky] = useState(false);
+  const lastScrollY = useRef(0);
+
+  useEffect(() => {
+    // `enabled=false`: listener HİÇ eklenmez — `hidden`/`isSticky` iç state'i ne olursa olsun
+    // hook'un döndürdüğü değerler zaten `enabled &&` ile kapılı (aşağıdaki `return` ifadesi),
+    // burada AYRICA senkron bir `setState` ile sıfırlamaya gerek yok.
+    if (!enabled) return;
+
+    lastScrollY.current = window.scrollY;
+
+    function handleScroll() {
+      const currentY = window.scrollY;
+      const scrollingUp = currentY < lastScrollY.current;
+      const scrollingDown = currentY > lastScrollY.current;
+
+      // Yukarı kaydırma: MEVCUT scrollY ne olursa olsun (sadece "aşağı" bug'ının aksine) hemen
+      // görün. Aşağı kaydırma: sadece sayfanın belirli bir mesafesinden sonra (`> 120`) gizlen —
+      // sayfanın hemen başındaki küçük bir aşağı kaydırmada header'ın anında kaybolması istenmez.
+      if (scrollingUp) {
+        setHidden(false);
+      } else if (scrollingDown && currentY > 120) {
+        setHidden(true);
+      }
+
+      setIsSticky(currentY > 20);
+      lastScrollY.current = currentY;
+    }
+
+    // `back-to-top-button.tsx`'teki paternin AYNISI — geri/ileri navigasyonla sayfa zaten
+    // kaydırılmış halde açılırsa (`scrollY > 20`) ilk render'da isSticky'nin doğru yansıması için.
+    handleScroll();
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, [enabled]);
+
+  return { hidden: enabled && hidden, isSticky: enabled && isSticky };
+}
+
 export function SiteHeader({
   settings,
   pages,
@@ -82,6 +174,8 @@ export function SiteHeader({
   locales,
   activeLocale,
   productsModuleEnabled = true,
+  stickyHeaderEnabled = false,
+  headerStickyBlurEnabled = true,
 }: SiteHeaderProps) {
   // `useCartOptional`: bu bileşen `admin/navigation/page.tsx`'teki canlı önizlemede
   // `CartProvider` OLMADAN da render edilir (admin layout'unda sepet KASTEN yok) — o durumda
@@ -94,6 +188,7 @@ export function SiteHeader({
   const status = auth?.status ?? "unauthenticated";
   const user = auth?.user ?? null;
   const pathname = usePathname();
+  const { hidden, isSticky } = useSmartSticky(stickyHeaderEnabled);
   const navTree: NavNode[] =
     navigationItems && navigationItems.length > 0
       ? buildNavTree(navigationItems)
@@ -108,7 +203,17 @@ export function SiteHeader({
     activeLocale ? withLocalePrefix(path, activeLocale.code, defaultLocaleCode) : path;
 
   return (
-    <header className="border-b border-border bg-surface/80 backdrop-blur">
+    <header
+      className={cn(
+        "border-b border-border transition-colors duration-300",
+        isSticky
+          ? cn("bg-[var(--site-header-bg-sticky)]", headerStickyBlurEnabled && "backdrop-blur")
+          : "bg-[var(--site-header-bg)] backdrop-blur",
+        stickyHeaderEnabled && "sticky top-0 z-30 transition-transform duration-300",
+        stickyHeaderEnabled && (hidden ? "-translate-y-full" : "translate-y-0"),
+        isSticky && !hidden && "shadow-sm"
+      )}
+    >
       <nav
         className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6"
         aria-label="Site gezinme"
@@ -139,34 +244,50 @@ export function SiteHeader({
         </Link>
 
         <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
-          {navTree.map((link) =>
-            link.children.length > 0 ? (
-              <DropdownMenu key={link.id}>
-                <DropdownMenuTrigger
-                  render={
-                    <button
-                      type="button"
-                      className="flex items-center gap-1 text-foreground/70 outline-none hover:text-foreground focus-visible:text-foreground"
-                    />
-                  }
-                >
-                  {link.label}
-                  <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
-                  {link.children.map((child) => (
-                    <DropdownMenuItem key={child.id} render={<Link href={localize(child.href)} />}>
-                      {child.label}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ) : (
-              <Link key={link.id} href={localize(link.href)} className="text-foreground/70 hover:text-foreground">
+          {navTree.map((link) => {
+            if (link.children.length > 0) {
+              const hasActiveChild = link.children.some((child) => isNavLinkActive(pathname, localize(child.href)));
+              return (
+                <DropdownMenu key={link.id}>
+                  <DropdownMenuTrigger
+                    render={
+                      <button
+                        type="button"
+                        aria-current={hasActiveChild ? "page" : undefined}
+                        className={cn(
+                          "flex items-center gap-1 outline-none",
+                          hasActiveChild ? NAV_LINK_ACTIVE_TEXT_CLASS : NAV_LINK_TEXT_CLASSES
+                        )}
+                      />
+                    }
+                  >
+                    {link.label}
+                    <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start">
+                    {link.children.map((child) => (
+                      <DropdownMenuItem key={child.id} render={<Link href={localize(child.href)} />}>
+                        {child.label}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              );
+            }
+
+            const href = localize(link.href);
+            const active = isNavLinkActive(pathname, href);
+            return (
+              <Link
+                key={link.id}
+                href={href}
+                aria-current={active ? "page" : undefined}
+                className={cn(active ? NAV_LINK_ACTIVE_TEXT_CLASS : NAV_LINK_TEXT_CLASSES)}
+              >
                 {link.label}
               </Link>
-            )
-          )}
+            );
+          })}
           {showCta && (
             // §10.12.4 — `--site-button`/`--site-button-text` (`.site-scope` altında satır-içi
             // yazılır, bkz. globals.css `.site-scope` fallback bloğu). Admin'in `--primary`
@@ -195,7 +316,11 @@ export function SiteHeader({
                   <button
                     type="button"
                     aria-label={`Hesabım, ${user.name}`}
-                    className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-foreground/70 outline-none transition-colors hover:bg-surface-muted hover:text-foreground focus-visible:text-foreground"
+                    className={cn(
+                      "flex items-center gap-1.5 rounded-lg px-2 py-1.5 outline-none transition-colors hover:bg-surface-muted",
+                      ICON_LINK_TEXT_CLASSES,
+                      "focus-visible:text-[var(--site-header-link-hover)]"
+                    )}
                   />
                 }
               >
@@ -219,7 +344,7 @@ export function SiteHeader({
             <Link
               href={`/login?next=${encodeURIComponent(pathname)}`}
               aria-label="Giriş yap"
-              className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-foreground/70 transition-colors hover:bg-surface-muted hover:text-foreground"
+              className={cn("flex items-center gap-1.5 rounded-lg px-2 py-1.5 transition-colors hover:bg-surface-muted", ICON_LINK_TEXT_CLASSES)}
             >
               <UserIcon className="h-4.5 w-4.5" aria-hidden="true" />
               <span className="hidden sm:inline">Giriş Yap</span>
@@ -232,7 +357,10 @@ export function SiteHeader({
             <Link
               href={localize("/hesabim/favorilerim")}
               aria-label="Favorilerim"
-              className="relative inline-flex h-9 w-9 items-center justify-center rounded-lg text-foreground/70 transition-colors hover:bg-surface-muted hover:text-foreground"
+              className={cn(
+                "relative inline-flex h-9 w-9 items-center justify-center rounded-lg transition-colors hover:bg-surface-muted",
+                ICON_LINK_TEXT_CLASSES
+              )}
             >
               <Heart className="h-5 w-5" />
             </Link>
@@ -242,7 +370,10 @@ export function SiteHeader({
             <Link
               href={localize("/cart")}
               aria-label={`Sepet, ${itemCount} ürün`}
-              className="relative inline-flex h-9 w-9 items-center justify-center rounded-lg text-foreground/70 transition-colors hover:bg-surface-muted hover:text-foreground"
+              className={cn(
+                "relative inline-flex h-9 w-9 items-center justify-center rounded-lg transition-colors hover:bg-surface-muted",
+                ICON_LINK_TEXT_CLASSES
+              )}
             >
               <ShoppingCart className="h-5 w-5" />
               {itemCount > 0 && (

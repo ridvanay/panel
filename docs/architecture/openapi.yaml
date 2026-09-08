@@ -12289,6 +12289,18 @@ components:
       pattern: "^#[0-9a-fA-F]{6}$"
       example: "#4f46e5"
 
+    HexColorAlpha:
+      description: >
+        `#rgb` | `#rrggbb` | `#rrggbbaa` (alfa kanallı) — `PageContainerBackground.value`
+        (page-builder) ile AYNI regex paterni. `SiteAppearance`'ın header zemin/bağlantı
+        alanları (`headerBgColor`/`headerStickyBgColor`/`headerLinkColor`) alfa kanalını
+        ("kısmi şeffaflık") desteklemek için `HexColor` yerine bunu kullanır; diğer TÜM
+        renk alanları (`headerLinkHoverColor`/`headerLinkActiveColor` dahil) `HexColor`
+        kalır.
+      type: string
+      pattern: "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$"
+      example: "#ffffffcc"
+
     AppearancePreset:
       description: >
         `GET /admin/appearance/presets` öğesi — kod içi statik `lib/appearance-presets.ts`
@@ -12350,6 +12362,28 @@ components:
         surfaceColor: { $ref: "#/components/schemas/HexColor" }
         textColor: { $ref: "#/components/schemas/HexColor" }
         mutedTextColor: { $ref: "#/components/schemas/HexColor" }
+        # --- Header & Menü — SADECE `SiteHeader` bileşenini etkiler; sayfa başlığı banner'ından
+        # (`pageHeader*`) ve genel site renklerinden BAĞIMSIZDIR. Zemin/bağlantı (idle) alanları
+        # alfa kanallı (`HexColorAlpha`) — bugünkü `bg-surface/80`/`text-foreground/70` ile
+        # piksel-birebir uyum için; hover/aktif alanları OPAK (`HexColor`). ---
+        headerBgColor:
+          allOf: [{ $ref: "#/components/schemas/HexColorAlpha" }]
+          description: "Idle (kaydırılmamış) header zemini. Varsayılan `#ffffffcc` — bugünkü `bg-surface/80` ile piksel-birebir aynı."
+        headerStickyBgColor:
+          allOf: [{ $ref: "#/components/schemas/HexColorAlpha" }]
+          description: "Sayfa kaydırıldığında sabitlenen (sticky) header'ın zemin rengi. Yalnızca `stickyHeaderEnabled: true` iken görünür etkisi vardır."
+        headerStickyBlurEnabled:
+          type: boolean
+          description: "Sabitlenen header zemininde arka plan bulanıklığı (backdrop-blur) uygulanır. Idle durumda blur KOŞULSUZ kalır, bu anahtar yalnızca sticky durumu etkiler."
+        headerLinkColor:
+          allOf: [{ $ref: "#/components/schemas/HexColorAlpha" }]
+          description: "Nav link / hesap-sepet-favori ikon rengi (idle). Varsayılan `#111827b3` — bugünkü `text-foreground/70` ile piksel-birebir aynı."
+        headerLinkHoverColor:
+          allOf: [{ $ref: "#/components/schemas/HexColor" }]
+          description: "Hover VE focus-visible (aynı token). Opak — idle'ın aksine alfa kanalı YOK."
+        headerLinkActiveColor:
+          allOf: [{ $ref: "#/components/schemas/HexColor" }]
+          description: "Geçerli sayfayla eşleşen nav linkinin rengi. Opak; `primaryColor` ile AYNI varsayılanı taşır ama bağımsız bir alandır (canlı bağ YOK)."
         # --- §6 Yazı Tipi ---
         headingFont: { $ref: "#/components/schemas/SiteFont" }
         bodyFont: { $ref: "#/components/schemas/SiteFont" }
@@ -12418,6 +12452,12 @@ components:
         surfaceColor: { $ref: "#/components/schemas/HexColor" }
         textColor: { $ref: "#/components/schemas/HexColor" }
         mutedTextColor: { $ref: "#/components/schemas/HexColor" }
+        headerBgColor: { $ref: "#/components/schemas/HexColorAlpha" }
+        headerStickyBgColor: { $ref: "#/components/schemas/HexColorAlpha" }
+        headerStickyBlurEnabled: { type: boolean }
+        headerLinkColor: { $ref: "#/components/schemas/HexColorAlpha" }
+        headerLinkHoverColor: { $ref: "#/components/schemas/HexColor" }
+        headerLinkActiveColor: { $ref: "#/components/schemas/HexColor" }
         headingFont: { $ref: "#/components/schemas/SiteFont" }
         bodyFont: { $ref: "#/components/schemas/SiteFont" }
         baseFontSize: { type: integer, minimum: 14, maximum: 20 }
@@ -12478,6 +12518,12 @@ components:
         surfaceColor: { $ref: "#/components/schemas/HexColor" }
         textColor: { $ref: "#/components/schemas/HexColor" }
         mutedTextColor: { $ref: "#/components/schemas/HexColor" }
+        headerBgColor: { $ref: "#/components/schemas/HexColorAlpha" }
+        headerStickyBgColor: { $ref: "#/components/schemas/HexColorAlpha" }
+        headerStickyBlurEnabled: { type: boolean }
+        headerLinkColor: { $ref: "#/components/schemas/HexColorAlpha" }
+        headerLinkHoverColor: { $ref: "#/components/schemas/HexColor" }
+        headerLinkActiveColor: { $ref: "#/components/schemas/HexColor" }
         headingFont: { $ref: "#/components/schemas/SiteFont" }
         bodyFont: { $ref: "#/components/schemas/SiteFont" }
         baseFontSize: { type: integer, minimum: 14, maximum: 20 }

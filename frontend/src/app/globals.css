@@ -487,6 +487,11 @@
   --site-surface: #f9fafb;
   --site-text: #111827;
   --site-muted-text: #6b7280;
+  --site-header-bg: #ffffffcc;
+  --site-header-bg-sticky: #fffffff2;
+  --site-header-link: #111827b3;
+  --site-header-link-hover: #111827;
+  --site-header-link-active: #4f46e5;
   --site-radius: 8px;
   --site-heading-font: inherit;
   --site-body-font: inherit;

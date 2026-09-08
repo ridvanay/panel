@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  HexColorAlphaSchema,
   HexColorSchema,
   PageHeaderLayoutSchema,
   PageHeaderStyleSchema,
@@ -37,6 +38,12 @@ export const UpdateSiteAppearanceRequestSchema = z
     surfaceColor: HexColorSchema.optional(),
     textColor: HexColorSchema.optional(),
     mutedTextColor: HexColorSchema.optional(),
+    headerBgColor: HexColorAlphaSchema.optional(),
+    headerStickyBgColor: HexColorAlphaSchema.optional(),
+    headerStickyBlurEnabled: z.boolean().optional(),
+    headerLinkColor: HexColorAlphaSchema.optional(),
+    headerLinkHoverColor: HexColorSchema.optional(),
+    headerLinkActiveColor: HexColorSchema.optional(),
     headingFont: SiteFontSchema.optional(),
     bodyFont: SiteFontSchema.optional(),
     baseFontSize: z.number().int().min(14).max(20).optional(),

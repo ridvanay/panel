@@ -38,6 +38,20 @@ interface ColorFieldProps {
 
 /** Native `<input type="color">` (küçük kare swatch) + yanında hex `<Input>` (metin) + opsiyonel WCAG rozeti. */
 export function ColorField({ id, label, value, onChange, checkAgainst, maxLength = 7 }: ColorFieldProps) {
+  /**
+   * design-notes-header-colors.md §4 — native `<input type="color">` ASLA alfa kanalı döndürmez
+   * (`onChange` her zaman 7 karakterlik `#rrggbb`). Alfa-kanallı bir alanda (`maxLength > 7`)
+   * mevcut alfa son ekini (`value.slice(7)`) KORUYARAK yeniden ekliyoruz — aksi halde native
+   * swatch'tan bir renk seçmek sessizce alfayı `ff`'e (tam opak) düşürür.
+   */
+  function handleSwatchChange(newHex: string) {
+    if (maxLength > 7 && value.length === 9) {
+      onChange(newHex + value.slice(7));
+    } else {
+      onChange(newHex);
+    }
+  }
+
   return (
     <div className="space-y-1.5">
       <label htmlFor={id} className="block text-sm font-medium text-foreground">
@@ -47,8 +61,11 @@ export function ColorField({ id, label, value, onChange, checkAgainst, maxLength
         <input
           type="color"
           id={id}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
+          // 9 karakterli (`#rrggbbaa`) bir `value` attribute'u tarayıcının native renk seçicisini
+          // bozabilir/reddedebilir — swatch her zaman ilk 6 haneyi (alfasız) gösterir, hex metin
+          // `<Input>`'u ise tam `value`'yu DEĞİŞMEDEN gösterip düzenlemeye devam eder.
+          value={value.slice(0, 7)}
+          onChange={(e) => handleSwatchChange(e.target.value)}
           className="h-8 w-10 shrink-0 cursor-pointer rounded-md border border-input bg-transparent p-0.5"
           aria-label={`${label} — renk seçici`}
         />

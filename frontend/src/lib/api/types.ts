@@ -2547,6 +2547,18 @@ export interface SiteAppearance {
   surfaceColor: string;
   textColor: string;
   mutedTextColor: string;
+  /**
+   * §2 design-notes-header-colors.md — site header'ına özel renkler (genel Marka & Yüzey
+   * paletinden BAĞIMSIZ). `headerBgColor`/`headerStickyBgColor`/`headerLinkColor` `#rrggbb`
+   * VEYA `#rrggbbaa` (alfa kanallı) kabul eder; `headerLinkHoverColor`/`headerLinkActiveColor`
+   * düz 6-haneli hex'tir.
+   */
+  headerBgColor: string;
+  headerStickyBgColor: string;
+  headerStickyBlurEnabled: boolean;
+  headerLinkColor: string;
+  headerLinkHoverColor: string;
+  headerLinkActiveColor: string;
   headingFont: SiteFont;
   bodyFont: SiteFont;
   baseFontSize: number;
@@ -2591,6 +2603,13 @@ export interface PublicSiteAppearance {
   surfaceColor: string;
   textColor: string;
   mutedTextColor: string;
+  /** §2 design-notes-header-colors.md — bkz. `SiteAppearance`'taki aynı isimli alanların notu. */
+  headerBgColor: string;
+  headerStickyBgColor: string;
+  headerStickyBlurEnabled: boolean;
+  headerLinkColor: string;
+  headerLinkHoverColor: string;
+  headerLinkActiveColor: string;
   headingFont: SiteFont;
   bodyFont: SiteFont;
   baseFontSize: number;
@@ -2637,6 +2656,12 @@ export interface UpdateSiteAppearanceRequest {
   surfaceColor?: string;
   textColor?: string;
   mutedTextColor?: string;
+  headerBgColor?: string;
+  headerStickyBgColor?: string;
+  headerStickyBlurEnabled?: boolean;
+  headerLinkColor?: string;
+  headerLinkHoverColor?: string;
+  headerLinkActiveColor?: string;
   headingFont?: SiteFont;
   bodyFont?: SiteFont;
   baseFontSize?: number;

@@ -76,7 +76,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Accordion, AccordionItem, AccordionTrigger, AccordionPanel } from "@/components/ui/accordion";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { MediaSelectField } from "@/components/admin/media/media-select-field";
-import { ColorField } from "@/components/admin/appearance/color-field";
+import { ColorField, ContrastBadge } from "@/components/admin/appearance/color-field";
 import { SiteHeader } from "@/components/site/site-header";
 import { SiteFooter } from "@/components/site/site-footer";
 import { fieldErrorsFrom, friendlyErrorMessage } from "@/lib/api/friendly-error";
@@ -236,6 +236,12 @@ interface AppearanceFormState {
   surfaceColor: string;
   textColor: string;
   mutedTextColor: string;
+  headerBgColor: string;
+  headerStickyBgColor: string;
+  headerStickyBlurEnabled: boolean;
+  headerLinkColor: string;
+  headerLinkHoverColor: string;
+  headerLinkActiveColor: string;
   headingFont: SiteFont;
   bodyFont: SiteFont;
   baseFontSize: number;
@@ -274,6 +280,12 @@ function formFromDto(dto: SiteAppearance): AppearanceFormState {
     surfaceColor: dto.surfaceColor,
     textColor: dto.textColor,
     mutedTextColor: dto.mutedTextColor,
+    headerBgColor: dto.headerBgColor,
+    headerStickyBgColor: dto.headerStickyBgColor,
+    headerStickyBlurEnabled: dto.headerStickyBlurEnabled,
+    headerLinkColor: dto.headerLinkColor,
+    headerLinkHoverColor: dto.headerLinkHoverColor,
+    headerLinkActiveColor: dto.headerLinkActiveColor,
     headingFont: dto.headingFont,
     bodyFont: dto.bodyFont,
     baseFontSize: dto.baseFontSize,
@@ -329,6 +341,15 @@ const COLOR_FIELDS = [
 /** design-notes-theme-typography.md §6 — "Bileşen Stilleri" `colors` sekminin İÇİNDE, ayrı bir sekme DEĞİL. */
 const COMPONENT_STYLE_FIELDS = ["borderRadius", "buttonStyle"] as const;
 const TYPOGRAPHY_FIELDS = ["headingFont", "bodyFont", "baseFontSize"] as const;
+/** design-notes-header-colors.md §7 — `COLOR_FIELDS`'in YANINA, ayrı bir sabit olarak (semantik netlik için). */
+const HEADER_COLOR_FIELDS = [
+  "headerBgColor",
+  "headerStickyBgColor",
+  "headerStickyBlurEnabled",
+  "headerLinkColor",
+  "headerLinkHoverColor",
+  "headerLinkActiveColor",
+] as const;
 
 /** §10.12.9 — Panelin 9 sekmesinden 8'i (`brand` dahil, salt-okunur olduğu için hiç dirty olmaz;
  * `customCode` HARİÇ) `PATCH /admin/appearance`'a gider. `colors`/`typography` bölümleri
@@ -344,7 +365,7 @@ const SECTION_FIELDS = {
     "pageHeaderBackgroundMediaId",
     "pageHeaderOverlayOpacity",
   ],
-  colors: ["presetKey", ...COLOR_FIELDS, ...COMPONENT_STYLE_FIELDS],
+  colors: ["presetKey", ...COLOR_FIELDS, ...HEADER_COLOR_FIELDS, ...COMPONENT_STYLE_FIELDS],
   social: ["socialShareEnabled", "socialShareNetworks"],
   typography: ["presetKey", ...TYPOGRAPHY_FIELDS],
   features: [
@@ -907,6 +928,11 @@ export default function AdminAppearancePage() {
     "--site-surface": form.surfaceColor,
     "--site-text": form.textColor,
     "--site-muted-text": form.mutedTextColor,
+    "--site-header-bg": form.headerBgColor,
+    "--site-header-bg-sticky": form.headerStickyBgColor,
+    "--site-header-link": form.headerLinkColor,
+    "--site-header-link-hover": form.headerLinkHoverColor,
+    "--site-header-link-active": form.headerLinkActiveColor,
     "--site-radius": SITE_BORDER_RADIUS_PX[form.borderRadius],
     "--site-heading-font": SITE_FONT_FAMILY[form.headingFont],
     "--site-body-font": SITE_FONT_FAMILY[form.bodyFont],
@@ -1339,6 +1365,111 @@ export default function AdminAppearancePage() {
                         (koyu) tercih edin; <strong>Buton Metni</strong> (genelde beyaz) accent zemininde düşük kontrast oluşturabilir.
                       </p>
                     </div>
+                  </div>
+                </div>
+
+                {/* design-notes-header-colors.md §6 — "Header & Menü Renkleri" AYNI kart içinde,
+                    "Bileşen Renkleri" ile "Bileşen Stilleri" arasında (aynı "border-t ayraçla
+                    alt-bölüm" paterni). */}
+                <div className="space-y-4 border-t border-border/60 pt-4">
+                  <SectionHeader
+                    icon={PanelTop}
+                    title="Header & Menü Renkleri"
+                    description="Site üst menüsünün arka plan ve bağlantı renkleri."
+                  />
+
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-foreground">Normal Durum</p>
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <ColorField
+                        id="headerBgColor"
+                        label="Menü Arka Planı"
+                        value={form.headerBgColor}
+                        maxLength={9}
+                        onChange={(hex) => updateColorOrTypographyField("headerBgColor", hex)}
+                      />
+                      <div className="space-y-1.5">
+                        <ColorField
+                          id="headerLinkColor"
+                          label="Bağlantı Rengi (Menü)"
+                          value={form.headerLinkColor}
+                          maxLength={9}
+                          checkAgainst={form.headerBgColor}
+                          onChange={(hex) => updateColorOrTypographyField("headerLinkColor", hex)}
+                        />
+                        <p className="text-xs text-foreground/50">
+                          Bu renk header&apos;daki tüm bağlantı ve ikonlara (sepet, favoriler, hesap) uygulanır.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-foreground">Hover / Aktif Sayfa</p>
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <ColorField
+                        id="headerLinkHoverColor"
+                        label="Bağlantı Rengi (Üzerine Gelince)"
+                        value={form.headerLinkHoverColor}
+                        onChange={(hex) => updateColorOrTypographyField("headerLinkHoverColor", hex)}
+                      />
+                      <ColorField
+                        id="headerLinkActiveColor"
+                        label="Bağlantı Rengi (Aktif Sayfa)"
+                        value={form.headerLinkActiveColor}
+                        onChange={(hex) => updateColorOrTypographyField("headerLinkActiveColor", hex)}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Çapraz-sekme bağımlılığı — `stickyHeaderEnabled` (Ekstra Özellikler sekmesi)
+                      kapalıyken bu alt-grup GÖRSEL OLARAK devre dışı gösterilir (disabled input'lar
+                      DEĞİL — `pageHeaderOverlayOpacity`'nin devre dışı bırakılma paterniyle AYNI). */}
+                  <div
+                    className={cn(
+                      "space-y-2 border-t border-border/60 pt-4 transition-opacity duration-300",
+                      !form.stickyHeaderEnabled && "pointer-events-none opacity-50"
+                    )}
+                  >
+                    <p className="text-sm font-medium text-foreground">Yapışkan Header (Kaydırma Sonrası)</p>
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <ColorField
+                        id="headerStickyBgColor"
+                        label="Yapışkan Menü Arka Planı"
+                        value={form.headerStickyBgColor}
+                        maxLength={9}
+                        onChange={(hex) => updateColorOrTypographyField("headerStickyBgColor", hex)}
+                      />
+                      <div className="space-y-1.5">
+                        <p className="text-xs text-foreground/50">Bağlantı rengiyle kontrastı:</p>
+                        <ContrastBadge foreground={form.headerLinkColor} background={form.headerStickyBgColor} />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 rounded-lg border border-border/60 p-3">
+                      <PanelTop className="h-4 w-4 shrink-0 text-foreground/50" aria-hidden="true" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-foreground">Bulanıklık (Backdrop Blur)</p>
+                        <p className="text-xs text-foreground/60">
+                          Yapışkan haldeyken menü arkasındaki içerik hafifçe bulanıklaşır.
+                        </p>
+                      </div>
+                      <Switch
+                        checked={form.headerStickyBlurEnabled}
+                        onCheckedChange={(checked) => updateColorOrTypographyField("headerStickyBlurEnabled", Boolean(checked))}
+                        aria-label="Yapışkan header bulanıklığı"
+                      />
+                    </div>
+
+                    {!form.stickyHeaderEnabled && (
+                      <p className="text-xs text-foreground/50">
+                        Bu ayarları etkin kılmak için{" "}
+                        <Button variant="link" size="sm" onClick={() => setActiveTab("features")}>
+                          Ekstra Özellikler
+                        </Button>{" "}
+                        sekmesinden &quot;Yapışkan Header&quot;ı açın.
+                      </p>
+                    )}
                   </div>
                 </div>
 

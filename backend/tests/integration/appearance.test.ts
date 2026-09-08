@@ -77,6 +77,12 @@ describe("appearance — /appearance ve /admin/appearance (public + authenticate
     expect(data.pageHeaderStyle).toBe("PLAIN");
     expect(data.primaryColor).toBe("#4f46e5");
     expect(data.backToTopEnabled).toBe(true);
+    expect(data.headerBgColor).toBe("#ffffffcc");
+    expect(data.headerStickyBgColor).toBe("#fffffff2");
+    expect(data.headerStickyBlurEnabled).toBe(true);
+    expect(data.headerLinkColor).toBe("#111827b3");
+    expect(data.headerLinkHoverColor).toBe("#111827");
+    expect(data.headerLinkActiveColor).toBe("#4f46e5");
     expect(data.customCss).toBeNull();
     expect(data.customJs).toBeNull();
     // Public DTO yönetim-özel alanları TAŞIMAZ.
@@ -296,6 +302,103 @@ describe("appearance — /appearance ve /admin/appearance (public + authenticate
     expect(data.buttonStyle).toBe("SOFT");
   });
 
+  it("PATCH /admin/appearance — Header & Menü renkleri (headerBgColor/headerStickyBgColor/headerStickyBlurEnabled/headerLinkColor/headerLinkHoverColor/headerLinkActiveColor) kısmi güncellenebilir, alfa kanallı hex kabul edilir", async () => {
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/api/v1/admin/appearance",
+      headers: authHeader(adminToken),
+      payload: {
+        // Alfa kanallı (#rrggbbaa) — headerBgColor/headerStickyBgColor/headerLinkColor bunu kabul eder.
+        headerBgColor: "#0f172acc",
+        headerStickyBgColor: "#1e293bf2",
+        headerStickyBlurEnabled: false,
+        headerLinkColor: "#e2e8f0b3",
+        // Düz 6 haneli — headerLinkHoverColor/headerLinkActiveColor alfa KABUL ETMEZ.
+        headerLinkHoverColor: "#38bdf8",
+        headerLinkActiveColor: "#facc15",
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const data = res.json().data;
+    expect(data.headerBgColor).toBe("#0f172acc");
+    expect(data.headerStickyBgColor).toBe("#1e293bf2");
+    expect(data.headerStickyBlurEnabled).toBe(false);
+    expect(data.headerLinkColor).toBe("#e2e8f0b3");
+    expect(data.headerLinkHoverColor).toBe("#38bdf8");
+    expect(data.headerLinkActiveColor).toBe("#facc15");
+    // Kısmi PATCH — bu istekte gönderilmeyen alanlar (ör. primaryColor) DEĞİŞMEMİŞ olmalı.
+    expect(data.primaryColor).toBe("#ff0000");
+
+    const getRes = await app.inject({ method: "GET", url: "/api/v1/admin/appearance", headers: authHeader(adminToken) });
+    const getData = getRes.json().data;
+    expect(getData.headerBgColor).toBe("#0f172acc");
+    expect(getData.headerStickyBlurEnabled).toBe(false);
+    expect(getData.headerLinkActiveColor).toBe("#facc15");
+  });
+
+  it("PATCH /admin/appearance — geçersiz hex renk (headerLinkColor) 422 döner", async () => {
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/api/v1/admin/appearance",
+      headers: authHeader(adminToken),
+      payload: { headerLinkColor: "not-a-color" },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("PATCH /admin/appearance — geçersiz hex renk (headerLinkActiveColor) 422 döner", async () => {
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/api/v1/admin/appearance",
+      headers: authHeader(adminToken),
+      payload: { headerLinkActiveColor: "not-a-color" },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("PATCH /admin/appearance — headerLinkActiveColor alfa kanallı hex ile gönderilirse 422 döner (bu alan yalnızca düz 6 haneli hex kabul eder)", async () => {
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/api/v1/admin/appearance",
+      headers: authHeader(adminToken),
+      payload: { headerLinkActiveColor: "#4f46e5cc" },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("PATCH /admin/appearance — Header & Menü renklerinde de EDITOR 403, MANAGER 200 döner (RBAC eşiği değişmedi)", async () => {
+    const editorRes = await app.inject({
+      method: "PATCH",
+      url: "/api/v1/admin/appearance",
+      headers: authHeader(editorToken),
+      payload: { headerBgColor: "#000000" },
+    });
+    expect(editorRes.statusCode).toBe(403);
+
+    const managerRes = await app.inject({
+      method: "PATCH",
+      url: "/api/v1/admin/appearance",
+      headers: authHeader(managerToken),
+      payload: { headerBgColor: "#000000" },
+    });
+    expect(managerRes.statusCode).toBe(200);
+    expect(managerRes.json().data.headerBgColor).toBe("#000000");
+  });
+
+  it("GET /appearance (public) — Header & Menü renklerini de yansıtır (headerLinkActiveColor dahil)", async () => {
+    const res = await app.inject({ method: "GET", url: "/api/v1/appearance" });
+    const data = res.json().data;
+    expect(data.headerBgColor).toBe("#000000");
+    expect(data.headerStickyBgColor).toBe("#1e293bf2");
+    expect(data.headerStickyBlurEnabled).toBe(false);
+    expect(data.headerLinkColor).toBe("#e2e8f0b3");
+    expect(data.headerLinkHoverColor).toBe("#38bdf8");
+    expect(data.headerLinkActiveColor).toBe("#facc15");
+  });
+
   it("GET /admin/appearance/presets — statik registry döner, DB tablosu OLMADAN (USER panel kapısında 403 alır)", async () => {
     const userRes = await app.inject({ method: "GET", url: "/api/v1/admin/appearance/presets", headers: authHeader(userToken) });
     expect(userRes.statusCode).toBe(403);
@@ -342,6 +445,9 @@ describe("appearance — /appearance ve /admin/appearance (public + authenticate
     // §10.12.9 kararı — reset ucu YALNIZCA renk/tipografiyi etkiler, önceki PATCH'te
     // false yapılmış backToTopEnabled DEĞİŞMEMİŞ olmalı.
     expect(data.backToTopEnabled).toBe(false);
+    // Header & Menü renkleri de reset ucunun kapsamı DIŞINDADIR (presetlerin taşıdığı
+    // `AppearancePresetValues` kümesine dahil DEĞİLDİR) — önceki PATCH'teki değer korunur.
+    expect(data.headerBgColor).toBe("#000000");
   });
 
   it("POST /admin/appearance/reset — gövde boş, fabrika renk/tipografi DEFAULTS'una döner", async () => {

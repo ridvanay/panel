@@ -1674,6 +1674,14 @@ export type SocialShareNetwork = z.infer<typeof SocialShareNetworkSchema>;
 // güvenle gömülmesini sağlar.
 export const HexColorSchema = z.string().regex(/^#[0-9a-fA-F]{6}$/, "Geçerli bir 6 haneli hex renk olmalıdır (örn. #4f46e5).");
 
+// `#rgb` | `#rrggbb` | `#rrggbbaa` (alfa kanallı) — `pages.schemas.ts::HEX_COLOR_RE`
+// (`ContainerBackground.value`, page-builder) ile AYNI regex paterni, YENİDEN KULLANILIR (icat
+// EDİLMEDİ). `SiteAppearance`'ın alfa-kanallı header alanları (`headerBgColor`/
+// `headerStickyBgColor`/`headerLinkColor`) için — bkz. openapi.yaml `HexColorAlpha`.
+export const HexColorAlphaSchema = z
+  .string()
+  .regex(/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/, "Geçerli bir hex renk olmalıdır (#rgb, #rrggbb veya alfa kanallı #rrggbbaa, örn. #ffffffcc).");
+
 export const SiteAppearanceSchema = z.object({
   presetKey: z.string().nullable(),
   // --- Sayfa Başlığı Düzeni ---
@@ -1694,6 +1702,15 @@ export const SiteAppearanceSchema = z.object({
   surfaceColor: HexColorSchema,
   textColor: HexColorSchema,
   mutedTextColor: HexColorSchema,
+  // --- Header & Menü (SADECE `SiteHeader` bileşeni — pageHeader*/genel renklerden BAĞIMSIZ).
+  // `headerBgColor`/`headerStickyBgColor`/`headerLinkColor` alfa kanallı olabilir (bkz.
+  // `HexColorAlphaSchema`); `headerLinkHoverColor`/`headerLinkActiveColor` düz 6 haneli hex. ---
+  headerBgColor: HexColorAlphaSchema,
+  headerStickyBgColor: HexColorAlphaSchema,
+  headerStickyBlurEnabled: z.boolean(),
+  headerLinkColor: HexColorAlphaSchema,
+  headerLinkHoverColor: HexColorSchema,
+  headerLinkActiveColor: HexColorSchema,
   // --- Yazı Tipi ---
   headingFont: SiteFontSchema,
   bodyFont: SiteFontSchema,
@@ -1742,6 +1759,12 @@ export const PublicSiteAppearanceSchema = z.object({
   surfaceColor: HexColorSchema,
   textColor: HexColorSchema,
   mutedTextColor: HexColorSchema,
+  headerBgColor: HexColorAlphaSchema,
+  headerStickyBgColor: HexColorAlphaSchema,
+  headerStickyBlurEnabled: z.boolean(),
+  headerLinkColor: HexColorAlphaSchema,
+  headerLinkHoverColor: HexColorSchema,
+  headerLinkActiveColor: HexColorSchema,
   headingFont: SiteFontSchema,
   bodyFont: SiteFontSchema,
   baseFontSize: z.number().int().min(14).max(20),

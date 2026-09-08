@@ -22,6 +22,15 @@ describe("contrastRatio", () => {
     expect(contrastRatio("kırmızı", "#ffffff")).toBeNull();
     expect(contrastRatio("#fff", "#ffffff")).toBeNull();
   });
+
+  /** design-notes-header-colors.md §5 — 8 haneli (`#rrggbbaa`) alfa-kanallı hex kabul edilir,
+   * alfa hesaplamaya KATILMAZ (ham RGB karşılaştırması). */
+  it("alfa-kanallı (8 haneli) hex girdisini kabul eder, alfayı göz ardı eder", () => {
+    const withAlpha = contrastRatio("#111827b3", "#ffffffcc");
+    const withoutAlpha = contrastRatio("#111827", "#ffffff");
+    expect(withAlpha).not.toBeNull();
+    expect(withAlpha).toBeCloseTo(withoutAlpha!, 10);
+  });
 });
 
 describe("meetsWcagAa", () => {

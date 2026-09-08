@@ -1294,6 +1294,20 @@ model SiteAppearance {
   textColor       String @default("#111827")
   mutedTextColor  String @default("#6b7280")
 
+  // --- Header & Menü Renkleri (site header'ına özel — genel Marka & Yüzey renk paletinden
+  // BAĞIMSIZ, kullanıcı header'ı sitenin geri kalanından farklı renklendirebilir).
+  // `headerBgColor`/`headerStickyBgColor`/`headerLinkColor` `#rrggbb` VEYA `#rrggbbaa` (alfa
+  // kanallı) kabul eder — `ContainerBackground.value` (page-builder) ile AYNI regex paterni.
+  headerBgColor       String @default("#ffffffcc")
+  headerStickyBgColor String @default("#fffffff2")
+  // Yapışkan (sticky) durumdayken backdrop-blur uygulanır mı — CSS DEĞİŞKENİ DEĞİL, `buttonStyle`
+  // ile AYNI yapısal karar. Normal (kaydırılmamış) durumda blur HER ZAMAN uygulanır — geriye
+  // dönük uyumluluk için ayrı bir toggle YOK.
+  headerStickyBlurEnabled Boolean @default(true)
+  headerLinkColor         String  @default("#111827b3")
+  headerLinkHoverColor    String  @default("#111827")
+  headerLinkActiveColor   String  @default("#4f46e5")
+
   // --- Yazı Tipi ---
   headingFont  SiteFont @default(SYSTEM)
   bodyFont     SiteFont @default(SYSTEM)

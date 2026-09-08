@@ -7,7 +7,9 @@
 export const WCAG_AA_CONTRAST_THRESHOLD = 4.5;
 
 function hexToRgb(hex: string): [number, number, number] | null {
-  const match = /^#([0-9a-fA-F]{6})$/.exec(hex.trim());
+  // design-notes-header-colors.md §5 — alfa kanallı `#rrggbbaa` girdilerini de kabul eder (alfa
+  // grup 2, hesaplamaya KATILMAZ, göz ardı edilir — ham RGB karşılaştırması, saydamlık öncesi).
+  const match = /^#([0-9a-fA-F]{6})([0-9a-fA-F]{2})?$/.exec(hex.trim());
   if (!match) return null;
   const value = match[1]!;
   return [parseInt(value.slice(0, 2), 16), parseInt(value.slice(2, 4), 16), parseInt(value.slice(4, 6), 16)];

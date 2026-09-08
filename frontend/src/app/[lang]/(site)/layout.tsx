@@ -60,6 +60,11 @@ export default async function SiteLayout({
     "--site-surface": appearance.surfaceColor,
     "--site-text": appearance.textColor,
     "--site-muted-text": appearance.mutedTextColor,
+    "--site-header-bg": appearance.headerBgColor,
+    "--site-header-bg-sticky": appearance.headerStickyBgColor,
+    "--site-header-link": appearance.headerLinkColor,
+    "--site-header-link-hover": appearance.headerLinkHoverColor,
+    "--site-header-link-active": appearance.headerLinkActiveColor,
     "--site-radius": SITE_BORDER_RADIUS_PX[appearance.borderRadius],
     "--site-heading-font": SITE_FONT_FAMILY[appearance.headingFont],
     "--site-body-font": SITE_FONT_FAMILY[appearance.bodyFont],
@@ -87,6 +92,8 @@ export default async function SiteLayout({
             locales={locales}
             activeLocale={activeLocale}
             productsModuleEnabled={productsModuleEnabled}
+            stickyHeaderEnabled={appearance.stickyHeaderEnabled}
+            headerStickyBlurEnabled={appearance.headerStickyBlurEnabled}
           />
           <main className="flex-1">{children}</main>
           <SiteFooter
