@@ -19,6 +19,8 @@ import { restrictToVerticalAxis, restrictToWindowEdges } from "@dnd-kit/modifier
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { ListTree } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
+import { cn } from "@/lib/utils";
+import { NAVIGATION_MAX_DEPTH } from "@/lib/navigation-constants";
 import { DropIndicator, NavTreeRow, NavTreeRowOverlay } from "./nav-tree-row";
 import {
   buildTree,
@@ -34,7 +36,9 @@ import {
   previewProjection,
   removeItemCascade,
   updateItem,
+  type DropProjection,
   type FlatNavItem,
+  type NavTreeNode,
 } from "./nav-tree-utils";
 
 interface NavTreeEditorProps {
@@ -43,10 +47,109 @@ interface NavTreeEditorProps {
   hrefHint: string;
 }
 
+/** Çocuk konteynerinin rehber çizgisi opaklığı — derinlik arttıkça soluklaşır, dikkat köke kalır
+ * (ui-designer kararı (a) — `.claude/ui-designer-navigation-flyout-spec.md`). `depth` burada wrap
+ * edilen ÇOCUK düğümlerin derinliğidir (1, 2 veya 3); renk kodlaması/metin rozeti KULLANILMAZ. */
+function guideLineOpacityClass(depth: number): string {
+  if (depth <= 1) return "border-border/60";
+  if (depth === 2) return "border-border/40";
+  return "border-border/25";
+}
+
+interface NavTreeBranchProps {
+  nodes: NavTreeNode[];
+  depth: number;
+  items: FlatNavItem[];
+  activeId: string | null;
+  overId: string | null;
+  projection: DropProjection | null;
+  onIndent: (id: string) => void;
+  onOutdent: (id: string) => void;
+  onMoveUp: (id: string) => void;
+  onMoveDown: (id: string) => void;
+  onUpdate: (id: string, patch: { label?: string; href?: string }) => void;
+  onRemove: (id: string) => void;
+  hrefHint: string;
+}
+
 /**
- * Sağ panel — Karar 2-6: dnd-kit tabanlı, sürükle-bırakla sıralanabilir VE en fazla 2 seviye
- * iç-içe geçirilebilen menü ağacı. dnd-kit'in resmi "Sortable Tree" örneğindeki izdüşüm
- * (projection) mantığı referans alınmıştır — somut kurallar `nav-tree-utils.ts`'te.
+ * Özyinelemeli ağaç dalı (architect-scope §2) — kök ve ARBİTRARY derinlikteki tüm alt seviyeleri
+ * AYNI bileşenle render eder; sabit iki-seviyelik JSX'in yerini alır. Girinti, ui-designer kararı
+ * (a) gereği her seviyede sabit `ml-2 pl-3` (8+12=20px) konteyner iç içe geçmesiyle KÜMÜLATİF
+ * olarak oluşur (0/20/40/60px) — derinlik başına ayrı bir hesaplanmış `style` GEREKMEZ. Gerçek
+ * derinlik sınırı zaten veri modelinde/validasyonda (`NAVIGATION_MAX_DEPTH`) uygulandığı için
+ * buradaki `depth > NAVIGATION_MAX_DEPTH` kontrolü SADECE savunma amaçlıdır (bozuk state
+ * render'ı sonsuz döngüye/aşırı derinliğe sokmasın).
+ */
+function NavTreeBranch({
+  nodes,
+  depth,
+  items,
+  activeId,
+  overId,
+  projection,
+  onIndent,
+  onOutdent,
+  onMoveUp,
+  onMoveDown,
+  onUpdate,
+  onRemove,
+  hrefHint,
+}: NavTreeBranchProps) {
+  if (depth > NAVIGATION_MAX_DEPTH) return null;
+
+  return (
+    <>
+      {nodes.map((node) => {
+        const showIndicatorAbove = Boolean(activeId) && overId === node.item.id && projection !== null;
+        return (
+          <div key={node.item.id} className="space-y-2">
+            {showIndicatorAbove && <DropIndicator depth={projection!.depth} />}
+            <NavTreeRow
+              item={node.item}
+              canIndentItem={canIndent(items, node.item.id)}
+              canOutdentItem={canOutdent(items, node.item.id)}
+              canMoveUp={canMoveUpSibling(items, node.item.id)}
+              canMoveDown={canMoveDownSibling(items, node.item.id)}
+              onIndent={onIndent}
+              onOutdent={onOutdent}
+              onMoveUp={onMoveUp}
+              onMoveDown={onMoveDown}
+              onUpdate={onUpdate}
+              onRemove={onRemove}
+              hrefHint={hrefHint}
+            />
+            {node.children.length > 0 && (
+              <div className={cn("relative ml-2 space-y-2 border-l border-dashed pl-3", guideLineOpacityClass(depth + 1))}>
+                <NavTreeBranch
+                  nodes={node.children}
+                  depth={depth + 1}
+                  items={items}
+                  activeId={activeId}
+                  overId={overId}
+                  projection={projection}
+                  onIndent={onIndent}
+                  onOutdent={onOutdent}
+                  onMoveUp={onMoveUp}
+                  onMoveDown={onMoveDown}
+                  onUpdate={onUpdate}
+                  onRemove={onRemove}
+                  hrefHint={hrefHint}
+                />
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+/**
+ * Sağ panel — Karar 2-6: dnd-kit tabanlı, sürükle-bırakla sıralanabilir VE en fazla
+ * `NAVIGATION_MAX_DEPTH + 1` seviye iç-içe geçirilebilen menü ağacı. dnd-kit'in resmi
+ * "Sortable Tree" örneğindeki izdüşüm (projection) mantığı referans alınmıştır — somut kurallar
+ * `nav-tree-utils.ts`'te.
  */
 export function NavTreeEditor({ items, onChange, hrefHint }: NavTreeEditorProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -134,11 +237,6 @@ export function NavTreeEditor({ items, onChange, hrefHint }: NavTreeEditorProps)
     );
   }
 
-  function renderIndicatorAbove(rowId: string) {
-    if (!activeId || overId !== rowId || !projection) return null;
-    return <DropIndicator depth={projection.depth} />;
-  }
-
   return (
     <DndContext
       sensors={sensors}
@@ -152,48 +250,21 @@ export function NavTreeEditor({ items, onChange, hrefHint }: NavTreeEditorProps)
     >
       <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
         <div className="space-y-2">
-          {tree.map((node) => (
-            <div key={node.item.id} className="space-y-2">
-              {renderIndicatorAbove(node.item.id)}
-              <NavTreeRow
-                item={node.item}
-                canIndentItem={canIndent(items, node.item.id)}
-                canOutdentItem={canOutdent(items, node.item.id)}
-                canMoveUp={canMoveUpSibling(items, node.item.id)}
-                canMoveDown={canMoveDownSibling(items, node.item.id)}
-                onIndent={handleIndent}
-                onOutdent={handleOutdent}
-                onMoveUp={handleMoveUp}
-                onMoveDown={handleMoveDown}
-                onUpdate={handleUpdate}
-                onRemove={handleRemove}
-                hrefHint={hrefHint}
-              />
-              {node.children.length > 0 && (
-                <div className="relative ml-3 space-y-2 border-l border-dashed border-border/60 pl-5">
-                  {node.children.map((child) => (
-                    <div key={child.id} className="space-y-2">
-                      {renderIndicatorAbove(child.id)}
-                      <NavTreeRow
-                        item={child}
-                        canIndentItem={canIndent(items, child.id)}
-                        canOutdentItem={canOutdent(items, child.id)}
-                        canMoveUp={canMoveUpSibling(items, child.id)}
-                        canMoveDown={canMoveDownSibling(items, child.id)}
-                        onIndent={handleIndent}
-                        onOutdent={handleOutdent}
-                        onMoveUp={handleMoveUp}
-                        onMoveDown={handleMoveDown}
-                        onUpdate={handleUpdate}
-                        onRemove={handleRemove}
-                        hrefHint={hrefHint}
-                      />
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          ))}
+          <NavTreeBranch
+            nodes={tree}
+            depth={0}
+            items={items}
+            activeId={activeId}
+            overId={overId}
+            projection={projection}
+            onIndent={handleIndent}
+            onOutdent={handleOutdent}
+            onMoveUp={handleMoveUp}
+            onMoveDown={handleMoveDown}
+            onUpdate={handleUpdate}
+            onRemove={handleRemove}
+            hrefHint={hrefHint}
+          />
           {/* Listenin sonuna bırakma (`over === null`) — Karar 5.6: pointer son satırın da altına
               geçtiğinde, gösterge ağacın en altında render edilir. */}
           {activeId && overId === null && projection && <DropIndicator depth={projection.depth} />}

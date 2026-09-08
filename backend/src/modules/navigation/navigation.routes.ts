@@ -13,11 +13,55 @@ import { triggerGlobalRevalidation } from "../../lib/revalidate";
 import { DEFAULTS, SETTINGS_ID } from "../settings/settings.routes";
 import { UpdateNavigationConfigRequestSchema } from "./navigation.schemas";
 
+export type NavigationItemForSort = { id?: string; parentId?: string | null };
+
+/**
+ * Öğeleri seviye-sıralı (ata sayısı artan) olarak STABLE sıralar. `PUT /admin/navigation`
+ * tam-replace `createMany` öncesi kullanılır: her satırın ebeveyni, kendisinden ÖNCE
+ * yazılmış olur, dolayısıyla FK ihlali oluşmaz (bkz. ARCHITECTURE.md §10.10.3).
+ * `Array.prototype.sort` ES2019'dan beri stable'dır — aynı derinlikteki kardeşlerin
+ * payload'daki göreli sırası korunur. Modülden export edilir ki aynı desenin ikinci bir
+ * kopyası (`demo-templates/importer.ts`) buraya bağlanabilsin — kod KOPYALANMAZ.
+ */
+export function sortNavigationItemsByDepth<T extends NavigationItemForSort>(items: T[]): T[] {
+  const byId = new Map<string, T>();
+  items.forEach((item) => {
+    if (item.id) byId.set(item.id, item);
+  });
+
+  const depthMemo = new Map<string, number>();
+
+  function depthOf(item: T, visiting: Set<string> = new Set()): number {
+    if (item.id && depthMemo.has(item.id)) return depthMemo.get(item.id)!;
+    if (item.parentId == null) {
+      if (item.id) depthMemo.set(item.id, 0);
+      return 0;
+    }
+    const parent = byId.get(item.parentId);
+    // Savunma: parent bulunamazsa (orphan) veya teorik bir döngüye rastlanırsa (validasyon
+    // katmanı bunu zaten reddeder, ama bu fonksiyon bağımsız da kullanılabilir/çağrılabilir)
+    // kök gibi ele alınır — sonsuz özyineleme imkânsızdır.
+    if (!parent || (item.id != null && visiting.has(item.id))) {
+      if (item.id) depthMemo.set(item.id, 0);
+      return 0;
+    }
+    if (item.id) visiting.add(item.id);
+    const d = depthOf(parent, visiting) + 1;
+    if (item.id) depthMemo.set(item.id, d);
+    return d;
+  }
+
+  return [...items].sort((a, b) => depthOf(a) - depthOf(b));
+}
+
 async function readNavigationConfig(app: FastifyInstance) {
   const [settings, navigationItems, socialLinks, footerColumns] = await Promise.all([
     app.prisma.siteSettings.findUnique({ where: { id: SETTINGS_ID } }),
-    // Kök öğeler her zaman alt öğelerden önce gelir (nulls first) — tüketici tek geçişte
-    // ağacı kurabilir. Bkz. ARCHITECTURE.md §10.10.1.
+    // `(parentId NULLS FIRST, order)` kardeşleri bitişik/sıralı tutar (deterministiktir),
+    // ANCAK 4 seviyede "ata her zaman torundan önce gelir" GARANTİSİNİ VERMEZ — torunlar
+    // ebeveyn UUID'sine göre sıralanır, ebeveynin kendi derinliğine göre değil. Tüketici
+    // (site header, admin editör) tek geçişli gruplama YERİNE iki geçişli bir
+    // `parentId -> children[]` haritası kurmalıdır (bkz. ARCHITECTURE.md §10.10.1).
     app.prisma.navigationItem.findMany({
       orderBy: [{ parentId: { sort: "asc", nulls: "first" } }, { order: "asc" }],
     }),
@@ -74,13 +118,11 @@ export async function adminNavigationRoutes(app: FastifyInstance) {
 
         await tx.navigationItem.deleteMany({});
         if (body.navigationItems.length > 0) {
-          // Kararlı iki-parçalı bölme: kök öğeler (parentId === null) alt öğelerden ÖNCE
-          // yazılır. Derinlik 2 olduğu için bu, genel bir topolojik sıralamaya eşdeğerdir ve
-          // Prisma `createMany`'nin parametre limiti nedeniyle çoklu ifadeye bölünmesi
-          // durumunda dahi FK ihlalini engeller. ATLAMA — bkz. ARCHITECTURE.md §10.10.3.
-          const roots = body.navigationItems.filter((item) => item.parentId == null);
-          const children = body.navigationItems.filter((item) => item.parentId != null);
-          await tx.navigationItem.createMany({ data: [...roots, ...children] });
+          // Seviye-sıralı kararlı topolojik sıralama: her satırın ebeveyni kendisinden ÖNCE
+          // yazılır. 4 seviyede eski roots/children iki-parçalı bölme YETERSİZDİR (yalnızca
+          // derinlik ≤ 2'yi kapsar) — bkz. ARCHITECTURE.md §10.10.3.
+          const ordered = sortNavigationItemsByDepth(body.navigationItems);
+          await tx.navigationItem.createMany({ data: ordered });
         }
 
         await tx.socialLink.deleteMany({});

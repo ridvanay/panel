@@ -1,16 +1,25 @@
 /**
- * Sürükle-bırakla iç-içe geçirilebilen (max. 2 seviye) navigasyon ağacı için SAF (pure) mantık.
- * Bkz. `.claude/design-notes-navigation-menu-editor.md` Karar 3-5 ve ARCHITECTURE.md §10.10.1.
+ * Sürükle-bırakla iç-içe geçirilebilen (en fazla `NAVIGATION_MAX_DEPTH + 1` seviye — bkz.
+ * `@/lib/navigation-constants`) navigasyon ağacı için SAF (pure) mantık. Bkz.
+ * `.claude/design-notes-navigation-menu-editor.md` Karar 3-5,
+ * `.claude/architect-scope-navigation-deep-nesting.md` §2 ve ARCHITECTURE.md §10.10.1 / §10.10.3 /
+ * §10.10.3.1.
  *
  * Kanonik (canonical) state: `FlatNavItem[]` — HER ZAMAN "derinlik-önce" (depth-first) sırada
- * tutulur, yani her kök öğe hemen ardından KENDİ çocuklarıyla gelir (`(parentId NULLS FIRST,
- * order)` sunucu sıralamasıyla aynı sonucu üretir). Bu değişmez (invariant) her mutasyon
- * fonksiyonu tarafından korunur — dizinin ortasına "yabancı" bir kök sokulmaz.
+ * tutulur, yani her kök öğe hemen ardından KENDİ alt ağacıyla (tüm torunlarıyla, derinlik-önce)
+ * gelir (`(parentId NULLS FIRST, order)` sunucu sıralamasıyla aynı sonucu üretir). Bu değişmez
+ * (invariant) her mutasyon fonksiyonu tarafından korunur — dizinin ortasına "yabancı" bir kök
+ * sokulmaz.
+ *
+ * TÜM fonksiyonlar derinlikten BAĞIMSIZDIR — hiçbir yerde derinlik sayısı hardcode edilmez, tek
+ * sınır `NAVIGATION_MAX_DEPTH` sabitinden okunur (bkz. `@/lib/navigation-constants`).
  */
 
-export const INDENTATION_WIDTH = 32;
-/** Maksimum derinlik 2 (kök + 1 alt) — ARCHITECTURE.md §10.10.1 ile bağlayıcı. */
-export const MAX_DEPTH = 1;
+import { NAVIGATION_MAX_DEPTH } from "@/lib/navigation-constants";
+
+/** Sürükleme sırasında imleç ofsetini (px) derinlik adımına çevirmek için kullanılan SABİT adım
+ * genişliği — ui-designer kararı (a): 32 → 20px (bkz. `.claude/ui-designer-navigation-flyout-spec.md`). */
+export const INDENTATION_WIDTH = 20;
 
 export interface FlatNavItem {
   id: string;
@@ -20,12 +29,51 @@ export interface FlatNavItem {
   parentId: string | null;
 }
 
-export function getDepth(item: Pick<FlatNavItem, "parentId">): 0 | 1 {
-  return item.parentId === null ? 0 : 1;
+/** Bir öğenin doğrudan ebeveynden köke kadar giden ATA SAYISI (kök = 0). `parentId` zincirini
+ * yürüyerek hesaplanır — `depth` kolonu DB'de tutulmaz (bkz. ARCHITECTURE.md §10.10.1), burada da
+ * türetilir. Bozuk (döngülü) state'e karşı savunma amaçlı `visited` seti ile sonsuz döngü engellenir
+ * (normalde bu editörün ürettiği state'te döngü oluşamaz — mutasyonlar hep ağaç-korur). */
+export function getDepth(items: FlatNavItem[], id: string): number {
+  const byId = new Map(items.map((item) => [item.id, item] as const));
+  const visited = new Set<string>();
+  let depth = 0;
+  let current = byId.get(id);
+  while (current && current.parentId !== null) {
+    if (visited.has(current.id)) break;
+    visited.add(current.id);
+    depth++;
+    current = byId.get(current.parentId);
+  }
+  return depth;
 }
 
 export function hasChildren(items: FlatNavItem[], id: string): boolean {
   return items.some((item) => item.parentId === id);
+}
+
+/** Bir öğenin altındaki en derin dalın YÜKSEKLİĞİ (yapraksa 0). `canIndent`/`computeProjection`
+ * bir öğeyi taşırken ONUN ALTINDAKİ tüm alt ağacın da yeni konumda `NAVIGATION_MAX_DEPTH`'i
+ * aşmayacağını garanti etmek için bunu kullanır. */
+export function subtreeHeight(items: FlatNavItem[], id: string): number {
+  const children = items.filter((item) => item.parentId === id);
+  if (children.length === 0) return 0;
+  return 1 + Math.max(...children.map((child) => subtreeHeight(items, child.id)));
+}
+
+/** Bir öğenin TÜM alt ağacının (doğrudan + dolaylı torunlarının) id kümesi. */
+function getDescendantIds(items: FlatNavItem[], id: string): Set<string> {
+  const result = new Set<string>();
+  const stack: string[] = [id];
+  while (stack.length > 0) {
+    const current = stack.pop()!;
+    for (const item of items) {
+      if (item.parentId === current && !result.has(item.id)) {
+        result.add(item.id);
+        stack.push(item.id);
+      }
+    }
+  }
+  return result;
 }
 
 /** Yeni içerik/özel bağlantı öğelerini kök seviyenin SONUNA ekler (Karar 2.1/2.2). */
@@ -33,9 +81,13 @@ export function appendRootItems(items: FlatNavItem[], newItems: Omit<FlatNavItem
   return [...items, ...newItems.map((item) => ({ ...item, parentId: null }))];
 }
 
-/** Bir öğeyi (ve kök ise TÜM çocuklarını) kaldırır. */
+/** Bir öğeyi VE onun TÜM alt ağacını (doğrudan + dolaylı torunlarını) kaldırır. Bunu atlamak
+ * torunları orphan bırakır ve `PUT /admin/navigation`'ı 422'ye düşürür (bkz. ARCHITECTURE.md
+ * §10.10.3.1 — çözülebilirlik kuralı). */
 export function removeItemCascade(items: FlatNavItem[], id: string): FlatNavItem[] {
-  return items.filter((item) => item.id !== id && item.parentId !== id);
+  const toRemove = getDescendantIds(items, id);
+  toRemove.add(id);
+  return items.filter((item) => !toRemove.has(item.id));
 }
 
 export function updateItem(items: FlatNavItem[], id: string, patch: Partial<Pick<FlatNavItem, "label" | "href">>): FlatNavItem[] {
@@ -43,24 +95,25 @@ export function updateItem(items: FlatNavItem[], id: string, patch: Partial<Pick
 }
 
 /**
- * `depth === 0` VE kendisinden önce başka bir kök öğe varsa VE kendi çocuğu yoksa aktif olur.
- * Son koşul (Karar 5.3'ün indent/outdent butonlarına uygulanmış hâli — özet madde 6):
- * çocuğu olan bir kök öğe asla başka bir öğenin altına taşınamaz, aksi halde 3. seviye
- * (torun) oluşurdu.
+ * Bir öğe, kendisinden önce AYNI seviyede (aynı `parentId`) bir kardeşi varsa VE yeni konumda
+ * (kendi derinliği + 1) + (kendi alt ağacının yüksekliği) `NAVIGATION_MAX_DEPTH`'i aşmıyorsa
+ * indent edilebilir. "Çocuğu varsa indent yasak" kuralı KALKTI (architect-scope §2) — bir öğe
+ * kendi alt ağacıyla BİRLİKTE taşınır, yeter ki toplam derinlik sınırı aşılmasın.
  */
 export function canIndent(items: FlatNavItem[], id: string): boolean {
   const index = items.findIndex((item) => item.id === id);
   if (index <= 0) return false;
   const item = items[index]!;
-  if (getDepth(item) !== 0) return false;
-  if (hasChildren(items, id)) return false;
-  // Kendisinden önce başka bir kök öğe var mı?
-  return items.slice(0, index).some((prior) => getDepth(prior) === 0);
+  const hasPrecedingSibling = items.slice(0, index).some((prior) => prior.parentId === item.parentId);
+  if (!hasPrecedingSibling) return false;
+  const currentDepth = getDepth(items, id);
+  const height = subtreeHeight(items, id);
+  return currentDepth + 1 + height <= NAVIGATION_MAX_DEPTH;
 }
 
 export function canOutdent(items: FlatNavItem[], id: string): boolean {
   const item = items.find((i) => i.id === id);
-  return Boolean(item) && getDepth(item!) === 1;
+  return Boolean(item) && getDepth(items, id) > 0;
 }
 
 /** Aynı ebeveyne (`parentId`) sahip kardeşleri, kanonik derinlik-önce sıradaki GÖRELİ sırayla döner. */
@@ -107,118 +160,153 @@ export function moveSibling(items: FlatNavItem[], id: string, direction: -1 | 1)
   return flattenDepthFirst(swapped);
 }
 
-/** Öğeyi, kendisinden önceki en yakın kök öğenin çocuk listesinin SONUNA taşır (Karar 3). */
+/**
+ * Öğeyi, kendisinden önceki en yakın AYNI SEVİYEDEKİ kardeşin çocuk listesinin SONUNA taşır
+ * (Karar 3, çok seviyeli genelleme — architect-scope §2). Öğenin kendi alt ağacı (varsa) `parentId`
+ * referansları değişmediği için otomatik olarak onunla birlikte taşınır; fiziksel dizideki tam
+ * ekleme konumu önemli değildir çünkü sonuç `flattenDepthFirst` ile kanonikleştirilir (gruplama
+ * tamamen `parentId` üzerinden yapılır — ARCHITECTURE.md §10.10.1).
+ */
 export function indentItem(items: FlatNavItem[], id: string): FlatNavItem[] {
   if (!canIndent(items, id)) return items;
   const index = items.findIndex((item) => item.id === id);
   const item = items[index]!;
-  let precedingRootIndex = -1;
+  let precedingSiblingIndex = -1;
   for (let i = index - 1; i >= 0; i--) {
-    if (getDepth(items[i]!) === 0) {
-      precedingRootIndex = i;
+    if (items[i]!.parentId === item.parentId) {
+      precedingSiblingIndex = i;
       break;
     }
   }
-  if (precedingRootIndex === -1) return items;
-  const precedingRoot = items[precedingRootIndex]!;
+  if (precedingSiblingIndex === -1) return items;
+  const precedingSibling = items[precedingSiblingIndex]!;
 
-  const without = items.filter((i) => i.id !== id);
-  const newParentIndex = without.findIndex((i) => i.id === precedingRoot.id);
-  let insertAt = newParentIndex + 1;
-  while (insertAt < without.length && without[insertAt]!.parentId === precedingRoot.id) insertAt++;
-
-  const movedItem: FlatNavItem = { ...item, parentId: precedingRoot.id };
-  return [...without.slice(0, insertAt), movedItem, ...without.slice(insertAt)];
+  const updated = items.map((i) => (i.id === id ? { ...i, parentId: precedingSibling.id } : i));
+  return flattenDepthFirst(updated);
 }
 
 /**
- * Öğeyi kök seviyeye taşır; eski ebeveyninin (kalan) çocuk bloğunun HEMEN ARDINDAN eklenir —
- * yani eski ebeveyninden sonraki ilk kök öğe konumuna gelir (Karar 3: "görsel sıçrama olmasın").
+ * Öğeyi bir üst seviyeye (eski ebeveyninin ebeveynine — kök ise `null`) taşır; alt ağacı `parentId`
+ * referansları değişmediği için onunla birlikte gelir. Sonuç `flattenDepthFirst` ile
+ * kanonikleştirilir — eski ebeveyninin (kalan) alt ağacının HEMEN ARDINDAN görünür (Karar 3:
+ * "görsel sıçrama olmasın").
  */
 export function outdentItem(items: FlatNavItem[], id: string): FlatNavItem[] {
   if (!canOutdent(items, id)) return items;
   const item = items.find((i) => i.id === id)!;
-  const parentId = item.parentId!;
+  const parent = items.find((i) => i.id === item.parentId)!;
 
-  const without = items.filter((i) => i.id !== id);
-  const parentIndex = without.findIndex((i) => i.id === parentId);
-  let insertAt = parentIndex + 1;
-  while (insertAt < without.length && without[insertAt]!.parentId === parentId) insertAt++;
-
-  const movedItem: FlatNavItem = { ...item, parentId: null };
-  return [...without.slice(0, insertAt), movedItem, ...without.slice(insertAt)];
+  const updated = items.map((i) => (i.id === id ? { ...i, parentId: parent.parentId } : i));
+  return flattenDepthFirst(updated);
 }
 
 export interface DropProjection {
-  depth: 0 | 1;
+  depth: number;
   parentId: string | null;
+}
+
+/** `withoutActive` içinde, `item`'ın atalarını `targetDepth`'e ULAŞANA kadar yukarı çıkarak bulur
+ * (item'ın kendisi zaten `targetDepth`'teyse onu döner). `computeProjection`'ın hedef derinlikteki
+ * yeni ebeveyni bulmasının genel (derinlikten bağımsız) yoludur. */
+function findAncestorAtDepth(items: FlatNavItem[], item: FlatNavItem, targetDepth: number): FlatNavItem | null {
+  let current: FlatNavItem | null = item;
+  let depth = getDepth(items, item.id);
+  while (current && depth > targetDepth) {
+    current = current.parentId ? (items.find((i) => i.id === current!.parentId) ?? null) : null;
+    depth -= 1;
+  }
+  return current;
 }
 
 /**
  * Sürükleme sırasında imlecin yatay ofsetine (`offsetX`, px) ve bırakma pozisyonundan hemen
- * önceki öğeye göre projelenen derinliği/ebeveyni hesaplar (Karar 5.3). `withoutActive`,
- * aktif öğe (ve varsa çocuk bloğu) çıkarılmış, hedef konuma göre YENİDEN sıralanmış listedir;
- * `insertAt` bu liste içindeki hedef ekleme indeksidir.
+ * önceki öğeye göre projelenen derinliği/ebeveyni hesaplar (Karar 5.3, çok seviyeli genelleme).
+ * `withoutActive`, aktif öğe (ve TÜM alt ağacı) çıkarılmış, hedef konuma göre YENİDEN sıralanmış
+ * listedir; `insertAt` bu liste içindeki hedef ekleme indeksidir. `activeSubtreeHeight` (yapraksa 0)
+ * — aktif öğenin alt ağacı yeni konumda da `NAVIGATION_MAX_DEPTH`'i aşmasın diye izin verilen
+ * maksimum derinliği aşağı çeker (eski `activeHasChildren ? 0 : ...` hack'inin yerini alır).
  */
 export function computeProjection(
   withoutActive: FlatNavItem[],
   insertAt: number,
-  activeHasChildren: boolean,
-  activeDepth: 0 | 1,
+  activeSubtreeHeight: number,
+  activeDepth: number,
   offsetX: number
 ): DropProjection {
-  const previousItem = insertAt > 0 ? withoutActive[insertAt - 1] ?? null : null;
-  const previousDepth = previousItem ? getDepth(previousItem) : 0;
+  const previousItem = insertAt > 0 ? (withoutActive[insertAt - 1] ?? null) : null;
+  const previousDepth = previousItem ? getDepth(withoutActive, previousItem.id) : 0;
   const dragDepthDelta = Math.round(offsetX / INDENTATION_WIDTH);
   let projected = activeDepth + dragDepthDelta;
 
-  const maxAllowed = activeHasChildren ? 0 : previousItem ? Math.min(previousDepth + 1, MAX_DEPTH) : 0;
-  projected = Math.max(0, Math.min(projected, maxAllowed)) as 0 | 1;
+  const depthCeiling = NAVIGATION_MAX_DEPTH - activeSubtreeHeight;
+  const maxAllowed = previousItem ? Math.min(previousDepth + 1, depthCeiling) : 0;
+  projected = Math.max(0, Math.min(projected, maxAllowed));
 
   if (projected === 0) return { depth: 0, parentId: null };
-  const parentId = previousItem!.parentId === null ? previousItem!.id : previousItem!.parentId;
-  return { depth: 1, parentId };
+  const ancestor = findAncestorAtDepth(withoutActive, previousItem!, projected - 1);
+  return { depth: projected, parentId: ancestor ? ancestor.id : null };
 }
 
 export interface NavTreeNode {
   item: FlatNavItem;
-  children: FlatNavItem[];
+  children: NavTreeNode[];
 }
 
 /**
- * Render için: kök öğeleri sırayla, her biri kendi çocuk listesiyle döner. `items`'in FİZİKSEL
- * dizi sırası önemli değildir — gruplama tamamen `parentId` üzerinden yapılır (kardeşler
- * arasındaki GÖRELİ sıra `Array.filter`'ın sabit/stable doğası sayesinde korunur).
+ * Render için: kök öğeleri sırayla, her biri KENDİ ALT AĞACIYLA (özyinelemeli `NavTreeNode[]`)
+ * döner. İki geçişli `parentId -> children[]` haritası (O(n)) — `items`'in FİZİKSEL dizi sırasından
+ * bağımsızdır, gruplama tamamen `parentId` üzerinden yapılır (ARCHITECTURE.md §10.10.1). Ebeveyni
+ * payload içinde bulunamayan (orphan) öğeler ATLANIR — tüm ağaç düşürülmez.
  */
 export function buildTree(items: FlatNavItem[]): NavTreeNode[] {
-  const roots = items.filter((item) => item.parentId === null);
-  return roots.map((root) => ({
-    item: root,
-    children: items.filter((item) => item.parentId === root.id),
-  }));
+  const nodeById = new Map<string, NavTreeNode>();
+  for (const item of items) nodeById.set(item.id, { item, children: [] });
+
+  const roots: NavTreeNode[] = [];
+  for (const item of items) {
+    const node = nodeById.get(item.id)!;
+    if (item.parentId === null) {
+      roots.push(node);
+      continue;
+    }
+    const parent = nodeById.get(item.parentId);
+    if (parent) {
+      parent.children.push(node);
+    }
+    // orphan (ebeveyni payload'da yok) -> atla, ağacın geri kalanı etkilenmez.
+  }
+  return roots;
 }
 
 /** `buildTree`'yi derinlik-önce (depth-first) düz bir diziye geri çevirir — kanonik gösterim sırası. */
 export function flattenDepthFirst(items: FlatNavItem[]): FlatNavItem[] {
-  return buildTree(items).flatMap((node) => [node.item, ...node.children]);
+  const result: FlatNavItem[] = [];
+  function visit(nodes: NavTreeNode[]) {
+    for (const node of nodes) {
+      result.push(node.item);
+      visit(node.children);
+    }
+  }
+  visit(buildTree(items));
+  return result;
 }
 
 /**
- * Aktif öğeyi (kök ise, sürüklenirken kendi çocuk bloğu ADAY listesinden geçici olarak
- * çıkarılır — resmi dnd-kit "Sortable Tree" örneğindeki `removeChildrenOf` ile aynı gerekçe:
- * bir öğe kendi altına/üstüne bırakılamaz) hedef konuma taşır, projeksiyonu
- * (`computeProjection`) uygulayarak `parentId`'sini günceller. `overId === null` — pointer
- * listenin SONUNU geçtiğinde (dnd-kit `DragEndEvent.over === null`) — listenin en sonuna
- * ekleneceği anlamına gelir (bu, SON öğenin altına iç-içe geçirmenin TEK yoludur: ondan
- * sonra hover edilecek başka bir satır yoktur). Dönüş değeri HER ZAMAN kanonik derinlik-önce
- * sırada olacak şekilde yeniden düzleştirilir (`flattenDepthFirst`) — çağıranın sonraki
- * indent/outdent/render işlemleri için fiziksel diziyle uğraşmasına gerek kalmaz.
+ * Aktif öğeyi (kendi TÜM alt ağacıyla birlikte — resmi dnd-kit "Sortable Tree" örneğindeki
+ * `removeChildrenOf` ile aynı gerekçe: bir öğe kendi altına/üstüne bırakılamaz, ama artık yalnızca
+ * doğrudan çocuklar değil TÜM torunlar aday listesinden çıkarılır) hedef konuma taşır,
+ * projeksiyonu (`computeProjection`) uygulayarak `parentId`'sini günceller. `overId === null` —
+ * pointer listenin SONUNU geçtiğinde (dnd-kit `DragEndEvent.over === null`) — listenin en sonuna
+ * ekleneceği anlamına gelir (bu, SON öğenin altına iç-içe geçirmenin TEK yoludur: ondan sonra
+ * hover edilecek başka bir satır yoktur). Dönüş değeri HER ZAMAN kanonik derinlik-önce sırada
+ * olacak şekilde yeniden düzleştirilir (`flattenDepthFirst`) — çağıranın sonraki indent/outdent/
+ * render işlemleri için fiziksel diziyle uğraşmasına gerek kalmaz.
  */
 interface MoveContext {
   without: FlatNavItem[];
   insertAt: number;
   activeItem: FlatNavItem;
-  activeHasChildren: boolean;
+  activeDescendantIds: Set<string>;
   projection: DropProjection;
 }
 
@@ -227,10 +315,11 @@ function computeMoveContext(items: FlatNavItem[], activeId: string, overId: stri
   const activeIndex = flat.findIndex((i) => i.id === activeId);
   if (activeIndex === -1) return null;
   const activeItem = flat[activeIndex]!;
-  const activeDepth = getDepth(activeItem);
-  const activeHasChildren = hasChildren(items, activeId);
+  const activeDepth = getDepth(items, activeId);
+  const activeDescendantIds = getDescendantIds(items, activeId);
+  const activeSubtreeHeight = subtreeHeight(items, activeId);
 
-  const without = flat.filter((i) => i.id !== activeId && !(activeHasChildren && i.parentId === activeId));
+  const without = flat.filter((i) => i.id !== activeId && !activeDescendantIds.has(i.id));
 
   let insertAt: number;
   if (overId === null) {
@@ -240,8 +329,8 @@ function computeMoveContext(items: FlatNavItem[], activeId: string, overId: stri
     insertAt = overIndex === -1 ? without.length : overIndex;
   }
 
-  const projection = computeProjection(without, insertAt, activeHasChildren, activeDepth, offsetX);
-  return { without, insertAt, activeItem, activeHasChildren, projection };
+  const projection = computeProjection(without, insertAt, activeSubtreeHeight, activeDepth, offsetX);
+  return { without, insertAt, activeItem, activeDescendantIds, projection };
 }
 
 /**
@@ -263,26 +352,27 @@ export function previewProjection(
 export function moveItem(items: FlatNavItem[], activeId: string, overId: string | null, offsetX: number): FlatNavItem[] {
   const ctx = computeMoveContext(items, activeId, overId, offsetX);
   if (!ctx) return items;
-  const { without, insertAt, activeItem, activeHasChildren, projection } = ctx;
+  const { without, insertAt, activeItem, activeDescendantIds, projection } = ctx;
 
   const updatedActive: FlatNavItem = { ...activeItem, parentId: projection.parentId };
   const reordered = [...without.slice(0, insertAt), updatedActive, ...without.slice(insertAt)];
 
-  const activeChildren = activeHasChildren ? items.filter((i) => i.parentId === activeId) : [];
-  return flattenDepthFirst([...reordered, ...activeChildren]);
+  const activeDescendants = items.filter((i) => activeDescendantIds.has(i.id));
+  return flattenDepthFirst([...reordered, ...activeDescendants]);
 }
 
-/** `PUT /admin/navigation` payload'ı — sunucunun beklediği kardeş-kapsamlı `order`'ı hesaplar. */
+/** `PUT /admin/navigation` payload'ı — sunucunun beklediği kardeş-kapsamlı `order`'ı özyinelemeli
+ * olarak hesaplar (her seviyede 0'dan başlar, global bir indeks DEĞİLDİR — ARCHITECTURE.md §10.10.1). */
 export function toNavigationItemsPayload(
   items: FlatNavItem[]
 ): { id: string; label: string; href: string; order: number; parentId: string | null }[] {
-  const tree = buildTree(items);
   const result: { id: string; label: string; href: string; order: number; parentId: string | null }[] = [];
-  tree.forEach((node, rootOrder) => {
-    result.push({ id: node.item.id, label: node.item.label, href: node.item.href, order: rootOrder, parentId: null });
-    node.children.forEach((child, childOrder) => {
-      result.push({ id: child.id, label: child.label, href: child.href, order: childOrder, parentId: node.item.id });
+  function visit(nodes: NavTreeNode[], parentId: string | null) {
+    nodes.forEach((node, order) => {
+      result.push({ id: node.item.id, label: node.item.label, href: node.item.href, order, parentId });
+      visit(node.children, node.item.id);
     });
-  });
+  }
+  visit(buildTree(items), null);
   return result;
 }

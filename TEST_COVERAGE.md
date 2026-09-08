@@ -1615,10 +1615,11 @@ GERÇEKTEN anlık revalidation tetikliyor (aksi halde bu testler hâlâ ~60sn be
   eklenmedi (görev talimatı zaten "bu turda değişmedi, mevcut kapsamı zaten var olabilir kontrol
   et" diyordu; kontrol edildi, `restrictToVerticalAxis` bu bileşende `delta.x` kullanılmadığı için
   zararsız).
-- Navigasyon ağacında girinti/çıkıntı (indent/outdent) düğmeleri VE 2-seviye iç-içe geçirme
-  senaryoları bu turda e2e ile kapsanmadı (mevcut saf mantık zaten `nav-tree-utils.ts`'e karşı
-  birim test edilmiş olabilir — kontrol edilmedi, frontend-agent'ın alanı; bu tur SADECE görev
-  talimatındaki 3 senaryoya — yukarı/aşağı buton, sürükleme, ilk/son disabled — odaklandı).
+- ~~Navigasyon ağacında girinti/çıkıntı (indent/outdent) düğmeleri VE 2-seviye iç-içe geçirme
+  senaryoları bu turda e2e ile kapsanmadı~~ — **ARTIK GEÇERSİZ, kapsandı.** Bkz. aşağıdaki "Çok
+  seviyeli (4 katman) navigasyon menüsü" bölümü (`admin-navigation-deep-nesting.spec.ts`) —
+  indent/outdent butonları, 4 seviyeye kadar iç-içe geçirme, derinlik sınırı ve kaskad silme artık
+  tam e2e kapsamındadır.
 
 ## `DragOverlay` koordinat sapması düzeltmesi (`createPortal(..., document.body)` + `DragOverlay`'e ÖZEL `modifiers`) — E2E kapsamı (bu turda eklendi)
 
@@ -2438,3 +2439,80 @@ ETMEKSİZİN sessizce 422 ile başarısız olur. Test `admin-order-management-pr
 test beklenmedik biçimde geçip işaretin kaldırılması gerektiğini haber verecek. **Düzeltme
 frontend-agent'ın:** `onEditSubmit()`'te uygulanmayan billing alt-alanları `null` yazmak yerine
 gövdeden TAMAMEN OMİT edilmeli (checkout'un kendi deseniyle aynı).
+
+## Çok seviyeli (4 katman) navigasyon menüsü + nested flyout — E2E/entegrasyon kapsamı (bu turda eklendi)
+
+Kaynak: `.claude/architect-scope-navigation-deep-nesting.md` (bağlayıcı) — derinlik sınırı 2
+seviyeden 4 seviyeye (`NAVIGATION_MAX_DEPTH = 3`, 0-tabanlı ata sayısı) çıkarıldı. backend
+(`navigation.schemas.ts` cycle/depth doğrulaması, `navigation.routes.ts` seviye-sıralı topolojik
+sıralama), admin ağaç editörü (`nav-tree-utils.ts`/`nav-tree-editor.tsx`/`nav-tree-row.tsx`
+özyinelemeli hale getirildi) ve storefront (`site-header.tsx` nested `DropdownMenuSub` flyout +
+mobil özyinelemeli `Accordion`) tarafları tamamlandı; bu bölüm §5 (qa-agent) kapsamıdır.
+
+**Ortam notu:** e2e backend süreci (port 4001, `tsx src/server.ts`, watch MODU YOK) bu turun
+KOD DEĞİŞİKLİKLERİNDEN (backend-agent'ın `navigation.schemas.ts`/`navigation.routes.ts`
+güncellemeleri) SONRA yeniden başlatılmamıştı — ilk koşumda eski "Maksimum derinlik 2" kuralıyla
+422 veriyordu (bkz. aşağıdaki "bulunan bug" — HAYIR, bu bir kod bug'ı DEĞİLDİ, bir ortam
+tazeleme sorunuydu). qa-agent süreci yeniden başlattı (`DOTENV_CONFIG_PATH=.env.e2e npx tsx
+src/server.ts`), ardından TÜM testler geçti. **Not devops-agent'a:** e2e backend süreci `tsx
+--watch` ile başlatılırsa (veya CI'da her koşumda taze başlatılırsa) bu sınıf bir "ortam
+staleness" sorunu tekrar yaşanmaz.
+
+### Admin ağaç editörü — `frontend/tests/e2e/admin-navigation-deep-nesting.spec.ts` (YENİ dosya)
+
+| # | Senaryo | Durum |
+|---|---|---|
+| 1 | 4 seviyeli bir dal (`Ürünler → Aydınlatma → Masa Lambaları → Metal Lambalar`) "Girinti artır" butonlarıyla kurulur (her adımda DOM iç-içe geçme derinliği `border-l border-dashed` sarmalayıcı sayısıyla doğrulanır) → kaydet → sayfa yenile → hem DOM derinliği hem backend `parentId` zinciri KALICI | ✅ Geçiyor |
+| 2 | 4 seviyeli bir dalın en derin (yaprak, çocuksuz) öğesinde "Girinti artır" butonu disabled — 5. görünür seviyeye (ata sayısı 4) İZİN VERİLMEZ; "Girinti azalt" hâlâ enabled (editör genel olarak bozulmamış) | ✅ Geçiyor |
+| 3 | 2 seviyelik bir alt-ağacı (kendi çocuğu olan bir düğüm, `subtreeHeight=1`) — hedef kardeş grubunda ZATEN bir "önceki kardeş" varken (yani engelin nedeni "önceki kardeş yok" DEĞİL) — zaten derin bir noktaya (toplam derinlik sınırı AŞACAK şekilde) indent etmeye çalışmak engellenir; sınırda (tam `NAVIGATION_MAX_DEPTH`) olan ÖNCEKİ adım hâlâ izin verilir ve kaydedilebilir | ✅ Geçiyor |
+| 4 | Bir ata (Level 1) öğeyi silmek TÜM alt ağacı (torunları dahil) DOM'dan kaskad kaldırır (`EmptyState` "Menü öğesi yok" görünür) → kaydedince backend'de de üçü de (ata + 2 torun) TAMAMEN silinmiş olur | ✅ Geçiyor |
+
+### Storefront nested flyout — `frontend/tests/e2e/site-navigation-nested-flyout.spec.ts` (YENİ dosya)
+
+`[[project_revalidate_60s_staleness]]`: `GET /navigation` `next: revalidate: 60` önbellekli;
+`PUT /admin/navigation` best-effort `triggerGlobalRevalidation()` tetikler ama e2e ortamında
+`E2E_REVALIDATE_SECRET` eşleşmesine bağlı olduğundan (bkz. `playwright.config.ts` başlığı) TEK
+`reload()` varsayımı YAPILMADI — kök tetikleyici görünene kadar `toPass({timeout:90_000})` +
+`reload()` ile POLL edildi (gözlemde ilk denemede geçti, yani anlık revalidation bu ortamda da
+çalışıyor — ama test bunu ZORUNLU VARSAYMIYOR).
+
+| # | Senaryo | Durum |
+|---|---|---|
+| 1 | 4 seviyeli menüde: kök tetikleyici TIKLAMA ile açılır (`Ürünler`) → 2. seviye (`Aydınlatma`, `DropdownMenuSub`/`aria-haspopup`) HOVER-INTENT (150ms) ile 3. seviyeyi (`Masa Lambaları`) açar → 3. seviye HOVER ile 4. (yaprak) seviyeyi (`Metal Lambalar`) açar → yaprağa TIKLAMA kendi `href`'ine (doğru URL) navigasyon yapar | ✅ Geçiyor |
+| 2 | Nested flyout açıkken `header` + açık `[data-slot="dropdown-menu-(sub-)content"]` popup'larında axe-core (`wcag2a`/`wcag2aa`) kritik/ciddi ihlal YOK — proje `@axe-core/playwright` bağımlılığını İÇERMEDİĞİ için (yalnızca `jest-axe` unit tarafında var, bkz. `package.json`) zaten kurulu çekirdek `axe-core` paketi `page.addScriptTag` ile enjekte edilip tarayıcı içinde `axe.run()` çalıştırıldı — YENİ bir npm bağımlılığı EKLENMEDİ | ✅ Geçiyor |
+
+**Bulunan (ilgisiz) a11y sorunu — ui-designer/frontend-agent'a yönlendirilir, bu turda
+DÜZELTİLMEDİ:** axe-core taraması BAŞLANGIÇTA `.site-scope` (header+içerik+footer tamamı) ile
+kapsam denendiğinde, footer'daki telif metni (`© Ferah Ev Yaşam...`) ve site sloganı
+(`text-foreground/50`, `#8b8988` üzerinde `#fafaf9` arka plan, kontrast oranı 3.33:1) `serious`
+seviyesinde `color-contrast` (WCAG 1.4.3, min 4.5:1) ihlali verdi. Bu, navigasyon derinlik
+özelliğiyle İLGİSİZ, ÖNCEDEN VAR OLAN bir site teması sorunudur (muhtemelen demo şablonunun
+varsayılan `mutedTextColor`/footer metin rengi kombinasyonu) — qa-agent testinin kapsamını
+KASITLI olarak `header`'a daraltarak bu ilgisiz regresyona karşı flaky hale gelmesini önledi,
+ANCAK bu bulgu burada belgeleniyor ki ui-designer/frontend-agent ayrı bir görevde ele alsın:
+**`--site-muted-text` (veya footer'ın kullandığı spesifik token) demo şablonlarında/varsayılan
+temada WCAG AA kontrast eşiğini (4.5:1, normal metin) karşılamıyor.**
+
+### İki sabit dosyasının değer eşitliği — `backend/tests/unit/navigation-constants-parity.test.ts` (YENİ dosya, birim test)
+
+`NAVIGATION_MAX_DEPTH`/`NAVIGATION_MAX_ITEMS` proje bir npm workspace monorepo'su OLMADIĞI için
+`backend/src/modules/navigation/navigation.constants.ts` VE
+`frontend/src/lib/navigation-constants.ts` içinde AYNALANIYOR; normatif değer
+`docs/architecture/openapi.yaml`dadır. Bu test backend sabitini DOĞRUDAN import eder, frontend
+dosyasını VE openapi.yaml'ı statik metin/regex ile ayrıştırır (cross-workspace import mümkün
+değil) ve üçünün de eşit olduğunu doğrular.
+
+| # | Senaryo | Durum |
+|---|---|---|
+| 1 | backend `NAVIGATION_MAX_DEPTH` === frontend `NAVIGATION_MAX_DEPTH` (regex ile ayrıştırılmış) | ✅ Geçiyor |
+| 2 | backend `NAVIGATION_MAX_ITEMS` === frontend `NAVIGATION_MAX_ITEMS` (regex ile ayrıştırılmış) | ✅ Geçiyor |
+| 3 | backend `NAVIGATION_MAX_DEPTH === 3` (mimar kararı regresyon tripwire'ı) | ✅ Geçiyor |
+| 4 | backend `NAVIGATION_MAX_ITEMS === 100` (mimar kararı regresyon tripwire'ı) | ✅ Geçiyor |
+| 5 | openapi.yaml serbest metnindeki `NAVIGATION_MAX_DEPTH = <N>` backend değeriyle eşleşir | ✅ Geçiyor |
+| 6 | openapi.yaml `UpdateNavigationConfigRequest.navigationItems.maxItems` backend `NAVIGATION_MAX_ITEMS` ile eşleşir (yalnızca ilgili şema BLOĞU içinden ayrıştırılır — dosyadaki ilgisiz `maxItems: 100` tekrarlarıyla karışmaz) | ✅ Geçiyor |
+
+**Regresyon:** Bu turda hem `admin-navigation-editor.spec.ts` (6/6, mevcut 2-seviyeli sıralama/
+sürükleme kapsamı) hem `demo-templates-importer.test.ts`/`tests/integration/navigation.test.ts`
+(28/28, backend-agent'ın topolojik sıralama paylaşımı) yeniden koşuldu — kırılma YOK. Frontend
+birim testleri (`nav-tree-utils.test.ts`/`nav-tree-editor.test.tsx`/`site-header-nested-nav.test.tsx`,
+toplam 54 test) de yeşil.

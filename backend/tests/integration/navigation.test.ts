@@ -85,21 +85,79 @@ describe("navigation — /admin/navigation (parentId hiyerarşisi)", () => {
     expect(rootIndex).toBeLessThan(childIndex);
   });
 
-  it("derinlik ihlali — bir alt öğenin parentId'si başka bir alt öğeyi işaret ederse (3. seviye) 422 döner", async () => {
-    const rootId = crypto.randomUUID();
-    const childId = crypto.randomUUID();
-    const grandchildId = crypto.randomUUID();
+  it("4 seviyeli geçerli bir ağaç (NAVIGATION_MAX_DEPTH = 3) kabul edilir", async () => {
+    const level0 = crypto.randomUUID();
+    const level1 = crypto.randomUUID();
+    const level2 = crypto.randomUUID();
+    const level3 = crypto.randomUUID();
 
     const res = await putNavigation(
       basePayload([
-        { id: rootId, label: "Ürünler", href: "/urunler", order: 0, parentId: null },
-        { id: childId, label: "Yazılım", href: "/urunler/yazilim", order: 0, parentId: rootId },
-        { id: grandchildId, label: "Mobil", href: "/urunler/yazilim/mobil", order: 0, parentId: childId },
+        { id: level0, label: "Ana Menü", href: "/ana-menu", order: 0, parentId: null },
+        { id: level1, label: "Kategori", href: "/ana-menu/kategori", order: 0, parentId: level0 },
+        { id: level2, label: "Alt Kategori", href: "/ana-menu/kategori/alt", order: 0, parentId: level1 },
+        { id: level3, label: "Ürün Grubu", href: "/ana-menu/kategori/alt/grup", order: 0, parentId: level2 },
+      ])
+    );
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.navigationItems).toHaveLength(4);
+  });
+
+  it("derinlik ihlali — 5 seviyeli bir ağaç (ata sayısı NAVIGATION_MAX_DEPTH'i aşıyor) 422 döner ve mesaj 'derinlik' içerir", async () => {
+    const level0 = crypto.randomUUID();
+    const level1 = crypto.randomUUID();
+    const level2 = crypto.randomUUID();
+    const level3 = crypto.randomUUID();
+    const level4 = crypto.randomUUID();
+
+    const res = await putNavigation(
+      basePayload([
+        { id: level0, label: "Ana Menü", href: "/ana-menu", order: 0, parentId: null },
+        { id: level1, label: "Kategori", href: "/ana-menu/kategori", order: 0, parentId: level0 },
+        { id: level2, label: "Alt Kategori", href: "/ana-menu/kategori/alt", order: 0, parentId: level1 },
+        { id: level3, label: "Ürün Grubu", href: "/ana-menu/kategori/alt/grup", order: 0, parentId: level2 },
+        { id: level4, label: "Çok Derin", href: "/ana-menu/kategori/alt/grup/derin", order: 0, parentId: level3 },
       ])
     );
 
     expect(res.statusCode).toBe(422);
     expect(res.json().error.code).toBe("VALIDATION_ERROR");
+    expect(JSON.stringify(res.json().error)).toContain("derinlik");
+  });
+
+  it("2 düğümlü döngü (A -> B -> A) 422 döner ve mesaj 'döngü' içerir, 'derinlik' içermez", async () => {
+    const idA = crypto.randomUUID();
+    const idB = crypto.randomUUID();
+
+    const res = await putNavigation(
+      basePayload([
+        { id: idA, label: "A", href: "/a", order: 0, parentId: idB },
+        { id: idB, label: "B", href: "/b", order: 0, parentId: idA },
+      ])
+    );
+
+    expect(res.statusCode).toBe(422);
+    const errorStr = JSON.stringify(res.json().error).toLowerCase();
+    expect(errorStr).toContain("döngü");
+    expect(errorStr).not.toContain("derinlik");
+  });
+
+  it("3 düğümlü döngü (A -> B -> C -> A) 422 döner ve mesaj 'döngü' içerir", async () => {
+    const idA = crypto.randomUUID();
+    const idB = crypto.randomUUID();
+    const idC = crypto.randomUUID();
+
+    const res = await putNavigation(
+      basePayload([
+        { id: idA, label: "A", href: "/a", order: 0, parentId: idC },
+        { id: idB, label: "B", href: "/b", order: 0, parentId: idA },
+        { id: idC, label: "C", href: "/c", order: 0, parentId: idB },
+      ])
+    );
+
+    expect(res.statusCode).toBe(422);
+    expect(JSON.stringify(res.json().error).toLowerCase()).toContain("döngü");
   });
 
   it("payload içinde çözülemeyen parentId (var olmayan bir id'yi işaret ediyor) 422 döner", async () => {
@@ -140,39 +198,76 @@ describe("navigation — /admin/navigation (parentId hiyerarşisi)", () => {
     expect(res.json().error.code).toBe("VALIDATION_ERROR");
   });
 
-  it("20 öğe limiti tüm seviyelerin toplamına uygulanır (regresyon)", async () => {
-    const rootId = crypto.randomUUID();
-    const items: Array<{ id: string; label: string; href: string; order: number; parentId: string | null }> = [
-      { id: rootId, label: "Kök", href: "/kok", order: 0, parentId: null },
-    ];
-    // 20 kök + 1 alt öğe = 21 > limit.
-    for (let i = 1; i < 20; i++) {
+  it("101 öğe limiti aşarsa (NAVIGATION_MAX_ITEMS = 100) 422 döner", async () => {
+    const items: Array<{ id: string; label: string; href: string; order: number; parentId: string | null }> = [];
+    for (let i = 0; i < 101; i++) {
       items.push({ id: crypto.randomUUID(), label: `Kök ${i}`, href: `/kok-${i}`, order: i, parentId: null });
     }
-    items.push({ id: crypto.randomUUID(), label: "Fazla alt öğe", href: "/fazla", order: 0, parentId: rootId });
-    expect(items).toHaveLength(21);
+    expect(items).toHaveLength(101);
 
     const res = await putNavigation(basePayload(items));
     expect(res.statusCode).toBe(422);
     expect(res.json().error.code).toBe("VALIDATION_ERROR");
   });
 
-  it("tam 20 öğe (kök+alt karışık) sınırda kabul edilir", async () => {
+  it("tam 100 öğe (4 seviye karışık) sınırda kabul edilir", async () => {
     const rootId = crypto.randomUUID();
+    const level1Id = crypto.randomUUID();
+    const level2Id = crypto.randomUUID();
     const items: Array<{ id: string; label: string; href: string; order: number; parentId: string | null }> = [
       { id: rootId, label: "Kök", href: "/kok", order: 0, parentId: null },
+      { id: level1Id, label: "Kategori", href: "/kok/kategori", order: 0, parentId: rootId },
+      { id: level2Id, label: "Alt Kategori", href: "/kok/kategori/alt", order: 0, parentId: level1Id },
     ];
-    for (let i = 1; i < 15; i++) {
-      items.push({ id: crypto.randomUUID(), label: `Kök ${i}`, href: `/kok-${i}`, order: i, parentId: null });
+    // 3 + 97 = 100.
+    for (let i = 0; i < 97; i++) {
+      items.push({ id: crypto.randomUUID(), label: `Ürün Grubu ${i}`, href: `/urun-grubu-${i}`, order: i, parentId: level2Id });
     }
-    for (let i = 0; i < 5; i++) {
-      items.push({ id: crypto.randomUUID(), label: `Alt ${i}`, href: `/alt-${i}`, order: i, parentId: rootId });
-    }
-    expect(items).toHaveLength(20);
+    expect(items).toHaveLength(100);
 
     const res = await putNavigation(basePayload(items));
     expect(res.statusCode).toBe(200);
-    expect(res.json().data.navigationItems).toHaveLength(20);
+    expect(res.json().data.navigationItems).toHaveLength(100);
+  });
+
+  it("payload içinde çözülemeyen (orphan) parentId olan derin bir ağaç 422 döner", async () => {
+    const rootId = crypto.randomUUID();
+    const childId = crypto.randomUUID();
+    const bogusParentId = crypto.randomUUID();
+
+    const res = await putNavigation(
+      basePayload([
+        { id: rootId, label: "Kök", href: "/kok", order: 0, parentId: null },
+        { id: childId, label: "Alt", href: "/kok/alt", order: 0, parentId: rootId },
+        { id: crypto.randomUUID(), label: "Orphan", href: "/orphan", order: 0, parentId: bogusParentId },
+      ])
+    );
+
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("4 seviyeli + karışık sıralı bir dizi (ebeveynden önce çocuk geliyor) FK ihlali üretmeden kaydedilir", async () => {
+    const level0 = crypto.randomUUID();
+    const level1 = crypto.randomUUID();
+    const level2 = crypto.randomUUID();
+    const level3 = crypto.randomUUID();
+
+    // Kasıtlı olarak en derin öğeyi dizinin başına, kökü sonuna koyuyoruz — sunucu tarafında
+    // seviye-sıralı topolojik sıralama yapılmazsa FK ihlali alınırdı.
+    const items = [
+      { id: level3, label: "Ürün Grubu", href: "/ana-menu/kategori/alt/grup", order: 0, parentId: level2 },
+      { id: level1, label: "Kategori", href: "/ana-menu/kategori", order: 0, parentId: level0 },
+      { id: level2, label: "Alt Kategori", href: "/ana-menu/kategori/alt", order: 0, parentId: level1 },
+      { id: level0, label: "Ana Menü", href: "/ana-menu", order: 0, parentId: null },
+    ];
+
+    const res = await putNavigation(basePayload(items));
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.navigationItems).toHaveLength(4);
+
+    const row = await app.prisma.navigationItem.findUnique({ where: { id: level3 } });
+    expect(row?.parentId).toBe(level2);
   });
 
   it("roots-first insert sıralaması: payload'da alt öğe kendi kök ebeveyninden ÖNCE gelse bile hatasız kaydedilir", async () => {

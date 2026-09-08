@@ -3,17 +3,23 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChevronDown, Heart, Receipt, ShoppingCart, User as UserIcon } from "lucide-react";
+import { ChevronDown, Heart, Menu, Receipt, ShoppingCart, User as UserIcon } from "lucide-react";
 import { useCartOptional } from "@/context/cart-context";
 import { useAuthOptional } from "@/context/auth-context";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Accordion, AccordionItem, AccordionPanel, AccordionTrigger } from "@/components/ui/accordion";
 import { LanguageSwitcher } from "@/components/site/language-switcher";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
+import { NAVIGATION_MAX_DEPTH } from "@/lib/navigation-constants";
 import type { Locale, NavigationItemDto, SiteButtonStyle, SitePage, SiteSettings } from "@/lib/api/types";
 import { DEFAULT_HEADER_LOGO_HEIGHT } from "@/lib/site-settings/logo";
 import { cn } from "@/lib/utils";
@@ -62,29 +68,57 @@ const SITE_BUTTON_STYLE_CLASSES: Record<SiteButtonStyle, string> = {
   SOFT: "bg-[var(--site-button)]/10 text-[var(--site-button)]",
 };
 
+/** §architect-scope-navigation-deep-nesting.md §4 — özyinelemeli (4 seviyeye kadar) ağaç düğümü. */
 interface NavNode {
   id: string;
   href: string;
   label: string;
-  children: { id: string; href: string; label: string }[];
+  children: NavNode[];
 }
 
 /**
- * §10.10.1: `navigationItems` düz bir dizidir, ağaç `parentId` ile kurulur. Maksimum derinlik
- * 2 (kök + bir alt seviye) — backend zaten bunu garanti ediyor (kök olmayan bir öğe yalnızca
- * kök bir öğeyi işaret edebilir), bu yüzden tek geçişli bir gruplama yeterlidir.
+ * §10.10.1/§10.10.3: `navigationItems` düz bir dizidir, ağaç `parentId` ile kurulur. Derinlik
+ * `NAVIGATION_MAX_DEPTH` (0-tabanlı, kök = 0) ile sınırlıdır — backend bunu yazma anında
+ * doğrular, ancak elle-müdahale edilmiş/kısmi restore edilmiş DB verisi (döngü, aşırı derinlik)
+ * teoride sızabilir; bu yüzden burada da savunma amaçlı bir derinlik kesme uygulanır.
+ *
+ * İki geçişli `parentId -> children[]` haritası O(n)'dir. Ebeveyni (parentId'si) dizide
+ * BULUNAMAYAN bir öğe (orphan) sessizce ATLANIR — bu yalnızca o öğeyi düşürür, tüm ağacı değil.
  */
 function buildNavTree(items: NavigationItemDto[]): NavNode[] {
-  const roots = items.filter((item) => item.parentId === null).sort((a, b) => a.order - b.order);
-  return roots.map((root) => ({
-    id: root.id,
-    href: root.href,
-    label: root.label,
-    children: items
-      .filter((item) => item.parentId === root.id)
+  const itemById = new Map<string, NavigationItemDto>();
+  for (const item of items) {
+    itemById.set(item.id, item);
+  }
+
+  const childrenByParentId = new Map<string, NavigationItemDto[]>();
+  for (const item of items) {
+    if (item.parentId === null) continue;
+    if (!itemById.has(item.parentId)) continue; // orphan: ebeveyn dizide yok, öğe atlanır
+    const siblings = childrenByParentId.get(item.parentId);
+    if (siblings) {
+      siblings.push(item);
+    } else {
+      childrenByParentId.set(item.parentId, [item]);
+    }
+  }
+
+  // `depth` kesme: hem bozuk/döngüsel `parentId` verisine karşı savunma hem de ürün politikası
+  // olan `NAVIGATION_MAX_DEPTH`'in ağaç kurma aşamasında da uygulanması içindir (render katmanı
+  // AYRICA kendi kesmesini uygular — çift savunma kasıtlıdır, bkz. `NavMenuItems`).
+  function toNode(item: NavigationItemDto, depth: number): NavNode {
+    const rawChildren = depth >= NAVIGATION_MAX_DEPTH ? [] : (childrenByParentId.get(item.id) ?? []);
+    const children = rawChildren
+      .slice()
       .sort((a, b) => a.order - b.order)
-      .map((child) => ({ id: child.id, href: child.href, label: child.label })),
-  }));
+      .map((child) => toNode(child, depth + 1));
+    return { id: item.id, href: item.href, label: item.label, children };
+  }
+
+  return items
+    .filter((item) => item.parentId === null)
+    .sort((a, b) => a.order - b.order)
+    .map((root) => toNode(root, 0));
 }
 
 /** Sondaki `/`'i kaldırır (kök `/` hariç) — `withLocalePrefix`'in prefixli kök yol için ürettiği
@@ -107,6 +141,147 @@ function isNavLinkActive(pathname: string | null, href: string): boolean {
     return normalizedPathname === "/" || normalizedPathname === "";
   }
   return normalizedPathname === normalizedHref || normalizedPathname.startsWith(`${normalizedHref}/`);
+}
+
+/**
+ * Herhangi bir derinlikteki torun (child, torun, torun-torun...) route eşleşirse `true` döner —
+ * eski `hasActiveChild`'ın (yalnızca doğrudan çocuklara bakan) özyinelemeli hâli.
+ */
+function hasActiveDescendant(node: NavNode, isActive: (href: string) => boolean): boolean {
+  return node.children.some((child) => isActive(child.href) || hasActiveDescendant(child, isActive));
+}
+
+interface NavMenuItemsProps {
+  nodes: NavNode[];
+  localize: (path: string) => string;
+  pathname: string | null;
+  /** 0-tabanlı, kökten (`DropdownMenuContent` içeriği) itibaren bu düğümlerin derinliği. */
+  depth: number;
+}
+
+/**
+ * §architect-scope-navigation-deep-nesting.md §4 — masaüstü flyout'un özyinelemeli gövdesi.
+ * Çocuğu OLMAYAN düğüm düz `DropdownMenuItem`; çocuğu OLAN düğüm `DropdownMenuSub` +
+ * `DropdownMenuSubTrigger` + `DropdownMenuSubContent` içinde KENDİNİ çağırır.
+ *
+ * `ui-designer-navigation-flyout-spec.md` (b): `DropdownMenuSubContent`'in `side="right"`/
+ * `alignOffset={-3}` varsayılanları DEĞİŞTİRİLMEZ; sadece `collisionPadding={8}` eklenir.
+ * Hover-intent: `DropdownMenuSubTrigger`'ın (Base UI `MenuSubmenuTrigger`) kendi `openOnHover`/
+ * `delay`/`closeDelay` prop'ları kullanılır — ayrı bir `setTimeout` fallback'ine gerek yok.
+ *
+ * Savunma: `depth`, `NAVIGATION_MAX_DEPTH`'i aşarsa düğün sessizce ATLANIR (throw edilmez) —
+ * `buildNavTree` zaten bunu büyük ölçüde engeller, bu render-katmanı kesmesi ikinci bir savunma.
+ */
+function NavMenuItems({ nodes, localize, pathname, depth }: NavMenuItemsProps) {
+  if (depth > NAVIGATION_MAX_DEPTH) return null;
+
+  return (
+    <>
+      {nodes.map((node) => {
+        if (node.children.length > 0) {
+          const hasActiveChild = hasActiveDescendant(node, (href) => isNavLinkActive(pathname, localize(href)));
+          return (
+            <DropdownMenuSub key={node.id}>
+              <DropdownMenuSubTrigger
+                openOnHover
+                delay={150}
+                closeDelay={300}
+                className={cn(hasActiveChild && NAV_LINK_ACTIVE_TEXT_CLASS)}
+              >
+                {node.label}
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent collisionPadding={8}>
+                <NavMenuItems nodes={node.children} localize={localize} pathname={pathname} depth={depth + 1} />
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+          );
+        }
+
+        const href = localize(node.href);
+        const active = isNavLinkActive(pathname, href);
+        return (
+          <DropdownMenuItem
+            key={node.id}
+            render={<Link href={href} aria-current={active ? "page" : undefined} />}
+            className={cn(active && NAV_LINK_ACTIVE_TEXT_CLASS)}
+          >
+            {node.label}
+          </DropdownMenuItem>
+        );
+      })}
+    </>
+  );
+}
+
+interface MobileNavAccordionProps {
+  nodes: NavNode[];
+  localize: (path: string) => string;
+  pathname: string | null;
+  depth: number;
+  onNavigate: () => void;
+}
+
+/**
+ * `ui-designer-navigation-flyout-spec.md` (c) — BAĞLAYICI: `Sheet` içinde özyinelemeli
+ * `Accordion` (Base UI'ın `type="multiple"` karşılığı `multiple` boole prop'udur — bu
+ * primitif Radix DEĞİL, `components/ui/accordion.tsx`'in gerçek API'si doğrulanarak
+ * kullanılmıştır). Çocuğu OLAN düğüm `AccordionItem` + `AccordionTrigger` +
+ * `AccordionPanel` (kendini çağırır); yaprak düz `Link`. Girinti `style={{ paddingLeft }}`
+ * ile (`depth * 16 + 16`), dokunmatik hedef `min-h-11`. `onNavigate`: bir linke tıklanınca
+ * `Sheet`'i kapatmak için (mevcut `SheetClose` her yaprakta ayrı sarmalamak yerine tek bir
+ * `onClick` callback'i — Base UI `Dialog` kontrollü `open` state'i üzerinden kapatılır).
+ */
+function MobileNavAccordion({ nodes, localize, pathname, depth, onNavigate }: MobileNavAccordionProps) {
+  if (depth > NAVIGATION_MAX_DEPTH) return null;
+
+  return (
+    <Accordion multiple className={depth === 0 ? "gap-1 px-2" : "gap-0"}>
+      {nodes.map((node) => {
+        const paddingLeft = depth * 16 + 16;
+
+        if (node.children.length > 0) {
+          const hasActiveChild = hasActiveDescendant(node, (href) => isNavLinkActive(pathname, localize(href)));
+          return (
+            <AccordionItem key={node.id} value={node.id} className={depth > 0 ? "border-none" : undefined}>
+              <AccordionTrigger
+                style={{ paddingLeft }}
+                className={cn("min-h-11", hasActiveChild && NAV_LINK_ACTIVE_TEXT_CLASS)}
+              >
+                {node.label}
+              </AccordionTrigger>
+              <AccordionPanel className="pl-4">
+                <MobileNavAccordion
+                  nodes={node.children}
+                  localize={localize}
+                  pathname={pathname}
+                  depth={depth + 1}
+                  onNavigate={onNavigate}
+                />
+              </AccordionPanel>
+            </AccordionItem>
+          );
+        }
+
+        const href = localize(node.href);
+        const active = isNavLinkActive(pathname, href);
+        return (
+          <Link
+            key={node.id}
+            href={href}
+            onClick={onNavigate}
+            aria-current={active ? "page" : undefined}
+            style={{ paddingLeft }}
+            className={cn(
+              "flex min-h-11 items-center px-3 py-2.5 text-sm",
+              active ? NAV_LINK_ACTIVE_TEXT_CLASS : "text-foreground"
+            )}
+          >
+            {node.label}
+          </Link>
+        );
+      })}
+    </Accordion>
+  );
 }
 
 /** İdle/hover/aktif durumları arasında geçiş yapan nav link/tetikleyici metin rengi sınıfları. */
@@ -189,6 +364,9 @@ export function SiteHeader({
   const user = auth?.user ?? null;
   const pathname = usePathname();
   const { hidden, isSticky } = useSmartSticky(stickyHeaderEnabled);
+  // `ui-designer-navigation-flyout-spec.md` (c) — mobil `Sheet` açık/kapalı durumu; bir yaprak
+  // linke tıklanınca (`MobileNavAccordion`'ın `onNavigate`'i) programatik olarak kapatılır.
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const navTree: NavNode[] =
     navigationItems && navigationItems.length > 0
       ? buildNavTree(navigationItems)
@@ -243,10 +421,44 @@ export function SiteHeader({
           )}
         </Link>
 
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
+        {/* `ui-designer-navigation-flyout-spec.md` (c) — `md:hidden` altında hamburger tetikleyici;
+            masaüstü nav-link listesi `md:flex` ile mobilde gizlenir (CTA/dil/hesap/favori/sepet
+            ikonları BİLEREK bu sarmalayıcının DIŞINDA, her iki genişlikte de görünür kalır). */}
+        <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
+          <SheetTrigger
+            render={
+              <button
+                type="button"
+                aria-label="Menüyü aç"
+                className={cn(
+                  "inline-flex h-9 w-9 items-center justify-center rounded-lg transition-colors hover:bg-surface-muted md:hidden",
+                  ICON_LINK_TEXT_CLASSES
+                )}
+              />
+            }
+          >
+            <Menu className="h-5 w-5" aria-hidden="true" />
+          </SheetTrigger>
+          <SheetContent side="left" className="w-3/4 sm:max-w-sm">
+            <SheetHeader>
+              <SheetTitle>Menü</SheetTitle>
+            </SheetHeader>
+            <div className="flex-1 overflow-y-auto pb-4">
+              <MobileNavAccordion
+                nodes={navTree}
+                localize={localize}
+                pathname={pathname}
+                depth={0}
+                onNavigate={() => setMobileNavOpen(false)}
+              />
+            </div>
+          </SheetContent>
+        </Sheet>
+
+        <div className="hidden items-center gap-x-5 gap-y-1 text-sm md:flex">
           {navTree.map((link) => {
             if (link.children.length > 0) {
-              const hasActiveChild = link.children.some((child) => isNavLinkActive(pathname, localize(child.href)));
+              const hasActiveChild = hasActiveDescendant(link, (href) => isNavLinkActive(pathname, localize(href)));
               return (
                 <DropdownMenu key={link.id}>
                   <DropdownMenuTrigger
@@ -265,11 +477,7 @@ export function SiteHeader({
                     <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start">
-                    {link.children.map((child) => (
-                      <DropdownMenuItem key={child.id} render={<Link href={localize(child.href)} />}>
-                        {child.label}
-                      </DropdownMenuItem>
-                    ))}
+                    <NavMenuItems nodes={link.children} localize={localize} pathname={pathname} depth={1} />
                   </DropdownMenuContent>
                 </DropdownMenu>
               );
@@ -288,6 +496,9 @@ export function SiteHeader({
               </Link>
             );
           })}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
           {showCta && (
             // §10.12.4 — `--site-button`/`--site-button-text` (`.site-scope` altında satır-içi
             // yazılır, bkz. globals.css `.site-scope` fallback bloğu). Admin'in `--primary`

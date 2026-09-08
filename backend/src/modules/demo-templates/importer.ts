@@ -3,7 +3,8 @@ import type { FastifyInstance } from "fastify";
 import { Prisma, type Locale } from "@prisma/client";
 import { z } from "zod";
 import { DEMO_TEMPLATE_REGISTRY, getDemoTemplate } from "./registry";
-import { countNavItemsTotal, type DemoTemplateDefinition } from "./types";
+import { countNavItemsTotal, type DemoTemplateDefinition, type DemoTemplateNavItem } from "./types";
+import { sortNavigationItemsByDepth } from "../navigation/navigation.routes";
 import { resolvePageBlockTokens } from "./lib/asset-tokens";
 import { deriveOptionValueSlugs, deriveVariantKey, assertOptionValuesMatchAxes } from "../products/lib/variants";
 import { derivePriceColumns } from "../../lib/product-pricing";
@@ -304,6 +305,45 @@ interface TransactionOutcome {
   previousShipping: { shippingFlatFeeCents: number | null; freeShippingThresholdCents: number | null } | null;
 }
 
+export interface TemplateNavigationRow {
+  id: string;
+  label: string;
+  href: string;
+  order: number;
+  parentId: string | null;
+}
+
+/**
+ * `template.navigation` (kök + TEK seviye çocuk — bkz. `DemoTemplateNavItem`,
+ * `.claude/architect-scope-demo-template-import.md` §3, BAĞLAYICI; bu şekli DERİNLEŞTİRMEK
+ * ayrı bir architect kararı gerektirir, bu fonksiyonun kapsamı DEĞİLDİR) düz bir satır
+ * listesine çevrilir ve `navigation` modülünün PAYLAŞILAN, derinlikten bağımsız topolojik
+ * sıralayıcısıyla (`navigation.routes.ts::sortNavigationItemsByDepth`, ARCHITECTURE.md
+ * §10.10.3) ebeveyn-önce sıraya dizilir.
+ *
+ * Önceden burada `roots`/`children` adında elle bölünmüş İKİ ayrı dizi vardı ve doğrudan
+ * `[...roots, ...children]` olarak birleştiriliyordu — PUT `/admin/navigation` handler'ındaki
+ * (bkz. `navigation.routes.ts`) ESKİ desenin bire bir kopyasıydı. `DemoTemplateNavItem`
+ * bugün yalnızca 2 katman ürettiği için o desen FK açısından hâlâ doğruydu, ANCAK aynı
+ * kod deseninin ikinci bir kopyasıydı (bkz. `.claude/architect-scope-navigation-deep-nesting.md`
+ * §1, "ATLAMA" notu). Mantık KOPYALANMAK YERİNE paylaşılan yardımcıya bağlandı: şablon şekli
+ * ileride (architect onayıyla) derinleştirilirse yalnızca aşağıdaki `flatten` adımının
+ * özyinelemeli hale getirilmesi yeterli olur — sıralama otomatik doğru çalışır, çünkü
+ * `sortNavigationItemsByDepth` derinlikten bağımsızdır (memoize edilmiş ata-sayısına göre
+ * stable sort, `<T>` generic).
+ */
+export function buildTemplateNavigationRows(navigation: DemoTemplateNavItem[]): TemplateNavigationRow[] {
+  const flat: TemplateNavigationRow[] = [];
+  navigation.forEach((item, index) => {
+    const rootId = crypto.randomUUID();
+    flat.push({ id: rootId, label: item.label, href: item.href, order: index, parentId: null });
+    (item.children ?? []).forEach((child, childIndex) => {
+      flat.push({ id: crypto.randomUUID(), label: child.label, href: child.href, order: childIndex, parentId: rootId });
+    });
+  });
+  return sortNavigationItemsByDepth(flat);
+}
+
 /** §5.2 Faz 2 — TEK transaction, sıra BAĞLAYICI (2.1 → 2.11). */
 async function writeTemplateInTransaction(
   tx: Prisma.TransactionClient,
@@ -371,26 +411,14 @@ async function writeTemplateInTransaction(
     update: settingsFields,
   });
 
-  // 2.4 — NavigationItem TAMAMEN DEĞİŞTİRİLİR (kök → çocuk sırası ZORUNLU, FK ihlalini önler).
+  // 2.4 — NavigationItem TAMAMEN DEĞİŞTİRİLİR. Sıralama `buildTemplateNavigationRows`'a
+  // devredildi — ebeveyn her satırdan ÖNCE yazılır, FK ihlalini önler (bkz. yukarıdaki JSDoc).
   await tx.navigationItem.deleteMany({});
   let navigationItemCount = 0;
   if (template.navigation.length > 0) {
-    const rootIds = template.navigation.map(() => crypto.randomUUID());
-    const roots = template.navigation.map((item, index) => ({
-      id: rootIds[index]!,
-      label: item.label,
-      href: item.href,
-      order: index,
-      parentId: null as string | null,
-    }));
-    const children: { id: string; label: string; href: string; order: number; parentId: string }[] = [];
-    template.navigation.forEach((item, index) => {
-      (item.children ?? []).forEach((child, childIndex) => {
-        children.push({ id: crypto.randomUUID(), label: child.label, href: child.href, order: childIndex, parentId: rootIds[index]! });
-      });
-    });
-    await tx.navigationItem.createMany({ data: [...roots, ...children] });
-    navigationItemCount = roots.length + children.length;
+    const rows = buildTemplateNavigationRows(template.navigation);
+    await tx.navigationItem.createMany({ data: rows });
+    navigationItemCount = rows.length;
   }
 
   // 2.5 — FooterColumn + FooterLink TAMAMEN DEĞİŞTİRİLİR. Kolon silmek Cascade ile linkleri de siler.

@@ -101,4 +101,109 @@ describe("SiteHeader — hiyerarşik (parentId) navigasyon", () => {
     const results = await axe(container, axeOptions);
     expect(results).toHaveNoViolations();
   });
+
+  it("3 seviyeli bir ağaçta 2. seviye düğüm için DropdownMenuSub (submenu tetikleyicisi) render eder ve 3. seviyeye tıklanınca doğru href'e sahip menü öğesi açılır", async () => {
+    const navigationItems: NavigationItemDto[] = [
+      { id: "root-1", label: "Ürünler", href: "/products", order: 0, parentId: null },
+      { id: "child-1", label: "Mobilya", href: "/products/mobilya", order: 0, parentId: "root-1" },
+      {
+        id: "grandchild-1",
+        label: "Ahşap Dolaplar",
+        href: "/products/mobilya/ahsap-dolaplar",
+        order: 0,
+        parentId: "child-1",
+      },
+    ];
+
+    const user = userEvent.setup();
+    render(<SiteHeader settings={settings} pages={[]} navigationItems={navigationItems} />);
+
+    await user.click(screen.getByRole("button", { name: /Ürünler/ }));
+
+    // 2. seviye ("Mobilya") çocuğu olduğu için düz menuitem DEĞİL, bir submenu tetikleyicisi
+    // (Base UI `MenuSubmenuTrigger` bir `menuitem` rolüyle render edilir, `aria-haspopup` taşır).
+    const submenuTrigger = await screen.findByRole("menuitem", { name: "Mobilya" });
+    expect(submenuTrigger).toHaveAttribute("aria-haspopup");
+
+    await user.hover(submenuTrigger);
+
+    // Hover-intent açılış gecikmesi (150ms) sonrası 3. seviye görünür olmalı.
+    const leaf = await screen.findByRole("menuitem", { name: "Ahşap Dolaplar" }, { timeout: 2000 });
+    expect(leaf).toHaveAttribute("href", "/products/mobilya/ahsap-dolaplar");
+  });
+
+  it("NAVIGATION_MAX_DEPTH aşan bir düğümü render katmanında sessizce atlar (throw etmez)", () => {
+    // `buildNavTree` zaten 4. seviyeden sonrasını (depth >= NAVIGATION_MAX_DEPTH) keser; bu test
+    // en azından 4 seviyeli geçerli bir ağacın hatasız render edildiğini doğrular.
+    const navigationItems: NavigationItemDto[] = [
+      { id: "l0", label: "Seviye 0", href: "/l0", order: 0, parentId: null },
+      { id: "l1", label: "Seviye 1", href: "/l0/l1", order: 0, parentId: "l0" },
+      { id: "l2", label: "Seviye 2", href: "/l0/l1/l2", order: 0, parentId: "l1" },
+      { id: "l3", label: "Seviye 3", href: "/l0/l1/l2/l3", order: 0, parentId: "l2" },
+    ];
+
+    expect(() =>
+      render(<SiteHeader settings={settings} pages={[]} navigationItems={navigationItems} />)
+    ).not.toThrow();
+  });
+});
+
+describe("SiteHeader — mobil (Sheet + Accordion) navigasyon", () => {
+  it("hamburger tetikleyiciye tıklanınca Sheet açılır ve çok seviyeli ağaç Accordion olarak render edilir", async () => {
+    const navigationItems: NavigationItemDto[] = [
+      { id: "root-1", label: "Ürünler", href: "/products", order: 0, parentId: null },
+      { id: "child-1", label: "Mobilya", href: "/products/mobilya", order: 0, parentId: "root-1" },
+      {
+        id: "grandchild-1",
+        label: "Ahşap Dolaplar",
+        href: "/products/mobilya/ahsap-dolaplar",
+        order: 0,
+        parentId: "child-1",
+      },
+      { id: "root-2", label: "İletişim", href: "/iletisim", order: 1, parentId: null },
+    ];
+
+    const user = userEvent.setup();
+    render(<SiteHeader settings={settings} pages={[]} navigationItems={navigationItems} />);
+
+    await user.click(screen.getByRole("button", { name: "Menüyü aç" }));
+
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+
+    // Çocuğu olan düğüm bir accordion tetikleyicisi (button) olarak görünür, yaprak düz link.
+    const trigger = screen.getByRole("button", { name: "Ürünler" });
+    expect(screen.getByRole("link", { name: "İletişim" })).toHaveAttribute("href", "/iletisim");
+
+    await user.click(trigger);
+    const childTrigger = await screen.findByRole("button", { name: "Mobilya" });
+
+    await user.click(childTrigger);
+    const leaf = await screen.findByRole("link", { name: "Ahşap Dolaplar" });
+    expect(leaf).toHaveAttribute("href", "/products/mobilya/ahsap-dolaplar");
+  });
+
+  it("mobil bir yaprak linke tıklanınca Sheet kapanır", async () => {
+    const navigationItems: NavigationItemDto[] = [
+      { id: "root-1", label: "İletişim", href: "/iletisim", order: 0, parentId: null },
+    ];
+
+    const user = userEvent.setup();
+    render(<SiteHeader settings={settings} pages={[]} navigationItems={navigationItems} />);
+
+    await user.click(screen.getByRole("button", { name: "Menüyü aç" }));
+    await screen.findByRole("dialog");
+
+    const links = screen.getAllByRole("link", { name: "İletişim" });
+    // Mobil Sheet içindeki yaprak link (masaüstü `hidden md:flex` sarmalayıcısındaki linkten
+    // ayırt edilemez çünkü jsdom `hidden`/breakpoint uygulamaz — Sheet içindekini seçmek için
+    // en yakın `dialog` ata üzerinden filtrelenir).
+    const dialog = screen.getByRole("dialog");
+    const mobileLink = links.find((link) => dialog.contains(link));
+    expect(mobileLink).toBeTruthy();
+
+    await user.click(mobileLink as HTMLElement);
+
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
 });

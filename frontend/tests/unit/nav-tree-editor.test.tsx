@@ -96,6 +96,27 @@ describe("NavTreeEditor", () => {
     expect(onChange).toHaveBeenLastCalledWith([]);
   });
 
+  it("3 seviyeli bir ağaçta hepsini render eder ve kök silinince TÜM alt ağaç (torunlar dahil) kaskad silinir", async () => {
+    const items: FlatNavItem[] = [
+      { id: "a", label: "Ana Sayfa", href: "/", parentId: null },
+      { id: "a1", label: "Kategori", href: "/kategori", parentId: "a" },
+      { id: "a11", label: "Alt Kategori", href: "/kategori/alt", parentId: "a1" },
+    ];
+    const onChange = vi.fn();
+    const user = userEvent.setup();
+    render(<Harness initial={items} onChange={onChange} />);
+
+    expect(screen.getByText("Ana Sayfa")).toBeInTheDocument();
+    expect(screen.getByText("Kategori")).toBeInTheDocument();
+    expect(screen.getByText("Alt Kategori")).toBeInTheDocument();
+
+    const editButtons = screen.getAllByRole("button", { name: "Düzenle" });
+    await user.click(editButtons[0]!);
+    await user.click(screen.getByRole("button", { name: "Kaldır" }));
+
+    expect(onChange).toHaveBeenLastCalledWith([]);
+  });
+
   it("kritik/ciddi a11y ihlali içermez", async () => {
     const items: FlatNavItem[] = [
       { id: "a", label: "Ana Sayfa", href: "/", parentId: null },

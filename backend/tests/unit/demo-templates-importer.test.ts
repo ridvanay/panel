@@ -14,10 +14,11 @@ import { storage } from "../../src/lib/storage";
  * kullanan `importDemoTemplate` importu, mock KURULDUKTAN SONRA (dosyanın en üstünde,
  * `vi.mock` hoisting sayesinde) çözülür.
  */
-const { BROKEN_TEMPLATE_KEY, BROKEN_TEMPLATE } = vi.hoisted(() => {
+const { BROKEN_TEMPLATE_KEY, BROKEN_TEMPLATE, DEEP_NAV_TEMPLATE_KEY } = vi.hoisted(() => {
   const key = "broken-template";
   return {
     BROKEN_TEMPLATE_KEY: key,
+    DEEP_NAV_TEMPLATE_KEY: "deep-nav-template",
     BROKEN_TEMPLATE: {
       key,
       version: "1.0.0",
@@ -49,9 +50,52 @@ const { BROKEN_TEMPLATE_KEY, BROKEN_TEMPLATE } = vi.hoisted(() => {
 
 vi.mock("../../src/modules/demo-templates/registry", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../src/modules/demo-templates/registry")>();
+  const { MODERN_ARCHITECTURE_TEMPLATE } = await import("../../src/modules/demo-templates/templates/modern-architecture");
+
+  /**
+   * `feature/navigation-deep-nesting` — `importer.ts::buildTemplateNavigationRows` regresyon
+   * senaryosu: `modern-architecture`'ın GERİ KALANI (assets/appearance/settings/page/vb.)
+   * DEĞİŞTİRİLMEDEN kullanılır, yalnızca `navigation` alanı ÇOKLU-KÖK + KARIŞIK sayıda çocuk
+   * içeren bir dizi ile override edilir. Amaç: eski elle-bölünmüş `roots`/`children` deseninin
+   * yerini alan paylaşılan `sortNavigationItemsByDepth` yoluyla gerçek bir DB transaction'ı
+   * üzerinden FK ihlali OLMADAN kaydedildiğini doğrulamak (bkz. `demo-templates-importer.test.ts`
+   * altındaki ilgili `describe` bloğu).
+   */
+  // `key` KASITLI OLARAK override EDİLMEDİR — `assertTemplateAssetFilesReadable`/
+  // `materializeTemplateAssets` varlıkları `assets/<template.key>/` dizininden okur
+  // (`lib/assets.ts::templateAssetsDir`); gerçek `modern-architecture` varlık klasörü
+  // korunur, yalnızca `getDemoTemplate` bu objeyi AYRI bir anahtarla (`DEEP_NAV_TEMPLATE_KEY`)
+  // döndürür.
+  const DEEP_NAV_TEMPLATE = {
+    ...MODERN_ARCHITECTURE_TEMPLATE,
+    navigation: [
+      { label: "Ana Sayfa", href: "/" },
+      {
+        label: "Hizmetlerimiz",
+        href: "/",
+        children: [
+          { label: "Tasarım", href: "/" },
+          { label: "Danışmanlık", href: "/" },
+          { label: "Uygulama", href: "/" },
+        ],
+      },
+      { label: "Projeler", href: "/portfolio" },
+      {
+        label: "İletişim",
+        href: "/",
+        children: [{ label: "Ofis", href: "/" }],
+      },
+      { label: "Hakkımızda", href: "/" },
+    ],
+  };
+
   return {
     ...actual,
-    getDemoTemplate: (key: string) => (key === BROKEN_TEMPLATE_KEY ? (BROKEN_TEMPLATE as never) : actual.getDemoTemplate(key)),
+    getDemoTemplate: (key: string) => {
+      if (key === BROKEN_TEMPLATE_KEY) return BROKEN_TEMPLATE as never;
+      if (key === DEEP_NAV_TEMPLATE_KEY) return DEEP_NAV_TEMPLATE as never;
+      return actual.getDemoTemplate(key);
+    },
   };
 });
 
@@ -358,5 +402,106 @@ describe("demo-templates importer — bugfix: ecommerce-pro force-reapply sonras
 
     const linkedProductCount = await app.prisma.product.count({ where: { categoryId: linkedCategory!.id } });
     expect(linkedProductCount).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * `.claude/architect-scope-navigation-deep-nesting.md` §1 "ATLAMA" notu — `importer.ts`'teki
+ * eski elle-bölünmüş `roots`/`children` deseni (PUT `/admin/navigation` handler'ındaki AYNI
+ * desenin bir kopyasıydı) `buildTemplateNavigationRows` + paylaşılan
+ * `navigation.routes.ts::sortNavigationItemsByDepth` ile değiştirildi (kod KOPYALANMADI).
+ *
+ * `DemoTemplateNavItem` şekli (`types.ts`) `.claude/architect-scope-demo-template-import.md`
+ * §3'te BAĞLAYICI ve bugün YALNIZCA 2 katman (kök + tek seviye çocuk) üretir — bu kontratı
+ * derinleştirmek AYRI bir architect kararı gerektirir, bu görevin kapsamı DEĞİLDİR. Bu yüzden
+ * aşağıdaki testler gerçek bir 4 seviyeli demo şablonu KURAMAZ; bunun yerine (a) saf
+ * `buildTemplateNavigationRows` fonksiyonunu DB'siz doğrular, (b) çoklu-köklü/karışık sayıda
+ * çocuklu, GERÇEKÇİ bir şablonun uçtan uca (gerçek transaction) FK ihlali olmadan
+ * kaydedildiğini doğrular. `sortNavigationItemsByDepth`'in kendisinin 4 seviye + karışık
+ * sıralı girdilerdeki genel doğruluğu ZATEN `tests/integration/navigation.test.ts`'te test
+ * edilir (kod gibi test de KOPYALANMAZ).
+ */
+describe("demo-templates importer — navigation import: paylaşılan topolojik sıralayıcıya geçiş", () => {
+  it("`buildTemplateNavigationRows` (DB'siz): her satırın ebeveyni, kendisinden ÖNCEKİ bir indekste yer alır", async () => {
+    const { buildTemplateNavigationRows } = await import("../../src/modules/demo-templates/importer");
+
+    const rows = buildTemplateNavigationRows([
+      { label: "Ana Sayfa", href: "/" },
+      {
+        label: "Hizmetlerimiz",
+        href: "/hizmetler",
+        children: [
+          { label: "Tasarım", href: "/hizmetler/tasarim" },
+          { label: "Danışmanlık", href: "/hizmetler/danismanlik" },
+        ],
+      },
+      { label: "Projeler", href: "/portfolio" },
+      { label: "İletişim", href: "/iletisim", children: [{ label: "Ofis", href: "/iletisim/ofis" }] },
+    ]);
+
+    expect(rows).toHaveLength(7);
+
+    const indexById = new Map(rows.map((row, index) => [row.id, index]));
+    for (const row of rows) {
+      if (row.parentId == null) continue;
+      const parentIndex = indexById.get(row.parentId);
+      expect(parentIndex).toBeDefined();
+      expect(parentIndex!).toBeLessThan(indexById.get(row.id)!);
+    }
+
+    // Kök sırası + her kökün kendi çocuk sırası (`order`) korunur.
+    const roots = rows.filter((r) => r.parentId == null);
+    expect(roots.map((r) => r.label)).toEqual(["Ana Sayfa", "Hizmetlerimiz", "Projeler", "İletişim"]);
+    const hizmetlerRoot = roots.find((r) => r.label === "Hizmetlerimiz")!;
+    const hizmetlerChildren = rows.filter((r) => r.parentId === hizmetlerRoot.id).sort((a, b) => a.order - b.order);
+    expect(hizmetlerChildren.map((c) => c.label)).toEqual(["Tasarım", "Danışmanlık"]);
+  });
+
+  describe("uçtan uca (gerçek transaction): çoklu-köklü/karışık sayıda çocuklu şablon FK ihlali üretmeden kaydedilir", () => {
+    let app: FastifyInstance;
+    let actorId: string;
+    let actorEmail: string;
+
+    beforeAll(async () => {
+      app = await buildTestApp();
+      await resetDatabase(app.prisma);
+      const admin = await registerTestUser(app, { email: "demo-template-deep-nav-admin@example.com" });
+      actorId = admin.userId;
+      actorEmail = "demo-template-deep-nav-admin@example.com";
+    });
+
+    afterAll(async () => {
+      await resetDatabase(app.prisma);
+      await app.close();
+    });
+
+    it("import başarılı olur, 9 navigasyon satırı (5 kök + 4 çocuk) doğru ebeveyn bağlarıyla kaydedilir", async () => {
+      const { importDemoTemplate } = await import("../../src/modules/demo-templates/importer");
+
+      const result = await importDemoTemplate(app, {
+        templateKey: DEEP_NAV_TEMPLATE_KEY,
+        body: { confirm: true, force: false, setAsHomePage: false },
+        actorId,
+        actorEmail,
+      });
+
+      expect(result.counts.navigationItems).toBe(9);
+
+      const rows = await app.prisma.navigationItem.findMany({ orderBy: { order: "asc" } });
+      expect(rows).toHaveLength(9);
+
+      const hizmetlerRoot = rows.find((r) => r.label === "Hizmetlerimiz" && r.parentId === null);
+      expect(hizmetlerRoot).toBeTruthy();
+      const hizmetlerChildren = rows.filter((r) => r.parentId === hizmetlerRoot!.id);
+      expect(hizmetlerChildren.map((c) => c.label).sort()).toEqual(["Danışmanlık", "Tasarım", "Uygulama"].sort());
+
+      const iletisimRoot = rows.find((r) => r.label === "İletişim" && r.parentId === null);
+      expect(iletisimRoot).toBeTruthy();
+      const iletisimChildren = rows.filter((r) => r.parentId === iletisimRoot!.id);
+      expect(iletisimChildren.map((c) => c.label)).toEqual(["Ofis"]);
+
+      // Çocuğu OLMAYAN kökler de doğru şekilde `parentId: null` ile kaydedilmiştir.
+      expect(rows.filter((r) => r.parentId === null)).toHaveLength(5);
+    });
   });
 });

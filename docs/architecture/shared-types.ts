@@ -326,9 +326,11 @@ export interface PermissionsMatrix {
 
 /**
  * Hiyerarşik menü öğesi. Yapı DÜZ DİZİ + `parentId` ile ifade edilir (nested JSON ağacı
- * değil). Maksimum derinlik 2: `parentId` dolu bir öğe yalnızca `parentId === null` olan
- * bir kök öğeyi işaret edebilir. `order` kardeş-kapsamlıdır (aynı `parentId` grubu içinde
- * 0'dan artar). Sunucu diziyi `(parentId NULLS FIRST, order)` ile döner.
+ * değil). **Maksimum derinlik 4 seviye** (`NAVIGATION_MAX_DEPTH = 3` = 0-tabanlı derinlik
+ * indeksi / ata sayısı; kök = 0). `order` kardeş-kapsamlıdır (aynı `parentId` grubu içinde
+ * 0'dan artar). Sunucu diziyi `(parentId NULLS FIRST, order)` ile döner — kardeşler
+ * bitişik/sıralıdır, ancak ataların torunlardan önce gelmesi GARANTİ DEĞİLDİR: tüketici
+ * iki geçişli `parentId -> children[]` haritasıyla (O(n)) ağacı kurar, orphan öğeleri atlar.
  */
 export interface NavigationItem {
   id: string;
@@ -384,7 +386,7 @@ export interface UpdateNavigationConfigRequest {
   headerCtaLabel?: string | null;
   headerCtaHref?: string | null;
   footerCopyrightText?: string | null;
-  /** Tüm seviyelerin toplamı en fazla 20 öğe. Derinlik en fazla 2. */
+  /** Tüm seviyelerin toplamı en fazla 100 öğe (NAVIGATION_MAX_ITEMS). Ata sayısı en fazla 3 (4 seviye). */
   navigationItems: Array<Omit<NavigationItem, "id" | "parentId"> & { id?: string; parentId?: string | null }>;
   socialLinks: Array<Omit<SocialLink, "id">>;
   footerColumns: Array<{

@@ -1640,9 +1640,10 @@ paths:
       description: >
         Tam değiştirme (replace) semantiği: `navigationItems`/`socialLinks`/`footerColumns`
         gönderilen dizilerle DB'deki mevcut kayıtların tamamının yerini alır (delete-then-recreate,
-        tek transaction içinde). `navigationItems` hiyerarşiktir (`parentId`); kayıt sırasında
-        sunucu önce kök öğeleri, sonra alt öğeleri yazar (self-FK sıralama garantisi —
-        bkz. ARCHITECTURE.md "Navigasyon Hiyerarşisi"). Menüye içerikten (sayfa/blog/ürün/portföy)
+        tek transaction içinde). `navigationItems` hiyerarşiktir (`parentId`, en fazla 4 seviye);
+        kayıt sırasında sunucu satırları SEVİYE SIRASIYLA (önce derinlik 0, sonra 1, 2, 3)
+        yazar — genelleştirilmiş topolojik sıra, self-FK ihlalini `createMany` çok ifadeye
+        bölünse bile engeller (bkz. ARCHITECTURE.md §10.10.3). Menüye içerikten (sayfa/blog/ürün/portföy)
         eklenen öğeler de sıradan öğelerdir: yalnızca `label`/`href` snapshot'ı taşınır,
         kaynak içeriğe kalıcı referans TUTULMAZ.
       requestBody:
@@ -9364,12 +9365,21 @@ components:
         Hiyerarşik (iç içe geçebilen) menü öğesi. Yapı DÜZ BİR DİZİ + `parentId` ile ifade
         edilir (iç içe/nested JSON ağacı DEĞİL) — WordPress'in kendi veri modeliyle ve
         dnd-kit "nested sortable" paterniyle aynı. Tüketici ağacı `parentId`'ye göre kurar.
-        Maksimum derinlik 2'dir: `parentId` dolu olan bir öğe yalnızca `parentId`'si null
-        olan (kök) bir öğeyi işaret edebilir; dolayısıyla döngü/kendine referans imkânsızdır.
+        **Maksimum derinlik: 4 SEVİYE** (`NAVIGATION_MAX_DEPTH = 3`, 0-tabanlı derinlik
+        indeksi = atalarının sayısı; kök = 0, en derin öğe = 3). Derinlik bir ÜRÜN
+        politikasıdır, yapısal bir sınır değildir: tüm katmanlar (Zod doğrulaması, admin
+        editörü, storefront renderer) derinlikten BAĞIMSIZ/özyinelemeli yazılır, sınır
+        yalnızca tek bir sabitten okunur. Şemada `depth` kolonu YOKTUR — derinlik her zaman
+        `parentId` zincirinden türetilir.
         `order` KARDEŞ-KAPSAMLIDIR (aynı `parentId` grubu içinde 0'dan artar), global sıra
         değildir — tüketici önce `parentId`'ye göre gruplamalı, sonra `order`'a göre
-        sıralamalıdır. Sunucu diziyi `(parentId NULLS FIRST, order)` ile döner, yani kök
-        öğeler her zaman alt öğelerden önce gelir (tek geçişli ağaç kurulumu güvenlidir).
+        sıralamalıdır. Sunucu diziyi `(parentId NULLS FIRST, order ASC)` ile döner: bu,
+        kardeşlerin bitişik ve doğru sırada olmasını garanti eder, ancak derinlik >2
+        olduğunda ataların torunlardan ÖNCE gelmesini ARTIK GARANTİ ETMEZ (torunlar
+        ebeveynlerinin UUID'sine göre sıralanır). Bu yüzden tüketici ağacı TEK GEÇİŞLE
+        değil, `parentId -> children[]` haritası kuran İKİ GEÇİŞLİ O(n) algoritmayla
+        kurmalıdır (bkz. ARCHITECTURE.md §10.10.1). Tüketici ayrıca savunmacı davranmalıdır:
+        ebeveyni bulunamayan (orphan) öğeler sessizce ATLANIR, ağacın tamamı düşürülmez.
       type: object
       required: [id, label, href, order, parentId]
       properties:
@@ -9449,15 +9459,24 @@ components:
         footerCopyrightText: { type: string, maxLength: 200, nullable: true }
         navigationItems:
           type: array
-          maxItems: 20
+          maxItems: 100
           description: >
             DÜZ dizi (nested JSON ağacı değil); hiyerarşi `parentId` ile kurulur.
-            `maxItems: 20` TÜM SEVİYELERİN TOPLAMIDIR (kök + alt öğeler) — nesting bu
-            limiti değiştirmez. 422 ile reddedilen ek kurallar: (1) `id` değerleri payload
-            içinde benzersiz olmalı; (2) `parentId`, aynı payload'daki bir öğenin `id`'siyle
-            eşleşmeli (DB'deki eski bir id'ye referans geçersizdir — kayıt tam-replace'tir);
-            (3) maksimum derinlik 2 — `parentId` ile işaret edilen öğenin kendi `parentId`'si
-            null OLMALIDIR; (4) bir öğe kendi `id`'sini `parentId` olarak veremez.
+            `maxItems: 100` TÜM SEVİYELERİN TOPLAMIDIR (kök + tüm alt seviyeler) — eski
+            `20` limiti 4 seviyeli bir ağaç için yetersizdi (4 kök x 4 kategori x 3 alt
+            kategori zaten limiti aşıyordu). 422 ile reddedilen ek kurallar (bu SIRAYLA
+            değerlendirilir, ilk hata öğe bazlı `path` ile raporlanır):
+            (1) `id` değerleri payload içinde benzersiz olmalı;
+            (2) bir öğe kendi `id`'sini `parentId` olarak veremez (kendine referans);
+            (3) `parentId`, aynı payload'daki bir öğenin `id`'siyle eşleşmeli (DB'deki eski
+            bir id'ye referans geçersizdir — kayıt tam-replace'tir);
+            (4) **DÖNGÜ (cycle) YASAK** — bir öğe kendi alt ağacındaki bir öğenin çocuğu
+            yapılamaz; ata zinciri üç-renkli (WHITE/GRAY/BLACK) memoize edilmiş iteratif
+            DFS ile O(n) taranır (algoritma: ARCHITECTURE.md §10.10.3);
+            (5) **maksimum derinlik** — her öğenin ata sayısı `NAVIGATION_MAX_DEPTH = 3`'ü
+            AŞAMAZ (yani en fazla 4 görünür seviye). Derinlik, döngü taramasından SONRA
+            hesaplanır; böylece döngü içeren payload "derinlik aşıldı" yerine doğru
+            ("döngü") hatasını alır.
           items:
             type: object
             required: [label, href, order]

@@ -7,7 +7,7 @@ import { ArrowDown, ArrowUp, ChevronDown, ChevronLeft, ChevronRight, GripVertica
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import type { FlatNavItem } from "./nav-tree-utils";
+import { INDENTATION_WIDTH, type FlatNavItem } from "./nav-tree-utils";
 
 interface NavTreeRowProps {
   item: FlatNavItem;
@@ -184,12 +184,15 @@ export function NavTreeRowOverlay({ item }: { item: FlatNavItem }) {
   );
 }
 
-/** Karar 5.4: bırakma göstergesi — projelenen derinliğe göre sola/sağa kayan ince çizgi. */
-export function DropIndicator({ depth }: { depth: 0 | 1 }) {
+/** Karar 5.4: bırakma göstergesi — projelenen derinliğe göre sola/sağa kayan ince çizgi. Çok
+ * seviyeli genelleme (architect-scope §2): `depth` artık `0 | 1` değil, `NAVIGATION_MAX_DEPTH`'e
+ * kadar herhangi bir sayı olabilir; ofset sürükleme projeksiyonuyla AYNI `INDENTATION_WIDTH`
+ * adımını kullanır. */
+export function DropIndicator({ depth }: { depth: number }) {
   return (
     <div
       className="relative h-0.5 rounded-full bg-primary before:absolute before:-left-1 before:-top-[3px] before:h-2 before:w-2 before:rounded-full before:bg-primary"
-      style={{ marginLeft: depth * 32 }}
+      style={{ marginLeft: depth * INDENTATION_WIDTH }}
       aria-hidden="true"
     />
   );

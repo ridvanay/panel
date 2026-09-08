@@ -347,7 +347,7 @@ erDiagram
 > `SocialLink` (`SocialPlatform` enum), `FooterColumn` → `FooterLink` (1-n,
 > `onDelete: Cascade`); ayrıca `SiteSettings`'e `headerCtaLabel`/`headerCtaHref`/
 > `footerCopyrightText` eklendi. `NavigationItem` artık **hiyerarşiktir**
-> (`parentId` self-relation, düz dizi + parentId; maksimum derinlik 2, kardeş-kapsamlı
+> (`parentId` self-relation, düz dizi + parentId; maksimum derinlik 4 seviye, kardeş-kapsamlı
 > `order`, istemci tarafında üretilen `id`) — bağlayıcı kararlar ve self-FK insert
 > sıralaması için bkz. §10.10. Tam sözleşme için `openapi.yaml`'daki
 > `NavigationConfig`/`UpdateNavigationConfigRequest` şemalarına bakın.
@@ -2172,17 +2172,51 @@ düzleştirilmek zorunda; (2) dnd-kit'in "nested sortable" paterni de düz liste
 üzerinden çalışır, ağaç↔düz dönüşümü her sürüklemede gereksiz maliyet ve hata kaynağı;
 (3) kısmi güncelleme/validasyon (per-item hata mesajı) düz dizide çok daha basit.
 
-**Maksimum derinlik = 2 (kök + bir alt seviye).** Kural şu tek cümleye indirgenmiştir:
-*`parentId` dolu olan bir öğe, YALNIZCA `parentId`'si null olan bir öğeyi işaret edebilir.*
-Bunun üç faydası var: (a) doğrulama özyineleme/graf gezintisi gerektirmez, O(n) tek geçiş;
-(b) döngü (cycle) ve kendine referans **yapısal olarak imkânsız** — çünkü bir öğe kendini
-işaret ederse `parentId`'si dolu olur ve artık kök olmadığı için hedef geçersizleşir;
-(c) site header'ı zaten tam olarak iki seviye (kök + dropdown) render ediyor — daha derin
-veri kullanıcının oluşturup ASLA göremeyeceği "hayalet" öğeler üretirdi. Derinliği 3'e
-çıkarmak istenirse önce kontrat (openapi.yaml), sonra header renderer güncellenir; DB
-şemasında bir değişiklik gerekmez. Derinlik **DB'de zorlanmaz** (Postgres CHECK başka
-satıra bakamaz), API validasyon katmanında zorlanır — tek yazma yolu `PUT /admin/navigation`
-olduğu için bu yeterlidir.
+**Maksimum derinlik = 4 SEVİYE (revize — eski karar "2 seviye" GEÇERSİZDİR).** Tek
+normatif sabit: `NAVIGATION_MAX_DEPTH = 3`, tanımı **0-tabanlı derinlik indeksi = bir
+öğenin ata sayısı** (kök = 0 → en derin öğe = 3 → toplam 4 görünür seviye: Ana Menü →
+Kategori → Alt Kategori → Ürün Grubu). Bu tanım kasten seçilmiştir: backend'in "ata
+sayısı" ile frontend `nav-tree-utils.ts`'in 0-tabanlı `depth` değeri AYNI sayıdır, iki
+katman arasında ±1 kayması olamaz.
+
+Eski kuralın ("bir çocuğun ebeveyni kök olmalı") sağladığı iki bedava garanti KAYBOLDU ve
+artık açıkça uygulanmalıdır: (a) döngü/kendine referans artık yapısal olarak imkânsız
+DEĞİL — payload üzerinde açık cycle detection zorunlu (§10.10.3); (b) `(parentId NULLS
+FIRST, order)` sıralaması artık ataların torunlardan önce gelmesini garanti etmiyor —
+tüketici **tek geçişli gruplama yerine iki geçişli `parentId -> children[]` haritası**
+kurmalıdır:
+
+```
+// 1. geçiş: her öğe için boş çocuk listesi + id haritası
+// 2. geçiş: her öğeyi kendi ebeveyninin children[]'ına iliştir (ebeveyn yoksa ATLA — orphan)
+// kökler = parentId === null olanlar; her seviyede children.sort((a,b) => a.order - b.order)
+```
+
+Bu O(n)'dir ve dizinin fiziksel sırasından bağımsızdır. Derinlik bir **ürün politikasıdır,
+yapısal sınır değildir**: Zod doğrulaması, admin editörü ve storefront renderer'ı
+derinlikten bağımsız/özyinelemeli yazılır; sınırı 6 seviyeye çıkarmak yalnızca sabitin
+değerini değiştirmek + QA'yı yeniden koşturmak demektir, kod değişikliği gerektirmez.
+Derinlik **DB'de zorlanmaz** (Postgres CHECK başka satıra bakamaz), API validasyon
+katmanında zorlanır — tek yazma yolu `PUT /admin/navigation` olduğu için bu yeterlidir.
+
+**`depth` kolonu EKLENMEZ — karar.** Derinlik `parentId` zincirinden türetilir. Gerekçe:
+(1) türetilmiş bir değeri kolona yazmak, her taşımada tüm alt ağaçta güncellenmesi gereken
+ve sessizce kayabilen (drift) bir invariant yaratır; (2) yazma yolu zaten tam-replace, yani
+kazanılacak bir yazma maliyeti yok; (3) okuma ≤100 satırlık tek bir `findMany`, bellekte
+derinlik hesabı O(n). `schema.prisma`'da **hiçbir değişiklik yoktur** → bu iş için
+db-agent'a görev DÜŞMEZ (mevcut `parentId` self-relation + `@@index([parentId])` +
+`onDelete: Cascade` yeterlidir; Cascade artık çok seviyeli olarak zincirleme çalışır).
+
+**Sabitin yeri.** Proje bir npm workspace monorepo'su DEĞİL (`backend/` ve `frontend/`
+bağımsız derlenir, ortak `paths` alias'ı yok), bu yüzden gerçek bir `shared/` paketi
+build/Docker değişikliği (devops-agent) gerektirirdi — bu iş için orantısız. Karar: değer
+**openapi.yaml'da normatiftir** ve TAM İKİ dosyada aynalanır:
+`backend/src/modules/navigation/navigation.constants.ts` ve
+`frontend/src/lib/navigation-constants.ts` (`NAVIGATION_MAX_DEPTH = 3`,
+`NAVIGATION_MAX_ITEMS = 100`). Her iki dosya da diğerine ve kontrata yorumla atıf verir;
+qa-agent iki değerin eşitliğini doğrulayan bir test tutar. Başka HİÇBİR yerde derinlik
+sayısı hardcode edilmez (`MAX_DEPTH = 1`, `0 | 1` tipleri, JSX'te sabit iki seviye — hepsi
+kaldırılır).
 
 `order` alanı artık **kardeş-kapsamlıdır**: aynı `parentId` grubu içinde 0'dan artar,
 global bir indeks DEĞİLDİR. Global pre-order indeksi reddedildi çünkü "çocukların
@@ -2200,9 +2234,15 @@ app.prisma.navigationItem.findMany({
 });
 ```
 
-**Toplam öğe limiti 20'de KALIYOR** (`.max(20)`). Bu limit tüm seviyelerin toplamıdır;
-nesting öğe sayısını değil yalnızca hiyerarşik dağılımını değiştirir, dolayısıyla
-limiti artırmak için bir gerekçe yok.
+Bu sorgu **DEĞİŞMEZ** (kardeşleri bitişik ve sıralı tutar, deterministiktir), ancak
+yukarıda belirtildiği gibi 4 seviyede "ata önce gelir" garantisini artık vermez —
+tüketici iki geçişli harita algoritmasını kullanır.
+
+**Toplam öğe limiti 20 → 100'e ÇIKARILDI** (`.max(100)`). Gerekçe: 4 seviyede 20 öğe
+gerçekçi değil (5 kök x 4 kategori zaten 25 eder). 100 öğe x ~600 bayt ≈ 60 KB payload,
+Fastify'ın 1 MB varsayılan gövde limitinin çok altında; 100 satır x 5 kolon = 500 bind
+parametresi, PostgreSQL'in 32767 limitinin çok altında (yani `createMany` tek ifadede
+kalır). Limit yine tüm seviyelerin TOPLAMIDIR.
 
 #### 10.10.2 İstemci tarafında ID üretimi — ONAYLANDI
 
@@ -2226,22 +2266,90 @@ gereksiz bir dönüşüm katmanı. (3) GET yanıtı `parentIndex` ifade edemez (
 o isteğe özgüdür), bu da request ve response şekillerini asimetrik yapar — sözleşmenin
 tek doğruluk kaynağı olma niteliğini zayıflatır. İstemcide zaten kararlı UUID (`localId`)
 var; onu doğrudan `id` yapmak hem daha basit hem daha güvenli. ui-designer'ın diğer tüm
-kararları (özellikle maksimum derinlik 2 — bağımsız olarak aynı sonuca varmış) geçerlidir.
+kararları geçerlidir (o dönemki "maksimum derinlik 2" mutabakatı hariç — §10.10.1 ile
+4 seviyeye revize edildi).
 
 #### 10.10.3 Self-referencing bulk insert sırası — KARAR: topolojik sıralama (seçenek c)
 
 `PUT /admin/navigation` tam-replace deseni (`deleteMany({})` + `createMany(...)`, tek
 transaction) **KORUNUR**. `parentId` eklenince ortaya çıkan risk, `createMany` içindeki
 bir alt öğe satırının kendi üst öğesinden önce yazılması hâlinde FK ihlali almaktır.
-Karar: **istemciden gelen düz liste, insert'ten önce sunucuda kök-öğeler-önce olacak
-şekilde sıralanır.** Derinlik 2 olduğu için bu genel bir topolojik sıralamaya değil,
-**kararlı (stable) iki-parçalı bölmeye** indirgenir:
+Karar: **istemciden gelen düz liste, insert'ten önce sunucuda atalar-önce olacak şekilde
+sıralanır.** 4 seviyede iki-parçalı bölme (roots/children) ARTIK YETERSİZDİR ve
+kaldırılmalıdır; yerine **seviye-sıralı (BFS/Kahn eşdeğeri) kararlı topolojik sıralama**
+gelir. Doğrulama zaten her öğenin derinliğini hesapladığı için ek maliyet sıfırdır:
 
 ```
-const roots    = items.filter((i) => i.parentId == null);
-const children = items.filter((i) => i.parentId != null);
-await tx.navigationItem.createMany({ data: [...roots, ...children] });
+// depthOf(): §10.10.3.1'deki memoize edilmiş hesap (doğrulamadan yeniden kullanılır)
+const ordered = [...items].sort((a, b) => depthOf(a) - depthOf(b)); // STABLE sort
+await tx.navigationItem.createMany({ data: ordered });
 ```
+
+`Array.prototype.sort` ES2019'dan beri kararlıdır (stable), yani aynı seviyedeki
+kardeşlerin göreli sırası korunur. Bu sıralama, `createMany` birden çok INSERT ifadesine
+bölünse bile her satırın ebeveyninin daha ÖNCEKİ bir ifadede yazılmış olmasını garanti eder.
+
+#### 10.10.3.1 Döngü (cycle) tespiti ve derinlik doğrulaması — BAĞLAYICI ALGORİTMA
+
+Kayıt tam-replace olduğu için graf **tamamen payload içindedir**: DB'ye sorgu, recursive
+CTE veya ata tablosu GEREKMEZ. Her düğümün en fazla BİR çıkan kenarı (`parentId`) vardır
+(fonksiyonel graf), bu yüzden üç-renkli iteratif DFS + memoizasyon toplamda O(n)'dir.
+Zod `superRefine` içinde, kural sırası AŞAĞIDAKİ GİBİ OLMALIDIR (yanlış sıra yanlış hata
+mesajı üretir — döngü içeren bir payload "derinlik aşıldı" demez, "döngü" der):
+
+```
+1) id benzersizliği            (mevcut kural — DEĞİŞMEZ)
+2) self-reference: item.parentId === item.id  -> hata, bu öğe için dur
+3) çözülebilirlik: byId.get(item.parentId) yoksa -> hata, bu öğe için dur
+4) CYCLE PASS (yeni)
+5) DEPTH PASS (yeni, cycle temiz olan düğümler için)
+```
+
+**(4) Cycle pass — üç renkli iteratif DFS:**
+
+```
+state: Map<id, 0|1|2>   // 0/undefined = beyaz(ziyaret edilmedi), 1 = gri(yolda), 2 = siyah(temiz)
+for (const start of items) {
+  if (state.get(start.id) === 2) continue;
+  const path: Item[] = [];
+  let cursor: Item | undefined = start;
+  while (cursor && state.get(cursor.id) !== 2) {
+    if (state.get(cursor.id) === 1) {           // gri düğüme geri döndük => DÖNGÜ
+      raise VALIDATION_ERROR on every item in path (path: [index, "parentId"])
+      break;
+    }
+    state.set(cursor.id, 1);
+    path.push(cursor);
+    cursor = cursor.parentId ? byId.get(cursor.parentId) : undefined;  // orphan => undefined, dur
+  }
+  if (döngü bulunmadıysa) for (const p of path) state.set(p.id, 2);
+}
+```
+
+Her düğüm `path`'e ömrü boyunca EN FAZLA bir kez girer (girdikten sonra gri/siyah olur),
+dolayısıyla toplam iş O(n). Ek güvenlik ağı olarak dış `while` en fazla `items.length`
+adımda döner — `state` kontrolü zaten bunu garanti eder, ayrı sayaç şart değildir.
+
+**(5) Depth pass — memoize edilmiş ata sayısı:**
+
+```
+depthMemo: Map<id, number>
+depthOf(item):
+  if (depthMemo.has(item.id)) return depthMemo.get(item.id)
+  d = item.parentId == null ? 0 : depthOf(byId.get(item.parentId)) + 1
+  depthMemo.set(item.id, d); return d
+// her item için: depthOf(item) > NAVIGATION_MAX_DEPTH  -> 422, path: [index, "parentId"]
+```
+
+Özyineleme yalnızca cycle pass TEMİZ geçtiyse çağrılır, dolayısıyla sonsuz özyineleme
+imkânsızdır (yine de derinlik ≤ 3 olduğu için çağrı yığını en fazla 4'tür). İstenirse
+aynı hesap iteratif de yazılabilir; `depthMemo` yazma sırasındaki topolojik sort'ta
+YENİDEN KULLANILIR.
+
+**Storefront/consumer tarafı savunması:** DB'den okunan veri de teorik olarak bozuk
+olabilir (elle SQL, kısmi restore). Ağaç kuran tüketici (site header, admin editör)
+orphan öğeyi ATLAR ve render özyinelemesine `NAVIGATION_MAX_DEPTH` sert kesme koyar —
+bozuk bir zincir sunucu tarafı render'ı sonsuz döngüye sokamaz.
 
 Gerekçe ve diğer seçeneklerin reddi:
 
@@ -2269,10 +2377,10 @@ kritik hâle gelir. Yukarıdaki sıralama bu senaryoda da doğru kalır — bu y
 "muhtemelen çalışır"a bırakılmaz, açıkça garanti edilir.
 
 Ek olarak `createMany` ÖNCESİ, `deleteMany` ile aynı transaction içinde şu doğrulamalar
-yapılır (hepsi 422 `VALIDATION_ERROR`): payload içi `id` benzersizliği; her `parentId`'nin
-aynı payload'da bir `id` ile eşleşmesi (DB'deki eski bir id'ye referans GEÇERSİZ — kayıt
-tam-replace'tir); işaret edilen öğenin `parentId`'sinin null olması (derinlik 2); bir
-öğenin kendi `id`'sini `parentId` olarak verememesi. Zod `superRefine` bunun doğru yeridir
+yapılır (hepsi 422 `VALIDATION_ERROR`), §10.10.3.1'deki SIRAYLA: payload içi `id`
+benzersizliği; kendine referans yasağı; her `parentId`'nin aynı payload'da bir `id` ile
+eşleşmesi (DB'deki eski bir id'ye referans GEÇERSİZ — kayıt tam-replace'tir); **döngü
+tespiti**; **ata sayısı ≤ `NAVIGATION_MAX_DEPTH`**. Zod `superRefine` bunun doğru yeridir
 — dizi bütününe bakan çapraz-alan kuralları olduğu için tekil öğe şemasında ifade edilemez.
 
 #### 10.10.4 İçerikten menü öğesi ekleme — snapshot, kalıcı referans YOK
@@ -2312,9 +2420,12 @@ kendisidir. Sentetik bir "Kategorisiz" satırı reddedildi: silinemez/yeniden
 adlandırılamaz özel bir kayıt, her yazma ucuna "bu id özel mi?" kontrolü eklerdi ve
 seed/migration'da tekilliğini garanti etmek gerekirdi.
 
-**Maksimum derinlik 2 (kök + bir alt seviye)**, §10.10.1'deki navigasyon kuralının
-birebir aynısı: *`parentId` dolu olan bir klasör YALNIZCA `parentId`'si null olan bir
-klasörü işaret edebilir.* Faydaları aynı: doğrulama O(n) tek geçiş, döngü **yapısal
+**Maksimum derinlik 2 (kök + bir alt seviye)** — DİKKAT: bu kural MediaFolder'a ÖZGÜDÜR
+ve §10.10.1'deki navigasyon kuralı 4 seviyeye revize edildikten sonra artık onunla aynı
+DEĞİLDİR; medya klasörleri bilinçli olarak 2 seviyede kalır (klasör paneli tek girintili
+bir ağaç çizer, derin klasör hiyerarşisi için ürün gerekçesi yok): *`parentId` dolu olan
+bir klasör YALNIZCA `parentId`'si null olan bir klasörü işaret edebilir.* Faydaları:
+doğrulama O(n) tek geçiş, döngü **yapısal
 olarak imkânsız** (ata gezintisi/recursive CTE gerekmez), ve UI zaten tek girintili bir
 ağaç paneli çiziyor. Derinliği artırmak istenirse önce kontrat, sonra doğrulama katmanı
 güncellenir; **DB şeması değişmez**. Derinlik DB'de zorlanmaz (Postgres CHECK başka
