@@ -78,6 +78,9 @@ describe("AdminModulesPage — a11y", () => {
       shippingEstimatedDaysMin: null,
       shippingEstimatedDaysMax: null,
       orderNotificationEmail: null,
+      pricesIncludeTax: true,
+      defaultTaxRateId: null,
+      defaultTaxRate: null,
     });
   });
 

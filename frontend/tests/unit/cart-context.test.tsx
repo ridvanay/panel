@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { CartProvider, useCart } from "@/context/cart-context";
-import type { Cart } from "@/lib/api/types";
+import type { Cart, TaxSummary } from "@/lib/api/types";
+
+const NO_TAX: TaxSummary = { includedInPrice: true, totalTaxCents: 0, breakdown: [] };
 
 vi.mock("@/lib/api/cart", () => ({
   getCart: vi.fn(),
@@ -19,6 +21,7 @@ function makeCart(overrides: Partial<Cart> = {}): Cart {
     subtotalCents: 0,
     shipping: { configured: false, feeCents: 0, thresholdCents: null, remainingCents: null, isFree: false },
     totalCents: 0,
+    tax: NO_TAX,
     ...overrides,
   };
 }
@@ -37,8 +40,8 @@ describe("CartProvider / useCart", () => {
       makeCart({
         subtotalCents: 30000,
         items: [
-          { id: "item-1", productId: "product-1", product, variantId: null, variantLabel: null, quantity: 2, frozenUnitPriceCents: 10000, currentPriceCents: 10000, lineTotalCents: 20000 },
-          { id: "item-2", productId: "product-2", product: { ...product, id: "product-2" }, variantId: null, variantLabel: null, quantity: 1, frozenUnitPriceCents: 10000, currentPriceCents: 10000, lineTotalCents: 10000 },
+          { id: "item-1", productId: "product-1", product, variantId: null, variantLabel: null, quantity: 2, frozenUnitPriceCents: 10000, currentPriceCents: 10000, lineTotalCents: 20000, taxRatePercent: null, taxCents: 0 },
+          { id: "item-2", productId: "product-2", product: { ...product, id: "product-2" }, variantId: null, variantLabel: null, quantity: 1, frozenUnitPriceCents: 10000, currentPriceCents: 10000, lineTotalCents: 10000, taxRatePercent: null, taxCents: 0 },
         ],
       })
     );
@@ -64,7 +67,7 @@ describe("CartProvider / useCart", () => {
     vi.mocked(cartApi.getCart).mockResolvedValue(makeCart());
     const updatedCart = makeCart({
       subtotalCents: 10000,
-      items: [{ id: "item-1", productId: "product-1", product, variantId: null, variantLabel: null, quantity: 1, frozenUnitPriceCents: 10000, currentPriceCents: 10000, lineTotalCents: 10000 }],
+      items: [{ id: "item-1", productId: "product-1", product, variantId: null, variantLabel: null, quantity: 1, frozenUnitPriceCents: 10000, currentPriceCents: 10000, lineTotalCents: 10000, taxRatePercent: null, taxCents: 0 }],
     });
     vi.mocked(cartApi.addCartItem).mockResolvedValue(updatedCart);
 
@@ -84,12 +87,12 @@ describe("CartProvider / useCart", () => {
     vi.mocked(cartApi.getCart).mockResolvedValue(
       makeCart({
         subtotalCents: 10000,
-        items: [{ id: "item-1", productId: "product-1", product, variantId: null, variantLabel: null, quantity: 1, frozenUnitPriceCents: 10000, currentPriceCents: 10000, lineTotalCents: 10000 }],
+        items: [{ id: "item-1", productId: "product-1", product, variantId: null, variantLabel: null, quantity: 1, frozenUnitPriceCents: 10000, currentPriceCents: 10000, lineTotalCents: 10000, taxRatePercent: null, taxCents: 0 }],
       })
     );
     const updatedCart = makeCart({
       subtotalCents: 20000,
-      items: [{ id: "item-1", productId: "product-1", product, variantId: null, variantLabel: null, quantity: 2, frozenUnitPriceCents: 10000, currentPriceCents: 10000, lineTotalCents: 20000 }],
+      items: [{ id: "item-1", productId: "product-1", product, variantId: null, variantLabel: null, quantity: 2, frozenUnitPriceCents: 10000, currentPriceCents: 10000, lineTotalCents: 20000, taxRatePercent: null, taxCents: 0 }],
     });
     vi.mocked(cartApi.updateCartItem).mockResolvedValue(updatedCart);
 
@@ -108,7 +111,7 @@ describe("CartProvider / useCart", () => {
     vi.mocked(cartApi.getCart).mockResolvedValue(
       makeCart({
         subtotalCents: 10000,
-        items: [{ id: "item-1", productId: "product-1", product, variantId: null, variantLabel: null, quantity: 1, frozenUnitPriceCents: 10000, currentPriceCents: 10000, lineTotalCents: 10000 }],
+        items: [{ id: "item-1", productId: "product-1", product, variantId: null, variantLabel: null, quantity: 1, frozenUnitPriceCents: 10000, currentPriceCents: 10000, lineTotalCents: 10000, taxRatePercent: null, taxCents: 0 }],
       })
     );
     vi.mocked(cartApi.removeCartItem).mockResolvedValue(makeCart());

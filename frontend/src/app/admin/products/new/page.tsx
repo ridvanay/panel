@@ -11,7 +11,9 @@ import { z } from "zod";
 import { AlertCircle, ChevronLeft, ShoppingBag } from "lucide-react";
 import * as productsApi from "@/lib/api/products";
 import * as usersAdminApi from "@/lib/api/users-admin";
-import type { AdminUser, Media, ProductCategory } from "@/lib/api/types";
+import * as taxApi from "@/lib/api/tax";
+import * as settingsApi from "@/lib/api/settings";
+import type { AdminUser, Media, ProductCategory, ProductTaxRate, TaxRate } from "@/lib/api/types";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
@@ -21,6 +23,8 @@ import { Select } from "@/components/ui/select";
 import { Alert } from "@/components/ui/alert";
 import { MediaSelectField } from "@/components/admin/media/media-select-field";
 import { PageHeading } from "@/components/admin/page-heading";
+import { TaxEstimateBox } from "@/components/admin/products/tax-estimate-box";
+import { TaxRateSelectField } from "@/components/admin/products/tax-rate-select-field";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { useAuth } from "@/context/auth-context";
 
@@ -55,7 +59,7 @@ const formSchema = z
       .number({ invalid_type_error: "Geçerli bir fiyat girin." })
       .positive("Fiyat 0'dan büyük olmalı."),
     currency: z.string().min(1, "Para birimi gerekli."),
-    taxRatePercent: z.string().optional(),
+    taxRateId: z.string().optional(),
     discountPriceLira: z.string().optional(),
     sku: z.string().optional(),
     stockQuantity: z.coerce.number().int("Tam sayı girin.").min(0, "0 veya daha büyük olmalı."),
@@ -86,6 +90,9 @@ export default function NewProductPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [admins, setAdmins] = useState<AdminUser[]>([]);
+  const [taxRates, setTaxRates] = useState<TaxRate[]>([]);
+  const [defaultTaxRate, setDefaultTaxRate] = useState<ProductTaxRate | null>(null);
+  const [pricesIncludeTax, setPricesIncludeTax] = useState(true);
 
   const {
     register,
@@ -102,7 +109,7 @@ export default function NewProductPage() {
       descriptionHtml: "",
       priceLira: 0,
       currency: "TRY",
-      taxRatePercent: "",
+      taxRateId: "",
       discountPriceLira: "",
       sku: "",
       stockQuantity: 0,
@@ -114,6 +121,10 @@ export default function NewProductPage() {
   });
 
   const title = useWatch({ control, name: "title" });
+  const priceLira = useWatch({ control, name: "priceLira" });
+  const discountPriceLira = useWatch({ control, name: "discountPriceLira" });
+  const taxRateId = useWatch({ control, name: "taxRateId" });
+  const watchedCurrency = useWatch({ control, name: "currency" });
 
   useEffect(() => {
     (async () => {
@@ -121,6 +132,25 @@ export default function NewProductPage() {
         setCategories(await productsApi.listProductCategories());
       } catch {
         // Kategori listesi opsiyonel — form kategori olmadan da gönderilebilir.
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        setTaxRates(await taxApi.listTaxRates());
+      } catch {
+        // Vergi sınıfı listesi opsiyonel — yüklenemezse form yalnızca "Mağaza Varsayılanı" ile devam eder.
+      }
+    })();
+    (async () => {
+      try {
+        const settings = await settingsApi.getSettings();
+        setDefaultTaxRate(settings.defaultTaxRate);
+        setPricesIncludeTax(settings.pricesIncludeTax);
+      } catch {
+        // Ayarlar opsiyonel — yüklenemezse varsayılan (`KDV dahil`) davranış korunur.
       }
     })();
   }, []);
@@ -151,7 +181,6 @@ export default function NewProductPage() {
     setError(null);
     try {
       const trimmedDiscount = values.discountPriceLira?.trim();
-      const trimmedTaxRate = values.taxRatePercent?.trim();
 
       const product = await productsApi.createProduct({
         title: values.title,
@@ -160,7 +189,7 @@ export default function NewProductPage() {
         descriptionHtml: values.descriptionHtml || undefined,
         priceCents: Math.round(values.priceLira * 100),
         currency: values.currency,
-        taxRatePercent: trimmedTaxRate ? Number(trimmedTaxRate) : undefined,
+        taxRateId: values.taxRateId || undefined,
         discountPriceCents: trimmedDiscount ? Math.round(Number(trimmedDiscount) * 100) : undefined,
         sku: values.sku || undefined,
         stockQuantity: values.stockQuantity,
@@ -250,10 +279,23 @@ export default function NewProductPage() {
               <Field id="discountPriceLira" label="İndirimli fiyat (TL)" error={errors.discountPriceLira?.message} hint="Opsiyonel.">
                 {(inputProps) => <Input {...inputProps} type="number" step="0.01" min="0" {...register("discountPriceLira")} />}
               </Field>
-              <Field id="taxRatePercent" label="KDV oranı (%)" hint="Opsiyonel, fiyata dahildir.">
-                {(inputProps) => <Input {...inputProps} type="number" step="0.01" min="0" max="100" {...register("taxRatePercent")} />}
-              </Field>
+              <TaxRateSelectField
+                value={taxRateId ?? ""}
+                onChange={(value) => setValue("taxRateId", value)}
+                taxRates={taxRates}
+                defaultTaxRate={defaultTaxRate}
+              />
             </div>
+
+            <TaxEstimateBox
+              priceLira={String(priceLira ?? "")}
+              discountPriceLira={discountPriceLira ?? ""}
+              currency={watchedCurrency || "TRY"}
+              taxRateId={taxRateId ?? ""}
+              taxRates={taxRates}
+              defaultTaxRate={defaultTaxRate}
+              pricesIncludeTax={pricesIncludeTax}
+            />
 
             <div className="grid gap-4 sm:grid-cols-2">
               <Field id="sku" label="SKU" hint="Opsiyonel.">

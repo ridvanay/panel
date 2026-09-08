@@ -64,6 +64,8 @@ import { assertValidCategoryParent } from "./lib/categories";
 import { queryCatalog } from "./lib/catalog-query";
 import { emitWebhookEvent } from "../../lib/webhook-emitter";
 import { toPublicProductDto } from "../public-api/public-api.mappers";
+import { type TaxRateLite } from "../../lib/tax";
+import { SETTINGS_ID } from "../settings/settings.routes";
 import {
   AddProductDocumentRequestSchema,
   AddProductImageRequestSchema,
@@ -142,7 +144,24 @@ const WITH_RELATIONS = {
   images: { include: { media: true }, orderBy: { order: "asc" as const } },
   variants: { include: { media: true }, orderBy: { order: "asc" as const } },
   documents: { include: { media: true }, orderBy: { order: "asc" as const } },
+  // Merkezi KDV oranı mimarisi (bkz. lib/tax.ts) — ürünün KENDİ seçtiği oran, `null` ise mağaza
+  // varsayılanı `toProductDto`/`toProductDtoLocalized` içinde AYRICA çözümlenir.
+  taxRate: true,
 } as const;
+
+/**
+ * `SiteSettings.defaultTaxRateId`'nin ÇÖZÜMLENMİŞ hâli — `lib/tax.ts::PriceTaxContext` İLE AYNI
+ * amaç, ürün DTO'ları için tek bir yerden okunur (`cart.routes.ts::readShippingSettings` İLE AYNI
+ * TEK-satırlık-okuma-tekrarı deseni, bkz. o dosyadaki gerekçe).
+ */
+async function getDefaultTaxRateLite(app: FastifyInstance): Promise<TaxRateLite | null> {
+  const settings = await app.prisma.siteSettings.findUnique({
+    where: { id: SETTINGS_ID },
+    select: { defaultTaxRate: { select: { id: true, name: true, ratePercent: true } } },
+  });
+  const rate = settings?.defaultTaxRate;
+  return rate ? { id: rate.id, name: rate.name, ratePercent: Number(rate.ratePercent) } : null;
+}
 
 /** Güncellemeden HEMEN ÖNCEKİ alan setini döner (bkz. blog.routes.ts::toBlogPostSnapshot). */
 function toProductSnapshot(product: Product): Record<string, unknown> {
@@ -153,7 +172,7 @@ function toProductSnapshot(product: Product): Record<string, unknown> {
     descriptionHtml: product.descriptionHtml,
     priceCents: product.priceCents,
     currency: product.currency,
-    taxRatePercent: product.taxRatePercent ? Number(product.taxRatePercent) : null,
+    taxRateId: product.taxRateId,
     discountPriceCents: product.discountPriceCents,
     sku: product.sku,
     stockQuantity: product.stockQuantity,
@@ -205,13 +224,16 @@ function applyProductLocale<T extends Product>(product: T, effectiveLocale: stri
 }
 
 async function toProductDtoLocalized(app: FastifyInstance, product: Parameters<typeof toProductDto>[0]) {
-  const localizations = await attachLocalizationsOne(app, "PRODUCT", product);
-  return toProductDto(product, localizations);
+  const [localizations, defaultTaxRate] = await Promise.all([
+    attachLocalizationsOne(app, "PRODUCT", product),
+    getDefaultTaxRateLite(app),
+  ]);
+  return toProductDto(product, localizations, defaultTaxRate);
 }
 
 async function toProductDtosLocalized(app: FastifyInstance, products: Parameters<typeof toProductDto>[0][]) {
-  const map = await attachLocalizations(app, "PRODUCT", products);
-  return products.map((product) => toProductDto(product, map.get(product.id) ?? []));
+  const [map, defaultTaxRate] = await Promise.all([attachLocalizations(app, "PRODUCT", products), getDefaultTaxRateLite(app)]);
+  return products.map((product) => toProductDto(product, map.get(product.id) ?? [], defaultTaxRate));
 }
 
 /** `/admin/products` prefix'i altında bağlanır (bkz. app.ts) — tüm durumlar (taslak dahil), authenticated. */
@@ -269,7 +291,7 @@ export async function adminProductsRoutes(app: FastifyInstance) {
         descriptionHtml,
         priceCents,
         currency,
-        taxRatePercent,
+        taxRateId,
         discountPriceCents,
         sku,
         stockQuantity,
@@ -288,6 +310,15 @@ export async function adminProductsRoutes(app: FastifyInstance) {
       } = request.body;
 
       assertDiscountBelowPrice(priceCents, discountPriceCents ?? null);
+
+      // Merkezi KDV oranı mimarisi — var olmayan bir `taxRateId` sessizce FK hatasına (P2003 →
+      // genel 500) düşmesin diye erken 422 (`assertImageMedia` İLE AYNI seviyede doğrulama).
+      if (taxRateId) {
+        const rate = await app.prisma.taxRate.findUnique({ where: { id: taxRateId } });
+        if (!rate) {
+          throw new ValidationError("Belirtilen KDV oranı bulunamadı.", { taxRateId: ["Belirtilen KDV oranı bulunamadı."] });
+        }
+      }
 
       // §2.2 madde 5 — kapak görseli slotu görsel DIŞINDAKİ medyayı reddeder (422).
       if (coverMediaId) {
@@ -319,7 +350,7 @@ export async function adminProductsRoutes(app: FastifyInstance) {
             descriptionHtml: sanitizeRichHtml(descriptionHtml),
             priceCents,
             currency: currency ?? undefined,
-            taxRatePercent: taxRatePercent ?? undefined,
+            taxRateId: taxRateId ?? undefined,
             discountPriceCents: discountPriceCents ?? undefined,
             effectivePriceCents,
             discountPercent,
@@ -352,8 +383,10 @@ export async function adminProductsRoutes(app: FastifyInstance) {
       });
 
       // §10.13.8 — `PRODUCT_CREATED` diğer içerik türlerinin aksine yayın durumuna BAĞLI DEĞİLDİR
-      // (`Product`'ın bir `*_PUBLISHED` olayı YOKTUR); her başarılı `POST` tetikler.
-      await emitWebhookEvent(app, "PRODUCT_CREATED", toPublicProductDto(product));
+      // (`Product`'ın bir `*_PUBLISHED` olayı YOKTUR); her başarılı `POST` tetikler. Merkezi KDV
+      // oranı mimarisi — mağaza varsayılanı ÇÖZÜMLENİP geçirilir (ürünün KENDİ oranı zaten
+      // `WITH_RELATIONS.taxRate` İLE geldi).
+      await emitWebhookEvent(app, "PRODUCT_CREATED", toPublicProductDto(product, await getDefaultTaxRateLite(app)));
 
       return reply.code(201).send(ok(await toProductDtoLocalized(app, product)));
     }
@@ -401,6 +434,15 @@ export async function adminProductsRoutes(app: FastifyInstance) {
       // (kapağı kaldır) doğrulama GEREKTİRMEZ.
       if (request.body.coverMediaId) {
         await assertImageMedia(app, request.body.coverMediaId);
+      }
+
+      // Merkezi KDV oranı mimarisi — `POST` ile AYNI erken doğrulama (`null` = mağaza
+      // varsayılanına dön, doğrulama GEREKMEZ).
+      if (request.body.taxRateId) {
+        const rate = await app.prisma.taxRate.findUnique({ where: { id: request.body.taxRateId } });
+        if (!rate) {
+          throw new ValidationError("Belirtilen KDV oranı bulunamadı.", { taxRateId: ["Belirtilen KDV oranı bulunamadı."] });
+        }
       }
 
       const { slug, translations, authorId: requestedAuthorId, scheduledAt, variantOptions, ...rest } = request.body;
@@ -470,7 +512,7 @@ export async function adminProductsRoutes(app: FastifyInstance) {
       });
 
       // §10.13.8 — `PRODUCT_UPDATED` yayın durumundan BAĞIMSIZ, her başarılı `PATCH`'te tetiklenir.
-      await emitWebhookEvent(app, "PRODUCT_UPDATED", toPublicProductDto(product));
+      await emitWebhookEvent(app, "PRODUCT_UPDATED", toPublicProductDto(product, await getDefaultTaxRateLite(app)));
 
       return reply.send(ok(await toProductDtoLocalized(app, product)));
     }
@@ -1017,7 +1059,10 @@ export async function adminProductsRoutes(app: FastifyInstance) {
         descriptionHtml: string;
         priceCents: number;
         currency: string;
-        taxRatePercent: number | null;
+        // Merkezi KDV oranı mimarisi ÖNCESİ kaydedilmiş eski revizyonlarda bu alan YOKTUR
+        // (`undefined` — restore bu durumda mevcut `taxRateId`'ye DOKUNMAZ, bkz. aşağıdaki
+        // `tx.product.update` — `undefined` Prisma'da "alanı DEĞİŞTİRME" anlamına gelir).
+        taxRateId?: string | null;
         discountPriceCents: number | null;
         sku: string | null;
         stockQuantity: number;
@@ -1064,7 +1109,7 @@ export async function adminProductsRoutes(app: FastifyInstance) {
             descriptionHtml: sanitizeRichHtml(snapshot.descriptionHtml),
             priceCents: snapshot.priceCents,
             currency: snapshot.currency,
-            taxRatePercent: snapshot.taxRatePercent,
+            taxRateId: snapshot.taxRateId,
             discountPriceCents: snapshot.discountPriceCents,
             effectivePriceCents,
             discountPercent,
@@ -1207,7 +1252,7 @@ export async function publicProductsRoutes(app: FastifyInstance) {
       // Performans denetimi (§5.5) — `getLocaleSet` `queryCatalog`'un sonucuna bağımlı DEĞİLDİR,
       // bu yüzden ikisi ayrı `await` zinciri yerine PARALEL çalıştırılır; `localeSet` daha sonra
       // `attachLocalizations`'a geçirilerek AYNI sorgunun (`locale.findMany`) tekrarlanması önlenir.
-      const [{ rows, total, facets: computedFacets }, localeSet] = await Promise.all([
+      const [{ rows, total, facets: computedFacets }, localeSet, defaultTaxRate] = await Promise.all([
         queryCatalog(app, {
           search,
           category,
@@ -1221,13 +1266,14 @@ export async function publicProductsRoutes(app: FastifyInstance) {
           withFacets: facets,
         }),
         getLocaleSet(app),
+        getDefaultTaxRateLite(app),
       ]);
 
       const effectiveLocale = resolveEffectiveLocaleCode(localeSet, locale);
       const localizationsByEntity = await attachLocalizations(app, "PRODUCT", rows, localeSet);
 
       const dtos = rows.map((row) =>
-        toProductListItemDto(applyProductLocale(row, effectiveLocale), localizationsByEntity.get(row.id) ?? [])
+        toProductListItemDto(applyProductLocale(row, effectiveLocale), localizationsByEntity.get(row.id) ?? [], defaultTaxRate)
       );
 
       const totalPages = total === 0 ? 0 : Math.ceil(total / effectivePerPage);
@@ -1331,8 +1377,11 @@ export async function publicProductsRoutes(app: FastifyInstance) {
         }));
       if (!resolvedProduct) throw new NotFoundError("Ürün bulunamadı.");
 
-      const localizations = await attachLocalizationsOne(app, "PRODUCT", resolvedProduct, localeSet);
-      return reply.send(ok(toProductDto(applyProductLocale(resolvedProduct, effectiveLocale), localizations)));
+      const [localizations, defaultTaxRate] = await Promise.all([
+        attachLocalizationsOne(app, "PRODUCT", resolvedProduct, localeSet),
+        getDefaultTaxRateLite(app),
+      ]);
+      return reply.send(ok(toProductDto(applyProductLocale(resolvedProduct, effectiveLocale), localizations, defaultTaxRate)));
     }
   );
 

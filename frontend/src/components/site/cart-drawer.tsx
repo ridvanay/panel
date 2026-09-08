@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { LinkButton } from "@/components/ui/link-button";
 import { Alert } from "@/components/ui/alert";
 import { FreeShippingProgress } from "@/components/site/free-shipping-progress";
+import { TaxSummaryRows } from "@/components/tax-summary-rows";
 import { formatPriceFromCents } from "@/lib/format-price";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 
@@ -194,6 +195,12 @@ export function CartDrawer() {
                     </span>
                   </div>
                 )}
+                <TaxSummaryRows
+                  tax={cart.tax}
+                  currency={cart.currency ?? "TRY"}
+                  className="flex items-center justify-between text-sm text-foreground/70"
+                  subRowClassName="text-xs text-foreground/50"
+                />
                 <div className="flex items-center justify-between text-base font-semibold text-foreground">
                   <span>Toplam</span>
                   <span>{formatPriceFromCents(cart.totalCents, cart.currency ?? "TRY")}</span>

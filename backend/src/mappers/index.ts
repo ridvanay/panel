@@ -30,6 +30,7 @@ import type {
   ProductImage,
   ProductVariant,
   ProductDocument,
+  TaxRate,
   PortfolioCategory,
   PortfolioItem,
   PortfolioImage,
@@ -106,6 +107,9 @@ import type {
   CartDto,
   CartItemDto,
   CartShippingDto,
+  TaxSummaryDto,
+  ProductTaxRateDto,
+  TaxRateDto,
   OrderDto,
   AdminOrderDto,
   OrderActivityEntryDto,
@@ -145,6 +149,7 @@ import type { ModuleDefinition } from "../lib/module-registry";
 import { buildMaskedKey } from "../lib/api-key";
 import { resolveUnitPriceCents } from "../lib/product-pricing";
 import { computeShipping, type ShippingSettingsInput } from "../lib/shipping";
+import { computeTaxBreakdown, type PriceTaxContext, type TaxRateLite } from "../lib/tax";
 import { buildVariantLabel } from "../modules/products/lib/variants";
 
 export function toUserDto(user: User): UserDto {
@@ -387,18 +392,42 @@ export function toSiteSettingsDto(settings: SiteSettings): SiteSettingsDto {
     freeShippingThresholdCents: settings.freeShippingThresholdCents,
     shippingEstimatedDaysMin: settings.shippingEstimatedDaysMin,
     shippingEstimatedDaysMax: settings.shippingEstimatedDaysMax,
+    // Merkezi KDV oranı mimarisi — hangi oranın kullanıldığı BURADA SIZMAZ, yalnızca dahil/hariç
+    // yorumu (bkz. AdminSiteSettingsSchema.defaultTaxRateId/defaultTaxRate, ADMIN-only).
+    pricesIncludeTax: settings.pricesIncludeTax,
   };
+}
+
+/** `toProductDto`/`toCartItemDto`/`toOrderDto` İLE PAYLAŞILAN küçük dönüşüm — `Decimal` → `number`. */
+function toProductTaxRateDto(rate: Pick<TaxRate, "id" | "name" | "ratePercent">): ProductTaxRateDto {
+  return { id: rate.id, name: rate.name, ratePercent: Number(rate.ratePercent) };
 }
 
 /**
  * `.claude/architect-scope-search-and-order-emails.md` §2.3 (bağlayıcı) — YALNIZCA
  * `/admin/settings` uçları bunu kullanır. `toSiteSettingsDto` KASITLI OLARAK değiştirilmedi:
  * `orderNotificationEmail` public `GET /settings`'e SIZMAMALI (PII/spam-harvest riski).
+ * `defaultTaxRate` relation'ı ÇAĞIRAN TARAFTAN `include: { defaultTaxRate: true }` ile gelir —
+ * gelmezse (relation okunmadıysa) `undefined` kabul edilip `null` döner.
  */
-export function toAdminSiteSettingsDto(settings: SiteSettings): AdminSiteSettingsDto {
+export function toAdminSiteSettingsDto(settings: SiteSettings & { defaultTaxRate?: TaxRate | null }): AdminSiteSettingsDto {
   return {
     ...toSiteSettingsDto(settings),
     orderNotificationEmail: settings.orderNotificationEmail,
+    defaultTaxRateId: settings.defaultTaxRateId,
+    defaultTaxRate: settings.defaultTaxRate ? toProductTaxRateDto(settings.defaultTaxRate) : null,
+  };
+}
+
+/** `/admin/tax-rates` CRUD DTO'su — bkz. modules/tax/tax.routes.ts. */
+export function toTaxRateDto(rate: TaxRate): TaxRateDto {
+  return {
+    ...toProductTaxRateDto(rate),
+    description: rate.description,
+    isDefault: rate.isDefault,
+    sortOrder: rate.sortOrder,
+    createdAt: rate.createdAt.toISOString(),
+    updatedAt: rate.updatedAt.toISOString(),
   };
 }
 
@@ -565,9 +594,27 @@ type ProductWithRelations = Product & {
   images?: ProductImageWithMedia[];
   variants?: ProductVariantWithMedia[];
   documents?: ProductDocumentWithMedia[];
+  // Merkezi KDV oranı mimarisi — ürünün KENDİ seçtiği oran (relation `include: { taxRate: true }`
+  // İLE gelir). Fetch edilmediyse `undefined` kabul edilir (mağaza varsayılanına düşer).
+  taxRate?: TaxRate | null;
 };
 
-export function toProductDto(product: ProductWithRelations, localizations: ContentLocalizationDto[] = []): ProductDto {
+/**
+ * `product.taxRateId`'nin ÇÖZÜMLENMİŞ hâli — ürünün KENDİ oranı (`product.taxRate`, relation
+ * fetch edildiyse) varsa o, yoksa `defaultTaxRate` (mağaza varsayılanı, çağıran taraftan gelir,
+ * bkz. lib/tax.ts::PriceTaxContext) kullanılır. İkisi de yoksa `null` (KDV hesaplanmaz).
+ */
+function resolveEmbeddedProductTaxRate(product: ProductWithRelations, defaultTaxRate: TaxRateLite | null): TaxRateLite | null {
+  if (product.taxRate) return toProductTaxRateDto(product.taxRate);
+  if (product.taxRateId) return null; // oran fetch edilmedi ama bir id VAR — yanlış fallback vermemek için null.
+  return defaultTaxRate;
+}
+
+export function toProductDto(
+  product: ProductWithRelations,
+  localizations: ContentLocalizationDto[] = [],
+  defaultTaxRate: TaxRateLite | null = null
+): ProductDto {
   const axes = ((product.variantOptions as ProductVariantOptionDto[] | null) ?? []) as ProductVariantOptionDto[];
   const { score, issues } = computeProductSeoScore({
     seoTitle: product.seoTitle,
@@ -576,6 +623,7 @@ export function toProductDto(product: ProductWithRelations, localizations: Conte
     descriptionHtml: product.descriptionHtml,
     coverMediaUrl: product.coverMedia ? absolutizeMediaUrl(product.coverMedia.url) : null,
   });
+  const resolvedTaxRate = resolveEmbeddedProductTaxRate(product, defaultTaxRate);
 
   return {
     id: product.id,
@@ -585,7 +633,11 @@ export function toProductDto(product: ProductWithRelations, localizations: Conte
     descriptionHtml: product.descriptionHtml,
     priceCents: product.priceCents,
     currency: product.currency,
-    taxRatePercent: product.taxRatePercent !== null && product.taxRatePercent !== undefined ? Number(product.taxRatePercent) : null,
+    // @deprecated — geriye dönük uyumluluk için ÇÖZÜMLENMİŞ orandan türetilir (ham DB kolonu
+    // ARTIK OKUNMAZ, bkz. schemas/entities.ts::ProductSchema.taxRatePercent notu).
+    taxRatePercent: resolvedTaxRate?.ratePercent ?? null,
+    taxRateId: product.taxRateId,
+    taxRate: resolvedTaxRate,
     discountPriceCents: product.discountPriceCents,
     sku: product.sku,
     stockQuantity: product.stockQuantity,
@@ -625,8 +677,12 @@ export function toProductDto(product: ProductWithRelations, localizations: Conte
  * alanlarını çıkarır (§3.2, bağlayıcı). İki mapper arasında alan KOPYALAMA YASAKTIR — bu yüzden
  * `toProductDto`'nun ÜRETTİĞİ objeden destructure edilir, DB satırından yeniden okunmaz.
  */
-export function toProductListItemDto(product: ProductWithRelations, localizations: ContentLocalizationDto[] = []): ProductListItemDto {
-  const full = toProductDto(product, localizations);
+export function toProductListItemDto(
+  product: ProductWithRelations,
+  localizations: ContentLocalizationDto[] = [],
+  defaultTaxRate: TaxRateLite | null = null
+): ProductListItemDto {
+  const full = toProductDto(product, localizations, defaultTaxRate);
   const {
     descriptionHtml: _descriptionHtml,
     documents: _documents,
@@ -846,20 +902,34 @@ export function toExportJobDto(job: ExportJobWithCreator): ExportJobDto {
 // ---------- §10.9.3 Sepet + Stripe Checkout ----------
 
 type CartItemWithProduct = CartItem & {
-  product: Pick<Product, "id" | "title" | "slug" | "stockQuantity" | "priceCents" | "discountPriceCents" | "variantOptions"> & {
+  product: Pick<Product, "id" | "title" | "slug" | "stockQuantity" | "priceCents" | "discountPriceCents" | "variantOptions" | "taxRateId"> & {
     coverMedia: Media | null;
+    // Merkezi KDV oranı mimarisi — `cart.routes.ts::WITH_ITEMS` bu relation'ı `select` eder.
+    taxRate: Pick<TaxRate, "id" | "name" | "ratePercent"> | null;
   };
   variant: ProductVariant | null;
 };
 
 /** `frozenUnitPriceCents` (sepete eklenme anı) ile `currentPriceCents` (DB'den taze, `variant`
  * varsa §1.5 miras/mutlak kuralıyla, yoksa üründen) AYRI döner — bkz. schemas/entities.ts::
- * CartItemSchema notu. `product.stockQuantity` satır varyasyonluysa VARYASYONUN stoğudur (§1.2). */
-export function toCartItemDto(item: CartItemWithProduct): CartItemDto {
+ * CartItemSchema notu. `product.stockQuantity` satır varyasyonluysa VARYASYONUN stoğudur (§1.2).
+ * KDV `frozenUnitPriceCents` (dondurulmuş fiyat) üzerinden hesaplanır — `lineTotalCents`/
+ * `subtotalCents` İLE AYNI taban (bkz. lib/tax.ts::computeTaxBreakdown).
+ */
+export function toCartItemDto(item: CartItemWithProduct, taxContext: PriceTaxContext): CartItemDto {
   const currentPriceCents = resolveUnitPriceCents(item.product, item.variant);
   const axes = (item.product.variantOptions as ProductVariantOptionDto[] | null) ?? [];
   const variantLabel = item.variant ? buildVariantLabel(item.variant.optionValues as Record<string, string>, axes) : null;
   const stockQuantity = item.variant ? item.variant.stockQuantity : item.product.stockQuantity;
+
+  // Ürünün KENDİ oranı varsa (relation fetch edildi) o kullanılır; yoksa mağaza varsayılanı.
+  const resolvedTaxRate: TaxRateLite | null = item.product.taxRate
+    ? toProductTaxRateDto(item.product.taxRate)
+    : taxContext.defaultTaxRate;
+  const { taxCents } = computeTaxBreakdown(
+    [{ unitPriceCents: item.unitPriceCents, quantity: item.quantity, ratePercent: resolvedTaxRate?.ratePercent ?? 0 }],
+    { pricesIncludeTax: taxContext.pricesIncludeTax }
+  );
 
   return {
     id: item.id,
@@ -877,13 +947,25 @@ export function toCartItemDto(item: CartItemWithProduct): CartItemDto {
     frozenUnitPriceCents: item.unitPriceCents,
     currentPriceCents,
     lineTotalCents: item.unitPriceCents * item.quantity,
+    taxRatePercent: resolvedTaxRate?.ratePercent ?? null,
+    taxCents,
   };
 }
 
-export function toCartDto(items: CartItemWithProduct[], currency: string | null, shippingSettings: ShippingSettingsInput): CartDto {
-  const mapped = items.map(toCartItemDto);
+export function toCartDto(
+  items: CartItemWithProduct[],
+  currency: string | null,
+  shippingSettings: ShippingSettingsInput,
+  taxContext: PriceTaxContext
+): CartDto {
+  const mapped = items.map((item) => toCartItemDto(item, taxContext));
   const subtotalCents = mapped.reduce((sum, item) => sum + item.lineTotalCents, 0);
   const shipping: CartShippingDto = computeShipping(subtotalCents, shippingSettings);
+
+  const taxResult = computeTaxBreakdown(
+    mapped.map((item) => ({ unitPriceCents: item.frozenUnitPriceCents, quantity: item.quantity, ratePercent: item.taxRatePercent ?? 0 })),
+    { pricesIncludeTax: taxContext.pricesIncludeTax }
+  );
 
   return {
     items: mapped,
@@ -891,6 +973,7 @@ export function toCartDto(items: CartItemWithProduct[], currency: string | null,
     subtotalCents,
     shipping,
     totalCents: subtotalCents + shipping.feeCents,
+    tax: { includedInPrice: taxContext.pricesIncludeTax, totalTaxCents: taxResult.taxCents, breakdown: taxResult.breakdown },
   };
 }
 
@@ -905,6 +988,8 @@ export function toOrderItemDto(item: OrderItem): OrderItemDto {
     unitPriceCents: item.unitPriceCents,
     quantity: item.quantity,
     lineTotalCents: item.lineTotalCents,
+    taxRatePercent: item.taxRatePercent !== null && item.taxRatePercent !== undefined ? Number(item.taxRatePercent) : null,
+    taxCents: item.taxCents,
   };
 }
 
@@ -973,6 +1058,24 @@ function toOrderBillingSnapshotDto(order: Order): OrderBillingSnapshotDto | null
   };
 }
 
+/**
+ * Sipariş KDV özeti — `OrderItem` SNAPSHOT'larından (checkout ANINDAKİ `taxRatePercent`/
+ * `unitPriceCents`/`quantity`) DETERMİNİSTİK olarak YENİDEN türetilir (`computeTaxBreakdown`
+ * SAF bir fonksiyondur — AYNI girdiler AYNI sonucu üretir, checkout'un yazdığı `taxCents` ile
+ * BİREBİR eşleşir). Ayrı bir `breakdown` kolonu EKLENMEDİ (§ görev notu — DB şeması db-agent'a ait).
+ */
+function toOrderTaxSummaryDto(order: OrderWithItems): TaxSummaryDto {
+  const result = computeTaxBreakdown(
+    order.items.map((item) => ({
+      unitPriceCents: item.unitPriceCents,
+      quantity: item.quantity,
+      ratePercent: item.taxRatePercent !== null && item.taxRatePercent !== undefined ? Number(item.taxRatePercent) : 0,
+    })),
+    { pricesIncludeTax: order.pricesIncludeTax }
+  );
+  return { includedInPrice: order.pricesIncludeTax, totalTaxCents: result.taxCents, breakdown: result.breakdown };
+}
+
 export function toOrderDto(order: OrderWithItems): OrderDto {
   return {
     id: order.id,
@@ -996,6 +1099,7 @@ export function toOrderDto(order: OrderWithItems): OrderDto {
     shippingAddress: toOrderShippingAddressSnapshotDto(order),
     billing: toOrderBillingSnapshotDto(order),
     items: order.items.map(toOrderItemDto),
+    tax: toOrderTaxSummaryDto(order),
   };
 }
 

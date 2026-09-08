@@ -52,6 +52,9 @@ describe("cart (§10.9.3 Sepet + Stripe Checkout)", () => {
       // §3 — SiteSettings satırı yokken/shippingFlatFeeCents null iken kargo hiç hesaplanmaz.
       shipping: { configured: false, feeCents: 0, thresholdCents: null, remainingCents: null, isFree: false },
       totalCents: 0,
+      // Merkezi KDV oranı mimarisi — SiteSettings satırı yokken varsayılan `pricesIncludeTax: true`,
+      // hesaplanacak satır olmadığı için `totalTaxCents`/`breakdown` boş kalır.
+      tax: { includedInPrice: true, totalTaxCents: 0, breakdown: [] },
     });
   });
 

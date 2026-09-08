@@ -36,6 +36,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Spinner } from "@/components/ui/spinner";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { TaxSummaryRows } from "@/components/tax-summary-rows";
 import { fieldErrorsFrom, friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { formatPriceFromCents } from "@/lib/format-price";
 import { ORDER_STATUS_LABELS, ORDER_STATUS_TONE } from "@/lib/order-status";
@@ -903,10 +904,14 @@ export default function AdminOrderDetailPage({ params }: { params: Promise<{ ord
           <span className="text-foreground/60">İndirim</span>
           <span className="text-foreground">-{formatPriceFromCents(order.discountCents, order.currency)}</span>
         </div>
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-foreground/60">Vergi</span>
-          <span className="text-foreground">{formatPriceFromCents(order.taxCents, order.currency)}</span>
-        </div>
+        <TaxSummaryRows
+          tax={order.tax}
+          currency={order.currency}
+          className="flex items-center justify-between text-sm"
+          labelClassName="text-foreground/60"
+          valueClassName="text-foreground"
+          subRowClassName="text-xs text-foreground/50"
+        />
         <div className="flex items-center justify-between border-t border-border pt-2 text-base font-semibold">
           <span className="text-foreground">Toplam</span>
           <span className="text-foreground">{formatPriceFromCents(order.totalCents, order.currency)}</span>

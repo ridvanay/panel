@@ -47,6 +47,8 @@ function makeProduct(overrides: Partial<Product> = {}): Product {
     priceCents: 150000,
     currency: "TRY",
     taxRatePercent: null,
+    taxRateId: null,
+    taxRate: null,
     discountPriceCents: null,
     sku: "SKU-1",
     stockQuantity: 10,

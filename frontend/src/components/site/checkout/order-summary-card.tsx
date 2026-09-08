@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { FreeShippingProgress } from "@/components/site/free-shipping-progress";
+import { TaxSummaryRows } from "@/components/tax-summary-rows";
 import { LegalConsentSection } from "./legal-consent-section";
 import { useLocalizePath } from "@/context/locale-alternates-context";
 import { formatPriceFromCents } from "@/lib/format-price";
@@ -65,6 +66,12 @@ export function OrderSummaryLines({ cart, className }: { cart: Cart; className?:
             </span>
           </div>
         )}
+        <TaxSummaryRows
+          tax={cart.tax}
+          currency={currency}
+          className="flex items-center justify-between text-sm text-foreground/70"
+          subRowClassName="text-xs text-foreground/50"
+        />
         <div className="flex items-center justify-between border-t border-border pt-2 text-foreground">
           <span className="text-base font-semibold">Toplam</span>
           <span className="text-lg font-bold">{formatPriceFromCents(cart.totalCents, currency)}</span>

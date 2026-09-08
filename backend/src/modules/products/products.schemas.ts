@@ -130,7 +130,10 @@ export const CreateProductRequestSchema = z
     // Para: HER ZAMAN kuruş/cent cinsinden pozitif tam sayı — float KESİNLİKLE YOK.
     priceCents: z.number().int().positive(),
     currency: z.string().min(1).optional(),
-    taxRatePercent: z.number().min(0).max(100).nullable().optional(),
+    // Merkezi KDV oranı mimarisi (bkz. lib/tax.ts, prisma/schema.prisma::TaxRate) — serbest
+    // `taxRatePercent` YERİNE ürün artık bir `TaxRate` satırı SEÇER. `null` = mağaza varsayılanı
+    // (`SiteSettings.defaultTaxRateId`) kullanılır.
+    taxRateId: z.string().uuid().nullable().optional(),
     discountPriceCents: z.number().int().positive().nullable().optional(),
     sku: z.string().min(1).nullable().optional(),
     stockQuantity: z.number().int().min(0).optional(),
@@ -154,6 +157,10 @@ export const CreateProductRequestSchema = z
     // Faz 4 (zamanlanmış yayın) — bkz. schemas/common.ts::refineScheduledAt açıklaması.
     scheduledAt: z.string().datetime().nullable().optional(),
   })
+  // Merkezi KDV oranı mimarisi — `taxRatePercent` (eski serbest yüzde alanı) BU UÇTAN artık
+  // KABUL EDİLMEZ; `.strict()` gönderilirse 422 döner (`UpdateProductVariantRequestSchema` ile
+  // AYNI karar deseni, bkz. o dosyadaki not).
+  .strict("Bilinmeyen alan. `taxRatePercent` KALDIRILDI — yerine `taxRateId` kullanın.")
   .refine(refineScheduledAt, SCHEDULED_AT_REFINEMENT)
   .refine(refineDiscountBelowPrice, DISCOUNT_REFINEMENT);
 
@@ -165,7 +172,8 @@ export const UpdateProductRequestSchema = z
     descriptionHtml: z.string().optional(),
     priceCents: z.number().int().positive().optional(),
     currency: z.string().min(1).optional(),
-    taxRatePercent: z.number().min(0).max(100).nullable().optional(),
+    // Merkezi KDV oranı mimarisi — bkz. CreateProductRequestSchema.taxRateId notu.
+    taxRateId: z.string().uuid().nullable().optional(),
     discountPriceCents: z.number().int().positive().nullable().optional(),
     sku: z.string().min(1).nullable().optional(),
     stockQuantity: z.number().int().min(0).optional(),
@@ -188,6 +196,8 @@ export const UpdateProductRequestSchema = z
     // (route handler, önce varyasyonları silmek gerekir — sessizce yetim varyasyon BIRAKILMAZ).
     variantOptions: ProductVariantOptionsSchema.optional(),
   })
+  // Merkezi KDV oranı mimarisi — bkz. CreateProductRequestSchema'daki AYNI `.strict()` notu.
+  .strict("Bilinmeyen alan. `taxRatePercent` KALDIRILDI — yerine `taxRateId` kullanın.")
   .refine(refineScheduledAt, SCHEDULED_AT_REFINEMENT)
   .refine(refineDiscountBelowPrice, DISCOUNT_REFINEMENT);
 

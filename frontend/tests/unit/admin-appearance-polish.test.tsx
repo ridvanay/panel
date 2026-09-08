@@ -133,6 +133,9 @@ const settings: AdminSiteSettings = {
   shippingEstimatedDaysMin: null,
   shippingEstimatedDaysMax: null,
   orderNotificationEmail: null,
+  pricesIncludeTax: true,
+  defaultTaxRateId: null,
+  defaultTaxRate: null,
 };
 
 const navConfig: NavigationConfigDto = {

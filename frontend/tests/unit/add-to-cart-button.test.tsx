@@ -3,7 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AddToCartButton } from "@/components/site/add-to-cart-button";
 import { CartProvider } from "@/context/cart-context";
-import type { Cart } from "@/lib/api/types";
+import type { Cart, TaxSummary } from "@/lib/api/types";
 
 const NOT_CONFIGURED_SHIPPING: Cart["shipping"] = {
   configured: false,
@@ -12,6 +12,8 @@ const NOT_CONFIGURED_SHIPPING: Cart["shipping"] = {
   remainingCents: null,
   isFree: false,
 };
+
+const NO_TAX: TaxSummary = { includedInPrice: true, totalTaxCents: 0, breakdown: [] };
 
 /**
  * §10.9.3 Sepet + Stripe Checkout — "Stokta olmayan ürün sepete eklenemiyor / 'Tükendi' durumu
@@ -44,6 +46,7 @@ describe("AddToCartButton", () => {
       subtotalCents: 0,
       shipping: NOT_CONFIGURED_SHIPPING,
       totalCents: 0,
+      tax: NO_TAX,
     });
 
     renderButton({ productId: "product-1", stockQuantity: 0 });
@@ -63,6 +66,7 @@ describe("AddToCartButton", () => {
       subtotalCents: 0,
       shipping: NOT_CONFIGURED_SHIPPING,
       totalCents: 0,
+      tax: NO_TAX,
     });
     vi.mocked(cartApi.addCartItem).mockResolvedValue({
       items: [
@@ -76,12 +80,15 @@ describe("AddToCartButton", () => {
           frozenUnitPriceCents: 1000,
           currentPriceCents: 1000,
           lineTotalCents: 1000,
+          taxRatePercent: null,
+          taxCents: 0,
         },
       ],
       currency: "TRY",
       subtotalCents: 1000,
       shipping: NOT_CONFIGURED_SHIPPING,
       totalCents: 1000,
+      tax: NO_TAX,
     });
 
     renderButton({ productId: "product-1", stockQuantity: 5 });
@@ -102,6 +109,7 @@ describe("AddToCartButton", () => {
       subtotalCents: 0,
       shipping: NOT_CONFIGURED_SHIPPING,
       totalCents: 0,
+      tax: NO_TAX,
     });
     vi.mocked(cartApi.addCartItem).mockRejectedValue(new Error("Ürün tükendi."));
 

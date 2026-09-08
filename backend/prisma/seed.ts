@@ -295,6 +295,58 @@ async function main() {
       isSystem: true,
     },
   });
+
+  // Merkezi KDV oranı mimarisi (bkz. schema.prisma TaxRate modeli, migration
+  // 20260908164454_add_central_tax_rates). Bu 3 satır migration'ın backfill'inde de
+  // (name üzerinden ON CONFLICT DO NOTHING ile) oluşturulur — burada idempotent
+  // upsert ile AYNI sonucu üretir, çakışma yaratmaz.
+  const standardTaxRate = await prisma.taxRate.upsert({
+    where: { name: "Standart KDV" },
+    update: {},
+    create: {
+      name: "Standart KDV",
+      ratePercent: 20,
+      isDefault: true,
+      sortOrder: 0,
+    },
+  });
+
+  await prisma.taxRate.upsert({
+    where: { name: "İndirimli KDV" },
+    update: {},
+    create: {
+      name: "İndirimli KDV",
+      ratePercent: 10,
+      isDefault: false,
+      sortOrder: 1,
+    },
+  });
+
+  await prisma.taxRate.upsert({
+    where: { name: "Muaf" },
+    update: {},
+    create: {
+      name: "Muaf",
+      ratePercent: 0,
+      isDefault: false,
+      sortOrder: 2,
+    },
+  });
+
+  // SiteSettings tek satırlık (singleton) tablo — lazy-upsert deseni (bkz.
+  // modules/settings/settings.routes.ts), burada da id="singleton" ile upsert edilir.
+  await prisma.siteSettings.upsert({
+    where: { id: "singleton" },
+    update: {
+      pricesIncludeTax: true,
+      defaultTaxRateId: standardTaxRate.id,
+    },
+    create: {
+      id: "singleton",
+      pricesIncludeTax: true,
+      defaultTaxRateId: standardTaxRate.id,
+    },
+  });
 }
 
 main()

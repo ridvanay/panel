@@ -640,6 +640,32 @@ model ProductCategory {
   @@map("product_categories")
 }
 
+// Merkezi KDV oranı mimarisi — mağaza genelinde tanımlı, isimlendirilmiş oranlar
+// (ör. "Standart KDV" %20). Ürün bazlı serbest `Product.taxRatePercent` alanının
+// YERİNE geçer (bkz. Product.taxRateId, SiteSettings.defaultTaxRateId); ürünler artık
+// serbest yüzde girmek yerine bu tablodan bir satır SEÇER. `isDefault=true` olan TEK
+// satır SiteSettings.defaultTaxRateId ile eşleşir ve `taxRateId=null` olan ürünler
+// (mağaza varsayılanı) için kod tarafında fallback kaynağıdır — bu eşleşmeyi DB
+// zorlamaz, uygulama katmanı (backend-agent) tutarlılığı sağlar. `isDefault` başına en
+// fazla bir `true` satır olabilmesi bu migration'da kısmi (partial) unique index ile
+// garanti edilir (bkz. migration.sql, `tax_rates_single_default`) — Prisma şemasında
+// ifade edilemeyen bir kısıttır.
+model TaxRate {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  ratePercent Decimal  @db.Decimal(5, 2)
+  description String?
+  isDefault   Boolean  @default(false)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  products             Product[]      @relation("ProductTaxRate")
+  siteSettingsDefaults SiteSettings[] @relation("SiteSettingsDefaultTaxRate")
+
+  @@map("tax_rates")
+}
+
 // §10.9.2 Ürünler Modülü (Eklenti/Modül Yönetimi) — bkz. ARCHITECTURE.md. Fiyat Int (kuruş),
 // KDV fiyata dahil, stok sayısal (checkout'ta Serializable transaction ile düşürülür, bkz.
 // admin-users.routes.ts::runSerializable paterni).
@@ -658,7 +684,12 @@ model Product {
   priceCents         Int
   currency           String     @default("TRY")
   // KDV fiyata DAHİL (kullanıcı kararı) — bu alan sadece FATURA/gösterim amaçlı ayrıştırma içindir.
+  // @deprecated: yerine taxRateId kullanılır, public-api v1 ve import geçmişi hâlâ okuyor.
+  // Ayrı bir migration'da (chore/drop-product-tax-rate-percent) kaldırılacak.
   taxRatePercent     Decimal?   @db.Decimal(5, 2)
+  // Merkezi KDV oranı — bkz. TaxRate modeli üstündeki not. null = mağaza varsayılanı
+  // (SiteSettings.defaultTaxRateId) kullanılır, kod tarafı bunu çözer (DB'de fallback YOK).
+  taxRateId          String?
   discountPriceCents Int?
   sku                String?    @unique
   stockQuantity      Int        @default(0)
@@ -706,6 +737,8 @@ model Product {
   category      ProductCategory?  @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   coverMedia    Media?            @relation("ProductCoverMedia", fields: [coverMediaId], references: [id], onDelete: SetNull)
   author        User?             @relation("ProductAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  // Merkezi KDV oranı — oran satırı silinirse ürün null'a düşer (mağaza varsayılanına döner).
+  taxRate       TaxRate?          @relation("ProductTaxRate", fields: [taxRateId], references: [id], onDelete: SetNull)
   images        ProductImage[]
   // §1/§2 (.claude/architect-scope-ecommerce-pro-template.md, bağlayıcı) — varyasyon
   // kombinasyonları ve teknik döküman (PDF) join tablosu.
@@ -722,6 +755,7 @@ model Product {
   @@index([deletedAt, status])
   @@index([authorId])
   @@index([coverMediaId])
+  @@index([taxRateId])
   // Katalog listeleme/sıralama için — bkz. architect-scope-products-catalog.md §2.3.
   @@index([status, deletedAt, effectivePriceCents])
   @@index([status, deletedAt, salesCount])
@@ -1144,11 +1178,21 @@ model SiteSettings {
   /// Yeni sipariş bildirimi (ORDER_ADMIN_NOTIFICATION) alıcısı. null/boş = bildirim KAPALI
   /// (best-effort atlanır, hata DEĞİLDİR).
   orderNotificationEmail     String?
+  // Merkezi KDV oranı mimarisi (bkz. TaxRate modeli). true = fiyatlar KDV DAHİL girilir
+  // (bugünkü tek davranışla birebir uyumlu varsayılan); false = fiyatlar KDV HARİÇ, KDV
+  // checkout'ta ayrıca eklenir. Bu bayrak sipariş anında Order.pricesIncludeTax'e
+  // SNAPSHOT'lanır — sonradan değişse bile geçmiş siparişler etkilenmez.
+  pricesIncludeTax           Boolean      @default(true)
+  // null = mağaza genelinde varsayılan KDV oranı TANIMLANMAMIŞ (KDV hiç hesaplanmaz,
+  // Product.taxRateId de null olan ürünler için fallback yok). TaxRate satırı silinirse
+  // otomatik null'a düşer.
+  defaultTaxRateId           String?
   updatedAt                  DateTime     @updatedAt
 
   // Kök `/` rotasında render edilecek sayfa. Sayfa silinirse otomatik null'a düşer
   // (bkz. pages.routes.ts) — frontend bu durumda varsayılan (SaaS pazarlama) fallback'i gösterir.
-  homePage Page? @relation(fields: [homePageId], references: [id], onDelete: SetNull)
+  homePage       Page?    @relation(fields: [homePageId], references: [id], onDelete: SetNull)
+  defaultTaxRate TaxRate? @relation("SiteSettingsDefaultTaxRate", fields: [defaultTaxRateId], references: [id], onDelete: SetNull)
 
   @@map("site_settings")
 }
@@ -1301,8 +1345,8 @@ model SiteAppearance {
   // BAĞIMSIZ, kullanıcı header'ı sitenin geri kalanından farklı renklendirebilir).
   // `headerBgColor`/`headerStickyBgColor`/`headerLinkColor` `#rrggbb` VEYA `#rrggbbaa` (alfa
   // kanallı) kabul eder — `ContainerBackground.value` (page-builder) ile AYNI regex paterni.
-  headerBgColor       String @default("#ffffffcc")
-  headerStickyBgColor String @default("#fffffff2")
+  headerBgColor           String  @default("#ffffffcc")
+  headerStickyBgColor     String  @default("#fffffff2")
   // Yapışkan (sticky) durumdayken backdrop-blur uygulanır mı — CSS DEĞİŞKENİ DEĞİL, `buttonStyle`
   // ile AYNI yapısal karar. Normal (kaydırılmamış) durumda blur HER ZAMAN uygulanır — geriye
   // dönük uyumluluk için ayrı bir toggle YOK.
@@ -2056,6 +2100,10 @@ model Order {
   // KDV fiyata DAHİL (Product.taxRatePercent ile AYNI karar) — bu alan sadece FATURA/gösterim
   // amaçlı ayrıştırma içindir, totalCents'e ayrıca eklenmez.
   taxCents                Int         @default(0)
+  // SiteSettings.pricesIncludeTax'in checkout ANINDAKİ SNAPSHOT'ı — ayar sonradan
+  // değişse bile geçmiş siparişin fatura/gösterim yorumu bozulmaz (OrderItem fiyat
+  // snapshot felsefesiyle AYNI gerekçe).
+  pricesIncludeTax        Boolean     @default(true)
   // §3 (.claude/architect-scope-ecommerce-pro-template.md, bağlayıcı) — checkout anında
   // computeShipping() ile hesaplanan kargo bedelinin SNAPSHOT'ı. `totalCents = subtotal -
   // discount + shipping`. Kargo hiç yapılandırılmamışsa (SiteSettings.shippingFlatFeeCents
@@ -2174,6 +2222,13 @@ model OrderItem {
   unitPriceCents Int
   quantity       Int
   lineTotalCents Int
+  // Merkezi KDV oranı mimarisi — checkout ANINDAKİ TaxRate.ratePercent SNAPSHOT'ı (oran
+  // sonradan değişse/silinse bile satır kalıcıdır). null = kalem KDV'siz satıldı (ürünün
+  // de mağazanın da o an tanımlı bir oranı yoktu).
+  taxRatePercent Decimal?        @db.Decimal(5, 2)
+  // Bu kalemin KDV tutarı (kuruş) — Order.taxCents toplamının kaynağı, sadece
+  // FATURA/gösterim amaçlı ayrıştırma (Order.taxCents ile AYNI karar).
+  taxCents       Int             @default(0)
 
   @@index([orderId])
   @@index([productId])

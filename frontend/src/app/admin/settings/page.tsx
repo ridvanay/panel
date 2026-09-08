@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import * as settingsApi from "@/lib/api/settings";
@@ -20,6 +21,8 @@ import { PageHeading } from "@/components/admin/page-heading";
 import { LocaleManager } from "@/components/admin/locale-manager";
 import { ApiKeysSection } from "@/components/admin/settings/api-keys-section";
 import { WebhooksSection } from "@/components/admin/settings/webhooks-section";
+import { TaxSettingsSection } from "@/components/admin/settings/tax-settings-section";
+import { SectionHeader } from "@/components/admin/settings/section-header";
 import { cn } from "@/lib/utils";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { useUnsavedChangesGuard } from "@/hooks/use-unsaved-changes-guard";
@@ -34,6 +37,7 @@ import {
   Languages,
   Lock,
   Mail,
+  Percent,
   ShieldCheck,
   ShoppingBag,
   Settings2,
@@ -97,31 +101,13 @@ function RoleBadge({ role, active }: { role: SiteRole; active: boolean }) {
   );
 }
 
-function SectionHeader({
-  icon: Icon,
-  title,
-  description,
-}: {
-  icon: typeof Globe;
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="flex items-start gap-3">
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-        <Icon className="h-4 w-4" />
-      </span>
-      <div>
-        <h2 className="admin-h2">{title}</h2>
-        <p className="mt-0.5 admin-text-secondary">{description}</p>
-      </div>
-    </div>
-  );
-}
-
-export default function AdminSettingsPage() {
+function AdminSettingsPageContent() {
   const t = useT();
-  const [activeTab, setActiveTab] = useState("general");
+  // Derin link desteği — ürün düzenleme/oluşturma formundaki "Vergi Sınıflarını Yönet →" linki
+  // `?tab=tax` ile buraya yönlendirir (`admin/navigation/page.tsx`teki AYNI desen). Yalnızca İLK
+  // render'da okunur, sonraki sekme değişiklikleri normal `activeTab` state'iyle yönetilir.
+  const searchParams = useSearchParams();
+  const [activeTab, setActiveTab] = useState(() => (searchParams.get("tab") === "tax" ? "tax" : "general"));
 
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -313,6 +299,10 @@ export default function AdminSettingsPage() {
             Genel Ayarlar
             {hasUnsavedChanges && <span className="ml-1 h-1.5 w-1.5 rounded-full bg-warning" aria-hidden="true" />}
           </TabsTrigger>
+          <TabsTrigger value="tax">
+            <Percent className="h-3.5 w-3.5" />
+            Vergi Sınıfları
+          </TabsTrigger>
           <TabsTrigger value="security">
             <ShieldCheck className="h-3.5 w-3.5" />
             Güvenlik &amp; Rol İzinleri
@@ -497,6 +487,12 @@ export default function AdminSettingsPage() {
           </motion.div>
         </TabsContent>
 
+        <TabsContent value="tax" className="mt-6 outline-none">
+          <motion.div variants={cardVariants} initial="hidden" animate="show">
+            <TaxSettingsSection />
+          </motion.div>
+        </TabsContent>
+
         <TabsContent value="security" className="mt-6 outline-none">
           <motion.div variants={cardVariants} initial="hidden" animate="show">
             <Card className="space-y-4">
@@ -646,5 +642,27 @@ export default function AdminSettingsPage() {
         </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+function AdminSettingsPageFallback() {
+  return (
+    <div className="flex min-h-[50vh] items-center justify-center">
+      <Spinner className="h-6 w-6 text-primary" />
+    </div>
+  );
+}
+
+/**
+ * NOT (Next.js 16 — bkz. frontend/AGENTS.md): `useSearchParams` kullanan Client Component
+ * production build'de `<Suspense>` ile sarılmalı, aksi halde build hata verir (bkz.
+ * `app/admin/navigation/page.tsx` ile AYNI pattern) — `?tab=tax` derin link desteği bu sarmalamayı
+ * gerektirir.
+ */
+export default function AdminSettingsPage() {
+  return (
+    <Suspense fallback={<AdminSettingsPageFallback />}>
+      <AdminSettingsPageContent />
+    </Suspense>
   );
 }

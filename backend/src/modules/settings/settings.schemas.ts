@@ -26,6 +26,12 @@ export const UpdateSiteSettingsRequestSchema = z
     // ::notifyEmail` İLE AYNI doğrulama. Boş string KABUL EDİLMEZ (422); bildirimi kapatmak için
     // `null` gönderilir.
     orderNotificationEmail: z.string().email().max(254).nullable().optional(),
+    // Merkezi KDV oranı mimarisi (bkz. lib/tax.ts, prisma/schema.prisma::TaxRate). `true` =
+    // fiyatlar KDV DAHİL girilir (bugünkü tek davranışla birebir uyumlu varsayılan).
+    pricesIncludeTax: z.boolean().optional(),
+    // `null` = mağaza genelinde varsayılan KDV oranı TANIMLANMAMIŞ. Var olmayan bir id
+    // gönderilirse route handler 422 döner (bkz. settings.routes.ts).
+    defaultTaxRateId: z.string().uuid().nullable().optional(),
   })
   .refine(
     (data) =>

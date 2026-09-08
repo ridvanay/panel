@@ -34,6 +34,15 @@ export const DEFAULTS = {
   // `.claude/architect-scope-search-and-order-emails.md` §2.3 (bağlayıcı) — `null`/boş = yeni
   // sipariş bildirimi (ORDER_ADMIN_NOTIFICATION) KAPALI (best-effort atlanır, hata DEĞİLDİR).
   orderNotificationEmail: null as string | null,
+  // Merkezi KDV oranı mimarisi — `pricesIncludeTax: true` DB migration'ının varsayılanıyla
+  // (`@default(true)`) birebir aynı; henüz hiç `PATCH` çağrılmamışsa da davranış AYNI kalır.
+  // NOT: `defaultTaxRate` (gömülü DTO) BİLİNÇLİ olarak BURADA YOKTUR — bu obje `navigation.routes.ts`/
+  // `demo-templates/importer.ts` tarafından DOĞRUDAN `siteSettings.create({ ...DEFAULTS, ... })`
+  // gövdesine SPREAD edilir (Prisma `SiteSettingsCreateInput` yalnızca skaler `defaultTaxRateId`'yi
+  // bilir, gömülü relation nesnesini DEĞİL) — `readSettings()` satır YOKSA `defaultTaxRate: null`'ı
+  // AYRICA ekler (aşağıda).
+  defaultTaxRateId: null as string | null,
+  pricesIncludeTax: true,
 };
 
 /**
@@ -58,8 +67,8 @@ function assertShippingEstimateRange(finalMin: number | null, finalMax: number |
  * fazladan alanı SESSİZCE STRIP EDER, dolayısıyla public uçtan asla SIZMAZ (§2.3 sızıntı kararı).
  */
 async function readSettings(app: FastifyInstance) {
-  const row = await app.prisma.siteSettings.findUnique({ where: { id: SETTINGS_ID } });
-  return row ? toAdminSiteSettingsDto(row) : DEFAULTS;
+  const row = await app.prisma.siteSettings.findUnique({ where: { id: SETTINGS_ID }, include: { defaultTaxRate: true } });
+  return row ? toAdminSiteSettingsDto(row) : { ...DEFAULTS, defaultTaxRate: null };
 }
 
 /** `/settings` prefix'i altında bağlanır — herkese açık, site header/nav'ı bunu okur. */
@@ -128,10 +137,23 @@ export async function adminSettingsRoutes(app: FastifyInstance) {
           : existingOrDefaults.shippingEstimatedDaysMax;
       assertShippingEstimateRange(finalShippingMin, finalShippingMax);
 
+      // Merkezi KDV oranı mimarisi — var olmayan bir `defaultTaxRateId` sessizce FK hatasına
+      // (P2003 → genel 500) düşmesin diye burada 422 ile erken reddedilir (`homePageId` ile
+      // AYNI seviyede bir doğrulama henüz YOKTU; burada bilinçli olarak eklenir).
+      if (request.body.defaultTaxRateId) {
+        const rate = await app.prisma.taxRate.findUnique({ where: { id: request.body.defaultTaxRateId } });
+        if (!rate) {
+          throw new ValidationError("Belirtilen KDV oranı bulunamadı.", {
+            defaultTaxRateId: ["Belirtilen KDV oranı bulunamadı."],
+          });
+        }
+      }
+
       const settings = await app.prisma.siteSettings.upsert({
         where: { id: SETTINGS_ID },
         create: { id: SETTINGS_ID, ...DEFAULTS, ...request.body },
         update: request.body,
+        include: { defaultTaxRate: true },
       });
 
       await logAudit(app, {

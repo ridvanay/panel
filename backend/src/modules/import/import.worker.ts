@@ -1005,7 +1005,8 @@ interface WriteProductInput {
  * §10.8.9 SKU/tekillik kuralı (karar 2E) — eşleştirme anahtarı `sku`'dur (varsa), `sku` boşsa
  * `slug`. `createNew` + SKU çakışması → satır ATLANIR (`ABC-1`/`ABC-1-2` iki ayrı stok kalemi
  * demek olurdu, envanteri sessizce bozar) — slug çakışması gibi `-2`/`-3` İLE ÇÖZÜLMEZ.
- * `taxRatePercent` HER ZAMAN `null` bırakılır (§10.8.9 KDV kuralı — export oran taşımaz),
+ * `taxRatePercent`/`taxRateId` HER ZAMAN `null` bırakılır (§10.8.9 KDV kuralı — export oran
+ * taşımaz; ürün mağaza varsayılan KDV oranına düşer, bkz. lib/tax.ts::resolveProductTaxRate),
  * `coverMediaId` HER ZAMAN `null` (§10.8.9 görsel kuralı — SSRF, `ProductImage` YAZILMAZ).
  */
 async function writeProduct(app: FastifyInstance, input: WriteProductInput): Promise<void> {
@@ -1033,7 +1034,12 @@ async function writeProduct(app: FastifyInstance, input: WriteProductInput): Pro
     discountPercent,
     currency: input.currency,
     sku: input.sku,
+    // §10.8.9 KDV kuralı — WXR kaynağı bir vergi oranı TAŞIMAZ (export/kaynak formatı bunu hiç
+    // içermez); ne eski (deprecated) `taxRatePercent` ham kolonu NE DE merkezi `taxRateId`
+    // buradan set edilir — ürün mağaza varsayılanına (`SiteSettings.defaultTaxRateId`) düşer
+    // (bkz. lib/tax.ts::resolveProductTaxRate).
     taxRatePercent: null,
+    taxRateId: null,
     stockQuantity: input.stockQuantity,
     categoryId: input.categoryId,
     coverMediaId: null,
@@ -1089,7 +1095,7 @@ async function writeProduct(app: FastifyInstance, input: WriteProductInput): Pro
           descriptionHtml: existing.descriptionHtml,
           priceCents: existing.priceCents,
           currency: existing.currency,
-          taxRatePercent: existing.taxRatePercent ? Number(existing.taxRatePercent) : null,
+          taxRateId: existing.taxRateId,
           discountPriceCents: existing.discountPriceCents,
           sku: existing.sku,
           stockQuantity: existing.stockQuantity,

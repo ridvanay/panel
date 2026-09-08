@@ -12,6 +12,7 @@ import { Alert } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FreeShippingProgress } from "@/components/site/free-shipping-progress";
+import { TaxSummaryRows } from "@/components/tax-summary-rows";
 import { formatPriceFromCents } from "@/lib/format-price";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 
@@ -193,6 +194,14 @@ export default function CartPage() {
             </span>
           </div>
         )}
+        <TaxSummaryRows
+          tax={cart.tax}
+          currency={cart.currency ?? "TRY"}
+          className="flex items-center justify-between"
+          labelClassName="text-sm font-medium text-foreground/70"
+          valueClassName="text-base font-medium text-foreground"
+          subRowClassName="text-xs text-foreground/50"
+        />
         <div className="flex items-center justify-between border-t border-border pt-2">
           <span className="text-sm font-medium text-foreground/70">Toplam</span>
           <span className="text-xl font-semibold text-foreground">

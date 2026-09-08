@@ -28,6 +28,7 @@ const settings: SiteSettings = {
   freeShippingThresholdCents: null,
   shippingEstimatedDaysMin: null,
   shippingEstimatedDaysMax: null,
+  pricesIncludeTax: true,
 };
 
 const axeOptions = { rules: { region: { enabled: false } } };

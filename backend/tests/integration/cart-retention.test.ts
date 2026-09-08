@@ -113,6 +113,7 @@ describe("sepet saklama süresi taraması (cart-retention, §10.9.3)", () => {
       subtotalCents: 0,
       shipping: { configured: false, feeCents: 0, thresholdCents: null, remainingCents: null, isFree: false },
       totalCents: 0,
+      tax: { includedInPrice: true, totalTaxCents: 0, breakdown: [] },
     });
   });
 });

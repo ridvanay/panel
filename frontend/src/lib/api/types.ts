@@ -873,6 +873,16 @@ export interface AddProductDocumentRequest {
   title?: string;
 }
 
+/**
+ * Merkezi KDV oranı mimarisi — ürüne/mağaza varsayılanına GÖMÜLEN hafif izdüşüm. `TaxRate`
+ * (tam admin CRUD DTO'su, `/admin/tax-rates` uçları) bunu alan seti olarak GENİŞLETİR.
+ */
+export interface ProductTaxRate {
+  id: string;
+  name: string;
+  ratePercent: number;
+}
+
 export interface Product {
   id: string;
   title: string;
@@ -882,8 +892,15 @@ export interface Product {
   /** Para: HER ZAMAN kuruş/cent cinsinden Int — float KESİNLİKLE YOK. */
   priceCents: number;
   currency: string;
-  /** KDV fiyata DAHİL — bu alan yalnızca fatura/gösterim amaçlı ayrıştırma içindir. */
+  /**
+   * @deprecated Merkezi KDV oranı mimarisi ÖNCESİ serbest yüzde alanı. Artık `taxRateId`/
+   * `taxRate`'den ÇÖZÜMLENEN oranla DOLDURULUR (geriye dönük uyumluluk); istekten YAZILAMAZ.
+   */
   taxRatePercent: number | null;
+  /** Merkezi KDV oranı — ürünün KENDİ seçtiği oran. `null` = mağaza varsayılanı kullanılır. */
+  taxRateId: string | null;
+  /** `taxRateId` ÇÖZÜMLENMİŞ hâli — ürünün kendi oranı yoksa mağaza varsayılanı GÖMÜLÜR. */
+  taxRate: ProductTaxRate | null;
   discountPriceCents: number | null;
   sku: string | null;
   stockQuantity: number;
@@ -962,6 +979,10 @@ export interface ProductListItem {
   images: ProductImage[];
   variantOptions: ProductVariantOption[];
   variants: ProductVariant[];
+  /** Merkezi KDV oranı — ürünün KENDİ seçtiği oran. `null` = mağaza varsayılanı kullanılır. */
+  taxRateId: string | null;
+  /** `taxRateId` ÇÖZÜMLENMİŞ hâli. */
+  taxRate: ProductTaxRate | null;
   localizations: ContentLocalization[];
   publishedAt: string | null;
   createdAt: string;
@@ -1062,7 +1083,8 @@ export interface CreateProductRequest {
   descriptionHtml?: string;
   priceCents: number;
   currency?: string;
-  taxRatePercent?: number | null;
+  /** Merkezi KDV oranı mimarisi — `taxRatePercent` GÖNDERİLEMEZ (422), yerine bu kullanılır. `null`/`undefined` = mağaza varsayılanı. */
+  taxRateId?: string | null;
   discountPriceCents?: number | null;
   sku?: string | null;
   stockQuantity?: number;
@@ -1091,7 +1113,8 @@ export interface UpdateProductRequest {
   descriptionHtml?: string;
   priceCents?: number;
   currency?: string;
-  taxRatePercent?: number | null;
+  /** Merkezi KDV oranı mimarisi — `taxRatePercent` GÖNDERİLEMEZ (422), yerine bu kullanılır. `null` = mağaza varsayılanı. */
+  taxRateId?: string | null;
   discountPriceCents?: number | null;
   sku?: string | null;
   stockQuantity?: number;
@@ -1270,6 +1293,29 @@ export interface CartItem {
   frozenUnitPriceCents: number;
   currentPriceCents: number;
   lineTotalCents: number;
+  /**
+   * Merkezi KDV oranı mimarisi — okuma ANINDA çözümlenir (sepet KDV oranı DONDURMAZ, yalnızca
+   * fiyatı dondurur; checkout'ta TEKRAR taze çözümlenir/SNAPSHOT'lanır). `null` = bu satır için
+   * hiçbir KDV oranı çözümlenemedi (KDV hesaplanmaz).
+   */
+  taxRatePercent: number | null;
+  taxCents: number;
+}
+
+/** `lib/tax.ts::computeTaxBreakdown` sonucunun ORAN bazlı döküm satırı — `Cart`/`Order` tax özetinde ORTAK. */
+export interface TaxBreakdownEntry {
+  ratePercent: number;
+  /** Bu orana ait satırların NET (KDV hariç) toplamı. */
+  baseCents: number;
+  taxCents: number;
+}
+
+/** `Cart`/`Order` KDV özeti — ikisi de AYNI şekli paylaşır. */
+export interface TaxSummary {
+  /** Checkout ANINDAKİ (Order) veya OKUMA ANINDAKİ (Cart) `SiteSettings.pricesIncludeTax`. */
+  includedInPrice: boolean;
+  totalTaxCents: number;
+  breakdown: TaxBreakdownEntry[];
 }
 
 /**
@@ -1295,6 +1341,7 @@ export interface Cart {
   shipping: CartShipping;
   /** `subtotalCents + shipping.feeCents`. Kargo yapılandırılmamışsa `subtotalCents`'e EŞİTTİR. */
   totalCents: number;
+  tax: TaxSummary;
 }
 
 export interface AddCartItemRequest {
@@ -1399,6 +1446,9 @@ export interface OrderItem {
   unitPriceCents: number;
   quantity: number;
   lineTotalCents: number;
+  /** Merkezi KDV oranı mimarisi — checkout ANINDAKİ `TaxRate.ratePercent` SNAPSHOT'ı. `null` = kalem KDV'siz satıldı. */
+  taxRatePercent: number | null;
+  taxCents: number;
 }
 
 /**
@@ -1472,6 +1522,12 @@ export interface Order {
   /** Fatura bilgisi SNAPSHOT'ı — `shippingAddress` ile AYNI kural (eski siparişlerde `null`). */
   billing: OrderBillingSnapshot | null;
   items: OrderItem[];
+  /**
+   * Merkezi KDV oranı mimarisi — `tax.totalTaxCents` HER ZAMAN üstteki `taxCents` alanıyla
+   * AYNIDIR (geriye dönük uyumluluk için `taxCents` KORUNUR), `tax.breakdown` kalemlerin
+   * `taxRatePercent`'e göre GRUPLANMIŞ döküm görünümüdür.
+   */
+  tax: TaxSummary;
 }
 
 /**
@@ -1653,6 +1709,11 @@ export interface SiteSettings {
    */
   shippingEstimatedDaysMin: number | null;
   shippingEstimatedDaysMax: number | null;
+  /**
+   * Merkezi KDV oranı mimarisi — `true` = fiyatlar KDV DAHİL girilir (bugünkü tek davranışla
+   * birebir uyumlu varsayılan).
+   */
+  pricesIncludeTax: boolean;
 }
 
 export interface UpdateSiteSettingsRequest {
@@ -1674,6 +1735,10 @@ export interface UpdateSiteSettingsRequest {
    * EDİLMEZ (422); kapatmak için `null` gönderilir.
    */
   orderNotificationEmail?: string | null;
+  /** Merkezi KDV oranı mimarisi — `true` = fiyatlar KDV DAHİL girilir. */
+  pricesIncludeTax?: boolean;
+  /** `null` = mağaza genelinde varsayılan KDV oranı TANIMLANMAMIŞ. */
+  defaultTaxRateId?: string | null;
 }
 
 /**
@@ -1683,6 +1748,43 @@ export interface UpdateSiteSettingsRequest {
  */
 export interface AdminSiteSettings extends SiteSettings {
   orderNotificationEmail: string | null;
+  /** Merkezi KDV oranı mimarisi — mağaza varsayılan oranı. */
+  defaultTaxRateId: string | null;
+  /** `defaultTaxRateId` ÇÖZÜMLENMİŞ (gömülü) hâli — id doluysa ama oran silinmişse (SetNull) ikisi de `null` olur. */
+  defaultTaxRate: ProductTaxRate | null;
+}
+
+/**
+ * Merkezi KDV oranı mimarisi — `/admin/tax-rates` CRUD DTO'su. `ProductTaxRate`'i (id/name/
+ * ratePercent) GENİŞLETİR.
+ */
+export interface TaxRate extends ProductTaxRate {
+  description: string | null;
+  isDefault: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * `POST /admin/tax-rates` — `name` benzersizdir. `ratePercent` 0..100 aralığındadır.
+ * `isDefault: true` gönderilirse mevcut varsayılan otomatik olarak `false`'a çekilir.
+ */
+export interface CreateTaxRateRequest {
+  name: string;
+  ratePercent: number;
+  description?: string | null;
+  isDefault?: boolean;
+  sortOrder?: number;
+}
+
+export interface UpdateTaxRateRequest {
+  name?: string;
+  ratePercent?: number;
+  description?: string | null;
+  /** `false` gönderilerek doğrudan kaldırılamaz (mevcut varsayılansa 422) — önce başka bir oran varsayılan yapılmalı. */
+  isDefault?: boolean;
+  sortOrder?: number;
 }
 
 export interface UpdateBlogPostRequest {

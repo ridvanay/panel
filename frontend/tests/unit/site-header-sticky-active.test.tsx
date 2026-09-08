@@ -26,6 +26,7 @@ const settings: SiteSettings = {
   freeShippingThresholdCents: null,
   shippingEstimatedDaysMin: null,
   shippingEstimatedDaysMax: null,
+  pricesIncludeTax: true,
 };
 
 const navigationItems: NavigationItemDto[] = [

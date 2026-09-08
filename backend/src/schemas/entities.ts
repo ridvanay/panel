@@ -434,6 +434,18 @@ export const ProductDocumentSchema = z.object({
 });
 export type ProductDocumentDto = z.infer<typeof ProductDocumentSchema>;
 
+/**
+ * Merkezi KDV oranı mimarisi (bkz. `lib/tax.ts`, prisma/schema.prisma::TaxRate) — ürüne/mağaza
+ * varsayılanına GÖMÜLEN hafif izdüşüm. `TaxRateSchema` (tam admin CRUD DTO'su, `.claude`
+ * belgesindeki `/admin/tax-rates` uçları) bunu `.extend()` ile GENİŞLETİR — alan seti sapamaz.
+ */
+export const ProductTaxRateSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string(),
+  ratePercent: z.number(),
+});
+export type ProductTaxRateDto = z.infer<typeof ProductTaxRateSchema>;
+
 export const ProductSchema = z.object({
   id: z.string().uuid(),
   title: z.string(),
@@ -443,8 +455,16 @@ export const ProductSchema = z.object({
   // Para: HER ZAMAN kuruş/cent cinsinden Int — float KESİNLİKLE YOK (bkz. prisma/schema.prisma::Product).
   priceCents: z.number().int(),
   currency: z.string(),
-  // KDV fiyata DAHİL — bu alan yalnızca fatura/gösterim amaçlı ayrıştırma içindir.
+  // @deprecated — merkezi KDV oranı mimarisi ÖNCESİ serbest yüzde alanı. Artık `taxRateId`/
+  // `taxRate`den ÇÖZÜMLENEN oranla DOLDURULUR (geriye dönük uyumluluk); istekten YAZILAMAZ
+  // (bkz. products.schemas.ts). Ayrı bir migration'da kaldırılacak (db-agent notu).
   taxRatePercent: z.number().nullable(),
+  // Merkezi KDV oranı — ürünün KENDİ seçtiği oran (bkz. TaxRate modeli). `null` = mağaza
+  // varsayılanı (`SiteSettings.defaultTaxRateId`) kullanılır.
+  taxRateId: z.string().uuid().nullable(),
+  // `taxRateId` ÇÖZÜMLENMİŞ hâli — ürünün kendi oranı yoksa mağaza varsayılanı GÖMÜLÜR;
+  // ikisi de yoksa/oranlar tablosunda bulunamazsa `null` (KDV hiç hesaplanmaz).
+  taxRate: ProductTaxRateSchema.nullable(),
   discountPriceCents: z.number().int().nullable(),
   sku: z.string().nullable(),
   stockQuantity: z.number().int(),
@@ -846,14 +866,36 @@ export const SiteSettingsSchema = z.object({
   // koda gömülmez).
   shippingEstimatedDaysMin: z.number().int().nullable(),
   shippingEstimatedDaysMax: z.number().int().nullable(),
+  // Merkezi KDV oranı mimarisi (bkz. lib/tax.ts, TaxRate modeli) — `true` = fiyatlar KDV DAHİL
+  // girilir (bugünkü tek davranışla birebir uyumlu varsayılan). `defaultTaxRateId` BURADA
+  // SIZMAZ (yalnızca admin DTO'sunda, bkz. AdminSiteSettingsSchema) — public tüketici için
+  // yalnızca dahil/hariç yorumu anlamlıdır, hangi oranın kullanıldığı DEĞİL.
+  pricesIncludeTax: z.boolean(),
 });
 export type SiteSettingsDto = z.infer<typeof SiteSettingsSchema>;
+
+/**
+ * Merkezi KDV oranı mimarisi — `/admin/tax-rates` CRUD DTO'su. `ProductTaxRateSchema`'yı
+ * (id/name/ratePercent) `.extend()` ile GENİŞLETİR (alan seti sapamaz, bkz. Product bölümündeki not).
+ */
+export const TaxRateSchema = ProductTaxRateSchema.extend({
+  description: z.string().nullable(),
+  isDefault: z.boolean(),
+  sortOrder: z.number().int(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type TaxRateDto = z.infer<typeof TaxRateSchema>;
 
 // `.claude/architect-scope-search-and-order-emails.md` §2.3 (bağlayıcı) — `orderNotificationEmail`
 // public `GET /settings`'te SIZMAZ (PII/spam-harvest riski); yalnızca admin uçları bu genişletilmiş
 // DTO'yu döner. `SiteSettingsSchema` bilinçli olarak DEĞİŞTİRİLMEDİ.
 export const AdminSiteSettingsSchema = SiteSettingsSchema.extend({
   orderNotificationEmail: z.string().nullable(),
+  // Merkezi KDV oranı mimarisi — mağaza varsayılan oranı. `defaultTaxRate` ÇÖZÜMLENMİŞ (gömülü)
+  // hâlidir; `defaultTaxRateId` null DEĞİLSE ama oran silinmişse (SetNull) ikisi de `null` olur.
+  defaultTaxRateId: z.string().uuid().nullable(),
+  defaultTaxRate: ProductTaxRateSchema.nullable(),
 });
 export type AdminSiteSettingsDto = z.infer<typeof AdminSiteSettingsSchema>;
 
@@ -1417,8 +1459,35 @@ export const CartItemSchema = z.object({
   frozenUnitPriceCents: z.number().int(),
   currentPriceCents: z.number().int(),
   lineTotalCents: z.number().int(),
+  // Merkezi KDV oranı mimarisi (bkz. lib/tax.ts) — okuma ANINDA çözümlenir (sepet KDV oranı
+  // DONDURMAZ, yalnızca fiyatı dondurur; checkout'ta TEKRAR taze çözümlenir/SNAPSHOT'lanır).
+  // `null` = bu satır için hiçbir KDV oranı çözümlenemedi (KDV hesaplanmaz).
+  taxRatePercent: z.number().nullable(),
+  taxCents: z.number().int(),
 });
 export type CartItemDto = z.infer<typeof CartItemSchema>;
+
+/**
+ * `lib/tax.ts::computeTaxBreakdown` sonucunun ORAN bazlı döküm satırı — `Cart`/`Order` tax
+ * özetinde ORTAK (bkz. CartTaxSummarySchema/OrderSchema.tax).
+ */
+export const TaxBreakdownEntrySchema = z.object({
+  ratePercent: z.number(),
+  // Bu orana ait satırların NET (KDV hariç) toplamı.
+  baseCents: z.number().int(),
+  taxCents: z.number().int(),
+});
+export type TaxBreakdownEntryDto = z.infer<typeof TaxBreakdownEntrySchema>;
+
+/** `Cart`/`Order` KDV özeti — ikisi de AYNI şekli paylaşır (bkz. lib/tax.ts::computeTaxBreakdown). */
+export const TaxSummarySchema = z.object({
+  // Checkout ANINDAKİ (Order) veya OKUMA ANINDAKİ (Cart) `SiteSettings.pricesIncludeTax` —
+  // `true` iken `totalTaxCents` toplam tutara AYRICA EKLENMEZ (zaten fiyata dahildir).
+  includedInPrice: z.boolean(),
+  totalTaxCents: z.number().int(),
+  breakdown: z.array(TaxBreakdownEntrySchema),
+});
+export type TaxSummaryDto = z.infer<typeof TaxSummarySchema>;
 
 /**
  * §3 (.claude/architect-scope-ecommerce-pro-template.md, bağlayıcı) — kargo hesabı SUNUCUDA, TEK
@@ -1444,7 +1513,10 @@ export const CartSchema = z.object({
   subtotalCents: z.number().int(),
   shipping: CartShippingSchema,
   // `subtotalCents + shipping.feeCents` — kargo yapılandırılmamışsa `subtotalCents`'e EŞİTTİR.
+  // `subtotalCents` (ve dolayısıyla `totalCents`) KDV DAHİL/HARİÇ yorumu `tax.includedInPrice`e
+  // bağlıdır — KDV `totalCents`e AYRICA EKLENMEZ (bkz. lib/tax.ts).
   totalCents: z.number().int(),
+  tax: TaxSummarySchema,
 });
 export type CartDto = z.infer<typeof CartSchema>;
 
@@ -1522,6 +1594,10 @@ export const OrderItemSchema = z.object({
   unitPriceCents: z.number().int(),
   quantity: z.number().int(),
   lineTotalCents: z.number().int(),
+  // Merkezi KDV oranı mimarisi — checkout ANINDAKİ `TaxRate.ratePercent` SNAPSHOT'ı (bkz.
+  // prisma/schema.prisma::OrderItem.taxRatePercent). `null` = kalem KDV'siz satıldı.
+  taxRatePercent: z.number().nullable(),
+  taxCents: z.number().int(),
 });
 export type OrderItemDto = z.infer<typeof OrderItemSchema>;
 
@@ -1557,6 +1633,10 @@ export const OrderSchema = z.object({
   shippingAddress: OrderAddressSnapshotSchema.nullable(),
   billing: OrderBillingSnapshotSchema.nullable(),
   items: z.array(OrderItemSchema),
+  // Merkezi KDV oranı mimarisi — `tax.totalTaxCents` HER ZAMAN üstteki `taxCents` alanıyla
+  // AYNIDIR (geriye dönük uyumluluk için `taxCents` KORUNUR), `tax.breakdown` kalemlerin
+  // `taxRatePercent`'e göre GRUPLANMIŞ döküm görünümüdür (bkz. lib/tax.ts).
+  tax: TaxSummarySchema,
 });
 export type OrderDto = z.infer<typeof OrderSchema>;
 

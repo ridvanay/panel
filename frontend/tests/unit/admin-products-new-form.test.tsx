@@ -17,6 +17,14 @@ vi.mock("@/lib/api/users-admin", () => ({
   listAdminUsers: vi.fn(),
 }));
 
+vi.mock("@/lib/api/tax", () => ({
+  listTaxRates: vi.fn().mockResolvedValue([]),
+}));
+
+vi.mock("@/lib/api/settings", () => ({
+  getSettings: vi.fn().mockResolvedValue({ defaultTaxRate: null, pricesIncludeTax: true }),
+}));
+
 let mockUser: User;
 vi.mock("@/context/auth-context", () => ({
   useAuth: () => ({ user: mockUser }),
@@ -94,6 +102,8 @@ describe("NewProductPage — form validasyonu", () => {
       priceCents: 10000,
       currency: "TRY",
       taxRatePercent: null,
+      taxRateId: null,
+      taxRate: null,
       discountPriceCents: null,
       sku: null,
       stockQuantity: 0,

@@ -3,7 +3,7 @@ import { render, screen } from "@testing-library/react";
 import { FeaturedProductsBlockView } from "@/components/site/blocks/featured-products-block";
 import { CartProvider } from "@/context/cart-context";
 import type { FeaturedProductsBlock } from "@/lib/page-builder/types";
-import type { Cart, Product } from "@/lib/api/types";
+import type { Cart, Product, TaxSummary } from "@/lib/api/types";
 
 // `ProductCard` artık `FavoriteButton`'ı render eder (bkz. `product-card.tsx`), o da
 // `useRouter`/`usePathname` kullanır — bir Next.js app router olmadan bu hook'lar fırlatır.
@@ -23,12 +23,15 @@ vi.mock("@/lib/api/cart", () => ({
 
 const cartApi = await import("@/lib/api/cart");
 
+const NO_TAX: TaxSummary = { includedInPrice: true, totalTaxCents: 0, breakdown: [] };
+
 const EMPTY_CART: Cart = {
   items: [],
   currency: null,
   subtotalCents: 0,
   shipping: { configured: false, feeCents: 0, thresholdCents: null, remainingCents: null, isFree: false },
   totalCents: 0,
+  tax: NO_TAX,
 };
 
 /**
@@ -58,6 +61,8 @@ function makeProduct(overrides: Partial<Product> = {}): Product {
     priceCents: 10000,
     currency: "TRY",
     taxRatePercent: null,
+    taxRateId: null,
+    taxRate: null,
     discountPriceCents: null,
     sku: null,
     stockQuantity: 5,

@@ -2584,3 +2584,62 @@ taslak/çöp ürün sızıntısı gibi sunucu tarafı kuralları backend-agent'�
 zaten kapsanıyor (§1.6) — burada TEKRAR EDİLMEDİ. §2'nin SMTP hata/başarı, `sendCustomerEmail`
 şema daraltması (422), public `GET /settings` alan listesi gibi kombinasyonları da AYNI şekilde
 `backend/tests/integration/{orders,settings,webhook-order}.test.ts`'te zaten var.
+
+## Merkezi Vergi/KDV Sınıfları — entegrasyon + E2E kapsamı (bu turda eklendi)
+
+Kaynak: db/backend/frontend-agent'ın tamamladığı `/admin/tax-rates` CRUD + `lib/tax.ts::
+computeTaxBreakdown` + sepet/checkout/sipariş KDV dökümü özelliği (branch:
+`feature/central-tax-rates`) — qa-agent görev tanımı.
+
+**Ortam notu (`header-instant-search`/`admin-navigation-deep-nesting` bölümleriyle AYNI sınıf
+sorun):** e2e backend süreci (port 4001, `tsx src/server.ts`, watch MODU YOK) `tax.routes.ts`/
+`app.ts` route kaydı ve `20260908164454_add_central_tax_rates` migration'ından SONRA yeniden
+başlatılmamıştı — `GET /admin/tax-rates` `NOT_FOUND` (404, route hiç kayıtlı değildi) dönüyordu.
+qa-agent `saas_e2e`'ye `prisma migrate deploy` uyguladı, süreci sonlandırıp
+`DOTENV_CONFIG_PATH=.env.e2e npx tsx src/server.ts` ile yeniden başlattı; ardından TÜM testler
+geçti. **Not devops-agent'a:** aynı tavsiye tekrarlanıyor — e2e backend süreci `tsx --watch` ile
+veya CI'da her koşumda taze başlatılırsa bu sınıf "ortam staleness" sorunu tekrar yaşanmaz.
+
+### Backend entegrasyon testi — `backend/tests/integration/tax.test.ts` (YENİ dosya, 9 test)
+
+`tests/integration/{cart,products,settings}.test.ts` İLE AYNI `app.inject()` + `registerTestUser`/
+rol-yükseltme deseni.
+
+| # | Senaryo | Durum |
+|---|---|---|
+| 1 | Kimliği doğrulanmamış istek `GET /admin/tax-rates`'te 401 alır | ✅ Geçiyor |
+| 2 | MANAGER `GET` yapabilir; `POST`/`PATCH`/`DELETE`'te 403 alır | ✅ Geçiyor |
+| 3 | ADMIN oluşturabilir (201), güncelleyebilir (200) ve silebilir (204) | ✅ Geçiyor |
+| 4 | Varsayılan sınıf silinemez — 409 `TAX_RATE_IS_DEFAULT` | ✅ Geçiyor |
+| 5 | Kullanımda olan sınıf `reassignToId` olmadan silinemez — 409 `TAX_RATE_IN_USE`; `reassignToId` ile silinir VE ürün yeni sınıfa taşınır (DB doğrulaması) | ✅ Geçiyor |
+| 6 | `POST /admin/products`'a eski `taxRatePercent` göndermek 422 döner (`.strict()`) | ✅ Geçiyor |
+| 7 | `PATCH /admin/products/:id`'e eski `taxRatePercent` göndermek 422 döner | ✅ Geçiyor |
+| 8 | `pricesIncludeTax: true` — sepette KDV fiyattan geri çıkarılır, `tax.breakdown`/`totalTaxCents` `computeTaxBreakdown` ile birebir tutarlı | ✅ Geçiyor |
+| 9 | `pricesIncludeTax: false` — sepette KDV fiyatın üzerine eklenir, aynı tutarlılık | ✅ Geçiyor |
+
+Regresyon: `cart.test.ts` (backend-agent'ın güncellediği), `cart-retention.test.ts`,
+`products.test.ts`, `settings.test.ts`, `checkout.test.ts` — toplam 116 test — bu turdan
+etkilenmediği doğrulanmak için yeniden koşuldu, kırılma YOK.
+
+### Frontend E2E — `frontend/tests/e2e/tax-management.spec.ts` (YENİ dosya, 3 test)
+
+`admin-product-variant-media-persistence.spec.ts` İLE AYNI dosya-başına-tek-context deseni
+(admin işlemleri) + `cart-dedupe-drawer-shipping.spec.ts` İLE AYNI çerezsiz `page` fixture'ı
+(storefront doğrulaması).
+
+| # | Senaryo | Durum |
+|---|---|---|
+| 1 | `/admin/settings?tab=tax`'ten yeni bir vergi sınıfı (%10) eklenir — tabloya VE "Vergi sınıfı eklendi." başarı bildirimine yansır | ✅ Geçiyor |
+| 2 | Ürün düzenleme formunda (`/admin/products/[productId]`) o sınıf seçilip "Kaydet"e basılır; tam sayfa yeniden yükleme sonrası dropdown'da hâlâ seçili (DB kalıcılığı); eski serbest "KDV oranı (%)" metin kutusu ARTIK HİÇ BULUNMUYOR (regresyon güvencesi) | ✅ Geçiyor |
+| 3 | Ürün storefront'tan sepete eklenir; `/cart` sayfasında "KDV (%10)" dökümü doğru oranla görünür | ✅ Geçiyor |
+
+**Bulunan, İLGİSİZ bir regresyon (frontend-agent'a yönlendirilecek, bu turda DÜZELTİLMEDİ):**
+Bu turun regresyon taramasında (`product-catalog-add-to-cart.spec.ts` yeniden koşulurken)
+`header-search.tsx`'in (commit `1c91166`, "header canlı ürün araması") eklediği site-genelindeki
+`<span className="sr-only" aria-live="polite">` (arama sonucu duyurusu), PDP adet göstergesinin
+`locator('span[aria-live="polite"]')` seçicisiyle ÇAKIŞIYOR — strict-mode violation (2 eşleşme).
+Bu, tax özelliğinden TAMAMEN BAĞIMSIZ, önceden var olan bir test-kırılganlığı (uygulamanın
+gerçek davranışı BOZULMADI, yalnızca test seçicisi artık belirsiz). qa-agent bu turda
+DÜZELTMEDİ (kapsam dışı) — frontend-agent'a (`header-search.tsx`'in sr-only duyuru elementinin
+kapsamı/konumu) veya qa-agent'ın kendisine (test seçicisinin daraltılması) bir sonraki turda
+yönlendirilmeli.

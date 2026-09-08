@@ -28,6 +28,7 @@ function makeOrder(overrides: Partial<AdminOrder> = {}): AdminOrder {
     subtotalCents: 15000,
     discountCents: 0,
     taxCents: 0,
+    tax: { includedInPrice: true, totalTaxCents: 0, breakdown: [] },
     shippingCents: 0,
     totalCents: 15000,
     errorSummary: null,

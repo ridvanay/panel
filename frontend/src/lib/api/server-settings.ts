@@ -13,6 +13,7 @@ const DEFAULT_SETTINGS: SiteSettings = {
   freeShippingThresholdCents: null,
   shippingEstimatedDaysMin: null,
   shippingEstimatedDaysMax: null,
+  pricesIncludeTax: true,
 };
 
 /** Sunucu bileşenlerinden çağrılır — bkz. server-plans.ts'teki apiFetch kullanılmama gerekçesi. */

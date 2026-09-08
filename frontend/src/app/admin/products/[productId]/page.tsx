@@ -7,6 +7,8 @@ import { toast } from "sonner";
 import * as productsApi from "@/lib/api/products";
 import * as revisionsApi from "@/lib/api/revisions";
 import * as localesApi from "@/lib/api/locales";
+import * as taxApi from "@/lib/api/tax";
+import * as settingsApi from "@/lib/api/settings";
 import type {
   ContentStatus,
   ContentTranslations,
@@ -15,9 +17,13 @@ import type {
   ProductCategory,
   ProductDocument,
   ProductImage,
+  ProductTaxRate,
   ProductVariant,
   ProductVariantOption,
+  TaxRate,
 } from "@/lib/api/types";
+import { TaxEstimateBox } from "@/components/admin/products/tax-estimate-box";
+import { TaxRateSelectField } from "@/components/admin/products/tax-rate-select-field";
 import { useAutosave } from "@/hooks/use-autosave";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -56,7 +62,7 @@ interface ProductSnapshot {
   descriptionHtml: string;
   priceLira: string;
   currency: string;
-  taxRatePercent: string;
+  taxRateId: string;
   discountPriceLira: string;
   sku: string;
   stockQuantity: string;
@@ -139,7 +145,10 @@ export default function EditProductPage({ params }: { params: Promise<{ productI
   const [descriptionHtml, setDescriptionHtml] = useState("");
   const [priceLira, setPriceLira] = useState("");
   const [currency, setCurrency] = useState("TRY");
-  const [taxRatePercent, setTaxRatePercent] = useState("");
+  const [taxRateId, setTaxRateId] = useState("");
+  const [taxRates, setTaxRates] = useState<TaxRate[]>([]);
+  const [defaultTaxRate, setDefaultTaxRate] = useState<ProductTaxRate | null>(null);
+  const [pricesIncludeTax, setPricesIncludeTax] = useState(true);
   const [discountPriceLira, setDiscountPriceLira] = useState("");
   const [sku, setSku] = useState("");
   const [stockQuantity, setStockQuantity] = useState("0");
@@ -166,10 +175,15 @@ export default function EditProductPage({ params }: { params: Promise<{ productI
 
   const load = useCallback(async () => {
     try {
-      const [product, cats] = await Promise.all([
+      const [product, cats, rates, settings] = await Promise.all([
         productsApi.getProduct(productId),
         productsApi.listProductCategories().catch(() => []),
+        taxApi.listTaxRates().catch(() => []),
+        settingsApi.getSettings().catch(() => null),
       ]);
+      setTaxRates(rates);
+      setDefaultTaxRate(settings?.defaultTaxRate ?? null);
+      setPricesIncludeTax(settings?.pricesIncludeTax ?? true);
       const nextSnapshot: ProductSnapshot = {
         title: product.title,
         slug: product.slug,
@@ -177,7 +191,7 @@ export default function EditProductPage({ params }: { params: Promise<{ productI
         descriptionHtml: product.descriptionHtml,
         priceLira: centsToLiraString(product.priceCents),
         currency: product.currency,
-        taxRatePercent: product.taxRatePercent !== null ? String(product.taxRatePercent) : "",
+        taxRateId: product.taxRateId ?? "",
         discountPriceLira: centsToLiraString(product.discountPriceCents),
         sku: product.sku ?? "",
         stockQuantity: String(product.stockQuantity),
@@ -200,7 +214,7 @@ export default function EditProductPage({ params }: { params: Promise<{ productI
       setDescriptionHtml(nextSnapshot.descriptionHtml);
       setPriceLira(nextSnapshot.priceLira);
       setCurrency(nextSnapshot.currency);
-      setTaxRatePercent(nextSnapshot.taxRatePercent);
+      setTaxRateId(nextSnapshot.taxRateId);
       setDiscountPriceLira(nextSnapshot.discountPriceLira);
       setSku(nextSnapshot.sku);
       setStockQuantity(nextSnapshot.stockQuantity);
@@ -246,7 +260,7 @@ export default function EditProductPage({ params }: { params: Promise<{ productI
       descriptionHtml !== snapshot.descriptionHtml ||
       priceLira !== snapshot.priceLira ||
       currency !== snapshot.currency ||
-      taxRatePercent !== snapshot.taxRatePercent ||
+      taxRateId !== snapshot.taxRateId ||
       discountPriceLira !== snapshot.discountPriceLira ||
       sku !== snapshot.sku ||
       stockQuantity !== snapshot.stockQuantity ||
@@ -270,7 +284,7 @@ export default function EditProductPage({ params }: { params: Promise<{ productI
     descriptionHtml,
     priceLira,
     currency,
-    taxRatePercent,
+    taxRateId,
     discountPriceLira,
     sku,
     stockQuantity,
@@ -341,7 +355,6 @@ export default function EditProductPage({ params }: { params: Promise<{ productI
     setSaving(true);
     try {
       const trimmedDiscount = discountPriceLira.trim();
-      const trimmedTaxRate = taxRatePercent.trim();
 
       await productsApi.updateProduct(productId, {
         title,
@@ -350,7 +363,7 @@ export default function EditProductPage({ params }: { params: Promise<{ productI
         descriptionHtml,
         priceCents: Math.round(Number(priceLira) * 100),
         currency,
-        taxRatePercent: trimmedTaxRate ? Number(trimmedTaxRate) : null,
+        taxRateId: taxRateId || null,
         discountPriceCents: trimmedDiscount ? Math.round(Number(trimmedDiscount) * 100) : null,
         sku: sku || null,
         stockQuantity: Number(stockQuantity),
@@ -603,20 +616,18 @@ export default function EditProductPage({ params }: { params: Promise<{ productI
                   />
                 )}
               </Field>
-              <Field id="taxRatePercent" label="KDV oranı (%)" hint="Opsiyonel, fiyata dahildir.">
-                {(inputProps) => (
-                  <Input
-                    {...inputProps}
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    max="100"
-                    value={taxRatePercent}
-                    onChange={(e) => setTaxRatePercent(e.target.value)}
-                  />
-                )}
-              </Field>
+              <TaxRateSelectField value={taxRateId} onChange={setTaxRateId} taxRates={taxRates} defaultTaxRate={defaultTaxRate} />
             </div>
+
+            <TaxEstimateBox
+              priceLira={priceLira}
+              discountPriceLira={discountPriceLira}
+              currency={currency}
+              taxRateId={taxRateId}
+              taxRates={taxRates}
+              defaultTaxRate={defaultTaxRate}
+              pricesIncludeTax={pricesIncludeTax}
+            />
 
             <div className="grid gap-4 sm:grid-cols-2">
               <Field id="sku" label="SKU" hint="Opsiyonel.">

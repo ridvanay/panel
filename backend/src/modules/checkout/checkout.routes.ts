@@ -17,6 +17,7 @@ import { emitWebhookEvent } from "../../lib/webhook-emitter";
 import { buildWebhookOrderPayload } from "../../lib/webhook-order-payload";
 import { resolveUnitPriceCents } from "../../lib/product-pricing";
 import { computeShipping, type ShippingSettingsInput } from "../../lib/shipping";
+import { computeTaxBreakdown, type PriceTaxContext, type TaxRateLite } from "../../lib/tax";
 import { SETTINGS_ID } from "../settings/settings.routes";
 import { buildVariantLabel, type ProductVariantOption } from "../products/lib/variants";
 
@@ -48,6 +49,23 @@ async function readShippingSettings(app: FastifyInstance): Promise<ShippingSetti
   return {
     shippingFlatFeeCents: settings?.shippingFlatFeeCents ?? null,
     freeShippingThresholdCents: settings?.freeShippingThresholdCents ?? null,
+  };
+}
+
+/**
+ * Merkezi KDV oranı mimarisi (bkz. lib/tax.ts::PriceTaxContext) — `readShippingSettings` İLE AYNI
+ * gerekçeyle KOPYALANMIŞ tek-satırlık okuma (`cart.routes.ts::readTaxContext` İLE AYNI şekil).
+ */
+async function readTaxContext(app: FastifyInstance): Promise<PriceTaxContext> {
+  const settings = await app.prisma.siteSettings.findUnique({
+    where: { id: SETTINGS_ID },
+    select: { pricesIncludeTax: true, defaultTaxRate: { select: { id: true, name: true, ratePercent: true } } },
+  });
+  return {
+    pricesIncludeTax: settings?.pricesIncludeTax ?? true,
+    defaultTaxRate: settings?.defaultTaxRate
+      ? { id: settings.defaultTaxRate.id, name: settings.defaultTaxRate.name, ratePercent: Number(settings.defaultTaxRate.ratePercent) }
+      : null,
   };
 }
 
@@ -104,10 +122,15 @@ export async function checkoutRoutes(app: FastifyInstance) {
       // §1.6 (.claude/architect-scope-ecommerce-pro-template.md, bağlayıcı) — satılan birimin
       // varyasyonlu olup olmadığını çözebilmek için `variants` İLE BİRLİKTE okunur.
       const productIds = cart.items.map((item) => item.productId);
-      const freshProducts = await app.prisma.product.findMany({
-        where: { id: { in: productIds } },
-        include: { variants: true },
-      });
+      // Merkezi KDV oranı mimarisi — `taxRate` relation'ı taze okunur (`taxRateId` fiyat gibi
+      // DONDURULMAZ; checkout ANINDAKİ oran SNAPSHOT'lanır, bkz. aşağıdaki `orderItemsData`).
+      const [freshProducts, taxContext] = await Promise.all([
+        app.prisma.product.findMany({
+          where: { id: { in: productIds } },
+          include: { variants: true, taxRate: true },
+        }),
+        readTaxContext(app),
+      ]);
       const productById = new Map(freshProducts.map((product) => [product.id, product]));
 
       const orderItemsData: {
@@ -119,6 +142,8 @@ export async function checkoutRoutes(app: FastifyInstance) {
         unitPriceCents: number;
         quantity: number;
         lineTotalCents: number;
+        taxRatePercent: number | null;
+        taxCents: number;
       }[] = [];
 
       for (const cartItem of cart.items) {
@@ -152,6 +177,16 @@ export async function checkoutRoutes(app: FastifyInstance) {
         // §1.3 — `productSku` SATILAN BİRİMİN sku'sunu taşır (varsa varyasyonunki).
         const productSku = variant?.sku ?? product.sku;
 
+        // Merkezi KDV oranı mimarisi — ürünün KENDİ oranı varsa o, yoksa mağaza varsayılanı
+        // (bkz. lib/tax.ts). Kargo bu hesaba KATILMAZ (v1 kapsamı dışı).
+        const resolvedTaxRate: TaxRateLite | null = product.taxRate
+          ? { id: product.taxRate.id, name: product.taxRate.name, ratePercent: Number(product.taxRate.ratePercent) }
+          : taxContext.defaultTaxRate;
+        const { taxCents: lineTaxCents } = computeTaxBreakdown(
+          [{ unitPriceCents, quantity: cartItem.quantity, ratePercent: resolvedTaxRate?.ratePercent ?? 0 }],
+          { pricesIncludeTax: taxContext.pricesIncludeTax }
+        );
+
         orderItemsData.push({
           productId: product.id,
           productTitle: product.title,
@@ -161,17 +196,24 @@ export async function checkoutRoutes(app: FastifyInstance) {
           unitPriceCents,
           quantity: cartItem.quantity,
           lineTotalCents: unitPriceCents * cartItem.quantity,
+          taxRatePercent: resolvedTaxRate?.ratePercent ?? null,
+          taxCents: lineTaxCents,
         });
       }
 
       const currency = freshProducts[0]?.currency ?? cart.currency;
       const subtotalCents = orderItemsData.reduce((sum, item) => sum + item.lineTotalCents, 0);
+      // `pricesIncludeTax: true` iken `lineTotalCents` (dolayısıyla `subtotalCents`) ZATEN KDV
+      // DAHİLDİR — `taxCents` yalnızca FATURA/gösterim amaçlı ayrıştırmadır, `totalCents`e
+      // AYRICA EKLENMEZ. `false` iken `lineTotalCents` NET'tir — KDV `totalCents`e EKLENİR.
+      const taxCents = orderItemsData.reduce((sum, item) => sum + item.taxCents, 0);
 
       // §3.3 — kargo TEK yardımcıdan (computeShipping) hesaplanır, matematiği burada
-      // TEKRARLANMAZ. `totalCents = subtotalCents - discountCents + shippingCents`.
+      // TEKRARLANMAZ. `totalCents = subtotalCents - discountCents + shippingCents (+ taxCents,
+      // yalnızca pricesIncludeTax:false iken)`.
       const shippingSettings = await readShippingSettings(app);
       const shipping = computeShipping(subtotalCents, shippingSettings);
-      const totalCents = subtotalCents + shipping.feeCents;
+      const totalCents = subtotalCents + shipping.feeCents + (taxContext.pricesIncludeTax ? 0 : taxCents);
 
       // §3.5/§5.3 madde 4 (bağlayıcı) — onay ANI, isteğin İÇİNDEN gelen herhangi bir zaman damgası
       // KABUL EDİLMEDEN, sunucuda ÜRETİLİR. Zod `z.literal(true)` zaten `true` DIŞINDA bir değeri
@@ -191,7 +233,10 @@ export async function checkoutRoutes(app: FastifyInstance) {
           currency,
           subtotalCents,
           discountCents: 0,
-          taxCents: 0,
+          taxCents,
+          // Merkezi KDV oranı mimarisi — checkout ANINDAKİ `SiteSettings.pricesIncludeTax`
+          // SNAPSHOT'ı (bkz. prisma/schema.prisma::Order.pricesIncludeTax notu).
+          pricesIncludeTax: taxContext.pricesIncludeTax,
           shippingCents: shipping.feeCents,
           totalCents,
           items: { create: orderItemsData },
@@ -251,6 +296,22 @@ export async function checkoutRoutes(app: FastifyInstance) {
             currency: currency.toLowerCase(),
             unit_amount: shipping.feeCents,
             product_data: { name: "Kargo" },
+          },
+          quantity: 1,
+        });
+      }
+
+      // Merkezi KDV oranı mimarisi — `pricesIncludeTax: false` iken satır fiyatları NET'tir
+      // (KDV `totalCents`e YUKARIDA AYRICA eklendi); tahsil edilen tutar `totalCents` İLE BİREBİR
+      // AYNI olmak zorunda olduğundan (§3.3 İLE AYNI ilke) KDV de Kargo İLE AYNI desende AYRI
+      // bir `price_data` satırı olarak eklenir. `pricesIncludeTax: true` iken (varsayılan/tek
+      // eski davranış) KDV zaten satır fiyatlarına DAHİLDİR — ayrı bir satır EKLENMEZ.
+      if (!taxContext.pricesIncludeTax && taxCents > 0) {
+        lineItems.push({
+          price_data: {
+            currency: currency.toLowerCase(),
+            unit_amount: taxCents,
+            product_data: { name: "KDV" },
           },
           quantity: 1,
         });

@@ -9,6 +9,7 @@ import type {
   PortfolioCategory,
   PortfolioImage,
   Media,
+  TaxRate,
 } from "@prisma/client";
 import type {
   PublicBlogPostDto,
@@ -19,6 +20,7 @@ import type {
   PublicProductDto,
 } from "../../schemas/entities";
 import { absolutizeMediaUrl } from "../../mappers";
+import type { TaxRateLite } from "../../lib/tax";
 
 /**
  * §10.13.5 — public API'nin KENDİ DTO mapper'ları. Admin mapper'ları (`mappers/index.ts::
@@ -80,9 +82,28 @@ type PublicProductRow = Product & {
   category: ProductCategory | null;
   coverMedia: Media | null;
   images: (ProductImage & { media: Media })[];
+  // Merkezi KDV oranı mimarisi (bkz. lib/tax.ts) — relation OPSİYONELDİR: çağıran taraf
+  // `include: { taxRate: true }` ile getirdiyse kullanılır (bkz. products.routes.ts::
+  // WITH_RELATIONS, webhook payload'ları BU relation'ı taşır); `/public/products*` (bkz.
+  // public-api.routes.ts::PRODUCT_WITH_RELATIONS) henüz taşımıyor — bu durumda `defaultTaxRate`
+  // parametresine, o da yoksa ESKİ (deprecated) `taxRatePercent` ham koluna düşülür (regresyon
+  // ÖNLEME — relation/parametre sağlanmadan önceki davranışla BİREBİR aynı kalır).
+  taxRate?: Pick<TaxRate, "id" | "name" | "ratePercent"> | null;
 };
 
-export function toPublicProductDto(product: PublicProductRow): PublicProductDto {
+/**
+ * `defaultTaxRate` — çağıran taraf `SiteSettings.defaultTaxRateId`nin çözümlenmiş hâlini
+ * (bkz. lib/tax.ts::TaxRateLite) verebilir; vermezse (mevcut `/public/products*` uçları) ve
+ * `product.taxRate` relation'ı da fetch edilmediyse ham (deprecated) kolona düşülür.
+ */
+export function toPublicProductDto(product: PublicProductRow, defaultTaxRate: TaxRateLite | null = null): PublicProductDto {
+  const resolvedRatePercent = product.taxRate
+    ? Number(product.taxRate.ratePercent)
+    : product.taxRateId
+      ? null // relation fetch edilmedi ama ürünün KENDİ bir oranı VAR — yanlış (varsayılan) oranı sızdırmamak için null.
+      : (defaultTaxRate?.ratePercent ??
+        (product.taxRatePercent !== null && product.taxRatePercent !== undefined ? Number(product.taxRatePercent) : null));
+
   return {
     id: product.id,
     title: product.title,
@@ -92,7 +113,7 @@ export function toPublicProductDto(product: PublicProductRow): PublicProductDto 
     priceCents: product.priceCents,
     discountPriceCents: product.discountPriceCents,
     currency: product.currency,
-    taxRatePercent: product.taxRatePercent !== null && product.taxRatePercent !== undefined ? String(product.taxRatePercent) : null,
+    taxRatePercent: resolvedRatePercent !== null ? String(resolvedRatePercent) : null,
     sku: product.sku,
     // §10.13.5 bağlayıcı karar — ham `stockQuantity` DÖNMEZ, yalnızca türetilmiş boolean.
     inStock: product.stockQuantity > 0,

@@ -29,6 +29,7 @@ import { adminSlidersRoutes, publicSlidersRoutes } from "./modules/sliders/slide
 import { adminMediaRoutes } from "./modules/media/media.routes";
 import { adminStatsRoutes } from "./modules/stats/stats.routes";
 import { adminSettingsRoutes, publicSettingsRoutes } from "./modules/settings/settings.routes";
+import { adminTaxRatesRoutes } from "./modules/tax/tax.routes";
 import { adminAppearanceRoutes, publicAppearanceRoutes } from "./modules/appearance/appearance.routes";
 import { adminDemoTemplatesRoutes } from "./modules/demo-templates/demo-templates.routes";
 import { adminSiteModulesRoutes, publicModulesRoutes } from "./modules/site-modules/site-modules.routes";
@@ -178,6 +179,8 @@ export function buildApp() {
       api.register(adminStatsRoutes, { prefix: "/admin/stats" });
       api.register(publicSettingsRoutes, { prefix: "/settings" });
       api.register(adminSettingsRoutes, { prefix: "/admin/settings" });
+      // Merkezi KDV oranı mimarisi — bkz. modules/tax/tax.routes.ts.
+      api.register(adminTaxRatesRoutes, { prefix: "/admin/tax-rates" });
       // §10.12 Site Özelleştirme — bkz. ARCHITECTURE.md §10.12. `/admin/settings` NASIL ÇALIŞTIĞI,
       // bu ise NASIL GÖRÜNDÜĞÜ (rota sınırı §10.12.1).
       api.register(publicAppearanceRoutes, { prefix: "/appearance" });

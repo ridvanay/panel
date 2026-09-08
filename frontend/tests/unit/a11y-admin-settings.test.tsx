@@ -8,11 +8,18 @@ import type { AdminSiteSettings, PermissionsMatrix } from "@/lib/api/types";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/admin/settings",
+  useSearchParams: () => new URLSearchParams(),
 }));
 vi.mock("@/lib/api/settings", () => ({
   getSettings: vi.fn(),
   updateSettings: vi.fn(),
   getPermissionsMatrix: vi.fn(),
+}));
+vi.mock("@/lib/api/tax", () => ({
+  listTaxRates: vi.fn().mockResolvedValue([]),
+  createTaxRate: vi.fn(),
+  updateTaxRate: vi.fn(),
+  deleteTaxRate: vi.fn(),
 }));
 vi.mock("@/lib/api/pages", () => ({ listPages: vi.fn() }));
 vi.mock("@/lib/api/locales", () => ({ listAdminLocales: vi.fn().mockResolvedValue([]) }));
@@ -35,6 +42,9 @@ const settings: AdminSiteSettings = {
   shippingEstimatedDaysMin: null,
   shippingEstimatedDaysMax: null,
   orderNotificationEmail: null,
+  pricesIncludeTax: true,
+  defaultTaxRateId: null,
+  defaultTaxRate: null,
 };
 const permissions: PermissionsMatrix = {
   roles: ["ADMIN", "MANAGER", "EDITOR", "CUSTOMER", "USER"],

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { ProductCardMedia } from "@/components/site/product-card-media";
 import { CartProvider } from "@/context/cart-context";
-import type { Cart } from "@/lib/api/types";
+import type { Cart, TaxSummary } from "@/lib/api/types";
 
 // `ProductCardMedia` `FavoriteButton`'ı render eder — `useRouter`/`usePathname` bir Next.js app
 // router olmadan fırlatır (`product-card.test.tsx` ile AYNI mock deseni).
@@ -33,12 +33,15 @@ vi.mock("@/components/site/safe-image", () => ({
   ),
 }));
 
+const NO_TAX: TaxSummary = { includedInPrice: true, totalTaxCents: 0, breakdown: [] };
+
 const EMPTY_CART: Cart = {
   items: [],
   currency: null,
   subtotalCents: 0,
   shipping: { configured: false, feeCents: 0, thresholdCents: null, remainingCents: null, isFree: false },
   totalCents: 0,
+  tax: NO_TAX,
 };
 
 function renderMedia(overrides: Partial<Parameters<typeof ProductCardMedia>[0]> = {}) {

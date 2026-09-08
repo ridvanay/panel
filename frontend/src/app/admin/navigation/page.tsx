@@ -534,6 +534,7 @@ function AdminNavigationPageContent() {
     freeShippingThresholdCents: null,
     shippingEstimatedDaysMin: null,
     shippingEstimatedDaysMax: null,
+    pricesIncludeTax: true,
   };
   // Henüz label/href doldurulmamış yeni eklenen satırlar önizlemeye YANSITILMAZ — aksi halde
   // SiteHeader/SiteFooter bunları `<a href="">` (erişilebilir ismi olmayan link, axe-core

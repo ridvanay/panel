@@ -24,6 +24,10 @@ export const CATALOG_LIST_RELATIONS = {
   coverMedia: true,
   images: { include: { media: true }, orderBy: { order: "asc" as const } },
   variants: { include: { media: true }, orderBy: { order: "asc" as const } },
+  // Merkezi KDV oranı mimarisi (bkz. lib/tax.ts) — ürünün KENDİ seçtiği oran; `toProductDto`
+  // bunu okur (products.routes.ts::WITH_RELATIONS İLE AYNI gerekçe, `ProductListItem.taxRateId`
+  // ürünün KENDİ override'ını yansıtmak ZORUNDA, mağaza varsayılanına yanlış düşmemeli).
+  taxRate: true,
 } as const;
 
 export interface CatalogQueryParams {

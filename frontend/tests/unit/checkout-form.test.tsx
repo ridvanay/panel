@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import CheckoutPage from "@/app/[lang]/(site)/checkout/page";
 import { CartProvider } from "@/context/cart-context";
 import { ApiClientError } from "@/lib/api/error";
-import type { Cart } from "@/lib/api/types";
+import type { Cart, TaxSummary } from "@/lib/api/types";
 
 vi.mock("next/navigation", () => ({
   useParams: () => ({}),
@@ -41,11 +41,14 @@ const NOT_CONFIGURED_SHIPPING: Cart["shipping"] = {
   isFree: false,
 };
 
+const NO_TAX: TaxSummary = { includedInPrice: true, totalTaxCents: 0, breakdown: [] };
+
 const cartWithItems: Cart = {
   currency: "TRY",
   subtotalCents: 15000,
   shipping: NOT_CONFIGURED_SHIPPING,
   totalCents: 15000,
+  tax: NO_TAX,
   items: [
     {
       id: "item-1",
@@ -57,6 +60,8 @@ const cartWithItems: Cart = {
       frozenUnitPriceCents: 15000,
       currentPriceCents: 15000,
       lineTotalCents: 15000,
+      taxRatePercent: null,
+      taxCents: 0,
     },
   ],
 };
@@ -112,6 +117,7 @@ describe("CheckoutPage — form doğrulaması", () => {
       items: [],
       shipping: NOT_CONFIGURED_SHIPPING,
       totalCents: 0,
+      tax: NO_TAX,
     });
 
     renderCheckout();

@@ -12,12 +12,14 @@ import { generateOpaqueToken, hashToken } from "../../lib/tokens";
 import { CART_COOKIE_NAME, CART_TOKEN_TTL_DAYS, cartCookieOptions } from "../../lib/cookies";
 import { resolveUnitPriceCents } from "../../lib/product-pricing";
 import { computeShipping, type ShippingSettingsInput } from "../../lib/shipping";
+import { type PriceTaxContext } from "../../lib/tax";
 import { SETTINGS_ID } from "../settings/settings.routes";
 import { AddCartItemRequestSchema, CartItemIdParamSchema, UpdateCartItemRequestSchema } from "./cart.schemas";
 
 /** `GET /cart`/`POST /cart/items` yanıtlarında ürün join'i için ortak `include` şekli.
  * `variantOptions` (product) + `variant` (item) — CartItemDto.variantLabel/stok TÜRETİMİ için
- * (bkz. mappers/index.ts::toCartItemDto, CartItem'da AYRICA saklanmaz). */
+ * (bkz. mappers/index.ts::toCartItemDto, CartItem'da AYRICA saklanmaz). `taxRateId`/`taxRate` —
+ * merkezi KDV oranı mimarisi (bkz. lib/tax.ts), satır bazlı KDV hesabı için gerekir. */
 const WITH_ITEMS = {
   items: {
     include: {
@@ -32,6 +34,8 @@ const WITH_ITEMS = {
           currency: true,
           coverMedia: true,
           variantOptions: true,
+          taxRateId: true,
+          taxRate: { select: { id: true, name: true, ratePercent: true } },
         },
       },
       variant: true,
@@ -60,6 +64,23 @@ async function readShippingSettings(app: FastifyInstance): Promise<ShippingSetti
 }
 
 /**
+ * Merkezi KDV oranı mimarisi (bkz. lib/tax.ts::PriceTaxContext) — `readShippingSettings` İLE AYNI
+ * TEK-satırlık-okuma deseni, sepet okuma ANINDA (fiyat gibi DONDURULMAZ) uygulanır.
+ */
+async function readTaxContext(app: FastifyInstance): Promise<PriceTaxContext> {
+  const settings = await app.prisma.siteSettings.findUnique({
+    where: { id: SETTINGS_ID },
+    select: { pricesIncludeTax: true, defaultTaxRate: { select: { id: true, name: true, ratePercent: true } } },
+  });
+  return {
+    pricesIncludeTax: settings?.pricesIncludeTax ?? true,
+    defaultTaxRate: settings?.defaultTaxRate
+      ? { id: settings.defaultTaxRate.id, name: settings.defaultTaxRate.name, ratePercent: Number(settings.defaultTaxRate.ratePercent) }
+      : null,
+  };
+}
+
+/**
  * Cookie'deki opak token'ın hash'iyle SÜRESİ GEÇMEMİŞ bir `Cart` arar. Cookie yoksa VEYA
  * eşleşen/geçerli bir sepet yoksa `null` döner — ÇAĞIRAN TARAF karar verir: `GET /cart` boş
  * sepet döner, `POST /cart/items` yeni bir sepet+token oluşturur (lazy create, bkz. görev notu).
@@ -84,14 +105,23 @@ export async function cartRoutes(app: FastifyInstance) {
     { schema: { response: { 200: ApiSuccessSchema(CartSchema) } } },
     async (request, reply) => {
       const cart = await findCartFromCookie(app, request);
-      const shippingSettings = await readShippingSettings(app);
+      const [shippingSettings, taxContext] = await Promise.all([readShippingSettings(app), readTaxContext(app)]);
 
       if (!cart) {
         const shipping = computeShipping(0, shippingSettings);
-        return reply.send(ok({ items: [], currency: null, subtotalCents: 0, shipping, totalCents: 0 }));
+        return reply.send(
+          ok({
+            items: [],
+            currency: null,
+            subtotalCents: 0,
+            shipping,
+            totalCents: 0,
+            tax: { includedInPrice: taxContext.pricesIncludeTax, totalTaxCents: 0, breakdown: [] },
+          })
+        );
       }
 
-      return reply.send(ok(toCartDto(cart.items, cart.currency, shippingSettings)));
+      return reply.send(ok(toCartDto(cart.items, cart.currency, shippingSettings, taxContext)));
     }
   );
 
@@ -177,8 +207,8 @@ export async function cartRoutes(app: FastifyInstance) {
         reply.setCookie(CART_COOKIE_NAME, rawToken, cartCookieOptions());
       }
 
-      const shippingSettings = await readShippingSettings(app);
-      return reply.code(201).send(ok(toCartDto(finalCart.items, finalCart.currency, shippingSettings)));
+      const [shippingSettings, taxContext] = await Promise.all([readShippingSettings(app), readTaxContext(app)]);
+      return reply.code(201).send(ok(toCartDto(finalCart.items, finalCart.currency, shippingSettings, taxContext)));
     }
   );
 
@@ -199,8 +229,8 @@ export async function cartRoutes(app: FastifyInstance) {
       await app.prisma.cartItem.update({ where: { id: item.id }, data: { quantity: request.body.quantity } });
 
       const finalCart = await app.prisma.cart.findUniqueOrThrow({ where: { id: cart.id }, include: WITH_ITEMS });
-      const shippingSettings = await readShippingSettings(app);
-      return reply.send(ok(toCartDto(finalCart.items, finalCart.currency, shippingSettings)));
+      const [shippingSettings, taxContext] = await Promise.all([readShippingSettings(app), readTaxContext(app)]);
+      return reply.send(ok(toCartDto(finalCart.items, finalCart.currency, shippingSettings, taxContext)));
     }
   );
 
