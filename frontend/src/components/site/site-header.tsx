@@ -18,7 +18,7 @@ import {
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Accordion, AccordionItem, AccordionPanel, AccordionTrigger } from "@/components/ui/accordion";
 import { LanguageSwitcher } from "@/components/site/language-switcher";
-import { HeaderSearch } from "@/components/site/header-search";
+import { HeaderSearchPanel, HeaderSearchTrigger, useHeaderSearch } from "@/components/site/header-search";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
 import { NAVIGATION_MAX_DEPTH } from "@/lib/navigation-constants";
 import type { Locale, NavigationItemDto, SiteButtonStyle, SitePage, SiteSettings } from "@/lib/api/types";
@@ -381,6 +381,10 @@ export function SiteHeader({
   const localize = (path: string) =>
     activeLocale ? withLocalePrefix(path, activeLocale.code, defaultLocaleCode) : path;
 
+  // design-notes-instant-search.md §1(b)/(c)/(d) — tek arama state'i, tetikleyici (nav'ın sağ ikon
+  // grubunun içinde) ve panel (nav'ın DOĞRUDAN sonrasındaki bağımsız sibling) arasında paylaşılır.
+  const search = useHeaderSearch({ localize });
+
   return (
     <header
       className={cn(
@@ -394,7 +398,7 @@ export function SiteHeader({
       )}
     >
       <nav
-        className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6"
+        className="mx-auto flex h-20 max-w-5xl flex-nowrap items-center justify-between gap-4 px-4 sm:px-6"
         aria-label="Site gezinme"
       >
         <Link href={localize("/")} className="flex items-center gap-2 text-lg font-semibold text-foreground">
@@ -499,11 +503,17 @@ export function SiteHeader({
           })}
         </div>
 
-        {/* design-notes-instant-search.md §1(a) — nav-link kümesinin kapanışından HEMEN SONRA,
-            hesap eylemleri kümesinin İÇİNDE DEĞİL; `productsModuleEnabled` sepet/favori ile AYNI koşul. */}
-        {productsModuleEnabled && <HeaderSearch localize={localize} />}
+        {/* design-notes-instant-search.md §1(a)/(b) — arama tetikleyicisi artık sağ eylem ikonları
+            grubunun İÇİNDE, en solda; `productsModuleEnabled` sepet/favori ile AYNI koşul. */}
+        <div className="flex items-center gap-3 shrink-0">
+          {productsModuleEnabled && (
+            <HeaderSearchTrigger
+              panelOpen={search.panelOpen}
+              togglePanel={search.togglePanel}
+              triggerRef={search.triggerRef}
+            />
+          )}
 
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
           {showCta && (
             // §10.12.4 — `--site-button`/`--site-button-text` (`.site-scope` altında satır-içi
             // yazılır, bkz. globals.css `.site-scope` fallback bloğu). Admin'in `--primary`
@@ -604,6 +614,24 @@ export function SiteHeader({
           )}
         </div>
       </nav>
+
+      {/* design-notes-instant-search.md §1(d) — nav'ın DOĞRUDAN sonrasına gelen bağımsız sibling,
+          edge-to-edge tam genişlik; `<nav>`in flex-nowrap davranışına hiç bağımlı değil. */}
+      {productsModuleEnabled && (
+        <HeaderSearchPanel
+          panelOpen={search.panelOpen}
+          inputRef={search.inputRef}
+          inputValue={search.inputValue}
+          handleInputChange={search.handleInputChange}
+          handleFocus={search.handleFocus}
+          handleKeyDown={search.handleKeyDown}
+          handleOpenChange={search.handleOpenChange}
+          resultsOpen={search.resultsOpen}
+          activeDescendantId={search.activeDescendantId}
+          renderBody={search.renderBody}
+          liveMessage={search.liveMessage}
+        />
+      )}
     </header>
   );
 }

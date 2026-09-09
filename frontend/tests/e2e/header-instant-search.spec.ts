@@ -54,9 +54,16 @@ test.afterAll(async () => {
   if (category) await adminDeleteProductCategory(adminToken, category.id);
 });
 
-/** Header'daki masaüstü (≥1024px, varsayılan Playwright viewport'u zaten bunun üstünde) kalıcı
- *  arama input'u — `header-search.tsx`'teki `aria-label="Ürün ara"` `role="combobox"`. */
-function searchInput(page: import("@playwright/test").Page) {
+/**
+ * qa-agent BULGUSU (bu turda düzeltildi, bkz. dosya başlığı) — arama artık nav'ın İÇİNDE kalıcı
+ * bir input DEĞİL; tek bir tetikleyici ikon-buton (`HeaderSearchTrigger`, `aria-label="Ara"`) +
+ * tıklanınca `<nav>`in altında açılan bağımsız bir panel (`HeaderSearchPanel`,
+ * `aria-label="Ürün ara"` `role="combobox"` input, bkz. `header-search.tsx` başlık notu). Panel
+ * açılınca input otomatik odaklanır (`useHeaderSearch`'teki `useEffect`), bu yüzden ayrıca
+ * `input.click()` GEREKMEZ.
+ */
+async function openSearchInput(page: import("@playwright/test").Page) {
+  await page.getByRole("button", { name: "Ara", exact: true }).click();
   return page.getByRole("combobox", { name: "Ürün ara" });
 }
 
@@ -68,8 +75,7 @@ test("1 karakterde istek atılmaz ve popover açılmaz", async ({ page }) => {
   });
 
   await page.goto("/");
-  const input = searchInput(page);
-  await input.click();
+  const input = await openSearchInput(page);
   await input.fill(SEARCH_TERM.slice(0, 1));
   // Debounce (250ms) + ağ gecikmesi payı — istek ASLA atılmamalı (min 2 karakter kuralı §1.6-b).
   await page.waitForTimeout(600);
@@ -82,8 +88,7 @@ test("≥2 karakterde açılır kutuda ürün VE kategori grubu görünür, sonu
   page,
 }) => {
   await page.goto("/");
-  const input = searchInput(page);
-  await input.click();
+  const input = await openSearchInput(page);
   await input.fill(SEARCH_TERM);
 
   const listbox = page.getByRole("listbox", { name: "Arama sonuçları" });
@@ -105,8 +110,7 @@ test("≥2 karakterde açılır kutuda ürün VE kategori grubu görünür, sonu
 
 test("bulunamayan terimde boş durum metni gösterilir", async ({ page }) => {
   await page.goto("/");
-  const input = searchInput(page);
-  await input.click();
+  const input = await openSearchInput(page);
   await input.fill(NO_MATCH_TERM);
 
   await expect(page.getByText(`"${NO_MATCH_TERM}" için sonuç bulunamadı`)).toBeVisible({ timeout: 5_000 });
@@ -114,8 +118,7 @@ test("bulunamayan terimde boş durum metni gösterilir", async ({ page }) => {
 
 test("'Tüm sonuçları gör' katalog sayfasına (/products?search=...) geçer ve ürünü orada gösterir", async ({ page }) => {
   await page.goto("/");
-  const input = searchInput(page);
-  await input.click();
+  const input = await openSearchInput(page);
   await input.fill(SEARCH_TERM);
 
   const listbox = page.getByRole("listbox", { name: "Arama sonuçları" });

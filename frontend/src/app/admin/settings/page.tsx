@@ -27,6 +27,7 @@ import { cn } from "@/lib/utils";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { useUnsavedChangesGuard } from "@/hooks/use-unsaved-changes-guard";
 import { useT } from "@/context/i18n-context";
+import { useModules } from "@/context/modules-context";
 import type { SiteTemplate } from "@/lib/api/types";
 import {
   AlertCircle,
@@ -108,6 +109,26 @@ function AdminSettingsPageContent() {
   // render'da okunur, sonraki sekme değişiklikleri normal `activeTab` state'iyle yönetilir.
   const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState(() => (searchParams.get("tab") === "tax" ? "tax" : "general"));
+
+  // `admin/navigation/page.tsx:412`teki AYNI desen — backend `MODULE_REGISTRY`de "ecommerce" diye
+  // ayrı bir key YOK, "% Vergi Sınıfları" sekmesi SADECE "products" modülüne bağlıdır.
+  const { isModuleEnabled, loading: modulesLoading } = useModules();
+  const productsModuleEnabled = isModuleEnabled("products");
+
+  // Modüller yüklenmeden ÖNCE `isModuleEnabled` kayıtsız/henüz-bilinmeyen bir key için `true`
+  // döner (bkz. `modules-context.tsx` JSDoc'u) — yani sekme geçici olarak görünür kalabilir, bu
+  // sidebar filtresiyle AYNI, KABUL EDİLEBİLİR bir davranıştır. Ancak modüller yüklendikten SONRA
+  // "products" kapalıysa ve kullanıcı hâlâ (ör. `?tab=tax` deep-link'i ile) "tax" sekmesindeyse
+  // "general"a yönlendir. `useEffect` içinde senkron `setState` YERİNE (react-hooks/set-state-in-effect,
+  // cascading render uyarısı) React'ın önerdiği "render sırasında ayarla" deseni kullanılır — bu,
+  // `loading -> loaded` geçişini SADECE BİR KEZ yakalayan bir `modulesReady` bayrağıyla yapılır.
+  const [modulesReady, setModulesReady] = useState(false);
+  if (!modulesLoading && !modulesReady) {
+    setModulesReady(true);
+    if (!productsModuleEnabled && activeTab === "tax") {
+      setActiveTab("general");
+    }
+  }
 
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -299,10 +320,12 @@ function AdminSettingsPageContent() {
             Genel Ayarlar
             {hasUnsavedChanges && <span className="ml-1 h-1.5 w-1.5 rounded-full bg-warning" aria-hidden="true" />}
           </TabsTrigger>
-          <TabsTrigger value="tax">
-            <Percent className="h-3.5 w-3.5" />
-            Vergi Sınıfları
-          </TabsTrigger>
+          {productsModuleEnabled && (
+            <TabsTrigger value="tax">
+              <Percent className="h-3.5 w-3.5" />
+              Vergi Sınıfları
+            </TabsTrigger>
+          )}
           <TabsTrigger value="security">
             <ShieldCheck className="h-3.5 w-3.5" />
             Güvenlik &amp; Rol İzinleri
@@ -487,11 +510,13 @@ function AdminSettingsPageContent() {
           </motion.div>
         </TabsContent>
 
-        <TabsContent value="tax" className="mt-6 outline-none">
-          <motion.div variants={cardVariants} initial="hidden" animate="show">
-            <TaxSettingsSection />
-          </motion.div>
-        </TabsContent>
+        {productsModuleEnabled && (
+          <TabsContent value="tax" className="mt-6 outline-none">
+            <motion.div variants={cardVariants} initial="hidden" animate="show">
+              <TaxSettingsSection />
+            </motion.div>
+          </TabsContent>
+        )}
 
         <TabsContent value="security" className="mt-6 outline-none">
           <motion.div variants={cardVariants} initial="hidden" animate="show">

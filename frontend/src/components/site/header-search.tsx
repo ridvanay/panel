@@ -5,14 +5,16 @@
  *
  * Kontrat: `.claude/architect-scope-search-and-order-emails.md` §1 (BAĞLAYICI).
  * Görsel spesifikasyon: `.claude/design-notes-instant-search.md` (BİREBİR uygulanır, burada
- * yeniden görsel karar VERİLMEZ).
+ * yeniden görsel karar VERİLMEZ) — §1(b)/(c)/(d) tek-pattern (mobil+masaüstü ORTAK tetikleyici/panel)
+ * davranışını yansıtacak şekilde güncellenmiştir, §0/§2-§7 DEĞİŞMEMİŞTİR.
  *
- * Tek bir `<HeaderSearch />` örneği hem mobil ikon-tetikleyici + genişleyen ikinci satırı hem de
- * masaüstü kalıcı input'u kapsar (state paylaşımı için tek bileşen). Mobil açılır satır, tasarım
- * notundaki illüstratif "header'ın sibling'i" yerleşimi yerine `<nav>`in KENDİ `flex-wrap`
- * davranışından yararlanan `order-last basis-full` ile aynı GÖRSEL sonucu (tam genişlik ikinci
- * satır) üretir — §1(a)'nın BAĞLAYICI kısmı ("`<HeaderSearch />`, `<nav>`in DOĞRUDAN çocuğu")
- * ile çelişmeden, `<header>` seviyesine çıkmak için portal gerektirmeyen eşdeğer bir teknik.
+ * Tek bir arama state'i (`useHeaderSearch`) iki AYRI prezentasyonel bileşene dağıtılır:
+ * - `HeaderSearchTrigger`: `site-header.tsx`'teki sağ eylem ikonları grubunun İÇİNDE render edilen
+ *   ikon-buton (nav'ın flex-child'ı).
+ * - `HeaderSearchPanel`: `<header>` içinde `<nav>`in DOĞRUDAN sonrasına gelen bağımsız bir sibling
+ *   `<div>` olarak render edilen, açılınca beliren tam-genişlik arama satırı.
+ * Bu ayrım, tetikleyicinin nav'ın sağ ikon kümesinde kalmasına İZİN VERİRKEN panelin nav'ın
+ * `flex-wrap`/`flex-nowrap` davranışına hiç bağımlı olmamasını sağlar (bkz. `site-header.tsx`).
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -32,7 +34,6 @@ const MIN_CHARS = 2;
 const DEBOUNCE_MS = 250;
 
 type SearchStatus = "idle" | "loading" | "success" | "error";
-type ActiveInstance = "desktop" | "mobile" | null;
 
 interface FlatResultItem {
   href: string;
@@ -47,29 +48,37 @@ export interface HeaderSearchProps {
 const INPUT_BASE_CLASSES =
   "rounded-[var(--site-radius)] border border-border bg-[var(--site-surface,transparent)] pl-8 pr-3 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
 
+/** Tetikleyici ikon-buton sınıfları — sepet/favori ikonlarıyla AYNI görsel aile (`ICON_LINK_TEXT_CLASSES`). */
+const TRIGGER_BUTTON_CLASSES =
+  "inline-flex h-9 w-9 items-center justify-center rounded-lg text-[var(--site-header-link)] transition-colors hover:bg-surface-muted hover:text-[var(--site-header-link-hover)]";
+
 const ROW_CLASSES = "flex items-center gap-3 px-3 py-2 outline-none hover:bg-muted focus-visible:bg-muted";
 
-export function HeaderSearch({ localize }: HeaderSearchProps) {
+/**
+ * Tüm arama mantığını (debounce/cache/abort, klavye navigasyonu, açık/kapalı state'i) tek bir yerde
+ * tutan hook — `site-header.tsx` bunu bir kez çağırır, dönen değerleri `HeaderSearchTrigger` ve
+ * `HeaderSearchPanel`e prop olarak dağıtır (bkz. dosya başı notu).
+ */
+export function useHeaderSearch({ localize }: HeaderSearchProps) {
   const router = useRouter();
 
   const [inputValue, setInputValue] = useState("");
   const [status, setStatus] = useState<SearchStatus>("idle");
   const [result, setResult] = useState<ProductSearchResult | null>(null);
   const [highlightedIndex, setHighlightedIndex] = useState<number | null>(null);
-  const [activeInstance, setActiveInstance] = useState<ActiveInstance>(null);
+  /** Kullanıcının sonuç popover'ını görmek isteyip istemediği (input odaklandığında `true` olur). */
   const [wantsOpen, setWantsOpen] = useState(false);
-  const [mobileRowOpen, setMobileRowOpen] = useState(false);
+  /** Arama satırının (tetikleyici ikon-butonla açılıp kapanan) kendisi açık mı. */
+  const [panelOpen, setPanelOpen] = useState(false);
 
   // Terim → sonuç eşlemesi bileşen ömrü boyunca bellekte (§1.6 madde d).
   const cacheRef = useRef<Map<string, ProductSearchResult>>(new Map());
   const abortRef = useRef<AbortController | null>(null);
-  const desktopInputRef = useRef<HTMLInputElement | null>(null);
-  const mobileInputRef = useRef<HTMLInputElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
 
   const trimmed = inputValue.trim();
-  const shouldShow = wantsOpen && trimmed.length >= MIN_CHARS;
-  const desktopOpen = shouldShow && activeInstance === "desktop";
-  const mobileOpen = shouldShow && activeInstance === "mobile";
+  const resultsOpen = wantsOpen && trimmed.length >= MIN_CHARS;
 
   const runSearch = useCallback(async (term: string) => {
     const cached = cacheRef.current.get(term);
@@ -141,14 +150,12 @@ export function HeaderSearch({ localize }: HeaderSearchProps) {
         ? "Arama şu anda kullanılamıyor"
         : "";
 
-  function closeAll() {
+  function closeResults() {
     setWantsOpen(false);
-    setActiveInstance(null);
     setHighlightedIndex(null);
   }
 
-  function handleFocus(instance: ActiveInstance) {
-    setActiveInstance(instance);
+  function handleFocus() {
     setWantsOpen(true);
   }
 
@@ -156,7 +163,25 @@ export function HeaderSearch({ localize }: HeaderSearchProps) {
     if (!open) setWantsOpen(false);
   }
 
-  function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>, instance: ActiveInstance) {
+  /** Paneli tamamen kapatır: sonuç popover'ı + arama satırının kendisi + input değeri sıfırlanır. */
+  function closePanel() {
+    closeResults();
+    setPanelOpen(false);
+    setInputValue("");
+  }
+
+  function togglePanel() {
+    setPanelOpen((prev) => {
+      const next = !prev;
+      if (!next) {
+        setInputValue("");
+        closeResults();
+      }
+      return next;
+    });
+  }
+
+  function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
     if (event.key === "ArrowDown") {
       if (flatItems.length === 0) return;
       event.preventDefault();
@@ -170,39 +195,26 @@ export function HeaderSearch({ localize }: HeaderSearchProps) {
       event.preventDefault();
       const target = highlightedIndex !== null ? flatItems[highlightedIndex]?.href : catalogHref;
       if (target) {
-        closeAll();
+        closeResults();
         router.push(target);
       }
     } else if (event.key === "Escape") {
-      closeAll();
-      // §6 — mobil açılır satırda Esc HEM popover'ı HEM satırın kendisini kapatır.
-      if (instance === "mobile") {
-        setMobileRowOpen(false);
-        setInputValue("");
-      }
+      // §6 — Esc HEM sonuç popover'ını HEM arama satırının kendisini kapatır, odak tetikleyici
+      // ikona geri döner.
+      closePanel();
+      triggerRef.current?.focus();
     }
   }
 
   function handleSelect() {
-    closeAll();
-  }
-
-  function toggleMobileRow() {
-    setMobileRowOpen((prev) => {
-      const next = !prev;
-      if (!next) {
-        setInputValue("");
-        closeAll();
-      }
-      return next;
-    });
+    closeResults();
   }
 
   useEffect(() => {
-    if (mobileRowOpen) {
-      mobileInputRef.current?.focus();
+    if (panelOpen) {
+      inputRef.current?.focus();
     }
-  }, [mobileRowOpen]);
+  }, [panelOpen]);
 
   function renderBody() {
     const footer = (
@@ -371,25 +383,75 @@ export function HeaderSearch({ localize }: HeaderSearchProps) {
 
   const activeDescendantId = highlightedIndex !== null ? `header-search-option-${highlightedIndex}` : undefined;
 
+  return {
+    panelOpen,
+    togglePanel,
+    inputRef,
+    triggerRef,
+    inputValue,
+    handleInputChange,
+    handleFocus,
+    handleKeyDown,
+    handleOpenChange,
+    resultsOpen,
+    activeDescendantId,
+    renderBody,
+    liveMessage,
+  };
+}
+
+export type UseHeaderSearchReturn = ReturnType<typeof useHeaderSearch>;
+
+/**
+ * `site-header.tsx`'teki sağ eylem ikonları grubunun İÇİNDE, en solda render edilen tek tetikleyici
+ * (`aria-label`/`aria-expanded` panel açık/kapalı durumunu yansıtır).
+ */
+export function HeaderSearchTrigger({
+  panelOpen,
+  togglePanel,
+  triggerRef,
+}: Pick<UseHeaderSearchReturn, "panelOpen" | "togglePanel" | "triggerRef">) {
   return (
-    <>
+    <button
+      ref={triggerRef}
+      type="button"
+      aria-label={panelOpen ? "Aramayı kapat" : "Ara"}
+      aria-expanded={panelOpen}
+      onClick={togglePanel}
+      className={TRIGGER_BUTTON_CLASSES}
+    >
+      <Search className="h-5 w-5" aria-hidden="true" />
+    </button>
+  );
+}
+
+/**
+ * `<header>` içinde `<nav>`in DOĞRUDAN sonrasına gelen bağımsız sibling — edge-to-edge tam genişlik,
+ * açılış animasyonu `animate-in fade-in-0 slide-in-from-top-2 duration-150` (proje genelinde zaten
+ * kullanılan `tw-animate-css` sınıfları, bkz. `admin/appearance/page.tsx`/`popover.tsx`).
+ */
+export function HeaderSearchPanel({
+  panelOpen,
+  inputRef,
+  inputValue,
+  handleInputChange,
+  handleFocus,
+  handleKeyDown,
+  handleOpenChange,
+  resultsOpen,
+  activeDescendantId,
+  renderBody,
+  liveMessage,
+}: Omit<UseHeaderSearchReturn, "panelOpen" | "togglePanel" | "triggerRef"> & { panelOpen: boolean }) {
+  if (!panelOpen) return null;
+
+  return (
+    <div className="animate-in fade-in-0 slide-in-from-top-2 border-t border-border/60 px-4 py-2.5 duration-150 sm:px-6">
       <span aria-live="polite" className="sr-only">
         {liveMessage}
       </span>
-
-      {/* §1(b) < 1024px — ikon-buton tetikleyici. */}
-      <button
-        type="button"
-        aria-label={mobileRowOpen ? "Aramayı kapat" : "Ürün ara"}
-        onClick={toggleMobileRow}
-        className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-[var(--site-header-link)] transition-colors hover:bg-surface-muted hover:text-[var(--site-header-link-hover)] lg:hidden"
-      >
-        <Search className="h-5 w-5" aria-hidden="true" />
-      </button>
-
-      {/* §1(c) ≥ 1024px — kalıcı input. */}
-      <Popover open={desktopOpen} onOpenChange={handleOpenChange}>
-        <div className="relative hidden lg:block">
+      <Popover open={resultsOpen} onOpenChange={handleOpenChange}>
+        <div className="relative">
           <Search
             className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--site-header-link)]"
             aria-hidden="true"
@@ -398,20 +460,20 @@ export function HeaderSearch({ localize }: HeaderSearchProps) {
             nativeButton={false}
             render={
               <input
-                ref={desktopInputRef}
+                ref={inputRef}
                 type="text"
                 role="combobox"
-                aria-expanded={desktopOpen}
+                aria-expanded={resultsOpen}
                 aria-controls="header-search-listbox"
-                aria-activedescendant={desktopOpen ? activeDescendantId : undefined}
+                aria-activedescendant={resultsOpen ? activeDescendantId : undefined}
                 aria-label="Ürün ara"
                 autoComplete="off"
                 placeholder="Ürün, kategori ara..."
                 value={inputValue}
                 onChange={(e) => handleInputChange(e.target.value)}
-                onFocus={() => handleFocus("desktop")}
-                onKeyDown={(e) => handleKeyDown(e, "desktop")}
-                className={cn("h-9 w-56 xl:w-72", INPUT_BASE_CLASSES)}
+                onFocus={handleFocus}
+                onKeyDown={handleKeyDown}
+                className={cn("h-10 w-full", INPUT_BASE_CLASSES)}
               />
             }
           />
@@ -421,56 +483,11 @@ export function HeaderSearch({ localize }: HeaderSearchProps) {
           align="start"
           sideOffset={6}
           collisionPadding={8}
-          className="w-96 max-w-[calc(100vw-2rem)] flex-col gap-0 p-0"
+          className="w-(--anchor-width) flex-col gap-0 p-0"
         >
           {renderBody()}
         </PopoverContent>
       </Popover>
-
-      {/* §1(d) < 1024px — ikinci satır (bkz. dosya başı notu: `order-last basis-full` ile `<nav>`in
-          KENDİ flex-wrap'i üzerinden tam-genişlik ikinci satır, portalsız eşdeğer teknik). */}
-      {mobileRowOpen && (
-        <div className="order-last -mx-4 basis-full border-t border-border/60 px-4 py-2.5 sm:-mx-6 sm:px-6 lg:hidden">
-          <Popover open={mobileOpen} onOpenChange={handleOpenChange}>
-            <div className="relative">
-              <Search
-                className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--site-header-link)]"
-                aria-hidden="true"
-              />
-              <PopoverTrigger
-                nativeButton={false}
-                render={
-                  <input
-                    ref={mobileInputRef}
-                    type="text"
-                    role="combobox"
-                    aria-expanded={mobileOpen}
-                    aria-controls="header-search-listbox"
-                    aria-activedescendant={mobileOpen ? activeDescendantId : undefined}
-                    aria-label="Ürün ara"
-                    autoComplete="off"
-                    placeholder="Ürün, kategori ara..."
-                    value={inputValue}
-                    onChange={(e) => handleInputChange(e.target.value)}
-                    onFocus={() => handleFocus("mobile")}
-                    onKeyDown={(e) => handleKeyDown(e, "mobile")}
-                    className={cn("h-10 w-full", INPUT_BASE_CLASSES)}
-                  />
-                }
-              />
-            </div>
-            <PopoverContent
-              side="bottom"
-              align="start"
-              sideOffset={6}
-              collisionPadding={8}
-              className="w-(--anchor-width) flex-col gap-0 p-0"
-            >
-              {renderBody()}
-            </PopoverContent>
-          </Popover>
-        </div>
-      )}
-    </>
+    </div>
   );
 }

@@ -60,71 +60,48 @@ sepet/favori ikonlarıyla AYNI koşul (`{productsModuleEnabled && <HeaderSearch 
 `products` modülüne bağımlı bir uçtur (§1.1 architect kararı), modül kapalıyken header'da hiçbir iz
 bırakmaz.
 
-### (b) Breakpoint kararı — `lg` (1024px), `md` (768px) DEĞİL
+### (b) GÜNCELLEME (frontend-agent, storefront header tek-satır düzeltmesi) — breakpoint ayrımı KALDIRILDI
 
-Mevcut header `md:hidden`/`md:flex` ile hamburger↔nav-link geçişini yönetiyor; **arama için AYRI bir
-`lg:` breakpoint'i** kullanılır:
+**Önceki karar** (ayrı `lg:hidden` ikon-buton + `hidden lg:block` sabit-genişlikte kalıcı input) TERK
+EDİLDİ. Kök sorun: `<nav>`in `flex-wrap` davranışı + masaüstünde HER ZAMAN görünen `w-56 xl:w-72` sabit
+genişlikte bir input, çok linkli menü + CTA + dil seçici + hesap/favori/sepet ikonlarıyla toplam
+genişlik sınırlı masaüstü çözünürlüklerde (1280-1440px) taşmaya ve `<nav>`in ikinci satıra bölünmesine
+yol açıyordu.
 
-- **`< 1024px` (mobil + tablet, `lg:hidden`):** yalnızca bir **ikon-buton** tetikleyici — `Search`
-  (lucide) ikonu, sepet/favori ile BİREBİR aynı kalıp: `inline-flex h-9 w-9 items-center justify-center
-  rounded-lg transition-colors hover:bg-surface-muted` + `ICON_LINK_TEXT_CLASSES` (`text-[var(--site-header-link)]
-  hover:text-[var(--site-header-link-hover)]`), ikon `h-5 w-5`, `aria-label="Ürün ara"`.
-- **`≥ 1024px` (`hidden lg:flex`):** kalıcı (persistent), her zaman görünür bir metin girişi kutusu —
-  bkz. §1(c).
+**Yeni karar — TEK bir davranış, tüm genişliklerde:** Mobil/tablet/masaüstü ayrımı olmadan tek bir
+`Search` (lucide) ikon-buton tetikleyici — sepet/favori ikonlarıyla BİREBİR aynı kalıp
+(`inline-flex h-9 w-9 items-center justify-center rounded-lg text-[var(--site-header-link)]
+transition-colors hover:bg-surface-muted hover:text-[var(--site-header-link-hover)]`, ikon `h-5 w-5`) —
+`<nav>`in sağ eylem ikonları grubunun İÇİNDE, EN SOLDA (arama ikonu → CTA → dil seçici → hesap →
+favori → sepet sıralaması). Tıklanınca §1(d)'deki panel açılır/kapanır (`aria-expanded` bu duruma
+bağlı, `aria-label` "Ara" ↔ "Aramayı kapat" arasında geçiş yapar).
 
-**Gerekçe:** 768-1023px aralığında header zaten nav-link + CTA + dil + hesap + favori + sepet ile
-doludur; kalıcı bir 200px+ input orada `flex-wrap` sayesinde ikinci satıra düşer ama bu ÖNGÖRÜLEMEYEN
-bir header yüksekliği artışı yaratır (satır kırılma noktası viewport'a göre değişir). Tek, sabit bir
-`lg:` eşiği hem öngörülebilir hem de büyük e-ticaret sitelerinin (mobil = büyüteç ikonu, geniş masaüstü
-= kalıcı kutu) yerleşik konvansiyonuyla örtüşür.
+**Gerekçe:** Kalıcı (persistent) bir masaüstü input KALDIRILDI — panel yalnızca kullanıcı isteyince
+açılır, bu da `<nav>`in genişlik bütçesini SABİT ve ÖNGÖRÜLEBİLİR tutar (arama ikonu her zaman 36×36px,
+viewport'tan bağımsız). Büyük e-ticaret sitelerindeki "kalıcı masaüstü kutusu" konvansiyonundan bu
+BİLİNÇLİ sapma, `<nav>`in tek satırda kalması gerekliliğinin (bkz. görev tanımı) önceliklendirilmesidir.
 
-### (c) Masaüstü kalıcı input (`≥ 1024px`)
+### (c) GÜNCELLEME — kalıcı masaüstü input KALDIRILDI
 
-```tsx
-// İllüstratif — gerçek state/erişilebilirlik kablolaması frontend-agent'ındır.
-<div className="relative hidden lg:block">
-  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--site-header-link)]" aria-hidden="true" />
-  <input
-    type="text"
-    placeholder="Ürün, kategori ara..."
-    className={cn(
-      "h-9 w-56 xl:w-72 rounded-[var(--site-radius)] border border-border bg-[var(--site-surface,transparent)]",
-      "pl-8 pr-3 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-colors",
-      "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-    )}
-  />
-</div>
-```
+Önceki §1(c)'deki "masaüstü kalıcı input" (`hidden lg:block`, `w-56 xl:w-72`) artık YOK — masaüstünde
+de arama SADECE §1(b)'deki ikon-buton ile başlar, açılan panel (§1(d)) tüm genişliklerde AYNI
+`w-full` girişi kullanır. Odak halkası/köşe yuvarlaklığı/kenarlık/ikon rengi kararları (eski §1(c)'nin
+görsel dili) DEĞİŞMEDEN §1(d)'deki tek panele taşındı.
 
-- Genişlik: `lg:w-56` (224px) → `xl:w-72` (288px). Sabit bir ölçek, rastgele değer değil (Tailwind'in
-  kendi `w-*` skalası).
-- Köşe yuvarlaklığı **`rounded-[var(--site-radius)]`** (CTA butonuyla AYNI özelleştirilebilir token) —
-  40×40 ürün küçük resimleri gibi sabit `--radius-md` DEĞİL, çünkü bu bir üst-seviye etkileşim öğesi
-  (CTA butonu/form input'u sınıfı), kullanıcı sitenin köşe yuvarlaklığı tercihini burada da görmeli.
-- Kenarlık: `border-border` (site-scope'ta `color-mix(site-text 15%, transparent)`e köprülü — global
-  `Input` primitifinin varsayılan `border-input`inden BİRAZ daha belirgin, header'ın kendi arka plan
-  renginin (`--site-header-bg`, kullanıcı özelleştirebilir) üzerinde okunabilirlik payı bırakır).
-- Odak halkası: standart `Input` primitifiyle BİREBİR aynı (`focus-visible:border-ring focus-visible:ring-3
-  focus-visible:ring-ring/50`) — `.site-scope` içinde `--ring` → `--site-primary`'ye köprülü, yani marka
-  rengiyle tutarlı bir halka (bkz. §6).
-- İkon rengi `--site-header-link` (header'ın diğer ikonlarıyla AYNI token) — input'un KENDİSİ header
-  chrome'unun bir parçası olduğu için nötr `text-muted-foreground` değil, header'a özgü token kullanılır.
+### (d) Panel — TEK genişlik, tüm ekranlarda `<nav>`in bağımsız sibling'i
 
-### (d) Mobil/tablet açılır satır (`< 1024px`)
-
-İkon tetikleyiciye tıklanınca **ayrı bir tam-genişlik ikinci satır** açılır — `<nav>` içine flex-child
-olarak sıkıştırılmaz (flex-wrap sıralamasıyla uğraşmak yerine, `<header>` içinde `<nav>`in ALTINA, yeni
-bir sibling `<div>`):
+İkon tetikleyiciye tıklanınca **tam-genişlik bir panel** açılır — `<nav>` içine flex-child olarak
+sıkıştırılmaz, `<header>` içinde `<nav>`in DOĞRUDAN sonrasına gelen bağımsız bir sibling `<div>`:
 
 ```tsx
 // İllüstratif iskelet
 <header className={cn(/* mevcut header sınıfları, DEĞİŞMEZ */)}>
-  <nav className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6">
-    {/* logo, hamburger, nav-links, HeaderSearch (ikon-buton), CTA/dil/hesap/favori/sepet — mevcut */}
+  <nav className="mx-auto flex h-20 max-w-5xl flex-nowrap items-center justify-between gap-4 px-4 sm:px-6">
+    {/* logo, hamburger, nav-links, CTA/dil/hesap/favori/sepet grubu (arama ikon-butonu bu grubun İÇİNDE, en solda) — mevcut */}
   </nav>
-  {mobileSearchOpen && (
-    <div className="border-t border-border/60 px-4 py-2.5 sm:px-6 lg:hidden">
-      {/* aynı ikon + input, w-full */}
+  {panelOpen && (
+    <div className="border-t border-border/60 px-4 py-2.5 sm:px-6 animate-in fade-in-0 slide-in-from-top-2 duration-150">
+      {/* input, w-full — masaüstü/mobil AYRIMI YOK */}
     </div>
   )}
 </header>
@@ -132,11 +109,13 @@ bir sibling `<div>`):
 
 - Bu satır **header'ın KENDİ arka plan token'larını miras alır** (`--site-header-bg`/`-sticky`) — ayrı
   bir renk tanımlamaz, sadece `border-t border-border/60` ile üst satırdan ayrılır.
-- Input `w-full h-10` (mobilde biraz daha büyük dokunmatik hedef, 44px'in altında ama input olduğu için
-  kabul edilebilir — `py-2.5` dış boşlukla toplam dokunma alanı 44px'e yakın), aynı `rounded-[var(--site-radius)]`
-  ve odak halkası (§1c ile birebir aynı sınıflar, yalnızca `w-56 xl:w-72` yerine `w-full`).
-  İkon-butonuna TEKRAR basmak veya Esc bu satırı kapatır (frontend-agent, §6).
+- Input `w-full h-10` (TÜM genişliklerde, artık `w-56 xl:w-72`/`w-96` masaüstüne özel sabit genişlik
+  YOK), aynı `rounded-[var(--site-radius)]` ve odak halkası (eski §1(c) ile birebir aynı sınıflar).
+  İkon-butonuna TEKRAR basmak veya Esc bu paneli kapatır (frontend-agent, §6) — Esc AYRICA odağı
+  tetikleyici ikona geri döndürür.
   Kapanınca input değeri sıfırlanır — açık popover da otomatik kapanır (aşağı bkz. §6).
+- Açılış animasyonu `animate-in fade-in-0 slide-in-from-top-2 duration-150` (`tw-animate-css`,
+  proje genelinde zaten kullanılan sınıflar — bkz. `admin/appearance/page.tsx`).
 
 ---
 
