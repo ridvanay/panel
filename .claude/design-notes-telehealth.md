@@ -733,6 +733,82 @@ geçebilir, taşan günler tıklanamaz olacağından fazladan bir görsel gürü
   `<button>` grid'i mi) frontend-agent'ın implementasyon detayıdır (§2.2.1'in "semantik fark
   KALIR, görsel sınıf birleşir" ilkesiyle AYNI ayrım).
 
+### 2.3.2.1 Seçili + en yakın müsait gün çakışması — QA bug düzeltmesi (v1, 2026-09-12, ui-designer)
+
+**Bug (qa-agent tespiti):** `availability-calendar.tsx`'in hücre render mantığında `isSelected`
+dalı (`if (isSelected) return (...)`) `isAvailable`/`isEarliest` dalından ÖNCE kontrol ediliyor
+ve o dal SADECE `<span>{day}</span>` + `Check` render ediyor — `isEarliest` hiç okunmuyor. Sayfa
+İLK açıldığında `selectedDayKey`, `earliestAvailableDayKey()` ile başlatıldığı için (yani
+varsayılan seçim ZATEN en yakın müsait gündür), bu iki durum en sık karşılaşılan senaryoda
+ÇAKIŞIYOR ve §2.3.2'nin "Erken" etiketi kullanıcı BAŞKA bir güne geçmeden HİÇBİR ZAMAN
+görünmüyor. **Bu aynı zamanda bir erişilebilirlik hatasıdır**: `isSelected` dalının
+`aria-label`'ı da (`` `${datePart} — seçili` ``) `isEarliest` kontrolü İÇERMİYOR — yani ekran
+okuyucu kullanıcı da sayfa ilk açıldığında "en yakın randevu tarihi" bilgisini asla duymuyor,
+sorun sadece görsel değil.
+
+**Neden hücre İÇİNE bir köşe rozeti EKLENMİYOR:** Hücre `w-full` ile ~40-44px genişlikte
+render olur (`grid-cols-7 gap-1`, §2.3.2). "Erken" metni (5 karakter) küçük punto ile bile
+mevcut sub-slot'ta (gün numarasının ALTINDA, `Check` ikonunun kapladığı yer) sığmaz —
+Check'in yerini alamaz (ikisi de "seçili"nin ZORUNLU üçlü sinyalinin bir parçası, §2.3.2 "Seçili
+hücrenin ek sinyali"). Hücrenin köşesine `absolute` bir metin rozeti denendiğinde (ör.
+`-top-1 -right-1`), rozet genişliği gün numarasının bulunduğu üst şeridi KAPLAR (hücre yarısından
+fazla genişlikte bir pill, ~42px'lik hücrede günün rakamıyla ÇAKIŞIR) — bu, görev tanımının
+"hücre boyutunu bozma" kısıtını ihlal ETMESE de, günün rakamını görsel olarak GİZLER, kabul
+edilemez. Salt bir NOKTA (metin yok) sığar ama kendi başına "en yakın" anlamını TAŞIMAZ (dekoratif
+kalır, gerçek bilgiyi iletmez) — bu yüzden bu yaklaşım REDDEDİLDİ.
+
+**Karar: bilgiyi hücrenin dışına, takvim kartının en altına, KOŞULLU bir metin satırı olarak taşı.**
+Hücrenin kendisi (§2.3.2'deki "Seçili" JSX'i) **DEĞİŞMEZ** — `<span>{day}</span>` + `Check`
+BİREBİR aynı kalır, hücre boyutu/iç yapısı hiç etkilenmez. Bunun yerine, gün ızgarasının
+(§2.3.2'nin `grid grid-cols-7 gap-1` bloğu) **HEMEN ALTINA**, takvim kartının (`rounded-
+[var(--site-radius)] border border-border bg-surface p-4 sm:p-5`) İÇİNDE (kartın kapanışından
+ÖNCE), SADECE `selectedDayKey === earliestKey && earliestKey !== null` iken render edilen bir
+satır eklenir:
+
+```
+{selectedDayKey === earliestKey && earliestKey !== null && (
+  <p className="mt-3 flex items-center gap-1.5 text-xs font-medium text-primary">
+    <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+    En yakın müsait randevu tarihi seçili.
+  </p>
+)}
+```
+
+- **Konum:** gün ızgarasının (7×N hücre grid'i) hemen altı, hâlâ takvim kartının İÇİNDE —
+  ayrı bir kart/panel DEĞİL, mevcut kartın doğal bir uzantısı (§2.2.5'in "seçim onay şeridi" gibi
+  ayrı bir bordered panel İCAT EDİLMEZ; bu bilgi o kadar ağırlıklı değil, sadece bir NOT).
+- **Koşul kasıtlı olarak DAR tutuldu** — bu satır SADECE seçili gün ile en yakın müsait gün
+  ÇAKIŞTIĞINDA görünür (yani tam olarak §2.3.2'nin hücre-içi "Erken" etiketinin GÖRÜNMEDİĞİ tek
+  durumda). Kullanıcı başka bir güne geçtiğinde bu satır KAYBOLUR — çünkü o durumda hücre-içi
+  "Erken" etiketi zaten kendi işini görüyor (en yakın müsait gün ızgarada görünür kalır, ayrıca
+  bir metin satırıyla TEKRAR ETMEK gereksiz — `design-notes-telehealth.md` §2.2.5'in "aynı bilgi
+  iki kez farklı stillerde gösterilmez" ilkesiyle BİREBİR aynı gerekçe).
+- **Renk/tipografi:** `text-xs font-medium text-primary` + `h-1.5 w-1.5 rounded-full bg-primary`
+  nokta — §2.3.2'nin hücre-içi "Erken" etiketiyle AYNI `text-primary` tonu (tutarlı anlam:
+  "bu teal vurgusu = en yakın randevu" kullanıcı zihninde tek bir renkle eşleşir), YENİ bir renk
+  İCAT EDİLMEZ. Nokta boyutu (`h-1.5 w-1.5`) §2.3.2'nin sıradan müsaitlik noktasından
+  (`h-1 w-1`) bir kademe büyük — burada hücre içi gibi bir alan kısıtı YOK, biraz daha görünür
+  olabilir.
+- **`mt-3`** (12px) — grid ile bu satır arasına, dosyanın DEĞİŞMEDEN kullandığı 4/8/12px
+  spacing ölçeğinden (§2.2.2, §2.2.6 örnekleri) bir adım, YENİ bir ölçek değeri İCAT EDİLMEZ.
+- **Erişilebilirlik — asıl düzeltme burada, metnin kendisi:** bu satır `aria-hidden` DEĞİLDİR
+  (yalnızca içindeki dekoratif nokta `aria-hidden="true"`) — gerçek, ekran okuyucu tarafından
+  okunan bir paragraf. Bu, bug'ın ekran-okuyucu tarafını da KÖKTEN çözer (hücrenin kendi
+  `aria-label`'ına güvenmek yerine, sayfada bağımsız okunabilir bir cümle bilgiyi taşır).
+- **`isSelected` hücresinin `aria-label`'ı DA güçlendirilir** (bu satırla ÇİFT güvence, birbirinin
+  YERİNE değil): `` `${datePart} — seçili${isEarliest ? ", en yakın randevu tarihi" : ""}` `` —
+  mevcut kod bu kontrolü hiç yapmıyordu (bug'ın ikinci parçası), §2.3.2'nin `isAvailable`
+  dalındaki AYNI ek zaten vardı, `isSelected` dalına da BİREBİR aynı desen uygulanır.
+- **Bu, §2.2.3'ün KALDIRILAN "{gün} için uygun saatler" başlığını GERİ GETİRMEZ** — o başlık
+  "şu an HANGİ günü görüntülüyorum" bilgisini taşıyordu (§2.4'ün seçim paneliyle DUPLICATE
+  olduğu için kaldırıldı); bu satır TAMAMEN farklı bir bilgi taşır ("en yakın müsait gün HANGİSİ,
+  ve şu an seçili olan da bu mu") — ikisi ÇAKIŞMAZ, biri diğerinin yerine geçmez.
+- **Neden koşulsuz/her zaman GÖRÜNMEZ (yani `earliestKey` var olduğu her an değil, sadece
+  seçili≡en-yakın iken):** eğer bu satır HER ZAMAN görünseydi (seçili gün başka bir gün olsa
+  bile), ızgaradaki "Erken" etiketiyle aynı bilgiyi İKİNCİ bir yerde TEKRAR ederdi — gereksiz
+  gürültü. Dar koşul, bu satırın SADECE ızgaranın kendi "Erken" sinyalinin görünmez olduğu
+  TEK anda devreye girmesini garanti eder.
+
 ### 2.3.3 Saat grupları — ÖÖ Sabah / ÖS Öğleden Sonra (2 grup, §2.2.2'yi GÜNCELLER)
 
 Görev tanımı üç grubu (Sabah/Öğleden Sonra/Akşam) **İKİYE** sadeleştirmeyi istiyor. Sınır saati

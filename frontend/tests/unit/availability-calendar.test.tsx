@@ -108,6 +108,25 @@ describe("AvailabilityCalendar", () => {
     expect(screen.getByLabelText(/20 Eylül .+ — seçili/)).toBeInTheDocument();
   });
 
+  it("§2.3.2.1 — sayfa ilk açıldığında (seçili gün ≡ en yakın müsait gün) 'seçili' hücrenin `aria-label`'ı da 'en yakın randevu tarihi' bilgisini taşır", () => {
+    renderCalendar();
+    expect(screen.getByLabelText(/18 Eylül .+ — seçili, en yakın randevu tarihi/)).toBeInTheDocument();
+  });
+
+  it("§2.3.2.1 — QA bug düzeltmesi: seçili gün ≡ en yakın müsait gün olduğunda koşullu bilgi satırı görünür, başka bir gün seçilince kaybolur", () => {
+    renderCalendar();
+    // Varsayılan seçim zaten en yakın müsait gün (18 Eylül) — bilgi satırı GÖRÜNÜR olmalı.
+    expect(screen.getByText("En yakın müsait randevu tarihi seçili.")).toBeInTheDocument();
+
+    // Başka bir günü (20 Eylül) seçince çakışma ortadan kalkar, satır KAYBOLUR.
+    fireEvent.click(screen.getByLabelText(/20 Eylül .+ — müsait$/));
+    expect(screen.queryByText("En yakın müsait randevu tarihi seçili.")).not.toBeInTheDocument();
+
+    // Tekrar en yakın müsait güne (18 Eylül) dönülünce satır YENİDEN görünür.
+    fireEvent.click(screen.getByLabelText(/18 Eylül .+ — müsait, en yakın randevu tarihi/));
+    expect(screen.getByText("En yakın müsait randevu tarihi seçili.")).toBeInTheDocument();
+  });
+
   it("§2.3.2 — müsait olmayan/geçmiş günler tıklanamaz bir `<span>`dır, `<button>` DEĞİLDİR", () => {
     renderCalendar();
     const emptyCell = screen.getByLabelText(/17 Eylül .+ — müsait saat yok/);

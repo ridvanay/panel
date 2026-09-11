@@ -373,7 +373,7 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, lang, default
                         key={dayKey}
                         type="button"
                         aria-pressed="true"
-                        aria-label={`${datePart} — seçili`}
+                        aria-label={`${datePart} — seçili${isEarliest ? ", en yakın randevu tarihi" : ""}`}
                         onClick={() => setSelectedDayKey(dayKey)}
                         className="relative flex h-10 w-full flex-col items-center justify-center gap-0.5 rounded-[var(--site-radius)] border-2 border-transparent bg-primary text-sm font-semibold tabular-nums text-primary-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface sm:h-11"
                       >
@@ -416,6 +416,19 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, lang, default
                 });
               })()}
             </div>
+
+            {/* §2.3.2.1 — QA bug düzeltmesi: sayfa ilk açıldığında `selectedDayKey` zaten
+                `earliestKey`'e eşit olduğu için ızgaradaki hücre-içi "Erken" etiketi bu durumda
+                asla görünmez (o dal `isSelected` tarafından ele alınır). Bu koşullu satır
+                SADECE bu çakışma anında (seçili gün ≡ en yakın müsait gün) devreye girer ve
+                bilgiyi ekran okuyucuya da taşır — başka bir gün seçildiğinde kaybolur, çünkü o
+                durumda ızgaranın kendi "Erken" sinyali zaten görünür. */}
+            {selectedDayKey === earliestKey && earliestKey !== null && (
+              <p className="mt-3 flex items-center gap-1.5 text-xs font-medium text-primary">
+                <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+                En yakın müsait randevu tarihi seçili.
+              </p>
+            )}
           </div>
 
           {hourGroups.length > 0 && (
