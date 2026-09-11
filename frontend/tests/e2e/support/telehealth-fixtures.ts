@@ -248,6 +248,30 @@ export async function deleteAdminDoctorFixture(token: string, doctorId: string):
   }
 }
 
+/**
+ * `PUT /admin/telehealth/doctors/{id}/availability` — haftalık ızgaranın TAMAMINI değiştirir
+ * (bkz. `telehealth.schemas.ts::SetDoctorAvailabilityRequestSchema`). qa-agent kullanımı
+ * (bu turda eklendi) — `createAdminDoctorFixture` BAŞLI BAŞINA hiçbir `DoctorAvailability`
+ * satırı üretmez (yalnızca `telehealth-clinic` demo şablonunun 4 doktoru üretir); saat
+ * grid'inin gruplama/aynı-görsel-dil/onay şeridi davranışını demo şablondan BAĞIMSIZ, kendi
+ * kontrollü bir pencereyle doğrulamak için kullanılır.
+ */
+export async function setDoctorAvailabilityRaw(
+  token: string,
+  doctorId: string,
+  rules: { dayOfWeek: 1 | 2 | 3 | 4 | 5 | 6 | 7; startMinute: number; endMinute: number }[]
+): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}/admin/telehealth/doctors/${doctorId}/availability`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ rules }),
+  });
+  if (res.status !== 200) {
+    const body = await safeJson(res);
+    throw new Error(`Fixture doktor müsaitliği ayarlanamadı: ${res.status} ${JSON.stringify(body)}`);
+  }
+}
+
 export interface CreatedAppointment {
   id: string;
   doctorSlug: string;

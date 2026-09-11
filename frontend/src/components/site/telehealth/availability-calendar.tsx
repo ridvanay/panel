@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Check, Globe, Loader2 } from "lucide-react";
+import { CalendarCheck, CalendarDays, Check, Globe, Loader2 } from "lucide-react";
 import * as telehealthApi from "@/lib/api/telehealth";
 import { ApiClientError } from "@/lib/api/error";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
@@ -61,6 +61,31 @@ function formatTime(iso: string, timeZone: string): string {
   return new Intl.DateTimeFormat("tr-TR", { timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(iso));
 }
 
+/**
+ * `.claude/design-notes-telehealth.md` §2.2.2 — saat dilimine göre "Sabah/Öğleden Sonra/Akşam"
+ * grubu. `formatTime`'ın ürettiği `HH:mm` dizesinden saat kısmı `parseInt` ile okunur (ikinci bir
+ * saat biçimlendirici İCAT EDİLMEZ, mevcut `formatTime` ile AYNI kaynaktan türer).
+ */
+const HOUR_GROUP_LABELS = ["Sabah", "Öğleden Sonra", "Akşam"] as const;
+type HourGroupLabel = (typeof HOUR_GROUP_LABELS)[number];
+
+function getHourGroupLabel(iso: string, timeZone: string): HourGroupLabel {
+  const hour = parseInt(formatTime(iso, timeZone).slice(0, 2), 10);
+  if (hour < 12) return "Sabah";
+  if (hour < 18) return "Öğleden Sonra";
+  return "Akşam";
+}
+
+/**
+ * §2.2.1 — tarih chip'i VE saat slotu paylaşılan taban dili. `focus-visible:ring` daha önce
+ * hiçbir slot/gün düğmesinde YOKTU, bu eklenen bir düzelti.
+ */
+const SELECTION_PILL_BASE =
+  "inline-flex h-10 items-center justify-center gap-1.5 rounded-[var(--site-radius)] border text-sm font-medium tabular-nums transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface";
+const SELECTION_PILL_AVAILABLE = "border-border bg-surface text-foreground hover:border-primary/50 hover:bg-primary/5";
+const SELECTION_PILL_SELECTED =
+  "border-2 border-transparent bg-primary text-primary-foreground ring-2 ring-offset-2 ring-offset-surface ring-primary";
+
 export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, lang, defaultLocaleCode, initialSlots, kvkkPage }: AvailabilityCalendarProps) {
   const router = useRouter();
   const [visitorTimeZone, setVisitorTimeZone] = useState<string | undefined>(undefined);
@@ -110,6 +135,20 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, lang, default
   }, [dayGroups, selectedDayKey]);
 
   const activeDay = dayGroups.find((d) => d.key === selectedDayKey) ?? dayGroups[0] ?? null;
+
+  // §2.2.2 — seçili günün saatleri Sabah/Öğleden Sonra/Akşam gruplarına ayrılır, boş grup RENDER
+  // EDİLMEZ; kronolojik sıra (dolu/geçmiş dahil) her grubun İÇİNDE korunur.
+  const hourGroups = useMemo(() => {
+    if (!activeDay) return [];
+    const groups = new Map<HourGroupLabel, AvailabilitySlot[]>();
+    for (const slot of activeDay.items) {
+      const label = getHourGroupLabel(slot.startsAt, displayTimeZone);
+      const list = groups.get(label) ?? [];
+      list.push(slot);
+      groups.set(label, list);
+    }
+    return HOUR_GROUP_LABELS.filter((label) => groups.has(label)).map((label) => ({ label, items: groups.get(label)! }));
+  }, [activeDay, displayTimeZone]);
 
   const {
     register,
@@ -195,8 +234,9 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, lang, default
 
   return (
     <div className="space-y-4">
-      {/* §4 — 2 aşamalı saat dilimi rozeti (hidrasyon uyuşmazlığı önlenir). */}
-      <div className="mb-1 flex items-start gap-2 rounded-[var(--site-radius)] border border-border bg-muted/50 px-3 py-2 text-xs text-foreground/70">
+      {/* §4/§2.2.6 — 2 aşamalı saat dilimi rozeti (hidrasyon uyuşmazlığı önlenir), stil KORUNUR,
+          sadece alttaki tarih chip satırıyla arasındaki boşluk `mb-1`→`mb-4` (§2.2.6). */}
+      <div className="mb-4 flex items-start gap-2 rounded-[var(--site-radius)] border border-border bg-muted/50 px-3 py-2 text-xs text-foreground/70">
         <Globe className="mt-0.5 h-3.5 w-3.5 shrink-0 text-foreground/50" aria-hidden="true" />
         {visitorTimeZone ? (
           <span>
@@ -212,6 +252,7 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, lang, default
         <p className="text-sm text-foreground/60">Önümüzdeki günlerde müsait bir saat bulunmuyor.</p>
       ) : (
         <>
+          {/* §2.2.1 — tarih chip'i artık saat slotuyla AYNI paylaşılan pil dilini kullanır. */}
           <div className="flex flex-wrap gap-2" role="tablist" aria-label="Gün seçin">
             {dayGroups.map((day) => {
               const active = day.key === activeDay?.key;
@@ -222,11 +263,9 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, lang, default
                   role="tab"
                   aria-selected={active}
                   onClick={() => setSelectedDayKey(day.key)}
-                  className={cn(
-                    "rounded-[var(--site-radius)] border px-3 py-1.5 text-sm font-medium transition-colors duration-150",
-                    active ? "border-primary bg-primary/10 text-primary" : "border-border bg-surface text-foreground/70 hover:border-primary/40"
-                  )}
+                  className={cn(SELECTION_PILL_BASE, "px-4", active ? SELECTION_PILL_SELECTED : SELECTION_PILL_AVAILABLE)}
                 >
+                  {active && <Check className="h-3.5 w-3.5" aria-hidden="true" />}
                   {formatDayLabel(day.items[0]!.startsAt, displayTimeZone)}
                 </button>
               );
@@ -234,88 +273,114 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, lang, default
           </div>
 
           {activeDay && (
-            <div
-              role="radiogroup"
-              aria-label={`${formatDayLabel(activeDay.items[0]!.startsAt, displayTimeZone)} müsaitlik saatleri`}
-              className="flex flex-wrap gap-2"
-            >
-              {activeDay.items.map((slot) => {
-                const isPast = new Date(slot.startsAt).getTime() < now;
-                const isSelected = selectedSlot?.startsAt === slot.startsAt;
-                const time = formatTime(slot.startsAt, displayTimeZone);
+            <>
+              {/* §2.2.3 — seçili güne göre saat grid başlığı. */}
+              <p className="mb-3 mt-4 flex items-center gap-1.5 text-sm font-semibold text-foreground">
+                <CalendarDays className="h-4 w-4 text-foreground/40" aria-hidden="true" />
+                {formatDayLabel(activeDay.items[0]!.startsAt, displayTimeZone)} için uygun saatler
+              </p>
 
-                if (isSelected) {
-                  return (
-                    <button
-                      key={slot.startsAt}
-                      type="button"
-                      role="radio"
-                      aria-checked="true"
-                      aria-label={`${time} — seçili`}
-                      onClick={() => selectSlot(slot)}
-                      className="flex h-10 min-w-[84px] items-center justify-center gap-1 rounded-[var(--site-radius)] border-2 border-transparent bg-primary px-3 text-sm font-medium tabular-nums text-primary-foreground ring-2 ring-offset-2 ring-offset-surface ring-primary"
-                    >
-                      <Check className="h-3.5 w-3.5" aria-hidden="true" />
-                      {time}
-                    </button>
-                  );
-                }
+              {/* §2.2.2 — Sabah/Öğleden Sonra/Akşam gruplarına ayrılmış saat ızgarası; boş grup
+                  RENDER EDİLMEZ. `role="radiogroup"` semantiği DEĞİŞMEDİ, yalnızca içerik gruplanır. */}
+              <div role="radiogroup" aria-label={`${formatDayLabel(activeDay.items[0]!.startsAt, displayTimeZone)} müsaitlik saatleri`}>
+                {hourGroups.map((group) => (
+                  <Fragment key={group.label}>
+                    <p className="mb-2 mt-5 text-xs font-semibold uppercase tracking-wider text-foreground/50 first:mt-0">{group.label}</p>
+                    <div className="grid grid-cols-[repeat(auto-fill,minmax(84px,1fr))] gap-2">
+                      {group.items.map((slot) => {
+                        const isPast = new Date(slot.startsAt).getTime() < now;
+                        const isSelected = selectedSlot?.startsAt === slot.startsAt;
+                        const time = formatTime(slot.startsAt, displayTimeZone);
 
-                if (!slot.available && isPast) {
-                  return (
-                    <span
-                      key={slot.startsAt}
-                      aria-label={`${time} — geçmiş, artık kullanılamaz`}
-                      className="flex h-10 min-w-[84px] cursor-not-allowed items-center justify-center rounded-[var(--site-radius)] border border-transparent px-3 text-sm font-medium tabular-nums text-foreground/25"
-                    >
-                      {time}
-                    </span>
-                  );
-                }
+                        if (isSelected) {
+                          return (
+                            <button
+                              key={slot.startsAt}
+                              type="button"
+                              role="radio"
+                              aria-checked="true"
+                              aria-label={`${time} — seçili`}
+                              onClick={() => selectSlot(slot)}
+                              className={cn(SELECTION_PILL_BASE, "px-3 min-w-[84px]", SELECTION_PILL_SELECTED)}
+                            >
+                              <Check className="h-3.5 w-3.5" aria-hidden="true" />
+                              {time}
+                            </button>
+                          );
+                        }
 
-                if (!slot.available) {
-                  return (
-                    <span
-                      key={slot.startsAt}
-                      aria-label={`${time} — dolu, seçilemez`}
-                      aria-disabled="true"
-                      className="flex h-10 min-w-[84px] cursor-not-allowed flex-col items-center justify-center rounded-[var(--site-radius)] border border-border/60 bg-muted px-3 text-sm font-medium tabular-nums text-foreground/40"
-                    >
-                      <span className="line-through decoration-foreground/30">{time}</span>
-                      <span className="text-[10px] text-foreground/50">Dolu</span>
-                    </span>
-                  );
-                }
+                        if (!slot.available && isPast) {
+                          return (
+                            <span
+                              key={slot.startsAt}
+                              aria-label={`${time} — geçmiş, artık kullanılamaz`}
+                              className="flex h-10 min-w-[84px] cursor-not-allowed items-center justify-center rounded-[var(--site-radius)] border border-transparent px-3 text-sm font-medium tabular-nums text-foreground/25"
+                            >
+                              {time}
+                            </span>
+                          );
+                        }
 
-                return (
-                  <button
-                    key={slot.startsAt}
-                    type="button"
-                    role="radio"
-                    aria-checked="false"
-                    aria-label={`${time} — müsait`}
-                    onClick={() => selectSlot(slot)}
-                    className="flex h-10 min-w-[84px] items-center justify-center rounded-[var(--site-radius)] border border-border bg-surface px-3 text-sm font-medium tabular-nums text-foreground transition-colors duration-150 hover:border-primary/50 hover:bg-primary/5"
-                  >
-                    {time}
-                  </button>
-                );
-              })}
-            </div>
+                        if (!slot.available) {
+                          return (
+                            <span
+                              key={slot.startsAt}
+                              aria-label={`${time} — dolu, seçilemez`}
+                              aria-disabled="true"
+                              className="flex h-10 min-w-[84px] cursor-not-allowed flex-col items-center justify-center rounded-[var(--site-radius)] border border-border/60 bg-muted px-3 text-sm font-medium tabular-nums text-foreground/40"
+                            >
+                              <span className="line-through decoration-foreground/30">{time}</span>
+                              <span className="text-[10px] text-foreground/50">Dolu</span>
+                            </span>
+                          );
+                        }
+
+                        return (
+                          <button
+                            key={slot.startsAt}
+                            type="button"
+                            role="radio"
+                            aria-checked="false"
+                            aria-label={`${time} — müsait`}
+                            onClick={() => selectSlot(slot)}
+                            className={cn(SELECTION_PILL_BASE, "px-3 min-w-[84px]", SELECTION_PILL_AVAILABLE)}
+                          >
+                            {time}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </Fragment>
+                ))}
+              </div>
+            </>
           )}
 
           <Button type="button" variant="ghost" size="sm" onClick={() => void loadMoreDays()}>
             Daha fazla gün göster
           </Button>
+
+          {/* §2.2.5 — seçim onay şeridi: saat ızgarasının HEMEN ALTI, booking formunun HEMEN
+              ÜSTÜ; formun İÇİNDEKİ eski "Seçilen saat: ..." satırı BURAYA taşındı (DUPLICATE
+              olmasın diye formdan kaldırıldı, aşağıya bkz). */}
+          {selectedSlot && (
+            <div className="flex items-center justify-between gap-3 rounded-[var(--site-radius)] border border-primary/30 bg-primary/5 px-4 py-3">
+              <div className="flex items-center gap-2 text-sm">
+                <CalendarCheck className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+                <span className="font-medium text-foreground">
+                  {formatDayLabel(selectedSlot.startsAt, displayTimeZone)} · {formatTime(selectedSlot.startsAt, displayTimeZone)}
+                </span>
+              </div>
+              <button type="button" onClick={() => setSelectedSlot(null)} className="shrink-0 text-xs font-medium text-primary hover:underline">
+                Değiştir
+              </button>
+            </div>
+          )}
         </>
       )}
 
       {selectedSlot && (
         <form className="mt-4 space-y-4 rounded-[var(--site-radius)] border border-border bg-surface p-4" onSubmit={handleSubmit(onSubmit)} noValidate>
-          <p className="text-sm font-medium text-foreground">
-            Seçilen saat: {formatDayLabel(selectedSlot.startsAt, displayTimeZone)} · {formatTime(selectedSlot.startsAt, displayTimeZone)}
-          </p>
-
           <Field id="patientName" label="Ad soyad" error={errors.patientName?.message} required>
             {(inputProps) => <Input {...inputProps} {...register("patientName")} />}
           </Field>

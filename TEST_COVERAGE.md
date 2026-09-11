@@ -2551,3 +2551,38 @@ başarısız olur (sessizce yanlış bir sekmede kalmaz). Düzeltme sonrası dos
 sürede koşturmak `POST /appointments`'ın belgelenmiş 5 istek/dk hız sınırına çarpıp "Çok fazla
 istek" hatası üretti — bu, testin veya uygulamanın bir kusuru DEĞİL, salt tekrarlanan manuel
 koşumların beklenen bir yan etkisidir (bkz. dosyanın kendi `POST /appointments` yorumu).
+
+## Doktor detay hero bug fix + randevu tarih-saat (`availability-calendar.tsx`) yeniden tasarımı — e2e kapsamı (bu turda eklendi)
+
+Kaynak: koordinatörün doğrudan görev talimatı, db-agent→backend-agent→ui-designer(x2)→
+frontend-agent(x2)→qa-agent zincirinin SON adımı. Mevcut `telehealth-doctor-profile-redesign.spec.ts`
+dosyası genişletildi (yeni dosya AÇILMADI) — 4 yeni test + 1 yeni fixture doktor (`calendarDoctor`,
+`support/telehealth-fixtures.ts::setDoctorAvailabilityRaw` yeni yardımcısıyla haftanın HER günü
+08:00-22:00 müsaitlik + `createAppointmentRaw` ile GERÇEK bir rezervasyon).
+
+| # | Senaryo | Durum |
+|---|---|---|
+| 1 | `/doctors/elif-aydemir` hero — ham `alt` metni (`/kolonat\|kurumsal proje kapak/i`) sayfada HİÇBİR yerde görünür metin olarak YOK; avatar kutusunda gerçek `<img>` (Elif'in GERÇEK `avatarMediaId`'si var) VEYA (savunmacı dal) monogram render olur | ✅ Geçiyor |
+| 2 | REGRESYON — `/doctors/elif-aydemir` ücreti kendi para biriminde (`₺450,00`), önceki turun "sabit ₺450,00" şüphesi (yanlış alarmdı) tekrar doğrulandı | ✅ Geçiyor |
+| 3 | Tarih chip'i VE saat slotu AYNI taban görsel dili paylaşır (`rounded-[var(--site-radius)]`/`tabular-nums`/`focus-visible:ring-2` ortak sınıfları, ikisi seçiliyken de `ring-2`/`ring-offset-2` + Check ikonu) | ✅ Geçiyor |
+| 4 | Saat ızgarası Sabah/Öğleden Sonra/Akşam gruplarına ayrılmış (üçü de aynı günde render — `calendarDoctor`'ın 08:00-22:00 penceresiyle garanti), grid başlığında "{gün} için uygun saatler" | ✅ Geçiyor |
+| 5 | Müsait bir saate tıklanınca altta "{gün} · {saat}" onay şeridi (CalendarCheck ikonlu, "Değiştir" butonlu) görünür | ✅ Geçiyor |
+| 6 | Rezerve edilmiş (`available:false`) bir saat — `<span aria-disabled="true">`, `role="radio"` DEĞİL, gerçekten tıklanamaz, "Dolu" etiketli | ✅ Geçiyor |
+
+**Zaman etiketi eşleştirme deseni (yeni):** Node tarafında saat dilimi matematiği yeniden
+hesaplamak YERİNE `page.evaluate` ile TARAYICININ KENDİ `Intl.DateTimeFormat` çağrısı kullanıldı
+(host/tarayıcı saat dilimi farklı olabileceği ihtimaline karşı sağlamlık) — component'in render
+ettiği metinle birebir karşılaştırılabilir bir referans üretir, uygulama kaynağını import ETMEZ.
+
+Doğrulama: dosya izole 2 kez + tüm `telehealth-*.spec.ts` (26 test, 1 bilinçli skip) birlikte 2 kez
+koşuldu. Birleşik koşumlardan BİRİNDE `telehealth-public-booking.spec.ts` madde 8 `POST
+/appointments`'ın 5 istek/dk hız sınırına çarpıp "Çok fazla istek" hatasıyla başarısız oldu —
+kök neden: qa-agent'ın AYNI dosyayı doğrulama sırasında art arda 3 kez izole çalıştırması (her
+seferinde `calendarDoctor` için 1 randevu) + hemen ardından birleşik koşum, hepsi aynı 1 dakikalık
+pencereye denk geldi. Dosya tek başına VE birleşik suite ~1 dakika sonra tekrar koşulduğunda
+(rate-limit penceresi temizlenince) 25/25 yeşil — bu, mevcut "art arda debug koşumu" notuyla AYNI,
+ZATEN belgelenmiş ortam kısıtı (yukarıdaki not), YENİ bir bug veya flaky test DEĞİL; CI'da dosyalar
+arasında doğal boşluk olduğundan bu sınıf çakışma beklenmez.
+
+Hiçbir yeni backend/frontend bug'ı bulunmadı — hero bug fix (`doctor-avatar.tsx::DoctorAvatarMedia`)
+ve `availability-calendar.tsx` yeniden tasarımı görev tanımıyla BİREBİR uyumlu çalışıyor.

@@ -5,45 +5,24 @@ import { formatPriceFromCents } from "@/lib/format-price";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
+import { DoctorAvatarMedia } from "@/components/site/telehealth/doctor-avatar";
 import { cn } from "@/lib/utils";
 
 /**
  * `.claude/design-notes-telehealth.md` §2 — doktor kartı. Izgara (`/doctors`) VE profil sayfasının
  * üst özet kartı AYNI yapıyı paylaşır, yalnızca boyut (`size`) değişir. Fotogerçekçi/AI insan
- * görseli YASAK ([DTI] §9.3) — gerçek `Media` yoksa DAİMA monogram + gradyan fallback.
+ * görseli YASAK ([DTI] §9.3) — gerçek `Media` yoksa DAİMA monogram + gradyan fallback. Görsel
+ * render'ı (`SafeImage` + yüklenemedi-fallback) `doctor-avatar.tsx`'te ortak — bkz. o dosyanın
+ * bug fix yorumu (qa-agent, 2026-09-11: düz `<img>` Docker'da tarayıcı-taraflı çözülemeyen bir
+ * host'a bakıyordu).
  */
 
-/** `doctors/[slug]/page.tsx`'in `DoctorProfileHero`'su (§2.1) AYNEN yeniden kullanır — YENİ bir hash-renk/monogram mantığı İCAT EDİLMEZ. */
-export function initialsFromFullName(fullName: string): string {
-  const parts = fullName.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "?";
-  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
-  return `${parts[0]![0]}${parts[parts.length - 1]![0]}`.toUpperCase();
-}
-
 function DoctorAvatar({ doctor, size }: { doctor: DoctorProfile; size: "sm" | "lg" }) {
-  const dimensionClass = size === "sm" ? "h-16 w-16 text-lg" : "h-24 w-24 text-2xl";
+  const sizeClassName = size === "sm" ? "h-16 w-16 rounded-full" : "h-24 w-24 rounded-full";
+  const textClassName = size === "sm" ? "text-lg" : "text-2xl";
   return (
     <div className="relative shrink-0">
-      {doctor.avatarMedia ? (
-        // eslint-disable-next-line @next/next/no-img-element -- dairesel küçük avatar, next/image remotePatterns kapsamı dışı olabilir
-        <img
-          src={doctor.avatarMedia.url}
-          alt={doctor.avatarMedia.altText ?? ""}
-          className={cn("rounded-full border border-border object-cover", dimensionClass)}
-        />
-      ) : (
-        <div
-          className={cn(
-            "flex items-center justify-center rounded-full font-semibold text-white",
-            "bg-gradient-to-br from-[#0F766E] to-[#0369A1]",
-            dimensionClass
-          )}
-          aria-hidden="true"
-        >
-          {initialsFromFullName(doctor.fullName)}
-        </div>
-      )}
+      <DoctorAvatarMedia doctor={doctor} sizeClassName={sizeClassName} textClassName={textClassName} sizes={size === "sm" ? "64px" : "96px"} />
       {doctor.isVerified && (
         <span className="absolute -bottom-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-white ring-2 ring-surface">
           <BadgeCheck className="h-3 w-3" aria-hidden="true" />

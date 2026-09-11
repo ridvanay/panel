@@ -357,7 +357,217 @@ yorumundaki AYNI öncelik sırasını KORUR.
 
 ---
 
+## 2.2 Randevu tarih-saat seçim akışı (v1, 2026-09-11, ui-designer)
+
+Bağlam: `availability-calendar.tsx` (frontend-agent, mevcut implementasyon) tarih seçimini
+`role="tab"` pilleriyle **yumuşak/tint** bir seçili durumla (`border-primary bg-primary/10
+text-primary`) gösteriyor, saat seçimini ise `role="radio"` düğmeleriyle **dolgu+ring+ikon**
+seçili durumla (§3'ün ORİJİNAL hali) gösteriyordu — iki farklı "seçim vurgusu" dili aynı akışta
+yan yana duruyordu. Bu bölüm ikisini **TEK bir pil (chip/button) diline** birleştirir ve §3'ü
+bu doğrultuda GÜNCELLER (aşağıdaki §3 artık bu bölümle tutarlı okunmalı — "seçili" satırı bu
+bölümdeki nihai sınıflarla DEĞİŞTİRİLMİŞTİR). Kod YAZILMAMIŞTIR, yalnızca sınıf/spesifikasyon.
+
+### 2.2.1 Ortak "seçim pili" taban dili — tarih chip'i ve saat slotu AYNI kurallara uyar
+
+**Karar:** iki bileşen tipi de aynı taban + aynı üç durum sınıfını kullanır, SADECE genişlik/
+padding'te (içerik uzunluğu farklı olduğu için) ayrışır — `--site-radius` (bu şablonda 16px),
+kenarlık/hover/seçili renk tokenleri BİREBİR aynıdır.
+
+**Paylaşılan taban (her ikisi de):**
+```
+inline-flex h-10 items-center justify-center gap-1.5 rounded-[var(--site-radius)] border
+text-sm font-medium tabular-nums transition-colors duration-150
+focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50
+focus-visible:ring-offset-2 focus-visible:ring-offset-surface
+```
+(`focus-visible:ring` — mevcut kodda hiçbir slot/gün düğmesinde açık bir klavye odak stili
+YOKTU, bu eklenen bir düzelti; tarayıcı varsayılan `outline`'ına bırakılmaz.)
+
+**Boyut farkı (İZİN VERİLEN TEK ayrım):**
+- Tarih chip'i: `px-4` (içerik "11 Eylül Cuma" gibi değişken/uzun metin), sabit genişlik YOK.
+- Saat slotu: `px-3 min-w-[84px]` (içerik sabit `HH:mm`, §3'teki mevcut `min-w-[84px]`
+  DEĞİŞMEDİ).
+
+**Durum sınıfları (renk tokenleri — İKİSİ İÇİN DE aynı):**
+
+| Durum | Sınıf | Not |
+|---|---|---|
+| Müsait/pasif (seçilebilir, seçili değil) | `border-border bg-surface text-foreground hover:border-primary/50 hover:bg-primary/5` | Tarih chip'inin eski `text-foreground/70` tonu KALDIRILDI — saat slotuyla aynı `text-foreground` (tam kontrast) kullanılır; ikisi de birincil, tıklanabilir içerik, biri diğerinden "daha az önemli" değildir |
+| **Seçili** | `border-2 border-transparent bg-primary text-primary-foreground ring-2 ring-offset-2 ring-offset-surface ring-primary` + baştan `Check` (lucide, `h-3.5 w-3.5`) ikonu, etiketten `gap-1.5` | Tarih chip'inin eski soft/tint seçili durumu (`bg-primary/10 text-primary`, ikon YOK) KALDIRILDI — §3'ün saat slotu için zaten doğrulanmış, renk-körü güvenli (WCAG 1.4.1, dolgu+ikon+ring üçlü sinyal) dili artık HER İKİSİNE de uygulanır. Gerekçe: mevcut iki dili birbirine YAKINLAŞTIRMAK yerine, ikisini de zaten var olan DAHA GÜÇLÜ/erişilebilir sinyale YÜKSELTMEK — bir geriye düşüş değil |
+
+Dolu/geçmiş durumları (yalnızca saat slotunda anlamlı — bir "gün" asla dolu/geçmiş olarak
+render edilmez, gün her zaman seçilebilir) **§3'teki hali BİREBİR KORUNUR** (aşağıda §2.2.4'te
+tekrar özetlenir, DEĞİŞİKLİK YOK) — bu bölüm SADECE müsait/seçili ikilisini birleştiriyor.
+
+**`role`/ARIA değişmez:** tarih chip'i `role="tab" aria-selected`, saat slotu `role="radio"
+aria-checked` — bu semantik fark (gün seçimi ↔ tek seçimli grup) KALIR, yalnızca GÖRSEL sınıflar
+birleşiyor; ekran okuyucu davranışı frontend-agent'ın implementasyon detayıdır.
+
+### 2.2.2 Saat gruplama — Sabah / Öğleden Sonra / Akşam
+
+Seçili günün saat slotları, ızgaraya dökülmeden önce üç sabit gruba ayrılır (ziyaretçinin
+`displayTimeZone`'undaki saat değerine göre, `formatTime`'ın ürettiği `HH:mm` dizesinden
+saat kısmı `parseInt` ile okunur — hesaplama frontend-agent'ın implementasyon detayıdır):
+
+| Grup | Aralık (dahil) | Etiket |
+|---|---|---|
+| Sabah | `00:00`–`11:59` | **"Sabah"** |
+| Öğleden Sonra | `12:00`–`17:59` | **"Öğleden Sonra"** |
+| Akşam | `18:00`–`23:59` | **"Akşam"** |
+
+- **Boş grup RENDER EDİLMEZ** — o gün için "Sabah" saati yoksa "Sabah" başlığı da, boş bir
+  ızgara da GÖRÜNMEZ (sahte bir boşluk/başlık üretmenin gereği yok).
+- **Grup başlığı tipografisi:** `text-xs font-semibold uppercase tracking-wider
+  text-foreground/50 mb-2 mt-5 first:mt-0` — §8'in "İkincil/muted metin" rolüyle (`text-xs`,
+  `text-foreground/60`) aynı aileden, ama `uppercase tracking-wider` ile bir bölüm ETİKETİ
+  (kart/tablo başlığı değil) olarak ayrışır; bu projede İLK KEZ kullanılan bir "uppercase
+  eyebrow" deseni — gerekçesi: üç grup arka arkaya `text-sm font-semibold` (bölüm başlığı
+  ölçeği) kullansaydı saat ızgarasıyla aynı görsel ağırlığı taşır, taranabilirlik yerine
+  gürültü eklerdi; küçük/açık/geniş-aralıklı bir etiket göz için "bölüm ayracı" işlevi görür.
+- **Grup içi ızgara:** `grid grid-cols-[repeat(auto-fill,minmax(84px,1fr))] gap-2` — sabit
+  breakpoint sütun sayısı (`sm:grid-cols-4` gibi) İCAT EDİLMEZ; `auto-fill` + `minmax(84px,1fr)`
+  konteyner genişliği ne olursa olsun (mobil tam genişlik, `lg:` sonrası §2.1.1'in 672px'lik ana
+  sütunu) slot pilinin (§2.2.1, `min-w-[84px]`) altına düşmeden otomatik sütunlanır — mevcut
+  `flex flex-wrap gap-2`'nin YERİNİ alır (flex-wrap solda boşluk bırakan düzensiz satırlar
+  üretiyordu, grid hepsini hizalar).
+- **Gruplar arası boşluk** üstteki `mt-5` (20px, grup başlığının kendi üst boşluğu) ile
+  sağlanır, ayrı bir `space-y-*` sarmalayıcı GEREKMEZ.
+
+### 2.2.3 Seçili güne göre saat grid başlığı
+
+Grup başlıklarının (§2.2.2) ÜSTÜNDE, tarih chip satırının altında, TEK SATIR bir bağlam
+başlığı — "hangi güne bakıyorum" sorusunu saatleri okumadan ÖNCE yanıtlar:
+
+```
+<p className="mb-3 flex items-center gap-1.5 text-sm font-semibold text-foreground">
+  <CalendarDays className="h-4 w-4 text-foreground/40" aria-hidden="true" />
+  {formatDayLabel(activeDay.items[0].startsAt, displayTimeZone)} için uygun saatler
+</p>
+```
+
+- Format BİREBİR mevcut `formatDayLabel` çıktısını kullanır (`"11 Eylül Cuma"` gibi,
+  `weekday: long, day: numeric, month: long`, `tr-TR`) + sabit `" için uygun saatler"` eki —
+  §3'ün `aria-label`'ında zaten kullanılan AYNI etiketin (`"{gün adı} müsaitlik saatleri"`)
+  görsel/okunabilir karşılığı, ikinci bir tarih biçimlendirici İCAT EDİLMEZ.
+- `CalendarDays` ikonu (lucide) — §4'ün saat dilimi rozetindeki "ikon + metin" desenini
+  (`Globe` + metin) tekrarlar, aynı satır yüksekliği/boşluk ritmini (`gap-1.5`/`gap-2`
+  aralığında) korur; `Clock`/`Globe` ile KARIŞTIRILMAZ (o ikonlar sırasıyla geri sayım/saat
+  dilimi rolüne ayrılmış, §4/§7).
+- `text-sm font-semibold text-foreground` — §2.2.2'nin grup etiketlerinden (küçük/uppercase/
+  muted) kasıtlı olarak DAHA GÜÇLÜ, çünkü bu, üç grubun ORTAK üst başlığıdır (hiyerarşi:
+  gün başlığı > grup etiketi > slot metni).
+- Konum: mevcut saat dilimi rozetinin (§4/§2.2.6) ALTINDA, tarih chip satırının ALTINDA, ilk
+  grup başlığının ÜSTÜNDE.
+
+### 2.2.4 Dolu / geçmiş / müsait — DEĞİŞMEDİ (§3'ten taşınan özet)
+
+Bu üç durum §3'te zaten nihai — burada sadece grid/gruplama bağlamında hatırlatılır, sınıflar
+BİREBİR AYNI kalır:
+
+- **Müsait:** §2.2.1'deki paylaşılan "müsait/pasif" sınıfı (artık tarih chip'iyle birleşik).
+- **Dolu:** `border-border/60 bg-muted text-foreground/40 cursor-not-allowed pointer-events-none
+  line-through decoration-foreground/30` + alt satırda `text-[10px] text-foreground/50` "Dolu"
+  etiketi — DEĞİŞMEDİ.
+- **Geçmiş:** `border-transparent bg-transparent text-foreground/25 cursor-not-allowed
+  pointer-events-none` (çizgi/etiket YOK) — DEĞİŞMEDİ.
+
+Grid'e (§2.2.2) yerleşimleri de DEĞİŞMEZ: dolu/geçmiş slotlar kendi grubunun içinde, müsait
+slotlarla aynı ızgarada, konumlarını (kronolojik sıra) KORUYARAK render edilir — "önce müsaitler,
+sonra dolular" gibi bir yeniden sıralama YOK (kullanıcı saat sırasını kaybetmemeli).
+
+### 2.2.5 Seçim onay şeridi (slot seçildiğinde, form/CTA'nın ÜSTÜNDE)
+
+Şu an seçili saat bilgisi SADECE booking formunun içinde gömülü düz bir `<p>` olarak görünüyor
+(`availability-calendar.tsx` satır 315-317: `"Seçilen saat: {gün} · {saat}"`, `text-sm
+font-medium text-foreground`, formun İÇİNDE). Bu METNİ formun İÇİNDEN ÇIKARIP, saat ızgarası
+(§2.2.2-2.2.4) ile booking formu arasına, kendi vurgulu şeridi olarak taşı:
+
+```
+<div className="flex items-center justify-between gap-3 rounded-[var(--site-radius)] border border-primary/30 bg-primary/5 px-4 py-3">
+  <div className="flex items-center gap-2 text-sm">
+    <CalendarCheck className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+    <span className="font-medium text-foreground">
+      {formatDayLabel(selectedSlot.startsAt, displayTimeZone)} · {formatTime(selectedSlot.startsAt, displayTimeZone)}
+    </span>
+  </div>
+  <button type="button" onClick={() => setSelectedSlot(null)} className="shrink-0 text-xs font-medium text-primary hover:underline">
+    Değiştir
+  </button>
+</div>
+```
+
+- **Konum:** saat grid'inin (§2.2.2) HEMEN ALTI, booking formunun (mevcut `<form
+  className="mt-4 ...">`) HEMEN ÜSTÜ — yalnızca `selectedSlot !== null` iken render edilir
+  (mevcut `{selectedSlot && (...)}` koşuluyla AYNI kapı, sadece bu şerit formdan AYRI bir
+  kardeş eleman olur). "CTA'ya yakın" isteği bu konumla karşılanır: hasta formu doldurmadan
+  önce SEÇTİĞİ şeyi bir kez daha net görür, "Randevuyu Onayla" butonuna basmadan önceki SON
+  görsel doğrulama noktası.
+- **Renk tokenleri:** `border-primary/30 bg-primary/5` — §6.1'deki "Bekleme Odası" panelinin
+  `border-primary/20 bg-primary/5` tonuyla AYNI aileden (bir kademe daha görünür kenarlık,
+  `/30` vs `/20`, çünkü bu aktif bir onay değil bekleyiş DEĞİL); YENİ bir teal tonu İCAT
+  EDİLMEZ.
+- **İçerik formatı:** `{gün etiketi} · {HH:mm}` — orta nokta ayracı §2'nin "30 dk · ₺450"
+  deseniyle AYNI konvansiyon, ikinci bir ayraç biçimi İCAT EDİLMEZ.
+- **"Değiştir" bağlantısı:** `text-primary hover:underline`, mevcut `setSelectedSlot(null)`
+  state'ini çağırır (zaten var olan fonksiyon, yeni bir state GEREKMEZ) — kullanıcı formu
+  doldurmaya başlamadan saatini değiştirebilir; form ALANLARINI SIFIRLAMAZ (yalnızca slot
+  seçimini temizler, `patientName`/`patientEmail` girilmişse KORUNUR — kullanıcı deneyimi
+  gereği, veri kaybı YARATILMAZ).
+- **İkon:** `CalendarCheck` (lucide) — "onaylı tarih" çağrışımı, §2.2.3'ün `CalendarDays`
+  (henüz seçilmemiş/genel) ikonundan KASITLI olarak farklı bir varyant (dolu/işaretli), aynı
+  ailenin "durum değişti" sinyali.
+- Form içindeki eski satır (`"Seçilen saat: ..."`, satır 315-317) bu şeritle DUPLICATE olacağı
+  için KALDIRILIR — aynı bilgi iki kez farklı stillerde gösterilmez (§9'daki "bilinçli tekrar"
+  ilkesinin TERSİ burada geçerli: o farklı SAYFA konumlarında bilinçli tekrardı, bu ise aynı
+  akışta bitişik gereksiz bir tekrar olurdu).
+
+### 2.2.6 Saat dilimi rozeti — stil KORUNUR, yalnızca hizalama
+
+§4'teki iki-aşamalı saat dilimi rozetinin (`Globe` ikonu, `border-border bg-muted/50` şeridi)
+**sınıfları/metni/aşama mantığı DEĞİŞMEZ** — bu bölüm SADECE onun yeni ızgarayla dikey
+sıralamasını netleştirir:
+
+```
+[saat dilimi rozeti — §4, DEĞİŞMEDİ]
+[tarih chip satırı — §2.2.1]
+[gün başlığı "{gün} için uygun saatler" — §2.2.3]
+[Sabah — grup başlığı + grid — §2.2.2]
+[Öğleden Sonra — grup başlığı + grid]
+[Akşam — grup başlığı + grid]
+[seçim onay şeridi — §2.2.5, YALNIZCA selectedSlot varken]
+[booking formu / "Randevuyu Onayla" — DEĞİŞMEDİ]
+```
+
+Rozet ile tarih chip satırı arasındaki boşluk mevcut `mb-1`'den `mb-4`'e ÇIKARILIR (16px) —
+şu an rozetin ALTINDAKİ eleman (tarih chip'leri) neredeyse yapışık duruyordu (`mb-1` = 4px),
+yeni gün başlığı+grup başlıklarıyla kalabalıklaşan ızgarada bu şerit kendi "bilgi bandı"
+kimliğini görsel bir boşlukla ayırmalı. Rozetin kendi İÇ `px-3 py-2` dolgusu, `text-xs` boyutu,
+`Globe` ikonu, iki-aşamalı (SSR/mount) davranışı BİREBİR KORUNUR.
+
+### 2.2.7 Breakpoint özeti
+
+Bu akışta YENİ bir breakpoint İCAT EDİLMEZ, mevcut Tailwind varsayılanları (`sm`/`md`/`lg`)
+kullanılır:
+
+- Tarih chip satırı: `flex flex-wrap gap-2` — DEĞİŞMEDİ, tüm genişliklerde satır kaydırır.
+- Saat grid'i (§2.2.2): `grid-cols-[repeat(auto-fill,minmax(84px,1fr))]` — breakpoint'e BAĞIMLI
+  DEĞİL, kendiliğinden yanıt verir (mobilde ~3-4 sütun, `lg:`'nin 672px ana sütununda ~6-7
+  sütun — kesin sayı konteyner genişliğine göre otomatik).
+  Grid ile ilgili tek gerçek "breakpoint" olayı §2.1.1'in `lg:grid-cols-[1fr_320px]` geçişidir
+  (ana sütun `lg:` altında 672px'e sabitlenir) — bu, §2.1'in KENDİ kararıdır, burada TEKRAR
+  İCAT EDİLMEZ.
+- Seçim onay şeridi (§2.2.5): tek satır `flex items-center justify-between` her genişlikte
+  aynı kalır — içerik ("11 Eylül Cuma · 14:00" + "Değiştir") en dar mobil ekranda (`320px`)
+  dahi taşmayacak kadar kısa, ayrı bir mobil varyant GEREKMEZ.
+
+---
+
 ## 3. Slot düğmesi durumları (müsait / dolu / geçmiş / seçili)
+
+**Not (2026-09-11, ui-designer):** aşağıdaki tablonun **"Müsait"** ve **"Seçili"** satırları
+artık §2.2.1'in tarih chip'iyle BİRLEŞTİRİLMİŞ nihai sınıflarını yansıtır (tabloyu okurken
+"tarih chip'i de bu satırları kullanır" bilgisini ekleyin) — **"Dolu"** ve **"Geçmiş"** satırları
+DEĞİŞMEDİ, bunlar zaten §2.2.4'te aynen tekrarlandı.
 
 `GET /doctors/{slug}/slots` yalnızca `{ startsAt, endsAt, available }` döndürür (mimari §4.2)
 — "geçmiş" ile "dolu/tampon içi" ayrımı **frontend'in `now` ile karşılaştırmasından** gelir,
@@ -667,11 +877,14 @@ Gerçek metin/fotoğraf içermez — yalnızca bölüm ritmini ve palet renkleri
 | Hero "Hakkında" tipografisi | `max-w-prose text-base leading-7 text-foreground/80` (eski `text-sm leading-relaxed text-foreground/70`'in yerine) |
 | Hero fiyat/CTA paneli | Ayrı `bg-surface border border-border` kart, `lg:sticky lg:top-24`; mobilde `sticky-add-to-cart-bar.tsx` ile BİREBİR aynı `fixed bottom-0 z-40` alt çubuk deseni |
 | Dil rozeti | `Badge variant="outline" size="sm"`, ISO kodu büyük harf, emoji bayrak YOK |
-| Slot — müsait | `border-border bg-surface hover:border-primary/50` |
-| Slot — seçili | `bg-primary text-primary-foreground ring-2 ring-primary` + `Check` ikonu |
-| Slot — dolu | `bg-muted text-foreground/40 line-through` + "Dolu" etiketi + `Lock` yok, sadece çizgi+etiket |
-| Slot — geçmiş | `text-foreground/25`, çizgi/etiket YOK, yalnızca `aria-label` |
-| Saat dilimi rozeti | 2 aşamalı (SSR jenerik → mount sonrası ikili gösterim), `Globe` ikonu |
+| Tarih chip + Slot — müsait (§2.2.1, BİRLEŞİK) | `h-10 rounded-[var(--site-radius)] border-border bg-surface text-foreground hover:border-primary/50 hover:bg-primary/5` (chip `px-4`, slot `px-3 min-w-[84px]`) |
+| Tarih chip + Slot — seçili (§2.2.1, BİRLEŞİK) | `border-2 border-transparent bg-primary text-primary-foreground ring-2 ring-offset-2 ring-offset-surface ring-primary` + `Check` ikonu (eski tarih chip'inin soft/tint seçili hali KALDIRILDI) |
+| Slot — dolu | `bg-muted text-foreground/40 line-through` + "Dolu" etiketi + `Lock` yok, sadece çizgi+etiket (DEĞİŞMEDİ) |
+| Slot — geçmiş | `text-foreground/25`, çizgi/etiket YOK, yalnızca `aria-label` (DEĞİŞMEDİ) |
+| Saat grid gruplama (§2.2.2) | Sabah `00:00-11:59` / Öğleden Sonra `12:00-17:59` / Akşam `18:00+`, grup başlığı `text-xs font-semibold uppercase tracking-wider text-foreground/50`, grid `grid-cols-[repeat(auto-fill,minmax(84px,1fr))] gap-2` |
+| Seçili gün başlığı (§2.2.3) | `text-sm font-semibold text-foreground` + `CalendarDays` ikonu, "{gün} için uygun saatler" |
+| Seçim onay şeridi (§2.2.5) | `border-primary/30 bg-primary/5` + `CalendarCheck` ikonu + "{gün} · {HH:mm}" + "Değiştir" bağlantısı, grid'in altı/formun üstü |
+| Saat dilimi rozeti | 2 aşamalı (SSR jenerik → mount sonrası ikili gösterim), `Globe` ikonu, DEĞİŞMEDİ (§2.2.6 — sadece `mb-4` hizalama) |
 | Konsültasyon kontrol çubuğu | `bg-black/70 backdrop-blur-md rounded-full`, toggle `h-12 w-12`, ayrıl `h-14 w-14 bg-danger` ayrık |
 | Bekleme odası paneli | `border-primary/20 bg-primary/5` + `Loader2` + `animate-ping` (sakin) |
 | "Yapılandırılmamış" paneli | `border-warning/30 bg-warning/5` + `Settings2` (admin aksiyonu, `--danger` DEĞİL) |

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { DoctorProfileHero } from "@/components/site/telehealth/doctor-profile-hero";
 import type { DoctorProfile } from "@/lib/api/types";
 
@@ -96,6 +96,46 @@ describe("DoctorProfileHero", () => {
     expect(screen.getByText("EN")).toBeInTheDocument();
     expect(screen.getByLabelText("Konuşulan diller: Türkçe, İngilizce")).toBeInTheDocument();
   });
+
+  it(
+    "bug fix (qa-agent, 2026-09-11): `avatarMedia` VAR ama görsel YÜKLENEMEZSE (host next/image " +
+      "üzerinden geçse de gerçek bir `error` event'i fırlatsa) ham `alt` metni ASLA görünmez, " +
+      "monogram fallback'e düşülür",
+    () => {
+      render(
+        <DoctorProfileHero
+          doctor={makeDoctor({
+            fullName: "Elif Aydemir",
+            // `localhost` — `NEXT_PUBLIC_API_URL` varsayılanının (`http://localhost:4000/api/v1`)
+            // host'u, `isOptimizableImageUrl` bunu İZİNLİ sayar → `SafeImage` `next/image`'i
+            // seçer (düz `<img>` DEĞİL) — bug'ın gerçek üretim koşulunu (next/image + onError)
+            // taklit eder.
+            avatarMedia: {
+              id: "m2",
+              url: "http://localhost:4000/uploads/broken-avatar.jpg",
+              filename: "broken-avatar.jpg",
+              mimeType: "image/jpeg",
+              sizeBytes: 2048,
+              altText: "Kütle Yapı — kurumsal proje kapak görseli, kolonat silueti",
+              width: 512,
+              height: 512,
+              folderId: null,
+              createdAt: "2026-01-01T00:00:00.000Z",
+            },
+          })}
+        />
+      );
+
+      const img = screen.getByRole("img", { name: "Kütle Yapı — kurumsal proje kapak görseli, kolonat silueti" });
+      fireEvent.error(img);
+
+      // Ham `alt` metni bir yerde DÜZ METİN olarak görünmemeli (kırık görsel + `alt` sızıntısı YOK).
+      expect(screen.queryByText("Kütle Yapı — kurumsal proje kapak görseli, kolonat silueti")).not.toBeInTheDocument();
+      expect(screen.queryByRole("img")).not.toBeInTheDocument();
+      // Mevcut monogram fallback'e düşülür (`initialsFromFullName` — "Elif Aydemir" → "EA").
+      expect(screen.getByText("EA")).toBeInTheDocument();
+    }
+  );
 
   it("uzun ad `break-words` ile ikinci satıra sarkar, `truncate` KULLANILMAZ (kesilmez)", () => {
     render(<DoctorProfileHero doctor={makeDoctor({ fullName: "Çok Uzun Bir Ad Soyad Örneği Testi" })} />);

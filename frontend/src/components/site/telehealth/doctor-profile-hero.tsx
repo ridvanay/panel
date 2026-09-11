@@ -1,14 +1,17 @@
 import { BadgeCheck, Stethoscope } from "lucide-react";
 import type { DoctorProfile } from "@/lib/api/types";
 import { Badge } from "@/components/ui/badge";
-import { initialsFromFullName } from "@/components/site/telehealth/doctor-card";
+import { DoctorAvatarMedia } from "@/components/site/telehealth/doctor-avatar";
 
 /**
  * `.claude/design-notes-telehealth.md` §2.1.2 — doktor detay sayfasının hero başlık satırı.
  * `DoctorCard`'ın (§2) ızgara avatarından KASITLI olarak farklı (yumuşak köşeli KARE, dairesel
- * DEĞİL) — `initialsFromFullName` ve marka gradyanı (`from-[#0F766E] to-[#0369A1]`) `doctor-card.tsx`
- * ile BİREBİR aynı, YENİ bir hash-renk paleti İCAT EDİLMEDİ. İnteraktif hiçbir öğe yok, bu yüzden
- * bir Server Component olarak kalır (`"use client"` GEREKMEZ).
+ * DEĞİL) — monogram/marka gradyanı (`from-[#0F766E] to-[#0369A1]`) `doctor-card.tsx` ile BİREBİR
+ * aynı (`doctor-avatar.tsx::DoctorAvatarMedia` ortak), YENİ bir hash-renk paleti İCAT EDİLMEDİ.
+ * `DoctorAvatarMedia` kendi içinde bir Client Component'tir (görsel yüklenemedi-fallback state'i
+ * için, bkz. o dosyanın bug fix yorumu) ama bu bileşen ona hiçbir closure/event handler PROP
+ * OLARAK GEÇMEZ — bu yüzden bu dosya KENDİSİ bir Server Component olarak kalır (`"use client"`
+ * GEREKMEZ).
  */
 const LANGUAGE_NAMES: Record<string, string> = {
   tr: "Türkçe",
@@ -24,23 +27,13 @@ export function DoctorProfileHero({ doctor }: { doctor: DoctorProfile }) {
 
   return (
     <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-start sm:gap-6">
-      <div className="h-28 w-28 shrink-0 overflow-hidden rounded-[var(--site-radius)] sm:h-36 sm:w-36">
-        {doctor.avatarMedia ? (
-          // eslint-disable-next-line @next/next/no-img-element -- avatar URL'si medya kütüphanesinden gelir, next/image remotePatterns kapsamı dışı olabilir (doctor-card.tsx ile AYNI istisna)
-          <img
-            src={doctor.avatarMedia.url}
-            alt={doctor.avatarMedia.altText ?? ""}
-            className="h-full w-full border border-border object-cover"
-          />
-        ) : (
-          <div
-            className="flex h-full w-full select-none items-center justify-center bg-gradient-to-br from-[#0F766E] to-[#0369A1] text-3xl font-semibold text-white sm:text-4xl"
-            aria-hidden="true"
-          >
-            {initialsFromFullName(doctor.fullName)}
-          </div>
-        )}
-      </div>
+      <DoctorAvatarMedia
+        doctor={doctor}
+        sizeClassName="h-28 w-28 rounded-[var(--site-radius)] sm:h-36 sm:w-36"
+        textClassName="text-3xl sm:text-4xl"
+        sizes="144px"
+        priority
+      />
 
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
