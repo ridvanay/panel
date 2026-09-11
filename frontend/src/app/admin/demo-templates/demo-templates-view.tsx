@@ -15,6 +15,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useAuth } from "@/context/auth-context";
+import { useModules } from "@/context/modules-context";
 import * as demoTemplatesApi from "@/lib/api/demo-templates";
 import { ApiClientError } from "@/lib/api/error";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
@@ -59,6 +60,9 @@ const REPLACES_LABELS: Record<DemoTemplateReplacesField, string> = {
   footer: "Footer sütunlarınız ve linkleriniz",
   socialLinks: "Sosyal medya linkleriniz",
   homePage: "Ana sayfa ayarınız (yalnızca \"Ana sayfa yap\" seçiliyse)",
+  // `.claude/architect-scope-telehealth-template.md` §2.6/§9.6 — yalnızca `enableRequiredModules`
+  // işaretliyse ve gerçekten kapalı bir modül açılacaksa görünür (GENEL bir alan, bkz. types.ts).
+  siteModules: "Kapalı olan gerekli modül(ler) — açık onayınızla AÇILACAK",
 };
 
 const CONTENTS_LABELS: { key: keyof DemoTemplateContents; label: string }[] = [
@@ -70,6 +74,10 @@ const CONTENTS_LABELS: { key: keyof DemoTemplateContents; label: string }[] = [
   { key: "navigationItems", label: "navigasyon öğesi" },
   { key: "footerColumns", label: "footer sütunu" },
   { key: "mediaAssets", label: "medya varlığı" },
+  // §6.1/§12 — `telehealth-clinic` bu alanları dolduran İLK şablon (GENEL alan, opsiyonel).
+  { key: "specialties", label: "uzmanlık" },
+  { key: "doctors", label: "doktor" },
+  { key: "availabilityWindows", label: "müsaitlik penceresi" },
 ];
 
 interface ConflictState {
@@ -80,12 +88,16 @@ interface ConflictState {
 export function DemoTemplatesView() {
   const { user } = useAuth();
   const isAdmin = user?.role === "ADMIN";
+  const { isModuleEnabled } = useModules();
 
   const [templates, setTemplates] = useState<DemoTemplateSummary[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [confirmTarget, setConfirmTarget] = useState<DemoTemplateSummary | null>(null);
   const [setAsHomePage, setSetAsHomePage] = useState(true);
+  // §2.6 (GENEL — herhangi bir şablonun `requiredModules`i için kullanılabilir, `telehealth-clinic`'e
+  // ÖZEL DEĞİLDİR). Varsayılan `false`: modül SESSİZCE açılmaz, kullanıcı AÇIK onay vermelidir.
+  const [enableRequiredModules, setEnableRequiredModules] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
 
@@ -113,6 +125,7 @@ export function DemoTemplatesView() {
   function openConfirm(template: DemoTemplateSummary) {
     setImportError(null);
     setSetAsHomePage(true);
+    setEnableRequiredModules(false);
     setConfirmTarget(template);
   }
 
@@ -125,6 +138,7 @@ export function DemoTemplatesView() {
         confirm: true,
         force: options.force,
         setAsHomePage,
+        enableRequiredModules,
       });
       setConfirmTarget(null);
       setConflict(null);
@@ -362,15 +376,41 @@ export function DemoTemplatesView() {
             <div className="space-y-1.5">
               <p className="text-xs font-medium tracking-wide text-foreground/50 uppercase">Yeni eklenecek içerik</p>
               <div className="grid grid-cols-2 gap-1.5 text-sm text-foreground/70">
-                {CONTENTS_LABELS.filter((c) => confirmTarget.contents[c.key] > 0).map((c) => (
+                {CONTENTS_LABELS.filter((c) => (confirmTarget?.contents[c.key] ?? 0) > 0).map((c) => (
                   <span key={c.key} className="flex items-center gap-1.5">
                     <PlusCircle className="h-3.5 w-3.5 shrink-0 text-success" />
-                    {confirmTarget.contents[c.key]} {c.label}
+                    {confirmTarget?.contents[c.key]} {c.label}
                   </span>
                 ))}
               </div>
             </div>
           )}
+
+          {/* §2.6 (GENEL) — bu şablonun ihtiyaç duyduğu modüllerden KAPALI olanlar için açık
+              opt-in. Tüm gerekli modüller zaten açıksa bu blok hiç GÖSTERİLMEZ (madde 3: modül
+              kapalıyken import yine 201 döner + warnings[], sessiz açma YOK). */}
+          {confirmTarget &&
+            confirmTarget.requiredModules.length > 0 &&
+            confirmTarget.requiredModules.some((key) => !isModuleEnabled(key)) && (
+              <div className="space-y-2 rounded-lg border border-warning/30 bg-warning/5 p-3">
+                <p className="text-sm text-foreground">
+                  Bu şablon şu modül(ler)e ihtiyaç duyar:{" "}
+                  <strong className="font-medium">{confirmTarget.requiredModules.join(", ")}</strong>. Kapalı kalan
+                  modüllerin ürettiği içerik (ör. ilgili public sayfalar) sitede GÖRÜNMEZ.
+                </p>
+                <div className="flex items-center justify-between gap-3">
+                  <label htmlFor="enable-required-modules" className="text-sm font-medium text-foreground">
+                    Gerekli modülleri otomatik aç
+                  </label>
+                  <Switch
+                    id="enable-required-modules"
+                    checked={enableRequiredModules}
+                    onCheckedChange={setEnableRequiredModules}
+                    aria-label="Gerekli modülleri otomatik aç"
+                  />
+                </div>
+              </div>
+            )}
 
           <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
             <div>
@@ -504,44 +544,50 @@ export function DemoTemplatesView() {
             </div>
           </DialogHeader>
 
-          {result && result.warnings.length > 0 && (
-            <div className="space-y-1.5">
-              <p className="text-xs font-medium tracking-wide text-foreground/50 uppercase">Uyarılar</p>
-              <ul className="space-y-1 text-sm">
-                {result.warnings.map((warning, i) => (
-                  <li key={i} className="flex items-start gap-2 text-warning">
-                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                    <span>{warning}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+          {/* Gövde AYRI kaydırılır (bkz. post-editor.tsx / webhook-deliveries-dialog.tsx ile AYNI
+              desen) — `warnings[]` şablona göre (ör. telehealth-clinic: 6 uzmanlık + 4 doktor +
+              extraPages) çok satır üretebilir; footer bu sarmalayıcının DIŞINDA kalarak her zaman
+              görünür/erişilebilir kalır. */}
+          <div className="max-h-[60vh] space-y-4 overflow-y-auto">
+            {result && result.warnings.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-xs font-medium tracking-wide text-foreground/50 uppercase">Uyarılar</p>
+                <ul className="space-y-1 text-sm">
+                  {result.warnings.map((warning, i) => (
+                    <li key={i} className="flex items-start gap-2 text-warning">
+                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                      <span>{warning}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
-          {result && (
-            <div className="flex flex-wrap gap-2">
-              <Link
-                href={`/admin/pages/${result.pageId}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
-              >
-                <ExternalLink className="h-3.5 w-3.5" />
-                Oluşturulan sayfayı aç
-              </Link>
-              {result.sliderId && (
+            {result && (
+              <div className="flex flex-wrap gap-2">
                 <Link
-                  href={`/admin/sliders/${result.sliderId}`}
+                  href={`/admin/pages/${result.pageId}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
                 >
                   <ExternalLink className="h-3.5 w-3.5" />
-                  Slider&apos;ı aç
+                  Oluşturulan sayfayı aç
                 </Link>
-              )}
-            </div>
-          )}
+                {result.sliderId && (
+                  <Link
+                    href={`/admin/sliders/${result.sliderId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    Slider&apos;ı aç
+                  </Link>
+                )}
+              </div>
+            )}
+          </div>
 
           <DialogFooter>
             <Button type="button" onClick={closeResult}>

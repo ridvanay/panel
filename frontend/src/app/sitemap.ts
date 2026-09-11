@@ -4,6 +4,7 @@ import { fetchPublishedPagesServer } from "@/lib/api/server-pages";
 import { fetchBlogPostsServer } from "@/lib/api/server-blog";
 import { fetchProductsServer } from "@/lib/api/server-products";
 import { fetchPortfolioItemsServer } from "@/lib/api/server-portfolio";
+import { fetchDoctorsServer } from "@/lib/api/server-telehealth";
 import { fetchSiteSettingsServer } from "@/lib/api/server-settings";
 import { fetchLocalesServer } from "@/lib/api/server-locales";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
@@ -39,11 +40,15 @@ function buildLanguageAlternates(
 }
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const [pages, posts, products, portfolioItems, settings, locales] = await Promise.all([
+  const [pages, posts, products, portfolioItems, doctors, settings, locales] = await Promise.all([
     fetchPublishedPagesServer(),
     fetchBlogPostsServer(),
     fetchProductsServer(),
     fetchPortfolioItemsServer(),
+    // `.claude/architect-scope-telehealth-template.md` §9.5 — `telehealth` modülü kapalıyken
+    // `GET /doctors` 404 döner ve `fetchDoctorsServer` bunu `[]`e çevirir (bkz. yorumu);
+    // dolayısıyla modül kapalı/hiç doktor yokken aşağıdaki döngü hiçbir girdi üretmez.
+    fetchDoctorsServer({}),
     fetchSiteSettingsServer(),
     fetchLocalesServer(),
   ]);
@@ -111,6 +116,29 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 0.5,
       alternates: { languages: buildLanguageAlternates(item.localizations, locales, defaultLocale, "/portfolio") },
     });
+  }
+
+  // `.claude/architect-scope-telehealth-template.md` §9.5 — `/doctors` (statik liste) ve
+  // `/doctors/[slug]` (dinamik) girdileri. `DoctorProfile`'da `localizations` YOKTUR (§3.8 —
+  // doktor profili `ContentSlug`/i18n sistemine dahil değil), bu yüzden `alternates.languages`
+  // ÜRETİLMEZ (`buildLanguageAlternates` burada KULLANILMAZ). `/consultation/*` KASITLI OLARAK
+  // eklenmez — o yol zaten `noindex, nofollow` (`consultation/[id]/page.tsx::generateMetadata`).
+  // Statik `/doctors` girdisi yalnızca en az bir yayınlanmış (aktif) doktor varsa eklenir —
+  // aksi halde modül kapalıyken/hiç doktor yokken 404 dönen bir URL sitemap'e sızardı (kural 3).
+  if (doctors.length > 0) {
+    entries.push({
+      url: `${SITE_URL}/doctors`,
+      changeFrequency: "daily",
+      priority: 0.7,
+    });
+    for (const doctor of doctors) {
+      entries.push({
+        url: `${SITE_URL}/doctors/${doctor.slug}`,
+        lastModified: doctor.updatedAt,
+        changeFrequency: "weekly",
+        priority: 0.6,
+      });
+    }
   }
 
   return entries;

@@ -49,6 +49,10 @@ import type {
   ContactForm,
   ContactFormField,
   ContactSubmission,
+  Specialty,
+  DoctorProfile,
+  DoctorAvailability,
+  Appointment,
 } from "@prisma/client";
 import type {
   UserDto,
@@ -121,6 +125,11 @@ import type {
   OutboundWebhookDto,
   WebhookDeliverySummaryDto,
   WebhookDeliveryDto,
+  SpecialtyDto,
+  DoctorProfileDto,
+  DoctorAvailabilityRuleDto,
+  DoctorSummaryDto,
+  AppointmentDto,
 } from "../schemas/entities";
 import { env } from "../config/env";
 import {
@@ -1536,4 +1545,97 @@ export function toSliderUsageDto(entry: {
   pageDeletedAt: string | null;
 }): SliderUsageDto {
   return { ...entry };
+}
+
+// -------------------------------------------------------------------------
+// TeleHealth — `.claude/architect-scope-telehealth-template.md`.
+// -------------------------------------------------------------------------
+
+export function toSpecialtyDto(specialty: Specialty): SpecialtyDto {
+  return {
+    id: specialty.id,
+    name: specialty.name,
+    slug: specialty.slug,
+    icon: specialty.icon,
+    description: specialty.description,
+    order: specialty.order,
+    isActive: specialty.isActive,
+    createdAt: specialty.createdAt.toISOString(),
+    updatedAt: specialty.updatedAt.toISOString(),
+  };
+}
+
+export function toDoctorAvailabilityRuleDto(rule: DoctorAvailability): DoctorAvailabilityRuleDto {
+  return {
+    id: rule.id,
+    dayOfWeek: rule.dayOfWeek,
+    startMinute: rule.startMinute,
+    endMinute: rule.endMinute,
+    isActive: rule.isActive,
+  };
+}
+
+type DoctorProfileWithRelations = DoctorProfile & {
+  specialty: Specialty | null;
+  avatarMedia: Media | null;
+  availability?: DoctorAvailability[];
+};
+
+export function toDoctorProfileDto(doctor: DoctorProfileWithRelations): DoctorProfileDto {
+  return {
+    id: doctor.id,
+    userId: doctor.userId,
+    specialtyId: doctor.specialtyId,
+    specialty: doctor.specialty ? toSpecialtyDto(doctor.specialty) : null,
+    title: doctor.title,
+    fullName: doctor.fullName,
+    slug: doctor.slug,
+    bio: doctor.bio,
+    languages: doctor.languages,
+    timeZone: doctor.timeZone,
+    sessionDurationMin: doctor.sessionDurationMin,
+    sessionPriceCents: doctor.sessionPriceCents,
+    currency: doctor.currency,
+    avatarMediaId: doctor.avatarMediaId,
+    avatarMedia: doctor.avatarMedia ? toMediaDto(doctor.avatarMedia) : null,
+    isVerified: doctor.isVerified,
+    verifiedAt: doctor.verifiedAt ? doctor.verifiedAt.toISOString() : null,
+    isActive: doctor.isActive,
+    order: doctor.order,
+    availability: (doctor.availability ?? []).map(toDoctorAvailabilityRuleDto),
+    createdAt: doctor.createdAt.toISOString(),
+    updatedAt: doctor.updatedAt.toISOString(),
+  };
+}
+
+export function toDoctorSummaryDto(doctor: Pick<DoctorProfile, "id" | "title" | "fullName" | "slug">): DoctorSummaryDto {
+  return { id: doctor.id, title: doctor.title, fullName: doctor.fullName, slug: doctor.slug };
+}
+
+type AppointmentWithDoctor = Appointment & { doctor: Pick<DoctorProfile, "id" | "title" | "fullName" | "slug"> };
+
+/**
+ * `meetingRoomName`/`accessTokenHash` BİLİNÇLİ OLARAK bu DTO'ya DAHİL EDİLMEZ (bkz.
+ * schemas/entities.ts::AppointmentSchema yorumu — minimum ifşa, §8.5).
+ */
+export function toAppointmentDto(appointment: AppointmentWithDoctor): AppointmentDto {
+  return {
+    id: appointment.id,
+    doctorId: appointment.doctorId,
+    doctor: toDoctorSummaryDto(appointment.doctor),
+    patientUserId: appointment.patientUserId,
+    patientName: appointment.patientName,
+    patientEmail: appointment.patientEmail,
+    startsAt: appointment.startsAt.toISOString(),
+    endsAt: appointment.endsAt.toISOString(),
+    status: appointment.status,
+    priceCents: appointment.priceCents,
+    currency: appointment.currency,
+    startedAt: appointment.startedAt ? appointment.startedAt.toISOString() : null,
+    endedAt: appointment.endedAt ? appointment.endedAt.toISOString() : null,
+    cancelledAt: appointment.cancelledAt ? appointment.cancelledAt.toISOString() : null,
+    cancelReason: appointment.cancelReason,
+    createdAt: appointment.createdAt.toISOString(),
+    updatedAt: appointment.updatedAt.toISOString(),
+  };
 }

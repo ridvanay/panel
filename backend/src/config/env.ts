@@ -50,6 +50,18 @@ const EnvSchema = z.object({
   STRIPE_SECRET_KEY: z.string().default(""),
   STRIPE_WEBHOOK_SECRET: z.string().default(""),
 
+  // `.claude/architect-scope-telehealth-template.md` §4.4 (KARAR C) — LiveKit konsültasyon
+  // odası, `STRIPE_SECRET_KEY` ile BİREBİR AYNI desen: üçü de boş bırakılırsa
+  // `modules/telehealth/lib/livekit.ts::isLiveKitConfigured()` false döner ve
+  // `POST /appointments/{id}/meeting-token` `503 LIVEKIT_NOT_CONFIGURED` verir — özellik
+  // sessizce devre dışı kalır, hiçbir başka akış bundan ETKİLENMEZ.
+  LIVEKIT_URL: z.string().default(""),
+  LIVEKIT_API_KEY: z.string().default(""),
+  LIVEKIT_API_SECRET: z.string().default(""),
+  // Token TTL — kısa tutulur (§8: token süresi randevu penceresine yakın, kaçırılmış bir
+  // token'ın uzun süre geçerli kalmaması için). Dakika.
+  LIVEKIT_TOKEN_TTL_MIN: z.coerce.number().int().positive().max(60).default(15),
+
   // On-demand ISR — backend, frontend'den AYRI bir process olduğu için Next.js'in
   // `revalidatePath`'ini DOĞRUDAN çağıramaz; bunun yerine kaydetme sonrası frontend'deki
   // `POST /api/revalidate` webhook'unu bu paylaşılan sırla imzalayarak tetikler (bkz.

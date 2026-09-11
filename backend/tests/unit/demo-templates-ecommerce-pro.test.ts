@@ -147,7 +147,7 @@ describe("ecommerce-pro demo şablonu — gerçek import (§4.4/§4.5 kabul krit
 
     const result = await importDemoTemplate(app, {
       templateKey: "ecommerce-pro",
-      body: { confirm: true, force: false, setAsHomePage: true },
+      body: { confirm: true, force: false, setAsHomePage: true, enableRequiredModules: false },
       actorId,
       actorEmail,
     });

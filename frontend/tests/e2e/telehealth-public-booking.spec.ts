@@ -1,0 +1,214 @@
+import { test, expect, type Page } from "@playwright/test";
+import { getCachedAdminSession, getSiteModules, patchSiteModule } from "./support/api";
+import {
+  ensureTelehealthModuleWithDoctors,
+  listAllAdminDoctors,
+  getPublicDoctorSlotsRaw,
+  defaultSlotRangeISODates,
+  type FixtureDoctor,
+} from "./support/telehealth-fixtures";
+
+/**
+ * qa-agent — `.claude/architect-scope-telehealth-template.md` §10 (QA kapsamı) madde 8/9. Backend'in
+ * `tests/unit/telehealth-availability.test.ts`/`telehealth-timezone.test.ts`/`telehealth-booking.test.ts`
+ * + `tests/integration/telehealth.test.ts` ZATEN slot üretimi/DST/saat dilimi dönüşümünü/rezervasyon
+ * yarışını `app.inject` seviyesinde kapsıyor — BURADA YENİDEN YAZILMAZ. Bu dosya yalnızca gerçek
+ * tarayıcı + gerçek backend + gerçek Postgres (`saas_e2e`) üzerinden "hasta `/doctors`'ta doktor bulur
+ * → slot seçer → randevu alır → katılım bağlantısı görür" zincirini VE "aynı slot, farklı ziyaretçi
+ * dilimlerinde farklı yerel saatle gösteriliyor" (§4.2 bağlayıcı) davranışını gerçek DOM üzerinden
+ * kapatır.
+ *
+ * `telehealth-template-import.spec.ts`'ten TAMAMEN BAĞIMSIZ çalışır (dosyalar arası sıra garantisi
+ * yok) — `ensureTelehealthModuleWithDoctors()` (bkz. `support/telehealth-fixtures.ts`) GERÇEK
+ * importer'ı (mock DEĞİL) kullanarak modülü açar ve doktor verisinin var olduğunu garanti eder.
+ *
+ * Proje kökü CLAUDE.md / memory notu: public sayfalar (`/doctors*`) `next: { revalidate: 60 }` ile
+ * önbelleklenir (bkz. `lib/api/server-telehealth.ts`, `lib/api/server-modules.ts`) — bu modülü YENİ
+ * açan/YENİ doktor üreten bir kurulumdan hemen sonraki ilk ziyaret en fazla 60 sn eski durumu
+ * gösterebilir. Bu BİR HATA DEĞİLDİR (proje belleği: "60s ISR gecikmesi... e2e testleri `toPass` +
+ * `reload` ile yoklamalıdır") — aşağıdaki `gotoAndWaitReady()` yardımcısı bunu tolere eder.
+ */
+test.describe.configure({ mode: "serial" });
+
+let adminToken: string;
+let initialTelehealthEnabled: boolean;
+let bookableDoctor: FixtureDoctor;
+let bookableDoctorFullName: string;
+
+/** `customer-portal-module-toggle.spec.ts`'teki AYNI 60 sn ISR toleransı deseni. */
+async function gotoAndWaitReady(page: Page, url: string, ready: () => Promise<void>): Promise<void> {
+  await expect(async () => {
+    await page.goto(url, { waitUntil: "domcontentloaded" });
+    await ready();
+  }).toPass({ timeout: 75_000, intervals: [2_000, 5_000] });
+}
+
+test.beforeAll(async ({}, testInfo) => {
+  testInfo.setTimeout(150_000);
+  const session = await getCachedAdminSession();
+  adminToken = session.accessToken;
+
+  const modules = await getSiteModules(adminToken);
+  initialTelehealthEnabled = modules.find((m) => m.key === "telehealth")?.enabled ?? false;
+
+  await ensureTelehealthModuleWithDoctors(adminToken);
+
+  const doctors = await listAllAdminDoctors(adminToken);
+  const { from, to } = defaultSlotRangeISODates(30);
+  let picked: FixtureDoctor | undefined;
+  for (const doctor of doctors) {
+    const slotsRes = await getPublicDoctorSlotsRaw(doctor.slug, from, to);
+    if (slotsRes.status === 200 && (slotsRes.data ?? []).some((s) => s.available)) {
+      picked = doctor;
+      break;
+    }
+  }
+  if (!picked) throw new Error("Rezervasyon testleri için müsait slotu olan bir doktor bulunamadı.");
+  bookableDoctor = picked;
+  bookableDoctorFullName = `${picked.title} ${picked.fullName}`.trim();
+});
+
+test.afterAll(async () => {
+  // `customer-portal-module-toggle.spec.ts::initialProductsModuleEnabled` İLE AYNI ilke — yalnızca
+  // BU dosyanın değiştirdiği global durumu (modül aç/kapa) geri yazar, içerik SİLİNMEZ (bkz.
+  // `support/telehealth-fixtures.ts` dosya başlığı — `Appointment.doctor` `onDelete: Restrict`).
+  await patchSiteModule(adminToken, "telehealth", initialTelehealthEnabled).catch(() => undefined);
+});
+
+test("madde 8: /doctors listesi + uzmanlık filtresi → doktor detayına git → slot seç → randevu al → onay ekranında katılım bağlantısı var", async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+
+  // qa-agent notu — `.first()` KASITLI: paylaşımlı `saas_e2e` veritabanında AYNI isimli birden
+  // fazla doktor (leftover fixture verisi, `support/telehealth-fixtures.ts` başlığındaki "leftover
+  // satırlar sonraki koşumları BOZMAZ" felsefesi) birikebilir — bu test tek bir doktorun KİMLİĞİNİ
+  // değil, listeleme/filtre/rezervasyon AKIŞININ ÇALIŞTIĞINI doğrular.
+  await gotoAndWaitReady(page, "/doctors", async () => {
+    await expect(page.getByRole("heading", { name: "Doktorlarımız" })).toBeVisible();
+    await expect(page.getByText(bookableDoctorFullName).first()).toBeVisible();
+  });
+
+  // Uzmanlık filtresi — doktorun kendi uzmanlığı seçildiğinde hâlâ listede kalmalı.
+  if (bookableDoctor.specialty) {
+    await page.getByLabel("Uzmanlığa göre filtrele").selectOption(bookableDoctor.specialty.slug);
+    await expect(page).toHaveURL(new RegExp(`specialty=${bookableDoctor.specialty.slug}`));
+    await expect(page.getByText(bookableDoctorFullName).first()).toBeVisible();
+  }
+
+  // Arama filtresi — doktorun adına göre arayınca hâlâ listede kalmalı (debounce'lu, `q` URL'e yazılır).
+  await page.getByLabel("Doktor ara").fill(bookableDoctor.fullName);
+  await expect(page).toHaveURL(/[?&]q=/, { timeout: 5_000 });
+  await expect(page.getByText(bookableDoctorFullName).first()).toBeVisible();
+
+  // Aynı isimli birden fazla kart olsa da (yukarıdaki not) HANGİSİNE tıklandığı ÖNEMLİ DEĞİL —
+  // rezervasyon akışı doktordan BAĞIMSIZ olarak aynı şekilde çalışır.
+  await page.getByRole("link", { name: bookableDoctorFullName }).first().click();
+  await expect(page).toHaveURL(/\/doctors\/[^/]+$/);
+  await expect(page.getByRole("heading", { name: "Müsaitlik ve Randevu" })).toBeVisible();
+
+  // Hidrasyon sonrası ziyaretçi dilimi yeniden hesaplanır (§4.2) — DOM'un oturmasını bekle.
+  await page.waitForTimeout(500);
+
+  const availableSlot = page.getByRole("radio", { name: /— müsait$/ }).first();
+  await expect(availableSlot).toBeVisible({ timeout: 15_000 });
+  await availableSlot.click();
+
+  const patientEmail = `qa-e2e-telehealth-booking-${Date.now()}@example.com`;
+  await page.getByLabel("Ad soyad").fill("QA E2E Test Hastası");
+  await page.getByLabel("E-posta").fill(patientEmail);
+  // `Checkbox` (`@base-ui/react/checkbox`) GERÇEK etkileşimli kökü `id="consent"` DEĞİL — bu id,
+  // form/label ilişkilendirmesi için GİZLİ (`aria-hidden`, sıfır boyutlu) yerel `<input>`'a
+  // atanır. Native HTML semantiğiyle TUTARLI şekilde ilişkili `<label for="consent">`'a
+  // tıklamak (görünür/normal akışta olan gerçek eleman) her tarayıcıda checkbox'ı değiştirir.
+  await page.locator('label[for="consent"]').click();
+
+  await page.getByRole("button", { name: "Randevuyu Onayla" }).click();
+
+  await expect(page.getByText("Randevunuz oluşturuldu.")).toBeVisible({ timeout: 20_000 });
+  const confirmationLink = page.getByRole("link", { name: "bu bağlantı" });
+  await expect(confirmationLink).toBeVisible();
+  const href = await confirmationLink.getAttribute("href");
+  expect(href).toMatch(/\/consultation\/[0-9a-fA-F-]{36}\?t=.+/);
+});
+
+test.describe("§4.2/madde 9 — saat dilimi duyarlılığı: aynı slot, farklı ziyaretçi dilimlerinde farklı yerel saat etiketiyle gösteriliyor", () => {
+  let timezoneDoctorSlug: string;
+  let referenceSlotIso: string;
+
+  test.beforeAll(async () => {
+    // qa-agent bulgusu (kendi testinde bulunup düzeltildi, proje kökü CLAUDE.md madde 3) — sırf
+    // "İLK müsait slot" seçmek, o slotun sorgu anında rezervasyon tamponunun (§4.2: "şu andan
+    // itibaren 2 saatten yakın slotlar `available:false`") SINIRINA ÇOK YAKIN olma ihtimalini
+    // taşıyordu: bu describe'un `beforeAll`'ı ile sayfanın GERÇEKTEN yüklendiği an arasında geçen
+    // (paylaşımlı, sıralı çalışan suite'te dakikalar sürebilen) süre içinde slot tamponun İÇİNE
+    // girip `available:false`'a düşebiliyor ve `role=radio` DEĞİL statik "Dolu" span'ı olarak
+    // render ediliyordu (ara sıra gözlemlenen flaky "element(s) not found" hatası). En az 6 saat
+    // ileride bir slot seçmek bu marjı ortadan kaldırır.
+    const SAFE_MARGIN_MS = 6 * 60 * 60_000;
+    const doctors = await listAllAdminDoctors(adminToken);
+    const { from, to } = defaultSlotRangeISODates(30);
+    for (const doctor of doctors) {
+      const slotsRes = await getPublicDoctorSlotsRaw(doctor.slug, from, to);
+      const safeSlot = (slotsRes.data ?? []).find(
+        (s) => s.available && new Date(s.startsAt).getTime() - Date.now() > SAFE_MARGIN_MS
+      );
+      if (safeSlot) {
+        timezoneDoctorSlug = doctor.slug;
+        referenceSlotIso = safeSlot.startsAt;
+        break;
+      }
+    }
+    if (!timezoneDoctorSlug) throw new Error("Saat dilimi testi için güvenli marjlı, müsait bir slot bulunamadı.");
+  });
+
+  /** `availability-calendar.tsx::formatTime` İLE BİREBİR AYNI biçimlendirme — bağımsız doğrulama. */
+  function expectedTimeLabel(timeZone: string): string {
+    return new Intl.DateTimeFormat("tr-TR", { timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(
+      new Date(referenceSlotIso)
+    );
+  }
+
+  test.describe("ziyaretçi dilimi: America/New_York", () => {
+    test.use({ timezoneId: "America/New_York" });
+
+    test("rozet ziyaretçi dilimini gösterir + slot New York yerel saatinde etiketlenir", async ({ page }) => {
+      await gotoAndWaitReady(page, `/doctors/${timezoneDoctorSlug}`, async () => {
+        await expect(page.getByRole("heading", { name: "Müsaitlik ve Randevu" })).toBeVisible();
+      });
+      await page.waitForTimeout(500);
+
+      // `exact: true` — doktorun KENDİ diliminin (paranteziçi "(doktorun yerel saat dilimi: ...)")
+      // ZİYARETÇİ diliminin `<strong>` etiketiyle YANLIŞLIKLA eşleşmesini önler (bu doktorun kendi
+      // `timeZone`'u bazen ziyaretçi diliminden FARKLI OLMAYABİLİR — bkz. `telehealth-rbac.spec.ts`
+      // benzeri qa-agent bulgusu, iki metin de aynı dize İÇEREBİLİR).
+      await expect(page.getByText("America/New_York", { exact: true })).toBeVisible({ timeout: 15_000 });
+      const label = expectedTimeLabel("America/New_York");
+      await expect(page.getByRole("radio", { name: new RegExp(`^${label} —`) })).toBeVisible({ timeout: 15_000 });
+    });
+  });
+
+  test.describe("ziyaretçi dilimi: Europe/Istanbul", () => {
+    test.use({ timezoneId: "Europe/Istanbul" });
+
+    test("AYNI slot Europe/Istanbul yerel saatinde FARKLI bir etiketle gösterilir", async ({ page }) => {
+      await gotoAndWaitReady(page, `/doctors/${timezoneDoctorSlug}`, async () => {
+        await expect(page.getByRole("heading", { name: "Müsaitlik ve Randevu" })).toBeVisible();
+      });
+      await page.waitForTimeout(500);
+
+      // `exact: true` — bkz. yukarıdaki "America/New_York" bloğundaki AYNI gerekçe (bu ortamda
+      // doktorun kendi `timeZone`'u tesadüfen "Europe/Istanbul" ile eşleşmiş, `exact:false` iki
+      // ayrı elemanla — ziyaretçi rozeti VE doktorun kendi dilimi parantezi — çakışıyordu).
+      await expect(page.getByText("Europe/Istanbul", { exact: true })).toBeVisible({ timeout: 15_000 });
+
+      const istanbulLabel = expectedTimeLabel("Europe/Istanbul");
+      const newYorkLabel = expectedTimeLabel("America/New_York");
+      // Sağlık kontrolü — iki dilim arasındaki ofset (7-10 saat) etiketlerin FARKLI olmasını garanti eder;
+      // aksi halde aşağıdaki DOM iddiası yanlışlıkla "aynı" bir etiketle geçebilirdi.
+      expect(istanbulLabel).not.toBe(newYorkLabel);
+
+      await expect(page.getByRole("radio", { name: new RegExp(`^${istanbulLabel} —`) })).toBeVisible({ timeout: 15_000 });
+    });
+  });
+});

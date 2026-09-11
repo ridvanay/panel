@@ -13,6 +13,81 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
 
 ### Added
 
+- **`feat(telehealth)`: Tele-Sağlık modülü (doktor profilleri, haftalık müsaitlik, saat
+  dilimi duyarlı randevu, LiveKit görüntülü konsültasyon) + `feat(demo-templates)`:
+  üçüncü hazır şablon "Global TeleHealth & Clinic"** (bağlayıcı karar dokümanı
+  `.claude/architect-scope-telehealth-template.md`, `ARCHITECTURE.md` §10.23,
+  `docs/architecture/openapi.yaml` `TeleHealth` tag'i). İki ayrı iş: (A) platformun
+  kalıcı bir yetenek genişlemesi olan `telehealth` modülü, (B) bunu sergileyen üçüncü
+  demo şablonu `telehealth-clinic`.
+  - **(A) Veri modeli:** yeni `AppointmentStatus` enum'u + `Specialty`/`DoctorProfile`/
+    `DoctorAvailability`/`Appointment` tabloları (migration `add_telehealth_module`,
+    salt-ekleme). `DoctorAvailability` haftalık **tekrarlayan bir kural**dır, üretilmiş
+    slot satırı değildir — somut slotlar (`GET /doctors/{slug}/slots`) bu kurallardan
+    çalışma zamanında saf bir fonksiyonla türetilir. **`MeetingRoom` tablosu açılmadı**
+    ve doktor `rating`/`reviewCount` alanı (dayanaksız sosyal kanıt) bilinçli olarak
+    reddedildi.
+  - **(A) Saat dilimi:** tekrarlayan müsaitlik doktorun IANA diliminde **duvar
+    saatidir**; randevu UTC bir **an**dır. Dönüşüm tek yerde yapılır, API sınırından
+    dışarıya yalnızca ISO-8601 `Z`'li anlar çıkar; DST geçişlerinde var olmayan saat
+    üretilmez, çift geçen saatte ilk örnek alınır. Yeni bir saat dilimi kütüphanesi
+    **eklenmedi** (Node 20'nin `Intl` desteği yeterli).
+  - **(A) Rezervasyon:** `POST /appointments` kimlik doğrulama gerektirmez (5 istek/dk),
+    `runSerializable` + `@@unique([doctorId, startsAt])` çifte rezervasyonu engeller
+    (`409 SLOT_TAKEN`); fiyat/süre istemciden asla kabul edilmez. İptal edilen bir
+    randevunun saati v1'de yeniden satılabilir hale gelmez (bilinçli, backlog:
+    `feature/appointment-reschedule`).
+  - **(A) LiveKit konsültasyon odası (integration-agent):** gerçek `livekit-server-sdk`
+    entegrasyonu — sahte/mock video arayüzü yazılmadı. Yapılandırma `STRIPE_SECRET_KEY`
+    ile birebir aynı opsiyonel deseni izler: `LIVEKIT_URL`/`LIVEKIT_API_KEY`/
+    `LIVEKIT_API_SECRET` boşsa `POST /appointments/{id}/meeting-token`
+    `503 LIVEKIT_NOT_CONFIGURED` döner ve `/consultation/[id]` dürüst bir
+    "yapılandırılmamış" durum paneli gösterir. Token grant kapsamı yalnızca
+    `roomJoin: true, room: <meetingRoomName>`; katılımcı kimliği PII içermez; katılım
+    yalnızca randevu penceresi içinde (`startsAt - 5dk … endsAt + 15dk`) mümkündür.
+    Görüşme kaydı (Egress) bilinçli olarak kapsam dışı bırakıldı.
+  - **(A) RBAC ve modül kapatma:** `telehealth` `MODULE_REGISTRY`'de
+    **`defaultEnabled: false`** ile kayıtlı (dikey sektör modülü, `products`/`portfolio`
+    gibi yatay yeteneklerden bilinçli olarak farklı). Modül kapalıyken **hem public hem
+    admin** tele-sağlık uçları 404 döner — bu, admin uçlarının modül durumundan bağımsız
+    çalıştığı genel platform deseninden (§10.9.1) hasta PII'si nedeniyle bilinçli bir
+    sapmadır (security-agent denetiminde eksik bulunup düzeltildi, aşağıya bkz.).
+    `/admin/telehealth/appointments` yalnızca ADMIN/MANAGER'a açıktır (EDITOR hariç).
+  - **(A) KVKK:** compliance-agent onayı **engelleyiciydi** ve verildi — randevu formu
+    yalnızca ad + e-posta toplar (semptom/şikâyet alanı yok, özel nitelikli veri reddi),
+    açık rıza onay kutusu zorunlu, önerilen saklama politikası randevu bitiminden
+    12 ay sonra hasta adı/e-postasının anonimleştirilmesi (satır silinmez). Acil durum
+    uyarısı (*"Bu platform acil tıbbi durumlar için kullanılamaz."*) sitewide kalıcı bir
+    şerit + randevu formunda ikinci kez gösterilir.
+  - **(B) `telehealth-clinic` demo şablonu** ("Global TeleHealth & Clinic"): 6 uzmanlık +
+    4 kurgusal doktor profili + haftalık müsaitlik takvimi oluşturur. **Örnek/sahte
+    randevu üretmez** — `DemoTemplateDefinition.telehealth` şeklinde `appointments` diye
+    bir alan hiç yoktur (yapısal garanti, [EPT]'deki sahte sipariş reddiyle aynı
+    gerekçe + çıkarımsal sağlık verisi riski). Demo doktorların `isVerified` alanı
+    daima `false`, `bio`'nun ilk cümlesi zorunlu bir demo uyarısı taşır. Modül
+    varsayılan kapalı geldiği için şablon `requiredModules: ["telehealth"]` bildirir;
+    `ImportDemoTemplateRequest.enableRequiredModules` (varsayılan `false`) açık
+    opt-in'i olmadan modül otomatik açılmaz — kapalıyken import yine `201` döner ve
+    `warnings[]` ile bilgilendirir. **Şablonun taşıyıcısı, diğer ikisiyle aynı şekilde,
+    `.ts`'tir; `.json` reddedildi.** Şablonun şeması istenen JSON şekliyle birebir
+    aynıdır, yalnızca taşıyıcısı TypeScript'tir — böylece bozuk bir şablon üretime
+    değil, CI'ya düşer.
+  - **Görsel:** ui-designer, mimarinin önerdiği ham `#0D9488`/`#0284C7` tonlarının
+    WCAG AA'yı geçmediğini tespit edip `#0F766E`/`#0369A1`'e koyulaştırdı; slot düğmesi
+    durumları (müsait/seçili/dolu/geçmiş), saat dilimi rozeti ve konsültasyon kontrol
+    çubuğu bu paletle tanımlandı.
+  - **Denetimde bulunup düzeltilen bulgular:** security-agent, modül kapalıyken
+    `/admin/telehealth/*` uçlarının (hasta PII'si dahil) yanlışlıkla erişilebilir
+    kaldığını ve `accessToken` karşılaştırmasının sabit zamanlı olmadığını tespit edip
+    ikisini de düzeltti (`.claude/security-review-telehealth.md`). compliance-agent,
+    randevu onay ekranındaki "e-postanıza kaydettik" ifadesinin gerçekleşmeyen bir
+    işlemi anlatan yanıltıcı bir metin olduğunu bulup düzeltti
+    (`.claude/compliance-notes-telehealth.md`).
+  - Testler: backend 89/89 birim + entegrasyon testi (saat dilimi/DST, slot üretimi,
+    rezervasyon yarışı, LiveKit token/IDOR, demo şablon içe aktarma) + 15 yeni
+    Playwright e2e senaryosu (`telehealth-public-booking`, `telehealth-consultation`,
+    `telehealth-rbac`, `telehealth-template-import`) geçiyor.
+
 - **Sipariş yönetimi profesyonelleştirildi: askıya alma, hedefe göre daralan RBAC,
   düzenleme paneli, iptal e-postası ve sipariş bazlı aktivite günlüğü** (bağlayıcı
   karar dokümanı `.claude/architect-scope-order-management-pro.md`, `ARCHITECTURE.md`

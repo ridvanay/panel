@@ -87,6 +87,7 @@ dosyalarının kendisine bakın.
 | `FRONTEND_URL` / `PUBLIC_URL` | CORS, e-posta linkleri, medya URL'leri için |
 | `JWT_PRIVATE_KEY_BASE64` / `JWT_PUBLIC_KEY_BASE64` | RS256 anahtar çifti (dev'de boşsa geçici anahtar üretilir) |
 | `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` | Faturalama |
+| `LIVEKIT_URL` / `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` | Tele-Sağlık görüntülü konsültasyon (opsiyonel — `STRIPE_*` ile aynı desen, boşsa özellik `503` ile dürüstçe devre dışı kalır) |
 | `SMTP_*` | E-posta gönderimi (boşsa dev'de otomatik Ethereal test hesabı — e-posta şablonu editörünün test gönderimi ve iletişim formu bildirimleri bunu kullanır) |
 | `ENCRYPTION_KEY` | 2FA TOTP secret şifrelemesi (AES-256-GCM) |
 | `STORAGE_DRIVER`, `S3_*` | Medya depolama (local veya S3-uyumlu) |
@@ -100,6 +101,7 @@ dosyalarının kendisine bakın.
 | `NEXT_PUBLIC_API_URL` | Backend adresi (`/api/v1` dahil) |
 | `NEXT_PUBLIC_SITE_URL` | sitemap/robots için mutlak URL üretimi |
 | `NEXT_PUBLIC_SENTRY_DSN` / `SENTRY_*` | Hata takibi (client + server) |
+| `NEXT_PUBLIC_LIVEKIT_URL` | Tele-Sağlık — yalnızca sunucu adresi, API secret ASLA frontend'e geçmez |
 
 > E-posta şablonu editörü ve iletişim formu için **ayrı bir env değişkeni gerekmez** —
 > mevcut `SMTP_*`/`FRONTEND_URL` yapılandırmasını yeniden kullanır.
@@ -115,15 +117,16 @@ dosyalarının kendisine bakın.
 │       │   ├── email-templates/    # §10.16 e-posta şablonu blok editörü
 │       │   ├── contact/            # §10.16 iletişim formu
 │       │   ├── products/           # §10.9.2 ürün varyasyonu (ProductVariant) + PDF döküman (ProductDocument) + kargo eşiği
-│       │   ├── demo-templates/     # §10.22 1 tıkla hazır demo şablon içe aktarıcı (modern-architecture, ecommerce-pro)
+│       │   ├── demo-templates/     # §10.22 1 tıkla hazır demo şablon içe aktarıcı (modern-architecture, ecommerce-pro, telehealth-clinic)
+│       │   ├── telehealth/         # §10.23 Tele-Sağlık: doktor/uzmanlık/randevu, saat dilimi duyarlı slot, LiveKit konsültasyon token'ı
 │       │   └── pages/              # §10.17 sayfa Grid/Kolon düzeni burada (pages.schemas.ts, lib/sanitize-blocks.ts)
 │       ├── lib/                 # paylaşılan yardımcılar (email-renderer.ts, html-sanitize.ts, rate-limit.ts, ...)
 │       └── plugins/             # Fastify plugin'leri (prisma, auth, vb.)
 ├── frontend/                    # Next.js (App Router)
 │   └── src/
 │       ├── app/
-│       │   ├── admin/            # yönetim paneli (notifications/templates, contact, pages, ...)
-│       │   └── [lang]/(site)/    # public site (locale-prefixli)
+│       │   ├── admin/            # yönetim paneli (notifications/templates, contact, pages, telehealth/, ...)
+│       │   └── [lang]/(site)/    # public site (locale-prefixli) — §10.23 doctors/, consultation/[id]/ dahil
 │       ├── components/admin/     # email-editor/, page-builder/ dahil
 │       └── lib/api/              # backend API istemcileri (tip güvenli fetch sarmalayıcıları)
 ├── docs/architecture/

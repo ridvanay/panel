@@ -26,6 +26,9 @@ import {
   Palette,
   MessageSquare,
   GalleryHorizontal,
+  Stethoscope,
+  Tag,
+  CalendarClock,
 } from "lucide-react";
 import {
   Sidebar,
@@ -105,6 +108,20 @@ export const navItems: NavItem[] = [
   { href: "/admin/products", labelKey: "nav.products", icon: ShoppingBag, module: "products", roles: ["ADMIN", "MANAGER"] },
   { href: "/admin/orders", labelKey: "nav.orders", icon: Receipt, module: "products", roles: ["ADMIN", "MANAGER"] },
   { href: "/admin/portfolio", labelKey: "nav.portfolio", icon: Briefcase, module: "portfolio", roles: ["ADMIN", "MANAGER"] },
+  // `.claude/architect-scope-telehealth-template.md` §5.1/§8.4 — doktor/uzmanlık CRUD'u okuma
+  // panel kapısı (ADMIN/MANAGER/EDITOR), yazma ADMIN+MANAGER'a kilitli (sayfanın kendi içinde);
+  // sidebar item'ı bu yüzden `roles` KISITLAMAZ (EDITOR görür, salt-okunur kullanır). Randevular
+  // hasta PII'si taşıdığı İÇİN (§8.4 bağlayıcı) EDITOR'e sidebar'da da GÖSTERİLMEZ — `3cbc753`
+  // "modüle bağlı Vergi Sınıfları sekmesi" ile BİREBİR aynı `module` filtresi deseni.
+  { href: "/admin/telehealth/doctors", labelKey: "nav.telehealth", icon: Stethoscope, module: "telehealth" },
+  { href: "/admin/telehealth/specialties", labelKey: "nav.telehealthSpecialties", icon: Tag, module: "telehealth" },
+  {
+    href: "/admin/telehealth/appointments",
+    labelKey: "nav.telehealthAppointments",
+    icon: CalendarClock,
+    module: "telehealth",
+    roles: ["ADMIN", "MANAGER"],
+  },
   { href: "/admin/stats", labelKey: "nav.stats", icon: BarChart3, roles: ["ADMIN", "MANAGER"] },
   // `/admin/reports/exports/*` backend'de SiteRole=ADMIN VEYA MANAGER (§5.3 satır 16).
   { href: "/admin/reports", labelKey: "nav.reports", icon: FileArchive, roles: ["ADMIN", "MANAGER"] },

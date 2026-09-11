@@ -2438,3 +2438,43 @@ ETMEKSİZİN sessizce 422 ile başarısız olur. Test `admin-order-management-pr
 test beklenmedik biçimde geçip işaretin kaldırılması gerektiğini haber verecek. **Düzeltme
 frontend-agent'ın:** `onEditSubmit()`'te uygulanmayan billing alt-alanları `null` yazmak yerine
 gövdeden TAMAMEN OMİT edilmeli (checkout'un kendi deseniyle aynı).
+
+## Tele-Sağlık (`telehealth` modülü + `telehealth-clinic` demo şablonu) — backend + e2e kapsamı (bu turda eklendi)
+
+Kaynak: `.claude/architect-scope-telehealth-template.md` §10 (qa-agent görev listesi, 13 madde,
+bağlayıcı) + `ARCHITECTURE.md` §10.23. security-agent ve compliance-agent denetimlerini
+(ikisi de bu tur için engelleyici) geçti; bulunan 2 güvenlik bulgusu ve 2 KVKK metin sorunu
+ilgili ajanlar tarafından kendi denetimleri sırasında düzeltildi (bkz. `.claude/
+security-review-telehealth.md`, `.claude/compliance-notes-telehealth.md`).
+
+### Backend — unit + entegrasyon (89/89 yeşil)
+
+| Dosya | Katman | Kapsar |
+|---|---|---|
+| `backend/tests/unit/telehealth-timezone.test.ts` | unit | Duvar saati ↔ an dönüşümü; DST'de var olmayan saat üretilmiyor, çift geçen saatte ilk örnek alınıyor |
+| `backend/tests/unit/telehealth-availability.test.ts` | unit | Haftalık kuraldan somut slot türetimi (saf fonksiyon), doktor dilimi ≠ sunucu dilimi, `dayOfWeek` ISO(1-7)↔JS(0-6) dönüşümü, rezervasyon tamponu (now'a 2 saatten yakın slotlar `available:false`) |
+| `backend/tests/unit/telehealth-booking.test.ts` | unit | Rezervasyon değişmezleri (fiyat/süre sunucudan okunur, slot doğrulaması) |
+| `backend/tests/unit/telehealth-livekit.test.ts` | unit | Token/grant üretim mantığı (saf kısım) |
+| `backend/tests/integration/telehealth.test.ts` | entegrasyon (`app.inject`, gerçek Postgres) | `/doctors*`, `POST /appointments` (çifte rezervasyon → `409 SLOT_TAKEN`), `/admin/telehealth/*` RBAC (EDITOR appointments'ta 403, MANAGER doktor/uzmanlık okur+yazamaz sınırı), **modül kapalıyken ADMIN dahil tüm admin uçları 404** (security-agent'ın eklediği regresyon testi) |
+| `backend/tests/integration/telehealth-livekit.test.ts` | entegrasyon | `meeting-token` ucu: secret sızıntısı yok, TTL tavanı, grant kapsamı tek (`roomJoin`), IDOR (4 geçerli yol + geçersiz kombinasyonlar), hız sınırı (11. istek 429), audit kaydı |
+| `backend/tests/unit/demo-templates-telehealth-clinic.test.ts` | unit | `telehealth-clinic` tanımı Zod şemalarından geçiyor, token'lar (`asset:`/`ref:specialty-slug:`) çözülüyor, tavanlar zorlanıyor, **`appointments` alanı tipte yok + importer kaynağında `appointment`/`user` yazan çağrı yok** (statik + gerçek-import doğrulaması), demo doktorlarda `isVerified === false` ve zorunlu demo cümlesi |
+
+### E2E (Playwright, `frontend/tests/e2e/`)
+
+| Dosya | Kapsar |
+|---|---|
+| `telehealth-template-import.spec.ts` | ADMIN olarak `telehealth-clinic` uygula → 201, admin kartı görünür, uzmanlık/doktor/müsaitlik oluştu, **`appointments` tablosu boş + hiçbir `User` yaratılmadı**; modül kapalıyken import → `201` + `warnings[]`; `enableRequiredModules:true` ile modül açılır ve `/doctors` 200 döner |
+| `telehealth-public-booking.spec.ts` | `/doctors` listesi + uzmanlık filtresi → detay → slot seç → randevu al → onay ekranında katılım bağlantısı; saat dilimi testi (`test.use({ timezoneId })` ile `America/New_York` ve `Europe/Istanbul` — aynı an, farklı yerel saat etiketi) |
+| `telehealth-consultation.spec.ts` | `/consultation/[id]`: LiveKit yapılandırılmamışken dürüst "yapılandırılmamış" paneli (sahte video YOK), geri sayım çalışıyor; `?t=` token'ı yok/yanlışken erişim yok; randevu penceresi dışında `409 APPOINTMENT_NOT_JOINABLE` |
+| `telehealth-rbac.spec.ts` | EDITOR `/admin/telehealth/appointments`'ta 403, MANAGER görüyor; doktor/uzmanlık CRUD yetki eşiği |
+
+**Not (mevcut bilinen davranış, proje geneli):** public `/doctors*` sayfaları 60 sn ISR
+gecikmesiyle güncellenir — e2e testleri `toPass` + `reload` ile yoklar; bu bir hata değildir
+(bkz. proje hafızası "Products/blog/portfolio 60s staleness").
+
+### Bulunan ve raporlanan bug'lar
+
+Yok — security-agent ve compliance-agent denetimleri sırasında bulunan maddeler (admin
+modül-kapalı guard eksikliği, sabit-zamanlı token karşılaştırması, yanıltıcı "e-postanıza
+kaydettik" metni) ilgili ajanların **kendileri tarafından** aynı turda düzeltildi; qa-agent'a
+yönlendirilen açık bir frontend/backend bug'ı bulunmadı.

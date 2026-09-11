@@ -843,4 +843,10 @@ export const MODERN_ARCHITECTURE_TEMPLATE: DemoTemplateDefinition = {
   // korunur, regresyon kontrolü). Ek (yasal/kurumsal) sayfa da üretmiyor.
   commerce: null,
   extraPages: [],
+
+  // `.claude/architect-scope-telehealth-template.md` §6.1/§9.6 — bu şablon tele-sağlık verisi
+  // GETİRMİYOR; `telehealth: null` dalı importer'da hiçbir yeni satır YAZMAZ (davranış birebir
+  // korunur, regresyon kontrolü).
+  requiredModules: [],
+  telehealth: null,
 };

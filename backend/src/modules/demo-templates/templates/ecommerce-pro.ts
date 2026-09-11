@@ -1026,4 +1026,10 @@ export const ECOMMERCE_PRO_TEMPLATE: DemoTemplateDefinition = {
       blocks: buildLegalPageBlocks("ep-iptal-iade", ["İptal Koşulları", "İade Süreci", "İade Edilemeyecek Ürünler", "İade Bedelinin İadesi"]),
     },
   ],
+
+  // `.claude/architect-scope-telehealth-template.md` §6.1/§9.6 — bu şablon tele-sağlık verisi
+  // GETİRMİYOR; `telehealth: null` dalı importer'da hiçbir yeni satır YAZMAZ (davranış birebir
+  // korunur, regresyon kontrolü).
+  requiredModules: [],
+  telehealth: null,
 };

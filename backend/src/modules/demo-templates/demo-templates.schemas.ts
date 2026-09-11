@@ -17,6 +17,10 @@ export const ImportDemoTemplateRequestSchema = z
     confirm: z.literal(true),
     force: z.boolean().default(false),
     setAsHomePage: z.boolean().default(true),
+    // `.claude/architect-scope-telehealth-template.md` §2.6/§9.6 — dar tadilat: şablonun
+    // `requiredModules`'ündeki anahtarlar YALNIZCA bu AÇIK opt-in ile açılabilir. Varsayılan
+    // `false` — sessiz kill-switch çevirme YOK ([DTI] §3.2 yasağının gerekçesi).
+    enableRequiredModules: z.boolean().default(false),
   })
   .strict("Bilinmeyen alan gönderildi.");
 export type ImportDemoTemplateRequest = z.infer<typeof ImportDemoTemplateRequestSchema>;

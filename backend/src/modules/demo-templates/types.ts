@@ -43,6 +43,17 @@ export const MAX_TEMPLATE_PRODUCTS = 12;
 export const MAX_TEMPLATE_PRODUCT_VARIANTS = 12;
 export const MAX_TEMPLATE_PRODUCT_DOCUMENTS = 3;
 export const MAX_TEMPLATE_EXTRA_PAGES = 8;
+// `.claude/architect-scope-telehealth-template.md` §6.1/§9.6 — YENİ tavanlar (telehealth-clinic
+// genişlemesi). `MAX_TEMPLATE_ASSETS`/`MAX_TEMPLATE_ASSET_BYTES` DEĞİŞMEDİ (bu şablon ~8 varlık taşır).
+export const MAX_TEMPLATE_SPECIALTIES = 12;
+export const MAX_TEMPLATE_DOCTORS = 8;
+export const MAX_TEMPLATE_DOCTOR_AVAILABILITY = 21; // doktor BAŞINA (3 pencere × 7 gün)
+
+/**
+ * §7.2 madde 3 — HER demo doktorun `bio`'sunun İLK CÜMLESİ. `assertDemoTemplateCaps` bunu
+ * çalışma zamanında zorlar (bağlayıcı, compliance-agent'ın "ilk tarama"sı — bkz. dosya başlığı).
+ */
+export const REQUIRED_DEMO_DOCTOR_BIO_SENTENCE = "Bu, örnek (demo) bir doktor profilidir; gerçek bir hekimi temsil etmez.";
 
 /* ---------------------------------------------------------------------------------------------
  * §3 — `DemoTemplateAsset`
@@ -289,6 +300,51 @@ export interface DemoTemplateProduct {
   status: "PUBLISHED";
 }
 
+/* ---------------------------------------------------------------------------------------------
+ * `.claude/architect-scope-telehealth-template.md` §6.1 — `DemoTemplateSpecialty` /
+ * `DemoTemplateDoctor` (bağlayıcı, [DTI]/[EPT]'nin BİREBİR genişlemesi, §9.6).
+ * ------------------------------------------------------------------------------------------- */
+
+export interface DemoTemplateSpecialty {
+  name: string;
+  slug: string;
+  /** lucide-react ikon anahtarı — `icon-box` bloğuyla AYNI sözlük (§3.2). */
+  icon: string;
+  description: string | null;
+  order: number;
+}
+
+export interface DemoTemplateDoctorAvailabilityRule {
+  /** ISO-8601: 1 = Pazartesi … 7 = Pazar (§3.4 — `DoctorAvailability.dayOfWeek` ile AYNI konvansiyon). */
+  dayOfWeek: 1 | 2 | 3 | 4 | 5 | 6 | 7;
+  /** Gün başlangıcından itibaren DAKİKA (0-1440), doktorun `timeZone`'undaki DUVAR SAATİ. */
+  startMinute: number;
+  endMinute: number;
+}
+
+export interface DemoTemplateDoctor {
+  /** "Dr." / "Prof. Dr." / "Uzm. Dr." — serbest metin, enum DEĞİL (§3.3). */
+  title: string;
+  fullName: string;
+  slug: string;
+  /** §7.2 madde 3 — İLK CÜMLE `REQUIRED_DEMO_DOCTOR_BIO_SENTENCE` OLMAK ZORUNDADIR. */
+  bio: string;
+  /** ISO 639-1 kodları ("tr", "en", "de") — en fazla 6 (`telehealth.schemas.ts::LANGUAGES_SCHEMA` ile AYNI tavan). */
+  languages: string[];
+  /** IANA saat dilimi ("Europe/Istanbul") — "UTC+3" gibi ofset string'i YASAK (§3.3). */
+  timeZone: string;
+  specialtySlug: string | null;
+  sessionDurationMin: number;
+  sessionPriceCents: number;
+  currency: string;
+  /** `assets[].key` → `DoctorProfile.avatarMediaId` (GERÇEK Media FK). */
+  avatarAssetKey: string | null;
+  order: number;
+  /** §7.2 madde 1 — şablonda DAİMA `false`. Tip düzeyinde sabitlenir (literal, `boolean` DEĞİL). */
+  isVerified: false;
+  availability: DemoTemplateDoctorAvailabilityRule[];
+}
+
 export interface DemoTemplateExtraPage {
   title: string;
   slug: string;
@@ -426,6 +482,25 @@ export interface DemoTemplateDefinition {
 
   /** §4.3 — ana sayfa DIŞINDAKİ sayfalar (yasal yer tutucular + kurumsal sayfalar). `modern-architecture` için []. */
   extraPages: DemoTemplateExtraPage[];
+
+  /**
+   * `.claude/architect-scope-telehealth-template.md` §2.6 — bu şablonun ihtiyaç duyduğu
+   * `MODULE_REGISTRY` anahtarları. `[]` = yok (`modern-architecture`/`ecommerce-pro`). Modül
+   * kapalıyken (ve `enableRequiredModules: false` iken) import yine `201` döner + `warnings[]`
+   * (importer.ts).
+   */
+  requiredModules: string[];
+
+  /**
+   * §6.1 — `null` = bu şablon tele-sağlık verisi getirmiyor (`modern-architecture`/
+   * `ecommerce-pro`: null, DAVRANIŞ DEĞİŞMEZ — bu dal hiçbir yeni satır YAZMAZ).
+   * ⚠ `appointments` alanı BİLİNÇLİ OLARAK YOKTUR ve EKLENMEYECEKTİR (§3.6 yapısal garantisi;
+   * sahte randevu üretmek yalnızca yasak değil, bu tiple TANIMLANAMAZ).
+   */
+  telehealth: {
+    specialties: DemoTemplateSpecialty[];
+    doctors: DemoTemplateDoctor[];
+  } | null;
 }
 
 /* ---------------------------------------------------------------------------------------------
@@ -468,11 +543,16 @@ export const DemoTemplateCapsSchema = z.object({
   // `.claude/architect-scope-ecommerce-pro-template.md` §4.6 — YENİ tavanlar.
   products: z.array(z.unknown()).max(MAX_TEMPLATE_PRODUCTS, `En fazla ${MAX_TEMPLATE_PRODUCTS} ürün olabilir.`),
   extraPages: z.array(z.unknown()).max(MAX_TEMPLATE_EXTRA_PAGES, `En fazla ${MAX_TEMPLATE_EXTRA_PAGES} ek sayfa olabilir.`),
+  // `.claude/architect-scope-telehealth-template.md` §6.1/§9.6 — YENİ tavanlar.
+  specialties: z.array(z.unknown()).max(MAX_TEMPLATE_SPECIALTIES, `En fazla ${MAX_TEMPLATE_SPECIALTIES} uzmanlık olabilir.`),
+  doctors: z.array(z.unknown()).max(MAX_TEMPLATE_DOCTORS, `En fazla ${MAX_TEMPLATE_DOCTORS} doktor olabilir.`),
 });
 
 /** `registry.ts` her tanımı module-yükleme anında BUNUNLA doğrular — ihlal, uygulamanın açılışında/ilk importta patlar ("derlenmez/testten geçmez", §3.3). */
 export function assertDemoTemplateCaps(definition: DemoTemplateDefinition): void {
   const products = definition.commerce?.products ?? [];
+  const specialties = definition.telehealth?.specialties ?? [];
+  const doctors = definition.telehealth?.doctors ?? [];
 
   const result = DemoTemplateCapsSchema.safeParse({
     assets: definition.assets,
@@ -481,6 +561,8 @@ export function assertDemoTemplateCaps(definition: DemoTemplateDefinition): void
     portfolioItems: definition.portfolio.items,
     products,
     extraPages: definition.extraPages,
+    specialties,
+    doctors,
   });
   if (!result.success) {
     const messages = result.error.issues.map((issue) => issue.message).join("; ");
@@ -533,5 +615,27 @@ export function assertDemoTemplateCaps(definition: DemoTemplateDefinition): void
         }
       }
     }
+  }
+
+  // `.claude/architect-scope-telehealth-template.md` §6.1/§7.2/§9.6 — doktor BAŞINA müsaitlik
+  // tavanı + §7.2 madde 3'ün ZORUNLU ilk cümlesi. `definition.telehealth === null` ise (diğer
+  // iki şablon) `doctors` zaten [] olduğundan döngü hiç çalışmaz.
+  for (const doctor of doctors) {
+    if (doctor.availability.length > MAX_TEMPLATE_DOCTOR_AVAILABILITY) {
+      throw new Error(
+        `Demo şablon tanımı "${definition.key}": doktor "${doctor.slug}" en fazla ${MAX_TEMPLATE_DOCTOR_AVAILABILITY} müsaitlik penceresine sahip olabilir.`
+      );
+    }
+    if (!doctor.bio.startsWith(REQUIRED_DEMO_DOCTOR_BIO_SENTENCE)) {
+      throw new Error(
+        `Demo şablon tanımı "${definition.key}": doktor "${doctor.slug}" bio'sunun İLK CÜMLESİ "${REQUIRED_DEMO_DOCTOR_BIO_SENTENCE}" OLMAK ZORUNDADIR (§7.2 madde 3).`
+      );
+    }
+  }
+
+  // §2.6 madde 1 tutarlılığı — `telehealth` doluysa `requiredModules` bunu YANSITMALIDIR
+  // (savunma derinliği; şablon yazarının unutması senaryosu).
+  if (definition.telehealth && !definition.requiredModules.includes("telehealth")) {
+    throw new Error(`Demo şablon tanımı "${definition.key}": \`telehealth\` verisi taşıyan şablon \`requiredModules\` içinde "telehealth" İÇERMELİDİR.`);
   }
 }

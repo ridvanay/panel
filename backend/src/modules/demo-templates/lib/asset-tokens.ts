@@ -42,6 +42,13 @@ export const PRODUCT_CATEGORY_REF_PREFIX = "ref:product-category:";
 // doğrudan kullanılabilir `sliderId` koyması ile AYNI desen).
 export const PRODUCT_CATEGORY_SLUG_REF_PREFIX = "ref:product-category-slug:";
 
+// `.claude/architect-scope-telehealth-template.md` §6.2 — DÖRDÜNCÜ token ailesi:
+// `ref:specialty-slug:<slug>` → `PRODUCT_CATEGORY_SLUG_REF_PREFIX` ile BİREBİR AYNI iki-fazlı
+// erteleme deseni (ham bir id'ye DEĞİL, doğrudan KULLANILABİLİR bir `href`'e çözülür), TEK fark
+// hedef varlık ve inşa edilen yol: `Specialty.slug` → `/doctors?specialty=<gerçek-slug>`. AYNI
+// çözümleyici, AYNI dosya (§3.4/[EPT] §4.2 madde 4 — tek üretim noktası disiplini).
+export const SPECIALTY_SLUG_REF_PREFIX = "ref:specialty-slug:";
+
 const ABSOLUTE_VISIT_CAP = 100_000;
 
 export function buildAssetToken(key: string): string {
@@ -55,6 +62,11 @@ export function buildProductCategoryRefToken(slug: string): string {
 /** `templateSlug` — şablonun statik tanımındaki HAM (henüz benzersizleştirilmemiş) kategori slug'ı. */
 export function buildProductCategorySlugHrefRefToken(templateSlug: string): string {
   return `${PRODUCT_CATEGORY_SLUG_REF_PREFIX}${templateSlug}`;
+}
+
+/** `templateSlug` — şablonun statik tanımındaki HAM (henüz benzersizleştirilmemiş) uzmanlık slug'ı. */
+export function buildSpecialtySlugHrefRefToken(templateSlug: string): string {
+  return `${SPECIALTY_SLUG_REF_PREFIX}${templateSlug}`;
 }
 
 function isAssetToken(value: string): value is `asset:${string}` {
@@ -79,6 +91,14 @@ function isProductCategorySlugHrefRefToken(value: string): value is `ref:product
 
 function productCategorySlugHrefTemplateSlugFromToken(value: string): string {
   return value.slice(PRODUCT_CATEGORY_SLUG_REF_PREFIX.length);
+}
+
+function isSpecialtySlugHrefRefToken(value: string): value is `ref:specialty-slug:${string}` {
+  return value.startsWith(SPECIALTY_SLUG_REF_PREFIX) && value.length > SPECIALTY_SLUG_REF_PREFIX.length;
+}
+
+function specialtySlugHrefTemplateSlugFromToken(value: string): string {
+  return value.slice(SPECIALTY_SLUG_REF_PREFIX.length);
 }
 
 export interface ResolveTokensResult {
@@ -130,13 +150,20 @@ interface StackFrame {
  * yanlış slug'a işaret ediyordu). `null` ise `ref:product-category-slug:<templateSlug>` token'ları
  * DOKUNULMADAN ERTELENİR (unresolved SAYILMAZ); bir `Map` verildiğinde haritada KARŞILIĞI OLMAYAN
  * her `templateSlug` FATAL/unresolved sayılır.
+ *
+ * `specialtySlugByTemplateSlug` — `productCategorySlugByTemplateSlug` ile BİREBİR AYNI iki-fazlı
+ * erteleme deseni (`.claude/architect-scope-telehealth-template.md` §6.2): `null` ise
+ * `ref:specialty-slug:<templateSlug>` token'ları DOKUNULMADAN ERTELENİR; bir `Map` verildiğinde
+ * haritada KARŞILIĞI OLMAYAN her `templateSlug` FATAL/unresolved sayılır. Çözümleyici `href`'i
+ * `/doctors?specialty=<gerçek-slug>` olarak inşa eder.
  */
 export function resolvePageBlockTokens(
   blocks: unknown[],
   assetUrlByKey: ReadonlyMap<string, string>,
   sliderId: string | null,
   productCategoryIdBySlug: ReadonlyMap<string, string> | null = null,
-  productCategorySlugByTemplateSlug: ReadonlyMap<string, string> | null = null
+  productCategorySlugByTemplateSlug: ReadonlyMap<string, string> | null = null,
+  specialtySlugByTemplateSlug: ReadonlyMap<string, string> | null = null
 ): ResolveTokensResult {
   const root: unknown[] = deepCloneJson(blocks) as unknown[];
   const unresolvedTokens = new Set<string>();
@@ -189,6 +216,19 @@ export function resolvePageBlockTokens(
           }
         }
         // productCategorySlugByTemplateSlug === null → ERTELENİR (bkz. fonksiyon başlığı).
+        continue;
+      }
+      if (isSpecialtySlugHrefRefToken(value)) {
+        if (specialtySlugByTemplateSlug !== null) {
+          const templateSlug = specialtySlugHrefTemplateSlugFromToken(value);
+          const resolvedSlug = specialtySlugByTemplateSlug.get(templateSlug);
+          if (resolvedSlug !== undefined) {
+            (frame.container as Record<string | number, unknown>)[key] = `/doctors?specialty=${resolvedSlug}`;
+          } else {
+            unresolvedTokens.add(value);
+          }
+        }
+        // specialtySlugByTemplateSlug === null → ERTELENİR (bkz. fonksiyon başlığı).
         continue;
       }
       if (isAssetToken(value)) {

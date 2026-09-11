@@ -27,7 +27,11 @@ export type ApiErrorCode =
   | "BAD_REQUEST"
   | "EMAIL_DELIVERY_FAILED"
   | "INTERNAL_ERROR"
-  | "NETWORK_ERROR";
+  | "NETWORK_ERROR"
+  // `.claude/architect-scope-telehealth-template.md` §12 — `TeleHealth` tag'i.
+  | "SLOT_TAKEN"
+  | "APPOINTMENT_NOT_JOINABLE"
+  | "LIVEKIT_NOT_CONFIGURED";
 
 export type MembershipRole = "OWNER" | "ADMIN" | "MEMBER";
 export type MembershipStatus = "ACTIVE" | "INVITED" | "SUSPENDED";
@@ -3104,7 +3108,17 @@ export interface PublicPortfolioItem extends PublicSeoFields {
  * katmanlar, metinler) backend'de kod içi statik bir registry'dedir ve HİÇBİR API yanıtında dönmez —
  * bu tipler yalnızca panel kartı + içe aktarma sonucu için gereken ÖZET şekli yansıtır.
  */
-export type DemoTemplateReplacesField = "appearance" | "siteSettings" | "navigation" | "footer" | "socialLinks" | "homePage";
+export type DemoTemplateReplacesField =
+  | "appearance"
+  | "siteSettings"
+  | "navigation"
+  | "footer"
+  | "socialLinks"
+  | "homePage"
+  // `.claude/architect-scope-telehealth-template.md` §2.6/§9.6 (tadilat) — yalnızca
+  // `enableRequiredModules: true` ile AÇIK opt-in üzerinden görünür; `SiteModule` GENELDE
+  // yazılmaz, bu satır SADECE bu opt-in aktifse yıkıcılık matrisinde listelenir.
+  | "siteModules";
 
 export interface DemoTemplateContents {
   pages: number;
@@ -3115,6 +3129,10 @@ export interface DemoTemplateContents {
   navigationItems: number;
   footerColumns: number;
   mediaAssets: number;
+  /** §6.1/§12 (GENEL, OPSİYONEL) — `telehealth-clinic` bu alanları dolduran İLK şablon olacak. */
+  specialties?: number;
+  doctors?: number;
+  availabilityWindows?: number;
 }
 
 /** `GET /admin/demo-templates` öğesi. */
@@ -3133,6 +3151,14 @@ export interface DemoTemplateSummary {
   /** Yıkıcılık matrisi — bu şablon uygulandığında ÜZERİNE YAZILACAK/SİLİNECEK alanlar. Onay
    *  diyaloğunda madde madde gösterilmesi ZORUNLUDUR. */
   replaces?: DemoTemplateReplacesField[];
+  /**
+   * `.claude/architect-scope-telehealth-template.md` §2.6/§6.1 (GENEL alan — herhangi bir
+   * şablon kullanabilir, `telehealth-clinic`'e ÖZEL kod DEĞİLDİR). Bu şablonun veri ürettiği
+   * içeriğin sitede GÖRÜNÜR olması için açık olması gereken `MODULE_REGISTRY` anahtarları.
+   * Boş dizi = önkoşul yok. Kapalıysa import yine `201` döner + `warnings[]`
+   * (`enableRequiredModules: true` verilmedikçe modül SESSİZCE açılmaz).
+   */
+  requiredModules: string[];
   /** `null` = bu şablon hiç uygulanmadı. */
   appliedAt: string | null;
   appliedVersion?: string | null;
@@ -3148,6 +3174,12 @@ export interface ImportDemoTemplateRequest {
   force?: boolean;
   /** `true` iken oluşturulan sayfa `SiteSettings.homePageId` olur. Varsayılan: `true`. */
   setAsHomePage?: boolean;
+  /**
+   * §2.6 (GENEL alan) — `requiredModules` içindeki anahtarları AÇIK opt-in ile açar. Varsayılan
+   * `false`: modül kapalı kalır, import yine `201` döner + `warnings[]`. `SiteModule` bunun
+   * DIŞINDA hiçbir yoldan yazılmaz (`.claude/architect-scope-demo-template-import.md` §3.2).
+   */
+  enableRequiredModules?: boolean;
 }
 
 export interface DemoTemplateImportCounts {
@@ -3159,6 +3191,14 @@ export interface DemoTemplateImportCounts {
   footerLinks: number;
   socialLinks: number;
   slides: number;
+  /**
+   * §6.1/§12 (GENEL — `telehealth-clinic` bu alanları dolduran İLK şablon olacak, ama tip
+   * herhangi bir şablon için OPSİYONELDİR). `appointments` alanı BİLİNÇLİ OLARAK YOKTUR —
+   * demo şablonları asla sahte randevu üretmez (§3.6).
+   */
+  specialties?: number;
+  doctors?: number;
+  availabilityWindows?: number;
 }
 
 /** `POST /admin/demo-templates/{templateKey}/import` (`201`) yanıtı. */
@@ -3175,6 +3215,8 @@ export interface DemoTemplateImportResult {
   counts: DemoTemplateImportCounts;
   /** ENGELLEMEYEN uyarılar — başarısızlık DEĞİLDİR, yanıt yine `201`'dir. */
   warnings: string[];
+  /** §2.6 — `enableRequiredModules: true` ile bu import sırasında AÇILAN modül anahtarları. */
+  enabledModules?: string[];
 }
 
 /** `409 CONFLICT` gövdesindeki `error.details` şekli (bkz. openapi.yaml §6.4). */
@@ -3184,4 +3226,178 @@ export interface DemoTemplateConflictDetails {
   importedBy: string | null;
   version: string;
   pageId: string | null;
+}
+
+/**
+ * -----------------------------------------------------------------------
+ * TeleHealth — `.claude/architect-scope-telehealth-template.md` ve
+ * `docs/architecture/openapi.yaml` `TeleHealth` tag'i (tek doğruluk kaynağı).
+ * Meeting-token/complete uçlarının şekli (integration-agent'ın sahası) henüz
+ * kontrata BİREBİR işlenmedi; burada mimari §4.4/§12'deki dokümante sözleşmeye göre
+ * tanımlanır ve openapi.yaml güncellendiğinde bu blokla karşılaştırılıp hizalanmalıdır.
+ * -----------------------------------------------------------------------
+ */
+export type AppointmentStatus = "SCHEDULED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED" | "NO_SHOW";
+
+export interface Specialty {
+  id: string;
+  name: string;
+  slug: string;
+  /** lucide-react ikon anahtarı — `icon-box` bloğuyla AYNI sözlük (`lib/page-builder/icon-options.ts`). */
+  icon: string;
+  description: string | null;
+  order: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateSpecialtyRequest {
+  name: string;
+  slug?: string;
+  icon: string;
+  description?: string | null;
+  order?: number;
+  isActive?: boolean;
+}
+
+export type UpdateSpecialtyRequest = Partial<CreateSpecialtyRequest>;
+
+export interface DoctorAvailabilityRule {
+  id: string;
+  /** ISO-8601: 1 = Pazartesi … 7 = Pazar (JS'in 0-6/Pazar=0 konvansiyonu KULLANILMAZ). */
+  dayOfWeek: number;
+  /** Gün başlangıcından itibaren dakika (0-1440), doktorun `timeZone`'undaki DUVAR SAATİ. */
+  startMinute: number;
+  endMinute: number;
+  isActive: boolean;
+}
+
+export interface DoctorAvailabilityRuleInput {
+  dayOfWeek: number;
+  startMinute: number;
+  endMinute: number;
+  isActive?: boolean;
+}
+
+export interface DoctorProfile {
+  id: string;
+  userId: string | null;
+  specialtyId: string | null;
+  specialty: Specialty | null;
+  /** "Dr." / "Prof. Dr." / "Uzm. Dr." — serbest metin, enum DEĞİL. */
+  title: string;
+  fullName: string;
+  slug: string;
+  bio: string;
+  /** ISO 639-1 kodları ("tr", "en"), en fazla 6. */
+  languages: string[];
+  /** IANA saat dilimi ("Europe/Istanbul"). */
+  timeZone: string;
+  sessionDurationMin: number;
+  sessionPriceCents: number;
+  currency: string;
+  avatarMediaId: string | null;
+  avatarMedia: Media | null;
+  isVerified: boolean;
+  verifiedAt: string | null;
+  isActive: boolean;
+  order: number;
+  availability: DoctorAvailabilityRule[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateDoctorRequest {
+  title: string;
+  fullName: string;
+  slug?: string;
+  bio: string;
+  languages: string[];
+  timeZone: string;
+  specialtyId?: string | null;
+  sessionDurationMin: number;
+  sessionPriceCents: number;
+  currency?: string;
+  avatarMediaId?: string | null;
+  isVerified?: boolean;
+  isActive?: boolean;
+  order?: number;
+  /** Opsiyonel panel kullanıcısı bağlantısı (§2.5) — `@@unique` ihlali `409 CONFLICT`. */
+  userId?: string | null;
+}
+
+export type UpdateDoctorRequest = Partial<CreateDoctorRequest>;
+
+export interface SetDoctorAvailabilityRequest {
+  rules: DoctorAvailabilityRuleInput[];
+}
+
+/** `GET /doctors/{slug}/slots` yanıt öğesi — yalnızca `available: boolean` taşır (§8 madde 5). */
+export interface AvailabilitySlot {
+  startsAt: string;
+  endsAt: string;
+  available: boolean;
+}
+
+export interface DoctorSummary {
+  id: string;
+  title: string;
+  fullName: string;
+  slug: string;
+}
+
+/** Randevu OKUMA DTO'su — `meetingRoomName`/`accessTokenHash` BİLİNÇLİ OLARAK TAŞINMAZ. */
+export interface Appointment {
+  id: string;
+  doctorId: string;
+  doctor: DoctorSummary;
+  patientUserId: string | null;
+  patientName: string;
+  patientEmail: string;
+  startsAt: string;
+  endsAt: string;
+  status: AppointmentStatus;
+  priceCents: number;
+  currency: string;
+  startedAt: string | null;
+  endedAt: string | null;
+  cancelledAt: string | null;
+  cancelReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateAppointmentRequest {
+  doctorSlug: string;
+  /** GERÇEK bir slot başlangıcı olmalı (dakika çözünürlüğü, UTC `Z`'li ISO an). */
+  startsAt: string;
+  patientName: string;
+  patientEmail: string;
+  /** KVKK açık rıza onay kutusu — sunucu yalnızca `true` kabul eder. */
+  consent: true;
+}
+
+/** `POST /appointments` yanıtı — ham `accessToken`'ı BİR KEZ döner. */
+export interface CreateAppointmentResult {
+  id: string;
+  doctorSlug: string;
+  startsAt: string;
+  endsAt: string;
+  status: AppointmentStatus;
+  priceCents: number;
+  currency: string;
+  /** Katılım bağlantısı `/{lang}/consultation/{id}?t=<accessToken>` olarak kurulur. */
+  accessToken: string;
+}
+
+/**
+ * `POST /appointments/{id}/meeting-token` — integration-agent'ın ucu (§4.4). Başarısızsa
+ * `503` (`error.code: LIVEKIT_NOT_CONFIGURED`) veya `409` (`error.code: APPOINTMENT_NOT_JOINABLE`).
+ */
+export interface MeetingTokenResponse {
+  token: string;
+  serverUrl: string;
+  roomName: string;
+  expiresAt: string;
 }

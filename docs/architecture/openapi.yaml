@@ -395,6 +395,79 @@ tags:
       **`SUPER_ADMIN` rolü İCAT EDİLMEDİ** — 5 kademeli rol modeli (bkz. kök `x-site-rbac`)
       değişmez; "yalnızca en üst yetki" isteği projenin mevcut en yüksek kademesi olan
       `ADMIN`'e daraltılarak karşılanır.
+  - name: TeleHealth
+    description: >
+      **Tele-Sağlık modülü** (`/doctors`, `/appointments`, `/admin/telehealth/*`) —
+      doktor profilleri, haftalık müsaitlik ve online randevu. Bkz. ARCHITECTURE.md
+      §10.23 ve bağlayıcı karar dokümanı `.claude/architect-scope-telehealth-template.md`.
+      `Products`/
+      `Portfolio` gibi kapatılabilir bir modüldür (`MODULE_REGISTRY` anahtarı
+      `telehealth`, **`defaultEnabled: false`** — `products`/`portfolio`'dan
+      BİLİNÇLİ olarak FARKLI, dikey bir sektör modülü). **Modül kapalıyken TÜM
+      public VE admin tele-sağlık uçları 404 döner** (§8.6/DoD, bağlayıcı) —
+      `/admin/telehealth/*` bu noktada `Products`/`Portfolio` admin uçlarının
+      genel deseninden (modül durumundan bağımsız çalışma) BİLİNÇLİ olarak
+      SAPAR: `/admin/telehealth/appointments` hasta PII'si taşıdığı için,
+      modülü kapatmanın bu PII'ye erişimi de kapatması gerekir (security-agent
+      denetimi, `.claude/security-review-telehealth.md` — bu davranış
+      güvenlik turunda düzeltildi).
+
+
+      **Saat dilimi (bağlayıcı, §4.2):** tekrarlayan müsaitlik doktorun IANA
+      diliminde DUVAR SAATİDİR; randevu (`Appointment.startsAt`/`endsAt`) UTC bir
+      ANDIR. API sınırından dışarıya yalnızca ISO-8601 `Z`'li anlar çıkar — sunucu
+      ASLA önceden biçimlendirilmiş yerel saat string'i döndürmez.
+      `GET /doctors/{slug}/slots` yanıtı yalnızca `available: boolean` taşır —
+      **"kim rezerve etti" ASLA sızmaz.**
+
+
+      **Rezervasyon (§4.3):** `POST /appointments` kimlik doğrulama GEREKTİRMEZ,
+      route-level hız sınırı **5 istek/dakika** (IP bazlı). `priceCents`/
+      `sessionDurationMin` istemciden ASLA kabul edilmez — sunucuda
+      `DoctorProfile`'dan okunur. Çifte rezervasyon `@@unique([doctorId,
+      startsAt])` ile DB seviyesinde engellenir; çakışma **`409`
+      (`error.code: SLOT_TAKEN`)** döner. İptal edilen bir randevu slotu SERBEST
+      BIRAKMAZ — o saat kalıcı olarak kapalı kalır (v1, bkz. karar dokümanı §4.3).
+
+
+      **Erişim kontrolü (§8):** `GET /appointments/{id}` ve
+      `POST /appointments/{id}/cancel` şu yollardan BİRİYLE erişilebilir: (a)
+      randevunun sahibi oturum açmış hasta, (b) doğru `?t=<accessToken>` sunan
+      misafir hasta, (c) doktorun bağlı `User`'ı, (d) `SiteRole.ADMIN`/`MANAGER`.
+      Yetkisiz erişim `403` DEĞİL **`404`** döner (IDOR — kaynağın varlığı
+      sızdırılmaz). Ham `accessToken` YALNIZCA `POST /appointments` yanıtında BİR
+      KEZ döner; `Appointment` okuma DTO'su `meetingRoomName`/`accessTokenHash`
+      TAŞIMAZ.
+
+
+      **RBAC (§8.4, bağlayıcı):** `/admin/telehealth/appointments` (hasta PII'si
+      içerir) **ADMIN veya MANAGER'dır — EDITOR DIŞLANIR** (`Products`/`Portfolio`
+      ile AYNI eşik). Doktor/uzmanlık CRUD'u da ADMIN+MANAGER; okuma panel
+      kapısıdır (ADMIN/MANAGER/EDITOR).
+
+
+      **LiveKit konsültasyon odası (§4.4/§4.5/§8, integration-agent'ın SAHASI):**
+      `POST /appointments/{id}/meeting-token` yalnızca §4.5'teki 4 yoldan biriyle
+      (oturum sahibi hasta, doğru `?t=` sunan misafir hasta, doktorun bağlı
+      `User`'ı, `SiteRole.ADMIN` — **MANAGER DAHİL DEĞİL**, bu daha dar bir
+      yetki yüzeyidir) ve yalnızca katılım penceresi içinde (`startsAt - 5dk` …
+      `endsAt + 15dk`) token üretir; aksi hâlde **`409
+      APPOINTMENT_NOT_JOINABLE`**. `LIVEKIT_URL`/`LIVEKIT_API_KEY`/
+      `LIVEKIT_API_SECRET` tanımsızken **`503 LIVEKIT_NOT_CONFIGURED`** döner.
+      Grant kapsamı YALNIZCA `roomJoin: true, room: <meetingRoomName>` —
+      `roomCreate`/`roomAdmin`/`roomList`/`ingressAdmin` VERİLMEZ; katılımcı
+      `identity`'si (`patient:<appointmentId>` / `doctor:<doctorId>`) PII
+      İÇERMEZ. Hız sınırı **10 istek/dakika**; her başarılı üretim
+      `logAudit(action: "telehealth.meeting_token.issued")` ile kaydedilir.
+      İlk başarılı token → `status: IN_PROGRESS` + `startedAt` (tek seferlik).
+      `POST /appointments/{id}/complete` yalnızca doktorun bağlı `User`'ı veya
+      `ADMIN` çağırabilir → `status: COMPLETED` + `endedAt`.
+
+
+      **Kapsam dışı (bağlayıcı, backlog):** Ödeme (`priceCents` bir
+      snapshot'tır, Stripe akışı v1'de bağlanmaz), doktor değerlendirme/
+      puanlama, çoklu uzmanlık, randevu erteleme, LiveKit kaydı (Egress) ve
+      semptom/şikâyet formu (özel nitelikli veri) kapsam dışıdır.
   - name: Localization
     description: >
       Çoklu dil yapılandırması (`/locales`, `/admin/locales`) — bkz. ARCHITECTURE.md
@@ -6026,6 +6099,560 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
 
   # ==========================================================================
+  # TeleHealth — bkz. `TeleHealth` tag'i, ARCHITECTURE.md §10.23 ve
+  # `.claude/architect-scope-telehealth-template.md` (bağlayıcı karar dokümanı).
+  # Meeting-token/complete uçları integration-agent'ın sahasıdır — aşağıda tanımlıdır.
+  # ==========================================================================
+
+  /doctors:
+    get:
+      tags: [TeleHealth]
+      security: []
+      summary: Aktif doktorları listele (public)
+      description: >
+        `telehealth` modülü kapalıysa `404 NOT_FOUND`. `userId`/`avatarMediaId`
+        DIŞINDA iç kimlik/e-posta/randevu verisi TAŞIMAZ (§8 madde 5).
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: specialtySlug
+          in: query
+          required: false
+          schema: { type: string }
+        - name: language
+          in: query
+          required: false
+          description: "ISO 639-1 kod (\"tr\")."
+          schema: { type: string }
+        - $ref: "#/components/parameters/SearchQuery"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/DoctorProfile" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /doctors/{slug}:
+    parameters:
+      - $ref: "#/components/parameters/DoctorSlug"
+    get:
+      tags: [TeleHealth]
+      security: []
+      summary: Doktor profili detayı (public)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/DoctorProfile" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /doctors/{slug}/slots:
+    parameters:
+      - $ref: "#/components/parameters/DoctorSlug"
+    get:
+      tags: [TeleHealth]
+      security: []
+      summary: Müsaitlik takvimi — somut, MUTLAK (UTC) slotlar (public)
+      description: >
+        Haftalık kurallardan (`DoctorAvailability`) + mevcut randevulardan ÇALIŞMA
+        ZAMANINDA türetilir (§4.2, saf fonksiyon: `lib/availability.ts`). DST
+        tuzağı: var olmayan duvar saati ÜRETİLMEZ; çift geçen duvar saati YALNIZCA
+        İLK (DST'li) örnekte üretilir. `from`/`to` doktorun KENDİ takvim günüdür.
+      parameters:
+        - name: from
+          in: query
+          required: true
+          description: "YYYY-MM-DD (doktorun yerel takvim günü)."
+          schema: { type: string, pattern: "^\\d{4}-\\d{2}-\\d{2}$" }
+        - name: to
+          in: query
+          required: true
+          description: "YYYY-MM-DD — `from`'a göre en fazla 31 gün sonrası."
+          schema: { type: string, pattern: "^\\d{4}-\\d{2}-\\d{2}$" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/AvailabilitySlot" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422":
+          description: "`to` < `from` VEYA aralık 31 günü aşıyor (`error.code: VALIDATION_ERROR`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+
+  /appointments:
+    post:
+      tags: [TeleHealth]
+      security: []
+      summary: Randevu al (public, kimlik doğrulama GEREKMEZ)
+      description: >
+        §4.3 — route-level hız sınırı **5 istek/dakika** (IP bazlı). Sunucu
+        `runSerializable` ile "check-then-act" yapar: `startsAt` GERÇEKTEN bir
+        slot mu (§4.2) → o slot dolu mu → değilse oluştur.
+        `@@unique([doctorId, startsAt])` ikinci savunma hattıdır. `priceCents`/
+        `sessionDurationMin` istemciden ASLA kabul edilmez, `DoctorProfile`'dan
+        okunur. `Authorization: Bearer` header'ı VARSA `Appointment.patientUserId`
+        dolar (`POST /checkout/session` ile AYNI opsiyonel-auth deseni); yoksa
+        misafir akışı çalışır.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateAppointmentRequest" }
+      responses:
+        "201":
+          description: Randevu oluşturuldu
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/CreateAppointmentResult" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "Slot az önce başka biri tarafından alındı (`error.code: SLOT_TAKEN`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /appointments/{id}:
+    parameters:
+      - $ref: "#/components/parameters/AppointmentId"
+      - $ref: "#/components/parameters/AppointmentAccessToken"
+    get:
+      tags: [TeleHealth]
+      security: []
+      summary: Randevu detayı (§8 erişim kontrolü)
+      description: >
+        Erişim: (a) oturum sahibi hasta, (b) doğru `?t=` sunan misafir hasta,
+        (c) doktorun bağlı `User`'ı, (d) `ADMIN`/`MANAGER`. Yetkisiz erişim
+        `404` döner (IDOR — varlık sızdırılmaz), `403` DEĞİL.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Appointment" }
+        "404":
+          description: "Randevu yok VEYA erişim yetkisi yok (§8 — ayrım YAPILMAZ)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+
+  /appointments/{id}/cancel:
+    parameters:
+      - $ref: "#/components/parameters/AppointmentId"
+      - $ref: "#/components/parameters/AppointmentAccessToken"
+    post:
+      tags: [TeleHealth]
+      security: []
+      summary: Randevuyu iptal et (§8 erişim kontrolü ile AYNI)
+      description: >
+        Yalnızca `SCHEDULED` randevular iptal edilebilir. **İptal edilen randevu
+        slotu SERBEST BIRAKMAZ** — `startsAt` DEĞİŞMEZ, o saat kalıcı olarak
+        kapalı kalır (§4.3, backlog: `feature/appointment-reschedule`).
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 500 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Appointment" }
+        "404":
+          description: "Randevu yok VEYA erişim yetkisi yok"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "409":
+          description: "Randevu zaten SCHEDULED durumunda değil (`error.code: CONFLICT`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+
+  /appointments/{id}/meeting-token:
+    parameters:
+      - $ref: "#/components/parameters/AppointmentId"
+      - $ref: "#/components/parameters/AppointmentAccessToken"
+    post:
+      tags: [TeleHealth]
+      security: []
+      summary: LiveKit konsültasyon odası token'ı üret (integration-agent'ın ucu, §4.4/§4.5/§8)
+      description: >
+        Hız sınırı **10 istek/dakika**. Erişim §4.5'teki 4 yoldan biriyle
+        sınırlıdır: (a) oturum sahibi hasta, (b) doğru `?t=` sunan misafir
+        hasta, (c) doktorun bağlı `User`'ı, (d) `SiteRole.ADMIN` (**MANAGER
+        DAHİL DEĞİL** — `GET /appointments/{id}` ile aynı eşik değildir, bu
+        daha dar bir yetki yüzeyidir). Yetkisiz erişim `404` döner (IDOR).
+        Randevu `SCHEDULED`/`IN_PROGRESS` DIŞINDA bir durumdaysa VEYA katılım
+        penceresi (`startsAt - 5dk` … `endsAt + 15dk`) dışındaysa
+        **`409 APPOINTMENT_NOT_JOINABLE`**. `LIVEKIT_URL`/`LIVEKIT_API_KEY`/
+        `LIVEKIT_API_SECRET` tanımsızsa (randevu/erişim hiç sorgulanmadan)
+        **`503 LIVEKIT_NOT_CONFIGURED`**. Grant kapsamı YALNIZCA `roomJoin:
+        true, room: <meetingRoomName>`. İlk başarılı üretimde randevu
+        `IN_PROGRESS`'e geçer ve `startedAt` yazılır (tek seferlik, eşzamanlı
+        çağrılar `updateMany` ile korunur). Her başarılı üretim
+        `logAudit(action: "telehealth.meeting_token.issued")` ile kaydedilir.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/MeetingTokenResponse" }
+        "404":
+          description: "Randevu yok VEYA erişim yetkisi yok (§8 — ayrım YAPILMAZ)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "409":
+          description: "Randevu katılıma uygun değil (`error.code: APPOINTMENT_NOT_JOINABLE`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "503":
+          description: "LiveKit yapılandırılmamış (`error.code: LIVEKIT_NOT_CONFIGURED`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+
+  /appointments/{id}/complete:
+    parameters:
+      - $ref: "#/components/parameters/AppointmentId"
+    post:
+      tags: [TeleHealth]
+      security: []
+      summary: Randevuyu tamamlandı olarak işaretle (doktor veya ADMIN, §4.5)
+      description: >
+        Kimlik doğrulaması `/appointments/{id}` İLE AYNI opsiyonel-`Bearer`
+        desenini kullanır — eksik/geçersiz `Authorization` header'ı **401
+        FIRLATMAZ**. Yalnızca randevunun bağlı doktoru (`DoctorProfile.userId`'si
+        oturum sahibiyle eşleşen) veya `SiteRole.ADMIN` çağırabilir — misafir
+        `accessToken`'ı (`?t=`) BURADA GEÇERSİZDİR, kimlik doğrulanmamış/yetkisiz
+        HER istek (MANAGER dahil) **`404`** döner (IDOR — ayrım YAPILMAZ).
+        Başarılı çağrı `status: COMPLETED` + `endedAt` yazar.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Appointment" }
+        "404":
+          description: "Randevu yok VEYA erişim yetkisi yok (§8 — ayrım YAPILMAZ)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+
+  /admin/telehealth/specialties:
+    get:
+      tags: [TeleHealth]
+      summary: Uzmanlıkları listele (ADMIN, MANAGER veya EDITOR — okuma panel kapısı)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/Specialty" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [TeleHealth]
+      summary: Yeni uzmanlık oluştur (ADMIN veya MANAGER)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateSpecialtyRequest" }
+      responses:
+        "201":
+          description: Oluşturuldu
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Specialty" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/telehealth/specialties/{specialtyId}:
+    parameters:
+      - $ref: "#/components/parameters/SpecialtyId"
+    patch:
+      tags: [TeleHealth]
+      summary: Uzmanlığı güncelle (ADMIN veya MANAGER)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateSpecialtyRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Specialty" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+    delete:
+      tags: [TeleHealth]
+      summary: Uzmanlığı sil (ADMIN veya MANAGER)
+      description: "Bağlı doktorların `specialtyId`'si `SetNull` ile boşa düşer (kullanımda 409 koruması YOKTUR, bilinçli)."
+      responses:
+        "204": { description: Silindi }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/telehealth/doctors:
+    get:
+      tags: [TeleHealth]
+      summary: Doktorları listele (ADMIN, MANAGER veya EDITOR — okuma panel kapısı)
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: specialtyId
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - $ref: "#/components/parameters/SearchQuery"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/DoctorProfile" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [TeleHealth]
+      summary: Yeni doktor oluştur (ADMIN veya MANAGER)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateDoctorRequest" }
+      responses:
+        "201":
+          description: Oluşturuldu
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/DoctorProfile" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/telehealth/doctors/{doctorId}:
+    parameters:
+      - $ref: "#/components/parameters/DoctorId"
+    get:
+      tags: [TeleHealth]
+      summary: Doktor detayı (ADMIN, MANAGER veya EDITOR)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/DoctorProfile" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [TeleHealth]
+      summary: Doktoru güncelle (ADMIN veya MANAGER)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateDoctorRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/DoctorProfile" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+    delete:
+      tags: [TeleHealth]
+      summary: Doktoru KALICI sil (ADMIN veya MANAGER)
+      description: "`Appointment.doctor` `onDelete: Restrict` — geçmiş/gelecek randevusu olan bir doktor silinemez (409); önce pasife alın."
+      responses:
+        "204": { description: Silindi }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "Doktorun randevu geçmişi var (`error.code: CONFLICT`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+
+  /admin/telehealth/doctors/{doctorId}/availability:
+    parameters:
+      - $ref: "#/components/parameters/DoctorId"
+    get:
+      tags: [TeleHealth]
+      summary: Doktorun haftalık müsaitlik ızgarasını getir (ADMIN, MANAGER veya EDITOR)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/DoctorAvailabilityRule" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [TeleHealth]
+      summary: Haftalık ızgaranın TAMAMINI değiştir (ADMIN veya MANAGER)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SetDoctorAvailabilityRequest" }
+      responses:
+        "200":
+          description: OK — güncel kural listesi döner
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/DoctorAvailabilityRule" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/telehealth/appointments:
+    get:
+      tags: [TeleHealth]
+      summary: Randevuları listele (SALT-OKUNUR, yalnızca ADMIN veya MANAGER — EDITOR 403)
+      description: >
+        Hasta PII'si (`patientName`/`patientEmail`) içerir — `requirePanelAccess()`
+        (ADMIN/MANAGER/EDITOR) DEĞİL, doğrudan `ADMIN`/`MANAGER` (§8.4 bağlayıcı,
+        veri minimizasyonu). EDITOR'ün bu veriye erişmesi için iş gerekçesi yoktur.
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: doctorId
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: status
+          in: query
+          required: false
+          schema: { $ref: "#/components/schemas/AppointmentStatus" }
+        - $ref: "#/components/parameters/SearchQuery"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/Appointment" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: "EDITOR dahil, ADMIN/MANAGER DIŞINDAKİ her rol (`error.code: FORBIDDEN`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+
+  # ==========================================================================
   # Gelişmiş Slider / Hero Studio — bkz. `Sliders` tag'i ve
   # `.claude/architect-scope-advanced-slider.md` (bağlayıcı karar dokümanı).
   # ==========================================================================
@@ -8761,6 +9388,36 @@ components:
         (§10.13.5 madde 4): (1) `ContentSlug(locale, slug)` tam eşleşme,
         (2) varsayılan dildeki kanonik `slug` kolonu. İkisi de tutmazsa `404`.
       schema: { type: string }
+    DoctorSlug:
+      name: slug
+      in: path
+      required: true
+      description: "`DoctorProfile.slug` — `ContentSlug` tablosuna KAYDOLMAZ (§3.8, i18n yok)."
+      schema: { type: string }
+    SpecialtyId:
+      name: specialtyId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    DoctorId:
+      name: doctorId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    AppointmentId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    AppointmentAccessToken:
+      name: t
+      in: query
+      required: false
+      description: >
+        Misafir hastanın katılım bağlantısındaki opak `accessToken` (bkz.
+        `CreateAppointmentResult.accessToken`). Oturum açmış sahibi/doktoru/
+        ADMIN-MANAGER için GEREKMEZ (§8 erişim kontrolü).
+      schema: { type: string }
 
   responses:
     Unauthorized:
@@ -9000,6 +9657,11 @@ components:
               # `BAD_REQUEST` ve `EMAIL_DELIVERY_FAILED` backend'de (`lib/errors.ts::ApiErrorCode`)
               # ZATEN üretiliyordu ama bu enum'da EKSİKTİ — sözleşme drift'i kapatıldı
               # (`PAYLOAD_TOO_LARGE` için daha önce yapılan düzeltmenin aynısı).
+              # `SLOT_TAKEN`/`APPOINTMENT_NOT_JOINABLE`/`LIVEKIT_NOT_CONFIGURED` —
+              # `TeleHealth` tag'i (§12 .claude/architect-scope-telehealth-template.md).
+              # `LIVEKIT_NOT_CONFIGURED` (503) ve `APPOINTMENT_NOT_JOINABLE` (409)
+              # `POST /appointments/{id}/meeting-token` ucu tarafından üretilir
+              # (integration-agent, bkz. `/appointments/{id}/meeting-token` path'i).
               enum:
                 [
                   BAD_REQUEST,
@@ -9012,6 +9674,9 @@ components:
                   PAYLOAD_TOO_LARGE,
                   EMAIL_DELIVERY_FAILED,
                   INTERNAL_ERROR,
+                  SLOT_TAKEN,
+                  APPOINTMENT_NOT_JOINABLE,
+                  LIVEKIT_NOT_CONFIGURED,
                 ]
             message: { type: string }
             details:
@@ -13940,6 +14605,275 @@ components:
         productId: { type: string, format: uuid }
 
     # -------------------------------------------------------------------------
+    # TeleHealth — `.claude/architect-scope-telehealth-template.md` (bağlayıcı karar
+    # dokümanı). `MeetingTokenResponse` (meeting-token/complete uçlarının şeması,
+    # integration-agent'ın sahası — §4.4/§4.5/§8/§12) aşağıda tanımlıdır.
+    # -------------------------------------------------------------------------
+
+    AppointmentStatus:
+      type: string
+      description: >
+        Randevu yaşam döngüsü. Değer SIRASI bağlayıcıdır (Postgres enum tanım
+        sırası). `SCHEDULED` → `IN_PROGRESS` (ilk başarılı LiveKit token'ında) →
+        `COMPLETED` (`POST /appointments/{id}/complete`, integration-agent'ın ucu)
+        VEYA `CANCELLED` (`POST /appointments/{id}/cancel`) VEYA `NO_SHOW` (v1'de
+        otomatik üretilmez, backlog).
+      enum: [SCHEDULED, IN_PROGRESS, COMPLETED, CANCELLED, NO_SHOW]
+
+    Specialty:
+      type: object
+      description: "Tıbbi uzmanlık alanı (ör. Kardiyoloji) — `icon-box` bloğuyla AYNI lucide-react ikon sözlüğü."
+      required: [id, name, slug, icon, order, isActive, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+        icon: { type: string, description: "lucide-react ikon anahtarı (ör. \"heart-pulse\")." }
+        description: { type: string, nullable: true }
+        order: { type: integer }
+        isActive: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    DoctorAvailabilityRule:
+      type: object
+      description: >
+        Haftalık TEKRARLAYAN müsaitlik penceresi — üretilmiş bir SLOT DEĞİLDİR
+        (bkz. `AvailabilitySlot`). `startMinute`/`endMinute` doktorun `timeZone`'undaki
+        DUVAR SAATİDİR (gün başlangıcından itibaren dakika, 0-1440).
+      required: [id, dayOfWeek, startMinute, endMinute, isActive]
+      properties:
+        id: { type: string, format: uuid }
+        dayOfWeek:
+          type: integer
+          minimum: 1
+          maximum: 7
+          description: "ISO-8601: 1 = Pazartesi … 7 = Pazar (JavaScript'in 0-6/Pazar=0 konvansiyonu KULLANILMAZ)."
+        startMinute: { type: integer, minimum: 0, maximum: 1440 }
+        endMinute: { type: integer, minimum: 0, maximum: 1440 }
+        isActive: { type: boolean }
+
+    DoctorProfile:
+      type: object
+      description: >
+        Doktor profili. `userId` NULLABLE — panel/hesap kullanıcısı OLMADAN da tam
+        bir kayıttır. `rating`/`reviewCount` YOKTUR (dayanaksız sosyal kanıt reddi,
+        bkz. karar dokümanı §3.3).
+      required:
+        [
+          id, userId, specialtyId, specialty, title, fullName, slug, bio, languages,
+          timeZone, sessionDurationMin, sessionPriceCents, currency, avatarMediaId,
+          avatarMedia, isVerified, verifiedAt, isActive, order, availability,
+          createdAt, updatedAt,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        userId: { type: string, format: uuid, nullable: true }
+        specialtyId: { type: string, format: uuid, nullable: true }
+        specialty:
+          allOf: [{ $ref: "#/components/schemas/Specialty" }]
+          nullable: true
+        title: { type: string, description: "\"Dr.\" / \"Prof. Dr.\" / \"Uzm. Dr.\" — serbest metin, enum DEĞİL." }
+        fullName: { type: string }
+        slug: { type: string }
+        bio: { type: string }
+        languages:
+          type: array
+          items: { type: string }
+          maxItems: 6
+          description: "ISO 639-1 kodları (\"tr\", \"en\")."
+        timeZone: { type: string, description: "IANA saat dilimi (\"Europe/Istanbul\"). Ofset string'i (\"UTC+3\") KABUL EDİLMEZ." }
+        sessionDurationMin: { type: integer }
+        sessionPriceCents: { type: integer }
+        currency: { type: string }
+        avatarMediaId: { type: string, format: uuid, nullable: true }
+        avatarMedia:
+          allOf: [{ $ref: "#/components/schemas/Media" }]
+          nullable: true
+        isVerified:
+          type: boolean
+          description: "Kimlik/diploma doğrulaması rozeti. Demo şablonunun ürettiği profillerde DAİMA false."
+        verifiedAt: { type: string, format: date-time, nullable: true }
+        isActive: { type: boolean }
+        order: { type: integer }
+        availability:
+          type: array
+          items: { $ref: "#/components/schemas/DoctorAvailabilityRule" }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    AvailabilitySlot:
+      type: object
+      description: >
+        `GET /doctors/{slug}/slots` yanıt öğesi. `available: false` — geçmiş, `now`'a
+        2 saatten YAKIN VEYA zaten rezerve edilmiş bir slot. **"Kim rezerve etti" ASLA
+        sızmaz** — yalnızca boolean.
+      required: [startsAt, endsAt, available]
+      properties:
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        available: { type: boolean }
+
+    DoctorSummary:
+      type: object
+      description: "`Appointment.doctor` join'i için minimal özet."
+      required: [id, title, fullName, slug]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        fullName: { type: string }
+        slug: { type: string }
+
+    Appointment:
+      type: object
+      description: >
+        Randevu OKUMA DTO'su. `meetingRoomName`/`accessTokenHash` BİLİNÇLİ OLARAK
+        TAŞINMAZ (minimum ifşa, §8). Ham `accessToken` YALNIZCA
+        `CreateAppointmentResult`'ta (oluşturma anında) BİR KEZ döner.
+      required:
+        [
+          id, doctorId, doctor, patientUserId, patientName, patientEmail, startsAt,
+          endsAt, status, priceCents, currency, startedAt, endedAt, cancelledAt,
+          cancelReason, createdAt, updatedAt,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        doctorId: { type: string, format: uuid }
+        doctor: { $ref: "#/components/schemas/DoctorSummary" }
+        patientUserId: { type: string, format: uuid, nullable: true }
+        patientName: { type: string }
+        patientEmail: { type: string, format: email }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        status: { $ref: "#/components/schemas/AppointmentStatus" }
+        priceCents: { type: integer }
+        currency: { type: string }
+        startedAt: { type: string, format: date-time, nullable: true }
+        endedAt: { type: string, format: date-time, nullable: true }
+        cancelledAt: { type: string, format: date-time, nullable: true }
+        cancelReason: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    CreateAppointmentRequest:
+      type: object
+      description: >
+        Yalnızca ad + e-posta toplanır — semptom/şikâyet alanı YOKTUR (özel nitelikli
+        veri reddi, §3.5). `consent: true` — KVKK açık rıza onay kutusu, sunucu
+        yalnızca `true` kabul eder.
+      required: [doctorSlug, startsAt, patientName, patientEmail, consent]
+      properties:
+        doctorSlug: { type: string }
+        startsAt:
+          type: string
+          format: date-time
+          description: "GERÇEK bir slot başlangıcı olmalı (dakika çözünürlüğü) — sunucuda `lib/availability.ts` ile doğrulanır, aksi halde 422."
+        patientName: { type: string, minLength: 1, maxLength: 120 }
+        patientEmail: { type: string, format: email, maxLength: 255 }
+        consent: { type: boolean, enum: [true] }
+
+    CreateAppointmentResult:
+      type: object
+      description: "`POST /appointments` yanıtı — ham `accessToken`'ı BİR KEZ döner (hash'i saklanır)."
+      required: [id, doctorSlug, startsAt, endsAt, status, priceCents, currency, accessToken]
+      properties:
+        id: { type: string, format: uuid }
+        doctorSlug: { type: string }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        status: { $ref: "#/components/schemas/AppointmentStatus" }
+        priceCents: { type: integer }
+        currency: { type: string }
+        accessToken:
+          type: string
+          description: "Katılım bağlantısı `/{lang}/consultation/{id}?t=<accessToken>` olarak kurulur. Bu yanıttan SONRA bir daha DÖNMEZ."
+
+    MeetingTokenResponse:
+      type: object
+      description: >
+        `POST /appointments/{id}/meeting-token` yanıtı (integration-agent'ın ucu,
+        §4.4/§4.5/§8). Grant kapsamı YALNIZCA `roomJoin: true, room: <roomName>`
+        — `roomCreate`/`roomAdmin`/`roomList`/`ingressAdmin` VERİLMEZ. Katılımcı
+        `identity`'si (`patient:<appointmentId>` / `doctor:<doctorId>`) PII
+        İÇERMEZ ve bu yanıtta AYRICA döndürülmez.
+      required: [token, serverUrl, roomName, expiresAt]
+      properties:
+        token:
+          type: string
+          description: "Kısa ömürlü LiveKit JWT'si (TTL ≤ `LIVEKIT_TOKEN_TTL_MIN`, varsayılan 15 dk)."
+        serverUrl:
+          type: string
+          description: "LiveKit sunucu adresi (`LIVEKIT_URL`, ör. `wss://<proje>.livekit.cloud`)."
+        roomName:
+          type: string
+          description: "`Appointment.meetingRoomName` — tahmin edilemeyen, rastgele üretilmiş oda adı."
+        expiresAt:
+          type: string
+          format: date-time
+          description: "Token'ın son geçerlilik anı (ISO-8601 `Z`'li)."
+
+    CreateSpecialtyRequest:
+      type: object
+      required: [name, icon]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 80 }
+        slug: { type: string, minLength: 1, maxLength: 80, description: "verilmezse name'den slugify edilir" }
+        icon: { type: string, minLength: 1, maxLength: 60 }
+        description: { type: string, maxLength: 500, nullable: true }
+        order: { type: integer, minimum: 0 }
+        isActive: { type: boolean }
+
+    UpdateSpecialtyRequest:
+      allOf: [{ $ref: "#/components/schemas/CreateSpecialtyRequest" }]
+      description: "Tüm alanlar OPSİYONELDİR (partial) — yalnızca gönderilenler güncellenir."
+
+    CreateDoctorRequest:
+      type: object
+      required: [title, fullName, bio, languages, timeZone, sessionDurationMin, sessionPriceCents]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 40 }
+        fullName: { type: string, minLength: 1, maxLength: 120 }
+        slug: { type: string, minLength: 1, maxLength: 80, description: "verilmezse fullName'den slugify edilir" }
+        bio: { type: string, minLength: 1, maxLength: 5000 }
+        languages:
+          type: array
+          items: { type: string, pattern: "^[a-z]{2}$" }
+          maxItems: 6
+        timeZone: { type: string, minLength: 1, maxLength: 80 }
+        specialtyId: { type: string, format: uuid, nullable: true }
+        sessionDurationMin: { type: integer, minimum: 5, maximum: 240 }
+        sessionPriceCents: { type: integer, minimum: 0 }
+        currency: { type: string, minLength: 3, maxLength: 3 }
+        avatarMediaId: { type: string, format: uuid, nullable: true }
+        isVerified:
+          type: boolean
+          description: "GERÇEK admin CRUD alanıdır — yalnızca demo-templates içe aktarıcısı DAİMA false yazar (§7.2)."
+        isActive: { type: boolean }
+        order: { type: integer, minimum: 0 }
+        userId: { type: string, format: uuid, nullable: true, description: "Opsiyonel panel kullanıcısı bağlantısı (§2.5) — `@@unique` ihlali 409." }
+
+    UpdateDoctorRequest:
+      allOf: [{ $ref: "#/components/schemas/CreateDoctorRequest" }]
+      description: "Tüm alanlar OPSİYONELDİR (partial) — yalnızca gönderilenler güncellenir."
+
+    SetDoctorAvailabilityRequest:
+      type: object
+      description: "Haftalık ızgaranın TAMAMINI değiştirir — eski kurallar SİLİNİR, yenileri tek transaction'da yazılır."
+      required: [rules]
+      properties:
+        rules:
+          type: array
+          maxItems: 21
+          items:
+            type: object
+            required: [dayOfWeek, startMinute, endMinute]
+            properties:
+              dayOfWeek: { type: integer, minimum: 1, maximum: 7 }
+              startMinute: { type: integer, minimum: 0, maximum: 1440 }
+              endMinute: { type: integer, minimum: 0, maximum: 1440 }
+              isActive: { type: boolean, default: true }
+
+    # -------------------------------------------------------------------------
     # §10.13 Üçüncü Parti Entegrasyon — API Anahtarları
     # -------------------------------------------------------------------------
 
@@ -15138,7 +16072,20 @@ components:
         contents:
           type: object
           description: "Şablon uygulandığında OLUŞACAK kayıt sayıları — onay diyaloğunda gösterilir."
-          required: [pages, sliders, slides, portfolioCategories, portfolioItems, navigationItems, footerColumns, mediaAssets]
+          required:
+            [
+              pages,
+              sliders,
+              slides,
+              portfolioCategories,
+              portfolioItems,
+              navigationItems,
+              footerColumns,
+              mediaAssets,
+              specialties,
+              doctors,
+              availabilityWindows,
+            ]
           properties:
             pages: { type: integer, example: 1 }
             sliders: { type: integer, example: 1 }
@@ -15148,15 +16095,33 @@ components:
             navigationItems: { type: integer, example: 9 }
             footerColumns: { type: integer, example: 4 }
             mediaAssets: { type: integer, example: 6 }
+            specialties:
+              type: integer
+              example: 0
+              description: "`.claude/architect-scope-telehealth-template.md` §12 — `telehealth-clinic` DIŞINDAKİ şablonlarda HER ZAMAN 0."
+            doctors: { type: integer, example: 0 }
+            availabilityWindows: { type: integer, example: 0 }
+        requiredModules:
+          type: array
+          description: >
+            §2.6 — bu şablonun ihtiyaç duyduğu `MODULE_REGISTRY` anahtarları (ör.
+            `telehealth-clinic` → `["telehealth"]`). `[]` = yok. Modül kapalıysa VE
+            `POST .../import` isteği `enableRequiredModules: true` GÖNDERMEDİYSE import yine
+            `201` döner ama `warnings[]` ile uyarır.
+          items: { type: string }
+          example: []
         replaces:
           type: array
           description: >
             **Yıkıcılık matrisi (§6.1)** — bu şablon uygulandığında MEVCUT verinin
             SİLİNECEĞİ/ÜZERİNE YAZILACAĞI alanlar. Arayüz bunu onay diyaloğunda madde
             madde göstermek ZORUNDADIR. Burada OLMAYAN her şey yalnızca EKLENİR.
+            `siteModules` — YALNIZCA `requiredModules` boş DEĞİLSE listede görünür; bu
+            şablon `enableRequiredModules: true` ile uygulandığında `SiteModule` satırını
+            AÇABİLİR anlamına gelir (§2.6, `.claude/architect-scope-telehealth-template.md`).
           items:
             type: string
-            enum: [appearance, siteSettings, navigation, footer, socialLinks, homePage]
+            enum: [appearance, siteSettings, navigation, footer, socialLinks, homePage, siteModules]
         appliedAt:
           type: string
           format: date-time
@@ -15207,6 +16172,18 @@ components:
             `true` iken `SiteSettings.homePageId` oluşturulan sayfaya yazılır; eski
             değer `AuditLog.metadata.previousHomePageId`'ye düşer (geri almanın TEK
             kaydı). `false` iken sayfa oluşturulur ama ana sayfa değiştirilmez.
+        enableRequiredModules:
+          type: boolean
+          default: false
+          description: >
+            `.claude/architect-scope-telehealth-template.md` §2.6 — dar tadilat ([DTI]
+            §3.2 "`SiteModule` YAZILMAZ" yasağının): şablonun `requiredModules`'ündeki
+            anahtarlar YALNIZCA bu AÇIK opt-in ile açılabilir. Varsayılan `false` —
+            modül kapalıysa import yine `201` döner + `warnings[]` ile uyarır. `true`
+            ise ilgili `SiteModule` satır(lar)ı Faz 2'de `enabled: true` yapılır ve
+            `AuditLog.metadata.enabledModules`/yanıtın `enabledModules` alanına düşer.
+            `requiredModules: []` olan şablonlarda (ör. `modern-architecture`,
+            `ecommerce-pro`) bu alanın hiçbir etkisi YOKTUR.
       additionalProperties: false
 
     DemoTemplateImportResult:
@@ -15215,7 +16192,7 @@ components:
         kayıtların ID'lerini ve sayılarını döner; arayüz bunlarla doğrudan
         `/admin/pages/{pageId}` ve `/admin/sliders/{sliderId}` bağlantıları kurar.
       type: object
-      required: [templateKey, version, importedAt, pageId, counts, warnings]
+      required: [templateKey, version, importedAt, pageId, counts, enabledModules, warnings]
       properties:
         templateKey: { type: string, example: modern-architecture }
         version: { type: string, example: "1.0.0" }
@@ -15237,7 +16214,8 @@ components:
         counts:
           type: object
           description: "Bu çağrıda GERÇEKTEN oluşturulan kayıt sayıları (`DemoTemplateSummary.contents` beklenen sayılardır; bu alan gerçekleşendir)."
-          required: [media, portfolioCategories, portfolioItems, navigationItems, footerColumns, footerLinks, socialLinks, slides]
+          required:
+            [media, portfolioCategories, portfolioItems, navigationItems, footerColumns, footerLinks, socialLinks, slides, specialties, doctors, availabilityWindows]
           properties:
             media: { type: integer }
             portfolioCategories: { type: integer }
@@ -15247,11 +16225,26 @@ components:
             footerLinks: { type: integer }
             socialLinks: { type: integer }
             slides: { type: integer }
+            specialties:
+              type: integer
+              example: 0
+              description: "`telehealth-clinic` DIŞINDAKİ şablonlarda HER ZAMAN 0 (§12)."
+            doctors: { type: integer, example: 0 }
+            availabilityWindows: { type: integer, example: 0 }
+        enabledModules:
+          type: array
+          description: >
+            §2.6 — `enableRequiredModules: true` ile GERÇEKTEN açılan `MODULE_REGISTRY`
+            anahtarları. `[]` = hiçbiri açılmadı (istek `false` gönderdi VEYA şablonun
+            `requiredModules`'ü boş).
+          items: { type: string }
+          example: []
         warnings:
           type: array
           description: >
             **ENGELLEMEYEN** uyarılar (Türkçe, kullanıcıya olduğu gibi gösterilir).
             Uyarı BAŞARISIZLIK DEĞİLDİR — yanıt yine `201`'dir. Bilinen üreteçler:
-            `portfolio` modülü kapalı, slug benzersizleştirildi, `force` ile ikinci
-            kopya üretildi.
+            `portfolio`/`telehealth` modülü kapalı, slug benzersizleştirildi, `force`
+            ile ikinci kopya üretildi, demo doktor/uzmanlık verisi oluşturuldu (§7.2
+            madde 4), yasal yer tutucu sayfa oluşturuldu (§4.3).
           items: { type: string }

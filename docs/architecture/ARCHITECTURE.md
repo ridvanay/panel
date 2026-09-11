@@ -5946,6 +5946,181 @@ kaynak doküman §14.
 
 ---
 
+### 10.23 Tele-Sağlık (`telehealth`) Modülü + `telehealth-clinic` demo şablonu
+
+Durum: v1 (2026-09-11 — implemente edildi; backend unit/entegrasyon + Playwright e2e
+testleri yeşil, security/compliance/ui-designer/seo denetimlerinden geçti) · Sahibi: Mimar.
+**Bağlayıcı kaynak:** `.claude/architect-scope-telehealth-template.md` (**[TCT]**, tam
+gerekçeler, veri modeli, LiveKit sahiplik kararı) + `.claude/security-review-telehealth.md`
++ `.claude/compliance-notes-telehealth.md` + `.claude/design-notes-telehealth.md` +
+`docs/architecture/openapi.yaml` (`TeleHealth` tag'i — tek doğruluk kaynağı). Bu bölüm o
+dokümanların ÖZETİDİR; çelişkide kaynak doküman/openapi.yaml kazanır.
+
+#### 10.23.1 Amaç ve kapsam ayrımı — "modül" ≠ "demo şablon"
+
+Bu iş bilinçli olarak İKİ ayrı parçaya bölünmüştür ([TCT] §0):
+
+- **(A) `telehealth` modülü** — platformun KALICI bir yetenek genişlemesi: doktor
+  profilleri, haftalık müsaitlik, saat dilimi duyarlı randevu alma ve LiveKit tabanlı
+  görüntülü konsültasyon. `backend/src/modules/telehealth/**`,
+  `frontend/src/app/[lang]/(site)/doctors/**` + `.../consultation/[id]/`,
+  `frontend/src/app/admin/telehealth/**`.
+- **(B) `telehealth-clinic` demo şablonu** — (A)'yı **sergileyen** üçüncü hazır şablon
+  (§10.22'nin üçüncü üyesi), yalnızca `Specialty`/`DoctorProfile`/`DoctorAvailability`
+  SATIRI üretir; modülün KENDİSİNE hiçbir yeni altyapı KOYMAZ.
+
+`demo-templates`/`ecommerce-pro` şablonlarından farklı olarak (A) olmadan (B) anlamsızdır
+— bu yüzden `telehealth`, `products`/`portfolio` gibi **kendi başına birinci sınıf bir
+modül** olarak açılmıştır, demo-templates modülünün İÇİNE gömülmemiştir ([TCT] §2). Diğer
+her iki şablon gibi hiçbir `modules/telehealth/**` veya `doctors/**` dosyası
+`templateKey`/`telehealth-clinic` bilmez — şablon silinse/hiç uygulanmasa da modül tamdır.
+
+Modül `MODULE_REGISTRY`'de **`defaultEnabled: false`** ile kayıtlıdır — `products`/
+`portfolio` gibi yatay yeteneklerden BİLİNÇLİ olarak farklı, dikey bir sektör modülüdür;
+varsayılan açık gelmesi her mevcut kurulumun admin kenar çubuğunda "Tele-Sağlık" ve
+public'te `/doctors` rotasını sessizce açardı.
+
+#### 10.23.2 Veri modeli özeti
+
+Migration `add_telehealth_module` (salt-ekleme, `ALTER TYPE` yok, tek migration): yeni
+`AppointmentStatus` enum'u (`SCHEDULED → IN_PROGRESS → COMPLETED` veya `CANCELLED`/
+`NO_SHOW`) + 4 model:
+
+| Model | Rolü |
+|---|---|
+| `Specialty` | Tıbbi uzmanlık alanı (Kardiyoloji vb.) — `icon-box` bloğuyla AYNI `lucide-react` ikon sözlüğü. |
+| `DoctorProfile` | Doktor profili. `userId` **nullable** — panel/hesap kullanıcısı OLMADAN da tam bir kayıttır ([TCT] §2.5); şablon bu alanı DAİMA `null` bırakır. `rating`/`reviewCount` YOKTUR — dayanaksız sosyal kanıt reddi (`OrderItem`/[EPT] disipliniyle AYNI). Fiyatlama seans başınadır (`sessionPriceCents`), saat başına DEĞİL. |
+| `DoctorAvailability` | Haftalık **TEKRARLAYAN** kural — üretilmiş slot satırı DEĞİLDİR (§10.23.3). |
+| `Appointment` | Randevu. **`MeetingRoom` tablosu YOKTUR** — LiveKit oda adı (`meetingRoomName`) tek bir string olarak randevunun üzerindedir; token üretimi kod'dur, veri değil. |
+
+**Bilinçli reddedilen alanlar (bağlayıcı):** `DoctorProfile.rating`/`reviewCount` (dayanaksız
+sosyal kanıt), `Appointment.patientNote`/semptom alanı (KVKK md.6 özel nitelikli veri —
+açık rıza + ayrı teknik tedbir gerektirir, v1'de hiç toplanmaz), `ContentEntityType.DOCTOR`
+(doktor slug'ları `ContentSlug`'a kaydolmaz — v1'de çok dilli değildir).
+
+#### 10.23.3 Saat dilimi mimarisi — duvar saati (kural) vs an (randevu)
+
+Tek bağlayıcı cümle ([TCT] §4.2): **tekrarlayan müsaitlik DUVAR SAATİDİR (doktorun IANA
+diliminde, `DoctorAvailability.startMinute`/`endMinute` — gün başlangıcından itibaren
+dakika); randevu ANDIR (UTC `timestamptz`, `Appointment.startsAt`/`endsAt`).** Dönüşüm
+TEK yerde (`modules/telehealth/lib/timezone.ts`) yapılır ve API sınırından dışarıya
+yalnızca ISO-8601 `Z`'li anlar çıkar — sunucu ASLA önceden biçimlendirilmiş yerel saat
+string'i döndürmez. Somut slotlar (`GET /doctors/{slug}/slots`) bu kurallardan +
+mevcut randevulardan **çalışma zamanında** türetilir (saf fonksiyon,
+`lib/availability.ts`) — slot satırı hiçbir zaman DB'de tutulmaz (4 doktor × 5 gün ×
+16 slot × 52 hafta'lık ölü veri kaçınılmıştır).
+
+**DST kuralı:** ilkbahar geçişinde var olmayan bir duvar saati için slot ÜRETİLMEZ;
+sonbaharda çift geçen bir saatte YALNIZCA ilk (DST'li) örnek üretilir — bu, Node 20'nin
+tam ICU desteğiyle (`Intl.DateTimeFormat(…, { timeZone })`) sağlanır; **yeni bir saat
+dilimi kütüphanesi (`luxon`/`date-fns-tz`/`moment-timezone`) EKLENMEMİŞTİR.** Ziyaretçinin
+kendi dilimi yalnızca istemcide, mount sonrası okunur (`Intl.DateTimeFormat().
+resolvedOptions().timeZone`) — sunucu SSR'da yalnızca ham veriyi döner, saatler
+istemcide biçimlendirilir (hidrasyon uyuşmazlığından kaçınmak için).
+
+#### 10.23.4 Rezervasyon ve eşzamanlılık
+
+`POST /appointments` (public, kimlik doğrulama gerektirmez, 5 istek/dk) mevcut
+`runSerializable` paternini (webhook stok düşürme ile AYNI sınıf "check-then-act")
+kullanır: slot gerçekten müsait mi → dolu mu → değilse oluştur. `@@unique([doctorId,
+startsAt])` DB seviyesinde ikinci savunma hattıdır; yarış durumunda `P2002` yakalanıp
+**`409 SLOT_TAKEN`**'e çevrilir. `priceCents`/`sessionDurationMin` istemciden ASLA kabul
+edilmez, `DoctorProfile`'dan taze okunur. İptal edilen bir randevu slotu **serbest
+BIRAKMAZ** (`@@unique` bunu engeller) — v1'de iptal edilen saat kalıcı olarak kapalı
+kalır; kısmi unique indeks BİLİNÇLİ olarak eklenmemiştir (backlog:
+`feature/appointment-reschedule`).
+
+#### 10.23.5 LiveKit entegrasyonu — gerçek SDK, opsiyonel yapılandırma, sahte video YOK
+
+Konsültasyon odası **gerçek bir WebRTC SDK'sıyla** (`livekit-server-sdk` + frontend'de
+`@livekit/components-react`) kurulur; sahte/mock bir video arayüzü (taklit katılımcı
+karesi, döngülü örnek video) **YASAKTIR** — bu, "gösterilen ile gerçekleşen aynı olmalı"
+ilkesinin ihlalidir. Yapılandırma `STRIPE_SECRET_KEY` ile **birebir aynı opsiyonel
+desen**i izler: `LIVEKIT_URL`/`LIVEKIT_API_KEY`/`LIVEKIT_API_SECRET` boş bırakılırsa
+`POST /appointments/{id}/meeting-token` **`503 LIVEKIT_NOT_CONFIGURED`** döner ve
+`/consultation/[id]` sayfası randevu bilgilerini/geri sayımı normal gösterip video
+alanında dürüst bir "yapılandırılmamış" durum paneli sunar — bu bir hata ekranı değildir.
+
+Grant kapsamı YALNIZCA `roomJoin: true, room: <meetingRoomName>`dir (`roomCreate`/
+`roomAdmin`/`roomList`/`ingressAdmin` VERİLMEZ); katılımcı `identity`'si
+(`patient:<appointmentId>` / `doctor:<doctorId>`) PII İÇERMEZ; token yalnızca katılım
+penceresi içinde (`startsAt - 5dk` … `endsAt + 15dk`) üretilir, aksi hâlde
+`409 APPOINTMENT_NOT_JOINABLE`. **Sahiplik:** `livekit-server-sdk` bağımlılığı,
+`lib/livekit.ts` ve `meeting-token`/`complete` uçları integration-agent'ın TEK
+sahasıdır — backend-agent bu dosyalara dokunmaz (§10.23'ün geri kalanı backend-agent'ın
+alanıdır). **Kayıt (recording/Egress) v1'de KAPSAM DIŞIDIR** (bağlayıcı) — bir tıbbi
+konsültasyonu kaydetmek özel nitelikli veriyi kalıcılaştırır ve ayrı bir KVKK/rıza turu
+gerektirir (backlog: `feature/telehealth-recording`). LiveKit SUNUCUSU/SFU compose'a
+DAHİL DEĞİLDİR ve self-host EDİLMEZ — LiveKit Cloud veya harici bir kurulum varsayılır.
+
+#### 10.23.6 Güvenlik ve KVKK özeti
+
+**Modül kapalıyken TÜM public VE admin tele-sağlık uçları 404 döner** — bu,
+§10.9.1'deki "admin route'lar modül durumundan bağımsızdır" genel deseninden **bilinçli
+bir sapmadır**: `/admin/telehealth/appointments` hasta PII'si (ad + e-posta) taşıdığı
+için, modülü kapatmanın bu PII'ye erişimi de kapatması gerekir. Bu sapma, security-agent
+denetiminde `/admin/telehealth/*`'in başlangıçta genel deseni yanlışlıkla miras aldığı
+(guard eksik) bir bulgu olarak tespit edilip düzeltilmiştir (`.claude/
+security-review-telehealth.md` Bulgu 1). RBAC: `/admin/telehealth/appointments`
+**ADMIN veya MANAGER** — EDITOR dışlanır (veri minimizasyonu); doktor/uzmanlık CRUD'u
+ADMIN+MANAGER, okuma panel kapısı (ADMIN/MANAGER/EDITOR).
+
+compliance-agent onayı **engelleyiciydi** ve verildi: demo doktor verisi daima
+kurgusaldır (`isVerified: false`, bio'nun ilk cümlesi zorunlu demo uyarısı, gerçek
+hekimle ad çakışması taranır), tanı/tedavi vaadi içeren metin yasaktır, acil durum
+uyarısı (`"Bu platform acil tıbbi durumlar için KULLANILAMAZ. Acil durumda 112'yi
+arayın."`) sitewide kalıcı bir şerit + booking anında kart olarak iki kez gösterilir.
+Önerilen saklama politikası: `Appointment.endsAt`'ten **12 ay** sonra `patientName` →
+`"Silinmiş Kayıt"`, `patientEmail` → `null` (satır silinmez, istatistik bütünlüğü
+korunur) — nihai süre için gerçek bir hukuk danışmanına başvurulması gerektiği açıkça
+not edilmiştir.
+
+#### 10.23.7 `telehealth-clinic` demo şablonu — modülü nasıl sergiler
+
+Üçüncü hazır şablon (§10.22'nin genel mimarisini birebir izler): `Specialty`/
+`DoctorProfile`/`DoctorAvailability` satırları üretir, **randevu ÜRETMEZ**
+(`DemoTemplateDefinition.telehealth` şeklinde `appointments` diye bir alan YOKTUR —
+sahte randevu yapısal olarak tanımlanamaz). Gerekçe [EPT]'deki sahte sipariş reddiyle
+aynıdır ve iki maddeyle güçlenir: bir randevu kaydı "hangi hasta hangi uzmanlığa
+göründü" bilgisini taşır (çıkarımsal sağlık verisi) ve doktorun takvimindeki gerçek bir
+slotu doldurup ilk gerçek hastayı engeller. Bunun yerine şablon yalnızca **müsaitlik
+takvimini** doldurur; sonuç ekranı *"Örnek randevu oluşturulmaz — ilk gerçek randevunuz
+burada görünecek."* uyarısını gösterir.
+
+**Şablon taşıyıcısı `.ts`'tir, `.json` DEĞİL** — diğer iki şablonla (§10.22.2) BİREBİR
+aynı gerekçeyle: `page.blocks`/`slider.slides[].layers` içeriği DB'ye yazılmadan önce
+API'nin kullandığı AYNI Zod şemalarından geçirilir ve `tsc`'nin `.json` dosyalarını
+`dist/`e kopyalamaması ikinci bir dağıtım davranışı sınıfı üretirdi. **Kullanıcıya
+açıklama:** şablonun *şeması* istenen JSON şekliyle BİREBİR aynıdır; yalnızca
+*taşıyıcısı* TypeScript'tir — böylece bozuk bir şablon üretime değil, CI'ya düşer.
+
+Modül `defaultEnabled: false` geldiği için şablon `requiredModules: ["telehealth"]`
+taşır; `ImportDemoTemplateRequest.enableRequiredModules` (varsayılan `false`) AÇIK
+opt-in olmadan modül açılmaz — modül kapalıyken import yine `201` döner + `warnings[]`
+ile uyarır (bkz. §10.22, [DTI] §3.2'nin dar tadilatı, [TCT] §2.6).
+
+Görsel diller ui-designer tarafından, mimarinin önerdiği ham `#0D9488`/`#0284C7`
+tonlarının WCAG AA'yı GEÇMEDİĞİ tespit edilip `#0F766E`/`#0369A1`'e koyulaştırılarak
+finalize edilmiştir (`.claude/design-notes-telehealth.md` §1) — palet, slot düğmesi
+durumları (müsait/seçili/dolu/geçmiş), saat dilimi rozeti ve konsültasyon kontrol
+çubuğu bu dokümanda tanımlıdır. Önizleme: `frontend/public/demo-templates/
+telehealth-clinic/preview.svg` (diğer iki şablonla AYNI format).
+
+#### 10.23.8 Kapsam dışı (backlog)
+
+Örnek/sahte randevular ve `MeetingRoom` tablosu **yapısal olarak kapalıdır** (geri
+dönüşü yok). Ayrıca: görüşme kaydı (`feature/telehealth-recording`), randevu onay/
+hatırlatma e-postaları (`feature/telehealth-appointment-emails`), randevu ödemesi/Stripe
+(`feature/telehealth-payments`), doktor değerlendirme/puanlama
+(`feature/doctor-reviews`), çoklu uzmanlık (`feature/doctor-multiple-specialties`),
+tatil/izin takvimi (`feature/doctor-time-off`), randevu erteleme
+(`feature/appointment-reschedule`), semptom/şikâyet formu — özel nitelikli veri
+(`feature/telehealth-intake-form`), çok dilli doktor içeriği
+(`feature/telehealth-i18n`), `SiteTemplate.HEALTHCARE` (`feature/
+site-template-healthcare`). Ayrıntı: kaynak doküman §11.
+
+---
+
 ### Bilinen Sorunlar / Backlog
 
 - **`preValidation` vs RBAC hook sıralaması** (2026-08-05, qa-agent, orta öncelik,

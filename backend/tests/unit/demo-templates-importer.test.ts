@@ -78,7 +78,7 @@ describe("demo-templates importer — §12 madde 4: çözülemeyen token → 422
     try {
       await importDemoTemplate(app, {
         templateKey: BROKEN_TEMPLATE_KEY,
-        body: { confirm: true, force: false, setAsHomePage: true },
+        body: { confirm: true, force: false, setAsHomePage: true, enableRequiredModules: false },
         actorId,
         actorEmail: "demo-template-broken-admin@example.com",
       });
@@ -133,7 +133,7 @@ describe("demo-templates importer — §12 madde 5: Faz 2 hata enjeksiyonu → d
     try {
       await importDemoTemplate(app, {
         templateKey: "modern-architecture",
-        body: { confirm: true, force: false, setAsHomePage: true },
+        body: { confirm: true, force: false, setAsHomePage: true, enableRequiredModules: false },
         actorId,
         actorEmail,
       });
@@ -196,7 +196,7 @@ describe("demo-templates importer — bugfix: BAŞKA bir entity tipinin (çöp k
 
     const result = await importDemoTemplate(app, {
       templateKey: "modern-architecture",
-      body: { confirm: true, force: false, setAsHomePage: true },
+      body: { confirm: true, force: false, setAsHomePage: true, enableRequiredModules: false },
       actorId,
       actorEmail,
     });
@@ -226,7 +226,7 @@ describe("demo-templates importer — bugfix: BAŞKA bir entity tipinin (çöp k
 
     const result = await importDemoTemplate(app, {
       templateKey: "modern-architecture",
-      body: { confirm: true, force: true, setAsHomePage: true },
+      body: { confirm: true, force: true, setAsHomePage: true, enableRequiredModules: false },
       actorId,
       actorEmail,
     });
@@ -310,14 +310,14 @@ describe("demo-templates importer — bugfix: ecommerce-pro force-reapply sonras
 
     const first = await importDemoTemplate(app, {
       templateKey: "ecommerce-pro",
-      body: { confirm: true, force: false, setAsHomePage: false },
+      body: { confirm: true, force: false, setAsHomePage: false, enableRequiredModules: false },
       actorId,
       actorEmail,
     });
 
     const second = await importDemoTemplate(app, {
       templateKey: "ecommerce-pro",
-      body: { confirm: true, force: true, setAsHomePage: false },
+      body: { confirm: true, force: true, setAsHomePage: false, enableRequiredModules: false },
       actorId,
       actorEmail,
     });

@@ -43,6 +43,18 @@ const PLACEHOLDER_ASSET_URL = "/__demo-template-placeholder__";
 const PLACEHOLDER_UUID = "00000000-0000-0000-0000-000000000000";
 const MAX_TRANSACTION_RETRIES = 2; // §5.2 — Faz 2'de P2002/ConflictError (slug/SKU çakışması) yakalanırsa yeniden dene (§6.5).
 
+/**
+ * `.claude/architect-scope-telehealth-template.md` §2.6 madde 3 — modül BAŞINA uyarı metni,
+ * BİREBİR bu metinle. Bilinmeyen bir `requiredModules` anahtarı (gelecekteki şablonlar) jenerik
+ * bir metne düşer (`DEFAULT_REQUIRED_MODULE_WARNING`) — [DTI] §6.6 deseninin genellemesi.
+ */
+const REQUIRED_MODULE_WARNING_MESSAGE: Record<string, string> = {
+  telehealth: "Tele-Sağlık modülü kapalı olduğu için doktorlar ve randevu sayfaları sitede görünmeyecek. /admin/modules üzerinden açabilirsiniz.",
+};
+function DEFAULT_REQUIRED_MODULE_WARNING(moduleKey: string): string {
+  return `"${moduleKey}" modülü kapalı olduğu için bu şablonun ilgili içerikleri sitede görünmeyecek. /admin/modules üzerinden açabilirsiniz.`;
+}
+
 export interface ImportDemoTemplateParams {
   templateKey: string;
   body: ImportDemoTemplateRequest;
@@ -101,6 +113,10 @@ interface SlugPlan {
   // haritaya girer; tüketim tarafında `null`/`undefined` OLDUĞU GİBİ korunur.
   productSkuByTemplateSku: Map<string, string>;
   variantSkuByTemplateSku: Map<string, string>;
+  // `.claude/architect-scope-telehealth-template.md` §6.7/§9.6 — YENİ (telehealth-clinic
+  // genişlemesi). `telehealth === null` ise (diğer iki şablon) bu haritalar boş kalır.
+  specialtySlugByTemplateSlug: Map<string, string>;
+  doctorSlugByTemplateSlug: Map<string, string>;
 }
 
 /**
@@ -258,6 +274,34 @@ async function resolveSlugPlan(
     extraPageSlugByTemplateSlug.set(extraPage.slug, resolved);
   }
 
+  // `.claude/architect-scope-telehealth-template.md` §6.7 — uzmanlıklar/doktorlar da EKLENİR
+  // (mevcut kullanıcı içeriği asla silinmez), AYNI benzersizleştirme deseni. `Specialty`/
+  // `DoctorProfile` §3.8 gereği `ContentSlug`'a YAZILMAZ — bu yüzden `existsAnyLocaleSlug`
+  // ÇAĞRILMAZ (yalnızca kendi tablosuna bakılır, portfolio/product ile AYNI ilk-kontrol seviyesi).
+  const specialtySlugByTemplateSlug = new Map<string, string>();
+  for (const specialty of template.telehealth?.specialties ?? []) {
+    const resolved = await findAvailableSlug(
+      async (candidate) => Boolean(await app.prisma.specialty.findFirst({ where: { slug: candidate }, select: { id: true } })),
+      specialty.slug
+    );
+    if (resolved !== slugify(specialty.slug)) {
+      slugWarnings.push(`"${slugify(specialty.slug)}" zaten kullanılıyordu, uzmanlık "${resolved}" olarak oluşturuldu.`);
+    }
+    specialtySlugByTemplateSlug.set(specialty.slug, resolved);
+  }
+
+  const doctorSlugByTemplateSlug = new Map<string, string>();
+  for (const doctor of template.telehealth?.doctors ?? []) {
+    const resolved = await findAvailableSlug(
+      async (candidate) => Boolean(await app.prisma.doctorProfile.findFirst({ where: { slug: candidate }, select: { id: true } })),
+      doctor.slug
+    );
+    if (resolved !== slugify(doctor.slug)) {
+      slugWarnings.push(`"${slugify(doctor.slug)}" zaten kullanılıyordu, doktor "${resolved}" olarak oluşturuldu.`);
+    }
+    doctorSlugByTemplateSlug.set(doctor.slug, resolved);
+  }
+
   return {
     plan: {
       pageSlug,
@@ -269,6 +313,8 @@ async function resolveSlugPlan(
       extraPageSlugByTemplateSlug,
       productSkuByTemplateSku,
       variantSkuByTemplateSku,
+      specialtySlugByTemplateSlug,
+      doctorSlugByTemplateSlug,
     },
     slugWarnings,
   };
@@ -302,6 +348,12 @@ interface TransactionOutcome {
   // §4.4 — `commerce != null` ise `SiteSettings` kargo alanları ÜZERİNE YAZILIR; eski değerler
   // burada taşınır (audit `metadata.previousShipping`). `commerce === null` ise `null`.
   previousShipping: { shippingFlatFeeCents: number | null; freeShippingThresholdCents: number | null } | null;
+  // `.claude/architect-scope-telehealth-template.md` §6.7/§12 — `DemoTemplateImportResultSchema.
+  // counts`'un GERÇEK bir parçasıdır (ecommerce-pro'nun audit-only `commerceCounts`'ünden
+  // FARKLI — architect §12 bağlayıcı kararı gereği kamuya açık yanıtın parçası).
+  telehealthCounts: { specialties: number; doctors: number; availabilityWindows: number };
+  // §2.6/§12 — `enableRequiredModules: true` ile GERÇEKTEN açılan modül anahtarları.
+  enabledModules: string[];
 }
 
 /** §5.2 Faz 2 — TEK transaction, sıra BAĞLAYICI (2.1 → 2.11). */
@@ -576,6 +628,69 @@ async function writeTemplateInTransaction(
     extraPageCount += 1;
   }
 
+  // 2.7f/2.7g — `.claude/architect-scope-telehealth-template.md` §6.7: Specialty → DoctorProfile
+  // → DoctorAvailability. EKLENİR (mevcut kayıtlar ASLA silinmez, §6.7 yıkıcılık matrisi).
+  // `template.telehealth === null` ise (modern-architecture/ecommerce-pro) bu blok TAMAMEN
+  // atlanır — DAVRANIŞ DEĞİŞMEZ. `userId` DAİMA `null` (§2.5) — bu blokta `user` yazan HİÇBİR
+  // çağrı YOKTUR; `appointment` yazan HİÇBİR çağrı da YOKTUR (§3.6 yapısal garantisi).
+  const specialtyIdByTemplateSlug = new Map<string, string>();
+  let specialtyCount = 0;
+  let doctorCount = 0;
+  let availabilityWindowCount = 0;
+  if (template.telehealth) {
+    for (const specialty of template.telehealth.specialties) {
+      const created = await tx.specialty.create({
+        data: {
+          name: specialty.name,
+          slug: plan.specialtySlugByTemplateSlug.get(specialty.slug)!,
+          icon: specialty.icon,
+          description: specialty.description,
+          order: specialty.order,
+        },
+      });
+      specialtyIdByTemplateSlug.set(specialty.slug, created.id);
+      specialtyCount += 1;
+    }
+
+    for (const doctor of template.telehealth.doctors) {
+      const specialtyId = doctor.specialtySlug ? (specialtyIdByTemplateSlug.get(doctor.specialtySlug) ?? null) : null;
+      const avatarMediaId = doctor.avatarAssetKey ? (assetKeyToMediaId.get(doctor.avatarAssetKey) ?? null) : null;
+      const createdDoctor = await tx.doctorProfile.create({
+        data: {
+          userId: null,
+          specialtyId,
+          title: doctor.title,
+          fullName: doctor.fullName,
+          slug: plan.doctorSlugByTemplateSlug.get(doctor.slug)!,
+          bio: doctor.bio,
+          languages: doctor.languages,
+          timeZone: doctor.timeZone,
+          sessionDurationMin: doctor.sessionDurationMin,
+          sessionPriceCents: doctor.sessionPriceCents,
+          currency: doctor.currency,
+          avatarMediaId,
+          // §7.2 madde 1 — şablonun ürettiği demo profillerde DAİMA `false` (tip düzeyinde de
+          // `false` literal'e sabitlenmiştir, bkz. `types.ts::DemoTemplateDoctor.isVerified`).
+          isVerified: false,
+          order: doctor.order,
+        },
+      });
+      doctorCount += 1;
+
+      if (doctor.availability.length > 0) {
+        await tx.doctorAvailability.createMany({
+          data: doctor.availability.map((slot) => ({
+            doctorId: createdDoctor.id,
+            dayOfWeek: slot.dayOfWeek,
+            startMinute: slot.startMinute,
+            endMinute: slot.endMinute,
+          })),
+        });
+        availabilityWindowCount += doctor.availability.length;
+      }
+    }
+  }
+
   // 2.8 — Slider + Slide (order 0..n-1). EKLENİR.
   let sliderId: string | null = null;
   let slideCount = 0;
@@ -648,7 +763,8 @@ async function writeTemplateInTransaction(
     EMPTY_ASSET_MAP,
     sliderId,
     productCategoryIdByTemplateSlug,
-    plan.productCategorySlugByTemplateSlug
+    plan.productCategorySlugByTemplateSlug,
+    plan.specialtySlugByTemplateSlug
   );
   if (finalResolve.unresolvedTokens.length > 0) {
     // Teorik olarak Faz 0'da yakalanmış olmalıydı — savunma derinliği.
@@ -690,6 +806,23 @@ async function writeTemplateInTransaction(
     update: { version: template.version, importedById: actorId, pageId: createdPage.id, importedAt: new Date() },
   });
 
+  // 2.12 — `.claude/architect-scope-telehealth-template.md` §2.6/§6.7 — dar tadilat ([DTI] §3.2
+  // "`SiteModule` YAZILMAZ" yasağının): YALNIZCA `requiredModules` içindeki anahtarlar, YALNIZCA
+  // `enableRequiredModules: true` AÇIK opt-in ile açılabilir. `PATCH /admin/modules/{key}`
+  // (`site-modules.routes.ts`) ile AYNI upsert şekli — ayrıcalık yüzeyi GENİŞLEMEZ (bu uç zaten
+  // ADMIN-only). `false` (varsayılan) ise bu blok HİÇ ÇALIŞMAZ, `SiteModule` DOKUNULMAZ.
+  const enabledModules: string[] = [];
+  if (body.enableRequiredModules) {
+    for (const moduleKey of template.requiredModules) {
+      await tx.siteModule.upsert({
+        where: { key: moduleKey },
+        create: { key: moduleKey, enabled: true, updatedById: actorId },
+        update: { enabled: true, updatedById: actorId },
+      });
+      enabledModules.push(moduleKey);
+    }
+  }
+
   return {
     pageId: createdPage.id,
     pageSlug: createdPage.slug,
@@ -719,6 +852,8 @@ async function writeTemplateInTransaction(
           freeShippingThresholdCents: settingsBeforeHome?.freeShippingThresholdCents ?? null,
         }
       : null,
+    telehealthCounts: { specialties: specialtyCount, doctors: doctorCount, availabilityWindows: availabilityWindowCount },
+    enabledModules,
   };
 }
 
@@ -760,12 +895,18 @@ export async function importDemoTemplate(app: FastifyInstance, params: ImportDem
   const placeholderCategorySlugMap = template.commerce
     ? new Map(template.commerce.categories.map((c) => [c.slug, "placeholder-slug"]))
     : null;
+  // `.claude/architect-scope-telehealth-template.md` §6.2 — `ref:specialty-slug:<slug>` AYNI
+  // "kuru koşu" ŞEKİL doğrulamasına tabidir, `ref:product-category-slug:` ile BİREBİR desen.
+  const placeholderSpecialtySlugMap = template.telehealth
+    ? new Map(template.telehealth.specialties.map((s) => [s.slug, "placeholder-slug"]))
+    : null;
   const dryRun = resolvePageBlockTokens(
     template.page.blocks as unknown[],
     placeholderAssetMap,
     template.slider ? PLACEHOLDER_UUID : null,
     placeholderCategoryMap,
-    placeholderCategorySlugMap
+    placeholderCategorySlugMap,
+    placeholderSpecialtySlugMap
   );
   if (dryRun.unresolvedTokens.length > 0) {
     throw new ValidationError("Şablon içeriğinde çözülemeyen token bulundu.", { unresolvedTokens: dryRun.unresolvedTokens });
@@ -822,6 +963,24 @@ export async function importDemoTemplate(app: FastifyInstance, params: ImportDem
   if (legalPageCount > 0) {
     warnings.push(`${legalPageCount} yasal sayfa YER TUTUCU olarak oluşturuldu; yayına almadan önce içeriklerini doldurun.`);
   }
+  // `.claude/architect-scope-telehealth-template.md` §2.6 madde 3 — `enableRequiredModules: false`
+  // (varsayılan) VE modül şu an kapalıysa, import yine `201` döner ama AÇIKÇA uyarır (metin
+  // BİREBİR §2.6 madde 3'ten). `enableRequiredModules: true` ise bu modül Faz 2'de açılacaktır,
+  // uyarı GEREKMEZ.
+  if (!params.body.enableRequiredModules) {
+    for (const moduleKey of template.requiredModules) {
+      if (!(await isModuleEnabled(app, moduleKey))) {
+        warnings.push(REQUIRED_MODULE_WARNING_MESSAGE[moduleKey] ?? DEFAULT_REQUIRED_MODULE_WARNING(moduleKey));
+      }
+    }
+  }
+  // §7.2 madde 4 — compliance-agent'a bağlayıcı: kurgusal demo doktor/uzmanlık verisi üreten
+  // şablonlarda kullanıcı AÇIKÇA uyarılmalı (metin BİREBİR §7.2 madde 4'ten).
+  if (template.telehealth) {
+    warnings.push(
+      `${template.telehealth.doctors.length} örnek doktor profili ve ${template.telehealth.specialties.length} uzmanlık oluşturuldu; yayına almadan önce gerçek bilgilerinizle değiştirin veya silin.`
+    );
+  }
 
   // ---- Faz 1 — varlık materyalizasyonu (transaction DIŞINDA, DB yazma YOK) --------------------
   const savedAssets = await materializeTemplateAssets(template.key, template.assets);
@@ -836,7 +995,7 @@ export async function importDemoTemplate(app: FastifyInstance, params: ImportDem
   // `ProductCategory.id`'ler VE benzersizleştirilmiş slug'lar yalnızca Faz 2'de (transaction
   // içinde, kategoriler oluşturulduktan/`resolveSlugPlan` çalıştıktan SONRA) bilinir; `ref:slider`
   // ile AYNI erteleme deseni (bkz. `lib/asset-tokens.ts::resolvePageBlockTokens` başlığı).
-  const assetResolved = resolvePageBlockTokens(template.page.blocks as unknown[], assetUrlByKey, null, null, null);
+  const assetResolved = resolvePageBlockTokens(template.page.blocks as unknown[], assetUrlByKey, null, null, null, null);
   if (assetResolved.unresolvedTokens.length > 0) {
     await removeSavedTemplateAssets(savedAssets, (paths) => app.log.warn({ paths }, "Demo şablon telafi: dosya silinemedi (Faz 1)"));
     throw new ValidationError("Şablon içeriğinde çözülemeyen token bulundu.", { unresolvedTokens: assetResolved.unresolvedTokens });
@@ -930,6 +1089,11 @@ export async function importDemoTemplate(app: FastifyInstance, params: ImportDem
       // §4.4 — ecommerce-pro genişlemesi (audit-only, DemoTemplateImportResultSchema'nın DIŞINDA).
       commerceCounts: finalOutcome.commerceCounts,
       previousShipping: finalOutcome.previousShipping,
+      // §6.7/§2.6 — telehealth-clinic genişlemesi. `telehealthCounts` yanıtın (§12) BİR PARÇASI,
+      // yine de audit görünürlüğü için burada da taşınır; `enabledModules` yalnızca audit-only
+      // DEĞİLDİR (yanıtın parçasıdır) ama izlenebilirlik için burada da tekrar edilir.
+      telehealthCounts: finalOutcome.telehealthCounts,
+      enabledModules: finalOutcome.enabledModules,
       warnings,
     },
     ipAddress: params.ip ?? null,
@@ -949,7 +1113,11 @@ export async function importDemoTemplate(app: FastifyInstance, params: ImportDem
     pageSlug: finalOutcome.pageSlug,
     setAsHomePage: finalOutcome.setAsHomePage,
     sliderId: finalOutcome.sliderId,
-    counts: finalOutcome.counts,
+    // §12 — `DemoTemplateImportCountsSchema` artık `specialties`/`doctors`/`availabilityWindows`
+    // ZORUNLU alanlarını da içerir; `telehealth: null` şablonlarda (finalOutcome.telehealthCounts)
+    // HER ZAMAN 0'dır.
+    counts: { ...finalOutcome.counts, ...finalOutcome.telehealthCounts },
+    enabledModules: finalOutcome.enabledModules,
     warnings,
   };
 }
@@ -983,11 +1151,20 @@ export async function listDemoTemplateSummaries(app: FastifyInstance) {
         navigationItems: countNavItemsTotal(definition.navigation),
         footerColumns: definition.footer.columns.length,
         mediaAssets: definition.assets.length,
+        // §6.1/§12 — `telehealth: null` şablonlarda (modern-architecture/ecommerce-pro) HER ZAMAN 0.
+        specialties: definition.telehealth?.specialties.length ?? 0,
+        doctors: definition.telehealth?.doctors.length ?? 0,
+        availabilityWindows: definition.telehealth?.doctors.reduce((sum, doctor) => sum + doctor.availability.length, 0) ?? 0,
       },
+      // §2.6/§12 — bu şablonun ihtiyaç duyduğu `MODULE_REGISTRY` anahtarları. `[]` = yok.
+      requiredModules: definition.requiredModules,
       // §6.1 yıkıcılık matrisi — appearance/siteSettings/navigation/footer/socialLinks HER ZAMAN
       // (bu şablonun her uygulanışında) üzerine yazılır. `homePage` ise şablonun KENDİ önerisine
       // bağlıdır (`page.setAsHomePage`) — istek-anındaki `setAsHomePage` bayrağı (varsayılan
       // true) GET anında bilinmez, bu yüzden burada şablonun statik niyeti yansıtılır.
+      // `siteModules` — §6.7 tablosu: `requiredModules` boş DEĞİLSE, bu şablon `enableRequiredModules:
+      // true` ile uygulandığında `SiteModule` satırını AÇABİLİR (istek-anındaki bayrak GET anında
+      // bilinmez, `homePage` ile AYNI "şablonun statik niyeti" mantığı).
       replaces: [
         "appearance" as const,
         "siteSettings" as const,
@@ -995,6 +1172,7 @@ export async function listDemoTemplateSummaries(app: FastifyInstance) {
         "footer" as const,
         "socialLinks" as const,
         ...(definition.page.setAsHomePage ? (["homePage" as const] as const) : []),
+        ...(definition.requiredModules.length > 0 ? (["siteModules" as const] as const) : []),
       ],
       appliedAt: applied ? applied.importedAt.toISOString() : null,
       appliedVersion: applied?.version ?? null,

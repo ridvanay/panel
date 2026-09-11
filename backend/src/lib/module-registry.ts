@@ -40,6 +40,18 @@ export const MODULE_REGISTRY: ModuleDefinition[] = [
     adminPath: "/admin/portfolio",
     recommendedFor: ["PORTFOLIO"],
   },
+  {
+    key: "telehealth",
+    label: "Tele-Sağlık",
+    description: "Doktor profilleri, haftalık müsaitlik, online randevu ve görüntülü konsültasyon.",
+    // `.claude/architect-scope-telehealth-template.md` §2.3/§2.4 (bağlayıcı) — `products`/
+    // `portfolio`'dan BİLİNÇLİ olarak FARKLI: bu dikey bir sektör modülüdür, varsayılan açık
+    // gelmesi HER mevcut kuruluma admin kenar çubuğunda "Tele-Sağlık" + public `/doctors`
+    // rotasını sessizce açardı. `recommendedFor` VERİLMEZ — `SiteTemplate` enum'ı tele-sağlığı
+    // kapsamıyor ve enum'a `HEALTHCARE` değeri EKLENMEZ (backlog: feature/site-template-healthcare).
+    defaultEnabled: false,
+    adminPath: "/admin/telehealth/doctors",
+  },
 ];
 
 export function getModuleDefinition(key: string): ModuleDefinition | undefined {

@@ -196,7 +196,50 @@ kullanılır):
 Production/staging secret'ları (GitHub Environment secrets, repoya asla girmez — bkz. "CD" bölümü):
 `DATABASE_URL`, `REGISTRY_URL`, `REGISTRY_USERNAME`, `REGISTRY_PASSWORD`,
 `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_SITE_URL` ve backend'in `.env.example`'ında listelenen tüm
-üretim secret'ları (JWT anahtarları, `ENCRYPTION_KEY`, `STRIPE_*`, `SMTP_*` vb.).
+üretim secret'ları (JWT anahtarları, `ENCRYPTION_KEY`, `STRIPE_*`, `SMTP_*`, `LIVEKIT_*` vb.).
+
+### Tele-Sağlık (LiveKit) — env değişkenleri (bu tur, devops-agent)
+
+`.claude/architect-scope-telehealth-template.md` §4.4 madde 2/4 ve §9.5 kapsamında, bu turda
+yalnızca yapılandırma dosyaları hazırlandı (backend-agent/integration-agent henüz kod
+yazmadı — `backend/src/config/env.ts`'deki Zod şeması integration-agent'ın işi, bu dosyaya
+devops-agent DOKUNMADI):
+
+- **`backend/.env.example`**: `STRIPE_SECRET_KEY` ile BİREBİR AYNI opsiyonel/varsayılan-boş
+  desende `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `LIVEKIT_TOKEN_TTL_MIN=15`
+  eklendi. Yorum satırı üçü boşken `POST /appointments/{id}/meeting-token`'ın
+  `503 LIVEKIT_NOT_CONFIGURED` döneceğini ve **LiveKit sunucusunun/SFU'nun bu compose'a
+  DAHİL EDİLMEDİĞİNİ** (LiveKit Cloud veya harici kurulum varsayıldığını) açıkça belirtiyor.
+- **`frontend/.env.local.example`**: `NEXT_PUBLIC_LIVEKIT_URL=` eklendi — yalnızca sunucunun
+  WebSocket adresi. Yorum satırı **API secret'ın frontend'e ASLA geçmediğini** vurguluyor
+  (token backend'de üretilir, frontend uçtan alır).
+- **`docker-compose.yml` (kök) / `backend/docker-compose.yml`**: **değişiklik yapılmadı,
+  kasıtlı.** Mevcut desen zaten `STRIPE_*` gibi opsiyonel sırları `env_file: ./backend/.env`
+  üzerinden okuyor — compose'un `environment:` bloğu yalnızca Docker-network'e özgü
+  override'ları (`DATABASE_URL`, `PORT`, `NODE_ENV`, `INTERNAL_FRONTEND_URL`) taşıyor,
+  `STRIPE_*` orada AÇIKÇA LİSTELENMİYOR. `LIVEKIT_*` de aynı şekilde `.env` dosyasından
+  otomatik akacağı için compose'a eklenmesi GEREKMEDİ. **LiveKit sunucusu/SFU servisi
+  compose'a EKLENMEDİ** — bağlayıcı karar (§4.4 madde 4): self-host bu turun kapsamı değil,
+  LiveKit Cloud/harici kurulum varsayılıyor.
+- **`backend/scripts/copy-static-assets.js`**: **değişiklik GEREKMEDİ, doğrulandı.** Script
+  `src/**` altını uzantıya göre (dosya adına/dizin adına göre DEĞİL) genel olarak tarıyor
+  (`STATIC_ASSET_EXTENSIONS = .png/.jpg/.jpeg/.webp/.gif/.pdf`) — `modern-architecture` ve
+  `ecommerce-pro` şablonlarının varlıklarını nasıl kapsıyorsa, backend-agent'ın ikinci turda
+  ekleyeceği `backend/src/modules/demo-templates/assets/telehealth-clinic/**` altındaki ~8 PNG
+  (§6.3: 4 doktor avatarı + 2-3 destekleyici görsel) hiçbir kod değişikliği gerekmeden aynı
+  şekilde `dist/`e kopyalanacak. `preview.svg` (Next.js statiği,
+  `frontend/public/demo-templates/telehealth-clinic/`) bu script'in kapsamı DIŞINDADIR (zaten
+  `frontend/public/` derleme boru hattından geçmez) — mevcut iki şablonla aynı desen.
+- **CI (`.github/workflows/ci.yml`, `deploy.yml`)**: **`LIVEKIT_*` secret'ı eklenmedi,
+  kasıtlı.** `STRIPE_*` de bugün CI job'larına env olarak geçmiyor (testler dış servise
+  bağlanmıyor) — LiveKit "yapılandırılmamış mod" testte de geçerli olduğu için (§4.4 madde 3)
+  aynı desen izlendi. Production/staging'e gerçek `LIVEKIT_*` değerleri **GitHub Environment
+  secrets** (`production`/`staging`) üzerinden, `backend/.env.example`'daki diğer üretim
+  secret'larıyla (`STRIPE_*`, `SMTP_*` vb.) AYNI mekanizmayla enjekte edilecek — bu turda ek
+  bir workflow YAML değişikliği gerekmedi.
+- **`docker compose up --build -d` bu turda ÇALIŞTIRILMADI** — backend-agent/integration-agent
+  henüz `LIVEKIT_*`'i tüketen kod yazmadı; bu adım, tüm ajanlar bitince devops-agent'ın
+  yeniden devreye gireceği "CI/imaj doğrulaması" adımında (§9.2) yapılacak.
 
 ## CI (`.github/workflows/ci.yml`)
 

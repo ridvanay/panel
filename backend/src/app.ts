@@ -55,6 +55,13 @@ import { outboundWebhooksRoutes } from "./modules/outbound-webhooks/outbound-web
 import { publicApiRoutes } from "./modules/public-api/public-api.routes";
 import { registerWebhookDispatcher, recoverStuckWebhookDeliveries } from "./modules/outbound-webhooks/outbound-webhooks.dispatcher";
 import { registerWebhookDeliveryRetentionScheduler } from "./modules/outbound-webhooks/outbound-webhooks.retention";
+import { telehealthRoutes } from "./modules/telehealth/telehealth.routes";
+import {
+  adminTelehealthAppointmentsRoutes,
+  adminTelehealthDoctorsRoutes,
+  adminTelehealthSpecialtiesRoutes,
+} from "./modules/telehealth/telehealth.admin.routes";
+import { telehealthLiveKitRoutes } from "./modules/telehealth/telehealth.livekit.routes";
 
 export function buildApp() {
   // `SENTRY_DSN` tanımsızsa no-op (bkz. lib/sentry.ts) — her `buildApp()` çağrısında
@@ -226,6 +233,23 @@ export function buildApp() {
       api.register(apiKeysRoutes, { prefix: "/admin/settings/api-keys" });
       api.register(outboundWebhooksRoutes, { prefix: "/admin/settings/webhooks" });
       api.register(publicApiRoutes, { prefix: "/public" });
+      // Tele-Sağlık modülü — bkz. .claude/architect-scope-telehealth-template.md §2.2/§4.1.
+      // PUBLIC uçlar kök seviyede `/doctors` + `/appointments` (prefiks YOK, telehealthRoutes
+      // kendi içinde ikisini de tanımlar) ve `requireModuleEnabled("telehealth")` ile korunur
+      // (bkz. telehealth.routes.ts) — `Cart`/`Checkout` İLE AYNI desen. §8.6/DoD (bağlayıcı):
+      // `adminProductsRoutes`'un aksine, Admin uçları da modül DURUMUNA BAĞLIDIR — modül
+      // kapalıyken `/admin/telehealth/*` de 404 döner (bkz. telehealth.admin.routes.ts'teki
+      // `requireModuleEnabled("telehealth")` hook'u, security-agent düzeltmesi);
+      // `/admin/telehealth/appointments` PII içerdiği için ayrıca ADMIN+MANAGER (EDITOR dışlanır, §8.4).
+      api.register(telehealthRoutes);
+      // §4.4/§9.4/§9.5 (bağlayıcı) — LiveKit konsültasyon odası token'ı, integration-agent'ın AYRI
+      // dosyası (`telehealth.livekit.routes.ts`, `telehealth.routes.ts`'e DOKUNULMADI). Aynı public
+      // `/appointments` yüzeyine EKLENİR; kendi `requireModuleEnabled("telehealth")` + kimlik
+      // doğrulama hook'larını KENDİSİ taşır.
+      api.register(telehealthLiveKitRoutes);
+      api.register(adminTelehealthSpecialtiesRoutes, { prefix: "/admin/telehealth/specialties" });
+      api.register(adminTelehealthDoctorsRoutes, { prefix: "/admin/telehealth/doctors" });
+      api.register(adminTelehealthAppointmentsRoutes, { prefix: "/admin/telehealth/appointments" });
     },
     { prefix: "/api/v1" }
   );

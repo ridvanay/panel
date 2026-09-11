@@ -2140,9 +2140,14 @@ export const DemoTemplateContentsSchema = z.object({
   navigationItems: z.number().int(),
   footerColumns: z.number().int(),
   mediaAssets: z.number().int(),
+  // `.claude/architect-scope-telehealth-template.md` §12 — `telehealth: null` şablonlarda
+  // (modern-architecture/ecommerce-pro) HER ZAMAN 0.
+  specialties: z.number().int(),
+  doctors: z.number().int(),
+  availabilityWindows: z.number().int(),
 });
 
-export const DemoTemplateReplacesSchema = z.enum(["appearance", "siteSettings", "navigation", "footer", "socialLinks", "homePage"]);
+export const DemoTemplateReplacesSchema = z.enum(["appearance", "siteSettings", "navigation", "footer", "socialLinks", "homePage", "siteModules"]);
 
 export const DemoTemplateSummarySchema = z.object({
   key: z.string(),
@@ -2154,6 +2159,8 @@ export const DemoTemplateSummarySchema = z.object({
   palette: z.array(HexColorSchema),
   contents: DemoTemplateContentsSchema,
   replaces: z.array(DemoTemplateReplacesSchema).optional(),
+  // §2.6/§12 — bu şablonun ihtiyaç duyduğu `MODULE_REGISTRY` anahtarları. `[]` = yok.
+  requiredModules: z.array(z.string()),
   appliedAt: z.string().datetime().nullable(),
   appliedVersion: z.string().nullable().optional(),
   appliedById: z.string().uuid().nullable().optional(),
@@ -2171,6 +2178,10 @@ export const DemoTemplateImportCountsSchema = z.object({
   footerLinks: z.number().int(),
   socialLinks: z.number().int(),
   slides: z.number().int(),
+  // §12 — `telehealth: null` şablonlarda HER ZAMAN 0.
+  specialties: z.number().int(),
+  doctors: z.number().int(),
+  availabilityWindows: z.number().int(),
 });
 
 export const DemoTemplateImportResultSchema = z.object({
@@ -2182,6 +2193,127 @@ export const DemoTemplateImportResultSchema = z.object({
   setAsHomePage: z.boolean().optional(),
   sliderId: z.string().uuid().nullable().optional(),
   counts: DemoTemplateImportCountsSchema,
+  // §2.6/§12 — `enableRequiredModules: true` ile GERÇEKTEN açılan modül anahtarları. `[]` =
+  // hiçbiri açılmadı (istek `false` gönderdi VEYA şablonun `requiredModules`'ü boş).
+  enabledModules: z.array(z.string()),
   warnings: z.array(z.string()),
 });
 export type DemoTemplateImportResultDto = z.infer<typeof DemoTemplateImportResultSchema>;
+
+// -------------------------------------------------------------------------
+// TeleHealth — `.claude/architect-scope-telehealth-template.md` (bağlayıcı karar dokümanı),
+// openapi.yaml `TeleHealth` tag'i. Yeni birinci sınıf modül (§2.2) — `demo-templates`ten
+// TAMAMEN BAĞIMSIZDIR, hiçbir alan `templateKey` bilmez (§2.2 bağlayıcı sınır).
+// -------------------------------------------------------------------------
+
+export const SpecialtySchema = z.object({
+  id: z.string().uuid(),
+  name: z.string(),
+  slug: z.string(),
+  // lucide-react ikon anahtarı — `icon-box` bloğuyla AYNI sözlük (bkz. §3.2).
+  icon: z.string(),
+  description: z.string().nullable(),
+  order: z.number().int(),
+  isActive: z.boolean(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type SpecialtyDto = z.infer<typeof SpecialtySchema>;
+
+/** Haftalık TEKRARLAYAN müsaitlik penceresi — `DoctorAvailability`, ÜRETİLMİŞ SLOT DEĞİL (§3.4). */
+export const DoctorAvailabilityRuleSchema = z.object({
+  id: z.string().uuid(),
+  // ISO-8601: 1 = Pazartesi … 7 = Pazar (bkz. modules/telehealth/lib/availability.ts).
+  dayOfWeek: z.number().int().min(1).max(7),
+  startMinute: z.number().int().min(0).max(1440),
+  endMinute: z.number().int().min(0).max(1440),
+  isActive: z.boolean(),
+});
+export type DoctorAvailabilityRuleDto = z.infer<typeof DoctorAvailabilityRuleSchema>;
+
+export const DoctorProfileSchema = z.object({
+  id: z.string().uuid(),
+  // §2.5 — opsiyonel panel kullanıcısı bağlantısı. Şablon bu alanı DAİMA null bırakır.
+  userId: z.string().uuid().nullable(),
+  specialtyId: z.string().uuid().nullable(),
+  specialty: SpecialtySchema.nullable(),
+  title: z.string(),
+  fullName: z.string(),
+  slug: z.string(),
+  bio: z.string(),
+  languages: z.array(z.string()),
+  // IANA saat dilimi ("Europe/Istanbul") — bkz. modules/telehealth/lib/timezone.ts.
+  timeZone: z.string(),
+  sessionDurationMin: z.number().int(),
+  sessionPriceCents: z.number().int(),
+  currency: z.string(),
+  avatarMediaId: z.string().uuid().nullable(),
+  avatarMedia: MediaSchema.nullable(),
+  // §7.2 — şablonun ürettiği demo profillerde DAİMA false; gerçek doğrulama admin panelden yapılır.
+  isVerified: z.boolean(),
+  verifiedAt: z.string().nullable(),
+  isActive: z.boolean(),
+  order: z.number().int(),
+  availability: z.array(DoctorAvailabilityRuleSchema),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type DoctorProfileDto = z.infer<typeof DoctorProfileSchema>;
+
+/** `Appointment.doctor` join'i için minimal özet — `UserSummarySchema` ile AYNI patern. */
+export const DoctorSummarySchema = z.object({
+  id: z.string().uuid(),
+  title: z.string(),
+  fullName: z.string(),
+  slug: z.string(),
+});
+export type DoctorSummaryDto = z.infer<typeof DoctorSummarySchema>;
+
+export const AppointmentStatusSchema = z.enum(["SCHEDULED", "IN_PROGRESS", "COMPLETED", "CANCELLED", "NO_SHOW"]);
+export type AppointmentStatus = z.infer<typeof AppointmentStatusSchema>;
+
+/**
+ * `Appointment` OKUMA DTO'su — `meetingRoomName`/`accessTokenHash` BİLİNÇLİ OLARAK TAŞINMAZ
+ * (§8.5 — minimum ifşa; oda adı yalnızca sunucu içi LiveKit token üretiminde kullanılır).
+ */
+export const AppointmentSchema = z.object({
+  id: z.string().uuid(),
+  doctorId: z.string().uuid(),
+  doctor: DoctorSummarySchema,
+  patientUserId: z.string().uuid().nullable(),
+  patientName: z.string(),
+  patientEmail: z.string(),
+  startsAt: z.string(),
+  endsAt: z.string(),
+  status: AppointmentStatusSchema,
+  priceCents: z.number().int(),
+  currency: z.string(),
+  startedAt: z.string().nullable(),
+  endedAt: z.string().nullable(),
+  cancelledAt: z.string().nullable(),
+  cancelReason: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type AppointmentDto = z.infer<typeof AppointmentSchema>;
+
+/** `GET /doctors/{slug}/slots` yanıt öğesi — §4.2: "kim rezerve etti" ASLA sızmaz, sadece boolean. */
+export const AvailabilitySlotSchema = z.object({
+  startsAt: z.string(),
+  endsAt: z.string(),
+  available: z.boolean(),
+});
+export type AvailabilitySlotDto = z.infer<typeof AvailabilitySlotSchema>;
+
+/** `POST /appointments` yanıtı — ham `accessToken`'ı BİR KEZ döner (bkz. §4.3). */
+export const CreateAppointmentResultSchema = z.object({
+  id: z.string().uuid(),
+  doctorSlug: z.string(),
+  startsAt: z.string(),
+  endsAt: z.string(),
+  status: AppointmentStatusSchema,
+  priceCents: z.number().int(),
+  currency: z.string(),
+  accessToken: z.string(),
+});
+export type CreateAppointmentResultDto = z.infer<typeof CreateAppointmentResultSchema>;

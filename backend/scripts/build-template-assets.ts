@@ -568,11 +568,169 @@ const EP_PDF_GENERATORS: { file: string; build: () => Buffer }[] = [
 ];
 
 /* ---------------------------------------------------------------------------------------------
+ * `telehealth-clinic` — `.claude/architect-scope-telehealth-template.md` §6.3 +
+ * `.claude/design-notes-telehealth.md` §10. AYNI bağımlılıksız yaklaşım: 4 doktor avatar
+ * monogramı (gradyan zemin + baş harfler BASİT GEOMETRİK ŞEKİL — 5×7 bit-map "font", GERÇEK bir
+ * font dosyası/glyph render motoru DEĞİL, sadece dolgulu kare bloklar) + 2 destekleyici görsel
+ * (soyut çizgi motifi, ecommerce-pro'nun kategori kartı felsefesiyle AYNI). Palet
+ * design-notes §1.2/§10 ile BİREBİR: `#0F766E → #0369A1` gradyan (hero ile AYNI uçlar).
+ * ------------------------------------------------------------------------------------------- */
+
+const TH_PRIMARY = hexToRgb("#0F766E");
+const TH_BUTTON = hexToRgb("#0369A1");
+const TH_BACKGROUND = hexToRgb("#F8FAFC");
+const TH_SURFACE = hexToRgb("#FFFFFF");
+const WHITE: Rgb = { r: 255, g: 255, b: 255 };
+
+/** Basit Bresenham-benzeri parametrik çizgi — `Canvas` sınıfı yalnızca H/V çizgi ve daire çevresi
+ *  taşır; bu script'e ÖZGÜ, `Canvas.blendPixel` (public) ÜZERİNDEN çalışan, sınıfı DEĞİŞTİRMEYEN
+ *  yerel bir yardımcıdır (§10 "basit geometrik şekil" — kilit/kalkan/saat kadranı motifleri
+ *  için gereken tek ek primitif). */
+function drawLineSegment(canvas: Canvas, x0: number, y0: number, x1: number, y1: number, color: Rgb, opacityPercent: number, thickness = 2): void {
+  const steps = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0), 1) * 2;
+  const half = Math.floor(thickness / 2);
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const x = Math.round(x0 + (x1 - x0) * t);
+    const y = Math.round(y0 + (y1 - y0) * t);
+    for (let tx = 0; tx < thickness; tx++) {
+      for (let ty = 0; ty < thickness; ty++) {
+        canvas.blendPixel(x + tx - half, y + ty - half, color, opacityPercent);
+      }
+    }
+  }
+}
+
+/** 5×7 nokta-matrisi "font" — YALNIZCA doktor avatarlarının başharfleri için gereken 7 harf
+ *  (`A B E F J L W`). Gerçek bir font/glyph render motoru DEĞİLDİR — dolgulu kare bloklardan
+ *  oluşan BASİT GEOMETRİK bir yer tutucudur (§10, [DTI] §9.3 "fotogerçekçi insan görseli YASAK"
+ *  ile AYNI ruh: bu ASLA bir yüz/fotoğraf değildir).  */
+const FONT_5X7: Record<string, string[]> = {
+  A: ["01110", "10001", "10001", "11111", "10001", "10001", "10001"],
+  B: ["11110", "10001", "10001", "11110", "10001", "10001", "11110"],
+  E: ["11111", "10000", "10000", "11110", "10000", "10000", "11111"],
+  F: ["11111", "10000", "10000", "11110", "10000", "10000", "10000"],
+  J: ["00111", "00010", "00010", "00010", "00010", "10010", "01100"],
+  L: ["10000", "10000", "10000", "10000", "10000", "10000", "11111"],
+  W: ["10001", "10001", "10001", "10001", "10101", "10101", "01010"],
+};
+
+function drawBitmapChar(canvas: Canvas, ch: string, x0: number, y0: number, scale: number, color: Rgb): void {
+  const glyph = FONT_5X7[ch];
+  if (!glyph) return;
+  for (let row = 0; row < glyph.length; row++) {
+    const bits = glyph[row]!;
+    for (let col = 0; col < bits.length; col++) {
+      if (bits[col] !== "1") continue;
+      const px = x0 + col * scale;
+      const py = y0 + row * scale;
+      for (let dx = 0; dx < scale; dx++) {
+        for (let dy = 0; dy < scale; dy++) {
+          canvas.setPixel(px + dx, py + dy, color);
+        }
+      }
+    }
+  }
+}
+
+/** Doktor avatarı — gradyan zemin (hero ile AYNI uçlar) + iki baş harf, `design-notes-telehealth.
+ *  md` §2/§10 ile BİREBİR ("bg-gradient-to-br from-[#0F766E] to-[#0369A1] text-white"). */
+function buildDoctorAvatar(initials: readonly [string, string]): Buffer {
+  const width = 512;
+  const height = 512;
+  const canvas = new Canvas(width, height);
+  canvas.fill((x, y) => linearGradientAt(width, height, x, y, 135, TH_PRIMARY, TH_BUTTON));
+
+  const scale = 22;
+  const charWidth = 5 * scale;
+  const charHeight = 7 * scale;
+  const gap = 26;
+  const totalWidth = charWidth * 2 + gap;
+  const startX = Math.round((width - totalWidth) / 2);
+  const startY = Math.round((height - charHeight) / 2);
+
+  drawBitmapChar(canvas, initials[0], startX, startY, scale, WHITE);
+  drawBitmapChar(canvas, initials[1], startX + charWidth + gap, startY, scale, WHITE);
+
+  return canvas.toPngBuffer();
+}
+
+/** "7/24 erişim" — merkezi saat kadranının ince çizgi soyutlaması (design-notes §10 madde a). */
+function buildThSupportAccess(): Buffer {
+  const width = 1200;
+  const height = 900;
+  const canvas = new Canvas(width, height);
+  canvas.fill((x, y) => linearGradientAt(width, height, x, y, 135, TH_BACKGROUND, TH_SURFACE));
+
+  const cx = width * 0.5;
+  const cy = height * 0.5;
+  canvas.drawCircleOutline(cx, cy, 260, TH_PRIMARY, 22, 3);
+  canvas.drawCircleOutline(cx, cy, 6, TH_PRIMARY, 60, 4);
+  for (let i = 0; i < 12; i++) {
+    const angle = (i / 12) * Math.PI * 2;
+    const rOuter = 260;
+    const rInner = 230;
+    drawLineSegment(
+      canvas,
+      cx + rInner * Math.sin(angle),
+      cy - rInner * Math.cos(angle),
+      cx + rOuter * Math.sin(angle),
+      cy - rOuter * Math.cos(angle),
+      TH_PRIMARY,
+      25,
+      2
+    );
+  }
+  // Saat kolları — "7/24" çağrışımı için sabit bir zaman (deterministik, `Math.random()` YOK).
+  drawLineSegment(canvas, cx, cy, cx, cy - 160, TH_PRIMARY, 55, 4);
+  drawLineSegment(canvas, cx, cy, cx + 110, cy + 40, TH_PRIMARY, 55, 4);
+  return canvas.toPngBuffer();
+}
+
+/** "Şifreli görüşme" — iç içe geçmiş kalkan + onay işareti soyutlaması (design-notes §10 madde b). */
+function buildThSupportSecurity(): Buffer {
+  const width = 1200;
+  const height = 900;
+  const canvas = new Canvas(width, height);
+  canvas.fill((x, y) => linearGradientAt(width, height, x, y, 45, TH_SURFACE, TH_BACKGROUND));
+
+  const cx = width * 0.5;
+  const topY = 260;
+  const bendY = topY + 260;
+  const bottomY = 680;
+  const leftX = cx - 180;
+  const rightX = cx + 180;
+
+  drawLineSegment(canvas, leftX, topY, rightX, topY, TH_BUTTON, 28, 3);
+  drawLineSegment(canvas, leftX, topY, leftX, bendY, TH_BUTTON, 28, 3);
+  drawLineSegment(canvas, rightX, topY, rightX, bendY, TH_BUTTON, 28, 3);
+  drawLineSegment(canvas, leftX, bendY, cx, bottomY, TH_BUTTON, 28, 3);
+  drawLineSegment(canvas, rightX, bendY, cx, bottomY, TH_BUTTON, 28, 3);
+  // İç onay işareti (checkmark).
+  drawLineSegment(canvas, cx - 70, topY + 180, cx - 15, topY + 235, TH_BUTTON, 40, 5);
+  drawLineSegment(canvas, cx - 15, topY + 235, cx + 95, topY + 115, TH_BUTTON, 40, 5);
+  return canvas.toPngBuffer();
+}
+
+const TH_DOCTOR_AVATAR_GENERATORS: { file: string; build: () => Buffer }[] = [
+  { file: "avatar-elif-aydemir.png", build: () => buildDoctorAvatar(["E", "A"]) },
+  { file: "avatar-james-whitfield.png", build: () => buildDoctorAvatar(["J", "W"]) },
+  { file: "avatar-laura-bennett.png", build: () => buildDoctorAvatar(["L", "B"]) },
+  { file: "avatar-felix-braun.png", build: () => buildDoctorAvatar(["F", "B"]) },
+];
+
+const TH_SUPPORT_GENERATORS: { file: string; build: () => Buffer }[] = [
+  { file: "support-access.png", build: buildThSupportAccess },
+  { file: "support-security.png", build: buildThSupportSecurity },
+];
+
+/* ---------------------------------------------------------------------------------------------
  * main
  * ------------------------------------------------------------------------------------------- */
 
 const OUTPUT_DIR = path.join(__dirname, "..", "src", "modules", "demo-templates", "assets", "modern-architecture");
 const EP_OUTPUT_DIR = path.join(__dirname, "..", "src", "modules", "demo-templates", "assets", "ecommerce-pro");
+const TH_OUTPUT_DIR = path.join(__dirname, "..", "src", "modules", "demo-templates", "assets", "telehealth-clinic");
 
 const GENERATORS: { file: string; build: () => Buffer }[] = [
   { file: "portfolio-cover-1.png", build: buildPortfolioCover1 },
@@ -609,6 +767,7 @@ function main(): void {
   writePngAssets(OUTPUT_DIR, GENERATORS);
   writePngAssets(EP_OUTPUT_DIR, [...EP_CATEGORY_GENERATORS, ...EP_PRODUCT_GENERATORS]);
   writePdfAssets(EP_OUTPUT_DIR, EP_PDF_GENERATORS);
+  writePngAssets(TH_OUTPUT_DIR, [...TH_DOCTOR_AVATAR_GENERATORS, ...TH_SUPPORT_GENERATORS]);
 }
 
 main();

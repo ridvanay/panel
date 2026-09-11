@@ -15,7 +15,28 @@ export type ApiErrorCode =
    * header'ı, statusCode 400). Bu tür hatalar birer istemci hatasıdır, 500'e düşürülmemelidir.
    */
   | "BAD_REQUEST"
-  | "INTERNAL_ERROR";
+  | "INTERNAL_ERROR"
+  /**
+   * `.claude/architect-scope-telehealth-template.md` §4.3/§8/§12 — `POST /appointments` çifte
+   * rezervasyon çakışması. `@@unique([doctorId, startsAt])` ikinci savunma hattı (`P2002`) da
+   * BU koda çevrilir (bkz. SlotTakenError). 409.
+   */
+  | "SLOT_TAKEN"
+  /**
+   * §4.5/§8/§12 — konsültasyon katılım penceresi (`startsAt - 5dk` … `endsAt + 15dk`) dışında
+   * token isteği. integration-agent'ın `POST /appointments/{id}/meeting-token` ucu fırlatır
+   * (bkz. `modules/telehealth/lib/booking.ts::isWithinJoinWindow` — SAF yardımcı, backend-agent
+   * yazar ama bu uçta KULLANMAZ). 409.
+   */
+  | "APPOINTMENT_NOT_JOINABLE"
+  /**
+   * §4.4/§8/§12 — LiveKit ortam değişkenleri (`LIVEKIT_URL`/`LIVEKIT_API_KEY`/
+   * `LIVEKIT_API_SECRET`) tanımsızken `POST /appointments/{id}/meeting-token`. Kod TÜRÜ burada
+   * (paylaşılan dosya) ÖNCEDEN tanımlanır ki integration-agent bu dosyaya DOKUNMAK ZORUNDA
+   * KALMASIN (§4.4 — o dosya/uç tamamen integration-agent'ın sahasıdır, backend-agent
+   * FIRLATMAZ/KULLANMAZ). 503.
+   */
+  | "LIVEKIT_NOT_CONFIGURED";
 
 export class ApiError extends Error {
   statusCode: number;
@@ -111,6 +132,43 @@ export class DemoTemplateAlreadyImportedError extends ApiError {
     this.importedBy = info.importedBy;
     this.version = info.version;
     this.pageId = info.pageId;
+  }
+}
+
+/**
+ * `.claude/architect-scope-telehealth-template.md` §4.3 (bağlayıcı) — "check-then-act" bulgusu
+ * VEYA `@@unique([doctorId, startsAt])` (`P2002`) ikinci savunma hattı tarafından yakalanan
+ * çifte rezervasyon çakışması. Genel `ConflictError`'dan AYRI bir sınıf: frontend'in
+ * `error.code === "SLOT_TAKEN"` ile diğer 409'lardan (ör. genel `CONFLICT`) ayırt edebilmesi
+ * ve kullanıcıya "bu saat az önce doldu, takvimi yenileyin" gibi ÖZEL bir mesaj gösterebilmesi
+ * için (bkz. `modules/telehealth/lib/booking.ts::bookAppointment`).
+ */
+export class SlotTakenError extends ApiError {
+  constructor(message = "Bu randevu saati az önce başka biri tarafından alındı.") {
+    super(409, "SLOT_TAKEN", message);
+  }
+}
+
+/**
+ * §4.5/§8/§12 (bağlayıcı) — `POST /appointments/{id}/meeting-token` katılım penceresi dışında
+ * (`now < startsAt - 5dk` VEYA `now > endsAt + 15dk`) YA DA randevu `SCHEDULED`/`IN_PROGRESS`
+ * DIŞINDA bir durumdayken çağrılırsa fırlatılır (bkz.
+ * `modules/telehealth/lib/booking.ts::isWithinJoinWindow`). 409.
+ */
+export class AppointmentNotJoinableError extends ApiError {
+  constructor(message = "Bu randevuya şu anda katılım penceresi dışında olduğunuz için katılamazsınız.") {
+    super(409, "APPOINTMENT_NOT_JOINABLE", message);
+  }
+}
+
+/**
+ * §4.4/§8/§12 (bağlayıcı) — `LIVEKIT_URL`/`LIVEKIT_API_KEY`/`LIVEKIT_API_SECRET`'ten biri
+ * boşken `POST /appointments/{id}/meeting-token`. 503 (istemci hatası DEĞİL, sunucu
+ * yapılandırma eksikliği).
+ */
+export class LiveKitNotConfiguredError extends ApiError {
+  constructor(message = "Görüntülü görüşme altyapısı (LiveKit) bu kurulumda yapılandırılmamış.") {
+    super(503, "LIVEKIT_NOT_CONFIGURED", message);
   }
 }
 

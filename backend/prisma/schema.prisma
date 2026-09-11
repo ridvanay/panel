@@ -335,6 +335,10 @@ model User {
   // için zorunlu karşı-ilişki alanları (ContentRevision/EmailTemplate ile AYNI desen).
   contactFormUpdates     ContactForm[]        @relation("ContactFormUpdater")
   contactSubmissionsRead ContactSubmission[]  @relation("ContactSubmissionReader")
+  // Tele-Sağlık — bkz. .claude/architect-scope-telehealth-template.md §2.5/§3.7.
+  // Opsiyonel panel kullanıcısı ↔ doktor profili bağlantısı ve hastanın kendi randevuları.
+  doctorProfile          DoctorProfile?       @relation("DoctorProfileUser")
+  appointmentsAsPatient  Appointment[]        @relation("AppointmentPatient")
 
   @@map("users")
 }
@@ -1503,6 +1507,9 @@ model Media {
   // Gelişmiş Slider — Slide.bgMediaId / Slide.bgVideoPosterMediaId karşı-ilişkileri.
   slideBackgrounds      Slide[]           @relation("SlideBackgroundMedia")
   slideVideoPosters     Slide[]           @relation("SlideVideoPosterMedia")
+  // Tele-Sağlık — bkz. .claude/architect-scope-telehealth-template.md §3.3/§3.7.
+  // DoctorProfile.avatarMediaId için zorunlu karşı-ilişki alanı.
+  doctorAvatars         DoctorProfile[]   @relation("DoctorAvatarMedia")
 
   @@index([folderId])
   @@map("media")
@@ -1935,6 +1942,162 @@ model DemoTemplateImport {
   @@index([importedById])
   @@index([pageId])
   @@map("demo_template_imports")
+}
+
+/// Tele-Sağlık randevu yaşam döngüsü — .claude/architect-scope-telehealth-template.md §3.1.
+/// Değer SIRASI bağlayıcıdır (PostgreSQL enum tanım sırası ORDER BY davranışını belirler).
+/// YENİ bir enum olduğu için tüm değerler İLK SEFERDE tanımlanır: sonradan değer eklemek
+/// `ALTER TYPE ... ADD VALUE` ile GERİ ALINAMAZ (bkz. ImportJobType.PRODUCTS emsali).
+/// Kullanıcının istediği SCHEDULED/COMPLETED ikilisi YETERSİZDİR: iptal ve gelmedi (no-show)
+/// durumları ilk gerçek kullanımda ORTAYA ÇIKAR ve o an enum'a dokunmak migration borcudur.
+enum AppointmentStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+model Specialty {
+  id          String   @id @default(uuid())
+  seq         Int      @unique @default(autoincrement())
+  name        String
+  slug        String   @unique
+  /// lucide-react ikon anahtarı (ör. "heart-pulse") — `icon-box` bloğuyla AYNI sözlük.
+  /// Görsel/Media DEĞİL: ikon setine bağlanmak sıfır varlık maliyeti + keskin render (§[DTI] 4.4).
+  icon        String
+  description String?
+  order       Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  doctors DoctorProfile[]
+
+  @@index([isActive, order])
+  @@map("specialties")
+}
+
+model DoctorProfile {
+  id          String  @id @default(uuid())
+  seq         Int     @unique @default(autoincrement())
+  /// §2.5 — opsiyonel panel kullanıcısı bağlantısı. Şablon bu alanı DAİMA null bırakır.
+  userId      String? @unique
+  specialtyId String?
+
+  /// "Dr." / "Prof. Dr." / "Uzm. Dr." — serbest metin, enum DEĞİL: unvanlar ülkeye göre
+  /// değişir ve enum'a değer eklemek geri alınamaz.
+  title     String
+  /// `User.name`'den BAĞIMSIZ: profil hesap olmadan da tam bir kayıttır (§2.5).
+  fullName  String
+  slug      String   @unique
+  bio       String
+  /// ISO 639-1 kodları ("tr", "en", "de") — en fazla 6, Zod ile zorlanır.
+  languages String[]
+  /// IANA saat dilimi ("Europe/Istanbul"). Müsaitlik kuralları BU dilimin DUVAR SAATİNDE
+  /// yorumlanır (§3.4). "UTC+3" gibi ofset string'i YASAK — DST'de sessizce yanlış olur.
+  timeZone  String   @default("Europe/Istanbul")
+
+  /// Satılan birim seans'tır, saat DEĞİL ([EPT] §1.2 "fiyat satılan seviyede yaşar" ilkesi).
+  /// `hourlyRate` REDDEDİLDİ: 30 dk seansta bölme yuvarlama hatası üretir.
+  sessionDurationMin Int    @default(30)
+  sessionPriceCents  Int
+  currency           String @default("TRY")
+
+  /// Avatar GERÇEK bir Media satırıdır ([DTI] §4.2) — serbest `avatarUrl` string'i REDDEDİLDİ:
+  /// medya kütüphanesinde görünmeyen görsel MediaPicker ile değiştirilemez.
+  avatarMediaId String?
+
+  /// Kimlik/diploma doğrulaması yapılmış profil rozeti. Şablonun ürettiği DEMO profillerde
+  /// DAİMA false'tur (§7.2) — sahte doğrulama rozeti yayına sızarsa tüketiciyi yanıltır.
+  isVerified Boolean   @default(false)
+  verifiedAt DateTime?
+  isActive   Boolean   @default(true)
+  order      Int       @default(0)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  user         User?                @relation("DoctorProfileUser", fields: [userId], references: [id], onDelete: SetNull)
+  specialty    Specialty?           @relation(fields: [specialtyId], references: [id], onDelete: SetNull)
+  avatarMedia  Media?               @relation("DoctorAvatarMedia", fields: [avatarMediaId], references: [id], onDelete: SetNull)
+  availability DoctorAvailability[]
+  appointments Appointment[]
+
+  @@index([specialtyId])
+  @@index([avatarMediaId])
+  @@index([isActive, order])
+  @@map("doctor_profiles")
+}
+
+/// Haftalık TEKRARLAYAN müsaitlik penceresi. BURADA SLOT SATIRI TUTULMAZ — slotlar
+/// (§4.2) bu kurallardan + mevcut randevulardan ÇALIŞMA ZAMANINDA türetilir.
+/// Gerekçe: 4 doktor × 5 gün × 16 slot × 52 hafta = 16.640 satır/yıl'lık ölü veri; ayrıca
+/// "gelecek ne kadar süre için slot üretelim?" sorusunun doğru cevabı yoktur.
+model DoctorAvailability {
+  id          String  @id @default(uuid())
+  doctorId    String
+  /// ISO-8601: 1 = Pazartesi … 7 = Pazar. JavaScript'in 0-6 (0 = Pazar) konvansiyonu
+  /// BİLİNÇLİ olarak KULLANILMAZ; dönüşüm TEK yerde (lib/availability.ts) yapılır.
+  dayOfWeek   Int
+  /// Gün başlangıcından itibaren DAKİKA (0-1440), DOKTORUN `timeZone`'undaki DUVAR SAATİ.
+  /// 09:00-17:00 → 540 / 1020. `DateTime` KULLANILMAZ: tekrarlayan kural bir AN değildir.
+  startMinute Int
+  endMinute   Int
+  isActive    Boolean @default(true)
+
+  doctor DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  @@unique([doctorId, dayOfWeek, startMinute])
+  @@index([doctorId])
+  @@map("doctor_availability")
+}
+
+model Appointment {
+  id            String  @id @default(uuid())
+  seq           Int     @unique @default(autoincrement())
+  doctorId      String
+  /// Kayıtlı hasta; misafir randevusunda NULL (Cart.siteUserId ile AYNI desen).
+  patientUserId String?
+
+  /// PII SNAPSHOT (OrderItem.productTitle disipliniyle AYNI): kullanıcı silinse/adını
+  /// değiştirse de randevunun kimle yapıldığı kaydı bozulmaz.
+  patientName  String
+  patientEmail String
+
+  /// MUTLAK AN (Postgres timestamptz). `startTimeUtc` adlandırması REDDEDİLDİ: Prisma
+  /// DateTime zaten UTC saklar, "Utc" soneki hem gereksiz hem proje konvansiyonuna
+  /// (publishedAt/startedAt/importedAt) aykırıdır.
+  startsAt DateTime
+  endsAt   DateTime
+
+  status     AppointmentStatus @default(SCHEDULED)
+  priceCents Int
+  currency   String            @default("TRY")
+
+  /// LiveKit oda adı — TAHMİN EDİLEMEZ, rastgele üretilir ("room_" + 32 hex).
+  /// Appointment.id'den TÜRETİLMEZ: id, liste yanıtlarında ve loglarda görünür;
+  /// oda adının ondan türemesi, odayı bilen herkese oda adını verir.
+  meetingRoomName String @unique
+  /// Misafir hastanın katılım bağlantısındaki opak token'ın SHA-256 hash'i
+  /// (Cart.tokenHash / lib/tokens.ts ile AYNI desen). HAM DEĞER SAKLANMAZ.
+  accessTokenHash String @unique
+
+  startedAt    DateTime?
+  endedAt      DateTime?
+  cancelledAt  DateTime?
+  cancelReason String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  doctor      DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Restrict)
+  patientUser User?         @relation("AppointmentPatient", fields: [patientUserId], references: [id], onDelete: SetNull)
+
+  /// Çifte rezervasyonun DB seviyesi garantisi (§4.3).
+  @@unique([doctorId, startsAt])
+  @@index([patientUserId])
+  @@index([doctorId, startsAt])
+  @@index([status, startsAt])
+  @@map("appointments")
 }
 
 // §10.9.3 Sepet + Stripe Checkout (Eklenti/Modül Yönetimi) — bkz. ARCHITECTURE.md. Misafir
