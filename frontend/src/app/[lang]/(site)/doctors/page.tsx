@@ -7,6 +7,7 @@ import { DoctorCard } from "@/components/site/telehealth/doctor-card";
 import { DoctorFilters } from "@/components/site/telehealth/doctor-filters";
 import { EmptyState } from "@/components/ui/empty-state";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
+import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import { SITE_URL } from "@/lib/env";
 
 /**
@@ -118,7 +119,13 @@ export default async function DoctorsIndexPage({ params, searchParams }: Doctors
       ) : (
         <div className="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {doctors.map((doctor) => (
-            <DoctorCard key={doctor.id} doctor={doctor} activeLocaleCode={lang} defaultLocaleCode={defaultLocaleCode} />
+            <DoctorCard
+              key={doctor.id}
+              doctor={doctor}
+              activeLocaleCode={lang}
+              defaultLocaleCode={defaultLocaleCode}
+              intlLocale={contentLocaleToIntl(lang)}
+            />
           ))}
         </div>
       )}

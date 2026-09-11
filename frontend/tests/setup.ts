@@ -44,6 +44,23 @@ if (typeof globalThis.ResizeObserver === "undefined") {
   globalThis.ResizeObserver = ResizeObserverPolyfill as unknown as typeof ResizeObserver;
 }
 
+// jsdom `IntersectionObserver`'ı implemente etmez; `sticky-add-to-cart-bar.tsx` ve
+// `doctor-price-panel.tsx` (§2.1.5) mount olurken bunu kullanır — polyfill olmadan
+// "IntersectionObserver is not defined" ile patlar. `ResizeObserver` polyfill'iyle AYNI ilke:
+// hiçbir gözlem tetiklemeyen sessiz bir sahte (testler ilgili görünürlük state'ini manuel
+// tetiklemek isterse kendi `vi.stubGlobal`'ını kullanabilir).
+if (typeof globalThis.IntersectionObserver === "undefined") {
+  class IntersectionObserverPolyfill {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+    takeRecords() {
+      return [];
+    }
+  }
+  globalThis.IntersectionObserver = IntersectionObserverPolyfill as unknown as typeof IntersectionObserver;
+}
+
 // jsdom, `Range`/`Element` için `getClientRects`/`getBoundingClientRect` implemente etmez.
 // TipTap/ProseMirror tabanlı editörler `.focus()` çağrısında görünürlük hesaplamak için bunu
 // kullanır (bkz. EditorView.scrollToSelection) — polyfill olmadan test tamamlansa bile arka

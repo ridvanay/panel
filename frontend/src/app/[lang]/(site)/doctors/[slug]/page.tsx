@@ -5,10 +5,12 @@ import { fetchLocalesServer } from "@/lib/api/server-locales";
 import { fetchSiteSettingsServer } from "@/lib/api/server-settings";
 import { fetchPublishedPagesServer } from "@/lib/api/server-pages";
 import { resolveKvkkNoticePage } from "@/lib/legal-pages";
-import { DoctorCard } from "@/components/site/telehealth/doctor-card";
+import { DoctorProfileHero } from "@/components/site/telehealth/doctor-profile-hero";
+import { DoctorPricePanel } from "@/components/site/telehealth/doctor-price-panel";
 import { EmergencyNoticeCard } from "@/components/site/telehealth/emergency-notice";
 import { AvailabilityCalendar } from "@/components/site/telehealth/availability-calendar";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
+import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import { buildDoctorJsonLd } from "@/lib/doctor-json-ld";
 import { JsonLdScript } from "@/components/site/json-ld-script";
 import { SITE_URL } from "@/lib/env";
@@ -104,29 +106,46 @@ export default async function DoctorDetailPage({ params }: DoctorDetailPageProps
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
-      <DoctorCard doctor={doctor} size="lg" activeLocaleCode={lang} defaultLocaleCode={defaultLocaleCode} ctaHref="#randevu" />
+      {/* `.claude/design-notes-telehealth.md` §2.1.1 — iki sütun + sticky yan panel. `320px` sabit
+          sağ sütun, `product-purchase-panel.tsx`'in `lg:sticky lg:top-24 lg:self-start` deseniyle
+          BİREBİR aynı offset. */}
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-[1fr_320px] lg:items-start">
+        <div className="min-w-0">
+          <DoctorProfileHero doctor={doctor} />
 
-      <section className="mt-10 space-y-3">
-        <h2 className="text-xl font-semibold text-foreground">Hakkında</h2>
-        <p className="whitespace-pre-line text-sm leading-relaxed text-foreground/70">{doctor.bio}</p>
-      </section>
+          <section className="mt-10 max-w-prose space-y-3">
+            <h2 className="text-xl font-semibold text-foreground">Hakkında</h2>
+            <p className="whitespace-pre-line text-base leading-7 text-foreground/80">{doctor.bio}</p>
+          </section>
 
-      <section id="randevu" className="mt-10 scroll-mt-24">
-        <h2 className="text-xl font-semibold text-foreground">Müsaitlik ve Randevu</h2>
-        <div className="mt-4">
-          <EmergencyNoticeCard />
+          <section id="randevu" className="mt-10 scroll-mt-24">
+            <h2 className="text-xl font-semibold text-foreground">Müsaitlik ve Randevu</h2>
+            <div className="mt-4">
+              <EmergencyNoticeCard />
+            </div>
+            <div className="mt-4">
+              <AvailabilityCalendar
+                doctorSlug={doctor.slug}
+                doctorTimeZone={doctor.timeZone}
+                lang={lang}
+                defaultLocaleCode={defaultLocaleCode}
+                initialSlots={slots}
+                kvkkPage={kvkkPage}
+              />
+            </div>
+          </section>
         </div>
-        <div className="mt-4">
-          <AvailabilityCalendar
-            doctorSlug={doctor.slug}
-            doctorTimeZone={doctor.timeZone}
-            lang={lang}
-            defaultLocaleCode={defaultLocaleCode}
-            initialSlots={slots}
-            kvkkPage={kvkkPage}
+
+        <aside className="lg:sticky lg:top-24 lg:self-start">
+          <DoctorPricePanel
+            sessionPriceCents={doctor.sessionPriceCents}
+            sessionDurationMin={doctor.sessionDurationMin}
+            currency={doctor.currency}
+            ctaHref="#randevu"
+            intlLocale={contentLocaleToIntl(lang)}
           />
-        </div>
-      </section>
+        </aside>
+      </div>
 
       <JsonLdScript json={buildDoctorJsonLd(doctor, canonicalUrl)} />
     </div>

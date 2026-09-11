@@ -13,7 +13,8 @@ import { cn } from "@/lib/utils";
  * görseli YASAK ([DTI] §9.3) — gerçek `Media` yoksa DAİMA monogram + gradyan fallback.
  */
 
-function initialsFromFullName(fullName: string): string {
+/** `doctors/[slug]/page.tsx`'in `DoctorProfileHero`'su (§2.1) AYNEN yeniden kullanır — YENİ bir hash-renk/monogram mantığı İCAT EDİLMEZ. */
+export function initialsFromFullName(fullName: string): string {
   const parts = fullName.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return "?";
   if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
@@ -59,6 +60,7 @@ export function DoctorCard({
   defaultLocaleCode,
   size = "sm",
   ctaHref,
+  intlLocale,
 }: {
   doctor: DoctorProfile;
   activeLocaleCode?: string;
@@ -71,6 +73,12 @@ export function DoctorCard({
    * (`.claude/design-notes-telehealth.md` §2 CTA notu).
    */
   ctaHref?: string;
+  /**
+   * `formatPriceFromCents`'in `locale` parametresi — verilmezse fonksiyonun kendi varsayılanı
+   * (`"tr-TR"`) kullanılır. `contentLocaleToIntl(lang)` ile üretilir (site İÇERİK dili, admin
+   * panel dili DEĞİL — bkz. `lib/i18n/content-locale-to-intl.ts`).
+   */
+  intlLocale?: string;
 }) {
   const href = activeLocaleCode
     ? withLocalePrefix(`/doctors/${doctor.slug}`, activeLocaleCode, defaultLocaleCode ?? activeLocaleCode)
@@ -108,7 +116,7 @@ export function DoctorCard({
       <div className="flex items-baseline gap-1.5 text-sm">
         <span className="text-foreground/60">{doctor.sessionDurationMin} dk</span>
         <span aria-hidden="true">·</span>
-        <span className="font-semibold text-foreground">{formatPriceFromCents(doctor.sessionPriceCents, doctor.currency)}</span>
+        <span className="font-semibold text-foreground">{formatPriceFromCents(doctor.sessionPriceCents, doctor.currency, intlLocale)}</span>
       </div>
 
       <Link

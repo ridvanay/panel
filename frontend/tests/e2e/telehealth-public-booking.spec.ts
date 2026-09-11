@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Page, type Locator } from "@playwright/test";
 import { getCachedAdminSession, getSiteModules, patchSiteModule } from "./support/api";
 import {
   ensureTelehealthModuleWithDoctors,
@@ -41,6 +41,31 @@ async function gotoAndWaitReady(page: Page, url: string, ready: () => Promise<vo
     await page.goto(url, { waitUntil: "domcontentloaded" });
     await ready();
   }).toPass({ timeout: 75_000, intervals: [2_000, 5_000] });
+}
+
+/**
+ * qa-agent bulgusu (bu turda, KENDİ test tasarımında bulunup düzeltildi — proje kökü CLAUDE.md
+ * madde 3, kural gereği flaky kaynağı ELE ALINIR): `AvailabilityCalendar` mount'ta varsayılan
+ * olarak İLK gün sekmesini (kronolojik olarak en erken slot grubu — genelde "bugün") seçili
+ * gösterir (`availability-calendar.tsx::useEffect`, `dayGroups[0]`). Bu, aranan slotun (ister
+ * "herhangi bir müsait slot", ister belirli bir saat etiketi) O sekmede olduğu ANLAMINA GELMEZ:
+ * - Test GÜNÜN ilerleyen saatinde (doktorun mesai bitiminden SONRA) koşarsa bugünün tüm slotları
+ *   `isPast`tır — gün sekmesi hâlâ VAR olsa da hiçbir `role=radio` üretilmez.
+ * - Belirli bir referans slot (§4.2 saat dilimi testi) kronolojik olarak İLK günden SONRAKİ bir
+ *   günde olabilir.
+ * Bu, UYGULAMA KODUNUN hatası DEĞİLDİR (geçmiş bir saatin rezerve edilemez olması DOĞRUDUR) —
+ * yalnızca "varsayılan/İLK sekme her zaman aranan slotu içerir" testin YANLIŞ, saat-bağımlı
+ * varsayımıdır. Düzeltme: sabit bekleme/varsayım yerine, hedef `radio` görünür olana kadar gün
+ * sekmelerinde SIRAYLA İLERLE.
+ */
+async function selectDayTabContaining(page: Page, radio: Locator): Promise<boolean> {
+  const dayTabs = page.getByRole("tab");
+  const count = await dayTabs.count();
+  for (let i = 0; i < count; i++) {
+    if (i > 0) await dayTabs.nth(i).click();
+    if (await radio.isVisible().catch(() => false)) return true;
+  }
+  return false;
 }
 
 test.beforeAll(async ({}, testInfo) => {
@@ -110,8 +135,11 @@ test("madde 8: /doctors listesi + uzmanlık filtresi → doktor detayına git �
   // Hidrasyon sonrası ziyaretçi dilimi yeniden hesaplanır (§4.2) — DOM'un oturmasını bekle.
   await page.waitForTimeout(500);
 
+  // bkz. `selectDayTabContaining()` başlığı — varsayılan/İLK gün sekmesi HER ZAMAN müsait bir slot
+  // İÇERMEYEBİLİR (saat-bağımlı), bu yüzden bulunana kadar sekmelerde ilerlenir.
   const availableSlot = page.getByRole("radio", { name: /— müsait$/ }).first();
-  await expect(availableSlot).toBeVisible({ timeout: 15_000 });
+  const found = await selectDayTabContaining(page, availableSlot);
+  expect(found, `Hiçbir gün sekmesinde müsait bir slot bulunamadı (doktor: ${bookableDoctorFullName})`).toBe(true);
   await availableSlot.click();
 
   const patientEmail = `qa-e2e-telehealth-booking-${Date.now()}@example.com`;
@@ -184,7 +212,10 @@ test.describe("§4.2/madde 9 — saat dilimi duyarlılığı: aynı slot, farkl�
       // benzeri qa-agent bulgusu, iki metin de aynı dize İÇEREBİLİR).
       await expect(page.getByText("America/New_York", { exact: true })).toBeVisible({ timeout: 15_000 });
       const label = expectedTimeLabel("America/New_York");
-      await expect(page.getByRole("radio", { name: new RegExp(`^${label} —`) })).toBeVisible({ timeout: 15_000 });
+      const targetRadio = page.getByRole("radio", { name: new RegExp(`^${label} —`) });
+      const found = await selectDayTabContaining(page, targetRadio);
+      expect(found, `"${label}" etiketli slot hiçbir gün sekmesinde bulunamadı`).toBe(true);
+      await expect(targetRadio).toBeVisible({ timeout: 15_000 });
     });
   });
 
@@ -208,7 +239,10 @@ test.describe("§4.2/madde 9 — saat dilimi duyarlılığı: aynı slot, farkl�
       // aksi halde aşağıdaki DOM iddiası yanlışlıkla "aynı" bir etiketle geçebilirdi.
       expect(istanbulLabel).not.toBe(newYorkLabel);
 
-      await expect(page.getByRole("radio", { name: new RegExp(`^${istanbulLabel} —`) })).toBeVisible({ timeout: 15_000 });
+      const targetRadio = page.getByRole("radio", { name: new RegExp(`^${istanbulLabel} —`) });
+      const found = await selectDayTabContaining(page, targetRadio);
+      expect(found, `"${istanbulLabel}" etiketli slot hiçbir gün sekmesinde bulunamadı`).toBe(true);
+      await expect(targetRadio).toBeVisible({ timeout: 15_000 });
     });
   });
 });

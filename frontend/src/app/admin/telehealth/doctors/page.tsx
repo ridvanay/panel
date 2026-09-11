@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { AlertCircle, Search, Stethoscope } from "lucide-react";
+import { AlertCircle, Globe, Search, Stethoscope } from "lucide-react";
 import * as telehealthApi from "@/lib/api/telehealth";
 import type { DoctorProfile } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
@@ -131,6 +131,7 @@ export default function AdminTelehealthDoctorsPage() {
                     <TableHead>Ad</TableHead>
                     <TableHead>Uzmanlık</TableHead>
                     <TableHead>Ücret</TableHead>
+                    <TableHead>Saat Dilimi</TableHead>
                     <TableHead>Durum</TableHead>
                     <TableHead className="text-right">İşlemler</TableHead>
                   </TableRow>
@@ -147,6 +148,12 @@ export default function AdminTelehealthDoctorsPage() {
                       <TableCell className="text-sm text-foreground/70">{doctor.specialty?.name ?? "—"}</TableCell>
                       <TableCell className="text-sm text-foreground/70">
                         {doctor.sessionDurationMin} dk · {formatPriceFromCents(doctor.sessionPriceCents, doctor.currency)}
+                      </TableCell>
+                      <TableCell>
+                        <Badge tone="neutral" size="sm" className="gap-1">
+                          <Globe className="h-3 w-3" aria-hidden="true" />
+                          {doctor.timeZone}
+                        </Badge>
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-wrap gap-1.5">

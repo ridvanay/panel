@@ -51,11 +51,22 @@ async function setTelehealthModuleEnabled(app: FastifyInstance, enabled: boolean
 /** Europe/Istanbul, Pazartesi 09:00-17:00, 30dk seans (varsayılan) — her çağrıda YENİ bir doktor/uzmanlık. */
 async function createDoctorWithAvailability(
   app: FastifyInstance,
-  overrides: Partial<{ sessionDurationMin: number; sessionPriceCents: number }> = {}
+  overrides: Partial<{ sessionDurationMin: number; sessionPriceCents: number; currency: string; withAvatar: boolean }> = {}
 ) {
   const specialty = await app.prisma.specialty.create({
     data: { name: `Kardiyoloji ${crypto.randomUUID()}`, slug: `kardiyoloji-${crypto.randomUUID()}`, icon: "heart-pulse" },
   });
+  const avatarMedia = overrides.withAvatar
+    ? await app.prisma.media.create({
+        data: {
+          path: `uploads/telehealth-test-${crypto.randomUUID()}.jpg`,
+          url: `/uploads/telehealth-test-${crypto.randomUUID()}.jpg`,
+          filename: "avatar.jpg",
+          mimeType: "image/jpeg",
+          sizeBytes: 1024,
+        },
+      })
+    : null;
   const doctor = await app.prisma.doctorProfile.create({
     data: {
       title: "Dr.",
@@ -67,14 +78,15 @@ async function createDoctorWithAvailability(
       specialtyId: specialty.id,
       sessionDurationMin: overrides.sessionDurationMin ?? 30,
       sessionPriceCents: overrides.sessionPriceCents ?? 50000,
-      currency: "TRY",
+      currency: overrides.currency ?? "TRY",
+      avatarMediaId: avatarMedia?.id ?? null,
       isActive: true,
     },
   });
   await app.prisma.doctorAvailability.create({
     data: { doctorId: doctor.id, dayOfWeek: 1, startMinute: 540, endMinute: 1020, isActive: true },
   });
-  return { doctor, specialty };
+  return { doctor, specialty, avatarMedia };
 }
 
 /** Bugünden itibaren GELECEKTEKİ ilk Pazartesi'nin 09:00 Europe/Istanbul (= 06:00 UTC) anı. */
@@ -142,15 +154,37 @@ describe("telehealth — modül aç/kapa + doktor/slot görüntüleme", () => {
 
   it("modül AÇIKKEN doktor listesi/detayı ve slot takvimi doğru döner", async () => {
     await setTelehealthModuleEnabled(app, true);
-    const { doctor, specialty } = await createDoctorWithAvailability(app);
+    const { doctor, specialty, avatarMedia } = await createDoctorWithAvailability(app, {
+      sessionDurationMin: 45,
+      sessionPriceCents: 65000,
+      currency: "GBP",
+      withAvatar: true,
+    });
 
     const list = await app.inject({ method: "GET", url: "/api/v1/doctors" });
     expect(list.statusCode).toBe(200);
-    expect(list.json().data.some((d: { id: string }) => d.id === doctor.id)).toBe(true);
+    const listedDoctor = list.json().data.find((d: { id: string }) => d.id === doctor.id);
+    expect(listedDoctor).toBeDefined();
+    // §regresyon — liste ucu her doktorun KENDİ para birimi/süre/ücret/saat dilimini döner,
+    // sabit/varsayılan bir değere DÜŞMEZ (bkz. görev notu: hardcode "TRY" riski).
+    expect(listedDoctor.currency).toBe("GBP");
+    expect(listedDoctor.timeZone).toBe("Europe/Istanbul");
+    expect(listedDoctor.sessionDurationMin).toBe(45);
+    expect(listedDoctor.sessionPriceCents).toBe(65000);
+    expect(listedDoctor.avatarMediaId).toBe(avatarMedia?.id);
+    expect(listedDoctor.avatarMedia).not.toBeNull();
+    expect(typeof listedDoctor.avatarMedia.url).toBe("string");
 
     const detail = await app.inject({ method: "GET", url: `/api/v1/doctors/${doctor.slug}` });
     expect(detail.statusCode).toBe(200);
-    expect(detail.json().data.specialty.id).toBe(specialty.id);
+    const detailBody = detail.json().data;
+    expect(detailBody.specialty.id).toBe(specialty.id);
+    expect(detailBody.currency).toBe("GBP");
+    expect(detailBody.timeZone).toBe("Europe/Istanbul");
+    expect(detailBody.sessionDurationMin).toBe(45);
+    expect(detailBody.sessionPriceCents).toBe(65000);
+    expect(detailBody.avatarMediaId).toBe(avatarMedia?.id);
+    expect(detailBody.avatarMedia?.url).toEqual(expect.stringContaining(avatarMedia!.url));
 
     const monday = nextMondayNineAmUtc();
     const fromStr = monday.toISOString().slice(0, 10);

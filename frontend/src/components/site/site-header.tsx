@@ -34,6 +34,11 @@ interface SiteHeaderProps {
    * §customer-portal §4.4 — `false` iken sepet ikonu, favori ikonu ve hesap menüsündeki
    * "Siparişlerim" öğesi render EDİLMEZ. Verilmezse `true` kabul edilir (geriye dönük
    * uyumluluk — admin canlı önizleme/unit testler bu prop'u vermez).
+   *
+   * Sepet ikonu AYRICA `isDoctorDetailRoute(pathname)` iken (doktor DETAY sayfası,
+   * `/doctors/[slug]`) bu prop `true` olsa bile gizlenir — bir randevu/danışmanlık akışında
+   * "sepet" kavramı anlamsızdır. Bu istisna YALNIZCA sepet ikonunu etkiler; favori ikonu ve
+   * `/products/*` gibi diğer tüm yüzeyler bu prop'un DEĞERİNE göre normal davranmaya devam eder.
    */
   productsModuleEnabled?: boolean;
   /**
@@ -107,6 +112,21 @@ function isNavLinkActive(pathname: string | null, href: string): boolean {
     return normalizedPathname === "/" || normalizedPathname === "";
   }
   return normalizedPathname === normalizedHref || normalizedPathname.startsWith(`${normalizedHref}/`);
+}
+
+/**
+ * Görev tanımı madde 4 — doktor DETAY sayfasında (`/doctors/[slug]`, `/{lang}/doctors/[slug]`)
+ * sepet ikonu gösterilmez (bir danışmanlık/randevu akışında "sepet" kavramı anlamsız). BİLEREK
+ * yalnızca DETAY sayfasını eşler — `/doctors` ızgarası ve sitenin geri kalanı (`/products/*` dahil)
+ * ETKİLENMEZ. `usePathname()` zaten bu bileşende (aktif nav linki tespiti için) mevcut olduğundan
+ * bu kontrol için `(site)/layout.tsx`'e (Server Component) prop eklemek veya `proxy.ts`'e yeni bir
+ * header eklemek GEREKMEDİ — en az invaziv nokta burasıdır. `[a-z]{2}` locale prefix segmenti
+ * (`/en/doctors/...` gibi) `Locale.code` ile sınırlı DEĞİL — panelden sonradan eklenen yeni bir
+ * dil kodu da (ör. `/de/doctors/...`) bu genel örüntüyle eşleşir.
+ */
+function isDoctorDetailRoute(pathname: string | null): boolean {
+  if (!pathname) return false;
+  return /^\/(?:[a-z]{2}\/)?doctors\/[^/]+\/?$/.test(pathname);
 }
 
 /** İdle/hover/aktif durumları arasında geçiş yapan nav link/tetikleyici metin rengi sınıfları. */
@@ -198,6 +218,7 @@ export function SiteHeader({
         ];
 
   const showCta = Boolean(ctaLabel && ctaHref);
+  const showCartIcon = productsModuleEnabled && !isDoctorDetailRoute(pathname);
   const defaultLocaleCode = locales?.find((l) => l.isDefault)?.code ?? activeLocale?.code ?? "tr";
   const localize = (path: string) =>
     activeLocale ? withLocalePrefix(path, activeLocale.code, defaultLocaleCode) : path;
@@ -366,7 +387,7 @@ export function SiteHeader({
             </Link>
           )}
 
-          {productsModuleEnabled && (
+          {showCartIcon && (
             <Link
               href={localize("/cart")}
               aria-label={`Sepet, ${itemCount} ürün`}

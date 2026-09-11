@@ -475,7 +475,12 @@ function buildLegalPageBlocks(idPrefix: string, sectionHeadings: string[]): Page
 }
 
 /* ---------------------------------------------------------------------------------------------
- * [TCT] §7.2 — 4 demo doktor, FARKLI saat dilimlerinde. Adlar kurgusal/jenerik (madde 2).
+ * [TCT] §7.2 — 4 demo doktor, FARKLI saat dilimlerinde VE FARKLI `currency`'lerde (kendi
+ * `timeZone`'una uygun yerel para birimi — TRY/GBP/USD/EUR). İKİSİ DE (`timeZone`, `currency`)
+ * doktor bazında BAĞIMSIZ alanlardır (`DoctorProfile`, `Appointment.currency` rezervasyon anında
+ * doktordan kopyalanır) — 4 satırın hepsinde AYNI sabit değer kullanmak (regresyon) çoklu saat
+ * dilimi/para birimi desteğini demo/teste YANSITMAZ ve bu şablonun bütün amacını (§ başlık:
+ * "çoklu saat dilimi duyarlı") geçersiz kılar. Adlar kurgusal/jenerik (madde 2).
  * `isVerified: false` (madde 1, tip düzeyinde literal). `bio`'nun İLK CÜMLESİ ZORUNLU
  * (madde 3) — `REQUIRED_DEMO_DOCTOR_BIO_SENTENCE` ile başlar, `assertDemoTemplateCaps` bunu
  * ÇALIŞMA ZAMANINDA zorlar. Müsaitlik: Pzt-Cuma 09:00-17:00 (kendi saat diliminde duvar saati,
@@ -512,7 +517,7 @@ const DOCTORS: DemoTemplateDoctor[] = [
     specialtySlug: "dermatoloji",
     sessionDurationMin: 30,
     sessionPriceCents: 45000,
-    currency: "TRY",
+    currency: "GBP",
     avatarAssetKey: "avatar-james-whitfield",
     order: 1,
     isVerified: false,
@@ -528,7 +533,7 @@ const DOCTORS: DemoTemplateDoctor[] = [
     specialtySlug: "noroloji",
     sessionDurationMin: 30,
     sessionPriceCents: 45000,
-    currency: "TRY",
+    currency: "USD",
     avatarAssetKey: "avatar-laura-bennett",
     order: 2,
     isVerified: false,
@@ -544,7 +549,7 @@ const DOCTORS: DemoTemplateDoctor[] = [
     specialtySlug: "psikiyatri",
     sessionDurationMin: 30,
     sessionPriceCents: 45000,
-    currency: "TRY",
+    currency: "EUR",
     avatarAssetKey: "avatar-felix-braun",
     order: 3,
     isVerified: false,

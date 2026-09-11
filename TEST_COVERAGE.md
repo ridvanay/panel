@@ -2478,3 +2478,76 @@ Yok — security-agent ve compliance-agent denetimleri sırasında bulunan madde
 modül-kapalı guard eksikliği, sabit-zamanlı token karşılaştırması, yanıltıcı "e-postanıza
 kaydettik" metni) ilgili ajanların **kendileri tarafından** aynı turda düzeltildi; qa-agent'a
 yönlendirilen açık bir frontend/backend bug'ı bulunmadı.
+
+## Admin doktor listesi + `/doctors/[slug]` yeniden tasarımı (çoklu para birimi/süre/saat dilimi, hero+sticky panel, sepet ikonu kaldırma) — e2e kapsamı (bu turda eklendi)
+
+Kaynak: koordinatörün doğrudan görev talimatı (db-agent → backend-agent → ui-designer →
+frontend-agent zincirinin çıktısı). Yeni dosya: `telehealth-public-booking.spec.ts`'e ek olarak
+`telehealth-doctor-profile-redesign.spec.ts`.
+
+| # | Senaryo | Durum |
+|---|---|---|
+| 1 | `/admin/telehealth/doctors` — aynı anda ≥4 FARKLI para birimi sembolü (₺/£/$/€, demo doktorların GERÇEK `currency`'si) + "Saat Dilimi" sütunu (Globe rozet, doktor bazında bağımsız) | ✅ Geçiyor |
+| 2 | `/admin/telehealth/doctors` — süre alanı doktor bazında GERÇEKTEN farklı (kendi oluşturduğu 20dk/75dk fixture doktorlarla, demo verisi hepsi 30dk olduğu için BUNU KANITLAYAMAZ — bkz. not) | ✅ Geçiyor |
+| 3 | `/doctors/[slug]` — doktorun KENDİ para biriminde biçimlendirilmiş ücret (Laura Bennett→USD `$450,00`, James Whitfield→GBP `£450,00`) | ✅ Geçiyor |
+| 4 | `/doctors/[slug]` — süre alanı gerçek `sessionDurationMin` (fixture: 20dk/75dk, sabit "30 dk" DEĞİL) | ✅ Geçiyor |
+| 5 | `/doctors/[slug]` — avatar YOKSA monogram fallback TAŞMADAN render olur (bounding box kare + 100-160px aralığında, `scrollWidth`/`scrollHeight` kendi kutusunu aşmıyor, sayfa genelinde yatay taşma yok) | ✅ Geçiyor |
+| 6 | `/doctors/[slug]` (header dahil) sepet ikonu HİÇ görünmez | ✅ Geçiyor |
+| 7 | REGRESYON — `/doctors` (liste) ve `/products` sayfalarında sepet ikonu HÂLÂ görünür (yanlışlıkla kaldırılmadı) | ✅ Geçiyor |
+
+**7/7 senaryo yeşil**, ardışık 2 kez tekrar koşuldu (idempotency/flaky kontrolü), ayrıca tüm
+`telehealth-*.spec.ts` dosyaları (23 test, 1 bilinçli skip) birlikte koşuldu — hepsi yeşil.
+
+Test verisi notu: `telehealth-clinic` demo şablonunun 4 doktoru (`Elif Aydemir`=TRY,
+`James Whitfield`=GBP, `Laura Bennett`=USD, `Felix Braun`=EUR) `currency` açısından madde 1/3'ü
+kapsar, ama HEPSİ `sessionDurationMin: 30` taşıdığı için (bkz. `telehealth-clinic.ts` DOCTORS
+dizisi) "süre doktor bazında GERÇEKTEN farklı" iddiasını (madde 2/4) demo veriyle KANITLAMAK
+mümkün değildir — bu yüzden `telehealth-doctor-profile-redesign.spec.ts` kendi
+`sessionDurationMin`i farklı (20/75 dk) 2 fixture doktoru + avatarsız 1 fixture doktoru
+`POST /admin/telehealth/doctors` ile GERÇEKTEN oluşturur (mock DEĞİL, bkz.
+`support/telehealth-fixtures.ts::createAdminDoctorFixture`), `afterAll`'da temizler.
+
+### Araştırılan bulgu — currency=TRY kalıntısı (kod bug'ı ZATEN backend-agent tarafından düzeltilmiş, script'i de mevcut)
+
+İlk koşumda paylaşımlı `saas_e2e` veritabanındaki 20 demo doktorun (5 önceki `telehealth-clinic`
+import koşumu) TAMAMI `currency` alanında "TRY" gösteriyordu — James Whitfield/Laura
+Bennett/Felix Braun DAHİL (şablonun tanımladığı GBP/USD/EUR DEĞİL). Kök neden araştırıldı: bu,
+importer'ın ÖNCEKİ bir sürümünde gerçek bir bug'dı — **backend-agent zaten fark edip düzeltmiş**
+(mevcut `importer.ts::writeTemplateInTransaction` doğru `currency: doctor.currency` kullanıyor,
+canlı tanı logu ile TEKRAR doğrulandı) ve zaten var olan hatalı satırlar için idempotent bir
+remediation script'i de bırakmış: `backend/scripts/fix-telehealth-demo-doctor-currency.ts`
+(kendi başlığı: "bu düzeltme ÖNCESİNDE üretilmiş kurulumlarda hepsi `currency: TRY` ile içeri
+alınmıştı (bug)"). qa-agent'ın gördüğü kalıntı, port 4001'deki e2e backend SÜRECİNİN bu düzeltme
+KODLANMADAN ÖNCE başlatılmış olması ve hiç yeniden başlatılmamasıydı (bkz. proje hafızası
+"Rebuild after code changes" — bu kural Docker'a ek olarak yerel `tsx` ile çalıştırılan e2e
+backend'ine de uygulanır); süreç yeniden başlatılınca YENİ importlar doğru currency'lerle geldi.
+Bu turda backend/frontend kod tabanında **DEĞİŞİKLİK YAPILMADI** (yalnızca geçici bir tanı
+`console.log` eklenip anında geri alındı, `git diff` ile doğrulandı) — **backend-agent'a yeni bir
+bug raporu GEREKMEZ** (zaten kendi turunda bulup düzeltmiş); yalnızca bilgi amaçlı not: script'in
+`backend/scripts/fix-telehealth-demo-doctor-currency.ts` gerçek (dev/prod) ortamlarda ÖNCEDEN
+uygulanmış `telehealth-clinic` şablonlarına karşı çalıştırılması gerekiyorsa bu devops-agent'ın
+deploy runbook'una eklenmesi gereken bir adımdır. e2e testleri ayrıca bu tür kalıntılara karşı
+SAĞLAMLIK için isim + BEKLENEN `currency` eşleşmesine göre doktor seçer (bkz. dosyanın kendi
+notu).
+
+### qa-agent'ın kendi test tasarımında bulup düzelttiği 2 flaky kaynağı (bu turda, `telehealth-public-booking.spec.ts`, mevcut dosya — kural gereği doğrudan düzeltildi)
+
+`AvailabilityCalendar` mount'ta varsayılan olarak İLK gün sekmesini (kronolojik en erken slot
+grubu) seçili gösterir. Bu turda regresyon koşumu sırasında (gün ilerleyen saatte, doktorun
+09:00-17:00 mesaisi bittikten SONRA) şu ikisi ortaya çıktı:
+1. **Madde 8** (`— müsait$` ilk radio) — bugünün TÜM slotları geçmişte kaldığı için gün sekmesi
+   var ama hiçbir `role=radio` üretilmiyordu ("element(s) not found", 15s timeout).
+2. **Madde 9** (belirli bir zaman etiketi arayan saat dilimi testi) — referans slot kronolojik
+   olarak İLK günden SONRAKİ bir günde olabiliyordu, varsayılan sekme onu hiç göstermiyordu.
+
+İkisi de **UYGULAMA KODUNUN hatası DEĞİL** (geçmiş bir saatin rezerve edilemez olması DOĞRU
+davranıştır) — yalnızca "varsayılan/İLK sekmede her zaman aranan slot vardır" testin SAAT-BAĞIMLI,
+YANLIŞ varsayımıydı. Düzeltme: paylaşılan `selectDayTabContaining()` yardımcı fonksiyonu — hedef
+`radio` görünür olana kadar gün sekmelerinde sırayla ilerler, bulunamazsa net bir mesajla
+başarısız olur (sessizce yanlış bir sekmede kalmaz). Düzeltme sonrası dosya izole 2 kez + tam
+`telehealth-*` suite'i içinde 1 kez, hepsinde yeşil koştu.
+
+**Gözlemlenen ama BUG OLMAYAN bir durum:** Bu dosyayı üst üste birkaç kez (debug amaçlı) kısa
+sürede koşturmak `POST /appointments`'ın belgelenmiş 5 istek/dk hız sınırına çarpıp "Çok fazla
+istek" hatası üretti — bu, testin veya uygulamanın bir kusuru DEĞİL, salt tekrarlanan manuel
+koşumların beklenen bir yan etkisidir (bkz. dosyanın kendi `POST /appointments` yorumu).

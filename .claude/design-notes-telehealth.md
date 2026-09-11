@@ -176,6 +176,187 @@ paylaşır, yalnızca boyut değişir.
 
 ---
 
+## 2.1 Doktor detay sayfası — Hero düzeni (v2, 2026-09-11, ui-designer)
+
+Bağlam: `/doctors/[slug]` sayfası bugüne kadar §2'deki paylaşılan `DoctorCard`'ı `size="lg"` ile
+BİREBİR aynı şekilde tekrar kullanıyordu (avatar+isim+uzmanlık+dil rozetleri+fiyat+CTA TEK bir
+kart yüzeyinde). Bu, bir danışmanlık/randevu HERO'su için yetersiz kaldı: fiyat+CTA sayfa
+kaydırıldıkça kayboluyor, "Hakkında" bölümü dar/sıkışık görünüyor, uzmanlık/dil bilgisi görsel
+ağırlık taşımıyor. Bu bölüm YALNIZCA doktor DETAY sayfasını kapsar — `/doctors` ızgarasındaki
+`DoctorCard` (§2, `size="sm"`) DEĞİŞMEZ.
+
+**Kod implementasyonu YOK** — frontend-agent muhtemelen bunu `DoctorCard`'dan AYRI yeni bir
+`DoctorProfileHero` bileşeni olarak kurar (paylaşılan `size="lg"` varyantı BURADA TERK EDİLİR,
+ızgara kartı `sm` varyantıyla sınırlı kalır); bu bir implementasyon detayıdır, burada yalnızca
+görsel sözleşme verilir.
+
+### 2.1.1 Sayfa iskeleti — iki sütun + sticky yan panel
+
+Mevcut `max-w-5xl` konteyner KORUNUR (`doctors/[slug]/page.tsx`). İçerik artık tek sütun değil,
+`lg:` kırılımından itibaren iki sütun: SOL/ana sütun (hero başlığı + "Hakkında" + "Müsaitlik ve
+Randevu"), SAĞ sütun YALNIZCA fiyat+CTA paneli — `product-purchase-panel.tsx`'in
+`lg:sticky lg:top-24 lg:self-start` deseniyle BİREBİR aynı offset (projede zaten 4 yerde kurulu
+emsal — bkz. `checkout/page.tsx`, `catalog-sidebar.tsx`, `product-purchase-panel.tsx` — YENİ bir
+sticky-offset değeri İCAT EDİLMEDİ):
+
+```
+<div className="grid grid-cols-1 gap-8 lg:grid-cols-[1fr_320px] lg:items-start">
+  <div className="min-w-0"> {/* ana sütun: hero başlık + Hakkında + Müsaitlik */} </div>
+  <aside className="lg:sticky lg:top-24 lg:self-start"> {/* §2.1.4 fiyat/CTA paneli */} </aside>
+</div>
+```
+
+`320px` sabit genişlik — mevcut `1024px` (`max-w-5xl`) konteynerde ana sütuna `gap-8` (32px)
+düşüldükten sonra ~**672px** bırakır; bu, "Hakkında" metninin `max-w-prose` (§2.1.3) ölçüsünü
+zaten aşan bir genişlik, rastgele bir kesir DEĞİL.
+
+Mobilde (`<lg`) sütunlar TEK sütuna düşer, panel `sticky` DEĞİLDİR (dar ekranda "yapışkan yan
+panel" kavramı anlamsız) — bunun yerine §2.1.5'teki mobil alt çubuk devreye girer.
+
+### 2.1.2 Hero başlık satırı — avatar + isim + rozet/chip'ler
+
+```
+┌──────────┐  Dr. Elif Aydemir  [✓ Doğrulanmış Hekim]
+│          │  ─────────────────────────────────────
+│   EA     │  [🩺 Kardiyoloji]
+│          │  [TR] [EN]
+└──────────┘
+```
+
+- **Kapsayıcı:** `flex flex-col items-start gap-4 sm:flex-row sm:items-start sm:gap-6` — dar
+  ekranda avatar üstte/tek sütun, `sm:` (640px) itibaren yan yana.
+- **Avatar/fotoğraf alanı — KASITLI olarak §2'nin dairesel ızgara avatarından FARKLI şekil:**
+  `h-28 w-28 sm:h-36 sm:w-36 shrink-0 rounded-[var(--site-radius)] overflow-hidden` (yumuşak
+  köşeli KARE — `--site-radius` bu şablonda 16px, §8; buton/kart/rozetle AYNI köşe dili, YENİ
+  bir radius token İCAT EDİLMEDİ). Gerekçe: hero'nun "profil fotoğrafı" ağırlığını ızgara
+  kartının küçük dairesel avatarından görsel olarak AYIRT ETMEK — kullanıcı bunun sıradan bir
+  liste öğesi değil, sayfanın ana konusu olduğunu anlar.
+  - GERÇEK `avatarMedia` varsa: `<img>` `object-cover h-full w-full`, `border border-border`.
+  - YOKSA (monogram fallback, **DAİMA** — [DTI] §9.3, fotogerçekçi/AI insan görseli YASAK):
+    `flex h-full w-full items-center justify-center bg-gradient-to-br from-[#0F766E]
+    to-[#0369A1] text-3xl sm:text-4xl font-semibold text-white select-none`.
+    **§2/§10'daki TEK marka gradyanı BİREBİR korunur; isim/`id`'ye göre hash'lenmiş çoklu renk
+    paleti KASITLI OLARAK KULLANILMAZ.** Gerekçe: `design-notes-telehealth.md` §10 bu gradyanı
+    "4 doktor avatarı ... AYNI uçlar, marka tutarlılığı" gerekçesiyle zaten sabitlemiş bir
+    karardır; ızgara kartı (`h-16 w-16`, onlarca doktor yan yana) ile hero'nun (TEK doktor,
+    sayfanın odağı) AYNI gradyanı taşıması, ziyaretçinin `/doctors` ızgarasından tıklayıp
+    geldiği kartla profildeki hero'nun AYNI kişi/marka kimliğini taşıdığını görsel olarak
+    teyit eder. Renk-hash'leme yalnızca "listede onlarca doktoru birbirinden ayırt etme"
+    problemini çözer — bu projede her doktor zaten benzersiz bir fotoğraf/isim/uzmanlık
+    kombinasyonuyla ayrışıyor; tam tersine, her doktora farklı bir monogram rengi vermek
+    markanın "tek teal→okyanus mavisi" kimliğini sulandırırdı. **Taşma güvencesi:**
+    `initialsFromFullName` (`doctor-card.tsx`, DEĞİŞMEDİ) HER ZAMAN yalnızca 1-2 harf
+    döndürür — sabit `text-3xl/4xl` ile 112-144px'lik bir kare içinde bu ASLA taşmaz
+    (ölçülebilir üst sınır); ham `fullName` monogram konteynerine ASLA yazılmaz.
+  - `isVerified` **köşe rozeti hero'da KALDIRILIR** (§2'nin ızgara kartındaki küçük köşe
+    `BadgeCheck`'i yalnızca yer darlığı için bir çözümdü) — hero'da aynı bilgi artık isim
+    yanındaki metin taşıyan chip'te var (aşağıda); aynı bilgiyi iki kez farklı biçimde
+    göstermek (ikon-only köşe + metinli chip) gürültü yaratır.
+- **İsim:** `text-2xl sm:text-3xl font-semibold text-foreground break-words` (§8 H1 ölçeği,
+  Plus Jakarta Sans) — `truncate` KULLANILMAZ (ızgara kartının aksine hero'da tam genişlik var,
+  doktorun adının kesilmesi kabul edilemez); uzun adlar `break-words` ile ikinci satıra sarkar.
+- **Doğrulama chip'i** (`isVerified === true` iken, isimle aynı satırda/yanında, `flex-wrap`
+  sayesinde dar ekranda alta düşer): `Badge tone="primary" solid size="lg"` + `BadgeCheck`
+  ikonu + **"Doğrulanmış Hekim"** metni — `solid` (`bg-primary text-primary-foreground`)
+  kasıtlı olarak aşağıdaki uzmanlık/dil chip'lerinin `soft` (`bg-{tone}/10`) halinden güçlü,
+  çünkü bu bir güven sinyali, sıradan bir meta veri değil. `isVerified === false` iken
+  **hiçbir şey render edilmez** (§2 ile AYNI ilke — sahte negatif sinyal yok).
+- **Uzmanlık chip'i** (isim/doğrulama satırının ALTINDA, `mt-3`, kendi satırında):
+  `Badge tone="primary" size="lg"` (soft, `bg-primary/10 text-primary`) + `Stethoscope`
+  (lucide) ikonu + `doctor.specialty?.name ?? "Genel Danışmanlık"`. Chip içi ikon+metin
+  `gap-1.5`. Bu, §2'nin düz `text-sm text-foreground/60` uzmanlık metninin hero'daki
+  YÜKSELTİLMİŞ halidir.
+- **Dil chip'leri** (uzmanlık chip'inin altında, `mt-2`, `flex flex-wrap gap-1.5`): §2 ile
+  AYNI `Badge tone="neutral" size="sm"` + ISO kodu büyük harf — hero'da BÜYÜTÜLMEZ (bilinçli:
+  bunlar ikincil bilgi, doğrulama/uzmanlık chip'leriyle aynı görsel ağırlığı taşırsa hiyerarşi
+  düzleşir). `aria-label="Konuşulan diller: ..."` §2 ile AYNI.
+
+### 2.1.3 "Hakkında" (bio) tipografisi
+
+```
+<section className="mt-10 max-w-prose space-y-3">
+  <h2 className="text-xl font-semibold text-foreground">Hakkında</h2>
+  <p className="whitespace-pre-line text-base leading-7 text-foreground/80">{doctor.bio}</p>
+</section>
+```
+
+- **`max-w-prose`** (Tailwind `65ch`) — görev tanımının istediği "ölçü" (measure) kısıtı;
+  `672px`'lik ana sütunun (§2.1.1) İÇİNDE oturur, ikinci bir sabit piksel genişliği İCAT
+  EDİLMEZ.
+- **`text-base leading-7`** (16px / 28px satır yüksekliği, ~1.75 oranı) — mevcut
+  `text-sm leading-relaxed` (14px/1.625) sıkışık görünümün doğrudan nedeniydi; §8'in "Gövde
+  metni: text-sm/text-base" aralığının ÜST UCUNU kullanmak hero bağlamında (kısa liste öğesi
+  değil, sayfanın ana okunacak metni) doğru seçim.
+- **`text-foreground/80`** (§2'nin `/70`'inden bir kademe koyu) — daha uzun bir okuma
+  bloğunda `/70` (`mutedTextColor` rolü, AA sınırında ~4.55:1) ile YAKIN render edilebiliyordu;
+  `/80` daha güvenli bir marj bırakır — uzun okuma metni ikincil/muted değildir.
+- Başlık-gövde arası `space-y-3` (12px), bölüm başlangıcı `mt-10` (40px) — sayfanın ZATEN
+  kullandığı değer, DEĞİŞMEDİ.
+
+### 2.1.4 Fiyat + CTA paneli (sticky, kart İÇİNE GÖMÜLÜ DEĞİL)
+
+```
+<aside className="lg:sticky lg:top-24 lg:self-start">
+  <div className="rounded-[var(--site-radius)] border border-border bg-surface p-5 shadow-sm">
+    <div className="flex items-baseline gap-1.5">
+      <span className="text-2xl font-semibold text-foreground">{fiyat}</span>
+      <span className="text-sm text-foreground/60">/ seans</span>
+    </div>
+    <p className="mt-1 text-sm text-foreground/60">{sessionDurationMin} dakika görüşme</p>
+    <Button size="lg" className="mt-4 w-full rounded-[var(--site-radius)]" asChild>
+      <a href="#randevu">Randevu Al</a>
+    </Button>
+  </div>
+</aside>
+```
+
+- Bu, görev tanımının "fiyat+CTA kart içine gömülü olmamalı" isteğinin BİREBİR karşılığı:
+  fiyat+CTA artık hero'nun/bio'nun İÇİNE gömülü DEĞİL, kendi `bg-surface border border-border`
+  yüzeyinde, sayfa kaydırıldıkça ("Hakkında"/"Müsaitlik" bölümleri boyunca) sabit kalan
+  bağımsız bir panel.
+- `formatPriceFromCents` §2 ile AYNI biçimlendirici — yeni bir fiyat formatı İCAT EDİLMEZ.
+- CTA her zaman `href="#randevu"` (sayfanın kendi slot takvimine kaydırır, §2'nin `ctaHref`
+  mekanizmasıyla AYNI davranış) — `Button variant="default" size="lg"` (`buttonStyle: SOLID`,
+  §8).
+- Panel genişliği sidebar sütununun tamamı (`320px`, §2.1.1) — panel içinde ayrı bir `max-w`
+  GEREKMEZ. Panele güven ifadesi (ör. "KVKK uyumlu görüşme") eklenecekse metni
+  compliance-agent onaylamalıdır (§9'daki acil durum metniyle AYNI ilke) — bu doküman yerleşim
+  önerir, metin İCAT ETMEZ.
+
+### 2.1.5 Mobil davranış — sticky panel yerine alt çubuk
+
+`<lg` ekranlarda §2.1.4'teki panel `sticky` DEĞİLDİR, normal akışta hero başlığının hemen
+altında TEK KEZ render edilir (kullanıcı sayfayı ilk açtığında fiyatı/CTA'yı zaten görür).
+Kullanıcı aşağı kaydırıp bu panel viewport'tan çıktığında, `sticky-add-to-cart-bar.tsx`
+(`ecommerce-storefront`, PDP) ile **BİREBİR AYNI** desen devreye girer — YENİ bir mobil
+sticky-bar deseni İCAT EDİLMEZ:
+
+```
+<div
+  aria-hidden={!visible}
+  className={cn(
+    "fixed inset-x-0 bottom-0 z-40 h-16 border-t border-border bg-surface/95",
+    "shadow-[0_-2px_12px_rgba(0,0,0,0.08)] backdrop-blur-sm transition-transform duration-300 lg:hidden",
+    visible ? "translate-y-0" : "pointer-events-none translate-y-full"
+  )}
+>
+  <div className="flex h-full items-center gap-3 px-4">
+    <div className="min-w-0 text-base font-semibold text-foreground">{fiyat}</div>
+    <div className="flex-1" />
+    <Button size="lg" className="rounded-[var(--site-radius)]" asChild>
+      <a href="#randevu">Randevu Al</a>
+    </Button>
+  </div>
+</div>
+```
+
+`visible` durumu `IntersectionObserver` ile §2.1.4'teki inline panelin `ref`'ini izler
+(`sticky-add-to-cart-bar.tsx`'in `targetRef` deseniyle AYNI) — bu implementasyon detayı
+frontend-agent'a aittir. `z-40` ve çerez bandı önceliği (`z-50`) `sticky-add-to-cart-bar.tsx`
+yorumundaki AYNI öncelik sırasını KORUR.
+
+---
+
 ## 3. Slot düğmesi durumları (müsait / dolu / geçmiş / seçili)
 
 `GET /doctors/{slug}/slots` yalnızca `{ startsAt, endsAt, available }` döndürür (mimari §4.2)
@@ -479,7 +660,12 @@ Gerçek metin/fotoğraf içermez — yalnızca bölüm ritmini ve palet renkleri
 | `borderRadius` / `buttonStyle` / `presetKey` | `LG` (16px) / `SOLID` / `null` |
 | `headingFont` / `bodyFont` / `baseFontSize` | `PLUS_JAKARTA_SANS` / `INTER` / `16` |
 | Hero gradyanı | `#0F766E → #0369A1`, sol-üst → sağ-alt |
-| Doktor kartı avatarı | `h-16 w-16`(ızgara)/`h-24 w-24`(profil) dairesel; monogram fallback `from-[#0F766E] to-[#0369A1]` |
+| Doktor kartı avatarı (ızgara) | `h-16 w-16` dairesel; monogram fallback `from-[#0F766E] to-[#0369A1]` |
+| Doktor detay hero düzeni (§2.1) | `grid-cols-1 lg:grid-cols-[1fr_320px] gap-8`, sağ sütun `lg:sticky lg:top-24 lg:self-start` |
+| Hero avatar | `h-28 w-28 sm:h-36 sm:w-36 rounded-[var(--site-radius)]` (yumuşak kare, ızgaradan KASITLI farklı); monogram AYNI `from-[#0F766E] to-[#0369A1]` gradyanı (hash-tabanlı çoklu renk KULLANILMAZ) |
+| Hero chip'leri | Doğrulama: `Badge tone="primary" solid size="lg"` + `BadgeCheck`; Uzmanlık: `Badge tone="primary" size="lg"` + `Stethoscope`; Diller: `Badge tone="neutral" size="sm"` (değişmedi) |
+| Hero "Hakkında" tipografisi | `max-w-prose text-base leading-7 text-foreground/80` (eski `text-sm leading-relaxed text-foreground/70`'in yerine) |
+| Hero fiyat/CTA paneli | Ayrı `bg-surface border border-border` kart, `lg:sticky lg:top-24`; mobilde `sticky-add-to-cart-bar.tsx` ile BİREBİR aynı `fixed bottom-0 z-40` alt çubuk deseni |
 | Dil rozeti | `Badge variant="outline" size="sm"`, ISO kodu büyük harf, emoji bayrak YOK |
 | Slot — müsait | `border-border bg-surface hover:border-primary/50` |
 | Slot — seçili | `bg-primary text-primary-foreground ring-2 ring-primary` + `Check` ikonu |

@@ -60,6 +60,12 @@ export interface FixtureDoctor {
   timeZone: string;
   sessionDurationMin: number;
   specialty: { slug: string; name: string } | null;
+  /** Görev tanımı — currency/avatar doğrulaması (bu turda eklendi). API zaten `DoctorProfile`'ın
+   * TAMAMINI döner; bu alanlar önceden bu dar arayüze YANSITILMAMIŞTI. */
+  sessionPriceCents?: number;
+  currency?: string;
+  avatarMediaId?: string | null;
+  isVerified?: boolean;
 }
 
 /** `GET /admin/telehealth/specialties` — panel kapısı (ADMIN/MANAGER/EDITOR), sayfalanmaz (küçük liste). */
@@ -182,6 +188,64 @@ export function defaultSlotRangeISODates(daysAhead = 30): { from: string; to: st
   const to = new Date(from);
   to.setUTCDate(to.getUTCDate() + daysAhead);
   return { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) };
+}
+
+export interface CreateDoctorFixtureInput {
+  title: string;
+  fullName: string;
+  slug?: string;
+  bio: string;
+  languages: string[];
+  timeZone: string;
+  sessionDurationMin: number;
+  sessionPriceCents: number;
+  currency?: string;
+  avatarMediaId?: string | null;
+  isVerified?: boolean;
+  isActive?: boolean;
+}
+
+export interface CreatedFixtureDoctor extends FixtureDoctor {
+  currency: string;
+  sessionPriceCents: number;
+  avatarMediaId: string | null;
+}
+
+/**
+ * `POST /admin/telehealth/doctors` — görev tanımı doğrulaması (admin doktor listesi/detay
+ * sayfasının para birimi/süre/saat dilimi/avatar-yoksa-monogram davranışı GERÇEK, doktor bazında
+ * BAĞIMSIZ alanlardır, sabit/hardcode DEĞİL) için `telehealth-clinic` demo şablonundan BAĞIMSIZ,
+ * bilinçli olarak FARKLI `sessionDurationMin`/`currency` değerleriyle kurulan bir fixture doktor
+ * oluşturur. Demo şablonun 4 doktorunun HEPSİ `sessionDurationMin: 30` taşıdığı için (bkz.
+ * `telehealth-clinic.ts` DOCTORS dizisi — yalnızca `currency`/`timeZone` doktor bazında değişir),
+ * "süre doktor doktor GERÇEKTEN farklılaşıyor" iddiası yalnızca demo verisiyle KANITLANAMAZ.
+ * `avatarMediaId` verilmezse `null` kalır — public detay sayfasında monogram fallback'i GERÇEK
+ * (mock DEĞİL) bir doktor üzerinden tetiklemek için kullanılır.
+ */
+export async function createAdminDoctorFixture(token: string, input: CreateDoctorFixtureInput): Promise<CreatedFixtureDoctor> {
+  const res = await fetch(`${API_BASE_URL}/admin/telehealth/doctors`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ ...input, languages: input.languages }),
+  });
+  const body = (await safeJson(res)) as { data?: CreatedFixtureDoctor; error?: { code: string; message: string } };
+  if (res.status !== 201 || !body.data) {
+    throw new Error(`Fixture doktor oluşturulamadı: ${res.status} ${JSON.stringify(body.error)}`);
+  }
+  return body.data;
+}
+
+/** `DELETE /admin/telehealth/doctors/{doctorId}` — kalıcı silme. Bu fixture'ların hiçbir GERÇEK
+ * randevusu olmadığından (`Appointment.doctor` `onDelete: Restrict`) her zaman başarılı olmalıdır;
+ * yine de `blog-fixtures.ts` başlığındaki bulgu gereği durum kodu SESSİZCE YUTULMAZ. */
+export async function deleteAdminDoctorFixture(token: string, doctorId: string): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}/admin/telehealth/doctors/${doctorId}`, {
+    method: "DELETE",
+    headers: authHeadersNoBody(token),
+  });
+  if (res.status !== 204 && res.status !== 200 && res.status !== 404) {
+    throw new Error(`Fixture doktor silinemedi: ${res.status}`);
+  }
 }
 
 export interface CreatedAppointment {
