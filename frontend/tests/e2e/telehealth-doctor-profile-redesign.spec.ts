@@ -1,4 +1,4 @@
-import { test, expect, type Page, type Locator } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { getCachedAdminSession, getSiteModules, patchSiteModule } from "./support/api";
 import { createAuthenticatedPage } from "./support/admin-session";
 import {
@@ -247,13 +247,16 @@ test("madde 2 (detay sayfası): doktor bazında gerçek `sessionDurationMin` —
   await expect(async () => {
     await page.goto(`/doctors/${durationDoctorShort.slug}`);
     await expect(page.getByRole("heading", { level: 1 })).toContainText(durationDoctorShort.fullName, { timeout: 5_000 });
-    await expect(page.getByText("20 dakika görüşme")).toBeVisible({ timeout: 5_000 });
+    // qa-agent notu — bu turda §2.4 "Hizmet Özeti" paneli (`doctor-service-summary.tsx`) eski
+    // `doctor-price-panel.tsx`'in "{dk} dakika görüşme" metnini "{dk} Dk." ile DEĞİŞTİRDİ
+    // (§2.4.3 — `Clock` ikonu + statik süre, tasarım kararı, BUG DEĞİL); assertion güncellendi.
+    await expect(page.getByText("20 Dk.", { exact: true })).toBeVisible({ timeout: 5_000 });
   }).toPass({ timeout: 90_000, intervals: [1_000, 2_000, 5_000] });
 
   await expect(async () => {
     await page.goto(`/doctors/${durationDoctorLong.slug}`);
     await expect(page.getByRole("heading", { level: 1 })).toContainText(durationDoctorLong.fullName, { timeout: 5_000 });
-    await expect(page.getByText("75 dakika görüşme")).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText("75 Dk.", { exact: true })).toBeVisible({ timeout: 5_000 });
   }).toPass({ timeout: 90_000, intervals: [1_000, 2_000, 5_000] });
 });
 
@@ -366,32 +369,105 @@ test("regresyon: doktor detay (/doctors/elif-aydemir) — ücret doktorun KENDİ
 });
 
 /**
- * qa-agent — `availability-calendar.tsx` yeniden tasarımı: tarih chip'i + saat slotu AYNI görsel
- * dili paylaşıyor (§2.2.1 — `SELECTION_PILL_BASE`/`SELECTION_PILL_SELECTED` ortak sınıfları),
- * saat ızgarası Sabah/Öğleden Sonra/Akşam gruplarına ayrılmış (boş grup gizlenir), seçili tarihe
- * göre grid başlığı ("{gün} için uygun saatler") var, bir saat seçilince altta "{gün} · {saat}"
- * onay şeridi (CalendarCheck ikonlu) görünüyor, dolu bir saat disabled/tıklanamaz.
+ * qa-agent (bu turda GÜNCELLENDİ) — `availability-calendar.tsx` §2.3 ay takvimi ızgarası
+ * yeniden tasarımı: tarih seçimi artık `role="tab"` pilleri DEĞİL, bir AY TAKVİMİ hücresi
+ * (`aria-label="{tarih} — ..."` taşıyan `<button>`/`<span>`). Saat ızgarası artık ÜÇ (Sabah/
+ * Öğleden Sonra/Akşam) DEĞİL İKİ gruba (ÖÖ Sabah/ÖS Öğleden Sonra) ayrılmış, §2.2.3'ün "{gün}
+ * için uygun saatler" grid başlığı KALDIRILDI (§2.3'ün "kim ne miras alıyor" haritası — aynı
+ * bilgi zaten "Hizmet Özeti" panelinin "Seçilen Randevu" kutusunda var). Seçim onay şeridi
+ * (CalendarCheck ikonlu "{gün} · {saat}" + "Değiştir") ve dolu/geçmiş saat disabled davranışı
+ * DEĞİŞMEDİ.
  *
- * Zaman etiketlerini (`formatDayLabel`/`formatTime`, `tr-TR` + tarayıcının YEREL saat dilimi,
- * bkz. `availability-calendar.tsx::displayTimeZone`) Node tarafında BAĞIMSIZ yeniden hesaplamak
- * (host/tarayıcı saat dilimi FARKLI olabilir) yerine, `page.evaluate` ile TARAYICININ KENDİ
- * `Intl.DateTimeFormat` çağrısı kullanılır — bu, uygulama kaynağını import ETMEK DEĞİLDİR
- * (`@/` alias'ı burada da çözülmez, dosyanın diğer yardımcılarıyla AYNI ilke), yalnızca aynı
- * standart Intl sözleşmesini BAĞIMSIZ olarak çağırıp component'in render ettiği metinle
- * (tarayıcının hydration SONRASI kendi yerel dilimiyle) birebir KARŞILAŞTIRILABİLİR bir referans
- * üretir.
+ * Zaman etiketlerini (`formatDayLabel`/`formatTime`/`formatCellDatePart`, `tr-TR` + tarayıcının
+ * YEREL saat dilimi, bkz. `availability-calendar.tsx::displayTimeZone`) Node tarafında BAĞIMSIZ
+ * yeniden hesaplamak (host/tarayıcı saat dilimi FARKLI olabilir) yerine, `page.evaluate` ile
+ * TARAYICININ KENDİ `Intl.DateTimeFormat` çağrısı kullanılır — bu, uygulama kaynağını import
+ * ETMEK DEĞİLDİR (`@/` alias'ı burada da çözülmez, dosyanın diğer yardımcılarıyla AYNI ilke),
+ * yalnızca aynı standart Intl sözleşmesini BAĞIMSIZ olarak çağırıp component'in render ettiği
+ * metinle (tarayıcının hydration SONRASI kendi yerel dilimiyle) birebir KARŞILAŞTIRILABİLİR bir
+ * referans üretir.
  */
-async function selectDayTabWithVisibleLocator(page: Page, locator: Locator): Promise<boolean> {
-  const dayTabs = page.getByRole("tab");
-  const count = await dayTabs.count();
-  for (let i = 0; i < count; i++) {
-    if (i > 0) await dayTabs.nth(i).click();
-    if (await locator.isVisible().catch(() => false)) return true;
-  }
-  return false;
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-test("randevu tarih-saat tasarımı: tarih chip'i + saat slotu AYNI görsel dil, saat ızgarası Sabah/Öğleden Sonra/Akşam gruplu, seçim onay şeridi, dolu saat disabled", async ({
+/** `formatCellDatePart` (`availability-calendar.tsx`) İLE BİREBİR AYNI biçim — takvim hücresinin `aria-label`'ının tarih kısmı ("16 Eylül Çarşamba"). */
+async function cellDatePartForIso(page: Page, iso: string): Promise<string> {
+  return page.evaluate((isoStr) => {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return new Intl.DateTimeFormat("tr-TR", { timeZone: tz, day: "numeric", month: "long", weekday: "long" }).format(new Date(isoStr));
+  }, iso);
+}
+
+/**
+ * Verilen ISO zaman damgasının karşılık geldiği takvim hücresine tıklar; hücre henüz görünür
+ * ayda DEĞİLSE ("Sonraki ay" ile ileri gidilmemiş bir ayda) takvimi ileri sarar. Geriye sarma
+ * GEREKMEZ — tüm fixture/rezervasyon slotları "şimdi"den SONRAKİ 30 gün içindedir ve takvim
+ * varsayılan olarak kronolojik en erken müsait güne göre açılır
+ * (`availability-calendar.tsx::earliestAvailableDayKey`).
+ */
+async function goToCalendarDayForIso(page: Page, iso: string): Promise<void> {
+  const datePart = await cellDatePartForIso(page, iso);
+  const dayCell = page.getByRole("button", { name: new RegExp(`^${escapeRegExp(datePart)} —`) });
+  for (let i = 0; i < 3 && !(await dayCell.first().isVisible().catch(() => false)); i++) {
+    await page.getByRole("button", { name: "Sonraki ay" }).click();
+  }
+  await expect(dayCell.first()).toBeVisible({ timeout: 15_000 });
+  await dayCell.first().click();
+}
+
+test("takvim: en yakın müsait günde 'Erken' mikro-etiketi görünür, ay navigasyonu (ileri her zaman aktif, geri bugünün ayından önceye gidemez) çalışır", async ({
+  page,
+}, testInfo) => {
+  testInfo.setTimeout(60_000);
+  await expect(async () => {
+    await page.goto(`/doctors/${calendarDoctor.slug}`);
+    await expect(page.getByRole("heading", { level: 1 })).toContainText(calendarDoctor.fullName, { timeout: 5_000 });
+    await expect(page.getByRole("heading", { name: "Müsaitlik ve Randevu" })).toBeVisible({ timeout: 5_000 });
+  }).toPass({ timeout: 90_000, intervals: [1_000, 2_000, 5_000] });
+  await page.waitForTimeout(500);
+
+  // qa-agent BULGUSU (bu turda) — takvim mount'ta VARSAYILAN olarak kronolojik en erken müsait
+  // GÜNÜ zaten SEÇİLİ gösterir (`earliestAvailableDayKey`); component'in "Seçili" render dalı
+  // "Müsait + Erken" dalından ÖNCE kontrol edildiği için (`availability-calendar.tsx` §2.3.2),
+  // en yakın gün SEÇİLİYKEN "Erken" etiketi GÖRÜNMEZ — sayfa İLK açıldığında bu etiket normal
+  // koşullarda HİÇBİR ZAMAN görünmez (yalnızca kullanıcı BAŞKA bir güne geçip en yakın günü
+  // seçili olmaktan çıkardığında ortaya çıkar). Bu, `frontend-agent`/`ui-designer`'a iletilmesi
+  // gereken bir UX bulgusudur (bkz. bu turun qa-agent raporu) — test burada GERÇEK davranışı
+  // (farklı bir güne geçtikten SONRA etiketin göründüğünü) doğrular, YANLIŞ bir "başlangıçta
+  // görünür" varsayımıyla flaky bırakılmaz.
+  const anotherDay = page.getByRole("button", { name: /— müsait$/ }).first();
+  await expect(anotherDay).toBeVisible({ timeout: 10_000 });
+  await anotherDay.click();
+
+  const earliestDayCell = page.getByRole("button", { name: /— müsait, en yakın randevu tarihi$/ });
+  await expect(earliestDayCell).toBeVisible({ timeout: 10_000 });
+  await expect(earliestDayCell.getByText("Erken", { exact: true })).toBeVisible();
+
+  // Ay navigasyonu — calendarDoctor haftanın HER günü müsait (beforeAll kurulumu), bu yüzden
+  // bugünün ayında en az bir müsait gün garanti: takvim varsayılan olarak BUGÜNÜN AYINI açar ve
+  // "Önceki ay" (bugünün ayından öncesine gidilemez kısıtı, §2.3.1) BAŞLANGIÇTA disabled olmalı.
+  const prevButton = page.getByRole("button", { name: "Önceki ay" });
+  const nextButton = page.getByRole("button", { name: "Sonraki ay" });
+  const monthLabel = page.locator("p.uppercase.tracking-wider", { hasText: /^[A-ZÇĞİÖŞÜ]+ \d{4}$/ });
+
+  await expect(prevButton).toBeDisabled();
+  const initialLabel = (await monthLabel.textContent())!.trim();
+
+  await nextButton.click();
+  await expect(monthLabel).not.toHaveText(initialLabel, { timeout: 10_000 });
+  const nextLabel = (await monthLabel.textContent())!.trim();
+  expect(nextLabel).not.toBe(initialLabel);
+  // İleri gidince "Önceki ay" artık AKTİF — bugünün ayının ÖTESİNDEYİZ.
+  await expect(prevButton).toBeEnabled();
+
+  await prevButton.click();
+  await expect(monthLabel).toHaveText(initialLabel, { timeout: 10_000 });
+  // Başlangıç (bugünün) ayına geri dönünce "Önceki ay" YENİDEN disabled.
+  await expect(prevButton).toBeDisabled();
+});
+
+test("randevu tarih-saat tasarımı: takvim hücresinden gün seçimi, saat ızgarası ÖÖ Sabah/ÖS Öğleden Sonra gruplu (İKİ grup, Akşam YOK), seçim onay şeridi, dolu saat disabled", async ({
   page,
 }, testInfo) => {
   testInfo.setTimeout(120_000);
@@ -417,46 +493,36 @@ test("randevu tarih-saat tasarımı: tarih chip'i + saat slotu AYNI görsel dil,
     bookedCalendarSlot.startsAt
   );
 
+  // 0) Rezervasyonun günü hangi ayda ise takvimi o aya götür ve gün hücresine tıkla.
+  await goToCalendarDayForIso(page, bookedCalendarSlot.startsAt);
+
   // 1) Dolu saat — `${time} — dolu, seçilemez` `aria-label`'lı, disabled/tıklanamaz bir `<span>`
-  // (role=radio DEĞİL — buton bile değil, gerçekten tıklanamaz bir eleman). Rezervasyonun günü
-  // hangi gün sekmesindeyse ORAYA git.
+  // (role=radio DEĞİL — buton bile değil, gerçekten tıklanamaz bir eleman).
   const dolu = page.locator(`[aria-label="${bookedTimeLabel} — dolu, seçilemez"]`);
-  const foundDoluDay = await selectDayTabWithVisibleLocator(page, dolu);
-  expect(foundDoluDay, `Rezerve edilen saat (${bookedTimeLabel}) hiçbir gün sekmesinde 'dolu' olarak görünmedi`).toBe(true);
   await expect(dolu).toBeVisible();
   await expect(dolu).toHaveAttribute("aria-disabled", "true");
   await expect(dolu.getByText("Dolu")).toBeVisible();
   // Gerçekten tıklanamaz — `<span>`, `role="radio"` YOK (müsait/seçili slotların ikisi de `<button role="radio">`'dur).
   await expect(dolu).not.toHaveJSProperty("tagName", "BUTTON");
 
-  // 2) Grid başlığı — seçili güne göre "{gün} için uygun saatler".
-  await expect(page.getByText(`${bookedDayLabel} için uygun saatler`)).toBeVisible();
+  // 2) ÖÖ Sabah / ÖS Öğleden Sonra — İKİSİ DE bu günde render olmalı (08:00-22:00 penceresi,
+  // §2.3.3 — üçüncü "Akşam" grubu ARTIK YOK, 12:00 sınırıyla öğleden sonraya BİRLEŞTİRİLDİ).
+  await expect(page.getByText("ÖÖ Sabah", { exact: true })).toBeVisible();
+  await expect(page.getByText("ÖS Öğleden Sonra", { exact: true })).toBeVisible();
+  await expect(page.getByText("Akşam", { exact: true })).toHaveCount(0);
 
-  // 3) Sabah/Öğleden Sonra/Akşam — ÜÇÜ DE bu günde render olmalı (08:00-22:00 penceresi).
-  const radiogroup = page.getByRole("radiogroup");
-  await expect(radiogroup.getByText("Sabah", { exact: true })).toBeVisible();
-  await expect(radiogroup.getByText("Öğleden Sonra", { exact: true })).toBeVisible();
-  await expect(radiogroup.getByText("Akşam", { exact: true })).toBeVisible();
+  // 3) Seçili gün hücresi — `aria-pressed="true"` + Check ikonu (§2.3.2 "Seçili" durumu; takvim
+  // hücresi ARTIK saat slotuyla ORTAK bir "pil" taban stilini PAYLAŞMIYOR — §2.2.1'in tarih
+  // chip'i yarısı §2.3 tarafından KALDIRILDI, hücre kendi `shadow-sm`+Check sinyalini taşır).
+  const selectedDayCell = page.getByRole("button", { name: /— seçili$/ });
+  await expect(selectedDayCell).toHaveAttribute("aria-pressed", "true");
+  await expect(selectedDayCell.locator("svg")).toHaveCount(1);
 
-  // 4) Tarih chip'i (aktif/seçili gün sekmesi) VE müsait bir saat slotu AYNI taban görsel dili
-  // paylaşır (`SELECTION_PILL_BASE` — `rounded-[var(--site-radius)]`/`tabular-nums`/
-  // `focus-visible:ring-2` ortak sınıfları). Aktif tab HER ZAMAN `aria-selected="true"`.
-  const activeDayTab = page.getByRole("tab", { selected: true });
+  // 4) Müsait bir saate tıkla → seçili duruma geçer (`SELECTION_PILL_SELECTED`, Check ikonu) VE
+  // altta "{gün} · {saat}" onay şeridi (CalendarCheck ikonlu) görünür. Saat slotu pilinin taban
+  // sınıfları §2.3.4 ile DEĞİŞMEDİ.
   const availableRadio = page.getByRole("radio", { name: /— müsait$/ }).first();
   await expect(availableRadio).toBeVisible();
-  const [activeTabClass, availableRadioClass] = await Promise.all([
-    activeDayTab.getAttribute("class"),
-    availableRadio.getAttribute("class"),
-  ]);
-  for (const sharedFragment of ["rounded-[var(--site-radius)]", "tabular-nums", "focus-visible:ring-2"]) {
-    expect(activeTabClass, `tarih chip'i sınıfı '${sharedFragment}' içermiyor — paylaşılan taban stil bozuldu`).toContain(sharedFragment);
-    expect(availableRadioClass, `saat slotu sınıfı '${sharedFragment}' içermiyor — paylaşılan taban stil bozuldu`).toContain(sharedFragment);
-  }
-  // Aktif tarih chip'inin İÇİNDE bir Check ikonu (§2.2.1 — seçili durum ortak dili) render olur.
-  await expect(activeDayTab.locator("svg")).toHaveCount(1);
-
-  // 5) Müsait bir saate tıkla → seçili duruma geçer (aynı `SELECTION_PILL_SELECTED` ailesi,
-  // Check ikonu) VE altta "{gün} · {saat}" onay şeridi (CalendarCheck ikonlu) görünür.
   const availableTimeLabel = (await availableRadio.getAttribute("aria-label"))?.replace(/ — müsait$/, "");
   expect(availableTimeLabel, "müsait slotun aria-label'ından saat etiketi çıkarılamadı").toBeTruthy();
   await availableRadio.click();
@@ -469,21 +535,22 @@ test("randevu tarih-saat tasarımı: tarih chip'i + saat slotu AYNI görsel dil,
   for (const sharedFragment of ["rounded-[var(--site-radius)]", "tabular-nums", "ring-2", "ring-offset-2"]) {
     expect(selectedRadioClass, `seçili saat slotu sınıfı '${sharedFragment}' içermiyor`).toContain(sharedFragment);
   }
-  // Aktif tarih chip'i de AYNI "ring-2"/"ring-offset-2" seçili aile sınıflarını taşır (§2.2.1 —
-  // seçili durumda ikisi de aynı taban stil).
-  const activeTabClassAfter = await page.getByRole("tab", { selected: true }).getAttribute("class");
-  for (const sharedFragment of ["ring-2", "ring-offset-2"]) {
-    expect(activeTabClassAfter, `aktif tarih chip'i sınıfı '${sharedFragment}' içermiyor`).toContain(sharedFragment);
-  }
 
   // Onay şeridinin dış kapsayıcısı — "Değiştir" butonunun EBEVEYNİ (component'te `<button>` ile
   // "{gün} · {saat}" `<span>`'i AYNI dış `<div>`'in kardeşleridir, bkz. `availability-calendar.tsx`
-  // §2.2.5 bloğu).
+  // §2.3.6/§2.2.5 bloğu).
   const changeButton = page.getByRole("button", { name: "Değiştir" });
   await expect(changeButton).toBeVisible();
   const confirmationStrip = changeButton.locator("..");
   await expect(confirmationStrip).toContainText(`${bookedDayLabel} · ${availableTimeLabel}`);
   await expect(confirmationStrip.locator("svg")).toHaveCount(1); // CalendarCheck ikonu
+
+  // 5) "Hizmet Özeti" paneli (§2.4) — sağ sütun, AYNI seçimi `BookingSelectionProvider` context'i
+  // üzerinden gösterir: "Seçilen Randevu" kutusu artık "{gün} · {saat}" metnini taşır.
+  await expect(page.getByText("Hizmet Özeti", { exact: true })).toBeVisible();
+  await expect(page.getByText("Seçilen Randevu", { exact: true })).toBeVisible();
+  const summaryBox = page.getByText("Seçilen Randevu", { exact: true }).locator("..");
+  await expect(summaryBox).toContainText(`${bookedDayLabel} · ${availableTimeLabel}`);
 });
 
 /**

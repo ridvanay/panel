@@ -45,7 +45,8 @@ if (typeof globalThis.ResizeObserver === "undefined") {
 }
 
 // jsdom `IntersectionObserver`'ı implemente etmez; `sticky-add-to-cart-bar.tsx` ve
-// `doctor-price-panel.tsx` (§2.1.5) mount olurken bunu kullanır — polyfill olmadan
+// `doctor-service-summary.tsx` (§2.1.5, eski adı `doctor-price-panel.tsx`) mount olurken bunu
+// kullanır — polyfill olmadan
 // "IntersectionObserver is not defined" ile patlar. `ResizeObserver` polyfill'iyle AYNI ilke:
 // hiçbir gözlem tetiklemeyen sessiz bir sahte (testler ilgili görünürlük state'ini manuel
 // tetiklemek isterse kendi `vi.stubGlobal`'ını kullanabilir).

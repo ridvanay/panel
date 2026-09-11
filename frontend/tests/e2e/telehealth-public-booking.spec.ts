@@ -44,28 +44,63 @@ async function gotoAndWaitReady(page: Page, url: string, ready: () => Promise<vo
 }
 
 /**
- * qa-agent bulgusu (bu turda, KENDİ test tasarımında bulunup düzeltildi — proje kökü CLAUDE.md
- * madde 3, kural gereği flaky kaynağı ELE ALINIR): `AvailabilityCalendar` mount'ta varsayılan
- * olarak İLK gün sekmesini (kronolojik olarak en erken slot grubu — genelde "bugün") seçili
- * gösterir (`availability-calendar.tsx::useEffect`, `dayGroups[0]`). Bu, aranan slotun (ister
- * "herhangi bir müsait slot", ister belirli bir saat etiketi) O sekmede olduğu ANLAMINA GELMEZ:
- * - Test GÜNÜN ilerleyen saatinde (doktorun mesai bitiminden SONRA) koşarsa bugünün tüm slotları
- *   `isPast`tır — gün sekmesi hâlâ VAR olsa da hiçbir `role=radio` üretilmez.
- * - Belirli bir referans slot (§4.2 saat dilimi testi) kronolojik olarak İLK günden SONRAKİ bir
- *   günde olabilir.
- * Bu, UYGULAMA KODUNUN hatası DEĞİLDİR (geçmiş bir saatin rezerve edilemez olması DOĞRUDUR) —
- * yalnızca "varsayılan/İLK sekme her zaman aranan slotu içerir" testin YANLIŞ, saat-bağımlı
- * varsayımıdır. Düzeltme: sabit bekleme/varsayım yerine, hedef `radio` görünür olana kadar gün
- * sekmelerinde SIRAYLA İLERLE.
+ * qa-agent bulgusu (bu turda GÜNCELLENDİ — `availability-calendar.tsx` §2.3 ay takvimi ızgarası
+ * yeniden tasarımı, tarih chip'i/`role="tab"` KALDIRILDI). Kök-neden gerekçesi DEĞİŞMEDİ (proje
+ * kökü CLAUDE.md madde 3, flaky kaynağı ELE ALINIR — burada BİLE): `AvailabilityCalendar` mount'ta
+ * varsayılan olarak kronolojik en erken müsait GÜNÜ seçili gösterir
+ * (`availability-calendar.tsx::earliestAvailableDayKey`). Bu, aranan slotun (ister "herhangi bir
+ * müsait slot", ister belirli bir saat etiketi) O günde olduğu ANLAMINA GELMEZ — hidrasyon
+ * sonrası `displayTimeZone` değişimi (§4.2) gün gruplamasını kaydırabilir. Düzeltme: sabit
+ * bekleme/varsayım yerine, hedef `radio` görünür olana kadar takvimdeki "müsait" gün hücrelerinde
+ * SIRAYLA İLERLE (eski `role="tab"` iterasyonunun takvim hücresine uyarlanmış hali).
  */
-async function selectDayTabContaining(page: Page, radio: Locator): Promise<boolean> {
-  const dayTabs = page.getByRole("tab");
-  const count = await dayTabs.count();
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Herhangi bir müsait saat slotuna ulaşana kadar takvimdeki "müsait" gün hücrelerinde ilerler. */
+async function selectAnyAvailableRadio(page: Page): Promise<Locator> {
+  let radio = page.getByRole("radio", { name: /— müsait$/ }).first();
+  if (await radio.isVisible().catch(() => false)) return radio;
+
+  const availableDays = page.getByRole("button", { name: /— müsait/ });
+  const count = await availableDays.count();
   for (let i = 0; i < count; i++) {
-    if (i > 0) await dayTabs.nth(i).click();
-    if (await radio.isVisible().catch(() => false)) return true;
+    await availableDays.nth(i).click();
+    radio = page.getByRole("radio", { name: /— müsait$/ }).first();
+    if (await radio.isVisible().catch(() => false)) return radio;
   }
-  return false;
+  throw new Error("Takvimde görünür hiçbir günde müsait bir saat slotu bulunamadı.");
+}
+
+/** `formatCellDatePart` (`availability-calendar.tsx`) İLE BİREBİR AYNI biçim — takvim hücresinin `aria-label`'ının tarih kısmı ("16 Eylül Çarşamba"). */
+async function cellDatePartForIso(page: Page, iso: string): Promise<string> {
+  return page.evaluate((isoStr) => {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return new Intl.DateTimeFormat("tr-TR", { timeZone: tz, day: "numeric", month: "long", weekday: "long" }).format(new Date(isoStr));
+  }, iso);
+}
+
+/**
+ * Belirli bir ISO zaman damgasının karşılık geldiği takvim hücresine gider (gerekirse ay ileri
+ * sarılır, bkz. dosya başı yorumu), hücreye tıklar ve o zaman damgasının saat slotu `radio`'sunu
+ * döndürür — §4.2 saat dilimi testleri GİBİ belirli bir referans slotu arayan senaryolar içindir
+ * ("herhangi bir müsait slot" için `selectAnyAvailableRadio` yeterlidir).
+ */
+async function selectSpecificSlot(page: Page, iso: string): Promise<Locator> {
+  const datePart = await cellDatePartForIso(page, iso);
+  const dayCell = page.getByRole("button", { name: new RegExp(`^${escapeRegExp(datePart)} —`) });
+  for (let i = 0; i < 3 && !(await dayCell.first().isVisible().catch(() => false)); i++) {
+    await page.getByRole("button", { name: "Sonraki ay" }).click();
+  }
+  await expect(dayCell.first()).toBeVisible({ timeout: 15_000 });
+  await dayCell.first().click();
+
+  const timeLabel = await page.evaluate((isoStr) => {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return new Intl.DateTimeFormat("tr-TR", { timeZone: tz, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(isoStr));
+  }, iso);
+  return page.getByRole("radio", { name: new RegExp(`^${escapeRegExp(timeLabel)} —`) });
 }
 
 test.beforeAll(async ({}, testInfo) => {
@@ -135,12 +170,28 @@ test("madde 8: /doctors listesi + uzmanlık filtresi → doktor detayına git �
   // Hidrasyon sonrası ziyaretçi dilimi yeniden hesaplanır (§4.2) — DOM'un oturmasını bekle.
   await page.waitForTimeout(500);
 
-  // bkz. `selectDayTabContaining()` başlığı — varsayılan/İLK gün sekmesi HER ZAMAN müsait bir slot
-  // İÇERMEYEBİLİR (saat-bağımlı), bu yüzden bulunana kadar sekmelerde ilerlenir.
-  const availableSlot = page.getByRole("radio", { name: /— müsait$/ }).first();
-  const found = await selectDayTabContaining(page, availableSlot);
-  expect(found, `Hiçbir gün sekmesinde müsait bir slot bulunamadı (doktor: ${bookableDoctorFullName})`).toBe(true);
+  const doctorSlugMatch = page.url().match(/\/doctors\/([^/?]+)$/);
+  const doctorSlug = doctorSlugMatch?.[1];
+  expect(doctorSlug, "doktor slug'ı sayfa URL'inden çıkarılamadı").toBeTruthy();
+
+  // bkz. dosya başı `selectAnyAvailableRadio()` yorumu — varsayılan/İLK gün HER ZAMAN müsait bir
+  // slot İÇERMEYEBİLİR (saat-bağımlı), bu yüzden bulunana kadar takvim hücrelerinde ilerlenir.
+  const availableSlot = await selectAnyAvailableRadio(page);
+  const selectedTimeLabel = (await availableSlot.getAttribute("aria-label"))?.replace(/ — müsait$/, "");
+  expect(selectedTimeLabel, "müsait slotun aria-label'ından saat etiketi çıkarılamadı").toBeTruthy();
   await availableSlot.click();
+
+  // `POST /appointments`'e giden GERÇEK ağ isteğinin gövdesini yakala (mock DEĞİL — `route.continue()`
+  // isteğin GERÇEK e2e backend'ine ulaşmasına izin verir) ve kontrata (`doctorSlug`/`startsAt`)
+  // uyduğunu doğrula (görev talimatı madde — "backend'e giden payload'ı network request body'sini
+  // yakalayarak doğrula").
+  let capturedBody: { doctorSlug?: string; startsAt?: string } | undefined;
+  await page.route("**/appointments", async (route) => {
+    if (route.request().method() === "POST") {
+      capturedBody = route.request().postDataJSON() as { doctorSlug?: string; startsAt?: string };
+    }
+    await route.continue();
+  });
 
   const patientEmail = `qa-e2e-telehealth-booking-${Date.now()}@example.com`;
   await page.getByLabel("Ad soyad").fill("QA E2E Test Hastası");
@@ -158,6 +209,18 @@ test("madde 8: /doctors listesi + uzmanlık filtresi → doktor detayına git �
   await expect(confirmationLink).toBeVisible();
   const href = await confirmationLink.getAttribute("href");
   expect(href).toMatch(/\/consultation\/[0-9a-fA-F-]{36}\?t=.+/);
+
+  // Yakalanan payload — kontrata uygun `doctorSlug` VE seçilen slotun `startsAt`'ı (tarayıcının
+  // yerel dilimindeki görüntülenen saat etiketiyle YENİDEN biçimlendirilip karşılaştırılır, ISO
+  // dizesinin KENDİSİ host/tarayıcı saat dilimine göre değişebileceğinden ham string eşitliği
+  // GÜVENİLMEZ).
+  expect(capturedBody?.doctorSlug, "yakalanan POST /appointments gövdesinde doctorSlug eksik/yanlış").toBe(doctorSlug);
+  expect(capturedBody?.startsAt, "yakalanan POST /appointments gövdesinde startsAt eksik").toBeTruthy();
+  const capturedTimeLabel = await page.evaluate((iso) => {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return new Intl.DateTimeFormat("tr-TR", { timeZone: tz, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(iso));
+  }, capturedBody!.startsAt!);
+  expect(capturedTimeLabel, "payload'daki startsAt, seçilen saat slotuyla eşleşmiyor").toBe(selectedTimeLabel);
 });
 
 test.describe("§4.2/madde 9 — saat dilimi duyarlılığı: aynı slot, farklı ziyaretçi dilimlerinde farklı yerel saat etiketiyle gösteriliyor", () => {
@@ -212,10 +275,13 @@ test.describe("§4.2/madde 9 — saat dilimi duyarlılığı: aynı slot, farkl�
       // benzeri qa-agent bulgusu, iki metin de aynı dize İÇEREBİLİR).
       await expect(page.getByText("America/New_York", { exact: true })).toBeVisible({ timeout: 15_000 });
       const label = expectedTimeLabel("America/New_York");
-      const targetRadio = page.getByRole("radio", { name: new RegExp(`^${label} —`) });
-      const found = await selectDayTabContaining(page, targetRadio);
-      expect(found, `"${label}" etiketli slot hiçbir gün sekmesinde bulunamadı`).toBe(true);
+      // `selectSpecificSlot` takvimi (gerekirse ay ileri sararak) referans slotun GÜNÜNE götürür
+      // ve TARAYICININ KENDİ (test.use ile "America/New_York" olarak ayarlanmış) yerel dilimiyle
+      // hesaplanmış saat etiketini arar — Node'daki `expectedTimeLabel`'in BAĞIMSIZ referansıyla
+      // aşağıda karşılaştırılır.
+      const targetRadio = await selectSpecificSlot(page, referenceSlotIso);
       await expect(targetRadio).toBeVisible({ timeout: 15_000 });
+      await expect(targetRadio).toHaveAttribute("aria-label", new RegExp(`^${escapeRegExp(label)} —`));
     });
   });
 
@@ -239,10 +305,9 @@ test.describe("§4.2/madde 9 — saat dilimi duyarlılığı: aynı slot, farkl�
       // aksi halde aşağıdaki DOM iddiası yanlışlıkla "aynı" bir etiketle geçebilirdi.
       expect(istanbulLabel).not.toBe(newYorkLabel);
 
-      const targetRadio = page.getByRole("radio", { name: new RegExp(`^${istanbulLabel} —`) });
-      const found = await selectDayTabContaining(page, targetRadio);
-      expect(found, `"${istanbulLabel}" etiketli slot hiçbir gün sekmesinde bulunamadı`).toBe(true);
+      const targetRadio = await selectSpecificSlot(page, referenceSlotIso);
       await expect(targetRadio).toBeVisible({ timeout: 15_000 });
+      await expect(targetRadio).toHaveAttribute("aria-label", new RegExp(`^${escapeRegExp(istanbulLabel)} —`));
     });
   });
 });

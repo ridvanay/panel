@@ -357,7 +357,17 @@ yorumundaki AYNI öncelik sırasını KORUR.
 
 ---
 
-## 2.2 Randevu tarih-saat seçim akışı (v1, 2026-09-11, ui-designer)
+## 2.2 Randevu tarih-saat seçim akışı (v1, 2026-09-11, ui-designer) — **SUPERSEDE EDİLDİ**
+
+> **Durum (2026-09-11, ui-designer, v2):** Bu bölümün **tarih seçim kısmı** (§2.2.1'in "tarih
+> chip'i" yarısı, §2.2.3'ün gün başlığı, §2.2.6'nın dikey sıralaması) **§2.3 tarafından
+> SUPERSEDE EDİLMİŞTİR** — dikey chip listesi UX açısından verimsiz bulunduğu için yerini tam
+> bir AYLIK TAKVİM IZGARASINA (month grid) bırakır. **Bu bölüm SİLİNMEZ** (tarihsel karar kaydı
+> olarak kalır, "seçim pili" taban dilinin NEREDEN geldiğini açıklar), ama **frontend-agent artık
+> BUNU DEĞİL, §2.3'ü uygular.** Şu alt bölümler KISMEN hâlâ geçerlidir (§2.3 bunları miras alır,
+> tekrar İCAT ETMEZ): §2.2.1'in SAAT SLOTU yarısı (tarih chip'i yarısı DEĞİL), §2.2.2'nin saat
+> gruplama MANTIĞI (üç grup ikiye düşürülür, §2.3.3), §2.2.4 (dolu/geçmiş/müsait), §2.2.5 (seçim
+> onay şeridi), §2.2.6'nın saat dilimi rozeti stili. Ayrıntılı harita §2.3'ün girişinde.
 
 Bağlam: `availability-calendar.tsx` (frontend-agent, mevcut implementasyon) tarih seçimini
 `role="tab"` pilleriyle **yumuşak/tint** bir seçili durumla (`border-primary bg-primary/10
@@ -562,12 +572,461 @@ kullanılır:
 
 ---
 
+## 2.3 Randevu takvim ızgarası (month grid) — §2.2'yi supersede eder (v2, 2026-09-11, ui-designer)
+
+**Kod YAZILMAMIŞTIR** — bu bölüm de yalnızca sınıf/spesifikasyon kararıdır, frontend-agent
+uygular. Bu bölüm §2.2'nin tarih chip'i (dikey/yatay liste) kısmını **TAMAMEN KALDIRIR** ve
+yerine tam genişlikte bir AYLIK TAKVİM IZGARASI (month grid) koyar; §2.2'nin saat slotu/gruplama/
+onay şeridi kararları (aşağıda §2.3.3-§2.3.6'da miras alınıp gerekli yerlerde güncellenir) KALIR.
+
+**Kim ne miras alıyor — hızlı harita:**
+
+| §2.2 alt bölümü | §2.3'teki durumu |
+|---|---|
+| §2.2.1 tarih chip'i yarısı | **KALDIRILDI** → §2.3.2 (takvim hücresi) onun yerini alır |
+| §2.2.1 saat slotu yarısı | **DEĞİŞMEDİ**, §2.3.4'te tekrar teyit edilir |
+| §2.2.2 (Sabah/Öğleden Sonra/Akşam, 3 grup) | **DEĞİŞTİ** → §2.3.3 (2 grup: ÖÖ Sabah / ÖS Öğleden Sonra) |
+| §2.2.3 (gün başlığı) | **KALDIRILDI** — takvimde seçili gün zaten görsel olarak vurgulu (§2.3.2 "Seçili"), saat grid'inin üstünde ayrı bir "{gün} için uygun saatler" metnine gerek KALMADI; aynı bilgi §2.4'ün "Seçilen Randevu" satırında zaten var |
+| §2.2.4 (dolu/geçmiş/müsait saat) | **DEĞİŞMEDİ**, §2.3.4'te tekrar teyit edilir |
+| §2.2.5 (seçim onay şeridi) | **DEĞİŞMEDİ**, konumu §2.3.6'da teyit edilir |
+| §2.2.6 (saat dilimi rozeti + dikey sıralama) | Rozetin STİLİ DEĞİŞMEDİ, dikey sıralama §2.3.7'de GÜNCELLENDİ (takvim rozetin altına girer) |
+
+### 2.3.1 Ay navigasyonu
+
+Takvim kartının EN ÜSTÜ, tam genişlik, üç bölümlü satır:
+
+```
+<div className="mb-4 flex items-center justify-between">
+  <button
+    type="button"
+    aria-label="Önceki ay"
+    disabled={isPrevMonthDisabled}
+    className="flex h-9 w-9 items-center justify-center rounded-[var(--site-radius)] border border-border text-foreground/70 transition-colors duration-150 hover:border-primary/50 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-border disabled:hover:bg-transparent"
+  >
+    <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+  </button>
+  <p className="text-sm font-semibold uppercase tracking-wider text-foreground">
+    {ayAdıBüyükHarf} {yıl}
+  </p>
+  <button
+    type="button"
+    aria-label="Sonraki ay"
+    className="flex h-9 w-9 items-center justify-center rounded-[var(--site-radius)] border border-border text-foreground/70 transition-colors duration-150 hover:border-primary/50 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+  >
+    <ChevronRight className="h-4 w-4" aria-hidden="true" />
+  </button>
+</div>
+```
+
+- **Ay+yıl etiketi:** `new Intl.DateTimeFormat("tr-TR", { month: "long", year: "numeric" })`
+  çıktısı BÜYÜK HARFE çevrilir (`.toLocaleUpperCase("tr-TR")` — Türkçe `İ/i` noktalama kuralı
+  için `.toUpperCase()` DEĞİL `toLocaleUpperCase("tr-TR")` kullanılır, "EYLÜL 2026" gibi) —
+  ikinci bir ay-adı sözlüğü İCAT EDİLMEZ, `Intl` zaten Türkçe ay adlarını doğru üretir.
+- **Geri buton devre dışı koşulu:** görüntülenen ayın ilk günü, bugünün ait olduğu ayın ilk
+  gününden ÖNCEYSE (`viewMonthStart < startOfCurrentMonth`) `disabled` — "bugünden önceki aya
+  gidilemez" kısıtı BİREBİR budur; bugünün AYI her zaman gezilebilir (geçmiş günleri §2.3.2'de
+  zaten tek tek pasif render edilir, ay bazında ayrıca kilitlemek gereksiz çift kısıt olurdu).
+- **İleri buton HİÇBİR ZAMAN disabled DEĞİL** — backend `GET /doctors/{slug}/slots` hangi ay
+  için veri döndürürse döndürsün (mimari §4.2), kullanıcı istediği kadar ileri gidebilir; o ay
+  için slot yoksa §2.3.2'nin "hiç müsait gün yok" durumu (tüm günler pasif) zaten bunu iletir —
+  ayrıca bir "bu ayın sonrası kilitli" mesajı İCAT EDİLMEZ.
+- Buton boyutu `h-9 w-9` (36px) — dokunma hedefi §2.3.2'nin hücre boyutundan (min 40px) BİLE
+  isteye küçük TUTULMAZ, `h-9` zaten ≥36px WCAG 2.5.5 AAA eşiğinin biraz altında ama AA'nın
+  aradığı 24px eşiğinin ÜZERİNDE; nav okları birincil etkileşim yüzeyi DEĞİL (hücreler kadar sık
+  dokunulmaz), bu yüzden §2.3.2'nin 40px kuralı ona UYGULANMAZ.
+
+### 2.3.2 Gün ızgarası — 7 sütun, hücre durumları
+
+**Gün başlıkları** (nav'ın altında, `mb-1`):
+```
+<div className="mb-1 grid grid-cols-7 gap-1">
+  {["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"].map((d) => (
+    <span key={d} className="flex h-6 items-center justify-center text-[11px] font-semibold uppercase tracking-wide text-foreground/40">
+      {d}
+    </span>
+  ))}
+</div>
+```
+Pazartesi BAŞLANGIÇ (Türkiye standardı, ISO 8601) — `Date.getDay()`'in Pazar=0 döndüren
+JS varsayılanı frontend-agent'ın hücre-indeksleme hesabında `(getDay() + 6) % 7` gibi bir
+dönüşümle Pazartesi=0'a çevrilir; bu bir implementasyon detayıdır, burada yalnızca GÖRSEL
+sıra (`Pzt` ilk sütun) bağlayıcıdır.
+
+**Hücre ızgarası:** `grid grid-cols-7 gap-1` — 7 sütun, satır sayısı ay uzunluğuna göre değişir
+(4-6 satır). Her hücre taban boyutu (TÜM durumlar için ORTAK, dokunma hedefi garantisi):
+`flex h-10 sm:h-11 w-full flex-col items-center justify-center gap-0.5` — `w-full` sütunu
+doldurur (7 eşit sütun kendiliğinden kare-YAKIN bir en-boy oranı üretir, `aspect-square`
+UTILITY'sine İHTİYAÇ YOK çünkü `gap-1` ile `grid-cols-7` zaten dar konteynerde ~40-48px arası
+kare-yakın hücreler üretir — sabit `aspect-square` mobilde 320px genişlikte 7×`gap-1` düşüldükten
+sonra ~40px'in ALTINA inebilirdi, `h-10 sm:h-11` ile YÜKSEKLİK sabitlemek `min 40px` dokunma
+hedefini GENİŞLİKTEN bağımsız garanti eder — bu daha güvenli bir taktik).
+
+**Ay dışı taşan günler (önceki ayın son günleri, ilk haftanın hafta-içi hizalaması için):**
+tamamen BOŞ/görünmez yer tutucu, gün numarası YOK:
+```
+<span aria-hidden="true" className="h-10 sm:h-11 w-full" />
+```
+Sonraki ayın taşan günleri (son satırı 7'ye tamamlamak için) RENDER EDİLMEZ — satır kısa
+kalabilir, sahte bir "sonraki ay" günü İCAT EDİLMEZ (kullanıcı `>` ile zaten bir sonraki aya
+geçebilir, taşan günler tıklanamaz olacağından fazladan bir görsel gürültüdür).
+
+**Durum sınıfları (4 durum):**
+
+| Durum | Öğe | Sınıf |
+|---|---|---|
+| **Müsait** (o gün ≥1 uygun slot var) | `<button>` | `flex h-10 sm:h-11 w-full flex-col items-center justify-center gap-0.5 rounded-[var(--site-radius)] border border-primary/20 bg-primary/5 text-sm font-medium tabular-nums text-foreground transition-colors duration-150 hover:border-primary/50 hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface` |
+| **Müsait + en yakın gün** (kronolojik olarak İLK uygun gün, "Erken Randevu" vurgusu) | `<button>` | Müsait ile AYNI taban, İÇ etiket farklı (aşağıda) |
+| **Müsait değil / geçmiş** (o gün için 0 slot VEYA gün geçmişte) | `<span>` (tıklanamaz) | `flex h-10 sm:h-11 w-full items-center justify-center rounded-[var(--site-radius)] border border-transparent text-sm font-medium tabular-nums text-foreground/25 cursor-not-allowed` |
+| **Seçili** | `<button aria-pressed="true">` | `relative flex h-10 sm:h-11 w-full flex-col items-center justify-center gap-0.5 rounded-[var(--site-radius)] border-2 border-transparent bg-primary text-sm font-semibold tabular-nums text-primary-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface` |
+
+**Hücre İÇ yapısı (gün numarası + alt işaretleyici, boyut BOZULMAZ):**
+
+```
+{/* Müsait, en yakın gün DEĞİL */}
+<button aria-label="16 Eylül Çarşamba — müsait" className={AVAILABLE}>
+  <span>16</span>
+  <span aria-hidden="true" className="h-1 w-1 rounded-full bg-primary" />
+</button>
+
+{/* Müsait, EN YAKIN gün — "Erken Randevu" vurgusu */}
+<button aria-label="16 Eylül Çarşamba — müsait, en yakın randevu tarihi" className={AVAILABLE}>
+  <span>16</span>
+  <span aria-hidden="true" className="text-[8px] font-semibold uppercase leading-none tracking-wide text-primary">
+    Erken
+  </span>
+</button>
+
+{/* Müsait değil / geçmiş */}
+<span aria-label="9 Eylül Çarşamba — müsait saat yok" className={DISABLED}>9</span>
+
+{/* Seçili */}
+<button aria-pressed="true" aria-label="16 Eylül Çarşamba — seçili" className={SELECTED}>
+  <span>16</span>
+  <Check className="h-2.5 w-2.5" aria-hidden="true" />
+</button>
+```
+
+- **"Erken Randevu" etiketi SADECE kronolojik olarak İLK müsait güne** uygulanır (tüm müsait
+  günlere değil) — 40-44px'lik bir hücreye tam "Erken Randevu" metni SIĞMAZ, bu yüzden kısaltılmış
+  `"Erken"` (8px, tek satır) kullanılır; TAM metin ekran okuyucuya `aria-label` üzerinden
+  ("... en yakın randevu tarihi") ulaşır — görsel kısaltma ile erişilebilir tam ifade ARASINDA
+  bir ÇATIŞMA yok, sadece SUNUM farkı.
+  Diğer TÜM müsait günler (en yakın olan HARİÇ) yalnızca `h-1 w-1 rounded-full bg-primary` bir
+  nokta taşır — "bu günde müsaitlik var" sinyali, hücre boyutunu ETKİLEMEZ.
+- **Renk kararı — `bg-emerald-50` DEĞİL, `bg-primary/5`/`border-primary/20`:** görev tanımı
+  örnek olarak "zümrüt paletiyle uyumlu bir açık yeşil ton" öneriyordu; bu doküman §0/§1'in
+  KESİN kuralına (`SiteAppearance` token'larının HİÇBİRİ ham/yeni bir renk taşımaz, TEK
+  doğrulanmış `primaryColor` — `#0F766E`, teal — kullanılır) SADIK KALARAK ham `emerald-50`
+  yerine `primary` token'ının `%5/%20` tint'ini kullanır. Sonuç görsel olarak "açık yeşilimsi"
+  bir zemindir (teal zaten yeşile yakın bir tondur) AMA token kaynağı YENİ bir renk İCAT ETMEZ —
+  §1.2'nin "iki farklı yeşil/mavi icat etmek yerine tek doğrulanmış ton" ilkesiyle BİREBİR aynı
+  karar. `bg-primary/5` beyaz/`surfaceColor` zemin üzerinde metin taşımadığı için AA hesabına
+  GİRMEZ (§1.3'ün metin kontrastı tablosu yalnızca DÜZ METNİ kapsar, dekoratif %5 dolgu bir
+  "grafiksel nesne" — WCAG 1.4.11 — bile SAYILMAYACAK kadar soluktur, sıradan bir hover/zemin
+  tonudur).
+- **Seçili hücrenin ek sinyali:** dolgu rengi DEĞİŞİMİNE ek olarak `Check` ikonu (renk-körü
+  güvenliği, §2.2.1/§3'ün "seçili" sinyaliyle AYNI ilke — dolgu+ikon+şekil değişimi ÜÇLÜ sinyal)
+  VE `shadow-sm` (görev tanımının istediği "diğer hücrelerden öne çıkma" — dolgu+ikonun ÜSTÜNE
+  üçüncü bir görsel ayrım katmanı).
+- **`aria-label` formatı** (`"{gün} {ay adı} {haftanın günü} — {durum}"`) — bu bölümün
+  önerdiği metin, kesin ARIA/`role` yapısı (örn. `role="grid"`/`role="gridcell"` mi yoksa düz
+  `<button>` grid'i mi) frontend-agent'ın implementasyon detayıdır (§2.2.1'in "semantik fark
+  KALIR, görsel sınıf birleşir" ilkesiyle AYNI ayrım).
+
+### 2.3.3 Saat grupları — ÖÖ Sabah / ÖS Öğleden Sonra (2 grup, §2.2.2'yi GÜNCELLER)
+
+Görev tanımı üç grubu (Sabah/Öğleden Sonra/Akşam) **İKİYE** sadeleştirmeyi istiyor. Sınır saati
+öğlen 12:00 — sabah grubu `00:00–11:59`, öğleden sonra grubu (eski "Öğleden Sonra" + "Akşam"
+BİRLEŞİR) `12:00–23:59`:
+
+| Grup | Aralık (dahil) | Etiket | Rozet şeridi |
+|---|---|---|---|
+| Sabah | `00:00`–`11:59` | **"ÖÖ SABAH"** | sıcak/sarı gradyan |
+| Öğleden Sonra | `12:00`–`23:59` | **"ÖS ÖĞLEDEN SONRA"** | nötr/bej |
+
+`getHourGroupLabel` (`availability-calendar.tsx` satır 72-77) fonksiyonu ikiye İNDİRİLİR —
+`hour < 12 ? "Sabah" : "Öğleden Sonra"` — üçüncü dal (`hour < 18`) KALDIRILIR. Boş grup KURALI
+DEĞİŞMEDİ (§2.2.2 ile aynı): o gün için "Sabah" saati yoksa "ÖÖ SABAH" şeridi de, boş bir kart
+da GÖRÜNMEZ.
+
+**Her grup kendi kartıdır (şerit üstte, saat ızgarası altta, TEK yüzeyde birleşik):**
+
+```
+<section className="overflow-hidden rounded-[var(--site-radius)] border border-border">
+  {/* başlık şeridi */}
+  <div className="flex items-center gap-2 bg-gradient-to-r from-amber-50 to-orange-50 px-4 py-2.5">
+    <Sun className="h-4 w-4 shrink-0 text-amber-600" aria-hidden="true" />
+    <span className="text-xs font-semibold uppercase tracking-wider text-amber-900">ÖÖ Sabah</span>
+  </div>
+  {/* saat ızgarası */}
+  <div className="grid grid-cols-[repeat(auto-fill,minmax(84px,1fr))] gap-2 p-3">
+    {/* §2.3.4 saat butonları */}
+  </div>
+</section>
+
+<section className="overflow-hidden rounded-[var(--site-radius)] border border-border">
+  <div className="flex items-center gap-2 bg-muted px-4 py-2.5">
+    <CloudSun className="h-4 w-4 shrink-0 text-foreground/50" aria-hidden="true" />
+    <span className="text-xs font-semibold uppercase tracking-wider text-foreground/70">ÖS Öğleden Sonra</span>
+  </div>
+  <div className="grid grid-cols-[repeat(auto-fill,minmax(84px,1fr))] gap-2 p-3">
+    {/* §2.3.4 saat butonları */}
+  </div>
+</section>
+```
+
+- İki kart arası boşluk: `space-y-3` (12px) sarmalayıcı — kartların KENDİ `border`'ı olduğundan
+  ayrı bir `divide-y` GEREKMEZ.
+- **Başlık şeridi tipografisi (İKİSİ için ORTAK):** `text-xs font-semibold uppercase
+  tracking-wider` (§2.2.2'nin grup etiketi ölçeğiyle AYNI aile — `text-xs`, ama burada
+  ARTIK muted DEĞİL, kendi şeridinin zemini üzerinde güçlü renk taşıyor, çünkü bu artık
+  bağımsız bir kart başlığı, saat ızgarasının İÇİNDEKİ bir alt-etiket değil).
+- **ÖÖ Sabah renk kararı — İKİNCİ bilinçli §0 istisnası:** `from-amber-50 to-orange-50` +
+  `text-amber-900`/`text-amber-600` proje paletinin (`--primary`/`--secondary`/kök semantik
+  renkler) DIŞINDA, ham Tailwind varsayılan tonlarıdır — bu doküman genelde ("SAPMA YOK", §0)
+  bunu YASAKLAR, ama burada KASITLI bir istisna yapılır: "sabah" kavramının sezgisel karşılığı
+  SICAK/GÜNEŞ ışığı tonudur ve projenin paletinde (teal + okyanus mavisi + nötr gri + kırmızı/
+  yeşil/amber SEMANTİK durum renkleri) bu sıcaklığı taşıyan bir token YOKTUR; `primaryColor`'ı
+  (teal) hem sabah hem öğleden sonra şeridinde kullanmak "zaman dilimi" ayrımını GÖRSEL OLARAK
+  SİLERDİ (görev tanımının doğrudan istediği "iki farklı başlık şeridi" amacına aykırı). Kontrast
+  doğrulaması: `amber-900` (`#78350f`) / `amber-50` (`#fffbeb`) ≈ **12.9:1** (AAA), `amber-600`
+  (`#d97706`) ikon-only kullanıldığından metin kontrastı KAPSAMINA GİRMEZ. Bu istisna §5'in
+  "video üzerine bindirilen kontrol çubuğu" istisnasıyla AYNI mantık: dar/işlevsel bir mikro-alan,
+  markanın GENEL kimliğini (buton/link/CTA/başlık renkleri) ETKİLEMEZ, YALNIZCA bu iki şeridin
+  İÇİNDE yaşar.
+- **ÖS Öğleden Sonra renk kararı — YENİ renk İCAT EDİLMEDİ:** `bg-muted` + `text-foreground/70`
+  (kök `--muted`/`--muted-foreground` aile token'ları, zaten globals.css'te tanımlı) — görev
+  tanımının "nötr/bej" isteği kök `muted` tonuyla ZATEN karşılanıyor, `bg-stone-50` gibi YENİ bir
+  Tailwind rengi İCAT ETMEYE gerek yok. İkon `CloudSun` (lucide) — `Moon` DEĞİL (görev tanımının
+  kendi notu: gündüz sonrası olduğu için ay uygun değil), `Sunset` DEĞİL (gün batımı ÇAĞRIŞIMI
+  öğleden sonranın TAMAMI için yanıltıcı olurdu, `CloudSun` "hâlâ gündüz ama sabahın tam
+  tersi" nötr bir çağrışım taşır).
+- **`rounded-t-[var(--site-radius)]` yerine `overflow-hidden` + kartın KENDİ `rounded-[var(--site-radius)]`'ı:** şerit ayrı bir üst-köşe yuvarlama YAZMAZ, dış `<section>` `rounded-[var(--site-radius)]
+  overflow-hidden` taşır ve şeridin dikdörtgen köşeleri kartın kendisi tarafından KIRPILIR — iki
+  ayrı `rounded-t-*`/`rounded-b-*` değeri senkronize ETMEK yerine tek bir kırpma noktası.
+
+### 2.3.4 Saat butonları — §2.2.1/§2.2.4/§3 İLE DEĞİŞMEDİ
+
+Saat butonlarının sınıfları (müsait/seçili/dolu/geçmiş) bu turda DEĞİŞMEZ — §2.2.1'in paylaşılan
+taban dili (`SELECTION_PILL_BASE`/`_AVAILABLE`/`_SELECTED`, `px-3 min-w-[84px]`) ve §2.2.4/§3'ün
+dolu/geçmiş sınıfları BİREBİR aynı kalır, yalnızca ARTIK §2.3.3'ün iki kartının İÇİNE (üç grup
+DEĞİL, iki grup) yerleşirler. Kronolojik sıra (dolu/geçmiş dahil, "önce müsaitler sonra dolular"
+yeniden sıralaması YOK) kuralı da DEĞİŞMEDİ.
+
+### 2.3.5 Saat dilimi bilgi çubuğu — stil KORUNUR, sadece hizalama
+
+§4/§2.2.6'daki iki-aşamalı saat dilimi rozetinin sınıfları/metni/aşama mantığı DEĞİŞMEZ. Tek
+fark: artık ALTINDA tarih chip satırı DEĞİL, doğrudan §2.3.1'in ay navigasyonu gelir (§2.3.7'de
+dikey sıra netleştirilir).
+
+### 2.3.6 Seçim onay şeridi — §2.2.5 İLE DEĞİŞMEDİ, konum güncellendi
+
+`CalendarCheck` ikonu + `"{gün etiketi} · {HH:mm}"` + "Değiştir" bağlantısı İÇEREN şerit
+(§2.2.5'in TÜM sınıfları/davranışı BİREBİR) — konumu artık: İKİ saat grubu kartının (§2.3.3)
+HEMEN ALTI, booking formunun HEMEN ÜSTÜ (§2.2.3'ün "gün başlığı" kaldırıldığı için bu şeridin
+üstünde artık doğrudan saat kartları var, aradaki mesafe DEĞİŞMEDİ — `selectedSlot !== null`
+koşulu AYNI kapı).
+
+### 2.3.7 Dikey sıra (takvim + saat grupları birlikte)
+
+```
+[saat dilimi rozeti — §4/§2.3.5, DEĞİŞMEDİ]
+[AY TAKVİMİ IZGARASI — §2.3.1 (nav) + §2.3.2 (7 sütun hücre grid'i)]  ← §2.2'nin tarih chip'inin YERİNİ alır
+[ÖÖ Sabah kartı — §2.3.3, YALNIZCA o gün sabah slotu varsa]
+[ÖS Öğleden Sonra kartı — §2.3.3, YALNIZCA o gün öğleden sonra slotu varsa]
+[seçim onay şeridi — §2.3.6/§2.2.5, YALNIZCA selectedSlot varken]
+[booking formu / "Randevuyu Onayla" — DEĞİŞMEDİ]
+```
+
+Takvim ile ilk saat grubu kartı arasındaki boşluk `mt-5` (20px, §2.2.2'nin grup başlığı üst
+boşluğuyla AYNI ritim) — takvimin kendi `p-4 sm:p-5` iç dolgusu ayrı bir kart yüzeyi olduğundan
+(§2.3.2), saat kartları (§2.3.3) takvimin DIŞINDA, kendi `border`'larıyla ayrı birer yüzeydir;
+aralarında ekstra bir `border`/`bg-surface` sarmalayıcı GEREKMEZ.
+
+### 2.3.8 Breakpoint özeti
+
+Bu akışta YENİ bir breakpoint İCAT EDİLMEZ:
+
+- Takvim hücre ızgarası (§2.3.2): `grid-cols-7` SABİT (ay takvimi mantığı gereği, hiçbir
+  genişlikte 7'den az/çok sütun OLAMAZ) — hücre YÜKSEKLİĞİ `h-10 sm:h-11` ile küçük ekranlarda
+  bile ≥40px dokunma hedefini korur, GENİŞLİK sütun sayısına bölünerek kendiliğinden ayarlanır.
+- Saat grid'i (§2.3.4): §2.2.2 ile AYNI, `grid-cols-[repeat(auto-fill,minmax(84px,1fr))]`,
+  breakpoint'e BAĞIMLI DEĞİL.
+- Takvim kartı + saat kartları TEK sütunda kalır (bu bölüm kendi içinde `lg:` bir iki-sütun
+  düzeni İCAT ETMEZ) — §2.1.1'in `lg:grid-cols-[1fr_320px]` ana/yan sütun geçişi tek gerçek
+  breakpoint kırılımı, bu bölüm onun İÇİNDEKİ ana sütunda (672px, `lg:` sonrası) tam genişlik
+  akar.
+
+---
+
+## 2.4 Hizmet Özeti paneli — §2.1.4'ü genişletir (v2, 2026-09-11, ui-designer)
+
+Bağlam: §2.1.4'teki `doctor-price-panel.tsx` şimdiye kadar SADECE fiyat+CTA taşıyordu. Bu bölüm
+onu, doktor profili + hizmet detayı + seçilen randevu bilgisini de gösteren ZENGİN bir "Hizmet
+Özeti" kartına genişletir. **§2.1.4/§2.1.5'in sticky/mobil-çubuk MEKANİZMASI DEĞİŞMEZ** —
+`lg:sticky lg:top-24 lg:self-start` sarmalayıcı ve mobildeki `sticky-add-to-cart-bar.tsx` deseni
+BİREBİR KORUNUR; bu bölüm SADECE panelin İÇ İÇERİĞİNİ zenginleştirir (§2.4.6'da sticky/mobil
+etkisi ayrıca netleştirilir).
+
+### 2.4.1 Panel yapısı
+
+```
+<aside className="lg:sticky lg:top-24 lg:max-h-[calc(100vh-7rem)] lg:self-start lg:overflow-y-auto">
+  <div className="rounded-[var(--site-radius)] border border-border bg-surface p-5 shadow-sm">
+    <p className="text-xs font-semibold uppercase tracking-wider text-foreground/50">Hizmet Özeti</p>
+
+    {/* §2.4.2 doktor profili satırı */}
+    <div className="mt-4 flex items-center gap-3">
+      <DoctorAvatarMedia doctor={doctor} sizeClassName="h-12 w-12 rounded-full shrink-0" textClassName="text-base" sizes="48px" />
+      <div className="min-w-0">
+        <p className="truncate text-sm font-semibold text-foreground">{title} {fullName}</p>
+        <p className="truncate text-xs text-foreground/60">{specialty?.name ?? "Genel Danışmanlık"}</p>
+      </div>
+    </div>
+
+    <div className="my-4 border-t border-border" />
+
+    {/* §2.4.3 hizmet detayı satırı */}
+    <div className="flex items-center justify-between gap-2 text-sm">
+      <span className="text-foreground/80">{serviceName}</span>
+      <span className="flex items-center gap-1 shrink-0 text-foreground/60">
+        <Clock className="h-3.5 w-3.5" aria-hidden="true" />
+        {sessionDurationMin} Dk.
+      </span>
+    </div>
+
+    {/* §2.4.4 dinamik seçim satırı */}
+    <div className="mt-4 rounded-[var(--site-radius)] border border-border bg-muted/50 p-3">
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-foreground/50">Seçilen Randevu</p>
+      {selectedSlot ? (
+        <p className="mt-1 flex items-center gap-1.5 text-sm font-medium text-foreground">
+          <CalendarCheck className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
+          {formatDayLabel(selectedSlot.startsAt, displayTimeZone)} · {formatTime(selectedSlot.startsAt, displayTimeZone)}
+        </p>
+      ) : (
+        <p className="mt-1 text-sm text-foreground/40">Tarih ve saat seçin</p>
+      )}
+    </div>
+
+    {/* §2.4.5 fiyat + CTA */}
+    <div className="mt-4 flex items-baseline gap-1.5">
+      <span className="text-2xl font-semibold text-foreground">{price}</span>
+      <span className="text-sm text-foreground/60">/ seans</span>
+    </div>
+    <a href={ctaHref} className={cn(buttonVariants({ size: "lg" }), "mt-3 w-full rounded-[var(--site-radius)]")}>
+      Randevu Al
+    </a>
+  </div>
+</aside>
+```
+
+### 2.4.2 Doktor profili satırı
+
+- **Avatar:** `doctor-avatar.tsx`'in (`DoctorAvatarMedia`) KOMPAKT varyantı — `h-12 w-12
+  rounded-full` (§2'nin ızgara kartı avatarıyla AYNI dairesel şekil/boyut AİLESİNDEN, hero'nun
+  kare `h-28/36` varyantından FARKLI — bu panel bir "özet kart", hero DEĞİL, §2'nin ızgara
+  kartı diliyle hizalanması daha DOĞRU: kullanıcı zaten hero'da BÜYÜK kare avatarı gördü, burada
+  onu küçük/dairesel bir "özet rozeti" olarak TEKRAR görmesi TUTARLI bir küçültme, YENİ bir
+  üçüncü şekil İCAT ETMEZ). `sizes="48px"`. Gerçek görsel YOKSA/hata varsa mevcut monogram
+  fallback (`from-[#0F766E] to-[#0369A1]`, §2/§2.1.2/§10 ile AYNI gradyan) `textClassName="text-base"`.
+- **Ad + uzmanlık:** `flex flex-col min-w-0` içinde ad `text-sm font-semibold text-foreground
+  truncate` (`{title} {fullName}`, §2'nin ızgara kartı ölçeğiyle AYNI, hero'nun `text-2xl/3xl`
+  İLE KARIŞTIRILMAZ — bu küçük bir özet satırı), uzmanlık `text-xs text-foreground/60 truncate`
+  hemen altında (§2'nin "Uzmanlık" satırıyla AYNI rol/ton).
+- **Ayırıcı:** `border-t border-border my-4` (16px üst+alt boşluk — §2'nin `border-t
+  border-border/60 my-3` ayracından BİRAZ daha güçlü/`/60` OPAKLIK EKİ OLMADAN, çünkü bu panelde
+  ayıracın ÜSTÜNDE/ALTINDA şimdi İKİ FARKLI bilgi bloğu var — profil ve hizmet detayı — §2'nin
+  kartındaki "meta bilgi/fiyat" ayrımından biraz daha BELİRGİN bir bölüm geçişi gerekiyor).
+
+### 2.4.3 Hizmet detayı satırı
+
+**Hizmet adı — specialty'den TÜRETİLİR, sabit metin İCAT EDİLMEZ:**
+`{doctor.specialty?.name ?? "Genel Danışmanlık"} Seansı` (§2.1.2'nin uzmanlık chip'indeki
+AYNI fallback zincirini — `doctor.specialty?.name ?? "Genel Danışmanlık"` — kullanır, yalnızca
+sonuna `" Seansı"` eki eklenir, ör. "Kardiyoloji Seansı", uzmanlık yoksa "Genel Danışmanlık
+Seansı"). **Sabit "Profesyonel Danışmanlık Seansı" metni KULLANILMAZ** — proje zaten her
+doktora bir `specialty` atıyor (mimari veri modeli), bu bilgiyi YOK SAYIP jenerik bir isim
+göstermek daha AZ bilgilendirici olurdu; specialty'den türetmek İKİNCİ bir metin kaynağı/
+çeviri anahtarı İCAT ETMEDEN (compliance/documentation-agent'ın onaylaması gereken YENİ bir
+sabit dize YARATMADAN) doğru bilgiyi verir.
+- **Süre:** `Clock` (lucide) ikonu + `{sessionDurationMin} Dk.` — §7'nin geri sayımından farklı
+  bir ikon/rol (`Clock` burada STATİK süre bilgisi, geri sayımda kullanılan sayaç DEĞİL).
+- Satır düzeni: `flex items-center justify-between` — hizmet adı SOLDA (`text-foreground/80`,
+  §2.1.3'ün bio metniyle AYNI okuma tonu), süre SAĞDA (`text-foreground/60`, ikincil/muted).
+
+### 2.4.4 Dinamik seçim satırı — "Seçilen Randevu"
+
+- **Kapsayıcı:** `rounded-[var(--site-radius)] border border-border bg-muted/50 p-3` — §6.1'in
+  "Bekleme Odası" panelinin dolgu mantığıyla AYNI aileden (nötr bir bilgi kutusu), ama `primary`
+  tint DEĞİL `muted` (bu bir "bekleyiş" değil, sade bir bilgi ÖZETİ — `primary` tonu bu panelde
+  zaten CTA/fiyatta kullanılacağından, burada tekrar kullanmak görsel hiyerarşiyi BULANIKLAŞTIRIR).
+- **Üst etiket:** `text-[11px] font-semibold uppercase tracking-wider text-foreground/50`
+  "Seçilen Randevu" (§2.4.1'in "Hizmet Özeti" üst etiketiyle AYNI aileden, bir tık daha küçük —
+  `11px` vs panelin ana üst etiketinin `text-xs`/12px — çünkü bu İKİNCİL bir alt-başlık, panelin
+  BİRİNCİL başlığı değil).
+- **Seçili durum:** `CalendarCheck` (lucide, §2.2.5/§2.3.6 ile AYNI ikon — "onaylı tarih"
+  sinyalinin panel İÇİNDE TEKRARI, tutarlı bir görsel dil) + `{formatDayLabel} · {formatTime}`
+  (§2.2.5 ile AYNI orta-nokta ayraç konvansiyonu — görev tanımının verdiği örnek `"16 Eylül
+  Çarşamba, 09:30"` VİRGÜLLÜ formatı KASITLI olarak KULLANILMAZ, çünkü proje zaten §2.2.5'te
+  orta-nokta ayracını "30 dk · ₺450" ile AYNI konvansiyon olarak sabitlemiş; ikinci bir ayraç
+  biçimi İCAT ETMEK tutarsızlık yaratırdı).
+- **Boş durum (hiçbir şey seçilmemiş):** `text-sm text-foreground/40` "Tarih ve saat seçin" —
+  `/40` opaklığı bu panelin/dokümanın en soluk metin tonu (§2'nin `/60`'ından, §2.1.3'ün
+  `/80`'inden DAHA soluk) çünkü bu bir PLACEHOLDER, gerçek bir veri/meta bilgi DEĞİL — input
+  placeholder'larının genel konvansiyonuyla (gerçek değerden daha soluk) tutarlı. İkon YOK bu
+  durumda (`CalendarCheck` yalnızca gerçek bir seçim olduğunda "onaylı" anlamı taşır; boş
+  durumda bir ikon göstermek sahte bir doluluk hissi verirdi).
+
+### 2.4.5 CTA + fiyat
+
+- **Fiyat:** `formatPriceFromCents` + `" / seans"` (§2.1.4/§2 ile BİREBİR AYNI biçimlendirici/
+  ek — YENİ bir format İCAT EDİLMEZ), `text-2xl font-semibold text-foreground` + `text-sm
+  text-foreground/60` ek, `flex items-baseline gap-1.5` (§2.1.4 ile AYNI).
+- **CTA:** `Button size="lg" className="w-full rounded-[var(--site-radius)]"` "Randevu Al",
+  `href="#randevu"` (§2.1.4 ile AYNI davranış — sayfanın kendi slot takvimine kaydırır). **DEVRE
+  DIŞI BIRAKILMAZ** (`selectedSlot` olmasa da tıklanabilir kalır) — bu buton bir "randevuyu
+  onayla" GÖNDER'i DEĞİL, panelin İÇİNDEN takvime/forma bir ÇAPA bağlantısıdır (gerçek "Randevuyu
+  Onayla" `<button type="submit">`'i §2.2.5/§2.3.6'nın altındaki booking formunda, farklı bir
+  elemanda KALIR) — kullanıcı henüz saat seçmeden bu butona basarsa takvime yönlendirilir, bu
+  BEKLENEN/YARARLI bir davranıştır, DEVRE DIŞI bırakmak fonksiyonu GİZLERDİ.
+- Fiyat CTA'nın ÜSTÜNDE (§2.1.4 ile AYNI dikey sıra) — görev tanımının "CTA + altında/yanında
+  fiyat" ifadesindeki iki seçenekten (üstte/yanda) ÜSTTE olanı §2.1.4'ün mevcut kararıyla
+  TUTARLILIK için KORUNUR (yeni bir yan-yana düzen İCAT EDİLMEZ).
+
+### 2.4.6 Sticky davranış ve mobil — §2.1.4/§2.1.5'e EK
+
+- **Masaüstü (`lg:` ve üzeri):** `lg:sticky lg:top-24 lg:self-start` OFFSET'i DEĞİŞMEZ (§2.1.1
+  ile AYNI, projede 4 yerde kurulu emsal — YENİ bir offset İCAT EDİLMEZ). **EKLENEN tek şey:**
+  `lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto` — panel artık avatar+ayraç+hizmet+seçim
+  kutusu+fiyat+CTA taşıdığından (eski sürümün ~3 katı yükseklik), çok kısa viewport'larda
+  (ör. tarayıcı araç çubukları açık bir 720px yükseklik) `top-24` (96px) offset'iyle birlikte
+  panel viewport'un ALT kenarını AŞABİLİR; `max-h-[calc(100vh-7rem)]` (viewport - 112px, `top-24`
+  96px + güvenlik payı) + `overflow-y-auto` panel KENDİ İÇİNDE kayar, sayfanın GENEL scroll'unu
+  ETKİLEMEZ. Tipik masaüstü yüksekliklerde (`≥768px`) panel zaten TAMAMEN sığar, bu kural sadece
+  bir GÜVENLİK AĞIDIR, normal kullanımda görünmez/devreye GİRMEZ.
+- **Mobil (`<lg`):** §2.1.5'in mobil davranışı DEĞİŞMEZ — bu ZENGİN panel (§2.4.1'in TAMAMI)
+  hero başlığının hemen altında, normal akışta, `sticky` OLMADAN TEK KEZ render edilir (§2.1.5
+  ile AYNI, sadece artık İÇERİĞİ zengin). **Ayrı bir "mobil sade panel" İCAT EDİLMEZ** — mobil
+  kullanıcı da masaüstü kullanıcının gördüğü AYNI zengin özeti (avatar/hizmet/seçim/fiyat/CTA)
+  görür, tek fark `sticky` OLMAMASI. Kullanıcı bu paneli kaydırıp GEÇTİĞİNDE devreye giren
+  `sticky-add-to-cart-bar.tsx` deseni (§2.1.5'teki `fixed inset-x-0 bottom-0` çubuk) DEĞİŞMEZ —
+  o çubuk BİLİNÇLİ olarak SADE kalır (yalnızca fiyat+CTA, §2.1.5'in JSX'i BİREBİR) çünkü onun
+  rolü "kullanıcı zaten scroll ETTİ, sadece hızlı bir CTA hatırlatıcısı" — zengin içeriği (avatar/
+  hizmet/seçim satırı) o dar `h-16` çubuğa SIKIŞTIRMAK okunaksız/aceleci bir UI üretirdi. Kısacası:
+  **zengin panel = TEK render nokta (üstte, sticky/non-sticky farkıyla masaüstü/mobil ayrışır),
+  sade fiyat+CTA çubuğu = SADECE mobilde, panel viewport'tan çıkınca, İKİNCİ bir hatırlatıcı** —
+  bu §9.2'nin "şerit+kart" bilinçli tekrar ilkesiyle AYNI mantık.
+
+---
+
 ## 3. Slot düğmesi durumları (müsait / dolu / geçmiş / seçili)
 
-**Not (2026-09-11, ui-designer):** aşağıdaki tablonun **"Müsait"** ve **"Seçili"** satırları
-artık §2.2.1'in tarih chip'iyle BİRLEŞTİRİLMİŞ nihai sınıflarını yansıtır (tabloyu okurken
-"tarih chip'i de bu satırları kullanır" bilgisini ekleyin) — **"Dolu"** ve **"Geçmiş"** satırları
-DEĞİŞMEDİ, bunlar zaten §2.2.4'te aynen tekrarlandı.
+**Not (2026-09-11, ui-designer, v2 — §2.3 sonrası):** aşağıdaki tablo artık YALNIZCA SAAT
+SLOTUNU kapsar — "tarih chip'i" §2.3'ün AY TAKVİMİ IZGARASI tarafından supersede edildiği için
+(gün seçimi artık §2.3.2'nin hücreleri üzerinden yapılır, kendi durum tablosu ORADADIR) bu
+tablonun **"Müsait"** ve **"Seçili"** satırları ARTIK yalnızca §2.2.1'in SAAT SLOTU yarısını
+yansıtır (tarih chip'i referansı TARİHSEL bir not olarak okunmalı). **"Dolu"** ve **"Geçmiş"**
+satırları DEĞİŞMEDİ, bunlar zaten §2.2.4/§2.3.4'te aynen tekrarlandı.
 
 `GET /doctors/{slug}/slots` yalnızca `{ startsAt, endsAt, available }` döndürür (mimari §4.2)
 — "geçmiş" ile "dolu/tampon içi" ayrımı **frontend'in `now` ile karşılaştırmasından** gelir,
@@ -877,13 +1336,16 @@ Gerçek metin/fotoğraf içermez — yalnızca bölüm ritmini ve palet renkleri
 | Hero "Hakkında" tipografisi | `max-w-prose text-base leading-7 text-foreground/80` (eski `text-sm leading-relaxed text-foreground/70`'in yerine) |
 | Hero fiyat/CTA paneli | Ayrı `bg-surface border border-border` kart, `lg:sticky lg:top-24`; mobilde `sticky-add-to-cart-bar.tsx` ile BİREBİR aynı `fixed bottom-0 z-40` alt çubuk deseni |
 | Dil rozeti | `Badge variant="outline" size="sm"`, ISO kodu büyük harf, emoji bayrak YOK |
-| Tarih chip + Slot — müsait (§2.2.1, BİRLEŞİK) | `h-10 rounded-[var(--site-radius)] border-border bg-surface text-foreground hover:border-primary/50 hover:bg-primary/5` (chip `px-4`, slot `px-3 min-w-[84px]`) |
-| Tarih chip + Slot — seçili (§2.2.1, BİRLEŞİK) | `border-2 border-transparent bg-primary text-primary-foreground ring-2 ring-offset-2 ring-offset-surface ring-primary` + `Check` ikonu (eski tarih chip'inin soft/tint seçili hali KALDIRILDI) |
+| ~~Tarih chip (§2.2.1)~~ | **SUPERSEDE EDİLDİ** → §2.3.2 ay takvimi hücreleri (aşağıdaki 2 satır) |
+| Slot (saat) — müsait (§2.2.1/§2.3.4, DEĞİŞMEDİ) | `h-10 rounded-[var(--site-radius)] border-border bg-surface text-foreground hover:border-primary/50 hover:bg-primary/5 px-3 min-w-[84px]` |
+| Slot (saat) — seçili (§2.2.1/§2.3.4, DEĞİŞMEDİ) | `border-2 border-transparent bg-primary text-primary-foreground ring-2 ring-offset-2 ring-offset-surface ring-primary` + `Check` ikonu |
 | Slot — dolu | `bg-muted text-foreground/40 line-through` + "Dolu" etiketi + `Lock` yok, sadece çizgi+etiket (DEĞİŞMEDİ) |
 | Slot — geçmiş | `text-foreground/25`, çizgi/etiket YOK, yalnızca `aria-label` (DEĞİŞMEDİ) |
-| Saat grid gruplama (§2.2.2) | Sabah `00:00-11:59` / Öğleden Sonra `12:00-17:59` / Akşam `18:00+`, grup başlığı `text-xs font-semibold uppercase tracking-wider text-foreground/50`, grid `grid-cols-[repeat(auto-fill,minmax(84px,1fr))] gap-2` |
-| Seçili gün başlığı (§2.2.3) | `text-sm font-semibold text-foreground` + `CalendarDays` ikonu, "{gün} için uygun saatler" |
-| Seçim onay şeridi (§2.2.5) | `border-primary/30 bg-primary/5` + `CalendarCheck` ikonu + "{gün} · {HH:mm}" + "Değiştir" bağlantısı, grid'in altı/formun üstü |
+| **Ay takvimi ızgarası (§2.3.1/§2.3.2, YENİ)** | Nav: `< EYLÜL 2026 >`, geri buton geçmiş aya `disabled`; hücre `grid grid-cols-7 gap-1`, taban `h-10 sm:h-11 w-full`; müsait `border-primary/20 bg-primary/5` + nokta işaretleyici; en yakın müsait gün "Erken" mikro-etiketi; müsait-değil/geçmiş `text-foreground/25` (`<span>`, tıklanamaz); seçili `bg-primary text-primary-foreground shadow-sm` + `Check` |
+| Saat grid gruplama (§2.3.3, GÜNCELLENDİ — 3→2 grup) | ÖÖ Sabah `00:00-11:59` (ikon `Sun`, `from-amber-50 to-orange-50`) / ÖS Öğleden Sonra `12:00-23:59` (ikon `CloudSun`, `bg-muted`) — her grup `overflow-hidden rounded-[var(--site-radius)] border border-border` kart, şerit `text-xs font-semibold uppercase tracking-wider`, grid `grid-cols-[repeat(auto-fill,minmax(84px,1fr))] gap-2 p-3` |
+| ~~Seçili gün başlığı (§2.2.3)~~ | **KALDIRILDI** — takvim hücresinin kendi seçili vurgusu + §2.4.4'ün "Seçilen Randevu" satırı bu bilgiyi zaten taşıyor |
+| Seçim onay şeridi (§2.2.5/§2.3.6, DEĞİŞMEDİ) | `border-primary/30 bg-primary/5` + `CalendarCheck` ikonu + "{gün} · {HH:mm}" + "Değiştir" bağlantısı, saat kartlarının altı/formun üstü |
+| **Hizmet Özeti paneli (§2.4, YENİ — §2.1.4'ü genişletir)** | Üst etiket "HİZMET ÖZETİ"; avatar `h-12 w-12 rounded-full` + ad/uzmanlık; ayraç; hizmet adı `{specialty ?? "Genel Danışmanlık"} Seansı` + `Clock` ikonu + süre; "Seçilen Randevu" kutusu (`bg-muted/50`, boşken `text-foreground/40` "Tarih ve saat seçin"); fiyat üstte + `Button` "Randevu Al" altta (devre dışı bırakılmaz); sticky `lg:top-24` DEĞİŞMEDİ, EK `lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto` güvenlik ağı; mobilde aynı zengin panel tek render + değişmeyen sade `sticky-add-to-cart-bar` çubuğu |
 | Saat dilimi rozeti | 2 aşamalı (SSR jenerik → mount sonrası ikili gösterim), `Globe` ikonu, DEĞİŞMEDİ (§2.2.6 — sadece `mb-4` hizalama) |
 | Konsültasyon kontrol çubuğu | `bg-black/70 backdrop-blur-md rounded-full`, toggle `h-12 w-12`, ayrıl `h-14 w-14 bg-danger` ayrık |
 | Bekleme odası paneli | `border-primary/20 bg-primary/5` + `Loader2` + `animate-ping` (sakin) |
