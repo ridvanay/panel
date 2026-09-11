@@ -44,12 +44,23 @@ describe("AdminSidebar — §8.2 rol görünürlük tablosu", () => {
     }
   });
 
-  it("EDITOR: yalnızca Sayfalar/Blog/Medya/Güvenlik görünür, panelin geri kalanı GİZLİ", () => {
+  it("EDITOR: Sayfalar/Blog/Medya/Güvenlik + TeleHealth doktor/uzmanlık kataloğu (salt-okunur) görünür, randevular (PII) GİZLİ", () => {
     const visible = visibleHrefsFor("EDITOR");
 
     expect(visible.sort()).toEqual(
-      ["/admin/pages", "/admin/blog", "/admin/media", "/admin/settings/security"].sort()
+      [
+        "/admin/pages",
+        "/admin/blog",
+        "/admin/media",
+        "/admin/settings/security",
+        "/admin/telehealth/doctors",
+        "/admin/telehealth/specialties",
+      ].sort()
     );
+
+    // §8.4 (telehealth architect scope) — hasta PII'si taşıyan randevular EDITOR'e
+    // hiçbir koşulda görünmez/erişilemez olmalı (veri minimizasyonu, security-agent onaylı).
+    expect(visible).not.toContain("/admin/telehealth/appointments");
   });
 
   it("EDITOR için 'Sayfalar' öğesi 'Sayfalar (Salt İçerik Düzenleme)' etiketine eşlenir (roleLabelKeys)", () => {

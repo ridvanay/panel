@@ -169,3 +169,105 @@ dışı, önceden var olan 3 hata hariç); `telehealth.test.ts` (12 test, 1 yeni
 
 **Karar: ONAY.** Definition of Done'daki "Token grant kapsamı/TTL/IDOR/identity denetimi
 imzalandı (security-agent — engelleyici)" kriteri karşılanmıştır.
+
+---
+
+## Ek — 2026-09-12: `sidebar-role-visibility.test.tsx` uyuşmazlığı (KOD DOĞRU, TEST ESKİ)
+
+**Bağlam:** `frontend/tests/unit/sidebar-role-visibility.test.tsx`'teki "EDITOR: yalnızca
+Sayfalar/Blog/Medya/Güvenlik görünür" testi FAIL ediyor çünkü `filterVisibleNavItems(navItems,
+{role:"EDITOR"}, () => true)` gerçekte şu listeyi döndürüyor:
+`["/admin/pages", "/admin/blog", "/admin/media", "/admin/settings/security",
+"/admin/telehealth/doctors", "/admin/telehealth/specialties"]` — testin beklediği 4 öğeye ek
+olarak **2 telehealth öğesi** (`doctors`, `specialties`) da EDITOR'e görünüyor.
+`/admin/telehealth/appointments` ise `roles: ["ADMIN","MANAGER"]` ile zaten doğru şekilde
+GİZLİ (test bunu hiç sorgulamıyor, hatalı olan yalnızca 4'lük "tam liste" beklentisi).
+
+### Kök neden
+
+Test, `.claude/architect-scope-rbac-5-tier.md` §8.2'deki (2026-08-23 tarihli) bağlayıcı
+sidebar tablosuna göre yazılmış. O tablo **telehealth modülünden ÖNCE** var olduğu için
+telehealth'i hiç içermiyor — test bunu güncellenmeden bırakmış (stale test), kod ise DAHA
+SONRA eklenen `.claude/architect-scope-telehealth-template.md` §8 madde 4'teki (bu bölüm
+zaten "security-agent — engelleyici denetim" başlığı altında, yani security-agent'ın kendi
+imzaladığı bir karar) şu **özel/daha güncel** talimatı doğru uyguluyor:
+
+> "Doktor/uzmanlık CRUD'u ADMIN + MANAGER (içerik yönetimi), **okuma panel kapısı**"
+> (= `requirePanelAccess()` = ADMIN+MANAGER+**EDITOR**)
+>
+> "/admin/telehealth/appointments ADMIN + MANAGER; **EDITOR DIŞLANIR** — ... hasta PII'sine
+> erişmesi için hiçbir iş gerekçesi yoktur (veri minimizasyonu)."
+
+Bu, backend'de de (`telehealth.admin.routes.ts`) ve bu dosyanın kendi §8.4 satırında zaten
+doğrulanmış: doktor/uzmanlık **okuma** `requirePanelAccess()` (A+M+E), **appointments**
+`requireSiteRole(ROLES_ADMIN_MANAGER)` (EDITOR 403). `sidebar.tsx` (satır 111-124) bu
+backend gerçeğiyle BİREBİR tutarlı — `roles` kısıtı appointments'a var, doctors/specialties'e
+yok (yorum satırları bunu açıkça gerekçelendiriyor).
+
+### KARAR (bağlayıcı, security-agent)
+
+**EDITOR, TeleHealth admin sayfalarından şunlara erişebilir/görebilir:**
+- `/admin/telehealth/doctors` — ✔ GÖRÜNÜR, salt-okunur (yazma butonları backend 403'e düşer,
+  sayfa kendi içinde bunu ele almalı — frontend-agent kapsamı).
+- `/admin/telehealth/specialties` — ✔ GÖRÜNÜR, salt-okunur (aynı gerekçe).
+- `/admin/telehealth/appointments` — ✖ GİZLİ VE ERİŞİLEMEZ (backend 403). **Bu satır
+  DEĞİŞMEZ** — hasta adı/e-postası PII'sidir, veri minimizasyonu ilkesi bağlayıcıdır, hiçbir
+  koşulda EDITOR'e açılamaz.
+
+**Gerekçe (RBAC felsefesiyle tutarlılık):** Doktor/uzmanlık verisi hasta PII'si DEĞİLDİR —
+ADMIN'in kendi girdiği bir "hizmet vitrini" içeriğidir (bkz. `compliance-notes-telehealth.md`
+işleme envanteri: `DoctorProfile.*` → "hizmet sağlayıcı verisi, hasta verisi değil"). Bu,
+EDITOR'ün zaten okuma erişimi olan `appearance`/`navigation`/`settings`/`site-modules` GET
+uçlarıyla AYNI sınıftadır (§5.3 tablosu — panel kapısı okuma A+M+E), yalnızca SIDEBAR'da o
+modüller için görünürlük UX tercihiyle gizlenmiş (§8.2 tablosu) iken, telehealth için architect
+BİLEREK farklı bir UX kararı verdi (`sidebar.tsx` satır 111-115 yorumu: "EDITOR görür,
+salt-okunur kullanır" — Vergi Sınıfları sekmesi emsaliyle `module`-bağlı ama `roles`-kısıtsız).
+Bu, §8.2'nin "gizleme bir güvenlik önlemi DEĞİLDİR, sunucu bağımsız karar verir" ilkesiyle de
+uyumludur — EDITOR'e doctors/specialties nav öğesini göstermek sunucu tarafında zaten
+doğrulanmış bir izni yansıtır, yeni bir güvenlik yüzeyi AÇMAZ.
+
+**appointments'ın GİZLENMESİNİN gerekçesi** ise §8.2'nin "PII → EDITOR hariç" ilkesiyle
+(bkz. `contact/submissions` satırı: "EDITOR çıkarıldı, ziyaretçi PII'si, EDITOR kapsamı dışı")
+BİREBİR aynı sınıftadır — telehealth appointments da ziyaretçi/hasta PII'si taşıdığı için aynı
+istisna telehealth'e de uygulanmış, tutarlıdır.
+
+### Aksiyon — frontend-agent'a devredilecek (KOD DEĞİŞİKLİĞİ security-agent'ın kapsamı DIŞI)
+
+**Kod (`sidebar.tsx`) DEĞİŞTİRİLMEZ** — mevcut implementasyon yukarıdaki bağlayıcı kararla
+tutarlıdır. **Test güncellenmelidir:**
+
+`frontend/tests/unit/sidebar-role-visibility.test.tsx`, "EDITOR: yalnızca Sayfalar/Blog/
+Medya/Güvenlik görünür" bloğundaki beklenen dizi şu şekilde güncellenecek (frontend-agent):
+
+```ts
+expect(visible.sort()).toEqual(
+  [
+    "/admin/pages",
+    "/admin/blog",
+    "/admin/media",
+    "/admin/settings/security",
+    "/admin/telehealth/doctors",
+    "/admin/telehealth/specialties",
+  ].sort()
+);
+```
+
+Ayrıca aynı test dosyasına EDITOR için `/admin/telehealth/appointments`'ın **GİZLİ** kaldığını
+doğrulayan açık bir `expect(visible).not.toContain("/admin/telehealth/appointments")`
+assertion'ı eklenmesi ÖNERİLİR (şu an bu satır zımnen `toEqual`'in dışında kalarak
+doğrulanıyor, ama açık bir assertion regresyonu daha güvenilir yakalar). Test başlığı da
+güncellenerek telehealth'in dahil olduğu netleştirilebilir (örn. "...ve TeleHealth
+doktor/uzmanlık kataloğu (salt-okunur) görünür, randevular (PII) GİZLİ").
+
+**qa-agent'a bilgi:** e2e tarafında EDITOR ile `/admin/telehealth/doctors` ve `/specialties`
+sayfalarına GET ile 200, yazma denemesinde (POST/PATCH/DELETE) 403; `/admin/telehealth/
+appointments`'a hem UI'da bağlantı olmaması hem de doğrudan API isteğiyle 403 alındığı zaten
+`telehealth.test.ts:340-397`'de kapsanmış (bkz. yukarıki "GÜVENLİ bulunan alanlar" tablosu,
+§8.4 satırı) — frontend unit test düzeltmesi bu e2e kapsamını GENİŞLETMEZ, sadece unit test
+ile gerçek/onaylı davranışı hizalar.
+
+**Eskalasyon notu:** Bu karar `architect-scope-rbac-5-tier.md` §8.2'nin tablosunu GEÇERSİZ
+KILMAZ, sadece o tablonun telehealth eklenmeden ÖNCE yazıldığı ve telehealth'in kendi (daha
+sonraki, security-agent onaylı) architect kararına tabi olduğunu teyit eder. §8.2 tablosunun
+kendisi bu ek modülle güncellenmek istenirse (documentation-agent/architect) bu, bağlayıcılığı
+DEĞİŞTİRMEYEN kozmetik bir senkronizasyon olur — security-agent bunu bloklayıcı görmüyor.
