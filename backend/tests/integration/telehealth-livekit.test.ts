@@ -284,6 +284,18 @@ describe("telehealth/livekit — meeting-token, LiveKit YAPILANDIRILMIŞKEN (sah
     const { doctor } = await createDoctorWithAvailability(app);
     const { id, accessToken } = await bookAppointment(app, doctor.slug, nextMondayNineAmUtc());
 
+    // [TCT] §9.7.2/§9.7.3 (bağlayıcı) — `POST /appointments` artık `PENDING_PAYMENT` ile
+    // başlar; yalnızca `SCHEDULED` randevular iptal edilebilir (bkz. telehealth.routes.ts). Bu
+    // izole akışta ödemeyi simüle etmenin en basit yolu ADMIN'in manuel `mark-paid` ucudur.
+    const created = await app.prisma.appointment.findUniqueOrThrow({ where: { id } });
+    const markPaid = await app.inject({
+      method: "POST",
+      url: `/api/v1/admin/telehealth/bookings/${created.bookingId}/mark-paid`,
+      headers: authHeader(adminToken),
+      payload: { reason: "Test — ofis içi ödeme simülasyonu" },
+    });
+    expect(markPaid.statusCode).toBe(200);
+
     const cancelRes = await app.inject({ method: "POST", url: `/api/v1/appointments/${id}/cancel?t=${accessToken}`, payload: {} });
     expect(cancelRes.statusCode).toBe(200);
 

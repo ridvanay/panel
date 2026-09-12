@@ -946,6 +946,509 @@ politikası, "yeni blok tipi YOK", telif kuralları) **aynen geçerlidir.**
 
 ---
 
+### 9.7 TADİLAT TURU 2 — Rezervasyon akışı, çoklu slot, sağlık verisi, ödeme, portallar
+
+> **Durum:** BAĞLAYICI. Bu bölüm, bu dokümanın §3.5 / §4.3 / §4.5 / §11 maddelerini
+> **açıkça ve gerekçeli olarak tadil eder.** Tadil EDİLMEYEN her madde aynen yürürlüktedir.
+> Branş: **`feature/telehealth-booking-payments`** (master'dan açılır).
+> Kapsam kaynağı: kullanıcının "Randevu Rezervasyon Akışı, Çoklu Slot, Sağlık Verisi Yükleme,
+> Ödeme ve Video Toplantı Entegrasyonu" isteği.
+
+#### 9.7.0 Tadilat özeti (tek tablo)
+
+| # | Mevcut karar | Yeni karar | Tip |
+|---|---|---|---|
+| 1 | §4.3 "**Ödeme YOKTUR**, backlog `feature/telehealth-payments`" | Backlog **AÇILDI** — Stripe Checkout (`mode: "payment"`), mevcut `checkout.routes.ts` + `webhooks/stripe.routes.ts` deseniyle BİREBİR | **TADİL** |
+| 2 | Kullanıcı isteği: "Mock Escrow" | **REDDEDİLDİ** — §4.4 madde 1'in ("sahte arayüz yazılmaz") doğrudan uygulaması; emanet (escrow) lisanslı finansal faaliyettir. Yapılandırılmamış Stripe → `503 PAYMENTS_NOT_CONFIGURED` + dürüst panel (LiveKit deseni) | **RET** |
+| 3 | §3.5 "`patientNote` REDDEDİLDİ" | **Alan olarak hâlâ REDDEDİLDİ**; yerine ayrı, şifreli, ayrı rızalı `AppointmentIntake` + `AppointmentDocument` modelleri (§9.7.5). `Appointment`/`AppointmentBooking` üzerinde serbest metin şikâyet alanı **YOKTUR** | **YENİDEN ÇERÇEVELEME** |
+| 4 | §11 `feature/telehealth-intake-form` backlog | **AÇILDI** — compliance-agent ÖN-onayı ENGELLEYİCİ ve **db-agent'tan ÖNCE** gelir (§9.7.9) | **TADİL** |
+| 5 | §3.5 "`MeetingRoom` tablosu REDDEDİLDİ" | **AYNEN GEÇERLİ** — oda sahipliği yalnızca bir seviye YUKARI taşındı: `AppointmentBooking.meetingRoomName` (§9.7.6) | **KORUNDU** |
+| 6 | §3.5 `@@unique([doctorId, startsAt])` = 1 randevu = 1 slot | **AYNEN GEÇERLİ** — çoklu slot, satırı genişleterek DEĞİL, `AppointmentBooking` üst kaydıyla çözülür (§9.7.2) | **KORUNDU** |
+| 7 | §4.3 "iptal edilen slot kapalı kalır" | **Dar tadilat:** yalnızca `PENDING_PAYMENT`'ta kalıp süresi dolan (hiç ödenmemiş) satırlar **HARD DELETE** edilir → slot serbest kalır. Ödenmiş/onaylanmış randevunun iptalinde kural **DEĞİŞMEDİ** (§9.7.3) | **TADİL** |
+| 8 | §4.5 katılım penceresi `startsAt - 5 dk` | `startsAt - **10 dk**`; çoklu slotta pencere **booking açıklığı** üzerinden hesaplanır; ayrıca **`paymentStatus = PAID`** şartı eklendi (§9.7.6) | **TADİL** |
+| 9 | §11 "Doktor tarafı için ayrı panel/rol" backlog | **AÇILDI** ama **`SiteRole.DOCTOR` EKLENMEZ** — doktorluk bir ROL değil, bir İLİŞKİDİR (`DoctorProfile.userId`), §2.5'in doğrudan sonucu (§9.7.7) | **TADİL** |
+| 10 | §11 `feature/telehealth-appointment-emails` backlog | **AÇILDI** (yalnızca `APPOINTMENT_CONFIRMATION`; hatırlatma e-postası backlog'da KALIR) — notification-agent devreye girer (§9.7.8) | **TADİL** |
+| 11 | Kullanıcı isteği: "fatura" | **YENİDEN ÇERÇEVELENDİ** — `Invoice` TABLOSU AÇILMAZ; PAID booking'in TÜRETİLMİŞ görünümü (`GET .../invoice`). UI etiketi "**Ödeme Belgesi (bilgi amaçlıdır)**", "Fatura" DEĞİL — e-Fatura/GİB entegrasyonu yoktur (§9.7.4) | **YENİDEN ÇERÇEVELEME** |
+| 12 | §4.4 madde 5 "kayıt (recording) KAPSAM DIŞI" | **AYNEN GEÇERLİ** — "geçmiş görüşme kayıtları" isteği, video kaydı DEĞİL, **randevu geçmişi listesi** olarak karşılanır (§9.7.7) | **KORUNDU** |
+
+#### 9.7.1 KARAR G — Ödeme: Stripe Checkout, mevcut desenle, sahte escrow YOK
+
+1. `POST /appointments/bookings` → `AppointmentBooking.paymentStatus = PENDING`, randevu
+   satırları `AppointmentStatus.PENDING_PAYMENT` ile **oluşturulur ve slotu TUTAR**
+   (`@@unique([doctorId, startsAt])` çifte rezervasyonu tutma anında da engeller).
+2. `POST /appointments/bookings/{id}/checkout-session` (**integration-agent**) Stripe
+   Checkout oturumu açar; `metadata.bookingId` taşır; `expires_at` = **30 dakika**
+   (`Cart`/`Order`'ın 24 saatlik varsayılanı REDDEDİLDİ — 24 saat tutulan bir klinik slotu
+   satılamaz hâle gelir).
+3. **Onay olayı `checkout.session.completed` (mode `"payment"`)'dır.** Kullanıcının istediği
+   `payment_intent.succeeded` **REDDEDİLDİ**: `metadata.bookingId`'yi taşıyan oturum
+   nesnesidir, `PaymentIntent` değil; depodaki mevcut sipariş akışı da bu olayı kullanır
+   (`webhooks/stripe.routes.ts::handleCheckoutCompleted`) ve **ikinci bir onay yolu açmak
+   çift-onay/idempotency yarışı üretir.** `payment_intent.payment_failed` yalnızca
+   `paymentStatus = FAILED` + `errorSummary` yazar.
+4. **Yeni webhook path'i AÇILMAZ.** Mevcut `POST /webhooks/stripe` genişletilir
+   (`session.metadata.bookingId` varsa yeni dal). İmza doğrulaması, ham-body parser ve
+   idempotency (`stripeCheckoutSessionId @unique` + `paymentStatus !== PENDING` ise no-op)
+   **aynen mevcut desendir.**
+5. Onay işlemi **tek `runSerializable` transaction**'dır: `paymentStatus = PAID` + `paidAt`
+   + **tüm** `PENDING_PAYMENT` randevuları `SCHEDULED`'a çevir. Stok düşürme YOKTUR
+   (satılan bir envanter değil, bir zaman dilimidir) — `handleOrderPaid`'in stok döngüsü
+   **kopyalanmaz**.
+6. **Yapılandırılmamışken (bağlayıcı):** `STRIPE_SECRET_KEY` boşsa
+   `POST .../checkout-session` → **`503 PAYMENTS_NOT_CONFIGURED`**; booking oluşturma yine
+   `201` döner ve yanıtta `paymentsConfigured: false, checkoutUrl: null` bulunur. Frontend
+   **dürüst durum paneli** gösterir (§4.4 madde 3 ile BİREBİR aynı desen). **Randevu
+   otomatik PAID'e ÇEVRİLMEZ.**
+7. **Manuel/ofis içi ödeme kaçış kapısı:** `POST /admin/telehealth/bookings/{id}/mark-paid`
+   — **yalnızca ADMIN**, `reason` zorunlu, `logAudit(action: "telehealth.booking.marked_paid")`.
+   `paidBy = "manual"`. MANAGER'a verilmez (para hareketi beyanı).
+8. **İade (refund) KAPSAM DIŞI.** `REFUNDED` enum değeri ilk seferde tanımlanır (sonradan
+   `ALTER TYPE` borcu doğurmasın) ama **bu turda hiçbir kod onu YAZMAZ.** Backlog:
+   `feature/telehealth-refunds` (integration-agent).
+9. `Order`/`OrderItem` tabloları **KULLANILMAZ** (bağlayıcı). Gerekçe: (a) `Order`, ürün
+   biçimlidir (`orderNumber`, `OrderItem.productId`, kargo kolonları, stok düşürme,
+   `salesCount`, `ORDER_PAID` giden webhook'u, `ORDER_CONFIRMATION` e-postası); (b) randevu
+   siparişi **çıkarımsal sağlık verisidir** (§7.1) ve onu genel ticaret tablosuna,
+   `/admin/orders` RBAC'ine ve satış raporlarına karıştırmak §8.4'ün kendi veri
+   minimizasyonu kararını ihlal eder; (c) `ORDER_PAID` webhook'u abone 3. partilere
+   randevu verisi sızdırırdı.
+
+#### 9.7.2 KARAR H — Çoklu slot: `AppointmentBooking` üst kaydı (1 satır = 1 slot KORUNUR)
+
+**Reddedilen alternatif:** tek `Appointment` satırının `endsAt`'ini genişletmek (13:30–14:30).
+Gerekçe: `@@unique([doctorId, startsAt])` yalnızca BAŞLANGIÇ anını korur — 13:30'da başlayan
+60 dk'lık bir randevu, 14:00'da başlayan başka bir randevuyu **veritabanı düzeyinde
+engellemez**. Bu, §4.3'ün tüm çifte-rezervasyon garantisini sessizce kaldırırdı; aralık
+çakışması için `EXCLUDE USING gist` gerekirdi → depoda elle yazılmış SQL yasağı ([EPT] §1.4).
+
+**Karar:** `N` slot = `N` `Appointment` satırı + 1 `AppointmentBooking` üst kaydı.
+- Çifte rezervasyon garantisi **hiç değişmeden** çalışır.
+- `totalCents = slotCount × unitPriceCents` doğal olarak satır snapshot'larının toplamıdır
+  — "toplam tutar" istemciden **ASLA** kabul edilmez (§8 madde 3 aynen geçerli).
+- Kısmi iptal (2 slottan 1'inin iptali) temsil edilebilir.
+- Ardışık olmayan slotlar (13:30 + 15:00) desteklenir.
+
+**Kısıtlar (Zod, bağlayıcı):**
+- `slots.length` **1..4** (`MAX_BOOKING_SLOTS = 4`). Sınırsız seçim, kimlik doğrulamasız tek
+  bir istekle doktorun tüm gününü tutmaya izin verirdi (hız sınırı 5/dk buna yetmez).
+- Tüm slotlar **AYNI doktora** ve **doktorun kendi saat diliminde AYNI takvim gününe** ait
+  olmalıdır → aksi hâlde `422`. Aksi takdirde tek bir "booking" haftalara yayılır ve katılım
+  penceresi/oda kavramı çöker.
+- Her slot sunucuda `lib/availability.ts` ile **ayrı ayrı** doğrulanır; herhangi biri
+  geçersiz/dolu ise **tüm booking reddedilir** (kısmi rezervasyon YOKTUR) → `409 SLOT_TAKEN`.
+
+**Mevcut `POST /appointments` (tek slot) KALDIRILMAZ** — geriye dönük uyumluluk için
+korunur, `deprecated: true` işaretlenir ve iç olarak `slotCount: 1` bir booking üretir.
+Davranış değişikliği (artık `PENDING_PAYMENT` ile başlar) openapi'de açıkça yazılır ve
+qa-agent mevcut e2e testlerini günceller.
+
+#### 9.7.3 KARAR I — `AppointmentStatus.PENDING_PAYMENT` (tek yeni değer) + süre dolumu
+
+- `AppointmentStatus`'a **YALNIZCA `PENDING_PAYMENT`** eklenir,
+  `ALTER TYPE ... ADD VALUE ... BEFORE 'SCHEDULED'` ile, **İZOLE bir migration'da**
+  (`ImportJobType.PRODUCTS` / `SiteUserStatus` emsali). Gerekçe: tutulmuş-ama-ödenmemiş slot
+  gerçek bir domain durumudur; onaylanmışla aynı değerde tutmak `GET /slots`'u ya çifte satışa
+  ya da hiç ödenmemiş slotun kalıcı ölümüne mahkûm eder.
+- **`CONFIRMED` EKLENMEZ.** `SCHEDULED` zaten onaylanmış durumdur (§3.1 bağlayıcı adlandırma);
+  UI etiketi "Onaylandı"dır. Enum'a eşanlamlı ikinci değer eklemek geri alınamaz borçtur.
+- Ödeme durumu **randevuda değil booking'de** yaşar: **YENİ** enum `BookingPaymentStatus`
+  (`PENDING | PAID | FAILED | EXPIRED | REFUNDED`) — yeni enum olduğu için `ALTER TYPE`
+  değildir, tüm değerler ilk seferde tanımlanır (§3.1 disiplini).
+- **Süre dolumu (§4.3'e dar tadilat):** `checkout.session.expired` veya süpürücü
+  `expiresAt < now` gördüğünde → booking `paymentStatus = EXPIRED`, **`PENDING_PAYMENT`
+  randevu satırları HARD DELETE edilir** (slot serbest kalır).
+  Gerekçe: hiç ödenmemiş, hiç onaylanmamış bir satır tıbbi bir kayıt DEĞİLDİR — hiçbir şey
+  olmamıştır; silmek KVKK veri minimizasyonuyla uyumludur, kısmi unique indeks ([EPT] §1.4
+  reddi) gerektirmez ve drift riski üretmez.
+  **Ödenmiş/`SCHEDULED` bir randevunun iptalinde §4.3 AYNEN GEÇERLİDİR: satır silinmez,
+  slot kapalı kalır.**
+- Süpürücü `backend/src/lib/booking-expiry.ts` (yeni dosya, `cart-retention.ts` iskeletiyle
+  aynı) — **backend-agent.** Kadans: 5 dakika (slotun boşa gitmemesi için `contact-retention`
+  saatlik kadansı uygun değildir).
+
+#### 9.7.4 Veri modeli taslağı (db-agent — uygulayacak olan)
+
+> Taslaktır; nihai alan tipleri/indeksler db-agent'ın kararıdır. `AppointmentBooking`
+> yerleşimi: `Appointment` modelinden SONRA, `Cart` modelinden ÖNCE.
+
+```prisma
+enum BookingPaymentStatus { PENDING PAID FAILED EXPIRED REFUNDED }
+
+model AppointmentBooking {
+  id             String @id @default(uuid())
+  seq            Int    @unique @default(autoincrement())
+  /// Hastaya gösterilen okunabilir numara (Order.orderNumber deseni). Üretimi backend-agent'ın işi.
+  bookingNumber  String @unique
+  doctorId       String
+  patientUserId  String?
+
+  /// PII SNAPSHOT — Appointment.patientName/Email ile AYNI disiplin ve AYNI retention döngüsü.
+  patientName    String
+  patientEmail   String
+
+  slotCount      Int
+  /// DoctorProfile.sessionPriceCents SNAPSHOT'ı — istemciden ASLA alınmaz (§8 madde 3).
+  unitPriceCents Int
+  subtotalCents  Int
+  totalCents     Int
+  currency       String @default("TRY")
+
+  paymentStatus           BookingPaymentStatus @default(PENDING)
+  stripeCheckoutSessionId String?  @unique
+  stripePaymentIntentId   String?
+  paidAt                  DateTime?
+  /// "stripe" | "manual" (§9.7.1 madde 7). Serbest metin, enum DEĞİL (sağlayıcı eklenebilir).
+  paidBy                  String?
+  paidNote                String?
+  errorSummary            String?
+  /// Slot TUTMA süresi sonu = Stripe Checkout oturumunun expires_at'i (30 dk).
+  expiresAt               DateTime
+
+  /// §9.7.6 — booking BAŞINA TEK LiveKit odası. Rastgele ("room_" + 32 hex), id'den TÜRETİLMEZ.
+  meetingRoomName String @unique
+  /// Hasta magic-link'inin opak token'ının SHA-256 hash'i (lib/tokens.ts). HAM DEĞER SAKLANMAZ.
+  accessTokenHash String @unique
+
+  /// KVKK randevu aydınlatma/onay KANITI — boolean DEĞİL zaman damgası
+  /// (Order.distanceSalesApprovedAt emsali). İstekten gelen zaman damgası KABUL EDİLMEZ.
+  consentAt      DateTime
+  consentVersion String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  doctor       DoctorProfile         @relation(fields: [doctorId], references: [id], onDelete: Restrict)
+  patientUser  User?                 @relation("AppointmentBookingPatient", fields: [patientUserId], references: [id], onDelete: SetNull)
+  appointments Appointment[]
+  intake       AppointmentIntake?
+  documents    AppointmentDocument[]
+
+  @@index([doctorId, createdAt])
+  @@index([patientUserId])
+  @@index([paymentStatus, expiresAt])
+  @@index([stripePaymentIntentId])
+  @@map("appointment_bookings")
+}
+```
+
+`Appointment` modeline **EKLENECEK** (başka hiçbir alanı değiştirilmez):
+```prisma
+  /// null = bu tur ÖNCESİ oluşmuş tekil randevu (geriye dönük backfill YAPILMAZ).
+  bookingId String?
+  booking   AppointmentBooking? @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  @@index([bookingId])
+```
+`Appointment.meetingRoomName` / `accessTokenHash` **KALDIRILMAZ** (mevcut satırlar ve tekil
+akış bozulmaz); booking'e bağlı randevularda **booking'inkiler kanonik kabul edilir.**
+
+`User` modeline: `appointmentBookings AppointmentBooking[] @relation("AppointmentBookingPatient")`.
+
+**Sağlık verisi modelleri — §9.7.5'in teknik karşılığı:**
+```prisma
+model AppointmentIntake {
+  id        String @id @default(uuid())
+  bookingId String @unique
+  /// AES-256-GCM ŞİFRELİ (lib/crypto.ts::encryptSecret — User.twoFactorSecret İLE AYNI
+  /// disiplin). DÜZ METİN ASLA SAKLANMAZ; index YOK, arama YOK, log'a YAZILMAZ.
+  noteCiphertext           String?
+  /// KVKK md.6/2 AÇIK RIZA KANITI. NOT NULL — rıza olmadan bu satır VAR OLAMAZ.
+  healthDataConsentAt      DateTime
+  healthDataConsentVersion String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  booking AppointmentBooking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  @@map("appointment_intakes")
+}
+
+model AppointmentDocument {
+  id        String @id @default(uuid())
+  seq       Int    @unique @default(autoincrement())
+  bookingId String
+  /// PRIVATE depolama yolu. `Media` satırı DEĞİLDİR ve @fastify/static ALTINDA SERVİS EDİLMEZ.
+  storagePath String
+  filename    String
+  /// WHITELIST: application/pdf | image/png | image/jpeg — sihirli-bayt doğrulaması ZORUNLU
+  /// (lib/mime-detect.ts, media.routes.ts:149-165 İLE AYNI disiplin).
+  mimeType    String
+  sizeBytes   Int
+  sha256      String
+  uploadedAt  DateTime  @default(now())
+  /// KVKK md.11 silme hakkı: dosya DİSKTEN silinir, satır erişim denetimi bütünlüğü için kalır.
+  deletedAt   DateTime?
+  booking AppointmentBooking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  @@index([bookingId, deletedAt])
+  @@map("appointment_documents")
+}
+```
+
+`EmailTemplatePurpose` enum'ına **yalnızca `APPOINTMENT_CONFIRMATION`** eklenir (İZOLE
+migration). Hatırlatma/iptal e-postası bu turda EKLENMEZ.
+
+**Migration planı (db-agent, bağlayıcı — 4 ayrı migration, bu sırayla):**
+1. `add_appointment_status_pending_payment` — **YALNIZCA** `ALTER TYPE`, başka hiçbir şey.
+2. `add_email_template_purpose_appointment_confirmation` — **YALNIZCA** `ALTER TYPE`.
+3. `add_telehealth_booking_and_payments` — `BookingPaymentStatus` + `AppointmentBooking`
+   + `Appointment.bookingId` + karşı-ilişkiler.
+4. `add_telehealth_intake_and_documents` — `AppointmentIntake` + `AppointmentDocument`.
+
+Gerekçe: `ALTER TYPE ... ADD VALUE` bazı Postgres sürümlerinde aynı transaction içinde
+kullanılamaz; ayrıca geri alınamaz adımı ayrı commit'te tutmak §13'ün `git bisect` gerekçesiyle
+tutarlıdır. **Elle yazılmış SQL YOK; backfill YOK.**
+
+#### 9.7.5 KARAR J — Sağlık verisi (ENGELLEYİCİ, compliance-agent + security-agent)
+
+§3.5'in `patientNote` reddi **kaldırılmadı, yerine getirilebilir bir çerçeveye taşındı.**
+Kullanıcının istediği şikâyet notu + reçete/tahlil/radyoloji yüklemesi **KVKK md.6 özel
+nitelikli kişisel veridir** ve aşağıdaki **ON maddenin tamamı sağlanmadan hiçbir kod
+birleştirilemez.**
+
+1. **Randevunun ÖN KOŞULU OLAMAZ.** Intake adımı **opsiyoneldir**; atlanması rezervasyonu,
+   ödemeyi veya görüşmeyi **hiçbir şekilde engellemez.** (KVKK: hizmetin şartına bağlanan
+   rıza geçerli rıza değildir. Kullanıcının "dosyanız yoksa atlayabilirsiniz" notu bu
+   kararla uyumludur ve **zorunludur.**)
+2. **AYRI açık rıza.** Randevu KVKK onay kutusundan **BAĞIMSIZ, ikinci bir onay kutusu**;
+   varsayılan **işaretsiz**; metni **compliance-agent yazar** (frontend-agent metni kendisi
+   yazmaz — §5.2 `ContactForm` emsali). Kanıt `healthDataConsentAt` + `...Version`.
+   Rıza yoksa not/dosya **kabul edilmez** → `422 HEALTH_CONSENT_REQUIRED`.
+3. **Şifreleme.** Not, `lib/crypto.ts` (AES-256-GCM) ile şifreli saklanır. Düz metin kolon
+   **YASAK**; arama/filtre/sıralama **YASAK**.
+4. **`Media` tablosu YASAK (bağlayıcı, kodda doğrulandı).** Sağlık belgesi **ASLA** bir
+   `Media` satırı olmaz. İki somut gerekçe: (a) `plugins/uploads.ts:32-34` — `UPLOAD_DIR`
+   `@fastify/static` ile `/uploads/` altında **kimlik doğrulamasız** servis edilir; bir
+   tahlil sonucu URL'i bilen herkese açık olurdu; (b) `GET /admin/media` tüm kütüphaneyi
+   listeler → **EDITOR hasta belgelerini görürdü**, bu §8.4'ün kendi kararının ihlalidir.
+5. **Özel depolama + kapılı servis.** Dosyalar `PRIVATE_UPLOAD_DIR` (ör. `uploads-private/`,
+   `@fastify/static`'e **KAYDEDİLMEZ**) altına yazılır; **yalnızca**
+   `GET /appointments/documents/{documentId}/content` üzerinden, yetkilendirmeden geçerek,
+   `Content-Disposition: attachment` + `Cache-Control: no-store` ile akıtılır.
+   `storagePath` tahmin edilemez olmalıdır.
+6. **Erişim kaydı ZORUNLU.** Her indirme/okuma
+   `logAudit(action: "telehealth.intake_document.accessed" | "telehealth.intake_note.accessed")`
+   yazar (aktör, belge id, booking id, IP). Bu bir "nice to have" değil, KVKK teknik
+   tedbiridir.
+7. **Yetkilendirme (§4.5/§8'den DAHA DAR):** not/belge içeriğine yalnızca (a) hastanın
+   kendisi (oturum veya doğru `?t=`), (b) **o booking'in doktoru** (`doctor.userId`),
+   (c) `ADMIN` (destek — denetime ADMIN olarak düşer) erişir.
+   **`MANAGER` İÇERİĞE ERİŞEMEZ** (yalnızca "N belge var" sayısını görür);
+   **`EDITOR` hiçbir şey göremez.** Başka bir doktor → `404` (varlık sızdırılmaz).
+8. **Sızma yasakları (code-quality-agent + security-agent doğrular):** not/belge içeriği veya
+   dosya adı; admin randevu liste DTO'sunda, giden webhook payload'ında, e-posta gövdesinde,
+   log/Sentry breadcrumb'ında, LiveKit oda metadata'sında **YER ALAMAZ.**
+9. **Saklama.** Belgeler ve not, booking'in son `endsAt`'inden **90 gün** sonra
+   **gerçekten silinir** (dosya diskten, `noteCiphertext` `null`) — §7.3'ün 12 aylık
+   `patientName`/`patientEmail` anonimleştirme penceresinden **kısadır ve öyle kalmalıdır**
+   (özel nitelikli veri, sıkı minimizasyon). Nihai süre compliance-agent'ın kararıdır.
+   Süpürücü: `backend/src/lib/intake-retention.ts` (backend-agent, `contact-retention.ts`
+   iskeleti).
+10. **Silme hakkı (KVKK md.11) UÇ OLARAK VARDIR:**
+    `DELETE /appointments/documents/{documentId}` ve
+    `DELETE /appointments/bookings/{id}/intake` — hasta kendi verisini **beklemeden** siler.
+
+**Yüklemede teknik kısıtlar:** istek başına **1 dosya**, ≤ **5 MB** (mevcut
+`MAX_UPLOAD_BYTES`), booking başına en fazla **5 belge**
+(`409 DOCUMENT_LIMIT_REACHED`), MIME whitelist + **sihirli-bayt** doğrulaması (beyan ile
+içerik uyuşmazsa `422 UNSUPPORTED_DOCUMENT_TYPE`), SVG **REDDEDİLİR** ([DTI] §4.1),
+hız sınırı **10 istek/dk**.
+
+#### 9.7.6 Toplantı odası ve katılım penceresi (§3.5/§4.5 tadilatı)
+
+- `MeetingRoom` tablosu **hâlâ YOKTUR** (§3.5 gerekçesi aynen geçerli). Oda, booking'e
+  1:1 bağlı tek bir string'dir; yalnızca **sahibi bir seviye yukarı taşınmıştır**.
+- **Çoklu slot = TEK oda.** Aksi hâlde 13:30–14:30 arası tek bir konsültasyonda hasta
+  14:00'da odadan düşerdi.
+- **Katılım penceresi (bağlayıcı, §4.5 yerine):** `now >= min(startsAt) - 10 dk` **ve**
+  `now <= max(endsAt) + 15 dk`. Aksi hâlde `409 APPOINTMENT_NOT_JOINABLE`.
+- **YENİ ŞART:** booking'e bağlı bir randevu için token, `paymentStatus === "PAID"`
+  değilse **ÜRETİLMEZ** → `409 APPOINTMENT_NOT_JOINABLE`. (Ödenmemiş görüşme açılmaz.)
+- §8 madde 1'in tüm grant/TTL/identity kısıtları **aynen geçerlidir**; `identity`
+  `patient:<bookingId>` / `doctor:<doctorId>` olur (PII içermez).
+- İlk başarılı token → ilgili randevu `IN_PROGRESS` + `startedAt` (tek seferlik) — değişmedi.
+
+#### 9.7.7 KARAR K — Doktor ve Hasta portalları: YENİ AUTH SİSTEMİ YOK
+
+**Kodda doğrulandı — hiçbiri yeniden yazılmaz:** e-posta/şifre girişi, TOTP 2FA
+(`User.twoFactorEnabled` / `twoFactorSecret` AES-256-GCM), yedek kodlar,
+`POST /auth/login` → `{ requiresTwoFactor, challengeToken }` → `POST /auth/2fa/verify`
+akışı ve 2FA kurulum uçları (`/admin/settings/security/2fa/*`, **rol şartı YOK** —
+`security.routes.ts:41-46`, yalnızca `authenticate`) **zaten mevcuttur.**
+
+1. **`SiteRole.DOCTOR` EKLENMEZ (bağlayıcı).** Doktorluk bir ROL değil bir **İLİŞKİDİR**:
+   `isDoctor(user) = DoctorProfile.userId === user.id`. Bu, §2.5'in doğrudan sonucudur ve
+   `canUseAdvancedBuilder(user) = role === "ADMIN"` türetme emsaliyle aynı disiplindir
+   (`User` modeli, satır 285-291). Enum'a değer eklemek geri alınamaz ve
+   `PERMISSIONS_MATRIX` / `site-roles.ts` / `.claude/architect-scope-rbac-5-tier.md`'nin
+   tamamını dalgalandırırdı. Backlog: `feature/doctor-role-tier`.
+2. **2FA doktor için ZORUNLU — kolon ile DEĞİL, kapı ile.** `/doctor/*` uçları
+   `user.twoFactorEnabled === true` şartını **route seviyesinde** arar; sağlanmazsa
+   **`403 TWO_FACTOR_REQUIRED`** + kurulum yönlendirmesi. Yeni DB kolonu YOK, yeni 2FA
+   ucu YOK.
+3. **Portal rotaları panel DEĞİLDİR** — doktor bir admin kullanıcısı değildir:
+   frontend `/{lang}/doctor/**` ve `/{lang}/patient/**` (site tarafı),
+   backend `/api/v1/doctor/*` ve `/api/v1/patient/*`. `/admin/telehealth/*`
+   **değişmeden** admin/manager panelinde kalır. Türkçe rota segmenti **REDDEDİLDİ**
+   (§5.2 gerekçesi aynen); her ikisi de `noindex`.
+4. **Hasta magic-link:** `AppointmentBooking.accessTokenHash`. Ham token
+   `POST /appointments/bookings` yanıtında **BİR KEZ** döner ve ödeme sonrası e-postada
+   iletilir. Bağlantı: `/{lang}/patient/bookings/{bookingId}?t=<token>`. Geçerlilik:
+   son `endsAt` + **30 gün** (ödeme belgesi erişimi) — nihai süre security-agent'ın.
+   Karşılaştırma **sabit zamanlı** (`timingSafeEqualHex`), yetkisiz erişim **`404`**.
+   `POST /appointments/bookings/{id}/resend-link` hız sınırı **1 istek/dk**.
+5. **"Geçmiş görüşme kayıtları" = randevu GEÇMİŞİ.** §4.4 madde 5'in video kaydı yasağı
+   **aynen yürürlüktedir**; doktor panelinde gösterilen, geçmiş randevuların listesi ve
+   (varsa) o booking'e ait belgelerdir. Ses/video kaydı **YOKTUR ve ima EDİLMEZ.**
+
+#### 9.7.8 Bildirim (notification-agent) — sınırlı açılış
+
+- **Yalnızca `APPOINTMENT_CONFIRMATION`**: ödeme onaylandığında hastaya; içinde randevu
+  slotları, toplam tutar ve **magic-link** bulunur. Şablon/tetikleyici **notification-agent**;
+  gönderim kanalı mevcut `sendTemplateEmail` (integration-agent bağımlılığı yok, SMTP zaten var).
+- **Bağlayıcı:** e-posta gövdesine şikâyet notu, belge adı veya uzmanlık adı **YAZILMAZ**
+  (uzmanlık adı çıkarımsal sağlık verisidir — "Psikiyatri randevunuz" bir e-posta konusu
+  OLAMAZ). Konu satırı nötr olmalıdır: "Randevunuz onaylandı".
+- Hatırlatma/iptal/no-show e-postaları **bu turda YOK** — backlog'da kalır.
+
+#### 9.7.9 Ajan dağılımı ve yürütme sırası (§9.2'nin bu tur için REVİZYONU)
+
+```
+architect (bu §9.7)
+  → compliance-agent  [ÖN-ONAY, ENGELLEYİCİ]      # §9.7.5'in 10 maddesi + rıza metni sürümü
+  → db-agent          [4 migration, tek başına]
+  → backend-agent  ∥  ui-designer  ∥  devops-agent
+  → integration-agent (Stripe) ∥ frontend-agent ∥ notification-agent
+  → security-agent  ∥  compliance-agent (son denetim)   [İKİSİ DE ENGELLEYİCİ]
+  → code-quality-agent
+  → qa-agent
+  → documentation-agent
+  → devops-agent (CI/imaj) → observability-agent (opsiyonel)
+```
+
+**§9.2'den TEK YAPISAL FARK:** compliance-agent **öne alındı.** Gerekçe: sağlık verisinin
+saklama biçimi (şifreleme, ayrı tablo, rıza kanıtı, `Media` yasağı) bir **şema kararıdır** —
+migration yazıldıktan sonra denetlenemez, önce kararlaştırılmalıdır.
+
+| Ajan | Bu turdaki sahası | DOKUNMAZ |
+|---|---|---|
+| **compliance-agent** | §9.7.5'in 10 maddesi; iki rıza metni + sürümleme; 90 gün/12 ay saklama; `.claude/compliance-notes-telehealth.md` güncellemesi | Kod |
+| **db-agent** | §9.7.4'teki 4 migration, indeksler | İş mantığı |
+| **backend-agent** | booking/slot matematiği, `PENDING_PAYMENT` yaşam döngüsü, intake+belge uçları, `/doctor/*` + `/patient/*` uçları, `lib/booking-expiry.ts`, `lib/intake-retention.ts`, private storage sürücüsü | **Stripe kodu, LiveKit kodu, e-posta şablonu, şema** |
+| **integration-agent** | `POST .../checkout-session`, `webhooks/stripe.routes.ts` yeni dalı, `503 PAYMENTS_NOT_CONFIGURED`, mevcut LiveKit ucunun booking-odasına uyarlanması | Fiyat/slot matematiği, intake |
+| **security-agent** | ENGELLEYİCİ: magic-link TTL/sabit-zaman, belge IDOR matrisi (§9.7.5 madde 7), private storage'ın statik servis ALTINDA OLMADIĞININ doğrulanması, webhook imza/idempotency, `TWO_FACTOR_REQUIRED` kapısı, hız sınırları | Politikanın implementasyonu |
+| **frontend-agent** | çoklu slot seçim state'i (`selectedSlot` → `selectedSlots`), Hizmet Özeti dinamik toplam, opsiyonel intake adımı + drag&drop uploader, `/doctor/**` + `/patient/**` ekranları, ödeme dönüş sayfaları | **Meta/SEO, rıza metninin İÇERİĞİ, görsel token kararı** |
+| **ui-designer** | çoklu-slot çip/liste deseni, "SEÇİLEN RANDEVU" kutusunun sağ-üst aksiyon paterni ("Değiştir"), bağımsız yeşil şeridin kaldırılması, uploader boş/hata/yükleniyor durumları, ödeme durumu rozetleri (Ödendi/Bekliyor/Süresi doldu) — `.claude/design-notes-telehealth.md`'ye EK | Kod |
+| **notification-agent** | `APPOINTMENT_CONFIRMATION` şablonu + tetikleyici (§9.7.8) | Gönderim altyapısı |
+| **devops-agent** | `PRIVATE_UPLOAD_DIR` volume/backup/izin, `STRIPE_*` CI secret'ları, `.env.example`, **private dizinin imaja/statik servise sızmadığının doğrulanması** | Uygulama kodu |
+| **seo-agent** | `/doctor/**`, `/patient/**` ve ödeme dönüş sayfaları **`noindex`**; sitemap'e GİRMEZ | — |
+| **qa-agent** | §9.7.11 | Bug düzeltme |
+| **code-quality-agent** | yeni bağımlılık **YOK** hedefi (Stripe SDK zaten var; uploader için yeni paket EKLENMEZ — native HTML5 drag&drop), `any` yok, §9.7.5 madde 8 sızma taraması | Mimari karar |
+
+#### 9.7.10 Kontrat (`docs/architecture/openapi.yaml`) — bu turda architect tarafından EKLENDİ
+
+**Durum: YAPILDI** — `docs/architecture/openapi.yaml` bu turda architect tarafından
+güncellendi (YAML + tüm `$ref`'ler doğrulandı). Yeni şemalar: `BookingPaymentStatus`,
+`AppointmentBooking`, `CreateBookingRequest`, `CreateBookingResult`,
+**`BookingCheckoutSessionResponse`** (abonelik akışındaki mevcut `CheckoutSessionResponse`
+ile ad çakışmasını önlemek için bilinçli olarak AYRI şema), `BookingInvoice`,
+`AppointmentIntake`, `UpsertIntakeRequest`, `AppointmentDocument`, `DoctorPortalProfile`,
+`MarkBookingPaidRequest`. Yeni parametre: **`AppointmentDocumentId`** (mevcut `DocumentId`
+`ProductDocument`'e aittir — yeniden kullanılMAZ). `AppointmentStatus`'a `PENDING_PAYMENT`
+eklendi; `POST /appointments` `deprecated: true` işaretlendi.
+
+Yeni uçlar (özet; ayrıntı openapi.yaml'da):
+
+| Method + Yol | Auth | Sahibi |
+|---|---|---|
+| `POST /appointments/bookings` | public (opsiyonel Bearer), 5/dk | backend-agent |
+| `GET /appointments/bookings/{bookingId}` | `?t=` \| oturum \| doktor \| ADMIN/MANAGER | backend-agent |
+| `POST /appointments/bookings/{bookingId}/checkout-session` | `?t=` \| oturum, 10/dk | **integration-agent** |
+| `POST /appointments/bookings/{bookingId}/cancel` | `?t=` \| oturum \| ADMIN | backend-agent |
+| `GET /appointments/bookings/{bookingId}/invoice` | `?t=` \| oturum \| ADMIN (yalnızca PAID) | backend-agent |
+| `POST /appointments/bookings/{bookingId}/resend-link` | public, 1/dk | notification-agent |
+| `PUT /appointments/bookings/{bookingId}/intake` | hasta \| o booking'in doktoru \| ADMIN | backend-agent |
+| `GET /appointments/bookings/{bookingId}/intake` | aynı (MANAGER **HARİÇ**) + audit | backend-agent |
+| `DELETE /appointments/bookings/{bookingId}/intake` | hasta \| ADMIN | backend-agent |
+| `POST /appointments/bookings/{bookingId}/documents` | hasta, multipart, 10/dk | backend-agent |
+| `GET /appointments/bookings/{bookingId}/documents` | hasta \| doktor \| ADMIN (metadata) | backend-agent |
+| `GET /appointments/documents/{documentId}/content` | hasta \| o booking'in doktoru \| ADMIN + **audit** | backend-agent |
+| `DELETE /appointments/documents/{documentId}` | hasta \| ADMIN | backend-agent |
+| `GET /doctor/me` | oturum + `DoctorProfile` + 2FA | backend-agent |
+| `GET /doctor/bookings` | aynı | backend-agent |
+| `GET /patient/bookings` | oturum | backend-agent |
+| `POST /admin/telehealth/bookings/{bookingId}/mark-paid` | **ADMIN only** + audit | backend-agent |
+| `GET /admin/telehealth/bookings` | ADMIN + MANAGER (EDITOR dışlanır) | backend-agent |
+| `POST /webhooks/stripe` | imza (MEVCUT uç genişletilir) | **integration-agent** |
+
+Yeni hata kodları: `PAYMENTS_NOT_CONFIGURED` (503), `BOOKING_NOT_PAYABLE` (409),
+`BOOKING_EXPIRED` (409), `HEALTH_CONSENT_REQUIRED` (422), `UNSUPPORTED_DOCUMENT_TYPE` (422),
+`DOCUMENT_LIMIT_REACHED` (409), `TWO_FACTOR_REQUIRED` (403), `NOT_A_DOCTOR` (403).
+
+#### 9.7.11 QA kapsamı — §10'a EK (qa-agent)
+
+**Birim/entegrasyon:**
+14. `slotCount = 2` → `totalCents === 2 × unitPriceCents`; istemcinin gönderdiği `totalCents`
+    **yok sayılır**.
+15. `slots.length > 4` → `422`; farklı doktorlara/farklı günlere ait slotlar → `422`;
+    slotlardan biri doluysa **hiçbiri** oluşmaz (kısmi rezervasyon yok) → `409 SLOT_TAKEN`.
+16. Webhook idempotency: aynı `checkout.session.completed` iki kez → randevular yalnızca bir
+    kez `SCHEDULED`, e-posta bir kez.
+17. Süre dolumu: `expiresAt` geçmiş bir booking → randevu satırları **silinmiş**, aynı slot
+    `GET /slots`'ta yeniden `available: true`.
+18. Ödenmemiş booking → `POST /appointments/{id}/meeting-token` → `409 APPOINTMENT_NOT_JOINABLE`.
+19. Katılım penceresi: `startsAt - 11 dk` → `409`; `- 9 dk` → `200`.
+20. Rıza olmadan not/belge → `422 HEALTH_CONSENT_REQUIRED`; 6. belge → `409`;
+    `.svg`/sahte uzantılı PDF → `422`.
+
+**E2E (`frontend/tests/e2e/`):**
+21. `telehealth-multi-slot-booking.spec.ts`: 13:30 + 14:00 seç → sağ kartta iki slot listeli,
+    "2 Slot · 60 Dk" ve toplam tutar = 2 × seans ücreti → booking oluştur.
+22. Belgeli senaryo: intake adımında rıza + PDF yükle → randevu oluşur, doktor panelinde belge
+    görünür ve önizlenebilir.
+23. Belgesiz senaryo: intake adımı **atlanır** → rezervasyon ve ödeme **aynı şekilde tamamlanır.**
+24. Ödeme sonrası: (mock'lanmış webhook ile) booking "Ödendi" rozeti, randevu "Onaylandı",
+    "Toplantıya Katıl" butonu aktif, magic-link ile giriş çalışıyor.
+25. **Sızıntı testi (ENGELLEYİCİ):** yüklenen belge `/uploads/**` altından **ERİŞİLEMİYOR**;
+    `GET /admin/media` listesinde **GÖRÜNMÜYOR**.
+26. **Yetki matrisi:** başka bir doktor belge içeriğine → `404`; MANAGER içeriğe → `403`,
+    sayıya → `200`; EDITOR → `404`.
+27. 2FA'sı kapalı bir doktor `/doctor/*` → `403 TWO_FACTOR_REQUIRED`.
+28. `?t=` olmadan / yanlış token ile `/patient/bookings/{id}` → erişim yok.
+
+**Not:** §10'daki 60 sn ISR yoklama kuralı (`toPass` + `reload`) bu testler için de geçerlidir.
+
+#### 9.7.12 Bilinçli KAPSAM DIŞI (bu tur) + backlog
+
+| Öğe | Neden | Branş |
+|---|---|---|
+| İade/kısmi iade | §9.7.1 madde 8 | `feature/telehealth-refunds` |
+| Gerçek escrow / doktora ödeme aktarımı (payout) | Lisanslı finansal faaliyet; §4.4 madde 1 "sahte arayüz yok" | `feature/telehealth-escrow-payouts` |
+| e-Fatura / e-Arşiv (GİB) | §9.7.0 madde 11 | `feature/e-invoice-integration` |
+| Görüşme kaydı (Egress) | §4.4 madde 5 — DEĞİŞMEDİ | `feature/telehealth-recording` |
+| Randevu hatırlatma/iptal e-postası | §9.7.8 | `feature/telehealth-reminder-emails` |
+| `SiteRole.DOCTOR` | §9.7.7 madde 1 | `feature/doctor-role-tier` |
+| Randevu erteleme (reschedule) | §4.3 — DEĞİŞMEDİ | `feature/appointment-reschedule` |
+| Belgede virüs/malware taraması | 3. parti servis gerektirir; v1'de MIME+sihirli-bayt+boyut sınırı ile yetinilir (security-agent bunu **bilinen kabul edilmiş risk** olarak imzalar) | `feature/upload-antivirus` |
+| Doktorun kendi müsaitliğini düzenlemesi | v1'de ADMIN/MANAGER yeterli | `feature/doctor-self-availability` |
+
+#### 9.7.13 Commit planı (§13 disipliniyle, squash-merge)
+
+```
+1. chore(db): AppointmentStatus.PENDING_PAYMENT (izole ALTER TYPE)
+2. chore(db): EmailTemplatePurpose.APPOINTMENT_CONFIRMATION (izole ALTER TYPE)
+3. feat(db): randevu booking'i ve ödeme alanları
+4. feat(db): intake notu ve tıbbi belge modelleri
+5. feat(telehealth): çoklu slot rezervasyon ve booking yaşam döngüsü
+6. feat(telehealth): Stripe Checkout ve ödeme webhook'u        # integration-agent
+7. feat(telehealth): şifreli intake notu ve özel belge deposu
+8. feat(telehealth): doktor ve hasta portalı uçları
+9. feat(telehealth): çoklu slot seçimi, intake adımı ve portal arayüzleri
+10. feat(notifications): randevu onay e-postası
+11. test(e2e): çoklu slot, belge ve ödeme akışları
+12. chore(devops): özel belge deposu ve STRIPE_* ortam değişkenleri
+13. docs(openapi,architecture): booking/ödeme/intake kontratı
+```
+Squash mesajı: `feat(telehealth): çoklu slot rezervasyon, ödeme, sağlık verisi yükleme ve portallar`.
+
+---
+
 ## 10. QA kapsamı (qa-agent)
 
 **Birim (backend-agent + qa-agent):**
@@ -983,6 +1486,12 @@ e2e testleri `toPass` + `reload` ile **yoklamalıdır**; bu bir hata değildir v
 ---
 
 ## 11. Bilinçli KAPSAM DIŞI + backlog
+
+> **§9.7 GÜNCELLEMESİ:** aşağıdaki tablodaki **4 satır AÇILMIŞTIR** ve artık kapsam dışı
+> DEĞİLDİR: `feature/telehealth-payments`, `feature/telehealth-intake-form`,
+> `feature/telehealth-appointment-emails` (yalnızca onay e-postası),
+> `feature/doctor-portal` (rol eklenmeden, §9.7.7). Güncel kapsam-dışı listesi için
+> **§9.7.12** esastır. Diğer satırlar aynen yürürlüktedir.
 
 | Öğe | Neden | Branş |
 |---|---|---|
@@ -1080,3 +1589,21 @@ Squash-merge mesajı: `feat(telehealth): Global TeleHealth / Online Clinic modü
 - [ ] E2E 6-13 yeşil (qa-agent)
 - [ ] `LIVEKIT_*` env'leri `.env.example`/compose/CI'da; varlıklar `dist/` ve Docker imajında; **kod değişikliğinden sonra `docker compose up --build -d`** (devops-agent)
 - [ ] ARCHITECTURE.md + README + CHANGELOG (documentation-agent); CI yeşil
+
+### 14.1 §9.7 turu için EK Definition of Done
+
+- [ ] compliance-agent'ın **ÖN-onayı** alındı; §9.7.5'in 10 maddesi + iki rıza metni sürümlendi (**ENGELLEYİCİ, db-agent'tan ÖNCE**)
+- [ ] 4 migration ayrı ayrı temiz uygulandı; iki `ALTER TYPE` **izole** commit'te; elle SQL/backfill YOK (db-agent)
+- [ ] Çoklu slot: `N` slot = `N` `Appointment` + 1 `AppointmentBooking`; `@@unique([doctorId, startsAt])` DEĞİŞMEDİ; `totalCents` sunucuda hesaplandı (backend-agent)
+- [ ] `PENDING_PAYMENT` → süre dolumunda **hard delete** → slot yeniden satılabilir; `SCHEDULED` iptalinde §4.3 davranışı DEĞİŞMEDİ (backend-agent)
+- [ ] Stripe: `checkout.session.completed` tek onay yolu, `runSerializable`, idempotent; yapılandırılmamışken `503 PAYMENTS_NOT_CONFIGURED` + dürüst panel, **otomatik PAID YOK** (integration-agent)
+- [ ] Sağlık belgesi **hiçbir koşulda** `Media` satırı değil; `/uploads/**` altından erişilemiyor; her okuma audit'e düşüyor (backend-agent + security-agent — **ENGELLEYİCİ**)
+- [ ] Intake notu AES-256-GCM şifreli; ayrı açık rıza olmadan kabul edilmiyor; intake atlanabiliyor ve rezervasyonu engellemiyor (backend-agent + compliance-agent)
+- [ ] Belge/not yetki matrisi: hasta ✓, o booking'in doktoru ✓, ADMIN ✓, MANAGER içerik ✗, EDITOR ✗, başka doktor `404` (security-agent — **ENGELLEYİCİ**)
+- [ ] `SiteRole.DOCTOR` **eklenmedi**; `/doctor/*` 2FA kapısı `403 TWO_FACTOR_REQUIRED` veriyor; yeni 2FA ucu yazılmadı (backend-agent)
+- [ ] Magic-link sabit zamanlı karşılaştırma + `404` ile yanıtlama; TTL security-agent onaylı (security-agent)
+- [ ] Onay e-postası konusunda/gövdesinde uzmanlık adı, not veya belge adı YOK (notification-agent + compliance-agent)
+- [ ] `/doctor/**`, `/patient/**`, ödeme dönüş sayfaları `noindex` ve sitemap dışı (seo-agent)
+- [ ] Yeni npm bağımlılığı **eklenmedi** (code-quality-agent)
+- [ ] E2E 14-28 yeşil (qa-agent)
+- [ ] `PRIVATE_UPLOAD_DIR` volume/yedek/izinleri tanımlı ve statik servis altında DEĞİL (devops-agent)

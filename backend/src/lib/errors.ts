@@ -36,7 +36,51 @@ export type ApiErrorCode =
    * KALMASIN (§4.4 — o dosya/uç tamamen integration-agent'ın sahasıdır, backend-agent
    * FIRLATMAZ/KULLANMAZ). 503.
    */
-  | "LIVEKIT_NOT_CONFIGURED";
+  | "LIVEKIT_NOT_CONFIGURED"
+  /**
+   * `.claude/architect-scope-telehealth-template.md` §9.7.1/§9.7.10 (bağlayıcı) — booking zaten
+   * `PAID`/`CANCELLED`/`EXPIRED` durumundayken tekrar ödeme/fatura/manuel-ödeme talebi (bkz.
+   * `GET .../invoice`, `POST /admin/telehealth/bookings/{id}/mark-paid` — backend-agent'ın
+   * uçları; integration-agent'ın `checkout-session` ucu da AYNI kodu KULLANIR). 409.
+   */
+  | "BOOKING_NOT_PAYABLE"
+  /**
+   * §9.7.5 KARAR J madde 2 (ENGELLEYİCİ, bağlayıcı) — sağlık verisi (şikâyet notu/belge) için
+   * AYRI açık rıza (`healthDataConsent`) `true` gönderilmeden `PUT .../intake` veya
+   * `POST .../documents`. 422.
+   */
+  | "HEALTH_CONSENT_REQUIRED"
+  /**
+   * §9.7.5 madde 4/uygulama kısıtı — beyan edilen `Content-Type` ile sihirli-bayt tespiti
+   * uyuşmuyor VEYA MIME whitelist (`application/pdf`/`image/png`/`image/jpeg`) dışı (SVG DAHİL,
+   * kesin reddedilir). 422.
+   */
+  | "UNSUPPORTED_DOCUMENT_TYPE"
+  /** §9.7.5 uygulama kısıtı — booking başına en fazla 5 (silinmemiş) belge. 409. */
+  | "DOCUMENT_LIMIT_REACHED"
+  /**
+   * §9.7.7 KARAR K madde 2 (bağlayıcı) — `/doctor/*` uçları `user.twoFactorEnabled !== true`
+   * ise bu kodla 403 döner (yeni DB kolonu/2FA ucu YOK, mevcut TOTP kapısı route seviyesinde
+   * uygulanır).
+   */
+  | "TWO_FACTOR_REQUIRED"
+  /**
+   * §9.7.7 KARAR K madde 1 (bağlayıcı) — `/doctor/*` uçlarına, `DoctorProfile.userId ===
+   * user.id` ilişkisi OLMAYAN bir kullanıcı erişirse. 403. `SiteRole.DOCTOR` YOKTUR.
+   */
+  | "NOT_A_DOCTOR"
+  /**
+   * §9.7.1 madde 6/§9.7.10 (bağlayıcı, integration-agent) — `STRIPE_SECRET_KEY` boşken
+   * `POST /appointments/bookings/{id}/checkout-session`. `LIVEKIT_NOT_CONFIGURED` İLE BİREBİR
+   * AYNI dürüst-yapılandırılmamışlık deseni. 503.
+   */
+  | "PAYMENTS_NOT_CONFIGURED"
+  /**
+   * §9.7.1/§9.7.3/§9.7.10 (bağlayıcı, integration-agent) — booking'in slot tutma süresi
+   * (`expiresAt`) dolmuşken `POST .../checkout-session`. `BOOKING_NOT_PAYABLE`'dan AYRI bir
+   * koddur (booking hâlâ `paymentStatus: PENDING` görünebilir, süpürücü henüz çalışmamıştır). 409.
+   */
+  | "BOOKING_EXPIRED";
 
 export class ApiError extends Error {
   statusCode: number;
@@ -182,5 +226,87 @@ export class LiveKitNotConfiguredError extends ApiError {
 export class EmailDeliveryError extends ApiError {
   constructor(message = "E-posta gönderilemedi.") {
     super(502, "EMAIL_DELIVERY_FAILED", message);
+  }
+}
+
+/**
+ * `.claude/architect-scope-telehealth-template.md` §9.7.1/§9.7.10 (bağlayıcı) — booking
+ * `paymentStatus` zaten `PAID`/`FAILED`/`EXPIRED`/`REFUNDED` iken ödeme/fatura/manuel-ödeme
+ * işlemi denendiğinde. 409.
+ */
+export class BookingNotPayableError extends ApiError {
+  constructor(message = "Bu rezervasyon ödeme kabul edecek/işlem görecek durumda değil.") {
+    super(409, "BOOKING_NOT_PAYABLE", message);
+  }
+}
+
+/**
+ * §9.7.5 KARAR J madde 2 (ENGELLEYİCİ, bağlayıcı) — `healthDataConsent: true` gönderilmeden
+ * şikâyet notu/belge kabul edilmez. 422. Randevu/ödeme KVKK onayından (`consent`) TAMAMEN AYRI
+ * bir rızadır — KARIŞTIRILMAZ.
+ */
+export class HealthConsentRequiredError extends ApiError {
+  constructor(message = "Sağlık verisi paylaşımı için ayrı açık rıza (healthDataConsent) gereklidir.") {
+    super(422, "HEALTH_CONSENT_REQUIRED", message, { healthDataConsent: ["Bu alan zorunludur."] });
+  }
+}
+
+/** §9.7.5 madde 4 — MIME whitelist dışı veya beyan/sihirli-bayt uyuşmazlığı (SVG dahil). 422. */
+export class UnsupportedDocumentTypeError extends ApiError {
+  constructor(message = "Dosya türü desteklenmiyor veya beyan edilen türle dosya içeriği uyuşmuyor.") {
+    super(422, "UNSUPPORTED_DOCUMENT_TYPE", message, { file: [message] });
+  }
+}
+
+/** §9.7.5 uygulama kısıtı — booking başına en fazla 5 (silinmemiş) belge. 409. */
+export class DocumentLimitReachedError extends ApiError {
+  constructor(message = "Bu rezervasyon için en fazla 5 belge yüklenebilir.") {
+    super(409, "DOCUMENT_LIMIT_REACHED", message);
+  }
+}
+
+/**
+ * §9.7.7 KARAR K madde 2 (bağlayıcı) — `/doctor/*` uçları, oturumun `twoFactorEnabled` alanı
+ * `true` OLMADIĞI sürece 403 döner. Yeni bir DB kolonu/2FA ucu YOKTUR — mevcut TOTP kurulum
+ * uçları (`/admin/settings/security/2fa/*`) kullanılır.
+ */
+export class TwoFactorRequiredError extends ApiError {
+  constructor(message = "Bu işlem için iki adımlı doğrulamanın (2FA) etkin olması gerekir.") {
+    super(403, "TWO_FACTOR_REQUIRED", message);
+  }
+}
+
+/**
+ * §9.7.7 KARAR K madde 1 (bağlayıcı) — `DoctorProfile.userId === user.id` ilişkisi olmayan bir
+ * kullanıcı `/doctor/*` uçlarına erişirse. `SiteRole.DOCTOR` EKLENMEZ; doktorluk bir İLİŞKİDİR.
+ */
+export class NotADoctorError extends ApiError {
+  constructor(message = "Bu hesaba bağlı bir doktor profili bulunamadı.") {
+    super(403, "NOT_A_DOCTOR", message);
+  }
+}
+
+/**
+ * `.claude/architect-scope-telehealth-template.md` §9.7.1 madde 6 / §9.7.10 (bağlayıcı) —
+ * `STRIPE_SECRET_KEY` boşken `POST /appointments/bookings/{id}/checkout-session`.
+ * `LiveKitNotConfiguredError` İLE BİREBİR AYNI dürüst-yapılandırılmamışlık deseni — sahte/mock
+ * ödeme veya "escrow" ekranı YASAKTIR (§4.4 madde 1). 503 (istemci hatası DEĞİL).
+ */
+export class PaymentsNotConfiguredError extends ApiError {
+  constructor(message = "Ödeme altyapısı (Stripe) bu kurulumda yapılandırılmamış.") {
+    super(503, "PAYMENTS_NOT_CONFIGURED", message);
+  }
+}
+
+/**
+ * §9.7.1/§9.7.3/§9.7.10 (bağlayıcı) — `AppointmentBooking.expiresAt < now` (slot tutma süresi
+ * dolmuş) iken `POST .../checkout-session` çağrılırsa. `BookingNotPayableError`'dan (zaten
+ * PAID/FAILED/CANCELLED) AYRI bir koddur: booking hâlâ `paymentStatus: PENDING` görünüyor
+ * olabilir (5 dakikalık süpürücü henüz çalışmamış olabilir) ama slot tutma süresi zaten
+ * dolmuştur — istemciye bu ayrım açıkça iletilir. 409.
+ */
+export class BookingExpiredError extends ApiError {
+  constructor(message = "Bu rezervasyonun slot tutma süresi doldu.") {
+    super(409, "BOOKING_EXPIRED", message);
   }
 }

@@ -82,3 +82,33 @@ export const EMAIL_TEST_SEND_RATE_LIMIT = { max: 3, timeWindow: "1 minute" };
  * karşılayacak, ama otomatize bir döngüyü sınırlayacak bir tavan.
  */
 export const EMAIL_TEMPLATE_PREVIEW_RATE_LIMIT = { max: 120, timeWindow: "1 minute" };
+
+// ---------------------------------------------------------------------------
+// [TCT] §9.7 TADİLAT TURU 2 — booking (çoklu slot) + ödeme + sağlık verisi + portal.
+// Değerler `.claude/architect-scope-telehealth-template.md` §9.7.10/§9.7.5 tablosuyla
+// BAĞLAYICI olarak bire bir eşleşir.
+// ---------------------------------------------------------------------------
+
+/**
+ * `POST /appointments/bookings` — public, kimlik doğrulamasız YAZMA ucu (§9.7.2). Mevcut
+ * (tek slot, deprecated) `POST /appointments`'ın 5/dk route-level limitiyle AYNI — çoklu slot
+ * olması hız sınırını DEĞİŞTİRMEZ (tek istekte en fazla 4 slot zaten kendi tavanıyla sınırlı).
+ */
+export const BOOKING_CREATE_RATE_LIMIT = { max: 5, timeWindow: "1 minute" };
+
+/** `POST /appointments/bookings/{id}/documents` — §9.7.5 uygulama kısıtı. */
+export const BOOKING_DOCUMENT_UPLOAD_RATE_LIMIT = { max: 10, timeWindow: "1 minute" };
+
+/**
+ * `POST /appointments/bookings/{id}/resend-link` — §9.7.7 madde 4. E-posta numaralandırma/
+ * kaba-kuvvet yüzeyini sınırlamak için ÇOK sıkı (booking var olsun olmasın yanıt hep 202 döner,
+ * ama gönderim tetikleyicisinin kendisi hâlâ sınırlanmalı).
+ */
+export const BOOKING_RESEND_LINK_RATE_LIMIT = { max: 1, timeWindow: "1 minute" };
+
+/**
+ * `POST /appointments/bookings/{id}/checkout-session` (integration-agent, §9.7.9/§9.7.10) —
+ * gerçek bir Stripe API çağrısı tetikler (`checkout.routes.ts::CHECKOUT_RATE_LIMIT` İLE AYNI
+ * değer/gerekçe: kaba kuvvet/otomatik Stripe session spam'ine karşı route-level sıkı tavan).
+ */
+export const BOOKING_CHECKOUT_SESSION_RATE_LIMIT = { max: 10, timeWindow: "1 minute" };

@@ -2586,3 +2586,166 @@ arasında doğal boşluk olduğundan bu sınıf çakışma beklenmez.
 
 Hiçbir yeni backend/frontend bug'ı bulunmadı — hero bug fix (`doctor-avatar.tsx::DoctorAvatarMedia`)
 ve `availability-calendar.tsx` yeniden tasarımı görev tanımıyla BİREBİR uyumlu çalışıyor.
+
+## Tele-Sağlık — çoklu slot rezervasyon, ödeme (Stripe), sağlık verisi, doktor/hasta portalı — [TCT] §9.7.11 QA kapsamı (bu turda eklendi)
+
+Kaynak: `.claude/architect-scope-telehealth-template.md` §9.7.11 "QA kapsamı — §10'a EK" (bağlayıcı,
+madde 14-28) + koordinatörün security-agent'tan aktardığı 2 ek regresyon isteği (süresi dolmuş
+magic-link TTL'i, checkout-session gecikme senaryosu). db/backend/ui/devops/integration/frontend/
+notification ajanları tamamladı; security-agent ve compliance-agent ENGELLEYİCİ denetimlerini ONAY
+ile bitirdi. Bu turun odağı: birim/entegrasyon boşluklarını kapatmak + e2e katmanını yazmak/
+güncellemek.
+
+### Birim/entegrasyon (madde 14-20) — mevcut kapsam taraması + 3 gerçek boşluk
+
+backend-agent'ın KENDİ turu zaten `backend/tests/integration/{telehealth-bookings,telehealth-
+checkout,telehealth-webhook}.test.ts` + `backend/tests/unit/telehealth-booking.test.ts` ile madde
+14/15/16/17/19/20'yi (fiyat hesabı sunucu tarafında/istemci `totalCents` yok sayılır, slot limitleri
+`>4`→422/farklı gün→422/kısmi rezervasyon yok→409 `SLOT_TAKEN`, webhook idempotency, süre dolumu
+süpürücüsü, katılım penceresi EXACT sınır `-10dk`/`-10dk-1sn`/`+15dk`/`+15dk+1sn` unit seviyesinde,
+rıza olmadan 422/6. belge 409/SVG-sahte-uzantı 422) zaten kapsıyor — **burada YENİDEN YAZILMADI**.
+qa-agent taraması SONUCU 3 GERÇEK boşluk bulundu ve yeni bir dosyada (backend-agent/integration-
+agent'ın KENDİ dosyalarına DOKUNULMADAN, `backend/tests/integration/telehealth-qa-regression.test.ts`)
+kapatıldı:
+
+| # | Boşluk | Neden daha önce kapsanmamıştı | Test |
+|---|---|---|---|
+| madde 18 | Ödenmemiş (gerçek `POST /appointments/bookings` akışıyla oluşmuş, hâlâ `PENDING_PAYMENT`) bir booking randevusu için `meeting-token` → `409` | Mevcut testler ya `createAppointmentDirect` (varsayılan `status: SCHEDULED`, booking'e BAĞLI DEĞİL) ya CANCELLED durumunu kapsıyordu — "hiç ödenmemiş, booking'e bağlı" kod dalı (en erken 409 dalı) hiç tetiklenmemişti | `[qa] telehealth — ödenmemiş booking'de meeting-token (§9.7.11 madde 18)` — 2 test (misafir token + ADMIN oturumu bile giremiyor) |
+| security-agent ek | 30 günlük magic-link TTL'i (`lib/telehealth-access.ts::MAGIC_LINK_TOKEN_TTL_MS`, `[TCT] §9.7.7 madde 4` nihai security-agent kararı) | Kod VARDI, HİÇBİR test bu yolu tetiklemiyordu | `[qa] telehealth — magic-link TTL süresi dolmuş token reddi` — 4 test (tam sınır İÇİNDE 200, sınır+1sn 404, health-data uçlarında da AYNI TTL, oturumlu/Bearer erişim TTL'e TABİ DEĞİL) |
+| security-agent ek | `checkout-session` gecikme senaryosunda `booking.expiresAt`'in Stripe'a senkronize edilip booking'in KAYBOLMADIĞI | `telehealth-checkout.test.ts` yalnızca `stripeCheckoutSessionId`'in yazıldığını doğruluyordu, `expiresAt` senkronizasyonunu DEĞİL | `[qa] telehealth — checkout-session gecikme senaryosunda booking KAYBOLMAZ` — 2 test (senkronizasyon + süpürücü dokunmuyor; REGRESYON KARŞILAŞTIRMASI — checkout-session hiç çağrılmazsa AYNI booking GERÇEKTEN silinir, testin kendisinin anlamlı olduğunun kanıtı) |
+
+**8/8 yeni test yeşil** + `backend/tests/` TAMAMI (117 dosya, 1390 test) bu turda yeniden koşuldu,
+hepsi yeşil — regresyon YOK.
+
+### E2E (madde 21-28, `frontend/tests/e2e/`)
+
+Yeni dosya: **`telehealth-multi-slot-booking.spec.ts`** (10 test) — kendi İZOLE fixture doktorlarını
+kurar (`createAdminDoctorFixture` + `setDoctorAvailabilityRaw`, haftanın HER günü 08:00-22:00,
+`telehealth-doctor-profile-redesign.spec.ts::calendarDoctor` İLE AYNI desen) — paylaşımlı
+`telehealth-clinic` demo verisine BAĞIMLI DEĞİLDİR, `telehealth-template-import.spec.ts`'ten
+TAMAMEN BAĞIMSIZ çalışır.
+
+| # | Mimari madde | Senaryo | Durum |
+|---|---|---|---|
+| 21 | madde 21 | 2 slot seç (checkbox) → Hizmet Özeti "2 Slot · 60 Dk" + "Toplam" = 2×seans ücreti (gerçek `Intl.NumberFormat` karşılaştırması); `POST /appointments/bookings` payload'ı yakalanır — `doctorSlug`/`slots` doğru, `totalCents` istemciden HİÇ GÖNDERİLMEZ | ✅ Geçiyor |
+| 22 | madde 22 | Belgeli senaryo — intake adımında sağlık verisi rızası + GERÇEK bir PDF (`%PDF-1.4` magic-byte) yüklenir → randevu oluşur; booking'in GERÇEK doktoru (2FA açılınca) KENDİ bearer'ıyla belgeyi listeler VE içeriği 200 ile indirir ("önizlenebilir") | ✅ Geçiyor |
+| 23 | madde 23 | Belgesiz senaryo — intake adımı "Bu adımı atla" ile ATLANIR → rezervasyon/ödeme adımı AYNI ŞEKİLDE tamamlanır; `hasIntakeNote:false`, `documentCount:0` | ✅ Geçiyor |
+| 24 | madde 24 | GERÇEK HTTP webhook isteği + GEÇERLİ Stripe imzası (`support/api.ts::postStripeTelehealthBookingPaid` — `stripe.checkout.sessions.create` HİÇ ÇAĞRILMAZ, yalnızca `POST /webhooks/stripe`'ın imza doğrulama + iş mantığı kod yolu tetiklenir) → booking `PAID`, randevu `SCHEDULED`; katılım penceresine kaydırılıp (`shiftAppointmentIntoJoinWindowDirectly`) `/patient/bookings/{id}?t=` sayfasında "Ödendi" rozeti + AKTİF "Toplantıya Katıl" `<a href="/consultation/...">` + AYNI orijinal magic-link token'ının ödeme SONRASI da çalıştığı doğrulanır | ✅ Geçiyor |
+| 25 | madde 25 **(ENGELLEYİCİ)** | Sızıntı testi — madde 22'nin yüklediği belgenin GERÇEK `storagePath`'i (API yanıtında ASLA dönmeyen bir alan) doğrudan DB'den okunur (bkz. aşağıdaki yöntem notu) ve backend origin'ine `GET /uploads/{storagePath}` atılır → **`404`** (kesin); `GET /admin/media` TAM taraması (`listAllAdminMedia`, cursor'lı) belgenin dosya adını VE herhangi bir `application/pdf` mimeType'ı HİÇ İÇERMEZ | ✅ **KIRMIZI ÇIKMADI — merge engellenmedi** |
+| 26 | madde 26 | Yetki matrisi — booking'le İLGİSİZ başka bir doktor → içerik `404` + booking view `404`; MANAGER → içerik `404` (sağlık verisi eşiği, `assertBookingHealthDataAccess`), booking view `200` (`documentCount` SAYISINI görebiliyor — §9.7.10 view eşiği ADMIN+MANAGER); EDITOR → hem içerik hem view `404`; booking'in GERÇEK doktoru → içerik `200` (kontrast/pozitif kanıt) | ✅ Geçiyor |
+| 27 | madde 27 | 2FA kapısı — **API seviyesi** (yeşil): `GET /doctor/me` 2FA kapalıyken `403 TWO_FACTOR_REQUIRED`, açılınca `200`. **UI seviyesi**: aşağıdaki RSC çökme bug'ı frontend-agent tarafından düzeltildi, `test.fail()` kaldırıldı — bkz. "GÜNCELLEME" notu aşağıda | ✅ API + UI (düzeltme sonrası) |
+| 28 | madde 28 | `/patient/bookings/{id}` — `?t=` OLMADAN ve YANLIŞ token ile hem UI (`page.goto` + "Rezervasyon bulunamadı" metni, booking'in hasta adı SIZDIRILMAZ) hem API (`404`, `403` DEĞİL) seviyesinde reddedilir; DOĞRU token'la (madde 23'ün booking'i YENİDEN KULLANILARAK, fazladan booking OLUŞTURULMADAN — rate-limit notuna bkz.) erişim ÇALIŞIR | ✅ Geçiyor |
+
+**Sonuç (düzeltme sonrası — bkz. "GÜNCELLEME" notu): 10/10 GERÇEK test yeşil, `test.fail()` işareti YOK.**
+`telehealth-*.spec.ts` TAMAMI art arda 2 kez birlikte koşuldu — yeşil, regresyon YOK.
+
+**Yöntem notu (madde 25, `storagePath` okuma):** API yanıtı `storagePath`'i HİÇ döndürmediği için
+(`mappers/index.ts::toAppointmentDocumentDto`, bilinçli — §9.7.5 madde 4/5) ve `prisma db execute`
+SELECT sonucu DÖNDÜRMEDİĞİ için (yalnızca DDL/DML için tasarlanmış, elle doğrulandı — `Script
+executed successfully.` dışında çıktı YOK), `getAppointmentDocumentStoragePathDirectly()`
+(`support/telehealth-fixtures.ts`) backend'in KENDİ `node_modules/@prisma/client`'ını (MUTLAK
+yolla, `require()`) kullanan geçici, bağımsız bir CommonJS betiğiyle DB'yi okur — betik
+`os.tmpdir()`'a yazılıp iş bitince silinir; `backend/src`/`backend/scripts` İÇİNE HİÇBİR ŞEY
+YAZILMAZ (ajan sınır ihlali olmasın diye).
+
+**Görev talimatı ile GERÇEK/bağlayıcı kontrat arasındaki bir çelişki (madde 26, bilgi amaçlı,
+DÜZELTME GEREKMEZ):** Koordinatörün görev talimatı "MANAGER içeriğe → 403" diyordu; ama
+`docs/architecture/openapi.yaml`'ın `/appointments/documents/{documentId}/content` uç tanımı AÇIKÇA
+"`MANAGER`/`EDITOR`/diğer doktorlar → **`404`** (varlık sızdırılmaz)" der — bu, §8'in tüm dosyada
+tutarlı biçimde uygulanan IDOR felsefesiyle (yetkisiz erişimde HER ZAMAN `404`, `403` DEĞİL) birebir
+uyumludur ve backend-agent'ın kendi testinde (`telehealth-bookings.test.ts`) ZATEN böyle
+doğrulanmıştı. qa-agent testi GERÇEK/bağlayıcı kontrata göre yazdı (404) — bu bir kontrat ihlali
+DEĞİLDİR, görev talimatındaki bir paraphrase/yazım farkıdır.
+
+### KRİTİK bug bulundu — frontend-agent'a yönlendirilir
+
+**`/doctor` VE `/doctor/profile` sayfalarının İKİSİ DE her istekte (2FA/oturum durumundan
+BAĞIMSIZ) `500` sunucu hatasıyla çöküyor.** Kök neden: `frontend/src/app/[lang]/(site)/doctor/
+page.tsx` ve `.../doctor/profile/page.tsx` (İKİSİ de Server Component, `"use client"` YOK) bir
+FONKSİYONU (render-prop: `{(profile) => <DoctorBookingsPanel profile={profile} />}`) `"use client"`
+işaretli `DoctorPortalShell`'e (`doctor-portal-shell.tsx`) `children` olarak geçiriyor.
+`frontend/AGENTS.md`'nin baştan uyardığı gibi bu Next.js sürümü DAHA SIKI: bir Server Component'in
+bir Client Component'e `children` olarak FONKSİYON geçirmesi RSC sınırında serileştirilemez
+("Functions are not valid as a child of Client Components") — sonuç, `curl`/gerçek tarayıcı ile
+BAĞIMSIZCA doğrulandığı üzere, HER İSTEKTE `500`dür (yalnızca bu test ortamına özgü DEĞİL, gerçek
+kullanıcılar için de doktor portalının İKİ sayfası da TAMAMEN KULLANILAMAZ durumda). Backend'in
+2FA kapısının KENDİSİ DOĞRU çalışıyor (API-seviyesi test yeşil, bkz. madde 27 tablosu) — bug SALT
+istemci/SSR-RSC sınırına aittir. Reprodüksiyon + önerilen düzeltme (render-prop yerine normal
+children veya context/hook ile `profile`'ı expose etmek): `frontend/tests/e2e/telehealth-multi-
+slot-booking.spec.ts` — `"madde 27 (UI seviyesi) — BUG (frontend-agent, KRİTİK): ..."` (`test.fail()`
+ile işaretli, düzeltilirse test kırmızıya döner ve işaretin kaldırılması gerektiği anlaşılır).
+
+> **GÜNCELLEME (documentation-agent, bu tur kapanışı):** frontend-agent önerilen düzeltmeyi
+> uyguladı — `frontend/src/app/[lang]/(site)/doctor/page.tsx` ve `.../doctor/profile/page.tsx`
+> artık render-prop yerine `<DoctorPortalShell><DoctorBookingsPanel /></DoctorPortalShell>`
+> normal `children` deseniyle render ediyor (kod doğrudan doğrulandı). `telehealth-multi-slot-
+> booking.spec.ts`'teki `test.fail()` işareti kaldırıldı, test "madde 27 (UI seviyesi): /doctor ve
+> /doctor/profile sayfaları çalışır (500 REGRESYONU DÜZELTİLDİ)..." adıyla gerçek/yeşil bir teste
+> dönüştürüldü (qa-agent). Bu paragraflar tarihsel kayıt olarak KORUNDU; "Kapsam dışı
+> bırakılanlar" bölümündeki "doktor panelinin TAM UI akışı test EDİLEMEDİ" notu artık GEÇERLİ
+> DEĞİLDİR — madde 27 testi şimdi gerçek sayfa render'ını da kapsıyor.
+
+### qa-agent'ın kendi test tasarımında bulup düzelttiği flaky/hata kaynakları (bu turda)
+
+1. **İki dosyada AYNI yazım hatası** — `telehealth-public-booking.spec.ts` VE (ilk taslağında)
+   `telehealth-multi-slot-booking.spec.ts`, `BookingIntakeStep`'in gerçek metnini ("**Bu adım**
+   opsiyoneldir") "Bu **adımı** opsiyoneldir" olarak YANLIŞ yazmıştı — ikisi de düzeltildi.
+2. **`getByText(..., {exact:true})` strict-mode ihlalleri** — `BookingPostCreationFlow`'un başarı
+   `Alert`'i tek bir paragrafın İÇİNDE "N Slot · Toplam ..." metnini TAM CÜMLENİN bir PARÇASI olarak
+   taşıyor (`exact:true` bu yüzden hiç eşleşmiyordu); `doctor-service-summary.tsx`'in "Toplam"ı hem
+   masaüstü panel hem mobil sabit alt barda render ediyor (`.first()` gerekiyordu, `telehealth-
+   doctor-profile-redesign.spec.ts`'teki YERLEŞİK desenin AYNISI). Düzeltme: `exact:false` + `.first()`.
+3. **`PatientBookingDetailPanel::loadError` varsayımı yanlıştı** — bileşen `{loadError ??
+   "Bu rezervasyon bulunamadı..."}` deseniyle, booking bulunamadığında backend'in HAM hata mesajını
+   ("Rezervasyon bulunamadı.") gösteriyor, jenerik metne DEĞİL (`loadError` DOLU olduğu için). Test
+   ikisini de kapsayan bir regex'e (`/[Rr]ezervasyon bulunamadı/`) geçirildi.
+4. **madde 21/22/23'ün booking-oluşturma akışı — `BookingIntakeStep`'in gerçek sırası yanlış
+   varsayılmıştı**: `DocumentUploader` YALNIZCA `PUT .../intake` BAŞARIYLA kaydedildikten
+   (`saved === true`) SONRA render edilir; ilk taslak dosya seçiciyi rıza/not doldurulur
+   doldurulmaz aramaya çalışıp 90sn timeout'a çarpıyordu. Düzeltme: "Kaydet ve Devam Et" → "Bilgileriniz
+   kaydedildi." bekleniyor → SONRA belge yükleniyor → "Devam Et" (farklı buton, "Kaydet ve Devam
+   Et" DEĞİL).
+5. **Sabit zaman ofseti (`now + 6/8 saat`) yerine GERÇEK müsaitlik sorgusu** — `pickAvailableSlotIso()`
+   yardımcı fonksiyonu eklendi (`telehealth-consultation.spec.ts::bookRealAppointment` İLE AYNI
+   desen); sabit ofset doktorun 08:00-22:00 penceresini gün sınırında (gece yarısını) AŞTIĞINDA
+   `422` üretiyordu (saat-bağımlı, yalnızca günün belirli saatlerinde tetiklenen bir hataydı).
+6. **`telehealth-doctor-profile-redesign.spec.ts`, ÖNCEDEN VAR OLAN (bu turda dokunulmayan bir
+   bölümde) bir flaky kaynağı** — "randevu tarih-saat tasarımı" testi `getByRole("button", {name:
+   /— seçili$/})` (SONU `$` ile ÇAPALI) kullanıyordu; ama `bookedCalendarSlot` (`available[0]`,
+   kronolojik İLK slot) SIK SIK AYNI ZAMANDA `earliestKey`'e denk geldiğinden hücrenin `aria-label`'ı
+   `"{tarih} — seçili, en yakın randevu tarihi"` İLE BİTİYORDU (`$` çapası bu durumda YANLIŞLIKLA
+   eşleşmiyordu) — dosyanın kendi ÖNCEKİ turunda AYNI kategori (`earliestKey` çakışması) başka bir
+   testte ZATEN belgelenmiş bir tuzaktı, bu test o düzeltmeyi almamıştı. Düzeltme: `$` çapası
+   kaldırıldı (yanlış pozitif riski YOK — "müsait"/"dolu" metinleri "seçili" alt dizesini asla
+   içermez).
+7. **`telehealth-doctor-profile-redesign.spec.ts::madde 2` (ADMIN doktor listesi) — ortam kaynaklı,
+   KOD BUG'I DEĞİL** — sayfa `limit:100` ile TEK seferde çekiyor, sayfalama UI'ı YOK; yıllar içinde
+   biriken paylaşımlı `saas_e2e` verisi artık 100'ü AŞIYOR (bu turda ölçüldü: 100+ doktor,
+   `nextCursor` dolu), bu yüzden `seq asc` sırasında SONA düşen YENİ fixture doktorlar ilk sayfada
+   GÖRÜNMEYEBİLİYORDU. Düzeltme: sayfanın KENDİ arama kutusu ("Doktor ara", debounce'lu, backend'e
+   `search` parametresiyle gider) kullanıldı — hacim artışından BAĞIMSIZ, kalıcı bir çözüm.
+8. **Dosyalar arası PAYLAŞILAN hız sınırı etkileşimi (madde 21-28 dosyası → `telehealth-public-
+   booking.spec.ts`, alfabetik sırada BİRBİRİNE bitişik)** — `POST /appointments/bookings`'in 5/dk
+   route-level sınırı IP bazlıdır, TÜM telehealth booking dosyaları PAYLAŞIR. Yeni dosyanın İLK
+   taslağı 5 booking oluşturma çağrısı yapıyordu (madde 21/22/23/24/28) — bu TEK BAŞINA bucket'ı
+   DOLDURUYOR, hemen ardından çalışan `telehealth-public-booking.spec.ts`'in TEK çağrısı `429`
+   alıyordu (yalnızca qa-agent'ın kendi ART ARDA manuel debug koşumlarında DEĞİL, dosyalar NORMAL
+   sırada art arda çalıştığında da TUTARLI biçimde tekrarlanan bir etkileşimdi — önceki
+   "art arda debug koşumu" notlarındaki kategoriden FARKLI, kalıcı bir risk). Düzeltme: madde 28
+   madde 23'ün booking'ini (network yanıtından yakalanan GERÇEK `accessToken`'ıyla) YENİDEN
+   KULLANACAK şekilde yeniden yazıldı — dosya başına toplam çağrı sayısı 5'ten 4'e düştü, iki dosya
+   art arda çalıştığında toplam 5'i AŞMIYOR (2 kez ardışık tam suite koşumuyla doğrulandı, 35/35 yeşil).
+
+### Kapsam dışı bırakılanlar (bilinçli, gerekçeli)
+
+- **Madde 19'un "-11dk→409, -9dk→200" ÖRNEK sınır değerleri** e2e/entegrasyon seviyesinde AYRICA
+  tekrarlanmadı — backend-agent'ın `tests/unit/telehealth-booking.test.ts::isWithinJoinWindow`
+  testi GERÇEK/kesin sınırı (`-10dk`/`-10dk-1sn`/`+15dk`/`+15dk+1sn`, SABİT `now` ile, gerçek zamanlı
+  bir entegrasyon testinden DAHA HASSAS) ZATEN kapsıyor; e2e seviyesinde AYNI sınırı gerçek saatle
+  (`Date.now()`) tekrar test etmek doğası gereği kararsız olurdu (bkz. bu dosyanın "toPass" felsefesi
+  ile AYNI gerekçe — zamanlamaya bağlı testler GERÇEK saatle DEĞİL, kontrollü girdilerle test edilir).
+- ~~**Doktor panelinin (`/doctor`) TAM UI akışı**... bug düzeltildiğinde bu turun `test.fail()`
+  işaretli testi GENİŞLETİLMELİ~~ — **ÇÖZÜLDÜ, bkz. yukarıdaki "GÜNCELLEME" notu.** RSC çökmesi
+  frontend-agent tarafından düzeltildi, madde 27 testi artık gerçek sayfa render'ını (dürüst
+  2FA uyarısı + 2FA açıldıktan sonra normal render) kapsıyor; bu madde artık kapsam dışı
+  DEĞİLDİR.

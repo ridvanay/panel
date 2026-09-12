@@ -6,9 +6,17 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/auth-context";
 import { Card } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
+import { isSafeInternalPath } from "@/lib/safe-redirect";
 
 /** /login, /register, /forgot-password, /reset-password için ortak kabuk: zaten
- * girişliyse /dashboard'a yönlendirir, aksi halde ortalanmış bir kart içinde formu gösterir. */
+ * girişliyse `?next=` (varsa ve güvenliyse) hedefine, aksi halde /dashboard'a yönlendirir;
+ * girişli değilse ortalanmış bir kart içinde formu gösterir.
+ *
+ * `next` okuması `useSearchParams` yerine bilinçli olarak `window.location.search` üzerinden
+ * yapılıyor: `useSearchParams` bir Suspense sınırı gerektirir ve `forgot-password` sayfası hiç
+ * Suspense kullanmıyor. Bu efekt zaten client-only (useEffect) çalıştığından `window` güvenle
+ * erişilebilir. Hedef, `login`/`register` sayfalarındaki `goToDestination()` ile AYNI güvenlik
+ * kontrolünü (`isSafeInternalPath`) kullanır — böylece iki yönlendirme yarışsa bile aynı hedefe gider. */
 export function AuthPageShell({
   title,
   subtitle,
@@ -24,7 +32,9 @@ export function AuthPageShell({
   const router = useRouter();
 
   useEffect(() => {
-    if (status === "authenticated") router.replace("/dashboard");
+    if (status !== "authenticated") return;
+    const next = new URLSearchParams(window.location.search).get("next");
+    router.replace(isSafeInternalPath(next) ? next : "/dashboard");
   }, [status, router]);
 
   if (status === "authenticated") {

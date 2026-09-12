@@ -241,6 +241,100 @@ devops-agent DOKUNMADI):
   henüz `LIVEKIT_*`'i tüketen kod yazmadı; bu adım, tüm ajanlar bitince devops-agent'ın
   yeniden devreye gireceği "CI/imaj doğrulaması" adımında (§9.2) yapılacak.
 
+### Tele-Sağlık (Tur 2) — `PRIVATE_UPLOAD_DIR` volume/backup/izin (devops-agent)
+
+`.claude/architect-scope-telehealth-template.md` §9.7 "TADİLAT TURU 2" ve
+`.claude/compliance-notes-telehealth.md` "TUR 2" (KRİTİK BAĞLAYICI ŞART) kapsamında, sağlık
+verisi (şikâyet notu eki + reçete/tahlil/radyoloji belgeleri, `AppointmentDocument`) için özel
+bir dosya deposu hazırlandı. **Bu turda backend-agent henüz `PRIVATE_UPLOAD_DIR`'ı tüketen kod
+(env.ts şeması, private storage sürücüsü, `plugins/uploads.ts`'e ekleme) YAZMADI** — aşağıdaki
+tüm değişiklikler yalnızca altyapı/iskelet hazırlığıdır.
+
+**Nihai yol:** `PRIVATE_UPLOAD_DIR = /app/storage/private-uploads` (container içi; host'ta
+Docker named volume `saas_private_uploads`).
+
+**KRİTİK — `UPLOAD_DIR`'ın alt dizini DEĞİL, kardeşi:** `plugins/uploads.ts:10`'daki
+`UPLOAD_DIR = path.join(process.cwd(), "uploads")` (`/app/uploads`), `@fastify/static` ile
+`root: UPLOAD_DIR` altındaki **her şeyi** (alt klasörler dahil) `/uploads/**` üzerinden
+**kimlik doğrulamasız** servis ediyor (`uploads.ts:32-34`, bu turda tekrar doğrulandı — hâlâ
+`PRIVATE_UPLOAD_DIR`'a dair hiçbir referans YOK). Bu yüzden `PRIVATE_UPLOAD_DIR`
+`/app/uploads/private` gibi bir alt yol OLAMAZ — `/app/storage/private-uploads` seçildi:
+`/app/storage/imports` ve `/app/storage/exports` (mevcut private-ama-volume'süz depolar) ile
+aynı üst dizin altında, ama `/app/uploads`'tan tamamen ayrı bir dal.
+
+**Yapılan değişiklikler:**
+- **`backend/.env.example`**: `PRIVATE_UPLOAD_DIR=./storage/private-uploads` eklendi (Medya
+  depolama bölümünden önce), yorum satırı alt-dizin yasağını ve backend-agent'ın henüz bunu
+  tüketen kod yazmadığını açıkça belirtiyor. `STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET` zaten
+  mevcuttu (satır 34-36), değişiklik gerekmedi.
+- **`backend/Dockerfile`**: `storage/imports` mkdir'inin hemen altına
+  `RUN mkdir -p /app/storage/private-uploads && chown -R nodejs:nodejs
+  /app/storage/private-uploads` eklendi — **hiçbir `COPY` bu dizine dokunmuyor** (yalnızca boş
+  dizin + `nodejs` kullanıcısına izin), gerçek içerik yalnızca runtime'da volume ile gelir.
+  Sağlık verisi hiçbir zaman imajın kendisinde dondurulmaz.
+- **`docker-compose.yml` (kök)**: `backend.volumes` bloğuna yeni named volume
+  `saas_private_uploads:/app/storage/private-uploads` eklendi — `saas_uploads`tan (public
+  `/app/uploads`) **bilinçli olarak ayrı**, aynı `/app/uploads` mount noktasına EKLENMEDİ.
+  Kök `volumes:` bloğuna `saas_private_uploads:` tanımı eklendi.
+- **`backend/docker-compose.yml`** (db-only, backend servisi YOK): değişiklik gerekmedi.
+- **`backend/.gitignore`**: `storage/exports/`in hemen altına `storage/private-uploads/`
+  eklendi (aynı gerekçe — asla repoya girmez).
+- **`backend/.dockerignore`**: `storage/private-uploads` eklendi — Dockerfile zaten bu dizini
+  hiç `COPY` etmiyor olsa da, build context'in Docker daemon'a gönderilmesi sırasında (lokal
+  geliştirmede bu dizin doluysa) dahil edilmemesi için ek savunma katmanı.
+
+**Statik servise sızma doğrulaması (bu turda yapılan):** `plugins/uploads.ts` tam dosyası
+okundu — `@fastify/static` yalnızca `root: UPLOAD_DIR` (`/app/uploads`) ile register ediliyor,
+`PRIVATE_UPLOAD_DIR`/`storage/private-uploads`'a dair **hiçbir referans yok** (beklenen durum,
+backend-agent henüz bu özelliği yazmadı). Bu nedenle şu an için sızma riski **yoktur** — ama bu
+bir tek seferlik kontrol değildir: backend-agent private storage sürücüsünü/`plugins/uploads.ts`
+değişikliğini yazdığında, **security-agent** (§9.7.9'daki kendi görevi: "private storage'ın
+statik servis ALTINDA OLMADIĞININ doğrulanması") ve **code-quality-agent** (§9.7.5 madde 8 sızma
+taraması) bunu YENİDEN doğrulamalı; devops-agent da CI/imaj doğrulaması adımında (§9.7.9 son
+satır) `docker run` ile gerçek bir dosya `storage/private-uploads`'a yazıp `GET /uploads/**`
+üzerinden erişilemediğini (404/dosya yok) manuel teyit etmelidir — qa-agent'ın §9.7.11 madde 25
+"Sızıntı testi (ENGELLEYİCİ)" e2e testi bunu otomatikleştirecek.
+
+**Backup stratejisi (mevcut `UPLOAD_DIR`/`saas_uploads` desenine tutarlı, ama DAHA SIKI):**
+- `saas_uploads` (public medya) için repoda hiçbir otomatik backup mekanizması tanımlı değil
+  (yalnızca Docker named volume kalıcılığı) — `saas_private_uploads` için bu **yetersizdir**,
+  çünkü içerik KVKK md.6 özel nitelikli veridir ve tek kopyası kaybolursa hastanın belgesi
+  geri getirilemez biçimde kaybolur.
+- Öneri (bağlayıcı olmayan, production hedefi seçildiğinde uygulanmalı — bkz. "CD" bölümü):
+  günlük, **şifreli** (at-rest encryption, ör. `age`/GPG veya hedef bulut sağlayıcısının
+  native volume-snapshot şifrelemesi) bir yedekleme job'ı; yedek saklama süresi
+  `AppointmentDocument` için tanımlanan **90 günlük** KVKK saklama penceresini (bkz.
+  compliance-notes-telehealth.md) AŞMAMALIDIR — aksi halde "silinen" bir belge yedekte
+  süresiz yaşamaya devam eder ve KVKK md.11 silme hakkını fiilen anlamsızlaştırır. Yedekleme
+  rotasyonu bu 90 günlük pencereyle senkronize tutulmalı (backend-agent'ın süpürücüsü diskten
+  sildiğinde, en eski yedek de rotasyonla düşmüş olmalı).
+- Bu proje bir production hosting hedefi henüz seçilmediği (bkz. "CD" bölümü, `deploy.yml`
+  placeholder) için gerçek bir backup job'ı (cron/Velero/bulut sağlayıcı snapshot) bu turda
+  **yazılmadı** — yalnızca ilke burada not edilmiştir, hedef platform seçilince devops-agent
+  tarafından somutlaştırılmalıdır.
+
+**Dosya izinleri:** container içinde `chown -R nodejs:nodejs /app/storage/private-uploads` ile
+yalnızca backend process'inin çalıştığı `nodejs` kullanıcısı yazabilir/okuyabilir (root veya
+başka bir servis kullanıcısı erişemez — image zaten `USER nodejs` ile non-root çalışıyor). Host
+tarafında (bare-metal/VM senaryosu, container dışı erişim) volume'un bağlı olduğu dizinin
+işletim sistemi düzeyinde 700/yalnızca-servis-kullanıcısı izniyle sınırlanması **hedef platform
+seçildiğinde** devops-agent'ın sorumluluğundadır (K8s `securityContext.fsGroup`/PVC access
+mode, VM'de `chmod 700` vb.) — Docker named volume'ları host'ta doğrudan bir dosya yolu
+sunmadığı için (Docker'ın kendi yönettiği alan) bu turda ek bir komut gerekmedi.
+
+**CI secret'ları (`STRIPE_*`) — doğrulama:** `.github/workflows/ci.yml`/`deploy.yml` incelendi.
+Backend testlerinde `../../src/lib/stripe` modülü tamamen `vi.mock`'lanıyor (bkz.
+`tests/integration/checkout.test.ts:11-17`) — gerçek bir Stripe API çağrısı **hiç yapılmıyor**,
+bu yüzden CI job'ının `STRIPE_SECRET_KEY`'e ihtiyacı yok (env.ts'te zaten boş string varsayılanı
+var). `backend/.env.test`'teki `STRIPE_WEBHOOK_SECRET=whsec_test_secret_for_integration_tests`
+**gerçek bir Stripe sırrı DEĞİLDİR** — yalnızca `constructEvent`'in yerel HMAC imza
+doğrulamasını test etmek için sabit bir test değeridir (repoda durması güvenlik riski
+oluşturmaz, zaten önceki turda böyle mevcuttu). Booking/ödeme akışı için integration-agent'ın
+yazacağı yeni testler de aynı mock desenini kullanmalı — **gerçek `STRIPE_SECRET_KEY` hiçbir
+zaman CI'a girmemeli.** Production/staging'e gerçek `STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET`
+zaten mevcut GitHub Environment secrets mekanizmasıyla (yukarıdaki "Ortam değişkenleri"
+tablosu) enjekte ediliyor — bu tur için ek bir CI YAML değişikliği **gerekmedi.**
+
 ## CI (`.github/workflows/ci.yml`)
 
 - Tetikleyici: `master`/`main`/`release`'e push ve bu branch'lere açılan PR + `workflow_call`

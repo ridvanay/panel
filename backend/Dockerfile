@@ -65,6 +65,19 @@ RUN mkdir -p /app/uploads && chown -R nodejs:nodejs /app/uploads
 # (kod tarafında da `ensureLocalDir()` ile `fs.mkdirSync(..., {recursive:true})` fallback'i var).
 RUN mkdir -p /app/storage/imports && chown -R nodejs:nodejs /app/storage
 
+# Tele-Sağlık ÖZEL (private) belge deposu (`PRIVATE_UPLOAD_DIR`, sağlık verisi — şikâyet notu
+# eki, reçete/tahlil/radyoloji belgesi). BAĞLAYICI (.claude/compliance-notes-telehealth.md
+# "TUR 2" KRİTİK ŞART, .claude/architect-scope-telehealth-template.md §9.7.5 KARAR J): bu dizin
+# yukarıdaki `/app/uploads`'ın (satır ~57-59, `@fastify/static` ile kimlik doğrulamasız servis
+# edilen public dizin) ALT DİZİNİ DEĞİLDİR — `/app/uploads`ın KARDEŞİDİR. Bu Dockerfile'da
+# HİÇBİR YERDE bu dizine `COPY` yapılmaz (kişisel sağlık verisi imaja donmuş biçimde GİRMEZ);
+# burada yalnızca boş dizin + doğru sahiplik/izin (yalnızca `nodejs` kullanıcısı — backend
+# process) önceden hazırlanır, gerçek içerik yalnızca runtime'da bir Docker volume/bind-mount
+# ile buraya gelir (bkz. docker-compose.yml `saas_private_uploads` named volume, INFRA.md).
+# `@fastify/static`'in `root` parametresi bu dizini ASLA almamalıdır (backend-agent'ın
+# plugins/uploads.ts'i, security-agent doğrular) — aksi halde madde 4/5'in tüm koruması delinir.
+RUN mkdir -p /app/storage/private-uploads && chown -R nodejs:nodejs /app/storage/private-uploads
+
 USER nodejs
 
 EXPOSE 4000

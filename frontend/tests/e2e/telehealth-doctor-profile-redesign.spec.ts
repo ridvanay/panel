@@ -200,16 +200,24 @@ test("madde 1/3: admin doktor listesi — aynı anda ≥4 FARKLI para birimi sem
 });
 
 test("madde 2: admin doktor listesi — süre alanı doktor bazında GERÇEKTEN farklı (sabit '30 dk' DEĞİL)", async () => {
+  // qa-agent bulgusu (bu turda, ortam kaynaklı — KOD BUG'I DEĞİL) — liste sayfası TEK seferde
+  // `limit: 100` çeker, sayfalama UI'ı YOK (`admin/telehealth/doctors/page.tsx`). Yıllar içinde
+  // biriken paylaşımlı `saas_e2e` verisi artık 100'ü AŞIYOR — bu yüzden `seq asc` sıralamasında
+  // SONA düşen (en YENİ) fixture doktorlar ilk 100'e HER ZAMAN girmeyebilir. Sayfanın KENDİ arama
+  // kutusunu ("Doktor ara", debounce'lu, `search` sorgu parametresi backend'e gider) kullanmak bu
+  // hacim artışından BAĞIMSIZ, kalıcı bir çözümdür.
   await adminPage.goto("/admin/telehealth/doctors");
+  await adminPage.getByLabel("Doktor ara").fill(durationDoctorShort.fullName);
   const rowShort = adminPage.locator("tr", { hasText: durationDoctorShort.fullName });
-  const rowLong = adminPage.locator("tr", { hasText: durationDoctorLong.fullName });
   await expect(rowShort).toBeVisible({ timeout: 15_000 });
-  await expect(rowLong).toBeVisible({ timeout: 15_000 });
-
   await expect(rowShort).toContainText("20 dk");
-  await expect(rowLong).toContainText("75 dk");
-  // Regresyon — ikisi de "30 dk" GÖSTERMEZ (sabit değer kalıntısı olmadığının kanıtı).
+  // Regresyon — "30 dk" GÖSTERMEZ (sabit değer kalıntısı olmadığının kanıtı).
   await expect(rowShort).not.toContainText("30 dk");
+
+  await adminPage.getByLabel("Doktor ara").fill(durationDoctorLong.fullName);
+  const rowLong = adminPage.locator("tr", { hasText: durationDoctorLong.fullName });
+  await expect(rowLong).toBeVisible({ timeout: 15_000 });
+  await expect(rowLong).toContainText("75 dk");
   await expect(rowLong).not.toContainText("30 dk");
 });
 
@@ -514,43 +522,54 @@ test("randevu tarih-saat tasarımı: takvim hücresinden gün seçimi, saat ızg
   // 3) Seçili gün hücresi — `aria-pressed="true"` + Check ikonu (§2.3.2 "Seçili" durumu; takvim
   // hücresi ARTIK saat slotuyla ORTAK bir "pil" taban stilini PAYLAŞMIYOR — §2.2.1'in tarih
   // chip'i yarısı §2.3 tarafından KALDIRILDI, hücre kendi `shadow-sm`+Check sinyalini taşır).
-  const selectedDayCell = page.getByRole("button", { name: /— seçili$/ });
+  //
+  // qa-agent DÜZELTMESİ (bu turda, kural gereği flaky kaynağı BULUNUP DÜZELTİLDİ — proje kökü
+  // CLAUDE.md madde 3) — `bookedCalendarSlot` (`available[0]`, kronolojik İLK müsait slot) SIK SIK
+  // AYNI ZAMANDA `earliestKey`'e denk gelir; bu durumda hücrenin `aria-label`'ı `"{tarih} — seçili"`
+  // İLE DEĞİL `"{tarih} — seçili, en yakın randevu tarihi"` İLE BİTER (bkz. `availability-calendar.tsx`
+  // `isSelected` dalı, `takvim: en yakın müsait günde 'Erken'...` testindeki AYNI kategori not) —
+  // sabit `$` sonu-çapası bu durumda YANLIŞLIKLA eşleşmiyordu. Düzelti: `$` çapası KALDIRILDI,
+  // yalnızca "seçili" alt dizesi aranır (yanlış pozitif riski YOK — "müsait"/"dolu" varyantları bu
+  // kelimeyi hiçbir zaman İÇERMEZ).
+  const selectedDayCell = page.getByRole("button", { name: /— seçili/ });
   await expect(selectedDayCell).toHaveAttribute("aria-pressed", "true");
   await expect(selectedDayCell.locator("svg")).toHaveCount(1);
 
-  // 4) Müsait bir saate tıkla → seçili duruma geçer (`SELECTION_PILL_SELECTED`, Check ikonu) VE
-  // altta "{gün} · {saat}" onay şeridi (CalendarCheck ikonlu) görünür. Saat slotu pilinin taban
-  // sınıfları §2.3.4 ile DEĞİŞMEDİ.
-  const availableRadio = page.getByRole("radio", { name: /— müsait$/ }).first();
-  await expect(availableRadio).toBeVisible();
-  const availableTimeLabel = (await availableRadio.getAttribute("aria-label"))?.replace(/ — müsait$/, "");
+  // [TCT] §9.7.2 (bağlayıcı) — TEKİL slot varsayımı KALDIRILDI: saat slotları artık `role="radio"`
+  // DEĞİL `role="checkbox"` (1..4 ÇOKLU seçim, `MAX_BOOKING_SLOTS`). qa-agent GÜNCELLEMESİ (bu
+  // turda) — frontend-agent'ın bıraktığı not: bu test eski tekil-slot `role="radio"` API'sini
+  // bekliyordu, kırıktı. 4) Müsait bir saate tıkla → seçili duruma geçer (`SELECTION_PILL_SELECTED`,
+  // Check ikonu). Saat slotu pilinin taban sınıfları §2.3.4 ile DEĞİŞMEDİ.
+  const availableCheckbox = page.getByRole("checkbox", { name: /— müsait$/ }).first();
+  await expect(availableCheckbox).toBeVisible();
+  const availableTimeLabel = (await availableCheckbox.getAttribute("aria-label"))?.replace(/ — müsait$/, "");
   expect(availableTimeLabel, "müsait slotun aria-label'ından saat etiketi çıkarılamadı").toBeTruthy();
-  await availableRadio.click();
+  await availableCheckbox.click();
 
-  const selectedRadio = page.getByRole("radio", { checked: true });
-  await expect(selectedRadio).toBeVisible();
-  await expect(selectedRadio).toHaveAttribute("aria-label", `${availableTimeLabel} — seçili`);
-  await expect(selectedRadio.locator("svg")).toHaveCount(1);
-  const selectedRadioClass = await selectedRadio.getAttribute("class");
+  const selectedCheckbox = page.getByRole("checkbox", { checked: true });
+  await expect(selectedCheckbox).toBeVisible();
+  await expect(selectedCheckbox).toHaveAttribute("aria-label", `${availableTimeLabel} — seçili`);
+  await expect(selectedCheckbox.locator("svg")).toHaveCount(1);
+  const selectedCheckboxClass = await selectedCheckbox.getAttribute("class");
   for (const sharedFragment of ["rounded-[var(--site-radius)]", "tabular-nums", "ring-2", "ring-offset-2"]) {
-    expect(selectedRadioClass, `seçili saat slotu sınıfı '${sharedFragment}' içermiyor`).toContain(sharedFragment);
+    expect(selectedCheckboxClass, `seçili saat slotu sınıfı '${sharedFragment}' içermiyor`).toContain(sharedFragment);
   }
 
-  // Onay şeridinin dış kapsayıcısı — "Değiştir" butonunun EBEVEYNİ (component'te `<button>` ile
-  // "{gün} · {saat}" `<span>`'i AYNI dış `<div>`'in kardeşleridir, bkz. `availability-calendar.tsx`
-  // §2.3.6/§2.2.5 bloğu).
-  const changeButton = page.getByRole("button", { name: "Değiştir" });
-  await expect(changeButton).toBeVisible();
-  const confirmationStrip = changeButton.locator("..");
-  await expect(confirmationStrip).toContainText(`${bookedDayLabel} · ${availableTimeLabel}`);
-  await expect(confirmationStrip.locator("svg")).toHaveCount(1); // CalendarCheck ikonu
+  // §12.1/§12.2.4 (`.claude/design-notes-telehealth.md`, [TCT] §9.7.2 bağlayıcı) — standalone
+  // "seçim onay şeridi" (eski CalendarCheck ikonlu "{gün} · {saat}" + inline "Değiştir")
+  // `availability-calendar.tsx`'ten TAMAMEN KALDIRILDI; "Değiştir" aksiyonu "Hizmet Özeti"
+  // panelinin (`doctor-service-summary.tsx`, sağ sütun) başlık satırının SAĞINA taşındı. Bu artık
+  // TEK doğruluk kaynağıdır — aşağıdaki 5. adım bunu doğrular.
 
   // 5) "Hizmet Özeti" paneli (§2.4) — sağ sütun, AYNI seçimi `BookingSelectionProvider` context'i
-  // üzerinden gösterir: "Seçilen Randevu" kutusu artık "{gün} · {saat}" metnini taşır.
+  // üzerinden gösterir: "Seçilen Randevu" kutusu "{gün}" + slot çip(ler)i taşır, "Değiştir"
+  // butonu BURADADIR (inline şerit DEĞİL).
   await expect(page.getByText("Hizmet Özeti", { exact: true })).toBeVisible();
   await expect(page.getByText("Seçilen Randevu", { exact: true })).toBeVisible();
-  const summaryBox = page.getByText("Seçilen Randevu", { exact: true }).locator("..");
-  await expect(summaryBox).toContainText(`${bookedDayLabel} · ${availableTimeLabel}`);
+  const summaryBox = page.getByText("Seçilen Randevu", { exact: true }).locator("..").locator("..");
+  await expect(summaryBox).toContainText(bookedDayLabel);
+  await expect(summaryBox).toContainText(availableTimeLabel!);
+  await expect(summaryBox.getByRole("button", { name: "Değiştir" })).toBeVisible();
 });
 
 /**

@@ -77,6 +77,76 @@ export const CancelAppointmentRequestSchema = z.object({
 });
 export type CancelAppointmentRequest = z.infer<typeof CancelAppointmentRequestSchema>;
 
+// ---------- [TCT] §9.7 TADİLAT TURU 2 — booking (çoklu slot) + sağlık verisi + portal ----------
+
+export const BookingIdParamSchema = z.object({
+  bookingId: z.string().uuid(),
+});
+
+/**
+ * §9.7.2 KARAR H (bağlayıcı) — `slots` 1..4 öğe (`MAX_BOOKING_SLOTS`); yinelenen/farklı-gün/
+ * farklı-doktor doğrulaması `lib/booking.ts::createBooking` İÇİNDE (doktorun `timeZone`'una
+ * ihtiyaç duyduğu için burada DEĞİL, orada) yapılır. `consent` — randevu KVKK onay kutusu,
+ * sağlık verisi rızası DEĞİLDİR (o `UpsertIntakeRequestSchema.healthDataConsent` ile AYRI).
+ */
+export const CreateBookingRequestSchema = z.object({
+  doctorSlug: z.string().min(1).max(80),
+  slots: z.array(ISO_INSTANT_SCHEMA).min(1).max(4),
+  patientName: z.string().trim().min(1).max(120),
+  patientEmail: z.string().trim().toLowerCase().email().max(255),
+  consent: z.literal(true),
+  consentVersion: z.string().trim().min(1).max(40).optional(),
+});
+export type CreateBookingRequest = z.infer<typeof CreateBookingRequestSchema>;
+
+export const CancelBookingRequestSchema = z.object({
+  reason: z.string().trim().min(1).max(500).optional(),
+});
+export type CancelBookingRequest = z.infer<typeof CancelBookingRequestSchema>;
+
+/**
+ * §9.7.5 KARAR J (ENGELLEYİCİ, bağlayıcı) — `healthDataConsent` randevu onayından AYRI, ikinci
+ * bir açık rızadır; varsayılan işaretsiz (frontend), sunucu yalnızca `true` kabul eder.
+ * `true` DEĞİLSE `422 HEALTH_CONSENT_REQUIRED` (route katmanında, bu şema `z.literal(true)`
+ * İLE ZATEN "eksikse `false`/undefined" olgusunu ZodError'a çevirir — ama route handler'ı
+ * BAĞLAYICI hata KODUNU (`HEALTH_CONSENT_REQUIRED`, genel `VALIDATION_ERROR` DEĞİL) üretmek
+ * için doğrulamayı elle de tekrarlar, bkz. telehealth.routes.ts).
+ */
+export const UpsertIntakeRequestSchema = z.object({
+  note: z.string().trim().max(2000).nullable().optional(),
+  healthDataConsent: z.boolean(),
+  consentVersion: z.string().trim().min(1).max(40).optional(),
+});
+export type UpsertIntakeRequest = z.infer<typeof UpsertIntakeRequestSchema>;
+
+export const AppointmentDocumentIdParamSchema = z.object({
+  documentId: z.string().uuid(),
+});
+
+/** §9.7.1 madde 7 (bağlayıcı) — YALNIZCA ADMIN, `reason` ZORUNLU (denetim kaydı + `paidNote`). */
+export const MarkBookingPaidRequestSchema = z.object({
+  reason: z.string().trim().min(1).max(500),
+});
+export type MarkBookingPaidRequest = z.infer<typeof MarkBookingPaidRequestSchema>;
+
+export const ListAdminBookingsQuerySchema = z.object({
+  doctorId: z.string().uuid().optional(),
+  paymentStatus: z.enum(["PENDING", "PAID", "FAILED", "EXPIRED", "REFUNDED"]).optional(),
+  search: z.string().trim().min(1).max(120).optional(),
+  cursor: z.string().optional(),
+  limit: z.coerce.number().int().positive().max(100).default(20),
+});
+export type ListAdminBookingsQuery = z.infer<typeof ListAdminBookingsQuerySchema>;
+
+export const DoctorBookingsQuerySchema = z.object({
+  from: z.string().datetime({ offset: true }).optional(),
+  to: z.string().datetime({ offset: true }).optional(),
+  paymentStatus: z.enum(["PENDING", "PAID", "FAILED", "EXPIRED", "REFUNDED"]).optional(),
+  cursor: z.string().optional(),
+  limit: z.coerce.number().int().positive().max(100).default(20),
+});
+export type DoctorBookingsQuery = z.infer<typeof DoctorBookingsQuerySchema>;
+
 // ---------- Admin ----------
 
 export const SpecialtyIdParamSchema = z.object({
@@ -161,7 +231,8 @@ export type SetDoctorAvailabilityRequest = z.infer<typeof SetDoctorAvailabilityR
 
 export const ListAdminAppointmentsQuerySchema = z.object({
   doctorId: z.string().uuid().optional(),
-  status: z.enum(["SCHEDULED", "IN_PROGRESS", "COMPLETED", "CANCELLED", "NO_SHOW"]).optional(),
+  // [TCT] §9.7.3 — `PENDING_PAYMENT` eklendi (tutulmuş-ama-ödenmemiş slot da artık bir filtre değeridir).
+  status: z.enum(["PENDING_PAYMENT", "SCHEDULED", "IN_PROGRESS", "COMPLETED", "CANCELLED", "NO_SHOW"]).optional(),
   search: z.string().trim().min(1).max(120).optional(),
   cursor: z.string().optional(),
   limit: z.coerce.number().int().positive().max(100).default(20),

@@ -234,7 +234,12 @@ describe("telehealth — randevu oluşturma (§4.3)", () => {
 
     const created = await app.prisma.appointment.findUniqueOrThrow({ where: { id: body.id } });
     expect(created.priceCents).toBe(75000);
-    expect(created.status).toBe("SCHEDULED");
+    // [TCT] §9.7.2/§9.7.3 KARAR I (bağlayıcı) — artık `PENDING_PAYMENT` ile başlar (iç olarak
+    // `slotCount: 1` bir `AppointmentBooking` üretir); ödeme onaylanana kadar `SCHEDULED`'a
+    // otomatik geçmez.
+    expect(created.status).toBe("PENDING_PAYMENT");
+    expect(created.bookingId).not.toBeNull();
+    expect(body.status).toBe("PENDING_PAYMENT");
   });
 
   it("geçersiz (müsaitlik dışı) bir saat için 422 döner, RANDEVU OLUŞMAZ", async () => {
@@ -338,11 +343,14 @@ describe("telehealth — randevu erişimi (IDOR koruması, §8.5)", () => {
 
 describe("telehealth — randevu iptali (§4.3, slot serbest KALMAZ)", () => {
   let app: FastifyInstance;
+  let adminToken: string;
 
   beforeAll(async () => {
     app = await buildTestApp();
     await resetDatabase(app.prisma);
     await setTelehealthModuleEnabled(app, true);
+    const admin = await registerTestUser(app, { email: `telehealth-cancel-admin-${crypto.randomUUID()}@example.com` });
+    adminToken = admin.accessToken;
   });
 
   afterAll(async () => {
@@ -360,6 +368,17 @@ describe("telehealth — randevu iptali (§4.3, slot serbest KALMAZ)", () => {
       payload: { doctorSlug: doctor.slug, startsAt: startsAt.toISOString(), patientName: "İptal Testi", patientEmail: "iptal@example.com", consent: true },
     });
     const { id, accessToken } = createRes.json().data;
+
+    // [TCT] §9.7.2/§9.7.3 (bağlayıcı) — artık `PENDING_PAYMENT` ile başlar; yalnızca
+    // `SCHEDULED` randevular iptal edilebilir. ADMIN'in manuel `mark-paid` ucu ödemeyi simüle eder.
+    const created = await app.prisma.appointment.findUniqueOrThrow({ where: { id } });
+    const markPaid = await app.inject({
+      method: "POST",
+      url: `/api/v1/admin/telehealth/bookings/${created.bookingId}/mark-paid`,
+      headers: authHeader(adminToken),
+      payload: { reason: "Test — ofis içi ödeme simülasyonu" },
+    });
+    expect(markPaid.statusCode).toBe(200);
 
     const cancelRes = await app.inject({ method: "POST", url: `/api/v1/appointments/${id}/cancel?t=${accessToken}`, payload: {} });
     expect(cancelRes.statusCode).toBe(200);

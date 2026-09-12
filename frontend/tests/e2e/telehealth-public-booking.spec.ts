@@ -51,24 +51,33 @@ async function gotoAndWaitReady(page: Page, url: string, ready: () => Promise<vo
  * (`availability-calendar.tsx::earliestAvailableDayKey`). Bu, aranan slotun (ister "herhangi bir
  * müsait slot", ister belirli bir saat etiketi) O günde olduğu ANLAMINA GELMEZ — hidrasyon
  * sonrası `displayTimeZone` değişimi (§4.2) gün gruplamasını kaydırabilir. Düzeltme: sabit
- * bekleme/varsayım yerine, hedef `radio` görünür olana kadar takvimdeki "müsait" gün hücrelerinde
- * SIRAYLA İLERLE (eski `role="tab"` iterasyonunun takvim hücresine uyarlanmış hali).
+ * bekleme/varsayım yerine, hedef slot (`checkbox`, bkz. aşağıdaki fonksiyonun güncellenmiş başlığı)
+ * görünür olana kadar takvimdeki "müsait" gün hücrelerinde SIRAYLA İLERLE (eski `role="tab"`
+ * iterasyonunun takvim hücresine uyarlanmış hali).
  */
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/** Herhangi bir müsait saat slotuna ulaşana kadar takvimdeki "müsait" gün hücrelerinde ilerler. */
+/**
+ * Herhangi bir müsait saat slotuna ulaşana kadar takvimdeki "müsait" gün hücrelerinde ilerler.
+ *
+ * qa-agent GÜNCELLEMESİ (bu turda) — frontend-agent'ın bıraktığı not: [TCT] §9.7.2 (bağlayıcı)
+ * TEKİL slot varsayımı KALDIRILDI, saat slotları artık `role="radio"` DEĞİL `role="checkbox"`
+ * (1..4 ÇOKLU seçim, `availability-calendar.tsx`). Bu yardımcı fonksiyon adı/dönüş tipi AYNI
+ * KALDI (yalnızca tek bir çağıran — madde 8/9 — TEK bir slot seçtiği için isim değiştirilmedi,
+ * davranışı hâlâ "ilk müsait slotu bul ve döndür"dür).
+ */
 async function selectAnyAvailableRadio(page: Page): Promise<Locator> {
-  let radio = page.getByRole("radio", { name: /— müsait$/ }).first();
-  if (await radio.isVisible().catch(() => false)) return radio;
+  let checkbox = page.getByRole("checkbox", { name: /— müsait$/ }).first();
+  if (await checkbox.isVisible().catch(() => false)) return checkbox;
 
   const availableDays = page.getByRole("button", { name: /— müsait/ });
   const count = await availableDays.count();
   for (let i = 0; i < count; i++) {
     await availableDays.nth(i).click();
-    radio = page.getByRole("radio", { name: /— müsait$/ }).first();
-    if (await radio.isVisible().catch(() => false)) return radio;
+    checkbox = page.getByRole("checkbox", { name: /— müsait$/ }).first();
+    if (await checkbox.isVisible().catch(() => false)) return checkbox;
   }
   throw new Error("Takvimde görünür hiçbir günde müsait bir saat slotu bulunamadı.");
 }
@@ -83,7 +92,7 @@ async function cellDatePartForIso(page: Page, iso: string): Promise<string> {
 
 /**
  * Belirli bir ISO zaman damgasının karşılık geldiği takvim hücresine gider (gerekirse ay ileri
- * sarılır, bkz. dosya başı yorumu), hücreye tıklar ve o zaman damgasının saat slotu `radio`'sunu
+ * sarılır, bkz. dosya başı yorumu), hücreye tıklar ve o zaman damgasının saat slotu `checkbox`'ını
  * döndürür — §4.2 saat dilimi testleri GİBİ belirli bir referans slotu arayan senaryolar içindir
  * ("herhangi bir müsait slot" için `selectAnyAvailableRadio` yeterlidir).
  */
@@ -100,7 +109,9 @@ async function selectSpecificSlot(page: Page, iso: string): Promise<Locator> {
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
     return new Intl.DateTimeFormat("tr-TR", { timeZone: tz, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(isoStr));
   }, iso);
-  return page.getByRole("radio", { name: new RegExp(`^${escapeRegExp(timeLabel)} —`) });
+  // qa-agent GÜNCELLEMESİ (bu turda) — bkz. `selectAnyAvailableRadio()` başlığındaki AYNI not:
+  // slot rolü artık `checkbox`dır.
+  return page.getByRole("checkbox", { name: new RegExp(`^${escapeRegExp(timeLabel)} —`) });
 }
 
 test.beforeAll(async ({}, testInfo) => {
@@ -181,14 +192,14 @@ test("madde 8: /doctors listesi + uzmanlık filtresi → doktor detayına git �
   expect(selectedTimeLabel, "müsait slotun aria-label'ından saat etiketi çıkarılamadı").toBeTruthy();
   await availableSlot.click();
 
-  // `POST /appointments`'e giden GERÇEK ağ isteğinin gövdesini yakala (mock DEĞİL — `route.continue()`
-  // isteğin GERÇEK e2e backend'ine ulaşmasına izin verir) ve kontrata (`doctorSlug`/`startsAt`)
-  // uyduğunu doğrula (görev talimatı madde — "backend'e giden payload'ı network request body'sini
-  // yakalayarak doğrula").
-  let capturedBody: { doctorSlug?: string; startsAt?: string } | undefined;
-  await page.route("**/appointments", async (route) => {
+  // [TCT] §9.7.2 (bağlayıcı) — qa-agent GÜNCELLEMESİ (bu turda, frontend-agent'ın bıraktığı not):
+  // tekil `POST /appointments` DEPRECATED oldu, yerine çoklu-slot `POST /appointments/bookings`
+  // geldi (`slots: string[]`, tek slot seçilse dahi `slots: [iso]`). GERÇEK ağ isteğinin gövdesini
+  // yakala (mock DEĞİL — `route.continue()` isteğin GERÇEK e2e backend'ine ulaşmasına izin verir).
+  let capturedBody: { doctorSlug?: string; slots?: string[] } | undefined;
+  await page.route("**/appointments/bookings", async (route) => {
     if (route.request().method() === "POST") {
-      capturedBody = route.request().postDataJSON() as { doctorSlug?: string; startsAt?: string };
+      capturedBody = route.request().postDataJSON() as { doctorSlug?: string; slots?: string[] };
     }
     await route.continue();
   });
@@ -204,23 +215,35 @@ test("madde 8: /doctors listesi + uzmanlık filtresi → doktor detayına git �
 
   await page.getByRole("button", { name: "Randevuyu Onayla" }).click();
 
-  await expect(page.getByText("Randevunuz oluşturuldu.")).toBeVisible({ timeout: 20_000 });
-  const confirmationLink = page.getByRole("link", { name: "bu bağlantı" });
-  await expect(confirmationLink).toBeVisible();
-  const href = await confirmationLink.getAttribute("href");
-  expect(href).toMatch(/\/consultation\/[0-9a-fA-F-]{36}\?t=.+/);
+  // [TCT] §9.7.1/§9.7.2 (bağlayıcı) — qa-agent GÜNCELLEMESİ (bu turda, frontend-agent'ın bıraktığı
+  // not): eski akış (`POST /appointments`) rezervasyon oluşturunca DOĞRUDAN "Randevunuz oluşturuldu."
+  // + konsültasyon linkini gösteriyordu. Yeni akış booking→ödeme akışına DÖNÜŞTÜ:
+  // `BookingPostCreationFlow` önce rezervasyon özetini (`bookingNumber` + slot çipleri) gösterir,
+  // ardından OPSİYONEL intake adımına geçer — direkt bir konsültasyon linki BURADA ARTIK YOKTUR
+  // (madde 24'ün kapsadığı "ödeme sonrası" akışının BİR PARÇASI, bu testin odağı DEĞİL — bkz.
+  // `telehealth-multi-slot-booking.spec.ts::madde 24`).
+  await expect(page.getByText(/Rezervasyonunuz oluşturuldu \(BKG-/)).toBeVisible({ timeout: 20_000 });
+  // "1 Slot" metni HEM başarı uyarısının (Toplam) HEM Hizmet Özeti panelinin (Dk) İÇİNDE görünür —
+  // `.first()` strict-mode ihlalini önler (`telehealth-multi-slot-booking.spec.ts`'teki AYNI not).
+  await expect(page.getByText("1 Slot", { exact: false }).first()).toBeVisible();
+  // Opsiyonel "Tıbbi Belgeler ve Ön Bilgiler" adımı otomatik açılır — bu adımın VARLIĞI, akışın
+  // gerçekten yeni booking→intake→ödeme zincirine geçtiğinin kanıtıdır.
+  await expect(page.getByText("Bu adım opsiyoneldir", { exact: false })).toBeVisible({ timeout: 10_000 });
 
   // Yakalanan payload — kontrata uygun `doctorSlug` VE seçilen slotun `startsAt`'ı (tarayıcının
   // yerel dilimindeki görüntülenen saat etiketiyle YENİDEN biçimlendirilip karşılaştırılır, ISO
   // dizesinin KENDİSİ host/tarayıcı saat dilimine göre değişebileceğinden ham string eşitliği
   // GÜVENİLMEZ).
-  expect(capturedBody?.doctorSlug, "yakalanan POST /appointments gövdesinde doctorSlug eksik/yanlış").toBe(doctorSlug);
-  expect(capturedBody?.startsAt, "yakalanan POST /appointments gövdesinde startsAt eksik").toBeTruthy();
+  expect(capturedBody?.doctorSlug, "yakalanan POST /appointments/bookings gövdesinde doctorSlug eksik/yanlış").toBe(doctorSlug);
+  expect(capturedBody?.slots, "yakalanan POST /appointments/bookings gövdesinde slots eksik").toHaveLength(1);
+  // İstemci `totalCents`/`unitPriceCents` HİÇ GÖNDERMEZ (madde 14 — backend'in kendi entegrasyon
+  // testi bunun sunucu tarafında da YOK SAYILDIĞINI ayrıca kanıtlıyor).
+  expect((capturedBody as unknown as { totalCents?: unknown })?.totalCents).toBeUndefined();
   const capturedTimeLabel = await page.evaluate((iso) => {
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
     return new Intl.DateTimeFormat("tr-TR", { timeZone: tz, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(iso));
-  }, capturedBody!.startsAt!);
-  expect(capturedTimeLabel, "payload'daki startsAt, seçilen saat slotuyla eşleşmiyor").toBe(selectedTimeLabel);
+  }, capturedBody!.slots![0]!);
+  expect(capturedTimeLabel, "payload'daki slots[0], seçilen saat slotuyla eşleşmiyor").toBe(selectedTimeLabel);
 });
 
 test.describe("§4.2/madde 9 — saat dilimi duyarlılığı: aynı slot, farklı ziyaretçi dilimlerinde farklı yerel saat etiketiyle gösteriliyor", () => {
@@ -233,7 +256,7 @@ test.describe("§4.2/madde 9 — saat dilimi duyarlılığı: aynı slot, farkl�
     // itibaren 2 saatten yakın slotlar `available:false`") SINIRINA ÇOK YAKIN olma ihtimalini
     // taşıyordu: bu describe'un `beforeAll`'ı ile sayfanın GERÇEKTEN yüklendiği an arasında geçen
     // (paylaşımlı, sıralı çalışan suite'te dakikalar sürebilen) süre içinde slot tamponun İÇİNE
-    // girip `available:false`'a düşebiliyor ve `role=radio` DEĞİL statik "Dolu" span'ı olarak
+    // girip `available:false`'a düşebiliyor ve `role=checkbox` DEĞİL statik "Dolu" span'ı olarak
     // render ediliyordu (ara sıra gözlemlenen flaky "element(s) not found" hatası). En az 6 saat
     // ileride bir slot seçmek bu marjı ortadan kaldırır.
     const SAFE_MARGIN_MS = 6 * 60 * 60_000;

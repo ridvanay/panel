@@ -12,7 +12,7 @@ import { hashToken } from "../../lib/tokens";
 import { timingSafeEqualHex } from "../../lib/api-key";
 import { logAudit } from "../../lib/audit";
 import { AppointmentIdParamSchema, AccessTokenQuerySchema } from "./telehealth.schemas";
-import { isWithinJoinWindow } from "./lib/booking";
+import { getBookingJoinWindow, isWithinJoinWindow } from "./lib/booking";
 import { createMeetingToken, isLiveKitConfigured } from "./lib/livekit";
 
 /**
@@ -39,16 +39,19 @@ type AppointmentAccessSubject = {
 };
 
 /**
- * §4.5/§8 (bağlayıcı) — token/tamamlama uçlarına yalnızca 4 yoldan biri erişebilir: (a) oturum
- * sahibi hasta, (b) doğru `accessToken`'ı sunan misafir hasta, (c) doktorun bağlı `User`'ı,
- * (d) `SiteRole.ADMIN` — **MANAGER DAHİL DEĞİL** (görev talimatı §4.5'in birebir okunuşu;
- * `telehealth.routes.ts::assertAppointmentAccess`'teki genel randevu görüntüleme/iptal ADMIN+MANAGER
- * eşiğiyle KARIŞTIRILMAMALI — bu, ayrı ve daha dar bir yetki yüzeyidir). IDOR: yetkisiz erişim
- * `404` döner (randevunun varlığı SIZDIRILMAZ), `403` DEĞİL — `telehealth.routes.ts` İLE AYNI disiplin.
+ * [TCT] §9.7.6 (bağlayıcı, integration-agent'ın bu tur uyarlaması) — booking'e bağlı bir randevu
+ * için `Appointment.accessTokenHash` YALNIZCA deprecated tek-slot `POST /appointments` akışının
+ * istemciye döndürdüğü token'dır (bkz. `lib/booking.ts::bookAppointment`). Çoklu-slot
+ * `POST /appointments/bookings` akışında istemciye YALNIZCA booking'in KENDİ token'ı döner
+ * (`AppointmentBooking.accessTokenHash`) — bu yüzden booking-bağlı bir randevuda İKİ token da
+ * (randevunun KENDİ + booking'in) kabul edilir (geriye dönük uyumluluk + yeni akış, İKİSİ
+ * BİRDEN). `bookingAccessTokenHash` YOKSA (bookingId null — bu tur ÖNCESİ tekil randevu) yalnızca
+ * randevunun kendi hash'i karşılaştırılır (davranış DEĞİŞMEDİ).
  */
 function isAuthorizedForMeetingAccess(
   appointment: AppointmentAccessSubject,
-  request: { user?: { id: string; role: string }; providedToken?: string }
+  request: { user?: { id: string; role: string }; providedToken?: string },
+  bookingAccessTokenHash?: string | null
 ): { authorized: boolean; isDoctor: boolean } {
   if (request.user) {
     if (request.user.role === "ADMIN") return { authorized: true, isDoctor: false };
@@ -61,8 +64,14 @@ function isAuthorizedForMeetingAccess(
   }
   // §8 madde 2 (bağlayıcı, security-agent düzeltmesi) — sabit zamanlı karşılaştırma
   // (`telehealth.routes.ts::assertAppointmentAccess` İLE AYNI disiplin, düz `===` YASAK).
-  if (request.providedToken && timingSafeEqualHex(hashToken(request.providedToken), appointment.accessTokenHash)) {
-    return { authorized: true, isDoctor: false };
+  if (request.providedToken) {
+    const providedHash = hashToken(request.providedToken);
+    if (timingSafeEqualHex(providedHash, appointment.accessTokenHash)) {
+      return { authorized: true, isDoctor: false };
+    }
+    if (bookingAccessTokenHash && timingSafeEqualHex(providedHash, bookingAccessTokenHash)) {
+      return { authorized: true, isDoctor: false };
+    }
   }
   return { authorized: false, isDoctor: false };
 }
@@ -91,27 +100,59 @@ export async function telehealthLiveKitRoutes(app: FastifyInstance) {
         throw new LiveKitNotConfiguredError();
       }
 
+      // [TCT] §9.7.6 (bağlayıcı) — booking'e bağlı bir randevuda oda/katılım penceresi/token
+      // kanonik olarak booking üzerinden çözülür (bkz. aşağıdaki `booking` bloğu). `select`
+      // yalnızca ihtiyaç duyulan alt kümeyi taşır (§8.5 minimum ifşa — mapper'a değil, doğrudan
+      // Prisma sorgusuna DB düzeyinde uygulanır).
       const appointment = await app.prisma.appointment.findUnique({
         where: { id: request.params.id },
-        include: WITH_APPOINTMENT_DOCTOR,
+        include: {
+          ...WITH_APPOINTMENT_DOCTOR,
+          booking: {
+            select: {
+              meetingRoomName: true,
+              accessTokenHash: true,
+              paymentStatus: true,
+              appointments: { select: { startsAt: true, endsAt: true } },
+            },
+          },
+        },
       });
       if (!appointment) throw new NotFoundError("Randevu bulunamadı.");
 
-      const { authorized, isDoctor } = isAuthorizedForMeetingAccess(appointment, {
-        user: request.user,
-        providedToken: request.query.t,
-      });
+      const booking = appointment.booking;
+
+      const { authorized, isDoctor } = isAuthorizedForMeetingAccess(
+        appointment,
+        { user: request.user, providedToken: request.query.t },
+        booking?.accessTokenHash
+      );
       if (!authorized) throw new NotFoundError("Randevu bulunamadı.");
 
       if (appointment.status !== "SCHEDULED" && appointment.status !== "IN_PROGRESS") {
         throw new AppointmentNotJoinableError();
       }
-      if (!isWithinJoinWindow(new Date(), appointment.startsAt, appointment.endsAt)) {
+
+      // [TCT] §9.7.6 madde 2/4 (bağlayıcı) — booking'e bağlıysa pencere TÜM booking açıklığı
+      // üzerinden (`min(startsAt)-10dk … max(endsAt)+15dk`) hesaplanır VE `paymentStatus !==
+      // "PAID"` ise `null`/`null` (asla katılınabilir görünmez) — `getBookingJoinWindow` bu ikisini
+      // BİRLİKTE uygular. `bookingId` YOKSA (bu tur ÖNCESİ tekil randevu) DAVRANIŞ DEĞİŞMEDİ.
+      let isJoinable: boolean;
+      if (booking) {
+        const { joinableFrom, joinableUntil } = getBookingJoinWindow(booking.appointments, booking.paymentStatus);
+        const now = new Date();
+        isJoinable = Boolean(joinableFrom && joinableUntil && now >= joinableFrom && now <= joinableUntil);
+      } else {
+        isJoinable = isWithinJoinWindow(new Date(), appointment.startsAt, appointment.endsAt);
+      }
+      if (!isJoinable) {
         throw new AppointmentNotJoinableError();
       }
 
+      // [TCT] §9.7.6 (bağlayıcı) — "Çoklu slot = TEK oda": booking'e bağlıysa KANONİK oda
+      // `AppointmentBooking.meetingRoomName`'dir (aksi hâlde hasta ikinci slotta odadan düşer).
       const meeting = await createMeetingToken({
-        roomName: appointment.meetingRoomName,
+        roomName: booking ? booking.meetingRoomName : appointment.meetingRoomName,
         participant: isDoctor ? { kind: "doctor", id: appointment.doctor.id } : { kind: "patient", id: appointment.id },
       });
 

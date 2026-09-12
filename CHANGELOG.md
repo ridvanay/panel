@@ -13,6 +13,88 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
 
 ### Added
 
+- **`feat(telehealth)`: Çoklu slot randevu rezervasyonu, Stripe ile ödeme, opsiyonel/rızaya
+  bağlı sağlık verisi (şikâyet notu + belge) yükleme ve doktor/hasta portalları** (bağlayıcı
+  karar dokümanı `.claude/architect-scope-telehealth-template.md` §9.7 "TADİLAT TURU 2",
+  `.claude/compliance-notes-telehealth.md` "TUR 2", `docs/architecture/openapi.yaml`). Tele-Sağlık
+  modülünün (bkz. aşağıdaki Tur 1 kaydı) ikinci, kapsamlı genişleme turu.
+  - **Çoklu slot rezervasyonu:** bir randevu artık 1-4 bitişik-olmayan slot içerebilir (aynı
+    doktor, doktorun kendi takviminde aynı gün) — yeni `AppointmentBooking` üst kaydı, her slot
+    kendi `Appointment` satırını korur (`@@unique([doctorId, startsAt])` çifte rezervasyon
+    garantisi değişmeden çalışır). Herhangi bir slot doluysa **hiçbiri** oluşmaz
+    (`409 SLOT_TAKEN`); toplam tutar her zaman sunucuda hesaplanır, istemciden asla kabul
+    edilmez. Mevcut tek-slot `POST /appointments` geriye dönük uyumluluk için korunur ama
+    `deprecated: true` işaretlendi.
+  - **Ödeme (Stripe Checkout, `mode: "payment"`):** rezervasyon oluşturulunca slot **30 dakika**
+    tutulur (`AppointmentStatus.PENDING_PAYMENT`); ödeme `checkout.session.completed` webhook'uyla
+    onaylanır (mevcut `webhooks/stripe.routes.ts` genişletildi, yeni bir webhook yolu açılmadı).
+    Süresi dolan, hiç ödenmemiş rezervasyonlar 5 dakikalık bir süpürücüyle (`lib/booking-expiry.ts`)
+    **gerçekten silinir** ve slot serbest kalır — ödenmiş/onaylanmış bir randevunun iptalinde mevcut
+    kural (slot kapalı kalır) değişmedi. Stripe yapılandırılmamışken `POST .../checkout-session`
+    dürüstçe `503 PAYMENTS_NOT_CONFIGURED` döner (LiveKit'in mevcut deseniyle birebir aynı).
+    ADMIN için ofis-içi manuel ödeme kaçış kapısı: `POST
+    /admin/telehealth/bookings/{id}/mark-paid` (zorunlu gerekçe + audit). **Sahte "emanet
+    (escrow)" arayüzü bilinçli olarak reddedildi** (lisanslı finansal faaliyet); iade,
+    doktora ödeme aktarımı ve e-Fatura entegrasyonu bu turda kapsam dışı bırakıldı (bkz. aşağıdaki
+    backlog listesi). Ödenmiş bir rezervasyon için "Ödeme Belgesi (bilgi amaçlıdır)" görünümü
+    (`GET .../invoice`) sunulur — bu gerçek bir e-Fatura/GİB belgesi değildir, ayrı bir `Invoice`
+    tablosu açılmadı.
+  - **Sağlık verisi (opsiyonel, rızaya bağlı, ENGELLEYİCİ compliance-agent ön-onayı ile):**
+    rezervasyona randevudan **bağımsız** bir "intake" adımı eklenebilir — şikâyet notu
+    (`AppointmentIntake.noteCiphertext`, AES-256-GCM şifreli, düz metin asla saklanmaz/aranmaz)
+    ve en fazla 5 belge (reçete/tahlil/radyoloji, ≤5 MB, PDF/PNG/JPEG, sihirli-bayt doğrulaması,
+    `AppointmentDocument`). Bu adım **randevunun ön koşulu değildir** — atlanması rezervasyonu,
+    ödemeyi veya görüşmeyi hiçbir şekilde engellemez. Ayrı, varsayılan işaretsiz, randevu KVKK
+    onayından bağımsız ikinci bir açık rıza zorunludur (`422 HEALTH_CONSENT_REQUIRED` rıza
+    yoksa). Belgeler **`Media` tablosuna asla girmez** ve `@fastify/static`in herkese açık
+    `/uploads/**` sunumunun tamamen dışında, ayrı bir özel dizinde (`PRIVATE_UPLOAD_DIR`)
+    tutulur; içeriğe yalnızca hasta, o rezervasyonun doktoru ve ADMIN erişebilir (**MANAGER
+    içeriği göremez, yalnızca belge sayısını görür; EDITOR hiçbir şey göremez**), her erişim
+    denetim kaydına düşer. Saklama: son randevu bitiminden **90 gün sonra gerçekten silinir**
+    (dosya diskten, not `null`'lanır) — mevcut 12 aylık isim/e-posta anonimleştirme
+    penceresinden kasıtlı olarak daha kısa. Silme hakkı uçları (`DELETE .../intake`,
+    `DELETE .../documents/{id}`) hastaya beklemeden silme imkânı verir.
+  - **Doktor ve hasta portalları:** yeni bir rol/kimlik doğrulama sistemi **eklenmedi** — mevcut
+    e-posta/şifre + TOTP 2FA akışı aynen kullanılıyor. **`SiteRole.DOCTOR` eklenmedi**
+    (doktorluk bir rol değil `DoctorProfile.userId` ilişkisidir). Doktor portalı
+    (`/{lang}/doctor/**`, backend `/api/v1/doctor/*`) için 2FA **route seviyesinde zorunlu**
+    (`403 TWO_FACTOR_REQUIRED`, yeni DB kolonu/2FA ucu yok). Hasta portalı
+    (`/{lang}/patient/**`) rezervasyon anında üretilen, ödeme sonrası e-postayla iletilen bir
+    **magic-link** (`?t=`) ile çalışır; her ikisi de `noindex`, admin panelinden ayrı. "Geçmiş
+    görüşme kayıtları" **randevu geçmişi listesidir** — ses/video kaydı yoktur ve bu turda da
+    eklenmedi.
+  - **Bildirim:** yalnızca `APPOINTMENT_CONFIRMATION` e-postası (ödeme onaylandığında, magic-link
+    içerir) eklendi — konu satırı nötrdür ("Randevunuz onaylandı"), gövdeye şikâyet notu/belge
+    adı/uzmanlık adı asla yazılmaz. Hatırlatma/iptal e-postaları backlog'da kalıyor.
+  - Yeni migration'lar (salt-ekleme + iki izole `ALTER TYPE`):
+    `add_appointment_status_pending_payment`, `add_email_template_purpose_appointment_confirmation`,
+    `add_telehealth_booking_and_payments`, `add_telehealth_intake_and_documents`.
+  - Yeni hata kodları: `PAYMENTS_NOT_CONFIGURED` (503), `BOOKING_NOT_PAYABLE` (409),
+    `BOOKING_EXPIRED` (409), `HEALTH_CONSENT_REQUIRED` (422), `UNSUPPORTED_DOCUMENT_TYPE` (422),
+    `DOCUMENT_LIMIT_REACHED` (409), `TWO_FACTOR_REQUIRED` (403), `NOT_A_DOCTOR` (403).
+  - **Bilinçli kapsam dışı (backlog):** iade/kısmi iade (`feature/telehealth-refunds`), gerçek
+    escrow/doktora ödeme aktarımı (`feature/telehealth-escrow-payouts`), e-Fatura/e-Arşiv
+    (`feature/e-invoice-integration`), görüşme kaydı (`feature/telehealth-recording`), randevu
+    hatırlatma/iptal e-postası (`feature/telehealth-reminder-emails`), `SiteRole.DOCTOR`
+    (`feature/doctor-role-tier`), randevu erteleme (`feature/appointment-reschedule`), belgede
+    virüs taraması (`feature/upload-antivirus`), doktorun kendi müsaitliğini düzenlemesi
+    (`feature/doctor-self-availability`).
+  - **Denetimde bulunup düzeltilen bulgular:** e2e doğrulaması sırasında iki gerçek regresyon
+    tespit edilip kapatıldı — (1) doktor portalı sayfalarının (`/doctor`, `/doctor/profile`)
+    bir Server Component'ten Client Component'e `children` olarak fonksiyon (render-prop)
+    geçirmesi nedeniyle RSC sınırında serileştirilemeyip **her istekte `500` ile çökmesi**
+    (düzeltme: `profile` artık bir React context ile expose ediliyor, `children` düz
+    `ReactNode`), (2) doktor/hasta portalı kimlik doğrulama yönlendirme akışındaki bir
+    tutarsızlık. İkisi de frontend-agent tarafından düzeltildi ve qa-agent'ın
+    `telehealth-multi-slot-booking.spec.ts` (madde 27) testiyle doğrulandı — bkz.
+    `TEST_COVERAGE.md`.
+  - Testler: backend `tests/` tamamı (117 dosya, 1390 test) + bu tura özel 8 yeni birim/
+    entegrasyon regresyon testi yeşil; 10 yeni `telehealth-multi-slot-booking.spec.ts` Playwright
+    e2e senaryosu (çoklu slot toplam tutarı, belgeli/belgesiz intake, gerçek Stripe webhook imzası,
+    belge sızıntı testi — `/uploads/**` altından erişilemiyor + `/admin/media`de görünmüyor —,
+    doktor/MANAGER/EDITOR yetki matrisi, 2FA kapısı, magic-link erişim denetimi) dahil
+    `telehealth-*.spec.ts` suite'inin tamamı yeşil.
+
 - **`feat(telehealth)`: Tele-Sağlık modülü (doktor profilleri, haftalık müsaitlik, saat
   dilimi duyarlı randevu, LiveKit görüntülü konsültasyon) + `feat(demo-templates)`:
   üçüncü hazır şablon "Global TeleHealth & Clinic"** (bağlayıcı karar dokümanı

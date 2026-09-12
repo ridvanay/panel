@@ -1,6 +1,10 @@
 node_modules
 dist
 uploads
+# Tele-Sağlık ÖZEL (private) sağlık verisi belge deposu — Dockerfile burayı hiçbir zaman COPY
+# etmez (bkz. Dockerfile yorumu), ama build context'in Docker daemon'a gönderilmesi sırasında da
+# (lokal geliştirmede bu dizin dolu olabilir) DAHİL EDİLMEMESİ için defense-in-depth.
+storage/private-uploads
 coverage
 tests
 

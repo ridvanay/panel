@@ -348,6 +348,8 @@ export interface TestMedia {
   url: string;
   filename: string;
   altText: string | null;
+  /** qa-agent — §9.7.11 madde 25 sızıntı testi (`listAllAdminMedia`) `mimeType`'ı da okur (`toMediaDto` zaten döner). */
+  mimeType?: string;
 }
 
 /**
@@ -379,6 +381,29 @@ export async function setTestMediaAltText(token: string, mediaId: string, altTex
     body: JSON.stringify({ altText }),
   });
   return json<{ data: TestMedia }>(res).then((b) => b.data);
+}
+
+/**
+ * qa-agent — `.claude/architect-scope-telehealth-template.md` §9.7.11 madde 25 (ENGELLEYİCİ
+ * sızıntı testi) — `GET /admin/media` TAM taraması (`listAllAdminDoctors()` İLE AYNI cursor
+ * deseni). Sağlık belgesi ASLA bir `Media` satırı olmadığı için (bkz.
+ * `backend/src/lib/telehealth-document-storage.ts` başlığı) bu liste, gerçek bir tıbbi belge
+ * yüklendikten SONRA bile HİÇ değişmemelidir.
+ */
+export async function listAllAdminMedia(token: string): Promise<TestMedia[]> {
+  const out: TestMedia[] = [];
+  let cursor: string | undefined;
+  while (true) {
+    const url = new URL(`${API_BASE_URL}/admin/media`);
+    url.searchParams.set("limit", "100");
+    if (cursor) url.searchParams.set("cursor", cursor);
+    const res = await fetch(url, { headers: authHeadersNoBody(token) });
+    const body = (await res.json().catch(() => ({}))) as { data?: TestMedia[]; meta?: { nextCursor?: string | null } };
+    out.push(...(body.data ?? []));
+    if (!body.meta?.nextCursor) break;
+    cursor = body.meta.nextCursor;
+  }
+  return out;
 }
 
 /** Sayfanın `blocks` alanını API üzerinden DOĞRUDAN değiştirir — UI adımlarını atlayan hızlı kurulum
@@ -566,6 +591,54 @@ export async function postStripeCheckoutSessionCompleted(orderId: string): Promi
         object: "checkout.session",
         mode: "payment",
         metadata: { kind: "order", orderId },
+      },
+    },
+  };
+  const payload = JSON.stringify(event);
+  const res = await fetch(`${API_BASE_URL}/webhooks/stripe`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Stripe-Signature": buildStripeSignatureHeader(payload, E2E_STRIPE_WEBHOOK_SECRET),
+    },
+    body: payload,
+  });
+  return { status: res.status };
+}
+
+/**
+ * qa-agent — `.claude/architect-scope-telehealth-template.md` §9.7.11 madde 24 — telehealth
+ * booking'inin `checkout.session.completed` dalı (`handleTelehealthBookingPaid`,
+ * `backend/src/modules/webhooks/stripe.routes.ts`). `postStripeCheckoutSessionCompleted()`
+ * İLE BİREBİR AYNI imza mekanizması (`buildStripeSignatureHeader`), yalnızca `metadata` şekli
+ * FARKLI (`kind: "telehealth_booking"`, `bookingId`, opsiyonel `rawAccessToken` —
+ * `telehealth.checkout.routes.ts::metadata` ile BİREBİR AYNI alan adları). GERÇEK Stripe API'sine
+ * hiç çıkılmaz (`checkout.sessions.create` bu fonksiyonda ÇAĞRILMAZ) — yalnızca webhook'un imza
+ * doğrulama + iş mantığı kod yolu gerçek HTTP ile tetiklenir (backend'in kendi
+ * `tests/integration/telehealth-webhook.test.ts`'i İLE AYNI olay şekli, orada `app.inject` ile,
+ * burada GERÇEK ağ isteğiyle).
+ */
+export async function postStripeTelehealthBookingPaid(
+  bookingId: string,
+  opts: { rawAccessToken?: string; paymentIntentId?: string } = {}
+): Promise<{ status: number }> {
+  const event = {
+    id: `evt_e2e_${crypto.randomUUID()}`,
+    object: "event",
+    api_version: "2024-06-20",
+    created: Math.floor(Date.now() / 1000),
+    type: "checkout.session.completed",
+    data: {
+      object: {
+        id: `cs_test_e2e_${crypto.randomUUID()}`,
+        object: "checkout.session",
+        mode: "payment",
+        payment_intent: opts.paymentIntentId ?? `pi_test_e2e_${crypto.randomUUID()}`,
+        metadata: {
+          kind: "telehealth_booking",
+          bookingId,
+          ...(opts.rawAccessToken ? { rawAccessToken: opts.rawAccessToken } : {}),
+        },
       },
     },
   };

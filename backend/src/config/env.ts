@@ -112,6 +112,16 @@ const EnvSchema = z.object({
   // bkz. lib/crypto.ts::encryptSecret/decryptSecret.
   ENCRYPTION_KEY: z.string().min(1, "ENCRYPTION_KEY zorunlu."),
 
+  // `.claude/architect-scope-telehealth-template.md` §9.7.5 KARAR J +
+  // `.claude/compliance-notes-telehealth.md` "TUR 2" KRİTİK ŞART — sağlık verisi (şikâyet notu
+  // eki, reçete/tahlil/radyoloji belgesi, `AppointmentDocument`) için ÖZEL depo. BAĞLAYICI:
+  // `plugins/uploads.ts::UPLOAD_DIR`'ın (`/app/uploads`, `@fastify/static` ile kimlik
+  // doğrulamasız servis edilir) ALT DİZİNİ OLAMAZ — devops-agent tarafından
+  // `/app/storage/private-uploads` (host'ta ayrı bir named volume) olarak hazırlandı, bkz.
+  // INFRA.md/docker-compose.yml/backend/.env.example. `lib/telehealth-document-storage.ts`
+  // bu değeri TÜKETİR; `@fastify/static`'e ASLA kaydedilmez.
+  PRIVATE_UPLOAD_DIR: z.string().default("./storage/private-uploads"),
+
   // E-posta gönderimi (SMTP) — bkz. lib/mail.ts. Sağlayıcı koda gömülmez: Mailtrap/SendGrid
   // SMTP/Resend SMTP/kurumsal SMTP hepsi aynı SMTP_HOST/PORT/USER/PASS arayüzüyle çalışır.
   // SMTP_HOST boş bırakılırsa: NODE_ENV=development'ta lib/mail.ts otomatik bir Ethereal

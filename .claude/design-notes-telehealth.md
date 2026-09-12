@@ -1431,3 +1431,747 @@ Gerçek metin/fotoğraf içermez — yalnızca bölüm ritmini ve palet renkleri
 | Acil durum uyarısı | `--warning` tonu (`--danger` DEĞİL); sitewide kapatılamaz ince şerit (§9.1) + booking anında kart tekrarı (§9.2) |
 | Avatar/destekleyici görsel yönü | Monogram gradyan (§10), soyut çizgi motifli destekleyici görseller — fotoğraf/AI insan YOK |
 | `preview.svg` | `frontend/public/demo-templates/telehealth-clinic/preview.svg`, 1200×750, oluşturuldu |
+
+---
+
+## 12. Booking Turu 2 — çoklu slot, "Değiştir" taşınması, uploader, ödeme rozetleri, randevu yönetimi, portal teması (v1, 2026-09-12, ui-designer)
+
+Girdi: `.claude/architect-scope-telehealth-template.md` §9.7 (BAĞLAYICI — booking/ödeme/sağlık
+verisi/portal kararları burada TEKRAR EDİLMEZ, yalnızca görsel karar üretilir), §9.7.9'daki
+ui-designer satırı. **Kod YAZILMAMIŞTIR**, frontend-agent uygular. Bu bölüm §2.2.5/§2.3.6
+(seçim onay şeridi) ve §2.4.4 (Seçilen Randevu kutusu, tekil slot) üzerinde **TADİLAT**
+yapar — tekil slot varsayımı çoklu slota genişletilir; §2.4.4'ün "Ödeme durumu"/"Randevu
+yönetimi"/"Uploader" gibi bu turda YENİ olan konuları da bu bölüm kapsar. Palet/tipografi/
+`--site-radius`/ikon kaynağı (§0/§1/§8) **DEĞİŞMEDİ**, tamamı miras alınır — bu bölüm YENİ bir
+renk/font İCAT ETMEZ, yalnızca mevcut token setini yeni bileşenlere uygular.
+
+### 12.1 Standalone şeridin kaldırılması + "Değiştir" aksiyonunun taşınması
+
+**Kaldırılan:** §2.2.5/§2.3.6'daki bağımsız "seçim onay şeridi" (`border-primary/30
+bg-primary/5` + `CalendarCheck` + "{gün} · {saat}" + "Değiştir") **TAMAMEN SİLİNİR** —
+`availability-calendar.tsx`'te takvim/saat kartlarının altında, formun üstünde artık HİÇBİR
+şerit render edilmez. Bu, görev tanımının "formun üstündeki standalone şerit kaldırılmalı"
+isteğinin birebir karşılığıdır; §2.2.5'in kendisi tarihsel bir karar kaydı olarak METİNDE
+KALIR (silinmez) ama **artık uygulanmaz** — bu notla supersede edilir.
+
+**Taşınan yer:** §2.4.4'teki "Seçilen Randevu" kutusunun (Hizmet Özeti paneli, sağ sütun)
+**kendi başlık satırının sağ üst köşesi**. Kutunun mevcut tek satırlık üst etiketi
+(`text-[11px] font-semibold uppercase tracking-wider text-foreground/50` "Seçilen Randevu")
+artık bir başlık SATIRI olur, "Değiştir" aksiyonuyla aynı hizada:
+
+```
+<div className="flex items-center justify-between gap-2">
+  <p className="text-[11px] font-semibold uppercase tracking-wider text-foreground/50">
+    Seçilen Randevu
+  </p>
+  {selectedSlots.length > 0 && (
+    <button
+      type="button"
+      onClick={clearAllSlots}
+      className="flex shrink-0 items-center gap-1 rounded-[var(--site-radius)] px-1.5 py-0.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+    >
+      <Pencil className="h-3 w-3" aria-hidden="true" />
+      Değiştir
+    </button>
+  )}
+</div>
+```
+
+- **Boyut:** `text-xs` (12px) — panelin ikincil aksiyonu, "Randevu Al" CTA'sının (`size="lg"`)
+  görsel ağırlığıyla YARIŞMAZ; §2.2.5'in eski "Değiştir"iyle AYNI punto (`text-xs
+  font-medium`), yalnızca artık bir metin-link DEĞİL, hafif dolgulu bir mikro-buton (aşağıda
+  gerekçe).
+- **İkon:** `Pencil` (lucide, `h-3 w-3`) — §2.2.5'in ikonsuz metin-linkinden KASITLI fark:
+  orada "Değiştir" bir satırın İÇİNDE, bağlamı zaten görünürken bir metin ekiydi; burada
+  kutunun köşesinde YALNIZ BAŞINA duran bir aksiyon olduğundan (kullanıcı gözü önce ikonu
+  yakalar) bir "düzenle" çağrışımı taşıyan ikon gerekli — `Pencil` "içeriği değiştir" anlamını
+  `CalendarCheck`/`X` gibi diğer bu dokümanın zaten kullandığı ikonlarla ÇAKIŞMADAN taşır.
+- **Hover/focus:** `hover:bg-primary/10 hover:underline` (hem dolgu hem alt çizgi — tek bir
+  sinyale güvenilmez, WCAG 1.4.1 ile aynı ilke bu dokümanın her yerinde) + `focus-visible:ring-2
+  focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface`
+  (§2.2.1'in paylaşılan focus halkası — YENİ bir focus stili İCAT EDİLMEZ). `px-1.5 py-0.5
+  rounded-[var(--site-radius)]` dolgu, buton dokunma hedefini büyütür (metin-link'ten daha
+  güvenilir bir tıklama alanı) ve hover'daki `bg-primary/10`'un görünür bir sınırı olur.
+- **Görünürlük koşulu:** yalnızca `selectedSlots.length > 0` iken render edilir — hiç seçim
+  yokken "Değiştir"in KENDİSİ anlamsızdır (değiştirilecek bir şey yok); bu, §2.4.4'ün mevcut
+  boş-durum dalıyla (`"Tarih ve saat seçin"`) aynı `if` kapısını paylaşır.
+- **Davranış:** `clearAllSlots` — **TÜM** seçili slotları temizler (tekil slotun `Değiştir`i
+  gibi TEK bir slotu değil, bütün seçimi sıfırlar; tekil slot kaldırma §12.2'deki çip'in kendi
+  `X`'i ile yapılır, bu ikisi FARKLI granülaritedir). Booking formundaki `patientName`/
+  `patientEmail`/rıza kutusu **SIFIRLANMAZ** (§2.2.5'in "form alanları korunur" ilkesi AYNEN
+  geçerli — veri kaybı yaratılmaz). Tıklama sonrası odak/scroll takvime GERİ TAŞINMAZ
+  (kullanıcı zaten Hizmet Özeti panelini görüyor, panel `lg:sticky` olduğundan sol sütundaki
+  takvim zaten görünür durumda olabilir — otomatik `scrollIntoView` İCAT EDİLMEZ, gereksiz bir
+  sıçrama olurdu).
+- **Neden "yeşil şerit" (`bg-primary/5` teali) BAŞKA BİR YERDE TEKRARLANMAZ:** görev tanımının
+  "bağımsız yeşil şeridin kaldırılması" isteği yalnızca §2.2.5'in konumunu (formun/takvimin
+  ÜSTÜNDE, ayrı bir yüzey) hedefliyor — Hizmet Özeti panelindeki "Seçilen Randevu" kutusunun
+  KENDİSİ zaten §2.4.4'te `bg-muted/50` (nötr, primary tint DEĞİL) idi ve BU turda da ÖYLE
+  KALIR; iki farklı "seçildi" sinyalini (kutunun nötr zemini + takvimdeki `bg-primary`
+  dolgulu seçili pilleri) birbirine karıştırmamak için kutuya AYRICA bir primary tint
+  EKLENMEZ.
+
+### 12.2 Çoklu slot seçimi — takvim + Hizmet Özeti paneli
+
+Mimari §9.7.2 (bağlayıcı): 1-4 slot, hepsi AYNI doktor + AYNI takvim günü. Görsel karar bu
+kısıtın ÜÇ yüzeyde nasıl okunur olduğunu tarif eder: takvimin saat ızgarası, Hizmet Özeti
+paneli, ve sınıra ulaşma/gün değişimi durumları.
+
+#### 12.2.1 Saat ızgarasında çoklu seçim — YENİ sınıf İCAT EDİLMEZ, sadece çoğullaşır
+
+§2.2.1/§2.3.4'ün `SELECTION_PILL_SELECTED` sınıfı (`bg-primary text-primary-foreground
+ring-2 ring-primary` + `Check` ikonu) **DEĞİŞMEDİ** — tek fark, artık AYNI ANDA birden fazla
+saat pili bu durumda olabilir (en fazla 4). Tıklama davranışı: müsait bir pile tıklamak onu
+seçili kümeye EKLER; zaten seçili bir pile TEKRAR tıklamak onu kümeden ÇIKARIR (toggle) —
+tekil slotun "bir seç, diğerini seçince öncekini otomatik bırak" (radio) davranışı **YERİNİ
+çoklu-seçim (checkbox benzeri) davranışa bırakır**; bu nedenle `role="radio"`/`radiogroup`
+ARIA'sı **`role="checkbox"` + kapsayıcı `aria-label="{gün} müsaitlik saatleri, en fazla 4
+seçim"`** olarak GÜNCELLENİR (semantik değişiklik — çoklu seçim artık radyo grubu DEĞİLDİR;
+bu bir implementasyon detayı ama semantik zorunluluk, §2.2.1'in "ARIA farkı kalır" ilkesiyle
+tutarlı).
+
+#### 12.2.2 Sınıra ulaşma durumu — 5. bir slot durumu (YENİ)
+
+4 slot seçiliyken, henüz seçilmemiş ama `available: true` olan diğer TÜM slotlar için YENİ bir
+görsel durum — "dolu" (başkası tarafından alınmış) ile KARIŞTIRILMAMASI gerektiği için o
+sınıfın YERİNE değil, kendi soluk/nötr durumu:
+
+```
+<Tooltip>
+  <TooltipTrigger asChild>
+    <span
+      aria-disabled="true"
+      aria-label={`${time} — müsait, ancak en fazla 4 slot seçilebilir`}
+      className="flex h-10 min-w-[84px] cursor-not-allowed items-center justify-center rounded-[var(--site-radius)] border border-border/60 bg-surface px-3 text-sm font-medium tabular-nums text-foreground/35"
+    >
+      {time}
+    </span>
+  </TooltipTrigger>
+  <TooltipContent>En fazla 4 slot seçebilirsiniz</TooltipContent>
+</Tooltip>
+```
+
+- **Neden §3'ün "Dolu" sınıfını (`bg-muted line-through` + "Dolu" etiketi) YENİDEN
+  KULLANMIYORUZ:** o sınıf "bu saat BAŞKASI tarafından alındı" anlamı taşır (§2.2.4'ün kendi
+  gerekçesi) — burada saat HÂLÂ müsaittir, yalnızca KULLANICININ kendi seçim sınırına
+  ulaşılmıştır. Aynı görseli kullanmak kullanıcıyı "bu saat tükendi" diye yanlış bilgilendirir.
+  Bu yüzden çizgi/‟Dolu" etiketi YOK, sadece daha soluk bir "geçici olarak seçilemez" tonu
+  (`text-foreground/35`, "geçmiş"in `/25`'inden biraz daha belirgin — çünkü bu durum kalıcı
+  değil, bir slot bırakıldığında hemen tekrar tıklanabilir hale gelir, "geçmiş" gibi kalıcı
+  değildir).
+- **`Tooltip`/`TooltipTrigger`/`TooltipContent`** (`@/components/ui/tooltip`, projede zaten
+  kurulu paylaşılan primitive — `option-facet-filter.tsx`'te public sitede de kullanılıyor,
+  YENİ bir bağımlılık İCAT EDİLMEZ) — masaüstünde hover'da "En fazla 4 slot seçebilirsiniz"
+  açıklamasını verir; dokunmatik cihazlarda `aria-label` zaten aynı bilgiyi ekran okuyucuya
+  taşıdığından ikinci bir dokunma-tetiklemeli açıklama GEREKMEZ (Tooltip bileşeni bunu kendi
+  davranışıyla halleder, bu implementasyon detayıdır).
+- Zaten SEÇİLİ olan 4 slot bu durumdan ETKİLENMEZ — onlar her zaman tıklanabilir kalır (birini
+  bırakınca yerine başka bir saat seçilebilsin diye).
+
+#### 12.2.3 Farklı gün seçimi — otomatik sıfırlama + bilgilendirme
+
+Mimari kısıt (§9.7.2) tüm slotların AYNI takvim gününe ait olmasını zorunlu kılar. Kullanıcı
+zaten 1+ slot seçiliyken TAKVİMDE BAŞKA BİR GÜNÜN saatine tıklarsa:
+
+- Önceki seçim(ler) **otomatik olarak temizlenir**, yeni tıklanan slot TEK BAŞINA seçili hale
+  gelir (bir hata/`409` ÜRETİLMEZ, kullanıcı akışı KESİLMEZ — bu saf bir istemci-tarafı
+  state geçişidir, sunucuya henüz hiçbir istek gitmemiştir).
+- Hemen ardından, takvim kartının ALTINDA (saat gruplarının ÜSTÜNDE), geçici bir bilgi notu:
+  ```
+  <Alert variant="info" className="mt-3">
+    Farklı bir gün seçtiğiniz için önceki seçiminiz temizlendi.
+  </Alert>
+  ```
+  Mevcut paylaşılan `Alert` bileşeni (`@/components/ui/alert`, booking formunun kendi
+  hata/başarı mesajlarında ZATEN kullanılıyor — YENİ bir bildirim bileşeni/toast kütüphanesi
+  İCAT EDİLMEZ; projede `sonner` yalnızca `admin/**` sayfalarında kurulu, public site'ta HİÇ
+  kullanılmıyor — bu tutarlılığı bozmamak için burada da toast DEĞİL, sayfanın kendi `Alert`
+  deseni kullanılır). Kalıcılığı (birkaç saniye sonra otomatik kaybolması mı, yoksa kullanıcının
+  bir sonraki etkileşimine kadar mı kalacağı) frontend-agent'ın implementasyon detayıdır — bu
+  doküman yalnızca GÖRSEL/bileşen kararını verir.
+
+#### 12.2.4 Hizmet Özeti paneli — "Seçilen Randevu" kutusu, çip listesi
+
+§2.4.4'ün kutusu (`rounded-[var(--site-radius)] border border-border bg-muted/50 p-3`)
+YAPISI KORUNUR, yalnızca İÇERİĞİ tekil satırdan çoklu-çip listesine genişler. Tüm slotlar AYNI
+güne ait olmak ZORUNDA olduğundan (§9.7.2), tarih BİR KEZ üstte yazılır, saatler altta çip
+olarak listelenir — her satırda tarihi TEKRARLAMAK (§2.2.5'in "aynı bilgi iki kez
+gösterilmez" ilkesi) gereksiz olurdu:
+
+```
+<div className="mt-4 rounded-[var(--site-radius)] border border-border bg-muted/50 p-3">
+  <div className="flex items-center justify-between gap-2">
+    <p className="text-[11px] font-semibold uppercase tracking-wider text-foreground/50">Seçilen Randevu</p>
+    {selectedSlots.length > 0 && (/* §12.1 "Değiştir" butonu */)}
+  </div>
+
+  {selectedSlots.length === 0 ? (
+    <p className="mt-1 text-sm text-foreground/40">Tarih ve saatleri seçin</p>
+  ) : (
+    <>
+      <p className="mt-2 flex items-center gap-1.5 text-sm font-medium text-foreground">
+        <CalendarCheck className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
+        {formatDayLabel(selectedSlots[0].startsAt, displayTimeZone)}
+      </p>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {selectedSlots.map((slot) => (
+          <span
+            key={slot.startsAt}
+            className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 py-1 pl-2.5 pr-1.5 text-xs font-medium tabular-nums text-primary"
+          >
+            {formatTime(slot.startsAt, displayTimeZone)}
+            <button
+              type="button"
+              onClick={() => removeSlot(slot)}
+              aria-label={`${formatTime(slot.startsAt, displayTimeZone)} slotunu kaldır`}
+              className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-primary/70 hover:bg-primary/20 hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+            >
+              <X className="h-3 w-3" aria-hidden="true" />
+            </button>
+          </span>
+        ))}
+      </div>
+      <p className="mt-2 text-xs text-foreground/60">
+        {selectedSlots.length} Slot · {selectedSlots.length * sessionDurationMin} Dk
+      </p>
+    </>
+  )}
+</div>
+```
+
+- **Çip stili:** `rounded-full border-primary/30 bg-primary/10 text-primary` — takvimdeki
+  "müsait gün" tonuyla (§2.3.2 `border-primary/20 bg-primary/5`) AYNI aileden, bir kademe daha
+  belirgin (`/30`/`/10`) çünkü burada artık KESİNLEŞMİŞ bir seçimi temsil ediyor, bir olasılığı
+  DEĞİL. Her çip kendi `X` kaldırma düğmesini taşır (`h-4 w-4 rounded-full`, dokunma hedefi
+  küçük ama çip zaten kompakt bir ikincil aksiyon; masaüstünde `hover:bg-primary/20
+  hover:text-danger` net bir "kaldır" sinyali verir, dokunmatikte `aria-label` zaten yeterli).
+- **"Değiştir" ile çip'in `X`'i arasındaki granülarite farkı bilerek KORUNUR:** kutunun
+  köşesindeki "Değiştir" (§12.1) TÜM seçimi temizler; çipin kendi `X`'i SADECE o TEK slotu
+  kaldırır. İkisi de aynı `removeSlot`/`clearAllSlots` state fonksiyonlarına bağlanır ama farklı
+  granülaritede — bu, görev tanımının "silme ikonu ile tekil slot kaldırma" isteğinin BİREBİR
+  karşılığıdır.
+- **"{n} Slot · {toplam dk} Dk" özet etiketi:** `text-xs text-foreground/60`, orta-nokta ayracı
+  (§2'nin "30 dk · ₺450" konvansiyonuyla AYNI) — görev tanımının verdiği örnek `"2 Slot: 60
+  Dk"` (iki nokta üst üste) KASITLI olarak orta-noktaya çevrilir, çünkü doküman zaten §2.4.4'te
+  AYNI gerekçeyle görev tanımının virgüllü tarih formatını orta-noktaya çevirmişti ("ikinci bir
+  ayraç biçimi İCAT ETMEK tutarsızlık yaratırdı") — burada da AYNI ilke uygulanır, tek bir
+  ayraç dili proje genelinde korunur. Konum: çip listesinin HEMEN ALTI, fiyat bloğunun ÜSTÜ.
+  Süre `sessionDurationMin × slotCount` ile türetilir (doktorun TEK seans süresi × seçilen slot
+  sayısı) — yeni bir "toplam süre" alanı istemciden İCAT EDİLMEZ/sunucuya gönderilmez, bu salt
+  GÖRSEL bir çarpım, mimari §9.7.2'nin "totalCents istemciden asla kabul edilmez" ilkesiyle AYNI
+  ruh (süre de sunucu tarafından ayrıca doğrulanır/türetilir, istemcinin hesabı yalnızca
+  gösterim amaçlıdır).
+
+#### 12.2.5 Toplam tutarın vurgulanması — tekil/çoklu ayrımı
+
+§2.4.5'in fiyat bloğu (`text-2xl font-semibold` + `/ seans`) **`slotCount === 1` iken AYNEN
+KORUNUR** (değişmedi). `slotCount > 1` iken, `cart-drawer.tsx`/`design-notes-checkout-
+redesign.md`'nin "Ara Toplam → Toplam" hiyerarşisiyle AYNI ilkeyi ödünç alan bir döküm eklenir
+(YENİ bir fiyat sunumu dili İCAT EDİLMEZ, mevcut sepet/checkout deseni bu panele TAŞINIR):
+
+```
+<div className="mt-4 space-y-1.5 border-t border-border pt-4">
+  <div className="flex items-center justify-between text-xs text-foreground/60">
+    <span>{formatPriceFromCents(unitPriceCents, ...)} × {slotCount} seans</span>
+    <span>{formatPriceFromCents(subtotalCents, ...)}</span>
+  </div>
+  <div className="flex items-baseline justify-between">
+    <span className="text-sm font-semibold text-foreground">Toplam</span>
+    <span className="text-2xl font-semibold text-foreground">{formatPriceFromCents(totalCents, ...)}</span>
+  </div>
+</div>
+```
+
+- **"Toplam" satırı `text-2xl font-semibold`'ta KALIR** (checkout'un kendi `text-lg
+  font-bold`'undan FARKLI, KASITLI) — çünkü bu panelde fiyat TEK figürdür (checkout'ta olduğu
+  gibi üstünde kargo/vergi satırları yok), §2.4.5'in zaten kurduğu görsel ağırlık burada
+  KORUNUR; yalnızca ÜSTÜNE tek satırlık birim-fiyat×adet dökümü eklenir.
+  `formatPriceFromCents` biçimlendiricisi ve `intlLocale` parametresi §2/§2.4.5 ile AYNI —
+  ikinci bir fiyat formatı İCAT EDİLMEZ.
+- CTA ("Randevu Al") bu bloğun ALTINDA, §2.4.5 ile AYNI konum/davranış (devre dışı bırakılmaz,
+  `href="#randevu"`) — DEĞİŞMEDİ.
+
+### 12.3 Tıbbi belge yükleyici (uploader) — durumlar
+
+Mimari §9.7.5 (bağlayıcı): opsiyonel adım, istek başına 1 dosya, booking başına ≤5 belge,
+≤5MB, PDF/PNG/JPG whitelist, SVG YASAK. code-quality-agent'ın "uploader için yeni paket
+EKLENMEZ" kararı (§9.7.9) gereği görsel/etkileşim **native HTML5 drag&drop** (`onDragOver`/
+`onDrop`/gizli `<input type="file">`) üzerine kurulur — bu doküman yalnızca durumların
+GÖRSELİNİ tarif eder.
+
+#### 12.3.1 Adımın kendisi — opsiyonel olduğunun görsel ilanı
+
+Adımın EN ÜSTÜNDE, dropzone'un bile ÜSTÜNDE, sabit bir not (§9.7.5 madde 1'in ZORUNLU kıldığı
+mikro-metin — bu doküman metni ÖNERİR, nihai metin compliance-agent'ındır, `emergency-notice.tsx`
+ile AYNI "yer tutucu" ilkesi):
+
+```
+<p className="mb-3 text-xs text-foreground/60">
+  Bu adım opsiyoneldir — dosyanız yoksa devam edebilirsiniz.
+</p>
+```
+
+Adımın altındaki "İleri/Devam Et" veya "Randevuyu Onayla" CTA'sı hiçbir zaman belge
+yüklenmesini ŞART KOŞMAZ (buton hiçbir koşulda bu adım yüzünden disabled OLMAZ) — bu, §9.7.5
+madde 1'in "randevunun ön koşulu olamaz" kararının DOĞRUDAN görsel karşılığıdır.
+
+#### 12.3.2 Boş durum (davet)
+
+```
+<div
+  role="button"
+  tabIndex={0}
+  className="flex flex-col items-center gap-2 rounded-[var(--site-radius)] border-2 border-dashed border-border bg-surface p-8 text-center transition-colors duration-150 hover:border-primary/40 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+>
+  <UploadCloud className="h-8 w-8 text-foreground/40" aria-hidden="true" />
+  <p className="text-sm font-medium text-foreground">
+    Dosyaları buraya sürükleyin veya <span className="text-primary underline-offset-4">seçmek için tıklayın</span>
+  </p>
+  <p className="text-xs text-foreground/50">PDF, PNG veya JPG · maksimum 5MB</p>
+</div>
+```
+
+- `border-2 border-dashed` — bu dokümanda İLK KEZ kullanılan bir kenarlık stili (diğer TÜM
+  yüzeyler `border` düz çizgi, §0/§8) — KASITLI istisna: kesikli çizgi, evrensel/tanıdık bir
+  "buraya bırak" sinyalidir (dosya yükleyicilerin neredeyse tamamının ortak dili), düz bir
+  `border-border` burada "tıklanabilir bir kart" ile "bir bırakma alanı" arasındaki farkı
+  YETERİNCE İLETMEZ.
+- İkon `UploadCloud` (lucide) — "yükleme" kavramının en doğrudan karşılığı, `Paperclip` (ki
+  §12.5'te belge SAYISI/eki için kullanılır) ile KARIŞTIRILMAZ.
+- Metnin ikinci tıklanabilir kısmı (`seçmek için tıklayın`) `text-primary` — gizli
+  `<input type="file">`'ı tetikleyen GERÇEK bir etkileşim noktasını işaretler (tüm kutu zaten
+  tıklanabilir/`role="button"`, ama metindeki bu vurgu kullanıcıya "buraya tıklaman da
+  yeterli" der).
+
+#### 12.3.3 Sürükleniyor/hover (dragover)
+
+```
+<div className="flex flex-col items-center gap-2 rounded-[var(--site-radius)] border-2 border-dashed border-primary bg-primary/5 p-8 text-center">
+  <UploadCloud className="h-8 w-8 text-primary" aria-hidden="true" />
+  <p className="text-sm font-medium text-primary">Bırakmak için serbest bırakın</p>
+</div>
+```
+
+Yalnızca `dragOver` olayı aktifken (native `onDragEnter`/`onDragLeave` çifti) — ikincil
+"PDF/PNG/JPG · 5MB" satırı bu durumda GİZLENİR (kullanıcının dikkati tek bir eylemde: bırakmak),
+kenarlık/ikon/metin tamamen `primary` tonuna geçer (§2.3.2'nin müsait/seçili geçişindeki AYNI
+"dolgu değişimi = durum değişimi" ilkesi).
+
+#### 12.3.4 Yükleniyor (dosya seçildi/bırakıldı, sunucuya gönderiliyor)
+
+Dropzone'un YERİNİ ALMAZ — dropzone (§12.3.2 boş hâli, "5/5 sınırına kadar" başka dosya
+eklenebilsin diye) ÜSTTE kalır, yüklenen/yükleniyor dosyalar ALTINDA bir liste olarak birikir:
+
+```
+<div className="flex items-center gap-3 rounded-[var(--site-radius)] border border-border bg-surface p-3">
+  <FileText className="h-5 w-5 shrink-0 text-foreground/40" aria-hidden="true" />
+  <div className="min-w-0 flex-1">
+    <p className="truncate text-sm font-medium text-foreground">tahlil-sonucu.pdf</p>
+    <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+      <div className="h-full rounded-full bg-primary transition-all duration-150" style={{ width: `${progress}%` }} />
+    </div>
+  </div>
+  <span className="shrink-0 text-xs tabular-nums text-foreground/50">%{progress}</span>
+  <button type="button" aria-label="Yüklemeyi iptal et" className="shrink-0 text-foreground/40 hover:text-danger">
+    <X className="h-4 w-4" aria-hidden="true" />
+  </button>
+</div>
+```
+
+- Dosya tipi ikonu (`FileText` PDF için, `FileImage` PNG/JPG için — aşağıdaki §12.3.5'te AYNI
+  eşleme) — `mimeType`'a göre seçilir, dosyanın kendi önizlemesi (thumbnail) GÖSTERİLMEZ
+  (mimari §9.7.5 madde 5: belge özel/kapılı depoda, istemci henüz `documentId` almadan/sunucu
+  onaylamadan bir `<img>` önizlemesi oluşturmak gereksiz karmaşıklık + olası sağlık verisini
+  DOM'da erken/gereksiz bir `blob:` URL'i olarak tutmak anlamına gelir — ikon YETERLİDİR).
+- İlerleme çubuğu `bg-muted` zemin + `bg-primary` dolgu (§2.3.2'nin "primary = aktif/olumlu
+  ilerleme" ilkesiyle tutarlı, YENİ bir renk İCAT EDİLMEZ).
+
+#### 12.3.5 Başarılı (yüklendi)
+
+```
+<div className="flex items-center gap-3 rounded-[var(--site-radius)] border border-border bg-surface p-3">
+  <FileText className="h-5 w-5 shrink-0 text-foreground/40" aria-hidden="true" />
+  <div className="min-w-0 flex-1">
+    <p className="truncate text-sm font-medium text-foreground">tahlil-sonucu.pdf</p>
+    <p className="text-xs text-foreground/50">2.4 MB</p>
+  </div>
+  <CheckCircle2 className="h-4 w-4 shrink-0 text-success" aria-hidden="true" />
+  <button type="button" aria-label="tahlil-sonucu.pdf dosyasını kaldır" className="shrink-0 text-foreground/40 hover:text-danger">
+    <Trash2 className="h-4 w-4" aria-hidden="true" />
+  </button>
+</div>
+```
+
+- İkon eşlemesi (booking sürecinin TAMAMINDA — burada, §12.3.4'te, §12.5'in belge listesinde
+  AYNI): **PDF → `FileText`**, **PNG/JPG → `FileImage`** — ikinci bir dosya-tipi ikon seti
+  İCAT EDİLMEZ, ikisi de `lucide-react`.
+  `Trash2` (kaldır) DEĞİL, ayrıntı: bu buton `AppointmentDocument` KAYDINI DA siler
+  (§9.7.5 madde 10 "silme hakkı" ucu) — bu yüzden §12.3.4'ün "iptal" `X`'inden BİLEREK farklı
+  bir ikon (`Trash2`), çünkü ikisinin sonucu FARKLIDIR (biri henüz tamamlanmamış bir isteği
+  iptal eder, diğeri KALICI bir kaydı siler).
+- **Boyut bilgisi** insan-okunur birim (`"2.4 MB"`) — ham bayt DEĞİL.
+- **Tıklanabilir önizleme YOK bu listede** — bu, HASTANIN KENDİ yüklediği belge listesi
+  (intake adımı, booking akışının içinde); önizleme/indirme yalnızca §12.5'in doktor panelinde
+  anlamlıdır (kendi yüklediğini hasta zaten biliyor, tekrar açmasına GEREK YOK bu adımda) —
+  gerekirse `GET .../documents/{id}/content` üzerinden bir "Görüntüle" bağlantısı EKLENEBİLİR
+  ama bu turda ZORUNLU değildir, frontend-agent'ın kapsam kararına bırakılır.
+
+#### 12.3.6 Hata durumu (yanlış format / boyut aşımı / sunucu reddi)
+
+```
+<div className="flex items-start gap-3 rounded-[var(--site-radius)] border border-danger/30 bg-danger/10 p-3">
+  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-danger" aria-hidden="true" />
+  <div className="min-w-0 flex-1">
+    <p className="truncate text-sm font-medium text-danger">rapor.docx</p>
+    <p className="text-xs text-danger/80">Desteklenmeyen dosya biçimi — yalnızca PDF, PNG veya JPG yükleyebilirsiniz.</p>
+  </div>
+  <button type="button" aria-label="Hatayı kapat" className="shrink-0 text-danger/60 hover:text-danger">
+    <X className="h-4 w-4" aria-hidden="true" />
+  </button>
+</div>
+```
+
+- **Hata mesajları (frontend-agent backend hata koduna göre eşler, metinler bu dokümanın
+  ÖNERİSİ, nihai metin frontend-agent'ın çeviri sözlüğüne girer):**
+  - `422 UNSUPPORTED_DOCUMENT_TYPE` → *"Desteklenmeyen dosya biçimi — yalnızca PDF, PNG veya
+    JPG yükleyebilirsiniz."*
+  - istemci-taraflı boyut ön-kontrolü (5MB üzeri) → *"Dosya 5MB sınırını aşıyor."*
+  - `409 DOCUMENT_LIMIT_REACHED` → *"En fazla 5 belge yükleyebilirsiniz."* (bu mesaj tek
+    seferlik bir satır olarak dropzone'un YERİNE geçer — §12.3.7)
+- Ton `--danger` (kırmızı) — §12.2.2'nin "sınıra ulaşma" durumundan BİLEREK farklı (o bir
+  KISIT bildirimiydi, "warning" bile değildi, sadece soluk-nötr; bu GERÇEK bir reddedilme/
+  hatadır) — `--warning` (amber) DEĞİL, çünkü kullanıcının düzeltmesi gereken somut bir HATA
+  var (§6.2/§9'un "warning = henüz kurulmamış/kalıcı bilgi", "danger = bir şey başarısız oldu"
+  ayrımıyla TUTARLI).
+
+#### 12.3.7 5 belge sınırına ulaşıldığında dropzone'un kendisi
+
+`documents.length === 5` iken §12.3.2'nin dropzone'u ARTIK RENDER EDİLMEZ — yerine tek satırlık
+nötr bir bilgi notu:
+
+```
+<div className="flex items-center gap-2 rounded-[var(--site-radius)] border border-border bg-muted/50 px-4 py-3 text-sm text-foreground/60">
+  <Paperclip className="h-4 w-4 shrink-0" aria-hidden="true" />
+  Belge sınırına ulaşıldı (5/5) — yeni bir belge eklemeden önce mevcut bir belgeyi kaldırın.
+</div>
+```
+
+Zaten yüklenmiş 5 belgenin listesi (§12.3.5) bu notun ALTINDA görünmeye devam eder — kullanıcı
+onlardan birini `Trash2` ile silerse dropzone GERİ GELİR.
+
+### 12.4 Ödeme durumu rozetleri
+
+Mimari §9.7.3: `BookingPaymentStatus = PENDING | PAID | FAILED | EXPIRED | REFUNDED`. Görev
+tanımı üç etiketi (Ödendi/Bekliyor/Süresi Doldu) istiyor; bu doküman TAMAMLAYICI olarak
+`FAILED`/`REFUNDED` için de tutarlı bir eşleme verir (frontend-agent'ın aynı `Badge`
+bileşenini enum'un TÜM değerleri için kullanması gerekeceğinden — enum'un bir kısmı için
+karar verip diğerini boşlukta bırakmak tutarsız bir bileşen API'si üretirdi).
+
+Paylaşılan `Badge` (`@/components/ui/badge`, `tone`/`size`/`solid` — YENİ bir rozet bileşeni
+İCAT EDİLMEZ) — HER durumda `solid` (dolgu) + ikon + metin ÜÇLÜ sinyali (renk-körü güvenliği,
+§2.2.1/§3 ile AYNI ilke, bir ödeme durumu asla SADECE renkle ayırt edilmez):
+
+| Durum (`BookingPaymentStatus`) | Etiket | `Badge` | İkon |
+|---|---|---|---|
+| `PAID` | **"Ödendi"** | `tone="success" solid size="sm"` | `CircleCheck` |
+| `PENDING` | **"Bekliyor"** | `tone="warning" solid size="sm"` | `Clock` |
+| `EXPIRED` | **"Süresi Doldu"** | `tone="neutral" solid size="sm"` | `Ban` |
+| `FAILED` | "Başarısız" | `tone="danger" solid size="sm"` | `XCircle` |
+| `REFUNDED` | "İade Edildi" | `tone="neutral" size="sm"` (soft, solid DEĞİL) | `Undo2` |
+
+```
+<Badge tone="success" solid size="sm" className="gap-1">
+  <CircleCheck className="h-3 w-3" aria-hidden="true" />
+  Ödendi
+</Badge>
+```
+
+- **`EXPIRED` neden `danger` (kırmızı) DEĞİL, `neutral` (gri):** görev tanımı "gri/kırmızı"
+  arasında seçim bırakmıştı; bu doküman **gri**yi seçer — süresi dolmuş bir booking bir HATA
+  değildir (§9.7.3: hiç ödenmemiş satırlar zaten HARD DELETE edilir, kullanıcı tarafında
+  "başarısız bir işlem" değil "bu slot artık geçerli değil, serbest bırakıldı" nötr bir sondur)
+  — `--danger` burada §12.3.6/§9'un "danger = somut hata" ayrımını GEREKSİZ yere sertleştirirdi.
+  `FAILED` (ödeme GİRİŞİMİ başarısız oldu, ör. kart reddi) ise GERÇEK bir hata olduğundan
+  `danger` ORADA kullanılır — iki farklı son durumun (sessizce süresi dolma / aktif olarak
+  reddedilme) FARKLI ciddiyette olduğu böylece rozet renginde de yansır.
+- **`PENDING` neden `warning` (amber) `solid`:** bu bir bekleyiş, `--danger` DEĞİL; ama §6.1'in
+  "sakin/nötr primary" bekleme odası tonundan da FARKLI — burada kullanıcının (özellikle
+  doktorun randevu listesinde) DİKKATİNİ çekmesi gerekir ("bu hasta henüz ödemedi, süresi
+  30 dakika içinde dolabilir"), bu yüzden `warning` (amber, "dikkat" tonu) `success`/`neutral`
+  ile aynı görsel ağırlıkta ama anlamca "aksiyon/takip gerekebilir" sinyali taşır.
+- **Boyut:** `size="sm"` — tablo/kart satırında birçok rozet yan yana görünebileceğinden
+  (§12.5), `lg` yalnızca TEK bir rozetin sayfanın en görünür noktasında (ör. randevu detay
+  sayfasının kendi başlığında) vurgulanması gerektiğinde kullanılabilir; bu doküman varsayılan
+  olarak `sm`'i BAĞLAYICI kılar, `lg` istisnası frontend-agent'ın sayfa bağlamına bırakılır.
+- **Konum (kart/tablo içinde):** §12.5'te detaylandırılır.
+
+### 12.5 Randevu yönetim ekranı (`/doctor/bookings`, `/patient/bookings`) — kart/tablo düzeni
+
+Mimari §9.7.10: `GET /doctor/bookings` ve `GET /patient/bookings` uçları. Görev tanımının
+"kart/tablo görünümü" isteği **responsive bir TEK bileşen** olarak çözülür — mobilde kart
+listesi, `md:` ve üzerinde tablo; iki AYRI bileşen/iki AYRI veri-çekme mantığı İCAT EDİLMEZ,
+yalnızca AYNI veri iki farklı Tailwind düzeninde render edilir (`hidden`/`md:hidden` çifti).
+
+#### 12.5.1 Mobil — kart listesi (`<md`)
+
+```
+<div className="space-y-3 md:hidden">
+  <div className="rounded-[var(--site-radius)] border border-border bg-surface p-4">
+    <div className="flex items-start justify-between gap-2">
+      <div className="min-w-0">
+        <p className="truncate text-sm font-semibold text-foreground">{counterpartName}</p>
+        <p className="text-xs text-foreground/60">{formatDayLabel(...)}</p>
+      </div>
+      <Badge tone="success" solid size="sm">Ödendi</Badge>
+    </div>
+
+    <div className="mt-2 flex flex-wrap gap-1.5">
+      {slots.map((s) => (
+        <span key={s.startsAt} className="rounded-full border border-border bg-muted/50 px-2 py-0.5 text-xs tabular-nums text-foreground/70">
+          {formatTime(s.startsAt, tz)}
+        </span>
+      ))}
+    </div>
+
+    <div className="mt-3 flex items-center justify-between gap-2 border-t border-border/60 pt-3">
+      {documentCount > 0 && (
+        <button type="button" className="flex items-center gap-1 text-xs text-foreground/60 hover:text-primary">
+          <Paperclip className="h-3.5 w-3.5" aria-hidden="true" />
+          {documentCount} belge
+        </button>
+      )}
+      <div className="flex-1" />
+      {/* §12.5.3 "Toplantıya Katıl" CTA */}
+    </div>
+  </div>
+</div>
+```
+
+- **Karşı taraf adı** (`counterpartName`) — doktor görünümünde HASTA adı, hasta görünümünde
+  DOKTOR adı+unvanı; aynı kart şablonu, yalnızca hangi alan bağlandığı context'e göre değişir
+  (§2'nin `DoctorCard`'ının `size` prop'u gibi, tek bileşen iki bağlamda kullanılır).
+- **Slot çipleri** — §12.2.4'ün SEÇİM çipinden KASITLI olarak farklı tonda: `border-border
+  bg-muted/50 text-foreground/70` (NÖTR) — bunlar artık bir "seçim" değil, KESİNLEŞMİŞ/GEÇMİŞ
+  bir randevu kaydı; `primary` tint (§12.2.4) yalnızca AKTİF SEÇİM anını temsil eder, burada
+  onu tekrarlamak yanlış bir "hâlâ seçilebilir" izlenimi verirdi.
+- **Rozet konumu:** kartın SAĞ ÜSTÜ, isim/tarih ile AYNI satır — bu, görev tanımının "ödeme
+  durumu" bilgisinin ilk bakışta görünmesi isteğiyle tutarlı (kullanıcı kartı taramaya
+  başladığı anda görür).
+- **Belge sayısı:** yalnızca `documentCount > 0` iken görünür (§2'nin "sahte negatif sinyal
+  yok" ilkesiyle AYNI — 0 belge varken "0 belge" YAZILMAZ, satır tamamen boş kalır).
+
+#### 12.5.2 Masaüstü — tablo (`md:` ve üzeri)
+
+```
+<table className="hidden w-full text-sm md:table">
+  <thead>
+    <tr className="border-b border-border text-left text-xs font-semibold uppercase tracking-wider text-foreground/50">
+      <th className="py-2 pr-4">{doktorGörünümü ? "Hasta" : "Doktor"}</th>
+      <th className="py-2 pr-4">Slotlar</th>
+      <th className="py-2 pr-4">Ödeme</th>
+      <th className="py-2 pr-4">Belgeler</th>
+      <th className="py-2 pr-4 text-right">Aksiyon</th>
+    </tr>
+  </thead>
+  <tbody className="divide-y divide-border/60">
+    <tr>
+      <td className="py-3 pr-4 font-medium text-foreground">{counterpartName}</td>
+      <td className="py-3 pr-4">
+        <div className="flex flex-wrap gap-1.5">{/* §12.5.1 ile AYNI slot çipleri */}</div>
+      </td>
+      <td className="py-3 pr-4"><Badge tone="success" solid size="sm">Ödendi</Badge></td>
+      <td className="py-3 pr-4">
+        {documentCount > 0 ? (
+          <button type="button" className="flex items-center gap-1 text-foreground/60 hover:text-primary">
+            <Paperclip className="h-3.5 w-3.5" aria-hidden="true" />{documentCount}
+          </button>
+        ) : (
+          <span className="text-foreground/30">—</span>
+        )}
+      </td>
+      <td className="py-3 pr-4 text-right">{/* §12.5.3 CTA */}</td>
+    </tr>
+  </tbody>
+</table>
+```
+
+- `hidden ... md:table` / `md:hidden` çifti — bu dokümanda İLK KEZ bir `<table>` elemanı
+  kullanılıyor (önceki bölümlerin hepsi kart/grid tabanlıydı); tablo burada UYGUNDUR çünkü bu
+  ekran GERÇEKTEN çok-sütunlu, tarama-odaklı bir liste (randevu yönetimi), kart görünümünün
+  "hikaye anlatan" doğasından farklı bir kullanım — `design-notes-order-management-pro.md`'nin
+  admin tablo geleneğinden GÖRSEL OLARAK bağımsız (bu tablo `.site-scope` token'larıyla
+  çizilir, admin'in tablosu farklı bir token sistemine bağlıdır, §12.6).
+- **Belge sütunu boşken** `text-foreground/30 —` (em-dash benzeri, sade) — §2'nin "sahte
+  negatif sinyal yok" ilkesinin tablo YOĞUNLUĞUNDAKİ karşılığı: kart görünümünde satırı
+  TAMAMEN gizlemek mümkündü, TABLODA bir hücreyi boş bırakmak sütun hizasını bozar, bu yüzden
+  nötr bir yer tutucu KARAKTER kullanılır (yeni bir ikon/rozet İCAT EDİLMEZ).
+
+#### 12.5.3 "Toplantıya Katıl" CTA — aktif/pasif durumları
+
+```
+<Tooltip>
+  <TooltipTrigger asChild>
+    <span tabIndex={disabled ? 0 : -1}>
+      <Button size="sm" disabled={disabled} className="rounded-[var(--site-radius)]" asChild={!disabled}>
+        {disabled ? "Toplantıya Katıl" : <a href={consultationHref}>Toplantıya Katıl</a>}
+      </Button>
+    </span>
+  </TooltipTrigger>
+  {disabled && <TooltipContent>{disabledReason}</TooltipContent>}
+</Tooltip>
+```
+
+- **`disabled` koşulları (mimari §9.7.6, bağlayıcı) ve karşılık gelen `disabledReason`
+  metinleri (bu doküman ÖNERİR, nihai metin frontend-agent'ın çeviri sözlüğüne girer):**
+  - `paymentStatus !== "PAID"` → *"Görüşmeye katılmak için önce ödeme tamamlanmalıdır."*
+  - `now < min(startsAt) - 10dk` → *"Görüşme, randevu saatinize 10 dakika kalana kadar
+    açılmaz."*
+  - `now > max(endsAt) + 15dk` → *"Görüşme penceresi kapandı."*
+- **`<span tabIndex>` sarmalayıcı** — native `disabled` bir `<button>`/`<a>` fare/klavye
+  odağını ALMADIĞI için Tooltip/tarayıcı `title` tetiklenmez; paylaşılan `Tooltip`
+  (`@base-ui/react`) bu deseni zaten önerir (bu bir implementasyon detayıdır, ama GÖRSEL
+  sonucu — devre dışı bir CTA'nın YİNE DE açıklama verebilmesi — bağlayıcıdır).
+  Görev tanımının "disabled + tooltip" isteğinin BİREBİR karşılığı budur.
+- **Aktifken:** `Button size="sm"` normal solid CTA (§8, `buttonStyle: SOLID`), `href`
+  `/{lang}/consultation/{appointmentId}?t=...` (hasta) veya oturum-tabanlı (doktor) — mevcut
+  `/consultation/[id]` sayfasının kendisi (§5/§6) DEĞİŞMEDİ, bu yalnızca ona giden bir bağlantı.
+- **Boyut `size="sm"`** — tablo/kart satırı yoğunluğuna uygun, §2.4.5'in `size="lg"` ana
+  CTA'sıyla KARIŞTIRILMAZ (o, tekil sayfanın BİRİCİK aksiyonu; bu, bir LİSTE satırının
+  aksiyonu).
+
+#### 12.5.4 Belge önizleme (yalnızca doktor görünümü)
+
+Görev tanımı: *"yüklenen belgeler (doktor için tıklayınca önizleme)"*. §12.5.1/§12.5.2'deki
+`Paperclip` + sayı düğmesi doktor görünümünde TIKLANABİLİR (hasta görünümünde salt bilgi
+amaçlı, kendi belgesini bu ekrandan tekrar açmasına GEREK yoktur — §12.3.5'in gerekçesiyle
+AYNI). Tıklama, mevcut `Card`/modal primitiflerinden bir **`Dialog`** açar (proje kütüphanesinde
+zaten Radix/Shadcn tabanlı bir dialog PRIMITIFI olduğu varsayımıyla — YENİ bir modal kütüphanesi
+İCAT EDİLMEZ, frontend-agent mevcut `@/components/ui/dialog`'u kullanır):
+
+```
+<DialogContent className="max-w-2xl">
+  <DialogHeader>
+    <DialogTitle>Yüklenen Belgeler</DialogTitle>
+  </DialogHeader>
+  <div className="space-y-2">
+    {documents.map((doc) => (
+      <a
+        key={doc.id}
+        href={`/api/v1/appointments/documents/${doc.id}/content`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex items-center gap-3 rounded-[var(--site-radius)] border border-border bg-surface p-3 hover:border-primary/40"
+      >
+        {doc.mimeType === "application/pdf" ? (
+          <FileText className="h-5 w-5 shrink-0 text-foreground/40" aria-hidden="true" />
+        ) : (
+          <FileImage className="h-5 w-5 shrink-0 text-foreground/40" aria-hidden="true" />
+        )}
+        <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{doc.filename}</span>
+        <span className="shrink-0 text-xs text-foreground/50">{formatBytes(doc.sizeBytes)}</span>
+      </a>
+    ))}
+  </div>
+</DialogContent>
+```
+
+- Görüntüleme yeni bir sekmede/`Content-Disposition` yanıtına göre tarayıcının kendi PDF/resim
+  görüntüleyicisine BIRAKILIR — özel bir ışık kutusu (lightbox)/PDF-viewer bileşeni İCAT
+  EDİLMEZ (bu, `GET .../documents/{id}/content`'in zaten `attachment`/`no-store` başlıklarıyla
+  akıttığı mimari kararla, §9.7.5 madde 5, TUTARLI bir sadelik). Her tıklama backend'de
+  `logAudit(action: "telehealth.intake_document.accessed")` üretir (§9.7.5 madde 6) — bu bir
+  implementasyon detayı ama GÖRSEL tarafın (yeni sekmede açma, modal İÇİNDE göstermeme) bu
+  denetim gereksinimini BOZMADIĞI teyit edilir: belge asla sayfanın kendi DOM'una `<img>`/
+  `<iframe>` olarak GÖMÜLMEZ, her açılış AYRI bir gezinme/istek olur.
+
+### 12.6 Doktor/Hasta portalı — genel tema yönü
+
+**Karar: Kamu sitesinin (`.site-scope`, `SiteAppearance`, bu dokümanın §0-§11'inde kurulan
+teal/okyanus mavisi kimliği) görsel diliyle DEVAM ETTİRİLİR — admin panelinin ayrı token
+sistemi/dashboard kabuğu KULLANILMAZ.**
+
+**Gerekçe:**
+
+1. **Mimari §9.7.7 madde 3 bağlayıcı çerçeve zaten bunu söylüyor:** "Portal rotaları panel
+   DEĞİLDİR — doktor bir admin kullanıcısı değildir", rotalar `/{lang}/doctor/**` ve
+   `/{lang}/patient/**` (dil ÖNEKLİ, yani `SiteSettings`/tenant'a bağlı site rotaları) —
+   `/admin/**`'in dil-öneksiz, tekil-tenant yapısından KASITLI olarak AYRIŞTIRILMIŞ. Bir
+   rotanın `[lang]` altında yaşaması, onun `.site-scope` CSS değişkenlerinin ZATEN enjekte
+   edildiği ağaçta render edileceği anlamına gelir (`app/[lang]/(site)/layout.tsx`'in ürettiği
+   AYNI bağlam) — admin'in AYRI kök layout'unu (`app/admin/layout.tsx`, farklı token seti,
+   `design-notes-admin-gaps.md` satır 136'nın işaret ettiği `--foreground`/`--success` gibi
+   GENEL/tema-değiştirilebilir shadcn token'ları) buraya TAŞIMAK iki paralel token sistemini
+   TEK bir sayfa ağacında ÇARPIŞTIRIRDI.
+2. **Marka/güven sürekliliği:** hasta, bir doktorun `/doctors/[slug]` sayfasından (bu dokümanın
+   teal→okyanus mavisi kimliğiyle) randevu alıp ödeme yapıyor, sonra magic-link ile kendi
+   booking'ine (`/patient/bookings/{id}`) dönüyor. Tam bu noktada — ödeme durumu, tıbbi belge,
+   görüşmeye katılma gibi EN HASSAS eylemler — aniden admin'in jenerik gri/karanlık-mod
+   destekli dashboard kabuğuna GEÇMEK güven kaybı yaratır (kullanıcı "acaba yanlış bir yere mi
+   yönlendirildim" hissi yaşayabilir — bu, phishing/güvenlik farkındalığı eğitiminin TAM
+   TERSİ bir izlenimdir, sağlık/ödeme verisi bağlamında özellikle riskli). Doktor tarafı için
+   de AYNI mantık geçerli: doktor `DoctorProfile.userId` üzerinden bir `User` olsa da (§9.7.7
+   madde 1), GÜNLÜK İŞİ hasta karşılama/randevu takibidir — bu bir CMS/e-ticaret yönetim işi
+   DEĞİLDİR, dolayısıyla CMS'in yönetim estetiğini MİRAS ALMASI için hiçbir işlevsel gerekçe
+   yoktur.
+3. **Teknik ekonomi:** `.site-scope` token'ları (`--site-primary`/`--site-radius` vb.) zaten
+   sunucu tarafında `SiteSettings`'ten hesaplanıp enjekte ediliyor (§0); bu portalların TEK
+   yapması gereken, sayfayı bu ZATEN VAR OLAN kapsamın İÇİNE yerleştirmektir — YENİ bir
+   tema-değişkeni köprüsü (admin'in dark/light toggle mekanizması) kurmaya GEREK YOKTUR, bu
+   sıfır fayda için gereksiz mühendislik olurdu.
+4. **Layout farkı — portal, tam bir admin sidebar'ı DEĞİL, sade bir üst çubuk:** doktor/hasta
+   portalının kapsamı (bu turda) 1-2 ekrandır (randevu listesi ± profil) — `admin/layout.tsx`'in
+   çok-modüllü ikonlu sol sidebar'ı (§CLAUDE.md'nin admin paneli kastı) burada YERSİZ
+   büyüklükte bir gezinme üretirdi. Bunun yerine:
+   ```
+   <header className="border-b border-border bg-surface">
+     <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3 sm:px-6">
+       <span className="text-sm font-semibold text-foreground">{siteName}</span>
+       <nav className="flex items-center gap-4 text-sm text-foreground/70">
+         <Link href="...">Randevularım</Link>
+         {/* doktor görünümünde yalnızca: */}
+         <Link href="...">Profilim</Link>
+         <button type="button" className="text-foreground/50 hover:text-danger">Çıkış Yap</button>
+       </nav>
+     </div>
+   </header>
+   ```
+   `max-w-5xl` — §2.1.1'in doktor detay sayfasıyla AYNI konteyner genişliği (bu portal da o
+   sayfanın devamı hissini vermeli, YENİ bir sayfa genişliği İCAT EDİLMEZ). Sidebar/ikon-menü
+   YOK — bu, CLAUDE.md'nin admin paneli için tarif ettiği "sol sidebar (ikonlu, aktif sayfa
+   vurgulu)" gereksinimi bu portala UYGULANMAZ, çünkü o gereksinim `.claude/CLAUDE.md`'nin genel
+   ajan orkestrasyon şablonu değil, **admin panelinin kendi** tasarım sözleşmesidir (bu görev
+   tanımının kendisi de "bunlar admin paneli DEĞİL" diyerek bu ayrımı zaten açıkça çiziyor).
+5. **İçerik yüzeyleri** — §12.5'in kart/tablosu, §12.4'ün rozetleri, §2/§2.4'ün `Card`/`Badge`/
+   `Button` primitifleri BUNLARIN TAMAMI zaten `.site-scope` token'larına bağlı paylaşılan
+   bileşenlerdir; portalın "tema yönü" kararı fiilen ZATEN §12.4/§12.5'in kendisinde
+   uygulanmıştır — bu alt bölüm yalnızca üst-seviye ÇERÇEVEYİ (header/konteyner) netleştirir.
+
+**Sonuç:** doktor/hasta portalı, admin panelinin bir uzantısı DEĞİL, kamu sitesinin
+kimlik-doğrulamalı bir devamıdır — aynı palet, aynı `--site-radius`, aynı `Plus Jakarta Sans/
+Inter` tipografi, aynı `Card`/`Badge`/`Button`/`Alert`/`Tooltip` bileşen kütüphanesi.
+
+### 12.7 Özet — bu bölümde eklenen/değişen somut değerler
+
+| Öğe | Değer |
+|---|---|
+| ~~Seçim onay şeridi (§2.2.5/§2.3.6)~~ | **KALDIRILDI** — `Değiştir` artık §2.4.4'ün kutusunda |
+| "Değiştir" (YENİ konum) | Kutunun başlık satırı sağı, `text-xs` + `Pencil` (`h-3 w-3`) ikonu, `hover:bg-primary/10 hover:underline`, TÜM seçimi temizler |
+| Slot çipi (kaldırma ikonlu) | `rounded-full border-primary/30 bg-primary/10 text-primary` + `X` (`h-3 w-3`) kaldırma düğmesi |
+| "N Slot · M Dk" özeti | `text-xs text-foreground/60`, orta-nokta ayracı (virgül/iki nokta DEĞİL) |
+| Sınıra ulaşılan slot (4/4) | `border-border/60 bg-surface text-foreground/35` + `Tooltip` "En fazla 4 slot seçebilirsiniz" — "Dolu" sınıfından AYRI |
+| Farklı gün seçimi bildirimi | `Alert variant="info"` — toast İCAT EDİLMEZ |
+| Çoklu slot toplam tutar | `slotCount>1` iken "birim×adet" satırı + `text-2xl font-semibold` "Toplam" (checkout'un Ara Toplam/Toplam ilkesi ödünç alınır) |
+| Uploader — boş | `border-2 border-dashed border-border` + `UploadCloud` + "PDF, PNG veya JPG · maksimum 5MB" |
+| Uploader — dragover | `border-primary bg-primary/5`, ikon/metin `text-primary` |
+| Uploader — yükleniyor | dosya satırı + `bg-muted` iz + `bg-primary` ilerleme çubuğu + `%N` + iptal `X` |
+| Uploader — başarılı | dosya satırı + `CheckCircle2 text-success` + `Trash2` kaldır |
+| Uploader — hata | `border-danger/30 bg-danger/10` + `AlertCircle` + kapatılabilir |
+| Uploader — 5/5 limit | dropzone YERİNE `Paperclip` + "Belge sınırına ulaşıldı (5/5)" notu |
+| Ödeme rozeti — Ödendi | `Badge tone="success" solid size="sm"` + `CircleCheck` |
+| Ödeme rozeti — Bekliyor | `Badge tone="warning" solid size="sm"` + `Clock` |
+| Ödeme rozeti — Süresi Doldu | `Badge tone="neutral" solid size="sm"` + `Ban` (kırmızı DEĞİL) |
+| Ödeme rozeti — Başarısız/İade | `tone="danger" solid` + `XCircle` / `tone="neutral"` (soft) + `Undo2` |
+| Randevu yönetimi düzeni | `<md`: kart listesi; `md:` ve üzeri: `<table>` — AYNI veri, iki Tailwind düzeni |
+| "Toplantıya Katıl" disabled | `Tooltip` + `<span tabIndex>` sarmalayıcı; nedenler: ödenmemiş / pencere açılmadı / pencere kapandı |
+| Belge önizleme (doktor) | `Dialog` içinde belge listesi, her satır yeni sekmede `.../documents/{id}/content` açar — gömülü `<img>`/`<iframe>` YOK |
+| Doktor/Hasta portalı teması | Admin panel DEĞİL — kamu sitesinin `.site-scope` paleti/`--site-radius`/tipografisi; sade üst çubuk (`max-w-5xl`), sidebar YOK |

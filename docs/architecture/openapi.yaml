@@ -464,10 +464,58 @@ tags:
       `ADMIN` çağırabilir → `status: COMPLETED` + `endedAt`.
 
 
-      **Kapsam dışı (bağlayıcı, backlog):** Ödeme (`priceCents` bir
-      snapshot'tır, Stripe akışı v1'de bağlanmaz), doktor değerlendirme/
-      puanlama, çoklu uzmanlık, randevu erteleme, LiveKit kaydı (Egress) ve
-      semptom/şikâyet formu (özel nitelikli veri) kapsam dışıdır.
+      **Kapsam dışı (bağlayıcı, backlog):** doktor değerlendirme/puanlama, çoklu
+      uzmanlık, randevu erteleme ve LiveKit kaydı (Egress) kapsam dışıdır.
+
+
+      ---
+
+
+      **§9.7 TADİLAT TURU 2 (BAĞLAYICI) — rezervasyon, ödeme, sağlık verisi, portallar.**
+      Kaynak: `.claude/architect-scope-telehealth-template.md` §9.7. Bu tur, yukarıdaki
+      kapsam-dışı listesinin **üç satırını AÇAR** ve şu kararları getirir:
+
+
+      1. **Çoklu slot (§9.7.2):** `N` slot = `N` `Appointment` satırı + 1
+      `AppointmentBooking` üst kaydı. Tek satırın `endsAt`'ini genişletmek
+      **REDDEDİLDİ** — `@@unique([doctorId, startsAt])` yalnızca başlangıç anını
+      korur, aralık çakışmasını DB düzeyinde engelleyemezdi. Tavan **4 slot**;
+      hepsi aynı doktora ve aynı takvim gününe ait olmalıdır; biri dolu ise
+      **hiçbiri** oluşturulmaz.
+
+
+      2. **Ödeme (§9.7.1):** Stripe Checkout (`mode: "payment"`), mevcut
+      `POST /checkout/session` + `POST /webhooks/stripe` deseniyle; **yeni webhook
+      path'i açılmaz**. Onay olayı **`checkout.session.completed`**'dır
+      (`payment_intent.succeeded` REDDEDİLDİ — `metadata.bookingId`'yi oturum
+      nesnesi taşır ve ikinci onay yolu idempotency yarışı üretir).
+      `STRIPE_SECRET_KEY` boşken **`503 PAYMENTS_NOT_CONFIGURED`** + dürüst durum
+      paneli; **sahte ödeme / "mock escrow" ekranı YASAKTIR** (§4.4 madde 1).
+      Randevular `PENDING_PAYMENT` ile slotu tutar; `expiresAt` (30 dk) dolarsa
+      satırlar **HARD DELETE** edilir ve slot serbest kalır.
+
+
+      3. **Sağlık verisi (§9.7.5 — ENGELLEYİCİ, KVKK md.6):** §3.5'in `patientNote`
+      reddi **ayakta**; veri `Appointment` üzerinde DEĞİL, ayrı ve sertleştirilmiş
+      `AppointmentIntake` (AES-256-GCM şifreli not) + `AppointmentDocument`
+      modellerinde yaşar. Zorunlu kısıtlar: **ayrı** açık rıza (varsayılan
+      işaretsiz, hizmetin şartı DEĞİL), **`Media` tablosu YASAK** (`/uploads/`
+      kimlik doğrulamasız servis edilir ve `GET /admin/media` EDITOR'e listeler),
+      özel dizinden kapılı akış, **her erişimde denetim kaydı**, 90 gün saklama,
+      hastanın silme hakkı. İçeriğe `MANAGER` **erişemez**, `EDITOR` hiç erişemez.
+
+
+      4. **Portallar (§9.7.7):** **YENİ AUTH SİSTEMİ YAZILMAZ** ve
+      **`SiteRole.DOCTOR` EKLENMEZ** — doktorluk bir ROL değil, `DoctorProfile.userId`
+      İLİŞKİSİDİR. TOTP 2FA zaten mevcuttur (`/auth/login` → `/auth/2fa/verify`,
+      kurulum `/admin/settings/security/2fa/*`, rol şartı yok); `/doctor/*` uçları
+      `twoFactorEnabled` kapısıyla **`403 TWO_FACTOR_REQUIRED`** verir. Hasta
+      magic-link'i `AppointmentBooking.accessTokenHash`'tir.
+
+
+      5. **"Fatura" (§9.7.0 madde 11):** `Invoice` tablosu **AÇILMAZ**;
+      `GET /appointments/bookings/{id}/invoice` PAID booking'in türetilmiş
+      görünümüdür ve **resmi bir e-Fatura DEĞİLDİR** ("Ödeme Belgesi" etiketi zorunlu).
   - name: Localization
     description: >
       Çoklu dil yapılandırması (`/locales`, `/admin/locales`) — bkz. ARCHITECTURE.md
@@ -6204,8 +6252,21 @@ paths:
     post:
       tags: [TeleHealth]
       security: []
-      summary: Randevu al (public, kimlik doğrulama GEREKMEZ)
+      deprecated: true
+      summary: "[DEPRECATED] Tek slotluk randevu al — yerine `POST /appointments/bookings`"
       description: >
+        **§9.7.2 — KULLANIMDAN KALDIRILDI, ama KALDIRILMADI** (geriye dönük uyum).
+        Yeni istemciler `POST /appointments/bookings` kullanmalıdır.
+
+
+        **DAVRANIŞ DEĞİŞİKLİĞİ (§9.7.3):** bu uç artık iç olarak `slotCount: 1` bir
+        `AppointmentBooking` üretir ve randevu **`SCHEDULED` DEĞİL `PENDING_PAYMENT`**
+        ile başlar; ödeme onaylanana kadar `POST /appointments/{id}/meeting-token`
+        **`409 APPOINTMENT_NOT_JOINABLE`** döner. Ödeme yapılandırılmamışsa randevu
+        otomatik onaylanmaz — ADMIN `POST /admin/telehealth/bookings/{id}/mark-paid`
+        ile manuel onaylayabilir. qa-agent mevcut e2e testlerini buna göre günceller.
+
+
         §4.3 — route-level hız sınırı **5 istek/dakika** (IP bazlı). Sunucu
         `runSerializable` ile "check-then-act" yapar: `startsAt` GERÇEKTEN bir
         slot mu (§4.2) → o slot dolu mu → değilse oluştur.
@@ -6322,8 +6383,27 @@ paths:
         DAHİL DEĞİL** — `GET /appointments/{id}` ile aynı eşik değildir, bu
         daha dar bir yetki yüzeyidir). Yetkisiz erişim `404` döner (IDOR).
         Randevu `SCHEDULED`/`IN_PROGRESS` DIŞINDA bir durumdaysa VEYA katılım
-        penceresi (`startsAt - 5dk` … `endsAt + 15dk`) dışındaysa
-        **`409 APPOINTMENT_NOT_JOINABLE`**. `LIVEKIT_URL`/`LIVEKIT_API_KEY`/
+        penceresi dışındaysa **`409 APPOINTMENT_NOT_JOINABLE`**.
+
+
+        **§9.7.6 TADİLATI (bağlayıcı, §4.5'in yerine):**
+        (1) Katılım penceresi **`startsAt - 10 dk`** … `endsAt + 15 dk`'dır
+        (önceki 5 dk tadil edildi).
+        (2) Randevu bir `AppointmentBooking`'e bağlıysa pencere **booking
+        açıklığı** üzerinden hesaplanır: `min(startsAt) - 10dk` …
+        `max(endsAt) + 15dk` — çoklu slotta hasta 14:00'da odadan DÜŞMEZ.
+        (3) Oda, booking'e bağlı randevularda
+        **`AppointmentBooking.meetingRoomName`**'dir (booking başına TEK oda);
+        `Appointment.meetingRoomName` yalnızca booking'siz eski satırlar için
+        kullanılır. **`MeetingRoom` tablosu hâlâ AÇILMAZ** (§3.5).
+        (4) **YENİ ZORUNLU ŞART:** booking'e bağlı randevularda
+        `paymentStatus === "PAID"` değilse token **ÜRETİLMEZ** →
+        `409 APPOINTMENT_NOT_JOINABLE` (ödenmemiş görüşme açılmaz).
+        (5) `identity` booking'li akışta `patient:<bookingId>` /
+        `doctor:<doctorId>` olur — PII içermez (§8 madde 1 aynen geçerli).
+
+
+        `LIVEKIT_URL`/`LIVEKIT_API_KEY`/
         `LIVEKIT_API_SECRET` tanımsızsa (randevu/erişim hiç sorgulanmadan)
         **`503 LIVEKIT_NOT_CONFIGURED`**. Grant kapsamı YALNIZCA `roomJoin:
         true, room: <meetingRoomName>`. İlk başarılı üretimde randevu
@@ -6651,6 +6731,628 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+
+  # ==========================================================================
+  # TeleHealth — §9.7 TADİLAT TURU 2: çoklu slot rezervasyonu (booking), ödeme,
+  # sağlık verisi (intake + belge), doktor/hasta portalı.
+  # Bkz. `.claude/architect-scope-telehealth-template.md` §9.7 (BAĞLAYICI).
+  #
+  # BAĞLAYICI SINIRLAR (ihlal → architect'e eskale):
+  #  - `POST .../checkout-session` ve `POST /webhooks/stripe` **integration-agent**'ındır;
+  #    backend-agent bu dosyalara dokunmaz (§9.7.9).
+  #  - Sağlık belgesi **ASLA** bir `Media` satırı DEĞİLDİR ve `/uploads/**` altından
+  #    servis EDİLMEZ; yalnızca `GET /appointments/documents/{documentId}/content`
+  #    üzerinden, yetkilendirme + denetim kaydıyla akıtılır (§9.7.5 madde 4/5/6).
+  #  - Not/belge İÇERİĞİNE `MANAGER` erişemez, `EDITOR` hiç erişemez (§9.7.5 madde 7).
+  # ==========================================================================
+
+  /appointments/bookings:
+    post:
+      tags: [TeleHealth]
+      security: []
+      summary: Çoklu slot randevu rezervasyonu oluştur (public, kimlik doğrulama GEREKMEZ)
+      description: >
+        §9.7.2 — `N` slot = `N` `Appointment` satırı + 1 `AppointmentBooking` üst kaydı.
+        `@@unique([doctorId, startsAt])` çifte rezervasyon garantisi DEĞİŞMEZ.
+        Randevular `PENDING_PAYMENT` ile oluşur ve slotu **TUTAR**; `expiresAt`
+        (30 dk) dolduğunda bu satırlar **HARD DELETE** edilir ve slot yeniden
+        satılabilir olur (§9.7.3).
+
+
+        **Tutar istemciden ASLA kabul edilmez:** `unitPriceCents` `DoctorProfile`'dan
+        okunur, `totalCents = slotCount × unitPriceCents` sunucuda hesaplanır.
+
+
+        **Kısıtlar:** `slots` 1..4 öğe; hepsi AYNI doktora ve doktorun kendi saat
+        diliminde AYNI takvim gününe ait olmalıdır; her slot sunucuda ayrı ayrı
+        doğrulanır. Slotlardan **herhangi biri** dolu/geçersizse **hiçbiri**
+        oluşturulmaz (kısmi rezervasyon YOKTUR) → `409 SLOT_TAKEN`.
+
+
+        Hız sınırı **5 istek/dakika**. `Authorization: Bearer` VARSA
+        `patientUserId` dolar (opsiyonel-auth deseni).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateBookingRequest" }
+      responses:
+        "201":
+          description: Rezervasyon oluşturuldu (ödeme bekleniyor)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/CreateBookingResult" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "Slotlardan biri az önce alındı (`error.code: SLOT_TAKEN`) — hiçbiri oluşturulmadı"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /appointments/bookings/{bookingId}:
+    parameters:
+      - $ref: "#/components/parameters/BookingId"
+      - $ref: "#/components/parameters/AppointmentAccessToken"
+    get:
+      tags: [TeleHealth]
+      security: []
+      summary: Rezervasyon detayı — slotlar, ödeme durumu, katılım bilgisi
+      description: >
+        Erişim: (a) doğru `?t=` sunan hasta (magic-link), (b) oturum sahibi hasta,
+        (c) booking'in doktorunun bağlı `User`'ı, (d) `ADMIN`/`MANAGER`.
+        Yetkisiz erişim **`404`** (IDOR — varlık sızdırılmaz).
+
+
+        **`hasIntakeNote` yalnızca bir BOOLEAN'dır; not metni bu yanıtta ASLA
+        dönmez** (§9.7.5 madde 8). `documentCount` da yalnızca sayıdır.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/AppointmentBooking" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /appointments/bookings/{bookingId}/checkout-session:
+    parameters:
+      - $ref: "#/components/parameters/BookingId"
+      - $ref: "#/components/parameters/AppointmentAccessToken"
+    post:
+      tags: [TeleHealth]
+      security: []
+      summary: Stripe Checkout oturumu oluştur (integration-agent'ın ucu)
+      description: >
+        §9.7.1 — `mode: "payment"`, `metadata.bookingId`, `expires_at` **30 dakika**.
+        Mevcut `POST /checkout/session` ile AYNI Stripe entegrasyon deseni.
+        Aynı booking için tekrar çağrılırsa hâlâ geçerli oturum yeniden döner
+        (idempotent).
+
+
+        **`STRIPE_SECRET_KEY` tanımsızsa `503 PAYMENTS_NOT_CONFIGURED`** —
+        `LIVEKIT_NOT_CONFIGURED` ile BİREBİR aynı dürüst-yapılandırılmamışlık
+        deseni. Randevu **otomatik PAID'e ÇEVRİLMEZ**; sahte/mock bir ödeme veya
+        "escrow" ekranı **YASAKTIR** (§4.4 madde 1).
+
+
+        Hız sınırı **10 istek/dakika**.
+      responses:
+        "200":
+          description: Checkout oturumu hazır
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/BookingCheckoutSessionResponse" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: >
+            Booking ödenebilir durumda değil (`error.code: BOOKING_NOT_PAYABLE` —
+            zaten PAID/CANCELLED) VEYA slot tutma süresi doldu
+            (`error.code: BOOKING_EXPIRED`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "503":
+          description: "Ödeme altyapısı yapılandırılmamış (`error.code: PAYMENTS_NOT_CONFIGURED`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+
+  /appointments/bookings/{bookingId}/cancel:
+    parameters:
+      - $ref: "#/components/parameters/BookingId"
+      - $ref: "#/components/parameters/AppointmentAccessToken"
+    post:
+      tags: [TeleHealth]
+      security: []
+      summary: Rezervasyonu iptal et (tüm slotlar)
+      description: >
+        `paymentStatus = PENDING` ise: randevu satırları **SİLİNİR**, slotlar serbest
+        kalır, booking `EXPIRED` olur (§9.7.3).
+        `paymentStatus = PAID` ise: randevular `CANCELLED` olur ve **§4.3 aynen
+        geçerlidir — slot kapalı kalır.** Para iadesi **bu turda YOKTUR**
+        (backlog `feature/telehealth-refunds`); yanıt bunu açıkça belirtir.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string, maxLength: 500 }
+      responses:
+        "200":
+          description: İptal edildi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/AppointmentBooking" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "Zaten iptal edilmiş veya tamamlanmış (`error.code: CONFLICT`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+
+  /appointments/bookings/{bookingId}/invoice:
+    parameters:
+      - $ref: "#/components/parameters/BookingId"
+      - $ref: "#/components/parameters/AppointmentAccessToken"
+    get:
+      tags: [TeleHealth]
+      security: []
+      summary: Ödeme belgesi (makbuz) — TÜRETİLMİŞ görünüm, yeni tablo YOK
+      description: >
+        §9.7.0 madde 11 (bağlayıcı) — **`Invoice` TABLOSU AÇILMAZ.** Bu uç, `PAID`
+        bir `AppointmentBooking`'in türetilmiş bir görünümüdür. **Bu bir e-Fatura /
+        e-Arşiv fatura DEĞİLDİR** (GİB entegrasyonu yoktur); müşteri yüzeyindeki
+        etiket **"Ödeme Belgesi (bilgi amaçlıdır)"** olmalıdır, "Fatura" DEĞİL.
+        PDF üretimi sunucuda YAPILMAZ — frontend yazdırma stili kullanır.
+        Backlog: `feature/e-invoice-integration`.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/BookingInvoice" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "Booking henüz ödenmemiş (`error.code: BOOKING_NOT_PAYABLE`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+
+  /appointments/bookings/{bookingId}/resend-link:
+    parameters:
+      - $ref: "#/components/parameters/BookingId"
+    post:
+      tags: [TeleHealth]
+      security: []
+      summary: Güvenli erişim bağlantısını (magic-link) e-postayla yeniden gönder
+      description: >
+        Yeni bir `accessToken` üretir, hash'ini saklar ve **yalnızca kayıtlı
+        `patientEmail` adresine** gönderir — ham token **YANITTA DÖNMEZ**
+        (e-posta numaralandırma/ele geçirme yüzeyi). Yanıt, booking var olsun
+        olmasın **her zaman `202`** döner (varlık sızdırılmaz).
+        Hız sınırı **1 istek/dakika**. Şablon/tetikleyici **notification-agent**'ındır;
+        e-posta içeriğinde uzmanlık adı, intake notu veya belge adı **YER ALAMAZ**
+        (§9.7.8).
+      responses:
+        "202": { description: "İstek alındı (e-posta varsa gönderildi)" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /appointments/bookings/{bookingId}/intake:
+    parameters:
+      - $ref: "#/components/parameters/BookingId"
+      - $ref: "#/components/parameters/AppointmentAccessToken"
+    put:
+      tags: [TeleHealth]
+      security: []
+      summary: Şikâyet/ön not kaydet veya güncelle (OPSİYONEL adım, AYRI açık rıza ZORUNLU)
+      description: >
+        §9.7.5 (ENGELLEYİCİ, compliance) — **KVKK md.6 özel nitelikli kişisel veri.**
+
+
+        1. Bu adım **OPSİYONELDİR** ve atlanması rezervasyonu/ödemeyi/görüşmeyi
+           **engellemez** (rıza, hizmetin şartına bağlanamaz).
+        2. `healthDataConsent` randevu KVKK onayından **AYRI ve ikinci** bir açık
+           rızadır; `true` değilse **`422 HEALTH_CONSENT_REQUIRED`**.
+        3. Not **AES-256-GCM ile şifreli** saklanır (`lib/crypto.ts`); düz metin
+           kolon, index, arama ve log **YASAKTIR**.
+        4. `Appointment`/`AppointmentBooking` üzerinde serbest metin şikâyet alanı
+           **YOKTUR** — §3.5'in reddi ayakta kalır, veri ayrı ve sertleştirilmiş
+           bir tabloda yaşar.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpsertIntakeRequest" }
+      responses:
+        "200":
+          description: Kaydedildi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/AppointmentIntake" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422":
+          description: >
+            Açık rıza verilmedi (`error.code: HEALTH_CONSENT_REQUIRED`) veya
+            doğrulama hatası (`VALIDATION_ERROR`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+    get:
+      tags: [TeleHealth]
+      security: []
+      summary: Şikâyet/ön notu OKU (çözülmüş metin) — denetim kaydı yazılır
+      description: >
+        **Yetki (§9.7.5 madde 7, §8'den DAHA DAR):** (a) hastanın kendisi
+        (oturum veya doğru `?t=`), (b) **yalnızca bu booking'in doktoru**
+        (`doctor.userId`), (c) `ADMIN` (destek).
+        **`MANAGER` ERİŞEMEZ** (`GET /appointments/bookings/{bookingId}` ile
+        AYNI eşik DEĞİLDİR), **`EDITOR` erişemez**, başka bir doktor → **`404`**.
+
+
+        Her başarılı okuma `logAudit(action: "telehealth.intake_note.accessed")`
+        yazar — bu bir opsiyon değil, KVKK teknik tedbiridir.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/AppointmentIntake" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [TeleHealth]
+      security: []
+      summary: Şikâyet/ön notu sil (KVKK md.11 silme hakkı)
+      description: >
+        Hasta (oturum veya `?t=`) veya `ADMIN`. `noteCiphertext` **null**'lanır;
+        rıza kanıtı (`healthDataConsentAt`) denetim bütünlüğü için korunur.
+        Saklama süpürücüsü bunu ayrıca `endsAt + 90 gün` sonunda otomatik yapar.
+      responses:
+        "204": { description: Silindi }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /appointments/bookings/{bookingId}/documents:
+    parameters:
+      - $ref: "#/components/parameters/BookingId"
+      - $ref: "#/components/parameters/AppointmentAccessToken"
+    post:
+      tags: [TeleHealth]
+      security: []
+      summary: Tıbbi belge yükle (reçete/tahlil/radyoloji) — OPSİYONEL, AYRI açık rıza ZORUNLU
+      description: >
+        `multipart/form-data`, alan adı `file`. §9.7.5 (ENGELLEYİCİ):
+
+
+        - **`Media` satırı OLUŞTURULMAZ (bağlayıcı).** `Media` kütüphanesi
+          `/uploads/` altında **kimlik doğrulamasız** servis edilir
+          (`plugins/uploads.ts`) ve `GET /admin/media` onu **EDITOR'e de** listeler —
+          ikisi de hasta belgesi için kabul edilemez. Dosya `PRIVATE_UPLOAD_DIR`
+          altına yazılır ve statik servise **KAYDEDİLMEZ**.
+        - İstek başına **1 dosya**, ≤ **5 MB**; booking başına en fazla **5 belge**
+          (`409 DOCUMENT_LIMIT_REACHED`).
+        - MIME whitelist: `application/pdf`, `image/png`, `image/jpeg`. Beyan edilen
+          `Content-Type` ile **sihirli-bayt** tespiti uyuşmazsa
+          `422 UNSUPPORTED_DOCUMENT_TYPE`. **SVG REDDEDİLİR.**
+        - Ayrı sağlık verisi rızası verilmemişse `422 HEALTH_CONSENT_REQUIRED`.
+        - Hız sınırı **10 istek/dakika**.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        "201":
+          description: Belge yüklendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/AppointmentDocument" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "Belge tavanı aşıldı (`error.code: DOCUMENT_LIMIT_REACHED`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "422":
+          description: >
+            Desteklenmeyen/uyuşmayan dosya tipi (`UNSUPPORTED_DOCUMENT_TYPE`) veya
+            açık rıza yok (`HEALTH_CONSENT_REQUIRED`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+    get:
+      tags: [TeleHealth]
+      security: []
+      summary: Belge listesi (yalnızca METADATA — içerik DÖNMEZ)
+      description: >
+        Yetki: hasta (`?t=`/oturum), booking'in doktoru, `ADMIN`.
+        **`MANAGER` yalnızca `GET /appointments/bookings/{bookingId}` üzerindeki
+        `documentCount` sayısını görür, bu listeyi GÖRMEZ.**
+        Yanıt hiçbir koşulda dosya içeriği veya indirilebilir doğrudan URL taşımaz —
+        indirme yalnızca `GET /appointments/documents/{documentId}/content` ile yapılır.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/AppointmentDocument" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /appointments/documents/{documentId}/content:
+    parameters:
+      - $ref: "#/components/parameters/AppointmentDocumentId"
+      - $ref: "#/components/parameters/AppointmentAccessToken"
+    get:
+      tags: [TeleHealth]
+      security: []
+      summary: Belge içeriğini indir (kapılı akış + ZORUNLU denetim kaydı)
+      description: >
+        Dosyanın **TEK** servis yoludur (§9.7.5 madde 5). `PRIVATE_UPLOAD_DIR`
+        `@fastify/static` altında **kayıtlı değildir**; public URL **YOKTUR**.
+
+
+        Yanıt başlıkları **zorunlu**: `Content-Disposition: attachment`,
+        `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`.
+
+
+        **Yetki:** hasta (oturum/`?t=`), **yalnızca bu booking'in doktoru**, `ADMIN`.
+        `MANAGER`/`EDITOR`/diğer doktorlar → **`404`** (varlık sızdırılmaz).
+        Her başarılı erişim
+        `logAudit(action: "telehealth.intake_document.accessed")` yazar.
+      responses:
+        "200":
+          description: Dosya akışı
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+            image/png:
+              schema: { type: string, format: binary }
+            image/jpeg:
+              schema: { type: string, format: binary }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /appointments/documents/{documentId}:
+    parameters:
+      - $ref: "#/components/parameters/AppointmentDocumentId"
+      - $ref: "#/components/parameters/AppointmentAccessToken"
+    delete:
+      tags: [TeleHealth]
+      security: []
+      summary: Belgeyi sil (KVKK md.11 silme hakkı)
+      description: >
+        Hasta (oturum/`?t=`) veya `ADMIN`. **Dosya diskten GERÇEKTEN silinir**;
+        satır `deletedAt` ile işaretlenir (erişim denetim izinin bütünlüğü için).
+        Doktor bir hastanın belgesini **SİLEMEZ**.
+      responses:
+        "204": { description: Silindi }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /doctor/me:
+    get:
+      tags: [TeleHealth]
+      summary: Doktor portalı oturum profili (oturum + DoctorProfile + TOTP zorunlu)
+      description: >
+        §9.7.7 (bağlayıcı) — **`SiteRole.DOCTOR` EKLENMEZ.** Doktorluk bir ROL değil
+        bir İLİŞKİDİR: `DoctorProfile.userId === user.id`. Bağlı profili olmayan
+        kullanıcı → **`403 NOT_A_DOCTOR`**.
+
+
+        **TOTP (2FA) ZORUNLUDUR** ama yeni bir DB kolonu veya yeni bir 2FA ucu ile
+        DEĞİL, **route kapısı** ile: `user.twoFactorEnabled !== true` →
+        **`403 TWO_FACTOR_REQUIRED`**. Kurulum mevcut
+        `POST /admin/settings/security/2fa/setup` + `/enable` uçlarıyla yapılır
+        (bu uçlar rol şartı taşımaz, herkes kendi hesabı için kullanır);
+        giriş akışı mevcut `POST /auth/login` → `POST /auth/2fa/verify`'dır.
+        **Yeni auth sistemi YAZILMAZ.**
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/DoctorPortalProfile" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: "`error.code: NOT_A_DOCTOR` veya `TWO_FACTOR_REQUIRED`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+
+  /doctor/bookings:
+    get:
+      tags: [TeleHealth]
+      summary: Doktorun kendi rezervasyonları (takvim + geçmiş)
+      description: >
+        Yalnızca `DoctorProfile.userId === user.id` olan doktorun kendi kayıtları —
+        `doctorId` sorgu parametresi **KABUL EDİLMEZ** (IDOR yüzeyi).
+        `NOT_A_DOCTOR` / `TWO_FACTOR_REQUIRED` kapıları `GET /doctor/me` ile aynıdır.
+
+
+        **"Geçmiş görüşme kayıtları" = geçmiş RANDEVU listesidir.** §4.4 madde 5'in
+        video/ses kaydı yasağı aynen yürürlüktedir; bu uç hiçbir kayıt medyası
+        döndürmez ve ima etmez.
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: from
+          in: query
+          required: false
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          required: false
+          schema: { type: string, format: date-time }
+        - name: paymentStatus
+          in: query
+          required: false
+          schema: { $ref: "#/components/schemas/BookingPaymentStatus" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/AppointmentBooking" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: "`error.code: NOT_A_DOCTOR` veya `TWO_FACTOR_REQUIRED`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+
+  /patient/bookings:
+    get:
+      tags: [TeleHealth]
+      summary: Oturum sahibi hastanın kendi rezervasyonları
+      description: >
+        `Appointment.patientUserId`/`AppointmentBooking.patientUserId` eşleşmesiyle
+        filtrelenir; başka hiçbir parametre sahipliği geçersiz kılamaz.
+        **2FA zorunlu DEĞİLDİR** (hasta bir panel kullanıcısı değildir).
+        Oturumu olmayan misafir hasta, bu uç yerine magic-link'li
+        `GET /appointments/bookings/{bookingId}?t=` yolunu kullanır.
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/AppointmentBooking" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /admin/telehealth/bookings:
+    get:
+      tags: [TeleHealth]
+      summary: Rezervasyonları listele (yalnızca ADMIN veya MANAGER — EDITOR 403)
+      description: >
+        `GET /admin/telehealth/appointments` ile AYNI RBAC eşiği (§8.4 — hasta PII'si).
+        **Intake notu ve belge içeriği bu yanıtta ASLA yer almaz**; yalnızca
+        `hasIntakeNote` / `documentCount` sayıları döner (§9.7.5 madde 7/8).
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: doctorId
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: paymentStatus
+          in: query
+          required: false
+          schema: { $ref: "#/components/schemas/BookingPaymentStatus" }
+        - $ref: "#/components/parameters/SearchQuery"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/AppointmentBooking" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/telehealth/bookings/{bookingId}/mark-paid:
+    parameters:
+      - $ref: "#/components/parameters/BookingId"
+    post:
+      tags: [TeleHealth]
+      summary: Rezervasyonu manuel ÖDENDİ işaretle (YALNIZCA ADMIN, denetim kaydı zorunlu)
+      description: >
+        §9.7.1 madde 7 — ofis içi/havale gibi platform dışı ödemeler için kaçış
+        kapısı. **MANAGER'a VERİLMEZ** (bir para hareketi beyanıdır).
+        `reason` ZORUNLUDUR; `paidBy = "manual"` yazılır ve
+        `logAudit(action: "telehealth.booking.marked_paid")` düşer.
+        Etki `checkout.session.completed` ile aynıdır: booking `PAID`,
+        tüm `PENDING_PAYMENT` randevular `SCHEDULED`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MarkBookingPaidRequest" }
+      responses:
+        "200":
+          description: Ödendi olarak işaretlendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/AppointmentBooking" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "Zaten ödenmiş/iptal edilmiş (`error.code: BOOKING_NOT_PAYABLE`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
 
   # ==========================================================================
   # Gelişmiş Slider / Hero Studio — bkz. `Sliders` tag'i ve
@@ -9417,7 +10119,26 @@ components:
         Misafir hastanın katılım bağlantısındaki opak `accessToken` (bkz.
         `CreateAppointmentResult.accessToken`). Oturum açmış sahibi/doktoru/
         ADMIN-MANAGER için GEREKMEZ (§8 erişim kontrolü).
+
+
+        §9.7.7 madde 4 — booking uçlarında bu parametre `AppointmentBooking.accessTokenHash`
+        ile **sabit zamanlı** (`timingSafeEqualHex`) karşılaştırılır; eşleşmezse **`404`**.
       schema: { type: string }
+    BookingId:
+      name: bookingId
+      in: path
+      required: true
+      description: "`AppointmentBooking.id` (§9.7.2 — çoklu slot üst kaydı)."
+      schema: { type: string, format: uuid }
+    AppointmentDocumentId:
+      name: documentId
+      in: path
+      required: true
+      description: >
+        `AppointmentDocument.id` — sağlık belgesi (§9.7.5). Mevcut `DocumentId`
+        parametresi `ProductDocument` içindir ve BU DEĞİLDİR; ad çakışmasını
+        önlemek için ayrı tanımlanmıştır.
+      schema: { type: string, format: uuid }
 
   responses:
     Unauthorized:
@@ -9662,6 +10383,19 @@ components:
               # `LIVEKIT_NOT_CONFIGURED` (503) ve `APPOINTMENT_NOT_JOINABLE` (409)
               # `POST /appointments/{id}/meeting-token` ucu tarafından üretilir
               # (integration-agent, bkz. `/appointments/{id}/meeting-token` path'i).
+              #
+              # §9.7 (TADİLAT TURU 2 — rezervasyon/ödeme/sağlık verisi/portal) ile eklenenler:
+              #   PAYMENTS_NOT_CONFIGURED (503) — STRIPE_SECRET_KEY boş; LIVEKIT_NOT_CONFIGURED
+              #     ile BİREBİR aynı "dürüst yapılandırılmamışlık" deseni (§9.7.1 madde 6).
+              #   BOOKING_NOT_PAYABLE (409)    — booking zaten PAID/EXPIRED/CANCELLED.
+              #   BOOKING_EXPIRED (409)        — slot tutma süresi (expiresAt) doldu.
+              #   HEALTH_CONSENT_REQUIRED (422)— ayrı sağlık verisi açık rızası verilmeden
+              #     intake notu/belge gönderildi (KVKK md.6/2, §9.7.5 madde 2).
+              #   UNSUPPORTED_DOCUMENT_TYPE (422) — MIME whitelist DIŞI veya beyan ile
+              #     sihirli-bayt uyuşmazlığı (§9.7.5).
+              #   DOCUMENT_LIMIT_REACHED (409) — booking başına 5 belge tavanı.
+              #   TWO_FACTOR_REQUIRED (403)    — /doctor/* uçları TOTP zorunlu (§9.7.7 madde 2).
+              #   NOT_A_DOCTOR (403)           — oturum sahibinin DoctorProfile'ı yok.
               enum:
                 [
                   BAD_REQUEST,
@@ -9677,6 +10411,14 @@ components:
                   SLOT_TAKEN,
                   APPOINTMENT_NOT_JOINABLE,
                   LIVEKIT_NOT_CONFIGURED,
+                  PAYMENTS_NOT_CONFIGURED,
+                  BOOKING_NOT_PAYABLE,
+                  BOOKING_EXPIRED,
+                  HEALTH_CONSENT_REQUIRED,
+                  UNSUPPORTED_DOCUMENT_TYPE,
+                  DOCUMENT_LIMIT_REACHED,
+                  TWO_FACTOR_REQUIRED,
+                  NOT_A_DOCTOR,
                 ]
             message: { type: string }
             details:
@@ -14618,7 +15360,30 @@ components:
         `COMPLETED` (`POST /appointments/{id}/complete`, integration-agent'ın ucu)
         VEYA `CANCELLED` (`POST /appointments/{id}/cancel`) VEYA `NO_SHOW` (v1'de
         otomatik üretilmez, backlog).
-      enum: [SCHEDULED, IN_PROGRESS, COMPLETED, CANCELLED, NO_SHOW]
+
+
+        **§9.7.3 tadilatı — `PENDING_PAYMENT` EKLENDİ** (tek yeni değer; izole
+        `ALTER TYPE ... ADD VALUE ... BEFORE 'SCHEDULED'` migration'ı). Rezervasyon
+        oluşturulduğunda randevu bu durumda başlar ve **slotu TUTAR**
+        (`@@unique([doctorId, startsAt])` çifte rezervasyonu tutma anında da engeller).
+        Ödeme onaylanınca `SCHEDULED`'a geçer. `expiresAt` dolduğunda
+        `PENDING_PAYMENT` satırları **HARD DELETE** edilir ve slot yeniden
+        satılabilir olur — `CANCELLED`'a ÇEVRİLMEZ (§4.3'ün "iptal edilen slot
+        kapalı kalır" kuralı yalnızca ÖDENMİŞ/`SCHEDULED` randevular için geçerlidir).
+
+
+        **`CONFIRMED` değeri EKLENMEZ** — `SCHEDULED` zaten onaylanmış durumdur
+        (UI etiketi "Onaylandı"); eşanlamlı ikinci enum değeri geri alınamaz borçtur.
+      enum: [PENDING_PAYMENT, SCHEDULED, IN_PROGRESS, COMPLETED, CANCELLED, NO_SHOW]
+
+    BookingPaymentStatus:
+      type: string
+      description: >
+        §9.7.3 — `AppointmentBooking.paymentStatus`. **YENİ** bir enum'dır
+        (`ALTER TYPE` DEĞİL), bu yüzden tüm değerler ilk seferde tanımlanır (§3.1
+        disiplini). `REFUNDED` tanımlıdır ama **bu turda hiçbir kod onu YAZMAZ** —
+        iade kapsam dışıdır (backlog `feature/telehealth-refunds`).
+      enum: [PENDING, PAID, FAILED, EXPIRED, REFUNDED]
 
     Specialty:
       type: object
@@ -14811,6 +15576,291 @@ components:
           type: string
           format: date-time
           description: "Token'ın son geçerlilik anı (ISO-8601 `Z`'li)."
+
+    # ------------------------------------------------------------------------
+    # §9.7 TADİLAT TURU 2 — booking (çoklu slot) + ödeme + sağlık verisi + portal
+    # ------------------------------------------------------------------------
+
+    CreateBookingRequest:
+      type: object
+      description: >
+        §9.7.2 — çoklu slot rezervasyon isteği.
+        **`totalCents`/`unitPriceCents`/`sessionDurationMin` GÖNDERİLEMEZ** ve
+        gönderilse bile **YOK SAYILIR**: fiyat `DoctorProfile`'dan okunur ve toplam
+        sunucuda hesaplanır (§8 madde 3 aynen geçerli).
+
+
+        `slots` öğelerinin HEPSİ aynı doktora ve doktorun kendi saat diliminde
+        **aynı takvim gününe** ait olmalıdır; her biri `lib/availability.ts` ile
+        ayrı ayrı doğrulanır. Şikâyet notu/belge bu gövdede **YOKTUR** — ayrı ve
+        opsiyonel `PUT .../intake` + `POST .../documents` uçlarıyla, ayrı açık
+        rızayla toplanır (§3.5 + §9.7.5).
+      required: [doctorSlug, slots, patientName, patientEmail, consent]
+      properties:
+        doctorSlug: { type: string }
+        slots:
+          type: array
+          minItems: 1
+          maxItems: 4
+          description: >
+            Seçilen slot BAŞLANGIÇ anları (ISO-8601 `Z`'li). Tavan **4**
+            (`MAX_BOOKING_SLOTS`) — kimlik doğrulamasız tek bir istekle doktorun
+            tüm gününün tutulmasını engeller. Yinelenen değer → `422`.
+          items: { type: string, format: date-time }
+        patientName: { type: string, minLength: 1, maxLength: 120 }
+        patientEmail: { type: string, format: email, maxLength: 255 }
+        consent:
+          type: boolean
+          enum: [true]
+          description: >
+            Randevu KVKK aydınlatma/açık rıza onay kutusu. **Sağlık verisi rızası
+            DEĞİLDİR** — o, `UpsertIntakeRequest.healthDataConsent` ile AYRICA alınır.
+        consentVersion:
+          type: string
+          description: "Onaylanan metnin sürümü (compliance-agent sürümler). Verilmezse sunucu aktif sürümü yazar."
+
+    CreateBookingResult:
+      type: object
+      description: >
+        `POST /appointments/bookings` yanıtı. Ham `accessToken` **BİR KEZ** döner
+        (hash'i saklanır) ve magic-link `/{lang}/patient/bookings/{bookingId}?t=<accessToken>`
+        olarak kurulur.
+      required:
+        [
+          bookingId, bookingNumber, doctorSlug, slotCount, unitPriceCents,
+          subtotalCents, totalCents, currency, paymentStatus, expiresAt,
+          appointments, accessToken, paymentsConfigured, checkoutUrl,
+        ]
+      properties:
+        bookingId: { type: string, format: uuid }
+        bookingNumber: { type: string }
+        doctorSlug: { type: string }
+        slotCount:
+          type: integer
+          minimum: 1
+          maximum: 4
+          description: "UI'daki \"2 Slot · 60 Dk\" gösteriminin kaynağı (`slotCount × sessionDurationMin`)."
+        unitPriceCents: { type: integer, description: "`DoctorProfile.sessionPriceCents` SNAPSHOT'ı." }
+        subtotalCents: { type: integer }
+        totalCents: { type: integer, description: "`slotCount × unitPriceCents` — SUNUCUDA hesaplanır." }
+        currency: { type: string }
+        paymentStatus: { $ref: "#/components/schemas/BookingPaymentStatus" }
+        expiresAt:
+          type: string
+          format: date-time
+          description: "Slot TUTMA süresinin sonu (30 dk). Bu andan sonra `PENDING_PAYMENT` randevular silinir."
+        appointments:
+          type: array
+          items: { $ref: "#/components/schemas/Appointment" }
+        accessToken:
+          type: string
+          description: "Opak magic-link token'ı. Bu yanıttan SONRA bir daha DÖNMEZ."
+        paymentsConfigured:
+          type: boolean
+          description: >
+            `false` → `STRIPE_SECRET_KEY` tanımsız. Frontend **dürüst durum paneli**
+            gösterir; sahte/mock ödeme veya "escrow" ekranı **YASAKTIR** (§4.4 madde 1).
+        checkoutUrl:
+          type: string
+          nullable: true
+          description: "Kolaylık alanı — `paymentsConfigured: false` ise `null`."
+
+    AppointmentBooking:
+      type: object
+      description: >
+        Rezervasyon OKUMA DTO'su. `meetingRoomName`/`accessTokenHash` **TAŞINMAZ**
+        (minimum ifşa, §8). **`intakeNote` metni ve belge içeriği/URL'i bu şemada
+        ASLA yer almaz** — yalnızca `hasIntakeNote` (boolean) ve `documentCount`
+        (sayı) döner (§9.7.5 madde 8).
+      required:
+        [
+          id, bookingNumber, doctorId, doctor, patientUserId, patientName,
+          patientEmail, slotCount, unitPriceCents, subtotalCents, totalCents,
+          currency, paymentStatus, paidAt, expiresAt, appointments,
+          hasIntakeNote, documentCount, createdAt, updatedAt,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        bookingNumber: { type: string }
+        doctorId: { type: string, format: uuid }
+        doctor: { $ref: "#/components/schemas/DoctorSummary" }
+        patientUserId: { type: string, format: uuid, nullable: true }
+        patientName: { type: string }
+        patientEmail: { type: string, format: email }
+        slotCount: { type: integer }
+        unitPriceCents: { type: integer }
+        subtotalCents: { type: integer }
+        totalCents: { type: integer }
+        currency: { type: string }
+        paymentStatus: { $ref: "#/components/schemas/BookingPaymentStatus" }
+        paidAt: { type: string, format: date-time, nullable: true }
+        paidBy:
+          type: string
+          nullable: true
+          enum: [stripe, manual, null]
+          description: "`manual` → ADMIN `mark-paid` ile işaretlendi (§9.7.1 madde 7)."
+        expiresAt: { type: string, format: date-time }
+        errorSummary: { type: string, nullable: true }
+        appointments:
+          type: array
+          items: { $ref: "#/components/schemas/Appointment" }
+        hasIntakeNote:
+          type: boolean
+          description: "Şifreli notun VARLIĞI. Metnin kendisi yalnızca `GET .../intake` ile ve denetim kaydıyla alınır."
+        documentCount:
+          type: integer
+          description: "Silinmemiş belge sayısı. `MANAGER` yalnızca bu sayıyı görebilir, içeriği GÖREMEZ."
+        joinableFrom:
+          type: string
+          format: date-time
+          nullable: true
+          description: >
+            `min(startsAt) - 10 dk` (§9.7.6 — §4.5'teki 5 dk tadil edildi).
+            `paymentStatus !== PAID` ise `null` döner: ödenmemiş görüşme açılmaz.
+        joinableUntil: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    BookingCheckoutSessionResponse:
+      type: object
+      description: >
+        `POST /appointments/bookings/{bookingId}/checkout-session` yanıtı
+        (integration-agent'ın ucu). Abonelik akışındaki `CheckoutSessionResponse`
+        ile **KARIŞTIRILMAMALIDIR** — bu ayrı şema bilinçlidir: booking akışı
+        `sessionId` ve `expiresAt` (slot tutma süresi) taşır.
+      required: [checkoutUrl, sessionId, expiresAt]
+      properties:
+        checkoutUrl: { type: string, format: uri, description: "Stripe Hosted Checkout URL'i." }
+        sessionId: { type: string, description: "`AppointmentBooking.stripeCheckoutSessionId`." }
+        expiresAt: { type: string, format: date-time, description: "Oturum bitişi (30 dk) = slot tutma süresi sonu." }
+
+    BookingInvoice:
+      type: object
+      description: >
+        §9.7.0 madde 11 — **TÜRETİLMİŞ görünüm, yeni tablo YOK.**
+        **Bu bir e-Fatura/e-Arşiv fatura DEĞİLDİR.** Müşteri yüzeyindeki etiket
+        "Ödeme Belgesi (bilgi amaçlıdır)" olmalıdır. Satıcı bilgileri
+        `SiteSettings`'ten okunur. Yalnızca `paymentStatus: PAID` için döner.
+      required: [bookingNumber, issuedAt, seller, buyer, lines, subtotalCents, totalCents, currency, disclaimer]
+      properties:
+        bookingNumber: { type: string }
+        issuedAt: { type: string, format: date-time, description: "`AppointmentBooking.paidAt`." }
+        seller:
+          type: object
+          description: "`SiteSettings`'ten türetilir — bu şema için yeni bir ayar alanı EKLENMEZ."
+          properties:
+            name: { type: string }
+            email: { type: string, nullable: true }
+        buyer:
+          type: object
+          required: [name, email]
+          properties:
+            name: { type: string }
+            email: { type: string, format: email }
+        lines:
+          type: array
+          description: "Her slot bir satırdır (`slotCount` adet). Doktorun UZMANLIK ADI satır metnine YAZILMAZ — çıkarımsal sağlık verisi (§7.1)."
+          items:
+            type: object
+            required: [description, startsAt, endsAt, unitPriceCents]
+            properties:
+              description: { type: string, example: "Online konsültasyon (30 dk)" }
+              startsAt: { type: string, format: date-time }
+              endsAt: { type: string, format: date-time }
+              unitPriceCents: { type: integer }
+        subtotalCents: { type: integer }
+        totalCents: { type: integer }
+        currency: { type: string }
+        stripePaymentIntentId: { type: string, nullable: true }
+        disclaimer:
+          type: string
+          description: "ZORUNLU sabit metin: bu belgenin resmi bir fatura olmadığını belirtir (compliance-agent nihai metni yazar)."
+
+    UpsertIntakeRequest:
+      type: object
+      description: >
+        §9.7.5 (ENGELLEYİCİ) — **KVKK md.6 özel nitelikli kişisel veri.**
+        `healthDataConsent` randevu onayından **AYRI, ikinci** bir açık rızadır ve
+        varsayılan olarak işaretsizdir; `true` değilse istek
+        **`422 HEALTH_CONSENT_REQUIRED`** ile reddedilir. Bu adım **OPSİYONELDİR**
+        ve atlanması rezervasyonu/ödemeyi/görüşmeyi engellemez.
+      required: [healthDataConsent]
+      properties:
+        note:
+          type: string
+          maxLength: 2000
+          nullable: true
+          description: >
+            Şikâyet/ön not. Sunucuda **AES-256-GCM ile şifrelenerek** saklanır
+            (`lib/crypto.ts`); düz metin kolon, index, arama ve **log YASAKTIR**.
+            Yanıt/DTO'larda yalnızca §9.7.5 madde 7'deki yetkili taraflara çözülür.
+        healthDataConsent:
+          type: boolean
+          enum: [true]
+          description: "Sağlık verisi işlenmesine AÇIK RIZA. Kanıt `healthDataConsentAt` zaman damgası olarak saklanır (boolean DEĞİL)."
+        consentVersion:
+          type: string
+          description: "Onaylanan sağlık verisi rıza metninin sürümü (compliance-agent sürümler)."
+
+    AppointmentIntake:
+      type: object
+      description: >
+        Çözülmüş intake kaydı. **Yalnızca** hastanın kendisi, o booking'in doktoru
+        ve `ADMIN` alabilir; `MANAGER`/`EDITOR`/diğer doktorlar → `404`.
+        Her okuma `logAudit("telehealth.intake_note.accessed")` yazar.
+      required: [bookingId, note, healthDataConsentAt, healthDataConsentVersion, createdAt, updatedAt]
+      properties:
+        bookingId: { type: string, format: uuid }
+        note: { type: string, nullable: true, description: "Çözülmüş düz metin — YALNIZCA bu uçta döner." }
+        healthDataConsentAt: { type: string, format: date-time }
+        healthDataConsentVersion: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    AppointmentDocument:
+      type: object
+      description: >
+        Tıbbi belge METADATA'sı. **`mediaId` alanı YOKTUR ve EKLENMEYECEKTİR** —
+        sağlık belgesi hiçbir koşulda bir `Media` satırı değildir (§9.7.5 madde 4).
+        **Doğrudan/public bir `url` alanı da YOKTUR**; indirme yalnızca
+        `GET /appointments/documents/{documentId}/content` üzerinden, yetkilendirme
+        ve denetim kaydıyla yapılır.
+      required: [id, bookingId, filename, mimeType, sizeBytes, uploadedAt]
+      properties:
+        id: { type: string, format: uuid }
+        bookingId: { type: string, format: uuid }
+        filename: { type: string, description: "Hastanın orijinal dosya adı — PII olabilir; yalnızca yetkili yanıtta döner." }
+        mimeType:
+          type: string
+          enum: [application/pdf, image/png, image/jpeg]
+          description: "Sihirli-bayt ile DOĞRULANMIŞ gerçek tip. SVG REDDEDİLİR."
+        sizeBytes: { type: integer, maximum: 5242880 }
+        sha256: { type: string }
+        uploadedAt: { type: string, format: date-time }
+        deletedAt: { type: string, format: date-time, nullable: true }
+
+    DoctorPortalProfile:
+      type: object
+      description: >
+        §9.7.7 — `GET /doctor/me`. **`SiteRole.DOCTOR` YOKTUR**; doktorluk
+        `DoctorProfile.userId` ilişkisinden TÜRETİLİR
+        (`canUseAdvancedBuilder` emsaliyle aynı disiplin).
+      required: [userId, email, name, doctorProfile, twoFactorEnabled]
+      properties:
+        userId: { type: string, format: uuid }
+        email: { type: string, format: email }
+        name: { type: string }
+        doctorProfile: { $ref: "#/components/schemas/DoctorProfile" }
+        twoFactorEnabled:
+          type: boolean
+          description: "`false` ise bu uç zaten `403 TWO_FACTOR_REQUIRED` döner; alan yalnızca istemci tarafı netlik içindir."
+
+    MarkBookingPaidRequest:
+      type: object
+      description: "§9.7.1 madde 7 — YALNIZCA ADMIN. `reason` denetim kaydına ve `paidNote`'a yazılır."
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 1, maxLength: 500 }
 
     CreateSpecialtyRequest:
       type: object

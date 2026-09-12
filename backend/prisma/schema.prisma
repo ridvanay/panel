@@ -339,6 +339,8 @@ model User {
   // Opsiyonel panel kullanıcısı ↔ doktor profili bağlantısı ve hastanın kendi randevuları.
   doctorProfile          DoctorProfile?       @relation("DoctorProfileUser")
   appointmentsAsPatient  Appointment[]        @relation("AppointmentPatient")
+  // [TCT] §9.7.4 (bağlayıcı) — çoklu slot rezervasyon üst kaydı, hastanın kendi hesabı.
+  appointmentBookings    AppointmentBooking[] @relation("AppointmentBookingPatient")
 
   @@map("users")
 }
@@ -1302,8 +1304,8 @@ model SiteAppearance {
   // BAĞIMSIZ, kullanıcı header'ı sitenin geri kalanından farklı renklendirebilir).
   // `headerBgColor`/`headerStickyBgColor`/`headerLinkColor` `#rrggbb` VEYA `#rrggbbaa` (alfa
   // kanallı) kabul eder — `ContainerBackground.value` (page-builder) ile AYNI regex paterni.
-  headerBgColor       String @default("#ffffffcc")
-  headerStickyBgColor String @default("#fffffff2")
+  headerBgColor           String  @default("#ffffffcc")
+  headerStickyBgColor     String  @default("#fffffff2")
   // Yapışkan (sticky) durumdayken backdrop-blur uygulanır mı — CSS DEĞİŞKENİ DEĞİL, `buttonStyle`
   // ile AYNI yapısal karar. Normal (kaydırılmamış) durumda blur HER ZAMAN uygulanır — geriye
   // dönük uyumluluk için ayrı bir toggle YOK.
@@ -1611,6 +1613,9 @@ enum EmailTemplatePurpose {
   // .claude/architect-scope-order-management-pro.md §4.4/§6 (bağlayıcı) — sipariş iptal
   // e-postası. Mevcut kısmi unique indeks (`email_templates_active_purpose_key`) otomatik kapsar.
   ORDER_CANCELLATION
+  // [TCT] §9.7.8 (bağlayıcı) — randevu ödemesi onaylandığında hastaya gönderilen tek şablon.
+  // Hatırlatma/iptal e-postası bu turda EKLENMEZ (backlog: feature/telehealth-reminder-emails).
+  APPOINTMENT_CONFIRMATION
   CUSTOM
 }
 
@@ -1951,6 +1956,11 @@ model DemoTemplateImport {
 /// Kullanıcının istediği SCHEDULED/COMPLETED ikilisi YETERSİZDİR: iptal ve gelmedi (no-show)
 /// durumları ilk gerçek kullanımda ORTAYA ÇIKAR ve o an enum'a dokunmak migration borcudur.
 enum AppointmentStatus {
+  /// [TCT] §9.7.3 KARAR I — tutulmuş-ama-ödenmemiş slot. Booking ödeme bekliyorken
+  /// randevu satırları bu durumdadır; süresi dolarsa HARD DELETE edilir (§9.7.3), satır
+  /// ödenirse `SCHEDULED`'a çevrilir. `SCHEDULED`'DAN ÖNCE eklenmiştir (izole migration,
+  /// `ALTER TYPE ... ADD VALUE ... BEFORE 'SCHEDULED'`).
+  PENDING_PAYMENT
   SCHEDULED
   IN_PROGRESS
   COMPLETED
@@ -2017,11 +2027,13 @@ model DoctorProfile {
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
-  user         User?                @relation("DoctorProfileUser", fields: [userId], references: [id], onDelete: SetNull)
-  specialty    Specialty?           @relation(fields: [specialtyId], references: [id], onDelete: SetNull)
-  avatarMedia  Media?               @relation("DoctorAvatarMedia", fields: [avatarMediaId], references: [id], onDelete: SetNull)
-  availability DoctorAvailability[]
-  appointments Appointment[]
+  user                User?                @relation("DoctorProfileUser", fields: [userId], references: [id], onDelete: SetNull)
+  specialty           Specialty?           @relation(fields: [specialtyId], references: [id], onDelete: SetNull)
+  avatarMedia         Media?               @relation("DoctorAvatarMedia", fields: [avatarMediaId], references: [id], onDelete: SetNull)
+  availability        DoctorAvailability[]
+  appointments        Appointment[]
+  // [TCT] §9.7.4 (bağlayıcı) — çoklu slot rezervasyon üst kayıtları.
+  appointmentBookings AppointmentBooking[]
 
   @@index([specialtyId])
   @@index([avatarMediaId])
@@ -2089,15 +2101,140 @@ model Appointment {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  doctor      DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Restrict)
-  patientUser User?         @relation("AppointmentPatient", fields: [patientUserId], references: [id], onDelete: SetNull)
+  /// [TCT] §9.7.4 — null = bu tur ÖNCESİ oluşmuş tekil randevu (geriye dönük backfill YAPILMAZ).
+  bookingId String?
+
+  doctor      DoctorProfile       @relation(fields: [doctorId], references: [id], onDelete: Restrict)
+  patientUser User?               @relation("AppointmentPatient", fields: [patientUserId], references: [id], onDelete: SetNull)
+  booking     AppointmentBooking? @relation(fields: [bookingId], references: [id], onDelete: Cascade)
 
   /// Çifte rezervasyonun DB seviyesi garantisi (§4.3).
   @@unique([doctorId, startsAt])
   @@index([patientUserId])
   @@index([doctorId, startsAt])
   @@index([status, startsAt])
+  @@index([bookingId])
   @@map("appointments")
+}
+
+/// [TCT] §9.7.1 KARAR G / §9.7.3 KARAR I — booking ödeme durumu. `Appointment.status`'tan
+/// AYRI: ödeme, randevu değil BOOKING düzeyinde yaşar (çoklu slotta N randevu 1 booking'e bağlıdır).
+enum BookingPaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  EXPIRED
+  /// [TCT] §9.7.1 madde 8 — ilk seferde tanımlanır (sonradan `ALTER TYPE` borcu doğurmasın)
+  /// ama bu turda hiçbir kod onu YAZMAZ. Backlog: feature/telehealth-refunds.
+  REFUNDED
+}
+
+/// [TCT] §9.7.2 KARAR H — çoklu slot üst kaydı. N slot = N `Appointment` satırı + 1
+/// `AppointmentBooking`. `@@unique([doctorId, startsAt])` (Appointment üzerinde) çifte
+/// rezervasyon garantisini booking eklendikten SONRA da hiç değişmeden korur.
+model AppointmentBooking {
+  id            String  @id @default(uuid())
+  seq           Int     @unique @default(autoincrement())
+  /// Hastaya gösterilen okunabilir numara (Order.orderNumber deseni). Üretimi backend-agent'ın işi.
+  bookingNumber String  @unique
+  doctorId      String
+  patientUserId String?
+
+  /// PII SNAPSHOT — Appointment.patientName/Email ile AYNI disiplin ve AYNI retention döngüsü.
+  patientName  String
+  patientEmail String
+
+  slotCount      Int
+  /// DoctorProfile.sessionPriceCents SNAPSHOT'ı — istemciden ASLA alınmaz (§8 madde 3).
+  unitPriceCents Int
+  subtotalCents  Int
+  totalCents     Int
+  currency       String @default("TRY")
+
+  paymentStatus           BookingPaymentStatus @default(PENDING)
+  stripeCheckoutSessionId String?              @unique
+  stripePaymentIntentId   String?
+  paidAt                  DateTime?
+  /// "stripe" | "manual" (§9.7.1 madde 7). Serbest metin, enum DEĞİL (sağlayıcı eklenebilir).
+  paidBy                  String?
+  paidNote                String?
+  errorSummary            String?
+  /// Slot TUTMA süresi sonu = Stripe Checkout oturumunun expires_at'i (30 dk).
+  expiresAt               DateTime
+
+  /// §9.7.6 — booking BAŞINA TEK LiveKit odası. Rastgele ("room_" + 32 hex), id'den TÜRETİLMEZ.
+  meetingRoomName String @unique
+  /// Hasta magic-link'inin opak token'ının SHA-256 hash'i (lib/tokens.ts). HAM DEĞER SAKLANMAZ.
+  accessTokenHash String @unique
+
+  /// KVKK randevu aydınlatma/onay KANITI — boolean DEĞİL zaman damgası
+  /// (Order.distanceSalesApprovedAt emsali). İstekten gelen zaman damgası KABUL EDİLMEZ.
+  consentAt      DateTime
+  consentVersion String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  doctor       DoctorProfile         @relation(fields: [doctorId], references: [id], onDelete: Restrict)
+  patientUser  User?                 @relation("AppointmentBookingPatient", fields: [patientUserId], references: [id], onDelete: SetNull)
+  appointments Appointment[]
+  intake       AppointmentIntake?
+  documents    AppointmentDocument[]
+
+  @@index([doctorId, createdAt])
+  @@index([patientUserId])
+  @@index([paymentStatus, expiresAt])
+  @@index([stripePaymentIntentId])
+  @@map("appointment_bookings")
+}
+
+/// [TCT] §9.7.4/§9.7.5 KARAR J — hastanın (opsiyonel) şikâyet notu. Booking BAŞINA EN FAZLA
+/// bir kayıt (1:1). `Media` tablosu KULLANILMAZ (§9.7.5 madde 4); not asla düz metin
+/// saklanmaz, aranamaz, sıralanamaz.
+model AppointmentIntake {
+  id        String @id @default(uuid())
+  bookingId String @unique
+
+  /// AES-256-GCM ŞİFRELİ (lib/crypto.ts::encryptSecret — User.twoFactorSecret İLE AYNI
+  /// disiplin). DÜZ METİN ASLA SAKLANMAZ; index YOK, arama YOK, log'a YAZILMAZ.
+  noteCiphertext           String?
+  /// KVKK md.6/2 AÇIK RIZA KANITI. NOT NULL — rıza olmadan bu satır VAR OLAMAZ.
+  healthDataConsentAt      DateTime
+  healthDataConsentVersion String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  booking AppointmentBooking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@map("appointment_intakes")
+}
+
+/// [TCT] §9.7.4/§9.7.5 KARAR J — hastanın (opsiyonel) yüklediği tıbbi belge (reçete, tahlil,
+/// radyoloji vb.). `Media` tablosu KULLANILMAZ (§9.7.5 madde 4); ÖZEL depoda tutulur,
+/// yalnızca kapılı bir uçtan servis edilir (@fastify/static ALTINDA DEĞİL).
+model AppointmentDocument {
+  id        String @id @default(uuid())
+  seq       Int    @unique @default(autoincrement())
+  bookingId String
+
+  /// PRIVATE depolama yolu. `Media` satırı DEĞİLDİR ve @fastify/static ALTINDA SERVİS EDİLMEZ.
+  storagePath String
+  filename    String
+  /// WHITELIST: application/pdf | image/png | image/jpeg — sihirli-bayt doğrulaması ZORUNLU
+  /// (lib/mime-detect.ts, media.routes.ts:149-165 İLE AYNI disiplin).
+  mimeType    String
+  sizeBytes   Int
+  sha256      String
+
+  uploadedAt DateTime  @default(now())
+  /// KVKK md.11 silme hakkı: dosya DİSKTEN silinir, satır erişim denetimi bütünlüğü için kalır.
+  deletedAt  DateTime?
+
+  booking AppointmentBooking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId, deletedAt])
+  @@map("appointment_documents")
 }
 
 // §10.9.3 Sepet + Stripe Checkout (Eklenti/Modül Yönetimi) — bkz. ARCHITECTURE.md. Misafir

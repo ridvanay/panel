@@ -53,6 +53,9 @@ import type {
   DoctorProfile,
   DoctorAvailability,
   Appointment,
+  AppointmentBooking,
+  AppointmentIntake,
+  AppointmentDocument,
 } from "@prisma/client";
 import type {
   UserDto,
@@ -130,6 +133,10 @@ import type {
   DoctorAvailabilityRuleDto,
   DoctorSummaryDto,
   AppointmentDto,
+  AppointmentBookingDto,
+  AppointmentIntakeDto,
+  AppointmentDocumentDto,
+  DoctorPortalProfileDto,
 } from "../schemas/entities";
 import { env } from "../config/env";
 import {
@@ -153,6 +160,7 @@ import { buildMaskedKey } from "../lib/api-key";
 import { resolveUnitPriceCents } from "../lib/product-pricing";
 import { computeShipping, type ShippingSettingsInput } from "../lib/shipping";
 import { buildVariantLabel } from "../modules/products/lib/variants";
+import { getBookingJoinWindow } from "../modules/telehealth/lib/booking";
 
 export function toUserDto(user: User): UserDto {
   return {
@@ -1637,5 +1645,95 @@ export function toAppointmentDto(appointment: AppointmentWithDoctor): Appointmen
     cancelReason: appointment.cancelReason,
     createdAt: appointment.createdAt.toISOString(),
     updatedAt: appointment.updatedAt.toISOString(),
+  };
+}
+
+// ---------- [TCT] §9.7 TADİLAT TURU 2 — booking (çoklu slot) + sağlık verisi + portal ----------
+
+type AppointmentBookingWithRelations = AppointmentBooking & {
+  doctor: Pick<DoctorProfile, "id" | "title" | "fullName" | "slug">;
+  appointments: Appointment[];
+  /** Yalnızca VARLIĞI (`hasIntakeNote`) için — not METNİ bu DTO'ya ASLA taşınmaz (§9.7.5 madde 8). */
+  intake?: { id: string } | null;
+  /** Çağıran taraf ZATEN `deletedAt: null` ile filtrelemiş olmalıdır (bkz. route). */
+  documents?: unknown[];
+};
+
+/**
+ * `meetingRoomName`/`accessTokenHash` BİLİNÇLİ OLARAK bu DTO'ya DAHİL EDİLMEZ (§8 — minimum
+ * ifşa). `joinableFrom`/`joinableUntil` — `paymentStatus !== "PAID"` iken HER ZAMAN `null`
+ * (§9.7.6 madde 4 — ödenmemiş görüşme "katılınabilir" GÖRÜNMEZ).
+ */
+export function toAppointmentBookingDto(booking: AppointmentBookingWithRelations): AppointmentBookingDto {
+  const { joinableFrom, joinableUntil } = getBookingJoinWindow(booking.appointments, booking.paymentStatus);
+  return {
+    id: booking.id,
+    bookingNumber: booking.bookingNumber,
+    doctorId: booking.doctorId,
+    doctor: toDoctorSummaryDto(booking.doctor),
+    patientUserId: booking.patientUserId,
+    patientName: booking.patientName,
+    patientEmail: booking.patientEmail,
+    slotCount: booking.slotCount,
+    unitPriceCents: booking.unitPriceCents,
+    subtotalCents: booking.subtotalCents,
+    totalCents: booking.totalCents,
+    currency: booking.currency,
+    paymentStatus: booking.paymentStatus,
+    paidAt: booking.paidAt ? booking.paidAt.toISOString() : null,
+    paidBy: booking.paidBy,
+    expiresAt: booking.expiresAt.toISOString(),
+    errorSummary: booking.errorSummary,
+    appointments: booking.appointments.map((appointment) => toAppointmentDto({ ...appointment, doctor: booking.doctor })),
+    hasIntakeNote: Boolean(booking.intake),
+    documentCount: booking.documents?.length ?? 0,
+    joinableFrom: joinableFrom ? joinableFrom.toISOString() : null,
+    joinableUntil: joinableUntil ? joinableUntil.toISOString() : null,
+    createdAt: booking.createdAt.toISOString(),
+    updatedAt: booking.updatedAt.toISOString(),
+  };
+}
+
+/**
+ * Çözülmüş intake DTO'su — `note` (düz metin) parametre olarak AYRICA geçirilir (`lib/crypto.ts`
+ * çözme işlemi ROUTE katmanında yapılır, mapper'lar DB/şifreleme bilmez, `toPageDto` paterniyle
+ * AYNI ilke: mapper saf bir dönüşümdür).
+ */
+export function toAppointmentIntakeDto(intake: AppointmentIntake, note: string | null): AppointmentIntakeDto {
+  return {
+    bookingId: intake.bookingId,
+    note,
+    healthDataConsentAt: intake.healthDataConsentAt.toISOString(),
+    healthDataConsentVersion: intake.healthDataConsentVersion,
+    createdAt: intake.createdAt.toISOString(),
+    updatedAt: intake.updatedAt.toISOString(),
+  };
+}
+
+/** `mediaId`/`url` alanı YOKTUR — sağlık belgesi hiçbir koşulda bir `Media` satırı değildir (§9.7.5 madde 4). */
+export function toAppointmentDocumentDto(document: AppointmentDocument): AppointmentDocumentDto {
+  return {
+    id: document.id,
+    bookingId: document.bookingId,
+    filename: document.filename,
+    mimeType: document.mimeType as AppointmentDocumentDto["mimeType"],
+    sizeBytes: document.sizeBytes,
+    sha256: document.sha256,
+    uploadedAt: document.uploadedAt.toISOString(),
+    deletedAt: document.deletedAt ? document.deletedAt.toISOString() : null,
+  };
+}
+
+/** §9.7.7 — `GET /doctor/me`. `SiteRole.DOCTOR` YOKTUR; doktorluk `DoctorProfile.userId` ilişkisinden TÜRETİLİR. */
+export function toDoctorPortalProfileDto(
+  user: Pick<User, "id" | "email" | "name" | "twoFactorEnabled">,
+  doctorProfile: DoctorProfileWithRelations
+): DoctorPortalProfileDto {
+  return {
+    userId: user.id,
+    email: user.email,
+    name: user.name,
+    doctorProfile: toDoctorProfileDto(doctorProfile),
+    twoFactorEnabled: user.twoFactorEnabled,
   };
 }

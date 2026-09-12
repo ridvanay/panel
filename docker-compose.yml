@@ -66,6 +66,15 @@ services:
     volumes:
       # Yerel medya deposu (STORAGE_DRIVER=local) container yeniden oluşturulduğunda kaybolmasın.
       - saas_uploads:/app/uploads
+      # Tele-Sağlık ÖZEL (private) belge deposu — sağlık verisi (şikâyet notu eki, reçete/tahlil/
+      # radyoloji belgesi). BİLİNÇLİ OLARAK `saas_uploads`tan (yukarıdaki satır) AYRI, KENDİ
+      # named volume'ü — `PRIVATE_UPLOAD_DIR`, `/app/uploads`ın (public, `@fastify/static` ile
+      # auth'suz servis edilen) ALT DİZİNİ DEĞİLDİR, kardeş bir dizindir (`/app/storage/
+      # private-uploads`). Bu volume `/app/uploads` içine MOUNT EDİLMEZ — aksi halde
+      # `@fastify/static`'in `root: UPLOAD_DIR` taraması onu da servis eder ve KVKK md.6 özel
+      # nitelikli veri koruması sessizce delinir (bkz. .claude/compliance-notes-telehealth.md
+      # "TUR 2" KRİTİK ŞART). Backup stratejisi ve dosya izinleri için INFRA.md.
+      - saas_private_uploads:/app/storage/private-uploads
     depends_on:
       db:
         condition: service_healthy
@@ -123,3 +132,6 @@ services:
 volumes:
   saas_pgdata:
   saas_uploads:
+  # Tele-Sağlık private belge deposu (sağlık verisi) — bkz. backend servisinin volumes bloğundaki
+  # yorum ve INFRA.md "Tele-Sağlık özel (private) belge deposu" bölümü.
+  saas_private_uploads:

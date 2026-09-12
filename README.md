@@ -88,6 +88,7 @@ dosyalarının kendisine bakın.
 | `JWT_PRIVATE_KEY_BASE64` / `JWT_PUBLIC_KEY_BASE64` | RS256 anahtar çifti (dev'de boşsa geçici anahtar üretilir) |
 | `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` | Faturalama |
 | `LIVEKIT_URL` / `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` | Tele-Sağlık görüntülü konsültasyon (opsiyonel — `STRIPE_*` ile aynı desen, boşsa özellik `503` ile dürüstçe devre dışı kalır) |
+| `PRIVATE_UPLOAD_DIR` | Tele-Sağlık sağlık verisi (şikâyet notu eki, reçete/tahlil/radyoloji belgesi) için **özel** (kimlik doğrulamasız `/uploads/**` servisinin TAMAMEN DIŞINDA) dosya deposu — `UPLOAD_DIR`'ın alt dizini OLAMAZ, ayrı bir Docker volume ile mount edilir (bkz. `INFRA.md`) |
 | `SMTP_*` | E-posta gönderimi (boşsa dev'de otomatik Ethereal test hesabı — e-posta şablonu editörünün test gönderimi ve iletişim formu bildirimleri bunu kullanır) |
 | `ENCRYPTION_KEY` | 2FA TOTP secret şifrelemesi (AES-256-GCM) |
 | `STORAGE_DRIVER`, `S3_*` | Medya depolama (local veya S3-uyumlu) |
@@ -184,6 +185,7 @@ API istemcileri (`frontend/src/lib/api/*`) ve backend route şemaları bu kontra
 | `INFRA.md` | Docker/CI-CD/deploy detayları | devops-agent |
 | `TEST_COVERAGE.md` | E2E/entegrasyon test kapsamı, bilinen bug'lar | qa-agent |
 | `.claude/design-notes-*.md` | Görsel/etkileşim tasarım kararları | ui-designer |
+| `.claude/compliance-notes-*.md` | KVKK/GDPR değerlendirmeleri, rıza metni sürümleri, saklama süreleri | compliance-agent |
 
 ## Ajan orkestrasyonu
 

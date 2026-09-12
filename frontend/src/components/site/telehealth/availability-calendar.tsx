@@ -5,29 +5,37 @@ import { useRouter } from "next/navigation";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { CalendarCheck, Check, ChevronLeft, ChevronRight, CloudSun, Globe, Loader2, Sun } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, CloudSun, Globe, Loader2, Sun } from "lucide-react";
 import * as telehealthApi from "@/lib/api/telehealth";
 import { ApiClientError } from "@/lib/api/error";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
-import type { AvailabilitySlot, SitePage } from "@/lib/api/types";
-import { formatDayKey, formatDayLabel, formatTime } from "@/lib/telehealth-format";
+import type { AvailabilitySlot, CreateBookingResult, SitePage } from "@/lib/api/types";
+import { MAX_BOOKING_SLOTS } from "@/lib/api/types";
+import { formatDayKey, formatTime } from "@/lib/telehealth-format";
 import { useBookingSelection } from "@/components/site/telehealth/booking-selection-context";
+import { BookingPostCreationFlow } from "@/components/site/telehealth/booking-post-creation-flow";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Alert } from "@/components/ui/alert";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 
 /**
- * `.claude/architect-scope-telehealth-template.md` §4.2 + `.claude/design-notes-telehealth.md`
- * §2.3/§2.3.3/§4 — ay takvimi ızgarası (§2.2'nin dikey tarih chip listesini SUPERSEDE eder) + iki
- * saat grubuna (ÖÖ Sabah/ÖS Öğleden Sonra) ayrılmış slot ızgarası + randevu formu. Ziyaretçi
- * dilimi/`selectedSlot` artık `booking-selection-context.tsx` üzerinden PAYLAŞILIR ("Hizmet Özeti"
- * paneli — §2.4 — AYNI seçimi sağ sütunda göstermek zorunda); bu dosya context'in TÜKETİCİSİ ve
- * TEK yazarıdır (`setSelectedSlot`), context'in SAHİBİ DEĞİLDİR (bkz. o dosyanın başlığı).
+ * `.claude/architect-scope-telehealth-template.md` §4.2/§9.7.2 + `.claude/design-notes-telehealth.md`
+ * §2.3/§4/§12 — ay takvimi ızgarası + iki saat grubuna (ÖÖ Sabah/ÖS Öğleden Sonra) ayrılmış ÇOKLU
+ * slot seçim ızgarası (1..4, AYNI gün) + randevu formu. `selectedSlots` `booking-selection-
+ * context.tsx` üzerinden PAYLAŞILIR ("Hizmet Özeti" paneli AYNI seçimi sağ sütunda gösterir); bu
+ * dosya context'in TÜKETİCİSİ ve TEK yazarıdır, context'in SAHİBİ DEĞİLDİR.
+ *
+ * [TCT] §9.7.2 (bağlayıcı) — TEKİL slot varsayımı KALDIRILDI: `POST /appointments/bookings` ile
+ * `slots: string[]` (1..4) gönderilir; tutar (`totalCents`) İSTEMCİDEN ASLA gönderilmez, yalnızca
+ * yanıttaki değer kanoniktir. `.claude/design-notes-telehealth.md` §12.1 — standalone "seçim onay
+ * şeridi" TAMAMEN KALDIRILDI, "Değiştir" aksiyonu Hizmet Özeti kutusuna taşındı
+ * (`doctor-service-summary.tsx`).
  */
 
 interface AvailabilityCalendarProps {
@@ -60,12 +68,14 @@ function getHourGroupLabel(iso: string, timeZone: string): HourGroupLabel {
   return hour < 12 ? "Sabah" : "Öğleden Sonra";
 }
 
-/** §2.3.4/§2.2.1/§3 — saat slotu (müsait/seçili) taban dili, DEĞİŞMEDİ. */
+/** §2.2.1/§12.2.1 — seçim pili taban dili, çoklu seçimde de DEĞİŞMEDEN kullanılır. */
 const SELECTION_PILL_BASE =
   "inline-flex h-10 items-center justify-center gap-1.5 rounded-[var(--site-radius)] border text-sm font-medium tabular-nums transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface";
 const SELECTION_PILL_AVAILABLE = "border-border bg-surface text-foreground hover:border-primary/50 hover:bg-primary/5";
 const SELECTION_PILL_SELECTED =
   "border-2 border-transparent bg-primary text-primary-foreground ring-2 ring-offset-2 ring-offset-surface ring-primary";
+/** §12.2.2 — 4/4 sınırına ulaşıldığında henüz seçilmemiş müsait slotların "geçici olarak seçilemez" durumu. */
+const SELECTION_PILL_AT_LIMIT = "border-border/60 bg-surface text-foreground/35 cursor-not-allowed";
 
 function pad2(n: number): string {
   return String(n).padStart(2, "0");
@@ -129,10 +139,11 @@ function mergeSlots(prev: AvailabilitySlot[], fetched: AvailabilitySlot[]): Avai
 
 export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, lang, defaultLocaleCode, initialSlots, kvkkPage }: AvailabilityCalendarProps) {
   const router = useRouter();
-  const { selectedSlot, setSelectedSlot, displayTimeZone, visitorTimeZone } = useBookingSelection();
+  const { selectedSlots, toggleSlot, clearAllSlots, displayTimeZone, visitorTimeZone } = useBookingSelection();
   const [slots, setSlots] = useState<AvailabilitySlot[]>(initialSlots);
   const [bookingError, setBookingError] = useState<string | null>(null);
-  const [bookingResult, setBookingResult] = useState<{ id: string; accessToken: string } | null>(null);
+  const [dayChangedNotice, setDayChangedNotice] = useState(false);
+  const [bookingResult, setBookingResult] = useState<CreateBookingResult | null>(null);
 
   // §2.3.1 — takvimin başlangıç sayfası. `initialSlots`/`doctorTimeZone` SUNUCU/istemci İLK
   // render'ında AYNIDIR (hidrasyon güvenli, `visitorTimeZone` henüz BİLİNMİYOR) — mount sonrası
@@ -236,29 +247,30 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, lang, default
   const { year: currentYear, month0: currentMonth0 } = getYearMonthInTimeZone(new Date(now), displayTimeZone);
   const isPrevMonthDisabled = viewMonth.year * 12 + viewMonth.month0 <= currentYear * 12 + currentMonth0;
 
-  function selectSlot(slot: AvailabilitySlot) {
+  function handleSlotClick(slot: AvailabilitySlot) {
     if (!slot.available) return;
-    setSelectedSlot(slot);
     setBookingError(null);
+    const { dayChanged } = toggleSlot(slot, displayTimeZone);
+    setDayChangedNotice(dayChanged);
   }
 
   async function onSubmit(values: BookingFormValues) {
-    if (!selectedSlot) return;
+    if (selectedSlots.length === 0) return;
     setBookingError(null);
     try {
-      const result = await telehealthApi.createAppointment({
+      const result = await telehealthApi.createBooking({
         doctorSlug,
-        startsAt: selectedSlot.startsAt,
+        slots: selectedSlots.map((s) => s.startsAt),
         patientName: values.patientName,
         patientEmail: values.patientEmail,
         consent: true,
       });
-      setBookingResult({ id: result.id, accessToken: result.accessToken });
+      setBookingResult(result);
     } catch (err) {
       if (err instanceof ApiClientError && err.status === 409) {
-        setBookingError("Bu saat az önce başka biri tarafından alındı. Lütfen başka bir saat seçin.");
-        setSelectedSlot(null);
-        // Slotu yeniden getirerek ızgarayı tazele — kullanıcı aynı hatayı tekrar görmesin.
+        setBookingError("Seçtiğiniz saatlerden biri az önce başka biri tarafından alındı. Lütfen yeniden seçin.");
+        clearAllSlots();
+        // Slotları yeniden getirerek ızgarayı tazele — kullanıcı aynı hatayı tekrar görmesin.
         router.refresh();
       } else {
         setBookingError(friendlyErrorMessage(err));
@@ -267,29 +279,7 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, lang, default
   }
 
   if (bookingResult) {
-    const consultationHref = withLocalePrefix(`/consultation/${bookingResult.id}?t=${bookingResult.accessToken}`, lang, defaultLocaleCode);
-    return (
-      <Alert variant="success">
-        <div className="space-y-2">
-          <p className="font-medium">Randevunuz oluşturuldu.</p>
-          <p className="text-sm">
-            Randevu saatinizde{" "}
-            <Link href={consultationHref} className="font-medium text-primary hover:underline">
-              bu bağlantı
-            </Link>{" "}
-            üzerinden görüşmeye katılabilirsiniz.{" "}
-            {/* compliance-agent (§7.3) — bu sürümde randevu onay/hatırlatma e-postası GÖNDERİLMEZ
-                (mimari doküman §11 backlog: `feature/telehealth-appointment-emails`,
-                notification-agent). Buradaki metin bu bağlantının SADECE bu ekranda gösterildiğini
-                doğru şekilde yansıtır — "e-postanıza da kaydettik" gibi gerçekleşmeyen bir işlemi
-                iddia ETMEZ (KVKK m.10/GDPR m.13 şeffaflık ilkesi: yapılmayan bir veri işleme
-                faaliyetini yapılmış gibi göstermek yasaktır). */}
-            Bu bağlantıyı not alın veya bu sayfayı yer imlerine ekleyin — bu sürümde bağlantı ayrıca
-            e-posta ile gönderilmemektedir.
-          </p>
-        </div>
-      </Alert>
-    );
+    return <BookingPostCreationFlow result={bookingResult} displayTimeZone={displayTimeZone} />;
   }
 
   return (
@@ -310,11 +300,6 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, lang, default
       {slots.length === 0 ? (
         <p className="text-sm text-foreground/60">Önümüzdeki günlerde müsait bir saat bulunmuyor.</p>
       ) : (
-        // Düz `<div>` (Fragment DEĞİL) — §2.3.7'nin `mt-5` gap kararı, dış `space-y-4`
-        // sarmalayıcısının `& > * + *` sibling kuralıyla ÇAKIŞMASIN (Fragment kullanılsaydı bu
-        // içindeki elemanlar dış konteynerin DOĞRUDAN çocukları olur ve `space-y-4`'ün mt-4
-        // kuralı, aşağıdaki AÇIK `mt-5`/`mt-4` sınıflarının ÜZERİNE yazardı — CSS özgüllüğü
-        // gereği bileşik `space-y` seçicisi tek bir utility sınıfından daha güçlüdür).
         <div>
           {/* §2.3.1 — ay navigasyonu + §2.3.2 — 7 sütunlu gün ızgarası, tek kart yüzeyi. */}
           <div className="rounded-[var(--site-radius)] border border-border bg-surface p-4 sm:p-5">
@@ -447,10 +432,14 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, lang, default
                     </div>
                   )}
 
-                  <div className="grid grid-cols-[repeat(auto-fill,minmax(84px,1fr))] gap-2 p-3">
+                  <div
+                    role="group"
+                    aria-label={`${group.label} müsaitlik saatleri, en fazla ${MAX_BOOKING_SLOTS} seçim`}
+                    className="grid grid-cols-[repeat(auto-fill,minmax(84px,1fr))] gap-2 p-3"
+                  >
                     {group.items.map((slot) => {
                       const isPast = new Date(slot.startsAt).getTime() < now;
-                      const isSelected = selectedSlot?.startsAt === slot.startsAt;
+                      const isSelected = selectedSlots.some((s) => s.startsAt === slot.startsAt);
                       const time = formatTime(slot.startsAt, displayTimeZone);
 
                       if (isSelected) {
@@ -458,10 +447,10 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, lang, default
                           <button
                             key={slot.startsAt}
                             type="button"
-                            role="radio"
+                            role="checkbox"
                             aria-checked="true"
                             aria-label={`${time} — seçili`}
-                            onClick={() => selectSlot(slot)}
+                            onClick={() => handleSlotClick(slot)}
                             className={cn(SELECTION_PILL_BASE, "px-3 min-w-[84px]", SELECTION_PILL_SELECTED)}
                           >
                             <Check className="h-3.5 w-3.5" aria-hidden="true" />
@@ -496,14 +485,33 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, lang, default
                         );
                       }
 
+                      // §12.2.2 — 4/4 sınırına ulaşıldığında henüz seçilmemiş müsait slotlar
+                      // "dolu" DEĞİL, kendi soluk/nötr "geçici olarak seçilemez" durumuna girer.
+                      if (selectedSlots.length >= MAX_BOOKING_SLOTS) {
+                        return (
+                          <Tooltip key={slot.startsAt}>
+                            <TooltipTrigger>
+                              <span
+                                aria-disabled="true"
+                                aria-label={`${time} — müsait, ancak en fazla ${MAX_BOOKING_SLOTS} slot seçilebilir`}
+                                className={cn(SELECTION_PILL_BASE, "px-3 min-w-[84px]", SELECTION_PILL_AT_LIMIT)}
+                              >
+                                {time}
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent>En fazla {MAX_BOOKING_SLOTS} slot seçebilirsiniz</TooltipContent>
+                          </Tooltip>
+                        );
+                      }
+
                       return (
                         <button
                           key={slot.startsAt}
                           type="button"
-                          role="radio"
+                          role="checkbox"
                           aria-checked="false"
                           aria-label={`${time} — müsait`}
-                          onClick={() => selectSlot(slot)}
+                          onClick={() => handleSlotClick(slot)}
                           className={cn(SELECTION_PILL_BASE, "px-3 min-w-[84px]", SELECTION_PILL_AVAILABLE)}
                         >
                           {time}
@@ -516,27 +524,16 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, lang, default
             </div>
           )}
 
-          {/* §2.3.6/§2.2.5 — seçim onay şeridi: saat kartlarının HEMEN ALTI, booking formunun
-              HEMEN ÜSTÜ; DEĞİŞMEDİ (yalnızca dış `space-y-4`'ün ürettiği eski dolaylı `mt-4`
-              boşluğu artık AÇIK bir `mt-4` sınıfıyla korunur, bkz. yukarıdaki Fragment→`div`
-              notu). */}
-          {selectedSlot && (
-            <div className="mt-4 flex items-center justify-between gap-3 rounded-[var(--site-radius)] border border-primary/30 bg-primary/5 px-4 py-3">
-              <div className="flex items-center gap-2 text-sm">
-                <CalendarCheck className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
-                <span className="font-medium text-foreground">
-                  {formatDayLabel(selectedSlot.startsAt, displayTimeZone)} · {formatTime(selectedSlot.startsAt, displayTimeZone)}
-                </span>
-              </div>
-              <button type="button" onClick={() => setSelectedSlot(null)} className="shrink-0 text-xs font-medium text-primary hover:underline">
-                Değiştir
-              </button>
-            </div>
+          {/* §12.2.3 — farklı bir gün seçildiğinde önceki seçim otomatik temizlenir + bilgi notu. */}
+          {dayChangedNotice && (
+            <Alert variant="info" className="mt-3">
+              Farklı bir gün seçtiğiniz için önceki seçiminiz temizlendi.
+            </Alert>
           )}
         </div>
       )}
 
-      {selectedSlot && (
+      {selectedSlots.length > 0 && (
         <form className="mt-4 space-y-4 rounded-[var(--site-radius)] border border-border bg-surface p-4" onSubmit={handleSubmit(onSubmit)} noValidate>
           <Field id="patientName" label="Ad soyad" error={errors.patientName?.message} required>
             {(inputProps) => <Input {...inputProps} {...register("patientName")} />}
@@ -546,26 +543,16 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, lang, default
             label="E-posta"
             error={errors.patientEmail?.message}
             required
-            // compliance-agent (§7.3) — bu e-posta yalnızca randevu kaydının bir parçası olarak
-            // SAKLANIR (PII snapshot, bkz. Appointment.patientEmail); bu sürümde otomatik bir
-            // e-posta GÖNDERİLMEZ (§11 backlog). İpucu metni bunu doğru yansıtır.
-            hint="Randevu kaydınızla ilişkilendirilecektir; bu sürümde otomatik e-posta gönderilmez."
+            hint="Randevu kaydınızla ilişkilendirilecek ve ödeme onaylandığında güvenli erişim bağlantınız bu adrese gönderilecektir."
           >
-
             {(inputProps) => <Input {...inputProps} type="email" {...register("patientEmail")} />}
           </Field>
 
           {/*
-            compliance-agent NİHAİ onayı (§7.3/§7.4, `.claude/compliance-notes-telehealth.md`):
+            compliance-agent NİHAİ onayı (Tur 1, `.claude/compliance-notes-telehealth.md`):
             aşağıdaki onay kutusu metni bu görev kapsamında finalize edilmiştir — varsayılan
-            İŞARETSİZ (`defaultValues.consent = undefined`) ve backend `consent: z.literal(true)`
-            ile ZORUNLU kılınmıştır (bkz. `telehealth.schemas.ts::CreateAppointmentRequestSchema`).
-            UYARI: bu metin de, bağlandığı "KVKK Aydınlatma Metni" sayfası da bir YER TUTUCUDUR ve
-            hukuki geçerliliği yoktur ([EPT] §4.3 ilkesiyle aynı ruh) — canlıya almadan önce gerçek
-            bir hukuk danışmanıyla birlikte gözden geçirilip/doldurulması ZORUNLUDUR. Bu uyarı
-            bilerek KULLANICIYA gösterilen metnin İÇİNE YAZILMAMIŞTIR (üretim ortamında müşteriyi
-            gereksiz yere tedirgin eder) — aynı ilke bu şablonun `extraPages`'indeki
-            `LEGAL_PLACEHOLDER_NOTICE` ile HER yasal sayfada zaten müşteri-yüzeyinde karşılanıyor.
+            İŞARETSİZ ve backend `consent: z.literal(true)` ile ZORUNLU kılınmıştır. Bu, sağlık
+            verisi rızasından (`booking-intake-step.tsx`) TAMAMEN AYRI, randevu KVKK onayıdır.
           */}
           <div>
             <label htmlFor="consent" className="flex items-start gap-2.5 text-sm text-foreground/80">
@@ -613,7 +600,7 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, lang, default
         </form>
       )}
 
-      {!selectedSlot && bookingError && (
+      {selectedSlots.length === 0 && bookingError && (
         <Alert variant="error">
           <span>{bookingError}</span>
         </Alert>

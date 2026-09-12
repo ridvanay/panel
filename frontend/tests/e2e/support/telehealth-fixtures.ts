@@ -23,6 +23,9 @@
  */
 import { execFileSync } from "node:child_process";
 import path from "node:path";
+import crypto from "node:crypto";
+import { tmpdir } from "node:os";
+import { writeFileSync, unlinkSync } from "node:fs";
 import { API_BASE_URL, getSiteModules, patchSiteModule } from "./api";
 import { importDemoTemplateRaw } from "./demo-templates-fixtures";
 
@@ -319,6 +322,170 @@ export async function requestMeetingTokenRaw(id: string, token?: string): Promis
 }
 
 // ---------------------------------------------------------------------------
+// qa-agent — `.claude/architect-scope-telehealth-template.md` §9.7.11 "QA kapsamı — §10'a EK"
+// (bağlayıcı, madde 21-28). Çoklu-slot booking/ödeme/sağlık-verisi/portal fixture yardımcıları —
+// yukarıdaki tekil-randevu (`POST /appointments`, DEPRECATED) yardımcılarından AYRI, `POST
+// /appointments/bookings` (çoklu slot) akışı içindir.
+// ---------------------------------------------------------------------------
+
+export interface CreatedBookingAppointment {
+  id: string;
+  startsAt: string;
+  endsAt: string;
+  status: string;
+}
+
+export interface CreatedBooking {
+  bookingId: string;
+  bookingNumber: string;
+  doctorSlug: string;
+  slotCount: number;
+  unitPriceCents: number;
+  subtotalCents: number;
+  totalCents: number;
+  currency: string;
+  paymentStatus: string;
+  expiresAt: string;
+  appointments: CreatedBookingAppointment[];
+  accessToken: string;
+  paymentsConfigured: boolean;
+  checkoutUrl: string | null;
+}
+
+/** `POST /appointments/bookings` — PUBLIC (opsiyonel Bearer), hız sınırı 5/dk, 1..4 slot. `totalCents`
+ * İSTEMCİDEN gönderilmez/gönderilse de sunucu YOK SAYAR (§9.7.11 madde 14 — backend'in kendi
+ * `tests/integration/telehealth-bookings.test.ts`'inde ZATEN doğrulanır); bu fixture yalnızca
+ * kontrata uygun alanları gönderir. */
+export async function createBookingRaw(
+  input: { doctorSlug: string; slots: string[]; patientName: string; patientEmail: string; consent?: boolean; consentVersion?: string },
+  bearerToken?: string
+): Promise<RawApiResult<CreatedBooking>> {
+  const res = await fetch(`${API_BASE_URL}/appointments/bookings`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(bearerToken ? { Authorization: `Bearer ${bearerToken}` } : {}) },
+    body: JSON.stringify({
+      doctorSlug: input.doctorSlug,
+      slots: input.slots,
+      patientName: input.patientName,
+      patientEmail: input.patientEmail,
+      consent: input.consent ?? true,
+      ...(input.consentVersion ? { consentVersion: input.consentVersion } : {}),
+    }),
+  });
+  const body = await safeJson(res);
+  return { status: res.status, data: body.data as CreatedBooking | undefined, error: body.error as RawApiResult<unknown>["error"] };
+}
+
+export interface FixtureBookingDetail {
+  id: string;
+  bookingNumber: string;
+  paymentStatus: string;
+  slotCount: number;
+  totalCents: number;
+  currency: string;
+  joinableFrom: string | null;
+  joinableUntil: string | null;
+  hasIntakeNote: boolean;
+  documentCount: number;
+  appointments: CreatedBookingAppointment[];
+}
+
+/** `GET /appointments/bookings/{id}?t=` — misafir magic-link VEYA oturum (Bearer); ikisi BİRDEN verilmez normalde ama ikisi de opsiyonel parametredir. */
+export async function getBookingRaw(
+  bookingId: string,
+  opts: { magicLinkToken?: string; bearerToken?: string } = {}
+): Promise<RawApiResult<FixtureBookingDetail>> {
+  const url = new URL(`${API_BASE_URL}/appointments/bookings/${bookingId}`);
+  if (opts.magicLinkToken) url.searchParams.set("t", opts.magicLinkToken);
+  const res = await fetch(url, { headers: opts.bearerToken ? { Authorization: `Bearer ${opts.bearerToken}` } : {} });
+  const body = await safeJson(res);
+  return { status: res.status, data: body.data as FixtureBookingDetail | undefined, error: body.error as RawApiResult<unknown>["error"] };
+}
+
+/** `PUT /appointments/bookings/{id}/intake` — §9.7.5 KARAR J, `healthDataConsent: true` ZORUNLU. */
+export async function upsertBookingIntakeRaw(
+  bookingId: string,
+  body: { note?: string | null; healthDataConsent: boolean; consentVersion?: string },
+  opts: { magicLinkToken?: string; bearerToken?: string } = {}
+): Promise<RawApiResult<Record<string, unknown>>> {
+  const url = new URL(`${API_BASE_URL}/appointments/bookings/${bookingId}/intake`);
+  if (opts.magicLinkToken) url.searchParams.set("t", opts.magicLinkToken);
+  const res = await fetch(url, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...(opts.bearerToken ? { Authorization: `Bearer ${opts.bearerToken}` } : {}) },
+    body: JSON.stringify(body),
+  });
+  const responseBody = await safeJson(res);
+  return { status: res.status, data: responseBody.data as Record<string, unknown> | undefined, error: responseBody.error as RawApiResult<unknown>["error"] };
+}
+
+export interface FixtureAppointmentDocument {
+  id: string;
+  bookingId: string;
+  filename: string;
+  mimeType: string;
+  sizeBytes: number;
+  sha256: string;
+}
+
+/** `POST /appointments/bookings/{id}/documents` — multipart, istek başına 1 dosya. `uploadTestMedia()`
+ * (`support/api.ts`) İLE AYNI `fetch` + `FormData`/`Blob` deseni (yeni bir HTTP paketi EKLENMEZ). */
+export async function uploadBookingDocumentRaw(
+  bookingId: string,
+  file: { filename: string; mimeType: string; bytes: Buffer },
+  opts: { magicLinkToken?: string; bearerToken?: string } = {}
+): Promise<RawApiResult<FixtureAppointmentDocument>> {
+  const url = new URL(`${API_BASE_URL}/appointments/bookings/${bookingId}/documents`);
+  if (opts.magicLinkToken) url.searchParams.set("t", opts.magicLinkToken);
+  const form = new FormData();
+  form.append("file", new Blob([new Uint8Array(file.bytes)], { type: file.mimeType }), file.filename);
+  const res = await fetch(url, {
+    method: "POST",
+    headers: opts.bearerToken ? { Authorization: `Bearer ${opts.bearerToken}` } : {},
+    body: form,
+  });
+  const body = await safeJson(res);
+  return { status: res.status, data: body.data as FixtureAppointmentDocument | undefined, error: body.error as RawApiResult<unknown>["error"] };
+}
+
+export async function listBookingDocumentsRaw(
+  bookingId: string,
+  opts: { magicLinkToken?: string; bearerToken?: string } = {}
+): Promise<RawApiResult<FixtureAppointmentDocument[]>> {
+  const url = new URL(`${API_BASE_URL}/appointments/bookings/${bookingId}/documents`);
+  if (opts.magicLinkToken) url.searchParams.set("t", opts.magicLinkToken);
+  const res = await fetch(url, { headers: opts.bearerToken ? { Authorization: `Bearer ${opts.bearerToken}` } : {} });
+  const body = await safeJson(res);
+  return { status: res.status, data: body.data as FixtureAppointmentDocument[] | undefined, error: body.error as RawApiResult<unknown>["error"] };
+}
+
+/** `GET /appointments/documents/{documentId}/content` — §9.7.11 madde 25/26. Yalnızca `status`u
+ * döner (içerik/blob testin ihtiyacı DEĞİL — yetki matrisi/sızıntı testleri sadece durum kodunu sorar). */
+export async function getDocumentContentStatusRaw(
+  documentId: string,
+  opts: { magicLinkToken?: string; bearerToken?: string } = {}
+): Promise<number> {
+  const url = new URL(`${API_BASE_URL}/appointments/documents/${documentId}/content`);
+  if (opts.magicLinkToken) url.searchParams.set("t", opts.magicLinkToken);
+  const res = await fetch(url, { headers: opts.bearerToken ? { Authorization: `Bearer ${opts.bearerToken}` } : {} });
+  return res.status;
+}
+
+/** `PATCH /admin/telehealth/doctors/{id}` `{ userId }` — bir `User`'ı doktor hesabına bağlar
+ * (§9.7.7 KARAR K). `telehealth-livekit.test.ts`'in backend'deki AYNI deseni. */
+export async function linkDoctorUserRaw(adminToken: string, doctorId: string, userId: string): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}/admin/telehealth/doctors/${doctorId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${adminToken}` },
+    body: JSON.stringify({ userId }),
+  });
+  if (res.status !== 200) {
+    const body = await safeJson(res);
+    throw new Error(`Doktor hesabı bağlanamadı: ${res.status} ${JSON.stringify(body)}`);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // `demo-templates-fixtures.ts::resetDemoTemplateImportRow`/`setRawPageBlocksDirectly` İLE AYNI
 // `prisma db execute --stdin` deseni — burada YALNIZCA §4.5 katılım penceresi UI testi
 // (`telehealth-consultation-access.spec.ts`) için, GERÇEKTEN rezervasyon akışından (§4.3, saf
@@ -333,6 +500,70 @@ const BACKEND_DIR = path.resolve(process.cwd(), "..", "backend");
 export function shiftAppointmentIntoJoinWindowDirectly(appointmentId: string, startInSeconds = 60, durationMinutes = 30): void {
   const esc = (value: string) => value.replace(/'/g, "''");
   const sql = `UPDATE "appointments" SET "startsAt" = now() + interval '${startInSeconds} seconds', "endsAt" = now() + interval '${startInSeconds} seconds' + interval '${durationMinutes} minutes' WHERE id = '${esc(appointmentId)}';`;
+  execFileSync("npx", ["prisma", "db", "execute", "--stdin", `--url=${E2E_DATABASE_URL}`], {
+    cwd: BACKEND_DIR,
+    input: sql,
+    stdio: ["pipe", "pipe", "pipe"],
+    shell: process.platform === "win32",
+  });
+}
+
+// ---------------------------------------------------------------------------
+// qa-agent — §9.7.11 madde 25/27 için EK DB yardımcıları (yukarıdaki `E2E_DATABASE_URL`/
+// `BACKEND_DIR` PAYLAŞILIR). `prisma db execute` SELECT sonucu DÖNDÜRMEZ (yalnızca DDL/DML için
+// tasarlanmıştır — elle doğrulandı, `Script executed successfully.` dışında çıktı YOKTUR); bu
+// yüzden OKUMA gereken tek fixture (`getAppointmentDocumentStoragePathDirectly`, madde 25 sızıntı
+// testi için GERÇEK `storagePath` gerekir — API yanıtı bunu ASLA döndürmez, bkz.
+// `mappers/index.ts::toAppointmentDocumentDto`) backend'in KENDİ `node_modules/@prisma/client`'ını
+// (mutlak yolla, `require()`) kullanan geçici, bağımsız bir CommonJS betiğiyle yapılır —
+// `backend/src` veya `backend/scripts` İÇİNE HİÇBİR ŞEY YAZILMAZ (ajan sınır ihlali OLMASIN diye,
+// bkz. proje kökü CLAUDE.md), betik `os.tmpdir()`'a yazılıp işlem sonunda silinir.
+// ---------------------------------------------------------------------------
+const PRISMA_CLIENT_ABS_PATH = path.join(BACKEND_DIR, "node_modules", "@prisma", "client");
+
+function runReadOnlyPrismaScript<T>(body: string, args: string[]): T {
+  const scriptPath = path.join(tmpdir(), `qa-e2e-prisma-read-${crypto.randomUUID()}.cjs`);
+  const script = `
+const { PrismaClient } = require(${JSON.stringify(PRISMA_CLIENT_ABS_PATH)});
+const prisma = new PrismaClient({ datasources: { db: { url: ${JSON.stringify(E2E_DATABASE_URL)} } } });
+(async () => {
+  ${body}
+  await prisma.$disconnect();
+})().catch(async (err) => { await prisma.$disconnect(); process.stderr.write(String(err && err.stack || err)); process.exit(1); });
+`;
+  writeFileSync(scriptPath, script, "utf-8");
+  try {
+    const stdout = execFileSync("node", [scriptPath, ...args], { encoding: "utf-8" });
+    return JSON.parse(stdout) as T;
+  } finally {
+    unlinkSync(scriptPath);
+  }
+}
+
+/** §9.7.11 madde 25 (ENGELLEYİCİ sızıntı testi) — yüklenen bir tıbbi belgenin GERÇEK, opak
+ * `storagePath`'ini (API yanıtında ASLA dönmeyen bir alan) doğrudan DB'den okur — böylece test
+ * "`/uploads/<gerçek-dosya-adı>` GERÇEKTEN erişilemiyor mu" sorusunu, tahmini/rastgele bir dosya
+ * adıyla DEĞİL, GERÇEK depolanan adla sorabilir. */
+export function getAppointmentDocumentStoragePathDirectly(documentId: string): string {
+  const result = runReadOnlyPrismaScript<{ storagePath: string | null }>(
+    `
+    const doc = await prisma.appointmentDocument.findUnique({ where: { id: process.argv[2] }, select: { storagePath: true } });
+    process.stdout.write(JSON.stringify(doc ?? { storagePath: null }));
+    `,
+    [documentId]
+  );
+  if (!result.storagePath) throw new Error(`Belge storagePath'i okunamadı (documentId=${documentId}).`);
+  return result.storagePath;
+}
+
+/** §9.7.11 madde 27 (2FA kapısı) — `User.twoFactorEnabled`'i doğrudan yazar (admin panelinde bir
+ * kullanıcının 2FA'sını ZORLA açan bir uç YOKTUR — 2FA kendi kendine kayıt/etkinleştirmedir,
+ * `hesabim` akışı TOTP sırrı üretip doğrulama ister; bu fixture o akışı ATLAYIP doğrudan bayrağı
+ * yazar — `shiftAppointmentIntoJoinWindowDirectly` İLE AYNI "gerçek varlık, sahte olan yalnızca
+ * zamanlama/bayrak" felsefesi). */
+export function setUserTwoFactorEnabledDirectly(userId: string, enabled: boolean): void {
+  const esc = (value: string) => value.replace(/'/g, "''");
+  const sql = `UPDATE "users" SET "twoFactorEnabled" = ${enabled ? "true" : "false"} WHERE id = '${esc(userId)}';`;
   execFileSync("npx", ["prisma", "db", "execute", "--stdin", `--url=${E2E_DATABASE_URL}`], {
     cwd: BACKEND_DIR,
     input: sql,

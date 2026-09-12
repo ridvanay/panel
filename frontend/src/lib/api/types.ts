@@ -31,7 +31,17 @@ export type ApiErrorCode =
   // `.claude/architect-scope-telehealth-template.md` §12 — `TeleHealth` tag'i.
   | "SLOT_TAKEN"
   | "APPOINTMENT_NOT_JOINABLE"
-  | "LIVEKIT_NOT_CONFIGURED";
+  | "LIVEKIT_NOT_CONFIGURED"
+  // `.claude/architect-scope-telehealth-template.md` §9.7.10 — TADİLAT TURU 2 (booking/ödeme/
+  // sağlık verisi/portal) hata kodları. Bkz. `backend/src/lib/errors.ts`.
+  | "PAYMENTS_NOT_CONFIGURED"
+  | "BOOKING_NOT_PAYABLE"
+  | "BOOKING_EXPIRED"
+  | "HEALTH_CONSENT_REQUIRED"
+  | "UNSUPPORTED_DOCUMENT_TYPE"
+  | "DOCUMENT_LIMIT_REACHED"
+  | "TWO_FACTOR_REQUIRED"
+  | "NOT_A_DOCTOR";
 
 export type MembershipRole = "OWNER" | "ADMIN" | "MEMBER";
 export type MembershipStatus = "ACTIVE" | "INVITED" | "SUSPENDED";
@@ -3400,4 +3410,173 @@ export interface MeetingTokenResponse {
   serverUrl: string;
   roomName: string;
   expiresAt: string;
+}
+
+/**
+ * -----------------------------------------------------------------------
+ * [TCT] §9.7 TADİLAT TURU 2 — çoklu slot booking, ödeme, sağlık verisi, portallar.
+ * `docs/architecture/openapi.yaml` `TeleHealth` tag'i + backend gerçek uygulaması
+ * (`telehealth.routes.ts`/`telehealth.portal.routes.ts`/`telehealth.schemas.ts`/
+ * `schemas/entities.ts`) BİREBİR — tek doğruluk kaynağı.
+ * -----------------------------------------------------------------------
+ */
+export type BookingPaymentStatus = "PENDING" | "PAID" | "FAILED" | "EXPIRED" | "REFUNDED";
+
+/** §9.7.2 — 1..4 slot, hepsi AYNI doktor + AYNI takvim günü (sunucu ayrıca doğrular). */
+export const MAX_BOOKING_SLOTS = 4;
+
+export interface CreateBookingRequest {
+  doctorSlug: string;
+  /** 1..4 ISO-8601 `Z`'li an, dakika çözünürlüğünde. */
+  slots: string[];
+  patientName: string;
+  patientEmail: string;
+  /** Randevu KVKK onay kutusu — sağlık verisi rızasından (`UpsertIntakeRequest.healthDataConsent`) AYRI. */
+  consent: true;
+  consentVersion?: string;
+}
+
+/** `POST /appointments/bookings` yanıtı — ham `accessToken`'ı BİR KEZ döner. */
+export interface CreateBookingResult {
+  bookingId: string;
+  bookingNumber: string;
+  doctorSlug: string;
+  slotCount: number;
+  unitPriceCents: number;
+  subtotalCents: number;
+  totalCents: number;
+  currency: string;
+  paymentStatus: BookingPaymentStatus;
+  expiresAt: string;
+  appointments: Appointment[];
+  /** Hasta magic-link'i — `/{lang}/patient/bookings/{bookingId}?t=<accessToken>`. */
+  accessToken: string;
+  /** `false` ise Stripe yapılandırılmamış — dürüst durum paneli gösterilir, sahte ödeme YOK. */
+  paymentsConfigured: boolean;
+  checkoutUrl: string | null;
+}
+
+/**
+ * Rezervasyon OKUMA DTO'su — `meetingRoomName`/`accessTokenHash` BİLİNÇLİ OLARAK TAŞINMAZ.
+ * `hasIntakeNote`/`documentCount` DIŞINDA sağlık verisi İÇERİĞİ bu tipte ASLA yer almaz.
+ */
+export interface AppointmentBooking {
+  id: string;
+  bookingNumber: string;
+  doctorId: string;
+  doctor: DoctorSummary;
+  patientUserId: string | null;
+  patientName: string;
+  patientEmail: string;
+  slotCount: number;
+  unitPriceCents: number;
+  subtotalCents: number;
+  totalCents: number;
+  currency: string;
+  paymentStatus: BookingPaymentStatus;
+  paidAt: string | null;
+  /** `"stripe"` | `"manual"` | `null` — serbest metin, enum DEĞİL. */
+  paidBy: string | null;
+  expiresAt: string;
+  errorSummary: string | null;
+  appointments: Appointment[];
+  /** Şifreli notun VARLIĞI — metnin kendisi yalnızca `GET .../intake` ile ve denetim kaydıyla alınır. */
+  hasIntakeNote: boolean;
+  /** Silinmemiş belge sayısı — `MANAGER` yalnızca bu sayıyı görebilir, içeriği GÖREMEZ. */
+  documentCount: number;
+  /** `min(startsAt) - 10dk`. `paymentStatus !== "PAID"` ise `null` (ödenmemiş görüşme açılmaz). */
+  joinableFrom: string | null;
+  joinableUntil: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CancelBookingRequest {
+  reason?: string;
+}
+
+/** `POST /appointments/bookings/{bookingId}/checkout-session` yanıtı (integration-agent'ın ucu). */
+export interface BookingCheckoutSessionResponse {
+  checkoutUrl: string;
+  sessionId: string;
+  expiresAt: string;
+}
+
+/**
+ * §9.7.0 madde 11 — TÜRETİLMİŞ görünüm, `Invoice` TABLOSU YOKTUR. Müşteri yüzeyi etiketi
+ * "Ödeme Belgesi (bilgi amaçlıdır)" olmalıdır, "Fatura" DEĞİL (e-Fatura entegrasyonu yok).
+ */
+export interface BookingInvoice {
+  bookingNumber: string;
+  issuedAt: string;
+  seller: { name: string; email: string | null };
+  buyer: { name: string; email: string };
+  lines: Array<{
+    description: string;
+    startsAt: string;
+    endsAt: string;
+    unitPriceCents: number;
+  }>;
+  subtotalCents: number;
+  totalCents: number;
+  currency: string;
+  stripePaymentIntentId: string | null;
+  disclaimer: string;
+}
+
+/**
+ * Çözülmüş intake kaydı. Yalnızca hastanın kendisi, o booking'in doktoru ve `ADMIN` alabilir;
+ * her okuma sunucuda denetlenir (audit log) — bkz. `.claude/architect-scope-telehealth-template.md` §9.7.5.
+ */
+export interface AppointmentIntake {
+  bookingId: string;
+  note: string | null;
+  healthDataConsentAt: string;
+  healthDataConsentVersion: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * §9.7.5 KARAR J (ENGELLEYİCİ) — `healthDataConsent` randevu KVKK onayından AYRI ikinci bir
+ * açık rızadır; `true` değilse `422 HEALTH_CONSENT_REQUIRED`.
+ */
+export interface UpsertIntakeRequest {
+  note?: string | null;
+  healthDataConsent: boolean;
+  consentVersion?: string;
+}
+
+/** Tıbbi belge METADATA'sı — `mediaId`/`url` alanı YOKTUR (§9.7.5 madde 4, `Media` tablosu YASAK). */
+export interface AppointmentDocument {
+  id: string;
+  bookingId: string;
+  filename: string;
+  mimeType: "application/pdf" | "image/png" | "image/jpeg";
+  sizeBytes: number;
+  sha256: string;
+  uploadedAt: string;
+  deletedAt: string | null;
+}
+
+/** §9.7.7 — `GET /doctor/me`. `SiteRole.DOCTOR` YOKTUR; doktorluk `DoctorProfile.userId` ilişkisinden TÜRETİLİR. */
+export interface DoctorPortalProfile {
+  userId: string;
+  email: string;
+  name: string;
+  doctorProfile: DoctorProfile;
+  twoFactorEnabled: boolean;
+}
+
+export interface ListDoctorBookingsParams {
+  from?: string;
+  to?: string;
+  paymentStatus?: BookingPaymentStatus;
+  cursor?: string;
+  limit?: number;
+}
+
+export interface ListPatientBookingsParams {
+  cursor?: string;
+  limit?: number;
 }

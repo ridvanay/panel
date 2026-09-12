@@ -965,6 +965,9 @@ export const EmailTemplatePurposeSchema = z.enum([
   "ORDER_CANCELLATION",
   "ORG_INVITATION",
   "CONTACT_FORM_NOTIFICATION",
+  // `.claude/architect-scope-telehealth-template.md` §9.7.8 (bağlayıcı) — randevu ödemesi
+  // onaylandığında hastaya, magic-link taşıyan TEK yeni şablon (§9.7 TADİLAT TURU 2).
+  "APPOINTMENT_CONFIRMATION",
   "CUSTOM",
 ]);
 export type EmailTemplatePurpose = z.infer<typeof EmailTemplatePurposeSchema>;
@@ -2269,8 +2272,19 @@ export const DoctorSummarySchema = z.object({
 });
 export type DoctorSummaryDto = z.infer<typeof DoctorSummarySchema>;
 
-export const AppointmentStatusSchema = z.enum(["SCHEDULED", "IN_PROGRESS", "COMPLETED", "CANCELLED", "NO_SHOW"]);
+/**
+ * [TCT] §9.7.3 KARAR I — `PENDING_PAYMENT` EKLENDİ (tutulmuş-ama-ödenmemiş slot).
+ * `CONFIRMED` değeri EKLENMEZ — `SCHEDULED` zaten onaylanmış durumdur (UI etiketi "Onaylandı").
+ */
+export const AppointmentStatusSchema = z.enum(["PENDING_PAYMENT", "SCHEDULED", "IN_PROGRESS", "COMPLETED", "CANCELLED", "NO_SHOW"]);
 export type AppointmentStatus = z.infer<typeof AppointmentStatusSchema>;
+
+/**
+ * [TCT] §9.7.3 — `AppointmentBooking.paymentStatus`. YENİ bir enum'dır (`ALTER TYPE` DEĞİL).
+ * `REFUNDED` tanımlıdır ama bu turda hiçbir kod onu YAZMAZ (backlog: `feature/telehealth-refunds`).
+ */
+export const BookingPaymentStatusSchema = z.enum(["PENDING", "PAID", "FAILED", "EXPIRED", "REFUNDED"]);
+export type BookingPaymentStatus = z.infer<typeof BookingPaymentStatusSchema>;
 
 /**
  * `Appointment` OKUMA DTO'su — `meetingRoomName`/`accessTokenHash` BİLİNÇLİ OLARAK TAŞINMAZ
@@ -2317,3 +2331,146 @@ export const CreateAppointmentResultSchema = z.object({
   accessToken: z.string(),
 });
 export type CreateAppointmentResultDto = z.infer<typeof CreateAppointmentResultSchema>;
+
+// ------------------------------------------------------------------------
+// [TCT] §9.7 TADİLAT TURU 2 — booking (çoklu slot) + ödeme + sağlık verisi + portal.
+// Yerleşim: architect'in openapi.yaml kararıyla BİREBİR (bkz. o dosyadaki aynı bölüm).
+// ------------------------------------------------------------------------
+
+/**
+ * `POST /appointments/bookings` yanıtı. Ham `accessToken` BİR KEZ döner (hash'i saklanır) ve
+ * magic-link `/{lang}/patient/bookings/{bookingId}?t=<accessToken>` olarak kurulur.
+ * `paymentsConfigured: false` ise `STRIPE_SECRET_KEY` tanımsızdır — booking yine `201` ile
+ * oluşur (§9.7.1 madde 6), sahte/mock ödeme ekranı YASAKTIR.
+ */
+export const CreateBookingResultSchema = z.object({
+  bookingId: z.string().uuid(),
+  bookingNumber: z.string(),
+  doctorSlug: z.string(),
+  slotCount: z.number().int().min(1).max(4),
+  unitPriceCents: z.number().int(),
+  subtotalCents: z.number().int(),
+  totalCents: z.number().int(),
+  currency: z.string(),
+  paymentStatus: BookingPaymentStatusSchema,
+  expiresAt: z.string(),
+  appointments: z.array(AppointmentSchema),
+  accessToken: z.string(),
+  paymentsConfigured: z.boolean(),
+  checkoutUrl: z.string().nullable(),
+});
+export type CreateBookingResultDto = z.infer<typeof CreateBookingResultSchema>;
+
+/**
+ * `POST /appointments/bookings/{bookingId}/checkout-session` yanıtı (integration-agent'ın ucu,
+ * §9.7.1/§9.7.10). Abonelik akışındaki `CheckoutSessionResponseSchema` (checkout.schemas.ts) ile
+ * BİLİNÇLİ OLARAK KARIŞTIRILMAZ — openapi.yaml'daki `BookingCheckoutSessionResponse` şemasıyla
+ * bire bir eşleşir.
+ */
+export const BookingCheckoutSessionResponseSchema = z.object({
+  checkoutUrl: z.string(),
+  sessionId: z.string(),
+  expiresAt: z.string(),
+});
+export type BookingCheckoutSessionResponseDto = z.infer<typeof BookingCheckoutSessionResponseSchema>;
+
+/**
+ * Rezervasyon OKUMA DTO'su. `meetingRoomName`/`accessTokenHash` TAŞINMAZ (minimum ifşa, §8).
+ * `hasIntakeNote`/`documentCount` DIŞINDA sağlık verisi İÇERİĞİ bu şemada ASLA yer almaz
+ * (§9.7.5 madde 8).
+ */
+export const AppointmentBookingSchema = z.object({
+  id: z.string().uuid(),
+  bookingNumber: z.string(),
+  doctorId: z.string().uuid(),
+  doctor: DoctorSummarySchema,
+  patientUserId: z.string().uuid().nullable(),
+  patientName: z.string(),
+  patientEmail: z.string(),
+  slotCount: z.number().int(),
+  unitPriceCents: z.number().int(),
+  subtotalCents: z.number().int(),
+  totalCents: z.number().int(),
+  currency: z.string(),
+  paymentStatus: BookingPaymentStatusSchema,
+  paidAt: z.string().nullable(),
+  paidBy: z.string().nullable(),
+  expiresAt: z.string(),
+  errorSummary: z.string().nullable(),
+  appointments: z.array(AppointmentSchema),
+  hasIntakeNote: z.boolean(),
+  documentCount: z.number().int(),
+  joinableFrom: z.string().nullable(),
+  joinableUntil: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type AppointmentBookingDto = z.infer<typeof AppointmentBookingSchema>;
+
+/**
+ * §9.7.0 madde 11 — TÜRETİLMİŞ görünüm, `Invoice` TABLOSU AÇILMAZ. Bu bir e-Fatura/e-Arşiv
+ * fatura DEĞİLDİR; müşteri yüzeyi etiketi "Ödeme Belgesi (bilgi amaçlıdır)" olmalıdır.
+ */
+export const BookingInvoiceSchema = z.object({
+  bookingNumber: z.string(),
+  issuedAt: z.string(),
+  seller: z.object({ name: z.string(), email: z.string().nullable() }),
+  buyer: z.object({ name: z.string(), email: z.string() }),
+  lines: z.array(
+    z.object({
+      description: z.string(),
+      startsAt: z.string(),
+      endsAt: z.string(),
+      unitPriceCents: z.number().int(),
+    })
+  ),
+  subtotalCents: z.number().int(),
+  totalCents: z.number().int(),
+  currency: z.string(),
+  stripePaymentIntentId: z.string().nullable(),
+  disclaimer: z.string(),
+});
+export type BookingInvoiceDto = z.infer<typeof BookingInvoiceSchema>;
+
+/**
+ * Çözülmüş intake kaydı. Yalnızca hastanın kendisi, o booking'in doktoru ve `ADMIN` alabilir;
+ * `MANAGER`/`EDITOR`/diğer doktorlar → `404`. Her okuma `logAudit(...)` yazar (§9.7.5 madde 6).
+ */
+export const AppointmentIntakeSchema = z.object({
+  bookingId: z.string().uuid(),
+  note: z.string().nullable(),
+  healthDataConsentAt: z.string(),
+  healthDataConsentVersion: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type AppointmentIntakeDto = z.infer<typeof AppointmentIntakeSchema>;
+
+/**
+ * Tıbbi belge METADATA'sı. `mediaId`/`url` alanı YOKTUR ve EKLENMEYECEKTİR — sağlık belgesi
+ * hiçbir koşulda bir `Media` satırı değildir (§9.7.5 madde 4).
+ */
+export const AppointmentDocumentSchema = z.object({
+  id: z.string().uuid(),
+  bookingId: z.string().uuid(),
+  filename: z.string(),
+  mimeType: z.enum(["application/pdf", "image/png", "image/jpeg"]),
+  sizeBytes: z.number().int(),
+  sha256: z.string(),
+  uploadedAt: z.string(),
+  deletedAt: z.string().nullable(),
+});
+export type AppointmentDocumentDto = z.infer<typeof AppointmentDocumentSchema>;
+
+/**
+ * §9.7.7 — `GET /doctor/me`. `SiteRole.DOCTOR` YOKTUR; doktorluk `DoctorProfile.userId`
+ * ilişkisinden TÜRETİLİR.
+ */
+export const DoctorPortalProfileSchema = z.object({
+  userId: z.string().uuid(),
+  email: z.string(),
+  name: z.string(),
+  doctorProfile: DoctorProfileSchema,
+  twoFactorEnabled: z.boolean(),
+});
+export type DoctorPortalProfileDto = z.infer<typeof DoctorPortalProfileSchema>;

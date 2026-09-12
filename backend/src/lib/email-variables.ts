@@ -79,6 +79,21 @@ const SYSTEM_VARIABLES_BY_PURPOSE: Record<EmailTemplatePurpose, EmailVariableDef
     { key: "submitted_at", label: "Gönderim Tarihi", sampleValue: "17.08.2026 14:30", source: "system" },
     { key: "submission_url", label: "Yönetim Paneli Bağlantısı", sampleValue: "https://example.com/admin/contact/submissions/abc", source: "system" },
   ],
+  /**
+   * [TCT] §9.7.8 (bağlayıcı) — YALNIZCA ödeme onaylandığında hastaya. **Bağlayıcı sızma
+   * yasağı:** doktorun uzmanlık adı, şikâyet notu veya belge adı bu değişken setine ASLA
+   * EKLENMEZ (uzmanlık adı çıkarımsal sağlık verisidir, §7.1) — konu satırı nötr olmalıdır
+   * ("Randevunuz onaylandı"), şablonun kendi İÇERİĞİ notification-agent'ındır
+   * (bkz. `modules/telehealth/lib/booking.ts::triggerAppointmentConfirmationEmail`, backend-agent
+   * yalnızca BU registry girdisini ve tetikleyici çağrıyı bırakır).
+   */
+  APPOINTMENT_CONFIRMATION: [
+    { key: "booking_number", label: "Rezervasyon Numarası", sampleValue: "BKG-L4K2J1-A1B2", source: "system" },
+    { key: "patient_name", label: "Hasta Adı", sampleValue: "Ayşe Yılmaz", source: "system" },
+    { key: "slots_summary", label: "Randevu Saatleri", sampleValue: "06.01.2025 09:00, 06.01.2025 09:30", source: "system" },
+    { key: "total_formatted", label: "Toplam Tutar", sampleValue: "750.00 TRY", source: "system" },
+    { key: "magic_link", label: "Rezervasyon Bağlantısı", sampleValue: "https://example.com/tr/patient/bookings/abc?t=xyz", source: "system" },
+  ],
   CUSTOM: [],
 };
 

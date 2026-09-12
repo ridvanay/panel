@@ -124,6 +124,27 @@ async function main() {
     },
   });
 
+  // [TCT] §9.7.8 (bağlayıcı) — randevu ödemesi onaylandığında hastaya gönderilen TEK şablon
+  // (bkz. modules/telehealth/lib/notifications.ts::triggerAppointmentConfirmationEmail). Konu
+  // satırı BİLİNÇLİ OLARAK NÖTR: doktorun uzmanlık adı çıkarımsal sağlık verisidir (§7.1) ve
+  // ne konuda ne gövdede yer alır; şikâyet notu/belge adı da AYNI şekilde ASLA yer almaz.
+  await prisma.emailTemplate.upsert({
+    where: { key: "APPOINTMENT_CONFIRMATION" },
+    update: {},
+    create: {
+      key: "APPOINTMENT_CONFIRMATION",
+      name: "Randevu Onay E-postası",
+      purpose: "APPOINTMENT_CONFIRMATION",
+      editorMode: "RAW",
+      isSystem: true,
+      isActive: true,
+      subject: "Randevunuz onaylandı",
+      bodyHtml:
+        "<p>Merhaba {{patient_name}},</p><p><strong>{{booking_number}}</strong> numaralı rezervasyonunuz için ödemeniz alındı, randevunuz onaylandı.</p><p>Randevu saat(ler)i: {{slots_summary}}</p><p>Toplam: {{total_formatted}}</p><p>Rezervasyon detaylarınızı görüntülemek ve görüşmeye katılmak için aşağıdaki bağlantıyı kullanabilirsiniz:</p><p><a href=\"{{magic_link}}\">Rezervasyonumu Görüntüle</a></p>",
+      availableVariables: ["booking_number", "patient_name", "slots_summary", "total_formatted", "magic_link"],
+    },
+  });
+
   // Organizasyon daveti — bkz. modules/invitations/invitations.routes.ts::orgInvitationsRoutes.
   // Ham davet bağlantısı artık ne response'ta ne de log'da düz metin dönmez (bkz. security-agent
   // kararı — token sızıntısı temizliği); bunun yerine bu şablon üzerinden gerçekten gönderilir.

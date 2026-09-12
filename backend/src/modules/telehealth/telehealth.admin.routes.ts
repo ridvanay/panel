@@ -5,21 +5,27 @@ import { authenticate } from "../../middleware/authenticate";
 import { requireSiteRole } from "../../middleware/site-rbac";
 import { requirePanelAccess } from "../../middleware/panel-access";
 import { requireModuleEnabled } from "../../middleware/module-guard";
-import { ROLES_ADMIN_MANAGER } from "../../lib/site-roles";
+import { ROLES_ADMIN, ROLES_ADMIN_MANAGER } from "../../lib/site-roles";
 import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema, ApiSuccessWithMeta } from "../../schemas/common";
-import { AppointmentSchema, DoctorAvailabilityRuleSchema, DoctorProfileSchema, SpecialtySchema } from "../../schemas/entities";
-import { toAppointmentDto, toDoctorProfileDto, toSpecialtyDto } from "../../mappers";
+import { AppointmentBookingSchema, AppointmentSchema, DoctorAvailabilityRuleSchema, DoctorProfileSchema, SpecialtySchema } from "../../schemas/entities";
+import { toAppointmentBookingDto, toAppointmentDto, toDoctorProfileDto, toSpecialtyDto } from "../../mappers";
 import { ConflictError, NotFoundError } from "../../lib/errors";
 import { buildPageMeta, parseCursor } from "../../lib/pagination";
 import { isImageMimeType } from "../../lib/mime-detect";
 import { slugify } from "../../lib/slug";
+import { logAudit } from "../../lib/audit";
+import { confirmBookingPayment } from "./lib/booking";
+import { triggerAppointmentConfirmationEmail } from "./lib/notifications";
 import {
+  BookingIdParamSchema,
   CreateDoctorRequestSchema,
   CreateSpecialtyRequestSchema,
   DoctorIdParamSchema,
   ListAdminAppointmentsQuerySchema,
+  ListAdminBookingsQuerySchema,
   ListAdminDoctorsQuerySchema,
+  MarkBookingPaidRequestSchema,
   SetDoctorAvailabilityRequestSchema,
   SpecialtyIdParamSchema,
   UpdateDoctorRequestSchema,
@@ -28,6 +34,12 @@ import {
 
 const WITH_DOCTOR_RELATIONS = { specialty: true, avatarMedia: true, availability: true } as const;
 const WITH_APPOINTMENT_RELATIONS = { doctor: { select: { id: true, title: true, fullName: true, slug: true } } } as const;
+const WITH_BOOKING_RELATIONS = {
+  doctor: { select: { id: true, title: true, fullName: true, slug: true, userId: true } },
+  appointments: true,
+  intake: { select: { id: true } },
+  documents: { where: { deletedAt: null }, select: { id: true } },
+} as const;
 
 async function assertImageMedia(app: FastifyInstance, mediaId: string) {
   const media = await app.prisma.media.findUnique({ where: { id: mediaId } });
@@ -360,6 +372,100 @@ export async function adminTelehealthAppointmentsRoutes(app: FastifyInstance) {
       });
 
       return reply.send(ok(rows.map(toAppointmentDto), buildPageMeta(rows, limit)));
+    }
+  );
+}
+
+/**
+ * `/admin/telehealth/bookings` prefix'i altında bağlanır — §9.7.10: `GET /` ADMIN+MANAGER
+ * (EDITOR dışlanır, `/admin/telehealth/appointments` İLE AYNI eşik — hasta PII'si), `POST
+ * .../mark-paid` YALNIZCA ADMIN (§9.7.1 madde 7 — para hareketi beyanı, MANAGER'a VERİLMEZ).
+ */
+export async function adminTelehealthBookingsRoutes(app: FastifyInstance) {
+  const server = app.withTypeProvider<ZodTypeProvider>();
+  server.addHook("preHandler", requireModuleEnabled("telehealth"));
+  server.addHook("preHandler", authenticate);
+
+  server.get(
+    "/",
+    {
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
+      schema: {
+        querystring: ListAdminBookingsQuerySchema,
+        response: { 200: ApiSuccessWithMeta(z.array(AppointmentBookingSchema), z.object({ nextCursor: z.string().nullable() })) },
+      },
+    },
+    async (request, reply) => {
+      const { doctorId, paymentStatus, search, cursor, limit } = request.query;
+      const cursorSeq = parseCursor(cursor);
+
+      const rows = await app.prisma.appointmentBooking.findMany({
+        where: {
+          ...(cursorSeq ? { seq: { gt: cursorSeq } } : {}),
+          ...(doctorId ? { doctorId } : {}),
+          ...(paymentStatus ? { paymentStatus } : {}),
+          ...(search
+            ? {
+                OR: [
+                  { patientName: { contains: search, mode: "insensitive" } },
+                  { patientEmail: { contains: search, mode: "insensitive" } },
+                  { bookingNumber: { contains: search, mode: "insensitive" } },
+                ],
+              }
+            : {}),
+        },
+        orderBy: { seq: "asc" },
+        take: limit,
+        include: WITH_BOOKING_RELATIONS,
+      });
+
+      return reply.send(ok(rows.map(toAppointmentBookingDto), buildPageMeta(rows, limit)));
+    }
+  );
+
+  server.post(
+    "/:bookingId/mark-paid",
+    {
+      // §9.7.1 madde 7 (bağlayıcı) — YALNIZCA ADMIN, `ROLES_ADMIN_MANAGER` DEĞİL.
+      preHandler: requireSiteRole(...ROLES_ADMIN),
+      schema: {
+        params: BookingIdParamSchema,
+        body: MarkBookingPaidRequestSchema,
+        response: { 200: ApiSuccessSchema(AppointmentBookingSchema) },
+      },
+    },
+    async (request, reply) => {
+      const existing = await app.prisma.appointmentBooking.findUnique({ where: { id: request.params.bookingId } });
+      if (!existing) throw new NotFoundError("Rezervasyon bulunamadı.");
+      if (existing.paymentStatus !== "PENDING") {
+        throw new ConflictError("Bu rezervasyon zaten ödenmiş/iptal edilmiş/süresi dolmuş.");
+      }
+
+      const { booking, appointments, rawAccessToken } = await confirmBookingPayment(app, {
+        bookingId: existing.id,
+        paidBy: "manual",
+        paidNote: request.body.reason,
+      });
+
+      await logAudit(app, {
+        actorId: request.user!.id,
+        actorEmail: request.user!.email,
+        action: "telehealth.booking.marked_paid",
+        targetType: "AppointmentBooking",
+        targetId: booking.id,
+        metadata: { reason: request.body.reason },
+        ipAddress: request.ip,
+      });
+
+      // §9.7.8 — mevcut `ORDER_CONFIRMATION` deseniyle AYNI: best-effort, e-posta gönderimi
+      // BAŞARISIZ olsa da bu uç ASLA 500 dönmez (bkz. notifications.ts::triggerAppointmentConfirmationEmail).
+      await triggerAppointmentConfirmationEmail(app, { booking, appointments, rawAccessToken });
+
+      const withRelations = await app.prisma.appointmentBooking.findUniqueOrThrow({
+        where: { id: booking.id },
+        include: WITH_BOOKING_RELATIONS,
+      });
+      return reply.send(ok(toAppointmentBookingDto(withRelations)));
     }
   );
 }

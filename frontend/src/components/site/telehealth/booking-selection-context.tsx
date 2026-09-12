@@ -2,30 +2,43 @@
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import type { AvailabilitySlot } from "@/lib/api/types";
+import { MAX_BOOKING_SLOTS } from "@/lib/api/types";
+import { formatDayKey } from "@/lib/telehealth-format";
 
 /**
- * `.claude/design-notes-telehealth.md` §2.4 — "Hizmet Özeti" paneli artık `AvailabilityCalendar`
- * (sol sütun) ile AYNI "seçilen randevu" bilgisini (§2.4.4, sağ sütun) göstermek zorunda. İkisi
- * `doctors/[slug]/page.tsx`'te KARDEŞ Server Component ağaçlarının İÇİNDE render edildiği için
- * (grid'in sol/sağ sütunları) prop drilling ile paylaşılamaz — bu yüzden ikisini de saran TEK bir
- * Client Context sağlayıcısı (`state yönetimi için Context` — frontend-agent scope) `selectedSlot`
- * VE saat-dilimi-duyarlı `displayTimeZone`'u TEK bir doğruluk kaynağında tutar.
+ * `.claude/design-notes-telehealth.md` §2.4/§12.2 — "Hizmet Özeti" paneli artık
+ * `AvailabilityCalendar` (sol sütun) ile AYNI ÇOKLU slot seçimini (§12.2.4, sağ sütun)
+ * göstermek zorunda. İkisi `doctors/[slug]/page.tsx`'te KARDEŞ Server Component ağaçlarının
+ * İÇİNDE render edildiği için (grid'in sol/sağ sütunları) prop drilling ile paylaşılamaz —
+ * bu yüzden ikisini de saran TEK bir Client Context sağlayıcısı `selectedSlots` VE
+ * saat-dilimi-duyarlı `displayTimeZone`'u TEK bir doğruluk kaynağında tutar.
+ *
+ * [TCT] §9.7.2 (bağlayıcı) — `selectedSlot` (tekil) `selectedSlots` (1..4, AYNI güne ait)
+ * olarak GENİŞLETİLDİ. Tekil-slot varsayımı KALDIRILDI — bu bilinçli bir kırılma, tek doğruluk
+ * kaynağı bu context'tir (`availability-calendar.tsx`/`doctor-service-summary.tsx` İKİSİ de
+ * bu genişletilmiş şekli tüketir).
  *
  * Mimari §4.2 bağlayıcı — hidrasyon uyuşmazlığı: `visitorTimeZone` YALNIZCA mount SONRASI
  * `Intl.DateTimeFormat().resolvedOptions().timeZone` ile okunur; mount öncesi/SSR sırasında
- * sunucudan gelen (dolayısıyla SSR/istemç arasında AYNI) `doctorTimeZone` fallback'i kullanılır
- * (`availability-calendar.tsx`'in ÖNCEKİ sürümündeki AYNI kök-neden düzeltmesi, artık BURADA
- * merkezi).
+ * sunucudan gelen (dolayısıyla SSR/istemci arasında AYNI) `doctorTimeZone` fallback'i kullanılır.
  *
- * ÖNEMLİ — randevu oluşturma payload'ı: bu context SADECE UI/durum GÖSTERİMİ içindir
- * (`selectedSlot` state'inin KENDİSİ). `POST /appointments`'e giden `startsAt` değeri hâlâ
- * `AvailabilityCalendar::onSubmit`'in doğrudan `selectedSlot.startsAt`'ı okumasıyla (context
- * üzerinden AYNI referans) üretilir — biçim/anlam DEĞİŞMEDİ, yalnızca state'in SAHİPLİĞİ bu
- * sağlayıcıya taşındı.
+ * ÖNEMLİ — randevu oluşturma payload'ı: bu context SADECE UI/durum GÖSTERİMİ içindir.
+ * `POST /appointments/bookings`'e giden `slots` değeri hâlâ `AvailabilityCalendar::onSubmit`'in
+ * doğrudan `selectedSlots.map(s => s.startsAt)`'ı okumasıyla üretilir; tutar (`totalCents`)
+ * İSTEMCİDEN ASLA gönderilmez — yalnızca gösterim amaçlı yerel bir çarpım (§12.2.4).
  */
 interface BookingSelectionContextValue {
-  selectedSlot: AvailabilitySlot | null;
-  setSelectedSlot: (slot: AvailabilitySlot | null) => void;
+  selectedSlots: AvailabilitySlot[];
+  /**
+   * §12.2.1/§12.2.3 — müsait bir slota tıklamak onu kümeye EKLER; zaten seçili bir slota
+   * TEKRAR tıklamak kümeden ÇIKARIR (checkbox benzeri toggle, radio DEĞİL). Farklı bir GÜNE
+   * ait bir slot seçilirse önceki seçim OTOMATİK temizlenir ve `true` döner (çağıran taraf
+   * bunu bir bilgi notu göstermek için kullanır); aksi hâlde `false` döner. 4 slot doluyken
+   * yeni (henüz seçilmemiş) bir slot eklenmeye çalışılırsa YOK SAYILIR (`false` döner).
+   */
+  toggleSlot: (slot: AvailabilitySlot, timeZone: string) => { dayChanged: boolean; limitReached: boolean };
+  removeSlot: (slot: AvailabilitySlot) => void;
+  clearAllSlots: () => void;
   /** Ziyaretçi dilimi bilinmiyorsa (mount öncesi) `doctorTimeZone`'a düşer — §4.2. */
   displayTimeZone: string;
   visitorTimeZone: string | undefined;
@@ -35,7 +48,7 @@ interface BookingSelectionContextValue {
 const BookingSelectionContext = createContext<BookingSelectionContextValue | null>(null);
 
 export function BookingSelectionProvider({ doctorTimeZone, children }: { doctorTimeZone: string; children: ReactNode }) {
-  const [selectedSlot, setSelectedSlot] = useState<AvailabilitySlot | null>(null);
+  const [selectedSlots, setSelectedSlots] = useState<AvailabilitySlot[]>([]);
   const [visitorTimeZone, setVisitorTimeZone] = useState<string | undefined>(undefined);
 
   useEffect(() => {
@@ -45,8 +58,46 @@ export function BookingSelectionProvider({ doctorTimeZone, children }: { doctorT
 
   const displayTimeZone = visitorTimeZone ?? doctorTimeZone;
 
+  function toggleSlot(slot: AvailabilitySlot, timeZone: string): { dayChanged: boolean; limitReached: boolean } {
+    let dayChanged = false;
+    let limitReached = false;
+
+    setSelectedSlots((prev) => {
+      const alreadySelected = prev.some((s) => s.startsAt === slot.startsAt);
+      if (alreadySelected) {
+        return prev.filter((s) => s.startsAt !== slot.startsAt);
+      }
+
+      // §12.2.3 — farklı bir takvim günü seçildiyse önceki seçim OTOMATİK temizlenir, yeni
+      // slot TEK BAŞINA seçili olur (409 ÜRETİLMEZ, saf istemci-tarafı state geçişi).
+      if (prev.length > 0 && formatDayKey(prev[0]!.startsAt, timeZone) !== formatDayKey(slot.startsAt, timeZone)) {
+        dayChanged = true;
+        return [slot];
+      }
+
+      if (prev.length >= MAX_BOOKING_SLOTS) {
+        limitReached = true;
+        return prev;
+      }
+
+      return [...prev, slot].sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+    });
+
+    return { dayChanged, limitReached };
+  }
+
+  function removeSlot(slot: AvailabilitySlot) {
+    setSelectedSlots((prev) => prev.filter((s) => s.startsAt !== slot.startsAt));
+  }
+
+  function clearAllSlots() {
+    setSelectedSlots([]);
+  }
+
   return (
-    <BookingSelectionContext.Provider value={{ selectedSlot, setSelectedSlot, displayTimeZone, visitorTimeZone, doctorTimeZone }}>
+    <BookingSelectionContext.Provider
+      value={{ selectedSlots, toggleSlot, removeSlot, clearAllSlots, displayTimeZone, visitorTimeZone, doctorTimeZone }}
+    >
       {children}
     </BookingSelectionContext.Provider>
   );

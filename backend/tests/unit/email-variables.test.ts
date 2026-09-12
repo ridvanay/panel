@@ -35,6 +35,14 @@ describe("getSystemVariablesForPurpose", () => {
     const keys = getSystemVariablesForPurpose("ORG_INVITATION").map((v) => v.key);
     expect(keys).toEqual(expect.arrayContaining(["inviter_name", "organization_name", "accept_url"]));
   });
+
+  it("[TCT] §9.7.8 — matches the exact APPOINTMENT_CONFIRMATION variable set relied upon by modules/telehealth/lib/notifications.ts, and contains NO specialty/complaint/document leak", () => {
+    const keys = getSystemVariablesForPurpose("APPOINTMENT_CONFIRMATION").map((v) => v.key);
+    expect(keys).toEqual(
+      expect.arrayContaining(["booking_number", "patient_name", "slots_summary", "total_formatted", "magic_link"])
+    );
+    expect(keys).not.toEqual(expect.arrayContaining(["specialty", "specialty_name", "complaint", "note", "document_name"]));
+  });
 });
 
 describe("getContactFieldVariables", () => {

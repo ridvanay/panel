@@ -9,3 +9,7 @@ uploads/
 storage/imports/
 # §10.8.10 Analitik Rapor Dışa Aktarma — AYNI GEREKÇEYLE PRIVATE depo (bkz. lib/export-storage.ts).
 storage/exports/
+# Tele-Sağlık — ÖZEL (private) sağlık verisi belge deposu (şikâyet notu eki, reçete/tahlil/
+# radyoloji belgesi). `uploads/`/`storage/exports/` ile AYNI gerekçe + KVKK md.6 özel nitelikli
+# veri — asla repoya girmez. Bkz. .claude/compliance-notes-telehealth.md "TUR 2".
+storage/private-uploads/

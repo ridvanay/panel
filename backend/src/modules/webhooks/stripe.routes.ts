@@ -8,6 +8,9 @@ import { sendTemplateEmail } from "../email-templates/email-templates.service";
 import { emitWebhookEvent } from "../../lib/webhook-emitter";
 import { buildWebhookOrderPayload } from "../../lib/webhook-order-payload";
 import { logAudit } from "../../lib/audit";
+import { BookingNotPayableError } from "../../lib/errors";
+import { confirmBookingPayment } from "../telehealth/lib/booking";
+import { triggerAppointmentConfirmationEmail } from "../telehealth/lib/notifications";
 
 function mapStatus(status: Stripe.Subscription.Status): SubscriptionStatus {
   switch (status) {
@@ -63,15 +66,131 @@ async function upsertSubscription(
 }
 
 /**
- * §10.9.3 Sepet + Stripe Checkout — `checkout.session.completed` artık İKİ farklı akıştan
- * gelebilir (aynı Stripe hesabı hem org abonelikleri hem misafir ürün siparişleri için
- * kullanılıyor): `session.mode === "subscription"` ise bu, `billing.service.ts::
- * createCheckoutSession`'ın ürettiği MEVCUT akıştır — davranışı BİREBİR korunur (aşağıdaki
- * `organizationId`/`session.subscription` guard'ı öncekiyle AYNI). `session.mode === "payment"`
- * ise checkout.routes.ts'in ürettiği YENİ sepet siparişi akışıdır.
+ * `.claude/architect-scope-telehealth-template.md` §9.7.1 KARAR G (bağlayıcı) —
+ * `checkout.session.completed` (`mode: "payment"`, `metadata.bookingId` taşıyan) dalı.
+ * integration-agent'ın TEK SAHASI — booking/randevu durum geçişinin İŞ MANTIĞI
+ * `lib/booking.ts::confirmBookingPayment`'ta (backend-agent) YAŞAR; bu fonksiyon YALNIZCA
+ * Stripe'a özgü kısmı (session okuma, idempotency ön-kontrolü, e-posta tetikleyicisi) taşır —
+ * `handleOrderPaid` İLE AYNI iş bölümü.
+ *
+ * **İdempotency (§9.7.1 madde 4, bağlayıcı):** `confirmBookingPayment` booking ZATEN
+ * `PENDING` DIŞINDA bir durumdaysa `BookingNotPayableError` (409) fırlatır — Stripe aynı
+ * event'i tekrar gönderirse (retry/aynı event iki kez) bu burada YAKALANIR ve SESSİZCE
+ * dönülür (webhook YİNE DE `200` döner, randevular İKİNCİ kez `SCHEDULED`'a geçmez, e-posta
+ * İKİNCİ kez gönderilmez).
+ *
+ * **accessToken rotasyonu kararı (görev notu KRİTİK TASARIM NOTU, bkz.
+ * `telehealth.checkout.routes.ts` yorumu):** `session.metadata.rawAccessToken` VARSA (misafir
+ * `?t=` ile checkout-session açıldıysa) `knownRawAccessToken` olarak geçirilir — booking'in
+ * `accessTokenHash`'i ROTATE EDİLMEZ, hastanın orijinal magic-link'i ödeme SONRASI da ÇALIŞIR.
+ * YOKSA (oturumlu/Bearer akışı) `confirmBookingPayment` YENİ bir token üretir (rotate) — bu
+ * hastanın erişimini KAYBETTİRMEZ, çünkü oturumlu hastanın zaten `/patient/bookings` üzerinden
+ * kimlik-doğrulamalı erişimi vardır.
+ */
+async function handleTelehealthBookingPaid(app: FastifyInstance, session: Stripe.Checkout.Session): Promise<void> {
+  const bookingId = session.metadata?.bookingId;
+  if (!bookingId) return;
+
+  const stripePaymentIntentId = typeof session.payment_intent === "string" ? session.payment_intent : (session.payment_intent?.id ?? null);
+  const knownRawAccessToken = session.metadata?.rawAccessToken || undefined;
+
+  let result: Awaited<ReturnType<typeof confirmBookingPayment>>;
+  try {
+    result = await confirmBookingPayment(app, {
+      bookingId,
+      paidBy: "stripe",
+      stripePaymentIntentId,
+      knownRawAccessToken,
+    });
+  } catch (err) {
+    if (err instanceof BookingNotPayableError) {
+      // GÜVENLİK NOTU (security-agent, görev özeti madde 2) — `BookingNotPayableError` İKİ
+      // FARKLI durumu KAPSAR: (a) booking ZATEN `PAID` (Stripe'ın aynı olayı ikinci kez
+      // göndermesi — GERÇEK/ZARARSIZ idempotency, bkz. dosya üstü yorum) VEYA (b) booking
+      // `EXPIRED`/`FAILED` durumuna düşmüş (hasta Stripe'ta ödemeyi TAMAMLADI ama internal hold
+      // bu arada süresi doldu/süpürüldü — `telehealth.checkout.routes.ts`'teki senkronizasyon
+      // düzeltmesi bunu BÜYÜK ÖLÇÜDE önler ama saat kayması/nadir yarış durumları TAMAMEN
+      // dışlanamaz). (b) durumunda PARA ALINMIŞTIR ama randevu ASLA `SCHEDULED` OLMAZ — bu
+      // SESSİZCE yutulursa kayıp bir ödeme fark edilmeden kalır (iade mekanizması bu turda
+      // YOKTUR, §9.7.1 madde 8). Bu yüzden (a)/(b) ayrımı AÇIKÇA yapılır: (a) `app.log.info` ile
+      // no-op, (b) `app.log.error` + `logAudit` ile OPERASYONEL MÜDAHALE gerektiren bir olay
+      // olarak İZ BIRAKILIR (manuel iade/telafi ADMIN'in takdirindedir — bu fonksiyon bir iade
+      // BAŞLATMAZ, yalnızca durumu GÖRÜNÜR kılar).
+      const current = await app.prisma.appointmentBooking.findUnique({
+        where: { id: bookingId },
+        select: { paymentStatus: true },
+      });
+
+      if (current?.paymentStatus === "PAID") {
+        app.log.info({ bookingId }, "Stripe webhook: booking zaten ödenmiş durumda (idempotent no-op).");
+        return;
+      }
+
+      app.log.error(
+        { bookingId, bookingPaymentStatus: current?.paymentStatus ?? "unknown" },
+        "Stripe webhook: ödeme Stripe'ta tamamlandı ama booking artık ödenebilir durumda DEĞİL (muhtemelen süresi doldu/süpürüldü) — MANUEL İNCELEME GEREKİR (iade/telafi)."
+      );
+      await logAudit(app, {
+        actorId: null,
+        actorEmail: null,
+        action: "telehealth.booking.paid_after_expiry",
+        status: "FAILURE",
+        targetType: "AppointmentBooking",
+        targetId: bookingId,
+        metadata: { bookingPaymentStatus: current?.paymentStatus ?? "unknown", stripePaymentIntentId },
+      });
+      return;
+    }
+    throw err;
+  }
+
+  // §9.7.8 (notification-agent'ın HOOK'u, integration-agent burada ÇAĞIRIR) — booking
+  // ÖDENDİĞİNDE tetiklenir; best-effort'tur (fonksiyonun kendi içinde try/catch VAR, bu akışı
+  // BOZMAZ, bkz. lib/notifications.ts::triggerAppointmentConfirmationEmail).
+  await triggerAppointmentConfirmationEmail(app, {
+    booking: result.booking,
+    appointments: result.appointments,
+    rawAccessToken: result.rawAccessToken,
+  });
+}
+
+/**
+ * §9.7.1 madde 3 (bağlayıcı) — `payment_intent.payment_failed`. `metadata.bookingId`
+ * `payment_intent_data.metadata`'dan gelir (bkz. `telehealth.checkout.routes.ts::
+ * stripe.checkout.sessions.create`). YALNIZCA `paymentStatus = FAILED` + `errorSummary` yazar —
+ * randevu satırlarına DOKUNMAZ (hâlâ `PENDING_PAYMENT`; hasta tekrar ödeme deneyebilir/booking
+ * süresi dolarsa süpürücü zaten temizler). `updateMany` ile İDEMPOTENT: booking ZATEN
+ * `PENDING` DIŞINDAYSA (ör. bu arada başka bir oturumla ödendi) no-op.
+ */
+async function handleTelehealthPaymentFailed(app: FastifyInstance, paymentIntent: Stripe.PaymentIntent): Promise<void> {
+  const bookingId = paymentIntent.metadata?.bookingId;
+  if (!bookingId) return;
+
+  const errorSummary = paymentIntent.last_payment_error?.message ?? "payment_failed";
+
+  await app.prisma.appointmentBooking.updateMany({
+    where: { id: bookingId, paymentStatus: "PENDING" },
+    data: { paymentStatus: "FAILED", errorSummary },
+  });
+}
+
+/**
+ * §10.9.3 Sepet + Stripe Checkout — `checkout.session.completed` artık ÜÇ farklı akıştan
+ * gelebilir (aynı Stripe hesabı org abonelikleri, misafir ürün siparişleri VE [TCT] §9.7.1
+ * telehealth booking ödemeleri için kullanılıyor): `session.mode === "subscription"` ise bu,
+ * `billing.service.ts::createCheckoutSession`'ın ürettiği MEVCUT akıştır — davranışı BİREBİR
+ * korunur (aşağıdaki `organizationId`/`session.subscription` guard'ı öncekiyle AYNI).
+ * `session.mode === "payment"` içinde `session.metadata.bookingId` VARSA [TCT] §9.7.1
+ * (integration-agent) booking akışıdır; YOKSA checkout.routes.ts'in ürettiği sepet siparişi
+ * akışıdır — **YENİ bir webhook path'i AÇILMADI** (§9.7.1 madde 4, bağlayıcı), mevcut uç
+ * `metadata` içeriğine göre dallanır (`handleOrderPaid` İLE AYNI `kind` ayrımı deseni).
  */
 async function handleCheckoutCompleted(app: FastifyInstance, session: Stripe.Checkout.Session) {
   if (session.mode === "payment") {
+    if (session.metadata?.bookingId) {
+      await handleTelehealthBookingPaid(app, session);
+      return;
+    }
     await handleOrderPaid(app, session);
     return;
   }
@@ -309,6 +428,12 @@ export default async function stripeWebhookRoutes(app: FastifyInstance) {
         break;
       case "checkout.session.expired":
         await handleOrderExpired(app, event.data.object as Stripe.Checkout.Session);
+        break;
+      // [TCT] §9.7.1 madde 3 (bağlayıcı) — YALNIZCA `paymentStatus = FAILED` + `errorSummary`.
+      // `payment_intent.succeeded` KASITLI OLARAK dinlenmez (§9.7.1 madde 3 — onay olayı
+      // `checkout.session.completed`'dır, ikinci bir onay yolu AÇILMAZ).
+      case "payment_intent.payment_failed":
+        await handleTelehealthPaymentFailed(app, event.data.object as Stripe.PaymentIntent);
         break;
       case "customer.subscription.updated":
       case "customer.subscription.deleted":

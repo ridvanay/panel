@@ -58,10 +58,16 @@ import { registerWebhookDeliveryRetentionScheduler } from "./modules/outbound-we
 import { telehealthRoutes } from "./modules/telehealth/telehealth.routes";
 import {
   adminTelehealthAppointmentsRoutes,
+  adminTelehealthBookingsRoutes,
   adminTelehealthDoctorsRoutes,
   adminTelehealthSpecialtiesRoutes,
 } from "./modules/telehealth/telehealth.admin.routes";
 import { telehealthLiveKitRoutes } from "./modules/telehealth/telehealth.livekit.routes";
+import { telehealthCheckoutRoutes } from "./modules/telehealth/telehealth.checkout.routes";
+import { telehealthNotificationRoutes } from "./modules/telehealth/telehealth.notifications.routes";
+import { telehealthDoctorPortalRoutes, telehealthPatientPortalRoutes } from "./modules/telehealth/telehealth.portal.routes";
+import { registerBookingExpirySweeper } from "./lib/booking-expiry";
+import { registerIntakeRetentionScheduler } from "./lib/intake-retention";
 
 export function buildApp() {
   // `SENTRY_DSN` tanımsızsa no-op (bkz. lib/sentry.ts) — her `buildApp()` çağrısında
@@ -247,9 +253,25 @@ export function buildApp() {
       // `/appointments` yüzeyine EKLENİR; kendi `requireModuleEnabled("telehealth")` + kimlik
       // doğrulama hook'larını KENDİSİ taşır.
       api.register(telehealthLiveKitRoutes);
+      // §9.7.1/§9.7.9/§9.7.10 (bağlayıcı) — Stripe Checkout oturumu, integration-agent'ın AYRI
+      // dosyası (`telehealth.checkout.routes.ts`, `telehealth.routes.ts`'e DOKUNULMADI). Aynı
+      // public `/appointments` yüzeyine EKLENİR; kendi `requireModuleEnabled("telehealth")` +
+      // kimlik doğrulama hook'larını KENDİSİ taşır.
+      api.register(telehealthCheckoutRoutes);
+      // §9.7.8/§9.7.10 (bağlayıcı) — magic-link yeniden gönderimi, notification-agent'ın AYRI
+      // dosyası (`telehealth.notifications.routes.ts`, `telehealth.routes.ts`'e DOKUNULMADI).
+      // Aynı public `/appointments` yüzeyine EKLENİR; kendi `requireModuleEnabled("telehealth")`
+      // hook'unu KENDİSİ taşır (kimlik doğrulama YOK — openapi.yaml `security: []`).
+      api.register(telehealthNotificationRoutes);
       api.register(adminTelehealthSpecialtiesRoutes, { prefix: "/admin/telehealth/specialties" });
       api.register(adminTelehealthDoctorsRoutes, { prefix: "/admin/telehealth/doctors" });
       api.register(adminTelehealthAppointmentsRoutes, { prefix: "/admin/telehealth/appointments" });
+      // [TCT] §9.7.10 — booking listesi (ADMIN+MANAGER) + manuel ödendi işaretleme (YALNIZCA ADMIN).
+      api.register(adminTelehealthBookingsRoutes, { prefix: "/admin/telehealth/bookings" });
+      // [TCT] §9.7.7 KARAR K — doktor/hasta portalları. Panel DEĞİLDİR (`requirePanelAccess()`
+      // KULLANILMAZ); doktor tarafı KENDİ 2FA kapısını route içinde uygular.
+      api.register(telehealthDoctorPortalRoutes, { prefix: "/doctor" });
+      api.register(telehealthPatientPortalRoutes, { prefix: "/patient" });
     },
     { prefix: "/api/v1" }
   );
@@ -335,6 +357,23 @@ export function buildApp() {
       registerContactRetentionScheduler(app);
     } catch (err) {
       app.log.error({ err }, "İletişim formu saklama süresi scheduler kurulumu başarısız oldu — bu oturumda süresi geçmiş gönderimler temizlenmeyebilir.");
+    }
+
+    try {
+      // [TCT] §9.7.3 KARAR I — 5 dakikalık kadans, `PENDING_PAYMENT` yaşam döngüsü (hiç
+      // ödenmemiş tutulan slotları serbest bırakır). AYNI izolasyon/gerekçe: `app.prisma`
+      // yalnızca burada güvenle kullanılabilir.
+      registerBookingExpirySweeper(app);
+    } catch (err) {
+      app.log.error({ err }, "Randevu rezervasyonu süre dolumu (booking-expiry) scheduler kurulumu başarısız oldu.");
+    }
+
+    try {
+      // [TCT] §9.7.5 KARAR J madde 9 (ENGELLEYİCİ, compliance-agent onaylı) — günlük kadans,
+      // sağlık verisi (intake notu + tıbbi belge) 90 gün sonra GERÇEKTEN silinir.
+      registerIntakeRetentionScheduler(app);
+    } catch (err) {
+      app.log.error({ err }, "Sağlık verisi (intake/belge) saklama süresi scheduler kurulumu başarısız oldu.");
     }
   });
 
