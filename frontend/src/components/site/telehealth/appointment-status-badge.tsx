@@ -1,4 +1,4 @@
-import { CalendarClock, CircleCheck, UserX, Video, XCircle } from "lucide-react";
+import { CalendarClock, CircleCheck, Clock, UserX, Video, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import type { AppointmentStatus } from "@/lib/api/types";
 
@@ -6,10 +6,13 @@ import type { AppointmentStatus } from "@/lib/api/types";
  * `.claude/design-notes-telehealth.md` §13.1 — seans durumu rozeti, `payment-status-badge.tsx`
  * (§12.4) İLE BİREBİR AYNI konvansiyon: `Record<AppointmentStatus, {...}>` + `Badge` primitifi +
  * ikon-metin ikilisi (renk-körü güvenliği, WCAG 1.4.1 — tek başına renge güvenilmez).
- * `Record<AppointmentStatus, ...>` TypeScript'te EXHAUSTIVE olduğundan `NO_SHOW` da BURADA
- * tanımlanır (görev tanımı yalnızca ilk dördünü istese de bu bir derleme zorunluluğudur).
+ * `Record<AppointmentStatus, ...>` TypeScript'te EXHAUSTIVE olduğundan `NO_SHOW`/`PENDING_PAYMENT`
+ * da BURADA tanımlanır (görev tanımı yalnızca ilk dördünü istese de bu bir derleme zorunluluğudur —
+ * `PENDING_PAYMENT` daha önce buradan EKSİKTİ, `CONFIG[status]` `undefined` dönüp `/doctor`
+ * randevu listesini çökertiyordu, qa-agent'ın Adım 4 e2e doğrulamasında bulundu).
  */
 const CONFIG: Record<AppointmentStatus, { label: string; tone: "neutral" | "primary" | "success" | "danger"; solid: boolean; Icon: typeof CircleCheck }> = {
+  PENDING_PAYMENT: { label: "Ödeme Bekliyor", tone: "neutral", solid: false, Icon: Clock },
   SCHEDULED: { label: "Planlandı", tone: "neutral", solid: false, Icon: CalendarClock },
   IN_PROGRESS: { label: "Devam Ediyor", tone: "primary", solid: true, Icon: Video },
   COMPLETED: { label: "Tamamlandı", tone: "success", solid: true, Icon: CircleCheck },

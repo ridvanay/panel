@@ -2749,3 +2749,114 @@ ile işaretli, düzeltilirse test kırmızıya döner ve işaretin kaldırılmas
   frontend-agent tarafından düzeltildi, madde 27 testi artık gerçek sayfa render'ını (dürüst
   2FA uyarısı + 2FA açıldıktan sonra normal render) kapsıyor; bu madde artık kapsam dışı
   DEĞİLDİR.
+
+## Tele-Sağlık — Tiptap konsültasyon notu editörü (§13.4.2 tadilat, bu turda eklendi)
+
+Kapsam: doktorun "Seansı Tamamla" modalındaki Tiptap tabanlı epikriz/reçete editörü (şablon
+seçici, toolbar biçimlendirme, tablo) + hastanın kendi randevu sayfasında bu notu okuyup
+yazdırabilmesi (`GET /appointments/bookings/{id}/consultation-note`). Dosya:
+`frontend/tests/e2e/doctor-panel-session-lifecycle.spec.ts` — bu dosyanın kendi ortamına (§dosya
+başlığı: `saas_dev`, doktor `elif-aydemir`, `localhost:3000`/`4000`) EK test'ler (adım 6-8), AYRICA
+mevcut adım 4'ün not-girme adımı yeni UI'a UYARLANDI. Yeni fixture felsefesi: `TARGET_BOOKING_NUMBER`
+(adım 1-5, tek bir gerçek UAT booking'i) yerine `POST /appointments/bookings` (public) ile
+her koşumda taze, birbirinden İZOLE 3 booking üretilir; durumları (`resetAppointmentToInProgress`
+İLE AYNI felsefe) doğrudan DB'de hedef duruma taşınır — ödeme/webhook akışı YENİDEN test EDİLMEZ
+(`telehealth-multi-slot-booking.spec.ts`'in sahası).
+
+| Adım | Kapsam | Sonuç |
+|---|---|---|
+| adım 6 | "Standart Epikriz" şablonu, editöre yazıp SEÇ+kalınlaştır, ayrı bir paragrafta SEÇ+madde işaretli liste, "Seansı Tamamla" → `COMPLETED` + not şifreli dolu | ✅ |
+| adım 6 (hasta) | Magic-link (`?t=`) ile `/patient/bookings/{id}`, "Doktor Notu / Reçete" bölümü + "Görüntüle" → `<strong>`/`<li>` render, "Yazdır" → `window.print()` spy çağrılıyor | ✅ |
+| adım 7 | "İlaç Reçetesi" şablonu, tablo hücrelerine ilaç adı/dozaj/kullanım şekli, "Seansı Tamamla" | ✅ |
+| adım 7 (hasta) | Reçete `<table>` olarak render ediliyor (`th`/`td` içerikleriyle) | ✅ |
+| adım 8 [negatif] | Notu/tamamlanmış randevusu OLMAYAN bir booking'de "Doktor Notu / Reçete" bölümü HİÇ görünmez | ✅ |
+
+Doğrulama: dosya izole 3 kez koşuldu (booking-oluşturma hız sınırı — 5/dk — nedeniyle art arda
+koşumlar arasında bekleme gerekti), hepsinde 9/9 yeşil.
+
+### qa-agent'ın kendi test tasarımında bulup düzelttiği flaky kaynağı (bu turda, mevcut dosya — kural gereği doğrudan düzeltildi)
+
+**Toolbar butonuna ÖNCE tıklayıp SONRA yazma sırası, bu ProseMirror editöründe karakter kaybına
+yol açıyordu.** `chain().focus().toggleBold().run()` (veya `toggleBulletList`) programatik olarak
+DOM focus'unu editöre geri veriyor, ama View'in bir sonraki native `keydown`'ı GÜVENLE işleyebilmesi
+için tarayıcının bir tık'a daha ihtiyacı var — hemen ardından `keyboard.type()` çağrılırsa yazılan
+metnin İLK birkaç karakteri SESSİZCE kayboluyordu (`aria-pressed="true"` beklemek dahi bunu ÇÖZMEDİ —
+React state'i senkron güncellenir ama View'in DOM'a geri senkronizasyonu AYRI bir olay). Ayrıca
+"Madde listesi" — editör odaklanmadan hemen SONRA tıklanınca `<ul><li>` sarmalaması hiç OLUŞMUYORDU.
+Kök neden bir ürün bug'ı DEĞİL, testin kendi etkileşim sırasıydı. Düzeltme — HER ZAMAN "ÖNCE yaz,
+SONRA seç (`Home`/`Shift+End`) + biçimlendir" sırası kullanıldı (yazma anında editör ZATEN
+odaklı/kararlı olduğundan karakter kaybı YOK); liste ve kalın biçimlendirme birbirinden BAĞIMSIZ,
+ayrı paragraflarda uygulanarak seçim durumu çakışması da önlendi.
+
+**EK bulgu — `aria-pressed` beklemek TEK BAŞINA yeterli değildi.** Yukarıdaki düzeltmeden SONRA
+bile, bir sonraki paragrafa geçmeden ÖNCE yalnızca toolbar butonunun `aria-pressed="true"`
+olmasını beklemek arada bir YETERSİZ kaldı: iki ayrı biçimlendirme komutu (kalın + liste)
+birbirinin ÜZERİNE yazılabiliyordu (gözlemlenen somut örnek: "Tanı" paragrafına geçilip liste
+komutu verildiğinde, HENÜZ commit edilmemiş kalın komutu YANLIŞ paragrafa uygulandı — sonuç
+`<ul><li><strong>Bol sıvı tüketimi</strong></li></ul>` + düz `<p>Kontrol öneriliyor.</p>`, ikisi
+de YANLIŞ konumda/biçimde). Nihai düzeltme — bir sonraki alana geçmeden ÖNCE `aria-pressed`
+DEĞİL, doğrudan GERÇEK DOM çıktısı (`editor.locator("strong"/"li", { hasText: ... })`) beklenir;
+bu, komutun GERÇEKTEN commit edildiğinin tek güvenilir kanıtıdır.
+
+**EK bulgu 2 — `onRetry()` sayfalamayı SIFIRLIYOR.** `handleComplete` başarı sonrası TÜM listeyi
+(`doctor-bookings-panel.tsx::load()`) yalnızca 1. sayfa (`limit:20`) olarak yeniden çekiyor —
+önceden "Daha Fazla Yükle" ile açılan sayfalar KAYBOLUYOR. `elif-aydemir` (bu dosyanın hedef
+doktoru) paylaşılan/kalıcı dev DB'sinde test turları arasında BİRİKTİĞİNDEN (bu turda 20+ booking'e
+ulaştı) taze fixture'lar sık sık 1. sayfanın DIŞINA düşüyor — hem tamamlama ÖNCESİ satırı bulmak
+HEM DE tamamlama SONRASI "Tamamlandı" rozetini doğrulamak için `ensureBookingRowLoaded()` yardımcı
+fonksiyonu eklendi (hedef satır bulunana/"Daha Fazla Yükle" tükenene kadar `toPass` ile TEKRAR
+TEKRAR sayfalar). Bu, yalnızca bu turun debug koşumlarına ÖZGÜ bir sorun değil — gerçek kullanımda
+da bir doktorun booking listesi büyüdükçe AYNI senaryo (yeni tamamlanan bir seansın 1. sayfada
+görünmemesi) oluşabilir; test artık bu büyümeye KARŞI SAĞLAM.
+
+Tüm düzeltmeler sonrası dosya 4 ardışık izole koşumda (art arda, hız sınırı nedeniyle aralarda
+bekleyerek) tutarlı biçimde 9/9 yeşil verdi.
+
+### Kritik bug — qa-agent bulgusu, DÜZELTİLMEDİ, frontend-agent'a yönlendirildi
+
+**`AppointmentStatus` frontend tipi/`AppointmentStatusBadge` haritası backend'in enum'ıyla senkron
+DEĞİL — `PENDING_PAYMENT` durumundaki HERHANGİ bir randevu bir doktorun `/doctor` (Randevularım)
+sayfasının TAMAMINI çökertiyor.**
+
+- **Gerçek repro (bu turda, gerçek tarayıcı + gerçek backend):** `elif-aydemir` doktorunun
+  booking listesinde süresi dolmuş ama henüz sweep edilmemiş bir `PENDING_PAYMENT` randevu satırı
+  varken `/doctor`'a giriş yapıldığında sayfa `pageerror` ile çöktü: `TypeError: Cannot
+  destructure property 'label' of 'b[e]' as it is undefined.` — kaynak
+  `frontend/src/components/site/telehealth/appointment-status-badge.tsx`:
+  ```ts
+  const CONFIG: Record<AppointmentStatus, {...}> = {
+    SCHEDULED: {...}, IN_PROGRESS: {...}, COMPLETED: {...}, CANCELLED: {...}, NO_SHOW: {...},
+    // PENDING_PAYMENT YOK
+  };
+  const { label, tone, solid, Icon } = CONFIG[status]; // status === "PENDING_PAYMENT" → undefined
+  ```
+- **Kök neden:** `backend/prisma/schema.prisma::AppointmentStatus` enum'ı 6 değer taşıyor
+  (`PENDING_PAYMENT, SCHEDULED, IN_PROGRESS, COMPLETED, CANCELLED, NO_SHOW` — `PENDING_PAYMENT`
+  "tutulmuş-ama-ödenmemiş slot" için KASITLI/dokümante edilmiş bir durumdur), ama
+  `frontend/src/lib/api/types.ts::AppointmentStatus` yalnızca 5 değer tanımlıyor
+  (`"SCHEDULED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED" | "NO_SHOW"` — `PENDING_PAYMENT`
+  EKSİK). `appointment-status-badge.tsx`'in kendi yorumu ("`Record<AppointmentStatus, ...>`
+  TypeScript'te EXHAUSTIVE olduğundan...") YANLIŞ bir güvenceye dayanıyor — eksik olan tip
+  TANIMININ KENDİSİ, derleyici bunu YAKALAYAMIYOR.
+- **Neden önemli/tekrarlanabilir üretimde de:** `PENDING_PAYMENT`, bir hasta rezervasyon
+  oluşturup ödeme SIRASINDAYKEN normal, geçici bir durumdur (ödeme webhook'u gelene veya slot
+  süresi dolup sweep edilene kadar). Doktor bu birkaç dakikalık pencerede KENDİ panelini açarsa
+  (gerçek, günlük bir senaryo) TÜM randevu listesi çöker — yalnızca bu dosyanın test ortamına
+  ÖZGÜ bir veri sorunu DEĞİLDİR.
+- **Kim düzeltmeli:** frontend-agent — (1) `AppointmentStatus` union'ına `"PENDING_PAYMENT"`
+  eklenmeli, (2) `appointment-status-badge.tsx::CONFIG`'e (muhtemelen "Ödeme Bekleniyor" gibi
+  nötr bir etiketle) bir giriş eklenmeli, (3) aynı deseni kullanan başka haritalar (varsa) için de
+  aynı kontrol yapılmalı.
+- qa-agent bu turda BU BUG'I DÜZELTMEDİ (kural gereği); repro'yu doğrulamak için kullanılan
+  gerçek stale randevu backend'in KENDİ süre-dolumu süpürücüsü tarafından test sırasında
+  (müdahale edilmeden) temizlendiği için şu an ortamda YENİDEN üretilemiyor, ama kök neden kod
+  okumasıyla kesin doğrulandı ve gerçek bir çökme ile bir kez REPRODUCE edildi.
+
+### Ortam notu — Docker imajları yeniden build edilmedi
+
+Bu turun başında `frontend`/`backend` Docker container'ları HENÜZ REBUILD EDİLMEMİŞ, önceki
+(Tiptap editörü OLMAYAN, düz `<textarea>`) koda karşı çalışıyordu — `docker compose up --build -d`
+ile yeniden build edilene kadar adım 4'ün eski `getByLabel(...).fill(...)` çağrısı SESSİZCE eski
+UI'a karşı "geçiyordu" (yanlış güven). Proje memory kuralı ("backend/frontend edit sonrası HER
+ZAMAN rebuild") bu tur BAŞINDA uygulandı; qa-agent kendi görevine başlamadan önce bu kontrolü
+YAPMALI (kod okuması ile ÇALIŞAN container'ın davranışı ARASINDA fark olabilir).

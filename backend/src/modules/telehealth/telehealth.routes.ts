@@ -13,6 +13,7 @@ import {
   AppointmentSchema,
   AvailabilitySlotSchema,
   BookingInvoiceSchema,
+  ConsultationNoteSchema,
   CreateAppointmentResultSchema,
   CreateBookingResultSchema,
   DoctorProfileSchema,
@@ -22,6 +23,7 @@ import {
   toAppointmentDocumentDto,
   toAppointmentDto,
   toAppointmentIntakeDto,
+  toConsultationNoteDto,
   toDoctorProfileDto,
 } from "../../mappers";
 import {
@@ -583,6 +585,67 @@ export async function telehealthRoutes(app: FastifyInstance) {
       });
 
       return reply.send(ok(toAppointmentIntakeDto(intake, note)));
+    }
+  );
+
+  // ---------------------------------------------------------------------
+  // Adım 4 — hastanın kendi randevu detay sayfasında doktorun epikriz/reçete notunu okuyup
+  // yazdırabilmesi. `intake`'in AKSİNE bu OPSİYONEL bir görüntüleme ucudur (seans henüz
+  // tamamlanmamış/not girilmemiş → 404 DEĞİL, `{ html: null, updatedAt: null }` ile 200).
+  // ---------------------------------------------------------------------
+
+  server.get(
+    "/appointments/bookings/:bookingId/consultation-note",
+    {
+      schema: {
+        params: BookingIdParamSchema,
+        querystring: AccessTokenQuerySchema,
+        response: { 200: ApiSuccessSchema(ConsultationNoteSchema) },
+      },
+    },
+    async (request, reply) => {
+      const booking = await app.prisma.appointmentBooking.findUnique({
+        where: { id: request.params.bookingId },
+        include: WITH_BOOKING_RELATIONS,
+      });
+      if (!booking) throw new NotFoundError("Rezervasyon bulunamadı.");
+
+      // §9.7.5 madde 7 (ENGELLEYİCİ) — hasta/booking'in doktoru/ADMIN. MANAGER/EDITOR HARİÇ
+      // (intake İLE AYNI eşik — bu da sağlık verisi/tıbbi kayıt İÇERİĞİDİR).
+      assertBookingHealthDataAccess(booking, { user: request.user, providedToken: request.query.t });
+
+      // [TCT] §9.7.6 konvansiyonu — çoklu slot booking'lerde epikriz/reçete HER ZAMAN İLK
+      // randevuya yazılır (`/complete` ucu zaten client tarafında `completingFirstAppointment`
+      // ile yalnızca ilk randevuya yazıyor). `WITH_BOOKING_RELATIONS.appointments` `startsAt asc`
+      // sıralıdır (bkz. yukarıdaki sabit tanımı) — `appointments[0]` DETERMİNİSTİKTİR.
+      const canonicalAppointment = booking.appointments[0];
+      const ciphertext = canonicalAppointment?.consultationNoteCiphertext ?? null;
+
+      // Not YOKSA 404 ATILMAZ — bu normal bir durumdur (seans henüz tamamlanmamış/not girilmemiş).
+      if (!ciphertext) {
+        return reply.header("Cache-Control", "no-store").send(ok(toConsultationNoteDto(null, null)));
+      }
+
+      // Yeniden sanitize EDİLMEZ — yazma anında (`/complete`) zaten temizlendi, "tek temizleme
+      // yolu" ilkesi (bkz. lib/html-sanitize.ts dosya başı yorumu).
+      const html = decryptSecret(ciphertext);
+
+      // §9.7.5 madde 6 disiplini (`telehealth.intake_note.accessed` İLE AYNI) — yalnızca not
+      // GERÇEKTEN VARSA denetlenir (bu uç sık sık "var mı yok mu" kontrolü için de çağrılabilir,
+      // notsuz her çağrıyı denetlemek gereksiz gürültü olurdu — intake'ten BİLİNÇLİ bir sapma).
+      // `metadata`'ya not İÇERİĞİ ASLA yazılmaz.
+      await logAudit(app, {
+        actorId: request.user?.id ?? null,
+        actorEmail: request.user?.email ?? null,
+        action: "telehealth.consultation_note.accessed",
+        targetType: "AppointmentBooking",
+        targetId: booking.id,
+        ipAddress: request.ip,
+      });
+
+      return reply
+        .header("Cache-Control", "no-store")
+        .send(ok(toConsultationNoteDto(html, canonicalAppointment!.consultationNoteUpdatedAt)));
     }
   );
 

@@ -15,6 +15,7 @@ import { AppointmentIdParamSchema, AccessTokenQuerySchema, CompleteAppointmentRe
 import { getBookingJoinWindow, isWithinJoinWindow } from "./lib/booking";
 import { createMeetingToken, isLiveKitConfigured } from "./lib/livekit";
 import { encryptSecret } from "../../lib/crypto";
+import { sanitizeRichHtml } from "../../lib/html-sanitize";
 
 /**
  * `.claude/architect-scope-telehealth-template.md` §4.4/§4.5/§8/§9.4/§9.5/§12 — integration-agent'ın
@@ -205,17 +206,26 @@ export async function telehealthLiveKitRoutes(app: FastifyInstance) {
       if (!isAdmin && !isDoctor) throw new NotFoundError("Randevu bulunamadı.");
 
       // Epikriz/konsültasyon notu opsiyoneldir — boş/undefined ise mevcut davranış (yalnızca
-      // status/`endedAt`) DEĞİŞMEZ, var olan bir not SİLİNMEZ (bkz. telehealth.schemas.ts).
-      const note = request.body?.note?.trim();
-      const hasNote = Boolean(note);
+      // status/`endedAt`) DEĞİŞMEZ, var olan bir not SİLİNMEZ (bkz. telehealth.schemas.ts). Tiptap
+      // editörünün ürettiği ham HTML DB'ye yazılmadan ÖNCE `sanitizeRichHtml` ile temizlenir —
+      // "tek temizleme yolu" ilkesi (bkz. lib/html-sanitize.ts dosya başı yorumu). Boş bir Tiptap
+      // editörü etiketten arındırılınca boş kalan HTML üretebilir (ör. `<p></p>`) — bu durumda not
+      // YOK sayılır (basit bir etiket-soyma + trim kontrolü yeterli, aşırı mühendislik gerekmez).
+      const rawNote = request.body?.note?.trim();
+      const sanitizedNote = rawNote ? sanitizeRichHtml(rawNote) : "";
+      const strippedNote = sanitizedNote.replace(/<[^>]*>/g, "").trim();
+      const hasNote = strippedNote.length > 0;
 
       const updated = await app.prisma.appointment.update({
         where: { id: appointment.id },
         data: {
           status: "COMPLETED",
-          endedAt: new Date(),
+          // İdempotency — randevu zaten COMPLETED iken doktor notu SONRADAN düzenliyorsa (ör. bir
+          // yazım hatasını düzeltmek için `/complete`'i ikinci kez çağırıyorsa) `endedAt` gerçek
+          // seans bitiş zaman damgası olarak KALIR, ikinci düzenlemede KAYMAZ.
+          endedAt: appointment.endedAt ?? new Date(),
           ...(hasNote
-            ? { consultationNoteCiphertext: encryptSecret(note!), consultationNoteUpdatedAt: new Date() }
+            ? { consultationNoteCiphertext: encryptSecret(sanitizedNote), consultationNoteUpdatedAt: new Date() }
             : {}),
         },
         include: { doctor: { select: { id: true, title: true, fullName: true, slug: true } } },

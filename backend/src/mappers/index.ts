@@ -135,6 +135,7 @@ import type {
   AppointmentDto,
   AppointmentBookingDto,
   AppointmentIntakeDto,
+  ConsultationNoteDto,
   AppointmentDocumentDto,
   DoctorPortalProfileDto,
 } from "../schemas/entities";
@@ -1686,6 +1687,10 @@ export function toAppointmentBookingDto(booking: AppointmentBookingWithRelations
     errorSummary: booking.errorSummary,
     appointments: booking.appointments.map((appointment) => toAppointmentDto({ ...appointment, doctor: booking.doctor })),
     hasIntakeNote: Boolean(booking.intake),
+    // Adım 4 — kanonik randevu (§9.7.6 konvansiyonu: epikriz/reçete HER ZAMAN İLK randevuya
+    // yazılır, bkz. telehealth.livekit.routes.ts::/complete) üzerinden VARLIK bilgisi; İÇERİK
+    // bu DTO'ya ASLA taşınmaz (§9.7.5 madde 8 ile AYNI disiplin).
+    hasConsultationNote: Boolean(booking.appointments[0]?.consultationNoteCiphertext),
     documentCount: booking.documents?.length ?? 0,
     joinableFrom: joinableFrom ? joinableFrom.toISOString() : null,
     joinableUntil: joinableUntil ? joinableUntil.toISOString() : null,
@@ -1707,6 +1712,17 @@ export function toAppointmentIntakeDto(intake: AppointmentIntake, note: string |
     healthDataConsentVersion: intake.healthDataConsentVersion,
     createdAt: intake.createdAt.toISOString(),
     updatedAt: intake.updatedAt.toISOString(),
+  };
+}
+
+/**
+ * Adım 4 — çözülmüş konsültasyon notu DTO'su. `toAppointmentIntakeDto` İLE AYNI desen: decrypt
+ * ROUTE katmanında yapılır, mapper saf bir dönüşümdür (DB/şifreleme bilmez).
+ */
+export function toConsultationNoteDto(html: string | null, updatedAt: Date | null): ConsultationNoteDto {
+  return {
+    html,
+    updatedAt: updatedAt ? updatedAt.toISOString() : null,
   };
 }
 

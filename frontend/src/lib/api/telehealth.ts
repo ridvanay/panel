@@ -12,6 +12,7 @@ import type {
   BookingCheckoutSessionResponse,
   BookingInvoice,
   CancelBookingRequest,
+  ConsultationNote,
   CreateAppointmentRequest,
   CreateAppointmentResult,
   CreateBookingRequest,
@@ -175,6 +176,11 @@ export function upsertBookingIntake(bookingId: string, input: UpsertIntakeReques
 /** Hasta/booking'in doktoru/ADMIN (MANAGER HARİÇ) — her okuma sunucuda denetlenir (audit log). */
 export function getBookingIntake(bookingId: string, accessToken?: string): Promise<AppointmentIntake> {
   return apiFetch<AppointmentIntake>(`/appointments/bookings/${bookingId}/intake`, { query: { t: accessToken } });
+}
+
+/** `GET .../consultation-note` — not yoksa `html: null` ile 200 döner (404 DEĞİL). */
+export function getConsultationNote(bookingId: string, accessToken?: string): Promise<ConsultationNote> {
+  return apiFetch<ConsultationNote>(`/appointments/bookings/${bookingId}/consultation-note`, { query: { t: accessToken } });
 }
 
 /** KVKK md.11 — not METNİ `null`'lanır, rıza kanıtı denetim bütünlüğü için korunur. */

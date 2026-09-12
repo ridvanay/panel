@@ -3247,7 +3247,7 @@ export interface DemoTemplateConflictDetails {
  * tanımlanır ve openapi.yaml güncellendiğinde bu blokla karşılaştırılıp hizalanmalıdır.
  * -----------------------------------------------------------------------
  */
-export type AppointmentStatus = "SCHEDULED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED" | "NO_SHOW";
+export type AppointmentStatus = "PENDING_PAYMENT" | "SCHEDULED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED" | "NO_SHOW";
 
 export interface Specialty {
   id: string;
@@ -3482,6 +3482,9 @@ export interface AppointmentBooking {
   appointments: Appointment[];
   /** Şifreli notun VARLIĞI — metnin kendisi yalnızca `GET .../intake` ile ve denetim kaydıyla alınır. */
   hasIntakeNote: boolean;
+  /** Şifreli konsültasyon notunun (epikriz/reçete) VARLIĞI — `hasIntakeNote` İLE AYNI mantık, metnin
+   *  kendisi yalnızca `GET .../consultation-note` ile alınır. */
+  hasConsultationNote: boolean;
   /** Silinmemiş belge sayısı — `MANAGER` yalnızca bu sayıyı görebilir, içeriği GÖREMEZ. */
   documentCount: number;
   /** `min(startsAt) - 10dk`. `paymentStatus !== "PAID"` ise `null` (ödenmemiş görüşme açılmaz). */
@@ -3535,6 +3538,16 @@ export interface AppointmentIntake {
   healthDataConsentVersion: string;
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * Doktorun seans tamamlarken girdiği epikriz/reçete notu — Tiptap'in ürettiği sanitize edilmiş
+ * HTML. Yalnızca hasta, o booking'in doktoru ve `ADMIN` alabilir (intake İLE AYNI erişim deseni).
+ * Not yoksa `html: null` ile 200 döner, 404 DEĞİL.
+ */
+export interface ConsultationNote {
+  html: string | null;
+  updatedAt: string | null;
 }
 
 /**

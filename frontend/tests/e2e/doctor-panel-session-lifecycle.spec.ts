@@ -74,6 +74,11 @@ const EXPECTED_SESSION_PRICE_CENTS = 45000; // ₺450,00 — DB'den bu turda do�
 
 const CONSULTATION_NOTE = `QA e2e — otomatik epikriz notu (${new Date().toISOString()}). Hasta stabil, kontrol önerildi.`;
 
+/** Bu dosyanın EK kapsamındaki (adım 6-8) taze fixture booking'lerini TEKRAR ÇALIŞTIRMALAR
+ * arasında birbirinden ayırt etmek için — `admin-users-fixtures.ts`/`telehealth-multi-slot-
+ * booking.spec.ts::RUN_SUFFIX` İLE AYNI desen. */
+const RUN_SUFFIX = Date.now().toString(36);
+
 // ---------------------------------------------------------------------------
 // DB yardımcıları — `saas_dev`'e (host'a expose edilmiş Postgres, `docker-compose.yml`) karşı,
 // backend'in KENDİ `@prisma/client`'ı ile. `prisma db execute` SELECT sonucu DÖNDÜRMEZ (yalnızca
@@ -184,6 +189,104 @@ function readDoctorCompletedTotalsDirectly(doctorId: string): { grossCents: numb
 const DOCTOR_PROFILE_ID = "d7ceb8f4-b19e-4492-8a3c-524652fac98e"; // elif-aydemir, doctor_profiles.id (bkz. önceki UAT turu).
 
 // ---------------------------------------------------------------------------
+// qa-agent — bu turun EK kapsamı (orkestratör talimatı): Tiptap tabanlı konsültasyon notu
+// editörü — şablon seçici ("Standart Epikriz"/"İlaç Reçetesi"), toolbar biçimlendirme
+// (kalın/madde işaretli liste), tablo doldurma — VE hastanın kendi randevu sayfasında bu notu
+// biçimlendirmesiyle okuyup yazdırabilmesi.
+//
+// Yukarıdaki `TARGET_BOOKING_NUMBER` (gerçek, önceden var olan UAT booking'i) BİLİNÇLİ OLARAK
+// KULLANILMAZ — o booking zaten adım 1-5'in DAR kapsamına (belge/not rozeti, tek epikriz metni,
+// kazanç toplamları) bağlıdır; iki farklı şablonu/tabloyu/negatif senaryoyu ORAYA eklemek
+// kırılganlık üretir. Bunun yerine `support/telehealth-fixtures.ts`'teki İZOLE fixture booking
+// FELSEFESİYLE (`telehealth-multi-slot-booking.spec.ts`) AYNI şekilde, GERÇEK `POST
+// /appointments/bookings` (public, AYNI `elif-aydemir` doktoru, AYNI backend/DB — bu dosya
+// `saas_e2e` DEĞİL `saas_dev`'e karşı çalışır) ile TAZE, birbirinden bağımsız booking'ler üretilir.
+// Ödeme/webhook akışı BAŞKA dosyalarda (`telehealth-multi-slot-booking.spec.ts`) KAPSANIYOR —
+// burada YENİDEN test edilmez; booking'in durumu `resetAppointmentToInProgress` İLE AYNI "gerçek
+// varlık, sahte olan yalnızca zamanlama/durum" felsefesiyle doğrudan DB'de hedef duruma taşınır.
+//
+// qa-agent bulgusu (bu tur, KRİTİK — final rapora taşındı): bu dosyanın hedeflediği paylaşılan
+// dev ortamında `elif-aydemir` doktorunun booking listesinde süresi dolmuş, ödenmemiş
+// (`PENDING_PAYMENT`) bir randevu satırı birikince `/doctor` sayfasının TAMAMI çöküyordu
+// (`AppointmentStatusBadge`'in `Record<AppointmentStatus, ...>` haritası `PENDING_PAYMENT`'ı
+// İÇERMİYOR — `frontend/src/lib/api/types.ts::AppointmentStatus` union'ı da backend'in 6 değerli
+// `AppointmentStatus` enum'ıyla (bkz. `schema.prisma`) SENKRON DEĞİL, yalnızca 5 değer var).
+// Randevu bu turda backend'in KENDİ süre-dolumu süpürücüsü tarafından temizlendiği için (gerçek
+// zamanlı gözlem — qa-agent bu satırı SİLMEDİ/DEĞİŞTİRMEDİ) şu an tekrar ÜRETİLEMEDİ, ama kök
+// neden kod okumasıyla KESİN doğrulandı ve gerçek bir çökme ile REPRODUCE edildi (bkz. final
+// rapor) — frontend-agent'a yönlendirilmesi gerekir, qa-agent BURADA DÜZELTMEZ.
+// ---------------------------------------------------------------------------
+const DEV_API_BASE_URL = process.env.DEV_API_BASE_URL ?? "http://localhost:4000/api/v1";
+const FIXTURE_DOCTOR_SLUG = "elif-aydemir";
+
+interface FreshBookingFixture {
+  bookingId: string;
+  bookingNumber: string;
+  appointmentId: string;
+  accessToken: string;
+  patientName: string;
+}
+
+async function findAvailableSlotIso(): Promise<string> {
+  const from = new Date().toISOString().slice(0, 10);
+  const toDate = new Date();
+  toDate.setUTCDate(toDate.getUTCDate() + 14);
+  const to = toDate.toISOString().slice(0, 10);
+  const res = await fetch(`${DEV_API_BASE_URL}/doctors/${FIXTURE_DOCTOR_SLUG}/slots?from=${from}&to=${to}`);
+  const body = (await res.json()) as { data?: { startsAt: string; available: boolean }[] };
+  const slot = (body.data ?? []).find((s) => s.available);
+  if (!slot) throw new Error(`qa-agent: ${FIXTURE_DOCTOR_SLUG} için müsait slot bulunamadı (consultation-note e2e fixture'ı).`);
+  return slot.startsAt;
+}
+
+/** GERÇEK `POST /appointments/bookings` (public, hız sınırı 5/dk) — `telehealth-fixtures.ts::
+ * createBookingRaw` İLE AYNI kontrat, yalnızca bu dosyanın kendi `localhost:4000` hedefine karşı. */
+async function createFreshSingleSlotBooking(patientSuffix: string): Promise<FreshBookingFixture> {
+  const startsAt = await findAvailableSlotIso();
+  // Kısa bir çalıştırma-bazlı sonek (`RUN_SUFFIX`) — bu dosya TEKRAR ÇALIŞTIRILABİLİR olmalı
+  // (bkz. dosya başındaki "KOŞULSUZ SIFIRLAR" gerekçesi); aksi halde önceki bir koşumdan kalan
+  // AYNI isimli bir booking satırı `locator("tr", { hasText: ... })`'ı BİRDEN FAZLA satıra
+  // eşleştirip strict-mode ihlaline yol açar (ilk elden gözlemlendi, bu turda).
+  const patientName = `QA E2E Not Testi ${patientSuffix} ${RUN_SUFFIX}`;
+  const res = await fetch(`${DEV_API_BASE_URL}/appointments/bookings`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      doctorSlug: FIXTURE_DOCTOR_SLUG,
+      slots: [startsAt],
+      patientName,
+      patientEmail: `qa-e2e-consultation-note-${patientSuffix}-${Date.now()}@example.com`,
+      consent: true,
+    }),
+  });
+  const body = (await res.json()) as {
+    data?: { bookingId: string; bookingNumber: string; accessToken: string; appointments: { id: string }[] };
+    error?: { code: string; message: string };
+  };
+  if (res.status !== 201 || !body.data) {
+    throw new Error(`qa-agent: taze fixture booking oluşturulamadı (${patientSuffix}): ${res.status} ${JSON.stringify(body.error)}`);
+  }
+  return {
+    bookingId: body.data.bookingId,
+    bookingNumber: body.data.bookingNumber,
+    appointmentId: body.data.appointments[0]!.id,
+    accessToken: body.data.accessToken,
+    patientName,
+  };
+}
+
+/** Ödeme/webhook akışı BAŞKA dosyalarda kapsanıyor (bkz. yukarıdaki başlık yorumu) — burada
+ * yalnızca booking'in durumu doğrudan hedef duruma taşınır (`resetAppointmentToInProgress`
+ * İLE AYNI `prisma db execute` deseni). */
+function markFixtureBookingPaidWithAppointmentStatus(fixture: FreshBookingFixture, status: "IN_PROGRESS" | "SCHEDULED"): void {
+  const esc = (value: string) => value.replace(/'/g, "''");
+  runSqlDirectly(`UPDATE "appointment_bookings" SET "paymentStatus" = 'PAID' WHERE id = '${esc(fixture.bookingId)}';`);
+  runSqlDirectly(
+    `UPDATE "appointments" SET "status" = '${status}', "endedAt" = NULL, "consultationNoteCiphertext" = NULL, "consultationNoteUpdatedAt" = NULL WHERE id = '${esc(fixture.appointmentId)}';`
+  );
+}
+
+// ---------------------------------------------------------------------------
 // 2FA login yardımcısı — `(auth)/login/page.tsx`'in GERÇEK iki adımlı akışı (`requiresTwoFactor`
 // → "Doğrulama Kodu" ekranı). `otplib`'in `authenticator.generate()`'i backend'in KENDİ
 // `lib/totp.ts::verifyTotp` sarmalayıcısının (`authenticator.verify`) BEKLEDİĞİ AYNI RFC 6238
@@ -208,6 +311,10 @@ async function loginDoctorWithTwoFactor(browser: Browser, email: string, passwor
 }
 
 let doctorPage: Page;
+/** qa-agent — bu turun EK kapsamı (yukarıdaki başlık yorumu): şablon/toolbar/tablo/hasta-tarafı. */
+let epicrisisBooking: FreshBookingFixture;
+let prescriptionBooking: FreshBookingFixture;
+let scheduledOnlyBooking: FreshBookingFixture;
 
 test.beforeAll(async ({ browser }, testInfo) => {
   testInfo.setTimeout(60_000);
@@ -217,6 +324,21 @@ test.beforeAll(async ({ browser }, testInfo) => {
 
 test.afterAll(async () => {
   await doctorPage?.close();
+});
+
+test.beforeAll(async ({}, testInfo) => {
+  testInfo.setTimeout(60_000);
+  // Üç bağımsız, taze booking — `elif-aydemir`'in paylaşılan booking listesindeki DİĞER
+  // satırlardan (adım 1-5'in hedef booking'i DAHİL) TAMAMEN İZOLE. Rate limit (5/dk) —
+  // ardışık 3 çağrı bu limitin altındadır.
+  epicrisisBooking = await createFreshSingleSlotBooking("epikriz");
+  markFixtureBookingPaidWithAppointmentStatus(epicrisisBooking, "IN_PROGRESS");
+
+  prescriptionBooking = await createFreshSingleSlotBooking("recete");
+  markFixtureBookingPaidWithAppointmentStatus(prescriptionBooking, "IN_PROGRESS");
+
+  scheduledOnlyBooking = await createFreshSingleSlotBooking("notsuz");
+  markFixtureBookingPaidWithAppointmentStatus(scheduledOnlyBooking, "SCHEDULED");
 });
 
 test("adım 1-2: 2FA login ile /doctor portalına erişim, booking listesinde 'Tıbbi Belgeler (1)' rozeti ve hasta notu göstergesi görünür", async () => {
@@ -277,7 +399,16 @@ test("adım 4: 'Seansı Tamamla' — epikriz notu girilir, rozet 'Tamamlandı'ya
   const dialog = doctorPage.getByRole("dialog", { name: "Seansı Tamamla" });
   await expect(dialog).toBeVisible({ timeout: 15_000 });
 
-  await dialog.getByLabel(/Epikriz \/ Konsültasyon Notu/).fill(CONSULTATION_NOTE);
+  // qa-agent bulgusu (bu tur) — modal artık düz bir `<textarea>` DEĞİL, Tiptap tabanlı
+  // `ConsultationNoteEditor` (bkz. final rapor: `frontend/src/components/site/telehealth/
+  // consultation-note-editor.tsx`). Eski `dialog.getByLabel(...).fill(...)` ARTIK HİÇBİR ŞEYE
+  // eşleşmiyor (etiket artık ilişkisiz düz metin) — `post-editor.tsx`/`admin-email-template-
+  // editor.spec.ts` İLE AYNI, bu depoda YERLEŞİK ProseMirror deseni (`.ProseMirror` + gerçek
+  // klavye girişi, `fill()` DEĞİL) kullanılır.
+  const editor = dialog.locator(".ProseMirror");
+  await editor.click();
+  await doctorPage.keyboard.type(CONSULTATION_NOTE);
+  await expect(editor).toContainText(CONSULTATION_NOTE);
   await dialog.getByRole("button", { name: "Seansı Tamamla" }).click();
 
   await expect(dialog).not.toBeVisible({ timeout: 20_000 });
@@ -335,4 +466,212 @@ test("adım 5: /doctor/earnings — brüt/komisyon(%15)/net tutar ve tamamlanan 
   await expect(sessionRow.getByText("₺450,00", { exact: true })).toBeVisible();
   await expect(sessionRow.getByText("₺67,50", { exact: true })).toBeVisible();
   await expect(sessionRow.getByText("₺382,50", { exact: true })).toBeVisible();
+});
+
+// =============================================================================
+// qa-agent — bu turun EK kapsamı (bkz. dosya ortasındaki fixture başlık yorumu): Tiptap editörü
+// şablonları/toolbar biçimlendirmesi/tablosu + hasta tarafı okuma/yazdırma + negatif senaryo.
+// `epicrisisBooking`/`prescriptionBooking`/`scheduledOnlyBooking` — `elif-aydemir`'in paylaşılan
+// listesindeki DİĞER satırlardan (yukarıdaki adım 1-5) TAMAMEN İZOLE, taze fixture'lar.
+// =============================================================================
+
+/**
+ * `doctor-bookings-panel.tsx` — `GET /doctor/bookings` `limit:20`, `seq asc`, cursor sayfalı
+ * ("Daha Fazla Yükle"). `elif-aydemir` paylaşılan/kalıcı bir dev DB'sinde yıllar/turlar içinde
+ * biriken bir doktor olduğundan (bu turda ölçüldü: 20+ booking) TAZE fixture'larımız (en YÜKSEK
+ * `seq`) ilk sayfada GÖRÜNMEYEBİLİR — `telehealth-doctor-profile-redesign.spec.ts::madde 2`
+ * bulgusunun AYNISI, farklı bir liste için. O dosyadaki çözüm (arama kutusu) BURADA YOK; bu
+ * yüzden hedef satır bulunana kadar "Daha Fazla Yükle" TEKRAR TEKRAR tıklanır (`toPass` İLE AYNI
+ * polling felsefesi, sabit `waitForTimeout` DEĞİL).
+ */
+async function ensureBookingRowLoaded(page: Page, patientName: string): Promise<void> {
+  await expect(async () => {
+    const row = page.locator("tr", { hasText: patientName });
+    if ((await row.count()) > 0) return;
+    const loadMore = page.getByRole("button", { name: "Daha Fazla Yükle" });
+    if ((await loadMore.count()) > 0) await loadMore.click();
+    expect(await row.count(), `"${patientName}" satırı sayfalama sonrası hâlâ yüklenmedi`).toBeGreaterThan(0);
+  }).toPass({ timeout: 20_000, intervals: [500, 1_000, 2_000] });
+}
+
+test("adım 6: 'Standart Epikriz' şablonu + kalın/madde işaretli liste biçimlendirmesiyle not girilir, seans tamamlanır", async () => {
+  test.setTimeout(60_000);
+  await doctorPage.goto("/doctor");
+  await expect(doctorPage.getByRole("heading", { name: "Randevularım" })).toBeVisible({ timeout: 15_000 });
+
+  await ensureBookingRowLoaded(doctorPage, epicrisisBooking.patientName);
+  const row = doctorPage.locator("tr", { hasText: epicrisisBooking.patientName });
+  await expect(row).toBeVisible({ timeout: 15_000 });
+  await row.getByRole("button", { name: "Seansı Tamamla" }).click();
+
+  const dialog = doctorPage.getByRole("dialog", { name: "Seansı Tamamla" });
+  await expect(dialog).toBeVisible({ timeout: 15_000 });
+
+  // Şablon seçici — "Standart Epikriz" (editör boşken tıklanır, `window.confirm` TETİKLENMEZ —
+  // `consultation-note-editor.tsx::applyTemplate` yalnızca editör DOLUYSA onay ister).
+  await dialog.getByRole("button", { name: "Standart Epikriz" }).click();
+  const editor = dialog.locator(".ProseMirror");
+  await expect(editor.locator("h3", { hasText: "Şikayet" })).toBeVisible();
+  await expect(editor.locator("h3", { hasText: "Öneriler" })).toBeVisible();
+
+  // qa-agent bulgusu (bu tur) — "toolbar butonuna ÖNCE tıkla, SONRA yaz" sırası bu ProseMirror
+  // editöründe GERÇEK bir race'e yol açıyor: `chain().focus().toggleX().run()` DOM focus'unu
+  // programatik olarak geri veriyor ama View'in native `keydown`'ları GÜVENLE işleyebilmesi için
+  // bir sonraki tick'e ihtiyacı var — hemen ardından `keyboard.type()` çağrılırsa metnin İLK
+  // birkaç karakteri SESSİZCE düşüyor (ilk elden gözlemlendi, `aria-pressed` bekmesi dahi bunu
+  // ÇÖZMÜYOR). Sağlam desen — HER ZAMAN "ÖNCE yaz, SONRA seç+biçimlendir" (`post-editor.tsx`
+  // İLE AYNI ProseMirror deseni, yalnızca sıralama YER DEĞİŞTİRİR): yazma anında editör ZATEN
+  // odaklı/kararlı olduğundan karakter kaybı YOK.
+  //
+  // Şablon HTML'i `<h3>Öneriler</h3><p></p>` ile biter — `Control+End` imleci belgenin gerçek
+  // sonundaki (zaten boş) paragrafa taşır.
+  await editor.click();
+  await doctorPage.keyboard.press("Control+End");
+  await doctorPage.keyboard.type("Kontrol öneriliyor.");
+  await doctorPage.keyboard.press("Home");
+  await doctorPage.keyboard.press("Shift+End");
+  await dialog.getByRole("button", { name: "Kalın" }).click();
+  // qa-agent bulgusu (bu tur, EK) — `aria-pressed` beklemek TEK BAŞINA yeterli DEĞİL (React
+  // state'i günceller ama komutun GERÇEKTEN uygulandığının kanıtı DEĞİL); bir sonraki paragrafa
+  // geçmeden ÖNCE GERÇEK DOM çıktısı (`<strong>`) doğrulanır — aksi halde bu iki ayrı biçimlendirme
+  // işlemi (kalın + liste) birbirinin ÜZERİNE yazılabiliyor (ilk elden gözlemlendi: liste
+  // paragrafına geçildiğinde HENÜZ commit edilmemiş kalın komutu YANLIŞ paragrafa uygulandı).
+  await expect(editor.locator("strong", { hasText: "Kontrol öneriliyor." })).toBeVisible();
+
+  // Liste — "Tanı" başlığı altındaki BAĞIMSIZ boş paragrafa yazılır (bold seçim durumundan
+  // İZOLE, aynı gerekçe).
+  await editor.locator("p").nth(2).click();
+  await doctorPage.keyboard.type("Bol sıvı tüketimi");
+  await doctorPage.keyboard.press("Home");
+  await doctorPage.keyboard.press("Shift+End");
+  await dialog.getByRole("button", { name: "Madde listesi" }).click();
+  await expect(editor.locator("li", { hasText: "Bol sıvı tüketimi" })).toBeVisible();
+
+  // Son bir kez, HER İKİ biçimlendirmenin de BİRBİRİNİ BOZMADAN bir arada kalıcı olduğunu doğrula.
+  await expect(editor.locator("strong", { hasText: "Kontrol öneriliyor." })).toBeVisible();
+
+  await dialog.getByRole("button", { name: "Seansı Tamamla" }).click();
+  await expect(dialog).not.toBeVisible({ timeout: 20_000 });
+  // `handleComplete` başarı sonrası TÜM listeyi (`onRetry` → `load()`) SIFIRDAN, yalnızca 1.
+  // sayfa (`limit:20`) olarak yeniden çeker — önceden tıklanan "Daha Fazla Yükle" sayfaları
+  // KAYBOLUR. `elif-aydemir`'in paylaşılan/kalıcı listesi 20'yi AŞTIĞINDAN satırımız yeniden
+  // sayfalanana kadar GÖRÜNMEYEBİLİR (`ensureBookingRowLoaded` İLE AYNI gerekçe — bu kez
+  // reload SONRASI tekrar uygulanır).
+  await ensureBookingRowLoaded(doctorPage, epicrisisBooking.patientName);
+  await expect(row.locator("span", { hasText: "Tamamlandı" })).toBeVisible({ timeout: 20_000 });
+
+  await expect(async () => {
+    const appt = readAppointmentDirectly(epicrisisBooking.appointmentId);
+    expect(appt.status).toBe("COMPLETED");
+    expect(appt.hasConsultationNote, "consultationNoteCiphertext NULL kaldı — not yazılmamış").toBe(true);
+  }).toPass({ timeout: 15_000, intervals: [500, 1_000, 2_000] });
+});
+
+test("adım 6 (hasta tarafı): epikriz notu 'Doktor Notu / Reçete' bölümünde kalın metin + madde işaretli listeyle görüntülenir, Yazdır window.print tetikler", async ({
+  page,
+}) => {
+  test.setTimeout(30_000);
+  // §9.7.7 madde 4 — misafir magic-link (`?t=`) erişimi, oturum GEREKMEZ (bkz.
+  // `patient-booking-detail-panel.tsx` dosya başı yorumu). `window.print` GERÇEK bir yazdırma
+  // diyaloğu açmadan (Playwright'te zaten açılmaz) yalnızca ÇAĞRILDIĞI bir spy ile doğrulanır —
+  // [DTI] "mock yasak" kısıtı bu ölçüm tekniğine değil ÜRÜNÜN KENDİSİNE ilişkindir.
+  await page.addInitScript(() => {
+    (window as unknown as { __qaPrintCalled: boolean }).__qaPrintCalled = false;
+    window.print = () => {
+      (window as unknown as { __qaPrintCalled: boolean }).__qaPrintCalled = true;
+    };
+  });
+
+  await page.goto(`/patient/bookings/${epicrisisBooking.bookingId}?t=${epicrisisBooking.accessToken}`, { waitUntil: "domcontentloaded" });
+  await expect(page.getByText(epicrisisBooking.bookingNumber)).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("heading", { name: "Doktor Notu / Reçete" })).toBeVisible({ timeout: 15_000 });
+
+  // Doktor notu varsayılan GİZLİ — "Görüntüle" tıklanana kadar İÇERİK ÇEKİLMEZ (adım 3'teki
+  // hasta notu İLE AYNI disiplin, bkz. `handleViewConsultationNote`).
+  await page.getByRole("button", { name: "Görüntüle" }).click();
+
+  const printButton = page.getByRole("button", { name: "Yazdır" });
+  await expect(printButton).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator("strong", { hasText: "Kontrol öneriliyor." })).toBeVisible();
+  await expect(page.locator("li", { hasText: "Bol sıvı tüketimi" })).toBeVisible();
+
+  await printButton.click();
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { __qaPrintCalled?: boolean }).__qaPrintCalled), { timeout: 5_000 })
+    .toBe(true);
+});
+
+test("adım 7: 'İlaç Reçetesi' şablonu ile tabloya ilaç adı/dozaj/kullanım şekli girilir, seans tamamlanır", async () => {
+  test.setTimeout(60_000);
+  await doctorPage.goto("/doctor");
+  await expect(doctorPage.getByRole("heading", { name: "Randevularım" })).toBeVisible({ timeout: 15_000 });
+
+  await ensureBookingRowLoaded(doctorPage, prescriptionBooking.patientName);
+  const row = doctorPage.locator("tr", { hasText: prescriptionBooking.patientName });
+  await expect(row).toBeVisible({ timeout: 15_000 });
+  await row.getByRole("button", { name: "Seansı Tamamla" }).click();
+
+  const dialog = doctorPage.getByRole("dialog", { name: "Seansı Tamamla" });
+  await expect(dialog).toBeVisible({ timeout: 15_000 });
+
+  await dialog.getByRole("button", { name: "İlaç Reçetesi" }).click();
+  const editor = dialog.locator(".ProseMirror");
+  await expect(editor.locator("th", { hasText: "İlaç Adı" })).toBeVisible();
+  await expect(editor.locator("th", { hasText: "Dozaj" })).toBeVisible();
+  await expect(editor.locator("th", { hasText: "Kullanım Şekli" })).toBeVisible();
+
+  // Şablonun veri satırı (tbody'nin 2. `tr`'si, 1. satır başlıklardır) — 3 boş hücreye sırayla
+  // tıklanıp yazılır; her hücreden SONRA gerçek DOM içeriği doğrulanır (adım 6'daki AYNI
+  // gerekçe — bir sonraki hücreye geçmeden ÖNCE yazının GERÇEKTEN commit edildiğinden emin ol).
+  const dataRow = editor.locator("table tbody tr").nth(1);
+  await dataRow.locator("td").nth(0).click();
+  await doctorPage.keyboard.type("Parasetamol 500mg");
+  await expect(dataRow.locator("td").nth(0)).toContainText("Parasetamol 500mg");
+
+  await dataRow.locator("td").nth(1).click();
+  await doctorPage.keyboard.type("Günde 3 kez 1 tablet");
+  await expect(dataRow.locator("td").nth(1)).toContainText("Günde 3 kez 1 tablet");
+
+  await dataRow.locator("td").nth(2).click();
+  await doctorPage.keyboard.type("Yemeklerden sonra, bol suyla");
+  await expect(dataRow.locator("td").nth(2)).toContainText("Yemeklerden sonra, bol suyla");
+
+  await dialog.getByRole("button", { name: "Seansı Tamamla" }).click();
+  await expect(dialog).not.toBeVisible({ timeout: 20_000 });
+  // Reload sonrası yeniden sayfalama gerekebilir (bkz. adım 6'daki AYNI gerekçe).
+  await ensureBookingRowLoaded(doctorPage, prescriptionBooking.patientName);
+  await expect(row.locator("span", { hasText: "Tamamlandı" })).toBeVisible({ timeout: 20_000 });
+
+  await expect(async () => {
+    const appt = readAppointmentDirectly(prescriptionBooking.appointmentId);
+    expect(appt.status).toBe("COMPLETED");
+    expect(appt.hasConsultationNote, "consultationNoteCiphertext NULL kaldı — not yazılmamış").toBe(true);
+  }).toPass({ timeout: 15_000, intervals: [500, 1_000, 2_000] });
+});
+
+test("adım 7 (hasta tarafı): reçete tablosu 'Doktor Notu / Reçete' bölümünde <table> olarak render edilir", async ({ page }) => {
+  test.setTimeout(30_000);
+  await page.goto(`/patient/bookings/${prescriptionBooking.bookingId}?t=${prescriptionBooking.accessToken}`, { waitUntil: "domcontentloaded" });
+  await expect(page.getByText(prescriptionBooking.bookingNumber)).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("heading", { name: "Doktor Notu / Reçete" })).toBeVisible({ timeout: 15_000 });
+
+  await page.getByRole("button", { name: "Görüntüle" }).click();
+
+  const table = page.locator("table");
+  await expect(table).toBeVisible({ timeout: 15_000 });
+  await expect(table.locator("th", { hasText: "İlaç Adı" })).toBeVisible();
+  await expect(table.locator("td", { hasText: "Parasetamol 500mg" })).toBeVisible();
+  await expect(table.locator("td", { hasText: "Günde 3 kez 1 tablet" })).toBeVisible();
+  await expect(table.locator("td", { hasText: "Yemeklerden sonra, bol suyla" })).toBeVisible();
+});
+
+test("adım 8 [negatif]: notu olmayan (tamamlanmamış) bir booking'in hasta sayfasında 'Doktor Notu / Reçete' bölümü HİÇ görünmez", async ({
+  page,
+}) => {
+  test.setTimeout(30_000);
+  await page.goto(`/patient/bookings/${scheduledOnlyBooking.bookingId}?t=${scheduledOnlyBooking.accessToken}`, { waitUntil: "domcontentloaded" });
+  await expect(page.getByText(scheduledOnlyBooking.bookingNumber)).toBeVisible({ timeout: 15_000 });
+
+  await expect(page.getByRole("heading", { name: "Doktor Notu / Reçete" })).toHaveCount(0);
+  await expect(page.getByText("Doktor Notu", { exact: false })).toHaveCount(0);
 });

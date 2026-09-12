@@ -15,9 +15,8 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert } from "@/components/ui/alert";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Field } from "@/components/ui/field";
-import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { ConsultationNoteEditor } from "@/components/site/telehealth/consultation-note-editor";
 
 /**
  * `.claude/design-notes-telehealth.md` §12.5 (Booking Turu 1) + §13 (Booking Turu 3) — randevu
@@ -319,7 +318,7 @@ export function BookingListView({ bookings, loadError, onRetry, perspective, tim
       {/* §13.4.2 — "Seansı Tamamla" mini-modalı, YALNIZCA doktor perspektifi. */}
       {perspective === "doctor" && completingBooking && completingFirstAppointment && (
         <Dialog open={completingId !== null} onOpenChange={(open) => !open && setCompletingId(null)}>
-          <DialogContent className="max-w-md">
+          <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Seansı Tamamla</DialogTitle>
               <DialogDescription>
@@ -330,18 +329,10 @@ export function BookingListView({ bookings, loadError, onRetry, perspective, tim
 
             {completeError && <Alert variant="error">{completeError}</Alert>}
 
-            <Field id="consultationNote" label="Epikriz / Konsültasyon Notu (opsiyonel)">
-              {(inputProps) => (
-                <Textarea
-                  {...inputProps}
-                  rows={4}
-                  maxLength={4000}
-                  placeholder="Görüşmede konuşulanların kısa bir özeti (tanı, öneri, sonraki adım)…"
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                />
-              )}
-            </Field>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Epikriz / Konsültasyon Notu (opsiyonel)</label>
+              <ConsultationNoteEditor content={note} onChange={setNote} />
+            </div>
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setCompletingId(null)}>

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, CircleCheck, FileText, Loader2, Trash2 } from "lucide-react";
+import { AlertTriangle, CircleCheck, FileText, Loader2, Printer, StickyNote, Trash2 } from "lucide-react";
 import * as telehealthApi from "@/lib/api/telehealth";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import type { AppointmentBooking } from "@/lib/api/types";
@@ -48,6 +48,8 @@ export function PatientBookingDetailPanel({
   const [addingIntake, setAddingIntake] = useState(false);
   const [intakeNote, setIntakeNote] = useState<string | null | undefined>(undefined);
   const [intakeError, setIntakeError] = useState<string | null>(null);
+  const [consultationNote, setConsultationNote] = useState<string | null | undefined>(undefined);
+  const [consultationNoteError, setConsultationNoteError] = useState<string | null>(null);
   const [polling, setPolling] = useState(paymentOutcome === "success");
   const pollCountRef = useRef(0);
 
@@ -113,6 +115,16 @@ export function PatientBookingDetailPanel({
       setIntakeNote(intake.note);
     } catch (err) {
       setIntakeError(friendlyErrorMessage(err));
+    }
+  }
+
+  async function handleViewConsultationNote() {
+    setConsultationNoteError(null);
+    try {
+      const result = await telehealthApi.getConsultationNote(bookingId, accessToken);
+      setConsultationNote(result.html);
+    } catch (err) {
+      setConsultationNoteError(friendlyErrorMessage(err));
     }
   }
 
@@ -261,6 +273,54 @@ export function PatientBookingDetailPanel({
           </div>
         )}
       </section>
+
+      {booking.hasConsultationNote && (
+        <section className="space-y-3">
+          <div className="flex items-center justify-between print:hidden">
+            <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+              <StickyNote className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+              Doktor Notu / Reçete
+            </h2>
+            {consultationNote && (
+              <Button type="button" variant="outline" size="sm" onClick={() => window.print()}>
+                <Printer className="h-4 w-4" aria-hidden="true" />
+                Yazdır
+              </Button>
+            )}
+          </div>
+
+          {consultationNoteError && <Alert variant="error">{consultationNoteError}</Alert>}
+
+          {/* Yazdırmada görünen antet — ekranda gizli */}
+          <div className="hidden print:block print:mb-6">
+            <div className="flex items-start justify-between border-b border-border pb-4">
+              <div>
+                <p className="text-base font-semibold text-foreground">
+                  {booking.doctor.title} {booking.doctor.fullName}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-foreground/50">Hasta</p>
+                <p className="text-sm font-medium text-foreground">{booking.patientName}</p>
+              </div>
+            </div>
+          </div>
+
+          {consultationNote === undefined ? (
+            <button
+              type="button"
+              onClick={() => void handleViewConsultationNote()}
+              className="text-xs font-medium text-primary hover:underline"
+            >
+              Görüntüle
+            </button>
+          ) : (
+            <div className="rounded-[var(--site-radius)] border border-border bg-surface p-4">
+              <div className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: consultationNote ?? "" }} />
+            </div>
+          )}
+        </section>
+      )}
 
       <p className="text-xs text-foreground/40">
         <Link href={localize("/patient/bookings")} className="hover:underline">

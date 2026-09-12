@@ -2376,8 +2376,8 @@ export type BookingCheckoutSessionResponseDto = z.infer<typeof BookingCheckoutSe
 
 /**
  * Rezervasyon OKUMA DTO'su. `meetingRoomName`/`accessTokenHash` TAŞINMAZ (minimum ifşa, §8).
- * `hasIntakeNote`/`documentCount` DIŞINDA sağlık verisi İÇERİĞİ bu şemada ASLA yer almaz
- * (§9.7.5 madde 8).
+ * `hasIntakeNote`/`hasConsultationNote`/`documentCount` DIŞINDA sağlık verisi İÇERİĞİ bu şemada
+ * ASLA yer almaz (§9.7.5 madde 8).
  */
 export const AppointmentBookingSchema = z.object({
   id: z.string().uuid(),
@@ -2399,6 +2399,10 @@ export const AppointmentBookingSchema = z.object({
   errorSummary: z.string().nullable(),
   appointments: z.array(AppointmentSchema),
   hasIntakeNote: z.boolean(),
+  // Adım 4 — hasta kendi randevu detay sayfasında doktorun epikriz/reçete notunu görebilmeden
+  // ÖNCE ekstra bir GET yapmadan "var mı yok mu" bilgisini booking listesinde/detayında görsün
+  // diye eklendi (`hasIntakeNote` İLE BİREBİR AYNI desen, bkz. mappers/index.ts::toAppointmentBookingDto).
+  hasConsultationNote: z.boolean(),
   documentCount: z.number().int(),
   joinableFrom: z.string().nullable(),
   joinableUntil: z.string().nullable(),
@@ -2445,6 +2449,20 @@ export const AppointmentIntakeSchema = z.object({
   updatedAt: z.string(),
 });
 export type AppointmentIntakeDto = z.infer<typeof AppointmentIntakeSchema>;
+
+/**
+ * Adım 4 — doktorun `POST /appointments/{id}/complete`'te yazdığı epikriz/reçete notu (Tiptap
+ * zengin metin editörünün ürettiği, `sanitizeRichHtml` ile temizlenmiş HTML). `intake`'in
+ * AKSİNE not YOKSA (seans henüz tamamlanmamış/not girilmemiş) `404` DEĞİL, `html: null` ile
+ * `200` döner — bu normal bir durumdur (bkz. `GET /appointments/bookings/{bookingId}/consultation-note`).
+ * Erişim `AppointmentIntakeSchema` İLE AYNI eşik: hasta/booking'in doktoru/`ADMIN`
+ * (`assertBookingHealthDataAccess`, `MANAGER`/`EDITOR` HARİÇ).
+ */
+export const ConsultationNoteSchema = z.object({
+  html: z.string().nullable(),
+  updatedAt: z.string().nullable(),
+});
+export type ConsultationNoteDto = z.infer<typeof ConsultationNoteSchema>;
 
 /**
  * Tıbbi belge METADATA'sı. `mediaId`/`url` alanı YOKTUR ve EKLENMEYECEKTİR — sağlık belgesi

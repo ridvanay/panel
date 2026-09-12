@@ -757,6 +757,146 @@ describe("telehealth booking — sağlık verisi yetki matrisi (§9.7.5 KARAR J,
   });
 });
 
+describe("telehealth booking — konsültasyon notu (Adım 4, GET .../consultation-note)", () => {
+  let app: FastifyInstance;
+  let adminToken: string;
+  let managerToken: string;
+  let editorToken: string;
+
+  beforeAll(async () => {
+    app = await buildTestApp();
+    await resetDatabase(app.prisma);
+    await setTelehealthModuleEnabled(app, true);
+    const admin = await registerTestUser(app, { email: `telehealth-note-admin-${crypto.randomUUID()}@example.com` });
+    adminToken = admin.accessToken;
+    managerToken = await loginAs(app, (await createUserDirect(app, "MANAGER")).email);
+    editorToken = await loginAs(app, (await createUserDirect(app, "EDITOR")).email);
+  });
+
+  afterAll(async () => {
+    await resetDatabase(app.prisma);
+    await app.close();
+  });
+
+  async function createBookingDirect() {
+    const { doctor } = await createDoctorWithAvailability(app);
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/v1/appointments/bookings",
+      payload: bookingPayload(doctor.slug, [nextMondayNineAmUtc()]),
+    });
+    expect(created.statusCode).toBe(201);
+    const data = created.json().data as { bookingId: string; accessToken: string; appointments: { id: string }[] };
+    return { doctor, bookingId: data.bookingId, accessToken: data.accessToken, appointmentId: data.appointments[0]!.id };
+  }
+
+  it("not YOKSA (seans tamamlanmamış) 404 DEĞİL, `{ html: null, updatedAt: null }` ile 200 döner; audit ATILMAZ", async () => {
+    const { bookingId, accessToken } = await createBookingDirect();
+
+    const res = await app.inject({ method: "GET", url: `/api/v1/appointments/bookings/${bookingId}/consultation-note?t=${accessToken}` });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data).toEqual({ html: null, updatedAt: null });
+    expect(res.headers["cache-control"]).toBe("no-store");
+
+    const audit = await app.prisma.auditLog.findFirst({
+      where: { action: "telehealth.consultation_note.accessed", targetId: bookingId },
+    });
+    expect(audit).toBeNull();
+
+    const bookingView = await app.inject({ method: "GET", url: `/api/v1/appointments/bookings/${bookingId}?t=${accessToken}` });
+    expect(bookingView.json().data.hasConsultationNote).toBe(false);
+  });
+
+  it("doktor `/complete` ile not yazdıktan sonra hasta okuyabilir; yetki matrisi (hasta/doktor/ADMIN ✓, MANAGER ✗, EDITOR ✗); audit loglanır", async () => {
+    const { doctor, bookingId, accessToken, appointmentId } = await createBookingDirect();
+
+    const doctorUser = await createUserDirect(app, "USER");
+    const doctorUserToken = await loginAs(app, doctorUser.email);
+    await app.inject({
+      method: "PATCH",
+      url: `/api/v1/admin/telehealth/doctors/${doctor.id}`,
+      headers: authHeader(adminToken),
+      payload: { userId: doctorUser.id },
+    });
+
+    const complete = await app.inject({
+      method: "POST",
+      url: `/api/v1/appointments/${appointmentId}/complete`,
+      headers: authHeader(doctorUserToken),
+      payload: { note: "<p>Reçete: parasetamol 500mg</p>" },
+    });
+    expect(complete.statusCode).toBe(200);
+
+    // Hasta kendi randevusunda (misafir token) okuyabilir.
+    const patientGet = await app.inject({
+      method: "GET",
+      url: `/api/v1/appointments/bookings/${bookingId}/consultation-note?t=${accessToken}`,
+    });
+    expect(patientGet.statusCode).toBe(200);
+    expect(patientGet.json().data.html).toBe("<p>Reçete: parasetamol 500mg</p>");
+    expect(patientGet.json().data.updatedAt).not.toBeNull();
+
+    const audit = await app.prisma.auditLog.findFirst({
+      where: { action: "telehealth.consultation_note.accessed", targetId: bookingId },
+    });
+    expect(audit).not.toBeNull();
+    expect(JSON.stringify(audit?.metadata ?? {})).not.toContain("parasetamol");
+
+    // Booking görünümünde `hasConsultationNote` artık true.
+    const bookingView = await app.inject({
+      method: "GET",
+      url: `/api/v1/appointments/bookings/${bookingId}?t=${accessToken}`,
+    });
+    expect(bookingView.json().data.hasConsultationNote).toBe(true);
+
+    // Booking'in doktoru okuyabilir.
+    const doctorGet = await app.inject({
+      method: "GET",
+      url: `/api/v1/appointments/bookings/${bookingId}/consultation-note`,
+      headers: authHeader(doctorUserToken),
+    });
+    expect(doctorGet.statusCode).toBe(200);
+    expect(doctorGet.json().data.html).toBe("<p>Reçete: parasetamol 500mg</p>");
+
+    // ADMIN okuyabilir.
+    const adminGet = await app.inject({
+      method: "GET",
+      url: `/api/v1/appointments/bookings/${bookingId}/consultation-note`,
+      headers: authHeader(adminToken),
+    });
+    expect(adminGet.statusCode).toBe(200);
+
+    // MANAGER İÇERİĞE ERİŞEMEZ (intake İLE AYNI eşik, §9.7.5 madde 7 ENGELLEYİCİ).
+    const managerGet = await app.inject({
+      method: "GET",
+      url: `/api/v1/appointments/bookings/${bookingId}/consultation-note`,
+      headers: authHeader(managerToken),
+    });
+    expect(managerGet.statusCode).toBe(404);
+
+    // EDITOR hiç erişemez.
+    const editorGet = await app.inject({
+      method: "GET",
+      url: `/api/v1/appointments/bookings/${bookingId}/consultation-note`,
+      headers: authHeader(editorToken),
+    });
+    expect(editorGet.statusCode).toBe(404);
+  });
+
+  it("yanlış/eksik `?t=` ile misafir erişemez (404) — IDOR: varlık sızdırılmaz", async () => {
+    const { bookingId } = await createBookingDirect();
+
+    const noToken = await app.inject({ method: "GET", url: `/api/v1/appointments/bookings/${bookingId}/consultation-note` });
+    expect(noToken.statusCode).toBe(404);
+
+    const wrongToken = await app.inject({
+      method: "GET",
+      url: `/api/v1/appointments/bookings/${bookingId}/consultation-note?t=yanlis-token-degeri`,
+    });
+    expect(wrongToken.statusCode).toBe(404);
+  });
+});
+
 describe("telehealth — doktor/hasta portalları (§9.7.7 KARAR K)", () => {
   let app: FastifyInstance;
 

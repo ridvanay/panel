@@ -79,14 +79,17 @@ export type CancelAppointmentRequest = z.infer<typeof CancelAppointmentRequestSc
 
 /**
  * `POST /appointments/{id}/complete` — opsiyonel epikriz/konsültasyon notu. `note` boş/undefined
- * ise mevcut davranış (yalnızca status/`endedAt`) DEĞİŞMEZ; DOLU ise `Appointment.
+ * ise mevcut davranış (yalnızca status/`endedAt`) DEĞİŞMEZ; DOLU ise (Tiptap zengin metin
+ * editörünün ürettiği, `sanitizeRichHtml` ile temizlenmiş HTML) `Appointment.
  * consultationNoteCiphertext`'e AES-256-GCM şifreli yazılır (bkz. telehealth.livekit.routes.ts).
+ * Üst sınır (`.max(20000)`) düz metin DEĞİL sanitize edilmiş HTML'i hesaba katar (etiketler +
+ * tablo/liste yapısı düz metne göre daha fazla karakter kaplar).
  * Dıştaki `.nullish()` (`.optional()` DEĞİL) BİLİNÇLİDİR — `light-my-request`/Fastify, `payload`
  * HİÇ verilmediğinde gövdeyi `undefined` DEĞİL `null` gönderir (`StartImportJobRequestSchema`
  * ile YAŞANMIŞ AYNI kuyruk, bkz. tests/integration/import.test.ts yorumu); `.optional()` bu
  * durumda "Expected object, received null" ile 422 üretirdi.
  */
-export const CompleteAppointmentRequestSchema = z.object({ note: z.string().trim().max(4000).nullish() }).nullish();
+export const CompleteAppointmentRequestSchema = z.object({ note: z.string().trim().max(20000).nullish() }).nullish();
 export type CompleteAppointmentRequest = z.infer<typeof CompleteAppointmentRequestSchema>;
 
 // ---------- [TCT] §9.7 TADİLAT TURU 2 — booking (çoklu slot) + sağlık verisi + portal ----------

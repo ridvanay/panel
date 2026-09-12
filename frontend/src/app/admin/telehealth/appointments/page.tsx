@@ -26,6 +26,7 @@ import { formatPriceFromCents } from "@/lib/format-price";
  * Doğrudan URL ile gelen yetkisiz bir kullanıcı burada `friendlyErrorMessage`'ın 403 mesajını görür.
  */
 const STATUS_LABELS: Record<AppointmentStatus, string> = {
+  PENDING_PAYMENT: "Ödeme Bekliyor",
   SCHEDULED: "Planlandı",
   IN_PROGRESS: "Devam Ediyor",
   COMPLETED: "Tamamlandı",
@@ -34,6 +35,7 @@ const STATUS_LABELS: Record<AppointmentStatus, string> = {
 };
 
 const STATUS_TONES: Record<AppointmentStatus, "neutral" | "primary" | "success" | "danger" | "warning"> = {
+  PENDING_PAYMENT: "neutral",
   SCHEDULED: "primary",
   IN_PROGRESS: "warning",
   COMPLETED: "success",
