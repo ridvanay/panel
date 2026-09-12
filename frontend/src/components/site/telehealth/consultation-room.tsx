@@ -4,15 +4,15 @@ import { useCallback, useEffect, useState, type ComponentType } from "react";
 import "@livekit/components-styles";
 import {
   DisconnectButton,
-  GridLayout,
   LiveKitRoom,
   ParticipantTile,
   RoomAudioRenderer,
+  useConnectionState,
   useParticipants,
   useTrackToggle,
   useTracks,
 } from "@livekit/components-react";
-import { Track } from "livekit-client";
+import { ConnectionState, Track } from "livekit-client";
 import {
   AlertTriangle,
   Loader2,
@@ -24,6 +24,8 @@ import {
   Settings2,
   Video,
   VideoOff,
+  Wifi,
+  WifiOff,
   type LucideProps,
 } from "lucide-react";
 import * as telehealthApi from "@/lib/api/telehealth";
@@ -31,6 +33,7 @@ import { ApiClientError } from "@/lib/api/error";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import type { Appointment, MeetingTokenResponse } from "@/lib/api/types";
 import { Alert } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -302,7 +305,47 @@ function ConsultationControlBar() {
   );
 }
 
-/** Video ızgarası + bekleme odası — `RoomContext` içinde (katılımcı sayısına göre karar verir). */
+/**
+ * Bağlantı durumu rozeti — `payment-status-badge.tsx` (§12.4) paterniyle AYNI konvansiyon: her
+ * durumda ikon + metin, mevcut `Badge` primitive'i + var olan tone tokenleri (`warning`/`success`/
+ * `danger`). Video üzerine bindirildiği için kontrol çubuğuyla (§5) aynı "cam" istisnasını paylaşan
+ * yarı saydam koyu zemin üstünde konumlandırılır; YENİ bir renk/font tokeni İCAT EDİLMEZ.
+ */
+function ConnectionStatusBadge() {
+  const state = useConnectionState();
+
+  const config = (() => {
+    switch (state) {
+      case ConnectionState.Connected:
+        return { label: "Bağlandı", tone: "success" as const, Icon: Wifi, spin: false };
+      case ConnectionState.Disconnected:
+        return { label: "Bağlantı Kesildi", tone: "danger" as const, Icon: WifiOff, spin: false };
+      case ConnectionState.Reconnecting:
+      case ConnectionState.SignalReconnecting:
+        return { label: "Yeniden Bağlanıyor…", tone: "warning" as const, Icon: Loader2, spin: true };
+      case ConnectionState.Connecting:
+      default:
+        return { label: "Bağlanıyor…", tone: "warning" as const, Icon: Loader2, spin: true };
+    }
+  })();
+
+  return (
+    <div className="absolute left-4 top-4 z-10">
+      <Badge tone={config.tone} solid size="sm" className="gap-1 shadow-sm">
+        <config.Icon className={cn("h-3 w-3", config.spin && "animate-spin")} aria-hidden="true" />
+        {config.label}
+      </Badge>
+    </div>
+  );
+}
+
+/**
+ * Video düzeni — spotlight + picture-in-picture: karşı tarafın track'i tam alanı kaplayan ana
+ * görünüm, kendi kameramız sağ altta yüzen küçük bir kart (`ParticipantTile`'ın `trackRef` prop'u
+ * ile, tasarım-notes §7'nin "kontrol çubuğu" ile AYNI yüzen-kart konvansiyonu). Karşı taraf YOKSA
+ * `WaitingRoomPanel` tam ekran korunur, kendi kamera PIP'i yine görünür kalır (video-konferans
+ * standardı — kullanıcı beklerken de kendi görüntüsünü görür). `RoomContext` içinde çalışır.
+ */
 function ConsultationStage() {
   const participants = useParticipants();
   const tracks = useTracks(
@@ -314,15 +357,24 @@ function ConsultationStage() {
   );
   const hasRemoteParticipant = participants.some((p) => !p.isLocal);
 
+  const remoteTrack =
+    tracks.find((t) => !t.participant.isLocal && t.source === Track.Source.ScreenShare) ??
+    tracks.find((t) => !t.participant.isLocal && t.source === Track.Source.Camera);
+  const localCameraTrack = tracks.find((t) => t.participant.isLocal && t.source === Track.Source.Camera);
+
   return (
-    <div className="h-full w-full">
-      {hasRemoteParticipant ? (
-        <GridLayout tracks={tracks} className="h-full w-full">
-          <ParticipantTile />
-        </GridLayout>
+    <div className="relative h-full w-full">
+      {hasRemoteParticipant && remoteTrack ? (
+        <ParticipantTile trackRef={remoteTrack} className="h-full w-full" />
       ) : (
         <div className="flex h-full w-full items-center justify-center p-6">
           <WaitingRoomPanel />
+        </div>
+      )}
+
+      {localCameraTrack && (
+        <div className="absolute bottom-6 right-6 z-10 h-24 w-32 overflow-hidden rounded-[var(--site-radius)] border border-white/20 shadow-lg sm:h-28 sm:w-40">
+          <ParticipantTile trackRef={localCameraTrack} className="h-full w-full" />
         </div>
       )}
     </div>
@@ -341,6 +393,7 @@ function ConsultationVideoRoom({ meeting, onLeave }: { meeting: MeetingTokenResp
       className="relative aspect-video w-full overflow-hidden rounded-[var(--site-radius)] bg-[#0F172A]"
     >
       <RoomAudioRenderer />
+      <ConnectionStatusBadge />
       <ConsultationStage />
       <ConsultationControlBar />
     </LiveKitRoom>

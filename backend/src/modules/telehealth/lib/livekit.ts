@@ -76,7 +76,12 @@ export async function createMeetingToken(
     identity,
     ttl: ttlSeconds,
   });
-  accessToken.addGrant({ roomJoin: true, room: input.roomName });
+  accessToken.addGrant({
+    roomJoin: true,
+    room: input.roomName,
+    canPublish: true,
+    canSubscribe: true,
+  });
 
   const token = await accessToken.toJwt();
   const expiresAt = new Date(Date.now() + ttlSeconds * 1000).toISOString();

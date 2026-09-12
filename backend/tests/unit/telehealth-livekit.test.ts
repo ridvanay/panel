@@ -61,6 +61,8 @@ describe("modules/telehealth/lib/livekit", () => {
 
       expect(claims.video?.roomJoin).toBe(true);
       expect(claims.video?.room).toBe("room_deadbeef");
+      expect(claims.video?.canPublish).toBe(true);
+      expect(claims.video?.canSubscribe).toBe(true);
       expect(claims.video?.roomCreate).toBeFalsy();
       expect(claims.video?.roomAdmin).toBeFalsy();
       expect(claims.video?.roomList).toBeFalsy();
