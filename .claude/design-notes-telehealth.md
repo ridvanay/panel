@@ -2175,3 +2175,571 @@ Inter` tipografi, aynı `Card`/`Badge`/`Button`/`Alert`/`Tooltip` bileşen küt�
 | "Toplantıya Katıl" disabled | `Tooltip` + `<span tabIndex>` sarmalayıcı; nedenler: ödenmemiş / pencere açılmadı / pencere kapandı |
 | Belge önizleme (doktor) | `Dialog` içinde belge listesi, her satır yeni sekmede `.../documents/{id}/content` açar — gömülü `<img>`/`<iframe>` YOK |
 | Doktor/Hasta portalı teması | Admin panel DEĞİL — kamu sitesinin `.site-scope` paleti/`--site-radius`/tipografisi; sade üst çubuk (`max-w-5xl`), sidebar YOK |
+
+---
+
+## 13. Booking Turu 3 — seans durumu rozeti, vurgulu belge rozeti, gömülü belge önizleme, "Seansı Tamamla", doktor kazanç sayfası (v1, 2026-09-12, ui-designer)
+
+**Kod YAZILMAMIŞTIR** — bu bölüm de yalnızca sınıf/spesifikasyon kararıdır, frontend-agent
+uygular. Palet/tipografi/`--site-radius`/ikon kaynağı (§0/§1/§8) **DEĞİŞMEDİ** — bu bölüm YENİ
+bir renk/font/ikon-seti İCAT ETMEZ, `payment-status-badge.tsx` (§12.4), `booking-list-view.tsx`
+(§12.5), `booking-documents-dialog.tsx` (§12.5.4) ve `join-meeting-button.tsx` (§12.5.3) üzerinde
+**TADİLAT** yapar; `/doctor/earnings` tek YENİ sayfadır. Girdi: bu turun görev tanımı (madde 1-5,
+architect/backend tarafından henüz kontrata bağlanmamış — bkz. §13.4.4 ve §13.5.4'teki açık
+bağımlılık notları).
+
+### 13.1 Seans Durumu Rozeti (`AppointmentStatusBadge`) — `payment-status-badge.tsx` İLE AYNI konvansiyon
+
+Yeni bileşen, `payment-status-badge.tsx`'in (§12.4) BİREBİR kalıbı: `Record<AppointmentStatus,
+{...}>` + `Badge` primitifi + ikon-metin ikilisi (renk-körü güvenliği, WCAG 1.4.1 — tek başına
+renge güvenilmez). `AppointmentStatus` (`lib/api/types.ts:3250`) **BEŞ** değer taşır
+(`SCHEDULED`/`IN_PROGRESS`/`COMPLETED`/`CANCELLED`/`NO_SHOW`) — görev tanımı yalnızca ilk
+dördünü istedi, ama `Record<AppointmentStatus, ...>` TypeScript'te zorunlu olarak EXHAUSTIVE
+olacağından (`payment-status-badge.tsx`'in kendi `Record<BookingPaymentStatus, ...>`'ı gibi)
+`NO_SHOW` da BURADA tanımlanır — eksik bırakılırsa derleme hatası verir, bu bir "bonus" değil bir
+zorunluluktur.
+
+| Durum | Etiket | `tone` | `solid` | İkon |
+|---|---|---|---|---|
+| `SCHEDULED` | **"Planlandı"** | `neutral` | `false` (soft) | `CalendarClock` |
+| `IN_PROGRESS` | **"Devam Ediyor"** | `primary` | `true` | `Video` |
+| `COMPLETED` | **"Tamamlandı"** | `success` | `true` | `CircleCheck` |
+| `CANCELLED` | **"İptal Edildi"** | `danger` | `true` | `XCircle` |
+| `NO_SHOW` | **"Hasta Gelmedi"** | `danger` | `false` (soft) | `UserX` |
+
+Gerekçeler:
+- **`SCHEDULED` = soft/neutral, TEK istisna solid OLMAYAN "normal" durum:** bu, bir randevu
+  listesindeki İSTATİSTİKSEL OLARAK EN SIK görülecek durumdur (her randevu hayatına burada
+  başlar) — `payment-status-badge.tsx`'in aksine (orada PENDING de solid'di, çünkü ödeme
+  bekleyişi HER ZAMAN aktif bir dikkat gerektirir) burada "planlandı" pasif/beklenen bir
+  durumdur, listenin HER satırını solid bir rozetle doldurmak (§13.5'teki "sahte negatif sinyal
+  üretilmez" ilkesiyle aynı aile) gürültü yaratırdı. `CalendarClock` — §2.2.3'ün `CalendarDays`
+  (genel/seçilmemiş tarih) ve §2.2.5'in `CalendarCheck` (onaylı seçim) ikonlarından KASITLI
+  farklı üçüncü bir takvim varyantı (saat ibresi eklenmiş hali), "gelecekte, saati belirli"
+  anlamını taşır.
+- **`IN_PROGRESS` = solid primary, EN GÜÇLÜ vurgu:** doktorun listede ŞU AN gözden kaçırmaması
+  gereken TEK durum ("bu görüşme canlı, katılman/bitirmen gerekebilir") — §2.1.2'nin doğrulama
+  rozetiyle (`solid`, "bu bir güven sinyali, sıradan meta veri değil") AYNI gerekçe ailesi.
+  `Video` — bu dokümanda ilk kez kullanılan bir ikon, ama çakışma YOK (mevcut ikon envanterinde
+  "canlı görüşme" kavramını taşıyan başka bir ikon yok); `Wifi`/`WifiOff`/`Loader2`
+  (§5'in `ConnectionStatusBadge`'i) ile KARIŞTIRILMAZ — o rozet LiveKit bağlantı kalitesini,
+  bu rozet randevunun İŞ durumunu anlatır, ikisi farklı bağlamlarda (biri video üzerinde, biri
+  randevu listesinde) göründüğünden aynı anda çakışmazlar.
+- **`COMPLETED` = solid success, `CircleCheck`:** `payment-status-badge.tsx`'in `PAID` rozetiyle
+  AYNI ikon — BİLİNÇLİ tekrar (§9'daki "bilinçli tekrar" ilkesi): ikisi de "bir şey başarıyla
+  sonuçlandı" anlamını taşıyor, farklı bağlamlarda (ödeme ↔ seans) aynı görsel dilin
+  kullanılması tutarlılığı GÜÇLENDİRİR, karıştırmaz (aynı satırda asla yan yana görünmezler,
+  §13.5'teki Aksiyon sütunu kuralı gereği).
+- **`CANCELLED` = solid danger, `XCircle`:** `FAILED` ödeme rozetiyle AYNI ikon, AYNI gerekçe
+  ailesi (olumsuz/geri dönüşü olmayan sonuç, solid ile vurgulanır).
+- **`NO_SHOW` = soft danger (`CANCELLED`'tan tek fark: `solid={false}`):** görev tanımı bu
+  durumu istemedi ama tip zorunlu kılıyor; `CANCELLED`'dan (aktif bir iptal eylemi, "olan bitti,
+  net") kasıtlı olarak BİR KADEME daha sessiz — "hasta gelmedi" geçmişe dönük bir OLGU kaydı,
+  `REFUNDED`'ın (§12.4, soft) "artık aksiyon gerektirmeyen geçmiş durum" ilkesiyle AYNI ailede.
+  `UserX` — bu dokümanda ilk kullanım, "kişi katılmadı" anlamını doğrudan taşır, `Ban`
+  (§12.4 `EXPIRED`, "süre/işlem" anlamı) ile KARIŞTIRILMAZ.
+
+```tsx
+// booking-list-view.tsx içinde KULLANIM ÖRNEĞİ (kod YAZILMADI, yalnızca yerleşim tarifi)
+<AppointmentStatusBadge status={firstAppointment.status} size="sm" />
+```
+
+### 13.2 "Tıbbi Belgeler (N)" vurgulu rozet/buton + hasta notu göstergesi
+
+`booking-list-view.tsx`'in HEM mobil kart alt satırındaki (satır 106-121) HEM masaüstü tablo
+"Belgeler" hücresindeki (satır 162-181) mevcut sade `Paperclip` + "{N} belge" metin-linki bu
+BİREBİR aynı KONUMDA kalır, yalnızca içeriği/ağırlığı değişir:
+
+```tsx
+{(booking.documentCount > 0 || booking.hasIntakeNote) && (
+  perspective === "doctor" ? (
+    <button
+      type="button"
+      onClick={() => setDocumentsBookingId(booking.id)}
+      className="inline-flex items-center gap-1.5 rounded-[var(--site-radius)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+    >
+      {booking.documentCount > 0 && (
+        <Badge tone="primary" solid size="sm" className="gap-1">
+          <Paperclip className="h-3 w-3" aria-hidden="true" />
+          Tıbbi Belgeler ({booking.documentCount})
+        </Badge>
+      )}
+      {booking.hasIntakeNote && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <StickyNote className="h-3 w-3" aria-hidden="true" />
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>Hasta notu da mevcut</TooltipContent>
+        </Tooltip>
+      )}
+    </button>
+  ) : (
+    <span className="inline-flex items-center gap-1.5">{/* aynı iç yapı, tıklanamaz */}</span>
+  )
+)}
+```
+
+- **Koşul GENİŞLETİLDİ:** eski kod yalnızca `documentCount > 0` iken bir şey render ediyordu;
+  YENİ koşul `documentCount > 0 || hasIntakeNote` — çünkü `booking-documents-dialog.tsx`
+  (§13.3) artık YALNIZCA belge değil, notu da gösterebiliyor; belge SIFIR ama not VARSA
+  (hasta hiç dosya yüklemeden yalnızca not bırakmışsa) doktorun bunu görebilmesi/açabilmesi
+  gerekir — eski kodda bu durum SESSİZCE KAYBOLUYORDU (bir bug, bu turda düzeltiliyor).
+- **Ana rozet — `Badge tone="primary" solid size="sm"`:** görev tanımının "belirgin/vurgulu"
+  isteğinin doğrudan karşılığı — §2.1.2'nin doğrulama rozetiyle AYNI gerekçe ("bu bir güven/
+  klinik-önem sinyali, sıradan meta veri değil, doktor görüşmeden ÖNCE fark etmeli"). `tone`
+  bilerek `warning`/`danger` DEĞİL `primary` — belge varlığı bir SORUN değil, ÖNEMLİ bir bilgi;
+  bu doküman `warning`/`danger`'ı hep "bir şey bekliyor/başarısız/olumsuz" anlamına ayırmıştı
+  (§1, §12.4), belgenin kendisi olumsuz bir sinyal DEĞİLDİR. Etiket metni de eski "{N} belge"
+  yerine **"Tıbbi Belgeler ({N})"** — görev tanımının istediği BİREBİR metin.
+  `size="sm"` — §12.4'ün "birçok rozet yan yana görünebilir, `sm` BAĞLAYICI" ilkesiyle tutarlı
+  (bu rozet `PaymentStatusBadge` ile aynı satırda DEĞİL ama aynı tablo satırında görünür, tutarlı
+  boyut skalası korunur).
+- **Hasta notu göstergesi — AYRI, KÜÇÜK, ikon-only:** görev tanımının "hasta notu da varsa
+  ayrıca belirt" isteği tam metinli ikinci bir rozet DEĞİL (tabloda yer sıkışık, iki tam-metin
+  rozet üst üste bineceği için) — `h-5 w-5` dairesel, `bg-primary/10 text-primary` (ana rozetle
+  AYNI ton ailesi, "olumsuz değil" mesajı korunur), `StickyNote` ikonu + `Tooltip` (§12.2.2'nin
+  zaten kurulu `Tooltip` primitifiyle AYNI desen) "Hasta notu da mevcut" metni. Belge YOKSA ama
+  not VARSA, bu ikon TEK BAŞINA (ana rozet olmadan) render edilir — buton yine de tıklanabilir
+  kalır (dialog'u açar, §13.3).
+- **Konum/düzen DEĞİŞMEDİ:** mobil kartta hâlâ alt satırın SOLUNDA (`JoinMeetingButton`
+  sağda), masaüstü tabloda hâlâ kendi "Belgeler" sütununda — görev tanımının "mevcut konumu
+  koru" şartı BİREBİR karşılanır, yalnızca içerik/ağırlık değişti.
+- **Patient perspektifi:** aynı görsel (`Badge` + ikon), ama `<button>` DEĞİL `<span>`
+  sarmalayıcı — mevcut kodun asimetrisi (hasta kendi belgesini bu ekrandan ÖNİZLEYEMİYOR)
+  KORUNUR, bu bölüm o kararı DEĞİŞTİRMEZ (kapsam dışı — hastaya aynı dialog'u açma kararı
+  architect/frontend-agent'ın ileride alabileceği AYRI bir karardır).
+
+### 13.3 Güvenli Belge Önizleme Modalı (`booking-documents-dialog.tsx`)
+
+Mevcut davranış (§12.5.4: her satır `window.open` ile yeni sekmede blob açar) **KALDIRILIR**,
+yerine modal İÇİNDE gömülü önizleme gelir. Dialog artık iki şeyi birden gösterir: booking'e ait
+hasta notu (varsa, §13.2'nin tetiklediği aynı `hasIntakeNote` bayrağı) VE belgeler — bunlar
+FARKLI veri kapsamlarıdır (not booking'e, belgeler dosyalara bağlıdır), bu yüzden dialog içinde
+DİKEY olarak İKİ AYRI bölüme ayrılır, not ÜSTTE (bağlam), belgeler ALTTA (kanıt/detay).
+
+#### 13.3.1 Dialog boyutu ve iskelet
+
+```
+<DialogContent className="max-w-3xl">
+  <DialogHeader>
+    <DialogTitle>Tıbbi Belgeler</DialogTitle>
+    <DialogDescription>Bu rezervasyon için yüklenen belgeler ve hasta notu.</DialogDescription>
+  </DialogHeader>
+
+  {/* §13.3.2 — hasta notu, YALNIZCA hasIntakeNote true ise, varsayılan KAPALI/açılır */}
+  {/* §13.3.3 — belge seçici (>1 belgede), YALNIZCA >1 belgede render edilir */}
+  {/* §13.3.4 — seçili belgenin gömülü önizlemesi */}
+</DialogContent>
+```
+
+- **`max-w-3xl`** (§12.5.4'ün `max-w-2xl`'inden bir kademe geniş) — gömülü `<img>`/`<iframe>`
+  önizlemesi düz bir dosya LİSTESİNDEN daha fazla yatay alan ister; `max-w-3xl` masaüstünde
+  konforlu bir önizleme genişliği verirken sayfanın `max-w-5xl` konteynerini (§12.6) AŞMAZ.
+  Dialog primitifi zaten `w-[calc(100vw-2rem)]` ile dar ekranlarda otomatik daralıyor
+  (`dialog.tsx:56`), YENİ bir responsive kural İCAT EDİLMEZ.
+- **Dikey sınır:** önizleme çerçevesi (§13.3.4) sabit `h-[420px]` — dialog'un kendisi
+  `max-h-[85vh] overflow-y-auto` alması gerekir (mevcut `DialogContent` bunu VARSAYILAN
+  yapmıyor, frontend-agent bu turda `className`'e `max-h-[85vh] overflow-y-auto` EKLEMELİDİR)
+  çünkü not + seçici + 420px önizleme dar ekranlarda dialog'u viewport'tan taşırabilir.
+
+#### 13.3.2 Hasta notu bölümü — varsayılan KAPALI, açık rıza gerektirmez ama İSTEĞE BAĞLI okuma
+
+```tsx
+{booking.hasIntakeNote && (
+  <div className="rounded-[var(--site-radius)] border border-border bg-muted/30 p-3">
+    <div className="flex items-center justify-between gap-2">
+      <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-foreground/50">
+        <StickyNote className="h-3.5 w-3.5" aria-hidden="true" />
+        Hasta Notu
+      </p>
+      {!noteRevealed && (
+        <Button type="button" variant="outline" size="sm" onClick={() => void revealNote()} loading={loadingNote}>
+          Görüntüle
+        </Button>
+      )}
+    </div>
+    {noteRevealed && (
+      <p className="mt-2 whitespace-pre-line text-sm text-foreground/80">{note ?? "Bu rezervasyon için not girilmemiş."}</p>
+    )}
+  </div>
+)}
+```
+
+- **Neden varsayılan GİZLİ (bir `Button`'a tıklanana kadar `getBookingIntake` ÇAĞRILMAZ):**
+  `.claude/architect-scope-telehealth-template.md` §9.7.5 madde 6 — HER okuma
+  `logAudit("telehealth.intake_note.accessed")` üretir; dialog her açıldığında notu OTOMATİK
+  çekmek, doktor notu hiç okumasa bile (belgeleri görmek için dialog'u açtığı HER seferinde) bir
+  denetim kaydı üretir — bu gereksiz/şişirilmiş bir audit trail yaratır. Doktorun AÇIKÇA
+  "Görüntüle"ye basması, hem gerçek bir okuma NİYETİNİ işaretler hem de denetim kaydını
+  ANLAMLI tutar. Bu bir KVKK rıza metni DEĞİLDİR (görev tanımının "özel bir uyarı/rıza metni
+  GEREKMİYOR" şartıyla ÇELİŞMEZ) — yalnızca gereksiz erişim/log şişkinliğini önleyen bir
+  etkileşim kararı.
+- **Tipografi:** `text-xs font-semibold uppercase tracking-wider text-foreground/50` başlık —
+  §2.2.2'nin "uppercase eyebrow" deseniyle AYNI (bölüm etiketi, YENİ bir stil İCAT EDİLMEZ);
+  gövde `text-sm text-foreground/80` — §2.1.3'ün "Hakkında" paragrafıyla AYNI ton (`/80`,
+  "uzun/önemli okuma metni ikincil değildir" ilkesi, çünkü bu klinik bir not, sönük gösterilmez).
+  `whitespace-pre-line` — §2.1.3 ile AYNI, doktorun yazdığı satır sonları korunur.
+- **`Button variant="outline" size="sm"`** — mevcut ikincil aksiyon boyut/varyant konvansiyonu
+  (§12.5'in "Tekrar Dene" butonuyla AYNI), YENİ bir varyant İCAT EDİLMEZ.
+- **Belge YOK, yalnızca not VARSA:** §13.3.3/§13.3.4 tamamen render edilmez, dialog yalnızca bu
+  bölümü + "Bu rezervasyon için yüklenmiş bir belge yok." (§12.5.4'ün mevcut boş-durum metni,
+  DEĞİŞMEDİ) gösterir.
+
+#### 13.3.3 Belge seçici — YALNIZCA birden fazla belgede render edilir
+
+Tek belge varsa seçici ATLANIR, önizleme (§13.3.4) doğrudan o tek belgeyi gösterir (§2.2.2'nin
+"boş grup render edilmez" ilkesiyle AYNI aile: gereksiz/anlamsız bir tek-öğeli seçici İCAT
+EDİLMEZ). ≥2 belgede, §2.2.1'in paylaşılan "seçim pili" diliyle BİREBİR aynı yatay çip sırası:
+
+```tsx
+<div className="flex flex-wrap gap-2">
+  {documents.map((doc) => {
+    const selected = doc.id === selectedDocId;
+    return (
+      <button
+        key={doc.id}
+        type="button"
+        onClick={() => setSelectedDocId(doc.id)}
+        aria-pressed={selected}
+        className={cn(
+          "inline-flex max-w-[200px] items-center gap-1.5 rounded-[var(--site-radius)] border px-3 py-1.5 text-xs font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface",
+          selected
+            ? "border-2 border-transparent bg-primary text-primary-foreground ring-2 ring-offset-2 ring-offset-surface ring-primary"
+            : "border-border bg-surface text-foreground hover:border-primary/50 hover:bg-primary/5"
+        )}
+      >
+        {selected ? (
+          <Check className="h-3 w-3 shrink-0" aria-hidden="true" />
+        ) : doc.mimeType === "application/pdf" ? (
+          <FileText className="h-3 w-3 shrink-0" aria-hidden="true" />
+        ) : (
+          <FileImage className="h-3 w-3 shrink-0" aria-hidden="true" />
+        )}
+        <span className="truncate">{doc.filename}</span>
+      </button>
+    );
+  })}
+</div>
+```
+
+- Sınıflar §2.2.1'in `SELECTION_PILL` tabanının BİREBİR (aynı `rounded-[var(--site-radius)]`,
+  aynı `focus-visible:ring`, aynı seçili durum: `bg-primary text-primary-foreground ring-2
+  ring-primary` + ikon) — YENİ bir seçim dili İCAT EDİLMEZ, dosya adı gibi değişken-uzunluklu
+  içerik taşıdığı için tarih chip'inin `px-4`/genişlik-serbest kalıbına yakın (`max-w-[200px]
+  truncate`, dosya adları tarihten çok daha uzun olabildiği için EK bir taşma güvencesi).
+- **İkon DEĞİŞİMİ seçilince:** seçili çip dosya-türü ikonunu (`FileText`/`FileImage`) `Check`
+  ile DEĞİŞTİRİR (ikisini yan yana göstermek küçük bir çip içinde ikon kalabalığı yaratırdı) —
+  dosya türü bilgisi zaten ALTTAKİ önizlemede (§13.3.4) görünür olduğundan seçili durumda
+  tekrara gerek yoktur.
+- `aria-pressed` — bu bir `role="tab"`/`radio` grubu DEĞİL basit bir toggle-seçici olduğundan
+  (§2.2.1'in gün/saat semantiğinden farklı bir kullanım bağlamı) en uygun ARIA örüntüsü budur;
+  frontend-agent implementasyon detayı.
+- Varsayılan seçili belge: dizideki İLK belge (`documents[0]`), dialog her açıldığında sıfırlanır.
+
+#### 13.3.4 Seçili belgenin gömülü önizlemesi
+
+```tsx
+<div className="mt-3 overflow-hidden rounded-[var(--site-radius)] border border-border bg-muted/30">
+  <div className="flex items-center justify-between gap-2 border-b border-border/60 px-3 py-2">
+    <span className="min-w-0 truncate text-sm font-medium text-foreground">{selectedDoc.filename}</span>
+    <div className="flex shrink-0 items-center gap-2 text-xs text-foreground/50">
+      {formatBytes(selectedDoc.sizeBytes)}
+      <button
+        type="button"
+        onClick={() => void openInNewTab(selectedDoc)}
+        className="flex items-center gap-1 text-foreground/50 hover:text-primary"
+        aria-label="Yeni sekmede aç"
+      >
+        <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+      </button>
+    </div>
+  </div>
+
+  <div className="flex h-[420px] items-center justify-center">
+    {loadingPreview ? (
+      <Skeleton className="h-full w-full rounded-none" />
+    ) : previewError ? (
+      <Alert variant="error" className="m-3">{previewError}</Alert>
+    ) : selectedDoc.mimeType === "application/pdf" ? (
+      <iframe src={blobUrl} title={selectedDoc.filename} className="h-full w-full" />
+    ) : (
+      <img src={blobUrl} alt={selectedDoc.filename} className="h-full w-full object-contain" />
+    )}
+  </div>
+</div>
+```
+
+- **`h-[420px]` sabit yükseklik** — hem PDF `<iframe>` hem `<img>` için ORTAK bir çerçeve;
+  farklı belgeler arasında geçişte (§13.3.3) dialog'un boyu ZIPLAMAZ (sabit çerçeve, değişen
+  yalnızca içerik) — bu, §2.2.2'nin `auto-fill` grid'inin "konteyner sabit, içerik esner"
+  felsefesiyle aynı yönde bir karar.
+  `bg-muted/30` zemin — resim `object-contain` ile letterbox'landığında (bir tahlil/reçete
+  taraması nadiren 420px'lik çerçeveye TAM oturur) boşluk çıplak `bg-surface` yerine hafif
+  ayrışan bir zemin alır.
+- **`object-contain`, KESİNLİKLE `object-cover` DEĞİL:** bu bir dekoratif görsel değil bir tıbbi
+  belge — kırpma KABUL EDİLEMEZ (§2'nin avatar `object-cover`'ıyla KARIŞTIRILMAZ, o dekoratif
+  bir fotoğraf, bu klinik bir kayıt).
+- **Yükleniyor durumu:** `Skeleton` (mevcut primitif, §12.5'in `BookingListSkeleton`'ıyla AYNI
+  bileşen) çerçevenin TAMAMINI kaplar (`h-full w-full`) — belge her seçildiğinde (blob henüz
+  fetch edilmediyse) kısa bir `Skeleton` yanıp söner, YENİ bir yükleniyor deseni İCAT EDİLMEZ.
+- **Hata durumu:** `Alert variant="error"` (§12.5'in mevcut hata deseni) çerçeve İÇİNDE, `m-3`
+  boşluklu — belge indirilemezse (ör. süresi geçmiş blob, ağ hatası) kullanıcı boş bir çerçeveyle
+  BAŞ BAŞA KALMAZ.
+- **"Yeni sekmede aç" (`ExternalLink`):** §12.5.4'ün eski TEK davranışı (yeni sekmede açma)
+  tamamen KALDIRILMAZ, ikincil bir kaçış kapısı olarak KORUNUR — uzun bir PDF'i yazdırmak/
+  büyütmek isteyen doktor için faydalı, aynı `fetchDocumentContentBlob` + geçici blob URL
+  mekanizmasını (§12.5.4'ün orijinal yorumundaki `setTimeout(() => URL.revokeObjectURL(url),
+  60_000)` dahil) kullanır — YENİ bir indirme/açma mekanizması İCAT EDİLMEZ, yalnızca ARTIK
+  TEK/VARSAYILAN davranış DEĞİL, köşedeki küçük bir ikon-buton.
+- **`<iframe>` güvenlik notu (bu doküman KARAR VERMEZ, security-agent'a devredilir):** blob
+  içeriği çalıştırılabilir script barındırmamalıdır (`sandbox` özniteliği, `Content-Security-
+  Policy` vb.) — bu bir GÖRSEL karar değil bir güvenlik implementasyon detayıdır, CLAUDE.md'nin
+  "kendi alanı dışına taşan ajan ilgili ajana devreder" kuralı gereği frontend-agent bu iframe'i
+  kodlarken **security-agent'ın** `sandbox`/CSP önerisini alması gerekir; bu doküman yalnızca
+  iframe'in VAR OLMASI gerektiğini ve boyut/yerleşimini tarif eder.
+- Belge değiştiğinde (`selectedDocId` değişince) önceki `blobUrl` `URL.revokeObjectURL` ile
+  temizlenir (bellek sızıntısı önlenir) — implementasyon detayı, frontend-agent'a aittir.
+
+### 13.4 "Seansı Tamamla" aksiyonu + epikriz notu
+
+#### 13.4.1 Görünürlük kuralı — Aksiyon sütununun TAM davranışı (§13.1 ile birlikte okunur)
+
+`booking-list-view.tsx`'in Aksiyon alanı (mobil kart footer sağı + masaüstü tablo "Aksiyon"
+sütunu) durum bazında şu şekilde YENİDEN tanımlanır (`firstAppointment = booking.appointments[0]`
+üzerinden okunur, §9.7.6'nın "çoklu slot = TEK oda" kararı gereği booking'in TÜM randevuları
+AYNI durumu paylaşır):
+
+| `firstAppointment.status` | Gösterilen |
+|---|---|
+| `SCHEDULED`, katılım penceresi henüz AÇILMADI/AÇIK | yalnızca `JoinMeetingButton` (DEĞİŞMEDİ) |
+| `SCHEDULED`, katılım penceresi KAPANDI (`now > joinableUntil`) | `JoinMeetingButton` (disabled, mevcut tooltip "Görüşme penceresi kapandı") **+** (yalnızca `perspective === "doctor"`) "Seansı Tamamla" butonu |
+| `IN_PROGRESS` | `AppointmentStatusBadge` (§13.1, "Devam Ediyor") **+** `JoinMeetingButton` (yeniden katılım için) **+** (yalnızca doktor) "Seansı Tamamla" butonu |
+| `COMPLETED` | yalnızca `AppointmentStatusBadge` (§13.1, "Tamamlandı") — buton YOK |
+| `CANCELLED` / `NO_SHOW` | yalnızca `AppointmentStatusBadge` (§13.1) — buton YOK |
+
+- **Neden `SCHEDULED` + pencere kapandı durumu da "Seansı Tamamla" gösterir:** mimari doküman
+  (§9.7.6) randevu durumunun pencere kapanınca OTOMATİK `COMPLETED`/`NO_SHOW`'a geçtiğine dair
+  bir kural TANIMLAMAZ — doktor hiç katılmasa bile randevu `SCHEDULED` olarak SONSUZA KADAR
+  asılı kalabilir. Bu, doktorun listesinin kirlenmesine yol açar; "Seansı Tamamla" burada bir
+  MANUEL kapanış mekanizması işlevi görür (görüşme fiilen yapılmamış olsa da doktor kaydı
+  temizleyebilir). Bu bir mimari/backend GAP'idir, bu doküman yalnızca UI TARAFINDAKİ
+  MEVCUT tutarsızlığı (sonsuz `SCHEDULED`) gidermek için bir çıkış noktası tarif eder — bir
+  `NO_SHOW` işaretleme akışı İCAT ETMEZ (görev tanımı bunu istemedi), yalnızca "Seansı Tamamla"
+  akışını (§13.4.2) tekrar kullanır.
+- **`perspective === "patient"` hiçbir zaman "Seansı Tamamla" GÖRMEZ** — bu yalnızca doktorun
+  yapabileceği bir eylemdir (hasta tarafı yalnızca `AppointmentStatusBadge`'i, uygunsa, görür).
+- **Düzen:** birden fazla eleman aynı satırda olduğunda (`IN_PROGRESS` satırı gibi)
+  `flex flex-wrap items-center justify-end gap-2` (masaüstü) / `flex flex-wrap items-center
+  gap-2` (mobil, mevcut footer satırının İÇİNDE) — §12.5'in mevcut flex düzeninin doğal
+  uzantısı, YENİ bir grid sistemi İCAT EDİLMEZ.
+
+#### 13.4.2 "Seansı Tamamla" butonu ve mini-modal
+
+**Tetikleyici buton:** `Button variant="success" size="sm"` — bu varyant zaten `button.tsx`'te
+TANIMLI ve TAM BU AMAÇ için yorumlanmış ("olumlu-ama-geri-alınabilir onay eylemleri ... ör.
+'Siparişi Onayla'", `button.tsx:25-30`) — YENİ bir varyant İCAT EDİLMEZ, bu tam olarak o
+yorumun beklediği ikinci somut kullanım örneğidir. `CheckCircle2` ikonu (§12.5'in uploader
+başarı durumundaki AYNI ikon — "bir şey başarıyla tamamlandı" anlamının BİLİNÇLİ tekrarı, §9'un
+ilkesi) + "Seansı Tamamla" metni.
+
+**Modal — mevcut `Dialog` primitifinin tekrar kullanımı, YENİ bir modal sistemi İCAT EDİLMEZ:**
+
+```tsx
+<Dialog open={completingId === booking.id} onOpenChange={(open) => !open && setCompletingId(null)}>
+  <DialogContent className="max-w-md">
+    <DialogHeader>
+      <DialogTitle>Seansı Tamamla</DialogTitle>
+      <DialogDescription>
+        {counterpartName} ile {formatDayLabel(...)} · {formatTime(...)} seansını tamamlandı olarak işaretleyeceksiniz.
+      </DialogDescription>
+    </DialogHeader>
+
+    <Field id="consultationNote" label="Epikriz / Konsültasyon Notu (opsiyonel)">
+      {(inputProps) => (
+        <Textarea
+          {...inputProps}
+          rows={4}
+          placeholder="Görüşmede konuşulanların kısa bir özeti (tanı, öneri, sonraki adım)…"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+        />
+      )}
+    </Field>
+
+    <DialogFooter>
+      <Button type="button" variant="outline" onClick={() => setCompletingId(null)}>
+        Vazgeç
+      </Button>
+      <Button type="button" variant="success" loading={submitting} onClick={() => void handleComplete()}>
+        Seansı Tamamla
+      </Button>
+    </DialogFooter>
+  </DialogContent>
+</Dialog>
+```
+
+- **`max-w-md`** — `DialogContent`'in varsayılanından (`max-w-sm`, §12.5.4'ün belge dialog'unun
+  ise `max-w-2xl`/`max-w-3xl` ihtiyacından) bir ORTA nokta: bu modal ne §13.3'ün geniş önizleme
+  ihtiyacına ne de basit bir onay kutusuna sahip — tek bir `Textarea` + iki satırlık açıklama
+  için `max-w-md` yeterli, gereksiz boşluk BIRAKMAZ.
+- **`Field`/`Textarea`** — `@/components/ui/field` + `@/components/ui/textarea`, `availability-
+  calendar.tsx`'in booking formunda ZATEN kurulu AYNI ikili (§2.3, `Field id="patientName"`
+  deseni) — YENİ bir form-alanı sarmalayıcı İCAT EDİLMEZ. `Textarea` `.site-scope` İÇİNDE
+  render edildiğinden `--ring`/`--input` zaten `--site-primary`'e eşlenir (`globals.css:525`),
+  EK bir odak-rengi sınıfı GEREKMEZ.
+- **Rıza/uyarı metni YOK (görev tanımının açık isteği):** yalnızca `label` + `placeholder` —
+  compliance-agent'ın yazması gereken bir metin İCAT EDİLMEDİ, çünkü görev tanımı bunun
+  gerekmediğini zaten netleştirdi ("doktor-hasta ilişkisinin doğal bir parçası").
+- **`Button variant="success"` ikinci kullanımı** (footer'daki onay butonu) — tetikleyiciyle
+  AYNI varyant, tutarlı "bu olumlu bir onay eylemi" sinyali baştan sona korunur.
+
+#### 13.4.3 Gönderim davranışı (implementasyon detayı, kısaca)
+
+Not BOŞ bırakılabilir (`placeholder` zaten "(opsiyonel)" diyor) — boş notla da "Seansı
+Tamamla" TIKLANABİLİR olmalı, textarea'yı doldurmak bir ÖN KOŞUL DEĞİLDİR (görev tanımının
+"opsiyonel" şartının UI karşılığı: buton hiçbir zaman yalnızca not boş diye devre dışı
+BIRAKILMAZ).
+
+#### 13.4.4 Açık bağımlılık — backend kontratı bu turda GENİŞLEMELİDİR
+
+`lib/api/telehealth.ts:104`'teki mevcut `completeAppointment(id, accessToken?)` — yani
+`POST /appointments/{id}/complete` — BUGÜN hiçbir istek gövdesi ALMIYOR (yalnızca `?t=`
+query'si var). Epikriz notunun sunucuya taşınabilmesi için bu uca opsiyonel bir `note` alanı
+EKLENMESİ gerekir (şifreleme/saklama/erişim kuralları §9.7.5'in ONA MADDESİYLE AYNI çerçevede
+olmalı — bu bir **architect + backend-agent + compliance-agent** kararıdır, ui-designer BURADA
+KARAR VERMEZ, yalnızca UI'ın bu alanı BEKLEDİĞİNİ belirtir). Kontrat genişlemeden önce
+frontend-agent bu butonu **notu YOK SAYARAK** (yalnızca tamamlama çağrısı, `note` gönderilmeden)
+devreye alabilir — buton işlevi bu ara dönemde de ÇALIŞIR kalmalıdır, epikriz alanı yalnızca
+o ana kadar "gelecek turda etkinleşecek" bir arayüz parçası olarak kalır.
+
+### 13.5 `/doctor/earnings` sayfası
+
+Konum: `doctor-portal-shell.tsx`'in (§12.6) mevcut üst çubuğuna (`bookingsHref`/`profileHref`
+satırının YANINA) üçüncü bir `Link`: **"Kazançlarım"** (`href="/doctor/earnings"`), AYNI aktif-
+durum sınıfıyla (`pathname === href ? "font-medium text-primary" : "hover:text-foreground"`,
+`doctor-portal-shell.tsx:147-152` İLE BİREBİR AYNI kalıp, YENİ bir nav stili İCAT EDİLMEZ).
+Sayfa içeriği `mx-auto max-w-5xl px-4 py-10 sm:px-6` konteynerinin İÇİNDE render edilir (mevcut
+`{children}` yuvası, DEĞİŞMEDİ).
+
+#### 13.5.1 Stat kartı — mevcut admin `StatCard`'ı YENİDEN KULLANMA kararı ve gerekçesi
+
+Projede `components/admin/stats/stat-card.tsx` altında bir stat-kartı paterni MEVCUT, ama
+BİLİNÇLİ olarak burada TEKRAR KULLANILMAZ: (a) admin'in kendi `Card` primitifini/`--foreground`/
+`--success` gibi GENEL shadcn tema tokenlerini kullanır (§12.6'nın "doktor portalı admin token
+sistemini MİRAS ALMAZ" kararıyla DOĞRUDAN ÇELİŞİR); (b) köşesinde dekoratif `blur-2xl` bir ışık
+halkası taşır (`stat-card.tsx:37-47`) — bu, §0'ın "Minimal/Flat, gradyan/ambient glow YOK (video
+kontrol çubuğu TEK istisna)" kararının AÇIK İHLALİDİR. Bu yüzden görev tanımının önerdiği İKİNCİ
+seçenek uygulanır — task'ın önerdiği taban + bu dokümanın ZATEN kurulu tipografi ölçeğiyle:
+
+```tsx
+<div className="rounded-[var(--site-radius)] border border-border bg-surface p-5">
+  <div className="flex items-center gap-2 text-sm text-foreground/60">
+    <Icon className="h-4 w-4" aria-hidden="true" />
+    {label}
+  </div>
+  <p className="mt-2 text-2xl font-semibold text-foreground">{formatPriceFromCents(amountCents, currency)}</p>
+  {sublabel && <p className="mt-1 text-xs text-foreground/50">{sublabel}</p>}
+</div>
+```
+
+- **`text-2xl font-semibold`** — admin `StatCard`'ın `text-3xl`'i DEĞİL, §2.1.4'ün fiyat
+  panelindeki AYNI ölçek (`{fiyat}` `text-2xl font-semibold`, §2.1.4) — bu sayfa da bir "parasal
+  değer" gösteriyor, ZATEN doğrulanmış AYNI tipografi rolü kullanılır, ikinci bir "büyük sayı"
+  ölçeği İCAT EDİLMEZ.
+  `formatPriceFromCents` (`lib/format-price.ts`) — §2/§2.1.4 ile AYNI biçimlendirici.
+- **Dekoratif glow YOK, YERİNE düz ikon:** `Icon` (`h-4 w-4`), etiketin SOLUNDA, `text-foreground/
+  60` (mutedTextColor rolü) — admin'in köşedeki blur dairesinin YERİNE geçen, bu dokümanın flat
+  diliyle uyumlu, sıfır-glow bir görsel çapa.
+- Üç kart `grid grid-cols-1 gap-4 sm:grid-cols-3` (mobilde dikey yığın, `sm:` itibaren yan yana)
+  — §2.1.1'in `lg:grid-cols-[1fr_320px]` gibi ÖZEL bir kesir DEĞİL, standart eşit-üçlü ızgara
+  (üç değer eşit görsel ağırlıkta baş sütun/ikincil sütun ayrımı GEREKTİRMEZ).
+
+#### 13.5.2 Üç kart — içerik ve vurgu farkı
+
+| Kart | `label` | İkon | `tone`/vurgu | `sublabel` |
+|---|---|---|---|---|
+| Toplam Brüt Kazanç | "Toplam Brüt Kazanç" | `Wallet` | standart (§13.5.1 taban) | "Tamamlanan N seans" |
+| Platform Komisyonu | "Platform Komisyonu (%{oran})" | `Percent` | standart | — |
+| Net Kazanç | "Net Kazanç" | `PiggyBank` | **VURGULU** (aşağıda) | "Komisyon sonrası, size ödenecek tutar" |
+
+**Net Kazanç kartı VURGULU:** `border-primary/30 bg-primary/5` (§2.2.5'in eski onay şeridiyle
+AYNI ton ailesi — "bu üçünün İÇİNDE doktorun asıl önemsediği rakam budur", tıpkı §12.3'ün
+"Toplam" satırının çoklu-slot özetinde `text-2xl font-semibold` ile öne çıkarılması gibi) +
+değer rengi `text-primary` (diğer iki kartın `text-foreground`'ından farklı, TEK bu kartta).
+Brüt/Komisyon kartları NÖTR kalır (`bg-surface`, `text-foreground`) — üç kartı da aynı ağırlıkta
+vurgulamak "hangisi önemli" sorusunu YANITSIZ bırakırdı.
+
+**Platform komisyon oranı** (`%{oran}`) — "backend'den gelecek sabit global oran" (görev
+tanımı) — bu değer BU dokümanın kapsamı DIŞINDA (architect/backend-agent DTO kararı); UI
+yalnızca `%{oran}` yer tutucusunu etikete gömer, ikinci bir açıklama cümlesi İCAT ETMEZ.
+
+#### 13.5.3 Tamamlanan seanslar listesi
+
+Kartların ALTINDA, `mt-8`, `booking-list-view.tsx`'in masaüstü tablo İSKELETİYLE (§12.5.2) AYNI
+kalıp — YENİ bir tablo sistemi İCAT EDİLMEZ, yalnızca sütunlar bu bağlama uyarlanır:
+
+```
+<table className="w-full text-sm">
+  <thead>
+    <tr className="border-b border-border text-left text-xs font-semibold uppercase tracking-wider text-foreground/50">
+      <th className="py-2 pr-4">Hasta</th>
+      <th className="py-2 pr-4">Tarih</th>
+      <th className="py-2 pr-4 text-right">Brüt Tutar</th>
+      <th className="py-2 pr-4 text-right">Komisyon</th>
+      <th className="py-2 text-right">Net Tutar</th>
+    </tr>
+  </thead>
+  <tbody className="divide-y divide-border/60">
+    {/* her satır: formatDayLabel + formatTime (§ ile AYNI), formatPriceFromCents (§2 ile AYNI) */}
+  </tbody>
+</table>
+```
+
+- Yalnızca `AppointmentStatus === "COMPLETED"` seanslar listelenir (sayfanın amacı zaten
+  "kazanç", tamamlanmamış bir seans kazanç ÜRETMEZ) — filtre backend DTO'sunun kendisinde
+  uygulanmalıdır (bu bir görsel karar değil, veri kararı).
+  Para sütunları `text-right tabular-nums` (§12.2'nin `tabular-nums` kararıyla AYNI, sayı
+  hizası).
+- **Mobil:** `booking-list-view.tsx`'in `<md:hidden` kart deseninin (§12.5.1) AYNI iskeleti —
+  hasta adı + tarih üstte, altında `Brüt / Komisyon / Net` üç değeri `flex justify-between
+  text-xs` üç satır halinde (tablo sütunlarının dikey karşılığı) — YENİ bir mobil kart yapısı
+  İCAT EDİLMEZ, mevcut kart zeminine (`rounded-[var(--site-radius)] border border-border
+  bg-surface p-4`) ek satırlar eklenir.
+- **Boş durum:** `booking-list-view.tsx`'in mevcut boş-durum panelinin (§12.5, `CalendarX2` +
+  "Henüz bir randevunuz yok.") AYNI iskeleti, ikon `Wallet` ile DEĞİŞTİRİLİR, metin "Henüz
+  tamamlanmış bir seansınız yok." — YENİ bir boş-durum deseni İCAT EDİLMEZ.
+- **Sayfalama:** `doctor-bookings-panel.tsx`'in (§12.5) mevcut "Daha Fazla Yükle"
+  (`Button variant="outline" size="sm" loading={...}`) desenini BİREBİR tekrar kullanır.
+
+#### 13.5.4 Açık bağımlılık — bu sayfa için HENÜZ bir API kontratı YOK
+
+`lib/api/telehealth.ts`'te `/doctor/earnings` (veya eşdeğeri) bir uç BULUNMUYOR — brüt/komisyon/
+net toplamlarını ve tamamlanan seans listesini döndürecek DTO'nun şekli **architect'in**
+kararıdır (muhtemelen `listDoctorBookings`'in bir varyantı + ayrı bir özet ucu, ama bu bir mimari
+karardır, ui-designer BURADA VARSAYIM YAPMAZ). Bu bölüm yalnızca DTO GELDİĞİNDE sayfanın nasıl
+GÖRÜNECEĞİNİ tarif eder; frontend-agent kontrat netleşmeden bu sayfayı KODLAYAMAZ (§CLAUDE.md'nin
+"API kontratı tek doğruluk kaynağıdır" ilkesi gereği önce architect'e danışılmalıdır).
+
+### 13.6 Özet — bu bölümde eklenen somut değerler
+
+| Öğe | Değer |
+|---|---|
+| Seans rozeti — Planlandı | `tone="neutral"` (soft) + `CalendarClock` |
+| Seans rozeti — Devam Ediyor | `tone="primary" solid` + `Video` |
+| Seans rozeti — Tamamlandı | `tone="success" solid` + `CircleCheck` |
+| Seans rozeti — İptal Edildi | `tone="danger" solid` + `XCircle` |
+| Seans rozeti — Hasta Gelmedi | `tone="danger"` (soft) + `UserX` |
+| "Tıbbi Belgeler (N)" rozeti | `Badge tone="primary" solid size="sm"` + `Paperclip`, konum DEĞİŞMEDİ |
+| Hasta notu göstergesi | `h-5 w-5` dairesel `bg-primary/10 text-primary` + `StickyNote` + `Tooltip` |
+| Belge dialog boyutu | `max-w-3xl`, `max-h-[85vh] overflow-y-auto` |
+| Belge önizleme çerçevesi | `h-[420px]`, resim `object-contain`, PDF `<iframe>`, `Skeleton` yükleniyor |
+| Belge seçici (çoklu) | §2.2.1 seçim pili BİREBİR, seçili ikon `Check` |
+| Hasta notu açılışı | varsayılan gizli, "Görüntüle" butonuyla İSTEĞE BAĞLI (gereksiz audit-log önlenir) |
+| "Seansı Tamamla" | `Button variant="success"` + `CheckCircle2`, `Dialog max-w-md` + `Field`/`Textarea` |
+| Aksiyon sütunu kuralı | `COMPLETED`/`CANCELLED`/`NO_SHOW` → yalnızca rozet; `IN_PROGRESS` → rozet+buton(lar); `SCHEDULED` pencere kapandı → +"Seansı Tamamla" |
+| `/doctor/earnings` stat kartı | `rounded-[var(--site-radius)] border border-border bg-surface p-5`, admin `StatCard` KULLANILMAZ (glow ihlali) |
+| Net Kazanç vurgusu | `border-primary/30 bg-primary/5 text-primary` (tek vurgulu kart) |
+| Kazanç tablosu | `booking-list-view.tsx` tablo/kart iskeleti BİREBİR + Brüt/Komisyon/Net sütunu |
+| Açık bağımlılıklar | `POST /appointments/{id}/complete` gövdesine `note` eklenmeli (architect/backend/compliance); `/doctor/earnings` DTO'su HENÜZ YOK (architect) |

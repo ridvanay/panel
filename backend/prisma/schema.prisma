@@ -2101,6 +2101,17 @@ model Appointment {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
+  /// AES-256-GCM ŞİFRELİ (lib/crypto.ts::encryptSecret/decryptSecret —
+  /// AppointmentIntake.noteCiphertext İLE AYNI disiplin, "iv:authTag:ciphertext" hex formatı).
+  /// Doktorun seans SONRASI epikriz/konsültasyon notu — KVKK md.6 özel nitelikli sağlık
+  /// verisidir. DÜZ METİN ASLA SAKLANMAZ; index YOK, arama YOK, log'a YAZILMAZ. Yalnızca
+  /// randevunun doktoru ve ADMIN tarafından yazılabilir/okunabilir; erişimde audit log
+  /// ZORUNLUDUR (yetkilendirme + audit iş mantığı backend-agent'ın sorumluluğundadır, bu
+  /// alan yalnızca şifreli değeri taşır).
+  consultationNoteCiphertext String?
+  /// Epikriz notunun en son ne zaman girildiği/güncellendiği (audit ve UI için).
+  consultationNoteUpdatedAt  DateTime?
+
   /// [TCT] §9.7.4 — null = bu tur ÖNCESİ oluşmuş tekil randevu (geriye dönük backfill YAPILMAZ).
   bookingId String?
 

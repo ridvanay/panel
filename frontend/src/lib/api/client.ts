@@ -2,7 +2,7 @@ import * as Sentry from "@sentry/nextjs";
 import { API_BASE_URL } from "../env";
 import { ApiClientError } from "./error";
 import { clearAccessToken, getAccessToken, setAccessToken } from "./token-store";
-import type { ApiErrorBody, AuthTokens, Page } from "./types";
+import type { ApiErrorBody, AuthTokens, Page, PageMeta } from "./types";
 
 type Method = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 
@@ -152,6 +152,20 @@ export async function apiFetchPage<T>(path: string, options: RequestOptions = {}
   const { body } = await request(path, options);
   return {
     items: (body?.data as T[]) ?? [],
+    meta: body?.meta ?? { nextCursor: null },
+  };
+}
+
+/**
+ * `data` zarfı bir DİZİ DEĞİL bir NESNE olan ama yine de üst seviyede cursor sayfalama
+ * `meta.nextCursor` taşıyan uçlar için (ör. `GET /doctor/earnings` — `data: { summary, sessions }`
+ * + `meta.nextCursor`, `/doctor/bookings` İLE AYNI YERDE) — `apiFetchPage`'in `T[]` varsayımını
+ * PAYLAŞMAZ, `data`'yı OLDUĞU GİBİ döner.
+ */
+export async function apiFetchWithMeta<T>(path: string, options: RequestOptions = {}): Promise<{ data: T; meta: PageMeta }> {
+  const { body } = await request(path, options);
+  return {
+    data: body?.data as T,
     meta: body?.meta ?? { nextCursor: null },
   };
 }

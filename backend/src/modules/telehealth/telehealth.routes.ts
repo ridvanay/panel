@@ -73,7 +73,10 @@ const WITH_APPOINTMENT_RELATIONS = { doctor: { select: { id: true, title: true, 
 const WITH_BOOKING_DOCTOR = { id: true, title: true, fullName: true, slug: true, userId: true } as const;
 const WITH_BOOKING_RELATIONS = {
   doctor: { select: WITH_BOOKING_DOCTOR },
-  appointments: true,
+  // `startsAt asc` — ilişki sırası Prisma/Postgres tarafından GARANTİLİ DEĞİLDİR (bkz. satır
+  // ~458'deki booking detay sorgusuyla AYNI disiplin); `appointments[0]`'a dayanan istemci
+  // mantığı (durum rozeti, "Seansı Tamamla" hedefi) DETERMİNİSTİK bir sıra GEREKTİRİR.
+  appointments: { orderBy: { startsAt: "asc" } },
   // §9.7.5 madde 8 — yalnızca VARLIK/SAYI taşınır, İÇERİK asla (bkz. mappers/index.ts::toAppointmentBookingDto).
   intake: { select: { id: true } },
   documents: { where: { deletedAt: null }, select: { id: true } },

@@ -1,21 +1,31 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, CalendarX2, Paperclip } from "lucide-react";
-import type { AppointmentBooking } from "@/lib/api/types";
+import { AlertTriangle, CalendarX2, CheckCircle2, Paperclip, StickyNote } from "lucide-react";
+import type { AppointmentBooking, AppointmentStatus } from "@/lib/api/types";
 import { formatDayLabel, formatTime } from "@/lib/telehealth-format";
+import { friendlyErrorMessage } from "@/lib/api/friendly-error";
+import * as telehealthApi from "@/lib/api/telehealth";
 import { PaymentStatusBadge } from "@/components/site/telehealth/payment-status-badge";
+import { AppointmentStatusBadge } from "@/components/site/telehealth/appointment-status-badge";
 import { JoinMeetingButton } from "@/components/site/telehealth/join-meeting-button";
 import { BookingDocumentsDialog } from "@/components/site/telehealth/booking-documents-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert } from "@/components/ui/alert";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Field } from "@/components/ui/field";
+import { Textarea } from "@/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 /**
- * `.claude/design-notes-telehealth.md` §12.5 — randevu yönetim ekranı. Responsive TEK bileşen:
- * mobilde kart listesi, `md:` ve üzerinde tablo — AYNI veri, iki AYRI veri-çekme mantığı İCAT
- * EDİLMEZ, yalnızca iki Tailwind düzeninde render edilir. Doktor (`/doctor/bookings`) VE hasta
- * (`/patient/bookings`) portalında ORTAK kullanılır (`perspective` prop'u).
+ * `.claude/design-notes-telehealth.md` §12.5 (Booking Turu 1) + §13 (Booking Turu 3) — randevu
+ * yönetim ekranı. Responsive TEK bileşen: mobilde kart listesi, `md:` ve üzerinde tablo — AYNI
+ * veri, iki AYRI veri-çekme mantığı İCAT EDİLMEZ, yalnızca iki Tailwind düzeninde render edilir.
+ * Doktor (`/doctor/bookings`) VE hasta (`/patient/bookings`) portalında ORTAK kullanılır
+ * (`perspective` prop'u). §13.1/§13.2/§13.4 bu bileşene TADİLAT ekler (seans durumu rozeti,
+ * vurgulu belge rozeti + hasta notu göstergesi, "Seansı Tamamla" aksiyonu).
  */
 
 interface BookingListViewProps {
@@ -38,8 +48,110 @@ function BookingListSkeleton() {
   );
 }
 
+/**
+ * §13.4.1 — "Seansı Tamamla" `IN_PROGRESS`'te HER ZAMAN, `SCHEDULED`'ta YALNIZCA katılım
+ * penceresi KAPANDIYSA (`now > joinableUntil`) gösterilir; pencere hiç AÇILMADIYSA
+ * (`joinableUntil === null`, ör. ödeme bekliyor) "henüz açılmadı" sayılır, buton GÖSTERİLMEZ.
+ */
+function isSessionCompletable(status: AppointmentStatus, joinableUntil: string | null, now: number): boolean {
+  if (status === "IN_PROGRESS") return true;
+  if (status === "SCHEDULED" && joinableUntil && now > new Date(joinableUntil).getTime()) return true;
+  return false;
+}
+
+/** §13.1/§13.4.1 — Aksiyon alanı, `firstAppointment.status`'e göre rozet/buton kombinasyonu. */
+function BookingActions({
+  booking,
+  perspective,
+  accessToken,
+  now,
+  onComplete,
+}: {
+  booking: AppointmentBooking;
+  perspective: "doctor" | "patient";
+  accessToken?: string;
+  now: number;
+  onComplete: () => void;
+}) {
+  const status = booking.appointments[0]?.status;
+
+  if (!status) {
+    return <JoinMeetingButton booking={booking} accessToken={accessToken} size="sm" />;
+  }
+
+  const showBadge = status !== "SCHEDULED";
+  const showJoin = status === "SCHEDULED" || status === "IN_PROGRESS";
+  const showComplete = perspective === "doctor" && isSessionCompletable(status, booking.joinableUntil, now);
+
+  return (
+    <>
+      {showBadge && <AppointmentStatusBadge status={status} size="sm" />}
+      {showJoin && <JoinMeetingButton booking={booking} accessToken={accessToken} size="sm" />}
+      {showComplete && (
+        <Button type="button" variant="success" size="sm" className="gap-1" onClick={onComplete}>
+          <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
+          Seansı Tamamla
+        </Button>
+      )}
+    </>
+  );
+}
+
+/** §13.2 — "Tıbbi Belgeler (N)" vurgulu rozet + hasta notu göstergesi, koşul `documentCount > 0 || hasIntakeNote`. */
+function BookingDocumentsIndicator({
+  booking,
+  perspective,
+  onOpen,
+}: {
+  booking: AppointmentBooking;
+  perspective: "doctor" | "patient";
+  onOpen: () => void;
+}) {
+  if (!(booking.documentCount > 0 || booking.hasIntakeNote)) return null;
+
+  const content = (
+    <>
+      {booking.documentCount > 0 && (
+        <Badge tone="primary" solid size="sm" className="gap-1">
+          <Paperclip className="h-3 w-3" aria-hidden="true" />
+          Tıbbi Belgeler ({booking.documentCount})
+        </Badge>
+      )}
+      {booking.hasIntakeNote && (
+        <Tooltip>
+          <TooltipTrigger render={<span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-primary" />}>
+            <StickyNote className="h-3 w-3" aria-hidden="true" />
+          </TooltipTrigger>
+          <TooltipContent>Hasta notu da mevcut</TooltipContent>
+        </Tooltip>
+      )}
+    </>
+  );
+
+  if (perspective !== "doctor") {
+    return <span className="inline-flex items-center gap-1.5">{content}</span>;
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="inline-flex items-center gap-1.5 rounded-[var(--site-radius)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+    >
+      {content}
+    </button>
+  );
+}
+
 export function BookingListView({ bookings, loadError, onRetry, perspective, timeZone, accessToken }: BookingListViewProps) {
   const [documentsBookingId, setDocumentsBookingId] = useState<string | null>(null);
+  const [completingId, setCompletingId] = useState<string | null>(null);
+  const [note, setNote] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [completeError, setCompleteError] = useState<string | null>(null);
+
+  // eslint-disable-next-line react-hooks/purity -- `join-meeting-button.tsx` İLE AYNI gerekçe: katılım penceresi durumunu "şu an" ile karşılaştırmak GEREKİR, saniyede bir tick atan bir sayaç GEREKMEZ, yalnızca render anındaki an yeterlidir
+  const now = Date.now();
 
   if (bookings === null && !loadError) {
     return <BookingListSkeleton />;
@@ -73,6 +185,30 @@ export function BookingListView({ bookings, loadError, onRetry, perspective, tim
     );
   }
 
+  const completingBooking = bookings.find((b) => b.id === completingId) ?? null;
+  const completingFirstAppointment = completingBooking?.appointments[0] ?? null;
+
+  function openComplete(bookingId: string) {
+    setCompletingId(bookingId);
+    setNote("");
+    setCompleteError(null);
+  }
+
+  async function handleComplete() {
+    if (!completingFirstAppointment) return;
+    setSubmitting(true);
+    setCompleteError(null);
+    try {
+      await telehealthApi.completeAppointment(completingFirstAppointment.id, accessToken, note);
+      setCompletingId(null);
+      onRetry();
+    } catch (err) {
+      setCompleteError(friendlyErrorMessage(err));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   return (
     <>
       {/* §12.5.1 — mobil kart listesi (<md) */}
@@ -102,25 +238,17 @@ export function BookingListView({ bookings, loadError, onRetry, perspective, tim
                 ))}
               </div>
 
-              <div className="mt-3 flex items-center justify-between gap-2 border-t border-border/60 pt-3">
-                {booking.documentCount > 0 &&
-                  (perspective === "doctor" ? (
-                    <button
-                      type="button"
-                      onClick={() => setDocumentsBookingId(booking.id)}
-                      className="flex items-center gap-1 text-xs text-foreground/60 hover:text-primary"
-                    >
-                      <Paperclip className="h-3.5 w-3.5" aria-hidden="true" />
-                      {booking.documentCount} belge
-                    </button>
-                  ) : (
-                    <span className="flex items-center gap-1 text-xs text-foreground/60">
-                      <Paperclip className="h-3.5 w-3.5" aria-hidden="true" />
-                      {booking.documentCount} belge
-                    </span>
-                  ))}
-                <div className="flex-1" />
-                <JoinMeetingButton booking={booking} accessToken={accessToken} size="sm" />
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-3">
+                <BookingDocumentsIndicator booking={booking} perspective={perspective} onOpen={() => setDocumentsBookingId(booking.id)} />
+                <div className="flex flex-1 flex-wrap items-center gap-2">
+                  <BookingActions
+                    booking={booking}
+                    perspective={perspective}
+                    accessToken={accessToken}
+                    now={now}
+                    onComplete={() => openComplete(booking.id)}
+                  />
+                </div>
               </div>
             </div>
           );
@@ -160,28 +288,18 @@ export function BookingListView({ bookings, loadError, onRetry, perspective, tim
                   <PaymentStatusBadge status={booking.paymentStatus} />
                 </td>
                 <td className="py-3 pr-4">
-                  {booking.documentCount > 0 ? (
-                    perspective === "doctor" ? (
-                      <button
-                        type="button"
-                        onClick={() => setDocumentsBookingId(booking.id)}
-                        className="flex items-center gap-1 text-foreground/60 hover:text-primary"
-                      >
-                        <Paperclip className="h-3.5 w-3.5" aria-hidden="true" />
-                        {booking.documentCount}
-                      </button>
-                    ) : (
-                      <span className="flex items-center gap-1 text-foreground/60">
-                        <Paperclip className="h-3.5 w-3.5" aria-hidden="true" />
-                        {booking.documentCount}
-                      </span>
-                    )
-                  ) : (
-                    <span className="text-foreground/30">—</span>
-                  )}
+                  <BookingDocumentsIndicator booking={booking} perspective={perspective} onOpen={() => setDocumentsBookingId(booking.id)} />
                 </td>
                 <td className="py-3 pr-4 text-right">
-                  <JoinMeetingButton booking={booking} accessToken={accessToken} size="sm" />
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    <BookingActions
+                      booking={booking}
+                      perspective={perspective}
+                      accessToken={accessToken}
+                      now={now}
+                      onComplete={() => openComplete(booking.id)}
+                    />
+                  </div>
                 </td>
               </tr>
             );
@@ -192,9 +310,49 @@ export function BookingListView({ bookings, loadError, onRetry, perspective, tim
       {perspective === "doctor" && documentsBookingId && (
         <BookingDocumentsDialog
           bookingId={documentsBookingId}
+          hasIntakeNote={bookings.find((b) => b.id === documentsBookingId)?.hasIntakeNote ?? false}
           open={documentsBookingId !== null}
           onOpenChange={(open) => !open && setDocumentsBookingId(null)}
         />
+      )}
+
+      {/* §13.4.2 — "Seansı Tamamla" mini-modalı, YALNIZCA doktor perspektifi. */}
+      {perspective === "doctor" && completingBooking && completingFirstAppointment && (
+        <Dialog open={completingId !== null} onOpenChange={(open) => !open && setCompletingId(null)}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Seansı Tamamla</DialogTitle>
+              <DialogDescription>
+                {completingBooking.patientName} ile {formatDayLabel(completingFirstAppointment.startsAt, timeZone)} ·{" "}
+                {formatTime(completingFirstAppointment.startsAt, timeZone)} seansını tamamlandı olarak işaretleyeceksiniz.
+              </DialogDescription>
+            </DialogHeader>
+
+            {completeError && <Alert variant="error">{completeError}</Alert>}
+
+            <Field id="consultationNote" label="Epikriz / Konsültasyon Notu (opsiyonel)">
+              {(inputProps) => (
+                <Textarea
+                  {...inputProps}
+                  rows={4}
+                  maxLength={4000}
+                  placeholder="Görüşmede konuşulanların kısa bir özeti (tanı, öneri, sonraki adım)…"
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                />
+              )}
+            </Field>
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setCompletingId(null)}>
+                Vazgeç
+              </Button>
+              <Button type="button" variant="success" loading={submitting} onClick={() => void handleComplete()}>
+                Seansı Tamamla
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
     </>
   );

@@ -2474,3 +2474,44 @@ export const DoctorPortalProfileSchema = z.object({
   twoFactorEnabled: z.boolean(),
 });
 export type DoctorPortalProfileDto = z.infer<typeof DoctorPortalProfileSchema>;
+
+/**
+ * §9.7 TADİLAT — `GET /doctor/earnings`. `env.PLATFORM_COMMISSION_RATE_PERCENT` — sabit GLOBAL
+ * oran, doktor bazında override YOK (bu turun kapsamı). `completedSessionCount`/gross/commission/
+ * net TÜM tamamlanmış randevular üzerinden (sayfalama UYGULANMADAN) hesaplanır — `sessions.items`
+ * ile TUTARSIZ görünmesin diye satır bazında YUVARLANMIŞ değerlerin TOPLAMIdır.
+ */
+export const DoctorEarningsSummarySchema = z.object({
+  grossCents: z.number().int(),
+  commissionCents: z.number().int(),
+  netCents: z.number().int(),
+  currency: z.string(),
+  commissionRatePercent: z.number(),
+  completedSessionCount: z.number().int(),
+});
+export type DoctorEarningsSummaryDto = z.infer<typeof DoctorEarningsSummarySchema>;
+
+/**
+ * `bookingId` — bu randevu bir `AppointmentBooking`'e bağlı DEĞİLSE (bu tur ÖNCESİ, deprecated
+ * tekil `POST /appointments` akışından kalma randevu) `appointmentId` İLE AYNI değere düşer
+ * (bkz. telehealth.portal.routes.ts) — şema seviyesinde nullable YAPILMAZ (kontrat gereği).
+ */
+export const DoctorEarningsSessionSchema = z.object({
+  bookingId: z.string().uuid(),
+  appointmentId: z.string().uuid(),
+  patientName: z.string(),
+  startsAt: z.string(),
+  grossCents: z.number().int(),
+  commissionCents: z.number().int(),
+  netCents: z.number().int(),
+  currency: z.string(),
+});
+export type DoctorEarningsSessionDto = z.infer<typeof DoctorEarningsSessionSchema>;
+
+export const DoctorEarningsResponseSchema = z.object({
+  summary: DoctorEarningsSummarySchema,
+  sessions: z.object({
+    items: z.array(DoctorEarningsSessionSchema),
+  }),
+});
+export type DoctorEarningsResponseDto = z.infer<typeof DoctorEarningsResponseSchema>;

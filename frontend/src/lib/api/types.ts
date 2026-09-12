@@ -3580,3 +3580,41 @@ export interface ListPatientBookingsParams {
   cursor?: string;
   limit?: number;
 }
+
+/**
+ * `.claude/design-notes-telehealth.md` §13.5 — `GET /doctor/earnings`. Yalnızca oturumun KENDİ
+ * `DoctorProfile`'ı (IDOR yüzeyi yok, `listDoctorBookings` İLE AYNI ilke). `commissionRatePercent`
+ * backend'den gelen SABİT global komisyon oranıdır (bkz. §13.5.2).
+ */
+export interface DoctorEarningsSummary {
+  grossCents: number;
+  commissionCents: number;
+  netCents: number;
+  currency: string;
+  commissionRatePercent: number;
+  completedSessionCount: number;
+}
+
+/** Yalnızca `AppointmentStatus === "COMPLETED"` seanslar — bkz. `DoctorEarningsSummary`. */
+export interface DoctorEarningsSession {
+  bookingId: string;
+  appointmentId: string;
+  patientName: string;
+  startsAt: string;
+  grossCents: number;
+  commissionCents: number;
+  netCents: number;
+  currency: string;
+}
+
+export interface GetDoctorEarningsParams {
+  cursor?: string;
+  limit?: number;
+}
+
+/** `listDoctorBookings`'in `Page<T>`'i İLE AYNI cursor-sayfalama şekli, yalnızca `items` yerine `summary`/`sessions.items`. */
+export interface DoctorEarningsPage {
+  summary: DoctorEarningsSummary;
+  sessions: { items: DoctorEarningsSession[] };
+  meta: PageMeta;
+}

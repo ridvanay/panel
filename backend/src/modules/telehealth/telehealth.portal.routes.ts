@@ -5,16 +5,20 @@ import { authenticate } from "../../middleware/authenticate";
 import { requireModuleEnabled } from "../../middleware/module-guard";
 import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema, ApiSuccessWithMeta, CursorQuerySchema } from "../../schemas/common";
-import { AppointmentBookingSchema, DoctorPortalProfileSchema } from "../../schemas/entities";
+import { AppointmentBookingSchema, DoctorEarningsResponseSchema, DoctorPortalProfileSchema } from "../../schemas/entities";
 import { toAppointmentBookingDto, toDoctorPortalProfileDto } from "../../mappers";
 import { NotADoctorError, TwoFactorRequiredError } from "../../lib/errors";
 import { buildPageMeta, parseCursor } from "../../lib/pagination";
+import { env } from "../../config/env";
 import { DoctorBookingsQuerySchema } from "./telehealth.schemas";
 
 const WITH_DOCTOR_RELATIONS = { specialty: true, avatarMedia: true, availability: true } as const;
 const WITH_BOOKING_RELATIONS = {
   doctor: { select: { id: true, title: true, fullName: true, slug: true, userId: true } },
-  appointments: true,
+  // `startsAt asc` — `telehealth.routes.ts::WITH_BOOKING_RELATIONS` İLE AYNI disiplin (ilişki
+  // sırası Prisma/Postgres tarafından GARANTİLİ DEĞİLDİR, `appointments[0]`'a dayanan mantık
+  // deterministik sıra GEREKTİRİR).
+  appointments: { orderBy: { startsAt: "asc" } },
   intake: { select: { id: true } },
   documents: { where: { deletedAt: null }, select: { id: true } },
 } as const;
@@ -106,6 +110,95 @@ export async function telehealthDoctorPortalRoutes(app: FastifyInstance) {
       });
 
       return reply.send(ok(rows.map(toAppointmentBookingDto), buildPageMeta(rows, limit)));
+    }
+  );
+
+  /**
+   * §9.7 TADİLAT — salt-okunur kazanç özeti. `/doctor/me`/`/doctor/bookings` İLE AYNI şekilde
+   * rate limit/audit log GEREKMEZ (hassas bir yazma eylemi değil).
+   */
+  server.get(
+    "/earnings",
+    {
+      schema: {
+        querystring: CursorQuerySchema,
+        response: { 200: ApiSuccessWithMeta(DoctorEarningsResponseSchema, z.object({ nextCursor: z.string().nullable() })) },
+      },
+    },
+    async (request, reply) => {
+      const { doctorProfileId } = await requireDoctorPortalAccess(app, request.user!.id);
+
+      // Tek para birimi varsayımı — `DoctorProfile.currency`/`sessionPriceCents` İLE AYNI desen.
+      const doctorProfile = await app.prisma.doctorProfile.findUniqueOrThrow({
+        where: { id: doctorProfileId },
+        select: { currency: true },
+      });
+      const currency = doctorProfile.currency;
+      const rate = env.PLATFORM_COMMISSION_RATE_PERCENT;
+
+      const { cursor, limit } = request.query;
+      const cursorSeq = parseCursor(cursor);
+
+      // `summary` — SAYFALAMA UYGULANMADAN tüm tamamlanmış randevular üzerinden hesaplanır (satır
+      // bazında YUVARLA, SONRA topla — `sessions.items` ile toplamda TUTARSIZLIK olmasın).
+      const allCompleted = await app.prisma.appointment.findMany({
+        where: { doctorId: doctorProfileId, status: "COMPLETED" },
+        select: { priceCents: true },
+      });
+      let grossCents = 0;
+      let commissionCents = 0;
+      let netCents = 0;
+      for (const row of allCompleted) {
+        const rowCommissionCents = Math.round((row.priceCents * rate) / 100);
+        grossCents += row.priceCents;
+        commissionCents += rowCommissionCents;
+        netCents += row.priceCents - rowCommissionCents;
+      }
+
+      // `doctorId` sorgu parametresi BİLİNÇLİ OLARAK YOKTUR (IDOR yüzeyi, `/bookings` İLE AYNI
+      // disiplin) — yalnızca oturumun KENDİ `DoctorProfile`'ı üzerinden filtrelenir.
+      const rows = await app.prisma.appointment.findMany({
+        where: {
+          doctorId: doctorProfileId,
+          status: "COMPLETED",
+          ...(cursorSeq ? { seq: { lt: cursorSeq } } : {}),
+        },
+        orderBy: { seq: "desc" },
+        take: limit,
+        include: { booking: { select: { id: true } } },
+      });
+
+      const items = rows.map((appointment) => {
+        const rowCommissionCents = Math.round((appointment.priceCents * rate) / 100);
+        return {
+          // `booking` YOKSA (bu tur ÖNCESİ deprecated tekil randevu) `appointmentId`'ye düşer.
+          bookingId: appointment.booking?.id ?? appointment.id,
+          appointmentId: appointment.id,
+          patientName: appointment.patientName,
+          startsAt: appointment.startsAt.toISOString(),
+          grossCents: appointment.priceCents,
+          commissionCents: rowCommissionCents,
+          netCents: appointment.priceCents - rowCommissionCents,
+          currency: appointment.currency,
+        };
+      });
+
+      return reply.send(
+        ok(
+          {
+            summary: {
+              grossCents,
+              commissionCents,
+              netCents,
+              currency,
+              commissionRatePercent: rate,
+              completedSessionCount: allCompleted.length,
+            },
+            sessions: { items },
+          },
+          buildPageMeta(rows, limit)
+        )
+      );
     }
   );
 }

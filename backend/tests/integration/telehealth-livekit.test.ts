@@ -401,4 +401,42 @@ describe("telehealth/livekit — complete (§4.5 son madde: doktor/ADMIN)", () =
     const res = await app.inject({ method: "POST", url: `/api/v1/appointments/${id}/complete?t=${accessToken}` });
     expect(res.statusCode).toBe(404);
   });
+
+  it("`note` gönderildiğinde AES-256-GCM ile şifrelenip yazılır; audit loglanır; `note` YOKSA mevcut alanlar DOKUNULMAZ", async () => {
+    const { decryptSecret } = await import("../../src/lib/crypto");
+    const { doctor } = await createDoctorWithAvailability(app);
+    const { id } = await bookAppointment(app, doctor.slug, nextMondayNineAmUtc());
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/appointments/${id}/complete`,
+      headers: authHeader(adminToken),
+      payload: { note: "Hasta stabil, kontrol önerildi." },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.status).toBe("COMPLETED");
+
+    const raw = await app.prisma.appointment.findUniqueOrThrow({ where: { id } });
+    expect(raw.consultationNoteCiphertext).not.toBeNull();
+    expect(raw.consultationNoteCiphertext).not.toContain("Hasta stabil");
+    expect(decryptSecret(raw.consultationNoteCiphertext!)).toBe("Hasta stabil, kontrol önerildi.");
+    expect(raw.consultationNoteUpdatedAt).not.toBeNull();
+
+    const audit = await app.prisma.auditLog.findFirst({
+      where: { action: "telehealth.consultation_note.updated", targetId: id },
+    });
+    expect(audit).not.toBeNull();
+    // Not içeriği metadata'ya YAZILMAZ.
+    expect(JSON.stringify(audit?.metadata ?? {})).not.toContain("Hasta stabil");
+
+    // `note` YOKSA — var olan not SİLİNMEZ (ikinci bir çağrı, notsuz).
+    const secondCall = await app.inject({
+      method: "POST",
+      url: `/api/v1/appointments/${id}/complete`,
+      headers: authHeader(adminToken),
+    });
+    expect(secondCall.statusCode).toBe(200);
+    const afterSecondCall = await app.prisma.appointment.findUniqueOrThrow({ where: { id } });
+    expect(afterSecondCall.consultationNoteCiphertext).toBe(raw.consultationNoteCiphertext);
+  });
 });

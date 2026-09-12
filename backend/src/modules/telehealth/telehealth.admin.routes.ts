@@ -36,7 +36,10 @@ const WITH_DOCTOR_RELATIONS = { specialty: true, avatarMedia: true, availability
 const WITH_APPOINTMENT_RELATIONS = { doctor: { select: { id: true, title: true, fullName: true, slug: true } } } as const;
 const WITH_BOOKING_RELATIONS = {
   doctor: { select: { id: true, title: true, fullName: true, slug: true, userId: true } },
-  appointments: true,
+  // `startsAt asc` — `telehealth.routes.ts::WITH_BOOKING_RELATIONS` İLE AYNI disiplin (ilişki
+  // sırası Prisma/Postgres tarafından GARANTİLİ DEĞİLDİR, `appointments[0]`'a dayanan mantık
+  // deterministik sıra GEREKTİRİR).
+  appointments: { orderBy: { startsAt: "asc" } },
   intake: { select: { id: true } },
   documents: { where: { deletedAt: null }, select: { id: true } },
 } as const;

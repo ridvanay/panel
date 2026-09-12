@@ -833,6 +833,84 @@ describe("telehealth — doktor/hasta portalları (§9.7.7 KARAR K)", () => {
     expect(res.json().data).toHaveLength(1);
     expect(res.json().data[0].patientUserId).toBe(patient.userId);
   });
+
+  it("GET /doctor/earnings — yalnızca COMPLETED randevuları sayar; gross/commission/net satır bazında YUVARLANIP toplanır", async () => {
+    const { env } = await import("../../src/config/env");
+    const rate = env.PLATFORM_COMMISSION_RATE_PERCENT;
+
+    const { doctor } = await createDoctorWithAvailability(app, 100000);
+    const doctorUser = await createUserDirect(app, "USER");
+    const doctorUserToken = await loginAs(app, doctorUser.email);
+    await app.prisma.user.update({ where: { id: doctorUser.id }, data: { twoFactorEnabled: true } });
+    await app.prisma.doctorProfile.update({ where: { id: doctor.id }, data: { userId: doctorUser.id } });
+
+    const startsAt = nextMondayNineAmUtc();
+    const secondSlot = new Date(startsAt.getTime() + 30 * 60 * 1000);
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/v1/appointments/bookings",
+      payload: bookingPayload(doctor.slug, [startsAt, secondSlot]),
+    });
+    expect(created.statusCode).toBe(201);
+    const appointments = created.json().data.appointments as { id: string }[];
+    const bookingId = created.json().data.bookingId as string;
+
+    // Yalnızca İLK randevu COMPLETED yapılır — ikincisi PENDING_PAYMENT/SCHEDULED kalır ve
+    // özete/listeye HİÇ GİRMEMELİDİR.
+    await app.prisma.appointment.update({ where: { id: appointments[0]!.id }, data: { status: "COMPLETED", endedAt: new Date() } });
+
+    const res = await app.inject({ method: "GET", url: "/api/v1/doctor/earnings", headers: authHeader(doctorUserToken) });
+    expect(res.statusCode).toBe(200);
+    const body = res.json().data;
+    const expectedCommission = Math.round((100000 * rate) / 100);
+
+    expect(body.summary.completedSessionCount).toBe(1);
+    expect(body.summary.grossCents).toBe(100000);
+    expect(body.summary.commissionCents).toBe(expectedCommission);
+    expect(body.summary.netCents).toBe(100000 - expectedCommission);
+    expect(body.summary.currency).toBe("TRY");
+    expect(body.summary.commissionRatePercent).toBe(rate);
+
+    expect(body.sessions.items).toHaveLength(1);
+    expect(body.sessions.items[0].appointmentId).toBe(appointments[0]!.id);
+    expect(body.sessions.items[0].bookingId).toBe(bookingId);
+    expect(body.sessions.items[0].grossCents).toBe(100000);
+    expect(body.sessions.items[0].commissionCents).toBe(expectedCommission);
+    expect(body.sessions.items[0].netCents).toBe(100000 - expectedCommission);
+    // Sayfa TAM DOLU DEĞİL (limit varsayılan 20, tek satır) → nextCursor null.
+    expect(res.json().meta.nextCursor).toBeNull();
+  });
+
+  it("GET /doctor/earnings — DoctorProfile'ı OLMAYAN kullanıcı 403 alır; bir doktor BAŞKA doktorun kazancını GÖREMEZ", async () => {
+    const notDoctor = await registerTestUser(app, { email: `telehealth-earnings-notdoctor-${crypto.randomUUID()}@example.com` });
+    const notDoctorRes = await app.inject({ method: "GET", url: "/api/v1/doctor/earnings", headers: authHeader(notDoctor.accessToken) });
+    expect(notDoctorRes.statusCode).toBe(403);
+    expect(notDoctorRes.json().error.code).toBe("NOT_A_DOCTOR");
+
+    // Kendi randevusu OLMAYAN bir doktor — `doctorId` sorgu parametresi YOK (IDOR yüzeyi), bu
+    // yüzden BAŞKA bir doktorun tamamlanmış randevusu bu doktorun özetine/listesine SIZMAZ.
+    const { doctor: doctorA } = await createDoctorWithAvailability(app);
+    const doctorUserA = await createUserDirect(app, "USER");
+    const doctorUserAToken = await loginAs(app, doctorUserA.email);
+    await app.prisma.user.update({ where: { id: doctorUserA.id }, data: { twoFactorEnabled: true } });
+    await app.prisma.doctorProfile.update({ where: { id: doctorA.id }, data: { userId: doctorUserA.id } });
+
+    const { doctor: doctorB } = await createDoctorWithAvailability(app);
+    const bookingB = await app.inject({
+      method: "POST",
+      url: "/api/v1/appointments/bookings",
+      payload: bookingPayload(doctorB.slug, [nextMondayNineAmUtc()]),
+    });
+    expect(bookingB.statusCode).toBe(201);
+    const appointmentB = bookingB.json().data.appointments[0].id as string;
+    await app.prisma.appointment.update({ where: { id: appointmentB }, data: { status: "COMPLETED", endedAt: new Date() } });
+
+    const resA = await app.inject({ method: "GET", url: "/api/v1/doctor/earnings", headers: authHeader(doctorUserAToken) });
+    expect(resA.statusCode).toBe(200);
+    expect(resA.json().data.summary.completedSessionCount).toBe(0);
+    expect(resA.json().data.summary.grossCents).toBe(0);
+    expect(resA.json().data.sessions.items).toHaveLength(0);
+  });
 });
 
 /** `multipart/form-data` gövdesini elle inşa eder (tek dosya alanı, `file`) — test yardımcı fonksiyonu. */

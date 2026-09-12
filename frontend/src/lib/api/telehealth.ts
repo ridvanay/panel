@@ -1,7 +1,7 @@
 import { API_BASE_URL } from "../env";
 import { getAccessToken } from "./token-store";
 import { ApiClientError } from "./error";
-import { apiFetch, apiFetchPage } from "./client";
+import { apiFetch, apiFetchPage, apiFetchWithMeta } from "./client";
 import type {
   ApiErrorBody,
   Appointment,
@@ -19,8 +19,12 @@ import type {
   CreateDoctorRequest,
   CreateSpecialtyRequest,
   DoctorAvailabilityRule,
+  DoctorEarningsPage,
+  DoctorEarningsSession,
+  DoctorEarningsSummary,
   DoctorPortalProfile,
   DoctorProfile,
+  GetDoctorEarningsParams,
   ListDoctorBookingsParams,
   ListPatientBookingsParams,
   MeetingTokenResponse,
@@ -100,9 +104,18 @@ export function requestMeetingToken(id: string, accessToken?: string): Promise<M
   });
 }
 
-/** `POST /appointments/{id}/complete` — doktor/ADMIN, integration-agent'ın ucu. */
-export function completeAppointment(id: string, accessToken?: string): Promise<Appointment> {
-  return apiFetch<Appointment>(`/appointments/${id}/complete`, { method: "POST", query: { t: accessToken } });
+/**
+ * `POST /appointments/{id}/complete` — doktor/ADMIN, integration-agent'ın ucu. `note` — §13.4'ün
+ * epikriz/konsültasyon notu, opsiyonel (trim, ≤4000 karakter); boş/`undefined` iken gövde HİÇ
+ * gönderilmez (eski davranışla BİREBİR aynı, yalnızca tamamlama).
+ */
+export function completeAppointment(id: string, accessToken?: string, note?: string): Promise<Appointment> {
+  const trimmedNote = note?.trim();
+  return apiFetch<Appointment>(`/appointments/${id}/complete`, {
+    method: "POST",
+    query: { t: accessToken },
+    body: trimmedNote ? { note: trimmedNote } : undefined,
+  });
 }
 
 // ---------- [TCT] §9.7 TADİLAT TURU 2 — çoklu slot booking + ödeme + sağlık verisi ----------
@@ -281,6 +294,19 @@ export function listDoctorBookings(params: ListDoctorBookingsParams = {}): Promi
       limit: params.limit ?? 20,
     },
   });
+}
+
+/**
+ * `GET /doctor/earnings` — §13.5, `listDoctorBookings` İLE AYNI IDOR/cursor-sayfalama deseni.
+ * `data` bir DİZİ DEĞİL (`{ summary, sessions }`), bu yüzden `apiFetchPage` yerine
+ * `apiFetchWithMeta` kullanılır; `meta.nextCursor` `/doctor/bookings` İLE AYNI ÜST SEVİYEDE gelir.
+ */
+export async function getDoctorEarnings(params: GetDoctorEarningsParams = {}): Promise<DoctorEarningsPage> {
+  const { data, meta } = await apiFetchWithMeta<{ summary: DoctorEarningsSummary; sessions: { items: DoctorEarningsSession[] } }>(
+    "/doctor/earnings",
+    { query: { cursor: params.cursor, limit: params.limit ?? 20 } }
+  );
+  return { summary: data.summary, sessions: data.sessions, meta };
 }
 
 // ---------- [TCT] §9.7.7 — Hasta portalı (`/patient/*`, oturum GEREKİR, 2FA GEREKMEZ) ----------

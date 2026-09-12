@@ -11,9 +11,10 @@ import { AppointmentNotJoinableError, LiveKitNotConfiguredError, NotFoundError }
 import { hashToken } from "../../lib/tokens";
 import { timingSafeEqualHex } from "../../lib/api-key";
 import { logAudit } from "../../lib/audit";
-import { AppointmentIdParamSchema, AccessTokenQuerySchema } from "./telehealth.schemas";
+import { AppointmentIdParamSchema, AccessTokenQuerySchema, CompleteAppointmentRequestSchema } from "./telehealth.schemas";
 import { getBookingJoinWindow, isWithinJoinWindow } from "./lib/booking";
 import { createMeetingToken, isLiveKitConfigured } from "./lib/livekit";
+import { encryptSecret } from "../../lib/crypto";
 
 /**
  * `.claude/architect-scope-telehealth-template.md` §4.4/§4.5/§8/§9.4/§9.5/§12 — integration-agent'ın
@@ -186,6 +187,7 @@ export async function telehealthLiveKitRoutes(app: FastifyInstance) {
     {
       schema: {
         params: AppointmentIdParamSchema,
+        body: CompleteAppointmentRequestSchema,
         response: { 200: ApiSuccessSchema(AppointmentSchema) },
       },
     },
@@ -202,11 +204,35 @@ export async function telehealthLiveKitRoutes(app: FastifyInstance) {
       const isDoctor = Boolean(request.user && appointment.doctor.userId && appointment.doctor.userId === request.user.id);
       if (!isAdmin && !isDoctor) throw new NotFoundError("Randevu bulunamadı.");
 
+      // Epikriz/konsültasyon notu opsiyoneldir — boş/undefined ise mevcut davranış (yalnızca
+      // status/`endedAt`) DEĞİŞMEZ, var olan bir not SİLİNMEZ (bkz. telehealth.schemas.ts).
+      const note = request.body?.note?.trim();
+      const hasNote = Boolean(note);
+
       const updated = await app.prisma.appointment.update({
         where: { id: appointment.id },
-        data: { status: "COMPLETED", endedAt: new Date() },
+        data: {
+          status: "COMPLETED",
+          endedAt: new Date(),
+          ...(hasNote
+            ? { consultationNoteCiphertext: encryptSecret(note!), consultationNoteUpdatedAt: new Date() }
+            : {}),
+        },
         include: { doctor: { select: { id: true, title: true, fullName: true, slug: true } } },
       });
+
+      if (hasNote) {
+        // §8 madde 2 disiplini (`telehealth.intake_note.accessed` ile AYNI) — `metadata`'ya NOT
+        // İÇERİĞİ ASLA YAZILMAZ.
+        await logAudit(app, {
+          actorId: request.user?.id ?? null,
+          actorEmail: request.user?.email ?? null,
+          action: "telehealth.consultation_note.updated",
+          targetType: "Appointment",
+          targetId: appointment.id,
+          ipAddress: request.ip,
+        });
+      }
 
       return reply.send(ok(toAppointmentDto(updated)));
     }

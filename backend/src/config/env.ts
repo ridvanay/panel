@@ -62,6 +62,11 @@ const EnvSchema = z.object({
   // token'ın uzun süre geçerli kalmaması için). Dakika.
   LIVEKIT_TOKEN_TTL_MIN: z.coerce.number().int().positive().max(60).default(15),
 
+  // `GET /doctor/earnings` (§9.7 TADİLAT) — sabit GLOBAL platform komisyon oranı (yüzde).
+  // Doktor bazında override YOKTUR (bu turun kapsamı dışı); tanımsızsa makul bir varsayılana
+  // (%15) düşer, `LIVEKIT_TOKEN_TTL_MIN` ile AYNI "opsiyonel, mantıklı varsayılanlı" desen.
+  PLATFORM_COMMISSION_RATE_PERCENT: z.coerce.number().min(0).max(100).default(15),
+
   // On-demand ISR — backend, frontend'den AYRI bir process olduğu için Next.js'in
   // `revalidatePath`'ini DOĞRUDAN çağıramaz; bunun yerine kaydetme sonrası frontend'deki
   // `POST /api/revalidate` webhook'unu bu paylaşılan sırla imzalayarak tetikler (bkz.
