@@ -42,6 +42,10 @@ export const UserSchema = z.object({
   // yalnızca `role === "ADMIN"` iken `true` (bkz. lib/builder-capability.ts). Eski
   // `User.advancedBuilderEnabled` bayrağı KALDIRILDI.
   canUseAdvancedBuilder: z.boolean(),
+  // [TCT] §9.7.7 KARAR K3 — doktorluk `DoctorProfile.userId === user.id` İLİŞKİSİDİR
+  // (`SiteRole.DOCTOR` YOK). Bu alan o ilişkinin TÜRETİLMİŞ + SALT-OKUNUR bir yansımasıdır —
+  // `null` = bu kullanıcı hiçbir doktor profiline bağlı DEĞİL.
+  doctorProfileId: z.string().uuid().nullable(),
 });
 export type UserDto = z.infer<typeof UserSchema>;
 
@@ -2533,3 +2537,82 @@ export const DoctorEarningsResponseSchema = z.object({
   }),
 });
 export type DoctorEarningsResponseDto = z.infer<typeof DoctorEarningsResponseSchema>;
+
+/**
+ * [TCT] §9.7.7 KARAR K10a — `GET /admin/telehealth/analytics/overview` (ADMIN+MANAGER).
+ * `revenue`/`series`/`doctors` YALNIZCA `status=COMPLETED` randevuları sayar — `GET
+ * /doctor/earnings` İLE AYNI tanım (bkz. modules/telehealth/lib/commission.ts::splitCommission,
+ * PAYLAŞILAN yardımcı). `appointments` her `AppointmentStatus`'u AYRI sayar — gruplama/sunum
+ * kararı frontend'e aittir.
+ */
+export const TelehealthOverviewGranularitySchema = z.enum(["day", "week", "month"]);
+export type TelehealthOverviewGranularity = z.infer<typeof TelehealthOverviewGranularitySchema>;
+
+export const TelehealthOverviewAppointmentCountsSchema = z.object({
+  total: z.number().int(),
+  pendingPayment: z.number().int(),
+  scheduled: z.number().int(),
+  inProgress: z.number().int(),
+  completed: z.number().int(),
+  cancelled: z.number().int(),
+  noShow: z.number().int(),
+});
+export type TelehealthOverviewAppointmentCountsDto = z.infer<typeof TelehealthOverviewAppointmentCountsSchema>;
+
+/** `failed = FAILED + EXPIRED` toplamı (bkz. telehealth.analytics.routes.ts). */
+export const TelehealthOverviewBookingCountsSchema = z.object({
+  total: z.number().int(),
+  paid: z.number().int(),
+  pending: z.number().int(),
+  failed: z.number().int(),
+  refunded: z.number().int(),
+});
+export type TelehealthOverviewBookingCountsDto = z.infer<typeof TelehealthOverviewBookingCountsSchema>;
+
+export const TelehealthOverviewRevenueSchema = z.object({
+  grossCents: z.number().int(),
+  commissionCents: z.number().int(),
+  netCents: z.number().int(),
+  completedSessionCount: z.number().int(),
+});
+export type TelehealthOverviewRevenueDto = z.infer<typeof TelehealthOverviewRevenueSchema>;
+
+export const TelehealthOverviewSeriesPointSchema = z.object({
+  date: z.string(),
+  completedCount: z.number().int(),
+  cancelledCount: z.number().int(),
+  grossCents: z.number().int(),
+  commissionCents: z.number().int(),
+  netCents: z.number().int(),
+});
+export type TelehealthOverviewSeriesPointDto = z.infer<typeof TelehealthOverviewSeriesPointSchema>;
+
+/** En fazla 20 satır, `netCents DESC` (bkz. telehealth.analytics.routes.ts). */
+export const TelehealthOverviewDoctorRowSchema = z.object({
+  doctorId: z.string().uuid(),
+  title: z.string(),
+  fullName: z.string(),
+  slug: z.string(),
+  completedCount: z.number().int(),
+  cancelledCount: z.number().int(),
+  grossCents: z.number().int(),
+  commissionCents: z.number().int(),
+  netCents: z.number().int(),
+});
+export type TelehealthOverviewDoctorRowDto = z.infer<typeof TelehealthOverviewDoctorRowSchema>;
+
+export const TelehealthOverviewSchema = z.object({
+  from: z.string(),
+  to: z.string(),
+  granularity: TelehealthOverviewGranularitySchema,
+  // Aralıktaki COMPLETED randevuların tek para birimi; kayıt yoksa "TRY" (bkz. rota).
+  currency: z.string(),
+  mixedCurrency: z.boolean(),
+  commissionRatePercent: z.number(),
+  appointments: TelehealthOverviewAppointmentCountsSchema,
+  bookings: TelehealthOverviewBookingCountsSchema,
+  revenue: TelehealthOverviewRevenueSchema,
+  series: z.array(TelehealthOverviewSeriesPointSchema),
+  doctors: z.array(TelehealthOverviewDoctorRowSchema),
+});
+export type TelehealthOverviewDto = z.infer<typeof TelehealthOverviewSchema>;

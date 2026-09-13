@@ -84,6 +84,7 @@ export async function adminUsersRoutes(app: FastifyInstance) {
         },
         orderBy: { seq: "asc" },
         take: limit,
+        include: { doctorProfile: { select: { id: true } } },
       });
 
       return reply.send(ok(rows.map(toAdminUserDto), buildPageMeta(rows, limit)));
@@ -118,6 +119,7 @@ export async function adminUsersRoutes(app: FastifyInstance) {
 
       const user = await app.prisma.user.create({
         data: { name, email: emailLower, passwordHash, role: role ?? "EDITOR" },
+        include: { doctorProfile: { select: { id: true } } },
       });
 
       const rawToken = await createPasswordResetToken(app, user.id);
@@ -180,7 +182,11 @@ export async function adminUsersRoutes(app: FastifyInstance) {
           await assertNotLastActiveAdmin(tx, target.id);
         }
 
-        return tx.user.update({ where: { id: target.id }, data: { role } });
+        return tx.user.update({
+          where: { id: target.id },
+          data: { role },
+          include: { doctorProfile: { select: { id: true } } },
+        });
       });
 
       await logAudit(app, {
@@ -227,7 +233,11 @@ export async function adminUsersRoutes(app: FastifyInstance) {
           await assertNotLastActiveAdmin(tx, target.id);
         }
 
-        return tx.user.update({ where: { id: target.id }, data: { status } });
+        return tx.user.update({
+          where: { id: target.id },
+          data: { status },
+          include: { doctorProfile: { select: { id: true } } },
+        });
       });
 
       await logAudit(app, {
@@ -272,6 +282,7 @@ export async function adminUsersRoutes(app: FastifyInstance) {
         const updated = await tx.user.update({
           where: { id: target.id },
           data: { status: "DELETED", deletedAt },
+          include: { doctorProfile: { select: { id: true } } },
         });
 
         // Yan etkiler — AYNI Serializable transaction içinde (bkz. openapi.yaml açıklaması):
@@ -323,6 +334,7 @@ export async function adminUsersRoutes(app: FastifyInstance) {
         return tx.user.update({
           where: { id: target.id },
           data: { status: "ACTIVE", deletedAt: null },
+          include: { doctorProfile: { select: { id: true } } },
         });
       });
 

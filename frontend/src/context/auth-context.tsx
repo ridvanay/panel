@@ -8,8 +8,13 @@ import type { AuthSession, LoginRequest, RegisterRequest, User } from "@/lib/api
 
 type AuthStatus = "loading" | "authenticated" | "unauthenticated";
 
-/** `login()` 2FA açık kullanıcılarda token vermeden `challengeToken` döner (bkz. ARCHITECTURE.md §10.4). */
-type LoginOutcome = { requiresTwoFactor: false } | { requiresTwoFactor: true; challengeToken: string };
+/**
+ * `login()` 2FA açık kullanıcılarda token vermeden `challengeToken` döner (bkz. ARCHITECTURE.md
+ * §10.4). Başarılı dalda `user`'ı da taşır — `loadSession()`'ın state güncellemesi React'in
+ * bir sonraki render'ına kadar `useAuth().user`'a yansımaz; giriş sonrası akıllı yönlendirme
+ * (bkz. `lib/post-login-destination.ts`) AYNI render'da güncel `user`'a ihtiyaç duyar.
+ */
+type LoginOutcome = { requiresTwoFactor: false; user: User } | { requiresTwoFactor: true; challengeToken: string };
 
 interface AuthContextValue {
   status: AuthStatus;
@@ -20,8 +25,8 @@ interface AuthContextValue {
   logout: () => Promise<void>;
   /** Üyelik listesini tazelemek için (org oluşturma/silme, davet kabul sonrası). */
   refreshSession: () => Promise<void>;
-  /** 2FA challenge sonrası TOTP/backup kodu doğrulaması; başarılıysa oturumu açar. */
-  verifyTwoFactor: (challengeToken: string, code: string) => Promise<void>;
+  /** 2FA challenge sonrası TOTP/backup kodu doğrulaması; başarılıysa oturumu açar ve `user`'ı döner. */
+  verifyTwoFactor: (challengeToken: string, code: string) => Promise<User>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -31,7 +36,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [memberships, setMemberships] = useState<AuthSession["memberships"]>([]);
 
-  const loadSession = useCallback(async () => {
+  /**
+   * `session.user`'ı RETURN eder — `login()`/`verifyTwoFactor()` bunu senkron olarak outcome'a
+   * taşıyabilsin diye (bkz. `LoginOutcome` üstündeki not). Hata dalında `null` döner, çağıran
+   * taraf zaten `authApi.login`/`verifyTwoFactor`'ın kendi hatasını fırlatmasına güvenir — bu
+   * `catch` yalnızca "oturum bilgisi çekilemedi" senaryosunu (ör. ilk yüklemede refresh sonrası)
+   * ele alır.
+   */
+  const loadSession = useCallback(async (): Promise<User | null> => {
     try {
       const session = await authApi.getSession();
       setUser(session.user);
@@ -40,11 +52,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Sentry hata event'lerini "hangi kullanıcı" sorusuna bağlamak için — SADECE id
       // (PII olmadan, bkz. proje kökü CLAUDE.md § Kurallar); email/isim ASLA gönderilmez.
       Sentry.setUser({ id: session.user.id });
+      return session.user;
     } catch {
       setUser(null);
       setMemberships([]);
       setStatus("unauthenticated");
       Sentry.setUser(null);
+      return null;
     }
   }, []);
 
@@ -78,16 +92,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // 2FA gerekiyor — henüz token yok, loadSession() ÇAĞRILMAZ.
         return { requiresTwoFactor: true, challengeToken: result.challengeToken };
       }
-      await loadSession();
-      return { requiresTwoFactor: false };
+      const user = await loadSession();
+      // `authApi.login` başarıyla token döndüyse `loadSession()` normal şartlarda `null`
+      // dönmez — yine de tip güvenliği için burada net bir hata fırlatılır (sessiz `undefined`
+      // yaymak yerine, çağıran tarafın `user.doctorProfileId`'a erişimi güvenli olsun).
+      if (!user) throw new Error("Oturum bilgisi yüklenemedi.");
+      return { requiresTwoFactor: false, user };
     },
     [loadSession]
   );
 
   const verifyTwoFactor = useCallback(
-    async (challengeToken: string, code: string) => {
+    async (challengeToken: string, code: string): Promise<User> => {
       await authApi.verifyTwoFactor(challengeToken, code);
-      await loadSession();
+      const user = await loadSession();
+      if (!user) throw new Error("Oturum bilgisi yüklenemedi.");
+      return user;
     },
     [loadSession]
   );
@@ -119,7 +139,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     login,
     register,
     logout,
-    refreshSession: loadSession,
+    refreshSession: async () => {
+      await loadSession();
+    },
     verifyTwoFactor,
   };
 

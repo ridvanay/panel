@@ -113,6 +113,13 @@ export const navItems: NavItem[] = [
   // sidebar item'ı bu yüzden `roles` KISITLAMAZ (EDITOR görür, salt-okunur kullanır). Randevular
   // hasta PII'si taşıdığı İÇİN (§8.4 bağlayıcı) EDITOR'e sidebar'da da GÖSTERİLMEZ — `3cbc753`
   // "modüle bağlı Vergi Sınıfları sekmesi" ile BİREBİR aynı `module` filtresi deseni.
+  {
+    href: "/admin/telehealth/overview",
+    labelKey: "nav.telehealthOverview",
+    icon: Activity,
+    module: "telehealth",
+    roles: ["ADMIN", "MANAGER"],
+  },
   { href: "/admin/telehealth/doctors", labelKey: "nav.telehealth", icon: Stethoscope, module: "telehealth" },
   { href: "/admin/telehealth/specialties", labelKey: "nav.telehealthSpecialties", icon: Tag, module: "telehealth" },
   {

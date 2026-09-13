@@ -319,6 +319,21 @@ export default function EditDoctorPage({ params }: { params: Promise<{ doctorId:
 
               <MediaSelectField id="avatar" label="Avatar" value={avatar} onChange={setAvatar} />
 
+              {/* K8 — bağlama/çözme SADECE `/admin/users`'ta yapılır (ADMIN-only, backend
+               * `PATCH .../doctors/{id}` gövdesinde `userId` alanı ADMIN'e kilitli); burada
+               * salt-okunur bir durum satırı + oraya yönlendiren bir bağlantı gösterilir. */}
+              <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
+                <div>
+                  <p className="text-sm font-medium text-foreground">Bağlı hesap</p>
+                  <p className="text-xs text-foreground/60">
+                    {doctor.userId ? "Bağlı ✓" : "Bağlı hesap yok"}
+                  </p>
+                </div>
+                <Link href="/admin/users" className="text-xs font-medium text-primary hover:underline">
+                  Bağlantıyı /admin/users üzerinden yönetin →
+                </Link>
+              </div>
+
               <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
                 <div>
                   <p className="text-sm font-medium text-foreground">Aktif</p>

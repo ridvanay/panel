@@ -43,7 +43,7 @@ interface DoctorPortalShellProps {
 }
 
 export function DoctorPortalShell({ children }: DoctorPortalShellProps) {
-  const { status, logout } = useAuth();
+  const { status } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const localize = useLocalizePath();
@@ -140,27 +140,29 @@ export function DoctorPortalShell({ children }: DoctorPortalShellProps) {
 
   return (
     <DoctorPortalProfileContext.Provider value={profile}>
-      <div>
-        <header className="border-b border-border bg-surface">
-          <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3 sm:px-6">
-            <span className="text-sm font-semibold text-foreground">{profile.doctorProfile.title} {profile.doctorProfile.fullName}</span>
-            <nav className="flex items-center gap-4 text-sm text-foreground/70">
-              <Link href={bookingsHref} className={pathname === bookingsHref ? "font-medium text-primary" : "hover:text-foreground"}>
-                Randevularım
-              </Link>
-              <Link href={earningsHref} className={pathname === earningsHref ? "font-medium text-primary" : "hover:text-foreground"}>
-                Kazançlarım
-              </Link>
-              <Link href={profileHref} className={pathname === profileHref ? "font-medium text-primary" : "hover:text-foreground"}>
-                Profilim
-              </Link>
-              <button type="button" onClick={() => void logout()} className="text-foreground/50 hover:text-danger">
-                Çıkış Yap
-              </button>
-            </nav>
-          </div>
-        </header>
-        <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">{children}</div>
+      {/*
+       * §K6 — Katman 1 (marka/hesap/çıkış) artık YALNIZCA `SiteHeader`'da yaşar; bu kabuk
+       * kendi `<header>`'ını RENDER ETMEZ (çift-header düzeltmesi). Doktor kimliği + sekme
+       * şeridi `max-w-5xl` konteynerin İÇİNDE, `children`'ın ÜSTÜNDE sade bir `<div>`'dir.
+       */}
+      <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
+          <span className="text-sm font-semibold text-foreground">
+            {profile.doctorProfile.title} {profile.doctorProfile.fullName}
+          </span>
+          <nav className="flex items-center gap-4 text-sm text-foreground/70">
+            <Link href={bookingsHref} className={pathname === bookingsHref ? "font-medium text-primary" : "hover:text-foreground"}>
+              Randevularım
+            </Link>
+            <Link href={earningsHref} className={pathname === earningsHref ? "font-medium text-primary" : "hover:text-foreground"}>
+              Kazançlarım
+            </Link>
+            <Link href={profileHref} className={pathname === profileHref ? "font-medium text-primary" : "hover:text-foreground"}>
+              Profilim
+            </Link>
+          </nav>
+        </div>
+        {children}
       </div>
     </DoctorPortalProfileContext.Provider>
   );

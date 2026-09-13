@@ -10,7 +10,7 @@ import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema, ApiSuccessWithMeta } from "../../schemas/common";
 import { AppointmentBookingSchema, AppointmentSchema, DoctorAvailabilityRuleSchema, DoctorProfileSchema, SpecialtySchema } from "../../schemas/entities";
 import { toAppointmentBookingDto, toAppointmentDto, toDoctorProfileDto, toSpecialtyDto } from "../../mappers";
-import { ConflictError, NotFoundError } from "../../lib/errors";
+import { ConflictError, ForbiddenError, NotFoundError } from "../../lib/errors";
 import { buildPageMeta, parseCursor } from "../../lib/pagination";
 import { isImageMimeType } from "../../lib/mime-detect";
 import { slugify } from "../../lib/slug";
@@ -43,6 +43,20 @@ const WITH_BOOKING_RELATIONS = {
   intake: { select: { id: true } },
   documents: { where: { deletedAt: null }, select: { id: true } },
 } as const;
+
+/**
+ * [TCT] §9.7.7 KARAR K8 (GÜVENLİK DÜZELTMESİ, bağlayıcı) — bir `DoctorProfile`'ı bir `User.id`'ye
+ * bağlamak/çözmek (ayrıcalık yükseltme yüzeyi: bir MANAGER, herhangi bir kullanıcı hesabını
+ * -bir ADMIN'inki dahil- doktor portalı üzerinden hasta PII'sine erişim kazandıracak şekilde
+ * bağlayabilirdi) YALNIZCA `SiteRole=ADMIN` tarafından yapılabilir. İstek gövdesinde `userId`
+ * anahtarı YOKSA (bağlantıya dokunulmuyor) bu kontrol DEVREYE GİRMEZ.
+ */
+function assertUserLinkChangeAllowed(request: { user?: { role: string } | null; body: Record<string, unknown> }) {
+  if (!("userId" in request.body)) return;
+  if (request.user?.role !== "ADMIN") {
+    throw new ForbiddenError("Doktor profilini bir kullanıcı hesabına bağlama/çözme yetkisi yalnızca ADMIN'dedir.");
+  }
+}
 
 async function assertImageMedia(app: FastifyInstance, mediaId: string) {
   const media = await app.prisma.media.findUnique({ where: { id: mediaId } });
@@ -186,6 +200,7 @@ export async function adminTelehealthDoctorsRoutes(app: FastifyInstance) {
     },
     async (request, reply) => {
       const body = request.body;
+      assertUserLinkChangeAllowed(request);
       if (body.avatarMediaId) await assertImageMedia(app, body.avatarMediaId);
 
       const doctor = await app.prisma.doctorProfile.create({
@@ -210,6 +225,20 @@ export async function adminTelehealthDoctorsRoutes(app: FastifyInstance) {
         },
         include: WITH_DOCTOR_RELATIONS,
       });
+
+      // K8 — bağlama denetimi (yeni profil, `previousUserId` her zaman `null`).
+      if ("userId" in body) {
+        await logAudit(app, {
+          actorId: request.user!.id,
+          actorEmail: request.user!.email,
+          action: "telehealth.doctor.user_link",
+          targetType: "DoctorProfile",
+          targetId: doctor.id,
+          metadata: { userId: body.userId ?? null, previousUserId: null },
+          ipAddress: request.ip,
+        });
+      }
+
       return reply.code(201).send(ok(toDoctorProfileDto(doctor)));
     }
   );
@@ -238,6 +267,8 @@ export async function adminTelehealthDoctorsRoutes(app: FastifyInstance) {
       },
     },
     async (request, reply) => {
+      assertUserLinkChangeAllowed(request);
+
       const existing = await app.prisma.doctorProfile.findUnique({ where: { id: request.params.doctorId } });
       if (!existing) throw new NotFoundError("Doktor bulunamadı.");
 
@@ -253,6 +284,20 @@ export async function adminTelehealthDoctorsRoutes(app: FastifyInstance) {
         },
         include: WITH_DOCTOR_RELATIONS,
       });
+
+      // K8 — bağlama/çözme denetimi.
+      if ("userId" in request.body) {
+        await logAudit(app, {
+          actorId: request.user!.id,
+          actorEmail: request.user!.email,
+          action: "telehealth.doctor.user_link",
+          targetType: "DoctorProfile",
+          targetId: doctor.id,
+          metadata: { userId: request.body.userId ?? null, previousUserId: existing.userId },
+          ipAddress: request.ip,
+        });
+      }
+
       return reply.send(ok(toDoctorProfileDto(doctor)));
     }
   );

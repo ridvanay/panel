@@ -32,6 +32,8 @@ import type {
   Page,
   SetDoctorAvailabilityRequest,
   Specialty,
+  TelehealthOverview,
+  TelehealthOverviewQuery,
   UpdateDoctorRequest,
   UpdateSpecialtyRequest,
   UpsertIntakeRequest,
@@ -399,5 +401,16 @@ export function listAdminAppointments(params: ListAdminAppointmentsParams = {}):
       cursor: params.cursor,
       limit: params.limit ?? 50,
     },
+  });
+}
+
+/**
+ * `GET /admin/telehealth/analytics/overview` — [TCT] §9.7.7 KARAR K10a/K10b, yalnızca
+ * ADMIN/MANAGER. `from`/`to` verilmezse backend son 30 günü kullanır, `granularity` verilmezse
+ * `"day"`.
+ */
+export function getTelehealthOverview(params: TelehealthOverviewQuery = {}): Promise<TelehealthOverview> {
+  return apiFetch<TelehealthOverview>("/admin/telehealth/analytics/overview", {
+    query: { from: params.from, to: params.to, granularity: params.granularity },
   });
 }

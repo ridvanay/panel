@@ -12,6 +12,9 @@ import { Alert } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { isSafeInternalPath } from "@/lib/safe-redirect";
+import { resolvePostLoginPath } from "@/lib/post-login-destination";
+import { listPublicModules } from "@/lib/api/modules";
+import type { User } from "@/lib/api/types";
 
 interface TwoFactorChallenge {
   challengeToken: string;
@@ -29,8 +32,22 @@ function LoginForm() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  function goToDestination() {
-    router.replace(isSafeInternalPath(next) ? next : "/dashboard");
+  /**
+   * §K4 — doktor hesabı VE `next` yok/güvensizse `telehealth` modülünün açık olup olmadığını
+   * kontrol eder (`GET /modules`). Bu çağrı BİLEREK SADECE doktor kullanıcılar için yapılır —
+   * doktor OLMAYAN hiç kimse (§10.21'in 4 diğer rolü + hasta) bu ekstra isteği ASLA atmaz.
+   */
+  async function goToDestination(user: User) {
+    let telehealthEnabled = false;
+    if (user.doctorProfileId !== null && !isSafeInternalPath(next)) {
+      try {
+        const modules = await listPublicModules();
+        telehealthEnabled = modules.find((m) => m.key === "telehealth")?.enabled ?? false;
+      } catch {
+        telehealthEnabled = false;
+      }
+    }
+    router.replace(resolvePostLoginPath({ next, doctorProfileId: user.doctorProfileId, telehealthEnabled }));
   }
 
   async function handleSubmit(event: FormEvent) {
@@ -43,7 +60,7 @@ function LoginForm() {
         setChallenge({ challengeToken: result.challengeToken });
         return;
       }
-      goToDestination();
+      await goToDestination(result.user);
     } catch (err) {
       setError(friendlyErrorMessage(err));
     } finally {
@@ -57,8 +74,8 @@ function LoginForm() {
     setError(null);
     setSubmitting(true);
     try {
-      await verifyTwoFactor(challenge.challengeToken, code);
-      goToDestination();
+      const user = await verifyTwoFactor(challenge.challengeToken, code);
+      await goToDestination(user);
     } catch (err) {
       setError(friendlyErrorMessage(err));
     } finally {

@@ -556,6 +556,53 @@ export function getAppointmentDocumentStoragePathDirectly(documentId: string): s
   return result.storagePath;
 }
 
+// ---------------------------------------------------------------------------
+// qa-agent — portal izolasyonu (Admin/Doktor/Hasta) + admin analitik e2e fixture'ları (bu turda
+// eklendi). `E2E_DATABASE_URL`/`BACKEND_DIR` yukarıda TANIMLI (`shiftAppointmentIntoJoinWindowDirectly`
+// İLE PAYLAŞILIR).
+// ---------------------------------------------------------------------------
+
+/** `appointment_bookings.paymentStatus`'u doğrudan `PAID` yapar — booking'in KENDİSİ (`POST
+ * /appointments/bookings`) GERÇEK, herkese açık uçtan oluşturulur; ödeme/webhook akışı
+ * `telehealth-multi-slot-booking.spec.ts`'te AYRICA kapsanır, burada TEKRAR test edilmez
+ * (`doctor-panel-session-lifecycle.spec.ts::markFixtureBookingPaidWithAppointmentStatus` İLE
+ * AYNI felsefe, farklı hedef veritabanı — `saas_e2e`). */
+export function markBookingPaidDirectly(bookingId: string): void {
+  const esc = (value: string) => value.replace(/'/g, "''");
+  const sql = `UPDATE "appointment_bookings" SET "paymentStatus" = 'PAID', "paidAt" = now() WHERE id = '${esc(bookingId)}';`;
+  execFileSync("npx", ["prisma", "db", "execute", "--stdin", `--url=${E2E_DATABASE_URL}`], {
+    cwd: BACKEND_DIR,
+    input: sql,
+    stdio: ["pipe", "pipe", "pipe"],
+    shell: process.platform === "win32",
+  });
+}
+
+/** Randevunun durumunu VE (isteğe bağlı) zamanlamasını doğrudan DB'de değiştirir —
+ * `shiftAppointmentIntoJoinWindowDirectly` İLE AYNI "gerçek randevu, sahte olan yalnızca
+ * durum/zamanlama" felsefesi. `daysAgo` verilirse `startsAt`/`endsAt` GEÇMİŞE kaydırılır (admin
+ * analitik e2e fixture'ı — `/admin/telehealth/analytics/overview` varsayılan aralığı son 30 gün
+ * olduğundan, bu aralık İÇİNDE bir `COMPLETED` seans garantilemek için); verilmezse zamanlama
+ * DOKUNULMAZ (randevu GERÇEK rezervasyon akışından geçtiği ANDAKİ gelecekteki slotunu korur). */
+export function setAppointmentStatusDirectly(
+  appointmentId: string,
+  status: "SCHEDULED" | "COMPLETED" | "CANCELLED" | "NO_SHOW" | "IN_PROGRESS",
+  opts: { daysAgo?: number; durationMinutes?: number } = {}
+): void {
+  const esc = (value: string) => value.replace(/'/g, "''");
+  const timingSql =
+    opts.daysAgo !== undefined
+      ? `, "startsAt" = now() - interval '${opts.daysAgo} days', "endsAt" = now() - interval '${opts.daysAgo} days' + interval '${opts.durationMinutes ?? 30} minutes'`
+      : "";
+  const sql = `UPDATE "appointments" SET "status" = '${status}'${timingSql} WHERE id = '${esc(appointmentId)}';`;
+  execFileSync("npx", ["prisma", "db", "execute", "--stdin", `--url=${E2E_DATABASE_URL}`], {
+    cwd: BACKEND_DIR,
+    input: sql,
+    stdio: ["pipe", "pipe", "pipe"],
+    shell: process.platform === "win32",
+  });
+}
+
 /** §9.7.11 madde 27 (2FA kapısı) — `User.twoFactorEnabled`'i doğrudan yazar (admin panelinde bir
  * kullanıcının 2FA'sını ZORLA açan bir uç YOKTUR — 2FA kendi kendine kayıt/etkinleştirmedir,
  * `hesabim` akışı TOTP sırrı üretip doğrulama ister; bu fixture o akışı ATLAYIP doğrudan bayrağı

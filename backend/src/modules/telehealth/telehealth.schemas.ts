@@ -244,6 +244,19 @@ export const SetDoctorAvailabilityRequestSchema = z.object({
 });
 export type SetDoctorAvailabilityRequest = z.infer<typeof SetDoctorAvailabilityRequestSchema>;
 
+/**
+ * [TCT] §9.7.7 KARAR K10a — `GET /admin/telehealth/analytics/overview`. Aralık çözümü
+ * `lib/stats-query.ts::resolveStatsRange`'e DEVREDİLİR (`from`/`to` — varsayılan son 30 gün,
+ * üst sınır 366 gün, aşımda 422); bu şema yalnızca ham string'leri KABUL eder, doğrulamayı
+ * TEKRAR ETMEZ.
+ */
+export const TelehealthOverviewQuerySchema = z.object({
+  from: z.string().optional(),
+  to: z.string().optional(),
+  granularity: z.enum(["day", "week", "month"]).default("day"),
+});
+export type TelehealthOverviewQuery = z.infer<typeof TelehealthOverviewQuerySchema>;
+
 export const ListAdminAppointmentsQuerySchema = z.object({
   doctorId: z.string().uuid().optional(),
   // [TCT] §9.7.3 — `PENDING_PAYMENT` eklendi (tutulmuş-ama-ödenmemiş slot da artık bir filtre değeridir).

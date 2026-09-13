@@ -9,6 +9,7 @@ import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import crypto from "node:crypto";
 import path from "node:path";
+import { authenticator } from "otplib";
 
 const API_BASE_URL = process.env.E2E_API_URL ?? "http://localhost:4001/api/v1";
 
@@ -756,6 +757,43 @@ export async function adminGetOrderActivity(
   if (!res.ok) return { status: res.status, rawText, entries: [] };
   const parsed = JSON.parse(rawText) as { data: Array<Record<string, unknown>> };
   return { status: res.status, rawText, entries: parsed.data };
+}
+
+// ---------------------------------------------------------------------------
+// qa-agent — `.claude/architect-scope-telehealth-template.md` K6/K quali (bu turda eklendi) —
+// doktor/hasta portalı izolasyonu e2e fixture'ı. Doktor portalı 2FA ZORUNLU kılar
+// (`requireDoctorPortalAccess`, `telehealth.portal.routes.ts`) ama admin panelinde bir
+// kullanıcının 2FA'sını ZORLA açan bir uç YOKTUR — bu GERÇEK, kendi-kendine-servis akışın
+// (`/admin/settings/security/2fa/setup` → `/enable`) tam kendisidir (mock/DB-hack DEĞİL):
+// `doctor-panel-session-lifecycle.spec.ts`'in ÖNCEDEN VAR OLAN bir UAT hesabı için kullandığı
+// sabit TOTP sırrının aksine, burada TAZE bir fixture kullanıcı için secret backend'in kendi
+// `POST /setup` yanıtından (`otpauthUrl`) okunur — `otplib`'in `authenticator.generate()`'i
+// backend'in KENDİ `lib/totp.ts::verifyTotp` sarmalayıcısının (`authenticator.verify`) BEKLEDİĞİ
+// AYNI RFC 6238 TOTP algoritmasını üretir (bkz. o dosyanın AYNI kütüphane notu).
+// ---------------------------------------------------------------------------
+
+/** `POST /admin/settings/security/2fa/setup` + `/enable` — bearer sahibinin KENDİ hesabında
+ * gerçek 2FA'yı uçtan uca etkinleştirir (kurulum akışını ATLAMAZ). Dönen `secret` yalnızca
+ * testin ihtiyaç duyduğu (giriş sırasında kod üretmek için) değerdir — DB'ye asla doğrudan
+ * yazılmaz. */
+export async function setupAndEnableTwoFactorForSelf(token: string): Promise<{ secret: string }> {
+  const setupRes = await fetch(`${API_BASE_URL}/admin/settings/security/2fa/setup`, {
+    method: "POST",
+    headers: authHeadersNoBody(token),
+  });
+  const setupBody = await json<{ data: { otpauthUrl: string; setupToken: string } }>(setupRes);
+  const secret = new URL(setupBody.data.otpauthUrl).searchParams.get("secret");
+  if (!secret) {
+    throw new Error("qa-agent: /2fa/setup yanıtındaki otpauthUrl içinde 'secret' parametresi bulunamadı.");
+  }
+  const code = authenticator.generate(secret);
+  const enableRes = await fetch(`${API_BASE_URL}/admin/settings/security/2fa/enable`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ setupToken: setupBody.data.setupToken, code }),
+  });
+  await json(enableRes);
+  return { secret };
 }
 
 export { API_BASE_URL };

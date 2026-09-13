@@ -63,6 +63,13 @@ describe("AdminSidebar — §8.2 rol görünürlük tablosu", () => {
     expect(visible).not.toContain("/admin/telehealth/appointments");
   });
 
+  // K10b — mali/iş verisi analitik paneli, randevular İLE AYNI eşik (ADMIN/MANAGER), EDITOR'e KAPALI.
+  it("Tele-Sağlık Özeti (analytics overview): ADMIN/MANAGER'da görünür, EDITOR'de GİZLİ", () => {
+    expect(visibleHrefsFor("ADMIN")).toContain("/admin/telehealth/overview");
+    expect(visibleHrefsFor("MANAGER")).toContain("/admin/telehealth/overview");
+    expect(visibleHrefsFor("EDITOR")).not.toContain("/admin/telehealth/overview");
+  });
+
   it("EDITOR için 'Sayfalar' öğesi 'Sayfalar (Salt İçerik Düzenleme)' etiketine eşlenir (roleLabelKeys)", () => {
     const pagesItem = navItems.find((item) => item.href === "/admin/pages")!;
     expect(pagesItem.roleLabelKeys?.EDITOR).toBe("nav.pagesEditorOnly");

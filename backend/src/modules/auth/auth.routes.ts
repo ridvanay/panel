@@ -152,7 +152,10 @@ export default async function authRoutes(app: FastifyInstance) {
         throw new UnauthorizedError("Geçersiz veya süresi dolmuş doğrulama isteği.");
       }
 
-      const user = await app.prisma.user.findUnique({ where: { id: userId } });
+      const user = await app.prisma.user.findUnique({
+        where: { id: userId },
+        include: { doctorProfile: { select: { id: true } } },
+      });
       if (!user || !user.twoFactorEnabled || !user.twoFactorSecret) {
         throw new UnauthorizedError();
       }

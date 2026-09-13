@@ -25,6 +25,14 @@ vi.mock("@/context/auth-context", () => ({
   useAuth: () => ({ user: mockUser }),
 }));
 
+// K8 — sayfa artık doktor rozeti/bağlama aksiyonu için `useModules()` okuyor; bu testler telehealth
+// modülünün açık olduğu (varsayılan) durumu doğrular (bkz. `a11y-admin-modules.test.tsx` İLE AYNI
+// mock deseni). `doctorProfileId: null` fixture'larıyla birlikte yalnızca "Doktor profiline bağla"
+// aksiyonu render edilir, mevcut testlerin selektörlerini ETKİLEMEZ.
+vi.mock("@/context/modules-context", () => ({
+  useModules: () => ({ modules: [], loading: false, isModuleEnabled: () => true, refetch: vi.fn() }),
+}));
+
 const usersAdminApi = await import("@/lib/api/users-admin");
 const { toast } = await import("sonner");
 
@@ -41,6 +49,7 @@ function makeUser(overrides: Partial<User> = {}): User {
     canUseAdvancedBuilder: true,
     createdAt: "2026-01-01T00:00:00.000Z",
     twoFactorEnabled: false,
+    doctorProfileId: null,
     ...overrides,
   };
 }
@@ -58,6 +67,7 @@ function makeAdminUser(overrides: Partial<AdminUser> = {}): AdminUser {
     status: "ACTIVE",
     lastLoginAt: "2026-08-01T10:00:00.000Z",
     deletedAt: null,
+    doctorProfileId: null,
     ...overrides,
   };
 }

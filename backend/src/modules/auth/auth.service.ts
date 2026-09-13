@@ -1,5 +1,9 @@
 import type { FastifyInstance } from "fastify";
 import type { User } from "@prisma/client";
+
+// [TCT] §9.7.7 KARAR K3 (bağlayıcı) — `toUserDto`/`toAdminUserDto`'nun gerektirdiği `doctorProfile`
+// İLİŞKİSİ ile GENİŞLETİLMİŞ `User` — `mappers/index.ts::UserWithDoctorLink` İLE AYNI şekil.
+type UserWithDoctorLink = User & { doctorProfile: { id: string } | null };
 import { hashPassword, verifyPassword } from "../../lib/password";
 import { generateOpaqueToken, hashToken } from "../../lib/tokens";
 import { signAccessToken, signChallengeToken } from "../../lib/jwt";
@@ -65,6 +69,9 @@ export async function register(
   const passwordHash = await hashPassword(input.password);
   const user = await app.prisma.user.create({
     data: { email, passwordHash, name: input.name, role: userCount === 0 ? "ADMIN" : undefined },
+    // [TCT] §9.7.7 KARAR K3 — `toUserDto` artık `doctorProfile` İLİŞKİSİNİ gerektiriyor (yeni kayıtta
+    // her zaman `null`, ama tip tutarlılığı için `include` ZORUNLU).
+    include: { doctorProfile: { select: { id: true } } },
   });
 
   const tokens = await issueTokenPair(app, user, meta);
@@ -86,14 +93,17 @@ export async function register(
 /** §10.4 Güvenlik & 2FA — `login()`'ün 2FA açık/kapalı iki farklı sonucunu ayırt eden discriminated union. */
 export type LoginResult =
   | { twoFactorRequired: true; challengeToken: string }
-  | { twoFactorRequired: false; user: User; tokens: TokenIssue };
+  | { twoFactorRequired: false; user: UserWithDoctorLink; tokens: TokenIssue };
 
 export async function login(
   app: FastifyInstance,
   input: { email: string; password: string },
   meta: RequestMeta
 ): Promise<LoginResult> {
-  const user = await app.prisma.user.findUnique({ where: { email: input.email.toLowerCase() } });
+  const user = await app.prisma.user.findUnique({
+    where: { email: input.email.toLowerCase() },
+    include: { doctorProfile: { select: { id: true } } },
+  });
   // E-posta ve şifre hatalarını ayırt etmiyoruz: hangi alanın yanlış olduğunu sızdırmamak için.
   if (!user || !(await verifyPassword(user.passwordHash, input.password))) {
     throw new UnauthorizedError("E-posta veya şifre hatalı.");
@@ -252,7 +262,10 @@ export async function resetPassword(app: FastifyInstance, rawToken: string, newP
 }
 
 export async function getSession(app: FastifyInstance, userId: string) {
-  const user = await app.prisma.user.findUnique({ where: { id: userId } });
+  const user = await app.prisma.user.findUnique({
+    where: { id: userId },
+    include: { doctorProfile: { select: { id: true } } },
+  });
   if (!user) {
     throw new NotFoundError("Kullanıcı bulunamadı.");
   }

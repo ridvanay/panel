@@ -163,7 +163,12 @@ import { computeShipping, type ShippingSettingsInput } from "../lib/shipping";
 import { buildVariantLabel } from "../modules/products/lib/variants";
 import { getBookingJoinWindow } from "../modules/telehealth/lib/booking";
 
-export function toUserDto(user: User): UserDto {
+// [TCT] §9.7.7 KARAR K3 (bağlayıcı) — `toUserDto`/`toAdminUserDto` artık `doctorProfile` İLİŞKİSİNİ
+// GEREKTİRİR (BİLİNÇLİ breaking tip değişikliği): alan opsiyonel BIRAKILMAZ ki TypeScript her çağrı
+// yerini `include: { doctorProfile: { select: { id: true } } }` eklemeye ZORLASIN.
+type UserWithDoctorLink = User & { doctorProfile: { id: string } | null };
+
+export function toUserDto(user: UserWithDoctorLink): UserDto {
   return {
     id: user.id,
     email: user.email,
@@ -178,10 +183,11 @@ export function toUserDto(user: User): UserDto {
     // lib/builder-capability.ts, TEK türetme kaynağı; saf rol türevi, `advancedBuilderEnabled`
     // bayrağı KALDIRILDI).
     canUseAdvancedBuilder: canUseAdvancedBuilder(user),
+    doctorProfileId: user.doctorProfile?.id ?? null,
   };
 }
 
-export function toAdminUserDto(user: User): AdminUserDto {
+export function toAdminUserDto(user: UserWithDoctorLink): AdminUserDto {
   return {
     ...toUserDto(user),
     status: user.status,

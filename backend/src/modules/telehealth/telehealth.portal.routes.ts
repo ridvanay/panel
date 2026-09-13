@@ -11,6 +11,7 @@ import { NotADoctorError, TwoFactorRequiredError } from "../../lib/errors";
 import { buildPageMeta, parseCursor } from "../../lib/pagination";
 import { env } from "../../config/env";
 import { DoctorBookingsQuerySchema } from "./telehealth.schemas";
+import { splitCommission } from "./lib/commission";
 
 const WITH_DOCTOR_RELATIONS = { specialty: true, avatarMedia: true, availability: true } as const;
 const WITH_BOOKING_RELATIONS = {
@@ -149,10 +150,10 @@ export async function telehealthDoctorPortalRoutes(app: FastifyInstance) {
       let commissionCents = 0;
       let netCents = 0;
       for (const row of allCompleted) {
-        const rowCommissionCents = Math.round((row.priceCents * rate) / 100);
-        grossCents += row.priceCents;
-        commissionCents += rowCommissionCents;
-        netCents += row.priceCents - rowCommissionCents;
+        const split = splitCommission(row.priceCents, rate);
+        grossCents += split.grossCents;
+        commissionCents += split.commissionCents;
+        netCents += split.netCents;
       }
 
       // `doctorId` sorgu parametresi BİLİNÇLİ OLARAK YOKTUR (IDOR yüzeyi, `/bookings` İLE AYNI
@@ -169,16 +170,16 @@ export async function telehealthDoctorPortalRoutes(app: FastifyInstance) {
       });
 
       const items = rows.map((appointment) => {
-        const rowCommissionCents = Math.round((appointment.priceCents * rate) / 100);
+        const split = splitCommission(appointment.priceCents, rate);
         return {
           // `booking` YOKSA (bu tur ÖNCESİ deprecated tekil randevu) `appointmentId`'ye düşer.
           bookingId: appointment.booking?.id ?? appointment.id,
           appointmentId: appointment.id,
           patientName: appointment.patientName,
           startsAt: appointment.startsAt.toISOString(),
-          grossCents: appointment.priceCents,
-          commissionCents: rowCommissionCents,
-          netCents: appointment.priceCents - rowCommissionCents,
+          grossCents: split.grossCents,
+          commissionCents: split.commissionCents,
+          netCents: split.netCents,
           currency: appointment.currency,
         };
       });

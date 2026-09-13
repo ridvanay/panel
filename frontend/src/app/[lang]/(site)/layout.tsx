@@ -38,12 +38,13 @@ export default async function SiteLayout({
   const activeLocale = locales.find((l) => l.code === lang);
   if (!activeLocale) notFound();
 
-  const [settings, pages, navigation, appearance, productsModuleEnabled] = await Promise.all([
+  const [settings, pages, navigation, appearance, productsModuleEnabled, telehealthModuleEnabled] = await Promise.all([
     fetchSiteSettingsServer(),
     fetchPublishedPagesServer(lang),
     fetchNavigationConfigServer(),
     fetchSiteAppearanceServer(),
     isModuleEnabledServer("products"),
+    isModuleEnabledServer("telehealth"),
   ]);
 
   // §10.12.4 render sözleşmesi — BU değişkenler `:root`'a DEĞİL, yalnızca bu `.site-scope`
@@ -94,6 +95,7 @@ export default async function SiteLayout({
             productsModuleEnabled={productsModuleEnabled}
             stickyHeaderEnabled={appearance.stickyHeaderEnabled}
             headerStickyBlurEnabled={appearance.headerStickyBlurEnabled}
+            telehealthModuleEnabled={telehealthModuleEnabled}
           />
           <main className="flex-1">{children}</main>
           <SiteFooter

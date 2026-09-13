@@ -6572,6 +6572,12 @@ paths:
     post:
       tags: [TeleHealth]
       summary: Yeni doktor oluştur (ADMIN veya MANAGER)
+      description: >
+        [TCT] §9.7.7 KARAR K8 (GÜVENLİK, bağlayıcı) — gövdede `userId` alanı yalnızca
+        `SiteRole=ADMIN` tarafından gönderilebilir; MANAGER gönderirse `403` (ayrıcalık
+        yükseltme yüzeyi: MANAGER, bir `User.id`'yi -bir ADMIN'inki dahil- bir `DoctorProfile`'a
+        bağlayarak o hesaba doktor portalı üzerinden hasta PII'sine erişim kazandırabilirdi).
+        `userId` gövdede YOKSA bu kısıtlama devreye girmez.
       requestBody:
         required: true
         content:
@@ -6588,7 +6594,11 @@ paths:
                   - properties:
                       data: { $ref: "#/components/schemas/DoctorProfile" }
         "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
+        "403":
+          description: "MANAGER, ADMIN yalnızca bir yetkiyle gövdede `userId` gönderdi (`error.code: FORBIDDEN`) VEYA rol yetersiz."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
         "422": { $ref: "#/components/responses/ValidationError" }
 
   /admin/telehealth/doctors/{doctorId}:
@@ -6613,6 +6623,11 @@ paths:
     patch:
       tags: [TeleHealth]
       summary: Doktoru güncelle (ADMIN veya MANAGER)
+      description: >
+        [TCT] §9.7.7 KARAR K8 (GÜVENLİK, bağlayıcı) — `POST /admin/telehealth/doctors` İLE AYNI
+        kısıtlama: gövdede `userId` alanı (bağlama VEYA `null` ile çözme dahil) yalnızca
+        `SiteRole=ADMIN` tarafından gönderilebilir; MANAGER gönderirse `403`. Bağlama/çözme
+        `telehealth.doctor.user_link` audit kaydı ÜRETİR.
       requestBody:
         required: true
         content:
@@ -6629,7 +6644,11 @@ paths:
                   - properties:
                       data: { $ref: "#/components/schemas/DoctorProfile" }
         "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
+        "403":
+          description: "MANAGER gövdede `userId` gönderdi (`error.code: FORBIDDEN`) VEYA rol yetersiz."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
         "404": { $ref: "#/components/responses/NotFound" }
         "422": { $ref: "#/components/responses/ValidationError" }
     delete:
@@ -6731,6 +6750,43 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+
+  /admin/telehealth/analytics/overview:
+    get:
+      tags: [TeleHealth]
+      summary: Tele-sağlık analitik özeti (SALT-OKUNUR, yalnızca ADMIN veya MANAGER — EDITOR 403)
+      description: >
+        [TCT] §9.7.7 KARAR K10a — hasta PII'si TAŞIMAZ (yalnızca toplulaştırılmış sayı/tutar),
+        yine de `adminTelehealthAppointmentsRoutes` İLE AYNI eşik uygulanır (ADMIN+MANAGER).
+        Aralık çözümü `resolveStatsRange` ile PAYLAŞILIR (varsayılan son 30 gün, üst sınır 366
+        gün — aşımı 422). `revenue`/`series`/`doctors` YALNIZCA `status=COMPLETED` randevuları
+        sayar — `GET /doctor/earnings` İLE AYNI tanım (`lib/commission.ts::splitCommission`,
+        PAYLAŞILAN yardımcı). `appointments` her `AppointmentStatus`'u AYRI sayar (gruplama
+        YOK, sunum kararı frontend'e ait). Modül kapalıyken bu uç da `404` döner
+        (`requireModuleEnabled("telehealth")`, diğer tüm `/admin/telehealth/*` uçlarıyla
+        AYNI disiplin).
+      parameters:
+        - $ref: "#/components/parameters/StatsFrom"
+        - $ref: "#/components/parameters/StatsTo"
+        - $ref: "#/components/parameters/StatsGranularity"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/TelehealthOverview" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: "EDITOR dahil, ADMIN/MANAGER DIŞINDAKİ her rol (`error.code: FORBIDDEN`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
 
   # ==========================================================================
   # TeleHealth — §9.7 TADİLAT TURU 2: çoklu slot rezervasyonu (booking), ödeme,
@@ -10468,6 +10524,17 @@ components:
             kontrolü DEĞİLDİR.** Sunucu her yazma isteğinde bağımsız olarak yeniden
             hesaplar; istemcinin kontrolleri gizlemesine GÜVENİLMEZ.
         createdAt: { type: string, format: date-time }
+        doctorProfileId:
+          type: string
+          format: uuid
+          nullable: true
+          readOnly: true
+          description: >
+            [TCT] §9.7.7 KARAR K3 — TÜRETİLMİŞ + SALT-OKUNUR. `SiteRole.DOCTOR` YOKTUR;
+            doktorluk `DoctorProfile.userId === user.id` ilişkisiyle tanımlıdır. `null` = bu
+            kullanıcı hiçbir doktor profiline bağlı değil. Bağlama/çözme YALNIZCA
+            `POST/PATCH /admin/telehealth/doctors` (`userId` alanı, YALNIZCA `SiteRole=ADMIN`)
+            üzerinden yapılır.
 
     AdminUser:
       description: "`/admin/users` uçlarında dönen genişletilmiş kullanıcı DTO'su — yalnızca SiteRole=ADMIN görebilir (MANAGER dahil hiç kimse)."
@@ -15854,6 +15921,105 @@ components:
         twoFactorEnabled:
           type: boolean
           description: "`false` ise bu uç zaten `403 TWO_FACTOR_REQUIRED` döner; alan yalnızca istemci tarafı netlik içindir."
+
+    TelehealthOverviewAppointmentCounts:
+      type: object
+      required: [total, pendingPayment, scheduled, inProgress, completed, cancelled, noShow]
+      properties:
+        total: { type: integer }
+        pendingPayment: { type: integer }
+        scheduled: { type: integer }
+        inProgress: { type: integer }
+        completed: { type: integer }
+        cancelled: { type: integer }
+        noShow: { type: integer }
+
+    TelehealthOverviewBookingCounts:
+      type: object
+      description: "`failed` = `FAILED` + `EXPIRED` toplamı."
+      required: [total, paid, pending, failed, refunded]
+      properties:
+        total: { type: integer }
+        paid: { type: integer }
+        pending: { type: integer }
+        failed: { type: integer }
+        refunded: { type: integer }
+
+    TelehealthOverviewRevenue:
+      type: object
+      description: "YALNIZCA `status=COMPLETED` randevular — `GET /doctor/earnings` İLE AYNI tanım."
+      required: [grossCents, commissionCents, netCents, completedSessionCount]
+      properties:
+        grossCents: { type: integer }
+        commissionCents: { type: integer }
+        netCents: { type: integer }
+        completedSessionCount: { type: integer }
+
+    TelehealthOverviewSeriesPoint:
+      type: object
+      required: [date, completedCount, cancelledCount, grossCents, commissionCents, netCents]
+      properties:
+        date: { type: string, description: "Bucket başlangıcı, `YYYY-MM-DD` (haftalık/aylık bucket'larda da bucket'ın İLK günü)." }
+        completedCount: { type: integer }
+        cancelledCount: { type: integer }
+        grossCents: { type: integer }
+        commissionCents: { type: integer }
+        netCents: { type: integer }
+
+    TelehealthOverviewDoctorRow:
+      type: object
+      description: "`netCents DESC` sıralı, en fazla 20 satır."
+      required: [doctorId, title, fullName, slug, completedCount, cancelledCount, grossCents, commissionCents, netCents]
+      properties:
+        doctorId: { type: string, format: uuid }
+        title: { type: string }
+        fullName: { type: string }
+        slug: { type: string }
+        completedCount: { type: integer }
+        cancelledCount: { type: integer }
+        grossCents: { type: integer }
+        commissionCents: { type: integer }
+        netCents: { type: integer }
+
+    TelehealthOverview:
+      type: object
+      description: >
+        [TCT] §9.7.7 KARAR K10a — `GET /admin/telehealth/analytics/overview` yanıtı.
+      required:
+        - from
+        - to
+        - granularity
+        - currency
+        - mixedCurrency
+        - commissionRatePercent
+        - appointments
+        - bookings
+        - revenue
+        - series
+        - doctors
+      properties:
+        from: { type: string, format: date-time }
+        to: { type: string, format: date-time }
+        granularity: { $ref: "#/components/schemas/Granularity" }
+        currency:
+          type: string
+          description: >
+            Aralıktaki `COMPLETED` randevuların tek para birimi; kayıt yoksa `"TRY"`. Birden
+            fazla para birimi varsa (`mixedCurrency: true`) alfabetik olarak İLK kod seçilir —
+            deterministik bir varsayılandır, `mixedCurrency` bayrağı asıl sinyaldir.
+        mixedCurrency: { type: boolean }
+        commissionRatePercent:
+          type: number
+          description: "`env.PLATFORM_COMMISSION_RATE_PERCENT` — `GET /doctor/earnings` İLE AYNI global oran."
+        appointments: { $ref: "#/components/schemas/TelehealthOverviewAppointmentCounts" }
+        bookings: { $ref: "#/components/schemas/TelehealthOverviewBookingCounts" }
+        revenue: { $ref: "#/components/schemas/TelehealthOverviewRevenue" }
+        series:
+          type: array
+          items: { $ref: "#/components/schemas/TelehealthOverviewSeriesPoint" }
+        doctors:
+          type: array
+          items: { $ref: "#/components/schemas/TelehealthOverviewDoctorRow" }
 
     MarkBookingPaidRequest:
       type: object

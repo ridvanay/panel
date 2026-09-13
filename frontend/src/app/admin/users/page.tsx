@@ -1,20 +1,26 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 import {
   AlertCircle,
   Download,
+  Link2,
   RotateCcw,
   Search,
   Trash2,
+  Unlink,
   UserCheck,
   UserX,
   Users as UsersIcon,
 } from "lucide-react";
 import * as usersAdminApi from "@/lib/api/users-admin";
+import * as telehealthApi from "@/lib/api/telehealth";
 import type { AdminUser, SiteRole, SiteUserStatus } from "@/lib/api/types";
+import { LinkDoctorDialog } from "@/components/admin/telehealth/link-doctor-dialog";
+import { useModules } from "@/context/modules-context";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select } from "@/components/ui/select";
@@ -71,9 +77,17 @@ interface PendingRoleChange {
 
 export default function AdminUsersPage() {
   const { user: currentUser } = useAuth();
+  const { isModuleEnabled } = useModules();
+  const telehealthEnabled = isModuleEnabled("telehealth");
   const [users, setUsers] = useState<AdminUser[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [newUserDialogOpen, setNewUserDialogOpen] = useState(false);
+
+  // K8 — doktor profiline bağlama/çözme (`/admin/telehealth/doctors/[doctorId]`'daki salt-okunur
+  // bağlantı notunun karşılığı — bağlama/çözme işlemi SADECE burada yapılır).
+  const [linkDoctorUser, setLinkDoctorUser] = useState<AdminUser | null>(null);
+  const [pendingUnlinkDoctorUser, setPendingUnlinkDoctorUser] = useState<AdminUser | null>(null);
+  const [unlinkDoctorLoading, setUnlinkDoctorLoading] = useState(false);
 
   const [pendingRoleChange, setPendingRoleChange] = useState<PendingRoleChange | null>(null);
   const [roleUpdating, setRoleUpdating] = useState(false);
@@ -209,6 +223,26 @@ export default function AdminUsersPage() {
       toast.error(friendlyErrorMessage(err));
     } finally {
       setRestoreLoading(false);
+    }
+  }
+
+  // Backend `PATCH /admin/telehealth/doctors/{id}` gövdesinde `userId` alanı VARSA (null dahil)
+  // yalnızca `SiteRole=ADMIN` kabul eder (MANAGER `403 FORBIDDEN` alır) — bu sayfa zaten
+  // ADMIN-only olduğu için normal akışta bu koşula düşülmez, ama `friendlyErrorMessage` yine de
+  // sunucu mesajını olduğu gibi gösterir.
+  async function handleConfirmUnlinkDoctor() {
+    if (!pendingUnlinkDoctorUser?.doctorProfileId) return;
+    const target = pendingUnlinkDoctorUser;
+    setUnlinkDoctorLoading(true);
+    try {
+      await telehealthApi.updateDoctor(target.doctorProfileId!, { userId: null });
+      await load();
+      toast.success(`"${target.name}" kullanıcısının doktor bağlantısı kaldırıldı.`);
+      setPendingUnlinkDoctorUser(null);
+    } catch (err) {
+      toast.error(friendlyErrorMessage(err));
+    } finally {
+      setUnlinkDoctorLoading(false);
     }
   }
 
@@ -599,7 +633,7 @@ export default function AdminUsersPage() {
                     <TableHead className="w-56">E-posta</TableHead>
                     <TableHead className="w-36">Rol</TableHead>
                     <TableHead className="w-28">Durum</TableHead>
-                    <TableHead className="w-32 text-right">İşlemler</TableHead>
+                    <TableHead className="w-40 text-right">İşlemler</TableHead>
                     <TableHead className="w-40 text-right">Son Giriş Tarihi</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -632,6 +666,40 @@ export default function AdminUsersPage() {
                         ? LAST_ADMIN_MESSAGE
                         : "Sil";
 
+                    // K8 — doktor profili bağlama/çözme aksiyonu, mevcut Tooltip+icon-button
+                    // deseniyle AYNI (bkz. yukarıdaki durum/silme butonları).
+                    const doctorActionButton = telehealthEnabled ? (
+                      user.doctorProfileId === null ? (
+                        <Tooltip>
+                          <TooltipTrigger render={<span tabIndex={0} className="inline-flex" />}>
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              aria-label="Doktor profiline bağla"
+                              onClick={() => setLinkDoctorUser(user)}
+                            >
+                              <Link2 className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Doktor profiline bağla</TooltipContent>
+                        </Tooltip>
+                      ) : (
+                        <Tooltip>
+                          <TooltipTrigger render={<span tabIndex={0} className="inline-flex" />}>
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              aria-label="Doktor bağlantısını kaldır"
+                              onClick={() => setPendingUnlinkDoctorUser(user)}
+                            >
+                              <Unlink className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Doktor bağlantısını kaldır</TooltipContent>
+                        </Tooltip>
+                      )
+                    ) : null;
+
                     return (
                       <TableRow key={user.id}>
                         <TableCell className="w-10">
@@ -644,7 +712,18 @@ export default function AdminUsersPage() {
                         <TableCell className="w-14">
                           <Avatar name={user.name} src={user.avatarUrl} size={32} />
                         </TableCell>
-                        <TableCell className="w-auto font-medium text-foreground">{user.name}</TableCell>
+                        <TableCell className="w-auto font-medium text-foreground">
+                          <div className="flex items-center gap-2">
+                            <span>{user.name}</span>
+                            {telehealthEnabled && user.doctorProfileId !== null && (
+                              <Link href={`/admin/telehealth/doctors/${user.doctorProfileId}`}>
+                                <Badge tone="primary" className="transition-colors hover:bg-primary/20">
+                                  Doktor
+                                </Badge>
+                              </Link>
+                            )}
+                          </div>
+                        </TableCell>
                         <TableCell className="w-56 text-foreground/60">{user.email}</TableCell>
                         <TableCell className="w-36">
                           <Select
@@ -667,24 +746,28 @@ export default function AdminUsersPage() {
                         <TableCell className="w-28">
                           <Badge tone={statusBadgeTone[user.status]}>{statusLabels[user.status]}</Badge>
                         </TableCell>
-                        <TableCell className="w-32 text-right">
+                        <TableCell className="w-40 text-right">
                           <div className="flex items-center justify-end gap-1">
                             {isDeleted ? (
-                              <Tooltip>
-                                <TooltipTrigger render={<span tabIndex={0} className="inline-flex" />}>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon-sm"
-                                    aria-label="Geri Yükle"
-                                    onClick={() => setPendingRestoreUser(user)}
-                                  >
-                                    <RotateCcw className="h-4 w-4" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>Geri Yükle</TooltipContent>
-                              </Tooltip>
+                              <>
+                                {doctorActionButton}
+                                <Tooltip>
+                                  <TooltipTrigger render={<span tabIndex={0} className="inline-flex" />}>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon-sm"
+                                      aria-label="Geri Yükle"
+                                      onClick={() => setPendingRestoreUser(user)}
+                                    >
+                                      <RotateCcw className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Geri Yükle</TooltipContent>
+                                </Tooltip>
+                              </>
                             ) : (
                               <>
+                                {doctorActionButton}
                                 <Tooltip>
                                   <TooltipTrigger render={<span tabIndex={0} className="inline-flex" />}>
                                     <Button
@@ -856,6 +939,32 @@ export default function AdminUsersPage() {
         confirmText="Geri Yükle"
         loading={restoreLoading}
         onConfirm={handleConfirmRestore}
+      />
+
+      <LinkDoctorDialog
+        open={linkDoctorUser !== null}
+        onOpenChange={(open) => {
+          if (!open) setLinkDoctorUser(null);
+        }}
+        user={linkDoctorUser}
+        onLinked={load}
+      />
+
+      <ConfirmDialog
+        open={pendingUnlinkDoctorUser !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingUnlinkDoctorUser(null);
+        }}
+        title="Doktor bağlantısını kaldır"
+        description={
+          pendingUnlinkDoctorUser
+            ? `"${pendingUnlinkDoctorUser.name}" kullanıcısının doktor profiliyle bağlantısını kaldırmak istediğinize emin misiniz? Doktor profili silinmez, yalnızca bu hesapla ilişkisi kesilir.`
+            : undefined
+        }
+        confirmText="Bağlantıyı Kaldır"
+        tone="danger"
+        loading={unlinkDoctorLoading}
+        onConfirm={handleConfirmUnlinkDoctor}
       />
     </div>
   );

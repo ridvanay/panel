@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChevronDown, Heart, Receipt, ShoppingCart, User as UserIcon } from "lucide-react";
+import { CalendarClock, ChevronDown, Heart, LogOut, Receipt, ShoppingCart, Stethoscope, User as UserIcon } from "lucide-react";
 import { useCartOptional } from "@/context/cart-context";
 import { useAuthOptional } from "@/context/auth-context";
 import {
@@ -55,6 +55,12 @@ interface SiteHeaderProps {
    * İdle (kaydırılmamış) durumda blur KOŞULSUZ kalır, bu prop'tan ETKİLENMEZ.
    */
   headerStickyBlurEnabled?: boolean;
+  /**
+   * `.claude/architect-scope-telehealth-template.md` K6 — `false` (varsayılan) iken "Doktor
+   * Paneli"/"Randevularım" hesap menüsü öğeleri HİÇ render edilmez (geriye dönük uyumluluk —
+   * admin canlı önizleme/unit testler bu prop'u vermez).
+   */
+  telehealthModuleEnabled?: boolean;
 }
 
 /**
@@ -196,6 +202,7 @@ export function SiteHeader({
   productsModuleEnabled = true,
   stickyHeaderEnabled = false,
   headerStickyBlurEnabled = true,
+  telehealthModuleEnabled = false,
 }: SiteHeaderProps) {
   // `useCartOptional`: bu bileşen `admin/navigation/page.tsx`'teki canlı önizlemede
   // `CartProvider` OLMADAN da render edilir (admin layout'unda sepet KASTEN yok) — o durumda
@@ -207,6 +214,9 @@ export function SiteHeader({
   const auth = useAuthOptional();
   const status = auth?.status ?? "unauthenticated";
   const user = auth?.user ?? null;
+  // `.claude/architect-scope-telehealth-template.md` K6 — `SiteRole.DOCTOR` YOKTUR; doktorluk
+  // `User.doctorProfileId` ilişkisinden TÜRETİLİR (bkz. types.ts).
+  const isDoctorSession = status === "authenticated" && user?.doctorProfileId != null;
   const pathname = usePathname();
   const { hidden, isSticky } = useSmartSticky(stickyHeaderEnabled);
   const navTree: NavNode[] =
@@ -218,7 +228,7 @@ export function SiteHeader({
         ];
 
   const showCta = Boolean(ctaLabel && ctaHref);
-  const showCartIcon = productsModuleEnabled && !isDoctorDetailRoute(pathname);
+  const showCartIcon = productsModuleEnabled && !isDoctorDetailRoute(pathname) && !isDoctorSession;
   const defaultLocaleCode = locales?.find((l) => l.isDefault)?.code ?? activeLocale?.code ?? "tr";
   const localize = (path: string) =>
     activeLocale ? withLocalePrefix(path, activeLocale.code, defaultLocaleCode) : path;
@@ -349,16 +359,36 @@ export function SiteHeader({
                 <span className="hidden max-w-[8rem] truncate sm:inline">{user.name}</span>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                {/* §K6 — KESİN sıra: Doktor Paneli → Randevularım → Hesabım → Siparişlerim → Çıkış Yap. */}
+                {isDoctorSession && telehealthModuleEnabled && (
+                  <DropdownMenuItem render={<Link href={localize("/doctor")} />}>
+                    <Stethoscope className="h-4 w-4" aria-hidden="true" />
+                    Doktor Paneli
+                  </DropdownMenuItem>
+                )}
+                {!isDoctorSession && telehealthModuleEnabled && (
+                  <DropdownMenuItem render={<Link href={localize("/patient/bookings")} />}>
+                    <CalendarClock className="h-4 w-4" aria-hidden="true" />
+                    Randevularım
+                  </DropdownMenuItem>
+                )}
+                {/* `/hesabim` HERKESE (5 rol + doktor) açık — `DoctorPortalShell`'in 2FA ekranı
+                    `/hesabim/profil`'e link verir, bu öğe doktorda GİZLENİRSE doktor 2FA'yı
+                    açamaz hale gelir. */}
                 <DropdownMenuItem render={<Link href={localize("/hesabim")} />}>
                   <UserIcon className="h-4 w-4" aria-hidden="true" />
                   Hesabım
                 </DropdownMenuItem>
-                {productsModuleEnabled && (
+                {productsModuleEnabled && !isDoctorSession && (
                   <DropdownMenuItem render={<Link href={localize("/hesabim/siparislerim")} />}>
                     <Receipt className="h-4 w-4" aria-hidden="true" />
                     Siparişlerim
                   </DropdownMenuItem>
                 )}
+                <DropdownMenuItem onClick={() => void auth?.logout()}>
+                  <LogOut className="h-4 w-4" aria-hidden="true" />
+                  Çıkış Yap
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           ) : (
@@ -374,7 +404,7 @@ export function SiteHeader({
 
           {/* design-notes-customer-portal.md §6 — rozet (adet sayacı) BİLEREK yok; favori adedi
               işlem hızını etkilemez. */}
-          {productsModuleEnabled && status === "authenticated" && (
+          {productsModuleEnabled && status === "authenticated" && !isDoctorSession && (
             <Link
               href={localize("/hesabim/favorilerim")}
               aria-label="Favorilerim"

@@ -90,6 +90,12 @@ export interface User {
   readonly canUseAdvancedBuilder: boolean;
   createdAt: string;
   twoFactorEnabled: boolean;
+  /**
+   * `.claude/architect-scope-telehealth-template.md` §2.5 — `SiteRole.DOCTOR` YOKTUR; doktorluk
+   * `DoctorProfile.userId` ilişkisinden TÜRETİLİR (bkz. backend `UserSchema.doctorProfileId`).
+   * `null` = bu hesap hiçbir doktor profiline bağlı değil.
+   */
+  readonly doctorProfileId: string | null;
 }
 
 /**
@@ -111,6 +117,8 @@ export interface AdminUser {
   lastLoginAt: string | null;
   /** Yumuşak silme damgası — `status: "DELETED"` ise dolu, aksi hâlde `null`. */
   deletedAt: string | null;
+  /** Bkz. `User.doctorProfileId` — TS arayüzleri backend Zod `.extend()` gibi miras almadığı için elle eklenir. */
+  readonly doctorProfileId: string | null;
 }
 
 export interface CreateAdminUserRequest {
@@ -3630,4 +3638,77 @@ export interface DoctorEarningsPage {
   summary: DoctorEarningsSummary;
   sessions: { items: DoctorEarningsSession[] };
   meta: PageMeta;
+}
+
+// ---------- [TCT] §9.7.7 KARAR K10a/K10b — `GET /admin/telehealth/analytics/overview` ----------
+
+/** `admin/telehealth/analytics/overview` sorgu parametreleri — `from`/`to` verilmezse backend son 30 günü kullanır. */
+export interface TelehealthOverviewQuery {
+  from?: string;
+  to?: string;
+  granularity?: StatsGranularity;
+}
+
+export interface TelehealthOverviewAppointmentCounts {
+  total: number;
+  pendingPayment: number;
+  scheduled: number;
+  inProgress: number;
+  completed: number;
+  cancelled: number;
+  noShow: number;
+}
+
+export interface TelehealthOverviewBookingCounts {
+  total: number;
+  paid: number;
+  pending: number;
+  failed: number;
+  refunded: number;
+}
+
+export interface TelehealthOverviewRevenue {
+  grossCents: number;
+  commissionCents: number;
+  netCents: number;
+  completedSessionCount: number;
+}
+
+export interface TelehealthOverviewSeriesPoint {
+  date: string;
+  completedCount: number;
+  cancelledCount: number;
+  grossCents: number;
+  commissionCents: number;
+  netCents: number;
+}
+
+export interface TelehealthOverviewDoctorRow {
+  doctorId: string;
+  title: string;
+  fullName: string;
+  slug: string;
+  completedCount: number;
+  cancelledCount: number;
+  grossCents: number;
+  commissionCents: number;
+  netCents: number;
+}
+
+/** `GET /admin/telehealth/analytics/overview` — yalnızca ADMIN/MANAGER (§8.4 mali/iş verisi eşiği). */
+export interface TelehealthOverview {
+  from: string;
+  to: string;
+  granularity: StatsGranularity;
+  /** Aralıktaki COMPLETED randevuların tek para birimi; kayıt yoksa "TRY". */
+  currency: string;
+  /** `true` ise aralıkta birden fazla para birimi karışmıştır — `currency`/gelir toplamları yaklaşıktır. */
+  mixedCurrency: boolean;
+  commissionRatePercent: number;
+  appointments: TelehealthOverviewAppointmentCounts;
+  bookings: TelehealthOverviewBookingCounts;
+  revenue: TelehealthOverviewRevenue;
+  series: TelehealthOverviewSeriesPoint[];
+  /** En fazla 20 satır, `netCents DESC`. */
+  doctors: TelehealthOverviewDoctorRow[];
 }
