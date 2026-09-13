@@ -1728,3 +1728,92 @@ export interface PageColumnsBlock {
  * biçimi KALDIRILDI (sütun artık ayrı bir varlık değil, sıradan bir `container`).
  */
 export type PageBuilderContainerId = "root" | `container:${string}`;
+
+// ---------- Tele-Sağlık: görüşme kaydı (§TUR 3) ----------
+//
+// Kaynak: `docs/architecture/openapi.yaml` (`ConsultationRecording`,
+// `RecordingStatus`, `RecordingConsentRequest`) + `.claude/compliance-notes-telehealth.md`
+// "TUR 3" (compliance-agent, ENGELLEYİCİ). Çelişkide **openapi.yaml kazanır**.
+
+/**
+ * `ConsultationRecording.status` — değer SIRASI bağlayıcıdır (Postgres enum tanım
+ * sırası `ORDER BY` davranışını belirler): mutlu yol önce, terminal istisnalar sonda.
+ *
+ * - `PENDING_CONSENT`  Doktor istedi, **hastanın rızası bekleniyor**. Egress bu
+ *   durumda ASLA çağrılmamıştır. TTL 120 sn (`consentExpiresAt`).
+ * - `RECORDING`        Hasta onayladı VE Egress fiilen başladı.
+ * - `PROCESSING`       Egress durduruldu, dosya henüz şifrelenip arşivlenmedi.
+ * - `COMPLETED`        Dosya at-rest AES-256-GCM ile şifrelenip nihai konuma yazıldı.
+ * - `CONSENT_DENIED`   Hasta açıkça reddetti; Egress hiç çağrılmadı (KVKK kanıtı).
+ * - `FAILED`           Egress/arşivleme hatası. Teknik neden istemciye DÖNMEZ.
+ */
+export type RecordingStatus =
+  | "PENDING_CONSENT"
+  | "RECORDING"
+  | "PROCESSING"
+  | "COMPLETED"
+  | "CONSENT_DENIED"
+  | "FAILED";
+
+/**
+ * `POST /appointments/{id}/recording/consent` gövdesi.
+ *
+ * **`granted: true` sabitine indirgenemez** — red de kaydedilmesi gereken bir KVKK
+ * olayıdır. İstemcide hiçbir seçenek önceden işaretli GELMEZ; modalı kapatmak
+ * "karar verilmedi"dir ve bu uca istek göndermez.
+ */
+export interface RecordingConsentRequest {
+  granted: boolean;
+}
+
+/**
+ * Bir randevunun (tekil seansın) sunucu tarafı görüşme kaydı. `Appointment` başına
+ * EN FAZLA BİR satır (`appointmentId` unique).
+ *
+ * **Şifreleme terminolojisi (BAĞLAYICI, TUR 3 madde 5):** bu kayıt **sunucuda
+ * (at-rest) AES-256-GCM** ile şifrelenir. Sunucu tarafı Egress tanım gereği uçtan
+ * uca şifreleme ile bağdaşmaz — hiçbir UI metninde, admin panelinde veya
+ * dokümantasyonda "E2EE"/"uçtan uca şifreli" iddiası KULLANILAMAZ.
+ *
+ * **`storagePath`, `egressId` ve `failureReason` alanları bu DTO'da YOKTUR ve
+ * EKLENMEYECEKTİR** (`AppointmentDocument`'ın `mediaId`/`url` yasağıyla AYNI
+ * disiplin). Dosyaya erişimin TEK yolu
+ * `GET /appointments/{id}/recording/content`'tir.
+ */
+export interface ConsultationRecording {
+  id: string;
+  appointmentId: string;
+  status: RecordingStatus;
+  /** Rıza isteminin hastaya gönderildiği an (ISO-8601 Z). Yeniden istemde TAZELENİR. */
+  consentRequestedAt: string;
+  /** `consentRequestedAt + 120 sn` — sunucuda TÜRETİLİR (kolon değildir), geri sayım için. */
+  consentExpiresAt: string;
+  /** Doktorun "Kaydı Başlat" aksiyonu. Hastanın rızasının YERİNE GEÇMEZ. */
+  doctorConsentAt: string | null;
+  /** **Egress'in başlatılabilmesi için ZORUNLU ön koşul** — null iken Egress ASLA çağrılmaz. */
+  patientConsentAt: string | null;
+  /**
+   * Hastanın açıkça reddettiği (son) an. Yeniden sorulup onaylansa da KORUNUR.
+   * Bu olay hastanın aleyhine bir geçmiş/etiket olarak GÖSTERİLMEZ.
+   */
+  patientConsentDeniedAt: string | null;
+  startedAt: string | null;
+  endedAt: string | null;
+  durationSeconds: number | null;
+  /** ŞİFRELİ nesnenin boyutu (36 baytlık MAGIC+IV+authTag başlığı dahil). */
+  fileSizeBytes: number | null;
+  /** `status === "COMPLETED" && deletedAt === null`. true iken `/recording/content` 200 döner. */
+  downloadable: boolean;
+  /**
+   * Dosya GERÇEKTEN silindikten sonra dolar; satır denetim izi bütünlüğü için KALIR.
+   * Saklama: randevunun `endsAt`'inden 30 gün (günlük süpürücü) veya hasta/ADMIN silmesi.
+   */
+  deletedAt: string | null;
+  createdAt: string;
+}
+
+/**
+ * `GET /appointments/{id}/recording` yanıtı — kayıt hiç başlatılmadıysa `null`
+ * döner (`404` DEĞİL: "kayıt yok" normal bir durumdur).
+ */
+export type ConsultationRecordingState = ConsultationRecording | null;

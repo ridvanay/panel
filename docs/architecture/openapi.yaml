@@ -465,7 +465,8 @@ tags:
 
 
       **Kapsam dışı (bağlayıcı, backlog):** doktor değerlendirme/puanlama, çoklu
-      uzmanlık, randevu erteleme ve LiveKit kaydı (Egress) kapsam dışıdır.
+      uzmanlık ve randevu erteleme kapsam dışıdır. **LiveKit kaydı (Egress) artık
+      KAPSAM DIŞI DEĞİLDİR** — bkz. aşağıdaki "§TUR 3" bloğu.
 
 
       ---
@@ -516,6 +517,104 @@ tags:
       5. **"Fatura" (§9.7.0 madde 11):** `Invoice` tablosu **AÇILMAZ**;
       `GET /appointments/bookings/{id}/invoice` PAID booking'in türetilmiş
       görünümüdür ve **resmi bir e-Fatura DEĞİLDİR** ("Ödeme Belgesi" etiketi zorunlu).
+
+
+      ---
+
+
+      **§TUR 3 (BAĞLAYICI) — sunucu tarafı görüşme kaydı (LiveKit Egress) +
+      S3/MinIO arşivleme.** Kaynak: `.claude/compliance-notes-telehealth.md`
+      "TUR 3" (compliance-agent, ENGELLEYİCİ) + architect'in
+      `feature/telehealth-recording` karar dokümanı. §4.4 madde 5'in "kayıt
+      KAPSAM DIŞI" kararı bu turla **kaldırılmıştır**; aşağıdaki 8 madde
+      kaldırmanın koşuludur:
+
+
+      1. **Varsayılan KAPALI, AYRI modül anahtarı.** `MODULE_REGISTRY`'ye
+      `telehealth-recording` (`defaultEnabled: false`) eklenir — `telehealth`
+      anahtarından **AYRIDIR**: tele-sağlığı açan bir kurulum kaydı da açmış
+      OLMAZ. Yeni Prisma migration GEREKTİRMEZ (`SiteModule` tablosu ve
+      `isModuleEnabled` fallback'i zaten var). Kayıt uçları
+      `requireModuleEnabled("telehealth")` **VE**
+      `requireModuleEnabled("telehealth-recording")` guard'larını birlikte
+      taşır; ikisinden biri kapalıysa **`404`** (varlık sızdırılmaz).
+      Yeni bir admin ekranı İCAT EDİLMEZ — mevcut `/admin/modules` kullanılır.
+
+
+      2. **Rıza mekanizması (ENGELLEYİCİ, KVKK md.6/md.10).** Doktorun
+      `POST /appointments/{id}/recording/start` çağrısı Egress'i **DOĞRUDAN
+      TETİKLEMEZ** — yalnızca `PENDING_CONSENT` durumunda bir
+      `ConsultationRecording` satırı oluşturur ve hastaya oda içi bir rıza
+      istemi gönderir. Egress API'si **YALNIZCA** hasta
+      `POST /appointments/{id}/recording/consent` ile `granted: true` verdikten
+      ve `patientConsentAt` yazıldıktan **SONRA** çağrılır. Bu rıza, randevu
+      onayına veya §9.7.5'teki "Sağlık Verisi Paylaşım İzni"ne **GÖMÜLEMEZ**;
+      önceden alınan genel bir "kayıt izni" (blanket consent) **KABUL EDİLMEZ**.
+      Hasta reddederse: kayıt başlamaz, doktora **nötr** bildirim gösterilir,
+      olay yalnızca `AuditLog`'a düşer — hastanın aleyhine bir geçmiş/etiket
+      olarak **GÖSTERİLMEZ**.
+
+
+      3. **Rıza istemi gerçek zamanlı, sunucu-otoriter data channel ile iletilir.**
+      Backend `RoomServiceClient.sendData` (topic `telehealth.recording`,
+      `RELIABLE`) ile odadaki tüm katılımcılara PII **İÇERMEYEN** bir durum
+      paketi yayınlar. **Yeni bir realtime altyapı KURULMAZ ve polling döngüsü
+      İSTENMEZ**; istemciler odaya (yeniden) bağlanırken durumu
+      `GET /appointments/{id}/recording` ile bir kez tazeler. Sinyal
+      best-effort'tur — doğruluk kaynağı DB'dir. İstemci grant kapsamı
+      **GENİŞLEMEZ** (§8 madde 1 aynen geçerli: `roomJoin` + `room` dışında
+      grant YOK; `roomRecord`/`roomAdmin`/`canPublishData` **VERİLMEZ**).
+
+
+      4. **Şeffaflık rozeti gereklidir ama RIZANIN YERİNE GEÇMEZ.** Kayıt aktif
+      olduğu **her an** sürekli görünür bir gösterge zorunludur; başlangıçta bir
+      kez gösterilip kaybolan toast YETERSİZDİR. Rozet = şeffaflık (m.10),
+      modal = rıza toplama — İKİSİ DE gereklidir.
+
+
+      5. **Şifreleme terminolojisi (BAĞLAYICI).** Sunucu tarafı Egress tanım
+      gereği uçtan uca şifreleme ile BAĞDAŞMAZ. Bu sözleşmede, UI'da, admin
+      panelinde ve dokümantasyonda kullanılabilecek **TEK** terim
+      **"sunucuda (at-rest) AES-256-GCM şifreleme"**dir. Kayıt dosyası,
+      `ENCRYPTION_KEY` (base64, 32 bayt) ana anahtar disiplini korunarak,
+      `lib/crypto.ts`'ten AYRI binary-güvenli bir **akış (stream)** yardımcısıyla
+      şifrelenir — tüm dosyayı belleğe alan/hex'e çeviren yol REDDEDİLMİŞTİR.
+
+
+      6. **Depolama akışı.** Egress dosyayı önce **staging** ön-ekine yazar
+      (`telehealth-recordings-staging/`), backend onu akış hâlinde okuyup
+      şifreleyerek nihai ön-eke (`telehealth-recordings/`, `.mp4.enc`) çok
+      parçalı (multipart) yükler ve staging nesnesini **SİLER**. Kayıt özelliği
+      **`STORAGE_DRIVER=s3` GEREKTİRİR** (Egress backend'in yerel diskine
+      erişemez) ve `LIVEKIT_EGRESS_WEBHOOK_URL` tanımlı olmalıdır — aksi hâlde
+      **`503 RECORDING_NOT_CONFIGURED`** (LiveKit'in kendisi eksikse mevcut
+      **`503 LIVEKIT_NOT_CONFIGURED`**). Nesneler **private**'tır; public ACL,
+      `S3_PUBLIC_URL` ve CDN yolu **KULLANILMAZ**. `storagePath`/`egressId`
+      hiçbir DTO'da, denetim `metadata`'sında veya logda **DÖNMEZ**.
+
+
+      7. **Saklama ve silme.** Kayıt, **randevunun kendi `endsAt`'inden 30 gün**
+      sonra günlük bir süpürücüyle **GERÇEKTEN silinir** (dosya diskten/S3'ten
+      gider, satır `deletedAt` ile KALIR). Bu süre §9.7.5'in 90 günlük sağlık
+      verisi ve Tur 1'in 12 aylık randevu PII penceresinden **KASITLI olarak
+      daha kısadır** (ses+görüntü daha zengin bir özel nitelikli veri kümesidir).
+      Hasta kendi kaydını beklemeden sildirebilir
+      (`DELETE /appointments/{id}/recording`, KVKK md.11); **doktor bir kaydı
+      SİLEMEZ** — silme yetkisi hasta + `ADMIN` ile sınırlıdır
+      (`assertBookingPatientOrAdminAccess` eşiği). Nihai saklama süresi için
+      gerçek bir hukuk danışmanına başvurulması gerektiği uyarısı aynen geçerlidir.
+
+
+      8. **Erişim ve denetim.** Kaydı görüntüleme/indirme eşiği §9.7.5 ile
+      **BİREBİR AYNIDIR**: hasta + **o randevunun** doktoru + `ADMIN`;
+      `MANAGER`/`EDITOR`/diğer doktorlar → **`404`**. **AYRI bir
+      "MedicalAuditLog" tablosu AÇILMAZ** — mevcut tek `AuditLog` ve şu action
+      adları kullanılır: `telehealth.recording.consent_requested`,
+      `.consent_granted`, `.consent_denied`, `.started`, `.stopped`,
+      `.accessed`, `.downloaded`, `.deleted`. Bir randevu için **EN FAZLA BİR**
+      kayıt oturumu vardır (`ConsultationRecording.appointmentId` unique);
+      tamamlanmış/başarısız bir kaydın üzerine ikincisi başlatılamaz
+      (**`409 RECORDING_ALREADY_EXISTS`**).
   - name: Localization
     description: >
       Çoklu dil yapılandırması (`/locales`, `/admin/locales`) — bkz. ARCHITECTURE.md
@@ -1379,6 +1478,15 @@ paths:
             `true` ise `DELETED` durumundaki kullanıcılar da listeye dahil edilir.
             Varsayılan `false`.
           schema: { type: boolean, default: false }
+        - name: search
+          in: query
+          required: false
+          description: >
+            Ad veya e-posta üzerinde sunucu tarafı arama (case-insensitive, `contains`).
+            100+ kullanıcılı listelerde istemci tarafı filtrenin yalnızca ilk sayfayı
+            (`limit`) taraması sorununu çözer — yakın zamanda eklenen/rol değiştirilen
+            bir kullanıcı ilk sayfanın dışında kalsa bile bulunabilir.
+          schema: { type: string, minLength: 1, maxLength: 120 }
       responses:
         "200":
           description: OK
@@ -6468,6 +6576,390 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
 
+  # ---------------------------------------------------------------------------
+  # §TUR 3 — Görüşme kaydı (LiveKit Egress) + S3/MinIO arşivleme.
+  # Kaynak: .claude/compliance-notes-telehealth.md "TUR 3" (compliance-agent,
+  # ENGELLEYİCİ) + architect'in feature/telehealth-recording karar dokümanı.
+  #
+  # SAHİPLİK (bağlayıcı, §4.4 madde 4'ün uzantısı): `livekit-server-sdk` /
+  # `@livekit/protocol` import eden HER dosya integration-agent'ındır.
+  #   integration-agent : /recording/start, /recording/consent, /recording/stop,
+  #                       /webhooks/livekit
+  #   backend-agent     : GET /recording, GET /recording/content,
+  #                       DELETE /recording  (LiveKit SDK'sına DOKUNMAZ)
+  #
+  # TÜM kayıt uçları `requireModuleEnabled("telehealth")` VE
+  # `requireModuleEnabled("telehealth-recording")` (varsayılan KAPALI) taşır —
+  # biri kapalıysa `404`. TEK İSTİSNA: /webhooks/livekit (aşağıda gerekçeli).
+  # ---------------------------------------------------------------------------
+
+  /appointments/{id}/recording/start:
+    parameters:
+      - $ref: "#/components/parameters/AppointmentId"
+    post:
+      tags: [TeleHealth]
+      security: []
+      summary: Kayıt için hastadan rıza iste (doktor/ADMIN — Egress'i TETİKLEMEZ, §TUR 3 madde 2)
+      description: >
+        **Bu uç Egress'i BAŞLATMAZ.** Yalnızca `PENDING_CONSENT` durumunda bir
+        `ConsultationRecording` satırı oluşturur/yeniler ve odaya rıza istemi
+        sinyali yayınlar (`RoomServiceClient.sendData`, topic
+        `telehealth.recording`, PII içermez). Egress **YALNIZCA**
+        `POST /appointments/{id}/recording/consent` `granted: true` ile
+        çağrılabilir (ENGELLEYİCİ compliance kuralı).
+
+
+        **Yetki:** yalnızca randevunun bağlı doktorunun `User`'ı veya
+        `SiteRole.ADMIN`. Misafir `?t=` token'ı **BURADA GEÇERSİZDİR**
+        (`POST /appointments/{id}/complete` ile AYNI eşik). Yetkisiz/bulunamayan
+        her istek **`404`** (IDOR — ayrım YAPILMAZ). Hız sınırı **10 istek/dakika**.
+
+
+        **Ön koşul sırası (bağlayıcı):** (1) iki modül guard'ı → `404`;
+        (2) LiveKit yapılandırılmamış → **`503 LIVEKIT_NOT_CONFIGURED`**;
+        (3) `STORAGE_DRIVER!=s3` / `S3_BUCKET`/S3 anahtar çifti /
+        `LIVEKIT_EGRESS_WEBHOOK_URL` eksik → **`503 RECORDING_NOT_CONFIGURED`**;
+        (4) yetki → `404`; (5) randevu `SCHEDULED`/`IN_PROGRESS` değilse veya
+        katılım penceresi dışındaysa → **`409 APPOINTMENT_NOT_JOINABLE`**
+        (`meeting-token` ucuyla AYNI pencere hesabı, §9.7.6);
+        (6) durum kontrolü (aşağıdaki tablo).
+
+
+        **Mevcut satır varsa:** `PENDING_CONSENT` (TTL dolmamış) / `RECORDING` /
+        `PROCESSING` → **`409 RECORDING_ALREADY_ACTIVE`**. `COMPLETED` /
+        `FAILED` → **`409 RECORDING_ALREADY_EXISTS`** (randevu başına EN FAZLA
+        bir kayıt; backlog `feature/telehealth-multi-segment-recording`).
+        `CONSENT_DENIED` **veya** TTL'i dolmuş `PENDING_CONSENT` → satır
+        YENİDEN KULLANILIR (`consentRequestedAt` tazelenir);
+        `patientConsentDeniedAt` **KORUNUR** (geçmiş rıza kanıtı silinmez).
+
+
+        Doktorun bu tıklaması doktor tarafının rızası sayılır
+        (`doctorConsentAt`/`doctorConsentVersion` yazılır) ama hastanın
+        rızasının **YERİNE GEÇMEZ**. Denetim:
+        `logAudit("telehealth.recording.consent_requested")`.
+      responses:
+        "200":
+          description: "Rıza istemi gönderildi (status: PENDING_CONSENT)"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/ConsultationRecording" }
+        "404":
+          description: "Modül kapalı VEYA randevu yok VEYA erişim yetkisi yok (ayrım YAPILMAZ)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "409":
+          description: >
+            `error.code`: `APPOINTMENT_NOT_JOINABLE` | `RECORDING_ALREADY_ACTIVE`
+            | `RECORDING_ALREADY_EXISTS`
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "503":
+          description: >
+            `error.code`: `LIVEKIT_NOT_CONFIGURED` | `RECORDING_NOT_CONFIGURED`
+            (hangi ayarın eksik olduğu İSİMLE söylenir, DEĞERİ ASLA sızdırılmaz)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+
+  /appointments/{id}/recording/consent:
+    parameters:
+      - $ref: "#/components/parameters/AppointmentId"
+      - $ref: "#/components/parameters/AppointmentAccessToken"
+    post:
+      tags: [TeleHealth]
+      security: []
+      summary: Hastanın kayıt rızası — kabul VEYA ret (yalnızca hasta, §TUR 3 madde 2)
+      description: >
+        **Yetki: YALNIZCA hasta** — oturum sahibi (`patientUserId`) veya doğru
+        `?t=` sunan misafir hasta (`assertBookingPatientOnlyAccess` eşiği).
+        Doktor ve `ADMIN` hastanın YERİNE onay **VEREMEZ** → `404`.
+        Hız sınırı **10 istek/dakika**.
+
+
+        Gövde `{ "granted": boolean }` — **`z.literal(true)` DEĞİLDİR**: red de
+        kaydedilmesi gereken bir KVKK olayıdır. Varsayılan bir değer YOKTUR;
+        istemcide hiçbir seçenek önceden işaretli GELMEZ.
+
+
+        **Akış (bağlayıcı):** satır yok / `status != PENDING_CONSENT` →
+        **`409 RECORDING_CONSENT_NOT_PENDING`**; `consentRequestedAt + 120 sn`
+        geçmişse → **`409 RECORDING_CONSENT_EXPIRED`** (satır `PENDING_CONSENT`
+        kalır, doktor yeniden isteyebilir).
+
+
+        `granted: false` → `status: CONSENT_DENIED` + `patientConsentDeniedAt`;
+        **Egress HİÇ ÇAĞRILMAZ**; `logAudit(".consent_denied")`; doktora nötr
+        bildirim sinyali. Bu olay hastanın aleyhine bir geçmiş/etiket olarak
+        **GÖSTERİLMEZ**.
+
+
+        `granted: true` → **ÖNCE** `patientConsentAt`/`patientConsentVersion`
+        yazılır (`updateMany` + `status: PENDING_CONSENT` koşulu; eşzamanlı iki
+        çağrı Egress'i İKİ KEZ başlatamaz), **SONRA**
+        `EgressClient.startRoomCompositeEgress` çağrılır → `status: RECORDING`,
+        `egressId`, `startedAt`. Denetim: `.consent_granted` **ve** `.started`.
+
+
+        Egress teknik olarak başarısız olursa yanıt yine **`200`** döner ve
+        `status: FAILED` taşır — hastanın rızası GEÇERLİ olarak kaydedilmiştir;
+        teknik hata hastanın eyleminin başarısızlığı DEĞİLDİR. `failureReason`
+        istemciye **DÖNMEZ** (yalnızca sunucu logunda).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RecordingConsentRequest" }
+      responses:
+        "200":
+          description: "Rıza kaydedildi (status: RECORDING | CONSENT_DENIED | FAILED)"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/ConsultationRecording" }
+        "404":
+          description: "Modül kapalı VEYA randevu yok VEYA çağıran hasta değil (ayrım YAPILMAZ)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "409":
+          description: >
+            `error.code`: `RECORDING_CONSENT_NOT_PENDING` | `RECORDING_CONSENT_EXPIRED`
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /appointments/{id}/recording/stop:
+    parameters:
+      - $ref: "#/components/parameters/AppointmentId"
+    post:
+      tags: [TeleHealth]
+      security: []
+      summary: Kaydı durdur (doktor/ADMIN)
+      description: >
+        Yetki `POST /appointments/{id}/recording/start` İLE AYNI (doktorun
+        `User`'ı veya `ADMIN`; misafir `?t=` **geçersiz**). `status != RECORDING`
+        → **`409 RECORDING_NOT_ACTIVE`**.
+
+
+        `EgressClient.stopEgress(egressId)` çağrılır → `status: PROCESSING`.
+        Dosyanın şifrelenip arşivlenmesi **`egress_ended` webhook'u** ile
+        tamamlanır; `endedAt`/`durationSeconds`/`fileSizeBytes` orada yazılır.
+        Doktor durdurmazsa oda boşaldığında LiveKit Egress'i kendisi sonlandırır
+        ve aynı webhook gelir — **ek bir zamanlayıcı YAZILMAZ.**
+        Denetim: `logAudit("telehealth.recording.stopped")`.
+      responses:
+        "200":
+          description: "Durdurma isteği alındı (status: PROCESSING)"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/ConsultationRecording" }
+        "404":
+          description: "Modül kapalı VEYA randevu yok VEYA erişim yetkisi yok (ayrım YAPILMAZ)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "409":
+          description: "Aktif bir kayıt yok (`error.code: RECORDING_NOT_ACTIVE`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /appointments/{id}/recording:
+    parameters:
+      - $ref: "#/components/parameters/AppointmentId"
+      - $ref: "#/components/parameters/AppointmentAccessToken"
+    get:
+      tags: [TeleHealth]
+      security: []
+      summary: Kayıt durumunu oku (hasta / o randevunun doktoru / ADMIN)
+      description: >
+        **Yetki §9.7.5 ile BİREBİR AYNI eşik** (`assertBookingHealthDataAccess`):
+        hasta (oturum/`?t=`), **yalnızca bu randevunun** doktoru, `ADMIN`.
+        `MANAGER`/`EDITOR`/diğer doktorlar → **`404`**. Randevu bir booking'e
+        bağlı değilse (TUR 2 öncesi tekil randevu) erişim öznesi randevunun kendi
+        `patientUserId`/`accessTokenHash`/`endsAt` alanlarından kurulur — **YENİ
+        bir yetki kuralı yazılmaz.**
+
+
+        Kayıt satırı yoksa **`404` DEĞİL**, `200` + `data: null` döner ("kayıt
+        yok" normal bir durumdur). Hız sınırı **60 istek/dakika** — istemciler
+        bu ucu odaya bağlanırken ve `Reconnected` olayında bir kez çağırır;
+        **sürekli polling döngüsü İSTENMEZ** (gerçek zamanlı yol data
+        channel'dır, §TUR 3 madde 3).
+
+
+        **Denetim kaydı YAZILMAZ** — bu bir durum okumasıdır, içerik erişimi
+        değildir; her tazelemede audit yazmak `AuditLog`'u anlamsız kılar.
+      responses:
+        "200":
+          description: "Kayıt durumu (kayıt hiç başlatılmadıysa `data: null`)"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        allOf:
+                          - $ref: "#/components/schemas/ConsultationRecording"
+                        nullable: true
+        "404":
+          description: "Modül kapalı VEYA randevu yok VEYA erişim yetkisi yok (ayrım YAPILMAZ)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+    delete:
+      tags: [TeleHealth]
+      security: []
+      summary: Kaydı sil (KVKK md.11 — hasta veya ADMIN; DOKTOR SİLEMEZ)
+      description: >
+        **Yetki `assertBookingPatientOrAdminAccess` eşiğidir:** hasta
+        (oturum/`?t=`) veya `ADMIN`. **Doktor DAHİL DEĞİLDİR** — bir doktor
+        hastanın kaydını **SİLEMEZ** (§TUR 3 madde 7: doktorun tek taraflı silme
+        isteği kötüye kullanım riski taşır ve ADMIN onayına tabidir; ayrı bir
+        "silme talebi/onay kuyruğu" makinesi **YAZILMAZ** — ADMIN aynı ucu
+        çağırır, `AppointmentDocument` silme emsaliyle AYNI). Doktor → `404`.
+
+
+        **Dosya S3/MinIO'dan GERÇEKTEN silinir** ve `storagePath` `null`'lanır;
+        satır `deletedAt` ile işaretlenir ve **KALIR** (erişim denetim izinin
+        bütünlüğü — `AppointmentDocument` İLE AYNI disiplin). `status` DEĞİŞMEZ.
+        `PENDING_CONSENT`/`RECORDING` durumunda çağrılırsa
+        **`409 RECORDING_NOT_AVAILABLE`** (önce durdurun).
+        Denetim: `logAudit("telehealth.recording.deleted", { reason })`.
+      responses:
+        "200":
+          description: "Silindi (`deletedAt` dolu)"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/ConsultationRecording" }
+        "404":
+          description: "Modül kapalı VEYA kayıt yok VEYA erişim yetkisi yok (doktor DAHİL)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "409":
+          description: "Kayıt hâlâ sürüyor/rıza bekliyor (`error.code: RECORDING_NOT_AVAILABLE`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+
+  /appointments/{id}/recording/content:
+    parameters:
+      - $ref: "#/components/parameters/AppointmentId"
+      - $ref: "#/components/parameters/AppointmentAccessToken"
+      - $ref: "#/components/parameters/RecordingDisposition"
+    get:
+      tags: [TeleHealth]
+      security: []
+      summary: Kayıt dosyasını izle/indir (kapılı akış + ZORUNLU denetim kaydı)
+      description: >
+        Dosyanın **TEK** servis yoludur. Nesne private S3/MinIO'dadır, public URL
+        **YOKTUR**, `@fastify/static` altında **DEĞİLDİR**, CDN'e **çıkmaz**.
+        Yanıt, şifreli nesnenin akış hâlinde çözülmesiyle üretilir (tüm dosya
+        belleğe **ALINMAZ**).
+
+
+        **Yetki §9.7.5 ile BİREBİR AYNI** (`assertBookingHealthDataAccess`):
+        hasta, **yalnızca bu randevunun** doktoru, `ADMIN`.
+        `MANAGER`/`EDITOR`/diğer doktorlar → **`404`**. Hız sınırı
+        **10 istek/dakika**.
+
+
+        Yanıt başlıkları **zorunlu**: `Content-Disposition: <disposition>;
+        filename="gorusme-kaydi-<seq>.mp4"`, `Cache-Control: no-store`,
+        `X-Content-Type-Options: nosniff`. `Content-Length` **verilmez**
+        (çözülmüş boyut akış sırasında kesinleşir).
+
+
+        **Denetim (zorunlu):** `?disposition=inline` →
+        `logAudit("telehealth.recording.accessed")`; `?disposition=attachment`
+        (varsayılan) → `logAudit("telehealth.recording.downloaded")`.
+        `metadata`'ya **dosya adı / `storagePath` / `egressId` / oda adı / URL
+        ASLA yazılmaz** — yalnızca `appointmentId`, `recordingId`, aktör, IP.
+
+
+        `status != COMPLETED` veya `deletedAt != null` →
+        **`409 RECORDING_NOT_AVAILABLE`**.
+      responses:
+        "200":
+          description: "Şifresi çözülmüş video akışı"
+          content:
+            video/mp4:
+              schema: { type: string, format: binary }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "Kayıt indirilebilir durumda değil (`error.code: RECORDING_NOT_AVAILABLE`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /webhooks/livekit:
+    post:
+      tags: [TeleHealth]
+      security: []
+      summary: LiveKit Egress webhook'u (integration-agent — imza doğrulamalı, kimliksiz)
+      description: >
+        LiveKit'in `egress_*` olaylarını POST ettiği uçtur. `/webhooks/stripe`
+        deseniyle AYNI iskelet: bu encapsulation context'ine özel bir
+        `addContentTypeParser` ham gövdeyi **string** olarak alır (LiveKit
+        `application/webhook+json` gönderir), imza
+        `WebhookReceiver.receive(rawBody, request.headers.authorization)` ile
+        doğrulanır. İmza geçersizse **`400`** (`{ "error": "invalid signature" }`)
+        ve gövde **loglanmaz**. Hız sınırı **UYGULANMAZ** (LiveKit retry'ları
+        boğulmamalıdır).
+
+
+        **Modül guard'ı BİLİNÇLİ OLARAK YOKTUR (gerekçeli istisna):** kayıt
+        sürerken yönetici `telehealth-recording` modülünü kapatırsa
+        `egress_ended` olayı yine de işlenmelidir; aksi hâlde S3'te
+        **şifrelenmemiş yetim bir nesne** kalırdı. security-agent bu istisnayı
+        denetler.
+
+
+        **İşlenen olaylar:** `egress_started` → `status: RECORDING` (idempotent);
+        `egress_updated` → sessiz `200`; `egress_ended` → dosya staging'den
+        okunup **akış hâlinde AES-256-GCM ile şifrelenir**, nihai ön-eke çok
+        parçalı yüklenir, staging nesnesi **silinir**, satır `COMPLETED`
+        (hata hâlinde `FAILED` + `failureReason`) olur. Bilinmeyen olay tipi →
+        sessiz `200`. Tekrar gönderim (retry) **İDEMPOTENT'tir**: satır zaten
+        `COMPLETED`/`FAILED` ise şifreleme/yükleme İKİNCİ KEZ YAPILMAZ
+        (`stripe.routes.ts` idempotency disipliniyle AYNI felsefe).
+
+
+        **Ajan sınırı:** integration-agent LiveKit SDK tiplerini backend-agent'ın
+        arşivleme fonksiyonuna **SIZDIRMAZ** — düz bir
+        `{ egressId, durationSeconds, error }` nesnesine çevirip geçer.
+      responses:
+        "200":
+          description: "Olay alındı (bilinmeyen olay tipleri de dahil)"
+        "400":
+          description: "İmza doğrulanamadı — gövde loglanmaz"
+
   /admin/telehealth/specialties:
     get:
       tags: [TeleHealth]
@@ -10195,6 +10687,21 @@ components:
         parametresi `ProductDocument` içindir ve BU DEĞİLDİR; ad çakışmasını
         önlemek için ayrı tanımlanmıştır.
       schema: { type: string, format: uuid }
+    RecordingDisposition:
+      name: disposition
+      in: query
+      required: false
+      description: >
+        §TUR 3 — `GET /appointments/{id}/recording/content` yanıtının
+        `Content-Disposition` başlığını ve **denetim kaydı action'ını** belirler:
+        `inline` → oda/portal içinde izleme, `logAudit("telehealth.recording.accessed")`;
+        `attachment` (varsayılan) → indirme,
+        `logAudit("telehealth.recording.downloaded")`. Tek uç, iki
+        compliance-zorunlu action — ayrı bir "download" ucu AÇILMAZ.
+      schema:
+        type: string
+        enum: [inline, attachment]
+        default: attachment
 
   responses:
     Unauthorized:
@@ -10452,6 +10959,29 @@ components:
               #   DOCUMENT_LIMIT_REACHED (409) — booking başına 5 belge tavanı.
               #   TWO_FACTOR_REQUIRED (403)    — /doctor/* uçları TOTP zorunlu (§9.7.7 madde 2).
               #   NOT_A_DOCTOR (403)           — oturum sahibinin DoctorProfile'ı yok.
+              #
+              # §TUR 3 (görüşme kaydı / LiveKit Egress + S3-MinIO arşivleme) ile eklenenler
+              # (bkz. TeleHealth tag'i "§TUR 3" bloğu ve /appointments/{id}/recording* path'leri):
+              #   RECORDING_NOT_CONFIGURED (503)     — LiveKit VAR ama kayıt altyapısı eksik:
+              #     STORAGE_DRIVER != s3, S3_BUCKET/S3 anahtar çifti veya
+              #     LIVEKIT_EGRESS_WEBHOOK_URL boş. LIVEKIT_NOT_CONFIGURED /
+              #     PAYMENTS_NOT_CONFIGURED ile AYNI "dürüst yapılandırılmamışlık" deseni.
+              #     Eksik ayarın ADI söylenir, DEĞERİ ASLA sızdırılmaz.
+              #   RECORDING_ALREADY_ACTIVE (409)     — rıza bekleyen (TTL dolmamış) ya da
+              #     süren/işlenen bir kayıt zaten var.
+              #   RECORDING_ALREADY_EXISTS (409)     — bu randevunun kaydı zaten
+              #     COMPLETED/FAILED. Randevu başına EN FAZLA BİR kayıt
+              #     (ConsultationRecording.appointmentId unique, compliance TUR 3 madde 1d).
+              #   RECORDING_CONSENT_NOT_PENDING (409)— /recording/consent çağrıldı ama
+              #     bekleyen bir rıza istemi yok.
+              #   RECORDING_CONSENT_EXPIRED (409)    — rıza istemi TTL'i (120 sn) doldu;
+              #     doktor yeniden isteyebilir, satır PENDING_CONSENT kalır.
+              #   RECORDING_NOT_ACTIVE (409)         — /recording/stop çağrıldı ama
+              #     status != RECORDING.
+              #   RECORDING_NOT_AVAILABLE (409)      — içerik/silme istendi ama kayıt
+              #     COMPLETED değil veya deletedAt dolu.
+              # NOT: yetkisiz erişim bu kodların HİÇBİRİNİ döndürmez — DAİMA 404
+              # (IDOR; kaydın/randevunun varlığı sızdırılmaz).
               enum:
                 [
                   BAD_REQUEST,
@@ -10475,6 +11005,13 @@ components:
                   DOCUMENT_LIMIT_REACHED,
                   TWO_FACTOR_REQUIRED,
                   NOT_A_DOCTOR,
+                  RECORDING_NOT_CONFIGURED,
+                  RECORDING_ALREADY_ACTIVE,
+                  RECORDING_ALREADY_EXISTS,
+                  RECORDING_CONSENT_NOT_PENDING,
+                  RECORDING_CONSENT_EXPIRED,
+                  RECORDING_NOT_ACTIVE,
+                  RECORDING_NOT_AVAILABLE,
                 ]
             message: { type: string }
             details:
@@ -15451,6 +15988,134 @@ components:
         disiplini). `REFUNDED` tanımlıdır ama **bu turda hiçbir kod onu YAZMAZ** —
         iade kapsam dışıdır (backlog `feature/telehealth-refunds`).
       enum: [PENDING, PAID, FAILED, EXPIRED, REFUNDED]
+
+    RecordingStatus:
+      type: string
+      description: >
+        §TUR 3 — `ConsultationRecording.status`. **YENİ** bir enum'dır
+        (`ALTER TYPE` DEĞİL), bu yüzden tüm değerler ilk seferde tanımlanır
+        (§3.1 disiplini) — sonradan değer eklemek geri alınamaz. Değer SIRASI
+        bağlayıcıdır (Postgres enum tanım sırası `ORDER BY` davranışını belirler):
+        mutlu yol önce, terminal istisnalar sonda (`AppointmentStatus` emsali).
+
+
+        `PENDING_CONSENT` — doktor istedi, **hastanın rızası bekleniyor; Egress
+        bu durumda ASLA çağrılmamıştır.** TTL 120 sn (`consentExpiresAt`).
+
+        `RECORDING` — hasta onayladı **ve** Egress fiilen başladı.
+
+        `PROCESSING` — Egress durduruldu, dosya henüz şifrelenip arşivlenmedi.
+
+        `COMPLETED` — dosya at-rest AES-256-GCM ile şifrelenip nihai konuma
+        yazıldı; `GET .../recording/content` artık `200` döner.
+
+        `CONSENT_DENIED` — hasta **açıkça reddetti**; Egress hiç çağrılmadı
+        (KVKK kanıtı). Doktor yeni bir aksiyonla TEKRAR sorabilir; otomatik
+        yeniden istem YOKTUR.
+
+        `FAILED` — Egress veya arşivleme hatası. Teknik neden istemciye
+        **DÖNMEZ** (yalnızca sunucu logunda).
+      enum: [PENDING_CONSENT, RECORDING, PROCESSING, COMPLETED, CONSENT_DENIED, FAILED]
+
+    RecordingConsentRequest:
+      type: object
+      description: >
+        §TUR 3 madde 2 — `POST /appointments/{id}/recording/consent` gövdesi.
+        **`granted: true` sabitine (`z.literal(true)`) İNDİRGENEMEZ:** red de
+        kaydedilmesi gereken bir KVKK olayıdır (`patientConsentDeniedAt` +
+        `telehealth.recording.consent_denied`). İstemcide hiçbir seçenek
+        **önceden işaretli GELMEZ**; modalı kapatmak "karar verilmedi"dir ve bu
+        uca istek göndermez.
+      required: [granted]
+      properties:
+        granted:
+          type: boolean
+          description: "true = kaydı kabul ediyorum, false = reddediyorum. Varsayılan YOKTUR."
+
+    ConsultationRecording:
+      type: object
+      description: >
+        §TUR 3 — bir randevunun (tekil seansın) sunucu tarafı görüşme kaydı.
+        `Appointment` başına **EN FAZLA BİR** satır (`appointmentId` unique).
+
+
+        **Şifreleme terminolojisi (BAĞLAYICI):** bu kayıt **sunucuda (at-rest)
+        AES-256-GCM** ile şifrelenir. Sunucu tarafı Egress tanım gereği uçtan uca
+        şifreleme ile bağdaşmaz; bu sözleşmede, UI'da ve dokümantasyonda başka
+        bir şifreleme iddiası **KULLANILAMAZ**.
+
+
+        **`storagePath`, `egressId` ve `failureReason` alanları bu DTO'da
+        YOKTUR ve EKLENMEYECEKTİR** (`AppointmentDocument`'ın `mediaId`/`url`
+        yasağıyla AYNI disiplin): opak depolama anahtarı ve sağlayıcı kimliği
+        istemciye sızmaz, denetim `metadata`'sına da yazılmaz. Dosyaya erişimin
+        **TEK** yolu `GET /appointments/{id}/recording/content`'tir.
+      required:
+        [
+          id,
+          appointmentId,
+          status,
+          consentRequestedAt,
+          consentExpiresAt,
+          downloadable,
+          createdAt,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        appointmentId: { type: string, format: uuid }
+        status: { $ref: "#/components/schemas/RecordingStatus" }
+        consentRequestedAt:
+          type: string
+          format: date-time
+          description: "Rıza isteminin hastaya gönderildiği an. Yeniden istemde TAZELENİR."
+        consentExpiresAt:
+          type: string
+          format: date-time
+          description: >
+            `consentRequestedAt + 120 sn`. Sunucuda TÜRETİLİR (kolon değildir);
+            istemcinin geri sayımı için. Bu andan sonra `/recording/consent`
+            **`409 RECORDING_CONSENT_EXPIRED`** döner.
+        doctorConsentAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: "Doktorun 'Kaydı Başlat' aksiyonu = doktor tarafının rızası. Hastanınkinin YERİNE GEÇMEZ."
+        patientConsentAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: >
+            **Egress'in fiilen başlatılabilmesi için ZORUNLU ön koşul.** Bu alan
+            `null` iken Egress API'si ASLA çağrılmaz (ENGELLEYİCİ compliance kuralı).
+        patientConsentDeniedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: >
+            Hastanın açıkça reddettiği (son) an. Doktor yeniden sorup hasta
+            onaylarsa da **KORUNUR** (geçmiş kanıt silinmez). Bu olay hastanın
+            aleyhine bir geçmiş/etiket olarak **GÖSTERİLMEZ** — yalnızca
+            `AuditLog`'ta yaşar.
+        startedAt: { type: string, format: date-time, nullable: true }
+        endedAt: { type: string, format: date-time, nullable: true }
+        durationSeconds: { type: integer, nullable: true }
+        fileSizeBytes:
+          type: integer
+          nullable: true
+          description: "ŞİFRELİ nesnenin boyutu (36 baytlık MAGIC+IV+authTag başlığı dahil)."
+        downloadable:
+          type: boolean
+          description: "`status === COMPLETED && deletedAt === null`. true iken `/recording/content` 200 döner."
+        deletedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: >
+            Dosya GERÇEKTEN silindikten sonra dolar; satır denetim izi bütünlüğü
+            için KALIR (`AppointmentDocument` İLE AYNI). Saklama süresi:
+            randevunun `endsAt`'inden **30 gün** (günlük süpürücü) veya hastanın/
+            ADMIN'in `DELETE .../recording` çağrısı.
+        createdAt: { type: string, format: date-time }
 
     Specialty:
       type: object

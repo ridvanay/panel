@@ -56,6 +56,7 @@ import type {
   AppointmentBooking,
   AppointmentIntake,
   AppointmentDocument,
+  ConsultationRecording,
 } from "@prisma/client";
 import type {
   UserDto,
@@ -138,6 +139,7 @@ import type {
   ConsultationNoteDto,
   AppointmentDocumentDto,
   DoctorPortalProfileDto,
+  ConsultationRecordingDto,
 } from "../schemas/entities";
 import { env } from "../config/env";
 import {
@@ -1743,6 +1745,36 @@ export function toAppointmentDocumentDto(document: AppointmentDocument): Appoint
     sha256: document.sha256,
     uploadedAt: document.uploadedAt.toISOString(),
     deletedAt: document.deletedAt ? document.deletedAt.toISOString() : null,
+  };
+}
+
+/**
+ * TUR 3 (bağlayıcı) — `consentExpiresAt` route katmanında hesaplanıp parametre olarak geçirilir
+ * (mapper DB şeması/`RECORDING_CONSENT_TTL_MS` sabitini bilmez, `toAppointmentIntakeDto`'daki
+ * "decrypt/hesaplama route'ta yapılır, mapper saf dönüşümdür" ilkesiyle AYNI).
+ * `storagePath`/`egressId`/`failureReason` BİLEREK dönmez (bkz. schemas/entities.ts::
+ * ConsultationRecordingSchema notu).
+ */
+export function toConsultationRecordingDto(
+  recording: ConsultationRecording,
+  consentExpiresAt: string
+): ConsultationRecordingDto {
+  return {
+    id: recording.id,
+    appointmentId: recording.appointmentId,
+    status: recording.status,
+    consentRequestedAt: recording.consentRequestedAt.toISOString(),
+    consentExpiresAt,
+    doctorConsentAt: recording.doctorConsentAt ? recording.doctorConsentAt.toISOString() : null,
+    patientConsentAt: recording.patientConsentAt ? recording.patientConsentAt.toISOString() : null,
+    patientConsentDeniedAt: recording.patientConsentDeniedAt ? recording.patientConsentDeniedAt.toISOString() : null,
+    startedAt: recording.startedAt ? recording.startedAt.toISOString() : null,
+    endedAt: recording.endedAt ? recording.endedAt.toISOString() : null,
+    durationSeconds: recording.durationSeconds,
+    fileSizeBytes: recording.fileSizeBytes,
+    downloadable: recording.status === "COMPLETED" && recording.deletedAt === null,
+    deletedAt: recording.deletedAt ? recording.deletedAt.toISOString() : null,
+    createdAt: recording.createdAt.toISOString(),
   };
 }
 

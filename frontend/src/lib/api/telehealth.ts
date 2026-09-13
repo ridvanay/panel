@@ -13,6 +13,7 @@ import type {
   BookingInvoice,
   CancelBookingRequest,
   ConsultationNote,
+  ConsultationRecording,
   CreateAppointmentRequest,
   CreateAppointmentResult,
   CreateBookingRequest,
@@ -119,6 +120,53 @@ export function completeAppointment(id: string, accessToken?: string, note?: str
     query: { t: accessToken },
     body: trimmedNote ? { note: trimmedNote } : undefined,
   });
+}
+
+// ---------- Görüşme kaydı (LiveKit Egress) — `.claude/architect-scope-telehealth-recording.md` ----------
+
+/** Doktor/ADMIN — misafir `accessToken` GEÇERSİZ (yalnızca doktorun bağlı `User`'ı veya ADMIN). */
+export function startRecording(appointmentId: string): Promise<ConsultationRecording> {
+  return apiFetch<ConsultationRecording>(`/appointments/${appointmentId}/recording/start`, { method: "POST" });
+}
+
+/** Hasta — `accessToken` opsiyonel (misafir). `granted: false` = red (de kaydedilir). */
+export function submitRecordingConsent(appointmentId: string, granted: boolean, accessToken?: string): Promise<ConsultationRecording> {
+  return apiFetch<ConsultationRecording>(`/appointments/${appointmentId}/recording/consent`, {
+    method: "POST",
+    query: { t: accessToken },
+    body: { granted },
+  });
+}
+
+/** Doktor/ADMIN. */
+export function stopRecording(appointmentId: string): Promise<ConsultationRecording> {
+  return apiFetch<ConsultationRecording>(`/appointments/${appointmentId}/recording/stop`, { method: "POST" });
+}
+
+/** Hasta/booking'in doktoru/ADMIN. Kayıt YOKSA `data: null` döner (`404` DEĞİL). */
+export function getRecordingStatus(appointmentId: string, accessToken?: string): Promise<ConsultationRecording | null> {
+  return apiFetch<ConsultationRecording | null>(`/appointments/${appointmentId}/recording`, { query: { t: accessToken } });
+}
+
+/**
+ * `GET /appointments/{id}/recording/content` — ham video stream, `apiFetch` KULLANILMAZ (ikili veri).
+ * Büyük video dosyaları için tarayıcının kendi stream/Range desteğine güvenilir; bu yüzden
+ * `fetchDocumentContentBlob`'un aksine burada blob'a ÇEKİLMEZ, dönen URL doğrudan `<video src>`/
+ * indirme linki `href` olarak kullanılır. `disposition`: `"inline"` (izle) | `"attachment"` (indir).
+ */
+export function getRecordingContentUrl(
+  appointmentId: string,
+  options: { accessToken?: string; disposition?: "inline" | "attachment" } = {}
+): string {
+  const params = new URLSearchParams();
+  if (options.accessToken) params.set("t", options.accessToken);
+  if (options.disposition) params.set("disposition", options.disposition);
+  return `${API_BASE_URL}/appointments/${appointmentId}/recording/content?${params.toString()}`;
+}
+
+/** Hasta/ADMIN — doktor DAHİL DEĞİL (backend `404` döner). */
+export function deleteRecording(appointmentId: string, accessToken?: string): Promise<ConsultationRecording> {
+  return apiFetch<ConsultationRecording>(`/appointments/${appointmentId}/recording`, { method: "DELETE", query: { t: accessToken } });
 }
 
 // ---------- [TCT] §9.7 TADİLAT TURU 2 — çoklu slot booking + ödeme + sağlık verisi ----------

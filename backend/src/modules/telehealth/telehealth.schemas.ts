@@ -266,3 +266,19 @@ export const ListAdminAppointmentsQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(100).default(20),
 });
 export type ListAdminAppointmentsQuery = z.infer<typeof ListAdminAppointmentsQuerySchema>;
+
+// ---------- TUR 3 (bağlayıcı) — Sunucu tarafı görüşme kaydı (LiveKit Egress) ----------
+
+/** Rıza istemi metninin gösterildiği sabit sürüm — `consentVersion` alanlarıyla AYNI desen (§9.7.5). */
+export const RECORDING_CONSENT_VERSION = "v1";
+/** Rıza isteminin geçerlilik penceresi (ms) — bu süre dolduktan sonra yanıt `RECORDING_CONSENT_EXPIRED` (409) ile reddedilir. */
+export const RECORDING_CONSENT_TTL_MS = 120_000; // 2 dakika
+
+export const RecordingConsentRequestSchema = z.object({ granted: z.boolean() });
+export type RecordingConsentRequest = z.infer<typeof RecordingConsentRequestSchema>;
+
+/** `?disposition=inline|attachment`, varsayılan `attachment` (indirme, izin verilen tek varsayılan). */
+export const RecordingContentQuerySchema = AccessTokenQuerySchema.extend({
+  disposition: z.enum(["inline", "attachment"]).default("attachment"),
+});
+export type RecordingContentQuery = z.infer<typeof RecordingContentQuerySchema>;

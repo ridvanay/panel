@@ -72,7 +72,7 @@ export async function adminUsersRoutes(app: FastifyInstance) {
     "/",
     { schema: { querystring: ListAdminUsersQuerySchema, response: { 200: ApiSuccessSchema(z.array(AdminUserSchema)) } } },
     async (request, reply) => {
-      const { cursor, limit, includeDeleted } = request.query;
+      const { cursor, limit, includeDeleted, search } = request.query;
       const cursorSeq = parseCursor(cursor);
 
       // Varsayılan olarak `DELETED` kullanıcılar listeden filtrelenir (yumuşak silme —
@@ -81,6 +81,9 @@ export async function adminUsersRoutes(app: FastifyInstance) {
         where: {
           ...(cursorSeq ? { seq: { gt: cursorSeq } } : {}),
           ...(includeDeleted ? {} : { status: { not: "DELETED" } }),
+          ...(search
+            ? { OR: [{ name: { contains: search, mode: "insensitive" } }, { email: { contains: search, mode: "insensitive" } }] }
+            : {}),
         },
         orderBy: { seq: "asc" },
         take: limit,

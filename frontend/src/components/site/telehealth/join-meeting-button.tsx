@@ -56,16 +56,17 @@ export function JoinMeetingButton({ booking, accessToken, size = "sm" }: JoinMee
 
   return (
     <Tooltip>
-      <TooltipTrigger>
-        <span tabIndex={0}>
-          <button
-            type="button"
-            disabled
+      <TooltipTrigger
+        render={
+          <span
+            role="button"
+            aria-disabled="true"
+            tabIndex={0}
             className={cn(buttonVariants({ size }), "rounded-[var(--site-radius)] pointer-events-none")}
-          >
-            Toplantıya Katıl
-          </button>
-        </span>
+          />
+        }
+      >
+        Toplantıya Katıl
       </TooltipTrigger>
       <TooltipContent>{disabledReason}</TooltipContent>
     </Tooltip>

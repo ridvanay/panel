@@ -62,6 +62,17 @@ const EnvSchema = z.object({
   // token'ın uzun süre geçerli kalmaması için). Dakika.
   LIVEKIT_TOKEN_TTL_MIN: z.coerce.number().int().positive().max(60).default(15),
 
+  // `.claude/architect-scope-telehealth-template.md` (TUR 3, bağlayıcı) — LiveKit Egress
+  // arşivleme. Egress BACKEND KONTEYNERİNİN DIŞINDA çalışır: `S3_ENDPOINT` docker-içi bir adres
+  // (ör. http://minio:9000) ise Egress ona ULAŞAMAYABİLİR — bu yüzden AYRI, dışarıdan erişilebilir
+  // bir endpoint tanımlanabilir. Boşsa mevcut `S3_ENDPOINT` kullanılır.
+  LIVEKIT_EGRESS_S3_ENDPOINT: z.string().default(""),
+  // LiveKit'in `egress_*` olaylarını POST edeceği MUTLAK URL. BOŞSA kayıt özelliği
+  // YAPILANDIRILMAMIŞ sayılır (503) — webhook olmadan dosya asla arşivlenemez, S3'te
+  // şifrelenmemiş yetim nesne kalırdı ("dürüst yapılandırılmamışlık" — LIVEKIT_NOT_CONFIGURED/
+  // PAYMENTS_NOT_CONFIGURED İLE AYNI felsefe).
+  LIVEKIT_EGRESS_WEBHOOK_URL: z.string().default(""),
+
   // `GET /doctor/earnings` (§9.7 TADİLAT) — sabit GLOBAL platform komisyon oranı (yüzde).
   // Doktor bazında override YOKTUR (bu turun kapsamı dışı); tanımsızsa makul bir varsayılana
   // (%15) düşer, `LIVEKIT_TOKEN_TTL_MIN` ile AYNI "opsiyonel, mantıklı varsayılanlı" desen.

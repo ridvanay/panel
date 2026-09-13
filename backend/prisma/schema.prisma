@@ -2115,9 +2115,10 @@ model Appointment {
   /// [TCT] §9.7.4 — null = bu tur ÖNCESİ oluşmuş tekil randevu (geriye dönük backfill YAPILMAZ).
   bookingId String?
 
-  doctor      DoctorProfile       @relation(fields: [doctorId], references: [id], onDelete: Restrict)
-  patientUser User?               @relation("AppointmentPatient", fields: [patientUserId], references: [id], onDelete: SetNull)
-  booking     AppointmentBooking? @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  doctor      DoctorProfile          @relation(fields: [doctorId], references: [id], onDelete: Restrict)
+  patientUser User?                  @relation("AppointmentPatient", fields: [patientUserId], references: [id], onDelete: SetNull)
+  booking     AppointmentBooking?    @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  recording   ConsultationRecording?
 
   /// Çifte rezervasyonun DB seviyesi garantisi (§4.3).
   @@unique([doctorId, startsAt])
@@ -2246,6 +2247,77 @@ model AppointmentDocument {
 
   @@index([bookingId, deletedAt])
   @@map("appointment_documents")
+}
+
+/// Görüşme kaydı yaşam döngüsü — .claude/compliance-notes-telehealth.md TUR 3 madde 1.
+enum RecordingStatus {
+  /// Doktor istedi, hastanın onayı BEKLENİYOR. Egress bu durumda ASLA çağrılmamıştır.
+  PENDING_CONSENT
+  /// Hasta onayladı + Egress fiilen başladı.
+  RECORDING
+  /// Egress durduruldu, dosya henüz şifrelenip arşivlenmedi.
+  PROCESSING
+  /// Dosya şifrelenip nihai konuma yazıldı, indirilebilir.
+  COMPLETED
+  /// Hasta AÇIKÇA reddetti — Egress hiç çağrılmadı (KVKK kanıtı).
+  CONSENT_DENIED
+  /// Egress hatası veya arşivleme hatası. `failureReason` doldurulur.
+  FAILED
+}
+
+/// TUR 3 madde 1(d) + madde 3/4 — bir randevunun (tekil seansın) sunucu tarafı görüşme kaydı.
+/// `AppointmentDocument` İLE AYNI disiplin: `storagePath` OPAK'tır ve API yanıtlarında ASLA
+/// dönmez; gerçek silmeden sonra bile SATIR KALIR (`deletedAt`, denetim izi bütünlüğü).
+/// UYARI (TUR 3 madde 5, bağlayıcı): bu kayıt E2EE DEĞİLDİR — sunucuda (at-rest) AES-256-GCM
+/// ile şifrelenir. Hiçbir yorumda/UI'da "uçtan uca şifreli" denmez.
+model ConsultationRecording {
+  id            String @id @default(uuid())
+  seq           Int    @unique @default(autoincrement())
+  /// TUR 3 madde 1(d) — her Appointment (tekil seans) EN FAZLA 1 kayıt. Bir randevu için
+  /// ikinci bir kayıt oturumu AÇILMAZ (409 RECORDING_ALREADY_EXISTS).
+  appointmentId String @unique
+
+  status RecordingStatus @default(PENDING_CONSENT)
+
+  /// LiveKit Egress kimliği — `egress_started/updated/ended` webhook'unun TEK eşleme anahtarı.
+  /// Rıza beklerken NULL'dur (Egress henüz çağrılmadı).
+  egressId String? @unique
+
+  /// --- RIZA KANITI (TUR 3 madde 1, ENGELLEYİCİ) ---
+  /// Doktorun "Kaydı Başlat" tıklaması = doktor tarafının rızası. Satır oluşurken yazılır.
+  doctorConsentAt        DateTime?
+  doctorConsentVersion   String?
+  /// Rıza isteminin hastaya gönderildiği an. Yeniden istemde GÜNCELLENİR (TTL bundan hesaplanır).
+  consentRequestedAt     DateTime  @default(now())
+  /// NULL = hasta henüz onaylamadı. BAĞLAYICI İŞ KURALI: Egress API'si bu alan NULL iken
+  /// ASLA çağrılmaz (şema değil, backend/integration kuralı).
+  patientConsentAt       DateTime?
+  patientConsentVersion  String?
+  /// Hastanın AÇIKÇA reddettiği (son) an. Yeniden sorulup onaylanırsa DA korunur (geçmiş kanıt).
+  patientConsentDeniedAt DateTime?
+
+  /// --- KAYIT/DOSYA ---
+  startedAt       DateTime?
+  endedAt         DateTime?
+  durationSeconds Int?
+  fileSizeBytes   Int?
+  /// ŞİFRELENMİŞ nihai S3/MinIO anahtarı (opak). API'de ASLA dönmez, audit metadata'sına
+  /// ASLA yazılmaz (AppointmentDocument.storagePath İLE AYNI kural).
+  storagePath     String?
+  /// FAILED durumunda teknik hata özeti. PII/tıbbi içerik İÇERMEZ (yalnızca Egress hata metni).
+  failureReason   String?
+
+  /// TUR 3 madde 3 — dosya GERÇEKTEN silinir, satır denetim izi için KALIR.
+  deletedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  /// Saklama süpürücüsünün (recording-retention.ts) tarama filtresi.
+  @@index([status, deletedAt])
+  @@map("consultation_recordings")
 }
 
 // §10.9.3 Sepet + Stripe Checkout (Eklenti/Modül Yönetimi) — bkz. ARCHITECTURE.md. Misafir

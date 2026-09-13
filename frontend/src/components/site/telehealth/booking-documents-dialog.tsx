@@ -11,6 +11,7 @@ import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { formatBytes } from "@/lib/format-bytes";
 import { cn } from "@/lib/utils";
+import { RecordingAccessPanel } from "@/components/site/telehealth/recording-access-panel";
 
 /**
  * `.claude/design-notes-telehealth.md` §13.3 — güvenli belge önizleme modalı (doktor görünümü).
@@ -29,12 +30,18 @@ interface BookingDocumentsDialogProps {
   bookingId: string;
   /** `AppointmentBooking.hasIntakeNote` — hasta notu bölümünü render edip etmeyeceğimizi belirler. */
   hasIntakeNote: boolean;
+  /**
+   * `AppointmentBooking.appointments[].id` — F5 görüşme kaydı erişim paneli (izle/indir), doktor
+   * görünümü olduğu için "Sil" YOK (`RecordingAccessPanel canDelete={false}`, backend zaten `404`
+   * döner ama UI baştan göstermez).
+   */
+  appointmentIds: string[];
   accessToken?: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
-export function BookingDocumentsDialog({ bookingId, hasIntakeNote, accessToken, open, onOpenChange }: BookingDocumentsDialogProps) {
+export function BookingDocumentsDialog({ bookingId, hasIntakeNote, appointmentIds, accessToken, open, onOpenChange }: BookingDocumentsDialogProps) {
   const [documents, setDocuments] = useState<AppointmentDocument[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
@@ -145,6 +152,10 @@ export function BookingDocumentsDialog({ bookingId, hasIntakeNote, accessToken, 
         </DialogHeader>
 
         {error && <Alert variant="error">{error}</Alert>}
+
+        {appointmentIds.map((appointmentId) => (
+          <RecordingAccessPanel key={appointmentId} appointmentId={appointmentId} accessToken={accessToken} canDelete={false} />
+        ))}
 
         {hasIntakeNote && (
           <div className="rounded-[var(--site-radius)] border border-border bg-muted/30 p-3">

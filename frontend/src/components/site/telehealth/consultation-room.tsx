@@ -9,10 +9,11 @@ import {
   RoomAudioRenderer,
   useConnectionState,
   useParticipants,
+  useRoomContext,
   useTrackToggle,
   useTracks,
 } from "@livekit/components-react";
-import { ConnectionState, Track } from "livekit-client";
+import { ConnectionState, RoomEvent, Track } from "livekit-client";
 import {
   AlertTriangle,
   Loader2,
@@ -29,13 +30,18 @@ import {
   type LucideProps,
 } from "lucide-react";
 import * as telehealthApi from "@/lib/api/telehealth";
+import { listPublicModules } from "@/lib/api/modules";
 import { ApiClientError } from "@/lib/api/error";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
-import type { Appointment, MeetingTokenResponse } from "@/lib/api/types";
+import { useAuthOptional } from "@/context/auth-context";
+import type { Appointment, ConsultationRecording, MeetingTokenResponse, RecordingSignalPayload } from "@/lib/api/types";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { RecordingConsentDialog } from "@/components/site/telehealth/recording-consent-dialog";
+import { RecordingIndicator } from "@/components/site/telehealth/recording-indicator";
+import { RecordingControls } from "@/components/site/telehealth/recording-controls";
 import { cn } from "@/lib/utils";
 
 /**
@@ -381,7 +387,136 @@ function ConsultationStage() {
   );
 }
 
-function ConsultationVideoRoom({ meeting, onLeave }: { meeting: MeetingTokenResponse; onLeave: () => void }) {
+/**
+ * Gelen `RecordingSignalPayload` mevcut yerel `recording` durumuyla birleştirilir. Sinyal
+ * `startedAt`/`patientConsentDeniedAt` TAŞIMAZ (§ payload PII içermez, minimal alan seti) — bu iki
+ * alan yalnızca REST yanıtlarından (kendi aksiyonumuz — `startRecording`/`stopRecording`/
+ * `submitRecordingConsent`) veya mount/reconnect tazelemesinden (`getRecordingStatus`) gelir. Karşı
+ * tarafın aksiyonuyla `RECORDING`'e/`CONSENT_DENIED`'e YENİ geçildiyse (yerelde henüz yoksa) doktor
+ * tarafındaki süre sayacı/60sn kilidi çalışabilsin diye YAKLAŞIK bir zaman damgası atanır (sinyal
+ * alım anı) — kesin değer bir sonraki mount/reconnect tazelemesinde düzelir; ekranda gösterilen
+ * kozmetik bir sayaçtır, denetim kaydı/hukuki bir alan DEĞİLDİR.
+ */
+function mergeRecordingSignal(prev: ConsultationRecording | null, signal: RecordingSignalPayload): ConsultationRecording {
+  const receivedAt = new Date().toISOString();
+  const base: ConsultationRecording =
+    prev && prev.id === signal.recordingId
+      ? prev
+      : {
+          id: signal.recordingId,
+          appointmentId: signal.appointmentId,
+          status: signal.status,
+          consentRequestedAt: receivedAt,
+          consentExpiresAt: signal.consentExpiresAt ?? receivedAt,
+          doctorConsentAt: null,
+          patientConsentAt: null,
+          patientConsentDeniedAt: null,
+          startedAt: null,
+          endedAt: null,
+          durationSeconds: null,
+          fileSizeBytes: null,
+          downloadable: false,
+          deletedAt: null,
+          createdAt: receivedAt,
+        };
+
+  return {
+    ...base,
+    status: signal.status,
+    consentExpiresAt: signal.consentExpiresAt ?? base.consentExpiresAt,
+    startedAt: base.startedAt ?? (signal.status === "RECORDING" ? receivedAt : base.startedAt),
+    patientConsentDeniedAt:
+      signal.status === "CONSENT_DENIED" ? (base.patientConsentDeniedAt ?? receivedAt) : base.patientConsentDeniedAt,
+  };
+}
+
+/**
+ * F4 — `RoomContext` içinde (yani `<LiveKitRoom>` altında) çalışır, mevcut `room` nesnesine
+ * `RoomEvent.DataReceived`/`RoomEvent.Reconnected` dinleyicisi ekler. Kendi başına render ETMEZ
+ * (`null` döner) — yalnızca üst bileşene (`ConsultationRoomLoaded`) durum aktarır.
+ */
+function RecordingSignalBridge({
+  appointmentId,
+  accessToken,
+  onSnapshot,
+  onSignal,
+}: {
+  appointmentId: string;
+  accessToken?: string;
+  onSnapshot: (recording: ConsultationRecording | null) => void;
+  onSignal: (payload: RecordingSignalPayload) => void;
+}) {
+  const room = useRoomContext();
+
+  useEffect(() => {
+    telehealthApi
+      .getRecordingStatus(appointmentId, accessToken)
+      .then(onSnapshot)
+      .catch(() => {
+        // Kayıt özelliği opsiyoneldir — çekilemezse mevcut görüşme SESSİZCE etkilenmeden devam eder.
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- YALNIZCA mount'ta bir kez (F4: "sadece bu iki tetikleyicide tek seferlik çağrı", poll döngüsü KURULMAZ)
+  }, []);
+
+  useEffect(() => {
+    function handleData(payload: Uint8Array, ...rest: unknown[]) {
+      const topic = rest[2] as string | undefined;
+      if (topic !== "telehealth.recording") return;
+      try {
+        const parsed = JSON.parse(new TextDecoder().decode(payload)) as RecordingSignalPayload;
+        if (parsed.appointmentId !== appointmentId) return;
+        onSignal(parsed);
+      } catch {
+        // Bozuk/ilgisiz payload — yok say.
+      }
+    }
+
+    function handleReconnected() {
+      telehealthApi.getRecordingStatus(appointmentId, accessToken).then(onSnapshot).catch(() => {});
+    }
+
+    room.on(RoomEvent.DataReceived, handleData);
+    room.on(RoomEvent.Reconnected, handleReconnected);
+    return () => {
+      room.off(RoomEvent.DataReceived, handleData);
+      room.off(RoomEvent.Reconnected, handleReconnected);
+    };
+  }, [room, appointmentId, accessToken, onSnapshot, onSignal]);
+
+  return null;
+}
+
+interface ConsultationVideoRoomProps {
+  meeting: MeetingTokenResponse;
+  onLeave: () => void;
+  appointmentId: string;
+  accessToken?: string;
+  isDoctor: boolean;
+  /** `telehealth-recording` modülü açık mı — qa-agent bulgusu: kapalıyken doktor "Kaydı Başlat"
+   *  butonunu GÖRMEMELİDİR (tıklarsa backend zaten 404 döner, ama UI baştan göstermemeli). */
+  recordingModuleEnabled: boolean;
+  recording: ConsultationRecording | null;
+  consentDialogOpen: boolean;
+  onRecordingSnapshot: (recording: ConsultationRecording | null) => void;
+  onRecordingSignal: (payload: RecordingSignalPayload) => void;
+  onConsentResolved: (recording: ConsultationRecording) => void;
+  onConsentDismiss: () => void;
+}
+
+function ConsultationVideoRoom({
+  meeting,
+  onLeave,
+  appointmentId,
+  accessToken,
+  isDoctor,
+  recordingModuleEnabled,
+  recording,
+  consentDialogOpen,
+  onRecordingSnapshot,
+  onRecordingSignal,
+  onConsentResolved,
+  onConsentDismiss,
+}: ConsultationVideoRoomProps) {
   return (
     <LiveKitRoom
       token={meeting.token}
@@ -393,9 +528,35 @@ function ConsultationVideoRoom({ meeting, onLeave }: { meeting: MeetingTokenResp
       className="relative aspect-video w-full overflow-hidden rounded-[var(--site-radius)] bg-[#0F172A]"
     >
       <RoomAudioRenderer />
+      <RecordingSignalBridge
+        appointmentId={appointmentId}
+        accessToken={accessToken}
+        onSnapshot={onRecordingSnapshot}
+        onSignal={onRecordingSignal}
+      />
       <ConnectionStatusBadge />
+      <div className="absolute right-4 top-4 z-10">
+        <RecordingIndicator status={recording?.status} />
+      </div>
       <ConsultationStage />
       <ConsultationControlBar />
+
+      {isDoctor && recordingModuleEnabled && (
+        <div className="absolute bottom-6 left-4 z-10">
+          <RecordingControls appointmentId={appointmentId} recording={recording} onUpdate={onRecordingSnapshot} />
+        </div>
+      )}
+
+      {!isDoctor && recording && recording.status === "PENDING_CONSENT" && (
+        <RecordingConsentDialog
+          open={consentDialogOpen}
+          appointmentId={appointmentId}
+          accessToken={accessToken}
+          consentExpiresAt={recording.consentExpiresAt}
+          onResolved={onConsentResolved}
+          onDismiss={onConsentDismiss}
+        />
+      )}
     </LiveKitRoom>
   );
 }
@@ -406,6 +567,50 @@ function ConsultationRoomLoaded({ appointment, accessToken }: { appointment: App
   const [notConfigured, setNotConfigured] = useState(false);
   const [joinError, setJoinError] = useState<string | null>(null);
   const [requesting, setRequesting] = useState(false);
+
+  // F4 — bu görüşmenin doktoru mu izliyor? `SiteRole.DOCTOR` YOKTUR, `User.doctorProfileId`
+  // ilişkisinden TÜRETİLİR (bkz. `lib/api/types.ts::User`). Oturumsuz misafir hasta (`accessToken`
+  // ile) için `user` zaten `null` olur — `isDoctor` doğal olarak `false` kalır.
+  const auth = useAuthOptional();
+  const isDoctor = auth?.user?.doctorProfileId != null && auth.user.doctorProfileId === appointment.doctorId;
+
+  // qa-agent bulgusu — `RecordingControls` daha önce modül durumunu hiç kontrol etmiyordu,
+  // `telehealth-recording` KAPALIYKEN (her yeni kurulumun varsayılanı) bile doktora "Kaydı
+  // Başlat" butonunu gösteriyordu. Bu sayfa `(site)` ağacında `ModulesProvider` OLMADAN render
+  // edildiği için `useModules()` KULLANILAMAZ — `login/page.tsx`'in doktor yönlendirmesinde
+  // kullandığı AYNI hafif `listPublicModules()` REST çağrısı burada da kullanılır.
+  const [recordingModuleEnabled, setRecordingModuleEnabled] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    if (!isDoctor) return;
+    listPublicModules()
+      .then((modules) => {
+        if (!cancelled) setRecordingModuleEnabled(modules.some((m) => m.key === "telehealth-recording" && m.enabled));
+      })
+      .catch(() => {
+        if (!cancelled) setRecordingModuleEnabled(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isDoctor]);
+
+  // F4 — F1/F2/F3'ün paylaştığı kayıt durumu; `RecordingSignalBridge` (mount/reconnect tazelemesi
+  // + `RoomEvent.DataReceived`) VE F1/F3'ün kendi REST aksiyonları (start/stop/consent) BURAYA yazar.
+  const [recording, setRecording] = useState<ConsultationRecording | null>(null);
+  // Hasta rıza modalını manuel kapattığında (X/escape/dışına tıklama) AYNI rıza talebi için tekrar
+  // AÇILMAZ (TTL kendiliğinden dolar) — bir SONRAKİ talepte (yeni `recordingId`) yeniden açılabilir.
+  const [dismissedConsentId, setDismissedConsentId] = useState<string | null>(null);
+
+  const handleRecordingSnapshot = useCallback((next: ConsultationRecording | null) => {
+    setRecording(next);
+  }, []);
+
+  const handleRecordingSignal = useCallback((payload: RecordingSignalPayload) => {
+    setRecording((prev) => mergeRecordingSignal(prev, payload));
+  }, []);
+
+  const consentDialogOpen = !isDoctor && recording?.status === "PENDING_CONSENT" && dismissedConsentId !== recording.id;
 
   async function handleJoin() {
     setRequesting(true);
@@ -437,7 +642,20 @@ function ConsultationRoomLoaded({ appointment, accessToken }: { appointment: App
       </div>
 
       {meeting ? (
-        <ConsultationVideoRoom meeting={meeting} onLeave={() => setMeeting(null)} />
+        <ConsultationVideoRoom
+          meeting={meeting}
+          onLeave={() => setMeeting(null)}
+          appointmentId={appointment.id}
+          accessToken={accessToken}
+          isDoctor={isDoctor}
+          recordingModuleEnabled={recordingModuleEnabled}
+          recording={recording}
+          consentDialogOpen={consentDialogOpen}
+          onRecordingSnapshot={handleRecordingSnapshot}
+          onRecordingSignal={handleRecordingSignal}
+          onConsentResolved={handleRecordingSnapshot}
+          onConsentDismiss={() => recording && setDismissedConsentId(recording.id)}
+        />
       ) : (
         <PreJoinStage
           joinState={joinState}

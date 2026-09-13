@@ -80,7 +80,25 @@ export type ApiErrorCode =
    * (`expiresAt`) dolmuşken `POST .../checkout-session`. `BOOKING_NOT_PAYABLE`'dan AYRI bir
    * koddur (booking hâlâ `paymentStatus: PENDING` görünebilir, süpürücü henüz çalışmamıştır). 409.
    */
-  | "BOOKING_EXPIRED";
+  | "BOOKING_EXPIRED"
+  /**
+   * `.claude/architect-scope-telehealth-template.md` (TUR 3, bağlayıcı) — Egress/S3 ortam
+   * değişkenleri yapılandırılmamışken görüşme kaydı başlatma denendiğinde. `LIVEKIT_NOT_CONFIGURED`/
+   * `PAYMENTS_NOT_CONFIGURED` İLE BİREBİR AYNI dürüst-yapılandırılmamışlık deseni. 503.
+   */
+  | "RECORDING_NOT_CONFIGURED"
+  /** TUR 3 (bağlayıcı) — bir randevu için kayıt zaten RECORDING/PROCESSING durumundayken tekrar başlatma denendiğinde. 409. */
+  | "RECORDING_ALREADY_ACTIVE"
+  /** TUR 3 madde 1(d) (bağlayıcı) — bir `Appointment` için EN FAZLA 1 `ConsultationRecording` satırı; ikinci kayıt açma denemesi. 409. */
+  | "RECORDING_ALREADY_EXISTS"
+  /** TUR 3 (bağlayıcı) — rıza yanıtı (`granted: true/false`) yalnızca `PENDING_CONSENT` durumundaki bir kayıt için kabul edilir. 409. */
+  | "RECORDING_CONSENT_NOT_PENDING"
+  /** TUR 3 (bağlayıcı) — rıza isteminin `RECORDING_CONSENT_TTL_MS` penceresi dolduktan sonra yanıtlanması. 409. */
+  | "RECORDING_CONSENT_EXPIRED"
+  /** TUR 3 (bağlayıcı) — kayıt `RECORDING` durumunda DEĞİLKEN durdurma/Egress bildirimi işlemi denendiğinde. 409. */
+  | "RECORDING_NOT_ACTIVE"
+  /** TUR 3 (bağlayıcı) — kayıt `COMPLETED`+silinmemiş DEĞİLKEN içerik/indirme erişimi denendiğinde. 409. */
+  | "RECORDING_NOT_AVAILABLE";
 
 export class ApiError extends Error {
   statusCode: number;
@@ -308,5 +326,58 @@ export class PaymentsNotConfiguredError extends ApiError {
 export class BookingExpiredError extends ApiError {
   constructor(message = "Bu rezervasyonun slot tutma süresi doldu.") {
     super(409, "BOOKING_EXPIRED", message);
+  }
+}
+
+/**
+ * `.claude/architect-scope-telehealth-template.md` (TUR 3, bağlayıcı) — Egress/S3 görüşme kaydı
+ * altyapısı bu kurulumda yapılandırılmamışken kayıt başlatma denendiğinde. `LiveKitNotConfiguredError`/
+ * `PaymentsNotConfiguredError` İLE BİREBİR AYNI dürüst-yapılandırılmamışlık deseni. 503.
+ */
+export class RecordingNotConfiguredError extends ApiError {
+  constructor(message = "Görüşme kaydı altyapısı bu kurulumda yapılandırılmamış.") {
+    super(503, "RECORDING_NOT_CONFIGURED", message);
+  }
+}
+
+/** TUR 3 (bağlayıcı) — bir randevu için kayıt zaten RECORDING/PROCESSING durumundayken tekrar başlatma denendiğinde. 409. */
+export class RecordingAlreadyActiveError extends ApiError {
+  constructor(message = "Bu görüşme için zaten devam eden bir kayıt var.") {
+    super(409, "RECORDING_ALREADY_ACTIVE", message);
+  }
+}
+
+/** TUR 3 madde 1(d) (bağlayıcı) — bir `Appointment` için EN FAZLA 1 `ConsultationRecording` satırı. */
+export class RecordingAlreadyExistsError extends ApiError {
+  constructor(message = "Bu randevu için zaten bir kayıt oturumu açılmış.") {
+    super(409, "RECORDING_ALREADY_EXISTS", message);
+  }
+}
+
+/** TUR 3 (bağlayıcı) — rıza yanıtı yalnızca `PENDING_CONSENT` durumundaki bir kayıt için kabul edilir. 409. */
+export class RecordingConsentNotPendingError extends ApiError {
+  constructor(message = "Bu kayıt için bekleyen bir rıza isteği yok.") {
+    super(409, "RECORDING_CONSENT_NOT_PENDING", message);
+  }
+}
+
+/** TUR 3 (bağlayıcı) — rıza isteminin geçerlilik penceresi (`RECORDING_CONSENT_TTL_MS`) dolmuş. 409. */
+export class RecordingConsentExpiredError extends ApiError {
+  constructor(message = "Kayıt rıza isteminin süresi doldu, doktor kaydı yeniden başlatmalı.") {
+    super(409, "RECORDING_CONSENT_EXPIRED", message);
+  }
+}
+
+/** TUR 3 (bağlayıcı) — kayıt `RECORDING` durumunda DEĞİLKEN durdurma/Egress bildirimi işlemi denendiğinde. 409. */
+export class RecordingNotActiveError extends ApiError {
+  constructor(message = "Bu kayıt şu anda aktif olarak kaydedilmiyor.") {
+    super(409, "RECORDING_NOT_ACTIVE", message);
+  }
+}
+
+/** TUR 3 (bağlayıcı) — kayıt `COMPLETED` + silinmemiş DEĞİLKEN içerik/indirme erişimi denendiğinde. 409. */
+export class RecordingNotAvailableError extends ApiError {
+  constructor(message = "Bu görüşme kaydı şu anda indirilebilir durumda değil.") {
+    super(409, "RECORDING_NOT_AVAILABLE", message);
   }
 }

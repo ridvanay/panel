@@ -10,11 +10,12 @@ import type {
 
 /**
  * `includeDeleted` — `true` ise `status: DELETED` (yumuşak silinmiş) kullanıcılar da listeye
- * dahil edilir. Verilmezse backend varsayılanı (`false`) geçerlidir — bkz. openapi.yaml
- * `GET /admin/users`.
+ * dahil edilir. Verilmezse backend varsayılanı (`false`) geçerlidir. `search` — ad/e-posta
+ * üzerinde SUNUCU TARAFI arama (case-insensitive) — sayfalanmış listede istemci tarafı
+ * filtrenin yalnızca ilk sayfayı taraması sorununu çözer (bkz. openapi.yaml `GET /admin/users`).
  */
-export function listAdminUsers(cursor?: string, includeDeleted?: boolean): Promise<Page<AdminUser>> {
-  return apiFetchPage<AdminUser>("/admin/users", { query: { cursor, limit: 100, includeDeleted } });
+export function listAdminUsers(cursor?: string, includeDeleted?: boolean, search?: string): Promise<Page<AdminUser>> {
+  return apiFetchPage<AdminUser>("/admin/users", { query: { cursor, limit: 100, includeDeleted, search } });
 }
 
 /**

@@ -184,7 +184,7 @@ const trustBandSection: PageNode = {
     {
       id: "th-trust-2",
       type: "icon-box",
-      data: { icon: "ShieldCheck", heading: "Şifreli Görüşme", description: "Görüntülü konsültasyonlar uçtan uca şifreli bağlantı üzerinden yapılır." },
+      data: { icon: "ShieldCheck", heading: "Şifreli Görüşme", description: "Görüntülü konsültasyonlar şifreli bağlantı üzerinden yapılır." },
     },
     {
       id: "th-trust-3",
@@ -757,7 +757,7 @@ export const TELEHEALTH_CLINIC_TEMPLATE: DemoTemplateDefinition = {
         "Rızanın Konusu",
         "İşlenecek Özel Nitelikli Veri Kategorileri",
         "Rızanın Geri Alınması",
-        "Görüntülü Görüşmenin Kaydedilmediğine İlişkin Beyan",
+        "Görüşme Kaydı Politikası ve Rızası",
       ]),
     },
     {

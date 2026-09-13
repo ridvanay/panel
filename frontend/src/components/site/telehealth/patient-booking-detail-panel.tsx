@@ -14,6 +14,7 @@ import { BookingSummaryCard } from "@/components/site/telehealth/booking-summary
 import { BookingIntakeStep } from "@/components/site/telehealth/booking-intake-step";
 import { BookingPaymentStep } from "@/components/site/telehealth/booking-payment-step";
 import { DocumentUploader } from "@/components/site/telehealth/document-uploader";
+import { RecordingAccessPanel } from "@/components/site/telehealth/recording-access-panel";
 
 /**
  * `.claude/architect-scope-telehealth-template.md` §9.7.10 — `/{lang}/patient/bookings/{bookingId}`.
@@ -219,6 +220,15 @@ export function PatientBookingDetailPanel({
       )}
 
       <BookingSummaryCard booking={booking} accessToken={accessToken} timeZone={Intl.DateTimeFormat().resolvedOptions().timeZone} />
+
+      {/*
+       * F5 — görüşme kaydı erişimi (izle/indir/sil). `RecordingAccessPanel` yalnızca ilgili
+       * randevunun kaydı `COMPLETED && downloadable` ise kendini render eder, aksi halde SESSİZCE
+       * hiçbir şey göstermez — burada koşulsuz her randevu için monte edilir.
+       */}
+      {booking.appointments.map((appointment) => (
+        <RecordingAccessPanel key={appointment.id} appointmentId={appointment.id} accessToken={accessToken} canDelete />
+      ))}
 
       {(booking.paymentStatus === "PENDING" || booking.paymentStatus === "FAILED") && !polling && (
         <BookingPaymentStep bookingId={booking.id} accessToken={accessToken} totalCents={booking.totalCents} currency={booking.currency} />

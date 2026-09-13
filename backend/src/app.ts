@@ -67,8 +67,12 @@ import { telehealthLiveKitRoutes } from "./modules/telehealth/telehealth.livekit
 import { telehealthCheckoutRoutes } from "./modules/telehealth/telehealth.checkout.routes";
 import { telehealthNotificationRoutes } from "./modules/telehealth/telehealth.notifications.routes";
 import { telehealthDoctorPortalRoutes, telehealthPatientPortalRoutes } from "./modules/telehealth/telehealth.portal.routes";
+import { telehealthRecordingRoutes } from "./modules/telehealth/telehealth.recording.routes";
+import { telehealthRecordingAccessRoutes } from "./modules/telehealth/telehealth.recording-access.routes";
+import { telehealthEgressWebhookRoutes } from "./modules/telehealth/telehealth.egress-webhook.routes";
 import { registerBookingExpirySweeper } from "./lib/booking-expiry";
 import { registerIntakeRetentionScheduler } from "./lib/intake-retention";
+import { registerRecordingRetentionScheduler } from "./lib/recording-retention";
 
 export function buildApp() {
   // `SENTRY_DSN` tanımsızsa no-op (bkz. lib/sentry.ts) — her `buildApp()` çağrısında
@@ -231,6 +235,12 @@ export function buildApp() {
       // Kendi content-type parser'ını (raw body) kaydeder — kendi encapsulation
       // context'inde kaldığı için diğer /api/v1 uçlarının JSON parse'ını etkilemez.
       api.register(stripeWebhookRoutes, { prefix: "/webhooks/stripe" });
+      // TUR 3 (bağlayıcı) — LiveKit Egress'in `egress_started/updated/ended` bildirimleri,
+      // integration-agent'ın AYRI dosyası (`telehealth.egress-webhook.routes.ts`). `stripeWebhookRoutes`
+      // İLE AYNI desen: kendi encapsulation context'inde ham gövde content-type parser'ı taşır.
+      // Konum BİLİNÇLİ OLARAK `modules/telehealth/`dir (architect kararı) ama nihai yol diğer
+      // GELEN webhook'larla (`/webhooks/stripe`) TUTARLI şekilde `/webhooks/livekit`dir.
+      api.register(telehealthEgressWebhookRoutes, { prefix: "/webhooks/livekit" });
       // §10.13 Üçüncü Parti Entegrasyon: API Anahtarları + Public API + Giden Webhook'lar — bkz.
       // ARCHITECTURE.md §10.13. `apiKeysRoutes`/`outboundWebhooksRoutes` yalnızca SiteRole=ADMIN
       // (okuma dahil). `publicApiRoutes` TAMAMEN AYRI bir kimlik doğrulama katmanıdır (`X-Api-Key`,
@@ -259,6 +269,14 @@ export function buildApp() {
       // public `/appointments` yüzeyine EKLENİR; kendi `requireModuleEnabled("telehealth")` +
       // kimlik doğrulama hook'larını KENDİSİ taşır.
       api.register(telehealthCheckoutRoutes);
+      // TUR 3 (bağlayıcı) — sunucu tarafı görüşme kaydı (LiveKit Egress). `telehealthRecordingRoutes`
+      // (integration-agent — kayıt BAŞLAT/rıza/DURDUR, LiveKit SDK'sını çağırır) ve
+      // `telehealthRecordingAccessRoutes` (backend-agent — durum oku/içerik akıt/sil, LiveKit
+      // SDK'sına HİÇ DOKUNMAZ) AYRI dosyalardır ama İKİSİ DE aynı public `/appointments` yüzeyine
+      // eklenir; her biri kendi `requireModuleEnabled("telehealth")` +
+      // `requireModuleEnabled("telehealth-recording")` + `authenticateOptional` hook'unu KENDİSİ taşır.
+      api.register(telehealthRecordingRoutes);
+      api.register(telehealthRecordingAccessRoutes);
       // §9.7.8/§9.7.10 (bağlayıcı) — magic-link yeniden gönderimi, notification-agent'ın AYRI
       // dosyası (`telehealth.notifications.routes.ts`, `telehealth.routes.ts`'e DOKUNULMADI).
       // Aynı public `/appointments` yüzeyine EKLENİR; kendi `requireModuleEnabled("telehealth")`
@@ -378,6 +396,14 @@ export function buildApp() {
       registerIntakeRetentionScheduler(app);
     } catch (err) {
       app.log.error({ err }, "Sağlık verisi (intake/belge) saklama süresi scheduler kurulumu başarısız oldu.");
+    }
+
+    try {
+      // TUR 3 (bağlayıcı) — görüşme kaydı (video) 30 gün sonra GERÇEKTEN silinir + yetim staging
+      // nesneleri temizlenir. `registerIntakeRetentionScheduler` İLE AYNI izolasyon/gerekçe.
+      registerRecordingRetentionScheduler(app);
+    } catch (err) {
+      app.log.error({ err }, "Görüşme kaydı saklama süresi scheduler kurulumu başarısız oldu.");
     }
   });
 

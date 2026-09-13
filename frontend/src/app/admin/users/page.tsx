@@ -125,20 +125,31 @@ export default function AdminUsersPage() {
     items: visibleUsers,
   } = useFilteredList(users, matchesUser);
 
-  const load = useCallback(async () => {
-    try {
-      const page = await usersAdminApi.listAdminUsers(undefined, includeDeleted);
-      setUsers(page.items);
-    } catch (err) {
-      setError(friendlyErrorMessage(err));
-    }
-  }, [includeDeleted]);
+  // `search` — sunucu tarafı arama terimi (ad/e-posta, `?search=`). İstemci tarafı
+  // `useFilteredList` filtresi (aşağıda `matchesUser`) ÜZERİNE eklenir, ONUN YERİNE GEÇMEZ:
+  // sunucu zaten eşleşen satırları döndürdüğü için yeniden filtrelemek zararsızdır, ama artık
+  // `listAdminUsers()`'ın TEK sayfası (limit 100) yalnızca "eşleşen" kullanıcılardan oluşur —
+  // 100+ kullanıcılı bir kurulumda yakın zamanda eklenen/rol değiştirilen bir kullanıcı, ilk
+  // sayfanın DIŞINDA kalsa bile artık bulunabilir (bkz. qa-agent bulgusu, önceki tur).
+  const load = useCallback(
+    async (searchTerm?: string) => {
+      try {
+        const page = await usersAdminApi.listAdminUsers(undefined, includeDeleted, searchTerm || undefined);
+        setUsers(page.items);
+      } catch (err) {
+        setError(friendlyErrorMessage(err));
+      }
+    },
+    [includeDeleted]
+  );
 
   useEffect(() => {
-    (async () => {
-      await load();
-    })();
-  }, [load]);
+    const trimmed = search.trim();
+    // Arama terimi BOŞKEN (mount, temizleme, `includeDeleted` değişimi) HEMEN yükle; DOLUYKEN
+    // her tuş vuruşunda istek atmamak için 250ms debounce uygula.
+    const handle = setTimeout(() => void load(trimmed || undefined), trimmed ? 250 : 0);
+    return () => clearTimeout(handle);
+  }, [load, search]);
 
   function handleUserCreated(user: AdminUser) {
     setUsers((prev) => (prev ? [user, ...prev] : [user]));
@@ -236,7 +247,7 @@ export default function AdminUsersPage() {
     setUnlinkDoctorLoading(true);
     try {
       await telehealthApi.updateDoctor(target.doctorProfileId!, { userId: null });
-      await load();
+      await load(search.trim() || undefined);
       toast.success(`"${target.name}" kullanıcısının doktor bağlantısı kaldırıldı.`);
       setPendingUnlinkDoctorUser(null);
     } catch (err) {
@@ -363,7 +374,7 @@ export default function AdminUsersPage() {
     setBulkRoleLoading(false);
     setBulkRoleConfirmOpen(false);
     setSelectedIds(new Set());
-    await load();
+    await load(search.trim() || undefined);
 
     if (successCount > 0 && failCount === 0) {
       toast.success(
@@ -399,7 +410,7 @@ export default function AdminUsersPage() {
     setBulkStatusLoading(false);
     setBulkStatusAction(null);
     setSelectedIds(new Set());
-    await load();
+    await load(search.trim() || undefined);
 
     const actionLabel = targetStatus === "SUSPENDED" ? "askıya alındı" : "aktifleştirildi";
     if (successCount > 0 && failCount === 0) {
@@ -461,7 +472,7 @@ export default function AdminUsersPage() {
     setBulkDeleteLoading(false);
     setBulkDeleteConfirmOpen(false);
     setSelectedIds(new Set());
-    await load();
+    await load(search.trim() || undefined);
 
     const parts: string[] = [];
     if (successCount > 0) {

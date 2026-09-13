@@ -3580,6 +3580,48 @@ export interface AppointmentDocument {
   deletedAt: string | null;
 }
 
+/**
+ * Sunucu tarafı görüşme kaydı (LiveKit Egress) — `.claude/architect-scope-telehealth-recording.md`
+ * (bkz. `docs/architecture/openapi.yaml` `TeleHealth` tag'i). Kayıt dosyası sunucuda (at-rest)
+ * AES-256 ile şifrelenir; bu DTO `storagePath`/`egressId`/`failureReason` gibi depolama/egress iç
+ * detaylarını BİLİNÇLİ OLARAK TAŞIMAZ.
+ */
+export type RecordingStatus = "PENDING_CONSENT" | "RECORDING" | "PROCESSING" | "COMPLETED" | "CONSENT_DENIED" | "FAILED";
+
+export interface ConsultationRecording {
+  id: string;
+  appointmentId: string;
+  status: RecordingStatus;
+  consentRequestedAt: string;
+  /** `consentRequestedAt + 120sn` — UI geri sayımı için, sunucu türetir. */
+  consentExpiresAt: string;
+  doctorConsentAt: string | null;
+  patientConsentAt: string | null;
+  patientConsentDeniedAt: string | null;
+  startedAt: string | null;
+  endedAt: string | null;
+  durationSeconds: number | null;
+  /** ŞİFRELİ boyut (at-rest AES-256 sonrası). */
+  fileSizeBytes: number | null;
+  /** `status === "COMPLETED" && deletedAt === null` — sunucu türetir. */
+  downloadable: boolean;
+  deletedAt: string | null;
+  createdAt: string;
+}
+
+/**
+ * Oda-içi gerçek-zamanlı sinyal (LiveKit data channel) — `topic: "telehealth.recording"`,
+ * `RoomEvent.DataReceived` ile dinlenir. PII İÇERMEZ, doğrudan UI state'ine yansıtılabilir.
+ */
+export interface RecordingSignalPayload {
+  v: 1;
+  appointmentId: string;
+  recordingId: string;
+  status: RecordingStatus;
+  consentVersion: string;
+  consentExpiresAt: string | null;
+}
+
 /** §9.7.7 — `GET /doctor/me`. `SiteRole.DOCTOR` YOKTUR; doktorluk `DoctorProfile.userId` ilişkisinden TÜRETİLİR. */
 export interface DoctorPortalProfile {
   userId: string;

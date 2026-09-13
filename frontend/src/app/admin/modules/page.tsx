@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 
 const dateFormatter = new Intl.DateTimeFormat("tr-TR", { dateStyle: "medium", timeStyle: "short" });
@@ -23,6 +24,16 @@ const dateFormatter = new Intl.DateTimeFormat("tr-TR", { dateStyle: "medium", ti
 function formatDate(iso: string): string {
   return dateFormatter.format(new Date(iso));
 }
+
+/**
+ * `.claude/architect-scope-telehealth-recording.md` F7 — bu modül anahtarını AÇMADAN ÖNCE
+ * (toggle'a tıklayınca, onaydan ÖNCE) bir uyarı dialogu gösterilir. Metin bağlayıcıdır, AYNEN
+ * kullanılır. Diğer modüllerin toggle davranışı DEĞİŞTİRİLMEZ — yalnızca BU anahtar için genel
+ * toggle akışına ek bir onay adımı eklenir.
+ */
+const RECORDING_MODULE_KEY = "telehealth-recording";
+const RECORDING_MODULE_WARNING =
+  "Görüşme kaydı özel nitelikli sağlık verisi (ses+görüntü) oluşturur ve kalıcılaştırır. Bu özelliği etkinleştirmeden önce KVKK/GDPR uyumluluğu için gerçek bir hukuk danışmanına danışmanız ÖNEMLE ÖNERİLİR.";
 
 export default function AdminModulesPage() {
   const { user } = useAuth();
@@ -32,6 +43,9 @@ export default function AdminModulesPage() {
   const [modules, setModules] = useState<SiteModule[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pendingKey, setPendingKey] = useState<string | null>(null);
+  // F7 — `telehealth-recording` AÇILMADAN ÖNCE gösterilen ek onay adımı; diğer modüller bu state'i
+  // HİÇ KULLANMAZ (`handleToggle` doğrudan çağrılır).
+  const [recordingWarningModule, setRecordingWarningModule] = useState<SiteModule | null>(null);
   // Yalnızca görsel bir ipucu için — "Önerilen" rozetini göstermek amacıyla mevcut site
   // şablonu ayrıca çekilir, herhangi bir modülün aktif/pasif davranışını ETKİLEMEZ.
   const [siteTemplate, setSiteTemplate] = useState<SiteTemplate | null>(null);
@@ -65,6 +79,20 @@ export default function AdminModulesPage() {
     } finally {
       setPendingKey(null);
     }
+  }
+
+  /**
+   * F7 — genel toggle akışının giriş noktası. `telehealth-recording`'i ETKİNLEŞTİRMEK
+   * (`checked === true`) isteniyorsa `handleToggle` DOĞRUDAN çağrılmaz, önce uyarı dialogu açılır;
+   * dialogtaki onaydan sonra `handleToggle` çağrılır. Kapatma (`checked === false`) VE diğer TÜM
+   * modüller bu ek adımdan ETKİLENMEZ.
+   */
+  function handleToggleRequest(module: SiteModule, enabled: boolean) {
+    if (module.key === RECORDING_MODULE_KEY && enabled) {
+      setRecordingWarningModule(module);
+      return;
+    }
+    void handleToggle(module, enabled);
   }
 
   return (
@@ -138,13 +166,29 @@ export default function AdminModulesPage() {
                   aria-label={`${module.label} modülünü ${module.enabled ? "devre dışı bırak" : "etkinleştir"}`}
                   checked={module.enabled}
                   disabled={!isAdmin || pendingKey === module.key}
-                  onCheckedChange={(checked) => void handleToggle(module, checked)}
+                  onCheckedChange={(checked) => handleToggleRequest(module, checked)}
                 />
               </Card>
             ))}
           </div>
         )
       )}
+
+      <ConfirmDialog
+        open={recordingWarningModule !== null}
+        onOpenChange={(open) => !open && setRecordingWarningModule(null)}
+        title="Görüşme Kaydını Etkinleştir"
+        description={RECORDING_MODULE_WARNING}
+        confirmText="Anladım, Etkinleştir"
+        tone="warning"
+        loading={recordingWarningModule !== null && pendingKey === recordingWarningModule.key}
+        onConfirm={() => {
+          if (!recordingWarningModule) return;
+          const targetModule = recordingWarningModule;
+          setRecordingWarningModule(null);
+          void handleToggle(targetModule, true);
+        }}
+      />
     </div>
   );
 }

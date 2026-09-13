@@ -2469,6 +2469,40 @@ export const ConsultationNoteSchema = z.object({
 export type ConsultationNoteDto = z.infer<typeof ConsultationNoteSchema>;
 
 /**
+ * TUR 3 (bağlayıcı, `.claude/compliance-notes-telehealth.md`) — sunucu tarafı görüşme kaydı
+ * (LiveKit Egress) yaşam döngüsü. `storagePath`/`egressId`/`failureReason` BU ŞEMADA YOKTUR —
+ * API yanıtında ASLA dönmez (bkz. `AppointmentDocumentSchema` notu, AYNI opak-storagePath disiplini).
+ */
+export const RecordingStatusSchema = z.enum([
+  "PENDING_CONSENT",
+  "RECORDING",
+  "PROCESSING",
+  "COMPLETED",
+  "CONSENT_DENIED",
+  "FAILED",
+]);
+export type RecordingStatus = z.infer<typeof RecordingStatusSchema>;
+
+export const ConsultationRecordingSchema = z.object({
+  id: z.string().uuid(),
+  appointmentId: z.string().uuid(),
+  status: RecordingStatusSchema,
+  consentRequestedAt: z.string(),
+  consentExpiresAt: z.string(),
+  doctorConsentAt: z.string().nullable(),
+  patientConsentAt: z.string().nullable(),
+  patientConsentDeniedAt: z.string().nullable(),
+  startedAt: z.string().nullable(),
+  endedAt: z.string().nullable(),
+  durationSeconds: z.number().int().nullable(),
+  fileSizeBytes: z.number().int().nullable(),
+  downloadable: z.boolean(),
+  deletedAt: z.string().nullable(),
+  createdAt: z.string(),
+});
+export type ConsultationRecordingDto = z.infer<typeof ConsultationRecordingSchema>;
+
+/**
  * Tıbbi belge METADATA'sı. `mediaId`/`url` alanı YOKTUR ve EKLENMEYECEKTİR — sağlık belgesi
  * hiçbir koşulda bir `Media` satırı değildir (§9.7.5 madde 4).
  */

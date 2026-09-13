@@ -209,6 +209,11 @@ sayfasının ZORUNLU bölümlerinden biri olarak zaten şablona eklenmiştir
 şifreleme, erişim kaydı ve **HER İKİ TARAFIN** (hasta + doktor) açık rızası gerektiren TAMAMEN
 AYRI bir değerlendirme turu gerektirir — bu turun onayı O özelliği KAPSAMAZ.
 
+**GÜNCELLEME:** Kayıt özelliği artık talep edilmiştir. Bkz. dosya sonundaki **"TUR 3 — Görüşme
+Kaydı (Recording/Egress) + S3/MinIO Arşivleme"** bölümü. Yukarıdaki KAPSAM DIŞI kararı, TUR 3'ün
+bağlayıcı koşulları architect tarafından nihai plana işlenmeden ve db-agent/backend-agent bu
+kararlara göre çalışmadan **geçerliliğini korur** — yani kod hâlâ "önce yazılmaz".
+
 ---
 
 ## Kendi düzelttiklerim (küçük içerik/metin düzeltmeleri, bu denetim sırasında)
@@ -632,3 +637,301 @@ denetim açısından merge edilebilir.**
 **Hukuki tavsiye notu (tekrar):** Bu bölüm de hukuki tavsiye DEĞİLDİR; nihai saklama süresi, rıza
 metinlerinin hukuki içeriği ve üçüncü taraf (Stripe) veri paylaşımının nihai KVKK/GDPR uygunluğu
 için gerçek bir hukuk danışmanına başvurulması ZORUNLUDUR.
+
+---
+
+## TUR 3 — Görüşme Kaydı (Recording/Egress) + S3/MinIO Arşivleme — ÖN-DEĞERLENDİRME
+## (compliance-agent ÖNCÜLÜĞÜNDE, ENGELLEYİCİ)
+
+> Bağlam: [TCT] §4.4 madde 5 (satır ~556-559) bu özelliği **bağlayıcı** olarak KAPSAM DIŞI
+> bırakmış ve "compliance-agent önderliğinde ayrı bir tur, kod önce YAZILMAZ" şartı koşmuştu
+> (yukarıdaki "Kayıt (recording/Egress) yasağının yazılı teyidi" bölümü). Kullanıcı bu turun
+> **compliance-agent ile başlamasını** seçti. Bu bölüm mimari/uyumluluk KARARLARINI verir —
+> **kod yazılmamıştır**; architect bu kararları plana işleyip db-agent/backend-agent/
+> frontend-agent'a devretmeden önce hiçbiri çalışmaya başlamaz.
+>
+> **Okunan/doğrulanan mevcut kod (spekülasyon değil):** `backend/prisma/schema.prisma`
+> (`AppointmentIntake` satır 2205-2222 — `healthDataConsentAt`/`healthDataConsentVersion` NOT
+> NULL rıza kanıtı deseni; `Appointment.consultationNoteCiphertext` satır 2105-2113; `AuditLog`
+> satır 1556-1571 — tek, serbest-metin `action` alanlı genel tablo), `backend/src/lib/crypto.ts`
+> (`encryptSecret`/`decryptSecret`, AES-256-GCM, `ENCRYPTION_KEY` 32 byte base64, hex
+> `iv:authTag:ciphertext` formatı — küçük string'ler için), `backend/src/lib/
+> telehealth-document-storage.ts` (özel depo: local disk VEYA S3/MinIO, `STORAGE_DRIVER=s3`,
+> `PRIVATE_UPLOAD_DIR`/`S3_BUCKET`/`S3_ENDPOINT`/`S3_REGION`, public ACL/CDN YOK, opak
+> `storagePath`, tek servis yolu audit'li uç), `backend/src/lib/intake-retention.ts` (90 gün,
+> `MAX(endsAt)`'ten itibaren, günlük süpürücü, idempotent, dosya diskten/S3'ten SİLİNİR ama satır
+> `deletedAt` ile KALIR), `backend/src/lib/audit.ts` (`logAudit`, "metadata'ya asla token/URL/
+> şifre yazma" kuralı), `backend/src/modules/demo-templates/templates/telehealth-clinic.ts`
+> (satır 739-762, `acik-riza-metni` sayfası, madde 4: "Görüntülü Görüşmenin Kaydedilmediğine
+> İlişkin Beyan").
+
+### Genel karar: **KOŞULLU ÖN-ONAY — kayıt özelliği teknik olarak mümkün, ancak aşağıdaki 7
+maddenin TAMAMI bağlayıcıdır**
+
+Bloklayıcı olan tek şey **rıza mekanizmasının (madde 1) architect'in planına AYNEN, gevşetilmeden
+girmesidir.** Diğer maddeler netleştirme/karar niteliğindedir.
+
+### 1) Rıza mekanizması (bağlayıcı, en kritik karar)
+
+**(a) Ayrı bir açık rıza adımı ZORUNLU — randevu/rezervasyon onayına veya "Sağlık Verisi Paylaşım
+İzni"ne (TUR 2) GÖMÜLEMEZ.** Kayıt, bambaşka bir işleme faaliyetidir (kalıcı ses+görüntü) ve KVKK
+md.10 "her işleme amacı için ayrı, aydınlatılmış rıza" ilkesi gereği kendi başına bir onay adımı
+gerektirir.
+
+**(b) Rıza NE ZAMAN alınır — ÖNCEDEN (randevu alırken) DEĞİL, GERÇEK ZAMANLI (görüşme anında).**
+Gerekçe: randevu alma anında hastanın "bu spesifik görüşme kaydedilecek mi" bilgisi yoktur (doktor
+kaydı başlatıp başlatmayacağına o an karar verir); önceden alınan bir "genel kayıt izni" KVKK'nın
+"belirli, bilgilendirilmiş" rıza şartını karşılamaz (blanket consent kabul edilemez). Akış:
+1. Doktor odada "Kaydı Başlat" aksiyonuna basar → bu, Egress'i **DOĞRUDAN TETİKLEMEZ.**
+2. Backend, o an için bir rıza-bekleme durumu oluşturur (aşağıdaki model, madde d) ve LiveKit
+   data-channel/oda metadata'sı üzerinden hastanın istemcisine gerçek zamanlı bir istem gönderir:
+   *"Doktorunuz bu görüşmeyi kaydetmek istiyor. Kabul ediyor musunuz?"* (Kabul Ediyorum /
+   Reddediyorum, hiçbiri varsayılan olarak seçili DEĞİL).
+3. Hasta **Kabul Ediyorum** derse → `patientConsentAt`/`patientConsentVersion` yazılır → backend
+   BUNDAN SONRA Egress API'sini çağırır (Egress başlaması hastanın onayından ÖNCE ASLA
+   tetiklenmez).
+4. Doktorun kendi aksiyonu ("Kaydı Başlat" tıklaması) doktor tarafının rızası sayılır
+   (`doctorConsentAt`/`doctorConsentVersion` aynı anda yazılır) — ama bu, hastanın rızasının
+   YERİNE GEÇMEZ; ikisi de gereklidir (HER İKİ TARAFIN rızası, [TCT] madde 5).
+
+**(c) Hasta REDDEDERSE:** Kayıt başlamaz (Egress hiç çağrılmaz). Doktora nötr bir bildirim
+gösterilir ("Hasta kaydı onaylamadı, görüşme kayıtsız devam ediyor" — hastayı suçlayan/ısrarcı bir
+dil KULLANILMAZ). Red, audit'e düşer (`telehealth.recording.consent_denied`) ama bu olay hastanın
+aleyhine hiçbir şekilde KULLANILAMAZ/görüntülenemez (ör. doktor panelinde "bu hasta kaydı
+reddetti" şeklinde bir geçmiş/etiket GÖSTERİLMEZ — yalnızca o oturuma özeldir). Doktor aynı
+oturumda TEKRAR sorabilir (otomatik yeniden deneme YOK, elle yeniden tetiklenir) ama art arda
+ısrarcı istemler (spam) ÖNERİLMEZ — frontend-agent'a bağlayıcı olmayan öneri: reddedilen bir
+istekten sonra en az X saniye/yeni bir doktor aksiyonu olmadan otomatik tekrar istem GÖNDERİLMEMELİ.
+
+**(d) Rıza kaydı — yeni model önerisi (db-agent'a, `AppointmentIntake` deseniyle TUTARLI ama
+BİREBİR aynı DEĞİL):**
+
+```
+model ConsultationRecording {
+  id                     String    @id @default(uuid())
+  appointmentId          String    @unique   // her Appointment (tekil seans) en fazla 1 kayıt
+  egressId               String?              // LiveKit Egress kimliği (webhook eşleme için)
+  doctorConsentAt        DateTime?
+  doctorConsentVersion   String?
+  patientConsentAt       DateTime?            // NULL = henüz onaylanmadı; Egress'in
+                                               // FİİLEN başlatılabilmesi için ZORUNLU ön koşul
+  patientConsentVersion  String?
+  patientConsentDeniedAt DateTime?            // hastanın açıkça REDDETTİĞİ an (kanıt)
+  storagePath            String?              // opak S3/MinIO anahtarı, AppointmentDocument
+                                               // .storagePath İLE AYNI disiplin — API'de ASLA dönmez
+  startedAt              DateTime?
+  endedAt                DateTime?
+  durationSeconds         Int?
+  fileSizeBytes           Int?
+  deletedAt               DateTime?           // gerçek silme sonrası da SATIR kalır (audit bütünlüğü,
+                                               // AppointmentDocument İLE AYNI)
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+  appointment            Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+}
+```
+
+Not: `patientConsentAt` burada **NOT NULL değildir** (AppointmentIntake'ten farklı) çünkü satır,
+rıza istemi GÖNDERİLDİĞİ anda (doktorun tıklamasıyla) zaten oluşturulmuş olabilir — asıl bağlayıcı
+kural şema değil, **iş mantığı**dır: backend, Egress başlatma çağrısını `patientConsentAt IS NOT
+NULL` olmadan **asla** yapmamalıdır (bu, backend-agent'a bağlayıcı bir kural olarak burada
+verilir). `consentVersion` alanları TUR 2'nin "serbest string, enum değil, `v1`'den başlar"
+disipliniyle AYNI kalmalıdır.
+
+### 2) Şeffaflık UI (rozet) — YETERLİ DEĞİL, RIZA YERİNE GEÇMEZ
+
+Ticket'ın istediği "Bu görüşme kaydedilmektedir" rozeti **gereklidir ama tek başına YETERSİZDİR.**
+Rozet bir **bilgilendirme/durum göstergesidir** (KVKK m.10 şeffaflık ilkesinin bir parçası,
+kaydın AKTİF OLDUĞU her an sürekli görünür olmalı — yalnızca başlangıçta bir kere gösterilip
+kaybolan bir toast YETERLİ DEĞİLDİR), **madde 1'deki ayrı, gerçek-zamanlı onay adımının YERİNE
+GEÇMEZ.** frontend-agent'a bağlayıcı gerekçe: rozet = "şu an ne olduğunu gösterme" (transparency),
+onay modalı = "rıza toplama" (consent) — ikisi FARKLI KVKK yükümlülükleridir ve İKİSİ DE gereklidir.
+
+### 3) Saklama/silme politikası
+
+**Süre önerisi: son `endsAt`'ten (randevu/seansın bitişinden) itibaren 30 gün** — TUR 2'nin metin
+notu (90 gün) ve TUR 1'in genel randevu PII'si (12 ay) hiyerarşisinden **kasıtlı olarak DAHA
+KISADIR.** Gerekçe: ses+görüntü kaydı, yazılı bir nottan/belgeden DAHA ZENGİN bir özel nitelikli
+veri kümesidir (yüz görüntüsü + ses + tıbbi içeriğin TAMAMI, birebir "oturdu gibi" yeniden
+izlenebilir) — minimizasyon ilkesi burada en sıkı uygulanmalıdır. **Bu, projenin diğer
+kararlarındaki (90 gün/12 ay) AYNI dürüstlük diliyle işaretlenmelidir: kesin süre için gerçek bir
+hukuk danışmanına danışılması ZORUNLUDUR** — özellikle Türkiye'de sağlık kayıtlarına dair
+sektörel mevzuatın (hasta dosyası saklama süreleri gibi) burada 30 günden ÇOK DAHA UZUN bir asgari
+süre öngörmüş olma ihtimali vardır; bu, "veri minimizasyonu kısa tutmak ister" ile "sağlık mevzuatı
+uzun tutmayı zorunlu kılabilir" arasında GERÇEK bir gerilim alanıdır ve bu proje bir hukuk
+danışmanının karar vermesi gereken noktadır (compliance-agent burada salt mühendislik/varsayılan
+bir süre öneriyor, nihai değil).
+
+**Süpürücü:** `backend/src/lib/recording-retention.ts` — `intake-retention.ts` ile BİREBİR aynı
+desen (günlük kadans, `MAX(endsAt)` bazlı cutoff, idempotent, dosyayı S3/MinIO'dan/diskten
+GERÇEKTEN siler, `ConsultationRecording` satırı `deletedAt` ile KALIR).
+
+**Hastanın silme talebi (KVKK md.11):** **EVET, hasta kendi kaydının silinmesini beklemeksizin
+talep edebilir** — TUR 2'nin `DELETE .../intake` / `DELETE .../documents/{id}` deseniyle AYNI,
+yeni bir `DELETE /appointments/{id}/recording` ucu önerilir, yalnızca randevunun hastası (veya
+ADMIN) çağırabilir. **Doktorun TEK TARAFLI silme talebi FARKLI ele alınmalıdır:** doktorun "bu
+kaydı sil" isteği hastanın md.11 hakkından KAYNAKLANMAZ (kayıt her iki tarafın ortak verisidir ama
+"veri sahibi" birincil olarak hastadır) — doktorun silme isteği doğrudan/anında UYGULANMAMALI,
+ADMIN onayından geçmelidir (kötüye kullanım riski: bir doktorun, olası bir şikayet/uyuşmazlık
+kaydını sildirmeye çalışması). Bu, bağlayıcı bir öneri olarak backend-agent'a iletilir.
+
+### 4) Erişim/denetim (audit) politikası
+
+**Kim görüntüleyebilir/indirebilir:** TUR 2'nin `assertBookingHealthDataAccess` deseniyle AYNEN
+tutarlı — **yalnızca o randevunun doktoru + ADMIN + randevunun hastasının kendisi**; MANAGER
+içerikten HARİÇ, EDITOR hiç YOK, başka bir doktor 404 alır (varlık sızdırılmaz). Hasta kendi
+kaydına erişebilmelidir (md.11 erişim hakkı) — bu, mevcut `GET .../documents/{id}/content`
+ucunun aynısı bir `GET /appointments/{id}/recording` ucu olarak modellenebilir.
+
+**Audit — AYRI bir "MedicalAuditLog" tablosu GEREKMEZ.** Mevcut proje deseni **tek, genel
+`AuditLog` tablosunu** (`schema.prisma:1556-1571`, serbest-metin `action` alanı) TÜM
+`telehealth.*` olayları için (intake/belge/epikriz erişimi dahil) zaten kullanıyor — yeni bir
+tablo bu deseni KIRAR ve gerekçesizdir. Yeni action isimleri önerilir (migration GEREKTİRMEZ,
+`action` zaten serbest metin): `telehealth.recording.consent_requested`,
+`telehealth.recording.consent_granted`, `telehealth.recording.consent_denied`,
+`telehealth.recording.started`, `telehealth.recording.stopped`,
+`telehealth.recording.accessed`, `telehealth.recording.downloaded`,
+`telehealth.recording.deleted`. `metadata` alanına **dosya adı/`storagePath`/videonun kendisi
+ASLA yazılmaz** — yalnızca `appointmentId`, aktör, IP gibi opak tanımlayıcılar (mevcut
+`audit.ts:19` kuralının doğal uzantısı). **İstisnai durum (ticket'ın "MedicalAuditLog" talebine
+yanıt):** eğer gerçek bir hukuk danışmanı ileride "sağlık kaydı erişim logu, genel admin
+audit'inden AYRI ve DEĞİŞTİRİLEMEZ (WORM/append-only) olmalı" derse, bu, mevcut `AuditLog`
+tablosunun YETERSİZ kaldığı bir senaryodur ve o zaman db-agent'a AYRI bir talep olarak
+açılabilir — ama **bu turda, bu ölçekte (şablon/demo platformu) gerekli/orantılı DEĞİLDİR.**
+
+### 5) Şifreleme terminolojisi düzeltmesi (bağlayıcı, dürüstlük/pazarlama uyarısı)
+
+**"E2EE (AES-256)" YANLIŞ bir terimdir — DÜZELTİLMELİDİR.** Sunucu tarafı (server-side) LiveKit
+Egress, ham medya akışlarını alıp kompozit bir MP4 üretmek ZORUNDADIR — bu, TANIM GEREĞİ uçtan uca
+şifreleme (E2EE) ile **BAĞDAŞMAZ** (E2EE'de sunucu hiçbir zaman düz metne erişemez; Egress bunun
+tam tersini yapar). **Doğru ve tek kullanılabilecek terim: "sunucuda, aktarım sonrası, dosya
+olarak saklanırken (at-rest) AES-256 şifreleme."** Bu ayrım architect/backend-agent/frontend-agent
+için BAĞLAYICIDIR: hiçbir UI metninde, admin panelinde veya pazarlama içeriğinde **"uçtan uca
+şifreli"/"E2EE"** ifadesi KULLANILAMAZ — bu, hastaya/kullanıcıya yanlış bir güvenlik vaadi vermek
+olur (KVKK m.10 şeffaflık ilkesinin ihlali).
+
+**Anahtar yönetimi (compliance-agent'ın onayı gereken kısım — nihai mekanizma security-agent'a
+aittir):** Mevcut `lib/crypto.ts::encryptSecret`/`decryptSecret` (hex string, `iv:authTag:
+ciphertext` formatı) **büyük binary dosyalar için UYGUN DEĞİLDİR** (tüm dosyayı belleğe alıp
+hex'e çeviren bir tasarımdır — bir video için bellek/CPU maliyeti kabul edilemez). Bu nedenle
+**yeni, binary-güvenli bir AES-256-GCM yardımcı fonksiyonu (stream veya buffer bazlı,
+hex-DÖNÜŞTÜRMEYEN) yazılmalıdır** — ama **compliance-agent'ın şartı, bunun AYNI `ENCRYPTION_KEY`
+ana anahtar disiplinini (env'den, 32 byte base64, `openssl rand -base64 32`) izlemesidir**, YENİ
+bir anahtar yönetimi mekanizması icat EDİLMEMELİDİR (tutarlılık + operasyonel basitlik). **Ek
+öneri (bağlayıcı değil, security-agent'a girdi):** eğer key-separation (blast-radius azaltma)
+isteniyorsa, `ENCRYPTION_KEY`'den HKDF ile türetilmiş AYRI bir alt-anahtar (`recording` bağlamlı)
+kullanılabilir — ama bu bir security-agent kararıdır, compliance-agent yalnızca "AES-256 at-rest,
+tutarlı anahtar disiplini" şartını koyar. **Ayrıca:** S3/MinIO'nun kendi sunucu-taraflı şifrelemesi
+(SSE, `S3_ENDPOINT` MinIO ise veya AWS S3 SSE-S3) bu uygulama-seviyesi şifrelemenin YERİNE
+GEÇMEZ — ikisi birlikte (uygulama önce şifreler, depolama sağlayıcı yalnızca ŞİFRELİ baytları
+görür) tercih edilir; bu, madde 7'deki yurt dışı aktarım riskini de AZALTIR (bkz. aşağıda).
+
+**Yurt dışına veri aktarımı riski (bağlayıcı uyarı):** `telehealth-document-storage.ts` zaten
+`STORAGE_DRIVER=s3` ile AWS S3'ü destekliyor; eğer işletme AWS'nin ABD bölgesini (`S3_REGION`
+varsayılanı `us-east-1`) kullanırsa bu, KVKK md.9 kapsamında **yurt dışına veri aktarımıdır** ve
+özel nitelikli veri (sağlık kaydı) için EK bir gerekçe/güvence gerektirir. **Öneri:** admin
+panelinde/`.env.example`'da açık bir uyarı ("Kayıt dosyaları için `S3_REGION` seçerken yurt
+dışına veri aktarımı kurallarına dikkat edin; mümkünse yurt içi/AB bölgesi veya self-hosted
+MinIO tercih edin") — bu, cross-border aktarım riskini ORTADAN KALDIRMAZ ama işletmeye görünür
+kılar; nihai uygunluk yine hukuk danışmanı kararıdır.
+
+### 6) Demo şablonu güncellemesi
+
+`backend/src/modules/demo-templates/templates/telehealth-clinic.ts:760`'taki **"Görüntülü
+Görüşmenin Kaydedilmediğine İlişkin Beyan"** başlığı, kayıt özelliği kod tabanına eklendiği ANDAN
+İTİBAREN **YANLIŞ/yanıltıcı** olur (özellik var ama kapalı olsa bile, bir "beyan" artık mutlak bir
+gerçek değil, KOŞULLU bir durumu tarif etmelidir). **Öneri: başlık
+`"Görüşme Kaydı Politikası ve Rızası"` ile DEĞİŞTİRİLMELİDİR** ve `buildLegalPageBlocks`'un ürettiği
+(şu an salt başlık olan, gövdesiz) YER TUTUCU bölüm, madde 7'deki varsayılan-kapalı bayrağa göre
+**koşullu** iki gövdeyi tarif edecek şekilde genişletilmelidir (nihai gövde metni yine
+`LEGAL_PLACEHOLDER_NOTICE` ile işaretli bir taslak olacaktır, gerçek hukuki metin DEĞİL):
+- **Kayıt özelliği KAPALIYSA** (varsayılan): mevcut ruhu koru — "Bu platformda görüntülü
+  görüşmeler varsayılan olarak kaydedilmez."
+- **Kayıt özelliği o randevu/doktor için AÇIKSA:** "Doktorunuz görüşmeyi kaydetmek isteyebilir; bu
+  yalnızca SİZİN görüşme sırasında ayrıca vereceğiniz açık rızanızla gerçekleşir, reddetme
+  hakkınız vardır, kayıt [N] gün sonra silinir, yalnızca doktorunuz ve siz erişebilirsiniz."
+Bu, architect'in planına EKLENMESİ gereken bir içerik/metin değişikliği görevidir (madde
+numaralandırması `buildLegalPageBlocks("th-acik-riza", [...])` dizisinde 4. eleman olarak KALIR,
+yalnızca metni değişir).
+
+### 7) Ölçek/kapsam sınırlaması önerisi
+
+**Öneri: özellik varsayılan olarak KAPALI gelmelidir** — bir ayar bayrağı (ör.
+`TelehealthSettings.recordingEnabled Boolean @default(false)`, mevcut proje "yeni davranış
+varsayılan kapalı" disipliniyle tutarlı — `LIVEKIT_URL` boş varsayılanıyla AYNI felsefe, [TCT]
+§4.4 madde 2). Admin panelinde bu bayrağı AÇMAYA çalışan bir yönetici, TUR 1/TUR 2'deki
+`LEGAL_PLACEHOLDER_NOTICE` diliyle TUTARLI bir uyarı GÖRMELİDİR: *"Görüşme kaydı özel nitelikli
+sağlık verisi (ses+görüntü) oluşturur ve kalıcılaştırır. Bu özelliği etkinleştirmeden önce KVKK/
+GDPR uyumluluğu için gerçek bir hukuk danışmanına danışmanız ÖNEMLE ÖNERİLİR. Ayrıntı:
+`.claude/compliance-notes-telehealth.md` (TUR 3)."* Bu, projenin bir şablon/demo platformu mu
+yoksa gerçek üretim mi olduğu belirsizliğini AZALTMAZ ama riski görünür ve işletmenin kendi
+kararına bağlı kılar — [TCT]'nin ve bu dosyanın tekrar eden "nihai karar hukuk danışmanınındır"
+ilkesiyle birebir tutarlıdır.
+
+### Özet tablo (TUR 3)
+
+| # | Konu | Karar |
+|---|---|---|
+| 1 | Rıza mekanizması | Ayrı, gerçek-zamanlı, iki taraflı (hasta+doktor) onay; Egress hastanın onayından ÖNCE tetiklenemez; red = kayıt yok, nötr bildirim, audit'e düşer ama hasta aleyhine kullanılamaz |
+| 2 | Şeffaflık rozeti | Gerekli ama YETERSİZ — rızanın YERİNE GEÇMEZ, sürekli görünür olmalı |
+| 3 | Saklama/silme | 30 gün öneri (son `endsAt`'ten), günlük süpürücü, hasta beklemeden silebilir, doktorun tek taraflı silme isteği ADMIN onayına tabi |
+| 4 | Erişim/audit | Hasta+randevu doktoru+ADMIN (MANAGER/EDITOR hariç, mevcut desen); AYRI "MedicalAuditLog" tablosu GEREKMEZ, mevcut `AuditLog` + yeni `telehealth.recording.*` action'lar yeterli |
+| 5 | Şifreleme terimi | "E2EE" YANLIŞ, DÜZELTİLMELİ → "sunucuda at-rest AES-256"; aynı `ENCRYPTION_KEY` disiplini, yeni binary-güvenli yardımcı fonksiyon; yurt dışı aktarım riski (AWS US region) işaretlendi |
+| 6 | Demo şablonu | `telehealth-clinic.ts:760` başlığı `"Görüşme Kaydı Politikası ve Rızası"` olarak değişmeli, koşullu (açık/kapalı) gövde |
+| 7 | Kapsam sınırlaması | Varsayılan KAPALI bayrak + admin panelinde hukuk danışmanı uyarısı |
+
+**Bloklayıcı madde:** Madde 1'in (rıza mekanizması) architect'in planına gevşetilmeden
+girmesi **ENGELLEYİCİDİR** — bunsuz db-agent/backend-agent bu özelliğe başlayamaz. Diğer
+maddeler netleştirme niteliğindedir, mimariye göre küçük ayarlamalar architect'in takdirindedir.
+
+**Hukuki tavsiye notu (tekrar, TUR 1/TUR 2 ile AYNI ilke):** Bu bölüm hukuki tavsiye DEĞİLDİR;
+özellikle (a) 30 günlük saklama süresi (sağlık kaydı saklama süresine dair sektörel asgari
+mevzuat ihtimali nedeniyle BURADA gerilim YÜKSEKTİR), (b) rıza metinlerinin nihai hukuki içeriği,
+(c) yurt dışına veri aktarımının nihai uygunluğu için gerçek bir hukuk danışmanına başvurulması
+**ZORUNLUDUR.**
+
+---
+
+## NİHAİ DENETİM: 2026-09-13 — TUR 3 kararlarının koda yansıması doğrulandı (spekülasyon değil)
+
+> Bu, kod YAZILDIKTAN SONRA yapılan bağımsız bir doğrulama turudur (architect'in planı → db-agent/
+> backend-agent/integration-agent/frontend-agent'ın implementasyonu → bu denetim). Aşağıdaki 7
+> madde, gerçek dosyalar okunarak (spekülasyon yapılmadan) tek tek karşılaştırıldı.
+
+| # | Madde | Sonuç | Kanıt |
+|---|---|---|---|
+| 1 | Rıza mekanizması (gerçek zamanlı, hasta ön koşulu, red kaydı) | **PASS** | `schema.prisma:2273-2321` (`ConsultationRecording`: `doctorConsentAt/Version`, `patientConsentAt/Version`, `patientConsentDeniedAt`, `RecordingStatus.PENDING_CONSENT/CONSENT_DENIED`). `telehealth.recording.routes.ts:187-202` (`/start` yalnızca `PENDING_CONSENT` satırı yazar, Egress'e HİÇ dokunmaz), `:259-296` (`/consent` — `granted:false` → `CONSENT_DENIED` + `patientConsentDeniedAt`, audit `consent_denied`; `granted:true` → ÖNCE `updateMany({patientConsentAt})` `count===1` doğrulanır, `startRoomCompositeRecording` SADECE bundan SONRA, satır 310, çağrılır). Randevu onayına gömülü DEĞİL — ayrı uçlar (`/recording/start`, `/recording/consent`). |
+| 2 | Şeffaflık rozeti (sürekli, toast değil) | **PASS** | `recording-indicator.tsx:10-11` (`status !== "RECORDING"` ise `null`, aksi hâlde kalıcı `Badge`, otomatik kapanma/timeout YOK); `consultation-room.tsx:534` render ağacında sürekli bağlı, gerçek zamanlı sinyal (`:463`, `topic === "telehealth.recording"`) ile state güncellendikçe otomatik kaybolur/görünür — kaybolan bir toast DEĞİL. |
+| 3 | Saklama/silme (30 gün, `endsAt`, hasta-only silme) | **PASS** | `recording-retention.ts:23,38,41` (`RECORDING_RETENTION_MS=30 gün`, cutoff `appointment.endsAt`'ten, günlük kadans, idempotent). `telehealth.recording-access.routes.ts:196-198` (`DELETE .../recording` → `assertBookingPatientOrAdminAccess`, doktor YOK); `telehealth-access.ts:96-100` fonksiyonu doğrulandı — yalnızca hasta veya ADMIN. |
+| 4 | Erişim/audit (hasta+doktor+ADMIN, action isimleri, PII'siz metadata) | **PASS** | `telehealth-access.ts:84-89` (`assertBookingHealthDataAccess` — ADMIN/doktor/hasta, MANAGER/EDITOR YOK). Audit action'ları `telehealth.recording.consent_requested/consent_denied/consent_granted/started/stopped/accessed/downloaded/deleted` — hepsi `telehealth.recording.routes.ts` ve `telehealth.recording-access.routes.ts` içinde BİREBİR bu isimlerle bulundu. `metadata` alanları yalnızca `recordingId`/`appointmentId`/`viaAdmin`/`reason` — `storagePath`/dosya adı/URL YOK (`recording-access.routes.ts:154,216`). |
+| 5 | Şifreleme terminolojisi (E2EE sıfır, demo düzeltmesi) | **PASS** | `binary-crypto.ts:13-14` — "BU E2EE (uçtan uca şifreleme) DEĞİLDİR" açık negatif beyanı mevcut. Repo geneli grep: backend/frontend `src` altında `E2EE`/`uçtan uca` yalnızca bu negatif beyanlarda + ilgisiz bir mimarlık şablonu cümlesinde (`modern-architecture.ts:273`, şifrelemeyle alakasız) geçiyor — sıfır yanlış kullanım. `telehealth-clinic.ts:187` artık "Görüntülü konsültasyonlar şifreli bağlantı üzerinden yapılır" (uçtan uca iddiası YOK). |
+| 6 | Demo şablonu (satır ~187, ~760) | **PASS** | `telehealth-clinic.ts:187` düzeltildi (madde 5'te kanıtlandı); `telehealth-clinic.ts:760` başlık `"Görüşme Kaydı Politikası ve Rızası"` olarak değişmiş. |
+| 7 | Kapsam sınırlaması (varsayılan kapalı + admin uyarısı) | **PASS** | `module-registry.ts:56,64` (`key: "telehealth-recording"`, `defaultEnabled: false`, kod yorumunda TUR 3 madde 7 referansı). `admin/modules/page.tsx:34-36,90-96,178-191` — `telehealth-recording` AÇILIRKEN (`enabled===true`) `handleToggle` DOĞRUDAN çağrılmıyor, önce `RECORDING_MODULE_WARNING` metniyle onay dialogu açılıyor, yalnızca `onConfirm`'de gerçek toggle tetikleniyor; metin TUR 3 §7'nin önerdiği metinle esasen aynı (yalnızca sonundaki "Ayrıntı: ..." referans cümlesi eksik, bağlayıcı değil). |
+
+**Sonuç: 7/7 PASS — bloklayıcı bulgu YOK.**
+
+**Ek bulgu (bloklayıcı DEĞİL, ama kayda geçirilmeli — dürüstlük/izlenebilirlik notu):**
+`recording-consent-dialog.tsx:12-13` ve `admin/modules/page.tsx:29-33` kod yorumları, metinlerin
+`.claude/architect-scope-telehealth-recording.md` adlı bir belgeden geldiğini ve "compliance-
+agent'ın bağlayıcı kararı, AYNEN kullanılır" olduğunu iddia ediyor — **bu dosya repoda
+mevcut değil** (`.claude/` dizininde arandı, bulunamadı). Hasta rıza modalının `CONSENT_TEXT`'i
+(`recording-consent-dialog.tsx:22`: *"Doktorunuz bu görüşmeyi kaydetmek istiyor. Kayıt sunucuda
+AES-256 ile şifrelenerek saklanır, 30 gün sonra otomatik silinir ve yalnızca siz, doktorunuz ve
+sistem yöneticisi erişebilir. Reddetme hakkınız vardır; reddetmeniz görüşmeyi etkilemez."*) bu
+dosyanın TUR 3 §1(b)'sinde yalnızca ÖRNEK/illüstratif olarak verilen kısa istem cümlesiyle
+("Doktorunuz bu görüşmeyi kaydetmek istiyor. Kabul ediyor musunuz?") birebir AYNI DEĞİLDİR —
+architect/frontend-agent bunu KENDİLİĞİNDEN genişletmiş görünüyor. **İçerik denetimi:** genişletilmiş
+metin madde 1/3/4/5 kararlarının TAMAMIYLA TUTARLIDIR (doğru terim "sunucuda AES-256", doğru süre
+"30 gün", doğru erişim kümesi "siz, doktorunuz, sistem yöneticisi" = hasta+doktor+ADMIN, reddin
+görüşmeyi etkilemediği doğru) — KVKK açısından bir ihlal YOKTUR, metin aslında ÖRNEK cümleden DAHA
+İYİ/daha şeffaftır (m.10 açısından daha bilgilendirici). **Bu nedenle bloklayıcı değildir ve bu
+denetimle birlikte metin compliance-agent tarafından NİHAİ olarak onaylanır** — ama var olmayan bir
+belgeye atıf yapan kod yorumu YANILTICIDIR; documentation-agent/architect'e, ya gerçek bir
+`architect-scope-telehealth-recording.md` dosyasının oluşturulması ya da yorumların
+`compliance-notes-telehealth.md` (TUR 3) + bu nihai denetim notuna işaret edecek şekilde
+düzeltilmesi ÖNERİLİR (bloklayıcı değil, iz sürülebilirlik/dürüstlük için).
+
+**qa-agent'a geçiş:** Yukarıdaki 7/7 PASS ile `telehealth-recording` özelliği fonksiyonel/uyumluluk
+denetiminden geçmiştir; qa-agent e2e test kapsamına şunları eklemelidir (bağlayıcı olmayan öneri):
+rıza reddi akışı (Egress'in HİÇ çağrılmadığının doğrulanması), rıza TTL dolumu, hasta-only silme
+(doktorun 403/404 alması), private storage sızıntı testi (madde 4/5 deseniyle AYNI, TUR 2 emsali).

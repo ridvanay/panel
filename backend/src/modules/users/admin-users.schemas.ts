@@ -17,6 +17,10 @@ export const ListAdminUsersQuerySchema = CursorQuerySchema.extend({
     .enum(["true", "false"])
     .default("false")
     .transform((v) => v === "true"),
+  /** Ad/e-posta üzerinde sunucu tarafı arama (case-insensitive, `contains`) — 100+ kullanıcılı
+   *  listelerde istemci tarafı filtrenin yalnızca ilk sayfayı taradığı sorunu çözer (bkz.
+   *  `telehealth.admin.routes.ts::ListAdminDoctorsQuerySchema` İLE AYNI desen). */
+  search: z.string().trim().min(1).max(120).optional(),
 });
 
 export const CreateAdminUserRequestSchema = z.object({

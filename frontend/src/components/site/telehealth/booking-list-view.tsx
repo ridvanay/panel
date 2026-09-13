@@ -310,6 +310,8 @@ export function BookingListView({ bookings, loadError, onRetry, perspective, tim
         <BookingDocumentsDialog
           bookingId={documentsBookingId}
           hasIntakeNote={bookings.find((b) => b.id === documentsBookingId)?.hasIntakeNote ?? false}
+          appointmentIds={bookings.find((b) => b.id === documentsBookingId)?.appointments.map((a) => a.id) ?? []}
+          accessToken={accessToken}
           open={documentsBookingId !== null}
           onOpenChange={(open) => !open && setDocumentsBookingId(null)}
         />

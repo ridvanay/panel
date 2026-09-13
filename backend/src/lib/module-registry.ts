@@ -52,6 +52,19 @@ export const MODULE_REGISTRY: ModuleDefinition[] = [
     defaultEnabled: false,
     adminPath: "/admin/telehealth/doctors",
   },
+  {
+    key: "telehealth-recording",
+    label: "Görüşme Kaydı",
+    description:
+      "Sunucu tarafı görüntülü görüşme kaydı (LiveKit Egress) ve S3/MinIO arşivleme. " +
+      "Kayıt yalnızca hastanın görüşme sırasında vereceği ayrı açık rıza ile başlar.",
+    // TUR 3 madde 7 (bağlayıcı) — özel nitelikli sağlık verisi ÜRETEN bir özelliktir, varsayılan
+    // KAPALI. `telehealth`'ten AYRI bir anahtardır: tele-sağlık modülünü açan her kurulum kaydı
+    // da açmış OLMAZ.
+    defaultEnabled: false,
+    // `adminPath` BİLEREK VERİLMEZ — bu modülün kendi admin ekranı/sidebar girdisi YOKTUR,
+    // yalnızca /admin/modules üzerinden aç/kapa edilir.
+  },
 ];
 
 export function getModuleDefinition(key: string): ModuleDefinition | undefined {

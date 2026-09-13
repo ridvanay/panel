@@ -2860,3 +2860,84 @@ ile yeniden build edilene kadar adım 4'ün eski `getByLabel(...).fill(...)` ça
 UI'a karşı "geçiyordu" (yanlış güven). Proje memory kuralı ("backend/frontend edit sonrası HER
 ZAMAN rebuild") bu tur BAŞINDA uygulandı; qa-agent kendi görevine başlamadan önce bu kontrolü
 YAPMALI (kod okuması ile ÇALIŞAN container'ın davranışı ARASINDA fark olabilir).
+
+## Tele-Sağlık — Görüşme Kaydı (LiveKit Egress + S3/MinIO, `telehealth-recording` modülü) — e2e kapsamı (bu turda eklendi)
+
+Kapsam: `feature/telehealth-recording` — architect/security-agent/compliance-agent bu özelliğin
+ENGELLEYİCİ denetimlerini ZATEN yaptı (PASS). Backend'in kendi `tests/integration/telehealth-
+recording.test.ts`'i (24 test, `vi.mock("livekit-server-sdk")`) rıza akışının durum makinesini
+(`PENDING_CONSENT → RECORDING/CONSENT_DENIED → PROCESSING/FAILED`) ZATEN kapsıyor — BURADA
+TEKRARLANMAZ. Dosya: `frontend/tests/e2e/telehealth-recording.spec.ts` (5 test — 4 senaryo testi +
+1 `setup` login).
+
+Bu ortamda (`backend/.env.e2e`) `LIVEKIT_URL`/`LIVEKIT_API_KEY`/`LIVEKIT_API_SECRET` SAHTE ama
+"dolu" (`isLiveKitConfigured()` TRUE — yalnızca yerel JWT imzalamak için, gerçek bir sunucuya asla
+ulaşılmaz), ama `STORAGE_DRIVER=local` (`isRecordingConfigured()` FALSE) — yani gerçek bir Egress/S3
+akışı (video dosyasının GERÇEKTEN kaydedilmesi) bu ortamda test EDİLEMEZ/EDİLMEDİ; kapsam görev
+talimatının kendisinin sınırladığı 4 maddeyle sınırlı:
+
+| Senaryo | Sonuç |
+|---|---|
+| Modül kapalıyken (varsayılan) doktor görüşme odasına girer — `RecordingIndicator` hiç görünmez, `getRecordingStatus` 404'ü sessizce yutulur, sayfa çökmez (`pageerror` YOK) | ✅ |
+| Backend API guard matrisi — modül kapalıyken `start`/`consent`/`stop`/`GET`/`GET .../content`/`DELETE` HEPSİ 404; `POST /webhooks/livekit` (modül guard'sız, bilinçli istisna) imzasızken 400 | ✅ |
+| `/admin/modules` — `telehealth-recording` toggle'ına tıklayınca ÖNCE uyarı dialogu (KVKK/GDPR metni), "Vazgeç" modülü AÇMAZ, "Anladım, Etkinleştir" GERÇEKTEN açar | ✅ |
+| Modül AÇIK ama S3/webhook yapılandırılmamışken "Kaydı Başlat" → dürüst `503 RECORDING_NOT_CONFIGURED`, anlamlı hata metni gösterilir, oda çökmez | ✅ |
+
+Doğrulama: dosya 3 ardışık izole koşumda (aralarda `POST /appointments/bookings`'in 5/dk hız
+sınırına takılmamak için bekleyerek) tutarlı biçimde 5/5 yeşil verdi.
+
+### Kritik bug #1 — qa-agent bulgusu, DÜZELTİLMEDİ, frontend-agent'a yönlendirildi
+
+**`RecordingControls` ("Kaydı Başlat" butonu) `telehealth-recording` modülünün açık/kapalı
+durumundan TAMAMEN BAĞIMSIZ — modül KAPALIYKEN (her yeni kurulumun VARSAYILANI) doktor GENE DE
+butonu görür.** `frontend/src/components/site/telehealth/consultation-room.tsx::
+ConsultationVideoRoom` içinde `{isDoctor && <RecordingControls .../>}` — `useModules()` bu dosyada
+HİÇ import edilmiyor, modül durumuna dair hiçbir kontrol yok. Tıklanınca backend'in modül guard'ı
+`404 NOT_FOUND` ("Kaynak bulunamadı.") döner ve bu, buton altında genel/yanıltıcı bir hata metni
+olarak görünür (çökme YOK, ama görev talimatının beklediği "buton HİÇ GÖRÜNMEZ" davranışı
+karşılanmıyor). Öneri: `RecordingControls` (ve tutarlılık için muhtemelen `RecordingIndicator`)
+`useModules()` ile `telehealth-recording` durumunu okuyup kapalıyken hiç render ETMEMELİ —
+`admin/modules/page.tsx`'in F7 uyarı dialogu deseninin mantıksal tamamlayıcısı. `telehealth-
+recording.spec.ts` madde 1 mevcut (buggy) davranışı belgeler/atlatır (proje konvansiyonu —
+"atlatılıyor, DÜZELTİLMİYOR").
+
+### Kritik bug #2 — qa-agent bulgusu, DÜZELTİLMEDİ, frontend-agent'a yönlendirildi (DETERMİNİSTİK, flaky DEĞİL)
+
+**`ConsultationRoom::loadAppointment()` mount'ta HEMEN `GET /appointments/{id}` çağırır,
+`AuthProvider`'ın kendi mount-time `authApi.refresh()`'ini (httpOnly cookie → access token)
+BEKLEMEZ.** React'in "çocuk effect'ler ata effect'lerden önce çalışır" kuralı gereği bu HER ZAMAN
+`ConsultationRoom`'un effect'inin `AuthProvider`'ınkinden ÖNCE ateşlenmesi anlamına gelir — `?t=`
+misafir token'ı OLMADAN (yalnızca oturuma dayalı) HER TAM SAYFA YÜKLEMESİNDE `getAppointment`
+isteği `Authorization` header'ı OLMADAN gider, backend bunu (doğru biçimde, IDOR'a karşı)
+misafir/token'sız sayıp `404 Randevu bulunamadı.` döner. `ConsultationRoom` bu durumdan
+KENDİLİĞİNDEN toparlanmaz (yalnızca manuel "Tekrar Dene" butonu vardır — o ana kadar `refresh()`
+tamamlanmış olduğundan tıklanınca 200 döner). Elle (gerçek Playwright tarayıcısı + Node script ile)
+doğrulandı: **her** navigasyon denemesi (tam sayfa yenileme dahil, 45sn boyunca tekrar tekrar) AYNI
+şekilde başarısız oldu — rastgele bir yarış DEĞİL, deterministik bir sıralama hatası. Gerçek bir
+doktor/hasta `/consultation/{id}`'e doğrudan bir link/yer imiyle (tam sayfa yüklemesi, SPA içi
+navigasyon DEĞİL) geldiğinde HER ZAMAN önce bu yanlış-negatif ekranı görür. Öneri: `loadAppointment()`
+`useAuthOptional()`'ın `status === "loading"`'den çıkmasını beklemeli (veya en azından bir kez
+otomatik yeniden denemeli). `telehealth-recording.spec.ts::gotoConsultationAndWaitReady()` bunu
+"Tekrar Dene" butonuna tıklayarak atlatır (tam sayfa yeniden yükleme DEĞİL).
+
+### Bilgi amaçlı bulgu — backend, kritik DEĞİL, backend-agent'a yönlendirildi
+
+**`backend/src/lib/recording-retention.ts::registerRecordingRetentionScheduler` uygulama
+açılışında (ve her 24 saatte bir) `isRecordingStorageConfigured()`'i HİÇ kontrol etmeden
+`telehealthRecordingStorage.listStaging()` çağırır.** `STORAGE_DRIVER=local` (S3 yapılandırılmamış)
+iken bu her seferinde `CredentialsProviderError: Could not load credentials from any providers`
+ile başarısız olup `ERROR` seviyesinde loglanır (bu turda backend `.env.e2e` ile başlatılırken
+gözlemlendi). Sunucuyu çökürtmüyor (yakalanıp loglanıyor) ama özelliğin her yerde uyguladığı
+"dürüst yapılandırılmamışlık" felsefesine aykırı — süpürücü `isRecordingStorageConfigured()`
+FALSE'sa sessizce no-op olmalı (`RecordingNotConfiguredError` deseniyle tutarlı). Observability-agent
+için gürültülü/yanıltıcı bir ERROR logu üretir.
+
+### Ortam notu
+
+Bu turda backend `backend/.env.e2e` ile `npx tsx src/server.ts` (port 4001), frontend `next dev`
+(port 3100) ile DOĞRUDAN çalıştırıldı — proje e2e altyapısının kendi (`playwright.config.ts`
+başlığında belgelenen) standardı budur, kök `docker-compose.yml` (port 3000/4000) TAMAMEN ayrı bir
+"tüm yığın" ortamıdır ve bu e2e koşumu tarafından KULLANILMAZ. `tsx`/`next dev` doğrudan TS
+kaynağını çalıştırdığı için (derleme/rebuild adımı YOK) yeni backend/frontend kodu OTOMATİK
+yansır — bu dosyanın yeni migration'ı (`20260913030408_add_telehealth_recording`) `saas_e2e`
+veritabanına `prisma migrate deploy` ile bu turda uygulandı.
