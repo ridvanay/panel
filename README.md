@@ -119,7 +119,7 @@ dosyalarının kendisine bakın.
 │       │   ├── contact/            # §10.16 iletişim formu
 │       │   ├── products/           # §10.9.2 ürün varyasyonu (ProductVariant) + PDF döküman (ProductDocument) + kargo eşiği
 │       │   ├── demo-templates/     # §10.22 1 tıkla hazır demo şablon içe aktarıcı (modern-architecture, ecommerce-pro, telehealth-clinic)
-│       │   ├── telehealth/         # §10.23 Tele-Sağlık: doktor/uzmanlık/randevu, saat dilimi duyarlı slot, LiveKit konsültasyon token'ı
+│       │   ├── telehealth/         # §10.23 Tele-Sağlık: doktor/uzmanlık/randevu, saat dilimi duyarlı slot, LiveKit konsültasyon token'ı, doktor öz-servis profili, randevu kimlik bilgisi adımı
 │       │   └── pages/              # §10.17 sayfa Grid/Kolon düzeni burada (pages.schemas.ts, lib/sanitize-blocks.ts)
 │       ├── lib/                 # paylaşılan yardımcılar (email-renderer.ts, html-sanitize.ts, rate-limit.ts, ...)
 │       └── plugins/             # Fastify plugin'leri (prisma, auth, vb.)
@@ -139,6 +139,15 @@ dosyalarının kendisine bakın.
 ├── TEST_COVERAGE.md              # e2e/entegrasyon test kapsamı (qa-agent)
 └── CHANGELOG.md
 ```
+
+> **Tele-Sağlık — doktor öz-servis profili + randevu kimlik bilgisi adımı (2026-09-13):**
+> doktorlar kendi paneli (`/doctor/profile`) üzerinden özgeçmiş alanlarını (alt uzmanlık,
+> uzun biyografi, özgeçmiş/yayın listesi) düzenleyebilir — fiyat, unvan, slug **değiştiremez**.
+> Randevu akışına, ödemeden ÖNCE zorunlu bir "Kimlik Bilgileri" adımı eklendi: T.C. Kimlik
+> No/pasaport için **algoritmik format denetimi** (NVİ/KPS sorgusu DEĞİL) + 18 yaş sınırı;
+> veriler şifreli + maskeli saklanır, ayrı bir `Patient` tablosuna veya `Appointment`'a
+> kopyalanmaz. Ayrıntı ve karar gerekçeleri: `docs/architecture/ARCHITECTURE.md` §10.23.9,
+> `.claude/architect-scope-doctor-portfolio-identity-console.md`.
 
 ## Test
 

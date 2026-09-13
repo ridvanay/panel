@@ -57,14 +57,37 @@ export const MAX_BOOKING_SLOTS = 4;
 /** [TCT] §9.7.1 madde 2/§9.7.3 — slot TUTMA süresi (Stripe Checkout `expires_at` ile AYNI). */
 export const BOOKING_HOLD_MS = 30 * 60 * 1000;
 
-/** compliance-agent'ın "TUR 2" onayındaki başlangıç sürümü (bkz. o doküman, satır ~502). */
-export const DEFAULT_APPOINTMENT_CONSENT_VERSION = "v1";
+/**
+ * `.claude/compliance-notes-doctor-identity.md` madde (a) (bağlayıcı) — [DPI] TUR 4 ile kimlik
+ * adımı booking akışının ZORUNLU parçası olduğundan booking onay kutusunun aydınlatma metni
+ * MADDİ olarak genişledi (yeni bir veri kategorisi: kimlik no/pasaport no, doğum tarihi, uyruk).
+ * `"v1"` → `"v2"` — GLOBAL bump (TR/FOREIGN ayrımı YOK, herkes için kimlik adımı artık zorunlu).
+ * Geriye dönük backfill YOKTUR: bu turdan önceki booking'ler `"v1"` olarak KALIR.
+ */
+export const DEFAULT_APPOINTMENT_CONSENT_VERSION = "v2";
 
 /** Hastaya gösterilen okunabilir rezervasyon numarası — `checkout.routes.ts::generateOrderNumber` İLE AYNI desen. */
 export function generateBookingNumber(): string {
   const timePart = Date.now().toString(36).toUpperCase();
   const randomPart = crypto.randomBytes(2).toString("hex").toUpperCase();
   return `BKG-${timePart}-${randomPart}`;
+}
+
+/**
+ * [DPI] §2.2/§2.3/§2.6 — kimlik verisi ZATEN şifrelenmiş/hash'lenmiş/maskelenmiş hâlde gelir
+ * (`lib/identity.ts` çağıran tarafta, yani `telehealth.routes.ts`'te çalıştırılır) — bu modül
+ * (`lib/booking.ts`) kimlik doğrulama/şifreleme ALGORİTMASINI BİLMEZ, yalnızca DB'ye YAZAR.
+ * Deprecated `bookAppointment()` (tek slot) bu alanı HİÇ göndermez → tüm kimlik kolonları
+ * `null` kalır (backfill YOKTUR, [DPI] §2.2).
+ */
+export interface CreateBookingIdentityInput {
+  citizenshipType: "TR" | "FOREIGN";
+  countryCode: string;
+  identityNumberCiphertext: string;
+  identityNumberHash: string;
+  identityNumberMasked: string;
+  patientBirthDate: Date;
+  identityCapturedAt: Date;
 }
 
 export interface CreateBookingInput {
@@ -75,6 +98,7 @@ export interface CreateBookingInput {
   patientEmail: string;
   patientUserId: string | null;
   consentVersion?: string;
+  identity?: CreateBookingIdentityInput;
 }
 
 export interface CreateBookingResult {
@@ -199,6 +223,20 @@ export async function createBooking(app: FastifyInstance, input: CreateBookingIn
           accessTokenHash: bookingAccessTokenHash,
           consentAt,
           consentVersion,
+          // [DPI] §2.2/§2.6 — booking satırıyla AYNI transaction'da yazılır (tek yazma, "kimliksiz
+          // booking" durumu HİÇ OLUŞMAZ). `undefined` ise (deprecated tek-slot akışı) tüm kimlik
+          // kolonları şemadaki nullable varsayılanıyla `null` kalır.
+          ...(input.identity
+            ? {
+                citizenshipType: input.identity.citizenshipType,
+                identityCountryCode: input.identity.countryCode,
+                identityNumberCiphertext: input.identity.identityNumberCiphertext,
+                identityNumberHash: input.identity.identityNumberHash,
+                identityNumberMasked: input.identity.identityNumberMasked,
+                patientBirthDate: input.identity.patientBirthDate,
+                identityCapturedAt: input.identity.identityCapturedAt,
+              }
+            : {}),
         },
       });
 

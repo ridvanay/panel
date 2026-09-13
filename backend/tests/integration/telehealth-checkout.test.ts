@@ -74,11 +74,22 @@ function nextMondayNineAmUtc(): Date {
   return new Date(Date.UTC(monday.getUTCFullYear(), monday.getUTCMonth(), monday.getUTCDate(), 6, 0, 0));
 }
 
+// [DPI] §2.4 — checksum-valid TCKN (`identity.test.ts`/`tr-identity.test.ts` İLE AYNI bilinen
+// dev/test değeri), 1950'den beri KULLANILAGELEN sabit bir doğum tarihiyle (her zaman ≥18 yaş).
+const VALID_TEST_IDENTITY = { citizenshipType: "TR" as const, identityNumber: "10000000146", birthDate: "1990-01-01" };
+
 async function createBooking(app: FastifyInstance, doctorSlug: string, slots: Date[], patientEmail = `hasta-${crypto.randomUUID()}@example.com`) {
   const res = await app.inject({
     method: "POST",
     url: "/api/v1/appointments/bookings",
-    payload: { doctorSlug, slots: slots.map((s) => s.toISOString()), patientName: "Test Hasta", patientEmail, consent: true },
+    payload: {
+      doctorSlug,
+      slots: slots.map((s) => s.toISOString()),
+      patientName: "Test Hasta",
+      patientEmail,
+      identity: VALID_TEST_IDENTITY,
+      consent: true,
+    },
   });
   expect(res.statusCode).toBe(201);
   return res.json().data as { bookingId: string; accessToken: string; totalCents: number; slotCount: number; currency: string };
@@ -250,6 +261,7 @@ describe("telehealth checkout — Stripe YAPILANDIRILMIŞKEN (sahte config)", ()
         slots: [nextMondayNineAmUtc().toISOString()],
         patientName: "Test Hasta",
         patientEmail: patient.email,
+        identity: VALID_TEST_IDENTITY,
         consent: true,
       },
     });
@@ -304,6 +316,7 @@ describe("telehealth checkout — Stripe YAPILANDIRILMIŞKEN (sahte config)", ()
         slots: [nextMondayNineAmUtc().toISOString()],
         patientName: "Test Hasta",
         patientEmail: patient.email,
+        identity: VALID_TEST_IDENTITY,
         consent: true,
       },
     });

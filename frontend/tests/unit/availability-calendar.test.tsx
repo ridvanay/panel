@@ -178,10 +178,10 @@ describe("AvailabilityCalendar", () => {
   it("'Değiştir' seçimi temizler, booking formu (dolayısıyla onay şeridi) kaybolur; gün seçimi KORUNUR", () => {
     renderCalendar();
     fireEvent.click(screen.getByLabelText("10:00 — müsait"));
-    expect(screen.getByRole("button", { name: "Randevuyu Onayla" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Randevu Oluştur" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Değiştir" }));
-    expect(screen.queryByRole("button", { name: "Randevuyu Onayla" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Randevu Oluştur" })).not.toBeInTheDocument();
     expect(screen.getByLabelText("10:00 — müsait")).toBeInTheDocument();
     // Takvimdeki gün seçimi (hangi günün saatlerine bakıldığı) "Değiştir" ile SIFIRLANMAZ.
     expect(screen.getByLabelText(/18 Eylül .+ — seçili/)).toBeInTheDocument();

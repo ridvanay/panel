@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 import { authenticate } from "../../middleware/authenticate";
 import { requireSiteRole } from "../../middleware/site-rbac";
 import { requirePanelAccess } from "../../middleware/panel-access";
@@ -10,11 +11,13 @@ import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema, ApiSuccessWithMeta } from "../../schemas/common";
 import { AppointmentBookingSchema, AppointmentSchema, DoctorAvailabilityRuleSchema, DoctorProfileSchema, SpecialtySchema } from "../../schemas/entities";
 import { toAppointmentBookingDto, toAppointmentDto, toDoctorProfileDto, toSpecialtyDto } from "../../mappers";
-import { ConflictError, ForbiddenError, NotFoundError } from "../../lib/errors";
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "../../lib/errors";
 import { buildPageMeta, parseCursor } from "../../lib/pagination";
 import { isImageMimeType } from "../../lib/mime-detect";
 import { slugify } from "../../lib/slug";
 import { logAudit } from "../../lib/audit";
+import { sanitizeRichHtml } from "../../lib/html-sanitize";
+import { canAccessBookingHealthData } from "../../lib/telehealth-access";
 import { confirmBookingPayment } from "./lib/booking";
 import { triggerAppointmentConfirmationEmail } from "./lib/notifications";
 import {
@@ -56,6 +59,27 @@ function assertUserLinkChangeAllowed(request: { user?: { role: string } | null; 
   if (request.user?.role !== "ADMIN") {
     throw new ForbiddenError("Doktor profilini bir kullanıcı hesabına bağlama/çözme yetkisi yalnızca ADMIN'dedir.");
   }
+}
+
+/**
+ * [DPI] §1.1 — `practiceStartYear` üst sınırı (içinde bulunulan yıl) sabit `.max()` İLE
+ * DEĞİL, dinamik olarak burada zorlanır (aksi hâlde her 1 Ocak'ta sessizce eskiyen bir sabit
+ * gerekirdi — saklanan bir "deneyim yılı" değil, bir "başlangıç yılı ÜST SINIRI" olduğu için).
+ */
+function assertPracticeStartYearNotFuture(practiceStartYear: number | null | undefined) {
+  if (practiceStartYear == null) return;
+  const currentYear = new Date().getUTCFullYear();
+  if (practiceStartYear > currentYear) {
+    throw new ValidationError("Geçersiz mesleğe başlama yılı.", { practiceStartYear: ["Gelecekte bir yıl olamaz."] });
+  }
+}
+
+/** [DPI] §1.1/§1.2 — `aboutHtml` `lib/html-sanitize.ts`'ten geçer; temizlik SONRASI boşsa `null`. */
+function sanitizeAboutHtml(aboutHtml: string | null | undefined): string | null | undefined {
+  if (aboutHtml === undefined) return undefined;
+  if (aboutHtml === null) return null;
+  const sanitized = sanitizeRichHtml(aboutHtml);
+  return sanitized.length > 0 ? sanitized : null;
 }
 
 async function assertImageMedia(app: FastifyInstance, mediaId: string) {
@@ -202,13 +226,19 @@ export async function adminTelehealthDoctorsRoutes(app: FastifyInstance) {
       const body = request.body;
       assertUserLinkChangeAllowed(request);
       if (body.avatarMediaId) await assertImageMedia(app, body.avatarMediaId);
+      assertPracticeStartYearNotFuture(body.practiceStartYear);
 
       const doctor = await app.prisma.doctorProfile.create({
         data: {
           title: body.title,
+          subSpecialty: body.subSpecialty ?? null,
           fullName: body.fullName,
           slug: body.slug ? slugify(body.slug) : slugify(body.fullName),
           bio: body.bio,
+          aboutHtml: sanitizeAboutHtml(body.aboutHtml) ?? null,
+          practiceStartYear: body.practiceStartYear ?? null,
+          cvEntries: (body.cvEntries ?? []) as Prisma.InputJsonValue,
+          publications: (body.publications ?? []) as Prisma.InputJsonValue,
           languages: body.languages,
           timeZone: body.timeZone,
           specialtyId: body.specialtyId ?? null,
@@ -272,8 +302,9 @@ export async function adminTelehealthDoctorsRoutes(app: FastifyInstance) {
       const existing = await app.prisma.doctorProfile.findUnique({ where: { id: request.params.doctorId } });
       if (!existing) throw new NotFoundError("Doktor bulunamadı.");
 
-      const { slug, avatarMediaId, ...rest } = request.body;
+      const { slug, avatarMediaId, aboutHtml, cvEntries, publications, practiceStartYear, ...rest } = request.body;
       if (avatarMediaId) await assertImageMedia(app, avatarMediaId);
+      assertPracticeStartYearNotFuture(practiceStartYear);
 
       const doctor = await app.prisma.doctorProfile.update({
         where: { id: request.params.doctorId },
@@ -281,6 +312,10 @@ export async function adminTelehealthDoctorsRoutes(app: FastifyInstance) {
           ...rest,
           ...(slug !== undefined ? { slug: slugify(slug) } : {}),
           ...(avatarMediaId !== undefined ? { avatarMediaId } : {}),
+          ...(aboutHtml !== undefined ? { aboutHtml: sanitizeAboutHtml(aboutHtml) } : {}),
+          ...(practiceStartYear !== undefined ? { practiceStartYear } : {}),
+          ...(cvEntries !== undefined ? { cvEntries: cvEntries as Prisma.InputJsonValue } : {}),
+          ...(publications !== undefined ? { publications: publications as Prisma.InputJsonValue } : {}),
         },
         include: WITH_DOCTOR_RELATIONS,
       });
@@ -467,7 +502,14 @@ export async function adminTelehealthBookingsRoutes(app: FastifyInstance) {
         include: WITH_BOOKING_RELATIONS,
       });
 
-      return reply.send(ok(rows.map(toAppointmentBookingDto), buildPageMeta(rows, limit)));
+      // [DPI] §2.7 — `identity` yalnızca `canAccessBookingHealthData` eşiğini geçen aktörler
+      // için doldurulur: `ADMIN` ✓, `MANAGER` ✗ (booking'in kendisi görünür, kimliği GÖREMEZ).
+      return reply.send(
+        ok(
+          rows.map((row) => toAppointmentBookingDto(row, canAccessBookingHealthData(row, { user: request.user }))),
+          buildPageMeta(rows, limit)
+        )
+      );
     }
   );
 
@@ -513,7 +555,9 @@ export async function adminTelehealthBookingsRoutes(app: FastifyInstance) {
         where: { id: booking.id },
         include: WITH_BOOKING_RELATIONS,
       });
-      return reply.send(ok(toAppointmentBookingDto(withRelations)));
+      // Bu uç yalnızca `ROLES_ADMIN` içindir (mark-paid preHandler) — `canAccessBookingHealthData`
+      // ADMIN için her zaman `true` döner, ama tek kaynak disiplini için yine de çağrılır.
+      return reply.send(ok(toAppointmentBookingDto(withRelations, canAccessBookingHealthData(withRelations, { user: request.user }))));
     }
   );
 }

@@ -27,6 +27,7 @@ import {
   shiftAppointmentIntoJoinWindowDirectly,
   type CreatedFixtureDoctor,
 } from "./support/telehealth-fixtures";
+import { submitIdentityStepDialog } from "./support/telehealth-identity-ui";
 
 /**
  * qa-agent — `.claude/architect-scope-telehealth-template.md` §9.7.11 "QA kapsamı — §10'a EK"
@@ -92,13 +93,17 @@ async function selectNAvailableSlots(page: Page, n: number): Promise<string[]> {
   return timeLabels;
 }
 
+/**
+ * [DPI] §2.6 (bağlayıcı) — qa-agent GÜNCELLEMESİ (bu turda, regresyon): "Randevuyu Onayla"→
+ * "Randevu Oluştur"a yeniden adlandırıldı, KVKK onayı (`label[for="consent"]`) ana formdan
+ * "Kimlik Bilgileri" modalının İÇİNE taşındı — bkz. `support/telehealth-identity-ui.ts` başlığı.
+ * GERÇEK `POST /appointments/bookings` çağrısı artık modalın "Devam Et"iyle tetiklenir.
+ */
 async function fillAndSubmitBookingForm(page: Page, patientName: string, patientEmail: string): Promise<void> {
   await page.getByLabel("Ad soyad").fill(patientName);
   await page.getByLabel("E-posta").fill(patientEmail);
-  // `telehealth-public-booking.spec.ts`'teki AYNI gerekçe — gerçek etkileşimli kök `id="consent"`
-  // DEĞİL, `<label for="consent">`'a tıklamak her tarayıcıda checkbox'ı değiştirir.
-  await page.locator('label[for="consent"]').click();
-  await page.getByRole("button", { name: "Randevuyu Onayla" }).click();
+  await page.getByRole("button", { name: "Randevu Oluştur" }).click();
+  await submitIdentityStepDialog(page);
 }
 
 /** 5 MB'ın altında, magic-byte'ı GERÇEKTEN PDF olan küçük bir test dosyası (`backend`'in kendi

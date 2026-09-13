@@ -98,7 +98,23 @@ export type ApiErrorCode =
   /** TUR 3 (bağlayıcı) — kayıt `RECORDING` durumunda DEĞİLKEN durdurma/Egress bildirimi işlemi denendiğinde. 409. */
   | "RECORDING_NOT_ACTIVE"
   /** TUR 3 (bağlayıcı) — kayıt `COMPLETED`+silinmemiş DEĞİLKEN içerik/indirme erişimi denendiğinde. 409. */
-  | "RECORDING_NOT_AVAILABLE";
+  | "RECORDING_NOT_AVAILABLE"
+  /**
+   * `.claude/architect-scope-doctor-portfolio-identity-console.md` (**[DPI]**) §2.4/§2.5
+   * (bağlayıcı) — beyan edilen `birthDate`'e göre hesaplanan yaş 18'in altındaysa
+   * `POST /appointments/bookings` veya `PUT .../identity` bu kodla `422` döner. **Bu bir yaş
+   * DOĞRULAMASI DEĞİL, biçimsel/mantıksal bir denetimdir** (§2.5 dil kuralı) — veli/vasi rızası
+   * akışı bu turun kapsamı dışındadır (backlog: `feature/telehealth-guardian-consent`). Hata
+   * mesajı/`details` SABİT ve JENERİKTİR — beyan edilen doğum tarihi ASLA yansıtılmaz
+   * (security-review ENGELLEYİCİ madde 3).
+   */
+  | "IDENTITY_MINOR_NOT_SUPPORTED"
+  /**
+   * [DPI] §2.6 (bağlayıcı) — `PUT /appointments/bookings/{bookingId}/identity`, booking
+   * `paymentStatus !== PENDING` iken çağrılırsa. Ödenmiş bir randevunun kimlik bilgisi bir
+   * SNAPSHOT'tır (`Order` satırlarının donması ile AYNI ilke) — hasta dahi artık düzeltemez.
+   */
+  | "IDENTITY_LOCKED";
 
 export class ApiError extends Error {
   statusCode: number;
@@ -379,5 +395,29 @@ export class RecordingNotActiveError extends ApiError {
 export class RecordingNotAvailableError extends ApiError {
   constructor(message = "Bu görüşme kaydı şu anda indirilebilir durumda değil.") {
     super(409, "RECORDING_NOT_AVAILABLE", message);
+  }
+}
+
+/**
+ * [DPI] §2.4/§2.5 (bağlayıcı) + security-review ENGELLEYİCİ madde 3 — beyan edilen `birthDate`'e
+ * göre hesaplanan yaş 18'in altında. Mesaj SABİTTİR; beyan edilen tarih/normalize edilmiş hâli
+ * bu hataya ASLA enjekte edilmez. "Yaşı doğrulanmadı/reddedildi" gibi itham edici bir ifade
+ * KULLANILMAZ (bkz. `.claude/compliance-notes-doctor-identity.md` madde b).
+ */
+export class IdentityMinorNotSupportedError extends ApiError {
+  constructor(message = "Bu hizmet şu an 18 yaş altı hastalar için sunulmuyor.") {
+    super(422, "IDENTITY_MINOR_NOT_SUPPORTED", message);
+  }
+}
+
+/**
+ * [DPI] §2.6 (bağlayıcı) — `PUT .../identity`, booking `paymentStatus !== PENDING` iken.
+ * Ödenmiş bir randevunun kimlik bilgisi bir SNAPSHOT'tır — `BookingNotPayableError` İLE AYNI
+ * dürüst-kilit deseni, ayrı bir kod (frontend'in "kimlik artık düzeltilemez" mesajını diğer
+ * 409'lardan ayırt edebilmesi için).
+ */
+export class IdentityLockedError extends ApiError {
+  constructor(message = "Bu rezervasyonun kimlik bilgisi artık düzeltilemez (ödeme tamamlandı/iptal edildi).") {
+    super(409, "IDENTITY_LOCKED", message);
   }
 }

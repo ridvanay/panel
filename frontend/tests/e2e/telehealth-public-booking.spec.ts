@@ -7,6 +7,7 @@ import {
   defaultSlotRangeISODates,
   type FixtureDoctor,
 } from "./support/telehealth-fixtures";
+import { submitIdentityStepDialog } from "./support/telehealth-identity-ui";
 
 /**
  * qa-agent — `.claude/architect-scope-telehealth-template.md` §10 (QA kapsamı) madde 8/9. Backend'in
@@ -207,13 +208,15 @@ test("madde 8: /doctors listesi + uzmanlık filtresi → doktor detayına git �
   const patientEmail = `qa-e2e-telehealth-booking-${Date.now()}@example.com`;
   await page.getByLabel("Ad soyad").fill("QA E2E Test Hastası");
   await page.getByLabel("E-posta").fill(patientEmail);
-  // `Checkbox` (`@base-ui/react/checkbox`) GERÇEK etkileşimli kökü `id="consent"` DEĞİL — bu id,
-  // form/label ilişkilendirmesi için GİZLİ (`aria-hidden`, sıfır boyutlu) yerel `<input>`'a
-  // atanır. Native HTML semantiğiyle TUTARLI şekilde ilişkili `<label for="consent">`'a
-  // tıklamak (görünür/normal akışta olan gerçek eleman) her tarayıcıda checkbox'ı değiştirir.
-  await page.locator('label[for="consent"]').click();
 
-  await page.getByRole("button", { name: "Randevuyu Onayla" }).click();
+  // [DPI] §2.6 (bağlayıcı) — qa-agent GÜNCELLEMESİ (bu turda, regresyon): bu buton ARTIK booking'i
+  // DOĞRUDAN oluşturmuyor ("Randevuyu Onayla" adı da "Randevu Oluştur"a DEĞİŞTİ) — yalnızca
+  // ad-soyad/e-postayı doğrulayıp "Kimlik Bilgileri" modalını AÇAR. KVKK onay kutusu
+  // (eski `label[for="consent"]`) da ana formdan bu modalın İÇİNE (`identityConsent`) TAŞINDI.
+  // Gerçek `POST /appointments/bookings` çağrısı yalnızca modalın "Devam Et"iyle tetiklenir —
+  // bkz. `support/telehealth-identity-ui.ts` başlığındaki AYNI qa-agent bulgusu.
+  await page.getByRole("button", { name: "Randevu Oluştur" }).click();
+  await submitIdentityStepDialog(page);
 
   // [TCT] §9.7.1/§9.7.2 (bağlayıcı) — qa-agent GÜNCELLEMESİ (bu turda, frontend-agent'ın bıraktığı
   // not): eski akış (`POST /appointments`) rezervasyon oluşturunca DOĞRUDAN "Randevunuz oluşturuldu."

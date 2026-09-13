@@ -2,27 +2,25 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useForm, Controller } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Check, ChevronLeft, ChevronRight, CloudSun, Globe, Loader2, Sun } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, CloudSun, Globe, Sun } from "lucide-react";
 import * as telehealthApi from "@/lib/api/telehealth";
 import { ApiClientError } from "@/lib/api/error";
-import { friendlyErrorMessage } from "@/lib/api/friendly-error";
-import type { AvailabilitySlot, CreateBookingResult, SitePage } from "@/lib/api/types";
+import { friendlyErrorMessage, fieldErrorsFrom } from "@/lib/api/friendly-error";
+import type { AvailabilitySlot, BookingIdentityInput, CreateBookingResult, SitePage } from "@/lib/api/types";
 import { MAX_BOOKING_SLOTS } from "@/lib/api/types";
 import { formatDayKey, formatTime } from "@/lib/telehealth-format";
 import { useBookingSelection } from "@/components/site/telehealth/booking-selection-context";
 import { BookingPostCreationFlow } from "@/components/site/telehealth/booking-post-creation-flow";
+import { IdentityStepDialog } from "@/components/site/telehealth/identity-step-dialog";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Alert } from "@/components/ui/alert";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { withLocalePrefix } from "@/lib/i18n/site-path";
 import { cn } from "@/lib/utils";
-import Link from "next/link";
 
 /**
  * `.claude/architect-scope-telehealth-template.md` §4.2/§9.7.2 + `.claude/design-notes-telehealth.md`
@@ -47,12 +45,19 @@ interface AvailabilityCalendarProps {
   kvkkPage: Pick<SitePage, "title" | "slug"> | null;
 }
 
+/**
+ * [DPI] §2.6 — KVKK onayı artık `IdentityStepDialog`'un İÇİNDE toplanır (kimlik bilgileriyle
+ * AYNI tek onay kutusu, compliance-agent'ın "ayrı bir rıza kolonu AÇILMAZ" kararı) — bu yüzden
+ * bu şemada İKİNCİ bir `consent` alanı YOKTUR, yalnızca ad-soyad/e-posta.
+ */
 const bookingFormSchema = z.object({
   patientName: z.string().trim().min(1, "Ad soyad gerekli.").max(120),
   patientEmail: z.string().trim().min(1, "E-posta gerekli.").email("Geçerli bir e-posta girin.").max(255),
-  consent: z.literal(true, { errorMap: () => ({ message: "Devam etmek için KVKK Aydınlatma Metni'ni onaylamalısınız." }) }),
 });
 type BookingFormValues = z.infer<typeof bookingFormSchema>;
+
+/** [DPI] compliance-notes-doctor-identity.md (a) — kimlik alanı eklenmesiyle genişleyen booking KVKK metni sürümü. */
+const BOOKING_CONSENT_VERSION = "v2";
 
 /**
  * `.claude/design-notes-telehealth.md` §2.3.3 — saat gruplaması ÜÇTEN (Sabah/Öğleden Sonra/
@@ -145,6 +150,15 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, lang, default
   const [dayChangedNotice, setDayChangedNotice] = useState(false);
   const [bookingResult, setBookingResult] = useState<CreateBookingResult | null>(null);
 
+  // [DPI] §2.6 — slot seçimi → kimlik adımı/modalı → `POST /appointments/bookings` → Stripe.
+  // `pendingPatientInfo` yalnızca ad-soyad/e-posta formunun `handleSubmit` doğrulamasından
+  // GEÇTİKTEN sonra dolar; modal AÇIKKEN bu bilgiler değişmez (form modalın ALTINDA gizlenir).
+  const [identityModalOpen, setIdentityModalOpen] = useState(false);
+  const [pendingPatientInfo, setPendingPatientInfo] = useState<{ patientName: string; patientEmail: string } | null>(null);
+  const [identitySubmitting, setIdentitySubmitting] = useState(false);
+  const [identityServerError, setIdentityServerError] = useState<string | null>(null);
+  const [identityFieldErrors, setIdentityFieldErrors] = useState<Record<string, string>>({});
+
   // §2.3.1 — takvimin başlangıç sayfası. `initialSlots`/`doctorTimeZone` SUNUCU/istemci İLK
   // render'ında AYNIDIR (hidrasyon güvenli, `visitorTimeZone` henüz BİLİNMİYOR) — mount sonrası
   // `displayTimeZone` değişse de bu başlangıç değeri GERİYE dönük değiştirilmez (kullanıcı zaten
@@ -211,11 +225,10 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, lang, default
   const {
     register,
     handleSubmit,
-    control,
-    formState: { errors, isSubmitting },
+    formState: { errors },
   } = useForm<BookingFormValues>({
     resolver: zodResolver(bookingFormSchema),
-    defaultValues: { patientName: "", patientEmail: "", consent: undefined as unknown as true },
+    defaultValues: { patientName: "", patientEmail: "" },
   });
 
   /** §2.3.1 — ay değiştiğinde o ayın slotlarını (henüz yüklenmemişse) getirir, mevcutlarla BİRLEŞTİRİR. */
@@ -254,27 +267,52 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, lang, default
     setDayChangedNotice(dayChanged);
   }
 
-  async function onSubmit(values: BookingFormValues) {
+  /**
+   * [DPI] §2.6 — bu form artık BOOKING'i doğrudan OLUŞTURMAZ; yalnızca ad-soyad/e-postayı
+   * doğrulayıp "Kimlik Bilgileri" modalını açar ("Randevu Oluştur" adımı). Gerçek
+   * `POST /appointments/bookings` çağrısı modalın "Devam Et"i tetiklediği `handleIdentityContinue`'dedir.
+   */
+  function onSubmit(values: BookingFormValues) {
     if (selectedSlots.length === 0) return;
     setBookingError(null);
+    setIdentityServerError(null);
+    setIdentityFieldErrors({});
+    setPendingPatientInfo({ patientName: values.patientName, patientEmail: values.patientEmail });
+    setIdentityModalOpen(true);
+  }
+
+  async function handleIdentityContinue(identity: BookingIdentityInput) {
+    if (!pendingPatientInfo || selectedSlots.length === 0) return;
+    setIdentitySubmitting(true);
+    setIdentityServerError(null);
+    setIdentityFieldErrors({});
     try {
       const result = await telehealthApi.createBooking({
         doctorSlug,
         slots: selectedSlots.map((s) => s.startsAt),
-        patientName: values.patientName,
-        patientEmail: values.patientEmail,
+        patientName: pendingPatientInfo.patientName,
+        patientEmail: pendingPatientInfo.patientEmail,
+        identity,
         consent: true,
+        consentVersion: BOOKING_CONSENT_VERSION,
       });
+      setIdentityModalOpen(false);
       setBookingResult(result);
     } catch (err) {
       if (err instanceof ApiClientError && err.status === 409) {
+        setIdentityModalOpen(false);
         setBookingError("Seçtiğiniz saatlerden biri az önce başka biri tarafından alındı. Lütfen yeniden seçin.");
         clearAllSlots();
         // Slotları yeniden getirerek ızgarayı tazele — kullanıcı aynı hatayı tekrar görmesin.
         router.refresh();
       } else {
-        setBookingError(friendlyErrorMessage(err));
+        // [DPI] §2.6 — 422 (geçersiz kimlik/yaş) modal AÇIK KALIR, ilgili `Field`'ın hata slotu
+        // sunucu mesajıyla doldurulur; hiçbir slot tutulmaz (backend tarafı).
+        setIdentityServerError(friendlyErrorMessage(err));
+        setIdentityFieldErrors(fieldErrorsFrom(err));
       }
+    } finally {
+      setIdentitySubmitting(false);
     }
   }
 
@@ -549,53 +587,18 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, lang, default
           </Field>
 
           {/*
-            compliance-agent NİHAİ onayı (Tur 1, `.claude/compliance-notes-telehealth.md`):
-            aşağıdaki onay kutusu metni bu görev kapsamında finalize edilmiştir — varsayılan
-            İŞARETSİZ ve backend `consent: z.literal(true)` ile ZORUNLU kılınmıştır. Bu, sağlık
-            verisi rızasından (`booking-intake-step.tsx`) TAMAMEN AYRI, randevu KVKK onayıdır.
+            [DPI] §2.6 — KVKK onayı + kimlik bilgileri artık `IdentityStepDialog`'un İÇİNDE
+            toplanır (slot seçimi → kimlik adımı/modalı → `POST /appointments/bookings` →
+            Stripe). Bu buton yalnızca ad-soyad/e-postayı doğrulayıp modalı AÇAR.
           */}
-          <div>
-            <label htmlFor="consent" className="flex items-start gap-2.5 text-sm text-foreground/80">
-              <Controller
-                control={control}
-                name="consent"
-                render={({ field }) => (
-                  <Checkbox
-                    id="consent"
-                    className="mt-0.5"
-                    aria-invalid={errors.consent ? true : undefined}
-                    checked={field.value === true}
-                    onCheckedChange={(checked) => field.onChange(checked === true ? true : undefined)}
-                  />
-                )}
-              />
-              <span>
-                {kvkkPage ? (
-                  <Link href={withLocalePrefix(`/${kvkkPage.slug}`, lang, defaultLocaleCode)} target="_blank" className="text-primary underline-offset-4 hover:underline">
-                    KVKK Aydınlatma Metni
-                  </Link>
-                ) : (
-                  "KVKK Aydınlatma Metni"
-                )}
-                {"'"}ni okudum, kişisel verilerimin bu randevu kapsamında işlenmesine açık rızamı veriyorum.
-              </span>
-            </label>
-            {errors.consent && (
-              <p role="alert" className="pl-6 text-xs text-danger">
-                {errors.consent.message}
-              </p>
-            )}
-          </div>
-
           {bookingError && (
             <Alert variant="error">
               <span>{bookingError}</span>
             </Alert>
           )}
 
-          <Button type="submit" loading={isSubmitting} className="w-full rounded-[var(--site-radius)]">
-            {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
-            Randevuyu Onayla
+          <Button type="submit" className="w-full rounded-[var(--site-radius)]">
+            Randevu Oluştur
           </Button>
         </form>
       )}
@@ -605,6 +608,24 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, lang, default
           <span>{bookingError}</span>
         </Alert>
       )}
+
+      <IdentityStepDialog
+        open={identityModalOpen}
+        onOpenChange={(open) => {
+          setIdentityModalOpen(open);
+          if (!open) {
+            setIdentityServerError(null);
+            setIdentityFieldErrors({});
+          }
+        }}
+        submitting={identitySubmitting}
+        serverError={identityServerError}
+        serverFieldErrors={identityFieldErrors}
+        onContinue={(identity) => void handleIdentityContinue(identity)}
+        kvkkPage={kvkkPage}
+        lang={lang}
+        defaultLocaleCode={defaultLocaleCode}
+      />
     </div>
   );
 }

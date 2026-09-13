@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { DoctorCvEntrySchema, DoctorPublicationSchema } from "../../schemas/entities";
 
 /** `.claude/architect-scope-telehealth-template.md` §3.2/§4.1 — Zod istek/param şemaları. */
 
@@ -99,6 +100,29 @@ export const BookingIdParamSchema = z.object({
 });
 
 /**
+ * `.claude/architect-scope-doctor-portfolio-identity-console.md` (**[DPI]**) §2.4/§2.6 —
+ * `POST /appointments/bookings` ve `PUT .../identity` gövdesindeki kimlik nesnesi. Bu şema
+ * yalnızca YÜZEYSEL şekli (uzunluk/regex) doğrular; TCKN checksum'u/pasaport biçimi/ülke kodu
+ * kuralları/18 yaş sınırı gibi DERİN doğrulama `lib/identity.ts::validateBookingIdentityInput`
+ * İÇİNDE, route katmanında yapılır (security-review ENGELLEYİCİ madde 3 — jenerik hata mesajı
+ * disiplini Zod `.refine()` mesaj interpolasyonuyla İHLAL EDİLMESİN diye BİLİNÇLİ bir ayrım).
+ * `citizenshipType` yalnızca `TR`/`FOREIGN` kabul eder — `FOREIGN_RESIDENT` bu turda hiçbir akış
+ * tarafından YAZILMAZ (Prisma enum'unun kendisi §5'te 3 değerle tanımlı, girdi şeması burada
+ * BİLİNÇLİ olarak dar tutulur).
+ */
+export const BookingIdentityInputSchema = z.object({
+  citizenshipType: z.enum(["TR", "FOREIGN"]),
+  identityNumber: z.string().min(6).max(20),
+  countryCode: z
+    .string()
+    .regex(/^[A-Z]{2}$/, "Geçersiz ülke kodu.")
+    .nullable()
+    .optional(),
+  birthDate: z.string().regex(ISO_DATE_RE, "`birthDate` YYYY-MM-DD biçiminde olmalı."),
+});
+export type BookingIdentityInput = z.infer<typeof BookingIdentityInputSchema>;
+
+/**
  * §9.7.2 KARAR H (bağlayıcı) — `slots` 1..4 öğe (`MAX_BOOKING_SLOTS`); yinelenen/farklı-gün/
  * farklı-doktor doğrulaması `lib/booking.ts::createBooking` İÇİNDE (doktorun `timeZone`'una
  * ihtiyaç duyduğu için burada DEĞİL, orada) yapılır. `consent` — randevu KVKK onay kutusu,
@@ -109,6 +133,9 @@ export const CreateBookingRequestSchema = z.object({
   slots: z.array(ISO_INSTANT_SCHEMA).min(1).max(4),
   patientName: z.string().trim().min(1).max(120),
   patientEmail: z.string().trim().toLowerCase().email().max(255),
+  // [DPI] §2.6 (bağlayıcı) — ZORUNLU. Kimlik, booking satırıyla AYNI transaction'da yazılır;
+  // ayrı bir "önce booking aç, sonra kimlik ekle" adımı REDDEDİLDİ.
+  identity: BookingIdentityInputSchema,
   consent: z.literal(true),
   consentVersion: z.string().trim().min(1).max(40).optional(),
 });
@@ -153,13 +180,31 @@ export const ListAdminBookingsQuerySchema = z.object({
 });
 export type ListAdminBookingsQuery = z.infer<typeof ListAdminBookingsQuerySchema>;
 
-export const DoctorBookingsQuerySchema = z.object({
-  from: z.string().datetime({ offset: true }).optional(),
-  to: z.string().datetime({ offset: true }).optional(),
-  paymentStatus: z.enum(["PENDING", "PAID", "FAILED", "EXPIRED", "REFUNDED"]).optional(),
-  cursor: z.string().optional(),
-  limit: z.coerce.number().int().positive().max(100).default(20),
-});
+/** [DPI] §3.2 — konsolun durum filtresi (Tümü/Bugün/Gelecek/Tamamlanan). */
+export const DoctorBookingsScopeSchema = z.enum(["all", "today", "upcoming", "completed"]);
+export type DoctorBookingsScope = z.infer<typeof DoctorBookingsScopeSchema>;
+
+export const DoctorBookingsQuerySchema = z
+  .object({
+    from: z.string().datetime({ offset: true }).optional(),
+    to: z.string().datetime({ offset: true }).optional(),
+    paymentStatus: z.enum(["PENDING", "PAID", "FAILED", "EXPIRED", "REFUNDED"]).optional(),
+    scope: DoctorBookingsScopeSchema.default("all"),
+    cursor: z.string().optional(),
+    limit: z.coerce.number().int().positive().max(100).default(20),
+  })
+  // [DPI] §3.2 (bağlayıcı) — `scope` (`all` DIŞINDA bir değer) `from`/`to` ile BİRLİKTE
+  // gönderilemez (iki farklı zaman ekseni sessizce birleştirilmez). `scope` gönderilmediğinde
+  // (varsayılan `all`) mevcut `from`/`to` davranışı GERİYE DÖNÜK olarak DEĞİŞMEZ.
+  .superRefine((data, ctx) => {
+    if (data.scope !== "all" && (data.from !== undefined || data.to !== undefined)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "`scope`, `from`/`to` ile birlikte gönderilemez.",
+        path: ["scope"],
+      });
+    }
+  });
 export type DoctorBookingsQuery = z.infer<typeof DoctorBookingsQuerySchema>;
 
 // ---------- Admin ----------
@@ -197,9 +242,18 @@ const LANGUAGES_SCHEMA = z.array(z.string().regex(ISO_639_1_RE, "ISO 639-1 kod b
 
 export const CreateDoctorRequestSchema = z.object({
   title: z.string().trim().min(1).max(40),
+  // [DPI] §1.1 — alt branş/bağlı merkez, serbest metin, enum DEĞİL.
+  subSpecialty: z.string().trim().min(1).max(120).nullable().optional(),
   fullName: z.string().trim().min(1).max(120),
   slug: z.string().trim().min(1).max(80).optional(),
   bio: z.string().trim().min(1).max(5000),
+  // [DPI] §1.1/§1.2 — `lib/html-sanitize.ts`'ten GEÇİRİLİR (route katmanında); temizlik sonrası
+  // boşsa `null` yazılır.
+  aboutHtml: z.string().max(20000).nullable().optional(),
+  // [DPI] §1.1 — üst sınır (içinde bulunulan yıl) route katmanında dinamik olarak zorlanır.
+  practiceStartYear: z.number().int().min(1950).nullable().optional(),
+  cvEntries: z.array(DoctorCvEntrySchema).max(60).optional(),
+  publications: z.array(DoctorPublicationSchema).max(200).optional(),
   languages: LANGUAGES_SCHEMA,
   timeZone: z.string().trim().min(1).max(80),
   specialtyId: z.string().uuid().nullable().optional(),
@@ -219,6 +273,26 @@ export type CreateDoctorRequest = z.infer<typeof CreateDoctorRequestSchema>;
 
 export const UpdateDoctorRequestSchema = CreateDoctorRequestSchema.partial();
 export type UpdateDoctorRequest = z.infer<typeof UpdateDoctorRequestSchema>;
+
+/**
+ * [DPI] §1.4 (bağlayıcı) — `PUT /doctor/profile` gövdesi. **`UpdateDoctorRequestSchema`'dan
+ * TÜRETİLMEZ** (admin şemasına ileride eklenecek bir alan sessizce doktorun yazma yüzeyine
+ * düşmesin diye AYRI bir şema). `.strict()`: kapsam dışı alan (ör. `title`/`sessionPriceCents`/
+ * `experienceYears`) → `422`, sessiz yok sayma YOK. Tüm alanlar opsiyoneldir (yalnızca
+ * gönderilenler güncellenir); `cvEntries`/`publications` gönderilirse dizinin TAMAMINI değiştirir.
+ */
+export const UpdateDoctorSelfProfileRequestSchema = z
+  .object({
+    subSpecialty: z.string().trim().max(120).nullable().optional(),
+    bio: z.string().trim().min(1).max(5000).optional(),
+    aboutHtml: z.string().max(20000).nullable().optional(),
+    practiceStartYear: z.number().int().min(1950).nullable().optional(),
+    languages: LANGUAGES_SCHEMA.optional(),
+    cvEntries: z.array(DoctorCvEntrySchema).max(60).optional(),
+    publications: z.array(DoctorPublicationSchema).max(200).optional(),
+  })
+  .strict();
+export type UpdateDoctorSelfProfileRequest = z.infer<typeof UpdateDoctorSelfProfileRequestSchema>;
 
 const AVAILABILITY_RULE_INPUT_SCHEMA = z
   .object({

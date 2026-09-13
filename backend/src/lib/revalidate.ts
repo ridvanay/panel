@@ -104,6 +104,39 @@ export async function triggerPublicPageRevalidation(
 }
 
 /**
+ * `.claude/architect-scope-doctor-portfolio-identity-console.md` (**[DPI]**) §1.4 madde 4 —
+ * `PUT /doctor/profile` yazımından SONRA çağrılır. `triggerPublicPageRevalidation`'ın AKSİNE
+ * bir `Page` satırı YOKTUR (`DoctorProfile` `pages` tablosuna kayıtlı değildir) — bu yüzden
+ * path'ler doğrudan doktor route yapısından (`[lang]/(site)/doctors/page.tsx` +
+ * `[lang]/(site)/doctors/[slug]/page.tsx`) kurulur, `resolveAffectedPaths`'in çeviri arama
+ * mantığı KULLANILMAZ (doktor profili şu an çok-dilli DEĞİLDİR). Guard/try-catch/log deseni
+ * `triggerPublicPageRevalidation` İLE BİREBİR AYNIDIR (best-effort, asıl admin isteğini ASLA
+ * etkilemez).
+ */
+export async function triggerDoctorProfileRevalidation(app: FastifyInstance, slug: string): Promise<void> {
+  if (!env.REVALIDATE_SECRET) return; // yapılandırılmamış — özellik sessizce devre dışı (bkz. config/env.ts)
+
+  try {
+    const { enabled } = await getLocaleSet(app);
+    const paths = enabled.flatMap((locale) => [`/${locale.code}/doctors`, `/${locale.code}/doctors/${slug}`]);
+    if (paths.length === 0) return;
+
+    const res = await fetch(`${env.INTERNAL_FRONTEND_URL ?? env.FRONTEND_URL}/api/revalidate`, {
+      method: "POST",
+      headers: { "x-revalidate-secret": env.REVALIDATE_SECRET, "content-type": "application/json" },
+      body: JSON.stringify({ paths }),
+    });
+
+    if (!res.ok) {
+      app.log.warn({ status: res.status, paths }, "Doktor profili on-demand revalidation isteği başarısız oldu");
+    }
+  } catch (err) {
+    // Asıl `PUT /doctor/profile` isteğini ASLA bozmaz — bkz. dosya başlığı.
+    app.log.warn({ err, slug }, "Doktor profili on-demand revalidation isteği gönderilemedi");
+  }
+}
+
+/**
  * Görünüm (appearance) ve navigasyon (navigation) gibi TEK bir sayfayı değil TÜM public site
  * layout'unu (header/footer, renkler/tipografi, özel CSS-JS, her locale) etkileyen admin
  * işlemlerinden sonra çağrılır. `triggerPublicPageRevalidation`'ın AKSİNE burada path hesaplaması

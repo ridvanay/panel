@@ -2002,6 +2002,30 @@ model DoctorProfile {
   fullName  String
   slug      String   @unique
   bio       String
+  /// [DPI] §1.1 — doktorun alt uzmanlık alanı (ör. "Pediatrik Kardiyoloji"). `title` ile AYNI
+  /// gerekçeyle serbest metin, enum DEĞİL: alt uzmanlıklar branşa göre sonsuz çeşitlenir ve
+  /// enum'a değer eklemek geri alınamaz. ≤120 karakter Zod ile zorlanır (backend-agent).
+  subSpecialty String?
+  /// [DPI] §1.1/§1.2 — UZUN biyografi (zengin metin, ≤20000 karakter Zod ile zorlanır). `bio`
+  /// KISA ÖZET olarak DEĞİŞMEDEN kalır (doktor kartı/liste özeti + SEO meta description +
+  /// demo şablonunun `REQUIRED_DEMO_DOCTOR_BIO_SENTENCE` garantisi `bio`ya bağlı kalmaya devam
+  /// eder). Yazma yolunda `lib/html-sanitize.ts` ZORUNLUDUR (backend-agent); okuma yolunda
+  /// yeniden sanitize EDİLMEZ. Temizlik sonrası boşsa `null`.
+  aboutHtml String?
+  /// [DPI] §1.1 — doktorluğa başlama yılı (1950..bu yıl aralığı backend'de zorlanır).
+  /// `experienceYears` KOLON OLARAK EKLENMEZ ([DPI] §1.1'de REDDEDİLDİ): saklanan "deneyim
+  /// yılı" her 1 Ocak'ta sessizce yanlışa döner; `experienceYears` DTO'da
+  /// `currentYear - practiceStartYear` ile türetilir.
+  practiceStartYear Int?
+  /// [DPI] §1.1/§1.3 — kurumsal özgeçmiş girdileri (eğitim/deneyim/sertifika/üyelik/ödül).
+  /// Dizi elemanlarının şekli (`DoctorCvEntry`) Zod ile YAZMA ANINDA zorlanır; `kind` bir
+  /// Prisma enum'u DEĞİLDİR (JSON içinde enum yaşamaz). `cvData` DEĞİL `cvEntries`: şemadaki
+  /// hiçbir Json kolonu "Data" soneki taşımaz (`blocks`/`layers`/`options`/`translations`
+  /// emsali). HTML KABUL ETMEZ (düz metin) — HTML gelirse `422`, sessizce temizlenmez.
+  cvEntries Json @default("[]")
+  /// [DPI] §1.1/§1.3 — akademik yayın listesi (`DoctorPublication` şekli Zod ile zorlanır).
+  /// Dizi SIRASI doktorundur, sunucu yeniden sıralamaz. HTML KABUL ETMEZ — HTML gelirse `422`.
+  publications Json @default("[]")
   /// ISO 639-1 kodları ("tr", "en", "de") — en fazla 6, Zod ile zorlanır.
   languages String[]
   /// IANA saat dilimi ("Europe/Istanbul"). Müsaitlik kuralları BU dilimin DUVAR SAATİNDE
@@ -2141,6 +2165,19 @@ enum BookingPaymentStatus {
   REFUNDED
 }
 
+/// [DPI] §2.2 — hasta uyruk/kimlik türü. TÜM değerler İLK SEFERDE tanımlanır, sıra bağlayıcıdır
+/// (`AppointmentStatus`/`BookingPaymentStatus` yorumundaki AYNI gerekçe: `CREATE TYPE` yeni bir
+/// enum olduğu için bu turda `ALTER TYPE ... ADD VALUE` izolasyon kuralı GEÇERLİ DEĞİLDİR, ama
+/// ileride bir değer eklemek yine geri alınamaz bir migration borcu doğurur).
+enum CitizenshipType {
+  TR
+  FOREIGN
+  /// Türkiye'de ikamet eden, 99 ile başlayan Yabancı Kimlik Numarası taşıyan yabancı uyruklu.
+  /// Bu turda HİÇBİR KOD bunu YAZMAZ (BookingPaymentStatus.REFUNDED ile AYNI emsal) —
+  /// ileride migration borcu doğmasın diye şimdiden tanımlanır. UI yalnızca TR/FOREIGN sunar.
+  FOREIGN_RESIDENT
+}
+
 /// [TCT] §9.7.2 KARAR H — çoklu slot üst kaydı. N slot = N `Appointment` satırı + 1
 /// `AppointmentBooking`. `@@unique([doctorId, startsAt])` (Appointment üzerinde) çifte
 /// rezervasyon garantisini booking eklendikten SONRA da hiç değişmeden korur.
@@ -2155,6 +2192,42 @@ model AppointmentBooking {
   /// PII SNAPSHOT — Appointment.patientName/Email ile AYNI disiplin ve AYNI retention döngüsü.
   patientName  String
   patientEmail String
+
+  /// [DPI] §2.1/§2.2/§2.6 — hasta kimlik bilgisi bloğu. `Patient`/`Appointment` tablosuna
+  /// KOPYALANMAZ, YALNIZCA burada tutulur (veri minimizasyonu, KVKK md.4;
+  /// `Appointment.bookingId` join'i okuma ihtiyacını zaten karşılar). HEPSİ nullable: backfill
+  /// YOKTUR, bu turdan önceki satırlar ve deprecated `POST /appointments` akışı `null` kalır.
+  /// [DPI] §2.8 — randevu PII penceresiyle (son `endsAt` + 12 ay) AYNI saklama döngüsüne tabidir.
+  citizenshipType CitizenshipType?
+  /// [DPI] §2.2/§2.4 — ISO 3166-1 alpha-2, BÜYÜK harf (`TR` için `"TR"`). Pasaportta (`FOREIGN`)
+  /// ZORUNLU, `"TR"` OLAMAZ (backend'de zorlanır) — pasaport numarası yalnızca veren ülke
+  /// içinde tekildir, ülke kodu hash girdisine DAHİLDİR (§2.3).
+  identityCountryCode String?
+  /// [DPI] §2.2/§2.3 — AES-256-GCM ŞİFRELİ (`lib/crypto.ts::encryptSecret/decryptSecret`,
+  /// `AppointmentIntake.noteCiphertext` İLE BİREBİR AYNI disiplin, "iv:authTag:ciphertext" hex
+  /// formatı). Index YOK, arama YOK, log'a YAZILMAZ.
+  identityNumberCiphertext String?
+  /// [DPI] §2.2/§2.3 — HMAC-SHA-256, anahtar `env.ENCRYPTION_KEY`'den HKDF ile türetilen
+  /// `subKey` (salt: "telehealth-identity-hash", info: "identity-number-hmac-v1"). Çıplak
+  /// SHA-256 (`lib/tokens.ts::hashToken`) BİLİNÇLİ OLARAK KULLANILMADI: T.C. Kimlik No uzayı
+  /// (~10^9) tuzsuz hash için kaba kuvvete açıktır; HKDF+HMAC anahtarlı olduğu için saldırgan
+  /// önce 256-bit `ENCRYPTION_KEY`'i kırmak zorundadır. Index YOK/arama YOK/log YOK kuralı
+  /// yalnızca `identityNumberCiphertext` içindir — bu kolonun kendisi konsolun "Toplam Hasta"
+  /// `DISTINCT` sayacı (§3.1) için indekslenir, numaranın açık hâlini asla taşımaz.
+  identityNumberHash String?
+  /// [DPI] §2.2/§2.4 — denormalize maske (`123******89`), en fazla 5 gerçek karakter açığa
+  /// çıkar (`ApiKey.keyPrefix`/`last4` emsali). Yalnızca görüntüleme amaçlıdır, arama/eşleştirme
+  /// için KULLANILMAZ.
+  identityNumberMasked String?
+  /// [DPI] §2.2 — TAKVİM GÜNÜ, bir AN DEĞİL (`@db.Date`). Ayrıştırma DAİMA
+  /// `new Date("<YYYY-MM-DD>T00:00:00.000Z")`, serileştirme DAİMA `.toISOString().slice(0, 10)`
+  /// (backend-agent) — yerel-saat kurucuları YASAK.
+  patientBirthDate DateTime? @db.Date
+  /// [DPI] §2.2/§2.5 — kimlik biçimsel/mantıksal denetiminin YAPILDIĞI an. `identityVerifiedAt`
+  /// DEĞİL: bu bir NVİ/KPS gerçek kimlik doğrulaması DEĞİLDİR, yalnızca algoritmik format
+  /// denetimidir (§2.4-2.5). Hiçbir DTO/UI/e-posta metninde "kimlik doğrulandı" ifadesi
+  /// KULLANILMAZ.
+  identityCapturedAt DateTime?
 
   slotCount      Int
   /// DoctorProfile.sessionPriceCents SNAPSHOT'ı — istemciden ASLA alınmaz (§8 madde 3).
@@ -2197,6 +2270,9 @@ model AppointmentBooking {
   @@index([patientUserId])
   @@index([paymentStatus, expiresAt])
   @@index([stripePaymentIntentId])
+  /// [DPI] §2.2/§5 — konsolun "Toplam Hasta" `DISTINCT` sayacı (§3.1) için. Yalnızca hash
+  /// üzerinde: açık numara veya şifreli değer üzerinde ASLA indeks açılmaz.
+  @@index([identityNumberHash])
   @@map("appointment_bookings")
 }
 

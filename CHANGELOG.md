@@ -13,6 +13,68 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
 
 ### Added
 
+- **`feat(telehealth)`: Kurumsal hekim profili, doktor öz-servis düzenleme paneli, randevu
+  öncesi kimlik bilgisi toplama adımı ve doktor konsolu metrik ucu** (bağlayıcı karar
+  dokümanı `.claude/architect-scope-doctor-portfolio-identity-console.md`,
+  `docs/architecture/ARCHITECTURE.md` §10.23.9, `docs/architecture/openapi.yaml`). Tele-Sağlık
+  modülünün üçüncü genişleme turu, üç ayrı ekseni tek turda ilerletir.
+  - **Doktor öz-geçmiş alanları + dar öz-servis yazma yüzeyi:** `DoctorProfile`e
+    `subSpecialty`, `aboutHtml` (uzun biyografi — kısa özet `bio` DEĞİŞMEDEN korunur, demo
+    şablonunun zorunlu ilk cümle garantisi bu yüzden bozulmadı), `practiceStartYear`,
+    `cvEntries[]`, `publications[]` eklendi. `experienceYears` bir kolon DEĞİLDİR — DTO'da
+    `currentYear - practiceStartYear` ile türetilir, istekte gönderilirse `422`. Yeni uç
+    `PUT /doctor/profile`: doktor kendi özgeçmişini, `bio`sunu ve dillerini düzenleyebilir;
+    **fiyat, unvan, slug, saat dilimi, `isVerified` alanlarını YAZAMAZ** (Zod `.strict()`,
+    kapsam dışı alan `422`) — bunlar birer yetkinlik/ürün tanımı iddiasıdır. `aboutHtml`
+    yazma yolunda mevcut `lib/html-sanitize.ts`'ten geçer; `cvEntries`/`publications` düz
+    metin JSON'dur, HTML kabul etmez (`422`).
+  - **Randevu öncesi kimlik bilgisi toplama (ödemeden ÖNCE, zorunlu):** `POST
+    /appointments/bookings` gövdesine `identity` nesnesi eklendi — T.C. Kimlik No
+    (**algoritmik format denetimi**: mod-11/mod-10 sağlama + repdigit reddi; **bu bir
+    NVİ/KPS sorgusu DEĞİLDİR**) veya pasaport no + ülke kodu, artı doğum tarihi. 18 yaş altı
+    `422 IDENTITY_MINOR_NOT_SUPPORTED` ile reddedilir ve **hiçbir slot tutulmaz**
+    (`SLOT_TAKEN` ile aynı ya-hep-ya-hiç kuralı). Veriler yeni `AppointmentBooking` kolonları
+    üzerinde tutulur — **`Patient` diye yeni bir tablo AÇILMADI**, **`Appointment`'a
+    kopyalanmadı** (veri minimizasyonu; `Appointment.bookingId` join'i zaten yeterli).
+    Şifreleme AES-256-GCM (mevcut `lib/crypto.ts`), arama/eşleştirme için HKDF-türetilmiş
+    anahtarla HMAC-SHA-256 hash (yeni `lib/identity.ts`) — çıplak `hashToken` kimlik için
+    **hiçbir yerde kullanılmadı** (düşük entropili girdi için güvensiz olurdu). Görüntüleme
+    için denormalize maskeleme (en fazla 5 gerçek karakter açık).
+  - **Okuma yetkisi ve düzeltme penceresi:** hasta ✓, o booking'in doktoru ✓, `ADMIN` ✓;
+    **`MANAGER` booking'i görür ama `identity: null` alır**, `EDITOR`/başka doktor `404`.
+    Açık değer yalnızca `GET .../identity` ucundan döner (`Cache-Control: no-store`, her
+    erişim denetim kaydına düşer). `PUT .../identity` yalnızca hasta + yalnızca ödeme
+    beklemedeki (`PENDING`) bir rezervasyonda çalışır; ödenmiş bir rezervasyonda
+    `409 IDENTITY_LOCKED`.
+  - **Doktor konsolu — yeni toplama ucu:** `GET /doctor/overview` (`doctorId` parametresi
+    YOK, IDOR koruması) doktorun saat diliminde "bugünkü seanslar", tamamlanan
+    konsültasyon sayısı, toplam hasta (`PAID` booking'lerde tekil sayım) ve bekleyen tıbbi
+    belge sayısını döner. `GET /doctor/bookings`e durum filtresi (`scope`) eklendi.
+    `AppointmentDocument`e bir "incelendi" bayrağı **EKLENMEDİ** — uygulanmayan bir tıbbi
+    inceleme sorumluluğunu ima eder.
+  - **Kurumsal hekim profil sayfası (`/doctors/[slug]`):** koyu lacivert üst bant + tek
+    URL'de kalan üç sekme (Doktor Hakkında / Özgeçmiş / Bilimsel Yayınlar); boş sekmeler
+    gizlenmez, nötr bir bilgi notu gösterir.
+  - **Dil kuralı (bağlayıcı):** yapılan iş **algoritmik format denetimidir** — **NVİ/KPS
+    sorgusu DEĞİLDİR** — kolon adı `identityCapturedAt`'tir (`identityVerifiedAt` DEĞİL) ve
+    hiçbir kullanıcı yüzeyinde/e-postada/bu belgede bunun aksini ima eden bir ifade
+    kullanılmaz. Gerçek NVİ/KPS sorgu entegrasyonu kapsam dışıdır (backlog:
+    `feature/telehealth-kps-identity-verification`).
+  - **Bilinen operasyonel gap (dokümante edildi, engelleyici değil):** `ENCRYPTION_KEY`
+    rotasyonu mevcut `identityNumberHash` değerlerini geçersiz kılar; şifreli değer
+    (`identityNumberCiphertext`) teorik olarak çözülüp yeniden şifrelenip yeniden
+    hash'lenebilir, **ancak bunu otomatikleştiren bir offline runbook/script bugün YOKTUR**
+    (yalnızca kimlik alanları için değil, projedeki tüm `encryptSecret` tüketicileri için
+    genel bir boşluk) — bkz. `.claude/security-review-doctor-identity.md`,
+    `docs/architecture/ARCHITECTURE.md` §10.23.9.
+  - **Diğer bilinçli kapsam dışı (backlog):** 12 aylık booking-kimlik anonimleştirme
+    süpürücüsü henüz yazılmadı (mevcut isim/e-posta süpürücüsü kimlik kolonlarını
+    kapsamıyor — `.claude/compliance-notes-doctor-identity.md`), veli/vasi (18 yaş altı)
+    rıza akışı, doktor bazında komisyon oranı, kimlik numarasıyla admin araması.
+  - İki turluk `security-agent` (tasarım + implementasyon) ve `compliance-agent` (ön onay +
+    implementasyon) denetiminden **ENGELLEYİCİ bulgu olmadan** geçti; 24/24 Playwright e2e
+    senaryosu yeşil.
+
 - **`feat(telehealth)`: Çoklu slot randevu rezervasyonu, Stripe ile ödeme, opsiyonel/rızaya
   bağlı sağlık verisi (şikâyet notu + belge) yükleme ve doktor/hasta portalları** (bağlayıcı
   karar dokümanı `.claude/architect-scope-telehealth-template.md` §9.7 "TADİLAT TURU 2",

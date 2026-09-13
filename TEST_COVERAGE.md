@@ -2941,3 +2941,66 @@ başlığında belgelenen) standardı budur, kök `docker-compose.yml` (port 300
 kaynağını çalıştırdığı için (derleme/rebuild adımı YOK) yeni backend/frontend kodu OTOMATİK
 yansır — bu dosyanın yeni migration'ı (`20260913030408_add_telehealth_recording`) `saas_e2e`
 veritabanına `prisma migrate deploy` ile bu turda uygulandı.
+
+## Kurumsal Hekim Profili + Hasta Kimlik Bilgisi + Doktor Konsolu (`[DPI]`) — E2E kapsamı (bu turda eklendi)
+
+Kaynak: `.claude/architect-scope-doctor-portfolio-identity-console.md` (**[DPI]**) §6 madde 10
+(qa-agent'a özel, bağlayıcı talimat listesi, (a)-(h)). Backend/frontend-agent implementasyonu
+tamamladı, security-agent/compliance-agent İKİ turluk denetimden PASS ile geçti (bkz.
+`.claude/security-review-doctor-identity.md`, `.claude/compliance-notes-doctor-identity.md`).
+Yeni dosya: `frontend/tests/e2e/telehealth-doctor-identity.spec.ts` (10 test). Yeni paylaşılan
+yardımcı: `frontend/tests/e2e/support/telehealth-identity-ui.ts` (booking widget'ının "Kimlik
+Bilgileri" modalını dolduran UI yardımcısı). `backend/tests/integration/telehealth-identity.test.ts`
+(backend-agent) AYNI kontratı `app.inject` seviyesinde ZATEN kapsıyor — bu dosya YENİDEN YAZMAZ,
+AYNI kontratı gerçek tarayıcı + gerçek HTTP + gerçek Postgres (`saas_e2e`) zincirinden geçirir.
+
+| Madde | Senaryo | Sonuç |
+|---|---|---|
+| (a) | Booking widget'ında kimlik modalı ATLANAMAZ — "Randevu Oluştur" yalnızca modalı açar, "Devam Et" boşken devre dışıdır, hiçbir booking isteği GİTMEZ; `identity` alanı olmadan `POST /appointments/bookings` → `422` | ✅ |
+| (b) | Geçersiz TCKN (checksum hatalı, istemci "Geçersiz" rozetiyle de işaretler) → `422 VALIDATION_ERROR`, slot TUTULMAZ (reddedilen denemeden SONRA aynı slot başka bir hastaya başarıyla satılır); 18 yaş altı → `422 IDENTITY_MINOR_NOT_SUPPORTED`, slot müsait KALIR | ✅ |
+| (c) | `MANAGER` — `GET /admin/telehealth/bookings` listesinde booking'i GÖRÜR ama `identity: null`; `ADMIN` aynı satırda `identity` DOLU + doğru maskeli (`100******46`); dedike `GET .../identity` ucu `MANAGER` için `404` | ✅ |
+| (d) | Booking'in AİT OLMADIĞI başka bir doktor `GET .../identity` → `404`; booking'in KENDİ doktoru `200` ile açık numarayı okur | ✅ |
+| (e) | `PAID` booking'de `PUT .../identity` → `409 IDENTITY_LOCKED`; kontrol grubu — `PENDING` iken AYNI istek `200` ile günceller (TR→FOREIGN dönüşümü dahil) | ✅ |
+| (f) | Doktor `PUT /doctor/profile` ile `title`/`sessionPriceCents` (kapsam dışı) → `422`; kontrol grubu — izin verilen `subSpecialty` `200` ile güncellenir, `title` DEĞİŞMEZ | ✅ |
+| (g) | `GET /doctor/overview` — gerçek bir randevu "şimdi+120sn" penceresine kaydırılıp doktorun `timeZone`'unda ("Europe/Istanbul") "bugün" sayacının ÖNCESİ/SONRASI küme farkıyla arttığı, `today.date`in Node'da bağımsız hesaplanan `en-CA` `YYYY-MM-DD` ile eşleştiği, `generatedAt`in sunucu "şu an"ına yakın olduğu doğrulandı | ✅ |
+| (h) | Kurumsal profil sayfası üç sekme: "Doktor Hakkında" (`bio`+`aboutHtml` DİKEY, ikisi de görünür), "Özgeçmiş" (`cvEntries` doktorun VERDİĞİ SIRAYLA — kronolojik DEĞİL — render edilir), "Bilimsel Yayınlar" (`publications` `kind`'a göre SABİT grup sırasıyla — Uluslararası→Ulusal→Diğer — girdi sırasından BAĞIMSIZ gruplanır); boş içerikte nötr "henüz paylaşılmamış" notu, sekme YİNE DE tıklanabilir kalır | ✅ |
+
+**qa-agent bulgusu (regresyon, kendi test kod tabanında DÜZELTİLDİ — uygulama kodu DEĞİL):**
+[DPI] §2.6 `identity`'i booking gövdesinde ZORUNLU kıldığı ve booking formunun "Randevuyu
+Onayla"→"Randevu Oluştur" adı + KVKK onay kutusunun ana formdan `IdentityStepDialog`'un İÇİNE
+(`id="identityConsent"`) taşınmasıyla SONUÇLANDIĞI için, bu turdan ÖNCE yazılmış
+`telehealth-public-booking.spec.ts` (madde 8) ve `telehealth-multi-slot-booking.spec.ts`
+(`fillAndSubmitBookingForm` yardımcısının ÜÇ çağrı noktası) YANLIŞ varsayım taşıyordu — ikisi de
+GÜNCELLENDİ (yeni paylaşılan `support/telehealth-identity-ui.ts` yardımcısı kullanılarak), ayrıca
+`support/telehealth-fixtures.ts::createBookingRaw` da `identity` için bir varsayılan
+(`VALID_TEST_TR_IDENTITY`, TCKN `10000000146`) kazandı — aksi hâlde bu iki dosyanın TÜM booking
+oluşturma çağrıları `422`'ye düşerdi. Üçü de bu turda YEŞİL doğrulandı (public-booking 4/4,
+multi-slot-booking 10/10).
+
+**qa-agent bulgusu (kendi testinde, düzeltildi — kod tabanına YANSIMADI):** ilk koşumda
+`page.getByLabel("Ay")` (doğum tarihi ay seçici) dialog'a SCOPE edilmeden çağrılırsa hem
+`AvailabilityCalendar`'ın "Önceki ay"/"Sonraki ay" düğmeleriyle HEM de KVKK onay metninin "**Ay**
+dınlatma" ile BAŞLAMASI yüzünden STRICT MODE ihlaline/sessiz zaman aşımına düşüyordu —
+`support/telehealth-identity-ui.ts` artık tüm alanları `dialog` kökünden sorgular, yalnızca "Ay"
+için `exact: true` kullanır (çok kısa/tehlikeli tek alt-dize).
+
+**Ortam notu — 5/dk booking-oluşturma hız sınırı (`BOOKING_CREATE_RATE_LIMIT`):** bu dosyanın
+tek başına ürettiği ~8 `POST /appointments/bookings` çağrısı normalde (UI navigasyonu/ISR
+polling'in doğal aralığıyla) sorun çıkarmaz, ama qa-agent'ın AYNI backend sürecine karşı arka
+arkaya birden fazla MANUEL koşum yapması (bu turda doğrulama sırasında olduğu gibi) kotayı
+tüketebilir — `pacedCreateBookingRaw`/`reserveBookingCreateSlot` yerel bir kayan-pencere sayacıyla
+GEREKTİĞİNDE bekler, sunucunun GERÇEK `429`'unu da (paylaşılan kota başka bir süreçten tüketilmiş
+olsa dahi) `Retry-After` kadar bekleyip tek seferlik yeniden deneyerek TELAFİ eder — CI'da
+(backend her koşum için TAZE başlatılacağından) bu ekstra bekleme genelde hiç TETİKLENMEZ.
+
+### Kapsam dışı / backlog notları (bug DEĞİL, bilgi amaçlı)
+
+- `.claude/compliance-notes-doctor-identity.md` İkinci Tur'un kendi işaretlediği backlog
+  maddeleri (12 aylık kimlik-PII süpürücüsü henüz yazılmadı, notification-agent şablon gözden
+  geçirmesi henüz yapılmadı, VERBİS envanter dosyası organizasyonel) bu turun DoD'sini
+  BLOKLAMIYOR — qa-agent bunları TEKRAR test ETMEDİ (kod yok, test edilecek davranış yok),
+  yalnızca burada referans olarak not düşülür.
+- `security-review-doctor-identity.md` madde 8 — `GET`/`PUT .../identity` uçlarında AYRI bir
+  route-level hız sınırı YOK (ENGELLEYİCİ DEĞİL, security-agent devretti) — bu yüzden qa-agent'ın
+  bu uçlara yaptığı tekrarlanan çağrılar (madde c/d/e testleri) hiçbir zaman `429` ile karşılaşmadı;
+  yalnızca `POST /appointments/bookings` (booking oluşturma) 5/dk sınırına tabidir.

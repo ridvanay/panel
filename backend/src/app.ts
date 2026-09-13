@@ -70,6 +70,7 @@ import { telehealthDoctorPortalRoutes, telehealthPatientPortalRoutes } from "./m
 import { telehealthRecordingRoutes } from "./modules/telehealth/telehealth.recording.routes";
 import { telehealthRecordingAccessRoutes } from "./modules/telehealth/telehealth.recording-access.routes";
 import { telehealthEgressWebhookRoutes } from "./modules/telehealth/telehealth.egress-webhook.routes";
+import { telehealthIdentityRoutes } from "./modules/telehealth/telehealth.identity.routes";
 import { registerBookingExpirySweeper } from "./lib/booking-expiry";
 import { registerIntakeRetentionScheduler } from "./lib/intake-retention";
 import { registerRecordingRetentionScheduler } from "./lib/recording-retention";
@@ -282,6 +283,11 @@ export function buildApp() {
       // Aynı public `/appointments` yüzeyine EKLENİR; kendi `requireModuleEnabled("telehealth")`
       // hook'unu KENDİSİ taşır (kimlik doğrulama YOK — openapi.yaml `security: []`).
       api.register(telehealthNotificationRoutes);
+      // [DPI] §2.6/§2.7 (bağlayıcı) — hasta kimlik bilgisi oku/düzelt, backend-agent'ın AYRI
+      // dosyası (`telehealth.identity.routes.ts`, `telehealth.routes.ts`'e DOKUNULMADI). Aynı
+      // public `/appointments` yüzeyine EKLENİR; kendi `requireModuleEnabled("telehealth")` +
+      // `authenticateOptional` hook'larını KENDİSİ taşır.
+      api.register(telehealthIdentityRoutes);
       api.register(adminTelehealthSpecialtiesRoutes, { prefix: "/admin/telehealth/specialties" });
       api.register(adminTelehealthDoctorsRoutes, { prefix: "/admin/telehealth/doctors" });
       api.register(adminTelehealthAppointmentsRoutes, { prefix: "/admin/telehealth/appointments" });

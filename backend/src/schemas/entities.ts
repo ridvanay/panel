@@ -2238,6 +2238,66 @@ export const DoctorAvailabilityRuleSchema = z.object({
 });
 export type DoctorAvailabilityRuleDto = z.infer<typeof DoctorAvailabilityRuleSchema>;
 
+/**
+ * `.claude/architect-scope-doctor-portfolio-identity-console.md` (**[DPI]**) §1.3 —
+ * `DoctorProfile.cvEntries` öğesi. `kind` bir Prisma enum'u DEĞİLDİR (JSON'un içinde enum
+ * yaşamaz) — Zod literal union'dır. **Hiçbir alan HTML KABUL ETMEZ** (düz metin); zengin metin
+ * yalnızca `aboutHtml`'de yaşar. Bu şema hem YAZMA (request) hem OKUMA (response) için TEK
+ * doğrulama kaynağıdır (`PUT /doctor/profile` ve admin `CreateDoctorRequest`/`UpdateDoctorRequest`
+ * bunu REFERANS alır — ikinci bir kopyası AÇILMAZ).
+ */
+const HTML_TAG_PATTERN = /<[a-z!/][^>]*>/i;
+const PLAIN_TEXT_HTML_MESSAGE = "Bu alan HTML içeremez.";
+const HTTPS_ONLY_MESSAGE = "Yalnızca https:// bağlantılara izin verilir.";
+
+function plainTextField<T extends z.ZodType<string, z.ZodTypeDef, string>>(schema: T) {
+  return schema.refine((value) => !HTML_TAG_PATTERN.test(value), { message: PLAIN_TEXT_HTML_MESSAGE });
+}
+
+function httpsOnlyField<T extends z.ZodType<string, z.ZodTypeDef, string>>(schema: T) {
+  return schema.refine((value) => value.startsWith("https://"), { message: HTTPS_ONLY_MESSAGE });
+}
+
+export const DoctorCvEntryKindSchema = z.enum(["EDUCATION", "EXPERIENCE", "CERTIFICATE", "MEMBERSHIP", "AWARD"]);
+export type DoctorCvEntryKind = z.infer<typeof DoctorCvEntryKindSchema>;
+
+export const DoctorCvEntrySchema = z
+  .object({
+    kind: DoctorCvEntryKindSchema,
+    title: plainTextField(z.string().trim().min(1).max(160)),
+    organization: plainTextField(z.string().trim().min(1).max(160)),
+    location: plainTextField(z.string().trim().max(120)).nullable().optional(),
+    startYear: z.number().int().min(1950),
+    // `null` = hâlen devam ediyor.
+    endYear: z.number().int().min(1950).nullable().optional(),
+    description: plainTextField(z.string().trim().max(500)).nullable().optional(),
+  })
+  .superRefine((entry, ctx) => {
+    if (entry.endYear != null && entry.endYear < entry.startYear) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "`endYear`, `startYear`'dan küçük olamaz.", path: ["endYear"] });
+    }
+  });
+export type DoctorCvEntryDto = z.infer<typeof DoctorCvEntrySchema>;
+
+/**
+ * [DPI] §1.3 — `DoctorProfile.publications` öğesi. `DoctorCvEntrySchema` İLE AYNI kurallar
+ * (HTML YASAK). `url`/`doi` YALNIZCA `https://` şeması kabul eder (`http:`/`javascript:`/`data:`
+ * → 422).
+ */
+export const DoctorPublicationKindSchema = z.enum(["INTERNATIONAL_ARTICLE", "NATIONAL_ARTICLE", "PROCEEDING", "BOOK_CHAPTER", "OTHER"]);
+export type DoctorPublicationKind = z.infer<typeof DoctorPublicationKindSchema>;
+
+export const DoctorPublicationSchema = z.object({
+  kind: DoctorPublicationKindSchema,
+  title: plainTextField(z.string().trim().min(1).max(300)),
+  venue: plainTextField(z.string().trim().min(1).max(200)),
+  authors: plainTextField(z.string().trim().max(300)).nullable().optional(),
+  year: z.number().int().min(1950),
+  doi: httpsOnlyField(plainTextField(z.string().trim().max(120))).nullable().optional(),
+  url: httpsOnlyField(z.string().trim().max(500).url()).nullable().optional(),
+});
+export type DoctorPublicationDto = z.infer<typeof DoctorPublicationSchema>;
+
 export const DoctorProfileSchema = z.object({
   id: z.string().uuid(),
   // §2.5 — opsiyonel panel kullanıcısı bağlantısı. Şablon bu alanı DAİMA null bırakır.
@@ -2245,9 +2305,19 @@ export const DoctorProfileSchema = z.object({
   specialtyId: z.string().uuid().nullable(),
   specialty: SpecialtySchema.nullable(),
   title: z.string(),
+  // [DPI] §1.1 — alt branş/bağlı merkez, serbest metin, enum DEĞİL.
+  subSpecialty: z.string().nullable(),
   fullName: z.string(),
   slug: z.string(),
   bio: z.string(),
+  // [DPI] §1.1/§1.2 — uzun biyografi, `lib/html-sanitize.ts`'ten geçirilmiş HTML.
+  aboutHtml: z.string().nullable(),
+  // [DPI] §1.1 — SAKLANAN alan (4 haneli yıl).
+  practiceStartYear: z.number().int().nullable(),
+  // [DPI] §1.1 — TÜRETİLMİŞ, salt-okunur (`currentYear - practiceStartYear`). Kolon DEĞİLDİR.
+  experienceYears: z.number().int().nullable(),
+  cvEntries: z.array(DoctorCvEntrySchema),
+  publications: z.array(DoctorPublicationSchema),
   languages: z.array(z.string()),
   // IANA saat dilimi ("Europe/Istanbul") — bkz. modules/telehealth/lib/timezone.ts.
   timeZone: z.string(),
@@ -2341,6 +2411,47 @@ export type CreateAppointmentResultDto = z.infer<typeof CreateAppointmentResultS
 // Yerleşim: architect'in openapi.yaml kararıyla BİREBİR (bkz. o dosyadaki aynı bölüm).
 // ------------------------------------------------------------------------
 
+// ------------------------------------------------------------------------
+// [DPI] TUR 4 — hasta kimlik bilgisi (AppointmentBooking üzerinde, PII).
+// ------------------------------------------------------------------------
+
+/**
+ * [DPI] §2.2 — Prisma enum `CitizenshipType`. `FOREIGN_RESIDENT` bu turda HİÇBİR KOD tarafından
+ * YAZILMAZ (`BookingPaymentStatus.REFUNDED` ile AYNI emsal — ileride migration borcu doğmasın
+ * diye şimdiden tanımlanır); UI yalnızca `TR`/`FOREIGN` sunar.
+ */
+export const CitizenshipTypeSchema = z.enum(["TR", "FOREIGN", "FOREIGN_RESIDENT"]);
+export type CitizenshipType = z.infer<typeof CitizenshipTypeSchema>;
+
+/**
+ * [DPI] §2.7 — `AppointmentBooking.identity`. **Çözülmüş kimlik numarası ASLA burada DÖNMEZ**;
+ * `maskedNumber` yazma anında DENORMALİZE edilip saklanır. Yalnızca `canAccessBookingHealthData`
+ * eşiğini geçen aktörler için doldurulur; `MANAGER`/`EDITOR`/başka doktor için `null`'dır.
+ */
+export const BookingIdentitySummarySchema = z.object({
+  citizenshipType: CitizenshipTypeSchema,
+  countryCode: z.string(),
+  maskedNumber: z.string(),
+  // Yaş rozetinin kaynağı — TAM doğum tarihi bu nesnede DÖNMEZ (yalnızca `GET .../identity`'de).
+  birthYear: z.number().int(),
+  capturedAt: z.string(),
+});
+export type BookingIdentitySummaryDto = z.infer<typeof BookingIdentitySummarySchema>;
+
+/**
+ * [DPI] §2.7 — `GET /appointments/bookings/{bookingId}/identity` yanıtı. Çözülmüş kimlik
+ * numarasının döndüğü TEK yerdir.
+ */
+export const BookingIdentitySchema = z.object({
+  bookingId: z.string().uuid(),
+  citizenshipType: CitizenshipTypeSchema,
+  countryCode: z.string(),
+  identityNumber: z.string(),
+  birthDate: z.string(),
+  capturedAt: z.string(),
+});
+export type BookingIdentityDto = z.infer<typeof BookingIdentitySchema>;
+
 /**
  * `POST /appointments/bookings` yanıtı. Ham `accessToken` BİR KEZ döner (hash'i saklanır) ve
  * magic-link `/{lang}/patient/bookings/{bookingId}?t=<accessToken>` olarak kurulur.
@@ -2391,6 +2502,9 @@ export const AppointmentBookingSchema = z.object({
   patientUserId: z.string().uuid().nullable(),
   patientName: z.string(),
   patientEmail: z.string(),
+  // [DPI] §2.7 — `null` İKİ AYRI durumu ifade eder: (a) aktör `canAccessBookingHealthData`
+  // eşiğini geçmiyor (`MANAGER` DAHİL), (b) booking bu turdan ÖNCE oluşmuş, kimlik HİÇ alınmamış.
+  identity: BookingIdentitySummarySchema.nullable(),
   slotCount: z.number().int(),
   unitPriceCents: z.number().int(),
   subtotalCents: z.number().int(),
@@ -2571,6 +2685,46 @@ export const DoctorEarningsResponseSchema = z.object({
   }),
 });
 export type DoctorEarningsResponseDto = z.infer<typeof DoctorEarningsResponseSchema>;
+
+/**
+ * [DPI] §3.1 — "Bugün", doktorun `DoctorProfile.timeZone` DUVAR SAATİNDEKİ takvim günüdür.
+ * Sayımlar `Appointment` satırları üzerindedir (booking DEĞİL).
+ */
+export const DoctorConsoleTodayCountsSchema = z.object({
+  date: z.string(),
+  // `PENDING_PAYMENT` HARİÇ (ödenmemiş tutma bir seans DEĞİLDİR).
+  total: z.number().int(),
+  scheduled: z.number().int(),
+  inProgress: z.number().int(),
+  completed: z.number().int(),
+  // `CANCELLED` + `NO_SHOW` toplamı.
+  cancelled: z.number().int(),
+});
+export type DoctorConsoleTodayCountsDto = z.infer<typeof DoctorConsoleTodayCountsSchema>;
+
+/**
+ * [DPI] §3.1 — `GET /doctor/overview` yanıtı; doktor konsolunun 4 metrik kartının TEK kaynağı.
+ * Para/komisyon alanı BİLİNÇLİ OLARAK YOKTUR — kazanç `GET /doctor/earnings`'in işidir.
+ */
+export const DoctorConsoleOverviewSchema = z.object({
+  timeZone: z.string(),
+  today: DoctorConsoleTodayCountsSchema,
+  // TÜM zamanlar, `status=COMPLETED` — `GET /doctor/earnings`'in `completedSessionCount`'u İLE AYNI tanım.
+  completedConsultationTotal: z.number().int(),
+  // `paymentStatus=PAID` booking'lerde TEKİL hasta sayısı (anahtar sırası: identityNumberHash → patientUserId → email).
+  distinctPatientTotal: z.number().int(),
+  pendingDocumentCount: z.number().int(),
+  nextAppointment: z
+    .object({
+      appointmentId: z.string().uuid(),
+      bookingId: z.string().uuid().nullable(),
+      startsAt: z.string(),
+      joinableFrom: z.string().nullable(),
+    })
+    .nullable(),
+  generatedAt: z.string(),
+});
+export type DoctorConsoleOverviewDto = z.infer<typeof DoctorConsoleOverviewSchema>;
 
 /**
  * [TCT] §9.7.7 KARAR K10a — `GET /admin/telehealth/analytics/overview` (ADMIN+MANAGER).

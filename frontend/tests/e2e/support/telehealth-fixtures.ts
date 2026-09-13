@@ -193,6 +193,33 @@ export function defaultSlotRangeISODates(daysAhead = 30): { from: string; to: st
   return { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) };
 }
 
+/**
+ * qa-agent — `.claude/architect-scope-doctor-portfolio-identity-console.md` (**[DPI]**) §1.3 —
+ * `POST /admin/telehealth/doctors` gövdesindeki `cvEntries`/`publications` JSON şekli. Backend
+ * kaynağı: `backend/src/schemas/entities.ts::DoctorCvEntrySchema`/`DoctorPublicationSchema`. Bu
+ * dosya uygulama kaynağını import ETMEZ (bkz. bu dosyanın diğer fixture'larındaki AYNI ilke) —
+ * kontratın BAĞIMSIZ, test-tarafı bir kopyasıdır.
+ */
+export interface FixtureDoctorCvEntry {
+  kind: "EDUCATION" | "EXPERIENCE" | "CERTIFICATE" | "MEMBERSHIP" | "AWARD";
+  title: string;
+  organization: string;
+  location?: string | null;
+  startYear: number;
+  endYear?: number | null;
+  description?: string | null;
+}
+
+export interface FixtureDoctorPublication {
+  kind: "INTERNATIONAL_ARTICLE" | "NATIONAL_ARTICLE" | "PROCEEDING" | "BOOK_CHAPTER" | "OTHER";
+  title: string;
+  venue: string;
+  authors?: string | null;
+  year: number;
+  doi?: string | null;
+  url?: string | null;
+}
+
 export interface CreateDoctorFixtureInput {
   title: string;
   fullName: string;
@@ -206,6 +233,14 @@ export interface CreateDoctorFixtureInput {
   avatarMediaId?: string | null;
   isVerified?: boolean;
   isActive?: boolean;
+  /** [DPI] §1.1/§1.3 — kurumsal hekim profili sekmelerinin (`telehealth-doctor-identity.spec.ts`
+   * madde (h)) içerik fixture'ı için. Hepsi opsiyonel — verilmezse admin uçu zaten `bio` dışında
+   * hiçbirini ZORUNLU KILMAZ. */
+  subSpecialty?: string | null;
+  aboutHtml?: string | null;
+  practiceStartYear?: number | null;
+  cvEntries?: FixtureDoctorCvEntry[];
+  publications?: FixtureDoctorPublication[];
 }
 
 export interface CreatedFixtureDoctor extends FixtureDoctor {
@@ -352,12 +387,45 @@ export interface CreatedBooking {
   checkoutUrl: string | null;
 }
 
+/**
+ * `.claude/architect-scope-doctor-portfolio-identity-console.md` (**[DPI]**) §2.6 — `identity`
+ * `POST /appointments/bookings` gövdesinde ZORUNLU hâle geldi (`CreateBookingRequestSchema.identity`,
+ * artık opsiyonel DEĞİL). `10000000146` — geçerli bir T.C. Kimlik No sağlama toplamı taşıyan,
+ * yaygın bilinen bir TEST numarasıdır (repdigit DEĞİL, `lib/identity.ts::isValidTurkishIdentityNumber`
+ * checksum'unu GEÇER): d1..d9 tek pozisyon toplamı=2, çift pozisyon toplamı=0 → d10=((2*7)-0)%10=4,
+ * d1..d10 toplamı=6 → d11=6 — "10000000146" ile eşleşir. `createBookingRaw()`'ın VARSAYILANI budur;
+ * çağıran taraf geçersiz-kimlik/18-yaş-altı SENARYOLARI için `identity`'i AÇIKÇA override eder.
+ */
+export const VALID_TEST_TR_IDENTITY: BookingIdentityInputRaw = {
+  citizenshipType: "TR",
+  identityNumber: "10000000146",
+  countryCode: "TR",
+  birthDate: "1990-01-01",
+};
+
+export interface BookingIdentityInputRaw {
+  citizenshipType: "TR" | "FOREIGN";
+  identityNumber: string;
+  countryCode?: string | null;
+  birthDate: string;
+}
+
 /** `POST /appointments/bookings` — PUBLIC (opsiyonel Bearer), hız sınırı 5/dk, 1..4 slot. `totalCents`
  * İSTEMCİDEN gönderilmez/gönderilse de sunucu YOK SAYAR (§9.7.11 madde 14 — backend'in kendi
  * `tests/integration/telehealth-bookings.test.ts`'inde ZATEN doğrulanır); bu fixture yalnızca
- * kontrata uygun alanları gönderir. */
+ * kontrata uygun alanları gönderir. [DPI] §2.6 — `identity` verilmezse `VALID_TEST_TR_IDENTITY`
+ * varsayılanı kullanılır (mevcut TÜM çağıranların — bu turdan ÖNCE yazılmış diğer spec
+ * dosyalarının — kontrattaki YENİ zorunlu alan yüzünden `422`'ye DÜŞMEMESİ için). */
 export async function createBookingRaw(
-  input: { doctorSlug: string; slots: string[]; patientName: string; patientEmail: string; consent?: boolean; consentVersion?: string },
+  input: {
+    doctorSlug: string;
+    slots: string[];
+    patientName: string;
+    patientEmail: string;
+    consent?: boolean;
+    consentVersion?: string;
+    identity?: BookingIdentityInputRaw;
+  },
   bearerToken?: string
 ): Promise<RawApiResult<CreatedBooking>> {
   const res = await fetch(`${API_BASE_URL}/appointments/bookings`, {
@@ -369,6 +437,7 @@ export async function createBookingRaw(
       patientName: input.patientName,
       patientEmail: input.patientEmail,
       consent: input.consent ?? true,
+      identity: input.identity ?? VALID_TEST_TR_IDENTITY,
       ...(input.consentVersion ? { consentVersion: input.consentVersion } : {}),
     }),
   });
@@ -388,6 +457,9 @@ export interface FixtureBookingDetail {
   hasIntakeNote: boolean;
   documentCount: number;
   appointments: CreatedBookingAppointment[];
+  /** [DPI] §2.7 — yalnızca `canAccessBookingHealthData` eşiğini geçen aktörler için dolu (hasta,
+   * o booking'in doktoru, `ADMIN`); `MANAGER`/`EDITOR`/başka doktor için `null`. */
+  identity: { citizenshipType: string; countryCode: string; maskedNumber: string; birthYear: number; capturedAt: string } | null;
 }
 
 /** `GET /appointments/bookings/{id}?t=` — misafir magic-link VEYA oturum (Bearer); ikisi BİRDEN verilmez normalde ama ikisi de opsiyonel parametredir. */
@@ -483,6 +555,105 @@ export async function linkDoctorUserRaw(adminToken: string, doctorId: string, us
     const body = await safeJson(res);
     throw new Error(`Doktor hesabı bağlanamadı: ${res.status} ${JSON.stringify(body)}`);
   }
+}
+
+// ---------------------------------------------------------------------------
+// qa-agent — `.claude/architect-scope-doctor-portfolio-identity-console.md` (**[DPI]**) §6 madde 10
+// e2e fixture yardımcıları (`telehealth-doctor-identity.spec.ts`). `API_BASE_URL`/`safeJson`/
+// `RawApiResult` YUKARIDA TANIMLI, PAYLAŞILIR.
+// ---------------------------------------------------------------------------
+
+export interface FixtureBookingIdentityDetail {
+  bookingId: string;
+  citizenshipType: "TR" | "FOREIGN" | "FOREIGN_RESIDENT";
+  countryCode: string;
+  identityNumber: string;
+  birthDate: string;
+  capturedAt: string;
+}
+
+/** `GET /appointments/bookings/{bookingId}/identity` — [DPI] §2.7, açık kimlik numarasının
+ * döndüğü TEK uç. Yetkisiz erişim `404` döner (varlık sızdırılmaz, IDOR disiplini). */
+export async function getBookingIdentityRaw(
+  bookingId: string,
+  opts: { magicLinkToken?: string; bearerToken?: string } = {}
+): Promise<RawApiResult<FixtureBookingIdentityDetail>> {
+  const url = new URL(`${API_BASE_URL}/appointments/bookings/${bookingId}/identity`);
+  if (opts.magicLinkToken) url.searchParams.set("t", opts.magicLinkToken);
+  const res = await fetch(url, { headers: opts.bearerToken ? { Authorization: `Bearer ${opts.bearerToken}` } : {} });
+  const body = await safeJson(res);
+  return {
+    status: res.status,
+    data: body.data as FixtureBookingIdentityDetail | undefined,
+    error: body.error as RawApiResult<unknown>["error"],
+  };
+}
+
+/** `PUT /appointments/bookings/{bookingId}/identity` — [DPI] §2.6, yalnızca hasta + yalnızca
+ * `paymentStatus=PENDING` (aksi hâlde `409 IDENTITY_LOCKED`). Döner: TAM `AppointmentBooking` DTO'su. */
+export async function putBookingIdentityRaw(
+  bookingId: string,
+  body: BookingIdentityInputRaw,
+  opts: { magicLinkToken?: string; bearerToken?: string } = {}
+): Promise<RawApiResult<Record<string, unknown>>> {
+  const url = new URL(`${API_BASE_URL}/appointments/bookings/${bookingId}/identity`);
+  if (opts.magicLinkToken) url.searchParams.set("t", opts.magicLinkToken);
+  const res = await fetch(url, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...(opts.bearerToken ? { Authorization: `Bearer ${opts.bearerToken}` } : {}) },
+    body: JSON.stringify(body),
+  });
+  const responseBody = await safeJson(res);
+  return { status: res.status, data: responseBody.data as Record<string, unknown> | undefined, error: responseBody.error as RawApiResult<unknown>["error"] };
+}
+
+/** `GET /admin/telehealth/bookings` — ADMIN+MANAGER (§9.7.10), imleç sayfalı. [DPI] §2.7 —
+ * `MANAGER` için `data[].identity` HER ZAMAN `null` döner (booking'in kendisi görünür kalır). */
+export async function listAdminBookingsRaw(
+  token: string,
+  params: { doctorId?: string; limit?: number } = {}
+): Promise<RawApiResult<Record<string, unknown>[]>> {
+  const url = new URL(`${API_BASE_URL}/admin/telehealth/bookings`);
+  url.searchParams.set("limit", String(params.limit ?? 100));
+  if (params.doctorId) url.searchParams.set("doctorId", params.doctorId);
+  const res = await fetch(url, { headers: authHeadersNoBody(token) });
+  const body = await safeJson(res);
+  return { status: res.status, data: body.data as Record<string, unknown>[] | undefined, error: body.error as RawApiResult<unknown>["error"] };
+}
+
+/** `PUT /doctor/profile` — [DPI] §1.4, doktorun KENDİ dar yazma yüzeyi (`.strict()` Zod şeması,
+ * kapsam dışı alan — ör. `title`/`sessionPriceCents` — `422` döner). 2FA + doktor-hesabı kapısı
+ * (`requireDoctorPortalAccess`) taşır — `bearerToken` GERÇEK 2FA etkin bir doktor kullanıcısına
+ * ait OLMALIDIR (bkz. `support/api.ts::setupAndEnableTwoFactorForSelf`). */
+export async function updateDoctorSelfProfileRaw(
+  bearerToken: string,
+  body: Record<string, unknown>
+): Promise<RawApiResult<Record<string, unknown>>> {
+  const res = await fetch(`${API_BASE_URL}/doctor/profile`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${bearerToken}` },
+    body: JSON.stringify(body),
+  });
+  const responseBody = await safeJson(res);
+  return { status: res.status, data: responseBody.data as Record<string, unknown> | undefined, error: responseBody.error as RawApiResult<unknown>["error"] };
+}
+
+export interface FixtureDoctorOverview {
+  timeZone: string;
+  today: { date: string; total: number; scheduled: number; inProgress: number; completed: number; cancelled: number };
+  completedConsultationTotal: number;
+  distinctPatientTotal: number;
+  pendingDocumentCount: number;
+  nextAppointment: { appointmentId: string; bookingId: string; startsAt: string; joinableFrom: string } | null;
+  generatedAt: string;
+}
+
+/** `GET /doctor/overview` — [DPI] §3.1, doktor konsolu metrik kartlarının TEK toplama ucu.
+ * `doctorId` parametresi YOKTUR (IDOR) — yalnızca `bearerToken`in KENDİ `DoctorProfile`'ı. */
+export async function getDoctorOverviewRaw(bearerToken: string): Promise<RawApiResult<FixtureDoctorOverview>> {
+  const res = await fetch(`${API_BASE_URL}/doctor/overview`, { headers: authHeadersNoBody(bearerToken) });
+  const body = await safeJson(res);
+  return { status: res.status, data: body.data as FixtureDoctorOverview | undefined, error: body.error as RawApiResult<unknown>["error"] };
 }
 
 // ---------------------------------------------------------------------------

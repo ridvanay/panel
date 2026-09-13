@@ -76,15 +76,32 @@ export function assertBookingViewAccess(booking: BookingAccessSubject, request: 
 }
 
 /**
+ * `.claude/architect-scope-doctor-portfolio-identity-console.md` (**[DPI]**) §2.7 +
+ * `.claude/security-review-doctor-identity.md` ENGELLEYİCİ madde 2 — `assertBookingHealthDataAccess`
+ * İLE AYNI eşiğin THROW ETMEYEN boolean kardeşi. [DPI] §2.7 İKİ FARKLI davranış istiyor: (a)
+ * liste/detay DTO'sunda `identity` alanı eşiği geçemeyen aktörler için `null` (booking'in
+ * kendisi hâlâ görünür olabilir, ör. `MANAGER`), (b) dedike `GET .../identity` ucu aynı eşikte
+ * `404` fırlatır. Bu ikisinin AYNI mantıktan türemesi için (try/catch ile `NotFoundError`'ı
+ * sessizce yutmak KIRILGAN bir örüntüdür — gelecekte `assertBookingHealthDataAccess`'e yeni bir
+ * throw eklenirse mapper'da sessizce YUTULABİLİRDİ) `assertBookingHealthDataAccess` BUNUN
+ * ÜZERİNE yeniden yazılır; davranış DEĞİŞMEZ, tek kaynak burasıdır.
+ */
+export function canAccessBookingHealthData(booking: BookingAccessSubject, request: BookingAccessRequest): boolean {
+  if (request.user && request.user.role === "ADMIN") return true;
+  if (isRequestingDoctor(booking, request)) return true;
+  if (isRequestingPatient(booking, request)) return true;
+  return false;
+}
+
+/**
  * §9.7.5 madde 7 (ENGELLEYİCİ) — intake notu/belge İÇERİĞİ: (a) hasta, (b) YALNIZCA bu
  * booking'in doktoru, (c) `ADMIN` (destek). `MANAGER` İÇERİĞE ERİŞEMEZ, `EDITOR` hiç erişemez
  * (zaten `request.user` bu iki role ile buraya hiç ulaşmaz — bu fonksiyon yalnızca izin
- * VERMEZ, ayrıca engellemez).
+ * VERMEZ, ayrıca engellemez). [DPI] §2.7 — aynı eşik `GET .../identity` (bu fonksiyon) VE
+ * `AppointmentBooking.identity` mapper alanı (`canAccessBookingHealthData`) tarafından PAYLAŞILIR.
  */
 export function assertBookingHealthDataAccess(booking: BookingAccessSubject, request: BookingAccessRequest): void {
-  if (request.user && request.user.role === "ADMIN") return;
-  if (isRequestingDoctor(booking, request)) return;
-  if (isRequestingPatient(booking, request)) return;
+  if (canAccessBookingHealthData(booking, request)) return;
   throw new NotFoundError("Rezervasyon bulunamadı.");
 }
 

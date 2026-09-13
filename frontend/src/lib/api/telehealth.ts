@@ -10,6 +10,8 @@ import type {
   AppointmentIntake,
   AvailabilitySlot,
   BookingCheckoutSessionResponse,
+  BookingIdentity,
+  BookingIdentityInput,
   BookingInvoice,
   CancelBookingRequest,
   ConsultationNote,
@@ -21,6 +23,7 @@ import type {
   CreateDoctorRequest,
   CreateSpecialtyRequest,
   DoctorAvailabilityRule,
+  DoctorConsoleOverview,
   DoctorEarningsPage,
   DoctorEarningsSession,
   DoctorEarningsSummary,
@@ -36,6 +39,7 @@ import type {
   TelehealthOverview,
   TelehealthOverviewQuery,
   UpdateDoctorRequest,
+  UpdateDoctorSelfProfileRequest,
   UpdateSpecialtyRequest,
   UpsertIntakeRequest,
 } from "./types";
@@ -228,6 +232,27 @@ export function getBookingIntake(bookingId: string, accessToken?: string): Promi
   return apiFetch<AppointmentIntake>(`/appointments/bookings/${bookingId}/intake`, { query: { t: accessToken } });
 }
 
+/**
+ * [DPI] §2.7 — çözülmüş kimlik numarasının döndüğü TEK uç (`GET .../intake` emsali). Yetki:
+ * hasta, o booking'in doktoru, `ADMIN` (`MANAGER`/`EDITOR`/diğer doktorlar → `404`). Her çağrı
+ * sunucuda denetim kaydı üretir.
+ */
+export function getBookingIdentity(bookingId: string, accessToken?: string): Promise<BookingIdentity> {
+  return apiFetch<BookingIdentity>(`/appointments/bookings/${bookingId}/identity`, { query: { t: accessToken } });
+}
+
+/**
+ * [DPI] §2.6 — yalnızca hasta, yalnızca `paymentStatus = PENDING` (aksi hâlde `409 IDENTITY_LOCKED`).
+ * Doğrulama kuralları `POST /appointments/bookings` İLE BİREBİR AYNIDIR.
+ */
+export function updateBookingIdentity(bookingId: string, input: BookingIdentityInput, accessToken?: string): Promise<AppointmentBooking> {
+  return apiFetch<AppointmentBooking>(`/appointments/bookings/${bookingId}/identity`, {
+    method: "PUT",
+    query: { t: accessToken },
+    body: input,
+  });
+}
+
 /** `GET .../consultation-note` — not yoksa `html: null` ile 200 döner (404 DEĞİL). */
 export function getConsultationNote(bookingId: string, accessToken?: string): Promise<ConsultationNote> {
   return apiFetch<ConsultationNote>(`/appointments/bookings/${bookingId}/consultation-note`, { query: { t: accessToken } });
@@ -339,17 +364,38 @@ export function getDoctorPortalProfile(): Promise<DoctorPortalProfile> {
   return apiFetch<DoctorPortalProfile>("/doctor/me");
 }
 
-/** `GET /doctor/bookings` — yalnızca oturumun KENDİ `DoctorProfile`'ı (IDOR yüzeyi yok, `doctorId` parametresi YOK). */
+/**
+ * `GET /doctor/bookings` — yalnızca oturumun KENDİ `DoctorProfile`'ı (IDOR yüzeyi yok, `doctorId`
+ * parametresi YOK). [DPI] §3.2 — `scope`, `from`/`to` ile BİRLİKTE gönderilirse sunucu `422` döner.
+ */
 export function listDoctorBookings(params: ListDoctorBookingsParams = {}): Promise<Page<AppointmentBooking>> {
   return apiFetchPage<AppointmentBooking>("/doctor/bookings", {
     query: {
       from: params.from,
       to: params.to,
       paymentStatus: params.paymentStatus,
+      scope: params.scope,
       cursor: params.cursor,
       limit: params.limit ?? 20,
     },
   });
+}
+
+/**
+ * [DPI] §1.4 — doktorun KENDİ kurumsal profilini düzenlemesi (dar yazma yüzeyi).
+ * `UpdateDoctorSelfProfileRequest`'in dışındaki alanlar (unvan/fiyat/süre/slug/avatar vb.) bu
+ * tipte YOKTUR — sunucu kapsam dışı bir alan gelirse `422` döner.
+ */
+export function updateDoctorSelfProfile(input: UpdateDoctorSelfProfileRequest): Promise<DoctorPortalProfile> {
+  return apiFetch<DoctorPortalProfile>("/doctor/profile", { method: "PUT", body: input });
+}
+
+/**
+ * [DPI] §3.1 — doktor konsolunun 4 metrik kartının TEK kaynağı. `doctorId` parametresi YOK (IDOR
+ * yüzeyi). Yanıt `Cache-Control: no-store` taşır.
+ */
+export function getDoctorConsoleOverview(): Promise<DoctorConsoleOverview> {
+  return apiFetch<DoctorConsoleOverview>("/doctor/overview");
 }
 
 /**

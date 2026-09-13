@@ -6106,18 +6106,102 @@ durumları (müsait/seçili/dolu/geçmiş), saat dilimi rozeti ve konsültasyon 
 çubuğu bu dokümanda tanımlıdır. Önizleme: `frontend/public/demo-templates/
 telehealth-clinic/preview.svg` (diğer iki şablonla AYNI format).
 
-#### 10.23.8 Kapsam dışı (backlog)
+#### 10.23.8 Kapsam dışı (backlog — v1 anlık görüntüsü)
 
 Örnek/sahte randevular ve `MeetingRoom` tablosu **yapısal olarak kapalıdır** (geri
 dönüşü yok). Ayrıca: görüşme kaydı (`feature/telehealth-recording`), randevu onay/
 hatırlatma e-postaları (`feature/telehealth-appointment-emails`), randevu ödemesi/Stripe
-(`feature/telehealth-payments`), doktor değerlendirme/puanlama
-(`feature/doctor-reviews`), çoklu uzmanlık (`feature/doctor-multiple-specialties`),
-tatil/izin takvimi (`feature/doctor-time-off`), randevu erteleme
-(`feature/appointment-reschedule`), semptom/şikâyet formu — özel nitelikli veri
-(`feature/telehealth-intake-form`), çok dilli doktor içeriği
-(`feature/telehealth-i18n`), `SiteTemplate.HEALTHCARE` (`feature/
-site-template-healthcare`). Ayrıntı: kaynak doküman §11.
+(`feature/telehealth-payments`), doktor değerlendirme/puanlama (`feature/doctor-reviews`),
+çoklu uzmanlık (`feature/doctor-multiple-specialties`), tatil/izin takvimi
+(`feature/doctor-time-off`), randevu erteleme (`feature/appointment-reschedule`),
+semptom/şikâyet formu — özel nitelikli veri (`feature/telehealth-intake-form`), çok dilli
+doktor içeriği (`feature/telehealth-i18n`), `SiteTemplate.HEALTHCARE`
+(`feature/site-template-healthcare`). Ayrıntı: kaynak doküman §11.
+
+**Not:** bu liste ilk telehealth turunun (v1) anlık görüntüsüdür ve tarihsel bağlam için
+değiştirilmeden bırakılmıştır — sonraki turlarda (çoklu slot rezervasyonu + ödeme +
+portallar, görüşme kaydı/Egress, §10.23.9'daki [DPI] turu) bu maddelerin bir kısmı
+kapatıldı. Güncel durum için `CHANGELOG.md`'ye bakın.
+
+#### 10.23.9 Kurumsal hekim profili + hasta kimlik bilgisi toplama + doktor konsolu (Turu 3)
+
+Durum: implemente edildi (2026-09-13), iki turluk security-agent + compliance-agent
+denetiminden geçti, 24/24 Playwright e2e senaryosu yeşil. **Bağlayıcı kaynak:**
+`.claude/architect-scope-doctor-portfolio-identity-console.md` (**[DPI]**) +
+`.claude/security-review-doctor-identity.md` + `.claude/compliance-notes-doctor-identity.md`
++ `.claude/design-notes-doctor-portfolio-console.md` + `docs/architecture/openapi.yaml`. Bu
+alt bölüm ÖZETTİR; çelişkide [DPI]/openapi.yaml kazanır.
+
+**(A) Doktor öz-geçmiş alanları + dar öz-servis yazma yüzeyi.** `DoctorProfile`e
+`subSpecialty`, `aboutHtml` (uzun biyografi, `bio` kısa özet olarak DEĞİŞMEDEN kalır —
+demo şablonunun `REQUIRED_DEMO_DOCTOR_BIO_SENTENCE` garantisi bu yüzden korunuyor),
+`practiceStartYear`, `cvEntries[]`, `publications[]` (ikisi de düz metin Zod JSON, HTML
+kabul ETMEZ — `422`) eklendi. `experienceYears` bir kolon DEĞİLDİR, DTO'da
+`currentYear - practiceStartYear` ile türetilir ([DPI] §1.1, `DoctorAvailability`'den slot
+türetimiyle AYNI disiplin). Doktor kendi paneli (`PUT /doctor/profile`) üzerinden bu
+alanları + `bio`/`languages`'ı düzenleyebilir; **fiyat, unvan, slug, saat dilimi,
+`isVerified` YAZAMAZ** (`.strict()` Zod, kapsam dışı alan `422`) — bunlar birer yetkinlik/
+ürün tanımı iddiasıdır, kendi kendine yükseltilemez ([DPI] §1.4).
+
+**(B) Randevu öncesi kimlik bilgisi toplama.** `POST /appointments/bookings` gövdesinde,
+ödemeden ÖNCE, zorunlu bir `identity` nesnesi eklendi: T.C. Kimlik No (algoritmik format
+denetimi — mod-11/mod-10 sağlama + repdigit reddi; **bu bir NVİ/KPS sorgusu DEĞİLDİR**) veya
+pasaport no + ülke kodu, artı doğum tarihi. 18 yaş altı `422
+IDENTITY_MINOR_NOT_SUPPORTED` ile reddedilir, **hiçbir slot tutulmaz** (`SLOT_TAKEN` ile
+aynı ya-hep-ya-hiç). Veriler yalnızca `AppointmentBooking` üzerinde tutulur —
+**`Appointment`'a kopyalanmaz** (veri minimizasyonu, KVKK md.4; `Appointment.bookingId`
+join'i zaten yeterli). Saklama: mevcut 12 aylık randevu-PII penceresiyle AYNI (son
+`endsAt` + 12 ay) — **ancak bu pencereyi booking kimlik kolonlarında fiilen uygulayan bir
+süpürücü henüz yazılmadı** (backlog, engelleyici değil:
+`chore(telehealth): 12 aylık hasta PII/kimlik anonimleştirme süpürücüsü`,
+`.claude/compliance-notes-doctor-identity.md` madde 5).
+
+- **Şifreleme/hash:** `identityNumberCiphertext` AES-256-GCM (`lib/crypto.ts`, mevcut
+  yardımcı), `identityNumberHash` HKDF-türetilmiş anahtarla HMAC-SHA-256
+  (`lib/identity.ts`) — çıplak `hashToken` kimlik için **kullanılmaz** (10^9'luk değer
+  uzayı çıplak SHA-256 için taranabilir; keyed-hash zorunlu). `identityNumberMasked`
+  denormalize görüntüleme maskesi (en fazla 5 gerçek karakter açık).
+- **Okuma yetkisi:** hasta ✓, o booking'in doktoru ✓, `ADMIN` ✓; **`MANAGER` booking'i
+  görür ama `identity: null` alır**, `EDITOR`/başka doktor `404`. Açık değer tek uçta
+  (`GET .../identity`, `Cache-Control: no-store`, audit'e düşer). Düzeltme penceresi
+  `PUT .../identity` yalnızca hasta + `paymentStatus = PENDING`; ödenmiş bir randevuda
+  `409 IDENTITY_LOCKED` (kimlik artık bir SNAPSHOT'tır).
+- **Dil kuralı (bağlayıcı, [DPI] §2.5):** yapılan iş **algoritmik format denetimidir** —
+  **NVİ/KPS sorgusu DEĞİLDİR** — bu yüzden kolon adı `identityCapturedAt`'tir
+  (`identityVerifiedAt` DEĞİL) ve hiçbir kullanıcı yüzeyinde/dokümantasyonda bunun
+  aksini ima eden bir ifade geçmez. Gerçek NVİ/KPS sorgu entegrasyonu backlog:
+  `feature/telehealth-kps-identity-verification`.
+- **`ENCRYPTION_KEY` rotasyonu — operasyonel not:** anahtar rotasyonu tüm mevcut
+  `identityNumberHash` değerlerini geçersiz kılar (yeni `subKey`, dolayısıyla farklı
+  HMAC üretir). Teorik olarak kurtarılabilir — `identityNumberCiphertext` eski anahtarla
+  çözülüp yeni anahtarla yeniden şifrelenebilir ve yeni `subKey` ile yeniden hash'lenebilir
+  — **ancak bunu yapan bir offline runbook/script bugün YOKTUR** (yalnızca
+  `identityNumberHash` için değil, `encryptSecret` kullanan TÜM alanlar için genel bir
+  boşluk; security-agent 1. tur tasarım denetiminde flaglendi,
+  `.claude/security-review-doctor-identity.md` §2). Rotasyon planlanıyorsa önce bu runbook
+  yazılmalı; aksi halde rotasyon sonrası "Toplam Hasta" konsol metriği (aşağıya bkz.)
+  sessizce bozulur.
+
+**(C) Doktor konsolu metrik toplama ucu.** `GET /doctor/overview` (`doctorId` parametresi
+YOK — IDOR koruması, kapı `GET /doctor/me` ile aynı) istemcide hesaplanamayan 4 metriği
+sunucuda üretir: bugünkü seanslar (doktorun `timeZone`'unda takvim günü), tamamlanan
+konsültasyonlar (`/doctor/earnings` ile AYNI tanım), toplam hasta (`PAID` booking'lerde
+`DISTINCT` — anahtar sırası `identityNumberHash` → `user:<id>` → `email:<lower>`; **kimlik
+hash kolonunun ilk gerçek tüketicisi budur**), bekleyen tıbbi belgeler (`AppointmentDocument`e
+"incelendi" bayrağı EKLENMEDİ — uygulanmayan bir tıbbi inceleme sorumluluğunu ima eder).
+`GET /doctor/bookings`e `scope` (`all|today|upcoming|completed`) filtresi eklendi; `from`/`to`
+ile birlikte `422`. Konsolun geri kalanı (maskeli kimlik, kalan süre rozeti, belge modalı,
+konsültasyon notu) mevcut uçlardan beslenir — yeni backend GEREKMEDİ ([DPI] §3.3).
+
+**Kurumsal hekim profil sayfası (`/doctors/[slug]`):** koyu lacivert üst bant + tek URL'de
+kalan üç sekme (Doktor Hakkında / Özgeçmiş / Bilimsel Yayınlar, `Tabs` primitifi — her
+sekme için ayrı indekslenebilir rota AÇILMADI, seo-agent kararı). Boş sekmeler gizlenmez,
+nötr bir "henüz eklenmedi" notuyla gösterilir.
+
+**Kapsam dışı (backlog, bu turda kasıtlı bırakıldı):** gerçek NVİ/KPS sorgu
+entegrasyonu, veli/vasi (18 yaş altı) rıza akışı, doktor bazında komisyon oranı, kimlik
+numarasıyla admin araması, 12 aylık booking-kimlik süpürücüsü, `ENCRYPTION_KEY` rotasyon
+runbook'u.
 
 ---
 

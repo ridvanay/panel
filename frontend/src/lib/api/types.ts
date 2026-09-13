@@ -41,7 +41,12 @@ export type ApiErrorCode =
   | "UNSUPPORTED_DOCUMENT_TYPE"
   | "DOCUMENT_LIMIT_REACHED"
   | "TWO_FACTOR_REQUIRED"
-  | "NOT_A_DOCTOR";
+  | "NOT_A_DOCTOR"
+  // `.claude/architect-scope-doctor-portfolio-identity-console.md` (**[DPI]**) §2 — hasta kimlik
+  // bilgisi akışı. Mesajlar SABİT/JENERİKTİR (bkz. backend `lib/errors.ts`), girilen kimlik
+  // numarası/doğum tarihi bu hatalara ASLA enjekte edilmez.
+  | "IDENTITY_MINOR_NOT_SUPPORTED"
+  | "IDENTITY_LOCKED";
 
 export type MembershipRole = "OWNER" | "ADMIN" | "MEMBER";
 export type MembershipStatus = "ACTIVE" | "INVITED" | "SUSPENDED";
@@ -3298,6 +3303,37 @@ export interface DoctorAvailabilityRuleInput {
   isActive?: boolean;
 }
 
+/**
+ * [DPI] — `DoctorProfile.cvEntries` öğesi. `kind` bir Prisma enum'u DEĞİLDİR (JSON içinde enum
+ * yaşamaz) — serbest string literal union. Hiçbir alan HTML KABUL ETMEZ (düz metin).
+ */
+export type DoctorCvEntryKind = "EDUCATION" | "EXPERIENCE" | "CERTIFICATE" | "MEMBERSHIP" | "AWARD";
+
+export interface DoctorCvEntry {
+  kind: DoctorCvEntryKind;
+  title: string;
+  organization: string;
+  location?: string | null;
+  startYear: number;
+  /** `null` = hâlen devam ediyor. `startYear`'dan küçük olamaz → 422. */
+  endYear?: number | null;
+  description?: string | null;
+}
+
+/** [DPI] — `DoctorProfile.publications` öğesi. `DoctorCvEntry` İLE AYNI kurallar (HTML YASAK). */
+export type DoctorPublicationKind = "INTERNATIONAL_ARTICLE" | "NATIONAL_ARTICLE" | "PROCEEDING" | "BOOK_CHAPTER" | "OTHER";
+
+export interface DoctorPublication {
+  kind: DoctorPublicationKind;
+  title: string;
+  venue: string;
+  authors?: string | null;
+  year: number;
+  doi?: string | null;
+  /** Yalnızca `https://` — `http:`/`javascript:`/`data:` sunucuda `422`. */
+  url?: string | null;
+}
+
 export interface DoctorProfile {
   id: string;
   userId: string | null;
@@ -3305,9 +3341,22 @@ export interface DoctorProfile {
   specialty: Specialty | null;
   /** "Dr." / "Prof. Dr." / "Uzm. Dr." — serbest metin, enum DEĞİL. */
   title: string;
+  /** [DPI] — alt branş/bağlı merkez, serbest metin (`title` İLE AYNI gerekçe). Filtreye/aramaya girmez. */
+  subSpecialty: string | null;
   fullName: string;
   slug: string;
+  /** KISA özet — doktor kartı/liste/meta description kaynağı. DEĞİŞMEDİ. Uzun biyografi `aboutHtml`'dir. */
   bio: string;
+  /** [DPI] — "Doktor Hakkında" sekmesinin uzun biyografisi. `lib/html-sanitize.ts`'ten GEÇMİŞ, GÜVENİLİR HTML. */
+  aboutHtml: string | null;
+  /** Mesleğe başlama YILI — SAKLANAN alan budur. */
+  practiceStartYear: number | null;
+  /** TÜRETİLMİŞ, salt-okunur (`currentYear - practiceStartYear`) — kolon DEĞİL, istekte gönderilirse `422`. */
+  experienceYears: number | null;
+  /** Özgeçmiş zaman çizelgesi — dizi SIRASI doktorundur, sunucu YENİDEN SIRALAMAZ. */
+  cvEntries: DoctorCvEntry[];
+  /** Bilimsel yayınlar — `cvEntries` İLE AYNI sıra disiplini. */
+  publications: DoctorPublication[];
   /** ISO 639-1 kodları ("tr", "en"), en fazla 6. */
   languages: string[];
   /** IANA saat dilimi ("Europe/Istanbul"). */
@@ -3328,9 +3377,14 @@ export interface DoctorProfile {
 
 export interface CreateDoctorRequest {
   title: string;
+  subSpecialty?: string | null;
   fullName: string;
   slug?: string;
   bio: string;
+  aboutHtml?: string | null;
+  practiceStartYear?: number | null;
+  cvEntries?: DoctorCvEntry[];
+  publications?: DoctorPublication[];
   languages: string[];
   timeZone: string;
   specialtyId?: string | null;
@@ -3346,6 +3400,23 @@ export interface CreateDoctorRequest {
 }
 
 export type UpdateDoctorRequest = Partial<CreateDoctorRequest>;
+
+/**
+ * [DPI] — `PUT /doctor/profile` gövdesi. **`UpdateDoctorRequest`'ten `allOf` ile TÜREMEZ**
+ * (bilinçli, admin şemasına ileride eklenecek bir alan sessizce doktorun yazma yüzeyine
+ * düşmemelidir). Doktorun DEĞİŞTİREMEYECEĞİ alanlar (title/fullName/slug/specialtyId/timeZone/
+ * sessionDurationMin/sessionPriceCents/currency/avatarMediaId/isVerified/isActive/order/userId)
+ * bu tipte YOKTUR — form bu alanları GÖNDERMEZ, sunucu zaten `additionalProperties:false` ile `422` döner.
+ */
+export interface UpdateDoctorSelfProfileRequest {
+  subSpecialty?: string | null;
+  bio: string;
+  aboutHtml?: string | null;
+  practiceStartYear?: number | null;
+  languages?: string[];
+  cvEntries?: DoctorCvEntry[];
+  publications?: DoctorPublication[];
+}
 
 export interface SetDoctorAvailabilityRequest {
   rules: DoctorAvailabilityRuleInput[];
@@ -3433,12 +3504,63 @@ export type BookingPaymentStatus = "PENDING" | "PAID" | "FAILED" | "EXPIRED" | "
 /** §9.7.2 — 1..4 slot, hepsi AYNI doktor + AYNI takvim günü (sunucu ayrıca doğrular). */
 export const MAX_BOOKING_SLOTS = 4;
 
+/**
+ * [DPI] §2.2 — Prisma enum `CitizenshipType`. `FOREIGN_RESIDENT` bu turda HİÇBİR KOD tarafından
+ * YAZILMAZ (ileride migration borcu doğmasın diye şimdiden tanımlı) — UI yalnızca `TR`/`FOREIGN` sunar.
+ */
+export type CitizenshipType = "TR" | "FOREIGN" | "FOREIGN_RESIDENT";
+
+/**
+ * [DPI] §2.4/§2.6 — `POST /appointments/bookings` ve `PUT .../identity` gövdesindeki kimlik
+ * nesnesi. `identityNumber` **hiçbir client-side storage/analytics/log'a YAZILMAZ**; yalnızca
+ * bellek-içi form state'inde tutulur ve doğrudan istek gövdesine geçirilir.
+ */
+export interface BookingIdentityInput {
+  citizenshipType: "TR" | "FOREIGN";
+  /** T.C. Kimlik No (11 hane) veya pasaport numarası. */
+  identityNumber: string;
+  /** ISO 3166-1 alpha-2, BÜYÜK harf. `TR` tipinde opsiyonel, `FOREIGN` tipinde ZORUNLU (`"TR"` OLAMAZ). */
+  countryCode?: string | null;
+  /** `YYYY-MM-DD` — takvim günü, `format: date-time` DEĞİL. */
+  birthDate: string;
+}
+
+/**
+ * [DPI] §2.7 — `AppointmentBooking.identity`. Çözülmüş kimlik numarası ASLA burada DÖNMEZ.
+ * `assertBookingHealthDataAccess` eşiğini geçemeyen aktörler (`MANAGER` dahil) için `null`'dır.
+ */
+export interface BookingIdentitySummary {
+  citizenshipType: CitizenshipType;
+  countryCode: string;
+  /** `TR` → ilk3+6★+son2. `FOREIGN` → ilk2+★+son2. En fazla 5 gerçek karakter açığa çıkar. */
+  maskedNumber: string;
+  /** Yaş rozetinin kaynağı — TAM doğum tarihi bu nesnede DÖNMEZ. */
+  birthYear: number;
+  /** Kimliğin ALINDIĞI an — `identityVerifiedAt` DEĞİLDİR, "doğrulandı" olarak ETİKETLENEMEZ. */
+  capturedAt: string;
+}
+
+/**
+ * [DPI] §2.7 — `GET /appointments/bookings/{bookingId}/identity` yanıtı. Çözülmüş kimlik
+ * numarasının döndüğü TEK yer; her çağrı sunucuda denetim kaydı (`telehealth.identity.accessed`) üretir.
+ */
+export interface BookingIdentity {
+  bookingId: string;
+  citizenshipType: CitizenshipType;
+  countryCode: string;
+  identityNumber: string;
+  birthDate: string;
+  capturedAt: string;
+}
+
 export interface CreateBookingRequest {
   doctorSlug: string;
   /** 1..4 ISO-8601 `Z`'li an, dakika çözünürlüğünde. */
   slots: string[];
   patientName: string;
   patientEmail: string;
+  /** [DPI] §2.6 — ZORUNLU. Kimlik adımının çıktısı, booking ile AYNI transaction'da yazılır. */
+  identity: BookingIdentityInput;
   /** Randevu KVKK onay kutusu — sağlık verisi rızasından (`UpsertIntakeRequest.healthDataConsent`) AYRI. */
   consent: true;
   consentVersion?: string;
@@ -3476,6 +3598,12 @@ export interface AppointmentBooking {
   patientUserId: string | null;
   patientName: string;
   patientEmail: string;
+  /**
+   * [DPI] §2.7 — `null` İKİ AYRI durumu ifade eder: (a) çağıran aktör eşiği geçmiyor (`MANAGER`
+   * dahil), (b) booking bu turdan ÖNCE/deprecated `POST /appointments` ile oluşmuş, kimlik HİÇ
+   * alınmamış. UI bu ikisini ayırt ETMEZ (backfill YAPILMAZ) — ikisi de aynı boş-durum rozetidir.
+   */
+  identity: BookingIdentitySummary | null;
   slotCount: number;
   unitPriceCents: number;
   subtotalCents: number;
@@ -3631,12 +3759,55 @@ export interface DoctorPortalProfile {
   twoFactorEnabled: boolean;
 }
 
+/** [DPI] §3.2 — konsolun durum filtresi. `scope` `from`/`to` ile BİRLİKTE gönderilemez → `422`. */
+export type DoctorBookingsScope = "all" | "today" | "upcoming" | "completed";
+
 export interface ListDoctorBookingsParams {
   from?: string;
   to?: string;
   paymentStatus?: BookingPaymentStatus;
+  scope?: DoctorBookingsScope;
   cursor?: string;
   limit?: number;
+}
+
+/**
+ * [DPI] §3.1 — `GET /doctor/overview` yanıtı; doktor konsolunun 4 metrik kartının TEK kaynağı.
+ * Para/komisyon alanı BİLİNÇLİ OLARAK YOKTUR (`GET /doctor/earnings`'in işidir).
+ */
+export interface DoctorConsoleTodayCounts {
+  /** Doktorun saat dilimindeki bugünün tarihi (`YYYY-MM-DD`) — istemci kendi "bugün"ünü hesaplamaz. */
+  date: string;
+  /** `PENDING_PAYMENT` HARİÇ. */
+  total: number;
+  scheduled: number;
+  inProgress: number;
+  completed: number;
+  /** `CANCELLED` + `NO_SHOW` toplamı. */
+  cancelled: number;
+}
+
+export interface DoctorConsoleOverview {
+  timeZone: string;
+  today: DoctorConsoleTodayCounts;
+  /** TÜM zamanlar, `status=COMPLETED` — `GET /doctor/earnings`'in `completedSessionCount`'u İLE AYNI tanım. */
+  completedConsultationTotal: number;
+  /** `paymentStatus=PAID` booking'lerde TEKİL hasta sayısı (anahtar: kimlik hash → kullanıcı → e-posta). */
+  distinctPatientTotal: number;
+  /**
+   * Silinmemiş, `PAID` booking'e bağlı ve HENÜZ TAMAMLANMAMIŞ randevusu olan belge sayısı. Bu
+   * BİR TIBBİ İNCELEME ONAYI DEĞİLDİR — yalnızca belge yüklenmiş ama seans tamamlanmamış demektir.
+   */
+  pendingDocumentCount: number;
+  /** Şu andan sonraki İLK `SCHEDULED`/`IN_PROGRESS` randevu — "kalan süre" rozetinin kaynağı. */
+  nextAppointment: {
+    appointmentId: string;
+    bookingId: string | null;
+    startsAt: string;
+    joinableFrom: string | null;
+  } | null;
+  /** Sunucu saati — "kalan süre" geri sayımı istemci saatine DEĞİL, buna göre kalibre edilir. */
+  generatedAt: string;
 }
 
 export interface ListPatientBookingsParams {

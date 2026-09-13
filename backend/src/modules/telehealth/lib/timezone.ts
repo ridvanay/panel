@@ -85,6 +85,41 @@ function getOffsetMinutesAt(instant: Date, timeZone: string): number {
  * okur, sonra o ofsetle gerçek adayı hesaplar; sonucu yeniden formatlayıp istenen duvar saatiyle
  * round-trip doğrulaması yapar (uyuşmuyorsa an mevcut değildir → `null`).
  */
+/**
+ * `.claude/architect-scope-doctor-portfolio-identity-console.md` (**[DPI]**) §3.1 — `GET
+ * /doctor/overview`'un "Bugün" kartı için doktorun kendi `timeZone`'unun DUVAR SAATİNDEKİ takvim
+ * gününün (00:00) UTC karşılığı. `wallTimeToUtc`'in "var olmayan duvar saati" (DST ilkbahar
+ * geçişi) davranışına uyumlu savunma: tam 00:00 nadiren mevcut olmayabilir (bazı bölgeler gece
+ * yarısı geçiş yapar) — bu durumda o günün İLK var olan duvar saati dakikası kullanılır.
+ */
+export function getStartOfCalendarDayInTimeZone(date: CalendarDate, timeZone: string): Date {
+  for (let minute = 0; minute < 180; minute++) {
+    const candidate = wallTimeToUtc(
+      { year: date.year, month: date.month, day: date.day, hour: Math.floor(minute / 60), minute: minute % 60 },
+      timeZone
+    );
+    if (candidate) return candidate;
+  }
+  throw new Error(`"${timeZone}" için ${date.year}-${date.month}-${date.day} gün başlangıcı hesaplanamadı.`);
+}
+
+/** Bir ANIN `timeZone`'daki duvar takvim gününün BAŞLANGICI (00:00) — `getStartOfCalendarDayInTimeZone`'un ANDAN türetilmiş kısayolu. */
+export function getStartOfDayInTimeZone(instant: Date, timeZone: string): Date {
+  const wall = getWallClockParts(instant, timeZone);
+  return getStartOfCalendarDayInTimeZone({ year: wall.year, month: wall.month, day: wall.day }, timeZone);
+}
+
+/** Takvim aritmetiği (zaman diliminden BAĞIMSIZ) — `days` gün ekler/çıkarır. */
+export function addCalendarDays(date: CalendarDate, days: number): CalendarDate {
+  const shifted = new Date(Date.UTC(date.year, date.month - 1, date.day + days));
+  return { year: shifted.getUTCFullYear(), month: shifted.getUTCMonth() + 1, day: shifted.getUTCDate() };
+}
+
+/** `CalendarDate`/`WallClockParts` → `YYYY-MM-DD`. */
+export function formatCalendarDateKey(date: Pick<CalendarDate, "year" | "month" | "day">): string {
+  return `${String(date.year).padStart(4, "0")}-${String(date.month).padStart(2, "0")}-${String(date.day).padStart(2, "0")}`;
+}
+
 export function wallTimeToUtc(wall: WallClockParts, timeZone: string): Date | null {
   const guessMillis = Date.UTC(wall.year, wall.month - 1, wall.day, wall.hour, wall.minute, 0, 0);
 

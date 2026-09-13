@@ -257,6 +257,11 @@ async function createFreshSingleSlotBooking(patientSuffix: string): Promise<Fres
       patientName,
       patientEmail: `qa-e2e-consultation-note-${patientSuffix}-${Date.now()}@example.com`,
       consent: true,
+      // [DPI] (`.claude/architect-scope-doctor-portfolio-identity-console.md`) §2.6 — `identity`
+      // artık ZORUNLU (`CreateBookingRequestSchema.identity`); bkz.
+      // `support/telehealth-fixtures.ts::VALID_TEST_TR_IDENTITY` İLE AYNI, geçerli bir sağlama
+      // toplamı taşıyan test TCKN'si.
+      identity: { citizenshipType: "TR", identityNumber: "10000000146", countryCode: "TR", birthDate: "1990-01-01" },
     }),
   });
   const body = (await res.json()) as {

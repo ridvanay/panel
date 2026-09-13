@@ -140,6 +140,9 @@ import type {
   AppointmentDocumentDto,
   DoctorPortalProfileDto,
   ConsultationRecordingDto,
+  DoctorCvEntryDto,
+  DoctorPublicationDto,
+  BookingIdentitySummaryDto,
 } from "../schemas/entities";
 import { env } from "../config/env";
 import {
@@ -1598,6 +1601,16 @@ type DoctorProfileWithRelations = DoctorProfile & {
   availability?: DoctorAvailability[];
 };
 
+/**
+ * [DPI] §1.1 — `practiceStartYear`'dan TÜRETİLİR (saklanan bir "deneyim yılı" her 1 Ocak'ta
+ * sessizce yanlışa döner). Negatif çıkarsa `0` (ör. gelecekte bir yıl DB'ye elle yazılmışsa).
+ */
+function deriveExperienceYears(practiceStartYear: number | null): number | null {
+  if (practiceStartYear == null) return null;
+  const currentYear = new Date().getUTCFullYear();
+  return Math.max(currentYear - practiceStartYear, 0);
+}
+
 export function toDoctorProfileDto(doctor: DoctorProfileWithRelations): DoctorProfileDto {
   return {
     id: doctor.id,
@@ -1605,9 +1618,17 @@ export function toDoctorProfileDto(doctor: DoctorProfileWithRelations): DoctorPr
     specialtyId: doctor.specialtyId,
     specialty: doctor.specialty ? toSpecialtyDto(doctor.specialty) : null,
     title: doctor.title,
+    subSpecialty: doctor.subSpecialty,
     fullName: doctor.fullName,
     slug: doctor.slug,
     bio: doctor.bio,
+    aboutHtml: doctor.aboutHtml,
+    practiceStartYear: doctor.practiceStartYear,
+    experienceYears: deriveExperienceYears(doctor.practiceStartYear),
+    // [DPI] §1.3 — DB'de `Json`; yazma anında Zod ile ZATEN doğrulanmış olduğundan okuma
+    // yolunda YENİDEN doğrulanmaz (`toPageDto`'nun `blocks` alanıyla AYNI disiplin).
+    cvEntries: (doctor.cvEntries as unknown as DoctorCvEntryDto[]) ?? [],
+    publications: (doctor.publications as unknown as DoctorPublicationDto[]) ?? [],
     languages: doctor.languages,
     timeZone: doctor.timeZone,
     sessionDurationMin: doctor.sessionDurationMin,
@@ -1669,11 +1690,42 @@ type AppointmentBookingWithRelations = AppointmentBooking & {
 };
 
 /**
+ * [DPI] §2.7 — `AppointmentBooking.identity` yalnızca `canAccessBookingHealthData` eşiğini geçen
+ * aktörler için doldurulur (`hasHealthDataAccess`, çağıran tarafça HESAPLANIR — bu fonksiyon
+ * saf bir dönüşümdür, `request`/DB bilmez, `toAppointmentIntakeDto`'nun "decrypt route'ta
+ * yapılır" ilkesiyle AYNI). Booking'de kimlik HİÇ toplanmamışsa (bu turdan ÖNCE oluşmuş/deprecated
+ * `POST /appointments` akışı) da `null` döner — backfill YOKTUR.
+ */
+export function toBookingIdentitySummaryDto(
+  booking: Pick<AppointmentBooking, "citizenshipType" | "identityCountryCode" | "identityNumberMasked" | "patientBirthDate" | "identityCapturedAt">,
+  hasHealthDataAccess: boolean
+): BookingIdentitySummaryDto | null {
+  if (!hasHealthDataAccess) return null;
+  if (
+    !booking.citizenshipType ||
+    !booking.identityCountryCode ||
+    !booking.identityNumberMasked ||
+    !booking.patientBirthDate ||
+    !booking.identityCapturedAt
+  ) {
+    return null;
+  }
+  return {
+    citizenshipType: booking.citizenshipType,
+    countryCode: booking.identityCountryCode,
+    maskedNumber: booking.identityNumberMasked,
+    birthYear: booking.patientBirthDate.getUTCFullYear(),
+    capturedAt: booking.identityCapturedAt.toISOString(),
+  };
+}
+
+/**
  * `meetingRoomName`/`accessTokenHash` BİLİNÇLİ OLARAK bu DTO'ya DAHİL EDİLMEZ (§8 — minimum
  * ifşa). `joinableFrom`/`joinableUntil` — `paymentStatus !== "PAID"` iken HER ZAMAN `null`
- * (§9.7.6 madde 4 — ödenmemiş görüşme "katılınabilir" GÖRÜNMEZ).
+ * (§9.7.6 madde 4 — ödenmemiş görüşme "katılınabilir" GÖRÜNMEZ). `hasHealthDataAccess` çağıran
+ * tarafça (`canAccessBookingHealthData`) ÖNCEDEN hesaplanıp geçirilir — [DPI] §2.7.
  */
-export function toAppointmentBookingDto(booking: AppointmentBookingWithRelations): AppointmentBookingDto {
+export function toAppointmentBookingDto(booking: AppointmentBookingWithRelations, hasHealthDataAccess: boolean): AppointmentBookingDto {
   const { joinableFrom, joinableUntil } = getBookingJoinWindow(booking.appointments, booking.paymentStatus);
   return {
     id: booking.id,
@@ -1683,6 +1735,7 @@ export function toAppointmentBookingDto(booking: AppointmentBookingWithRelations
     patientUserId: booking.patientUserId,
     patientName: booking.patientName,
     patientEmail: booking.patientEmail,
+    identity: toBookingIdentitySummaryDto(booking, hasHealthDataAccess),
     slotCount: booking.slotCount,
     unitPriceCents: booking.unitPriceCents,
     subtotalCents: booking.subtotalCents,

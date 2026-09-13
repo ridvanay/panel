@@ -53,7 +53,9 @@ import {
   assertBookingPatientOnlyAccess,
   assertBookingPatientOrAdminAccess,
   assertBookingViewAccess,
+  canAccessBookingHealthData,
 } from "../../lib/telehealth-access";
+import { validateBookingIdentityInput, encryptIdentityNumber, hashIdentityNumber, maskIdentityNumber } from "../../lib/identity";
 import {
   AccessTokenQuerySchema,
   AppointmentDocumentIdParamSchema,
@@ -339,7 +341,13 @@ export async function telehealthRoutes(app: FastifyInstance) {
       schema: { body: CreateBookingRequestSchema, response: { 201: ApiSuccessSchema(CreateBookingResultSchema) } },
     },
     async (request, reply) => {
-      const { doctorSlug, slots, patientName, patientEmail, consentVersion } = request.body;
+      const { doctorSlug, slots, patientName, patientEmail, identity, consentVersion } = request.body;
+
+      // [DPI] §2.4/§2.6 (bağlayıcı) — derin kimlik denetimi (TCKN checksum/pasaport biçimi/18
+      // yaş sınırı) `createBooking()` ÇAĞRILMADAN ÖNCE yapılır: geçersiz kimlik → `422`, hiçbir
+      // slot TUTULMAZ (`SLOT_TAKEN` ile AYNI "ya hep ya hiç" disiplini).
+      const validatedIdentity = validateBookingIdentityInput(identity);
+      const identityCapturedAt = new Date();
 
       const result = await createBooking(app, {
         doctorSlug,
@@ -348,6 +356,15 @@ export async function telehealthRoutes(app: FastifyInstance) {
         patientEmail,
         patientUserId: request.user?.id ?? null,
         consentVersion,
+        identity: {
+          citizenshipType: validatedIdentity.citizenshipType,
+          countryCode: validatedIdentity.countryCode,
+          identityNumberCiphertext: encryptIdentityNumber(validatedIdentity.normalizedNumber),
+          identityNumberHash: hashIdentityNumber(validatedIdentity.citizenshipType, validatedIdentity.countryCode, validatedIdentity.normalizedNumber),
+          identityNumberMasked: maskIdentityNumber(validatedIdentity.citizenshipType, validatedIdentity.normalizedNumber),
+          patientBirthDate: validatedIdentity.birthDate,
+          identityCapturedAt,
+        },
       });
 
       // [TCT] §9.7.1 madde 6 (bağlayıcı) — yapılandırılmamışken booking yine `201` döner;
@@ -394,7 +411,11 @@ export async function telehealthRoutes(app: FastifyInstance) {
 
       assertBookingViewAccess(booking, { user: request.user, providedToken: request.query.t });
 
-      return reply.send(ok(toAppointmentBookingDto(booking)));
+      // [DPI] §2.7 — görüntüleme eşiği (`assertBookingViewAccess`, MANAGER DAHİL) ile sağlık
+      // verisi eşiği (`canAccessBookingHealthData`, MANAGER HARİÇ) FARKLIDIR: booking'in kendisi
+      // MANAGER'a görünür ama `identity` alanı `null` döner.
+      const hasHealthDataAccess = canAccessBookingHealthData(booking, { user: request.user, providedToken: request.query.t });
+      return reply.send(ok(toAppointmentBookingDto(booking, hasHealthDataAccess)));
     }
   );
 
@@ -444,7 +465,8 @@ export async function telehealthRoutes(app: FastifyInstance) {
         where: { id: booking.id },
         include: WITH_BOOKING_RELATIONS,
       });
-      return reply.send(ok(toAppointmentBookingDto(updated)));
+      const hasHealthDataAccess = canAccessBookingHealthData(updated, { user: request.user, providedToken: request.query.t });
+      return reply.send(ok(toAppointmentBookingDto(updated, hasHealthDataAccess)));
     }
   );
 

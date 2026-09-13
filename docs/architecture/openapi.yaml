@@ -615,6 +615,116 @@ tags:
       kayıt oturumu vardır (`ConsultationRecording.appointmentId` unique);
       tamamlanmış/başarısız bir kaydın üzerine ikincisi başlatılamaz
       (**`409 RECORDING_ALREADY_EXISTS`**).
+
+
+      ---
+
+
+      ### TUR 4 — Kurumsal hekim profili, hasta kimlik bilgisi ve doktor konsolu
+
+
+      Kaynak: `.claude/architect-scope-doctor-portfolio-identity-console.md`
+      (bundan sonra **[DPI]**, BAĞLAYICI). Bu tur yukarıdaki hiçbir kararı geri
+      almaz; üç ekseni ekler.
+
+
+      1. **Hekim özgeçmişi (`DoctorProfile`).** `bio` DEĞİŞMEZ ve **kısa özet**
+      olarak kalır (doktor kartı, liste, meta description, demo şablonunun
+      `REQUIRED_DEMO_DOCTOR_BIO_SENTENCE` `startsWith` garantisi buna
+      bağlıdır — yeniden amaçlandırılması bu garantiyi kırardı). Uzun biyografi
+      **`aboutHtml`** adıyla AYRI ve NULLABLE eklenir; `contentHtml`/`bodyHtml`
+      adlandırmasıyla aynı ailedendir ve **yazma yolunda `lib/html-sanitize.ts`
+      ZORUNLUDUR** ("tek temizleme yolu" ilkesi). **`experienceYears` bir KOLON
+      DEĞİLDİR:** yılda bir sessizce yanlışa dönen bir sayı saklanmaz —
+      `practiceStartYear` (4 haneli yıl) saklanır, `experienceYears` yanıtta
+      TÜRETİLİR (slot üretiminin `DoctorAvailability`'den türetilmesiyle AYNI
+      disiplin). `cvData` adı **REDDEDİLDİ** (şemadaki hiçbir `Json` kolonu
+      "Data" soneki taşımaz) → **`cvEntries`** ve **`publications`**, ikisi de
+      `Json @default("[]")`. **Bu iki JSON'un İÇİNDE HTML YASAKTIR** (düz
+      metin); ikinci bir sanitizasyon yolu açılmaz.
+
+
+      2. **Hasta kimlik bilgisi.** **`Patient` tablosu AÇILMAZ** (§3.5'in
+      "yeni tablo icat etme" reddi aynen geçerli). Kimlik alanları **YALNIZCA
+      `AppointmentBooking`'e** yazılır; `Appointment`'a **KOPYALANMAZ** —
+      `patientName`/`patientEmail` snapshot ikilisinden BİLİNÇLİ bir sapmadır
+      ve gerekçesi veri minimizasyonudur (bir kimlik numarasının ikinci bir
+      kopyası, ikinci bir sızıntı yüzeyidir; `Appointment.bookingId` join'i
+      yeterlidir). Kimlik, ödemeden ÖNCE ve **`POST /appointments/bookings`
+      gövdesinin İÇİNDE** toplanır (`identity` nesnesi, ZORUNLU) — ayrı bir
+      "önce booking aç, sonra kimlik ekle" adımı **REDDEDİLDİ**: kimliksiz bir
+      booking durumu, yeni bir kapı (`checkout` önünde `IDENTITY_REQUIRED`) ve
+      yeni bir süpürücü borcu üretirdi. Intake/belgenin ayrı uçta olması bu
+      kararla ÇELİŞMEZ: onlar **opsiyoneldir ve ayrı açık rıza ister**, kimlik
+      ise her rezervasyonun zorunlu parçasıdır.
+
+
+      **Saklama biçimi:** numara **AES-256-GCM şifreli**
+      (`identityNumberCiphertext`, `lib/crypto.ts::encryptSecret` —
+      `AppointmentIntake.noteCiphertext` ile BİREBİR aynı disiplin ve
+      `iv:authTag:ciphertext` hex formatı). Tekilleştirme/arama için
+      **`identityNumberHash`** tutulur ama **`lib/tokens.ts::hashToken` (çıplak
+      SHA-256) BU ALAN İÇİN YASAKTIR**: T.C. Kimlik No uzayı ~10^9'dur ve
+      çıplak SHA-256 saniyeler içinde tersine çevrilir. Hash **HMAC-SHA-256**
+      ile, `ENCRYPTION_KEY`'den `crypto.hkdfSync` ile TÜRETİLMİŞ ayrı bir alt
+      anahtarla üretilir (`lib/identity.ts`). Doğum tarihi **takvim
+      günüdür, bir AN değildir** → `DateTime @db.Date`, kontratta `format:
+      date` (`YYYY-MM-DD`); `date-time` KULLANILMAZ.
+
+
+      **Maskeleme:** liste/detay DTO'ları **ASLA çözülmüş numara taşımaz**;
+      `AppointmentBooking.identity.maskedNumber` **DENORMALİZE** ve
+      kalıcı yazılır (`ApiKey.keyPrefix`/`last4` emsali) — böylece liste
+      yanıtları hiç deşifre çağrısı yapmaz. Açık değer YALNIZCA
+      `GET /appointments/bookings/{bookingId}/identity` ucunda, §9.7.5'in
+      DAR eşiğiyle (`assertBookingHealthDataAccess`: hasta + o booking'in
+      doktoru + `ADMIN`; `MANAGER`/`EDITOR`/diğer doktorlar → **`404`**) ve
+      `logAudit("telehealth.identity.accessed")` ile döner. Aynı nedenle
+      `identity` nesnesi, bu eşiği geçemeyen aktörler için (**`MANAGER` dahil**)
+      **`null`** döner.
+
+
+      **"Doğrulama" iddiası (bağlayıcı dil kuralı):** yapılan iş NVİ/KPS
+      sorgusu DEĞİL, **algoritmik format denetimidir**. Bu yüzden alan adı
+      `identityVerifiedAt` DEĞİL **`identityCapturedAt`**'tir ve hiçbir
+      DTO/UI/e-posta metninde "kimlik doğrulandı" / "identity verified"
+      İFADESİ KULLANILMAZ (`DoctorProfile.isVerified` rozeti ve kayıtlar için
+      "uçtan uca şifreli demeyin" kuralıyla AYNI disiplin). Gerçek doğrulama
+      backlog: `feature/telehealth-kps-identity-verification`.
+
+
+      **18 yaş sınırı:** `birthDate`'e göre 18 yaşından küçük hasta
+      **`422 IDENTITY_MINOR_NOT_SUPPORTED`** ile REDDEDİLİR — veli/vasi rızası
+      akışı bu turun kapsamında DEĞİLDİR (backlog:
+      `feature/telehealth-guardian-consent`). Kimlik için **AYRI bir rıza
+      kolonu AÇILMAZ**; mevcut `consentAt`/`consentVersion` kullanılır, ancak
+      aydınlatma metni sürümü compliance-agent tarafından YÜKSELTİLİR.
+
+
+      **Geriye dönük backfill YOKTUR.** Bu turdan ÖNCE oluşmuş booking'lerde
+      `identity` **`null`**'dır ve doktor konsolu bunu "Kimlik bilgisi alınmadı"
+      olarak DÜRÜSTÇE gösterir; eski/deprecated `POST /appointments` kimlik
+      TOPLAMAZ ve ödeme yolu kimlik varlığına göre KAPATILMAZ.
+
+
+      3. **Doktor konsolu.** Metrik kartları için **yeni bir toplama ucu
+      GEREKLİDİR** — `GET /doctor/bookings` imleç tabanlı sayfalıdır ve
+      "Toplam Hasta" TÜM satırlar üzerinde `DISTINCT` ister; istemcide
+      hesaplanamaz. Uç: **`GET /doctor/overview`**
+      (`/admin/telehealth/analytics/overview` adlandırmasıyla aynı aile,
+      `NOT_A_DOCTOR`/`TWO_FACTOR_REQUIRED` kapıları `GET /doctor/me` ile AYNI).
+      "Bugün" **doktorun kendi `timeZone`'unun DUVAR SAATİNDE** hesaplanır
+      (`lib/timezone.ts`) — istemci tarihi KABUL EDİLMEZ. "Toplam Hasta" =
+      `paymentStatus=PAID` booking'lerde `DISTINCT identityNumberHash`, kimliği
+      olmayan eski satırlarda `patientUserId` → `lower(patientEmail)` sırasıyla
+      düşülen anahtar. **"Bekleyen Tıbbi Belgeler" için `AppointmentDocument`'a
+      `reviewedAt` GİBİ BİR İNCELEME DURUMU EKLENMEZ** (tıbbi inceleme iş akışı
+      ve sorumluluğu ima eder); "bekleyen" = **henüz tamamlanmamış
+      (`SCHEDULED`/`IN_PROGRESS`) randevuya bağlı, silinmemiş belge** —
+      TÜRETİLMİŞ bir sayıdır ve UI bu tanımı ipucu metninde AÇIKÇA yazar.
+      Durum filtreli kart listesi için `GET /doctor/bookings`'e **`scope`**
+      (`all|today|upcoming|completed`) eklenir; `from`/`to` ile BİRLİKTE
+      gönderilirse **`422`** (iki farklı zaman ekseni sessizce birleştirilmez).
   - name: Localization
     description: >
       Çoklu dil yapılandırması (`/locales`, `/admin/locales`) — bkz. ARCHITECTURE.md
@@ -7319,6 +7429,21 @@ paths:
 
         Hız sınırı **5 istek/dakika**. `Authorization: Bearer` VARSA
         `patientUserId` dolar (opsiyonel-auth deseni).
+
+
+        **[DPI] TUR 4 — kimlik adımı.** `identity` artık **ZORUNLU** gövde alanıdır:
+        slot seçimi → **kimlik adımı** → booking → Stripe Checkout. Kimlik, booking
+        satırıyla **AYNI transaction'da** yazılır (`identityNumberCiphertext`
+        AES-256-GCM, `identityNumberHash` HMAC-SHA-256, `identityNumberMasked`
+        denormalize, `patientBirthDate` `@db.Date`, `identityCapturedAt = now()`).
+        Bu yüzden "kimliksiz booking" durumu YOKTUR ve `checkout-session` ucuna
+        yeni bir kapı EKLENMEZ. Geçersiz kimlik `422`'dir ve **hiçbir slot
+        tutulmaz** (`SLOT_TAKEN` ile aynı "ya hep ya hiç" disiplini).
+
+
+        Kimlik numarası **istek log'una, hata gövdesine ve denetim metadata'sına
+        ASLA yazılmaz**; hız sınırı bu uçta ayrıca bir kimlik-numarası deneme
+        yüzeyini de sınırlar.
       requestBody:
         required: true
         content:
@@ -7340,7 +7465,14 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
-        "422": { $ref: "#/components/responses/ValidationError" }
+        "422":
+          description: >
+            Geçersiz slot/gövde (`error.code: VALIDATION_ERROR`) **veya** 18 yaş altı
+            hasta (`error.code: IDENTITY_MINOR_NOT_SUPPORTED`, [DPI]). Hata gövdesi
+            kimlik numarasını GERİ YANSITMAZ.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /appointments/bookings/{bookingId}:
@@ -7590,6 +7722,130 @@ paths:
         "204": { description: Silindi }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /appointments/bookings/{bookingId}/consultation-note:
+    parameters:
+      - $ref: "#/components/parameters/BookingId"
+      - $ref: "#/components/parameters/AppointmentAccessToken"
+    get:
+      tags: [TeleHealth]
+      security: []
+      summary: Doktorun epikriz/konsültasyon notunu oku (şifre çözülmüş HTML)
+      description: >
+        (Kontrat borcu kapatıldı — uç `telehealth.routes.ts`'te zaten YAŞIYORDU,
+        burada belgelenmemişti.) Yetki §9.7.5 ile **BİREBİR AYNI**
+        (`assertBookingHealthDataAccess`): hasta + o booking'in doktoru + `ADMIN`;
+        `MANAGER`/`EDITOR`/diğer doktorlar → **`404`**.
+
+
+        Not `POST /appointments/{id}/complete` ile **booking'in İLK randevusuna**
+        (`appointments[0]`, `startsAt asc` — deterministik) AES-256-GCM şifreli
+        yazılır; bu uç onu çözer. **Not YOKSA `404` DEĞİL, `200` +
+        `{ html: null, updatedAt: null }` döner** (seansın henüz tamamlanmamış
+        olması normal bir durumdur). Yeniden sanitize EDİLMEZ (temizlik yazma
+        anında yapıldı — tek temizleme yolu). Yalnızca not GERÇEKTEN varsa
+        `logAudit("telehealth.consultation_note.accessed")` yazılır; yanıt
+        `Cache-Control: no-store` taşır.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/ConsultationNote" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /appointments/bookings/{bookingId}/identity:
+    parameters:
+      - $ref: "#/components/parameters/BookingId"
+      - $ref: "#/components/parameters/AppointmentAccessToken"
+    get:
+      tags: [TeleHealth]
+      security: []
+      summary: Hastanın kimlik bilgisini açık olarak oku (denetim kaydı ZORUNLU)
+      description: >
+        [DPI] — **çözülmüş kimlik numarasının döndüğü TEK uç** (`GET .../intake`
+        emsali). Yetki `assertBookingHealthDataAccess`: hasta (oturum veya `?t=`),
+        **o** booking'in doktoru, `ADMIN`. **`MANAGER`/`EDITOR`/diğer doktorlar →
+        `404`** (varlık sızdırılmaz).
+
+
+        Her çağrı `logAudit("telehealth.identity.accessed")` yazar; **audit
+        `metadata`'sına kimlik numarası/maskesi ASLA yazılmaz** — yalnızca
+        `bookingId`, aktör ve IP (`telehealth.recording.accessed` ile AYNI kural).
+        Yanıt `Cache-Control: no-store` taşır.
+
+
+        Booking'de kimlik hiç yoksa (bu turdan önceki satırlar) → **`404`**;
+        istemci bunu `AppointmentBooking.identity === null` ile zaten bilir ve
+        düğmeyi göstermez.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/BookingIdentity" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [TeleHealth]
+      security: []
+      summary: Kimlik bilgisini DÜZELT (yalnızca hasta, yalnızca ödeme öncesi)
+      description: >
+        [DPI] — yanlış girilmiş bir kimlik numarası/doğum tarihi tıbbi kaydı kalıcı
+        olarak bozar; bu yüzden **dar bir düzeltme penceresi** vardır.
+
+
+        Yetki `assertBookingPatientOnlyAccess` (`PUT .../intake` İLE AYNI eşik):
+        **yalnızca hasta**. Doktor/`ADMIN` bir hastanın kimliğini **YAZAMAZ**
+        (okuyabilir) — §9.7.10'un "doktor hasta verisi oluşturamaz" kuralı aynen
+        geçerlidir.
+
+
+        **Yalnızca `paymentStatus = PENDING` iken açıktır**; ödenmiş/iptal olmuş
+        booking'de **`409 IDENTITY_LOCKED`** (ödenmiş bir randevunun kimliği bir
+        SNAPSHOT'tır, `Order` satırlarının donması ile AYNI ilke). Düzeltme
+        `logAudit("telehealth.identity.updated")` yazar; metadata'ya **eski/yeni
+        numara YAZILMAZ**, yalnızca hangi alanların değiştiği (`fields: [...]`).
+
+
+        Doğrulama kuralları `POST /appointments/bookings` ile BİREBİR AYNIDIR
+        (tek Zod şeması, `BookingIdentityInput`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BookingIdentityInput" }
+      responses:
+        "200":
+          description: Güncellendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/AppointmentBooking" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "Ödenmiş/iptal edilmiş booking (`error.code: IDENTITY_LOCKED`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422":
+          description: >
+            Geçersiz kimlik (`error.code: VALIDATION_ERROR`) veya 18 yaş altı
+            (`error.code: IDENTITY_MINOR_NOT_SUPPORTED`). **Hata gövdesi girilen
+            numarayı GERİ YANSITMAZ.**
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+
   /appointments/bookings/{bookingId}/documents:
     parameters:
       - $ref: "#/components/parameters/BookingId"
@@ -7755,6 +8011,127 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
 
+  /doctor/profile:
+    put:
+      tags: [TeleHealth]
+      summary: Doktorun KENDİ kurumsal profilini düzenlemesi (dar yazma yüzeyi)
+      description: >
+        [DPI] — doktor panelinden özgeçmiş/yayın/biyografi düzenleme.
+        `doctorId` **PARAMETRE OLARAK ALINMAZ** (`GET /doctor/bookings` ile AYNI IDOR
+        disiplini): hedef DAİMA `DoctorProfile.userId === user.id`. Kapılar
+        `GET /doctor/me` ile AYNI (`NOT_A_DOCTOR` → sonra `TWO_FACTOR_REQUIRED`).
+
+
+        **Yazılabilir alan kümesi `UpdateDoctorSelfProfileRequest` ile SINIRLIDIR ve
+        `UpdateDoctorRequest`'ten TÜRETİLMEZ** — unvan, doğrulama rozeti, fiyat,
+        seans süresi, saat dilimi, slug ve avatar doktora KAPALIDIR (gerekçeler
+        şema açıklamasında). Kapsam dışı bir alan gönderilirse **`422`** (sessiz
+        yok sayma YOK).
+
+
+        **Yan etkiler (bağlayıcı):** (1) `aboutHtml` `lib/html-sanitize.ts`'ten
+        GEÇER; (2) `cvEntries`/`publications` Zod ile doğrulanır ve **TAMAMEN**
+        değiştirilir (kısmi birleştirme YOK); (3)
+        `logAudit("telehealth.doctor.profile_updated", { fields: [...] })` —
+        metadata'ya İÇERİK yazılmaz, yalnızca alan adları; (4) public doktor
+        sayfası ISR'dir → yazma sonrası `lib/revalidate.ts` ile `/doctors/{slug}`
+        ve `/doctors` **tetiklenir** (aksi hâlde değişiklik 60 sn'ye kadar
+        görünmez; bu beklenen bayatlıktır, hata değildir).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateDoctorSelfProfileRequest" }
+      responses:
+        "200":
+          description: Güncellendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/DoctorPortalProfile" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: "`error.code: NOT_A_DOCTOR` veya `TWO_FACTOR_REQUIRED`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /doctor/overview:
+    get:
+      tags: [TeleHealth]
+      summary: Doktor konsolu metrik kartları (toplama ucu)
+      description: >
+        [DPI] — `/doctor` konsolundaki 4 kartın (Bugünkü Seanslar, Tamamlanan
+        Konsültasyonlar, Toplam Hasta, Bekleyen Tıbbi Belgeler) TEK kaynağı.
+
+
+        **Neden yeni bir uç?** `GET /doctor/bookings` imleç tabanlı sayfalıdır;
+        "Toplam Hasta" TÜM satırlarda `DISTINCT` ister, "Bugün" ise doktorun saat
+        diliminde gün sınırı hesabı ister. İkisi de istemcide doğru yapılamaz
+        (`/admin/telehealth/analytics/overview`'un var olma gerekçesiyle AYNI).
+
+
+        `doctorId` parametresi **YOKTUR** (IDOR yüzeyi). Kapılar `GET /doctor/me`
+        ile AYNI. Salt-okunur ve hasta PII'si taşımadığı için denetim kaydı
+        GEREKMEZ (`/doctor/earnings` ile aynı değerlendirme); yanıt
+        `Cache-Control: no-store` taşır.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/DoctorConsoleOverview" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: "`error.code: NOT_A_DOCTOR` veya `TWO_FACTOR_REQUIRED`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+
+  /doctor/earnings:
+    get:
+      tags: [TeleHealth]
+      summary: Doktorun kendi kazanç özeti + tamamlanan seans dökümü
+      description: >
+        (Kontrat borcu kapatıldı — uç `telehealth.portal.routes.ts`'te zaten
+        YAŞIYORDU, burada belgelenmemişti.) `doctorId` parametresi **YOKTUR**;
+        kapılar `GET /doctor/me` ile AYNI.
+
+
+        `summary` **sayfalama UYGULANMADAN** tüm `status=COMPLETED` randevular
+        üzerinden hesaplanır ve satır bazında YUVARLANMIŞ değerlerin toplamıdır
+        (`sessions.items` ile tutarsız görünmemesi için —
+        `lib/commission.ts::splitCommission`, `/admin/telehealth/analytics/overview`
+        ile PAYLAŞILAN yardımcı). Komisyon oranı
+        `env.PLATFORM_COMMISSION_RATE_PERCENT`'tir; doktor bazında override YOKTUR.
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/DoctorEarningsResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: "`error.code: NOT_A_DOCTOR` veya `TWO_FACTOR_REQUIRED`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+
   /doctor/bookings:
     get:
       tags: [TeleHealth]
@@ -7783,6 +8160,24 @@ paths:
           in: query
           required: false
           schema: { $ref: "#/components/schemas/BookingPaymentStatus" }
+        - name: scope
+          in: query
+          required: false
+          description: >
+            [DPI] — konsolun durum filtresi (Tümü / Bugün / Gelecek / Tamamlanan).
+            **`from`/`to` ile BİRLİKTE gönderilemez → `422`** (iki zaman ekseni
+            sessizce birleştirilmez).
+
+
+            Tanımlar (hepsi **doktorun `timeZone`'unda**, sunucuda hesaplanır):
+            `today` = bugüne düşen `startsAt`'i olan booking; `upcoming` =
+            `startsAt > now` ve `SCHEDULED`/`IN_PROGRESS` randevusu olan; `completed`
+            = en az bir `COMPLETED` randevusu olan. Üçü de `PENDING_PAYMENT`
+            randevuları SAYMAZ.
+          schema:
+            type: string
+            enum: [all, today, upcoming, completed]
+            default: all
       responses:
         "200":
           description: OK
@@ -7801,6 +8196,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
 
   /patient/bookings:
     get:
@@ -16158,7 +16554,8 @@ components:
         bkz. karar dokümanı §3.3).
       required:
         [
-          id, userId, specialtyId, specialty, title, fullName, slug, bio, languages,
+          id, userId, specialtyId, specialty, title, subSpecialty, fullName, slug, bio,
+          aboutHtml, practiceStartYear, experienceYears, cvEntries, publications, languages,
           timeZone, sessionDurationMin, sessionPriceCents, currency, avatarMediaId,
           avatarMedia, isVerified, verifiedAt, isActive, order, availability,
           createdAt, updatedAt,
@@ -16171,9 +16568,61 @@ components:
           allOf: [{ $ref: "#/components/schemas/Specialty" }]
           nullable: true
         title: { type: string, description: "\"Dr.\" / \"Prof. Dr.\" / \"Uzm. Dr.\" — serbest metin, enum DEĞİL." }
+        subSpecialty:
+          type: string
+          nullable: true
+          maxLength: 120
+          description: >
+            [DPI] — alt branş / bağlı merkez ("Böbrek Nakli Merkezi", "Girişimsel
+            Kardiyoloji"). `title` ile AYNI gerekçeyle serbest metin, **enum DEĞİL**.
+            `Specialty` İLİŞKİSİNİN YERİNE GEÇMEZ: `specialtyId` filtrelenebilir
+            taksonomidir, bu alan yalnızca sunum metnidir (filtreye/aramaya girmez).
         fullName: { type: string }
         slug: { type: string }
-        bio: { type: string }
+        bio:
+          type: string
+          description: >
+            **KISA özet** — doktor kartı, liste ve meta description kaynağı. DEĞİŞMEDİ
+            ve amacı DEĞİŞTİRİLMEDİ (demo şablonunun zorunlu uyarı cümlesi
+            `startsWith` garantisi buna bağlıdır). Uzun biyografi `aboutHtml`'dir.
+        aboutHtml:
+          type: string
+          nullable: true
+          maxLength: 20000
+          description: >
+            [DPI] — "Doktor Hakkında" sekmesinin uzun biyografisi (zengin metin).
+            Yazma yolunda **`lib/html-sanitize.ts`'ten GEÇMEK ZORUNDADIR**
+            (`contentHtml`/`bodyHtml` ile AYNI tek temizleme yolu). Okuma yolunda
+            yeniden sanitize EDİLMEZ.
+        practiceStartYear:
+          type: integer
+          nullable: true
+          minimum: 1950
+          description: >
+            Mesleğe başlama YILI (4 hane, üst sınır = içinde bulunulan yıl).
+            **SAKLANAN alan budur.**
+        experienceYears:
+          type: integer
+          nullable: true
+          description: >
+            **TÜRETİLMİŞ, salt-okunur** (`currentYear - practiceStartYear`, negatifse
+            `0`). Kolon olarak SAKLANMAZ — saklanan bir "deneyim yılı" her 1 Ocak'ta
+            sessizce yanlışa döner (slotların `DoctorAvailability`'den türetilmesiyle
+            AYNI disiplin). İstekte gönderilirse **422**.
+        cvEntries:
+          type: array
+          maxItems: 60
+          items: { $ref: "#/components/schemas/DoctorCvEntry" }
+          description: >
+            Özgeçmiş zaman çizelgesi (`Json @default("[]")`). Dizi SIRASI doktorun
+            kendi sırasıdır ve sunucu tarafından YENİDEN SIRALANMAZ; gruplama/
+            sıralama sunum kararıdır (frontend `kind` bazında gruplar, grup içinde
+            `startYear DESC` sıralar).
+        publications:
+          type: array
+          maxItems: 200
+          items: { $ref: "#/components/schemas/DoctorPublication" }
+          description: "Bilimsel yayınlar (`Json @default(\"[]\")`). `cvEntries` ile AYNI sıra disiplini."
         languages:
           type: array
           items: { type: string }
@@ -16198,6 +16647,60 @@ components:
           items: { $ref: "#/components/schemas/DoctorAvailabilityRule" }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+
+    DoctorCvEntry:
+      type: object
+      description: >
+        [DPI] — `DoctorProfile.cvEntries` öğesi (Prisma `Json`, **Zod ile yazma anında
+        doğrulanır** — `PageBlockListSchema`/`SlideLayersSchema` disiplini). `kind` bir
+        **Prisma enum'u DEĞİLDİR** (JSON'un içinde enum yaşamaz): Zod literal union'dır,
+        bu yüzden yeni değer eklemek `ALTER TYPE` borcu DOĞURMAZ.
+
+
+        **Hiçbir alan HTML KABUL ETMEZ** — düz metindir. Zengin metin yalnızca
+        `aboutHtml`'de yaşar; ikinci bir sanitizasyon yolu AÇILMAZ.
+      required: [kind, title, organization, startYear]
+      properties:
+        kind:
+          type: string
+          enum: [EDUCATION, EXPERIENCE, CERTIFICATE, MEMBERSHIP, AWARD]
+          description: "Sekmedeki zaman çizelgesi grubu."
+        title: { type: string, minLength: 1, maxLength: 160, description: "\"Tıp Doktoru\", \"Uzmanlık Eğitimi\", \"Başhekim Yardımcısı\"." }
+        organization: { type: string, minLength: 1, maxLength: 160, description: "Kurum/üniversite/hastane adı." }
+        location: { type: string, nullable: true, maxLength: 120 }
+        startYear: { type: integer, minimum: 1950 }
+        endYear:
+          type: integer
+          nullable: true
+          minimum: 1950
+          description: "`null` = **hâlen devam ediyor** (UI \"… – Devam ediyor\"). `startYear`'dan küçük olamaz → 422."
+        description: { type: string, nullable: true, maxLength: 500, description: "DÜZ METİN. HTML gönderilirse 422 (kaçırılmaz, sessizce temizlenmez)." }
+
+    DoctorPublication:
+      type: object
+      description: >
+        [DPI] — `DoctorProfile.publications` öğesi. `DoctorCvEntry` ile AYNI kurallar
+        (Zod literal union, HTML YASAK).
+
+
+        **`url`/`doi` için bağlayıcı kural:** yalnızca `https://` şeması kabul edilir
+        (`http:`/`javascript:`/`data:` → 422) ve frontend bu bağlantıları
+        `rel="noopener noreferrer nofollow"` + `target="_blank"` ile render eder.
+      required: [kind, title, venue, year]
+      properties:
+        kind:
+          type: string
+          enum: [INTERNATIONAL_ARTICLE, NATIONAL_ARTICLE, PROCEEDING, BOOK_CHAPTER, OTHER]
+          description: >
+            "Uluslararası hakemli dergi" / "ulusal hakemli dergi" / "bildiri" /
+            "kitap bölümü" ayrımı. **Hakemlilik bir İDDİADIR** — UI bu etiketleri
+            doktorun BEYANI olarak sunar, platform doğrulaması olarak DEĞİL.
+        title: { type: string, minLength: 1, maxLength: 300 }
+        venue: { type: string, minLength: 1, maxLength: 200, description: "Dergi/kongre/kitap adı." }
+        authors: { type: string, nullable: true, maxLength: 300, description: "Serbest metin yazar dizisi (\"Aydemir E., Bennett L. ve ark.\")." }
+        year: { type: integer, minimum: 1950 }
+        doi: { type: string, nullable: true, maxLength: 120 }
+        url: { type: string, nullable: true, format: uri, maxLength: 500 }
 
     AvailabilitySlot:
       type: object
@@ -16313,6 +16816,131 @@ components:
     # §9.7 TADİLAT TURU 2 — booking (çoklu slot) + ödeme + sağlık verisi + portal
     # ------------------------------------------------------------------------
 
+    # ------------------------------------------------------------------------
+    # [DPI] TUR 4 — hasta kimlik bilgisi (AppointmentBooking üzerinde, PII)
+    # ------------------------------------------------------------------------
+
+    CitizenshipType:
+      type: string
+      description: >
+        [DPI] — Prisma enum `CitizenshipType`. Değer SIRASI bağlayıcıdır ve
+        **TÜM değerler İLK SEFERDE** tanımlanır (`ALTER TYPE ... ADD VALUE` geri
+        alınamaz — `AppointmentStatus` yorumundaki aynı gerekçe).
+
+
+        `FOREIGN_RESIDENT` (Türkiye'de ikamet eden, 99 ile başlayan **Yabancı Kimlik
+        Numarası** taşıyan yabancı uyruklu) **bu turda hiçbir kod tarafından
+        YAZILMAZ** — tıpkı `BookingPaymentStatus.REFUNDED` gibi ileride migration
+        borcu doğmasın diye şimdiden tanımlanır. UI bu turda yalnızca `TR` ve
+        `FOREIGN` sunar.
+      enum: [TR, FOREIGN, FOREIGN_RESIDENT]
+
+    BookingIdentityInput:
+      type: object
+      description: >
+        [DPI] — `POST /appointments/bookings` ve `PUT /appointments/bookings/{bookingId}/identity`
+        gövdesindeki kimlik nesnesi. **Sunucu doğrulaması (bağlayıcı):**
+
+
+        1. `citizenshipType: TR` → `identityNumber` **tam 11 ASCII rakam**, ilk hane
+        `0` OLAMAZ ve **T.C. Kimlik No sağlama algoritmasını** geçmelidir:
+        `d10 = ((d1+d3+d5+d7+d9) * 7 - (d2+d4+d6+d8)) mod 10` **ve**
+        `d11 = (d1+…+d10) mod 10`. Ayrıca ilk 10 hanesi AYNI olan değerler
+        (`/^(\d)\1{9}\d$/`, ör. `11111111110`) algoritmayı geçse bile REDDEDİLİR.
+        `countryCode` verilirse `"TR"` olmalıdır (verilmezse `"TR"` yazılır).
+
+
+        2. `citizenshipType: FOREIGN` → `identityNumber` bir **pasaport
+        numarasıdır**: boşluk/tire temizlenip BÜYÜK harfe çevrildikten sonra
+        `^[A-Z0-9]{6,20}$`. Sağlama algoritması UYGULANMAZ (ülkeden ülkeye değişir).
+        `countryCode` **ZORUNLUDUR** ve `"TR"` OLAMAZ (pasaportu VEREN ülkedir;
+        numara yalnızca veren ülke içinde tekildir, bu yüzden hash'e de girer).
+
+
+        3. `birthDate` geçerli bir takvim günü olmalı, gelecekte olamaz ve **18 yaş
+        altı → `422 IDENTITY_MINOR_NOT_SUPPORTED`** (veli/vasi rızası akışı bu turun
+        kapsamı dışındadır). 120 yaştan büyük → `422`.
+
+
+        **Bu doğrulama NVİ/KPS sorgusu DEĞİLDİR** (bkz. TeleHealth tag açıklaması,
+        TUR 4 madde 2) — bu yüzden ayrı bir `POST /identity/validate` ucu da
+        **AÇILMAZ**: algoritma istemcide de sunucuda da aynı saf fonksiyondur
+        (`lib/identity.ts` ↔ frontend kopyası) ve kimlik numarası sorgulanabilir bir
+        ağ ucu hâline getirilmez.
+      required: [citizenshipType, identityNumber, birthDate]
+      properties:
+        citizenshipType: { $ref: "#/components/schemas/CitizenshipType" }
+        identityNumber:
+          type: string
+          minLength: 6
+          maxLength: 20
+          description: >
+            T.C. Kimlik No veya pasaport numarası. **Log'a, hata mesajına, audit
+            `metadata`'sına ve e-postaya ASLA yazılmaz** (`noteCiphertext` ile AYNI
+            disiplin). Doğrulama hatası yanıtı numarayı GERİ YANSITMAZ.
+        countryCode:
+          type: string
+          nullable: true
+          pattern: "^[A-Z]{2}$"
+          description: "ISO 3166-1 alpha-2, BÜYÜK harf. `TR` tipinde opsiyonel (`\"TR\"`), `FOREIGN` tipinde ZORUNLU."
+        birthDate:
+          type: string
+          format: date
+          description: >
+            `YYYY-MM-DD` — **takvim günü**, bir AN değil. DB'de `DateTime @db.Date`;
+            `format: date-time` KULLANILMAZ (saat dilimi kayması hastanın doğum
+            gününü bir gün oynatır). Ayrıştırma DAİMA `new Date("<YYYY-MM-DD>T00:00:00.000Z")`,
+            serileştirme DAİMA `.toISOString().slice(0, 10)` ile yapılır.
+
+    BookingIdentitySummary:
+      type: object
+      description: >
+        [DPI] — `AppointmentBooking.identity`. **Çözülmüş kimlik numarası ASLA burada
+        DÖNMEZ** (`ApiKey` DTO'sunun ham anahtarı taşımamasıyla AYNI disiplin);
+        `maskedNumber` yazma anında DENORMALİZE edilip saklanır, liste yanıtları hiç
+        deşifre çağrısı YAPMAZ.
+
+
+        Bu nesne yalnızca `assertBookingHealthDataAccess` eşiğini geçen aktörler için
+        doldurulur (hasta, o booking'in doktoru, `ADMIN`); **`MANAGER`/`EDITOR`/diğer
+        doktorlar için `null`**'dır — booking'in kendisi onlara görünür olsa bile.
+      required: [citizenshipType, countryCode, maskedNumber, birthYear, capturedAt]
+      properties:
+        citizenshipType: { $ref: "#/components/schemas/CitizenshipType" }
+        countryCode: { type: string, pattern: "^[A-Z]{2}$" }
+        maskedNumber:
+          type: string
+          description: >
+            **Maskeleme kuralı (bağlayıcı, tek yardımcı: `lib/identity.ts::maskIdentityNumber`):**
+            `TR` → ilk 3 hane + 6 yıldız + son 2 hane (`123******89`). `FOREIGN` →
+            ilk 2 + (uzunluk-4) yıldız + son 2. Her iki durumda da **en fazla 5
+            gerçek karakter** açığa çıkar; 6 karakterden kısa girdi TAMAMEN maskelenir.
+        birthYear:
+          type: integer
+          description: "Yaş rozetinin kaynağı. **TAM doğum tarihi bu nesnede DÖNMEZ** — o yalnızca `GET .../identity` ucundadır."
+        capturedAt:
+          type: string
+          format: date-time
+          description: >
+            Kimliğin ALINDIĞI an. **`identityVerifiedAt` DEĞİLDİR** ve "doğrulandı"
+            olarak ETİKETLENEMEZ (yalnızca format denetimi yapılmıştır).
+
+    BookingIdentity:
+      type: object
+      description: >
+        [DPI] — `GET /appointments/bookings/{bookingId}/identity` yanıtı. **Çözülmüş
+        kimlik numarasının döndüğü TEK yerdir** (`AppointmentIntake.note` emsali);
+        her çağrı `logAudit("telehealth.identity.accessed")` yazar ve yanıt
+        `Cache-Control: no-store` taşır.
+      required: [bookingId, citizenshipType, countryCode, identityNumber, birthDate, capturedAt]
+      properties:
+        bookingId: { type: string, format: uuid }
+        citizenshipType: { $ref: "#/components/schemas/CitizenshipType" }
+        countryCode: { type: string, pattern: "^[A-Z]{2}$" }
+        identityNumber: { type: string, description: "Çözülmüş düz metin — YALNIZCA bu uçta." }
+        birthDate: { type: string, format: date }
+        capturedAt: { type: string, format: date-time }
+
     CreateBookingRequest:
       type: object
       description: >
@@ -16327,7 +16955,7 @@ components:
         ayrı ayrı doğrulanır. Şikâyet notu/belge bu gövdede **YOKTUR** — ayrı ve
         opsiyonel `PUT .../intake` + `POST .../documents` uçlarıyla, ayrı açık
         rızayla toplanır (§3.5 + §9.7.5).
-      required: [doctorSlug, slots, patientName, patientEmail, consent]
+      required: [doctorSlug, slots, patientName, patientEmail, identity, consent]
       properties:
         doctorSlug: { type: string }
         slots:
@@ -16341,12 +16969,22 @@ components:
           items: { type: string, format: date-time }
         patientName: { type: string, minLength: 1, maxLength: 120 }
         patientEmail: { type: string, format: email, maxLength: 255 }
+        identity:
+          allOf: [{ $ref: "#/components/schemas/BookingIdentityInput" }]
+          description: >
+            [DPI] — **ZORUNLU.** Slot seçiminden sonra, Stripe Checkout'tan ÖNCE açılan
+            kimlik adımının çıktısı. Ayrı bir uca taşınması REDDEDİLDİ: booking ile
+            AYNI transaction'da yazılır, böylece "kimliksiz booking" diye bir durum
+            HİÇ OLUŞMAZ.
         consent:
           type: boolean
           enum: [true]
           description: >
             Randevu KVKK aydınlatma/açık rıza onay kutusu. **Sağlık verisi rızası
             DEĞİLDİR** — o, `UpsertIntakeRequest.healthDataConsent` ile AYRICA alınır.
+            [DPI] — kimlik bilgisi için AYRI bir rıza kolonu AÇILMAZ; bu onay kimlik
+            işlemeyi de KAPSAR ve `consentVersion` compliance-agent tarafından
+            YÜKSELTİLİR (eski sürümü onaylamış kayıtlar değişmez).
         consentVersion:
           type: string
           description: "Onaylanan metnin sürümü (compliance-agent sürümler). Verilmezse sunucu aktif sürümü yazar."
@@ -16407,9 +17045,9 @@ components:
       required:
         [
           id, bookingNumber, doctorId, doctor, patientUserId, patientName,
-          patientEmail, slotCount, unitPriceCents, subtotalCents, totalCents,
+          patientEmail, identity, slotCount, unitPriceCents, subtotalCents, totalCents,
           currency, paymentStatus, paidAt, expiresAt, appointments,
-          hasIntakeNote, documentCount, createdAt, updatedAt,
+          hasIntakeNote, hasConsultationNote, documentCount, createdAt, updatedAt,
         ]
       properties:
         id: { type: string, format: uuid }
@@ -16419,6 +17057,15 @@ components:
         patientUserId: { type: string, format: uuid, nullable: true }
         patientName: { type: string }
         patientEmail: { type: string, format: email }
+        identity:
+          allOf: [{ $ref: "#/components/schemas/BookingIdentitySummary" }]
+          nullable: true
+          description: >
+            [DPI] — `null` iki AYRI durumu ifade eder ve UI ikisini KARIŞTIRMAMALIDIR:
+            (a) çağıran aktör `assertBookingHealthDataAccess` eşiğini geçmiyor
+            (`MANAGER` dahil), (b) booking bu turdan ÖNCE veya deprecated
+            `POST /appointments` ile oluşmuş, kimlik HİÇ alınmamış. Doktor konsolu
+            (b) için "Kimlik bilgisi alınmadı" rozeti gösterir — **backfill YAPILMAZ**.
         slotCount: { type: integer }
         unitPriceCents: { type: integer }
         subtotalCents: { type: integer }
@@ -16439,6 +17086,12 @@ components:
         hasIntakeNote:
           type: boolean
           description: "Şifreli notun VARLIĞI. Metnin kendisi yalnızca `GET .../intake` ile ve denetim kaydıyla alınır."
+        hasConsultationNote:
+          type: boolean
+          description: >
+            Doktorun epikriz/konsültasyon notunun VARLIĞI (`hasIntakeNote` İLE AYNI
+            desen). İçerik yalnızca
+            `GET /appointments/bookings/{bookingId}/consultation-note` ucunda döner.
         documentCount:
           type: integer
           description: "Silinmemiş belge sayısı. `MANAGER` yalnızca bu sayıyı görebilir, içeriği GÖREMEZ."
@@ -16549,6 +17202,18 @@ components:
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
 
+    ConsultationNote:
+      type: object
+      description: >
+        `GET /appointments/bookings/{bookingId}/consultation-note` yanıtı. Not
+        girilmemişse **iki alan da `null`'dır ve bu bir HATA DEĞİLDİR** (`200`).
+        `html` yazma anında (`POST /appointments/{id}/complete`) sanitize edilmiş,
+        DB'de AES-256-GCM şifreli tutulan içeriğin çözülmüş hâlidir.
+      required: [html, updatedAt]
+      properties:
+        html: { type: string, nullable: true }
+        updatedAt: { type: string, format: date-time, nullable: true }
+
     AppointmentDocument:
       type: object
       description: >
@@ -16586,6 +17251,50 @@ components:
         twoFactorEnabled:
           type: boolean
           description: "`false` ise bu uç zaten `403 TWO_FACTOR_REQUIRED` döner; alan yalnızca istemci tarafı netlik içindir."
+
+    DoctorEarningsSummary:
+      type: object
+      description: >
+        `GET /doctor/earnings` özeti — **sayfalama UYGULANMADAN** tüm tamamlanmış
+        randevular üzerinden, satır bazında yuvarlanmış değerlerin toplamı.
+      required: [grossCents, commissionCents, netCents, currency, commissionRatePercent, completedSessionCount]
+      properties:
+        grossCents: { type: integer }
+        commissionCents: { type: integer }
+        netCents: { type: integer }
+        currency: { type: string, description: "`DoctorProfile.currency` — tek para birimi varsayımı (`sessionPriceCents` ile AYNI desen)." }
+        commissionRatePercent: { type: number, description: "`env.PLATFORM_COMMISSION_RATE_PERCENT` — GLOBAL, doktor bazında override YOK." }
+        completedSessionCount: { type: integer }
+
+    DoctorEarningsSession:
+      type: object
+      description: >
+        `bookingId`, randevu bir `AppointmentBooking`'e bağlı DEĞİLSE (deprecated
+        tekil `POST /appointments` akışından kalma satır) `appointmentId` ile AYNI
+        değere düşer — şema seviyesinde nullable YAPILMAZ (kontrat gereği).
+      required: [bookingId, appointmentId, patientName, startsAt, grossCents, commissionCents, netCents, currency]
+      properties:
+        bookingId: { type: string, format: uuid }
+        appointmentId: { type: string, format: uuid }
+        patientName: { type: string }
+        startsAt: { type: string, format: date-time }
+        grossCents: { type: integer }
+        commissionCents: { type: integer }
+        netCents: { type: integer }
+        currency: { type: string }
+
+    DoctorEarningsResponse:
+      type: object
+      required: [summary, sessions]
+      properties:
+        summary: { $ref: "#/components/schemas/DoctorEarningsSummary" }
+        sessions:
+          type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items: { $ref: "#/components/schemas/DoctorEarningsSession" }
 
     TelehealthOverviewAppointmentCounts:
       type: object
@@ -16713,9 +17422,30 @@ components:
       required: [title, fullName, bio, languages, timeZone, sessionDurationMin, sessionPriceCents]
       properties:
         title: { type: string, minLength: 1, maxLength: 40 }
+        subSpecialty: { type: string, minLength: 1, maxLength: 120, nullable: true }
         fullName: { type: string, minLength: 1, maxLength: 120 }
         slug: { type: string, minLength: 1, maxLength: 80, description: "verilmezse fullName'den slugify edilir" }
-        bio: { type: string, minLength: 1, maxLength: 5000 }
+        bio: { type: string, minLength: 1, maxLength: 5000, description: "KISA özet (kart/liste/meta). Uzun biyografi `aboutHtml`'dir." }
+        aboutHtml:
+          type: string
+          maxLength: 20000
+          nullable: true
+          description: "`lib/html-sanitize.ts`'ten GEÇİRİLİR; temizlik SONRASI boş kalırsa `null` yazılır."
+        practiceStartYear:
+          type: integer
+          minimum: 1950
+          nullable: true
+          description: "Üst sınır = içinde bulunulan yıl (sunucuda `new Date().getUTCFullYear()`), aşımı 422. `experienceYears` GÖNDERİLEMEZ (türetilmiştir) — gönderilirse 422."
+        cvEntries:
+          type: array
+          maxItems: 60
+          items: { $ref: "#/components/schemas/DoctorCvEntry" }
+          description: "TAMAMINI değiştirir (`SetDoctorAvailabilityRequest` disiplini) — kısmi öğe birleştirme YOKTUR."
+        publications:
+          type: array
+          maxItems: 200
+          items: { $ref: "#/components/schemas/DoctorPublication" }
+          description: "TAMAMINI değiştirir."
         languages:
           type: array
           items: { type: string, pattern: "^[a-z]{2}$" }
@@ -16736,6 +17466,110 @@ components:
     UpdateDoctorRequest:
       allOf: [{ $ref: "#/components/schemas/CreateDoctorRequest" }]
       description: "Tüm alanlar OPSİYONELDİR (partial) — yalnızca gönderilenler güncellenir."
+
+    UpdateDoctorSelfProfileRequest:
+      type: object
+      additionalProperties: false
+      description: >
+        [DPI] — `PUT /doctor/profile` gövdesi. **`UpdateDoctorRequest`'in bir alt
+        kümesi DEĞİL, AYRI bir şemadır ve `allOf` ile ONDAN TÜREMEZ:** admin şemasına
+        ileride eklenecek herhangi bir alan (ör. yeni bir fiyat/rozet alanı) sessizce
+        doktorun yazma yüzeyine düşmemelidir.
+
+
+        **Doktorun DEĞİŞTİREMEYECEĞİ alanlar (bağlayıcı):** `title`, `fullName`,
+        `slug`, `specialtyId`, `timeZone`, `sessionDurationMin`, `sessionPriceCents`,
+        `currency`, `avatarMediaId`, `isVerified`, `isActive`, `order`, `userId`.
+        Gerekçeler: `title`/`isVerified` bir **kimlik/yetkinlik iddiasıdır** (kendi
+        kendine "Prof. Dr." olunmaz); fiyat/süre **satılan ürünün tanımıdır**
+        ([EPT] §1.2); `timeZone` tüm slot üretimini etkiler; `slug` canlı URL'i ve
+        sitemap'i kırar; `avatarMediaId` bir `Media` satırı gerektirir ve doktor bir
+        panel kullanıcısı DEĞİLDİR. Bu alanlar `/admin/telehealth/doctors/{doctorId}`
+        ile ADMIN/MANAGER tarafından yönetilmeye DEVAM EDER.
+
+
+        **`additionalProperties: false` bilinçlidir:** yukarıdaki alanlardan biri
+        gönderilirse istek **sessizce yok sayılmaz, `422` ile REDDEDİLİR** (Zod
+        `.strict()`). "Fiyatımı güncelledim ama değişmedi" sınıfı sessiz başarısızlık
+        kabul edilemez.
+      properties:
+        subSpecialty: { type: string, maxLength: 120, nullable: true }
+        bio: { type: string, minLength: 1, maxLength: 5000 }
+        aboutHtml: { type: string, maxLength: 20000, nullable: true }
+        practiceStartYear: { type: integer, minimum: 1950, nullable: true }
+        languages:
+          type: array
+          items: { type: string, pattern: "^[a-z]{2}$" }
+          maxItems: 6
+        cvEntries:
+          type: array
+          maxItems: 60
+          items: { $ref: "#/components/schemas/DoctorCvEntry" }
+        publications:
+          type: array
+          maxItems: 200
+          items: { $ref: "#/components/schemas/DoctorPublication" }
+
+    DoctorConsoleTodayCounts:
+      type: object
+      description: >
+        [DPI] — "Bugün", **doktorun `DoctorProfile.timeZone` DUVAR SAATİNDEKİ** takvim
+        günüdür (`lib/timezone.ts`); istemciden gelen bir tarih/ofset KABUL EDİLMEZ.
+        Sayımlar `Appointment` satırları üzerindedir (booking değil) — bir kart
+        "seans" gösterir.
+      required: [date, total, scheduled, inProgress, completed, cancelled]
+      properties:
+        date: { type: string, format: date, description: "Doktorun saat dilimindeki bugünün tarihi (`YYYY-MM-DD`) — istemci kendi \"bugün\"ünü hesaplamaz." }
+        total: { type: integer, description: "`PENDING_PAYMENT` HARİÇ (ödenmemiş tutma bir seans değildir)." }
+        scheduled: { type: integer }
+        inProgress: { type: integer }
+        completed: { type: integer }
+        cancelled: { type: integer, description: "`CANCELLED` + `NO_SHOW` toplamı (`TelehealthOverviewBookingCounts.failed`'in birleştirme disipliniyle aynı)." }
+
+    DoctorConsoleOverview:
+      type: object
+      description: >
+        [DPI] — `GET /doctor/overview` yanıtı; doktor konsolunun 4 metrik kartının TEK
+        kaynağı. **Para/komisyon alanı BİLİNÇLİ OLARAK YOKTUR** — kazanç
+        `GET /doctor/earnings`'in işidir ve iki uç aynı sayıyı iki farklı tanımla
+        üretmez.
+      required: [timeZone, today, completedConsultationTotal, distinctPatientTotal, pendingDocumentCount, nextAppointment, generatedAt]
+      properties:
+        timeZone: { type: string, description: "Tüm gün sınırlarının yorumlandığı IANA dilimi — UI saat gösterimini de buna göre yapar." }
+        today: { $ref: "#/components/schemas/DoctorConsoleTodayCounts" }
+        completedConsultationTotal:
+          type: integer
+          description: "TÜM zamanlar, `status=COMPLETED` randevu sayısı — `GET /doctor/earnings`'in `completedSessionCount`'u İLE AYNI tanım (tek yardımcı, iki farklı sayım YOK)."
+        distinctPatientTotal:
+          type: integer
+          description: >
+            `paymentStatus=PAID` booking'lerde TEKİL hasta sayısı. Anahtar sırası
+            (bağlayıcı): `identityNumberHash` → yoksa `user:<patientUserId>` → yoksa
+            `email:<lower(patientEmail)>`. Kimlik hash'i bu metriğin İLK gerçek
+            tüketicisidir (kolonun var olma gerekçesi budur). Ödenmemiş/süresi dolmuş
+            tutmalar SAYILMAZ.
+        pendingDocumentCount:
+          type: integer
+          description: >
+            Silinmemiş (`deletedAt: null`), `PAID` booking'e bağlı ve **henüz
+            tamamlanmamış** (`SCHEDULED`/`IN_PROGRESS` randevusu olan) belge sayısı.
+            **`AppointmentDocument`'a inceleme durumu (`reviewedAt` vb.) EKLENMEDİ** —
+            "okundu/onaylandı" bayrağı, uygulamadığımız bir tıbbi inceleme iş akışını
+            ve sorumluluğunu ima eder. UI bu kartın ipucunda tanımı AÇIKÇA yazar.
+        nextAppointment:
+          type: object
+          nullable: true
+          description: "Şu andan sonraki İLK `SCHEDULED`/`IN_PROGRESS` randevu — \"kalan süre\" rozetinin kaynağı. Yoksa `null`."
+          required: [appointmentId, bookingId, startsAt, joinableFrom]
+          properties:
+            appointmentId: { type: string, format: uuid }
+            bookingId: { type: string, format: uuid, nullable: true }
+            startsAt: { type: string, format: date-time }
+            joinableFrom: { type: string, format: date-time, nullable: true, description: "`min(startsAt) - 10 dk` (§9.7.6) — istemci bu eşiği KENDİ hesaplamaz." }
+        generatedAt:
+          type: string
+          format: date-time
+          description: "Sunucu saati. \"Kalan süre\" geri sayımı istemci saatine DEĞİL, bu değere göre kalibre edilir (yanlış ayarlı istemci saati yanlış rozet üretir)."
 
     SetDoctorAvailabilityRequest:
       type: object
