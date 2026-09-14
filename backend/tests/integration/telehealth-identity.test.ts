@@ -498,6 +498,82 @@ describe("telehealth — doktor self-servis profil ucu (PUT /doctor/profile — 
   });
 
   /**
+   * Bug fix (backend-agent, 2026-09-14) — `doi` bir URL DEĞİLDİR (`https://doi.org/` öneki
+   * render tarafında SABİT eklenir, bkz. `entities.ts::DoctorPublicationSchema` üstündeki not),
+   * bu yüzden serbest biçimli DOI metni (`https://` ŞEMASIZ) artık `422` ile REDDEDİLMEMELİDİR.
+   */
+  it("serbest biçimli `doi` (https:// şemasız, düz sayı dahil) kabul edilir", async () => {
+    const res = await app.inject({
+      method: "PUT",
+      url: "/api/v1/doctor/profile",
+      headers: authHeader(doctorUserToken),
+      payload: {
+        publications: [{ kind: "INTERNATIONAL_ARTICLE", title: "Test Makale", venue: "Test Dergisi", year: 2020, doi: "1221321" }],
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.doctorProfile.publications[0].doi).toBe("1221321");
+  });
+
+  it("`doi` içinde HTML gönderilirse hâlâ 422 döner (serbest metin ≠ HTML izni)", async () => {
+    const res = await app.inject({
+      method: "PUT",
+      url: "/api/v1/doctor/profile",
+      headers: authHeader(doctorUserToken),
+      payload: {
+        publications: [{ kind: "INTERNATIONAL_ARTICLE", title: "Test Makale", venue: "Test Dergisi", year: 2020, doi: "<script>1</script>" }],
+      },
+    });
+    expect(res.statusCode).toBe(422);
+  });
+
+  it("`url` hâlâ YALNIZCA https:// şeması kabul eder (XSS/açık şema koruması korunur)", async () => {
+    const res = await app.inject({
+      method: "PUT",
+      url: "/api/v1/doctor/profile",
+      headers: authHeader(doctorUserToken),
+      payload: {
+        publications: [{ kind: "INTERNATIONAL_ARTICLE", title: "Test Makale", venue: "Test Dergisi", year: 2020, url: "javascript:alert(1)" }],
+      },
+    });
+    expect(res.statusCode).toBe(422);
+    // Detaylı hata anahtarı dizin-içi yolu taşır — frontend'in `describeArrayItemError`'ının
+    // ayrıştırdığı format ("publications.0.url").
+    expect(Object.keys(res.json().error.details ?? {})).toContain("publications.0.url");
+  });
+
+  it("`url` boş string (`\"\"`) ile 200 döner (savunma amaçlı gevşetme)", async () => {
+    const res = await app.inject({
+      method: "PUT",
+      url: "/api/v1/doctor/profile",
+      headers: authHeader(doctorUserToken),
+      payload: {
+        publications: [{ kind: "INTERNATIONAL_ARTICLE", title: "Test Makale", venue: "Test Dergisi", year: 2020, url: "" }],
+      },
+    });
+    expect(res.statusCode).toBe(200);
+  });
+
+  it("`year` string olarak gönderilirse coerce edilir, aralık dışı yıl 422 döner", async () => {
+    const coerced = await app.inject({
+      method: "PUT",
+      url: "/api/v1/doctor/profile",
+      headers: authHeader(doctorUserToken),
+      payload: { publications: [{ kind: "INTERNATIONAL_ARTICLE", title: "Test Makale", venue: "Test Dergisi", year: "2020" }] },
+    });
+    expect(coerced.statusCode).toBe(200);
+    expect(coerced.json().data.doctorProfile.publications[0].year).toBe(2020);
+
+    const outOfRange = await app.inject({
+      method: "PUT",
+      url: "/api/v1/doctor/profile",
+      headers: authHeader(doctorUserToken),
+      payload: { publications: [{ kind: "INTERNATIONAL_ARTICLE", title: "Test Makale", venue: "Test Dergisi", year: 9999 }] },
+    });
+    expect(outOfRange.statusCode).toBe(422);
+  });
+
+  /**
    * Bug fix (backend-agent, 2026-09-14) — doktor hiçbir bilimsel yayın/özgeçmiş girdisi
    * eklemeden formu kaydettiğinde frontend'in gönderdiği GERÇEK payload (boş `cvEntries`/
    * `publications` dizileri + `null` `subSpecialty`/`practiceStartYear`) `422` ile

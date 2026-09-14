@@ -2281,8 +2281,14 @@ export type DoctorCvEntryDto = z.infer<typeof DoctorCvEntrySchema>;
 
 /**
  * [DPI] §1.3 — `DoctorProfile.publications` öğesi. `DoctorCvEntrySchema` İLE AYNI kurallar
- * (HTML YASAK). `url`/`doi` YALNIZCA `https://` şeması kabul eder (`http:`/`javascript:`/`data:`
- * → 422).
+ * (HTML YASAK). `url` — `doctor-profile-tabs.tsx::PublicationsList` bunu DOĞRUDAN `<a href>`
+ * olarak render ettiği için (gerçek bir tıklanabilir bağlantı) YALNIZCA `https://` şeması kabul
+ * eder (`http:`/`javascript:`/`data:` → 422, XSS/açık şema koruması — BİLİNÇLİ, gevşetilmez).
+ * `doi` İSE bir URL DEĞİLDİR — serbest biçimli bir tanımlayıcıdır (ör. `10.1234/xyz`, hatta bazı
+ * yayınlarda çıplak bir sayı) ve render tarafında HER ZAMAN sabit `https://doi.org/` öneki İLE
+ * birleştirilir (bkz. `doctor-profile-tabs.tsx` satır 98) — yani `doi` asla şemanın kendisi
+ * OLAMAZ, bu yüzden `https://` zorunluluğu burada yanlış bir kısıtlamaydı (bug fix,
+ * backend-agent, 2026-09-14) ve KALDIRILDI; yalnızca HTML enjeksiyonu (`plainTextField`) engellenir.
  */
 export const DoctorPublicationKindSchema = z.enum(["INTERNATIONAL_ARTICLE", "NATIONAL_ARTICLE", "PROCEEDING", "BOOK_CHAPTER", "OTHER"]);
 export type DoctorPublicationKind = z.infer<typeof DoctorPublicationKindSchema>;
@@ -2292,9 +2298,14 @@ export const DoctorPublicationSchema = z.object({
   title: plainTextField(z.string().trim().min(1).max(300)),
   venue: plainTextField(z.string().trim().min(1).max(200)),
   authors: plainTextField(z.string().trim().max(300)).nullable().optional(),
-  year: z.number().int().min(1950),
-  doi: httpsOnlyField(plainTextField(z.string().trim().max(120))).nullable().optional(),
-  url: httpsOnlyField(z.string().trim().max(500).url()).nullable().optional(),
+  // `z.coerce` — istemciden ender de olsa string gelme ihtimaline karşı esnek (ör. `<input
+  // type="number">`'ın tarayıcı otomasyonu/eski state'i); üst sınır `2100` mantık dışı gelecek
+  // yıllarını (ör. `9999`) reddeder.
+  year: z.coerce.number().int().min(1950).max(2100),
+  doi: plainTextField(z.string().trim().max(120)).nullable().optional(),
+  // Boş string de kabul edilir (`""` → "URL girilmedi", frontend zaten `null`'a çevirir ama
+  // savunma amaçlı burada da reddedilmez).
+  url: z.union([httpsOnlyField(z.string().trim().max(500).url()), z.literal("")]).nullable().optional(),
 });
 export type DoctorPublicationDto = z.infer<typeof DoctorPublicationSchema>;
 
