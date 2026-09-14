@@ -152,7 +152,10 @@ export function BookingWizard({ doctor, doctorSlug, doctorTimeZone, lang, defaul
     <div className="space-y-6">
       <BookingStepperBar steps={steps} />
 
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-[1fr_320px] lg:items-start">
+      {/* Görev (2026-09-14) Görev 2 — DIŞ grid, takvim/slot alanı (kendi İÇ oranı ~%35/%35) +
+          "Hizmet Özeti" sağ sütunu (~%30). Sağ sütun `320px` → `360px`e genişletildi ki üç-parçalı
+          oran task'ın istediği ~%35/%35/%30'a YAKLAŞSIN (piksel-mükemmel matematik ZORUNLU DEĞİL). */}
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-[1fr_360px] lg:items-start">
         <div className="min-w-0 space-y-4">
           {currentStep === 2 && (
             <AvailabilityCalendar

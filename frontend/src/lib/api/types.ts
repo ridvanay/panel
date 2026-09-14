@@ -3955,3 +3955,22 @@ export interface TelehealthOverview {
   /** En fazla 20 satır, `netCents DESC`. */
   doctors: TelehealthOverviewDoctorRow[];
 }
+
+// ---------- Görev (2026-09-14) — `GET|PATCH /admin/telehealth/settings` + PUBLIC `GET /telehealth/theme` ----------
+
+/**
+ * Randevu sihırbazının (`/doctors/[slug]`) tema renkleri — backend
+ * `backend/src/schemas/entities.ts::TelehealthThemeSettingsSchema` İLE BİREBİR (tek doğruluk
+ * kaynağı orasıdır). Tüm alanlar `#rrggbb` hex string. Varsayılanlar backend
+ * `TELEHEALTH_THEME_DEFAULTS`'ta: `primaryColor: "#0f766e"`, `secondaryColor: "#0369a1"`,
+ * `accentColor: "#f59e0b"`, `calendarActiveBg: "#0f766e"`.
+ */
+export interface TelehealthThemeSettings {
+  primaryColor: string;
+  secondaryColor: string;
+  accentColor: string;
+  calendarActiveBg: string;
+}
+
+/** `PATCH /admin/telehealth/settings` gövdesi — KISMİ, hepsi opsiyonel (0-4 alan). */
+export type UpdateTelehealthThemeSettingsRequest = Partial<TelehealthThemeSettings>;

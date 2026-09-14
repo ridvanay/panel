@@ -295,11 +295,15 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
             </label>
           </div>
 
-          {/* Görev 1 — SOL: ay takvimi (~%40), SAĞ: slot ızgarası (~%60); mobilde tek kolon. */}
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:items-start">
+          {/* Görev (2026-09-14) Görev 2 — SOL: ay takvimi (~%35), SAĞ: slot ızgarası (~%35, dış
+              gridin sağ "Hizmet Özeti" sütunuyla birlikte ~%30); mobilde tek kolon. Önceki turun
+              dar `2fr/3fr` oranı, takvim sütununun "sıkışık" hissini gidermek için `1fr/1fr`'e
+              (+ `lg:min-w-80` taban genişliği) genişletildi — bkz. `booking-wizard.tsx`'teki DIŞ
+              grid'in AYNI görev kapsamında güncellenen sağ sütun genişliği. */}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-start">
             {/* §2.3.1 — ay navigasyonu + §2.3.2 — 7 sütunlu gün ızgarası, tek kart yüzeyi. */}
-            <div className="rounded-[var(--site-radius)] border border-border bg-surface p-4 sm:p-5">
-              <div className="mb-4 flex items-center justify-between">
+            <div className="rounded-[var(--site-radius)] border border-border bg-surface p-4 sm:p-5 lg:min-w-80">
+              <div className="mb-5 flex items-center justify-between sm:mb-6">
                 <button
                   type="button"
                   aria-label="Önceki ay"
@@ -340,7 +344,7 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                   for (let day = 1; day <= daysInMonth; day++) cells.push({ day, dayKey: buildDayKey(year, month0, day) });
 
                   return cells.map((cell, idx) => {
-                    if (!cell) return <span key={`blank-${idx}`} aria-hidden="true" className="h-10 w-full sm:h-11" />;
+                    if (!cell) return <span key={`blank-${idx}`} aria-hidden="true" className="h-12 w-full sm:h-14" />;
 
                     const { day, dayKey } = cell;
                     const isAvailable = availableDayKeySet.has(dayKey);
@@ -357,7 +361,11 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                           aria-pressed="true"
                           aria-label={`${datePart} — seçili${isEarliest ? ", en yakın randevu tarihi" : ""}`}
                           onClick={() => setSelectedDayKey(dayKey)}
-                          className="relative flex h-10 w-full flex-col items-center justify-center gap-0.5 rounded-[var(--site-radius)] border-2 border-transparent bg-primary text-sm font-semibold tabular-nums text-primary-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface sm:h-11"
+                          // Görev (2026-09-14) Görev 2 — takvim SEÇİLİ GÜN hücresi artık admin
+                          // panelinden yönetilen `calendarActiveBg`'e (`.telehealth-scope`'un
+                          // `--telehealth-calendar-active-bg`'i) EXPLICIT bağlanır; `--primary`
+                          // cascade'inden BAĞIMSIZ, ayrı bir semantik kavram (bkz. layout notu).
+                          className="relative flex h-12 w-full flex-col items-center justify-center gap-0.5 rounded-[var(--site-radius)] border-2 border-transparent bg-[var(--telehealth-calendar-active-bg)] text-sm font-semibold tabular-nums text-primary-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface sm:h-14 sm:text-base"
                         >
                           <span>{day}</span>
                           <Check className="h-2.5 w-2.5" aria-hidden="true" />
@@ -373,7 +381,7 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                           aria-label={`${datePart} — müsait${isEarliest ? ", en yakın randevu tarihi" : ""}${isWeekend ? ", hafta sonu" : ""}`}
                           onClick={() => setSelectedDayKey(dayKey)}
                           className={cn(
-                            "flex h-10 w-full flex-col items-center justify-center gap-0.5 rounded-[var(--site-radius)] border text-sm font-medium tabular-nums transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface sm:h-11",
+                            "flex h-12 w-full flex-col items-center justify-center gap-0.5 rounded-[var(--site-radius)] border text-sm font-medium tabular-nums transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface sm:h-14 sm:text-base",
                             isWeekend
                               ? "border-[var(--site-secondary)]/30 bg-[var(--site-secondary)]/10 text-foreground hover:border-[var(--site-secondary)]/50 hover:bg-[var(--site-secondary)]/20"
                               : "border-primary/20 bg-primary/5 text-foreground hover:border-primary/50 hover:bg-primary/10"
@@ -398,7 +406,7 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                       <span
                         key={dayKey}
                         aria-label={`${datePart} — müsait saat yok`}
-                        className="flex h-10 w-full cursor-not-allowed items-center justify-center rounded-[var(--site-radius)] border border-transparent text-sm font-medium tabular-nums text-foreground/25 sm:h-11"
+                        className="flex h-12 w-full cursor-not-allowed items-center justify-center rounded-[var(--site-radius)] border border-transparent text-sm font-medium tabular-nums text-foreground/25 sm:h-14 sm:text-base"
                       >
                         {day}
                       </span>
@@ -438,9 +446,18 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                   {displayedHourGroups.map((group) => (
                     <section key={group.label} className="overflow-hidden rounded-[var(--site-radius)] border border-border">
                       {group.label === "Sabah" ? (
-                        <div className="flex items-center gap-2 bg-gradient-to-r from-amber-50 to-orange-50 px-4 py-2.5">
-                          <Sun className="h-4 w-4 shrink-0 text-amber-600" aria-hidden="true" />
-                          <span className="text-xs font-semibold uppercase tracking-wider text-amber-900">ÖÖ Sabah</span>
+                        // Görev (2026-09-14) Görev 2 — "Sabah" grup başlığı sabit amber yerine
+                        // `--telehealth-accent`'e (admin "Vurgu Rengi") EXPLICIT bağlanır;
+                        // `color-mix` ile hafif bir zemin tonu üretilir (`--primary` cascade'inden
+                        // BAĞIMSIZ, ayrı semantik kavram — bkz. layout notu).
+                        <div
+                          className="flex items-center gap-2 px-4 py-2.5"
+                          style={{ backgroundColor: "color-mix(in oklch, var(--telehealth-accent) 12%, white)" }}
+                        >
+                          <Sun className="h-4 w-4 shrink-0" style={{ color: "var(--telehealth-accent)" }} aria-hidden="true" />
+                          <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--telehealth-accent)" }}>
+                            ÖÖ Sabah
+                          </span>
                         </div>
                       ) : (
                         <div className="flex items-center gap-2 bg-muted px-4 py-2.5">

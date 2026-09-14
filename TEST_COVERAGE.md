@@ -3122,3 +3122,84 @@ KENDİ kapsamı DIŞINDA ama tutarlılık kontrolü için koşuldu) 30/30 yeşil
 **Gerçek bug bulunmadı** (test altyapısı güncellemeleri/seçici düzeltmeleri DIŞINDA) — backend-agent'ın
 `GET /doctor/bookings` düzeltmesi + frontend-agent'ın wizard/kart implementasyonu, görev
 talimatındaki sözleşmeyle BİREBİR eşleşti.
+
+## Randevu sihirbazı — admin panelinden yönetilen tema renkleri + genişletilmiş takvim kartı — E2E kapsamı (bu turda eklendi)
+
+Kaynak: orkestratörün doğrudan görev talimatı (bu tur backend-agent → frontend-agent → qa-agent
+daraltılmış akışı). `GET/PATCH /admin/telehealth/settings` (panel, `SiteModule.settings`
+`key="telehealth"` JSON'unda saklanır, migration YOK) + PUBLIC `GET /telehealth/theme` + yeni admin
+sayfası `/admin/telehealth/settings` + `doctors/layout.tsx`'in `.telehealth-scope` CSS custom
+property enjeksiyonu (`--telehealth-primary/secondary/accent/calendarActiveBg` + `--primary`/
+`--secondary` cascade) + genişletilmiş takvim kartı (`h-10/h-11` → `h-12/h-14`, iç grid `2fr/3fr` →
+`1fr/1fr`, dış grid sağ sütun `320px` → `360px`).
+
+**Yeni dosya: `telehealth-theme-settings.spec.ts`** (3 test, paylaşımlı `telehealth-clinic` demo
+doktoru — kendi izole fixture doktoru GEREKMEZ, yalnızca okuma/görsel doğrulama yapılır):
+
+| Test | Senaryo | Sonuç |
+|---|---|---|
+| 1 | Admin panelinde `primaryColor` değişikliği (`PATCH /admin/telehealth/settings`) → `/doctors/[slug]`'da hem `.telehealth-scope`'un `--telehealth-primary`/`--primary` CSS custom property'sinde HEM stepper 1. adımın ("tamamlandı", statik/hekim zaten seçili) GERÇEK render edilmiş arka plan renginde (`getComputedStyle().backgroundColor`) yansır; test SONUNDA orijinal renge PATCH ile GERİ ALINIR (global/singleton ayar, `finally` bloğunda, hem başarı hem hata durumunda) | ✅ |
+| 2 | Masaüstü (1280px) — genişletilmiş takvim kartı sayfa/viewport genişliğini AŞMIYOR (`boundingBox` ile), gün hücreleri (`h-14` @ `sm:`) eski `h-10/h-11`den BELİRGİN büyük (KABA aralık, piksel-mükemmel ZORUNLU DEĞİL — görev talimatı) | ✅ |
+| 3 | Mobil (375px) — takvim/sayfa yatay scroll/taşma YARATMIYOR (`document.documentElement.scrollWidth <= window.innerWidth`) | ✅ |
+
+**qa-agent bulgusu (test yazarken GÖZLEMLENDİ, gerçek davranış — görev talimatının "GERÇEK
+davranışı gözlemleyip ona göre test yaz" uyarısı BİREBİR bu senaryo içindi):** `PATCH
+/admin/telehealth/settings`, `PATCH /admin/appearance`'ın (bkz.
+`admin-appearance-instant-revalidation.spec.ts`) AKSİNE, backend kaynağında (`telehealth.admin.
+routes.ts::adminTelehealthSettingsRoutes`) `triggerGlobalRevalidation()` (veya herhangi bir
+on-demand revalidation) ÇAĞIRMAZ. `fetchTelehealthThemeServer()` (`server-telehealth.ts`)
+`next: { revalidate: 60 }` ile önbelleklenir — bu yüzden admin PATCH'ten SONRA `/doctors/[slug]`'a
+TEK bir `page.reload()` YETERLİ DEĞİL: test 1'in poll'lu (`toPass`, 75sn/2-5sn aralık) koşumu
+GERÇEKTEN ~55-70 saniye sürdü (birden fazla art arda koşumda ÖLÇÜLDÜ) — bu, `revalidate: 60`
+penceresinin GERÇEKTEN dolduğunu, yani admin renk değişikliğinin public sayfaya ANINDA DEĞİL,
+en fazla ~60 saniyelik bir gecikmeyle yansıdığını KANITLAR (proje belleği "60s staleness — expected
+eventual consistency" notuyla TUTARLI, ama bu spesifik uç için görev talimatı "ANINDA yansıma"
+doğrulaması İSTEDİĞİNDEN, bu bir ÜRÜN/UX BOŞLUĞU olarak backend-agent'a bildirildi — bkz. altta).
+Test bu yüzden `toPass`/poll deseniyle yazıldı (tek `reload` İDDİASI YAPILMADI) — hem gözlemlenen
+gerçek gecikmeyi hem olası ortam farklılıklarını (prod build, farklı revalidate davranışı) TEK
+testte güvenle kapsar.
+
+**qa-agent BULGUSU 1 (backend-agent'a yönlendirilmesi gerekir — ürün/UX boşluğu, engelleyici
+DEĞİL):** `PATCH /admin/telehealth/settings` başarılı yazmadan SONRA `triggerGlobalRevalidation()`
+(veya en az `/doctors` + `/doctors/[slug]` path'lerine özel bir on-demand revalidation) ÇAĞIRMIYOR
+— `PATCH /admin/appearance`'ın (`lib/revalidate.ts::triggerGlobalRevalidation`) VE `PUT
+/doctor/profile`'ın (`triggerDoctorProfileRevalidation`) KURDUĞU aynı deseni izlemiyor. Sonuç:
+admin bir tema rengini değiştirdiğinde, randevu sihirbazına bu değişiklik `next: { revalidate: 60 }`
+penceresi (en fazla ~60sn) dolana kadar YANSIMAZ — görev talimatının "ANINDA yansıması" doğrulama
+beklentisiyle ÇELİŞİR (appearance panelindeki AYNI görsel kalitede bir deneyim beklenir). Önerilen
+düzeltme: `adminTelehealthSettingsRoutes` PATCH handler'ının sonuna (audit log'dan SONRA)
+`triggerGlobalRevalidation(app)` çağrısı eklenmesi (appearance route'unun KENDİ PATCH handler'ında
+YAPTIĞI BİREBİR AYNI desen) — qa-agent bunu KENDİSİ DÜZELTMEDİ (proje kökü CLAUDE.md madde 6, kendi
+kod tabanı dışı değişiklik).
+
+**qa-agent BULGUSU 2 (regresyon, bu turun DEĞİŞİKLİKLERİYLE İLGİSİZ — frontend-agent'a
+yönlendirilmesi gerekir, ÖNCEKİ bir turdan — "Grid görevi Görev 1" — kalma, bu turda KEŞFEDİLDİ):**
+`telehealth-booking-wizard.spec.ts` "madde 3: mobil (375px)" testi (mevcut, bu turdan ÖNCE
+yazılmıştı) genel regresyon taraması sırasında BAŞARISIZ bulundu — `getByRole("button", {name:
+"Devam Et"})` 1 yerine 2 eleman buluyor. Kök neden bu turun DEĞİŞİKLİKLERİYLE İLGİSİZ olduğu
+KANITLANDI: qa-agent bu turun `availability-calendar.tsx`/`booking-wizard.tsx` değişikliklerini
+`git stash` ile GEÇİCİ olarak GERİ ALIP (teşhis amaçlı, sonra `git stash pop` ile GERİ YÜKLENDİ —
+hiçbir kalıcı değişiklik YAPILMADI) AYNI testi tekrar koşturdu — AYNI şekilde başarısız oldu. Kök
+neden: `DoctorServiceSummaryPanel`'in (`doctor-service-summary.tsx`) mobil sabit alt CTA çubuğu
+(`barVisible`, bir `IntersectionObserver`'ın "Hizmet Özeti" panelinin viewport'tan ÇIKTIĞINI"
+algılamasıyla `aria-hidden={false}` olur) ile panelin KENDİ İÇİNDEKİ birincil "Devam Et" butonu
+(mobilde `hidden`/`aria-hidden` İLE GİZLENMEZ, yalnızca CSS akışıyla aşağıda kalır) AYNI ANDA
+erişilebilirlik ağacında görünür oluyor — fixture doktorun HAFTANIN HER GÜNÜ 00:00-24:00 müsaitliği
+(`setDoctorAvailabilityRaw`, testin KENDİ kurulumu) takvim+slot alanını o kadar UZATIYOR ki "Hizmet
+Özeti" paneli 375px genişlikte sayfa ilk açıldığında ZATEN ~1950-2000px aşağıda (viewport
+yüksekliği 812px) — yani mobil sabit çubuk İLK RENDER'DA ZATEN görünür hale geliyor, panelin KENDİ
+butonu ise HİÇBİR ZAMAN gizlenmiyor. Önerilen düzeltme (frontend-agent kararı): ya panelin KENDİ
+gömülü butonu mobilde (`lg:` altında) `aria-hidden`/`hidden` ile GİZLENSİN (sabit çubuk zaten AYNI
+işlevi görüyor), ya da test'in İDDİASI ("tam olarak 1 görünür buton") gözden geçirilsin
+(erişilebilirlik açısından İKİ görünür/erişilebilir "Devam Et" butonu KAFA KARIŞTIRICI olabilir —
+ekran okuyucu kullanıcısı için aynı isimde 2 buton bulunması UX sorunu). qa-agent bu testi KENDİSİ
+DEĞİŞTİRMEDİ (kendi kapsamı dışı, madde 3 `telehealth-booking-wizard.spec.ts`'e ait, bu dosyanın
+SAHİBİ değil).
+
+Doğrulama: `telehealth-theme-settings.spec.ts` (3/3, art arda 2 KEZ koşuldu — ikisinde de yeşil,
+temizlik doğrulandı: `GET /telehealth/theme` her koşum SONUNDA varsayılanlara `#0f766e`/`#0369a1`/
+`#f59e0b`/`#0f766e` dönüyor), `backend/tests/integration/telehealth-theme-settings.test.ts` (6/6,
+backend-agent'ın bu turda eklediği), `telehealth-public-booking.spec.ts` (4/4),
+`doctor-console-dashboard-layout.spec.ts` (2/2) — hepsi yeşil (regresyon YOK). `telehealth-booking-
+wizard.spec.ts` madde 1/masaüstü YEŞİL, madde 3/mobil KIRMIZI (yukarıdaki BULGU 2, ÖNCEKİ bir tur
+kaynaklı). `cd frontend && npx tsc --noEmit` temiz.

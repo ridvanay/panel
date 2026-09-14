@@ -1,5 +1,5 @@
 import { SERVER_API_BASE_URL, toInternalMediaUrl } from "../env";
-import type { AvailabilitySlot, DoctorProfile } from "./types";
+import type { AvailabilitySlot, DoctorProfile, TelehealthThemeSettings } from "./types";
 
 /**
  * `.claude/architect-scope-telehealth-template.md` §5.2 — public `/doctors*` sunucu bileşenleri
@@ -60,3 +60,31 @@ export async function fetchDoctorSlotsServer(slug: string, from: string, to: str
     return [];
   }
 }
+
+/**
+ * Görev (2026-09-14) Görev 1/2 — `GET /telehealth/theme` (PUBLIC, prefiks YOK) sunucu tarafı
+ * çağrısı. `fetchSiteAppearanceServer` İLE AYNI önbellek politikası (`revalidate: 60`, §10.12.9)
+ * ve "asla çökme" ilkesi: backend erişilemezse/`telehealth` modülü kapalıysa (404) backend
+ * `TELEHEALTH_THEME_DEFAULTS` (`backend/src/schemas/entities.ts`) İLE BİREBİR AYNI sabit
+ * değerlere düşülür — `doctors/layout.tsx`'in `.telehealth-scope` enjeksiyonu bu yüzden asla
+ * bozuk/eksik bir tema ile render edilmez.
+ */
+const TELEHEALTH_THEME_DEFAULTS: TelehealthThemeSettings = {
+  primaryColor: "#0f766e",
+  secondaryColor: "#0369a1",
+  accentColor: "#f59e0b",
+  calendarActiveBg: "#0f766e",
+};
+
+export async function fetchTelehealthThemeServer(): Promise<TelehealthThemeSettings> {
+  try {
+    const res = await fetch(`${SERVER_API_BASE_URL}/telehealth/theme`, { next: { revalidate: 60 } });
+    if (!res.ok) return TELEHEALTH_THEME_DEFAULTS;
+    const json = JSON.parse(toInternalMediaUrl(await res.text())) as { data: TelehealthThemeSettings };
+    return json.data;
+  } catch {
+    return TELEHEALTH_THEME_DEFAULTS;
+  }
+}
+
+export { TELEHEALTH_THEME_DEFAULTS };

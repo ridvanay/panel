@@ -856,3 +856,43 @@ export function setUserTwoFactorEnabledDirectly(userId: string, enabled: boolean
     shell: process.platform === "win32",
   });
 }
+
+// ---------------------------------------------------------------------------
+// qa-agent — Grid görevi (2026-09-14) Görev 2, randevu sihirbazı tema renkleri e2e fixture
+// yardımcıları (`telehealth-theme-settings.spec.ts`). `getAdminAppearance`/`patchAppearance`
+// (`support/api.ts`) İLE AYNI desen (GET/PATCH çifti, `patchAppearance()`'ın çağırma imzasıyla
+// BİREBİR aynı: `authHeaders`/`authHeadersNoBody` gövdeli/gövdesiz ayrımı orada zaten belgelendi) —
+// bu dosyaya eklendi (`api.ts`'e DEĞİL) çünkü uç tamamen telehealth alanına özgü.
+// ---------------------------------------------------------------------------
+
+export interface FixtureTelehealthThemeSettings {
+  primaryColor: string;
+  secondaryColor: string;
+  accentColor: string;
+  calendarActiveBg: string;
+}
+
+/** `GET /admin/telehealth/settings` — panel kapısı (ADMIN/MANAGER/EDITOR okuyabilir). Teardown'da
+ * orijinal değeri geri yazabilmek için `patchAdminTelehealthThemeSettings()`'ten ÖNCE çağrılmalı
+ * (`getAdminAppearance()` İLE AYNI ilke). */
+export async function getAdminTelehealthThemeSettings(token: string): Promise<FixtureTelehealthThemeSettings> {
+  const res = await fetch(`${API_BASE_URL}/admin/telehealth/settings`, { headers: authHeadersNoBody(token) });
+  const body = await safeJson(res);
+  if (!res.ok) throw new Error(`Tema ayarları okunamadı: ${res.status} ${JSON.stringify(body)}`);
+  return body.data as FixtureTelehealthThemeSettings;
+}
+
+/** `PATCH /admin/telehealth/settings` — yalnızca ADMIN/MANAGER (EDITOR → 403). KISMİ gövde. */
+export async function patchAdminTelehealthThemeSettings(
+  token: string,
+  patch: Partial<FixtureTelehealthThemeSettings>
+): Promise<FixtureTelehealthThemeSettings> {
+  const res = await fetch(`${API_BASE_URL}/admin/telehealth/settings`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(patch),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw new Error(`Tema ayarları güncellenemedi: ${res.status} ${JSON.stringify(body)}`);
+  return body.data as FixtureTelehealthThemeSettings;
+}

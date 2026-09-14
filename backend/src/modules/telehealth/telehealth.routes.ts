@@ -17,6 +17,7 @@ import {
   CreateAppointmentResultSchema,
   CreateBookingResultSchema,
   DoctorProfileSchema,
+  TelehealthThemeSettingsSchema,
 } from "../../schemas/entities";
 import {
   toAppointmentBookingDto,
@@ -45,6 +46,7 @@ import { encryptSecret, decryptSecret } from "../../lib/crypto";
 import { detectUploadMimeType } from "../../lib/mime-detect";
 import { telehealthDocumentStorage } from "../../lib/telehealth-document-storage";
 import { logAudit } from "../../lib/audit";
+import { parseTelehealthTheme } from "./lib/theme-settings";
 import { BOOKING_CREATE_RATE_LIMIT, BOOKING_DOCUMENT_UPLOAD_RATE_LIMIT } from "../../lib/rate-limit";
 import { MAX_UPLOAD_BYTES } from "../../plugins/uploads";
 import { env } from "../../config/env";
@@ -234,7 +236,21 @@ export async function telehealthRoutes(app: FastifyInstance) {
     }
   );
 
-  // §4.3 (bağlayıcı) — kimlik doğrulama GEREKTİRMEZ, hız sınırı 5 istek/dk (para hareketi
+  // Randevu sihirbazının (`/doctors/[slug]`, frontend) tema renkleri — `SiteModule.settings`
+  // (`key="telehealth"`) JSON'undan okunur (bkz. `lib/theme-settings.ts::parseTelehealthTheme`,
+  // migration/yeni model YOK). Kimlik doğrulama GEREKMEZ (renkler hassas veri DEĞİL, `/appearance`
+  // public ucunun AYNI disiplinini izler) — dosyanın tepesindeki `requireModuleEnabled("telehealth")`
+  // preHandler'ı zaten modül kapalıyken bu route'u da doğal olarak 404'e düşürür, EKSTRA kontrol GEREKMEZ.
+  server.get(
+    "/telehealth/theme",
+    { schema: { response: { 200: ApiSuccessSchema(TelehealthThemeSettingsSchema) } } },
+    async (_request, reply) => {
+      const row = await app.prisma.siteModule.findUnique({ where: { key: "telehealth" } });
+      return reply.send(ok(parseTelehealthTheme(row?.settings)));
+    }
+  );
+
+  // §4.3 (bağlayıcı) — kimlik doğrulama GEREKMEZ, hız sınırı 5 istek/dk (para hareketi
   // içermese de kimlik doğrulamasız bir YAZMA ucudur — checkout.routes.ts::CHECKOUT_RATE_LIMIT
   // İLE AYNI route-level override deseni, global limitten BAĞIMSIZ).
   //

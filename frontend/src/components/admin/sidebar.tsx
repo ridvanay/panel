@@ -129,6 +129,16 @@ export const navItems: NavItem[] = [
     module: "telehealth",
     roles: ["ADMIN", "MANAGER"],
   },
+  // Görev (2026-09-14) Görev 1 — `PATCH /admin/telehealth/settings` yalnızca ADMIN/MANAGER
+  // yazabildiği için (EDITOR → 403), `/admin/telehealth/appointments` İLE AYNI yazma-hassas
+  // görünürlük kuralı: EDITOR'a sidebar'da GÖSTERİLMEZ.
+  {
+    href: "/admin/telehealth/settings",
+    labelKey: "nav.telehealthSettings",
+    icon: Palette,
+    module: "telehealth",
+    roles: ["ADMIN", "MANAGER"],
+  },
   { href: "/admin/stats", labelKey: "nav.stats", icon: BarChart3, roles: ["ADMIN", "MANAGER"] },
   // `/admin/reports/exports/*` backend'de SiteRole=ADMIN VEYA MANAGER (§5.3 satır 16).
   { href: "/admin/reports", labelKey: "nav.reports", icon: FileArchive, roles: ["ADMIN", "MANAGER"] },

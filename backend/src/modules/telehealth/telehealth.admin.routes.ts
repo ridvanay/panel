@@ -6,10 +6,18 @@ import { authenticate } from "../../middleware/authenticate";
 import { requireSiteRole } from "../../middleware/site-rbac";
 import { requirePanelAccess } from "../../middleware/panel-access";
 import { requireModuleEnabled } from "../../middleware/module-guard";
-import { ROLES_ADMIN, ROLES_ADMIN_MANAGER } from "../../lib/site-roles";
+import { ROLES_ADMIN, ROLES_ADMIN_MANAGER, ROLES_PANEL } from "../../lib/site-roles";
 import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema, ApiSuccessWithMeta } from "../../schemas/common";
-import { AppointmentBookingSchema, AppointmentSchema, DoctorAvailabilityRuleSchema, DoctorProfileSchema, SpecialtySchema } from "../../schemas/entities";
+import {
+  AppointmentBookingSchema,
+  AppointmentSchema,
+  DoctorAvailabilityRuleSchema,
+  DoctorProfileSchema,
+  SpecialtySchema,
+  TelehealthThemeSettingsSchema,
+  UpdateTelehealthThemeSettingsRequestSchema,
+} from "../../schemas/entities";
 import { toAppointmentBookingDto, toAppointmentDto, toDoctorProfileDto, toSpecialtyDto } from "../../mappers";
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "../../lib/errors";
 import { buildPageMeta, parseCursor } from "../../lib/pagination";
@@ -18,8 +26,10 @@ import { slugify } from "../../lib/slug";
 import { logAudit } from "../../lib/audit";
 import { sanitizeRichHtml } from "../../lib/html-sanitize";
 import { canAccessBookingHealthData } from "../../lib/telehealth-access";
+import { triggerGlobalRevalidation } from "../../lib/revalidate";
 import { confirmBookingPayment } from "./lib/booking";
 import { triggerAppointmentConfirmationEmail } from "./lib/notifications";
+import { parseTelehealthTheme } from "./lib/theme-settings";
 import {
   BookingIdParamSchema,
   CreateDoctorRequestSchema,
@@ -558,6 +568,75 @@ export async function adminTelehealthBookingsRoutes(app: FastifyInstance) {
       // Bu uç yalnızca `ROLES_ADMIN` içindir (mark-paid preHandler) — `canAccessBookingHealthData`
       // ADMIN için her zaman `true` döner, ama tek kaynak disiplini için yine de çağrılır.
       return reply.send(ok(toAppointmentBookingDto(withRelations, canAccessBookingHealthData(withRelations, { user: request.user }))));
+    }
+  );
+}
+
+/**
+ * `/admin/telehealth/settings` prefix'i altında bağlanır — randevu sihirbazının
+ * (`/doctors/[slug]`, frontend) tema renkleri. Migration/yeni Prisma modeli YOK; `SiteModule`
+ * satırının (`key="telehealth"`) genel amaçlı `settings Json` alanı KULLANILIR (bkz.
+ * `lib/theme-settings.ts::parseTelehealthTheme`). `GET` → panel kapısı (`ROLES_PANEL`,
+ * `specialties` GET İLE AYNI), `PATCH` → `ROLES_ADMIN_MANAGER` (`specialties` PATCH İLE AYNI).
+ * DİKKAT: bu route `SiteModule.enabled`'a HİÇ DOKUNMAZ — modülün açık/kapalı durumu
+ * `adminSiteModulesRoutes`'un işidir (`site-modules.routes.ts`), `enabled` `create` dalında
+ * BİLİNÇLİ OLARAK belirtilmez (Prisma `@default(true)` devreye girer).
+ */
+export async function adminTelehealthSettingsRoutes(app: FastifyInstance) {
+  const server = app.withTypeProvider<ZodTypeProvider>();
+  server.addHook("preHandler", requireModuleEnabled("telehealth"));
+  server.addHook("preHandler", authenticate);
+  server.addHook("preHandler", requirePanelAccess());
+
+  server.get(
+    "/",
+    {
+      preHandler: requireSiteRole(...ROLES_PANEL),
+      schema: { response: { 200: ApiSuccessSchema(TelehealthThemeSettingsSchema) } },
+    },
+    async (_request, reply) => {
+      const row = await app.prisma.siteModule.findUnique({ where: { key: "telehealth" } });
+      return reply.send(ok(parseTelehealthTheme(row?.settings)));
+    }
+  );
+
+  server.patch(
+    "/",
+    {
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
+      schema: {
+        body: UpdateTelehealthThemeSettingsRequestSchema,
+        response: { 200: ApiSuccessSchema(TelehealthThemeSettingsSchema) },
+      },
+    },
+    async (request, reply) => {
+      const existing = await app.prisma.siteModule.findUnique({ where: { key: "telehealth" } });
+      const currentTheme = parseTelehealthTheme(existing?.settings);
+      const merged = { ...currentTheme, ...request.body };
+
+      const row = await app.prisma.siteModule.upsert({
+        where: { key: "telehealth" },
+        create: { key: "telehealth", settings: merged, updatedById: request.user!.id },
+        update: { settings: merged, updatedById: request.user!.id },
+      });
+
+      await logAudit(app, {
+        actorId: request.user!.id,
+        actorEmail: request.user!.email,
+        action: "telehealth.settings.update",
+        targetType: "SiteModule",
+        targetId: "telehealth",
+        metadata: merged,
+        ipAddress: request.ip,
+      });
+
+      // qa-agent bulgusu (2026-09-14) — tema rengi `/doctors/[slug]`'ın `revalidate: 60`
+      // önbelleğine tabi (`fetchTelehealthThemeServer`); bu satır OLMADAN admin'deki bir renk
+      // değişikliği ~60sn'ye kadar yansımıyordu (görev talimatının "ANINDA" beklentisiyle
+      // ÇELİŞİYORDU). `appearance.routes.ts`'in AYNI global best-effort revalidation deseni.
+      await triggerGlobalRevalidation(app);
+
+      return reply.send(ok(parseTelehealthTheme(row.settings)));
     }
   );
 }

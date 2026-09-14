@@ -2770,6 +2770,35 @@ export const DoctorPortalFeedSchema = z.object({
 export type DoctorPortalFeedDto = z.infer<typeof DoctorPortalFeedSchema>;
 
 /**
+ * `SiteModule.settings` (`key="telehealth"`) JSON'unda saklanan tema renkleri — randevu
+ * sihirbazının (`/doctors/[slug]`, frontend) rengini kontrol eder. Migration/yeni model YOK
+ * (`SiteModule.settings Json @default("{}")` genel amaçlı alanı KULLANILIR, bkz.
+ * `modules/telehealth/lib/theme-settings.ts`). Hex doğrulaması `#rrggbb` (6 haneli, kısa `#rgb`
+ * biçimi KABUL EDİLMEZ) — geçersiz bir değer bu şemadan geçerken otomatik `422 VALIDATION_ERROR`
+ * üretir (bkz. `plugins/error-handler.ts::isZodError`, `UpdateSpecialtyRequestSchema` İLE AYNI disiplin).
+ */
+const HEX_COLOR_REGEX = /^#[0-9a-fA-F]{6}$/;
+const HEX_COLOR_MESSAGE = "Geçerli bir hex renk kodu girin (#rrggbb).";
+export const TelehealthThemeSettingsSchema = z.object({
+  primaryColor: z.string().regex(HEX_COLOR_REGEX, HEX_COLOR_MESSAGE),
+  secondaryColor: z.string().regex(HEX_COLOR_REGEX, HEX_COLOR_MESSAGE),
+  accentColor: z.string().regex(HEX_COLOR_REGEX, HEX_COLOR_MESSAGE),
+  calendarActiveBg: z.string().regex(HEX_COLOR_REGEX, HEX_COLOR_MESSAGE),
+});
+export type TelehealthThemeSettings = z.infer<typeof TelehealthThemeSettingsSchema>;
+
+/** `PATCH /admin/telehealth/settings` gövdesi — kısmi güncelleme, `UpdateSpecialtyRequestSchema` İLE AYNI desen. */
+export const UpdateTelehealthThemeSettingsRequestSchema = TelehealthThemeSettingsSchema.partial();
+
+/** `.claude` §... — varsayılan tema renkleri (koyu turkuaz-yeşil / kurumsal mavi / amber vurgu). */
+export const TELEHEALTH_THEME_DEFAULTS: TelehealthThemeSettings = {
+  primaryColor: "#0f766e",
+  secondaryColor: "#0369a1",
+  accentColor: "#f59e0b",
+  calendarActiveBg: "#0f766e",
+};
+
+/**
  * [TCT] §9.7.7 KARAR K10a — `GET /admin/telehealth/analytics/overview` (ADMIN+MANAGER).
  * `revenue`/`series`/`doctors` YALNIZCA `status=COMPLETED` randevuları sayar — `GET
  * /doctor/earnings` İLE AYNI tanım (bkz. modules/telehealth/lib/commission.ts::splitCommission,

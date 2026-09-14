@@ -39,9 +39,11 @@ import type {
   Specialty,
   TelehealthOverview,
   TelehealthOverviewQuery,
+  TelehealthThemeSettings,
   UpdateDoctorRequest,
   UpdateDoctorSelfProfileRequest,
   UpdateSpecialtyRequest,
+  UpdateTelehealthThemeSettingsRequest,
   UpsertIntakeRequest,
 } from "./types";
 
@@ -516,4 +518,18 @@ export function getTelehealthOverview(params: TelehealthOverviewQuery = {}): Pro
   return apiFetch<TelehealthOverview>("/admin/telehealth/analytics/overview", {
     query: { from: params.from, to: params.to, granularity: params.granularity },
   });
+}
+
+/**
+ * Görev (2026-09-14) — `GET /admin/telehealth/settings`, randevu sihirbazının tema renkleri.
+ * Panel kapısı (`ROLES_PANEL`): ADMIN/MANAGER/EDITOR okuyabilir (`listAdminSpecialties` İLE AYNI
+ * okuma-geniş/yazma-dar desen — yazma `updateTelehealthThemeSettings` yalnızca ADMIN/MANAGER).
+ */
+export function getTelehealthThemeSettings(): Promise<TelehealthThemeSettings> {
+  return apiFetch<TelehealthThemeSettings>("/admin/telehealth/settings");
+}
+
+/** `PATCH /admin/telehealth/settings` — yalnızca ADMIN/MANAGER (EDITOR → 403). KISMİ gövde. */
+export function updateTelehealthThemeSettings(input: UpdateTelehealthThemeSettingsRequest): Promise<TelehealthThemeSettings> {
+  return apiFetch<TelehealthThemeSettings>("/admin/telehealth/settings", { method: "PATCH", body: input });
 }

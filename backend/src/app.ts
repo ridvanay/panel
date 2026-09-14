@@ -60,6 +60,7 @@ import {
   adminTelehealthAppointmentsRoutes,
   adminTelehealthBookingsRoutes,
   adminTelehealthDoctorsRoutes,
+  adminTelehealthSettingsRoutes,
   adminTelehealthSpecialtiesRoutes,
 } from "./modules/telehealth/telehealth.admin.routes";
 import { adminTelehealthAnalyticsRoutes } from "./modules/telehealth/telehealth.analytics.routes";
@@ -296,6 +297,10 @@ export function buildApp() {
       // [TCT] §9.7.7 KARAR K10a — salt-okunur analitik özet (ADMIN+MANAGER, EDITOR dışlanır).
       // YENİ YÜZEY = YENİ DOSYA deseni (`telehealth.admin.routes.ts`'e DOKUNULMADI).
       api.register(adminTelehealthAnalyticsRoutes, { prefix: "/admin/telehealth/analytics" });
+      // Randevu sihirbazı tema renkleri — migration/yeni model YOK, `SiteModule.settings`
+      // (`key="telehealth"`) JSON'u KULLANILIR. `GET` panel kapısı, `PATCH` ADMIN+MANAGER
+      // (bkz. telehealth.admin.routes.ts::adminTelehealthSettingsRoutes).
+      api.register(adminTelehealthSettingsRoutes, { prefix: "/admin/telehealth/settings" });
       // [TCT] §9.7.7 KARAR K — doktor/hasta portalları. Panel DEĞİLDİR (`requirePanelAccess()`
       // KULLANILMAZ); doktor tarafı KENDİ 2FA kapısını route içinde uygular.
       api.register(telehealthDoctorPortalRoutes, { prefix: "/doctor" });
