@@ -496,6 +496,66 @@ describe("telehealth — doktor self-servis profil ucu (PUT /doctor/profile — 
     });
     expect(res.statusCode).toBe(422);
   });
+
+  /**
+   * Bug fix (backend-agent, 2026-09-14) — doktor hiçbir bilimsel yayın/özgeçmiş girdisi
+   * eklemeden formu kaydettiğinde frontend'in gönderdiği GERÇEK payload (boş `cvEntries`/
+   * `publications` dizileri + `null` `subSpecialty`/`practiceStartYear`) `422` ile
+   * REDDEDİLMEMELİDİR — regresyon testi.
+   */
+  it("boş `cvEntries`/`publications` dizileri ve `null` opsiyonel alanlarla 200 döner", async () => {
+    const res = await app.inject({
+      method: "PUT",
+      url: "/api/v1/doctor/profile",
+      headers: authHeader(doctorUserToken),
+      payload: {
+        subSpecialty: null,
+        bio: "Yeni kısa özet.",
+        aboutHtml: null,
+        practiceStartYear: null,
+        languages: ["tr"],
+        cvEntries: [],
+        publications: [],
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.doctorProfile.cvEntries).toEqual([]);
+    expect(res.json().data.doctorProfile.publications).toEqual([]);
+    expect(res.json().data.doctorProfile.subSpecialty).toBeNull();
+    expect(res.json().data.doctorProfile.practiceStartYear).toBeNull();
+  });
+
+  it("boş `subSpecialty` (`\"\"`) kabul edilir (422 DEĞİL)", async () => {
+    const res = await app.inject({
+      method: "PUT",
+      url: "/api/v1/doctor/profile",
+      headers: authHeader(doctorUserToken),
+      payload: { subSpecialty: "" },
+    });
+    expect(res.statusCode).toBe(200);
+  });
+
+  it("bir yayın eklenip sonra boş diziye geri döndürüldüğünde şema patlamaz (200)", async () => {
+    const withPublication = await app.inject({
+      method: "PUT",
+      url: "/api/v1/doctor/profile",
+      headers: authHeader(doctorUserToken),
+      payload: {
+        publications: [{ kind: "INTERNATIONAL_ARTICLE", title: "Test Makale", venue: "Test Dergisi", year: 2020 }],
+      },
+    });
+    expect(withPublication.statusCode).toBe(200);
+    expect(withPublication.json().data.doctorProfile.publications).toHaveLength(1);
+
+    const clearedAgain = await app.inject({
+      method: "PUT",
+      url: "/api/v1/doctor/profile",
+      headers: authHeader(doctorUserToken),
+      payload: { publications: [] },
+    });
+    expect(clearedAgain.statusCode).toBe(200);
+    expect(clearedAgain.json().data.doctorProfile.publications).toEqual([]);
+  });
 });
 
 describe("telehealth — GET /doctor/bookings `scope` (§3.2)", () => {
