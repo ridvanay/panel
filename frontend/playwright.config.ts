@@ -21,6 +21,27 @@ import { defineConfig, devices } from "@playwright/test";
  *
  * Bu dosya CI'a devops-agent tarafından entegre edilmelidir (`.github/workflows/ci.yml`) —
  * qa-agent kendi ci.yml'i DEĞİŞTİRMEZ (bkz. proje kökü CLAUDE.md ajan sınırları).
+ *
+ * **`.claude/architect-scope-doctor-subdomain.md` §6.4/§7.4 — host şeması `siteadi.localhost`'a
+ * taşındı.** `baseURL` ve `webServer.command`'ın env'leri o dokümanın "E2E (`playwright.config.ts`)"
+ * sütunu BİREBİR uygulanır:
+ *   - `NEXT_PUBLIC_SITE_URL`/`baseURL`  → `http://siteadi.localhost:3100`
+ *   - `NEXT_PUBLIC_DOCTOR_URL` (YENİ)   → `http://doktor.siteadi.localhost:3100`
+ *   - `NEXT_PUBLIC_API_URL`             → `http://siteadi.localhost:4001/api/v1`
+ *   - `INTERNAL_API_URL` (bare-metal'de ZORUNLU, §6.1/§6.4 — Node.js `*.localhost`'u ÇÖZEMEZ,
+ *     yalnızca tarayıcı çözer) → `http://localhost:4001/api/v1`
+ *   - `NEXT_PUBLIC_INTERNAL_MEDIA_URL` (next/image optimize edicinin sunucu-taraflı fetch'i,
+ *     AYNI Node çözümleme kısıtı) → `http://localhost:4001`
+ * `*.siteadi.localhost` zinciri tarayıcı (Chromium) tarafından OTOMATİK 127.0.0.1'e çözülür —
+ * hosts dosyası/yönetici hakkı GEREKMEZ (§6.1 deney satırı 6, `next.config.ts::allowedDevOrigins`
+ * ile birlikte doğrulandı).
+ *
+ * **Geriye dönük uyumluluk senaryosu (§7.4 madde 13 — `NEXT_PUBLIC_DOCTOR_URL` tanımsız):**
+ * `NEXT_PUBLIC_DOCTOR_URL` bir build/dev-server BAŞLANGICINDA inline edilen sabittir; bu
+ * webServer'ı ETKİLEMEDEN ayrı bir sunucu gerektirir. Bu yüzden AYRI bir dosyada
+ * (`tests/e2e/doctor-subdomain-backward-compat.spec.ts`) ele alınır — o dosyanın başlığındaki
+ * manuel çalıştırma talimatına bakın (`doctor-panel-session-lifecycle.spec.ts`'in `E2E_SKIP_WEBSERVER`
+ * deseniyle AYNI felsefe).
  */
 /**
  * `.env.local`'daki `REVALIDATE_SECRET` (dev sabiti, `dev-revalidate-secret-change-me`)
@@ -44,7 +65,7 @@ export default defineConfig({
   reporter: [["list"], ["html", { outputFolder: "playwright-report", open: "never" }]],
   timeout: 30_000,
   use: {
-    baseURL: process.env.E2E_FRONTEND_URL ?? "http://localhost:3100",
+    baseURL: process.env.E2E_FRONTEND_URL ?? "http://siteadi.localhost:3100",
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },
@@ -69,7 +90,26 @@ export default defineConfig({
     ? undefined
     : {
         command:
-          `npx cross-env NEXT_PUBLIC_API_URL=http://localhost:4001/api/v1 NEXT_PUBLIC_SITE_URL=http://localhost:3100 REVALIDATE_SECRET=${E2E_REVALIDATE_SECRET} next dev -p 3100`,
+          `npx cross-env ` +
+          `NEXT_PUBLIC_API_URL=http://siteadi.localhost:4001/api/v1 ` +
+          `NEXT_PUBLIC_SITE_URL=http://siteadi.localhost:3100 ` +
+          `NEXT_PUBLIC_DOCTOR_URL=http://doktor.siteadi.localhost:3100 ` +
+          `INTERNAL_API_URL=http://localhost:4001/api/v1 ` +
+          `NEXT_PUBLIC_INTERNAL_MEDIA_URL=http://localhost:4001 ` +
+          `REVALIDATE_SECRET=${E2E_REVALIDATE_SECRET} next dev -p 3100`,
+        // qa-agent bulgusu (bu tur, KRİTİK): Playwright'ın `webServer.url` hazır-mı kontrolü test
+        // RUNNER'ININ KENDİ Node.js sürecinde çalışır — `.claude/architect-scope-doctor-subdomain.md`
+        // §6.1'in belgelediği AYNI kısıt (Node'un OS çözümleyicisi `*.localhost` ZİNCİRİNİ ÇÖZEMEZ,
+        // yalnızca tarayıcı çözer) burada da geçerli: `url: "http://siteadi.localhost:3100"` DENENDİ,
+        // Node `fetch failed`/`ENOTFOUND` ile SESSİZCE hiç bağlanamadı ve `webServer` 60sn sonra
+        // "Timed out waiting ... from config.webServer" ile PATLADI (sunucunun kendisi `curl` ile
+        // doğrulandığı gibi GERÇEKTEN 776ms'de hazırdı — sorun sunucuda DEĞİL, probun host adını
+        // çözememesindeydi). Düzeltme: hazır-mı probu Node'un ÇÖZEBİLDİĞİ `localhost`'a yapılır —
+        // AYNI süreç (`next dev -p 3100`), yalnızca `Host` header'ına göre dallanan `proxy.ts` §3.1
+        // [0] açısından `localhost:3100` ile `siteadi.localhost:3100` FARK ETMEZ (ikisi de "ana
+        // host" dalına düşer, isDoctorHostname() ikisinde de false) — yalnızca HAZIR-MI kontrolü
+        // içindir, gerçek testler (tarayıcı içinde çalışır, `*.localhost`'u SORUNSUZ çözer, §6.1
+        // deney satırı 6) `baseURL`/mutlak URL'ler üzerinden doğru host'ları KULLANMAYA DEVAM EDER.
         url: "http://localhost:3100",
         reuseExistingServer: !process.env.CI,
         timeout: 60_000,

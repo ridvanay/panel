@@ -8,6 +8,11 @@ export function refreshCookieOptions() {
   return {
     httpOnly: true,
     secure: isProd,
+    // `sameSite: "strict"` hekim portalı (`doktor.siteadi.*`) subdomain izolasyonu için
+    // KASITLI OLARAK değiştirilmedi: `doktor.*` ve API aynı kayıt edilebilir alan adı
+    // (`siteadi.localhost`/`siteadi.com`) altında olduğu sürece tarayıcı bunları zaten
+    // aynı-site sayar ve çerez sorunsuz taşınır — bkz. `.claude/architect-scope-doctor-subdomain.md`
+    // §6.2 (deneyle doğrulandı, §6.1).
     sameSite: "strict" as const,
     path: REFRESH_COOKIE_PATH,
     maxAge: env.REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60,

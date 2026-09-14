@@ -156,6 +156,83 @@ devops-agent tarafında yapılan/kontrol edilen değişiklikler:
   - S3 sürücüsünde (`STORAGE_DRIVER=s3`) bu tartışma zaten geçersiz — dosya container'ın
     dışında, S3 bucket'ında tutulur, container'ın kendisi stateless kalır.
 
+## Hekim Portalı Subdomain İzolasyonu (`doktor.*`) — host şeması ve env matrisi (devops-agent)
+
+`.claude/architect-scope-doctor-subdomain.md` (bağlayıcı karar dokümanı) §6/§6.4 kapsamında,
+hekim portalının (`/doctor/**`) ana vitrinden host bazlı izolasyonu için yerel/E2E host şeması
+`localhost` tabanlıdan `*.siteadi.localhost` tabanlıya taşındı. **Gerekçe (deneyle doğrulandı,
+§6.1):** `doktor.localhost` ile `localhost` tarayıcıda **farklı site** sayılır (`localhost` bir
+eTLD gibi davranır) — bu yüzden `SameSite=Strict` refresh çerezi `doktor.localhost` sayfasından
+`localhost` API'sine **taşınmaz** ve hekim oturumu sayfa yenilemesinde ölür. Ortak bir üst etiket
+(`siteadi.localhost`) altındaki alt alan adları ise **aynı site**dir, çerez sorunsuz taşınır.
+`*.localhost` ve `*.*.localhost` adlarını **tarayıcı** otomatik 127.0.0.1'e çözer (hosts
+dosyası/yönetici hakkı GEREKMEZ), **fakat Node.js'in OS çözümleyicisi ÇÖZEMEZ** — bu yüzden
+sunucu-taraflı fetch'ler (`INTERNAL_API_URL`, `NEXT_PUBLIC_INTERNAL_MEDIA_URL`) artık bare-metal
+`npm run dev`'de de (öncesinde yalnızca Docker'da) ZORUNLU.
+
+**Host şeması:**
+
+| Ortam | Ana site | Hekim | API |
+|---|---|---|---|
+| Prod (referans) | `https://siteadi.com` | `https://doktor.siteadi.com` | `https://api.siteadi.com` (aynı kayıt edilebilir alan adı — ZORUNLU) |
+| Dev (bare-metal/Docker) | `http://siteadi.localhost:3000` | `http://doktor.siteadi.localhost:3000` | `http://siteadi.localhost:4000` |
+| E2E (Playwright) | `http://siteadi.localhost:3100` | `http://doktor.siteadi.localhost:3100` | `http://siteadi.localhost:4001` |
+
+**Env matrisi (§6.4, uygulandı):**
+
+| Değişken | Nerede | Dev | E2E |
+|---|---|---|---|
+| `NEXT_PUBLIC_SITE_URL` | frontend build-arg | `http://siteadi.localhost:3000` | `http://siteadi.localhost:3100` |
+| `NEXT_PUBLIC_DOCTOR_URL` *(YENİ)* | frontend build-arg | `http://doktor.siteadi.localhost:3000` | `http://doktor.siteadi.localhost:3100` |
+| `NEXT_PUBLIC_API_URL` | frontend build-arg | `http://siteadi.localhost:4000/api/v1` | `http://siteadi.localhost:4001/api/v1` |
+| `INTERNAL_API_URL` | frontend runtime | `http://localhost:4000/api/v1` (bare-metal, ZORUNLU) / `http://backend:4000/api/v1` (Docker) | `http://localhost:4001/api/v1` |
+| `NEXT_PUBLIC_INTERNAL_MEDIA_URL` | frontend build-arg | `http://localhost:4000` (bare-metal, ZORUNLU) / `http://backend:4000` (Docker) | `http://localhost:4001` |
+| `FRONTEND_URL` | backend | `http://siteadi.localhost:3000` | `http://siteadi.localhost:3100` |
+| `DOCTOR_FRONTEND_URL` *(YENİ, opsiyonel)* | backend | `http://doktor.siteadi.localhost:3000` | `http://doktor.siteadi.localhost:3100` |
+| `PUBLIC_URL` | backend | `http://siteadi.localhost:4000` | `http://siteadi.localhost:4001` |
+
+**Değiştirilen dosyalar:**
+
+- `frontend/.env.local.example`: `NEXT_PUBLIC_SITE_URL`/`NEXT_PUBLIC_API_URL` host'u
+  `siteadi.localhost`'a taşındı; yeni `NEXT_PUBLIC_DOCTOR_URL` eklendi; `INTERNAL_API_URL`
+  (yeni satır, önceden yalnızca Docker'da gerekiyordu) ve `NEXT_PUBLIC_INTERNAL_MEDIA_URL`
+  (artık boş değil, `http://localhost:4000`) bare-metal dev için ZORUNLU hâle geldiklerinden
+  dolu değerle eklendi.
+- `backend/.env.example`: `FRONTEND_URL`/`PUBLIC_URL` host'u `siteadi.localhost`'a taşındı; yeni
+  `DOCTOR_FRONTEND_URL` eklendi (backend-agent'ın `config/env.ts`'ine paralel olarak zaten
+  `z.string().url().optional()` şemasıyla eklediği görüldü — devops tarafı yalnızca şablon
+  dosyasını günceller).
+- `backend/.env.e2e`: aynı host taşıması (`:3100`/`:4001` portlarıyla) + `DOCTOR_FRONTEND_URL`
+  eklendi — qa-agent'ın `doctor-subdomain-isolation.spec.ts`'inin CORS/oturum senaryolarını
+  (§7.4) test edebilmesi için **kasıtlı olarak aktif** bırakıldı (yorum satırı değil).
+- `docker-compose.yml`: `frontend.build.args`'a `NEXT_PUBLIC_SITE_URL`/`NEXT_PUBLIC_API_URL`
+  ile AYNI desende `NEXT_PUBLIC_DOCTOR_URL` build-arg'ı eklendi (build-time inline edilir,
+  runtime `environment:` YETMEZ) ve mevcut ikisinin host'u `siteadi.localhost`'a taşındı —
+  bu artık Docker Compose kullanımında da geçerli, çünkü tarayıcı Docker'da da bare-metal'deki
+  ile AYNI host şemasını görüyor (yalnızca container-içi iletişim, örn. `backend:4000`,
+  DEĞİŞMEDİ). Dosya başındaki kullanım yorumu tarayıcıda açılacak adresin artık
+  `http://siteadi.localhost:3000` (ve opsiyonel `http://doktor.siteadi.localhost:3000`)
+  olduğunu belirtecek şekilde güncellendi.
+
+**Bilinçli sapma (devops-agent kararı):** Görev talimatında backend servisine
+`DOCTOR_FRONTEND_URL`'in `environment:` bloğuna eklenmesi istendi, ancak bu **yapılmadı** —
+bunun yerine `environment:` bloğuna yalnızca açıklayıcı bir yorum eklendi. Gerekçe: dosyadaki
+mevcut `FRONTEND_URL` yorumuyla (`"KRİTİK: FRONTEND_URL BURADA OVERRIDE EDİLMEZ"`) birebir aynı
+mantık geçerli — `DOCTOR_FRONTEND_URL` zaten `env_file: ./backend/.env` üzerinden otomatik
+akıyor (tıpkı `STRIPE_*`/`LIVEKIT_*` gibi, bkz. yukarıdaki "Tele-Sağlık (LiveKit)" notu) ve
+Docker Compose'da `environment:` bloğu `env_file`'a göre ÖNCELİKLİDİR — burada sabit bir değer
+hardcode etmek, geliştiricinin kendi `backend/.env`'inde `DOCTOR_FRONTEND_URL`'i silerek/boş
+bırakarak subdomain modunu KAPATMASINI (§3.4 geriye dönük uyumluluk anahtarı) imkânsız hale
+getirirdi. Bir çelişki/blokaj görülürse architect'e eskale edilecektir.
+
+**Prod dağıtımı (§7.1 madde 3-4, takip kalemi):** `doktor.<domain>` için DNS/sertifika
+(wildcard veya ayrı SAN) ve reverse-proxy host yönlendirmesi hedef platform seçildiğinde
+kurulmalı (bkz. aşağıdaki "CD" bölümündeki placeholder). Ayrıca doktor host'u için
+reverse-proxy/CDN seviyesinde yalnızca `/`, `/login`, `/forgot-password`, `/reset-password`,
+`/doctor/*`, `/_next/*`, `/api/*` yollarının uygulamaya geçirilmesi önerilir (`/admin`,
+`/dashboard` host seviyesinde kesilir) — proxy.ts bu yolları host bazında görmez, doğru katman
+uygulama değil reverse proxy/CDN'dir (frontend-agent'ın `proxy.ts`'teki §3.2 notuna bakınız).
+
 ## Bağımlılık politikası — `allowScripts` (backend)
 
 backend-agent, içe aktarma özelliği için şu bağımlılıkları ekledi: `saxes`, `csv-parse`,

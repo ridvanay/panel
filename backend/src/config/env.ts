@@ -10,6 +10,17 @@ const EnvSchema = z.object({
   // adı ("frontend") BURAYA ASLA YAZILMAMALI — tarayıcı bu adı çözemez, hem CORS'u (login dahil
   // TÜM istekler ağ hatası gibi görünerek başarısız olur) hem gönderilen e-posta linklerini kırar.
   FRONTEND_URL: z.string().url().default("http://localhost:3000"),
+  // `.claude/architect-scope-doctor-subdomain.md` §6.4/§7.2 — hekim portalının (`/doctor/**`)
+  // izole edildiği AYRI bir tarayıcı origin'i (dev: `doktor.siteadi.localhost:3000`, prod:
+  // `doktor.siteadi.com`). `FRONTEND_URL` İLE AYNI ROLÜ oynar (CORS `origin` allow-list'i,
+  // bkz. plugins/security.ts) — TEK fark, bunun host bazlı ikinci bir tarayıcı origin'i olması.
+  // OPSİYONEL: subdomain izolasyonu yapılandırılmamış kurulumlarda (`DOCTOR_FRONTEND_URL`
+  // tanımsız/boş) hekim portalı `FRONTEND_URL` altında aynı origin'den servis edilir ve CORS
+  // allow-list'i tek eleman olarak kalır — geriye dönük uyumluluk bozulmaz. Bu alanın bir
+  // allow-list girdisi olmasının nedeni: `credentials: true` ile çalışan bir CORS
+  // yapılandırmasında `Access-Control-Allow-Origin` ASLA `*`/wildcard/regex olamaz (security-agent
+  // kuralı) — ikinci sabit origin'in tanınabilmesi için allow-list'e AYRICA eklenmesi gerekir.
+  DOCTOR_FRONTEND_URL: z.string().url().optional(),
   // Backend'in SUNUCUDAN SUNUCUYA çağırdığı tek uç: `lib/revalidate.ts`teki on-demand ISR
   // webhook'u (`POST /api/revalidate`). Docker Compose ağında frontend servisine "frontend"
   // adıyla erişilir (`FRONTEND_URL`'den KASITLI OLARAK AYRI — bkz. o alanın yorumu); tanımsızsa

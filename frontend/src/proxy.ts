@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { SERVER_API_BASE_URL } from "@/lib/env";
+import { DOCTOR_ORIGIN, SITE_ORIGIN, isDoctorHostname } from "@/lib/doctor-host";
+import { isSafeInternalPath } from "@/lib/safe-redirect";
 import type { PublicSiteAppearance, Locale } from "@/lib/api/types";
 
 /**
  * §10.12.5 Bakım Modu — SUNUM anahtarıdır, bir GÜVENLİK kontrolü DEĞİLDİR: API'yi kapatmaz,
- * hiçbir veriyi korumaz. Yalnızca ziyaretçi (`(site)`) sayfalarını etkiler.
+ * hiçbir veriyi korumaz. Yalnızca ziyaretçi (`(site)`) sayfalarını etkiler — hekim portalını
+ * (`(doctor)`) KAPSAMAZ (§3.3, aşağıda).
  *
  * **Neden `(site)/layout.tsx` DEĞİL, proxy (Next.js 16 — bkz. frontend/AGENTS.md, `middleware.ts`
  * ARTIK `proxy.ts` olarak yeniden adlandırıldı, node_modules/next/dist/docs/01-app/03-api-reference/
@@ -19,15 +22,38 @@ import type { PublicSiteAppearance, Locale } from "@/lib/api/types";
  * middleware.ts'tir" notuyla da TUTARLIDIR (oturum çerezi istek başına proxy'de okunabilir; not
  * mimari dokümanda eski isimle yazılmış olsa da kastedilen dosya BUDUR).
  *
- * **§10.5 / `.claude/architect-scope-i18n.md` §4.3 — TEK proxy dosyası, İKİ sorumluluk:**
- * Next 16 tek bir proxy dosyasına izin verir; bu yüzden locale rewrite/redirect mantığı bu
- * MEVCUT fonksiyona eklenir, ikinci bir dosya AÇILMAZ. **Sıra bağlayıcıdır:** önce bakım modu
- * (503 kazanır — bakım modundayken dil yönlendirmesi YAPILMAZ), sonra locale çözümlemesi.
+ * **`.claude/architect-scope-doctor-subdomain.md` §3.1 — TEK proxy dosyası, ÜÇ sorumluluk:**
+ * Next 16 tek bir proxy dosyasına izin verir (§2.1); `.claude/architect-scope-i18n.md` §4.3'ün
+ * "TEK proxy dosyası, İKİ sorumluluk" notu (bakım modu + locale rewrite/redirect) artık ÜÇÜNCÜ bir
+ * sorumlulukla genişledi: **hekim portalının (`/doctor/**`) host bazlı izolasyonu**
+ * (`doktor.<domain>` ↔ ana domain). Bu üç sorumluluğun ÇALIŞMA SIRASI BAĞLAYICIDIR:
  *
- * **`/admin` KESİNLİKLE etkilenmez** — aşağıdaki `matcher` admin/api/auth/SaaS rotalarını
- * (`/login`, `/dashboard` vb. — bu monorepo'nun site-DIŞI SaaS yüzeyi) negatif lookahead ile
- * hariç tutar; yönetici kendini asla kilitleyemez (bağlayıcı kural). Admin panelinin dili
- * URL'de DEĞİL, `localStorage`'dadır (§7) — bu proxy admin rotalarını HİÇ görmez.
+ *   [0] Host tespiti (`request.headers.get("host")` — App Router'da `nextUrl` host/hostname
+ *       ALANI SUNMAZ, bkz. doküman §2.3) → `isDoctorHost`.
+ *   [1] SaaS auth yüzeyi erken çıkışı — `/login`/`/register`/`/forgot-password`/`/reset-password`
+ *       ana host'ta HER ŞEYDEN ÖNCE `next()` ile geçer (bugünkü davranışın birebir korunması —
+ *       bakım modu fetch'i de locale fetch'i de bu yolları GÖRMEZ).
+ *   [2] Locale listesi HER İKİ host için de çekilir (rewrite hedefi + `<html lang>` için gerekir).
+ *   ANA HOST dalı: [3] bakım modu (503, MEVCUT — DEĞİŞMEDİ) → [4] `/doctor/**` doktor host'una
+ *       307 devri (yalnızca `DOCTOR_ORIGIN` yapılandırılmışsa) → [5] locale redirect/rewrite
+ *       (MEVCUT — DEĞİŞMEDİ).
+ *   DOKTOR HOST dalı: [6] bakım modu UYGULANMAZ (`/appearance` fetch'i HİÇ YAPILMAZ — §3.3) →
+ *       [7] auth yüzeyi (`/login` → hekim girişine rewrite, `/forgot-password`/`/reset-password`
+ *       jenerik ekran, `/register` ana host'a devir) → [8] portal rotaları (tek dilli — §3.5) →
+ *       [9] diğer her şey ana host'a 307 devredilir → [10] TÜM doktor host yanıtlarına
+ *       `X-Robots-Tag: noindex, nofollow` + `x-doctor-portal: 1` eklenir.
+ *
+ * Bu sıra `.claude/architect-scope-doctor-subdomain.md` §3.1'de birebir tanımlıdır ve
+ * SORGULANMADAN uygulanır — alternatifler (koşullu header render, cookie/header köprüsü vb.)
+ * orada değerlendirilip REDDEDİLMİŞTİR (§5.1).
+ *
+ * **`/admin` KESİNLİKLE etkilenmez** — aşağıdaki `matcher` admin/api/dashboard/invitations/pricing
+ * rotalarını (bu monorepo'nun site-DIŞI SaaS yüzeyi) negatif lookahead ile hariç tutar; yönetici
+ * kendini asla kilitleyemez (bağlayıcı kural). Admin panelinin dili URL'de DEĞİL, `localStorage`'dadır
+ * (§7) — bu proxy admin rotalarını HİÇ görmez. **Kabul edilen sınır (§3.2, bilinçli):** doktor
+ * host'unda `/admin` ve `/dashboard` erişilebilir kalır (proxy onları görmez) — bu bir güvenlik
+ * açığı DEĞİLDİR (yetkilendirme API tarafındadır, host bazlı değildir), yalnızca kozmetik bir
+ * sızıntıdır; doğru katman reverse proxy/CDN'dir (devops-agent takip kalemi).
  *
  * **`public/` altındaki statik dosyalar (`.*\..*`):** Bu proxy TÜM istekleri (yukarıdaki
  * negatif liste hariç) `/${locale}/...`'a rewrite eder — `_next/static`, `favicon.ico`,
@@ -43,7 +69,7 @@ import type { PublicSiteAppearance, Locale } from "@/lib/api/types";
  */
 export const config = {
   matcher: [
-    "/((?!admin|api|login|register|forgot-password|reset-password|invitations|pricing|dashboard|_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|.*\\..*).*)",
+    "/((?!admin|api|invitations|pricing|dashboard|_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|.*\\..*).*)",
   ],
 };
 
@@ -94,9 +120,46 @@ async function fetchEnabledLocales(): Promise<Locale[]> {
   }
 }
 
-export async function proxy(request: NextRequest) {
-  const { pathname } = request.nextUrl;
+/** §3.1 [1] — bu dört yol ana host'ta proxy'nin GERİ KALANINI (bakım modu, locale, doktor devri) HİÇ görmez. */
+const SAAS_AUTH_SURFACE_PATHS = new Set(["/login", "/register", "/forgot-password", "/reset-password"]);
 
+/** `doctor-portal-route-guard.tsx::isDoctorPortalRoute` İLE AYNI genel `[a-z]{2}` locale prefix örüntüsü. */
+const DOCTOR_PORTAL_ROUTE_PATTERN = /^\/(?:[a-z]{2}\/)?doctor(?:\/|$)/;
+/** Yalnızca locale ÖNEKLİ hâli (`/tr/doctor`, `/en/doctor/earnings`) — §3.1 [8]'in 3. satırı. */
+const DOCTOR_PORTAL_PREFIXED_ROUTE_PATTERN = /^\/[a-z]{2}\/doctor(?:\/|$)/;
+/** Ana host'ta `/doctor/**` → doktor host'una devrederken locale prefix'ini soymak için (§3.1 [4]). */
+const LEADING_LOCALE_SEGMENT_PATTERN = /^\/[a-z]{2}(?=\/|$)/;
+
+/** §3.1 [10] — doktor host'undan dönen HER yanıta (rewrite/next/redirect fark etmez) uygulanır. */
+function withDoctorPortalHeaders(response: NextResponse): NextResponse {
+  response.headers.set("X-Robots-Tag", "noindex, nofollow");
+  response.headers.set("x-doctor-portal", "1");
+  return response;
+}
+
+/**
+ * Farklı bir origin'e (mutlak) yönlendirme hedefi üretir — §3.6: origin YALNIZCA env'den (çağıranın
+ * verdiği sabit) türetilir, `Host` header'ından DEĞİL.
+ *
+ * security-agent denetimi (§7.6, 2026-09-14, CWE-601 open redirect) — `pathname` filtrelenmeden
+ * `new URL(`${pathname}${search}`, origin)`'e geçirilirse bu bir basit pathname-setter DEĞİL, TAM bir
+ * WHATWG relative-URL çözümlemesidir: `pathname` `"//evil.example"` (protokol-göreli) veya
+ * `"/\\evil.example"` (tarayıcı tarafından `//`'a normalize edilen ters slash) olursa, verilen
+ * `origin` YOK SAYILIR ve sonuç `https://evil.example/`'a çözülür. `[4]` ve `[7]` çağrıları sabit/
+ * doğrulanmış path'ler kullandığı için savunmasız DEĞİLDİR; ancak `[9]` catch-all dalı `pathname`'i
+ * hiçbir filtreleme olmadan buraya iletiyordu. `isSafeInternalPath` (`lib/safe-redirect.ts`) TAM
+ * OLARAK bu bypass sınıfını reddeder — login/register akışında zaten kullanılan AYNI kontrol burada
+ * TEKRAR kullanılır (kod tekrarı YASAK); güvenli değilse path `"/"`'e normalize edilir, `new URL()`'e
+ * asla ham/filtrelenmemiş hâliyle geçirilmez.
+ */
+function crossOriginUrl(origin: string, pathname: string, search: string): URL {
+  const safePathname = isSafeInternalPath(pathname) ? pathname : "/";
+  return new URL(`${safePathname}${search}`, origin);
+}
+
+/** §3.1 ANA HOST dalı — bakım modu, `/doctor/**` devri, locale redirect/rewrite. */
+async function handleMainHost(request: NextRequest, pathname: string, defaultLocale: Locale, localeCodes: Set<string>): Promise<NextResponse> {
+  // [3] BAKIM MODU (503) — MEVCUT KOD, DEĞİŞMEDİ.
   let maintenanceEnabled = false;
   let maintenanceMessage = DEFAULT_MAINTENANCE_MESSAGE;
   try {
@@ -114,10 +177,6 @@ export async function proxy(request: NextRequest) {
     maintenanceEnabled = false;
   }
 
-  const locales = await fetchEnabledLocales();
-  const defaultLocale = locales.find((l) => l.isDefault) ?? locales[0]!;
-  const localeCodes = new Set(locales.map((l) => l.code));
-
   const firstSegment = pathname.split("/")[1] ?? "";
 
   if (maintenanceEnabled) {
@@ -130,9 +189,16 @@ export async function proxy(request: NextRequest) {
     });
   }
 
+  // [4] DOKTOR ROTASI DEVRİ (§3.4) — yalnızca `DOCTOR_ORIGIN` yapılandırılmışsa. 307 (kalıcı DEĞİL):
+  // doktor host'u bir dağıtım yapılandırmasıdır, kapatıldığında kalıcı bir yönlendirme kullanıcı
+  // tarayıcısında hapsolmamalı; ayrıca 307 metodu/gövdeyi korur (RSC/POST navigasyonları güvenli).
+  if (DOCTOR_ORIGIN && DOCTOR_PORTAL_ROUTE_PATTERN.test(pathname)) {
+    const strippedPath = pathname.replace(LEADING_LOCALE_SEGMENT_PATTERN, "") || "/";
+    return NextResponse.redirect(crossOriginUrl(DOCTOR_ORIGIN, strippedPath, request.nextUrl.search), 307);
+  }
+
+  // [5] LOCALE REDIRECT/REWRITE — MEVCUT KOD, DEĞİŞMEDİ.
   // `/tr/...` (varsayılan dilin KENDİ prefix'i) → 301 ile prefix'siz kanonik URL'e.
-  // §12.2 — varsayılan dildeki kanonik slug ile farklı bir locale prefix'i altında gelen istekler
-  // (`/en/gizlilik-politikasi` gibi) BU KURALA girmez, backend slug fallback'i zaten çözer.
   if (firstSegment === defaultLocale.code) {
     const rest = pathname.slice(`/${defaultLocale.code}`.length) || "/";
     const url = request.nextUrl.clone();
@@ -155,4 +221,75 @@ export async function proxy(request: NextRequest) {
   const headers = new Headers(request.headers);
   headers.set("x-active-locale", defaultLocale.code);
   return NextResponse.rewrite(url, { request: { headers } });
+}
+
+/** §3.1 DOKTOR HOST dalı — bakım modu UYGULANMAZ (§3.3), auth yüzeyi, tek dilli portal rotaları. */
+function handleDoctorHost(request: NextRequest, pathname: string, defaultLocale: Locale): NextResponse {
+  // [7] AUTH YÜZEYİ.
+  if (pathname === "/login") {
+    const url = request.nextUrl.clone();
+    url.pathname = `/${defaultLocale.code}/doctor/login`;
+    const headers = new Headers(request.headers);
+    headers.set("x-active-locale", defaultLocale.code);
+    return NextResponse.rewrite(url, { request: { headers } });
+  }
+  if (pathname === "/forgot-password" || pathname === "/reset-password") {
+    // Jenerik ekran — zaten `(auth)` grubunda, SiteHeader/Footer YOK; doktor host'una özgü bir
+    // varyant GEREKMEZ.
+    return NextResponse.next();
+  }
+  if (pathname === "/register") {
+    // Hekimler kendi kendine kayıt olmaz (§4) — ana host'a devir.
+    return NextResponse.redirect(crossOriginUrl(SITE_ORIGIN, pathname, request.nextUrl.search), 307);
+  }
+
+  // [8] PORTAL ROTALARI (tek dilli — §3.5, ziyaretçinin gördüğü URL HER ZAMAN prefix'sizdir).
+  if (pathname === "/") {
+    const url = request.nextUrl.clone();
+    url.pathname = `/${defaultLocale.code}/doctor`;
+    const headers = new Headers(request.headers);
+    headers.set("x-active-locale", defaultLocale.code);
+    return NextResponse.rewrite(url, { request: { headers } });
+  }
+  // `/{lang}/doctor/...` biçiminde gelen bir istek → aynı host'ta prefix'siz hâline 307 (bu kontrol
+  // genel `DOCTOR_PORTAL_ROUTE_PATTERN`'DEN ÖNCE gelir — o da prefix'li hâli eşler).
+  if (DOCTOR_PORTAL_PREFIXED_ROUTE_PATTERN.test(pathname)) {
+    const url = request.nextUrl.clone();
+    url.pathname = pathname.replace(LEADING_LOCALE_SEGMENT_PATTERN, "") || "/";
+    return NextResponse.redirect(url, 307);
+  }
+  if (DOCTOR_PORTAL_ROUTE_PATTERN.test(pathname)) {
+    const url = request.nextUrl.clone();
+    url.pathname = `/${defaultLocale.code}${pathname}`;
+    const headers = new Headers(request.headers);
+    headers.set("x-active-locale", defaultLocale.code);
+    return NextResponse.rewrite(url, { request: { headers } });
+  }
+
+  // [9] DİĞER HER ŞEY (hasta/e-ticaret/kurumsal sayfalar) — ana host'a devir.
+  return NextResponse.redirect(crossOriginUrl(SITE_ORIGIN, pathname, request.nextUrl.search), 307);
+}
+
+export async function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  // [0] Host tespiti — App Router'da `nextUrl` host/hostname ALANI SUNMAZ (§2.3), `Host` header'ı okunur.
+  const host = request.headers.get("host") ?? "";
+  const isDoctorHost = isDoctorHostname(host);
+
+  // [1] SaaS auth yüzeyi erken çıkışı — YALNIZCA ana host'ta, locale/bakım-modu fetch'lerinden ÖNCE.
+  if (!isDoctorHost && SAAS_AUTH_SURFACE_PATHS.has(pathname)) {
+    return NextResponse.next();
+  }
+
+  // [2] Locale listesi — her iki host için de gerekli (rewrite hedefi + `<html lang>`).
+  const locales = await fetchEnabledLocales();
+  const defaultLocale = locales.find((l) => l.isDefault) ?? locales[0]!;
+  const localeCodes = new Set(locales.map((l) => l.code));
+
+  if (isDoctorHost) {
+    return withDoctorPortalHeaders(handleDoctorHost(request, pathname, defaultLocale));
+  }
+
+  return handleMainHost(request, pathname, defaultLocale, localeCodes);
 }

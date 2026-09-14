@@ -59,6 +59,11 @@ const nextConfig: NextConfig = {
   // Docker runtime image'ını küçültmek için: `.next/standalone` içine yalnızca
   // gerçekten kullanılan node_modules bağımlılıkları dahil edilir (bkz. Dockerfile).
   output: "standalone",
+  // `.claude/architect-scope-doctor-subdomain.md` §6.4 — dev sunucusu `siteadi.localhost`'ta
+  // başlatılır; Next VARSAYILAN olarak başka origin'lerden (ör. `doktor.siteadi.localhost`)
+  // gelen istekleri BLOKLAR (doğrulandı: `node_modules/next/dist/docs/.../allowedDevOrigins.md`).
+  // frontend-agent'a DAR yetki — YALNIZCA bu anahtar, başka bir config anahtarına dokunulmaz.
+  allowedDevOrigins: ["siteadi.localhost", "*.siteadi.localhost"],
   images: {
     remotePatterns: buildImageRemotePatterns(),
     // `docker-compose.yml`'de `NEXT_PUBLIC_API_URL=http://localhost:4000/api/v1` — bu projenin

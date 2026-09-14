@@ -1,10 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as telehealthApi from "@/lib/api/telehealth";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import type { AppointmentBooking, DoctorBookingsScope, DoctorConsoleOverview } from "@/lib/api/types";
-import { useDoctorPortalProfile } from "@/components/site/telehealth/doctor-portal-shell";
+import { useDoctorPortalProfile } from "@/components/site/telehealth/doctor-portal-context";
 import { DoctorPortalFeedCard } from "@/components/site/telehealth/doctor-portal-feed-card";
 import { DoctorPortalQuickLinksCard } from "@/components/site/telehealth/doctor-portal-quick-links-card";
 import { DoctorConsoleOverviewCards } from "@/components/site/telehealth/doctor-console-overview-cards";
@@ -137,16 +137,29 @@ export function DoctorBookingsPanel() {
     }
   }, []);
 
+  // frontend-agent bug fix (`.claude/architect-scope-doctor-subdomain.md` §5.4 invariant 4 —
+  // qa-agent'ın bulduğu bug, bkz. `doctor-portal-feed-card.tsx`'teki AYNI kök neden açıklaması):
+  // `DoctorBookingsPanel` de `DoctorPortalShell` `status === "ready"` OLANA KADAR mount edilmez —
+  // bu geç mount, React dev-modu StrictMode'un "mount → effect → cleanup → effect" ikiye katlama
+  // simülasyonunu TAM O ANDA tetikler, `loadOverview`/`loadBookings` efektleri iki kez çalışıp
+  // GERÇEK ikinci `GET /doctor/overview` + `GET /doctor/bookings` istekleri atıyordu. `hasLoadedRef`
+  // (overview) ve `lastLoadedScopeRef` (bookings, scope'a göre anahtarlanır) StrictMode'un HEMEN
+  // ardından gelen ikinci (fantom) çağrısını atlar; `scope` GERÇEKTEN değiştiğinde (tab tıklaması —
+  // bu bir REMOUNT değil sıradan bir yeniden render'dır, StrictMode ETKİLEMEZ) `lastLoadedScopeRef`
+  // güncel değerle eşleşmediği için normal şekilde yeniden fetch eder ("Tekrar Dene" butonları zaten
+  // `loadOverview()`/`loadBookings(scope)`'u DOĞRUDAN çağırır, bu guard'ların DIŞINDADIR).
+  const hasLoadedOverviewRef = useRef(false);
   useEffect(() => {
-    (async () => {
-      await loadOverview();
-    })();
+    if (hasLoadedOverviewRef.current) return;
+    hasLoadedOverviewRef.current = true;
+    void loadOverview();
   }, [loadOverview]);
 
+  const lastLoadedScopeRef = useRef<DoctorBookingsScope | null>(null);
   useEffect(() => {
-    (async () => {
-      await loadBookings(scope);
-    })();
+    if (lastLoadedScopeRef.current === scope) return;
+    lastLoadedScopeRef.current = scope;
+    void loadBookings(scope);
   }, [scope, loadBookings]);
 
   async function loadMore() {

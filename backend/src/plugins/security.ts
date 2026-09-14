@@ -18,7 +18,16 @@ export default fp(async function securityPlugin(app: FastifyInstance) {
   });
 
   await app.register(cors, {
-    origin: env.FRONTEND_URL,
+    // `.claude/architect-scope-doctor-subdomain.md` §6.4/§7.2 — hekim portalı
+    // (`doktor.siteadi.*`) ana site'den (`siteadi.*`) FARKLI bir tarayıcı origin'i olduğu için
+    // tek bir string yeterli değil; sabit, env kaynaklı bir allow-list dizisi kullanılır.
+    // `DOCTOR_FRONTEND_URL` tanımsızsa `.filter(Boolean)` onu listeden düşürür ve davranış
+    // bugünküyle (`FRONTEND_URL` tek origin) BİREBİR AYNI kalır. BAĞLAYICI KISIT (security-agent):
+    // wildcard (`*`) veya regex origin YASAK — `credentials: true` ile birlikte
+    // `Access-Control-Allow-Origin: *` asla üretilemez; allow-list SABİT ve yalnızca env'den gelir.
+    origin: [env.FRONTEND_URL, env.DOCTOR_FRONTEND_URL].filter(
+      (value): value is string => Boolean(value),
+    ),
     credentials: true, // refresh token httpOnly cookie için gerekli
     // @fastify/cors'un varsayılanı yalnızca "GET,HEAD,POST" — bu API PATCH/PUT/DELETE
     // kullandığı için (ör. içerik düzenleme/silme) açıkça listelenmezse tarayıcı preflight'ı

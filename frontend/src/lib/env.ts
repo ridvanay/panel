@@ -9,6 +9,16 @@ export const SERVER_API_BASE_URL = process.env.INTERNAL_API_URL ?? API_BASE_URL;
 // sitemap.ts/robots.ts gibi mutlak URL üretmesi gereken dosyalar için — sitenin kendi origin'i.
 export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
+/**
+ * `.claude/architect-scope-doctor-subdomain.md` §6.4 — hekim portalının izole subdomain'i
+ * (`http://doktor.siteadi.localhost:3000` dev, `https://doktor.siteadi.com` prod). Tanımsız
+ * KALABİLİR (tek-domain kurulumlar, geriye dönük uyumluluk — §3.4) — bu durumda `null`. Gerçek
+ * "subdomain modu açık mı" hesaplaması (`SITE_URL` ile aynı hostname'e çözülme döngü koruması
+ * dahil) BURADA DEĞİL, `lib/doctor-host.ts::DOCTOR_ORIGIN`'dedir; bu sabit yalnızca ham env
+ * okumasıdır.
+ */
+export const DOCTOR_SITE_URL = process.env.NEXT_PUBLIC_DOCTOR_URL || null;
+
 const PUBLIC_MEDIA_ORIGIN = (() => {
   try {
     return new URL(API_BASE_URL).origin;

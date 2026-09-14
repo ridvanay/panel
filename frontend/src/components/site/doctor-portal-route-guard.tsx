@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuthOptional } from "@/context/auth-context";
 import { useLocalizePath } from "@/context/locale-alternates-context";
+import { isDoctorHostname, isSubdomainModeEnabled, toDoctorOrigin } from "@/lib/doctor-host";
 
 /**
  * §K6 (`.claude/architect-scope-telehealth-template.md`) + görev talimatı — doktor hesabı
@@ -15,6 +16,15 @@ import { useLocalizePath } from "@/context/locale-alternates-context";
  * `/doctors/[slug]` (kamuya açık doktor profili LİSTESİ/DETAYI, ÇOĞUL) `/doctor` (doktor
  * portalı, TEKİL) İLE KARIŞTIRILMAZ — aşağıdaki örüntü `site-header.tsx::isDoctorDetailRoute`
  * İLE AYNI genel `[a-z]{2}` locale prefix segmentini (`Locale.code` ile SINIRLI DEĞİL) kullanır.
+ *
+ * `.claude/architect-scope-doctor-subdomain.md` §5.6 — bu guard `(site)/layout.tsx`'te KALIR
+ * (`(doctor)` grubuna eklenmez, orada ters yönde bir döngü üretir). Subdomain modu AÇIKKEN
+ * (`isSubdomainModeEnabled()`) ve şu an ana host'taysak (`(site)` sayfaları YALNIZCA ana host'ta
+ * render edilir, ama bu bileşenin kendisi `window.location.hostname`'e bakarak KORUR), `router.replace`
+ * YERİNE `window.location.assign` ile TAM SAYFA gezinme yapılır — `router.replace` bir RSC
+ * navigasyonu başlatır ve proxy'nin döndüğü cross-origin 307'yi Next istemci router'ının izlemesi
+ * GARANTİ DEĞİLDİR (bellek-içi access token da origin değiştiğinde zaten kaybolur, yeni origin'de
+ * oturum yalnızca refresh cookie ile kurulur — bkz. karar dokümanı §6).
  */
 function isDoctorPortalRoute(pathname: string | null): boolean {
   if (!pathname) return false;
@@ -36,6 +46,10 @@ export function DoctorPortalRouteGuard() {
     // guard ARTIK müdahale ETMEZ — `isDoctorSession` `false` olur, effect erken çıkar.
     if (!isDoctorSession) return;
     if (isDoctorPortalRoute(pathname)) return;
+    if (isSubdomainModeEnabled() && !isDoctorHostname(window.location.hostname)) {
+      window.location.assign(toDoctorOrigin("/doctor"));
+      return;
+    }
     router.replace(localize("/doctor"));
   }, [isDoctorSession, pathname, router, localize]);
 

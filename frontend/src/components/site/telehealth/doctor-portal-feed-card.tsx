@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, CalendarPlus, CheckCircle2, Megaphone, ShieldCheck } from "lucide-react";
 import * as telehealthApi from "@/lib/api/telehealth";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
@@ -11,7 +11,7 @@ import type {
   DoctorPortalNotification,
   DoctorPortalNotificationKind,
 } from "@/lib/api/types";
-import { useDoctorPortalProfile } from "@/components/site/telehealth/doctor-portal-shell";
+import { useDoctorPortalProfile } from "@/components/site/telehealth/doctor-portal-context";
 import { formatDayLabel, formatTime } from "@/lib/telehealth-format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -128,14 +128,31 @@ export function DoctorPortalFeedCard() {
     }
   }, []);
 
+  // frontend-agent bug fix (§5.4 invariant 4) — `DoctorPortalFeedCard` `DoctorPortalShell`'in
+  // `status === "ready"` olana KADAR HİÇ mount edilmez (bkz. shell'in koşullu render'ı); yani bu
+  // bileşenin fiber'ı SAYFANIN İLK renderında DEĞİL, DAHA SONRA (bir state geçişinin SONUCUNDA)
+  // oluşturulur — bu React'in geliştirme-modu StrictMode "mount → effect → cleanup → effect"
+  // simülasyonunu (`reactStrictMode: true`, App Router'da Next 13.5.1'den beri VARSAYILAN, bkz.
+  // `node_modules/next/dist/docs/.../reactStrictMode.md`) TAM OLARAK bu mount anında tetikler —
+  // efekt gövdesi iki kez çalışıp GERÇEK bir ikinci `GET /doctor/portal-feed` isteği atıyordu.
+  // (`DoctorPortalProvider`'ın `/doctor/me` efekti bu simülasyondan ETKİLENMEZ çünkü o bileşen
+  // SIFIRINCI render'da zaten mount'tur; asıl fetch'i tetikleyen `authStatus` geçişi bir REMOUNT
+  // DEĞİL sıradan bir yeniden render'dır — StrictMode YALNIZCA mount'ları ikiye katlar.)
+  // `hasLoadedRef` ikinci (StrictMode) çağrıyı SESSİZCE atlar; state güncellemesini engelleyen bir
+  // `ignore` bayrağı YETMEZ — `fetch()` her iki çağrıda da SENKRON olarak tetiklenir (ağ isteği
+  // `await`'ten ÖNCE gönderilir), bu yüzden asıl istek KENDİSİ ikinci çağrıda hiç BAŞLATILMAMALI.
+  const hasLoadedRef = useRef(false);
+
   useEffect(() => {
-    (async () => {
-      await loadFeed();
-    })();
+    if (hasLoadedRef.current) return;
+    hasLoadedRef.current = true;
+    void loadFeed();
   }, [loadFeed]);
 
   return (
-    <section data-testid="doctor-portal-feed-card" className="space-y-3 rounded-[var(--site-radius)] border border-border bg-surface p-4">
+    // `id`: `doctor-top-bar.tsx`'teki bildirim bağlantısının (`#doctor-portal-feed-card`) çapası —
+    // invariant 4'ün "izin verilen geri çekilme"si (§5.4), ikinci bir `GET /doctor/portal-feed` AÇMAZ.
+    <section id="doctor-portal-feed-card" data-testid="doctor-portal-feed-card" className="space-y-3 rounded-[var(--site-radius)] border border-border bg-surface p-4">
       <div className="flex items-center gap-1.5">
         <Megaphone className="h-3.5 w-3.5 text-foreground/50" aria-hidden="true" />
         <h2 className="text-xs font-semibold uppercase tracking-wide text-foreground/70">Portal Akışı &amp; Duyurular</h2>

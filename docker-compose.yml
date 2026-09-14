@@ -7,7 +7,13 @@
 # Kullanım:
 #   docker compose up --build
 #   Backend:  http://localhost:4000/api/v1  (healthcheck: /api/v1/healthz)
-#   Frontend: http://localhost:3000          (healthcheck: /api/health)
+#   Frontend (tarayıcıda AÇILACAK adres): http://siteadi.localhost:3000 (healthcheck host
+#     içeriden http://127.0.0.1:3000/api/health ile kontrol eder, bkz. aşağıdaki healthcheck).
+#   Hekim portalı (opsiyonel, subdomain izolasyonu): http://doktor.siteadi.localhost:3000
+#     (`.claude/architect-scope-doctor-subdomain.md` §6.3/§6.4 — `*.localhost` tarayıcı
+#     tarafından otomatik 127.0.0.1'e çözülür, hosts dosyası/yönetici hakkı GEREKMEZ; sade
+#     `http://localhost:3000` de hâlâ çalışır ama hekim oturumu sayfa yenilemesinde ölür,
+#     çünkü `doktor.localhost` ile `localhost` farklı site sayılır — §6.1 deneyi).
 #
 # NOT: backend servisi `backend/.env` dosyasını `env_file` ile okur — bu dosya repoya girmez
 # (.gitignore), her geliştirici kendi `.env.example`'ından türetir.
@@ -41,6 +47,13 @@ services:
       # docker-compose ağında Postgres servisi "db" host adıyla erişilir — .env'deki
       # DATABASE_URL genelde localhost'a işaret eder, burada override edilir.
       DATABASE_URL: postgresql://postgres:postgres@db:5432/saas_dev?schema=public
+      # DOCTOR_FRONTEND_URL BİLİNÇLİ OLARAK burada override EDİLMEZ (FRONTEND_URL ile AYNI
+      # gerekçe, bkz. aşağıdaki not): opsiyonel bir CORS allow-list origin'idir, `backend/.env`
+      # (env_file'dan, `.env.example`'daki güncel `siteadi.localhost` değeriyle) zaten doğru
+      # tarayıcı-erişilebilir değeri taşır — burada hardcode etmek, `NEXT_PUBLIC_DOCTOR_URL`
+      # tanımsızken subdomain modunu kapatan geriye dönük uyumluluk anahtarını (bkz.
+      # `.claude/architect-scope-doctor-subdomain.md` §3.4) `environment:` bloğunun `env_file`'a
+      # göre önceliği yüzünden devre dışı bırakılamaz hale getirirdi.
       PORT: 4000
       # env_file (.env) NODE_ENV=development taşıyor ve env_file, environment'tan ÖNCE
       # işlense de compose bu bloktaki değeri üstün tutar — Dockerfile'daki
@@ -92,8 +105,19 @@ services:
       args:
         # Tarayıcı doğrudan host'taki 4000 portuna erişir (backend container'ının iç ağ adı
         # "backend" tarayıcıdan çözülemez) — bu yüzden localhost, docker network adı değil.
-        NEXT_PUBLIC_API_URL: http://localhost:4000/api/v1
-        NEXT_PUBLIC_SITE_URL: http://localhost:3000
+        # Host şeması `.claude/architect-scope-doctor-subdomain.md` §6.3/§6.4 kararınca
+        # `siteadi.localhost`'a taşındı — hekim portalı (`/doctor/**`) subdomain izolasyonunun
+        # refresh çerezi (SameSite=Strict) taşıyabilmesi için frontend ve backend'in AYNI kayıt
+        # edilebilir üst alan adı altında olması ZORUNLUDUR (§6.1 deneyi, §6.2 kararı) — bu artık
+        # yalnızca bare-metal değil, Docker Compose için de geçerlidir (tarayıcı ikisinde de aynı
+        # host şemasını görür).
+        NEXT_PUBLIC_API_URL: http://siteadi.localhost:4000/api/v1
+        NEXT_PUBLIC_SITE_URL: http://siteadi.localhost:3000
+        # Hekim portalı (`/doctor/**`) subdomain izolasyonu — YENİ. NEXT_PUBLIC_SITE_URL ile AYNI
+        # desen (build-time inline edilir, runtime `environment:` YETMEZ). TANIMSIZ bırakılırsa
+        # özelliğin tamamı devre dışı kalır (§3.4 geriye dönük uyumluluk) — bu compose şablonunda
+        # özelliği örneklemek için dolu bırakıldı.
+        NEXT_PUBLIC_DOCTOR_URL: http://doktor.siteadi.localhost:3000
         # DİĞER İKİSİNİN TAM TERSİ: bu SADECE next/image'in KENDİ sunucu-taraflı optimize fetch'i
         # (frontend container'ının İÇİNDE çalışır, `/_next/image` route'u) içindir — backend'in
         # `Media.url`'i tarayıcıya göre mutlaklaştırdığı `localhost:4000`'e o container'dan

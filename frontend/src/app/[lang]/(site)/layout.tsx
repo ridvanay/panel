@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { notFound } from "next/navigation";
 import Script from "next/script";
 import { fetchSiteSettingsServer } from "@/lib/api/server-settings";
@@ -16,10 +16,9 @@ import { DoctorPortalRouteGuard } from "@/components/site/doctor-portal-route-gu
 import { BackToTopButton } from "@/components/site/back-to-top-button";
 import { CookieConsentBanner } from "@/components/site/cookie-consent-banner";
 import { CartDrawer } from "@/components/site/cart-drawer";
+import { SiteScope } from "@/components/site/site-scope";
 import { getFooterLogoHeight } from "@/lib/site-settings/logo";
 import { escapeEmbeddedClosingTags } from "@/lib/site-settings/appearance";
-import { SITE_FONT_FAMILY, SITE_FONT_VARIABLES } from "@/lib/site-settings/site-fonts";
-import { SITE_BORDER_RADIUS_PX } from "@/lib/site-settings/site-radius";
 
 export default async function SiteLayout({
   children,
@@ -48,33 +47,6 @@ export default async function SiteLayout({
     isModuleEnabledServer("telehealth"),
   ]);
 
-  // §10.12.4 render sözleşmesi — BU değişkenler `:root`'a DEĞİL, yalnızca bu `.site-scope`
-  // sarmalayıcısına satır-içi `style` ile yazılır; admin panelinin `--primary`/`--ring` gibi
-  // token'ları (`.admin-shell` altında) buradan ASLA etkilenmez.
-  const siteScopeStyle = {
-    "--site-primary": appearance.primaryColor,
-    "--site-secondary": appearance.secondaryColor,
-    "--site-button": appearance.buttonColor,
-    "--site-button-text": appearance.buttonTextColor,
-    "--site-link": appearance.linkColor,
-    "--site-accent": appearance.accentColor,
-    "--site-background": appearance.backgroundColor,
-    "--site-surface": appearance.surfaceColor,
-    "--site-text": appearance.textColor,
-    "--site-muted-text": appearance.mutedTextColor,
-    "--site-header-bg": appearance.headerBgColor,
-    "--site-header-bg-sticky": appearance.headerStickyBgColor,
-    "--site-header-link": appearance.headerLinkColor,
-    "--site-header-link-hover": appearance.headerLinkHoverColor,
-    "--site-header-link-active": appearance.headerLinkActiveColor,
-    "--site-radius": SITE_BORDER_RADIUS_PX[appearance.borderRadius],
-    "--site-heading-font": SITE_FONT_FAMILY[appearance.headingFont],
-    "--site-body-font": SITE_FONT_FAMILY[appearance.bodyFont],
-    "--site-base-font-size": `${appearance.baseFontSize}px`,
-    // `CSSProperties` (csstype) tanınan CSS özellikleri için index imzası TAŞIMAZ — `--site-*`
-    // özel özellikleri (custom properties) için `unknown` üzerinden güvenli bir tip dönüşümü.
-  } as unknown as CSSProperties;
-
   const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? activeLocale.code;
 
   const content = (
@@ -83,7 +55,7 @@ export default async function SiteLayout({
           gidebilmesi için alt sayfaların `localizations`'ı header'a bu Provider üzerinden akar
           (bkz. context/locale-alternates-context.tsx). */}
       <LocaleAlternatesProvider activeLocaleCode={activeLocale.code} defaultLocaleCode={defaultLocaleCode}>
-        <div className={`site-scope flex min-h-screen flex-col ${SITE_FONT_VARIABLES}`} style={siteScopeStyle}>
+        <SiteScope appearance={appearance}>
           {/* §9 frontend-agent — doktor hesabı guard'ı (bkz. bileşenin başlığı); `LocaleAlternatesProvider`
               İÇİNDE mount edilir ki `useLocalizePath()` çalışsın. Görsel çıktısı YOKTUR (`null` döner). */}
           <DoctorPortalRouteGuard />
@@ -125,7 +97,7 @@ export default async function SiteLayout({
               `productsModuleEnabled` iken (bu `content` her iki dalda da render edildiği için
               burada AYRICA kontrol edilir) — `CartProvider` kapalı modülde ağaca hiç eklenmez. */}
           {productsModuleEnabled && <CartDrawer />}
-        </div>
+        </SiteScope>
       </LocaleAlternatesProvider>
 
       {/*

@@ -3276,3 +3276,77 @@ Doğrulama (2026-09-14, qa-agent — madde 1b'nin test-beklentisi düzeltmesi tu
 düzeltildi), 2 tekrar (`--repeat-each=2`) ile flake KONTROLÜ yapıldı — kararlı. Aynı suite ile
 BİRLİKTE `telehealth-doctor-profile-redesign.spec.ts` (12/12) ve `telehealth-doctor-identity.spec.ts`
 (10/10) de ART ARDA koşuldu — regresyon YOK. `cd frontend && npx tsc --noEmit` temiz.
+
+## Hekim portalı subdomain izolasyonu (`doktor.*`) — qa-agent (bu tur, `.claude/architect-scope-doctor-subdomain.md` §7.4)
+
+Yeni: `frontend/tests/e2e/doctor-subdomain-isolation.spec.ts` — bağlayıcı 14 senaryolu tablonun
+1-12. maddeleri (doktor host `/` rewrite, header/footer izolasyonu, `/login` hekim ekranı, sayfa
+yenilemede oturumun refresh cookie ile hayatta kalması [en kritik test], ana host↔doktor host 307
+devri + oturum korunumu, ana host locale/auth-yüzeyi regresyonu, bakım modunun doktor host'unu
+kapsamaması, `X-Robots-Tag`, tek dilli `/tr/doctor` 307'si, `/doctor/me`+`/doctor/portal-feed` ağ
+sayımı). Gerçek `saas_e2e` backend'i (4001) + gerçek `next dev` (3100, `NEXT_PUBLIC_DOCTOR_URL`
+DOLU) ile çalışır. `playwright.config.ts`'in `baseURL`/`webServer` env'leri §6.4 matrisine göre
+güncellendi (`siteadi.localhost`/`doktor.siteadi.localhost`); `webServer.url` hazır-mı probu
+BİLEREK `localhost` kalır (Node `*.localhost`'u çözemez, §6.1 — qa-agent bulgusu, dosya başı yorumu).
+
+Yeni: `frontend/tests/e2e/doctor-subdomain-backward-compat.spec.ts` — senaryo 13
+(`NEXT_PUBLIC_DOCTOR_URL` TANIMSIZKEN ana domain'de `/doctor`'ın eskisi gibi, cross-origin
+`window.location.assign` TETİKLEMEDEN çalıştığını doğrular). Paylaşılan `webServer`'ı KULLANAMAZ
+(env build-time sabit) — kendi manuel çalıştırma talimatına sahip, `doctor-panel-session-
+lifecycle.spec.ts`'in `E2E_SKIP_WEBSERVER` deseniyle AYNI felsefe.
+
+Senaryo 14 (mevcut `doctor-console-dashboard-layout.spec.ts` + `doctor-panel-session-
+lifecycle.spec.ts` regresyonu) GERÇEKTEN ÇALIŞTIRILDI:
+- `doctor-console-dashboard-layout.spec.ts`: 2/2 YEŞİL (doğru `E2E_FRONTEND_URL=http://
+  siteadi.localhost:3100` ile) — regresyon YOK, `data-testid`'ler korunmuş.
+- `doctor-panel-session-lifecycle.spec.ts` (paylaşılan `saas_dev` Docker stack'ine karşı):
+  **BLOKE** — bu turla İLGİSİZ, ÖNCEKİ bir turdan kalma iki bağımsız sorun buldu (aşağıya bkz.,
+  frontend-agent'a yönlendirildi, qa-agent DÜZELTMEDİ). Adım 1-2'nin ötesi (3-8) bu yüzden
+  DOĞRULANAMADI bu turda.
+
+**qa-agent BULGUSU 1 (BUG — frontend-agent'a yönlendirilir, subdomain göreviyle İLGİSİZ):**
+`/doctor` sayfa yüklemesi başına `GET /doctor/overview`, `GET /doctor/bookings` VE `GET
+/doctor/portal-feed` (hepsi `DoctorBookingsPanel`/`DoctorPortalFeedCard`'ın içinde) TUTARLI şekilde
+**2 kez** atılıyor; AYNI yüklemede bir üst katmandaki (`DoctorPortalProvider`) `GET /doctor/me` KESİN
+**1 kez** atılıyor. Bu asimetri React StrictMode'un TÜM effect'leri eşit ikiye katlaması teorisiyle
+ÇELİŞİYOR — kök neden muhtemelen `DoctorPortalShell`'in `/doctor`'a self-referential `<Link>`ları
+(nav şeridi + `DoctorTopBar` logosu, ikisi de görünür alanda) için Next.js App Router otomatik
+prefetch'inin `DoctorBookingsPanel` alt ağacını bir kez daha mount edip gerçek bir ikinci ağ isteği
+tetiklemesi — kesin teşhis frontend-agent'ındır. `.claude/architect-scope-doctor-subdomain.md` §5.4
+invariant 4'ü ("İkinci `GET /doctor/portal-feed` YASAK") İHLAL EDİYOR. `doctor-subdomain-
+isolation.spec.ts`'teki ilgili assert BİLİNÇLİ OLARAK `toHaveLength(1)`'de bırakıldı — test
+KIRIK KALMALI, bug gizlenmedi. (subdomain proxy değişikliğiyle İLGİSİZ — `proxy.ts` client-side
+data-fetching'e dokunmuyor; muhtemelen ÖNCEKİ bir dashboard-redesign turundan kalma.)
+
+**qa-agent BULGUSU 2 (BUG/regresyon — frontend-agent'a yönlendirilir, subdomain göreviyle İLGİSİZ):**
+`doctor-panel-session-lifecycle.spec.ts`'in "adım 1-2" testi artık İKİ ayrı nedenle KIRIK:
+(a) `page.getByRole("heading", { name: "Randevularım" })` bekliyor — dashboard yeniden tasarımı
+(önceki tur, "Doktor Konsolu" 2 kolonlu portal düzeni) sayfa başlığını "Doktor Konsolu"na
+DEĞİŞTİRDİ, bu test dosyası GÜNCELLENMEDİ (bkz. `doctor-console-dashboard-layout.spec.ts` — O test
+ZATEN "Doktor Konsolu" bekliyor, doğru). (b) Başlık düzeltilse bile hedef booking satırı
+(`BKG-MTYFI44Y-78B2`, hasta "Rıdvan Ay") artık `GET /doctor/bookings`'in ilk sayfasında (limit 20)
+GÖRÜNMÜYOR — paylaşılan/kalıcı `saas_dev` DB'sinin zamanla büyümesiyle (dosyanın kendi başlık
+yorumundaki "20+ booking" gözlemiyle TUTARLI) satır sayfalanmış listede daha aşağı düşmüş olabilir;
+bu test dosyası bu spesifik satır için (adım 6-8'in `ensureBookingRowLoaded`'ının AKSİNE) sayfalama-
+farkında bir bekleme KULLANMIYOR. qa-agent BU DOSYAYI DÜZELTMEDİ (kendi kod tabanı DEĞİL — mevcut
+bir qa-agent test dosyası, ama kök neden hem UI metni DEĞİŞİKLİĞİ hem DE canlı veri büyümesi;
+düzeltme kararı/önceliği frontend-agent+qa-agent koordinasyonu gerektirir, tek başına
+üstlenilmedi). **Doğrulama için GEÇİCİ olarak** başlık + hedef veri sorunları bypass edilip DİĞER
+adımların (3-8) çalışıp çalışmadığı ayrıca kontrol edilmedi (adım 1-2 booking satırı bulunamadığı
+için zaten orada durdu) — bu nedenle adım 3-8'in mevcut durumu BU TURDA DOĞRULANAMADI.
+
+**Operasyonel bulgu (devops/dokümantasyon takip kalemi, kod bug'ı DEĞİL):** Yerel (gitignored)
+`backend/.env` dosyası host-şeması taşımasından (§6.3/§6.4) ÖNCEKİ `FRONTEND_URL=http://
+localhost:3000` değerini taşıyordu — `backend/.env.example` güncellenmiş olsa da GERÇEK `.env`
+elle senkronize edilmedi, bu da Docker stack'inde `siteadi.localhost` origin'inden gelen TÜM
+isteklerin (login DAHİL) CORS'ta reddedilip "Sunucuya ulaşılamadı" ile SESSİZCE başarısız olmasına
+yol açtı. qa-agent bu turda kendi yerel `.env`'ini `.env.example` ile senkronize etti (host şeması
+geçişi yapan HER geliştiricinin/CI ortamının aynı adımı atması gerekir — documentation-agent/
+INFRA.md'ye bir "mevcut `.env`'inizi `.env.example`'a göre güncelleyin" notu eklenmesi önerilir).
+Aynı şekilde Playwright'ın `webServer.url` hazır-mı probu Node tarafında çalıştığından `*.localhost`
+çözemiyordu — `localhost` fallback'ine çevrildi (yukarıya bkz.).
+
+`docker compose up --build -d` bu turda çalıştırıldı (proje hafıza kuralı, backend/frontend
+kodu bu görev boyunca değişmedi ama önceki turların birikmiş değişiklikleri henüz image'a
+yansımamıştı) — stack (`db`/`backend`/`frontend`) sağlıklı, `siteadi.localhost:3000` VE
+`doktor.siteadi.localhost:3000` ikisi de 200 dönüyor.

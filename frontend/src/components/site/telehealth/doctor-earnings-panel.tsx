@@ -6,7 +6,7 @@ import type { LucideIcon } from "lucide-react";
 import * as telehealthApi from "@/lib/api/telehealth";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import type { DoctorEarningsSession, DoctorEarningsSummary } from "@/lib/api/types";
-import { useDoctorPortalProfile } from "@/components/site/telehealth/doctor-portal-shell";
+import { useDoctorPortalProfile } from "@/components/site/telehealth/doctor-portal-context";
 import { formatDayLabel, formatTime } from "@/lib/telehealth-format";
 import { formatPriceFromCents } from "@/lib/format-price";
 import { Button } from "@/components/ui/button";

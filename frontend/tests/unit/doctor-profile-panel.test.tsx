@@ -83,7 +83,7 @@ const portalProfile: DoctorPortalProfile = {
   doctorProfile: makeDoctorProfile(),
 };
 
-vi.mock("@/components/site/telehealth/doctor-portal-shell", () => ({
+vi.mock("@/components/site/telehealth/doctor-portal-context", () => ({
   useDoctorPortalProfile: () => portalProfile,
 }));
 
