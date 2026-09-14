@@ -27,6 +27,7 @@ import type {
   DoctorEarningsPage,
   DoctorEarningsSession,
   DoctorEarningsSummary,
+  DoctorPortalFeed,
   DoctorPortalProfile,
   DoctorProfile,
   GetDoctorEarningsParams,
@@ -396,6 +397,14 @@ export function updateDoctorSelfProfile(input: UpdateDoctorSelfProfileRequest): 
  */
 export function getDoctorConsoleOverview(): Promise<DoctorConsoleOverview> {
   return apiFetch<DoctorConsoleOverview>("/doctor/overview");
+}
+
+/**
+ * `GET /doctor/portal-feed` — "Portal Akışı & Duyurular" kartının TEK kaynağı. `doctorId`
+ * parametresi YOK (IDOR yüzeyi), `/doctor/overview` İLE AYNI desen.
+ */
+export function getDoctorPortalFeed(): Promise<DoctorPortalFeed> {
+  return apiFetch<DoctorPortalFeed>("/doctor/portal-feed");
 }
 
 /**

@@ -12,6 +12,7 @@ import { WishlistProvider } from "@/context/wishlist-context";
 import { LocaleAlternatesProvider } from "@/context/locale-alternates-context";
 import { SiteHeader } from "@/components/site/site-header";
 import { SiteFooter } from "@/components/site/site-footer";
+import { DoctorPortalRouteGuard } from "@/components/site/doctor-portal-route-guard";
 import { BackToTopButton } from "@/components/site/back-to-top-button";
 import { CookieConsentBanner } from "@/components/site/cookie-consent-banner";
 import { CartDrawer } from "@/components/site/cart-drawer";
@@ -83,6 +84,9 @@ export default async function SiteLayout({
           (bkz. context/locale-alternates-context.tsx). */}
       <LocaleAlternatesProvider activeLocaleCode={activeLocale.code} defaultLocaleCode={defaultLocaleCode}>
         <div className={`site-scope flex min-h-screen flex-col ${SITE_FONT_VARIABLES}`} style={siteScopeStyle}>
+          {/* §9 frontend-agent — doktor hesabı guard'ı (bkz. bileşenin başlığı); `LocaleAlternatesProvider`
+              İÇİNDE mount edilir ki `useLocalizePath()` çalışsın. Görsel çıktısı YOKTUR (`null` döner). */}
+          <DoctorPortalRouteGuard />
           <SiteHeader
             settings={settings}
             pages={pages}

@@ -10,7 +10,9 @@ import {
   AppointmentBookingSchema,
   DoctorConsoleOverviewSchema,
   DoctorEarningsResponseSchema,
+  DoctorPortalFeedSchema,
   DoctorPortalProfileSchema,
+  type DoctorPortalNotification,
 } from "../../schemas/entities";
 import { toAppointmentBookingDto, toDoctorPortalProfileDto } from "../../mappers";
 import { NotADoctorError, TwoFactorRequiredError, ValidationError } from "../../lib/errors";
@@ -24,6 +26,14 @@ import { DoctorBookingsQuerySchema, UpdateDoctorSelfProfileRequestSchema } from 
 import { splitCommission } from "./lib/commission";
 import { JOIN_WINDOW_BEFORE_START_MS } from "./lib/booking";
 import { addCalendarDays, formatCalendarDateKey, getStartOfCalendarDayInTimeZone, getStartOfDayInTimeZone, getWallClockParts } from "./lib/timezone";
+import { DOCTOR_PORTAL_ANNOUNCEMENTS } from "./lib/portal-announcements";
+
+/** `GET /doctor/portal-feed` — bildirim besleme penceresi (son 14 gün). */
+const PORTAL_FEED_NOTIFICATION_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
+/** `GET /doctor/portal-feed` — nihai birleşik liste üst sınırı. */
+const PORTAL_FEED_NOTIFICATION_MAX_ITEMS = 10;
+/** `GET /doctor/portal-feed` — her kaynak sorgusunun kendi `take` sınırı. */
+const PORTAL_FEED_NOTIFICATION_PER_SOURCE_LIMIT = 5;
 
 const WITH_DOCTOR_RELATIONS = { specialty: true, avatarMedia: true, availability: true } as const;
 const WITH_BOOKING_RELATIONS = {
@@ -417,6 +427,83 @@ export async function telehealthDoctorPortalRoutes(app: FastifyInstance) {
                 joinableFrom: new Date(nextAppointmentRow.startsAt.getTime() - JOIN_WINDOW_BEFORE_START_MS).toISOString(),
               }
             : null,
+          generatedAt: now.toISOString(),
+        })
+      );
+    }
+  );
+
+  /**
+   * "Portal Akışı & Duyurular" besleme ucu. `announcements` kod-seviyeli statik bir listedir
+   * (bkz. `lib/portal-announcements.ts`); `notifications` doktora özel GERÇEK olaylardan
+   * türetilir (booking oluşturma/rıza onayı/tamamlanan randevu, son 14 gün, en fazla 10 kayıt).
+   * `doctorId` sorgu parametresi BİLİNÇLİ OLARAK YOKTUR (IDOR yüzeyi) — `/bookings`/`/earnings`/
+   * `/overview` İLE AYNI disiplin, yalnızca oturumun KENDİ `DoctorProfile`'ı üzerinden filtrelenir.
+   * Şifreli/hassas alanlar (`consultationNoteCiphertext`, `identityNumberCiphertext` vb.)
+   * SEÇİLMEZ — yalnızca aşağıda listelenen alanlar `select` edilir.
+   */
+  server.get(
+    "/portal-feed",
+    { schema: { response: { 200: ApiSuccessSchema(DoctorPortalFeedSchema) } } },
+    async (request, reply) => {
+      const { doctorProfileId } = await requireDoctorPortalAccess(app, request.user!.id);
+
+      const now = new Date();
+      const windowStart = new Date(now.getTime() - PORTAL_FEED_NOTIFICATION_WINDOW_MS);
+
+      const [recentBookings, recentCompletedAppointments] = await Promise.all([
+        app.prisma.appointmentBooking.findMany({
+          where: { doctorId: doctorProfileId, createdAt: { gte: windowStart } },
+          orderBy: { createdAt: "desc" },
+          take: PORTAL_FEED_NOTIFICATION_PER_SOURCE_LIMIT,
+          select: { id: true, bookingNumber: true, patientName: true, createdAt: true, consentAt: true },
+        }),
+        app.prisma.appointment.findMany({
+          where: { doctorId: doctorProfileId, status: "COMPLETED", endedAt: { gte: windowStart } },
+          orderBy: { endedAt: "desc" },
+          take: PORTAL_FEED_NOTIFICATION_PER_SOURCE_LIMIT,
+          select: { id: true, patientName: true, endedAt: true },
+        }),
+      ]);
+
+      const notifications: DoctorPortalNotification[] = [];
+
+      for (const booking of recentBookings) {
+        notifications.push({
+          id: `booking-created:${booking.id}`,
+          kind: "BOOKING_CREATED",
+          message: `Yeni randevu talebi: ${booking.bookingNumber}`,
+          occurredAt: booking.createdAt.toISOString(),
+        });
+      }
+
+      for (const booking of recentBookings) {
+        if (!booking.consentAt) continue;
+        notifications.push({
+          id: `consent-given:${booking.id}`,
+          kind: "CONSENT_GIVEN",
+          message: `${booking.patientName} rıza onayını verdi`,
+          occurredAt: booking.consentAt.toISOString(),
+        });
+      }
+
+      for (const appointment of recentCompletedAppointments) {
+        // `endedAt` `null` OLABİLİR (COMPLETED ama bitiş zamanı kaydedilmemiş) — bu satır atlanır.
+        if (!appointment.endedAt) continue;
+        notifications.push({
+          id: `appointment-completed:${appointment.id}`,
+          kind: "APPOINTMENT_COMPLETED",
+          message: `Randevu tamamlandı: ${appointment.patientName}`,
+          occurredAt: appointment.endedAt.toISOString(),
+        });
+      }
+
+      notifications.sort((a, b) => (a.occurredAt < b.occurredAt ? 1 : a.occurredAt > b.occurredAt ? -1 : 0));
+
+      return reply.send(
+        ok({
+          announcements: DOCTOR_PORTAL_ANNOUNCEMENTS,
+          notifications: notifications.slice(0, PORTAL_FEED_NOTIFICATION_MAX_ITEMS),
           generatedAt: now.toISOString(),
         })
       );

@@ -30,6 +30,7 @@ import {
   BookingNotPayableError,
   ConflictError,
   DocumentLimitReachedError,
+  ForbiddenError,
   HealthConsentRequiredError,
   NotFoundError,
   UnsupportedDocumentTypeError,
@@ -250,6 +251,19 @@ export async function telehealthRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const { doctorSlug, startsAt, patientName, patientEmail } = request.body;
 
+      // §9.7.7 KARAR K (bu tur) — hekim profiline sahip bir kullanıcı KENDİ adına hasta
+      // randevusu oluşturamaz (yanlışlıkla/kötüye kullanım yüzeyi). `authenticateOptional`
+      // altında `request.user` `undefined` OLABİLİR (misafir randevusu ETKİLENMEZ).
+      if (request.user) {
+        const doctorProfile = await app.prisma.doctorProfile.findUnique({
+          where: { userId: request.user.id },
+          select: { id: true },
+        });
+        if (doctorProfile) {
+          throw new ForbiddenError("Hekim profilleri hasta randevusu oluşturamaz.");
+        }
+      }
+
       const { appointment, rawAccessToken } = await bookAppointment(app, {
         doctorSlug,
         startsAt: new Date(startsAt),
@@ -342,6 +356,19 @@ export async function telehealthRoutes(app: FastifyInstance) {
     },
     async (request, reply) => {
       const { doctorSlug, slots, patientName, patientEmail, identity, consentVersion } = request.body;
+
+      // §9.7.7 KARAR K (bu tur) — hekim profiline sahip bir kullanıcı KENDİ adına hasta
+      // randevusu oluşturamaz (yanlışlıkla/kötüye kullanım yüzeyi). `authenticateOptional`
+      // altında `request.user` `undefined` OLABİLİR (misafir randevusu ETKİLENMEZ).
+      if (request.user) {
+        const doctorProfile = await app.prisma.doctorProfile.findUnique({
+          where: { userId: request.user.id },
+          select: { id: true },
+        });
+        if (doctorProfile) {
+          throw new ForbiddenError("Hekim profilleri hasta randevusu oluşturamaz.");
+        }
+      }
 
       // [DPI] §2.4/§2.6 (bağlayıcı) — derin kimlik denetimi (TCKN checksum/pasaport biçimi/18
       // yaş sınırı) `createBooking()` ÇAĞRILMADAN ÖNCE yapılır: geçersiz kimlik → `422`, hiçbir

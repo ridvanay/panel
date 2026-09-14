@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Check, ChevronLeft, ChevronRight, CloudSun, Globe, Sun } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, CloudSun, Globe, ShieldAlert, Sun } from "lucide-react";
+import { useAuthOptional } from "@/context/auth-context";
 import * as telehealthApi from "@/lib/api/telehealth";
 import { ApiClientError } from "@/lib/api/error";
 import { friendlyErrorMessage, fieldErrorsFrom } from "@/lib/api/friendly-error";
@@ -144,6 +145,11 @@ function mergeSlots(prev: AvailabilitySlot[], fetched: AvailabilitySlot[]): Avai
 
 export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, lang, defaultLocaleCode, initialSlots, kvkkPage }: AvailabilityCalendarProps) {
   const router = useRouter();
+  // `.claude/architect-scope-telehealth-template.md` K6 — `SiteRole.DOCTOR` YOKTUR; doktorluk
+  // `User.doctorProfileId` ilişkisinden TÜRETİLİR (bkz. `site-header.tsx`'teki AYNI desen).
+  // `useAuthOptional` KULLANILIR (bu bileşen bazı bağlamlarda Provider'sız render edilebilir).
+  const auth = useAuthOptional();
+  const isDoctorSession = auth?.status === "authenticated" && auth.user?.doctorProfileId != null;
   const { selectedSlots, toggleSlot, clearAllSlots, displayTimeZone, visitorTimeZone } = useBookingSelection();
   const [slots, setSlots] = useState<AvailabilitySlot[]>(initialSlots);
   const [bookingError, setBookingError] = useState<string | null>(null);
@@ -261,7 +267,7 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, lang, default
   const isPrevMonthDisabled = viewMonth.year * 12 + viewMonth.month0 <= currentYear * 12 + currentMonth0;
 
   function handleSlotClick(slot: AvailabilitySlot) {
-    if (!slot.available) return;
+    if (!slot.available || isDoctorSession) return;
     setBookingError(null);
     const { dayChanged } = toggleSlot(slot, displayTimeZone);
     setDayChangedNotice(dayChanged);
@@ -322,6 +328,17 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, lang, default
 
   return (
     <div className="space-y-4">
+      {/* frontend-agent — hekim oturumu kendi adına hasta randevusu ALAMAZ (bkz. backend
+          `POST /appointments`/`POST /appointments/bookings` 403 `FORBIDDEN` guard'ı, AYNI tur).
+          Slot seçimi/gönderim aşağıda AYRICA devre dışı bırakılır; bu banner yalnızca kullanıcıya
+          NEDENİ açıklar. */}
+      {isDoctorSession && (
+        <Alert variant="warning" className="flex items-start gap-2" data-testid="doctor-session-booking-blocked-notice">
+          <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+          <span>Hekim oturumu ile randevu alınamaz.</span>
+        </Alert>
+      )}
+
       {/* §4/§2.3.5 — 2 aşamalı saat dilimi rozeti (hidrasyon uyuşmazlığı önlenir), stil KORUNUR. */}
       <div className="mb-4 flex items-start gap-2 rounded-[var(--site-radius)] border border-border bg-muted/50 px-3 py-2 text-xs text-foreground/70">
         <Globe className="mt-0.5 h-3.5 w-3.5 shrink-0 text-foreground/50" aria-hidden="true" />
@@ -497,6 +514,26 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, lang, default
                         );
                       }
 
+                      // frontend-agent — hekim oturumu için müsait slotlar TIKLANAMAZ hale getirilir
+                      // (backend'deki 403 `FORBIDDEN` guard'ıyla TUTARLI, ama kullanıcıya isteği
+                      // GÖNDERMEDEN önce net bir geri bildirim verir).
+                      if (slot.available && isDoctorSession) {
+                        return (
+                          <Tooltip key={slot.startsAt}>
+                            <TooltipTrigger>
+                              <span
+                                aria-disabled="true"
+                                aria-label={`${time} — müsait, ancak hekim oturumu ile randevu alınamaz`}
+                                className={cn(SELECTION_PILL_BASE, "px-3 min-w-[84px]", SELECTION_PILL_AT_LIMIT)}
+                              >
+                                {time}
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent>Hekim oturumu ile randevu alınamaz.</TooltipContent>
+                          </Tooltip>
+                        );
+                      }
+
                       if (!slot.available && isPast) {
                         return (
                           <span
@@ -571,7 +608,10 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, lang, default
         </div>
       )}
 
-      {selectedSlots.length > 0 && (
+      {/* `isDoctorSession` iken `handleSlotClick` zaten erken çıkar, ama `selectedSlots` (paylaşılan
+          `BookingSelectionProvider` context'i) bir önceki misafir/hasta oturumundan kalmış OLABİLİR
+          — form yine de EKSTRA bir güvenlik ağı olarak gizlenir. */}
+      {selectedSlots.length > 0 && !isDoctorSession && (
         <form className="mt-4 space-y-4 rounded-[var(--site-radius)] border border-border bg-surface p-4" onSubmit={handleSubmit(onSubmit)} noValidate>
           <Field id="patientName" label="Ad soyad" error={errors.patientName?.message} required>
             {(inputProps) => <Input {...inputProps} {...register("patientName")} />}

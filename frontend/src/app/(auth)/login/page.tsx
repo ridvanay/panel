@@ -12,7 +12,7 @@ import { Alert } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { isSafeInternalPath } from "@/lib/safe-redirect";
-import { resolvePostLoginPath } from "@/lib/post-login-destination";
+import { isDoctorPortalPath, resolvePostLoginPath } from "@/lib/post-login-destination";
 import { listPublicModules } from "@/lib/api/modules";
 import type { User } from "@/lib/api/types";
 
@@ -33,13 +33,18 @@ function LoginForm() {
   const [submitting, setSubmitting] = useState(false);
 
   /**
-   * §K4 — doktor hesabı VE `next` yok/güvensizse `telehealth` modülünün açık olup olmadığını
-   * kontrol eder (`GET /modules`). Bu çağrı BİLEREK SADECE doktor kullanıcılar için yapılır —
-   * doktor OLMAYAN hiç kimse (§10.21'in 4 diğer rolü + hasta) bu ekstra isteği ASLA atmaz.
+   * §K4 + `post-login-destination.ts` §KESİN öncelik sırası — doktor hesabı VE `next` zaten
+   * `/doctor` altında güvenli bir yol DEĞİLSE `telehealth` modülünün açık olup olmadığını
+   * kontrol eder (`GET /modules`). `next` zaten `/doctor` altındaysa `resolvePostLoginPath`
+   * `telehealthEnabled`'ın değerinden BAĞIMSIZ olarak AYNI sonucu (`next`) üretir (bkz. o
+   * dosya) — bu durumda gereksiz bir `GET /modules` isteği ATILMAZ. Bu çağrı BİLEREK SADECE
+   * doktor kullanıcılar için yapılır — doktor OLMAYAN hiç kimse (§10.21'in 4 diğer rolü +
+   * hasta) bu ekstra isteği ASLA atmaz.
    */
   async function goToDestination(user: User) {
     let telehealthEnabled = false;
-    if (user.doctorProfileId !== null && !isSafeInternalPath(next)) {
+    const nextIsSafeDoctorPortalPath = isSafeInternalPath(next) && isDoctorPortalPath(next);
+    if (user.doctorProfileId !== null && !nextIsSafeDoctorPortalPath) {
       try {
         const modules = await listPublicModules();
         telehealthEnabled = modules.find((m) => m.key === "telehealth")?.enabled ?? false;

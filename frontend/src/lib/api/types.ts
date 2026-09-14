@@ -3810,6 +3810,36 @@ export interface DoctorConsoleOverview {
   generatedAt: string;
 }
 
+/**
+ * `GET /doctor/portal-feed` — "Portal Akışı & Duyurular" kartı. `announcements` kod-seviyeli
+ * statik bir listedir (backend `lib/portal-announcements.ts`), `notifications` doktora özel
+ * gerçek olaylardan türetilir (booking oluşturma/rıza onayı/tamamlanan randevu).
+ */
+export type DoctorPortalAnnouncementSeverity = "INFO" | "IMPORTANT" | "SYSTEM";
+
+export interface DoctorPortalAnnouncement {
+  id: string;
+  title: string;
+  body: string;
+  severity: DoctorPortalAnnouncementSeverity;
+  publishedAt: string;
+}
+
+export type DoctorPortalNotificationKind = "BOOKING_CREATED" | "CONSENT_GIVEN" | "APPOINTMENT_COMPLETED";
+
+export interface DoctorPortalNotification {
+  id: string;
+  kind: DoctorPortalNotificationKind;
+  message: string;
+  occurredAt: string;
+}
+
+export interface DoctorPortalFeed {
+  announcements: DoctorPortalAnnouncement[];
+  notifications: DoctorPortalNotification[];
+  generatedAt: string;
+}
+
 export interface ListPatientBookingsParams {
   cursor?: string;
   limit?: number;

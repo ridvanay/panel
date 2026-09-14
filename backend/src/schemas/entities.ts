@@ -2738,6 +2738,38 @@ export const DoctorConsoleOverviewSchema = z.object({
 export type DoctorConsoleOverviewDto = z.infer<typeof DoctorConsoleOverviewSchema>;
 
 /**
+ * `GET /doctor/portal-feed` — "Portal Akışı & Duyurular" besleme verisi.
+ * `announcements` kod-seviyeli statik bir listedir (bkz.
+ * `modules/telehealth/lib/portal-announcements.ts`), `notifications` doktora özel gerçek
+ * olaylardan türetilir (bkz. `telehealth.portal.routes.ts`).
+ */
+export const DoctorPortalAnnouncementSeveritySchema = z.enum(["INFO", "IMPORTANT", "SYSTEM"]);
+export const DoctorPortalAnnouncementSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  body: z.string(),
+  severity: DoctorPortalAnnouncementSeveritySchema,
+  publishedAt: z.string(),
+});
+export type DoctorPortalAnnouncement = z.infer<typeof DoctorPortalAnnouncementSchema>;
+
+export const DoctorPortalNotificationKindSchema = z.enum(["BOOKING_CREATED", "CONSENT_GIVEN", "APPOINTMENT_COMPLETED"]);
+export const DoctorPortalNotificationSchema = z.object({
+  id: z.string(),
+  kind: DoctorPortalNotificationKindSchema,
+  message: z.string(),
+  occurredAt: z.string(),
+});
+export type DoctorPortalNotification = z.infer<typeof DoctorPortalNotificationSchema>;
+
+export const DoctorPortalFeedSchema = z.object({
+  announcements: z.array(DoctorPortalAnnouncementSchema),
+  notifications: z.array(DoctorPortalNotificationSchema),
+  generatedAt: z.string(),
+});
+export type DoctorPortalFeedDto = z.infer<typeof DoctorPortalFeedSchema>;
+
+/**
  * [TCT] §9.7.7 KARAR K10a — `GET /admin/telehealth/analytics/overview` (ADMIN+MANAGER).
  * `revenue`/`series`/`doctors` YALNIZCA `status=COMPLETED` randevuları sayar — `GET
  * /doctor/earnings` İLE AYNI tanım (bkz. modules/telehealth/lib/commission.ts::splitCommission,

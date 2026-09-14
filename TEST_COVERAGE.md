@@ -3004,3 +3004,53 @@ olsa dahi) `Retry-After` kadar bekleyip tek seferlik yeniden deneyerek TELAFİ e
   route-level hız sınırı YOK (ENGELLEYİCİ DEĞİL, security-agent devretti) — bu yüzden qa-agent'ın
   bu uçlara yaptığı tekrarlanan çağrılar (madde c/d/e testleri) hiçbir zaman `429` ile karşılaşmadı;
   yalnızca `POST /appointments/bookings` (booking oluşturma) 5/dk sınırına tabidir.
+
+## §9.7.7 KARAR K — Hekim oturumu randevu engeli + kök rota guard'ı + doktor portalı "Portal Akışı & Duyurular" kartı — E2E kapsamı (bu turda eklendi)
+
+Kaynak: orkestratörün doğrudan görev talimatı (bu tur backend-agent → frontend-agent → qa-agent
+daraltılmış akışı). Backend/frontend-agent implementasyonu tamamladı; qa-agent yalnızca doğrulama
+ekledi. Yeni dosya: `frontend/tests/e2e/telehealth-doctor-session-guard.spec.ts` (8 test, 1'i
+`test.fixme` — aşağıya bkz.). Kendi izole fixture doktoru (`createAdminDoctorFixture` +
+`setDoctorAvailabilityRaw`, haftanın HER günü geniş pencere) + kendi-kendine-servis 2FA
+(`setupAndEnableTwoFactorForSelf`), `telehealth-portal-isolation.spec.ts`/`telehealth-multi-slot-
+booking.spec.ts` İLE AYNI desen.
+
+| Madde | Senaryo | Sonuç |
+|---|---|---|
+| 1a | Doktor Bearer token'ıyla `POST /appointments/bookings` → `403 FORBIDDEN`; AYNI slot/doktora oturumsuz (misafir) istek kontrol grubu olarak `201` (hekim guard'ı misafir akışını BOZMUYOR) | ✅ |
+| 1a-bis | Doktor Bearer token'ıyla DEPRECATED `POST /appointments` → `403 FORBIDDEN`, `"Hekim profilleri hasta randevusu oluşturamaz."` | ✅ |
+| 1b | Doktor oturumuyla `/doctors/[slug]`'da uyarı banner'ı + disabled-slot UI görünür | ⚠️ `test.fixme` — bkz. aşağıdaki bulgu |
+| 2a | Doktor 2FA ile düz `/login`'den giriş → `/doctor`; sonra `/`'e gidince `DoctorPortalRouteGuard` tekrar `/doctor`'a döndürür | ✅ |
+| 2b | `/login?next=/doctors/{slug}` (doktor-olmayan güvenli `next`) ile giriş → `next` YOK SAYILIR, sonuç `/doctor` | ✅ |
+| 2c | `/login?next=/doctor/bookings` (zaten `/doctor` altında güvenli `next`) ile giriş → `next` KORUNUR | ✅ |
+| 3 | `/doctor` panelinde "Portal Akışı & Duyurular" kartı hatasız render olur, 3 statik duyuru (INFO/IMPORTANT/SYSTEM) HER ZAMAN görünür, bildirim listesi boş/dolu ikisi de zarifçe render olur, sayfa hatası (`pageerror`) YOK | ✅ |
+
+**qa-agent BULGUSU (kritik, frontend-agent'a yönlendirilmesi gerekir — bu turda DÜZELTİLMEDİ):**
+madde 1'in frontend UI kısmı (uyarı banner'ı + disabled-slot, `availability-calendar.tsx`)
+GERÇEK bir tarayıcıda PRATİKTE HİÇ GÖRÜNMÜYOR. `DoctorPortalRouteGuard`
+(`frontend/src/components/site/doctor-portal-route-guard.tsx`), `isDoctorSession` context değeri
+`true` olduğu AYNI render/commit döngüsünde `/doctors/[slug]`'ı da `/doctor`'a yönlendiriyor
+(görev talimatının kendisi de bunun KASITLI olduğunu doğruluyor) — `router.replace()`'in
+tetiklediği RSC fetch isteği KASITLI OLARAK 3 sn geciktirilerek (`page.route` intercept)
+doğrulandı: URL 2.8+ saniye boyunca `/doctors/[slug]`'da SABİT kalırken (takvim/saat ızgarası TAM
+render olmuş, "Müsaitlik ve Randevu" başlığı görünür haldeyken) banner
+(`data-testid="doctor-session-booking-blocked-notice"`) BİR KEZ BİLE boyanmadı. Bu bir "yavaş ağ"
+yarış durumu DEĞİL, deterministik/tekrarlanabilir bir davranış — guard'ın yönlendirmesi ile
+banner/disabled-slot savunma katmanı aynı render turunda çakışıyor, ikincisi pratikte ÖLÜ KOD.
+`madde 1b` testi niyet edilen (ticket'taki) davranışı `test.fixme` ile (CI'ı KIRMADAN) belgeler;
+frontend-agent guard/banner çakışmasını çözdüğünde `test.fixme` kaldırılıp test tekrar aktif
+edilmelidir. Backend'in GERÇEK güvenlik sınırı (`403 FORBIDDEN`, madde 1a/1a-bis) bu bulgudan
+BAĞIMSIZ olarak sağlam ve tam kapsamlı doğrulandı.
+
+**qa-agent BULGUSU (regresyon, bu turun DEĞİŞİKLİKLERİYLE İLGİSİZ — frontend-agent'a
+yönlendirilmesi gerekir):** regresyon taraması sırasında `telehealth-portal-isolation.spec.ts`
+madde 1 (`heading("Randevularım")` bekliyor, `/doctor` sayfasında) BAŞARISIZ bulundu. Kök neden bu
+turdan ÖNCEKİ bir commit — `592bc54` ("feat(telehealth): kurumsal hekim profili, randevu kimlik
+bilgisi adımı ve doktor konsolu") `doctor-bookings-panel.tsx`'in `<h1>`'ini "Randevularım"dan
+"Doktor Konsolu"ya yeniden adlandırdı ama ilgili e2e assertion'ları GÜNCELLENMEDİ. Aynı desen
+`doctor-panel-session-lifecycle.spec.ts` içinde 3 yerde daha var (satır ~350/505/612, hepsi
+`doctorPage.getByRole("heading", { name: "Randevularım" })`, hepsi `/doctor` bağlamında) —
+KOŞULMADI ama AYNI kod yolu/aynı heading metniyle eşleşiyor, muhtemelen AYNI şekilde başarısız.
+Bu bulgunun düzeltmesi (rename kasıtlıysa test güncellenir, yanlışlıkla değiştiyse h1 geri alınır)
+frontend-agent/orkestratörün kararıdır — qa-agent bu turda YALNIZCA bu 3 senaryonun kapsamına
+girdiği için diğer spec dosyalarını DEĞİŞTİRMEDİ.

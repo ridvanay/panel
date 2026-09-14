@@ -5,6 +5,7 @@ import * as telehealthApi from "@/lib/api/telehealth";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import type { AppointmentBooking, DoctorBookingsScope, DoctorConsoleOverview } from "@/lib/api/types";
 import { useDoctorPortalProfile } from "@/components/site/telehealth/doctor-portal-shell";
+import { DoctorPortalFeedCard } from "@/components/site/telehealth/doctor-portal-feed-card";
 import { DoctorConsoleOverviewCards } from "@/components/site/telehealth/doctor-console-overview-cards";
 import { DoctorConsolePatientCard } from "@/components/site/telehealth/doctor-console-patient-card";
 import { BookingDocumentsDialog } from "@/components/site/telehealth/booking-documents-dialog";
@@ -135,6 +136,9 @@ export function DoctorBookingsPanel() {
         <h1 className="text-2xl font-semibold text-foreground">Doktor Konsolu</h1>
         <p className="mt-1 text-sm text-foreground/60">Hastalarınızın rezervasyonlarını, belgelerini ve konsültasyon notlarını buradan yönetin.</p>
       </div>
+
+      {/* Görev 3 — "Portal Akışı & Duyurular" kartı, metrik kartlarının HEMEN ÜSTÜNDE. */}
+      <DoctorPortalFeedCard />
 
       {overviewError ? (
         <Alert variant="error">
