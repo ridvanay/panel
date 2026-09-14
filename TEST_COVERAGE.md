@@ -3203,3 +3203,76 @@ backend-agent'ın bu turda eklediği), `telehealth-public-booking.spec.ts` (4/4)
 `doctor-console-dashboard-layout.spec.ts` (2/2) — hepsi yeşil (regresyon YOK). `telehealth-booking-
 wizard.spec.ts` madde 1/masaüstü YEŞİL, madde 3/mobil KIRMIZI (yukarıdaki BULGU 2, ÖNCEKİ bir tur
 kaynaklı). `cd frontend && npx tsc --noEmit` temiz.
+
+## Tele-Sağlık — `/doctors/[slug]` 2 kolonlu grid + 4. sekme "Uzmanlık Alanları" + sticky "Hızlı Randevu" kartı (bu turda eklendi)
+
+Kapsam: CLAUDE.md standart akışından bağımsız daraltılmış akış (frontend-agent → ui-designer →
+qa-agent) — `/doctors/[slug]` sayfasının YENİ 2 kolonlu düzeni (sol `lg:col-span-8` 4 sekmeli
+`DoctorProfileTabs`, sağ `lg:col-span-4` sticky `DoctorQuickBookingCard`) + hero avatarının
+GERÇEKTEN yuvarlak (`rounded-full`) olması. Yeni dosya:
+`frontend/tests/e2e/telehealth-doctor-profile-quick-booking-grid.spec.ts` (7 test).
+
+| # | Kapsam | Sonuç |
+|---|---|---|
+| 1a | Masaüstü (1280px) — sağ "Hızlı Randevu" kartı BOŞ DEĞİL, sol sekmelerle YAN YANA (aynı grid satırı, çakışma yok) | ✅ |
+| 1b | Masaüstü — sticky kart, KENDİ grid satırı içinde (uzun "Özgeçmiş" sekmesiyle genişletilmiş "kayma payı") makul bir mesafe kaydırıldığında viewport üstünde kalır | ✅ (DÜZELTİLDİ — bkz. altta, TEST BEKLENTİSİ hatasıydı, APP BUG DEĞİL) |
+| 2 | 4 sekmenin (Hakkında/Özgeçmiş/Bilimsel Yayınlar/Uzmanlık Alanları) TAMAMI DOLU içerikle (zengin `cvEntries`/`publications`/`subSpecialty` fixture'ı) doğru render olur, `pageerror` YOK | ✅ |
+| 2 (boş-durum) | Aynı 4 sekme, içerik OLMAYAN bir doktorda nötr "henüz paylaşılmamış" mesajları gösterir, `pageerror` YOK | ✅ |
+| 3a | Mobil (375px) — "Hızlı Randevu" kartı sekme içeriğinin ALTINA akar (dikey yığılma) | ✅ |
+| 3b | Mobil (375px) — sayfa genelinde yatay taşma YOK | ✅ (DÜZELTİLDİ — frontend-agent, bkz. altta) |
+
+Mevcut `telehealth-doctor-profile-redesign.spec.ts` (12/12) VE `telehealth-doctor-identity.spec.ts`
+(10/10, madde (h) dahil — üç sekmenin içerik doğruluğu zaten `cvEntries`/`publications` dolu bir
+fixture'la kapsanıyordu) bu turun grid/sekme değişiklikleriyle BAŞTAN SONA ÇALIŞTIRILDI — HİÇBİRİ
+kırılmadı, güncelleme GEREKMEDİ (eski testler ya `.first()`/esnek seçicilerle yazılmıştı ya da yeni
+4. sekmenin/2. kolonun varlığını hiç VARSAYMIYORDU).
+
+**qa-agent BULGUSU 1 — [KAPATILDI 2026-09-14: TEST BEKLENTİSİ HATASIYDI, APP BUG DEĞİL].**
+Bu bulgu ÖNCEKİ turlarda "masaüstü sticky davranışı kırık" olarak frontend-agent'a
+yönlendirilmişti (`lg:items-start` eksikliği, sonra `lg:self-start`/grid-alanı deseniyle bir sonraki
+turda düzeltildi — bkz. `doctors/[slug]/page.tsx` satır ~156-166'daki qa-agent yorumu). Ancak testin
+KENDİSİ (`"madde 1b"`) `#randevu` section'ına (2-kolonlu sticky grid'in TAMAMEN DIŞINDA/ALTINDA,
+`BookingWizard`'ın KENDİ AYRI `<section id="randevu">`'u) scroll edildiğinde kartın HÂLÂ görünür
+olmasını BEKLİYORDU — bu, orkestratörün bir sonraki turdaki mimari analizinin de doğruladığı gibi
+YANLIŞ bir test beklentisiydi: kartın sticky "kayma payı" (containing block'u — CSS Grid'de sticky
+için grid ALANIDIR, `align-self`'ten bağımsız) SADECE kendi grid satırının (sol `DoctorProfileTabs`
+ile aynı satır) yüksekliğiyle sınırlıdır; `#randevu` bu satırın TAMAMEN DIŞINDA olduğundan kart o
+noktada DOĞAL olarak sticky'likten çıkar — bu, section-scoped sticky sidebar'ların (ör. e-ticaret
+"satın al" kutusunun ürün açıklaması bölümünde sticky kalıp yorumlar bölümünde KALMAMASI gibi)
+BEKLENEN/DOĞRU davranışıdır; `#randevu`'da bu rolü `BookingWizard`'ın KENDİ sticky özet paneli
+ZATEN devralır. qa-agent (bu turda, orkestratörün DOĞRUDAN talimatıyla) testi DÜZELTTİ — uygulama
+koduna (`page.tsx`/`doctor-quick-booking-card.tsx`/`doctor-profile-tabs.tsx`) DOKUNULMADI: test artık
+kartın GEÇERLİ sticky aralığını (varsayılan kısa "Doktor Hakkında" YERİNE UZUN "Özgeçmiş" sekmesine
+geçilip, `#randevu`'ya DEĞİL kendi grid satırı içinde makul (450px) bir mesafe kaydırılarak) doğru
+şekilde ölçüyor ve `test.fail()` KALDIRILDI — test artık GEÇİYOR (ölçülen: scroll öncesi kart
+belge-göreli y≈438px, `top-6`=24px eşiği scrollY≈414'te aşılıyor; 450px'lik scroll bu eşiğin
+ÜZERİNDE VE `#randevu`'nun (scroll öncesi y≈894px) ÇOK ALTINDA kalıyor, kart clamp olmuş, `top-6`
+civarında küçük pozitif bir `y` (<100px) ölçüldü).
+
+**qa-agent BULGUSU 2 (frontend-agent/ui-designer'a yönlendirilmesi gerekir — mobil yatay taşma
+regresyonu, bu turun 4. sekme eklemesiyle DOĞRUDAN ilgili):** Mobilde (375px) 4 sekmeli `TabsList`
+(`doctor-profile-tabs.tsx`, `components/ui/tabs.tsx`'in paylaşılan `inline-flex w-fit` taban
+sınıfı) SIĞMIYOR. Dördüncü "Uzmanlık Alanları" sekmesi eklenince (her tetikleyici
+`whitespace-nowrap` + `px-3`/`sm:px-4` dolgu taşıyor) çubuğun doğal (sarmayan) genişliği ~530px'e
+çıkıyor — `TabsList`'in KENDİSİ (`overflow-x-auto`/`flex-wrap` YOK) 375px'lik mobil viewport'a
+sığmıyor ve `w-fit` olduğu için kendi ebeveyn kolonunu İTİYOR, bu da `document.body.scrollWidth`'i
+(546px, ölçüldü) `clientWidth`'in (375px) BELİRGİN ÜZERİNE çıkarıp SAYFA GENELİNDE yatay bir
+kaydırma çubuğu ortaya çıkarıyor (header/hero DAHİL, kendileri taşmasa BİLE `body` genişliği
+arttığı için). Kontrol amaçlı: `/`, `/doctors` (liste), `/products` AYNI viewport'ta (375px) yatay
+taşma GÖSTERMİYOR — bu KESİNLİKLE bu turun 4. sekmesiyle ilgili bir regresyon, site genelinde bir
+header/layout sorunu DEĞİL. Önerilen düzeltme yönü: mobilde `TabsList`'e yatay scroll kapsülleme
+(`overflow-x-auto` + `flex-nowrap`, dokunmatik kaydırma) eklemek — bu hem `w-fit` taşmasını sayfa
+dışına sızdırmaz hem de 4 sekmenin tamamını erişilebilir tutar (bu sayfaya özel bir `className`
+override'ı ile çözülebilir, global `tabs.tsx` DEĞİŞMEDEN). **[DÜZELTİLDİ, frontend-agent]** —
+Seçenek A (önerilen düzeltme yönüyle BİREBİR) uygulandı: `doctor-profile-tabs.tsx`'teki
+`<TabsList>` SADECE bu sayfaya özel `overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0` sarmalayıcı
+`<div>` içine alındı, paylaşılan `components/ui/tabs.tsx` DEĞİŞMEDİ.
+`telehealth-doctor-profile-quick-booking-grid.spec.ts::"madde 3b"`'deki `test.fail()` KALDIRILDI —
+test GEÇİYOR.
+
+Doğrulama (2026-09-14, qa-agent — madde 1b'nin test-beklentisi düzeltmesi turu):
+`telehealth-doctor-profile-quick-booking-grid.spec.ts` GERÇEKTEN ÇALIŞTIRILDI — 7/7 YEŞİL, HİÇBİR
+`test.fail()` KALMADI (BULGU 1 test hatasıydı/düzeltildi, BULGU 2 frontend-agent tarafından
+düzeltildi), 2 tekrar (`--repeat-each=2`) ile flake KONTROLÜ yapıldı — kararlı. Aynı suite ile
+BİRLİKTE `telehealth-doctor-profile-redesign.spec.ts` (12/12) ve `telehealth-doctor-identity.spec.ts`
+(10/10) de ART ARDA koşuldu — regresyon YOK. `cd frontend && npx tsc --noEmit` temiz.

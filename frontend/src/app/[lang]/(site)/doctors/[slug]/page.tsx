@@ -7,6 +7,7 @@ import { fetchPublishedPagesServer } from "@/lib/api/server-pages";
 import { resolveKvkkNoticePage } from "@/lib/legal-pages";
 import { DoctorProfileHero } from "@/components/site/telehealth/doctor-profile-hero";
 import { DoctorProfileTabs } from "@/components/site/telehealth/doctor-profile-tabs";
+import { DoctorQuickBookingCard } from "@/components/site/telehealth/doctor-quick-booking-card";
 import { BookingSelectionProvider } from "@/components/site/telehealth/booking-selection-context";
 import { EmergencyNoticeCard } from "@/components/site/telehealth/emergency-notice";
 import { BookingWizard } from "@/components/site/telehealth/booking-wizard";
@@ -105,6 +106,15 @@ export default async function DoctorDetailPage({ params }: DoctorDetailPageProps
   const kvkkPage = resolveKvkkNoticePage(pages);
   const canonicalUrl = resolveCanonicalUrl(lang, defaultLocaleCode, slug);
 
+  /* Grid görevi (2026-09-14) Görev 2a — `DoctorQuickBookingCard`'ın "En erken müsait tarih"
+   * gösterimi İÇİN, `BookingWizard`'a ZATEN geçirilen AYNI `slots` dizisinden BAĞIMSIZ, basit bir
+   * türetme. `availability-calendar.tsx`'in kendi (dışa aktarılmamış) `earliestAvailableDayKey`
+   * mantığı KOPYALANMAZ/DEĞİŞTİRİLMEZ — bu SADECE bir gösterim alanı. */
+  const earliestAvailableIso =
+    slots
+      .filter((slot) => slot.available)
+      .sort((a, b) => a.startsAt.localeCompare(b.startsAt))[0]?.startsAt ?? null;
+
   return (
     <>
       {/* `.claude/design-notes-doctor-portfolio-console.md` §1.1 — koyu lacivert kurumsal başlık
@@ -127,8 +137,34 @@ export default async function DoctorDetailPage({ params }: DoctorDetailPageProps
             paylaşımı gerekir). */}
         <BookingSelectionProvider doctorTimeZone={doctor.timeZone}>
           {/* `.claude/design-notes-doctor-portfolio-console.md` §1.2/§1.3 — hero içeriği bandın
-              içine taşındığı için İLK eleman artık Tab çubuğudur. */}
-          <DoctorProfileTabs doctor={doctor} />
+              içine taşındığı için İLK eleman artık Tab çubuğudur. Grid görevi (2026-09-14) Görev 2a
+              — eski tek-kolon yapı (sağda BOŞLUK) 12-kolonlu 2-sütun yapıya genişletildi: sol
+              (lg:col-span-8) sekmeler, sağ (lg:col-span-4) sticky "Hızlı Randevu" önizleme kartı.
+              `<section id="randevu">` (EmergencyNoticeCard + BookingWizard, KENDİ 12-kolonlu iç
+              grid'iyle) BU grid'in DIŞINDA/ALTINDA kalır — SIRALI iki AYRI bölüm, İÇ İÇE grid
+              DEĞİL.
+
+              qa-agent bulgusu (2026-09-14, iki turda düzeltildi) — `lg:sticky`'i İÇ İÇE bir
+              wrapper `<div>`'e koymak (ilk deneme) YETERSİZDİ: o wrapper'ın kendi kutusu kartın
+              doğal yüksekliğine eşitti, sticky'nin "kayma payı" neredeyse sıfır kalıyordu. Doğru
+              desen `booking-wizard.tsx`'in KENDİ `<aside>`'iyle BİREBİR AYNI: `lg:sticky`/`lg:top-6`/
+              `lg:self-start` GRİD ÖĞESİNİN (`<aside>`) KENDİSİNE uygulanır, ara wrapper YOK —
+              `lg:self-start` aside'ın grid satırının tam yüksekliğine ESNEMESİNİ (stretch)
+              engelleyip KENDİ içerik yüksekliğine sahip olmasını sağlar, `lg:sticky` de bu kutunun
+              üstünde çalışır; dış grid'in `lg:items-start`'ı bununla TUTARLI (redundant ama zararsız,
+              `booking-wizard.tsx`'te de İKİSİ BİRLİKTE var). */}
+          <div className="grid grid-cols-1 gap-8 lg:grid-cols-12 lg:items-start">
+            <div className="lg:col-span-8">
+              <DoctorProfileTabs doctor={doctor} />
+            </div>
+            <aside className="lg:col-span-4 lg:sticky lg:top-6 lg:self-start">
+              <DoctorQuickBookingCard
+                doctor={doctor}
+                earliestAvailableIso={earliestAvailableIso}
+                intlLocale={contentLocaleToIntl(lang)}
+              />
+            </aside>
+          </div>
 
           <section id="randevu" className="mt-10 scroll-mt-24">
             <h2 className="text-xl font-semibold text-foreground">Müsaitlik ve Randevu</h2>

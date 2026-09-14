@@ -1,5 +1,6 @@
-import { Award, ExternalLink, FileQuestion, GraduationCap, Briefcase, Trophy, Users } from "lucide-react";
+import { Award, ExternalLink, FileQuestion, GraduationCap, Briefcase, Stethoscope, Trophy, Users } from "lucide-react";
 import type { DoctorCvEntry, DoctorCvEntryKind, DoctorProfile, DoctorPublication, DoctorPublicationKind } from "@/lib/api/types";
+import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 /**
@@ -8,13 +9,27 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
  * 5 — sekmeler TEK URL'de kalır, `value` state'i istemcide tutulur).
  */
 
-const EMPTY_STATE_TEXT: Record<"about" | "cv" | "publications", string> = {
+/**
+ * Grid görevi (2026-09-14) — ui-designer turu. "Koyu kurumsal aktif tab çizgisi" talebi:
+ * `components/ui/tabs.tsx`'in PAYLAŞILAN `variant="line"` taban stili (admin panelde de
+ * kullanılıyor — global DOSYA değiştirilmedi) `text-primary`/`bg-primary/15` soft pill kullanıyor;
+ * BURADA yalnızca bu sayfaya özel `className` override'ıyla (twMerge son sınıfı kazanır) aktif
+ * sekme rengi `var(--site-secondary)` (koyu lacivert, hero bandıyla AYNI token) alt çizgisine +
+ * metin rengine taşındı — teal `primary` yalnızca CTA/rozetlerde kalır, sekme vurgusu daha "koyu
+ * kurumsal" hissetsin diye site'nin İKİNCİL markası kullanıldı (YENİ token İCAT EDİLMEDİ).
+ * `data-active:scale-100` taban bileşenin hafif "zoom" efektini bu düz-çizgi tasarımda iptal eder.
+ */
+const TAB_TRIGGER_CLASS =
+  "rounded-none px-3 py-2.5 text-sm font-semibold data-active:scale-100 data-active:rounded-none data-active:bg-transparent data-active:text-[var(--site-secondary)] data-active:after:bg-[var(--site-secondary)] group-data-horizontal/tabs:after:h-1 dark:data-active:bg-transparent dark:data-active:text-[var(--site-secondary)] sm:px-4";
+
+const EMPTY_STATE_TEXT: Record<"about" | "cv" | "publications" | "expertise", string> = {
   about: "Bu doktor için henüz biyografi bilgisi paylaşılmamış.",
   cv: "Bu doktor için henüz özgeçmiş bilgisi paylaşılmamış.",
   publications: "Bu doktor için henüz bilimsel yayın paylaşılmamış.",
+  expertise: "Bu doktor için henüz uzmanlık alanı bilgisi paylaşılmamış.",
 };
 
-function EmptyTabState({ tab }: { tab: "about" | "cv" | "publications" }) {
+function EmptyTabState({ tab }: { tab: "about" | "cv" | "publications" | "expertise" }) {
   return (
     <div className="flex flex-col items-center gap-2 rounded-[var(--site-radius)] border border-border bg-muted/30 p-8 text-center">
       <FileQuestion className="h-6 w-6 text-foreground/30" aria-hidden="true" />
@@ -51,7 +66,7 @@ function CvTimeline({ entries }: { entries: DoctorCvEntry[] }) {
               {entry.organization}
               {entry.location ? ` · ${entry.location}` : ""}
             </p>
-            {entry.description && <p className="mt-2 text-sm leading-6 text-foreground/80">{entry.description}</p>}
+            {entry.description && <p className="mt-2 text-sm leading-7 text-foreground/80">{entry.description}</p>}
           </li>
         );
       })}
@@ -124,14 +139,96 @@ function PublicationsList({ publications }: { publications: DoctorPublication[] 
   );
 }
 
+/**
+ * Grid görevi (2026-09-14) Görev 3 — "Uzmanlık Alanları" sekmesi, YENİ bir backend alanı/uç
+ * İSTEMEDEN, TAMAMEN VAR OLAN alanlardan türetilir: `doctor.specialty?.name` (ana uzmanlık) +
+ * `doctor.subSpecialty` (varsa) belirgin bir başlık/rozet olarak, ve `doctor.cvEntries`'in
+ * `CERTIFICATE`/`MEMBERSHIP`/`AWARD` türündeki girdileri "Sertifikalar & Üyelikler" alt başlığı
+ * altında SADE bir liste olarak (`CvTimeline`'ın dikey zaman çizelgesi BİREBİR TEKRARLANMAZ —
+ * burası kronoloji değil, kategorize bir özet; ui-designer SONRA görsel inceltme yapacak).
+ */
+const EXPERTISE_CV_KINDS: DoctorCvEntryKind[] = ["CERTIFICATE", "MEMBERSHIP", "AWARD"];
+
+function ExpertisePanel({ doctor }: { doctor: DoctorProfile }) {
+  const expertiseEntries = doctor.cvEntries.filter((entry) => EXPERTISE_CV_KINDS.includes(entry.kind));
+  const hasSpecialty = Boolean(doctor.specialty?.name) || Boolean(doctor.subSpecialty);
+
+  if (!hasSpecialty && expertiseEntries.length === 0) {
+    return <EmptyTabState tab="expertise" />;
+  }
+
+  return (
+    <div className="space-y-8">
+      {hasSpecialty && (
+        <div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-foreground/50">Uzmanlık Alanı</p>
+          <div className="flex flex-wrap items-center gap-2">
+            {doctor.specialty?.name && (
+              <Badge tone="primary" size="lg" className="gap-1.5">
+                <Stethoscope className="h-4 w-4" aria-hidden="true" />
+                {doctor.specialty.name}
+              </Badge>
+            )}
+            {doctor.subSpecialty && <span className="text-sm text-foreground/70">{doctor.subSpecialty}</span>}
+          </div>
+        </div>
+      )}
+
+      {expertiseEntries.length > 0 && (
+        <div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-foreground/50">Sertifikalar &amp; Üyelikler</p>
+          <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {expertiseEntries.map((entry, idx) => {
+              const KindIcon = CV_KIND_ICON[entry.kind];
+              return (
+                <li key={idx} className="flex items-start gap-3 rounded-[var(--site-radius)] border border-border bg-surface p-3">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border bg-muted/50 text-foreground/60">
+                    <KindIcon className="h-4 w-4" aria-hidden="true" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-foreground">{entry.title}</p>
+                    <p className="text-xs text-foreground/60">
+                      {entry.organization} · {entry.startYear}
+                      {entry.endYear ? `–${entry.endYear}` : ""}
+                    </p>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function DoctorProfileTabs({ doctor }: { doctor: DoctorProfile }) {
   return (
     <Tabs defaultValue="about">
-      <TabsList variant="line" className="border-b border-border">
-        <TabsTrigger value="about">Doktor Hakkında</TabsTrigger>
-        <TabsTrigger value="cv">Özgeçmiş</TabsTrigger>
-        <TabsTrigger value="publications">Bilimsel Yayınlar</TabsTrigger>
-      </TabsList>
+      {/*
+       * Grid görevi (2026-09-14) — qa-agent regresyon takibi. 4. sekme ("Uzmanlık Alanları")
+       * eklenmesiyle `TabsList`'in (paylaşılan `components/ui/tabs.tsx`, `w-fit whitespace-nowrap`
+       * taban stili — DOKUNULMADI) toplam genişliği mobil viewport'ta (375px) sayfayı yatay
+       * kaydırılabilir hale getiriyordu. Çözüm: SADECE bu sayfaya özel `overflow-x-auto` sarmalayıcı
+       * — taşma artık bu şeridin KENDİ İÇİNDE scroll olur, `document.body.scrollWidth` etkilenmez.
+       * `-mx-4 px-4 sm:mx-0 sm:px-0` — mobilde kart iç boşluğuna taşan "edge-to-edge" scroll şeridi.
+       */}
+      <div className="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
+        <TabsList variant="line" className="border-b border-border">
+          <TabsTrigger value="about" className={TAB_TRIGGER_CLASS}>
+            Doktor Hakkında
+          </TabsTrigger>
+          <TabsTrigger value="cv" className={TAB_TRIGGER_CLASS}>
+            Özgeçmiş
+          </TabsTrigger>
+          <TabsTrigger value="publications" className={TAB_TRIGGER_CLASS}>
+            Bilimsel Yayınlar
+          </TabsTrigger>
+          <TabsTrigger value="expertise" className={TAB_TRIGGER_CLASS}>
+            Uzmanlık Alanları
+          </TabsTrigger>
+        </TabsList>
+      </div>
 
       <TabsContent value="about" className="mt-6">
         <div className="space-y-8">
@@ -156,6 +253,10 @@ export function DoctorProfileTabs({ doctor }: { doctor: DoctorProfile }) {
 
       <TabsContent value="publications" className="mt-6">
         <PublicationsList publications={doctor.publications} />
+      </TabsContent>
+
+      <TabsContent value="expertise" className="mt-6">
+        <ExpertisePanel doctor={doctor} />
       </TabsContent>
     </Tabs>
   );

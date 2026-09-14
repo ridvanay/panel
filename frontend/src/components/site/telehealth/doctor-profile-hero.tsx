@@ -1,4 +1,4 @@
-import { BadgeCheck, Briefcase, Stethoscope } from "lucide-react";
+import { BadgeCheck, Briefcase, Building2, Stethoscope } from "lucide-react";
 import type { DoctorProfile } from "@/lib/api/types";
 import { Badge } from "@/components/ui/badge";
 import { DoctorAvatarMedia } from "@/components/site/telehealth/doctor-avatar";
@@ -31,21 +31,37 @@ export function DoctorProfileHero({ doctor }: { doctor: DoctorProfile }) {
   const languagesFullLabel = doctor.languages.map((code) => LANGUAGE_NAMES[code] ?? code.toUpperCase()).join(", ");
 
   return (
-    <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-start sm:gap-6">
-      <div className="h-28 w-28 shrink-0 overflow-hidden rounded-[var(--site-radius)] ring-1 ring-white/15 sm:h-36 sm:w-36">
-        <DoctorAvatarMedia doctor={doctor} sizeClassName="h-full w-full" textClassName="text-3xl sm:text-4xl" sizes="144px" priority />
+    <div className="flex flex-col items-start gap-5 sm:flex-row sm:items-start sm:gap-7">
+      {/* Grid görevi (2026-09-14) Görev 1 — task'ın "Yuvarlak/oval çerçeveli" talebi: site'nin genel
+          `rounded-[var(--site-radius)]` köşe-yuvarlama token'ından BİLİNÇLİ SAPMA, SADECE bu avatar
+          için (`rounded-full`). `border-4 border-white/20` — `ring` yerine gerçek `border`, task'ın
+          İSTEDİĞİ TAM sınıf. `shadow-lg` — renk İÇERMEYEN nötr derinlik (yeni renk/token İCAT
+          etmiyor), avatarı koyu banttan hafifçe kabartmak için. `DoctorAvatarMedia`'nın kendi İÇ
+          katmanı (görsel + monogram fallback) `sizeClassName` üzerinden AYNI `rounded-full`'a
+          uyumlu kırpılır (bkz. o bileşendeki `rounded-full` eklentisi). */}
+      <div className="h-32 w-32 shrink-0 overflow-hidden rounded-full border-4 border-white/20 shadow-lg lg:h-36 lg:w-36">
+        <DoctorAvatarMedia
+          doctor={doctor}
+          sizeClassName="h-full w-full rounded-full"
+          textClassName="text-3xl sm:text-4xl"
+          sizes="144px"
+          priority
+        />
       </div>
 
       <div className="min-w-0 flex-1">
-        {/* `isVerified === false` iken hiçbir şey render edilmez — sahte negatif sinyal yok. */}
+        {/* `isVerified === false` iken hiçbir şey render edilmez — sahte negatif sinyal yok.
+            `size="sm"` (Görev 1'de `lg` idi) — H1'in HEMEN üstünde iki ardışık `lg` solid-teal
+            rozetin (doğrulama + uzmanlık) aynı görsel ağırlıkta yarışmasını önlemek için bilinçli
+            küçültme; hiyerarşi artık: küçük doğrulama rozeti → büyük H1 → büyük uzmanlık rozeti. */}
         {doctor.isVerified && (
-          <Badge tone="primary" solid size="lg" className="gap-1.5">
-            <BadgeCheck className="h-4 w-4" aria-hidden="true" />
+          <Badge tone="primary" solid size="sm" className="gap-1.5">
+            <BadgeCheck className="h-3.5 w-3.5" aria-hidden="true" />
             Doğrulanmış Hekim
           </Badge>
         )}
 
-        <h1 className="mt-3 break-words text-2xl font-semibold text-white sm:text-3xl">
+        <h1 className="mt-3 break-words text-2xl font-semibold tracking-tight text-white lg:text-3xl">
           {doctor.title} {doctor.fullName}
         </h1>
 
@@ -55,8 +71,16 @@ export function DoctorProfileHero({ doctor }: { doctor: DoctorProfile }) {
           {doctor.specialty?.name ?? "Genel Danışmanlık"}
         </Badge>
 
-        {/* Alt uzmanlık/merkez — DÜZ METİN, teal DEĞİL, white/70. */}
-        {doctor.subSpecialty && <p className="mt-2 text-sm text-white/70">{doctor.subSpecialty}</p>}
+        {/* Alt uzmanlık/merkez — DÜZ METİN, teal DEĞİL, white/80 (Görev'de white/70'ten hafifçe
+            koyulaştırıldı, kontrastı DÜŞÜRMEZ sadece ARTIRIR). `Building2` ikonu "bağlı merkez"
+            bilgisine görsel bir çapa verir — YENİ VERİ ALANI İCAT EDİLMEDİ, sadece VAR OLAN
+            `subSpecialty` metninin SUNUMU güçlendirildi. */}
+        {doctor.subSpecialty && (
+          <p className="mt-2 flex items-center gap-1.5 text-sm font-medium text-white/80">
+            <Building2 className="h-3.5 w-3.5 shrink-0 text-white/60" aria-hidden="true" />
+            {doctor.subSpecialty}
+          </p>
+        )}
 
         <div className="mt-4 flex flex-wrap items-center gap-2">
           {/* Deneyim rozeti — [DPI] §1.1 `experienceYears` DTO'da TÜRETİLİR, bu bant hiçbir hesap
