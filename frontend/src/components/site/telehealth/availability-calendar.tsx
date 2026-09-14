@@ -57,7 +57,8 @@ function getHourGroupLabel(iso: string, timeZone: string): HourGroupLabel {
 /** §2.2.1/§12.2.1 — seçim pili taban dili, çoklu seçimde de DEĞİŞMEDEN kullanılır. */
 const SELECTION_PILL_BASE =
   "inline-flex h-10 items-center justify-center gap-1.5 rounded-[var(--site-radius)] border text-sm font-medium tabular-nums transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface";
-const SELECTION_PILL_AVAILABLE = "border-border bg-surface text-foreground hover:border-primary/50 hover:bg-primary/5";
+const SELECTION_PILL_AVAILABLE =
+  "border-border bg-white text-foreground hover:border-primary hover:bg-primary/10 hover:text-primary";
 const SELECTION_PILL_SELECTED =
   "border-2 border-transparent bg-primary text-primary-foreground ring-2 ring-offset-2 ring-offset-surface ring-primary";
 /** §12.2.2 — 4/4 sınırına ulaşıldığında henüz seçilmemiş müsait slotların "geçici olarak seçilemez" durumu. */
@@ -250,60 +251,58 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
   }
 
   return (
-    <div className="space-y-4">
-      {/* frontend-agent — hekim oturumu kendi adına hasta randevusu ALAMAZ (bkz. backend
-          `POST /appointments`/`POST /appointments/bookings` 403 `FORBIDDEN` guard'ı). Slot seçimi
-          aşağıda AYRICA devre dışı bırakılır; bu banner yalnızca kullanıcıya NEDENİ açıklar. */}
-      {isDoctorSession && (
-        <Alert variant="warning" className="flex items-start gap-2" data-testid="doctor-session-booking-blocked-notice">
-          <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-          <span>Hekim oturumu ile randevu alınamaz.</span>
-        </Alert>
-      )}
-
-      {conflictNotice && (
-        <Alert variant="error">
-          <span>{conflictNotice}</span>
-        </Alert>
-      )}
-
-      {/* §4/§2.3.5 — 2 aşamalı saat dilimi rozeti (hidrasyon uyuşmazlığı önlenir), stil KORUNUR. */}
-      <div className="flex items-start gap-2 rounded-[var(--site-radius)] border border-border bg-muted/50 px-3 py-2 text-xs text-foreground/70">
-        <Globe className="mt-0.5 h-3.5 w-3.5 shrink-0 text-foreground/50" aria-hidden="true" />
-        {visitorTimeZone ? (
-          <span>
-            Saatler <strong className="font-medium text-foreground">{visitorTimeZone}</strong> diliminizde gösteriliyor
-            <span className="text-foreground/50"> (doktorun yerel saat dilimi: {doctorTimeZone})</span>
-          </span>
-        ) : (
-          <span>Saat dilimi algılanıyor…</span>
+    <>
+      {/* Grid görevi (2026-09-14) Görev — bu bileşen ARTIK `booking-wizard.tsx`'in SAHİP OLDUĞU
+          TEK `lg:grid-cols-12` dış gridinin ÜYESİDİR (kendi iç grid'i YOKTUR): meta blok (banner/
+          conflict/saat dilimi rozeti/boş-slot mesajı, `lg:col-span-12`, TAM genişlik, KENDİ
+          satırında) → takvim kartı (`lg:col-span-4`) → slot kartı (`lg:col-span-5`) — dış gridin
+          sağ `lg:col-span-3` "Hizmet Özeti" sütunuyla AYNI satırda 4+5+3=12 tamamlanır. Fragment
+          döndürülür (kök `<div>` YOK) ki bu üç/dört parça `booking-wizard.tsx`'teki grid'in
+          DOĞRUDAN çocukları olsun. */}
+      <div className="lg:col-span-12 space-y-3">
+        {/* frontend-agent — hekim oturumu kendi adına hasta randevusu ALAMAZ (bkz. backend
+            `POST /appointments`/`POST /appointments/bookings` 403 `FORBIDDEN` guard'ı). Slot seçimi
+            aşağıda AYRICA devre dışı bırakılır; bu banner yalnızca kullanıcıya NEDENİ açıklar. */}
+        {isDoctorSession && (
+          <Alert variant="warning" className="flex items-start gap-2" data-testid="doctor-session-booking-blocked-notice">
+            <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+            <span>Hekim oturumu ile randevu alınamaz.</span>
+          </Alert>
         )}
+
+        {conflictNotice && (
+          <Alert variant="error">
+            <span>{conflictNotice}</span>
+          </Alert>
+        )}
+
+        {/* §4/§2.3.5 — 2 aşamalı saat dilimi rozeti (hidrasyon uyuşmazlığı önlenir), stil KORUNUR. */}
+        <div className="flex items-start gap-2 rounded-[var(--site-radius)] border border-border bg-muted/50 px-3 py-2 text-xs text-foreground/70">
+          <Globe className="mt-0.5 h-3.5 w-3.5 shrink-0 text-foreground/50" aria-hidden="true" />
+          {visitorTimeZone ? (
+            <span>
+              Saatler <strong className="font-medium text-foreground">{visitorTimeZone}</strong> diliminizde gösteriliyor
+              <span className="text-foreground/50"> (doktorun yerel saat dilimi: {doctorTimeZone})</span>
+            </span>
+          ) : (
+            <span>Saat dilimi algılanıyor…</span>
+          )}
+        </div>
+
+        {slots.length === 0 && <p className="text-sm text-foreground/60">Önümüzdeki günlerde müsait bir saat bulunmuyor.</p>}
       </div>
 
-      {slots.length === 0 ? (
-        <p className="text-sm text-foreground/60">Önümüzdeki günlerde müsait bir saat bulunmuyor.</p>
-      ) : (
-        <div>
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-            <SlotAvailabilityLegend />
-            <label className="flex shrink-0 items-center gap-2 text-xs font-medium text-foreground/70">
-              {/* `aria-label` KASITLI olarak VERİLMEZ — bu `Switch` bir `<label>`'ın İÇİNDE render
-                  edildiği için erişilebilir ad zaten o `<label>`'ın metninden ("Dolu saatleri
-                  gizle") türetilir; İKİSİNİ BİRDEN vermek çift/yinelenen bir isimle sonuçlanırdı. */}
-              <Switch size="sm" checked={hideFullSlots} onCheckedChange={setHideFullSlots} />
-              Dolu saatleri gizle
-            </label>
-          </div>
-
-          {/* Görev (2026-09-14) Görev 2 — SOL: ay takvimi (~%35), SAĞ: slot ızgarası (~%35, dış
-              gridin sağ "Hizmet Özeti" sütunuyla birlikte ~%30); mobilde tek kolon. Önceki turun
-              dar `2fr/3fr` oranı, takvim sütununun "sıkışık" hissini gidermek için `1fr/1fr`'e
-              (+ `lg:min-w-80` taban genişliği) genişletildi — bkz. `booking-wizard.tsx`'teki DIŞ
-              grid'in AYNI görev kapsamında güncellenen sağ sütun genişliği. */}
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-start">
+      {slots.length > 0 && (
+        <>
+          {/* TAKVİM KARTI — `lg:col-span-4`. Legend ARTIK burada (task madde 2 — takvim kartının
+              hemen üstünde, kompakt), üst meta bloğunda DEĞİL. */}
+          <div className="lg:col-span-4">
+            <div className="mb-3">
+              <SlotAvailabilityLegend />
+            </div>
             {/* §2.3.1 — ay navigasyonu + §2.3.2 — 7 sütunlu gün ızgarası, tek kart yüzeyi. */}
-            <div className="rounded-[var(--site-radius)] border border-border bg-surface p-4 sm:p-5 lg:min-w-80">
-              <div className="mb-5 flex items-center justify-between sm:mb-6">
+            <div className="rounded-[var(--site-radius)] border border-border bg-surface p-4 sm:p-5">
+              <div className="mb-6 flex items-center justify-between sm:mb-8">
                 <button
                   type="button"
                   aria-label="Önceki ay"
@@ -344,7 +343,7 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                   for (let day = 1; day <= daysInMonth; day++) cells.push({ day, dayKey: buildDayKey(year, month0, day) });
 
                   return cells.map((cell, idx) => {
-                    if (!cell) return <span key={`blank-${idx}`} aria-hidden="true" className="h-12 w-full sm:h-14" />;
+                    if (!cell) return <span key={`blank-${idx}`} aria-hidden="true" className="aspect-square w-full" />;
 
                     const { day, dayKey } = cell;
                     const isAvailable = availableDayKeySet.has(dayKey);
@@ -365,7 +364,7 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                           // panelinden yönetilen `calendarActiveBg`'e (`.telehealth-scope`'un
                           // `--telehealth-calendar-active-bg`'i) EXPLICIT bağlanır; `--primary`
                           // cascade'inden BAĞIMSIZ, ayrı bir semantik kavram (bkz. layout notu).
-                          className="relative flex h-12 w-full flex-col items-center justify-center gap-0.5 rounded-[var(--site-radius)] border-2 border-transparent bg-[var(--telehealth-calendar-active-bg)] text-sm font-semibold tabular-nums text-primary-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface sm:h-14 sm:text-base"
+                          className="relative flex aspect-square w-full flex-col items-center justify-center gap-0.5 rounded-[var(--site-radius)] border-2 border-transparent bg-[var(--telehealth-calendar-active-bg)] text-sm font-semibold tabular-nums text-primary-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface sm:text-base"
                         >
                           <span>{day}</span>
                           <Check className="h-2.5 w-2.5" aria-hidden="true" />
@@ -381,7 +380,7 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                           aria-label={`${datePart} — müsait${isEarliest ? ", en yakın randevu tarihi" : ""}${isWeekend ? ", hafta sonu" : ""}`}
                           onClick={() => setSelectedDayKey(dayKey)}
                           className={cn(
-                            "flex h-12 w-full flex-col items-center justify-center gap-0.5 rounded-[var(--site-radius)] border text-sm font-medium tabular-nums transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface sm:h-14 sm:text-base",
+                            "flex aspect-square w-full flex-col items-center justify-center gap-0.5 rounded-[var(--site-radius)] border text-sm font-medium tabular-nums transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface sm:text-base",
                             isWeekend
                               ? "border-[var(--site-secondary)]/30 bg-[var(--site-secondary)]/10 text-foreground hover:border-[var(--site-secondary)]/50 hover:bg-[var(--site-secondary)]/20"
                               : "border-primary/20 bg-primary/5 text-foreground hover:border-primary/50 hover:bg-primary/10"
@@ -406,7 +405,7 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                       <span
                         key={dayKey}
                         aria-label={`${datePart} — müsait saat yok`}
-                        className="flex h-12 w-full cursor-not-allowed items-center justify-center rounded-[var(--site-radius)] border border-transparent text-sm font-medium tabular-nums text-foreground/25 sm:h-14 sm:text-base"
+                        className="flex aspect-square w-full cursor-not-allowed items-center justify-center rounded-[var(--site-radius)] border border-transparent text-sm font-medium tabular-nums text-foreground/25 sm:text-base"
                       >
                         {day}
                       </span>
@@ -432,9 +431,23 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                 </Alert>
               )}
             </div>
+          </div>
 
-            {/* SAĞ — slot ızgarası. */}
-            <div>
+          {/* SAAT SLOTLARI KARTI — `lg:col-span-5`. "Dolu saatleri gizle" toggle'ı legend'dan
+              AYRILDI, ARTIK bu kartla ilişkilendirildi (legend takvimi açıklar, bu toggle slot
+              listesini filtreler — bkz. task notu). */}
+          <div className="lg:col-span-5">
+            <div className="mb-3">
+              <label className="flex shrink-0 items-center gap-2 text-xs font-medium text-foreground/70">
+                {/* `aria-label` KASITLI olarak VERİLMEZ — bu `Switch` bir `<label>`'ın İÇİNDE render
+                    edildiği için erişilebilir ad zaten o `<label>`'ın metninden ("Dolu saatleri
+                    gizle") türetilir; İKİSİNİ BİRDEN vermek çift/yinelenen bir isimle sonuçlanırdı. */}
+                <Switch size="sm" checked={hideFullSlots} onCheckedChange={setHideFullSlots} />
+                Dolu saatleri gizle
+              </label>
+            </div>
+
+            <div className="rounded-[var(--site-radius)] border border-border bg-surface p-4 sm:p-5 max-h-[460px] overflow-y-auto">
               {displayedHourGroups.length === 0 && activeDayItems.length > 0 && (
                 <p className="rounded-[var(--site-radius)] border border-dashed border-border p-4 text-center text-sm text-foreground/50">
                   Bu gün için gösterilecek müsait saat yok. &quot;Dolu saatleri gizle&quot;yi kapatırsanız tüm saatleri görebilirsiniz.
@@ -469,7 +482,7 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                       <div
                         role="group"
                         aria-label={`${group.label} müsaitlik saatleri, en fazla ${MAX_BOOKING_SLOTS} seçim`}
-                        className="grid grid-cols-[repeat(auto-fill,minmax(84px,1fr))] gap-2 p-3"
+                        className="grid grid-cols-3 gap-2.5 p-3 sm:grid-cols-4"
                       >
                         {group.items.map((slot) => {
                           const isPast = new Date(slot.startsAt).getTime() < now;
@@ -576,17 +589,17 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                   ))}
                 </div>
               )}
-
-              {/* §12.2.3 — farklı bir gün seçildiğinde önceki seçim otomatik temizlenir + bilgi notu. */}
-              {dayChangedNotice && (
-                <Alert variant="info" className="mt-3">
-                  Farklı bir gün seçtiğiniz için önceki seçiminiz temizlendi.
-                </Alert>
-              )}
             </div>
+
+            {/* §12.2.3 — farklı bir gün seçildiğinde önceki seçim otomatik temizlenir + bilgi notu. */}
+            {dayChangedNotice && (
+              <Alert variant="info" className="mt-3">
+                Farklı bir gün seçtiğiniz için önceki seçiminiz temizlendi.
+              </Alert>
+            )}
           </div>
-        </div>
+        </>
       )}
-    </div>
+    </>
   );
 }

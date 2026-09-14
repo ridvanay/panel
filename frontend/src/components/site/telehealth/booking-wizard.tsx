@@ -152,97 +152,102 @@ export function BookingWizard({ doctor, doctorSlug, doctorTimeZone, lang, defaul
     <div className="space-y-6">
       <BookingStepperBar steps={steps} />
 
-      {/* Görev (2026-09-14) Görev 2 — DIŞ grid, takvim/slot alanı (kendi İÇ oranı ~%35/%35) +
-          "Hizmet Özeti" sağ sütunu (~%30). Sağ sütun `320px` → `360px`e genişletildi ki üç-parçalı
-          oran task'ın istediği ~%35/%35/%30'a YAKLAŞSIN (piksel-mükemmel matematik ZORUNLU DEĞİL). */}
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-[1fr_360px] lg:items-start">
-        <div className="min-w-0 space-y-4">
-          {currentStep === 2 && (
-            <AvailabilityCalendar
-              doctorSlug={doctorSlug}
-              doctorTimeZone={doctorTimeZone}
-              initialSlots={initialSlots}
-              conflictNotice={conflictNotice}
-            />
-          )}
-
-          {currentStep === 3 && (
-            <div>
-              <button
-                type="button"
-                onClick={() => setCurrentStep(2)}
-                className="mb-3 inline-flex items-center gap-1 rounded-[var(--site-radius)] text-sm font-medium text-foreground/60 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
-              >
-                <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-                Tarih & Saat seçimine dön
-              </button>
-              <BookingIdentityStep
-                ref={identityFormRef}
-                submitting={identitySubmitting}
-                serverError={identityServerError}
-                serverFieldErrors={identityFieldErrors}
-                onContinue={(identity, patientName, patientEmail) => void handleIdentityContinue(identity, patientName, patientEmail)}
-                onCanContinueChange={setIdentityCanContinue}
-                kvkkPage={kvkkPage}
-                lang={lang}
-                defaultLocaleCode={defaultLocaleCode}
-              />
-            </div>
-          )}
-
-          {currentStep >= 4 && bookingResult && (
-            <div className="space-y-4">
-              <Alert variant="success">
-                <div className="space-y-2">
-                  <p className="flex items-center gap-1.5 font-medium">
-                    <CalendarCheck className="h-4 w-4 shrink-0" aria-hidden="true" />
-                    Rezervasyonunuz oluşturuldu ({bookingResult.bookingNumber}).
-                  </p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {bookingResult.appointments.map((appointment) => (
-                      <span key={appointment.id} className="rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-xs tabular-nums">
-                        {formatDayLabel(appointment.startsAt, displayTimeZone)} · {formatTime(appointment.startsAt, displayTimeZone)}
-                      </span>
-                    ))}
-                  </div>
-                  <p className="text-sm">
-                    {bookingResult.slotCount} Slot · Toplam {formatPriceFromCents(bookingResult.totalCents, bookingResult.currency)}. Bu
-                    rezervasyon slotu <strong>30 dakika</strong> tutar; bu süre içinde ödemeyi tamamlamanız gerekir.
-                  </p>
-                  <p className="text-sm">
-                    Randevunuzu daha sonra görüntülemek için bu bağlantıyı not alın veya yer imlerine ekleyin — ödeme
-                    onaylandığında aynı bağlantı e-posta ile de gönderilir.
-                  </p>
-                  <div className="flex flex-wrap items-center gap-2 pt-1">
-                    <Button type="button" variant="outline" size="sm" onClick={() => void handleResend()} loading={resendState === "sending"}>
-                      <Mail className="h-3.5 w-3.5" aria-hidden="true" />
-                      Bağlantıyı e-posta ile gönder
-                    </Button>
-                    {resendState === "sent" && <span className="text-xs text-success">Gönderildi (e-posta kayıtlıysa).</span>}
-                    {resendState === "error" && <span className="text-xs text-danger">{resendError}</span>}
-                  </div>
-                </div>
-              </Alert>
-
-              {currentStep === 4 ? (
-                <BookingIntakeStep bookingId={bookingResult.bookingId} accessToken={bookingResult.accessToken} onDone={() => setCurrentStep(5)} />
-              ) : (
-                <BookingPaymentStep
-                  bookingId={bookingResult.bookingId}
-                  accessToken={bookingResult.accessToken}
-                  totalCents={bookingResult.totalCents}
-                  currency={bookingResult.currency}
+      {/* Grid görevi (2026-09-14) — TEK `lg:grid-cols-12` dış grid, grid SAHİPLİĞİ artık
+          `AvailabilityCalendar`'ın kendi iç gridiyle BİRLEŞİK: adım 2'de `AvailabilityCalendar`
+          bir Fragment döndürür (meta `lg:col-span-12` + takvim `lg:col-span-4` + slot
+          `lg:col-span-5`, TOPLAM 9), bu üç/dört parça doğrudan bu gridin çocukları olur; diğer
+          adımlarda (3/4/5) içerik `lg:col-span-9` sütununa sarılır. Sağ "Hizmet Özeti"
+          `lg:col-span-3` — 9+3=12, her adımda AYNI toplam. */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12 lg:items-start">
+        {currentStep === 2 ? (
+          <AvailabilityCalendar
+            doctorSlug={doctorSlug}
+            doctorTimeZone={doctorTimeZone}
+            initialSlots={initialSlots}
+            conflictNotice={conflictNotice}
+          />
+        ) : (
+          <div className="lg:col-span-9 min-w-0 space-y-4">
+            {currentStep === 3 && (
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setCurrentStep(2)}
+                  className="mb-3 inline-flex items-center gap-1 rounded-[var(--site-radius)] text-sm font-medium text-foreground/60 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+                >
+                  <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+                  Tarih & Saat seçimine dön
+                </button>
+                <BookingIdentityStep
+                  ref={identityFormRef}
+                  submitting={identitySubmitting}
+                  serverError={identityServerError}
+                  serverFieldErrors={identityFieldErrors}
+                  onContinue={(identity, patientName, patientEmail) => void handleIdentityContinue(identity, patientName, patientEmail)}
+                  onCanContinueChange={setIdentityCanContinue}
+                  kvkkPage={kvkkPage}
+                  lang={lang}
+                  defaultLocaleCode={defaultLocaleCode}
                 />
-              )}
-            </div>
-          )}
-        </div>
+              </div>
+            )}
 
-        {/* §2.4.1/§2.4.6 — sticky offset KORUNDU. Adım 4/5'te (booking zaten oluşmuşken) TEK
-            "Devam Et" butonu artık `BookingIntakeStep`/`BookingPaymentStep`'in KENDİ aksiyonuna
-            (Kaydet ve Devam Et / Bu adımı atla / Ödemeye Geç) bırakılır — panel `locked` modda
-            (salt-okunur seçim özeti) İÇERİK olarak KALIR, ikinci bir buton EKLEMEZ. */}
-        <aside className="lg:sticky lg:top-24 lg:max-h-[calc(100vh-7rem)] lg:self-start lg:overflow-y-auto">
+            {currentStep >= 4 && bookingResult && (
+              <div className="space-y-4">
+                <Alert variant="success">
+                  <div className="space-y-2">
+                    <p className="flex items-center gap-1.5 font-medium">
+                      <CalendarCheck className="h-4 w-4 shrink-0" aria-hidden="true" />
+                      Rezervasyonunuz oluşturuldu ({bookingResult.bookingNumber}).
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {bookingResult.appointments.map((appointment) => (
+                        <span key={appointment.id} className="rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-xs tabular-nums">
+                          {formatDayLabel(appointment.startsAt, displayTimeZone)} · {formatTime(appointment.startsAt, displayTimeZone)}
+                        </span>
+                      ))}
+                    </div>
+                    <p className="text-sm">
+                      {bookingResult.slotCount} Slot · Toplam {formatPriceFromCents(bookingResult.totalCents, bookingResult.currency)}. Bu
+                      rezervasyon slotu <strong>30 dakika</strong> tutar; bu süre içinde ödemeyi tamamlamanız gerekir.
+                    </p>
+                    <p className="text-sm">
+                      Randevunuzu daha sonra görüntülemek için bu bağlantıyı not alın veya yer imlerine ekleyin — ödeme
+                      onaylandığında aynı bağlantı e-posta ile de gönderilir.
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                      <Button type="button" variant="outline" size="sm" onClick={() => void handleResend()} loading={resendState === "sending"}>
+                        <Mail className="h-3.5 w-3.5" aria-hidden="true" />
+                        Bağlantıyı e-posta ile gönder
+                      </Button>
+                      {resendState === "sent" && <span className="text-xs text-success">Gönderildi (e-posta kayıtlıysa).</span>}
+                      {resendState === "error" && <span className="text-xs text-danger">{resendError}</span>}
+                    </div>
+                  </div>
+                </Alert>
+
+                {currentStep === 4 ? (
+                  <BookingIntakeStep bookingId={bookingResult.bookingId} accessToken={bookingResult.accessToken} onDone={() => setCurrentStep(5)} />
+                ) : (
+                  <BookingPaymentStep
+                    bookingId={bookingResult.bookingId}
+                    accessToken={bookingResult.accessToken}
+                    totalCents={bookingResult.totalCents}
+                    currency={bookingResult.currency}
+                  />
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* §2.4.1/§2.4.6 — sticky offset `lg:top-24`/`calc(100vh-7rem)` → `lg:top-6`/
+            `calc(100vh-3rem)` (task madde 1 — "sticky top-6 olarak sabit kalsın", alt boşluk
+            ORANTILI küçültüldü). Adım 4/5'te (booking zaten oluşmuşken) TEK "Devam Et" butonu
+            artık `BookingIntakeStep`/`BookingPaymentStep`'in KENDİ aksiyonuna (Kaydet ve Devam Et /
+            Bu adımı atla / Ödemeye Geç) bırakılır — panel `locked` modda (salt-okunur seçim özeti)
+            İÇERİK olarak KALIR, ikinci bir buton EKLEMEZ. */}
+        <aside className="lg:col-span-3 lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:self-start lg:overflow-y-auto">
           <DoctorServiceSummaryPanel
             doctor={doctor}
             intlLocale={intlLocale}

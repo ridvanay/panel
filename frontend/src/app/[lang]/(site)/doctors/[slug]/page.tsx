@@ -110,14 +110,15 @@ export default async function DoctorDetailPage({ params }: DoctorDetailPageProps
       {/* `.claude/design-notes-doctor-portfolio-console.md` §1.1 — koyu lacivert kurumsal başlık
           bandı, [TDN] §2.1.2'yi SUPERSEDE eder. Zemin `secondaryColor` (ZATEN kurulu kök token),
           edge-to-edge tam genişlik (`.site-scope` konteynerinin DIŞINA taşar), içerik AYNI
-          `max-w-5xl` konteyner genişliği. */}
+          `max-w-7xl` konteyner genişliği (Grid görevi 2026-09-14 — `max-w-5xl`'den genişletildi,
+          `BookingWizard`'ın 12 kolonluk gridine daha ferah bir alan sağlamak için). */}
       <div className="w-full bg-[var(--site-secondary)]">
-        <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6 sm:py-14">
+        <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-14">
           <DoctorProfileHero doctor={doctor} />
         </div>
       </div>
 
-      <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
+      <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
         {/* Grid görevi (2026-09-14) Görev 1 — eski iki-sütun (takvim solda/hizmet özeti sağda,
             AYRI "Randevu Al" ANKOR + AYRI "Randevu Oluştur" SUBMIT butonlu) yapı `BookingWizard`'a
             (`booking-wizard.tsx`) DEVREDİLDİ — kurumsal, TEK butonlu, 5 adımlı numaralandırılmış
