@@ -3054,3 +3054,71 @@ KOŞULMADI ama AYNI kod yolu/aynı heading metniyle eşleşiyor, muhtemelen AYNI
 Bu bulgunun düzeltmesi (rename kasıtlıysa test güncellenir, yanlışlıkla değiştiyse h1 geri alınır)
 frontend-agent/orkestratörün kararıdır — qa-agent bu turda YALNIZCA bu 3 senaryonun kapsamına
 girdiği için diğer spec dosyalarını DEĞİŞTİRMEDİ.
+
+## Randevu sihirbazı (`BookingWizard`, 5 adımlı `<BookingStepperBar>`) + doktor konsolu kart formatı + hayalet-EXPIRED-booking backend düzeltmesi — E2E kapsamı (bu turda eklendi)
+
+Kaynak: orkestratörün doğrudan görev talimatı (bu tur ui-designer → frontend-agent → backend-agent
+→ qa-agent daraltılmış akışı). `/doctors/[slug]` randevu alma akışı TAMAMEN bir 5 adımlı sihirbaza
+(`booking-wizard.tsx`) dönüştürüldü — eski AYRI form + "Randevu Al" anchor + "Randevu Oluştur"
+submit + `IdentityStepDialog` MODAL'ı + `BookingPostCreationFlow` (2 ayrı iç adım) TAMAMEN
+KALDIRILDI. Doktor konsolu (`/doctor`) hasta kartı tarih formatı + `JoinMeetingButton` birleşimi
+yeniden düzenlendi; backend `GET /doctor/bookings` varsayılan (scope=all, filtresiz) sorgusundaki
+"hayalet EXPIRED booking" (appointments:[]) sızıntısı düzeltildi.
+
+**Yeni dosya: `telehealth-booking-wizard.spec.ts`** (4 test, kendi izole fixture doktoru —
+`createAdminDoctorFixture` + `setDoctorAvailabilityRaw`, haftanın HER günü geniş pencere +
+kendi-kendine-servis 2FA, mevcut `doctor-console-dashboard-layout.spec.ts` İLE AYNI desen):
+
+| Madde | Senaryo | Sonuç |
+|---|---|---|
+| 1 | Wizard adım geçişleri — `<BookingStepperBar>`'ın `data-status`'u her geçişte (`upcoming`→`current`→`completed`) doğru güncellenir; adım 2↔3 arası SERBEST geri/ileri (seçim KORUNUR); adım 3'ün gerçek `POST /appointments/bookings` gönderimi adım 4'e geçirir; adım 4/5'te "Tarih & Saat seçimine dön" YOK ve sağ panelin İKİNCİ "Devam Et"i YOK (yalnızca `BookingIntakeStep`'in KENDİ "Kaydet ve Devam Et"/"Bu adımı atla" aksiyonları var) | ✅ |
+| 2 | Doktor konsolu — randevu kartında TAM tarih formatı (`formatFullDayLabel`, "14 Eylül 2026, Pazartesi") + saat aralığı (`formatTime` başlangıç-bitiş) EKSİKSİZ görünür; "Randevu saati bilgisi eksik" fallback'i GERÇEK appointments'lı bir booking için GÖRÜNMEZ | ✅ |
+| 3 | Çift buton çakışmasının KALMADIĞI — hem masaüstü (1280px) hem mobil (375px) `/doctors/[slug]` SAYFA İÇERİĞİNDE (`main` landmark, site header'ın GLOBAL "Randevu Al" gezinme linki HARİÇ) eski "Randevu Al"/"Randevu Oluştur" YOK, TEK bir "Devam Et" butonu var (mobil sabit alt çubuk `aria-hidden` ile erişilebilirlik ağacından DIŞLANIYOR, ikinci eşleşme ÜRETMİYOR) | ✅ |
+| 4 [backend regresyonu] | Ödemesiz bırakılıp süresi dolan "hayalet" booking (appointments: []) `GET /doctor/bookings` varsayılan (scope=all, filtresiz) listesinden ARTIK SIZMIYOR (`excludeAppointmentlessBookings`, `telehealth.portal.routes.ts`); `?paymentStatus=EXPIRED` AÇIKÇA istenirse hâlâ (appointments:[] ile) dönüyor (kasıtlı escape hatch) | ✅ |
+
+Backend regresyon fixture'ı (madde 4) için `support/telehealth-fixtures.ts::expirePendingBookingDirectly`
+eklendi — `runBookingExpirySweep`'in (`backend/src/lib/booking-expiry.ts`) yaptığı iki adımı
+(`PENDING_PAYMENT` randevu satırlarını hard-delete + booking'i `EXPIRED`'a çevirme) backend kodunu
+İÇE AKTARMADAN, tek bir `prisma db execute --stdin` çağrısında taklit eder (sweep'in KENDİSİNİ 5 dk
+beklemek yerine SONUCU doğrudan üretir — deterministik, `shiftAppointmentIntoJoinWindowDirectly`
+İLE AYNI "gerçek booking, sahte olan yalnızca zamanlama/durum" felsefesi).
+
+### Mimari değişiklik yüzünden GÜNCELLENEN mevcut dosyalar (bug DEĞİL — kırık test altyapısı)
+
+- **`support/telehealth-identity-ui.ts`** (baştan yazıldı) — eski `IdentityStepDialog` (bir
+  `role="dialog"`) scope'u `booking-identity-step` `data-testid`'ine (sayfa içi `<form>`, DIALOG
+  DEĞİL) çevrildi; "Ad soyad"/"E-posta" artık AYNI formun içinde olduğu için
+  `fillBookingIdentityStep()` bunları da doldurur; tek "Devam Et" butonu (`continueBookingWizard()`)
+  hem adım 2→3 geçişini hem gerçek `POST`u tetikler.
+- **`telehealth-public-booking.spec.ts`** (madde 8) / **`telehealth-multi-slot-booking.spec.ts`**
+  (madde 21-24) / **`telehealth-doctor-identity.spec.ts`** (madde a/b UI) — eski "Randevu Oluştur" +
+  dialog varsayımları yeni sihirbaz akışına (`continueBookingWizard` + `submitBookingIdentityStep`)
+  güncellendi.
+
+**qa-agent bulgusu (kendi testinde/yardımcısında, bu turda tespit edilip DÜZELTİLDİ — proje kökü
+CLAUDE.md madde 3, "flaky/hatalı seçici kaynağını bul ve düzelt"):** `getByLabel(str, { exact: true })`
+"Ad soyad"/"E-posta" alanları için KULLANILAMAZ — bu `Field`'lar `required` olduğundan `<label>`'ın
+İÇİNDE `aria-hidden="true"` bir "*" `<span>`'i var (`components/ui/field.tsx`); Playwright'ın
+`<label for=...>`↔input eşleştirmesi `aria-hidden`'ı YOK SAYMAZ (standart ARIA accname algoritmasının
+AKSİNE) — gerçek eşleşen metin "Ad soyad*"/"E-posta*"dır, `exact: true` "Ad soyad"/"E-posta" (yıldızsız)
+ile SESSİZCE 0 eleman bulup `fill()`'i zaman aşımına düşürür (DOM'da alan GERÇEKTEN dolu/doğru
+render ediliyor gibi GÖRÜNÜR — ekran görüntüsüyle doğrulandı, sorun UYGULAMA KODUNDA DEĞİL, test
+seçicisindeydi). Düzeltme: `exact: true` yerine çapalanmış regex (`/^Ad soyad/`, `/^E-posta/`) —
+hem "*" son ekiyle eşleşir hem KVKK onay metnindeki alt-dizeyle (zaten tireli "ad-soyad"/"e-posta"
+olduğundan boşluklu etiketle çakışmıyordu ama regex yine de daha sağlam) KARIŞMAZ. Ayrıca doktor
+konsolu kart-format testinde (madde 2) `getByRole("button", {name:"Devam Et"})` (`exact` OLMADAN)
+`BookingIntakeStep`'in KENDİ "Kaydet ve Devam Et" butonuyla (alt-dize eşleşmesi) ÇAKIŞTIĞI
+GÖZLEMLENDİ — adım 4/5'te "ikinci Devam Et YOK" iddiası bu yüzden `exact: true` ile "Kaydet ve Devam
+Et"ten AYRIŞTIRILDI.
+
+Doğrulama: `telehealth-booking-wizard.spec.ts` (4/4), `telehealth-public-booking.spec.ts` (4/4),
+`telehealth-multi-slot-booking.spec.ts` (10/10), `telehealth-doctor-identity.spec.ts` (10/10),
+`doctor-console-dashboard-layout.spec.ts` (2/2), `telehealth-doctor-session-guard.spec.ts` (9/9,
+1 önceden var olan `test.fixme` hariç) — hepsi izole ve art arda koşuldu, hepsi yeşil. `cd frontend
+&& npx tsc --noEmit` temiz. `frontend/tests/unit/{availability-calendar,doctor-service-summary,
+post-login-destination}.test.ts` (frontend-agent'ın bu turda güncellediği unit testler, qa-agent'ın
+KENDİ kapsamı DIŞINDA ama tutarlılık kontrolü için koşuldu) 30/30 yeşil.
+
+**Gerçek bug bulunmadı** (test altyapısı güncellemeleri/seçici düzeltmeleri DIŞINDA) — backend-agent'ın
+`GET /doctor/bookings` düzeltmesi + frontend-agent'ın wizard/kart implementasyonu, görev
+talimatındaki sözleşmeyle BİREBİR eşleşti.

@@ -17,6 +17,21 @@ export function formatDayLabel(iso: string, timeZone: string): string {
   return new Intl.DateTimeFormat("tr-TR", { timeZone, weekday: "long", day: "numeric", month: "long" }).format(new Date(iso));
 }
 
+/**
+ * `"14 Eylül 2026, Pazartesi"` — doktor konsolu hasta kartı (`doctor-console-patient-card.tsx`)
+ * TAM tarih biçimi (Grid görevi, 2026-09-14, Görev 2 madde 1). `formatDayLabel`'den FARKLI olarak
+ * yıl İÇERİR ve hafta günü sona taşınır — kurumsal EHR kartlarında yılın da görünür olması
+ * beklenir (`formatDayLabel`'in kısa "gün ay haftaGünü" biçimi bu bağlam için yetersizdi). AYNI
+ * `Intl.DateTimeFormat("tr-TR", { timeZone, ... })` deseni İKİ AYRI çağrıyla (tarih + hafta günü)
+ * birleştirilir; ikinci bir tarih kütüphanesi İCAT EDİLMEZ.
+ */
+export function formatFullDayLabel(iso: string, timeZone: string): string {
+  const date = new Date(iso);
+  const datePart = new Intl.DateTimeFormat("tr-TR", { timeZone, day: "numeric", month: "long", year: "numeric" }).format(date);
+  const weekdayPart = new Intl.DateTimeFormat("tr-TR", { timeZone, weekday: "long" }).format(date);
+  return `${datePart}, ${weekdayPart}`;
+}
+
 /** `"HH:mm"` (`hourCycle: "h23"`) — saat slotu etiketi, onay şeridi, özet paneli AYNI kaynak. */
 export function formatTime(iso: string, timeZone: string): string {
   return new Intl.DateTimeFormat("tr-TR", { timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(iso));

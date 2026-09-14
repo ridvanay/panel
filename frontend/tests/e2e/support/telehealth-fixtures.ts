@@ -807,6 +807,40 @@ export function shiftAppointmentByMinutesAndSetStatusDirectly(
   });
 }
 
+// ---------------------------------------------------------------------------
+// qa-agent — Grid görevi (2026-09-14) Görev 2 madde 1 backend regresyon fixture'ı
+// (`GET /doctor/bookings` "hayalet EXPIRED booking" sızıntı düzeltmesi,
+// `telehealth.portal.routes.ts::excludeAppointmentlessBookings`). `runBookingExpirySweep`'in
+// (`backend/src/lib/booking-expiry.ts`) yaptığı İKİ adımı (PENDING_PAYMENT randevu satırlarını
+// hard-delete + booking'i EXPIRED'a çevir) TEK bir SQL betiğinde, backend kodunu İÇE AKTARMADAN
+// (ajan sınır ihlali OLMASIN diye) birebir taklit eder — `shiftAppointmentIntoJoinWindowDirectly`
+// İLE AYNI "gerçek booking, sahte olan yalnızca zamanlama/durum" felsefesi. Sweep'in KENDİSİ
+// (gerçek `expiresAt` geçmişe alınıp arka plan taramasının çalışmasını 5 dk BEKLEMEK) yerine bu
+// SONUCU doğrudan üretmek tercih edildi — hem daha hızlı/deterministik hem de bu dosyanın
+// `execFileSync("npx", ["prisma", "db", "execute", ...])` deseniyle TUTARLI (yeni bir bağımlılık/
+// yardımcı süreç İCAT EDİLMEZ).
+// ---------------------------------------------------------------------------
+
+/** Bir `PENDING` booking'i, süresi dolmuş gibi "hayalet" bir `EXPIRED` booking'e (appointments:
+ * []) dönüştürür — `runBookingExpirySweep`'in transaction'ıyla BİREBİR AYNI iki adım (hard-delete
+ * `PENDING_PAYMENT` randevular + `paymentStatus` geçişi), TEK bir `prisma db execute --stdin`
+ * çağrısında (Postgres basit sorgu protokolü noktalı virgülle ayrılmış birden fazla ifadeyi TEK
+ * istekte ÇALIŞTIRIR — bu depoda YENİ bir desen DEĞİL, `demo-templates-fixtures.ts`'in DDL
+ * betikleriyle AYNI mekanizma). */
+export function expirePendingBookingDirectly(bookingId: string): void {
+  const esc = (value: string) => value.replace(/'/g, "''");
+  const sql = `
+DELETE FROM "appointments" WHERE "bookingId" = '${esc(bookingId)}' AND "status" = 'PENDING_PAYMENT';
+UPDATE "appointment_bookings" SET "paymentStatus" = 'EXPIRED' WHERE id = '${esc(bookingId)}' AND "paymentStatus" = 'PENDING';
+`;
+  execFileSync("npx", ["prisma", "db", "execute", "--stdin", `--url=${E2E_DATABASE_URL}`], {
+    cwd: BACKEND_DIR,
+    input: sql,
+    stdio: ["pipe", "pipe", "pipe"],
+    shell: process.platform === "win32",
+  });
+}
+
 /** §9.7.11 madde 27 (2FA kapısı) — `User.twoFactorEnabled`'i doğrudan yazar (admin panelinde bir
  * kullanıcının 2FA'sını ZORLA açan bir uç YOKTUR — 2FA kendi kendine kayıt/etkinleştirmedir,
  * `hesabim` akışı TOTP sırrı üretip doğrulama ister; bu fixture o akışı ATLAYIP doğrudan bayrağı

@@ -51,6 +51,13 @@ import {
  * `support/telehealth-identity-ui.ts` başlığı). `support/telehealth-fixtures.ts::createBookingRaw`
  * da AYNI nedenle `identity` için bir varsayılan (`VALID_TEST_TR_IDENTITY`) kazandı.
  *
+ * **qa-agent bulgusu (İKİNCİ regresyon, bu turda — Grid görevi 2026-09-14 Görev 1):**
+ * `IdentityStepDialog`'un KENDİSİ de KALDIRILDI — "Hasta & Kimlik" artık `/doctors/[slug]`
+ * sihirbazının 3. adımı (`booking-identity-step.tsx`, `data-testid="booking-identity-step"`),
+ * bir `role="dialog"` DEĞİL. Aşağıdaki "madde (a)/(b) UI" testi bu yüzden GÜNCELLENDİ — "Randevu
+ * Oluştur" butonu/`page.getByRole("dialog", ...)` scope'u ARTIK YOK, yerine sağ panelin TEK
+ * "Devam Et" butonu (adım 2→3 geçişi) + sayfa içi form kullanılır.
+ *
  * Kendi, İZOLE fixture doktorları kurar (`telehealth-portal-isolation.spec.ts` İLE AYNI desen) —
  * paylaşımlı `telehealth-clinic` demo verisine BAĞIMLI DEĞİLDİR.
  *
@@ -280,7 +287,7 @@ test.afterAll(async () => {
 // madde (a) + (b, UI kısmı) — booking widget'ında kimlik adımı ATLANAMAZ + geçersiz TCKN
 // istemcide "Geçersiz" rozetiyle işaretlenir (sunucuya HİÇ gitmeden "Devam Et" devre dışı kalır)
 // =============================================================================
-test("madde (a)/(b) UI: 'Randevu Oluştur' kimlik modalını AÇAR ama booking'i OLUŞTURMAZ; geçersiz TCKN girilince 'Devam Et' devre dışı kalır", async ({
+test("madde (a)/(b) UI: adım 2→3 geçişi 'Hasta & Kimlik' adımını AÇAR ama booking'i OLUŞTURMAZ; geçersiz TCKN girilince 'Devam Et' devre dışı kalır", async ({
   page,
 }) => {
   test.setTimeout(90_000);
@@ -297,27 +304,34 @@ test("madde (a)/(b) UI: 'Randevu Oluştur' kimlik modalını AÇAR ama booking'i
   await page.waitForTimeout(500);
   await selectAnyAvailableSlot(page);
 
-  await page.getByLabel("Ad soyad").fill("QA E2E Kimlik Adımı Testi");
-  await page.getByLabel("E-posta").fill(`qa-e2e-identity-step-${Date.now()}@example.com`);
+  // Grid görevi (2026-09-14) Görev 1 (bağlayıcı) — qa-agent GÜNCELLEMESİ: eski `IdentityStepDialog`
+  // (bir `role="dialog"`) TAMAMEN KALDIRILDI. Sağ "Hizmet Özeti" panelinin TEK "Devam Et" butonu
+  // (adım 2→3) artık booking'i DOĞRUDAN oluşturmaz, yalnızca "Hasta & Kimlik" adımını (sayfanın
+  // KENDİ akışında, `data-testid="booking-identity-step"`) AÇAR.
+  const continueButton = page.getByRole("button", { name: "Devam Et" }).first();
+  await continueButton.click();
 
-  // [DPI] §2.6 — bu buton booking'i DOĞRUDAN oluşturmaz, yalnızca "Kimlik Bilgileri" modalını açar.
-  await page.getByRole("button", { name: "Randevu Oluştur" }).click();
-
-  const dialog = page.getByRole("dialog", { name: "Kimlik Bilgileri" });
-  await expect(dialog).toBeVisible({ timeout: 15_000 });
-  const continueButton = dialog.getByRole("button", { name: "Devam Et" });
+  const identityStep = page.getByTestId("booking-identity-step");
+  await expect(identityStep).toBeVisible({ timeout: 15_000 });
   await expect(continueButton).toBeDisabled();
 
-  // Modal AÇIK ama HİÇBİR alan doldurulmadı — kısa bir bekleme sonrası GERÇEK bir
-  // `POST /appointments/bookings` isteğinin GİTMEDİĞİNİ doğrula (modal "atlanamıyor").
+  // Adım AÇIK ama HİÇBİR alan doldurulmadı — kısa bir bekleme sonrası GERÇEK bir
+  // `POST /appointments/bookings` isteğinin GİTMEDİĞİNİ doğrula (adım "atlanamıyor").
   await page.waitForTimeout(1_500);
-  expect(capturedBookingPost, "kimlik modalı hiçbir alan doldurulmadan AÇIKKEN sunucuya bir booking isteği gitmemeli").toBe(false);
+  expect(capturedBookingPost, "kimlik adımı hiçbir alan doldurulmadan AÇIKKEN sunucuya bir booking isteği gitmemeli").toBe(false);
 
   // madde (b), UI kısmı — checksum HATALI bir TCKN (backend'in KENDİ testindeki `10000000145` İLE
   // AYNI, `10000000146`'nın son hanesi değiştirilmiş) istemci kopyası (`lib/telehealth-identity.ts`)
   // tarafından da REDDEDİLİR — "Geçersiz" rozeti GÖRÜNÜR, "Devam Et" HÂLÂ devre dışı.
-  await dialog.getByLabel("T.C. Kimlik Numarası").fill("10000000145");
-  await expect(dialog.getByText("Geçersiz", { exact: true })).toBeVisible({ timeout: 5_000 });
+  // Çapalanmış regex KULLANILIR (`exact: true` DEĞİL) — bkz.
+  // `support/telehealth-identity-ui.ts::fillBookingIdentityStep` başlığındaki qa-agent bulgusu:
+  // `required` `Field`'ların `label`'ı `aria-hidden` bir "*" içerir, Playwright'ın `getByLabel`
+  // eşleştirmesi bunu YOK SAYMAZ (gerçek metin "Ad soyad*"/"E-posta*"), `exact: true` bu yüzden HİÇ
+  // eşleşmez (0 eleman, sessizce zaman aşımına düşer).
+  await identityStep.getByLabel(/^Ad soyad/).fill("QA E2E Kimlik Adımı Testi");
+  await identityStep.getByLabel(/^E-posta/).fill(`qa-e2e-identity-step-${Date.now()}@example.com`);
+  await identityStep.getByLabel("T.C. Kimlik Numarası").fill("10000000145");
+  await expect(identityStep.getByText("Geçersiz", { exact: true })).toBeVisible({ timeout: 5_000 });
   await expect(continueButton).toBeDisabled();
   expect(capturedBookingPost, "geçersiz TCKN girildiğinde de sunucuya bir booking isteği GİTMEMELİ").toBe(false);
 });

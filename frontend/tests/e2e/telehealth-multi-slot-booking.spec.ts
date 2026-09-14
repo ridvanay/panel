@@ -27,7 +27,7 @@ import {
   shiftAppointmentIntoJoinWindowDirectly,
   type CreatedFixtureDoctor,
 } from "./support/telehealth-fixtures";
-import { submitIdentityStepDialog } from "./support/telehealth-identity-ui";
+import { submitBookingIdentityStep, continueBookingWizard } from "./support/telehealth-identity-ui";
 
 /**
  * qa-agent — `.claude/architect-scope-telehealth-template.md` §9.7.11 "QA kapsamı — §10'a EK"
@@ -94,16 +94,17 @@ async function selectNAvailableSlots(page: Page, n: number): Promise<string[]> {
 }
 
 /**
- * [DPI] §2.6 (bağlayıcı) — qa-agent GÜNCELLEMESİ (bu turda, regresyon): "Randevuyu Onayla"→
- * "Randevu Oluştur"a yeniden adlandırıldı, KVKK onayı (`label[for="consent"]`) ana formdan
- * "Kimlik Bilgileri" modalının İÇİNE taşındı — bkz. `support/telehealth-identity-ui.ts` başlığı.
- * GERÇEK `POST /appointments/bookings` çağrısı artık modalın "Devam Et"iyle tetiklenir.
+ * Grid görevi (2026-09-14) Görev 1 (bağlayıcı) — qa-agent GÜNCELLEMESİ (bu turda, regresyon):
+ * rezervasyon akışı TEK bir 5 adımlı sihirbaza dönüştü. Eski AYRI üst form ("Randevu Oluştur"
+ * butonu) + "Kimlik Bilgileri" MODAL'ı TAMAMEN KALDIRILDI — "Ad soyad"/"E-posta" artık adım 3'ün
+ * (`booking-identity-step.tsx`) KENDİ formunun içinde, KVKK onayı da (`identityConsent`) AYNI
+ * formda. Slot(lar) seçildikten SONRA önce adım 2→3 geçiş butonuna (`continueBookingWizard`),
+ * ardından formu doldurup GERÇEK `POST /appointments/bookings`'i tetikleyen AYNI butona
+ * (`submitBookingIdentityStep`) tıklanır — bkz. `support/telehealth-identity-ui.ts` başlığı.
  */
 async function fillAndSubmitBookingForm(page: Page, patientName: string, patientEmail: string): Promise<void> {
-  await page.getByLabel("Ad soyad").fill(patientName);
-  await page.getByLabel("E-posta").fill(patientEmail);
-  await page.getByRole("button", { name: "Randevu Oluştur" }).click();
-  await submitIdentityStepDialog(page);
+  await continueBookingWizard(page); // adım 2 → adım 3
+  await submitBookingIdentityStep(page, { patientName, patientEmail }); // formu doldur + gerçek POST
 }
 
 /** 5 MB'ın altında, magic-byte'ı GERÇEKTEN PDF olan küçük bir test dosyası (`backend`'in kendi

@@ -1,8 +1,8 @@
 "use client";
 
-import { Ban, Clock, IdCard, NotebookPen, Paperclip, Video } from "lucide-react";
+import { Ban, CalendarX2, IdCard, NotebookPen, Paperclip } from "lucide-react";
 import type { AppointmentBooking } from "@/lib/api/types";
-import { formatDayLabel, formatTime } from "@/lib/telehealth-format";
+import { formatFullDayLabel, formatTime } from "@/lib/telehealth-format";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -52,7 +52,12 @@ function ApproxAgeLabel({ birthYear }: { birthYear: number }) {
   );
 }
 
-/** [DPI] §2.7 — `identity` iki AYRI durumu ifade eder (yetki yetersiz VEYA hiç alınmamış); UI ikisini AYIRT ETMEZ. */
+/**
+ * [DPI] §2.7 — `identity` iki AYRI durumu ifade eder (yetki yetersiz VEYA hiç alınmamış); UI
+ * ikisini AYIRT ETMEZ. Grid görevi (2026-09-14) Görev 2 madde 2 — etiket "Doğrulanmamış" olarak
+ * DEĞİŞTİRİLDİ (eski "Kimlik bilgisi alınmadı" fazla teknikti), zaten soluk `border-dashed`
+ * stili bir ton daha soluklaştırıldı (`border-border/70` → `/50`, `text-foreground/40` → `/35`).
+ */
 function IdentityBadge({ maskedNumber }: { maskedNumber: string | null }) {
   if (maskedNumber) {
     return (
@@ -63,62 +68,20 @@ function IdentityBadge({ maskedNumber }: { maskedNumber: string | null }) {
     );
   }
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-[var(--site-radius)] border border-dashed border-border/70 px-2 py-1 text-xs text-foreground/40">
+    <span className="inline-flex items-center gap-1.5 rounded-[var(--site-radius)] border border-dashed border-border/50 px-2 py-1 text-xs text-foreground/35">
       <Ban className="h-3 w-3" aria-hidden="true" />
-      Kimlik bilgisi alınmadı
+      Doğrulanmamış
     </span>
   );
 }
 
-/** §3.4.3 — dört kademeli kalan süre rozeti, `generatedAt` ile kalibre edilmiş `nowMs` kullanır. */
-function RemainingTimeBadge({
-  joinableFrom,
-  joinableUntil,
-  nowMs,
-  timeZone,
-}: {
-  joinableFrom: string | null;
-  joinableUntil: string | null;
-  nowMs: number;
-  timeZone: string;
-}) {
-  if (!joinableFrom || !joinableUntil) return null;
-  const fromMs = new Date(joinableFrom).getTime();
-  const untilMs = new Date(joinableUntil).getTime();
-
-  if (nowMs < fromMs - 15 * 60_000) {
-    return (
-      <span className="text-xs text-foreground/60">
-        {formatDayLabel(joinableFrom, timeZone)} · {formatTime(joinableFrom, timeZone)}
-      </span>
-    );
-  }
-  if (nowMs < fromMs) {
-    const minutesLeft = Math.max(1, Math.ceil((fromMs - nowMs) / 60_000));
-    return (
-      <Badge tone="warning" solid size="sm" className="gap-1">
-        <Clock className="h-3 w-3" aria-hidden="true" />
-        {minutesLeft} dk içinde
-      </Badge>
-    );
-  }
-  if (nowMs <= untilMs) {
-    return (
-      <Badge tone="primary" solid size="sm" className="gap-1">
-        <Video className="h-3 w-3" aria-hidden="true" />
-        Şimdi
-      </Badge>
-    );
-  }
-  return (
-    <Badge tone="neutral" size="sm" className="gap-1">
-      <Ban className="h-3 w-3" aria-hidden="true" />
-      Süresi Geçti
-    </Badge>
-  );
-}
-
 export function DoctorConsolePatientCard({ booking, calibratedNowMs, timeZone, onOpenDocuments, onOpenNoteEditor }: DoctorConsolePatientCardProps) {
+  // Grid görevi (2026-09-14) Görev 2 madde 1 — SORU backend-agent'a: bazı booking'lerde
+  // `appointments` BOŞ geliyor ("Randevu saati yok" dalı buradan tetikleniyordu). Bu turda
+  // GÖZLEMLENEN: dev/e2e veri setinde bu duruma rastlamadım (grep ile bulunan tüm booking
+  // fixture'ları en az 1 appointment içeriyordu) — kök neden ARAŞTIRILMADI (bu frontend-agent'ın
+  // kapsamı DIŞINDA). Backend-agent lütfen doğrulasın: bu alan hangi akışta (iptal/taşıma/migrasyon?)
+  // boş dönebiliyor, gerçekten VERİ eksikliği mi yoksa serialization/join sorgusu mu?
   const firstAppointment = booking.appointments[0];
   const status = firstAppointment?.status;
   const showRemainingBadge = status === "SCHEDULED" || status === "IN_PROGRESS";
@@ -134,20 +97,15 @@ export function DoctorConsolePatientCard({ booking, calibratedNowMs, timeZone, o
               <p className="text-base font-bold tabular-nums tracking-tight text-foreground">
                 {formatTime(firstAppointment.startsAt, timeZone)} - {formatTime(firstAppointment.endsAt, timeZone)}
               </p>
-              <p className="mt-0.5 text-xs font-medium text-foreground/60">{formatDayLabel(firstAppointment.startsAt, timeZone)}</p>
+              <p className="mt-0.5 text-xs font-medium text-foreground/60">{formatFullDayLabel(firstAppointment.startsAt, timeZone)}</p>
             </div>
           ) : (
-            <p className="text-xs text-foreground/40">Randevu saati yok</p>
+            <div className="flex items-center gap-1.5 text-foreground/35">
+              <CalendarX2 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              <p className="text-xs">Randevu saati bilgisi eksik</p>
+            </div>
           )}
           {status && !showRemainingBadge && <AppointmentStatusBadge status={status} size="sm" />}
-          {showRemainingBadge && firstAppointment && (
-            <RemainingTimeBadge
-              joinableFrom={booking.joinableFrom}
-              joinableUntil={booking.joinableUntil}
-              nowMs={calibratedNowMs}
-              timeZone={timeZone}
-            />
-          )}
         </div>
 
         {/* Orta bölge: hasta künyesi */}
@@ -178,7 +136,15 @@ export function DoctorConsolePatientCard({ booking, calibratedNowMs, timeZone, o
 
         {/* Sağ bölge: hiyerarşik aksiyonlar — birincil (Katıl) üstte/öne çıkan, ikincil (Not Ekle) altında */}
         <div className="flex shrink-0 flex-col items-stretch gap-2 border-t border-border/60 pt-3 sm:w-auto sm:items-end sm:border-t-0 sm:border-l sm:border-border/60 sm:pt-0 sm:pl-4">
-          <JoinMeetingButton booking={booking} size="sm" />
+          <JoinMeetingButton
+            booking={booking}
+            size="sm"
+            mergeRemainingTime
+            timeZone={timeZone}
+            nowMs={calibratedNowMs}
+            activeLabel="Odaya Katıl"
+            activeVariant="success"
+          />
           <Button type="button" variant="outline" size="sm" onClick={onOpenNoteEditor} className="gap-1.5 rounded-[var(--site-radius)]">
             <NotebookPen className="h-3.5 w-3.5" aria-hidden="true" />
             Konsültasyon Notu Ekle

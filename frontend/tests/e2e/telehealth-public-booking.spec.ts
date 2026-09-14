@@ -7,7 +7,7 @@ import {
   defaultSlotRangeISODates,
   type FixtureDoctor,
 } from "./support/telehealth-fixtures";
-import { submitIdentityStepDialog } from "./support/telehealth-identity-ui";
+import { submitBookingIdentityStep, continueBookingWizard } from "./support/telehealth-identity-ui";
 
 /**
  * qa-agent — `.claude/architect-scope-telehealth-template.md` §10 (QA kapsamı) madde 8/9. Backend'in
@@ -206,24 +206,25 @@ test("madde 8: /doctors listesi + uzmanlık filtresi → doktor detayına git �
   });
 
   const patientEmail = `qa-e2e-telehealth-booking-${Date.now()}@example.com`;
-  await page.getByLabel("Ad soyad").fill("QA E2E Test Hastası");
-  await page.getByLabel("E-posta").fill(patientEmail);
 
-  // [DPI] §2.6 (bağlayıcı) — qa-agent GÜNCELLEMESİ (bu turda, regresyon): bu buton ARTIK booking'i
-  // DOĞRUDAN oluşturmuyor ("Randevuyu Onayla" adı da "Randevu Oluştur"a DEĞİŞTİ) — yalnızca
-  // ad-soyad/e-postayı doğrulayıp "Kimlik Bilgileri" modalını AÇAR. KVKK onay kutusu
-  // (eski `label[for="consent"]`) da ana formdan bu modalın İÇİNE (`identityConsent`) TAŞINDI.
-  // Gerçek `POST /appointments/bookings` çağrısı yalnızca modalın "Devam Et"iyle tetiklenir —
-  // bkz. `support/telehealth-identity-ui.ts` başlığındaki AYNI qa-agent bulgusu.
-  await page.getByRole("button", { name: "Randevu Oluştur" }).click();
-  await submitIdentityStepDialog(page);
+  // Grid görevi (2026-09-14) Görev 1 (bağlayıcı) — qa-agent GÜNCELLEMESİ (bu turda, regresyon):
+  // rezervasyon akışı TEK bir 5 adımlı sihirbaza (`<BookingStepperBar>`) dönüştü. Adım 2 ("Tarih &
+  // Saat") → sağ "Hizmet Özeti" panelinin TEK "Devam Et" butonu adım 3'e ("Hasta & Kimlik") geçirir;
+  // "Ad soyad"/"E-posta" alanları da ARTIK bu adımın kendi formunun (`booking-identity-step.tsx`,
+  // `data-testid="booking-identity-step"`) İÇİNDEDİR — eski AYRI üst form + "Randevu Oluştur" +
+  // "Kimlik Bilgileri" MODAL'ı (`IdentityStepDialog`) TAMAMEN KALDIRILDI. Gerçek `POST
+  // /appointments/bookings` çağrısı adım 3'ün "Devam Et"iyle (aynı buton, `requestSubmit()`)
+  // tetiklenir — bkz. `support/telehealth-identity-ui.ts` başlığındaki güncel qa-agent bulgusu.
+  await expect(page.getByTestId("booking-stepper-bar")).toBeVisible();
+  await continueBookingWizard(page); // adım 2 → adım 3
+  await submitBookingIdentityStep(page, { patientEmail }); // formu doldur + "Devam Et" (gerçek POST)
 
   // [TCT] §9.7.1/§9.7.2 (bağlayıcı) — qa-agent GÜNCELLEMESİ (bu turda, frontend-agent'ın bıraktığı
   // not): eski akış (`POST /appointments`) rezervasyon oluşturunca DOĞRUDAN "Randevunuz oluşturuldu."
-  // + konsültasyon linkini gösteriyordu. Yeni akış booking→ödeme akışına DÖNÜŞTÜ:
-  // `BookingPostCreationFlow` önce rezervasyon özetini (`bookingNumber` + slot çipleri) gösterir,
-  // ardından OPSİYONEL intake adımına geçer — direkt bir konsültasyon linki BURADA ARTIK YOKTUR
-  // (madde 24'ün kapsadığı "ödeme sonrası" akışının BİR PARÇASI, bu testin odağı DEĞİL — bkz.
+  // + konsültasyon linkini gösteriyordu. Yeni akış booking→ödeme akışına DÖNÜŞTÜ: sihirbazın 4.
+  // adımı önce rezervasyon özetini (`bookingNumber` + slot çipleri) gösterir, ardından OPSİYONEL
+  // intake adımına geçer — direkt bir konsültasyon linki BURADA ARTIK YOKTUR (madde 24'ün kapsadığı
+  // "ödeme sonrası" akışının BİR PARÇASI, bu testin odağı DEĞİL — bkz.
   // `telehealth-multi-slot-booking.spec.ts::madde 24`).
   await expect(page.getByText(/Rezervasyonunuz oluşturuldu \(BKG-/)).toBeVisible({ timeout: 20_000 });
   // "1 Slot" metni HEM başarı uyarısının (Toplam) HEM Hizmet Özeti panelinin (Dk) İÇİNDE görünür —

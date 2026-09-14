@@ -7,9 +7,15 @@ import type { AvailabilitySlot } from "@/lib/api/types";
 /**
  * `.claude/design-notes-telehealth.md` §2.3 — randevu ay takvimi ızgarası (§2.2'nin dikey tarih
  * chip listesini SUPERSEDE eder). Bu dosya §2.3.1/§2.3.2 (ay navigasyonu + gün ızgarası, "Erken"
- * mikro-etiketi, seçili gün), §2.3.3 (ÖÖ Sabah/ÖS Öğleden Sonra — İKİ grup, "Akşam" YOK) ve
- * §2.3.6/§2.2.5 (seçim onay şeridinin formdan AYRI, DUPLICATE olmayan tek bir gösterim noktası
- * olması) davranışını doğrular.
+ * mikro-etiketi, seçili gün), §2.3.3 (ÖÖ Sabah/ÖS Öğleden Sonra — İKİ grup, "Akşam" YOK) davranışını
+ * doğrular.
+ *
+ * Grid görevi (2026-09-14) Görev 1 — `AvailabilityCalendar` `booking-wizard.tsx`'in 2. adımı
+ * ("Tarih & Saat") İÇİN SADELEŞTİRİLDİ (ad-soyad/e-posta formu, kimlik modalı, booking oluşturma
+ * mantığı `booking-wizard.tsx`'e/`booking-identity-step.tsx`'e TAŞINDI) — bu dosyadaki eski
+ * "Randevu Oluştur"/"Değiştir" (booking formu + Hizmet Özeti'nin "Değiştir" aksiyonu, AYRI bir
+ * bileşen) testleri o taşınmayla ARTIK bu bileşene AİT DEĞİL, KALDIRILDI. "Dolu saatleri gizle"
+ * toggle'ı İÇİN yeni bir test EKLENDİ.
  *
  * `AvailabilityCalendar` artık `selectedSlot`/saat dilimini `booking-selection-context.tsx`
  * üzerinden okur ("Hizmet Özeti" paneliyle PAYLAŞILAN durum) — bu yüzden her render
@@ -50,7 +56,7 @@ function makeSlots(): AvailabilitySlot[] {
 function renderCalendar(slots: AvailabilitySlot[] = makeSlots()) {
   return render(
     <BookingSelectionProvider doctorTimeZone="UTC">
-      <AvailabilityCalendar doctorSlug="dr-test" doctorTimeZone="UTC" lang="tr" defaultLocaleCode="tr" initialSlots={slots} kvkkPage={null} />
+      <AvailabilityCalendar doctorSlug="dr-test" doctorTimeZone="UTC" initialSlots={slots} />
     </BookingSelectionProvider>
   );
 }
@@ -103,7 +109,7 @@ describe("AvailabilityCalendar", () => {
     renderCalendar();
     // Başka bir günü seçince (20 Eylül) 18 Eylül artık "seçili" DEĞİL, "Erken" etiketli müsait
     // hücreye geri döner.
-    fireEvent.click(screen.getByLabelText(/20 Eylül .+ — müsait$/));
+    fireEvent.click(screen.getByLabelText(/20 Eylül .+ — müsait(, hafta sonu)?$/));
     expect(screen.getByLabelText(/18 Eylül .+ — müsait, en yakın randevu tarihi/)).toBeInTheDocument();
     expect(screen.getByLabelText(/20 Eylül .+ — seçili/)).toBeInTheDocument();
   });
@@ -119,7 +125,7 @@ describe("AvailabilityCalendar", () => {
     expect(screen.getByText("En yakın müsait randevu tarihi seçili.")).toBeInTheDocument();
 
     // Başka bir günü (20 Eylül) seçince çakışma ortadan kalkar, satır KAYBOLUR.
-    fireEvent.click(screen.getByLabelText(/20 Eylül .+ — müsait$/));
+    fireEvent.click(screen.getByLabelText(/20 Eylül .+ — müsait(, hafta sonu)?$/));
     expect(screen.queryByText("En yakın müsait randevu tarihi seçili.")).not.toBeInTheDocument();
 
     // Tekrar en yakın müsait güne (18 Eylül) dönülünce satır YENİDEN görünür.
@@ -145,15 +151,18 @@ describe("AvailabilityCalendar", () => {
     renderCalendar();
     expect(screen.getByLabelText("10:00 — müsait")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByLabelText(/20 Eylül .+ — müsait$/));
+    fireEvent.click(screen.getByLabelText(/20 Eylül .+ — müsait(, hafta sonu)?$/));
 
     // Artık 20 Eylül'ün saatleri (Sabah + Öğleden Sonra, biri dolu) görünür, 18 Eylül'ünki YOK.
     expect(screen.queryByLabelText("10:00 — müsait")).not.toBeInTheDocument();
     expect(screen.getByText("ÖÖ Sabah")).toBeInTheDocument();
     expect(screen.getByText("ÖS Öğleden Sonra")).toBeInTheDocument();
     expect(screen.getByLabelText("09:00 — müsait")).toBeInTheDocument();
-    expect(screen.getByLabelText("15:00 — dolu, seçilemez")).toHaveAttribute("aria-disabled", "true");
-    expect(screen.getByText("Dolu")).toBeInTheDocument();
+    const fullSlot = screen.getByLabelText("15:00 — dolu, seçilemez");
+    expect(fullSlot).toHaveAttribute("aria-disabled", "true");
+    // `getByText("Dolu")` ARTIK BELİRSİZ — `<SlotAvailabilityLegend>` (Grid görevi, 2026-09-14)
+    // de "Dolu" metnini taşır; bu yüzden doğrulama slot pili'nin KENDİ içeriğine SCOPE edilir.
+    expect(fullSlot).toHaveTextContent("Dolu");
   });
 
   it("müsait bir saat seçildiğinde `aria-checked` 'true' olur ve `Check` ikonlu seçili sınıfı uygulanır", () => {
@@ -164,27 +173,17 @@ describe("AvailabilityCalendar", () => {
     expect(selected.className).toContain("bg-primary");
   });
 
-  it("§2.3.6/§2.2.5 — saat seçildiğinde onay şeridi görünür ve formdaki eski 'Seçilen saat: ...' satırı YOKTUR (duplicate değil)", () => {
+  it("Grid görevi (2026-09-14) — 'Dolu saatleri gizle' açıkken sadece DOLU slotlar gizlenir, geçmiş slotlar ETKİLENMEZ", () => {
     renderCalendar();
-    fireEvent.click(screen.getByLabelText("10:00 — müsait"));
+    fireEvent.click(screen.getByLabelText(/20 Eylül .+ — müsait(, hafta sonu)?$/));
+    expect(screen.getByLabelText("15:00 — dolu, seçilemez")).toBeInTheDocument();
 
-    expect(screen.queryByText(/^Seçilen saat:/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("switch", { name: "Dolu saatleri gizle" }));
+    expect(screen.queryByLabelText("15:00 — dolu, seçilemez")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("09:00 — müsait")).toBeInTheDocument();
 
-    const changeButton = screen.getByRole("button", { name: "Değiştir" });
-    const strip = changeButton.parentElement;
-    expect(strip).toHaveTextContent("10:00");
-  });
-
-  it("'Değiştir' seçimi temizler, booking formu (dolayısıyla onay şeridi) kaybolur; gün seçimi KORUNUR", () => {
-    renderCalendar();
-    fireEvent.click(screen.getByLabelText("10:00 — müsait"));
-    expect(screen.getByRole("button", { name: "Randevu Oluştur" })).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Değiştir" }));
-    expect(screen.queryByRole("button", { name: "Randevu Oluştur" })).not.toBeInTheDocument();
-    expect(screen.getByLabelText("10:00 — müsait")).toBeInTheDocument();
-    // Takvimdeki gün seçimi (hangi günün saatlerine bakıldığı) "Değiştir" ile SIFIRLANMAZ.
-    expect(screen.getByLabelText(/18 Eylül .+ — seçili/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("switch", { name: "Dolu saatleri gizle" }));
+    expect(screen.getByLabelText("15:00 — dolu, seçilemez")).toBeInTheDocument();
   });
 
   it("müsait saat YOKSA bilgi mesajı gösterir, hiçbir takvim/grup render EDİLMEZ", () => {

@@ -1,24 +1,16 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
 import { Check, ChevronLeft, ChevronRight, CloudSun, Globe, ShieldAlert, Sun } from "lucide-react";
 import { useAuthOptional } from "@/context/auth-context";
 import * as telehealthApi from "@/lib/api/telehealth";
-import { ApiClientError } from "@/lib/api/error";
-import { friendlyErrorMessage, fieldErrorsFrom } from "@/lib/api/friendly-error";
-import type { AvailabilitySlot, BookingIdentityInput, CreateBookingResult, SitePage } from "@/lib/api/types";
+import { friendlyErrorMessage } from "@/lib/api/friendly-error";
+import type { AvailabilitySlot } from "@/lib/api/types";
 import { MAX_BOOKING_SLOTS } from "@/lib/api/types";
 import { formatDayKey, formatTime } from "@/lib/telehealth-format";
 import { useBookingSelection } from "@/components/site/telehealth/booking-selection-context";
-import { BookingPostCreationFlow } from "@/components/site/telehealth/booking-post-creation-flow";
-import { IdentityStepDialog } from "@/components/site/telehealth/identity-step-dialog";
-import { Button } from "@/components/ui/button";
-import { Field } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
+import { SlotAvailabilityLegend } from "@/components/site/telehealth/slot-availability-legend";
+import { Switch } from "@/components/ui/switch";
 import { Alert } from "@/components/ui/alert";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -26,39 +18,27 @@ import { cn } from "@/lib/utils";
 /**
  * `.claude/architect-scope-telehealth-template.md` §4.2/§9.7.2 + `.claude/design-notes-telehealth.md`
  * §2.3/§4/§12 — ay takvimi ızgarası + iki saat grubuna (ÖÖ Sabah/ÖS Öğleden Sonra) ayrılmış ÇOKLU
- * slot seçim ızgarası (1..4, AYNI gün) + randevu formu. `selectedSlots` `booking-selection-
- * context.tsx` üzerinden PAYLAŞILIR ("Hizmet Özeti" paneli AYNI seçimi sağ sütunda gösterir); bu
- * dosya context'in TÜKETİCİSİ ve TEK yazarıdır, context'in SAHİBİ DEĞİLDİR.
+ * slot seçim ızgarası (1..4, AYNI gün). `selectedSlots` `booking-selection-context.tsx` üzerinden
+ * PAYLAŞILIR; bu dosya context'in TÜKETİCİSİ ve TEK yazarıdır, context'in SAHİBİ DEĞİLDİR.
  *
- * [TCT] §9.7.2 (bağlayıcı) — TEKİL slot varsayımı KALDIRILDI: `POST /appointments/bookings` ile
- * `slots: string[]` (1..4) gönderilir; tutar (`totalCents`) İSTEMCİDEN ASLA gönderilmez, yalnızca
- * yanıttaki değer kanoniktir. `.claude/design-notes-telehealth.md` §12.1 — standalone "seçim onay
- * şeridi" TAMAMEN KALDIRILDI, "Değiştir" aksiyonu Hizmet Özeti kutusuna taşındı
- * (`doctor-service-summary.tsx`).
+ * Grid görevi (2026-09-14) Görev 1 — bu bileşen `booking-wizard.tsx`'in 2. adımı ("Tarih & Saat")
+ * İÇİN SADELEŞTİRİLDİ: ad-soyad/e-posta formu, `IdentityStepDialog`, booking oluşturma/
+ * `BookingPostCreationFlow` mantığı `booking-wizard.tsx`'e TAŞINDI (o dosyanın başlığına bakın).
+ * Bu bileşen ARTIK yalnızca takvim + slot ızgarasıdır — SAF bir "adım 2 içeriği" bileşeni.
+ *
+ * ui-designer `slot-availability-legend.tsx` `data-notes` talimatı — takvim ızgarasındaki hafta
+ * sonu (Cmt/Paz) GÜN hücreleri (yalnızca "müsait" durumdaki, seçili OLMAYAN hücreler) legend'daki
+ * `--site-secondary` tonuyla (`border-[var(--site-secondary)]/30 bg-[var(--site-secondary)]/10`)
+ * İŞARETLENDİ — legend'ın "Hafta Sonu" swatch'ıyla BİREBİR aynı sınıflar (bkz. `isWeekend` dalı).
  */
 
 interface AvailabilityCalendarProps {
   doctorSlug: string;
   doctorTimeZone: string;
-  lang: string;
-  defaultLocaleCode: string;
   initialSlots: AvailabilitySlot[];
-  kvkkPage: Pick<SitePage, "title" | "slug"> | null;
+  /** `booking-wizard.tsx`'ten gelen 409 (slot çakışması) bildirimi — bu bileşenin KENDİ ay-getirme hatasından AYRI. */
+  conflictNotice?: string | null;
 }
-
-/**
- * [DPI] §2.6 — KVKK onayı artık `IdentityStepDialog`'un İÇİNDE toplanır (kimlik bilgileriyle
- * AYNI tek onay kutusu, compliance-agent'ın "ayrı bir rıza kolonu AÇILMAZ" kararı) — bu yüzden
- * bu şemada İKİNCİ bir `consent` alanı YOKTUR, yalnızca ad-soyad/e-posta.
- */
-const bookingFormSchema = z.object({
-  patientName: z.string().trim().min(1, "Ad soyad gerekli.").max(120),
-  patientEmail: z.string().trim().min(1, "E-posta gerekli.").email("Geçerli bir e-posta girin.").max(255),
-});
-type BookingFormValues = z.infer<typeof bookingFormSchema>;
-
-/** [DPI] compliance-notes-doctor-identity.md (a) — kimlik alanı eklenmesiyle genişleyen booking KVKK metni sürümü. */
-const BOOKING_CONSENT_VERSION = "v2";
 
 /**
  * `.claude/design-notes-telehealth.md` §2.3.3 — saat gruplaması ÜÇTEN (Sabah/Öğleden Sonra/
@@ -124,6 +104,12 @@ function getYearMonthInTimeZone(date: Date, timeZone: string): { year: number; m
   return { year, month0 };
 }
 
+/** Belirli bir yıl/ay/gün (UTC) hafta sonu (Cmt=6/Paz=0) mu — takvim hücresi hafta sonu işareti İÇİN. */
+function isWeekendDay(year: number, month0: number, day: number): boolean {
+  const weekday = new Date(Date.UTC(year, month0, day)).getUTCDay();
+  return weekday === 0 || weekday === 6;
+}
+
 /** Verilen slot listesindeki (`available: true`) kronolojik olarak İLK gün anahtarı, yoksa `null`. */
 function earliestAvailableDayKey(slots: AvailabilitySlot[], timeZone: string): string | null {
   const keys = slots.filter((s) => s.available).map((s) => formatDayKey(s.startsAt, timeZone));
@@ -143,32 +129,22 @@ function mergeSlots(prev: AvailabilitySlot[], fetched: AvailabilitySlot[]): Avai
   return merged;
 }
 
-export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, lang, defaultLocaleCode, initialSlots, kvkkPage }: AvailabilityCalendarProps) {
-  const router = useRouter();
+export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots, conflictNotice }: AvailabilityCalendarProps) {
   // `.claude/architect-scope-telehealth-template.md` K6 — `SiteRole.DOCTOR` YOKTUR; doktorluk
   // `User.doctorProfileId` ilişkisinden TÜRETİLİR (bkz. `site-header.tsx`'teki AYNI desen).
-  // `useAuthOptional` KULLANILIR (bu bileşen bazı bağlamlarda Provider'sız render edilebilir).
   const auth = useAuthOptional();
   const isDoctorSession = auth?.status === "authenticated" && auth.user?.doctorProfileId != null;
-  const { selectedSlots, toggleSlot, clearAllSlots, displayTimeZone, visitorTimeZone } = useBookingSelection();
+  const { selectedSlots, toggleSlot, displayTimeZone, visitorTimeZone } = useBookingSelection();
   const [slots, setSlots] = useState<AvailabilitySlot[]>(initialSlots);
-  const [bookingError, setBookingError] = useState<string | null>(null);
+  const [monthFetchError, setMonthFetchError] = useState<string | null>(null);
   const [dayChangedNotice, setDayChangedNotice] = useState(false);
-  const [bookingResult, setBookingResult] = useState<CreateBookingResult | null>(null);
-
-  // [DPI] §2.6 — slot seçimi → kimlik adımı/modalı → `POST /appointments/bookings` → Stripe.
-  // `pendingPatientInfo` yalnızca ad-soyad/e-posta formunun `handleSubmit` doğrulamasından
-  // GEÇTİKTEN sonra dolar; modal AÇIKKEN bu bilgiler değişmez (form modalın ALTINDA gizlenir).
-  const [identityModalOpen, setIdentityModalOpen] = useState(false);
-  const [pendingPatientInfo, setPendingPatientInfo] = useState<{ patientName: string; patientEmail: string } | null>(null);
-  const [identitySubmitting, setIdentitySubmitting] = useState(false);
-  const [identityServerError, setIdentityServerError] = useState<string | null>(null);
-  const [identityFieldErrors, setIdentityFieldErrors] = useState<Record<string, string>>({});
+  // Grid görevi (2026-09-14) Görev 1 — "Dolu saatleri gizle" toggle'ı; yalnızca `!slot.available &&
+  // !isPast` (gerçekten "Dolu" etiketli) slotları ızgaradan gizler, "geçmiş" slotlar ETKİLENMEZ.
+  const [hideFullSlots, setHideFullSlots] = useState(false);
 
   // §2.3.1 — takvimin başlangıç sayfası. `initialSlots`/`doctorTimeZone` SUNUCU/istemci İLK
   // render'ında AYNIDIR (hidrasyon güvenli, `visitorTimeZone` henüz BİLİNMİYOR) — mount sonrası
-  // `displayTimeZone` değişse de bu başlangıç değeri GERİYE dönük değiştirilmez (kullanıcı zaten
-  // navigasyona başlamış olabilir, ani bir ay sıçraması İSTENMEZ).
+  // `displayTimeZone` değişse de bu başlangıç değeri GERİYE dönük değiştirilmez.
   const [selectedDayKey, setSelectedDayKey] = useState<string | null>(() => earliestAvailableDayKey(initialSlots, doctorTimeZone));
   const [viewMonth, setViewMonth] = useState<{ year: number; month0: number }>(() => {
     const firstKey = earliestAvailableDayKey(initialSlots, doctorTimeZone);
@@ -228,14 +204,15 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, lang, default
     return HOUR_GROUP_LABELS.filter((label) => groups.has(label)).map((label) => ({ label, items: groups.get(label)! }));
   }, [activeDayItems, displayTimeZone]);
 
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-  } = useForm<BookingFormValues>({
-    resolver: zodResolver(bookingFormSchema),
-    defaultValues: { patientName: "", patientEmail: "" },
-  });
+  const displayedHourGroups = useMemo(() => {
+    if (!hideFullSlots) return hourGroups;
+    return hourGroups
+      .map((group) => ({
+        label: group.label,
+        items: group.items.filter((slot) => slot.available || new Date(slot.startsAt).getTime() < now),
+      }))
+      .filter((group) => group.items.length > 0);
+  }, [hourGroups, hideFullSlots, now]);
 
   /** §2.3.1 — ay değiştiğinde o ayın slotlarını (henüz yüklenmemişse) getirir, mevcutlarla BİRLEŞTİRİR. */
   async function fetchMonthSlots(year: number, month0: number) {
@@ -245,7 +222,7 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, lang, default
       const fetched = await telehealthApi.getDoctorSlots(doctorSlug, from, to);
       setSlots((prev) => mergeSlots(prev, fetched));
     } catch (err) {
-      setBookingError(friendlyErrorMessage(err));
+      setMonthFetchError(friendlyErrorMessage(err));
     }
   }
 
@@ -268,70 +245,15 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, lang, default
 
   function handleSlotClick(slot: AvailabilitySlot) {
     if (!slot.available || isDoctorSession) return;
-    setBookingError(null);
     const { dayChanged } = toggleSlot(slot, displayTimeZone);
     setDayChangedNotice(dayChanged);
-  }
-
-  /**
-   * [DPI] §2.6 — bu form artık BOOKING'i doğrudan OLUŞTURMAZ; yalnızca ad-soyad/e-postayı
-   * doğrulayıp "Kimlik Bilgileri" modalını açar ("Randevu Oluştur" adımı). Gerçek
-   * `POST /appointments/bookings` çağrısı modalın "Devam Et"i tetiklediği `handleIdentityContinue`'dedir.
-   */
-  function onSubmit(values: BookingFormValues) {
-    if (selectedSlots.length === 0) return;
-    setBookingError(null);
-    setIdentityServerError(null);
-    setIdentityFieldErrors({});
-    setPendingPatientInfo({ patientName: values.patientName, patientEmail: values.patientEmail });
-    setIdentityModalOpen(true);
-  }
-
-  async function handleIdentityContinue(identity: BookingIdentityInput) {
-    if (!pendingPatientInfo || selectedSlots.length === 0) return;
-    setIdentitySubmitting(true);
-    setIdentityServerError(null);
-    setIdentityFieldErrors({});
-    try {
-      const result = await telehealthApi.createBooking({
-        doctorSlug,
-        slots: selectedSlots.map((s) => s.startsAt),
-        patientName: pendingPatientInfo.patientName,
-        patientEmail: pendingPatientInfo.patientEmail,
-        identity,
-        consent: true,
-        consentVersion: BOOKING_CONSENT_VERSION,
-      });
-      setIdentityModalOpen(false);
-      setBookingResult(result);
-    } catch (err) {
-      if (err instanceof ApiClientError && err.status === 409) {
-        setIdentityModalOpen(false);
-        setBookingError("Seçtiğiniz saatlerden biri az önce başka biri tarafından alındı. Lütfen yeniden seçin.");
-        clearAllSlots();
-        // Slotları yeniden getirerek ızgarayı tazele — kullanıcı aynı hatayı tekrar görmesin.
-        router.refresh();
-      } else {
-        // [DPI] §2.6 — 422 (geçersiz kimlik/yaş) modal AÇIK KALIR, ilgili `Field`'ın hata slotu
-        // sunucu mesajıyla doldurulur; hiçbir slot tutulmaz (backend tarafı).
-        setIdentityServerError(friendlyErrorMessage(err));
-        setIdentityFieldErrors(fieldErrorsFrom(err));
-      }
-    } finally {
-      setIdentitySubmitting(false);
-    }
-  }
-
-  if (bookingResult) {
-    return <BookingPostCreationFlow result={bookingResult} displayTimeZone={displayTimeZone} />;
   }
 
   return (
     <div className="space-y-4">
       {/* frontend-agent — hekim oturumu kendi adına hasta randevusu ALAMAZ (bkz. backend
-          `POST /appointments`/`POST /appointments/bookings` 403 `FORBIDDEN` guard'ı, AYNI tur).
-          Slot seçimi/gönderim aşağıda AYRICA devre dışı bırakılır; bu banner yalnızca kullanıcıya
-          NEDENİ açıklar. */}
+          `POST /appointments`/`POST /appointments/bookings` 403 `FORBIDDEN` guard'ı). Slot seçimi
+          aşağıda AYRICA devre dışı bırakılır; bu banner yalnızca kullanıcıya NEDENİ açıklar. */}
       {isDoctorSession && (
         <Alert variant="warning" className="flex items-start gap-2" data-testid="doctor-session-booking-blocked-notice">
           <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
@@ -339,8 +261,14 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, lang, default
         </Alert>
       )}
 
+      {conflictNotice && (
+        <Alert variant="error">
+          <span>{conflictNotice}</span>
+        </Alert>
+      )}
+
       {/* §4/§2.3.5 — 2 aşamalı saat dilimi rozeti (hidrasyon uyuşmazlığı önlenir), stil KORUNUR. */}
-      <div className="mb-4 flex items-start gap-2 rounded-[var(--site-radius)] border border-border bg-muted/50 px-3 py-2 text-xs text-foreground/70">
+      <div className="flex items-start gap-2 rounded-[var(--site-radius)] border border-border bg-muted/50 px-3 py-2 text-xs text-foreground/70">
         <Globe className="mt-0.5 h-3.5 w-3.5 shrink-0 text-foreground/50" aria-hidden="true" />
         {visitorTimeZone ? (
           <span>
@@ -356,316 +284,292 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, lang, default
         <p className="text-sm text-foreground/60">Önümüzdeki günlerde müsait bir saat bulunmuyor.</p>
       ) : (
         <div>
-          {/* §2.3.1 — ay navigasyonu + §2.3.2 — 7 sütunlu gün ızgarası, tek kart yüzeyi. */}
-          <div className="rounded-[var(--site-radius)] border border-border bg-surface p-4 sm:p-5">
-            <div className="mb-4 flex items-center justify-between">
-              <button
-                type="button"
-                aria-label="Önceki ay"
-                disabled={isPrevMonthDisabled}
-                onClick={() => changeMonth(-1)}
-                className="flex h-9 w-9 items-center justify-center rounded-[var(--site-radius)] border border-border text-foreground/70 transition-colors duration-150 hover:border-primary/50 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-border disabled:hover:bg-transparent"
-              >
-                <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-              </button>
-              <p className="text-sm font-semibold uppercase tracking-wider text-foreground">
-                {formatMonthLabel(viewMonth.year, viewMonth.month0)}
-              </p>
-              <button
-                type="button"
-                aria-label="Sonraki ay"
-                onClick={() => changeMonth(1)}
-                className="flex h-9 w-9 items-center justify-center rounded-[var(--site-radius)] border border-border text-foreground/70 transition-colors duration-150 hover:border-primary/50 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
-              >
-                <ChevronRight className="h-4 w-4" aria-hidden="true" />
-              </button>
-            </div>
-
-            <div className="mb-1 grid grid-cols-7 gap-1">
-              {["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"].map((d) => (
-                <span key={d} className="flex h-6 items-center justify-center text-[11px] font-semibold uppercase tracking-wide text-foreground/40">
-                  {d}
-                </span>
-              ))}
-            </div>
-
-            <div className="grid grid-cols-7 gap-1">
-              {(() => {
-                const { year, month0 } = viewMonth;
-                const daysInMonth = daysInMonthUTC(year, month0);
-                const leadingBlanks = firstWeekdayMondayIndex(year, month0);
-                const cells: Array<{ day: number; dayKey: string } | null> = [];
-                for (let i = 0; i < leadingBlanks; i++) cells.push(null);
-                for (let day = 1; day <= daysInMonth; day++) cells.push({ day, dayKey: buildDayKey(year, month0, day) });
-
-                return cells.map((cell, idx) => {
-                  if (!cell) return <span key={`blank-${idx}`} aria-hidden="true" className="h-10 w-full sm:h-11" />;
-
-                  const { day, dayKey } = cell;
-                  const isAvailable = availableDayKeySet.has(dayKey);
-                  const isSelected = dayKey === selectedDayKey;
-                  const isEarliest = dayKey === earliestKey;
-                  const datePart = formatCellDatePart(year, month0, day);
-
-                  if (isSelected) {
-                    return (
-                      <button
-                        key={dayKey}
-                        type="button"
-                        aria-pressed="true"
-                        aria-label={`${datePart} — seçili${isEarliest ? ", en yakın randevu tarihi" : ""}`}
-                        onClick={() => setSelectedDayKey(dayKey)}
-                        className="relative flex h-10 w-full flex-col items-center justify-center gap-0.5 rounded-[var(--site-radius)] border-2 border-transparent bg-primary text-sm font-semibold tabular-nums text-primary-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface sm:h-11"
-                      >
-                        <span>{day}</span>
-                        <Check className="h-2.5 w-2.5" aria-hidden="true" />
-                      </button>
-                    );
-                  }
-
-                  if (isAvailable) {
-                    return (
-                      <button
-                        key={dayKey}
-                        type="button"
-                        aria-label={`${datePart} — müsait${isEarliest ? ", en yakın randevu tarihi" : ""}`}
-                        onClick={() => setSelectedDayKey(dayKey)}
-                        className="flex h-10 w-full flex-col items-center justify-center gap-0.5 rounded-[var(--site-radius)] border border-primary/20 bg-primary/5 text-sm font-medium tabular-nums text-foreground transition-colors duration-150 hover:border-primary/50 hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface sm:h-11"
-                      >
-                        <span>{day}</span>
-                        {isEarliest ? (
-                          <span aria-hidden="true" className="text-[8px] font-semibold uppercase leading-none tracking-wide text-primary">
-                            Erken
-                          </span>
-                        ) : (
-                          <span aria-hidden="true" className="h-1 w-1 rounded-full bg-primary" />
-                        )}
-                      </button>
-                    );
-                  }
-
-                  return (
-                    <span
-                      key={dayKey}
-                      aria-label={`${datePart} — müsait saat yok`}
-                      className="flex h-10 w-full cursor-not-allowed items-center justify-center rounded-[var(--site-radius)] border border-transparent text-sm font-medium tabular-nums text-foreground/25 sm:h-11"
-                    >
-                      {day}
-                    </span>
-                  );
-                });
-              })()}
-            </div>
-
-            {/* §2.3.2.1 — QA bug düzeltmesi: sayfa ilk açıldığında `selectedDayKey` zaten
-                `earliestKey`'e eşit olduğu için ızgaradaki hücre-içi "Erken" etiketi bu durumda
-                asla görünmez (o dal `isSelected` tarafından ele alınır). Bu koşullu satır
-                SADECE bu çakışma anında (seçili gün ≡ en yakın müsait gün) devreye girer ve
-                bilgiyi ekran okuyucuya da taşır — başka bir gün seçildiğinde kaybolur, çünkü o
-                durumda ızgaranın kendi "Erken" sinyali zaten görünür. */}
-            {selectedDayKey === earliestKey && earliestKey !== null && (
-              <p className="mt-3 flex items-center gap-1.5 text-xs font-medium text-primary">
-                <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
-                En yakın müsait randevu tarihi seçili.
-              </p>
-            )}
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <SlotAvailabilityLegend />
+            <label className="flex shrink-0 items-center gap-2 text-xs font-medium text-foreground/70">
+              {/* `aria-label` KASITLI olarak VERİLMEZ — bu `Switch` bir `<label>`'ın İÇİNDE render
+                  edildiği için erişilebilir ad zaten o `<label>`'ın metninden ("Dolu saatleri
+                  gizle") türetilir; İKİSİNİ BİRDEN vermek çift/yinelenen bir isimle sonuçlanırdı. */}
+              <Switch size="sm" checked={hideFullSlots} onCheckedChange={setHideFullSlots} />
+              Dolu saatleri gizle
+            </label>
           </div>
 
-          {hourGroups.length > 0 && (
-            <div className="mt-5 space-y-3">
-              {hourGroups.map((group) => (
-                <section key={group.label} className="overflow-hidden rounded-[var(--site-radius)] border border-border">
-                  {group.label === "Sabah" ? (
-                    <div className="flex items-center gap-2 bg-gradient-to-r from-amber-50 to-orange-50 px-4 py-2.5">
-                      <Sun className="h-4 w-4 shrink-0 text-amber-600" aria-hidden="true" />
-                      <span className="text-xs font-semibold uppercase tracking-wider text-amber-900">ÖÖ Sabah</span>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2 bg-muted px-4 py-2.5">
-                      <CloudSun className="h-4 w-4 shrink-0 text-foreground/50" aria-hidden="true" />
-                      <span className="text-xs font-semibold uppercase tracking-wider text-foreground/70">ÖS Öğleden Sonra</span>
-                    </div>
-                  )}
+          {/* Görev 1 — SOL: ay takvimi (~%40), SAĞ: slot ızgarası (~%60); mobilde tek kolon. */}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:items-start">
+            {/* §2.3.1 — ay navigasyonu + §2.3.2 — 7 sütunlu gün ızgarası, tek kart yüzeyi. */}
+            <div className="rounded-[var(--site-radius)] border border-border bg-surface p-4 sm:p-5">
+              <div className="mb-4 flex items-center justify-between">
+                <button
+                  type="button"
+                  aria-label="Önceki ay"
+                  disabled={isPrevMonthDisabled}
+                  onClick={() => changeMonth(-1)}
+                  className="flex h-9 w-9 items-center justify-center rounded-[var(--site-radius)] border border-border text-foreground/70 transition-colors duration-150 hover:border-primary/50 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-border disabled:hover:bg-transparent"
+                >
+                  <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+                </button>
+                <p className="text-sm font-semibold uppercase tracking-wider text-foreground">
+                  {formatMonthLabel(viewMonth.year, viewMonth.month0)}
+                </p>
+                <button
+                  type="button"
+                  aria-label="Sonraki ay"
+                  onClick={() => changeMonth(1)}
+                  className="flex h-9 w-9 items-center justify-center rounded-[var(--site-radius)] border border-border text-foreground/70 transition-colors duration-150 hover:border-primary/50 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+                >
+                  <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                </button>
+              </div>
 
-                  <div
-                    role="group"
-                    aria-label={`${group.label} müsaitlik saatleri, en fazla ${MAX_BOOKING_SLOTS} seçim`}
-                    className="grid grid-cols-[repeat(auto-fill,minmax(84px,1fr))] gap-2 p-3"
-                  >
-                    {group.items.map((slot) => {
-                      const isPast = new Date(slot.startsAt).getTime() < now;
-                      const isSelected = selectedSlots.some((s) => s.startsAt === slot.startsAt);
-                      const time = formatTime(slot.startsAt, displayTimeZone);
+              <div className="mb-1 grid grid-cols-7 gap-1">
+                {["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"].map((d) => (
+                  <span key={d} className="flex h-6 items-center justify-center text-[11px] font-semibold uppercase tracking-wide text-foreground/40">
+                    {d}
+                  </span>
+                ))}
+              </div>
 
-                      if (isSelected) {
-                        return (
-                          <button
-                            key={slot.startsAt}
-                            type="button"
-                            role="checkbox"
-                            aria-checked="true"
-                            aria-label={`${time} — seçili`}
-                            onClick={() => handleSlotClick(slot)}
-                            className={cn(SELECTION_PILL_BASE, "px-3 min-w-[84px]", SELECTION_PILL_SELECTED)}
-                          >
-                            <Check className="h-3.5 w-3.5" aria-hidden="true" />
-                            {time}
-                          </button>
-                        );
-                      }
+              <div className="grid grid-cols-7 gap-1">
+                {(() => {
+                  const { year, month0 } = viewMonth;
+                  const daysInMonth = daysInMonthUTC(year, month0);
+                  const leadingBlanks = firstWeekdayMondayIndex(year, month0);
+                  const cells: Array<{ day: number; dayKey: string } | null> = [];
+                  for (let i = 0; i < leadingBlanks; i++) cells.push(null);
+                  for (let day = 1; day <= daysInMonth; day++) cells.push({ day, dayKey: buildDayKey(year, month0, day) });
 
-                      // frontend-agent — hekim oturumu için müsait slotlar TIKLANAMAZ hale getirilir
-                      // (backend'deki 403 `FORBIDDEN` guard'ıyla TUTARLI, ama kullanıcıya isteği
-                      // GÖNDERMEDEN önce net bir geri bildirim verir).
-                      if (slot.available && isDoctorSession) {
-                        return (
-                          <Tooltip key={slot.startsAt}>
-                            <TooltipTrigger>
-                              <span
-                                aria-disabled="true"
-                                aria-label={`${time} — müsait, ancak hekim oturumu ile randevu alınamaz`}
-                                className={cn(SELECTION_PILL_BASE, "px-3 min-w-[84px]", SELECTION_PILL_AT_LIMIT)}
-                              >
-                                {time}
-                              </span>
-                            </TooltipTrigger>
-                            <TooltipContent>Hekim oturumu ile randevu alınamaz.</TooltipContent>
-                          </Tooltip>
-                        );
-                      }
+                  return cells.map((cell, idx) => {
+                    if (!cell) return <span key={`blank-${idx}`} aria-hidden="true" className="h-10 w-full sm:h-11" />;
 
-                      if (!slot.available && isPast) {
-                        return (
-                          <span
-                            key={slot.startsAt}
-                            aria-label={`${time} — geçmiş, artık kullanılamaz`}
-                            className="flex h-10 min-w-[84px] cursor-not-allowed items-center justify-center rounded-[var(--site-radius)] border border-transparent px-3 text-sm font-medium tabular-nums text-foreground/25"
-                          >
-                            {time}
-                          </span>
-                        );
-                      }
+                    const { day, dayKey } = cell;
+                    const isAvailable = availableDayKeySet.has(dayKey);
+                    const isSelected = dayKey === selectedDayKey;
+                    const isEarliest = dayKey === earliestKey;
+                    const isWeekend = isWeekendDay(year, month0, day);
+                    const datePart = formatCellDatePart(year, month0, day);
 
-                      if (!slot.available) {
-                        return (
-                          <span
-                            key={slot.startsAt}
-                            aria-label={`${time} — dolu, seçilemez`}
-                            aria-disabled="true"
-                            className="flex h-10 min-w-[84px] cursor-not-allowed flex-col items-center justify-center rounded-[var(--site-radius)] border border-border/60 bg-muted px-3 text-sm font-medium tabular-nums text-foreground/40"
-                          >
-                            <span className="line-through decoration-foreground/30">{time}</span>
-                            <span className="text-[10px] text-foreground/50">Dolu</span>
-                          </span>
-                        );
-                      }
-
-                      // §12.2.2 — 4/4 sınırına ulaşıldığında henüz seçilmemiş müsait slotlar
-                      // "dolu" DEĞİL, kendi soluk/nötr "geçici olarak seçilemez" durumuna girer.
-                      if (selectedSlots.length >= MAX_BOOKING_SLOTS) {
-                        return (
-                          <Tooltip key={slot.startsAt}>
-                            <TooltipTrigger>
-                              <span
-                                aria-disabled="true"
-                                aria-label={`${time} — müsait, ancak en fazla ${MAX_BOOKING_SLOTS} slot seçilebilir`}
-                                className={cn(SELECTION_PILL_BASE, "px-3 min-w-[84px]", SELECTION_PILL_AT_LIMIT)}
-                              >
-                                {time}
-                              </span>
-                            </TooltipTrigger>
-                            <TooltipContent>En fazla {MAX_BOOKING_SLOTS} slot seçebilirsiniz</TooltipContent>
-                          </Tooltip>
-                        );
-                      }
-
+                    if (isSelected) {
                       return (
                         <button
-                          key={slot.startsAt}
+                          key={dayKey}
                           type="button"
-                          role="checkbox"
-                          aria-checked="false"
-                          aria-label={`${time} — müsait`}
-                          onClick={() => handleSlotClick(slot)}
-                          className={cn(SELECTION_PILL_BASE, "px-3 min-w-[84px]", SELECTION_PILL_AVAILABLE)}
+                          aria-pressed="true"
+                          aria-label={`${datePart} — seçili${isEarliest ? ", en yakın randevu tarihi" : ""}`}
+                          onClick={() => setSelectedDayKey(dayKey)}
+                          className="relative flex h-10 w-full flex-col items-center justify-center gap-0.5 rounded-[var(--site-radius)] border-2 border-transparent bg-primary text-sm font-semibold tabular-nums text-primary-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface sm:h-11"
                         >
-                          {time}
+                          <span>{day}</span>
+                          <Check className="h-2.5 w-2.5" aria-hidden="true" />
                         </button>
                       );
-                    })}
-                  </div>
-                </section>
-              ))}
-            </div>
-          )}
+                    }
 
-          {/* §12.2.3 — farklı bir gün seçildiğinde önceki seçim otomatik temizlenir + bilgi notu. */}
-          {dayChangedNotice && (
-            <Alert variant="info" className="mt-3">
-              Farklı bir gün seçtiğiniz için önceki seçiminiz temizlendi.
-            </Alert>
-          )}
+                    if (isAvailable) {
+                      return (
+                        <button
+                          key={dayKey}
+                          type="button"
+                          aria-label={`${datePart} — müsait${isEarliest ? ", en yakın randevu tarihi" : ""}${isWeekend ? ", hafta sonu" : ""}`}
+                          onClick={() => setSelectedDayKey(dayKey)}
+                          className={cn(
+                            "flex h-10 w-full flex-col items-center justify-center gap-0.5 rounded-[var(--site-radius)] border text-sm font-medium tabular-nums transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface sm:h-11",
+                            isWeekend
+                              ? "border-[var(--site-secondary)]/30 bg-[var(--site-secondary)]/10 text-foreground hover:border-[var(--site-secondary)]/50 hover:bg-[var(--site-secondary)]/20"
+                              : "border-primary/20 bg-primary/5 text-foreground hover:border-primary/50 hover:bg-primary/10"
+                          )}
+                        >
+                          <span>{day}</span>
+                          {isEarliest ? (
+                            <span aria-hidden="true" className="text-[8px] font-semibold uppercase leading-none tracking-wide text-primary">
+                              Erken
+                            </span>
+                          ) : (
+                            <span
+                              aria-hidden="true"
+                              className={cn("h-1 w-1 rounded-full", isWeekend ? "bg-[var(--site-secondary)]" : "bg-primary")}
+                            />
+                          )}
+                        </button>
+                      );
+                    }
+
+                    return (
+                      <span
+                        key={dayKey}
+                        aria-label={`${datePart} — müsait saat yok`}
+                        className="flex h-10 w-full cursor-not-allowed items-center justify-center rounded-[var(--site-radius)] border border-transparent text-sm font-medium tabular-nums text-foreground/25 sm:h-11"
+                      >
+                        {day}
+                      </span>
+                    );
+                  });
+                })()}
+              </div>
+
+              {/* §2.3.2.1 — QA bug düzeltmesi: sayfa ilk açıldığında `selectedDayKey` zaten
+                  `earliestKey`'e eşit olduğu için ızgaradaki hücre-içi "Erken" etiketi bu durumda
+                  asla görünmez (o dal `isSelected` tarafından ele alınır). Bu koşullu satır
+                  SADECE bu çakışma anında devreye girer ve bilgiyi ekran okuyucuya da taşır. */}
+              {selectedDayKey === earliestKey && earliestKey !== null && (
+                <p className="mt-3 flex items-center gap-1.5 text-xs font-medium text-primary">
+                  <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+                  En yakın müsait randevu tarihi seçili.
+                </p>
+              )}
+
+              {monthFetchError && (
+                <Alert variant="error" className="mt-3">
+                  <span>{monthFetchError}</span>
+                </Alert>
+              )}
+            </div>
+
+            {/* SAĞ — slot ızgarası. */}
+            <div>
+              {displayedHourGroups.length === 0 && activeDayItems.length > 0 && (
+                <p className="rounded-[var(--site-radius)] border border-dashed border-border p-4 text-center text-sm text-foreground/50">
+                  Bu gün için gösterilecek müsait saat yok. &quot;Dolu saatleri gizle&quot;yi kapatırsanız tüm saatleri görebilirsiniz.
+                </p>
+              )}
+
+              {displayedHourGroups.length > 0 && (
+                <div className="space-y-3">
+                  {displayedHourGroups.map((group) => (
+                    <section key={group.label} className="overflow-hidden rounded-[var(--site-radius)] border border-border">
+                      {group.label === "Sabah" ? (
+                        <div className="flex items-center gap-2 bg-gradient-to-r from-amber-50 to-orange-50 px-4 py-2.5">
+                          <Sun className="h-4 w-4 shrink-0 text-amber-600" aria-hidden="true" />
+                          <span className="text-xs font-semibold uppercase tracking-wider text-amber-900">ÖÖ Sabah</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 bg-muted px-4 py-2.5">
+                          <CloudSun className="h-4 w-4 shrink-0 text-foreground/50" aria-hidden="true" />
+                          <span className="text-xs font-semibold uppercase tracking-wider text-foreground/70">ÖS Öğleden Sonra</span>
+                        </div>
+                      )}
+
+                      <div
+                        role="group"
+                        aria-label={`${group.label} müsaitlik saatleri, en fazla ${MAX_BOOKING_SLOTS} seçim`}
+                        className="grid grid-cols-[repeat(auto-fill,minmax(84px,1fr))] gap-2 p-3"
+                      >
+                        {group.items.map((slot) => {
+                          const isPast = new Date(slot.startsAt).getTime() < now;
+                          const isSelected = selectedSlots.some((s) => s.startsAt === slot.startsAt);
+                          const time = formatTime(slot.startsAt, displayTimeZone);
+
+                          if (isSelected) {
+                            return (
+                              <button
+                                key={slot.startsAt}
+                                type="button"
+                                role="checkbox"
+                                aria-checked="true"
+                                aria-label={`${time} — seçili`}
+                                onClick={() => handleSlotClick(slot)}
+                                className={cn(SELECTION_PILL_BASE, "px-3 min-w-[84px]", SELECTION_PILL_SELECTED)}
+                              >
+                                <Check className="h-3.5 w-3.5" aria-hidden="true" />
+                                {time}
+                              </button>
+                            );
+                          }
+
+                          // frontend-agent — hekim oturumu için müsait slotlar TIKLANAMAZ hale
+                          // getirilir (backend'deki 403 `FORBIDDEN` guard'ıyla TUTARLI).
+                          if (slot.available && isDoctorSession) {
+                            return (
+                              <Tooltip key={slot.startsAt}>
+                                <TooltipTrigger>
+                                  <span
+                                    aria-disabled="true"
+                                    aria-label={`${time} — müsait, ancak hekim oturumu ile randevu alınamaz`}
+                                    className={cn(SELECTION_PILL_BASE, "px-3 min-w-[84px]", SELECTION_PILL_AT_LIMIT)}
+                                  >
+                                    {time}
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent>Hekim oturumu ile randevu alınamaz.</TooltipContent>
+                              </Tooltip>
+                            );
+                          }
+
+                          if (!slot.available && isPast) {
+                            return (
+                              <span
+                                key={slot.startsAt}
+                                aria-label={`${time} — geçmiş, artık kullanılamaz`}
+                                className="flex h-10 min-w-[84px] cursor-not-allowed items-center justify-center rounded-[var(--site-radius)] border border-transparent px-3 text-sm font-medium tabular-nums text-foreground/25"
+                              >
+                                {time}
+                              </span>
+                            );
+                          }
+
+                          if (!slot.available) {
+                            return (
+                              <span
+                                key={slot.startsAt}
+                                aria-label={`${time} — dolu, seçilemez`}
+                                aria-disabled="true"
+                                className="flex h-10 min-w-[84px] cursor-not-allowed flex-col items-center justify-center rounded-[var(--site-radius)] border border-border/60 bg-muted px-3 text-sm font-medium tabular-nums text-foreground/40"
+                              >
+                                <span className="line-through decoration-foreground/30">{time}</span>
+                                <span className="text-[10px] text-foreground/50">Dolu</span>
+                              </span>
+                            );
+                          }
+
+                          // §12.2.2 — 4/4 sınırına ulaşıldığında henüz seçilmemiş müsait slotlar
+                          // "dolu" DEĞİL, kendi soluk/nötr "geçici olarak seçilemez" durumuna girer.
+                          if (selectedSlots.length >= MAX_BOOKING_SLOTS) {
+                            return (
+                              <Tooltip key={slot.startsAt}>
+                                <TooltipTrigger>
+                                  <span
+                                    aria-disabled="true"
+                                    aria-label={`${time} — müsait, ancak en fazla ${MAX_BOOKING_SLOTS} slot seçilebilir`}
+                                    className={cn(SELECTION_PILL_BASE, "px-3 min-w-[84px]", SELECTION_PILL_AT_LIMIT)}
+                                  >
+                                    {time}
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent>En fazla {MAX_BOOKING_SLOTS} slot seçebilirsiniz</TooltipContent>
+                              </Tooltip>
+                            );
+                          }
+
+                          return (
+                            <button
+                              key={slot.startsAt}
+                              type="button"
+                              role="checkbox"
+                              aria-checked="false"
+                              aria-label={`${time} — müsait`}
+                              onClick={() => handleSlotClick(slot)}
+                              className={cn(SELECTION_PILL_BASE, "px-3 min-w-[84px]", SELECTION_PILL_AVAILABLE)}
+                            >
+                              {time}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </section>
+                  ))}
+                </div>
+              )}
+
+              {/* §12.2.3 — farklı bir gün seçildiğinde önceki seçim otomatik temizlenir + bilgi notu. */}
+              {dayChangedNotice && (
+                <Alert variant="info" className="mt-3">
+                  Farklı bir gün seçtiğiniz için önceki seçiminiz temizlendi.
+                </Alert>
+              )}
+            </div>
+          </div>
         </div>
       )}
-
-      {/* `isDoctorSession` iken `handleSlotClick` zaten erken çıkar, ama `selectedSlots` (paylaşılan
-          `BookingSelectionProvider` context'i) bir önceki misafir/hasta oturumundan kalmış OLABİLİR
-          — form yine de EKSTRA bir güvenlik ağı olarak gizlenir. */}
-      {selectedSlots.length > 0 && !isDoctorSession && (
-        <form className="mt-4 space-y-4 rounded-[var(--site-radius)] border border-border bg-surface p-4" onSubmit={handleSubmit(onSubmit)} noValidate>
-          <Field id="patientName" label="Ad soyad" error={errors.patientName?.message} required>
-            {(inputProps) => <Input {...inputProps} {...register("patientName")} />}
-          </Field>
-          <Field
-            id="patientEmail"
-            label="E-posta"
-            error={errors.patientEmail?.message}
-            required
-            hint="Randevu kaydınızla ilişkilendirilecek ve ödeme onaylandığında güvenli erişim bağlantınız bu adrese gönderilecektir."
-          >
-            {(inputProps) => <Input {...inputProps} type="email" {...register("patientEmail")} />}
-          </Field>
-
-          {/*
-            [DPI] §2.6 — KVKK onayı + kimlik bilgileri artık `IdentityStepDialog`'un İÇİNDE
-            toplanır (slot seçimi → kimlik adımı/modalı → `POST /appointments/bookings` →
-            Stripe). Bu buton yalnızca ad-soyad/e-postayı doğrulayıp modalı AÇAR.
-          */}
-          {bookingError && (
-            <Alert variant="error">
-              <span>{bookingError}</span>
-            </Alert>
-          )}
-
-          <Button type="submit" className="w-full rounded-[var(--site-radius)]">
-            Randevu Oluştur
-          </Button>
-        </form>
-      )}
-
-      {selectedSlots.length === 0 && bookingError && (
-        <Alert variant="error">
-          <span>{bookingError}</span>
-        </Alert>
-      )}
-
-      <IdentityStepDialog
-        open={identityModalOpen}
-        onOpenChange={(open) => {
-          setIdentityModalOpen(open);
-          if (!open) {
-            setIdentityServerError(null);
-            setIdentityFieldErrors({});
-          }
-        }}
-        submitting={identitySubmitting}
-        serverError={identityServerError}
-        serverFieldErrors={identityFieldErrors}
-        onContinue={(identity) => void handleIdentityContinue(identity)}
-        kvkkPage={kvkkPage}
-        lang={lang}
-        defaultLocaleCode={defaultLocaleCode}
-      />
     </div>
   );
 }

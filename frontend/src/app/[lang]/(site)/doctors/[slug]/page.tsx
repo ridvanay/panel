@@ -7,10 +7,9 @@ import { fetchPublishedPagesServer } from "@/lib/api/server-pages";
 import { resolveKvkkNoticePage } from "@/lib/legal-pages";
 import { DoctorProfileHero } from "@/components/site/telehealth/doctor-profile-hero";
 import { DoctorProfileTabs } from "@/components/site/telehealth/doctor-profile-tabs";
-import { DoctorServiceSummaryPanel } from "@/components/site/telehealth/doctor-service-summary";
 import { BookingSelectionProvider } from "@/components/site/telehealth/booking-selection-context";
 import { EmergencyNoticeCard } from "@/components/site/telehealth/emergency-notice";
-import { AvailabilityCalendar } from "@/components/site/telehealth/availability-calendar";
+import { BookingWizard } from "@/components/site/telehealth/booking-wizard";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
 import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import { buildDoctorJsonLd } from "@/lib/doctor-json-ld";
@@ -119,43 +118,35 @@ export default async function DoctorDetailPage({ params }: DoctorDetailPageProps
       </div>
 
       <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
-        {/* `.claude/design-notes-telehealth.md` §2.1.1 — iki sütun + sticky yan panel. `320px` sabit
-            sağ sütun, `product-purchase-panel.tsx`'in `lg:sticky lg:top-24 lg:self-start` deseniyle
-            BİREBİR aynı offset. §2.4 — "Hizmet Özeti" paneli (sağ sütun) artık `AvailabilityCalendar`
-            (sol sütun) ile AYNI `selectedSlot`/saat dilimi bilgisini göstermek zorunda; ikisi KARDEŞ
-            ağaçlar olduğundan (`BookingSelectionProvider`, bkz. o dosyanın başlığı) paylaşılan durumu
-            TEK bir Context'te tutar — grid'in İKİ sütunu da bu sağlayıcının İÇİNDE render edilir. */}
+        {/* Grid görevi (2026-09-14) Görev 1 — eski iki-sütun (takvim solda/hizmet özeti sağda,
+            AYRI "Randevu Al" ANKOR + AYRI "Randevu Oluştur" SUBMIT butonlu) yapı `BookingWizard`'a
+            (`booking-wizard.tsx`) DEVREDİLDİ — kurumsal, TEK butonlu, 5 adımlı numaralandırılmış
+            sihirbaz (`BookingStepperBar`, ui-designer). `BookingSelectionProvider` DEĞİŞMEDİ —
+            sihirbazın İÇİNDEKİ takvim adımı ile sağ sticky özet paneli hâlâ KARDEŞ ağaçlar (Context
+            paylaşımı gerekir). */}
         <BookingSelectionProvider doctorTimeZone={doctor.timeZone}>
-          <div className="grid grid-cols-1 gap-8 lg:grid-cols-[1fr_320px] lg:items-start">
-            <div className="min-w-0">
-              {/* `.claude/design-notes-doctor-portfolio-console.md` §1.2/§1.3 — hero içeriği
-                  bandın içine taşındığı için sol sütunun İLK elemanı artık Tab çubuğudur. */}
-              <DoctorProfileTabs doctor={doctor} />
+          {/* `.claude/design-notes-doctor-portfolio-console.md` §1.2/§1.3 — hero içeriği bandın
+              içine taşındığı için İLK eleman artık Tab çubuğudur. */}
+          <DoctorProfileTabs doctor={doctor} />
 
-              <section id="randevu" className="mt-10 scroll-mt-24">
-                <h2 className="text-xl font-semibold text-foreground">Müsaitlik ve Randevu</h2>
-                <div className="mt-4">
-                  <EmergencyNoticeCard />
-                </div>
-                <div className="mt-4">
-                  <AvailabilityCalendar
-                    doctorSlug={doctor.slug}
-                    doctorTimeZone={doctor.timeZone}
-                    lang={lang}
-                    defaultLocaleCode={defaultLocaleCode}
-                    initialSlots={slots}
-                    kvkkPage={kvkkPage}
-                  />
-                </div>
-              </section>
+          <section id="randevu" className="mt-10 scroll-mt-24">
+            <h2 className="text-xl font-semibold text-foreground">Müsaitlik ve Randevu</h2>
+            <div className="mt-4">
+              <EmergencyNoticeCard />
             </div>
-
-            {/* §2.4.1/§2.4.6 — sticky offset DEĞİŞMEDİ, EK `max-h`/`overflow-y-auto` güvenlik ağı
-                (panel artık ~3x daha uzun, çok kısa viewport'larda taşmayı ÖNLER). */}
-            <aside className="lg:sticky lg:top-24 lg:max-h-[calc(100vh-7rem)] lg:self-start lg:overflow-y-auto">
-              <DoctorServiceSummaryPanel doctor={doctor} ctaHref="#randevu" intlLocale={contentLocaleToIntl(lang)} />
-            </aside>
-          </div>
+            <div className="mt-4">
+              <BookingWizard
+                doctor={doctor}
+                doctorSlug={doctor.slug}
+                doctorTimeZone={doctor.timeZone}
+                lang={lang}
+                defaultLocaleCode={defaultLocaleCode}
+                initialSlots={slots}
+                kvkkPage={kvkkPage}
+                intlLocale={contentLocaleToIntl(lang)}
+              />
+            </div>
+          </section>
         </BookingSelectionProvider>
 
         <JsonLdScript json={buildDoctorJsonLd(doctor, canonicalUrl)} />

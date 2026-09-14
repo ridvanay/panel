@@ -204,6 +204,19 @@ export async function telehealthDoctorPortalRoutes(app: FastifyInstance) {
         scopeFilter = { appointments: { some: { status: "COMPLETED" } } };
       }
 
+      // Kök neden notu (2026-09-14 araştırması) — `PENDING` bir booking süresi dolduğunda
+      // (`booking-expiry.ts::runBookingExpirySweep`) VEYA hasta hiç ödemeden iptal ettiğinde
+      // (`telehealth.routes.ts` `/appointments/bookings/:bookingId/cancel`), o booking'in TÜM
+      // `PENDING_PAYMENT` randevu satırları HARD DELETE edilir ve booking `paymentStatus =
+      // "EXPIRED"` olarak KALICI şekilde DB'de yaşamaya devam eder — sıfır `appointments` ile.
+      // `scope=today/upcoming/completed` bunu zaten `appointments: { some: ... }` ile doğal
+      // olarak ELER; yalnızca varsayılan `scope=all` + filtresiz sorguda bu "hayalet" booking'ler
+      // sızıyor ve doktor konsolunda `appointments[0]`'a dayanan kartlarda "Randevu saati bilgisi
+      // eksik" durumuna yol açıyordu. `paymentStatus` AÇIKÇA istenmediği sürece (ör. ileride bir
+      // denetim/analitik görünümü `paymentStatus=EXPIRED` isteyebilir) bu satırları varsayılan
+      // listeden dışarıda bırakıyoruz — DTO şekli/alanları DEĞİŞMEDİ, yalnızca satır sayısı azaldı.
+      const excludeAppointmentlessBookings = !paymentStatus && !scopeFilter;
+
       // `doctorId` sorgu parametresi BİLİNÇLİ OLARAK YOKTUR (IDOR yüzeyi) — yalnızca oturumun
       // KENDİ `DoctorProfile`'ı üzerinden filtrelenir.
       const rows = await app.prisma.appointmentBooking.findMany({
@@ -211,6 +224,7 @@ export async function telehealthDoctorPortalRoutes(app: FastifyInstance) {
           doctorId: doctorProfileId,
           ...(cursorSeq ? { seq: { gt: cursorSeq } } : {}),
           ...(paymentStatus ? { paymentStatus } : {}),
+          ...(excludeAppointmentlessBookings ? { appointments: { some: {} } } : {}),
           ...(scopeFilter ?? {}),
           ...(from || to
             ? {

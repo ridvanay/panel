@@ -12,6 +12,11 @@ import type { AvailabilitySlot, DoctorProfile } from "@/lib/api/types";
  * `DoctorPricePanel` → `DoctorServiceSummaryPanel` olarak YENİDEN ADLANDIRILDI). `IntersectionObserver`
  * `tests/setup.ts`'teki sessiz polyfill ile sağlanır (jsdom'da doğal olarak YOK).
  *
+ * Grid görevi (2026-09-14) Görev 1 — eski `ctaHref` ("Randevu Al" ANKOR) KALDIRILDI; panel artık
+ * `booking-wizard.tsx`'in TEK dinamik "Devam Et" butonunu barındırır (`currentStep`/`onContinue`/
+ * `continueDisabled`/`continueLoading`/`showContinueButton`/`locked` prop'ları). Bu dosya YENİ
+ * kontratı doğrular.
+ *
  * `booking-selection-context.tsx`'in ziyaretçi dilimi tespiti (`Intl.DateTimeFormat().
  * resolvedOptions().timeZone`) test makinesinin GERÇEK yerel dilimini okur — `availability-
  * calendar.test.tsx` İLE AYNI gerekçeyle bu SIFIR argümanlı çağrı sahte `UTC` değerine
@@ -86,10 +91,28 @@ function makeDoctor(overrides: Partial<DoctorProfile> = {}): DoctorProfile {
   };
 }
 
-function renderPanel(doctor: DoctorProfile = makeDoctor()) {
+function renderPanel(
+  doctor: DoctorProfile = makeDoctor(),
+  props: Partial<{
+    currentStep: 2 | 3 | 4 | 5;
+    onContinue: () => void;
+    continueDisabled: boolean;
+    continueLoading: boolean;
+    showContinueButton: boolean;
+    locked: boolean;
+  }> = {}
+) {
   return render(
     <BookingSelectionProvider doctorTimeZone={doctor.timeZone}>
-      <DoctorServiceSummaryPanel doctor={doctor} ctaHref="#randevu" />
+      <DoctorServiceSummaryPanel
+        doctor={doctor}
+        currentStep={props.currentStep ?? 2}
+        onContinue={props.onContinue ?? vi.fn()}
+        continueDisabled={props.continueDisabled ?? true}
+        continueLoading={props.continueLoading ?? false}
+        showContinueButton={props.showContinueButton ?? true}
+        locked={props.locked ?? false}
+      />
     </BookingSelectionProvider>
   );
 }
@@ -115,9 +138,9 @@ describe("DoctorServiceSummaryPanel", () => {
     expect(screen.getByText("Genel Danışmanlık Seansı")).toBeInTheDocument();
   });
 
-  it("§2.4.4 hiçbir randevu seçilmemişse 'Tarih ve saat seçin' placeholder'ını gösterir", () => {
+  it("§2.4.4 hiçbir randevu seçilmemişse 'Tarih ve saatleri seçin' placeholder'ını gösterir", () => {
     renderPanel();
-    expect(screen.getByText("Tarih ve saat seçin")).toBeInTheDocument();
+    expect(screen.getByText("Tarih ve saatleri seçin")).toBeInTheDocument();
   });
 
   it("fiyatı `doctor.currency`'ye göre biçimlendirir (iki kez render edilir — masaüstü panel + mobil çubuk)", () => {
@@ -125,11 +148,54 @@ describe("DoctorServiceSummaryPanel", () => {
     expect(screen.getAllByText(formatPriceFromCents(45000, "TRY")).length).toBeGreaterThan(0);
   });
 
-  it("CTA `#randevu`'ya işaret eder, DEVRE DIŞI bırakılmaz (iki kez render edilir)", () => {
-    renderPanel();
-    const links = screen.getAllByRole("link", { name: "Randevu Al", hidden: true });
-    expect(links).toHaveLength(2);
-    for (const link of links) expect(link).toHaveAttribute("href", "#randevu");
+  it("Grid görevi (2026-09-14) — TEK 'Devam Et' butonu render edilir (masaüstü panel + mobil çubuk, iki kez), `continueDisabled` ile devre dışı kalır", () => {
+    renderPanel(undefined, { continueDisabled: true });
+    // Mobil alt çubuk ilk render'da `aria-hidden="true"` (bkz. aşağıdaki "mobil alt çubuk..."
+    // testi) — bu yüzden `hidden: true` GEREKİR, aksi halde erişilebilirlik ağacından gizli
+    // ikinci kopya `getAllByRole` tarafından GÖRÜLMEZ.
+    const buttons = screen.getAllByRole("button", { name: "Devam Et", hidden: true });
+    expect(buttons).toHaveLength(2);
+    for (const button of buttons) expect(button).toBeDisabled();
+  });
+
+  it("Grid görevi (2026-09-14) — `continueDisabled=false` iken 'Devam Et' tıklanınca `onContinue` çağrılır", () => {
+    const onContinue = vi.fn();
+    renderPanel(undefined, { continueDisabled: false, onContinue });
+    fireEvent.click(screen.getAllByRole("button", { name: "Devam Et" })[0]!);
+    expect(onContinue).toHaveBeenCalledTimes(1);
+  });
+
+  it("Grid görevi (2026-09-14) — `showContinueButton=false` (adım 4/5) iken 'Devam Et' HİÇ render edilmez, mobil çubuk da gizlenir", () => {
+    const { container } = renderPanel(undefined, { showContinueButton: false, currentStep: 4 });
+    expect(screen.queryByRole("button", { name: "Devam Et" })).not.toBeInTheDocument();
+    expect(container.querySelector(".fixed.inset-x-0")).toBeNull();
+  });
+
+  it("Grid görevi (2026-09-14) — `locked=true` iken 'Değiştir' ve tekil slot kaldırma aksiyonları GİZLENİR (salt-okunur özet)", () => {
+    const doctor = makeDoctor();
+    const slots: AvailabilitySlot[] = [
+      { startsAt: "2026-09-18T10:00:00.000Z", endsAt: "2026-09-18T10:30:00.000Z", available: true },
+    ];
+
+    render(
+      <BookingSelectionProvider doctorTimeZone={doctor.timeZone}>
+        <AvailabilityCalendar doctorSlug={doctor.slug} doctorTimeZone={doctor.timeZone} initialSlots={slots} />
+        <DoctorServiceSummaryPanel
+          doctor={doctor}
+          currentStep={4}
+          onContinue={vi.fn()}
+          continueDisabled={false}
+          continueLoading={false}
+          showContinueButton={false}
+          locked
+        />
+      </BookingSelectionProvider>
+    );
+
+    fireEvent.click(screen.getByLabelText("10:00 — müsait"));
+    expect(screen.queryByRole("button", { name: "Değiştir" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("10:00 slotunu kaldır")).not.toBeInTheDocument();
+    expect(screen.getAllByText(/10:00/).length).toBeGreaterThanOrEqual(1);
   });
 
   it("mobil alt çubuk ilk render'da gizli kabul edilir (`aria-hidden=\"true\"`)", () => {
@@ -149,19 +215,27 @@ describe("DoctorServiceSummaryPanel", () => {
 
     render(
       <BookingSelectionProvider doctorTimeZone={doctor.timeZone}>
-        <AvailabilityCalendar doctorSlug={doctor.slug} doctorTimeZone={doctor.timeZone} lang="tr" defaultLocaleCode="tr" initialSlots={slots} kvkkPage={null} />
-        <DoctorServiceSummaryPanel doctor={doctor} ctaHref="#randevu" />
+        <AvailabilityCalendar doctorSlug={doctor.slug} doctorTimeZone={doctor.timeZone} initialSlots={slots} />
+        <DoctorServiceSummaryPanel
+          doctor={doctor}
+          currentStep={2}
+          onContinue={vi.fn()}
+          continueDisabled
+          continueLoading={false}
+          showContinueButton
+          locked={false}
+        />
       </BookingSelectionProvider>
     );
 
-    expect(screen.getByText("Tarih ve saat seçin")).toBeInTheDocument();
+    expect(screen.getByText("Tarih ve saatleri seçin")).toBeInTheDocument();
 
     fireEvent.click(screen.getByLabelText("10:00 — müsait"));
 
-    // Takvimin onay şeridi VE Hizmet Özeti panelinin "Seçilen Randevu" kutusu AYNI context'ten
+    // Takvimin seçim durumu VE Hizmet Özeti panelinin "Seçilen Randevu" kutusu AYNI context'ten
     // (`useBookingSelection`) beslendiği için İKİSİ DE "10:00"i gösterir — panel prop-drilling
     // OLMADAN, tek doğruluk kaynağından senkronize güncellenir.
-    expect(screen.queryByText("Tarih ve saat seçin")).not.toBeInTheDocument();
+    expect(screen.queryByText("Tarih ve saatleri seçin")).not.toBeInTheDocument();
     expect(screen.getAllByText(/10:00/).length).toBeGreaterThanOrEqual(2);
   });
 });
