@@ -774,6 +774,39 @@ export function setAppointmentStatusDirectly(
   });
 }
 
+// ---------------------------------------------------------------------------
+// qa-agent — doktor konsolu dashboard grid/sekme filtreleme e2e fixture yardımcısı (bu turda
+// eklendi, `doctor-console-dashboard-layout.spec.ts`). `setAppointmentStatusDirectly`'nin
+// `daysAgo`'su yalnızca GEÇMİŞE, GÜN hassasiyetinde kaydırır — "Bugün" sekmesi (`GET
+// /doctor/bookings?scope=today`) için ise DAKİKA hassasiyetinde, GÜNÜN İÇİNDE kalan (gece
+// yarısını AŞMAYAN), aynı SQL ifadesinde durumu da yazan bir kaydırmaya ihtiyaç var —
+// `shiftAppointmentIntoJoinWindowDirectly` İLE AYNI "gerçek randevu, sahte olan yalnızca
+// zamanlama/bayrak" felsefesi, ikisinin BİRLEŞİMİ.
+// ---------------------------------------------------------------------------
+
+/** Bir randevunun `startsAt`/`endsAt`'ini `now()`'a göre (ileri VEYA geri) dakika hassasiyetinde
+ * kaydırır VE `status`'unu AYNI ifadede yazar. Küçük `minutesFromNow` (ör. 5) değerleri "bugün"
+ * penceresi içinde KALMAYI garanti eder (gece yarısına 5 dk kalan çok nadir bir koşum ANI hariç —
+ * `shiftAppointmentIntoJoinWindowDirectly`'nin VARSAYILAN `startInSeconds=60`'ı İLE AYNI kabul
+ * edilebilir risk). */
+export function shiftAppointmentByMinutesAndSetStatusDirectly(
+  appointmentId: string,
+  minutesFromNow: number,
+  status: "SCHEDULED" | "COMPLETED" | "CANCELLED" | "NO_SHOW" | "IN_PROGRESS",
+  durationMinutes = 30
+): void {
+  const esc = (value: string) => value.replace(/'/g, "''");
+  const sign = minutesFromNow >= 0 ? "+" : "-";
+  const abs = Math.abs(minutesFromNow);
+  const sql = `UPDATE "appointments" SET "status" = '${status}', "startsAt" = now() ${sign} interval '${abs} minutes', "endsAt" = now() ${sign} interval '${abs} minutes' + interval '${durationMinutes} minutes' WHERE id = '${esc(appointmentId)}';`;
+  execFileSync("npx", ["prisma", "db", "execute", "--stdin", `--url=${E2E_DATABASE_URL}`], {
+    cwd: BACKEND_DIR,
+    input: sql,
+    stdio: ["pipe", "pipe", "pipe"],
+    shell: process.platform === "win32",
+  });
+}
+
 /** §9.7.11 madde 27 (2FA kapısı) — `User.twoFactorEnabled`'i doğrudan yazar (admin panelinde bir
  * kullanıcının 2FA'sını ZORLA açan bir uç YOKTUR — 2FA kendi kendine kayıt/etkinleştirmedir,
  * `hesabim` akışı TOTP sırrı üretip doğrulama ister; bu fixture o akışı ATLAYIP doğrudan bayrağı

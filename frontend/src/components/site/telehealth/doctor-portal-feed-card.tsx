@@ -22,12 +22,32 @@ import { Skeleton } from "@/components/ui/skeleton";
  * `GET /doctor/portal-feed` — "Portal Akışı & Duyurular" kartı. `doctor-bookings-panel.tsx`'in
  * `loadOverview` deseniyle AYNI şekilde (`useCallback` + `useEffect`, `friendlyErrorMessage`,
  * `Skeleton`) veri çeker; ayrı bir dosyada tutulur (panel zaten büyük).
+ *
+ * Grid görevi (2026-09-14): bu kart artık `doctor-bookings-panel.tsx`'in dar (~%25-30) sağ
+ * sidebar sütununda render edilir — eski `grid-cols-1 lg:grid-cols-2` yatay 2-kolon düzeni (duyuru +
+ * bildirim yan yana) dar sütunda EZİLİR, bu yüzden TEK dikey sütuna çevrildi (duyurular üstte,
+ * bildirimler altta) ve satır içi boşluklar kompakt bir liste hissi için sıkılaştırıldı. TÜM
+ * `data-testid` isimleri KORUNDU — qa-agent'ın `telehealth-doctor-session-guard.spec.ts` testi buna
+ * bağımlı.
+ *
+ * ui-designer inceltme turu (2026-09-14) — sidebar'ın ana alanın (`shadow-sm`'li KPI/randevu
+ * kartları) ÖNÜNE GEÇMEMESİ için BİLİNÇLİ olarak gölgesiz/düz bırakıldı (görsel ağırlık hiyerarşisi).
+ * Duyuru satırları artık önem seviyesine göre renkli sol-kenar vurgusu (`border-l-2`) taşıyor —
+ * kutu-içinde-kutu gürültüsünü azaltırken önem rozetiyle AYNI ton eşlemesini (INFO→primary,
+ * IMPORTANT→warning, SYSTEM→danger) tekrarlıyor. Bildirim satırları tam kutu yerine ince bir
+ * `divide-y` liste desenine çevrildi — duyurulardan daha düşük görsel öncelik.
  */
 
 const SEVERITY_BADGE_TONE: Record<DoctorPortalAnnouncementSeverity, "primary" | "warning" | "danger"> = {
   INFO: "primary",
   IMPORTANT: "warning",
   SYSTEM: "danger",
+};
+
+const SEVERITY_ACCENT_BORDER: Record<DoctorPortalAnnouncementSeverity, string> = {
+  INFO: "border-l-primary",
+  IMPORTANT: "border-l-warning",
+  SYSTEM: "border-l-danger",
 };
 
 const SEVERITY_LABEL: Record<DoctorPortalAnnouncementSeverity, string> = {
@@ -56,14 +76,16 @@ function AnnouncementRow({ announcement, timeZone }: { announcement: DoctorPorta
     <div
       data-testid="doctor-portal-feed-announcement"
       data-severity={announcement.severity}
-      className="rounded-[var(--site-radius)] border border-border bg-surface p-3"
+      className={`rounded-[var(--site-radius)] border border-border border-l-2 bg-surface p-2.5 ${SEVERITY_ACCENT_BORDER[announcement.severity]}`}
     >
-      <div className="flex flex-wrap items-start justify-between gap-2">
+      <div className="flex flex-wrap items-start justify-between gap-1.5">
         <p className="text-sm font-medium text-foreground">{announcement.title}</p>
-        <Badge tone={SEVERITY_BADGE_TONE[announcement.severity]}>{SEVERITY_LABEL[announcement.severity]}</Badge>
+        <Badge tone={SEVERITY_BADGE_TONE[announcement.severity]} size="sm">
+          {SEVERITY_LABEL[announcement.severity]}
+        </Badge>
       </div>
-      <p className="mt-1 text-sm text-foreground/70">{announcement.body}</p>
-      <p className="mt-2 text-xs text-foreground/40">
+      <p className="mt-1 text-xs text-foreground/70">{announcement.body}</p>
+      <p className="mt-1.5 text-[11px] text-foreground/40">
         {formatDayLabel(announcement.publishedAt, timeZone)} · {formatTime(announcement.publishedAt, timeZone)}
       </p>
     </div>
@@ -76,12 +98,12 @@ function NotificationRow({ notification, timeZone }: { notification: DoctorPorta
     <div
       data-testid="doctor-portal-feed-notification"
       data-kind={notification.kind}
-      className="flex items-start gap-2.5 rounded-[var(--site-radius)] border border-border bg-surface p-3"
+      className="flex items-start gap-2 py-2 first:pt-0 last:pb-0"
     >
-      <Icon className="mt-0.5 h-4 w-4 shrink-0 text-foreground/50" aria-hidden="true" />
+      <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-foreground/50" aria-hidden="true" />
       <div className="min-w-0">
-        <p className="text-sm text-foreground">{notification.message}</p>
-        <p className="mt-0.5 text-xs text-foreground/40">
+        <p className="text-xs text-foreground">{notification.message}</p>
+        <p className="mt-0.5 text-[11px] text-foreground/40">
           {formatDayLabel(notification.occurredAt, timeZone)} · {formatTime(notification.occurredAt, timeZone)}
         </p>
       </div>
@@ -113,10 +135,10 @@ export function DoctorPortalFeedCard() {
   }, [loadFeed]);
 
   return (
-    <section data-testid="doctor-portal-feed-card" className="space-y-5 rounded-[var(--site-radius)] border border-border bg-surface p-5">
-      <div className="flex items-center gap-2">
-        <Megaphone className="h-4 w-4 text-foreground/50" aria-hidden="true" />
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-foreground/70">Portal Akışı &amp; Duyurular</h2>
+    <section data-testid="doctor-portal-feed-card" className="space-y-3 rounded-[var(--site-radius)] border border-border bg-surface p-4">
+      <div className="flex items-center gap-1.5">
+        <Megaphone className="h-3.5 w-3.5 text-foreground/50" aria-hidden="true" />
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-foreground/70">Portal Akışı &amp; Duyurular</h2>
       </div>
 
       {error ? (
@@ -132,11 +154,12 @@ export function DoctorPortalFeedCard() {
           </span>
         </Alert>
       ) : feed ? (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <div className="space-y-3">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-foreground/50">Yönetim Duyuruları</h3>
+        // Sidebar dar sütununda YATAY 2-kolon (duyuru/bildirim yan yana) EZİLİR — TEK dikey sütun.
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <h3 className="text-[11px] font-semibold uppercase tracking-wide text-foreground/50">Yönetim Duyuruları</h3>
             {feed.announcements.length === 0 ? (
-              <p data-testid="doctor-portal-feed-announcements-empty" className="text-sm text-foreground/50">
+              <p data-testid="doctor-portal-feed-announcements-empty" className="text-xs text-foreground/50">
                 Şu an yeni bir duyuru yok.
               </p>
             ) : (
@@ -148,14 +171,14 @@ export function DoctorPortalFeedCard() {
             )}
           </div>
 
-          <div className="space-y-3">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-foreground/50">Hızlı Bildirimler</h3>
+          <div className="space-y-2">
+            <h3 className="text-[11px] font-semibold uppercase tracking-wide text-foreground/50">Hızlı Bildirimler</h3>
             {feed.notifications.length === 0 ? (
-              <p data-testid="doctor-portal-feed-notifications-empty" className="text-sm text-foreground/50">
+              <p data-testid="doctor-portal-feed-notifications-empty" className="text-xs text-foreground/50">
                 Şu an yeni bir bildirim yok.
               </p>
             ) : (
-              <div className="space-y-2">
+              <div className="divide-y divide-border/50">
                 {feed.notifications.map((notification) => (
                   <NotificationRow key={notification.id} notification={notification} timeZone={timeZone} />
                 ))}

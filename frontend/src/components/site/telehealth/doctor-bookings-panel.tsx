@@ -6,14 +6,17 @@ import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import type { AppointmentBooking, DoctorBookingsScope, DoctorConsoleOverview } from "@/lib/api/types";
 import { useDoctorPortalProfile } from "@/components/site/telehealth/doctor-portal-shell";
 import { DoctorPortalFeedCard } from "@/components/site/telehealth/doctor-portal-feed-card";
+import { DoctorPortalQuickLinksCard } from "@/components/site/telehealth/doctor-portal-quick-links-card";
 import { DoctorConsoleOverviewCards } from "@/components/site/telehealth/doctor-console-overview-cards";
 import { DoctorConsolePatientCard } from "@/components/site/telehealth/doctor-console-patient-card";
 import { BookingDocumentsDialog } from "@/components/site/telehealth/booking-documents-dialog";
 import { DoctorConsultationNoteDialog } from "@/components/site/telehealth/doctor-consultation-note-dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Alert } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
 import { CalendarX2, AlertTriangle } from "lucide-react";
 
 /**
@@ -21,6 +24,12 @@ import { CalendarX2, AlertTriangle } from "lucide-react";
  * `.claude/design-notes-doctor-portfolio-console.md` §3 — doktor konsolu: `GET /doctor/overview`
  * kaynaklı 4 metrik kartı + `scope` filtre sekmeleri (`GET /doctor/bookings?scope=...`) + hasta
  * kartları (kimlik rozeti, yaklaşık yaş, kalan süre rozeti, belge/not/katıl aksiyonları).
+ *
+ * Grid görevi (2026-09-14) — sayfa artık `lg:grid-cols-12` 2 kolonlu bir dashboard: ana alan
+ * (`lg:col-span-8` — başlık, metrik kartları, sekmeler, randevu akışı) + sağ sidebar
+ * (`lg:col-span-4` — "Portal Akışı & Duyurular" + "Hızlı Kısayollar"). DOM sırası BİLİNÇLİ: ana
+ * alan ÖNCE, sidebar SONRA — `lg:` altında (mobil/tablet) tek kolona düşünce hekim önce
+ * randevuları görür, duyurular altta kalır (ekstra `order-*` sınıfı GEREKMEZ).
  */
 
 const SCOPE_TABS: { value: DoctorBookingsScope; label: string }[] = [
@@ -29,6 +38,40 @@ const SCOPE_TABS: { value: DoctorBookingsScope; label: string }[] = [
   { value: "upcoming", label: "Gelecek Randevular" },
   { value: "completed", label: "Tamamlananlar" },
 ];
+
+/**
+ * Sekme sayaçları — SADECE gerçek bir toplamı OLAN scope'larda gösterilir. `GET /doctor/overview`
+ * `today.total` ve `completedConsultationTotal`ı zaten döner (yeni bir backend alanı İSTENMEDİ).
+ * "all"/"upcoming" sayfalanmış (cursor tabanlı) bir liste üzerinden gelir; `bookings.length` o anki
+ * SAYFANIN büyüklüğüdür, GERÇEK bir toplam DEĞİLDİR — yanıltıcı olmasın diye bu iki sekmede sayaç
+ * GÖSTERİLMEZ. Backend'e bir `counts` alanı eklenirse (`backend/src/lib/pagination.ts`
+ * `buildPageMetaWithCounts` zaten bu iş için var) kolayca tamamlanabilir.
+ */
+function scopeCount(scope: DoctorBookingsScope, overview: DoctorConsoleOverview | null): number | null {
+  if (!overview) return null;
+  if (scope === "today") return overview.today.total;
+  if (scope === "completed") return overview.completedConsultationTotal;
+  return null;
+}
+
+const EMPTY_STATE_COPY: Record<DoctorBookingsScope, { title: string; description: string }> = {
+  all: {
+    title: "Henüz bir randevunuz yok.",
+    description: "Hastalarınız randevu aldığında burada listelenecek.",
+  },
+  today: {
+    title: "Bugün için planlanmış randevunuz bulunmamaktadır.",
+    description: "Hastalarınız randevu aldığında burada listelenecek.",
+  },
+  upcoming: {
+    title: "Yaklaşan bir randevunuz yok.",
+    description: "Hastalarınız randevu aldığında burada listelenecek.",
+  },
+  completed: {
+    title: "Tamamlanmış bir randevunuz yok.",
+    description: "Tamamlanan konsültasyonlarınız burada listelenecek.",
+  },
+};
 
 function OverviewSkeleton() {
   return (
@@ -137,83 +180,99 @@ export function DoctorBookingsPanel() {
         <p className="mt-1 text-sm text-foreground/60">Hastalarınızın rezervasyonlarını, belgelerini ve konsültasyon notlarını buradan yönetin.</p>
       </div>
 
-      {/* Görev 3 — "Portal Akışı & Duyurular" kartı, metrik kartlarının HEMEN ÜSTÜNDE. */}
-      <DoctorPortalFeedCard />
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12 lg:items-start">
+        {/* Ana alan (~%70-75) — metrik kartları, filtre sekmeleri, randevu akışı. */}
+        <div className="space-y-6 lg:col-span-8">
+          {overviewError ? (
+            <Alert variant="error">
+              <span className="flex flex-wrap items-center justify-between gap-3">
+                <span className="flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  {overviewError}
+                </span>
+                <Button type="button" variant="outline" size="sm" onClick={() => void loadOverview()}>
+                  Tekrar Dene
+                </Button>
+              </span>
+            </Alert>
+          ) : overview ? (
+            <DoctorConsoleOverviewCards overview={overview} />
+          ) : (
+            <OverviewSkeleton />
+          )}
 
-      {overviewError ? (
-        <Alert variant="error">
-          <span className="flex flex-wrap items-center justify-between gap-3">
-            <span className="flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
-              {overviewError}
-            </span>
-            <Button type="button" variant="outline" size="sm" onClick={() => void loadOverview()}>
-              Tekrar Dene
-            </Button>
-          </span>
-        </Alert>
-      ) : overview ? (
-        <DoctorConsoleOverviewCards overview={overview} />
-      ) : (
-        <OverviewSkeleton />
-      )}
+          <Tabs value={scope} onValueChange={(value) => setScope(value as DoctorBookingsScope)}>
+            <TabsList>
+              {SCOPE_TABS.map((tab) => {
+                const count = scopeCount(tab.value, overview);
+                return (
+                  <TabsTrigger key={tab.value} value={tab.value} className="gap-1.5">
+                    {tab.label}
+                    {count !== null && (
+                      <Badge tone="neutral" size="sm" className="px-1.5 py-0 text-[10px] font-semibold">
+                        {count}
+                      </Badge>
+                    )}
+                  </TabsTrigger>
+                );
+              })}
+            </TabsList>
+          </Tabs>
 
-      <Tabs value={scope} onValueChange={(value) => setScope(value as DoctorBookingsScope)}>
-        <TabsList>
-          {SCOPE_TABS.map((tab) => (
-            <TabsTrigger key={tab.value} value={tab.value}>
-              {tab.label}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
+          {bookings === null && !loadError && <BookingCardsSkeleton />}
 
-      {bookings === null && !loadError && <BookingCardsSkeleton />}
+          {loadError && (
+            <Alert variant="error">
+              <span className="flex flex-wrap items-center justify-between gap-3">
+                <span className="flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  {loadError}
+                </span>
+                <Button type="button" variant="outline" size="sm" onClick={() => void loadBookings(scope)}>
+                  Tekrar Dene
+                </Button>
+              </span>
+            </Alert>
+          )}
 
-      {loadError && (
-        <Alert variant="error">
-          <span className="flex flex-wrap items-center justify-between gap-3">
-            <span className="flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
-              {loadError}
-            </span>
-            <Button type="button" variant="outline" size="sm" onClick={() => void loadBookings(scope)}>
-              Tekrar Dene
-            </Button>
-          </span>
-        </Alert>
-      )}
-
-      {bookings && bookings.length === 0 && !loadError && (
-        <div className="flex flex-col items-center gap-2 rounded-[var(--site-radius)] border border-border bg-surface p-10 text-center">
-          <CalendarX2 className="h-8 w-8 text-foreground/30" aria-hidden="true" />
-          <p className="text-sm font-medium text-foreground">Bu filtrede bir randevu yok.</p>
-          <p className="text-xs text-foreground/50">Hastalarınız randevu aldığında burada listelenecek.</p>
-        </div>
-      )}
-
-      {bookings && bookings.length > 0 && (
-        <div className="space-y-3">
-          {bookings.map((booking) => (
-            <DoctorConsolePatientCard
-              key={booking.id}
-              booking={booking}
-              calibratedNowMs={calibratedNowMs}
-              timeZone={timeZone}
-              onOpenDocuments={() => setDocumentsBookingId(booking.id)}
-              onOpenNoteEditor={() => setNoteEditorBookingId(booking.id)}
+          {bookings && bookings.length === 0 && !loadError && (
+            <EmptyState
+              icon={CalendarX2}
+              title={EMPTY_STATE_COPY[scope].title}
+              description={EMPTY_STATE_COPY[scope].description}
             />
-          ))}
-        </div>
-      )}
+          )}
 
-      {nextCursor && (
-        <div className="flex justify-center">
-          <Button type="button" variant="outline" size="sm" loading={loadingMore} onClick={() => void loadMore()}>
-            Daha Fazla Yükle
-          </Button>
+          {bookings && bookings.length > 0 && (
+            <div className="space-y-3">
+              {bookings.map((booking) => (
+                <DoctorConsolePatientCard
+                  key={booking.id}
+                  booking={booking}
+                  calibratedNowMs={calibratedNowMs}
+                  timeZone={timeZone}
+                  onOpenDocuments={() => setDocumentsBookingId(booking.id)}
+                  onOpenNoteEditor={() => setNoteEditorBookingId(booking.id)}
+                />
+              ))}
+            </div>
+          )}
+
+          {nextCursor && (
+            <div className="flex justify-center">
+              <Button type="button" variant="outline" size="sm" loading={loadingMore} onClick={() => void loadMore()}>
+                Daha Fazla Yükle
+              </Button>
+            </div>
+          )}
         </div>
-      )}
+
+        {/* Sağ sidebar (~%25-30) — "Portal Akışı & Duyurular" + "Hızlı Kısayollar". */}
+        <div className="space-y-6 lg:col-span-4">
+          <DoctorPortalFeedCard />
+          <DoctorPortalQuickLinksCard />
+        </div>
+      </div>
 
       {documentsBooking && (
         <BookingDocumentsDialog

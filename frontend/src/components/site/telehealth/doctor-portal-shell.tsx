@@ -16,10 +16,15 @@ import { Button } from "@/components/ui/button";
 /**
  * `.claude/design-notes-telehealth.md` §12.6 — doktor/hasta portalı, admin panelinin AYRI token
  * sistemini/dashboard kabuğunu KULLANMAZ; kamu sitesinin `.site-scope` paletiyle DEVAM eder. Sade
- * bir üst çubuk (`max-w-5xl`, sidebar YOK) — mevcut `hesabim-shell.tsx`'in TEK auth-guard desenini
- * izler, ama doktor için EK bir katman vardır: `DoctorProfile.userId` ilişkisi + `twoFactorEnabled`
- * kapısı (§9.7.7 KARAR K). `SiteRole.DOCTOR` YOKTUR — bu SADECE `GET /doctor/me`'nin başarıyla
- * dönmesiyle doğrulanır.
+ * bir üst çubuk (sidebar YOK — bu kabuk kendisi bir sidebar RENDER ETMEZ) — mevcut `hesabim-shell.tsx`'in
+ * TEK auth-guard desenini izler, ama doktor için EK bir katman vardır: `DoctorProfile.userId`
+ * ilişkisi + `twoFactorEnabled` kapısı (§9.7.7 KARAR K). `SiteRole.DOCTOR` YOKTUR — bu SADECE
+ * `GET /doctor/me`'nin başarıyla dönmesiyle doğrulanır.
+ *
+ * `max-w-6xl` — frontend-agent grid görevi (2026-09-14): `/doctor` (Randevularım) artık `children`
+ * İÇİNDE `lg:grid-cols-12` 2 kolonlu bir dashboard grid'i (ana alan + "Portal Akışı" sidebar'ı)
+ * kullanıyor; eski `max-w-5xl` (1024px) bunun için sıkışıktı. `/doctor/earnings` ve `/doctor/profile`
+ * bu genişlikten ETKİLENİR ama zarar GÖRMEZ (zaten dar içerikli, tek kolon sayfalar).
  *
  * NOT: `children` fonksiyon/render-prop DEĞİLDİR — `page.tsx` bir Server Component olduğundan bu
  * `"use client"` bileşenine yalnızca serileştirilebilir veri/React elemanları geçebilir (fonksiyon
@@ -81,7 +86,7 @@ export function DoctorPortalShell({ children }: DoctorPortalShellProps) {
 
   if (status !== "authenticated" || loadingProfile) {
     return (
-      <div className="mx-auto flex max-w-5xl justify-center px-4 py-24 sm:px-6">
+      <div className="mx-auto flex max-w-6xl justify-center px-4 py-24 sm:px-6">
         <Spinner className="h-6 w-6 text-[var(--site-primary)]" />
       </div>
     );
@@ -89,7 +94,7 @@ export function DoctorPortalShell({ children }: DoctorPortalShellProps) {
 
   if (error?.code === "NOT_A_DOCTOR") {
     return (
-      <div className="mx-auto max-w-5xl px-4 py-16 sm:px-6">
+      <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
         <div className="flex flex-col items-center gap-3 rounded-[var(--site-radius)] border border-border bg-surface p-10 text-center">
           <AlertTriangle className="h-8 w-8 text-foreground/40" aria-hidden="true" />
           <p className="text-sm font-medium text-foreground">Bu hesaba bağlı bir doktor profili bulunamadı.</p>
@@ -103,7 +108,7 @@ export function DoctorPortalShell({ children }: DoctorPortalShellProps) {
 
   if (error?.code === "TWO_FACTOR_REQUIRED") {
     return (
-      <div className="mx-auto max-w-5xl px-4 py-16 sm:px-6">
+      <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
         <div className="flex flex-col items-center gap-3 rounded-[var(--site-radius)] border border-warning/30 bg-warning/5 p-10 text-center">
           <ShieldAlert className="h-8 w-8 text-warning" aria-hidden="true" />
           <p className="text-sm font-medium text-foreground">Bu işlem için iki adımlı doğrulamanın (2FA) etkin olması gerekir.</p>
@@ -122,7 +127,7 @@ export function DoctorPortalShell({ children }: DoctorPortalShellProps) {
 
   if (error || !profile) {
     return (
-      <div className="mx-auto max-w-5xl px-4 py-16 sm:px-6">
+      <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
         <div className="flex flex-col items-center gap-3 rounded-[var(--site-radius)] border border-border bg-surface p-10 text-center">
           <AlertTriangle className="h-8 w-8 text-danger" aria-hidden="true" />
           <p className="text-sm font-medium text-foreground">{error ? friendlyErrorMessage(error) : "Profil yüklenemedi."}</p>
@@ -143,9 +148,9 @@ export function DoctorPortalShell({ children }: DoctorPortalShellProps) {
       {/*
        * §K6 — Katman 1 (marka/hesap/çıkış) artık YALNIZCA `SiteHeader`'da yaşar; bu kabuk
        * kendi `<header>`'ını RENDER ETMEZ (çift-header düzeltmesi). Doktor kimliği + sekme
-       * şeridi `max-w-5xl` konteynerin İÇİNDE, `children`'ın ÜSTÜNDE sade bir `<div>`'dir.
+       * şeridi `max-w-6xl` konteynerin İÇİNDE, `children`'ın ÜSTÜNDE sade bir `<div>`'dir.
        */}
-      <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
+      <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
           <span className="text-sm font-semibold text-foreground">
             {profile.doctorProfile.title} {profile.doctorProfile.fullName}
