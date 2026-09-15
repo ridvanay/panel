@@ -30,7 +30,13 @@ function hostnameOf(origin: string | null): string | null {
 /** `SITE_URL` DAİMA geçerli bir mutlak URL'dir (bkz. `lib/env.ts` varsayılanı) — fallback ham değeridir. */
 export const SITE_ORIGIN: string = safeOrigin(SITE_URL) ?? SITE_URL;
 
-const SITE_HOSTNAME = hostnameOf(SITE_ORIGIN);
+/**
+ * `SITE_ORIGIN`'in çözülmüş hostname'i (port HARİÇ, lowercase), ör. `"siteadi.localhost"`. `proxy.ts`
+ * `.claude/architect-scope-doctor-subdomain.md` §6'daki `localhost` → `siteadi.localhost` host
+ * migrasyonunu tespit etmek için bunu DIŞARI açık olarak kullanır (eski `Host: localhost` isteklerini
+ * `SITE_ORIGIN`'e 307 ile yönlendirmek için) — bu yüzden dışa açık (`export`).
+ */
+export const SITE_HOST: string | null = hostnameOf(SITE_ORIGIN);
 const RAW_DOCTOR_ORIGIN = safeOrigin(DOCTOR_SITE_URL);
 const RAW_DOCTOR_HOSTNAME = hostnameOf(RAW_DOCTOR_ORIGIN);
 
@@ -42,9 +48,10 @@ const RAW_DOCTOR_HOSTNAME = hostnameOf(RAW_DOCTOR_ORIGIN);
  * döngüsü oluşur (döngü analizi doğrulaması §3.4'te yazılıdır).
  */
 export const DOCTOR_ORIGIN: string | null =
-  RAW_DOCTOR_ORIGIN && RAW_DOCTOR_HOSTNAME && RAW_DOCTOR_HOSTNAME !== SITE_HOSTNAME ? RAW_DOCTOR_ORIGIN : null;
+  RAW_DOCTOR_ORIGIN && RAW_DOCTOR_HOSTNAME && RAW_DOCTOR_HOSTNAME !== SITE_HOST ? RAW_DOCTOR_ORIGIN : null;
 
-const DOCTOR_HOSTNAME = DOCTOR_ORIGIN ? hostnameOf(DOCTOR_ORIGIN) : null;
+/** `DOCTOR_ORIGIN`'in çözülmüş hostname'i — `SITE_HOST` ile AYNI dışa açma gerekçesi. */
+export const DOCTOR_HOST: string | null = DOCTOR_ORIGIN ? hostnameOf(DOCTOR_ORIGIN) : null;
 
 /** `NEXT_PUBLIC_DOCTOR_URL` geçerli VE ana site'tan farklı bir hostname'e çözülüyorsa `true`. */
 export function isSubdomainModeEnabled(): boolean {
@@ -54,12 +61,12 @@ export function isSubdomainModeEnabled(): boolean {
 /**
  * `host` bir `Host` header değeri (ör. `"doktor.siteadi.localhost:3000"`, port İÇEREBİLİR) ya da
  * `window.location.hostname` (port İÇERMEZ) olabilir — her iki biçim için de port ayıklanır.
- * Subdomain modu kapalıyken (`DOCTOR_HOSTNAME === null`) her zaman `false` döner.
+ * Subdomain modu kapalıyken (`DOCTOR_HOST === null`) her zaman `false` döner.
  */
 export function isDoctorHostname(host: string): boolean {
-  if (!DOCTOR_HOSTNAME) return false;
+  if (!DOCTOR_HOST) return false;
   const normalized = host.split(":")[0]?.trim().toLowerCase() ?? "";
-  return normalized.length > 0 && normalized === DOCTOR_HOSTNAME;
+  return normalized.length > 0 && normalized === DOCTOR_HOST;
 }
 
 /**

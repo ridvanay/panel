@@ -255,3 +255,80 @@ describe("proxy — hekim portalı host-izolasyonu (.claude/architect-scope-doct
     expect(res.headers.get("x-middleware-rewrite")).toContain("/tr/doctor");
   });
 });
+
+describe("proxy — §6 ESKİ `localhost` HOST MİGRASYONU (backend CORS allow-list yalnızca yeni host'u tanır)", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    process.env.NEXT_PUBLIC_SITE_URL = SITE_ORIGIN;
+    process.env.NEXT_PUBLIC_DOCTOR_URL = DOCTOR_ORIGIN;
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    if (ORIGINAL_SITE_URL === undefined) delete process.env.NEXT_PUBLIC_SITE_URL;
+    else process.env.NEXT_PUBLIC_SITE_URL = ORIGINAL_SITE_URL;
+    if (ORIGINAL_DOCTOR_URL === undefined) delete process.env.NEXT_PUBLIC_DOCTOR_URL;
+    else process.env.NEXT_PUBLIC_DOCTOR_URL = ORIGINAL_DOCTOR_URL;
+    vi.resetModules();
+  });
+
+  it("`Host: localhost` isteği, [1]/[2]'den (SaaS auth erken çıkışı, locale fetch'i) ÖNCE, `SITE_ORIGIN + pathname`'e 307 YÖNLENDİRİLİR — hiç fetch atılmaz", async () => {
+    const fetchMock = makeFetchMock();
+    vi.stubGlobal("fetch", fetchMock);
+    const { proxy } = await import("@/proxy");
+
+    const res = await proxy(new NextRequest(new URL("/login", SITE_ORIGIN), { headers: { host: "localhost:3100" } }));
+
+    expect(res.status).toBe(307);
+    const location = new URL(res.headers.get("location") as string);
+    expect(location.origin).toBe(SITE_ORIGIN);
+    expect(location.pathname).toBe("/login");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("`Host: 127.0.0.1` isteği de AYNI şekilde `SITE_ORIGIN`'e 307 yönlendirilir, query korunur", async () => {
+    vi.stubGlobal("fetch", makeFetchMock());
+    const { proxy } = await import("@/proxy");
+
+    const res = await proxy(new NextRequest(new URL("/urunler?kategori=a", SITE_ORIGIN), { headers: { host: "127.0.0.1:3100" } }));
+
+    expect(res.status).toBe(307);
+    const location = new URL(res.headers.get("location") as string);
+    expect(location.origin).toBe(SITE_ORIGIN);
+    expect(location.pathname).toBe("/urunler");
+    expect(location.search).toBe("?kategori=a");
+  });
+
+  it("`Host: siteadi.localhost` (zaten doğru host) bu yeni dala HİÇ GİRMEZ, normal locale rewrite akışına devam eder", async () => {
+    vi.stubGlobal("fetch", makeFetchMock());
+    const { proxy } = await import("@/proxy");
+
+    const res = await proxy(makeRequest("/urunler", "siteadi.localhost:3100"));
+
+    expect(res.status).not.toBe(307);
+    expect(res.headers.get("x-middleware-rewrite")).toContain("/tr/urunler");
+  });
+
+  it("`Host: doktor.siteadi.localhost` (doktor host'u) bu yeni dala HİÇ GİRMEZ, doktor host akışı korunur", async () => {
+    vi.stubGlobal("fetch", makeFetchMock());
+    const { proxy } = await import("@/proxy");
+
+    const res = await proxy(makeRequest("/", "doktor.siteadi.localhost:3100"));
+
+    expect(res.status).not.toBe(307);
+    expect(res.headers.get("x-middleware-rewrite")).toContain("/tr/doctor");
+  });
+
+  it("`SITE_HOST === \"localhost\"` (biri hâlâ eski şemayla çalışıyorsa) bu yeni dal DEVRE DIŞI kalır — `Host: 127.0.0.1` bile 307 ÜRETMEZ", async () => {
+    delete process.env.NEXT_PUBLIC_DOCTOR_URL;
+    process.env.NEXT_PUBLIC_SITE_URL = "http://localhost:3100";
+    vi.resetModules();
+    vi.stubGlobal("fetch", makeFetchMock());
+    const { proxy } = await import("@/proxy");
+
+    const res = await proxy(new NextRequest(new URL("/", "http://localhost:3100"), { headers: { host: "127.0.0.1:3100" } }));
+
+    expect(res.status).not.toBe(307);
+    expect(res.headers.get("x-middleware-rewrite")).toContain("/tr");
+  });
+});

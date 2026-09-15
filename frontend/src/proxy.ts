@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { SERVER_API_BASE_URL } from "@/lib/env";
-import { DOCTOR_ORIGIN, SITE_ORIGIN, isDoctorHostname } from "@/lib/doctor-host";
+import { DOCTOR_HOST, DOCTOR_ORIGIN, SITE_HOST, SITE_ORIGIN, isDoctorHostname } from "@/lib/doctor-host";
 import { isSafeInternalPath } from "@/lib/safe-redirect";
 import type { PublicSiteAppearance, Locale } from "@/lib/api/types";
 
@@ -21,6 +21,14 @@ import type { PublicSiteAppearance, Locale } from "@/lib/api/types";
  * katmanı proxy'dir. Bu, ARCHITECTURE.md'nin "ileride bypass token gerekirse doğru yer
  * middleware.ts'tir" notuyla da TUTARLIDIR (oturum çerezi istek başına proxy'de okunabilir; not
  * mimari dokümanda eski isimle yazılmış olsa da kastedilen dosya BUDUR).
+ *
+ * **`.claude/architect-scope-doctor-subdomain.md` §6 — ESKİ `localhost` HOST'UNDAN MİGRASYON:**
+ * yerel geliştirme ana site host'u `localhost` → `siteadi.localhost`'a taşındığında (SameSite=Strict
+ * refresh cookie'sinin doktor subdomain'iyle AYNI kayıt edilebilir alan adında olması için, §6),
+ * backend CORS allow-list'i artık YALNIZCA yeni host'u tanır — `Host: localhost`/`127.0.0.1` isteği
+ * backend'e CORS hatasıyla (sessizce kopan `SameSite=Strict` oturum riskiyle) değil, EN BAŞTA (bakım
+ * modu/locale fetch'inden ve §3.1 [1]'den bile ÖNCE, gereksiz API çağrısı yapmadan) doğru host'a 307
+ * ile yönlendirilerek çözülür — bkz. `proxy()` içindeki `[-1]` adımı.
  *
  * **`.claude/architect-scope-doctor-subdomain.md` §3.1 — TEK proxy dosyası, ÜÇ sorumluluk:**
  * Next 16 tek bir proxy dosyasına izin verir (§2.1); `.claude/architect-scope-i18n.md` §4.3'ün
@@ -270,11 +278,33 @@ function handleDoctorHost(request: NextRequest, pathname: string, defaultLocale:
   return NextResponse.redirect(crossOriginUrl(SITE_ORIGIN, pathname, request.nextUrl.search), 307);
 }
 
+/** §6 — `Host` header'ı (port HARİÇ, lowercase) tam olarak bunlardan biriyse "eski şema" kabul edilir. */
+const LEGACY_LOCALHOST_HOSTNAMES = new Set(["localhost", "127.0.0.1"]);
+
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // [0] Host tespiti — App Router'da `nextUrl` host/hostname ALANI SUNMAZ (§2.3), `Host` header'ı okunur.
   const host = request.headers.get("host") ?? "";
+  const normalizedHost = host.split(":")[0]?.trim().toLowerCase() ?? "";
+
+  // [-1] §6 ESKİ `localhost` HOST MİGRASYONU — bkz. dosya başı yorumu. `SITE_HOST !== "localhost"`
+  // koşulu, host şeması GERÇEKTEN taşınmışsa (`siteadi.localhost` vb.) anlamlıdır; biri hâlâ eski
+  // şemayla (`NEXT_PUBLIC_SITE_URL=http://localhost:3000`) çalışıyorsa (`SITE_HOST === "localhost"`)
+  // bu dal devre dışı kalır (geriye dönük uyumluluk) — ayrıca `normalizedHost !== SITE_HOST` kontrolü
+  // zaten bu durumda `localhost` isteğini "eski host" saymayacağından sonsuz döngü de OLUŞAMAZ. Bu dal
+  // `isSubdomainModeEnabled()`'a BAĞLI DEĞİLDİR — `NEXT_PUBLIC_DOCTOR_URL` tanımsız olsa BİLE (subdomain
+  // modu kapalıyken) çalışmalıdır, çünkü bu doktor özelliğinden bağımsız saf bir host migrasyonudur.
+  if (
+    SITE_HOST !== null &&
+    SITE_HOST !== "localhost" &&
+    LEGACY_LOCALHOST_HOSTNAMES.has(normalizedHost) &&
+    normalizedHost !== SITE_HOST &&
+    normalizedHost !== DOCTOR_HOST
+  ) {
+    return NextResponse.redirect(crossOriginUrl(SITE_ORIGIN, pathname, request.nextUrl.search), 307);
+  }
+
   const isDoctorHost = isDoctorHostname(host);
 
   // [1] SaaS auth yüzeyi erken çıkışı — YALNIZCA ana host'ta, locale/bakım-modu fetch'lerinden ÖNCE.
