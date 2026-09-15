@@ -380,6 +380,23 @@ export const TelehealthOverviewQuerySchema = z.object({
 });
 export type TelehealthOverviewQuery = z.infer<typeof TelehealthOverviewQuerySchema>;
 
+/**
+ * NOT — 2026-09-15 (backend-agent görev notu, "Admin randevu yeniden planlama") —
+ * `PATCH /admin/telehealth/appointments/{id}/reschedule` gövdesi. `id` bir **Appointment
+ * ID'sidir** (booking ID DEĞİL) — bu uç YALNIZCA belirtilen TEK appointment satırını yeniden
+ * planlar, booking'in DİĞER appointment'larına (çoklu-slot rezervasyonlarda) DOKUNMAZ. Bu,
+ * çok-slotlu bir booking'in "blok" bütünlüğünü bozabilir (ör. 4 saatlik bloktan 1 saat başka
+ * güne taşınabilir) — bilinçli/dar kapsam (backlog: "booking-geneli reschedule").
+ * `newDate`/`newStartTime` randevunun DOKTORUNUN `DoctorProfile.timeZone` alanındaki DUVAR
+ * SAATİ olarak yorumlanır (bkz. `lib/timezone.ts::wallTimeToUtc`, telehealth.admin.routes.ts).
+ */
+export const RescheduleAppointmentRequestSchema = z.object({
+  newDate: z.string().regex(ISO_DATE_RE, "`newDate` YYYY-MM-DD biçiminde olmalı."),
+  newStartTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "`newStartTime` HH:mm biçiminde olmalı."),
+  reason: z.string().trim().max(500).optional(),
+});
+export type RescheduleAppointmentRequest = z.infer<typeof RescheduleAppointmentRequestSchema>;
+
 export const ListAdminAppointmentsQuerySchema = z.object({
   doctorId: z.string().uuid().optional(),
   // [TCT] §9.7.3 — `PENDING_PAYMENT` eklendi (tutulmuş-ama-ödenmemiş slot da artık bir filtre değeridir).

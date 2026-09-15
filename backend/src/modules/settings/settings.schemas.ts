@@ -27,6 +27,12 @@ export const UpdateSiteSettingsRequestSchema = z
     // `demoPaymentsSupported=false` (üretim) iken bu istek REDDEDİLMEZ (`422` DEĞİL) — ham
     // sütun yazılır ama nihai bayrak `env.ts`teki fail-closed koruma nedeniyle `false` kalır.
     demoPaymentsEnabled: z.boolean().optional(),
+    // NOT — 2026-09-15: Sağ alt canlı destek widget'ı — HAM DB sütununa yazılır. `provider`
+    // API seviyesinde frontend'in sunduğu 3 seçenekle KISITLANIR (DB'de serbest metin,
+    // bkz. prisma/schema.prisma notu) — geçersiz bir değer `422` döner.
+    liveChatEnabled: z.boolean().optional(),
+    liveChatProvider: z.enum(["internal", "crisp", "tawkto"]).optional(),
+    liveChatScriptId: z.string().trim().max(200).nullable().optional(),
   })
   .refine(
     (data) =>

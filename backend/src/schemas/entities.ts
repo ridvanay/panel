@@ -833,6 +833,11 @@ export const SiteSettingsSchema = z.object({
   // customCodeEnabled` İLE AYNI desen (bkz. mappers/index.ts::toSiteSettingsDto).
   demoPaymentsEnabled: z.boolean(),
   demoPaymentsSupported: z.boolean(),
+  // NOT — 2026-09-15: Sağ alt canlı destek widget'ı — HAM DB sütunları, env-tabanlı bir
+  // AND-gate YOK (bkz. mappers/index.ts::toSiteSettingsDto).
+  liveChatEnabled: z.boolean(),
+  liveChatProvider: z.string(),
+  liveChatScriptId: z.string().nullable(),
 });
 export type SiteSettingsDto = z.infer<typeof SiteSettingsSchema>;
 
@@ -982,6 +987,12 @@ export const EmailTemplatePurposeSchema = z.enum([
   // `.claude/architect-scope-telehealth-template.md` §9.7.8 (bağlayıcı) — randevu ödemesi
   // onaylandığında hastaya, magic-link taşıyan TEK yeni şablon (§9.7 TADİLAT TURU 2).
   "APPOINTMENT_CONFIRMATION",
+  // NOT — 2026-09-15 (backend-agent, "Admin randevu yeniden planlama") — ADMIN bir randevuyu
+  // yeniden planladığında hastaya (ve VARSA doktora) gönderilen tek şablon (bkz. `lib/errors.ts`
+  // ::AppointmentRescheduleConflictError yorumu, `modules/telehealth/lib/notifications.ts
+  // ::triggerAppointmentRescheduledEmail`). Prisma `EmailTemplatePurpose` enum'una db-agent
+  // tarafından eklendi — bu DTO-seviyesi ayna (mirror) burada SENKRONİZE edilir.
+  "APPOINTMENT_RESCHEDULED",
   "CUSTOM",
 ]);
 export type EmailTemplatePurpose = z.infer<typeof EmailTemplatePurposeSchema>;

@@ -37,6 +37,7 @@ import type {
   Page,
   PatientBookingListMeta,
   PatientBookingsPage,
+  RescheduleAppointmentRequest,
   SetDoctorAvailabilityRequest,
   Specialty,
   TelehealthOverview,
@@ -532,6 +533,20 @@ export function listAdminAppointments(params: ListAdminAppointmentsParams = {}):
       cursor: params.cursor,
       limit: params.limit ?? 50,
     },
+  });
+}
+
+/**
+ * Görev (2026-09-15) — `PATCH /admin/telehealth/appointments/{id}/reschedule`, YALNIZCA ADMIN
+ * (MANAGER dahil diğer roller 403). `id` bir **Appointment ID'sidir** (booking ID DEĞİL) — yalnızca
+ * belirtilen TEK randevu satırını yeniden planlar, aynı booking'in diğer slotlarına DOKUNMAZ.
+ * `newDate`/`newStartTime` DOKTORUN kendi saat diliminde duvar saatidir; süre backend'de KORUNUR.
+ * 409 `APPOINTMENT_RESCHEDULE_CONFLICT` — doktorun yeni aralıkta başka aktif randevusu var.
+ */
+export function rescheduleAppointment(appointmentId: string, input: RescheduleAppointmentRequest): Promise<Appointment> {
+  return apiFetch<Appointment>(`/admin/telehealth/appointments/${appointmentId}/reschedule`, {
+    method: "PATCH",
+    body: input,
   });
 }
 

@@ -16,6 +16,12 @@ const DEFAULT_SETTINGS: SiteSettings = {
   // Fetch başarısız olursa güvenli (fail-closed) varsayılan — gerçek değer her zaman `/settings`den gelir.
   demoPaymentsEnabled: false,
   demoPaymentsSupported: false,
+  // Bkz. `types.ts::SiteSettings.liveChatEnabled` yorumu — backend mapper/şema wiring'i henüz
+  // TAMAMLANMADI, bu alanlar gerçek yanıtta `undefined` gelir; fetch başarısız olursa da
+  // güvenli (kapalı) varsayılan korunur.
+  liveChatEnabled: false,
+  liveChatProvider: "internal",
+  liveChatScriptId: null,
 };
 
 /** Sunucu bileşenlerinden çağrılır — bkz. server-plans.ts'teki apiFetch kullanılmama gerekçesi. */

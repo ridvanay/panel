@@ -88,6 +88,85 @@ export async function triggerAppointmentConfirmationEmail(
 }
 
 /**
+ * NOT — 2026-09-15 (backend-agent, "Admin randevu yeniden planlama") — `PATCH
+ * /admin/telehealth/appointments/{id}/reschedule` bildirim tetikleyicisi. `triggerAppointmentConfirmationEmail`
+ * İLE AYNI best-effort disiplini: TEK try/catch, gönderim başarısız olsa da çağıran akış (reschedule
+ * işlemi) ASLA bozulmaz — hata yalnızca loglanır.
+ *
+ * `lib/email-variables.ts::SYSTEM_VARIABLES_BY_PURPOSE.APPOINTMENT_RESCHEDULED` ile BİREBİR aynı
+ * anahtar seti kullanılır: `recipient_name`/`booking_number`/`old_slot_summary`/`new_slot_summary`/
+ * `reason`. `sendTemplateEmail` İKİ KEZ çağrılır: bir kez hastaya (booking'e bağlıysa
+ * `booking.patientEmail`/`patientName`, deprecated tekil randevu akışında `appointment.patientEmail`/
+ * `patientName`), bir kez — YALNIZCA doktorun bağlı bir `User` hesabı VARSA — doktora. Doktorun
+ * `User`/e-postası YOKSA (DEMO doktorların çoğu) ikinci gönderim SESSİZCE ATLANIR (hata DEĞİL,
+ * `DoctorProfile.userId` OPSİYONELDİR).
+ *
+ * `bookingNumber` — booking'e bağlı DEĞİLSE (deprecated tekil randevu akışı, `bookingId === null`)
+ * `appointment.id`'nin kısa bir özeti ("APT-" + ilk 8 hex) kullanılır (gerçek bir `bookingNumber`
+ * hiçbir zaman VAR OLMADI, sıfırdan uydurulmaz).
+ */
+export async function triggerAppointmentRescheduledEmail(
+  app: FastifyInstance,
+  input: {
+    appointment: Pick<Appointment, "id" | "bookingId" | "doctorId" | "patientName" | "patientEmail">;
+    doctorTimeZone: string;
+    doctorFullName: string;
+    doctorUserId: string | null;
+    oldStartsAt: Date;
+    newStartsAt: Date;
+    reason: string | null;
+  }
+): Promise<void> {
+  const { appointment, doctorTimeZone, doctorFullName, doctorUserId, oldStartsAt, newStartsAt, reason } = input;
+  try {
+    let bookingNumber: string;
+    let patientName: string;
+    let patientEmail: string;
+
+    if (appointment.bookingId) {
+      const booking = await app.prisma.appointmentBooking.findUnique({ where: { id: appointment.bookingId } });
+      // Şema zorunluluğu: `Appointment.bookingId` VARSA karşılık gelen `AppointmentBooking` satırı
+      // da VAR OLMALIDIR (FK) — bu dal yalnızca savunma amaçlı, beklenmedik bir eşzamanlı silme
+      // durumunda appointment'ın KENDİ PII snapshot'ına düşer.
+      bookingNumber = booking?.bookingNumber ?? `APT-${appointment.id.slice(0, 8).toUpperCase()}`;
+      patientName = booking?.patientName ?? appointment.patientName;
+      patientEmail = booking?.patientEmail ?? appointment.patientEmail;
+    } else {
+      bookingNumber = `APT-${appointment.id.slice(0, 8).toUpperCase()}`;
+      patientName = appointment.patientName;
+      patientEmail = appointment.patientEmail;
+    }
+
+    const oldSlotSummary = formatSlotsSummary([{ startsAt: oldStartsAt }], doctorTimeZone);
+    const newSlotSummary = formatSlotsSummary([{ startsAt: newStartsAt }], doctorTimeZone);
+    const reasonValue = reason ?? "";
+
+    await sendTemplateEmail(app, "APPOINTMENT_RESCHEDULED", patientEmail, {
+      recipient_name: patientName,
+      booking_number: bookingNumber,
+      old_slot_summary: oldSlotSummary,
+      new_slot_summary: newSlotSummary,
+      reason: reasonValue,
+    });
+
+    if (doctorUserId) {
+      const doctorUser = await app.prisma.user.findUnique({ where: { id: doctorUserId }, select: { email: true } });
+      if (doctorUser) {
+        await sendTemplateEmail(app, "APPOINTMENT_RESCHEDULED", doctorUser.email, {
+          recipient_name: doctorFullName,
+          booking_number: bookingNumber,
+          old_slot_summary: oldSlotSummary,
+          new_slot_summary: newSlotSummary,
+          reason: reasonValue,
+        });
+      }
+    }
+  } catch (err) {
+    app.log.error({ err, appointmentId: appointment.id }, "Randevu yeniden planlama e-postası gönderilemedi");
+  }
+}
+
+/**
  * `POST /appointments/bookings/{bookingId}/resend-link` (§9.7.10, notification-agent sahası) —
  * openapi.yaml (BAĞLAYICI kontrat) burada AÇIKÇA "yeni bir accessToken üretir" der: her çağrı
  * `accessTokenHash`'i ROTATE eder (eski bağlantı bu andan itibaren ÇALIŞMAZ) ve YALNIZCA kayıtlı

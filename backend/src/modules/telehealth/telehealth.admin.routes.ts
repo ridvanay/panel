@@ -19,7 +19,7 @@ import {
   UpdateTelehealthThemeSettingsRequestSchema,
 } from "../../schemas/entities";
 import { toAppointmentBookingDto, toAppointmentDto, toDoctorProfileDto, toSpecialtyDto } from "../../mappers";
-import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "../../lib/errors";
+import { AppointmentRescheduleConflictError, ConflictError, ForbiddenError, NotFoundError, ValidationError } from "../../lib/errors";
 import { buildPageMeta, parseCursor } from "../../lib/pagination";
 import { isImageMimeType } from "../../lib/mime-detect";
 import { slugify } from "../../lib/slug";
@@ -27,10 +27,13 @@ import { logAudit } from "../../lib/audit";
 import { sanitizeRichHtml } from "../../lib/html-sanitize";
 import { canAccessBookingHealthData } from "../../lib/telehealth-access";
 import { triggerGlobalRevalidation } from "../../lib/revalidate";
+import { runSerializable } from "../../lib/serializable-tx";
 import { confirmBookingPayment } from "./lib/booking";
-import { triggerAppointmentConfirmationEmail } from "./lib/notifications";
+import { triggerAppointmentConfirmationEmail, triggerAppointmentRescheduledEmail } from "./lib/notifications";
 import { parseTelehealthTheme } from "./lib/theme-settings";
+import { wallTimeToUtc } from "./lib/timezone";
 import {
+  AppointmentIdParamSchema,
   BookingIdParamSchema,
   CreateDoctorRequestSchema,
   CreateSpecialtyRequestSchema,
@@ -39,6 +42,7 @@ import {
   ListAdminBookingsQuerySchema,
   ListAdminDoctorsQuerySchema,
   MarkBookingPaidRequestSchema,
+  RescheduleAppointmentRequestSchema,
   SetDoctorAvailabilityRequestSchema,
   SpecialtyIdParamSchema,
   UpdateDoctorRequestSchema,
@@ -465,6 +469,104 @@ export async function adminTelehealthAppointmentsRoutes(app: FastifyInstance) {
       });
 
       return reply.send(ok(rows.map(toAppointmentDto), buildPageMeta(rows, limit)));
+    }
+  );
+
+  /**
+   * NOT — 2026-09-15 (backend-agent görev notu, "Admin randevu yeniden planlama") —
+   * `PATCH /admin/telehealth/appointments/{id}/reschedule`. `id` bir **Appointment ID'sidir**
+   * (booking ID DEĞİL) — bu uç YALNIZCA belirtilen TEK appointment satırını yeniden planlar,
+   * booking'in DİĞER appointment'larına (çoklu-slot rezervasyonlarda) DOKUNMAZ (bilinçli/dar
+   * kapsam, bkz. `telehealth.schemas.ts::RescheduleAppointmentRequestSchema` yorumu — backlog:
+   * "booking-geneli reschedule"). Grup hook'u `ROLES_ADMIN_MANAGER`dir (§8.4) — bu route KENDİ
+   * `requireSiteRole(...ROLES_ADMIN)` preHandler'ıyla MANAGER'ı EK OLARAK dışlar (para/randevu
+   * hareketi beyanı, `mark-paid` İLE AYNI eşik disiplini).
+   */
+  server.patch(
+    "/:id/reschedule",
+    {
+      preHandler: requireSiteRole(...ROLES_ADMIN),
+      schema: {
+        params: AppointmentIdParamSchema,
+        body: RescheduleAppointmentRequestSchema,
+        response: { 200: ApiSuccessSchema(AppointmentSchema) },
+      },
+    },
+    async (request, reply) => {
+      const existing = await app.prisma.appointment.findUnique({
+        where: { id: request.params.id },
+        include: { doctor: { select: { id: true, timeZone: true, fullName: true, userId: true } } },
+      });
+      if (!existing) throw new NotFoundError("Randevu bulunamadı.");
+
+      const [year, month, day] = request.body.newDate.split("-").map(Number) as [number, number, number];
+      const [hour, minute] = request.body.newStartTime.split(":").map(Number) as [number, number];
+      const newStartsAt = wallTimeToUtc({ year, month, day, hour, minute }, existing.doctor.timeZone);
+      if (!newStartsAt) {
+        throw new ValidationError(
+          "Belirtilen tarih/saat, doktorun saat diliminde geçerli bir an değil (DST geçişi nedeniyle bu duvar saati mevcut değil).",
+          { newStartTime: ["Bu saat mevcut değil, farklı bir saat seçin."] }
+        );
+      }
+
+      // Süre KORUNUR — yalnızca BAŞLANGIÇ kayar (görev talimatı, bağlayıcı).
+      const durationMs = existing.endsAt.getTime() - existing.startsAt.getTime();
+      const newEndsAt = new Date(newStartsAt.getTime() + durationMs);
+      const oldStartsAt = existing.startsAt;
+      const oldEndsAt = existing.endsAt;
+
+      const updated = await runSerializable(app, async (tx) => {
+        // Aynı doktorun AYNI yeni zaman aralığıyla ÇAKIŞAN başka bir AKTİF randevusu olmamalı
+        // (kendisi HARİÇ). `lib/booking.ts::createBooking`teki `@@unique([doctorId, startsAt])`
+        // ikinci savunma hattı burada GEÇERLİ DEĞİLDİR (yalnızca TAM aynı başlangıç anını
+        // yakalar, kısmi örtüşmeyi DEĞİL) — bu yüzden açık bir aralık-örtüşme sorgusu gerekir.
+        const conflict = await tx.appointment.findFirst({
+          where: {
+            doctorId: existing.doctorId,
+            id: { not: existing.id },
+            status: { in: ["SCHEDULED", "IN_PROGRESS"] },
+            startsAt: { lt: newEndsAt },
+            endsAt: { gt: newStartsAt },
+          },
+        });
+        if (conflict) throw new AppointmentRescheduleConflictError();
+
+        return tx.appointment.update({
+          where: { id: existing.id },
+          data: { startsAt: newStartsAt, endsAt: newEndsAt },
+          include: WITH_APPOINTMENT_RELATIONS,
+        });
+      });
+
+      await logAudit(app, {
+        actorId: request.user!.id,
+        actorEmail: request.user!.email,
+        action: "telehealth.appointment.rescheduled",
+        targetType: "Appointment",
+        targetId: existing.id,
+        metadata: {
+          oldStartsAt: oldStartsAt.toISOString(),
+          oldEndsAt: oldEndsAt.toISOString(),
+          newStartsAt: newStartsAt.toISOString(),
+          newEndsAt: newEndsAt.toISOString(),
+          reason: request.body.reason ?? null,
+        },
+        ipAddress: request.ip,
+      });
+
+      // §9.7.8 desenİYLE AYNI — best-effort, e-posta gönderimi BAŞARISIZ olsa da bu uç ASLA
+      // 500 dönmez (bkz. notifications.ts::triggerAppointmentRescheduledEmail).
+      await triggerAppointmentRescheduledEmail(app, {
+        appointment: existing,
+        doctorTimeZone: existing.doctor.timeZone,
+        doctorFullName: existing.doctor.fullName,
+        doctorUserId: existing.doctor.userId,
+        oldStartsAt,
+        newStartsAt,
+        reason: request.body.reason ?? null,
+      });
+
+      return reply.send(ok(toAppointmentDto(updated)));
     }
   );
 }

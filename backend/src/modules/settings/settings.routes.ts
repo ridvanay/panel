@@ -38,6 +38,12 @@ export const DEFAULTS = {
   // @default(true)`) TUTARLI. Bu ham değer `readSettings`te AND-gate'siz DÖNMEZ — bkz.
   // aşağıdaki `readSettings`.
   demoPaymentsEnabled: true,
+  // NOT — 2026-09-15: Sağ alt canlı destek widget'ı — HAM DB varsayılanlarıyla
+  // (`prisma/schema.prisma::SiteSettings.liveChat*`) TUTARLI. `readSettings`te
+  // `demoPaymentsEnabled`in AKSİNE env-tabanlı bir AND-gate GEREKMEZ.
+  liveChatEnabled: false,
+  liveChatProvider: "internal",
+  liveChatScriptId: null as string | null,
 };
 
 /**

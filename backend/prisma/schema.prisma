@@ -1161,6 +1161,17 @@ model SiteSettings {
   // .claude/security-review-demo-payment-toggle.md, .claude/architect-scope-demo-payment-doctor-counters.md
   // "EK KARAR — 2026-09-15".
   demoPaymentsEnabled        Boolean      @default(true)
+  // NOT — 2026-09-15: Sağ alt canlı destek widget'ı — admin panelden aç/kapa. Varsayılan
+  // KAPALI (`false`): `demoPaymentsEnabled`in aksine, yeni bir UI özelliğinin sessizce her
+  // ortamda otomatik açık gelmesi istenmiyor — admin bilinçli olarak açar.
+  liveChatEnabled            Boolean      @default(false)
+  /// "internal" (varsayılan, dahili mock arayüz) | "crisp" | "tawkto" — serbest metin, enum
+  /// DEĞİL (yeni bir sağlayıcı eklemek enum migration'ı gerektirmemeli, `demoPaymentsEnabled`
+  /// ile aynı "opsiyonel özellik alanı" grubunda).
+  liveChatProvider           String       @default("internal")
+  /// Yalnızca liveChatProvider harici bir sağlayıcıysa kullanılır (ör. Crisp Website ID,
+  /// Tawk.to widget ID). "internal" iken yoksayılır.
+  liveChatScriptId           String?
   updatedAt                  DateTime     @updatedAt
 
   // Kök `/` rotasında render edilecek sayfa. Sayfa silinirse otomatik null'a düşer
@@ -1629,7 +1640,13 @@ enum EmailTemplatePurpose {
   ORDER_CANCELLATION
   // [TCT] §9.7.8 (bağlayıcı) — randevu ödemesi onaylandığında hastaya gönderilen tek şablon.
   // Hatırlatma/iptal e-postası bu turda EKLENMEZ (backlog: feature/telehealth-reminder-emails).
+  // NOT — 2026-09-15: feature/telehealth-reminder-emails backlog'unun BİR PARÇASI (yalnızca
+  // reschedule) bu turda erken alındı (bkz. APPOINTMENT_RESCHEDULED altta). Hatırlatma/iptal
+  // e-postaları HÂLÂ backlog'da, bu turda EKLENMEDİ.
   APPOINTMENT_CONFIRMATION
+  // NOT — 2026-09-15: Admin randevu yeniden planlama (reschedule) akışı — hastaya "Randevunuz
+  // Yeniden Planlandı" bildirimi için tek şablon.
+  APPOINTMENT_RESCHEDULED
   CUSTOM
 }
 

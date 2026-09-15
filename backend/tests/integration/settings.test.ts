@@ -270,3 +270,87 @@ describe("settings — demoPaymentsEnabled/demoPaymentsSupported (AND-gate, DB a
     });
   });
 });
+
+/**
+ * NOT — 2026-09-15: Sağ alt canlı destek widget'ı (`liveChatEnabled`/`liveChatProvider`/
+ * `liveChatScriptId`) — `demoPaymentsEnabled`in AKSİNE env-tabanlı bir AND-gate YOKTUR, HAM DB
+ * sütunları doğrudan DTO'ya yansır (bkz. mappers/index.ts::toSiteSettingsDto). Bu blok, önceki
+ * turda mapper/şema/DEFAULTS kablolamasının UNUTULMASI nedeniyle PATCH'in DB'ye sessizce
+ * yazmadığı regresyonu bir daha yaşanmayacak şekilde kilitler.
+ */
+describe("settings — liveChatEnabled/liveChatProvider/liveChatScriptId", () => {
+  let app: FastifyInstance;
+  let accessToken: string;
+
+  beforeAll(async () => {
+    app = await buildTestApp();
+    await resetDatabase(app.prisma);
+    ({ accessToken } = await registerTestUser(app, { email: "settings-live-chat-admin@example.com" }));
+  });
+
+  afterAll(async () => {
+    await resetDatabase(app.prisma);
+    await app.close();
+  });
+
+  function authHeader() {
+    return { authorization: `Bearer ${accessToken}` };
+  }
+
+  it("DEFAULTS yolu (hiç PATCH edilmemiş taze kurulum) — liveChatEnabled: false, liveChatProvider: internal, liveChatScriptId: null", async () => {
+    const res = await app.inject({ method: "GET", url: "/api/v1/settings" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.liveChatEnabled).toBe(false);
+    expect(res.json().data.liveChatProvider).toBe("internal");
+    expect(res.json().data.liveChatScriptId).toBeNull();
+  });
+
+  it("ADMIN PATCH ile DEĞİŞTİRİLEN değerler HAM DB sütununa GERÇEKTEN yazılır VE public GET /settings'te geri döner", async () => {
+    const patch = await app.inject({
+      method: "PATCH",
+      url: "/api/v1/admin/settings",
+      headers: authHeader(),
+      payload: { liveChatEnabled: true, liveChatProvider: "crisp", liveChatScriptId: "abc123" },
+    });
+    expect(patch.statusCode).toBe(200);
+    expect(patch.json().data.liveChatEnabled).toBe(true);
+    expect(patch.json().data.liveChatProvider).toBe("crisp");
+    expect(patch.json().data.liveChatScriptId).toBe("abc123");
+
+    // HAM DB satırı gerçekten yazıldı — önceki turdaki "200 dönüyor ama DB'ye yazmıyor"
+    // regresyonunun tam olarak KANITLANMASI gereken kısım.
+    const row = await app.prisma.siteSettings.findUniqueOrThrow({ where: { id: "singleton" } });
+    expect(row.liveChatEnabled).toBe(true);
+    expect(row.liveChatProvider).toBe("crisp");
+    expect(row.liveChatScriptId).toBe("abc123");
+
+    const publicGet = await app.inject({ method: "GET", url: "/api/v1/settings" });
+    expect(publicGet.json().data.liveChatEnabled).toBe(true);
+    expect(publicGet.json().data.liveChatProvider).toBe("crisp");
+    expect(publicGet.json().data.liveChatScriptId).toBe("abc123");
+  });
+
+  it("liveChatScriptId null'a geri çekilebilir", async () => {
+    const patch = await app.inject({
+      method: "PATCH",
+      url: "/api/v1/admin/settings",
+      headers: authHeader(),
+      payload: { liveChatScriptId: null },
+    });
+    expect(patch.statusCode).toBe(200);
+    expect(patch.json().data.liveChatScriptId).toBeNull();
+
+    const row = await app.prisma.siteSettings.findUniqueOrThrow({ where: { id: "singleton" } });
+    expect(row.liveChatScriptId).toBeNull();
+  });
+
+  it("geçersiz liveChatProvider (frontend'in sunmadığı bir sağlayıcı) 422 döner", async () => {
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/api/v1/admin/settings",
+      headers: authHeader(),
+      payload: { liveChatProvider: "whatsapp" },
+    });
+    expect(res.statusCode).toBe(422);
+  });
+});

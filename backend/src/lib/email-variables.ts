@@ -94,6 +94,21 @@ const SYSTEM_VARIABLES_BY_PURPOSE: Record<EmailTemplatePurpose, EmailVariableDef
     { key: "total_formatted", label: "Toplam Tutar", sampleValue: "750.00 TRY", source: "system" },
     { key: "magic_link", label: "Rezervasyon Bağlantısı", sampleValue: "https://example.com/tr/patient/bookings/abc?t=xyz", source: "system" },
   ],
+  /**
+   * NOT — 2026-09-15 (backend-agent, "Admin randevu yeniden planlama") — ADMIN bir randevuyu
+   * yeniden planladığında hastaya (ve doktorun bağlı bir `User`/e-postası VARSA doktora) gönderilir.
+   * `APPOINTMENT_CONFIRMATION` İLE AYNI bağlayıcı sızma yasağı GEÇERLİDİR: uzmanlık adı/şikâyet
+   * notu/belge adı bu değişken setine ASLA EKLENMEZ (bkz.
+   * `modules/telehealth/lib/notifications.ts::triggerAppointmentRescheduledEmail`, şablonun
+   * İÇERİĞİ notification-agent'ındır).
+   */
+  APPOINTMENT_RESCHEDULED: [
+    { key: "recipient_name", label: "Alıcı Adı", sampleValue: "Ayşe Yılmaz", source: "system" },
+    { key: "booking_number", label: "Rezervasyon Numarası", sampleValue: "BKG-L4K2J1-A1B2", source: "system" },
+    { key: "old_slot_summary", label: "Eski Randevu Saati", sampleValue: "06.01.2025 09:00", source: "system" },
+    { key: "new_slot_summary", label: "Yeni Randevu Saati", sampleValue: "08.01.2025 10:00", source: "system" },
+    { key: "reason", label: "Değişiklik Notu", sampleValue: "Doktorun programı nedeniyle", source: "system" },
+  ],
   CUSTOM: [],
 };
 

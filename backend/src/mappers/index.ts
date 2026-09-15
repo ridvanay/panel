@@ -423,6 +423,12 @@ export function toSiteSettingsDto(settings: SiteSettings): SiteSettingsDto {
     // göstermemesi içindir.
     demoPaymentsEnabled: computeDemoPaymentsEnabled(settings.demoPaymentsEnabled),
     demoPaymentsSupported: isDemoPaymentsEnabled,
+    // Canlı destek widget'ı — `demoPaymentsEnabled`in AKSİNE env-tabanlı bir AND-gate
+    // GEREKTİRMEZ, HAM DB sütunları doğrudan yansıtılır (bkz. prisma/schema.prisma
+    // SiteSettings.liveChat* notu, 2026-09-15).
+    liveChatEnabled: settings.liveChatEnabled,
+    liveChatProvider: settings.liveChatProvider,
+    liveChatScriptId: settings.liveChatScriptId,
   };
 }
 

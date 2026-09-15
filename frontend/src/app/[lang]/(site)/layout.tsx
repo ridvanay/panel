@@ -13,6 +13,7 @@ import { LocaleAlternatesProvider } from "@/context/locale-alternates-context";
 import { SiteHeader } from "@/components/site/site-header";
 import { SiteFooter } from "@/components/site/site-footer";
 import { DoctorPortalRouteGuard } from "@/components/site/doctor-portal-route-guard";
+import { LiveChatWidget } from "@/components/site/live-chat-widget";
 import { BackToTopButton } from "@/components/site/back-to-top-button";
 import { CookieConsentBanner } from "@/components/site/cookie-consent-banner";
 import { CartDrawer } from "@/components/site/cart-drawer";
@@ -97,6 +98,13 @@ export default async function SiteLayout({
               `productsModuleEnabled` iken (bu `content` her iki dalda da render edildiği için
               burada AYRICA kontrol edilir) — `CartProvider` kapalı modülde ağaca hiç eklenmez. */}
           {productsModuleEnabled && <CartDrawer />}
+          {/* Görev (2026-09-15) — sağ alt canlı destek widget'ı. TEK global mount noktası: bu
+              layout `/patient/**`i (hasta portalı) de kapsar (`(site)/patient/layout.tsx` ayrı bir
+              header/shell EKLEMİYOR), `/doctor/**` AYRI bir route grubudur ((doctor)/layout.tsx,
+              kapsam DIŞI, görev talimatı). Widget kendi `usePathname()` kontrolüyle
+              `/consultation/**`de kendini HİÇ render etmez ve `liveChatEnabled` kapalıyken de
+              HİÇBİR ŞEY render etmez — bu yüzden burada AYRICA bir koşul YAZILMAZ. */}
+          <LiveChatWidget settings={settings} />
         </SiteScope>
       </LocaleAlternatesProvider>
 

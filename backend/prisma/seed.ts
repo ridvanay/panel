@@ -145,6 +145,31 @@ async function main() {
     },
   });
 
+  // NOT — 2026-09-15: Admin randevu yeniden planlama (reschedule) akışı — hastaya VE doktora
+  // (AYNI şablon, İKİ ayrı gönderim: hastaya giderken {{recipient_name}}=hasta adı, doktora
+  // giderken {{recipient_name}}=doktor adı) "Randevunuz Yeniden Planlandı" bildirimi için tek
+  // şablon (bkz. modules/telehealth/lib/notifications.ts, backend-agent tetikleyicisi). Konu
+  // satırı BİLİNÇLİ OLARAK NÖTR — APPOINTMENT_CONFIRMATION ile AYNI PII/sızma disiplini: doktorun
+  // uzmanlık adı, şikâyet notu, belge adı BU E-POSTADA ASLA yer almaz (bkz. §9.7.5 madde 8,
+  // §9.7.8). {{reason}} admin'in girdiği değişiklik nedenidir, BOŞ olabilir; lib/template-render.ts
+  // koşullu blok DESTEKLEMEDİĞİ için boşken paragraf doğal olarak boş görünür (kabul edilebilir).
+  await prisma.emailTemplate.upsert({
+    where: { key: "APPOINTMENT_RESCHEDULED" },
+    update: {},
+    create: {
+      key: "APPOINTMENT_RESCHEDULED",
+      name: "Randevu Yeniden Planlandı",
+      purpose: "APPOINTMENT_RESCHEDULED",
+      editorMode: "RAW",
+      isSystem: true,
+      isActive: true,
+      subject: "Randevunuz Yeniden Planlandı",
+      bodyHtml:
+        "<p>Sayın {{recipient_name}},</p><p><strong>{{booking_number}}</strong> numaralı randevunuz yeniden planlanmıştır.</p><p><strong>Eski Tarih/Saat:</strong> {{old_slot_summary}}</p><p><strong>Yeni Tarih/Saat:</strong> {{new_slot_summary}}</p><p>{{reason}}</p><p>Herhangi bir sorunuz olursa bizimle iletişime geçebilirsiniz.</p>",
+      availableVariables: ["recipient_name", "booking_number", "old_slot_summary", "new_slot_summary", "reason"],
+    },
+  });
+
   // Organizasyon daveti — bkz. modules/invitations/invitations.routes.ts::orgInvitationsRoutes.
   // Ham davet bağlantısı artık ne response'ta ne de log'da düz metin dönmez (bkz. security-agent
   // kararı — token sızıntısı temizliği); bunun yerine bu şablon üzerinden gerçekten gönderilir.

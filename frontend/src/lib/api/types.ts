@@ -50,7 +50,11 @@ export type ApiErrorCode =
   // `.claude/security-review-demo-payment-toggle.md` Madde 5 — env-gate AÇIK olduğu halde
   // admin `SiteSettings.demoPaymentsEnabled`'ı DB'den kapatmışsa `POST .../demo-pay` bu kodla
   // `403` döner (env kaynaklı `404` katmanından AYRI, `booking-payment-step.tsx` bunu ayrıca ele alır).
-  | "DEMO_PAYMENTS_DISABLED";
+  | "DEMO_PAYMENTS_DISABLED"
+  // NOT — 2026-09-15 (backend-agent, "Admin randevu yeniden planlama") — `PATCH
+  // /admin/telehealth/appointments/{id}/reschedule`, doktorun yeni zaman aralığında başka bir
+  // AKTİF randevusu varsa (kendisi HARİÇ) 409 ile döner (bkz. `backend/src/lib/errors.ts`).
+  | "APPOINTMENT_RESCHEDULE_CONFLICT";
 
 export type MembershipRole = "OWNER" | "ADMIN" | "MEMBER";
 export type MembershipStatus = "ACTIVE" | "INVITED" | "SUSPENDED";
@@ -1691,6 +1695,27 @@ export interface SiteSettings {
    * customCodeEnabled` emsaliyle aynı desen).
    */
   demoPaymentsSupported: boolean;
+  /**
+   * NOT — 2026-09-15 (frontend-agent, "Sağ alt canlı destek widget'ı") — Prisma sütunları
+   * (`SiteSettings.liveChatEnabled`/`liveChatProvider`/`liveChatScriptId`) db-agent tarafından
+   * eklendi, AMA backend `toSiteSettingsDto` (mappers/index.ts) + `SiteSettingsSchema`
+   * (schemas/entities.ts) + `settings.schemas.ts::UpdateSiteSettingsRequestSchema` + openapi.yaml
+   * `SiteSettings`/`UpdateSiteSettingsRequest` şemaları BU ALANLARI HENÜZ TAŞIMIYOR — bu bir
+   * backend-agent EKSİĞİDİR (frontend-agent'ın görevi değil). Gerçek API yanıtında bu alanlar
+   * `undefined` gelecektir; widget/admin formu bunu GÜVENLİ (kapalı) varsayılan olarak ele alır
+   * (bkz. `live-chat-widget.tsx`, `fetchSiteSettingsServer`'daki `DEFAULT_SETTINGS`). Backend
+   * mapper/schema/route wiring'i TAMAMLANANA kadar bu alanlar runtime'da HİÇBİR ZAMAN gerçek bir
+   * değerle dolmaz.
+   */
+  // Backend wiring TAMAMLANANA kadar gerçek yanıtta HİÇ BULUNMAYABİLİR — bu yüzden BİLİNÇLİ
+  // olarak opsiyonel tutulur (`demoPaymentsEnabled`in aksine); bu, diğer ajanların (ör.
+  // `site-header-*.test.tsx` mock'ları) mevcut TAM `SiteSettings` literallerini KIRMAZ.
+  // Backend mapper/şema wiring'i tamamlandığında bu alanlar zorunlu hale getirilebilir.
+  liveChatEnabled?: boolean;
+  /** `"internal" | "crisp" | "tawkto"` — backend serbest metin döner (enum DEĞİL, bkz. Prisma şeması). */
+  liveChatProvider?: "internal" | "crisp" | "tawkto";
+  /** Yalnızca `liveChatProvider !== "internal"` iken kullanılır (Crisp Website ID / Tawk.to widget ID). */
+  liveChatScriptId?: string | null;
 }
 
 export interface UpdateSiteSettingsRequest {
@@ -1707,6 +1732,10 @@ export interface UpdateSiteSettingsRequest {
   shippingEstimatedDaysMax?: number | null;
   /** HAM DB sütununa yazılır — `demoPaymentsSupported`e YAZILAMAZ (o salt-okunur bir mapper alanı). */
   demoPaymentsEnabled?: boolean;
+  /** Bkz. `SiteSettings.liveChatEnabled` yorumu — backend wiring TAMAMLANANA kadar bu alan sunucu tarafından yoksayılır (sessizce düşürülür). */
+  liveChatEnabled?: boolean;
+  liveChatProvider?: "internal" | "crisp" | "tawkto";
+  liveChatScriptId?: string | null;
 }
 
 export interface UpdateBlogPostRequest {
@@ -3669,6 +3698,20 @@ export interface AppointmentBooking {
 }
 
 export interface CancelBookingRequest {
+  reason?: string;
+}
+
+/**
+ * `PATCH /admin/telehealth/appointments/{id}/reschedule` gövdesi — `docs/architecture/openapi.yaml`
+ * `RescheduleAppointmentRequest`. `newDate`/`newStartTime` randevunun DOKTORUNUN kendi saat
+ * diliminde DUVAR SAATİDİR (UTC DEĞİL), dönüşüm sunucuda yapılır. Süre backend'de KORUNUR —
+ * burada bilinçli olarak bir süre alanı YOKTUR.
+ */
+export interface RescheduleAppointmentRequest {
+  /** `YYYY-MM-DD` */
+  newDate: string;
+  /** `HH:mm` */
+  newStartTime: string;
   reason?: string;
 }
 

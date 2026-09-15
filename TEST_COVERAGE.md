@@ -4141,3 +4141,98 @@ turlardaki AYNI Windows `*.localhost` çözümleme kısıtı) qa-agent tarafınd
 LiveKit için mevcut Docker `claudecodeproje-livekit-1` servisi (`ws://siteadi.localhost:7880`,
 zaten `.env.e2e`de tanımlı) YENİDEN KULLANILDI, AYRI bir LiveKit örneği başlatılmadı. `saas_e2e`
 migration'ları zaten güncel, DB'ye dokunulmadı.
+
+## Admin randevu yeniden planlama (reschedule) + e-posta bildirimi + sağ alt canlı destek widget'ı — SON adım (db-agent+notification-agent+backend-agent(x2) → qa-agent doğrulaması, bu turda eklendi, 2026-09-15)
+
+Kaynak: orkestratör görev talimatı. Kapsam — (1) YENİ `PATCH /admin/telehealth/appointments/{id}/
+reschedule` (ADMIN-only, MANAGER/EDITOR 403) + admin UI "Tarih/Saat Değiştir" modalı
+(`reschedule-appointment-dialog.tsx`) — doktorun kendi saat diliminde duvar saati UTC'ye çevrilir,
+süre KORUNUR, çakışan aktif randevu `409 APPOINTMENT_RESCHEDULE_CONFLICT`, best-effort e-posta
+(`APPOINTMENT_RESCHEDULED` şablonu, hasta + doktorun bağlı User'ı varsa). (2) YENİ sağ alt canlı
+destek widget'ı (`live-chat-widget.tsx`, `fixed bottom-6 right-6 z-50`) —
+`SiteSettings.liveChatEnabled/liveChatProvider/liveChatScriptId` ile admin panelden
+(`/admin/settings` → "Canlı Destek" kartı) yönetiliyor, varsayılan KAPALI, `/consultation/**`de
+HER ZAMAN gizli.
+
+**Standart e2e ortamına GERÇEKTEN çalıştırıldı** (`saas_e2e`, backend `4001`
+`DOTENV_CONFIG_PATH=.env.e2e npx tsx -r dotenv/config src/server.ts`, frontend `3100`
+`E2E_SKIP_WEBSERVER=1` ile elle başlatılan `next dev`, önceki turlardaki AYNI Windows
+`*.localhost` çözümleme kısıtı).
+
+**Ortam kurulum bulgusu (bu turda, engelleyici — qa-agent tarafından ÇÖZÜLDÜ, bir "bug" DEĞİL,
+migration state tutarsızlığı):** `saas_e2e`de yeni migration
+(`20260915153000_add_appointment_rescheduled_and_live_chat_settings`) `prisma migrate deploy` ile
+uygulanmaya çalışıldığında `P3018`/`42710` ("enum label already exists") hatası verdi —
+`_prisma_migrations` tablosunda satır `finished_at=NULL` olarak "yarım kalmış" görünüyordu ama
+GERÇEKTE hem enum değeri hem `site_settings` kolonları DB'de ZATEN VARDI (muhtemelen bu migration'ın
+daha önce elle/farklı bir oturumda kısmen uygulanmış olması). `prisma migrate resolve --applied
+20260915153000_...` ile durum düzeltildi (DB şeması zaten doğruydu, veri kaybı YOK). Bu qa-agent'ın
+KENDİ test-ortamı kurulum sorumluluğu kapsamındadır (db-agent'ın migration dosyasının KENDİSİ
+doğru) — devops-agent'a/db-agent'a yönlendirilecek bir uygulama bug'ı DEĞİLDİR.
+
+**Yeni dosyalar:**
+- `frontend/tests/e2e/telehealth-admin-reschedule.spec.ts` (YENİ, 3 test) — admin UI'dan reschedule
+  → admin tablosu + hasta portalı (`/patient/bookings/{id}`, yenilenince) + doktor konsolu
+  (`GET /doctor/bookings`, `DoctorBookingsPanel`in KENDİ veri kaynağı) ANINDA yansıma; çakışma
+  regresyonu (409, form BAŞARISIZ, randevu ESKİ saatinde KALIR); yetki regresyonu (MANAGER/EDITOR
+  API seviyesinde 403, randevu ETKİLENMEZ).
+- `frontend/tests/e2e/live-chat-widget.spec.ts` (YENİ, 4 test) — varsayılan KAPALI/render YOK;
+  admin panelden AÇ (internal) → ikon + panel + selamlama + mesaj gönder/otomatik yanıt (~800ms);
+  `/consultation/{id}` (GERÇEK randevu) sayfasında liveChatEnabled AÇIK olsa BİLE widget HİÇ
+  görünmez [KRİTİK]; temizlik testi ortamı KAPALI durumuna geri getirir ve doğrular.
+
+| # | Madde | Doğrulama | Durum |
+|---|---|---|---|
+| R1 | Admin "Tarih/Saat Değiştir" → `toast.success`, dialog kapanır, admin tablosunda YENİ saat görünür | `telehealth-admin-reschedule.spec.ts` (YENİ) | ✅ Geçiyor |
+| R2 | Hasta tarafı (`/patient/bookings/{id}?t=...`) yenilenince YENİ saat görünür (bu sayfa `revalidate:60` DEĞİL, dinamik) | `telehealth-admin-reschedule.spec.ts` (YENİ) | ✅ Geçiyor |
+| R3 | Doktor tarafı — `GET /doctor/bookings` (doktor konsolunun KENDİ veri kaynağı) AYNI randevuyu YENİ `startsAt` ile döner | `telehealth-admin-reschedule.spec.ts` (YENİ) | ✅ Geçiyor |
+| R4 [REGRESYON] | Aynı doktora YENİ saatle çakışan başka bir aktif randevu VARSA → 409 + kullanıcı-dostu satır-içi hata, dialog AÇIK kalır, randevu ESKİ saatinde KALIR | `telehealth-admin-reschedule.spec.ts` (YENİ) | ✅ Geçiyor |
+| R5 [REGRESYON, yetki] | MANAGER/EDITOR → API seviyesinde 403, randevu ETKİLENMEZ | `telehealth-admin-reschedule.spec.ts` (YENİ) | ✅ Geçiyor |
+| R6 | Backend'in KENDİ mock/spy entegrasyon testleri (UTC dönüşü, süre koruma, best-effort SMTP hatası toleransı, e-posta değişken içeriği) | `backend/tests/integration/telehealth-admin-reschedule.test.ts` (backend-agent, YENİDEN YAZILMADI) | ✅ Geçiyor (8/8, `vitest run` ile doğrulandı) |
+| W1 | `liveChatEnabled` KAPALIYKEN ana sayfada/`/patient`de widget HİÇ render edilmez | `live-chat-widget.spec.ts` (YENİ) | ✅ Geçiyor |
+| W2 | Admin panelden AÇ (internal) → ikon görünür, panele tıklanınca selamlama + panel açılır | `live-chat-widget.spec.ts` (YENİ) | ✅ Geçiyor |
+| W3 | Mesaj gönderilince listeye eklenir, ~800ms sonra SABİT otomatik yanıt gelir | `live-chat-widget.spec.ts` (YENİ) | ✅ Geçiyor |
+| W4 [KRİTİK] | `liveChatEnabled` AÇIKKEN bile GERÇEK `/consultation/{id}` sayfasında (video oda kontrolleri) widget HİÇ görünmez | `live-chat-widget.spec.ts` (YENİ) | ✅ Geçiyor |
+| W5 | Test sonu — `liveChatEnabled` TEKRAR KAPALIYA çekilir, paylaşımlı demo ortamı temiz bırakılır (doğrulandı) | `live-chat-widget.spec.ts` (YENİ) | ✅ Geçiyor |
+
+**`revalidate: 60` eventual-consistency notu (proje belleği İLE TUTARLI, bug DEĞİL):**
+`fetchSiteSettingsServer()` (`server-settings.ts`) `next: { revalidate: 60 }` ile önbellekli — admin
+panelden `liveChatEnabled` AÇILDIKTAN/KAPATILDIKTAN sonra `/` ve `/patient`in SSR'ı en fazla ~60sn
+eskimiş kalabilir. `live-chat-widget.spec.ts`teki TÜM pozitif/negatif görünürlük iddiaları
+`toPass({ timeout: 75_000, intervals: [2_000, 5_000] })` + `page.goto` (reload) desenini kullanır
+(`products/blog/portfolio` İLE AYNI, memory kuralı gereği REAKTİF olarak "düzeltilmeye"
+ÇALIŞILMADI).
+
+**Regresyon taraması (bu turda GERÇEKTEN koşuldu):**
+- `telehealth-multi-slot-booking.spec.ts` — 9/9 ✅ (İLK koşumda madde 22 `POST /appointments/
+  bookings`in paylaşılan 5/dk route-level hız sınırına takılıp `bookingId` `undefined` okuma
+  hatasıyla kırmızı oldu — bu qa-agent'ın KENDİ art arda çalıştırdığı 3 farklı e2e dosyasının
+  (reschedule + live-chat-widget + bu dosyanın kendi madde 21'i) AYNI 1 dakikalık pencerede
+  biriken booking-oluşturma çağrılarının DOĞAL sonucu, **uygulama regresyonu DEĞİL** — ~1dk sonra
+  YENİDEN koşulunca 9/9 yeşil. Kalıcı bir flaky kaynağı DEĞİL, yalnızca bu turun test-çalıştırma
+  YOĞUNLUĞUNUN bir yan etkisi.).
+- `patient-portal.spec.ts` — 13/13 ✅ (madde 39 fan-out testi DAHİL, hâlâ yeşil).
+- `telehealth-consultation.spec.ts` — 4/4 ✅ (1 `test.skip`, LiveKit bu ortamda yapılandırılı).
+
+**Kapsam dışı bırakılanlar (bu turda, gerekçeli):**
+- Gerçek SMTP/e-posta gelen kutusu simülasyonu — görev talimatı BİLİNÇLİ OLARAK kapsam dışı
+  bıraktı; backend'in best-effort davranışı (SMTP hatası olsa da 200) hem backend'in KENDİ
+  mock/spy testinde (R6) hem qa-agent'ın e2e akışında (R1, gerçek SMTP `.env.e2e`de
+  YAPILANDIRILMAMIŞ ama uç YİNE DE 200 döndü) dolaylı olarak doğrulandı.
+- Harici sağlayıcı (Crisp/Tawk.to) script enjeksiyonu — yalnızca `<Script>` tag'i render ediyor,
+  gerçek bir harici hesaba bağlı DEĞİL; bu turda e2e ile doğrulanmadı (düşük risk, saf DOM
+  render'ı, backend/frontend'in kendi tip/validasyon katmanı yeterli kapsam sağlıyor).
+
+**Eksik bırakılan (bu turda, bir sonraki tur için not):**
+- `RescheduleAppointmentDialog`/`LiveChatWidget` için frontend-agent tarafından yazılmış bir birim
+  testi (vitest/RTL) YOK (`frontend/tests/unit/`de ilgili dosya bulunamadı) — qa-agent'ın kapsamı
+  DEĞİL (Definition of Done: "Unit test yazılmış — backend-agent/frontend-agent"), frontend-agent'a
+  yönlendirilir.
+- a11y otomasyonu (axe-core) — repo genelinde `@axe-core/playwright` bağımlılığı/kurulumu HÂLÂ YOK
+  (yalnızca `jest-axe` birim-test seviyesinde mevcut, bkz. önceki tur notu "Eksik bırakılan — a11y
+  otomasyonu", satır ~3853) — bu turda da tekrar edildi, tek bir özellik turunda TEK BAŞINA
+  bootstrap edilecek kapsam DEĞİL, code-quality-agent/architect ile koordineli AYRI bir görev
+  olarak ele alınmalı.
+
+**Bulunan bug — YOK** (reschedule ve canlı destek widget'ı akışları için; çakışma/yetki
+regresyonları ve `/consultation` gizleme KRİTİK maddeleri dahil TÜMÜ beklenen şekilde çalışıyor).

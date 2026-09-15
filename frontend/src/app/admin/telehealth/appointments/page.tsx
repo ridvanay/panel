@@ -16,15 +16,27 @@ import { Select } from "@/components/ui/select";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PageHeading } from "@/components/admin/page-heading";
+import { RescheduleAppointmentDialog } from "@/components/admin/telehealth/reschedule-appointment-dialog";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { formatPriceFromCents } from "@/lib/format-price";
 
 /**
- * `.claude/architect-scope-telehealth-template.md` §5.1/§8.4 — SALT-OKUNUR randevu listesi
- * (yalnızca iptal aksiyonu), hasta PII'si içerir. Backend zaten `requireSiteRole(ADMIN, MANAGER)`
- * ile 403 döner (EDITOR dahil); sidebar item'ı bu role zaten görünmez (bkz. `sidebar.tsx`).
- * Doğrudan URL ile gelen yetkisiz bir kullanıcı burada `friendlyErrorMessage`'ın 403 mesajını görür.
+ * `.claude/architect-scope-telehealth-template.md` §5.1/§8.4 — randevu listesi, hasta PII'si
+ * içerir. Backend zaten `requireSiteRole(ADMIN, MANAGER)` ile 403 döner (EDITOR dahil); sidebar
+ * item'ı bu role zaten görünmez (bkz. `sidebar.tsx`). Doğrudan URL ile gelen yetkisiz bir kullanıcı
+ * burada `friendlyErrorMessage`'ın 403 mesajını görür.
+ *
+ * Görev (2026-09-15) — sayfa artık TAMAMEN salt-okunur DEĞİL: iptalin yanına "Tarih/Saat Değiştir"
+ * (reschedule) aksiyonu eklendi (`PATCH .../reschedule`, YALNIZCA ADMIN — MANAGER dialog'u açabilir
+ * ama kaydederken sunucudan 403 alır, `friendlyErrorMessage` ile forma yansır).
  */
+/**
+ * "Tarih/Saat Değiştir" butonunun GÖRÜNÜR olduğu durumlar — görev talimatı bağlayıcı: yalnızca
+ * `SCHEDULED`/`IN_PROGRESS` (aktif/planlanmış). Mevcut "İptal Et" butonu (`status === "SCHEDULED"`)
+ * İLE AYNI KAPSAM DEĞİLDİR — o davranış DEĞİŞTİRİLMEZ (görev talimatı yalnızca YANINA yeni bir
+ * aksiyon eklenmesini istiyor, mevcut iptal mantığını genişletmeyi DEĞİL).
+ */
+const RESCHEDULABLE_STATUSES: AppointmentStatus[] = ["SCHEDULED", "IN_PROGRESS"];
 const STATUS_LABELS: Record<AppointmentStatus, string> = {
   PENDING_PAYMENT: "Ödeme Bekliyor",
   SCHEDULED: "Planlandı",
@@ -52,6 +64,7 @@ export default function AdminTelehealthAppointmentsPage() {
   const [search, setSearch] = useState("");
   const [pendingCancel, setPendingCancel] = useState<Appointment | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  const [pendingReschedule, setPendingReschedule] = useState<Appointment | null>(null);
 
   const load = useCallback(async (status?: AppointmentStatus, search?: string) => {
     try {
@@ -88,7 +101,7 @@ export default function AdminTelehealthAppointmentsPage() {
       <PageHeading
         icon={CalendarClock}
         title="Randevular"
-        description="Tüm doktorların randevuları — salt okunur, yalnızca iptal edilebilir."
+        description="Tüm doktorların randevuları — hasta PII'si içerir; planlanmış/devam eden randevular iptal edilebilir veya (yalnızca ADMIN) yeniden planlanabilir."
       />
 
       {error && (
@@ -170,11 +183,24 @@ export default function AdminTelehealthAppointmentsPage() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        {appointment.status === "SCHEDULED" && (
-                          <Button variant="ghost" size="sm" onClick={() => setPendingCancel(appointment)}>
-                            İptal Et
-                          </Button>
-                        )}
+                        <div className="flex items-center justify-end gap-1">
+                          {RESCHEDULABLE_STATUSES.includes(appointment.status) && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setPendingReschedule(appointment)}
+                              aria-label={`"${appointment.patientName}" için randevu tarihini/saatini değiştir`}
+                            >
+                              <CalendarClock className="h-3.5 w-3.5" />
+                              Tarih/Saat Değiştir
+                            </Button>
+                          )}
+                          {appointment.status === "SCHEDULED" && (
+                            <Button variant="ghost" size="sm" onClick={() => setPendingCancel(appointment)}>
+                              İptal Et
+                            </Button>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -200,6 +226,15 @@ export default function AdminTelehealthAppointmentsPage() {
         tone="warning"
         loading={cancelling}
         onConfirm={handleCancel}
+      />
+
+      <RescheduleAppointmentDialog
+        open={pendingReschedule !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingReschedule(null);
+        }}
+        appointment={pendingReschedule}
+        onRescheduled={() => load(status || undefined, search)}
       />
     </div>
   );

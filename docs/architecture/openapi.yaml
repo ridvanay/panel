@@ -7421,6 +7421,71 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
 
+  /admin/telehealth/appointments/{id}/reschedule:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+        description: >
+          `Appointment.id` — **booking ID DEĞİLDİR**. Bu uç yalnızca belirtilen TEK
+          appointment satırını yeniden planlar; çoklu-slot bir booking'in diğer
+          appointment'larına DOKUNMAZ (bilinçli/dar kapsam — backlog: "booking-geneli
+          reschedule").
+    patch:
+      tags: [TeleHealth]
+      summary: Randevuyu yeniden planla (YALNIZCA ADMIN)
+      description: >
+        NOT — 2026-09-15 (backend-agent, "Admin randevu yeniden planlama"). **MANAGER'a
+        VERİLMEZ** (`mark-paid` İLE AYNI eşik disiplini — randevu hareketi beyanı).
+
+
+        `newDate`/`newStartTime`, randevunun DOKTORUNUN `DoctorProfile.timeZone`
+        alanındaki DUVAR SAATİ olarak yorumlanır (`lib/timezone.ts::wallTimeToUtc`).
+        Süre KORUNUR — yalnızca başlangıç zamanı kayar (`newEndsAt = newStartsAt +
+        mevcut süre`). Belirtilen duvar saati DST geçişi nedeniyle mevcut değilse
+        `422 VALIDATION_ERROR`.
+
+
+        **Çakışma kontrolü:** aynı doktorun (`Appointment.doctorId`) yeni zaman
+        aralığıyla ÇAKIŞAN başka bir AKTİF (`SCHEDULED`/`IN_PROGRESS`) randevusu
+        VARSA (kendisi HARİÇ) `409 APPOINTMENT_RESCHEDULE_CONFLICT`.
+
+
+        Başarılı güncelleme `logAudit(action: "telehealth.appointment.rescheduled",
+        metadata: { oldStartsAt, oldEndsAt, newStartsAt, newEndsAt, reason })` düşer
+        ve best-effort olarak `APPOINTMENT_RESCHEDULED` e-postasını hastaya (her zaman)
+        ve doktora (yalnızca `DoctorProfile.userId` DOLUYSA) gönderir — gönderim
+        BAŞARISIZ olsa da bu uç ASLA 500 dönmez.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RescheduleAppointmentRequest" }
+      responses:
+        "200":
+          description: Yeniden planlandı
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/Appointment" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: "MANAGER dahil, ADMIN DIŞINDAKİ her rol (`error.code: FORBIDDEN`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "Yeni zaman aralığı doktorun başka bir aktif randevusuyla çakışıyor (`error.code: APPOINTMENT_RESCHEDULE_CONFLICT`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
   /admin/telehealth/analytics/overview:
     get:
       tags: [TeleHealth]
@@ -13665,6 +13730,11 @@ components:
         - ORDER_CANCELLATION
         - ORG_INVITATION
         - CONTACT_FORM_NOTIFICATION
+        # NOT — pre-existing gap (bu turdan ÖNCE) düzeltildi: `APPOINTMENT_CONFIRMATION` Prisma
+        # enum'unda/`lib/email-variables.ts`te zaten VARDI ama bu listede EKSİKTİ.
+        - APPOINTMENT_CONFIRMATION
+        # NOT — 2026-09-15 (backend-agent, "Admin randevu yeniden planlama").
+        - APPOINTMENT_RESCHEDULED
         - CUSTOM
 
     EmailTemplateEditorMode:
@@ -14826,6 +14896,25 @@ components:
             doğrudan bu alanı okuyabilir. Sır DEĞİLDİR (public `GET /settings`'te de
             döner; sızdırdığı tek bilgi zaten UI'da gözlemlenebilir olan "bu ortamda
             demo ödeme butonu var mı"dır).
+        # ---- Canlı destek widget'ı (2026-09-15) ----
+        liveChatEnabled:
+          type: boolean
+          description: >
+            Sağ alt canlı destek widget'ının aktif olup olmadığı — HAM DB sütunu,
+            `demoPaymentsEnabled`in AKSİNE env-tabanlı bir AND-gate YOKTUR. Varsayılan
+            `false` (admin bilinçli olarak açar).
+        liveChatProvider:
+          type: string
+          enum: [internal, crisp, tawkto]
+          description: >
+            Kullanılacak sağlayıcı — "internal" (varsayılan, dahili mock arayüz) |
+            "crisp" | "tawkto". DB sütunu serbest metindir, ama bu API bu üç değerle
+            SINIRLIDIR (geçersiz bir değer `PATCH`te `422` döner).
+        liveChatScriptId:
+          type: string
+          nullable: true
+          maxLength: 200
+          description: "Yalnızca `liveChatProvider` harici bir sağlayıcıysa kullanılır (ör. Crisp Website ID, Tawk.to widget ID). `internal` iken yoksayılır."
 
     UpdateSiteSettingsRequest:
       description: "`PATCH /admin/settings` gövdesi — tüm alanlar opsiyoneldir, satır yoksa `DEFAULTS` ile birlikte oluşturulur (upsert)."
@@ -14866,6 +14955,9 @@ components:
             Denetim (audit): mevcut `settings.update` action'ı `metadata.changed` ile
             bu alanı otomatik loglar; ödeme-bütünlüğü hassasiyeti nedeniyle
             `metadata.demoPaymentsEnabled` olarak YENİ DEĞER de yazılır (boolean, PII DEĞİL).
+        liveChatEnabled: { type: boolean, description: "Sağ alt canlı destek widget'ı aç/kapa (admin toggle'ı) — HAM DB sütununa yazılır." }
+        liveChatProvider: { type: string, enum: [internal, crisp, tawkto], description: "Geçersiz bir değer (ör. `whatsapp`) `422` döner." }
+        liveChatScriptId: { type: string, nullable: true, maxLength: 200, description: "Yalnızca `liveChatProvider` harici bir sağlayıcıysa kullanılır." }
 
     SiteModule:
       description: >
@@ -17740,6 +17832,18 @@ components:
       required: [reason]
       properties:
         reason: { type: string, minLength: 1, maxLength: 500 }
+
+    RescheduleAppointmentRequest:
+      type: object
+      description: >
+        NOT — 2026-09-15 (backend-agent) — `PATCH /admin/telehealth/appointments/{id}/reschedule`
+        gövdesi. `newDate`/`newStartTime` randevunun doktorunun `DoctorProfile.timeZone`
+        alanındaki DUVAR SAATİDİR (UTC DEĞİL) — dönüşüm sunucuda `wallTimeToUtc` ile yapılır.
+      required: [newDate, newStartTime]
+      properties:
+        newDate: { type: string, pattern: "^\\d{4}-\\d{2}-\\d{2}$", example: "2026-09-22" }
+        newStartTime: { type: string, pattern: "^([01]\\d|2[0-3]):[0-5]\\d$", example: "10:00" }
+        reason: { type: string, maxLength: 500, description: "Admin notu — audit log'a ve e-postaya (`{{reason}}`) yazılır." }
 
     CreateSpecialtyRequest:
       type: object

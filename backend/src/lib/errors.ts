@@ -121,7 +121,15 @@ export type ApiErrorCode =
    * panelden `SiteSettings.demoPaymentsEnabled = false` yapılmışsa. 403 ("kasıtlı kapatma",
    * `PAYMENTS_NOT_CONFIGURED`/503 "dürüst yapılandırılmamışlık" İLE KARIŞTIRILMAZ).
    */
-  | "DEMO_PAYMENTS_DISABLED";
+  | "DEMO_PAYMENTS_DISABLED"
+  /**
+   * NOT — 2026-09-15 (backend-agent, "Admin randevu yeniden planlama") — `PATCH
+   * /admin/telehealth/appointments/{id}/reschedule`, yeni zaman aralığı AYNI doktorun başka bir
+   * AKTİF (`SCHEDULED`/`IN_PROGRESS`) randevusuyla ÇAKIŞIYORSA. `SlotTakenError`'dan AYRI bir
+   * kod (frontend'in reschedule çakışmasını hasta tarafı slot doluluğundan ayırt edebilmesi
+   * için) — genel `ConflictError` desenine UYAR ama kendi machine-readable kodu vardır. 409.
+   */
+  | "APPOINTMENT_RESCHEDULE_CONFLICT";
 
 export class ApiError extends Error {
   statusCode: number;
@@ -445,5 +453,16 @@ export class IdentityLockedError extends ApiError {
 export class DemoPaymentsDisabledError extends ApiError {
   constructor(message = "Demo ödeme bu ortamda admin tarafından kapatılmıştır.") {
     super(403, "DEMO_PAYMENTS_DISABLED", message);
+  }
+}
+
+/**
+ * NOT — 2026-09-15 (backend-agent, "Admin randevu yeniden planlama") — `PATCH
+ * /admin/telehealth/appointments/{id}/reschedule`, yeni zaman aralığı AYNI doktorun başka bir
+ * AKTİF randevusuyla çakışıyorsa fırlatılır (kendisi HARİÇ). 409.
+ */
+export class AppointmentRescheduleConflictError extends ApiError {
+  constructor(message = "Bu doktorun yeni zaman aralığında zaten başka bir aktif randevusu var.") {
+    super(409, "APPOINTMENT_RESCHEDULE_CONFLICT", message);
   }
 }

@@ -36,11 +36,25 @@ import {
   Languages,
   Lock,
   Mail,
+  MessageCircle,
   ShieldCheck,
   ShoppingBag,
   Settings2,
   Webhook,
 } from "lucide-react";
+
+/**
+ * Görev (2026-09-15) — "Canlı Destek" kartı. NOT (backend-agent EKSİĞİ, bkz.
+ * `lib/api/types.ts::SiteSettings.liveChatEnabled` yorumu): backend `toSiteSettingsDto`/
+ * `SiteSettingsSchema`/`UpdateSiteSettingsRequestSchema`/openapi.yaml bu alanları HENÜZ
+ * TAŞIMIYOR — bu form değerleri gönderir ama backend şu an SESSİZCE düşürür (422 vermez, ama
+ * KALICI OLMAZ). Backend wiring tamamlandığında bu form DEĞİŞİKLİK GEREKTİRMEZ.
+ */
+const LIVE_CHAT_PROVIDER_OPTIONS: { value: "internal" | "crisp" | "tawkto"; label: string }[] = [
+  { value: "internal", label: "Dahili (varsayılan)" },
+  { value: "crisp", label: "Crisp" },
+  { value: "tawkto", label: "Tawk.to" },
+];
 
 const SITE_TEMPLATE_OPTIONS: { value: SiteTemplate; label: string; description: string; icon: typeof Globe }[] = [
   { value: "SHOWCASE", label: "Tanıtım Sitesi", description: "Kurumsal/tanıtım odaklı sayfalar.", icon: Globe },
@@ -83,6 +97,9 @@ interface GeneralSettingsSnapshot {
   homePageId: string;
   siteTemplate: SiteTemplate;
   demoPaymentsEnabled: boolean;
+  liveChatEnabled: boolean;
+  liveChatProvider: "internal" | "crisp" | "tawkto";
+  liveChatScriptId: string;
 }
 
 function RoleBadge({ role, active }: { role: SiteRole; active: boolean }) {
@@ -144,6 +161,12 @@ export default function AdminSettingsPage() {
   const [demoPaymentsEnabled, setDemoPaymentsEnabled] = useState(false);
   const [demoPaymentsSupported, setDemoPaymentsSupported] = useState(false);
 
+  // Görev (2026-09-15) — canlı destek widget'ı ayarları. `demoPaymentsEnabled`in AKSİNE bir
+  // ortam (env) AND-gate'i YOKTUR — bu tamamen admin panelden yönetilen bir DB bayrağıdır.
+  const [liveChatEnabled, setLiveChatEnabled] = useState(false);
+  const [liveChatProvider, setLiveChatProvider] = useState<"internal" | "crisp" | "tawkto">("internal");
+  const [liveChatScriptId, setLiveChatScriptId] = useState("");
+
   const [permissions, setPermissions] = useState<PermissionsMatrix | null>(null);
   const [permissionsLoading, setPermissionsLoading] = useState(false);
   const [permissionsError, setPermissionsError] = useState<string | null>(null);
@@ -164,12 +187,20 @@ export default function AdminSettingsPage() {
       setPublishedPages(pages.items.filter((page) => page.status === "PUBLISHED"));
       setDemoPaymentsEnabled(settings.demoPaymentsEnabled);
       setDemoPaymentsSupported(settings.demoPaymentsSupported);
+      // Backend wiring EKSİK olduğu sürece bu üçü `undefined` gelir (bkz. dosya başı notu) —
+      // güvenli (kapalı/dahili) varsayılanlara düşülür.
+      setLiveChatEnabled(settings.liveChatEnabled ?? false);
+      setLiveChatProvider(settings.liveChatProvider ?? "internal");
+      setLiveChatScriptId(settings.liveChatScriptId ?? "");
       setSnapshot({
         siteName: settings.siteName,
         logoUrl: settings.logoUrl ?? "",
         homePageId: settings.homePageId ?? "",
         siteTemplate: settings.siteTemplate,
         demoPaymentsEnabled: settings.demoPaymentsEnabled,
+        liveChatEnabled: settings.liveChatEnabled ?? false,
+        liveChatProvider: settings.liveChatProvider ?? "internal",
+        liveChatScriptId: settings.liveChatScriptId ?? "",
       });
       setLoaded(true);
     } catch (err) {
@@ -190,9 +221,22 @@ export default function AdminSettingsPage() {
       logoUrl !== snapshot.logoUrl ||
       homePageId !== snapshot.homePageId ||
       siteTemplate !== snapshot.siteTemplate ||
-      demoPaymentsEnabled !== snapshot.demoPaymentsEnabled
+      demoPaymentsEnabled !== snapshot.demoPaymentsEnabled ||
+      liveChatEnabled !== snapshot.liveChatEnabled ||
+      liveChatProvider !== snapshot.liveChatProvider ||
+      liveChatScriptId !== snapshot.liveChatScriptId
     );
-  }, [siteName, logoUrl, homePageId, siteTemplate, demoPaymentsEnabled, snapshot]);
+  }, [
+    siteName,
+    logoUrl,
+    homePageId,
+    siteTemplate,
+    demoPaymentsEnabled,
+    liveChatEnabled,
+    liveChatProvider,
+    liveChatScriptId,
+    snapshot,
+  ]);
 
   // §10.12.8 — ortak hook: beforeunload + `/admin` linklerine capture-phase tıklama uyarısı
   // (davranış öncekiyle AYNI, sadece kod paylaşılıyor).
@@ -256,13 +300,31 @@ export default function AdminSettingsPage() {
         // HİÇ GÖNDERMEYİZ, aksi halde ilgisiz bir "Kaydet" tıklaması HAM DB sütununu (varsayılan
         // `true`) sessizce `false`'a çeker (env ileride açılırsa beklenmeyen davranış olurdu).
         ...(demoPaymentsSupported ? { demoPaymentsEnabled } : {}),
+        liveChatEnabled,
+        liveChatProvider,
+        liveChatScriptId: liveChatScriptId.trim() ? liveChatScriptId.trim() : null,
       });
       setSaved(true);
       // Nihai (env `&&` DB) değer sunucudan geri döner — `demoPaymentsSupported=false` (üretim)
       // iken istek REDDEDİLMEZ ama nihai bayrak `false` kalabilir; ekran her zaman sunucunun
       // döndürdüğü GERÇEK değeri yansıtır (kendi gönderdiğimiz ham değeri KÖRCE varsaymayız).
       setDemoPaymentsEnabled(updated.demoPaymentsEnabled);
-      setSnapshot({ siteName, logoUrl, homePageId, siteTemplate, demoPaymentsEnabled: updated.demoPaymentsEnabled });
+      // NOT (backend-agent EKSİĞİ) — `updated.liveChatEnabled`/`liveChatProvider`/`liveChatScriptId`
+      // backend wiring TAMAMLANANA kadar `undefined` gelir (yukarıda gönderdiğimiz değerler sessizce
+      // düşürülür, KALICI OLMAZ). Bu yüzden `demoPaymentsEnabled`in AKSİNE sunucu yanıtı KÖRCE takip
+      // EDİLMEZ — dirty-tracking snapshot'ı burada KENDİ gönderdiğimiz (iyimser) değerlerle güncellenir;
+      // backend wiring tamamlandığında `updated.liveChatEnabled` GERÇEK bir değer taşımaya başlar ve
+      // bu satırlar `demoPaymentsEnabled` deseniyle hizalanacak şekilde `updated.*`e geçirilebilir.
+      setSnapshot({
+        siteName,
+        logoUrl,
+        homePageId,
+        siteTemplate,
+        demoPaymentsEnabled: updated.demoPaymentsEnabled,
+        liveChatEnabled,
+        liveChatProvider,
+        liveChatScriptId,
+      });
       toast.success("Ayarlar kaydedildi.");
     } catch (err) {
       const message = friendlyErrorMessage(err);
@@ -501,6 +563,76 @@ export default function AdminSettingsPage() {
                     Bu ortamda demo ödeme altyapısı yapılandırılmamış — <code>ENABLE_DEMO_PAYMENTS</code> ortam
                     değişkeni kapalı olduğu için bu anahtar burada kullanılamaz. Bu, teknik bir kurulum eksikliğidir;
                     ortam yöneticinizle iletişime geçin.
+                  </p>
+                )}
+              </Card>
+            </motion.div>
+
+            {/*
+             * Görev (2026-09-15) — sağ alt canlı destek widget'ı yönetimi. `demoPaymentsEnabled`
+             * kartıyla AYNI görsel desen (toggle + açıklama), ama ortam (env) AND-gate'i YOKTUR —
+             * tamamen admin panelden yönetilen bir DB bayrağıdır.
+             */}
+            <motion.div variants={cardVariants} className="lg:col-span-3">
+              <Card className="space-y-4">
+                <SectionHeader
+                  icon={MessageCircle}
+                  title="Canlı Destek"
+                  description="Sağ alt köşede görünen canlı destek widget'ını yönetin."
+                />
+                <div className="flex items-center justify-between gap-4 rounded-lg border border-border/60 p-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-foreground">Canlı Destek Widget&apos;ı</p>
+                    <p className="text-xs text-foreground/60">
+                      Aktif olduğunda ziyaretçiler sağ alt köşedeki sohbet simgesiyle destek talebinde bulunabilir.
+                      Konsültasyon (video görüşme) sayfalarında HER ZAMAN gizlenir.
+                    </p>
+                  </div>
+                  <Switch checked={liveChatEnabled} onCheckedChange={(checked) => setLiveChatEnabled(Boolean(checked))} aria-label="Canlı Destek Widget'ı" />
+                </div>
+
+                {liveChatEnabled && (
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <Field id="liveChatProvider" label="Sağlayıcı" hint="Dahili seçiliyken basit bir mock sohbet arayüzü gösterilir.">
+                      {(inputProps) => (
+                        <Select
+                          {...inputProps}
+                          value={liveChatProvider}
+                          onChange={(e) => setLiveChatProvider(e.target.value as "internal" | "crisp" | "tawkto")}
+                        >
+                          {LIVE_CHAT_PROVIDER_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </Select>
+                      )}
+                    </Field>
+
+                    {liveChatProvider !== "internal" && (
+                      <Field
+                        id="liveChatScriptId"
+                        label={liveChatProvider === "crisp" ? "Crisp Website ID" : "Tawk.to Widget ID"}
+                        hint="Sağlayıcının panelinden alınan kimlik — bu widget'ı sizin hesabınıza bağlar."
+                        required
+                      >
+                        {(inputProps) => (
+                          <Input
+                            {...inputProps}
+                            value={liveChatScriptId}
+                            onChange={(e) => setLiveChatScriptId(e.target.value)}
+                            placeholder={liveChatProvider === "crisp" ? "ör. 12345678-abcd-1234-abcd-1234567890ab" : "ör. 5f8a.../default"}
+                          />
+                        )}
+                      </Field>
+                    )}
+                  </div>
+                )}
+
+                {liveChatEnabled && liveChatProvider !== "internal" && !liveChatScriptId.trim() && (
+                  <p className="flex items-start gap-1.5 admin-text-secondary">
+                    <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    Sağlayıcı kimliği (ID) girilmeden harici widget yüklenmez.
                   </p>
                 )}
               </Card>
