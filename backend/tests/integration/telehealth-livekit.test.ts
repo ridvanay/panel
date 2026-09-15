@@ -305,6 +305,137 @@ describe("telehealth/livekit — meeting-token, LiveKit YAPILANDIRILMIŞKEN (sah
   });
 });
 
+describe("telehealth/livekit — meeting-token, DOKTOR katılım penceresi bypass'ı (backend-agent görevi, 2026-09-15)", () => {
+  let app: FastifyInstance;
+  let adminToken: string;
+
+  beforeAll(async () => {
+    process.env.LIVEKIT_URL = "wss://fake-project.livekit.cloud";
+    process.env.LIVEKIT_API_KEY = "fake-api-key";
+    process.env.LIVEKIT_API_SECRET = "fake-api-secret-for-tests-only";
+    vi.resetModules();
+
+    const { buildApp } = await import("../../src/app");
+    app = buildApp();
+    await app.ready();
+    await resetDatabase(app.prisma);
+    await setTelehealthModuleEnabled(app, true);
+
+    const admin = await registerTestUser(app, { email: "telehealth-livekit-doctor-bypass-admin@example.com" });
+    adminToken = admin.accessToken;
+  });
+
+  afterAll(async () => {
+    await resetDatabase(app.prisma);
+    await app.close();
+    delete process.env.LIVEKIT_URL;
+    delete process.env.LIVEKIT_API_KEY;
+    delete process.env.LIVEKIT_API_SECRET;
+    vi.resetModules();
+  });
+
+  /** Doktoru bir `User`'a bağlar (mevcut testlerdeki "doktorun bağlı User'ı" deseniyle AYNI). */
+  async function linkDoctorUser(doctor: { id: string }) {
+    const doctorUser = await createUserDirect(app, "USER");
+    const doctorUserToken = await loginAs(app, doctorUser.email);
+    const link = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/admin/telehealth/doctors/${doctor.id}`,
+      headers: authHeader(adminToken),
+      payload: { userId: doctorUser.id },
+    });
+    expect(link.statusCode).toBe(200);
+    return doctorUserToken;
+  }
+
+  it("randevu saati ÇOK UZAKTA (dar pencerenin DIŞINDA) olsa da doktor 200 alır — misafir hasta AYNI randevuda 409 alır (davranışı KORUNUR)", async () => {
+    const { doctor } = await createDoctorWithAvailability(app);
+    const doctorUserToken = await linkDoctorUser(doctor);
+    const farFuture = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000);
+    const { appointment, rawAccessToken } = await createAppointmentDirect(app, doctor, {
+      startsAt: farFuture,
+      endsAt: new Date(farFuture.getTime() + 30 * 60 * 1000),
+    });
+
+    // Misafir hasta (dar pencere DIŞINDA) — davranış DEĞİŞMEDİ.
+    const patientRes = await app.inject({ method: "POST", url: `/api/v1/appointments/${appointment.id}/meeting-token?t=${rawAccessToken}` });
+    expect(patientRes.statusCode).toBe(409);
+    expect(patientRes.json().error.code).toBe("APPOINTMENT_NOT_JOINABLE");
+
+    // Doktor — ZAMAN penceresine tabi DEĞİL, odayı önceden test edebilir.
+    const doctorRes = await app.inject({
+      method: "POST",
+      url: `/api/v1/appointments/${appointment.id}/meeting-token`,
+      headers: authHeader(doctorUserToken),
+    });
+    expect(doctorRes.statusCode).toBe(200);
+    expect(typeof doctorRes.json().data.token).toBe("string");
+  });
+
+  it("booking'e bağlı, ÖDENMEMİŞ bir randevuda doktor da 409 alır — ödeme şartı ZAMAN penceresinden BAĞIMSIZ olarak KORUNUR", async () => {
+    const { doctor } = await createDoctorWithAvailability(app);
+    const doctorUserToken = await linkDoctorUser(doctor);
+
+    const startsAt = new Date(Date.now() + 60 * 60 * 1000);
+    const endsAt = new Date(startsAt.getTime() + 30 * 60 * 1000);
+    const booking = await app.prisma.appointmentBooking.create({
+      data: {
+        bookingNumber: `BK-${crypto.randomUUID()}`,
+        doctorId: doctor.id,
+        patientName: "Test Hasta",
+        patientEmail: `hasta-${crypto.randomUUID()}@example.com`,
+        slotCount: 1,
+        unitPriceCents: 50000,
+        subtotalCents: 50000,
+        totalCents: 50000,
+        currency: "TRY",
+        paymentStatus: "PENDING",
+        expiresAt: new Date(Date.now() + 30 * 60 * 1000),
+        meetingRoomName: `room_${crypto.randomBytes(16).toString("hex")}`,
+        accessTokenHash: crypto.randomBytes(32).toString("hex"),
+        consentAt: new Date(),
+        consentVersion: "v1",
+      },
+    });
+    const appointment = await app.prisma.appointment.create({
+      data: {
+        doctorId: doctor.id,
+        bookingId: booking.id,
+        status: "PENDING_PAYMENT",
+        patientName: "Test Hasta",
+        patientEmail: `hasta-${crypto.randomUUID()}@example.com`,
+        startsAt,
+        endsAt,
+        priceCents: 50000,
+        currency: "TRY",
+        meetingRoomName: booking.meetingRoomName,
+        accessTokenHash: crypto.randomBytes(32).toString("hex"),
+      },
+    });
+
+    // `status !== SCHEDULED/IN_PROGRESS` zaten tek başına 409 üretir — ödeme şartını İZOLE test
+    // etmek için burada SCHEDULED'a çekiyoruz (yalnızca bu test satırı, ödeme/status ayrı kontroller).
+    await app.prisma.appointment.update({ where: { id: appointment.id }, data: { status: "SCHEDULED" } });
+
+    const doctorRes = await app.inject({
+      method: "POST",
+      url: `/api/v1/appointments/${appointment.id}/meeting-token`,
+      headers: authHeader(doctorUserToken),
+    });
+    expect(doctorRes.statusCode).toBe(409);
+    expect(doctorRes.json().error.code).toBe("APPOINTMENT_NOT_JOINABLE");
+
+    // `paymentStatus` PAID'e çevrilince ZAMAN penceresi dışında olsa dahi doktor 200 alır.
+    await app.prisma.appointmentBooking.update({ where: { id: booking.id }, data: { paymentStatus: "PAID" } });
+    const doctorResAfterPaid = await app.inject({
+      method: "POST",
+      url: `/api/v1/appointments/${appointment.id}/meeting-token`,
+      headers: authHeader(doctorUserToken),
+    });
+    expect(doctorResAfterPaid.statusCode).toBe(200);
+  });
+});
+
 describe("telehealth/livekit — meeting-token hız sınırı (§8 madde 1 — 10/dk, AYRI app örneği)", () => {
   let app: FastifyInstance;
 

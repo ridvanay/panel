@@ -473,6 +473,49 @@ describe("telehealth — doktor self-servis profil ucu (PUT /doctor/profile — 
     expect(audit).not.toBeNull();
   });
 
+  // backend-agent görev notu (2026-09-15, "Doktorun kendi `timeZone`'unu güncelleyebilmesi") —
+  // doktor konsolundaki saat bilgisinin hastanın rezervasyon saatiyle karşılaştırılamaması
+  // hatasının kök nedeni: `timeZone` bu uca kadar YAZILAMIYORDU (bkz. [DPI] §1.4 2026-09-15
+  // güncellemesi). Geçerli bir IANA kimliğiyle güncellenir; geçersiz bir kimlik (`Intl.
+  // DateTimeFormat`'ın reddettiği bir dize) 422 ile REDDEDİLİR ve DB'de HİÇBİR ŞEY DEĞİŞMEZ.
+  it("geçerli bir IANA `timeZone` kimliğiyle (`America/New_York`) başarıyla güncellenir", async () => {
+    const res = await app.inject({
+      method: "PUT",
+      url: "/api/v1/doctor/profile",
+      headers: authHeader(doctorUserToken),
+      payload: { timeZone: "America/New_York" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.doctorProfile.timeZone).toBe("America/New_York");
+
+    const persisted = await app.prisma.doctorProfile.findUniqueOrThrow({ where: { id: doctorId } });
+    expect(persisted.timeZone).toBe("America/New_York");
+
+    // Sonraki testlerin varsayılanla (Europe/Istanbul) çalışmasını bozmamak için geri alınır.
+    const revert = await app.inject({
+      method: "PUT",
+      url: "/api/v1/doctor/profile",
+      headers: authHeader(doctorUserToken),
+      payload: { timeZone: "Europe/Istanbul" },
+    });
+    expect(revert.statusCode).toBe(200);
+  });
+
+  it("geçersiz bir IANA `timeZone` kimliği (`\"UTC+3\"`) 422 ile reddedilir; DB DEĞİŞMEZ", async () => {
+    const before = await app.prisma.doctorProfile.findUniqueOrThrow({ where: { id: doctorId } });
+
+    const res = await app.inject({
+      method: "PUT",
+      url: "/api/v1/doctor/profile",
+      headers: authHeader(doctorUserToken),
+      payload: { timeZone: "UTC+3" },
+    });
+    expect(res.statusCode).toBe(422);
+
+    const after = await app.prisma.doctorProfile.findUniqueOrThrow({ where: { id: doctorId } });
+    expect(after.timeZone).toBe(before.timeZone);
+  });
+
   it("`cvEntries` içinde HTML gönderilirse 422 döner", async () => {
     const res = await app.inject({
       method: "PUT",

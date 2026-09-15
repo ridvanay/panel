@@ -68,7 +68,16 @@ interface JoinState {
   isExpired: boolean;
 }
 
-function useJoinState(appointment: Appointment): JoinState {
+/**
+ * Bug-fix turu (2026-09-15) — backend `POST .../meeting-token`de doktoru katılım penceresinden
+ * TAMAMEN muaf tutuyor (doktor HER ZAMAN token alabilir, odayı önceden test edebilir). Bu hook'un
+ * kendi 5dk/15dk penceresi doktoru YANLIŞLIKLA engellememesi için `isDoctor === true` olduğunda
+ * `isJoinable` HER ZAMAN `true`, `isExpired` HER ZAMAN `false` döner — `remainingMs`/`isNear`
+ * (geri sayım GÖRSELİ, bilgilendirme amaçlı) doktor için de AYNEN hesaplanmaya devam eder, yalnızca
+ * buton görünürlüğünü kontrol eden iki alan bypass edilir. Hasta/misafir (`isDoctor === false`)
+ * davranışı DEĞİŞMEZ.
+ */
+function useJoinState(appointment: Appointment, isDoctor: boolean): JoinState {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
@@ -84,8 +93,8 @@ function useJoinState(appointment: Appointment): JoinState {
   return {
     remainingMs,
     isNear: remainingMs <= NEAR_THRESHOLD_MS && now <= joinClosesAt,
-    isJoinable: now >= joinOpensAt && now <= joinClosesAt,
-    isExpired: now > joinClosesAt,
+    isJoinable: isDoctor ? true : now >= joinOpensAt && now <= joinClosesAt,
+    isExpired: isDoctor ? false : now > joinClosesAt,
   };
 }
 
@@ -562,17 +571,21 @@ function ConsultationVideoRoom({
 }
 
 function ConsultationRoomLoaded({ appointment, accessToken }: { appointment: Appointment; accessToken?: string }) {
-  const joinState = useJoinState(appointment);
+  // F4 — bu görüşmenin doktoru mu izliyor? `SiteRole.DOCTOR` YOKTUR, `User.doctorProfileId`
+  // ilişkisinden TÜRETİLİR (bkz. `lib/api/types.ts::User`). Oturumsuz misafir hasta (`accessToken`
+  // ile) için `user` zaten `null` olur — `isDoctor` doğal olarak `false` kalır.
+  //
+  // Bug-fix turu (2026-09-15) — `useJoinState`in doktoru zaman penceresinden muaf tutabilmesi için
+  // `isDoctor` bu hook'tan ÖNCE hesaplanır (React hook kuralları ihlal edilmez — `useAuthOptional`
+  // zaten kendi bağımsız hook'u, çağrı SIRASI değişse de hook SAYISI/sırası her render'da sabit).
+  const auth = useAuthOptional();
+  const isDoctor = auth?.user?.doctorProfileId != null && auth.user.doctorProfileId === appointment.doctorId;
+
+  const joinState = useJoinState(appointment, isDoctor);
   const [meeting, setMeeting] = useState<MeetingTokenResponse | null>(null);
   const [notConfigured, setNotConfigured] = useState(false);
   const [joinError, setJoinError] = useState<string | null>(null);
   const [requesting, setRequesting] = useState(false);
-
-  // F4 — bu görüşmenin doktoru mu izliyor? `SiteRole.DOCTOR` YOKTUR, `User.doctorProfileId`
-  // ilişkisinden TÜRETİLİR (bkz. `lib/api/types.ts::User`). Oturumsuz misafir hasta (`accessToken`
-  // ile) için `user` zaten `null` olur — `isDoctor` doğal olarak `false` kalır.
-  const auth = useAuthOptional();
-  const isDoctor = auth?.user?.doctorProfileId != null && auth.user.doctorProfileId === appointment.doctorId;
 
   // qa-agent bulgusu — `RecordingControls` daha önce modül durumunu hiç kontrol etmiyordu,
   // `telehealth-recording` KAPALIYKEN (her yeni kurulumun varsayılanı) bile doktora "Kaydı
@@ -673,6 +686,22 @@ export function ConsultationRoom({ appointmentId, accessToken }: { appointmentId
   const [appointment, setAppointment] = useState<Appointment | null | undefined>(undefined);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  /**
+   * **architect (2026-09-15, `.claude/architect-scope-doctor-subdomain.md` §5.6.1 turu):** bu fetch
+   * eskiden mount'ta KOŞULSUZ atılıyordu. Access token YALNIZCA bellekte tutulur
+   * (`lib/api/token-store.ts`) — TAM SAYFA yüklemesinde (doktorun doktor host'undan ana site
+   * origin'ine cross-origin gelişi DAHİL, §5.6 notu) oturum ancak refresh çerezinden `AuthProvider`
+   * tarafından YENİDEN kurulur. `status === "loading"` iken atılan istek ANONİM gider,
+   * `GET /appointments/{id}` 404 döner ve bileşen "Randevu bulunamadı." hatasında KİLİTLENİRDİ
+   * (kullanıcı "Tekrar Dene"ye basana kadar; e2e'de birebir gözlendi). Bu yüzden oturum
+   * ÇÖZÜLENE kadar (`loading` dışına çıkana kadar) beklenir.
+   *
+   * Misafir hasta (magic-link `?t=`) BEKLEMEZ: `accessToken` varsa yetki o token'dan gelir,
+   * oturumun durumu ilgisizdir — eski davranış (anında fetch) AYNEN korunur.
+   */
+  const auth = useAuthOptional();
+  const waitingForSession = !accessToken && auth?.status === "loading";
+
   const loadAppointment = useCallback(async () => {
     setAppointment(undefined);
     setLoadError(null);
@@ -686,12 +715,13 @@ export function ConsultationRoom({ appointmentId, accessToken }: { appointmentId
   }, [appointmentId, accessToken]);
 
   useEffect(() => {
+    if (waitingForSession) return;
     (async () => {
       await loadAppointment();
     })();
-  }, [loadAppointment]);
+  }, [loadAppointment, waitingForSession]);
 
-  if (appointment === undefined) {
+  if (waitingForSession || appointment === undefined) {
     return <ConsultationSkeleton />;
   }
 

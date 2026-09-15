@@ -3406,3 +3406,84 @@ tabanlı `barVisible`) sayfa İLK yüklendiğinde `aria-hidden="false"` ile rend
 yalnızca panel gerçekten görünüm dışına ÇIKINCA aktifleşmeli). Kök neden/düzeltme frontend-agent'ın
 sahası (`IntersectionObserver` eşiği/`rootMargin` veya `barVisible` başlangıç koşulu) — qa-agent
 DOKUNMADI. Diğer 5/6 test (`madde 1`, `madde 2`, `madde 3` masaüstü, `madde 4`) YEŞİL.
+
+## Doktor konsolu katılım penceresi bypass'ı + çift saat dilimi gösterimi (bug-fix turu, bu turda eklendi)
+
+Bağlam — backend-agent/frontend-agent bu turda ÜÇ ilişkili düzeltmeyi zaten uyguladı (qa-agent
+kod YAZMADI, yalnızca test ekledi): (1) doktor konsolunda "Odaya Katıl" ARTIK HER ZAMAN gerçek/
+tıklanabilir bir `<a>` (`join-meeting-button.tsx::mergeRemainingTime` — pencere kapalıyken eskiden
+`<span>`/`<Badge>`'e dönüşüp KAYBOLUYORDU); (2) `POST .../meeting-token` doktoru katılım
+penceresinden TAMAMEN muaf tutuyor (`telehealth.livekit.routes.ts`, yalnızca booking
+`paymentStatus=PAID` şartı KORUNUR) + `consultation-room.tsx::useJoinState` doktor için bypass;
+(3) `doctor-console-patient-card.tsx` üst-sol saat bloğu doktorun KENDİ dilimi + (farklıysa)
+parantez içinde hastanın Europe/Istanbul rezervasyon saatini (`"(HH:mm TSİ)"`) gösteriyor.
+
+**Yeni dosya:** `frontend/tests/e2e/telehealth-doctor-console-join-window.spec.ts` (5 test, kendi
+İZOLE fixture doktorları — biri `Europe/Istanbul`, biri `America/New_York` — `createAdminDoctorFixture`
++ `setupAndEnableTwoFactorForSelf` GERÇEK 2FA login'i, `telehealth-doctor-session-guard.spec.ts`/
+`doctor-console-dashboard-layout.spec.ts` İLE AYNI desen).
+
+**Kapsanan (GERÇEKTEN koşuldu — yerel `saas_e2e` + backend `:4001` + frontend `:3100`, kanıt için
+final qa-agent raporuna bakın):**
+- madde 1a: katılım penceresi KAPALIYKEN (`SLOT_BOOKING_BUFFER_MS` 2 saat ötesi bir slot) "Odaya
+  Katıl" `getByRole("link", {name:"Odaya Katıl"})` ile DOM'da mevcut, görünür, `aria-disabled` YOK,
+  `pointer-events` `none` DEĞİL, `href` `/consultation/{appointmentId}` desenine uyuyor. **YEŞİL.**
+- madde 2a (regresyon): doktorun dilimi `Europe/Istanbul` ise kart yalnızca TEK saat aralığı +
+  `"(TSİ)"` gösterir, çift saat EKLENMEZ. **YEŞİL.**
+- madde 2b: doktorun dilimi `America/New_York` ise kart doktor-diliminde saat aralığı + parantez
+  içinde kısaltma + hastanın GERÇEK Europe/Istanbul rezervasyon saatini (`"{abbrev} ({HH:mm} TSİ)"`)
+  gösterir; sade `"(TSİ)"` biçimi bu kartta GÖRÜNMEZ. **YEŞİL.**
+- Regresyon taraması — `telehealth-multi-slot-booking.spec.ts` "madde 24" (hasta tarafı, magic-link
+  ile `/patient/bookings/{id}`'de "Toplantıya Katıl" aktif link — bu turda DOKUNULMADI, görev
+  talimatı gereği) YENİDEN koşuldu: **YEŞİL** (2/2). `doctor-console-dashboard-layout.spec.ts`
+  (above-the-fold + scope sekmeleri, `DoctorConsolePatientCard`/`JoinMeetingButton`'ı YOĞUN kullanan
+  BAŞKA bir dosya) YENİDEN koşuldu: **YEŞİL** (3/3, `saas_e2e`'nin paylaşılan 5/dk booking oluşturma
+  hız sınırına takılan İKİ geçici deneme HARİÇ — backend/uygulama davranışı DEĞİL, yerel art arda
+  koşumun kendi eseri).
+- `npx tsc --noEmit` (frontend, TÜM proje) — 0 hata.
+
+**qa-agent BULGUSU (KRİTİK, frontend-agent'a yönlendirilir — `madde 1b`, `test.fixme` ile CI'ı
+KIRMADAN belgelendi):** Doktor-subdomain izolasyonu AÇIKKEN (`NEXT_PUBLIC_DOCTOR_URL` ayrı bir
+hostname'e çözülüyorsa — bu e2e ortamının KENDİSİ DAHİL, bkz. `playwright.config.ts`) "Odaya
+Katıl"a tıklamak GERÇEKTE konsültasyon odasına GÖTÜRMEZ. Kök neden: `join-meeting-button.tsx`'in
+`href`'i `useLocalizePath()` ile üretilen SALT GÖRECELİ (host İÇERMEYEN) bir yoldur;
+`doctor-portal-route-guard.tsx::isDoctorPortalRoute()` yalnızca `/(?:[a-z]{2}/)?doctor(?:/|$)`
+desenini "doktor portalı" sayar — `/consultation/{id}` bu desenle EŞLEŞMEZ. Doktor
+`doktor.siteadi.localhost/doctor`'dayken linke tıklayınca tarayıcı AYNI (doktor) origin'inde
+`/consultation/{id}`'e gider → `DoctorPortalRouteGuard` bunu "doktor portalı DIŞI" sayıp
+`router.replace(localize("/doctor"))` ile DERHAL `/doctor`'a GERİ GÖNDERİR — doktor konsültasyon
+odasına HİÇBİR ZAMAN ulaşamaz. İlk elden, gerçek tarayıcıda tekrarlanabilir biçimde doğrulandı
+(`page.waitForURL(/\/consultation\/.../)` timeout'a düştü, sayfa `doktor.siteadi.localhost/doctor`
+üzerinde sabit kaldı). Bu, bu turun KENDİ "buton her zaman görünür/tıklanabilir" düzeltmesini
+PRATİKTE anlamsız kılan, doktor-subdomain izolasyonu (`.claude/architect-scope-doctor-subdomain.md`)
+ile ÇAKIŞAN bir mimari/entegrasyon regresyonu — subdomain izolaston devreye girmeden önce (yani
+doktor `/doctor`'a ana host üzerinden eriştiği eski kurulumlarda) bu sorun YOKTU. Olası düzeltme
+yönü (qa-agent BURADA DÜZELTMEDİ): `doctor-host.ts::toDoctorOrigin()`'in TERSİ — ana site origin'ine
+mutlak bir URL üreten bir `toSiteOrigin()` yardımcısı ile `join-meeting-button.tsx`'in
+`mergeRemainingTime` modunda `href`'i doktor host'undaysa MUTLAK olarak ana site origin'ine kurmak;
+VEYA `isDoctorPortalRoute()` desenine `/consultation`'ı da dahil edip o rotanın doktor hostname'i
+ALTINDA da render edilmesini sağlamak (bu ikinci seçenek `(site)` route grubunun host kısıtıyla
+ÇELİŞEBİLİR — nihai karar architect'e bırakılır).
+
+**ÇÖZÜLDÜ — architect kararı (2026-09-15), `madde 1b` `test.fixme` → `test` (AKTİF, YEŞİL).**
+Karar ve gerekçe: `.claude/architect-scope-doctor-subdomain.md` **§5.6.1**. Üç tamamlayıcı parça:
+1. `join-meeting-button.tsx` (`mergeRemainingTime` modu) href'i `SITE_ORIGIN` ile MUTLAK üretir
+   (frontend-agent, bu turda zaten yapılmıştı) — doktor ana site origin'ine cross-origin gider.
+2. `doctor-portal-route-guard.tsx::isDoctorSharedRouteException()` (**YENİ**) — `/consultation/{id}`
+   guard'ın DAR kapsamlı TEK istisnasıdır; doktor orada KALIR. Bu desen `proxy.ts`'in
+   `DOCTOR_PORTAL_ROUTE_PATTERN`'ı ile PAYLAŞILMAZ (paylaşılsaydı ana host'a gelen HER hasta
+   `/consultation` isteği de doktor subdomain'ine 307'lenirdi — hasta orada authenticated değildir).
+3. `consultation-room.tsx::ConsultationRoom` (**YENİ**) — randevu fetch'i, `?t=` magic-link YOKSA
+   `auth.status === "loading"` çıkana kadar BEKLER. Aksi hâlde TAM SAYFA yüklemesinde (bellek-içi
+   access token henüz refresh çerezinden kurulmamışken) istek ANONİM gidip 404 dönüyor ve sayfa
+   "Randevu bulunamadı." hatasında kilitleniyordu (2. madde düzeltildikten SONRA ortaya çıkan İKİNCİ
+   katman; gerçek tarayıcıda birebir gözlendi). Misafir hasta (`?t=`) davranışı DEĞİŞMEDİ.
+
+Koşum kanıtı (yerel `saas_e2e` + backend `:4001` + frontend `:3100`, `E2E_SKIP_WEBSERVER=1`):
+`telehealth-doctor-console-join-window.spec.ts` **5/5 YEŞİL** (madde 1b dâhil);
+`telehealth-consultation.spec.ts` **5 geçti / 1 skip** (LiveKit yapılandırma skip'i, mevcut);
+`frontend` `npx tsc --noEmit` 0 hata, `npm run lint` 0 error (5 önceden var olan warning).
+Not (architect → qa-agent, BU TURDA DÜZELTİLMEDİ): `telehealth-recording.spec.ts` "madde 1"
+`"Kaydı Başlat"` butonunun modül KAPALIYKEN de görünmesini bekliyor; `consultation-room.tsx`
+HEAD'de zaten `isDoctor && recordingModuleEnabled` ile gate'li — test ESKİ/buggy davranışı
+belgeliyor, beklenti güncellenmelidir (bu turdaki değişikliklerle İLGİSİZ, önceden var olan hata).

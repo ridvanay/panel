@@ -275,11 +275,36 @@ export const UpdateDoctorRequestSchema = CreateDoctorRequestSchema.partial();
 export type UpdateDoctorRequest = z.infer<typeof UpdateDoctorRequestSchema>;
 
 /**
+ * backend-agent görev notu (2026-09-15, "Doktorun kendi `timeZone`'unu güncelleyebilmesi") —
+ * Node 20 tam ICU ile gelir (bkz. `lib/timezone.ts` dosya başı notu); YENİ bir kütüphane
+ * EKLENMEZ, `Intl.DateTimeFormat` kurucusunun kendi doğrulaması "dener/fırlatır" deseniyle
+ * yeniden kullanılır. Geçersiz bir IANA kimliği (ör. "UTC+3", boş dize, uydurma bölge) `RangeError`
+ * fırlatır — bu `false` olarak yakalanır. Projede bu tur ÖNCESİNDE `timeZone` için ayrı bir
+ * IANA-format doğrulaması YOKTU (admin `CreateDoctorRequestSchema.timeZone` yalnızca serbest
+ * metin sınırı taşıyordu) — bu fonksiyon yalnızca BU alan için eklenir, admin şeması bilerek
+ * DEĞİŞTİRİLMEZ (kapsam dışı).
+ */
+function isValidIanaTimeZone(timeZone: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * [DPI] §1.4 (bağlayıcı) — `PUT /doctor/profile` gövdesi. **`UpdateDoctorRequestSchema`'dan
  * TÜRETİLMEZ** (admin şemasına ileride eklenecek bir alan sessizce doktorun yazma yüzeyine
  * düşmesin diye AYRI bir şema). `.strict()`: kapsam dışı alan (ör. `title`/`sessionPriceCents`/
  * `experienceYears`) → `422`, sessiz yok sayma YOK. Tüm alanlar opsiyoneldir (yalnızca
  * gönderilenler güncellenir); `cvEntries`/`publications` gönderilirse dizinin TAMAMINI değiştirir.
+ *
+ * `timeZone` — backend-agent görev notu (2026-09-15) ile eklendi: doktor konsolundaki saat
+ * bilgisi hastanın rezervasyon saatiyle karşılaştırılamıyordu çünkü doktor kendi `timeZone`'unu
+ * (varsayılan `"Europe/Istanbul"`) DEĞİŞTİREMİYORDU — artık self-service opsiyonel bir alan.
+ * `isValidIanaTimeZone` ile doğrulanır ("UTC+3" gibi bir ofset dizesi KABUL EDİLMEZ, yalnızca
+ * gerçek IANA kimlikleri, ör. "Europe/Istanbul", "America/New_York").
  */
 export const UpdateDoctorSelfProfileRequestSchema = z
   .object({
@@ -290,6 +315,13 @@ export const UpdateDoctorSelfProfileRequestSchema = z
     languages: LANGUAGES_SCHEMA.optional(),
     cvEntries: z.array(DoctorCvEntrySchema).max(60).optional(),
     publications: z.array(DoctorPublicationSchema).max(200).optional(),
+    timeZone: z
+      .string()
+      .trim()
+      .min(1)
+      .max(80)
+      .refine(isValidIanaTimeZone, { message: "Geçerli bir IANA saat dilimi kimliği olmalı (ör. \"Europe/Istanbul\")." })
+      .optional(),
   })
   .strict();
 export type UpdateDoctorSelfProfileRequest = z.infer<typeof UpdateDoctorSelfProfileRequestSchema>;

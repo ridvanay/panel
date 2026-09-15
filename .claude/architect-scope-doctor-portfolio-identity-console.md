@@ -81,19 +81,30 @@ içindeki `REQUIRED_DEMO_DOCTOR_BIO_SENTENCE` `startsWith` garantisi**
 ### 1.4 Doktorun yazma yüzeyi — `PUT /doctor/profile`
 
 **Yazabilir:** `subSpecialty`, `bio`, `aboutHtml`, `practiceStartYear`, `languages`,
-`cvEntries`, `publications`.
+`cvEntries`, `publications`, `timeZone` (bkz. aşağıdaki 2026-09-15 notu).
 
-**YAZAMAZ (bağlayıcı):** `title`, `fullName`, `slug`, `specialtyId`, `timeZone`,
+**YAZAMAZ (bağlayıcı):** `title`, `fullName`, `slug`, `specialtyId`,
 `sessionDurationMin`, `sessionPriceCents`, `currency`, `avatarMediaId`, `isVerified`,
 `isActive`, `order`, `userId`. Gerekçeler: `title`/`isVerified` bir **yetkinlik iddiasıdır**
 (kendi kendine "Prof. Dr." olunmaz — [CNT] §7.2/§7.4 disiplini); fiyat/süre satılan ürünün
-tanımıdır ([EPT] §1.2); `timeZone` tüm slot üretimini etkiler; `slug` canlı URL'i ve
-sitemap'i kırar; `avatarMediaId` bir `Media` satırı ister ve doktor bir panel kullanıcısı
-değildir ([TCT] §9.7.7).
+tanımıdır ([EPT] §1.2); `slug` canlı URL'i ve sitemap'i kırar; `avatarMediaId` bir `Media`
+satırı ister ve doktor bir panel kullanıcısı değildir ([TCT] §9.7.7).
 
 `UpdateDoctorSelfProfileRequest`, `UpdateDoctorRequest`'ten **`allOf` ile TÜREMEZ** — admin
 şemasına ileride eklenecek bir alan sessizce doktorun yazma yüzeyine düşmemelidir. Zod
 `.strict()`: kapsam dışı alan → **`422`**, sessiz yok sayma YOK.
+
+**2026-09-15 güncellemesi (backend-agent, "Doktorun kendi `timeZone`'unu güncelleyebilmesi"
+görevi):** `timeZone` YAZAMAZ listesinden çıkarılıp Yazabilir listesine taşındı. Kritik hata
+bildirimi: doktor konsolundaki saat bilgisi hastanın rezervasyon saatiyle karşılaştırılamıyordu
+çünkü doktorun `DoctorProfile.timeZone`'u (varsayılan `"Europe/Istanbul"`) self-service
+DEĞİŞTİRİLEMİYORDU. "`timeZone` tüm slot üretimini etkiler" gerekçesi hâlâ geçerlidir — bu
+yüzden alan opsiyonel ve IANA-format doğrulamalıdır (`UpdateDoctorSelfProfileRequestSchema::
+isValidIanaTimeZone`, `Intl.DateTimeFormat` dener/fırlatır deseni, YENİ kütüphane YOK); doktor
+değeri değiştirdiğinde mevcut tekrarlayan müsaitlik kuralları/slotlar YENİDEN HESAPLANMAZ
+(kurallar duvar-saati dakikası olarak saklanır, `lib/timezone.ts`), yalnızca YENİ hesaplamalar
+güncel `timeZone` ile yapılır — bu davranış BİLİNÇLİ bir sınırdır, admin CRUD'undaki
+`timeZone` alanı (`CreateDoctorRequestSchema`) bu tur ile DEĞİŞTİRİLMEDİ.
 
 ---
 

@@ -2,7 +2,7 @@
 
 import { Ban, CalendarX2, IdCard, NotebookPen, Paperclip } from "lucide-react";
 import type { AppointmentBooking } from "@/lib/api/types";
-import { formatFullDayLabel, formatTime } from "@/lib/telehealth-format";
+import { formatFullDayLabel, formatTime, formatTimeZoneAbbreviation } from "@/lib/telehealth-format";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -95,7 +95,15 @@ export function DoctorConsolePatientCard({ booking, calibratedNowMs, timeZone, o
           {firstAppointment ? (
             <div>
               <p className="text-base font-bold tabular-nums tracking-tight text-foreground">
-                {formatTime(firstAppointment.startsAt, timeZone)} - {formatTime(firstAppointment.endsAt, timeZone)}
+                {formatTime(firstAppointment.startsAt, timeZone)} - {formatTime(firstAppointment.endsAt, timeZone)}{" "}
+                <span className="text-xs font-medium tabular-nums text-foreground/50">
+                  {timeZone === "Europe/Istanbul"
+                    ? "(TSİ)"
+                    : `${formatTimeZoneAbbreviation(firstAppointment.startsAt, timeZone)} (${formatTime(
+                        firstAppointment.startsAt,
+                        "Europe/Istanbul"
+                      )} TSİ)`}
+                </span>
               </p>
               <p className="mt-0.5 text-xs font-medium text-foreground/60">{formatFullDayLabel(firstAppointment.startsAt, timeZone)}</p>
             </div>

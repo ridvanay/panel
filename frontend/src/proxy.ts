@@ -131,7 +131,13 @@ async function fetchEnabledLocales(): Promise<Locale[]> {
 /** §3.1 [1] — bu dört yol ana host'ta proxy'nin GERİ KALANINI (bakım modu, locale, doktor devri) HİÇ görmez. */
 const SAAS_AUTH_SURFACE_PATHS = new Set(["/login", "/register", "/forgot-password", "/reset-password"]);
 
-/** `doctor-portal-route-guard.tsx::isDoctorPortalRoute` İLE AYNI genel `[a-z]{2}` locale prefix örüntüsü. */
+/** `doctor-portal-route-guard.tsx::isDoctorPortalRoute` İLE AYNI genel `[a-z]{2}` locale prefix örüntüsü.
+ *
+ *  **2026-09-15 (architect, §5.6):** guard'da AYRICA `isDoctorSharedRouteException()` (`/consultation/{id}`)
+ *  vardır ve o desen BURAYA TAŞINMAZ/BURADAKİYLE BİRLEŞTİRİLMEZ — bu desen "hangi HOST'ta servis
+ *  edilir" sorusunu (oturumdan bağımsız, HASTA istekleri DAHİL) yanıtlar; `/consultation/**` ana
+ *  host'ta kalır. Buraya eklenirse hasta magic-link (`?t=`) erişimi de doktor subdomain'ine 307'lenir
+ *  (hasta orada authenticated değildir → login döngüsü). Gerekçenin tamamı guard dosyasındadır. */
 const DOCTOR_PORTAL_ROUTE_PATTERN = /^\/(?:[a-z]{2}\/)?doctor(?:\/|$)/;
 /** Yalnızca locale ÖNEKLİ hâli (`/tr/doctor`, `/en/doctor/earnings`) — §3.1 [8]'in 3. satırı. */
 const DOCTOR_PORTAL_PREFIXED_ROUTE_PATTERN = /^\/[a-z]{2}\/doctor(?:\/|$)/;

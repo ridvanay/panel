@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useLocalizePath } from "@/context/locale-alternates-context";
 import type { AppointmentBooking } from "@/lib/api/types";
+import { SITE_ORIGIN } from "@/lib/doctor-host";
 import { formatDayLabel, formatTime } from "@/lib/telehealth-format";
 import { cn } from "@/lib/utils";
 
@@ -19,10 +20,19 @@ import { cn } from "@/lib/utils";
  * konsolu hasta kartında (`doctor-console-patient-card.tsx`) AYRI bir `RemainingTimeBadge` +
  * bu buton İKİ AYRI elemandı (gereksiz tekrar) — bu modda "kalan süre" mantığı (eski
  * `RemainingTimeBadge`'in BİREBİR aynı eşikleri: -15dk/-0dk/pencere içi/pencere sonrası) BU
- * bileşene taşındı. Seans vakti HENÜZ gelmediyse buton yerine GRİ/UYARI renkli, buton-OLMAYAN bir
- * bekleme etiketi gösterilir; yalnızca katılım penceresi AÇIKKEN gerçek (aktif) buton render
- * edilir. Ödeme eksik/randevu yok/pencere kapandı durumları (nadir görülür) mevcut
- * disabled-tooltip desenine DÜŞER — task'ın "bu 2 durum korunabilir" kararı.
+ * bileşene taşındı.
+ *
+ * Bug-fix turu (2026-09-15) — backend-agent doktoru `POST .../meeting-token`teki katılım penceresi
+ * kontrolünden TAMAMEN muaf tuttu (doktor HER ZAMAN token alabilir, odayı önceden test edebilir).
+ * Önceki davranış (`mergeRemainingTime` modunda pencere kapalıyken buton yerine düz `<span>`/
+ * `<Badge>` render etmek) doktor konsolunda "Odaya Katıl" butonunun NEREDEYSE HİÇ görünmemesine
+ * yol açıyordu. Artık `mergeRemainingTime` modunda HER ZAMAN gerçek, tıklanabilir bir `<a>`
+ * render edilir — zaman durumuna göre YALNIZCA görsel varyant/yanındaki rozet değişir:
+ *   1) pencere henüz açılmadıysa: `variant="outline"` (soluk) buton + "X dk içinde" uyarı rozeti,
+ *   2) pencere açıksa: `activeVariant` (yeşil) buton, rozet yok,
+ *   3) pencere kapandıysa: `activeVariant` buton + "Süresi Geçti" nötr rozet (doktor geç kalan bir
+ *      görüşmeye de girebilmeli — backend zaten izin veriyor, buton disabled/gizli OLMAZ).
+ * Ödeme eksik/randevu yok durumları (nadir görülür) mevcut disabled-tooltip desenine DÜŞER.
  *
  * Varsayılan (`mergeRemainingTime` verilmezse) davranış DEĞİŞMEDİ —`booking-list-view.tsx`/
  * `booking-summary-card.tsx` mevcut disabled-tooltip desenini AYNEN KORUR (qa-agent'ın
@@ -61,40 +71,81 @@ export function JoinMeetingButton({
   // eslint-disable-next-line react-hooks/purity -- `availability-calendar.tsx` İLE AYNI gerekçe: katılım penceresi durumunu "şu an" ile karşılaştırmak GEREKİR, saniyede bir tick atan bir sayaç GEREKMEZ, yalnızca render anındaki an yeterlidir
   const now = nowMs ?? Date.now();
 
-  // §mergeRemainingTime — ödeme tamamsa VE katılım penceresi bilgisi mevcutsa AMA pencere HENÜZ
-  // açılmadıysa, disabled-tooltip buton yerine eski `RemainingTimeBadge`'in ürettiği bekleme
-  // etiketi gösterilir. Pencere ZATEN açıksa (veya kapandıysa) bu blok atlanır, akış normal
-  // aktif/disabled buton mantığına devam eder.
+  const relativeHref = firstAppointment
+    ? localize(`/consultation/${firstAppointment.id}${accessToken ? `?t=${encodeURIComponent(accessToken)}` : ""}`)
+    : "#";
+  // Doktor konsolu (`mergeRemainingTime=true`) doktor-subdomain izolasyonu açıkken kendi origin'inde
+  // (`doktor.siteadi.localhost`) render edilir; `/consultation/...` ise ana site origin'inde yaşar
+  // (bkz. `app/[lang]/(site)/consultation/[id]/page.tsx`) ve `doctor-portal-route-guard.tsx`'in
+  // `isDoctorPortalRoute()` deseniyle EŞLEŞMEZ — göreceli bir href ile tıklanırsa guard bunu "portal
+  // dışı" sanıp anında `/doctor`'a geri yönlendirir (doktor konsültasyon odasına asla ulaşamaz).
+  // Bu yüzden bu modda href'i `SITE_ORIGIN` ile MUTLAK yapıyoruz — tarayıcı gerçek bir cross-origin
+  // navigasyon yapar, guard hiç devreye girmez. `SITE_ORIGIN` subdomain modu kapalıyken de (tek host)
+  // zaten geçerli tek origin olduğu için zararsızdır — `isSubdomainModeEnabled()` kontrolüne gerek yok.
+  // Hasta/misafir tarafı (`mergeRemainingTime=false`) zaten ana site origin'inde olduğundan eski
+  // göreceli davranışı KORUR.
+  const href = mergeRemainingTime && firstAppointment ? `${SITE_ORIGIN}${relativeHref}` : relativeHref;
+  const activeButtonClassName = cn(
+    buttonVariants({ size, variant: activeVariant === "success" ? "success" : "default" }),
+    "rounded-[var(--site-radius)]"
+  );
+
+  // §mergeRemainingTime — ödeme tamamsa VE katılım penceresi bilgisi mevcutsa, buton HER DURUMDA
+  // (pencere açılmamış/açık/kapanmış fark etmeksizin) gerçek, tıklanabilir bir `<a>` olarak render
+  // edilir — backend doktoru zaman kısıtlamasından muaf tuttuğu için tıklamak her zaman çalışır
+  // (bkz. dosya başı yorum). Zaman durumuna göre YALNIZCA görsel varyant/yanındaki bilgi rozeti
+  // değişir; buton asla kaybolmaz.
   if (mergeRemainingTime && firstAppointment && booking.paymentStatus === "PAID" && booking.joinableFrom && booking.joinableUntil) {
     const fromMs = new Date(booking.joinableFrom).getTime();
     const untilMs = new Date(booking.joinableUntil).getTime();
     const resolvedTimeZone = timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const outlineButtonClassName = cn(buttonVariants({ size, variant: "outline" }), "rounded-[var(--site-radius)]");
 
     if (now < fromMs - 15 * 60_000) {
       return (
-        <span className="text-xs text-foreground/60">
-          {formatDayLabel(booking.joinableFrom, resolvedTimeZone)} · {formatTime(booking.joinableFrom, resolvedTimeZone)}
-        </span>
+        <div className="flex flex-col items-end gap-1">
+          <a href={href} className={outlineButtonClassName}>
+            {activeLabel}
+          </a>
+          <span className="text-xs text-foreground/60">
+            {formatDayLabel(booking.joinableFrom, resolvedTimeZone)} · {formatTime(booking.joinableFrom, resolvedTimeZone)}
+          </span>
+        </div>
       );
     }
     if (now < fromMs) {
       const minutesLeft = Math.max(1, Math.ceil((fromMs - now) / 60_000));
       return (
-        <Badge tone="warning" solid size="sm" className="gap-1">
-          <Clock className="h-3 w-3" aria-hidden="true" />
-          {minutesLeft} dk içinde
-        </Badge>
+        <div className="flex flex-col items-end gap-1">
+          <a href={href} className={outlineButtonClassName}>
+            {activeLabel}
+          </a>
+          <Badge tone="warning" solid size="sm" className="gap-1">
+            <Clock className="h-3 w-3" aria-hidden="true" />
+            {minutesLeft} dk içinde
+          </Badge>
+        </div>
       );
     }
     if (now > untilMs) {
       return (
-        <Badge tone="neutral" size="sm" className="gap-1">
-          <Ban className="h-3 w-3" aria-hidden="true" />
-          Süresi Geçti
-        </Badge>
+        <div className="flex flex-col items-end gap-1">
+          <a href={href} className={activeButtonClassName}>
+            {activeLabel}
+          </a>
+          <Badge tone="neutral" size="sm" className="gap-1">
+            <Ban className="h-3 w-3" aria-hidden="true" />
+            Süresi Geçti
+          </Badge>
+        </div>
       );
     }
-    // Pencere şu an AÇIK — aşağıdaki normal akışa devam edilir (aktif buton render edilir).
+    // Pencere şu an AÇIK — sade aktif buton, ek rozet yok.
+    return (
+      <a href={href} className={activeButtonClassName}>
+        {activeLabel}
+      </a>
+    );
   }
 
   let disabled = true;
@@ -114,16 +165,9 @@ export function JoinMeetingButton({
 
   if (!firstAppointment) disabled = true;
 
-  const href = firstAppointment
-    ? localize(`/consultation/${firstAppointment.id}${accessToken ? `?t=${encodeURIComponent(accessToken)}` : ""}`)
-    : "#";
-
   if (!disabled) {
     return (
-      <a
-        href={href}
-        className={cn(buttonVariants({ size, variant: activeVariant === "success" ? "success" : "default" }), "rounded-[var(--site-radius)]")}
-      >
+      <a href={href} className={activeButtonClassName}>
         {activeLabel}
       </a>
     );

@@ -36,3 +36,16 @@ export function formatFullDayLabel(iso: string, timeZone: string): string {
 export function formatTime(iso: string, timeZone: string): string {
   return new Intl.DateTimeFormat("tr-TR", { timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(iso));
 }
+
+/**
+ * Bug-fix turu (2026-09-15) — doktor konsolu hasta kartı (`doctor-console-patient-card.tsx`)
+ * doktorun `timeZone`'u `Europe/Istanbul`DEN farklıysa saat dilimi kısaltmasını ("EDT", "GMT+3"
+ * vb.) ikinci bir açıklama olarak gösterebilsin diye eklendi. `"Europe/Istanbul"` için Intl'in
+ * ürettiği kısaltma ICU sürümüne göre değişebilir (`GMT+3` vb.) — bunun yerine platformda yaygın
+ * bilinen SABİT `"TSİ"` (Türkiye Saati) kısaltması döndürülür.
+ */
+export function formatTimeZoneAbbreviation(iso: string, timeZone: string): string {
+  if (timeZone === "Europe/Istanbul") return "TSİ";
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone, timeZoneName: "short" }).formatToParts(new Date(iso));
+  return parts.find((part) => part.type === "timeZoneName")?.value ?? timeZone;
+}

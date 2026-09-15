@@ -3404,9 +3404,11 @@ export type UpdateDoctorRequest = Partial<CreateDoctorRequest>;
 /**
  * [DPI] — `PUT /doctor/profile` gövdesi. **`UpdateDoctorRequest`'ten `allOf` ile TÜREMEZ**
  * (bilinçli, admin şemasına ileride eklenecek bir alan sessizce doktorun yazma yüzeyine
- * düşmemelidir). Doktorun DEĞİŞTİREMEYECEĞİ alanlar (title/fullName/slug/specialtyId/timeZone/
+ * düşmemelidir). Doktorun DEĞİŞTİREMEYECEĞİ alanlar (title/fullName/slug/specialtyId/
  * sessionDurationMin/sessionPriceCents/currency/avatarMediaId/isVerified/isActive/order/userId)
  * bu tipte YOKTUR — form bu alanları GÖNDERMEZ, sunucu zaten `additionalProperties:false` ile `422` döner.
+ * `timeZone` backend-agent tarafından (2026-09-15) YAZILABİLİR hale getirildi — doktor kendi IANA
+ * saat dilimini değiştirebilir (bkz. `doctor-profile-panel.tsx`).
  */
 export interface UpdateDoctorSelfProfileRequest {
   subSpecialty?: string | null;
@@ -3414,6 +3416,7 @@ export interface UpdateDoctorSelfProfileRequest {
   aboutHtml?: string | null;
   practiceStartYear?: number | null;
   languages?: string[];
+  timeZone?: string;
   cvEntries?: DoctorCvEntry[];
   publications?: DoctorPublication[];
 }

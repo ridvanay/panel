@@ -135,20 +135,31 @@ export async function telehealthLiveKitRoutes(app: FastifyInstance) {
         throw new AppointmentNotJoinableError();
       }
 
+      // backend-agent görev notu (2026-09-15, "Doktor için katılım penceresi bypass'ı") — doktor
+      // (`isDoctor === true`) randevu saatinden BAĞIMSIZ olarak odaya girip önceden test edebilmeli
+      // (dar 10dk-önce/15dk-sonra penceresine tabi DEĞİL). status kontrolü (üstte, SCHEDULED/
+      // IN_PROGRESS) VE booking varsa `paymentStatus === "PAID"` şartı KORUNUR — yalnızca ZAMAN
+      // penceresi doktor için atlanır. Hasta tarafı (`isDoctor === false`) davranışı AYNEN KORUNUR:
       // [TCT] §9.7.6 madde 2/4 (bağlayıcı) — booking'e bağlıysa pencere TÜM booking açıklığı
       // üzerinden (`min(startsAt)-10dk … max(endsAt)+15dk`) hesaplanır VE `paymentStatus !==
       // "PAID"` ise `null`/`null` (asla katılınabilir görünmez) — `getBookingJoinWindow` bu ikisini
       // BİRLİKTE uygular. `bookingId` YOKSA (bu tur ÖNCESİ tekil randevu) DAVRANIŞ DEĞİŞMEDİ.
-      let isJoinable: boolean;
-      if (booking) {
-        const { joinableFrom, joinableUntil } = getBookingJoinWindow(booking.appointments, booking.paymentStatus);
-        const now = new Date();
-        isJoinable = Boolean(joinableFrom && joinableUntil && now >= joinableFrom && now <= joinableUntil);
+      if (isDoctor) {
+        if (booking && booking.paymentStatus !== "PAID") {
+          throw new AppointmentNotJoinableError();
+        }
       } else {
-        isJoinable = isWithinJoinWindow(new Date(), appointment.startsAt, appointment.endsAt);
-      }
-      if (!isJoinable) {
-        throw new AppointmentNotJoinableError();
+        let isJoinable: boolean;
+        if (booking) {
+          const { joinableFrom, joinableUntil } = getBookingJoinWindow(booking.appointments, booking.paymentStatus);
+          const now = new Date();
+          isJoinable = Boolean(joinableFrom && joinableUntil && now >= joinableFrom && now <= joinableUntil);
+        } else {
+          isJoinable = isWithinJoinWindow(new Date(), appointment.startsAt, appointment.endsAt);
+        }
+        if (!isJoinable) {
+          throw new AppointmentNotJoinableError();
+        }
       }
 
       // [TCT] §9.7.6 (bağlayıcı) — "Çoklu slot = TEK oda": booking'e bağlıysa KANONİK oda

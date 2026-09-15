@@ -147,6 +147,11 @@ export async function telehealthDoctorPortalRoutes(app: FastifyInstance) {
           ...(body.languages !== undefined ? { languages: body.languages } : {}),
           ...(body.cvEntries !== undefined ? { cvEntries: body.cvEntries as Prisma.InputJsonValue } : {}),
           ...(body.publications !== undefined ? { publications: body.publications as Prisma.InputJsonValue } : {}),
+          // backend-agent görev notu (2026-09-15) — doktor kendi `timeZone`'unu (ör. Türkiye'deyse
+          // "Europe/Istanbul") self-service değiştirebilsin diye eklendi. IANA-format doğrulaması
+          // `UpdateDoctorSelfProfileRequestSchema::isValidIanaTimeZone`'da ZATEN yapıldı, burada
+          // TEKRARLANMAZ.
+          ...(body.timeZone !== undefined ? { timeZone: body.timeZone } : {}),
         },
         include: WITH_DOCTOR_RELATIONS,
       });

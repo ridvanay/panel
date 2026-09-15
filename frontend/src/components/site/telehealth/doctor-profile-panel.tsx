@@ -24,9 +24,15 @@ import { Alert } from "@/components/ui/alert";
 /**
  * `.claude/architect-scope-doctor-portfolio-identity-console.md` (**[DPI]**) §1.4 +
  * `.claude/design-notes-doctor-portfolio-console.md` — `/doctor/profile`. `PUT /doctor/profile`
- * ile YALNIZCA `subSpecialty`/`bio`/`aboutHtml`/`practiceStartYear`/`languages`/`cvEntries`/
- * `publications` yazılabilir. Doktor `title`/`fullName`/`slug`/`specialty`/fiyat/süre/avatar
- * DEĞİŞTİREMEZ — bu alanlar salt-okunur bir özet blokta gösterilir, formda YER ALMAZ.
+ * ile YALNIZCA `subSpecialty`/`bio`/`aboutHtml`/`practiceStartYear`/`languages`/`timeZone`/
+ * `cvEntries`/`publications` yazılabilir. Doktor `title`/`fullName`/`slug`/`specialty`/fiyat/süre/
+ * avatar DEĞİŞTİREMEZ — bu alanlar salt-okunur bir özet blokta gösterilir, formda YER ALMAZ.
+ *
+ * Bug-fix turu (2026-09-15) — backend-agent `timeZone`'u YAZILABİLİR hale getirdi (doktor konsolu
+ * saat karışıklığı şikayeti: doktor kendi diliminin hastanın rezervasyon dilimiyle [Europe/Istanbul]
+ * farklı olduğunu bilip düzeltebilmeli/ayarlayabilmeli). Alan salt-okunur özet blokundan ÇIKARILDI,
+ * forma taşındı — `admin/telehealth/doctors/new/page.tsx`teki AYNI serbest metin + IANA doğrulama
+ * (backend 422) deseni kullanılır, yeni bir dropdown/select İCAT EDİLMEDİ.
  */
 
 const LANGUAGE_OPTIONS = ["tr", "en", "de", "fr", "es", "ar"] as const;
@@ -70,6 +76,7 @@ const profileFormSchema = z.object({
   bio: z.string().trim().min(1, "Kısa özet gerekli.").max(5000),
   practiceStartYear: z.string(),
   languages: z.array(z.string()).min(1, "En az bir dil seçin.").max(6),
+  timeZone: z.string().trim().min(1, "Saat dilimi gerekli.").max(80),
 });
 type ProfileFormValues = z.infer<typeof profileFormSchema>;
 
@@ -102,6 +109,7 @@ export function DoctorProfilePanel() {
       bio: doctorProfile.bio,
       practiceStartYear: doctorProfile.practiceStartYear != null ? String(doctorProfile.practiceStartYear) : "",
       languages: doctorProfile.languages,
+      timeZone: doctorProfile.timeZone,
     },
   });
 
@@ -126,6 +134,7 @@ export function DoctorProfilePanel() {
         aboutHtml: trimmedAboutHtml ? trimmedAboutHtml : null,
         practiceStartYear,
         languages: values.languages,
+        timeZone: values.timeZone.trim(),
         cvEntries,
         publications,
       });
@@ -148,7 +157,7 @@ export function DoctorProfilePanel() {
       // tarafından register EDİLMEDİĞİ için `describeArrayItemError` ile okunabilir metne çevrilip
       // genel `Alert`in altında listelenir (artık sessizce genel mesaja gömülmüyor).
       const fieldErrors = fieldErrorsFrom(err);
-      for (const field of ["subSpecialty", "bio", "practiceStartYear"] as const) {
+      for (const field of ["subSpecialty", "bio", "practiceStartYear", "timeZone"] as const) {
         if (fieldErrors[field]) setError(field, { message: fieldErrors[field] });
       }
       const detailMessages = Object.entries(fieldErrors)
@@ -165,7 +174,9 @@ export function DoctorProfilePanel() {
         <p className="mt-1 text-sm text-foreground/60">Kurumsal özgeçmişinizi ve biyografinizi düzenleyin.</p>
       </div>
 
-      {/* Salt-okunur özet — unvan/ad/uzmanlık/fiyat/süre/saat dilimi DOKTOR TARAFINDAN DEĞİŞTİRİLEMEZ. */}
+      {/* Salt-okunur özet — unvan/ad/uzmanlık/fiyat/süre DOKTOR TARAFINDAN DEĞİŞTİRİLEMEZ. Saat
+          dilimi artık aşağıdaki formda DÜZENLENEBİLİR (bkz. `timeZone` alanı), burada TEKRAR
+          EDİLMEZ (çift gösterim kafa karıştırır). */}
       <div className="rounded-[var(--site-radius)] border border-border bg-surface p-5">
         <div className="flex items-center justify-between gap-2">
           <div>
@@ -197,14 +208,10 @@ export function DoctorProfilePanel() {
             <dt className="text-xs text-foreground/50">Seans ücreti</dt>
             <dd className="text-foreground">{formatPriceFromCents(savedProfile.sessionPriceCents, savedProfile.currency)}</dd>
           </div>
-          <div>
-            <dt className="text-xs text-foreground/50">Saat dilimi</dt>
-            <dd className="text-foreground">{savedProfile.timeZone}</dd>
-          </div>
         </dl>
 
         <p className="mt-4 text-xs text-foreground/50">
-          Unvan, ad-soyad, uzmanlık alanı, fiyat, süre ve profil fotoğrafınızı değiştirmek için yönetici ile iletişime geçin.
+          Unvan, ad-soyad, uzmanlık alanı, fiyat ve süreyi/profil fotoğrafınızı değiştirmek için yönetici ile iletişime geçin.
         </p>
       </div>
 
@@ -242,6 +249,16 @@ export function DoctorProfilePanel() {
             {(inputProps) => (
               <Input {...inputProps} type="number" min={1950} max={new Date().getUTCFullYear()} {...register("practiceStartYear")} />
             )}
+          </Field>
+
+          <Field
+            id="timeZone"
+            label="Saat dilimi (IANA)"
+            error={errors.timeZone?.message}
+            required
+            hint='Randevu saatleriniz bu dilimde gösterilir. Ör. "Europe/Istanbul".'
+          >
+            {(inputProps) => <Input {...inputProps} {...register("timeZone")} />}
           </Field>
 
           <div>

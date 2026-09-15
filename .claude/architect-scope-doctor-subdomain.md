@@ -388,6 +388,64 @@ hedef `toDoctorOrigin(path)` ile tam sayfa açılır.
 **Not (qa-agent için kritik):** origin değiştiği için bellek-içi access token kaybolur; yeni
 origin'de oturum **yalnızca refresh cookie ile** kurulur. §6 bu yüzden bu işin en kritik parçasıdır.
 
+#### 5.6.1 KARAR (2026-09-15, architect — "doktor konsültasyon odasına ulaşamıyor" blocker'ı)
+
+**Bulgu (qa-agent, `telehealth-doctor-console-join-window.spec.ts` madde 1b):** doktor
+konsolundaki "Odaya Katıl" linki `SITE_ORIGIN` ile mutlak hâle getirildikten SONRA bile doktor
+konsültasyon odasına **ulaşamıyordu** — tarayıcı ana host'ta `/consultation/{id}`'e varıyor,
+refresh çerezi (§6) sayesinde oturum orada da doktor oturumu olarak kuruluyor,
+`DoctorPortalRouteGuard` rotayı "portal dışı" sayıp `window.location.assign(toDoctorOrigin("/doctor"))`
+ile doktoru **derhal geri gönderiyordu**. Yani §5.6'nın kuralı, doktorun kendi klinik iş yüzeyini
+de kapatıyordu.
+
+**KARAR — guard'a DAR kapsamlı, PAYLAŞILMAYAN bir istisna eklenir:**
+`doctor-portal-route-guard.tsx`'e, `proxy.ts::DOCTOR_PORTAL_ROUTE_PATTERN`'dan **bağımsız**,
+YALNIZCA bu istemci bileşeninde yaşayan ikinci bir desen eklendi:
+
+```
+isDoctorSharedRouteException(pathname) → /^\/(?:[a-z]{2}\/)?consultation\/[^/]+/
+guard: if (isDoctorPortalRoute(p) || isDoctorSharedRouteException(p)) return;
+```
+
+`proxy.ts` **DEĞİŞMEDİ** (yalnızca desenin neden paylaşılmadığını anlatan bir yorum eklendi).
+
+**Gerekçe — iki katman, İKİ FARKLI soru (§5.6 tablosunun doğal sonucu):** `proxy.ts`'in deseni
+"bu istek hangi **host**ta servis edilir?" sorusunu **oturumdan bağımsız** yanıtlar;
+`/consultation/**` ana host'ta servis edilir, çünkü aynı sayfaya **hasta da** magic-link (`?t=`)
+ile erişir. Guard'ın deseni ise "doktor **oturumu** bu sayfada **kalabilir mi**?" sorusunu
+**host'tan bağımsız** yanıtlar. İki soru bugüne dek tesadüfen aynı cevabı veriyordu;
+`/consultation/{id}` ikisinin **ayrıştığı ilk rota**dır: hasta+doktor tarafından **paylaşılan TEK**
+sayfa ve bir vitrin sayfası değil, doktorun **kendi randevusunun çalışma yüzeyi**.
+
+**REDDEDİLEN alternatifler:**
+1. *Ortak deseni genişletmek* (`DOCTOR_PORTAL_ROUTE_PATTERN`'a `/consultation` eklemek) —
+   **REDDEDİLDİ:** proxy §3.1 [4] ana host'a gelen **HER** `/consultation/...` isteğini (hasta
+   dâhil) doktor subdomain'ine 307'lerdi; hasta orada authenticated **değildir** (login döngüsü/404).
+   İşlevsel **ve** güvenlik açısından yanlış.
+2. *`/consultation` sayfasını doktor host'unda render etmek / `(doctor)` grubuna taşımak* —
+   **REDDEDİLDİ:** §5.6'nın "`(site)` sayfaları YALNIZCA ana host'ta render edilir" ilkesini bozar,
+   aynı sayfanın iki kitle için ikizlenmesini gerektirir.
+3. *Sayfa seviyesinde guard'ı atlatan bir mekanizma* (opt-out context/flag) — **REDDEDİLDİ:**
+   guard `(site)/layout.tsx`'te, sayfanın **ÜSTÜNDE** mount edilir; bir alt sayfanın üstündeki
+   effect'i iptal etmesi yeni bir cross-cutting sinyal katmanı (context) icat etmeyi gerektirir.
+   İzin listesi **tek yerde, denetlenebilir** kalmalıdır — istisna guard'ın kendisinde yazılıdır.
+
+**BAĞLAYICI kapsam kuralı:** bu istisna listesi **yalnızca `/consultation/{id}`** içerir. Yeni bir
+rota eklemek bir **mimari karardır** — buraya tarihli bir not düşülmeden genişletilmez. Kolaylık
+gerekçesiyle (`/products`, `/cart`, `/hesabim` vb.) büyütülmesi §5.6'nın "hekim ana vitrinde
+kalamaz" kuralını fiilen boşaltır.
+
+**Yetkilendirme sınırı (security-agent için):** bu bir **yetkilendirme** gevşetmesi DEĞİLDİR —
+guard bir gezinme/UX izolasyon katmanıdır. Doktorun ilgili randevuya erişip erişemeyeceğine API
+karar verir (`POST /appointments/{id}/meeting-token`, doktor yalnızca **kendi** randevusu için
+token alır). Kabul edilen kozmetik sınır: doktor bu sayfada `(site)` layout'unu (SiteHeader/Footer)
+görür — §3.2'deki `/admin` sızıntısıyla aynı sınıfta, bilinçli.
+
+**Tamamlayıcı (aynı tur):** `join-meeting-button.tsx` `mergeRemainingTime` (doktor konsolu) modunda
+href'i `SITE_ORIGIN` ile **mutlak** üretir — böylece doktor host'unda gereksiz bir proxy §3.1 [9]
+307 hop'u oluşmaz ve navigasyon doğrudan ana origin'e gider. İki değişiklik birbirini tamamlar:
+mutlak href doktoru **ana host'a götürür**, bu istisna orada **kalmasına izin verir**.
+
 ---
 
 ## 6. KARAR: Host şeması ve oturum çerezi — **deneyle doğrulandı**
