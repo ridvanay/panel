@@ -6,9 +6,12 @@ import {
   getPublicDoctorSlotsRaw,
   defaultSlotRangeISODates,
   createAppointmentRaw,
+  createBookingRaw,
   requestMeetingTokenRaw,
   shiftAppointmentIntoJoinWindowDirectly,
   markAppointmentJoinableDirectly,
+  markBookingPaidDirectly,
+  setAppointmentStatusDirectly,
   type CreatedAppointment,
 } from "./support/telehealth-fixtures";
 
@@ -195,4 +198,71 @@ test("madde 13: odaya bağlanınca kamera/mikrofon/ekran paylaşımı kontroller
 
   // Ayrıl butonu da kontrol çubuğunun bir parçası — varlığı/erişilebilirliği doğrulanır.
   await expect(page.getByRole("button", { name: "Görüşmeden ayrıl" })).toBeVisible();
+});
+
+// =============================================================================
+// qa-agent — 4-parçalı kritik hata paketi (2026-09-15) SON adım, madde 1 (zaman kilidinin
+// TAMAMEN kalkması). `bookJoinableRealAppointment` (üstteki testler) BİLİNÇLİ OLARAK
+// `shiftAppointmentIntoJoinWindowDirectly` kullanır (randevuyu ŞİMDİ katılınabilir pencereye
+// kaydırır) — bu YENİ test TAM TERSİNİ kanıtlar: randevu saati GERÇEKTEN 12+ saat sonrasında
+// KALIR (zaman kaydırma fixture'ı HİÇ ÇAĞRILMAZ, bkz. görev talimatı), yalnızca booking `PAID` +
+// randevu `status` `SCHEDULED` yapılır (`markBookingPaidDirectly` + `setAppointmentStatusDirectly`,
+// `patient-portal.spec.ts::bookingCancelled` İLE AYNI iki-adımlı desen — `markBookingPaidDirectly`
+// TEK BAŞINA randevunun KENDİ `status`ünü DEĞİŞTİRMEZ). GERÇEK kamera/mikrofon fake-device'ı ile
+// GERÇEKTEN "Bağlandı" durumuna ULAŞTIĞINI kanıtlamak — backend'in katılım penceresi kontrolünü
+// TAMAMEN kaldırdığının nihai, uçtan uca kanıtı.
+// =============================================================================
+test("madde 1 [GERÇEK LiveKit]: PAID booking + randevu saati GERÇEKTEN 12+ saat sonrasında olsa da (zaman kaydırma KULLANILMADI) 'Görüşmeye Katıl' GERÇEK bir LiveKit bağlantısı kurar ('Bağlandı')", async ({
+  page,
+  context,
+}) => {
+  test.setTimeout(90_000);
+  test.skip(
+    !liveKitConfigured,
+    "Bu ortamda LIVEKIT_URL/API_KEY/API_SECRET tanımlı değil — bu testin amacı tam olarak bunların " +
+      "YAPILANDIRILDIĞI durumda zaman kilidinin kalktığını GERÇEK bir bağlantıyla kanıtlamak."
+  );
+  await context.grantPermissions(["camera", "microphone"]);
+
+  const { from, to } = defaultSlotRangeISODates(30);
+  const slotsRes = await getPublicDoctorSlotsRaw(bookableDoctorSlug, from, to);
+  const thresholdMs = Date.now() + 12 * 60 * 60_000;
+  const slot = (slotsRes.data ?? []).find((s) => s.available && new Date(s.startsAt).getTime() >= thresholdMs);
+  if (!slot) throw new Error("qa-agent: 12+ saat sonrasına ait müsait bir slot bulunamadı.");
+
+  const booking = await createBookingRaw({
+    doctorSlug: bookableDoctorSlug,
+    slots: [slot.startsAt],
+    patientName: "QA E2E Hasta live-anytime",
+    patientEmail: `qa-e2e-telehealth-live-anytime-${Date.now()}@example.com`,
+  });
+  if (booking.status !== 201 || !booking.data) {
+    throw new Error(`qa-agent: booking oluşturulamadı: ${booking.status} ${JSON.stringify(booking.error)}`);
+  }
+  const appointmentId = booking.data.appointments[0]!.id;
+  const accessToken = booking.data.accessToken;
+
+  // Randevu GERÇEKTEN 12+ saat sonrasında kaldığını doğrula (zaman kaydırma fixture'ı KULLANILMADI).
+  const hoursAhead = (new Date(slot.startsAt).getTime() - Date.now()) / 3_600_000;
+  expect(hoursAhead).toBeGreaterThanOrEqual(11.9);
+
+  markBookingPaidDirectly(booking.data.bookingId);
+  setAppointmentStatusDirectly(appointmentId, "SCHEDULED");
+
+  await gotoAndWaitReady(page, `/consultation/${appointmentId}?t=${accessToken}`, async () => {
+    await expect(page.getByRole("heading", { name: /ile Görüşme$/ })).toBeVisible();
+  });
+  // Uzak geri sayım cümlesi hâlâ GÖRÜNÜYOR (salt bilgilendirme) — buton bunu ARTIK ENGELLEMİYOR.
+  await expect(page.getByText(/Randevunuza .*(saat|dakika).*kaldı\./)).toBeVisible({ timeout: 15_000 });
+
+  const joinButton = page.getByRole("button", { name: "Görüşmeye Katıl" });
+  await expect(joinButton).toBeVisible({ timeout: 15_000 });
+  await expect(joinButton).toBeEnabled();
+  await joinButton.click();
+
+  await expect(page.getByRole("heading", { name: "Görüntülü Görüşme Yapılandırılmamış" })).toHaveCount(0);
+  // Regresyonun kalbi — GERÇEK LiveKit bağlantısı "Bağlandı" durumuna ULAŞIR (yalnızca UI'da buton
+  // görünür OLMASI DEĞİL, backend'in `meeting-token` ucunun GERÇEKTEN 200 döndüğünün ve gerçek bir
+  // WebRTC oturumunun KURULDUĞUNUN nihai kanıtı).
+  await expect(page.getByText("Bağlandı", { exact: true })).toBeVisible({ timeout: 20_000 });
 });

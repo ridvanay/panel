@@ -4066,3 +4066,78 @@ outline/rozetli dalına düşüyordu). Düzeltme: `shiftAppointmentIntoJoinWindo
 şeması (madde 3, `.nullish()`) güncellemeleri backend-agent tarafından zaten yapıldı (bu turun git
 diff'inde görüldü) — qa-agent bu kontrata karşı davranışı doğruladı, EK bir kontrat sapması
 BULUNMADI.
+
+## 4-parçalı kritik hata paketi — SON adım, kısım 2 (integration+backend+frontend → qa-agent
+## doğrulaması, bu turda eklendi, 2026-09-15)
+
+Kaynak: orkestratör görev talimatı. Kapsam — (1) `POST /appointments/:id/meeting-token`in katılım
+penceresi/rol (isDoctor) ayrımının TAMAMEN kaldırılması (booking'e bağlıysa TEK şart
+`paymentStatus === "PAID"`, hem doktor hem hasta için, zaman TAMAMEN devre dışı) + frontend'in
+karşılık gelen değişiklikleri (`consultation-room.tsx::useJoinState` HER ZAMAN `isJoinable:true`,
+`join-meeting-button.tsx`'in varsayılan/hasta dalı SADECE `paymentStatus`a bakar), (2) fatura
+sayfasının (`patient-booking-invoice-panel.tsx`) `useAuth().status==="loading"` iken fetch atmaması
++ 1 kez sessiz retry, `patient-booking-detail-panel.tsx`e AYNI auth-bekleme deseninin eklenmesi,
+(3) doktor konsolu çoklu-slot blok saati (`computeAppointmentBlock`) + `"{N} Slot ({M} Dk)"` rozeti,
+(4) YENİ `/patient/payments` ("Ödemelerim") sayfası + nav öğesi. **Standart e2e ortamına
+(`saas_e2e`, backend `4001`, frontend `3100`) karşı GERÇEKTEN çalıştırıldı** — `backend/.env.e2e`
+ZATEN `ENABLE_DEMO_PAYMENTS=true`/gerçek `LIVEKIT_*` (önceki turdan) taşıdığından bu turda AYRI bir
+Docker/`saas_dev` ortamına GEREK KALMADI (frontend-agent'ın `saas_dev`de bıraktığı 2 test
+kullanıcısı/booking'e qa-agent BİLİNÇLİ OLARAK DOKUNMADI/İLGİLENMEDİ, görev talimatının açık
+yönlendirmesiyle).
+
+**qa-agent BULGUSU (bu turda, KRİTİK — REGRESYON, MEVCUT bir test STALE hale gelmişti, `telehealth-
+portal-isolation.spec.ts`teki "URL beklentisi güncellendi" emsaliyle AYNI disiplinle DÜZELTİLDİ):**
+`telehealth-consultation.spec.ts`teki **madde 11a** ("randevu penceresi henüz açılmamışken
+'Görüşmeye Katıl' butonu HİÇ gösterilmez") artık YANLIŞTI — `consultation-room.tsx::useJoinState`
+frontend-agent'ın KASITLI, belgelenmiş tasarım kararıyla artık HER ZAMAN `isJoinable:true` döndürüyor
+(zaman kilidi TAMAMEN kalktı); elle doğrulandı, eski assertion (`toHaveCount(0)`) GERÇEKTE `1`
+buluyordu. qa-agent testi YENİ, doğru davranışa güncelledi: buton HER ZAMAN görünür/tıklanabilir,
+tıklanınca (ödenmemiş/pencere-dışı bir randevuda) backend'in 409 `APPOINTMENT_NOT_JOINABLE`'ı dürüst
+bir `joinError` uyarısı olarak GÖRÜNÜR (sahte video YOK, "yapılandırılmamış" paneli TETİKLENMEZ —
+o yalnızca 503 içindir). **Bu bir uygulama bug'ı DEĞİLDİR** — frontend-agent'ın kod yorumunda
+AÇIKÇA belgelenen kasıtlı davranış; test dosyası (qa-agent'ın kendi alanı) güncellendi, uygulama
+koduna DOKUNULMADI.
+
+**Yeni dosyalar:**
+- `frontend/tests/e2e/telehealth-join-anytime-and-patient-payments.spec.ts` — madde 1 (zaman kilidi
+  kalktı + ÖDENMEMİŞ booking regresyonu, API white-box dahil) + madde 2 (fatura hard-refresh) +
+  madde 4 ("Ödemelerim" + fan-out yasağı).
+- `frontend/tests/e2e/telehealth-doctor-console-multi-slot-block.spec.ts` — madde 3 (4-ardışık-slot
+  blok saati + rozet + tek-slot regresyon kontrolü).
+- `telehealth-consultation-livekit-live.spec.ts`e EKLENEN yeni test (`chrome-livekit-media`
+  projesi) — madde 1'in GERÇEK LiveKit bağlantı kanıtı (zaman kaydırma fixture'ı HİÇ KULLANILMADI).
+
+| # | Madde | Doğrulama | Durum |
+|---|---|---|---|
+| 1a | Booking-bağlı randevu ARTIFICIALLY `SCHEDULED` ama booking `PENDING` ise `meeting-token` 409; booking `PAID` olunca (zamanlama HİÇ değişmeden) 200 | `telehealth-join-anytime-and-patient-payments.spec.ts` (YENİ, API white-box) | ✅ Geçiyor |
+| 1b [REGRESYON] | Ödenmemiş (PENDING) booking → `/patient/bookings/{id}`de "Toplantıya Katıl" HÂLÂ `aria-disabled`/`pointer-events:none`; doğrudan API çağrısı da HÂLÂ 409 | `telehealth-join-anytime-and-patient-payments.spec.ts` (YENİ) | ✅ Geçiyor |
+| 1c | PAID booking + randevu saati GERÇEKTEN 12+ saat sonrasında (zaman kaydırma KULLANILMADI) → `/patient/bookings/{id}`de buton aktif/tıklanabilir + `/consultation/{id}`de "Görüşmeye Katıl" aktif + `meeting-token` 200 | `telehealth-join-anytime-and-patient-payments.spec.ts` (YENİ) | ✅ Geçiyor |
+| 1d [GERÇEK LiveKit] | AYNI 12+ saat sonrası senaryo, GERÇEK kamera/mikrofon fake-device ile tıklanınca GERÇEKTEN "Bağlandı" durumuna ulaşır | `telehealth-consultation-livekit-live.spec.ts` (`chrome-livekit-media` projesi, YENİ test) | ✅ Geçiyor |
+| 1e [REGRESYON, MEVCUT test güncellendi] | "Görüşmeye Katıl" artık HER ZAMAN görünür/tıklanabilir (eski "pencere kapalıyken HİÇ gösterilmez" iddiası YANLIŞTI); tıklanınca dürüst 409 hatası | `telehealth-consultation.spec.ts` madde 11a (GÜNCELLENDİ) | ✅ Geçiyor |
+| 2 | Oturumlu hasta, GERÇEK hard-navigate (yeni sayfa, SPA state YOK) + yapay `/auth/refresh` gecikmesiyle `/patient/bookings/{id}/invoice`de "Rezervasyon bulunamadı" GÖRÜNMEZ, fatura doğru yüklenir | `telehealth-join-anytime-and-patient-payments.spec.ts` (YENİ) | ✅ Geçiyor |
+| 3 | 4 ardışık slotlu booking'de doktor konsolu kartı doğru BLOK saat aralığını (`computeAppointmentBlock`) + "4 Slot (240 Dk)" rozetini gösterir | `telehealth-doctor-console-multi-slot-block.spec.ts` (YENİ) | ✅ Geçiyor |
+| 3 [REGRESYON] | Tek slotlu booking'de "{N} Slot ({M} Dk)" rozeti HİÇ GÖRÜNMEZ | `telehealth-doctor-console-multi-slot-block.spec.ts` (YENİ) | ✅ Geçiyor |
+| 4 | "Ödemelerim" sol navda görünür → `/patient/payments`e gider, PAID booking tabloda (Tarih/Rezervasyon No/Doktor/Süre-Slot/Tutar/"Ödendi"/Makbuzu Görüntüle) görünür, tıklanınca doğru faturaya gider | `telehealth-join-anytime-and-patient-payments.spec.ts` (YENİ) | ✅ Geçiyor |
+| 4 [Fan-out yasağı, KHP bağlayıcı kural] | `/patient/payments` açılışında YALNIZCA `GET /patient/bookings` (booking sayısı kadar EK istek YOK) | `telehealth-join-anytime-and-patient-payments.spec.ts` (YENİ) | ✅ Geçiyor |
+
+**Regresyon taraması (bu turda GERÇEKTEN koşuldu, standart e2e ortamına karşı, izole/tekrar
+koşumlarla paylaşımlı `POST /appointments/bookings` 5/dk hız sınırı gürültüsünden ayıklandı):**
+- `telehealth-multi-slot-booking.spec.ts` — 9/9 ✅.
+- `patient-portal.spec.ts` — 13/13 ✅ (madde 39 fan-out testi DAHİL — önceki turlarda bilinen/kırık
+  olarak belgelenen bu test bu turda YEŞİL; frontend-agent görünüşe göre `patient-documents-panel.tsx`/
+  `patient-prescriptions-panel.tsx`e StrictMode-fantom-çağrı korumasını (`hasLoadedRef`) ARADA bir
+  turda eklemiş — kod incelemesiyle teyit edildi).
+- `telehealth-consultation.spec.ts` — 4/4 ✅ (1 `test.skip`, LiveKit bu ortamda yapılandırılı
+  olduğundan madde 10 doğal olarak atlanıyor) — madde 11a GÜNCELLENDİ (yukarıda).
+- `telehealth-join-button-visual-and-cancel.spec.ts` — 3/3 ✅ (bu turun değişikliğiyle DOĞRUDAN
+  örtüşen madde 2a/2b/3, hâlâ yeşil).
+- `telehealth-doctor-console-join-window.spec.ts` — 4/4 ✅ (madde 1a/1b/2a/2b, doktor konsolu
+  "Odaya Katıl" penceresi bypass'ı, hâlâ yeşil).
+
+**Ortam notu (bu tur, qa-agent'ın kendi alanı):** standart e2e backend'i (`4001`,
+`DOTENV_CONFIG_PATH=.env.e2e npx tsx src/server.ts`) ve frontend dev sunucusu (`3100`,
+`E2E_SKIP_WEBSERVER=1` ile `playwright.config.ts`'in kendi `webServer`'ı DEVRE DIŞI, önceki
+turlardaki AYNI Windows `*.localhost` çözümleme kısıtı) qa-agent tarafından elle başlatıldı;
+LiveKit için mevcut Docker `claudecodeproje-livekit-1` servisi (`ws://siteadi.localhost:7880`,
+zaten `.env.e2e`de tanımlı) YENİDEN KULLANILDI, AYRI bir LiveKit örneği başlatılmadı. `saas_e2e`
+migration'ları zaten güncel, DB'ye dokunulmadı.

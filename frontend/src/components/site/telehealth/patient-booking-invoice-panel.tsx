@@ -7,9 +7,12 @@ import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import type { BookingInvoice } from "@/lib/api/types";
 import { formatPriceFromCents } from "@/lib/format-price";
 import { formatDayLabel, formatTime } from "@/lib/telehealth-format";
+import { useAuth } from "@/context/auth-context";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+
+const AUTO_RETRY_DELAY_MS = 700;
 
 /**
  * `.claude/architect-scope-telehealth-template.md` §9.7.0 madde 11 (bağlayıcı) — `Invoice`
@@ -22,23 +25,60 @@ export function PatientBookingInvoicePanel({ bookingId, accessToken }: { booking
   const [loadError, setLoadError] = useState<string | null>(null);
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
+  /**
+   * Bug-fix turu (2026-09-15, frontend-agent) — bu sayfaya `booking-summary-card.tsx`teki fatura
+   * linki DÜZ bir `<a href>` (TAM SAYFA yenilemesi) ile ulaşılır. `accessToken` VERİLMEMİŞSE
+   * (oturum-bazlı erişim), istek `Authorization: Bearer` header'ına — bellekteki access token'a
+   * — güvenir; sayfa TAZE yüklendiğinde bu token henüz refresh-cookie'den geri yüklenmemiş
+   * olabilir (`AuthProvider` `status === "loading"`). Bu durumda `load()` ÇAĞRILMAZ, `auth.status`
+   * `"authenticated"`/`"unauthenticated"`e geçince (settled) tetiklenir. `accessToken` VERİLMİŞSE
+   * (misafir/magic-link, public erişim) auth context'in beklenmesine hiç GEREK YOK.
+   */
+  const auth = useAuth();
+  const waitingForSession = !accessToken && auth.status === "loading";
+  /**
+   * Başarısız deneme SAYACI (state — bir `ref` DEĞİL: render sırasında bir ref'in `.current`ını
+   * OKUMAK React kurallarını ihlal eder, `code-quality-agent`ın lint kuralı bunu hata olarak
+   * işaretler). `0` → henüz hiç deneme yok/ilk yükleme sürüyor, `1` → İLK deneme başarısız oldu
+   * (otomatik sessiz tekrar deneme BEKLENİYOR), `2+` → tekrar deneme de başarısız oldu, gerçek
+   * hata ekranı gösterilir. Başarıda `0`a sıfırlanır.
+   */
+  const [failedAttempts, setFailedAttempts] = useState(0);
+
   const load = useCallback(async () => {
     setLoadError(null);
     try {
       const result = await telehealthApi.getBookingInvoice(bookingId, accessToken);
       setInvoice(result);
+      setFailedAttempts(0);
     } catch (err) {
       setLoadError(friendlyErrorMessage(err));
+      setFailedAttempts((prev) => prev + 1);
     }
   }, [bookingId, accessToken]);
 
   useEffect(() => {
+    if (waitingForSession) return;
     (async () => {
       await load();
     })();
-  }, [load]);
+  }, [load, waitingForSession]);
 
-  if (invoice === null && !loadError) {
+  // Kullanıcının açıkça istediği otomatik 1 kez sessiz tekrar deneme — auth-bekleme düzeltmesi
+  // yarış durumunu ORTADAN KALDIRIR, ama ağdaki geçici tekil hatalara karşı ek bir güvenlik ağı.
+  // `failedAttempts === 1` KOŞULU sonsuz döngüyü ÖNLER: yalnızca TAM OLARAK ilk başarısız denemede
+  // bir kez tetiklenir (`0`/ilk yükleme VEYA `2+`/ikinci-ve-sonrası başarısız denemede TETİKLENMEZ).
+  useEffect(() => {
+    if (failedAttempts !== 1 || waitingForSession) return;
+    const timer = setTimeout(() => {
+      void load();
+    }, AUTO_RETRY_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [failedAttempts, waitingForSession, load]);
+
+  // `failedAttempts < 2` iken (henüz otomatik tekrar deneme YAPILMADI/sürüyor) ilk hata SESSİZCE
+  // gizlenir, iskelet gösterilmeye devam eder — kullanıcı hiçbir hata GÖRMEZ.
+  if (waitingForSession || (invoice === null && failedAttempts < 2)) {
     return <Skeleton className="h-64 w-full rounded-[var(--site-radius)]" />;
   }
 

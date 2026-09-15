@@ -6,6 +6,7 @@ import { AlertTriangle, CircleCheck, FileText, Loader2, Printer, StickyNote, Tra
 import * as telehealthApi from "@/lib/api/telehealth";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import type { AppointmentBooking } from "@/lib/api/types";
+import { useAuth } from "@/context/auth-context";
 import { useLocalizePath } from "@/context/locale-alternates-context";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert } from "@/components/ui/alert";
@@ -52,6 +53,16 @@ export function PatientBookingDetailPanel({
   lang: string;
 }) {
   const localize = useLocalizePath();
+  /**
+   * Bug-fix turu (2026-09-15, frontend-agent) — `patient-booking-invoice-panel.tsx`teki AYNI
+   * yarış durumu (bkz. o dosyanın dosya başı yorumu): `accessToken` YOKKEN (oturum-bazlı erişim)
+   * bu sayfaya da tam sayfa yenilemesiyle ulaşılabilir (`?payment=` dönüşü, magic-link OLMAYAN
+   * favoriler/yer imleri) ve bellekteki access token henüz refresh-cookie'den geri yüklenmemiş
+   * olabilir. Tutarlılık için AYNI auth-bekleme düzeltmesi uygulanır (otomatik retry'a burada
+   * gerek yok — kullanıcı şikayeti SADECE fatura sayfasıyla ilgiliydi).
+   */
+  const auth = useAuth();
+  const waitingForSession = !accessToken && auth.status === "loading";
   const [booking, setBooking] = useState<AppointmentBooking | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
@@ -76,11 +87,12 @@ export function PatientBookingDetailPanel({
   }, [bookingId, accessToken]);
 
   useEffect(() => {
+    if (waitingForSession) return;
     (async () => {
       await load();
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- yalnızca ilk mount'ta çalışır, `load()` referansı stabil (bkz. `useCallback`)
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `load()` referansı stabil (bkz. `useCallback`), yalnızca `waitingForSession` çözülünce (veya ilk mount'ta zaten çözülmüşse) bir kez çalışır
+  }, [waitingForSession]);
 
   // Stripe dönüşü `?payment=success` iken ödeme durumu webhook gecikmesiyle henüz `PAID`'e
   // geçmemiş olabilir — kısa bir yoklama (booking sayfasının GENEL polling gerekçesi, `qa-agent`ın
@@ -149,7 +161,7 @@ export function PatientBookingDetailPanel({
     }
   }
 
-  if (booking === null && !loadError) {
+  if (waitingForSession || (booking === null && !loadError)) {
     return (
       <div className="space-y-4">
         <Skeleton className="h-56 w-full rounded-[var(--site-radius)]" />

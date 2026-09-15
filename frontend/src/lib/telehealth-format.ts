@@ -49,3 +49,24 @@ export function formatTimeZoneAbbreviation(iso: string, timeZone: string): strin
   const parts = new Intl.DateTimeFormat("en-US", { timeZone, timeZoneName: "short" }).formatToParts(new Date(iso));
   return parts.find((part) => part.type === "timeZoneName")?.value ?? timeZone;
 }
+
+/**
+ * Bug-fix turu (2026-09-15, frontend-agent) — çoklu slot booking'lerde (`AppointmentBooking.appointments`,
+ * `startsAt asc` sıralı ama SIRALAMAYA GÜVENİLMEZ) blok saat aralığını/toplam dakikayı hesaplar.
+ * `doctor-console-patient-card.tsx` (blok saat gösterimi) VE `patient-payments-panel.tsx`
+ * (Süre/Slot Sayısı sütunu) AYNI mantığı kullanır — İKİ AYRI kopya İCAT EDİLMEZ.
+ */
+export interface AppointmentTimeSpan {
+  startsAt: string;
+  endsAt: string;
+}
+
+export function computeAppointmentBlock(appointments: AppointmentTimeSpan[]): {
+  startMs: number;
+  endMs: number;
+  totalMinutes: number;
+} {
+  const startMs = Math.min(...appointments.map((a) => new Date(a.startsAt).getTime()));
+  const endMs = Math.max(...appointments.map((a) => new Date(a.endsAt).getTime()));
+  return { startMs, endMs, totalMinutes: Math.round((endMs - startMs) / 60_000) };
+}

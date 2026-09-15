@@ -2,7 +2,7 @@
 
 import { Ban, CalendarX2, IdCard, NotebookPen, Paperclip } from "lucide-react";
 import type { AppointmentBooking } from "@/lib/api/types";
-import { formatFullDayLabel, formatTime, formatTimeZoneAbbreviation } from "@/lib/telehealth-format";
+import { computeAppointmentBlock, formatFullDayLabel, formatTime, formatTimeZoneAbbreviation } from "@/lib/telehealth-format";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -87,25 +87,36 @@ export function DoctorConsolePatientCard({ booking, calibratedNowMs, timeZone, o
   const showRemainingBadge = status === "SCHEDULED" || status === "IN_PROGRESS";
   const showDocumentsIndicator = booking.documentCount > 0 || booking.hasIntakeNote;
 
+  // Grid görevi (2026-09-15, frontend-agent) Görev 3 — saat bloğu SADECE `appointments[0]`den
+  // DEĞİL, TÜM appointment'lardan (`computeAppointmentBlock`, `lib/telehealth-format.ts`) türetilir;
+  // `booking.appointments.length > 1` iken "{N} Slot ({M} Dk)" rozeti eklenir (tek slotlu
+  // booking'lerde GÖSTERİLMEZ). `AppointmentStatusBadge`/`showRemainingBadge` mantığı BİLİNÇLİ
+  // OLARAK `firstAppointment.status`a bakmaya devam eder — bu görev SADECE saat GÖRÜNÜMÜYLE ilgili.
+  const hasMultipleSlots = booking.appointments.length > 1;
+  const block = firstAppointment ? computeAppointmentBlock(booking.appointments) : null;
+  const blockStartIso = block ? new Date(block.startMs).toISOString() : null;
+
   return (
     <div className="rounded-[var(--site-radius)] border border-border bg-surface p-4 shadow-sm">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
         {/* Sol bölge: zaman & durum — kurumsal EHR'lerde en belirgin öğe, hafif zeminlendirildi */}
         <div className="flex shrink-0 flex-row items-center justify-between gap-2 rounded-[var(--site-radius)] bg-surface-muted p-3 sm:w-36 sm:flex-col sm:items-start sm:justify-center sm:gap-1.5">
-          {firstAppointment ? (
+          {firstAppointment && block && blockStartIso ? (
             <div>
               <p className="text-base font-bold tabular-nums tracking-tight text-foreground">
-                {formatTime(firstAppointment.startsAt, timeZone)} - {formatTime(firstAppointment.endsAt, timeZone)}{" "}
+                {formatTime(blockStartIso, timeZone)} - {formatTime(new Date(block.endMs).toISOString(), timeZone)}{" "}
                 <span className="text-xs font-medium tabular-nums text-foreground/50">
                   {timeZone === "Europe/Istanbul"
                     ? "(TSİ)"
-                    : `${formatTimeZoneAbbreviation(firstAppointment.startsAt, timeZone)} (${formatTime(
-                        firstAppointment.startsAt,
-                        "Europe/Istanbul"
-                      )} TSİ)`}
+                    : `${formatTimeZoneAbbreviation(blockStartIso, timeZone)} (${formatTime(blockStartIso, "Europe/Istanbul")} TSİ)`}
                 </span>
               </p>
-              <p className="mt-0.5 text-xs font-medium text-foreground/60">{formatFullDayLabel(firstAppointment.startsAt, timeZone)}</p>
+              <p className="mt-0.5 text-xs font-medium text-foreground/60">{formatFullDayLabel(blockStartIso, timeZone)}</p>
+              {hasMultipleSlots && (
+                <Badge tone="neutral" size="sm" className="mt-1">
+                  {booking.appointments.length} Slot ({block.totalMinutes} Dk)
+                </Badge>
+              )}
             </div>
           ) : (
             <div className="flex items-center gap-1.5 text-foreground/35">

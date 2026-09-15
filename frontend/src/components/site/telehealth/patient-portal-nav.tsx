@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CalendarClock, ClipboardList, FileText, LayoutDashboard, UserCog } from "lucide-react";
+import { CalendarClock, ClipboardList, CreditCard, FileText, LayoutDashboard, UserCog } from "lucide-react";
 import type { ComponentType } from "react";
 import type { LucideProps } from "lucide-react";
 import { useLocalizePath } from "@/context/locale-alternates-context";
@@ -14,6 +14,10 @@ import { cn } from "@/lib/utils";
  * şerit); rota/etiket/ikon listesi TEK yerde tanımlıdır (ikili bakım yükü YOK). `.claude/architect-scope-telehealth-template.md`
  * §9.8.3 — rota haritası (`/patient`, `/patient/appointments`, `/patient/documents`,
  * `/patient/prescriptions`, `/patient/profile`); §9.8.2 KARAR M'nin bağlayıcı çerçevesi.
+ *
+ * Grid görevi (2026-09-15, frontend-agent) Görev 4 — `/patient/payments` ("Ödemelerim") eklendi;
+ * mevcut `GET /patient/bookings?scope=all` verisinin client-side türetilmiş bir görünümü (YENİ
+ * aggregate uç YOK, bkz. `patient-payments-panel.tsx`), rota haritasına eklenen TEK yeni sayfa.
  */
 
 interface NavItem {
@@ -27,6 +31,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/patient/appointments", label: "Randevularım", icon: CalendarClock },
   { href: "/patient/documents", label: "Belgelerim", icon: FileText },
   { href: "/patient/prescriptions", label: "Reçetelerim", icon: ClipboardList },
+  { href: "/patient/payments", label: "Ödemelerim", icon: CreditCard },
   { href: "/patient/profile", label: "Profilim", icon: UserCog },
 ];
 

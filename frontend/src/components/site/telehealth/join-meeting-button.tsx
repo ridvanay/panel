@@ -148,17 +148,16 @@ export function JoinMeetingButton({
     );
   }
 
+  // Bug-fix turu (2026-09-15, frontend-agent) — backend `POST .../meeting-token`de booking'e bağlı
+  // bir randevu için TEK şart `paymentStatus === "PAID"` (zaman penceresi backend'de TAMAMEN
+  // kalktı, hem doktor hem hasta için). Bu client-side kontrolün eskiden `joinableFrom`/
+  // `joinableUntil`e bakan kısmı backend'den DAHA SIKI davranıp butonu erken/gereksiz yere
+  // devre dışı bırakıyordu — TEK kalan kısıt artık ödeme durumu.
   let disabled = true;
   let disabledReason = "Görüşme bilgisi bulunamadı.";
 
   if (booking.paymentStatus !== "PAID") {
     disabledReason = "Görüşmeye katılmak için önce ödeme tamamlanmalıdır.";
-  } else if (!booking.joinableFrom || !booking.joinableUntil) {
-    disabledReason = "Görüşme henüz açılmadı.";
-  } else if (now < new Date(booking.joinableFrom).getTime()) {
-    disabledReason = "Görüşme, randevu saatinize 10 dakika kalana kadar açılmaz.";
-  } else if (now > new Date(booking.joinableUntil).getTime()) {
-    disabledReason = "Görüşme penceresi kapandı.";
   } else {
     disabled = false;
   }

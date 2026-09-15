@@ -267,7 +267,7 @@ describe("telehealth/livekit — meeting-token, LiveKit YAPILANDIRILMIŞKEN (sah
     expect(res.statusCode).toBe(200);
   });
 
-  it("§4.5 — randevu penceresi DIŞINDA 409 APPOINTMENT_NOT_JOINABLE döner", async () => {
+  it("integration-agent görev notu (2026-09-15) — booking'e BAĞLI DEĞİL (deprecated tekil randevu), randevu saati ÇOK UZAKTA olsa da 200 döner (dar zaman penceresi KALDIRILDI, `status` SCHEDULED yeterli)", async () => {
     const { doctor } = await createDoctorWithAvailability(app);
     const farFuture = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000);
     const { appointment, rawAccessToken } = await createAppointmentDirect(app, doctor, {
@@ -276,8 +276,7 @@ describe("telehealth/livekit — meeting-token, LiveKit YAPILANDIRILMIŞKEN (sah
     });
 
     const res = await app.inject({ method: "POST", url: `/api/v1/appointments/${appointment.id}/meeting-token?t=${rawAccessToken}` });
-    expect(res.statusCode).toBe(409);
-    expect(res.json().error.code).toBe("APPOINTMENT_NOT_JOINABLE");
+    expect(res.statusCode).toBe(200);
   });
 
   it("§4.5 — CANCELLED bir randevu için token istenemez (409)", async () => {
@@ -305,7 +304,7 @@ describe("telehealth/livekit — meeting-token, LiveKit YAPILANDIRILMIŞKEN (sah
   });
 });
 
-describe("telehealth/livekit — meeting-token, DOKTOR katılım penceresi bypass'ı (backend-agent görevi, 2026-09-15)", () => {
+describe("telehealth/livekit — meeting-token, katılım penceresi ÖDEME DURUMUNA göre (rol ayrımı YOK — integration-agent görevi, 2026-09-15)", () => {
   let app: FastifyInstance;
   let adminToken: string;
 
@@ -348,36 +347,20 @@ describe("telehealth/livekit — meeting-token, DOKTOR katılım penceresi bypas
     return doctorUserToken;
   }
 
-  it("randevu saati ÇOK UZAKTA (dar pencerenin DIŞINDA) olsa da doktor 200 alır — misafir hasta AYNI randevuda 409 alır (davranışı KORUNUR)", async () => {
-    const { doctor } = await createDoctorWithAvailability(app);
-    const doctorUserToken = await linkDoctorUser(doctor);
-    const farFuture = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000);
-    const { appointment, rawAccessToken } = await createAppointmentDirect(app, doctor, {
-      startsAt: farFuture,
-      endsAt: new Date(farFuture.getTime() + 30 * 60 * 1000),
-    });
-
-    // Misafir hasta (dar pencere DIŞINDA) — davranış DEĞİŞMEDİ.
-    const patientRes = await app.inject({ method: "POST", url: `/api/v1/appointments/${appointment.id}/meeting-token?t=${rawAccessToken}` });
-    expect(patientRes.statusCode).toBe(409);
-    expect(patientRes.json().error.code).toBe("APPOINTMENT_NOT_JOINABLE");
-
-    // Doktor — ZAMAN penceresine tabi DEĞİL, odayı önceden test edebilir.
-    const doctorRes = await app.inject({
-      method: "POST",
-      url: `/api/v1/appointments/${appointment.id}/meeting-token`,
-      headers: authHeader(doctorUserToken),
-    });
-    expect(doctorRes.statusCode).toBe(200);
-    expect(typeof doctorRes.json().data.token).toBe("string");
-  });
-
-  it("booking'e bağlı, ÖDENMEMİŞ bir randevuda doktor da 409 alır — ödeme şartı ZAMAN penceresinden BAĞIMSIZ olarak KORUNUR", async () => {
-    const { doctor } = await createDoctorWithAvailability(app);
-    const doctorUserToken = await linkDoctorUser(doctor);
-
-    const startsAt = new Date(Date.now() + 60 * 60 * 1000);
+  /**
+   * Booking + tek `Appointment` satırını DOĞRUDAN DB'ye yazar (booking akışının kendisi
+   * `telehealth.test.ts`'te ayrıca test edilir) — `paymentStatus`/`startsAt`/`appointment.status`
+   * İZOLE olarak kontrol edilebilsin diye. Hastanın KENDİ (booking'in) erişim token'ı döner.
+   */
+  async function createPaidOrUnpaidBookingAppointment(
+    doctor: { id: string },
+    overrides: Partial<{ paymentStatus: "PENDING" | "PAID"; startsAt: Date; appointmentStatus: "PENDING_PAYMENT" | "SCHEDULED" }> = {}
+  ) {
+    const paymentStatus = overrides.paymentStatus ?? "PENDING";
+    const startsAt = overrides.startsAt ?? new Date(Date.now() + 60 * 60 * 1000);
     const endsAt = new Date(startsAt.getTime() + 30 * 60 * 1000);
+    const bookingRawAccessToken = crypto.randomBytes(24).toString("hex");
+    const { hashToken } = await import("../../src/lib/tokens");
     const booking = await app.prisma.appointmentBooking.create({
       data: {
         bookingNumber: `BK-${crypto.randomUUID()}`,
@@ -389,10 +372,10 @@ describe("telehealth/livekit — meeting-token, DOKTOR katılım penceresi bypas
         subtotalCents: 50000,
         totalCents: 50000,
         currency: "TRY",
-        paymentStatus: "PENDING",
+        paymentStatus,
         expiresAt: new Date(Date.now() + 30 * 60 * 1000),
         meetingRoomName: `room_${crypto.randomBytes(16).toString("hex")}`,
-        accessTokenHash: crypto.randomBytes(32).toString("hex"),
+        accessTokenHash: hashToken(bookingRawAccessToken),
         consentAt: new Date(),
         consentVersion: "v1",
       },
@@ -401,7 +384,7 @@ describe("telehealth/livekit — meeting-token, DOKTOR katılım penceresi bypas
       data: {
         doctorId: doctor.id,
         bookingId: booking.id,
-        status: "PENDING_PAYMENT",
+        status: overrides.appointmentStatus ?? "SCHEDULED",
         patientName: "Test Hasta",
         patientEmail: `hasta-${crypto.randomUUID()}@example.com`,
         startsAt,
@@ -412,10 +395,40 @@ describe("telehealth/livekit — meeting-token, DOKTOR katılım penceresi bypas
         accessTokenHash: crypto.randomBytes(32).toString("hex"),
       },
     });
+    return { booking, appointment, patientAccessToken: bookingRawAccessToken };
+  }
 
-    // `status !== SCHEDULED/IN_PROGRESS` zaten tek başına 409 üretir — ödeme şartını İZOLE test
-    // etmek için burada SCHEDULED'a çekiyoruz (yalnızca bu test satırı, ödeme/status ayrı kontroller).
-    await app.prisma.appointment.update({ where: { id: appointment.id }, data: { status: "SCHEDULED" } });
+  it("booking'e BAĞLI DEĞİL (deprecated tekil randevu), randevu saati ÇOK UZAKTA olsa da doktor VE misafir hasta İKİSİ DE 200 alır (zaman penceresi kaldırıldı, rol ayrımı YOK)", async () => {
+    const { doctor } = await createDoctorWithAvailability(app);
+    const doctorUserToken = await linkDoctorUser(doctor);
+    const farFuture = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000);
+    const { appointment, rawAccessToken } = await createAppointmentDirect(app, doctor, {
+      startsAt: farFuture,
+      endsAt: new Date(farFuture.getTime() + 30 * 60 * 1000),
+    });
+
+    const patientRes = await app.inject({ method: "POST", url: `/api/v1/appointments/${appointment.id}/meeting-token?t=${rawAccessToken}` });
+    expect(patientRes.statusCode).toBe(200);
+
+    const doctorRes = await app.inject({
+      method: "POST",
+      url: `/api/v1/appointments/${appointment.id}/meeting-token`,
+      headers: authHeader(doctorUserToken),
+    });
+    expect(doctorRes.statusCode).toBe(200);
+    expect(typeof doctorRes.json().data.token).toBe("string");
+  });
+
+  it("booking'e bağlı, ÖDENMEMİŞ (PENDING) — randevu zaman penceresi İÇİNDE olsa dahi doktor VE hasta İKİSİ DE 409 alır (regresyon, rol ayrımı YOK)", async () => {
+    const { doctor } = await createDoctorWithAvailability(app);
+    const doctorUserToken = await linkDoctorUser(doctor);
+
+    // startsAt = şimdiden 5dk sonra — ESKİ dar pencerenin (startsAt-10dk...endsAt+15dk) İÇİNDE,
+    // yine de ödeme PENDING olduğu için katılım REDDEDİLMELİDİR (zaman değil, ödeme belirleyici).
+    const { appointment, patientAccessToken } = await createPaidOrUnpaidBookingAppointment(doctor, {
+      paymentStatus: "PENDING",
+      startsAt: new Date(Date.now() + 5 * 60 * 1000),
+    });
 
     const doctorRes = await app.inject({
       method: "POST",
@@ -425,14 +438,38 @@ describe("telehealth/livekit — meeting-token, DOKTOR katılım penceresi bypas
     expect(doctorRes.statusCode).toBe(409);
     expect(doctorRes.json().error.code).toBe("APPOINTMENT_NOT_JOINABLE");
 
-    // `paymentStatus` PAID'e çevrilince ZAMAN penceresi dışında olsa dahi doktor 200 alır.
-    await app.prisma.appointmentBooking.update({ where: { id: booking.id }, data: { paymentStatus: "PAID" } });
-    const doctorResAfterPaid = await app.inject({
+    const patientRes = await app.inject({
+      method: "POST",
+      url: `/api/v1/appointments/${appointment.id}/meeting-token?t=${patientAccessToken}`,
+    });
+    expect(patientRes.statusCode).toBe(409);
+    expect(patientRes.json().error.code).toBe("APPOINTMENT_NOT_JOINABLE");
+  });
+
+  it("booking'e bağlı, PAID — randevu zaman penceresi DIŞINDA (ör. randevudan 2 SAAT önce) olsa da doktor VE hasta İKİSİ DE 200 alır", async () => {
+    const { doctor } = await createDoctorWithAvailability(app);
+    const doctorUserToken = await linkDoctorUser(doctor);
+
+    // startsAt = şimdiden 2 SAAT sonra — ESKİ dar pencerenin (yalnızca startsAt-10dk'dan itibaren)
+    // AÇIKÇA DIŞINDA; `paymentStatus: PAID` tek başına yeterli olmalıdır.
+    const { appointment, patientAccessToken } = await createPaidOrUnpaidBookingAppointment(doctor, {
+      paymentStatus: "PAID",
+      startsAt: new Date(Date.now() + 2 * 60 * 60 * 1000),
+    });
+
+    const doctorRes = await app.inject({
       method: "POST",
       url: `/api/v1/appointments/${appointment.id}/meeting-token`,
       headers: authHeader(doctorUserToken),
     });
-    expect(doctorResAfterPaid.statusCode).toBe(200);
+    expect(doctorRes.statusCode).toBe(200);
+
+    const patientRes = await app.inject({
+      method: "POST",
+      url: `/api/v1/appointments/${appointment.id}/meeting-token?t=${patientAccessToken}`,
+    });
+    expect(patientRes.statusCode).toBe(200);
+    expect(typeof patientRes.json().data.token).toBe("string");
   });
 });
 

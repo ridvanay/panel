@@ -55,7 +55,6 @@ import { cn } from "@/lib/utils";
  * edilir — burada TEKRARLANMAZ (§9.1 tek yerden kapatılamaz şerit ilkesi).
  */
 
-const JOIN_WINDOW_BEFORE_MS = 5 * 60_000;
 const JOIN_WINDOW_AFTER_MS = 15 * 60_000;
 const NEAR_THRESHOLD_MS = 15 * 60_000;
 
@@ -69,15 +68,17 @@ interface JoinState {
 }
 
 /**
- * Bug-fix turu (2026-09-15) — backend `POST .../meeting-token`de doktoru katılım penceresinden
- * TAMAMEN muaf tutuyor (doktor HER ZAMAN token alabilir, odayı önceden test edebilir). Bu hook'un
- * kendi 5dk/15dk penceresi doktoru YANLIŞLIKLA engellememesi için `isDoctor === true` olduğunda
- * `isJoinable` HER ZAMAN `true`, `isExpired` HER ZAMAN `false` döner — `remainingMs`/`isNear`
- * (geri sayım GÖRSELİ, bilgilendirme amaçlı) doktor için de AYNEN hesaplanmaya devam eder, yalnızca
- * buton görünürlüğünü kontrol eden iki alan bypass edilir. Hasta/misafir (`isDoctor === false`)
- * davranışı DEĞİŞMEZ.
+ * Bug-fix turu (2026-09-15, frontend-agent) — backend `POST .../meeting-token` ARTIK rol ayrımı
+ * YAPMADAN çalışıyor: booking'e bağlı bir randevu için TEK şart `paymentStatus === "PAID"`
+ * (zaman penceresi backend'de TAMAMEN kalktı, hem doktor hem hasta için). Bu sayfaya
+ * (`/consultation/:id`) booking `PENDING_PAYMENT` durumundayken HİÇ ULAŞILAMAZ —
+ * `assertAppointmentAccess` bunu backend'de zaten reddeder — yani `appointment.status`
+ * `PENDING_PAYMENT` DEĞİLSE randevu ZATEN ödenmiş/onaylanmış demektir. Dolayısıyla bu hook'un
+ * kendi 5dk/15dk client-side penceresinin ARTIK KORUYUCU bir işlevi YOK; `isJoinable`/`isExpired`
+ * HER ZAMAN sırasıyla `true`/`false` döner (buton her zaman aktif). `remainingMs`/`isNear`
+ * (geri sayım GÖRSELİ, salt bilgilendirme) DEĞİŞMEDEN hesaplanmaya devam eder.
  */
-function useJoinState(appointment: Appointment, isDoctor: boolean): JoinState {
+function useJoinState(appointment: Appointment): JoinState {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
@@ -86,15 +87,14 @@ function useJoinState(appointment: Appointment, isDoctor: boolean): JoinState {
 
   const start = new Date(appointment.startsAt).getTime();
   const end = new Date(appointment.endsAt).getTime();
-  const joinOpensAt = start - JOIN_WINDOW_BEFORE_MS;
   const joinClosesAt = end + JOIN_WINDOW_AFTER_MS;
   const remainingMs = start - now;
 
   return {
     remainingMs,
     isNear: remainingMs <= NEAR_THRESHOLD_MS && now <= joinClosesAt,
-    isJoinable: isDoctor ? true : now >= joinOpensAt && now <= joinClosesAt,
-    isExpired: isDoctor ? false : now > joinClosesAt,
+    isJoinable: true,
+    isExpired: false,
   };
 }
 
@@ -573,15 +573,13 @@ function ConsultationVideoRoom({
 function ConsultationRoomLoaded({ appointment, accessToken }: { appointment: Appointment; accessToken?: string }) {
   // F4 — bu görüşmenin doktoru mu izliyor? `SiteRole.DOCTOR` YOKTUR, `User.doctorProfileId`
   // ilişkisinden TÜRETİLİR (bkz. `lib/api/types.ts::User`). Oturumsuz misafir hasta (`accessToken`
-  // ile) için `user` zaten `null` olur — `isDoctor` doğal olarak `false` kalır.
-  //
-  // Bug-fix turu (2026-09-15) — `useJoinState`in doktoru zaman penceresinden muaf tutabilmesi için
-  // `isDoctor` bu hook'tan ÖNCE hesaplanır (React hook kuralları ihlal edilmez — `useAuthOptional`
-  // zaten kendi bağımsız hook'u, çağrı SIRASI değişse de hook SAYISI/sırası her render'da sabit).
+  // ile) için `user` zaten `null` olur — `isDoctor` doğal olarak `false` kalır. Kayıt (recording)
+  // kontrollerinin gösterimi için HALA gerekli (bkz. `isDoctor && recordingModuleEnabled` altta) —
+  // `useJoinState`in artık buna ihtiyacı YOK (bkz. o hook'un dosya başı yorumu).
   const auth = useAuthOptional();
   const isDoctor = auth?.user?.doctorProfileId != null && auth.user.doctorProfileId === appointment.doctorId;
 
-  const joinState = useJoinState(appointment, isDoctor);
+  const joinState = useJoinState(appointment);
   const [meeting, setMeeting] = useState<MeetingTokenResponse | null>(null);
   const [notConfigured, setNotConfigured] = useState(false);
   const [joinError, setJoinError] = useState<string | null>(null);

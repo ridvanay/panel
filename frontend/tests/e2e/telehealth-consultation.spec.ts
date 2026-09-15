@@ -140,7 +140,17 @@ test("madde 10: LiveKit yapılandırılmamışken 'yapılandırılmamış' panel
   await expect(page.locator("video")).toHaveCount(0);
 });
 
-test("madde 11a: randevu penceresi (henüz) açılmamışken 'Görüşmeye Katıl' butonu HİÇ gösterilmez, uzak geri sayım cümlesi görünür", async ({
+// qa-agent — GÜNCELLEME (bu turda, REGRESYON — frontend-agent'ın kasıtlı değişikliği yüzünden STALE
+// hale gelen MEVCUT bir test, bkz. `telehealth-portal-isolation.spec.ts`teki AYNI "URL beklentisi
+// güncellendi" emsali). Bug-fix turu (2026-09-15) — `consultation-room.tsx::useJoinState` artık HER
+// ZAMAN `isJoinable: true` döner (backend'in katılım penceresi kontrolünü TAMAMEN kaldırmasıyla
+// UYUMLU, kasıtlı bir tasarım kararı — bkz. o hook'un dosya başı yorumu). Eski iddia ("buton HİÇ
+// gösterilmez") bu yüzden ARTIK YANLIŞ — elle doğrulandı (`toHaveCount(0)` → GERÇEKTE `1`). Yeni
+// doğru davranış: buton HER ZAMAN görünür/tıklanabilir; ödenmemiş/pencere-dışı bir randevuda
+// tıklanınca backend'in 409 `APPOINTMENT_NOT_JOINABLE`'ı bir `joinError` UYARISI olarak GÖRÜNÜR
+// (dürüst hata, sahte video YOK) — `notConfigured`/"Görüntülü Görüşme Yapılandırılmamış" paneli
+// TETİKLENMEZ (o yalnızca 503 için).
+test("madde 11a: randevu penceresi (henüz) açılmamışken 'Görüşmeye Katıl' butonu HER ZAMAN görünür/tıklanabilir (zaman kilidi kalktı), tıklanınca dürüst 409 hatası gösterilir", async ({
   page,
 }) => {
   test.setTimeout(90_000);
@@ -151,7 +161,17 @@ test("madde 11a: randevu penceresi (henüz) açılmamışken 'Görüşmeye Katı
   });
 
   await expect(page.getByText(/Randevunuza .*(saat|dakika).*kaldı\./)).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByRole("button", { name: "Görüşmeye Katıl" })).toHaveCount(0);
+
+  const joinButton = page.getByRole("button", { name: "Görüşmeye Katıl" });
+  await expect(joinButton).toBeVisible({ timeout: 15_000 });
+  await expect(joinButton).toBeEnabled();
+  await expect(page.locator("video")).toHaveCount(0);
+
+  await joinButton.click();
+  await expect(
+    page.getByText("Bu randevuya şu anda katılım penceresi dışında olduğunuz için katılamazsınız.", { exact: false })
+  ).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("heading", { name: "Görüntülü Görüşme Yapılandırılmamış" })).toHaveCount(0);
   await expect(page.locator("video")).toHaveCount(0);
 });
 
