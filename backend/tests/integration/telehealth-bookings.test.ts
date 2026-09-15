@@ -1133,6 +1133,257 @@ describe("telehealth — doktor/hasta portalları (§9.7.7 KARAR K)", () => {
   });
 });
 
+describe("telehealth booking — hasta portalı scope/counts (§9.8.4 KARAR O, §9.8.7 test 29-33)", () => {
+  let app: FastifyInstance;
+  let adminToken: string;
+
+  beforeEach(async () => {
+    app = await buildTestApp();
+    await resetDatabase(app.prisma);
+    await setTelehealthModuleEnabled(app, true);
+    const admin = await registerTestUser(app, { email: `khp-scope-admin-${crypto.randomUUID()}@example.com` });
+    adminToken = admin.accessToken;
+  });
+
+  afterEach(async () => {
+    await resetDatabase(app.prisma);
+    await app.close();
+  });
+
+  /** Doktorun müsaitlik penceresi (Pzt 09:00-17:00 Europe/Istanbul) içinde, çakışmayan bir slot üretir. */
+  function slotAt(offsetMinutesFromNineAm: number): Date {
+    return new Date(nextMondayNineAmUtc().getTime() + offsetMinutesFromNineAm * 60 * 1000);
+  }
+
+  it("test 29 — scope=upcoming: ödenmiş gelecekteki SCHEDULED VE ödenmemiş (PENDING) gelecekteki PENDING_PAYMENT booking DÖNER; geçmiş/tamamlanmış booking DÖNMEZ", async () => {
+    const { doctor } = await createDoctorWithAvailability(app);
+    const patient = await registerTestUser(app, { email: `khp-upcoming-${crypto.randomUUID()}@example.com` });
+
+    // Booking A — ödenmiş (PAID), gelecekteki SCHEDULED randevu.
+    const createdA = await app.inject({
+      method: "POST",
+      url: "/api/v1/appointments/bookings",
+      headers: authHeader(patient.accessToken),
+      payload: bookingPayload(doctor.slug, [slotAt(0)], patient.email),
+    });
+    const bookingAId = createdA.json().data.bookingId as string;
+    const markPaidA = await app.inject({
+      method: "POST",
+      url: `/api/v1/admin/telehealth/bookings/${bookingAId}/mark-paid`,
+      headers: authHeader(adminToken),
+      payload: { reason: "test" },
+    });
+    expect(markPaidA.statusCode).toBe(200);
+
+    // Booking B — ödenmemiş (PENDING, varsayılan), gelecekteki PENDING_PAYMENT — DOKTOR tarafında
+    // SAYILMAZ ama hasta tarafında "Ödemeyi tamamla" gerektiren AKTİF kayıttır (§9.8.4).
+    const createdB = await app.inject({
+      method: "POST",
+      url: "/api/v1/appointments/bookings",
+      headers: authHeader(patient.accessToken),
+      payload: bookingPayload(doctor.slug, [slotAt(30)], patient.email),
+    });
+    const bookingBId = createdB.json().data.bookingId as string;
+
+    // Booking C — geçmişte tamamlanmış (COMPLETED) → upcoming'e GİRMEZ.
+    const createdC = await app.inject({
+      method: "POST",
+      url: "/api/v1/appointments/bookings",
+      headers: authHeader(patient.accessToken),
+      payload: bookingPayload(doctor.slug, [slotAt(60)], patient.email),
+    });
+    const bookingCId = createdC.json().data.bookingId as string;
+    const pastStart = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    await app.prisma.appointment.updateMany({
+      where: { bookingId: bookingCId },
+      data: { startsAt: pastStart, endsAt: new Date(pastStart.getTime() + 30 * 60 * 1000), status: "COMPLETED" },
+    });
+    await app.prisma.appointmentBooking.update({ where: { id: bookingCId }, data: { paymentStatus: "PAID", paidAt: new Date() } });
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/patient/bookings?scope=upcoming",
+      headers: authHeader(patient.accessToken),
+    });
+    expect(res.statusCode).toBe(200);
+    const ids = (res.json().data as { id: string }[]).map((b) => b.id).sort();
+    expect(ids).toEqual([bookingAId, bookingBId].sort());
+  });
+
+  it("test 30 — scope=past: upcoming ile eşleşen booking DÖNMEZ; geçmişte kalmış ama COMPLETED işaretlenmemiş SCHEDULED booking DÖNER (kaybolma regresyonu)", async () => {
+    const { doctor } = await createDoctorWithAvailability(app);
+    const patient = await registerTestUser(app, { email: `khp-past-${crypto.randomUUID()}@example.com` });
+
+    // Booking D — geçmişte kalmış (endsAt < now) ama HÂLÂ SCHEDULED (doktor "Seansı Tamamla" demedi).
+    const createdD = await app.inject({
+      method: "POST",
+      url: "/api/v1/appointments/bookings",
+      headers: authHeader(patient.accessToken),
+      payload: bookingPayload(doctor.slug, [slotAt(0)], patient.email),
+    });
+    const bookingDId = createdD.json().data.bookingId as string;
+    const pastStart = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    await app.prisma.appointment.updateMany({
+      where: { bookingId: bookingDId },
+      data: { startsAt: pastStart, endsAt: new Date(pastStart.getTime() + 30 * 60 * 1000), status: "SCHEDULED" },
+    });
+    await app.prisma.appointmentBooking.update({ where: { id: bookingDId }, data: { paymentStatus: "PAID", paidAt: new Date() } });
+
+    // Booking E — gelecekteki SCHEDULED (upcoming) → past'e GİRMEZ.
+    const createdE = await app.inject({
+      method: "POST",
+      url: "/api/v1/appointments/bookings",
+      headers: authHeader(patient.accessToken),
+      payload: bookingPayload(doctor.slug, [slotAt(30)], patient.email),
+    });
+    const bookingEId = createdE.json().data.bookingId as string;
+    await app.inject({
+      method: "POST",
+      url: `/api/v1/admin/telehealth/bookings/${bookingEId}/mark-paid`,
+      headers: authHeader(adminToken),
+      payload: { reason: "test" },
+    });
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/patient/bookings?scope=past",
+      headers: authHeader(patient.accessToken),
+    });
+    expect(res.statusCode).toBe(200);
+    const ids = (res.json().data as { id: string }[]).map((b) => b.id);
+    expect(ids).toEqual([bookingDId]);
+  });
+
+  it("test 31 — scope=cancelled: randevu satırı kalmamış 'hayalet' (EXPIRED) booking DÖNER, diğer sekmelerdeki booking DÖNMEZ", async () => {
+    const { doctor } = await createDoctorWithAvailability(app);
+    const patient = await registerTestUser(app, { email: `khp-cancelled-${crypto.randomUUID()}@example.com` });
+
+    // Booking F — PENDING iken iptal edilir → randevu satırları HARD DELETE, paymentStatus=EXPIRED.
+    const createdF = await app.inject({
+      method: "POST",
+      url: "/api/v1/appointments/bookings",
+      headers: authHeader(patient.accessToken),
+      payload: bookingPayload(doctor.slug, [slotAt(0)], patient.email),
+    });
+    const bookingFId = createdF.json().data.bookingId as string;
+    const accessTokenF = createdF.json().data.accessToken as string;
+    const cancelRes = await app.inject({
+      method: "POST",
+      url: `/api/v1/appointments/bookings/${bookingFId}/cancel?t=${accessTokenF}`,
+      payload: {},
+    });
+    expect(cancelRes.statusCode).toBe(200);
+    expect(cancelRes.json().data.paymentStatus).toBe("EXPIRED");
+
+    // Booking G — gelecekteki SCHEDULED (upcoming) → cancelled'a GİRMEZ.
+    const createdG = await app.inject({
+      method: "POST",
+      url: "/api/v1/appointments/bookings",
+      headers: authHeader(patient.accessToken),
+      payload: bookingPayload(doctor.slug, [slotAt(30)], patient.email),
+    });
+    const bookingGId = createdG.json().data.bookingId as string;
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/patient/bookings?scope=cancelled",
+      headers: authHeader(patient.accessToken),
+    });
+    expect(res.statusCode).toBe(200);
+    const ids = (res.json().data as { id: string }[]).map((b) => b.id);
+    expect(ids).toEqual([bookingFId]);
+    expect(ids).not.toContain(bookingGId);
+  });
+
+  it("test 32 — meta.counts scope'tan BAĞIMSIZDIR: farklı scope isteklerinde AYNI sayaçlar döner ve gerçek dağılımla eşleşir", async () => {
+    const { doctor } = await createDoctorWithAvailability(app);
+    const patient = await registerTestUser(app, { email: `khp-counts-${crypto.randomUUID()}@example.com` });
+
+    // upcoming (ödenmemiş, PENDING_PAYMENT gelecekte).
+    const createdUpcoming = await app.inject({
+      method: "POST",
+      url: "/api/v1/appointments/bookings",
+      headers: authHeader(patient.accessToken),
+      payload: bookingPayload(doctor.slug, [slotAt(0)], patient.email),
+    });
+    expect(createdUpcoming.statusCode).toBe(201);
+
+    // past (geçmişte kalmış SCHEDULED).
+    const createdPast = await app.inject({
+      method: "POST",
+      url: "/api/v1/appointments/bookings",
+      headers: authHeader(patient.accessToken),
+      payload: bookingPayload(doctor.slug, [slotAt(30)], patient.email),
+    });
+    const bookingPastId = createdPast.json().data.bookingId as string;
+    const pastStart = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    await app.prisma.appointment.updateMany({
+      where: { bookingId: bookingPastId },
+      data: { startsAt: pastStart, endsAt: new Date(pastStart.getTime() + 30 * 60 * 1000), status: "SCHEDULED" },
+    });
+    await app.prisma.appointmentBooking.update({ where: { id: bookingPastId }, data: { paymentStatus: "PAID", paidAt: new Date() } });
+
+    // cancelled (hayalet EXPIRED).
+    const createdCancelled = await app.inject({
+      method: "POST",
+      url: "/api/v1/appointments/bookings",
+      headers: authHeader(patient.accessToken),
+      payload: bookingPayload(doctor.slug, [slotAt(60)], patient.email),
+    });
+    const bookingCancelledId = createdCancelled.json().data.bookingId as string;
+    const accessTokenCancelled = createdCancelled.json().data.accessToken as string;
+    await app.inject({
+      method: "POST",
+      url: `/api/v1/appointments/bookings/${bookingCancelledId}/cancel?t=${accessTokenCancelled}`,
+      payload: {},
+    });
+
+    const expectedCounts = { all: 3, upcoming: 1, past: 1, cancelled: 1 };
+
+    for (const scope of ["all", "upcoming", "past", "cancelled"] as const) {
+      const res = await app.inject({
+        method: "GET",
+        url: `/api/v1/patient/bookings?scope=${scope}`,
+        headers: authHeader(patient.accessToken),
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().meta.counts).toEqual(expectedCounts);
+    }
+  });
+
+  it("test 33 — başka bir kullanıcının booking'i hiçbir scope'ta görünmez (sahiplik filtresi regresyonu)", async () => {
+    const { doctor } = await createDoctorWithAvailability(app);
+    const patientA = await registerTestUser(app, { email: `khp-idor-a-${crypto.randomUUID()}@example.com` });
+    const patientB = await registerTestUser(app, { email: `khp-idor-b-${crypto.randomUUID()}@example.com` });
+
+    const createdB = await app.inject({
+      method: "POST",
+      url: "/api/v1/appointments/bookings",
+      headers: authHeader(patientB.accessToken),
+      payload: bookingPayload(doctor.slug, [slotAt(0)], patientB.email),
+    });
+    expect(createdB.statusCode).toBe(201);
+    const bookingBId = createdB.json().data.bookingId as string;
+    await app.inject({
+      method: "POST",
+      url: `/api/v1/admin/telehealth/bookings/${bookingBId}/mark-paid`,
+      headers: authHeader(adminToken),
+      payload: { reason: "test" },
+    });
+
+    for (const scope of ["all", "upcoming", "past", "cancelled"] as const) {
+      const res = await app.inject({
+        method: "GET",
+        url: `/api/v1/patient/bookings?scope=${scope}`,
+        headers: authHeader(patientA.accessToken),
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().data).toEqual([]);
+      expect(res.json().meta.counts).toEqual({ all: 0, upcoming: 0, past: 0, cancelled: 0 });
+    }
+  });
+});
+
 /** `multipart/form-data` gövdesini elle inşa eder (tek dosya alanı, `file`) — test yardımcı fonksiyonu. */
 function buildMultipartBody(filename: string, contentType: string, buffer: Buffer): { body: Buffer; contentType: string } {
   const boundary = `----testboundary${crypto.randomBytes(8).toString("hex")}`;

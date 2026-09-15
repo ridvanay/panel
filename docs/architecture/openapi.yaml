@@ -8278,9 +8278,61 @@ paths:
         **2FA zorunlu DEĞİLDİR** (hasta bir panel kullanıcısı değildir).
         Oturumu olmayan misafir hasta, bu uç yerine magic-link'li
         `GET /appointments/bookings/{bookingId}?t=` yolunu kullanır.
+
+
+        **[KHP] §9.8.4 (2026-09-15) — kurumsal hasta portalının TEK veri kaynağıdır.**
+        `/patient`, `/patient/appointments`, `/patient/documents`,
+        `/patient/prescriptions` ve `/patient/profile` sayfalarının TAMAMI bu tek
+        uçla beslenir; `GET /patient/documents` veya `GET /patient/prescriptions`
+        gibi **birleştirilmiş (aggregate) uçlar BİLİNÇLİ OLARAK YOKTUR** (gerekçe:
+        [KHP] §9.8.4). Belge/epikriz İÇERİĞİ yalnızca mevcut booking-scoped uçlardan
+        (`GET /appointments/bookings/{bookingId}/documents`,
+        `GET /appointments/bookings/{bookingId}/consultation-note`) ve **yalnızca
+        kullanıcı açıkça istediğinde (tıklama ile)** çekilir — sayfa açılışında
+        booking'ler üzerinde toplu (fan-out) çağrı yapmak **YASAKTIR** (her okuma
+        denetim kaydı üretir ve deşifre maliyeti doğurur, §9.7.5 madde 6).
       parameters:
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
+        - name: scope
+          in: query
+          required: false
+          description: >
+            [KHP] §9.8.4 — hasta portalı sekme filtresi (Aktif / Geçmiş / İptal).
+            `GET /doctor/bookings?scope=` İLE AYNI desendir, ama tanımları hastanın
+            bakış açısına göre **KASITLI OLARAK FARKLIDIR**:
+
+
+            - `upcoming` (UI: "Aktif") = gelecekte `SCHEDULED`/`IN_PROGRESS`
+              randevusu olan **VEYA** `paymentStatus = PENDING` olup gelecekte
+              `PENDING_PAYMENT` randevusu olan booking. Doktor tarafındaki
+              `upcoming` ödenmemiş tutmaları SAYMAZ; hasta tarafında ödenmemiş
+              rezervasyon **eylem gerektiren aktif bir kayıttır** ("Ödemeyi
+              tamamla"), bu yüzden dahildir.
+
+            - `past` (UI: "Geçmiş") = `endsAt <= now` olan en az bir randevusu
+              (`COMPLETED`/`NO_SHOW`/`SCHEDULED`/`IN_PROGRESS`) bulunan ve
+              `upcoming` ile eşleşmeyen booking. `SCHEDULED` dahildir: doktorun
+              "Seansı Tamamla" demediği geçmiş randevu hiçbir sekmede
+              KAYBOLMAMALIDIR.
+
+            - `cancelled` (UI: "İptal") = `CANCELLED` randevusu olan **VEYA**
+              `paymentStatus` ∈ {`EXPIRED`, `REFUNDED`} olan **VEYA** hiç randevu
+              satırı kalmamış ("hayalet") booking. Süresi dolan/ödenmeden iptal
+              edilen booking'lerin randevu satırları HARD DELETE edildiği için bu
+              kayıtlar YALNIZCA bu sekmede görünür.
+
+            - `all` (varsayılan) = mevcut davranış, filtresiz (hayalet booking'ler
+              DAHİL — geriye dönük uyumluluk).
+
+
+            Çoklu slotlu bir booking'in `past` ve `cancelled` sekmelerinde AYNI ANDA
+            görünmesi **kabul edilmiş bir durumdur**; ek karmaşıklıkla
+            "düzeltilMEZ".
+          schema:
+            type: string
+            enum: [all, upcoming, past, cancelled]
+            default: all
       responses:
         "200":
           description: OK
@@ -8293,6 +8345,7 @@ paths:
                       data:
                         type: array
                         items: { $ref: "#/components/schemas/AppointmentBooking" }
+                      meta: { $ref: "#/components/schemas/PatientBookingListMeta" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
   /admin/telehealth/bookings:
@@ -17175,6 +17228,43 @@ components:
         joinableUntil: { type: string, format: date-time, nullable: true }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+
+    PatientBookingCounts:
+      type: object
+      description: >
+        [KHP] §9.8.4 — `/patient/appointments` sekme sayaçları. `ContentCounts`
+        İLE AYNI disiplin: **istek `scope`'undan ETKİLENMEZ**, hastanın TÜM
+        booking'leri üzerinde ayrı sorgularla hesaplanır (aksi hâlde "Aktif (3)"
+        rozeti seçili sekmeye göre değişirdi). Sayaçlar
+        `buildPageMetaWithCounts` yardımcısıyla döner — yeni bir meta mekanizması
+        İCAT EDİLMEZ.
+
+
+        `all` diğer üçünün toplamı DEĞİLDİR: `scope=all` hayalet booking'leri de
+        içerir ve bir booking birden fazla sekmeye düşebilir (bkz. `scope`
+        açıklaması).
+      required: [all, upcoming, past, cancelled]
+      properties:
+        all: { type: integer }
+        upcoming: { type: integer }
+        past: { type: integer }
+        cancelled: { type: integer }
+
+    PatientBookingListMeta:
+      type: object
+      description: "`GET /patient/bookings` yanıtının `meta` zarfı."
+      required: [counts]
+      properties:
+        nextCursor:
+          type: string
+          nullable: true
+          description: >
+            Sıralama `seq ASC` (en eski → en yeni) olarak KORUNUR — mevcut
+            `parseCursor`/`buildPageMeta` yardımcıları yalnızca artan yönü
+            destekler ve bu turda yeni bir sayfalama yardımcısı YAZILMAZ.
+            `scope=past` için ters sıralama isteği backlog'dadır:
+            `feature/patient-bookings-desc-cursor`.
+        counts: { $ref: "#/components/schemas/PatientBookingCounts" }
 
     BookingCheckoutSessionResponse:
       type: object

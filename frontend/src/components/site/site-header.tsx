@@ -366,8 +366,11 @@ export function SiteHeader({
                     Doktor Paneli
                   </DropdownMenuItem>
                 )}
+                {/* [KHP] `.claude/architect-scope-telehealth-template.md` §9.8.3 — hedef `/patient/appointments`e
+                    güncellendi (eski `/patient/bookings` artık kalıcı yönlendirmeye düşüyor, gereksiz bir
+                    ekstra atlama olmasın diye buradan DOĞRUDAN yeni rotaya bağlanılır). */}
                 {!isDoctorSession && telehealthModuleEnabled && (
-                  <DropdownMenuItem render={<Link href={localize("/patient/bookings")} />}>
+                  <DropdownMenuItem render={<Link href={localize("/patient/appointments")} />}>
                     <CalendarClock className="h-4 w-4" aria-hidden="true" />
                     Randevularım
                   </DropdownMenuItem>

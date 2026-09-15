@@ -33,8 +33,10 @@ import {
  * Bu dosyanın GERÇEK davranışı yansıttığı (ticket'ın bazı YANLIŞ varsayımlarının AKSİNE)
  * mimari kararlar:
  * - `SiteRole.DOCTOR` YOKTUR — doktorluk `User.doctorProfileId !== null` ile belirlenir.
- * - Kanonik URL'ler: `/doctor` (randevu listesi, `/doctor/bookings` DEĞİL), `/patient/bookings`
- *   (`/patient/appointments` DEĞİL).
+ * - Kanonik URL'ler: `/doctor` (randevu listesi, `/doctor/bookings` DEĞİL), `/patient/appointments`
+ *   (`.claude/architect-scope-telehealth-template.md` [KHP] §9.8.3, 2026-09-15 — eski
+ *   `/patient/bookings` artık `/patient/appointments`e KALICI YÖNLENDİRİLİR; header'daki
+ *   "Randevularım" bağlantısı da doğrudan yeni hedefe güncellendi, `site-header.tsx`).
  * - `/admin/telehealth/doctors`/`specialties`: ADMIN+MANAGER+EDITOR okur (EDITOR salt-okunur).
  *   `/admin/telehealth/appointments` VE `overview`: SADECE ADMIN+MANAGER — EDITOR'e sidebar'da
  *   GÖRÜNMEZ ve backend BAĞIMSIZ olarak 403 döner (gizleme yalnızca kullanılabilirlik, güvenlik
@@ -281,7 +283,12 @@ test("madde 1: doktor 2FA ile düz /login'den giriş yapınca doğrudan /doctor'
 // =============================================================================
 // madde 2 — Hasta izolasyonu
 // =============================================================================
-test("madde 2: hasta girişinde header 'Randevularım' linki /patient/bookings'e gider; listede SADECE kendi randevusu görünür", async ({
+// qa-agent GÜNCELLEMESİ (2026-09-15, [KHP] §9.8.3/§9.8.7 test 36 regresyon taraması) — header
+// bağlantısının hedefi frontend-agent tarafından `/patient/appointments`e güncellendi
+// (`site-header.tsx`, eski `/patient/bookings` artık YALNIZCA kalıcı bir yönlendirmedir). Bu
+// testin URL beklentisi buna göre güncellendi; liste/izolasyon DAVRANIŞI (yalnızca kendi
+// randevusu) DEĞİŞMEDİ.
+test("madde 2: hasta girişinde header 'Randevularım' linki /patient/appointments'e gider; listede SADECE kendi randevusu görünür", async ({
   browser,
 }) => {
   const { page, close } = await createAuthenticatedPageAs(browser, PATIENT_USER_EMAIL, FIXTURE_PASSWORD);
@@ -295,7 +302,7 @@ test("madde 2: hasta girişinde header 'Randevularım' linki /patient/bookings'e
     const patientLink = page.getByRole("menuitem", { name: "Randevularım" });
     await expect(patientLink).toBeVisible({ timeout: 10_000 });
     await patientLink.click();
-    await expect(page).toHaveURL(/\/patient\/bookings$/);
+    await expect(page).toHaveURL(/\/patient\/appointments$/);
 
     await expect(page.getByRole("heading", { name: "Randevularım" })).toBeVisible({ timeout: 15_000 });
     const row = page.locator("tr", { hasText: `${doctorFixture.title} ${doctorFixture.fullName}` });

@@ -2541,6 +2541,27 @@ export const AppointmentBookingSchema = z.object({
 export type AppointmentBookingDto = z.infer<typeof AppointmentBookingSchema>;
 
 /**
+ * [KHP] `.claude/architect-scope-telehealth-template.md` §9.8.4 KARAR O — `/patient/appointments`
+ * sekme sayaçları. `ContentCountsSchema` İLE AYNI disiplin: istek `scope`'undan ETKİLENMEZ, hastanın
+ * TÜM booking'leri üzerinde ayrı sorgularla hesaplanır. `all` diğer üçünün toplamı DEĞİLDİR (bkz.
+ * `lib/patient-booking-scope.ts`).
+ */
+export const PatientBookingCountsSchema = z.object({
+  all: z.number().int(),
+  upcoming: z.number().int(),
+  past: z.number().int(),
+  cancelled: z.number().int(),
+});
+export type PatientBookingCountsDto = z.infer<typeof PatientBookingCountsSchema>;
+
+/** `GET /patient/bookings` yanıtının `meta` zarfı. */
+export const PatientBookingListMetaSchema = z.object({
+  nextCursor: z.string().nullable(),
+  counts: PatientBookingCountsSchema,
+});
+export type PatientBookingListMetaDto = z.infer<typeof PatientBookingListMetaSchema>;
+
+/**
  * §9.7.0 madde 11 — TÜRETİLMİŞ görünüm, `Invoice` TABLOSU AÇILMAZ. Bu bir e-Fatura/e-Arşiv
  * fatura DEĞİLDİR; müşteri yüzeyi etiketi "Ödeme Belgesi (bilgi amaçlıdır)" olmalıdır.
  */

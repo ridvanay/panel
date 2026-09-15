@@ -898,6 +898,25 @@ export function setUserTwoFactorEnabledDirectly(userId: string, enabled: boolean
   });
 }
 
+/**
+ * qa-agent — `.claude/architect-scope-telehealth-template.md` [KHP] §9.8.7 test 40 — `User.
+ * emailVerifiedAt`'i doğrudan yazar (`setUserTwoFactorEnabledDirectly` İLE AYNI "gerçek kullanıcı,
+ * sahte olan yalnızca bayrak/zaman damgası" felsefesi). E-posta doğrulama kendi-kendine-servis bir
+ * link akışıdır (test ortamında gerçek e-posta gönderilmez); `/patient/profile`in `success` tonlu
+ * "E-posta Doğrulandı" rozetini (§9.8.5 madde 5, §14.6 B) GERÇEK bir durumla doğrulamak için bu
+ * kısayol gerekir.
+ */
+export function setUserEmailVerifiedDirectly(userId: string, verified: boolean): void {
+  const esc = (value: string) => value.replace(/'/g, "''");
+  const sql = `UPDATE "users" SET "emailVerifiedAt" = ${verified ? "now()" : "NULL"} WHERE id = '${esc(userId)}';`;
+  execFileSync("npx", ["prisma", "db", "execute", "--stdin", `--url=${E2E_DATABASE_URL}`], {
+    cwd: BACKEND_DIR,
+    input: sql,
+    stdio: ["pipe", "pipe", "pipe"],
+    shell: process.platform === "win32",
+  });
+}
+
 // ---------------------------------------------------------------------------
 // qa-agent — Grid görevi (2026-09-14) Görev 2, randevu sihirbazı tema renkleri e2e fixture
 // yardımcıları (`telehealth-theme-settings.spec.ts`). `getAdminAppearance`/`patchAppearance`

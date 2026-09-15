@@ -1449,6 +1449,331 @@ Squash mesajı: `feat(telehealth): çoklu slot rezervasyon, ödeme, sağlık ver
 
 ---
 
+## 9.8 TUR 4 — Kurumsal Hasta Portalı (`/patient/**`) — architect kararları (2026-09-15)
+
+> **Kısa tag: `[KHP]`.** Bu bölüme `openapi.yaml` ve kod yorumlarından `[KHP] §9.8.x`
+> biçiminde atıf yapılır. Bu bölüm §9.7.7 KARAR K'yı **GENİŞLETİR**, §9.7.5 KARAR J'yi
+> **DEĞİŞTİRMEZ** ve `.claude/design-notes-telehealth.md` §12.6 madde 4'ü **TERSİNE ÇEVİRİR**
+> (bkz. §9.8.2).
+
+### 9.8.0 Karar özeti (tek tablo)
+
+| # | Konu | Karar | Yeni DB? | Yeni uç? |
+|---|---|---|---|---|
+| L | "Hasta rolü" | **REDDEDİLDİ** — hasta bir İLİŞKİDİR (`patientUserId`), rol DEĞİL | Hayır | Hayır |
+| L2 | Doktor/Admin `/patient`e girerse | Doktor → mevcut guard `/doctor`'a alır (**yeni kod YOK**); ADMIN/MANAGER/EDITOR → **yönlendirilmez**, kendi (muhtemelen boş) portalını görür | Hayır | Hayır |
+| M | Sol nav / çoklu sekme | §12.6 madde 4 **bilinçli olarak tersine çevrildi** — 5 hedefli kalıcı portal gezinmesi ZORUNLU | Hayır | Hayır |
+| N | Rota yapısı | `/patient`, `/patient/appointments`, `/patient/documents`, `/patient/prescriptions`, `/patient/profile` + **detay rotası `/patient/bookings/{id}` OLDUĞU YERDE KALIR** | Hayır | Hayır |
+| O | Aggregate uçlar (`GET /patient/documents` vb.) | **REDDEDİLDİ**; yerine mevcut `GET /patient/bookings`'e **additive `scope` parametresi + `meta.counts`** | Hayır | Hayır (mevcut uç genişledi) |
+| P | `/patient/profile` kimlik künyesi | **DAR KAPSAM** — yeni veri toplanMAZ; en güncel booking'in **maskeli** `identity` özeti + `User.emailVerifiedAt` rozeti | Hayır | Hayır |
+
+**Bu turun tek cümlelik özeti:** kurumsal hasta portalı **saf bir frontend/kabuk turudur**;
+backend'de tek değişiklik `GET /patient/bookings`'in `scope` + `counts` genişlemesidir,
+`db-agent` ve `integration-agent` bu turda **DEVREDE DEĞİLDİR**.
+
+### 9.8.1 KARAR L — `SiteRole.PATIENT` EKLENMEZ (bağlayıcı) + `/patient/**` guard matrisi
+
+Kullanıcının "yalnızca hasta rolüne sahip hesaplara açık olsun" isteği, §9.7.7 KARAR K
+madde 1 ile **AYNI gerekçeyle REDDEDİLİR** ve o kararın kapsamı buraya genişletilir:
+
+1. **`SiteRole`'e `PATIENT` (veya eşdeğeri) EKLENMEZ.** Doktorlukta olduğu gibi hastalık da
+   bir ROL değil bir **İLİŞKİDİR**: `isPatientOf(booking, user) = booking.patientUserId === user.id`.
+   Dahası bu, doktor durumundan **daha güçlü** bir gerekçeye sahiptir: sitedeki **her**
+   kullanıcı potansiyel bir hastadır (bir kullanıcı ilk randevusunu aldığı an "hasta" olur) —
+   bunu bir enum değeriyle modellemek, her `POST /appointments/bookings` çağrısında kullanıcının
+   rolünü yükseltmek gibi anlamsız bir yan etki gerektirirdi. Backlog dahi açılmaz; bu kalıcı
+   bir REDdir.
+2. **Yetkilendirme yeri değişmez:** `/patient/bookings` uçları zaten `authenticate` +
+   `where: { patientUserId: request.user!.id }` ile kapalıdır (`telehealth.portal.routes.ts`
+   satır 545-575). Sahiplik **sunucuda satır düzeyinde** zorlanır; frontend guard'ı yalnızca
+   bir gezinme/UX katmanıdır (`doctor-portal-route-guard.tsx` dosya başı yorumundaki AYNI
+   ayrım).
+3. **`/patient/**` guard matrisi (bağlayıcı, frontend-agent bunu AYNEN uygular):**
+
+| Aktör | Davranış | Nerede uygulanır |
+|---|---|---|
+| Oturumsuz | `/login?next=<pathname>` | `PatientPortalShell` (**MEVCUT**, değişmez) |
+| `telehealth` modülü kapalı | `404` | `patient/layout.tsx` (**MEVCUT**, değişmez) |
+| Doktor oturumu (`user.doctorProfileId != null`) | **SESSİZCE** `/doctor`'a (subdomain modunda doktor origin'ine) | `DoctorPortalRouteGuard` (**MEVCUT**, `(site)/layout.tsx` — **YENİ KOD YAZILMAZ**) |
+| `ADMIN` / `MANAGER` / `EDITOR` | **YÖNLENDİRİLMEZ.** Kendi hasta portalını görür (kendi booking'i yoksa boş durum) | — |
+| Magic-link misafiri (`?t=`) | Portal kabuğundaki 5 sayfaya **erişemez** → `/login?next=` | `PatientPortalShell` (mevcut davranış) |
+
+   - **Doktor için yeni bir guard YAZILMAZ ve `PatientPortalShell` kendi doktor kontrolünü
+     YAPMAZ.** İki guard aynı anda `router.replace` çağırırsa yönlendirme yarışı ve ekran
+     titremesi üretir. `/patient/**` ayrıca `isDoctorSharedRouteException` listesine
+     **EKLENMEZ** — `.claude/architect-scope-doctor-subdomain.md` §5.6'nın "kapsam dar tutulur"
+     kuralı burada da bağlayıcıdır (hekimin hasta portalında işi yoktur).
+   - **ADMIN'in yönlendirilMEMESİ bilinçli bir karardır** (orkestratörün önerdiği
+     "ADMIN → admin paneli" simetrisi **REDDEDİLDİ**): (a) bir personelin kendi adına randevu
+     alması tamamen meşrudur ve rol tabanlı bir yönlendirme bunu imkânsız kılardı — bu, KARAR
+     K'nın "rol değil ilişki" ilkesinin arkadan dolanılması olurdu; (b) `/patient/bookings/{id}`
+     magic-link'i ADMIN oturumu açıkken tıklanırsa kullanıcı sessizce admin paneline atılırdı,
+     bu bir hata gibi görünür; (c) sunucu zaten `patientUserId` ile kapıyı tuttuğu için
+     yönlendirmenin **hiçbir güvenlik değeri yoktur**.
+4. **`?t=` ile aggregate sayfa AÇILMAZ (güvenlik invaryantı, bağlayıcı).** Magic-link token'ı
+   **TEK bir booking'i** açar (`AppointmentBooking.accessTokenHash`). `/patient`,
+   `/patient/appointments`, `/patient/documents`, `/patient/prescriptions`, `/patient/profile`
+   sayfaları **oturum GEREKTİRİR** ve `?t=` parametresini **kabul etmez/iletmez**; tek-booking
+   token'ının hastanın TÜM geçmişini açması yetki yükseltmesi olurdu.
+   `/patient/bookings/{id}?t=` (detay) ve `.../invoice` bu kuralın **DIŞINDADIR** ve
+   **DEĞİŞMEZ**.
+
+### 9.8.2 KARAR M — `design-notes-telehealth.md` §12.6 madde 4 TERSİNE ÇEVRİLDİ (2026-09-15)
+
+**Eski karar (2026-09-12, §12.6 madde 4 + `patient-portal-shell.tsx` dosya başı yorumu):**
+"portalın kapsamı 1-2 ekrandır… sidebar/ikon-menü YOK… hasta portalının TEK hedefi olduğu için
+sekme şeridi de anlamsızdır."
+
+**Yeni karar (bağlayıcı):** o kararın **öncülü ortadan kalktı** — hasta portalı artık 5 hedefli
+bir yüzeydir, dolayısıyla **kalıcı bir portal-içi gezinme ZORUNLUDUR.** Bu, LiveKit self-host
+kararının tersine çevrilmesiyle **aynı konvansiyonla** kayda geçirilir: karar SİLİNMEZ, tarihli
+bir not ile **üzerine yazılır**.
+
+Tersine çevirmenin **SINIRLARI** (bunlar §12.6'nın hâlâ geçerli olan çekirdeğidir):
+
+1. **§12.6'nın 1., 2., 3. ve 5. maddeleri AYNEN YÜRÜRLÜKTEDİR:** portal `.site-scope`
+   paletinde kalır, admin token seti/dark-light toggle/`admin/layout.tsx` kabuğu **İTHAL
+   EDİLMEZ**. "Kurumsal sağlık standardı" görünümü, admin panelinin taklidi **DEĞİLDİR**.
+2. **Kabuk kendi `<header>`'ını RENDER ETMEZ.** Marka/hesap/çıkış Katman 1'de (`SiteHeader`)
+   kalır — `DoctorTopBar`/`DoctorPortalShell` ayrımıyla **AYNI** tekilleştirme kuralı
+   (çift marka satırı YASAK).
+3. **Gezinmenin BİÇİMİ ui-designer'ın kararıdır** (`.claude/CLAUDE.md` "görsel çelişki →
+   ui-designer"). architect'in bağlayıcı çerçevesi ve **varsayılan önerisi**: `lg:` ve üzeri
+   kalıcı sol ray (`lg:grid-cols-[240px_1fr]`, `max-w-6xl` — `DoctorPortalShell`'in bu turda
+   zaten benimsediği genişlik), `lg` altında yatay kaydırılabilir sekme şeridi. ui-designer bunu
+   değiştirebilir, ancak **madde 1 ve 2'yi ihlal edemez** ve gerekçesini
+   `design-notes-telehealth.md`'ye yazmak zorundadır.
+4. **Doktor portalıyla görsel akrabalık korunur:** aktif/pasif bağlantı durumları, tipografi ve
+   rozet dili `DoctorPortalShell`'in sekme şeridiyle **aynı ailede** olmalıdır; iki portal iki
+   farklı ürün gibi görünMEMELİDİR.
+5. `patient-portal-shell.tsx` dosya başı yorumu bu tersine çevirmeyi **tarihli** olarak
+   belgelemek zorundadır (`2026-09-15, [KHP] §9.8.2`); eski cümle silinmez, "REVİZE EDİLDİ"
+   notuyla korunur — `doctor-portal-route-guard.tsx`'teki 2026-09-15 istisna notuyla AYNI biçim.
+
+### 9.8.3 KARAR N — Rota haritası (bağlayıcı)
+
+| Rota | Durum | Not |
+|---|---|---|
+| `/{lang}/patient` | **YENİ** | Genel bakış / hero kartı. Kabuk İÇİNDE, oturum gerekir. |
+| `/{lang}/patient/appointments` | **YENİ** | Randevu listesi; Aktif/Geçmiş/İptal sekmeleri (`?scope=`). |
+| `/{lang}/patient/documents` | **YENİ** | Belge görüntüleme/yükleme (booking bağlamında). |
+| `/{lang}/patient/prescriptions` | **YENİ** | Epikriz/reçete (doktorun konsültasyon notu). |
+| `/{lang}/patient/profile` | **YENİ** | Künye + e-posta rozeti (§9.8.5). |
+| `/{lang}/patient/bookings` | **KALDIRILIR → kalıcı yönlendirme** | `/patient/appointments`'a `redirect()` (Next `permanentRedirect`). Sayfa gövdesi taşınır, yeniden yazılmaz. |
+| `/{lang}/patient/bookings/{bookingId}` | **AYNEN KALIR (bağlayıcı)** | Detay + ödeme dönüş sayfası + magic-link hedefi. |
+| `/{lang}/patient/bookings/{bookingId}/invoice` | **AYNEN KALIR** | Ödeme belgesi. |
+
+**Detay rotasının TAŞINMAMASI gerekçesi (bağlayıcı):** `/patient/bookings/{id}`, backend'de
+**üretilmiş ve çoktan gönderilmiş** URL'lerin hedefidir —
+`telehealth.checkout.routes.ts::buildPatientReturnUrl` (Stripe `success_url`/`cancel_url`) ve
+magic-link e-postası (`buildMagicLink`). Bu URL'ler **kullanıcıların e-posta kutularında
+yaşıyor** ve Stripe tarafında kayıtlı oturumlara bağlı. Rotayı `/patient/appointments/{id}`'ye
+taşımak (a) backend URL üreticilerini, (b) `?t=` ve `?payment=` sorgu parametrelerini koruyan
+bir yönlendirme katmanını, (c) e2e testlerini aynı anda değiştirmeyi gerektirirdi — **hiçbir
+kullanıcı faydası olmadan.** Liste rotası ise hiçbir yerde üretilmiyor; onu taşımak bedava.
+Ortaya çıkan "liste `/appointments`, detay `/bookings/{id}`" asimetrisi **bilinçlidir ve kabul
+edilmiştir**; ileride kapatmak isteyen backlog: `feature/patient-route-unification`.
+
+**Ek bağlayıcı kurallar:**
+- Detay sayfası (`/patient/bookings/{id}`) **kabuğun DIŞINDA kalır** — magic-link misafiri için
+  oturum guard'ı çalıştırılamaz (§9.7.7 madde 4). Sol nav orada görünmez; bu bir hata değildir.
+- Detay sayfasındaki "← Tüm randevularım" bağlantısı `/patient/appointments`'a güncellenir **ve
+  yalnızca `accessToken` YOKKEN render edilir** — misafiri oturum gerektiren bir listeye
+  göndermek onu login duvarına çarptırır (mevcut davranış bu yönüyle hatalıdır, bu turda
+  düzeltilir).
+- 5 yeni sayfanın **tamamı** `robots: { index: false, follow: false }` döndürür (§9.7.10
+  seo-agent kuralı); sitemap'e girmez. seo-agent bu turda ayrıca DEVREYE ALINMAZ — kural zaten
+  yazılıdır, frontend-agent mevcut `generateMetadata()` desenini kopyalar.
+
+### 9.8.4 KARAR O — Aggregate uçlar REDDEDİLDİ; `GET /patient/bookings` genişletildi
+
+**Soru:** `/patient/documents` ve `/patient/prescriptions` için hastanın TÜM booking'lerini
+birleştiren yeni backend uçları mı, yoksa istemci tarafında birleştirme mi?
+
+**Karar: YENİ AGGREGATE UÇ YOK.** Beş sayfanın tamamı **tek bir uçtan** beslenir:
+`GET /patient/bookings` (+ içerik için MEVCUT booking-scoped uçlar, **talep üzerine**).
+Buna karşılık bu uca **additive** iki genişleme yapılır (kontrat güncellendi, bkz.
+`docs/architecture/openapi.yaml`):
+
+- `?scope=all|upcoming|past|cancelled` (varsayılan `all` — mevcut davranış korunur),
+- `meta.counts` = `PatientBookingCounts` (`buildPageMetaWithCounts` ile; sekme rozetleri).
+
+**Gerekçe (dört madde, ağırlık sırasıyla):**
+
+1. **Gerekli veri ZATEN DTO'da.** `AppointmentBooking` şeması `documentCount`,
+   `hasConsultationNote`, `hasIntakeNote` ve maskeli `identity` alanlarını **zaten taşıyor**
+   (openapi satır ~17108+). Bir aggregate uç, var olan veriden türetilmiş ikinci bir görünüm
+   üretir — iki kaynak, iki bakım yükü, `.claude/CLAUDE.md`'nin "tek doğru kaynak" ilkesine
+   aykırı.
+2. **Güvenlik/uyum maliyeti (belirleyici madde).** Belge ve epikriz içeriği **özel nitelikli
+   sağlık verisidir** ve erişimi §9.7.5 madde 6-7 gereği **booking bazında** yetkilendirilip
+   **denetim kaydına yazılır**. "Tüm epikrizlerimi listele" uçu, KARAR J'nin booking-scoped
+   yetki modeline **YENİ ve DAHA GENİŞ** bir yüzey açar; bu, security-agent + compliance-agent
+   için **engelleyici** bir denetim turu tetikler (§9.7.9). Böyle bir uç için **bu turda
+   hiçbir işlevsel zorunluluk yoktur** — dolayısıyla açılmaz. Veri minimizasyonu da aynı yönü
+   gösterir: hasta bir epikrizi okumak istediğinde **o epikriz** deşifre edilir, hepsi değil.
+3. **Performans gerçekte sorun değil.** Sayfa açılışı **tam 1 istek**tir (`/patient/bookings`);
+   belge/epikriz içerikleri **yalnızca kullanıcı tıklayınca** çekilir. Hasta başına booking
+   sayısı küçüktür ve sayfalama zaten vardır. N+1 riski, aşağıdaki yasak sayesinde hiç
+   doğmaz.
+4. **Geri dönülebilirlik.** İleride gerçek bir ihtiyaç doğarsa (ör. 100+ booking'li hasta),
+   `GET /patient/documents` eklemek **additive** ve kırıcı olmayan bir adımdır. Şimdi eklemek
+   ise geri alınamaz bir yüzeydir.
+
+**Bağlayıcı uygulama kuralları (frontend-agent):**
+
+- **YASAK:** sayfa açılışında booking listesi üzerinde `listBookingDocuments` /
+  `getConsultationNote` **fan-out**'u (`Promise.all` ile N çağrı). Her `getConsultationNote` /
+  belge içeriği okuması sunucuda **denetim kaydı + deşifre** üretir; bunu kullanıcı istemeden
+  tetiklemek §9.7.5 madde 6'nın amacını boşaltır ve denetim kayıtlarını çöpe çevirir.
+- `/patient/documents` → `scope=all` listesinden `documentCount > 0` olan booking'ler kart
+  olarak listelenir; belgeler **kart açıldığında** çekilir (mevcut `BookingDocumentsDialog`
+  yeniden kullanılır).
+- `/patient/prescriptions` → `hasConsultationNote === true` olan booking'ler listelenir; HTML
+  içerik **"Görüntüle"ye basılınca** `getConsultationNote` ile çekilir (mevcut
+  `patient-booking-detail-panel.tsx` mantığının **AYNISI**, yeniden yazılmaz).
+- **Booking'siz belge yükleme YOKTUR (bağlayıcı, KARAR J).** Belge yüklemek rıza + booking
+  bağlamı gerektirir; `/patient/documents` sayfasındaki yükleme akışı, kullanıcıya önce bir
+  booking seçtirir ve **MEVCUT** `BookingIntakeStep`/`DocumentUploader` bileşenlerini kullanır.
+- Otomatik sayfalama **en fazla 1 sayfa**; devamı açık "Daha Fazla Yükle" ile (mevcut
+  `PatientBookingsPanel` deseni).
+
+### 9.8.5 KARAR P — `/patient/profile` kimlik künyesi: DAR KAPSAM + dil yasağı
+
+1. **Yeni veri toplanMAZ, yeni kolon/uç AÇILMAZ.** Kullanıcı seviyesinde (`User`) bir kimlik
+   alanı **eklenmez** — bu, db-agent + compliance-agent'ın engelleyici bir turunu gerektirirdi
+   ve mevcut [DPI] §2.1 kararıyla ("kimlik booking'e aittir, kopyalanmaz") çelişirdi.
+2. **Kaynak:** `GET /patient/bookings` yanıtındaki **en güncel** (`seq` en büyük) `identity !==
+   null` booking'in **maskeli** özeti: `citizenshipType`, `countryCode`, `maskedNumber`,
+   `birthYear`, `capturedAt`. Hiç yoksa nötr boş durum gösterilir.
+3. **`GET /appointments/bookings/{id}/identity` ÇAĞRILMAZ (bağlayıcı).** O uç açık kimlik
+   numarasını döndürür ve her çağrıda `logAudit("telehealth.identity.accessed")` yazar; bir
+   profil sayfasının her açılışında bunu tetiklemek kabul edilemez.
+4. **DİL YASAĞI ([DPI] §2.5, ENGELLEYİCİ — kullanıcının kendi ifadesi bu noktada
+   REDDEDİLİR):** yaptığımız iş **algoritmik format denetimidir**, kimlik doğrulama değildir.
+   Bu sayfada (ve her yerde) **"doğrulanmış kimlik" / "T.C. doğrulandı" / "doğrulanmış hasta" /
+   "verified" YASAKTIR.** Bölüm başlığı **"Kimlik Bilgileri"**, durum metni
+   **"Kimlik bilgisi alındı — {capturedAt}"** / **"Kimlik bilgisi bulunmuyor"**dur. Rozetin
+   rengi "onay yeşili" olarak okunacak bir güvence dili üretMEMELİDİR (ui-designer'ın kararı;
+   nötr ton önerilir).
+5. **E-posta onay rozeti SERBEST ve gerçektir:** `User.emailVerifiedAt` (auth kullanıcı
+   DTO'sunda **zaten var**, `frontend/src/lib/api/types.ts`) — burada
+   "E-posta doğrulandı / doğrulanmadı" ifadesi **doğru** ve izinlidir (madde 4'ün yasağı
+   yalnızca KİMLİK içindir). Yeni uç gerekmez.
+6. **Düzenleme yok:** künye salt-okunurdur; kimlik yalnızca `PUT /appointments/bookings/{id}/identity`
+   ile ve yalnızca `PENDING` ödemeli booking'de değişir (mevcut davranış). Profil sayfası bunu
+   bir cümleyle açıklar, form AÇMAZ.
+7. **compliance-agent bu turun akışında DEĞİLDİR** (gerekçe: yeni veri toplama yok, yeni
+   saklama yüzeyi yok, yeni deşifre yok, yeni uç yok — yalnızca zaten yetkili aktöre zaten
+   dönen maskeli verinin yeniden sunumu). **NOT (compliance-agent'ın bir sonraki rutin turunda
+   bakması için):** künye ilk kez bir booking bağlamı DIŞINDA gösteriliyor; 12 aylık PII
+   süpürücüsü `identity*` alanlarını null'ladığında bu sayfa kendiliğinden "Kimlik bilgisi
+   bulunmuyor" durumuna düşer (kendini iyileştiren davranış, ek iş gerekmez).
+
+### 9.8.6 Ajan dağılımı ve yürütme sırası (bu tur)
+
+```
+architect (bu §9.8 + openapi)   [TAMAMLANDI]
+  → ui-designer        [önce/paralel — nav paterni, hero kartı, sekme/rozet dili]
+  → frontend-agent     [kabuk + 5 sayfa + mevcut bileşenlerin ENTEGRASYONU]
+  → backend-agent      [YALNIZCA `GET /patient/bookings` scope + counts]
+  → qa-agent           [e2e + guard matrisi]
+```
+
+Kullanıcının verdiği sıra (`ui-designer → frontend-agent → backend-agent → qa-agent`) **aynen
+kabul edilmiştir**; backend işi tek ve küçük olduğu için frontend'den sonraya kalması sorun
+değildir, ancak frontend-agent `scope`/`counts` sözleşmesine **kontrata göre** yazar
+(uç hazır değilken bile kod kontrata uyar — `.claude/CLAUDE.md` çakışma kuralı).
+**db-agent, integration-agent, security-agent, compliance-agent, notification-agent ve
+seo-agent bu turda DEVREDE DEĞİLDİR** (gerekçeler: sırasıyla şema değişmiyor; ödeme/3. parti
+dokunulmuyor; yeni yetki yüzeyi açılmıyor (§9.8.4 madde 2 bunu bilinçli olarak önledi); yeni
+veri toplanmıyor (§9.8.5); bildirim eklenmiyor; `noindex` kuralı zaten yazılı (§9.8.3)).
+
+| Ajan | Bu turdaki sahası | DOKUNMAZ |
+|---|---|---|
+| **ui-designer** | §9.8.2'nin sınırları içinde: portal gezinme paterni (sol ray `lg+` / sekme şeridi `<lg`), aktif/pasif durumlar, `/patient` hero kartı (isim + yaklaşan randevu + birincil CTA), boş durumlar (5 sayfanın her biri), sekme sayacı rozeti, künye/e-posta rozetlerinin **nötr** dili (§9.8.5 madde 4), belge/epikriz kart deseni — `.claude/design-notes-telehealth.md`'ye **§14** olarak EK | Kod; §12.6 madde 1-2-3-5'i ihlal; admin token'ı ithal etmek |
+| **frontend-agent** | `PatientPortalShell`'i nav taşıyan kabuğa dönüştürmek (+ §9.8.2 madde 5 tarihli yorum); `/patient`, `/patient/appointments`, `/patient/documents`, `/patient/prescriptions`, `/patient/profile` sayfaları; `/patient/bookings` → `/patient/appointments` kalıcı yönlendirmesi; `PatientBookingsPanel`'e sekme/`scope` state'i; `listPatientBookings`'e `scope` parametresi + `counts` tipi (`lib/api/telehealth.ts`, `lib/api/types.ts`); `BookingDocumentsDialog`'u **prop ile** hasta perspektifine açmak; detay sayfasının geri-bağlantı düzeltmesi (§9.8.3) | **Yeni backend uç ÇAĞIRMAK/İCAT ETMEK**; görsel token kararı; meta/SEO kuralı icat etmek; `?t=` akışını değiştirmek; mevcut bileşenleri YENİDEN YAZMAK |
+| **backend-agent** | **Tek iş:** `telehealth.portal.routes.ts::GET /bookings` — `scope` querystring şeması (`PatientBookingsQuerySchema`, `telehealth.schemas.ts`), where-clause üretimi (**`lib/doctor-booking-scope.ts` emsaliyle AYRI ve SAF bir yardımcı**, ör. `lib/patient-booking-scope.ts`; doktor yardımcısı **değiştirilMEZ**), `buildPageMetaWithCounts` ile 4 sayaç; birim testleri | Şema/migration; frontend; **doktor `scope` semantiğini değiştirmek**; yeni uç eklemek |
+| **qa-agent** | §9.8.7 | Bug'ı kendi düzeltmek |
+
+**Sınır ihlali uyarıları (architect'in önden verdiği hakemlik):**
+- frontend-agent, `/patient/documents` için bir "tüm belgelerim" ucu isterse → **HAYIR**
+  (§9.8.4). Kontrat tek doğru kaynaktır.
+- backend-agent, hasta `scope` tanımlarını doktorunkiyle "birleştirmeye" kalkarsa → **HAYIR**
+  (§9.8.4'teki `upcoming` asimetrisi kasıtlıdır; iki portalın iş tanımı farklıdır).
+- ui-designer, admin panelinin ikonlu sidebar'ını/token setini önerirse → **HAYIR**
+  (§12.6 madde 1-2-3-5 hâlâ bağlayıcı).
+
+### 9.8.7 QA kapsamı (qa-agent) — §10/§9.7.11'e EK
+
+**Birim/entegrasyon (backend):**
+29. `scope=upcoming` → yalnızca gelecekte `SCHEDULED`/`IN_PROGRESS` **veya** `PENDING` ödemeli
+    gelecekteki `PENDING_PAYMENT` booking'ler döner.
+30. `scope=past` → `upcoming` ile eşleşen booking **DÖNMEZ**; geçmişte kalmış ama `COMPLETED`
+    işaretlenmemiş (`SCHEDULED`, `endsAt < now`) booking **DÖNER** (kaybolma regresyonu).
+31. `scope=cancelled` → randevu satırı kalmamış "hayalet" (`EXPIRED`) booking **DÖNER**.
+32. `meta.counts` **`scope`'tan bağımsızdır**: `scope=past` isteğinde de `upcoming` sayacı
+    doğru gelir.
+33. Başka bir kullanıcının booking'i **hiçbir `scope`'ta** görünmez (sahiplik filtresi
+    regresyonu).
+
+**E2E (`frontend/tests/e2e/`):**
+34. Oturumlu hasta `/patient` → hero kartı + 5 hedefli gezinme görünür; her hedefe tıklanabilir.
+35. `/patient/appointments` → 3 sekme, sekme değişince liste ve URL (`?scope=`) değişir; sayaç
+    rozetleri sekmeye göre DEĞİŞMEZ.
+36. `/patient/bookings` (eski URL) → `/patient/appointments`'a yönlenir; `/patient/bookings/{id}`
+    **yönlenmez** ve magic-link `?t=` ile oturumsuz **hâlâ açılır** (regresyon koruması —
+    en kritik test).
+37. Doktor oturumuyla `/patient` → sessizce `/doctor`'a gider (mevcut guard).
+38. ADMIN oturumuyla `/patient` → **yönlenmez**, boş durum görünür.
+39. `/patient/documents` ve `/patient/prescriptions` sayfa açılışında **yalnızca**
+    `/patient/bookings` isteği atılır (fan-out yasağı — `page.route`/istek sayacı ile
+    doğrulanır); içerik ancak tıklamadan sonra çekilir.
+40. `/patient/profile` → künyede **"doğrulandı/verified" ifadesi GEÇMEZ** (metin taraması,
+    §9.8.5 madde 4 — engelleyici kabul kriteri); e-posta rozeti `emailVerifiedAt` durumuna
+    göre doğru görünür.
+41. Oturumsuz `/patient/documents?t=<gecerli-token>` → login'e gider (aggregate sayfa token
+    kabul etmez, §9.8.1 madde 4).
+
+**Not:** §10'daki 60 sn ISR yoklama kuralı (`toPass` + `reload`) burada da geçerlidir.
+
+### 9.8.8 Bilinçli KAPSAM DIŞI (bu tur) + backlog
+
+| Öğe | Neden | Branş |
+|---|---|---|
+| `GET /patient/documents` / `/patient/prescriptions` aggregate uçları | §9.8.4 | `feature/patient-aggregate-endpoints` |
+| `SiteRole.PATIENT` | §9.8.1 madde 1 — **kalıcı RED**, backlog dahi yok | — |
+| Detay rotasının `/patient/appointments/{id}`'ye taşınması | §9.8.3 | `feature/patient-route-unification` |
+| `scope=past` için azalan (yeni→eski) sıralama | Yeni sayfalama yardımcısı gerektirir | `feature/patient-bookings-desc-cursor` |
+| Kullanıcı seviyesinde kimlik künyesi / kimlik doğrulama (KPS/NVI) | §9.8.5 madde 1 + [DPI] §2.5 | `feature/telehealth-kps-identity-verification` |
+| `/hesabim` ile birleştirme | İki portal iki farklı modüldür (e-ticaret hesabı ≠ sağlık portalı); tek yönlü bir bağlantı yeterlidir ve **opsiyoneldir** (telehealth modülü açıksa `/hesabim` gezinmesine "Sağlık Portalım → `/patient`" satırı; tek satırı aşarsa ERTELENİR) | `feature/account-portal-crosslink` |
+| Profil sayfasından kimlik düzenleme | §9.8.5 madde 6 | — |
+
+### 9.8.9 Commit planı
+
+Kullanıcı **tek commit** istedi (§13 KARAR F'nin aynısı). Ajanlar ayrı ayrı commit **ATMAZ**;
+ana oturum sonunda tek commit:
+
+```
+feat(telehealth): kurumsal hasta portalı — sol gezinme, sekmeli randevular, belge/epikriz ve künye
+```
+
+Ardından **`docker compose up --build -d`** (kod değişikliği sonrası zorunlu proje kuralı).
+
+### 9.8.10 Definition of Done (bu tur)
+
+- [ ] API kontratına uygun — `GET /patient/bookings` `scope` + `meta.counts` (architect: **YAPILDI**)
+- [ ] `design-notes-telehealth.md` §14 eklendi (ui-designer)
+- [ ] 5 sayfa + kabuk + yönlendirme (frontend-agent); `?t=` detay akışı **bozulmadı**
+- [ ] `scope`/`counts` backend + birim testleri (backend-agent)
+- [ ] Fan-out yasağı (§9.8.4) kodda ihlal edilmiyor
+- [ ] "doğrulanmış kimlik" dili hiçbir yüzeyde geçmiyor (§9.8.5 madde 4 — engelleyici)
+- [ ] §9.8.7 e2e testleri (qa-agent), özellikle test 36 ve 41
+- [ ] Lint/format + tip denetimi geçiyor
+- [ ] Tek commit + `docker compose up --build -d`
+
+---
+
 ## 10. QA kapsamı (qa-agent)
 
 **Birim (backend-agent + qa-agent):**

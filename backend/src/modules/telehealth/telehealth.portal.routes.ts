@@ -12,21 +12,23 @@ import {
   DoctorEarningsResponseSchema,
   DoctorPortalFeedSchema,
   DoctorPortalProfileSchema,
+  PatientBookingListMetaSchema,
   type DoctorPortalNotification,
 } from "../../schemas/entities";
 import { toAppointmentBookingDto, toDoctorPortalProfileDto } from "../../mappers";
 import { NotADoctorError, TwoFactorRequiredError, ValidationError } from "../../lib/errors";
-import { buildPageMeta, parseCursor } from "../../lib/pagination";
+import { buildPageMeta, buildPageMetaWithCounts, parseCursor } from "../../lib/pagination";
 import { env } from "../../config/env";
 import { logAudit } from "../../lib/audit";
 import { sanitizeRichHtml } from "../../lib/html-sanitize";
 import { canAccessBookingHealthData } from "../../lib/telehealth-access";
 import { triggerDoctorProfileRevalidation } from "../../lib/revalidate";
-import { DoctorBookingsQuerySchema, UpdateDoctorSelfProfileRequestSchema } from "./telehealth.schemas";
+import { DoctorBookingsQuerySchema, PatientBookingsQuerySchema, UpdateDoctorSelfProfileRequestSchema } from "./telehealth.schemas";
 import { splitCommission } from "./lib/commission";
 import { JOIN_WINDOW_BEFORE_START_MS } from "./lib/booking";
 import { addCalendarDays, formatCalendarDateKey, getStartOfCalendarDayInTimeZone, getWallClockParts } from "./lib/timezone";
 import { BOOKINGS_WITH_APPOINTMENTS_FILTER, buildDoctorBookingScopeFilter } from "./lib/doctor-booking-scope";
+import { buildPatientBookingScopeCountFilters, buildPatientBookingScopeFilter } from "./lib/patient-booking-scope";
 import { DOCTOR_PORTAL_ANNOUNCEMENTS } from "./lib/portal-announcements";
 
 /** `GET /doctor/portal-feed` — bildirim besleme penceresi (son 14 gün). */
@@ -538,6 +540,27 @@ export async function telehealthDoctorPortalRoutes(app: FastifyInstance) {
 }
 
 /**
+ * [KHP] §9.8.4 KARAR O — `PatientBookingCounts` (`meta.counts`) hesaplayıcısı. `lib/patient-booking-
+ * scope.ts::buildPatientBookingScopeCountFilters` SAF filtre üretir; bu fonksiyon onları DB'ye karşı
+ * çalıştıran tek yerdir (`lib/content-counts.ts`'in `fetchContentCounts`'ı İLE AYNI sorumluluk
+ * ayrımı). 4 sekme de AYNI `patientUserId` sahiplik filtresiyle sayılır (IDOR yüzeyi yok).
+ */
+async function countPatientBookingScopes(
+  app: FastifyInstance,
+  patientUserId: string,
+  now: Date
+): Promise<{ all: number; upcoming: number; past: number; cancelled: number }> {
+  const scopeCountFilters = buildPatientBookingScopeCountFilters(now);
+  const [all, upcoming, past, cancelled] = await Promise.all([
+    app.prisma.appointmentBooking.count({ where: { patientUserId, ...scopeCountFilters.all } }),
+    app.prisma.appointmentBooking.count({ where: { patientUserId, ...scopeCountFilters.upcoming } }),
+    app.prisma.appointmentBooking.count({ where: { patientUserId, ...scopeCountFilters.past } }),
+    app.prisma.appointmentBooking.count({ where: { patientUserId, ...scopeCountFilters.cancelled } }),
+  ]);
+  return { all, upcoming, past, cancelled };
+}
+
+/**
  * `/patient` prefix'i altında bağlanır (bkz. app.ts) — oturum GEREKTİRİR, **2FA ZORUNLU
  * DEĞİLDİR** (hasta bir panel kullanıcısı değildir, §9.7.10). Oturumu olmayan misafir hasta
  * bunun yerine magic-link'li `GET /appointments/bookings/{bookingId}?t=` yolunu kullanır.
@@ -551,25 +574,44 @@ export async function telehealthPatientPortalRoutes(app: FastifyInstance) {
     "/bookings",
     {
       schema: {
-        querystring: CursorQuerySchema,
-        response: { 200: ApiSuccessWithMeta(z.array(AppointmentBookingSchema), z.object({ nextCursor: z.string().nullable() })) },
+        querystring: PatientBookingsQuerySchema,
+        response: { 200: ApiSuccessWithMeta(z.array(AppointmentBookingSchema), PatientBookingListMetaSchema) },
       },
     },
     async (request, reply) => {
-      const { cursor, limit } = request.query;
+      const { scope, cursor, limit } = request.query;
       const cursorSeq = parseCursor(cursor);
+      const now = new Date();
 
-      const rows = await app.prisma.appointmentBooking.findMany({
-        where: { patientUserId: request.user!.id, ...(cursorSeq ? { seq: { gt: cursorSeq } } : {}) },
-        orderBy: { seq: "asc" },
-        take: limit,
-        include: WITH_BOOKING_RELATIONS,
-      });
+      // [KHP] §9.8.4 KARAR O — where-clause üretimi paylaşılan `lib/patient-booking-scope.ts`'e
+      // taşındı; doktor tarafının `lib/doctor-booking-scope.ts`'i İLE KARIŞTIRILMAZ, iki portalın
+      // `scope` tanımları KASITLI OLARAK FARKLIDIR.
+      const scopeFilter = buildPatientBookingScopeFilter(scope, { now });
+
+      // `patientUserId` sorgu parametresi BİLİNÇLİ OLARAK YOKTUR (IDOR yüzeyi) — yalnızca
+      // oturumun KENDİ kullanıcısı üzerinden filtrelenir (`/doctor/bookings` İLE AYNI disiplin).
+      const [rows, counts] = await Promise.all([
+        app.prisma.appointmentBooking.findMany({
+          where: {
+            patientUserId: request.user!.id,
+            ...(cursorSeq ? { seq: { gt: cursorSeq } } : {}),
+            ...(scopeFilter ?? {}),
+          },
+          orderBy: { seq: "asc" },
+          take: limit,
+          include: WITH_BOOKING_RELATIONS,
+        }),
+        // `meta.counts` — 4 sekmenin TAMAMI, istek `scope`'undan BAĞIMSIZ (§9.8.4, `ContentCounts`
+        // disipliniyle AYNI). Tek toplu sorgu yerine 4 ayrı `count` çağrısı kullanılır çünkü
+        // filtreler ilişki bazlı (`appointments: { some/none }`) — `$queryRaw FILTER` deseni
+        // (`lib/content-counts.ts`) yalnızca düz kolonlar için uygundur, burada UYGULANAMAZ.
+        countPatientBookingScopes(app, request.user!.id, now),
+      ]);
 
       return reply.send(
         ok(
           rows.map((row) => toAppointmentBookingDto(row, canAccessBookingHealthData(row, { user: request.user }))),
-          buildPageMeta(rows, limit)
+          buildPageMetaWithCounts(rows, limit, counts)
         )
       );
     }

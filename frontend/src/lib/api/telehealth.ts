@@ -35,6 +35,8 @@ import type {
   ListPatientBookingsParams,
   MeetingTokenResponse,
   Page,
+  PatientBookingListMeta,
+  PatientBookingsPage,
   SetDoctorAvailabilityRequest,
   Specialty,
   TelehealthOverview,
@@ -439,11 +441,20 @@ export async function getDoctorEarnings(params: GetDoctorEarningsParams = {}): P
 
 // ---------- [TCT] §9.7.7 — Hasta portalı (`/patient/*`, oturum GEREKİR, 2FA GEREKMEZ) ----------
 
-/** `GET /patient/bookings` — oturum sahibi hastanın KENDİ booking'leri. Misafir hasta magic-link'i (`?t=`) kullanır. */
-export function listPatientBookings(params: ListPatientBookingsParams = {}): Promise<Page<AppointmentBooking>> {
-  return apiFetchPage<AppointmentBooking>("/patient/bookings", {
-    query: { cursor: params.cursor, limit: params.limit ?? 20 },
+/**
+ * `GET /patient/bookings` — oturum sahibi hastanın KENDİ booking'leri. Misafir hasta magic-link'i
+ * (`?t=`) kullanır. [KHP] §9.8.4 KARAR O — kurumsal hasta portalının (`/patient/**`) TEK veri
+ * kaynağı; `scope` (Aktif/Geçmiş/İptal) + `meta.counts` (`PatientBookingCounts`, `scope`'tan
+ * BAĞIMSIZ sekme sayaçları) burada eklenir. `apiFetchPage` (sabit `PageMeta`/`ContentCounts`
+ * şekli) yerine `apiFetchWithMeta` kullanılır — `getDoctorEarnings` İLE AYNI gerekçe: dönen
+ * `meta.counts` şekli `ContentCounts`'tan FARKLIDIR, ortak `Page<T>` tipini GENİŞLETMEK yerine
+ * amaca özel `PatientBookingsPage` tipine tek bir sınırda (bu fonksiyon) cast edilir.
+ */
+export async function listPatientBookings(params: ListPatientBookingsParams = {}): Promise<PatientBookingsPage> {
+  const { data, meta } = await apiFetchWithMeta<AppointmentBooking[]>("/patient/bookings", {
+    query: { scope: params.scope, cursor: params.cursor, limit: params.limit ?? 20 },
   });
+  return { items: data ?? [], meta: meta as unknown as PatientBookingListMeta };
 }
 
 // ---------- Admin ----------

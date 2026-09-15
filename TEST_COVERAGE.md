@@ -3561,3 +3561,183 @@ Koşum kanıtı (yerel `saas_e2e` + backend `:4001` + frontend `:3100`, `E2E_SKI
   ediliyor — beklenen davranış, dosyaya DOKUNULMADI).
 - `chromium` projesi `telehealth-consultation-livekit-live.spec.ts`i `testIgnore` ile atladığı,
   `chrome-livekit-media` projesi de SADECE o dosyayı çalıştırdığı için ÇİFT/çakışan koşum YOK.
+
+## Kurumsal Hasta Portalı (`[KHP]` §9.8, TUR 4) — `/patient` genel bakış + `/patient/appointments`/
+`/patient/documents`/`/patient/prescriptions`/`/patient/profile` — E2E + entegrasyon kapsamı
+(2026-09-15, bu turda eklendi)
+
+Görev akışı: architect (§9.8 + openapi) → ui-designer (`.claude/design-notes-telehealth.md` §14) →
+frontend-agent (kabuk + 5 sayfa) → backend-agent (`GET /patient/bookings` `scope`/`counts`) →
+**qa-agent (bu bölüm)**.
+
+### Backend — birim + entegrasyon (mevcut kapsam taraması, YENİ dosya YAZILMADI çünkü backend-agent
+kendi testlerini ZATEN yazmıştı)
+
+- `backend/tests/unit/patient-booking-scope.test.ts` — **6/6 yeşil** (`buildPatientBookingScopeFilter`/
+  `buildPatientBookingScopeCountFilters`, §9.8.7 madde 29-32'nin saf where-clause karşılığı).
+- `backend/tests/integration/telehealth-bookings.test.ts` — **35/35 yeşil** (tüm dosya, çoklu slot/
+  ödeme/sağlık verisi/portal testleriyle BİRLİKTE); hasta portalı scope/counts bloğu (`describe`
+  "telehealth booking — hasta portalı scope/counts (§9.8.4 KARAR O, §9.8.7 test 29-33)") madde 29
+  (`scope=upcoming`), 30 (`scope=past` kaybolma regresyonu), 31 (`scope=cancelled` hayalet booking),
+  32 (`meta.counts` `scope`'tan bağımsız), 33 (sahiplik izolasyonu — başka kullanıcının booking'i
+  hiçbir scope'ta görünmez) — HEPSİ doğrulandı.
+- `backend/tests/integration/telehealth-webhook.test.ts` + `telehealth-checkout.test.ts` —
+  **16/16 yeşil** (regresyon taraması, bu tur DOKUNMADI ama ödeme-webhook fixture'ı bu bölümün e2e
+  testinde AYNEN kullanıldığı için ayrıca çalıştırıldı).
+- `npx vitest run` (backend, TAM suite) — **1580 geçti / 3 skip, 1 dosya FAIL**
+  (`module-toggle-data-integrity.test.ts`) — bu FAIL **[KHP] İLE İLGİSİZ**: `resetDatabase()`nin
+  `TRUNCATE`'i başka bir eşzamanlı vitest worker'ın AYNI `saas_test` DB'sinde çalışan başka bir dosya
+  ile Postgres `40P01 deadlock detected` hatasına düşüyor (test-altyapısı kaynaklı kaynak çakışması,
+  KHP kodunun bir parçası DEĞİL — devops-agent'a bilgi amaçlı not: `vitest` konfigürasyonunda dosyalar
+  arası DB izolasyonu/sıralama gözden geçirilebilir).
+
+### E2E — yeni dosya `frontend/tests/e2e/patient-portal.spec.ts` (12 test, §9.8.7 madde 34/35/37/38/
+39/40/41 + kullanıcının ek doğrulama maddeleri)
+
+Kendi izole fixture doktor/hasta/doktor-hesabı kurar (`telehealth-portal-isolation.spec.ts` İLE AYNI
+desen), `POST /appointments/bookings` 5/dk hız sınırına saygıyla `beforeAll`'da TEK seferde 4 booking
+oluşturur (Aktif/İptal/Geçmiş/Belge+Epikriz). **Koşum kanıtı (yerel `saas_e2e` + backend `:4001` +
+frontend `:3100`, `E2E_SKIP_WEBSERVER=1`): 11/12 YEŞİL, 1 BİLİNÇLİ KIRMIZI (aşağıda).**
+
+- **madde 34** — `/patient` hero kartı (isim + en yakın randevu + doktor + "Toplantıya Katıl") +
+  5 hedefli nav (`Genel Bakış`/`Randevularım`/`Belgelerim`/`Reçetelerim`/`Profilim`) render olur,
+  HEPSİ tıklanıp doğru rotaya gider — **GEÇTİ**.
+- **madde 35** — `/patient/appointments` 3 sekme (Aktif/Geçmiş/İptal), her sekmede doğru booking
+  listeleniyor, `?scope=` URL'e yansıyor, sekme sayaç rozetleri (`meta.counts`) sekme değişince
+  DEĞİŞMİYOR — **GEÇTİ**.
+- **ek doğrulama** — GERÇEK Stripe webhook'uyla (`postStripeTelehealthBookingPaid`, madde 24'teki
+  AYNI fixture) `PENDING → PAID` olan booking ANINDA `/patient` (hero) ve `/patient/appointments`te
+  görünüyor — **GEÇTİ**.
+- **ek doğrulama** — hero karttaki "Toplantıya Katıl" (`join-meeting-button.tsx` AYNEN gömülü)
+  `/consultation/{appointmentId}`e doğru appointment ID ile yönlendiriyor, oda başlığı DOĞRU
+  doktoru gösteriyor — **GEÇTİ** (gerçek LiveKit medya bağlantısı BU testin kapsamı DEĞİL, ayrı
+  `chrome-livekit-media` projesi zaten kapsıyor, yukarıdaki bölüm).
+- **madde 41** — oturumsuz `/patient/documents?t=<geçerli-booking-token>` → `/login?next=`e
+  yönleniyor (aggregate sayfalar booking-token KABUL ETMİYOR, `PatientPortalShell` `?t=`i hiç
+  okumadığı için bu davranış GARANTİ) — **GEÇTİ**.
+- **madde 40 (ENGELLEYİCİ dil taraması)** — `/patient/profile` "Kimlik Bilgileri" bölümünde
+  "doğrulandı/verified/onaylandı/doğrulanmış" (hiçbir büyük/küçük harf varyantı) GEÇMİYOR, `.text-
+  success`/`[class*='success']` sınıfı YOK (nötr ton); "Hesap Bilgileri" bölümündeki e-posta
+  rozeti (fixture `setUserEmailVerifiedDirectly` ile GERÇEK doğrulanmış işaretlendi) `success`
+  tonuyla "E-posta Doğrulandı" gösteriyor — **GEÇTİ**.
+- **ek doğrulama** — `/patient/documents` → booking kartı "Görüntüle" → `BookingDocumentsDialog`
+  GERÇEKTEN yüklenmiş belgeyi (`uploadBookingDocumentRaw` ile önce `healthDataConsent: true` rızası,
+  SONRA yükleme — §9.7.5 KARAR J ön koşulu) listeliyor — **GEÇTİ**.
+- **ek doğrulama** — `/patient/prescriptions` → booking kartı "Görüntüle" → `PatientConsultation
+  NoteDialog` doktorun GERÇEK `POST /appointments/{id}/complete` ucuyla yazdığı konsültasyon notunu
+  (epikriz HTML'i) doğru gösteriyor — **GEÇTİ**.
+- **madde 37** — doktor oturumuyla `/patient`e gidilince `DoctorPortalRouteGuard` sessizce
+  `doktor.siteadi.localhost/doctor`e (subdomain modunda tam sayfa `window.location.assign`)
+  yönlendiriyor — **GEÇTİ**.
+- **madde 38** — ADMIN oturumuyla `/patient` YÖNLENMİYOR, hero kartı kendi (booking'siz) boş
+  durumunu ("Henüz bir randevunuz bulunmuyor." + "Randevu Al") gösteriyor — **GEÇTİ**.
+- **madde 39 (fan-out yasağı) — BİLİNÇLİ OLARAK KIRMIZI, bkz. aşağıdaki bug.**
+
+### KRİTİK olmayan bug bulundu (bu turda) — frontend-agent'a yönlendirilir, qa-agent BURADA
+DÜZELTMEDİ (test BİLİNÇLİ OLARAK doğru/kırmızı bırakıldı)
+
+**`GET /patient/bookings?scope=all&limit=20` `/patient/documents` VE `/patient/prescriptions`
+sayfa açılışında 2 KEZ atılıyor** (`expect.soft` ile İKİ path için de doğrulandı, `madde 39` testi
+dosyanın SONUNA taşındı ki `serial` modunda BAŞKA hiçbir test bu bilinen kırmızının arkasında
+atlanmasın — bkz. dosya başı yorumu).
+
+- **Kapsam/önem:** §9.8.4'ün ASIL BAĞLAYICI yasağı — booking-scoped, DENETİM KAYDI ÜRETEN
+  belge/epikriz İÇERİK uçlarının (`GET .../documents`, `GET .../consultation-note`) sayfa
+  açılışında fan-out edilmesi — **İHLAL EDİLMİYOR** (`contentRequests` her iki path'te de `0`,
+  `expect.soft` ile AYRICA doğrulandı). Yalnızca zaten yetkisiz/denetimsiz, ucuz bir liste ucu
+  (`GET /patient/bookings`) 2 kez çağrılıyor — bu bir güvenlik/uyum ihlali DEĞİL, bir verimlilik
+  kusurudur.
+- **Kök neden adayı (qa-agent teşhisi, KESİN karar frontend-agent'ındır):** `patient-documents-
+  panel.tsx` ve `patient-prescriptions-panel.tsx`teki `useEffect(() => { (async () => { await
+  load(); })(); }, [load])` çağrısı, kardeş bileşen `patient-bookings-panel.tsx`
+  (`/patient/appointments`) İLE AYNI "StrictMode-fantom-çağrı koruması"ndan (`lastLoadedScopeRef`
+  — `doctor-bookings-panel.tsx`teki desenin BİREBİR kopyası) YOKSUN. Bu, `doctor-subdomain-
+  isolation.spec.ts`teki "senaryo 12" bulgusuyla (`/doctor/portal-feed` 2 kez atılıyor) AYNI kök
+  neden ailesidir (dev-sunucu `next dev`de React Strict Mode'un effect'leri çift-tetiklemesi ve/
+  veya bir prefetch etkileşimi — kesin teşhis frontend-agent'ındır; PRODUCTION build'de (`next
+  start`, Strict Mode double-invoke YOK) bu davranışın devam edip etmediği bu turda AYRICA
+  doğrulanmadı, zaman kısıtı).
+- **Önerilen düzeltme (qa-agent'ın önerisi, karar frontend-agent'ındır):** `patient-bookings-panel.
+  tsx`teki `lastLoadedScopeRef`/`lastLoadedRef` desenini bu iki panele de uygulamak (ör. bir
+  `hasLoadedRef` bayrağı).
+
+### Yöntem notları
+
+- Backend e2e sunucusu (port `4001`, `saas_e2e` DB) ve frontend `next dev` (port `3100`) bu turda
+  ELLE başlatıldı (`playwright.config.ts` başlığındaki talimat) — `E2E_SKIP_WEBSERVER=1` ile
+  koşuldu.
+- `POST /appointments/bookings`in sabit 5/dk (IP bazlı, TÜM test dosyaları/koşumlar arası PAYLAŞIMLI)
+  hız sınırı bu turda BELİRGİN biçimde hissedildi (aynı anda birden çok dosya/tekrar koşumu birbirini
+  429'a düşürdü) — qa-agent koşumlar arasına bilinçli bekleme süreleri EKLEYEREK atlattı (uygulama
+  kodu DEĞİŞTİRİLMEDİ); `telehealth-multi-slot-booking.spec.ts` dosya başlığındaki AYNI notla
+  tutarlı bir gözlem, devops-agent/backend-agent'a CI paralelleştirmesi için bilgi amaçlı.
+- **Regresyon (bu turda bulunan, qa-agent'ın KENDİ test dosyasında düzeltildi — uygulama kodu
+  DEĞİL):** `telehealth-portal-isolation.spec.ts` "madde 2" testi `site-header.tsx`'teki
+  "Randevularım" bağlantısının hedefinin (bu turda, frontend-agent tarafından, KASITLI ve DOĞRU
+  olarak) `/patient/bookings`'ten `/patient/appointments`'e güncellenmesini YANSITMIYORDU (eski
+  URL beklentisi `/\/patient\/bookings$/`). qa-agent testin URL beklentisini `/\/patient\/
+  appointments$/`e güncelledi; liste/izolasyon DAVRANIŞI (yalnızca kendi randevusu görünür)
+  DEĞİŞMEDİ. **Koşum kanıtı:** `--grep-invert "madde 1:"` ile izole koşumda **"madde 2" TEK BAŞINA
+  yeşil** (hem `-g "madde 2:"` filtreli hem tam-dosya-eksi-madde-1 koşumunda tutarlı biçimde geçti).
+- **qa-agent BULGUSU (bu turda — ortam/altyapı kaynaklı, [KHP] İLE İLGİSİZ, KHP'nin bir parçası
+  DEĞİL, DÜZELTİLMEDİ): `telehealth-portal-isolation.spec.ts` "madde 1" (doktor 2FA login → `/doctor`
+  yönlendirmesi — bu turda HİÇ DOKUNULMAYAN, tamamen ayrı bir özellik) bu oturumda 3 KEZ tekrarlanan
+  30-60sn zaman aşımıyla TAKILDI** — zaman aşımı anındaki sayfa görüntüsü BEKLENMEDİK biçimde
+  "QA E2E Admin" hesabıyla `/dashboard` "Organizasyonlarınız" ekranını gösteriyordu (doktor login
+  akışı DEĞİL). Backend (`:4001`) + frontend (`next dev :3100`) süreçleri TAMAMEN YENİDEN
+  BAŞLATILDIKTAN SONRA BİLE AYNI semptom tekrarlandı — bu yüzden "uzun süre çalışan dev sunucusu
+  yorgunluğu" teorisi ZAYIFLADI; en olası aday `next dev`in RSC/veri önbelleğinin, `beforeAll`'da
+  AÇIK BIRAKILAN uzun ömürlü `adminPage`/`editorPage` context'leriyle YENİ açılan doktor-login
+  context'i arasında çapraz bulaşması (bilinen bir `next dev` sınıfı sorunu). **`madde 1`
+  DIŞARIDA BIRAKILINCA** (`--grep-invert "madde 1:"`) dosyanın geri kalanı ÇALIŞTI: **"madde 2"
+  (qa-agent'ın bu turki düzeltmesi) YEŞİL**; `madde 3a` (analitik grafik — [KHP] İLE İLGİSİZ, ayrı
+  bir özellik) AYRI bir zamanlama/veri flakiness'iyle KIRMIZI kaldı, `3b`/`4a-d` bu run'da sıra
+  gelmeden atlandı (`serial` modu). **Sonuç:** bu iki bulgu (`madde 1` hang'i, `madde 3a` flake'i)
+  KHP turunun bir REGRESYONU DEĞİLDİR (ikisi de bu turda dokunulmayan, farklı özellikleri test eder)
+  — ayrı bir qa-agent/devops-agent turunda araştırılması ÖNERİLİR (`next start` üretim modunda aynı
+  dosyanın tekrar koşulması, RSC önbellek/uzun-ömürlü-context etkileşimini dışlamak için, iyi bir
+  ilk adım olur).
+- **Regresyon taraması (mevcut dosyalar, DEĞİŞTİRİLMEDİ):**
+  `telehealth-multi-slot-booking.spec.ts` — **10/10 yeşil** (madde 24/28 — magic-link `?t=` ile
+  `/patient/bookings/{id}` erişimi HÂLÂ ÇALIŞIYOR, [KHP] §9.8.7 madde 36'nın en kritik regresyon
+  koruması BURADA doğrulanır); `telehealth-consultation.spec.ts` — **5 geçti / 1 skip**, ÖNCEKİ
+  turla AYNI.
+- `patient-booking-detail-panel.tsx`teki "← Tüm randevularım" bağlantısının `/patient/appointments`e
+  güncellenmesi VE yalnızca `accessToken` YOKKEN render edilmesi (§9.8.3, madde 36'nın bir parçası)
+  KOD OKUMASIYLA doğrulandı (satır 361-367) — ayrı bir e2e test YAZILMADI çünkü davranış zaten
+  `telehealth-multi-slot-booking.spec.ts`teki magic-link testleriyle (misafir erişimi, `accessToken`
+  dolu) DOLAYLI olarak kapsanıyor; bağlantının kendisi görünürlük/href testi için qa-agent'ın
+  ek doğrulama listesinde DEĞİLDİ.
+
+### Kapsam dışı bırakılanlar (bu turda, gerekçeli)
+
+- Gerçek LiveKit medya bağlantısı (kamera/mikrofon publish) hero kartın "Toplantıya Katıl"
+  akışından test EDİLMEDİ — `telehealth-consultation-livekit-live.spec.ts` (yukarıdaki bölüm) bunu
+  ZATEN ayrı, headed `chrome-livekit-media` projesinde kapsıyor; burada yalnızca DOĞRU
+  appointment/route'a yönlendirme doğrulandı (bkz. "ek doğrulama" madde).
+- Demo ödeme ucu (`POST .../demo-pay`) BU turun e2e'sinde KULLANILMADI — `backend/.env.e2e`de
+  `ENABLE_DEMO_PAYMENTS` TANIMLI DEĞİL (`isDemoPaymentsEnabled` bu ortamda `false`, uç `404`
+  döner); "ödeme sonrası anlık görünürlük" doğrulaması bunun yerine GERÇEK Stripe webhook'u
+  (`postStripeTelehealthBookingPaid`, madde 24'teki AYNI, üretim akışını yansıtan mekanizma) ile
+  yapıldı — YENİ bir ödeme mekanizması İCAT EDİLMEDİ, MEVCUT ikisinden biri (webhook) kullanıldı.
+- `/patient/documents` sayfasında bir "belge YÜKLEME" akışı (mevcut `BookingIntakeStep`/
+  `DocumentUploader` bileşenlerinin bu sayfaya entegrasyonu) TEST EDİLMEDİ çünkü **KOD İNCELEMESİYLE
+  doğrulandı ki bu akış bu turda İMPLEMENTE EDİLMEMİŞ** — bkz. aşağıdaki gözlem notu.
+
+### Gözlem notu (bug DEĞİL kesin değil — mimari netleştirme gerekiyor, architect/frontend-agent'a
+bilgi amaçlı, ENGELLEYİCİ DEĞİL)
+
+`.claude/architect-scope-telehealth-template.md` §9.8.4 KARAR O şu cümleyi içeriyor: *"`/patient/
+documents` sayfasındaki yükleme akışı, kullanıcıya önce bir booking seçtirir ve MEVCUT
+`BookingIntakeStep`/`DocumentUploader` bileşenlerini kullanır."* Kod incelemesi (`patient-documents-
+panel.tsx`, `booking-documents-dialog.tsx`) bu akışın **HİÇ İMPLEMENTE EDİLMEDİĞİNİ** gösteriyor —
+sayfa TAMAMEN salt-okunurdur (`documentCount > 0` olan booking'ler kart olarak listelenir,
+"Görüntüle" YALNIZCA `BookingDocumentsDialog`'u AÇAR, dialog'un KENDİSİ upload input'u İÇERMEZ).
+Bu, `.claude/design-notes-telehealth.md` §14.5'in kart deseniyle DE TUTARLI (o bölüm de yalnızca
+"Görüntüle" aksiyonunu tanımlar, bir yükleme affordance'ı İÇERMEZ) — yani frontend-agent ile
+ui-designer'ın ÇIKTISI birbiriyle TUTARLI, ama architect'in §9.8.4 metniyle TUTARSIZ. **Etki
+sınırlı:** belge yükleme YETENEĞİ kaybolmadı — mevcut `/patient/bookings/{id}` (detay sayfası,
+DEĞİŞMEDİ) üzerinden ÇALIŞMAYA DEVAM EDİYOR (`DocumentUploader` orada AYNEN duruyor). qa-agent
+BURADA bir kod değişikliği YAPMADI (mimari netleştirme architect'in kararı); frontend-agent/
+architect bir sonraki turda ya §9.8.4 metnini "bu turun kapsamı görüntülemeyle sınırlıdır" şeklinde
+REVİZE etmeli ya da `/patient/documents`e gerçek bir yükleme akışı eklemelidir.

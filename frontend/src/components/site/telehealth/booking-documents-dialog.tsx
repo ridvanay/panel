@@ -14,16 +14,21 @@ import { cn } from "@/lib/utils";
 import { RecordingAccessPanel } from "@/components/site/telehealth/recording-access-panel";
 
 /**
- * `.claude/design-notes-telehealth.md` §13.3 — güvenli belge önizleme modalı (doktor görünümü).
- * §12.5.4'ün eski TEK davranışı (her satır `window.open` ile yeni sekmede blob açar) KALDIRILIR,
- * yerine modal İÇİNDE gömülü önizleme gelir. Dialog artık İKİ AYRI bölüm gösterir: hasta notu
- * (varsayılan GİZLİ, "Görüntüle" tıklanınca `getBookingIntake` ile çekilir — her okuma sunucuda
+ * `.claude/design-notes-telehealth.md` §13.3 — güvenli belge önizleme modalı. §12.5.4'ün eski TEK
+ * davranışı (her satır `window.open` ile yeni sekmede blob açar) KALDIRILIR, yerine modal İÇİNDE
+ * gömülü önizleme gelir. Dialog artık İKİ AYRI bölüm gösterir: hasta notu (varsayılan GİZLİ,
+ * "Görüntüle" tıklanınca `getBookingIntake` ile çekilir — her okuma sunucuda
  * `logAudit("telehealth.intake_note.accessed")` üretir, §9.7.5 madde 6, bu yüzden dialog HER
  * açıldığında OTOMATİK çekilmez) ve belgeler (çoklu belge seçici + gömülü önizleme).
  *
  * `<iframe>` güvenlik varsayılanı (security-agent yerine orkestratör tarafından belirlendi):
  * `sandbox="allow-same-origin"` — script çalıştırma/top-navigasyon/form gönderimi İZİN VERİLMEZ,
  * blob içeriği aynı origin'den geldiği için görüntüleyici yine de çalışır.
+ *
+ * [KHP] `.claude/architect-scope-telehealth-template.md` §9.8.4/§9.8.6 (2026-09-15) — bu bileşen
+ * ARTIK hem doktor konsolunda (`doctor-bookings-panel.tsx`, `doctor-console-patient-card.tsx`)
+ * hem de `/patient/documents` sayfasında (hasta perspektifi) yeniden kullanılır — YENİDEN
+ * YAZILMADI, tek fark `canDeleteRecordings` prop'u (bkz. aşağıdaki tip yorumu).
  */
 
 interface BookingDocumentsDialogProps {
@@ -31,17 +36,34 @@ interface BookingDocumentsDialogProps {
   /** `AppointmentBooking.hasIntakeNote` — hasta notu bölümünü render edip etmeyeceğimizi belirler. */
   hasIntakeNote: boolean;
   /**
-   * `AppointmentBooking.appointments[].id` — F5 görüşme kaydı erişim paneli (izle/indir), doktor
-   * görünümü olduğu için "Sil" YOK (`RecordingAccessPanel canDelete={false}`, backend zaten `404`
-   * döner ama UI baştan göstermez).
+   * `AppointmentBooking.appointments[].id` — F5 görüşme kaydı erişim paneli (izle/indir).
+   * `canDeleteRecordings` verilmezse `false` (doktor görünümü — backend zaten `404` döner ama UI
+   * baştan göstermez).
    */
   appointmentIds: string[];
   accessToken?: string;
+  /**
+   * [KHP] `.claude/architect-scope-telehealth-template.md` §9.8.4/§9.8.6 — bu dialog `/patient/documents`
+   * (hasta perspektifi) tarafından da AYNEN yeniden kullanılır. Hastanın kendi görüşme kaydını
+   * silebilmesi (`patient-booking-detail-panel.tsx`teki `RecordingAccessPanel canDelete` İLE AYNI
+   * yetki) ile doktorun (yalnızca izle/indir) TEK farkı budur — en dar kapsamlı ek prop, `perspective`
+   * gibi daha geniş bir enum İCAT EDİLMEDİ. Varsayılan `false`, MEVCUT doktor konsolu çağrı
+   * yerlerinin davranışını DEĞİŞTİRMEZ.
+   */
+  canDeleteRecordings?: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
-export function BookingDocumentsDialog({ bookingId, hasIntakeNote, appointmentIds, accessToken, open, onOpenChange }: BookingDocumentsDialogProps) {
+export function BookingDocumentsDialog({
+  bookingId,
+  hasIntakeNote,
+  appointmentIds,
+  accessToken,
+  canDeleteRecordings = false,
+  open,
+  onOpenChange,
+}: BookingDocumentsDialogProps) {
   const [documents, setDocuments] = useState<AppointmentDocument[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
@@ -154,7 +176,7 @@ export function BookingDocumentsDialog({ bookingId, hasIntakeNote, appointmentId
         {error && <Alert variant="error">{error}</Alert>}
 
         {appointmentIds.map((appointmentId) => (
-          <RecordingAccessPanel key={appointmentId} appointmentId={appointmentId} accessToken={accessToken} canDelete={false} />
+          <RecordingAccessPanel key={appointmentId} appointmentId={appointmentId} accessToken={accessToken} canDelete={canDeleteRecordings} />
         ))}
 
         {hasIntakeNote && (

@@ -207,6 +207,23 @@ export const DoctorBookingsQuerySchema = z
   });
 export type DoctorBookingsQuery = z.infer<typeof DoctorBookingsQuerySchema>;
 
+/**
+ * [KHP] `.claude/architect-scope-telehealth-template.md` §9.8.4 KARAR O — `GET /patient/bookings`
+ * sekme filtresi (Aktif/Geçmiş/İptal). `DoctorBookingsScopeSchema` İLE AYNI desen, ama tanımları
+ * hastanın bakış açısına göre KASITLI OLARAK FARKLIDIR (bkz. `lib/patient-booking-scope.ts`).
+ * `from`/`to` YOKTUR (doktor ucunun aksine bu turda gerekmiyor) — bu yüzden `DoctorBookingsQuerySchema`
+ * İLE AYNI `superRefine` çakışma kontrolüne de ihtiyaç yoktur.
+ */
+export const PatientBookingsScopeSchema = z.enum(["all", "upcoming", "past", "cancelled"]);
+export type PatientBookingsScope = z.infer<typeof PatientBookingsScopeSchema>;
+
+export const PatientBookingsQuerySchema = z.object({
+  scope: PatientBookingsScopeSchema.default("all"),
+  cursor: z.string().optional(),
+  limit: z.coerce.number().int().positive().max(100).default(20),
+});
+export type PatientBookingsQuery = z.infer<typeof PatientBookingsQuerySchema>;
+
 // ---------- Admin ----------
 
 export const SpecialtyIdParamSchema = z.object({

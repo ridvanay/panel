@@ -351,11 +351,20 @@ export function PatientBookingDetailPanel({
         </section>
       )}
 
-      <p className="text-xs text-foreground/40">
-        <Link href={localize("/patient/bookings")} className="hover:underline">
-          ← Tüm randevularım
-        </Link>
-      </p>
+      {/*
+       * [KHP] `.claude/architect-scope-telehealth-template.md` §9.8.3 — bağlantı hedefi
+       * `/patient/appointments`e güncellendi (eski `/patient/bookings` kalıcı yönlendirmeye
+       * düştü). **Yalnızca `accessToken` YOKKEN render edilir** — misafir hasta (magic-link, `?t=`)
+       * oturum GEREKTİREN bir listeye gönderilirse login duvarına çarpardı (mevcut bug, bu turda
+       * düzeltildi); oturum sahibi hastanın zaten bu bağlantıya ihtiyacı vardır.
+       */}
+      {!accessToken && (
+        <p className="text-xs text-foreground/40">
+          <Link href={localize("/patient/appointments")} className="hover:underline">
+            ← Tüm randevularım
+          </Link>
+        </p>
+      )}
     </div>
   );
 }

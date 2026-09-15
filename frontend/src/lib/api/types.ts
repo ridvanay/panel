@@ -3851,9 +3851,46 @@ export interface DoctorPortalFeed {
   generatedAt: string;
 }
 
+/**
+ * [KHP] `.claude/architect-scope-telehealth-template.md` §9.8.4 KARAR O — `GET /patient/bookings`
+ * sekme filtresi (Aktif/Geçmiş/İptal). `DoctorBookingsScope` İLE AYNI desen ama tanımları hastanın
+ * bakış açısına göre KASITLI OLARAK FARKLIDIR — bkz. openapi `#/paths/~1patient~1bookings/get`.
+ */
+export type PatientBookingsScope = "all" | "upcoming" | "past" | "cancelled";
+
 export interface ListPatientBookingsParams {
+  scope?: PatientBookingsScope;
   cursor?: string;
   limit?: number;
+}
+
+/**
+ * [KHP] §9.8.4 KARAR O — `/patient/appointments` sekme sayaçları. `ContentCounts` İLE AYNI
+ * disiplin: istek `scope`'undan ETKİLENMEZ, hastanın TÜM booking'leri üzerinden hesaplanır.
+ * `all` diğer üçünün toplamı DEĞİLDİR (bkz. openapi `PatientBookingCounts` açıklaması — bir
+ * booking birden fazla sekmeye düşebilir, hayalet booking'ler yalnızca `all`/`cancelled`'da sayılır).
+ */
+export interface PatientBookingCounts {
+  all: number;
+  upcoming: number;
+  past: number;
+  cancelled: number;
+}
+
+/** `GET /patient/bookings` yanıtının `meta` zarfı (openapi `PatientBookingListMeta`). */
+export interface PatientBookingListMeta {
+  nextCursor: string | null;
+  counts: PatientBookingCounts;
+}
+
+/**
+ * `listPatientBookings`'in dönüş şekli — `Page<T>`'i KASITLI OLARAK GENİŞLETMEZ (`PageMeta.counts`
+ * `ContentCounts`'a sabitlenmiştir, `PatientBookingCounts` FARKLI bir alan setidir) — `DoctorEarningsPage`
+ * İLE AYNI "amaca özel sayfalama şekli" deseni.
+ */
+export interface PatientBookingsPage {
+  items: AppointmentBooking[];
+  meta: PatientBookingListMeta;
 }
 
 /**

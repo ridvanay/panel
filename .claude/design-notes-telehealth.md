@@ -2118,7 +2118,21 @@ sistemi/dashboard kabuğu KULLANILMAZ.**
    yapması gereken, sayfayı bu ZATEN VAR OLAN kapsamın İÇİNE yerleştirmektir — YENİ bir
    tema-değişkeni köprüsü (admin'in dark/light toggle mekanizması) kurmaya GEREK YOKTUR, bu
    sıfır fayda için gereksiz mühendislik olurdu.
-4. **Layout farkı — portal, tam bir admin sidebar'ı DEĞİL, sade bir üst çubuk:** doktor/hasta
+4. > ⚠️ **BU MADDE HASTA PORTALI İÇİN REVİZE EDİLDİ — architect kararı, 2026-09-15.**
+   > Bkz. `.claude/architect-scope-telehealth-template.md` **§9.8.2 KARAR M** (`[KHP]`).
+   > Aşağıdaki "sidebar/sekme YOK" kuralının **öncülü** ("portalın kapsamı 1-2 ekrandır",
+   > "hasta portalının tek hedefi vardır") **ortadan kalkmıştır**: `/patient` artık 5 hedefli
+   > bir kurumsal portaldır (`/patient`, `/patient/appointments`, `/patient/documents`,
+   > `/patient/prescriptions`, `/patient/profile`) ve **kalıcı bir portal-içi gezinme
+   > ZORUNLUDUR** (varsayılan: `lg+` sol ray, `<lg` yatay sekme şeridi; nihai biçim
+   > ui-designer'ın). Metin, LiveKit self-host kararının tersine çevrilmesiyle **aynı
+   > konvansiyonla** silinmeden bırakılmıştır. **Değişmeyen kısım:** §12.6'nın 1., 2., 3. ve
+   > 5. maddeleri (admin token seti/dashboard kabuğu İTHAL EDİLMEZ) ve kabuğun **kendi
+   > `<header>`'ını render etmemesi** (marka/hesap/çıkış Katman 1'de, `SiteHeader`) **aynen
+   > yürürlüktedir.** Doktor portalı (`DoctorPortalShell`, 3 hedefli sekme şeridi) bu
+   > revizyondan **ETKİLENMEZ**.
+
+   **Layout farkı — portal, tam bir admin sidebar'ı DEĞİL, sade bir üst çubuk:** doktor/hasta
    portalının kapsamı (bu turda) 1-2 ekrandır (randevu listesi ± profil) — `admin/layout.tsx`'in
    çok-modüllü ikonlu sol sidebar'ı (§CLAUDE.md'nin admin paneli kastı) burada YERSİZ
    büyüklükte bir gezinme üretirdi. Bunun yerine:
@@ -2743,3 +2757,316 @@ GÖRÜNECEĞİNİ tarif eder; frontend-agent kontrat netleşmeden bu sayfayı KO
 | Net Kazanç vurgusu | `border-primary/30 bg-primary/5 text-primary` (tek vurgulu kart) |
 | Kazanç tablosu | `booking-list-view.tsx` tablo/kart iskeleti BİREBİR + Brüt/Komisyon/Net sütunu |
 | Açık bağımlılıklar | `POST /appointments/{id}/complete` gövdesine `note` eklenmeli (architect/backend/compliance); `/doctor/earnings` DTO'su HENÜZ YOK (architect) |
+
+---
+
+## 14. Kurumsal Hasta Portalı (`[KHP]` §9.8, TUR 4) — gezinme, hero kartı, boş durumlar, sekme rozetleri, belge/epikriz kartı, künye dili (v1, 2026-09-15, ui-designer)
+
+**Kod YAZILMAMIŞTIR** — bu bölüm de yalnızca sınıf/spesifikasyon kararıdır, frontend-agent
+uygular. Girdi: `.claude/architect-scope-telehealth-template.md` **§9.8** (özellikle §9.8.2
+KARAR M — bağlayıcı çerçeve — ve §9.8.5 KARAR P — dil yasağı, ENGELLEYİCİ). Bu bölüm §12.6'yı
+**SİLMEZ**; §12.6 madde 4'ün 2026-09-15 tarihli revizyon notu bu bölümün gerekçesini taşır,
+madde 1/2/3/5 (`.site-scope` paleti, admin token'ı İTHAL EDİLMEZ, kabuk kendi `<header>`'ını
+RENDER ETMEZ, doktor portalıyla görsel akrabalık) burada da **AYNEN** uygulanmıştır. Palet/
+tipografi/`--site-radius`/ikon kaynağı (§0/§1/§8) DEĞİŞMEDİ — bu bölüm YENİ bir renk/font
+İCAT ETMEZ; `Badge` (§12.4/§13.1), `EmptyState`, `Avatar`, `AppointmentStatusBadge` (§13.1),
+`booking-documents-dialog.tsx` (§13.3) üzerinde **TADİLAT/KULLANIM** kararı verir.
+
+### 14.1 Portal gezinme paterni — `lg:grid-cols-[240px_1fr]` sol ray / `<lg` yatay şerit
+
+**Architect'in varsayımı AYNEN KABUL EDİLDİ** (§9.8.2 madde 3) — gerekçesiz değiştirmek
+yerine ÜÇ somut karar EKLENİYOR: (a) konteyner genişliği, (b) ikon seti, (c) aktif/pasif/hover
+sınıfları. Değiştirmeme gerekçesi: `DoctorPortalShell`'in 3 hedefli sekme şeridi zaten AYNI
+`max-w-6xl` konteynerde yaşıyor (§12.6 madde 4 "doktor portalıyla görsel akrabalık"); 5 hedefli
+bir gezinmeyi doktor tarafında olmayan yeni bir grid biçimiyle çözmek iki portalı görsel olarak
+ayrıştırırdı — architect'in önerisi zaten bu akrabalığı koruyan EN KÜÇÜK yeterli değişikliktir.
+
+1. **Konteyner genişliği `max-w-6xl`'e YÜKSELTİLİR** (`patient-portal-shell.tsx` şu an
+   `max-w-5xl` — bu turda **DEĞİŞİR**, §12.6 madde 3'ün "DoctorPortalShell'in bu turda zaten
+   benimsediği genişlik" emsaline uyum). Kabuk hâlâ `<header>` RENDER ETMEZ (§12.6 madde 2,
+   DEĞİŞMEDİ) — bu yalnızca `<div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">`'nin
+   genişlik değeridir.
+2. **İskelet (`lg` ve üzeri):**
+   ```
+   <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
+     <PatientPortalNav variant="strip" className="lg:hidden" />   {/* <lg şerit, üstte */}
+     <div className="lg:grid lg:grid-cols-[240px_1fr] lg:items-start lg:gap-8">
+       <PatientPortalNav variant="rail" className="hidden lg:block lg:sticky lg:top-6" />
+       <div className="min-w-0">{children}</div>
+     </div>
+   </div>
+   ```
+   Tek nav bileşeni, `variant` prop'uyla iki render biçimi üretir (rota listesi TEK yerde
+   tanımlı kalır — ikili bakım yükü YOK).
+3. **5 rota → etiket → ikon (tek kaynak, ikisi de bu tabloyu kullanır):**
+
+   | Rota | Etiket | İkon (`lucide-react`) | Gerekçe |
+   |---|---|---|---|
+   | `/patient` | **Genel Bakış** | `LayoutDashboard` | Bu dokümanda İLK kullanım, çakışma yok; "özet/pano" anlamını doğrudan taşır. |
+   | `/patient/appointments` | **Randevularım** | `CalendarClock` | `AppointmentStatusBadge`'in `SCHEDULED` ikonuyla (§13.1) AYNI — nav ile içerik arasında BİLİNÇLİ tekrar, "randevu" kavramının tek görsel imzası. |
+   | `/patient/documents` | **Belgelerim** | `FileText` | `booking-documents-dialog.tsx`/`doctor-quick-booking-card.tsx`'te ZATEN "belge" anlamında kullanılıyor — üçüncü bir belge ikonu İCAT EDİLMEDİ. |
+   | `/patient/prescriptions` | **Reçetelerim** | `ClipboardList` | Bu dokümanda İLK kullanım. **BİLİNÇLİ OLARAK `StickyNote` KULLANILMADI** — o ikon `hasIntakeNote`/hasta notu göstergesine ayrılmış (§13.2); epikriz farklı bir kavramdır (doktorun ÜRETTİĞİ konsültasyon notu), karıştırılırsa iki farklı "not" türü aynı sembolü paylaşırdı. |
+   | `/patient/profile` | **Profilim** | `UserCog` | `doctor-portal-quick-links-card.tsx`'teki "Profilim" bağlantısıyla **BİREBİR AYNI** ikon — iki portal arasında en güçlü akrabalık sinyali (§12.6 madde 4). |
+
+4. **Aktif/pasif/hover sınıfları (rail VE strip PAYLAŞIR, yalnızca `flex-col`/`flex-row` değişir):**
+   ```tsx
+   const base = "inline-flex items-center gap-2.5 rounded-[var(--site-radius)] px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface";
+   const active = "bg-primary/10 text-primary";
+   const inactive = "text-foreground/70 hover:bg-surface-muted hover:text-foreground";
+   ```
+   - Rail (`lg+`): `<nav aria-label="Hasta portalı gezinmesi" className="flex flex-col gap-1">`,
+     her `Link` `aria-current={isActive ? "page" : undefined}`. İkon `h-4 w-4 shrink-0`,
+     `aria-hidden="true"`.
+   - Strip (`<lg`): AYNI sınıflar, `<nav className="-mx-4 flex gap-1 overflow-x-auto px-4 pb-1
+     sm:-mx-6 sm:px-6">`, her `Link` `shrink-0 whitespace-nowrap`. Kenar taşması (`-mx-4 px-4`)
+     `doctor-filters.tsx`'in mevcut yatay kaydırma desenidir, yeniden İCAT EDİLMEDİ.
+   - **`active` tonu `bg-primary/10 text-primary`** — `TabsTrigger`'ın `line` varyantının
+     `data-active:bg-primary/15 data-active:text-primary` sınıfıyla AYNI aile (`tabs.tsx`),
+     `Badge tone="primary"` soft tonuyla da tutarlı — projede "seçili/aktif" için ZATEN var
+     olan TEK ton, dördüncü bir "aktiflik rengi" İCAT EDİLMEDİ.
+   - `DoctorPortalShell`'in mevcut basit `Link` + `border-b` deseninden kasıtlı olarak
+     AYRILDI (ikon+rail gerektirdiği için), ama ton/aktiflik mantığı (§12.6 madde 4 "aynı aile")
+     KORUNDU — doktor tarafı bu turda **değiştirilmez**.
+
+### 14.2 `/patient` hero kartı — isim + en yakın randevu + birincil CTA
+
+**Bu sayfanın TEK içeriği hero karttır** (bu turda ek widget/liste TANIMLANMAZ — §9.8'in dar
+kapsam ilkesiyle tutarlı, ileride "son aktivite" gibi ek bölümler eklenmek istenirse yeni bir
+ui-designer turu gerekir). Admin `StatCard`/glow taklidi YASAK (§13.5 "admin StatCard
+KULLANILMAZ" kararının AYNISI) — sade `border border-border bg-surface` kartı, marka
+gradyanı (§1.4, `#0F766E → #0369A1`) **YALNIZCA** kamu hero'sunda kalır, portal içinde
+TEKRARLANMAZ (bu bir pazarlama yüzeyi değil, işlevsel bir panodur).
+
+```
+┌──────────────────────────────────────────────────────────┐
+│  Merhaba, Ayşe Kaya                                       │  ← text-2xl font-semibold (§8 H1)
+│  İşte hasta portalınızın genel görünümü.                  │  ← text-sm text-foreground/60
+│  ┌────────────────────────────────────────────────────┐   │
+│  │ [Avatar] Dr. Mehmet Demir · Kardiyoloji             │   │  ← border-primary/30 bg-primary/5
+│  │ 18 Eylül Perşembe · 14:00  [Planlandı]              │   │     rounded-[var(--site-radius)] p-4
+│  │                              [Görüşmeye Katıl →]    │   │
+│  └────────────────────────────────────────────────────┘   │
+└──────────────────────────────────────────────────────────┘
+```
+
+1. **Dış kart:** `rounded-[var(--site-radius)] border border-border bg-surface p-6 sm:p-8`.
+   Üstte greeting (`Merhaba, {user.fullName}` — `text-2xl font-semibold text-foreground`) +
+   alt satır `text-sm text-foreground/60`.
+2. **İç "en yakın randevu" paneli** — §13.6'daki "Net Kazanç vurgusu" kartıyla AYNI vurgulama
+   dili (`border-primary/30 bg-primary/5`, tek vurgulu iç kart), İÇİNDE: `Avatar` (h-10 w-10,
+   doktor-console-patient-card.tsx'teki boyutla tutarlı) + doktor adı/uzmanlığı + tarih-saat
+   (`formatFullDayLabel`/`formatTime`, MEVCUT `telehealth-format` yardımcıları, yeniden
+   yazılmaz) + `AppointmentStatusBadge` (§13.1, AYNEN kullanılır).
+3. **CTA — frontend-agent hangi koşulda hangisinin göründüğüne karar verir (iş mantığı), her
+   varyantın GÖRSELİ burada tanımlıdır:**
+
+   | Durum | CTA metni | Bileşen/stil |
+   |---|---|---|
+   | Katılım penceresi açık | "Görüşmeye Katıl" | `join-meeting-button.tsx` (§12.5.3) **AYNEN gömülür**, yeniden yazılmaz |
+   | Planlandı ama pencere kapalı | "Randevu Detayını Gör" | `Button variant="outline" size="sm"` → `/patient/bookings/{id}` |
+   | `PENDING_PAYMENT` (ödenmemiş) | "Ödemeyi Tamamla" | `Button size="sm"` + iç panel `border-warning/30 bg-warning/5` (ton `border-primary/30`'un YERİNE geçer — ödeme bekleyişi §12.4'teki gibi HER ZAMAN dikkat gerektirir) |
+   | Hiç randevu yok | "Randevu Al" | `Button size="sm"` → `/doctors`, iç panel YOK — yalnızca `text-sm text-foreground/60` "Henüz bir randevunuz bulunmuyor." satırı |
+
+   Test 34'ün ("hero kartı görünür") her koşulda geçmesi için hero kartının DIŞ çerçevesi
+   (greeting) **HER ZAMAN** render edilir; yalnızca iç panel/CTA koşula göre değişir.
+
+### 14.3 Boş durumlar — mevcut `EmptyState` (`components/ui/empty-state.tsx`), YENİ desen İCAT EDİLMEDİ
+
+`EmptyState({ icon, title, description, action })` imzası AYNEN kullanılır. Aşağıdaki tablo
+frontend-agent'a doğrudan prop değerlerini verir:
+
+| Sayfa/sekme | `icon` | `title` | `description` | `action` |
+|---|---|---|---|---|
+| `/patient/appointments` — Aktif (scope=upcoming) | `CalendarClock` | "Aktif randevunuz yok" | "Bir uzmanla görüşmek için hemen randevu alın." | `Button size="sm"` "Randevu Al" → `/doctors` |
+| `/patient/appointments` — Geçmiş (scope=past) | `CalendarCheck` | "Geçmiş randevunuz bulunmuyor" | "Tamamlanmış randevularınız burada listelenecek." | yok |
+| `/patient/appointments` — İptal (scope=cancelled) | `CalendarX2` | "İptal edilmiş randevunuz yok" | "İptal edilen veya süresi dolan randevular burada görünür." | yok |
+| `/patient/documents` | `Paperclip` | "Henüz belgeniz yok" | "Randevularınıza yüklediğiniz tıbbi belgeler burada listelenir." | `Button variant="outline" size="sm"` "Randevularım" → `/patient/appointments` |
+| `/patient/prescriptions` | `ClipboardList` | "Henüz epikriz kaydınız yok" | "Doktorunuzun oluşturduğu konsültasyon notları tamamlandıktan sonra burada görünür." | yok |
+
+Tüm ikonlar §14.1'in nav ikonlarıyla veya §13/§12'nin ZATEN kurulu envanteriyle (`CalendarX2` —
+`doctor-bookings-panel.tsx`/`booking-list-view.tsx`, `CalendarCheck` — `booking-wizard.tsx`/
+`doctor-service-summary.tsx`, `Paperclip` — belge rozeti ailesi) BİREBİR aynıdır — dördüncü bir
+ikon seti İCAT EDİLMEDİ.
+
+### 14.4 Sekme sayacı rozeti (`/patient/appointments`)
+
+`doctor-bookings-panel.tsx`'teki `SCOPE_TABS` + `Badge tone="neutral" size="sm"` deseninin
+**BİREBİR AYNISI** (§12'nin "aynı ailede" kuralı, doktor tarafı §9.8.4 gereği DEĞİŞMEZ ama
+DESEN paylaşılır):
+
+```tsx
+<Tabs value={scope} onValueChange={...}>
+  <TabsList>
+    {SCOPE_TABS.map((tab) => (
+      <TabsTrigger key={tab.value} value={tab.value} className="gap-1.5">
+        {tab.label}
+        <Badge tone="neutral" size="sm" className="px-1.5 py-0 text-[10px] font-semibold">
+          {counts[tab.value]}
+        </Badge>
+      </TabsTrigger>
+    ))}
+  </TabsList>
+</Tabs>
+```
+
+`SCOPE_TABS` (patient — 3 sekme, doktorunkinden FARKLI etiket/değer seti, §9.8.4'ün `scope`
+sözleşmesine göre): `{ value: "upcoming", label: "Aktif" }`, `{ value: "past", label: "Geçmiş" }`,
+`{ value: "cancelled", label: "İptal" }`. **Sayaçlar `scope`'tan bağımsızdır** (backend
+`meta.counts`, §9.8.7 test 32) — sekme değişince rozet rakamları DEĞİŞMEZ, yalnızca liste
+değişir; bu davranış görsel olarak "sabit sayaç" izlenimini DOĞRU biçimde yansıtmalıdır (sekmeyi
+değiştirirken rozetlerde ani bir "0 → N" flaş/animasyonu OLMAMALI, sayılar zaten yüklenmiş
+`meta.counts`'tan gelir).
+
+### 14.5 Belge & epikriz kart deseni (`/patient/documents`, `/patient/prescriptions`)
+
+İki sayfa da AYNI booking-kartı iskeletini kullanır (`doctor-console-patient-card.tsx`'in hasta
+kimliği satırıyla AYNI aile — `Avatar` + isim + rozet), yalnızca doktor/hasta rolleri yer
+değiştirir ve aksiyon farklıdır:
+
+```
+┌──────────────────────────────────────────────────────┐
+│ [Avatar 40px] Dr. Mehmet Demir                        │  ← text-sm font-semibold
+│               Kardiyoloji · 18 Eylül 2026, 14:00      │  ← text-xs text-foreground/60
+│               [Planlandı]                             │  ← AppointmentStatusBadge (§13.1)
+│                                                        │
+│ [Tıbbi Belgeler (3)]                    [Görüntüle →] │  ← belge sayfasında
+└──────────────────────────────────────────────────────┘
+```
+
+- **Kart yüzeyi:** `rounded-[var(--site-radius)] border border-border bg-surface p-4
+  hover:border-primary/30 transition-colors` — §2'nin doktor kartı hover davranışıyla AYNI
+  gerekçe (tıklanabilir/etkileşimli yüzey sinyali).
+- **Üst satır:** `Avatar` (`h-10 w-10`, doktor-console-patient-card.tsx ile AYNI boyut) +
+  doktor `{title} {fullName}` (`text-sm font-semibold text-foreground`) + uzmanlık/tarih
+  (`text-xs text-foreground/60`, orta-nokta ayraçlı, §12.7'nin "N Slot · M Dk" ayracıyla
+  AYNI konvansiyon) + `AppointmentStatusBadge` (§13.1, AYNEN).
+- **`/patient/documents` alt satır:** `Badge tone="primary" solid size="sm"` + `Paperclip` +
+  "Tıbbi Belgeler ({documentCount})" — §13.2'nin BİREBİR AYNI rozeti, konum kart içi alt satır.
+  Sağda `Button variant="outline" size="sm"` "Görüntüle" → `BookingDocumentsDialog`'u açar
+  (**prop ile hasta perspektifine açılır**, §9.8.4/§9.8.6 frontend-agent görevi — dialog YENİDEN
+  YAZILMAZ, §13.3).
+- **`/patient/prescriptions` alt satır:** `Badge tone="primary" solid size="sm"` + `ClipboardList`
+  + "Epikriz Mevcut" (liste zaten `hasConsultationNote === true` ile filtrelendiği için HER
+  kartta görünür — bu bir sayaç DEĞİL, sabit bir etiket; `documentCount` gibi değişken bir
+  sayı taşımaz, dolayısıyla parantez içi rakam YOK). Sağda `Button variant="outline" size="sm"`
+  "Görüntüle" → mevcut `patient-booking-detail-panel.tsx`'teki `getConsultationNote` +
+  HTML-önizleme mantığının **AYNISI** (yeniden yazılmaz, §9.8.4 madde son fıkra).
+- **Liste düzeni:** `space-y-3` dikey kart listesi (BookingListView'in `<md` mobil kart moduyla
+  AYNI, §12.5) — bu iki sayfa için masaüstü `<table>` moduna GEÇİLMEZ, çünkü içerik
+  (doktor+tarih+tek rozet+tek aksiyon) tablo sütunlarını gerektirecek kadar zengin değil; kart
+  listesi TEK breakpoint'te sabit kalır (yeni bir responsive dallanma İCAT EDİLMEDİ).
+
+  > frontend-agent notu (qa-agent bug fix turu, 2026-09-15) — `/patient/documents` artık
+  > `documentCount === 0` olan booking'leri de listeler (`documentCount` filtresi kaldırıldı);
+  > bu kartlarda alt satır `Badge tone="neutral"` "Henüz belge yok" + `Button variant="outline"
+  > size="sm"` "Belge Ekle" (`Plus` ikonu) gösterir — bu buton dialog AÇMAZ, hastayı ilgili
+  > booking'in DEĞİŞMEMİŞ detay sayfasına (`/patient/bookings/{id}`) yönlendirir (belge yükleme/
+  > KVKK rıza akışı orada zaten çalışıyor, burada TEKRAR EDİLMEDİ). Görsel token seçimi (nötr
+  > rozet + outline buton) mevcut §13.2 rozet ailesinden türetildi; ui-designer onayı gerekirse
+  > bu notu gözden geçirebilir.
+
+### 14.6 Künye ve e-posta rozetlerinin dili/rengi (§9.8.5 madde 4, ENGELLEYİCİ)
+
+**İki rozet AYRI kartlarda, AYRI ikon/ton ailelerinde yaşar — hiçbir yüzeyde yan yana/aynı
+görsel dilde GÖSTERİLMEZ** (kullanıcının "ikisi görsel olarak ayrıştırılmalı" isteği böyle
+karşılanır):
+
+**A) Kimlik Bilgileri kartı — NÖTR, "onay" görseli YOK:**
+
+```tsx
+<section className="space-y-3 rounded-[var(--site-radius)] border border-border bg-surface p-5">
+  <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+    <IdCard className="h-4 w-4 text-foreground/50" aria-hidden="true" />
+    Kimlik Bilgileri
+  </h2>
+  {identity ? (
+    <div className="space-y-1.5">
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge tone="neutral" size="sm" className="gap-1 font-mono tabular-nums">
+          {identity.maskedNumber}
+        </Badge>
+        <span className="text-sm text-foreground/60">
+          {identity.citizenshipType === "TR" ? "T.C. Vatandaşı" : identity.countryCode}
+        </span>
+      </div>
+      <p className="text-xs text-foreground/50">
+        Kimlik bilgisi alındı — {formatDate(identity.capturedAt)}
+      </p>
+    </div>
+  ) : (
+    <p className="text-sm text-foreground/50">Kimlik bilgisi bulunmuyor</p>
+  )}
+</section>
+```
+
+- **`tone="neutral"` — `success`/yeşil/`CircleCheck`/`BadgeCheck` KESİNLİKLE KULLANILMAZ**
+  (§9.8.5 madde 4 ENGELLEYİCİ). `IdCard` ikonu `doctor-console-patient-card.tsx`'teki
+  `IdentityBadge`'den ÖDÜNÇ alınır (§12'nin envanterinde ZATEN var, bilinçli tekrar) — bu
+  ikon bir "kart" biçimidir, `Check`/onay imgesi TAŞIMAZ, seçimi kasıtlı.
+  Bu bileşen **doctor-console-patient-card.tsx'ten farklı olarak** rakamı doğrudan `Badge`
+  içinde, altında metin olarak "alındı — {tarih}" cümlesini taşır — masaüstü doktor konsolunun
+  yoğun satır formatından farklı, profil sayfasının daha AÇIKLAYICI biçimine uyarlanmıştır.
+- **Boş durum metni de NÖTR:** `text-foreground/50`, kırmızı/`danger` DEĞİL — kimliğin
+  olmaması bir HATA değildir (`PENDING_PAYMENT` booking'lerde henüz toplanmamış olabilir),
+  §2'nin `isVerified=false` kararıyla AYNI ilke ("yokluğun kendisi zaten anlamı taşır, negatif
+  sinyal ÜRETİLMEZ").
+- **GÖZLEM (bu turun kapsamı DIŞINDA, architect/frontend-agent'a bilgi notu):**
+  `doctor-console-patient-card.tsx`'teki mevcut `IdentityBadge` boş durumda **"Doğrulanmamış"**
+  etiketi kullanıyor (2026-09-14 tarihli yorum) — bu, §9.8.5 madde 4'ün dil yasağının BİR
+  SONRAKİ turda gözden geçirmesi gereken bir TUTARSIZLIKTIR ("doğrulanmamış" kelimesi zıddı
+  "doğrulanmış" bir sürecin var olduğunu ima eder). **Bu turda DÜZELTİLMEZ** (doktor konsolu
+  bu turun kapsamında değil, §9.8.6 tablosu); yeni `/patient/profile` yüzeyi bu hatayı
+  TEKRARLAMAZ ("Kimlik bilgisi bulunmuyor" — süreç ima etmeyen düz bir olgu cümlesi).
+
+**B) Hesap Bilgileri kartı — E-posta rozeti, SERBEST ve gerçek `success` tonu:**
+
+```tsx
+<section className="space-y-3 rounded-[var(--site-radius)] border border-border bg-surface p-5">
+  <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+    <Mail className="h-4 w-4 text-foreground/50" aria-hidden="true" />
+    Hesap Bilgileri
+  </h2>
+  <div className="flex flex-wrap items-center gap-2">
+    <span className="text-sm text-foreground">{user.email}</span>
+    {user.emailVerifiedAt ? (
+      <Badge tone="success" solid size="sm" className="gap-1">
+        <CircleCheck className="h-3 w-3" aria-hidden="true" />
+        E-posta Doğrulandı
+      </Badge>
+    ) : (
+      <Badge tone="neutral" size="sm" className="gap-1">
+        <Mail className="h-3 w-3" aria-hidden="true" />
+        E-posta Doğrulanmadı
+      </Badge>
+    )}
+  </div>
+</section>
+```
+
+- **`success`/`CircleCheck` BURADA DOĞRU** — `AppointmentStatusBadge`'in `COMPLETED` ikonuyla
+  (§13.1) ve `payment-status-badge.tsx`'in `PAID` ikonuyla AYNI (§13.1'in "bilinçli tekrar"
+  ilkesi) — çünkü `emailVerifiedAt` GERÇEK bir doğrulama kaydıdır (§9.8.5 madde 5).
+  Doğrulanmamış durum `danger` DEĞİL `neutral` (SCHEDULED/soft ilkesiyle aynı aile —
+  doğrulanmamış e-posta bir hata değil, henüz tamamlanmamış bir adımdır) + `Mail` ikonu
+  (zarf kapalı hissi, `CircleCheck`'in TERSİ bir imge, karışma riski sıfır).
+- **Ayrı `<section>`, ayrı başlık (`IdCard` ↔ `Mail`), ayrı ton havuzu (yalnız-nötr ↔
+  nötr/success) — iki rozet asla aynı kartta/satırda YAN YANA render edilmez.** Bu, madde
+  4'ün "karıştırılmasın" şartının somut karşılığıdır.
+
+### 14.7 Özet — bu bölümde eklenen/değişen somut değerler
+
+| Öğe | Değer |
+|---|---|
+| `PatientPortalShell` konteyner | `max-w-5xl` → `max-w-6xl` (DoctorPortalShell ile eşleşti) |
+| Portal nav — rota/ikon | Genel Bakış `LayoutDashboard` · Randevularım `CalendarClock` · Belgelerim `FileText` · Reçetelerim `ClipboardList` · Profilim `UserCog` |
+| Portal nav — aktif | `bg-primary/10 text-primary` |
+| Portal nav — pasif/hover | `text-foreground/70 hover:bg-surface-muted hover:text-foreground` |
+| Portal nav — düzen | `lg+`: sol ray `grid-cols-[240px_1fr]`; `<lg`: yatay kaydırılabilir şerit (`-mx-4 px-4`) |
+| Hero kartı dış çerçeve | `rounded-[var(--site-radius)] border border-border bg-surface p-6 sm:p-8` (admin StatCard/glow YOK) |
+| Hero — en yakın randevu paneli | `border-primary/30 bg-primary/5` (ödenmemişse `border-warning/30 bg-warning/5`) |
+| Hero CTA | Katılım açık → `join-meeting-button.tsx`; kapalı → "Randevu Detayını Gör"; ödenmemiş → "Ödemeyi Tamamla"; randevu yok → "Randevu Al" |
+| Boş durumlar (5) | Mevcut `EmptyState` — bkz. §14.3 tablosu, yeni bileşen YOK |
+| Sekme sayacı | `Badge tone="neutral" size="sm"` + `Tabs`/`TabsList`/`TabsTrigger` (`doctor-bookings-panel.tsx` deseni BİREBİR) |
+| Belge/epikriz kartı | `Avatar 40px` + doktor adı/tarih + `AppointmentStatusBadge` + rozet (`Paperclip`/`ClipboardList`, `tone="primary" solid`) + "Görüntüle" |
+| Kimlik künyesi | `tone="neutral"` — `success`/yeşil/`CircleCheck` YASAK; "Kimlik bilgisi alındı — {tarih}" / "Kimlik bilgisi bulunmuyor" |
+| E-posta rozeti | `tone="success" solid` + `CircleCheck` (doğrulandı) / `tone="neutral"` + `Mail` (doğrulanmadı) — kimlik rozetinden AYRI kart |
