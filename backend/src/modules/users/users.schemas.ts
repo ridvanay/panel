@@ -1,9 +1,16 @@
 import { z } from "zod";
 
+/** Serbest formatlı telefon — ülke kodu/format ülkeye göre değişir, katı bir E.164 zorunluluğu YOK. */
+const ADDRESS_PHONE_REGEX = /^[0-9+()\-\s]{7,20}$/;
+
 export const UpdateUserRequestSchema = z.object({
   name: z.string().min(1).max(80).optional(),
   // `null` avatarı kaldırır, boş string ("") geçersizdir (422) — bkz. openapi.yaml UpdateUserRequest.
   avatarUrl: z.string().url().nullable().optional(),
+  // `null` telefonu kaldırır, boş string ("") geçersizdir (422, regex min 7 karakter zorunlu
+  // kılar) — `avatarUrl` ile AYNI disiplin. Regex `ADDRESS_PHONE_REGEX` ile AYNI (aşağıda tanımlı,
+  // ikinci bir kopya YAZILMAZ).
+  phone: z.string().regex(ADDRESS_PHONE_REGEX, "Geçerli bir telefon numarası giriniz.").nullable().optional(),
 });
 
 /** `POST /users/me/change-password` gövdesi — mesaj `auth.schemas.ts::RegisterRequestSchema` ile AYNI. */
@@ -23,9 +30,6 @@ export const MAX_WISHLIST_ITEMS_PER_USER = 100;
 export const AddressIdParamSchema = z.object({
   addressId: z.string().uuid(),
 });
-
-/** Serbest formatlı telefon — ülke kodu/format ülkeye göre değişir, katı bir E.164 zorunluluğu YOK. */
-const ADDRESS_PHONE_REGEX = /^[0-9+()\-\s]{7,20}$/;
 
 const addressTitle = z.string().min(1).max(60);
 const addressFullName = z.string().min(1).max(120);

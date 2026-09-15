@@ -265,6 +265,12 @@ model User {
   passwordHash    String
   name            String
   avatarUrl       String?
+  // Hesap seviyesinde genel iletişim numarası (randevu/SMS hatırlatma vb.) — `Address.phone`
+  // (e-ticaret adres defteri, ZORUNLU alan, satır ~2657) ile KARIŞTIRILMAMALI: o teslimat
+  // adresine özgüdür ve zorunludur, bu ise kullanıcı hesabının genel numarasıdır ve opsiyoneldir
+  // (mevcut kullanıcılarda backfill YOK). Format doğrulaması backend katmanında yapılır (bkz.
+  // users.schemas.ts), burada CHECK/unique constraint YOK — eşleştirme/arama amaçlı değil.
+  phone           String?
   emailVerifiedAt DateTime?
   role            SiteRole       @default(USER)
   status          SiteUserStatus @default(ACTIVE)

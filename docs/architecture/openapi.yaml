@@ -11546,6 +11546,13 @@ components:
         email: { type: string, format: email }
         name: { type: string }
         avatarUrl: { type: string, nullable: true }
+        phone:
+          type: string
+          nullable: true
+          description: >
+            `PATCH /users/me` ile yazılır. Serbest formatlı (ülke kodu/format ülkeye göre
+            değişir, katı bir E.164 zorunluluğu YOK — `Address.phone` ile AYNI regex).
+            `null` = telefon kayıtlı değil.
         emailVerifiedAt: { type: string, format: date-time, nullable: true }
         role:
           type: string
@@ -11821,14 +11828,22 @@ components:
 
     UpdateUserRequest:
       description: >
-        Kendi profilini güncelleme (`PATCH /users/me`). Yalnızca `name` ve `avatarUrl`
-        değiştirilebilir — `email`, `role`, `status` BU UÇTAN DEĞİŞTİRİLEMEZ (rol/durum
-        için bkz. `/admin/users/{userId}/role|status`). `avatarUrl: null` gönderilirse
-        avatar kaldırılır (boş string `""` GEÇERSİZDİR, 422 döner).
+        Kendi profilini güncelleme (`PATCH /users/me`). Yalnızca `name`, `avatarUrl` ve
+        `phone` değiştirilebilir — `email`, `role`, `status` BU UÇTAN DEĞİŞTİRİLEMEZ
+        (rol/durum için bkz. `/admin/users/{userId}/role|status`). `avatarUrl: null` /
+        `phone: null` gönderilirse ilgili alan kaldırılır (boş string `""` her iki alan
+        için de GEÇERSİZDİR, 422 döner).
       type: object
       properties:
         name: { type: string, minLength: 1, maxLength: 80 }
         avatarUrl: { type: string, format: uri, nullable: true }
+        phone:
+          type: string
+          nullable: true
+          pattern: "^[0-9+()\\-\\s]{7,20}$"
+          description: >
+            Serbest formatlı telefon — `Address.phone` ile AYNI regex. `null` telefonu
+            kaldırır, boş string (`""`) geçersizdir.
 
     ChangePasswordRequest:
       description: >

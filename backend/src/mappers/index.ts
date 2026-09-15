@@ -179,6 +179,7 @@ export function toUserDto(user: UserWithDoctorLink): UserDto {
     email: user.email,
     name: user.name,
     avatarUrl: user.avatarUrl,
+    phone: user.phone,
     emailVerifiedAt: user.emailVerifiedAt ? user.emailVerifiedAt.toISOString() : null,
     role: user.role,
     createdAt: user.createdAt.toISOString(),

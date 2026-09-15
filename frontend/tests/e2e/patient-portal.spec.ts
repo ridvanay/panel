@@ -470,6 +470,135 @@ test("madde 38: ADMIN oturumuyla /patient → yönlenmez, hero kartı boş durum
 });
 
 // =============================================================================
+// qa-agent — [KHP turu, 2026-09-15] sol nav rayı `lg:flex` düzeltmesi. Kök neden: `lg:block`in
+// taban `flex`i (`variant === "rail" ? "flex flex-col gap-1"`) ezip `<nav>`i `display:block`
+// yapması, `Link`lerin (satır-içi elemanlar) yan yana sarılmasıydı. Masaüstünde (lg+, ≥1024px)
+// TEK SÜTUN/DİKEY, taşmasız; dar genişlikte (<lg) `variant="strip"` yatay şerit REGRESYONU YOK.
+// =============================================================================
+test("qa-agent: /patient/appointments — masaüstünde (lg+) sol nav rayı tek sütun/dikey (yan yana binme YOK); dar genişlikte yatay şerit rejeksiyonsuz çalışır", async ({
+  browser,
+}) => {
+  const { page, close } = await loginAsPatient(browser);
+  try {
+    // ---- Masaüstü (lg+, ≥1024px) — `variant="rail"` GÖRÜNÜR olmalı, `variant="strip"` `lg:hidden`. ----
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto("/patient/appointments");
+    await expect(page.getByRole("heading", { name: "Randevularım" })).toBeVisible({ timeout: 15_000 });
+
+    const visibleNav = page.locator('nav[aria-label="Hasta portalı gezinmesi"]:visible');
+    await expect(visibleNav).toHaveCount(1);
+
+    const labels = ["Genel Bakış", "Randevularım", "Belgelerim", "Reçetelerim", "Profilim"] as const;
+    const boxes: { x: number; y: number }[] = [];
+    for (const label of labels) {
+      const link = visibleNav.getByRole("link", { name: label });
+      await expect(link).toBeVisible();
+      const box = await link.boundingBox();
+      if (!box) throw new Error(`qa-agent: "${label}" bağlantısının bounding box'ı alınamadı (masaüstü rail).`);
+      boxes.push({ x: box.x, y: box.y });
+    }
+
+    // Aynı sütun — X koordinatları (yaklaşık) AYNI olmalı (yan yana binme/sarma YOK).
+    const firstX = boxes[0]!.x;
+    for (const [i, box] of boxes.entries()) {
+      expect(Math.abs(box.x - firstX), `qa-agent: "${labels[i]}" X koordinatı sütundan sapıyor (yan yana binme regresyonu): ${JSON.stringify(boxes)}`).toBeLessThan(2);
+    }
+    // Dikey/ardışık — Y koordinatları KESİN ARTAN olmalı (üstten alta, tek sütun).
+    for (let i = 1; i < boxes.length; i++) {
+      expect(boxes[i]!.y, `qa-agent: "${labels[i]}" Y koordinatı önceki öğeden büyük olmalıydı (dikey sıralama regresyonu): ${JSON.stringify(boxes)}`).toBeGreaterThan(
+        boxes[i - 1]!.y
+      );
+    }
+
+    // ---- Regresyon — dar genişlik (<1024px), `variant="strip"` yatay kaydırılabilir şerit HÂLÂ
+    // doğru çalışıyor (bu turda DOKUNULMADI). Aynı sekmeler AYNI SATIRDA (Y yaklaşık aynı), X
+    // ARTAN (soldan sağa) olmalı. ----
+    await page.setViewportSize({ width: 375, height: 800 });
+    const visibleStripNav = page.locator('nav[aria-label="Hasta portalı gezinmesi"]:visible');
+    await expect(visibleStripNav).toHaveCount(1);
+
+    const stripBoxes: { x: number; y: number }[] = [];
+    for (const label of labels) {
+      const link = visibleStripNav.getByRole("link", { name: label });
+      await expect(link).toBeVisible();
+      const box = await link.boundingBox();
+      if (!box) throw new Error(`qa-agent: "${label}" bağlantısının bounding box'ı alınamadı (mobil strip).`);
+      stripBoxes.push({ x: box.x, y: box.y });
+    }
+    const firstStripY = stripBoxes[0]!.y;
+    for (const [i, box] of stripBoxes.entries()) {
+      expect(Math.abs(box.y - firstStripY), `qa-agent: "${labels[i]}" Y koordinatı aynı satırdan sapıyor (mobil şerit regresyonu): ${JSON.stringify(stripBoxes)}`).toBeLessThan(2);
+    }
+    for (let i = 1; i < stripBoxes.length; i++) {
+      expect(stripBoxes[i]!.x, `qa-agent: "${labels[i]}" X koordinatı önceki öğeden büyük olmalıydı (mobil şerit soldan-sağa sıralama regresyonu): ${JSON.stringify(stripBoxes)}`).toBeGreaterThan(
+        stripBoxes[i - 1]!.x
+      );
+    }
+  } finally {
+    await close();
+  }
+});
+
+// =============================================================================
+// qa-agent — [KHP turu, 2026-09-15] `/patient/profile` "İletişim Bilgileri" telefon numarası
+// kalıcılığı. `User.phone` (nullable, backend-agent bu turda eklendi) + `PATCH /users/me`.
+// =============================================================================
+test("qa-agent: /patient/profile — telefon numarası kaydedilir (success toast), sayfa yenilenince KALICI görünür; geçersiz format hata verir", async ({
+  browser,
+}) => {
+  const { page, close } = await loginAsPatient(browser);
+  try {
+    await page.goto("/patient/profile");
+    await expect(page.getByRole("heading", { name: "Profilim" })).toBeVisible({ timeout: 15_000 });
+
+    const contactSection = page.locator("section", { has: page.getByRole("heading", { name: "İletişim Bilgileri" }) });
+    await expect(contactSection).toBeVisible({ timeout: 15_000 });
+    const phoneInput = contactSection.getByLabel("Telefon Numarası");
+    const saveButton = contactSection.getByRole("button", { name: "Kaydet" });
+
+    const validPhone = "+90 555 123 45 67";
+    await phoneInput.fill(validPhone);
+    await saveButton.click();
+
+    // `toast.success` — sonner varsayılan başarı tonu (`data-type="success"`, bkz.
+    // `frontend/src/components/ui/sonner.tsx` — `richColors` AÇIK DEĞİL, yani arka plan
+    // literal yeşil DEĞİL; "success tonu" iddiası `data-type="success"` ile doğrulanır, bu
+    // repodaki en güvenilir/gerçek sinyaldir).
+    const successToast = page.locator('[data-sonner-toast][data-type="success"]', { hasText: "Telefon numaranız güncellendi." });
+    await expect(successToast).toBeVisible({ timeout: 10_000 });
+
+    // ---- Kalıcılık — sayfa YENİLENİR, input AYNI değeri göstermeli. ----
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "Profilim" })).toBeVisible({ timeout: 15_000 });
+    const contactSectionAfterReload = page.locator("section", { has: page.getByRole("heading", { name: "İletişim Bilgileri" }) });
+    await expect(contactSectionAfterReload.getByLabel("Telefon Numarası")).toHaveValue(validPhone, { timeout: 15_000 });
+
+    // ---- Geçersiz format — client-side zod `refine` (backend regex ile AYNI) reddeder, satır-içi
+    // hata (`role="alert"`) gösterilir; `PATCH /users/me` HİÇ ÇAĞRILMAMALI (aşağıda doğrulanır). ----
+    let patchCalled = false;
+    const onRequest = (req: import("@playwright/test").Request) => {
+      if (req.method() === "PATCH" && /\/api\/v1\/users\/me$/.test(req.url())) patchCalled = true;
+    };
+    page.on("request", onRequest);
+    const invalidPhoneInput = contactSectionAfterReload.getByLabel("Telefon Numarası");
+    await invalidPhoneInput.fill("abc");
+    await contactSectionAfterReload.getByRole("button", { name: "Kaydet" }).click();
+    await expect(page.getByRole("alert").filter({ hasText: "Geçerli bir telefon numarası giriniz." })).toBeVisible({ timeout: 10_000 });
+    page.off("request", onRequest);
+    expect(patchCalled, "qa-agent: geçersiz telefon formatıyla PATCH /users/me ÇAĞRILMAMALIYDI (client-side doğrulama başarısız olmalıydı).").toBe(false);
+
+    // Değer kalıcı KALMALI (geçersiz denemenin ÖNCEKİ geçerli değeri EZMEMESİ, backend'e HİÇ
+    // gitmediği için doğal sonuç) — ek bir sağlamlık kontrolü.
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "Profilim" })).toBeVisible({ timeout: 15_000 });
+    const contactSectionFinal = page.locator("section", { has: page.getByRole("heading", { name: "İletişim Bilgileri" }) });
+    await expect(contactSectionFinal.getByLabel("Telefon Numarası")).toHaveValue(validPhone, { timeout: 15_000 });
+  } finally {
+    await close();
+  }
+});
+
+// =============================================================================
 // [KHP] §9.8.7 test 39 — fan-out yasağı. BİLİNÇLİ OLARAK DOSYA SONUNA ALINDI: `serial` modunda bir
 // test kırmızı olunca yalnızca ONDAN SONRAKİ testler atlanır (bkz. dosya başı yorumu) — bu test
 // BİLİNEN bir bug'dan dolayı kırmızı KALACAĞI için sona konur ki YUKARIDAKİ TÜM testler (34-38, 40,

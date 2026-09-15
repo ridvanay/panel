@@ -3741,3 +3741,123 @@ DEĞİŞMEDİ) üzerinden ÇALIŞMAYA DEVAM EDİYOR (`DocumentUploader` orada AY
 BURADA bir kod değişikliği YAPMADI (mimari netleştirme architect'in kararı); frontend-agent/
 architect bir sonraki turda ya §9.8.4 metnini "bu turun kapsamı görüntülemeyle sınırlıdır" şeklinde
 REVİZE etmeli ya da `/patient/documents`e gerçek bir yükleme akışı eklemelidir.
+
+## Kurumsal Hasta Portalı — sol nav rayı `lg:flex` düzeltmesi + telefon numarası kalıcılığı
+(2026-09-15, bu turda eklendi)
+
+Görev akışı: db-agent (`User.phone` nullable kolon + migration) → frontend-agent (`patient-portal-
+shell.tsx` `lg:block`→`lg:flex` düzeltmesi, `patient-portal-nav.tsx` `rail` varyantına `w-full`/
+`justify-start`, `/patient/profile` "İletişim Bilgileri" telefon input'u) → backend-agent
+(`PATCH /users/me` `phone` alanı, regex `/^[0-9+()\-\s]{7,20}$/`, `null` = kaldırır, `""` = 422) →
+**qa-agent (bu bölüm, son adım)**.
+
+### Ortam doğrulaması (bu turda) — frontend container GÜNCEL DEĞİLDİ, yakalandı ve düzeltildi
+
+`docker inspect claudecodeproje-frontend-1` — container `2026-09-15T11:46:54Z` (14:46 yerel)
+oluşturulmuş, mount YOK (statik derlenmiş `standalone` build); `patient-portal-shell.tsx` (15:11) ve
+`patient-profile-panel.tsx` (15:12) BUNDAN SONRA değiştirilmişti — yani frontend-agent yalnızca
+backend'i (bu görevin özetinde belirtildiği gibi) rebuild etmiş, **frontend container ESKİ KODLA
+ayaktaydı**. `docker compose up --build -d frontend` çalıştırıldı, imaj yeniden derlendi, container
+sağlıklı yeniden başladı. (Not: e2e testleri bu docker-compose stack'ine karşı DEĞİL, ayrı bir
+`saas_e2e` DB + backend `:4001` + frontend `next dev :3100` ortamına karşı koşulur — bkz. aşağıdaki
+"Yöntem notları"; bu yüzden e2e sonuçları docker rebuild'inden bağımsızdır, ama görev özeti docker
+stack'inin GÜNCEL olmasını istediği için AYRICA doğrulanıp düzeltildi.)
+
+`backend/prisma/migrations/20260915121125_add_user_phone` ayrıca `saas_e2e` veritabanına
+(`npx prisma migrate deploy`) uygulandı — daha önce yalnızca docker-compose'un `db` servisinde
+(muhtemelen backend container başlatılırken) uygulanmıştı, e2e DB'sinde EKSİKTİ.
+
+### E2E — `frontend/tests/e2e/patient-portal.spec.ts`e 2 YENİ test eklendi (mevcut 12 test + 2 = 14)
+
+**Koşum kanıtı (yerel `saas_e2e` + backend `:4001` + frontend `:3100`, `E2E_SKIP_WEBSERVER=1`):
+tam dosya 2 kez ardışık koşuldu, HER İKİSİNDE 14/14 YEŞİL.**
+
+1. **"qa-agent: /patient/appointments — masaüstünde (lg+) sol nav rayı tek sütun/dikey (yan yana
+   binme YOK); dar genişlikte yatay şerit rejeksiyonsuz çalışır"** — `page.setViewportSize({width:
+   1280, height: 900})` (lg+) ile 5 nav linkinin `boundingBox()`'ı alınır: X koordinatları
+   (`Math.abs` farkı < 2px) AYNI sütunda, Y koordinatları KESİN ARTAN (`boxes[i].y >
+   boxes[i-1].y`) — yan yana binme/sarma YOK, tek sütun/dikey doğrulanır. Ardından
+   `setViewportSize({width: 375, height: 800})` (mobil, regresyon) ile AYNI 5 link `variant=
+   "strip"`e geçer: Y koordinatları (yaklaşık) AYNI satırda, X koordinatları ARTAN (soldan sağa)
+   — mevcut yatay şerit davranışı BOZULMADI. **GEÇTİ** — `lg:flex` düzeltmesi doğrulandı, bu
+   turdan ÖNCEKİ `lg:block` hatası (linklerin yan yana sarılması) bu testte X-sapması olarak
+   YAKALANABİLİRDİ (manuel olarak eski koda geri alıp doğrulanmadı, zaman kısıtı — ama assertion'ın
+   kendisi bu regresyon sınıfını yakalayacak şekilde tasarlandı: `Math.abs(box.x - firstX) <
+   2` HER satırda kırılırdı çünkü inline-flex linkler farklı X'lerde yan yana dururdu).
+2. **"qa-agent: /patient/profile — telefon numarası kaydedilir (success toast), sayfa yenilenince
+   KALICI görünür; geçersiz format hata verir"** — `+90 555 123 45 67` girilip "Kaydet"e
+   tıklanır, `[data-sonner-toast][data-type="success"]` (`hasText: "Telefon numaranız
+   güncellendi."`) görünür; `page.reload()` SONRASI input AYNI değeri gösterir (`toHaveValue`);
+   ardından `"abc"` girilip "Kaydet"e tıklanınca satır-içi `role="alert"` hatası ("Geçerli bir
+   telefon numarası giriniz.") görünür VE `PATCH /users/me`in HİÇ ÇAĞRILMADIĞI (`page.on(
+   "request", ...)` ile) doğrulanır (client-side zod `refine`, backend regex'iyle AYNI desen,
+   isteği hiç göndermeden reddediyor); son bir `page.reload()` ile ÖNCEKİ geçerli değerin
+   ezilmediği teyit edilir. **GEÇTİ.**
+
+**Not (dürüst değerlendirme, "YEŞİL toast" iddiası hakkında):** `frontend/src/components/ui/
+sonner.tsx`teki `<Toaster>` `richColors` prop'unu KULLANMIYOR — sonner'ın CSS'i `[data-rich-
+colors=true][data-sonner-toast][data-type=success]` seçicisiyle yeşil arka planı/metni SADECE
+`richColors` açıkken uygular. Yani bu toast'lar literal olarak yeşil DEĞİL (nötr `--normal-bg`/
+`--normal-text` + `CircleCheckIcon`, bkz. `sonner.tsx`). qa-agent bu yüzden "success tonu"nu
+GÖRSEL renk yerine sonner'ın GÜVENİLİR programatik sinyaliyle (`data-type="success"`, `toast.
+success()`'in kendisinin yazdığı öznitelik) doğruladı — bu, `telehealth-doctor-profile-toast.
+spec.ts`teki `data-sonner-toast` + `hasText` deseninin BİR ADIM İLERİSİ, aynı ailede. Bu bir bug
+DEĞİL (görev talimatındaki "YEŞİL toast" ifadesi muhtemelen "başarı tonu" kastıyla yazılmış), ama
+literal renk beklentisiyle karışmaması için not edilir.
+
+### Regresyon taraması — `patient-portal.spec.ts`in TAMAMI (14/14, önceki 12 test + bu turun 2 yenisi)
+
+Önceki turun 12 testi (madde 34/35/37/38/40/41 + 4 ek doğrulama + madde 39) bu turun sol nav
+CSS değişikliği/telefon alanı YÜZÜNDEN KIRILMADI — hepsi İKİ ayrı koşumda tutarlı biçimde geçti.
+
+**Gözlem (bilgi amaçlı, bu turdan BAĞIMSIZ, DOKUNULMADI):** önceki turda "BİLİNÇLİ KIRMIZI"
+olarak belgelenen **madde 39** (fan-out yasağı — `GET /patient/bookings`in `/patient/documents`/
+`/patient/prescriptions`te 2 kez atılması, `expect.soft`) bu turda YAPILAN 2 koşumun HER İKİSİNDE
+DE **YEŞİL** geldi. qa-agent bu turda `patient-documents-panel.tsx`/`patient-prescriptions-
+panel.tsx`e DOKUNMADI (görev kapsamı dışı) — bu ya (a) `next dev`in StrictMode çift-effect
+tetiklemesinin bu koşumlarda tesadüfen gerçekleşmediği bir zamanlama farkı, ya da (b) bug'ın
+altta yatan bir bağımlılık güncellemesi/başka bir turda SESSİZCE düzeldiği anlamına gelebilir.
+qa-agent BU TESTİN beklenen değerini (`toHaveLength(1)`) DEĞİŞTİRMEDİ — halihazırda doğru/nihai
+değerde duruyordu. **frontend-agent'a not:** eğer bu bug fiilen düzeldiyse, dosya başındaki
+"madde 39 BİLİNÇLİ OLARAK dosya sonuna alındı çünkü bilinen kırmızı" yorumu ve TEST_COVERAGE.md'nin
+yukarıdaki "KRİTİK olmayan bug" bölümü ARTIK GÜNCEL DEĞİL olabilir — bir sonraki qa-agent turunda
+birden fazla koşumla (ör. `--repeat-each=5`, rate-limit'e dikkat ederek) doğrulanıp durum
+netleştirilmelidir.
+
+### Yöntem notları
+
+- Backend e2e sunucusu (port `4001`, `saas_e2e` DB) ve frontend `next dev` (port `3100`) bu turda
+  ELLE başlatıldı, `E2E_SKIP_WEBSERVER=1` ile koşuldu (`playwright.config.ts`'in kendi `webServer`
+  otomatik başlatması bu ortamda 60sn'lik hazır-olma probunda `Timed out waiting 60000ms` ile
+  PATLADI — muhtemelen ilk derleme/Turbopack workspace-root uyarısı yüzünden yavaş açılış; elle
+  başlatılıp `curl` ile hazır olduğu doğrulandıktan SONRA `E2E_SKIP_WEBSERVER=1` ile bu sorun
+  atlatıldı, uygulama kodu/test config'i DEĞİŞTİRİLMEDİ).
+- `--repeat-each=3` + `-g "qa-agent:"` filtresiyle YENİ testleri TEK BAŞINA tekrar koşmaya
+  çalışıldığında `beforeAll`in `POST /appointments/bookings`i (4 booking/koşum) ART ARDA hızlıca
+  tetiklemesi 5/dk hız sınırına (`RATE_LIMITED`, `telehealth-multi-slot-booking.spec.ts` başlığında
+  ZATEN belgelenen AYNI kısıt) çarptı — bu YENİ testlerin KENDİSİNDE bir flake DEĞİL (ikisi de
+  `beforeAll`'da ZATEN oluşturulmuş fixture'ları KULLANIR, kendi booking'i YARATMAZ), tam dosyanın
+  TAM koşumları (`--repeat-each` OLMADAN, doğal `beforeAll`/`afterAll` aralığıyla) 2 kez ardışık
+  YEŞİL geldi — flakiness kaynağı test tasarımı DEĞİL, paylaşımlı rate-limit fixture'ının hızlı
+  ardışık `beforeAll` tekrarına duyarlılığıdır (mevcut, belgelenen bir kısıt, qa-agent'ın YENİ
+  testleriyle İLGİSİZ).
+
+### Bulunan bug — YOK (sol nav/telefon akışı için)
+
+Sol nav rayı düzeltmesi VE telefon numarası kalıcılığı akışı KOD DAVRANIŞI olarak DOĞRU çalışıyor
+— hiçbir gerçek regresyon/bug bulunmadı. `PATCH /users/me`in `phone: ""` için 422 döndüğü davranışı
+AYRICA test EDİLMEDİ (görev talimatı client-side geçersiz format senaryosunu istedi, backend'in
+`""` reddi zaten backend-agent'ın kendi entegrasyon testinde kapsanmış olmalı — bu turda tekrar
+doğrulanmadı, kapsam dışı bırakıldı).
+
+### Eksik bırakılan — a11y otomasyonu (frontend-agent/qa-agent'a not, bir sonraki tur için)
+
+Bu projede a11y denetimi `jest-axe` (vitest, `frontend/tests/unit/a11y-admin-*.test.tsx`) DESENİYLE
+YAPILIYOR — Playwright/axe-core tabanlı bir e2e a11y katmanı REPO'DA HİÇ YOK (kod taraması ile
+doğrulandı, `grep -rl axe frontend/tests/e2e` boş döndü). Hasta Portalı (`/patient/**`) için HİÇBİR
+a11y testi (unit NE DE e2e) YOK — bu turda YENİ EKLENEN telefon input'u/`Field` bileşeni de dahil.
+qa-agent bu turda REPO KONVANSİYONUNU BOZMAMAK için yeni bir Playwright+axe-core deseni İCAT ETMEDİ
+(görev kapsamı da sidebar+telefon ile sınırlıydı); **önerilen:** frontend-agent mevcut `jest-axe`
+deseniyle `patient-portal-nav.test.tsx`/`patient-profile-panel.test.tsx` (veya benzeri) unit
+a11y testleri eklesin — bu, projenin şu ana kadarki TÜM a11y kapsamıyla (bkz. yukarıdaki "A11y
+(axe-core) durumu" notları) TUTARLI bir yaklaşım olur.

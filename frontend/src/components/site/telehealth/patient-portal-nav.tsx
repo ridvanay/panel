@@ -31,7 +31,7 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 const BASE_LINK_CLASS =
-  "inline-flex items-center gap-2.5 rounded-[var(--site-radius)] px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface";
+  "inline-flex items-center justify-start gap-2.5 rounded-[var(--site-radius)] px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface";
 const ACTIVE_LINK_CLASS = "bg-primary/10 text-primary";
 const INACTIVE_LINK_CLASS = "text-foreground/70 hover:bg-surface-muted hover:text-foreground";
 
@@ -64,7 +64,12 @@ export function PatientPortalNav({ variant, className }: { variant: "rail" | "st
             key={item.href}
             href={localizedHref}
             aria-current={active ? "page" : undefined}
-            className={cn(BASE_LINK_CLASS, active ? ACTIVE_LINK_CLASS : INACTIVE_LINK_CLASS, variant === "strip" && "shrink-0 whitespace-nowrap")}
+            className={cn(
+              BASE_LINK_CLASS,
+              active ? ACTIVE_LINK_CLASS : INACTIVE_LINK_CLASS,
+              variant === "strip" && "shrink-0 whitespace-nowrap",
+              variant === "rail" && "w-full"
+            )}
           >
             <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
             {item.label}

@@ -90,6 +90,66 @@ describe("users — /me profil ve şifre değiştirme", () => {
     expect(dbUser?.avatarUrl).toBeNull();
   });
 
+  it("PATCH /users/me { phone: '' } döner 422 VALIDATION_ERROR", async () => {
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/api/v1/users/me",
+      headers: authHeader(session2AccessToken),
+      payload: { phone: "" },
+    });
+
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("PATCH /users/me { phone: 'abc' } (geçersiz format) döner 422 VALIDATION_ERROR", async () => {
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/api/v1/users/me",
+      headers: authHeader(session2AccessToken),
+      payload: { phone: "abc" },
+    });
+
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("PATCH /users/me { phone: '+90 555 123 45 67' } döner 200, DB'de yazar ve GET /users/me'de geri döner", async () => {
+    const setRes = await app.inject({
+      method: "PATCH",
+      url: "/api/v1/users/me",
+      headers: authHeader(session2AccessToken),
+      payload: { phone: "+90 555 123 45 67" },
+    });
+    expect(setRes.statusCode).toBe(200);
+    expect(setRes.json().data.phone).toBe("+90 555 123 45 67");
+
+    const dbUser = await app.prisma.user.findUnique({ where: { id: userId } });
+    expect(dbUser?.phone).toBe("+90 555 123 45 67");
+
+    const getRes = await app.inject({
+      method: "GET",
+      url: "/api/v1/users/me",
+      headers: authHeader(session2AccessToken),
+    });
+    expect(getRes.statusCode).toBe(200);
+    expect(getRes.json().data.phone).toBe("+90 555 123 45 67");
+  });
+
+  it("PATCH /users/me { phone: null } döner 200 ve DB'de NULL yazar (telefonu kaldırır)", async () => {
+    const clearRes = await app.inject({
+      method: "PATCH",
+      url: "/api/v1/users/me",
+      headers: authHeader(session2AccessToken),
+      payload: { phone: null },
+    });
+    expect(clearRes.statusCode).toBe(200);
+    expect(clearRes.json().data.phone).toBeNull();
+
+    const dbUser = await app.prisma.user.findUnique({ where: { id: userId } });
+    expect(dbUser?.phone).toBeNull();
+  });
+
   it("POST /users/me/change-password kimliksiz istek döner 401", async () => {
     const res = await app.inject({
       method: "POST",

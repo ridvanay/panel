@@ -74,6 +74,12 @@ export interface User {
   email: string;
   name: string;
   avatarUrl: string | null;
+  /**
+   * `.claude/architect-scope-telehealth-template.md` §9.8.2 KARAR M — hasta portalı
+   * (`/patient/profile`) telefon alanı. `null` = girilmemiş. Aynı gevşek regex ile doğrulanır
+   * (`Address.phone` — `/^[0-9+()\-\s]{7,20}$/`, bkz. `backend/src/modules/users/users.schemas.ts`).
+   */
+  phone: string | null;
   emailVerifiedAt: string | null;
   role: SiteRole;
   /**
@@ -234,6 +240,8 @@ export interface UpdateOrganizationRequest {
 export interface UpdateUserRequest {
   name?: string;
   avatarUrl?: string | null;
+  /** §9.8.2 KARAR M — `null` alanı temizler; boş string GEÇERSİZDİR (backend 422 döner). */
+  phone?: string | null;
 }
 
 /**

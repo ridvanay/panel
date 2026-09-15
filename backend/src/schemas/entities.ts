@@ -33,6 +33,9 @@ export const UserSchema = z.object({
   email: z.string().email(),
   name: z.string(),
   avatarUrl: z.string().nullable(),
+  // `PATCH /users/me` ile yazılır — regex `modules/users/users.schemas.ts::ADDRESS_PHONE_REGEX`
+  // ile AYNI (bkz. UpdateUserRequestSchema). `null` = telefon kayıtlı değil.
+  phone: z.string().nullable(),
   emailVerifiedAt: z.string().nullable(),
   role: SiteRoleSchema,
   createdAt: z.string(),

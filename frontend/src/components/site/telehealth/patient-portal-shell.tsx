@@ -52,7 +52,7 @@ export function PatientPortalShell({ children }: { children: ReactNode }) {
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
       <PatientPortalNav variant="strip" className="mb-6 lg:hidden" />
       <div className="lg:grid lg:grid-cols-[240px_1fr] lg:items-start lg:gap-8">
-        <PatientPortalNav variant="rail" className="hidden lg:sticky lg:top-6 lg:block" />
+        <PatientPortalNav variant="rail" className="hidden lg:sticky lg:top-6 lg:flex" />
         <div className="min-w-0">{children}</div>
       </div>
     </div>

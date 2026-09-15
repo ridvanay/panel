@@ -1,8 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, CircleCheck, IdCard, Mail } from "lucide-react";
+import { toast } from "sonner";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { AlertCircle, AlertTriangle, CircleCheck, IdCard, Mail, Phone } from "lucide-react";
 import * as telehealthApi from "@/lib/api/telehealth";
+import * as usersApi from "@/lib/api/users";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import type { AppointmentBooking, BookingIdentitySummary } from "@/lib/api/types";
 import { useAuth } from "@/context/auth-context";
@@ -11,6 +16,26 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Field } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+
+/**
+ * `frontend/src/app/[lang]/(site)/hesabim/profil/page.tsx::ADDRESS_PHONE_REGEX` deseniyle
+ * BİREBİR aynı — backend `backend/src/modules/users/users.schemas.ts` (`Address.phone`)
+ * gevşek doğrulamasının istemci tarafı yansısı. Ülke koduna göre değişir, katı E.164 ZORUNLU DEĞİL.
+ */
+const PHONE_REGEX = /^[0-9+()\-\s]{7,20}$/;
+
+/** `PATCH /users/me` gövdesini yansıtan istemci şeması — boş bırakılabilir (`phone: null` gönderilir). */
+const contactFormSchema = z.object({
+  phone: z
+    .string()
+    .trim()
+    .refine((value) => value === "" || PHONE_REGEX.test(value), "Geçerli bir telefon numarası giriniz.")
+    .optional(),
+});
+
+type ContactFormValues = z.infer<typeof contactFormSchema>;
 
 /**
  * `.claude/architect-scope-telehealth-template.md` §9.8.5 KARAR P — `/patient/profile`. Yeni veri
@@ -44,7 +69,7 @@ function ProfileSkeleton() {
 }
 
 export function PatientProfilePanel() {
-  const { user } = useAuth();
+  const { user, refreshSession } = useAuth();
   const [bookings, setBookings] = useState<AppointmentBooking[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -64,6 +89,33 @@ export function PatientProfilePanel() {
       await load();
     })();
   }, [load]);
+
+  const {
+    register: registerContact,
+    handleSubmit: handleContactFormSubmit,
+    formState: { errors: contactErrors, isSubmitting: contactSaving },
+    setError: setContactFormError,
+    reset: resetContactForm,
+  } = useForm<ContactFormValues>({
+    resolver: zodResolver(contactFormSchema),
+    defaultValues: { phone: user?.phone ?? "" },
+  });
+
+  useEffect(() => {
+    if (user) resetContactForm({ phone: user.phone ?? "" });
+  }, [user, resetContactForm]);
+
+  async function onContactSubmit(values: ContactFormValues) {
+    try {
+      await usersApi.updateMe({ phone: values.phone || null });
+      await refreshSession();
+      toast.success("Telefon numaranız güncellendi.");
+    } catch (err) {
+      const message = friendlyErrorMessage(err);
+      setContactFormError("root", { message });
+      toast.error(message);
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -133,6 +185,38 @@ export function PatientProfilePanel() {
                 </Badge>
               )}
             </div>
+          </section>
+
+          <section className="space-y-3 rounded-[var(--site-radius)] border border-border bg-surface p-5">
+            <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+              <Phone className="h-4 w-4 text-foreground/50" aria-hidden="true" />
+              İletişim Bilgileri
+            </h2>
+
+            {contactErrors.root?.message && (
+              <Alert variant="error">
+                <span className="flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  {contactErrors.root.message}
+                </span>
+              </Alert>
+            )}
+
+            <form onSubmit={handleContactFormSubmit(onContactSubmit)} noValidate className="space-y-4">
+              <Field id="name" label="Ad Soyad">
+                {(inputProps) => <Input {...inputProps} value={user?.name ?? ""} disabled readOnly />}
+              </Field>
+
+              <Field id="phone" label="Telefon Numarası" error={contactErrors.phone?.message} hint="Ör. 0555 123 45 67">
+                {(inputProps) => (
+                  <Input {...inputProps} type="tel" autoComplete="tel" placeholder="0555 123 45 67" {...registerContact("phone")} />
+                )}
+              </Field>
+
+              <Button type="submit" loading={contactSaving}>
+                Kaydet
+              </Button>
+            </form>
           </section>
         </>
       )}
