@@ -14,6 +14,8 @@
 #     tarafından otomatik 127.0.0.1'e çözülür, hosts dosyası/yönetici hakkı GEREKMEZ; sade
 #     `http://localhost:3000` de hâlâ çalışır ama hekim oturumu sayfa yenilemesinde ölür,
 #     çünkü `doktor.localhost` ile `localhost` farklı site sayılır — §6.1 deneyi).
+#   LiveKit (Tele-Sağlık görüntülü konsültasyon, YEREL/self-hosted, 2026-09-15 — bkz. `livekit`
+#     servisinin yorumu ve `backend/.env.example`'daki LiveKit bölümü): ws://siteadi.localhost:7880
 #
 # NOT: backend servisi `backend/.env` dosyasını `env_file` ile okur — bu dosya repoya girmez
 # (.gitignore), her geliştirici kendi `.env.example`'ından türetir.
@@ -74,6 +76,22 @@ services:
       # kendisini işaret eder, frontend servisini DEĞİL — src/lib/revalidate.ts'in on-demand ISR
       # webhook'u (POST /api/revalidate) SADECE bunu kullanır, CORS/e-posta linklerini ETKİLEMEZ.
       INTERNAL_FRONTEND_URL: http://frontend:3000
+      # LiveKit (Tele-Sağlık, YEREL/self-hosted geliştirme — 2026-09-15 kararı, bkz. aşağıdaki
+      # `livekit` servisi ve `backend/.env.example`'daki güncellenmiş LiveKit yorumu). DATABASE_URL
+      # İLE AYNI gerekçeyle burada `environment:` ile override edilir (env_file: ./backend/.env
+      # zaten bu üçünü taşıyabilir, ama bu compose'un kendi kendine yeten/tekrarlanabilir bir
+      # "clone edip `docker compose up` de, LiveKit dahil her şey çalışsın" deneyimi sunması
+      # hedeflendi). NOT: backend, token üretimi için LiveKit sunucusuna ağ üzerinden HİÇ
+      # bağlanmaz (`src/modules/telehealth/lib/livekit.ts::createMeetingToken()` JWT'yi
+      # `livekit-server-sdk`'nin `AccessToken` sınıfıyla tamamen yerel imzalar) — bu yüzden
+      # LIVEKIT_URL container-içi bir ağ adı (`ws://livekit:7880`) DEĞİL, TARAYICININ erişeceği
+      # `ws://siteadi.localhost:7880` olmalı (bu değer olduğu gibi `serverUrl` alanı olarak
+      # tarayıcıya döner, bkz. FRONTEND_URL'in yukarıdaki notuyla AYNI "sunucu-taraflı config ama
+      # tarayıcı-erişilebilir değer" deseni). Anahtarlar aşağıdaki `livekit` servisinin
+      # `--keys` argümanıyla BİREBİR eşleşmeli.
+      LIVEKIT_URL: ws://siteadi.localhost:7880
+      LIVEKIT_API_KEY: devkey
+      LIVEKIT_API_SECRET: secret_livekit_local_dev_key_32bytes
     ports:
       - "4000:4000"
     volumes:
@@ -152,6 +170,41 @@ services:
       timeout: 5s
       start_period: 15s
       retries: 5
+
+  # LiveKit (Tele-Sağlık görüntülü konsültasyon) — YEREL/self-hosted geliştirme seçeneği,
+  # 2026-09-15 KARARI (bkz. `backend/.env.example`'daki güncellenmiş LiveKit yorumu): önceki
+  # mimari karar ("LiveKit sunucusu bu compose'a DAHİL DEĞİLDİR ve self-host EDİLMEYECEKTİR")
+  # BİLİNÇLİ OLARAK tersine çevrildi — bu artık LiveKit Cloud/harici kuruluma bir ALTERNATİF
+  # DEĞİL, yerel geliştirme için EK bir seçenektir. Production'da HÂLÂ LiveKit Cloud
+  # (https://cloud.livekit.io) veya harici, doğru şekilde ölçeklenmiş bir kurulum ÖNERİLİR — bu
+  # tek-node `--dev` modu SADECE tek makinelik yerel geliştirme için uygundur (TURN kapalı,
+  # sabit tek UDP portu, tek node — prod'da yatay ölçekleme/TURN/TLS gerektirir).
+  #
+  # `backend`'in `depends_on`una eklenmez: backend, token üretimi için LiveKit sunucusuna ağ
+  # üzerinden HİÇ bağlanmaz (`backend/src/modules/telehealth/lib/livekit.ts` JWT'yi tamamen
+  # yerel imzalar, integration-agent'ın TEK SAHASI — bu compose dosyası o dosyaya dokunmaz).
+  #
+  # `--dev` modu: tek-node yerel senaryo için LiveKit'in kendi resmi kısayolu — sabit tek bir
+  # UDP portu (7882) kullanır, TURN'ü kapatır, loopback/tek-node `node_ip` çözümlemesini
+  # basitleştirir (self-host'ta en yaygın tuzak: sinyalleşme başarılı olur ama doğru
+  # node_ip/UDP port yapılandırması yoksa kamera/mikrofon medyası karşı tarafa HİÇBİR ZAMAN
+  # ulaşmaz — `--dev` bunu ortadan kaldırır). `--keys` argümanı `--dev`'in kendi varsayılan
+  # `devkey`/`secret` çiftini, backend'in yukarıdaki LIVEKIT_API_KEY/LIVEKIT_API_SECRET
+  # değerleriyle BİREBİR eşleşen özel bir anahtar/sır çiftiyle EZER.
+  livekit:
+    image: livekit/livekit-server:latest
+    restart: unless-stopped
+    command:
+      - "--dev"
+      - "--keys"
+      - "devkey: secret_livekit_local_dev_key_32bytes"
+    ports:
+      - "7880:7880"     # HTTP/WebSocket sinyalleşme — LIVEKIT_URL (ws://siteadi.localhost:7880) bunu gösterir
+      - "7881:7881"     # TCP — ICE/TURN fallback
+      - "7882:7882/udp" # WebRTC medyası (RTP/UDP) — `--dev` modunun sabit tek-node UDP mux portu.
+                         # BU SATIR OLMADAN sinyalleşme/token üretimi çalışır GÖRÜNÜR ama
+                         # kamera/mikrofon akışı container dışına ASLA çıkamaz (yaygın self-host
+                         # tuzağı, bkz. yukarıdaki not).
 
 volumes:
   saas_pgdata:

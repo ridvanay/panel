@@ -308,6 +308,81 @@ describe("telehealth booking — iptal (§9.7.3, POST .../cancel)", () => {
   });
 });
 
+describe("telehealth booking — GET /appointments/:id ve POST .../cancel booking token ile erişim (qa-agent kritik bug düzeltmesi)", () => {
+  // qa-agent bulgusu: `POST /appointments/bookings` istemciye YALNIZCA booking'in KENDİ
+  // `accessToken`'ını döner (randevunun KENDİ token'ını DEĞİL) — "Toplantıya Katıl" akışı bu
+  // booking token'ıyla `GET /appointments/{id}`'yi çağırıyordu ve `assertAppointmentAccess`
+  // yalnızca randevunun kendi hash'ini kabul ettiği için GERÇEK hastalar 404 alıyordu (konsültasyon
+  // odasına HİÇ ULAŞAMIYORLARDI). Bu blok, `telehealth.livekit.routes.ts::isAuthorizedForMeetingAccess`
+  // İLE AYNI OR-deseninin `assertAppointmentAccess`'e de uygulandığını doğrular.
+  let app: FastifyInstance;
+
+  beforeEach(async () => {
+    app = await buildTestApp();
+    await resetDatabase(app.prisma);
+    await setTelehealthModuleEnabled(app, true);
+  });
+
+  afterEach(async () => {
+    await resetDatabase(app.prisma);
+    await app.close();
+  });
+
+  it("booking'in KENDİ accessToken'ı ile GET /appointments/:id → 200 (önceden 404 idi)", async () => {
+    const { doctor } = await createDoctorWithAvailability(app);
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/v1/appointments/bookings",
+      payload: bookingPayload(doctor.slug, [nextMondayNineAmUtc()]),
+    });
+    expect(created.statusCode).toBe(201);
+    const { accessToken, appointments } = created.json().data;
+    const appointmentId = appointments[0].id as string;
+
+    const res = await app.inject({ method: "GET", url: `/api/v1/appointments/${appointmentId}?t=${accessToken}` });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.id).toBe(appointmentId);
+  });
+
+  it("booking'in KENDİ accessToken'ı ile POST /appointments/:id/cancel → 200 (aynı OR-kontrolü, PENDING_PAYMENT'ten SCHEDULED'a geçirilip test edilir)", async () => {
+    const { doctor } = await createDoctorWithAvailability(app);
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/v1/appointments/bookings",
+      payload: bookingPayload(doctor.slug, [nextMondayNineAmUtc()]),
+    });
+    expect(created.statusCode).toBe(201);
+    const { accessToken, appointments } = created.json().data;
+    const appointmentId = appointments[0].id as string;
+
+    // §9.7.3 — yalnızca SCHEDULED randevular /cancel ile iptal edilebilir; booking'in
+    // kendisi PENDING_PAYMENT'te kalsa da tek randevuyu doğrudan SCHEDULED'a çekmek bu testin
+    // amacı olan "token OR-kontrolü" için yeterlidir (booking-seviyeli iptal ayrı bir uçtur).
+    await app.prisma.appointment.update({ where: { id: appointmentId }, data: { status: "SCHEDULED" } });
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/appointments/${appointmentId}/cancel?t=${accessToken}`,
+      payload: {},
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.status).toBe("CANCELLED");
+  });
+
+  it("yanlış token ile GET /appointments/:id hâlâ 404 döner (IDOR regresyonu yok)", async () => {
+    const { doctor } = await createDoctorWithAvailability(app);
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/v1/appointments/bookings",
+      payload: bookingPayload(doctor.slug, [nextMondayNineAmUtc()]),
+    });
+    const appointmentId = created.json().data.appointments[0].id as string;
+
+    const res = await app.inject({ method: "GET", url: `/api/v1/appointments/${appointmentId}?t=yanlis-token-degeri` });
+    expect(res.statusCode).toBe(404);
+  });
+});
+
 describe("telehealth booking — süre dolumu süpürücüsü (§9.7.3 KARAR I)", () => {
   let app: FastifyInstance;
 

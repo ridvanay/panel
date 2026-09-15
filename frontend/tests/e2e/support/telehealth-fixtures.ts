@@ -841,6 +841,47 @@ UPDATE "appointment_bookings" SET "paymentStatus" = 'EXPIRED' WHERE id = '${esc(
   });
 }
 
+// ---------------------------------------------------------------------------
+// qa-agent — gerçek yerel LiveKit doğrulama turu (2026-09-15, `telehealth-consultation-livekit-
+// live.spec.ts`). qa-agent BULGUSU (bu turda keşfedildi, backend-agent'a raporlanır — bkz. final
+// qa-agent raporu): `POST /appointments` (deprecated tek-slot uç, `createAppointmentRaw`) İÇERİDE
+// de bir `AppointmentBooking` üretir (`paymentStatus: PENDING`, [TCT] §9.7.2) — dönen `accessToken`
+// DOĞRU şekilde randevunun KENDİ token'ıdır (`GET /appointments/{id}?t=` ile ÇALIŞIR, bkz.
+// `telehealth.routes.ts::assertAppointmentAccess`), AMA `POST .../meeting-token`
+// `appointment.status !== "SCHEDULED"/"IN_PROGRESS"` kontrolünü booking/pencere kontrolünden ÖNCE
+// yapar (`telehealth.livekit.routes.ts` satır ~134) — status ödeme tamamlanana kadar
+// `PENDING_PAYMENT` kalır. `shiftAppointmentIntoJoinWindowDirectly` TEK BAŞINA gerçek bir bağlantı
+// İÇİN YETERLİ DEĞİLDİR; booking'i `PAID` yapmak VE randevunun `status`'unu `SCHEDULED`'a almak
+// GEREKİR (`telehealth-recording.spec.ts::bookRealAppointment` başlığındaki AYNI bulgu — orada
+// `createBookingRaw` + `markBookingPaidDirectly` + `setAppointmentStatusDirectly` AYRI AYRI
+// çağrılır; burada randevunun bağlı olduğu booking'i `bookingId` DÖNMEDEN, yalnızca `appointmentId`
+// üzerinden TEK sorguda çözüp işaretleyen bir kısayol sunulur — deprecated tek-slot akışı
+// `bookingId`'i istemciye HİÇ döndürmez).
+// ---------------------------------------------------------------------------
+
+/** `POST /appointments` (deprecated tek-slot) ile oluşturulmuş bir randevuyu GERÇEKTEN katılınabilir
+ *  hâle getirir — bağlı `AppointmentBooking`'i (alt sorgu ile, `bookingId` İSTEMCİYE dönmediği için)
+ *  `PAID` yapar VE randevunun KENDİ `status`'unu `SCHEDULED`'a çevirir, TEK `prisma db execute`
+ *  çağrısında (`expirePendingBookingDirectly` İLE AYNI çoklu-ifade deseni). `shiftAppointmentInto
+ *  JoinWindowDirectly` İLE BİRLİKTE kullanılır — o yalnızca ZAMANLAMAYI kaydırır, BU fonksiyon
+ *  ödeme/durum önkoşulunu karşılar (ikisi olmadan `POST .../meeting-token` `409
+ *  APPOINTMENT_NOT_JOINABLE` döner — elle doğrulandı, bkz. dosya başı qa-agent bulgusu).
+ */
+export function markAppointmentJoinableDirectly(appointmentId: string): void {
+  const esc = (value: string) => value.replace(/'/g, "''");
+  const sql = `
+UPDATE "appointment_bookings" SET "paymentStatus" = 'PAID', "paidAt" = now()
+WHERE id = (SELECT "bookingId" FROM "appointments" WHERE id = '${esc(appointmentId)}');
+UPDATE "appointments" SET "status" = 'SCHEDULED' WHERE id = '${esc(appointmentId)}';
+`;
+  execFileSync("npx", ["prisma", "db", "execute", "--stdin", `--url=${E2E_DATABASE_URL}`], {
+    cwd: BACKEND_DIR,
+    input: sql,
+    stdio: ["pipe", "pipe", "pipe"],
+    shell: process.platform === "win32",
+  });
+}
+
 /** §9.7.11 madde 27 (2FA kapısı) — `User.twoFactorEnabled`'i doğrudan yazar (admin panelinde bir
  * kullanıcının 2FA'sını ZORLA açan bir uç YOKTUR — 2FA kendi kendine kayıt/etkinleştirmedir,
  * `hesabim` akışı TOTP sırrı üretip doğrulama ister; bu fixture o akışı ATLAYIP doğrudan bayrağı

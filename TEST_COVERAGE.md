@@ -3487,3 +3487,77 @@ Not (architect → qa-agent, BU TURDA DÜZELTİLMEDİ): `telehealth-recording.sp
 `"Kaydı Başlat"` butonunun modül KAPALIYKEN de görünmesini bekliyor; `consultation-room.tsx`
 HEAD'de zaten `isDoctor && recordingModuleEnabled` ile gate'li — test ESKİ/buggy davranışı
 belgeliyor, beklenti güncellenmelidir (bu turdaki değişikliklerle İLGİSİZ, önceden var olan hata).
+
+## Tele-Sağlık — GERÇEK yerel LiveKit doğrulaması (Docker `livekit` servisi, `--dev` modu) — e2e kapsamı (2026-09-15, bu turda eklendi)
+
+Görev akışı: devops-agent (`docker-compose.yml`'e `livekit/livekit-server` eklendi, `LIVEKIT_URL=
+ws://siteadi.localhost:7880` + `backend/.env.e2e`ye AYNI değerler) → backend-agent (elle doğrulama,
+kod değişmedi) → frontend-agent (elle doğrulama, kod değişmedi) → **qa-agent (bu bölüm)**.
+
+**Yeni dosya:** `frontend/tests/e2e/telehealth-consultation-livekit-live.spec.ts` — 2 yeni test,
+BİLEREK `telehealth-consultation.spec.ts`ten AYRI (gerekçe dosya başlığında):
+- **madde 12** — gerçek randevuyla `/consultation/{id}?t=`e gidilir, "Görüşmeye Katıl"a tıklanır;
+  "Görüntülü Görüşme Yapılandırılmamış" başlığının **HİÇ görünmediği** (`toHaveCount(0)`) VE
+  `ConnectionStatusBadge`'in **"Bağlandı"** (success tone) durumuna ULAŞTIĞI doğrulanır — kullanıcının
+  bildirdiği asıl şikayetin (yapılandırılmamış uyarısı) GERÇEKTEN kalktığının regresyon kanıtı.
+- **madde 13** — AYNI gerçek bağlantı üzerinden: `<video>` GERÇEKTEN mount oluyor (`count >= 1`,
+  sahte kamera cihazının yerel PIP track'i), mikrofon/kamera toggle butonları (`aria-label`
+  "Mikrofonu kapat"/"Kamerayı kapat" → tıkla → "Mikrofonu aç"/"Kamerayı aç") GERÇEKTEN
+  mute/unmute yapıyor, ekran paylaşımı butonu (`aria-label` "Ekranı paylaş") + ayrıl butonu
+  (`aria-label` "Görüşmeden ayrıl") render/tıklanabilir.
+
+**`playwright.config.ts` değişikliği:** YENİ proje `chrome-livekit-media` eklendi (sistemde kurulu
+GERÇEK Google Chrome, `channel: "chrome"`, **headed**, `launchOptions.args:
+["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-permissions"]`,
+`use.permissions: ["camera","microphone"]`) — YALNIZCA yukarıdaki yeni dosyayı çalıştırır
+(`testMatch`). Mevcut `chromium` projesi bu dosyayı `testIgnore` ile atlar; `chromium` projesinin
+KENDİSİ DEĞİŞMEDİ.
+
+**qa-agent BULGUSU (KRİTİK ortam kısıtı, bu makineye özgü, `playwright.config.ts` başlığında
+belgelendi) — neden ayrı bir proje ZORUNLU:** Bu Windows makinesinde Playwright'ın varsayılan
+bundled Chromium'u `--use-fake-device-for-media-stream`'i DESTEKLEMİYOR:
+- Headless bundled Chromium → `getUserMedia` anında `NotSupportedError` fırlatıyor.
+- Headed bundled Chromium → sahte ses cihazı çalışıyor AMA sahte video cihazı
+  `NotFoundError: Requested device not found` veriyor.
+- Her iki durumda da (elle, `chromium` projesiyle doğrulandı) websocket seviyesinde LiveKit
+  sunucusuna GERÇEKTEN bağlanılıyor (`connected to Livekit Server ...` konsol logu), AMA yerel
+  kamera/mikrofon track publish'i BAŞARISIZ olunca `ConnectionStatusBadge` **SONSUZA KADAR
+  "Bağlanıyor…"da TAKILI KALIYOR** — `ConnectionState.Connected`'e HİÇ geçmiyor. Yani "Bağlandı"
+  rozetini gerçekten doğrulamak GERÇEK, çalışan bir yerel medya cihazı gerektiriyor — bu yüzden
+  madde 12/13 İKİSİ DE `chrome-livekit-media` projesinde yaşıyor (madde 12'yi de varsayılan projede
+  bırakmak riskli/belirsiz olurdu).
+- Sistemde kurulu GERÇEK Google Chrome (`channel: "chrome"`, headed) HER İKİSİNİ DE destekliyor —
+  `fake_device_0` video girişi görünüyor, gerçek track publish ediliyor, rozet "Bağlandı"ya ulaşıyor.
+
+**qa-agent BULGUSU (backend-agent'a YÖNLENDİRİLİR — GERÇEK, ENGELLEYİCİ bir regresyon adayı,
+BU TURDA DÜZELTİLMEDİ, yalnızca RAPORLANIR):** `POST /appointments/bookings` (modern çoklu-slot
+booking akışı — projedeki ASIL/güncel rezervasyon ucu) sonrası patient'a dönen TEK token booking
+SEVİYESİNDEDİR (`accessToken: result.rawAccessToken`, `telehealth.routes.ts` satır ~431).
+`join-meeting-button.tsx` (`booking-summary-card.tsx`/`patient/bookings/[id]` sayfasındaki
+"Toplantıya Katıl" linki) bu BOOKING token'ını `/consultation/{appointmentId}?t=<bookingToken>`
+hâlinde kullanıyor (satır 75). AMA `GET /appointments/{id}` (`telehealth.routes.ts::
+assertAppointmentAccess`, satır 107-119) YALNIZCA randevunun KENDİ `accessTokenHash`'ini kontrol
+ediyor — booking token'ını KABUL ETMİYOR (`POST .../meeting-token`teki
+`isAuthorizedForMeetingAccess()`'in booking token fallback'inin AYNISI EKSİK). Elle, doğrudan API
+çağrısıyla doğrulandı: gerçek bir booking oluşturulup (`POST /appointments/bookings`) dönen
+`accessToken` ile `GET /appointments/{appointmentId}?t=<bookingToken>` çağrıldığında **`404
+NOT_FOUND` "Randevu bulunamadı."** dönüyor. **Pratik etki:** ödemesini tamamlamış GERÇEK bir hasta,
+kendi booking onay sayfasındaki "Toplantıya Katıl" linkine tıkladığında konsültasyon odasına HİÇ
+ULAŞAMAZ — "Randevu bulunamadı" hatasıyla karşılaşır (`telehealth-multi-slot-booking.spec.ts`
+"madde 24" testi bu regresyonu YAKALAMIYOR çünkü yalnızca `href` özniteliğinin deseniyle
+eşleştiğini kontrol ediyor, GERÇEKTEN navigate edip sayfanın yüklendiğini doğrulamıyor). Önerilen
+düzeltme yönü (qa-agent BURADA DÜZELTMEDİ, backend-agent'ın kararı): `assertAppointmentAccess()`'e
+`telehealth.livekit.routes.ts::isAuthorizedForMeetingAccess()`'teki İLE AYNI `bookingAccessTokenHash`
+OR-kontrolünü eklemek (randevunun `booking` ilişkisini de `include` ederek). Bu turun kendi
+testleri (madde 12/13) bu bug'a TAKILMADI çünkü DEPRECATED tek-slot `POST /appointments` ucunu
+kullanıyor (o uç randevunun KENDİ token'ını doğru döndürüyor) — `support/telehealth-fixtures.ts::
+markAppointmentJoinableDirectly` bu ucun `appointment.status`i asla otomatik `SCHEDULED`'a
+geçirmediğini (ödeme adımı hiç yok) telafi eden YENİ bir DB fixture'ıdır (başlığında ayrıntılı).
+
+Koşum kanıtı (yerel `saas_e2e` + backend `:4001` + frontend `:3100`, `E2E_SKIP_WEBSERVER=1`):
+- `telehealth-consultation-livekit-live.spec.ts --project=chrome-livekit-media` — **2/2 YEŞİL**.
+- `telehealth-consultation.spec.ts --project=chromium` (tam regresyon taraması) — **5 geçti / 1
+  skip**, ÖNCEKİ turla AYNI (madde 10 artık LiveKit yapılandırılmış olduğu için otomatik skip
+  ediliyor — beklenen davranış, dosyaya DOKUNULMADI).
+- `chromium` projesi `telehealth-consultation-livekit-live.spec.ts`i `testIgnore` ile atladığı,
+  `chrome-livekit-media` projesi de SADECE o dosyayı çalıştırdığı için ÇİFT/çakışan koşum YOK.

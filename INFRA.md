@@ -10,6 +10,7 @@ env değişkeni veya altyapı ile ilgili bir değişiklik yaptığında burası 
 | backend | Fastify + Prisma + PostgreSQL | 4000 | `GET /api/v1/healthz` → `{"status":"ok"}` |
 | frontend | Next.js 16 (App Router, standalone output) | 3000 | `GET /api/health` → `{"status":"ok"}` |
 | db | PostgreSQL 16 (alpine) | 5432 | `pg_isready` |
+| livekit *(YENİ, 2026-09-15, opsiyonel yerel-dev)* | `livekit/livekit-server` resmi imaj, `--dev` modu | 7880 (HTTP/WS), 7881 (TCP), 7882/udp (RTC medya) | `GET /` → `200 OK` (dedike `/health` ucu yok, LiveKit'in kendi validate ucu bu) |
 
 `backend`'deki `/admin/health` ayrı bir uçtur (auth gerektirir, depolama kotası bilgisi döner) —
 orkestrasyon/container health check için **kullanılmaz**, sadece admin panel içindir.
@@ -361,6 +362,92 @@ devops-agent DOKUNMADI):
 - **`docker compose up --build -d` bu turda ÇALIŞTIRILMADI** — backend-agent/integration-agent
   henüz `LIVEKIT_*`'i tüketen kod yazmadı; bu adım, tüm ajanlar bitince devops-agent'ın
   yeniden devreye gireceği "CI/imaj doğrulaması" adımında (§9.2) yapılacak.
+
+### Tele-Sağlık (LiveKit) — YEREL/self-hosted servis eklendi, bilinçli karar TERSİNE ÇEVİRMESİ (2026-09-15, devops-agent)
+
+**Önceki karar** ("LiveKit sunucusu/SFU compose'a DAHİL EDİLMEDİ, self-host bu turun kapsamı
+değil" — yukarıdaki madde) **BİLİNÇLİ OLARAK tersine çevrildi**: kullanıcı açıkça yerel/
+self-hosted bir LiveKit sunucusunu `docker-compose.yml`'e eklemeyi istedi (LiveKit Cloud'un
+**yerine değil**, buna **ek**, yerel geliştirme için opsiyonel bir seçenek olarak).
+
+**Mimari doğrulama (kod DEĞİŞTİRİLMEDİ, yalnızca okundu):**
+`backend/src/modules/telehealth/lib/livekit.ts::createMeetingToken()` JWT'yi tamamen yerel
+olarak imzalıyor (`livekit-server-sdk`'nin `AccessToken` sınıfı) — backend'in LiveKit sunucusuna
+token üretimi için **ağ üzerinden hiç bağlanması gerekmiyor**. `LIVEKIT_URL` değeri olduğu gibi
+`serverUrl` alanı olarak tarayıcıya dönüyor, dolayısıyla **tarayıcının erişebileceği** bir adres
+olmalı (`ws://siteadi.localhost:7880`), Docker-network-içi bir ad (`ws://livekit:7880`) DEĞİL.
+Bu dosya integration-agent'ın TEK SAHASI (dosya başlığındaki not) — devops-agent DOKUNMADI.
+
+**Yapılan değişiklikler:**
+- **`docker-compose.yml`**: yeni `livekit` servisi eklendi — resmi `livekit/livekit-server:latest`
+  imajı, `--dev` modu (tek-node yerel senaryo için LiveKit'in kendi kısayolu: sabit tek UDP
+  portu, TURN kapalı, basit `node_ip` çözümlemesi). `--keys "devkey:
+  secret_livekit_local_dev_key_32bytes"` argümanıyla `--dev`'in varsayılan anahtar çifti,
+  backend'in beklediği özel anahtarlarla EZİLDİ. Portlar: `7880:7880` (HTTP/WS sinyalleşme),
+  `7881:7881` (TCP, ICE/TURN fallback), **`7882:7882/udp`** (WebRTC medyası — RTP/UDP; bu port
+  olmadan sinyalleşme/token üretimi çalışır görünür ama kamera/mikrofon akışı container dışına
+  hiç çıkamaz, yaygın bir self-host tuzağı). `restart: unless-stopped` diğer servislerle
+  tutarlı. **`backend`'in `depends_on`una eklenmedi** — backend token üretimi için LiveKit'e ağ
+  üzerinden bağlanmıyor (yukarıdaki mimari doğrulama).
+  `backend.environment` bloğuna `LIVEKIT_URL: ws://siteadi.localhost:7880`,
+  `LIVEKIT_API_KEY: devkey`, `LIVEKIT_API_SECRET: secret_livekit_local_dev_key_32bytes` eklendi
+  — `DATABASE_URL` ile AYNI desen (`env_file: ./backend/.env` zaten bu üçünü taşıyabilir, ama
+  `environment:` override'ı bu compose'un kendi kendine yeten/tekrarlanabilir bir "clone edip
+  `docker compose up` de her şey çalışsın" deneyimi sunmasını sağlıyor). Dosya başındaki
+  "Kullanım" yorum bloğuna LiveKit erişim adresi eklendi.
+- **`backend/.env.example`**: LiveKit yorum bloğu güncellendi — "self-host EDİLMEYECEKTİR"
+  ifadesi kaldırıldı, yerine 2026-09-15 tarihli not: compose artık opsiyonel bir yerel `livekit`
+  servisi içeriyor (LiveKit Cloud/harici kurulumun YERİNE değil, EK bir seçenek),
+  **production'da HÂLÂ LiveKit Cloud/harici kurulum ÖNERİLİYOR** (`--dev` modu tek-node,
+  TURN'süz, yalnızca yerel geliştirme içindir). `LIVEKIT_URL`/`LIVEKIT_API_KEY`/
+  `LIVEKIT_API_SECRET` satırlarına yerel Docker değerlerini gösteren inline yorumlar eklendi.
+  `LIVEKIT_TOKEN_TTL_MIN=15` **değiştirilmedi** (talimat gereği).
+- **`backend/.env.e2e`**: qa-agent'ın `frontend/tests/e2e/telehealth-consultation.spec.ts`
+  §11b eskalasyonu (satır ~158-168, `liveKitConfigured` bayrağına bağlı `test.skip`) karşılandı
+  — `LIVEKIT_URL`/`LIVEKIT_API_KEY`/`LIVEKIT_API_SECRET` artık compose'daki `livekit` servisinin
+  gerçek `--keys` değerleriyle BİREBİR aynı (`ws://siteadi.localhost:7880` / `devkey` /
+  `secret_livekit_local_dev_key_32bytes`) — önceki sahte `wss://e2e-fake.livekit.cloud` değeri
+  kaldırıldı. Backend'in kendi `tests/integration/telehealth-livekit.test.ts`'i zaten
+  `process.env.LIVEKIT_*`'i test içinde geçici olarak set/delete ediyor (bu dosyadan
+  ETKİLENMEZ) — yalnızca e2e (Playwright, gerçek backend process'i `.env.e2e`'den okuyarak
+  ayağa kalkıyor) etkilendi. `LIVEKIT_TOKEN_TTL_MIN` bu dosyada zaten tanımlı DEĞİLDİ (env.ts
+  varsayılanı 15'e düşüyor) — DEĞİŞTİRİLMEDİ.
+- **`INFRA.md`** (bu bölüm + yukarıdaki "Servisler" tablosuna `livekit` satırı): güncellendi.
+
+**Doğrulama (gerçekten çalıştırıldı):**
+1. `docker compose config --quiet` → sözdizimsel olarak geçerli (ilk denemede `command:` alanı
+   tek-satır string olarak `"devkey: secret..."` yazılınca YAML parse hatası verdi — `mapping
+   values are not allowed in this context` — düzeltme: `command:` bir YAML listesine
+   (`["--dev", "--keys", "devkey: secret_livekit_local_dev_key_32bytes"]`) çevrildi, ikinci
+   denemede geçti).
+2. `docker compose up --build -d livekit db backend` → üç servis de `Up`/`healthy` (livekit'in
+   dedike bir Docker `HEALTHCHECK`'i yok, resmi imaj minimal — `docker compose ps` ile `Up`
+   durumu ve log çıktısı doğrulandı).
+3. `docker compose logs livekit` → `"starting LiveKit server" {"portHttp": 7880, "rtc.portTCP":
+   7881, "rtc.portUDP": {"Start":7882,"End":0}}` — beklenen portlar teyit edildi.
+4. `curl -sS -i http://localhost:7880/` (host'tan) → `HTTP/1.1 200 OK`, body `OK` — LiveKit'in
+   validate ucu host'tan erişilebilir.
+5. `curl -sS http://localhost:4000/api/v1/healthz` → `{"status":"ok"}`.
+6. `curl -sS -i -X POST http://localhost:4000/api/v1/appointments/<uuid>/meeting-token` (var
+   olmayan bir randevu id'siyle) → **`HTTP/1.1 404 Not Found`**, `{"error":{"code":"NOT_FOUND",
+   "message":"Randevu bulunamadı."}}` — **önceden (LiveKit yapılandırılmamışken) bu uç `503
+   LIVEKIT_NOT_CONFIGURED` dönerdi**; 404 dönmesi backend'in `LIVEKIT_URL`/`LIVEKIT_API_KEY`/
+   `LIVEKIT_API_SECRET`'i artık doğru okuduğunu ve randevu var olma kontrolüne kadar ilerlediğini
+   kanıtlıyor.
+7. `docker compose up --build -d` (tam yığın, frontend dahil) → dört servis de (`db`, `backend`,
+   `frontend`, `livekit`) `Up`/`healthy` (livekit hariç, madde 2'deki gerekçeyle) durumda —
+   `docker compose ps` çıktısıyla teyit edildi.
+
+**Sonraki ajanlara not (backend-agent/qa-agent):** LiveKit servisinin tam yapılandırması —
+image `livekit/livekit-server:latest`, `command: ["--dev", "--keys", "devkey:
+secret_livekit_local_dev_key_32bytes"]`, portlar `7880/7881/7882(udp)` — hem `docker-compose.yml`
+hem `backend/.env.e2e`/`backend/.env.example`'da tutarlı. qa-agent'ın §11b testi artık `test.skip`
+OLMADAN gerçekten çalışabilir (backend/.env.e2e'nin `liveKitConfigured` bayrağını okuyan
+Playwright tarafı zaten bu üç değişkenin doluluğuna bakıyordu). Gerçek oda/medya testleri
+yazılacaksa, e2e Playwright koşumunun `docker compose up`daki `livekit` servisine (host
+`localhost:7880/7881/7882`) erişebilmesi gerekir — yalnızca `backend/.env.e2e` ile bağımsız
+`tsx src/server.ts` çalıştırılan senaryoda (Docker `livekit` servisi ayakta değilse) token
+üretimi/409 gibi durum kodları hâlâ doğrulanabilir ama gerçek medya akışı test edilemez.
 
 ### Tele-Sağlık (Tur 2) — `PRIVATE_UPLOAD_DIR` volume/backup/izin (devops-agent)
 

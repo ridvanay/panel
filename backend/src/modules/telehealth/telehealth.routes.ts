@@ -103,18 +103,31 @@ const MAX_DOCUMENTS_PER_BOOKING = 5;
  * §8 madde 2 (bağlayıcı) — hash karşılaştırması `timingSafeEqualHex` ile SABİT ZAMANLI yapılır
  * (düz `===` YASAK, bkz. lib/api-key.ts::timingSafeEqualHex yorumu — `api-key-auth.ts` İLE AYNI
  * disiplin, bu depoda tek başka hash-karşılaştırma noktası).
+ *
+ * [TCT] qa-agent bulgusu (bu tur, kritik/engelleyici düzeltme) — booking'e bağlı bir randevuda
+ * `POST /appointments/bookings` akışı istemciye YALNIZCA booking'in KENDİ token'ını döner
+ * (`AppointmentBooking.accessTokenHash`), randevunun KENDİ `accessTokenHash`'ini DEĞİL. Bu yüzden
+ * `telehealth.livekit.routes.ts::isAuthorizedForMeetingAccess` İLE AYNI OR-deseni burada da
+ * uygulanır: `bookingAccessTokenHash` VARSA (booking'e bağlı randevu) hem randevunun KENDİ hash'i
+ * HEM booking'in hash'i kabul edilir; YOKSA (bu tur ÖNCESİ tekil randevu, `POST /appointments`)
+ * davranış DEĞİŞMEZ.
  */
 async function assertAppointmentAccess(
   app: FastifyInstance,
   appointment: { patientUserId: string | null; accessTokenHash: string; doctor: { userId?: string | null } },
-  request: { user?: { id: string; role: string } | undefined; providedToken?: string }
+  request: { user?: { id: string; role: string } | undefined; providedToken?: string },
+  bookingAccessTokenHash?: string | null
 ): Promise<void> {
   if (request.user) {
     if (request.user.role === "ADMIN" || request.user.role === "MANAGER") return;
     if (appointment.patientUserId && appointment.patientUserId === request.user.id) return;
     if (appointment.doctor.userId && appointment.doctor.userId === request.user.id) return;
   }
-  if (request.providedToken && timingSafeEqualHex(hashToken(request.providedToken), appointment.accessTokenHash)) return;
+  if (request.providedToken) {
+    const providedHash = hashToken(request.providedToken);
+    if (timingSafeEqualHex(providedHash, appointment.accessTokenHash)) return;
+    if (bookingAccessTokenHash && timingSafeEqualHex(providedHash, bookingAccessTokenHash)) return;
+  }
   throw new NotFoundError("Randevu bulunamadı.");
 }
 
@@ -315,11 +328,20 @@ export async function telehealthRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const appointment = await app.prisma.appointment.findUnique({
         where: { id: request.params.id },
-        include: { ...WITH_APPOINTMENT_RELATIONS, doctor: { select: { id: true, title: true, fullName: true, slug: true, userId: true } } },
+        include: {
+          ...WITH_APPOINTMENT_RELATIONS,
+          doctor: { select: { id: true, title: true, fullName: true, slug: true, userId: true } },
+          booking: { select: { accessTokenHash: true } },
+        },
       });
       if (!appointment) throw new NotFoundError("Randevu bulunamadı.");
 
-      await assertAppointmentAccess(app, appointment, { user: request.user, providedToken: request.query.t });
+      await assertAppointmentAccess(
+        app,
+        appointment,
+        { user: request.user, providedToken: request.query.t },
+        appointment.booking?.accessTokenHash
+      );
 
       return reply.send(ok(toAppointmentDto(appointment)));
     }
@@ -338,11 +360,19 @@ export async function telehealthRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const appointment = await app.prisma.appointment.findUnique({
         where: { id: request.params.id },
-        include: { doctor: { select: { id: true, title: true, fullName: true, slug: true, userId: true } } },
+        include: {
+          doctor: { select: { id: true, title: true, fullName: true, slug: true, userId: true } },
+          booking: { select: { accessTokenHash: true } },
+        },
       });
       if (!appointment) throw new NotFoundError("Randevu bulunamadı.");
 
-      await assertAppointmentAccess(app, appointment, { user: request.user, providedToken: request.query.t });
+      await assertAppointmentAccess(
+        app,
+        appointment,
+        { user: request.user, providedToken: request.query.t },
+        appointment.booking?.accessTokenHash
+      );
 
       if (appointment.status !== "SCHEDULED") {
         throw new ConflictError("Yalnızca planlanmış (SCHEDULED) randevular iptal edilebilir.");

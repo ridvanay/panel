@@ -84,6 +84,35 @@ export default defineConfig({
       name: "chromium",
       use: { ...devices["Desktop Chrome"] },
       dependencies: ["setup"],
+      // qa-agent bulgusu (2026-09-15, gerçek yerel LiveKit turu) — `telehealth-consultation-
+      // livekit-live.spec.ts` BİLEREK burada ÇALIŞTIRILMAZ (`chrome-livekit-media` projesine
+      // devredilir, bkz. aşağıdaki proje tanımı ve o dosyanın başlığı).
+      testIgnore: /telehealth-consultation-livekit-live\.spec\.ts/,
+    },
+    {
+      // qa-agent — `.claude/architect-scope-telehealth-template.md` §4.4 gerçek yerel LiveKit
+      // doğrulama turu (2026-09-15). GERÇEK kamera/mikrofon track'i publish eden testler İÇİN
+      // (`telehealth-consultation-livekit-live.spec.ts`) — Playwright'ın VARSAYILAN bundled
+      // Chromium'u bu Windows makinesinde `--use-fake-device-for-media-stream`'i DESTEKLEMİYOR:
+      // headless → `getUserMedia` `NotSupportedError` (elle doğrulandı, `LiveKitRoom`in bağlantı
+      // durumu SONSUZA KADAR "Bağlanıyor…"da TAKILI KALIYOR — websocket bağlantısı GERÇEKTEN
+      // kuruluyor ama yerel track publish hatası `ConnectionState.Connected`'e geçişi ENGELLİYOR);
+      // headed bundled Chromium → audio fake device çalışıyor AMA video → `NotFoundError`.
+      // Sistemde kurulu GERÇEK Google Chrome (`channel: "chrome"`, headed) İKİSİNİ DE destekliyor.
+      // `permissions: ["camera","microphone"]` (context izni) `--use-fake-ui-for-media-permissions`
+      // bayrağıyla BİRLİKTE gerekir — TEK BAŞINA hiçbiri yeterli değildir (elle doğrulandı).
+      name: "chrome-livekit-media",
+      testMatch: /telehealth-consultation-livekit-live\.spec\.ts/,
+      use: {
+        ...devices["Desktop Chrome"],
+        channel: "chrome",
+        headless: false,
+        permissions: ["camera", "microphone"],
+        launchOptions: {
+          args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-permissions"],
+        },
+      },
+      dependencies: ["setup"],
     },
   ],
   webServer: process.env.E2E_SKIP_WEBSERVER
