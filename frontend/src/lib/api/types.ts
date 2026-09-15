@@ -3808,6 +3808,14 @@ export interface DoctorConsoleOverview {
   } | null;
   /** Sunucu saati — "kalan süre" geri sayımı istemci saatine DEĞİL, buna göre kalibre edilir. */
   generatedAt: string;
+  /**
+   * `.claude/architect-scope-demo-payment-doctor-counters.md` İstek 2 (bağlayıcı) —
+   * `GET /doctor/bookings?scope=upcoming` İLE BİREBİR AYNI filtre, ama **booking** SAYISIdır
+   * (`appointmentBooking.count`), randevu sayısı DEĞİL (`today.total`'ın aksine).
+   */
+  upcomingBookingTotal: number;
+  /** `GET /doctor/bookings?scope=all` (varsayılan) İLE BİREBİR AYNI filtre — booking SAYISI. */
+  allBookingTotal: number;
 }
 
 /**

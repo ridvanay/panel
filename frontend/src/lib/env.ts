@@ -19,6 +19,17 @@ export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:30
  */
 export const DOCTOR_SITE_URL = process.env.NEXT_PUBLIC_DOCTOR_URL || null;
 
+/**
+ * `.claude/architect-scope-demo-payment-doctor-counters.md` §1.5 (bağlayıcı) — dev-only demo
+ * ödeme butonunun (`booking-payment-step.tsx`) tek görünürlük anahtarı. **Statik**
+ * `process.env.NEXT_PUBLIC_ENABLE_DEMO_PAYMENTS === "true"` üye erişimi ZORUNLU (`DOCTOR_SITE_URL`
+ * gibi bir değişkene atayıp sonra karşılaştırmak DEĞİL) — Next.js yalnızca bu statik deseni
+ * build-time'da inline edip dead-code elimination uygulayabilir; bu sayede prod build'de değer
+ * `false`'a sabitlenir ve butonu saran kod bloğu bundle'dan TAMAMEN düşer (yalnızca "render
+ * edilmiyor" değil, bundle'a hiç girmiyor).
+ */
+export const DEMO_PAYMENTS_ENABLED = process.env.NEXT_PUBLIC_ENABLE_DEMO_PAYMENTS === "true";
+
 const PUBLIC_MEDIA_ORIGIN = (() => {
   try {
     return new URL(API_BASE_URL).origin;

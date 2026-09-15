@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import Fastify from "fastify";
 import { serializerCompiler, validatorCompiler, ZodTypeProvider } from "fastify-type-provider-zod";
-import { env } from "./config/env";
+import { env, isDemoPaymentsEnabled } from "./config/env";
 import { initSentry } from "./lib/sentry";
 
 import prismaPlugin from "./plugins/prisma";
@@ -66,6 +66,7 @@ import {
 import { adminTelehealthAnalyticsRoutes } from "./modules/telehealth/telehealth.analytics.routes";
 import { telehealthLiveKitRoutes } from "./modules/telehealth/telehealth.livekit.routes";
 import { telehealthCheckoutRoutes } from "./modules/telehealth/telehealth.checkout.routes";
+import { telehealthDemoPaymentRoutes } from "./modules/telehealth/telehealth.demo-payment.routes";
 import { telehealthNotificationRoutes } from "./modules/telehealth/telehealth.notifications.routes";
 import { telehealthDoctorPortalRoutes, telehealthPatientPortalRoutes } from "./modules/telehealth/telehealth.portal.routes";
 import { telehealthRecordingRoutes } from "./modules/telehealth/telehealth.recording.routes";
@@ -271,6 +272,17 @@ export function buildApp() {
       // public `/appointments` yüzeyine EKLENİR; kendi `requireModuleEnabled("telehealth")` +
       // kimlik doğrulama hook'larını KENDİSİ taşır.
       api.register(telehealthCheckoutRoutes);
+      // `.claude/architect-scope-demo-payment-doctor-counters.md` İstek 1 §1.2/§1.3 (bağlayıcı) —
+      // geliştirme/demo ödeme simülatörü, backend-agent'ın AYRI dosyası
+      // (`telehealth.demo-payment.routes.ts`, Stripe SDK'sına/webhook'a DOKUNMAZ, integration-agent'ın
+      // sahası DEĞİLDİR). KATMAN 2 (register-time gizleme, üç katmanlı AND gating'in bir parçası) —
+      // `isDemoPaymentsEnabled` (`NODE_ENV !== "production"` VE `ENABLE_DEMO_PAYMENTS=true`) FALSE
+      // iken bu route HİÇ register EDİLMEZ → uç `404` döner, `403` DEĞİL (kapalı bir ucun varlığı
+      // sızdırılmaz — `middleware/module-guard.ts` İLE AYNI felsefe). Handler'ın kendisi de İLK
+      // satırında AYNI kontrolü TEKRARLAR (katman 3, defense-in-depth).
+      if (isDemoPaymentsEnabled) {
+        api.register(telehealthDemoPaymentRoutes);
+      }
       // TUR 3 (bağlayıcı) — sunucu tarafı görüşme kaydı (LiveKit Egress). `telehealthRecordingRoutes`
       // (integration-agent — kayıt BAŞLAT/rıza/DURDUR, LiveKit SDK'sını çağırır) ve
       // `telehealthRecordingAccessRoutes` (backend-agent — durum oku/içerik akıt/sil, LiveKit

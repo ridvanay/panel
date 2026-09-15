@@ -40,18 +40,19 @@ const SCOPE_TABS: { value: DoctorBookingsScope; label: string }[] = [
 ];
 
 /**
- * Sekme sayaçları — SADECE gerçek bir toplamı OLAN scope'larda gösterilir. `GET /doctor/overview`
- * `today.total` ve `completedConsultationTotal`ı zaten döner (yeni bir backend alanı İSTENMEDİ).
- * "all"/"upcoming" sayfalanmış (cursor tabanlı) bir liste üzerinden gelir; `bookings.length` o anki
- * SAYFANIN büyüklüğüdür, GERÇEK bir toplam DEĞİLDİR — yanıltıcı olmasın diye bu iki sekmede sayaç
- * GÖSTERİLMEZ. Backend'e bir `counts` alanı eklenirse (`backend/src/lib/pagination.ts`
- * `buildPageMetaWithCounts` zaten bu iş için var) kolayca tamamlanabilir.
+ * Sekme sayaçları — `GET /doctor/overview`'ın DÖRT alanından gelir, tamamı GERÇEK toplamlardır.
+ * `.claude/architect-scope-demo-payment-doctor-counters.md` İstek 2 (bağlayıcı) öncesinde "all"/
+ * "upcoming" sayfalanmış (cursor tabanlı) bir liste üzerinden geliyordu; `bookings.length` o anki
+ * SAYFANIN büyüklüğüydü, GERÇEK bir toplam DEĞİLDİ — bu yüzden o iki sekmede sayaç GÖSTERİLMİYORDU.
+ * Backend artık `upcomingBookingTotal`/`allBookingTotal`'ı (booking SAYISI, `GET /doctor/bookings`
+ * ile AYNI filtre) doğrudan döndüğü için bu kısıtlama ORTADAN KALKTI.
  */
-function scopeCount(scope: DoctorBookingsScope, overview: DoctorConsoleOverview | null): number | null {
+export function scopeCount(scope: DoctorBookingsScope, overview: DoctorConsoleOverview | null): number | null {
   if (!overview) return null;
   if (scope === "today") return overview.today.total;
   if (scope === "completed") return overview.completedConsultationTotal;
-  return null;
+  if (scope === "upcoming") return overview.upcomingBookingTotal;
+  return overview.allBookingTotal;
 }
 
 const EMPTY_STATE_COPY: Record<DoctorBookingsScope, { title: string; description: string }> = {

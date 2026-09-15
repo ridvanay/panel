@@ -203,6 +203,21 @@ export function createBookingCheckoutSession(bookingId: string, accessToken?: st
   });
 }
 
+/**
+ * `.claude/architect-scope-demo-payment-doctor-counters.md` İstek 1 (bağlayıcı) — dev-only demo
+ * ödeme simülatörü. Backend bayrağı (`ENABLE_DEMO_PAYMENTS`) kapalıyken/prod'da uç HİÇ register
+ * edilmez → `404` (`friendlyErrorMessage` ile gösterilir, çökme yok). Zaten ödenmişse/süresi
+ * dolmuşsa `409 BOOKING_NOT_PAYABLE`/`BOOKING_EXPIRED` — `createBookingCheckoutSession` İLE AYNI
+ * hata kodları. Yanıt `createBookingCheckoutSession`'ın AKSİNE bir `AppointmentBooking` DTO'sudur
+ * (ADMIN `mark-paid` ile birebir aynı şekil) — yeni bir tip İCAT EDİLMEZ.
+ */
+export function demoPayBooking(bookingId: string, accessToken?: string): Promise<AppointmentBooking> {
+  return apiFetch<AppointmentBooking>(`/appointments/bookings/${bookingId}/demo-pay`, {
+    method: "POST",
+    query: { t: accessToken },
+  });
+}
+
 export function cancelBooking(bookingId: string, accessToken?: string, input?: CancelBookingRequest): Promise<AppointmentBooking> {
   return apiFetch<AppointmentBooking>(`/appointments/bookings/${bookingId}/cancel`, {
     method: "POST",

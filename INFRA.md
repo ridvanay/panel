@@ -79,6 +79,50 @@ compose up` doğrulaması" bölümündeki adım adım komut ve kalıcı çözüm
   /app/dist/modules/demo-templates/assets/ecommerce-pro/` ile `tech-doc-1.pdf`/`tech-doc-2.pdf`
   runtime imajında (doğru `nodejs` kullanıcı sahipliğiyle) **mevcut** olduğu teyit edildi.
 
+## Demo ödeme modu (`ENABLE_DEMO_PAYMENTS`) — dev-only override compose dosyası
+
+`.claude/architect-scope-demo-payment-doctor-counters.md` kararınca, backend'e Stripe
+yapılandırılmadan e2e/manuel test edilebilen bir `POST /appointments/bookings/{bookingId}/
+demo-pay` ucu eklendi. Bu uç **yalnızca** `NODE_ENV !== "production"` **VE**
+`ENABLE_DEMO_PAYMENTS === true` iken register edilir; aksi hâlde route hiç yok (404). Ayrıca
+`NODE_ENV=production` iken `ENABLE_DEMO_PAYMENTS=true` verilirse backend **boot olmayı
+reddeder** (fail-closed koruma, `backend/src/config/env.ts`).
+
+**Sorun:** kök `docker-compose.yml`'nin `backend.environment` bloğu **bilinçli olarak**
+`NODE_ENV: production` set ediyor (prod-parity kararı — kalıcı JWT anahtarı, SMTP zorunluluğu
+gibi yalnızca production'da tetiklenen kontrollerin lokal doğrulanabilmesi için, bkz. dosyanın
+kendi içindeki satır ~58-63 yorumu). Bu karar **DEĞİŞTİRİLMEDİ** — bunun yerine ayrı, opsiyonel
+bir override dosyası eklendi.
+
+**Açma:**
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d
+```
+
+`docker-compose.dev.yml` (kök dizin, YENİ) yalnızca iki override taşır:
+- `backend.environment`: `NODE_ENV: development` (kök dosyadaki `production`'ı ezer) +
+  `ENABLE_DEMO_PAYMENTS: "true"`.
+- `frontend.build.args`: `NEXT_PUBLIC_ENABLE_DEMO_PAYMENTS: "true"` (build-time değişkeni,
+  frontend-agent'ın `lib/env.ts::DEMO_PAYMENTS_ENABLED`'ı statik `process.env.NEXT_PUBLIC_*`
+  erişimiyle okuduğu için — diğer `NEXT_PUBLIC_*` build-arg'larıyla aynı desen).
+
+Compose, override dosyalarındaki `environment:`/`build.args` map'lerini **anahtar bazında
+birleştirir** (kök dosyanın geri kalanını — `env_file`, volumes, healthcheck vb. — ezmez);
+bu yüzden `docker-compose.dev.yml`'de `env_file` veya diğer alanların tekrarına gerek yok.
+`backend/.env`/`.env.example`'a da ayrıca bir şey eklenmedi — bayrak yalnızca bu override
+dosyasında yaşıyor, `environment:` bloğu zaten `env_file`'daki değerin üzerine yazıyor.
+
+**Neden varsayılan `docker compose up`'ta YOK:** yukarıdaki prod-parity kararını (kalıcı
+NODE_ENV=production) kalıcı olarak bozmamak için — demo ödeme bayrağı yalnızca açıkça talep
+edildiğinde (`-f docker-compose.dev.yml` ile) devreye girer.
+
+**Normale dönüş:** override dosyası olmadan sade `docker compose up --build -d`
+çalıştırıldığında, backend/frontend image'ları **otomatik olarak** demo-pay'siz varsayılan
+build-arg'larla (`NODE_ENV=production`, demo bayrağı yok) yeniden build edilir — image tag'i
+aynı olduğu için bir önceki (dev override'lı) katman üzerine yazılır, kalıcı bir "kirlenme"
+oluşmaz.
+
 ## S3/CDN depolama başlıkları — bilinen sınırlama (`X-Content-Type-Options: nosniff`)
 
 **Durum: dokümante edilmiş bilinen sınırlama, düzeltilmedi — yeni bir CDN/Response Headers

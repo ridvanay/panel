@@ -36,11 +36,20 @@ export function PatientBookingDetailPanel({
   bookingId,
   accessToken,
   paymentOutcome,
+  lang,
 }: {
   bookingId: string;
   accessToken?: string;
   /** `?payment=success|cancelled` — Stripe Checkout dönüşü, bkz. dosya başı yorumu. */
   paymentOutcome?: "success" | "cancelled";
+  /**
+   * `BookingPaymentStep`'in demo ödeme yönlendirmesi için (ki bu sayfada `onDemoPaid` verildiği
+   * için ASLA gerçekten KULLANILMAZ — bkz. aşağıdaki `onDemoPaid`). `page.tsx`'teki `params.lang`
+   * — bu sayfaya ulaşan HER akış (Stripe `success_url`, magic-link e-postası) backend'de HER ZAMAN
+   * varsayılan dile kurulduğu için (`buildPatientReturnUrl`/`buildMagicLink`) pratikte zaten
+   * varsayılan dille AYNIDIR.
+   */
+  lang: string;
 }) {
   const localize = useLocalizePath();
   const [booking, setBooking] = useState<AppointmentBooking | null>(null);
@@ -231,7 +240,17 @@ export function PatientBookingDetailPanel({
       ))}
 
       {(booking.paymentStatus === "PENDING" || booking.paymentStatus === "FAILED") && !polling && (
-        <BookingPaymentStep bookingId={booking.id} accessToken={accessToken} totalCents={booking.totalCents} currency={booking.currency} />
+        <BookingPaymentStep
+          bookingId={booking.id}
+          accessToken={accessToken}
+          totalCents={booking.totalCents}
+          currency={booking.currency}
+          lang={lang}
+          // Bu bileşen ZATEN bu sayfada — demo ödeme başarılı olunca kendi kendine YÖNLENDİRMEK
+          // yerine güncel booking'i doğrudan state'e yazar (bkz. `booking-payment-step.tsx`
+          // `onDemoPaid` yorumu).
+          onDemoPaid={(updated) => setBooking(updated)}
+        />
       )}
 
       {cancellable && (

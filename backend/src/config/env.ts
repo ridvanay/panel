@@ -195,6 +195,17 @@ const EnvSchema = z.object({
   // `meta.facets.truncated: true` döner; kategori/fiyat/stok facet'leri SQL toplama
   // olduğu için bundan ETKİLENMEZ, HER ZAMAN tamdır.
   PRODUCT_FACET_SCAN_LIMIT: z.coerce.number().int().positive().default(2000),
+
+  // `.claude/architect-scope-demo-payment-doctor-counters.md` İstek 1 §1.3 — geliştirme/demo ödeme
+  // simülatörü (`POST /appointments/bookings/{bookingId}/demo-pay`) yalnızca `NODE_ENV !== "production"`
+  // VE bu bayrak `true` iken var olur. `SMTP_SECURE`/`CUSTOM_CODE_ENABLED` İLE BİREBİR AYNI desen —
+  // `z.coerce.boolean()` KASITLI OLARAK KULLANILMADI (boş olmayan HER string'i, örn. "false", `true`
+  // yapardı). Prod'da bu bayrağın `true` olması aşağıda (parse SONRASI) GÜRÜLTÜLÜ bir hatayla boot'u
+  // DURDURUR — sessiz yok sayma, yanlış `.env` kopyasının fark edilmeden prod'a gitmesi demektir.
+  ENABLE_DEMO_PAYMENTS: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
 });
 
 const parsed = EnvSchema.safeParse(process.env);
@@ -207,3 +218,24 @@ if (!parsed.success) {
 
 export const env = parsed.data;
 export const isProd = env.NODE_ENV === "production";
+
+// `.claude/architect-scope-demo-payment-doctor-counters.md` İstek 1 §1.3 — fail-closed boot koruması
+// (ZORUNLU). Zod şeması `ENABLE_DEMO_PAYMENTS`'i tek başına geçerli sayar (dev/test/prod hepsinde
+// `true`/`false` kabul eder) — prod'da `true` olması AYRICA burada, parse SONRASI, açık ve okunur bir
+// hatayla ENGELLENİR. Sessizce yok saymak (ör. `isDemoPaymentsEnabled` hesaplarken `isProd` ile
+// AND'lemek) yanlış `.env` kopyasının prod'a fark edilmeden gitmesi demektir; bu proje sessiz düşüşü
+// değil gürültülü hatayı seçer.
+if (isProd && env.ENABLE_DEMO_PAYMENTS) {
+  // eslint-disable-next-line no-console
+  console.error(
+    "Ortam değişkenleri geçersiz: ENABLE_DEMO_PAYMENTS=true, NODE_ENV=production ile birlikte KULLANILAMAZ " +
+      "(geliştirme/demo ödeme simülatörü üretimde asla açılamaz — bkz. .claude/architect-scope-demo-payment-doctor-counters.md)."
+  );
+  process.exit(1);
+}
+
+// İstek 1 §1.3 madde 1 — "VEYA" değil, üç katmanlı gating'in İLK katmanı (VE, iki bayrak birden).
+// Yukarıdaki fail-closed koruması sayesinde bu satıra ulaşıldığında `isProd && env.ENABLE_DEMO_PAYMENTS`
+// hiçbir zaman `true` olamaz; `env.NODE_ENV !== "production"` kontrolü yine de AÇIKÇA yazılır (tek
+// başına `NODE_ENV !== "production"` YETERSİZDİR — staging/CI çoğu zaman development/test ile koşar).
+export const isDemoPaymentsEnabled = env.NODE_ENV !== "production" && env.ENABLE_DEMO_PAYMENTS;

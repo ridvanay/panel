@@ -2725,6 +2725,14 @@ export const DoctorConsoleOverviewSchema = z.object({
   // `paymentStatus=PAID` booking'lerde TEKİL hasta sayısı (anahtar sırası: identityNumberHash → patientUserId → email).
   distinctPatientTotal: z.number().int(),
   pendingDocumentCount: z.number().int(),
+  // `.claude/architect-scope-demo-payment-doctor-counters.md` İstek 2 §2.2 (bağlayıcı) — sekmeler
+  // BOOKING listeler, sayaçlar da BOOKING sayısıdır (`today.total`'ın RANDEVU sayısı olmasıyla
+  // KARIŞTIRILMAMALIDIR — bilinen bir tutarsızlık, bu turda DEĞİŞTİRİLMEZ).
+  // `GET /doctor/bookings?scope=upcoming` İLE BİREBİR AYNI filtre, booking sayısı.
+  upcomingBookingTotal: z.number().int(),
+  // `GET /doctor/bookings`'in varsayılan `scope=all` davranışıyla BİREBİR AYNI ("hayalet"
+  // EXPIRED/appointmentsiz booking'ler HARİÇ).
+  allBookingTotal: z.number().int(),
   nextAppointment: z
     .object({
       appointmentId: z.string().uuid(),

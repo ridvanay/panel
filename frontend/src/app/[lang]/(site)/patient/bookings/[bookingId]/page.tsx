@@ -21,14 +21,14 @@ export function generateMetadata(): Metadata {
 }
 
 export default async function PatientBookingDetailPage({ params, searchParams }: PatientBookingDetailPageProps) {
-  const { bookingId } = await params;
+  const { lang, bookingId } = await params;
   const { t, payment } = await searchParams;
   const paymentOutcome = payment === "success" || payment === "cancelled" ? payment : undefined;
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
       <h1 className="mb-6 text-2xl font-semibold text-foreground">Rezervasyon Detayı</h1>
-      <PatientBookingDetailPanel bookingId={bookingId} accessToken={t} paymentOutcome={paymentOutcome} />
+      <PatientBookingDetailPanel bookingId={bookingId} accessToken={t} paymentOutcome={paymentOutcome} lang={lang} />
     </div>
   );
 }

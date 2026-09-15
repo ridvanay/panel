@@ -25,7 +25,8 @@ import { triggerDoctorProfileRevalidation } from "../../lib/revalidate";
 import { DoctorBookingsQuerySchema, UpdateDoctorSelfProfileRequestSchema } from "./telehealth.schemas";
 import { splitCommission } from "./lib/commission";
 import { JOIN_WINDOW_BEFORE_START_MS } from "./lib/booking";
-import { addCalendarDays, formatCalendarDateKey, getStartOfCalendarDayInTimeZone, getStartOfDayInTimeZone, getWallClockParts } from "./lib/timezone";
+import { addCalendarDays, formatCalendarDateKey, getStartOfCalendarDayInTimeZone, getWallClockParts } from "./lib/timezone";
+import { BOOKINGS_WITH_APPOINTMENTS_FILTER, buildDoctorBookingScopeFilter } from "./lib/doctor-booking-scope";
 import { DOCTOR_PORTAL_ANNOUNCEMENTS } from "./lib/portal-announcements";
 
 /** `GET /doctor/portal-feed` — bildirim besleme penceresi (son 14 gün). */
@@ -184,24 +185,17 @@ export async function telehealthDoctorPortalRoutes(app: FastifyInstance) {
 
       // [DPI] §3.2 — `scope` (`from`/`to` ile ASLA BİRLİKTE gelmez, `DoctorBookingsQuerySchema`
       // zaten bunu `422` ile reddeder) doktorun KENDİ `timeZone`'unda sunucuda hesaplanır.
+      // Where-clause üretimi paylaşılan `lib/doctor-booking-scope.ts`'e taşındı (`GET /overview`
+      // İLE PAYLAŞILIR, kod tekrarı yasak) — DAVRANIŞ SIFIR DEĞİŞTİ, yalnızca kod taşındı.
       let scopeFilter: Prisma.AppointmentBookingWhereInput | undefined;
       if (scope === "today") {
         const doctorProfile = await app.prisma.doctorProfile.findUniqueOrThrow({
           where: { id: doctorProfileId },
           select: { timeZone: true },
         });
-        const now = new Date();
-        const todayStart = getStartOfDayInTimeZone(now, doctorProfile.timeZone);
-        const wallToday = getWallClockParts(now, doctorProfile.timeZone);
-        const tomorrowCalendar = addCalendarDays({ year: wallToday.year, month: wallToday.month, day: wallToday.day }, 1);
-        const tomorrowStart = getStartOfCalendarDayInTimeZone(tomorrowCalendar, doctorProfile.timeZone);
-        scopeFilter = {
-          appointments: { some: { startsAt: { gte: todayStart, lt: tomorrowStart }, status: { not: "PENDING_PAYMENT" } } },
-        };
-      } else if (scope === "upcoming") {
-        scopeFilter = { appointments: { some: { startsAt: { gt: new Date() }, status: { in: ["SCHEDULED", "IN_PROGRESS"] } } } };
-      } else if (scope === "completed") {
-        scopeFilter = { appointments: { some: { status: "COMPLETED" } } };
+        scopeFilter = buildDoctorBookingScopeFilter("today", { timeZone: doctorProfile.timeZone, now: new Date() });
+      } else if (scope === "upcoming" || scope === "completed") {
+        scopeFilter = buildDoctorBookingScopeFilter(scope, { now: new Date() });
       }
 
       // Kök neden notu (2026-09-14 araştırması) — `PENDING` bir booking süresi dolduğunda
@@ -224,7 +218,7 @@ export async function telehealthDoctorPortalRoutes(app: FastifyInstance) {
           doctorId: doctorProfileId,
           ...(cursorSeq ? { seq: { gt: cursorSeq } } : {}),
           ...(paymentStatus ? { paymentStatus } : {}),
-          ...(excludeAppointmentlessBookings ? { appointments: { some: {} } } : {}),
+          ...(excludeAppointmentlessBookings ? BOOKINGS_WITH_APPOINTMENTS_FILTER : {}),
           ...(scopeFilter ?? {}),
           ...(from || to
             ? {
@@ -363,35 +357,46 @@ export async function telehealthDoctorPortalRoutes(app: FastifyInstance) {
       const tomorrowCalendar = addCalendarDays({ year: wallToday.year, month: wallToday.month, day: wallToday.day }, 1);
       const tomorrowStart = getStartOfCalendarDayInTimeZone(tomorrowCalendar, timeZone);
 
-      const [todayRows, completedConsultationTotal, paidBookings, pendingDocumentCount, nextAppointmentRow] = await Promise.all([
-        app.prisma.appointment.groupBy({
-          by: ["status"],
-          where: { doctorId: doctorProfileId, startsAt: { gte: todayStart, lt: tomorrowStart } },
-          _count: { _all: true },
-        }),
-        app.prisma.appointment.count({ where: { doctorId: doctorProfileId, status: "COMPLETED" } }),
-        // [DPI] §3.1 — "Toplam Hasta" TÜM `PAID` booking'ler üzerinde `DISTINCT` ister; imleç
-        // tabanlı `/doctor/bookings` bunu doğru yapamaz (bu uçun var olma gerekçesi budur).
-        app.prisma.appointmentBooking.findMany({
-          where: { doctorId: doctorProfileId, paymentStatus: "PAID" },
-          select: { identityNumberHash: true, patientUserId: true, patientEmail: true },
-        }),
-        app.prisma.appointmentDocument.count({
-          where: {
-            deletedAt: null,
-            booking: {
-              doctorId: doctorProfileId,
-              paymentStatus: "PAID",
-              appointments: { some: { status: { in: ["SCHEDULED", "IN_PROGRESS"] } } },
+      // İstek 2 §2.2 (bağlayıcı) — sekmeler BOOKING listeler → sayaçlar da BOOKING sayısıdır
+      // (`appointmentBooking.count`), randevu sayısı DEĞİL (aksi hâlde rozet ile görünen satır
+      // sayısı tutmaz). Aynı `lib/doctor-booking-scope.ts` kaynağı `GET /bookings` İLE PAYLAŞILIR.
+      const upcomingScopeFilter = buildDoctorBookingScopeFilter("upcoming", { now });
+
+      const [todayRows, completedConsultationTotal, paidBookings, pendingDocumentCount, nextAppointmentRow, upcomingBookingTotal, allBookingTotal] =
+        await Promise.all([
+          app.prisma.appointment.groupBy({
+            by: ["status"],
+            where: { doctorId: doctorProfileId, startsAt: { gte: todayStart, lt: tomorrowStart } },
+            _count: { _all: true },
+          }),
+          app.prisma.appointment.count({ where: { doctorId: doctorProfileId, status: "COMPLETED" } }),
+          // [DPI] §3.1 — "Toplam Hasta" TÜM `PAID` booking'ler üzerinde `DISTINCT` ister; imleç
+          // tabanlı `/doctor/bookings` bunu doğru yapamaz (bu uçun var olma gerekçesi budur).
+          app.prisma.appointmentBooking.findMany({
+            where: { doctorId: doctorProfileId, paymentStatus: "PAID" },
+            select: { identityNumberHash: true, patientUserId: true, patientEmail: true },
+          }),
+          app.prisma.appointmentDocument.count({
+            where: {
+              deletedAt: null,
+              booking: {
+                doctorId: doctorProfileId,
+                paymentStatus: "PAID",
+                appointments: { some: { status: { in: ["SCHEDULED", "IN_PROGRESS"] } } },
+              },
             },
-          },
-        }),
-        app.prisma.appointment.findFirst({
-          where: { doctorId: doctorProfileId, status: { in: ["SCHEDULED", "IN_PROGRESS"] }, startsAt: { gt: now } },
-          orderBy: { startsAt: "asc" },
-          select: { id: true, bookingId: true, startsAt: true },
-        }),
-      ]);
+          }),
+          app.prisma.appointment.findFirst({
+            where: { doctorId: doctorProfileId, status: { in: ["SCHEDULED", "IN_PROGRESS"] }, startsAt: { gt: now } },
+            orderBy: { startsAt: "asc" },
+            select: { id: true, bookingId: true, startsAt: true },
+          }),
+          // `upcomingBookingTotal` = `GET /bookings?scope=upcoming` İLE BİREBİR AYNI filtre, sayım hâli.
+          app.prisma.appointmentBooking.count({ where: { doctorId: doctorProfileId, ...(upcomingScopeFilter ?? {}) } }),
+          // `allBookingTotal` = `GET /bookings`'in varsayılan `scope=all` davranışıyla BİREBİR AYNI
+          // ("hayalet" EXPIRED/appointmentsiz booking'ler HARİÇ).
+          app.prisma.appointmentBooking.count({ where: { doctorId: doctorProfileId, ...BOOKINGS_WITH_APPOINTMENTS_FILTER } }),
+        ]);
 
       // ---- today (`PENDING_PAYMENT` HARİÇ; `cancelled` = CANCELLED + NO_SHOW) ----
       const today = { date: formatCalendarDateKey(wallToday), total: 0, scheduled: 0, inProgress: 0, completed: 0, cancelled: 0 };
@@ -433,6 +438,8 @@ export async function telehealthDoctorPortalRoutes(app: FastifyInstance) {
           completedConsultationTotal,
           distinctPatientTotal: patientKeys.size,
           pendingDocumentCount,
+          upcomingBookingTotal,
+          allBookingTotal,
           nextAppointment: nextAppointmentRow
             ? {
                 appointmentId: nextAppointmentRow.id,

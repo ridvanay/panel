@@ -40,6 +40,9 @@ Yalnızca veritabanına ihtiyaç duyan backend geliştirmesi (container'sız, `t
 için `backend/docker-compose.yml` (db-only) kullanılabilir — kök `docker-compose.yml`'nin
 yerini almaz, ek bir seçenektir.
 
+Stripe yapılandırmadan ödeme akışını test etmek (dev-only demo ödeme ucu) için ayrı bir
+override compose dosyası vardır — bkz. `INFRA.md` "Demo ödeme modu" bölümü.
+
 ## Yerel geliştirme (Docker'sız)
 
 ```bash

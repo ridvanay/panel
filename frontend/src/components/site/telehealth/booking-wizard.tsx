@@ -234,6 +234,11 @@ export function BookingWizard({ doctor, doctorSlug, doctorTimeZone, lang, defaul
                     accessToken={bookingResult.accessToken}
                     totalCents={bookingResult.totalCents}
                     currency={bookingResult.currency}
+                    // `backend/.../checkout.routes.ts::buildPatientReturnUrl` (Stripe `success_url`)
+                    // HER ZAMAN `localeSet.default.code`'u kullanır (aktif `lang` DEĞİL) — demo
+                    // ödeme yönlendirmesi AYNI rotayı üretsin diye burada da `defaultLocaleCode`
+                    // geçilir, `lang` DEĞİL.
+                    lang={defaultLocaleCode}
                   />
                 )}
               </div>

@@ -7402,6 +7402,9 @@ paths:
   #    servis EDİLMEZ; yalnızca `GET /appointments/documents/{documentId}/content`
   #    üzerinden, yetkilendirme + denetim kaydıyla akıtılır (§9.7.5 madde 4/5/6).
   #  - Not/belge İÇERİĞİNE `MANAGER` erişemez, `EDITOR` hiç erişemez (§9.7.5 madde 7).
+  #  - `.claude/architect-scope-demo-payment-doctor-counters.md` İstek 1 — `POST .../demo-pay`
+  #    **backend-agent**'ındır (Stripe SDK'sına/webhook'a HİÇ DOKUNMAZ), integration-agent'ın
+  #    yukarıdaki `checkout-session`/`webhooks/stripe` sahasının PARÇASI DEĞİLDİR.
   # ==========================================================================
 
   /appointments/bookings:
@@ -7550,6 +7553,73 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+
+  /appointments/bookings/{bookingId}/demo-pay:
+    x-dev-only: true
+    parameters:
+      - $ref: "#/components/parameters/BookingId"
+      - $ref: "#/components/parameters/AppointmentAccessToken"
+    post:
+      tags: [TeleHealth]
+      security: []
+      summary: "[DEV-ONLY] Geliştirme/demo ödeme simülatörü (backend-agent'ın ucu)"
+      description: >
+        `.claude/architect-scope-demo-payment-doctor-counters.md` İstek 1 (BAĞLAYICI).
+        **Yalnızca `NODE_ENV !== "production"` VE `ENABLE_DEMO_PAYMENTS=true` iken
+        kayıtlıdır; üretimde bu uç YOKTUR (`404`)** — kapalıyken/prod'da route hiç
+        register edilmez, varlığı sızdırılmaz.
+
+
+        Stripe SDK'sına/webhook'a **hiç dokunmaz**; `checkout-session`'ın **yerini
+        almaz**, onu TAMAMLAR — Stripe test-mode key'i tanımlı olsa bile local
+        webhook teslimi (tünel/`stripe listen`) sorunlu olduğunda booking'i
+        `PENDING`'de kilitlenmekten kurtarmak için vardır (`STRIPE_SECRET_KEY`'in
+        boş/dolu olması bu ucu ETKİLEMEZ).
+
+
+        İş mantığı gerçek Stripe webhook'unun ve ADMIN
+        `POST /admin/telehealth/bookings/{id}/mark-paid` ucunun kullandığı **aynı**
+        `confirmBookingPayment` fonksiyonunu çağırır — booking `paymentStatus=PAID`,
+        `paidAt` ve TÜM `PENDING_PAYMENT` randevular `SCHEDULED` olur. Bu satır DB'de
+        **`paidBy: "demo"`** ile kalıcı olarak işaretlenir — `stripePaymentIntentId`/
+        `stripeCheckoutSessionId` **ASLA yazılmaz** (`null` kalır), sahte bir Stripe
+        kimliği asla üretilmez.
+
+
+        **Erişim `checkout-session` ile BİREBİR AYNI:** yalnızca booking sahibi hasta
+        — oturumlu (`patientUserId` eşleşmesi) **veya** doğru `?t=` magic-link token'ı
+        (TTL dahil). Doktor/`MANAGER`/`ADMIN` bu ucu **kullanamaz** (`ADMIN`'in zaten
+        kendi `mark-paid` ucu vardır). Yetkisiz erişim **`404`** (IDOR — `403` DEĞİL).
+
+
+        Hız sınırı **10 istek/dakika** (`checkout-session` İLE AYNI kova).
+      responses:
+        "200":
+          description: Demo ödemesi tamamlandı — `mark-paid` İLE BİREBİR AYNI yanıt şekli
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/AppointmentBooking" }
+        "404":
+          description: >
+            Rezervasyon bulunamadı, aktör booking sahibi hasta DEĞİL (IDOR — `403`
+            DEĞİL) **veya** bu uç bu ortamda kayıtlı DEĞİL (prod'da/bayrak kapalıyken
+            HER ZAMAN `404`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "409":
+          description: >
+            Booking ödenebilir durumda değil (`error.code: BOOKING_NOT_PAYABLE` —
+            zaten PAID/CANCELLED) VEYA slot tutma süresi doldu
+            (`error.code: BOOKING_EXPIRED`) — `checkout-session` İLE AYNI kontroller.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /appointments/bookings/{bookingId}/cancel:
     parameters:
@@ -17533,7 +17603,18 @@ components:
         kaynağı. **Para/komisyon alanı BİLİNÇLİ OLARAK YOKTUR** — kazanç
         `GET /doctor/earnings`'in işidir ve iki uç aynı sayıyı iki farklı tanımla
         üretmez.
-      required: [timeZone, today, completedConsultationTotal, distinctPatientTotal, pendingDocumentCount, nextAppointment, generatedAt]
+      required:
+        [
+          timeZone,
+          today,
+          completedConsultationTotal,
+          distinctPatientTotal,
+          pendingDocumentCount,
+          upcomingBookingTotal,
+          allBookingTotal,
+          nextAppointment,
+          generatedAt,
+        ]
       properties:
         timeZone: { type: string, description: "Tüm gün sınırlarının yorumlandığı IANA dilimi — UI saat gösterimini de buna göre yapar." }
         today: { $ref: "#/components/schemas/DoctorConsoleTodayCounts" }
@@ -17556,6 +17637,21 @@ components:
             **`AppointmentDocument`'a inceleme durumu (`reviewedAt` vb.) EKLENMEDİ** —
             "okundu/onaylandı" bayrağı, uygulamadığımız bir tıbbi inceleme iş akışını
             ve sorumluluğunu ima eder. UI bu kartın ipucunda tanımı AÇIKÇA yazar.
+        upcomingBookingTotal:
+          type: integer
+          description: >
+            `.claude/architect-scope-demo-payment-doctor-counters.md` İstek 2 (bağlayıcı) —
+            `GET /doctor/bookings?scope=upcoming` İLE BİREBİR AYNI filtre, ama
+            **booking** SAYISIdır (`appointmentBooking.count`), randevu sayısı DEĞİL
+            (`today.total`'ın aksine — sekmeler booking listeler, rozet de booking
+            sayar). `PENDING_PAYMENT` randevulu booking'ler KASITLI OLARAK HARİÇTİR
+            (ödenmemiş tutma "gelecek onaylı randevu" değildir).
+        allBookingTotal:
+          type: integer
+          description: >
+            `GET /doctor/bookings`'in varsayılan `scope=all` (filtresiz) davranışıyla
+            BİREBİR AYNI **booking** sayısı — "hayalet" (appointmentsiz,
+            `EXPIRED`/hard-delete edilmiş randevulu) booking'ler HARİÇ tutulur.
         nextAppointment:
           type: object
           nullable: true

@@ -1,0 +1,35 @@
+# docker-compose.dev.yml — TEK BAŞINA ÇALIŞMAZ, dev/demo ödeme override dosyası.
+#
+# Kök `docker-compose.yml` ÜZERİNE BİNDİRİLEREK kullanılır (Compose override mekanizması —
+# `environment:`/`build.args` map'leri anahtar bazında BİRLEŞTİRİLİR, kök dosyadaki diğer
+# her şey — env_file, volumes, healthcheck, vb. — AYNEN kalır, burada TEKRAR YAZILMAZ):
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d
+#
+# NEDEN ayrı bir dosya (kök docker-compose.yml'e DOKUNULMADI)?
+# Kök dosyanın backend.environment bloğunda `NODE_ENV: production` BİLİNÇLİ OLARAK set
+# edilmiştir (satır ~58-63'teki yorumu okuyun) — bu, prod-parity için (kalıcı JWT anahtarı,
+# SMTP zorunluluğu gibi yalnızca production'da tetiklenen kontrollerin lokal doğrulanabilmesi
+# için) alınmış, KALICI ve DOKUNULMAMASI GEREKEN bir karardır. Ancak dev-only demo ödeme ucu
+# (`POST /appointments/bookings/{bookingId}/demo-pay`, bkz.
+# `.claude/architect-scope-demo-payment-doctor-counters.md`) tam olarak
+# `NODE_ENV !== "production"` şartına bağlıdır ve `NODE_ENV=production` iken
+# `ENABLE_DEMO_PAYMENTS=true` verilmesi backend'in **boot olmayı reddetmesine** (fail-closed
+# güvenlik koruması, `backend/src/config/env.ts`) yol açar — yani varsayılan
+# `docker compose up` ile bu özellik ASLA açılamaz, açmaya zorlamak crash-loop üretir.
+# Çözüm: prod-parity kararını bozmadan, yalnızca bu override dosyası aktifken (ayrı, açık bir
+# komutla) NODE_ENV'i development'a çeken ve demo ödeme bayrağını açan izole bir katman.
+#
+# Normal `docker compose up --build -d`'ye (bu dosya olmadan) dönüldüğünde image'lar bir
+# sonraki build'de otomatik olarak demo-pay'siz hale döner (bkz. INFRA.md "Demo ödeme modu").
+
+services:
+  backend:
+    environment:
+      NODE_ENV: development
+      ENABLE_DEMO_PAYMENTS: "true"
+
+  frontend:
+    build:
+      args:
+        NEXT_PUBLIC_ENABLE_DEMO_PAYMENTS: "true"
