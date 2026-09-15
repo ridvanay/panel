@@ -78,7 +78,12 @@ function extractManualSecret(otpauthUrl: string): string | null {
   }
 }
 
-function BackupCodesList({ codes }: { codes: string[] }) {
+/**
+ * `.claude/architect-scope-doctor-subdomain.md` §5.6.2 madde A.4 — `two-factor-setup-panel.tsx`
+ * (doktor portalı kurulum akışı) bu bileşeni AYNEN tüketir; yeni bir kopya YAZILMAZ. Bu sayfanın
+ * geri kalanı (disable/regenerate/oturum yönetimi) o paylaşılan bileşene GİRMEZ.
+ */
+export function BackupCodesList({ codes }: { codes: string[] }) {
   function copyAll() {
     navigator.clipboard.writeText(codes.join("\n")).then(
       () => toast.success("Yedek kodlar panoya kopyalandı."),

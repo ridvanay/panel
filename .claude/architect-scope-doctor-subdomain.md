@@ -446,6 +446,61 @@ href'i `SITE_ORIGIN` ile **mutlak** üretir — böylece doktor host'unda gereks
 307 hop'u oluşmaz ve navigasyon doğrudan ana origin'e gider. İki değişiklik birbirini tamamlar:
 mutlak href doktoru **ana host'a götürür**, bu istisna orada **kalmasına izin verir**.
 
+#### 5.6.2 KARAR (2026-09-15, architect — "2FA'sız doktor kalıcı olarak kilitleniyor" blocker'ı)
+
+**Bulgu (kod okumasıyla doğrulandı):** 2FA'sı **etkin olmayan** bir doktor `/doctor`a girdiğinde
+`GET /doctor/me` `403 TWO_FACTOR_REQUIRED` döner; `doctor-portal-shell.tsx` (satır 69-86) bir uyarı
+ekranı + `/hesabim/profil`e giden "Güvenlik Ayarlarına Git" butonu gösterir. Ancak
+`DoctorPortalRouteGuard`ın `isDoctorSession` koşulu (`auth.user.doctorProfileId != null`) **2FA
+durumundan bağımsızdır** — 2FA'sı olmayan doktor da "doktor oturumu" sayılır ve `/hesabim/profil`
+istisna listesinde **olmadığı için** anında `/doctor`a geri fırlatılır. **Deadlock:** doktor 2FA'yı
+**hiçbir zaman** kuramaz, portala **hiçbir zaman** giremez.
+
+**REDDEDİLDİ — `isDoctorSharedRouteException`a `/hesabim/profil` eklemek.** §5.6.1'in bağlayıcı
+kapsam kuralı gereği bu reddin tarihli kaydı burada tutulur. Üç gerekçe:
+1. **Kapsam orantısız.** `/hesabim/profil` 2FA'dan **çok daha fazlasıdır** (şifre değiştirme, aktif
+   oturum yönetimi, avatar/ad, hesap formu). Doktoru bir 2FA kurulumu uğruna bu sayfanın
+   **tamamına** açmak, "hekim ana vitrinde kalamaz" kuralını geniş ölçüde deler; §5.6.1'in
+   açıkça yasakladığı *kolaylık gerekçesiyle liste büyütme* örüntüsüdür.
+2. **Subdomain modunda zaten çalışmaz.** `/hesabim/profil` bir `(site)` sayfasıdır ve YALNIZCA ana
+   host'ta render edilir (§5.6); doktor ise doktor subdomain'indedir. İstisna eklense bile akış
+   cross-origin bir tam sayfa gezinmeye dönüşür, bellek-içi access token kaybolur ve oturum ana
+   host'ta yalnızca refresh cookie ile yeniden kurulur (§6) — bir **blocker** düzeltmesi için
+   kabul edilemez kırılganlık. §5.6.1'deki `/consultation/{id}` istisnası bu bedeli **klinik iş
+   yüzeyi** olduğu için ödemişti; bir ayar sayfası aynı gerekçeye sahip **değildir**.
+3. **Guard bir güvenlik-hassas dar yüzeydir.** Her yeni istisna denetlenmesi gereken yüzeyi büyütür;
+   burada istisnaya **hiç gerek yoktur** (bkz. aşağıdaki karar).
+
+**KARAR — 2FA kurulumu `/doctor`un İÇİNE gömülür; guard'a DOKUNULMAZ.**
+`doctor-portal-shell.tsx`'in `TWO_FACTOR_REQUIRED` dalı, "başka sayfaya git" linki yerine
+**satır içi** bir 2FA kurulum paneli render eder (QR + `otpauthUrl` + 6 haneli TOTP girişi + yedek
+kodlar). Mevcut `securityApi.setupTwoFactor()` / `enableTwoFactor()` **aynen** kullanılır —
+**yeni backend ucu YOK, backend'de hiçbir değişiklik YOK** (uçlar `authenticate` dışında şart
+aramaz, §9.7.7 KARAR K madde 2 ile birebir tutarlı; `app.ts:226` + `security.routes.ts` başlığı
+yeniden doğrulandı). Sonuç: **doktor `/doctor`dan hiç ayrılmaz**, `isDoctorSharedRouteException`
+**`/consultation/{id}` ile sınırlı kalır**, `proxy.ts` değişmez.
+
+**Çıkış koşulu (implementasyon için BAĞLAYICI — `refreshSession()` TEK BAŞINA YETMEZ):**
+`DoctorPortalShell`in dalı `useAuth().user.twoFactorEnabled`e değil,
+`useDoctorPortalContext().error?.code`a bakar; bu hata `DoctorPortalProvider`ın `GET /doctor/me`
+fetch'inden gelir ve `refreshSession()` o fetch'i **yeniden tetiklemez**. Doğru sıra:
+`enableTwoFactor()` → yedek kodları **kullanıcıya göster** → `refreshSession()` →
+`useDoctorPortalContext().retry()` (provider'ın `retryToken`'ını artırır, `/doctor/me` yeniden
+çekilir) → dal doğal olarak kapanır. **Yedek kodlar gösterilmeden otomatik geçiş YAPILMAZ** —
+kodlar bir daha gösterilemez (`/enable` her etkinleştirmede seti sıfırlar); geçiş, kullanıcının
+açık bir "Portala Gir" eylemiyle olur.
+
+**Kod tekrarı kararı (dar tutulur):** 2FA kurulum mantığı bugün `app/admin/settings/security/page.tsx`
+ve `app/[lang]/(site)/hesabim/profil/page.tsx`'te **zaten ikizdir** ("BİREBİR aynı mantık" notu,
+`profil/page.tsx:143`). Üçüncü bir kopya **kabul edilmez**; bu turda yalnızca **enable yolu**
+(`setup → QR → kod → enable → yedek kodlar`) `frontend/src/components/site/security/two-factor-setup-panel.tsx`
+adlı `.site-scope` uyumlu paylaşılan bir bileşene çıkarılır ve `doctor-portal-shell.tsx` onu tüketir.
+`disable` / `regenerate` / oturum yönetimi bu bileşene **girmez**. `hesabim/profil`in bu bileşene
+taşınması **bu turun kapsamı DIŞINDADIR** (dialog tabanlı akışı ve komşu disable/regenerate
+dialoglarıyla bağı var; çalışan bir sayfayı blocker düzeltmesi sırasında riske atmayız) — ayrı bir
+`chore/two-factor-panel-dedupe` görevine bırakılır. `admin/settings/security` **hiçbir zaman**
+bir `components/site/*` bileşenini tüketmez (ayrı token sistemi, `design-notes-telehealth.md` §12.6).
+
 ---
 
 ## 6. KARAR: Host şeması ve oturum çerezi — **deneyle doğrulandı**

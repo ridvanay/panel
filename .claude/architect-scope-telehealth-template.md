@@ -1282,6 +1282,13 @@ akışı ve 2FA kurulum uçları (`/admin/settings/security/2fa/*`, **rol şart�
    `user.twoFactorEnabled === true` şartını **route seviyesinde** arar; sağlanmazsa
    **`403 TWO_FACTOR_REQUIRED`** + kurulum yönlendirmesi. Yeni DB kolonu YOK, yeni 2FA
    ucu YOK.
+   **Güncelleme (2026-09-15, architect):** "kurulum yönlendirmesi" artık `/hesabim/profil`e
+   **link DEĞİLDİR** — `DoctorPortalRouteGuard` 2FA'sız doktoru o sayfadan `/doctor`a geri
+   fırlattığı için bu kalıcı bir kilitlenme üretiyordu. Kurulum akışı `/doctor`un İÇİNE,
+   `doctor-portal-shell.tsx`'in `TWO_FACTOR_REQUIRED` dalına **satır içi** gömülür; mevcut
+   `/admin/settings/security/2fa/*` uçları aynen kullanılır (**backend değişikliği YOK**, bu
+   maddenin "rol şartı YOK" tespiti yeniden doğrulandı). Karar, gerekçe ve reddedilen alternatif
+   için bkz. `.claude/architect-scope-doctor-subdomain.md` **§5.6.2**.
 3. **Portal rotaları panel DEĞİLDİR** — doktor bir admin kullanıcısı değildir:
    frontend `/{lang}/doctor/**` ve `/{lang}/patient/**` (site tarafı),
    backend `/api/v1/doctor/*` ve `/api/v1/patient/*`. `/admin/telehealth/*`

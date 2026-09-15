@@ -3937,3 +3937,66 @@ demo-pay'in YİNE `404` döndüğü) regresyon senaryosu bu turda e2e/tarayıcı
 KOŞULMADI — görev talimatı bunu backend-agent'ın KENDİ vitest testlerinin (`tests/integration/
 telehealth-demo-payment.test.ts`, önceki turda 15/15 yeşil olarak doğrulanmıştı) zaten kapsadığını
 not ederek bilinçli olarak bu turun e2e kapsamı DIŞINDA bıraktı — tekrar yazılmadı.
+
+## Doktor Girişi 2FA Kilitlenme (Deadlock) Düzeltmesi — SON adım (bu turda eklendi)
+
+`.claude/architect-scope-doctor-subdomain.md` §5.6.2 "2FA'sı olmayan doktor kalıcı olarak
+kilitleniyor" blocker'ı — architect → frontend-agent → security-agent tamamlandı sonrası qa-agent
+doğrulaması. `doctor-portal-shell.tsx`nin `TWO_FACTOR_REQUIRED` dalı artık `/hesabim/profil`e
+yönlendiren bir link YERİNE `components/site/security/two-factor-setup-panel.tsx` ile SATIR İÇİ
+2FA kurulumu sunuyor; `doctor-portal-route-guard.tsx`teki `isDoctorSharedRouteException` (§5.6.1)
+BİLİNÇLİ OLARAK genişletilMEDİ (kod incelemesiyle teyit edildi — desen HÂLÂ yalnızca
+`/^\/(?:[a-z]{2}\/)?consultation\/[^/]+/`).
+
+**Yeni dosya:** `frontend/tests/e2e/telehealth-doctor-2fa-setup.spec.ts` — kendi izole fixture
+doktorları (`createAdminDoctorFixture` + `getFixtureUserToken`, 2FA'sı OLMAYAN doktor için
+`setUserTwoFactorEnabledDirectly`/`setupAndEnableTwoFactorForSelf` BİLİNÇLİ olarak ÇAĞRILMAZ —
+taze `/auth/register` kullanıcısının `twoFactorEnabled` varsayılanı zaten `false`).
+
+| # | Ne test edildi | Durum |
+|---|---|---|
+| 1 | 2FA'sı olmayan doktor `/login`'den (2FA challenge YOK) düz giriş yapınca doğrudan `/doctor`'a düşer, HARİCİ bir sayfaya (`/hesabim/profil`) GİTMEZ | ✅ Geçiyor |
+| 2 | Uyarı ekranında QR kod (`<img>`, `data:` URI kaynağı) VE manuel secret metni GERÇEKTEN render ediliyor | ✅ Geçiyor |
+| 3 | Panel elemanlarının (QR/metin/input/buton) bounding box'ları ÇAKIŞMIYOR (önceki turdaki görsel hatanın — `max-w-sm` → `max-w-lg` — regresyon kontrolü) | ✅ Geçiyor |
+| 4 | GERÇEK bir TOTP kodu (`otplib`, backend'in `otpauthUrl`'sinden çıkarılan `secret`) ile doğrulama başarılı; yedek kodlar GÖRÜNÜYOR (benzersiz, boş değil) | ✅ Geçiyor |
+| 5 | "Portala Gir"e tıklayınca SAYFA YENİLEMEDEN (window nesnesine konan marker tıklamadan SONRA da kalıcı) doğrudan doktor konsoluna (Randevularım/Kazançlarım/Profilim) geçiliyor, URL hâlâ `/doctor` | ✅ Geçiyor |
+| 6 (regresyon) | 2FA'sı ZATEN etkin bir doktor normal girişte uyarı ekranı/QR kod GÖRMEDEN doğrudan doktor konsoluna erişiyor — guard hâlâ doğru çalışıyor | ✅ Geçiyor |
+
+**Kod incelemesi (ek test GEREKMEDİ):** `doctor-portal-route-guard.tsx::isDoctorSharedRouteException`
+hâlâ YALNIZCA `/consultation/{id}`'i kapsıyor; §5.6.2'nin "guard'a dokunulmaz" kararı doğrulandı.
+
+**Regresyon taraması (aynı turda GERÇEKTEN koşuldu, izole/tekrar koşumlarla rate-limit
+gürültüsünden ayıklandı):**
+- `patient-portal.spec.ts` — 14/14 ✅.
+- `telehealth-multi-slot-booking.spec.ts` — 10/10 ✅ (madde 27 API+UI seviyesi dahil — 2FA'sı
+  kapalı doktorun `/doctor`/`/doctor/profile`de "dürüst bir uyarı" gördüğü senaryo, bu turun
+  değişikliğiyle DOĞRUDAN örtüşüyor ve hâlâ yeşil).
+- `telehealth-doctor-session-guard.spec.ts` — 7/8 ✅ (1 `test.fixme`, ÖNCEDEN bilinen/belgelenmiş
+  bir frontend-agent bulgusu, bu turla İLGİSİZ).
+- `telehealth-portal-isolation.spec.ts` — **madde 1 KARARSIZ (flaky), bu turun kapsamı DIŞINDA bir
+  nedenle.** Art arda tekrarlanan koşumlarda önce `429 RATE_LIMITED` (paylaşımlı `saas_e2e` booking
+  hız sınırı — bu dosyanın kendi `beforeAll`'ı 3 booking oluşturuyor, qa-agent'ın aynı oturumda çok
+  sayıda telehealth suite'i art arda koşması kotayı tüketti), sonra (tam rate-limit soğuma
+  sonrasında) test 60 saniyelik zaman aşımına uğradı ve hata anındaki sayfa görüntüsü doktor
+  akışıyla İLGİSİZ bir ekrandı ("QA E2E Admin" hesabıyla `/dashboard` "Organizasyonlarınız"/org
+  seçim ekranı — bu dosyanın `beforeAll`'ında paylaşımlı `adminPage`/`editorPage`'in kendi state'i,
+  `madde 1`in doktor/2FA akışıyla kod yolu OLARAK kesişmiyor: `madde 1` `setupAndEnableTwoFactorForSelf`
+  ile ÖNCEDEN 2FA açılmış bir doktor kullanıyor, bu turun YENİ `TwoFactorSetupPanel` kod yolunu HİÇ
+  tetiklemiyor). **backend-agent'a not:** bu "Organizasyonlarınız" org-seçim ekranı/`/dashboard`
+  davranışı telehealth/doktor kapsamının tamamen DIŞINDA, ayrı bir SaaS çok-kiracılı modül gibi
+  görünüyor — kök nedeni (muhtemelen qa-agent'ın bu oturumda backend'i elle yeniden başlatmasının
+  admin oturum/organizasyon durumunu etkilemesi VEYA paylaşımlı `saas_e2e`'nin önceki turlardan
+  kalan organizasyonsuz bir admin fixture'ı biriktirmesi) bu turun kapsamı dışında araştırılmadı;
+  CI'daki TEMİZ bir ortamda (taze `saas_e2e`, tek suite koşumu) yeniden değerlendirilmeli.
+  **Bu turun 2FA değişikliğiyle İLİŞKİLİ bir regresyon DEĞİLDİR** — yukarıdaki özel
+  `telehealth-doctor-2fa-setup.spec.ts` madde 6 GÜVENLİ bir izolasyonla AYNI "2FA'sı zaten etkin
+  doktor" senaryosunu doğrudan ve TEMİZ bir şekilde yeşil doğruluyor.
+
+**Ortam notu (bu tur, qa-agent'ın kendi alanı):** e2e backend'i (`4001`) ve frontend dev sunucusu
+(`3100`, `NEXT_PUBLIC_DOCTOR_URL=http://doktor.siteadi.localhost:3100` dahil §6.4 matrisiyle
+BİREBİR) qa-agent tarafından elle başlatıldı (`saas_e2e` migration'ları zaten güncel, DB'ye
+dokunulmadı) — playwright.config.ts'in kendi `webServer`'ı bu Windows ortamında Node'un
+`*.localhost`'u çözememesi nedeniyle (dosya başlığındaki bilinen kısıt) hazır-mı probunda yerel
+olarak zaman zaman kararsızdı; `E2E_SKIP_WEBSERVER=1` ile devre dışı bırakılıp süreçler elle
+yönetildi. CI'da devops-agent'ın kurduğu pipeline zaten backend/frontend'i AYRI adımlarla başlattığı
+için bu kısıt CI'ı etkilemez.
