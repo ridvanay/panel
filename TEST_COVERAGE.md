@@ -4000,3 +4000,69 @@ dokunulmadı) — playwright.config.ts'in kendi `webServer`'ı bu Windows ortam�
 olarak zaman zaman kararsızdı; `E2E_SKIP_WEBSERVER=1` ile devre dışı bırakılıp süreçler elle
 yönetildi. CI'da devops-agent'ın kurduğu pipeline zaten backend/frontend'i AYRI adımlarla başlattığı
 için bu kısıt CI'ı etkilemez.
+
+## 4-parçalı kritik hata paketi — SON adım (devops+backend+frontend → qa-agent doğrulaması, bu turda eklendi, 2026-09-15)
+
+Kaynak: orkestratör görev talimatı. Kapsam — (1) kalıcı demo-ödeme ortamı (`docker-compose.dev.yml`,
+kök `.env`'in `COMPOSE_FILE` ile otomatik bindirmesi) + admin panel "Demo / Test Ödeme Modu"
+switch'i, (2) `join-meeting-button.tsx` disabled durumun GÖRSEL soluklaşması (`aria-disabled:
+opacity-50`), (3) `POST /appointments/bookings/{bookingId}/cancel` body şemasının `.nullish()`
+düzeltmesi, (4) YENİ `PATCH /admin/users/{userId}/password` ucu + `/admin/users` "Şifre Değiştir"
+dialog'u. **Dördü de GERÇEKTEN çalışan Docker yığınına (`siteadi.localhost:3000`/`:4000`,
+`saas_dev`) karşı doğrulandı** — bu turun 3 dosyası SADECE bu ortama karşı anlamlıdır (standart
+`saas_e2e`de `demoPaymentsSupported=false`/`aylin.kara@deneme.com` yok).
+
+**Ortam kurulumu (qa-agent'ın kendi alanı, bu turda):** Docker yığınında `qa-e2e-admin@example.com`
+fixture'ı `saas_dev`de daha önce YOKTU (yalnızca `saas_e2e`'de var) — `POST /auth/register` ile
+oluşturulup (varsayılan rol `USER`, çünkü `userCount>0`), `backend`'in kendi
+`npx prisma db execute --stdin --url=<saas_dev>` fixture desenİYLE (`telehealth-fixtures.ts`'teki
+"Directly" yardımcılarının AYNISI, YENİ bir mekanizma İCAT EDİLMEDİ) `role='ADMIN'`e terfi
+ettirildi — böylece `support/admin-session.ts::createAuthenticatedPage()` (sabit
+`ADMIN_EMAIL`/`ADMIN_PASSWORD`) Docker ortamında da GERÇEK bir UI login'i yapabildi. Node tarafı
+fixture çağrıları (`support/api.ts`) `*.localhost`'u ÇÖZEMEDİĞİ için `E2E_API_URL=http://
+localhost:4000/api/v1` (tarayıcı sayfaları içinse `E2E_FRONTEND_URL=http://siteadi.localhost:3000`)
+kullanıldı — `playwright.config.ts`'in Node-tarafı hazır-mı probu İLE AYNI kısıt/çözüm
+(`E2E_SKIP_WEBSERVER=1`, dosyalar `--no-deps` ile, `getCachedAdminSession()`'ın kendi fallback'i).
+
+| # | Madde | Doğrulama | Durum |
+|---|---|---|---|
+| 1 | Demo ödeme switch'i tıklanabilir (`demoPaymentsSupported=true`) + toggle aç/kapa → ödeme sayfasında demo buton görünür/gizlenir + 403 API regresyonu | `telehealth-admin-demo-payment-toggle.spec.ts` (MEVCUT dosya, DEĞİŞTİRİLMEDİ) — Docker'a karşı 3/3 | ✅ Geçiyor |
+| 2a | `PENDING` booking'de "Toplantıya Katıl" FONKSİYONEL disabled (`aria-disabled`/`pointer-events: none`) VE GÖRSEL OLARAK soluk (`getComputedStyle().opacity` < 1, ölçülen ≈0.5) | `telehealth-join-button-visual-and-cancel.spec.ts` (YENİ) | ✅ Geçiyor |
+| 2b | Demo ödemeyle PAID + katılım penceresi açıkken buton AKTİF/tam opak (opacity=1) — regresyon: aktif durum bozulmadı | `telehealth-join-button-visual-and-cancel.spec.ts` (YENİ) | ✅ Geçiyor |
+| 3 | `PENDING` booking iptali — `confirm` onaylanır → **422 DEĞİL 200**, booking rozeti sayfa YENİLENMEDEN "Süresi Doldu" (EXPIRED, nötr ton) olur, "Rezervasyonu İptal Et" butonu KAYBOLUR | `telehealth-join-button-visual-and-cancel.spec.ts` (YENİ) | ✅ Geçiyor |
+| 4 | `/admin/users`de "Şifre Değiştir" → yeni/onay şifre → `toast.success("Şifre güncellendi.")` → ESKİ şifreyle login 401, YENİ şifreyle login 200 | `admin-set-user-password.spec.ts` (YENİ, hedef: `aylin.kara@deneme.com`) | ✅ Geçiyor |
+
+**Madde 4 — paylaşımlı demo hesabın şifresi geri yüklendi (görev talimatının ZORUNLU kapanış
+adımı):** `admin-set-user-password.spec.ts::afterAll` her koşulda (test başarılı/başarısız fark
+etmez) `aylin.kara@deneme.com`ı `Demo12345!`ye geri yazar — bu turda test geçti VE `afterAll` da
+hatasız tamamlandı; `audit_logs` tablosunda `admin_users.password_reset` için hedef kullanıcıya ait
+İKİ ardışık satır (geçici şifre → orijinal şifre, 1 saniye arayla) doğrulandı. **Sonraki bir turda bu
+hesapla login denenirse `Demo12345!` KULLANILMALIDIR** (değişmedi).
+
+**Bilinçli test tasarım notu (madde 2/2b):** `markAppointmentJoinableDirectly()` (mevcut fixture,
+YALNIZCA ödeme/durum önkoşulunu karşılar) TEK BAŞINA yetersizdi — randevunun `startsAt`i hâlâ günler
+sonrasına ait bir slot olduğundan katılım penceresi açılmıyordu (buton "PAID ama pencere kapalı"
+outline/rozetli dalına düşüyordu). Düzeltme: `shiftAppointmentIntoJoinWindowDirectly()` (mevcut,
+`patient-portal.spec.ts::bookingUpcoming` İLE AYNI fixture) ile randevu ZAMANI da pencereye kaydırıldı
+— bu bir uygulama bug'ı DEĞİL, test fixture'ının eksik bir adımıydı, düzeltildi.
+
+**Regresyon taraması (bu turda GERÇEKTEN koşuldu):**
+- `telehealth-admin-demo-payment-toggle.spec.ts` — Docker'a karşı 3/3 ✅ (yukarıda, madde 1).
+- `patient-portal.spec.ts` — standart e2e ortamına (`saas_e2e`, backend `4001`, frontend `3100`)
+  karşı 14/14 ✅ (Docker'a karşı KOŞULAMADI — bu dosyanın `postStripeTelehealthBookingPaid()`
+  fixture'ı `backend/.env`'deki GERÇEK `STRIPE_WEBHOOK_SECRET`i gerektirir, bu qa-agent'ın erişimine
+  KAPALI/credential-materialization kısıtı altında — bu bir uygulama regresyonu DEĞİL, bir ortam
+  erişim kısıtıdır, standart izole ortamda tam yeşil).
+- `telehealth-multi-slot-booking.spec.ts` — standart e2e ortamına karşı 10/10 ✅ (tek dosya, izole
+  koşum). **qa-agent bulgusu (ortam, uygulama DEĞİL):** bu dosya `patient-portal.spec.ts` İLE AYNI
+  Playwright çalıştırmasında BİRLİKTE koşulduğunda madde 21 (`POST /appointments/bookings`) paylaşımlı
+  IP-bazlı hız sınırına çarpıp boş/hatalı bir booking yanıtıyla başarısız oldu — dosyalar TEK TEK
+  koşulduğunda (üretim ortamındaki gibi ayrı CI job'ları/dosyaları) sorun YOK. Bilinen "5/dk hız
+  sınırı + çoklu suite aynı IP" karakteristiğiyle TUTARLI (bkz. bu dosyanın YUKARIDAKİ turlarındaki
+  AYNI not) — yeni bir regresyon değil.
+
+**Kontrat notu (architect'e bilgi):** `docs/architecture/openapi.yaml`in `PATCH /admin/users/
+{userId}/password` (madde 4, YENİ uç) ve `POST /appointments/bookings/{bookingId}/cancel` gövde
+şeması (madde 3, `.nullish()`) güncellemeleri backend-agent tarafından zaten yapıldı (bu turun git
+diff'inde görüldü) — qa-agent bu kontrata karşı davranışı doğruladı, EK bir kontrat sapması
+BULUNMADI.

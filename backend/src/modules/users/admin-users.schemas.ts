@@ -36,3 +36,13 @@ export const UpdateAdminUserRoleRequestSchema = z.object({
 export const UpdateAdminUserStatusRequestSchema = z.object({
   status: SiteUserStatusSchema,
 });
+
+/**
+ * `PATCH /admin/users/{userId}/password` gövdesi — minimum uzunluk kuralı
+ * `users.schemas.ts::ChangePasswordRequestSchema`/`auth.schemas.ts::RegisterRequestSchema` ile
+ * AYNI (8 karakter); burada YENİ bir kural İCAT EDİLMEZ. `max(200)` yalnızca savunma-derinliği
+ * (argon2 hash'leme maliyetiyle DoS'u önler) — mevcut şifre şemalarında YOK, burada BİLİNÇLİ eklendi.
+ */
+export const SetAdminUserPasswordRequestSchema = z.object({
+  password: z.string().min(8, "Şifre en az 8 karakter olmalı.").max(200),
+});

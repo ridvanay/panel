@@ -181,7 +181,7 @@ export function JoinMeetingButton({
             role="button"
             aria-disabled="true"
             tabIndex={0}
-            className={cn(buttonVariants({ size }), "rounded-[var(--site-radius)] pointer-events-none")}
+            className={cn(buttonVariants({ size }), "rounded-[var(--site-radius)] pointer-events-none aria-disabled:opacity-50")}
           />
         }
       >

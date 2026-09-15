@@ -308,6 +308,94 @@ describe("telehealth booking — iptal (§9.7.3, POST .../cancel)", () => {
   });
 });
 
+/**
+ * Regresyon (backend-agent): frontend `patient-booking-detail-panel.tsx::handleCancel()`
+ * `telehealthApi.cancelBooking(booking.id, accessToken)`i 3. parametre (`input`) HİÇ
+ * VERMEDEN çağırıyor → `client.ts::request()` `options.body !== undefined` değilse
+ * Content-Type HİÇ set etmiyor ve `body`yi `fetch()`e `undefined` geçiriyor — istek TAMAMEN
+ * gövdesiz/Content-Type'sız gidiyor. Fastify böyle bir istekte `request.body`yi (`undefined`
+ * DEĞİL) `null` bırakır; `CancelBookingRequestSchema`in dış objesi `.optional()` İLE
+ * kayıtlıysa bu `null`u REDDEDER (422) — `.nullish()` (bkz. telehealth.routes.ts) ile düzeltildi.
+ * AYRI `describe`/`app`: `POST /appointments/bookings`'in 5/dk route-level limiti üstteki
+ * describe'ın bookinglerinle PAYLAŞILMASIN (bu dosyanın üst yorumu İLE AYNI gerekçe).
+ */
+describe("telehealth booking — iptal gövde varyantları (regresyon: eksik/boş/dolu body)", () => {
+  let app: FastifyInstance;
+  let adminToken: string;
+
+  beforeAll(async () => {
+    app = await buildTestApp();
+    await resetDatabase(app.prisma);
+    await setTelehealthModuleEnabled(app, true);
+    const admin = await registerTestUser(app, { email: `telehealth-booking-cancel-body-admin-${crypto.randomUUID()}@example.com` });
+    adminToken = admin.accessToken;
+  });
+
+  afterAll(async () => {
+    await resetDatabase(app.prisma);
+    await app.close();
+  });
+
+  it("body TAMAMEN eksik (Content-Type/gövde YOK — frontend'in gerçekte gönderdiği istek) → 200, RED DEĞİL", async () => {
+    const { doctor } = await createDoctorWithAvailability(app);
+    const startsAt = nextMondayNineAmUtc();
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/v1/appointments/bookings",
+      payload: bookingPayload(doctor.slug, [startsAt]),
+    });
+    const { bookingId, accessToken } = created.json().data;
+
+    const cancelRes = await app.inject({ method: "POST", url: `/api/v1/appointments/bookings/${bookingId}/cancel?t=${accessToken}` });
+    expect(cancelRes.statusCode).toBe(200);
+    expect(cancelRes.json().data.paymentStatus).toBe("EXPIRED");
+  });
+
+  it("boş obje `{}` gövdesiyle iptal → 200", async () => {
+    const { doctor } = await createDoctorWithAvailability(app);
+    const startsAt = nextMondayNineAmUtc();
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/v1/appointments/bookings",
+      payload: bookingPayload(doctor.slug, [startsAt]),
+    });
+    const { bookingId, accessToken } = created.json().data;
+
+    const cancelRes = await app.inject({ method: "POST", url: `/api/v1/appointments/bookings/${bookingId}/cancel?t=${accessToken}`, payload: {} });
+    expect(cancelRes.statusCode).toBe(200);
+    expect(cancelRes.json().data.paymentStatus).toBe("EXPIRED");
+  });
+
+  it("`{ reason }` gövdesiyle iptal → 200, `cancelReason` KAYDEDİLİR", async () => {
+    const { doctor } = await createDoctorWithAvailability(app);
+    const startsAt = nextMondayNineAmUtc();
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/v1/appointments/bookings",
+      payload: bookingPayload(doctor.slug, [startsAt]),
+    });
+    const { bookingId } = created.json().data;
+
+    await app.inject({
+      method: "POST",
+      url: `/api/v1/admin/telehealth/bookings/${bookingId}/mark-paid`,
+      headers: authHeader(adminToken),
+      payload: { reason: "test" },
+    });
+
+    const cancelRes = await app.inject({
+      method: "POST",
+      url: `/api/v1/appointments/bookings/${bookingId}/cancel`,
+      headers: authHeader(adminToken),
+      payload: { reason: "Hasta talebi üzerine" },
+    });
+    expect(cancelRes.statusCode).toBe(200);
+
+    const appointment = await app.prisma.appointment.findFirstOrThrow({ where: { bookingId } });
+    expect(appointment.cancelReason).toBe("Hasta talebi üzerine");
+  });
+});
+
 describe("telehealth booking — GET /appointments/:id ve POST .../cancel booking token ile erişim (qa-agent kritik bug düzeltmesi)", () => {
   // qa-agent bulgusu: `POST /appointments/bookings` istemciye YALNIZCA booking'in KENDİ
   // `accessToken`'ını döner (randevunun KENDİ token'ını DEĞİL) — "Toplantıya Katıl" akışı bu

@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import {
   AlertCircle,
   Download,
+  KeyRound,
   Link2,
   RotateCcw,
   Search,
@@ -20,6 +21,7 @@ import * as usersAdminApi from "@/lib/api/users-admin";
 import * as telehealthApi from "@/lib/api/telehealth";
 import type { AdminUser, SiteRole, SiteUserStatus } from "@/lib/api/types";
 import { LinkDoctorDialog } from "@/components/admin/telehealth/link-doctor-dialog";
+import { SetUserPasswordDialog } from "@/components/admin/users/set-user-password-dialog";
 import { useModules } from "@/context/modules-context";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -91,6 +93,12 @@ export default function AdminUsersPage() {
 
   const [pendingRoleChange, setPendingRoleChange] = useState<PendingRoleChange | null>(null);
   const [roleUpdating, setRoleUpdating] = useState(false);
+
+  // "Şifre Değiştir" — bkz. `set-user-password-dialog.tsx`. `SiteRole.ADMIN`-only backend uçtur
+  // (`requireSiteRole(...ROLES_ADMIN)`, dosya-geneli) — bu sayfanın KENDİSİ zaten sidebar'da
+  // (`components/admin/sidebar.tsx::navItems`) SADECE ADMIN'e gösterilir, ek bir rol denetimine
+  // burada gerek YOKTUR (MANAGER bu sayfaya hiç ulaşamaz, `listAdminUsers()` bile 403 alır).
+  const [passwordChangeUser, setPasswordChangeUser] = useState<AdminUser | null>(null);
 
   const [pendingStatusChange, setPendingStatusChange] = useState<AdminUser | null>(null);
   const [statusUpdating, setStatusUpdating] = useState(false);
@@ -784,6 +792,19 @@ export default function AdminUsersPage() {
                                     <Button
                                       variant="ghost"
                                       size="icon-sm"
+                                      aria-label="Şifre Değiştir"
+                                      onClick={() => setPasswordChangeUser(user)}
+                                    >
+                                      <KeyRound className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Şifre Değiştir</TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                  <TooltipTrigger render={<span tabIndex={0} className="inline-flex" />}>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon-sm"
                                       aria-label={tooltipLabel}
                                       disabled={statusDisabled}
                                       onClick={() => setPendingStatusChange(user)}
@@ -950,6 +971,14 @@ export default function AdminUsersPage() {
         confirmText="Geri Yükle"
         loading={restoreLoading}
         onConfirm={handleConfirmRestore}
+      />
+
+      <SetUserPasswordDialog
+        open={passwordChangeUser !== null}
+        onOpenChange={(open) => {
+          if (!open) setPasswordChangeUser(null);
+        }}
+        user={passwordChangeUser}
       />
 
       <LinkDoctorDialog

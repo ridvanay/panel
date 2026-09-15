@@ -157,6 +157,15 @@ export interface UpdateUserStatusRequest {
   status: Exclude<SiteUserStatus, "DELETED">;
 }
 
+/**
+ * `PATCH /admin/users/{userId}/password` — SÜPER YÖNETİCİ (`SiteRole.ADMIN`) tarafından bir
+ * kullanıcının şifresini MANUEL olarak belirlemesi (kullanıcının kendi şifre değiştirme akışıyla
+ * KARIŞTIRILMAZ, bkz. `ChangePasswordRequest`). Min 8 / max 200 karakter — kısa şifre 422 döner.
+ */
+export interface SetAdminUserPasswordRequest {
+  password: string;
+}
+
 export interface Organization {
   id: string;
   name: string;

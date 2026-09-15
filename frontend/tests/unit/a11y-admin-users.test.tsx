@@ -18,6 +18,9 @@ vi.mock("@/lib/api/users-admin", () => ({
   updateUserStatus: vi.fn(),
   deleteUser: vi.fn(),
   restoreUser: vi.fn(),
+  // "Şifre Değiştir" (`set-user-password-dialog.tsx`) — bu dosyanın testleri dialog'u AÇMIYOR,
+  // ama modül aynı `vi.mock` altında `SetUserPasswordDialog` tarafından da tüketiliyor.
+  setAdminUserPassword: vi.fn(),
 }));
 
 let mockUser: User;

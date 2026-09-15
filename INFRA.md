@@ -124,6 +124,39 @@ build-arg'larla (`NODE_ENV=production`, demo bayrağı yok) yeniden build edilir
 aynı olduğu için bir önceki (dev override'lı) katman üzerine yazılır, kalıcı bir "kirlenme"
 oluşmaz.
 
+### Kalıcı yerel etkinleştirme (bu makineye özel, opsiyonel, kök `.env`)
+
+`docker compose -f docker-compose.yml -f docker-compose.dev.yml up ...`'ı her seferinde
+elle yazmak istemeyen bir geliştirici, kök dizine (repo köküyle **aynı** dizin, `backend/.env`/
+`frontend/.env.local`'dan **AYRI**) şu içerikte bir `.env` dosyası oluşturabilir — Docker Compose
+kök `.env`'i **otomatik** okur ve `COMPOSE_FILE` değişkenini "bu proje dizininde hangi compose
+dosyaları varsayılan olarak birleştirilsin" olarak kullanır:
+
+```
+COMPOSE_PATH_SEPARATOR=;
+COMPOSE_FILE=docker-compose.yml;docker-compose.dev.yml
+```
+
+**Windows'a özgü kritik ayrıntı (gerçekten test edildi):** Windows'ta Docker Compose CLI'ı
+`COMPOSE_FILE` ayracı olarak `:`'yi **kabul etmez** (sürücü harfi/yol ayracıyla çakışır —
+`docker-compose.yml:docker-compose.dev.yml` tek bir dosya adı gibi yorumlanıp "dosya bulunamadı"
+hatası verir). `COMPOSE_PATH_SEPARATOR=;` açıkça set edilip ayraç `;` yapılmalı.
+
+Bu dosyayla düz `docker compose up --build -d` (**hiçbir `-f` bayrağı olmadan**) çalıştırıldığında
+backend `NODE_ENV=development` + `ENABLE_DEMO_PAYMENTS=true`, frontend
+`NEXT_PUBLIC_ENABLE_DEMO_PAYMENTS=true` ile ayağa kalkar; doğrulandı: `docker compose ps` →
+backend/frontend `healthy`, `curl http://localhost:4000/api/v1/settings` →
+`"demoPaymentsSupported":true,"demoPaymentsEnabled":true`.
+
+**Bu dosya kök `.gitignore`'a eklenmiştir ve repoya GİRMEZ** — sadece onu oluşturan geliştiricinin
+kendi makinesinde/checkout'unda yaşar. Repoyu yeni klonlayan/başka bir geliştirici bu dosyaya
+sahip **olmaz**, dolayısıyla onlar için varsayılan `docker compose up` hâlâ prod-parity'dir (demo
+modu kapalı) — yukarıdaki "**Neden varsayılan `docker compose up`'ta YOK**" kararı böylece
+korunur; bu mekanizma o kararı **projeye değil, yalnızca isteyen bireysel makineye** opt-in
+yapmanın bir yoludur. `docker-compose.override.yml` **kasıtlı olarak kullanılmadı** — bu dosya adı
+Compose tarafından proje genelinde (ekstra `-f` bayrağı gerektirmeden, herkes için) otomatik
+yüklenir ve prod-parity varsayılanını sessizce/kalıcı olarak bozardı.
+
 ## S3/CDN depolama başlıkları — bilinen sınırlama (`X-Content-Type-Options: nosniff`)
 
 **Durum: dokümante edilmiş bilinen sınırlama, düzeltilmedi — yeni bir CDN/Response Headers

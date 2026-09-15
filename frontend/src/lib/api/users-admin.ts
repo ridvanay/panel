@@ -4,6 +4,7 @@ import type {
   CreateAdminUserRequest,
   CreateAdminUserResponse,
   Page,
+  SetAdminUserPasswordRequest,
   SiteRole,
   SiteUserStatus,
 } from "./types";
@@ -49,6 +50,18 @@ export function updateUserStatus(
   status: Exclude<SiteUserStatus, "DELETED">
 ): Promise<AdminUser> {
   return apiFetch<AdminUser>(`/admin/users/${userId}/status`, { method: "PATCH", body: { status } });
+}
+
+/**
+ * `PATCH /admin/users/{userId}/password` — SÜPER YÖNETİCİ'nin bir kullanıcının şifresini MANUEL
+ * belirlemesi. `SetAdminUserPasswordRequest` bkz. `types.ts`. Yanıt gövdesinde şifre HİÇBİR
+ * YERDE bulunmaz, güncellenmiş `AdminUser` döner.
+ */
+export function setAdminUserPassword(userId: string, password: string): Promise<AdminUser> {
+  return apiFetch<AdminUser>(`/admin/users/${userId}/password`, {
+    method: "PATCH",
+    body: { password } satisfies SetAdminUserPasswordRequest,
+  });
 }
 
 /**

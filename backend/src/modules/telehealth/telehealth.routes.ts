@@ -498,7 +498,12 @@ export async function telehealthRoutes(app: FastifyInstance) {
       schema: {
         params: BookingIdParamSchema,
         querystring: AccessTokenQuerySchema,
-        body: CancelBookingRequestSchema,
+        // `.nullish()` (`.optional()` DEĞİL) — Fastify, Content-Type/gövde HİÇ gönderilmeyen bir
+        // istekte `request.body`yi `undefined` DEĞİL `null` bırakır (bkz. frontend'in `body:
+        // undefined` geçtiği `apiFetch` çağrısı — düşük seviye `fetch()` bunu Content-Length: 0,
+        // Content-Type'sız bir isteğe çevirir). `z.object({...}).optional()` yalnızca `undefined`u
+        // kabul eder, `null`u REDDEDER (422) — bu regresyonun asıl nedeni budur.
+        body: CancelBookingRequestSchema.nullish(),
         response: { 200: ApiSuccessSchema(AppointmentBookingSchema) },
       },
     },
@@ -528,7 +533,7 @@ export async function telehealthRoutes(app: FastifyInstance) {
         }
         await app.prisma.appointment.updateMany({
           where: { bookingId: booking.id, status: { in: ["SCHEDULED", "IN_PROGRESS"] } },
-          data: { status: "CANCELLED", cancelledAt: new Date(), cancelReason: request.body.reason ?? null },
+          data: { status: "CANCELLED", cancelledAt: new Date(), cancelReason: request.body?.reason ?? null },
         });
       } else {
         throw new ConflictError("Bu rezervasyon iptal edilebilir bir durumda değil.");

@@ -1752,6 +1752,59 @@ paths:
         "409": { $ref: "#/components/responses/Conflict" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
 
+  /admin/users/{userId}/password:
+    parameters:
+      - name: userId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [AdminUsers]
+      summary: Kullanıcının şifresini MANUEL belirle (yalnızca ADMIN)
+      description: >
+        `POST /admin/users` bir kullanıcı oluştururken kullanılamaz rastgele bir
+        şifre atar ve gerçek şifre belirleme e-postayla (`emailStatus`) yapılır —
+        SMTP çalışmıyorsa hesaba HİÇBİR ŞEKİLDE giriş yapılamaz. Bu uç, ADMIN'in
+        şifreyi doğrudan (e-posta akışına bağımlı OLMADAN) belirlemesini sağlayan
+        çıkış yoludur.
+
+
+        **Yan etki:** hedef kullanıcının TÜM refresh token'ları (mevcut oturumlar
+        DAHİL — "bu cihaz hariç" ayrımı YOKTUR, bkz. `POST /users/me/change-password`
+        ile FARKI) iptal edilir; kullanıcı yeni şifreyle yeniden giriş yapmalıdır.
+        Şifre hash'i/düz metni ne yanıtta ne audit log metadata'sında görünür.
+
+
+        **Silme ile ilişkisi:** `PATCH /role`/`/status` ile TUTARLI olarak,
+        `DELETED` bir kullanıcının şifresi bu uçla değiştirilemez → `404`.
+
+
+        **Rol/durum kısıtlaması YOK:** şifre değişimi ayrıcalık yükseltmesi
+        olmadığından `assertNotLastActiveAdmin` benzeri bir kural burada uygulanmaz.
+
+
+        **Hız sınırı:** 20 istek / 1 dakika (route-level, `ADMIN_USERS_RATE_LIMIT`
+        — bkz. `POST /admin/users`). Aşım → 429.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SetAdminUserPasswordRequest" }
+      responses:
+        "200":
+          description: Güncellendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/AdminUser" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
   /admin/users/{userId}:
     parameters:
       - name: userId
@@ -11726,6 +11779,15 @@ components:
           description: >
             `DELETED` BİLEREK dışarıda bırakılmıştır (bkz. `DELETE /admin/users/{userId}`)
             — bu enum `AdminUser.status` okuma enum'undan DAR olmalıdır.
+
+    SetAdminUserPasswordRequest:
+      description: >
+        `PATCH /admin/users/{userId}/password` gövdesi. Minimum uzunluk kuralı
+        `ChangePasswordRequest`/`RegisterRequest` ile AYNIDIR (8 karakter).
+      type: object
+      required: [password]
+      properties:
+        password: { type: string, minLength: 8, maxLength: 200 }
 
     PermissionsMatrix:
       type: object

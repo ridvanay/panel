@@ -1,2 +1,10 @@
 .aider*
 node_modules/
+
+# Kök .env — Docker Compose'un otomatik okuduğu dosya (COMPOSE_FILE/COMPOSE_PATH_SEPARATOR gibi
+# yalnızca BU makineye/checkout'a özel compose davranışı için, bkz. INFRA.md "Demo ödeme modu —
+# kalıcı yerel etkinleştirme"). Backend/frontend uygulama secret'larıyla (backend/.env,
+# frontend/.env.local) KARIŞTIRILMAMALI — bu dosya sadece hangi compose dosyalarının
+# birleştirileceğini belirler, repoya GİRMEMELİDİR (aksi halde repoyu klonlayan herkese sessizce
+# demo ödeme modu yayılır — bkz. docker-compose.dev.yml'in dosya başı yorumu).
+.env

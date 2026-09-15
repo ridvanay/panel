@@ -23,6 +23,7 @@ import {
   AdminUserIdParamSchema,
   CreateAdminUserRequestSchema,
   ListAdminUsersQuerySchema,
+  SetAdminUserPasswordRequestSchema,
   UpdateAdminUserRoleRequestSchema,
   UpdateAdminUserStatusRequestSchema,
 } from "./admin-users.schemas";
@@ -250,6 +251,58 @@ export async function adminUsersRoutes(app: FastifyInstance) {
         targetType: "User",
         targetId: user.id,
         metadata: { from: previousStatus, to: status },
+        ipAddress: request.ip,
+      });
+
+      return reply.send(ok(toAdminUserDto(user)));
+    }
+  );
+
+  /**
+   * `PATCH /admin/users/{userId}/password` — Süper Yönetici (ROLES_ADMIN, dosya-geneli hook)
+   * hedef kullanıcının şifresini MANUEL belirler. SMTP çalışmadığında (`POST /admin/users`in
+   * `emailStatus: "failed"` senaryosu) hesabın kilitli kalmasını çözen çıkış yolu — `assertNotLastActiveAdmin`
+   * BURADA GEREKMEZ (şifre değişimi rolü/durumu değiştirmez).
+   */
+  server.patch(
+    "/:userId/password",
+    {
+      config: { rateLimit: ADMIN_USERS_RATE_LIMIT },
+      schema: {
+        params: AdminUserIdParamSchema,
+        body: SetAdminUserPasswordRequestSchema,
+        response: { 200: ApiSuccessSchema(AdminUserSchema) },
+      },
+    },
+    async (request, reply) => {
+      const target = await app.prisma.user.findUnique({ where: { id: request.params.userId } });
+      if (!target || target.status === "DELETED") throw new NotFoundError("Kullanıcı bulunamadı.");
+
+      const passwordHash = await hashPassword(request.body.password);
+
+      // Admin BAŞKA birinin şifresini değiştiriyor — "bu cihaz hariç" kavramı YOK
+      // (`users.routes.ts::/me/change-password` İLE FARKLI, orada kullanıcı KENDİ oturumunu korur).
+      // Hedef kullanıcının TÜM refresh token'ları iptal edilir; kullanıcı YENİ şifreyle YENİDEN
+      // giriş yapmalıdır.
+      const [, user] = await app.prisma.$transaction([
+        app.prisma.refreshToken.updateMany({
+          where: { userId: target.id, revoked: false },
+          data: { revoked: true },
+        }),
+        app.prisma.user.update({
+          where: { id: target.id },
+          data: { passwordHash },
+          include: { doctorProfile: { select: { id: true } } },
+        }),
+      ]);
+
+      await logAudit(app, {
+        actorId: request.user!.id,
+        actorEmail: request.user!.email,
+        action: "admin_users.password_reset",
+        targetType: "User",
+        targetId: user.id,
+        metadata: { email: user.email },
         ipAddress: request.ip,
       });
 
