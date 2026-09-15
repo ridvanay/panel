@@ -3861,3 +3861,79 @@ qa-agent bu turda REPO KONVANSİYONUNU BOZMAMAK için yeni bir Playwright+axe-co
 deseniyle `patient-portal-nav.test.tsx`/`patient-profile-panel.test.tsx` (veya benzeri) unit
 a11y testleri eklesin — bu, projenin şu ana kadarki TÜM a11y kapsamıyla (bkz. yukarıdaki "A11y
 (axe-core) durumu" notları) TUTARLI bir yaklaşım olur.
+
+## Tele-Sağlık Vitrini + "Ödemeyi Tamamla" Köprüsü + Admin Kontrollü Demo Ödeme Modülü — SON adım (bu turda eklendi)
+
+`.claude/security-review-demo-payment-toggle.md` + `.claude/architect-scope-demo-payment-doctor-counters.md`
+"EK KARAR — 2026-09-15" (DB tabanlı `SiteSettings.demoPaymentsEnabled` admin toggle'ı) bağlamında,
+önceki turlarda backend-agent/frontend-agent tarafından tamamlanan ÜÇ ayrı işin (vitrin doğrulaması,
+"Ödemeyi Tamamla" butonu, admin demo ödeme toggle'ı) e2e/tarayıcı seviyesinde doğrulanması.
+
+**Yeni dosyalar:**
+- `frontend/tests/e2e/telehealth-showcase-and-resume-payment.spec.ts` — madde 1 (vitrin) + madde 2
+  ("Ödemeyi Tamamla" köprüsü). Docker geliştirme yığınına karşı çalışır (`saas_dev`, `localhost:3000`/
+  `4000`, `E2E_SKIP_WEBSERVER=1` + `--no-deps`) — vitrin, `telehealth-clinic` demo şablonunun GERÇEKTEN
+  import edildiği bu ortamda doğrulanabilir (boş başlayan `saas_e2e` içermez).
+- `frontend/tests/e2e/telehealth-admin-demo-payment-toggle.spec.ts` — madde 3 (admin toggle, "açık"
+  mutlu yolu). Standart `saas_e2e` + elle başlatılan backend (`.env.e2e`, `ENABLE_DEMO_PAYMENTS=true`
+  — bu turda **qa-agent tarafından eklendi**, güvenli: `NODE_ENV=development` zaten orada, fail-closed
+  boot koruması yalnızca `NODE_ENV=production` ile birlikteyken devreye girer) + elle başlatılan
+  frontend dev server (`NEXT_PUBLIC_ENABLE_DEMO_PAYMENTS=true`) ortamına karşı çalışır (`E2E_SKIP_WEBSERVER=1`
+  + `--no-deps`, tam komutlar dosya başlığında).
+
+**Sonuçlar — TÜMÜ GERÇEKTEN koşuldu, hepsi YEŞİL:**
+
+| # | Ne test edildi | Dosya | Durum |
+|---|---|---|---|
+| 1 | Ana sayfa (`/`) gerçek tele-sağlık içeriği (başlık "TeleHealth", "Doktorları Keşfet" → `/doctors` linki, gerçek branş adları) render ediyor — jenerik "SaaS Platform" taslağı DEĞİL | `telehealth-showcase-and-resume-payment.spec.ts` | ✅ Geçiyor |
+| 2 | Gerçek `PENDING` booking → hasta `/patient/appointments`'te "Ödemeyi Tamamla" butonu (bookingNumber'a özgü `aria-label`) görünür → tıklanınca `/patient/bookings/{id}`'e yönlenir → `BookingPaymentStep` GERÇEKTEN render edilir ("Ödenecek Tutar" + "Ödemeye Geç") | `telehealth-showcase-and-resume-payment.spec.ts` | ✅ Geçiyor |
+| 3a | Env açıkken (`demoPaymentsSupported=true`) admin `/admin/settings` → "Ödeme Yönetimi" kartındaki "Demo / Test Ödeme Modu" `Switch`'i AKTİF/tıklanabilir, "yapılandırılmamış" uyarısı GÖRÜNMÜYOR | `telehealth-admin-demo-payment-toggle.spec.ts` | ✅ Geçiyor |
+| 3b | Toggle KAPATILIP kaydedilince: (i) `GET /admin/settings` taze okuma `demoPaymentsEnabled=false` döner (cache YOK), (ii) booking ödeme sayfası **sayfa YENİLENEREK** kontrol edilir — "Demo Ödemeyi Tamamla (Test)" butonu GİZLİ, (iii) doğrudan `POST .../demo-pay` çağrısı **403 `DEMO_PAYMENTS_DISABLED`** döner (env AÇIK + DB KAPALI regresyonu) | `telehealth-admin-demo-payment-toggle.spec.ts` | ✅ Geçiyor |
+| 3c | Toggle TEKRAR AÇILIP kaydedilince: booking sayfası yenilenince buton TEKRAR görünür, doğrudan `POST .../demo-pay` **200** + `paymentStatus=PAID` döner | `telehealth-admin-demo-payment-toggle.spec.ts` | ✅ Geçiyor |
+
+**Regresyon taraması (aynı turda GERÇEKTEN koşuldu):**
+- `patient-portal.spec.ts` — 13/13 ✅ (bir ilk koşumda `POST /appointments/bookings`in 5/dk hız
+  sınırına (`BOOKING_CREATE_RATE_LIMIT`, `backend/src/lib/rate-limit.ts` satır 97) çarptığı ve
+  `429 RATE_LIMITED` ile başarısız olduğu gözlemlendi — bu turun YENİ dosyalarının (yukarıdaki
+  ikisi) art arda birden fazla booking oluşturması yüzünden paylaşımlı kotanın tükenmesiydi, **gerçek
+  bir regresyon DEĞİL**: ~70sn beklenip TEK BAŞINA yeniden koşulduğunda 13/13 YEŞİL geldi).
+- `telehealth-multi-slot-booking.spec.ts` — 9/9 ✅ (AYNI rate-limit nedeniyle bir ilk koşumda madde 21
+  başarısız oldu, bekleyip tekrar koşulunca YEŞİL — `telehealth-multi-slot-booking.spec.ts` başlığında
+  ZATEN belgelenen bilinen kısıt, bu turun testleriyle İLGİSİZ).
+- `telehealth-consultation.spec.ts` — 4/4 ✅ (+ madde 10 `skip` — `.env.e2e`nin GERÇEK LiveKit
+  anahtarları taşıması nedeniyle "LiveKit yapılandırılmamış" senaryosu bu ortamda ZATEN geçerli
+  değil, bilinen/kasıtlı bir koşullu atlama, hata DEĞİL).
+
+**Bulunan ve GİDERİLEN gerçek sorunlar (bu turda, altyapı — qa-agent kendi test kapsamındaki komutlarla düzeltti, uygulama kodu DEĞİŞTİRİLMEDİ):**
+1. **Docker frontend imajı bayattı.** `telehealth-showcase-and-resume-payment.spec.ts`in madde 2'si
+   ilk koşumda "Ödemeyi Tamamla" butonunu BULAMADI — kök neden `frontend/src/components/site/
+   telehealth/booking-list-view.tsx` (ve ilgili backend dosyalarının) çalışma kopyasındaki
+   (uncommitted) değişikliklerin, o an ayakta olan `claudecodeproje-frontend-1`/`-backend-1`
+   container'larına HİÇ YANSITILMAMIŞ olmasıydı (imaj bu değişikliklerden ÖNCE build edilmişti —
+   proje belleği: "backend/frontend edit sonrası HER ZAMAN `docker compose up --build -d`").
+   qa-agent `docker compose up --build -d` çalıştırdı (kod değişikliği DEĞİL, zaten yazılmış kodun
+   deploy edilmesi); sonrasında madde 1/2 ilk denemede YEŞİL geldi. **Not devops-agent'a:** bu turun
+   sonunda docker imajları GÜNCEL koddadır; ana oturum bunları commit'lerse bir SONRAKİ
+   `--build`'in aynı kodu tekrar üretmesi beklenir, ekstra bir aksiyon gerekmez.
+2. **`saas_e2e` migration sürüklenmesi.** `backend/prisma/migrations/
+   20260915140000_add_site_settings_demo_payments_enabled` migration'ı `_prisma_migrations` tablosunda
+   "başlamış ama `finished_at` YOK" durumundaydı (önceki bir kısmi/kesintili koşumdan kalma) —
+   `migrate deploy` bu yüzden `P3018`/`42701` ("column already exists") ile PATLADI. Kolonun GERÇEKTEN
+   şema ile birebir eşleştiği (`boolean not null default true`) doğrulandıktan SONRA qa-agent
+   `prisma migrate resolve --applied ...` ile sürüklenmeyi giderdi (şema/migration dosyasının
+   KENDİSİNE dokunulmadı — db-agent'ın sahip olduğu `schema.prisma`/migration SQL'i DEĞİŞMEDİ, yalnızca
+   `saas_e2e`'nin migration geçmişi senkronize edildi). **Not db-agent'a:** bu drift'in NASIL oluştuğu
+   (muhtemelen önceki bir turda `saas_e2e`'ye karşı yarıda kesilen bir `migrate deploy` denemesi)
+   araştırılmaya değer olabilir, ama bu turun kapsamı dışında bırakıldı.
+
+**Ortam değişikliği (qa-agent'ın kendi alanı, test-config):** `backend/.env.e2e`ye
+`ENABLE_DEMO_PAYMENTS=true` eklendi (görev talimatının açıkça istediği, güvenli değişiklik — bkz.
+dosya içindeki yeni yorum satırı). Bu, `saas_e2e`'ye karşı koşan STANDART webServer suite'ini
+ETKİLEMEZ (o suite backend'i KENDİSİ başlatmaz, `.env.e2e`yi zaten okuyordu) — sadece bu turdan
+itibaren o backend'i elle başlatan herkes demo ödeme "açık" senaryosunu test edebilir hale gelir.
+
+**Eksik bırakılan (bir sonraki tur için not):** Madde 3'ün "env KAPALI + DB `true`" (prod-benzeri,
+demo-pay'in YİNE `404` döndüğü) regresyon senaryosu bu turda e2e/tarayıcı seviyesinde TEKRAR
+KOŞULMADI — görev talimatı bunu backend-agent'ın KENDİ vitest testlerinin (`tests/integration/
+telehealth-demo-payment.test.ts`, önceki turda 15/15 yeşil olarak doğrulanmıştı) zaten kapsadığını
+not ederek bilinçli olarak bu turun e2e kapsamı DIŞINDA bıraktı — tekrar yazılmadı.

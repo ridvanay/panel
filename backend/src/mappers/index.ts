@@ -144,7 +144,8 @@ import type {
   DoctorPublicationDto,
   BookingIdentitySummaryDto,
 } from "../schemas/entities";
-import { env } from "../config/env";
+import { env, isDemoPaymentsEnabled } from "../config/env";
+import { computeDemoPaymentsEnabled } from "../lib/demo-payments";
 import {
   computeBlogPostSeoScore,
   computePageSeoScore,
@@ -415,6 +416,13 @@ export function toSiteSettingsDto(settings: SiteSettings): SiteSettingsDto {
     freeShippingThresholdCents: settings.freeShippingThresholdCents,
     shippingEstimatedDaysMin: settings.shippingEstimatedDaysMin,
     shippingEstimatedDaysMax: settings.shippingEstimatedDaysMax,
+    // Demo ödeme runtime toggle (`.claude/security-review-demo-payment-toggle.md` Madde 2/4) —
+    // `demoPaymentsEnabled` NİHAİ (env && db) AND-gate SONUCUDUR, HAM DB sütunu DEĞİLDİR.
+    // `demoPaymentsSupported` YALNIZCA env yetenek bayrağı (`SiteCustomCode.customCodeEnabled`
+    // İLE AYNI desen) — admin panelinin toggle'ı üretimde "kendiliğinden kapanıyor" gibi
+    // göstermemesi içindir.
+    demoPaymentsEnabled: computeDemoPaymentsEnabled(settings.demoPaymentsEnabled),
+    demoPaymentsSupported: isDemoPaymentsEnabled,
   };
 }
 

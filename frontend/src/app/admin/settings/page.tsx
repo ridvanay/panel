@@ -20,6 +20,7 @@ import { PageHeading } from "@/components/admin/page-heading";
 import { LocaleManager } from "@/components/admin/locale-manager";
 import { ApiKeysSection } from "@/components/admin/settings/api-keys-section";
 import { WebhooksSection } from "@/components/admin/settings/webhooks-section";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { useUnsavedChangesGuard } from "@/hooks/use-unsaved-changes-guard";
@@ -29,6 +30,7 @@ import {
   AlertCircle,
   Briefcase,
   CheckCircle2,
+  CreditCard,
   Globe,
   ImageIcon,
   Languages,
@@ -80,6 +82,7 @@ interface GeneralSettingsSnapshot {
   logoUrl: string;
   homePageId: string;
   siteTemplate: SiteTemplate;
+  demoPaymentsEnabled: boolean;
 }
 
 function RoleBadge({ role, active }: { role: SiteRole; active: boolean }) {
@@ -135,6 +138,12 @@ export default function AdminSettingsPage() {
   const [publishedPages, setPublishedPages] = useState<SitePage[]>([]);
   const [snapshot, setSnapshot] = useState<GeneralSettingsSnapshot | null>(null);
 
+  // `.claude/security-review-demo-payment-toggle.md` — `demoPaymentsEnabled` HAM DB sütununa
+  // yazılan, admin tarafından değiştirilebilir bayrak; `demoPaymentsSupported` salt-okunur
+  // ortam (env) yetenek bayrağı — kullanıcı tarafından ASLA değiştirilemez, dirty-tracking'e girmez.
+  const [demoPaymentsEnabled, setDemoPaymentsEnabled] = useState(false);
+  const [demoPaymentsSupported, setDemoPaymentsSupported] = useState(false);
+
   const [permissions, setPermissions] = useState<PermissionsMatrix | null>(null);
   const [permissionsLoading, setPermissionsLoading] = useState(false);
   const [permissionsError, setPermissionsError] = useState<string | null>(null);
@@ -153,11 +162,14 @@ export default function AdminSettingsPage() {
       setHomePageId(settings.homePageId ?? "");
       setSiteTemplate(settings.siteTemplate);
       setPublishedPages(pages.items.filter((page) => page.status === "PUBLISHED"));
+      setDemoPaymentsEnabled(settings.demoPaymentsEnabled);
+      setDemoPaymentsSupported(settings.demoPaymentsSupported);
       setSnapshot({
         siteName: settings.siteName,
         logoUrl: settings.logoUrl ?? "",
         homePageId: settings.homePageId ?? "",
         siteTemplate: settings.siteTemplate,
+        demoPaymentsEnabled: settings.demoPaymentsEnabled,
       });
       setLoaded(true);
     } catch (err) {
@@ -177,9 +189,10 @@ export default function AdminSettingsPage() {
       siteName !== snapshot.siteName ||
       logoUrl !== snapshot.logoUrl ||
       homePageId !== snapshot.homePageId ||
-      siteTemplate !== snapshot.siteTemplate
+      siteTemplate !== snapshot.siteTemplate ||
+      demoPaymentsEnabled !== snapshot.demoPaymentsEnabled
     );
-  }, [siteName, logoUrl, homePageId, siteTemplate, snapshot]);
+  }, [siteName, logoUrl, homePageId, siteTemplate, demoPaymentsEnabled, snapshot]);
 
   // §10.12.8 — ortak hook: beforeunload + `/admin` linklerine capture-phase tıklama uyarısı
   // (davranış öncekiyle AYNI, sadece kod paylaşılıyor).
@@ -234,14 +247,22 @@ export default function AdminSettingsPage() {
     setSaved(false);
     setSaving(true);
     try {
-      await settingsApi.updateSettings({
+      const updated = await settingsApi.updateSettings({
         siteName,
         logoUrl: logoUrl || null,
         homePageId: homePageId || null,
         siteTemplate,
+        // `demoPaymentsSupported=false` iken toggle zaten disabled/değişmez — bu durumda alanı
+        // HİÇ GÖNDERMEYİZ, aksi halde ilgisiz bir "Kaydet" tıklaması HAM DB sütununu (varsayılan
+        // `true`) sessizce `false`'a çeker (env ileride açılırsa beklenmeyen davranış olurdu).
+        ...(demoPaymentsSupported ? { demoPaymentsEnabled } : {}),
       });
       setSaved(true);
-      setSnapshot({ siteName, logoUrl, homePageId, siteTemplate });
+      // Nihai (env `&&` DB) değer sunucudan geri döner — `demoPaymentsSupported=false` (üretim)
+      // iken istek REDDEDİLMEZ ama nihai bayrak `false` kalabilir; ekran her zaman sunucunun
+      // döndürdüğü GERÇEK değeri yansıtır (kendi gönderdiğimiz ham değeri KÖRCE varsaymayız).
+      setDemoPaymentsEnabled(updated.demoPaymentsEnabled);
+      setSnapshot({ siteName, logoUrl, homePageId, siteTemplate, demoPaymentsEnabled: updated.demoPaymentsEnabled });
       toast.success("Ayarlar kaydedildi.");
     } catch (err) {
       const message = friendlyErrorMessage(err);
@@ -442,6 +463,46 @@ export default function AdminSettingsPage() {
               <Card className="space-y-4">
                 <SectionHeader icon={ImageIcon} title="Görünüm" description="Sitenizin logosu ve marka görseli." />
                 <ImageUploadField id="logoUrl" label="Logo" value={logoUrl} onChange={setLogoUrl} />
+              </Card>
+            </motion.div>
+
+            {/*
+             * `.claude/security-review-demo-payment-toggle.md` (bağlayıcı, 2026-09-15) — mevcut
+             * `SiteCustomCode.customCodeEnabled` (appearance/özel kod) desenindeki AYNI kalıp:
+             * ortam (env) tarafı kapalıyken (`demoPaymentsSupported === false`) toggle DEVRE DIŞI
+             * bırakılır ve altına nedeni açıklanır; ortam AÇIKKEN admin bunu istediği an kapatıp
+             * açabilir (üretimde env her koşulda `false` olduğu için bu kapatma/açma ASLA gerçek
+             * bir tahsilatı etkilemez — bkz. Madde 1).
+             */}
+            <motion.div variants={cardVariants} className="lg:col-span-3">
+              <Card className="space-y-4">
+                <SectionHeader
+                  icon={CreditCard}
+                  title="Ödeme Yönetimi"
+                  description="Tele-sağlık randevu ödemeleriyle ilgili yönetimsel ayarlar."
+                />
+                <div className="flex items-center justify-between gap-4 rounded-lg border border-border/60 p-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-foreground">Demo / Test Ödeme Modu</p>
+                    <p className="text-xs text-foreground/60">
+                      Aktif olduğunda Stripe olmadan test ödemeleri yapılabilir; canlıya alırken kapatınız.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={demoPaymentsEnabled}
+                    onCheckedChange={(checked) => setDemoPaymentsEnabled(Boolean(checked))}
+                    disabled={!demoPaymentsSupported}
+                    aria-label="Demo / Test Ödeme Modu"
+                  />
+                </div>
+                {!demoPaymentsSupported && (
+                  <p className="flex items-start gap-1.5 admin-text-secondary">
+                    <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    Bu ortamda demo ödeme altyapısı yapılandırılmamış — <code>ENABLE_DEMO_PAYMENTS</code> ortam
+                    değişkeni kapalı olduğu için bu anahtar burada kullanılamaz. Bu, teknik bir kurulum eksikliğidir;
+                    ortam yöneticinizle iletişime geçin.
+                  </p>
+                )}
               </Card>
             </motion.div>
           </motion.div>

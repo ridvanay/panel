@@ -46,7 +46,11 @@ export type ApiErrorCode =
   // bilgisi akışı. Mesajlar SABİT/JENERİKTİR (bkz. backend `lib/errors.ts`), girilen kimlik
   // numarası/doğum tarihi bu hatalara ASLA enjekte edilmez.
   | "IDENTITY_MINOR_NOT_SUPPORTED"
-  | "IDENTITY_LOCKED";
+  | "IDENTITY_LOCKED"
+  // `.claude/security-review-demo-payment-toggle.md` Madde 5 — env-gate AÇIK olduğu halde
+  // admin `SiteSettings.demoPaymentsEnabled`'ı DB'den kapatmışsa `POST .../demo-pay` bu kodla
+  // `403` döner (env kaynaklı `404` katmanından AYRI, `booking-payment-step.tsx` bunu ayrıca ele alır).
+  | "DEMO_PAYMENTS_DISABLED";
 
 export type MembershipRole = "OWNER" | "ADMIN" | "MEMBER";
 export type MembershipStatus = "ACTIVE" | "INVITED" | "SUSPENDED";
@@ -1666,6 +1670,18 @@ export interface SiteSettings {
    */
   shippingEstimatedDaysMin: number | null;
   shippingEstimatedDaysMax: number | null;
+  /**
+   * `.claude/security-review-demo-payment-toggle.md` Madde 4 — NİHAİ (env `&&` DB) AND-gate
+   * sonucudur, HAM DB sütunu DEĞİLDİR. `booking-payment-step.tsx`'in demo butonu render kararı
+   * bunu, build-time `DEMO_PAYMENTS_ENABLED` (lib/env.ts) İLE `&&` birleştirerek kullanır.
+   */
+  demoPaymentsEnabled: boolean;
+  /**
+   * Yalnızca ortam (env) yetenek bayrağı — DB'den BAĞIMSIZ. Admin panelindeki demo ödeme
+   * toggle'ının aktif/pasif (disabled) durumu BUNA göre belirlenir (`SiteCustomCode.
+   * customCodeEnabled` emsaliyle aynı desen).
+   */
+  demoPaymentsSupported: boolean;
 }
 
 export interface UpdateSiteSettingsRequest {
@@ -1680,6 +1696,8 @@ export interface UpdateSiteSettingsRequest {
   freeShippingThresholdCents?: number | null;
   shippingEstimatedDaysMin?: number | null;
   shippingEstimatedDaysMax?: number | null;
+  /** HAM DB sütununa yazılır — `demoPaymentsSupported`e YAZILAMAZ (o salt-okunur bir mapper alanı). */
+  demoPaymentsEnabled?: boolean;
 }
 
 export interface UpdateBlogPostRequest {

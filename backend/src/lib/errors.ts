@@ -114,7 +114,14 @@ export type ApiErrorCode =
    * `paymentStatus !== PENDING` iken çağrılırsa. Ödenmiş bir randevunun kimlik bilgisi bir
    * SNAPSHOT'tır (`Order` satırlarının donması ile AYNI ilke) — hasta dahi artık düzeltemez.
    */
-  | "IDENTITY_LOCKED";
+  | "IDENTITY_LOCKED"
+  /**
+   * `.claude/security-review-demo-payment-toggle.md` Madde 5 (architect onaylı) —
+   * `POST /appointments/bookings/{bookingId}/demo-pay`, env-gate AÇIK olduğu halde admin
+   * panelden `SiteSettings.demoPaymentsEnabled = false` yapılmışsa. 403 ("kasıtlı kapatma",
+   * `PAYMENTS_NOT_CONFIGURED`/503 "dürüst yapılandırılmamışlık" İLE KARIŞTIRILMAZ).
+   */
+  | "DEMO_PAYMENTS_DISABLED";
 
 export class ApiError extends Error {
   statusCode: number;
@@ -419,5 +426,24 @@ export class IdentityMinorNotSupportedError extends ApiError {
 export class IdentityLockedError extends ApiError {
   constructor(message = "Bu rezervasyonun kimlik bilgisi artık düzeltilemez (ödeme tamamlandı/iptal edildi).") {
     super(409, "IDENTITY_LOCKED", message);
+  }
+}
+
+/**
+ * `.claude/security-review-demo-payment-toggle.md` Madde 5 (architect onaylı) —
+ * `POST /appointments/bookings/{bookingId}/demo-pay` ucunun env-gate (`config/env.ts::
+ * isDemoPaymentsEnabled`) katmanlarının ÜZERİNE eklenen 4. katman: env AÇIK olduğu halde
+ * admin panelden `SiteSettings.demoPaymentsEnabled = false` yapılmışsa fırlatılır.
+ * `PaymentsNotConfiguredError`/`LiveKitNotConfiguredError` (503, "dürüst
+ * yapılandırılmamışlık") İLE KARIŞTIRILMAMALI — bu bir yapılandırma eksikliği DEĞİL, bilinçli
+ * bir admin kararıdır. `CUSTOM_CODE_ENABLED=false` iken `appearance.routes.ts`teki
+ * `ForbiddenError` (403) precedent'ıyla AYNI sınıf, ama frontend'in bu SPESİFİK durumu RBAC
+ * yetkisizliğinden ayırt edebilmesi için kendi machine-readable kodu vardır. Env kapalıyken
+ * (`isDemoPaymentsEnabled === false`) bu hata ASLA fırlatılmaz — o durumda önceki katman
+ * (`NotFoundError`, 404) önceliklidir.
+ */
+export class DemoPaymentsDisabledError extends ApiError {
+  constructor(message = "Demo ödeme bu ortamda admin tarafından kapatılmıştır.") {
+    super(403, "DEMO_PAYMENTS_DISABLED", message);
   }
 }

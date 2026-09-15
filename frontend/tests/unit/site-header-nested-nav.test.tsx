@@ -17,6 +17,8 @@ const settings: SiteSettings = {
   freeShippingThresholdCents: null,
   shippingEstimatedDaysMin: null,
   shippingEstimatedDaysMax: null,
+  demoPaymentsEnabled: false,
+  demoPaymentsSupported: false,
 };
 
 const axeOptions = { rules: { region: { enabled: false } } };

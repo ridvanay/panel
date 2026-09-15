@@ -5,9 +5,11 @@ import { authenticateOptional } from "../../middleware/authenticate";
 import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema } from "../../schemas/common";
 import { AppointmentBookingSchema } from "../../schemas/entities";
-import { BookingExpiredError, BookingNotPayableError, NotFoundError } from "../../lib/errors";
+import { BookingExpiredError, BookingNotPayableError, DemoPaymentsDisabledError, NotFoundError } from "../../lib/errors";
 import { assertBookingPatientOnlyAccess, canAccessBookingHealthData } from "../../lib/telehealth-access";
 import { isDemoPaymentsEnabled } from "../../config/env";
+import { computeDemoPaymentsEnabled } from "../../lib/demo-payments";
+import { SETTINGS_ID } from "../settings/settings.routes";
 import { BOOKING_CHECKOUT_SESSION_RATE_LIMIT } from "../../lib/rate-limit";
 import { AccessTokenQuerySchema, BookingIdParamSchema } from "./telehealth.schemas";
 import { toAppointmentBookingDto } from "../../mappers";
@@ -76,6 +78,18 @@ export async function telehealthDemoPaymentRoutes(app: FastifyInstance) {
       // gizleme (katman 2, `app.ts`) düşse/refactor edilse BİLE bu uç KAPALI KALIR.
       if (!isDemoPaymentsEnabled) {
         throw new NotFoundError();
+      }
+
+      // Katman 4 (2026-09-15, `.claude/security-review-demo-payment-toggle.md` Madde 5) — env
+      // kapısı ZATEN AÇIK (yukarıdaki katman 3 geçildi); admin panelden `SiteSettings.
+      // demoPaymentsEnabled = false` yapılmışsa `403 DEMO_PAYMENTS_DISABLED` (404 DEĞİL — bu
+      // noktada ucun varlığı zaten bilinen bir sır DEĞİL). DB'den **cache'siz, her istekte
+      // taze** okunur (çok-instance deploy'larda admin toggle'ı anında tüm instance'lara
+      // yansımalıdır) — booking DB'den okunmadan ÖNCE kontrol edilir.
+      const settingsRow = await app.prisma.siteSettings.findUnique({ where: { id: SETTINGS_ID } });
+      const dbDemoPaymentsEnabled = settingsRow?.demoPaymentsEnabled ?? true;
+      if (!computeDemoPaymentsEnabled(dbDemoPaymentsEnabled)) {
+        throw new DemoPaymentsDisabledError();
       }
 
       const booking = await app.prisma.appointmentBooking.findUnique({

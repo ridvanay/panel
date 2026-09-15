@@ -12,6 +12,8 @@ import { attachLocalizationsOne } from "../../lib/localization";
 import { logAudit } from "../../lib/audit";
 import { ValidationError } from "../../lib/errors";
 import { PERMISSIONS_MATRIX } from "../../lib/permissions-matrix";
+import { isDemoPaymentsEnabled } from "../../config/env";
+import { computeDemoPaymentsEnabled } from "../../lib/demo-payments";
 import { PermissionsMatrixDto, PermissionsMatrixSchema, UpdateSiteSettingsRequestSchema } from "./settings.schemas";
 
 export const SETTINGS_ID = "singleton";
@@ -31,6 +33,11 @@ export const DEFAULTS = {
   // tahmini teslimat satırını HİÇ render etmez.
   shippingEstimatedDaysMin: null as number | null,
   shippingEstimatedDaysMax: null as number | null,
+  // `.claude/security-review-demo-payment-toggle.md` Madde 2 + architect "Ek Karar B" —
+  // HAM DB varsayılanıyla (`prisma/schema.prisma::SiteSettings.demoPaymentsEnabled
+  // @default(true)`) TUTARLI. Bu ham değer `readSettings`te AND-gate'siz DÖNMEZ — bkz.
+  // aşağıdaki `readSettings`.
+  demoPaymentsEnabled: true,
 };
 
 /**
@@ -48,9 +55,23 @@ function assertShippingEstimateRange(finalMin: number | null, finalMax: number |
   }
 }
 
+/**
+ * Architect "Ek Karar B" (`.claude/architect-scope-demo-payment-doctor-counters.md`,
+ * "EK KARAR — 2026-09-15") — DB'de hiç satır YOKKEN (henüz `PATCH` çağrılmamış taze bir
+ * kurulum) `toSiteSettingsDto` mapper'ı hiç ÇAĞRILMAZ, ham `DEFAULTS` döner. AND-gate
+ * (`computeDemoPaymentsEnabled`) mapper'ın İÇİNDE uygulanır ama bu yol mapper'ı ATLADIĞI
+ * için burada da AYRICA uygulanmalıdır — aksi halde taze bir prod kurulumunda
+ * `GET /settings` yanlışlıkla `demoPaymentsEnabled: true` sızdırır (bağlayıcı, bkz.
+ * `.claude/security-review-demo-payment-toggle.md`).
+ */
 async function readSettings(app: FastifyInstance) {
   const row = await app.prisma.siteSettings.findUnique({ where: { id: SETTINGS_ID } });
-  return row ? toSiteSettingsDto(row) : DEFAULTS;
+  if (row) return toSiteSettingsDto(row);
+  return {
+    ...DEFAULTS,
+    demoPaymentsEnabled: computeDemoPaymentsEnabled(DEFAULTS.demoPaymentsEnabled),
+    demoPaymentsSupported: isDemoPaymentsEnabled,
+  };
 }
 
 /** `/settings` prefix'i altında bağlanır — herkese açık, site header/nav'ı bunu okur. */
@@ -131,7 +152,14 @@ export async function adminSettingsRoutes(app: FastifyInstance) {
         action: "settings.update",
         targetType: "SiteSettings",
         targetId: "singleton",
-        metadata: { changed: Object.keys(request.body) },
+        // security-agent Madde 3 (bağlayıcı öneri) — ödeme-bütünlüğü hassasiyeti nedeniyle
+        // salt alan adının yanına YENİ değer de açıkça yazılır (boolean, PII/sır DEĞİL).
+        metadata: {
+          changed: Object.keys(request.body),
+          ...(request.body.demoPaymentsEnabled !== undefined
+            ? { demoPaymentsEnabled: request.body.demoPaymentsEnabled }
+            : {}),
+        },
         ipAddress: request.ip,
       });
 

@@ -1153,6 +1153,14 @@ model SiteSettings {
   // (bkz. architect-scope-products-catalog.md §2.5; ticari taahhüt, sabit metin yazılmaz).
   shippingEstimatedDaysMin   Int?
   shippingEstimatedDaysMax   Int?
+  // [DPT] Geliştirme/demo ödeme simülatörü — admin panelden aç/kapa. YALNIZCA KISITLAYICI bir
+  // katmandır: nihai bayrak `env.isDemoPaymentsEnabled (backend/src/config/env.ts) &&
+  // SiteSettings.demoPaymentsEnabled (bu kolon)` şeklinde AND'lenir (backend-agent uygular).
+  // Bu kolon TEK BAŞINA demo ödemeyi ASLA açamaz — env de `true` olmalı (prod'da env her zaman
+  // `false`, bu yüzden varsayılan `true` prod'da güvenlik açığı YARATMAZ). Bkz.
+  // .claude/security-review-demo-payment-toggle.md, .claude/architect-scope-demo-payment-doctor-counters.md
+  // "EK KARAR — 2026-09-15".
+  demoPaymentsEnabled        Boolean      @default(true)
   updatedAt                  DateTime     @updatedAt
 
   // Kök `/` rotasında render edilecek sayfa. Sayfa silinirse otomatik null'a düşer

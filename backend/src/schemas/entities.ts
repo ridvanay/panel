@@ -826,6 +826,13 @@ export const SiteSettingsSchema = z.object({
   // koda gömülmez).
   shippingEstimatedDaysMin: z.number().int().nullable(),
   shippingEstimatedDaysMax: z.number().int().nullable(),
+  // Demo ödeme runtime toggle (`.claude/security-review-demo-payment-toggle.md`,
+  // `.claude/architect-scope-demo-payment-doctor-counters.md` "EK KARAR — 2026-09-15").
+  // `demoPaymentsEnabled` NİHAİ (env && db) AND-gate sonucudur — HAM DB sütunu DEĞİLDİR;
+  // `demoPaymentsSupported` yalnızca ortam (env) yetenek bayrağıdır, `SiteCustomCode.
+  // customCodeEnabled` İLE AYNI desen (bkz. mappers/index.ts::toSiteSettingsDto).
+  demoPaymentsEnabled: z.boolean(),
+  demoPaymentsSupported: z.boolean(),
 });
 export type SiteSettingsDto = z.infer<typeof SiteSettingsSchema>;
 

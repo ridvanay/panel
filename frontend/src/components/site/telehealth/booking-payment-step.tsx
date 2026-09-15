@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CreditCard, FlaskConical, Loader2, Settings2 } from "lucide-react";
 import * as telehealthApi from "@/lib/api/telehealth";
+import * as settingsApi from "@/lib/api/settings";
 import { ApiClientError } from "@/lib/api/error";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { formatPriceFromCents } from "@/lib/format-price";
@@ -25,6 +26,13 @@ import { Alert } from "@/components/ui/alert";
  * butonu eklenir — geliştirici Stripe webhook tüneli KURMADAN uçtan uca e2e test edebilsin diye.
  * Prod build'de `DEMO_PAYMENTS_ENABLED` statik olarak `false`'a sabitlendiği için bu blok dead-code
  * elimination ile bundle'dan TAMAMEN düşer (bkz. `lib/env.ts`).
+ *
+ * `.claude/security-review-demo-payment-toggle.md` Madde 4 (bağlayıcı, 2026-09-15) — build-time
+ * `DEMO_PAYMENTS_ENABLED` katmanı KORUNUR, YERİNE değil YANINA ikinci bir runtime kapı eklenir:
+ * admin panelden `SiteSettings.demoPaymentsEnabled` (DB) kapatılmışsa buton, env AÇIK olsa bile
+ * GİZLENİR. Bu bileşen kendi küçük `useEffect`'iyle herkese açık `GET /settings`i çeker (yeni bir
+ * global context İCAT EDİLMEDİ — en dar kapsamlı çözüm). Nihai görünürlük koşulu:
+ * `DEMO_PAYMENTS_ENABLED (build-time) && demoPaymentsRuntimeEnabled (runtime, sunucudan)`.
  */
 interface BookingPaymentStepProps {
   bookingId: string;
@@ -103,6 +111,27 @@ export function BookingPaymentStep({ bookingId, accessToken, totalCents, currenc
   const [error, setError] = useState<string | null>(null);
   const [demoRequesting, setDemoRequesting] = useState(false);
   const [demoError, setDemoError] = useState<string | null>(null);
+  // Fail-closed varsayılan: sunucudan doğrulanana kadar `false` (env AÇIK olsa da buton gizli kalır).
+  const [demoPaymentsRuntimeEnabled, setDemoPaymentsRuntimeEnabled] = useState(false);
+
+  useEffect(() => {
+    if (!DEMO_PAYMENTS_ENABLED) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const settings = await settingsApi.getPublicSettings();
+        if (!cancelled) setDemoPaymentsRuntimeEnabled(settings.demoPaymentsEnabled);
+      } catch {
+        // Sessizce yok sayılır — arıza durumunda güvenli (fail-closed) varsayılan `false` korunur,
+        // gerçek ödeme akışı (yukarıdaki `handlePay`) bu hatadan ETKİLENMEZ.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const showDemoPanel = DEMO_PAYMENTS_ENABLED && demoPaymentsRuntimeEnabled;
 
   async function handlePay() {
     setRequesting(true);
@@ -140,7 +169,14 @@ export function BookingPaymentStep({ bookingId, accessToken, totalCents, currenc
         router.push(`/${lang}/patient/bookings/${bookingId}?payment=success${tokenSuffix}`);
       }
     } catch (err) {
-      setDemoError(friendlyErrorMessage(err));
+      // `.claude/security-review-demo-payment-toggle.md` Madde 5 — env-gate AÇIK olduğu halde
+      // admin DB'den kapatmışsa backend bu SPESİFİK kodla `403` döner; genel `FORBIDDEN`/
+      // `friendlyErrorMessage` mesajından AYRI, açık bir mesajla gösterilir.
+      if (err instanceof ApiClientError && err.code === "DEMO_PAYMENTS_DISABLED") {
+        setDemoError("Demo ödeme şu anda yönetici tarafından devre dışı bırakılmış.");
+      } else {
+        setDemoError(friendlyErrorMessage(err));
+      }
       setDemoRequesting(false);
     }
   }
@@ -149,7 +185,7 @@ export function BookingPaymentStep({ bookingId, accessToken, totalCents, currenc
     return (
       <div className="space-y-4">
         <PaymentsNotConfiguredPanel onRetry={() => void handlePay()} retrying={requesting} />
-        {DEMO_PAYMENTS_ENABLED && (
+        {showDemoPanel && (
           <>
             <DemoPaymentPanel onDemoPay={() => void handleDemoPay()} loading={demoRequesting} />
             {demoError && <Alert variant="error">{demoError}</Alert>}
@@ -174,7 +210,7 @@ export function BookingPaymentStep({ bookingId, accessToken, totalCents, currenc
       </Button>
       <p className="text-center text-xs text-foreground/50">Güvenli ödeme sayfasına (Stripe Checkout) yönlendirileceksiniz.</p>
 
-      {DEMO_PAYMENTS_ENABLED && (
+      {showDemoPanel && (
         <>
           <DemoPaymentPanel onDemoPay={() => void handleDemoPay()} loading={demoRequesting} />
           {demoError && <Alert variant="error">{demoError}</Alert>}

@@ -13,6 +13,9 @@ const DEFAULT_SETTINGS: SiteSettings = {
   freeShippingThresholdCents: null,
   shippingEstimatedDaysMin: null,
   shippingEstimatedDaysMax: null,
+  // Fetch başarısız olursa güvenli (fail-closed) varsayılan — gerçek değer her zaman `/settings`den gelir.
+  demoPaymentsEnabled: false,
+  demoPaymentsSupported: false,
 };
 
 /** Sunucu bileşenlerinden çağrılır — bkz. server-plans.ts'teki apiFetch kullanılmama gerekçesi. */

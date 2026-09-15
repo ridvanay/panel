@@ -4574,6 +4574,12 @@ paths:
         döner: `{ siteName: "Site", logoUrl: null, homePageId: null, siteTemplate:
         SHOWCASE }` — lazy-upsert paterni (bkz. `settings.routes.ts::DEFAULTS`,
         `ARCHITECTURE.md` §10.9.5).
+
+
+        **`demoPaymentsEnabled` (2026-09-15):** frontend'in demo ödeme butonunu
+        runtime'da gizlemek için okuduğu NİHAİ (env **VE** DB) bayrak bu uçtan döner.
+        Satır YOKKEN dönen `DEFAULTS` yolunda da AND uygulanmak ZORUNDADIR (ham
+        `true` sızdırılamaz) — bkz. `SiteSettings.demoPaymentsEnabled` şeması.
       responses:
         "200":
           description: OK
@@ -4635,6 +4641,15 @@ paths:
         yalnızca frontend kurulum sihirbazının hangi modülleri/blok tiplerini
         ÖNERECEĞİNİ belirler (bkz. `SiteModule.recommendedFor`). Modül açma/kapama
         HER ZAMAN `PATCH /admin/modules/{key}` ile ayrı bir işlemdir.
+
+
+        `demoPaymentsEnabled` (2026-09-15) — demo ödemenin admin panelinden runtime
+        aç/kapa anahtarı. **YENİ bir uç/rol İCAT EDİLMEDİ:** bu uç zaten `authenticate`
+        + `requirePanelAccess()` + `requireSiteRole(...ROLES_ADMIN)` ile korunuyor ve
+        kullanıcının "süper admin" dediği rol = mevcut `SiteRole.ADMIN`. Bayrak
+        yalnızca KISITLAYICIDIR: `env.ts`'teki boot-time fail-closed koruma (üretimde
+        demo ödeme İMKÂNSIZ) DEĞİŞMEDİ ve bu bayrakla bypass EDİLEMEZ. Bkz.
+        `.claude/security-review-demo-payment-toggle.md`.
       requestBody:
         required: true
         content:
@@ -7593,6 +7608,17 @@ paths:
 
 
         Hız sınırı **10 istek/dakika** (`checkout-session` İLE AYNI kova).
+
+
+        **Runtime admin kapısı (2026-09-15, `.claude/security-review-demo-payment-toggle.md`
+        Madde 5):** yukarıdaki env/register-time katmanları (→ `404`) AYNEN KALIR;
+        onların ÜZERİNE 4. bir katman eklendi — env kapısı AÇIKKEN bile
+        `SiteSettings.demoPaymentsEnabled = false` ise uç **`403
+        DEMO_PAYMENTS_DISABLED`** döner (booking DB'den okunmadan ÖNCE). Bayrak
+        **cache'siz**, her istekte taze okunur. `404` ile gizlenmemesi KASITLIDIR:
+        bu noktaya ulaşıldığında ucun bu ortamda var olduğu zaten bilinmektedir
+        (`CUSTOM_CODE_ENABLED=false` → `PUT /admin/appearance/custom-code/*` `403`
+        emsali).
       responses:
         "200":
           description: Demo ödemesi tamamlandı — `mark-paid` İLE BİREBİR AYNI yanıt şekli
@@ -7608,6 +7634,15 @@ paths:
             Rezervasyon bulunamadı, aktör booking sahibi hasta DEĞİL (IDOR — `403`
             DEĞİL) **veya** bu uç bu ortamda kayıtlı DEĞİL (prod'da/bayrak kapalıyken
             HER ZAMAN `404`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "403":
+          description: >
+            Demo ödeme bu ortamda ADMIN tarafından kapatılmış
+            (`error.code: DEMO_PAYMENTS_DISABLED`) — env kapısı AÇIK, yalnızca
+            `SiteSettings.demoPaymentsEnabled = false`. Env kapalıyken bu kod ASLA
+            dönmez (o durumda `404` önceliklidir).
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
@@ -11501,6 +11536,14 @@ components:
               #     COMPLETED değil veya deletedAt dolu.
               # NOT: yetkisiz erişim bu kodların HİÇBİRİNİ döndürmez — DAİMA 404
               # (IDOR; kaydın/randevunun varlığı sızdırılmaz).
+              #
+              # 2026-09-15 (demo ödeme runtime toggle) ile eklenen:
+              #   DEMO_PAYMENTS_DISABLED (403) — `POST .../demo-pay`; env kapısı AÇIK
+              #     olmasına rağmen `SiteSettings.demoPaymentsEnabled = false` (admin
+              #     panelden KASITLI kapatma). "Yapılandırılmamışlık" (503) DEĞİL,
+              #     bilinçli kapatma → `CUSTOM_CODE_ENABLED=false` iken `PUT
+              #     /admin/appearance/custom-code/*` 403'ü ile AYNI sınıf. Env kapısı
+              #     kapalıyken (üretim) bu kod ASLA dönmez — 404 önceliklidir.
               enum:
                 [
                   BAD_REQUEST,
@@ -11531,6 +11574,7 @@ components:
                   RECORDING_CONSENT_EXPIRED,
                   RECORDING_NOT_ACTIVE,
                   RECORDING_NOT_AVAILABLE,
+                  DEMO_PAYMENTS_DISABLED,
                 ]
             message: { type: string }
             details:
@@ -14683,6 +14727,43 @@ components:
           minimum: 0
           maximum: 90
           description: "Üst sınır (iş günü). `Min`'den KÜÇÜK olamaz (`422`). `Min === Max` ise arayüz tek sayı gösterir."
+        # ---- Demo ödeme runtime toggle (architect onayı 2026-09-15) ----
+        # Kaynaklar (BAĞLAYICI): `.claude/security-review-demo-payment-toggle.md`,
+        # `.claude/architect-scope-demo-payment-doctor-counters.md` İstek 1 §1.3.
+        # `env.ts`'teki boot-time fail-closed koruma (prod + ENABLE_DEMO_PAYMENTS=true →
+        # `process.exit(1)`) DEĞİŞMEDİ; DB bayrağı onun ÜZERİNE **yalnızca kısıtlayıcı**
+        # bir AND-gate'tir, env korumasını ASLA bypass EDEMEZ.
+        demoPaymentsEnabled:
+          type: boolean
+          description: >
+            **NİHAİ (hesaplanmış) bayrak — HAM DB sütunu DEĞİL:**
+            `isDemoPaymentsEnabled (env: NODE_ENV !== "production" && ENABLE_DEMO_PAYMENTS)`
+            **VE** `SiteSettings.demoPaymentsEnabled (DB, admin toggle'ı)`. Üretimde
+            env tarafı HER ZAMAN `false` olduğundan bu alan da üretimde HER ZAMAN
+            `false`tur (DB `true` olsa bile). Sunucu bu ANDʼi kendisi hesaplar;
+            istemci env'i ASLA kendisi hesaplamaz.
+
+
+            Frontend sözleşmesi: demo ödeme butonunun render koşulu
+            `DEMO_PAYMENTS_ENABLED (build-time, bundle'dan düşürme katmanı — KORUNUR)`
+            **&&** `settings.demoPaymentsEnabled (bu alan, runtime)`. Runtime katmanı
+            build-time katmanının YERİNE GEÇMEZ, YANINA eklenir.
+
+
+            DB okuması **cache'lenmez** (her istekte taze Prisma okuması) — çok
+            instance'lı deploy'larda admin toggle'ı anında tüm instance'lara yansımalıdır.
+        demoPaymentsSupported:
+          type: boolean
+          description: >
+            Yalnızca ORTAM seviyesi (env) yetenek bayrağı — `isDemoPaymentsEnabled`.
+            Üretimde HER ZAMAN `false`. Admin panelinin demo-ödeme toggle'ını `false`
+            iken **devre dışı bırakıp nedenini açıklaması** içindir (`SiteCustomCode.
+            customCodeEnabled` ile BİREBİR aynı desen) — aksi halde toggle üretimde
+            "açılıp kendiliğinden kapanıyor" gibi görünürdü. `true` iken
+            `demoPaymentsEnabled === ` DB sütununun ham değeridir, yani toggle
+            doğrudan bu alanı okuyabilir. Sır DEĞİLDİR (public `GET /settings`'te de
+            döner; sızdırdığı tek bilgi zaten UI'da gözlemlenebilir olan "bu ortamda
+            demo ödeme butonu var mı"dır).
 
     UpdateSiteSettingsRequest:
       description: "`PATCH /admin/settings` gövdesi — tüm alanlar opsiyoneldir, satır yoksa `DEFAULTS` ile birlikte oluşturulur (upsert)."
@@ -14702,6 +14783,27 @@ components:
         freeShippingThresholdCents: { type: integer, nullable: true, minimum: 0, maximum: 100000000 }
         shippingEstimatedDaysMin: { type: integer, nullable: true, minimum: 0, maximum: 90 }
         shippingEstimatedDaysMax: { type: integer, nullable: true, minimum: 0, maximum: 90, description: "`shippingEstimatedDaysMin`'den küçükse `422` (çapraz-alan kuralı; yalnızca ikisi de gönderildiğinde ŞEMA seviyesinde, tek başına gönderildiğinde mevcut satıra karşı route handler'da doğrulanır — `discountPriceCents` ile AYNI desen)." }
+        demoPaymentsEnabled:
+          type: boolean
+          description: >
+            Demo ödeme runtime aç/kapa anahtarı (admin toggle'ı) — `SiteSettings.
+            demoPaymentsEnabled` HAM DB sütununa yazılır, DB varsayılanı `true`.
+            Diğer tüm alanlar gibi **opsiyoneldir** (PATCH semantiği).
+
+
+            Yanıttaki `demoPaymentsEnabled` bu ham değer DEĞİL, env ile AND'lenmiş
+            NİHAİ değerdir — bu yüzden `demoPaymentsSupported=false` (üretim) iken
+            `true` gönderilse bile yanıtta `false` görünür ve demo ödeme AÇILMAZ. Bu
+            KASITLIDIR: DB bayrağı yalnızca KISITLAYICIDIR, `env.ts`'teki boot-time
+            fail-closed korumayı ASLA gevşetemez (`.claude/security-review-demo-payment-toggle.md`
+            Madde 1-2). Bu nedenle `demoPaymentsSupported=false` iken istek REDDEDİLMEZ
+            (`422` DEĞİL) — sessizce etkisiz kalır, arayüz zaten toggle'ı devre dışı
+            bırakmıştır.
+
+
+            Denetim (audit): mevcut `settings.update` action'ı `metadata.changed` ile
+            bu alanı otomatik loglar; ödeme-bütünlüğü hassasiyeti nedeniyle
+            `metadata.demoPaymentsEnabled` olarak YENİ DEĞER de yazılır (boolean, PII DEĞİL).
 
     SiteModule:
       description: >

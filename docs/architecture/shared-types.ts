@@ -1817,3 +1817,44 @@ export interface ConsultationRecording {
  * döner (`404` DEĞİL: "kayıt yok" normal bir durumdur).
  */
 export type ConsultationRecordingState = ConsultationRecording | null;
+
+// ---------- Demo Ödeme Runtime Toggle (admin, 2026-09-15) ----------
+//
+// Kaynak: `docs/architecture/openapi.yaml` (`SiteSettings`, `UpdateSiteSettingsRequest`,
+// `DEMO_PAYMENTS_DISABLED`) + `.claude/security-review-demo-payment-toggle.md` +
+// `.claude/architect-scope-demo-payment-doctor-counters.md` "EK KARAR — 2026-09-15".
+// Çelişkide **openapi.yaml kazanır**.
+//
+// NOT: bu dosyada TAM bir `SiteSettings`/`AppointmentBooking` şekli YOKTUR (bu dosya
+// telehealth alan adlarının tamamını izlemez) — yalnızca demo ödeme admin toggle'ı için
+// backend-agent'a düşen kapanış maddesi aşağıda, DAR kapsamda belgelenir.
+
+/**
+ * `SiteSettings`e (openapi.yaml) eklenen İKİ alan. `demoPaymentsEnabled` NİHAİ
+ * (`isDemoPaymentsEnabled (env) && SiteSettings.demoPaymentsEnabled (DB)`) AND-gate
+ * SONUCUDUR — HAM DB sütunu DEĞİLDİR. `demoPaymentsSupported` YALNIZCA ortam (env)
+ * yetenek bayrağıdır, DB'den BAĞIMSIZDIR (`SiteCustomCode.customCodeEnabled` İLE AYNI
+ * desen — admin panelinin toggle'ı üretimde "kendiliğinden kapanıyor" gibi göstermemesi
+ * içindir). DB bayrağı YALNIZCA KISITLAYICIDIR; env korumasını ASLA bypass EDEMEZ.
+ */
+export interface SiteSettingsDemoPaymentFields {
+  demoPaymentsEnabled: boolean;
+  demoPaymentsSupported: boolean;
+}
+
+/**
+ * `PATCH /admin/settings` gövdesine eklenen alan — HAM DB sütununa yazar
+ * (`demoPaymentsSupported`e YAZILAMAZ, o hesaplı bir alandır). `demoPaymentsSupported=false`
+ * (üretim) iken istek REDDEDİLMEZ (`422` DEĞİL) — sessizce etkisiz kalır.
+ */
+export interface UpdateSiteSettingsDemoPaymentRequestFields {
+  demoPaymentsEnabled?: boolean;
+}
+
+// `ApiErrorCode` (bu dosyanın başı) TÜM domain'e özgü hata kodlarını İZLEMEZ (örn.
+// `LIVEKIT_NOT_CONFIGURED`/`BOOKING_NOT_PAYABLE` de bu union'da YOKTUR) — o yüzden
+// `DEMO_PAYMENTS_DISABLED` burada AYRI bir tip olarak, `ApiErrorCode`'a EKLENMEDEN
+// belgelenir. `POST /appointments/bookings/{bookingId}/demo-pay`: env-gate AÇIK iken
+// `SiteSettings.demoPaymentsEnabled = false` → 403. Env kapalıyken (üretim) bu kod ASLA
+// dönmez — `404` önceliklidir (bkz. openapi.yaml, `DemoPaymentsDisabledError`).
+export type DemoPaymentDisabledErrorCode = "DEMO_PAYMENTS_DISABLED";

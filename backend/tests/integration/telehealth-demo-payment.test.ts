@@ -173,6 +173,30 @@ describe("telehealth demo-pay — prod-benzeri konfigürasyon (NODE_ENV=producti
     });
     expect(res.statusCode).toBe(404);
   });
+
+  /**
+   * REGRESYON TESTİ (architect'in istediği, `.claude/security-review-demo-payment-toggle.md`
+   * Madde 1/kontrol listesi madde 9(c)) — DB bayrağının env korumasını BYPASS EDEMEDİĞİNİN
+   * kanıtı: env kapalıyken (prod simülasyonu) `SiteSettings.demoPaymentsEnabled` DB'de `true`
+   * olsa BİLE uç YİNE `404` döner (`403 DEMO_PAYMENTS_DISABLED` DEĞİL) — çünkü register-time
+   * gizleme (katman 2) zaten bu isteği yakalar, katman 4'e (DB kontrolü) hiç ULAŞILMAZ.
+   */
+  it("REGRESYON: env kapalıyken DB `demoPaymentsEnabled=true` olsa BİLE demo-pay YİNE `404` döner (DB env'i bypass EDEMEZ)", async () => {
+    await app.prisma.siteSettings.upsert({
+      where: { id: "singleton" },
+      create: { id: "singleton", demoPaymentsEnabled: true },
+      update: { demoPaymentsEnabled: true },
+    });
+
+    const { doctor } = await createDoctorWithAvailability(app);
+    const booking = await createBooking(app, doctor.slug, [nextMondayNineAmUtc()]);
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/appointments/bookings/${booking.bookingId}/demo-pay?t=${booking.accessToken}`,
+    });
+    expect(res.statusCode).toBe(404);
+  });
 });
 
 describe("telehealth demo-pay — BAYRAK AÇIKKEN (ENABLE_DEMO_PAYMENTS=true, NODE_ENV=test)", () => {
@@ -335,5 +359,71 @@ describe("telehealth demo-pay — BAYRAK AÇIKKEN (ENABLE_DEMO_PAYMENTS=true, NO
       url: "/api/v1/appointments/bookings/00000000-0000-0000-0000-000000000000/demo-pay",
     });
     expect(res.statusCode).toBe(404);
+  });
+
+  /**
+   * Katman 4 (2026-09-15, `.claude/security-review-demo-payment-toggle.md` Madde 5) — env
+   * kapısı AÇIK olduğu halde admin panelden `SiteSettings.demoPaymentsEnabled = false`
+   * yapılmışsa `403 DEMO_PAYMENTS_DISABLED` (404 DEĞİL). DB okuması cache'siz/her istekte
+   * taze olduğu için booking DB'den okunmadan ÖNCE reddedilir (booking hâlâ PENDING kalır).
+   */
+  it("env AÇIK ama DB `demoPaymentsEnabled=false` (admin kapatmış) → `403 DEMO_PAYMENTS_DISABLED`, booking DB'ye HİÇ dokunulmadan reddedilir", async () => {
+    await app.prisma.siteSettings.upsert({
+      where: { id: "singleton" },
+      create: { id: "singleton", demoPaymentsEnabled: false },
+      update: { demoPaymentsEnabled: false },
+    });
+
+    const { doctor } = await createDoctorWithAvailability(app);
+    const booking = await createBooking(app, doctor.slug, [nextMondayNineAmUtc()]);
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/appointments/bookings/${booking.bookingId}/demo-pay?t=${booking.accessToken}`,
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.code).toBe("DEMO_PAYMENTS_DISABLED");
+
+    const stillPending = await app.prisma.appointmentBooking.findUniqueOrThrow({ where: { id: booking.bookingId } });
+    expect(stillPending.paymentStatus).toBe("PENDING");
+  });
+
+  it("DB satırı hiç yoksa (taze kurulum, ham varsayılan `true`) env AÇIKKEN demo-pay NORMAL çalışır (200)", async () => {
+    const row = await app.prisma.siteSettings.findUnique({ where: { id: "singleton" } });
+    expect(row).toBeNull();
+
+    const { doctor } = await createDoctorWithAvailability(app);
+    const booking = await createBooking(app, doctor.slug, [nextMondayNineAmUtc()]);
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/appointments/bookings/${booking.bookingId}/demo-pay?t=${booking.accessToken}`,
+    });
+    expect(res.statusCode).toBe(200);
+  });
+
+  it("DB'de admin ÖNCE kapatıp SONRA tekrar açarsa demo-pay yeniden 200 döner (cache'siz, anında yansır)", async () => {
+    await app.prisma.siteSettings.upsert({
+      where: { id: "singleton" },
+      create: { id: "singleton", demoPaymentsEnabled: false },
+      update: { demoPaymentsEnabled: false },
+    });
+
+    const { doctor } = await createDoctorWithAvailability(app);
+    const booking = await createBooking(app, doctor.slug, [nextMondayNineAmUtc()]);
+
+    const disabled = await app.inject({
+      method: "POST",
+      url: `/api/v1/appointments/bookings/${booking.bookingId}/demo-pay?t=${booking.accessToken}`,
+    });
+    expect(disabled.statusCode).toBe(403);
+
+    await app.prisma.siteSettings.update({ where: { id: "singleton" }, data: { demoPaymentsEnabled: true } });
+
+    const enabled = await app.inject({
+      method: "POST",
+      url: `/api/v1/appointments/bookings/${booking.bookingId}/demo-pay?t=${booking.accessToken}`,
+    });
+    expect(enabled.statusCode).toBe(200);
   });
 });

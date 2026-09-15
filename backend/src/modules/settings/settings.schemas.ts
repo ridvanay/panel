@@ -22,6 +22,11 @@ export const UpdateSiteSettingsRequestSchema = z
     // çapraz kontrol edilir (`discountPriceCents` ile AYNI desen).
     shippingEstimatedDaysMin: z.number().int().min(0).max(90).nullable().optional(),
     shippingEstimatedDaysMax: z.number().int().min(0).max(90).nullable().optional(),
+    // `.claude/security-review-demo-payment-toggle.md` Madde 2/3 — HAM DB sütununa yazar
+    // (`demoPaymentsSupported`e YAZILAMAZ, o env'den hesaplı, salt-okunur bir mapper alanıdır).
+    // `demoPaymentsSupported=false` (üretim) iken bu istek REDDEDİLMEZ (`422` DEĞİL) — ham
+    // sütun yazılır ama nihai bayrak `env.ts`teki fail-closed koruma nedeniyle `false` kalır.
+    demoPaymentsEnabled: z.boolean().optional(),
   })
   .refine(
     (data) =>

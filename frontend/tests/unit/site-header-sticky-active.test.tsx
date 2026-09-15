@@ -24,6 +24,8 @@ const settings: SiteSettings = {
   freeShippingThresholdCents: null,
   shippingEstimatedDaysMin: null,
   shippingEstimatedDaysMax: null,
+  demoPaymentsEnabled: false,
+  demoPaymentsSupported: false,
 };
 
 const navigationItems: NavigationItemDto[] = [

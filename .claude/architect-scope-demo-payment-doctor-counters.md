@@ -173,3 +173,16 @@ Bu görev **release-coordinator'a devredilmez** — kapsam dar, bağımlılık z
 **Commit:** Conventional Commits. Örn. `feat(telehealth): dev-only demo odeme ucu (gating: NODE_ENV + ENABLE_DEMO_PAYMENTS)`, `feat(telehealth): doktor konsolu upcoming/all booking sayaclari`.
 
 **Docker hatırlatması:** backend/frontend değişikliği sonrası `docker compose up --build -d` zorunlu.
+
+---
+
+## EK KARAR — 2026-09-15: DB tabanlı admin toggle (`demoPaymentsEnabled`)
+
+**Durum:** BAĞLAYICI. Bu bölüm §1.3'ü **DEĞİŞTİRMEZ**, yalnızca ÜZERİNE bir katman ekler.
+
+- **§1.3'teki env tabanlı boot-time fail-closed koruma AYNEN YÜRÜRLÜKTE.** `backend/src/config/env.ts`'te HİÇBİR SATIR değişmez: `NODE_ENV=production` + `ENABLE_DEMO_PAYMENTS=true` kombinasyonu uygulamayı **boot olmaktan reddettirmeye devam eder** (`process.exit(1)`), `isDemoPaymentsEnabled` export'u ve register-time/`404` gizleme katmanları korunur.
+- **Üzerine eklenen:** `SiteSettings.demoPaymentsEnabled Boolean @default(true)` (db-agent, **migration GEREKİR** — §"Devre dışı" satırındaki "db-agent: migration YOK" ifadesi YALNIZCA ilk tur için geçerliydi, bu turda geçersizdir). Nihai bayrak `isDemoPaymentsEnabled (env) && SiteSettings.demoPaymentsEnabled (DB)` şeklinde **AND**'lenir.
+- **Yön kuralı (ihlal edilemez):** DB bayrağı **yalnızca KISITLAYICIDIR, asla GENİŞLETİCİ DEĞİLDİR** — env korumasını bypass edemez, üretimde demo ödemeyi açamaz. `VEYA` (OR) ile birleştirilmesi YASAKTIR.
+- **Uç/rol:** YENİ uç veya YENİ rol İCAT EDİLMEZ — mevcut `PATCH /admin/settings` (`ROLES_ADMIN` + `requirePanelAccess`) genişletilir, denetim mevcut `settings.update` action'ıyla yapılır. Bayrak kapalıyken `POST .../demo-pay` **`403 DEMO_PAYMENTS_DISABLED`** döner; env kaynaklı `404` katmanları aynen kalır.
+- **Frontend:** build-time `DEMO_PAYMENTS_ENABLED` dead-code-elimination katmanı KORUNUR; runtime kontrolü onun **yerine değil, yanına** (`&&`) eklenir.
+- Gerekçe ve tam denetim: `.claude/security-review-demo-payment-toggle.md` (security-agent, architect onaylı). Sözleşme: `docs/architecture/openapi.yaml` — `SiteSettings.demoPaymentsEnabled` / `demoPaymentsSupported`, `UpdateSiteSettingsRequest.demoPaymentsEnabled`, `DEMO_PAYMENTS_DISABLED` (403).

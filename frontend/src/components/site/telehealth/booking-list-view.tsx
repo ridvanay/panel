@@ -1,11 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, CalendarX2, CheckCircle2, Paperclip, StickyNote } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { AlertTriangle, CalendarX2, CheckCircle2, CreditCard, Paperclip, StickyNote } from "lucide-react";
 import type { AppointmentBooking, AppointmentStatus } from "@/lib/api/types";
 import { formatDayLabel, formatTime } from "@/lib/telehealth-format";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import * as telehealthApi from "@/lib/api/telehealth";
+import { useLocalizePath } from "@/context/locale-alternates-context";
 import { PaymentStatusBadge } from "@/components/site/telehealth/payment-status-badge";
 import { AppointmentStatusBadge } from "@/components/site/telehealth/appointment-status-badge";
 import { JoinMeetingButton } from "@/components/site/telehealth/join-meeting-button";
@@ -72,10 +74,40 @@ function BookingActions({
   now: number;
   onComplete: () => void;
 }) {
+  const router = useRouter();
+  const localize = useLocalizePath();
+
   const status = booking.appointments[0]?.status;
 
+  /**
+   * qa-agent bug fix turu (2026-09-15) — hasta sekmeyi kapatıp geri geldiğinde `PENDING`
+   * ödemeli booking'e dönecek YENİ bir uç İCAT EDİLMEDİ: `/patient/bookings/{id}` sayfası
+   * (`patient-booking-detail-panel.tsx`) ZATEN `BookingPaymentStep`i bu durumda render ediyor,
+   * burada yalnızca ORAYA yönlendiren bir CTA eklenir. `EXPIRED`'ta (AYRI durum, `PENDING`
+   * DEĞİL) buton BİLİNÇLİ OLARAK gösterilmez — "Süresi Doldu" rozeti (Ödeme kolonu) zaten
+   * farklı mesajı taşıyor, ölü bir ödeme sayfasına yönlendirme İCAT EDİLMEZ.
+   */
+  const showPaymentAction = perspective === "patient" && booking.paymentStatus === "PENDING";
+
   if (!status) {
-    return <JoinMeetingButton booking={booking} accessToken={accessToken} size="sm" />;
+    return (
+      <>
+        <JoinMeetingButton booking={booking} accessToken={accessToken} size="sm" />
+        {showPaymentAction && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="gap-1"
+            aria-label={`${booking.bookingNumber} numaralı rezervasyon için ödemeyi tamamla`}
+            onClick={() => router.push(localize(`/patient/bookings/${booking.id}`))}
+          >
+            <CreditCard className="h-3.5 w-3.5" aria-hidden="true" />
+            Ödemeyi Tamamla
+          </Button>
+        )}
+      </>
+    );
   }
 
   const showBadge = status !== "SCHEDULED";
@@ -90,6 +122,19 @@ function BookingActions({
         <Button type="button" variant="success" size="sm" className="gap-1" onClick={onComplete}>
           <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
           Seansı Tamamla
+        </Button>
+      )}
+      {showPaymentAction && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="gap-1"
+          aria-label={`${booking.bookingNumber} numaralı rezervasyon için ödemeyi tamamla`}
+          onClick={() => router.push(localize(`/patient/bookings/${booking.id}`))}
+        >
+          <CreditCard className="h-3.5 w-3.5" aria-hidden="true" />
+          Ödemeyi Tamamla
         </Button>
       )}
     </>

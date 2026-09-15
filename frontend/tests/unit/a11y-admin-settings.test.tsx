@@ -34,6 +34,8 @@ const settings: SiteSettings = {
   freeShippingThresholdCents: null,
   shippingEstimatedDaysMin: null,
   shippingEstimatedDaysMax: null,
+  demoPaymentsEnabled: false,
+  demoPaymentsSupported: false,
 };
 const permissions: PermissionsMatrix = {
   roles: ["ADMIN", "MANAGER", "EDITOR", "CUSTOMER", "USER"],

@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { buildTestApp } from "../helpers/build-test-app";
 import { resetDatabase } from "../helpers/reset-db";
@@ -114,5 +114,159 @@ describe("settings — shippingEstimatedDaysMin/Max (§2.5)", () => {
       payload: { shippingEstimatedDaysMin: 91 },
     });
     expect(res.statusCode).toBe(422);
+  });
+});
+
+/**
+ * `.claude/security-review-demo-payment-toggle.md` Madde 2/4 + architect "Ek Karar A/B"
+ * (`.claude/architect-scope-demo-payment-doctor-counters.md`, "EK KARAR — 2026-09-15") —
+ * NİHAİ bayrak `isDemoPaymentsEnabled (env) && SiteSettings.demoPaymentsEnabled (DB)`
+ * AND-gate'inin HEM `DEFAULTS` (hiç PATCH edilmemiş taze kurulum) HEM normal DB-satırı
+ * dönüş yolunda DOĞRU hesaplandığını doğrular. `isDemoPaymentsEnabled` DEĞERİ `config/env.ts`
+ * modül-seviyesi bir sabit olduğu için env kombinasyonlarını test etmek `vi.resetModules()` +
+ * `ENABLE_DEMO_PAYMENTS` process env değişikliği + `../../src/app`'in YENİDEN import edilmesini
+ * gerektirir (`tests/integration/telehealth-demo-payment.test.ts` İLE AYNI desen).
+ */
+describe("settings — demoPaymentsEnabled/demoPaymentsSupported (AND-gate, DB admin toggle)", () => {
+  describe("env KAPALI (ENABLE_DEMO_PAYMENTS tanımsız, varsayılan test ortamı)", () => {
+    let app: FastifyInstance;
+    let accessToken: string;
+
+    beforeAll(async () => {
+      app = await buildTestApp();
+      await resetDatabase(app.prisma);
+      ({ accessToken } = await registerTestUser(app, { email: "settings-demo-pay-env-off@example.com" }));
+    });
+
+    afterAll(async () => {
+      await resetDatabase(app.prisma);
+      await app.close();
+    });
+
+    function authHeader() {
+      return { authorization: `Bearer ${accessToken}` };
+    }
+
+    it("DEFAULTS yolu (hiç PATCH edilmemiş taze kurulum) — demoPaymentsEnabled: false, demoPaymentsSupported: false (env kapalı, DB ham varsayılanı `true` olsa BİLE sızdırılmaz)", async () => {
+      const res = await app.inject({ method: "GET", url: "/api/v1/settings" });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().data.demoPaymentsEnabled).toBe(false);
+      expect(res.json().data.demoPaymentsSupported).toBe(false);
+    });
+
+    it("PATCH ile DB'ye ham `true` yazılsa BİLE env kapalıyken nihai bayrak `false` kalır (DB KISITLAYICI, GENİŞLETİCİ DEĞİL)", async () => {
+      const patch = await app.inject({
+        method: "PATCH",
+        url: "/api/v1/admin/settings",
+        headers: authHeader(),
+        payload: { demoPaymentsEnabled: true },
+      });
+      expect(patch.statusCode).toBe(200);
+      // PATCH isteği REDDEDİLMEZ (422 DEĞİL) — ham sütun yazılır ama nihai bayrak env
+      // tarafından hâlâ kısıtlanır.
+      expect(patch.json().data.demoPaymentsEnabled).toBe(false);
+      expect(patch.json().data.demoPaymentsSupported).toBe(false);
+
+      const publicGet = await app.inject({ method: "GET", url: "/api/v1/settings" });
+      expect(publicGet.json().data.demoPaymentsEnabled).toBe(false);
+      expect(publicGet.json().data.demoPaymentsSupported).toBe(false);
+
+      // Ham DB sütunu GERÇEKTEN `true` yazıldı (DTO'nun HAM değeri değil, NİHAİ AND'li
+      // değeri döndürdüğünün kanıtı).
+      const row = await app.prisma.siteSettings.findUniqueOrThrow({ where: { id: "singleton" } });
+      expect(row.demoPaymentsEnabled).toBe(true);
+    });
+  });
+
+  describe("env AÇIK (ENABLE_DEMO_PAYMENTS=true, NODE_ENV=test)", () => {
+    let app: FastifyInstance;
+    let buildApp: () => FastifyInstance;
+    let accessToken: string;
+
+    beforeAll(async () => {
+      process.env.ENABLE_DEMO_PAYMENTS = "true";
+      vi.resetModules();
+      ({ buildApp } = await import("../../src/app"));
+    });
+
+    beforeEach(async () => {
+      app = buildApp();
+      await app.ready();
+      await resetDatabase(app.prisma);
+      ({ accessToken } = await registerTestUser(app, { email: `settings-demo-pay-env-on-${Date.now()}@example.com` }));
+    });
+
+    afterEach(async () => {
+      await resetDatabase(app.prisma);
+      await app.close();
+    });
+
+    afterAll(() => {
+      delete process.env.ENABLE_DEMO_PAYMENTS;
+      vi.resetModules();
+    });
+
+    function authHeader() {
+      return { authorization: `Bearer ${accessToken}` };
+    }
+
+    it("DEFAULTS yolu (hiç PATCH edilmemiş taze kurulum) — env açık + DB ham varsayılanı `true` → nihai bayrak `true`, `demoPaymentsSupported: true`", async () => {
+      const res = await app.inject({ method: "GET", url: "/api/v1/settings" });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().data.demoPaymentsEnabled).toBe(true);
+      expect(res.json().data.demoPaymentsSupported).toBe(true);
+    });
+
+    it("ADMIN `demoPaymentsEnabled: false` gönderirse nihai bayrak `false` olur (kapatma çalışır)", async () => {
+      const patch = await app.inject({
+        method: "PATCH",
+        url: "/api/v1/admin/settings",
+        headers: authHeader(),
+        payload: { demoPaymentsEnabled: false },
+      });
+      expect(patch.statusCode).toBe(200);
+      expect(patch.json().data.demoPaymentsEnabled).toBe(false);
+      expect(patch.json().data.demoPaymentsSupported).toBe(true);
+
+      const publicGet = await app.inject({ method: "GET", url: "/api/v1/settings" });
+      expect(publicGet.json().data.demoPaymentsEnabled).toBe(false);
+    });
+
+    it("ADMIN `false`dan sonra `true` gönderirse nihai bayrak TEKRAR `true` olur (geri açma)", async () => {
+      await app.inject({
+        method: "PATCH",
+        url: "/api/v1/admin/settings",
+        headers: authHeader(),
+        payload: { demoPaymentsEnabled: false },
+      });
+
+      const patch = await app.inject({
+        method: "PATCH",
+        url: "/api/v1/admin/settings",
+        headers: authHeader(),
+        payload: { demoPaymentsEnabled: true },
+      });
+      expect(patch.statusCode).toBe(200);
+      expect(patch.json().data.demoPaymentsEnabled).toBe(true);
+
+      const publicGet = await app.inject({ method: "GET", url: "/api/v1/settings" });
+      expect(publicGet.json().data.demoPaymentsEnabled).toBe(true);
+    });
+
+    it("`settings.update` audit kaydına YENİ değer (`metadata.demoPaymentsEnabled`) açıkça yazılır (security-agent Madde 3)", async () => {
+      await app.inject({
+        method: "PATCH",
+        url: "/api/v1/admin/settings",
+        headers: authHeader(),
+        payload: { demoPaymentsEnabled: false },
+      });
+
+      const audit = await app.prisma.auditLog.findFirst({
+        where: { action: "settings.update" },
+        orderBy: { createdAt: "desc" },
+      });
+      expect(audit).not.toBeNull();
+      expect(audit!.metadata).toMatchObject({ demoPaymentsEnabled: false });
+    });
   });
 });
