@@ -3350,3 +3350,59 @@ Aynı şekilde Playwright'ın `webServer.url` hazır-mı probu Node tarafında �
 kodu bu görev boyunca değişmedi ama önceki turların birikmiş değişiklikleri henüz image'a
 yansımamıştı) — stack (`db`/`backend`/`frontend`) sağlıklı, `siteadi.localhost:3000` VE
 `doktor.siteadi.localhost:3000` ikisi de 200 dönüyor.
+
+## Tur: Dev demo ödeme ucu + doktor konsolu sayaçları (`.claude/architect-scope-demo-payment-doctor-counters.md`)
+
+**Yeni dosya:** `frontend/tests/e2e/telehealth-demo-payment-doctor-counters.spec.ts` — koordinatörün
+ayağa kaldırdığı geliştirme Docker Compose yığınına (`docker-compose.yml` + `docker-compose.dev.yml`,
+`saas_dev`, backend `localhost:4000`, frontend `siteadi.localhost:3000`/`doktor.siteadi.localhost:3000`)
+karşı çalışır — standart `saas_e2e` suite'i bu bayrağı taşımadığı için BİLİNÇLİ OLARAK AYRI bir ortam
+(`doctor-panel-session-lifecycle.spec.ts` İLE AYNI felsefe, dosya başlığında çalıştırma talimatı var).
+
+**Kapsanan (GERÇEKTEN koşuldu, kanıt için final qa-agent raporuna bakın):**
+- Senaryo 1 (backend): `POST /appointments/bookings/{id}/demo-pay` → 200, `paymentStatus=PAID`,
+  randevu `SCHEDULED`. **YEŞİL.**
+- Senaryo 2 (doktor konsolu): demo ödeme sonrası `upcomingBookingTotal`/`allBookingTotal` TAM 1
+  artıyor, sekme rozetleri bu değerlerle eşleşiyor, "Ödeme Bekliyor" rozeti kalkıyor, randevu
+  katılım penceresine (`shiftAppointmentIntoJoinWindowDirectly`) kaydırılınca "Odaya Katıl" AKTİF
+  (gerçek `<a>` linki, `aria-disabled` YOK) bir düğmeye dönüşüyor. **YEŞİL.**
+- Senaryo 3 (regresyon): demo-pay UYGULANMAMIŞ (`PENDING`) bir booking "Tümü"nde görünüyor,
+  "Gelecek Randevular"da GÖRÜNMÜYOR — [DPI] §3.2'nin kasıtlı davranışı BOZULMAMIŞ; sayaçlar buna
+  göre doğru ayrışıyor (`all` +1, `upcoming` DEĞİŞMEDİ). **YEŞİL.**
+- Backend'in kendi unit/integration testleri (`tests/unit/env-demo-payments-boot-guard.test.ts`,
+  `tests/integration/telehealth-demo-payment.test.ts`) bu turda AYRICA çalıştırıldı: 15/15 YEŞİL
+  (fail-closed boot koruması + prod-benzeri `NODE_ENV=production` konfigürasyonda ucun 404 verdiği
+  DAHİL).
+- Regresyon kontrolü — mevcut `doctor-console-dashboard-layout.spec.ts` (3/3 YEŞİL, standart
+  `saas_e2e` ortamına karşı, sayaç rozeti testi DAHİL) ve `telehealth-booking-wizard.spec.ts` (5/6
+  YEŞİL — bkz. aşağıdaki BULGU, bu turun konusuyla İLGİSİZ).
+
+**qa-agent BULGUSU (KRİTİK, devops-agent'a yönlendirilir):** Senaryo 4 (hasta tarafı, GERÇEK
+tarayıcı, booking sihirbazı adım 5'teki "Demo Ödemeyi Tamamla (Test)" butonunun GÖRÜNÜRLÜĞÜ)
+docker dev yığınında BAŞARISIZ. Kök neden UYGULAMA KODUNDA DEĞİL: `docker-compose.dev.yml`
+`frontend.build.args.NEXT_PUBLIC_ENABLE_DEMO_PAYMENTS: "true"` verir AMA `frontend/Dockerfile`'ın
+builder aşaması bu ARG'ı HİÇ TANIMLAMAZ/`ENV`'e YAZMAZ (yalnızca `NEXT_PUBLIC_API_URL`/
+`NEXT_PUBLIC_SITE_URL`/`NEXT_PUBLIC_INTERNAL_MEDIA_URL` için `ARG`+`ENV` çifti var) — bu yüzden
+`next build` sırasında `process.env.NEXT_PUBLIC_ENABLE_DEMO_PAYMENTS` TANIMSIZ kalır,
+`frontend/src/lib/env.ts::DEMO_PAYMENTS_ENABLED` derleme anında `false`'a SABİTLENİR ve (frontend-
+agent'ın TASARLADIĞI GİBİ) dead-code-elimination ile TÜM demo buton bloğu bundle'dan düşer.
+Doğrulama: `docker exec claudecodeproje-frontend-1 sh -c "grep -o 'Demo.demeyi Tamamla'
+/app/.next/static/chunks/*.js"` SIFIR sonuç döner. Senaryo 1-3 bu bug'dan ETKİLENMEZ (backend
+bayrağı runtime env, build-time inlining sorunu YOK) — bu yüzden dosyada BİLİNÇLİ OLARAK EN SONA
+konuldu (`serial` modda bir FAIL sonrası Playwright dosyanın kalanını atlar). **Düzeltme önerisi
+(devops-agent uygular, qa-agent DOKUNMADI):** `frontend/Dockerfile`'ın builder aşamasına
+`ARG NEXT_PUBLIC_ENABLE_DEMO_PAYMENTS=` + `ENV NEXT_PUBLIC_ENABLE_DEMO_PAYMENTS=${NEXT_PUBLIC_ENABLE_DEMO_PAYMENTS}`
+eklenmesi (mevcut üç `NEXT_PUBLIC_*` çiftiyle AYNI desen), ardından image'ın yeniden build
+edilmesi. Test dosyası bu düzeltmeden SONRA senaryo 4'ün YEŞİLE dönmesini BEKLER — "buton YOK"
+şeklinde zayıflatılmadı (bug kalıcı olarak maskelenmesin diye).
+
+**qa-agent BULGUSU (pre-existing, bu turun kapsamı DIŞINDA, frontend-agent'a yönlendirilir):**
+`telehealth-booking-wizard.spec.ts` "madde 3: mobil (375px)" testi bu turda da KIRIK (git log ile
+doğrulandı — bu turun commit'i `doctor-service-summary.tsx`'e DOKUNMADI, önceki bir turdan kalma).
+Mobil (375×812) sabit alt eylem çubuğu (`doctor-service-summary.tsx`, `IntersectionObserver`
+tabanlı `barVisible`) sayfa İLK yüklendiğinde `aria-hidden="false"` ile render oluyor — masaüstü
+`<aside>` panelinin KENDİ "Devam Et" butonuyla AYNI ANDA erişilebilirlik ağacında görünüp
+`getByRole("button",{name:"Devam Et"})`'in 2 eleman dönmesine yol açıyor (beklenen: 1, alt çubuk
+yalnızca panel gerçekten görünüm dışına ÇIKINCA aktifleşmeli). Kök neden/düzeltme frontend-agent'ın
+sahası (`IntersectionObserver` eşiği/`rootMargin` veya `barVisible` başlangıç koşulu) — qa-agent
+DOKUNMADI. Diğer 5/6 test (`madde 1`, `madde 2`, `madde 3` masaüstü, `madde 4`) YEŞİL.
