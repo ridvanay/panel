@@ -4,9 +4,16 @@ import { useEffect, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/auth-context";
+import { useSiteBranding } from "@/context/site-branding-context";
 import { Card } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { isSafeInternalPath } from "@/lib/safe-redirect";
+import { DEFAULT_HEADER_LOGO_HEIGHT } from "@/lib/site-settings/logo";
+
+/** Bu bileşenin KENDİ marka fallback'i — `server-settings.ts::DEFAULT_SETTINGS.siteName`deki
+ * genel "Site" fallback'i BOZMADAN, `/settings` isteği başarısız olursa bile auth ekranlarında
+ * jenerik "SaaS Platform" yerine kurumsal bir ad görünmesi için. */
+const AUTH_SHELL_FALLBACK_SITE_NAME = "WM Health Istanbul";
 
 /** /login, /register, /forgot-password, /reset-password için ortak kabuk: zaten
  * girişliyse `?next=` (varsa ve güvenliyse) hedefine, aksi halde /dashboard'a yönlendirir;
@@ -30,6 +37,8 @@ export function AuthPageShell({
 }) {
   const { status } = useAuth();
   const router = useRouter();
+  const branding = useSiteBranding();
+  const siteName = branding.siteName?.trim() || AUTH_SHELL_FALLBACK_SITE_NAME;
 
   useEffect(() => {
     if (status !== "authenticated") return;
@@ -49,8 +58,24 @@ export function AuthPageShell({
     <main className="admin-shell flex min-h-screen items-center justify-center bg-surface-muted px-4 py-12">
       <div className="w-full max-w-sm">
         <div className="mb-6 text-center">
-          <Link href="/" className="text-lg font-semibold text-foreground">
-            SaaS Platform
+          <Link href="/" className="inline-flex flex-col items-center gap-1 text-lg font-semibold text-foreground">
+            {branding.logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element -- site-header.tsx ile AYNI desen (logo URL'si medya kütüphanesinden gelir, remotePatterns garanti değil)
+              <img
+                src={branding.logoUrl}
+                alt={siteName}
+                className="mx-auto block w-auto object-contain"
+                style={{
+                  height: `${branding.headerLogoHeight ?? DEFAULT_HEADER_LOGO_HEIGHT}px`,
+                  ...(branding.headerLogoMaxWidth ? { maxWidth: `${branding.headerLogoMaxWidth}px` } : {}),
+                }}
+              />
+            ) : (
+              <span>{siteName}</span>
+            )}
+            {branding.tagline?.trim() && (
+              <span className="text-xs font-normal text-foreground/60">{branding.tagline}</span>
+            )}
           </Link>
         </div>
         <Card>
