@@ -21,6 +21,8 @@ import { LocaleManager } from "@/components/admin/locale-manager";
 import { ApiKeysSection } from "@/components/admin/settings/api-keys-section";
 import { WebhooksSection } from "@/components/admin/settings/webhooks-section";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { useUnsavedChangesGuard } from "@/hooks/use-unsaved-changes-guard";
@@ -30,6 +32,7 @@ import {
   AlertCircle,
   Briefcase,
   CheckCircle2,
+  ClipboardList,
   CreditCard,
   Globe,
   ImageIcon,
@@ -100,6 +103,10 @@ interface GeneralSettingsSnapshot {
   liveChatEnabled: boolean;
   liveChatProvider: "internal" | "crisp" | "tawkto";
   liveChatScriptId: string;
+  liveChatPreChatEnabled: boolean;
+  liveChatRequireName: boolean;
+  liveChatRequirePhone: boolean;
+  liveChatRequireEmail: boolean;
 }
 
 function RoleBadge({ role, active }: { role: SiteRole; active: boolean }) {
@@ -167,6 +174,15 @@ export default function AdminSettingsPage() {
   const [liveChatProvider, setLiveChatProvider] = useState<"internal" | "crisp" | "tawkto">("internal");
   const [liveChatScriptId, setLiveChatScriptId] = useState("");
 
+  // Görev (2026-09-16) — ön görüşme (pre-chat) formu. Backend Prisma varsayılanlarıyla AYNI
+  // (`liveChatPreChatEnabled=false`, `liveChatRequireName=true`, `liveChatRequirePhone=true`,
+  // `liveChatRequireEmail=false`) — satır hiç oluşturulmamışsa (`?? default`) bu güvenli
+  // varsayılanlara düşülür (bkz. `.claude/architect-scope-support-desk-and-reminders.md` §7.1).
+  const [liveChatPreChatEnabled, setLiveChatPreChatEnabled] = useState(false);
+  const [liveChatRequireName, setLiveChatRequireName] = useState(true);
+  const [liveChatRequirePhone, setLiveChatRequirePhone] = useState(true);
+  const [liveChatRequireEmail, setLiveChatRequireEmail] = useState(false);
+
   const [permissions, setPermissions] = useState<PermissionsMatrix | null>(null);
   const [permissionsLoading, setPermissionsLoading] = useState(false);
   const [permissionsError, setPermissionsError] = useState<string | null>(null);
@@ -192,6 +208,10 @@ export default function AdminSettingsPage() {
       setLiveChatEnabled(settings.liveChatEnabled ?? false);
       setLiveChatProvider(settings.liveChatProvider ?? "internal");
       setLiveChatScriptId(settings.liveChatScriptId ?? "");
+      setLiveChatPreChatEnabled(settings.liveChatPreChatEnabled ?? false);
+      setLiveChatRequireName(settings.liveChatRequireName ?? true);
+      setLiveChatRequirePhone(settings.liveChatRequirePhone ?? true);
+      setLiveChatRequireEmail(settings.liveChatRequireEmail ?? false);
       setSnapshot({
         siteName: settings.siteName,
         logoUrl: settings.logoUrl ?? "",
@@ -201,6 +221,10 @@ export default function AdminSettingsPage() {
         liveChatEnabled: settings.liveChatEnabled ?? false,
         liveChatProvider: settings.liveChatProvider ?? "internal",
         liveChatScriptId: settings.liveChatScriptId ?? "",
+        liveChatPreChatEnabled: settings.liveChatPreChatEnabled ?? false,
+        liveChatRequireName: settings.liveChatRequireName ?? true,
+        liveChatRequirePhone: settings.liveChatRequirePhone ?? true,
+        liveChatRequireEmail: settings.liveChatRequireEmail ?? false,
       });
       setLoaded(true);
     } catch (err) {
@@ -224,7 +248,11 @@ export default function AdminSettingsPage() {
       demoPaymentsEnabled !== snapshot.demoPaymentsEnabled ||
       liveChatEnabled !== snapshot.liveChatEnabled ||
       liveChatProvider !== snapshot.liveChatProvider ||
-      liveChatScriptId !== snapshot.liveChatScriptId
+      liveChatScriptId !== snapshot.liveChatScriptId ||
+      liveChatPreChatEnabled !== snapshot.liveChatPreChatEnabled ||
+      liveChatRequireName !== snapshot.liveChatRequireName ||
+      liveChatRequirePhone !== snapshot.liveChatRequirePhone ||
+      liveChatRequireEmail !== snapshot.liveChatRequireEmail
     );
   }, [
     siteName,
@@ -235,6 +263,10 @@ export default function AdminSettingsPage() {
     liveChatEnabled,
     liveChatProvider,
     liveChatScriptId,
+    liveChatPreChatEnabled,
+    liveChatRequireName,
+    liveChatRequirePhone,
+    liveChatRequireEmail,
     snapshot,
   ]);
 
@@ -303,6 +335,10 @@ export default function AdminSettingsPage() {
         liveChatEnabled,
         liveChatProvider,
         liveChatScriptId: liveChatScriptId.trim() ? liveChatScriptId.trim() : null,
+        liveChatPreChatEnabled,
+        liveChatRequireName,
+        liveChatRequirePhone,
+        liveChatRequireEmail,
       });
       setSaved(true);
       // Nihai (env `&&` DB) değer sunucudan geri döner — `demoPaymentsSupported=false` (üretim)
@@ -324,6 +360,10 @@ export default function AdminSettingsPage() {
         liveChatEnabled,
         liveChatProvider,
         liveChatScriptId,
+        liveChatPreChatEnabled,
+        liveChatRequireName,
+        liveChatRequirePhone,
+        liveChatRequireEmail,
       });
       toast.success("Ayarlar kaydedildi.");
     } catch (err) {
@@ -634,6 +674,75 @@ export default function AdminSettingsPage() {
                     <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                     Sağlayıcı kimliği (ID) girilmeden harici widget yüklenmez.
                   </p>
+                )}
+              </Card>
+            </motion.div>
+
+            {/*
+             * Görev (2026-09-16) — ön görüşme (pre-chat) formu. `Canlı Destek` kartıyla AYNI
+             * görsel desen (toggle + koşullu-görünürlük). Üç zorunluluk anahtarı yalnızca
+             * `liveChatPreChatEnabled` açıkken ANLAMLIDIR — `liveChatProvider !== "internal"`
+             * iken `liveChatScriptId` alanının gizlenmesiyle AYNI ilke (bkz. `.claude/
+             * architect-scope-support-desk-and-reminders.md` §7.4).
+             */}
+            <motion.div variants={cardVariants} className="lg:col-span-3">
+              <Card className="space-y-4">
+                <SectionHeader
+                  icon={ClipboardList}
+                  title="Ön Bilgi Formu"
+                  description="Ziyaretçiler sohbete başlamadan önce iletişim bilgilerini toplayın."
+                />
+                <div className="flex items-center justify-between gap-4 rounded-lg border border-border/60 p-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-foreground">Görüşme Öncesi Bilgi Topla</p>
+                    <p className="text-xs text-foreground/60">
+                      Aktif olduğunda misafir ziyaretçiler ilk mesajdan önce ad soyad/telefon/e-posta formunu
+                      doldurur. Giriş yapmış hastalara bu form hiç gösterilmez (bilgiler hesaptan otomatik gelir).
+                    </p>
+                  </div>
+                  <Switch
+                    checked={liveChatPreChatEnabled}
+                    onCheckedChange={(checked) => setLiveChatPreChatEnabled(Boolean(checked))}
+                    aria-label="Görüşme Öncesi Bilgi Topla"
+                  />
+                </div>
+
+                {liveChatPreChatEnabled && (
+                  <div className="space-y-2.5 rounded-lg border border-border/60 p-3">
+                    <p className="text-xs font-medium text-foreground/70">
+                      Hangi alanlar zorunlu olsun? (İşaretlenmeyen alan yine gösterilir, sadece boş bırakılabilir.)
+                    </p>
+                    <div className="flex items-center gap-2.5">
+                      <Checkbox
+                        id="liveChatRequireName"
+                        checked={liveChatRequireName}
+                        onCheckedChange={(checked) => setLiveChatRequireName(Boolean(checked))}
+                      />
+                      <Label htmlFor="liveChatRequireName" className="cursor-pointer font-normal">
+                        İsim Zorunlu
+                      </Label>
+                    </div>
+                    <div className="flex items-center gap-2.5">
+                      <Checkbox
+                        id="liveChatRequirePhone"
+                        checked={liveChatRequirePhone}
+                        onCheckedChange={(checked) => setLiveChatRequirePhone(Boolean(checked))}
+                      />
+                      <Label htmlFor="liveChatRequirePhone" className="cursor-pointer font-normal">
+                        Telefon Numarası Zorunlu
+                      </Label>
+                    </div>
+                    <div className="flex items-center gap-2.5">
+                      <Checkbox
+                        id="liveChatRequireEmail"
+                        checked={liveChatRequireEmail}
+                        onCheckedChange={(checked) => setLiveChatRequireEmail(Boolean(checked))}
+                      />
+                      <Label htmlFor="liveChatRequireEmail" className="cursor-pointer font-normal">
+                        E-posta Zorunlu
+                      </Label>
+                    </div>
+                  </div>
                 )}
               </Card>
             </motion.div>

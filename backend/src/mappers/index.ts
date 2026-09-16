@@ -438,6 +438,12 @@ export function toSiteSettingsDto(settings: SiteSettings): SiteSettingsDto {
     liveChatEnabled: settings.liveChatEnabled,
     liveChatProvider: settings.liveChatProvider,
     liveChatScriptId: settings.liveChatScriptId,
+    // Ön görüşme (pre-chat) formu — `.claude/architect-scope-support-desk-and-reminders.md`
+    // §7.1/§7.3. HAM DB sütunları, PUBLIC `GET /settings`'te de döner (sır değil).
+    liveChatPreChatEnabled: settings.liveChatPreChatEnabled,
+    liveChatRequireName: settings.liveChatRequireName,
+    liveChatRequirePhone: settings.liveChatRequirePhone,
+    liveChatRequireEmail: settings.liveChatRequireEmail,
   };
 }
 
@@ -1902,6 +1908,8 @@ export function toSupportChatSessionSummaryDto(
     seq: session.seq,
     status: session.status,
     visitorName: session.visitorName,
+    // Ön görüşme (pre-chat) formu — `.claude/architect-scope-support-desk-and-reminders.md` §7.
+    visitorPhone: session.visitorPhone,
     visitorEmail: session.visitorEmail,
     visitorUserId: session.visitorUserId,
     assignedAgent: extras.assignedAgent ? toSupportAgentSummaryDto(extras.assignedAgent) : null,

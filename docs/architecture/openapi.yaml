@@ -10933,7 +10933,7 @@ paths:
     post:
       tags: [Support]
       security: []
-      summary: Ziyaretçi sohbet oturumu başlat (PUBLIC)
+      summary: Ziyaretçi sohbet oturumu başlat (PUBLIC, isteğe bağlı kimlikli)
       description: >
         Widget ilk mesaj gönderilmeden ÖNCE değil, **ilk mesajla BİRLİKTE** çağırır
         (`message` zorunludur) — boş oturum çöpü üretmemek için. Yanıtta dönen
@@ -10944,12 +10944,43 @@ paths:
 
         `liveChatEnabled = false` VEYA `liveChatProvider ≠ "internal"` ise **`404`**.
         Hız sınırı **3 istek/dakika/IP** (`SUPPORT_SESSION_CREATE_RATE_LIMIT`).
-        `visitorName`/`visitorEmail` OPSİYONELDİR ve DOĞRULANMAZ (kimlik iddiası
-        değildir; admin panelinde "ziyaretçi beyanı" olarak etiketlenir).
+        `visitorName`/`visitorPhone`/`visitorEmail` OPSİYONELDİR ve DOĞRULANMAZ (kimlik
+        iddiası değildir; admin panelinde "ziyaretçi beyanı" olarak etiketlenir).
+
+
+        **Ön görüşme (pre-chat) formu — 2026-09-16.** `SiteSettings.liveChatPreChatEnabled
+        = true` VE çağıran MİSAFİR ise, widget ilk mesajdan ÖNCE ad/telefon/e-posta
+        formunu gösterir ve toplanan değerleri BU gövdede `visitorName`/`visitorPhone`/
+        `visitorEmail` olarak yollar. Hangi alanların ZORUNLU olduğu `liveChatRequireName/
+        RequirePhone/RequireEmail` ile belirlenir ve **yalnızca istemcide** uygulanır:
+        bu uç, ayar ne olursa olsun bu üç alanı ZORUNLU KILMAZ (`422` fırlatmaz) ve
+        `message` tek zorunlu alan olarak kalır — ayarın PATCH'lenmesi, o an açık olan
+        widget akışlarını KIRMAMALIDIR.
+
+
+        **İsteğe bağlı kimlik (`Authorization: Bearer`) — 2026-09-16.** Bu uç
+        `middleware/authenticate.ts::authenticateOptional` taşır (`POST /checkout/session`
+        ve telehealth public uçlarıyla BİREBİR AYNI desen): header YOKSA/geçersizse
+        **401 FIRLATILMAZ**, misafir akışı aynen çalışır; bu yüzden `security: []`
+        DOĞRUDUR ve DEĞİŞMEZ. Header geçerliyse:
+
+        1. `visitorUserId` = o kullanıcının id'si (artık her zaman `null` DEĞİL — [ASD]
+           §3.4'teki "bu turda bağlanmaz" sınırlaması KALKTI).
+
+        2. `visitorName`/`visitorPhone`/`visitorEmail` **SUNUCUDA** `User.name`/
+           `User.phone`/`User.email`'den doldurulur ve gövdeden gelen aynı adlı alanlar
+           **YOKSAYILIR** (istemci bir şey yollamışsa bile). Gerekçe: oturum açmış bir
+           kullanıcı için beyan ile hesap verisinin çelişmesi, temsilciyi yanlış kişiye
+           dönüş yapmaya iter. `User` alanı boşsa (`phone` null olabilir) ilgili sütun
+           `null` kalır; istemci gövdesine GERİ DÜŞÜLMEZ.
+
+        3. Widget ön görüşme formunu **GÖSTERMEZ** (`liveChatPreChatEnabled = true` olsa
+           bile) — bilgi zaten hesapta vardır.
 
 
         Oturum `status = PENDING` doğar. `ipAddress`/`userAgent` kaydedilir
-        (kötüye kullanım takibi) ve 30 gün sonra redakte edilir.
+        (kötüye kullanım takibi) ve 30 gün sonra redakte edilir; `visitor*` beyan
+        alanları redaksiyona TABİ DEĞİLDİR.
       requestBody:
         required: true
         content:
@@ -15560,6 +15591,32 @@ components:
           nullable: true
           maxLength: 200
           description: "Yalnızca `liveChatProvider` harici bir sağlayıcıysa kullanılır (ör. Crisp Website ID, Tawk.to widget ID). `internal` iken yoksayılır."
+        # ---- Ön görüşme (pre-chat) formu (2026-09-16) ----
+        # Dördü de HAM DB sütunudur ve PUBLIC `GET /settings`'te de döner — widget
+        # (misafir ziyaretçi, token'sız) formu render edip etmeyeceğini bilmek ZORUNDA.
+        # Sır DEĞİLDİR: sızdırdığı tek bilgi zaten UI'da gözlemlenebilir olan
+        # "sohbet öncesi form çıkıyor mu, hangi alanlar zorunlu"dur.
+        liveChatPreChatEnabled:
+          type: boolean
+          description: >
+            Ziyaretçi sohbete başlamadan ÖNCE ad/telefon/e-posta formu gösterilsin mi.
+            Varsayılan `false` (mevcut davranış korunur — `liveChatEnabled` ile AYNI
+            "yeni UI sessizce açılmaz" disiplini). `liveChatEnabled = false` iken
+            ANLAMSIZDIR (widget zaten yok); `liveChatProvider ≠ "internal"` iken de
+            YOKSAYILIR (harici sağlayıcının kendi formu vardır).
+          default: false
+        liveChatRequireName:
+          type: boolean
+          description: "Form gösterilirken Ad Soyad alanı ZORUNLU mu. `false` iken alan yine GÖSTERİLİR, sadece opsiyoneldir. Varsayılan `true`."
+          default: true
+        liveChatRequirePhone:
+          type: boolean
+          description: "Form gösterilirken Telefon alanı ZORUNLU mu. Varsayılan `true`."
+          default: true
+        liveChatRequireEmail:
+          type: boolean
+          description: "Form gösterilirken E-posta alanı ZORUNLU mu. Varsayılan `false`."
+          default: false
 
     UpdateSiteSettingsRequest:
       description: "`PATCH /admin/settings` gövdesi — tüm alanlar opsiyoneldir, satır yoksa `DEFAULTS` ile birlikte oluşturulur (upsert)."
@@ -15603,6 +15660,13 @@ components:
         liveChatEnabled: { type: boolean, description: "Sağ alt canlı destek widget'ı aç/kapa (admin toggle'ı) — HAM DB sütununa yazılır." }
         liveChatProvider: { type: string, enum: [internal, crisp, tawkto], description: "Geçersiz bir değer (ör. `whatsapp`) `422` döner." }
         liveChatScriptId: { type: string, nullable: true, maxLength: 200, description: "Yalnızca `liveChatProvider` harici bir sağlayıcıysa kullanılır." }
+        liveChatPreChatEnabled: { type: boolean, description: "Ön görüşme formu aç/kapa. Diğer tüm alanlar gibi OPSİYONELDİR (PATCH semantiği); gönderilmezse mevcut değer korunur." }
+        liveChatRequireName: { type: boolean, description: "Formdaki Ad Soyad alanı zorunlu mu." }
+        liveChatRequirePhone: { type: boolean, description: "Formdaki Telefon alanı zorunlu mu." }
+        liveChatRequireEmail: { type: boolean, description: "Formdaki E-posta alanı zorunlu mu." }
+        # NOT: `liveChatPreChatEnabled = true` iken `liveChatRequire*` alanlarının ÜÇÜ birden
+        # `false` olabilir (form gösterilir, hiçbir alan zorunlu değildir, ziyaretçi boş
+        # geçebilir) — bu KASITLIDIR, çapraz-alan `422` kuralı YOKTUR.
 
     SiteModule:
       description: >
@@ -20163,7 +20227,7 @@ components:
         Liste DTO'su — **mesaj dizisi TAŞIMAZ** (yalnızca `lastMessagePreview`).
         `GET /admin/contact/submissions`'ın `data` alanını taşımama disipliniyle AYNI.
       required:
-        [id, seq, status, visitorName, visitorEmail, assignedAgent, messageCount, unreadForAgent, lastMessagePreview, lastMessageAt, createdAt, updatedAt]
+        [id, seq, status, visitorName, visitorPhone, visitorEmail, assignedAgent, messageCount, unreadForAgent, lastMessagePreview, lastMessageAt, createdAt, updatedAt]
       properties:
         id: { type: string, format: uuid }
         seq: { type: integer, description: "Cursor sıralamasının anahtarı (`seq DESC`)." }
@@ -20171,7 +20235,19 @@ components:
         visitorName:
           type: string
           nullable: true
-          description: "Ziyaretçi BEYANI — doğrulanmamıştır, UI bunu açıkça etiketler."
+          description: "Ziyaretçi BEYANI — doğrulanmamıştır, UI bunu açıkça etiketler. Ziyaretçi portala GİRİŞ YAPMIŞSA `User.name`'den otomatik doldurulur (yine de BEYAN sütununa yazılır, ayrı bir alan yoktur)."
+        visitorPhone:
+          type: string
+          nullable: true
+          maxLength: 40
+          description: >
+            Ziyaretçi BEYANI, doğrulanmamıştır (SMS/OTP doğrulaması YOKTUR).
+            `visitorName`/`visitorEmail` ile BİREBİR aynı muamele: **maskelenmez**
+            (temsilci dönüş yapacak), 30 günlük PII redaksiyonuna **TABİ DEĞİLDİR**
+            (`ipAddress`/`userAgent`in aksine — bkz. `.claude/compliance-notes-support-desk.md`
+            §1), oturum kalıcı silinene kadar yaşar. Ön görüşme formu kapalıyken `null`.
+            Admin liste aramasında (`q`) **ARANMAZ** — `q` yalnızca `visitorName`/
+            `visitorEmail` üzerinde çalışır (bu tur KASITLI olarak genişletilmedi).
         visitorEmail:
           type: string
           nullable: true
@@ -20229,6 +20305,17 @@ components:
       properties:
         message: { type: string, minLength: 1, maxLength: 2000, description: "Düz metin." }
         visitorName: { type: string, maxLength: 120, nullable: true }
+        visitorPhone:
+          type: string
+          maxLength: 40
+          nullable: true
+          description: >
+            Ön görüşme formundan gelir (`SiteSettings.liveChatPreChatEnabled`).
+            **Format DOĞRULAMASI YOKTUR** — yalnızca `maxLength` (uluslararası/kurumsal
+            numara biçimleri kısıtlanmaz; `visitorName` disipliniyle AYNI, serbest metin
+            beyan). Zorunluluk İSTEMCİ tarafındadır (`liveChatRequire*`); sunucu bu alanı
+            HİÇBİR ayarda ZORUNLU KILMAZ — ayar okumasıyla gövde doğrulamasını
+            birbirine bağlamak, ayar değiştiği anda açık oturum akışlarını kırardı.
         visitorEmail: { type: string, format: email, maxLength: 200, nullable: true }
         pageUrl: { type: string, maxLength: 500, nullable: true }
         locale: { type: string, maxLength: 10, nullable: true }

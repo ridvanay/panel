@@ -58,6 +58,42 @@ async function assertNotLastActiveAdmin(tx: Prisma.TransactionClient, excludeUse
   }
 }
 
+const SUPPORT_ASSIGNABLE_ROLES: SiteRole[] = ["ADMIN", "MANAGER"];
+
+/**
+ * Bug düzeltmesi (2026-09-16, qa-agent raporu) — `support.service.ts::assertValidAssignmentTarget`
+ * yalnızca ATAMA ANINDA rolü doğrular; kullanıcı SONRADAN ADMIN/MANAGER'dan düşürülürse
+ * `SupportChatSession.assignedAgentId` DB'de kalıcı olarak geçersiz kalıyordu ve
+ * `GET /admin/support/sessions` `SupportAgentSummarySchema.role` enum'ına ("ADMIN"|"MANAGER")
+ * çarpıp 500 ile çöküyordu (TÜM personel için destek masasını kilitleyen, kendi kendine
+ * düzelmeyen bir veri tutarsızlığı — kendi kendini onaramayan DoS). Rol ADMIN/MANAGER'dan
+ * ÇIKARILDIĞINDA, o kullanıcıya atanmış tüm oturumların atamasını AYNI (serializable)
+ * transaction içinde temizleriz — best-effort değil, atomik: rol değişikliğiyle
+ * senkron, yarış durumu yok.
+ */
+async function clearSupportAssignmentsIfDemoted(
+  app: FastifyInstance,
+  tx: Prisma.TransactionClient,
+  userId: string,
+  previousRole: SiteRole,
+  nextRole: SiteRole
+): Promise<void> {
+  const wasAssignable = SUPPORT_ASSIGNABLE_ROLES.includes(previousRole);
+  const stillAssignable = SUPPORT_ASSIGNABLE_ROLES.includes(nextRole);
+  if (!wasAssignable || stillAssignable) return;
+
+  const { count } = await tx.supportChatSession.updateMany({
+    where: { assignedAgentId: userId },
+    data: { assignedAgentId: null, assignedAt: null },
+  });
+  if (count > 0) {
+    app.log.warn(
+      { userId, previousRole, nextRole, clearedSessionCount: count },
+      "support: kullanıcının rolü ADMIN/MANAGER'dan düşürüldü, atanmış destek oturumları otomatik boşaltıldı"
+    );
+  }
+}
+
 /**
  * `/admin/users` prefix'i altında bağlanır (bkz. app.ts).
  * `.claude/architect-scope-rbac-5-tier.md` §5.3 satır 21 — tüm uçlar (okuma dahil) yalnızca
@@ -186,11 +222,15 @@ export async function adminUsersRoutes(app: FastifyInstance) {
           await assertNotLastActiveAdmin(tx, target.id);
         }
 
-        return tx.user.update({
+        const updated = await tx.user.update({
           where: { id: target.id },
           data: { role },
           include: { doctorProfile: { select: { id: true } } },
         });
+
+        await clearSupportAssignmentsIfDemoted(app, tx, target.id, target.role, role);
+
+        return updated;
       });
 
       await logAudit(app, {

@@ -4321,3 +4321,103 @@ kendi kaynağında düzelt):**
   TETİKLENMEDİ (destek+hatırlatma paketleri İZOLE koşuldu, 28/28 yeşil) — bilgi amaçlı not olarak
   bırakılıyor, devops-agent/backend-agent'ın test-DB izolasyon stratejisini gözden geçirmesi
   önerilir (ayrı `saas_test` şeması/paralel-olmayan sweeper testleri gibi).
+
+## 2026-09-16 turu, kısım 2 — Ön görüşme (pre-chat) formu (canlı destek widget'ı)
+
+Kaynak: `.claude/architect-scope-support-desk-and-reminders.md` §7 (EK KARAR). `docker compose up
+--build -d` ile ortam yeniden inşa edildi (proje kuralı). Yeni e2e dosyası:
+`frontend/tests/e2e/live-chat-prechat-form.spec.ts` (8 test — 1 admin ayar + 7 senaryo).
+
+| # | Senaryo | Doğrulama | Durum |
+|---|---|---|---|
+| 1 | Admin panelinden `liveChatPreChatEnabled`/İsim-Telefon zorunlu AÇILIR, `PATCH /admin/settings` anlık kaydeder (200, gövde doğrulanır) | `live-chat-prechat-form.spec.ts` madde 1 | ✅ Geçiyor |
+| 2 | Misafir zorunlu alanları (İsim/Telefon) BOŞ bırakıp gönderemez — RHF istemci doğrulaması engeller, `POST /support/sessions` HİÇ ÇAĞRILMAZ (ağ isteği izlenerek doğrulandı) | madde 2 | ✅ Geçiyor |
+| 3 | Form doğru doldurulunca `POST /support/sessions` 201 döner, `visitorName`/`visitorPhone` gövdede, sohbet ekranına geçilir | madde 3 | ✅ Geçiyor |
+| 4 | Giriş yapmış kullanıcıda (`auth.status === "authenticated"`) form ATLANIR — `liveChatPreChatEnabled` açık olsa bile doğrudan sohbet ekranı | madde 4 | ✅ Geçiyor |
+| 5 | Admin destek masasında ziyaretçinin Ad/Telefon beyanı görünür; doldurulmayan E-posta için "E-posta belirtilmedi" placeholder'ı | madde 5 | ✅ Geçiyor |
+| 6 [REGRESYON] | `liveChatPreChatEnabled=false` iken form HİÇ gösterilmez, doğrudan sohbet ekranı gelir (bir önceki turun davranışı korunuyor) | madde 6 | ✅ Geçiyor |
+| 7 | Üç `require*` de `false` iken form yine gösterilir ama hiçbir alan zorunlu değildir, boş isim/telefon/e-posta ile gönderim `201` kabul edilir | madde 7 | ✅ Geçiyor |
+
+**Test paketi tam koşum sonucu:**
+- Backend: `npx vitest run` → **137/137 dosya, 1651/1651 test ✅, SIFIR hata.** Önceki turdan
+  bilinen `telehealth-recording.test.ts` deadlock'u bu koşumda HİÇ TETİKLENMEDİ (tam paket tek
+  seferde yeşil geçti — izole doğrulama gerekmedi).
+- Frontend: `npx vitest run` → **769 test, 766 ✅ / 3 ❌** — üçü de `a11y-content-editor.test.tsx`
+  (2) ve `a11y-admin-appearance.test.tsx` (1), hepsi `axe.run()` zaman aşımı/"Axe is already
+  running" — **izole çalıştırıldığında (`npx vitest run tests/unit/a11y-content-editor.test.tsx
+  tests/unit/a11y-admin-appearance.test.tsx`) 10/10 ✅.** Kök neden paralel test dosyalarının AYNI
+  axe-core örneğini yarışa sokması (proje belleği: `a11y-content-editor.test.tsx` zaten bilinen
+  flaky; bu turda `a11y-admin-appearance.test.tsx`nin de AYNI sınıf sorunla (axe concurrency)
+  arasıra etkilendiği gözlemlendi — GERÇEK regresyon DEĞİL, kod DEĞİŞTİRİLMEDİ).
+- Yeni e2e dosyası `live-chat-prechat-form.spec.ts` 3 ayrı koşumda **8/8 ✅** (bkz. yukarı tablo).
+  Regresyon: `live-chat-widget.spec.ts` (4/4 ✅) ve `admin-support-desk.spec.ts` (2/2 ✅, bkz.
+  aşağıdaki bulunan bug notu) birlikte suite sırasıyla (alfabetik) koşuldu, 14/14 ✅.
+
+**KRİTİK BUG BULUNDU — backend-agent'a yönlendirilir (bu görevle DOLAYLI ilişkili, pre-chat formu
+DEĞİL, mevcut destek masası atama mantığındaki bir açık):**
+
+`GET /admin/support/sessions` (muhtemelen `GET .../{id}` ve `PATCH .../assign` da aynı yolu
+paylaşıyor), bir oturumun `assignedAgentId`'si ADMIN/MANAGER olmayan bir kullanıcıya işaret
+ediyorsa **500 INTERNAL_ERROR** ile çöküyor — TÜM admin/manager kullanıcılar için TÜM destek
+masası listesini kilitliyor (tek bir bozuk satır, listenin TAMAMINI düşürüyor).
+
+- **Kök neden:** `assignedAgentId` yalnızca ATAMA ANINDA `role ∈ {ADMIN, MANAGER}` doğrulanıyor
+  (`.claude/architect-scope-support-desk-and-reminders.md` §3.2 "Atama kısıtı"). Ama bir kullanıcı
+  ATANDIKTAN SONRA rolü düşürülürse (`PATCH /admin/users/{id}` ile MANAGER→USER, veya EDITOR'e
+  vb.), `SupportChatSession.assignedAgentId` GÜNCELLENMİYOR/temizlenmiyor. Liste ucu, `assignedAgent`
+  DTO'sunu `SupportAgentSummarySchema.role: z.enum(["ADMIN","MANAGER"])` ile serialize ederken
+  artık geçersiz olan `"USER"` değerine çarpıp Fastify `ResponseSerializationError` (`FST_ERR_
+  RESPONSE_SERIALIZATION`) fırlatıyor → genel hata yakalayıcı bunu 500'e çeviriyor.
+- **Kesin tekrar üretme adımları (3 kez BAĞIMSIZ doğrulandı, %100 deterministik):**
+  1. Bir kullanıcıyı MANAGER yap, bir destek oturumuna yanıt vermesini sağla (otomatik atanır,
+     `.claude/architect-scope-support-desk-and-reminders.md` §3.5 "yanıtlayan sahiplenir").
+  2. Aynı kullanıcının rolünü USER'a (veya EDITOR/CUSTOMER'a) düşür — `PATCH /admin/users/{id}`.
+  3. Herhangi bir ADMIN/MANAGER `GET /admin/support/sessions` çağırdığında **500** alır (ADMIN
+     dahil — kendi hesabıyla test edilse bile).
+  - Bu, gerçek `admin-support-desk.spec.ts`nin KENDİ fixture temizliğinde (`resetFixtureUserToBaseline`
+    — MANAGER fixture'ı test sonunda USER'a döndürür, doğru bir hijyen adımı) doğal olarak
+    tetikleniyor: dosya BİR KEZ çalışıp bir oturuma yanıt verdikten sonra, dosyanın kendi `afterAll`'ı
+    fixture'ı USER'a düşürüyor ve dosyanın BİR SONRAKİ koşumu (aynı paylaşımlı `saas_e2e`'de)
+    `madde 12`de **her seferinde** 500 ile başarısız oluyor (backend loguyla doğrulandı — stack
+    trace `support.routes.ts:143`, `ZodError: path ["data",10,"assignedAgent","role"], received
+    "USER"`). qa-agent bu turda etkilenen satırları elle (`assignedAgentId = NULL`) temizleyip
+    ortamı çalışır durumda BIRAKTI — kalıcı çözüm backend-agent'ın.
+  - Bu senaryo TEST fixture'larına özgü değil — GERÇEK production'da da bir admin/manager'ın rolü
+    (istifa, güvenlik olayı, reorganizasyon) düşürülürse AYNI çökme yaşanır ve KENDİ KENDİNE
+    DÜZELMEZ (bozuk satır DB'de kalıcı kalır, her `GET` tekrar 500 verir) — ciddiyeti YÜKSEK.
+  - Pre-chat formuyla İLGİSİZ (bu turun kendi değişikliği `visitorPhone` alanı sorunsuz serialize
+    oluyor, hatayı TETİKLEYEN alan `assignedAgent.role`), ama regresyon taraması SIRASINDA
+    bulundu — mevcut destek masası özelliğinin (§3.2/§3.5) ÖNCEDEN VAR OLAN bir açığı.
+- **Önerilen yönlendirme (backend-agent karar verir, qa-agent uygulamaz):** ya (a) `PATCH
+  /admin/users/{id}` rol değişikliğinde etkilenen `assignedAgentId`leri `NULL`layan bir yan etki
+  eklenir, ya (b) `SupportAgentSummarySchema.role` şeması/mapper'ı, ADMIN/MANAGER OLMAYAN bir
+  atanmış kullanıcıyı ÇÖKMEDEN (ör. `assignedAgent: null` gibi güvenli bir düşüşle) ele alacak
+  şekilde SAVUNMACI hale getirilir, ya da (c) her ikisi. db-agent'a da bilgi — `assignedAgentId`
+  FK'sinde rol bütünlüğünü garanti eden bir mekanizma (constraint/trigger) YOK.
+
+**Kendi test altyapımda bulduğum/düzelttiğim (flaky/kırılgan testler, proje kökü CLAUDE.md madde 3):**
+- `live-chat-prechat-form.spec.ts` madde 2/6/7 — `fetchSiteSettingsServer()`nin 60sn SSR önbelleği
+  (proje belleği: eventual-consistency, `toPass`+reload ile YOKLANIR) yalnızca "form görünür mü"
+  yapısal kontrolünü DEĞİL, `requireName`/`requirePhone` DAVRANIŞINI da (zorunluluk yıldızı `*`)
+  etkileyebiliyordu — ilk sürümde yalnızca yapısal kontrol `toPass` içindeydi, bu da nadiren bir
+  ÖNCEKİ koşumun bayat `require*` değerlerini yanlışlıkla "taze" sandırıyordu. Zorunluluk yıldızı
+  kontrolü de AYNI `toPass` döngüsüne alınarak düzeltildi.
+- `getByLabel("Mesajınız")` (substring, `exact` olmadan) sohbet kutusunun sr-only "Mesajınızı
+  yazın" etiketiyle DE eşleşiyordu (`Mesajınız` iki metnin ORTAK ön eki) — `exact: true` ile
+  `"Mesajınız *"` (mesaj alanı HER ZAMAN zorunlu, yıldız koşulsuz render edilir) hedeflenerek
+  düzeltildi.
+- `admin-support-desk.spec.ts` madde 9 — `page.getByText("Yanıtlandı")` paylaşımlı `saas_e2e`de
+  BAŞKA bir `ANSWERED` oturum varsa (sol listedeki durum rozeti de aynı metni taşır) strict-mode
+  ihlaline düşüyordu — dosyanın KENDİSİNİN zaten kullandığı `.last()` deseniyle (satır 133,
+  `templateBody` için) tutarlı şekilde düzeltildi (sağdaki detay panosu DOM'da listeden SONRA gelir).
+- `live-chat-prechat-form.spec.ts`nin `afterAll`'ı, kendi ürettiği "sıcak" (liveChatEnabled=true)
+  SSR önbellek girdisini bir sonraki dosyaya (`live-chat-widget.spec.ts` madde 1, 45sn toleranslı)
+  DEVRETMEMESİ için `liveChatEnabled: false`'a döndükten sonra ayrıca bunu bir sayfa yükleyip
+  `toPass` ile TEYİT EDİYOR — dosyalar arası (alfabetik sırada bitişik) önbellek yarışını ortadan
+  kaldırdı (3 bağımsız kombine koşumda doğrulandı, sonuncusu 14/14 ✅).
+
+**Bilgi amaçlı not:** `frontend/tests/unit/booking-payment-step-demo.test.tsx` ve
+`site-header-doctor-session.test.tsx` git status'ta değişmiş görünüyor (muhtemelen frontend-agent
+bu turda `/patient/bookings` rota adlandırmasını düzeltti) — bu turda TEKRAR koşulmadı (yukarıdaki
+`npx vitest run` tam paket koşumunda 766/769 içinde YEŞİL — önceki turun bilinen 6 hatası ARTIK
+YOK, frontend-agent'ın düzeltmesi doğrulandı).

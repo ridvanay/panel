@@ -838,6 +838,12 @@ export const SiteSettingsSchema = z.object({
   liveChatEnabled: z.boolean(),
   liveChatProvider: z.string(),
   liveChatScriptId: z.string().nullable(),
+  // Ön görüşme (pre-chat) formu — `.claude/architect-scope-support-desk-and-reminders.md`
+  // §7.1/§7.3. HAM DB sütunları, PUBLIC `GET /settings`'te de döner (sır değil).
+  liveChatPreChatEnabled: z.boolean(),
+  liveChatRequireName: z.boolean(),
+  liveChatRequirePhone: z.boolean(),
+  liveChatRequireEmail: z.boolean(),
 });
 export type SiteSettingsDto = z.infer<typeof SiteSettingsSchema>;
 
@@ -2982,6 +2988,9 @@ export const SupportChatSessionSummarySchema = z.object({
   seq: z.number().int(),
   status: SupportSessionStatusSchema,
   visitorName: z.string().nullable(),
+  // Ön görüşme (pre-chat) formu — `.claude/architect-scope-support-desk-and-reminders.md` §7.
+  // Ziyaretçi BEYANI, doğrulanmamış; 30 günlük PII redaksiyonuna TABİ DEĞİL.
+  visitorPhone: z.string().nullable(),
   visitorEmail: z.string().nullable(),
   visitorUserId: z.string().uuid().nullable(),
   assignedAgent: SupportAgentSummarySchema.nullable(),

@@ -89,7 +89,7 @@ describe("SiteHeader — doktor/hasta/anonim oturum izolasyonu (K6)", () => {
 
     expect(await screen.findByRole("menuitem", { name: /Randevularım/ })).toHaveAttribute(
       "href",
-      "/patient/bookings"
+      "/patient/appointments"
     );
     expect(screen.getByRole("menuitem", { name: /Siparişlerim/ })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: /Doktor Paneli/ })).not.toBeInTheDocument();

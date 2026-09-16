@@ -683,3 +683,70 @@ OLMADIĞI (§2.4 sızma yasağı) teyit edilir.
 | Kuyruk altyapısına (BullMQ/pg-boss) geçiş | §2.1 madde 4 — 9 sweeper birlikte ele alınır | `chore/background-job-runtime` |
 | Hatırlatma sürelerinin admin panelinden ayarlanabilmesi | İstenmedi; 60/30 sabittir | — |
 | "Hatırlatma gönderildi" bilgisinin admin UI'da görünmesi | §2.2 madde 1 — talep edilmedi | `feature/admin-reminder-visibility` |
+
+---
+
+## 7. EK KARAR — 2026-09-16: Ön görüşme (pre-chat) formu
+
+Mevcut desenlerin doğrudan genişlemesidir; yeni bir mimari/KVKK kararı DEĞİLDİR.
+Tek doğru kaynak yine `docs/architecture/openapi.yaml` (bu turda güncellendi).
+
+### 7.1 Şema (db-agent — TEK SAHİP)
+
+`SiteSettings` (`liveChatScriptId`in hemen altına, aynı blokta):
+
+| Alan | Tip | Default |
+|---|---|---|
+| `liveChatPreChatEnabled` | `Boolean` | `false` |
+| `liveChatRequireName` | `Boolean` | `true` |
+| `liveChatRequirePhone` | `Boolean` | `true` |
+| `liveChatRequireEmail` | `Boolean` | `false` |
+
+`SupportChatSession` (`visitorName`/`visitorEmail` ile AYNI blokta):
+
+| Alan | Tip | Not |
+|---|---|---|
+| `visitorPhone` | `String?` | Beyan, doğrulanmamış; index YOK (aranmaz) |
+
+Tek migration, geri dönüşlü, backfill GEREKMEZ (default'lar mevcut davranışı korur).
+
+### 7.2 KVKK (architect onayı, ayrı compliance turu GEREKMEZ)
+
+`visitorPhone`, `compliance-notes-support-desk.md` §1'deki `visitorName`/`visitorEmail`
+kaydının AYNI risk sınıfıdır: ziyaretçinin KENDİ beyan ettiği iletişim bilgisi, sağlık
+verisi DEĞİL, m.5/2-f meşru menfaat (destek talebine dönüş). Dolayısıyla:
+**30 günlük PII redaksiyonuna TABİ DEĞİL** (`lib/support-retention.ts` DEĞİŞMEZ —
+yalnızca `ipAddress`/`userAgent` null'lanır), **maskelenmez**, oturum kalıcı silinene
+kadar yaşar. compliance-agent bir sonraki turunda `compliance-notes-support-desk.md`
+§1 tablosuna satırı eklesin (bilgilendirme, blokaj değil).
+
+### 7.3 Uçlar (backend-agent)
+
+1. `GET /settings` (public) + `GET/PATCH /admin/settings`: 4 alan mevcut DTO'ya eklenir
+   (`entities.ts::SiteSettingsSchema`, `mappers/index.ts`, `settings.schemas.ts`,
+   `settings.routes.ts::DEFAULTS`). YENİ UÇ YOK. 4 alan public `GET /settings`'te de
+   döner — misafir widget formu render edip etmeyeceğini bilmek zorundadır; sır değildir.
+2. `POST /support/sessions`: gövdeye opsiyonel `visitorPhone` (`maxLength: 40`, format
+   doğrulaması YOK). Sunucu bu alanı HİÇBİR ayarda ZORUNLU KILMAZ — `liveChatRequire*`
+   YALNIZCA istemci tarafı kuralıdır (ayar PATCH'lenince açık widget akışları kırılmasın).
+3. `POST /support/sessions` artık `authenticateOptional` preHandler taşır
+   (`checkout.routes.ts` deseni). `security: []` DOĞRU kalır. Token geçerliyse:
+   `visitorUserId` = kullanıcı id'si (§3.4'teki "hep null" sınırlaması KALKTI) ve
+   `visitorName/Phone/Email` **sunucuda** `User.name/phone/email`'den doldurulur, gövdeden
+   gelen aynı adlı alanlar YOKSAYILIR. `User.phone` null ise sütun null kalır, gövdeye
+   geri düşülmez.
+4. Admin DTO'ları (`SupportChatSessionSummary` + detay): `visitorPhone` eklenir.
+   Liste araması `q` GENİŞLETİLMEZ (name/email'de kalır).
+
+### 7.4 Frontend (frontend-agent) / Admin UI
+
+- Widget: `liveChatPreChatEnabled && !oturumAçık` → ilk mesajdan ÖNCE form
+  (Ad Soyad / Telefon / E-posta; zorunluluk `liveChatRequire*`). Giriş yapmış kullanıcıda
+  form ATLANIR, istek `Authorization: Bearer` ile gider (auto-fill sunucuda olur —
+  istemci `visitor*` alanlarını göndermez).
+- Üç `liveChatRequire*` de `false` iken form gösterilir ama hiçbir alan zorunlu değildir;
+  bu geçerli bir yapılandırmadır (`422` yok).
+- Admin ayarlar sayfası: 4 toggle, `liveChatEnabled` grubunun altında; `liveChatRequire*`
+  yalnızca `liveChatPreChatEnabled` açıkken etkin görünür (salt UI davranışı).
+- Admin destek masası: `visitorPhone` `visitorName`/`visitorEmail` ile aynı yerde,
+  "ziyaretçi beyanı" etiketiyle; `tel:` linki serbest.

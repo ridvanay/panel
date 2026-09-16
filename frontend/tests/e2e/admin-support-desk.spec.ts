@@ -133,7 +133,12 @@ test("madde 7/9/10/13/14: ziyaretçi mesajı 'Bekleyen'de görünür → MANAGER
     await expect(page.getByText(templateBody).last()).toBeVisible({ timeout: 10_000 });
 
     // Madde 9: oturum ANSWERED'a geçer ve yanıtlayana (MANAGER) otomatik atanır.
-    await expect(page.getByText("Yanıtlandı")).toBeVisible({ timeout: 10_000 });
+    // qa-agent bulgusu (bu turda düzeltildi) — paylaşımlı `saas_e2e`de BAŞKA bir `ANSWERED`
+    // oturum varsa (ör. bu spec dosyasının önceki bir koşumdan kalan verisi) sol listedeki
+    // durum rozeti de "Yanıtlandı" metnini taşır ve `getByText` strict-mode ihlaline düşer —
+    // `templateBody` İLE AYNI `.last()` deseni (sağdaki detay panosu DOM'da listeden SONRA
+    // gelir, bkz. `app/admin/support/page.tsx`) bunu tekilleştirir.
+    await expect(page.getByText("Yanıtlandı").last()).toBeVisible({ timeout: 10_000 });
     const assignSelect = page.getByLabel("Temsilci ata");
     await expect(assignSelect).toHaveValue(/.+/, { timeout: 10_000 });
     await expect(assignSelect.locator("option:checked")).toHaveText("QA Support Manager");

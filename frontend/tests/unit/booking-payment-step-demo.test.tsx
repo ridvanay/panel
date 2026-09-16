@@ -17,6 +17,7 @@ import userEvent from "@testing-library/user-event";
 const pushMock = vi.hoisted(() => vi.fn());
 const createBookingCheckoutSessionMock = vi.hoisted(() => vi.fn());
 const demoPayBookingMock = vi.hoisted(() => vi.fn());
+const getPublicSettingsMock = vi.hoisted(() => vi.fn());
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: pushMock }),
@@ -25,6 +26,13 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/api/telehealth", () => ({
   createBookingCheckoutSession: (...args: unknown[]) => createBookingCheckoutSessionMock(...args),
   demoPayBooking: (...args: unknown[]) => demoPayBookingMock(...args),
+}));
+
+// Bileşen, gösterim koşulunu (§Madde 4) doğrulamak için herkese açık `GET /settings`i
+// (`getPublicSettings`) ayrı bir `useEffect` içinde çeker — mock'lanmazsa gerçek `fetch` başarısız
+// olur, hata sessizce yutulur ve fail-closed varsayılan (`false`) kalıcı olur, buton HİÇ görünmez.
+vi.mock("@/lib/api/settings", () => ({
+  getPublicSettings: (...args: unknown[]) => getPublicSettingsMock(...args),
 }));
 
 async function renderStep(props: Partial<{ accessToken?: string; onDemoPaid?: (booking: unknown) => void }> = {}) {
@@ -47,6 +55,8 @@ describe("BookingPaymentStep — dev-only demo ödeme butonu", () => {
     pushMock.mockReset();
     createBookingCheckoutSessionMock.mockReset();
     demoPayBookingMock.mockReset();
+    getPublicSettingsMock.mockReset();
+    getPublicSettingsMock.mockResolvedValue({ demoPaymentsEnabled: true });
   });
 
   afterEach(() => {
@@ -73,7 +83,7 @@ describe("BookingPaymentStep — dev-only demo ödeme butonu", () => {
     await renderStep();
 
     expect(screen.getByRole("button", { name: /ödemeye geç/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /demo ödemeyi tamamla/i })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /demo ödemeyi tamamla/i })).toBeInTheDocument();
     expect(screen.getByText(/yalnızca geliştirme ortamı/i)).toBeInTheDocument();
   });
 
@@ -86,7 +96,7 @@ describe("BookingPaymentStep — dev-only demo ödeme butonu", () => {
     await userEvent.click(screen.getByRole("button", { name: /ödemeye geç/i }));
 
     await waitFor(() => expect(screen.getByText(/ödeme altyapısı yapılandırılmamış/i)).toBeInTheDocument());
-    expect(screen.getByRole("button", { name: /demo ödemeyi tamamla/i })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /demo ödemeyi tamamla/i })).toBeInTheDocument();
   });
 
   it("demo ödeme başarılı olunca accessToken'ı taşır ve onDemoPaid verilmemişse ?payment=success rotasına yönlendirir", async () => {
@@ -94,7 +104,7 @@ describe("BookingPaymentStep — dev-only demo ödeme butonu", () => {
     demoPayBookingMock.mockResolvedValue({ id: "booking-1", paymentStatus: "PAID" });
 
     await renderStep({ accessToken: "magic-token-xyz" });
-    await userEvent.click(screen.getByRole("button", { name: /demo ödemeyi tamamla/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /demo ödemeyi tamamla/i }));
 
     await waitFor(() => expect(demoPayBookingMock).toHaveBeenCalledWith("booking-1", "magic-token-xyz"));
     expect(pushMock).toHaveBeenCalledWith("/tr/patient/bookings/booking-1?payment=success&t=magic-token-xyz");
@@ -107,7 +117,7 @@ describe("BookingPaymentStep — dev-only demo ödeme butonu", () => {
     const onDemoPaid = vi.fn();
 
     await renderStep({ onDemoPaid });
-    await userEvent.click(screen.getByRole("button", { name: /demo ödemeyi tamamla/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /demo ödemeyi tamamla/i }));
 
     await waitFor(() => expect(onDemoPaid).toHaveBeenCalledWith(paidBooking));
     expect(pushMock).not.toHaveBeenCalled();
@@ -119,7 +129,7 @@ describe("BookingPaymentStep — dev-only demo ödeme butonu", () => {
     demoPayBookingMock.mockRejectedValue(new ApiClientError(409, { code: "BOOKING_NOT_PAYABLE", message: "Bu rezervasyon zaten ödenmiş." }));
 
     await renderStep();
-    await userEvent.click(screen.getByRole("button", { name: /demo ödemeyi tamamla/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /demo ödemeyi tamamla/i }));
 
     await waitFor(() => expect(screen.getByText(/bu rezervasyon zaten ödenmiş/i)).toBeInTheDocument());
     expect(pushMock).not.toHaveBeenCalled();
@@ -131,7 +141,7 @@ describe("BookingPaymentStep — dev-only demo ödeme butonu", () => {
     demoPayBookingMock.mockRejectedValue(new ApiClientError(404, { code: "NOT_FOUND", message: "Bulunamadı." }));
 
     await renderStep();
-    await userEvent.click(screen.getByRole("button", { name: /demo ödemeyi tamamla/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /demo ödemeyi tamamla/i }));
 
     await waitFor(() => expect(screen.getByText(/bulunamadı/i)).toBeInTheDocument());
   });

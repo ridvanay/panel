@@ -1179,6 +1179,15 @@ model SiteSettings {
   /// Yalnızca liveChatProvider harici bir sağlayıcıysa kullanılır (ör. Crisp Website ID,
   /// Tawk.to widget ID). "internal" iken yoksayılır.
   liveChatScriptId           String?
+  /// [ASD §7] Ön görüşme (pre-chat) formu — açık olduğunda misafir widget ilk mesajdan ÖNCE
+  /// bir form gösterir. Varsayılan KAPALI (mevcut davranışı korur, geriye dönük uyumlu).
+  liveChatPreChatEnabled     Boolean      @default(false)
+  /// Yalnızca `liveChatPreChatEnabled` açıkken anlamlıdır; sunucu bunu ZORUNLU KILMAZ
+  /// (`architect-scope-support-desk-and-reminders.md` §7.3 madde 2) — yalnızca istemci tarafı
+  /// doğrulama kuralıdır.
+  liveChatRequireName        Boolean      @default(true)
+  liveChatRequirePhone       Boolean      @default(true)
+  liveChatRequireEmail       Boolean      @default(false)
   updatedAt                  DateTime     @updatedAt
 
   // Kök `/` rotasında render edilecek sayfa. Sayfa silinirse otomatik null'a düşer
@@ -2909,6 +2918,9 @@ model SupportChatSession {
   /// Ziyaretçi BEYANI, doğrulanmamış (compliance-notes §1 — m.5/2-f meşru menfaat).
   visitorName  String?
   visitorEmail String?
+  /// [ASD §7] Ön görüşme (pre-chat) formu alanı — ziyaretçi BEYANI, doğrulanmamış, format
+  /// kontrolü YOK (`maxLength: 40`, openapi). Aranmaz → indeks YOK.
+  visitorPhone String?
   /// Ziyaretçi oturum açmışsa bağlı `User` (`Cart.siteUserId` deseni). Misafirde NULL.
   visitorUserId String?
 

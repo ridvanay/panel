@@ -1,16 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import Script from "next/script";
 import { motion, AnimatePresence } from "framer-motion";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { MessageCircle, Send, X } from "lucide-react";
 import * as supportApi from "@/lib/api/support";
 import { ApiClientError } from "@/lib/api/error";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { fetchLegalPagesClient, resolveKvkkNoticePage } from "@/lib/legal-pages";
 import { useLocalizePath } from "@/context/locale-alternates-context";
+import { useAuthOptional } from "@/context/auth-context";
 import type { SitePage, SiteSettings, SupportChatMessagePublic, SupportSessionStatus } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 
@@ -25,7 +29,17 @@ import { cn } from "@/lib/utils";
  * alanlarını ZATEN taşıyor; `=== true` katı eşitliği yalnızca savunma amaçlı KALIR (zararsız).
  */
 interface LiveChatWidgetProps {
-  settings: Pick<SiteSettings, "siteName" | "liveChatEnabled" | "liveChatProvider" | "liveChatScriptId">;
+  settings: Pick<
+    SiteSettings,
+    | "siteName"
+    | "liveChatEnabled"
+    | "liveChatProvider"
+    | "liveChatScriptId"
+    | "liveChatPreChatEnabled"
+    | "liveChatRequireName"
+    | "liveChatRequirePhone"
+    | "liveChatRequireEmail"
+  >;
 }
 
 /**
@@ -58,6 +72,58 @@ interface StoredSupportSession {
   accessToken: string;
 }
 
+/**
+ * `.claude/architect-scope-support-desk-and-reminders.md` §7.4 — ön görüşme (pre-chat) formu.
+ * `visitorPhone` KASITLI OLARAK basit bir format kontrolüne tabidir (backend `maxLength` dışında
+ * DOĞRULAMA YAPMAZ, §7.3 madde 2) — bu tamamen istemci tarafı bir UX kolaylığıdır, uluslararası
+ * numaraları reddetmemesi için gevşek tutulur (yalnızca rakam/boşluk/+/()/- ve 7-20 karakter).
+ */
+const PHONE_FORMAT_REGEX = /^\+?[0-9\s()-]{7,20}$/;
+
+/**
+ * Zorunluluk (`liveChatRequireName/Phone/Email`) `superRefine` İLE uygulanır — şemanın STATİK
+ * TS tipi (`PreChatFormValues`) bu YÜZDEN `requireName/Phone/Email` bayraklarından BAĞIMSIZ,
+ * SABİT kalır (üç alan da her zaman `string | undefined`). Yalnızca zorunlu olan alanlarda boş
+ * bırakma HATA ÜRETİR; doldurulmuş ama hatalı biçimli bir alan zorunlu OLMASA bile reddedilir
+ * (görev talimatı: "e-posta/telefon formatı basit bir regex ile" doğrulanır).
+ */
+const preChatBaseSchema = z.object({
+  visitorName: z.string().trim().max(120, "En fazla 120 karakter olmalı.").optional(),
+  visitorPhone: z
+    .string()
+    .trim()
+    .max(40, "En fazla 40 karakter olmalı.")
+    .optional()
+    .refine((value) => !value || PHONE_FORMAT_REGEX.test(value), "Geçerli bir telefon numarası girin."),
+  visitorEmail: z
+    .string()
+    .trim()
+    .max(200, "En fazla 200 karakter olmalı.")
+    .optional()
+    .refine((value) => !value || z.string().email().safeParse(value).success, "Geçerli bir e-posta adresi girin."),
+  message: z.string().trim().min(1, "Lütfen bir mesaj yazın.").max(2000, "En fazla 2000 karakter olmalı."),
+});
+
+type PreChatFormValues = z.infer<typeof preChatBaseSchema>;
+
+function buildPreChatSchema(require: { name: boolean; phone: boolean; email: boolean }) {
+  return preChatBaseSchema.superRefine((values, ctx) => {
+    if (require.name && !values.visitorName?.trim()) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["visitorName"], message: "Ad soyad zorunludur." });
+    }
+    if (require.phone && !values.visitorPhone?.trim()) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["visitorPhone"], message: "Telefon numarası zorunludur." });
+    }
+    if (require.email && !values.visitorEmail?.trim()) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["visitorEmail"], message: "E-posta zorunludur." });
+    }
+  });
+}
+
+/** Mevcut mesaj kutusu (`live-chat-message-input`) İLE BİREBİR AYNI sınıflar — yeni bir görsel dil İCAT EDİLMEZ. */
+const PRE_CHAT_INPUT_CLASSES =
+  "w-full min-w-0 rounded-[var(--site-radius)] border border-input bg-transparent px-3 text-sm outline-none focus-visible:border-primary focus-visible:ring-3 focus-visible:ring-primary/30 aria-invalid:border-danger aria-invalid:ring-2 aria-invalid:ring-danger/20";
+
 function readStoredSession(): StoredSupportSession | null {
   if (typeof window === "undefined") return null;
   try {
@@ -77,8 +143,24 @@ function writeStoredSession(session: StoredSupportSession | null): void {
   else window.sessionStorage.removeItem(SUPPORT_SESSION_STORAGE_KEY);
 }
 
-function InternalChatPanel({ siteName, onClose }: { siteName: string; onClose: () => void }) {
+interface InternalChatPanelProps {
+  siteName: string;
+  onClose: () => void;
+  /** `SiteSettings.liveChatPreChatEnabled === true` — bkz. dosya başı `LiveChatWidget` yorumu. */
+  preChatEnabled: boolean;
+  requireName: boolean;
+  requirePhone: boolean;
+  requireEmail: boolean;
+}
+
+function InternalChatPanel({ siteName, onClose, preChatEnabled, requireName, requirePhone, requireEmail }: InternalChatPanelProps) {
   const localize = useLocalizePath();
+  // `favorite-button.tsx` İLE AYNI desen: `status === "loading"` da `unauthenticated` gibi ele
+  // alınır (henüz TEYİT EDİLMEMİŞ bir giriş durumunda form YANLIŞLIKLA atlanmaz/gösterilmez —
+  // `AuthProvider` bu widget'ın MONTE EDİLDİĞİ layout'un kökünde olduğundan pratikte panel
+  // açılana kadar zaten çözülmüş olur).
+  const auth = useAuthOptional();
+  const authenticated = auth?.status === "authenticated";
   const [session, setSession] = useState<StoredSupportSession | null>(() => readStoredSession());
   const [messages, setMessages] = useState<SupportChatMessagePublic[]>([]);
   const [status, setStatus] = useState<SupportSessionStatus | null>(null);
@@ -86,6 +168,23 @@ function InternalChatPanel({ siteName, onClose }: { siteName: string; onClose: (
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  // §7.4 — ön görüşme formu YALNIZCA misafir (`!authenticated`) VE henüz açık bir oturum
+  // YOKKEN (`!session`) gösterilir; form gönderiminin KENDİSİ `session`'ı doldurduğu için bu
+  // koşul otomatik olarak `false`'a döner (ayrı bir "form gönderildi" bayrağı GEREKMEZ).
+  const showPreChatForm = preChatEnabled && !authenticated && !session;
+  const preChatFormSchema = useMemo(
+    () => buildPreChatSchema({ name: requireName, phone: requirePhone, email: requireEmail }),
+    [requireName, requirePhone, requireEmail]
+  );
+  const {
+    register: registerPreChat,
+    handleSubmit: handlePreChatFormSubmit,
+    formState: { errors: preChatErrors, isSubmitting: preChatSubmitting },
+  } = useForm<PreChatFormValues>({
+    resolver: zodResolver(preChatFormSchema),
+    defaultValues: { visitorName: "", visitorPhone: "", visitorEmail: "", message: "" },
+  });
+  const [preChatError, setPreChatError] = useState<string | null>(null);
   // §4 (compliance-notes-support-desk.md) — mevcut, site genelindeki KVKK Aydınlatma Metni
   // sayfasına link verir (`telehealth-şablonundaki `kvkk-aydinlatma-metni` sayfasıyla AYNI
   // kaynak) — yoksa düz metin bırakılır (yeni bir sayfa İCAT EDİLMEZ).
@@ -221,6 +320,37 @@ function InternalChatPanel({ siteName, onClose }: { siteName: string; onClose: (
     }
   }
 
+  /**
+   * §7.4 — form YALNIZCA misafirde gösterilir, bu yüzden `visitor*` alanları BURADA (giriş
+   * yapmış kullanıcı akışında handleSend'in `!session` dalının AKSİNE) gövdeye eklenir. Boş
+   * bırakılan opsiyonel alanlar `undefined` olarak gönderilir (`""` DEĞİL) — sunucu tarafında
+   * `null` sütunla AYNI sonucu verir, ama boş string bir "beyan" gibi YORUMLANMAZ.
+   */
+  async function onPreChatSubmit(values: PreChatFormValues) {
+    bump();
+    setPreChatError(null);
+    // Bir önceki (artık sıfırlanmış) oturumdan kalan "oturumunuz sona ermiş" mesajı varsa
+    // (`resetSession()` bunu TEMİZLEMEZ) yeni bir görüşme başlatılırken temizlenir.
+    setSendError(null);
+    try {
+      const result = await supportApi.createSupportSession({
+        message: values.message.trim(),
+        visitorName: values.visitorName?.trim() || undefined,
+        visitorPhone: values.visitorPhone?.trim() || undefined,
+        visitorEmail: values.visitorEmail?.trim() || undefined,
+        pageUrl: typeof window !== "undefined" ? window.location.pathname : undefined,
+      });
+      const next: StoredSupportSession = { sessionId: result.sessionId, accessToken: result.accessToken };
+      writeStoredSession(next);
+      setSession(next);
+      setMessages([result.message]);
+      setStatus(result.status);
+      lastSeqRef.current = result.message.seq;
+    } catch (err) {
+      setPreChatError(friendlyErrorMessage(err));
+    }
+  }
+
   const isClosed = status === "CLOSED";
 
   return (
@@ -241,23 +371,135 @@ function InternalChatPanel({ siteName, onClose }: { siteName: string; onClose: (
         </button>
       </div>
 
-      <div ref={listRef} className="flex-1 space-y-2 overflow-y-auto px-4 py-3">
-        <div className="max-w-[85%] rounded-[var(--site-radius)] bg-muted px-3 py-2 text-sm text-foreground">
-          Merhaba! Randevu veya teknik konularda size nasıl yardımcı olabiliriz?
-        </div>
-        {loadingHistory && <p className="text-xs text-foreground/40">Yükleniyor…</p>}
-        {messages.map((m) => (
-          <div
-            key={m.id}
-            className={cn(
-              "max-w-[85%] rounded-[var(--site-radius)] px-3 py-2 text-sm",
-              m.senderType === "VISITOR" ? "ml-auto bg-primary text-primary-foreground" : "bg-muted text-foreground"
-            )}
+      {showPreChatForm ? (
+        <div className="flex-1 space-y-3 overflow-y-auto px-4 py-3">
+          <p className="text-sm text-foreground">
+            Merhaba! Size daha hızlı yardımcı olabilmemiz için önce birkaç bilgi rica ediyoruz.
+          </p>
+          <form
+            // `handleSend`/`handleAssign` İLE AYNI desen (dosya geneli) — RHF'in `handleSubmit(cb)`
+            // çağrısı RENDER SIRASINDA değil, olay anında (`onSubmit` tetiklenince) yapılır; bu
+            // fonksiyon `bump()` (ref/`Date.now`) OKUDUĞU için `react-hooks/refs`+`react-hooks/purity`
+            // bunu render'da doğrudan `handlePreChatFormSubmit(onPreChatSubmit)` çağrısından AYIRT
+            // edemez — ERTELENMİŞ (deferred) çağrı bu belirsizliği ORTADAN KALDIRIR.
+            onSubmit={(e) => void handlePreChatFormSubmit(onPreChatSubmit)(e)}
+            aria-label="Görüşme öncesi bilgi formu"
+            className="space-y-3"
+            noValidate
           >
-            {m.body}
+            <div className="space-y-1">
+              <label htmlFor="pre-chat-visitor-name" className="text-xs font-medium text-foreground/70">
+                Adınız Soyadınız{requireName && <span className="text-danger"> *</span>}
+              </label>
+              <input
+                id="pre-chat-visitor-name"
+                type="text"
+                autoComplete="name"
+                placeholder="Adınız Soyadınız"
+                aria-invalid={preChatErrors.visitorName ? true : undefined}
+                aria-describedby={preChatErrors.visitorName ? "pre-chat-visitor-name-error" : undefined}
+                className={cn(PRE_CHAT_INPUT_CLASSES, "h-9")}
+                {...registerPreChat("visitorName")}
+              />
+              {preChatErrors.visitorName && (
+                <p id="pre-chat-visitor-name-error" role="alert" className="text-xs text-danger">
+                  {preChatErrors.visitorName.message}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-1">
+              <label htmlFor="pre-chat-visitor-phone" className="text-xs font-medium text-foreground/70">
+                Telefon Numaranız{requirePhone && <span className="text-danger"> *</span>}
+              </label>
+              <input
+                id="pre-chat-visitor-phone"
+                type="tel"
+                autoComplete="tel"
+                placeholder="+90 5XX XXX XX XX"
+                aria-invalid={preChatErrors.visitorPhone ? true : undefined}
+                aria-describedby={preChatErrors.visitorPhone ? "pre-chat-visitor-phone-error" : undefined}
+                className={cn(PRE_CHAT_INPUT_CLASSES, "h-9")}
+                {...registerPreChat("visitorPhone")}
+              />
+              {preChatErrors.visitorPhone && (
+                <p id="pre-chat-visitor-phone-error" role="alert" className="text-xs text-danger">
+                  {preChatErrors.visitorPhone.message}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-1">
+              <label htmlFor="pre-chat-visitor-email" className="text-xs font-medium text-foreground/70">
+                E-posta Adresiniz{requireEmail && <span className="text-danger"> *</span>}
+              </label>
+              <input
+                id="pre-chat-visitor-email"
+                type="email"
+                autoComplete="email"
+                placeholder="ornek@eposta.com"
+                aria-invalid={preChatErrors.visitorEmail ? true : undefined}
+                aria-describedby={preChatErrors.visitorEmail ? "pre-chat-visitor-email-error" : undefined}
+                className={cn(PRE_CHAT_INPUT_CLASSES, "h-9")}
+                {...registerPreChat("visitorEmail")}
+              />
+              {preChatErrors.visitorEmail && (
+                <p id="pre-chat-visitor-email-error" role="alert" className="text-xs text-danger">
+                  {preChatErrors.visitorEmail.message}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-1">
+              <label htmlFor="pre-chat-message" className="text-xs font-medium text-foreground/70">
+                Mesajınız<span className="text-danger"> *</span>
+              </label>
+              <textarea
+                id="pre-chat-message"
+                rows={3}
+                placeholder="Size nasıl yardımcı olabiliriz?"
+                aria-invalid={preChatErrors.message ? true : undefined}
+                aria-describedby={preChatErrors.message ? "pre-chat-message-error" : undefined}
+                className={cn(PRE_CHAT_INPUT_CLASSES, "min-h-[4.5rem] resize-none py-2")}
+                {...registerPreChat("message")}
+              />
+              {preChatErrors.message && (
+                <p id="pre-chat-message-error" role="alert" className="text-xs text-danger">
+                  {preChatErrors.message.message}
+                </p>
+              )}
+            </div>
+
+            {preChatError && <p className="text-xs text-danger">{preChatError}</p>}
+
+            <button
+              type="submit"
+              disabled={preChatSubmitting}
+              className="flex h-9 w-full items-center justify-center rounded-[var(--site-radius)] bg-primary text-sm font-medium text-primary-foreground transition-colors duration-300 hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {preChatSubmitting ? "Gönderiliyor…" : "Görüşmeyi Başlat"}
+            </button>
+          </form>
+        </div>
+      ) : (
+        <div ref={listRef} className="flex-1 space-y-2 overflow-y-auto px-4 py-3">
+          <div className="max-w-[85%] rounded-[var(--site-radius)] bg-muted px-3 py-2 text-sm text-foreground">
+            Merhaba! Randevu veya teknik konularda size nasıl yardımcı olabiliriz?
           </div>
-        ))}
-      </div>
+          {loadingHistory && <p className="text-xs text-foreground/40">Yükleniyor…</p>}
+          {messages.map((m) => (
+            <div
+              key={m.id}
+              className={cn(
+                "max-w-[85%] rounded-[var(--site-radius)] px-3 py-2 text-sm",
+                m.senderType === "VISITOR" ? "ml-auto bg-primary text-primary-foreground" : "bg-muted text-foreground"
+              )}
+            >
+              {m.body}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/*
        * `.claude/compliance-notes-support-desk.md` §4 — SÜREKLİ görünür, KAPATILAMAZ (dismissible
@@ -285,7 +527,7 @@ function InternalChatPanel({ siteName, onClose }: { siteName: string; onClose: (
 
       {sendError && <p className="px-4 pt-2 text-xs text-danger">{sendError}</p>}
 
-      {isClosed ? (
+      {showPreChatForm ? null : isClosed ? (
         <div className="flex items-center justify-between gap-2 border-t border-border p-3">
           <p className="text-xs text-foreground/60">Bu sohbet kapatıldı.</p>
           <button
@@ -329,8 +571,16 @@ function InternalChatPanel({ siteName, onClose }: { siteName: string; onClose: (
   );
 }
 
+interface InternalLiveChatWidgetProps {
+  siteName: string;
+  preChatEnabled: boolean;
+  requireName: boolean;
+  requirePhone: boolean;
+  requireEmail: boolean;
+}
+
 /** "internal" sağlayıcı — kendi (gerçek backend'e bağlı) sohbet arayüzü. */
-function InternalLiveChatWidget({ siteName }: { siteName: string }) {
+function InternalLiveChatWidget({ siteName, preChatEnabled, requireName, requirePhone, requireEmail }: InternalLiveChatWidgetProps) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -344,7 +594,14 @@ function InternalLiveChatWidget({ siteName }: { siteName: string }) {
             exit={{ opacity: 0, y: 12, scale: 0.98 }}
             transition={{ duration: 0.3 }}
           >
-            <InternalChatPanel siteName={siteName} onClose={() => setOpen(false)} />
+            <InternalChatPanel
+              siteName={siteName}
+              onClose={() => setOpen(false)}
+              preChatEnabled={preChatEnabled}
+              requireName={requireName}
+              requirePhone={requirePhone}
+              requireEmail={requireEmail}
+            />
           </motion.div>
         ) : (
           <motion.button
@@ -406,5 +663,16 @@ export function LiveChatWidget({ settings }: LiveChatWidgetProps) {
     return <ExternalLiveChatScript provider={provider} scriptId={settings.liveChatScriptId} />;
   }
 
-  return <InternalLiveChatWidget siteName={settings.siteName} />;
+  return (
+    <InternalLiveChatWidget
+      siteName={settings.siteName}
+      // §7.4 — pre-chat bayrakları da `liveChatEnabled` İLE AYNI "backend henüz yetişmemişse
+      // güvenli (kapalı) varsayılan" disipliniyle `?? ` düşer. `liveChatRequireName/Phone` backend
+      // Prisma varsayılanı `true`, `liveChatRequireEmail` `false` (bkz. `types.ts` yorumu).
+      preChatEnabled={settings.liveChatPreChatEnabled === true}
+      requireName={settings.liveChatRequireName ?? true}
+      requirePhone={settings.liveChatRequirePhone ?? true}
+      requireEmail={settings.liveChatRequireEmail ?? false}
+    />
+  );
 }

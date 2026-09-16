@@ -354,3 +354,69 @@ describe("settings — liveChatEnabled/liveChatProvider/liveChatScriptId", () =>
     expect(res.statusCode).toBe(422);
   });
 });
+
+/**
+ * EK KARAR — 2026-09-16 (`.claude/architect-scope-support-desk-and-reminders.md` §7.1/§7.3) —
+ * Ön görüşme (pre-chat) formu ayarları. HAM DB sütunları, `liveChatEnabled` İLE AYNI şekilde
+ * env-tabanlı bir AND-gate GEREKTİRMEZ ve PUBLIC `GET /settings`'te de döner (widget'ın bilmesi
+ * gerekiyor).
+ */
+describe("settings — liveChatPreChatEnabled/liveChatRequireName/Phone/Email", () => {
+  let app: FastifyInstance;
+  let accessToken: string;
+
+  beforeAll(async () => {
+    app = await buildTestApp();
+    await resetDatabase(app.prisma);
+    ({ accessToken } = await registerTestUser(app, { email: "settings-pre-chat-admin@example.com" }));
+  });
+
+  afterAll(async () => {
+    await resetDatabase(app.prisma);
+    await app.close();
+  });
+
+  function authHeader() {
+    return { authorization: `Bearer ${accessToken}` };
+  }
+
+  it("DEFAULTS yolu — liveChatPreChatEnabled: false, liveChatRequireName: true, liveChatRequirePhone: true, liveChatRequireEmail: false", async () => {
+    const res = await app.inject({ method: "GET", url: "/api/v1/settings" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.liveChatPreChatEnabled).toBe(false);
+    expect(res.json().data.liveChatRequireName).toBe(true);
+    expect(res.json().data.liveChatRequirePhone).toBe(true);
+    expect(res.json().data.liveChatRequireEmail).toBe(false);
+  });
+
+  it("ADMIN PATCH ile dördü de değiştirilir, HAM DB sütununa yazılır ve public GET /settings'te geri döner", async () => {
+    const patch = await app.inject({
+      method: "PATCH",
+      url: "/api/v1/admin/settings",
+      headers: authHeader(),
+      payload: {
+        liveChatPreChatEnabled: true,
+        liveChatRequireName: false,
+        liveChatRequirePhone: false,
+        liveChatRequireEmail: true,
+      },
+    });
+    expect(patch.statusCode).toBe(200);
+    expect(patch.json().data.liveChatPreChatEnabled).toBe(true);
+    expect(patch.json().data.liveChatRequireName).toBe(false);
+    expect(patch.json().data.liveChatRequirePhone).toBe(false);
+    expect(patch.json().data.liveChatRequireEmail).toBe(true);
+
+    const row = await app.prisma.siteSettings.findUniqueOrThrow({ where: { id: "singleton" } });
+    expect(row.liveChatPreChatEnabled).toBe(true);
+    expect(row.liveChatRequireName).toBe(false);
+    expect(row.liveChatRequirePhone).toBe(false);
+    expect(row.liveChatRequireEmail).toBe(true);
+
+    const publicGet = await app.inject({ method: "GET", url: "/api/v1/settings" });
+    expect(publicGet.json().data.liveChatPreChatEnabled).toBe(true);
+    expect(publicGet.json().data.liveChatRequireName).toBe(false);
+    expect(publicGet.json().data.liveChatRequirePhone).toBe(false);
+    expect(publicGet.json().data.liveChatRequireEmail).toBe(true);
+  });
+});

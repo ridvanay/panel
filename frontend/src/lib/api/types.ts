@@ -1715,6 +1715,19 @@ export interface SiteSettings {
   liveChatProvider?: "internal" | "crisp" | "tawkto";
   /** Yalnızca `liveChatProvider !== "internal"` iken kullanılır (Crisp Website ID / Tawk.to widget ID). */
   liveChatScriptId?: string | null;
+  /**
+   * `.claude/architect-scope-support-desk-and-reminders.md` §7.1/§7.3 — ön görüşme (pre-chat)
+   * formu aç/kapa. `liveChatEnabled`/`liveChatProvider`/`liveChatScriptId` İLE AYNI gerekçeyle
+   * opsiyonel tutulur (satır kaydı yoksa/backend henüz yetişmemişse mevcut TAM `SiteSettings`
+   * test literallerini KIRMAZ). Widget/admin sayfası `?? false` ile güvenli varsayılana düşer.
+   */
+  liveChatPreChatEnabled?: boolean;
+  /** Form gösterilirken Ad Soyad alanı zorunlu mu. Backend varsayılanı `true`. */
+  liveChatRequireName?: boolean;
+  /** Form gösterilirken Telefon alanı zorunlu mu. Backend varsayılanı `true`. */
+  liveChatRequirePhone?: boolean;
+  /** Form gösterilirken E-posta alanı zorunlu mu. Backend varsayılanı `false`. */
+  liveChatRequireEmail?: boolean;
 }
 
 export interface UpdateSiteSettingsRequest {
@@ -1735,6 +1748,11 @@ export interface UpdateSiteSettingsRequest {
   liveChatEnabled?: boolean;
   liveChatProvider?: "internal" | "crisp" | "tawkto";
   liveChatScriptId?: string | null;
+  /** Bkz. `SiteSettings.liveChatPreChatEnabled` yorumu — gönderilmezse mevcut değer korunur (PATCH semantiği). */
+  liveChatPreChatEnabled?: boolean;
+  liveChatRequireName?: boolean;
+  liveChatRequirePhone?: boolean;
+  liveChatRequireEmail?: boolean;
 }
 
 export interface UpdateBlogPostRequest {
@@ -2344,6 +2362,11 @@ export interface SupportChatSessionSummary {
   status: SupportSessionStatus;
   /** Ziyaretçi BEYANI — doğrulanmamıştır. */
   visitorName: string | null;
+  /**
+   * Ziyaretçi BEYANI, doğrulanmamıştır (SMS/OTP doğrulaması YOKTUR). Maskelenmez, 30 günlük PII
+   * redaksiyonuna TABİ DEĞİLDİR. Ön görüşme formu kapalıyken/eski oturumlarda `null` olabilir.
+   */
+  visitorPhone: string | null;
   /** Ziyaretçi BEYANI — doğrulanmamıştır. Maskelenmez. */
   visitorEmail: string | null;
   visitorUserId: string | null;
@@ -2375,6 +2398,11 @@ export interface SupportChatSession extends SupportChatSessionSummary {
 export interface CreateSupportSessionRequest {
   message: string;
   visitorName?: string | null;
+  /**
+   * Ön görüşme formundan gelir (`SiteSettings.liveChatPreChatEnabled`). Format doğrulaması
+   * YOKTUR (yalnızca `maxLength: 40`) — zorunluluk istemci tarafındadır (`liveChatRequirePhone`).
+   */
+  visitorPhone?: string | null;
   visitorEmail?: string | null;
   pageUrl?: string | null;
   locale?: string | null;

@@ -48,6 +48,16 @@ vi.mock("@/lib/legal-pages", () => ({
   resolveKvkkNoticePage: () => null,
 }));
 
+/**
+ * `favorite-button.test.tsx` İLE AYNI desen — `useAuthOptional()` bu mutable değişken üzerinden
+ * kontrol edilir, her testin başında `beforeEach`'te `"unauthenticated"`e sıfırlanır (misafir
+ * varsayılan davranıştır).
+ */
+let authStatus: "authenticated" | "unauthenticated" = "unauthenticated";
+vi.mock("@/context/auth-context", () => ({
+  useAuthOptional: () => ({ status: authStatus }),
+}));
+
 const supportApi = await import("@/lib/api/support");
 
 // jsdom `Element.prototype.scrollTo`'yu implemente etmez (mesaj listesi otomatik kaydırması için
@@ -58,9 +68,18 @@ if (typeof Element.prototype.scrollTo !== "function") {
 
 const SETTINGS = { siteName: "Test Site", liveChatEnabled: true as const, liveChatProvider: "internal" as const, liveChatScriptId: null };
 
-async function openWidget() {
+/** `.claude/architect-scope-support-desk-and-reminders.md` §7.1 backend Prisma varsayılanlarıyla AYNI. */
+const SETTINGS_PRECHAT = {
+  ...SETTINGS,
+  liveChatPreChatEnabled: true as const,
+  liveChatRequireName: true as const,
+  liveChatRequirePhone: true as const,
+  liveChatRequireEmail: false as const,
+};
+
+async function openWidget(settings: typeof SETTINGS | typeof SETTINGS_PRECHAT = SETTINGS) {
   const user = userEvent.setup();
-  render(<LiveChatWidget settings={SETTINGS} />);
+  render(<LiveChatWidget settings={settings} />);
   await user.click(screen.getByRole("button", { name: "Canlı destek sohbetini aç" }));
   return user;
 }
@@ -68,6 +87,7 @@ async function openWidget() {
 beforeEach(() => {
   window.sessionStorage.clear();
   window.localStorage.clear();
+  authStatus = "unauthenticated";
   vi.mocked(supportApi.createSupportSession).mockReset();
   vi.mocked(supportApi.getSupportMessages).mockReset();
   vi.mocked(supportApi.sendSupportMessage).mockReset();
@@ -117,6 +137,88 @@ describe("LiveChatWidget — Canlı Destek (internal, gerçek backend)", () => {
 
     await user.click(screen.getByRole("button", { name: "Yeni Sohbet Başlat" }));
     expect(window.sessionStorage.getItem("support-chat-session")).toBeNull();
+    expect(screen.getByLabelText("Mesajınızı yazın")).toBeInTheDocument();
+  });
+});
+
+describe("LiveChatWidget — ön görüşme (pre-chat) formu (2026-09-16)", () => {
+  it("`liveChatPreChatEnabled=true` VE misafirse ilk mesajdan ÖNCE ad/telefon/e-posta/mesaj formu gösterilir, normal mesaj kutusu HENÜZ görünmez", async () => {
+    await openWidget(SETTINGS_PRECHAT);
+
+    expect(screen.getByLabelText(/Adınız Soyadınız/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Telefon Numaranız/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/E-posta Adresiniz/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Mesajınız/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Görüşmeyi Başlat" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Mesajınızı yazın")).not.toBeInTheDocument();
+  });
+
+  it("zorunlu alanlar (`liveChatRequireName`/`liveChatRequirePhone`) boşken gönderilemiyor — `createSupportSession` ÇAĞRILMAZ", async () => {
+    const user = await openWidget(SETTINGS_PRECHAT);
+
+    await user.type(screen.getByLabelText(/Mesajınız/), "Merhaba, yardım lazım");
+    await user.click(screen.getByRole("button", { name: "Görüşmeyi Başlat" }));
+
+    expect(await screen.findByText("Ad soyad zorunludur.")).toBeInTheDocument();
+    expect(screen.getByText("Telefon numarası zorunludur.")).toBeInTheDocument();
+    // `liveChatRequireEmail=false` — e-posta hatası GÖRÜNMEZ.
+    expect(screen.queryByText("E-posta zorunludur.")).not.toBeInTheDocument();
+    expect(supportApi.createSupportSession).not.toHaveBeenCalled();
+  });
+
+  it("geçersiz biçimli (opsiyonel) e-posta zorunlu olmasa bile reddedilir — basit format doğrulaması", async () => {
+    const user = await openWidget(SETTINGS_PRECHAT);
+
+    await user.type(screen.getByLabelText(/Adınız Soyadınız/), "Ayşe Yılmaz");
+    await user.type(screen.getByLabelText(/Telefon Numaranız/), "+90 555 123 45 67");
+    await user.type(screen.getByLabelText(/E-posta Adresiniz/), "gecersiz-eposta");
+    await user.type(screen.getByLabelText(/Mesajınız/), "Merhaba, yardım lazım");
+    await user.click(screen.getByRole("button", { name: "Görüşmeyi Başlat" }));
+
+    expect(await screen.findByText("Geçerli bir e-posta adresi girin.")).toBeInTheDocument();
+    expect(supportApi.createSupportSession).not.toHaveBeenCalled();
+  });
+
+  it("geçerli bilgilerle gönderim `POST /support/sessions`'ı `visitorName`/`visitorPhone` + ilk mesajla çağırır ve sohbet ekranına geçer", async () => {
+    vi.mocked(supportApi.createSupportSession).mockResolvedValue({
+      sessionId: "session-2",
+      accessToken: "token-xyz",
+      status: "PENDING",
+      message: { id: "msg-2", seq: 1, senderType: "VISITOR", senderDisplayName: null, body: "Merhaba, yardım lazım", createdAt: new Date().toISOString() },
+    });
+
+    const user = await openWidget(SETTINGS_PRECHAT);
+    await user.type(screen.getByLabelText(/Adınız Soyadınız/), "Ayşe Yılmaz");
+    await user.type(screen.getByLabelText(/Telefon Numaranız/), "+90 555 123 45 67");
+    await user.type(screen.getByLabelText(/Mesajınız/), "Merhaba, yardım lazım");
+    await user.click(screen.getByRole("button", { name: "Görüşmeyi Başlat" }));
+
+    expect(await screen.findByText("Merhaba, yardım lazım")).toBeInTheDocument();
+    expect(supportApi.createSupportSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: "Merhaba, yardım lazım",
+        visitorName: "Ayşe Yılmaz",
+        visitorPhone: "+90 555 123 45 67",
+      })
+    );
+    // Form kaybolur, normal (mevcut) mesaj kutusu artık görünür — sonraki mesajlar İÇİN.
+    expect(screen.queryByLabelText(/Adınız Soyadınız/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Mesajınızı yazın")).toBeInTheDocument();
+  });
+
+  it("giriş yapmış kullanıcıda form HİÇ gösterilmez, doğrudan sohbet ekranına geçilir", async () => {
+    authStatus = "authenticated";
+
+    await openWidget(SETTINGS_PRECHAT);
+
+    expect(screen.queryByLabelText(/Adınız Soyadınız/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Mesajınızı yazın")).toBeInTheDocument();
+  });
+
+  it("`liveChatPreChatEnabled=false` iken davranış DEĞİŞMEZ — form hiç gösterilmez", async () => {
+    await openWidget(SETTINGS);
+
+    expect(screen.queryByLabelText(/Adınız Soyadınız/)).not.toBeInTheDocument();
     expect(screen.getByLabelText("Mesajınızı yazın")).toBeInTheDocument();
   });
 });

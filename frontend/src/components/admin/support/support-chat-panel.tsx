@@ -264,7 +264,29 @@ export function SupportChatPanel({ sessionId, agents, templates, onSessionChange
               {STATUS_LABEL[session.status]}
             </Badge>
           </div>
-          {session.visitorEmail && <p className="truncate text-xs text-foreground/50">{session.visitorEmail}</p>}
+          {/*
+           * Görev (2026-09-16) — ön görüşme (pre-chat) formu §7.4: `visitorPhone` `visitorName`/
+           * `visitorEmail` İLE AYNI yerde, "ziyaretçi beyanı" etiketiyle gösterilir. İkisi de
+           * DOĞRULANMAMIŞ beyandır (SMS/OTP yok) — form kapalıyken/eski oturumlarda `null`
+           * olabileceğinden placeholder ile güvenli şekilde ele alınır (sessizce GİZLENMEZ).
+           */}
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-foreground/50">
+            <span
+              className="rounded bg-muted px-1 py-0.5 text-[10px] font-medium uppercase tracking-wide text-foreground/40"
+              title="Ziyaretçinin kendi beyanı — doğrulanmamıştır"
+            >
+              Ziyaretçi Beyanı
+            </span>
+            <span className="truncate">{session.visitorEmail || "E-posta belirtilmedi"}</span>
+            <span aria-hidden="true">·</span>
+            {session.visitorPhone ? (
+              <a href={`tel:${session.visitorPhone}`} className="truncate text-primary hover:underline">
+                {session.visitorPhone}
+              </a>
+            ) : (
+              <span>Telefon belirtilmedi</span>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1.5">

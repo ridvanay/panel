@@ -33,6 +33,12 @@ export const UpdateSiteSettingsRequestSchema = z
     liveChatEnabled: z.boolean().optional(),
     liveChatProvider: z.enum(["internal", "crisp", "tawkto"]).optional(),
     liveChatScriptId: z.string().trim().max(200).nullable().optional(),
+    // Ön görüşme (pre-chat) formu — `.claude/architect-scope-support-desk-and-reminders.md`
+    // §7.1/§7.3. HAM DB sütunlarına yazılır, çapraz-alan doğrulaması YOK (üçü de `false` olabilir).
+    liveChatPreChatEnabled: z.boolean().optional(),
+    liveChatRequireName: z.boolean().optional(),
+    liveChatRequirePhone: z.boolean().optional(),
+    liveChatRequireEmail: z.boolean().optional(),
   })
   .refine(
     (data) =>

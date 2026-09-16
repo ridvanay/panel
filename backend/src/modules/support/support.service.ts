@@ -85,14 +85,21 @@ export async function fetchLastMessagePreview(app: FastifyInstance, sessionId: s
  * [ASD] §3.1 (ilk mesaj BİRLİKTE) — oturum + ilk ziyaretçi mesajı TEK transaction'da oluşturulur.
  * `accessToken` HAM değeri yalnızca burada üretilir ve çağıran tarafa (route) döner — bir daha
  * ASLA okunamaz (`lib/tokens.ts` deseni, `Appointment.accessTokenHash` İLE AYNI).
+ *
+ * §7.3 (2026-09-16) — `authenticatedUserId` DOLUYSA (`authenticateOptional`), gövdeden gelen
+ * `visitorName`/`visitorPhone`/`visitorEmail` **YOKSAYILIR**; bu üç alan SUNUCUDA
+ * `User.name`/`User.phone`/`User.email`'den doldurulur (`User.phone` nullable ise sütun `null`
+ * kalır, gövdeye GERİ DÜŞÜLMEZ). Misafirde (`authenticatedUserId === null`) mevcut davranış
+ * aynen kalır — gövdeden gelen beyan alanları kullanılır.
  */
 export async function createSupportSessionWithFirstMessage(
   app: FastifyInstance,
   input: {
     message: string;
     visitorName: string | null;
+    visitorPhone: string | null;
     visitorEmail: string | null;
-    visitorUserId: string | null;
+    authenticatedUserId: string | null;
     pageUrl: string | null;
     locale: string | null;
     ipAddress: string | null;
@@ -103,13 +110,32 @@ export async function createSupportSessionWithFirstMessage(
   const accessTokenHash = hashToken(rawAccessToken);
   const now = new Date();
 
+  let visitorUserId: string | null = null;
+  let visitorName = input.visitorName;
+  let visitorPhone = input.visitorPhone;
+  let visitorEmail = input.visitorEmail;
+
+  if (input.authenticatedUserId) {
+    const user = await app.prisma.user.findUnique({
+      where: { id: input.authenticatedUserId },
+      select: { id: true, name: true, phone: true, email: true },
+    });
+    if (user) {
+      visitorUserId = user.id;
+      visitorName = user.name;
+      visitorPhone = user.phone;
+      visitorEmail = user.email;
+    }
+  }
+
   const { session, message } = await app.prisma.$transaction(async (tx) => {
     const createdSession = await tx.supportChatSession.create({
       data: {
         status: "PENDING",
-        visitorName: input.visitorName,
-        visitorEmail: input.visitorEmail,
-        visitorUserId: input.visitorUserId,
+        visitorName,
+        visitorPhone,
+        visitorEmail,
+        visitorUserId,
         accessTokenHash,
         pageUrl: input.pageUrl,
         locale: input.locale,

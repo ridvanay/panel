@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
+import { authenticateOptional } from "../../middleware/authenticate";
 import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema, ApiSuccessWithMeta } from "../../schemas/common";
 import { CreateSupportSessionResponseSchema, SupportChatMessagePublicSchema, SupportSessionStatusSchema } from "../../schemas/entities";
@@ -24,6 +25,9 @@ const SupportMessagesMetaSchema = z.object({
  */
 export async function supportPublicRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
+  // §7.3 (2026-09-16) — `checkout.routes.ts:64` İLE AYNI desen: header YOKSA/geçersizse 401
+  // FIRLATILMAZ, misafir akışı aynen çalışır (`security: []` DOĞRU kalır, DEĞİŞMEZ).
+  server.addHook("preHandler", authenticateOptional);
 
   server.post(
     "/sessions",
@@ -40,12 +44,13 @@ export async function supportPublicRoutes(app: FastifyInstance) {
 
       const { session, message, rawAccessToken } = await createSupportSessionWithFirstMessage(app, {
         message: request.body.message,
+        // §7.3 (2026-09-16) — `request.user` DOLUYSA (`authenticateOptional`) bu üç alan
+        // servis katmanında `User.name`/`User.phone`/`User.email`'den YENİDEN DOLDURULUR ve
+        // buradaki gövde değerleri YOKSAYILIR; misafirde (`request.user` yok) aynen kullanılır.
         visitorName: request.body.visitorName ?? null,
+        visitorPhone: request.body.visitorPhone ?? null,
         visitorEmail: request.body.visitorEmail ?? null,
-        // Ziyaretçi ucu kimlik doğrulaması GEREKTİRMEZ (`security: []`) — oturum açmış bir
-        // ziyaretçinin `User` ilişkisi bu turda bağlanmaz (bilinçli sınırlama, [ASD] §3.4'te
-        // `visitorUserId` şemada yaşasa da bu ucun bugünkü davranışı hep `null`'dur).
-        visitorUserId: null,
+        authenticatedUserId: request.user?.id ?? null,
         pageUrl: request.body.pageUrl ?? null,
         locale: request.body.locale ?? null,
         ipAddress: request.ip,

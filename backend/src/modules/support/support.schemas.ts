@@ -29,6 +29,9 @@ export const SupportAfterSeqQuerySchema = z.object({
 export const CreateSupportSessionRequestSchema = z.object({
   message: z.string().trim().min(1).max(2000),
   visitorName: z.string().trim().max(120).nullable().optional(),
+  // Ön görüşme (pre-chat) formu — `.claude/architect-scope-support-desk-and-reminders.md` §7.
+  // Ziyaretçi BEYANI; format doğrulaması BİLİNÇLİ OLARAK YOK (yalnızca maxLength).
+  visitorPhone: z.string().trim().max(40).nullable().optional(),
   visitorEmail: z.string().trim().toLowerCase().email().max(200).nullable().optional(),
   pageUrl: z.string().trim().max(500).nullable().optional(),
   locale: z.string().trim().max(10).nullable().optional(),

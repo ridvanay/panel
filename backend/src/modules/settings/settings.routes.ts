@@ -44,6 +44,13 @@ export const DEFAULTS = {
   liveChatEnabled: false,
   liveChatProvider: "internal",
   liveChatScriptId: null as string | null,
+  // Ön görüşme (pre-chat) formu — `.claude/architect-scope-support-desk-and-reminders.md`
+  // §7.1/§7.3. HAM DB varsayılanlarıyla (`prisma/schema.prisma::SiteSettings.liveChatPreChat*`)
+  // TUTARLI, AND-gate GEREKMEZ.
+  liveChatPreChatEnabled: false,
+  liveChatRequireName: true,
+  liveChatRequirePhone: true,
+  liveChatRequireEmail: false,
 };
 
 /**

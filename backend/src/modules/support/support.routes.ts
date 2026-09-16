@@ -59,12 +59,39 @@ const AdminSupportSessionsListMetaSchema = z.object({
   counts: SupportSessionCountsSchema,
 });
 
+const SUPPORT_AGENT_SUMMARY_ROLES = new Set(["ADMIN", "MANAGER"]);
+
+/**
+ * Savunma katmanı (bug fix, 2026-09-16 qa-agent raporu) — `SupportAgentSummarySchema.role`
+ * yalnızca `ADMIN`/`MANAGER` kabul eder. Kök neden düzeltmesi (`admin-users.routes.ts::
+ * clearSupportAssignmentsIfDemoted`) rol düşürüldüğü ANDA atamayı temizler, ama bu satır BU
+ * fix'ten ÖNCE oluşmuş bozuk kayıtları (veya öngörülemeyen bir yarış durumunu) KAPSAMAZ —
+ * mapper'a asla geçersiz role'lü bir `assignedAgent`/`closedBy` verilmez; bunun yerine `null`'a
+ * düşürülür ve veri tutarsızlığı sinyali olarak `warn` loglanır (sessizce yutulmaz). Response
+ * şeması ASLA genişletilmez (kontrat sabit kalır) — bkz. `schemas/entities.ts::
+ * SupportAgentSummarySchema`.
+ */
+function sanitizeSupportAgent(
+  app: FastifyInstance,
+  agent: SupportChatSessionWithRelations["assignedAgent"],
+  context: { sessionId: string; field: "assignedAgent" | "closedBy" }
+): SupportChatSessionWithRelations["assignedAgent"] {
+  if (!agent) return null;
+  if (SUPPORT_AGENT_SUMMARY_ROLES.has(agent.role)) return agent;
+  app.log.warn(
+    { sessionId: context.sessionId, field: context.field, userId: agent.id, role: agent.role },
+    "support: veri tutarsızlığı — atanan kullanıcının rolü artık ADMIN/MANAGER değil, response'ta null'a düşürüldü"
+  );
+  return null;
+}
+
 async function buildSessionSummaryDto(app: FastifyInstance, session: SupportChatSessionWithRelations) {
   const [unreadForAgent, lastMessagePreview] = await Promise.all([
     computeUnreadForAgent(app, session.id, session.lastAgentMessageAt),
     fetchLastMessagePreview(app, session.id),
   ]);
-  return toSupportChatSessionSummaryDto(session, { assignedAgent: session.assignedAgent, unreadForAgent, lastMessagePreview });
+  const assignedAgent = sanitizeSupportAgent(app, session.assignedAgent, { sessionId: session.id, field: "assignedAgent" });
+  return toSupportChatSessionSummaryDto(session, { assignedAgent, unreadForAgent, lastMessagePreview });
 }
 
 async function buildSessionDetailDto(app: FastifyInstance, session: SupportChatSessionWithRelations) {
@@ -72,9 +99,11 @@ async function buildSessionDetailDto(app: FastifyInstance, session: SupportChatS
     computeUnreadForAgent(app, session.id, session.lastAgentMessageAt),
     fetchLastMessagePreview(app, session.id),
   ]);
+  const assignedAgent = sanitizeSupportAgent(app, session.assignedAgent, { sessionId: session.id, field: "assignedAgent" });
+  const closedBy = sanitizeSupportAgent(app, session.closedBy, { sessionId: session.id, field: "closedBy" });
   return toSupportChatSessionDto(session, {
-    assignedAgent: session.assignedAgent,
-    closedBy: session.closedBy,
+    assignedAgent,
+    closedBy,
     unreadForAgent,
     lastMessagePreview,
   });

@@ -134,6 +134,69 @@ describe("Canlı Destek (Support)", () => {
       expect(res.json().error.code).toBe("SUPPORT_MESSAGE_LIMIT");
     });
 
+    it("giriş yapmış kullanıcı oturum açarsa visitorUserId/visitorName/visitorPhone/visitorEmail User'dan gelir, gövde YOKSAYILIR", async () => {
+      const { hashPassword } = await import("../../src/lib/password");
+      const passwordHash = await hashPassword("Sifre12345!");
+      const patient = await app.prisma.user.create({
+        data: {
+          email: `support-patient-${crypto.randomUUID()}@example.com`,
+          name: "Gerçek Hasta Adı",
+          phone: "+90 555 000 00 00",
+          passwordHash,
+          role: "USER",
+          status: "ACTIVE",
+        },
+      });
+      const patientToken = await loginAs(app, patient.email);
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/support/sessions",
+        headers: authHeader(patientToken),
+        payload: {
+          message: "Merhaba, yardım alabilir miyim?",
+          visitorName: "Sahte Ad",
+          visitorPhone: "0000000000",
+          visitorEmail: "sahte@example.com",
+        },
+      });
+      expect(res.statusCode).toBe(201);
+      const { sessionId } = res.json().data as { sessionId: string };
+
+      const session = await app.prisma.supportChatSession.findUniqueOrThrow({ where: { id: sessionId } });
+      expect(session.visitorUserId).toBe(patient.id);
+      expect(session.visitorName).toBe(patient.name);
+      expect(session.visitorPhone).toBe(patient.phone);
+      expect(session.visitorEmail).toBe(patient.email);
+    });
+
+    it("giriş yapmış kullanıcının telefonu boşsa visitorPhone null kalır, gövdeye geri düşülmez", async () => {
+      const { hashPassword } = await import("../../src/lib/password");
+      const passwordHash = await hashPassword("Sifre12345!");
+      const patient = await app.prisma.user.create({
+        data: {
+          email: `support-patient-${crypto.randomUUID()}@example.com`,
+          name: "Telefonsuz Hasta",
+          passwordHash,
+          role: "USER",
+          status: "ACTIVE",
+        },
+      });
+      const patientToken = await loginAs(app, patient.email);
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/support/sessions",
+        headers: authHeader(patientToken),
+        payload: { message: "Merhaba", visitorPhone: "0000000000" },
+      });
+      expect(res.statusCode).toBe(201);
+      const { sessionId } = res.json().data as { sessionId: string };
+
+      const session = await app.prisma.supportChatSession.findUniqueOrThrow({ where: { id: sessionId } });
+      expect(session.visitorPhone).toBeNull();
+    });
+
     it("ANSWERED bir oturuma ziyaretçi mesajı gönderince PENDING'e geri döner", async () => {
       const created = await createSession(app);
       await app.prisma.supportChatSession.update({ where: { id: created.sessionId }, data: { status: "ANSWERED" } });
@@ -269,6 +332,77 @@ describe("Canlı Destek (Support)", () => {
         expect(agent.email).toBeUndefined();
         expect(["ADMIN", "MANAGER"]).toContain(agent.role);
       }
+    });
+
+    it("[BUG FIX] MANAGER otomatik atandıktan sonra rolü USER'a düşürülünce atama temizlenir, liste 500 vermez", async () => {
+      // Repro (qa-agent) — 1) MANAGER yanıtlayıp otomatik atanır, 2) rolü USER'a düşürülür,
+      // 3) herhangi bir ADMIN/MANAGER listeyi çeker → ÖNCESİNDE 500 ZodError veriyordu
+      // (`SupportAgentSummarySchema.role` enum'ı "USER"a çarpıyordu).
+      const created = await createSession(app);
+      const managerUser = await createUserDirect(app, "MANAGER");
+      const managerToken = await loginAs(app, managerUser.email);
+
+      const replyRes = await app.inject({
+        method: "POST",
+        url: `/api/v1/admin/support/sessions/${created.sessionId}/messages`,
+        headers: authHeader(managerToken),
+        payload: { body: "Merhaba, size nasıl yardımcı olabilirim?" },
+      });
+      expect(replyRes.statusCode).toBe(201);
+
+      const assignedSession = await app.prisma.supportChatSession.findUniqueOrThrow({ where: { id: created.sessionId } });
+      expect(assignedSession.assignedAgentId).toBe(managerUser.id);
+
+      const demoteRes = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/admin/users/${managerUser.id}/role`,
+        headers: authHeader(adminToken),
+        payload: { role: "USER" },
+      });
+      expect(demoteRes.statusCode).toBe(200);
+
+      // Kök neden düzeltmesi: rol düşürülünce atama AYNI transaction'da temizlenir.
+      const sessionAfterDemotion = await app.prisma.supportChatSession.findUniqueOrThrow({ where: { id: created.sessionId } });
+      expect(sessionAfterDemotion.assignedAgentId).toBeNull();
+      expect(sessionAfterDemotion.assignedAt).toBeNull();
+
+      const listRes = await app.inject({ method: "GET", url: "/api/v1/admin/support/sessions", headers: authHeader(adminToken) });
+      expect(listRes.statusCode).toBe(200);
+      const listedSession = (listRes.json().data as Array<{ id: string; assignedAgent: unknown }>).find((s) => s.id === created.sessionId);
+      expect(listedSession?.assignedAgent).toBeNull();
+
+      const detailRes = await app.inject({
+        method: "GET",
+        url: `/api/v1/admin/support/sessions/${created.sessionId}`,
+        headers: authHeader(adminToken),
+      });
+      expect(detailRes.statusCode).toBe(200);
+      expect(detailRes.json().data.assignedAgent).toBeNull();
+    });
+
+    it("[BUG FIX] savunma katmanı — assignedAgentId geriye dönük/tutarsız şekilde geçersiz role'lü bir kullanıcıya işaret ederse liste/detay 500 vermez, assignedAgent null döner", async () => {
+      // Kök neden düzeltmesinden BAĞIMSIZ senaryo — role endpoint'i DIŞINDA (ör. eski/bozuk veri,
+      // doğrudan DB migrasyonu) `assignedAgentId` geçersiz bir role'e işaret ederse mapper/route
+      // katmanı YİNE DE çökmemeli (2. katman savunma).
+      const created = await createSession(app);
+      const nonAgentUser = await createUserDirect(app, "USER");
+      await app.prisma.supportChatSession.update({
+        where: { id: created.sessionId },
+        data: { assignedAgentId: nonAgentUser.id, assignedAt: new Date() },
+      });
+
+      const listRes = await app.inject({ method: "GET", url: "/api/v1/admin/support/sessions", headers: authHeader(adminToken) });
+      expect(listRes.statusCode).toBe(200);
+      const listedSession = (listRes.json().data as Array<{ id: string; assignedAgent: unknown }>).find((s) => s.id === created.sessionId);
+      expect(listedSession?.assignedAgent).toBeNull();
+
+      const detailRes = await app.inject({
+        method: "GET",
+        url: `/api/v1/admin/support/sessions/${created.sessionId}`,
+        headers: authHeader(adminToken),
+      });
+      expect(detailRes.statusCode).toBe(200);
+      expect(detailRes.json().data.assignedAgent).toBeNull();
     });
 
     it("DELETE oturumu ve mesajlarını KALICI siler", async () => {
