@@ -801,7 +801,14 @@ async function runUsersJob(app: FastifyInstance, ctx: JobRunContext, buffer: Buf
 
     try {
       const passwordHash = await hashPassword(crypto.randomBytes(32).toString("hex"));
-      const user = await app.prisma.user.create({ data: { name, email, passwordHash, role } });
+      // backend-agent bulgusu (2026-09-16) — `admin-users.routes.ts::POST /admin/users` İLE AYNI
+      // gerekçe (`.claude/architect-scope-guest-account-otp.md` §2.5, bağlayıcı): bu uç da
+      // ADMIN-only'dir (bkz. import.routes.ts::requireSiteRole(...ROLES_ADMIN)), yani bir admin
+      // toplu içe aktarma başlatarak bu e-postaların sahipliğini vekaleten doğrulamış sayılır.
+      // `emailVerifiedAt` set EDİLMEZSE, aşağıdaki şifre belirleme e-postası (best-effort) SMTP
+      // arızasında sessizce başarısız olur VE kullanıcı `login()`de AYRICA `requiresEmailVerification`
+      // ile karşılaşır — çifte SMTP bağımlılığı, aynı kalıcı kilitlenmeyi doğurur.
+      const user = await app.prisma.user.create({ data: { name, email, passwordHash, role, emailVerifiedAt: new Date() } });
 
       await logAudit(app, {
         actorId: ctx.actor?.id ?? null,

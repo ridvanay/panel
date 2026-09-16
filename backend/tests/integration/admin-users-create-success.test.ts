@@ -74,4 +74,50 @@ describe("POST /admin/users — SMTP mock'lanmış (başarı senaryosu)", () => 
     expect(input.to).toBe("success-user@example.com");
     expect(input.html).toContain("reset-password?token=");
   });
+
+  /**
+   * Regresyon (backend-agent bulgusu, 2026-09-16) — `.claude/architect-scope-guest-account-otp.md`
+   * §2.5 gerekçesinin `POST /admin/users`e de uygulanması: admin tarafından oluşturulan bir
+   * kullanıcı `emailVerifiedAt` DOLU doğar (SMTP arızasında çifte-bağımlılık kilitlenmesini önler).
+   * Uçtan uca: oluştur → DB'de `emailVerifiedAt` dolu doğrula → e-postadaki reset linkiyle şifre
+   * belirle → `POST /auth/login`de `requiresEmailVerification` ALINMADIĞINI, doğrudan token
+   * alındığını doğrula.
+   */
+  it("yeni admin-oluşturulan kullanıcı emailVerifiedAt DOLU doğar; reset-password sonrası login'de requiresEmailVerification ALINMAZ", async () => {
+    sendMailMock.mockClear();
+
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/api/v1/admin/users",
+      headers: authHeader(adminToken),
+      payload: { name: "Kilitlenme Regresyonu", email: "no-lockout-user@example.com" },
+    });
+    expect(createRes.statusCode).toBe(201);
+
+    const dbUser = await app.prisma.user.findUniqueOrThrow({ where: { email: "no-lockout-user@example.com" } });
+    expect(dbUser.emailVerifiedAt).not.toBeNull();
+
+    expect(sendMailMock).toHaveBeenCalledTimes(1);
+    const [, input] = sendMailMock.mock.calls[0] as unknown as [unknown, { to: string; html: string }];
+    const match = input.html.match(/reset-password\?token=([\w-]+)/);
+    expect(match).not.toBeNull();
+    const rawToken = match![1]!;
+
+    const resetRes = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/reset-password",
+      payload: { token: rawToken, newPassword: "YeniSifre12345!" },
+    });
+    expect(resetRes.statusCode).toBe(204);
+
+    const loginRes = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/login",
+      payload: { email: "no-lockout-user@example.com", password: "YeniSifre12345!" },
+    });
+    expect(loginRes.statusCode).toBe(200);
+    const loginBody = loginRes.json().data;
+    expect(loginBody.requiresEmailVerification).toBeUndefined();
+    expect(loginBody.tokens.accessToken).toEqual(expect.any(String));
+  });
 });

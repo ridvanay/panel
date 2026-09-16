@@ -157,8 +157,18 @@ export async function adminUsersRoutes(app: FastifyInstance) {
       // reset token'ıyla kendisi belirler (bkz. createPasswordResetToken).
       const passwordHash = await hashPassword(crypto.randomBytes(32).toString("hex"));
 
+      // backend-agent bulgusu (2026-09-16) — `.claude/architect-scope-guest-account-otp.md` §2.5
+      // (bağlayıcı) ile AYNI gerekçe: bir ADMIN'in bir kullanıcı oluşturması, o kullanıcının
+      // e-posta sahipliğinin admin tarafından ZATEN vekaleten doğrulandığı anlamına gelir
+      // (§2.5'in `resetPassword()`de zaten kabul ettiği ilke — "ADMIN'in oluşturduğu kullanıcılar"
+      // AÇIKÇA örnek gösterilmişti, ama bu YOLA hiç uygulanmamıştı). `emailVerifiedAt` BURADA set
+      // EDİLMEZSE ve SMTP arızalıysa/e-posta ulaşmazsa: kullanıcı şifresini `forgot-password` ile
+      // ALAMAZ (o da SMTP gerektirir) VE aldığında bile `login()` yine `requiresEmailVerification`
+      // döner (o da SMTP gerektirir) — çifte SMTP bağımlılığı hesabı KALICI OLARAK kilitler. Doktor
+      // hesapları da BU uçtan oluşturulup sonra `DoctorProfile.userId`ye bağlandığı için (bkz.
+      // telehealth.admin.routes.ts) bu düzeltme onları da kapsar.
       const user = await app.prisma.user.create({
-        data: { name, email: emailLower, passwordHash, role: role ?? "EDITOR" },
+        data: { name, email: emailLower, passwordHash, role: role ?? "EDITOR", emailVerifiedAt: new Date() },
         include: { doctorProfile: { select: { id: true } } },
       });
 

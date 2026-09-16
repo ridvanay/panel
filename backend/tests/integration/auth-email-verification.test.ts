@@ -235,3 +235,57 @@ describe("mevcut (backfill edilmiş) kullanıcıların girişi DEĞİŞMEDİ —
     expect(res.json().data.tokens).toBeDefined();
   });
 });
+
+describe("2FA açık + emailVerifiedAt dolu — regresyon (backend-agent bulgusu, 2026-09-16)", () => {
+  let app: FastifyInstance;
+
+  beforeAll(async () => {
+    app = await buildTestApp();
+    await resetDatabase(app.prisma);
+  });
+
+  afterAll(async () => {
+    await resetDatabase(app.prisma);
+    await app.close();
+  });
+
+  /**
+   * Sonuç A doğrulaması — `auth.service.ts::login()`in dal sırası (1) şifre/status
+   * (2) `emailVerifiedAt===null` → e-posta doğrulama (3) `twoFactorEnabled` → 2FA olduğundan,
+   * `emailVerifiedAt` DOLU + 2FA açık bir kullanıcı login'de HER ZAMAN `requiresTwoFactor: true`
+   * almalı, `requiresEmailVerification` ASLA görünmemeli (iki bayrak birbirini MASKELEMEMELİ).
+   * TOTP kodları BU akışta (`POST /auth/2fa/verify`) doğrulanır, e-posta doğrulama servisiyle
+   * KARIŞTIRILMAZ — `login-form.tsx::handleSubmit`teki `kind` ayrımı ile aynı sözleşme.
+   */
+  it("emailVerifiedAt dolu + twoFactorEnabled true → login requiresTwoFactor döner, requiresEmailVerification YOKTUR", async () => {
+    const email = uniqueEmail("2fa-and-verified");
+    const { hashPassword } = await import("../../src/lib/password");
+
+    // `login()` şifre/status/emailVerifiedAt/twoFactorEnabled kontrollerinden SONRA bir
+    // `challengeToken` döner — TOTP sırrının KENDİSİ bu adımda hiç okunmaz/çözülmez (yalnızca
+    // `POST /auth/2fa/verify` çözer), bu yüzden burada gerçek (şifreli) bir sır GEREKMEZ.
+    await app.prisma.user.create({
+      data: {
+        email,
+        passwordHash: await hashPassword("Sifre12345!"),
+        name: "2FA Verified User",
+        emailVerifiedAt: new Date(),
+        twoFactorEnabled: true,
+        twoFactorSecret: "placeholder-not-decrypted-by-login",
+      },
+    });
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/login",
+      payload: { email, password: "Sifre12345!" },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json().data;
+    expect(body.requiresTwoFactor).toBe(true);
+    expect(body.challengeToken).toEqual(expect.any(String));
+    expect(body.requiresEmailVerification).toBeUndefined();
+    expect(body.tokens).toBeUndefined();
+  });
+});

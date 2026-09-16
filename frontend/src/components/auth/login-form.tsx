@@ -139,11 +139,17 @@ export function LoginForm({ variant = "default" }: LoginFormProps) {
       <form className="space-y-4" onSubmit={handleVerify} noValidate>
         {error && <Alert variant="error">{error}</Alert>}
 
+        {/* Bu, e-posta doğrulama ekranıyla (`/verify-email`) KARIŞTIRILMAMASI için AYRI bir
+            başlık taşır — kullanıcı e-postasına gelen kodu DEĞİL, kimlik doğrulama uygulamasında
+            (ör. Google Authenticator) üretilen kodu girmelidir; bu ekrana e-posta ile İLGİSİ
+            OLMAYAN bir akıştan (2FA challenge) ulaşılır. */}
+        <p className="text-sm font-medium text-foreground">İki adımlı doğrulama</p>
         <p className="text-sm text-foreground/60">
-          Kimlik doğrulama uygulamanızdaki 6 haneli kodu ya da bir yedek kodu girin.
+          Bu bir e-posta kodu değildir. Kimlik doğrulama uygulamanızda (ör. Google Authenticator)
+          görünen 6 haneli kodu ya da bir yedek kodu girin.
         </p>
 
-        <Field id="code" label="Doğrulama Kodu" required>
+        <Field id="code" label="Authenticator Kodu" required>
           {(inputProps) => (
             <Input
               {...inputProps}
