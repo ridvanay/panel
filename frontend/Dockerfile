@@ -24,6 +24,11 @@ COPY . .
 # yüzden ENV değil, build ARG olarak verilir (bkz. docker-compose.yml build.args).
 ARG NEXT_PUBLIC_API_URL=http://localhost:4000/api/v1
 ARG NEXT_PUBLIC_SITE_URL=http://localhost:3000
+# Hekim portalı (`/doctor/**`) subdomain izolasyonu — NEXT_PUBLIC_SITE_URL ile AYNI desen
+# (build-time inline edilir, runtime `environment:` YETMEZ). TANIMSIZ bırakılırsa
+# `isDoctorHostname()` (src/lib/doctor-host.ts) her zaman false döner ve özelliğin tamamı
+# devre dışı kalır (geriye dönük uyumluluk) — bkz. docker-compose.yml frontend.build.args.
+ARG NEXT_PUBLIC_DOCTOR_URL=
 # next/image'in KENDİ sunucu-taraflı optimize fetch'i (frontend container'ının İÇİNDE çalışır)
 # NEXT_PUBLIC_API_URL'in (tarayıcı-taraflı, ör. localhost:4000) host'una ULAŞAMAZ — bkz.
 # docker-compose.yml frontend.build.args ve frontend/src/lib/env.ts::INTERNAL_MEDIA_ORIGIN yorumu.
@@ -32,6 +37,7 @@ ARG NEXT_PUBLIC_INTERNAL_MEDIA_URL=
 ARG NEXT_PUBLIC_ENABLE_DEMO_PAYMENTS=
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 ENV NEXT_PUBLIC_SITE_URL=${NEXT_PUBLIC_SITE_URL}
+ENV NEXT_PUBLIC_DOCTOR_URL=${NEXT_PUBLIC_DOCTOR_URL}
 ENV NEXT_PUBLIC_INTERNAL_MEDIA_URL=${NEXT_PUBLIC_INTERNAL_MEDIA_URL}
 ENV NEXT_PUBLIC_ENABLE_DEMO_PAYMENTS=${NEXT_PUBLIC_ENABLE_DEMO_PAYMENTS}
 ENV NEXT_TELEMETRY_DISABLED=1

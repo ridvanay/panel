@@ -292,6 +292,19 @@ sunucu-taraflı fetch'ler (`INTERNAL_API_URL`, `NEXT_PUBLIC_INTERNAL_MEDIA_URL`)
   `http://siteadi.localhost:3000` (ve opsiyonel `http://doktor.siteadi.localhost:3000`)
   olduğunu belirtecek şekilde güncellendi.
 
+**Düzeltme (sonraki tur, devops-agent):** `docker-compose.yml`'ın `frontend.build.args`'a
+geçtiği `NEXT_PUBLIC_DOCTOR_URL`, `frontend/Dockerfile`'da karşılık gelen `ARG`+`ENV`
+çiftinden YOKSUNDU — build-arg compose tarafından geçiliyordu ama Dockerfile'ın builder
+stage'i onu deklare/`ENV`'e çevirmediği için Next.js build'ine hiç ulaşmıyordu, bu da
+üretilen imajda `isDoctorHostname()`'in (`frontend/src/lib/doctor-host.ts`) her zaman
+`false` dönmesine ve `doktor.siteadi.localhost` host'unun subdomain routing'e hiç
+girmeden SaaS `/login`e düşmesine yol açıyordu. `frontend/Dockerfile`'a
+`NEXT_PUBLIC_SITE_URL` ile BİREBİR aynı desende `ARG NEXT_PUBLIC_DOCTOR_URL=` +
+`ENV NEXT_PUBLIC_DOCTOR_URL=${NEXT_PUBLIC_DOCTOR_URL}` eklendi (builder stage,
+diğer `NEXT_PUBLIC_*` çiftleriyle aynı blok). `docker compose up --build -d frontend`
+ile yeniden build edilip `curl -H "Host: doktor.siteadi.localhost" http://localhost:3000/login -D -`
+ile `x-doctor-portal: 1` header'ı ve `/tr/doctor/login`e rewrite doğrulandı.
+
 **Bilinçli sapma (devops-agent kararı):** Görev talimatında backend servisine
 `DOCTOR_FRONTEND_URL`'in `environment:` bloğuna eklenmesi istendi, ancak bu **yapılmadı** —
 bunun yerine `environment:` bloğuna yalnızca açıklayıcı bir yorum eklendi. Gerekçe: dosyadaki
