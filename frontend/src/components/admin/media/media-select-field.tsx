@@ -7,6 +7,7 @@ import * as mediaApi from "@/lib/api/media";
 import type { Media } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
 import { MediaPicker } from "@/components/admin/media/media-picker";
+import { MediaThumbnail } from "@/components/admin/media/media-thumbnail";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 
 interface MediaSelectFieldProps {
@@ -71,8 +72,11 @@ export function MediaSelectField({ id, label, value, onChange, required }: Media
 
       {value && (
         <div className="space-y-1">
-          {/* eslint-disable-next-line @next/next/no-img-element -- yüklenen/harici görsel URL'si, next/image remotePatterns henüz tanımlı değil */}
-          <img src={value.url} alt="" className="h-32 w-full rounded-md border border-border object-cover" />
+          <MediaThumbnail
+            src={value.url}
+            alt=""
+            className="h-32 w-full rounded-md border border-border object-cover"
+          />
           <p className="text-xs text-foreground/60">
             Alt metin:{" "}
             {value.altText ? value.altText : <span className="italic text-foreground/40">Tanımlanmamış</span>}

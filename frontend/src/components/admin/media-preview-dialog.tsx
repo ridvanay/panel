@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import type { Media } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { MediaThumbnail } from "@/components/admin/media/media-thumbnail";
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -39,11 +40,15 @@ export function MediaPreviewDialog({ media, open, onOpenChange }: MediaPreviewDi
           {media && <DialogDescription>{formatSize(media.sizeBytes)}</DialogDescription>}
         </DialogHeader>
         {media && (
-          // eslint-disable-next-line @next/next/no-img-element -- yüklenen medya URL'si, next/image remotePatterns henüz tanımlı değil
-          <img
+          <MediaThumbnail
             src={media.url}
             alt={media.filename}
             className="max-h-[65vh] w-full rounded-lg border border-border object-contain"
+            // `object-contain` + yalnızca `max-h-*` normal `<img>`de intrinsic en-boy oranına göre
+            // gerçek yükseklik verir, ama boş bir placeholder `div`de bu YOKTUR (0 yükseklik) —
+            // yükleme hatası durumunda somut bir kutu görünsün diye burada sabit bir yükseklik verilir.
+            fallbackClassName="h-64 w-full rounded-lg border border-border"
+            iconClassName="h-10 w-10"
           />
         )}
         <div className="flex justify-end">

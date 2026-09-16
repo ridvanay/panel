@@ -311,6 +311,79 @@ reverse-proxy/CDN seviyesinde yalnızca `/`, `/login`, `/forgot-password`, `/res
 `/dashboard` host seviyesinde kesilir) — proxy.ts bu yolları host bazında görmez, doğru katman
 uygulama değil reverse proxy/CDN'dir (frontend-agent'ın `proxy.ts`'teki §3.2 notuna bakınız).
 
+## Medya/Görsel Servis — Production Env Matrisi (`NEXT_PUBLIC_MEDIA_URL`, `next/image` remotePatterns)
+
+**Bağlam:** Production'da (`https://wmhealthistanbul.com`) admin panelinde yüklenen medya/doktor
+avatarlarının kırık görünmesi bildirildi. Kod tarafı doğrulandı — `frontend/next.config.ts::
+buildImageRemotePatterns()` ve `frontend/src/lib/image-hosts.ts::collectAllowedHosts()`
+(`.claude/architect-scope-products-catalog.md` §6.1, bağlayıcı karar) `next/image`'in izin
+verdiği host listesini **build zamanında**, sabit bir domain KODA YAZILMADAN, üç env
+değişkeninden dinamik türetiyor. Sorun bir kod hatası DEĞİL — production dağıtımında bu
+değişkenlerin doğru ayarlanıp ayarlanmadığı belirsizdi ve `NEXT_PUBLIC_MEDIA_URL` bu turdan önce
+`frontend/.env.local.example`'da hiç dokümante edilmemişti. Bu bölüm o boşluğu kapatır.
+
+**Üç değişken, aynı allowlist'i besler (`IMAGE_HOST_ENV_KEYS`, sıra önemli değil):**
+
+| Değişken | Ne zaman gerekir | Boşsa ne olur |
+|---|---|---|
+| `NEXT_PUBLIC_API_URL` | Her zaman zorunlu (zaten var) | — |
+| `NEXT_PUBLIC_MEDIA_URL` | Yalnızca medya **AYRI bir host'tan** serviliyorsa (`STORAGE_DRIVER=s3`, S3/CDN) | `next/image` o host'u remotePatterns'te GÖRMEZ → `SafeImage`/`isOptimizableImageUrl` sessizce düz `<img>`'e düşer (build/runtime KIRILMAZ, sadece optimize edilmemiş görsel) |
+| `NEXT_PUBLIC_INTERNAL_MEDIA_URL` | Docker/container-içi sunucu-taraflı optimize fetch için (bkz. yukarıdaki Hekim Portalı bölümü) | Server-side `next/image` optimize isteği container ağında host'a ulaşamaz → 400 |
+
+**`STORAGE_DRIVER=local` (varsayılan, backend `/uploads/*`'tan kendi servis eder):**
+`NEXT_PUBLIC_API_URL` TEK BAŞINA yeterlidir, `NEXT_PUBLIC_MEDIA_URL` BOŞ bırakılmalıdır —
+doldurmak zararsızdır ama gereksizdir (host `NEXT_PUBLIC_API_URL` ile aynıysa `seenHosts`
+tarafından tekilleştirilir).
+
+**`STORAGE_DRIVER=s3` (S3/CDN, `backend/.env.example`'daki `S3_*`/`S3_PUBLIC_URL`):**
+`NEXT_PUBLIC_MEDIA_URL`, backend'in ürettiği medya URL'lerinin (`s3.storage.ts::buildUrl`, bkz.
+yukarıdaki "S3/CDN depolama başlıkları" bölümü) host'uyla **birebir eşleşmelidir** —
+`S3_PUBLIC_URL` tanımlıysa o CDN host'u, değilse doğrudan S3/R2/MinIO endpoint host'u.
+
+**"Kırık görsel" (build/runtime hatası değil, tarayıcıda gerçekten yüklenmeyen `<img>`) ile
+"optimize edilmemiş görsel" (`SafeImage`'in bilinçli `<img>` fallback'i) birbirine
+karıştırılmamalı:**
+- `next.config.ts`/`image-hosts.ts`'in host'u tanımadığı durumda `SafeImage` düz `<img>`'e düşer
+  — bu görsel YİNE DE tarayıcıda görünür, yalnızca Next.js optimizasyonundan (resize/webp/lazy)
+  geçmez. Bu "beklenmedik" olabilir ama "kırık" DEĞİLDİR.
+- Gerçek "kırık resim" (tarayıcıda ikon/alt-text görünmesi), `<img src>`'in işaret ettiği host'a
+  **tarayıcının doğrudan ağ üzerinden erişememesi**dir — bu env değişkeni eksikliği DEĞİL, ya (a)
+  `NEXT_PUBLIC_API_URL`/`NEXT_PUBLIC_MEDIA_URL`'in production build'inde yanlış/eksik host
+  içermesi (görsel URL'si yanlış üretilir) ya da (b) backend host'unun (`/uploads/*` yolu dahil)
+  dışarıdan (tarayıcıdan) gerçekten erişilebilir olmamasıdır (DNS, TLS, reverse-proxy/CDN yol
+  yönlendirmesi).
+
+**`wmhealthistanbul.com` için somut kontrol listesi:**
+1. Production frontend build/deploy zamanında `NEXT_PUBLIC_API_URL` gerçekten
+   `https://wmhealthistanbul.com/api/v1` (veya backend'in gerçek public host'u neyse) değerine
+   sahip miydi? (`NEXT_PUBLIC_*` değişkenleri Next.js'te **build-time** inline edilir — deploy
+   sonrası runtime `environment:` ile override etmek YETMEZ, bkz. yukarıdaki Hekim Portalı
+   bölümündeki aynı uyarı; yanlışsa **yeniden build** gerekir.)
+2. `STORAGE_DRIVER` production backend'inde `local` mı `s3` mi? `s3` ise `NEXT_PUBLIC_MEDIA_URL`
+   tanımlı ve doğru host'a mı işaret ediyor?
+3. `local` ise: backend'in `/uploads/*` statik servis yolu (`backend/src/plugins/uploads.ts`)
+   production'da reverse-proxy/CDN **arkasında** doğru şekilde backend sürecine
+   yönlendiriliyor mu? **Bu proje reverse-proxy/nginx config İÇERMİYOR** (kök/`backend`
+   dizininde nginx/Caddy/Traefik yapılandırması yok) — bu katman bilinçli olarak repo dışında,
+   hedef altyapı sağlayıcısı tarafından yönetiliyor (yukarıdaki Hekim Portalı bölümündeki
+   "doğru katman uygulama değil reverse proxy/CDN'dir" notuyla TUTARLI). `/uploads/*` yolunun bu
+   proxy'de backend'e (ana API ile AYNI upstream) doğru yönlendirildiği doğrulanmalı — aksi
+   halde tarayıcı görsel URL'sine 404/502 alır, bu da gerçek "kırık resim" sebebidir.
+4. `curl -I https://wmhealthistanbul.com/uploads/<bilinen-bir-dosya>` (veya `NEXT_PUBLIC_MEDIA_URL`
+   host'unun eşdeğeri) doğrudan denenerek adım 3 harici olarak da doğrulanabilir.
+
+**Değiştirilen dosyalar (bu tur):**
+- `frontend/.env.local.example`: `NEXT_PUBLIC_MEDIA_URL` satırı (yorumla, ne zaman gerektiği
+  açıklanarak) `NEXT_PUBLIC_API_URL`'in hemen altına eklendi — önceden bu dosyada hiç yoktu.
+- `backend/.env.example`: kontrol edildi, `STORAGE_DRIVER`/`S3_*`/`S3_PUBLIC_URL` zaten "Medya
+  depolama" başlığı altında dokümante edilmiş durumda (satır ~112-123) — eksik bulunmadı,
+  değişiklik yapılmadı.
+- `INFRA.md`: bu bölüm eklendi.
+
+**KESİNLİKLE yapılmadı:** `next.config.ts`'e `wmhealthistanbul.com` hardcode edilmedi (mevcut
+dinamik `remotePatterns` mimarisini bozar, §6.1 kararına aykırı); fabrike bir nginx/reverse-proxy
+config dosyası oluşturulmadı (repoda bu katmana dair hiçbir kanıt yok, harici yönetiliyor).
+
 ## Bağımlılık politikası — `allowScripts` (backend)
 
 backend-agent, içe aktarma özelliği için şu bağımlılıkları ekledi: `saxes`, `csv-parse`,

@@ -147,7 +147,7 @@ export function buildApp() {
     requestIdHeader: "x-request-id",
     genReqId: () => randomUUID(),
     // Fastify'ın varsayılan bodyLimit'i (1 MiB) plugins/uploads.ts'teki multipart `fileSize`
-    // limitinden (MAX_UPLOAD_BYTES, 5MB) küçük — bu yüzden 1MB'ı aşan HER yükleme, multipart
+    // limitinden (MAX_UPLOAD_BYTES, 12MB) küçük — bu yüzden 1MB'ı aşan HER yükleme, multipart
     // parser'a hiç ulaşmadan Fastify core tarafından 413 ile reddediliyordu. Tek kaynaktan
     // (MAX_UPLOAD_BYTES) türetip multipart alan adları/boundary overhead'i için pay bırakıyoruz.
     bodyLimit: MAX_UPLOAD_BYTES + 64 * 1024,

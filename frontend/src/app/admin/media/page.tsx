@@ -40,6 +40,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { MediaPreviewDialog } from "@/components/admin/media-preview-dialog";
 import { MediaListTable } from "@/components/admin/media/media-list-table";
+import { MediaThumbnailFallback } from "@/components/admin/media/media-thumbnail";
 import { MediaFolderTree } from "@/components/admin/media/media-folder-tree";
 import { PageHeading } from "@/components/admin/page-heading";
 import { ListPagination } from "@/components/admin/list-pagination";
@@ -127,6 +128,10 @@ export default function AdminMediaPage() {
   const items = selectedFolder === ALL_FILES_SELECTION ? libraryMedia : folderItems;
 
   const [dominantColors, setDominantColors] = useState<Record<string, string | null>>({});
+  // Grid görünümündeki blur-up `<img onLoad>` efektini KORUMAK için `MediaThumbnail`in kendi
+  // onError→state akışı yerine burada aynı `dominantColors` deseninde ayrı bir hata state'i
+  // tutulur (bkz. `media-thumbnail.tsx` başındaki `MediaThumbnailFallback` yorumu).
+  const [failedThumbnailIds, setFailedThumbnailIds] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
@@ -769,14 +774,21 @@ export default function AdminMediaPage() {
                             aria-label={`${media.filename} önizlemesini aç`}
                             className="block aspect-square w-full cursor-zoom-in overflow-hidden rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           >
-                            {/* eslint-disable-next-line @next/next/no-img-element -- yüklenen medya URL'si, next/image remotePatterns henüz tanımlı değil */}
-                            <img
-                              src={media.url}
-                              alt=""
-                              loading="eager"
-                              onLoad={(e) => e.currentTarget.classList.remove("opacity-0", "blur-sm")}
-                              className="h-full w-full object-cover opacity-0 blur-sm transition-[opacity,filter,transform] duration-300 group-hover:scale-105"
-                            />
+                            {failedThumbnailIds.has(media.id) ? (
+                              <MediaThumbnailFallback alt={media.filename} className="h-full w-full" />
+                            ) : (
+                              // eslint-disable-next-line @next/next/no-img-element -- yüklenen medya URL'si, next/image remotePatterns henüz tanımlı değil
+                              <img
+                                src={media.url}
+                                alt=""
+                                loading="eager"
+                                onLoad={(e) => e.currentTarget.classList.remove("opacity-0", "blur-sm")}
+                                onError={() =>
+                                  setFailedThumbnailIds((prev) => new Set(prev).add(media.id))
+                                }
+                                className="h-full w-full object-cover opacity-0 blur-sm transition-[opacity,filter,transform] duration-300 group-hover:scale-105"
+                              />
+                            )}
                           </button>
                           {dominantColors[media.id] && (
                             <span

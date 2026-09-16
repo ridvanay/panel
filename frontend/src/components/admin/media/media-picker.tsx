@@ -12,6 +12,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { MediaFolderTree } from "@/components/admin/media/media-folder-tree";
+import { MediaThumbnail } from "@/components/admin/media/media-thumbnail";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { useMultiSelect } from "@/hooks/use-multi-select";
 import { cn } from "@/lib/utils";
@@ -349,8 +350,7 @@ export function MediaPicker(props: MediaPickerProps) {
                             </span>
                           </div>
                         ) : (
-                          // eslint-disable-next-line @next/next/no-img-element -- yüklenen/harici görsel URL'si, next/image remotePatterns henüz tanımlı değil
-                          <img src={media.url} alt="" className="h-full w-full object-cover" />
+                          <MediaThumbnail src={media.url} alt="" className="h-full w-full object-cover" />
                         )}
                         {selected && (
                           <span className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">

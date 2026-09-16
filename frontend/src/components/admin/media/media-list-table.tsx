@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { MediaThumbnail } from "@/components/admin/media/media-thumbnail";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -100,8 +101,12 @@ export function MediaListTable({
               </TableCell>
               <TableCell className="w-auto">
                 <div className="flex items-center gap-3">
-                  {/* eslint-disable-next-line @next/next/no-img-element -- yüklenen medya URL'si, next/image remotePatterns henüz tanımlı değil */}
-                  <img src={media.url} alt="" className="h-10 w-10 shrink-0 rounded-md object-cover" />
+                  <MediaThumbnail
+                    src={media.url}
+                    alt=""
+                    className="h-10 w-10 shrink-0 rounded-md object-cover"
+                    iconClassName="h-4 w-4"
+                  />
                   <span className="truncate text-sm font-medium text-foreground" title={media.filename}>
                     {media.filename}
                   </span>

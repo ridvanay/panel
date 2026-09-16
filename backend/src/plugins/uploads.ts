@@ -8,7 +8,7 @@ import { UPLOADS_RATE_LIMIT } from "../lib/rate-limit";
 import { IMAGE_EXTENSIONS } from "../lib/mime-detect";
 
 export const UPLOAD_DIR = path.join(process.cwd(), "uploads");
-export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024; // 5 MB
+export const MAX_UPLOAD_BYTES = 12 * 1024 * 1024; // 12 MB
 
 export default fp(async function uploadsPlugin(app: FastifyInstance) {
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
