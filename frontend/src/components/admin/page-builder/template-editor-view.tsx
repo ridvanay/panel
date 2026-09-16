@@ -219,7 +219,7 @@ export function TemplateEditorView({
         )}
       </div>
 
-      <div className="lg:sticky lg:top-6 lg:self-start">
+      <div className="min-w-0 lg:sticky lg:top-6 lg:self-start">
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
           <TemplatePreviewFrame nodes={nodes} />
         </motion.div>

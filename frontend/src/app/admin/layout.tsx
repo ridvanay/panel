@@ -90,7 +90,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                   `overflow-x-clip` bu zorlamadan MUAF (kural yalnızca 'visible'ı hedefliyor, 'clip'i
                   DEĞİL) — `overflow-y` gerçekten 'visible' kalıyor, `<main>` hiçbir eksende scroll
                   container OLMUYOR, `sticky` doğru şekilde `window`'a bağlanıyor (doğrulandı). */}
-              <main className="flex-1 overflow-x-clip bg-surface-muted p-4 md:p-6">
+              <main className="min-w-0 w-full max-w-full flex-1 overflow-x-clip bg-surface-muted p-4 md:p-6">
                 <AnimatePresence mode="wait">
                   <motion.div
                     key={pathname}

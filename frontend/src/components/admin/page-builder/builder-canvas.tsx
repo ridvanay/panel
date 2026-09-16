@@ -1150,7 +1150,7 @@ export function BuilderCanvas({
   };
 
   return (
-    <>
+    <div className="min-w-0 w-full max-w-full overflow-x-hidden">
       <DevicePreviewBar device={device} onChange={setDevice} />
       <DndContext
         sensors={sensors}
@@ -1214,6 +1214,6 @@ export function BuilderCanvas({
           setPendingUnwrap(null);
         }}
       />
-    </>
+    </div>
   );
 }

@@ -256,9 +256,9 @@ export function SupportChatPanel({ sessionId, agents, templates, onSessionChange
 
   return (
     <div className="flex h-full min-h-0 flex-col rounded-xl border border-border bg-card">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between gap-4 border-b border-border p-4">
+        <div className="flex min-w-0 flex-col gap-1">
+          <div className="flex min-w-0 items-center gap-2">
             <p className="truncate text-sm font-semibold text-foreground">{displayName}</p>
             <Badge tone={STATUS_TONE[session.status]} size="lg">
               {STATUS_LABEL[session.status]}
@@ -270,17 +270,17 @@ export function SupportChatPanel({ sessionId, agents, templates, onSessionChange
            * DOĞRULANMAMIŞ beyandır (SMS/OTP yok) — form kapalıyken/eski oturumlarda `null`
            * olabileceğinden placeholder ile güvenli şekilde ele alınır (sessizce GİZLENMEZ).
            */}
-          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-foreground/50">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-foreground/50">
             <span
-              className="rounded bg-muted px-1 py-0.5 text-[10px] font-medium uppercase tracking-wide text-foreground/40"
+              className="shrink-0 rounded bg-muted px-1 py-0.5 text-[10px] font-medium uppercase tracking-wide text-foreground/40"
               title="Ziyaretçinin kendi beyanı — doğrulanmamıştır"
             >
               Ziyaretçi Beyanı
             </span>
-            <span className="truncate">{session.visitorEmail || "E-posta belirtilmedi"}</span>
+            <span className="min-w-0 truncate">{session.visitorEmail || "E-posta belirtilmedi"}</span>
             <span aria-hidden="true">·</span>
             {session.visitorPhone ? (
-              <a href={`tel:${session.visitorPhone}`} className="truncate text-primary hover:underline">
+              <a href={`tel:${session.visitorPhone}`} className="min-w-0 truncate text-primary hover:underline">
                 {session.visitorPhone}
               </a>
             ) : (
@@ -288,9 +288,9 @@ export function SupportChatPanel({ sessionId, agents, templates, onSessionChange
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5">
-            <UserCog className="h-3.5 w-3.5 text-foreground/40" aria-hidden="true" />
+        <div className="flex shrink-0 items-center gap-2">
+          <div className="flex shrink-0 items-center gap-1.5">
+            <UserCog className="h-3.5 w-3.5 shrink-0 text-foreground/40" aria-hidden="true" />
             <Select
               className="h-8 w-40"
               value={session.assignedAgent?.id ?? ""}
@@ -306,10 +306,10 @@ export function SupportChatPanel({ sessionId, agents, templates, onSessionChange
               ))}
             </Select>
           </div>
-          <Button type="button" variant="outline" size="sm" loading={statusUpdating} onClick={() => void handleToggleClosed()}>
+          <Button type="button" variant="outline" size="sm" className="shrink-0" loading={statusUpdating} onClick={() => void handleToggleClosed()}>
             {isClosed ? "Yeniden Aç" : "Kapat"}
           </Button>
-          <Button type="button" variant="ghost" size="icon-sm" aria-label="Oturumu sil" onClick={() => setDeleteDialogOpen(true)}>
+          <Button type="button" variant="ghost" size="icon-sm" className="shrink-0" aria-label="Oturumu sil" onClick={() => setDeleteDialogOpen(true)}>
             <Trash2 className="h-4 w-4" />
           </Button>
         </div>
