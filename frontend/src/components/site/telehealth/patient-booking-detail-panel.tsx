@@ -73,6 +73,12 @@ export function PatientBookingDetailPanel({
   const [consultationNoteError, setConsultationNoteError] = useState<string | null>(null);
   const [polling, setPolling] = useState(paymentOutcome === "success");
   const pollCountRef = useRef(0);
+  // `.claude/architect-scope-support-desk-and-reminders.md` §2.5 — 30dk hatırlatma e-postasındaki
+  // `join_link` TOKEN'SIZ derin bağlantıdır (`/{lang}/patient/bookings/{bookingId}`). Oturumsuz/
+  // yetkisiz açılırsa (aşağıdaki hata dalı) var olan `resendBookingLink()` ucunu çağıran bir
+  // "yeni bağlantı iste" durumu EK OLARAK render edilir — yeni bir mekanizma İCAT EDİLMEZ.
+  const [resendLinkState, setResendLinkState] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [resendLinkError, setResendLinkError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoadError(null);
@@ -150,6 +156,18 @@ export function PatientBookingDetailPanel({
     }
   }
 
+  async function handleResendLink() {
+    setResendLinkState("sending");
+    setResendLinkError(null);
+    try {
+      await telehealthApi.resendBookingLink(bookingId);
+      setResendLinkState("sent");
+    } catch (err) {
+      setResendLinkState("error");
+      setResendLinkError(friendlyErrorMessage(err));
+    }
+  }
+
   async function handleDeleteNote() {
     if (!window.confirm("Şikâyet notunuzu ve rızanızı silmek istediğinizden emin misiniz?")) return;
     try {
@@ -171,24 +189,54 @@ export function PatientBookingDetailPanel({
 
   if (loadError || !booking) {
     return (
-      <Alert variant="error">
-        <div className="space-y-2">
-          <span className="flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
-            {loadError ?? "Bu rezervasyon bulunamadı ya da erişim bağlantınız geçersiz."}
-          </span>
-          <div className="flex items-center gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={() => void load()}>
-              Tekrar Dene
-            </Button>
-            {!accessToken && (
-              <Link href={`/login?next=${encodeURIComponent(`/patient/bookings/${bookingId}`)}`} className="text-xs text-primary hover:underline">
-                Giriş yap
-              </Link>
-            )}
+      <div className="space-y-4">
+        <Alert variant="error">
+          <div className="space-y-2">
+            <span className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
+              {loadError ?? "Bu rezervasyon bulunamadı ya da erişim bağlantınız geçersiz."}
+            </span>
+            <div className="flex items-center gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => void load()}>
+                Tekrar Dene
+              </Button>
+              {!accessToken && (
+                <Link href={`/login?next=${encodeURIComponent(`/patient/bookings/${bookingId}`)}`} className="text-xs text-primary hover:underline">
+                  Giriş yap
+                </Link>
+              )}
+            </div>
           </div>
-        </div>
-      </Alert>
+        </Alert>
+
+        {/*
+         * [ASD] §2.5 — misafir hasta boşluğunu kapatan ZORUNLU ek: `accessToken` YOKKEN (ne
+         * geçerli bir `?t=` ne de oturum var) mevcut hatanın ÜSTÜNE, var olan
+         * `POST .../resend-link` ucunu çağıran bir "yeni bağlantı iste" durumu render edilir.
+         * Yeni bir kurtarma mekanizması İCAT EDİLMEZ — `booking-wizard.tsx::handleResend` İLE
+         * AYNI çağrı/durum deseni.
+         */}
+        {!accessToken && (
+          <Alert variant="warning">
+            <div className="space-y-2">
+              <p>Bu bağlantıya erişmek için onay e-postanızdaki bağlantıyı kullanın veya yeni bir bağlantı isteyin.</p>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  loading={resendLinkState === "sending"}
+                  onClick={() => void handleResendLink()}
+                >
+                  Yeni Bağlantı İste
+                </Button>
+                {resendLinkState === "sent" && <span className="text-xs text-success">Gönderildi (e-posta kayıtlıysa).</span>}
+                {resendLinkState === "error" && <span className="text-xs text-danger">{resendLinkError}</span>}
+              </div>
+            </div>
+          </Alert>
+        )}
+      </div>
     );
   }
 

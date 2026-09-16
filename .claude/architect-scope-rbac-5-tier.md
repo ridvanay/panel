@@ -726,6 +726,7 @@ documentation-agent yalnızca implementasyon bittikten sonra detaylandırır) + 
 | Editoryal onay/moderasyon akışı (EDITOR'ün yayını onaya düşsün) | İstenmedi; iş gereksinimi EDITOR'e doğrudan yayın hakkı veriyor | — |
 | Organizasyon bazlı `MembershipRole` ekseni | Tamamen ayrı bir eksen; bu iş onu HİÇ etkilemez | — |
 | CUSTOMER'a özel ön yüz özellikleri (adres defteri, favoriler) | İstenmedi | — |
+| Ayrı bir `SUPPORT_AGENT` rolü (canlı destek masası) | **2026-09-16 eskalasyonu — bkz. `.claude/architect-scope-support-desk-and-reminders.md` §3.2.** Destek masası §5.1'deki beş ADMIN-özel kategoriden hiçbirine girmez → türetme kuralı gereği normal bir panel operasyonu modülüdür → `/admin/support/*` = `ROLES_ADMIN_MANAGER`. Bu doküman **REVİZE EDİLMEDİ, TEYİT EDİLDİ**: enum **hâlâ 5 değerdir** ve §1.7'nin "ikinci bir yetenek bayrağı eklenmez" kuralı da korunmuştur | `feature/rbac-support-agent-role` |
 
 ---
 

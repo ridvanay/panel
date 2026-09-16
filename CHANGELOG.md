@@ -13,6 +13,45 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
 
 ### Added
 
+- **`feat(telehealth)`: Erken katılım güvenlik onay modalı, otomatik randevu hatırlatma
+  e-postaları ve canlı destek yönetim masası** (bağlayıcı karar dokümanı
+  `.claude/architect-scope-support-desk-and-reminders.md`, KVKK değerlendirmesi
+  `.claude/compliance-notes-support-desk.md`, `docs/architecture/ARCHITECTURE.md` §10.23.10
+  ve §10.24, `docs/architecture/openapi.yaml`). Tamamen **additive** bir tur — mevcut hiçbir
+  uç/davranış kırılmadı.
+  - **Erken katılım güvenlik onay modalı:** randevu saatinden 10 dakikadan fazla erken
+    "Toplantıya Katıl" tıklayan hasta/doktora `ConfirmDialog` (`tone="warning"`) ile uyarı
+    gösterilir ("Anladım, Odaya Katıl" / "Vazgeç"); onay `sessionStorage`'da randevu başına
+    bir kez hatırlanır. **Backend hiçbir şeyi reddetmez** — bu bilinçli bir karardır, katılım
+    penceresi kısıtı 2026-09-15'te kaldırılmıştı ve geri getirilmedi. Sunucu yalnızca mevcut
+    katılım audit kaydına `earlyJoin`/`minutesBeforeStart` (sunucu saatinden) metadata'sı
+    ekler — ileride bir kısıt gerekirse karar ölçülmüş veriyle verilir.
+  - **1 saat / 30 dakika randevu hatırlatma e-postaları:** yeni süreç-içi `setInterval`
+    sweeper'ı (`lib/appointment-reminders.ts`, mevcut `booking-expiry.ts` iskeletiyle
+    birebir — yeni kuyruk altyapısı (BullMQ/Redis) **eklenmedi**), 5 dakikalık kadans, iki
+    yeni `Appointment` kolonu (`reminded60mAt`/`reminded30mAt`, hiçbir DTO'da dönmez) ve
+    claim-first `updateMany` ile çift gönderim engellenir. Yeniden planlanan randevularda
+    hatırlatma damgaları sıfırlanır, arka arkaya slotlarda tekrar bastırılır. İki yeni
+    e-posta şablonu (`APPOINTMENT_REMINDER_60M`/`_30M`) — 30 dakikalık e-postadaki katılım
+    bağlantısı token'sız derin bağlantıdır (mevcut onay bağlantısı rotate edilmez).
+  - **Canlı destek yönetim masası — gerçek backend'e geçiş:** `live-chat-widget.tsx`'in
+    daha önce istemci tarafı **mock** olan `internal` sohbet modu (bkz. önceki tur notu),
+    kalıcı, sunucu taraflı bir sohbet sistemiyle **değiştirildi** — ziyaretçi mesajı artık
+    sayfa yenilendiğinde kaybolmaz. Yeni `modules/support/` (ziyaretçi + yönetim uçları),
+    üç yeni tablo (`SupportChatSession`/`SupportChatMessage`/`SupportReplyTemplate`, düz
+    metin, HTML render edilmez) ve yeni admin sayfaları (`/admin/support`,
+    `/admin/support/templates`: oturum listesi, mesajlaşma, temsilci atama, hazır şablon
+    yönetimi). Gerçek zamanlılık **polling** ile sağlanır (`?afterSeq=` artımlı, 5/15sn
+    kadanslar) — projede SSE/WebSocket emsali olmadığı için bilinçli olarak tercih edildi.
+    Ayrı bir `SUPPORT_AGENT` rolü **eklenmedi**; erişim mevcut `ADMIN`/`MANAGER`'a verildi
+    (EDITOR göremez). KVKK: özel nitelikli veri riski **rıza yerine veri minimizasyonu**
+    (widget'ta kalıcı sağlık-verisi-paylaşmayın uyarısı) ile ele alındı; saklama: 30 gün
+    (IP/UA redaksiyon) + 180 gün (`closedAt` bazlı kapalı oturum silme) + 365 gün
+    (kapatılmamış oturum güvenlik ağı, yeni bağlayıcı karar).
+  - Kapsam dışı (bilinçli): erken katılımın backend'de engellenmesi, SSE/WebSocket, ayrı
+    destek rolü, destek mesajlarında tam metin arama, kuyruk altyapısına geçiş — ayrıntılar
+    ve takip branşları için `ARCHITECTURE.md` §10.23.10/§10.24.
+
 - **`feat(telehealth)`: Kurumsal hekim profili, doktor öz-servis düzenleme paneli, randevu
   öncesi kimlik bilgisi toplama adımı ve doktor konsolu metrik ucu** (bağlayıcı karar
   dokümanı `.claude/architect-scope-doctor-portfolio-identity-console.md`,

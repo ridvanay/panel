@@ -129,7 +129,18 @@ export type ApiErrorCode =
    * kod (frontend'in reschedule çakışmasını hasta tarafı slot doluluğundan ayırt edebilmesi
    * için) — genel `ConflictError` desenine UYAR ama kendi machine-readable kodu vardır. 409.
    */
-  | "APPOINTMENT_RESCHEDULE_CONFLICT";
+  | "APPOINTMENT_RESCHEDULE_CONFLICT"
+  /**
+   * `.claude/architect-scope-support-desk-and-reminders.md` §3.5 (bağlayıcı) — `CLOSED` bir
+   * destek oturumuna ziyaretçi VEYA temsilci mesaj göndermeye çalışırsa. Ziyaretçi kapanmış bir
+   * oturumu diriltemez (widget "yeni sohbet başlat" gösterir). 409.
+   */
+  | "SUPPORT_SESSION_CLOSED"
+  /**
+   * §3.5/§3.6 madde 4 (bağlayıcı) — bir destek oturumundaki mesaj sayısı 200'ü aşınca (yeni bir
+   * mesaj denemesi). `SupportChatSession.messageCount` denormalize sayacına dayanır. 409.
+   */
+  | "SUPPORT_MESSAGE_LIMIT";
 
 export class ApiError extends Error {
   statusCode: number;
@@ -464,5 +475,22 @@ export class DemoPaymentsDisabledError extends ApiError {
 export class AppointmentRescheduleConflictError extends ApiError {
   constructor(message = "Bu doktorun yeni zaman aralığında zaten başka bir aktif randevusu var.") {
     super(409, "APPOINTMENT_RESCHEDULE_CONFLICT", message);
+  }
+}
+
+/**
+ * `.claude/architect-scope-support-desk-and-reminders.md` §3.5 (bağlayıcı) — `CLOSED` bir destek
+ * oturumuna yeni mesaj gönderme denemesi. 409.
+ */
+export class SupportSessionClosedError extends ApiError {
+  constructor(message = "Bu destek oturumu kapatılmış, yeni mesaj gönderilemez.") {
+    super(409, "SUPPORT_SESSION_CLOSED", message);
+  }
+}
+
+/** §3.5/§3.6 madde 4 (bağlayıcı) — oturum başına en fazla 200 mesaj. 409. */
+export class SupportMessageLimitError extends ApiError {
+  constructor(message = "Bu destek oturumu için mesaj üst sınırına (200) ulaşıldı.") {
+    super(409, "SUPPORT_MESSAGE_LIMIT", message);
   }
 }

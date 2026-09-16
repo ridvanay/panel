@@ -4236,3 +4236,88 @@ eskimiş kalabilir. `live-chat-widget.spec.ts`teki TÜM pozitif/negatif görün�
 
 **Bulunan bug — YOK** (reschedule ve canlı destek widget'ı akışları için; çakışma/yetki
 regresyonları ve `/consultation` gizleme KRİTİK maddeleri dahil TÜMÜ beklenen şekilde çalışıyor).
+
+## 2026-09-16 turu — Erken katılım onay modalı · Randevu hatırlatma sweeper'ı · Canlı destek masası (gerçek backend)
+
+Kaynak: `.claude/architect-scope-support-desk-and-reminders.md` §4.8 (17 madde, bağlayıcı). Bu tur
+backend-agent ve frontend-agent PARALEL çalıştı, birbirlerine karşı canlı entegrasyon testi
+YAPILMAMIŞTI — bu turun birincil işi tam olarak buydu. `docker compose up --build -d` ile ortam
+yeniden inşa edildi (proje kuralı), ardından hem dev Docker ortamı (`localhost:4000`/`3000`) hem
+ayrı Playwright e2e ortamı (`saas_e2e` DB, backend `:4001`, frontend `:3100`) kullanıldı.
+
+**ÖNEMLİ DÜZELTME — W3 artık YANLIŞ:** yukarıdaki 2026-09-15 turu notundaki W3 maddesi ("~800ms
+sonra SABİT otomatik yanıt gelir") [ASD] §3.1'in BİLİNÇLİ tersine çevirdiği İSTEMCİ TARAFLI
+MOCK'u anlatıyordu — bu tur `InternalChatPanel`'in mock'u (`AUTO_REPLY_TEXT`/`setTimeout`) SİLİNDİ,
+widget artık GERÇEK backend'e (`POST /support/sessions`, `?afterSeq=` polling) bağlı. Eski test
+(`live-chat-widget.spec.ts` madde 2) bu YÜZDEN GERÇEKTEN KIRILDI (regresyon değil, mimari kararın
+DOĞAL sonucu) — qa-agent bu turda testi GERÇEK backend akışına göre GÜNCELLEDİ (mesaj artık gerçek
+`POST /support/sessions`e gider, sayfa YENİLENİNCE `sessionStorage` token'ıyla KALICI kalır).
+
+| # | Madde ([ASD] §4.8) | Doğrulama | Yöntem | Durum |
+|---|---|---|---|---|
+| 1-3 | Erken katılım (>10dk) → modal AÇILIR (metin birebir), [Vazgeç] navigasyon YAPMAZ, [Anladım] `/consultation/{id}`e yönlendirir, AYNI oturumda ikinci tıklamada modal TEKRAR açılmaz | `frontend/tests/e2e/early-join-warning-modal.spec.ts` (YENİ) | Gerçek tarayıcı, gerçek backend | ✅ Geçiyor |
+| 4 [REGRESYON] | Randevusuna ≤10dk kalan hasta → modal HİÇ açılmaz, DOĞRUDAN yönlendirir | `early-join-warning-modal.spec.ts` (YENİ) | Gerçek tarayıcı | ✅ Geçiyor |
+| 5 | Doktor konsolunda AYNI modal (`mergeRemainingTime=true` dalı) | Kod incelemesi — `join-meeting-button.tsx` TEK bileşen, `handleJoinClick`/`earlyJoinDialog` HER dalda (161/176/193/209/236 satırları) AYNI şekilde bağlı | Statik kod incelemesi (ayrı doktor-login e2e'si BU TURDA YAZILMADI, zaman bütçesi) | ✅ Kod incelemesiyle doğrulandı |
+| 6 | Sweeper `app.ts`de kayıtlı, hatasız başlıyor | `docker compose logs backend` → `"Randevu hatırlatma (appointment-reminders) taraması tamamlandı" reminded60m/reminded30m/failed` satırı her açılışta VE her 5dk'da basılıyor | Docker log incelemesi | ✅ Doğrulandı |
+| 6/9 | PAID+SCHEDULED randevu (startsAt now+62dk) → 60dk hatırlatması GİDER; aynı taramada PENDING (ödenmemiş) booking'e bağlı randevu (status zorla SCHEDULED yapılsa BİLE) hatırlatma ALMAZ | Gerçek dev DB'de appointment/booking fixture'ı oluşturulup `startsAt` SQL ile bantın içine kaydırıldı, `docker compose restart backend` ile ANINDA sweep tetiklendi (açılışta bir kez çalışıyor) | Docker dev ortamı, gerçek Ethereal SMTP (`previewUrl` log'da) | ✅ Doğrulandı (`reminded60m: 1, reminded30m: 0, failed: 0`; PENDING randevu `reminded60mAt` NULL kaldı) |
+| 7 | Claim-first — AYNI randevu için ikinci sweep hiç e-posta ÜRETMEZ | İkinci `docker compose restart backend` | Docker dev ortamı | ✅ Doğrulandı (`reminded60m: 0`) |
+| 8 | 30dk e-postasındaki `join_link` | Kod incelemesi (`notifications.ts` §2.5 — token'sız derin bağlantı, `resend-link` kurtarma yolu) | Statik — backend unit testleri (8/8) bunu ayrıca kapsıyor | ✅ Kod+unit test kapsamı yeterli görüldü |
+| 10 | Çoklu-slot (90dk) bastırması | backend unit test (`appointment-reminders.test.ts`) | vitest | ✅ 28/28 (support+reminders paketleri, bu turda YENİDEN koşuldu) |
+| 11 | Reschedule → `reminded60mAt`/`reminded30mAt` `null`'lanır | `PATCH /admin/telehealth/appointments/{id}/reschedule` gerçek çağrı + DB doğrulaması | Docker dev ortamı (curl+psql) | ✅ Doğrulandı |
+| 12 [KONTRAT] | EDITOR → `/admin/support/sessions`e DOĞRUDAN API isteğiyle 403; MANAGER → 200 | `frontend/tests/e2e/admin-support-desk.spec.ts` (YENİ) + dev ortamında curl ile ayrıca doğrulandı | Playwright + curl | ✅ Geçiyor |
+| 7/9/10/13/14/15 | Ziyaretçi mesajı "Bekleyen"de görünür → MANAGER şablon seçip yanıtlar → oturum "Yanıtlandı"ya geçer, yanıtlayana OTOMATİK atanır, atama `Select`i `GET /admin/support/agents`i kullanır, ziyaretçi tarafında ~5sn içinde görünür, sidebar "Canlı Destek" MANAGER'a görünür | `admin-support-desk.spec.ts` (YENİ) | Gerçek tarayıcı (MANAGER UI login), gerçek backend | ✅ Geçiyor |
+| 13 | `liveChatEnabled=false` → widget render EDİLMEZ, `POST /support/sessions` 404 | `live-chat-widget.spec.ts` madde 1 (mevcut) + dev ortamında curl (`PATCH /admin/settings` → 404 doğrulandı) | Playwright + curl | ✅ Geçiyor |
+| 14 | KVKK/sağlık uyarısı SÜREKLİ görünür (kapatılamaz) | `live-chat-widget.spec.ts` madde 2 (bu turda eklenen assertion) + kod incelemesi (`live-chat-widget.tsx` satır 262-284 — dismiss butonu YOK) | Playwright + kod incelemesi | ✅ Doğrulandı |
+| 15 | CLOSED oturuma ziyaretçi mesajı → 409, frontend "Yeni Sohbet Başlat" durumuna geçer | Dev ortamında curl (`SUPPORT_SESSION_CLOSED` 409 doğrulandı) + kod incelemesi (`InternalChatPanel::handleSend` catch dalı `isClosed` state'ini set ediyor) | curl + kod incelemesi | ✅ Doğrulandı |
+| — | Şablon yönetimi CRUD (`/admin/support/templates`) | Dev ortamında curl (create/list/update/delete, tümü 2xx) + `admin-support-desk.spec.ts`de UI'dan şablon seçilip kullanıldığı doğrulandı | curl + Playwright | ✅ Doğrulandı |
+
+**Regresyon taraması (bu turda GERÇEKTEN koşuldu):**
+- `live-chat-widget.spec.ts` — GÜNCELLENDİ (madde 2), 5/5 ✅.
+- `telehealth-join-button-visual-and-cancel.spec.ts` — 3/3 ✅ (erken katılım modalı bu dosyanın
+  hiçbir testinde butona TIKLAMIYOR — madde 2b `shiftAppointmentIntoJoinWindowDirectly(id, 60, 30)`
+  ile randevuyu 60 SANİYE sonrasına alıyor, yalnızca görsel/aria-disabled durumunu kontrol ediyor —
+  regresyon riski YOK, doğrulandı).
+- `telehealth-admin-reschedule.spec.ts` — 3/3 ✅ (reminder-stamp sıfırlama yan etkisi bu dosyada
+  AYRICA assert EDİLMEDİ — R1-R5 hâlâ yeşil, sıfırlama gerçek dev DB'de ayrıca doğrulandı, bkz.
+  madde 11 satırı).
+- Backend: `tests/integration/support.test.ts`, `tests/unit/support-retention.test.ts`,
+  `tests/unit/appointment-reminders.test.ts` — 28/28 ✅ (`vitest run`, gerçek `saas_test` DB).
+- Frontend unit: `tests/unit/join-meeting-button.test.tsx`, `tests/unit/live-chat-widget.test.tsx`
+  — 2/2 dosya ✅.
+
+**Bulunan bug — YOK.** Backend/frontend arasında kontrat sapması TESPİT EDİLMEDİ — `openapi.yaml`
+Support tag'i ile `lib/api/support.ts`/`lib/api/types.ts` arasında alan adı/şekil uyuşmazlığı
+bulunamadı; erken katılım modalının metni [ASD] §1.3 ile BİREBİR eşleşiyor; hatırlatma sweeper'ı
+uygunluk yüklemi (SCHEDULED + PAID) canlı ortamda doğru çalışıyor.
+
+**Kendi test altyapımda bulduğum/düzelttiğim (proje kökü CLAUDE.md madde 3 — flaky/kırık testi
+kendi kaynağında düzelt):**
+- `live-chat-widget.spec.ts` madde 2 — [ASD] §3.1'in BİLİNÇLİ mimari kararı yüzünden kırılan eski
+  mock-tabanlı assertion'lar GERÇEK backend akışına göre yeniden yazıldı (kalıcılık kanıtı — sayfa
+  yenilenince mesaj KAYBOLMAZ — eklendi, bu aynı zamanda [ASD] §4.8 madde 12'yi de kapsıyor).
+
+**Bu turda YAZILMAYAN (bir sonraki tur için not, kapsam dışı bırakıldı):**
+- Doktor konsolu için AYRI bir erken-katılım-modalı e2e'si (madde 5) — zaman bütçesi nedeniyle
+  yalnızca kod incelemesiyle doğrulandı (TEK bileşen/TEK handler paylaşıldığı için risk düşük
+  görüldü). Gerçek doktor-login akışıyla bir Playwright testi eklemek istenirse
+  `doctor-panel-session-lifecycle.spec.ts`teki doktor-login desenine bakılmalı.
+- `EARLY_JOIN_WARNING_THRESHOLD_MINUTES` sınır DEĞERİ (tam 10dk 0sn) e2e ile test EDİLMEDİ —
+  backend/frontend unit testlerinin kapsamında olduğu varsayıldı.
+- Ödeme sırasında hatırlatma e-postası şablonlarının GERÇEK içeriği (notification-agent'ın
+  `prisma/seed.ts` şablonları) — yalnızca tetikleyicinin ÇALIŞTIĞI (e-posta gönderildi log'u)
+  doğrulandı, gövde içeriği/sızma yasağı ([ASD] §2.4) BU TURDA görsel olarak incelenmedi (backend
+  unit testlerinin kapsamında).
+
+**Bilgi amaçlı notlar (kendi kaynağım OLMADIĞI için düzeltmedim, ilgili ajana bilgi):**
+- Frontend-agent'ın kendi raporunda belirttiği İKİ ÖNCEDEN VAR OLAN, bu görevle İLGİSİZ test hatası
+  BU TURDA YENİDEN KOŞULUP DOĞRULANDI: `tests/unit/booking-payment-step-demo.test.tsx` (demo ödeme
+  butonu `getByRole` ile bulunamıyor) ve `tests/unit/site-header-doctor-session.test.tsx`
+  ("Randevularım" linki `/patient/appointments`e gidiyor, test `/patient/bookings` bekliyor) — 2
+  dosya, 6 test FAIL. Bu görevle İLGİSİZ (booking/appointments rota adlandırma tutarsızlığı,
+  erken-katılım/hatırlatma/destek masasıyla İLİŞKİSİZ) — qa-agent DÜZELTMEDİ, frontend-agent'a
+  yönlendirilir.
+- Backend-agent'ın raporundaki test-altyapısı kırılganlığı (`telehealth-recording.test.ts`,
+  paylaşımlı `saas_test` DB'sinde çok sayıda sweeper'ın eşzamanlı TRUNCATE'i) BU TURDA YENİDEN
+  TETİKLENMEDİ (destek+hatırlatma paketleri İZOLE koşuldu, 28/28 yeşil) — bilgi amaçlı not olarak
+  bırakılıyor, devops-agent/backend-agent'ın test-DB izolasyon stratejisini gözden geçirmesi
+  önerilir (ayrı `saas_test` şeması/paralel-olmayan sweeper testleri gibi).

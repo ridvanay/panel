@@ -57,6 +57,9 @@ import type {
   AppointmentIntake,
   AppointmentDocument,
   ConsultationRecording,
+  SupportChatSession,
+  SupportChatMessage,
+  SupportReplyTemplate,
 } from "@prisma/client";
 import type {
   UserDto,
@@ -143,6 +146,12 @@ import type {
   DoctorCvEntryDto,
   DoctorPublicationDto,
   BookingIdentitySummaryDto,
+  SupportChatMessagePublicDto,
+  SupportChatMessageDto,
+  SupportAgentSummaryDto,
+  SupportChatSessionSummaryDto,
+  SupportChatSessionDto,
+  SupportReplyTemplateDto,
 } from "../schemas/entities";
 import { env, isDemoPaymentsEnabled } from "../config/env";
 import { computeDemoPaymentsEnabled } from "../lib/demo-payments";
@@ -1843,6 +1852,102 @@ export function toConsultationRecordingDto(
     downloadable: recording.status === "COMPLETED" && recording.deletedAt === null,
     deletedAt: recording.deletedAt ? recording.deletedAt.toISOString() : null,
     createdAt: recording.createdAt.toISOString(),
+  };
+}
+
+// ---------- [ASD] Canlı Destek (Support) — bkz. openapi.yaml tag: Support ----------
+
+type SupportAgentLike = Pick<User, "id" | "name" | "role">;
+
+/** `email` BİLİNÇLİ OLARAK YOKTUR (§3.2/§3.6) — çağıran taraf zaten yalnızca ADMIN/MANAGER'ı yükler. */
+export function toSupportAgentSummaryDto(agent: SupportAgentLike): SupportAgentSummaryDto {
+  return {
+    id: agent.id,
+    name: agent.name,
+    role: agent.role as "ADMIN" | "MANAGER",
+  };
+}
+
+/** **ZİYARETÇİ yüzeyi** — `senderUserId`/temsilcinin e-postası BURADA ASLA YOKTUR. */
+export function toSupportChatMessagePublicDto(message: SupportChatMessage): SupportChatMessagePublicDto {
+  return {
+    id: message.id,
+    seq: message.seq,
+    senderType: message.senderType,
+    senderDisplayName: message.senderDisplayName,
+    body: message.body,
+    createdAt: message.createdAt.toISOString(),
+  };
+}
+
+/** **YÖNETİM yüzeyi** — ziyaretçi DTO'suna `senderUserId` ekler. */
+export function toSupportChatMessageDto(message: SupportChatMessage): SupportChatMessageDto {
+  return {
+    ...toSupportChatMessagePublicDto(message),
+    senderUserId: message.senderUserId,
+  };
+}
+
+/**
+ * Liste DTO'su — `unreadForAgent`/`lastMessagePreview` TÜREVDİR ve DB şemasında YOKTUR;
+ * çağıran taraf (support.service.ts) bunları AYRI sorgularla hesaplayıp geçirir (mapper saf bir
+ * dönüşümdür, `toAppointmentIntakeDto`'daki "decrypt/hesaplama route'ta yapılır" ilkesiyle AYNI).
+ */
+export function toSupportChatSessionSummaryDto(
+  session: SupportChatSession,
+  extras: { assignedAgent: SupportAgentLike | null; unreadForAgent: number; lastMessagePreview: string | null }
+): SupportChatSessionSummaryDto {
+  return {
+    id: session.id,
+    seq: session.seq,
+    status: session.status,
+    visitorName: session.visitorName,
+    visitorEmail: session.visitorEmail,
+    visitorUserId: session.visitorUserId,
+    assignedAgent: extras.assignedAgent ? toSupportAgentSummaryDto(extras.assignedAgent) : null,
+    messageCount: session.messageCount,
+    unreadForAgent: extras.unreadForAgent,
+    lastMessagePreview: extras.lastMessagePreview,
+    lastMessageAt: session.lastMessageAt ? session.lastMessageAt.toISOString() : null,
+    createdAt: session.createdAt.toISOString(),
+    updatedAt: session.updatedAt.toISOString(),
+  };
+}
+
+/** Detay DTO'su — mesajlar AYRI uçtan çekilir, burada GÖMÜLMEZ. */
+export function toSupportChatSessionDto(
+  session: SupportChatSession,
+  extras: {
+    assignedAgent: SupportAgentLike | null;
+    closedBy: SupportAgentLike | null;
+    unreadForAgent: number;
+    lastMessagePreview: string | null;
+  }
+): SupportChatSessionDto {
+  return {
+    ...toSupportChatSessionSummaryDto(session, extras),
+    pageUrl: session.pageUrl,
+    locale: session.locale,
+    ipAddress: session.ipAddress,
+    userAgent: session.userAgent,
+    piiRedactedAt: session.piiRedactedAt ? session.piiRedactedAt.toISOString() : null,
+    assignedAt: session.assignedAt ? session.assignedAt.toISOString() : null,
+    closedAt: session.closedAt ? session.closedAt.toISOString() : null,
+    closedBy: extras.closedBy ? toSupportAgentSummaryDto(extras.closedBy) : null,
+  };
+}
+
+export function toSupportReplyTemplateDto(template: SupportReplyTemplate): SupportReplyTemplateDto {
+  return {
+    id: template.id,
+    seq: template.seq,
+    title: template.title,
+    body: template.body,
+    sortOrder: template.sortOrder,
+    isActive: template.isActive,
+    usageCount: template.usageCount,
+    createdAt: template.createdAt.toISOString(),
+    updatedAt: template.updatedAt.toISOString(),
   };
 }
 

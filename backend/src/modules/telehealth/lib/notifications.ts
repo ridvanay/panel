@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import type { Appointment, AppointmentBooking } from "@prisma/client";
+import type { Appointment, AppointmentBooking, EmailTemplatePurpose } from "@prisma/client";
 import { env } from "../../../config/env";
 import { getLocaleSet } from "../../../lib/localization";
 import { generateOpaqueToken, hashToken } from "../../../lib/tokens";
@@ -163,6 +163,102 @@ export async function triggerAppointmentRescheduledEmail(
     }
   } catch (err) {
     app.log.error({ err, appointmentId: appointment.id }, "Randevu yeniden planlama e-postası gönderilemedi");
+  }
+}
+
+/**
+ * [ASD] §2.4 (bağlayıcı) — `lib/appointment-reminders.ts` sweeper'ının tetikleyicisi.
+ * `triggerAppointmentRescheduledEmail` İLE AYNI best-effort disiplini: TEK try/catch, gönderim
+ * başarısız olsa da çağıran akış (sweeper turu) ASLA bozulmaz — hata `app.log.error` ile
+ * loglanır. `triggerAppointmentRescheduledEmail`'den FARKLI OLARAK bir `boolean` döner
+ * (`true` = gönderim denemesi başarılı, `false` = hata) — sweeper bunu tur başına
+ * `{reminded60m, reminded30m, failed}` sayaçları için kullanır (görev talimatı, bağlayıcı).
+ *
+ * `lib/email-variables.ts::SYSTEM_VARIABLES_BY_PURPOSE.APPOINTMENT_REMINDER_60M/_30M` ile
+ * BİREBİR aynı anahtar seti: `recipient_name`/`booking_number`/`doctor_name`/`slot_summary` HER
+ * İKİ amaçta da; `join_link` YALNIZCA `kind === "30m"`. Alıcılar
+ * `triggerAppointmentRescheduledEmail` İLE AYNI kural: hasta HER ZAMAN, doktor YALNIZCA bağlı bir
+ * `User`/e-postası VARSA (yoksa sessizce atlanır, hata DEĞİL).
+ *
+ * §2.5 (bağlayıcı) — `join_link` token ROTATE ETMEZ, token'sız derin bağlantıdır: hastaya
+ * booking'e bağlıysa `/{lang}/patient/bookings/{bookingId}`, booking'siz (deprecated tekil
+ * randevu) `/{lang}/patient/appointments`; doktora her zaman `/{lang}/doctor`. Dil segmenti
+ * `getLocaleSet(app).default.code` ile çözülür (`buildMagicLink` İLE AYNI kaynak).
+ *
+ * **Sızma yasağı (§9.7.5 madde 8 + §2.4, bağlayıcı):** uzmanlık adı, şikâyet/intake notu,
+ * epikriz, belge adı bu e-postalarda ASLA yer almaz.
+ */
+export async function triggerAppointmentReminderEmail(
+  app: FastifyInstance,
+  input: {
+    appointment: Pick<Appointment, "id" | "bookingId" | "doctorId" | "patientName" | "patientEmail" | "startsAt">;
+    doctorTimeZone: string;
+    doctorTitle: string;
+    doctorFullName: string;
+    doctorUserId: string | null;
+    kind: "60m" | "30m";
+  }
+): Promise<boolean> {
+  const { appointment, doctorTimeZone, doctorTitle, doctorFullName, doctorUserId, kind } = input;
+  try {
+    let bookingNumber: string;
+    let patientName: string;
+    let patientEmail: string;
+
+    if (appointment.bookingId) {
+      const booking = await app.prisma.appointmentBooking.findUnique({ where: { id: appointment.bookingId } });
+      // Şema zorunluluğu: `Appointment.bookingId` VARSA karşılık gelen `AppointmentBooking` satırı
+      // da VAR OLMALIDIR (FK) — bu dal yalnızca savunma amaçlı, beklenmedik bir eşzamanlı silme
+      // durumunda appointment'ın KENDİ PII snapshot'ına düşer.
+      bookingNumber = booking?.bookingNumber ?? `APT-${appointment.id.slice(0, 8).toUpperCase()}`;
+      patientName = booking?.patientName ?? appointment.patientName;
+      patientEmail = booking?.patientEmail ?? appointment.patientEmail;
+    } else {
+      bookingNumber = `APT-${appointment.id.slice(0, 8).toUpperCase()}`;
+      patientName = appointment.patientName;
+      patientEmail = appointment.patientEmail;
+    }
+
+    const slotSummary = formatSlotsSummary([{ startsAt: appointment.startsAt }], doctorTimeZone);
+    const doctorNameFormatted = `${doctorTitle} ${doctorFullName}`.trim();
+    const purpose: EmailTemplatePurpose = kind === "60m" ? "APPOINTMENT_REMINDER_60M" : "APPOINTMENT_REMINDER_30M";
+
+    let patientJoinLink: string | undefined;
+    let doctorJoinLink: string | undefined;
+    if (kind === "30m") {
+      const localeSet = await getLocaleSet(app);
+      const langCode = localeSet.default.code;
+      patientJoinLink = appointment.bookingId
+        ? `${env.FRONTEND_URL}/${langCode}/patient/bookings/${appointment.bookingId}`
+        : `${env.FRONTEND_URL}/${langCode}/patient/appointments`;
+      doctorJoinLink = `${env.FRONTEND_URL}/${langCode}/doctor`;
+    }
+
+    await sendTemplateEmail(app, purpose, patientEmail, {
+      recipient_name: patientName,
+      booking_number: bookingNumber,
+      doctor_name: doctorNameFormatted,
+      slot_summary: slotSummary,
+      ...(patientJoinLink ? { join_link: patientJoinLink } : {}),
+    });
+
+    if (doctorUserId) {
+      const doctorUser = await app.prisma.user.findUnique({ where: { id: doctorUserId }, select: { email: true } });
+      if (doctorUser) {
+        await sendTemplateEmail(app, purpose, doctorUser.email, {
+          recipient_name: doctorFullName,
+          booking_number: bookingNumber,
+          doctor_name: doctorNameFormatted,
+          slot_summary: slotSummary,
+          ...(doctorJoinLink ? { join_link: doctorJoinLink } : {}),
+        });
+      }
+    }
+
+    return true;
+  } catch (err) {
+    app.log.error({ err, appointmentId: appointment.id, kind }, "Randevu hatırlatma e-postası gönderilemedi");
+    return false;
   }
 }
 

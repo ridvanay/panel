@@ -122,14 +122,15 @@ dosyalarının kendisine bakın.
 │       │   ├── contact/            # §10.16 iletişim formu
 │       │   ├── products/           # §10.9.2 ürün varyasyonu (ProductVariant) + PDF döküman (ProductDocument) + kargo eşiği
 │       │   ├── demo-templates/     # §10.22 1 tıkla hazır demo şablon içe aktarıcı (modern-architecture, ecommerce-pro, telehealth-clinic)
-│       │   ├── telehealth/         # §10.23 Tele-Sağlık: doktor/uzmanlık/randevu, saat dilimi duyarlı slot, LiveKit konsültasyon token'ı, doktor öz-servis profili, randevu kimlik bilgisi adımı
+│       │   ├── telehealth/         # §10.23/§10.23.10 Tele-Sağlık: doktor/uzmanlık/randevu, saat dilimi duyarlı slot, LiveKit konsültasyon token'ı, doktor öz-servis profili, randevu kimlik bilgisi adımı, erken katılım audit metadata'sı, hatırlatma e-postası tetikleyicisi
+│       │   ├── support/            # §10.24 Canlı destek: ziyaretçi + yönetim uçları (oturum, mesaj, atama, hazır şablon) — gerçek backend, eski widget mock'unun yerini aldı
 │       │   └── pages/              # §10.17 sayfa Grid/Kolon düzeni burada (pages.schemas.ts, lib/sanitize-blocks.ts)
 │       ├── lib/                 # paylaşılan yardımcılar (email-renderer.ts, html-sanitize.ts, rate-limit.ts, ...)
 │       └── plugins/             # Fastify plugin'leri (prisma, auth, vb.)
 ├── frontend/                    # Next.js (App Router)
 │   └── src/
 │       ├── app/
-│       │   ├── admin/            # yönetim paneli (notifications/templates, contact, pages, telehealth/, ...)
+│       │   ├── admin/            # yönetim paneli (notifications/templates, contact, pages, telehealth/, support/, ...)
 │       │   └── [lang]/(site)/    # public site (locale-prefixli) — §10.23 doctors/, consultation/[id]/ dahil
 │       ├── components/admin/     # email-editor/, page-builder/ dahil
 │       └── lib/api/              # backend API istemcileri (tip güvenli fetch sarmalayıcıları)
@@ -151,6 +152,19 @@ dosyalarının kendisine bakın.
 > veriler şifreli + maskeli saklanır, ayrı bir `Patient` tablosuna veya `Appointment`'a
 > kopyalanmaz. Ayrıntı ve karar gerekçeleri: `docs/architecture/ARCHITECTURE.md` §10.23.9,
 > `.claude/architect-scope-doctor-portfolio-identity-console.md`.
+
+> **Tele-Sağlık — erken katılım onayı, randevu hatırlatma e-postaları, canlı destek masası
+> (2026-09-16):** `JoinMeetingButton` artık randevu saatinden 10 dk'dan fazla erken
+> katılımlarda bir uyarı modalı gösterir (backend katılımı **reddetmez**, yalnızca audit
+> metadata'sı ekler). Yeni bir süreç-içi `setInterval` sweeper'ı (`lib/appointment-
+> reminders.ts`) randevudan 1 saat ve 30 dakika önce hatırlatma e-postası gönderir. Canlı
+> destek widget'ının `internal` modu artık **gerçek, kalıcı bir backend'e** bağlıdır (eski
+> istemci-taraflı mock'un yerini aldı) — yeni `/admin/support` ve `/admin/support/templates`
+> yönetim sayfaları (oturum listesi, mesajlaşma, temsilci atama, hazır şablon yönetimi;
+> `ADMIN`/`MANAGER`, `EDITOR` göremez). Yeni ortam değişkeni **yok**. Ayrıntı ve karar
+> gerekçeleri: `docs/architecture/ARCHITECTURE.md` §10.23.10, §10.24,
+> `.claude/architect-scope-support-desk-and-reminders.md`,
+> `.claude/compliance-notes-support-desk.md`.
 
 ## Test
 

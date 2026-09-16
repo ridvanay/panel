@@ -993,6 +993,11 @@ export const EmailTemplatePurposeSchema = z.enum([
   // ::triggerAppointmentRescheduledEmail`). Prisma `EmailTemplatePurpose` enum'una db-agent
   // tarafından eklendi — bu DTO-seviyesi ayna (mirror) burada SENKRONİZE edilir.
   "APPOINTMENT_RESCHEDULED",
+  // [ASD] §2.4 (bağlayıcı) — 1 saat / 30 dakika randevu hatırlatma e-postaları. Prisma
+  // `EmailTemplatePurpose` enum'una db-agent tarafından eklendi — bu DTO-seviyesi ayna
+  // (mirror) burada SENKRONİZE edilir (`APPOINTMENT_RESCHEDULED` yorumuyla AYNI desen).
+  "APPOINTMENT_REMINDER_60M",
+  "APPOINTMENT_REMINDER_30M",
   "CUSTOM",
 ]);
 export type EmailTemplatePurpose = z.infer<typeof EmailTemplatePurposeSchema>;
@@ -2926,3 +2931,99 @@ export const TelehealthOverviewSchema = z.object({
   doctors: z.array(TelehealthOverviewDoctorRowSchema),
 });
 export type TelehealthOverviewDto = z.infer<typeof TelehealthOverviewSchema>;
+
+// ---------- [ASD] Canlı Destek (Support) — bkz. openapi.yaml tag: Support ----------
+// `.claude/architect-scope-support-desk-and-reminders.md` §3 — DTO alanları openapi.yaml'a
+// BİREBİR uyar (kaynak: openapi.yaml `SupportChatSession`/`SupportChatSessionSummary`/
+// `SupportChatMessage(Public)`/`SupportAgentSummary`/`SupportReplyTemplate` şemaları).
+
+export const SupportSessionStatusSchema = z.enum(["PENDING", "ANSWERED", "CLOSED"]);
+export type SupportSessionStatus = z.infer<typeof SupportSessionStatusSchema>;
+
+export const SupportMessageSenderTypeSchema = z.enum(["VISITOR", "AGENT"]);
+export type SupportMessageSenderType = z.infer<typeof SupportMessageSenderTypeSchema>;
+
+/** **ZİYARETÇİ yüzeyi DTO'su.** `senderUserId`/temsilcinin e-postası BURADA ASLA YOKTUR. */
+export const SupportChatMessagePublicSchema = z.object({
+  id: z.string().uuid(),
+  seq: z.number().int(),
+  senderType: SupportMessageSenderTypeSchema,
+  senderDisplayName: z.string().nullable(),
+  body: z.string(),
+  createdAt: z.string(),
+});
+export type SupportChatMessagePublicDto = z.infer<typeof SupportChatMessagePublicSchema>;
+
+/** **YÖNETİM yüzeyi DTO'su** — ziyaretçi DTO'suna `senderUserId` ekler. */
+export const SupportChatMessageSchema = SupportChatMessagePublicSchema.extend({
+  senderUserId: z.string().uuid().nullable(),
+});
+export type SupportChatMessageDto = z.infer<typeof SupportChatMessageSchema>;
+
+/** `GET /admin/support/agents` öğesi. `email` BİLİNÇLİ OLARAK YOKTUR. */
+export const SupportAgentSummarySchema = z.object({
+  id: z.string().uuid(),
+  name: z.string(),
+  role: z.enum(["ADMIN", "MANAGER"]),
+});
+export type SupportAgentSummaryDto = z.infer<typeof SupportAgentSummarySchema>;
+
+export const SupportSessionCountsSchema = z.object({
+  pending: z.number().int(),
+  answered: z.number().int(),
+  closed: z.number().int(),
+  all: z.number().int(),
+});
+export type SupportSessionCountsDto = z.infer<typeof SupportSessionCountsSchema>;
+
+/** Liste DTO'su — mesaj dizisi TAŞIMAZ, yalnızca `lastMessagePreview`. */
+export const SupportChatSessionSummarySchema = z.object({
+  id: z.string().uuid(),
+  seq: z.number().int(),
+  status: SupportSessionStatusSchema,
+  visitorName: z.string().nullable(),
+  visitorEmail: z.string().nullable(),
+  visitorUserId: z.string().uuid().nullable(),
+  assignedAgent: SupportAgentSummarySchema.nullable(),
+  messageCount: z.number().int(),
+  unreadForAgent: z.number().int(),
+  lastMessagePreview: z.string().nullable(),
+  lastMessageAt: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type SupportChatSessionSummaryDto = z.infer<typeof SupportChatSessionSummarySchema>;
+
+/** Detay DTO'su — mesajlar AYRI uçtan (`.../messages`) çekilir, burada GÖMÜLMEZ. */
+export const SupportChatSessionSchema = SupportChatSessionSummarySchema.extend({
+  pageUrl: z.string().nullable(),
+  locale: z.string().nullable(),
+  ipAddress: z.string().nullable(),
+  userAgent: z.string().nullable(),
+  piiRedactedAt: z.string().nullable(),
+  assignedAt: z.string().nullable(),
+  closedAt: z.string().nullable(),
+  closedBy: SupportAgentSummarySchema.nullable(),
+});
+export type SupportChatSessionDto = z.infer<typeof SupportChatSessionSchema>;
+
+export const CreateSupportSessionResponseSchema = z.object({
+  sessionId: z.string().uuid(),
+  accessToken: z.string(),
+  status: SupportSessionStatusSchema,
+  message: SupportChatMessagePublicSchema,
+});
+export type CreateSupportSessionResponseDto = z.infer<typeof CreateSupportSessionResponseSchema>;
+
+export const SupportReplyTemplateSchema = z.object({
+  id: z.string().uuid(),
+  seq: z.number().int(),
+  title: z.string().max(120),
+  body: z.string().max(2000),
+  sortOrder: z.number().int(),
+  isActive: z.boolean(),
+  usageCount: z.number().int(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type SupportReplyTemplateDto = z.infer<typeof SupportReplyTemplateSchema>;

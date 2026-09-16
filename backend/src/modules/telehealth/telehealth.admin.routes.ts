@@ -531,9 +531,12 @@ export async function adminTelehealthAppointmentsRoutes(app: FastifyInstance) {
         });
         if (conflict) throw new AppointmentRescheduleConflictError();
 
+        // [ASD] §2.6 (bağlayıcı) — hatırlatma süpürücüsü damgaları AYNI transaction'da null'lanır;
+        // aksi hâlde saati ileri alınan bir randevu bir daha ASLA hatırlatma e-postası almaz
+        // (bkz. lib/appointment-reminders.ts).
         return tx.appointment.update({
           where: { id: existing.id },
-          data: { startsAt: newStartsAt, endsAt: newEndsAt },
+          data: { startsAt: newStartsAt, endsAt: newEndsAt, reminded60mAt: null, reminded30mAt: null },
           include: WITH_APPOINTMENT_RELATIONS,
         });
       });

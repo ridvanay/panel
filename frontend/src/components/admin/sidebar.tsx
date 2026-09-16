@@ -25,6 +25,7 @@ import {
   Briefcase,
   Palette,
   MessageSquare,
+  MessageCircle,
   GalleryHorizontal,
   Stethoscope,
   Tag,
@@ -161,6 +162,10 @@ export const navItems: NavItem[] = [
   { href: "/admin/system", labelKey: "nav.system", icon: Activity, roles: ["ADMIN"] },
   { href: "/admin/notifications/templates", labelKey: "nav.emailTemplates", icon: Mail, roles: ["ADMIN", "MANAGER"] },
   { href: "/admin/contact", labelKey: "nav.contact", icon: MessageSquare, roles: ["ADMIN", "MANAGER"] },
+  // `.claude/architect-scope-support-desk-and-reminders.md` §3.2 — `/admin/support/*` = ADMIN
+  // veya MANAGER (`SUPPORT_AGENT` rolü EKLENMEDİ, bkz. o karar). Ziyaretçi PII'si (`contact`
+  // İLE AYNI görünürlük eşiği) — EDITOR GÖRMEZ.
+  { href: "/admin/support", labelKey: "nav.support", icon: MessageCircle, roles: ["ADMIN", "MANAGER"] },
   // Self-servis 2FA/oturumlar (§4.3 istisnası) — panele giren 3 rolün hepsine açık.
   { href: "/admin/settings/security", labelKey: "nav.security", icon: ShieldCheck },
   { href: "/admin/logs", labelKey: "nav.logs", icon: ScrollText, roles: ["ADMIN"] },

@@ -76,6 +76,10 @@ import { telehealthIdentityRoutes } from "./modules/telehealth/telehealth.identi
 import { registerBookingExpirySweeper } from "./lib/booking-expiry";
 import { registerIntakeRetentionScheduler } from "./lib/intake-retention";
 import { registerRecordingRetentionScheduler } from "./lib/recording-retention";
+import { registerAppointmentReminderSweeper } from "./lib/appointment-reminders";
+import { adminSupportRoutes } from "./modules/support/support.routes";
+import { supportPublicRoutes } from "./modules/support/support.public.routes";
+import { registerSupportRetentionScheduler } from "./lib/support-retention";
 
 export function buildApp() {
   // `SENTRY_DSN` tanımsızsa no-op (bkz. lib/sentry.ts) — her `buildApp()` çağrısında
@@ -317,6 +321,13 @@ export function buildApp() {
       // KULLANILMAZ); doktor tarafı KENDİ 2FA kapısını route içinde uygular.
       api.register(telehealthDoctorPortalRoutes, { prefix: "/doctor" });
       api.register(telehealthPatientPortalRoutes, { prefix: "/patient" });
+
+      // [ASD] §3.5 — Canlı Destek Masası. `telehealth.notifications.routes.ts`'in ayrık-dosya
+      // deseniyle AYNI: ziyaretçi yüzeyi (`security: []`, kendi `liveChatEnabled`/
+      // `liveChatProvider === "internal"` kontrolünü İÇİNDE taşır) ve yönetim yüzeyi
+      // (`SiteRole = ADMIN veya MANAGER`) AYRI dosyalarda/AYRI prefix'lerde bağlanır.
+      api.register(supportPublicRoutes, { prefix: "/support" });
+      api.register(adminSupportRoutes, { prefix: "/admin/support" });
     },
     { prefix: "/api/v1" }
   );
@@ -427,6 +438,22 @@ export function buildApp() {
       registerRecordingRetentionScheduler(app);
     } catch (err) {
       app.log.error({ err }, "Görüşme kaydı saklama süresi scheduler kurulumu başarısız oldu.");
+    }
+
+    try {
+      // [ASD] §2.1/§2.3 (bağlayıcı) — 5 dakikalık kadans, 1 saat/30 dakika randevu hatırlatma
+      // e-postaları (claim-first çift gönderim engeli, çoklu slot bastırması).
+      registerAppointmentReminderSweeper(app);
+    } catch (err) {
+      app.log.error({ err }, "Randevu hatırlatma (appointment-reminders) scheduler kurulumu başarısız oldu.");
+    }
+
+    try {
+      // [ASD] §3.7 / compliance-notes-support-desk.md §3 (bağlayıcı) — saatlik kadans, Canlı
+      // Destek saklama süpürücüsü (30/180/365 gün, üç bağımsız idempotent işlem).
+      registerSupportRetentionScheduler(app);
+    } catch (err) {
+      app.log.error({ err }, "Canlı Destek saklama süresi scheduler kurulumu başarısız oldu.");
     }
   });
 

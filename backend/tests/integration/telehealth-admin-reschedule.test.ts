@@ -279,6 +279,28 @@ describe("PATCH /admin/telehealth/appointments/:id/reschedule", () => {
     }
   });
 
+  it("[ASD] §2.6 — reschedule reminded60mAt/reminded30mAt damgalarını AYNI transaction'da null'lar", async () => {
+    const { doctor } = await createDoctorWithAvailability(app);
+    const { appointmentId } = await createScheduledAppointment(app, adminToken, doctor.slug, nextMondayNineAmUtc());
+
+    await app.prisma.appointment.update({
+      where: { id: appointmentId },
+      data: { reminded60mAt: new Date(), reminded30mAt: new Date() },
+    });
+
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/admin/telehealth/appointments/${appointmentId}/reschedule`,
+      headers: authHeader(adminToken),
+      payload: { newDate: "2026-12-21", newStartTime: "09:00" },
+    });
+    expect(res.statusCode).toBe(200);
+
+    const updated = await app.prisma.appointment.findUniqueOrThrow({ where: { id: appointmentId } });
+    expect(updated.reminded60mAt).toBeNull();
+    expect(updated.reminded30mAt).toBeNull();
+  });
+
   it("var olmayan appointment → 404", async () => {
     const res = await app.inject({
       method: "PATCH",

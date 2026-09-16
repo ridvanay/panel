@@ -109,6 +109,32 @@ const SYSTEM_VARIABLES_BY_PURPOSE: Record<EmailTemplatePurpose, EmailVariableDef
     { key: "new_slot_summary", label: "Yeni Randevu Saati", sampleValue: "08.01.2025 10:00", source: "system" },
     { key: "reason", label: "Değişiklik Notu", sampleValue: "Doktorun programı nedeniyle", source: "system" },
   ],
+  /**
+   * [ASD] §2.4 (bağlayıcı) — `startsAt`e ~1 saat kala, süpürücü tetikler
+   * (`lib/appointment-reminders.ts`). `APPOINTMENT_CONFIRMATION` İLE AYNI bağlayıcı sızma
+   * yasağı: uzmanlık adı/şikâyet notu/belge adı bu değişken setine ASLA EKLENMEZ. `join_link`
+   * BİLİNÇLİ OLARAK YOK (yalnızca 30 dk şablonunda vardır, §2.5) — 1 saat kala hasta henüz
+   * katılmaya hazır olmayabilir, katılım bağlantısı onay e-postasında zaten mevcuttur.
+   */
+  APPOINTMENT_REMINDER_60M: [
+    { key: "recipient_name", label: "Alıcı Adı", sampleValue: "Ayşe Yılmaz", source: "system" },
+    { key: "booking_number", label: "Rezervasyon Numarası", sampleValue: "BKG-L4K2J1-A1B2", source: "system" },
+    { key: "doctor_name", label: "Doktor Adı", sampleValue: "Dr. Mehmet Demir", source: "system" },
+    { key: "slot_summary", label: "Randevu Saati", sampleValue: "06.01.2025 09:00", source: "system" },
+  ],
+  /**
+   * [ASD] §2.4/§2.5 (bağlayıcı) — `startsAt`e ~30 dakika kala. `APPOINTMENT_REMINDER_60M` İLE
+   * AYNI sızma yasağı + EK olarak `join_link`: token'sız derin bağlantı (`/patient/bookings/
+   * {bookingId}` veya doktora `/doctor`) — token ROTATE EDİLMEZ, onay e-postasındaki bağlantı
+   * bozulmaz (bkz. `modules/telehealth/lib/notifications.ts::triggerAppointmentReminderEmail`).
+   */
+  APPOINTMENT_REMINDER_30M: [
+    { key: "recipient_name", label: "Alıcı Adı", sampleValue: "Ayşe Yılmaz", source: "system" },
+    { key: "booking_number", label: "Rezervasyon Numarası", sampleValue: "BKG-L4K2J1-A1B2", source: "system" },
+    { key: "doctor_name", label: "Doktor Adı", sampleValue: "Dr. Mehmet Demir", source: "system" },
+    { key: "slot_summary", label: "Randevu Saati", sampleValue: "06.01.2025 09:00", source: "system" },
+    { key: "join_link", label: "Katılım Bağlantısı", sampleValue: "https://example.com/tr/patient/bookings/abc", source: "system" },
+  ],
   CUSTOM: [],
 };
 

@@ -347,6 +347,13 @@ model User {
   appointmentsAsPatient  Appointment[]        @relation("AppointmentPatient")
   // [TCT] §9.7.4 (bağlayıcı) — çoklu slot rezervasyon üst kaydı, hastanın kendi hesabı.
   appointmentBookings    AppointmentBooking[] @relation("AppointmentBookingPatient")
+  // [ASD] §3.4 — Canlı Destek Masası. Dört zorunlu ters ilişki: ziyaretçi oturum açmışsa
+  // kendi destek oturumları, temsilci olarak atandığı oturumlar, kapattığı oturumlar
+  // (SupportChatSession) ve temsilci olarak gönderdiği mesajlar (SupportChatMessage).
+  supportSessionsAsVisitor SupportChatSession[] @relation("SupportVisitor")
+  supportSessionsAssigned  SupportChatSession[] @relation("SupportAgent")
+  supportSessionsClosed    SupportChatSession[] @relation("SupportCloser")
+  supportMessagesSent      SupportChatMessage[] @relation("SupportMessageSender")
 
   @@map("users")
 }
@@ -1647,6 +1654,13 @@ enum EmailTemplatePurpose {
   // NOT — 2026-09-15: Admin randevu yeniden planlama (reschedule) akışı — hastaya "Randevunuz
   // Yeniden Planlandı" bildirimi için tek şablon.
   APPOINTMENT_RESCHEDULED
+  // [ASD] §2.4 (bağlayıcı) — 1 saat / 30 dakika randevu hatırlatma e-postaları. TEK bir
+  // APPOINTMENT_REMINDER + değişken REDDEDİLDİ: konu satırları ve değişken setleri farklıdır
+  // (`join_link` yalnızca 30M'de). `ALTER TYPE ... ADD VALUE` geri alınamaz — bu yüzden bu iki
+  // değer İZOLE bir migration'da (`add_appointment_reminder_email_purposes`) eklenir, M1/M3 ile
+  // AYNI dosyada DEĞİL.
+  APPOINTMENT_REMINDER_60M
+  APPOINTMENT_REMINDER_30M
   CUSTOM
 }
 
@@ -2153,6 +2167,17 @@ model Appointment {
   endedAt      DateTime?
   cancelledAt  DateTime?
   cancelReason String?
+
+  /// [ASD] §2.2/§2.3 — hatırlatma süpürücüsü damgası ("1 saat kaldı" e-postası gönderildi,
+  /// veya çoklu-slot kuralıyla bilinçli olarak bastırıldı). NULL = henüz gönderilmedi.
+  /// Süpürücü bu alana koşullu `updateMany` ile ÖNCE yazar, SONRA gönderir (claim-first) —
+  /// çift gönderimi DB seviyesinde engeller. Hiçbir DTO'da DÖNMEZ (dahili süpürücü durumu).
+  /// Reschedule akışı bu alanı `null`'lar (§2.6). YENİ İNDEKS YOK — `@@index([status, startsAt])`
+  /// zaten yeterlidir (§2.2 madde 2, bağlayıcı).
+  reminded60mAt DateTime?
+  /// "30 dakika kaldı" e-postası damgası. Aynı disiplin, aynı gerekçe.
+  reminded30mAt DateTime?
+
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
@@ -2849,4 +2874,140 @@ model WebhookDelivery {
   // Sweeper'ın sıcak sorgusu: WHERE status IN (...) AND nextAttemptAt <= now().
   @@index([status, nextAttemptAt])
   @@map("webhook_deliveries")
+}
+
+// -----------------------------------------------------------------------------
+// Canlı Destek (Support Desk) — `.claude/architect-scope-support-desk-and-reminders.md`
+// (ASD) §3 ve `.claude/compliance-notes-support-desk.md` (bağlayıcı KVKK kararları).
+// Migration: add_support_chat (M3, `db-agent` — üç ayrı migration'ın üçüncüsü).
+// -----------------------------------------------------------------------------
+
+/// [ASD] §3.4 — sıra bağlayıcıdır. `PENDING`/`ANSWERED` TÜREV durumlardır (mesaj gönderimiyle
+/// otomatik değişir); `PATCH` ile `ANSWERED` elle SET EDİLEMEZ (backend-agent 422 döner).
+enum SupportSessionStatus {
+  PENDING
+  ANSWERED
+  CLOSED
+}
+
+enum SupportMessageSenderType {
+  VISITOR
+  AGENT
+}
+
+/// [ASD] §3.4 + compliance-notes §1/§3 — alan listesi ikisiyle de doğrulanmıştır
+/// (`openapi.yaml` `SupportChatSession`/`SupportChatSessionSummary` şemalarıyla BİREBİR
+/// tutarlı: `messageCount`, `assignedAt`, `pageUrl`, `locale` dahil — bunlar API kontratının
+/// GEREKTİRDİĞİ alanlardır). `SiteRole`'a DOKUNULMADI (§3.2, bağlayıcı).
+model SupportChatSession {
+  id     String               @id @default(uuid())
+  /// Cursor sayfalama anahtarı — admin liste ucu `seq DESC` sıralar (openapi: "Cursor
+  /// sıralamasının anahtarı").
+  seq    Int                  @unique @default(autoincrement())
+  status SupportSessionStatus @default(PENDING)
+
+  /// Ziyaretçi BEYANI, doğrulanmamış (compliance-notes §1 — m.5/2-f meşru menfaat).
+  visitorName  String?
+  visitorEmail String?
+  /// Ziyaretçi oturum açmışsa bağlı `User` (`Cart.siteUserId` deseni). Misafirde NULL.
+  visitorUserId String?
+
+  /// Ziyaretçinin opak erişim token'ının SHA-256 hash'i (`Appointment.accessTokenHash` /
+  /// `lib/tokens.ts` İLE AYNI desen). HAM DEĞER ASLA SAKLANMAZ; yalnızca
+  /// `POST /support/sessions` yanıtında BİR KEZ döner.
+  accessTokenHash String @unique
+
+  assignedAgentId String?
+  assignedAt      DateTime?
+  closedAt        DateTime?
+  closedById      String?
+
+  /// TÜREV alanların (`unreadForAgent`) O(1) hesaplanabilmesi için denormalize damgalar —
+  /// mesaj eklenirken AYNI transaction'da güncellenir (backend-agent). `openapi.yaml`'da
+  /// DÖNMEZ, yalnızca dahili sorgu optimizasyonudur.
+  lastMessageAt        DateTime?
+  lastVisitorMessageAt DateTime?
+  lastAgentMessageAt   DateTime?
+  /// 200 mesaj/oturum üst sınırının (§3.6 madde 4) O(1) kontrolü için sayaç — mesaj eklenirken
+  /// AYNI transaction'da artar (`OrderItem` benzeri denormalize sayaç deseni YOK burada,
+  /// ama gerekçe aynıdır: her `POST .../messages`'ta `COUNT(*)` çalıştırmaktan kaçınmak).
+  messageCount Int @default(0)
+
+  /// Bağlam; ziyaretçi gönderir, DOĞRULANMAZ (`maxLength: 500`, openapi).
+  pageUrl String?
+  locale  String?
+
+  /// [KVKK] 30 gün sonra `null`'lanır (`piiRedactedAt` damgalanır). Satır SİLİNMEZ.
+  ipAddress     String?
+  userAgent     String?
+  piiRedactedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  visitorUser   User?                @relation("SupportVisitor", fields: [visitorUserId], references: [id], onDelete: SetNull)
+  assignedAgent User?                @relation("SupportAgent", fields: [assignedAgentId], references: [id], onDelete: SetNull)
+  closedBy      User?                @relation("SupportCloser", fields: [closedById], references: [id], onDelete: SetNull)
+  messages      SupportChatMessage[]
+
+  // Admin liste + sekme rozeti filtresi (`status` + `seq DESC` cursor).
+  @@index([status, seq])
+  // "Bana atananlar" filtresi (`assignedAgentId=me`).
+  @@index([assignedAgentId])
+  // [KVKK] 30 günlük IP/UA redaksiyon süpürücüsü (`createdAt < now - 30g`).
+  @@index([createdAt])
+  // [KVKK] 180 günlük CLOSED oturum kalıcı silme süpürücüsü (`closedAt` bazlı, `createdAt` DEĞİL).
+  @@index([closedAt])
+  // [KVKK] 365 günlük "hiç kapatılmamış oturum" güvenlik ağı süpürücüsü.
+  @@index([lastMessageAt])
+  @@map("support_chat_sessions")
+}
+
+model SupportChatMessage {
+  id        String @id @default(uuid())
+  /// GLOBAL monoton artan sayaç (oturum-başı DEĞİL) — `?afterSeq=` artımlı çekiminin anahtarı.
+  /// `createdAt` KULLANILMAZ: aynı milisaniyede iki mesaj olabilir (openapi, birebir gerekçe).
+  seq       Int    @unique @default(autoincrement())
+  sessionId String
+
+  senderType   SupportMessageSenderType
+  /// Yalnızca `senderType = AGENT` iken dolu. Yönetim DTO'sunda döner (`SupportChatMessage`),
+  /// ziyaretçi DTO'sunda (`SupportChatMessagePublic`) YOK — minimum ifşa.
+  senderUserId String?
+  /// Gönderim ANINDAKİ temsilci ADI SNAPSHOT'ı (`OrderItem.productTitle` disiplini) — e-posta
+  /// DEĞİL, personel silinse de "kim yanıtladı" kaydı bozulmaz. `VISITOR` mesajında NULL.
+  senderDisplayName String?
+  /// DÜZ METİN, en fazla 2000 karakter (openapi). HTML/Markdown ne saklanır ne render edilir —
+  /// XSS yüzeyi yapısal olarak kapalıdır.
+  body String @db.Text
+
+  createdAt DateTime @default(now())
+
+  session    SupportChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  senderUser User?              @relation("SupportMessageSender", fields: [senderUserId], references: [id], onDelete: SetNull)
+
+  // `?afterSeq=` artımlı çekim + oturum mesaj dizisi — tek sorgu deseni.
+  @@index([sessionId, seq])
+  @@map("support_chat_messages")
+}
+
+/// Kişisel veri YOK (compliance-notes §1 — personel tarafından yazılan şablon metni),
+/// retention süpürücüsüne TABİ DEĞİL.
+model SupportReplyTemplate {
+  id         String  @id @default(uuid())
+  seq        Int     @unique @default(autoincrement())
+  title      String
+  body       String  @db.Text
+  sortOrder  Int     @default(0)
+  isActive   Boolean @default(true)
+  /// `templateId` ile gönderilen mesaj sayısı (openapi) — silinen mesajlardan ETKİLENMEZ,
+  /// backend-agent mesaj gönderiminde AYNI transaction'da artırır.
+  usageCount Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Eşitlikte `seq ASC` (openapi) — `sortOrder` birincil, `seq` ikincil sıralama anahtarıdır.
+  @@index([isActive, sortOrder])
+  @@map("support_reply_templates")
 }

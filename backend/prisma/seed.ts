@@ -170,6 +170,106 @@ async function main() {
     },
   });
 
+  // [ASD] §2.4/§4.3 (bağlayıcı) — randevu hatırlatma e-postaları. Süpürücü tetikleyicisi:
+  // modules/telehealth/lib/notifications.ts::triggerAppointmentReminderEmail. APPOINTMENT_RESCHEDULED
+  // İLE AYNI desen: hasta VE doktora AYNI şablon, İKİ ayrı gönderim ({{recipient_name}} alıcıya
+  // göre hasta ya da doktor adı olur). BLOCKS modu (mimar kararı). Sızma yasağı APPOINTMENT_CONFIRMATION
+  // İLE AYNI: uzmanlık adı, şikâyet/intake notu, belge adı bu e-postalarda ASLA yer almaz
+  // (§9.7.5 madde 8). `join_link` BİLİNÇLİ OLARAK YOK — yalnızca 30 dk şablonunda vardır.
+  await prisma.emailTemplate.upsert({
+    where: { key: "APPOINTMENT_REMINDER_60M" },
+    update: {},
+    create: {
+      key: "APPOINTMENT_REMINDER_60M",
+      name: "Randevu Hatırlatma E-postası (1 Saat Kala)",
+      purpose: "APPOINTMENT_REMINDER_60M",
+      editorMode: "BLOCKS",
+      isSystem: true,
+      isActive: true,
+      subject: "Randevunuza 1 Saat Kaldı",
+      bodyHtml: "",
+      availableVariables: ["recipient_name", "booking_number", "doctor_name", "slot_summary"],
+      blocks: [
+        {
+          id: "block-logo-header",
+          type: "logo-header",
+          style: { align: "center", backgroundColor: null, textColor: null, paddingY: "md", paddingX: "md" },
+          data: { useSiteLogo: true, logoUrl: null, height: 48 },
+        },
+        {
+          id: "block-heading",
+          type: "heading",
+          style: { align: "left", backgroundColor: null, textColor: null, paddingY: "md", paddingX: "md" },
+          data: { text: "Randevunuza 1 Saat Kaldı", level: 2 },
+        },
+        {
+          id: "block-text",
+          type: "text",
+          style: { align: "left", backgroundColor: null, textColor: null, paddingY: "sm", paddingX: "md" },
+          data: {
+            html:
+              "<p>Sayın {{recipient_name}},</p><p><strong>{{booking_number}}</strong> numaralı randevunuza yaklaşık 1 saat kalmıştır.</p><p><strong>Görüşülecek Kişi:</strong> {{doctor_name}}</p><p><strong>Randevu Saati:</strong> {{slot_summary}}</p><p>Lütfen randevu saatinden kısa bir süre önce hazır olunuz. Görüşmeye şimdiden katılmak isterseniz, onay e-postanızdaki bağlantıyı kullanabilirsiniz.</p>",
+          },
+        },
+      ],
+    },
+  });
+
+  // [ASD] §2.4/§2.5/§4.3 (bağlayıcı) — APPOINTMENT_REMINDER_60M İLE AYNI sızma yasağı + AYNI
+  // hasta/doktor gönderim deseni. EK olarak `join_link`: token ROTATE EDİLMEYEN, token'sız derin
+  // bağlantı (hastaya `/patient/bookings/{bookingId}` veya `/patient/appointments`, doktora
+  // `/doctor`) — bkz. modules/telehealth/lib/notifications.ts::triggerAppointmentReminderEmail.
+  await prisma.emailTemplate.upsert({
+    where: { key: "APPOINTMENT_REMINDER_30M" },
+    update: {},
+    create: {
+      key: "APPOINTMENT_REMINDER_30M",
+      name: "Randevu Hatırlatma E-postası (30 Dakika Kala)",
+      purpose: "APPOINTMENT_REMINDER_30M",
+      editorMode: "BLOCKS",
+      isSystem: true,
+      isActive: true,
+      subject: "Randevunuza 30 Dakika Kaldı",
+      bodyHtml: "",
+      availableVariables: ["recipient_name", "booking_number", "doctor_name", "slot_summary", "join_link"],
+      blocks: [
+        {
+          id: "block-logo-header",
+          type: "logo-header",
+          style: { align: "center", backgroundColor: null, textColor: null, paddingY: "md", paddingX: "md" },
+          data: { useSiteLogo: true, logoUrl: null, height: 48 },
+        },
+        {
+          id: "block-heading",
+          type: "heading",
+          style: { align: "left", backgroundColor: null, textColor: null, paddingY: "md", paddingX: "md" },
+          data: { text: "Randevunuza 30 Dakika Kaldı", level: 2 },
+        },
+        {
+          id: "block-text",
+          type: "text",
+          style: { align: "left", backgroundColor: null, textColor: null, paddingY: "sm", paddingX: "md" },
+          data: {
+            html:
+              "<p>Sayın {{recipient_name}},</p><p><strong>{{booking_number}}</strong> numaralı randevunuza yaklaşık 30 dakika kalmıştır.</p><p><strong>Görüşülecek Kişi:</strong> {{doctor_name}}</p><p><strong>Randevu Saati:</strong> {{slot_summary}}</p><p>Aşağıdaki bağlantıdan doğrudan odaya katılabilirsiniz.</p>",
+          },
+        },
+        {
+          id: "block-button",
+          type: "button",
+          style: { align: "left", backgroundColor: null, textColor: null, paddingY: "md", paddingX: "md" },
+          data: {
+            label: "Odaya Katıl",
+            href: "{{join_link}}",
+            backgroundColor: null,
+            textColor: null,
+            radius: "sm",
+          },
+        },
+      ],
+    },
+  });
+
   // Organizasyon daveti — bkz. modules/invitations/invitations.routes.ts::orgInvitationsRoutes.
   // Ham davet bağlantısı artık ne response'ta ne de log'da düz metin dönmez (bkz. security-agent
   // kararı — token sızıntısı temizliği); bunun yerine bu şablon üzerinden gerçekten gönderilir.

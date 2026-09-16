@@ -725,6 +725,76 @@ tags:
       Durum filtreli kart listesi için `GET /doctor/bookings`'e **`scope`**
       (`all|today|upcoming|completed`) eklenir; `from`/`to` ile BİRLİKTE
       gönderilirse **`422`** (iki farklı zaman ekseni sessizce birleştirilmez).
+  - name: Support
+    description: >
+      **Canlı Destek — gerçek backend sohbet sistemi**
+      (`.claude/architect-scope-support-desk-and-reminders.md` §3, BAĞLAYICI).
+
+
+      **Bu tag, 2026-09-15'teki "istemci taraflı mock" kararını BİLİNÇLİ OLARAK TERSİNE
+      ÇEVİRİR.** `frontend/src/components/site/live-chat-widget.tsx` içindeki
+      "Yeni bir backend/websocket altyapısı İCAT EDİLMEDİ" notu bu turda YÜRÜRLÜKTEN
+      KALKAR: `liveChatProvider = "internal"` modu artık kalıcı, sunucu tarafı bir
+      sohbet sistemidir. `crisp`/`tawkto` modları ve `SiteSettings.liveChatEnabled/
+      liveChatProvider/liveChatScriptId` mekanizmasının KENDİSİ **DEĞİŞMEZ**.
+
+
+      **İki ayrı yüzey:**
+
+      - **Ziyaretçi (public, `security: []`):** `/support/sessions*`. Kimlik doğrulama
+        YOK; oturum sahipliği `POST /support/sessions` yanıtında **BİR KEZ** dönen opak
+        `accessToken` ile kanıtlanır (`?t=`). Token'ın yalnızca SHA-256 hash'i saklanır
+        (`lib/tokens.ts` deseni — `AppointmentBooking.accessTokenHash` ile BİREBİR aynı
+        disiplin). Bu uçlar **yalnızca** `liveChatEnabled = true` **VE**
+        `liveChatProvider = "internal"` iken çalışır; aksi hâlde `404` (modül kapalı
+        davranışıyla aynı — ayrım yapılmaz).
+
+      - **Yönetim (`/admin/support/*`): `SiteRole = ADMIN veya MANAGER`.** EDITOR
+        bilinçli olarak DIŞARIDA — `.claude/architect-scope-rbac-5-tier.md` §5.3 satır 4
+        (iletişim formu gönderimleri) ile BİREBİR aynı gerekçe: ziyaretçi PII'si
+        EDITOR kapsamı dışıdır. **Yeni bir `SiteRole` değeri (`SUPPORT_AGENT`)
+        EKLENMEZ** — gerekçe aşağıda.
+
+
+      **Rol kararı (bağlayıcı, rbac-5-tier §1/§5.1 ile ÇELİŞMEZ, TEYİT EDER):** destek
+      masası rbac §5.1'deki beş ADMIN-özel kategorinin (a ayrıcalık yükseltme,
+      b kimlik bilgisi, c keyfi kod, d kill switch, f denetim izi) HİÇBİRİNE girmez →
+      türetme kuralı gereği **normal bir panel operasyonu modülüdür** → `ADMIN, MANAGER`.
+      6. bir enum değeri eklemek (1) geri alınamaz bir `ALTER TYPE ... ADD VALUE`
+      migration'ı, (2) `PANEL_ROLES` taban kapısının genişletilmesi ve (3) 21 modüllük
+      §5.3 tablosunun yeniden triyajı anlamına gelirdi; bugün "yalnızca destek" işi olan
+      tek bir kullanıcı bile yokken bu, rbac §3.2 madde 3'te açıkça reddedilen
+      spekülatif esnekliktir. Takip kalemi: `feature/rbac-support-agent-role`.
+
+
+      **Temsilci ataması:** `assignedAgentId` YALNIZCA `status = ACTIVE` ve
+      `role ∈ {ADMIN, MANAGER}` olan bir `User`'a işaret edebilir; aksi hâlde `422`.
+      Atanabilir temsilci listesi için `/admin/users` KULLANILMAZ (MANAGER o uçta
+      403 alır ve liste bütünüyle PII'dir) — dar kapsamlı `GET /admin/support/agents`
+      ucu vardır ve **e-posta DÖNDÜRMEZ**.
+
+
+      **Gerçek zamanlılık: POLLING (SSE/WebSocket DEĞİL).** Projede hiçbir yerde SSE
+      veya WebSocket yoktur; `import-progress-panel.tsx` mevcut bağlayıcı desendir
+      ("realtime altyapı YOK — uç 2 saniyede bir poll edilir"). Artımlı çekim için
+      `?afterSeq=` kullanılır (tam listeyi yeniden indirmez).
+      Bağlayıcı kadanslar: ziyaretçi paneli AÇIKKEN 5 sn, kapalıyken poll YOK;
+      admin oturum LİSTESİ 15 sn; admin AÇIK sohbet dizisi 5 sn; her iki tarafta da
+      10 dakika etkisizlikten sonra poll DURUR (kullanıcı etkileşimiyle yeniden başlar).
+
+
+      **Mesaj gövdesi DÜZ METİNDİR.** HTML/Markdown ne saklanır ne render edilir
+      (`sanitizeRichHtml` BU AKIŞTA KULLANILMAZ — "zengin metin yok" kuralı, temizleme
+      kuralından daha güvenlidir). En fazla 2000 karakter; oturum başına en fazla 200
+      mesaj (`409 CONFLICT`).
+
+
+      **KVKK (compliance-agent'a İŞARETLENDİ, nihai karar ONUN):** ziyaretçi mesajları
+      isim/e-posta ve sağlık anlatımı içerebilir → özel nitelikli veri riski. Bu turda
+      ÖNERİLEN (compliance-agent onayına tabi) saklama: `ipAddress`/`userAgent` 30 gün
+      sonra `null` + `piiRedactedAt` (ContactSubmission §10.16.10 ile BİREBİR aynı),
+      kapatılmış oturumlar 180 gün sonra kalıcı silinir. Widget'ta gönderimden ÖNCE
+      "sağlık bilgisi paylaşmayın" uyarısı gösterilir.
   - name: Localization
     description: >
       Çoklu dil yapılandırması (`/locales`, `/admin/locales`) — bkz. ARCHITECTURE.md
@@ -6668,16 +6738,36 @@ paths:
         hasta, (c) doktorun bağlı `User`'ı, (d) `SiteRole.ADMIN` (**MANAGER
         DAHİL DEĞİL** — `GET /appointments/{id}` ile aynı eşik değildir, bu
         daha dar bir yetki yüzeyidir). Yetkisiz erişim `404` döner (IDOR).
-        Randevu `SCHEDULED`/`IN_PROGRESS` DIŞINDA bir durumdaysa VEYA katılım
-        penceresi dışındaysa **`409 APPOINTMENT_NOT_JOINABLE`**.
+        Randevu `SCHEDULED`/`IN_PROGRESS` DIŞINDA bir durumdaysa
+        **`409 APPOINTMENT_NOT_JOINABLE`**.
 
 
-        **§9.7.6 TADİLATI (bağlayıcı, §4.5'in yerine):**
-        (1) Katılım penceresi **`startsAt - 10 dk`** … `endsAt + 15 dk`'dır
-        (önceki 5 dk tadil edildi).
-        (2) Randevu bir `AppointmentBooking`'e bağlıysa pencere **booking
-        açıklığı** üzerinden hesaplanır: `min(startsAt) - 10dk` …
-        `max(endsAt) + 15dk` — çoklu slotta hasta 14:00'da odadan DÜŞMEZ.
+        **ZAMAN PENCERESİ KALDIRILDI (2026-09-15, integration-agent; bu kontrat
+        metni 2026-09-16'da architect tarafından koda UYDURULDU — aşağıdaki
+        §9.7.6 maddeleri (1) ve (2) YÜRÜRLÜKTEN KALKTI, tarihsel kayıt olarak
+        bırakılmıştır).** Bugünkü tek katılım şartı: `status ∈
+        {SCHEDULED, IN_PROGRESS}` **VE** (booking'e bağlıysa)
+        `booking.paymentStatus === "PAID"`. Hem doktor hem hasta AYNI kurala
+        tabidir; erken/geç katılım backend'de **ENGELLENMEZ**.
+
+
+        **ERKEN KATILIM UYARISI — sunucu tarafı davranış
+        (`.claude/architect-scope-support-desk-and-reminders.md` §1, BAĞLAYICI):**
+        `startsAt - now > 10 dk` iken katılım **yine de İZİNLİDİR** (bu bir
+        kısıt değil, bilgilendirmedir; onay modalı yalnızca istemci tarafındadır).
+        Sunucu **yeni bir uç açmaz ve yeni bir hata kodu üretmez**; mevcut
+        `telehealth.meeting_token.issued` audit kaydının `metadata`'sına
+        SUNUCU SAATİNDEN hesaplanan iki alan eklenir:
+        `earlyJoin: boolean` ve `minutesBeforeStart: integer`
+        (negatif = randevu saatinden SONRA katılım). İstemci bu değerleri
+        GÖNDERMEZ ve etkileyemez — istemci saatiyle oynayan bir kullanıcı
+        yalnızca KENDİ modalını atlar, denetim izini bozamaz.
+        **Bu turda bir "erken katılım reddi" EKLENMEZ** — eklemek, 2026-09-15'te
+        bilinçli olarak kaldırılan pencere kısıtını geri getirir ve modalın
+        "Anladım, Odaya Katıl" butonunu yapısal olarak çalışmaz kılardı.
+
+
+        **§9.7.6 (kalan geçerli maddeler):**
         (3) Oda, booking'e bağlı randevularda
         **`AppointmentBooking.meetingRoomName`**'dir (booking başına TEK oda);
         `Appointment.meetingRoomName` yalnızca booking'siz eski satırlar için
@@ -7457,6 +7547,15 @@ paths:
         ve best-effort olarak `APPOINTMENT_RESCHEDULED` e-postasını hastaya (her zaman)
         ve doktora (yalnızca `DoctorProfile.userId` DOLUYSA) gönderir — gönderim
         BAŞARISIZ olsa da bu uç ASLA 500 dönmez.
+
+
+        **ZORUNLU YAN ETKİ (2026-09-16,
+        `.claude/architect-scope-support-desk-and-reminders.md` §2.6):** yeniden
+        planlama, randevunun `reminded60mAt` ve `reminded30mAt` damgalarını **AYNI
+        transaction içinde `null`'lar**. Aksi hâlde saati ileri alınan bir randevu
+        için hatırlatma e-postaları BİR DAHA ASLA gönderilmez (damga zaten
+        basılmıştır) — sessiz bir bildirim kaybı. Bu alanlar hiçbir DTO'da DÖNMEZ
+        (dâhilî süpürücü durumudur, bkz. §2.2).
       requestBody:
         required: true
         content:
@@ -10825,6 +10924,515 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
 
+  # ===========================================================================
+  # Canlı Destek (Support) — ZİYARETÇİ YÜZEYİ (PUBLIC, kimlik doğrulama YOK)
+  # `.claude/architect-scope-support-desk-and-reminders.md` §3
+  # ===========================================================================
+
+  /support/sessions:
+    post:
+      tags: [Support]
+      security: []
+      summary: Ziyaretçi sohbet oturumu başlat (PUBLIC)
+      description: >
+        Widget ilk mesaj gönderilmeden ÖNCE değil, **ilk mesajla BİRLİKTE** çağırır
+        (`message` zorunludur) — boş oturum çöpü üretmemek için. Yanıtta dönen
+        `accessToken` **BİR KEZ** görünür ve yalnızca hash'i saklanır; istemci onu
+        `sessionStorage`'da tutar (`localStorage` DEĞİL — paylaşılan cihazda kalıcı
+        PII bırakmaz, bağlayıcı).
+
+
+        `liveChatEnabled = false` VEYA `liveChatProvider ≠ "internal"` ise **`404`**.
+        Hız sınırı **3 istek/dakika/IP** (`SUPPORT_SESSION_CREATE_RATE_LIMIT`).
+        `visitorName`/`visitorEmail` OPSİYONELDİR ve DOĞRULANMAZ (kimlik iddiası
+        değildir; admin panelinde "ziyaretçi beyanı" olarak etiketlenir).
+
+
+        Oturum `status = PENDING` doğar. `ipAddress`/`userAgent` kaydedilir
+        (kötüye kullanım takibi) ve 30 gün sonra redakte edilir.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateSupportSessionRequest" }
+      responses:
+        "201":
+          description: Oturum oluşturuldu
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/CreateSupportSessionResponse" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /support/sessions/{sessionId}/messages:
+    parameters:
+      - $ref: "#/components/parameters/SupportSessionId"
+      - $ref: "#/components/parameters/SupportAccessToken"
+    get:
+      tags: [Support]
+      security: []
+      summary: Ziyaretçi — oturum mesajlarını çek (POLLING ucu)
+      description: >
+        **Gerçek zamanlılık polling iledir (SSE/WebSocket YOK — bkz. `Support` tag'i).**
+        Widget AÇIKKEN 5 saniyede bir çağrılır; kapalıyken ÇAĞRILMAZ; 10 dakika
+        etkisizlikten sonra durur.
+
+
+        `afterSeq` verilirse YALNIZCA o `seq`'ten büyük mesajlar döner (artımlı çekim —
+        tam dizi yeniden indirilmez). `meta.status` ile oturumun güncel durumu ve
+        `meta.lastSeq` ile bir sonraki `afterSeq` değeri döner.
+
+
+        Yetkilendirme YALNIZCA `?t=` iledir ve **sabit zamanlı** karşılaştırılır
+        (`timingSafeEqualHex`, `telehealth.livekit.routes.ts` disipliniyle AYNI).
+        Token yanlış/eksik → **`404`** (varlık sızdırılmaz). Hız sınırı
+        **60 istek/dakika/IP** (`SUPPORT_POLL_RATE_LIMIT`).
+
+
+        `senderUserId` ve temsilcinin e-postası bu yüzeyde **ASLA DÖNMEZ** — ajan
+        mesajlarında yalnızca `senderDisplayName` (site adı veya temsilcinin ADI,
+        ayar gereği) görünür.
+      parameters:
+        - $ref: "#/components/parameters/SupportAfterSeq"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/SupportChatMessagePublic" }
+                      meta:
+                        type: object
+                        required: [status, lastSeq]
+                        properties:
+                          status: { $ref: "#/components/schemas/SupportSessionStatus" }
+                          lastSeq: { type: integer, nullable: true, description: "Bu yanıttaki EN BÜYÜK `seq`; bir sonraki isteğin `afterSeq`'i. Mesaj yoksa `null` (istemci önceki değerini korur)." }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+    post:
+      tags: [Support]
+      security: []
+      summary: Ziyaretçi — mesaj gönder
+      description: >
+        Düz metin, en fazla 2000 karakter. HTML/Markdown **saklanmaz ve render
+        edilmez**. Oturum `CLOSED` ise **`409 SUPPORT_SESSION_CLOSED`** (ziyaretçi
+        kapanmış oturumu diriltemez; widget "yeni sohbet başlat" gösterir).
+        Oturumdaki mesaj sayısı 200'ü aşarsa **`409`**.
+
+
+        Başarılı gönderim oturumu `ANSWERED` → `PENDING`'e **geri çeker**
+        (temsilcinin yeni bir yanıtı beklendiğini gösterir) ve
+        `lastVisitorMessageAt`'i günceller. Hız sınırı **10 istek/dakika/IP**
+        (`SUPPORT_MESSAGE_RATE_LIMIT`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SendSupportMessageRequest" }
+      responses:
+        "201":
+          description: Gönderildi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/SupportChatMessagePublic" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "Oturum kapatılmış (`error.code: SUPPORT_SESSION_CLOSED`) veya mesaj üst sınırı aşıldı (`error.code: SUPPORT_MESSAGE_LIMIT`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  # ===========================================================================
+  # Canlı Destek (Support) — YÖNETİM MASASI (SiteRole = ADMIN veya MANAGER)
+  # ===========================================================================
+
+  /admin/support/sessions:
+    get:
+      tags: [Support]
+      summary: Destek oturumlarını listele (SiteRole=ADMIN veya MANAGER)
+      description: >
+        Cursor sayfalı, `seq DESC` (en yeni önce). `status` filtresi
+        (`PENDING` = bekliyor, `ANSWERED` = yanıtlandı, `CLOSED` = kapatıldı);
+        verilmezse HEPSİ döner. `assignedAgentId` filtresi ile "bana atananlar"
+        görünümü kurulur (`me` özel değeri desteklenir — istemci kendi id'sini
+        bilmek zorunda kalmaz).
+
+
+        `q` `visitorName`/`visitorEmail` üzerinde büyük/küçük harf duyarsız
+        `contains` araması yapar; **mesaj GÖVDELERİNDE ARAMA YAPMAZ**
+        (özel nitelikli veri içerebilir; tam metin arama bilinçli olarak
+        kapsam dışıdır — takip kalemi `feature/support-message-search`).
+
+
+        Liste yanıtı mesaj İÇERİĞİ TAŞIMAZ; yalnızca `lastMessagePreview`
+        (ilk 120 karakter, düz metin) döner — ContactSubmission liste ucunun
+        `data` alanını taşımama disipliniyle AYNI.
+
+
+        **Polling kadansı: 15 saniye** (bkz. `Support` tag'i).
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: status
+          in: query
+          required: false
+          schema: { $ref: "#/components/schemas/SupportSessionStatus" }
+        - name: assignedAgentId
+          in: query
+          required: false
+          description: "`me` = oturum sahibinin kendisi. UUID de verilebilir. `unassigned` = henüz atanmamış oturumlar."
+          schema: { type: string }
+        - name: q
+          in: query
+          required: false
+          schema: { type: string, maxLength: 100 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/SupportChatSessionSummary" }
+                      meta:
+                        type: object
+                        properties:
+                          nextCursor: { type: string, nullable: true }
+                          counts: { $ref: "#/components/schemas/SupportSessionCounts" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/support/sessions/{sessionId}:
+    parameters:
+      - $ref: "#/components/parameters/SupportSessionId"
+    get:
+      tags: [Support]
+      summary: Destek oturumu detayı (SiteRole=ADMIN veya MANAGER)
+      description: >
+        Yan etkisizdir — oturumu "okundu"/"yanıtlandı" İŞARETLEMEZ
+        (`GET /admin/contact/submissions/{id}` ile AYNI ilke: yan etkili GET
+        prefetch ile istem dışı tetiklenir). Durum yalnızca `PATCH` ile veya
+        temsilci MESAJ GÖNDERDİĞİNDE değişir.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/SupportChatSession" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [Support]
+      summary: Oturum durumunu güncelle — kapat/yeniden aç (SiteRole=ADMIN veya MANAGER)
+      description: >
+        Yalnızca `status` alanını taşır. `CLOSED`'a geçişte `closedAt`/`closedById`
+        doldurulur. `CLOSED` → `PENDING` (yeniden açma) İZİNLİDİR ve `closedAt`/
+        `closedById` temizlenir. `ANSWERED` bu uçtan **doğrudan SET EDİLEMEZ**
+        (`422`) — `ANSWERED` bir TÜREV durumdur, yalnızca temsilci mesaj
+        gönderdiğinde oluşur; elle set edilebilmesi iki ayrı doğruluk kaynağı
+        yaratırdı.
+
+
+        Audit: `support.session_status_change`. **`metadata`'ya ziyaretçi adı/
+        e-postası veya mesaj içeriği YAZILMAZ** (`contact.submission_status_change`
+        disipliniyle BİREBİR aynı) — yalnızca `targetId` + durum geçişi.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateSupportSessionRequest" }
+      responses:
+        "200":
+          description: Güncellendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/SupportChatSession" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+    delete:
+      tags: [Support]
+      summary: Oturumu ve tüm mesajlarını kalıcı sil (SiteRole=ADMIN veya MANAGER)
+      description: >
+        Geri alınamaz — çöp kutusu YOKTUR. KVKK silme talebinin (veri sahibi hakkı)
+        karşılığıdır; `DELETE /admin/contact/submissions/{id}` ile AYNI gerekçe ve
+        aynı yetki eşiği. Mesajlar `onDelete: Cascade` ile gider.
+        Audit: `support.session_delete`.
+      responses:
+        "204": { description: Silindi }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/support/sessions/{sessionId}/messages:
+    parameters:
+      - $ref: "#/components/parameters/SupportSessionId"
+    get:
+      tags: [Support]
+      summary: Oturum mesajlarını çek (SiteRole=ADMIN veya MANAGER, POLLING ucu)
+      description: >
+        `afterSeq` ile artımlı çekim — ziyaretçi ucuyla AYNI sözleşme.
+        **Açık sohbet dizisi için polling kadansı: 5 saniye.**
+        Bu yüzeyde `senderUserId` ve `senderDisplayName` DÖNER (kimin yanıtladığı
+        yönetim için gereklidir); ziyaretçi yüzeyinde DÖNMEZ.
+      parameters:
+        - $ref: "#/components/parameters/SupportAfterSeq"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/SupportChatMessage" }
+                      meta:
+                        type: object
+                        required: [status, lastSeq]
+                        properties:
+                          status: { $ref: "#/components/schemas/SupportSessionStatus" }
+                          lastSeq: { type: integer, nullable: true }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      tags: [Support]
+      summary: Temsilci yanıtı gönder (SiteRole=ADMIN veya MANAGER)
+      description: >
+        Düz metin, en fazla 2000 karakter. Başarılı gönderim **yan etki olarak**:
+        (1) `status` → `ANSWERED` (oturum `CLOSED` ise `409`),
+        (2) `lastAgentMessageAt` güncellenir,
+        (3) oturum HENÜZ ATANMAMIŞSA (`assignedAgentId = null`) **gönderene otomatik
+        atanır** — "yanıtlayan sahiplenir" kuralı; ayrı bir `assign` çağrısı
+        gerektirmeden atamasız oturum kalmasını engeller. Zaten BAŞKASINA atanmışsa
+        atama DEĞİŞMEZ (sessizce devralma YOK — devralmak için açık
+        `PATCH .../assign` gerekir).
+
+
+        `templateId` verilirse gövde, ilgili `SupportReplyTemplate.body`'sinden
+        DOLDURULUR; istemci yine de `body` göndermek ZORUNDADIR (şablon istemcide
+        düzenlenebilir — sunucu şablon metnini körlemesine yapıştırmaz). `templateId`
+        yalnızca `usageCount`/analitik ve audit için taşınır.
+
+
+        Audit: `support.message_sent` — **`metadata`'ya mesaj İÇERİĞİ YAZILMAZ**.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SendSupportAgentMessageRequest" }
+      responses:
+        "201":
+          description: Gönderildi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/SupportChatMessage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "Oturum kapatılmış (`error.code: SUPPORT_SESSION_CLOSED`) veya mesaj üst sınırı aşıldı (`error.code: SUPPORT_MESSAGE_LIMIT`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/support/sessions/{sessionId}/assign:
+    parameters:
+      - $ref: "#/components/parameters/SupportSessionId"
+    patch:
+      tags: [Support]
+      summary: Oturuma temsilci ata / atamayı kaldır (SiteRole=ADMIN veya MANAGER)
+      description: >
+        `agentId: null` → atamayı KALDIRIR (havuzа geri bırakır).
+        Hedef kullanıcı `status = ACTIVE` **ve** `role ∈ {ADMIN, MANAGER}` değilse
+        **`422`** (bkz. `Support` tag'i — rol kararı). Var olmayan kullanıcı da
+        `422` (`404` DEĞİL: hata gövdeye ait bir alandadır, kaynağa değil).
+
+
+        MANAGER **başkasına da atayabilir** — bu bir ayrıcalık yükseltmesi değildir
+        (hedefin yetkisi zaten rolünden gelir, atama yeni yetki VERMEZ).
+        Audit: `support.session_assigned` (`metadata: { fromAgentId, toAgentId }`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AssignSupportSessionRequest" }
+      responses:
+        "200":
+          description: Atandı
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/SupportChatSession" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/support/agents:
+    get:
+      tags: [Support]
+      summary: Atanabilir temsilci listesi (SiteRole=ADMIN veya MANAGER)
+      description: >
+        Atama dropdown'ını beslemek için DAR KAPSAMLI bir uç.
+        **`GET /admin/users` KULLANILAMAZ** — o uç `ADMIN`-only'dir (rbac-5-tier §5.3
+        satır 21: MANAGER `GET`'te de 403 alır, kullanıcı listesi bütünüyle PII'dir).
+        Bu uç YALNIZCA `{ id, name, role }` döner; **`email` ASLA dönmez**, `status`,
+        `lastLoginAt`, `createdAt` gibi alanlar dönmez.
+
+
+        Filtre sabittir ve istemciden GELMEZ: `status = ACTIVE` **ve**
+        `role ∈ {ADMIN, MANAGER}` **ve** `deletedAt IS NULL`. Sayfalama YOKTUR
+        (küçük ve sınırlı bir küme); `name ASC` sıralanır.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/SupportAgentSummary" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/support/templates:
+    get:
+      tags: [Support]
+      summary: Hazır yanıt şablonlarını listele (SiteRole=ADMIN veya MANAGER)
+      description: >
+        `sortOrder ASC, seq ASC` sıralı, **sayfalama YOKTUR** (yönetilebilir,
+        küçük bir küme — en fazla 100 satır, bkz. `POST`). `includeInactive=true`
+        verilmezse yalnızca `isActive = true` döner.
+      parameters:
+        - name: includeInactive
+          in: query
+          required: false
+          schema: { type: boolean, default: false }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/SupportReplyTemplate" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [Support]
+      summary: Hazır yanıt şablonu oluştur (SiteRole=ADMIN veya MANAGER)
+      description: >
+        Düz metin gövde (en fazla 2000 karakter — mesaj sınırıyla AYNI; şablon
+        gönderilemeyecek kadar uzun olamaz). Toplam şablon sayısı 100'ü aşarsa
+        **`409`**. `sortOrder` verilmezse mevcut en büyük değerin 10 fazlası atanır.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateSupportReplyTemplateRequest" }
+      responses:
+        "201":
+          description: Oluşturuldu
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/SupportReplyTemplate" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/support/templates/{templateId}:
+    parameters:
+      - $ref: "#/components/parameters/SupportTemplateId"
+    patch:
+      tags: [Support]
+      summary: Hazır yanıt şablonunu güncelle (SiteRole=ADMIN veya MANAGER)
+      description: "Kısmi güncelleme — verilmeyen alanlar DEĞİŞMEZ. Boş gövde (`{}`) `422`."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateSupportReplyTemplateRequest" }
+      responses:
+        "200":
+          description: Güncellendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/SupportReplyTemplate" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+    delete:
+      tags: [Support]
+      summary: Hazır yanıt şablonunu sil (SiteRole=ADMIN veya MANAGER)
+      description: >
+        Kalıcı siler. Şablondan ÜRETİLMİŞ geçmiş mesajlar ETKİLENMEZ
+        (`SupportChatMessage.body` bir SNAPSHOT'tır, şablona referans TUTMAZ —
+        `OrderItem.productTitle` disipliniyle AYNI).
+      responses:
+        "204": { description: Silindi }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -10849,6 +11457,34 @@ components:
       in: path
       required: true
       schema: { type: string, format: uuid }
+    SupportSessionId:
+      name: sessionId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    SupportTemplateId:
+      name: templateId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    SupportAccessToken:
+      name: t
+      in: query
+      required: false
+      description: >
+        Ziyaretçi oturum token'ı (ham, opak) — `POST /support/sessions` yanıtında
+        BİR KEZ döner. Sunucuda yalnızca SHA-256 hash'i saklanır ve karşılaştırma
+        **sabit zamanlıdır**. Eksik/yanlış → `404` (varlık sızdırılmaz).
+      schema: { type: string }
+    SupportAfterSeq:
+      name: afterSeq
+      in: query
+      required: false
+      description: >
+        Artımlı çekim — yalnızca bu `seq` değerinden BÜYÜK mesajlar döner.
+        Verilmezse oturumun TÜM mesajları döner (`seq ASC`, en fazla 200 satır —
+        oturum başına mesaj üst sınırı zaten 200'dür, ayrı sayfalama GEREKMEZ).
+      schema: { type: integer, minimum: 0 }
     Cursor:
       name: cursor
       in: query
@@ -13735,6 +14371,15 @@ components:
         - APPOINTMENT_CONFIRMATION
         # NOT — 2026-09-15 (backend-agent, "Admin randevu yeniden planlama").
         - APPOINTMENT_RESCHEDULED
+        # NOT — 2026-09-16 (`.claude/architect-scope-support-desk-and-reminders.md` §2).
+        # `feature/telehealth-reminder-emails` backlog kaleminin KALAN parçası kapatıldı.
+        # İKİ AYRI amaç, TEK bir "reminder" amacı + değişken DEĞİL: konu satırları farklıdır
+        # ("1 Saat Kaldı" / "30 Dakika Kaldı"), admin ikisini AYRI AYRI düzenleyebilmelidir ve
+        # `email_templates_active_purpose_key` kısmi unique indeksi amaç başına tek aktif
+        # şablonu zaten garanti eder. Değişken setleri de FARKLIDIR: yalnızca 30 dk şablonunda
+        # `join_link` vardır (bkz. lib/email-variables.ts).
+        - APPOINTMENT_REMINDER_60M
+        - APPOINTMENT_REMINDER_30M
         - CUSTOM
 
     EmailTemplateEditorMode:
@@ -19432,3 +20077,242 @@ components:
             ile ikinci kopya üretildi, demo doktor/uzmanlık verisi oluşturuldu (§7.2
             madde 4), yasal yer tutucu sayfa oluşturuldu (§4.3).
           items: { type: string }
+
+    # -------------------------------------------------------------------------
+    # Canlı Destek (Support) — `.claude/architect-scope-support-desk-and-reminders.md` §3
+    # -------------------------------------------------------------------------
+    SupportSessionStatus:
+      type: string
+      description: >
+        `PENDING` = bekliyor (ziyaretçi yazdı, temsilci henüz yanıtlamadı),
+        `ANSWERED` = yanıtlandı (son mesaj temsilciden),
+        `CLOSED` = kapatıldı (yalnızca temsilci kapatır; ziyaretçi kapatamaz).
+
+
+        `PENDING`/`ANSWERED` **TÜREV** durumlardır — mesaj gönderimiyle otomatik
+        değişirler, `PATCH /admin/support/sessions/{id}` ile `ANSWERED` elle SET
+        EDİLEMEZ (`422`). Yalnızca `CLOSED` ↔ `PENDING` elle geçişlidir.
+      enum: [PENDING, ANSWERED, CLOSED]
+
+    SupportMessageSenderType:
+      type: string
+      description: "`VISITOR` = ziyaretçi, `AGENT` = destek temsilcisi (ADMIN/MANAGER)."
+      enum: [VISITOR, AGENT]
+
+    SupportChatMessagePublic:
+      type: object
+      description: >
+        **ZİYARETÇİ yüzeyi DTO'su.** `senderUserId` ve temsilcinin e-postası
+        BURADA ASLA BULUNMAZ (minimum ifşa — ziyaretçi personel kimliğini
+        öğrenemez). `senderDisplayName` yalnızca `AGENT` mesajlarında doludur.
+      required: [id, seq, senderType, body, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        seq:
+          type: integer
+          description: "Monoton artan sıra numarası — `afterSeq` artımlı çekiminin anahtarı. `createdAt` DEĞİL (aynı milisaniyede iki mesaj olabilir)."
+        senderType: { $ref: "#/components/schemas/SupportMessageSenderType" }
+        senderDisplayName:
+          type: string
+          nullable: true
+          description: "Ziyaretçiye gösterilen ad. `VISITOR` mesajlarında `null`. `AGENT` mesajlarında temsilcinin ADI (e-posta DEĞİL)."
+        body:
+          type: string
+          description: "**DÜZ METİN.** HTML/Markdown ne saklanır ne render edilir; istemci `textContent` olarak basar."
+        createdAt: { type: string, format: date-time }
+
+    SupportChatMessage:
+      allOf:
+        - $ref: "#/components/schemas/SupportChatMessagePublic"
+        - type: object
+          description: "**YÖNETİM yüzeyi DTO'su** — ziyaretçi DTO'suna `senderUserId` ekler."
+          properties:
+            senderUserId:
+              type: string
+              format: uuid
+              nullable: true
+              description: "`VISITOR` mesajlarında `null`. Temsilci silinirse `SetNull` ile `null`'a düşer; `senderDisplayName` SNAPSHOT olduğu için kaybolmaz."
+
+    SupportAgentSummary:
+      type: object
+      description: "`GET /admin/support/agents` öğesi. **`email` BİLİNÇLİ OLARAK YOKTUR** (bkz. o ucun açıklaması)."
+      required: [id, name, role]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        role:
+          type: string
+          description: "Yalnızca bu iki değer dönebilir — uç filtresi sabittir (`SiteRole` dosya genelinde satır-içi enum olarak yazılır, adlandırılmış bir şema YOKTUR)."
+          enum: [ADMIN, MANAGER]
+
+    SupportSessionCounts:
+      type: object
+      description: >
+        Sekme rozetleri. `ContentCounts` disipliniyle AYNI: istekteki `status`
+        filtresinden ETKİLENMEZ, her zaman TÜM oturumlar üzerinden hesaplanır.
+      required: [pending, answered, closed, all]
+      properties:
+        pending: { type: integer }
+        answered: { type: integer }
+        closed: { type: integer }
+        all: { type: integer }
+
+    SupportChatSessionSummary:
+      type: object
+      description: >
+        Liste DTO'su — **mesaj dizisi TAŞIMAZ** (yalnızca `lastMessagePreview`).
+        `GET /admin/contact/submissions`'ın `data` alanını taşımama disipliniyle AYNI.
+      required:
+        [id, seq, status, visitorName, visitorEmail, assignedAgent, messageCount, unreadForAgent, lastMessagePreview, lastMessageAt, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        seq: { type: integer, description: "Cursor sıralamasının anahtarı (`seq DESC`)." }
+        status: { $ref: "#/components/schemas/SupportSessionStatus" }
+        visitorName:
+          type: string
+          nullable: true
+          description: "Ziyaretçi BEYANI — doğrulanmamıştır, UI bunu açıkça etiketler."
+        visitorEmail:
+          type: string
+          nullable: true
+          description: "Ziyaretçi BEYANI, doğrulanmamıştır. **Maskelenmez** (temsilci dönüş yapacak — `ContactSubmission` ile aynı iş gerekçesi)."
+        visitorUserId:
+          type: string
+          format: uuid
+          nullable: true
+          description: "Ziyaretçi oturum açmışsa bağlı `User`. Misafirde `null` (`Cart.siteUserId` deseni)."
+        assignedAgent:
+          oneOf:
+            - $ref: "#/components/schemas/SupportAgentSummary"
+          nullable: true
+          description: "`null` = havuzda, atanmamış."
+        messageCount: { type: integer }
+        unreadForAgent:
+          type: integer
+          description: "Son temsilci mesajından SONRA gelen ziyaretçi mesajı sayısı. Temsilci hiç yazmadıysa tüm ziyaretçi mesajları sayılır. TÜREVDİR — ayrı bir `readAt` sütunu YOKTUR."
+        lastMessagePreview:
+          type: string
+          nullable: true
+          description: "Son mesajın ilk **120** karakteri, düz metin. Tam içerik yalnızca detay/mesaj uçlarında döner."
+        lastMessageAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    SupportChatSession:
+      allOf:
+        - $ref: "#/components/schemas/SupportChatSessionSummary"
+        - type: object
+          description: "Detay DTO'su. Mesajlar AYRI uçtan çekilir (`.../messages`) — detay yanıtı mesaj dizisi GÖMMEZ, çünkü o uç 5 saniyede bir poll edilir ve detayın tekrar tekrar indirilmesi gereksizdir."
+          properties:
+            pageUrl:
+              type: string
+              nullable: true
+              description: "Sohbetin başlatıldığı sayfa (bağlam). Ziyaretçi tarafından gönderilir, DOĞRULANMAZ; `maxLength: 500`."
+            locale: { type: string, nullable: true, description: "Sohbetin başlatıldığı dil kodu." }
+            ipAddress:
+              type: string
+              nullable: true
+              description: "30 gün sonra `null`'lanır (`piiRedactedAt`). **Yalnızca detayda döner, listede DÖNMEZ.**"
+            userAgent: { type: string, nullable: true, description: "30 gün sonra `null`'lanır." }
+            piiRedactedAt: { type: string, format: date-time, nullable: true }
+            assignedAt: { type: string, format: date-time, nullable: true }
+            closedAt: { type: string, format: date-time, nullable: true }
+            closedBy:
+              oneOf:
+                - $ref: "#/components/schemas/SupportAgentSummary"
+              nullable: true
+
+    CreateSupportSessionRequest:
+      type: object
+      description: "Oturum İLK MESAJLA BİRLİKTE açılır — boş oturum çöpü üretilmez."
+      required: [message]
+      properties:
+        message: { type: string, minLength: 1, maxLength: 2000, description: "Düz metin." }
+        visitorName: { type: string, maxLength: 120, nullable: true }
+        visitorEmail: { type: string, format: email, maxLength: 200, nullable: true }
+        pageUrl: { type: string, maxLength: 500, nullable: true }
+        locale: { type: string, maxLength: 10, nullable: true }
+
+    CreateSupportSessionResponse:
+      type: object
+      required: [sessionId, accessToken, status, message]
+      properties:
+        sessionId: { type: string, format: uuid }
+        accessToken:
+          type: string
+          description: >
+            **BİR KEZ** döner, bir daha ASLA. Sunucuda yalnızca SHA-256 hash'i
+            saklanır. İstemci `sessionStorage`'da tutar (`localStorage` DEĞİL).
+            Kaybolursa ziyaretçi yeni bir oturum başlatır — "oturumumu kurtar"
+            akışı BİLİNÇLİ OLARAK YOKTUR (e-posta doğrulaması gerektirirdi).
+        status: { $ref: "#/components/schemas/SupportSessionStatus" }
+        message: { $ref: "#/components/schemas/SupportChatMessagePublic" }
+
+    SendSupportMessageRequest:
+      type: object
+      required: [body]
+      properties:
+        body: { type: string, minLength: 1, maxLength: 2000, description: "Düz metin." }
+
+    SendSupportAgentMessageRequest:
+      type: object
+      required: [body]
+      properties:
+        body: { type: string, minLength: 1, maxLength: 2000, description: "Düz metin. Şablon kullanılsa bile istemci GÖNDERMEK ZORUNDADIR." }
+        templateId:
+          type: string
+          format: uuid
+          nullable: true
+          description: "Yalnızca analitik/audit içindir; sunucu gövdeyi bundan TÜRETMEZ. Bilinmeyen id → `422`."
+
+    UpdateSupportSessionRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [PENDING, CLOSED]
+          description: "`ANSWERED` KABUL EDİLMEZ (`422`) — türev durumdur."
+
+    AssignSupportSessionRequest:
+      type: object
+      required: [agentId]
+      properties:
+        agentId:
+          type: string
+          format: uuid
+          nullable: true
+          description: "`null` → atamayı kaldırır. Hedef `ACTIVE` ve `role ∈ {ADMIN, MANAGER}` değilse `422`."
+
+    SupportReplyTemplate:
+      type: object
+      required: [id, seq, title, body, sortOrder, isActive, usageCount, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        seq: { type: integer }
+        title: { type: string, maxLength: 120 }
+        body: { type: string, maxLength: 2000, description: "Düz metin." }
+        sortOrder: { type: integer, description: "Artan sıra. Eşitlikte `seq ASC`." }
+        isActive: { type: boolean }
+        usageCount: { type: integer, description: "`templateId` ile gönderilen mesaj sayısı — sayaç, silinen mesajlardan ETKİLENMEZ." }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    CreateSupportReplyTemplateRequest:
+      type: object
+      required: [title, body]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 120 }
+        body: { type: string, minLength: 1, maxLength: 2000 }
+        sortOrder: { type: integer, nullable: true, description: "Verilmezse mevcut en büyük + 10." }
+        isActive: { type: boolean, default: true }
+
+    UpdateSupportReplyTemplateRequest:
+      type: object
+      description: "Kısmi güncelleme. En az bir alan ZORUNLU — boş gövde `422`."
+      minProperties: 1
+      properties:
+        title: { type: string, minLength: 1, maxLength: 120 }
+        body: { type: string, minLength: 1, maxLength: 2000 }
+        sortOrder: { type: integer }
+        isActive: { type: boolean }

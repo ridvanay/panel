@@ -114,9 +114,16 @@ test("madde 1: liveChatEnabled KAPALIYKEN ana sayfada ve hasta portalında widge
 
 // =============================================================================
 // 2) Admin panelinden AÇ (internal sağlayıcı) — ana sayfada/hasta portalında ikon görünür, panel
-// açılır (selamlama dahil), mesaj gönderilir + ~800ms sonra sabit otomatik yanıt gelir.
-// =============================================================================
-test("madde 2: admin panelinden 'Canlı Destek' AÇILIR (internal) — widget ikonu görünür, panel açılır, mesaj gönderilir, otomatik yanıt gelir", async ({
+// açılır (selamlama dahil), mesaj GERÇEK backend'e (`POST /support/sessions`) gönderilir ve
+// SAYFA YENİLENİNCE `sessionStorage` token'ı ile KALICI olarak geri gelir.
+//
+// qa-agent — `.claude/architect-scope-support-desk-and-reminders.md` §3.1 turu (2026-09-16)
+// `InternalChatPanel`'in istemci taraflı mock'unu (`AUTO_REPLY_TEXT`, `setTimeout`) KALDIRDI ve
+// widget'ı gerçek, kalıcı, sunucu taraflı bir sohbet sistemine bağladı — bu testin ESKİ "sabit
+// otomatik yanıt gelir" iddiası bu YÜZDEN artık YANLIŞTIR (regresyon değil, BİLİNÇLİ davranış
+// değişikliği — bkz. [ASD] §3.1 "önceki kararın bilinçli olarak tersine çevrilmesi"). qa-agent
+// bu turda testi GERÇEK backend akışına göre GÜNCELLEDİ (§4.8 madde 12 kalıcılık kanıtı dahil).
+test("madde 2: admin panelinden 'Canlı Destek' AÇILIR (internal) — widget ikonu görünür, panel açılır, mesaj GERÇEK backend'e gönderilir ve sayfa yenilenince KALICI kalır", async ({
   browser,
 }) => {
   test.setTimeout(150_000);
@@ -161,18 +168,35 @@ test("madde 2: admin panelinden 'Canlı Destek' AÇILIR (internal) — widget ik
     await expect(dialog).toBeVisible({ timeout: 10_000 });
     await expect(dialog.getByText("Merhaba! Randevu veya teknik konularda size nasıl yardımcı olabiliriz?")).toBeVisible();
 
+    // KVKK/sağlık uyarısı SÜREKLİ görünür (kapatılamaz) — [ASD] §3.7 / compliance-notes-support-desk.md §4.
+    await expect(
+      dialog.getByText("Lütfen sağlık durumunuza ilişkin ayrıntı paylaşmayın; tıbbi konular için randevu oluşturun.")
+    ).toBeVisible();
+
     const messageInput = dialog.getByLabel("Mesajınızı yazın");
     const sendButton = dialog.getByRole("button", { name: "Mesajı gönder" });
-    await messageInput.fill("qa-agent test mesajı — randevumu değiştirmek istiyorum.");
-    await sendButton.click();
+    const testMessage = `qa-agent test mesajı — randevumu değiştirmek istiyorum. (${Date.now().toString(36)})`;
+    const [createSessionResponse] = await Promise.all([
+      page.waitForResponse((res) => /\/support\/sessions$/.test(res.url()) && res.request().method() === "POST"),
+      (async () => {
+        await messageInput.fill(testMessage);
+        await sendButton.click();
+      })(),
+    ]);
+    expect(createSessionResponse.status(), "qa-agent: POST /support/sessions 201 dönmeli (GERÇEK backend).").toBe(201);
+    await expect(dialog.getByText(testMessage)).toBeVisible();
 
-    await expect(dialog.getByText("qa-agent test mesajı — randevumu değiştirmek istiyorum.")).toBeVisible();
-    // ~800ms gecikmeli SABİT otomatik yanıt (gerçek insan/AI DEĞİL, istemci tarafı mock).
-    await expect(dialog.getByText("Mesajınız alındı, ekibimiz en kısa sürede size dönüş yapacaktır.")).toBeVisible({ timeout: 3_000 });
+    // Kalıcılık kanıtı ([ASD] §3.5 madde 12 — eski istemci taraflı mock'un DÜŞTÜĞÜ yer): sayfa
+    // YENİLENİNCE mesaj `sessionStorage` token'ıyla backend'den GERİ GELİR, KAYBOLMAZ.
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await trigger.click();
+    const reopenedDialog = page.getByRole("dialog");
+    await expect(reopenedDialog).toBeVisible({ timeout: 10_000 });
+    await expect(reopenedDialog.getByText(testMessage)).toBeVisible({ timeout: 10_000 });
 
     // Kapatma butonu çalışır.
-    await dialog.getByRole("button", { name: "Sohbeti kapat" }).click();
-    await expect(dialog).toHaveCount(0);
+    await reopenedDialog.getByRole("button", { name: "Sohbeti kapat" }).click();
+    await expect(reopenedDialog).toHaveCount(0);
   } finally {
     await context.close();
   }

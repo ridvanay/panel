@@ -112,3 +112,17 @@ export const BOOKING_RESEND_LINK_RATE_LIMIT = { max: 1, timeWindow: "1 minute" }
  * değer/gerekçe: kaba kuvvet/otomatik Stripe session spam'ine karşı route-level sıkı tavan).
  */
 export const BOOKING_CHECKOUT_SESSION_RATE_LIMIT = { max: 10, timeWindow: "1 minute" };
+
+// ---------------------------------------------------------------------------
+// [ASD] Canlı Destek (Support) — değerler `.claude/architect-scope-support-desk-and-reminders.md`
+// §3.5/§3.6 madde 4 tablosuyla BAĞLAYICI olarak bire bir eşleşir.
+// ---------------------------------------------------------------------------
+
+/** `POST /support/sessions` — public, kimliksiz YAZMA ucu. Oturum+ilk mesajı BİRLİKTE açar. */
+export const SUPPORT_SESSION_CREATE_RATE_LIMIT = { max: 3, timeWindow: "1 minute" };
+
+/** `POST /support/sessions/{id}/messages` VE `POST /admin/support/sessions/{id}/messages`. */
+export const SUPPORT_MESSAGE_RATE_LIMIT = { max: 10, timeWindow: "1 minute" };
+
+/** `GET /support/sessions/{id}/messages` — ziyaretçi POLLING ucu (IP tabanı). */
+export const SUPPORT_POLL_RATE_LIMIT = { max: 60, timeWindow: "1 minute" };

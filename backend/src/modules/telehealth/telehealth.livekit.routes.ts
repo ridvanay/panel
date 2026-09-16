@@ -13,6 +13,7 @@ import { timingSafeEqualHex } from "../../lib/api-key";
 import { logAudit } from "../../lib/audit";
 import { AppointmentIdParamSchema, AccessTokenQuerySchema, CompleteAppointmentRequestSchema } from "./telehealth.schemas";
 import { createMeetingToken, isLiveKitConfigured } from "./lib/livekit";
+import { computeEarlyJoinAuditMetadata } from "./lib/early-join";
 import { encryptSecret } from "../../lib/crypto";
 import { sanitizeRichHtml } from "../../lib/html-sanitize";
 
@@ -165,13 +166,20 @@ export async function telehealthLiveKitRoutes(app: FastifyInstance) {
       }
 
       // §8 madde 1 (bağlayıcı) — başarılı HER üretimde audit. `metadata`'ya token/URL YAZILMAZ.
+      // [ASD] §1.2/§1.3 (bağlayıcı) — `earlyJoin`/`minutesBeforeStart` SUNUCU saatinden
+      // `appointment.startsAt`ten hesaplanır, istemciden ASLA gelmez. Backend bu bilgiyi
+      // SADECE loglar — katılımı REDDETMEZ (kontrol tamamen frontend modalindedir).
       await logAudit(app, {
         actorId: request.user?.id ?? null,
         actorEmail: request.user?.email ?? null,
         action: "telehealth.meeting_token.issued",
         targetType: "Appointment",
         targetId: appointment.id,
-        metadata: { participantKind: isDoctor ? "doctor" : "patient", viaAdmin: request.user?.role === "ADMIN" },
+        metadata: {
+          participantKind: isDoctor ? "doctor" : "patient",
+          viaAdmin: request.user?.role === "ADMIN",
+          ...computeEarlyJoinAuditMetadata(appointment.startsAt),
+        },
         ipAddress: request.ip,
       });
 

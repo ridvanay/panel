@@ -54,7 +54,12 @@ export type ApiErrorCode =
   // NOT — 2026-09-15 (backend-agent, "Admin randevu yeniden planlama") — `PATCH
   // /admin/telehealth/appointments/{id}/reschedule`, doktorun yeni zaman aralığında başka bir
   // AKTİF randevusu varsa (kendisi HARİÇ) 409 ile döner (bkz. `backend/src/lib/errors.ts`).
-  | "APPOINTMENT_RESCHEDULE_CONFLICT";
+  | "APPOINTMENT_RESCHEDULE_CONFLICT"
+  // `.claude/architect-scope-support-desk-and-reminders.md` §3.5 — Canlı Destek (`Support` tag).
+  // `POST .../messages` (ziyaretçi VE yönetim): oturum `CLOSED` iken 409; mesaj üst sınırı
+  // (200/oturum) aşıldığında da 409, farklı kodla.
+  | "SUPPORT_SESSION_CLOSED"
+  | "SUPPORT_MESSAGE_LIMIT";
 
 export type MembershipRole = "OWNER" | "ADMIN" | "MEMBER";
 export type MembershipStatus = "ACTIVE" | "INVITED" | "SUSPENDED";
@@ -1696,21 +1701,15 @@ export interface SiteSettings {
    */
   demoPaymentsSupported: boolean;
   /**
-   * NOT — 2026-09-15 (frontend-agent, "Sağ alt canlı destek widget'ı") — Prisma sütunları
-   * (`SiteSettings.liveChatEnabled`/`liveChatProvider`/`liveChatScriptId`) db-agent tarafından
-   * eklendi, AMA backend `toSiteSettingsDto` (mappers/index.ts) + `SiteSettingsSchema`
-   * (schemas/entities.ts) + `settings.schemas.ts::UpdateSiteSettingsRequestSchema` + openapi.yaml
-   * `SiteSettings`/`UpdateSiteSettingsRequest` şemaları BU ALANLARI HENÜZ TAŞIMIYOR — bu bir
-   * backend-agent EKSİĞİDİR (frontend-agent'ın görevi değil). Gerçek API yanıtında bu alanlar
-   * `undefined` gelecektir; widget/admin formu bunu GÜVENLİ (kapalı) varsayılan olarak ele alır
-   * (bkz. `live-chat-widget.tsx`, `fetchSiteSettingsServer`'daki `DEFAULT_SETTINGS`). Backend
-   * mapper/schema/route wiring'i TAMAMLANANA kadar bu alanlar runtime'da HİÇBİR ZAMAN gerçek bir
-   * değerle dolmaz.
+   * `.claude/architect-scope-support-desk-and-reminders.md` §3.1 — 2026-09-15 tarihli "backend
+   * wiring eksik" tespiti bu tur itibarıyla YANLIŞTIR: `schemas/entities.ts`, `mappers/index.ts`
+   * ve `openapi.yaml` bu alanları ZATEN taşıyor. `liveChatProvider = "internal"` artık gerçek,
+   * kalıcı, sunucu taraflı bir sohbet sistemidir (bkz. `live-chat-widget.tsx`).
    */
-  // Backend wiring TAMAMLANANA kadar gerçek yanıtta HİÇ BULUNMAYABİLİR — bu yüzden BİLİNÇLİ
-  // olarak opsiyonel tutulur (`demoPaymentsEnabled`in aksine); bu, diğer ajanların (ör.
-  // `site-header-*.test.tsx` mock'ları) mevcut TAM `SiteSettings` literallerini KIRMAZ.
-  // Backend mapper/şema wiring'i tamamlandığında bu alanlar zorunlu hale getirilebilir.
+  // `openapi.yaml`da opsiyonel (satır kaydı yoksa `DEFAULTS` ile upsert edilir) — bu yüzden
+  // opsiyonel tutulur; bu, diğer ajanların (ör. `site-header-*.test.tsx` mock'ları) mevcut TAM
+  // `SiteSettings` literallerini KIRMAZ. Widget `=== true` katı eşitliğiyle GÜVENLİ (kapalı)
+  // varsayılanı korur.
   liveChatEnabled?: boolean;
   /** `"internal" | "crisp" | "tawkto"` — backend serbest metin döner (enum DEĞİL, bkz. Prisma şeması). */
   liveChatProvider?: "internal" | "crisp" | "tawkto";
@@ -1732,7 +1731,7 @@ export interface UpdateSiteSettingsRequest {
   shippingEstimatedDaysMax?: number | null;
   /** HAM DB sütununa yazılır — `demoPaymentsSupported`e YAZILAMAZ (o salt-okunur bir mapper alanı). */
   demoPaymentsEnabled?: boolean;
-  /** Bkz. `SiteSettings.liveChatEnabled` yorumu — backend wiring TAMAMLANANA kadar bu alan sunucu tarafından yoksayılır (sessizce düşürülür). */
+  /** Bkz. `SiteSettings.liveChatEnabled` yorumu — HAM DB sütununa yazılır (admin aç/kapa). */
   liveChatEnabled?: boolean;
   liveChatProvider?: "internal" | "crisp" | "tawkto";
   liveChatScriptId?: string | null;
@@ -2293,6 +2292,161 @@ export interface CreateContactSubmissionResponse {
   id: string;
   /** `ContactForm.successMessage`. */
   message: string;
+}
+
+/**
+ * Canlı Destek (Support) — `.claude/architect-scope-support-desk-and-reminders.md` §3,
+ * `openapi.yaml` `Support` tag'i (tek doğru kaynak). Ziyaretçi yüzeyi (`*Public`/`security: []`)
+ * ile yönetim yüzeyi (ADMIN/MANAGER) DTO'ları bilinçli olarak AYRIDIR — ziyaretçi yüzeyi
+ * `senderUserId`/temsilci e-postası TAŞIMAZ (minimum ifşa, bkz. §3.6).
+ */
+
+export type SupportSessionStatus = "PENDING" | "ANSWERED" | "CLOSED";
+
+export type SupportMessageSenderType = "VISITOR" | "AGENT";
+
+/** ZİYARETÇİ yüzeyi DTO'su. `senderUserId` ve temsilcinin e-postası BURADA ASLA BULUNMAZ. */
+export interface SupportChatMessagePublic {
+  id: string;
+  seq: number;
+  senderType: SupportMessageSenderType;
+  /** Ziyaretçiye gösterilen ad. `VISITOR` mesajlarında `null`. `AGENT` mesajlarında temsilcinin ADI (e-posta DEĞİL). */
+  senderDisplayName: string | null;
+  /** DÜZ METİN — HTML/Markdown ne saklanır ne render edilir. */
+  body: string;
+  createdAt: string;
+}
+
+/** YÖNETİM yüzeyi DTO'su — ziyaretçi DTO'suna `senderUserId` ekler (kimin yanıtladığı). */
+export interface SupportChatMessage extends SupportChatMessagePublic {
+  senderUserId: string | null;
+}
+
+/** `GET /admin/support/agents` öğesi. `email` BİLİNÇLİ OLARAK YOKTUR. */
+export interface SupportAgentSummary {
+  id: string;
+  name: string;
+  role: "ADMIN" | "MANAGER";
+}
+
+/** Sekme rozetleri — istekteki `status` filtresinden ETKİLENMEZ, her zaman TÜM oturumlar üzerinden. */
+export interface SupportSessionCounts {
+  pending: number;
+  answered: number;
+  closed: number;
+  all: number;
+}
+
+/** Liste DTO'su — mesaj dizisi TAŞIMAZ, yalnızca `lastMessagePreview` (ilk 120 karakter). */
+export interface SupportChatSessionSummary {
+  id: string;
+  seq: number;
+  status: SupportSessionStatus;
+  /** Ziyaretçi BEYANI — doğrulanmamıştır. */
+  visitorName: string | null;
+  /** Ziyaretçi BEYANI — doğrulanmamıştır. Maskelenmez. */
+  visitorEmail: string | null;
+  visitorUserId: string | null;
+  /** `null` = havuzda, atanmamış. */
+  assignedAgent: SupportAgentSummary | null;
+  messageCount: number;
+  /** Son temsilci mesajından SONRA gelen ziyaretçi mesajı sayısı. TÜREVDİR. */
+  unreadForAgent: number;
+  lastMessagePreview: string | null;
+  lastMessageAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Detay DTO'su — mesajlar AYRI uçtan çekilir (`.../messages`). */
+export interface SupportChatSession extends SupportChatSessionSummary {
+  pageUrl: string | null;
+  locale: string | null;
+  /** 30 gün sonra `null`'lanır. Yalnızca detayda döner, listede DÖNMEZ. */
+  ipAddress: string | null;
+  userAgent: string | null;
+  piiRedactedAt: string | null;
+  assignedAt: string | null;
+  closedAt: string | null;
+  closedBy: SupportAgentSummary | null;
+}
+
+/** Oturum İLK MESAJLA BİRLİKTE açılır — boş oturum çöpü üretilmez. */
+export interface CreateSupportSessionRequest {
+  message: string;
+  visitorName?: string | null;
+  visitorEmail?: string | null;
+  pageUrl?: string | null;
+  locale?: string | null;
+}
+
+export interface CreateSupportSessionResponse {
+  sessionId: string;
+  /** BİR KEZ döner, bir daha ASLA — istemci `sessionStorage`'da tutar (`localStorage` DEĞİL). */
+  accessToken: string;
+  status: SupportSessionStatus;
+  message: SupportChatMessagePublic;
+}
+
+export interface SendSupportMessageRequest {
+  body: string;
+}
+
+export interface SendSupportAgentMessageRequest {
+  body: string;
+  /** Yalnızca analitik/audit içindir; sunucu gövdeyi bundan TÜRETMEZ. */
+  templateId?: string | null;
+}
+
+/** `ANSWERED` KABUL EDİLMEZ (`422`) — türev durumdur. */
+export interface UpdateSupportSessionRequest {
+  status: "PENDING" | "CLOSED";
+}
+
+/** `agentId: null` → atamayı KALDIRIR. */
+export interface AssignSupportSessionRequest {
+  agentId: string | null;
+}
+
+export interface SupportReplyTemplate {
+  id: string;
+  seq: number;
+  title: string;
+  /** Düz metin. */
+  body: string;
+  sortOrder: number;
+  isActive: boolean;
+  usageCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateSupportReplyTemplateRequest {
+  title: string;
+  body: string;
+  /** Verilmezse mevcut en büyük + 10. */
+  sortOrder?: number | null;
+  isActive?: boolean;
+}
+
+export interface UpdateSupportReplyTemplateRequest {
+  title?: string;
+  body?: string;
+  sortOrder?: number;
+  isActive?: boolean;
+}
+
+/** `GET .../messages` (ziyaretçi VE yönetim) — `apiFetchWithMeta`'nın `meta` şekli. */
+export interface SupportMessagesMeta {
+  status: SupportSessionStatus;
+  /** Bu yanıttaki EN BÜYÜK `seq`; bir sonraki `afterSeq`. Mesaj yoksa `null`. */
+  lastSeq: number | null;
+}
+
+/** `GET /admin/support/sessions` — `apiFetchWithMeta`'nın `meta` şekli. */
+export interface SupportSessionsListMeta {
+  nextCursor: string | null;
+  counts: SupportSessionCounts;
 }
 
 /**

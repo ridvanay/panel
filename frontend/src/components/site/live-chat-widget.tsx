@@ -1,33 +1,31 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
+import Link from "next/link";
 import Script from "next/script";
 import { motion, AnimatePresence } from "framer-motion";
 import { MessageCircle, Send, X } from "lucide-react";
-import type { SiteSettings } from "@/lib/api/types";
+import * as supportApi from "@/lib/api/support";
+import { ApiClientError } from "@/lib/api/error";
+import { friendlyErrorMessage } from "@/lib/api/friendly-error";
+import { fetchLegalPagesClient, resolveKvkkNoticePage } from "@/lib/legal-pages";
+import { useLocalizePath } from "@/context/locale-alternates-context";
+import type { SitePage, SiteSettings, SupportChatMessagePublic, SupportSessionStatus } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 
 /**
- * Görev (2026-09-15) — Sağ alt canlı destek widget'ı. `settings` `(site)/layout.tsx`'ten (server
- * component, `fetchSiteSettingsServer()`) props olarak GELİR — `booking-payment-step.tsx`'teki
- * ayrı bir client-side `getPublicSettings()` çağrısı İCAT EDİLMEDİ, zaten sunucu tarafında
- * YÜKLENMİŞ olan `settings` yeniden kullanılır (fazladan bir network isteği önlenir).
+ * `.claude/architect-scope-support-desk-and-reminders.md` §3 — Sağ alt canlı destek widget'ı.
+ * `settings` `(site)/layout.tsx`'ten (server component, `fetchSiteSettingsServer()`) props olarak
+ * GELİR — ayrı bir client-side `getPublicSettings()` çağrısı İCAT EDİLMEZ.
  *
- * NOT (backend-agent EKSİĞİ, bkz. `types.ts::SiteSettings.liveChatEnabled` yorumu) — Prisma
- * sütunları eklendi ama backend `toSiteSettingsDto`/`SiteSettingsSchema`/openapi.yaml şemaları
- * BU ALANLARI HENÜZ TAŞIMIYOR. Bu yüzden `settings.liveChatEnabled` gerçek ortamda `undefined`
- * gelecektir — aşağıdaki `=== true` katı eşitlik kontrolü BUNU GÜVENLİ (kapalı/render etmeme)
- * şekilde ele alır; backend wiring tamamlandığında herhangi bir frontend değişikliği GEREKMEZ.
+ * `liveChatProvider = "internal"` artık gerçek, kalıcı, sunucu taraflı bir sohbet sistemidir
+ * (2026-09-15 kararının BİLİNÇLİ tersine çevrilmesi — [ASD] §3.1). `schemas/entities.ts`,
+ * `mappers/index.ts` ve `openapi.yaml` `liveChatEnabled`/`liveChatProvider`/`liveChatScriptId`
+ * alanlarını ZATEN taşıyor; `=== true` katı eşitliği yalnızca savunma amaçlı KALIR (zararsız).
  */
 interface LiveChatWidgetProps {
   settings: Pick<SiteSettings, "siteName" | "liveChatEnabled" | "liveChatProvider" | "liveChatScriptId">;
-}
-
-interface ChatMessage {
-  id: string;
-  from: "visitor" | "agent";
-  text: string;
 }
 
 /**
@@ -40,36 +38,190 @@ function isConsultationRoute(pathname: string | null): boolean {
   return /^\/(?:[a-z]{2}\/)?consultation(?:\/|$)/.test(pathname);
 }
 
-const AUTO_REPLY_DELAY_MS = 800;
-const AUTO_REPLY_TEXT = "Mesajınız alındı, ekibimiz en kısa sürede size dönüş yapacaktır.";
+/**
+ * `?afterSeq=` artımlı çekim ile ziyaretçi mesajları — [ASD] §3.3 bağlayıcı kadanslar: panel
+ * AÇIKKEN 5sn'de bir, KAPALIYKEN poll YOK (bu bileşen zaten yalnızca panel açıkken monte edilir),
+ * 10dk etkisizlikten sonra durur (kullanıcı etkileşiminde otomatik devam eder — `bump()`).
+ */
+const POLL_INTERVAL_MS = 5000;
+const POLL_INACTIVITY_LIMIT_MS = 10 * 60 * 1000;
+
+/**
+ * `accessToken` yanıtta BİR KEZ döner — `sessionStorage`'da tutulur (`localStorage` KESİNLİKLE
+ * DEĞİL, [ASD] §3 + compliance-notes-support-desk.md: paylaşılan cihazda kalıcı ziyaretçi PII
+ * izi bırakmasın). Sekme kapanınca/yeni sekmede otomatik silinir — bu BİLİNÇLİ bir tercihtir.
+ */
+const SUPPORT_SESSION_STORAGE_KEY = "support-chat-session";
+
+interface StoredSupportSession {
+  sessionId: string;
+  accessToken: string;
+}
+
+function readStoredSession(): StoredSupportSession | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(SUPPORT_SESSION_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<StoredSupportSession>;
+    if (!parsed.sessionId || !parsed.accessToken) return null;
+    return { sessionId: parsed.sessionId, accessToken: parsed.accessToken };
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredSession(session: StoredSupportSession | null): void {
+  if (typeof window === "undefined") return;
+  if (session) window.sessionStorage.setItem(SUPPORT_SESSION_STORAGE_KEY, JSON.stringify(session));
+  else window.sessionStorage.removeItem(SUPPORT_SESSION_STORAGE_KEY);
+}
 
 function InternalChatPanel({ siteName, onClose }: { siteName: string; onClose: () => void }) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const localize = useLocalizePath();
+  const [session, setSession] = useState<StoredSupportSession | null>(() => readStoredSession());
+  const [messages, setMessages] = useState<SupportChatMessagePublic[]>([]);
+  const [status, setStatus] = useState<SupportSessionStatus | null>(null);
+  const [loadingHistory, setLoadingHistory] = useState<boolean>(() => Boolean(readStoredSession()));
   const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  // §4 (compliance-notes-support-desk.md) — mevcut, site genelindeki KVKK Aydınlatma Metni
+  // sayfasına link verir (`telehealth-şablonundaki `kvkk-aydinlatma-metni` sayfasıyla AYNI
+  // kaynak) — yoksa düz metin bırakılır (yeni bir sayfa İCAT EDİLMEZ).
+  const [kvkkPage, setKvkkPage] = useState<Pick<SitePage, "title" | "slug"> | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const idRef = useRef(0);
+  const lastSeqRef = useRef<number | null>(null);
+  // eslint-disable-next-line react-hooks/purity -- `join-meeting-button.tsx` İLE AYNI gerekçe: 10dk etkisizlik penceresinin BAŞLANGICI, ilk render anındaki "şu an" yeterlidir
+  const lastActivityRef = useRef(Date.now());
+  // Yalnızca sayfa YÜKLENİRKEN `sessionStorage`'dan HİDRATE edilen oturumu tutar — `handleSend`'in
+  // YENİ oluşturduğu bir oturum bu ref'e YAZILMAZ. Aşağıdaki "ilk yükleme" efekti bu YÜZDEN yalnızca
+  // MOUNT'ta bir kez çalışır (`session` state'ine değil bu ref'e bakar); aksi halde `handleSend`
+  // `setSession(next)` çağırdığında `session?.sessionId` değişir ve efekt YENİDEN tetiklenip
+  // az önce zaten elde ettiğimiz mesaj geçmişini GEREKSİZ YERE tekrar ağdan çekerdi.
+  const hydratedSessionRef = useRef<StoredSupportSession | null>(session);
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
   }, [messages]);
 
-  function nextId() {
-    idRef.current += 1;
-    return `msg-${idRef.current}`;
+  useEffect(() => {
+    fetchLegalPagesClient()
+      .then((pages) => setKvkkPage(resolveKvkkNoticePage(pages)))
+      .catch(() => setKvkkPage(null));
+  }, []);
+
+  const resetSession = useCallback(() => {
+    writeStoredSession(null);
+    setSession(null);
+    setMessages([]);
+    setStatus(null);
+    lastSeqRef.current = null;
+  }, []);
+
+  function bump() {
+    lastActivityRef.current = Date.now();
   }
 
-  function handleSend(e: React.FormEvent) {
+  // İlk yükleme — YALNIZCA MOUNT'ta, `sessionStorage`'dan hidrate edilen bir oturum varsa (sayfa
+  // yenilenmeden ÖNCE de kurulmuş olabilir) TAM geçmişi çeker (`afterSeq` YOK — verilmezse TÜM
+  // mesajlar döner). Token geçersiz/eksikse (`404`) oturum sıfırlanır — widget "yeni sohbet
+  // başlat" durumuna sessizce düşer. `handleSend`'in YENİ kurduğu bir oturum İÇİN TEKRAR ÇALIŞMAZ
+  // (bkz. `hydratedSessionRef` yorumu) — o akış zaten ilk mesajı response'tan alıp state'e yazar.
+  useEffect(() => {
+    const initial = hydratedSessionRef.current;
+    if (!initial) {
+      setLoadingHistory(false);
+      return;
+    }
+    let cancelled = false;
+    setLoadingHistory(true);
+    supportApi
+      .getSupportMessages(initial.sessionId, initial.accessToken)
+      .then(({ items, meta }) => {
+        if (cancelled) return;
+        setMessages(items);
+        setStatus(meta.status);
+        if (meta.lastSeq !== null) lastSeqRef.current = meta.lastSeq;
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        if (err instanceof ApiClientError && err.status === 404) resetSession();
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingHistory(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- BİLİNÇLİ OLARAK yalnızca mount'ta bir kez çalışır (bkz. yukarıdaki yorum); `resetSession` referansı `useCallback` ile stabildir
+  }, []);
+
+  // Polling — 5sn kadans, 10dk etkisizlikten sonra fiilen durur (istek atılmaz) ama efekt/timer
+  // KENDİSİ sökülmez; bir sonraki kullanıcı etkileşimi (`bump()`) bir sonraki tick'te otomatik
+  // devam ettirir — ayrı bir "yeniden başlat" mekanizması GEREKMEZ.
+  useEffect(() => {
+    if (!session) return;
+    const timer = setInterval(() => {
+      if (Date.now() - lastActivityRef.current > POLL_INACTIVITY_LIMIT_MS) return;
+      supportApi
+        .getSupportMessages(session.sessionId, session.accessToken, lastSeqRef.current ?? undefined)
+        .then(({ items, meta }) => {
+          setStatus(meta.status);
+          if (meta.lastSeq !== null) lastSeqRef.current = meta.lastSeq;
+          if (items.length > 0) setMessages((prev) => [...prev, ...items]);
+        })
+        .catch((err) => {
+          if (err instanceof ApiClientError && err.status === 404) resetSession();
+        });
+    }, POLL_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [session, resetSession]);
+
+  async function handleSend(e: React.FormEvent) {
     e.preventDefault();
     const text = draft.trim();
-    if (!text) return;
-    setMessages((prev) => [...prev, { id: nextId(), from: "visitor", text }]);
-    setDraft("");
-    // İSTEMCİ TARAFLI MOCK — gerçek bir insan/AI YANITLAMAZ, kalıcı DEĞİLDİR (sayfa yenilenince
-    // sıfırlanır). Yeni bir backend/websocket altyapısı İCAT EDİLMEDİ (görev talimatı, bağlayıcı).
-    setTimeout(() => {
-      setMessages((prev) => [...prev, { id: nextId(), from: "agent", text: AUTO_REPLY_TEXT }]);
-    }, AUTO_REPLY_DELAY_MS);
+    if (!text || sending) return;
+    bump();
+    setSending(true);
+    setSendError(null);
+    try {
+      if (!session) {
+        const result = await supportApi.createSupportSession({
+          message: text,
+          pageUrl: typeof window !== "undefined" ? window.location.pathname : undefined,
+        });
+        const next: StoredSupportSession = { sessionId: result.sessionId, accessToken: result.accessToken };
+        writeStoredSession(next);
+        setSession(next);
+        setMessages([result.message]);
+        setStatus(result.status);
+        lastSeqRef.current = result.message.seq;
+      } else {
+        const message = await supportApi.sendSupportMessage(session.sessionId, session.accessToken, { body: text });
+        setMessages((prev) => [...prev, message]);
+        lastSeqRef.current = message.seq;
+        // Ziyaretçi mesajı her zaman oturumu `PENDING`e çeker (yeni oturumda zaten `PENDING`
+        // doğar; `ANSWERED`ken de "temsilcinin yeni yanıtı bekleniyor"a geri döner — [ASD] §3.5).
+        setStatus("PENDING");
+      }
+      setDraft("");
+    } catch (err) {
+      if (err instanceof ApiClientError && err.status === 404) {
+        resetSession();
+        setSendError("Oturumunuz sona ermiş. Yeni bir sohbet başlatabilirsiniz.");
+      } else if (err instanceof ApiClientError && err.code === "SUPPORT_SESSION_CLOSED") {
+        setStatus("CLOSED");
+        setSendError(null);
+      } else {
+        setSendError(friendlyErrorMessage(err));
+      }
+    } finally {
+      setSending(false);
+    }
   }
+
+  const isClosed = status === "CLOSED";
 
   return (
     <div
@@ -93,45 +245,91 @@ function InternalChatPanel({ siteName, onClose }: { siteName: string; onClose: (
         <div className="max-w-[85%] rounded-[var(--site-radius)] bg-muted px-3 py-2 text-sm text-foreground">
           Merhaba! Randevu veya teknik konularda size nasıl yardımcı olabiliriz?
         </div>
+        {loadingHistory && <p className="text-xs text-foreground/40">Yükleniyor…</p>}
         {messages.map((m) => (
           <div
             key={m.id}
             className={cn(
               "max-w-[85%] rounded-[var(--site-radius)] px-3 py-2 text-sm",
-              m.from === "visitor" ? "ml-auto bg-primary text-primary-foreground" : "bg-muted text-foreground"
+              m.senderType === "VISITOR" ? "ml-auto bg-primary text-primary-foreground" : "bg-muted text-foreground"
             )}
           >
-            {m.text}
+            {m.body}
           </div>
         ))}
       </div>
 
-      <form onSubmit={handleSend} className="flex items-center gap-2 border-t border-border p-3">
-        <label htmlFor="live-chat-message-input" className="sr-only">
-          Mesajınızı yazın
-        </label>
-        <input
-          id="live-chat-message-input"
-          type="text"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          placeholder="Mesajınızı yazın…"
-          className="h-9 w-full min-w-0 rounded-[var(--site-radius)] border border-input bg-transparent px-3 text-sm outline-none focus-visible:border-primary focus-visible:ring-3 focus-visible:ring-primary/30"
-        />
-        <button
-          type="submit"
-          aria-label="Mesajı gönder"
-          disabled={!draft.trim()}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--site-radius)] bg-primary text-primary-foreground transition-colors duration-300 hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          <Send className="h-4 w-4" aria-hidden="true" />
-        </button>
-      </form>
+      {/*
+       * `.claude/compliance-notes-support-desk.md` §4 — SÜREKLİ görünür, KAPATILAMAZ (dismissible
+       * DEĞİL), mesaj gönderme formunun SABİT bir parçası. Ne `sessionStorage` ne `localStorage`
+       * ile "bir daha gösterme" YAPILMAZ — her mesajdan önce hatırlatılmalıdır.
+       */}
+      <div className="space-y-1 border-t border-border bg-warning/5 px-4 py-2 text-xs text-foreground/70">
+        <p>Lütfen sağlık durumunuza ilişkin ayrıntı paylaşmayın; tıbbi konular için randevu oluşturun.</p>
+        <p>
+          Bu sohbeti kullanarak{" "}
+          {kvkkPage ? (
+            <Link
+              href={localize(`/${kvkkPage.slug}`)}
+              target="_blank"
+              className="underline underline-offset-2 hover:text-foreground"
+            >
+              KVKK Aydınlatma Metni
+            </Link>
+          ) : (
+            "KVKK Aydınlatma Metni"
+          )}
+          {"'"}ni kabul etmiş olursunuz.
+        </p>
+      </div>
+
+      {sendError && <p className="px-4 pt-2 text-xs text-danger">{sendError}</p>}
+
+      {isClosed ? (
+        <div className="flex items-center justify-between gap-2 border-t border-border p-3">
+          <p className="text-xs text-foreground/60">Bu sohbet kapatıldı.</p>
+          <button
+            type="button"
+            onClick={() => {
+              resetSession();
+              setSendError(null);
+            }}
+            className="text-xs font-medium text-primary hover:underline"
+          >
+            Yeni Sohbet Başlat
+          </button>
+        </div>
+      ) : (
+        <form onSubmit={(e) => void handleSend(e)} className="flex items-center gap-2 border-t border-border p-3">
+          <label htmlFor="live-chat-message-input" className="sr-only">
+            Mesajınızı yazın
+          </label>
+          <input
+            id="live-chat-message-input"
+            type="text"
+            value={draft}
+            onChange={(e) => {
+              setDraft(e.target.value);
+              bump();
+            }}
+            placeholder="Mesajınızı yazın…"
+            className="h-9 w-full min-w-0 rounded-[var(--site-radius)] border border-input bg-transparent px-3 text-sm outline-none focus-visible:border-primary focus-visible:ring-3 focus-visible:ring-primary/30"
+          />
+          <button
+            type="submit"
+            aria-label="Mesajı gönder"
+            disabled={!draft.trim() || sending}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--site-radius)] bg-primary text-primary-foreground transition-colors duration-300 hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Send className="h-4 w-4" aria-hidden="true" />
+          </button>
+        </form>
+      )}
     </div>
   );
 }
 
-/** "internal" sağlayıcı — kendi mock sohbet arayüzü. */
+/** "internal" sağlayıcı — kendi (gerçek backend'e bağlı) sohbet arayüzü. */
 function InternalLiveChatWidget({ siteName }: { siteName: string }) {
   const [open, setOpen] = useState(false);
 
@@ -195,15 +393,15 @@ export function LiveChatWidget({ settings }: LiveChatWidgetProps) {
   // Video oda kontrollerinin ÜSTÜNE BİNMEMESİ için `/consultation/**`de HİÇ render edilmez.
   if (isConsultationRoute(pathname)) return null;
 
-  // Backend wiring EKSİK olduğu ortamlarda `liveChatEnabled` `undefined` gelir — katı `=== true`
-  // kontrolü bunu güvenli (kapalı) şekilde ele alır (bkz. dosya başlığı notu).
+  // `liveChatEnabled` backend'den `undefined` gelirse (ör. satır kaydı hiç oluşturulmamışsa)
+  // katı `=== true` kontrolü bunu güvenli (kapalı) şekilde ele alır.
   if (settings.liveChatEnabled !== true) return null;
 
   const provider = settings.liveChatProvider ?? "internal";
 
   if (provider !== "internal") {
     // `liveChatScriptId` boşsa harici sağlayıcı YAPILANDIRILAMAZ — sessizce hiçbir şey render
-    // edilmez (ne kendi mock arayüzü, ne de boş bir script; admin panel zaten bu durumda uyarır).
+    // edilmez (ne kendi arayüzü, ne de boş bir script; admin panel zaten bu durumda uyarır).
     if (!settings.liveChatScriptId) return null;
     return <ExternalLiveChatScript provider={provider} scriptId={settings.liveChatScriptId} />;
   }

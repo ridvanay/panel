@@ -6203,6 +6203,182 @@ entegrasyonu, veli/vasi (18 yaş altı) rıza akışı, doktor bazında komisyon
 numarasıyla admin araması, 12 aylık booking-kimlik süpürücüsü, `ENCRYPTION_KEY` rotasyon
 runbook'u.
 
+#### 10.23.10 Erken katılım uyarısı + randevu hatırlatma e-postaları (Turu 4)
+
+Durum: implemente edildi (2026-09-16) · **Bağlayıcı kaynak:**
+`.claude/architect-scope-support-desk-and-reminders.md` (**[ASD]**) §1–§2 +
+`docs/architecture/openapi.yaml`. Bu alt bölüm ÖZETTİR; çelişkide [ASD]/openapi.yaml kazanır.
+Canlı destek masası (aynı turun üçüncü parçası) ayrı bir modül olduğu için **§10.24**'tedir.
+
+**(A) Erken katılım güvenlik onay modalı — yalnızca frontend, backend REDDETMEZ.**
+2026-09-15'te kaldırılan 10dk-önce/15dk-sonra katılım penceresi **geri getirilmedi**;
+`POST /appointments/{id}/meeting-token` bugün de yalnızca `status ∈ {SCHEDULED,
+IN_PROGRESS}` ve (booking varsa) `paymentStatus = PAID` şartını arar. Erken katılan
+kullanıcıya `JoinMeetingButton` (projenin TEK katılım girişi, hasta ve doktor portalları
+dahil) bir `ConfirmDialog` (`tone="warning"`) gösterir: `startsAt - now > 10 dk` ise
+navigasyon `preventDefault` ile durdurulur, "Vazgeç" / "Anladım, Odaya Katıl" seçenekleri
+sunulur; onay `sessionStorage` (`early-join-ack:<appointmentId>`) ile randevu başına bir kez
+hatırlanır — `localStorage` kullanılmaz (paylaşılan cihaz izi bırakmasın diye). **Bilinçli
+karar:** modal bir yetkilendirme sınırı değildir; istemci saatini manipüle edip atlayan
+kullanıcı, backend'in zaten herkese açık tuttuğu bir kaynağa erişir. Kör kalınmaması için
+sunucu, mevcut `telehealth.meeting_token.issued` audit kaydına `metadata.earlyJoin` +
+`metadata.minutesBeforeStart` (sunucu saatinden, istemciden GÖNDERİLMEZ) ekler — ileride bir
+kısıt gerekirse karar tahminle değil ölçülmüş veriyle verilir. Eşik `10` dakika, hem
+frontend'de (`telehealth-format.ts`) hem backend'de (audit hesabı) tek sabittir.
+
+**(B) 1 saat / 30 dakika hatırlatma e-postaları — süreç-içi `setInterval` sweeper.**
+Projede BullMQ/Redis/pg-boss/node-cron **yoktur**; tüm zamanlanmış işler (7+1 örnek —
+`booking-expiry.ts`, `cart-retention.ts`, `contact-retention.ts`, ... ) aynı iskeleti
+kullanır. `lib/appointment-reminders.ts` bu deseni birebir izler: 5 dakikalık kadans,
+`app.ts` `onReady`'de kayıt, `timer.unref()`, `onClose`'da `clearInterval`. Bant kuralları:
+
+| E-posta | Koşul (`startsAt`, şimdiden itibaren) |
+|---|---|
+| 1 saat | `reminded60mAt IS NULL` AND `(35dk, 65dk]` |
+| 30 dakika | `reminded30mAt IS NULL` AND `(5dk, 35dk]` |
+
+Alt sınır (35/5), 10 dakika önce oluşturulan bir randevunun aynı turda iki yalan hatırlatma
+almasını engeller; bantların dışında kalan (çok geç rezerve edilmiş) randevu hiç hatırlatma
+almaz — onay e-postası zaten katılım bağlantısını taşıdığı için bu doğru kabul edilir.
+**Çift gönderim engeli — claim-first:** damga (`reminded60mAt`/`reminded30mAt`,
+`Appointment`'a eklenen iki nullable kolon, **yeni indeks YOK** — mevcut
+`@@index([status, startsAt])` yeterli) koşullu `updateMany` ile e-postadan ÖNCE basılır;
+`count === 1` olan instance gönderir. Bedeli kabul edilmiştir: SMTP hatasında e-posta
+kaybolur (damga basılı kalır) ama iki kez GİTMEZ — kayıp, çift gönderimden daha az kötüdür,
+her durumda `app.log.error` ile loglanır. Arka arkaya iki slotlu bir booking'de (90 dk
+içinde başlayan diğer slotlar) damga aynı transaction'da basılır ama e-posta yalnızca ilk
+slot için gönderilir. **Yeniden planlama** (`PATCH
+/admin/telehealth/appointments/{id}/reschedule`) her iki damgayı da aynı transaction'da
+`null`'lar — aksi halde saati ileri alınan randevu bir daha hiç hatırlatma almazdı.
+
+**30 dakika e-postasındaki katılım bağlantısı token'sızdır** (`{FRONTEND_URL}/{lang}/
+patient/bookings/{bookingId}` vb.) — ham `accessToken` sweeper'da bilinmez ve mevcut
+onay bağlantısını rotate etmek (öldürmek) istenmez; misafir hasta oturumsuz açarsa sayfa
+"yeni bağlantı iste" durumunu + mevcut `resend-link` ucunu gösterir. İki yeni
+`EmailTemplatePurpose` (`APPOINTMENT_REMINDER_60M`, `APPOINTMENT_REMINDER_30M`) — tek şablon
++ değişken yerine ayrı tutulmuştur çünkü konu satırları ve değişken setleri (`join_link`
+yalnızca 30 dk'da) farklıdır. Uzmanlık adı/şikâyet notu/belge adı bu e-postalarda ASLA yer
+almaz (mevcut sızma yasağı disiplini).
+
+**Kapsam dışı (backlog):** erken katılımın backend'de engellenmesi (modalla çelişirdi),
+hatırlatma sürelerinin admin panelinden ayarlanabilmesi, "hatırlatma gönderildi mi"
+bilgisinin admin UI'da görünmesi (`feature/admin-reminder-visibility`), kuyruk altyapısına
+(BullMQ/pg-boss) geçiş (`chore/background-job-runtime` — 9 sweeper birlikte ele alınır).
+
+---
+
+### 10.24 Canlı Destek (`support`) Modülü — gerçek backend, mock'un yerini alır
+
+Durum: implemente edildi (2026-09-16) · **Bağlayıcı kaynak:**
+`.claude/architect-scope-support-desk-and-reminders.md` (**[ASD]**) §3 +
+`.claude/compliance-notes-support-desk.md` (**[CSD]**) + `.claude/design-notes-support-
+desk.md` + `docs/architecture/openapi.yaml` (`Support` tag'i). Bu bölüm ÖZETTİR; çelişkide
+[ASD]/openapi.yaml kazanır.
+
+#### 10.24.1 Amaç ve önceki kararın tersine çevrilmesi
+
+`live-chat-widget.tsx`'teki `liveChatProvider = "internal"` modu, 2026-09-15'e kadar
+**istemci tarafı mock** (`setTimeout` ile sahte otomatik yanıt, hiçbir kalıcılık) idi —
+bilinçli bir kapsam sınırlamasıydı. Bu turla **gerçek, kalıcı, sunucu tarafı bir sohbet
+sistemine** geçildi: ziyaretçi mesajı sayfa yenilendiğinde KAYBOLMAZ, bir admin panelinden
+yanıtlanır ve temsilciye atanabilir. `crisp`/`tawkto` sağlayıcı dalları ve
+`SiteSettings.liveChatEnabled`/`liveChatProvider` mekanizmasının kendisi **değişmedi**.
+
+#### 10.24.2 Rol — yeni bir `SiteRole` değeri EKLENMEDİ
+
+`/admin/support/*` → `ADMIN, MANAGER` (mevcut `ROLES_ADMIN_MANAGER` sabiti); **EDITOR
+göremez.** Gerekçe, §10.21.5'teki türetme ilkesinin mekanik sonucudur: destek masası
+MANAGER'ın hariç tutulduğu beş kategoriden (ayrıcalık yükseltme, kimlik bilgisi, keyfi kod
+yürütme, kill switch, denetim izi) hiçbirine girmez → normal panel operasyonu → MANAGER
+dahil. Ayrı bir `SUPPORT_AGENT` rolü **bilinçli olarak reddedildi** ([ASD] §3.2 madde 1-5):
+`PANEL_ROLES`'u genişletmek her `/admin/*` ucunun yüzeyini sessizce büyütür, enum
+genişletmesi geri alınamaz bir migration borcu doğurur ve bugün "yalnızca destek" işi olan
+tek bir kullanıcı bile yoktur (spekülatif esneklik, §3.2 ilkesiyle reddedilir). İhtiyaç
+doğarsa: `feature/rbac-support-agent-role`. Atama alanı (`assignedAgentId`) yalnızca
+`ACTIVE`, silinmemiş, `ADMIN`/`MANAGER` bir kullanıcıya işaret edebilir (`422` aksi halde);
+dropdown, e-posta döndürmeyen dar bir uç kullanır (`GET /admin/support/agents`) —
+`GET /admin/users` MANAGER'a zaten kapalıdır (§10.21.5).
+
+#### 10.24.3 Gerçek zamanlılık — POLLING, SSE/WebSocket YOK
+
+Backend kaynak ağacında `text/event-stream`/`EventSource`/`WebSocket` **sıfır kez** geçer;
+projenin tek "realtime" emsali `import-progress-panel.tsx`'in 2sn poll'üdür. Aynı desen
+tekrarlanır: ziyaretçi widget'ı açıkken **5 sn**, admin oturum listesi **15 sn**, admin açık
+sohbet **5 sn** poll eder; her iki tarafta **10 dakika etkisizlikten sonra poll durur**.
+Poll'ün asıl maliyeti (tüm diziyi tekrar indirmek) artımlı çekimle (`?afterSeq=`, global
+monoton `seq` — aynı milisaniyede iki mesaj olabileceği için `createdAt` yerine kullanılır)
+yapısal olarak ortadan kaldırılır. Ölçekle ihtiyaç kanıtlanırsa: `feature/support-chat-sse`.
+
+#### 10.24.4 Veri modeli
+
+Üç yeni tablo (migration `add_support_chat`, salt-ekleme): `SupportChatSession`
+(durum `PENDING → ANSWERED → CLOSED`, ziyaretçi beyanı `visitorName`/`visitorEmail`,
+opak `accessTokenHash` — ham değer saklanmaz, `assignedAgentId`, `messageCount` denormalize
+sayaç), `SupportChatMessage` (`senderType VISITOR|AGENT`, `senderDisplayName` gönderim
+ANINDAKİ ad SNAPSHOT'ı — e-posta asla yazılmaz, `body` **düz metin**, en fazla 2000
+karakter), `SupportReplyTemplate` (hazır yanıt şablonları, kişisel veri taşımaz). **Düz
+metin zorunludur:** HTML/Markdown ne saklanır ne render edilir; istemci `textContent` olarak
+basar — XSS yüzeyi yapısal olarak kapalıdır. Tam alan listesi: `.claude/architect-scope-
+support-desk-and-reminders.md` §3.4.
+
+`ANSWERED` **türev** bir durumdur (`PATCH` ile elle set edilemez, `422`): temsilci yanıt
+gönderdiğinde oturum atanmamışsa gönderene otomatik atanır ("yanıtlayan sahiplenir"),
+başkasına atanmışsa sessiz devralma yoktur; ziyaretçi yeni mesaj yazınca `ANSWERED →
+PENDING`'e döner.
+
+#### 10.24.5 Uçlar (özet — tam sözleşme `openapi.yaml` `Support` tag'i)
+
+**Ziyaretçi (public, `liveChatEnabled=false` veya `provider≠"internal"` ise `404`):**
+`POST /support/sessions` (oturum + ilk mesaj, `accessToken` bir kez döner, 3/dk/IP),
+`GET /support/sessions/{sessionId}/messages?t=&afterSeq=` (poll, 60/dk/IP),
+`POST /support/sessions/{sessionId}/messages?t=` (10/dk/IP). Yanlış/eksik token → **404**
+(varlık sızdırılmaz, `timingSafeEqualHex` ile sabit-zamanlı karşılaştırma). Oturum başına
+200 mesaj (`409`), mesaj başına 2000 karakter (`422`).
+
+**Yönetim (`ADMIN`/`MANAGER`):** `GET /admin/support/sessions` (cursor + `status`/
+`assignedAgentId`/`q` filtreleri + sekme rozetleri), `GET|PATCH|DELETE
+/admin/support/sessions/{sessionId}`, `GET|POST .../messages`, `PATCH .../assign`,
+`GET /admin/support/agents`, `GET|POST /admin/support/templates`,
+`PATCH|DELETE /admin/support/templates/{templateId}`.
+
+#### 10.24.6 KVKK — özel nitelikli veri riski, rıza yerine minimizasyon
+
+Ziyaretçi serbest metin yazdığı için `SupportChatMessage.body` teorik olarak sağlık verisi
+anlatımı içerebilir. **Karar (compliance-agent, [CSD]):** açık rıza akışı yerine veri
+minimizasyonu — widget'ta, mesaj kutusunun HEMEN ÜSTÜNDE sürekli görünür (kapatılamaz,
+`sessionStorage`/`localStorage` ile gizlenmez) bir uyarı: *"Lütfen sağlık durumunuza ilişkin
+ayrıntı paylaşmayın; tıbbi konular için randevu oluşturun."* + ayrı bir KVKK aydınlatma
+bildirimi linki. Uyarıya rağmen paylaşılan veri **kabul edilen, kalan bir risktir**; kalan
+riski azaltan katmanlar: erişim yalnızca ADMIN/MANAGER, kısa saklama süreleri (aşağıda), tam
+metin arama YOK. Şifreleme (AES-256-GCM) bu turda zorunlu kılınmadı — bu, sağlık verisi
+toplamak için TASARLANMIŞ `AppointmentIntake.noteCiphertext` (§10.23.9'un öncülü) ile aynı
+risk düzeyini taşımaz.
+
+**Saklama (bağlayıcı, `lib/support-retention.ts`, `contact-retention.ts` ile aynı saatlik
+sweeper iskeleti):**
+
+| Kural | Süre | Tetikleyen |
+|---|---|---|
+| IP/UA redaksiyonu | 30 gün | `createdAt` bazlı — `ContactSubmission` ile aynı |
+| `CLOSED` oturum kalıcı silme | 180 gün | **`closedAt`** bazlı (`createdAt` DEĞİL — süregelen bir etkileşim olduğu için) |
+| Kapatılmamış oturum güvenlik ağı | 365 gün | `COALESCE(lastMessageAt, createdAt)` — unutulmuş/asılı kalmış `PENDING`/`ANSWERED` oturumların süresiz saklanmasını önler |
+
+`DELETE /admin/support/sessions/{id}` **hard delete**'tir (mesajlar `Cascade`) — KVKK md.11
+silme hakkının karşılığıdır; ziyaretçi kendi kendine silemez (ADMIN manuel işlemi yeterlidir,
+`ContactSubmission`/`Order` emsaliyle tutarlı). Oturum **detay** görüntülemesi (mesaj poll'ü
+DEĞİL) oturum başına/personel başına günde bir kez `support.session_viewed` audit kaydı
+üretir — potansiyel özel nitelikli içeriğin kim tarafından görüntülendiğinin izi için.
+
+#### 10.24.7 Kapsam dışı (backlog)
+
+SSE/WebSocket (`feature/support-chat-sse`), ayrı `SUPPORT_AGENT` rolü
+(`feature/rbac-support-agent-role`), destek mesajlarında tam metin arama (özel nitelikli
+veri riski), ziyaretçiye dosya/ekran görüntüsü yükleme, destek sohbetinden randevuya/
+booking'e bağ, temsilciye yeni mesaj push/e-posta bildirimi
+(`feature/support-agent-notifications`), ziyaretçi öz-hizmet silme
+(`feature/support-visitor-self-delete`), `crisp`/`tawkto` etkinleştirilmeden önce ayrı bir
+yurt dışı veri aktarımı KVKK/GDPR turu (bloklayıcı değil, işaretlendi).
+
 ---
 
 ### Bilinen Sorunlar / Backlog

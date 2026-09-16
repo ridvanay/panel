@@ -70,3 +70,11 @@ export function computeAppointmentBlock(appointments: AppointmentTimeSpan[]): {
   const endMs = Math.max(...appointments.map((a) => new Date(a.endsAt).getTime()));
   return { startMs, endMs, totalMinutes: Math.round((endMs - startMs) / 60_000) };
 }
+
+/**
+ * `.claude/architect-scope-support-desk-and-reminders.md` §1.2 — erken katılım uyarı modalının
+ * eşiği. Backend audit tarafında (`telehealth.livekit.routes.ts` `metadata.minutesBeforeStart`)
+ * AYNI sayı KULLANILIR — sihirli sayı iki tarafta ayrı ayrı KOPYALANMAZ, bu tek kaynak
+ * frontend'deki tek gerçek kaynaktır (backend kendi sabitini `lib/livekit.ts` yanında tutar).
+ */
+export const EARLY_JOIN_WARNING_THRESHOLD_MINUTES = 10;
