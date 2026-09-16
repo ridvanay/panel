@@ -129,6 +129,18 @@ export interface LocalizableEntity {
  * IN (...)` — liste uçlarında N+1 YASAK, bkz. §9 backend-agent madde 6). Varsayılan dil
  * HER ZAMAN `translated: true` ve kanonik slug ile döner (ContentSlug satırı olsun/olmasın —
  * §2.4 migration adım 3 zaten bu satırı da üretir, ama DTO seviyesinde buna bağımlı DEĞİLİZ).
+ *
+ * KÖK NEDEN DÜZELTMESİ (KVKK m.10/GDPR m.12 denetimi — qa-agent bulgusu): `translated` bayrağı
+ * ARTIK `ContentSlug` satırının VAR OLUŞUNA göre DEĞİL, `isLocaleTranslated()` (§1.4 — anlamlı/
+ * boş olmayan `title` var mı) ile hesaplanır. Önceki (satır varlığı bazlı) mantık, `syncContentSlugs`
+ * her zaman aynı title kontrolüyle senkron çalıştığı sürece pratikte aynı sonucu verse de, İKİ AYRI
+ * "çevrildi mi?" tanımının codebase'te var olmasına yol açıyordu (bkz. `isLocaleTranslated` — public
+ * API katmanında `isLegalDocument` kapısı için zaten kullanılıyordu) ve `Page.isLegalDocument: true`
+ * senaryosunda `publicPagesRoutes` (`GET /api/v1/pages/:slug`) bu (bağımsız/ikinci) mantığı kullandığı
+ * için `ContentSlug` senkronizasyonunda oluşabilecek EN UFAK bir sapmada (ör. eski/manuel veri, gelecekte
+ * `syncContentSlugs` dışında bir yazma yolu) hukuken zorunlu "bu belge sizin dilinizde yok" bildirimi
+ * sessizce atlanabiliyordu. Artık TEK doğruluk kaynağı `isLocaleTranslated` — `ContentSlug` sorgusu
+ * yalnızca (varsa) yerelleştirilmiş `slug`'ı taşımak için kullanılır, "çevrildi mi?" kararını VERMEZ.
  */
 export async function attachLocalizations<T extends LocalizableEntity>(
   app: FastifyInstance,
@@ -161,10 +173,11 @@ export async function attachLocalizations<T extends LocalizableEntity>(
     const itemRows = rowsByEntity.get(item.id) ?? [];
     const localizations = enabled.map((locale): ContentLocalizationDto => {
       if (locale.isDefault) return { locale: locale.code, slug: item.slug, translated: true };
+      const translated = isLocaleTranslated(item.translations, locale.code);
       const row = itemRows.find((r) => r.locale === locale.code);
-      return row
-        ? { locale: locale.code, slug: row.slug, translated: true }
-        : { locale: locale.code, slug: item.slug, translated: false };
+      // `slug` yalnızca routing/hreflang hedefidir — `ContentSlug` satırı varsa o kullanılır
+      // (yoksa kanonik slug'a düşer), ama bu seçim `translated` kararını ETKİLEMEZ.
+      return { locale: locale.code, slug: row?.slug ?? item.slug, translated };
     });
     result.set(item.id, localizations);
   }

@@ -7,6 +7,7 @@ import { fetchNavigationConfigServer } from "@/lib/api/server-navigation";
 import { fetchSiteAppearanceServer } from "@/lib/api/server-appearance";
 import { fetchLocalesServer } from "@/lib/api/server-locales";
 import { isModuleEnabledServer } from "@/lib/api/server-modules";
+import { getSiteDictionary } from "@/lib/i18n/site-dictionaries";
 import { CartProvider } from "@/context/cart-context";
 import { WishlistProvider } from "@/context/wishlist-context";
 import { LocaleAlternatesProvider } from "@/context/locale-alternates-context";
@@ -39,13 +40,14 @@ export default async function SiteLayout({
   const activeLocale = locales.find((l) => l.code === lang);
   if (!activeLocale) notFound();
 
-  const [settings, pages, navigation, appearance, productsModuleEnabled, telehealthModuleEnabled] = await Promise.all([
+  const [settings, pages, navigation, appearance, productsModuleEnabled, telehealthModuleEnabled, dict] = await Promise.all([
     fetchSiteSettingsServer(),
     fetchPublishedPagesServer(lang),
     fetchNavigationConfigServer(),
     fetchSiteAppearanceServer(),
     isModuleEnabledServer("products"),
     isModuleEnabledServer("telehealth"),
+    getSiteDictionary(lang),
   ]);
 
   const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? activeLocale.code;
@@ -73,6 +75,7 @@ export default async function SiteLayout({
             stickyHeaderEnabled={appearance.stickyHeaderEnabled}
             headerStickyBlurEnabled={appearance.headerStickyBlurEnabled}
             telehealthModuleEnabled={telehealthModuleEnabled}
+            dict={dict.nav}
           />
           <main className="flex-1">{children}</main>
           <SiteFooter

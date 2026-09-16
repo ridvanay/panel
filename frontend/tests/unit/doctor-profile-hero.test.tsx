@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { DoctorProfileHero } from "@/components/site/telehealth/doctor-profile-hero";
+import { telehealthStrings as trTelehealthStrings } from "@/lib/i18n/site-dictionaries/tr/telehealth";
 import type { DoctorProfile } from "@/lib/api/types";
+
+/**
+ * `.claude/architect-scope-i18n.md` §14.5 madde 9 — `DoctorProfileHero` artık `dict`/`lang`
+ * prop'u ALIR (SENKRON kalması gerektiği için, bkz. bileşendeki gerekçe yorumu). Bu testler `tr`
+ * sözlüğünü açıkça geçirir — mevcut Türkçe assertion'lar DEĞİŞTİRİLMEDEN korunur.
+ */
 
 /** `.claude/design-notes-telehealth.md` §2.1.2 — hero başlık satırı. */
 function makeDoctor(overrides: Partial<DoctorProfile> = {}): DoctorProfile {
@@ -50,7 +57,7 @@ function makeDoctor(overrides: Partial<DoctorProfile> = {}): DoctorProfile {
 
 describe("DoctorProfileHero", () => {
   it("gerçek avatar YOKSA monogram fallback'i (baş harfler + marka gradyanı) gösterir, taşma OLMAZ", () => {
-    render(<DoctorProfileHero doctor={makeDoctor()} />);
+    render(<DoctorProfileHero doctor={makeDoctor()} dict={trTelehealthStrings} lang="tr" />);
     expect(screen.getByText("EA")).toBeInTheDocument();
   });
 
@@ -71,6 +78,8 @@ describe("DoctorProfileHero", () => {
             createdAt: "2026-01-01T00:00:00.000Z",
           },
         })}
+        dict={trTelehealthStrings}
+        lang="tr"
       />
     );
     const img = screen.getByRole("img", { name: "Dr. Elif Aydemir" });
@@ -79,25 +88,25 @@ describe("DoctorProfileHero", () => {
   });
 
   it("`isVerified: true` iken 'Doğrulanmış Hekim' chip'i gösterir", () => {
-    render(<DoctorProfileHero doctor={makeDoctor({ isVerified: true })} />);
+    render(<DoctorProfileHero doctor={makeDoctor({ isVerified: true })} dict={trTelehealthStrings} lang="tr" />);
     expect(screen.getByText("Doğrulanmış Hekim")).toBeInTheDocument();
   });
 
   it("`isVerified: false` iken 'Doğrulanmış Hekim' chip'i HİÇ render EDİLMEZ (sahte negatif sinyal yok)", () => {
-    render(<DoctorProfileHero doctor={makeDoctor({ isVerified: false })} />);
+    render(<DoctorProfileHero doctor={makeDoctor({ isVerified: false })} dict={trTelehealthStrings} lang="tr" />);
     expect(screen.queryByText("Doğrulanmış Hekim")).not.toBeInTheDocument();
   });
 
   it("uzmanlık chip'i doktorun uzmanlık adını gösterir, uzmanlık YOKSA 'Genel Danışmanlık' fallback'ine düşer", () => {
-    render(<DoctorProfileHero doctor={makeDoctor()} />);
+    render(<DoctorProfileHero doctor={makeDoctor()} dict={trTelehealthStrings} lang="tr" />);
     expect(screen.getByText("Kardiyoloji")).toBeInTheDocument();
 
-    render(<DoctorProfileHero doctor={makeDoctor({ specialty: null, specialtyId: null })} />);
+    render(<DoctorProfileHero doctor={makeDoctor({ specialty: null, specialtyId: null })} dict={trTelehealthStrings} lang="tr" />);
     expect(screen.getByText("Genel Danışmanlık")).toBeInTheDocument();
   });
 
   it("dil rozetlerini ISO kodunun büyük harfli hali olarak gösterir + erişilebilir tam ad `aria-label`'ı taşır", () => {
-    render(<DoctorProfileHero doctor={makeDoctor({ languages: ["tr", "en"] })} />);
+    render(<DoctorProfileHero doctor={makeDoctor({ languages: ["tr", "en"] })} dict={trTelehealthStrings} lang="tr" />);
     expect(screen.getByText("TR")).toBeInTheDocument();
     expect(screen.getByText("EN")).toBeInTheDocument();
     expect(screen.getByLabelText("Konuşulan diller: Türkçe, İngilizce")).toBeInTheDocument();
@@ -129,6 +138,8 @@ describe("DoctorProfileHero", () => {
               createdAt: "2026-01-01T00:00:00.000Z",
             },
           })}
+          dict={trTelehealthStrings}
+          lang="tr"
         />
       );
 
@@ -144,7 +155,7 @@ describe("DoctorProfileHero", () => {
   );
 
   it("uzun ad `break-words` ile ikinci satıra sarkar, `truncate` KULLANILMAZ (kesilmez)", () => {
-    render(<DoctorProfileHero doctor={makeDoctor({ fullName: "Çok Uzun Bir Ad Soyad Örneği Testi" })} />);
+    render(<DoctorProfileHero doctor={makeDoctor({ fullName: "Çok Uzun Bir Ad Soyad Örneği Testi" })} dict={trTelehealthStrings} lang="tr" />);
     const heading = screen.getByRole("heading", { level: 1 });
     expect(heading.className).toContain("break-words");
     expect(heading.className).not.toContain("truncate");

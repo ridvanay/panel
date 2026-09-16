@@ -39,6 +39,14 @@ export interface BuildContentMetadataOptions {
   activeLocale?: string;
   /** İçerik türünün URL öneki (`""` Page, `"/blog"`, `"/products"`, `"/portfolio"`). */
   pathPrefix?: string;
+  /**
+   * qa-agent bulgusu (2026-09-16) — ana sayfa (`[lang]/page.tsx`) bir `Page` kaydı (`slug:
+   * "anasayfa"`) olarak modellenir ama PREFİX'SİZ kanonik URL'i HER ZAMAN `/` (varsayılan dil) /
+   * `/tr` (diğer diller) OLMALIDIR, kaydın kendi `slug`'ı DEĞİL. `true` iken `buildLanguageAlternates`
+   * her alternate için `pathPrefix + slug` yerine kök path (`"/"`) kullanır — `translated` filtresi
+   * DEĞİŞMEDEN uygulanmaya devam eder.
+   */
+  isHomepage?: boolean;
 }
 
 export function buildContentMetadata(fields: SeoContentFields, options: BuildContentMetadataOptions): Metadata {
@@ -92,18 +100,20 @@ function buildLanguageAlternates(options: BuildContentMetadataOptions): { langua
     const locale: Locale | undefined = options.locales.find((l) => l.code === item.locale);
     if (!locale || !locale.enabled) continue;
     const hreflangKey = locale.hreflang ?? locale.code;
-    const path = `${options.pathPrefix}/${item.slug}`;
+    const path = options.isHomepage ? "/" : `${options.pathPrefix}/${item.slug}`;
     const localizedPath = withLocalePrefix(path, locale.code, defaultLocale.code);
-    languages[hreflangKey] = `${SITE_URL}${localizedPath}`;
+    // Kök "/" (varsayılan dilin ana sayfası) `SITE_URL`e trailing-slash EKLEMEDEN birleştirilir —
+    // `x-default`/canonical İLE TUTARLI tek bir kök URL şekli (qa-agent bulgusu, 2026-09-16).
+    languages[hreflangKey] = localizedPath === "/" ? SITE_URL : `${SITE_URL}${localizedPath}`;
   }
 
   if (Object.keys(languages).length === 0) return {};
 
   const defaultItem = options.localizations.find((l) => l.locale === defaultLocale.code);
-  const defaultPath = defaultItem ? `${options.pathPrefix}/${defaultItem.slug}` : undefined;
+  const defaultPath = defaultItem ? (options.isHomepage ? "/" : `${options.pathPrefix}/${defaultItem.slug}`) : undefined;
   // `x-default` ZORUNLUDUR ve varsayılan dilin prefix'siz URL'sini gösterir (§6.1).
   if (defaultPath) {
-    languages["x-default"] = `${SITE_URL}${defaultPath}`;
+    languages["x-default"] = defaultPath === "/" ? SITE_URL : `${SITE_URL}${defaultPath}`;
   }
 
   return { languages };

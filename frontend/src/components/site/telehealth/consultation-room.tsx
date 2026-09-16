@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, type ComponentType } from "react";
+import { useCallback, useEffect, useMemo, useState, type ComponentType } from "react";
 import "@livekit/components-styles";
 import {
   DisconnectButton,
@@ -34,6 +34,8 @@ import { listPublicModules } from "@/lib/api/modules";
 import { ApiClientError } from "@/lib/api/error";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { useAuthOptional } from "@/context/auth-context";
+import { useActiveLocaleCode } from "@/context/locale-alternates-context";
+import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import type { Appointment, ConsultationRecording, MeetingTokenResponse, RecordingSignalPayload } from "@/lib/api/types";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -57,8 +59,6 @@ import { cn } from "@/lib/utils";
 
 const JOIN_WINDOW_AFTER_MS = 15 * 60_000;
 const NEAR_THRESHOLD_MS = 15 * 60_000;
-
-const dateTimeFormatter = new Intl.DateTimeFormat("tr-TR", { dateStyle: "long", timeStyle: "short" });
 
 interface JoinState {
   remainingMs: number;
@@ -578,6 +578,10 @@ function ConsultationRoomLoaded({ appointment, accessToken }: { appointment: App
   // `useJoinState`in artık buna ihtiyacı YOK (bkz. o hook'un dosya başı yorumu).
   const auth = useAuthOptional();
   const isDoctor = auth?.user?.doctorProfileId != null && auth.user.doctorProfileId === appointment.doctorId;
+  // Görev (2026-09-16) — takvim/randevu gün-ay-saat biçimlendirmesi denetimi: sabit modül-seviyesi
+  // `"tr-TR"` yerine aktif site diline bağlı biçimlendirici.
+  const intlLocale = contentLocaleToIntl(useActiveLocaleCode());
+  const dateTimeFormatter = useMemo(() => new Intl.DateTimeFormat(intlLocale, { dateStyle: "long", timeStyle: "short" }), [intlLocale]);
 
   const joinState = useJoinState(appointment);
   const [meeting, setMeeting] = useState<MeetingTokenResponse | null>(null);

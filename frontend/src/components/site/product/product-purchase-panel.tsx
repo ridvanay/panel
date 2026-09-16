@@ -17,6 +17,7 @@ import { StickyAddToCartBar } from "@/components/site/product/sticky-add-to-cart
 import { formatPriceFromCents } from "@/lib/format-price";
 import { computeDiscountPercent } from "@/lib/discount";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
+import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import { findMatchingVariant, firstMissingAxis, isOptionValueAvailable } from "@/lib/product-variants";
 
 /** `.claude/design-notes-ecommerce-storefront.md` §4 — `0 < stok <= 3`, yalnızca PDP. */
@@ -53,6 +54,9 @@ export function ProductPurchasePanel({
   const router = useRouter();
   const pathname = usePathname();
   const cart = useCartOptional();
+  // Görev (2026-09-16) — currency/locale format denetimi: `activeLocaleCode` zaten prop olarak
+  // geliyor, `doctor-card.tsx`/`product-card.tsx` İLE AYNI `contentLocaleToIntl` deseni.
+  const intlLocale = contentLocaleToIntl(activeLocaleCode);
 
   const [selected, setSelected] = useState<Record<string, string>>(() => {
     if (!hasVariants) return {};
@@ -154,18 +158,18 @@ export function ProductPurchasePanel({
             {discountPriceCents !== null ? (
               <>
                 <span className="mr-3 text-base font-normal text-foreground/40 line-through">
-                  {formatPriceFromCents(priceCents, product.currency)}
+                  {formatPriceFromCents(priceCents, product.currency, intlLocale)}
                 </span>
-                {formatPriceFromCents(discountPriceCents, product.currency)}
+                {formatPriceFromCents(discountPriceCents, product.currency, intlLocale)}
               </>
             ) : (
-              formatPriceFromCents(priceCents, product.currency)
+              formatPriceFromCents(priceCents, product.currency, intlLocale)
             )}
           </div>
 
           {discountPriceCents !== null && (
             <div className="mt-2">
-              <Badge tone="success">{formatPriceFromCents(priceCents - discountPriceCents, product.currency)} kazanın</Badge>
+              <Badge tone="success">{formatPriceFromCents(priceCents - discountPriceCents, product.currency, intlLocale)} kazanın</Badge>
             </div>
           )}
 

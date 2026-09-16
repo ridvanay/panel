@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { AlertCircle, ChevronLeft, Copy, Receipt } from "lucide-react";
 import * as usersApi from "@/lib/api/users";
 import type { Order } from "@/lib/api/types";
-import { useLocalizePath } from "@/context/locale-alternates-context";
+import { useLocalizePath, useActiveLocaleCode } from "@/context/locale-alternates-context";
+import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -16,8 +17,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { formatPriceFromCents } from "@/lib/format-price";
 import { ORDER_STATUS_LABELS, ORDER_STATUS_TONE } from "@/lib/order-status";
-
-const dateFormatter = new Intl.DateTimeFormat("tr-TR", { dateStyle: "medium", timeStyle: "short" });
 
 interface OrderDetailClientProps {
   orderId: string;
@@ -30,6 +29,10 @@ interface OrderDetailClientProps {
  */
 export function OrderDetailClient({ orderId }: OrderDetailClientProps) {
   const localize = useLocalizePath();
+  // Görev (2026-09-16) — currency/locale format denetimi: `formatPriceFromCents`'in sabit
+  // `"tr-TR"` varsayılanı yerine aktif site diline (context) bağlı BCP-47 etiketi.
+  const intlLocale = contentLocaleToIntl(useActiveLocaleCode());
+  const dateFormatter = useMemo(() => new Intl.DateTimeFormat(intlLocale, { dateStyle: "medium", timeStyle: "short" }), [intlLocale]);
   const [order, setOrder] = useState<Order | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -152,9 +155,9 @@ export function OrderDetailClient({ orderId }: OrderDetailClientProps) {
                   <TableRow key={item.id}>
                     <TableCell className="font-medium text-foreground">{item.productTitle}</TableCell>
                     <TableCell className="text-foreground/60">{item.productSku ?? "—"}</TableCell>
-                    <TableCell className="text-right">{formatPriceFromCents(item.unitPriceCents, order.currency)}</TableCell>
+                    <TableCell className="text-right">{formatPriceFromCents(item.unitPriceCents, order.currency, intlLocale)}</TableCell>
                     <TableCell className="text-right">{item.quantity}</TableCell>
-                    <TableCell className="text-right">{formatPriceFromCents(item.lineTotalCents, order.currency)}</TableCell>
+                    <TableCell className="text-right">{formatPriceFromCents(item.lineTotalCents, order.currency, intlLocale)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -164,19 +167,19 @@ export function OrderDetailClient({ orderId }: OrderDetailClientProps) {
           <Card className="ml-auto max-w-xs space-y-2">
             <div className="flex items-center justify-between text-sm">
               <span className="text-foreground/60">Ara Toplam</span>
-              <span className="text-foreground">{formatPriceFromCents(order.subtotalCents, order.currency)}</span>
+              <span className="text-foreground">{formatPriceFromCents(order.subtotalCents, order.currency, intlLocale)}</span>
             </div>
             <div className="flex items-center justify-between text-sm">
               <span className="text-foreground/60">İndirim</span>
-              <span className="text-foreground">-{formatPriceFromCents(order.discountCents, order.currency)}</span>
+              <span className="text-foreground">-{formatPriceFromCents(order.discountCents, order.currency, intlLocale)}</span>
             </div>
             <div className="flex items-center justify-between text-sm">
               <span className="text-foreground/60">Vergi</span>
-              <span className="text-foreground">{formatPriceFromCents(order.taxCents, order.currency)}</span>
+              <span className="text-foreground">{formatPriceFromCents(order.taxCents, order.currency, intlLocale)}</span>
             </div>
             <div className="flex items-center justify-between border-t border-border pt-2 text-base font-semibold">
               <span className="text-foreground">Toplam</span>
-              <span className="text-foreground">{formatPriceFromCents(order.totalCents, order.currency)}</span>
+              <span className="text-foreground">{formatPriceFromCents(order.totalCents, order.currency, intlLocale)}</span>
             </div>
           </Card>
         </div>

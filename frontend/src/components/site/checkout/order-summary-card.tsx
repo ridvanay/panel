@@ -7,8 +7,9 @@ import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { FreeShippingProgress } from "@/components/site/free-shipping-progress";
 import { LegalConsentSection } from "./legal-consent-section";
-import { useLocalizePath } from "@/context/locale-alternates-context";
+import { useLocalizePath, useActiveLocaleCode } from "@/context/locale-alternates-context";
 import { formatPriceFromCents } from "@/lib/format-price";
+import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import type { Cart, SitePage } from "@/lib/api/types";
 
 /**
@@ -19,6 +20,8 @@ import type { Cart, SitePage } from "@/lib/api/types";
  */
 export function OrderSummaryLines({ cart, className }: { cart: Cart; className?: string }) {
   const currency = cart.currency ?? "TRY";
+  // Görev (2026-09-16) — currency/locale format denetimi (bkz. `useActiveLocaleCode` yorumu).
+  const intlLocale = contentLocaleToIntl(useActiveLocaleCode());
 
   return (
     <div className={className}>
@@ -46,7 +49,7 @@ export function OrderSummaryLines({ cart, className }: { cart: Cart; className?:
               <p className="text-xs text-foreground/60">Adet: {item.quantity}</p>
             </div>
             <span className="shrink-0 text-sm font-semibold text-foreground">
-              {formatPriceFromCents(item.lineTotalCents, currency)}
+              {formatPriceFromCents(item.lineTotalCents, currency, intlLocale)}
             </span>
           </div>
         ))}
@@ -55,19 +58,19 @@ export function OrderSummaryLines({ cart, className }: { cart: Cart; className?:
       <div className="space-y-2 border-t border-border pt-4">
         <div className="flex items-center justify-between text-sm text-foreground/70">
           <span>Ara Toplam</span>
-          <span>{formatPriceFromCents(cart.subtotalCents, currency)}</span>
+          <span>{formatPriceFromCents(cart.subtotalCents, currency, intlLocale)}</span>
         </div>
         {cart.shipping.configured && (
           <div className="flex items-center justify-between text-sm text-foreground/70">
             <span>Kargo</span>
             <span className={cart.shipping.feeCents === 0 ? "font-medium text-success" : undefined}>
-              {cart.shipping.feeCents === 0 ? "Ücretsiz" : formatPriceFromCents(cart.shipping.feeCents, currency)}
+              {cart.shipping.feeCents === 0 ? "Ücretsiz" : formatPriceFromCents(cart.shipping.feeCents, currency, intlLocale)}
             </span>
           </div>
         )}
         <div className="flex items-center justify-between border-t border-border pt-2 text-foreground">
           <span className="text-base font-semibold">Toplam</span>
-          <span className="text-lg font-bold">{formatPriceFromCents(cart.totalCents, currency)}</span>
+          <span className="text-lg font-bold">{formatPriceFromCents(cart.totalCents, currency, intlLocale)}</span>
         </div>
       </div>
     </div>

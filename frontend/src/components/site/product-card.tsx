@@ -22,6 +22,12 @@ interface ProductCardProps {
   priority?: boolean;
   /** `.claude/design-notes-products-catalog.md` §3.5 — liste görünümünde YATAY satır. */
   variant?: "grid" | "list";
+  /**
+   * Görev (2026-09-16) — currency/locale format denetimi. `formatPriceFromCents`'in `locale`
+   * parametresi — verilmezse fonksiyonun kendi varsayılanı (`"tr-TR"`) kullanılır.
+   * `contentLocaleToIntl(lang)` ile üretilir (`doctor-card.tsx`'teki AYNI desen).
+   */
+  intlLocale?: string;
 }
 
 /** Kartın satılan-seviye stok durumu — [EPT] §1.2 "satılan seviye" kuralı, varyasyonlu üründe ürün-seviyesi `stockQuantity` ASLA kullanılmaz. */
@@ -41,7 +47,7 @@ function resolveColors(product: ProductListItem): ProductCardMediaColor[] {
   });
 }
 
-export function ProductCard({ product, activeLocaleCode, defaultLocaleCode, sizes, priority, variant = "grid" }: ProductCardProps) {
+export function ProductCard({ product, activeLocaleCode, defaultLocaleCode, sizes, priority, variant = "grid", intlLocale }: ProductCardProps) {
   const soldOut = computeSoldOut(product);
   const hasVariants = product.variants.length > 0;
   const href = activeLocaleCode
@@ -85,12 +91,12 @@ export function ProductCard({ product, activeLocaleCode, defaultLocaleCode, size
       {hasDiscount && product.discountPriceCents !== null ? (
         <>
           <span className="mr-2 text-sm font-normal text-foreground/40 line-through">
-            {formatPriceFromCents(product.priceCents, product.currency)}
+            {formatPriceFromCents(product.priceCents, product.currency, intlLocale)}
           </span>
-          {formatPriceFromCents(product.discountPriceCents, product.currency)}
+          {formatPriceFromCents(product.discountPriceCents, product.currency, intlLocale)}
         </>
       ) : (
-        formatPriceFromCents(product.priceCents, product.currency)
+        formatPriceFromCents(product.priceCents, product.currency, intlLocale)
       )}
     </p>
   );

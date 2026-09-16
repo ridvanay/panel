@@ -10,6 +10,8 @@ import { MAX_BOOKING_SLOTS } from "@/lib/api/types";
 import { formatDayKey, formatTime } from "@/lib/telehealth-format";
 import { useBookingSelection } from "@/components/site/telehealth/booking-selection-context";
 import { SlotAvailabilityLegend } from "@/components/site/telehealth/slot-availability-legend";
+import { useActiveLocaleCode } from "@/context/locale-alternates-context";
+import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import { Switch } from "@/components/ui/switch";
 import { Alert } from "@/components/ui/alert";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -49,6 +51,13 @@ interface AvailabilityCalendarProps {
 const HOUR_GROUP_LABELS = ["Sabah", "Öğleden Sonra"] as const;
 type HourGroupLabel = (typeof HOUR_GROUP_LABELS)[number];
 
+/**
+ * Görev (2026-09-16) — BİLİNÇLİ OLARAK `formatTime`'a bir `locale` GEÇİRİLMEZ: bu, kullanıcıya
+ * GÖSTERİLMEYEN, salt dahili bir gruplama hesabıdır (`parseInt` ile basamak ayıklar). Bazı
+ * diller (ör. `ar`) `Intl.DateTimeFormat` çıktısında Arapça-Hint rakamları üretebilir — sabit
+ * `"tr-TR"` varsayılanı (Batı rakamları garantili) burada `parseInt`'in KIRILMAMASI için TERCİH
+ * EDİLİR, aşağıdaki GÖRÜNTÜLENEN saatler (`formatTime(..., intlLocale)`) İLE KARIŞTIRILMAZ.
+ */
 function getHourGroupLabel(iso: string, timeZone: string): HourGroupLabel {
   const hour = parseInt(formatTime(iso, timeZone).slice(0, 2), 10);
   return hour < 12 ? "Sabah" : "Öğleden Sonra";
@@ -58,7 +67,7 @@ function getHourGroupLabel(iso: string, timeZone: string): HourGroupLabel {
 const SELECTION_PILL_BASE =
   "inline-flex h-10 items-center justify-center gap-1.5 rounded-[var(--site-radius)] border text-sm font-medium tabular-nums transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface";
 const SELECTION_PILL_AVAILABLE =
-  "border-border bg-white text-foreground hover:border-primary hover:bg-primary/10 hover:text-primary";
+  "border-border bg-surface text-foreground hover:border-primary hover:bg-primary/10 hover:text-primary";
 const SELECTION_PILL_SELECTED =
   "border-2 border-transparent bg-primary text-primary-foreground ring-2 ring-offset-2 ring-offset-surface ring-primary";
 /** §12.2.2 — 4/4 sınırına ulaşıldığında henüz seçilmemiş müsait slotların "geçici olarak seçilemez" durumu. */
@@ -83,16 +92,22 @@ function firstWeekdayMondayIndex(year: number, month0: number): number {
   return (new Date(Date.UTC(year, month0, 1)).getUTCDay() + 6) % 7;
 }
 
-/** §2.3.1 — `"EYLÜL 2026"`; Türkçe `İ/i` noktalama kuralı için `toUpperCase()` DEĞİL `toLocaleUpperCase("tr-TR")`. */
-function formatMonthLabel(year: number, month0: number): string {
-  return new Intl.DateTimeFormat("tr-TR", { month: "long", year: "numeric", timeZone: "UTC" })
+/**
+ * §2.3.1 — `"EYLÜL 2026"`; Türkçe `İ/i` noktalama kuralı için `toUpperCase()` DEĞİL
+ * `toLocaleUpperCase(locale)`. Görev (2026-09-16) — sabit `"tr-TR"` yerine `locale` parametresi
+ * (çağıran taraf `contentLocaleToIntl(useActiveLocaleCode())` geçer, `GÖREV 5`'teki AYNI desen) —
+ * `tr` dilinde davranış DEĞİŞMEZ (aynı özel büyük harf kuralı korunur), diğer dillerde takvim
+ * kendi dilinde ay/gün adlarıyla render edilir.
+ */
+function formatMonthLabel(year: number, month0: number, locale: string): string {
+  return new Intl.DateTimeFormat(locale, { month: "long", year: "numeric", timeZone: "UTC" })
     .format(new Date(Date.UTC(year, month0, 1)))
-    .toLocaleUpperCase("tr-TR");
+    .toLocaleUpperCase(locale);
 }
 
-/** §2.3.2 — hücre `aria-label`'ının tarih kısmı: `"16 Eylül Çarşamba"`. */
-function formatCellDatePart(year: number, month0: number, day: number): string {
-  return new Intl.DateTimeFormat("tr-TR", { day: "numeric", month: "long", weekday: "long", timeZone: "UTC" }).format(
+/** §2.3.2 — hücre `aria-label`'ının tarih kısmı: `"16 Eylül Çarşamba"`. Görev (2026-09-16) — AYNI `locale` parametresi. */
+function formatCellDatePart(year: number, month0: number, day: number, locale: string): string {
+  return new Intl.DateTimeFormat(locale, { day: "numeric", month: "long", weekday: "long", timeZone: "UTC" }).format(
     new Date(Date.UTC(year, month0, day))
   );
 }
@@ -136,6 +151,8 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
   const auth = useAuthOptional();
   const isDoctorSession = auth?.status === "authenticated" && auth.user?.doctorProfileId != null;
   const { selectedSlots, toggleSlot, displayTimeZone, visitorTimeZone } = useBookingSelection();
+  // Görev (2026-09-16) — takvim gün/ay isimleri denetimi: sabit `"tr-TR"` yerine aktif site dili.
+  const intlLocale = contentLocaleToIntl(useActiveLocaleCode());
   const [slots, setSlots] = useState<AvailabilitySlot[]>(initialSlots);
   const [monthFetchError, setMonthFetchError] = useState<string | null>(null);
   const [dayChangedNotice, setDayChangedNotice] = useState(false);
@@ -313,7 +330,7 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                   <ChevronLeft className="h-4 w-4" aria-hidden="true" />
                 </button>
                 <p className="text-sm font-semibold uppercase tracking-wider text-foreground">
-                  {formatMonthLabel(viewMonth.year, viewMonth.month0)}
+                  {formatMonthLabel(viewMonth.year, viewMonth.month0, intlLocale)}
                 </p>
                 <button
                   type="button"
@@ -350,7 +367,7 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                     const isSelected = dayKey === selectedDayKey;
                     const isEarliest = dayKey === earliestKey;
                     const isWeekend = isWeekendDay(year, month0, day);
-                    const datePart = formatCellDatePart(year, month0, day);
+                    const datePart = formatCellDatePart(year, month0, day, intlLocale);
 
                     if (isSelected) {
                       return (
@@ -487,7 +504,7 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                         {group.items.map((slot) => {
                           const isPast = new Date(slot.startsAt).getTime() < now;
                           const isSelected = selectedSlots.some((s) => s.startsAt === slot.startsAt);
-                          const time = formatTime(slot.startsAt, displayTimeZone);
+                          const time = formatTime(slot.startsAt, displayTimeZone, intlLocale);
 
                           if (isSelected) {
                             return (

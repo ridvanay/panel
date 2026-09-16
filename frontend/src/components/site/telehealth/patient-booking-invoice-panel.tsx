@@ -8,6 +8,8 @@ import type { BookingInvoice } from "@/lib/api/types";
 import { formatPriceFromCents } from "@/lib/format-price";
 import { formatDayLabel, formatTime } from "@/lib/telehealth-format";
 import { useAuth } from "@/context/auth-context";
+import { useActiveLocaleCode } from "@/context/locale-alternates-context";
+import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -24,6 +26,8 @@ export function PatientBookingInvoicePanel({ bookingId, accessToken }: { booking
   const [invoice, setInvoice] = useState<BookingInvoice | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  // Görev (2026-09-16) — currency/locale format denetimi (bkz. `useActiveLocaleCode` yorumu).
+  const intlLocale = contentLocaleToIntl(useActiveLocaleCode());
 
   /**
    * Bug-fix turu (2026-09-15, frontend-agent) — bu sayfaya `booking-summary-card.tsx`teki fatura
@@ -116,7 +120,7 @@ export function PatientBookingInvoicePanel({ bookingId, accessToken }: { booking
           </div>
           <div className="text-right">
             <p className="text-xs text-foreground/50">Düzenlenme Tarihi</p>
-            <p className="text-sm font-medium text-foreground">{new Intl.DateTimeFormat("tr-TR", { dateStyle: "long" }).format(new Date(invoice.issuedAt))}</p>
+            <p className="text-sm font-medium text-foreground">{new Intl.DateTimeFormat(intlLocale, { dateStyle: "long" }).format(new Date(invoice.issuedAt))}</p>
           </div>
         </div>
 
@@ -145,9 +149,9 @@ export function PatientBookingInvoicePanel({ bookingId, accessToken }: { booking
               <tr key={idx}>
                 <td className="py-2 text-foreground">{line.description}</td>
                 <td className="py-2 text-foreground/70">
-                  {formatDayLabel(line.startsAt, timeZone)} · {formatTime(line.startsAt, timeZone)}
+                  {formatDayLabel(line.startsAt, timeZone, intlLocale)} · {formatTime(line.startsAt, timeZone, intlLocale)}
                 </td>
-                <td className="py-2 text-right text-foreground">{formatPriceFromCents(line.unitPriceCents, invoice.currency)}</td>
+                <td className="py-2 text-right text-foreground">{formatPriceFromCents(line.unitPriceCents, invoice.currency, intlLocale)}</td>
               </tr>
             ))}
           </tbody>
@@ -155,7 +159,7 @@ export function PatientBookingInvoicePanel({ bookingId, accessToken }: { booking
 
         <div className="mt-4 flex items-baseline justify-between border-t border-border pt-4">
           <span className="text-sm font-semibold text-foreground">Toplam</span>
-          <span className="text-xl font-semibold text-foreground">{formatPriceFromCents(invoice.totalCents, invoice.currency)}</span>
+          <span className="text-xl font-semibold text-foreground">{formatPriceFromCents(invoice.totalCents, invoice.currency, intlLocale)}</span>
         </div>
 
         <p className="mt-6 text-xs text-foreground/50">{invoice.disclaimer}</p>

@@ -8,6 +8,7 @@ import { DoctorFilters } from "@/components/site/telehealth/doctor-filters";
 import { EmptyState } from "@/components/ui/empty-state";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
 import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
+import { getSiteDictionary } from "@/lib/i18n/site-dictionaries";
 import { SITE_URL } from "@/lib/env";
 
 /**
@@ -20,8 +21,6 @@ interface DoctorsPageProps {
   searchParams: Promise<{ specialty?: string; language?: string; q?: string }>;
 }
 
-const DOCTORS_PAGE_TITLE = "Doktorlarımız";
-
 /**
  * `products/page.tsx::generateMetadata` ile AYNI desen: `canonical` HER ZAMAN filtresiz temel
  * `/doctors`'a işaret eder; herhangi bir filtre/arama aktifse `robots: noindex, follow` (sonsuz
@@ -31,15 +30,17 @@ const DOCTORS_PAGE_TITLE = "Doktorlarımız";
  */
 export async function generateMetadata({ params, searchParams }: DoctorsPageProps): Promise<Metadata> {
   const { lang } = await params;
-  const [rawSearchParams, locales, settings, unfilteredDoctors] = await Promise.all([
+  const [rawSearchParams, locales, settings, unfilteredDoctors, dict] = await Promise.all([
     searchParams,
     fetchLocalesServer(),
     fetchSiteSettingsServer(),
     fetchDoctorsServer({}),
+    getSiteDictionary(lang),
   ]);
   const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? lang;
   const canonical = `${SITE_URL}${withLocalePrefix("/doctors", lang, defaultLocaleCode)}`;
   const isFiltered = Boolean(rawSearchParams.specialty || rawSearchParams.language || rawSearchParams.q);
+  const pageTitle = dict.telehealth.doctorsPageTitle;
 
   const specialtyNames = Array.from(
     new Set(unfilteredDoctors.filter((d) => d.specialty).map((d) => d.specialty!.name))
@@ -51,11 +52,11 @@ export async function generateMetadata({ params, searchParams }: DoctorsPageProp
       : "Doktorlarımızla online randevu alın.";
 
   return {
-    title: DOCTORS_PAGE_TITLE,
+    title: pageTitle,
     description,
     alternates: { canonical },
     openGraph: {
-      title: DOCTORS_PAGE_TITLE,
+      title: pageTitle,
       description,
       type: "website",
       siteName: settings.siteName,
@@ -63,7 +64,7 @@ export async function generateMetadata({ params, searchParams }: DoctorsPageProp
     },
     twitter: {
       card: "summary",
-      title: DOCTORS_PAGE_TITLE,
+      title: pageTitle,
       description,
     },
     ...(isFiltered ? { robots: { index: false, follow: true } } : {}),
@@ -74,15 +75,17 @@ export default async function DoctorsIndexPage({ params, searchParams }: Doctors
   const { lang } = await params;
   const { specialty, language, q } = await searchParams;
 
-  const [doctors, unfilteredDoctors, locales] = await Promise.all([
+  const [doctors, unfilteredDoctors, locales, dict] = await Promise.all([
     fetchDoctorsServer({ specialtySlug: specialty, language, search: q }),
     // Filtre seçeneklerini (uzmanlık listesi) oluşturmak için — public bir `/specialties` ucu
     // YOKTUR (§3.2 — tek FK, ayrı bir uç açılmadı), bu yüzden mevcut doktorlardan türetilir.
     fetchDoctorsServer({}),
     fetchLocalesServer(),
+    getSiteDictionary(lang),
   ]);
 
   const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? lang;
+  const intlLocale = contentLocaleToIntl(lang);
 
   const specialtyOptions = Array.from(
     new Map(
@@ -96,11 +99,13 @@ export default async function DoctorsIndexPage({ params, searchParams }: Doctors
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
-      <h1 className="font-heading text-2xl font-semibold text-foreground sm:text-3xl">Doktorlarımız</h1>
-      <p className="mt-2 text-foreground/60">Uzmanına göre filtreleyin, uygun saati seçin ve online randevunuzu alın.</p>
+      <h1 className="font-heading text-2xl font-semibold text-foreground sm:text-3xl">{dict.telehealth.doctorsPageTitle}</h1>
+      <p className="mt-2 text-foreground/60">{dict.telehealth.doctorsPageSubtitle}</p>
 
       <div className="mt-6">
         <DoctorFilters
+          dict={dict.telehealth}
+          locale={intlLocale}
           specialtyOptions={specialtyOptions}
           languageOptions={languageOptions}
           activeSpecialty={specialty}
@@ -112,8 +117,8 @@ export default async function DoctorsIndexPage({ params, searchParams }: Doctors
       {doctors.length === 0 ? (
         <EmptyState
           icon={Stethoscope}
-          title="Sonuç bulunamadı"
-          description="Bu filtrelerle eşleşen bir doktor yok. Filtreleri değiştirmeyi deneyin."
+          title={dict.telehealth.doctorsEmptyTitle}
+          description={dict.telehealth.doctorsEmptyDescription}
           className="mt-10"
         />
       ) : (
@@ -124,7 +129,8 @@ export default async function DoctorsIndexPage({ params, searchParams }: Doctors
               doctor={doctor}
               activeLocaleCode={lang}
               defaultLocaleCode={defaultLocaleCode}
-              intlLocale={contentLocaleToIntl(lang)}
+              intlLocale={intlLocale}
+              dict={dict.telehealth}
             />
           ))}
         </div>

@@ -133,6 +133,7 @@ import type {
   WebhookDeliverySummaryDto,
   WebhookDeliveryDto,
   SpecialtyDto,
+  SpecialtyWithDoctorCountDto,
   DoctorProfileDto,
   DoctorAvailabilityRuleDto,
   DoctorSummaryDto,
@@ -1613,6 +1614,11 @@ export function toSpecialtyDto(specialty: Specialty): SpecialtyDto {
     createdAt: specialty.createdAt.toISOString(),
     updatedAt: specialty.updatedAt.toISOString(),
   };
+}
+
+/** `GET /specialties/{slug}` (public) — `toSpecialtyDto` + `doctorCount` (route katmanında ayrıca sorgulanır). */
+export function toSpecialtyWithDoctorCountDto(specialty: Specialty, doctorCount: number): SpecialtyWithDoctorCountDto {
+  return { ...toSpecialtyDto(specialty), doctorCount };
 }
 
 export function toDoctorAvailabilityRuleDto(rule: DoctorAvailability): DoctorAvailabilityRuleDto {

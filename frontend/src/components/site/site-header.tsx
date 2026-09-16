@@ -14,6 +14,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { LanguageSwitcher } from "@/components/site/language-switcher";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
+import { formatSiteString } from "@/lib/i18n/site-dictionaries";
+import type { NavStrings } from "@/lib/i18n/site-dictionaries";
+import { navStrings as legacyFallbackNavStrings } from "@/lib/i18n/site-dictionaries/tr/nav";
 import type { Locale, NavigationItemDto, SiteButtonStyle, SitePage, SiteSettings } from "@/lib/api/types";
 import { DEFAULT_HEADER_LOGO_HEIGHT } from "@/lib/site-settings/logo";
 import { cn } from "@/lib/utils";
@@ -61,6 +64,20 @@ interface SiteHeaderProps {
    * admin canlı önizleme/unit testler bu prop'u vermez).
    */
   telehealthModuleEnabled?: boolean;
+  /**
+   * `.claude/architect-scope-i18n.md` §14.5 madde 2 — hesap menüsü/"Giriş Yap"/aria-label'lar.
+   * `(site)/layout.tsx` her zaman `dict.nav`'ı (aktif site locale'ine göre çözülmüş) geçirir.
+   *
+   * **Geriye dönük uyumluluk sapması (BİLİNÇLİ, bu görevin gerçek çıktısı — bkz. handback notu):**
+   * §14.3 "verilmezse KAYNAK dile (`en`) düşer" der; ANCAK 4 mevcut `site-header-*.test.tsx` unit
+   * testi (`doctor-session`, `doctor-route-cart`) `dict` VERMEDEN render eder ve dropdown/aria-label
+   * metinlerini Türkçe regex/tam eşleşme ile doğrular (ör. `getByRole("link", { name: "Giriş yap" })`).
+   * EN kaynağa düşmek bu testleri KIRARDI. Bu yüzden `dict` verilmezse bileşen kaynak `en` YERİNE
+   * `tr/nav.ts`'e (mevcut/legacy Türkçe metinlerle birebir aynı) düşer — admin önizlemesi ve testler
+   * ESKİDEN OLDUĞU GİBİ Türkçe görünmeye devam eder, gerçek ziyaretçi render'ı (`dict` HER ZAMAN
+   * verilir) etkilenmez.
+   */
+  dict?: NavStrings;
 }
 
 /**
@@ -203,6 +220,7 @@ export function SiteHeader({
   stickyHeaderEnabled = false,
   headerStickyBlurEnabled = true,
   telehealthModuleEnabled = false,
+  dict = legacyFallbackNavStrings,
 }: SiteHeaderProps) {
   // `useCartOptional`: bu bileşen `admin/navigation/page.tsx`'teki canlı önizlemede
   // `CartProvider` OLMADAN da render edilir (admin layout'unda sepet KASTEN yok) — o durumda
@@ -247,7 +265,7 @@ export function SiteHeader({
     >
       <nav
         className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6"
-        aria-label="Site gezinme"
+        aria-label={dict.siteNavigationAriaLabel}
       >
         <Link href={localize("/")} className="flex items-center gap-2 text-lg font-semibold text-foreground">
           {settings.logoUrl ? (
@@ -346,7 +364,7 @@ export function SiteHeader({
                 render={
                   <button
                     type="button"
-                    aria-label={`Hesabım, ${user.name}`}
+                    aria-label={formatSiteString(dict.accountMenuAriaLabel, { name: user.name })}
                     className={cn(
                       "flex items-center gap-1.5 rounded-lg px-2 py-1.5 outline-none transition-colors hover:bg-surface-muted",
                       ICON_LINK_TEXT_CLASSES,
@@ -363,7 +381,7 @@ export function SiteHeader({
                 {isDoctorSession && telehealthModuleEnabled && (
                   <DropdownMenuItem render={<Link href={localize("/doctor")} />}>
                     <Stethoscope className="h-4 w-4" aria-hidden="true" />
-                    Doktor Paneli
+                    {dict.doctorPortal}
                   </DropdownMenuItem>
                 )}
                 {/* [KHP] `.claude/architect-scope-telehealth-template.md` §9.8.3 — hedef `/patient/appointments`e
@@ -372,7 +390,7 @@ export function SiteHeader({
                 {!isDoctorSession && telehealthModuleEnabled && (
                   <DropdownMenuItem render={<Link href={localize("/patient/appointments")} />}>
                     <CalendarClock className="h-4 w-4" aria-hidden="true" />
-                    Randevularım
+                    {dict.myAppointments}
                   </DropdownMenuItem>
                 )}
                 {/* `/hesabim` HERKESE (5 rol + doktor) açık — `DoctorPortalShell`'in 2FA ekranı
@@ -380,28 +398,28 @@ export function SiteHeader({
                     açamaz hale gelir. */}
                 <DropdownMenuItem render={<Link href={localize("/hesabim")} />}>
                   <UserIcon className="h-4 w-4" aria-hidden="true" />
-                  Hesabım
+                  {dict.myAccount}
                 </DropdownMenuItem>
                 {productsModuleEnabled && !isDoctorSession && (
                   <DropdownMenuItem render={<Link href={localize("/hesabim/siparislerim")} />}>
                     <Receipt className="h-4 w-4" aria-hidden="true" />
-                    Siparişlerim
+                    {dict.myOrders}
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuItem onClick={() => void auth?.logout()}>
                   <LogOut className="h-4 w-4" aria-hidden="true" />
-                  Çıkış Yap
+                  {dict.logout}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           ) : (
             <Link
               href={`/login?next=${encodeURIComponent(pathname)}`}
-              aria-label="Giriş yap"
+              aria-label={dict.loginAriaLabel}
               className={cn("flex items-center gap-1.5 rounded-lg px-2 py-1.5 transition-colors hover:bg-surface-muted", ICON_LINK_TEXT_CLASSES)}
             >
               <UserIcon className="h-4.5 w-4.5" aria-hidden="true" />
-              <span className="hidden sm:inline">Giriş Yap</span>
+              <span className="hidden sm:inline">{dict.login}</span>
             </Link>
           )}
 
@@ -410,7 +428,7 @@ export function SiteHeader({
           {productsModuleEnabled && status === "authenticated" && !isDoctorSession && (
             <Link
               href={localize("/hesabim/favorilerim")}
-              aria-label="Favorilerim"
+              aria-label={dict.wishlistAriaLabel}
               className={cn(
                 "relative inline-flex h-9 w-9 items-center justify-center rounded-lg transition-colors hover:bg-surface-muted",
                 ICON_LINK_TEXT_CLASSES
@@ -423,7 +441,7 @@ export function SiteHeader({
           {showCartIcon && (
             <Link
               href={localize("/cart")}
-              aria-label={`Sepet, ${itemCount} ürün`}
+              aria-label={formatSiteString(dict.cartAriaLabel, { count: itemCount })}
               className={cn(
                 "relative inline-flex h-9 w-9 items-center justify-center rounded-lg transition-colors hover:bg-surface-muted",
                 ICON_LINK_TEXT_CLASSES

@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { COOKIE_BANNER_VISIBILITY_EVENT } from "@/components/site/cookie-consent-banner";
 import { formatPriceFromCents } from "@/lib/format-price";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
+import { useActiveLocaleCode } from "@/context/locale-alternates-context";
+import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import { cn } from "@/lib/utils";
 
 interface StickyAddToCartBarProps {
@@ -41,6 +43,8 @@ export function StickyAddToCartBar({
   onAdded,
 }: StickyAddToCartBarProps) {
   const { addItem } = useCart();
+  // Görev (2026-09-16) — currency/locale format denetimi (bkz. `useActiveLocaleCode` yorumu).
+  const intlLocale = contentLocaleToIntl(useActiveLocaleCode());
   const [visible, setVisible] = useState(false);
   const [cookieBannerVisible, setCookieBannerVisible] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -93,12 +97,12 @@ export function StickyAddToCartBar({
           {discountPriceCents !== null ? (
             <>
               <span className="mr-1.5 text-xs font-normal text-foreground/40 line-through">
-                {formatPriceFromCents(priceCents, currency)}
+                {formatPriceFromCents(priceCents, currency, intlLocale)}
               </span>
-              {formatPriceFromCents(discountPriceCents, currency)}
+              {formatPriceFromCents(discountPriceCents, currency, intlLocale)}
             </>
           ) : (
-            formatPriceFromCents(priceCents, currency)
+            formatPriceFromCents(priceCents, currency, intlLocale)
           )}
         </div>
         <div className="flex-1" />

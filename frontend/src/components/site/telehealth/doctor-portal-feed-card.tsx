@@ -13,6 +13,8 @@ import type {
 } from "@/lib/api/types";
 import { useDoctorPortalProfile } from "@/components/site/telehealth/doctor-portal-context";
 import { formatDayLabel, formatTime } from "@/lib/telehealth-format";
+import { useActiveLocaleCode } from "@/context/locale-alternates-context";
+import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
@@ -72,6 +74,8 @@ function FeedSkeleton() {
 }
 
 function AnnouncementRow({ announcement, timeZone }: { announcement: DoctorPortalAnnouncement; timeZone: string }) {
+  // Görev (2026-09-16) — takvim/randevu gün-ay-saat biçimlendirmesi denetimi (bkz. `useActiveLocaleCode` yorumu).
+  const intlLocale = contentLocaleToIntl(useActiveLocaleCode());
   return (
     <div
       data-testid="doctor-portal-feed-announcement"
@@ -86,7 +90,7 @@ function AnnouncementRow({ announcement, timeZone }: { announcement: DoctorPorta
       </div>
       <p className="mt-1 text-xs text-foreground/70">{announcement.body}</p>
       <p className="mt-1.5 text-[11px] text-foreground/40">
-        {formatDayLabel(announcement.publishedAt, timeZone)} · {formatTime(announcement.publishedAt, timeZone)}
+        {formatDayLabel(announcement.publishedAt, timeZone, intlLocale)} · {formatTime(announcement.publishedAt, timeZone, intlLocale)}
       </p>
     </div>
   );
@@ -94,6 +98,7 @@ function AnnouncementRow({ announcement, timeZone }: { announcement: DoctorPorta
 
 function NotificationRow({ notification, timeZone }: { notification: DoctorPortalNotification; timeZone: string }) {
   const Icon = NOTIFICATION_ICON[notification.kind];
+  const intlLocale = contentLocaleToIntl(useActiveLocaleCode());
   return (
     <div
       data-testid="doctor-portal-feed-notification"
@@ -104,7 +109,7 @@ function NotificationRow({ notification, timeZone }: { notification: DoctorPorta
       <div className="min-w-0">
         <p className="text-xs text-foreground">{notification.message}</p>
         <p className="mt-0.5 text-[11px] text-foreground/40">
-          {formatDayLabel(notification.occurredAt, timeZone)} · {formatTime(notification.occurredAt, timeZone)}
+          {formatDayLabel(notification.occurredAt, timeZone, intlLocale)} · {formatTime(notification.occurredAt, timeZone, intlLocale)}
         </p>
       </div>
     </div>

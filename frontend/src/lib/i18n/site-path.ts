@@ -10,5 +10,9 @@
 export function withLocalePrefix(path: string, activeLocale: string, defaultLocale: string): string {
   if (!path.startsWith("/")) return path;
   if (activeLocale === defaultLocale) return path;
+  // qa-agent bulgusu (2026-09-16) — kök path (`"/"`) için `${activeLocale}${path}` çift slash'a
+  // (`/en/`) düşer; ana sayfanın prefix'li kanonik URL'i her zaman `/en` (SONDA slash YOK)
+  // olmalıdır (`[lang]/page.tsx`'in kendi route segmenti ile BİREBİR AYNI şekil).
+  if (path === "/") return `/${activeLocale}`;
   return `/${activeLocale}${path}`;
 }

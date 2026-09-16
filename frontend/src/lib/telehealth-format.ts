@@ -12,9 +12,14 @@ export function formatDayKey(iso: string, timeZone: string): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(iso));
 }
 
-/** `"11 Eylül Cuma"` — §2.2.5/§2.3.6/§2.4.4 onay şeritlerinde/özet panelinde BİREBİR aynı çıktı. */
-export function formatDayLabel(iso: string, timeZone: string): string {
-  return new Intl.DateTimeFormat("tr-TR", { timeZone, weekday: "long", day: "numeric", month: "long" }).format(new Date(iso));
+/**
+ * `"11 Eylül Cuma"` — §2.2.5/§2.3.6/§2.4.4 onay şeritlerinde/özet panelinde BİREBİR aynı çıktı.
+ * Görev (2026-09-16) — `locale` opsiyoneldir ve varsayılanı `"tr-TR"`dir (`formatPriceFromCents`
+ * İLE AYNI geriye-dönük-uyumlu desen); çağıran taraf aktif site diline göre `contentLocaleToIntl`
+ * ile üretilen BCP-47 etiketini AÇIKÇA geçmelidir (bkz. çağıranların `useActiveLocaleCode` kullanımı).
+ */
+export function formatDayLabel(iso: string, timeZone: string, locale = "tr-TR"): string {
+  return new Intl.DateTimeFormat(locale, { timeZone, weekday: "long", day: "numeric", month: "long" }).format(new Date(iso));
 }
 
 /**
@@ -25,16 +30,26 @@ export function formatDayLabel(iso: string, timeZone: string): string {
  * `Intl.DateTimeFormat("tr-TR", { timeZone, ... })` deseni İKİ AYRI çağrıyla (tarih + hafta günü)
  * birleştirilir; ikinci bir tarih kütüphanesi İCAT EDİLMEZ.
  */
-export function formatFullDayLabel(iso: string, timeZone: string): string {
+export function formatFullDayLabel(iso: string, timeZone: string, locale = "tr-TR"): string {
   const date = new Date(iso);
-  const datePart = new Intl.DateTimeFormat("tr-TR", { timeZone, day: "numeric", month: "long", year: "numeric" }).format(date);
-  const weekdayPart = new Intl.DateTimeFormat("tr-TR", { timeZone, weekday: "long" }).format(date);
+  const datePart = new Intl.DateTimeFormat(locale, { timeZone, day: "numeric", month: "long", year: "numeric" }).format(date);
+  const weekdayPart = new Intl.DateTimeFormat(locale, { timeZone, weekday: "long" }).format(date);
   return `${datePart}, ${weekdayPart}`;
 }
 
-/** `"HH:mm"` (`hourCycle: "h23"`) — saat slotu etiketi, onay şeridi, özet paneli AYNI kaynak. */
-export function formatTime(iso: string, timeZone: string): string {
-  return new Intl.DateTimeFormat("tr-TR", { timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(iso));
+/**
+ * `"HH:mm"` saat slotu etiketi, onay şeridi, özet paneli AYNI kaynak.
+ * Görev (2026-09-16, düzeltme) — saat formatı (12h/24h) locale'e göre biçimlendirilmelidir:
+ * İngilizce (`en`, `en-US`, `en-GB` vb. — `.claude/architect-scope-i18n.md` §6.1'deki hreflang
+ * override'lar da bu köke bağlıdır) için `hourCycle: "h12"` (AM/PM), diğer tüm locale'ler
+ * (varsayılan `tr-TR` dahil) için `hourCycle: "h23"`. Bölgesel `en-*` varyantları arasında AYRIM
+ * YAPILMAZ — görev açıkça "İngilizceye göre" dedi, bölge bazlı ayrım istemedi; bu yüzden
+ * `Intl`'in kendi varsayılanına (`en-GB` → 24h) bırakmak yerine `locale.startsWith("en")` ile
+ * AÇIKÇA kontrol edilir. `formatDayLabel` İLE AYNI varsayılan/geriye-uyum deseni korunur.
+ */
+export function formatTime(iso: string, timeZone: string, locale = "tr-TR"): string {
+  const hourCycle = locale.toLowerCase().startsWith("en") ? "h12" : "h23";
+  return new Intl.DateTimeFormat(locale, { timeZone, hour: "2-digit", minute: "2-digit", hourCycle }).format(new Date(iso));
 }
 
 /**

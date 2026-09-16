@@ -13,9 +13,11 @@ import { EmergencyNoticeCard } from "@/components/site/telehealth/emergency-noti
 import { BookingWizard } from "@/components/site/telehealth/booking-wizard";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
 import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
+import { getSiteDictionary } from "@/lib/i18n/site-dictionaries";
 import { buildDoctorJsonLd } from "@/lib/doctor-json-ld";
 import { JsonLdScript } from "@/components/site/json-ld-script";
 import { SITE_URL } from "@/lib/env";
+import type { Locale } from "@/lib/api/types";
 
 /**
  * `.claude/architect-scope-telehealth-template.md` §5.2/§9.5 — doktor profili + saat dilimi
@@ -37,6 +39,27 @@ function truncateForDescription(text: string, maxLength = 160): string {
 
 function resolveCanonicalUrl(lang: string, defaultLocaleCode: string, slug: string): string {
   return `${SITE_URL}${withLocalePrefix(`/doctors/${slug}`, lang, defaultLocaleCode)}`;
+}
+
+/**
+ * qa-agent bulgusu (2026-09-16) — `alternates.languages` hiç üretilmiyordu. `DoctorProfile`'da
+ * (`lib/api/types.ts`) `Specialty` İLE AYNI durum: `translations`/`localizations` alanı YOKTUR
+ * (§3.8 — doktor profili `ContentSlug`/i18n sistemine dahil değil), dolayısıyla `.claude/architect-
+ * scope-i18n.md` §6.1'in `localizations` DTO dizisinden hreflang türetme kaynağı burada da YOKTUR.
+ * `specialties/[slug]/page.tsx::buildSelfLanguageAlternates` İLE BİREBİR AYNI "kendine referans"
+ * deseni: sayfa İÇERİĞİ (doktor profili) tüm dillerde AYNIDIR, yalnızca site kabuğu aktif dile göre
+ * değişir — bu yüzden AYNI slug her aktif dilin kendi prefix'li URL'sine eşlenir, `x-default`
+ * varsayılan dilin prefix'siz URL'südür.
+ */
+function buildSelfLanguageAlternates(locales: Locale[], defaultLocaleCode: string, slug: string): Record<string, string> {
+  const languages: Record<string, string> = {};
+  for (const locale of locales) {
+    if (!locale.enabled) continue;
+    const hreflangKey = locale.hreflang ?? locale.code;
+    languages[hreflangKey] = resolveCanonicalUrl(locale.code, defaultLocaleCode, slug);
+  }
+  languages["x-default"] = `${SITE_URL}/doctors/${slug}`;
+  return languages;
 }
 
 /**
@@ -64,7 +87,10 @@ export async function generateMetadata({ params }: DoctorDetailPageProps): Promi
   return {
     title,
     description,
-    alternates: { canonical },
+    alternates: {
+      canonical,
+      languages: buildSelfLanguageAlternates(locales, defaultLocaleCode, slug),
+    },
     openGraph: {
       title,
       description,
@@ -94,11 +120,12 @@ export default async function DoctorDetailPage({ params }: DoctorDetailPageProps
   const { lang, slug } = await params;
   const { from, to } = defaultSlotRange();
 
-  const [doctor, locales, pages, slots] = await Promise.all([
+  const [doctor, locales, pages, slots, dict] = await Promise.all([
     fetchDoctorBySlugServer(slug),
     fetchLocalesServer(),
     fetchPublishedPagesServer(lang),
     fetchDoctorSlotsServer(slug, from, to),
+    getSiteDictionary(lang),
   ]);
   if (!doctor) notFound();
 
@@ -124,7 +151,7 @@ export default async function DoctorDetailPage({ params }: DoctorDetailPageProps
           `BookingWizard`'ın 12 kolonluk gridine daha ferah bir alan sağlamak için). */}
       <div className="w-full bg-[var(--site-secondary)]">
         <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-14">
-          <DoctorProfileHero doctor={doctor} />
+          <DoctorProfileHero doctor={doctor} dict={dict.telehealth} lang={lang} />
         </div>
       </div>
 
@@ -155,21 +182,22 @@ export default async function DoctorDetailPage({ params }: DoctorDetailPageProps
               `booking-wizard.tsx`'te de İKİSİ BİRLİKTE var). */}
           <div className="grid grid-cols-1 gap-8 lg:grid-cols-12 lg:items-start">
             <div className="lg:col-span-8">
-              <DoctorProfileTabs doctor={doctor} />
+              <DoctorProfileTabs doctor={doctor} dict={dict.telehealth} />
             </div>
             <aside className="lg:col-span-4 lg:sticky lg:top-6 lg:self-start">
               <DoctorQuickBookingCard
                 doctor={doctor}
                 earliestAvailableIso={earliestAvailableIso}
                 intlLocale={contentLocaleToIntl(lang)}
+                dict={dict.telehealth}
               />
             </aside>
           </div>
 
           <section id="randevu" className="mt-10 scroll-mt-24">
-            <h2 className="text-xl font-semibold text-foreground">Müsaitlik ve Randevu</h2>
+            <h2 className="text-xl font-semibold text-foreground">{dict.telehealth.availabilityAndBookingTitle}</h2>
             <div className="mt-4">
-              <EmergencyNoticeCard />
+              <EmergencyNoticeCard text={dict.telehealth.emergencyNotice} />
             </div>
             <div className="mt-4">
               <BookingWizard

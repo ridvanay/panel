@@ -128,19 +128,26 @@ async function main() {
   // (bkz. modules/telehealth/lib/notifications.ts::triggerAppointmentConfirmationEmail). Konu
   // satırı BİLİNÇLİ OLARAK NÖTR: doktorun uzmanlık adı çıkarımsal sağlık verisidir (§7.1) ve
   // ne konuda ne gövdede yer alır; şikâyet notu/belge adı da AYNI şekilde ASLA yer almaz.
+  // backend-agent görev notu (2026-09-16, "varsayılan dili İngilizce yap") — içerik EN'e
+  // çevrildi. `EmailTemplate` modelinde locale/translations alanı YOKTUR (tek dilli içerik,
+  // bkz. `.claude/architect-scope-i18n.md`); bu yüzden `buildEmailRenderContext`'in okuduğu
+  // `localeSet.default.code` yalnızca KVKK footer linklerinin (`/{locale}/{slug}`) dilini
+  // belirler, gövde/konu metnini DEĞİL — o yüzden gövde/konu burada ELLE İngilizceye çevrildi.
+  // NOT: `upsert.update: {}` (idempotency) zaten SEED EDİLMİŞ bir DB satırını GÜNCELLEMEZ —
+  // mevcut ortamlarda `scripts/translate-appointment-email-templates-en.ts` ile AYRICA uygulandı.
   await prisma.emailTemplate.upsert({
     where: { key: "APPOINTMENT_CONFIRMATION" },
     update: {},
     create: {
       key: "APPOINTMENT_CONFIRMATION",
-      name: "Randevu Onay E-postası",
+      name: "Appointment Confirmation Email",
       purpose: "APPOINTMENT_CONFIRMATION",
       editorMode: "RAW",
       isSystem: true,
       isActive: true,
-      subject: "Randevunuz onaylandı",
+      subject: "Your appointment is confirmed",
       bodyHtml:
-        "<p>Merhaba {{patient_name}},</p><p><strong>{{booking_number}}</strong> numaralı rezervasyonunuz için ödemeniz alındı, randevunuz onaylandı.</p><p>Randevu saat(ler)i: {{slots_summary}}</p><p>Toplam: {{total_formatted}}</p><p>Rezervasyon detaylarınızı görüntülemek ve görüşmeye katılmak için aşağıdaki bağlantıyı kullanabilirsiniz:</p><p><a href=\"{{magic_link}}\">Rezervasyonumu Görüntüle</a></p>",
+        "<p>Hello {{patient_name}},</p><p>We have received your payment for booking <strong>{{booking_number}}</strong> and your appointment is confirmed.</p><p>Appointment time(s): {{slots_summary}}</p><p>Total: {{total_formatted}}</p><p>You can use the link below to view your booking details and join the consultation:</p><p><a href=\"{{magic_link}}\">View My Booking</a></p>",
       availableVariables: ["booking_number", "patient_name", "slots_summary", "total_formatted", "magic_link"],
     },
   });
@@ -158,14 +165,14 @@ async function main() {
     update: {},
     create: {
       key: "APPOINTMENT_RESCHEDULED",
-      name: "Randevu Yeniden Planlandı",
+      name: "Appointment Rescheduled",
       purpose: "APPOINTMENT_RESCHEDULED",
       editorMode: "RAW",
       isSystem: true,
       isActive: true,
-      subject: "Randevunuz Yeniden Planlandı",
+      subject: "Your Appointment Has Been Rescheduled",
       bodyHtml:
-        "<p>Sayın {{recipient_name}},</p><p><strong>{{booking_number}}</strong> numaralı randevunuz yeniden planlanmıştır.</p><p><strong>Eski Tarih/Saat:</strong> {{old_slot_summary}}</p><p><strong>Yeni Tarih/Saat:</strong> {{new_slot_summary}}</p><p>{{reason}}</p><p>Herhangi bir sorunuz olursa bizimle iletişime geçebilirsiniz.</p>",
+        "<p>Dear {{recipient_name}},</p><p>Your appointment <strong>{{booking_number}}</strong> has been rescheduled.</p><p><strong>Previous Date/Time:</strong> {{old_slot_summary}}</p><p><strong>New Date/Time:</strong> {{new_slot_summary}}</p><p>{{reason}}</p><p>If you have any questions, please feel free to contact us.</p>",
       availableVariables: ["recipient_name", "booking_number", "old_slot_summary", "new_slot_summary", "reason"],
     },
   });
@@ -181,12 +188,12 @@ async function main() {
     update: {},
     create: {
       key: "APPOINTMENT_REMINDER_60M",
-      name: "Randevu Hatırlatma E-postası (1 Saat Kala)",
+      name: "Appointment Reminder Email (1 Hour Before)",
       purpose: "APPOINTMENT_REMINDER_60M",
       editorMode: "BLOCKS",
       isSystem: true,
       isActive: true,
-      subject: "Randevunuza 1 Saat Kaldı",
+      subject: "Your Appointment Is in 1 Hour",
       bodyHtml: "",
       availableVariables: ["recipient_name", "booking_number", "doctor_name", "slot_summary"],
       blocks: [
@@ -200,7 +207,7 @@ async function main() {
           id: "block-heading",
           type: "heading",
           style: { align: "left", backgroundColor: null, textColor: null, paddingY: "md", paddingX: "md" },
-          data: { text: "Randevunuza 1 Saat Kaldı", level: 2 },
+          data: { text: "Your Appointment Is in 1 Hour", level: 2 },
         },
         {
           id: "block-text",
@@ -208,7 +215,7 @@ async function main() {
           style: { align: "left", backgroundColor: null, textColor: null, paddingY: "sm", paddingX: "md" },
           data: {
             html:
-              "<p>Sayın {{recipient_name}},</p><p><strong>{{booking_number}}</strong> numaralı randevunuza yaklaşık 1 saat kalmıştır.</p><p><strong>Görüşülecek Kişi:</strong> {{doctor_name}}</p><p><strong>Randevu Saati:</strong> {{slot_summary}}</p><p>Lütfen randevu saatinden kısa bir süre önce hazır olunuz. Görüşmeye şimdiden katılmak isterseniz, onay e-postanızdaki bağlantıyı kullanabilirsiniz.</p>",
+              "<p>Dear {{recipient_name}},</p><p>Your appointment <strong>{{booking_number}}</strong> is starting in about 1 hour.</p><p><strong>Participant:</strong> {{doctor_name}}</p><p><strong>Appointment Time:</strong> {{slot_summary}}</p><p>Please be ready shortly before your appointment time. If you would like to join early, you can use the link from your confirmation email.</p>",
           },
         },
       ],
@@ -224,12 +231,12 @@ async function main() {
     update: {},
     create: {
       key: "APPOINTMENT_REMINDER_30M",
-      name: "Randevu Hatırlatma E-postası (30 Dakika Kala)",
+      name: "Appointment Reminder Email (30 Minutes Before)",
       purpose: "APPOINTMENT_REMINDER_30M",
       editorMode: "BLOCKS",
       isSystem: true,
       isActive: true,
-      subject: "Randevunuza 30 Dakika Kaldı",
+      subject: "Your Appointment Is in 30 Minutes",
       bodyHtml: "",
       availableVariables: ["recipient_name", "booking_number", "doctor_name", "slot_summary", "join_link"],
       blocks: [
@@ -243,7 +250,7 @@ async function main() {
           id: "block-heading",
           type: "heading",
           style: { align: "left", backgroundColor: null, textColor: null, paddingY: "md", paddingX: "md" },
-          data: { text: "Randevunuza 30 Dakika Kaldı", level: 2 },
+          data: { text: "Your Appointment Is in 30 Minutes", level: 2 },
         },
         {
           id: "block-text",
@@ -251,7 +258,7 @@ async function main() {
           style: { align: "left", backgroundColor: null, textColor: null, paddingY: "sm", paddingX: "md" },
           data: {
             html:
-              "<p>Sayın {{recipient_name}},</p><p><strong>{{booking_number}}</strong> numaralı randevunuza yaklaşık 30 dakika kalmıştır.</p><p><strong>Görüşülecek Kişi:</strong> {{doctor_name}}</p><p><strong>Randevu Saati:</strong> {{slot_summary}}</p><p>Aşağıdaki bağlantıdan doğrudan odaya katılabilirsiniz.</p>",
+              "<p>Dear {{recipient_name}},</p><p>Your appointment <strong>{{booking_number}}</strong> is starting in about 30 minutes.</p><p><strong>Participant:</strong> {{doctor_name}}</p><p><strong>Appointment Time:</strong> {{slot_summary}}</p><p>You can join the room directly using the link below.</p>",
           },
         },
         {
@@ -259,7 +266,7 @@ async function main() {
           type: "button",
           style: { align: "left", backgroundColor: null, textColor: null, paddingY: "md", paddingX: "md" },
           data: {
-            label: "Odaya Katıl",
+            label: "Join Room",
             href: "{{join_link}}",
             backgroundColor: null,
             textColor: null,

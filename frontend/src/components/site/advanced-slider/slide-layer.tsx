@@ -63,7 +63,7 @@ export function SlideLayerView({
           {layer.type === "heading" && <HeadingContent text={layer.content.text} level={layer.content.level} />}
           {layer.type === "text" && <p className="m-0 whitespace-pre-line">{layer.content.text}</p>}
           {layer.type === "badge" && (
-            <span className="inline-block rounded-full bg-[var(--site-primary)] px-3 py-1 text-xs font-semibold text-white">
+            <span className="inline-block rounded-full bg-[var(--site-primary)] px-3 py-1 text-xs font-semibold text-[var(--site-button-text)]">
               {layer.content.text}
             </span>
           )}

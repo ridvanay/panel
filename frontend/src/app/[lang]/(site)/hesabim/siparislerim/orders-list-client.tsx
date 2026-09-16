@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { AlertCircle, Receipt } from "lucide-react";
 import * as usersApi from "@/lib/api/users";
 import type { Order } from "@/lib/api/types";
-import { useLocalizePath } from "@/context/locale-alternates-context";
+import { useLocalizePath, useActiveLocaleCode } from "@/context/locale-alternates-context";
+import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -18,8 +19,6 @@ import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { formatPriceFromCents } from "@/lib/format-price";
 import { ORDER_STATUS_LABELS, ORDER_STATUS_TONE } from "@/lib/order-status";
 
-const dateFormatter = new Intl.DateTimeFormat("tr-TR", { dateStyle: "medium", timeStyle: "short" });
-
 /**
  * `/hesabim/siparislerim` içerik istemcisi — §customer-portal §2.1. `GET /users/me/orders`
  * ROL GUARD'I TAŞIMAZ (sahiplik filtresi yeterlidir); bir `USER` bu sekmeyi görürse HARD 403
@@ -27,6 +26,10 @@ const dateFormatter = new Intl.DateTimeFormat("tr-TR", { dateStyle: "medium", ti
  */
 export function OrdersListClient() {
   const localize = useLocalizePath();
+  const intlLocale = contentLocaleToIntl(useActiveLocaleCode());
+  // Görev (2026-09-16) — currency/locale format denetimi: sabit modül-seviyesi `"tr-TR"`
+  // `Intl.DateTimeFormat` yerine aktif site diline bağlı biçimlendirici.
+  const dateFormatter = useMemo(() => new Intl.DateTimeFormat(intlLocale, { dateStyle: "medium", timeStyle: "short" }), [intlLocale]);
 
   const [orders, setOrders] = useState<Order[] | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -129,7 +132,7 @@ export function OrdersListClient() {
                         </Link>
                       </TableCell>
                       <TableCell className="text-foreground/60">{dateFormatter.format(new Date(order.createdAt))}</TableCell>
-                      <TableCell>{formatPriceFromCents(order.totalCents, order.currency)}</TableCell>
+                      <TableCell>{formatPriceFromCents(order.totalCents, order.currency, intlLocale)}</TableCell>
                       <TableCell>
                         <Badge tone={ORDER_STATUS_TONE[order.status]}>{ORDER_STATUS_LABELS[order.status]}</Badge>
                       </TableCell>

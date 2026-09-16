@@ -7,7 +7,8 @@ import { AlertCircle, Heart, ShoppingCart, Trash2 } from "lucide-react";
 import * as usersApi from "@/lib/api/users";
 import type { WishlistItem } from "@/lib/api/types";
 import { useCart } from "@/context/cart-context";
-import { useLocalizePath } from "@/context/locale-alternates-context";
+import { useLocalizePath, useActiveLocaleCode } from "@/context/locale-alternates-context";
+import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
@@ -35,6 +36,7 @@ function WishlistProductCard({
   removing: boolean;
 }) {
   const localize = useLocalizePath();
+  const intlLocale = contentLocaleToIntl(useActiveLocaleCode());
   const { product } = item;
   const soldOut = product.stockQuantity === 0;
 
@@ -58,12 +60,12 @@ function WishlistProductCard({
             {product.discountPriceCents !== null ? (
               <>
                 <span className="mr-2 text-sm font-normal text-foreground/40 line-through">
-                  {formatPriceFromCents(product.priceCents, product.currency)}
+                  {formatPriceFromCents(product.priceCents, product.currency, intlLocale)}
                 </span>
-                {formatPriceFromCents(product.discountPriceCents, product.currency)}
+                {formatPriceFromCents(product.discountPriceCents, product.currency, intlLocale)}
               </>
             ) : (
-              formatPriceFromCents(product.priceCents, product.currency)
+              formatPriceFromCents(product.priceCents, product.currency, intlLocale)
             )}
           </p>
         </div>

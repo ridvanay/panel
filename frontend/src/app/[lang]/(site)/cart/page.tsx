@@ -4,7 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Minus, Plus, ShoppingCart, Trash2 } from "lucide-react";
 import { useCart } from "@/context/cart-context";
-import { useLocalizePath } from "@/context/locale-alternates-context";
+import { useLocalizePath, useActiveLocaleCode } from "@/context/locale-alternates-context";
+import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import { Button } from "@/components/ui/button";
 import { LinkButton } from "@/components/ui/link-button";
 import { Card } from "@/components/ui/card";
@@ -19,6 +20,7 @@ export default function CartPage() {
   const { cart, loading, updateItem, removeItem, refetch } = useCart();
   const router = useRouter();
   const localize = useLocalizePath();
+  const intlLocale = contentLocaleToIntl(useActiveLocaleCode());
   const [error, setError] = useState<string | null>(null);
   const [mutatingId, setMutatingId] = useState<string | null>(null);
 
@@ -123,12 +125,12 @@ export default function CartPage() {
                 <p className="truncate text-sm font-medium text-foreground">{item.product.title}</p>
                 {item.variantLabel && <p className="text-xs text-foreground/60">{item.variantLabel}</p>}
                 <p className="mt-0.5 text-sm text-foreground/60">
-                  {formatPriceFromCents(item.frozenUnitPriceCents, cart.currency ?? "TRY")}
+                  {formatPriceFromCents(item.frozenUnitPriceCents, cart.currency ?? "TRY", intlLocale)}
                 </p>
                 {priceChanged && (
                   <p className="mt-1 flex items-center gap-1 text-xs text-warning">
                     <AlertTriangle className="h-3 w-3 shrink-0" />
-                    Fiyat güncellendi: yeni fiyat {formatPriceFromCents(item.currentPriceCents, cart.currency ?? "TRY")}
+                    Fiyat güncellendi: yeni fiyat {formatPriceFromCents(item.currentPriceCents, cart.currency ?? "TRY", intlLocale)}
                   </p>
                 )}
               </div>
@@ -160,7 +162,7 @@ export default function CartPage() {
               </div>
 
               <div className="w-24 shrink-0 text-right text-sm font-semibold text-foreground">
-                {formatPriceFromCents(item.lineTotalCents, cart.currency ?? "TRY")}
+                {formatPriceFromCents(item.lineTotalCents, cart.currency ?? "TRY", intlLocale)}
               </div>
 
               <Button
@@ -182,21 +184,21 @@ export default function CartPage() {
         <div className="flex items-center justify-between">
           <span className="text-sm font-medium text-foreground/70">Ara Toplam</span>
           <span className="text-base font-medium text-foreground">
-            {formatPriceFromCents(cart.subtotalCents, cart.currency ?? "TRY")}
+            {formatPriceFromCents(cart.subtotalCents, cart.currency ?? "TRY", intlLocale)}
           </span>
         </div>
         {cart.shipping.configured && (
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium text-foreground/70">Kargo</span>
             <span className="text-base font-medium text-foreground">
-              {cart.shipping.feeCents === 0 ? "Ücretsiz" : formatPriceFromCents(cart.shipping.feeCents, cart.currency ?? "TRY")}
+              {cart.shipping.feeCents === 0 ? "Ücretsiz" : formatPriceFromCents(cart.shipping.feeCents, cart.currency ?? "TRY", intlLocale)}
             </span>
           </div>
         )}
         <div className="flex items-center justify-between border-t border-border pt-2">
           <span className="text-sm font-medium text-foreground/70">Toplam</span>
           <span className="text-xl font-semibold text-foreground">
-            {formatPriceFromCents(cart.totalCents, cart.currency ?? "TRY")}
+            {formatPriceFromCents(cart.totalCents, cart.currency ?? "TRY", intlLocale)}
           </span>
         </div>
       </Card>

@@ -9,6 +9,8 @@ import type { DoctorEarningsSession, DoctorEarningsSummary } from "@/lib/api/typ
 import { useDoctorPortalProfile } from "@/components/site/telehealth/doctor-portal-context";
 import { formatDayLabel, formatTime } from "@/lib/telehealth-format";
 import { formatPriceFromCents } from "@/lib/format-price";
+import { useActiveLocaleCode } from "@/context/locale-alternates-context";
+import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert } from "@/components/ui/alert";
@@ -59,6 +61,8 @@ function EarningsSkeleton() {
 export function DoctorEarningsPanel() {
   const profile = useDoctorPortalProfile();
   const timeZone = profile.doctorProfile.timeZone;
+  // Görev (2026-09-16) — currency/locale format denetimi (bkz. `useActiveLocaleCode` yorumu).
+  const intlLocale = contentLocaleToIntl(useActiveLocaleCode());
 
   const [summary, setSummary] = useState<DoctorEarningsSummary | null>(null);
   const [sessions, setSessions] = useState<DoctorEarningsSession[] | null>(null);
@@ -128,18 +132,18 @@ export function DoctorEarningsPanel() {
             <StatCard
               icon={Wallet}
               label="Toplam Brüt Kazanç"
-              value={formatPriceFromCents(summary.grossCents, summary.currency)}
+              value={formatPriceFromCents(summary.grossCents, summary.currency, intlLocale)}
               sublabel={`Tamamlanan ${summary.completedSessionCount} seans`}
             />
             <StatCard
               icon={Percent}
               label={`Platform Komisyonu (%${summary.commissionRatePercent})`}
-              value={formatPriceFromCents(summary.commissionCents, summary.currency)}
+              value={formatPriceFromCents(summary.commissionCents, summary.currency, intlLocale)}
             />
             <StatCard
               icon={PiggyBank}
               label="Net Kazanç"
-              value={formatPriceFromCents(summary.netCents, summary.currency)}
+              value={formatPriceFromCents(summary.netCents, summary.currency, intlLocale)}
               sublabel="Komisyon sonrası, size ödenecek tutar"
               highlighted
             />
@@ -158,20 +162,20 @@ export function DoctorEarningsPanel() {
                   <div key={session.appointmentId} className="rounded-[var(--site-radius)] border border-border bg-surface p-4">
                     <p className="truncate text-sm font-semibold text-foreground">{session.patientName}</p>
                     <p className="text-xs text-foreground/60">
-                      {formatDayLabel(session.startsAt, timeZone)} · {formatTime(session.startsAt, timeZone)}
+                      {formatDayLabel(session.startsAt, timeZone, intlLocale)} · {formatTime(session.startsAt, timeZone, intlLocale)}
                     </p>
                     <div className="mt-2 space-y-1 text-xs">
                       <div className="flex justify-between">
                         <span className="text-foreground/50">Brüt</span>
-                        <span className="tabular-nums text-foreground">{formatPriceFromCents(session.grossCents, session.currency)}</span>
+                        <span className="tabular-nums text-foreground">{formatPriceFromCents(session.grossCents, session.currency, intlLocale)}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-foreground/50">Komisyon</span>
-                        <span className="tabular-nums text-foreground">{formatPriceFromCents(session.commissionCents, session.currency)}</span>
+                        <span className="tabular-nums text-foreground">{formatPriceFromCents(session.commissionCents, session.currency, intlLocale)}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-foreground/50">Net</span>
-                        <span className="tabular-nums font-medium text-foreground">{formatPriceFromCents(session.netCents, session.currency)}</span>
+                        <span className="tabular-nums font-medium text-foreground">{formatPriceFromCents(session.netCents, session.currency, intlLocale)}</span>
                       </div>
                     </div>
                   </div>
@@ -194,14 +198,14 @@ export function DoctorEarningsPanel() {
                     <tr key={session.appointmentId}>
                       <td className="py-3 pr-4 font-medium text-foreground">{session.patientName}</td>
                       <td className="py-3 pr-4 text-foreground/70">
-                        {formatDayLabel(session.startsAt, timeZone)} · {formatTime(session.startsAt, timeZone)}
+                        {formatDayLabel(session.startsAt, timeZone, intlLocale)} · {formatTime(session.startsAt, timeZone, intlLocale)}
                       </td>
-                      <td className="py-3 pr-4 text-right tabular-nums text-foreground">{formatPriceFromCents(session.grossCents, session.currency)}</td>
+                      <td className="py-3 pr-4 text-right tabular-nums text-foreground">{formatPriceFromCents(session.grossCents, session.currency, intlLocale)}</td>
                       <td className="py-3 pr-4 text-right tabular-nums text-foreground">
-                        {formatPriceFromCents(session.commissionCents, session.currency)}
+                        {formatPriceFromCents(session.commissionCents, session.currency, intlLocale)}
                       </td>
                       <td className="py-3 text-right tabular-nums font-medium text-foreground">
-                        {formatPriceFromCents(session.netCents, session.currency)}
+                        {formatPriceFromCents(session.netCents, session.currency, intlLocale)}
                       </td>
                     </tr>
                   ))}

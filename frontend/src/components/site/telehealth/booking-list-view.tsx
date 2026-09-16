@@ -7,7 +7,8 @@ import type { AppointmentBooking, AppointmentStatus } from "@/lib/api/types";
 import { formatDayLabel, formatTime } from "@/lib/telehealth-format";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import * as telehealthApi from "@/lib/api/telehealth";
-import { useLocalizePath } from "@/context/locale-alternates-context";
+import { useLocalizePath, useActiveLocaleCode } from "@/context/locale-alternates-context";
+import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import { PaymentStatusBadge } from "@/components/site/telehealth/payment-status-badge";
 import { AppointmentStatusBadge } from "@/components/site/telehealth/appointment-status-badge";
 import { JoinMeetingButton } from "@/components/site/telehealth/join-meeting-button";
@@ -188,6 +189,8 @@ function BookingDocumentsIndicator({
 }
 
 export function BookingListView({ bookings, loadError, onRetry, perspective, timeZone, accessToken }: BookingListViewProps) {
+  // Görev (2026-09-16) — takvim/randevu gün-ay-saat biçimlendirmesi denetimi (bkz. `useActiveLocaleCode` yorumu).
+  const intlLocale = contentLocaleToIntl(useActiveLocaleCode());
   const [documentsBookingId, setDocumentsBookingId] = useState<string | null>(null);
   const [completingId, setCompletingId] = useState<string | null>(null);
   const [note, setNote] = useState("");
@@ -265,7 +268,7 @@ export function BookingListView({ bookings, loadError, onRetry, perspective, tim
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold text-foreground">{counterpartName}</p>
                   <p className="text-xs text-foreground/60">
-                    {booking.appointments[0] ? formatDayLabel(booking.appointments[0].startsAt, timeZone) : booking.bookingNumber}
+                    {booking.appointments[0] ? formatDayLabel(booking.appointments[0].startsAt, timeZone, intlLocale) : booking.bookingNumber}
                   </p>
                 </div>
                 <PaymentStatusBadge status={booking.paymentStatus} />
@@ -277,7 +280,7 @@ export function BookingListView({ bookings, loadError, onRetry, perspective, tim
                     key={appointment.id}
                     className="rounded-full border border-border bg-muted/50 px-2 py-0.5 text-xs tabular-nums text-foreground/70"
                   >
-                    {formatTime(appointment.startsAt, timeZone)}
+                    {formatTime(appointment.startsAt, timeZone, intlLocale)}
                   </span>
                 ))}
               </div>
@@ -323,7 +326,7 @@ export function BookingListView({ bookings, loadError, onRetry, perspective, tim
                         key={appointment.id}
                         className="rounded-full border border-border bg-muted/50 px-2 py-0.5 text-xs tabular-nums text-foreground/70"
                       >
-                        {formatTime(appointment.startsAt, timeZone)}
+                        {formatTime(appointment.startsAt, timeZone, intlLocale)}
                       </span>
                     ))}
                   </div>
@@ -369,8 +372,8 @@ export function BookingListView({ bookings, loadError, onRetry, perspective, tim
             <DialogHeader>
               <DialogTitle>Seansı Tamamla</DialogTitle>
               <DialogDescription>
-                {completingBooking.patientName} ile {formatDayLabel(completingFirstAppointment.startsAt, timeZone)} ·{" "}
-                {formatTime(completingFirstAppointment.startsAt, timeZone)} seansını tamamlandı olarak işaretleyeceksiniz.
+                {completingBooking.patientName} ile {formatDayLabel(completingFirstAppointment.startsAt, timeZone, intlLocale)} ·{" "}
+                {formatTime(completingFirstAppointment.startsAt, timeZone, intlLocale)} seansını tamamlandı olarak işaretleyeceksiniz.
               </DialogDescription>
             </DialogHeader>
 

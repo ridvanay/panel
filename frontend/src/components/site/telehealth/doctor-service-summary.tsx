@@ -9,6 +9,9 @@ import { useBookingSelection } from "@/components/site/telehealth/booking-select
 import { formatPriceFromCents } from "@/lib/format-price";
 import { formatDayLabel, formatTime } from "@/lib/telehealth-format";
 import type { DoctorProfile } from "@/lib/api/types";
+import { formatSiteString } from "@/lib/i18n/site-dictionaries";
+import type { TelehealthStrings } from "@/lib/i18n/site-dictionaries";
+import { telehealthStrings as legacyFallbackTelehealthStrings } from "@/lib/i18n/site-dictionaries/tr/telehealth";
 import { cn } from "@/lib/utils";
 
 /**
@@ -46,6 +49,20 @@ interface DoctorServiceSummaryPanelProps {
   showContinueButton: boolean;
   /** Adım 4/5 — booking ZATEN oluşturuldu, seçim artık DEĞİŞTİRİLEMEZ (salt-okunur özet). */
   locked: boolean;
+  /**
+   * `.claude/architect-scope-i18n.md` §14.3/§14.5 madde 9 — bu bileşen `booking-wizard.tsx`'in
+   * (Faz 2 kapsamı, DOKUNULMADI) İÇİNDE render edilir; `dict` bu yüzden OPSİYONELDİR.
+   *
+   * **Geriye dönük uyumluluk sapması (BİLİNÇLİ, `site-header.tsx`'teki AYNI gerekçe):** §14.3'ün
+   * harfi "verilmezse KAYNAK dile (`en`) düşer" der, ANCAK `booking-wizard.tsx` (Faz 2, bu turda
+   * DOKUNULMADI) bu bileşene HENÜZ `dict` GEÇİRMİYOR — bugünkü ÜRETİM randevu sihirbazı baştan
+   * sona Türkçedir. EN kaynağa düşmek, Faz 2 bu bileşene gerçek `dict`'i bağlayana kadar sihirbazın
+   * İÇİNDE tek bir panelin aniden İngilizceye dönmesine (karışık dil, kullanıcıyı şaşırtan bir
+   * regresyon) yol açardı — bu yüzden verilmezse mevcut/legacy Türkçe metinlerle BİREBİR aynı
+   * `tr/telehealth.ts`'e düşer (`doctor-service-summary.test.tsx`, 4 protected `site-header-*`
+   * testiyle AYNI mantık — mevcut testler DEĞİŞTİRİLMEDEN geçer).
+   */
+  dict?: TelehealthStrings;
 }
 
 export function DoctorServiceSummaryPanel({
@@ -57,6 +74,7 @@ export function DoctorServiceSummaryPanel({
   continueLoading,
   showContinueButton,
   locked,
+  dict = legacyFallbackTelehealthStrings,
 }: DoctorServiceSummaryPanelProps) {
   const { selectedSlots, removeSlot, clearAllSlots, displayTimeZone } = useBookingSelection();
   const panelRef = useRef<HTMLDivElement>(null);
@@ -84,12 +102,12 @@ export function DoctorServiceSummaryPanel({
   const totalCents = doctor.sessionPriceCents * slotCount;
   // §2.4.3 — `doctor-profile-hero.tsx`'in uzmanlık chip'iyle AYNI fallback zinciri, sabit
   // "Profesyonel Danışmanlık Seansı" metni İCAT EDİLMEZ.
-  const specialtyName = doctor.specialty?.name ?? "Genel Danışmanlık";
+  const specialtyName = doctor.specialty?.name ?? dict.generalConsultationSpecialty;
 
   return (
     <>
       <div ref={panelRef} className="rounded-[var(--site-radius)] border border-border bg-surface p-5 shadow-sm">
-        <p className="text-xs font-semibold uppercase tracking-wider text-foreground/50">Hizmet Özeti</p>
+        <p className="text-xs font-semibold uppercase tracking-wider text-foreground/50">{dict.serviceSummaryLabel}</p>
 
         {/* §2.4.2 — doktor profili satırı. */}
         <div className="mt-4 flex items-center gap-3">
@@ -106,17 +124,17 @@ export function DoctorServiceSummaryPanel({
 
         {/* §2.4.3 — hizmet detayı satırı. */}
         <div className="flex items-center justify-between gap-2 text-sm">
-          <span className="text-foreground/80">{specialtyName} Seansı</span>
+          <span className="text-foreground/80">{formatSiteString(dict.sessionWithSpecialtyLabel, { specialty: specialtyName })}</span>
           <span className="flex shrink-0 items-center gap-1 text-foreground/60">
             <Clock className="h-3.5 w-3.5" aria-hidden="true" />
-            {doctor.sessionDurationMin} Dk.
+            {formatSiteString(dict.serviceDurationLabel, { minutes: doctor.sessionDurationMin })}
           </span>
         </div>
 
         {/* §12.2.4 — "Seçilen Randevu" kutusu, çoklu-çip listesi. */}
         <div className="mt-4 rounded-[var(--site-radius)] border border-border bg-muted/50 p-3">
           <div className="flex items-center justify-between gap-2">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-foreground/50">Seçilen Randevu</p>
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-foreground/50">{dict.selectedAppointmentLabel}</p>
             {/* Grid görevi (2026-09-14) Görev 1 — `locked` (adım 4/5) modunda booking ZATEN
                 oluşturulduğu için "Değiştir" KALDIRILIR (tıklanırsa yalnızca UI'daki seçimi
                 temizler, gerçek booking'i ETKİLEMEZ — kafa karıştırıcı olurdu). */}
@@ -127,18 +145,18 @@ export function DoctorServiceSummaryPanel({
                 className="flex shrink-0 items-center gap-1 rounded-[var(--site-radius)] px-1.5 py-0.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
               >
                 <Pencil className="h-3 w-3" aria-hidden="true" />
-                Değiştir
+                {dict.changeAction}
               </button>
             )}
           </div>
 
           {slotCount === 0 ? (
-            <p className="mt-1 text-sm text-foreground/40">Tarih ve saatleri seçin</p>
+            <p className="mt-1 text-sm text-foreground/40">{dict.selectDateTimePrompt}</p>
           ) : (
             <>
               <p className="mt-2 flex items-center gap-1.5 text-sm font-medium text-foreground">
                 <CalendarCheck className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
-                {formatDayLabel(selectedSlots[0]!.startsAt, displayTimeZone)}
+                {formatDayLabel(selectedSlots[0]!.startsAt, displayTimeZone, intlLocale)}
               </p>
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {selectedSlots.map((slot) => (
@@ -146,12 +164,14 @@ export function DoctorServiceSummaryPanel({
                     key={slot.startsAt}
                     className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 py-1 pl-2.5 pr-1.5 text-xs font-medium tabular-nums text-primary"
                   >
-                    {formatTime(slot.startsAt, displayTimeZone)}
+                    {formatTime(slot.startsAt, displayTimeZone, intlLocale)}
                     {!locked && (
                       <button
                         type="button"
                         onClick={() => removeSlot(slot)}
-                        aria-label={`${formatTime(slot.startsAt, displayTimeZone)} slotunu kaldır`}
+                        aria-label={formatSiteString(dict.removeSlotAriaLabel, {
+                          time: formatTime(slot.startsAt, displayTimeZone, intlLocale),
+                        })}
                         className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-primary/70 hover:bg-primary/20 hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
                       >
                         <X className="h-3 w-3" aria-hidden="true" />
@@ -161,7 +181,7 @@ export function DoctorServiceSummaryPanel({
                 ))}
               </div>
               <p className="mt-2 text-xs text-foreground/60">
-                {slotCount} Slot · {slotCount * doctor.sessionDurationMin} Dk
+                {formatSiteString(dict.slotSummaryLabel, { count: slotCount, minutes: slotCount * doctor.sessionDurationMin })}
               </p>
             </>
           )}
@@ -172,19 +192,19 @@ export function DoctorServiceSummaryPanel({
           <div className="mt-4 space-y-1.5 border-t border-border pt-4">
             <div className="flex items-center justify-between text-xs text-foreground/60">
               <span>
-                {unitPrice} × {slotCount} seans
+                {unitPrice} × {slotCount} {dict.sessionsUnitWord}
               </span>
               <span>{formatPriceFromCents(doctor.sessionPriceCents * slotCount, doctor.currency, intlLocale)}</span>
             </div>
             <div className="flex items-baseline justify-between">
-              <span className="text-sm font-semibold text-foreground">Toplam</span>
+              <span className="text-sm font-semibold text-foreground">{dict.totalLabel}</span>
               <span className="text-2xl font-semibold text-foreground">{formatPriceFromCents(totalCents, doctor.currency, intlLocale)}</span>
             </div>
           </div>
         ) : (
           <div className="mt-4 flex items-baseline gap-1.5">
             <span className="text-2xl font-semibold text-foreground">{unitPrice}</span>
-            <span className="text-sm text-foreground/60">/ seans</span>
+            <span className="text-sm text-foreground/60">{dict.perSessionPriceSuffix}</span>
           </div>
         )}
 
@@ -197,9 +217,9 @@ export function DoctorServiceSummaryPanel({
         {showContinueButton && (
           <div className="mt-3 space-y-1.5">
             <Button type="button" size="lg" className="w-full rounded-[var(--site-radius)]" disabled={continueDisabled} loading={continueLoading} onClick={onContinue}>
-              Devam Et
+              {dict.continueCta}
             </Button>
-            <p className="text-center text-[11px] text-foreground/40">Adım {currentStep} / 5</p>
+            <p className="text-center text-[11px] text-foreground/40">{formatSiteString(dict.stepProgressLabel, { current: currentStep })}</p>
           </div>
         )}
       </div>
@@ -221,7 +241,7 @@ export function DoctorServiceSummaryPanel({
             <div className="min-w-0 text-base font-semibold text-foreground">{slotCount > 1 ? formatPriceFromCents(totalCents, doctor.currency, intlLocale) : unitPrice}</div>
             <div className="flex-1" />
             <Button type="button" size="lg" className="rounded-[var(--site-radius)]" disabled={continueDisabled} loading={continueLoading} onClick={onContinue}>
-              Devam Et
+              {dict.continueCta}
             </Button>
           </div>
         </div>

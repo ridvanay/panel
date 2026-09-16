@@ -6,7 +6,8 @@ import { buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { useLocalizePath } from "@/context/locale-alternates-context";
+import { useLocalizePath, useActiveLocaleCode } from "@/context/locale-alternates-context";
+import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import type { AppointmentBooking } from "@/lib/api/types";
 import { SITE_ORIGIN } from "@/lib/doctor-host";
 import { EARLY_JOIN_WARNING_THRESHOLD_MINUTES, formatDayLabel, formatTime } from "@/lib/telehealth-format";
@@ -86,6 +87,8 @@ export function JoinMeetingButton({
   activeVariant = "default",
 }: JoinMeetingButtonProps) {
   const localize = useLocalizePath();
+  // Görev (2026-09-16) — takvim/randevu gün-ay-saat biçimlendirmesi denetimi (bkz. `useActiveLocaleCode` yorumu).
+  const intlLocale = contentLocaleToIntl(useActiveLocaleCode());
   const firstAppointment = booking.appointments[0];
   // eslint-disable-next-line react-hooks/purity -- `availability-calendar.tsx` İLE AYNI gerekçe: katılım penceresi durumunu "şu an" ile karşılaştırmak GEREKİR, saniyede bir tick atan bir sayaç GEREKMEZ, yalnızca render anındaki an yeterlidir
   const now = nowMs ?? Date.now();
@@ -166,7 +169,7 @@ export function JoinMeetingButton({
               {activeLabel}
             </a>
             <span className="text-xs text-foreground/60">
-              {formatDayLabel(booking.joinableFrom, resolvedTimeZone)} · {formatTime(booking.joinableFrom, resolvedTimeZone)}
+              {formatDayLabel(booking.joinableFrom, resolvedTimeZone, intlLocale)} · {formatTime(booking.joinableFrom, resolvedTimeZone, intlLocale)}
             </span>
           </div>
           {earlyJoinDialog}

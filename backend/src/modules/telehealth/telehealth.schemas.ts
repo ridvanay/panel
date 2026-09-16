@@ -25,6 +25,11 @@ export const DoctorSlugParamSchema = z.object({
   slug: z.string().min(1).max(80),
 });
 
+/** `GET /specialties/{slug}` (public) — `DoctorSlugParamSchema` İLE AYNI şekil, ayrı isim (netlik). */
+export const SpecialtySlugParamSchema = z.object({
+  slug: z.string().min(1).max(80),
+});
+
 /**
  * §4.2 — `GET /doctors/{slug}/slots?from=&to=`, en fazla 31 GÜNLÜK aralık. `from`/`to` doktorun
  * KENDİ takvim günüdür (bir zaman dilimi TAŞIMAZ) — dönüşüm `lib/timezone.ts`'te yapılır.

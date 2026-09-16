@@ -14,6 +14,8 @@ import { DoctorAboutEditor } from "@/components/site/telehealth/doctor-about-edi
 import { DoctorCvEntriesEditor } from "@/components/site/telehealth/doctor-cv-entries-editor";
 import { DoctorPublicationsEditor } from "@/components/site/telehealth/doctor-publications-editor";
 import { formatPriceFromCents } from "@/lib/format-price";
+import { useActiveLocaleCode } from "@/context/locale-alternates-context";
+import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import { Badge } from "@/components/ui/badge";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -83,6 +85,8 @@ type ProfileFormValues = z.infer<typeof profileFormSchema>;
 export function DoctorProfilePanel() {
   const portalProfile = useDoctorPortalProfile();
   const { doctorProfile } = portalProfile;
+  // Görev (2026-09-16) — currency/locale format denetimi (bkz. `useActiveLocaleCode` yorumu).
+  const intlLocale = contentLocaleToIntl(useActiveLocaleCode());
 
   // [DPI] §1.4 — `aboutHtml`/`cvEntries`/`publications` karmaşık/dizi veridir; proje genelinde
   // zengin metin/dizi editörleri (bkz. `post-editor.tsx`'in `contentHtml` state'i) RHF'in DIŞINDA,
@@ -206,7 +210,7 @@ export function DoctorProfilePanel() {
           </div>
           <div>
             <dt className="text-xs text-foreground/50">Seans ücreti</dt>
-            <dd className="text-foreground">{formatPriceFromCents(savedProfile.sessionPriceCents, savedProfile.currency)}</dd>
+            <dd className="text-foreground">{formatPriceFromCents(savedProfile.sessionPriceCents, savedProfile.currency, intlLocale)}</dd>
           </div>
         </dl>
 

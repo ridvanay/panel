@@ -12,6 +12,7 @@ import { ActiveFilterChips } from "@/components/site/catalog/active-filter-chips
 import { CatalogPagination } from "@/components/site/catalog/catalog-pagination";
 import { buildClearAllHref, hasActiveCatalogFilters, parseCatalogFilters, type RawSearchParams } from "@/lib/catalog-search-params";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
+import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import { SITE_URL } from "@/lib/env";
 
 interface ProductsIndexPageProps {
@@ -136,6 +137,7 @@ export default async function ProductsIndexPage({ params, searchParams }: Produc
                     product={product}
                     activeLocaleCode={lang}
                     defaultLocaleCode={defaultLocaleCode}
+                    intlLocale={contentLocaleToIntl(lang)}
                     variant={filters.view === "list" ? "list" : "grid"}
                     priority={index < 4}
                   />

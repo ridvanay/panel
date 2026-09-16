@@ -200,7 +200,10 @@ export function AdminSidebar() {
             href="/admin"
             className="flex items-center gap-2.5 rounded-xl px-2 py-1.5 transition-colors hover:bg-sidebar-accent"
           >
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[linear-gradient(to_bottom_right,var(--accent-500),var(--accent-700))] text-white shadow-[0_0_20px_rgba(var(--accent-rgb-400),0.5)]">
+            {/* ui-designer kontrast bulgusu (2026-09-16) — bazı accent preset'lerinde (amber/cyan)
+                500 tonu üzerinde `text-white` ~2.1-2.5:1 kontrast veriyordu. Gradyan 500→700'den
+                600→700'e (paletin en koyu mevcut tonu, `-800` YOK) çekildi. */}
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[linear-gradient(to_bottom_right,var(--accent-600),var(--accent-700))] text-white shadow-[0_0_20px_rgba(var(--accent-rgb-400),0.5)]">
               <LayoutGrid className="h-4 w-4" />
             </span>
             <span className="flex flex-col leading-tight">
@@ -262,7 +265,8 @@ export function AdminSidebar() {
           </div>
           <div className="flex items-center justify-between rounded-lg border border-sidebar-border bg-sidebar-foreground/5 px-2.5 py-2 text-xs text-sidebar-foreground/50">
             <span>{t("nav.version")}</span>
-            <span className="rounded-full bg-[linear-gradient(to_right,var(--accent-500),var(--accent-700))] px-2 py-0.5 font-medium text-white shadow-[0_0_10px_rgba(var(--accent-rgb-400),0.45)]">
+            {/* Aynı kontrast düzeltmesi (bkz. üstteki SidebarHeader rozet yorumu). */}
+            <span className="rounded-full bg-[linear-gradient(to_right,var(--accent-600),var(--accent-700))] px-2 py-0.5 font-medium text-white shadow-[0_0_10px_rgba(var(--accent-rgb-400),0.45)]">
               v1.0
             </span>
           </div>

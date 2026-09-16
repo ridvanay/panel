@@ -5,6 +5,8 @@ import { X } from "lucide-react";
 import type { ProductCatalogFacets, ProductCategoryFacet } from "@/lib/api/types";
 import { formatPriceFromCents } from "@/lib/format-price";
 import { buildCatalogHref, buildClearAllHref, hasActiveCatalogFilters, type CatalogFilters } from "@/lib/catalog-search-params";
+import { useActiveLocaleCode } from "@/context/locale-alternates-context";
+import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 
 interface ActiveFilterChipsProps {
   filters: CatalogFilters;
@@ -33,6 +35,8 @@ function findCategoryLabel(categories: ProductCategoryFacet[], slug: string): st
 export function ActiveFilterChips({ filters, facets }: ActiveFilterChipsProps) {
   const router = useRouter();
   const pathname = usePathname();
+  // Görev (2026-09-16) — currency/locale format denetimi (bkz. `useActiveLocaleCode` yorumu).
+  const intlLocale = contentLocaleToIntl(useActiveLocaleCode());
 
   if (!hasActiveCatalogFilters(filters)) return null;
 
@@ -51,8 +55,8 @@ export function ActiveFilterChips({ filters, facets }: ActiveFilterChipsProps) {
     // Filtre aralığı ürün bağımsızdır (henüz bir ürün seçilmedi) — mağazanın TEK para birimi
     // olduğu varsayımı `formatPriceFromCents`'in `tr-TR` locale varsayımıyla AYNI ölçekte.
     const currency = "TRY";
-    const minLabel = filters.minPrice !== null ? formatPriceFromCents(filters.minPrice, currency) : "";
-    const maxLabel = filters.maxPrice !== null ? formatPriceFromCents(filters.maxPrice, currency) : "";
+    const minLabel = filters.minPrice !== null ? formatPriceFromCents(filters.minPrice, currency, intlLocale) : "";
+    const maxLabel = filters.maxPrice !== null ? formatPriceFromCents(filters.maxPrice, currency, intlLocale) : "";
     const label = filters.minPrice !== null && filters.maxPrice !== null ? `${minLabel} – ${maxLabel}` : minLabel || maxLabel;
     chips.push({ key: "price", label, onRemove: () => go({ minPrice: null, maxPrice: null }) });
   }

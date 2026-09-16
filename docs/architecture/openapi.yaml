@@ -6604,6 +6604,53 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
 
+  /specialties:
+    get:
+      tags: [TeleHealth]
+      security: []
+      summary: Aktif uzmanlık (branş) alanlarını listele (public)
+      description: >
+        `telehealth` modülü kapalıysa `404 NOT_FOUND`. Yalnızca `isActive: true`
+        satırlar, `order` artan sırayla döner — sayfalama YOK (küçük/kapalı bir
+        taksonomi, `/admin/telehealth/specialties` İLE AYNI "tüm satırları tek
+        seferde dön" kararı).
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/Specialty" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /specialties/{slug}:
+    parameters:
+      - $ref: "#/components/parameters/SpecialtySlug"
+    get:
+      tags: [TeleHealth]
+      security: []
+      summary: Uzmanlık (branş) detayı — o branştaki aktif doktor sayısıyla birlikte (public)
+      description: >
+        `telehealth` modülü kapalıysa VEYA `slug` bulunamazsa/`isActive: false`
+        ise `404 NOT_FOUND` (varlığı SIZDIRILMAZ, `/doctors/{slug}` İLE AYNI disiplin).
+        `doctorCount` — bu branşa bağlı, YALNIZCA `isActive: true` doktor sayısı.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/SpecialtyWithDoctorCount" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /appointments:
     post:
       tags: [TeleHealth]
@@ -11988,6 +12035,12 @@ components:
       in: path
       required: true
       schema: { type: string, format: uuid }
+    SpecialtySlug:
+      name: slug
+      in: path
+      required: true
+      description: "`Specialty.slug` — `ContentSlug` tablosuna KAYDOLMAZ (`DoctorSlug` İLE AYNI karar, §3.8, i18n yok)."
+      schema: { type: string }
     DoctorId:
       name: doctorId
       in: path
@@ -17630,6 +17683,18 @@ components:
         isActive: { type: boolean }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+
+    SpecialtyWithDoctorCount:
+      description: "`GET /specialties/{slug}` (public) yanıt gövdesi — `Specialty` + `doctorCount`."
+      allOf:
+        - $ref: "#/components/schemas/Specialty"
+        - type: object
+          required: [doctorCount]
+          properties:
+            doctorCount:
+              type: integer
+              minimum: 0
+              description: "Bu branşa bağlı, YALNIZCA `isActive: true` doktor sayısı."
 
     DoctorAvailabilityRule:
       type: object

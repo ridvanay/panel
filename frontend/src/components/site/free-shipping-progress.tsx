@@ -1,6 +1,10 @@
+"use client";
+
 import { CheckCircle2 } from "lucide-react";
 import type { CartShipping } from "@/lib/api/types";
 import { formatPriceFromCents } from "@/lib/format-price";
+import { useActiveLocaleCode } from "@/context/locale-alternates-context";
+import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import { cn } from "@/lib/utils";
 
 interface FreeShippingProgressProps {
@@ -17,6 +21,8 @@ interface FreeShippingProgressProps {
  * Sepet çekmecesinin (`cart-drawer.tsx`) İÇİNDE kullanılan AYRI bir bileşendir.
  */
 export function FreeShippingProgress({ shipping, subtotalCents, currency, className }: FreeShippingProgressProps) {
+  // Görev (2026-09-16) — currency/locale format denetimi (bkz. `useActiveLocaleCode` yorumu).
+  const intlLocale = contentLocaleToIntl(useActiveLocaleCode());
   if (!shipping.configured) return null;
 
   const remaining = shipping.remainingCents;
@@ -40,7 +46,7 @@ export function FreeShippingProgress({ shipping, subtotalCents, currency, classN
             Ücretsiz kargo kazandınız!
           </>
         ) : (
-          remaining !== null && `Ücretsiz kargoya son ${formatPriceFromCents(remaining, currency)}!`
+          remaining !== null && `Ücretsiz kargoya son ${formatPriceFromCents(remaining, currency, intlLocale)}!`
         )}
       </p>
       <div className="h-2 w-full overflow-hidden rounded-full bg-muted">

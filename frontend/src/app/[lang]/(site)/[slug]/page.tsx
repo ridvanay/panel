@@ -14,6 +14,7 @@ import { SocialShareButtons } from "@/components/site/social-share-buttons";
 import { redirectToCanonicalSlug } from "@/lib/i18n/canonical-slug";
 import { buildContentMetadata } from "@/lib/seo";
 import { SITE_URL } from "@/lib/env";
+import { getSiteDictionary, formatSiteString } from "@/lib/i18n/site-dictionaries";
 import { normalizePageNodes } from "@/lib/page-builder/normalize";
 import { buildFaqPageJsonLd, buildMapPlaceJsonLd } from "@/lib/page-builder/structured-data";
 import { JsonLdScript } from "@/components/site/json-ld-script";
@@ -63,11 +64,12 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function DynamicPage({ params }: PageProps) {
   const { lang, slug } = await params;
-  const [page, locales, settings, appearance] = await Promise.all([
+  const [page, locales, settings, appearance, dict] = await Promise.all([
     fetchPageBySlugServer(slug, lang),
     fetchLocalesServer(),
     fetchSiteSettingsServer(),
     fetchSiteAppearanceServer(),
+    getSiteDictionary(lang),
   ]);
   if (!page) notFound();
 
@@ -120,7 +122,10 @@ export default async function DynamicPage({ params }: PageProps) {
         <LegalDocumentNotice
           title={page.title}
           defaultLocaleHref={`/${page.localizations.find((l) => l.locale === defaultLocale?.code)?.slug ?? slug}`}
-          defaultLocaleLabel={defaultLocale?.nativeLabel ?? ""}
+          noticeText={dict.legal.notAvailableInLocale}
+          viewInDefaultLocaleLabel={formatSiteString(dict.legal.viewInDefaultLocale, {
+            defaultLocaleLabel: defaultLocale?.nativeLabel ?? "",
+          })}
         />
       ) : (
         <>

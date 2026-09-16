@@ -6,8 +6,9 @@ import { AlertTriangle, Paperclip, Plus } from "lucide-react";
 import * as telehealthApi from "@/lib/api/telehealth";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import type { AppointmentBooking } from "@/lib/api/types";
-import { useLocalizePath } from "@/context/locale-alternates-context";
+import { useLocalizePath, useActiveLocaleCode } from "@/context/locale-alternates-context";
 import { formatFullDayLabel, formatTime } from "@/lib/telehealth-format";
+import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -43,6 +44,7 @@ function DocumentCardsSkeleton() {
 
 export function PatientDocumentsPanel() {
   const localize = useLocalizePath();
+  const intlLocale = contentLocaleToIntl(useActiveLocaleCode());
   const router = useRouter();
   const [bookings, setBookings] = useState<AppointmentBooking[] | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -143,7 +145,7 @@ export function PatientDocumentsPanel() {
                         {booking.doctor.title} {booking.doctor.fullName}
                       </p>
                       <p className="text-xs text-foreground/60">
-                        {firstAppointment ? `${formatFullDayLabel(firstAppointment.startsAt, timeZone)} · ${formatTime(firstAppointment.startsAt, timeZone)}` : booking.bookingNumber}
+                        {firstAppointment ? `${formatFullDayLabel(firstAppointment.startsAt, timeZone, intlLocale)} · ${formatTime(firstAppointment.startsAt, timeZone, intlLocale)}` : booking.bookingNumber}
                       </p>
                       {firstAppointment && (
                         <div className="mt-1">

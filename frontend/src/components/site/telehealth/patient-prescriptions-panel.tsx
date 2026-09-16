@@ -6,6 +6,8 @@ import * as telehealthApi from "@/lib/api/telehealth";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import type { AppointmentBooking } from "@/lib/api/types";
 import { formatFullDayLabel, formatTime } from "@/lib/telehealth-format";
+import { useActiveLocaleCode } from "@/context/locale-alternates-context";
+import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -34,6 +36,7 @@ function PrescriptionCardsSkeleton() {
 }
 
 export function PatientPrescriptionsPanel() {
+  const intlLocale = contentLocaleToIntl(useActiveLocaleCode());
   const [bookings, setBookings] = useState<AppointmentBooking[] | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -128,7 +131,7 @@ export function PatientPrescriptionsPanel() {
                         {booking.doctor.title} {booking.doctor.fullName}
                       </p>
                       <p className="text-xs text-foreground/60">
-                        {firstAppointment ? `${formatFullDayLabel(firstAppointment.startsAt, timeZone)} · ${formatTime(firstAppointment.startsAt, timeZone)}` : booking.bookingNumber}
+                        {firstAppointment ? `${formatFullDayLabel(firstAppointment.startsAt, timeZone, intlLocale)} · ${formatTime(firstAppointment.startsAt, timeZone, intlLocale)}` : booking.bookingNumber}
                       </p>
                       {firstAppointment && (
                         <div className="mt-1">

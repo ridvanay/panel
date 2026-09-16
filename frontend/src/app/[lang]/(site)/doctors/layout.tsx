@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { isModuleEnabledServer } from "@/lib/api/server-modules";
 import { fetchTelehealthThemeServer } from "@/lib/api/server-telehealth";
 import { EmergencyNoticeStrip } from "@/components/site/telehealth/emergency-notice";
+import { getSiteDictionary } from "@/lib/i18n/site-dictionaries";
 
 /**
  * `telehealth` modülü kapalıysa TÜM `/doctors/*` rotaları 404 döner — backend'in
@@ -17,11 +18,18 @@ import { EmergencyNoticeStrip } from "@/components/site/telehealth/emergency-not
  * TÜM mevcut Tailwind sınıflarının (stepper "tamamlandı" durumu, "Devam Et" butonu vb.) OTOMATİK
  * olarak randevu sihirbazının tema rengini almasını sağlar — o bileşenlere AYRICA dokunulmaz.
  */
-export default async function DoctorsLayout({ children }: { children: ReactNode }) {
+export default async function DoctorsLayout({
+  children,
+  params,
+}: {
+  children: ReactNode;
+  params: Promise<{ lang: string }>;
+}) {
+  const { lang } = await params;
   const enabled = await isModuleEnabledServer("telehealth");
   if (!enabled) notFound();
 
-  const theme = await fetchTelehealthThemeServer();
+  const [theme, dict] = await Promise.all([fetchTelehealthThemeServer(), getSiteDictionary(lang)]);
 
   const telehealthScopeStyle = {
     "--telehealth-primary": theme.primaryColor,
@@ -34,7 +42,7 @@ export default async function DoctorsLayout({ children }: { children: ReactNode 
 
   return (
     <div className="telehealth-scope" style={telehealthScopeStyle}>
-      <EmergencyNoticeStrip />
+      <EmergencyNoticeStrip text={dict.telehealth.emergencyNotice} />
       {children}
     </div>
   );

@@ -1,9 +1,10 @@
 "use client";
 
-import { useLocalizePath } from "@/context/locale-alternates-context";
+import { useLocalizePath, useActiveLocaleCode } from "@/context/locale-alternates-context";
 import type { AppointmentBooking } from "@/lib/api/types";
 import { formatDayLabel, formatTime } from "@/lib/telehealth-format";
 import { formatPriceFromCents } from "@/lib/format-price";
+import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import { PaymentStatusBadge } from "@/components/site/telehealth/payment-status-badge";
 import { JoinMeetingButton } from "@/components/site/telehealth/join-meeting-button";
 import { buttonVariants } from "@/components/ui/button";
@@ -16,6 +17,7 @@ import { cn } from "@/lib/utils";
  */
 export function BookingSummaryCard({ booking, accessToken, timeZone }: { booking: AppointmentBooking; accessToken?: string; timeZone: string }) {
   const localize = useLocalizePath();
+  const intlLocale = contentLocaleToIntl(useActiveLocaleCode());
   const firstSlot = booking.appointments[0];
 
   return (
@@ -33,19 +35,19 @@ export function BookingSummaryCard({ booking, accessToken, timeZone }: { booking
       <p className="text-sm font-semibold text-foreground">
         {booking.doctor.title} {booking.doctor.fullName}
       </p>
-      {firstSlot && <p className="mt-0.5 text-xs text-foreground/60">{formatDayLabel(firstSlot.startsAt, timeZone)}</p>}
+      {firstSlot && <p className="mt-0.5 text-xs text-foreground/60">{formatDayLabel(firstSlot.startsAt, timeZone, intlLocale)}</p>}
 
       <div className="mt-2 flex flex-wrap gap-1.5">
         {booking.appointments.map((appointment) => (
           <span key={appointment.id} className="rounded-full border border-border bg-muted/50 px-2 py-0.5 text-xs tabular-nums text-foreground/70">
-            {formatTime(appointment.startsAt, timeZone)}
+            {formatTime(appointment.startsAt, timeZone, intlLocale)}
           </span>
         ))}
       </div>
 
       <div className="mt-4 flex items-baseline justify-between border-t border-border pt-4">
         <span className="text-sm font-semibold text-foreground">Toplam</span>
-        <span className="text-xl font-semibold text-foreground">{formatPriceFromCents(booking.totalCents, booking.currency)}</span>
+        <span className="text-xl font-semibold text-foreground">{formatPriceFromCents(booking.totalCents, booking.currency, intlLocale)}</span>
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">

@@ -1,5 +1,5 @@
 import { SERVER_API_BASE_URL, toInternalMediaUrl } from "../env";
-import type { AvailabilitySlot, DoctorProfile, TelehealthThemeSettings } from "./types";
+import type { AvailabilitySlot, DoctorProfile, Specialty, SpecialtyWithDoctorCount, TelehealthThemeSettings } from "./types";
 
 /**
  * `.claude/architect-scope-telehealth-template.md` §5.2 — public `/doctors*` sunucu bileşenleri
@@ -88,3 +88,35 @@ export async function fetchTelehealthThemeServer(): Promise<TelehealthThemeSetti
 }
 
 export { TELEHEALTH_THEME_DEFAULTS };
+
+/**
+ * Görev (2026-09-16) — `GET /specialties` (public, sayfalama YOK) sunucu tarafı çağrısı.
+ * `fetchDoctorsServer` İLE AYNI "asla çökme" ilkesi (§9.5): backend erişilemezse/`telehealth`
+ * modülü kapalıysa (404) `[]` döner — çağıran sayfalar (`/specialties`, `sitemap.ts`) bu durumda
+ * sessizce boş liste/empty-state render eder.
+ */
+export async function fetchSpecialtiesServer(): Promise<Specialty[]> {
+  try {
+    const res = await fetch(`${SERVER_API_BASE_URL}/specialties`, { next: { revalidate: 60 } });
+    if (!res.ok) return [];
+    const json = (await res.json()) as { data: Specialty[] };
+    return json.data;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * `GET /specialties/{slug}` (public) — `Specialty` + `doctorCount`. `fetchDoctorBySlugServer` İLE
+ * AYNI desen: bulunamazsa/404 ise `null` (varlığı SIZDIRILMAZ, `notFound()` çağıran taraftadır).
+ */
+export async function fetchSpecialtyBySlugServer(slug: string): Promise<SpecialtyWithDoctorCount | null> {
+  try {
+    const res = await fetch(`${SERVER_API_BASE_URL}/specialties/${encodeURIComponent(slug)}`, { next: { revalidate: 60 } });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { data: SpecialtyWithDoctorCount };
+    return json.data;
+  } catch {
+    return null;
+  }
+}

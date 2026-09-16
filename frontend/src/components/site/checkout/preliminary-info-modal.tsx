@@ -4,8 +4,9 @@ import { ExternalLink, FileText } from "lucide-react";
 import { useFormContext, useWatch } from "react-hook-form";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { useLocalizePath } from "@/context/locale-alternates-context";
+import { useLocalizePath, useActiveLocaleCode } from "@/context/locale-alternates-context";
 import { formatPriceFromCents } from "@/lib/format-price";
+import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import type { Cart, SitePage } from "@/lib/api/types";
 import type { CheckoutFormValues } from "./checkout-schema";
 
@@ -24,6 +25,7 @@ interface PreliminaryInfoModalProps {
 export function PreliminaryInfoModal({ open, onOpenChange, cart, preliminaryInfoPage }: PreliminaryInfoModalProps) {
   const { control } = useFormContext<CheckoutFormValues>();
   const localize = useLocalizePath();
+  const intlLocale = contentLocaleToIntl(useActiveLocaleCode());
   const currency = cart.currency ?? "TRY";
 
   const fullName = useWatch({ control, name: "shippingAddress.fullName" });
@@ -37,7 +39,7 @@ export function PreliminaryInfoModal({ open, onOpenChange, cart, preliminaryInfo
     ? "—"
     : cart.shipping.feeCents === 0
       ? "Ücretsiz"
-      : formatPriceFromCents(cart.shipping.feeCents, currency);
+      : formatPriceFromCents(cart.shipping.feeCents, currency, intlLocale);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -66,7 +68,7 @@ export function PreliminaryInfoModal({ open, onOpenChange, cart, preliminaryInfo
           </div>
           <div className="flex justify-between py-1.5 font-semibold">
             <span>Toplam</span>
-            <span>{formatPriceFromCents(cart.totalCents, currency)}</span>
+            <span>{formatPriceFromCents(cart.totalCents, currency, intlLocale)}</span>
           </div>
         </div>
 

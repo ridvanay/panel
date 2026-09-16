@@ -387,6 +387,54 @@ describe("localization (§10.5)", () => {
       expect(enGetAfterTranslation.json().data.blocks.length).toBe(1);
     });
 
+    // KVKK m.10/GDPR m.12 — qa-agent bulgusu (kök neden): "çevrildi mi?" ARTIK tek kaynaktan
+    // (`isLocaleTranslated` — anlamlı/boş olmayan `title`) hesaplanır, `ContentSlug` satırının
+    // VAR OLUŞUNDAN DEĞİL (bkz. lib/localization.ts::attachLocalizations). Bu test, `ContentSlug`
+    // satırı senkronizasyon dışı bir yolla (ör. veri kirliliği/eski kayıt) `en` için VAR olduğu
+    // ama `translations.en.title` boş/eksik olduğu bir durumu simüle eder — eski (satır varlığı
+    // bazlı) mantıkta bu durum `translated: true` dönerdi ve `isLegalDocument` kapısı TAM Türkçe
+    // hukuki metni sessizce EN ziyaretçiye gösterirdi.
+    it("treats a page as untranslated when a stale ContentSlug row exists but translations[locale].title is empty (data-drift regression)", async () => {
+      const create = await app.inject({
+        method: "POST",
+        url: "/api/v1/admin/pages",
+        headers: adminHeader(),
+        payload: {
+          title: "Aydınlatma Metni Drift",
+          status: "PUBLISHED",
+          blocks: [{ type: "text", data: { html: "<p>Türkçe hukuki metin</p>" } }],
+          isLegalDocument: true,
+          translations: { en: { title: "Privacy Notice", blocks: [{ type: "text", data: { html: "<p>EN text</p>" } }] } },
+        },
+      });
+      const page = create.json().data;
+      expect(page.isLegalDocument).toBe(true);
+      expect(page.localizations.find((l: { locale: string }) => l.locale === "en").translated).toBe(true);
+
+      // `ContentSlug(PAGE, en)` satırı burada BİLEREK YERİNDE bırakılır (silinmez) — yalnızca
+      // `translations.en.title` doğrudan DB üzerinden (senkronizasyon yolunu/`syncContentSlugs`'ı
+      // ATLAYARAK) boşaltılır; böylece "satır var ama title anlamsız" veri kirliliği simüle edilir.
+      const dbPageBefore = await app.prisma.page.findUniqueOrThrow({ where: { id: page.id } });
+      const driftedTranslations = {
+        ...(dbPageBefore.translations as Record<string, Record<string, unknown>>),
+        en: { ...(dbPageBefore.translations as Record<string, Record<string, unknown>>).en, title: "" },
+      };
+      await app.prisma.page.update({ where: { id: page.id }, data: { translations: driftedTranslations } });
+
+      const staleSlugRow = await app.prisma.contentSlug.findFirst({ where: { entityType: "PAGE", entityId: page.id, locale: "en" } });
+      expect(staleSlugRow).not.toBeNull(); // satır hâlâ orada — bu senaryonun ön koşulu.
+
+      const enGet = await app.inject({ method: "GET", url: `/api/v1/pages/${page.slug}?locale=en` });
+      expect(enGet.statusCode).toBe(200);
+      // Hukuken zorunlu davranış (§5.1): blocks BOŞ, title varsayılan (TR) dilden gelir (BOŞALTILMAZ).
+      expect(enGet.json().data.blocks).toEqual([]);
+      expect(enGet.json().data.title).toBe("Aydınlatma Metni Drift");
+      expect(enGet.json().data.localizations.find((l: { locale: string }) => l.locale === "en").translated).toBe(false);
+
+      const adminGet = await app.inject({ method: "GET", url: `/api/v1/admin/pages/${page.id}`, headers: adminHeader() });
+      expect(adminGet.json().data.localizations.find((l: { locale: string }) => l.locale === "en").translated).toBe(false);
+    });
+
     it("a non-legal page (isLegalDocument: false) still applies normal silent fallback in the same situation", async () => {
       const create = await app.inject({
         method: "POST",

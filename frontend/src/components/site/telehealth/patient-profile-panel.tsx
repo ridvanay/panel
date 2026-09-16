@@ -11,7 +11,9 @@ import * as usersApi from "@/lib/api/users";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import type { AppointmentBooking, BookingIdentitySummary } from "@/lib/api/types";
 import { useAuth } from "@/context/auth-context";
+import { useActiveLocaleCode } from "@/context/locale-alternates-context";
 import { formatFullDayLabel } from "@/lib/telehealth-format";
+import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
@@ -70,6 +72,7 @@ function ProfileSkeleton() {
 
 export function PatientProfilePanel() {
   const { user, refreshSession } = useAuth();
+  const intlLocale = contentLocaleToIntl(useActiveLocaleCode());
   const [bookings, setBookings] = useState<AppointmentBooking[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -160,7 +163,7 @@ export function PatientProfilePanel() {
                     </Badge>
                     <span className="text-sm text-foreground/60">{identity.citizenshipType === "TR" ? "T.C. Vatandaşı" : identity.countryCode}</span>
                   </div>
-                  <p className="text-xs text-foreground/50">Kimlik bilgisi alındı — {formatFullDayLabel(identity.capturedAt, Intl.DateTimeFormat().resolvedOptions().timeZone)}</p>
+                  <p className="text-xs text-foreground/50">Kimlik bilgisi alındı — {formatFullDayLabel(identity.capturedAt, Intl.DateTimeFormat().resolvedOptions().timeZone, intlLocale)}</p>
                 </div>
               );
             })()}

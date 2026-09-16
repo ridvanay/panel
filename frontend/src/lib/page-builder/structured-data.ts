@@ -1,4 +1,5 @@
 import type { AccordionQAItem, PageNode } from "./types";
+import type { SiteSettings, SocialLinkDto } from "@/lib/api/types";
 
 /**
  * Sayfa-seviyesi JSON-LD toplayıcı + güvenli serileştirme yardımcıları.
@@ -63,6 +64,42 @@ export function buildFaqPageJsonLd(nodes: PageNode[]): string | null {
     })),
   };
   return safeJsonLdString(data);
+}
+
+/**
+ * Görev (2026-09-16) — ana sayfa `schema.org/MedicalOrganization` + `WebSite` JSON-LD'si.
+ * `doctor-json-ld.ts`/`specialty-json-ld.ts` İLE AYNI disiplin: yalnızca GERÇEKTEN var olan
+ * kaynaktan (`SiteSettings`/`NavigationConfigDto.socialLinks` — `settings/navigation` uçları,
+ * `site-footer.tsx`'in KULLANDIĞI AYNI kaynak) alan doldurulur. `address`/`telephone` KASITLI
+ * OLARAK EKLENMEZ: site genelinde (SiteSettings) yapılandırılmış bir kurumsal adres/telefon alanı
+ * YOK (yalnızca `google-map` sayfa bloğunun serbest metin `address`'i var, o zaten kendi `Place`
+ * JSON-LD'sini `buildMapPlaceJsonLd` ile üretiyor — sayfa-özel içerik, site-geneli kurumsal veri
+ * DEĞİL) — mimar "Kurallar" madde 1/2 (sahte/uydurma alan üretme yasağı) gereği bu iki alan
+ * atlanır, ikinci bir veri kaynağı İCAT EDİLMEZ.
+ */
+export function buildMedicalOrganizationJsonLd(settings: SiteSettings, socialLinks: SocialLinkDto[], siteUrl: string): string {
+  const sameAs = socialLinks.map((link) => link.url).filter((url) => url.trim().length > 0);
+
+  return safeJsonLdString({
+    "@context": "https://schema.org",
+    "@type": "MedicalOrganization",
+    name: settings.siteName,
+    url: siteUrl,
+    ...(settings.logoUrl ? { logo: settings.logoUrl } : {}),
+    ...(settings.tagline ? { description: settings.tagline } : {}),
+    ...(sameAs.length > 0 ? { sameAs } : {}),
+  });
+}
+
+/** `potentialAction: SearchAction` KASITLI OLARAK EKLENMEZ — doğrulanmış bir site-içi arama
+ *  endpoint'i yok (uydurma alan üretme yasağı, `buildMedicalOrganizationJsonLd` İLE AYNI gerekçe). */
+export function buildWebSiteJsonLd(settings: SiteSettings, siteUrl: string): string {
+  return safeJsonLdString({
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    name: settings.siteName,
+    url: siteUrl,
+  });
 }
 
 interface MapPlace {

@@ -2259,6 +2259,17 @@ export const SpecialtySchema = z.object({
 });
 export type SpecialtyDto = z.infer<typeof SpecialtySchema>;
 
+/**
+ * `GET /specialties/{slug}` (public) — `Specialty` + o branştaki AKTİF (`isActive: true`)
+ * doktor sayısı. Yalnızca bu tekil detay ucunda kullanılır; `GET /specialties` LİSTE ucu düz
+ * `SpecialtySchema` döner (`/doctors` liste ucunun `DoctorProfile` İLE AYNI ayrımı — sayaç gibi
+ * ek bir agregasyon yalnızca detay görünümünde hesaplanır).
+ */
+export const SpecialtyWithDoctorCountSchema = SpecialtySchema.extend({
+  doctorCount: z.number().int().nonnegative(),
+});
+export type SpecialtyWithDoctorCountDto = z.infer<typeof SpecialtyWithDoctorCountSchema>;
+
 /** Haftalık TEKRARLAYAN müsaitlik penceresi — `DoctorAvailability`, ÜRETİLMİŞ SLOT DEĞİL (§3.4). */
 export const DoctorAvailabilityRuleSchema = z.object({
   id: z.string().uuid(),

@@ -203,12 +203,12 @@ export function BookingWizard({ doctor, doctorSlug, doctorTimeZone, lang, defaul
                     <div className="flex flex-wrap gap-1.5">
                       {bookingResult.appointments.map((appointment) => (
                         <span key={appointment.id} className="rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-xs tabular-nums">
-                          {formatDayLabel(appointment.startsAt, displayTimeZone)} · {formatTime(appointment.startsAt, displayTimeZone)}
+                          {formatDayLabel(appointment.startsAt, displayTimeZone, intlLocale)} · {formatTime(appointment.startsAt, displayTimeZone, intlLocale)}
                         </span>
                       ))}
                     </div>
                     <p className="text-sm">
-                      {bookingResult.slotCount} Slot · Toplam {formatPriceFromCents(bookingResult.totalCents, bookingResult.currency)}. Bu
+                      {bookingResult.slotCount} Slot · Toplam {formatPriceFromCents(bookingResult.totalCents, bookingResult.currency, intlLocale)}. Bu
                       rezervasyon slotu <strong>30 dakika</strong> tutar; bu süre içinde ödemeyi tamamlamanız gerekir.
                     </p>
                     <p className="text-sm">

@@ -2,6 +2,7 @@ import { Award, ExternalLink, FileQuestion, GraduationCap, Briefcase, Stethoscop
 import type { DoctorCvEntry, DoctorCvEntryKind, DoctorProfile, DoctorPublication, DoctorPublicationKind } from "@/lib/api/types";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import type { TelehealthStrings } from "@/lib/i18n/site-dictionaries";
 
 /**
  * `.claude/design-notes-doctor-portfolio-console.md` §1.3/§1.4 — "Doktor Hakkında" / "Özgeçmiş" /
@@ -22,18 +23,21 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 const TAB_TRIGGER_CLASS =
   "rounded-none px-3 py-2.5 text-sm font-semibold data-active:scale-100 data-active:rounded-none data-active:bg-transparent data-active:text-[var(--site-secondary)] data-active:after:bg-[var(--site-secondary)] group-data-horizontal/tabs:after:h-1 dark:data-active:bg-transparent dark:data-active:text-[var(--site-secondary)] sm:px-4";
 
-const EMPTY_STATE_TEXT: Record<"about" | "cv" | "publications" | "expertise", string> = {
-  about: "Bu doktor için henüz biyografi bilgisi paylaşılmamış.",
-  cv: "Bu doktor için henüz özgeçmiş bilgisi paylaşılmamış.",
-  publications: "Bu doktor için henüz bilimsel yayın paylaşılmamış.",
-  expertise: "Bu doktor için henüz uzmanlık alanı bilgisi paylaşılmamış.",
-};
+function emptyStateText(dict: TelehealthStrings, tab: "about" | "cv" | "publications" | "expertise"): string {
+  const map: Record<"about" | "cv" | "publications" | "expertise", string> = {
+    about: dict.aboutEmpty,
+    cv: dict.cvEmpty,
+    publications: dict.publicationsEmpty,
+    expertise: dict.expertiseEmpty,
+  };
+  return map[tab];
+}
 
-function EmptyTabState({ tab }: { tab: "about" | "cv" | "publications" | "expertise" }) {
+function EmptyTabState({ dict, tab }: { dict: TelehealthStrings; tab: "about" | "cv" | "publications" | "expertise" }) {
   return (
     <div className="flex flex-col items-center gap-2 rounded-[var(--site-radius)] border border-border bg-muted/30 p-8 text-center">
       <FileQuestion className="h-6 w-6 text-foreground/30" aria-hidden="true" />
-      <p className="text-sm text-foreground/50">{EMPTY_STATE_TEXT[tab]}</p>
+      <p className="text-sm text-foreground/50">{emptyStateText(dict, tab)}</p>
     </div>
   );
 }
@@ -46,8 +50,8 @@ const CV_KIND_ICON: Record<DoctorCvEntryKind, typeof GraduationCap> = {
   AWARD: Trophy,
 };
 
-function CvTimeline({ entries }: { entries: DoctorCvEntry[] }) {
-  if (entries.length === 0) return <EmptyTabState tab="cv" />;
+function CvTimeline({ entries, dict }: { entries: DoctorCvEntry[]; dict: TelehealthStrings }) {
+  if (entries.length === 0) return <EmptyTabState dict={dict} tab="cv" />;
 
   return (
     <ol className="relative space-y-8 border-l border-border pl-8">
@@ -59,7 +63,7 @@ function CvTimeline({ entries }: { entries: DoctorCvEntry[] }) {
               <KindIcon className="h-4 w-4" aria-hidden="true" />
             </span>
             <p className="text-xs font-semibold uppercase tracking-wider text-foreground/50">
-              {entry.startYear} — {entry.endYear ?? "Devam ediyor"}
+              {entry.startYear} — {entry.endYear ?? dict.cvOngoing}
             </p>
             <h3 className="mt-1 text-base font-semibold text-foreground">{entry.title}</h3>
             <p className="text-sm text-foreground/70">
@@ -83,16 +87,19 @@ const PUBLICATION_GROUP_ORDER: DoctorPublicationKind[] = [
   "OTHER",
 ];
 
-const PUBLICATION_GROUP_LABEL: Record<DoctorPublicationKind, string> = {
-  INTERNATIONAL_ARTICLE: "Uluslararası Makaleler",
-  NATIONAL_ARTICLE: "Ulusal Makaleler",
-  PROCEEDING: "Bildiriler",
-  BOOK_CHAPTER: "Kitap Bölümleri",
-  OTHER: "Diğer Yayınlar",
-};
+function publicationGroupLabel(dict: TelehealthStrings, kind: DoctorPublicationKind): string {
+  const map: Record<DoctorPublicationKind, string> = {
+    INTERNATIONAL_ARTICLE: dict.publicationInternational,
+    NATIONAL_ARTICLE: dict.publicationNational,
+    PROCEEDING: dict.publicationProceeding,
+    BOOK_CHAPTER: dict.publicationBookChapter,
+    OTHER: dict.publicationOther,
+  };
+  return map[kind];
+}
 
-function PublicationsList({ publications }: { publications: DoctorPublication[] }) {
-  if (publications.length === 0) return <EmptyTabState tab="publications" />;
+function PublicationsList({ publications, dict }: { publications: DoctorPublication[]; dict: TelehealthStrings }) {
+  if (publications.length === 0) return <EmptyTabState dict={dict} tab="publications" />;
 
   const grouped = new Map<DoctorPublicationKind, DoctorPublication[]>();
   for (const pub of publications) {
@@ -106,7 +113,7 @@ function PublicationsList({ publications }: { publications: DoctorPublication[] 
       {PUBLICATION_GROUP_ORDER.filter((g) => (grouped.get(g)?.length ?? 0) > 0).map((g) => (
         <div key={g}>
           <p className="mb-2 mt-6 text-xs font-semibold uppercase tracking-wider text-foreground/50 first:mt-0">
-            {PUBLICATION_GROUP_LABEL[g]}
+            {publicationGroupLabel(dict, g)}
           </p>
           <ul>
             {grouped.get(g)!.map((pub, idx) => {
@@ -126,7 +133,7 @@ function PublicationsList({ publications }: { publications: DoctorPublication[] 
                       className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
                     >
                       <ExternalLink className="h-3 w-3" aria-hidden="true" />
-                      Kaynağa Git
+                      {dict.viewSource}
                     </a>
                   )}
                 </li>
@@ -149,19 +156,19 @@ function PublicationsList({ publications }: { publications: DoctorPublication[] 
  */
 const EXPERTISE_CV_KINDS: DoctorCvEntryKind[] = ["CERTIFICATE", "MEMBERSHIP", "AWARD"];
 
-function ExpertisePanel({ doctor }: { doctor: DoctorProfile }) {
+function ExpertisePanel({ doctor, dict }: { doctor: DoctorProfile; dict: TelehealthStrings }) {
   const expertiseEntries = doctor.cvEntries.filter((entry) => EXPERTISE_CV_KINDS.includes(entry.kind));
   const hasSpecialty = Boolean(doctor.specialty?.name) || Boolean(doctor.subSpecialty);
 
   if (!hasSpecialty && expertiseEntries.length === 0) {
-    return <EmptyTabState tab="expertise" />;
+    return <EmptyTabState dict={dict} tab="expertise" />;
   }
 
   return (
     <div className="space-y-8">
       {hasSpecialty && (
         <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-foreground/50">Uzmanlık Alanı</p>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-foreground/50">{dict.expertiseAreaLabel}</p>
           <div className="flex flex-wrap items-center gap-2">
             {doctor.specialty?.name && (
               <Badge tone="primary" size="lg" className="gap-1.5">
@@ -176,7 +183,7 @@ function ExpertisePanel({ doctor }: { doctor: DoctorProfile }) {
 
       {expertiseEntries.length > 0 && (
         <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-foreground/50">Sertifikalar &amp; Üyelikler</p>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-foreground/50">{dict.certificationsLabel}</p>
           <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {expertiseEntries.map((entry, idx) => {
               const KindIcon = CV_KIND_ICON[entry.kind];
@@ -202,7 +209,13 @@ function ExpertisePanel({ doctor }: { doctor: DoctorProfile }) {
   );
 }
 
-export function DoctorProfileTabs({ doctor }: { doctor: DoctorProfile }) {
+/**
+ * `.claude/architect-scope-i18n.md` §14.5 madde 9 — `dict.telehealth` sunucu ebeveyninden
+ * (`doctors/[slug]/page.tsx`) prop olarak geçirilir. `async` YAPILMAZ — `doctor-profile-hero.tsx`'teki
+ * AYNI gerekçe (qa-agent bulgusu: `@testing-library/react`/jsdom `async` Server Component'i
+ * render EDEMEZ, §14.3'ün prop-drilling alternatifi tercih edilir).
+ */
+export function DoctorProfileTabs({ doctor, dict }: { doctor: DoctorProfile; dict: TelehealthStrings }) {
   return (
     <Tabs defaultValue="about">
       {/*
@@ -216,16 +229,16 @@ export function DoctorProfileTabs({ doctor }: { doctor: DoctorProfile }) {
       <div className="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
         <TabsList variant="line" className="border-b border-border">
           <TabsTrigger value="about" className={TAB_TRIGGER_CLASS}>
-            Doktor Hakkında
+            {dict.tabAbout}
           </TabsTrigger>
           <TabsTrigger value="cv" className={TAB_TRIGGER_CLASS}>
-            Özgeçmiş
+            {dict.tabCv}
           </TabsTrigger>
           <TabsTrigger value="publications" className={TAB_TRIGGER_CLASS}>
-            Bilimsel Yayınlar
+            {dict.tabPublications}
           </TabsTrigger>
           <TabsTrigger value="expertise" className={TAB_TRIGGER_CLASS}>
-            Uzmanlık Alanları
+            {dict.tabExpertise}
           </TabsTrigger>
         </TabsList>
       </div>
@@ -248,15 +261,15 @@ export function DoctorProfileTabs({ doctor }: { doctor: DoctorProfile }) {
       </TabsContent>
 
       <TabsContent value="cv" className="mt-6">
-        <CvTimeline entries={doctor.cvEntries} />
+        <CvTimeline entries={doctor.cvEntries} dict={dict} />
       </TabsContent>
 
       <TabsContent value="publications" className="mt-6">
-        <PublicationsList publications={doctor.publications} />
+        <PublicationsList publications={doctor.publications} dict={dict} />
       </TabsContent>
 
       <TabsContent value="expertise" className="mt-6">
-        <ExpertisePanel doctor={doctor} />
+        <ExpertisePanel doctor={doctor} dict={dict} />
       </TabsContent>
     </Tabs>
   );

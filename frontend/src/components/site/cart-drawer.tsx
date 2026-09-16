@@ -5,7 +5,8 @@ import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Minus, Plus, ShoppingCart, X } from "lucide-react";
 import { useCart } from "@/context/cart-context";
-import { useLocalizePath } from "@/context/locale-alternates-context";
+import { useLocalizePath, useActiveLocaleCode } from "@/context/locale-alternates-context";
+import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import { Button } from "@/components/ui/button";
 import { LinkButton } from "@/components/ui/link-button";
 import { Alert } from "@/components/ui/alert";
@@ -26,6 +27,7 @@ import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 export function CartDrawer() {
   const { cart, isDrawerOpen, closeDrawer, updateItem, removeItem } = useCart();
   const localize = useLocalizePath();
+  const intlLocale = contentLocaleToIntl(useActiveLocaleCode());
   const router = useRouter();
   const [mutatingId, setMutatingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -171,7 +173,7 @@ export function CartDrawer() {
                           <X className="h-4 w-4" />
                         </Button>
                         <span className="text-sm font-semibold text-foreground">
-                          {formatPriceFromCents(item.lineTotalCents, cart.currency ?? "TRY")}
+                          {formatPriceFromCents(item.lineTotalCents, cart.currency ?? "TRY", intlLocale)}
                         </span>
                       </div>
                     </div>
@@ -182,7 +184,7 @@ export function CartDrawer() {
               <div className="shrink-0 space-y-2 border-t border-border p-4">
                 <div className="flex items-center justify-between text-sm text-foreground/70">
                   <span>Ara Toplam</span>
-                  <span>{formatPriceFromCents(cart.subtotalCents, cart.currency ?? "TRY")}</span>
+                  <span>{formatPriceFromCents(cart.subtotalCents, cart.currency ?? "TRY", intlLocale)}</span>
                 </div>
                 {cart.shipping.configured && (
                   <div className="flex items-center justify-between text-sm text-foreground/70">
@@ -190,13 +192,13 @@ export function CartDrawer() {
                     <span>
                       {cart.shipping.feeCents === 0
                         ? "Ücretsiz"
-                        : formatPriceFromCents(cart.shipping.feeCents, cart.currency ?? "TRY")}
+                        : formatPriceFromCents(cart.shipping.feeCents, cart.currency ?? "TRY", intlLocale)}
                     </span>
                   </div>
                 )}
                 <div className="flex items-center justify-between text-base font-semibold text-foreground">
                   <span>Toplam</span>
-                  <span>{formatPriceFromCents(cart.totalCents, cart.currency ?? "TRY")}</span>
+                  <span>{formatPriceFromCents(cart.totalCents, cart.currency ?? "TRY", intlLocale)}</span>
                 </div>
                 <Button type="button" className="w-full rounded-[var(--site-radius)]" onClick={handleCheckout}>
                   Ödemeye Geç

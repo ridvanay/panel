@@ -9,6 +9,8 @@ import { ApiClientError } from "@/lib/api/error";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { formatPriceFromCents } from "@/lib/format-price";
 import { DEMO_PAYMENTS_ENABLED } from "@/lib/env";
+import { useActiveLocaleCode } from "@/context/locale-alternates-context";
+import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import type { AppointmentBooking } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
@@ -106,6 +108,10 @@ function DemoPaymentPanel({ onDemoPay, loading }: { onDemoPay: () => void; loadi
 
 export function BookingPaymentStep({ bookingId, accessToken, totalCents, currency, lang, onDemoPaid }: BookingPaymentStepProps) {
   const router = useRouter();
+  // Görev (2026-09-16) — currency/locale format denetimi: `lang` prop'u BİLİNÇLİ OLARAK
+  // varsayılan dili taşır (bkz. üstteki `lang` yorumu, redirect amaçlı) — GÖRÜNTÜLENEN fiyat
+  // biçimi için AKTİF site dili context'ten (`useActiveLocaleCode`) okunur, `lang` KARIŞTIRILMAZ.
+  const intlLocale = contentLocaleToIntl(useActiveLocaleCode());
   const [requesting, setRequesting] = useState(false);
   const [notConfigured, setNotConfigured] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -199,7 +205,7 @@ export function BookingPaymentStep({ bookingId, accessToken, totalCents, currenc
     <div className="space-y-4 rounded-[var(--site-radius)] border border-border bg-surface p-5">
       <div className="flex items-baseline justify-between">
         <span className="text-sm font-semibold text-foreground">Ödenecek Tutar</span>
-        <span className="text-2xl font-semibold text-foreground">{formatPriceFromCents(totalCents, currency)}</span>
+        <span className="text-2xl font-semibold text-foreground">{formatPriceFromCents(totalCents, currency, intlLocale)}</span>
       </div>
 
       {error && <Alert variant="error">{error}</Alert>}

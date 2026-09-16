@@ -30,6 +30,12 @@ export function LanguageSwitcher({ locales, activeLocale }: LanguageSwitcherProp
 
   function hrefFor(locale: Locale): string {
     if (alternates) {
+      // qa-agent bulgusu (2026-09-16) — ana sayfa (`kind: "home"`) kaydının kendi `slug`'ı
+      // (`"anasayfa"`) ASLA URL'e girmez, PREFİX'SİZ kanonik URL'i HER ZAMAN kök path'tir
+      // (`lib/seo.ts::isHomepage` İLE AYNI gerekçe).
+      if (alternates.kind === "home") {
+        return withLocalePrefix("/", locale.code, defaultCode(locales));
+      }
       const match = alternates.items.find((item) => item.locale === locale.code);
       if (match) {
         const base = contentKindBasePath(alternates.kind);

@@ -12,6 +12,7 @@ import { PageHeader } from "@/components/site/page-header";
 import { SocialShareButtons } from "@/components/site/social-share-buttons";
 import { RichContentWithShortcodes } from "@/components/site/blocks/rich-content-with-shortcodes";
 import { redirectToCanonicalSlug } from "@/lib/i18n/canonical-slug";
+import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import { LinkButton } from "@/components/ui/link-button";
 import { buildContentMetadata } from "@/lib/seo";
 import { SITE_URL } from "@/lib/env";
@@ -95,7 +96,7 @@ export default async function PortfolioDetailPage({ params }: PageProps) {
           {item.clientName && <span className="text-sm text-foreground/60">Müşteri: {item.clientName}</span>}
           {item.completedAt && (
             <span className="text-sm text-foreground/60">
-              Tamamlanma: {new Date(item.completedAt).toLocaleDateString("tr-TR", { dateStyle: "medium" })}
+              Tamamlanma: {new Date(item.completedAt).toLocaleDateString(contentLocaleToIntl(lang), { dateStyle: "medium" })}
             </span>
           )}
         </div>

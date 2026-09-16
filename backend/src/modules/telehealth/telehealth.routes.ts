@@ -17,6 +17,8 @@ import {
   CreateAppointmentResultSchema,
   CreateBookingResultSchema,
   DoctorProfileSchema,
+  SpecialtySchema,
+  SpecialtyWithDoctorCountSchema,
   TelehealthThemeSettingsSchema,
 } from "../../schemas/entities";
 import {
@@ -26,6 +28,8 @@ import {
   toAppointmentIntakeDto,
   toConsultationNoteDto,
   toDoctorProfileDto,
+  toSpecialtyDto,
+  toSpecialtyWithDoctorCountDto,
 } from "../../mappers";
 import {
   BookingNotPayableError,
@@ -71,6 +75,7 @@ import {
   DoctorSlotsQuerySchema,
   DoctorSlugParamSchema,
   ListPublicDoctorsQuerySchema,
+  SpecialtySlugParamSchema,
   UpsertIntakeRequestSchema,
 } from "./telehealth.schemas";
 
@@ -246,6 +251,37 @@ export async function telehealthRoutes(app: FastifyInstance) {
       return reply.send(
         ok(slots.map((slot) => ({ startsAt: slot.startsAt.toISOString(), endsAt: slot.endsAt.toISOString(), available: slot.available })))
       );
+    }
+  );
+
+  // `/doctors?specialtySlug=` filtresinin AKSİNE, kullanıcı bir branşı (ör. anasayfa/branş
+  // listesi kartları) DOKTOR aramadan önce keşfedebilmelidir — bu yüzden bağımsız bir public
+  // uç. `/doctors` liste ucunun AYNI deseni: `isActive` filtresi, `order asc` sıralama, sayfalama
+  // YOK (uzmanlık taksonomisi küçük/kapalı bir kümedir — admin `GET /admin/telehealth/specialties`
+  // İLE AYNI "tüm satırları tek seferde dön" kararı, bkz. telehealth.admin.routes.ts).
+  server.get(
+    "/specialties",
+    { schema: { response: { 200: ApiSuccessSchema(z.array(SpecialtySchema)) } } },
+    async (_request, reply) => {
+      const rows = await app.prisma.specialty.findMany({ where: { isActive: true }, orderBy: { order: "asc" } });
+      return reply.send(ok(rows.map(toSpecialtyDto)));
+    }
+  );
+
+  server.get(
+    "/specialties/:slug",
+    { schema: { params: SpecialtySlugParamSchema, response: { 200: ApiSuccessSchema(SpecialtyWithDoctorCountSchema) } } },
+    async (request, reply) => {
+      const specialty = await app.prisma.specialty.findFirst({
+        where: { slug: request.params.slug, isActive: true },
+      });
+      if (!specialty) throw new NotFoundError("Uzmanlık alanı bulunamadı.");
+
+      // Yalnızca AKTİF doktorlar sayılır — `/doctors` liste ucunun `isActive: true` filtresiyle
+      // TUTARLI (pasif doktorlar public yüzeyde hiçbir yerde SAYILMAZ/GÖSTERİLMEZ).
+      const doctorCount = await app.prisma.doctorProfile.count({ where: { specialtyId: specialty.id, isActive: true } });
+
+      return reply.send(ok(toSpecialtyWithDoctorCountDto(specialty, doctorCount)));
     }
   );
 

@@ -7,8 +7,9 @@ import * as telehealthApi from "@/lib/api/telehealth";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import type { AppointmentBooking } from "@/lib/api/types";
 import { useAuth } from "@/context/auth-context";
-import { useLocalizePath } from "@/context/locale-alternates-context";
+import { useLocalizePath, useActiveLocaleCode } from "@/context/locale-alternates-context";
 import { formatFullDayLabel, formatTime } from "@/lib/telehealth-format";
+import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
@@ -61,6 +62,7 @@ function HeroSkeleton() {
 export function PatientHeroPanel() {
   const { user } = useAuth();
   const localize = useLocalizePath();
+  const intlLocale = contentLocaleToIntl(useActiveLocaleCode());
   const [bookings, setBookings] = useState<AppointmentBooking[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -136,7 +138,7 @@ export function PatientHeroPanel() {
               </p>
               <p className="flex flex-wrap items-center gap-1.5 text-xs text-foreground/60">
                 <span>
-                  {formatFullDayLabel(firstAppointment.startsAt, timeZone)} · {formatTime(firstAppointment.startsAt, timeZone)}
+                  {formatFullDayLabel(firstAppointment.startsAt, timeZone, intlLocale)} · {formatTime(firstAppointment.startsAt, timeZone, intlLocale)}
                 </span>
                 <AppointmentStatusBadge status={firstAppointment.status} />
               </p>

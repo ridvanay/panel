@@ -869,3 +869,289 @@ kanonik URL korunur. **Veri migration'ı GEREKMEZ.**
 | 1 | İlk kapsam ve kararlar | architect |
 | 2 | §2.3 "yapısal değişiklik yok" → `Page.isLegalDocument` eklendi; §5.1 hukuki belge istisnası tam davranışla tanımlandı; §12.1/§12.2 eklendi | **compliance-agent itirazı** (`.claude/compliance-notes-i18n.md` §4) — itiraz haklı bulundu, karar değiştirildi |
 | 3 | §8.1 eklendi: tanınmayan dil kodu satır bazlı `WARNING` yerine `ImportJobPreview.warnings` + `UNKNOWN_LOCALE` ile raporlanır — `ImportErrorSeverity` enum'ı DEĞİŞMEZ. Ayrıca `PATCH /admin/locales/{code}` açıklamasındaki hayali `warnings` yanıt alanı sözleşmeden kaldırıldı | **backend-agent'ın iki sorusu** — biri benim §8 ifademdeki, diğeri sözleşme metnimdeki hatayı ortaya çıkardı |
+| 4 | **§14 eklendi** — public sitenin STATİK arayüz metinleri için sunucu tarafı sözlük sistemi (`getSiteDictionary`). İlk doküman yalnızca İÇERİK çevirisini (DB'den gelen) ve ADMIN chrome'unu (§7) kapsıyordu; ziyaretçiye görünen sabit UI metinleri (nav, başlık, buton, boş durum, uyarı şeridi) **hiçbir bölümde ele alınmamıştı**. Varsayılan dil `en` olunca bu boşluk görünür hale geldi | architect (kullanıcı doğrulaması: `<html lang="en">` doğru, ekrandaki metin Türkçe) |
+
+---
+
+## 14. Public site UI string sözlüğü — sunucu tarafı `getSiteDictionary` (2026-09-16 eklendi)
+
+> **Numaralandırma notu:** kullanıcı isteğinde "§10" denmişti, ancak §10–§13 bu dokümanda
+> ZATEN DOLU (Git, riskler, compliance bulguları, revizyon geçmişi). Mevcut referansları
+> kırmamak için yeni bölüm **§14**'tür.
+
+### 14.0 Problem (doğrulanmış)
+
+Varsayılan dil `tr` → `en` çevrildi; routing, `<html lang>`, metadata, JSON-LD, para/tarih
+biçimlendirmesi ve DB'den gelen içerik doğru şekilde locale-aware. Ancak **ziyaretçinin
+gördüğü metnin çoğunluğu hâlâ bileşenlere gömülü sabit Türkçe string**. Ölçüm:
+`app/[lang]/(site)/**` altında **49**, `components/site/**` altında **135** dosya Türkçe
+karakter içeriyor. Tek seferde hepsi çevrilemez → **fazlı kapsam zorunludur** (§14.5).
+
+En keskin örnek: `components/site/legal-document-notice.tsx` — §5.1'in TAM OLARAK
+"ziyaretçi seçtiği dilde okuyabilsin" diye var olan uyarı metni, **sabit Türkçe**.
+İngilizce bir sayfada "Bu belge şu anda seçtiğiniz dilde mevcut değil" göstermek §5.1'i
+kendi içinde çürütür. Bu yüzden Faz 1'de ve uyumluluk önceliklidir.
+
+### 14.1 KARAR: Ayrı bir sistem — admin sözlüğü YENİDEN KULLANILMAZ
+
+`context/i18n-context.tsx` + `lib/i18n/dictionaries/**` (admin) public sitede
+**KULLANILAMAZ ve genişletilmez.** Beş bağımsız gerekçe:
+
+| # | Gerekçe |
+|---|---|
+| 1 | **Çalışma zamanı uyumsuz.** Admin çözümü bir React Context + `useT()` hook'udur; public site ağırlıklı olarak Server Component'tir (`async function Page`, `generateMetadata`) ve hook KULLANAMAZ. Bunu "çözmek" için ağacın tepesine `"use client"` koymak, sunucu render'ını ve RSC kazancını feda etmek demektir. |
+| 2 | **Dil kümesi farklı türde.** `AdminLocale = "tr" \| "en"` KAPALI bir union'dır (§7.3, kasıtlı). Site locale'i DB-driven, açık uçlu ve panelden deploy'suz genişleyebilir (§2.1). İkisini tek tipe zorlamak ya admin'i gereksiz genelleştirir ya site'ı yanlış şekilde daraltır. |
+| 3 | **Kavram karışması yasağı (§7.4).** `adminLocale` ile site locale'i aynı sözlükte buluşturmak, §7.4'ün bağlayıcı olarak ayırdığı iki kavramı kod seviyesinde birleştirir — sızıntı an meselesidir. |
+| 4 | **Hedef kitle ve üslup farklı.** Admin: editör jargonu ("Taslak", "Yayında", "Revizyon"). Site: hasta/ziyaretçi dili. Aynı anahtarın iki bağlamda doğru çevirisi çoğu zaman FARKLIDIR; paylaşmak yanlış tasarruftur. |
+| 5 | **Hata modu farklı olmalı.** Admin'de eksik anahtar sessizce anahtarın kendisini basar (kabul edilebilir: editör görür, bildirir). Sitede ziyaretçiye `telehealth.bookCta` yazısı göstermek kabul EDİLEMEZ → site sözlüğü **derleme zamanında tam olmaya zorlanır** (§14.2). |
+
+**Paylaşılan tek şey:** isimlendirme sözleşmesi (namespace adları `nav`, `common`, `legal`
+admin'le AYNI kalır) ve mevcut `lib/i18n/` üst klasörü. **Runtime kod paylaşımı YOK.**
+`lib/i18n/site-path.ts` ve `lib/i18n/content-locale-to-intl.ts` zaten ortaktır, aynen kalır.
+
+### 14.2 KARAR: Dosya yapısı ve imza
+
+Next.js 16'nın **resmi deseni doğrulandı** (`frontend/node_modules/next/dist/docs/01-app/
+02-guides/internationalization.md`, satır 98-174): dil başına sözlük + `getDictionary(locale)`
++ dinamik `import()`. Bu desen benimsenir, iki sapmayla (aşağıda gerekçeli).
+
+```
+frontend/src/lib/i18n/site-dictionaries/
+  index.ts        // getSiteDictionary, hasSiteDictionary, SITE_UI_SOURCE_LOCALE
+  types.ts        // SiteUiLocale, SiteDictionary
+  en/             // KAYNAK DİL (source of truth) — yeni anahtar ÖNCE buraya
+    index.ts
+    common.ts  nav.ts  telehealth.ts  legal.ts  errors.ts
+  tr/
+    index.ts
+    common.ts  nav.ts  telehealth.ts  legal.ts  errors.ts
+```
+
+**Sapma 1 — JSON değil, TypeScript.** Next dokümanı `.json` kullanır; biz `.ts` kullanırız
+(admin sözlüğüyle de tutarlı). Kazanç: `en` modülünden tip türetilir ve `tr` bu tipe
+UYMAK ZORUNDADIR — eksik anahtar **derleme hatası** olur, ziyaretçiye sızmaz (§14.1 gerekçe 5).
+
+```ts
+// en/nav.ts
+export const navStrings = { home: "Home", doctors: "Our Doctors", /* ... */ } as const;
+export type NavStrings = Record<keyof typeof navStrings, string>;
+
+// tr/nav.ts
+import type { NavStrings } from "../en/nav";   // `import type` → bundle'a GİRMEZ
+export const navStrings: NavStrings = { home: "Ana Sayfa", doctors: "Doktorlarımız", /* ... */ };
+```
+
+**Sapma 2 — düz noktalı anahtar + `t()` YOK; iç içe tipli nesne + doğrudan erişim VAR.**
+`dict.nav.doctors` yazılır, `t("nav.doctors")` DEĞİL. Gerekçe: (a) derleme zamanı anahtar
+güvenliği, (b) namespace dilimini client bileşene prop olarak geçmek doğal hale gelir
+(§14.3), (c) sunucu bileşeninde hook yok zaten, `t` yalnızca gereksiz bir dolaylılık olurdu.
+
+**Değerler YALNIZCA `string` olur — fonksiyon değer YASAK.** Gerekçe: sözlük dilimleri
+Client Component'lere prop olarak geçer ve RSC payload'ına **serialize edilmek zorundadır**;
+fonksiyon serialize edilemez. Parametreli metinler `{count}` yer tutucusuyla yazılır ve
+`formatSiteString(template, params)` yardımcısıyla doldurulur (admin `t(key, params)`
+semantiğinin AYNISI).
+
+**İmza (bağlayıcı):**
+
+```ts
+// types.ts
+export type SiteUiLocale = "en" | "tr";          // UI STRING KAPSAMI — DB locale kümesi DEĞİL
+export type SiteDictionary = {
+  common: CommonStrings; nav: NavStrings; telehealth: TelehealthStrings;
+  legal: LegalStrings;   errors: ErrorStrings;
+};
+
+// index.ts
+export const SITE_UI_SOURCE_LOCALE = "en" satisfies SiteUiLocale;
+export function hasSiteDictionary(lang: string): lang is SiteUiLocale;
+/** Bilinmeyen/sözlüğü olmayan dil → SESSİZCE kaynak dile (`en`) düşer. Asla throw/404 ETMEZ. */
+export const getSiteDictionary: (lang: string) => Promise<SiteDictionary>;  // React.cache ile sarılı
+export function formatSiteString(template: string, params?: Record<string, string | number>): string;
+```
+
+**KRİTİK AYRIM — iki farklı dil kümesi vardır ve eşit DEĞİLDİR:**
+
+| Küme | Kaynak | Ne zaman değişir |
+|---|---|---|
+| **DB locale kümesi** (`GET /locales`) | Veritabanı, panelden yönetilir | **Deploy'suz**, çalışma zamanında |
+| **UI string kapsamı** (`SiteUiLocale`) | Repo'daki `site-dictionaries/<code>/` | Yalnızca **deploy ile** |
+
+Bu ikisi birbirinden **sapabilir** ve sapma bozulmaya YOL AÇMAMALIDIR. Panelden `de`
+eklenirse rotalar, içerik çevirisi ve hreflang §2.1'deki kabul kriterine uygun şekilde
+deploy'suz çalışır; **arayüz metinleri İngilizce kalır** (kaynak dil). Bu kabul edilmiş ve
+belgelenmiş bir davranıştır — "yeni dil = deploy yok" kriteri İÇERİK için geçerlidir, repo'da
+var olmayan bir çeviri dosyası için değil.
+
+**Fallback hedefi kaynak dildir (`en`), DB varsayılanı DEĞİL.** Gerekçe: DB varsayılanı
+panelden `de` yapılabilir; `de` sözlüğü yoksa fallback'in fallback'i gerekirdi. Kaynak dil
+repo'da HER ZAMAN tam olduğu için tek güvenli zemindir. (Bu, §5'in *içerik* fallback'inden
+bilinçli olarak FARKLIDIR; §5 içerik için geçerlidir, UI string'leri için değil.)
+documentation-agent bunu "Dil ekleme" rehberine yazar: yeni dil eklerken arayüz metinleri
+için bir kod değişikliği de gerekir.
+
+### 14.3 KARAR: Tüketim deseni
+
+**Server Component (varsayılan yol) — prop drilling YOK:**
+
+```tsx
+export default async function DoctorsPage({ params }: PageProps<'/[lang]/doctors'>) {
+  const { lang } = await params;                    // Next 16: params bir Promise
+  const dict = await getSiteDictionary(lang);       // React.cache → istek başına TEK kez
+  return <h1>{dict.telehealth.doctorsTitle}</h1>;
+}
+```
+Her sunucu bileşeni sözlüğü **kendisi çağırır**. `React.cache` sayesinde bu bedavadır;
+layout'tan aşağı prop geçirmek YASAK değildir ama gereksizdir ve yapılmamalıdır.
+
+**Client Component — namespace DİLİMİ prop olarak geçer:**
+
+```tsx
+// server parent
+<DoctorFilters dict={dict.telehealth} specialties={specialties} />
+// client child:  function DoctorFilters({ dict }: { dict: TelehealthStrings })
+```
+Tüm sözlüğü geçmek YASAK — her sayfanın RSC payload'ına tüm string'ler girer. Sadece
+gereken namespace geçilir. Client alt ağacında daha derine normal prop olarak iner.
+
+**Site sözlüğü için React Context AÇILMAZ.** Gerekçe: Context sağlayıcısı `"use client"`
+gerektirir ve sözlüğü ağacın tepesinden aşağı tüm sayfalara serialize eder — yani §14.1'in
+1 numaralı gerekçesini kendi elimizle geri getirmiş oluruz. (Admin'de Context doğrudur,
+çünkü orada dil `localStorage`'dadır ve rota değiştirmez; sitede dil ROTADADIR.)
+
+**Geriye dönük uyumluluk (bağlayıcı):** `SiteHeader`/`SiteFooter` admin canlı önizlemesinde
+(`/admin/appearance`, `/admin/navigation`) ve 4 unit testte `dict` OLMADAN render edilir.
+Bu yüzden `dict` prop'u **opsiyoneldir**; verilmezse bileşen statik olarak import edilmiş
+**kaynak dil (`en`)** sözlüğüne düşer. Admin önizlemesinin İngilizce görünmesi bilinen ve
+kabul edilen bir sınırlamadır (aynı bileşen önizlemede `locales` prop'unu da almaz, dil
+değiştirici zaten görünmez) — `adminLocale` BU AMAÇLA KULLANILMAZ (§7.4).
+
+**`Intl.DisplayNames` kuralı (yeni):** `doctor-filters.tsx:14`'te sabit bir
+`LANGUAGE_NAMES: Record<string,string>` haritası var (`{ tr: "Türkçe", en: "İngilizce", … }`).
+Bu **sözlüğe taşınmaz**, `new Intl.DisplayNames([activeLocale], { type: "language" })` ile
+DEĞİŞTİRİLİR. Gerekçe: dil/ülke/para adları platformda zaten mevcuttur; elle çevrilen bir
+harita her yeni dilde N×M bakım borcu üretir. Aynı kural ülke adları için de geçerlidir.
+
+### 14.4 Anahtar isimlendirme (bağlayıcı)
+
+- Namespace adları admin ile **aynı sözcükler**: `common`, `nav`, `legal`; site'a özel:
+  `telehealth`, `errors`. Yeni namespace açmadan önce mevcut birine sığıp sığmadığına bak.
+- Anahtarlar **İngilizce, camelCase**: `dict.telehealth.bookAppointmentCta`. Değerler hedef
+  dilde.
+- Anahtar **anlamı** tarif eder, **yerini** değil: `common.backToHome` ✓,
+  `notFoundPageButton` ✗ — aynı metin ikinci bir yerde gerektiğinde ad yanlış kalmasın.
+- Parametreli metin: `"{count} doctors found"` + `formatSiteString`.
+- **Sadece STATİK metin girer.** DB'den gelen hiçbir şey (doktor adı, branş adı,
+  `NavigationItem.label`, `SiteSettings.siteName`, sayfa başlığı) sözlüğe KOPYALANMAZ —
+  onlar §1'in `translations` yoluna aittir.
+
+### 14.5 KAPSAM — Faz 1 (bu iş), Faz 2, Faz 3
+
+Sınır **huni derinliğine** göre çizilmiştir: yabancı bir ziyaretçi önce KEŞFEDER, sonra
+REZERVASYON yapar, en son PORTALI kullanır. Faz 1 = keşif yüzeyinin tamamı, "Randevu Oluştur"
+butonu DAHİL.
+
+**FAZ 1 — ŞİMDİ (frontend-agent, kesin dosya listesi):**
+
+| # | Dosya | Kapsam |
+|---|---|---|
+| 1 | `components/site/legal-document-notice.tsx` | §5.1 bildirimi → `legal.notAvailableInLocale` (+ `legal.viewInDefaultLocale`). **Uyumluluk önceliği — listenin 1. sırası.** |
+| 2 | `components/site/site-header.tsx` | Hesap menüsü (Doktor Paneli, Randevularım, Hesabım, Siparişlerim, Çıkış Yap), "Giriş Yap", tüm `aria-label`'lar (`Hesabım, {name}`, `Sepet, {count} ürün`, `Favorilerim`). DB'den gelen nav etiketleri KAPSAM DIŞI (§14.6). |
+| 3 | `components/site/telehealth/emergency-notice.tsx` | `EMERGENCY_NOTICE_TEXT` sabiti KALDIRILIR; `EmergencyNoticeStrip`/`EmergencyNoticeCard` `text: string` prop'u alır. Metin §14.7'ye göre. |
+| 4 | `app/[lang]/(site)/doctors/layout.tsx` | `lang` ile sözlüğü çözüp şeride `text` geçirir. |
+| 5 | `app/[lang]/(site)/doctors/page.tsx` | Başlık, alt başlık, boş durum ("Sonuç bulunamadı" + açıklama), `DOCTORS_PAGE_TITLE` sabiti. |
+| 6 | `components/site/telehealth/doctor-filters.tsx` | Arama placeholder'ı, `aria-label`'lar, `LANGUAGE_NAMES` → `Intl.DisplayNames` (§14.3). |
+| 7 | `components/site/telehealth/doctor-card.tsx` | Kart CTA/etiketleri. |
+| 8 | `app/[lang]/(site)/doctors/[slug]/page.tsx` | Sayfa chrome'u. |
+| 9 | `components/site/telehealth/doctor-profile-hero.tsx`, `doctor-profile-tabs.tsx`, `doctor-quick-booking-card.tsx`, `doctor-service-summary.tsx` | Sekme adları, "Randevu Oluştur" CTA, fiyat/süre etiketleri. **Sihirbazın İÇİ hariç.** |
+| 10 | `app/[lang]/(site)/specialties/layout.tsx`, `specialties/page.tsx`, `specialties/[slug]/page.tsx` | Başlık, açıklama, boş durum, CTA. Branş ADLARI DB'den gelir — dokunulmaz. |
+| 11 | `app/[lang]/(site)/page.tsx` | YALNIZCA sabit hero/şerit chrome'u. Blok içeriği DB'dendir — dokunulmaz. |
+| 12 | `app/[lang]/(site)/not-found.tsx` | "Ana Sayfaya Dön" (`DEFAULT_BUTTON_LABEL`) + 404 metni → `errors.*`. |
+| 13 | `components/site/product/product-breadcrumbs.tsx` | Tek satır: "Ana Sayfa" → `common.home`. Ucuz, her ürün sayfasında görünür. |
+
+**FAZ 2 — sıradaki iş (`feature/i18n-site-strings-phase2`), rezervasyon + ödeme hunisi:**
+`components/site/telehealth/booking-*.tsx` (wizard, stepper, identity/intake/payment adımları,
+summary), `availability-calendar.tsx`, `consultation-room.tsx`, `cart-drawer.tsx`,
+`(site)/cart`, `(site)/checkout` + `components/site/checkout/**`, `site-footer.tsx`,
+`cookie-consent-banner.tsx`. **Gerekçe:** Faz 1'de dönüşen yabancı hasta BU yüzeye çarpar —
+"bir gün" değil, **bir sonraki** iştir.
+
+**FAZ 3 — kimlik doğrulaması arkasındaki yüzeyler:** `(site)/patient/**` +
+`components/site/telehealth/patient-*.tsx`, `(doctor)/doctor/**` +
+`doctor-portal-*`/`doctor-console-*`/`doctor-bookings-panel`/`doctor-earnings-panel`,
+`(site)/hesabim/**`, `(site)/products`/`blog`/`portfolio` chrome'u. **Gerekçe:** ziyaretçi
+başına görünürlük en düşük, hacim en yüksek; doktor konsolunun kullanıcıları ayrıca
+büyük ölçüde yerel hekimlerdir.
+
+**Fazlar arası kural:** Faz 1 anahtar kümesi Faz 2/3'te YENİDEN ADLANDIRILMAZ. `common.*`
+namespace'i fazlar boyunca büyür; her faz kendi namespace'ini uydurmaz.
+
+### 14.6 Faz 1'in bilinçli boşluğu — DB'den gelen navigasyon etiketleri
+
+Header'ın ANA menüsü `NavigationItem.label` (DB) ve `SitePage.title`'dan gelir. Bunlar
+statik UI metni DEĞİLDİR → sözlüğe girmezler. `NavigationItem` modelinde `translations`
+kolonu YOKTUR; yani panelde "Doktorlarımız" yazan menü öğesi İngilizce sitede de öyle görünür.
+
+**Karar: Faz 1 kapsamı DIŞI, ayrı iş kalemi** (`feature/i18n-navigation-labels`). Çözüm şekli
+şimdiden bağlanır ki yeniden tartışılmasın: §1.2 paterni — `NavigationItem`'a
+`translations Json @default("{}")` kolonu (dil başına kolon AÇILMAZ) + §5 alan bazında sessiz
+fallback. Bu db-agent + backend-agent + admin UI işidir, saf frontend değildir; Faz 1'e
+bundle EDİLMEZ. **Bu, §12.1'deki çerez bandı kararıyla aynı mantıktır.**
+
+### 14.7 KARAR: Acil durum uyarısı ve "112"
+
+Mevcut metin: *"Bu platform acil tıbbi durumlar için KULLANILAMAZ. Acil durumda 112'yi
+arayın."* — `112` Türkiye'ye özeldir; yurt dışındaki bir hasta için **yanlış ve tehlikeli**
+bir yönlendirmedir.
+
+**Karar (Faz 1):** metin sözlüğe girer (`telehealth.emergencyNotice`); İngilizce sürüm
+**jenerik + yine de eyleme geçirilebilir** olur:
+
+> "This platform must NOT be used for medical emergencies. In an emergency, call your local
+> emergency number (112 in Türkiye)."
+
+Türkçe sürüm mevcut metniyle aynı kalır (TR okuyucusu ezici çoğunlukla Türkiye'dedir).
+
+**Reddedilen alternatifler:**
+- **Geo-IP ile ülkeye göre numara:** yeni bir konum-çıkarımı veri akışı demektir (compliance
+  etkisi), VPN/mobil ağlarda yanılır ve **yanlış bir acil numara, jenerik bir yönlendirmeden
+  çok daha kötüdür**. Reddedildi.
+- **Numarayı tamamen kaldırmak:** Türkiye'deki hastanın elinden çalışan bilgiyi alır.
+  Reddedildi.
+- **Panelden dil başına yapılandırılabilir numara** (`SiteAppearance`/telehealth ayarları):
+  DOĞRU uzun vadeli çözümdür, ama Faz 1 saf-frontend kapsamını şema + admin UI işine çevirir.
+  **Takip kalemi olarak kaydedildi**, Faz 1'e alınmadı.
+
+**Yetki notu (değişmedi):** bileşenin kendi başlığında yazdığı gibi metnin NİHAİ hukuki
+içeriği **compliance-agent**'ındır. Ben yalnızca metnin **şeklini** (sözlükte, locale başına,
+jenerik-artı-yerel-ipucu) bağlıyorum; frontend-agent bu şekli uygular, compliance-agent
+kelimeleri onaylar/değiştirir. Aynı şey §14.5 madde 1'deki hukuki bildirim metni için de
+geçerlidir.
+
+### 14.8 API sözleşmesi: DEĞİŞİKLİK YOK — doğrulandı
+
+`docs/architecture/openapi.yaml` **bu iş için DEĞİŞMEZ.** Doğrulama: sözlük bir **derleme
+artefaktıdır**, repo'da yaşar, hiçbir uç noktadan servis edilmez. Aktif dil zaten `[lang]`
+rota segmentinden gelir; geçerli dil listesi zaten mevcut `GET /locales` ile alınır
+(`fetchLocalesServer`, `revalidate: 60`). Yeni alan, yeni uç, yeni DB kolonu **yoktur**.
+→ **db-agent ve backend-agent bu işte DEVREDE DEĞİLDİR.**
+
+(İstisna, §14.6'daki `NavigationItem.translations` işidir — ama o AYRI bir iş kalemidir ve
+başladığında `openapi.yaml` güncellemesi **benden** geçer.)
+
+### 14.9 Görev dağılımı ve Definition of Done
+
+| Ajan | İş |
+|---|---|
+| **frontend-agent** | TEK uygulayıcı. §14.2 yapısını kur, §14.5 Faz 1 listesini uygula. Sözlüğe DB içeriği koyma; `Intl.DisplayNames` kuralını uygula (§14.3); `dict` prop'unu opsiyonel tut (önizleme/test uyumu). |
+| **compliance-agent** | İKİ metnin nihai wording'i: `telehealth.emergencyNotice` (§14.7) ve `legal.notAvailableInLocale`. Şekil bağlayıcı, kelimeler onun. |
+| **qa-agent** | E2E: `/doctors` EN'de İngilizce chrome; `/tr/...`... yani varsayılan-olmayan TR yolunda Türkçe chrome; sözlüğü OLMAYAN bir dil (`de` panelden eklenip etkinleştirilir) → sayfa **açılır**, chrome İngilizce (§14.2 sapma davranışının doğrudan testi, 500/boş ekran YOK); admin `/appearance` önizlemesi `dict`siz render'da PATLAMAZ; mevcut 4 `site-header-*.test.tsx` unit testi DEĞİŞTİRİLMEDEN geçer. |
+| **ui-designer** | Yalnızca danışman: EN→TR metin genişlemesi (~%30) header/CTA/filtre çiplerini taşırmamalı (§9 ui-designer madde 5'in aynısı, yeni yüzeylerde). |
+| **documentation-agent** | "Dil ekleme" rehberine §14.2'deki **iki küme ayrımını** yaz: panelden dil eklemek içeriği açar, arayüz metinleri için `site-dictionaries/<code>/` gerekir (deploy). |
+| **db-agent / backend-agent** | **DEVREDE DEĞİL** (§14.8). |
+
+**Definition of Done (Faz 1):** §14.5 tablosundaki 13 kalemin tamamı + lint/format geçer +
+`tsc` temiz (tip zorlaması sözlük parite garantisidir) + qa-agent'ın 5 maddesi yeşil +
+compliance-agent iki metni onaylar.
+
+**Branş:** `feature/i18n-site-strings`. Commit: `feat(i18n): ...`.

@@ -9,6 +9,7 @@ import { ShoppingCart } from "lucide-react";
 import { useCart } from "@/context/cart-context";
 import { useAuthOptional } from "@/context/auth-context";
 import { useLocalizePath } from "@/context/locale-alternates-context";
+import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import * as checkoutApi from "@/lib/api/checkout";
 import { ApiClientError } from "@/lib/api/error";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
@@ -132,6 +133,9 @@ export default function CheckoutPage() {
 
   const itemCount = cart.items.reduce((sum, item) => sum + item.quantity, 0);
   const currency = cart.currency ?? "TRY";
+  // Görev (2026-09-16) — currency/locale format denetimi: `lang` zaten `useParams()`'ten (satır
+  // yukarıda) okunuyordu, ikinci bir kaynak (context hook) İCAT EDİLMEZ.
+  const intlLocale = contentLocaleToIntl(lang ?? "tr");
 
   return (
     <FormProvider {...form}>
@@ -148,7 +152,7 @@ export default function CheckoutPage() {
               <AccordionTrigger>
                 <span className="flex flex-1 items-center justify-between pr-2">
                   <span>Sipariş Özeti ({itemCount} ürün)</span>
-                  <span className="font-semibold text-foreground">{formatPriceFromCents(cart.totalCents, currency)}</span>
+                  <span className="font-semibold text-foreground">{formatPriceFromCents(cart.totalCents, currency, intlLocale)}</span>
                 </span>
               </AccordionTrigger>
               <AccordionPanel className="border-t border-border/60 p-4">

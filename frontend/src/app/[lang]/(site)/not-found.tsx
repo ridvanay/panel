@@ -1,16 +1,22 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { Card } from "@/components/ui/card";
 import { LinkButton } from "@/components/ui/link-button";
 import { fetchSiteAppearanceServer } from "@/lib/api/server-appearance";
+import { getSiteDictionary } from "@/lib/i18n/site-dictionaries";
 
-export const metadata: Metadata = { title: "Sayfa bulunamadı" };
-
-// §10.12.7 404 sayfası — sabit Türkçe varsayılanlar (backend `null` dönerse burada kullanılır,
-// admin panelindeki placeholder metinleriyle BİREBİR aynı — design-notes-appearance-panel.md §10).
-const DEFAULT_TITLE = "Sayfa Bulunamadı";
-const DEFAULT_MESSAGE = "Aradığınız sayfa taşınmış veya kaldırılmış olabilir.";
-const DEFAULT_BUTTON_LABEL = "Ana Sayfaya Dön";
 const DEFAULT_BUTTON_HREF = "/";
+
+/** `x-active-locale` — bkz. aşağıdaki `SiteNotFound` içindeki AYNI gerekçe. */
+async function resolveActiveLocale(): Promise<string> {
+  const headersList = await headers();
+  return headersList.get("x-active-locale") ?? "";
+}
+
+export async function generateMetadata(): Promise<Metadata> {
+  const dict = await getSiteDictionary(await resolveActiveLocale());
+  return { title: dict.errors.notFoundTitle };
+}
 
 /**
  * Mevcut `frontend/src/app/not-found.tsx` KÖK not-found'dur ve admin 404'lerini de yakalar.
@@ -19,15 +25,20 @@ const DEFAULT_BUTTON_HREF = "/";
  *
  * Ayar çağrısı ASLA hata fırlatmamalıdır — bir 404 bileşeninde fırlatılan hata 500'e dönüşür.
  * `fetchSiteAppearanceServer` zaten try/catch → varsayılan deseni izliyor (bkz. server-appearance.ts).
+ *
+ * `.claude/architect-scope-i18n.md` §14.5 madde 12 — `not-found.js`/`global-not-found.js`
+ * bileşenleri HİÇBİR prop ALMAZ (bkz. `node_modules/next/dist/docs/01-app/03-api-reference/
+ * 03-file-conventions/not-found.md`), dolayısıyla `lang` route param'ından OKUNAMAZ. `app/layout.tsx`
+ * İLE AYNI çözüm: `proxy.ts`'in her site isteğine yazdığı `x-active-locale` header'ı okunur.
  */
 export default async function SiteNotFound() {
-  const appearance = await fetchSiteAppearanceServer();
+  const [appearance, dict] = await Promise.all([fetchSiteAppearanceServer(), getSiteDictionary(await resolveActiveLocale())]);
 
-  const title = appearance.notFoundTitle?.trim() || DEFAULT_TITLE;
-  const message = appearance.notFoundMessage?.trim() || DEFAULT_MESSAGE;
+  const title = appearance.notFoundTitle?.trim() || dict.errors.notFoundTitle;
+  const message = appearance.notFoundMessage?.trim() || dict.errors.notFoundMessage;
   // `headerCta*` ile AYNI kural: buton yalnızca etiket VE href'in ikisi de doluysa gösterilir.
   const hasCustomButton = Boolean(appearance.notFoundButtonLabel?.trim() && appearance.notFoundButtonHref?.trim());
-  const buttonLabel = hasCustomButton ? (appearance.notFoundButtonLabel as string) : DEFAULT_BUTTON_LABEL;
+  const buttonLabel = hasCustomButton ? (appearance.notFoundButtonLabel as string) : dict.errors.notFoundButtonLabel;
   const buttonHref = hasCustomButton ? (appearance.notFoundButtonHref as string) : DEFAULT_BUTTON_HREF;
 
   return (

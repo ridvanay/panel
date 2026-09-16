@@ -200,6 +200,65 @@ describe("telehealth — modül aç/kapa + doktor/slot görüntüleme", () => {
     const res = await app.inject({ method: "GET", url: `/api/v1/doctors/${doctor.slug}/slots?from=2030-01-01&to=2030-03-01` });
     expect(res.statusCode).toBe(422);
   });
+
+  it("GET /specialties — yalnızca AKTİF branşları order sırasına göre döner, detay ucu doktor sayısını taşır", async () => {
+    const activeSlug = `aktif-${crypto.randomUUID()}`;
+    const inactiveSlug = `pasif-${crypto.randomUUID()}`;
+    const active = await app.prisma.specialty.create({
+      data: { name: `Aktif Branş ${crypto.randomUUID()}`, slug: activeSlug, icon: "heart-pulse", order: 1, isActive: true },
+    });
+    await app.prisma.specialty.create({
+      data: { name: `Pasif Branş ${crypto.randomUUID()}`, slug: inactiveSlug, icon: "brain", order: 0, isActive: false },
+    });
+
+    const list = await app.inject({ method: "GET", url: "/api/v1/specialties" });
+    expect(list.statusCode).toBe(200);
+    const body = list.json().data as { id: string; slug: string; isActive: boolean }[];
+    expect(body.some((s) => s.slug === activeSlug)).toBe(true);
+    expect(body.some((s) => s.slug === inactiveSlug)).toBe(false);
+
+    // Detay ucu — o branştaki AKTİF doktor sayısını (`doctorCount`) taşır.
+    const detailNoDoctors = await app.inject({ method: "GET", url: `/api/v1/specialties/${activeSlug}` });
+    expect(detailNoDoctors.statusCode).toBe(200);
+    expect(detailNoDoctors.json().data.doctorCount).toBe(0);
+
+    const doctor = await app.prisma.doctorProfile.create({
+      data: {
+        title: "Dr.",
+        fullName: `Test Doktor ${crypto.randomUUID()}`,
+        slug: `test-doktor-${crypto.randomUUID()}`,
+        bio: "Test amaçlı doktor profili.",
+        languages: ["tr"],
+        timeZone: "Europe/Istanbul",
+        specialtyId: active.id,
+        sessionDurationMin: 30,
+        sessionPriceCents: 50000,
+        currency: "TRY",
+        isActive: true,
+      },
+    });
+    const detailWithDoctor = await app.inject({ method: "GET", url: `/api/v1/specialties/${activeSlug}` });
+    expect(detailWithDoctor.statusCode).toBe(200);
+    expect(detailWithDoctor.json().data.doctorCount).toBe(1);
+    expect(detailWithDoctor.json().data.id).toBe(active.id);
+
+    // Pasif branş detayı — varlığı SIZDIRILMAZ, 404.
+    const inactiveDetail = await app.inject({ method: "GET", url: `/api/v1/specialties/${inactiveSlug}` });
+    expect(inactiveDetail.statusCode).toBe(404);
+
+    // Olmayan slug — 404.
+    const missing = await app.inject({ method: "GET", url: "/api/v1/specialties/olmayan-slug" });
+    expect(missing.statusCode).toBe(404);
+
+    await app.prisma.doctorProfile.delete({ where: { id: doctor.id } }).catch(() => {});
+  });
+
+  it("modül KAPALIYKEN /specialties de 404 döner", async () => {
+    await setTelehealthModuleEnabled(app, false);
+    const res = await app.inject({ method: "GET", url: "/api/v1/specialties" });
+    expect(res.statusCode).toBe(404);
+    await setTelehealthModuleEnabled(app, true);
+  });
 });
 
 describe("telehealth — randevu oluşturma (§4.3)", () => {

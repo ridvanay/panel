@@ -6,8 +6,9 @@ import { AlertTriangle, CreditCard, FileText } from "lucide-react";
 import * as telehealthApi from "@/lib/api/telehealth";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import type { AppointmentBooking } from "@/lib/api/types";
-import { useLocalizePath } from "@/context/locale-alternates-context";
+import { useLocalizePath, useActiveLocaleCode } from "@/context/locale-alternates-context";
 import { formatPriceFromCents } from "@/lib/format-price";
+import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import { computeAppointmentBlock, formatDayLabel, formatTime } from "@/lib/telehealth-format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -37,6 +38,8 @@ function PaymentsSkeleton() {
 
 export function PatientPaymentsPanel() {
   const localize = useLocalizePath();
+  // Görev (2026-09-16) — currency/locale format denetimi (bkz. `useActiveLocaleCode` yorumu).
+  const intlLocale = contentLocaleToIntl(useActiveLocaleCode());
   const router = useRouter();
   const [bookings, setBookings] = useState<AppointmentBooking[] | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -122,7 +125,7 @@ export function PatientPaymentsPanel() {
                         {booking.doctor.title} {booking.doctor.fullName}
                       </p>
                       <p className="text-xs text-foreground/60">
-                        {formatDayLabel(dateIso, timeZone)} · {formatTime(dateIso, timeZone)}
+                        {formatDayLabel(dateIso, timeZone, intlLocale)} · {formatTime(dateIso, timeZone, intlLocale)}
                       </p>
                       <p className="mt-0.5 text-xs text-foreground/50">{booking.bookingNumber}</p>
                     </div>
@@ -136,7 +139,7 @@ export function PatientPaymentsPanel() {
                       {booking.slotCount} Slot ({block.totalMinutes} Dk)
                     </span>
                     <span aria-hidden="true">·</span>
-                    <span className="font-medium text-foreground">{formatPriceFromCents(booking.totalCents, booking.currency)}</span>
+                    <span className="font-medium text-foreground">{formatPriceFromCents(booking.totalCents, booking.currency, intlLocale)}</span>
                   </div>
 
                   <div className="mt-3 flex justify-end border-t border-border/60 pt-3">
@@ -176,7 +179,7 @@ export function PatientPaymentsPanel() {
                 return (
                   <tr key={booking.id}>
                     <td className="py-3 pr-4 text-foreground/70">
-                      {formatDayLabel(dateIso, timeZone)} · {formatTime(dateIso, timeZone)}
+                      {formatDayLabel(dateIso, timeZone, intlLocale)} · {formatTime(dateIso, timeZone, intlLocale)}
                     </td>
                     <td className="py-3 pr-4 font-medium text-foreground">{booking.bookingNumber}</td>
                     <td className="py-3 pr-4 text-foreground">
@@ -185,7 +188,7 @@ export function PatientPaymentsPanel() {
                     <td className="py-3 pr-4 text-foreground/70">
                       {booking.slotCount} Slot ({block.totalMinutes} Dk)
                     </td>
-                    <td className="py-3 pr-4 font-medium text-foreground">{formatPriceFromCents(booking.totalCents, booking.currency)}</td>
+                    <td className="py-3 pr-4 font-medium text-foreground">{formatPriceFromCents(booking.totalCents, booking.currency, intlLocale)}</td>
                     <td className="py-3 pr-4">
                       <Badge tone="success" size="sm">
                         Ödendi

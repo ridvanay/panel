@@ -3532,6 +3532,15 @@ export interface CreateSpecialtyRequest {
 
 export type UpdateSpecialtyRequest = Partial<CreateSpecialtyRequest>;
 
+/**
+ * `GET /specialties/{slug}` (public) yanıt gövdesi — `Specialty` + o branştaki AKTİF doktor
+ * sayısı (backend `SpecialtyWithDoctorCountSchema`, `backend/src/schemas/entities.ts`). `GET
+ * /specialties` LİSTE ucu düz `Specialty[]` döner, bu tip yalnızca tekil detay ucunda kullanılır.
+ */
+export interface SpecialtyWithDoctorCount extends Specialty {
+  doctorCount: number;
+}
+
 export interface DoctorAvailabilityRule {
   id: string;
   /** ISO-8601: 1 = Pazartesi … 7 = Pazar (JS'in 0-6/Pazar=0 konvansiyonu KULLANILMAZ). */

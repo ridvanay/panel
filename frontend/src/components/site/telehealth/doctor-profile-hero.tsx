@@ -2,6 +2,8 @@ import { BadgeCheck, Briefcase, Building2, Stethoscope } from "lucide-react";
 import type { DoctorProfile } from "@/lib/api/types";
 import { Badge } from "@/components/ui/badge";
 import { DoctorAvatarMedia } from "@/components/site/telehealth/doctor-avatar";
+import { formatSiteString } from "@/lib/i18n/site-dictionaries";
+import type { TelehealthStrings } from "@/lib/i18n/site-dictionaries";
 
 /**
  * `.claude/design-notes-doctor-portfolio-console.md` §1.1 — koyu lacivert kurumsal başlık bandı,
@@ -14,21 +16,28 @@ import { DoctorAvatarMedia } from "@/components/site/telehealth/doctor-avatar";
  * yalnızca OPAK rozet zemini veya ikon/kenarlık olarak kullanılır — ASLA düz metin rengi (koyu
  * zeminde 3.26:1, FAIL). Gerçek metin DAİMA `text-white`/`text-white/70`.
  */
-const LANGUAGE_NAMES: Record<string, string> = {
-  tr: "Türkçe",
-  en: "İngilizce",
-  de: "Almanca",
-  fr: "Fransızca",
-  es: "İspanyolca",
-  ar: "Arapça",
-};
-
 /** §1.1.2 — "koyu zemin çip'i" taban sınıfı, bu bantta İLK KEZ tanımlanan, blur/glow İÇERMEYEN düz alfa-şeffaflık. */
 const DARK_CHIP_BASE =
   "inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-white/10 px-2.5 py-1 text-xs font-medium text-white/90";
 
-export function DoctorProfileHero({ doctor }: { doctor: DoctorProfile }) {
-  const languagesFullLabel = doctor.languages.map((code) => LANGUAGE_NAMES[code] ?? code.toUpperCase()).join(", ");
+/**
+ * `.claude/architect-scope-i18n.md` §14.5 madde 9 — `dict.telehealth` VE `lang` bu bileşene sunucu
+ * ebeveyninden (`doctors/[slug]/page.tsx`) geçirilir. Bu bileşen SENKRON kalmak ZORUNDADIR — `async`
+ * Server Component'ler `@testing-library/react` + jsdom altında (bu projenin unit test harness'i,
+ * `react-server` koşulu yok) DOĞRUDAN render EDİLEMEZ ("Only Server Components can be async at the
+ * moment" hatası, qa-agent bulgusu bu turda) — bu yüzden §14.3'ün "her sunucu bileşeni sözlüğü
+ * kendisi çağırır" varsayılan deseni BURADA BİLİNÇLİ OLARAK terk edilir, prop-drilling (§14.3'ün
+ * izin verdiği alternatif) kullanılır. Eski sabit `LANGUAGE_NAMES` haritası `Intl.DisplayNames`
+ * ile değiştirildi (§14.3) — bunun KENDİSİ senkron bir API, `async`'e gerek duymaz.
+ */
+export function DoctorProfileHero({ doctor, dict, lang }: { doctor: DoctorProfile; dict: TelehealthStrings; lang: string }) {
+  let languageNames: Intl.DisplayNames | null = null;
+  try {
+    languageNames = new Intl.DisplayNames([lang], { type: "language" });
+  } catch {
+    languageNames = null;
+  }
+  const languagesFullLabel = doctor.languages.map((code) => languageNames?.of(code) ?? code.toUpperCase()).join(", ");
 
   return (
     <div className="flex flex-col items-start gap-5 sm:flex-row sm:items-start sm:gap-7">
@@ -57,7 +66,7 @@ export function DoctorProfileHero({ doctor }: { doctor: DoctorProfile }) {
         {doctor.isVerified && (
           <Badge tone="primary" solid size="sm" className="gap-1.5">
             <BadgeCheck className="h-3.5 w-3.5" aria-hidden="true" />
-            Doğrulanmış Hekim
+            {dict.verifiedPhysicianBadge}
           </Badge>
         )}
 
@@ -68,7 +77,7 @@ export function DoctorProfileHero({ doctor }: { doctor: DoctorProfile }) {
         {/* Uzmanlık — koyu zeminde teal DÜZ METİN YASAK, opak teal rozet kullanılır. */}
         <Badge tone="primary" solid size="lg" className="mt-3 gap-1.5">
           <Stethoscope className="h-4 w-4" aria-hidden="true" />
-          {doctor.specialty?.name ?? "Genel Danışmanlık"}
+          {doctor.specialty?.name ?? dict.generalConsultationSpecialty}
         </Badge>
 
         {/* Alt uzmanlık/merkez — DÜZ METİN, teal DEĞİL, white/80 (Görev'de white/70'ten hafifçe
@@ -89,12 +98,12 @@ export function DoctorProfileHero({ doctor }: { doctor: DoctorProfile }) {
           {doctor.experienceYears != null && (
             <Badge tone="primary" solid size="sm" className="gap-1">
               <Briefcase className="h-3 w-3" aria-hidden="true" />
-              {doctor.experienceYears} Yıl Deneyim
+              {formatSiteString(dict.experienceYearsBadge, { years: doctor.experienceYears })}
             </Badge>
           )}
 
           {doctor.languages.length > 0 && (
-            <div className="flex flex-wrap gap-1.5" aria-label={`Konuşulan diller: ${languagesFullLabel}`}>
+            <div className="flex flex-wrap gap-1.5" aria-label={formatSiteString(dict.spokenLanguagesAriaLabel, { languages: languagesFullLabel })}>
               {doctor.languages.map((code) => (
                 <span key={code} className={DARK_CHIP_BASE}>
                   {code.toUpperCase()}

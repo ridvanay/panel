@@ -3,6 +3,8 @@
 import { Ban, CalendarX2, IdCard, NotebookPen, Paperclip } from "lucide-react";
 import type { AppointmentBooking } from "@/lib/api/types";
 import { computeAppointmentBlock, formatFullDayLabel, formatTime, formatTimeZoneAbbreviation } from "@/lib/telehealth-format";
+import { useActiveLocaleCode } from "@/context/locale-alternates-context";
+import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -68,7 +70,7 @@ function IdentityBadge({ maskedNumber }: { maskedNumber: string | null }) {
     );
   }
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-[var(--site-radius)] border border-dashed border-border/50 px-2 py-1 text-xs text-foreground/35">
+    <span className="inline-flex items-center gap-1.5 rounded-[var(--site-radius)] border border-dashed border-border/50 px-2 py-1 text-xs text-foreground/60">
       <Ban className="h-3 w-3" aria-hidden="true" />
       Doğrulanmamış
     </span>
@@ -76,6 +78,8 @@ function IdentityBadge({ maskedNumber }: { maskedNumber: string | null }) {
 }
 
 export function DoctorConsolePatientCard({ booking, calibratedNowMs, timeZone, onOpenDocuments, onOpenNoteEditor }: DoctorConsolePatientCardProps) {
+  // Görev (2026-09-16) — takvim/randevu gün-ay-saat biçimlendirmesi denetimi (bkz. `useActiveLocaleCode` yorumu).
+  const intlLocale = contentLocaleToIntl(useActiveLocaleCode());
   // Grid görevi (2026-09-14) Görev 2 madde 1 — SORU backend-agent'a: bazı booking'lerde
   // `appointments` BOŞ geliyor ("Randevu saati yok" dalı buradan tetikleniyordu). Bu turda
   // GÖZLEMLENEN: dev/e2e veri setinde bu duruma rastlamadım (grep ile bulunan tüm booking
@@ -104,14 +108,14 @@ export function DoctorConsolePatientCard({ booking, calibratedNowMs, timeZone, o
           {firstAppointment && block && blockStartIso ? (
             <div>
               <p className="text-base font-bold tabular-nums tracking-tight text-foreground">
-                {formatTime(blockStartIso, timeZone)} - {formatTime(new Date(block.endMs).toISOString(), timeZone)}{" "}
+                {formatTime(blockStartIso, timeZone, intlLocale)} - {formatTime(new Date(block.endMs).toISOString(), timeZone, intlLocale)}{" "}
                 <span className="text-xs font-medium tabular-nums text-foreground/50">
                   {timeZone === "Europe/Istanbul"
                     ? "(TSİ)"
-                    : `${formatTimeZoneAbbreviation(blockStartIso, timeZone)} (${formatTime(blockStartIso, "Europe/Istanbul")} TSİ)`}
+                    : `${formatTimeZoneAbbreviation(blockStartIso, timeZone)} (${formatTime(blockStartIso, "Europe/Istanbul", intlLocale)} TSİ)`}
                 </span>
               </p>
-              <p className="mt-0.5 text-xs font-medium text-foreground/60">{formatFullDayLabel(blockStartIso, timeZone)}</p>
+              <p className="mt-0.5 text-xs font-medium text-foreground/60">{formatFullDayLabel(blockStartIso, timeZone, intlLocale)}</p>
               {hasMultipleSlots && (
                 <Badge tone="neutral" size="sm" className="mt-1">
                   {booking.appointments.length} Slot ({block.totalMinutes} Dk)
@@ -119,7 +123,7 @@ export function DoctorConsolePatientCard({ booking, calibratedNowMs, timeZone, o
               )}
             </div>
           ) : (
-            <div className="flex items-center gap-1.5 text-foreground/35">
+            <div className="flex items-center gap-1.5 text-foreground/60">
               <CalendarX2 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
               <p className="text-xs">Randevu saati bilgisi eksik</p>
             </div>
