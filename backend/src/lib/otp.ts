@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import type { EmailVerificationPurpose } from "@prisma/client";
 import { env } from "../config/env";
 import { VerificationCodeInvalidError } from "./errors";
+import { runSerializable } from "./serializable-tx";
 
 /**
  * `.claude/architect-scope-guest-account-otp.md` §1/§3 (bağlayıcı) + `.claude/security-review-
@@ -121,47 +122,58 @@ export interface IssuedVerificationCode {
  *
  * Cooldown/tavan aşıldığında `null` döner — çağıran taraf (route) YİNE DE `202` döner, yalnızca
  * e-posta GÖNDERİLMEZ (§3.6).
+ *
+ * **Atomiklik (race-condition düzeltmesi, bkz. `docker compose logs backend` — aynı milisaniyede
+ * iki eşzamanlı `resend-verification-code` → ikisi de `202`):** cooldown/tavan OKUMASI ile eski
+ * kodu geçersiz kılma + yeni kod YAZMASI ayrı adımlar olarak ÇALIŞTIRILMAZ — ikisi de `lib/
+ * serializable-tx.ts::runSerializable` ile TEK bir Serializable transaction'a sarılır (projenin
+ * `booking.ts`/`stripe.routes.ts::handleOrderPaid`'de KULLANDIĞI aynı desen). Postgres Serializable
+ * izolasyonda iki eşzamanlı çağrıdan biri diğerinin "en son kod" satırını YAZDIKTAN SONRA
+ * commit'lenene kadar bekletilir/çakışırsa `P2034` ile reddedilip retry edilir — bu sayede aynı
+ * `userId`+`purpose` için eşzamanlı iki çağrı ASLA iki farklı "canlı" kod ÜRETEMEZ: ikincisi ya
+ * cooldown'a takılıp `null` döner ya da retry sonrası birincinin geçersiz kıldığı satırı görüp
+ * kendi kodunu tek canlı kod olarak yazar.
  */
 export async function issueVerificationCode(
   app: FastifyInstance,
   userId: string,
   purpose: EmailVerificationPurpose
 ): Promise<IssuedVerificationCode | null> {
-  const now = new Date();
-  const windowStart = new Date(now.getTime() - DAILY_ISSUE_WINDOW_MS);
+  return runSerializable(app, async (tx) => {
+    const now = new Date();
+    const windowStart = new Date(now.getTime() - DAILY_ISSUE_WINDOW_MS);
 
-  const recent = await app.prisma.emailVerificationCode.findMany({
-    where: { userId, purpose, createdAt: { gte: windowStart } },
-    orderBy: { createdAt: "desc" },
-    select: { createdAt: true },
-  });
+    const recent = await tx.emailVerificationCode.findMany({
+      where: { userId, purpose, createdAt: { gte: windowStart } },
+      orderBy: { createdAt: "desc" },
+      select: { createdAt: true },
+    });
 
-  if (recent.length > 0) {
-    const lastCreatedAt = recent[0]!.createdAt;
-    if (now.getTime() - lastCreatedAt.getTime() < RESEND_COOLDOWN_MS) {
-      return null; // cooldown içinde — yeni kod ÜRETİLMEZ (§3.6).
+    if (recent.length > 0) {
+      const lastCreatedAt = recent[0]!.createdAt;
+      if (now.getTime() - lastCreatedAt.getTime() < RESEND_COOLDOWN_MS) {
+        return null; // cooldown içinde — yeni kod ÜRETİLMEZ (§3.6).
+      }
     }
-  }
-  if (recent.length >= DAILY_ISSUE_CAP) {
-    return null; // günlük tavan aşıldı (§3.6).
-  }
+    if (recent.length >= DAILY_ISSUE_CAP) {
+      return null; // günlük tavan aşıldı (§3.6).
+    }
 
-  const code = generateOtpCode();
-  const codeHash = hashOtpCode(userId, purpose, code);
-  const expiresAt = new Date(now.getTime() + TTL_BY_PURPOSE_MS[purpose]);
+    const code = generateOtpCode();
+    const codeHash = hashOtpCode(userId, purpose, code);
+    const expiresAt = new Date(now.getTime() + TTL_BY_PURPOSE_MS[purpose]);
 
-  await app.prisma.$transaction([
     // §3.4 — "her an en fazla tek bir canlı kod vardır" (eski canlı kodlar geçersiz kılınır).
-    app.prisma.emailVerificationCode.updateMany({
+    await tx.emailVerificationCode.updateMany({
       where: { userId, purpose, consumedAt: null },
       data: { consumedAt: now },
-    }),
-    app.prisma.emailVerificationCode.create({
+    });
+    await tx.emailVerificationCode.create({
       data: { userId, purpose, codeHash, expiresAt },
-    }),
-  ]);
+    });
 
-  return { code, expiresAt };
+    return { code, expiresAt };
+  });
 }
 
 /**

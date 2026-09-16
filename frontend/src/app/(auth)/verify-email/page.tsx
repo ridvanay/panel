@@ -58,6 +58,10 @@ function VerifyEmailForm() {
 
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // Kod doğrulama denemesi başarısız olduğunda `true`; backend'in döndürdüğü SPESİFİK hata
+  // koduna/kategorisine BAKMAZ (bkz. görev notu) — yalnızca "bir deneme başarısız oldu mu"
+  // sorusuna cevap verir, böylece §4.3 ayırt-edilemezlik garantisi korunur.
+  const [verifyFailed, setVerifyFailed] = useState(false);
   const [resendNotice, setResendNotice] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [resending, setResending] = useState(false);
@@ -85,12 +89,14 @@ function VerifyEmailForm() {
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setError(null);
+    setVerifyFailed(false);
     setSubmitting(true);
     try {
       await verifyEmail({ email: email as string, code });
       router.replace(isSafeInternalPath(next) ? next : "/dashboard");
     } catch (err) {
       setError(verifyEmailErrorMessage(err));
+      setVerifyFailed(true);
     } finally {
       setSubmitting(false);
     }
@@ -98,6 +104,7 @@ function VerifyEmailForm() {
 
   async function handleResend() {
     setError(null);
+    setVerifyFailed(false);
     setResendNotice(null);
     setResending(true);
     try {
@@ -126,7 +133,26 @@ function VerifyEmailForm() {
       </p>
 
       <form className="space-y-4" onSubmit={handleSubmit} noValidate>
-        {error && <Alert variant="error">{error}</Alert>}
+        {error && (
+          <div className="space-y-1.5">
+            <Alert variant="error">{error}</Alert>
+            {/* §4.3 — bu ipucu hata KATEGORİSİNE bakmaksızın HER başarısız denemede aynı şekilde
+                gösterilir; koşullu hale getirmek hesap-varlık oracle'ını yeniden açar. */}
+            {verifyFailed && (
+              <p className="text-sm text-foreground/60">
+                Bu e-posta ile daha önce kayıt olmadıysanız veya kaydınız zaten tamamlanmışsa,{" "}
+                <Link href="/register" className="font-medium text-primary hover:underline">
+                  Kayıt Ol
+                </Link>{" "}
+                veya{" "}
+                <Link href="/login" className="font-medium text-primary hover:underline">
+                  Giriş Yap
+                </Link>{" "}
+                sayfalarını deneyin.
+              </p>
+            )}
+          </div>
+        )}
         {resendNotice && !error && <Alert variant="success">{resendNotice}</Alert>}
 
         <Field id="code" label="Doğrulama Kodu" required>

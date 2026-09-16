@@ -84,7 +84,15 @@ function makeFakeApp() {
         return row;
       },
     },
-    $transaction: async (ops: Promise<unknown>[]) => Promise.all(ops),
+    // `lib/serializable-tx.ts::runSerializable` interaktif (callback) formunu kullanır
+    // (`$transaction(fn, { isolationLevel })`) — eski dizi formu (`$transaction([...])`) da
+    // bazı çağıranlarda hâlâ mevcut, ikisini de destekliyoruz. Bu sahte istemcide gerçek bir
+    // izolasyon/kilit YOKTUR (tek thread'li testler için `tx === prisma` yeterlidir); gerçek
+    // eşzamanlılık/race testi `tests/integration/otp-race.test.ts`'te gerçek Postgres'e karşı yapılır.
+    $transaction: async (arg: Promise<unknown>[] | ((tx: typeof prisma) => Promise<unknown>)) => {
+      if (typeof arg === "function") return arg(prisma);
+      return Promise.all(arg);
+    },
   };
 
   return { app: { prisma } as unknown as import("fastify").FastifyInstance, rows };
