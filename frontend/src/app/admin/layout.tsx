@@ -1,115 +1,41 @@
-"use client";
+import type { Metadata } from "next";
+import type { ReactNode } from "react";
+import { fetchSiteSettingsServer } from "@/lib/api/server-settings";
+import { AdminShell } from "@/components/admin/admin-shell";
 
-import { useEffect, type ReactNode } from "react";
-import { usePathname, useRouter } from "next/navigation";
-import { AnimatePresence, motion } from "framer-motion";
-import { toast } from "sonner";
-import { useAuth } from "@/context/auth-context";
-import type { SiteRole } from "@/lib/api/types";
-import { AccentProvider } from "@/context/accent-context";
-import { ModulesProvider } from "@/context/modules-context";
-import { CommandPaletteProvider } from "@/context/command-palette-context";
-import { AdminSidebar } from "@/components/admin/sidebar";
-import { AdminTopbar } from "@/components/admin/topbar";
-import { AdminBreadcrumb } from "@/components/admin/breadcrumb";
-import { CommandPalette } from "@/components/admin/command-palette";
-import { KeyboardShortcutsModal } from "@/components/admin/keyboard-shortcuts-modal";
-import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
-import { Spinner } from "@/components/ui/spinner";
-
-/** §10.21 §7.4 — panel erişimi olan roller; backend `requirePanelAccess()` ile AYNI küme. */
-const ROLES_PANEL = new Set<SiteRole>(["ADMIN", "MANAGER", "EDITOR"]);
+/**
+ * Görev (2026-09-16) — admin sekme başlığında jenerik "SaaS Platform" yerine kurumsal başlık.
+ * Kabuk (`AdminShell`, sidebar/topbar/auth yönlendirmesi vb.) hooks + framer-motion kullandığı
+ * için Client Component OLMAK ZORUNDA, ve Client Component `metadata`/`generateMetadata` EXPORT
+ * EDEMEZ (bkz. `node_modules/next/dist/docs/01-app/03-api-reference/04-functions/generate-metadata.md`
+ * §"Why generateMetadata is Server Component only"). Bu yüzden bu dosya SERVER Component'e
+ * dönüştürüldü, `AdminShell`i `children` olarak sarmalıyor — kabuk mantığında HİÇBİR değişiklik
+ * yok (saf taşıma, bkz. `components/admin/admin-shell.tsx`).
+ *
+ * Site adı sabit (hardcoded) DEĞİL — `fetchSiteSettingsServer()` ile aynı kaynaktan (proje
+ * genelinde JSON-LD/footer'ın kullandığı kaynakla AYNI) çekiliyor, site admin panelinden yeniden
+ * adlandırılırsa otomatik yansır.
+ *
+ * DÜZELTME (2026-09-16) — "· SaaS Platform" ikilenme bug'ı: `title.default` kök layout'un
+ * `title.template`'ine göre bir "sayfa başlığı" gibi davranıp kök template'e göre TEKRAR
+ * sarmalanıyordu (bkz. aynı doküman §"title" > "Good to know": `title.default` "will augment
+ * `title.template` from the closest parent segment if it exists"). `title.absolute` ise ata
+ * segment'lerdeki `title.template`'i YOK SAYAR ("ignores `title.template` from parent segments").
+ * `default` alanı yerine `absolute` kullanılarak kök template'in bu değeri tekrar sarmalaması
+ * engellendi; admin'in KENDİ `template`'i alt sayfalar için olduğu gibi çalışmaya devam ediyor
+ * (`title.template` sadece çocuk segment'leri etkiler, tanımlandığı segment'i etkilemez).
+ */
+export async function generateMetadata(): Promise<Metadata> {
+  const settings = await fetchSiteSettingsServer();
+  const siteName = settings.siteName;
+  return {
+    title: {
+      absolute: `Yönetim Paneli | ${siteName}`,
+      template: `%s | Yönetim Paneli | ${siteName}`,
+    },
+  };
+}
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
-  const { status, user } = useAuth();
-  const router = useRouter();
-  const pathname = usePathname();
-
-  useEffect(() => {
-    if (status === "unauthenticated") {
-      router.replace(`/login?next=${encodeURIComponent(pathname)}`);
-    }
-  }, [status, router, pathname]);
-
-  // §customer-portal §7.1 — backend'de `requirePanelAccess()` zaten CUSTOMER/USER'ı 403'ler
-  // (`admin-panel-guard-route-table.test.ts`), ama frontend'de rol kontrolü YOKTU: giriş yapmış
-  // bir CUSTOMER/USER `/admin`'e giderse admin kabuğu render edilip her panel isteği 403
-  // dönüyordu (kırık ekran + gürültü). Derinlemesine savunma — sunucu kararının YERİNE geçmez.
-  useEffect(() => {
-    if (status === "authenticated" && user && !ROLES_PANEL.has(user.role)) {
-      toast.error("Bu alana erişim yetkiniz yok, hesap sayfanıza yönlendirildiniz.");
-      router.replace("/hesabim/profil");
-    }
-  }, [status, user, router]);
-
-  // §10.21 §8.4 — gösterge paneli (`/admin`) `GET /admin/stats/*` çağırır ve EDITOR orada 403
-  // alır (§5.3 satır 19: views/breakdown/live-visitors yalnızca ADMIN/MANAGER). EDITOR bu
-  // rotaya HİÇ render edilmeden `/admin/blog`'a yönlendirilir — dashboard bileşenleri EDITOR
-  // için hiç mount edilmez, gereksiz 403 gürültüsü üretilmez.
-  useEffect(() => {
-    if (status === "authenticated" && user?.role === "EDITOR" && pathname === "/admin") {
-      router.replace("/admin/blog");
-    }
-  }, [status, user, pathname, router]);
-
-  // Yönlendirme tamamlanana kadar (yukarıdaki effect) dashboard içeriğini/veri çekimini HİÇ
-  // mount etme — `router.replace` bir sonraki render'a kadar `pathname`'i değiştirmez, bu
-  // guard olmadan `AdminDashboardPage` en az bir kez render olup `/admin/stats/*` isteklerini
-  // ateşlerdi.
-  const redirectingEditorFromDashboard = status === "authenticated" && user?.role === "EDITOR" && pathname === "/admin";
-  const redirectingNonPanelRole = status === "authenticated" && user !== null && !ROLES_PANEL.has(user.role);
-
-  if (status !== "authenticated" || redirectingEditorFromDashboard || redirectingNonPanelRole) {
-    return (
-      <main className="flex min-h-screen items-center justify-center">
-        <Spinner className="h-6 w-6 text-primary" />
-      </main>
-    );
-  }
-
-  return (
-    <AccentProvider>
-      <ModulesProvider>
-        <CommandPaletteProvider>
-          <SidebarProvider className="admin-shell">
-            <AdminSidebar />
-            <SidebarInset>
-              <AdminTopbar />
-              {/* `overflow-hidden` (dikey eksende) `<main>`'i CSS spec'ine göre bir "scroll container"
-                  yapıyordu — bu box GERÇEKTE hiç kaydırılmıyor (gerçek scroll `window` seviyesinde
-                  oluyor), bu yüzden `position: sticky` alt elemanları (ör. page-builder üst araç
-                  çubuğu) en yakın ata scroll container'a (bu `<main>`'e) bağlanıp fiilen static gibi
-                  davranıyordu.
-                  DİKKAT — `overflow-x-hidden` TEK BAŞINA YETERSİZ: CSS Overflow spec'inin "visible/
-                  non-visible eşleşme" kuralı gereği (bir eksen 'visible' DEĞİLKEN diğeri 'visible'
-                  ise, 'visible' olanın KULLANILAN değeri 'auto'ya zorlanır), `overflow-x: hidden` +
-                  belirtilmemiş `overflow-y` (varsayılan 'visible') kombinasyonunda tarayıcı
-                  `overflow-y`'nin kullanılan değerini YİNE 'auto' yapıyor — yani `<main>` YİNE bir
-                  scroll container oluyor, sticky YİNE bozuk kalıyor (canlı tarayıcıda
-                  `getComputedStyle` ile doğrulandı: `overflow-x-hidden` → `overflowY: "auto"`).
-                  `overflow-x-clip` bu zorlamadan MUAF (kural yalnızca 'visible'ı hedefliyor, 'clip'i
-                  DEĞİL) — `overflow-y` gerçekten 'visible' kalıyor, `<main>` hiçbir eksende scroll
-                  container OLMUYOR, `sticky` doğru şekilde `window`'a bağlanıyor (doğrulandı). */}
-              <main className="min-w-0 w-full max-w-full flex-1 overflow-x-clip bg-surface-muted p-4 md:p-6">
-                <AnimatePresence mode="wait">
-                  <motion.div
-                    key={pathname}
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -8 }}
-                    transition={{ duration: 0.2 }}
-                  >
-                    <AdminBreadcrumb pathname={pathname} />
-                    {children}
-                  </motion.div>
-                </AnimatePresence>
-              </main>
-            </SidebarInset>
-            <CommandPalette />
-            <KeyboardShortcutsModal />
-          </SidebarProvider>
-        </CommandPaletteProvider>
-      </ModulesProvider>
-    </AccentProvider>
-  );
+  return <AdminShell>{children}</AdminShell>;
 }
