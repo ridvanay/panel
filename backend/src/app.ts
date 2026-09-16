@@ -29,6 +29,7 @@ import { adminSlidersRoutes, publicSlidersRoutes } from "./modules/sliders/slide
 import { adminMediaRoutes } from "./modules/media/media.routes";
 import { adminStatsRoutes } from "./modules/stats/stats.routes";
 import { adminSettingsRoutes, publicSettingsRoutes } from "./modules/settings/settings.routes";
+import { adminEmailSettingsRoutes } from "./modules/settings/settings.email.routes";
 import { adminAppearanceRoutes, publicAppearanceRoutes } from "./modules/appearance/appearance.routes";
 import { adminDemoTemplatesRoutes } from "./modules/demo-templates/demo-templates.routes";
 import { adminSiteModulesRoutes, publicModulesRoutes } from "./modules/site-modules/site-modules.routes";
@@ -256,6 +257,11 @@ export function buildApp() {
       // KARIŞTIRILMAMALI — bkz. §10.13 isimlendirme çakışması uyarısı.
       api.register(apiKeysRoutes, { prefix: "/admin/settings/api-keys" });
       api.register(outboundWebhooksRoutes, { prefix: "/admin/settings/webhooks" });
+      // E-posta (SMTP) yapılandırması — `.claude/architect-scope-smtp-settings.md` §5 (bağlayıcı):
+      // AYRI alt-kaynak, `/admin/settings/{permissions,api-keys,webhooks}` İLE AYNI desen (`GET
+      // /settings` public sızıntı yüzeyi + `PATCH /admin/settings`in kör gövde yayılımı nedeniyle
+      // ANA settings router'ına EKLENMEDİ, bkz. o dokümanın §1.2).
+      api.register(adminEmailSettingsRoutes, { prefix: "/admin/settings/email" });
       api.register(publicApiRoutes, { prefix: "/public" });
       // Tele-Sağlık modülü — bkz. .claude/architect-scope-telehealth-template.md §2.2/§4.1.
       // PUBLIC uçlar kök seviyede `/doctors` + `/appointments` (prefiks YOK, telehealthRoutes

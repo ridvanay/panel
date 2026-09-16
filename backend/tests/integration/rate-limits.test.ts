@@ -288,3 +288,56 @@ describe("rate-limits — route-level (PUT /admin/appearance/custom-code/css)", 
     expect(body.error.details.retryAfterSeconds).toBeDefined();
   });
 });
+
+/**
+ * `POST /admin/settings/email/test` route-level rate limit'i (3/dakika, bkz.
+ * lib/rate-limit.ts::EMAIL_SMTP_TEST_RATE_LIMIT) doğrular — `.claude/architect-scope-smtp-settings.md`
+ * §4.3.4 + `.claude/security-review-smtp-settings.md` KARAR 3 (bağlayıcı: rate limit TEK BAŞINA
+ * yeterli değildir ama gerçek bir SMTP bağlantısı/gönderimi tetiklediği için AYRICA gereklidir).
+ * `.env.test`'teki `SMTP_ALLOW_PRIVATE_HOST=true` escape hatch'i sayesinde `127.0.0.1` kaydedilip
+ * test edilebiliyor — dinleyen bir servis olmadığı için her istek hızlı/deterministik bir
+ * `ECONNREFUSED` (502) alır, dış ağ/DNS erişimine BAĞIMLI DEĞİLDİR. Kendi izole
+ * `buildTestApp()` instance'ında çalışır ki bu bütçeyi `settings-email.test.ts`'teki
+ * senaryolar etkilemesin/onlardan etkilenmesin.
+ */
+describe("rate-limits — route-level (POST /admin/settings/email/test)", () => {
+  let app: FastifyInstance;
+  let admin: Awaited<ReturnType<typeof registerTestUser>>;
+
+  function authHeader(token: string) {
+    return { authorization: `Bearer ${token}` };
+  }
+
+  beforeAll(async () => {
+    app = await buildTestApp();
+    await resetDatabase(app.prisma);
+    admin = await registerTestUser(app, { email: "rate-limit-email-test-admin@example.com" });
+
+    const patchRes = await app.inject({
+      method: "PATCH",
+      url: "/api/v1/admin/settings/email",
+      headers: authHeader(admin.accessToken),
+      payload: { enabled: true, smtpHost: "127.0.0.1", smtpPort: 2525 },
+    });
+    expect(patchRes.statusCode).toBe(200);
+  });
+
+  afterAll(async () => {
+    await resetDatabase(app.prisma);
+    await app.close();
+  });
+
+  it("3 istek başarıyla işlenir (502 EMAIL_DELIVERY_FAILED — bağlantı reddi), 4. istek 429 döner ve RATE_LIMITED detaylarını içerir", async () => {
+    for (let i = 0; i < 3; i++) {
+      const res = await app.inject({ method: "POST", url: "/api/v1/admin/settings/email/test", headers: authHeader(admin.accessToken) });
+      expect(res.statusCode).toBe(502);
+    }
+
+    const res4 = await app.inject({ method: "POST", url: "/api/v1/admin/settings/email/test", headers: authHeader(admin.accessToken) });
+
+    expect(res4.statusCode).toBe(429);
+    const body = res4.json();
+    expect(body.error.code).toBe("RATE_LIMITED");
+    expect(body.error.details.retryAfterSeconds).toBeDefined();
+  });
+});

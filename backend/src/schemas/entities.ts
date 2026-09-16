@@ -1846,6 +1846,35 @@ export const SiteCustomCodeSchema = z.object({
 });
 export type SiteCustomCodeDto = z.infer<typeof SiteCustomCodeSchema>;
 
+/**
+ * `GET/PATCH /admin/settings/email` DTO'su — `.claude/architect-scope-smtp-settings.md` §5,
+ * openapi.yaml `EmailSettings` şemasıyla BİREBİR. **Parola ASLA dönmez** — yalnızca
+ * `smtpPasswordSet`. Bu DTO public `GET /settings` yanıtına ASLA eklenmez (ayrı tablo/uç, bkz.
+ * `.claude/architect-scope-smtp-settings.md` §1.2).
+ */
+export const EmailSettingsSchema = z.object({
+  enabled: z.boolean(),
+  smtpHost: z.string().nullable(),
+  smtpPort: z.number().int(),
+  smtpSecure: z.boolean(),
+  smtpUser: z.string().nullable(),
+  smtpPasswordSet: z.boolean(),
+  fromAddress: z.string().nullable(),
+  fromName: z.string().nullable(),
+  effectiveSource: z.enum(["database", "env", "ethereal", "none"]),
+  lastTestedAt: z.string().nullable(),
+  lastTestSucceeded: z.boolean().nullable(),
+  lastTestError: z.string().nullable(),
+  updatedById: z.string().uuid().nullable(),
+  updatedByName: z.string().nullable(),
+  // NOT: openapi.yaml `EmailSettings.updatedAt`'i non-nullable olarak belgeler (satır hep var
+  // varsayımıyla) ama `SiteAppearance`/`SiteCustomCode` İLE AYNI lazy-upsert deseni burada da
+  // geçerlidir — satır hiç `PATCH` edilmemişse DEĞER YOKTUR. `SiteAppearanceSchema.updatedAt`
+  // İLE TUTARLI olacak şekilde nullable tutuldu (bkz. readEmailSettings — settings.email.routes.ts).
+  updatedAt: z.string().nullable(),
+});
+export type EmailSettingsDto = z.infer<typeof EmailSettingsSchema>;
+
 // ---------------------------------------------------------------------------
 // §10.13 Üçüncü Parti Entegrasyon — API Anahtarları (bkz. ARCHITECTURE.md §10.13.3/§10.13.4,
 // openapi.yaml tag `ApiKeys`). Modül: modules/api-keys/*.

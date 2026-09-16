@@ -51,6 +51,53 @@ export const UpdateSiteSettingsRequestSchema = z
     }
   );
 
+// ---------------------------------------------------------------------------
+// E-posta (SMTP) yapılandırması — `.claude/architect-scope-smtp-settings.md` §5 +
+// `.claude/security-review-smtp-settings.md` KARAR 2 (bağlayıcı, mimarın önerisini SIKILAŞTIRDI).
+// ---------------------------------------------------------------------------
+
+/** KARAR 2.3 (bağlayıcı, DEĞİŞTİRİLMEDİ) — serbest port aralığı ucu bir port tarayıcısına çevirir. */
+export const SMTP_ALLOWED_PORTS = [25, 465, 587, 2525] as const;
+
+export const UpdateEmailSettingsRequestSchema = z.object({
+  // `smtpHost` (mevcut satırdaki veya AYNI istekte gönderilen) boşken `true` → route handler'da
+  // 422 (§3.3, `settings.routes.ts::assertShippingEstimateRange` İLE AYNI "çapraz alan, mevcut
+  // satıra karşı" deseni — bkz. settings.email.routes.ts::assertEmailEnabledHasHost).
+  enabled: z.boolean().optional(),
+  // KARAR 2.2 — boşluk/kontrol karakteri/şema/kimlik-bilgisi/port-eki içermemesi VE IP literal ya
+  // da RFC1123 host adı deseni olması `lib/smtp-host-guard.ts::validateSmtpHost`'ta AYRICA
+  // doğrulanır (ağ çağrısı gerektirdiği için route handler'da, zod refine'da DEĞİL). Buradaki
+  // `min(1)` yalnızca "boş string" durumunu (KARAR 2.2 son madde) erken/ucuz biçimde eler —
+  // `trim()` KASITLI OLARAK UYGULANMAZ (baştaki/sondaki boşluk sessizce temizlenmez, KARAR 2.2
+  // "boşluk" kuralına göre AÇIKÇA reddedilir).
+  smtpHost: z.string().min(1).max(255).nullable().optional(),
+  smtpPort: z
+    .number()
+    .int()
+    .refine((port) => (SMTP_ALLOWED_PORTS as readonly number[]).includes(port), {
+      message: "smtpPort yalnızca 25, 465, 587 veya 2525 olabilir.",
+    })
+    .optional(),
+  smtpSecure: z.boolean().optional(),
+  smtpUser: z.string().trim().max(255).nullable().optional(),
+  // Üç durumlu (bağlayıcı, §2.3.3): alan YOK → korunur; `null` → temizlenir; dolu string →
+  // değiştirilir. Yer-tutucu sentinel (`"***"` vb.) YOKTUR — bu yüzden min(1) uygulanır (boş
+  // string'in "temizle" anlamına gelmesi İSTENMEZ, `null` bunun için AYRI ve açık bir yoldur).
+  smtpPassword: z.string().min(1).max(255).nullable().optional(),
+  fromAddress: z.string().trim().email().nullable().optional(),
+  fromName: z.string().trim().max(120).nullable().optional(),
+});
+export type UpdateEmailSettingsRequestDto = z.infer<typeof UpdateEmailSettingsRequestSchema>;
+
+/** `POST /admin/settings/email/test` yanıtı — `sentTo` `lib/pii-mask.ts::maskEmail` ile maskelidir. */
+export const EmailSettingsTestResponseSchema = z.object({
+  sentTo: z.string(),
+  messageId: z.string().nullable().optional(),
+  previewUrl: z.string().nullable().optional(),
+  testedAt: z.string(),
+});
+export type EmailSettingsTestResponseDto = z.infer<typeof EmailSettingsTestResponseSchema>;
+
 /** `lib/permissions-matrix.ts::PERMISSIONS_MATRIX` şeklinin gevşek (literal'e bağlı olmayan) Zod karşılığı. */
 export const PermissionsMatrixSchema = z.object({
   roles: z.array(z.string()),

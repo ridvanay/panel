@@ -42,6 +42,7 @@ import type {
   WishlistItem,
   SiteAppearance,
   SiteCustomCode,
+  EmailSettings,
   Locale,
   ApiKey,
   OutboundWebhook,
@@ -126,6 +127,7 @@ import type {
   SiteAppearanceDto,
   PublicSiteAppearanceDto,
   SiteCustomCodeDto,
+  EmailSettingsDto,
   LocaleDto,
   ContentLocalizationDto,
   ApiKeyDto,
@@ -1384,6 +1386,36 @@ export function toSiteCustomCodeDto(row: SiteCustomCodeWithUpdaters | null, cust
     jsUpdatedAt: row?.jsUpdatedAt ? row.jsUpdatedAt.toISOString() : null,
     jsUpdatedBy: row?.jsUpdatedBy ? toUserSummaryDto(row.jsUpdatedBy) : null,
     customCodeEnabled,
+  };
+}
+
+type EmailSettingsWithUpdater = EmailSettings & { updatedBy: User | null };
+
+/**
+ * `GET/PATCH /admin/settings/email` DTO'su — `.claude/architect-scope-smtp-settings.md` §6 madde 6
+ * (bağlayıcı): `effectiveSource`'u türetir, **parolaya hiçbir şekilde yaklaşmaz** (`smtpPasswordSet`
+ * dışında parolayla ilgili hiçbir alan/ipucu taşımaz — `smtpPasswordCiphertext` bu mapper'a asla
+ * PARAMETRE olarak geçilmiş olsa bile burada okunmaz/dönüştürülmez). `effectiveSource` hesaplaması
+ * `lib/mail.ts::computeEffectiveEmailSource` İLE AYNI fonksiyondan gelir — gerçek gönderim yolunun
+ * seçtiği kaynakla DTO'nun gösterdiği kaynak birbirinden ASLA sapmaz.
+ */
+export function toEmailSettingsDto(row: EmailSettingsWithUpdater | null, effectiveSource: EmailSettingsDto["effectiveSource"]): EmailSettingsDto {
+  return {
+    enabled: row?.enabled ?? false,
+    smtpHost: row?.smtpHost ?? null,
+    smtpPort: row?.smtpPort ?? 587,
+    smtpSecure: row?.smtpSecure ?? false,
+    smtpUser: row?.smtpUser ?? null,
+    smtpPasswordSet: Boolean(row?.smtpPasswordCiphertext),
+    fromAddress: row?.fromAddress ?? null,
+    fromName: row?.fromName ?? null,
+    effectiveSource,
+    lastTestedAt: row?.lastTestedAt ? row.lastTestedAt.toISOString() : null,
+    lastTestSucceeded: row?.lastTestSucceeded ?? null,
+    lastTestError: row?.lastTestError ?? null,
+    updatedById: row?.updatedById ?? null,
+    updatedByName: row?.updatedBy?.name ?? null,
+    updatedAt: row?.updatedAt ? row.updatedAt.toISOString() : null,
   };
 }
 

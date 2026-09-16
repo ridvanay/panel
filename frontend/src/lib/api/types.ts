@@ -3261,6 +3261,62 @@ export interface WebhookOrderPayload {
   }>;
 }
 
+// ---------- E-posta (SMTP) Yapılandırması — `.claude/architect-scope-smtp-settings.md` ----------
+// `GET/PATCH /admin/settings/email` + `POST /admin/settings/email/test`. Ayrı singleton
+// tablo/alt-kaynak (`SiteSettings`'e EKLENMEDİ) — gerekçe: architect scope dosyası §1.2.
+
+export type EmailSettingsSource = "database" | "env" | "ethereal" | "none";
+
+/**
+ * `GET/PATCH /admin/settings/email` DTO'su. **Parola ASLA dönmez** — yalnızca
+ * `smtpPasswordSet: boolean`. `secretLast4` deseni BİLİNÇLİ OLARAK uygulanmaz
+ * (bir SMTP parolasının son 4 hanesi hiç kimsenin işine yaramaz).
+ */
+export interface EmailSettings {
+  enabled: boolean;
+  smtpHost: string | null;
+  /** İzinli küme: 25, 465, 587, 2525. */
+  smtpPort: number;
+  smtpSecure: boolean;
+  smtpUser: string | null;
+  smtpPasswordSet: boolean;
+  fromAddress: string | null;
+  fromName: string | null;
+  /** Şu anda GERÇEKTEN kullanılan kaynak — türetilmiş, salt-okunur. */
+  effectiveSource: EmailSettingsSource;
+  lastTestedAt: string | null;
+  lastTestSucceeded: boolean | null;
+  lastTestError: string | null;
+  updatedById: string | null;
+  updatedByName: string | null;
+  updatedAt: string;
+}
+
+/**
+ * `PATCH /admin/settings/email` gövdesi. `smtpPassword` ÜÇ DURUMLU: alan yok → korunur,
+ * `null` → temizlenir, dolu string → değiştirilir. Yer-tutucu sentinel YOKTUR.
+ */
+export interface UpdateEmailSettingsRequest {
+  enabled?: boolean;
+  smtpHost?: string | null;
+  smtpPort?: number;
+  smtpSecure?: boolean;
+  smtpUser?: string | null;
+  smtpPassword?: string | null;
+  fromAddress?: string | null;
+  fromName?: string | null;
+}
+
+/** `POST /admin/settings/email/test` başarı yanıtı — başarısızlıkta `502` (`EmailDeliveryError`) döner. */
+export interface EmailSettingsTestResponse {
+  /** Maskelenmiş alıcı (ör. `a***@ornek.com`) — her zaman isteği yapan kullanıcının kendi adresi. */
+  sentTo: string;
+  messageId: string | null;
+  /** Yalnızca `effectiveSource: "ethereal"` iken dolu. */
+  previewUrl: string | null;
+  testedAt: string;
+}
+
 // ---------- §10.13.5 Public API (`/api/v1/public/*`) DTO'ları ----------
 // Backend: modules/public-api/*. Bkz. ARCHITECTURE.md §10.13.5 + openapi.yaml tag `PublicApi`.
 //

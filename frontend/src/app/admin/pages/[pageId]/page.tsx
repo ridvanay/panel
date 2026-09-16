@@ -657,13 +657,13 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
 
             {isAdmin && (
               <div className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2.5">
-                <div className="flex items-start gap-2.5">
+                <div className="flex min-w-0 flex-1 items-start gap-2.5">
                   <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
                     <Scale className="h-4 w-4" />
                   </span>
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-foreground">Hukuki belge</p>
-                    <p className="text-xs text-foreground/60">
+                    <p className="break-words text-xs text-foreground/60">
                       Gizlilik politikası, KVKK aydınlatma metni, kullanım koşulları vb. — işaretlenirse
                       çevrilmemiş dillerde bu sayfanın gövdesi sessizce varsayılan dile DÜŞMEZ; bunun yerine
                       ziyaretçiye açık bir bildirim + varsayılan dildeki sürüme bağlantı gösterilir (KVKK m.10 /
@@ -671,7 +671,7 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
                     </p>
                   </div>
                 </div>
-                <Switch checked={isLegalDocument} onCheckedChange={setIsLegalDocument} />
+                <Switch checked={isLegalDocument} onCheckedChange={setIsLegalDocument} className="shrink-0" />
               </div>
             )}
           </Card>

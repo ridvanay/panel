@@ -19,6 +19,7 @@ import { ImageUploadField } from "@/components/admin/media/image-upload-field";
 import { PageHeading } from "@/components/admin/page-heading";
 import { LocaleManager } from "@/components/admin/locale-manager";
 import { ApiKeysSection } from "@/components/admin/settings/api-keys-section";
+import { EmailSettingsSection } from "@/components/admin/settings/email-settings-section";
 import { WebhooksSection } from "@/components/admin/settings/webhooks-section";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -863,38 +864,7 @@ export default function AdminSettingsPage() {
           </motion.div>
 
           <motion.div variants={cardVariants} initial="hidden" animate="show">
-            <Card className="space-y-4">
-              <SectionHeader
-                icon={Mail}
-                title="E-posta Yapılandırması"
-                description="SMTP entegrasyon ayarları."
-              />
-
-              <div className="inline-flex items-center gap-2 rounded-full border border-warning/30 bg-warning/10 px-3 py-1 text-xs font-medium text-warning">
-                <Lock className="h-3.5 w-3.5" />
-                Yakında — bu yapılandırma henüz bu ortamda desteklenmiyor.
-              </div>
-
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <Field id="smtpHost" label="SMTP Host">
-                  {(inputProps) => <Input {...inputProps} disabled placeholder="smtp.ornek.com" />}
-                </Field>
-                <Field id="smtpPort" label="SMTP Port">
-                  {(inputProps) => <Input {...inputProps} disabled placeholder="587" />}
-                </Field>
-                <Field id="smtpUser" label="SMTP Kullanıcı Adı">
-                  {(inputProps) => <Input {...inputProps} disabled placeholder="ornek@site.com" />}
-                </Field>
-                <Field id="smtpPassword" label="SMTP Parola">
-                  {(inputProps) => <Input {...inputProps} type="password" disabled placeholder="••••••••" />}
-                </Field>
-              </div>
-
-              <p className="flex items-start gap-1.5 admin-text-secondary">
-                <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                Bu yapılandırma henüz bu ortamda desteklenmiyor.
-              </p>
-            </Card>
+            <EmailSettingsSection />
           </motion.div>
         </TabsContent>
 

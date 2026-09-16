@@ -54,7 +54,7 @@ export function LanguageSwitcher({ locales, activeLocale }: LanguageSwitcherProp
           <button
             type="button"
             aria-label="Dil seç"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-transparent px-2.5 py-1.5 text-sm text-foreground/70 outline-none transition-colors hover:bg-surface-muted hover:text-foreground focus-visible:text-foreground"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-transparent bg-transparent px-2 py-1 text-sm text-foreground/70 outline-none transition-colors hover:bg-surface-muted hover:text-foreground focus-visible:text-foreground"
           />
         }
       >

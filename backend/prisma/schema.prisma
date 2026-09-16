@@ -332,6 +332,10 @@ model User {
   // için zorunlu karşı-ilişki alanları (ContentRevision/EmailTemplate ile AYNI desen).
   cssCodeUpdates         SiteCustomCode[]     @relation("SiteCustomCodeCssUpdater")
   jsCodeUpdates          SiteCustomCode[]     @relation("SiteCustomCodeJsUpdater")
+  // Giden e-posta (SMTP) yapılandırması denetim izi — EmailSettings.updatedById için
+  // zorunlu karşı-ilişki alanı (SiteCustomCode ile AYNI desen). Bkz.
+  // .claude/architect-scope-smtp-settings.md §1.4.
+  emailSettingsUpdates   EmailSettings[]      @relation("EmailSettingsUpdater")
   // §10.13 Üçüncü Parti Entegrasyon — API anahtarı + giden webhook denetim izi
   // için zorunlu karşı-ilişki alanları (ImportJob/ExportJob ile AYNI desen).
   apiKeysCreated         ApiKey[]             @relation("ApiKeyCreator")
@@ -1716,6 +1720,38 @@ model EmailTemplate {
 
   @@index([purpose, isActive])
   @@map("email_templates")
+}
+
+/// Giden e-posta (SMTP) yapılandırması — tekil satır, SiteSettings/SiteAppearance ile
+/// AYNI id="singleton" + lazy-upsert deseni. `SiteSettings`'e BİLEREK eklenmedi: o satır
+/// public `GET /settings` ile kimlik doğrulamasız servis ediliyor (gerekçe:
+/// .claude/architect-scope-smtp-settings.md §1.2).
+model EmailSettings {
+  id                     String    @id @default("singleton")
+  /// Öncelik anahtarı: true VE smtpHost dolu iken gönderim BU satırı kullanır,
+  /// aksi halde env.SMTP_* değerlerine düşülür (bkz. §3).
+  enabled                Boolean   @default(false)
+  smtpHost               String?
+  smtpPort               Int       @default(587)
+  smtpSecure             Boolean   @default(false)
+  smtpUser               String?
+  /// AES-256-GCM, lib/crypto.ts::encryptSecret ile şifreli. DÜZ METİN YASAK.
+  /// Ad, şifreli olduğunu AÇIKÇA söyler — `identityNumberCiphertext` ile aynı konvansiyon.
+  smtpPasswordCiphertext String?
+  fromAddress            String?
+  fromName               String?
+  lastTestedAt           DateTime?
+  lastTestSucceeded      Boolean?
+  lastTestError          String?
+  updatedById            String?
+  updatedAt              DateTime  @updatedAt
+
+  // Kullanıcı silinse de ayar satırı korunur (onDelete: SetNull) — SiteCustomCode
+  // denetim izi ile AYNI desen.
+  updatedBy User? @relation("EmailSettingsUpdater", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@index([updatedById])
+  @@map("email_settings")
 }
 
 // §10.16.7 İletişim formu — bkz. ARCHITECTURE.md §10.16.7. TEK (singleton) form,

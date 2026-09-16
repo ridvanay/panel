@@ -169,6 +169,20 @@ const EnvSchema = z.object({
   // Gönderen adı + adresi, örn. "Şirket Adı <no-reply@example.com>".
   SMTP_FROM: z.string().default("No-Reply <no-reply@example.com>"),
 
+  // `.claude/security-review-smtp-settings.md` KARAR 2.4 (bağlayıcı) — `EmailSettings.smtpHost`
+  // (panelden ADMIN'in girdiği DB yapılandırması) için SSRF ağ-katmanı kontrolünün
+  // (`lib/smtp-host-guard.ts::validateSmtpHostNetwork`, `lib/ssrf-guard.ts::isPublicUnicastIp`
+  // yeniden kullanır) TEK escape hatch'i. TÜM ortamlarda varsayılan `false` (kontrol açık);
+  // `true` iken özel/loopback/link-local/metadata dahil TÜM adresler kabul edilir — kısmi
+  // gevşetme (ör. yalnızca belirli bir CIDR) YOKTUR. Yalnızca env'den okunur, ADMIN panelinden
+  // hiçbir şekilde değiştirilemez (devops-agent'ın operasyonel kararıdır). `SMTP_SECURE` ile
+  // BİREBİR AYNI desen — `z.coerce.boolean()` KASITLI OLARAK KULLANILMADI (boş olmayan HER
+  // string'i, örn. "false", `true` yapardı).
+  SMTP_ALLOW_PRIVATE_HOST: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
+
   // Hata takibi (Sentry veya uyumlu bir self-hosted alternatif — GlitchTip vb. aynı DSN
   // formatını kullanır). Tanımsız/boş bırakılırsa Sentry HİÇ init edilmez (varsayılan KAPALI,
   // no-op) — bkz. lib/sentry.ts. Sadece error-handler.ts'teki son catch-all (beklenmedik 500)

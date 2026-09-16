@@ -83,6 +83,15 @@ export const EMAIL_TEST_SEND_RATE_LIMIT = { max: 3, timeWindow: "1 minute" };
  */
 export const EMAIL_TEMPLATE_PREVIEW_RATE_LIMIT = { max: 120, timeWindow: "1 minute" };
 
+/**
+ * `POST /admin/settings/email/test` — `.claude/architect-scope-smtp-settings.md` §4.3.4 +
+ * `.claude/security-review-smtp-settings.md` KARAR 3 (bağlayıcı). `EMAIL_TEST_SEND_RATE_LIMIT`
+ * İLE AYNI değer/gerekçe (ADMIN arkasında bile gerçek bir SMTP bağlantısı/gönderimi tetikler);
+ * KARAR 3'e göre TEK BAŞINA yeterli değildir — asıl kapatan katman test ucunun kaba hata
+ * sınıflandırmasıdır (bkz. lib/mail.ts::classifyEmailTestError), bu yalnızca ek bir savunma katmanı.
+ */
+export const EMAIL_SMTP_TEST_RATE_LIMIT = { max: 3, timeWindow: "1 minute" };
+
 // ---------------------------------------------------------------------------
 // [TCT] §9.7 TADİLAT TURU 2 — booking (çoklu slot) + ödeme + sağlık verisi + portal.
 // Değerler `.claude/architect-scope-telehealth-template.md` §9.7.10/§9.7.5 tablosuyla

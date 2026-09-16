@@ -134,7 +134,7 @@ export default function AdminSupportPage() {
       />
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[22rem_1fr]">
-        <div className="min-h-0 lg:h-[calc(100vh-14rem)]">
+        <div className="min-h-0 min-w-0 lg:h-[calc(100vh-14rem)]">
           <SupportSessionList
             sessions={sessions}
             loadError={loadError}

@@ -75,8 +75,9 @@ export function SupportSessionList({
       <Tabs
         value={tabValue}
         onValueChange={(v) => onStatusChange(v === "ALL" ? undefined : (v as SupportSessionStatus))}
+        className="min-w-0"
       >
-        <TabsList variant="line" className="flex-nowrap overflow-x-auto">
+        <TabsList variant="line" className="w-full max-w-full flex-nowrap justify-start overflow-x-auto">
           <TabsTrigger value="ALL">
             Tümü <span className="ml-1 tabular-nums text-foreground/70">({counts?.all ?? 0})</span>
           </TabsTrigger>

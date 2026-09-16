@@ -4793,6 +4793,183 @@ paths:
         "422": { $ref: "#/components/responses/ValidationError" }
 
   # ---------------------------------------------------------------------------
+  # E-POSTA (SMTP) YAPILANDIRMASI — AJAN KAPSAM NOTU (architect, bağlayıcı)
+  # Tam gerekçe: `.claude/architect-scope-smtp-settings.md`
+  #
+  #   NEDEN AYRI ALT-KAYNAK (`PATCH /admin/settings`e EKLENMEDİ):
+  #     1. `GET /settings` HERKESE AÇIKTIR (site header'ı okur) ve `GET /admin/settings`
+  #        EDITOR/MANAGER tarafından da okunabilir. SMTP host/kullanıcı/parola altyapı
+  #        kimlik bilgisidir; public/özel sınırı bir mapper disiplinine DEĞİL, TABLO ve
+  #        UÇ sınırına dayanmalıdır (savunma derinliği).
+  #     2. `PATCH /admin/settings` gövdeyi `update: request.body` ile KÖRLEMESİNE yayar;
+  #        yaz-şifrele/asla-döndürme semantiği gerektiren bir alan bu yolda barınamaz.
+  #     3. Mevcut `/admin/settings/{permissions,api-keys,webhooks}` alt-kaynak deseniyle
+  #        BİREBİR tutarlıdır — yeni bir desen İCAT EDİLMEDİ.
+  #
+  #   db-agent       : TEK yeni singleton tablo `EmailSettings`. `SiteSettings`'e HİÇBİR
+  #                    kolon EKLENMEZ (`SiteAppearance`/`SiteCustomCode` emsali). Parola
+  #                    kolonu `smtpPasswordCiphertext String?` — adı şifreli olduğunu
+  #                    AÇIKÇA söyler. İş kuralı/şifreleme kodu YAZMAZ.
+  #   backend-agent  : Aşağıdaki 3 uç + Zod şemaları + `toEmailSettingsDto` mapper +
+  #                    `lib/mail.ts` öncelik zinciri (DB > env > dev-Ethereal) +
+  #                    transporter önbellek geçersizleştirme. Şifreleme için
+  #                    MEVCUT `lib/crypto.ts::encryptSecret/decryptSecret` KULLANILIR —
+  #                    YENİ bir şifreleme yöntemi İCAT EDİLMEZ (`lib/identity.ts` ile aynı
+  #                    disiplin). Güvenlik POLİTİKASI BELİRLEMEZ.
+  #   security-agent : ENGELLEYİCİ ONAY — şifreleme yaklaşımı, `smtpHost` SSRF/port
+  #                    politikası, test ucunun hata-oracle yüzeyi, audit içeriği.
+  #                    Politikayı SIKILAŞTIRABİLİR, GEVŞETEMEZ.
+  #   frontend-agent : `/admin/settings` → "E-posta / API Yapılandırmaları" sekmesindeki
+  #                    "Yakında" rozetini ve `disabled` input'ları KALDIRIR, kartı bu üç
+  #                    uca bağlar. Parola alanı YAZ-ONLY'dir: doluysa placeholder olarak
+  #                    "••••••••" gösterir, boş bırakılırsa istekte GÖNDERİLMEZ.
+  #   qa-agent       : Parolanın hiçbir yanıtta/logda GÖRÜNMEDİĞİ, `enabled=false` iken
+  #                    env'e düşüldüğü, test ucunun yalnızca kendi adresine gönderdiği.
+  # ---------------------------------------------------------------------------
+
+  /admin/settings/email:
+    get:
+      tags: [Settings]
+      summary: E-posta (SMTP) yapılandırmasını oku (yalnızca SiteRole=ADMIN)
+      description: >
+        **Parola HİÇBİR KOŞULDA DÖNMEZ** — yalnızca `smtpPasswordSet: boolean` döner.
+        Webhook secret'larındaki `secretLast4` deseni burada BİLİNÇLİ OLARAK
+        UYGULANMAZ: bir webhook secret'ı karşı tarafta eşleştirilmek zorundadır, bir
+        SMTP parolasının son 4 hanesi ise hiç kimsenin işine yaramaz ve yalnızca
+        entropi sızdırır.
+
+
+        `GET /admin/settings`in aksine bu uç **panel kapısıyla yetinmez**, ADMIN
+        şarttır (MANAGER/EDITOR → `403`): SMTP host/kullanıcı altyapı kimlik
+        bilgisidir. `GET /permissions` ile aynı eşik.
+
+
+        Satır yoksa (hiç yapılandırılmamış) `422` DEĞİL, `DEFAULTS` ile doldurulmuş
+        bir DTO döner (`enabled: false`, `smtpPasswordSet: false`) — `GET /admin/settings`
+        ile AYNI lazy-upsert deseni.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/EmailSettings" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    patch:
+      tags: [Settings]
+      summary: E-posta (SMTP) yapılandırmasını güncelle (yalnızca SiteRole=ADMIN)
+      description: >
+        Satır yoksa oluşturulur (upsert), `PATCH /admin/settings` ile AYNI desen.
+        Tüm alanlar opsiyoneldir.
+
+
+        **Parola semantiği (bağlayıcı, üç durumlu):**
+
+        * alan GÖNDERİLMEZSE → mevcut şifreli parola KORUNUR (form her kaydedişte
+          parolayı yeniden yazdırmaz),
+
+        * `null` gönderilirse → parola TEMİZLENİR (kimliksiz/anonim relay senaryosu),
+
+        * dolu bir string gönderilirse → DEĞİŞTİRİLİR.
+
+        `"***"` gibi bir yer-tutucu sentinel'i YOKTUR ve İCAT EDİLMEZ — yer-tutucular
+        er ya da geç gerçek bir parola olarak kaydedilir.
+
+
+        **Şifreleme:** parola DB'ye `lib/crypto.ts::encryptSecret` (AES-256-GCM,
+        `ENCRYPTION_KEY`) ile yazılır — outbound webhook secret'ları, 2FA secret'ları
+        ve telehealth notlarıyla AYNI mekanizma. Düz metin saklama YASAKTIR.
+
+
+        **Audit:** `settings.email_update`, `metadata.changed` = gönderilen alan
+        ADLARI. Parola değeri (şifreli hâli dahil) audit'e, log'a veya hata mesajına
+        ASLA yazılmaz.
+
+
+        **Önbellek:** başarılı PATCH sonrası `lib/mail.ts`'in transporter singleton'ı
+        geçersizleştirilir; aksi halde süreç ömrü boyunca eski yapılandırma kullanılır.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateEmailSettingsRequest" }
+      responses:
+        "200":
+          description: Güncellendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/EmailSettings" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/settings/email/test:
+    post:
+      tags: [Settings]
+      summary: Kayıtlı SMTP yapılandırmasını doğrula ve kendine test e-postası gönder (yalnızca ADMIN)
+      description: >
+        **Gövde `to` alanı KABUL ETMEZ** — alıcı HER ZAMAN isteği yapan kullanıcının
+        e-posta adresidir. ADMIN arkasında bile "keyfi adrese e-posta gönder" ucu bir
+        spam-relay/phishing vektörüdür; `/admin/notifications/templates/{templateId}/test-send`
+        ile BİREBİR AYNI bağlayıcı kural (§10.16.6).
+
+
+        **KAYDEDİLMİŞ satır üzerinden çalışır**, istek gövdesindeki geçici bir
+        yapılandırma üzerinden DEĞİL (webhook `POST .../test` ile aynı semantik):
+        gerçekten kullanılacak olan yapılandırma test edilir. Arayüz akışı bu yüzden
+        "önce Kaydet, sonra Test Et" şeklindedir.
+
+
+        Önce `transporter.verify()` (bağlantı + kimlik doğrulama), ardından gerçek bir
+        e-posta gönderilir — `verify()` tek başına yetmez, bazı sağlayıcılar yalnızca
+        `MAIL FROM` aşamasında reddeder.
+
+
+        Sonuç `EmailSettings.lastTestedAt` / `lastTestSucceeded` / `lastTestError`
+        alanlarına yazılır (başarısızlıkta da) — admin panelde kalıcı bir "son
+        doğrulama" göstergesi olur.
+
+
+        `enabled: false` iken de çalışır: amaç, canlıya almadan ÖNCE doğrulamaktır
+        (webhook testinin `PAUSED`/`DISABLED` durumunda da çalışmasıyla aynı gerekçe).
+        Ancak `smtpHost` boşsa `422` döner — test edilecek bir şey yoktur.
+
+
+        Rate limit: 3/dakika (`EMAIL_SMTP_TEST_RATE_LIMIT`) —
+        `EMAIL_TEST_SEND_RATE_LIMIT` ile aynı değer. Audit: `settings.email_test`
+        (metadata'ya alıcı adresi ve hata gövdesi YAZILMAZ).
+      responses:
+        "200":
+          description: "Bağlantı doğrulandı ve test e-postası gönderildi."
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/EmailSettingsTestResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "502":
+          description: >
+            SMTP bağlantısı/gönderimi başarısız (`EMAIL_DELIVERY_FAILED`). Hata mesajı
+            yapılandırmayı düzeltmeye yetecek kadar bilgilendirici, ağ topolojisini
+            sızdırmayacak kadar dar olmalıdır (nihai sınır: security-agent).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+
+  # ---------------------------------------------------------------------------
   # SİTE ÖZELLEŞTİRME (§10.12) — AJAN KAPSAM NOTU (architect, bağlayıcı)
   #
   #   db-agent       : İKİ yeni singleton tablo (`SiteAppearance`, `SiteCustomCode`),
@@ -15720,6 +15897,127 @@ components:
         # NOT: `liveChatPreChatEnabled = true` iken `liveChatRequire*` alanlarının ÜÇÜ birden
         # `false` olabilir (form gösterilir, hiçbir alan zorunlu değildir, ziyaretçi boş
         # geçebilir) — bu KASITLIDIR, çapraz-alan `422` kuralı YOKTUR.
+
+    # -- E-posta (SMTP) yapılandırması — `.claude/architect-scope-smtp-settings.md` ------
+
+    EmailSettings:
+      type: object
+      description: >
+        `GET/PATCH /admin/settings/email` DTO'su. **Parola ASLA dönmez** — yalnızca
+        `smtpPasswordSet`. `secretLast4` deseni burada bilinçli olarak UYGULANMAZ
+        (gerekçe: uç açıklaması). Bu DTO public `GET /settings` yanıtına ASLA
+        eklenmez.
+      required: [enabled, smtpPort, smtpSecure, smtpPasswordSet, effectiveSource, updatedAt]
+      properties:
+        enabled:
+          type: boolean
+          description: >
+            **Öncelik anahtarı (bağlayıcı).** `true` VE `smtpHost` doluyken gönderim
+            bu satırdaki yapılandırmayı kullanır; aksi hâlde `env.SMTP_*` değerlerine
+            düşülür (ops seviyesi yedek). Bayrak KASITLIDIR: "alanlar doluysa DB
+            kazanır" kuralı, yarım doldurulmuş bir formun kaydedilmesiyle canlı
+            e-postayı SESSİZCE bozardı. Ayrıca admin, ayarlarını SİLMEDEN env'e geri
+            dönebilmelidir.
+        smtpHost: { type: string, nullable: true, maxLength: 255, example: "smtp.ornek.com" }
+        smtpPort:
+          type: integer
+          description: >
+            İzinli küme: 25, 465, 587, 2525. Serbest port aralığı, ucu bir iç ağ
+            port-tarayıcısına dönüştürür (nihai politika: security-agent).
+          enum: [25, 465, 587, 2525]
+          default: 587
+        smtpSecure:
+          type: boolean
+          description: "`true` = bağlantı en baştan TLS (genellikle port 465). `false` = düz bağlantı + STARTTLS (587/25). `env.SMTP_SECURE` ile aynı anlam."
+          default: false
+        smtpUser: { type: string, nullable: true, maxLength: 255 }
+        smtpPasswordSet:
+          type: boolean
+          description: "Kayıtlı bir parola VAR MI. Parolanın kendisi (veya herhangi bir parçası) DÖNMEZ."
+        fromAddress:
+          type: string
+          format: email
+          nullable: true
+          description: "Boşsa `env.SMTP_FROM` kullanılır. Doluyken `env.SMTP_FROM`'u EZER."
+        fromName: { type: string, nullable: true, maxLength: 120, example: "Örnek Klinik" }
+        effectiveSource:
+          type: string
+          enum: [database, env, ethereal, none]
+          description: >
+            **Şu anda GERÇEKTEN hangi kaynağın kullanıldığı** — arayüzün "kaydettim ama
+            çalışıyor mu?" belirsizliğini ortadan kaldıran salt-okunur alan.
+            `database` = bu satır; `env` = `env.SMTP_HOST`; `ethereal` = geliştirme
+            ortamı otomatik test kutusu; `none` = hiç yapılandırma yok, gönderim
+            BAŞARISIZ olur. Türetilmiş değerdir, DB kolonu DEĞİLDİR.
+        lastTestedAt: { type: string, format: date-time, nullable: true }
+        lastTestSucceeded: { type: boolean, nullable: true, description: "Hiç test edilmediyse `null`." }
+        lastTestError:
+          type: string
+          nullable: true
+          maxLength: 500
+          description: "Son başarısız testin kısaltılmış hata mesajı. Parola/kimlik bilgisi İÇEREMEZ; backend kırpar ve temizler."
+        updatedById: { type: string, format: uuid, nullable: true }
+        updatedByName: { type: string, nullable: true }
+        updatedAt: { type: string, format: date-time }
+
+    UpdateEmailSettingsRequest:
+      type: object
+      description: >
+        `PATCH /admin/settings/email` gövdesi — tüm alanlar opsiyoneldir (PATCH
+        semantiği), satır yoksa varsayılanlarla birlikte oluşturulur (upsert).
+        `effectiveSource`, `smtpPasswordSet`, `lastTest*` alanları salt-okunurdur ve
+        gönderilirse yok sayılır.
+      properties:
+        enabled:
+          type: boolean
+          description: >
+            `true` yapılırken `smtpHost` (mevcut satırdaki veya AYNI istekte gönderilen)
+            boşsa `422` — "açık ama yapılandırmasız" durumu, e-postanın sessizce
+            kaybolduğu bir tuzaktır ve sözleşme seviyesinde ENGELLENİR.
+        smtpHost:
+          type: string
+          nullable: true
+          maxLength: 255
+          description: >
+            Hostname. Kimlik bilgisi (`user:pass@`), şema (`smtp://`) veya port eki
+            İÇEREMEZ. SSRF politikası (literal IP yasağı, özel/loopback aralıklar,
+            `lib/ssrf-guard.ts::resolveAndValidateHost` yeniden kullanımı ve kurumsal
+            iç relay'ler için istisna) **security-agent'ın ENGELLEYİCİ kararıdır** —
+            bkz. `.claude/architect-scope-smtp-settings.md` §4.3. Webhook URL'lerinden
+            farklı olarak koşulsuz "public unicast" şartı KOYULAMAZ: meşru kurulumların
+            çoğu iç ağdaki bir relay'i kullanır.
+        smtpPort: { type: integer, enum: [25, 465, 587, 2525] }
+        smtpSecure: { type: boolean }
+        smtpUser: { type: string, nullable: true, maxLength: 255 }
+        smtpPassword:
+          type: string
+          nullable: true
+          maxLength: 255
+          writeOnly: true
+          description: >
+            Üç durumlu: **gönderilmezse** mevcut parola korunur, **`null`** ise
+            temizlenir, **dolu string** ise değiştirilir. Yer-tutucu sentinel'i
+            (`"***"` vb.) YOKTUR. Yanıtta ASLA görünmez; `writeOnly: true`.
+        fromAddress: { type: string, format: email, nullable: true }
+        fromName: { type: string, nullable: true, maxLength: 120 }
+
+    EmailSettingsTestResponse:
+      type: object
+      description: "`POST /admin/settings/email/test` yanıtı. Başarısızlıkta bu şema DÖNMEZ — `502 EMAIL_DELIVERY_FAILED` döner."
+      required: [sentTo, testedAt]
+      properties:
+        sentTo:
+          type: string
+          description: >
+            Maskelenmiş alıcı (ör. `a***@ornek.com`) — her zaman isteği yapan
+            kullanıcının kendi adresidir. Ham adres, `lib/pii-mask.ts` disiplini
+            gereği DÖNDÜRÜLMEZ.
+        messageId: { type: string, nullable: true }
+        previewUrl:
+          type: string
+          nullable: true
+          description: "Yalnızca geliştirme ortamında Ethereal kullanılıyorsa dolu (`effectiveSource: ethereal`) — gönderilen postayı tarayıcıda açar."
+        testedAt: { type: string, format: date-time }
 
     SiteModule:
       description: >
