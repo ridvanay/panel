@@ -247,12 +247,21 @@ export function PatientBookingDetailPanel({
   return (
     <div className="space-y-6">
       {paymentOutcome === "success" && booking.paymentStatus === "PAID" && (
-        <Alert variant="success">
-          <span className="flex items-center gap-2">
-            <CircleCheck className="h-4 w-4 shrink-0" aria-hidden="true" />
-            Ödemeniz alındı, randevunuz onaylandı.
-          </span>
-        </Alert>
+        <>
+          <Alert variant="success">
+            <span className="flex items-center gap-2">
+              <CircleCheck className="h-4 w-4 shrink-0" aria-hidden="true" />
+              Ödemeniz alındı, randevunuz onaylandı.
+            </span>
+          </Alert>
+          {/* `.claude/architect-scope-guest-account-otp.md` §8.3/§6 vektör 6 — STATİK, KOŞULSUZ
+              metin. Hesabın önceden var olup olmadığına göre DEĞİŞMEZ ve bunun için backend'e
+              HİÇBİR sorgu ATILMAZ (hesap-varlık oracle'ı sızdırılmaz). */}
+          <Alert variant="info">
+            Bu randevu, e-posta adresinize bağlı hesabınıza eklendi. Hesabınız yoksa, hesabınızı
+            oluşturmanız için gereken talimatları e-posta ile gönderdik.
+          </Alert>
+        </>
       )}
       {paymentOutcome === "success" && polling && booking.paymentStatus === "PENDING" && (
         <Alert variant="info">

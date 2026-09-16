@@ -33,6 +33,9 @@ describe("appearance — /appearance ve /admin/appearance (public + authenticate
         passwordHash,
         role,
         status: "ACTIVE",
+        // `.claude/architect-scope-guest-account-otp.md` §2.3 — `login()` artık `emailVerifiedAt`
+        // gerektiriyor; bu doğrudan-oluşturma yardımcısı GRANDFATHERED bir hesabı temsil eder.
+        emailVerifiedAt: new Date(),
       },
     });
   }
@@ -669,7 +672,15 @@ describe("appearance — özel CSS/JS kill switch (CUSTOM_CODE_ENABLED=false)", 
 
     const passwordHash = await hashPassword("Sifre12345!");
     const admin = await app.prisma.user.create({
-      data: { email: "appearance-killswitch-admin@example.com", name: "Kill Switch Admin", passwordHash, role: "ADMIN", status: "ACTIVE" },
+      data: {
+        email: "appearance-killswitch-admin@example.com",
+        name: "Kill Switch Admin",
+        passwordHash,
+        role: "ADMIN",
+        status: "ACTIVE",
+        // `.claude/architect-scope-guest-account-otp.md` §2.3 — `login()` artık `emailVerifiedAt` gerektiriyor.
+        emailVerifiedAt: new Date(),
+      },
     });
     adminId = admin.id;
 

@@ -316,7 +316,7 @@ export function SupportChatPanel({ sessionId, agents, templates, onSessionChange
       </div>
 
       <ScrollArea className="min-h-0 flex-1">
-        <div ref={listRef} className="space-y-3 p-4">
+        <div ref={listRef} className="mx-auto w-full max-w-3xl space-y-3 p-4">
           {messages.map((m) => (
             <div key={m.id} className={cn("flex flex-col gap-0.5", m.senderType === "AGENT" ? "items-end" : "items-start")}>
               <div
@@ -337,47 +337,49 @@ export function SupportChatPanel({ sessionId, agents, templates, onSessionChange
         </div>
       </ScrollArea>
 
-      <div className="space-y-2 border-t border-border p-3">
-        {templates.length > 0 && (
-          <div className="flex items-center gap-1.5">
-            <FileText className="h-3.5 w-3.5 shrink-0 text-foreground/40" aria-hidden="true" />
-            <Select className="h-8" value={selectedTemplateId} onChange={(e) => handleTemplateSelect(e.target.value)} aria-label="Hazır yanıt şablonu seç">
-              <option value="">Şablon seç…</option>
-              {templates.map((template) => (
-                <option key={template.id} value={template.id}>
-                  {template.title}
-                </option>
-              ))}
-            </Select>
-          </div>
-        )}
-
-        {sendError && <p className="text-xs text-danger">{sendError}</p>}
-
-        {isClosed ? (
-          <p className="text-xs text-foreground/60">Bu oturum kapatıldı — yanıt göndermek için önce yeniden açın.</p>
-        ) : (
-          <form onSubmit={(e) => void handleSend(e)} className="space-y-1.5">
-            <Textarea
-              value={draft}
-              onChange={(e) => {
-                setDraft(e.target.value);
-                bump();
-              }}
-              maxLength={2000}
-              rows={3}
-              placeholder="Yanıtınızı yazın…"
-              aria-label="Yanıt metni"
-            />
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-foreground/40">{draft.length}/2000</span>
-              <Button type="submit" size="sm" loading={sending} disabled={!draft.trim()}>
-                <Send className="h-4 w-4" />
-                Gönder
-              </Button>
+      <div className="border-t border-border p-3">
+        <div className="mx-auto w-full max-w-3xl space-y-2">
+          {templates.length > 0 && (
+            <div className="flex items-center gap-1.5">
+              <FileText className="h-3.5 w-3.5 shrink-0 text-foreground/40" aria-hidden="true" />
+              <Select className="h-8" value={selectedTemplateId} onChange={(e) => handleTemplateSelect(e.target.value)} aria-label="Hazır yanıt şablonu seç">
+                <option value="">Şablon seç…</option>
+                {templates.map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.title}
+                  </option>
+                ))}
+              </Select>
             </div>
-          </form>
-        )}
+          )}
+
+          {sendError && <p className="text-xs text-danger">{sendError}</p>}
+
+          {isClosed ? (
+            <p className="text-xs text-foreground/60">Bu oturum kapatıldı — yanıt göndermek için önce yeniden açın.</p>
+          ) : (
+            <form onSubmit={(e) => void handleSend(e)} className="space-y-1.5">
+              <Textarea
+                value={draft}
+                onChange={(e) => {
+                  setDraft(e.target.value);
+                  bump();
+                }}
+                maxLength={2000}
+                rows={3}
+                placeholder="Yanıtınızı yazın…"
+                aria-label="Yanıt metni"
+              />
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-foreground/40">{draft.length}/2000</span>
+                <Button type="submit" size="sm" loading={sending} disabled={!draft.trim()}>
+                  <Send className="h-4 w-4" />
+                  Gönder
+                </Button>
+              </div>
+            </form>
+          )}
+        </div>
       </div>
 
       <ConfirmDialog

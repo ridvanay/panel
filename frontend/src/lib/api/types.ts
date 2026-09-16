@@ -59,7 +59,12 @@ export type ApiErrorCode =
   // `POST .../messages` (ziyaretçi VE yönetim): oturum `CLOSED` iken 409; mesaj üst sınırı
   // (200/oturum) aşıldığında da 409, farklı kodla.
   | "SUPPORT_SESSION_CLOSED"
-  | "SUPPORT_MESSAGE_LIMIT";
+  | "SUPPORT_MESSAGE_LIMIT"
+  // `.claude/architect-scope-guest-account-otp.md` §4.3 — `/auth/verify-email` ve
+  // `/auth/activate-account` ortak jenerik hatası. Kullanıcı yok / canlı kod yok / kod yanlış /
+  // süresi dolmuş / deneme tükenmiş / amaç eşleşmiyor — HEPSİ AYNI gövdeyle döner (numaralandırma
+  // yüzeyi yok).
+  | "VERIFICATION_CODE_INVALID";
 
 export type MembershipRole = "OWNER" | "ADMIN" | "MEMBER";
 export type MembershipStatus = "ACTIVE" | "INVITED" | "SUSPENDED";
@@ -240,6 +245,23 @@ export interface RegisterRequest {
   email: string;
   password: string;
   name: string;
+}
+
+/**
+ * `.claude/architect-scope-guest-account-otp.md` §2 (bağlayıcı) — `POST /auth/register` yanıtı
+ * (`202`). **Token/cookie İÇERMEZ** ve **`User` DTO'su İÇERMEZ** (doğrulanmamış bir hesabın
+ * profil verisi istemciye geri verilmez).
+ */
+export interface RegistrationPendingVerification {
+  verificationRequired: true;
+  email: string;
+  /** Gönderilen kodun son geçerlilik anı (kayıt akışında +10 dakika). */
+  expiresAt: string;
+  /**
+   * `POST /auth/resend-verification-code`un bu kullanıcı için tekrar kod üretebileceği en erken
+   * an (+60 sn cooldown). Cooldown'ın kendisi SUNUCUDA zorlanır, bu alan yalnızca arayüz içindir.
+   */
+  resendAvailableAt: string;
 }
 
 export interface LoginRequest {
@@ -1943,18 +1965,57 @@ export interface SystemHealthDto {
 
 /**
  * Güvenlik & 2FA (TOTP) + Aktif Oturumlar — bkz. ARCHITECTURE.md §10.4.
- * `POST /auth/login` artık `AuthResponse` yerine `LoginResult` döner: 2FA kapalıysa
- * doğrudan token çifti, açıksa `{ requiresTwoFactor: true, challengeToken }`.
+ * `POST /auth/login` artık `AuthResponse` yerine `LoginResult` döner: başarılıysa doğrudan
+ * token çifti, 2FA açıksa `{ requiresTwoFactor: true, challengeToken }`, e-posta doğrulaması
+ * bekleniyorsa `{ requiresEmailVerification: true, email }`
+ * (`.claude/architect-scope-guest-account-otp.md` §2.3).
  */
 export interface LoginRequiresTwoFactorResponse {
   requiresTwoFactor: true;
   challengeToken: string;
 }
-export type LoginResult = AuthResponse | LoginRequiresTwoFactorResponse;
+
+/**
+ * Şifre DOĞRU ama `User.emailVerifiedAt = null`. Token/cookie VERİLMEZ. İstemci kullanıcıyı
+ * `/verify-email` ekranına yönlendirir; **kod otomatik gönderilmez**, kullanıcı
+ * `POST /auth/resend-verification-code` ile ister.
+ */
+export interface LoginRequiresEmailVerificationResponse {
+  requiresEmailVerification: true;
+  email: string;
+}
+
+export type LoginResult = AuthResponse | LoginRequiresTwoFactorResponse | LoginRequiresEmailVerificationResponse;
 
 export interface VerifyTwoFactorRequest {
   challengeToken: string;
   code: string;
+}
+
+/**
+ * `.claude/architect-scope-guest-account-otp.md` §4.2 — cihazdan bağımsız: `{ email, code }`,
+ * challenge token DEĞİL (kullanıcı kodu telefonundaki posta kutusundan okuyup masaüstünde
+ * girebilir). `code`: tam 6 haneli, yalnızca rakam.
+ */
+export interface VerifyEmailRequest {
+  email: string;
+  code: string;
+}
+
+/** Gövde YALNIZCA `email` taşır — `purpose` BİLİNÇLİ OLARAK YOKTUR (§3.5.2, bağlayıcı). */
+export interface ResendVerificationCodeRequest {
+  email: string;
+}
+
+/**
+ * Misafir randevu ödemesiyle açılmış hesabın aktivasyonu — kod doğrulaması ve ilk parolanın
+ * belirlenmesi TEK istekte yapılır. `password` kuralı `RegisterRequest` ile BİREBİR AYNI
+ * (min. 8 karakter).
+ */
+export interface ActivateAccountRequest {
+  email: string;
+  code: string;
+  password: string;
 }
 
 export interface TwoFactorSetupResponse {

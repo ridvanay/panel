@@ -42,6 +42,9 @@ describe("admin-users — RBAC ve son-admin koruması", () => {
         passwordHash,
         role,
         status,
+        // `.claude/architect-scope-guest-account-otp.md` §2.3 — `login()` artık `emailVerifiedAt`
+        // gerektiriyor; bu doğrudan-oluşturma yardımcısı GRANDFATHERED bir hesabı temsil eder.
+        emailVerifiedAt: new Date(),
       },
     });
   }

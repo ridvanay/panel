@@ -121,7 +121,7 @@ export function BookingIntakeStep({ bookingId, accessToken, onDone }: BookingInt
             checked={consent}
             onCheckedChange={(checked) => setConsent(checked === true)}
           />
-          <span>Yukarıdaki metni okudum, sağlık verimin işlenmesine açık rıza veriyorum. (varsayılan: işaretsiz)</span>
+          <span>Yukarıdaki metni okudum, sağlık verimin işlenmesine açık rıza veriyorum.</span>
         </label>
         {consentTouched && !consent && (
           <p role="alert" className="mt-1 pl-6 text-xs text-danger">

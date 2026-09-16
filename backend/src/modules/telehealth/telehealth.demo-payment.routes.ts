@@ -15,6 +15,7 @@ import { AccessTokenQuerySchema, BookingIdParamSchema } from "./telehealth.schem
 import { toAppointmentBookingDto } from "../../mappers";
 import { confirmBookingPayment } from "./lib/booking";
 import { triggerAppointmentConfirmationEmail } from "./lib/notifications";
+import { provisionPatientAccountForBooking } from "./lib/patient-account";
 
 /**
  * `.claude/architect-scope-demo-payment-doctor-counters.md` İstek 1 (BAĞLAYICI) —
@@ -135,6 +136,10 @@ export async function telehealthDemoPaymentRoutes(app: FastifyInstance) {
       // ADMIN `mark-paid` İLE AYNI — best-effort, e-posta gönderimi BAŞARISIZ olsa da bu uç ASLA
       // 500 dönmez (bkz. notifications.ts::triggerAppointmentConfirmationEmail).
       await triggerAppointmentConfirmationEmail(app, { booking: paidBooking, appointments, rawAccessToken });
+
+      // `.claude/architect-scope-guest-account-otp.md` §5.1/§6 Vektör 2 (bağlayıcı, security-review
+      // ONAYLANDI — demo-pay üretimde zaten 404 ile erişilemez) — best-effort, ödeme onayını ASLA bozmaz.
+      await provisionPatientAccountForBooking(app, paidBooking);
 
       const withRelations = await app.prisma.appointmentBooking.findUniqueOrThrow({
         where: { id: paidBooking.id },

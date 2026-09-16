@@ -946,6 +946,29 @@ export const LoginRequiresTwoFactorSchema = z.object({
 });
 export type LoginRequiresTwoFactorDto = z.infer<typeof LoginRequiresTwoFactorSchema>;
 
+/**
+ * `.claude/architect-scope-guest-account-otp.md` §2.3 — `POST /auth/login` şifre DOĞRU ama
+ * `User.emailVerifiedAt = null`. Token/cookie VERİLMEZ — kod OTOMATİK GÖNDERİLMEZ, istemci
+ * `POST /auth/resend-verification-code` ile ister.
+ */
+export const LoginRequiresEmailVerificationSchema = z.object({
+  requiresEmailVerification: z.literal(true),
+  email: z.string().email(),
+});
+export type LoginRequiresEmailVerificationDto = z.infer<typeof LoginRequiresEmailVerificationSchema>;
+
+/**
+ * §2.1 — `POST /auth/register` yanıtı (`202`). Token/cookie İÇERMEZ, `User` DTO'su İÇERMEZ
+ * (doğrulanmamış bir hesabın profil verisi istemciye geri verilmez).
+ */
+export const RegistrationPendingVerificationSchema = z.object({
+  verificationRequired: z.literal(true),
+  email: z.string().email(),
+  expiresAt: z.string(),
+  resendAvailableAt: z.string(),
+});
+export type RegistrationPendingVerificationDto = z.infer<typeof RegistrationPendingVerificationSchema>;
+
 /** §10.4 Güvenlik & 2FA — GET /admin/settings/security/sessions. */
 export const SessionSchema = z.object({
   id: z.string().uuid(),
@@ -1004,6 +1027,12 @@ export const EmailTemplatePurposeSchema = z.enum([
   // (mirror) burada SENKRONİZE edilir (`APPOINTMENT_RESCHEDULED` yorumuyla AYNI desen).
   "APPOINTMENT_REMINDER_60M",
   "APPOINTMENT_REMINDER_30M",
+  // `.claude/architect-scope-guest-account-otp.md` §7 (bağlayıcı) — ortak OTP altyapısının
+  // iki ayrı e-posta amacı (kayıt doğrulama / misafir hesabı aktivasyonu). Prisma
+  // `EmailTemplatePurpose` enum'una db-agent tarafından İZOLE bir migration'da eklendi — bu
+  // DTO-seviyesi ayna (mirror) burada SENKRONİZE edilir (`APPOINTMENT_RESCHEDULED` ile AYNI desen).
+  "EMAIL_VERIFICATION",
+  "ACCOUNT_ACTIVATION",
   "CUSTOM",
 ]);
 export type EmailTemplatePurpose = z.infer<typeof EmailTemplatePurposeSchema>;

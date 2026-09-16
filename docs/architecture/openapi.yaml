@@ -908,30 +908,64 @@ paths:
     post:
       tags: [Auth]
       security: []
-      summary: Yeni kullanıcı kaydı
+      summary: Yeni kullanıcı kaydı (e-posta doğrulaması ZORUNLU)
+      description: >
+        **DEĞİŞTİ — `.claude/architect-scope-guest-account-otp.md` §2 (bağlayıcı).**
+        Bu uç ARTIK `201 AuthResponse` (access+refresh token) DÖNMEZ. Kullanıcı satırı
+        `emailVerifiedAt = null` ile oluşturulur, 6 haneli bir doğrulama kodu e-posta ile
+        gönderilir ve uç `202` + `RegistrationPendingVerification` döner. Token çifti
+        YALNIZCA `POST /auth/verify-email` başarılı olduğunda verilir; refresh cookie bu
+        uçta ARTIK SET EDİLMEZ.
+
+
+        Gerekçe (§2.1): alternatif ("token ver, sonra her korumalı ucu `emailVerifiedAt`
+        ile kapat") `middleware/authenticate.ts` üzerinden 250+ ucun davranışını değiştirirdi
+        ve mevcut (`emailVerifiedAt = null`) TÜM kullanıcıları kilitlerdi. Bu tasarımda
+        `authenticate.ts` HİÇ DEĞİŞMEZ.
       requestBody:
         required: true
         content:
           application/json:
             schema: { $ref: "#/components/schemas/RegisterRequest" }
       responses:
-        "201":
-          description: Kayıt başarılı, oturum açıldı
+        "202":
+          description: Kayıt alındı — doğrulama kodu e-posta ile gönderildi, oturum HENÜZ AÇILMADI
           content:
             application/json:
               schema:
                 allOf:
                   - $ref: "#/components/schemas/ApiSuccessEnvelope"
                   - properties:
-                      data: { $ref: "#/components/schemas/AuthResponse" }
+                      data: { $ref: "#/components/schemas/RegistrationPendingVerification" }
         "422": { $ref: "#/components/responses/ValidationError" }
         "409": { $ref: "#/components/responses/Conflict" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /auth/login:
     post:
       tags: [Auth]
       security: []
       summary: E-posta/şifre ile giriş
+      description: >
+        Üç olası sonuç (discriminated union — istemci `requiresTwoFactor` /
+        `requiresEmailVerification` alanlarının VARLIĞINA bakarak ayırt eder):
+
+
+        1. **Başarılı** → `AuthResponse` (token çifti + refresh cookie).
+
+        2. **2FA gerekli** → `LoginRequiresTwoFactor` (§10.4; token YOK, `POST /auth/2fa/verify`
+        beklenir). *Bu şekil kodda hep vardı, sözleşmeye bu turda eklendi.*
+
+        3. **E-posta doğrulaması gerekli** → `LoginRequiresEmailVerification`
+        (`.claude/architect-scope-guest-account-otp.md` §2.3). Şifre DOĞRU ama
+        `emailVerifiedAt = null`. Token/cookie VERİLMEZ. **Kod OTOMATİK GÖNDERİLMEZ** —
+        istemci `POST /auth/resend-verification-code` ile açıkça ister (tek kod-üretim yolu).
+
+
+        **Geriye dönük uyumluluk (§2.4, bağlayıcı):** migration TÜM mevcut kullanıcılar için
+        `emailVerifiedAt = createdAt` backfill'i yapar ("grandfathering") — bu yüzden 3. dal
+        YALNIZCA bu özellikten SONRA oluşturulan hesaplarda tetiklenir, hiçbir mevcut kullanıcının
+        girişi bozulmaz.
       requestBody:
         required: true
         content:
@@ -939,7 +973,54 @@ paths:
             schema: { $ref: "#/components/schemas/LoginRequest" }
       responses:
         "200":
-          description: Giriş başarılı
+          description: Giriş başarılı VEYA ek bir doğrulama adımı gerekiyor
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        oneOf:
+                          - $ref: "#/components/schemas/AuthResponse"
+                          - $ref: "#/components/schemas/LoginRequiresTwoFactor"
+                          - $ref: "#/components/schemas/LoginRequiresEmailVerification"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /auth/verify-email:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Kayıt sonrası e-posta doğrulama kodunu (OTP) doğrula ve oturum aç
+      description: >
+        `.claude/architect-scope-guest-account-otp.md` §2/§4 (bağlayıcı). Kodu doğrular,
+        `User.emailVerifiedAt`i SET EDER, kodu tüketir ve **normal login ile BİREBİR AYNI**
+        token çiftini üretir (`auth.service.ts::issueTokenPair`) + refresh cookie'yi yazar.
+
+
+        **Amaç bağlaması (§4.5, bağlayıcı):** YALNIZCA `EMAIL_VERIFICATION` amaçlı kodları
+        kabul eder. Misafir hesabı aktivasyon kodu (`ACCOUNT_ACTIVATION`) bu uçta
+        **REDDEDİLİR** — o kodun sahibi henüz bir parola belirlememiştir; burada doğrulanırsa
+        giriş yapamayacağı hâlde "doğrulanmış" bir hesapta kilitli kalırdı (bkz.
+        `POST /auth/activate-account`).
+
+
+        **Cihaz bağımsızdır (§4.4):** gövde bir challenge token DEĞİL, `email` + `code` taşır —
+        kullanıcı kodu telefonundaki posta kutusundan okuyup masaüstünde girebilir.
+
+
+        **Deneme sınırı (§3.4, bağlayıcı):** her başarısız deneme `attemptCount`i artırır;
+        5. başarısız denemeden sonra kod KALICI OLARAK geçersizdir (yeniden gönderim gerekir).
+        Geçersiz/süresi dolmuş/denemesi tükenmiş/hiç olmayan kod ve var olmayan kullanıcı —
+        **hepsi AYNI** `401 VERIFICATION_CODE_INVALID` yanıtını verir (numaralandırma yüzeyi yok).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VerifyEmailRequest" }
+      responses:
+        "200":
+          description: Doğrulandı — oturum açıldı
           content:
             application/json:
               schema:
@@ -947,7 +1028,101 @@ paths:
                   - $ref: "#/components/schemas/ApiSuccessEnvelope"
                   - properties:
                       data: { $ref: "#/components/schemas/AuthResponse" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
+        "401":
+          description: "Kod geçersiz, süresi dolmuş veya deneme hakkı tükenmiş (`error.code: VERIFICATION_CODE_INVALID`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /auth/resend-verification-code:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Doğrulama/aktivasyon kodunu yeniden gönder
+      description: >
+        `.claude/architect-scope-guest-account-otp.md` §3.5 (bağlayıcı). **Her koşulda `202`
+        döner** — `forgot-password` ile AYNI numaralandırma-karşıtı disiplin (kullanıcı yok,
+        zaten doğrulanmış, cooldown içinde: hepsi ayırt edilemez).
+
+
+        **`purpose` gövdede YOKTUR ve EKLENMEYECEKTİR (bağlayıcı, §3.5.2).** Amaç SUNUCUDA
+        türetilir: kullanıcının EN SON `EmailVerificationCode` satırının amacı; hiç satırı
+        yoksa `EMAIL_VERIFICATION`. İstemcinin amaç seçebilmesi, normal bir kullanıcı için
+        `ACCOUNT_ACTIVATION` kodu ürettirip `POST /auth/activate-account`ın parola-belirleme
+        dalını açmaya çalışan bir vektör yaratırdı.
+
+
+        **Yeni kod, o kullanıcı+amaç için CANLI olan TÜM eski kodları GEÇERSİZ KILAR** (§3.4).
+
+
+        **Hedef-başına kısıtlar (§3.6, bağlayıcı) — IP tabanlı hız sınırından AYRI ve daha
+        önemlidir** (bu uç, kurbanın posta kutusuna saldırganın IP'sinden bağımsız olarak
+        e-posta göndertebilir): kullanıcı+amaç başına 60 sn cooldown ve 24 saatte en fazla
+        5 kod üretimi. Aşıldığında yine `202` döner ama e-posta GÖNDERİLMEZ.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ResendVerificationCodeRequest" }
+      responses:
+        "202": { description: "İstek alındı (numaralandırmayı önlemek için her zaman 202 — kodun gönderilip gönderilmediği AÇIKLANMAZ)" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /auth/activate-account:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Misafir randevu ödemesiyle açılmış hesabı aktive et (kod + parola belirle)
+      description: >
+        `.claude/architect-scope-guest-account-otp.md` §5/§6 (bağlayıcı) — **Özellik B'nin
+        kapanış adımı.** Misafir bir randevu ödemesi tamamlandığında `patientEmail` için
+        `emailVerifiedAt = null` ve **KULLANILAMAZ (rastgele) parolalı** bir `User` satırı
+        oluşturulur; o hesap BU uç çağrılana kadar giriş YAPAMAZ.
+
+
+        Tek atomik işlemde: `ACCOUNT_ACTIVATION` kodunu doğrular → `passwordHash`i belirler →
+        `emailVerifiedAt`i SET EDER → kodu tüketir → kullanıcının TÜM canlı refresh token'larını
+        iptal eder (`reset-password` ile AYNI disiplin) → token çiftini + refresh cookie'yi verir.
+
+
+        **Amaç bağlaması (§4.5, bağlayıcı):** YALNIZCA `ACCOUNT_ACTIVATION` amaçlı kodları
+        kabul eder. `EMAIL_VERIFICATION` kodu ile çağrılırsa `401 VERIFICATION_CODE_INVALID`
+        — aksi hâlde bu uç, kayıt akışındaki doğrulama kodunu bir "parola sıfırlama" aracına
+        çevirirdi.
+
+
+        **Alternatif aktivasyon yolu (§5.6):** `POST /auth/forgot-password` → `reset-password`
+        de geçerlidir ve `emailVerifiedAt`i SET EDER (bir posta kutusuna gönderilmiş sıfırlama
+        bağlantısının ele geçirilmesi, OTP'den DAHA GÜÇLÜ bir posta kutusu sahipliği kanıtıdır).
+        Bu, aktivasyon kodunun süresi dolan kullanıcıların kilitlenmesini önleyen kaçış kapısıdır.
+
+
+        Hata semantiği `verify-email` ile BİREBİR AYNI (tek jenerik `401`, 5 deneme sınırı).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ActivateAccountRequest" }
+      responses:
+        "200":
+          description: Hesap aktive edildi — parola belirlendi, oturum açıldı
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/AuthResponse" }
+        "401":
+          description: "Kod geçersiz, süresi dolmuş, deneme hakkı tükenmiş veya amacı `ACCOUNT_ACTIVATION` değil (`error.code: VERIFICATION_CODE_INVALID`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /auth/refresh:
     post:
@@ -12878,6 +13053,87 @@ components:
       properties:
         user: { $ref: "#/components/schemas/User" }
         tokens: { $ref: "#/components/schemas/AuthTokens" }
+
+    LoginRequiresTwoFactor:
+      description: >
+        §10.4 — şifre doğru, 2FA açık. Token/cookie VERİLMEZ; `challengeToken`
+        `POST /auth/2fa/verify`e iletilir. *(Kodda hep vardı — sözleşmeye
+        `.claude/architect-scope-guest-account-otp.md` turunda eklendi.)*
+      type: object
+      required: [requiresTwoFactor, challengeToken]
+      properties:
+        requiresTwoFactor: { type: boolean, enum: [true] }
+        challengeToken: { type: string }
+
+    LoginRequiresEmailVerification:
+      description: >
+        `.claude/architect-scope-guest-account-otp.md` §2.3 — şifre DOĞRU ama
+        `User.emailVerifiedAt = null`. Token/cookie VERİLMEZ. İstemci kullanıcıyı
+        `/verify-email` ekranına yönlendirir; **kod otomatik gönderilmez**, kullanıcı
+        `POST /auth/resend-verification-code` ile ister.
+
+
+        `email` yanıtta DÖNER (maskesiz) — istemci zaten o adresi gönderdi, yeni bir
+        bilgi sızmaz ve doğrulama ekranının adresi yeniden sormasını gereksiz kılar.
+      type: object
+      required: [requiresEmailVerification, email]
+      properties:
+        requiresEmailVerification: { type: boolean, enum: [true] }
+        email: { type: string, format: email }
+
+    RegistrationPendingVerification:
+      description: >
+        `POST /auth/register` yanıtı (`202`). **Token/cookie İÇERMEZ** ve
+        **`User` DTO'su İÇERMEZ** (doğrulanmamış bir hesabın profil verisi istemciye
+        geri verilmez — §2.2).
+      type: object
+      required: [verificationRequired, email, expiresAt, resendAvailableAt]
+      properties:
+        verificationRequired: { type: boolean, enum: [true] }
+        email: { type: string, format: email }
+        expiresAt:
+          description: Gönderilen kodun son geçerlilik anı (kayıt akışında +10 dakika).
+          type: string
+          format: date-time
+        resendAvailableAt:
+          description: >
+            `POST /auth/resend-verification-code`un bu kullanıcı için tekrar kod
+            üretebileceği en erken an (+60 sn cooldown, §3.6). İstemci butonu bu ana
+            kadar pasif tutar — cooldown'ın kendisi SUNUCUDA zorlanır, bu alan yalnızca
+            arayüz içindir.
+          type: string
+          format: date-time
+
+    VerifyEmailRequest:
+      description: >
+        `code`: **tam 6 haneli, yalnızca rakam.** Sunucu doğrulamadan önce boşlukları
+        ve tireleri temizler (kullanıcılar kodu kopyalarken sıklıkla taşır).
+      type: object
+      required: [email, code]
+      properties:
+        email: { type: string, format: email }
+        code: { type: string, pattern: "^[0-9]{6}$" }
+
+    ResendVerificationCodeRequest:
+      description: >
+        Gövde YALNIZCA `email` taşır — `purpose` BİLİNÇLİ OLARAK YOKTUR (§3.5.2, bağlayıcı).
+      type: object
+      required: [email]
+      properties:
+        email: { type: string, format: email }
+
+    ActivateAccountRequest:
+      description: >
+        Misafir randevu ödemesiyle açılmış hesabın aktivasyonu — kod doğrulaması ve ilk
+        parolanın belirlenmesi TEK istekte yapılır (araya "doğrulandı ama parolasız" bir
+        ara durum GİRMEZ). `password` kuralı `RegisterRequest`/`reset-password` ile
+        BİREBİR AYNI (min. 8 karakter) — yeni bir parola politikası İCAT EDİLMEZ.
+      type: object
+      required: [email, code, password]
+      properties:
+        email: { type: string, format: email }
+        code: { type: string, pattern: "^[0-9]{6}$" }
+        password: { type: string, minLength: 8 }
 
     RegisterRequest:
       type: object

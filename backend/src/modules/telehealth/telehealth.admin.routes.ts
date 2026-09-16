@@ -30,6 +30,7 @@ import { triggerGlobalRevalidation } from "../../lib/revalidate";
 import { runSerializable } from "../../lib/serializable-tx";
 import { confirmBookingPayment } from "./lib/booking";
 import { triggerAppointmentConfirmationEmail, triggerAppointmentRescheduledEmail } from "./lib/notifications";
+import { provisionPatientAccountForBooking } from "./lib/patient-account";
 import { parseTelehealthTheme } from "./lib/theme-settings";
 import { wallTimeToUtc } from "./lib/timezone";
 import {
@@ -665,6 +666,10 @@ export async function adminTelehealthBookingsRoutes(app: FastifyInstance) {
       // §9.7.8 — mevcut `ORDER_CONFIRMATION` deseniyle AYNI: best-effort, e-posta gönderimi
       // BAŞARISIZ olsa da bu uç ASLA 500 dönmez (bkz. notifications.ts::triggerAppointmentConfirmationEmail).
       await triggerAppointmentConfirmationEmail(app, { booking, appointments, rawAccessToken });
+
+      // `.claude/architect-scope-guest-account-otp.md` §5.1 (bağlayıcı) — best-effort, ödeme
+      // onayını (yukarıdaki `mark-paid`) ASLA bozmaz.
+      await provisionPatientAccountForBooking(app, booking);
 
       const withRelations = await app.prisma.appointmentBooking.findUniqueOrThrow({
         where: { id: booking.id },

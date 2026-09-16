@@ -31,8 +31,18 @@ function RegisterForm() {
     setFieldErrors({});
     setSubmitting(true);
     try {
-      await register({ name, email, password });
-      router.replace(isSafeInternalPath(next) ? next : "/dashboard");
+      // `.claude/architect-scope-guest-account-otp.md` §2.1/§8.1 (bağlayıcı) — `register()`
+      // ARTIK oturum KURMAZ, `/dashboard`e yönlendirme YOKTUR. Kullanıcı `/verify-email`e
+      // gider; `resendAvailableAt`/`expiresAt` orada kod gönderiliş anına göre geri sayım/hint
+      // göstermek için taşınır, `?next` VARSA korunur.
+      const result = await register({ name, email, password });
+      const query = new URLSearchParams({
+        email: result.email,
+        resendAvailableAt: result.resendAvailableAt,
+        expiresAt: result.expiresAt,
+      });
+      if (isSafeInternalPath(next)) query.set("next", next);
+      router.replace(`/verify-email?${query.toString()}`);
     } catch (err) {
       setFieldErrors(fieldErrorsFrom(err));
       setError(friendlyErrorMessage(err));

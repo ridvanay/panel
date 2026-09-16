@@ -10,6 +10,8 @@ import {
   AuthSessionSchema,
   AuthTokensSchema,
   LoginRequiresTwoFactorSchema,
+  LoginRequiresEmailVerificationSchema,
+  RegistrationPendingVerificationSchema,
 } from "../../schemas/entities";
 import { toUserDto } from "../../mappers";
 import { REFRESH_COOKIE_NAME, refreshCookieOptions } from "../../lib/cookies";
@@ -19,12 +21,16 @@ import { verifyChallengeToken } from "../../lib/jwt";
 import { decryptSecret } from "../../lib/crypto";
 import { verifyTotp } from "../../lib/totp";
 import { hashBackupCode } from "../../lib/backup-codes";
+import { VERIFICATION_CODE_RESEND_RATE_LIMIT } from "../../lib/rate-limit";
 import * as authService from "./auth.service";
 import {
+  ActivateAccountRequestSchema,
   ForgotPasswordRequestSchema,
   LoginRequestSchema,
   RegisterRequestSchema,
+  ResendVerificationCodeRequestSchema,
   ResetPasswordRequestSchema,
+  VerifyEmailRequestSchema,
   VerifyTwoFactorRequestSchema,
 } from "./auth.schemas";
 
@@ -42,19 +48,22 @@ export default async function authRoutes(app: FastifyInstance) {
     "/register",
     {
       config: { rateLimit: AUTH_RATE_LIMIT },
-      schema: { body: RegisterRequestSchema, response: { 201: ApiSuccessSchema(AuthResponseSchema) } },
+      schema: { body: RegisterRequestSchema, response: { 202: ApiSuccessSchema(RegistrationPendingVerificationSchema) } },
     },
     async (request, reply) => {
-      const { user, tokens } = await authService.register(app, request.body, {
+      // `.claude/architect-scope-guest-account-otp.md` §2.1 (bağlayıcı) — token/cookie ARTIK
+      // VERİLMEZ. Kayıt sonrası kullanıcı `POST /auth/verify-email`e yönlendirilir.
+      const result = await authService.register(app, request.body, {
         userAgent: request.headers["user-agent"],
         ipAddress: request.ip,
       });
 
-      reply.setCookie(REFRESH_COOKIE_NAME, tokens.refreshToken, refreshCookieOptions());
-      return reply.code(201).send(
+      return reply.code(202).send(
         ok({
-          user: toUserDto(user),
-          tokens: { accessToken: tokens.accessToken, accessTokenExpiresAt: tokens.accessTokenExpiresAt.toISOString() },
+          verificationRequired: true as const,
+          email: result.email,
+          expiresAt: result.expiresAt.toISOString(),
+          resendAvailableAt: result.resendAvailableAt.toISOString(),
         })
       );
     }
@@ -66,7 +75,9 @@ export default async function authRoutes(app: FastifyInstance) {
       config: { rateLimit: AUTH_RATE_LIMIT },
       schema: {
         body: LoginRequestSchema,
-        response: { 200: ApiSuccessSchema(z.union([AuthResponseSchema, LoginRequiresTwoFactorSchema])) },
+        response: {
+          200: ApiSuccessSchema(z.union([AuthResponseSchema, LoginRequiresTwoFactorSchema, LoginRequiresEmailVerificationSchema])),
+        },
       },
     },
     async (request, reply) => {
@@ -89,6 +100,21 @@ export default async function authRoutes(app: FastifyInstance) {
           });
 
           return reply.send(ok({ requiresTwoFactor: true as const, challengeToken: result.challengeToken }));
+        }
+
+        if (result.emailVerificationRequired) {
+          // `.claude/architect-scope-guest-account-otp.md` §2.3 (bağlayıcı) — şifre DOĞRU ama
+          // e-posta doğrulanmamış. Askıya alınmış hesap dalıyla AYNI desen: FORBIDDEN + reason.
+          await logAudit(app, {
+            actorId: null,
+            actorEmail: request.body.email,
+            action: "auth.login",
+            status: "FORBIDDEN",
+            metadata: { reason: "email_not_verified" },
+            ipAddress: request.ip,
+          });
+
+          return reply.send(ok({ requiresEmailVerification: true as const, email: result.email }));
         }
 
         const { user, tokens } = result;
@@ -197,6 +223,88 @@ export default async function authRoutes(app: FastifyInstance) {
         action: "auth.login",
         status: "SUCCESS",
         metadata: { via: "2fa" },
+        ipAddress: request.ip,
+      });
+
+      reply.setCookie(REFRESH_COOKIE_NAME, tokens.refreshToken, refreshCookieOptions());
+      return reply.send(
+        ok({
+          user: toUserDto(user),
+          tokens: { accessToken: tokens.accessToken, accessTokenExpiresAt: tokens.accessTokenExpiresAt.toISOString() },
+        })
+      );
+    }
+  );
+
+  // `.claude/architect-scope-guest-account-otp.md` §2/§4 (bağlayıcı) — kayıt sonrası (Özellik A)
+  // e-posta doğrulaması. Başarıda normal login ile BİREBİR AYNI çıktı: `issueTokenPair` +
+  // refresh cookie + `auth.login` audit kaydı (`metadata.via: "email_verification"`).
+  server.post(
+    "/verify-email",
+    {
+      config: { rateLimit: AUTH_RATE_LIMIT },
+      schema: { body: VerifyEmailRequestSchema, response: { 200: ApiSuccessSchema(AuthResponseSchema) } },
+    },
+    async (request, reply) => {
+      const { user, tokens } = await authService.verifyEmail(app, request.body, {
+        userAgent: request.headers["user-agent"],
+        ipAddress: request.ip,
+      });
+
+      await logAudit(app, {
+        actorId: user.id,
+        actorEmail: user.email,
+        action: "auth.login",
+        status: "SUCCESS",
+        metadata: { via: "email_verification" },
+        ipAddress: request.ip,
+      });
+
+      reply.setCookie(REFRESH_COOKIE_NAME, tokens.refreshToken, refreshCookieOptions());
+      return reply.send(
+        ok({
+          user: toUserDto(user),
+          tokens: { accessToken: tokens.accessToken, accessTokenExpiresAt: tokens.accessTokenExpiresAt.toISOString() },
+        })
+      );
+    }
+  );
+
+  // §3.5 (bağlayıcı) — gövde YALNIZCA `email`; HER koşulda `202` döner (numaralandırma karşıtı
+  // disiplin, `forgot-password` İLE AYNI). IP tabanlı `VERIFICATION_CODE_RESEND_RATE_LIMIT`
+  // (2/dk) — hedef-başına asıl kısıt (`lib/otp.ts::issueVerificationCode`) DAHA ÖNEMLİDİR.
+  server.post(
+    "/resend-verification-code",
+    {
+      config: { rateLimit: VERIFICATION_CODE_RESEND_RATE_LIMIT },
+      schema: { body: ResendVerificationCodeRequestSchema, response: { 202: z.undefined() } },
+    },
+    async (request, reply) => {
+      await authService.resendVerificationCode(app, request.body.email);
+      return reply.code(202).send();
+    }
+  );
+
+  // `.claude/architect-scope-guest-account-otp.md` §5/§4.4 (bağlayıcı) — Özellik B'nin kapanış
+  // adımı. Başarıda normal login ile BİREBİR AYNI çıktı (`metadata.via: "account_activation"`).
+  server.post(
+    "/activate-account",
+    {
+      config: { rateLimit: AUTH_RATE_LIMIT },
+      schema: { body: ActivateAccountRequestSchema, response: { 200: ApiSuccessSchema(AuthResponseSchema) } },
+    },
+    async (request, reply) => {
+      const { user, tokens } = await authService.activateAccount(app, request.body, {
+        userAgent: request.headers["user-agent"],
+        ipAddress: request.ip,
+      });
+
+      await logAudit(app, {
+        actorId: user.id,
+        actorEmail: user.email,
+        action: "auth.login",
+        status: "SUCCESS",
+        metadata: { via: "account_activation" },
         ipAddress: request.ip,
       });
 

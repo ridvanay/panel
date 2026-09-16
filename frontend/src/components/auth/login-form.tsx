@@ -102,8 +102,13 @@ export function LoginForm({ variant = "default" }: LoginFormProps) {
     setSubmitting(true);
     try {
       const result = await login({ email, password });
-      if (result.requiresTwoFactor) {
+      if (result.kind === "twoFactor") {
         setChallenge({ challengeToken: result.challengeToken });
+        return;
+      }
+      if (result.kind === "emailVerification") {
+        // §2.3/§8.1 — kod OTOMATİK GÖNDERİLMEZ; ekran "Kod gönder" eylemiyle açılır.
+        router.push(`/verify-email?email=${encodeURIComponent(result.email)}${next ? `&next=${encodeURIComponent(next)}` : ""}`);
         return;
       }
       await goToDestination(result.user);

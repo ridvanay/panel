@@ -8,6 +8,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
 import { useLocaleAlternates, contentKindBasePath } from "@/context/locale-alternates-context";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
 import type { Locale } from "@/lib/api/types";
@@ -49,15 +50,7 @@ export function LanguageSwitcher({ locales, activeLocale }: LanguageSwitcherProp
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <button
-            type="button"
-            aria-label="Dil seç"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-transparent bg-transparent px-2 py-1 text-sm text-foreground/70 outline-none transition-colors hover:bg-surface-muted hover:text-foreground focus-visible:text-foreground"
-          />
-        }
-      >
+      <DropdownMenuTrigger render={<Button type="button" variant="ghost" size="sm" aria-label="Dil seç" />}>
         <Globe className="h-3.5 w-3.5" aria-hidden="true" />
         {activeLocale.nativeLabel}
       </DropdownMenuTrigger>

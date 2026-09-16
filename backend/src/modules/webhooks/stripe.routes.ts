@@ -11,6 +11,7 @@ import { logAudit } from "../../lib/audit";
 import { BookingNotPayableError } from "../../lib/errors";
 import { confirmBookingPayment } from "../telehealth/lib/booking";
 import { triggerAppointmentConfirmationEmail } from "../telehealth/lib/notifications";
+import { provisionPatientAccountForBooking } from "../telehealth/lib/patient-account";
 
 function mapStatus(status: Stripe.Subscription.Status): SubscriptionStatus {
   switch (status) {
@@ -152,6 +153,11 @@ async function handleTelehealthBookingPaid(app: FastifyInstance, session: Stripe
     appointments: result.appointments,
     rawAccessToken: result.rawAccessToken,
   });
+
+  // `.claude/architect-scope-guest-account-otp.md` §5.1 (bağlayıcı) — `confirmBookingPayment`
+  // DÖNDÜKTEN SONRA, transaction DIŞINDA, best-effort (fonksiyonun KENDİ içinde try/catch VAR,
+  // bu webhook handler'ını ASLA bozmaz — bkz. patient-account.ts::provisionPatientAccountForBooking).
+  await provisionPatientAccountForBooking(app, result.booking);
 }
 
 /**

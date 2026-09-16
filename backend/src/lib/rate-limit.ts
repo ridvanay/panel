@@ -135,3 +135,18 @@ export const SUPPORT_MESSAGE_RATE_LIMIT = { max: 10, timeWindow: "1 minute" };
 
 /** `GET /support/sessions/{id}/messages` — ziyaretçi POLLING ucu (IP tabanı). */
 export const SUPPORT_POLL_RATE_LIMIT = { max: 60, timeWindow: "1 minute" };
+
+// ---------------------------------------------------------------------------
+// E-posta OTP Doğrulaması + Misafir Randevudan Hesap Oluşturma — değer
+// `.claude/architect-scope-guest-account-otp.md` §3.6 / `.claude/security-review-guest-account-otp.md`
+// KARAR 6 (değişiklik gerekmiyor, ONAYLANDI) ile BAĞLAYICI olarak bire bir eşleşir.
+// ---------------------------------------------------------------------------
+
+/**
+ * `POST /auth/resend-verification-code` — IP tabanlı (route-level `config.rateLimit`). **TEK
+ * BAŞINA YETERSİZDİR** (bu uç, saldırganın IP'sinden bağımsız olarak KURBANIN posta kutusuna
+ * e-posta göndertir) — asıl kapatan katman `lib/otp.ts::issueVerificationCode`'un HEDEF-BAŞINA
+ * (userId+purpose) 60 sn cooldown + 24 saatte 5 kod tavanıdır; bu yalnızca IP seviyesinde
+ * TAMAMLAYICI bir ek savunma katmanıdır.
+ */
+export const VERIFICATION_CODE_RESEND_RATE_LIMIT = { max: 2, timeWindow: "1 minute" };

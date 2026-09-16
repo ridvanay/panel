@@ -77,6 +77,9 @@ async function createUserDirect(app: FastifyInstance, role: "ADMIN" | "USER") {
       passwordHash,
       role,
       status: "ACTIVE",
+      // `.claude/architect-scope-guest-account-otp.md` §2.3 — `login()` artık `emailVerifiedAt`
+      // gerektiriyor; bu doğrudan-oluşturma yardımcısı GRANDFATHERED bir hesabı temsil eder.
+      emailVerifiedAt: new Date(),
     },
   });
 }

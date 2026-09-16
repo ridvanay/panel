@@ -205,6 +205,52 @@ export async function sendPasswordResetEmail(
   });
 }
 
+/**
+ * `.claude/architect-scope-guest-account-otp.md` §7 (bağlayıcı) — Özellik A: `POST /auth/register`
+ * sonrası (ve `POST /auth/resend-verification-code`, amaç `EMAIL_VERIFICATION` iken) gönderilen 6
+ * haneli kod. `verification_code` DÜZ METİN olarak taşınır — kod ZATEN kullanıcıya OKUNMASI için
+ * gönderiliyor, DB'deki HMAC hash'iyle (`lib/otp.ts`) KARIŞTIRILMAZ. Şablonun İÇERİĞİ
+ * notification-agent'ın sahasıdır — bu fonksiyon yalnızca tetikleyiciyi/değişken setini sağlar.
+ */
+export async function sendEmailVerificationCode(
+  app: FastifyInstance,
+  user: { email: string; name: string },
+  code: string,
+  expiresAt: Date
+): Promise<SendMailResult> {
+  return sendTemplateEmail(app, "EMAIL_VERIFICATION", user.email, {
+    user_name: user.name,
+    verification_code: code,
+    expires_in_minutes: String(Math.max(1, Math.round((expiresAt.getTime() - Date.now()) / 60_000))),
+  });
+}
+
+/**
+ * §7/§5 (bağlayıcı) — Özellik B: misafir randevu ödemesiyle açılan hesabın aktivasyon e-postası.
+ * **Bağlayıcı sızma yasağı (§9.7.5 madde 8 ile AYNI disiplin, §7.3):** doktor adı/uzmanlık/
+ * şikâyet notu/slot saatleri bu fonksiyona ASLA parametre olarak GEÇİRİLMEZ — yalnızca
+ * `bookingNumber` (alıcı e-postanın nedenini anlasın diye; aynı adrese zaten randevu onayı da
+ * gitmiştir). `activation_url` KODU TAŞIMAZ (§7.3) — yalnızca gezinme kolaylığıdır.
+ */
+export async function sendAccountActivationEmail(
+  app: FastifyInstance,
+  user: { email: string; name: string },
+  code: string,
+  expiresAt: Date,
+  bookingNumber: string
+): Promise<SendMailResult> {
+  const localeSet = await getLocaleSet(app);
+  const activationUrl = `${env.FRONTEND_URL}/${localeSet.default.code}/activate-account?email=${encodeURIComponent(user.email)}`;
+
+  return sendTemplateEmail(app, "ACCOUNT_ACTIVATION", user.email, {
+    user_name: user.name,
+    verification_code: code,
+    expires_in_hours: String(Math.max(1, Math.round((expiresAt.getTime() - Date.now()) / 3_600_000))),
+    activation_url: activationUrl,
+    booking_number: bookingNumber,
+  });
+}
+
 export interface SystemAnnouncementResult {
   sent: string[];
   failed: { userId: string; error: string }[];

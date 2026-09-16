@@ -27,6 +27,9 @@ async function createUserDirect(app: FastifyInstance, role: "ADMIN" | "MANAGER" 
       passwordHash,
       role,
       status: "ACTIVE",
+      // `.claude/architect-scope-guest-account-otp.md` §2.3 — `login()` artık `emailVerifiedAt`
+      // gerektiriyor; bu doğrudan-oluşturma yardımcısı GRANDFATHERED bir hesabı temsil eder.
+      emailVerifiedAt: new Date(),
     },
   });
 }
@@ -167,7 +170,7 @@ describe("telehealth — kimlik adımı (POST /appointments/bookings — [DPI] �
     expect(res.statusCode).toBe(422);
   });
 
-  it("geçerli kimlikle booking oluşur; `consentVersion` varsayılanı `v2`'dir ([CNT] TUR 4 güncellemesi)", async () => {
+  it("geçerli kimlikle booking oluşur; `consentVersion` varsayılanı `v3`'tür (`.claude/compliance-notes-guest-account-otp.md` §1 — misafir hesap sağlama nedeniyle v2→v3 yükseltildi)", async () => {
     const { doctor } = await createDoctorWithAvailability(app);
     const res = await app.inject({
       method: "POST",
@@ -178,7 +181,7 @@ describe("telehealth — kimlik adımı (POST /appointments/bookings — [DPI] �
     const bookingId = res.json().data.bookingId as string;
 
     const booking = await app.prisma.appointmentBooking.findUniqueOrThrow({ where: { id: bookingId } });
-    expect(booking.consentVersion).toBe("v2");
+    expect(booking.consentVersion).toBe("v3");
     expect(booking.citizenshipType).toBe("TR");
     expect(booking.identityNumberMasked).toBe("100******46");
     expect(booking.identityNumberCiphertext).not.toBeNull();

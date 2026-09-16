@@ -4,29 +4,54 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 import * as Sentry from "@sentry/nextjs";
 import * as authApi from "@/lib/api/auth";
 import { clearAccessToken, getAccessToken } from "@/lib/api/token-store";
-import type { AuthSession, LoginRequest, RegisterRequest, User } from "@/lib/api/types";
+import type {
+  ActivateAccountRequest,
+  AuthSession,
+  LoginRequest,
+  RegisterRequest,
+  RegistrationPendingVerification,
+  User,
+  VerifyEmailRequest,
+} from "@/lib/api/types";
 
 type AuthStatus = "loading" | "authenticated" | "unauthenticated";
 
 /**
- * `login()` 2FA açık kullanıcılarda token vermeden `challengeToken` döner (bkz. ARCHITECTURE.md
- * §10.4). Başarılı dalda `user`'ı da taşır — `loadSession()`'ın state güncellemesi React'in
- * bir sonraki render'ına kadar `useAuth().user`'a yansımaz; giriş sonrası akıllı yönlendirme
- * (bkz. `lib/post-login-destination.ts`) AYNI render'da güncel `user`'a ihtiyaç duyar.
+ * `login()` üç sonuçtan birini döner (bkz. `.claude/architect-scope-guest-account-otp.md` §2.3,
+ * ARCHITECTURE.md §10.4): 2FA açıksa token vermeden `challengeToken`, e-posta doğrulaması
+ * bekleniyorsa token vermeden `email`, başarılıysa `user`. Başarılı dalda `user`'ı da taşır —
+ * `loadSession()`'ın state güncellemesi React'in bir sonraki render'ına kadar `useAuth().user`'a
+ * yansımaz; giriş sonrası akıllı yönlendirme (bkz. `lib/post-login-destination.ts`) AYNI
+ * render'da güncel `user`'a ihtiyaç duyar.
  */
-type LoginOutcome = { requiresTwoFactor: false; user: User } | { requiresTwoFactor: true; challengeToken: string };
+type LoginOutcome =
+  | { kind: "success"; user: User }
+  | { kind: "twoFactor"; challengeToken: string }
+  | { kind: "emailVerification"; email: string };
 
 interface AuthContextValue {
   status: AuthStatus;
   user: User | null;
   memberships: AuthSession["memberships"];
   login: (input: LoginRequest) => Promise<LoginOutcome>;
-  register: (input: RegisterRequest) => Promise<void>;
+  /**
+   * `.claude/architect-scope-guest-account-otp.md` §2.1 (bağlayıcı) — ARTIK oturum KURMAZ
+   * (token/cookie YOK). Yalnızca `POST /auth/register`i çağırır ve `RegistrationPendingVerification`
+   * döner (`email`/`expiresAt`/`resendAvailableAt`) — oturum kurma SADECE `verifyEmail`/
+   * `activateAccount` başarılı olunca gerçekleşir.
+   */
+  register: (input: RegisterRequest) => Promise<RegistrationPendingVerification>;
   logout: () => Promise<void>;
   /** Üyelik listesini tazelemek için (org oluşturma/silme, davet kabul sonrası). */
   refreshSession: () => Promise<void>;
   /** 2FA challenge sonrası TOTP/backup kodu doğrulaması; başarılıysa oturumu açar ve `user`'ı döner. */
   verifyTwoFactor: (challengeToken: string, code: string) => Promise<User>;
+  /** Kayıt sonrası e-posta doğrulama kodunu tüketir; başarılıysa `verifyTwoFactor` ile AYNI
+   * şekilde oturumu açar ve `user`'ı döner. */
+  verifyEmail: (input: VerifyEmailRequest) => Promise<User>;
+  /** Misafir randevu ödemesiyle açılmış hesabı kod + yeni parolayla aktive eder; başarılıysa
+   * `verifyTwoFactor` ile AYNI şekilde oturumu açar ve `user`'ı döner. */
+  activateAccount: (input: ActivateAccountRequest) => Promise<User>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -90,14 +115,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const result = await authApi.login(input);
       if ("requiresTwoFactor" in result) {
         // 2FA gerekiyor — henüz token yok, loadSession() ÇAĞRILMAZ.
-        return { requiresTwoFactor: true, challengeToken: result.challengeToken };
+        return { kind: "twoFactor", challengeToken: result.challengeToken };
+      }
+      if ("requiresEmailVerification" in result) {
+        // E-posta doğrulaması gerekiyor — henüz token yok, loadSession() ÇAĞRILMAZ (§2.3).
+        return { kind: "emailVerification", email: result.email };
       }
       const user = await loadSession();
       // `authApi.login` başarıyla token döndüyse `loadSession()` normal şartlarda `null`
       // dönmez — yine de tip güvenliği için burada net bir hata fırlatılır (sessiz `undefined`
       // yaymak yerine, çağıran tarafın `user.doctorProfileId`'a erişimi güvenli olsun).
       if (!user) throw new Error("Oturum bilgisi yüklenemedi.");
-      return { requiresTwoFactor: false, user };
+      return { kind: "success", user };
     },
     [loadSession]
   );
@@ -112,10 +141,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [loadSession]
   );
 
-  const register = useCallback(
-    async (input: RegisterRequest) => {
-      await authApi.register(input);
-      await loadSession();
+  /**
+   * `.claude/architect-scope-guest-account-otp.md` §2 — ARTIK oturum KURMAZ. Yalnızca register
+   * uçunu çağırır; oturum kurma SADECE `verifyEmail`/`activateAccount` başarılı olunca olur.
+   */
+  const register = useCallback(async (input: RegisterRequest): Promise<RegistrationPendingVerification> => {
+    return authApi.register(input);
+  }, []);
+
+  /** `verifyTwoFactor` ile BİREBİR AYNI desen: uç çağrılır, refresh cookie SET edilmiş olur,
+   * `loadSession()` (401→otomatik `/auth/refresh` yoluyla) access token'ı belleğe alır. */
+  const verifyEmail = useCallback(
+    async (input: VerifyEmailRequest): Promise<User> => {
+      await authApi.verifyEmail(input);
+      const user = await loadSession();
+      if (!user) throw new Error("Oturum bilgisi yüklenemedi.");
+      return user;
+    },
+    [loadSession]
+  );
+
+  /** `verifyEmail` ile BİREBİR AYNI desen. */
+  const activateAccount = useCallback(
+    async (input: ActivateAccountRequest): Promise<User> => {
+      await authApi.activateAccount(input);
+      const user = await loadSession();
+      if (!user) throw new Error("Oturum bilgisi yüklenemedi.");
+      return user;
     },
     [loadSession]
   );
@@ -143,6 +195,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await loadSession();
     },
     verifyTwoFactor,
+    verifyEmail,
+    activateAccount,
   };
 
   return <AuthContext value={value}>{children}</AuthContext>;

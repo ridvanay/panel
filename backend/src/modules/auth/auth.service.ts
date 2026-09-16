@@ -8,9 +8,10 @@ import { hashPassword, verifyPassword } from "../../lib/password";
 import { generateOpaqueToken, hashToken } from "../../lib/tokens";
 import { signAccessToken, signChallengeToken } from "../../lib/jwt";
 import { ConflictError, UnauthorizedError, NotFoundError, ForbiddenError } from "../../lib/errors";
+import { issueVerificationCode, consumeVerificationCode, RESEND_COOLDOWN_MS } from "../../lib/otp";
 import { toUserDto } from "../../mappers";
 import { env } from "../../config/env";
-import { sendPasswordResetEmail, sendWelcomeEmail } from "../email-templates/email-templates.service";
+import { sendPasswordResetEmail, sendEmailVerificationCode, sendAccountActivationEmail } from "../email-templates/email-templates.service";
 
 interface RequestMeta {
   userAgent?: string;
@@ -46,11 +47,24 @@ export async function issueTokenPair(app: FastifyInstance, user: User, meta: Req
   return { accessToken, accessTokenExpiresAt, refreshToken };
 }
 
+export interface RegisterResult {
+  email: string;
+  expiresAt: Date;
+  resendAvailableAt: Date;
+}
+
+/**
+ * `.claude/architect-scope-guest-account-otp.md` §2 (bağlayıcı) — **DEĞİŞTİ.** Artık token/cookie
+ * DÖNDÜRMEZ; `User.emailVerifiedAt = null` ile bir kullanıcı oluşturur, 6 haneli bir
+ * `EMAIL_VERIFICATION` kodu üretir ve e-postayla gönderir. Token çifti YALNIZCA
+ * `POST /auth/verify-email` başarılı olduğunda üretilir (`issueTokenPair`, yeni bir token yolu
+ * İCAT EDİLMEZ). `middleware/authenticate.ts` HİÇ DEĞİŞMEDİ.
+ */
 export async function register(
   app: FastifyInstance,
   input: { email: string; password: string; name: string },
-  meta: RequestMeta
-) {
+  _meta: RequestMeta
+): Promise<RegisterResult> {
   const email = input.email.toLowerCase();
   const existing = await app.prisma.user.findUnique({ where: { email } });
   if (existing) {
@@ -63,37 +77,51 @@ export async function register(
   // `.claude/architect-scope-rbac-5-tier.md` §7.1 gereği bu artık `USER`'dır (eski: `VIEWER`).
   // `POST /auth/register` PUBLIC'tir; varsayılanın panele erişimi olan bir role (EDITOR/MANAGER)
   // düşmesi doğrudan bir güvenlik açığı olurdu — bu satırın kendisi DEĞİŞMEDİ, yalnızca şema
-  // varsayılanının anlamı değişti.
+  // varsayılanının anlamı değişti. `emailVerifiedAt` de ŞEMA VARSAYILANINA (`null`) bırakılır —
+  // bu ADMIN kuralıyla İLİŞKİSİZDİR, yeni her hesap (ilk ADMIN dahil) doğrulama BEKLER.
   const userCount = await app.prisma.user.count();
 
   const passwordHash = await hashPassword(input.password);
   const user = await app.prisma.user.create({
     data: { email, passwordHash, name: input.name, role: userCount === 0 ? "ADMIN" : undefined },
-    // [TCT] §9.7.7 KARAR K3 — `toUserDto` artık `doctorProfile` İLİŞKİSİNİ gerektiriyor (yeni kayıtta
-    // her zaman `null`, ama tip tutarlılığı için `include` ZORUNLU).
-    include: { doctorProfile: { select: { id: true } } },
   });
 
-  const tokens = await issueTokenPair(app, user, meta);
-
-  // Karşılama maili best-effort'tur: gönderim başarısız olsa bile kayıt işlemi geri alınmaz/
-  // engellenmez (kullanıcı zaten hesabına giriş yapabilir durumda) — sadece loglanır. Bu,
-  // `forgotPassword`'un aksine kritik bir güvenlik akışı değil, ek bir bildirimdir. `await` ile
-  // tamamlanmasını bekliyoruz (fire-and-forget yerine) ki testlerde/hata takibinde deterministik
-  // olsun; ama hatayı yutup register()'ı asla başarısız kılmıyoruz.
-  try {
-    await sendWelcomeEmail(app, { email: user.email, name: user.name });
-  } catch (err) {
-    app.log.error({ err, userId: user.id }, "Karşılama e-postası gönderilemedi");
+  // §2.1/§3.6 — taze oluşturulmuş bir `userId` için HİÇBİR önceki `EmailVerificationCode` satırı
+  // var OLAMAZ, dolayısıyla cooldown/tavan kısıtları doğal olarak devre dışı kalır (§3.6,
+  // "register kaynaklı ilk gönderim bu iki kısıttan MUAFTIR" — ayrı bir bayrak GEREKMEZ).
+  const issued = await issueVerificationCode(app, user.id, "EMAIL_VERIFICATION");
+  /* istanbul ignore next — taze kullanıcı için pratikte imkânsız, yalnızca savunma amaçlı. */
+  if (!issued) {
+    throw new Error("E-posta doğrulama kodu üretilemedi (beklenmedik durum).");
   }
 
-  return { user, tokens };
+  // Doğrulama kodu e-postası best-effort'tur (mevcut `sendWelcomeEmail` deseniyle AYNI disiplin,
+  // bkz. eski `register()`): gönderim başarısız olsa da kayıt işlemi geri alınmaz — DB satırı
+  // (kod dahil) zaten yazılmıştır, kullanıcı `POST /auth/resend-verification-code` ile yeniden
+  // deneyebilir. `forgotPassword`'dan KASITLI OLARAK FARKLI (orada kullanıcı VARLIĞI zaten bilinen
+  // bir bilgidir ve sıfırlama LİNKİ tek kurtarma yoludur) — burada `resend` her zaman bir
+  // kaçış kapısıdır, register() akışını SMTP kullanılabilirliğine BAĞIMLI kılmak istemiyoruz.
+  try {
+    await sendEmailVerificationCode(app, { email: user.email, name: user.name }, issued.code, issued.expiresAt);
+  } catch (err) {
+    app.log.error({ err, userId: user.id }, "Doğrulama kodu e-postası gönderilemedi (register)");
+  }
+
+  return {
+    email: user.email,
+    expiresAt: issued.expiresAt,
+    resendAvailableAt: new Date(Date.now() + RESEND_COOLDOWN_MS),
+  };
 }
 
-/** §10.4 Güvenlik & 2FA — `login()`'ün 2FA açık/kapalı iki farklı sonucunu ayırt eden discriminated union. */
+/**
+ * §10.4 Güvenlik & 2FA — `login()`'ün ÜÇ farklı sonucunu ayırt eden discriminated union.
+ * `.claude/architect-scope-guest-account-otp.md` §2.3 (bağlayıcı) — YENİ `emailVerificationRequired` dalı.
+ */
 export type LoginResult =
-  | { twoFactorRequired: true; challengeToken: string }
-  | { twoFactorRequired: false; user: UserWithDoctorLink; tokens: TokenIssue };
+  | { twoFactorRequired: true; emailVerificationRequired: false; challengeToken: string }
+  | { twoFactorRequired: false; emailVerificationRequired: true; email: string }
+  | { twoFactorRequired: false; emailVerificationRequired: false; user: UserWithDoctorLink; tokens: TokenIssue };
 
 export async function login(
   app: FastifyInstance,
@@ -122,17 +150,159 @@ export async function login(
     throw new ForbiddenError("Hesabınız askıya alınmış.");
   }
 
+  // `.claude/architect-scope-guest-account-otp.md` §2.3 (bağlayıcı) — şifre+status kontrolünden
+  // SONRA, 2FA dalından ÖNCE. `emailVerifiedAt === null` ise token ÜRETİLMEZ. Backfill migration'ı
+  // (§2.4) TÜM mevcut kullanıcıları grandfather ettiği için bu dal YALNIZCA bu özellikten SONRA
+  // oluşturulan hesaplarda tetiklenir — mevcut kullanıcıların girişi DEĞİŞMEZ. **Kod OTOMATİK
+  // GÖNDERİLMEZ** — istemci `POST /auth/resend-verification-code` ile açıkça ister.
+  if (user.emailVerifiedAt === null) {
+    return { twoFactorRequired: false, emailVerificationRequired: true, email: user.email };
+  }
+
   // §10.4: 2FA açıksa şifre doğru olsa bile token çifti HEMEN verilmez — önce
   // POST /auth/2fa/verify ile TOTP/backup kodu doğrulanmalı (bkz. modules/security).
   if (user.twoFactorEnabled) {
     const challengeToken = signChallengeToken(user.id);
-    return { twoFactorRequired: true, challengeToken };
+    return { twoFactorRequired: true, emailVerificationRequired: false, challengeToken };
   }
 
   await app.prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
 
   const tokens = await issueTokenPair(app, user, meta);
-  return { twoFactorRequired: false, user, tokens };
+  return { twoFactorRequired: false, emailVerificationRequired: false, user, tokens };
+}
+
+/**
+ * `.claude/architect-scope-guest-account-otp.md` §2/§4 (bağlayıcı) — kodu doğrular,
+ * `emailVerifiedAt`i SET EDER, kodu tüketir ve normal login ile BİREBİR AYNI token çiftini üretir.
+ * **YALNIZCA `EMAIL_VERIFICATION` amaçlı kodları kabul eder** (§4.5, amaç bağlaması —
+ * `consumeVerificationCode`'un `purpose` filtresiyle DOĞAL olarak sağlanır).
+ */
+export async function verifyEmail(
+  app: FastifyInstance,
+  input: { email: string; code: string },
+  meta: RequestMeta
+): Promise<{ user: UserWithDoctorLink; tokens: TokenIssue }> {
+  const user = await app.prisma.user.findUnique({
+    where: { email: input.email.toLowerCase() },
+    include: { doctorProfile: { select: { id: true } } },
+  });
+
+  // §4.3/security-review §4.3 netleştirmesi — `userId === null` OLSA BİLE gerçek bir
+  // HMAC+timingSafeEqual+DB sorgusu çalıştırılır (erken `return` YOK, zamanlama tutarlılığı).
+  await consumeVerificationCode(app, user?.id ?? null, "EMAIL_VERIFICATION", input.code);
+  /* istanbul ignore next — `consumeVerificationCode` userId=null iken HER ZAMAN fırlatır, bu satıra ulaşılamaz. */
+  if (!user) {
+    throw new UnauthorizedError();
+  }
+
+  const verifiedUser = await app.prisma.user.update({
+    where: { id: user.id },
+    data: { emailVerifiedAt: new Date() },
+    include: { doctorProfile: { select: { id: true } } },
+  });
+
+  const tokens = await issueTokenPair(app, verifiedUser, meta);
+  return { user: verifiedUser, tokens };
+}
+
+/**
+ * §3.5 (bağlayıcı) — gövde YALNIZCA `email` taşır. Amaç sunucuda türetilir: kullanıcının EN SON
+ * `EmailVerificationCode` satırının amacı; hiç satırı yoksa `EMAIL_VERIFICATION`. Yanıt HER
+ * KOŞULDA `202`dir (route seviyesinde) — bu fonksiyon HİÇBİR ZAMAN fırlatmaz, sessizce döner.
+ *
+ * security-review KARAR 7.2 (bağlayıcı SIKILAŞTIRMA) — e-posta gönderimi çağıranın `202`
+ * yanıtını BLOKLAMAMALIDIR (SMTP round-trip'in yanıt süresine sızıp bir zamanlama oracle'ı
+ * açmaması için); bu yüzden gönderim burada `void` + `.catch(...)` ile fire-and-forget yapılır.
+ */
+export async function resendVerificationCode(app: FastifyInstance, email: string): Promise<void> {
+  const user = await app.prisma.user.findUnique({ where: { email: email.toLowerCase() } });
+  if (!user) return; // enumeration koruması — sessizce çık.
+  if (user.emailVerifiedAt !== null) return; // zaten doğrulanmış — AYNI ayırt edilemezlik.
+
+  const latest = await app.prisma.emailVerificationCode.findFirst({
+    where: { userId: user.id },
+    orderBy: { createdAt: "desc" },
+    select: { purpose: true },
+  });
+  const purpose = latest?.purpose ?? "EMAIL_VERIFICATION";
+
+  const issued = await issueVerificationCode(app, user.id, purpose);
+  if (!issued) return; // cooldown/günlük tavan — sessizce çık, e-posta GÖNDERİLMEZ.
+
+  // Fire-and-forget (security-review KARAR 7.2, bağlayıcı) — `await` EDİLMEZ.
+  const sendPromise =
+    purpose === "EMAIL_VERIFICATION"
+      ? sendEmailVerificationCode(app, { email: user.email, name: user.name }, issued.code, issued.expiresAt)
+      : resolveActivationBookingNumber(app, user.id).then((bookingNumber) =>
+          sendAccountActivationEmail(app, { email: user.email, name: user.name }, issued.code, issued.expiresAt, bookingNumber)
+        );
+
+  void sendPromise.catch((err) => {
+    app.log.error({ err, userId: user.id, purpose }, "Doğrulama/aktivasyon kodu e-postası gönderilemedi (resend)");
+  });
+}
+
+/** `ACCOUNT_ACTIVATION` yeniden gönderiminde e-postanın `booking_number` değişkeni için — booking bulunamazsa boş bırakılır. */
+async function resolveActivationBookingNumber(app: FastifyInstance, userId: string): Promise<string> {
+  const booking = await app.prisma.appointmentBooking.findFirst({
+    where: { patientUserId: userId },
+    orderBy: { createdAt: "desc" },
+    select: { bookingNumber: true },
+  });
+  return booking?.bookingNumber ?? "";
+}
+
+/**
+ * `.claude/architect-scope-guest-account-otp.md` §5/§4.4 (bağlayıcı) + `.claude/security-review-
+ * guest-account-otp.md` KARAR 5 (bağlayıcı SIKILAŞTIRMA) — misafir randevu ödemesiyle açılmış
+ * hesabı aktive eder: kod doğrulaması + İLK parolanın belirlenmesi TEK istekte yapılır.
+ * **YALNIZCA `ACCOUNT_ACTIVATION` amaçlı kodları kabul eder** (§4.5).
+ *
+ * Başarıda TEK transaction'da: `passwordHash`i belirler → `emailVerifiedAt`i SET EDER →
+ * kullanıcının TÜM canlı refresh token'larını iptal eder → security-review KARAR 5 (YENİ,
+ * bağlayıcı): kullanıcıya bağlı TÜM `AppointmentBooking` satırlarının `accessTokenHash`'i
+ * rotate edilir (saldırganın elindeki eski misafir magic-link'i bu andan itibaren ÖLÜR).
+ *
+ * Kod tüketimi (`consumeVerificationCode`) BU transaction'ın DIŞINDA, ÖNCE yapılır —
+ * `lib/otp.ts` dosya-başı yorumundaki bilinçli tasarım kararına bakınız: başarısız bir denemenin
+ * `attemptCount` artırımı, sonraki bir transaction rollback'iyle ASLA silinmemelidir.
+ */
+export async function activateAccount(
+  app: FastifyInstance,
+  input: { email: string; code: string; password: string },
+  meta: RequestMeta
+): Promise<{ user: UserWithDoctorLink; tokens: TokenIssue }> {
+  const user = await app.prisma.user.findUnique({ where: { email: input.email.toLowerCase() } });
+
+  await consumeVerificationCode(app, user?.id ?? null, "ACCOUNT_ACTIVATION", input.code);
+  /* istanbul ignore next — `consumeVerificationCode` userId=null iken HER ZAMAN fırlatır. */
+  if (!user) {
+    throw new UnauthorizedError();
+  }
+
+  const passwordHash = await hashPassword(input.password);
+
+  await app.prisma.$transaction([
+    app.prisma.user.update({ where: { id: user.id }, data: { passwordHash, emailVerifiedAt: new Date() } }),
+    app.prisma.refreshToken.updateMany({ where: { userId: user.id, revoked: false }, data: { revoked: true } }),
+    // security-review KARAR 5 (bağlayıcı, YENİ) — aktivasyon anında, kullanıcıya bağlı TÜM
+    // booking'lerin `accessTokenHash`'i rotate edilir. Üretilen ham token HİÇBİR YERE
+    // yazılmaz/loglanmaz — kullanıcı artık portal üzerinden (oturum) erişir, eski magic-link'e
+    // ihtiyacı yoktur (bu KASITLIDIR).
+    app.prisma.appointmentBooking.updateMany({
+      where: { patientUserId: user.id },
+      data: { accessTokenHash: hashToken(generateOpaqueToken()) },
+    }),
+  ]);
+
+  const activatedUser = await app.prisma.user.findUniqueOrThrow({
+    where: { id: user.id },
+    include: { doctorProfile: { select: { id: true } } },
+  });
+
+  const tokens = await issueTokenPair(app, activatedUser, meta);
+  return { user: activatedUser, tokens };
 }
 
 export async function refresh(app: FastifyInstance, rawRefreshToken: string | undefined, meta: RequestMeta) {
@@ -251,8 +421,18 @@ export async function resetPassword(app: FastifyInstance, rawToken: string, newP
 
   const passwordHash = await hashPassword(newPassword);
 
+  // `.claude/architect-scope-guest-account-otp.md` §2.5 (bağlayıcı) — başarılı sıfırlamada
+  // `emailVerifiedAt` NULL ise onu da SET eder (AYNI transaction). Bir posta kutusuna gönderilen
+  // tek kullanımlık sıfırlama bağlantısının kullanılması, 6 haneli bir OTP'den DAHA GÜÇLÜ bir
+  // posta kutusu sahipliği kanıtıdır — bu, ADMIN'in oluşturduğu kullanıcılar/org davetleri/
+  // aktivasyon kodu süresi dolan Özellik B kullanıcıları için TEK kaçış kapısıdır (§5.6).
+  const user = await app.prisma.user.findUniqueOrThrow({ where: { id: resetToken.userId } });
+
   await app.prisma.$transaction([
-    app.prisma.user.update({ where: { id: resetToken.userId }, data: { passwordHash } }),
+    app.prisma.user.update({
+      where: { id: resetToken.userId },
+      data: { passwordHash, ...(user.emailVerifiedAt === null ? { emailVerifiedAt: new Date() } : {}) },
+    }),
     app.prisma.passwordResetToken.update({ where: { id: resetToken.id }, data: { usedAt: new Date() } }),
     app.prisma.refreshToken.updateMany({
       where: { userId: resetToken.userId, revoked: false },

@@ -135,6 +135,32 @@ const SYSTEM_VARIABLES_BY_PURPOSE: Record<EmailTemplatePurpose, EmailVariableDef
     { key: "slot_summary", label: "Randevu Saati", sampleValue: "06.01.2025 09:00", source: "system" },
     { key: "join_link", label: "Katılım Bağlantısı", sampleValue: "https://example.com/tr/patient/bookings/abc", source: "system" },
   ],
+  /**
+   * `.claude/architect-scope-guest-account-otp.md` §7.3 (bağlayıcı) — `POST /auth/register`
+   * sonrası gönderilen 6 haneli doğrulama kodu. `verification_code` DÜZ METİN olarak taşınır
+   * (kod zaten kullanıcıya OKUNMASI için gönderiliyor — DB'deki HMAC hash'iyle KARIŞTIRILMAZ,
+   * bkz. lib/otp.ts). Sağlık verisi/randevu bağlamı YOKTUR (kayıt akışı, telehealth'ten bağımsız).
+   */
+  EMAIL_VERIFICATION: [
+    { key: "user_name", label: "Kullanıcı Adı", sampleValue: "Ayşe Yılmaz", source: "system" },
+    { key: "verification_code", label: "Doğrulama Kodu", sampleValue: "048213", source: "system" },
+    { key: "expires_in_minutes", label: "Geçerlilik Süresi (dk)", sampleValue: "10", source: "system" },
+  ],
+  /**
+   * §7.3 (bağlayıcı) — misafir randevu ödemesiyle açılan hesabın aktivasyon e-postası.
+   * **Bağlayıcı sızma yasağı (§9.7.5 madde 8 ile AYNI disiplin, §7.3):** doktor adı, uzmanlık,
+   * şikâyet notu veya slot saatleri bu değişken setine ASLA EKLENMEZ — yalnızca `booking_number`
+   * yer alır (alıcı e-postanın nedenini anlasın diye; aynı adrese zaten randevu onayı da gitmiştir).
+   * `activation_url` KODU TAŞIMAZ (`${FRONTEND_URL}/{lang}/activate-account?email=...`) — kodun
+   * URL'ye konması onu referer/proxy loglarına sızdırır ve deneme sayacını anlamsızlaştırır.
+   */
+  ACCOUNT_ACTIVATION: [
+    { key: "user_name", label: "Kullanıcı Adı", sampleValue: "Ayşe Yılmaz", source: "system" },
+    { key: "verification_code", label: "Doğrulama Kodu", sampleValue: "048213", source: "system" },
+    { key: "expires_in_hours", label: "Geçerlilik Süresi (saat)", sampleValue: "24", source: "system" },
+    { key: "activation_url", label: "Hesap Aktivasyon Bağlantısı", sampleValue: "https://example.com/tr/activate-account?email=ayse%40example.com", source: "system" },
+    { key: "booking_number", label: "Rezervasyon Numarası", sampleValue: "BKG-L4K2J1-A1B2", source: "system" },
+  ],
   CUSTOM: [],
 };
 

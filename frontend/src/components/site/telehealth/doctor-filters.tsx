@@ -74,7 +74,7 @@ export function DoctorFilters({
 
   return (
     <div className="flex flex-wrap items-center gap-3">
-      <InputGroup className="w-full sm:max-w-xs border-2 border-border bg-muted">
+      <InputGroup className="w-full sm:max-w-xs">
         <InputGroupAddon>
           <Search />
         </InputGroupAddon>

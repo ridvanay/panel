@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { buildTestApp } from "../helpers/build-test-app";
 import { resetDatabase } from "../helpers/reset-db";
 import { hashToken } from "../../src/lib/tokens";
+import { hashOtpCode } from "../../src/lib/otp";
 
 // Not: `/users/me/change-password` route-bazlı olarak dakikada 5 istekle sınırlı
 // (bkz. lib/rate-limit.ts::SENSITIVE_ACTION_RATE_LIMIT). Bu dosyadaki başarısız/doğrulama
@@ -32,13 +33,35 @@ describe("users — /me profil ve şifre değiştirme", () => {
     email = "eve@example.com";
     password = "Sifre12345!";
 
+    // `.claude/architect-scope-guest-account-otp.md` §2 (bağlayıcı) — `POST /auth/register`
+    // ARTIK token/cookie DÖNDÜRMEZ (`202 RegistrationPendingVerification`). "Oturum #1" bu yüzden
+    // `POST /auth/verify-email`in başarılı yanıtından elde edilir (normal login ile BİREBİR AYNI
+    // çıktı — token çifti + refresh cookie) — `tests/helpers/auth.ts::registerTestUser`teki AYNI
+    // "DB'deki codeHash'i bilinen bir değere üzerine yaz" deseni.
     const registerRes = await app.inject({
       method: "POST",
       url: "/api/v1/auth/register",
       payload: { email, password, name: "Eve" },
     });
-    userId = registerRes.json().data.user.id;
-    session1Cookie = registerRes.cookies.map((c) => `${c.name}=${c.value}`).join("; ");
+    expect(registerRes.statusCode).toBe(202);
+
+    const registeredUser = await app.prisma.user.findUniqueOrThrow({ where: { email } });
+    userId = registeredUser.id;
+
+    const KNOWN_CODE = "778899";
+    const codeHash = hashOtpCode(userId, "EMAIL_VERIFICATION", KNOWN_CODE);
+    await app.prisma.emailVerificationCode.updateMany({
+      where: { userId, purpose: "EMAIL_VERIFICATION", consumedAt: null },
+      data: { codeHash },
+    });
+
+    const verifyRes = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/verify-email",
+      payload: { email, code: KNOWN_CODE },
+    });
+    expect(verifyRes.statusCode).toBe(200);
+    session1Cookie = verifyRes.cookies.map((c) => `${c.name}=${c.value}`).join("; ");
 
     const loginRes = await app.inject({
       method: "POST",

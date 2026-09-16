@@ -55,6 +55,10 @@ describe("admin-users — yumuşak silme (soft-delete) ve geri alma", () => {
         passwordHash,
         role,
         status,
+        // `.claude/architect-scope-guest-account-otp.md` §2.3 — `login()` artık `emailVerifiedAt`
+        // gerektiriyor; bu doğrudan-oluşturma yardımcısı GRANDFATHERED bir hesabı temsil eder
+        // (bu dosyanın RBAC/soft-delete testleri e-posta doğrulama akışını KAPSAMAZ).
+        emailVerifiedAt: new Date(),
       },
     });
   }

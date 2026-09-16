@@ -140,7 +140,14 @@ export type ApiErrorCode =
    * §3.5/§3.6 madde 4 (bağlayıcı) — bir destek oturumundaki mesaj sayısı 200'ü aşınca (yeni bir
    * mesaj denemesi). `SupportChatSession.messageCount` denormalize sayacına dayanır. 409.
    */
-  | "SUPPORT_MESSAGE_LIMIT";
+  | "SUPPORT_MESSAGE_LIMIT"
+  /**
+   * `.claude/architect-scope-guest-account-otp.md` §4.3 (bağlayıcı) + `.claude/security-review-
+   * guest-account-otp.md` — `POST /auth/verify-email` / `POST /auth/activate-account` için TEK
+   * jenerik hata. Kullanıcı yok / canlı kod yok / kod yanlış / süresi dolmuş / deneme tükenmiş /
+   * amaç eşleşmiyor — HEPSİ bu AYNI kodla, AYNI mesajla döner (hesap-varlık oracle'ı yok). 401.
+   */
+  | "VERIFICATION_CODE_INVALID";
 
 export class ApiError extends Error {
   statusCode: number;
@@ -492,5 +499,17 @@ export class SupportSessionClosedError extends ApiError {
 export class SupportMessageLimitError extends ApiError {
   constructor(message = "Bu destek oturumu için mesaj üst sınırına (200) ulaşıldı.") {
     super(409, "SUPPORT_MESSAGE_LIMIT", message);
+  }
+}
+
+/**
+ * `.claude/architect-scope-guest-account-otp.md` §4.3 (bağlayıcı) — `lib/otp.ts::
+ * consumeVerificationCode` içinde HER başarısızlık dalı bu hatayı fırlatır (mesaj SABİTTİR,
+ * hangi neden olduğu — kullanıcı yok/kod yanlış/süresi dolmuş/deneme tükenmiş/amaç eşleşmiyor —
+ * ASLA yansıtılmaz, hesap-varlık oracle'ı yok). 401.
+ */
+export class VerificationCodeInvalidError extends ApiError {
+  constructor(message = "Doğrulama kodu geçersiz, süresi dolmuş veya deneme hakkı tükenmiş.") {
+    super(401, "VERIFICATION_CODE_INVALID", message);
   }
 }

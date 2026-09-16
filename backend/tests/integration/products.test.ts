@@ -23,6 +23,9 @@ describe("products (§10.9.2 Ürünler Modülü)", () => {
         passwordHash,
         role,
         status: "ACTIVE",
+        // `.claude/architect-scope-guest-account-otp.md` §2.3 — `login()` artık `emailVerifiedAt`
+        // gerektiriyor; bu doğrudan-oluşturma yardımcısı GRANDFATHERED bir hesabı temsil eder.
+        emailVerifiedAt: new Date(),
       },
     });
   }

@@ -69,6 +69,56 @@ async function main() {
     },
   });
 
+  // .claude/architect-scope-guest-account-otp.md §7 (bağlayıcı) — ortak OTP altyapısının
+  // (§1) Özellik A ucu: `POST /auth/register` sonrası e-posta sahipliğini kanıtlayan 6
+  // haneli kod (bkz. lib/otp.ts::issueVerificationCode, purpose=EMAIL_VERIFICATION).
+  // Konu/gövde formatı PASSWORD_RESET/APPOINTMENT_CONFIRMATION ile AYNI tonda (RAW, nötr,
+  // İngilizce — backend-agent görev notu "varsayılan dili İngilizce yap", §7.3 uyarınca).
+  // Kod düz metin olarak YALNIZCA bu e-postada görünür; hiçbir API yanıtında/logda YER ALMAZ.
+  await prisma.emailTemplate.upsert({
+    where: { key: "EMAIL_VERIFICATION" },
+    update: {},
+    create: {
+      key: "EMAIL_VERIFICATION",
+      name: "Email Verification Code",
+      purpose: "EMAIL_VERIFICATION",
+      editorMode: "RAW",
+      isSystem: true,
+      isActive: true,
+      subject: "Your verification code",
+      bodyHtml:
+        "<p>Hello {{user_name}},</p><p>Use the code below to verify your email address and finish setting up your account:</p><p style=\"font-size:28px;font-weight:bold;letter-spacing:4px;\">{{verification_code}}</p><p>This code will expire in {{expires_in_minutes}} minutes. If you did not request this, you can safely ignore this email.</p>",
+      availableVariables: ["user_name", "verification_code", "expires_in_minutes"],
+    },
+  });
+
+  // .claude/architect-scope-guest-account-otp.md §5/§7 (bağlayıcı) — Özellik B ucu: misafir
+  // randevu ödemesiyle sağlanan hesabı aktive etmek için gönderilen kod (bkz.
+  // modules/telehealth/lib/patient-account.ts::provisionPatientAccountForBooking,
+  // purpose=ACCOUNT_ACTIVATION). BİLİNÇLİ OLARAK ayrı bir şablon (§7.2) — bir güvenlik/kimlik
+  // belirleme e-postası bir randevu makbuzunun içine GÖMÜLMEZ. Sağlık verisi sızma yasağı
+  // (§9.7.5 madde 8, APPOINTMENT_CONFIRMATION ile AYNI disiplin) burada da geçerlidir:
+  // doktor adı, uzmanlık, şikâyet notu veya slot saatleri YER ALMAZ; yalnızca `booking_number`
+  // alıcının e-postanın nedenini anlaması için bulunur (aynı adrese zaten randevu onayı da
+  // gitmektedir, yeni bir sızma yoktur). `activation_url` kodu TAŞIMAZ — yalnızca gezinme
+  // kolaylığıdır (§7.3).
+  await prisma.emailTemplate.upsert({
+    where: { key: "ACCOUNT_ACTIVATION" },
+    update: {},
+    create: {
+      key: "ACCOUNT_ACTIVATION",
+      name: "Account Activation Email",
+      purpose: "ACCOUNT_ACTIVATION",
+      editorMode: "RAW",
+      isSystem: true,
+      isActive: true,
+      subject: "Activate your account",
+      bodyHtml:
+        "<p>Hello {{user_name}},</p><p>We created an account for you using the email address from your recent booking (<strong>{{booking_number}}</strong>). Use the code below to activate your account and set a password:</p><p style=\"font-size:28px;font-weight:bold;letter-spacing:4px;\">{{verification_code}}</p><p>This code will expire in {{expires_in_hours}} hours. You can also start the activation from the link below:</p><p><a href=\"{{activation_url}}\">Activate My Account</a></p><p>If you did not make this booking, you can safely ignore this email.</p>",
+      availableVariables: ["user_name", "verification_code", "expires_in_hours", "activation_url", "booking_number"],
+    },
+  });
+
   await prisma.emailTemplate.upsert({
     where: { key: "SYSTEM_ANNOUNCEMENT" },
     update: {},

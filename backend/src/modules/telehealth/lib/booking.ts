@@ -62,9 +62,14 @@ export const BOOKING_HOLD_MS = 30 * 60 * 1000;
  * adımı booking akışının ZORUNLU parçası olduğundan booking onay kutusunun aydınlatma metni
  * MADDİ olarak genişledi (yeni bir veri kategorisi: kimlik no/pasaport no, doğum tarihi, uyruk).
  * `"v1"` → `"v2"` — GLOBAL bump (TR/FOREIGN ayrımı YOK, herkes için kimlik adımı artık zorunlu).
- * Geriye dönük backfill YOKTUR: bu turdan önceki booking'ler `"v1"` olarak KALIR.
+ *
+ * `.claude/compliance-notes-guest-account-otp.md` §1 (bağlayıcı) — `"v2"` → `"v3"`: misafir
+ * randevu ödemesinden hesap sağlama (`patient-account.ts`) randevunun ifasıyla SINIRLI OLMAYAN,
+ * randevu tamamlandıktan SONRA da devam eden AYRI bir işleme amacı (kimlik/erişim yönetimi)
+ * ekliyor — "bu randevu kapsamında" ifadesiyle sınırlı `v2` metni bunu KAPSAMAZ. GLOBAL bump
+ * (TR/FOREIGN ayrımı YOK), backfill YOKTUR: bu turdan önceki booking'ler `"v2"`/`"v1"` olarak KALIR.
  */
-export const DEFAULT_APPOINTMENT_CONSENT_VERSION = "v2";
+export const DEFAULT_APPOINTMENT_CONSENT_VERSION = "v3";
 
 /** Hastaya gösterilen okunabilir rezervasyon numarası — `checkout.routes.ts::generateOrderNumber` İLE AYNI desen. */
 export function generateBookingNumber(): string {

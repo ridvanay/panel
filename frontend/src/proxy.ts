@@ -38,18 +38,22 @@ import type { PublicSiteAppearance, Locale } from "@/lib/api/types";
  *
  *   [0] Host tespiti (`request.headers.get("host")` — App Router'da `nextUrl` host/hostname
  *       ALANI SUNMAZ, bkz. doküman §2.3) → `isDoctorHost`.
- *   [1] SaaS auth yüzeyi erken çıkışı — `/login`/`/register`/`/forgot-password`/`/reset-password`
- *       ana host'ta HER ŞEYDEN ÖNCE `next()` ile geçer (bugünkü davranışın birebir korunması —
- *       bakım modu fetch'i de locale fetch'i de bu yolları GÖRMEZ).
+ *   [1] SaaS auth yüzeyi erken çıkışı — `/login`/`/register`/`/forgot-password`/`/reset-password`/
+ *       `/verify-email` (§8.1, `.claude/architect-scope-guest-account-otp.md`) ana host'ta HER
+ *       ŞEYDEN ÖNCE `next()` ile geçer (bugünkü davranışın birebir korunması — bakım modu fetch'i
+ *       de locale fetch'i de bu yolları GÖRMEZ).
  *   [2] Locale listesi HER İKİ host için de çekilir (rewrite hedefi + `<html lang>` için gerekir).
  *   ANA HOST dalı: [3] bakım modu (503, MEVCUT — DEĞİŞMEDİ) → [4] `/doctor/**` doktor host'una
  *       307 devri (yalnızca `DOCTOR_ORIGIN` yapılandırılmışsa) → [5] locale redirect/rewrite
  *       (MEVCUT — DEĞİŞMEDİ).
  *   DOKTOR HOST dalı: [6] bakım modu UYGULANMAZ (`/appearance` fetch'i HİÇ YAPILMAZ — §3.3) →
- *       [7] auth yüzeyi (`/login` → hekim girişine rewrite, `/forgot-password`/`/reset-password`
- *       jenerik ekran, `/register` ana host'a devir) → [8] portal rotaları (tek dilli — §3.5) →
- *       [9] diğer her şey ana host'a 307 devredilir → [10] TÜM doktor host yanıtlarına
- *       `X-Robots-Tag: noindex, nofollow` + `x-doctor-portal: 1` eklenir.
+ *       [7] auth yüzeyi (`/login` → hekim girişine rewrite, `/forgot-password`/`/reset-password`/
+ *       `/verify-email` jenerik ekran, `/register` ana host'a devir) → [8] portal rotaları (tek
+ *       dilli — §3.5) → [9] diğer her şey ana host'a 307 devredilir → [10] TÜM doktor host
+ *       yanıtlarına `X-Robots-Tag: noindex, nofollow` + `x-doctor-portal: 1` eklenir.
+ *
+ *   `/activate-account` (§8.2) BU LİSTEYE EKLENMEZ — `[lang]/(site)/activate-account` altındadır
+ *       (e-postadaki bağlantının hedefi public site'tır) ve normal [2]/[5] locale akışından geçer.
  *
  * Bu sıra `.claude/architect-scope-doctor-subdomain.md` §3.1'de birebir tanımlıdır ve
  * SORGULANMADAN uygulanır — alternatifler (koşullu header render, cookie/header köprüsü vb.)
@@ -128,8 +132,14 @@ async function fetchEnabledLocales(): Promise<Locale[]> {
   }
 }
 
-/** §3.1 [1] — bu dört yol ana host'ta proxy'nin GERİ KALANINI (bakım modu, locale, doktor devri) HİÇ görmez. */
-const SAAS_AUTH_SURFACE_PATHS = new Set(["/login", "/register", "/forgot-password", "/reset-password"]);
+/**
+ * §3.1 [1] — bu yollar ana host'ta proxy'nin GERİ KALANINI (bakım modu, locale, doktor devri) HİÇ
+ * görmez. `.claude/architect-scope-guest-account-otp.md` §8.1 — `/verify-email` bu turda eklendi
+ * (`app/(auth)/verify-email/page.tsx`, `/register` ile AYNI `(auth)` grubu/kabuk); `/activate-account`
+ * BİLEREK BURADA DEĞİLDİR — o rota `[lang]/(site)/activate-account` altındadır (§8.2, e-postadaki
+ * bağlantının hedefi public site'tır) ve normal locale rewrite/redirect akışından GEÇMESİ GEREKİR.
+ */
+const SAAS_AUTH_SURFACE_PATHS = new Set(["/login", "/register", "/forgot-password", "/reset-password", "/verify-email"]);
 
 /** `doctor-portal-route-guard.tsx::isDoctorPortalRoute` İLE AYNI genel `[a-z]{2}` locale prefix örüntüsü.
  *
@@ -247,9 +257,11 @@ function handleDoctorHost(request: NextRequest, pathname: string, defaultLocale:
     headers.set("x-active-locale", defaultLocale.code);
     return NextResponse.rewrite(url, { request: { headers } });
   }
-  if (pathname === "/forgot-password" || pathname === "/reset-password") {
+  if (pathname === "/forgot-password" || pathname === "/reset-password" || pathname === "/verify-email") {
     // Jenerik ekran — zaten `(auth)` grubunda, SiteHeader/Footer YOK; doktor host'una özgü bir
-    // varyant GEREKMEZ.
+    // varyant GEREKMEZ. `/verify-email` (`.claude/architect-scope-guest-account-otp.md` §8.1)
+    // AYNI gerekçeyle buraya eklendi — doktorlar kendi kendine kayıt olmasa da (§4) `login()`'ün
+    // `requiresEmailVerification` dalı teorik olarak bu ekrana yönlendirebilir (§2.3).
     return NextResponse.next();
   }
   if (pathname === "/register") {
