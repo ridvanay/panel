@@ -75,9 +75,14 @@ const EnvSchema = z.object({
   LIVEKIT_URL: z.string().default(""),
   LIVEKIT_API_KEY: z.string().default(""),
   LIVEKIT_API_SECRET: z.string().default(""),
-  // Token TTL — kısa tutulur (§8: token süresi randevu penceresine yakın, kaçırılmış bir
-  // token'ın uzun süre geçerli kalmaması için). Dakika.
-  LIVEKIT_TOKEN_TTL_MIN: z.coerce.number().int().positive().max(60).default(15),
+  // Bug-fix turu (2026-09-17, backend-agent, kullanıcı onaylı — §8'in ÖNCEKİ 15dk/60dk tavanı
+  // gerçek görüşme süresine yetmiyordu: token dolunca LiveKit istemciyi ODADAN GERÇEKTEN ATIYORDU,
+  // "401/oturum kapandı" olarak raporlanan hatanın kök nedeni buydu). TTL artık görüşme süresine
+  // (randevu penceresi + makul gecikme payı) yakın tutulur, dakika cinsinden; token yine de
+  // YALNIZCA o randevunun `meetingRoomName`'ine `roomJoin`+`canPublish`+`canSubscribe` ile
+  // sınırlıdır (`roomCreate`/`roomAdmin` YOK, bkz. lib/livekit.ts) — süre uzasa da grant kapsamı
+  // DEĞİŞMEDİ.
+  LIVEKIT_TOKEN_TTL_MIN: z.coerce.number().int().positive().max(240).default(180),
 
   // `.claude/architect-scope-telehealth-template.md` (TUR 3, bağlayıcı) — LiveKit Egress
   // arşivleme. Egress BACKEND KONTEYNERİNİN DIŞINDA çalışır: `S3_ENDPOINT` docker-içi bir adres

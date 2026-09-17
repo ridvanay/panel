@@ -1,5 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
-import { getCachedAdminSession, getSiteModules, patchSiteModule } from "./support/api";
+import { authenticator } from "otplib";
+import { getCachedAdminSession, getSiteModules, patchSiteModule, getFixtureUserToken, setupAndEnableTwoFactorForSelf } from "./support/api";
+import { adminGetUserByEmail, adminUpdateStatus } from "./support/admin-users-fixtures";
 import {
   ensureTelehealthModuleWithDoctors,
   listAllAdminDoctors,
@@ -12,7 +14,12 @@ import {
   markAppointmentJoinableDirectly,
   markBookingPaidDirectly,
   setAppointmentStatusDirectly,
+  createAdminDoctorFixture,
+  deleteAdminDoctorFixture,
+  setDoctorAvailabilityRaw,
+  linkDoctorUserRaw,
   type CreatedAppointment,
+  type CreatedFixtureDoctor,
 } from "./support/telehealth-fixtures";
 
 /**
@@ -265,4 +272,155 @@ test("madde 1 [GERÇEK LiveKit]: PAID booking + randevu saati GERÇEKTEN 12+ saa
   // görünür OLMASI DEĞİL, backend'in `meeting-token` ucunun GERÇEKTEN 200 döndüğünün ve gerçek bir
   // WebRTC oturumunun KURULDUĞUNUN nihai kanıtı).
   await expect(page.getByText("Bağlandı", { exact: true })).toBeVisible({ timeout: 20_000 });
+});
+
+// =============================================================================
+// qa-agent — bug-fix turu (2026-09-17): İKİ TARAFLI GERÇEK video doğrulaması. Yukarıdaki testler
+// yalnızca KENDİ kameranızın (PIP) mount olduğunu doğruluyordu — raporlanan hatayı (karşı tarafın
+// video track'i "publishing"/"participant: doctor:..." loglarına rağmen ana ekranda render
+// edilmemesi) YAKALAYAMAZDI. `consultation-room.tsx::ConsultationStage`'deki `useTracks`
+// çağrısından `onlySubscribed: false` kaldırıldı (varsayılan `true`'ya dönüldü) — bu seçenek
+// GERÇEKTEN abone olunmamış bir track referansı döndürebiliyordu, ki bu da resmi LiveKit
+// örneklerinin İZLEMEDİĞİ bir kalıptır ve teorik olarak `ParticipantTile`'ın DOM'a bağlayacak
+// gerçek bir `MediaStreamTrack`'i olmadan render edilmesine yol açabilir. NOT (dürüstlük payı) —
+// bu makinede localhost loopback'te abonelik o kadar hızlı tamamlanıyor ki bu test HER İKİ
+// koddaki hâlde de (eski `onlySubscribed: false` DAHİL) geçti; yani bu test yerelde regresyonu
+// AYIRT ETMİYOR, gerçek WAN gecikmesi altında oluşan bir yarış durumunu benzetemiyor. Yine de
+// kalıcı bir kazanım: iki taraflı GERÇEK video render'ının HİÇ doğrulanmadığı bir boşluğu
+// kapatıyor ve `onlySubscribed: true` + `withPlaceholder` kalıbını resmi/önerilen şekilde
+// sabitliyor.
+// =============================================================================
+test.describe("qa-agent — iki taraflı gerçek video doğrulaması (2026-09-17 bug-fix turu)", () => {
+  test.describe.configure({ mode: "serial" });
+
+  const RUN_SUFFIX = Date.now().toString(36);
+  const DOCTOR_EMAIL = `qa-e2e-livekit-doctor-${RUN_SUFFIX}@example.com`;
+  const DOCTOR_PASSWORD = "QaE2eLivekitDoctor12345!";
+
+  let twoPartyDoctor: CreatedFixtureDoctor;
+  let doctorUserId: string;
+  let doctorTotpSecret: string;
+
+  test.beforeAll(async ({}, testInfo) => {
+    testInfo.setTimeout(90_000);
+    test.skip(!liveKitConfigured, "Bu ortamda LIVEKIT_URL/API_KEY/API_SECRET tanımlı değil.");
+
+    twoPartyDoctor = await createAdminDoctorFixture(adminToken, {
+      title: "Dr.",
+      fullName: `QA E2E LiveKit Doktoru ${RUN_SUFFIX}`,
+      bio: "qa-agent — iki taraflı gerçek video doğrulaması fixture doktoru.",
+      languages: ["tr"],
+      timeZone: "Europe/Istanbul",
+      sessionDurationMin: 30,
+      sessionPriceCents: 40000,
+      currency: "TRY",
+      isVerified: true,
+      isActive: true,
+    });
+    await setDoctorAvailabilityRaw(
+      adminToken,
+      twoPartyDoctor.id,
+      ([1, 2, 3, 4, 5, 6, 7] as const).map((dayOfWeek) => ({ dayOfWeek, startMinute: 0, endMinute: 1440 }))
+    );
+
+    const doctorUserToken = await getFixtureUserToken(DOCTOR_EMAIL, DOCTOR_PASSWORD, "QA E2E LiveKit Doktoru");
+    const doctorUser = await adminGetUserByEmail(adminToken, DOCTOR_EMAIL);
+    if (!doctorUser) throw new Error("qa-agent: LiveKit iki taraflı test doktor kullanıcısı oluşturulamadı.");
+    doctorUserId = doctorUser.id;
+    await linkDoctorUserRaw(adminToken, twoPartyDoctor.id, doctorUserId);
+    const twoFactor = await setupAndEnableTwoFactorForSelf(doctorUserToken);
+    doctorTotpSecret = twoFactor.secret;
+  });
+
+  test.afterAll(async () => {
+    if (twoPartyDoctor) await deleteAdminDoctorFixture(adminToken, twoPartyDoctor.id).catch(() => undefined);
+    if (doctorUserId) await adminUpdateStatus(adminToken, doctorUserId, "SUSPENDED").catch(() => undefined);
+  });
+
+  test("madde 14 [GERÇEK LiveKit, iki taraf]: doktor VE hasta aynı odaya bağlanınca KARŞI TARAFIN video'su GERÇEKTEN render edilir (placeholder'da TAKILI KALMAZ)", async ({
+    browser,
+  }) => {
+    test.setTimeout(120_000);
+
+    const { from, to } = defaultSlotRangeISODates(30);
+    const slotsRes = await getPublicDoctorSlotsRaw(twoPartyDoctor.slug, from, to);
+    const slot = (slotsRes.data ?? []).find((s) => s.available);
+    if (!slot) throw new Error("qa-agent: iki taraflı LiveKit testi için müsait slot bulunamadı.");
+
+    const created = await createAppointmentRaw({
+      doctorSlug: twoPartyDoctor.slug,
+      startsAt: slot.startsAt,
+      patientName: "QA E2E Hasta live-two-party",
+      patientEmail: `qa-e2e-livekit-two-party-${Date.now()}@example.com`,
+    });
+    if (created.status !== 201 || !created.data) {
+      throw new Error(`qa-agent: randevu oluşturulamadı: ${created.status} ${JSON.stringify(created.error)}`);
+    }
+    shiftAppointmentIntoJoinWindowDirectly(created.data.id, 90, 30);
+    markAppointmentJoinableDirectly(created.data.id);
+
+    const doctorContext = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    await doctorContext.grantPermissions(["camera", "microphone"]);
+    const doctorPage = await doctorContext.newPage();
+
+    const patientContext = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    await patientContext.grantPermissions(["camera", "microphone"]);
+    const patientPage = await patientContext.newPage();
+
+    try {
+      // Doktor — GERÇEK oturum (2FA) ile giriş yapar. Ana host'ta (`/login`) — `/consultation/**`
+      // zaten ana host'ta yaşar (bkz. `proxy.ts::isDoctorSharedRouteException`), `doktor.*`
+      // subdomain'ine GEREK YOK.
+      await doctorPage.goto("/login");
+      await doctorPage.getByLabel("E-posta").fill(DOCTOR_EMAIL);
+      await doctorPage.getByLabel("Şifre").fill(DOCTOR_PASSWORD);
+      await doctorPage.getByRole("button", { name: "Giriş yap" }).click();
+      await expect(doctorPage.getByText("İki adımlı doğrulama", { exact: false })).toBeVisible({ timeout: 15_000 });
+      await doctorPage.getByLabel("Authenticator Kodu").fill(authenticator.generate(doctorTotpSecret));
+      await doctorPage.getByRole("button", { name: "Doğrula" }).click();
+      // Doğrulama sonrası nereye yönlendirilirse yönlendirilsin (post-login-destination) — bu
+      // testin ilgisi dışında; görüşme sayfasına DOĞRUDAN gidilir.
+      await expect(doctorPage.getByText("İki adımlı doğrulama", { exact: false })).toHaveCount(0, { timeout: 15_000 });
+
+      await doctorPage.goto(`/consultation/${created.data.id}`);
+      await patientPage.goto(`/consultation/${created.data.id}?t=${created.data.accessToken}`);
+
+      await expect(doctorPage.getByRole("heading", { name: /ile Görüşme$/ })).toBeVisible({ timeout: 15_000 });
+      await expect(patientPage.getByRole("heading", { name: /ile Görüşme$/ })).toBeVisible({ timeout: 15_000 });
+
+      await doctorPage.getByRole("button", { name: "Görüşmeye Katıl" }).click();
+      await patientPage.getByRole("button", { name: "Görüşmeye Katıl" }).click();
+
+      await expect(doctorPage.getByText("Bağlandı", { exact: true })).toBeVisible({ timeout: 20_000 });
+      await expect(patientPage.getByText("Bağlandı", { exact: true })).toBeVisible({ timeout: 20_000 });
+
+      // "Bekleme Odası" paneli KARŞI TARAF bağlanınca HER İKİ tarafta da kaybolmalı.
+      await expect(doctorPage.getByText("Bekleme Odası")).toHaveCount(0, { timeout: 20_000 });
+      await expect(patientPage.getByText("Bekleme Odası")).toHaveCount(0, { timeout: 20_000 });
+
+      // Nihai kanıt — HER İKİ tarafta da (kendi PIP'i + karşı tarafın ana ekranı) TAM OLARAK 2
+      // `<video>` elementi var VE HEPSİ GERÇEKTEN kare alıyor (`videoWidth`/`videoHeight` > 0) —
+      // sahte cihazın ürettiği kareler DOM'a `attach()` edilmiş, placeholder'da TAKILI KALINMAMIŞ.
+      async function assertBothVideosRendering(page: Page): Promise<void> {
+        await expect
+          .poll(
+            () =>
+              page.evaluate(() => {
+                const videos = Array.from(document.querySelectorAll("video"));
+                return {
+                  count: videos.length,
+                  allRendering: videos.length > 0 && videos.every((v) => v.videoWidth > 0 && v.videoHeight > 0),
+                };
+              }),
+            { timeout: 20_000, intervals: [1_000] }
+          )
+          .toEqual({ count: 2, allRendering: true });
+      }
+      await assertBothVideosRendering(doctorPage);
+      await assertBothVideosRendering(patientPage);
+    } finally {
+      await doctorContext.close();
+      await patientContext.close();
+    }
+  });
 });

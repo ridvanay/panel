@@ -530,11 +530,19 @@ Kod tabanında bugün LiveKit'e ait **hiçbir referans yoktur** (doğrulandı:
   LIVEKIT_URL: z.string().default(""),          // wss://<proje>.livekit.cloud
   LIVEKIT_API_KEY: z.string().default(""),
   LIVEKIT_API_SECRET: z.string().default(""),
-  // Token TTL — kısa tutulur (§8). Dakika.
-  LIVEKIT_TOKEN_TTL_MIN: z.coerce.number().int().positive().max(60).default(15),
+  // Token TTL — Dakika.
+  LIVEKIT_TOKEN_TTL_MIN: z.coerce.number().int().positive().max(240).default(180),
 ```
    Frontend: `NEXT_PUBLIC_LIVEKIT_URL` (yalnızca sunucu adresi; **API secret ASLA frontend'e
    geçmez**).
+
+   **EK KARAR — 2026-09-17 (architect, kullanıcı onaylı, §8'in TTL kısmını revize eder):**
+   önceki 15dk varsayılan/60dk tavan üretimde gerçek bir kopma hatasına yol açıyordu — token
+   süresi dolduğunda LiveKit istemciyi **gerçekten** odadan atıyordu (kullanıcı tarafından
+   "401/oturum kapanması" olarak raporlandı). TTL artık görüşme süresine yakın (varsayılan
+   180dk, tavan 240dk) — grant kapsamı (`roomJoin` + o TEK `meetingRoomName`, `canPublish`/
+   `canSubscribe`, `roomCreate`/`roomAdmin` YOK) DEĞİŞMEDİ, yalnızca süre uzatıldı. Sızan bir
+   token'ın riski hâlâ TEK bir randevu odasıyla sınırlıdır.
 3. **Yapılandırılmamışken davranış (bağlayıcı):** `POST /appointments/{id}/meeting-token`
    → **`503 LIVEKIT_NOT_CONFIGURED`**. `/consultation/[id]` sayfası, randevu bilgilerini,
    geri sayımı ve katılımcı durumunu **normal şekilde gösterir**; video alanında ise açık bir
@@ -824,7 +832,7 @@ birleştirilemez (merge edilemez).
 
 1. **`POST /appointments/{id}/meeting-token`** — kontratın en riskli yeni yüzeyi:
    - `LIVEKIT_API_SECRET` **hiçbir yanıtta, logda veya hata gövdesinde** görünmemeli.
-   - Token TTL ≤ `LIVEKIT_TOKEN_TTL_MIN` (varsayılan 15 dk) ve **yalnızca o randevunun
+   - Token TTL ≤ `LIVEKIT_TOKEN_TTL_MIN` (varsayılan 180 dk, bkz. 2026-09-17 EK KARAR) ve **yalnızca o randevunun
      `meetingRoomName`'ine** kapsamlı (`roomJoin: true, room: <ad>`); `roomCreate`,
      `roomAdmin`, `roomList`, `ingressAdmin` grant'ları **VERİLMEZ**.
    - Katılımcı kimliği (`identity`) tahmin edilebilir ve KİŞİSEL VERİ İÇERMEZ

@@ -14,7 +14,7 @@ export interface LiveKitConfig {
   url: string;
   apiKey: string;
   apiSecret: string;
-  /** Dakika — bkz. `LIVEKIT_TOKEN_TTL_MIN`, varsayılan 15, tavan 60 (env.ts şeması). */
+  /** Dakika — bkz. `LIVEKIT_TOKEN_TTL_MIN`, varsayılan 180, tavan 240 (env.ts şeması). */
   tokenTtlMin: number;
 }
 

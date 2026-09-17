@@ -363,13 +363,19 @@ function ConnectionStatusBadge() {
  */
 function ConsultationStage() {
   const participants = useParticipants();
-  const tracks = useTracks(
-    [
-      { source: Track.Source.Camera, withPlaceholder: true },
-      { source: Track.Source.ScreenShare, withPlaceholder: false },
-    ],
-    { onlySubscribed: false }
-  );
+  // Bug-fix turu (2026-09-17, frontend-agent) — `onlySubscribed: false` karşı tarafın track'i
+  // için YAYINLANMIŞ ama HENÜZ ABONE OLUNMAMIŞ (`publication.track` boş) bir referans
+  // döndürebiliyordu; bu referans `ParticipantTile`'a geçince DOM'a bağlanacak gerçek bir
+  // `MediaStreamTrack` olmadığı için ekran placeholder'da TAKILI kalıyordu — SDK'nın kendi
+  // "publishing track"/"participant: doctor:..." logları GERÇEK olsa bile. Varsayılan
+  // `onlySubscribed: true` ile `tracks` yalnızca GERÇEKTEN abone olunmuş (DOM'a bağlanabilir)
+  // referansları döner; `withPlaceholder: true` karşı taraf HİÇ yayın yapmadığı durumda hâlâ
+  // nötr bir avatar göstermeye devam eder (davranış AYNI, yalnızca "yayınlandı ama abone
+  // olunmadı" ara durumu artık placeholder'a düşer, boş/donuk bir referansa değil).
+  const tracks = useTracks([
+    { source: Track.Source.Camera, withPlaceholder: true },
+    { source: Track.Source.ScreenShare, withPlaceholder: false },
+  ]);
   const hasRemoteParticipant = participants.some((p) => !p.isLocal);
 
   const remoteTrack =
