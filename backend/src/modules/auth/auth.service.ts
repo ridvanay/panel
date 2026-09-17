@@ -41,17 +41,19 @@ function logDevFallbackOtpCode(app: FastifyInstance, userId: string, email: stri
 
 /**
  * `logDevFallbackOtpCode` ile AYNI güvenlik disiplini, `forgotPassword` için — YALNIZCA
- * `NODE_ENV === "development"` iken (asla production/test) çalışır. `forgotPassword`,
- * OTP akışının AKSİNE, gerçek SMTP hatasını BİLEREK yutmaz (aşağıdaki çağrı yeri hatayı
- * yine `throw` eder) — bu fonksiyon SADECE geliştiriciye linki görmeden test etmeye devam
- * edebileceği bir kaçış kapısı ekler, hatayı yutma/rethrow sözleşmesini DEĞİŞTİRMEZ.
+ * `NODE_ENV === "development"` iken (asla production/test) çalışır. Bug-fix turu
+ * (2026-09-17, kullanıcı onaylı): artık SADECE SMTP gönderimi BAŞARISIZ olduğunda değil,
+ * `resetUrl` üretilir üretilmez KOŞULSUZ çağrılır — kullanıcı gönderim başarılı olsa da
+ * linki konsolda görebilmek istedi. `forgotPassword`'un hata yutma/rethrow sözleşmesini
+ * DEĞİŞTİRMEZ (bu fonksiyon salt bir log satırı ekler, `sendPasswordResetEmail` hatası
+ * hâlâ `throw` edilir).
  *
  * Gerçek `resetUrl` (token içeren TAM link) loglanır — ham token AYRICA loglanmaz, sabit/
  * evrensel bir fallback değer İCAT EDİLMEZ (bkz. `logDevFallbackOtpCode` yorumu, KARAR 1).
  */
-function logDevFallbackResetLink(app: FastifyInstance, userId: string, email: string, resetUrl: string): void {
+function logDevPasswordResetLink(app: FastifyInstance, userId: string, email: string, resetUrl: string): void {
   if (env.NODE_ENV !== "development") return;
-  app.log.warn({ userId, email, resetUrl }, "[AUTH_PASSWORD_RESET] E-posta gönderilemedi (yalnızca dev ortamı) — sıfırlama bağlantısı yukarıda");
+  app.log.warn({ userId, email }, "[AUTH] Password Reset Link: " + resetUrl);
 }
 
 export interface TokenIssue {
@@ -443,17 +445,18 @@ export async function forgotPassword(app: FastifyInstance, email: string) {
   const rawToken = await createPasswordResetToken(app, user.id);
   const resetUrl = `${env.FRONTEND_URL}/reset-password?token=${rawToken}`;
 
+  // Dev-only kaçış kapısı (bkz. logDevPasswordResetLink) — gönderim BAŞARILI olsun ya da
+  // olmasın, resetUrl üretilir üretilmez KOŞULSUZ loglanır (yalnızca development ortamında).
+  logDevPasswordResetLink(app, user.id, user.email, resetUrl);
+
   // Gerçek SMTP hatası (kullanıcı var, gönderim başarısız) burada YUTULMAZ — sendMail() zaten
   // app.log.error ile stack + hedef adresi (asla token/şifre) loglar ve EmailDeliveryError (502)
   // fırlatır; bu hata route'a kadar yükselip anlamlı bir hata olarak döner (bkz. lib/errors.ts).
-  try {
-    await sendPasswordResetEmail(app, { email: user.email, name: user.name }, resetUrl);
-  } catch (err) {
-    // Dev-only kaçış kapısı (bkz. logDevFallbackResetLink) — hata YUTULMAZ, aşağıda yeniden
-    // fırlatılır. Bu try/catch SADECE bir log satırı eklemek için var, sözleşmeyi bozmaz.
-    logDevFallbackResetLink(app, user.id, user.email, resetUrl);
-    throw err;
-  }
+  // Not: burada bilerek try/catch YOK — bir önceki turda burada duran try/catch SADECE dev-only
+  // log çağrısı için vardı (bkz. logDevPasswordResetLink yorumu); log artık yukarıda, koşulsuz
+  // yapıldığı için `catch (err) { throw err; }` kalıntısı ESLint `no-useless-catch` kuralını
+  // ihlal eder ve hiçbir davranış eklemezdi — `await` zaten hatayı DEĞİŞTİRMEDEN yukarı fırlatır.
+  await sendPasswordResetEmail(app, { email: user.email, name: user.name }, resetUrl);
 }
 
 export async function resetPassword(app: FastifyInstance, rawToken: string, newPassword: string) {
