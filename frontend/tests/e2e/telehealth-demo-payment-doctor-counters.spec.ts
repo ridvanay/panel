@@ -52,11 +52,11 @@ import { submitBookingIdentityStep } from "./support/telehealth-identity-ui";
  * ayakta olmayan `localhost:4001`'e istek atıp suite'i baştan düşürür.
  *
  * **Test sırası — BİLİNÇLİ:** senaryo 1-3 (backend demo-pay + doktor konsolu sayaçları/rozet/
- * "Odaya Katıl" + regresyon) `serial` modda İLK sırada koşar ve bu turda YEŞİLDİR. Senaryo 4
- * (hasta tarafı GERÇEK tarayıcı, adım 5'teki buton) EN SONA konuldu çünkü şu an BİLİNEN bir
- * `frontend/Dockerfile` eksikliği yüzünden KIRIKTIR (`serial` modda bir test FAIL olunca
- * Playwright dosyanın KALANINI atlar — bu yüzden asıl konu olan 1-3 önce koşmalı). Ayrıntı ve
- * kanıt senaryo 4'ün başlık yorumunda.
+ * "Odaya Katıl" + regresyon) `serial` modda İLK sırada koşar. Senaryo 4 (hasta tarafı GERÇEK
+ * tarayıcı, adım 5'teki buton) EN SONA konuldu — bir zamanlar `frontend/Dockerfile`'daki eksik
+ * `ARG`/`ENV NEXT_PUBLIC_ENABLE_DEMO_PAYMENTS` yüzünden kırıktı (`e0653aa` ile giderildi, bkz.
+ * senaryo 4'ün başlık yorumu), sıralama o dönem 1-3'ün bloklanmaması için seçildi ve o zamandan
+ * beri KORUNDU (`serial` modda bir test FAIL olursa Playwright dosyanın kalanını atlar).
  *
  * **Admin bootstrap — neden `getCachedAdminSession()` KULLANILMAZ:** o yardımcı `saas_e2e`'ye
  * ÖNCEDEN TOHUMLANMIŞ (`qa-e2e-admin@example.com`) bir ADMIN fixture'ı varsayar; `saas_dev`'de
@@ -361,25 +361,17 @@ test("senaryo 3 [regresyon]: ödenmemiş booking Tümü'nde görünür, Gelecek 
 // =============================================================================
 // Senaryo 4 — hasta tarafı: GERÇEK tarayıcı, booking sihirbazı baştan sona, adım 5'te "Demo
 // Ödemeyi Tamamla (Test)" butonunun GÖRÜNÜRLÜĞÜ. BİLİNÇLİ OLARAK DOSYA SONUNA ALINDI: `serial`
-// modda bir test FAILED olursa Playwright dosyanın KALANINI SKIP eder — bu test aşağıdaki BİLİNEN
-// bug yüzünden ŞİMDİLİK başarısız olduğundan, senaryo 1-3'ün (backend + doktor konsolu, GERÇEKTEN
-// bu turun konusu olan değişiklikler) ÇALIŞMASINI ENGELLEMEMESİ için EN SONA konuldu.
+// modda bir test FAILED olursa Playwright dosyanın KALANINI SKIP eder — senaryo 1-3'ün (backend +
+// doktor konsolu) bir üstteki senaryodaki başarısızlıktan ETKİLENMEMESİ için EN SONA konuldu.
 //
-// qa-agent BULGUSU (bu turda, KRİTİK, devops-agent'a yönlendirilir — bkz. final rapor): bu test
-// GÜNCEL docker dev yığınında BAŞARISIZ olur. Kök neden UYGULAMA KODUNDA DEĞİL:
-// `docker-compose.dev.yml` `frontend.build.args.NEXT_PUBLIC_ENABLE_DEMO_PAYMENTS: "true"` verir
-// AMA `frontend/Dockerfile`'ın builder aşaması bu ARG'ı HİÇ TANIMLAMAZ/`ENV`'e YAZMAZ (yalnızca
-// `NEXT_PUBLIC_API_URL`/`NEXT_PUBLIC_SITE_URL`/`NEXT_PUBLIC_INTERNAL_MEDIA_URL` için `ARG`+`ENV`
-// çifti var) — bu yüzden `next build` sırasında `process.env.NEXT_PUBLIC_ENABLE_DEMO_PAYMENTS`
-// TANIMSIZ kalır, `lib/env.ts::DEMO_PAYMENTS_ENABLED` derleme anında `false`'a sabitlenir ve
-// (frontend-agent'ın TASARLADIĞI GİBİ) dead-code-elimination ile TÜM demo buton bloğu bundle'dan
-// düşer. Doğrulama: `docker exec claudecodeproje-frontend-1 sh -c "grep -o 'Demo.demeyi Tamamla'
-// /app/.next/static/chunks/*.js"` SIFIR sonuç döner. Bu test BİLİNÇLİ OLARAK "doğru" beklentiyi
-// (buton GÖRÜNÜR olmalı) korur — `frontend/Dockerfile`'a `ARG`/`ENV NEXT_PUBLIC_ENABLE_DEMO_PAYMENTS`
-// eklenip image yeniden build edildiğinde bu test YEŞİLE dönmelidir; şimdiden "beklenen davranış
-// buton YOK" şeklinde ZAYIFLATILMADI (bug'ı KALICI OLARAK MASKELEMEMEK için).
+// GÜNCELLEME (2026-09-17, qa-agent): aşağıda anlatılan `frontend/Dockerfile`
+// `ARG`/`ENV NEXT_PUBLIC_ENABLE_DEMO_PAYMENTS` eksikliği `e0653aa fix(telehealth): demo odeme
+// bayragini Dockerfile build-arg'ina bagla` ile GİDERİLDİ — bu test GÜNCEL docker dev yığınına
+// (`docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d`) karşı hem
+// gerçek tarayıcıda (manuel doğrulama) hem bu otomasyonla YEŞİLDİR. Artık "bilinen bug" DEĞİL —
+// regresyona karşı bir regresyon testi olarak KALIR.
 // =============================================================================
-test("senaryo 4: booking sihirbazı adım 5'te demo ödeme butonu görünür (bilinen bug — bkz. yorum, devops-agent/Dockerfile)", async ({ page }) => {
+test("senaryo 4: booking sihirbazı adım 5'te demo ödeme butonu görünür", async ({ page }) => {
   test.setTimeout(90_000);
 
   await gotoAndWaitReady(page, `${SITE_ORIGIN}/doctors/${doctorFixture.slug}`, async () => {

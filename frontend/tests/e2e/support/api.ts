@@ -13,6 +13,29 @@ import { authenticator } from "otplib";
 
 const API_BASE_URL = process.env.E2E_API_URL ?? "http://localhost:4001/api/v1";
 
+/**
+ * qa-agent bulgusu (2026-09-17) — `.claude/architect-scope-guest-account-otp.md` ile `POST
+ * /auth/register` artık token DÖNDÜRMÜYOR (202 `verificationRequired`), doğrulama kodu SADECE
+ * hash'lenmiş halde DB'de tutuluyor ve e-posta ile gönderiliyor (bkz. `EmailVerificationCode`
+ * şeması) — bu yüzden e2e fixture'ları gerçek bir e-posta kutusu OKUYAMAZ. Çözüm
+ * `setUserTwoFactorEnabledDirectly`/`setUserEmailVerifiedDirectly` İLE AYNI "gerçek kullanıcı,
+ * sahte olan yalnızca bayrak/zaman damgası" felsefesi: OTP akışının KENDİSİ test EDİLMEZ (o,
+ * `backend/tests/integration/auth-*.test.ts` ve ayrı bir e2e dosyasının sahası), yalnızca bu
+ * fixture'ların ARDINDAN normal `/auth/login` ile gerçek bir token alabilmesi için
+ * `emailVerifiedAt` doğrudan yazılır. `email` üzerinden çalışır (userId'ye gerek YOKTUR) —
+ * `getFixtureUserToken`/`ensureAdminSession` register yanıtından artık userId ALAMIYOR.
+ */
+function markEmailVerifiedDirectly(email: string): void {
+  const esc = (value: string) => value.replace(/'/g, "''");
+  const sql = `UPDATE "users" SET "emailVerifiedAt" = now() WHERE email = '${esc(email.toLowerCase())}';`;
+  execFileSync("npx", ["prisma", "db", "execute", "--stdin", `--url=${E2E_DATABASE_URL}`], {
+    cwd: BACKEND_DIR,
+    input: sql,
+    stdio: ["pipe", "pipe", "pipe"],
+    shell: process.platform === "win32",
+  });
+}
+
 // `/auth/login` ve `/auth/register` sabit 5 istek/dk IP başına sınırlıdır
 // (`backend/src/modules/auth/auth.routes.ts` `AUTH_RATE_LIMIT`, env'den bağımsız). Aynı test
 // koşumunda onlarca fixture çağrısı bu limiti anında aşar — bu yüzden `auth.setup.ts` TEK SEFER
@@ -54,22 +77,25 @@ export async function ensureAdminSession(
     body: JSON.stringify({ email, password, name: "QA E2E Admin" }),
   });
 
-  let session: AdminSession;
-  if (registerRes.ok) {
-    const body = (await registerRes.json()) as {
-      data: { user: { id: string; role: string }; tokens: { accessToken: string } };
-    };
-    session = { email, password, accessToken: body.data.tokens.accessToken, userId: body.data.user.id };
-  } else {
-    // Zaten kayıtlı (409) — login ile devam.
-    const loginRes = await fetch(`${API_BASE_URL}/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
-    const body = await json<{ data: { user: { id: string }; tokens: { accessToken: string } } }>(loginRes);
-    session = { email, password, accessToken: body.data.tokens.accessToken, userId: body.data.user.id };
+  // §2.1 (bağlayıcı) — `POST /auth/register` artık `202 verificationRequired` döner, token YOKTUR.
+  // 409 (zaten kayıtlı) DIŞINDA bir hata varsa (register YENİ kullanıcı için 202 dışında bir şey
+  // dönerse) `json()` fırlatır — sessizce login'e düşülmez.
+  if (!registerRes.ok && registerRes.status !== 409) {
+    await json(registerRes);
   }
+  if (registerRes.status === 202) {
+    markEmailVerifiedDirectly(email);
+  }
+
+  // Register (202, taze kullanıcı) VEYA 409 (zaten kayıtlı) — her iki dalda da token'ı GERÇEK
+  // `/auth/login` üretir (bkz. yukarıdaki `markEmailVerifiedDirectly` başlığı).
+  const loginRes = await fetch(`${API_BASE_URL}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  const body = await json<{ data: { user: { id: string }; tokens: { accessToken: string } } }>(loginRes);
+  const session: AdminSession = { email, password, accessToken: body.data.tokens.accessToken, userId: body.data.user.id };
 
   await mkdir(path.dirname(TOKEN_CACHE_PATH), { recursive: true });
   await writeFile(TOKEN_CACHE_PATH, JSON.stringify(session), "utf-8");
@@ -90,9 +116,13 @@ export async function getFixtureUserToken(email: string, password: string, name:
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password, name }),
   });
-  if (registerRes.ok) {
-    const body = (await registerRes.json()) as { data: { tokens: { accessToken: string } } };
-    return body.data.tokens.accessToken;
+  // §2.1 (bağlayıcı) — `202 verificationRequired`, token YOK (bkz. `markEmailVerifiedDirectly`
+  // başlığı). 409 dışında bir hata varsa sessizce login'e düşülmez.
+  if (!registerRes.ok && registerRes.status !== 409) {
+    await json(registerRes);
+  }
+  if (registerRes.status === 202) {
+    markEmailVerifiedDirectly(email);
   }
   const loginRes = await fetch(`${API_BASE_URL}/auth/login`, {
     method: "POST",
