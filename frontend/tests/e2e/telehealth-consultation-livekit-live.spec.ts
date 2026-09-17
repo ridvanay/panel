@@ -418,6 +418,19 @@ test.describe("qa-agent — iki taraflı gerçek video doğrulaması (2026-09-17
       }
       await assertBothVideosRendering(doctorPage);
       await assertBothVideosRendering(patientPage);
+
+      // Bug-fix turu (2026-09-18) — "hasta sürekli odadan atılıyor" şikayetinin karşılığı olarak
+      // `ConsultationRoomLoaded::handleDisconnected` eklendi (`<LiveKitRoom key={meeting.token}>`
+      // ile temiz remount + tek seferlik otomatik yeniden bağlanma). Bu test o mantığı GERÇEK bir
+      // zorla-kopma senaryosuyla tetiklemez (LiveKit admin API'sine ihtiyaç duyar, paylaşılan yerel
+      // LiveKit konteynerini yeniden başlatmak riskli/yıkıcı olurdu — bkz. final rapor) — burada
+      // yalnızca birkaç saniye sonra hastanın HÂLÂ "Bağlandı" durumunda ve HÂLÂ karşı tarafın
+      // videosunu render ediyor olduğu doğrulanır (yeni `key` prop'unun GEREKSİZ bir remount/
+      // titreşim döngüsüne yol AÇMADIĞININ, önceki assertion'ların tesadüfen yakaladığı anlık bir
+      // kareye DEĞİL, kararlı bir bağlantıya işaret ettiğinin kanıtı).
+      await patientPage.waitForTimeout(5_000);
+      await expect(patientPage.getByText("Bağlandı", { exact: true })).toBeVisible();
+      await assertBothVideosRendering(patientPage);
     } finally {
       await doctorContext.close();
       await patientContext.close();

@@ -63,6 +63,9 @@ describe("modules/telehealth/lib/livekit", () => {
       expect(claims.video?.room).toBe("room_deadbeef");
       expect(claims.video?.canPublish).toBe(true);
       expect(claims.video?.canSubscribe).toBe(true);
+      // Bug-fix turu (2026-09-18) — hasta/doktor AYRIMI OLMADAN açıkça verilir (kayıt sinyali
+      // `RoomEvent.DataReceived` her iki katılımcı için de çalışsın diye, bkz. livekit.ts yorumu).
+      expect(claims.video?.canPublishData).toBe(true);
       expect(claims.video?.roomCreate).toBeFalsy();
       expect(claims.video?.roomAdmin).toBeFalsy();
       expect(claims.video?.roomList).toBeFalsy();

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ComponentType } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import "@livekit/components-styles";
 import {
   DisconnectButton,
@@ -13,7 +13,7 @@ import {
   useTrackToggle,
   useTracks,
 } from "@livekit/components-react";
-import { ConnectionState, RoomEvent, Track } from "livekit-client";
+import { ConnectionState, DisconnectReason, RoomEvent, Track } from "livekit-client";
 import {
   AlertTriangle,
   Loader2,
@@ -503,7 +503,7 @@ function RecordingSignalBridge({
 
 interface ConsultationVideoRoomProps {
   meeting: MeetingTokenResponse;
-  onLeave: () => void;
+  onLeave: (reason?: DisconnectReason) => void;
   appointmentId: string;
   accessToken?: string;
   isDoctor: boolean;
@@ -534,6 +534,12 @@ function ConsultationVideoRoom({
 }: ConsultationVideoRoomProps) {
   return (
     <LiveKitRoom
+      // Bug-fix turu (2026-09-18, frontend-agent) — `key`, token değiştiğinde (ilk katılım VE
+      // aşağıdaki `handleDisconnected` otomatik yeniden bağlanması) React'in `<LiveKitRoom>`'u
+      // TEMİZ bir şekilde unmount+remount etmesini GARANTİ EDER; kütüphanenin kendi iç prop-diff
+      // mantığına güvenmek yerine (aynı bileşen örneğinde eski WebRTC/sinyal durumunun kalıntısı
+      // KALMASIN diye).
+      key={meeting.token}
       token={meeting.token}
       serverUrl={meeting.serverUrl}
       video
@@ -633,7 +639,15 @@ function ConsultationRoomLoaded({ appointment, accessToken }: { appointment: App
 
   const consentDialogOpen = !isDoctor && recording?.status === "PENDING_CONSENT" && dismissedConsentId !== recording.id;
 
+  // Bug-fix turu (2026-09-18, frontend-agent) — bir manuel katılım başına EN FAZLA bir kez
+  // otomatik yeniden bağlanma dener (bkz. `handleDisconnected`); `handleJoin` her ÇAĞRILDIĞINDA
+  // sıfırlanır. Sonsuz yeniden-bağlanma döngüsünü (ör. kalıcı olarak bozuk bir ağda tekrar tekrar
+  // `meeting-token` çağırıp hız sınırına çarpmak) ÖNLER — `useState` DEĞİL `useRef`: bu bayracın
+  // değişmesi kendi başına bir yeniden render'ı TETİKLEMEMELİ.
+  const autoReconnectedRef = useRef(false);
+
   async function handleJoin() {
+    autoReconnectedRef.current = false;
     setRequesting(true);
     setJoinError(null);
     try {
@@ -651,6 +665,32 @@ function ConsultationRoomLoaded({ appointment, accessToken }: { appointment: App
     }
   }
 
+  /**
+   * Bug-fix turu (2026-09-18, frontend-agent) — ESKİDEN her `RoomEvent.Disconnected` doğrudan
+   * `setMeeting(null)` ile kullanıcıyı ön-katılım ekranına atıyordu; bu, kullanıcının KENDİ
+   * isteğiyle ayrılması (`DisconnectReason.CLIENT_INITIATED`, "Görüşmeden ayrıl" butonu) İLE
+   * geçici bir ağ/sinyal kopması (`SIGNAL_CLOSE`/`JOIN_FAILURE`/`STATE_MISMATCH` vb. — LiveKit'in
+   * KENDİ dahili yeniden bağlanma denemeleri TÜKENDİĞİNDE gelir, bkz. `@livekit/components-react`
+   * `onDisconnected` tipi) arasında AYRIM YAPMIYORDU. Şimdi yalnızca istemci-kaynaklı ayrılışta
+   * hemen ön-katılım ekranına dönülür; DİĞER TÜM nedenlerde taze bir `meeting-token` alınıp
+   * (`<LiveKitRoom key={meeting.token}>` sayesinde TEMİZ bir remount ile) tek seferlik SESSİZ bir
+   * yeniden bağlanma denenir — yalnızca BU da başarısız olursa kullanıcı ön-katılım ekranına, açık
+   * bir hata mesajıyla döner. Hastanın "sürekli odadan atılması" şikayetinin karşılığı budur.
+   */
+  async function handleDisconnected(reason?: DisconnectReason) {
+    if (reason !== DisconnectReason.CLIENT_INITIATED && !autoReconnectedRef.current) {
+      autoReconnectedRef.current = true;
+      try {
+        const token = await telehealthApi.requestMeetingToken(appointment.id, accessToken);
+        setMeeting(token);
+        return;
+      } catch {
+        setJoinError("Görüşme bağlantısı beklenmedik şekilde kesildi. Lütfen tekrar katılın.");
+      }
+    }
+    setMeeting(null);
+  }
+
   return (
     <div className="space-y-6">
       <div className="rounded-[var(--site-radius)] border border-border bg-surface p-5">
@@ -665,7 +705,7 @@ function ConsultationRoomLoaded({ appointment, accessToken }: { appointment: App
       {meeting ? (
         <ConsultationVideoRoom
           meeting={meeting}
-          onLeave={() => setMeeting(null)}
+          onLeave={(reason) => void handleDisconnected(reason)}
           appointmentId={appointment.id}
           accessToken={accessToken}
           isDoctor={isDoctor}

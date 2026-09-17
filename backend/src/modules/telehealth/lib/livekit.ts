@@ -81,6 +81,11 @@ export async function createMeetingToken(
     room: input.roomName,
     canPublish: true,
     canSubscribe: true,
+    // Bug-fix turu (2026-09-18) — daha önce zımnen (SDK varsayılanı) veriliyordu; hasta/doktor
+    // AYRIMI OLMADAN açıkça yazılır ki kayıt sinyali (`RecordingSignalBridge`'in `RoomEvent.
+    // DataReceived` dinleyicisi, `telehealth.recording` topic'i) HER İKİ katılımcı için de garanti
+    // altında olsun.
+    canPublishData: true,
   });
 
   const token = await accessToken.toJwt();
