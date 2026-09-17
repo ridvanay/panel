@@ -26,8 +26,14 @@ const EnvSchema = z.object({
   // adıyla erişilir (`FRONTEND_URL`'den KASITLI OLARAK AYRI — bkz. o alanın yorumu); tanımsızsa
   // `FRONTEND_URL`'e düşer (bare-metal/tek-host geliştirmede ikisi zaten aynı adrestir).
   INTERNAL_FRONTEND_URL: z.string().url().optional(),
-  // Yüklenen medya URL'lerini mutlaklaştırmak için kullanılır (bkz. modules/media).
-  PUBLIC_URL: z.string().url().default("http://localhost:4000"),
+  // Yüklenen medya URL'lerini mutlaklaştırmak için kullanılır (`mappers/index.ts::absolutizeMediaUrl`
+  // — Medya Kütüphanesi/ürün görselleri/doktor avatarları HEPSİ bu TEK fonksiyondan geçer). qa-agent
+  // bulgusu (2026-09-17): eskiden `.default("http://localhost:4000")` VARDI — production'da bu
+  // değişken unutulunca SESSİZCE bu varsayılana düşülüyor, gerçek kullanıcıların tarayıcısı
+  // `http://localhost:4000/uploads/...`'a (KENDİ makinesi) istek atıp ERR_CONNECTION_REFUSED/404
+  // alıyordu. `DATABASE_URL` İLE AYNI ilke uygulanır: varsayılan YOK, eksikse boot ANINDA gürültülü
+  // hatayla durur (sessiz yanlış veri yerine).
+  PUBLIC_URL: z.string().url("PUBLIC_URL geçerli bir URL olmalı (medya/dosya URL'lerini mutlaklaştırmak için kullanılır)."),
 
   DATABASE_URL: z.string().min(1, "DATABASE_URL zorunlu."),
 
@@ -244,6 +250,21 @@ if (isProd && env.ENABLE_DEMO_PAYMENTS) {
   console.error(
     "Ortam değişkenleri geçersiz: ENABLE_DEMO_PAYMENTS=true, NODE_ENV=production ile birlikte KULLANILAMAZ " +
       "(geliştirme/demo ödeme simülatörü üretimde asla açılamaz — bkz. .claude/architect-scope-demo-payment-doctor-counters.md)."
+  );
+  process.exit(1);
+}
+
+// qa-agent bulgusu (2026-09-17) — `PUBLIC_URL` yukarıda ZORUNLU kılındı (varsayılan YOK) ama biri
+// production'da onu YİNE DE yanlışlıkla `http://localhost:...`'a ayarlayabilir (ör. `.env` dosyası
+// kopyala-yapıştır hatası) — bu durumda Medya Kütüphanesi/ürün görselleri/doktor avatarları GERÇEK
+// kullanıcıların tarayıcısına `http://localhost:.../uploads/...` (kendi makineleri) olarak gider.
+// `ENABLE_DEMO_PAYMENTS` İLE AYNI ilke: sessiz yanlış veri yerine gürültülü boot hatası.
+const publicUrlHostname = new URL(env.PUBLIC_URL).hostname;
+if (isProd && (publicUrlHostname === "localhost" || publicUrlHostname === "127.0.0.1")) {
+  // eslint-disable-next-line no-console
+  console.error(
+    `Ortam değişkenleri geçersiz: PUBLIC_URL production'da "${publicUrlHostname}" olamaz ` +
+      "(medya/dosya URL'leri gerçek kullanıcıların tarayıcısına localhost olarak gider — gerçek genel erişilebilir domain'i girin)."
   );
   process.exit(1);
 }

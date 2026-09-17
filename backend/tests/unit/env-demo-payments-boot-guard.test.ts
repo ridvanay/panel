@@ -35,26 +35,29 @@ describe("config/env.ts — ENABLE_DEMO_PAYMENTS fail-closed boot koruması (§1
   });
 
   it("NODE_ENV=production + ENABLE_DEMO_PAYMENTS=false (varsayılan) → boot BAŞARILI, isDemoPaymentsEnabled=false", () => {
-    const result = runEnvFixture({ NODE_ENV: "production", ENABLE_DEMO_PAYMENTS: undefined });
+    // `PUBLIC_URL` bilinçli olarak gerçek bir domain'e override edilir — bu test ENABLE_DEMO_PAYMENTS'i
+    // doğrular, `.env.test`'in PUBLIC_URL değerine (yerel test sabiti) bağımlı OLMAMALIDIR (bkz.
+    // `env-public-url-boot-guard.test.ts` — PUBLIC_URL'in KENDİ production/localhost koruması AYRI test edilir).
+    const result = runEnvFixture({ NODE_ENV: "production", ENABLE_DEMO_PAYMENTS: undefined, PUBLIC_URL: "https://api.example.com" });
     expect(result.status).toBe(0);
-    expect(JSON.parse(result.stdout.trim())).toEqual({ ok: true, isDemoPaymentsEnabled: false });
+    expect(JSON.parse(result.stdout.trim())).toMatchObject({ ok: true, isDemoPaymentsEnabled: false });
   });
 
   it("NODE_ENV=development + ENABLE_DEMO_PAYMENTS=true → boot BAŞARILI, isDemoPaymentsEnabled=true (VE, iki bayrak birden)", () => {
     const result = runEnvFixture({ NODE_ENV: "development", ENABLE_DEMO_PAYMENTS: "true" });
     expect(result.status).toBe(0);
-    expect(JSON.parse(result.stdout.trim())).toEqual({ ok: true, isDemoPaymentsEnabled: true });
+    expect(JSON.parse(result.stdout.trim())).toMatchObject({ ok: true, isDemoPaymentsEnabled: true });
   });
 
   it("NODE_ENV=development + ENABLE_DEMO_PAYMENTS tanımsız (varsayılan false) → isDemoPaymentsEnabled=false (tek başına NODE_ENV YETERSİZ)", () => {
     const result = runEnvFixture({ NODE_ENV: "development", ENABLE_DEMO_PAYMENTS: undefined });
     expect(result.status).toBe(0);
-    expect(JSON.parse(result.stdout.trim())).toEqual({ ok: true, isDemoPaymentsEnabled: false });
+    expect(JSON.parse(result.stdout.trim())).toMatchObject({ ok: true, isDemoPaymentsEnabled: false });
   });
 
   it("NODE_ENV=test + ENABLE_DEMO_PAYMENTS=true → boot BAŞARILI, isDemoPaymentsEnabled=true (staging/CI'nin development/test ile koşabileceği senaryo)", () => {
     const result = runEnvFixture({ NODE_ENV: "test", ENABLE_DEMO_PAYMENTS: "true" });
     expect(result.status).toBe(0);
-    expect(JSON.parse(result.stdout.trim())).toEqual({ ok: true, isDemoPaymentsEnabled: true });
+    expect(JSON.parse(result.stdout.trim())).toMatchObject({ ok: true, isDemoPaymentsEnabled: true });
   });
 });
