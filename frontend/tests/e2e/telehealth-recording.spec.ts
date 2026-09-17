@@ -92,12 +92,13 @@ let closeDoctorSession: () => Promise<void>;
 
 /** `telehealth-portal-isolation.spec.ts::loginDoctorDirectlyWithTwoFactor` İLE AYNI desen, 2FA
  *  ADIMI OLMADAN — bu dosyanın doktor fixture'ı hiç 2FA etkinleştirmez (bu testin odağı DEĞİL).
- *  `support/admin-session.ts::createAuthenticatedPageAs` KULLANILMAZ: o `/dashboard`'a yönlendirme
- *  bekler, ama `resolvePostLoginPath` (telehealth AÇIK + `doctorProfileId` dolu) düz `/login`'den
- *  giren bir doktoru `/doctor`'a yönlendirir (bkz. `lib/post-login-destination.ts`) — yanlış
- *  bekleme `waitForURL` timeout'una yol açardı. Kamera/mikrofon izinleri baştan verilir (`<LiveKitRoom
- *  video audio>` gerçek `getUserMedia` isteyebilir — izin İSTEMİ olmadan sessizce reddedilmesi
- *  yerine, mevcutsa gerçek bir sahte cihaz kullanılabilsin/izin diyaloğu hiç açılmasın diye). */
+ *  `support/admin-session.ts::createAuthenticatedPageAs` KULLANILMAZ: qa-agent GÜNCELLEMESİ
+ *  (2026-09-17) — o yardımcı artık `/dashboard`'a ÖZGÜ bir bekleme YAPMIYOR (rol-agnostik, `/login`'den
+ *  ayrılmayı bekliyor), ama YİNE DE burada kullanılamaz çünkü kendi `browser.newContext()`'ini
+ *  `permissions: ["camera", "microphone"]` OLMADAN açıyor — bu dosyanın doktor context'i bu izinlerle
+ *  baştan açılmalıdır (`<LiveKitRoom video audio>` gerçek `getUserMedia` isteyebilir — izin İSTEMİ
+ *  olmadan sessizce reddedilmesi yerine, mevcutsa gerçek bir sahte cihaz kullanılabilsin/izin diyaloğu
+ *  hiç açılmasın diye). */
 async function loginDoctorDirectly(browser: Browser, email: string, password: string): Promise<{ page: Page; close: () => Promise<void> }> {
   const context = await browser.newContext({
     baseURL: process.env.E2E_FRONTEND_URL ?? "http://localhost:3100",

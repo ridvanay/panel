@@ -49,7 +49,13 @@ export async function createAuthenticatedPageAs(
   await page.getByLabel("E-posta").fill(email);
   await page.getByLabel("Şifre").fill(password);
   await page.getByRole("button", { name: "Giriş yap" }).click();
-  await page.waitForURL(/\/dashboard/, { timeout: 15_000 });
+  // qa-agent GÜNCELLEMESİ (2026-09-17, `/dashboard` emekliliği) — bu yardımcı ADMIN/EDITOR/MANAGER
+  // (panel → `/admin`) VE hasta/müşteri (USER/CUSTOMER → `/patient/appointments`) hesapları için
+  // AYNI ANDA kullanılıyor (bkz. dosya genelindeki çağıranlar); `login-form.tsx::goToDestination`
+  // hedefe DOĞRUDAN `router.replace` eder, `/dashboard` hiç ARA durak OLMAZ. Bu yüzden sabit bir
+  // hedef regex'i YERİNE, `/login`'den AYRILMAYI bekleyen rol-agnostik bir predicate kullanılır
+  // (doktor hesapları BU yardımcıyla ÇAĞRILMAZ — bkz. grep doğrulaması, qa-agent görev raporu).
+  await page.waitForURL((url) => url.pathname !== "/login", { timeout: 15_000 });
 
   return {
     page,

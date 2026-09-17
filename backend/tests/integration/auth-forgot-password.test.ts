@@ -68,4 +68,39 @@ describe("POST /auth/forgot-password — SMTP yapılandırılmadan (test ortamı
     expect(res.statusCode).toBe(502);
     expect(res.json().error.code).toBe("EMAIL_DELIVERY_FAILED");
   });
+
+  /**
+   * Bug-fix turu (2026-09-18) — `auth.service.ts::logDevFallbackResetLink` YALNIZCA
+   * `NODE_ENV === "development"` iken sıfırlama bağlantısını loglar (`logDevFallbackOtpCode`
+   * ile AYNI güvenlik disiplini). Bu test suite `NODE_ENV=test` ile çalışır — SMTP gönderimi
+   * yukarıdaki testte olduğu gibi doğal olarak başarısız olur (`EmailDeliveryError`), yani
+   * `forgotPassword()` çağrısı bu fonksiyonun catch dalından geçer. Test ortamında (ve
+   * production'da) sıfırlama bağlantısının/token'ın HİÇBİR log satırına yazılmadığını ve
+   * hatanın hâlâ 502 olarak yükseldiğini (sessizce yutulmadığını) doğrular.
+   */
+  it("reset link is NOT logged in test/production environment (dev-only escape hatch) and the 502 is still thrown", async () => {
+    const user = await registerTestUser(app, { email: "frank@example.com" });
+
+    const warnCalls: unknown[][] = [];
+    const originalWarn = app.log.warn.bind(app.log);
+    app.log.warn = ((...args: unknown[]) => {
+      warnCalls.push(args);
+      return (originalWarn as (...a: unknown[]) => unknown)(...args);
+    }) as typeof app.log.warn;
+
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/auth/forgot-password",
+        payload: { email: user.email },
+      });
+      expect(res.statusCode).toBe(502);
+      expect(res.json().error.code).toBe("EMAIL_DELIVERY_FAILED");
+    } finally {
+      app.log.warn = originalWarn;
+    }
+
+    expect(warnCalls.some((args) => JSON.stringify(args).includes("AUTH_PASSWORD_RESET"))).toBe(false);
+    expect(warnCalls.some((args) => JSON.stringify(args).includes("reset-password?token="))).toBe(false);
+  });
 });

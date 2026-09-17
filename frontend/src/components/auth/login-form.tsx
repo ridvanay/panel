@@ -88,7 +88,7 @@ export function LoginForm({ variant = "default" }: LoginFormProps) {
       }
     }
 
-    const destination = resolvePostLoginPath({ next, doctorProfileId: user.doctorProfileId, telehealthEnabled });
+    const destination = resolvePostLoginPath({ next, doctorProfileId: user.doctorProfileId, telehealthEnabled, role: user.role });
     if (isSubdomainModeEnabled() && isDoctorPortalPath(destination) && !isDoctorHostname(window.location.hostname)) {
       window.location.assign(toDoctorOrigin(destination));
       return;

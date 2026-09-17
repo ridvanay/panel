@@ -39,6 +39,21 @@ function logDevFallbackOtpCode(app: FastifyInstance, userId: string, email: stri
   app.log.warn({ userId, email, code }, "[AUTH_OTP] E-posta gönderilemedi (yalnızca dev ortamı) — doğrulama kodu yukarıda");
 }
 
+/**
+ * `logDevFallbackOtpCode` ile AYNI güvenlik disiplini, `forgotPassword` için — YALNIZCA
+ * `NODE_ENV === "development"` iken (asla production/test) çalışır. `forgotPassword`,
+ * OTP akışının AKSİNE, gerçek SMTP hatasını BİLEREK yutmaz (aşağıdaki çağrı yeri hatayı
+ * yine `throw` eder) — bu fonksiyon SADECE geliştiriciye linki görmeden test etmeye devam
+ * edebileceği bir kaçış kapısı ekler, hatayı yutma/rethrow sözleşmesini DEĞİŞTİRMEZ.
+ *
+ * Gerçek `resetUrl` (token içeren TAM link) loglanır — ham token AYRICA loglanmaz, sabit/
+ * evrensel bir fallback değer İCAT EDİLMEZ (bkz. `logDevFallbackOtpCode` yorumu, KARAR 1).
+ */
+function logDevFallbackResetLink(app: FastifyInstance, userId: string, email: string, resetUrl: string): void {
+  if (env.NODE_ENV !== "development") return;
+  app.log.warn({ userId, email, resetUrl }, "[AUTH_PASSWORD_RESET] E-posta gönderilemedi (yalnızca dev ortamı) — sıfırlama bağlantısı yukarıda");
+}
+
 export interface TokenIssue {
   accessToken: string;
   accessTokenExpiresAt: Date;
@@ -431,7 +446,14 @@ export async function forgotPassword(app: FastifyInstance, email: string) {
   // Gerçek SMTP hatası (kullanıcı var, gönderim başarısız) burada YUTULMAZ — sendMail() zaten
   // app.log.error ile stack + hedef adresi (asla token/şifre) loglar ve EmailDeliveryError (502)
   // fırlatır; bu hata route'a kadar yükselip anlamlı bir hata olarak döner (bkz. lib/errors.ts).
-  await sendPasswordResetEmail(app, { email: user.email, name: user.name }, resetUrl);
+  try {
+    await sendPasswordResetEmail(app, { email: user.email, name: user.name }, resetUrl);
+  } catch (err) {
+    // Dev-only kaçış kapısı (bkz. logDevFallbackResetLink) — hata YUTULMAZ, aşağıda yeniden
+    // fırlatılır. Bu try/catch SADECE bir log satırı eklemek için var, sözleşmeyi bozmaz.
+    logDevFallbackResetLink(app, user.id, user.email, resetUrl);
+    throw err;
+  }
 }
 
 export async function resetPassword(app: FastifyInstance, rawToken: string, newPassword: string) {

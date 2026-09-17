@@ -20,10 +20,10 @@ export const metadata: Metadata = {
   // Relative OG image/canonical URL'lerinin doğru mutlak URL'e çözümlenmesi için gerekli.
   metadataBase: new URL(SITE_URL),
   title: {
-    default: "SaaS Platform",
-    template: "%s · SaaS Platform",
+    default: "WM Health Istanbul",
+    template: "%s · WM Health Istanbul",
   },
-  description: "Ekip ve organizasyon yönetimi için modern SaaS platformu.",
+  description: "Uzman doktorlarla güvenli online görüşme ve randevu platformu.",
 };
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

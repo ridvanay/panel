@@ -56,7 +56,7 @@ export function FallbackHome() {
       </main>
 
       <footer className="border-t border-border py-8 text-center text-sm text-foreground/50">
-        © {new Date().getFullYear()} SaaS Platform. Tüm hakları saklıdır.
+        © {new Date().getFullYear()} WM Health Istanbul. Tüm hakları saklıdır.
       </footer>
     </div>
   );

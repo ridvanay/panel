@@ -12,8 +12,12 @@ export function DashboardNavbar() {
   return (
     <header className="border-b border-border bg-surface">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
+        {/* `/dashboard/layout.tsx` `<SiteBrandingProvider>` SAĞLAMAZ (yalnızca `(auth)`/`activate-account`/
+            `(doctor)` ağaçlarında sağlanıyor, bkz. `context/site-branding-context.tsx`) — `useSiteBranding()`
+            burada Provider'sız çağrılırsa fırlatır, bu yüzden `auth-page-shell.tsx`'teki AYNI literal
+            fallback ismi kullanılır. */}
         <Link href="/dashboard" className="text-sm font-semibold text-foreground">
-          SaaS Platform
+          WM Health Istanbul
         </Link>
 
         <div className="flex items-center gap-3">

@@ -231,7 +231,9 @@ test("madde 2: /patient/bookings/{id}/invoice — GERÇEK hard-navigate (yeni sa
     await loginPage.getByLabel("E-posta").fill(PATIENT_EMAIL);
     await loginPage.getByLabel("Şifre").fill(FIXTURE_PASSWORD);
     await loginPage.getByRole("button", { name: "Giriş yap" }).click();
-    await loginPage.waitForURL(/\/(dashboard|patient)/, { timeout: 15_000 });
+    // qa-agent GÜNCELLEMESİ (2026-09-17, `/dashboard` emekliliği) — panel-DIŞI (USER/CUSTOMER) hasta
+    // hesabı artık DOĞRUDAN `/patient/appointments`'a düşer, `/dashboard`'a HİÇ uğramaz.
+    await loginPage.waitForURL(/\/patient/, { timeout: 15_000 });
     // httpOnly refresh çerezi context'te KALICIDIR — bu sayfayı kapatmak SPA/JS bellek durumunu
     // (bellekteki access token DAHİL, bkz. `lib/api/token-store.ts`) TAMAMEN atar.
     await loginPage.close();
@@ -274,7 +276,8 @@ async function loginPatient(browser: Browser) {
   await page.getByLabel("E-posta").fill(PATIENT_EMAIL);
   await page.getByLabel("Şifre").fill(FIXTURE_PASSWORD);
   await page.getByRole("button", { name: "Giriş yap" }).click();
-  await page.waitForURL(/\/(dashboard|patient)/, { timeout: 15_000 });
+  // qa-agent GÜNCELLEMESİ (2026-09-17, `/dashboard` emekliliği) — bkz. yukarıdaki AYNI notu.
+  await page.waitForURL(/\/patient/, { timeout: 15_000 });
   return { page, close: () => context.close() };
 }
 

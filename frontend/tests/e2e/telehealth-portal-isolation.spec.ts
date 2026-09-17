@@ -293,8 +293,10 @@ test("madde 2: hasta girişinde header 'Randevularım' linki /patient/appointmen
 }) => {
   const { page, close } = await createAuthenticatedPageAs(browser, PATIENT_USER_EMAIL, FIXTURE_PASSWORD);
   try {
-    // `createAuthenticatedPageAs` `/dashboard`'a yönlendirilmeyi bekler (doktor OLMAYAN hesap için
-    // mevcut/değişmeyen davranış) — header'ı görmek için site sayfasına geçilir.
+    // qa-agent GÜNCELLEMESİ (2026-09-17, `/dashboard` emekliliği) — `createAuthenticatedPageAs`
+    // artık `/login`'den ayrılmayı bekler; bu panel-DIŞI (USER/CUSTOMER) hesap için gerçek hedef
+    // `/patient/appointments`dır (`/dashboard`'a HİÇ uğranmaz) — header'ı görmek için site
+    // sayfasına geçilir.
     await page.goto("/");
 
     await page.getByRole("button", { name: /^Hesabım,/ }).click();

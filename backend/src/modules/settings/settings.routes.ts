@@ -18,9 +18,9 @@ import { PermissionsMatrixDto, PermissionsMatrixSchema, UpdateSiteSettingsReques
 
 export const SETTINGS_ID = "singleton";
 export const DEFAULTS = {
-  siteName: "Site",
+  siteName: "WM Health Istanbul",
   logoUrl: null as string | null,
-  tagline: null as string | null,
+  tagline: "Uzman Doktorlarla Güvenli Online Görüşme" as string | null,
   headerLogoHeight: null as number | null,
   headerLogoMaxWidth: null as number | null,
   homePageId: null as string | null,

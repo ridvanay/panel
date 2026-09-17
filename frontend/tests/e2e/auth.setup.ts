@@ -18,8 +18,12 @@ setup("admin olarak giriş yap ve oturumu kaydet", async ({ page }) => {
   await page.getByLabel("Şifre").fill(password);
   await page.getByRole("button", { name: "Giriş yap" }).click();
 
-  await page.waitForURL(/\/dashboard/, { timeout: 15_000 });
-  await expect(page).toHaveURL(/\/dashboard/);
+  // qa-agent GÜNCELLEMESİ (2026-09-17, `/dashboard` emekliliği) — `ensureAdminSession()` ADMIN
+  // rolüyle giriş yapar; `resolvePostLoginPath` artık panel rolleri (`ADMIN`/`MANAGER`/`EDITOR`)
+  // için `/admin`'e (`/dashboard`'a DEĞİL) yönlendirir — `login-form.tsx::goToDestination` bu
+  // hedefe DOĞRUDAN `router.replace` eder, `/dashboard` hiç ARA durak OLMAZ.
+  await page.waitForURL(/\/admin/, { timeout: 15_000 });
+  await expect(page).toHaveURL(/\/admin/);
 
   await page.context().storageState({ path: ADMIN_STORAGE_STATE });
 });

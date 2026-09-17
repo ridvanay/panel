@@ -12,7 +12,7 @@
  * (mock API, gerçek backend yok) dosyalarının KAPSAMADIĞI "gerçek tarayıcıda buton tıklama →
  * gerçek ağ isteği → gerçek DB → tabloya yansıma" zincirini kapatır.
  */
-import { API_BASE_URL } from "./api";
+import { API_BASE_URL, markEmailVerifiedDirectly } from "./api";
 
 function authHeaders(token: string) {
   return { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
@@ -63,6 +63,20 @@ export interface FixtureAdminUser {
  * `resetFixtureUserToBaseline()` (aşağıda) her koşum SONUNDA/BAŞINDA kullanıcıyı DELETED bırakmak
  * yerine geri yükleyip USER/ACTIVE temel durumuna döndürür — bu fonksiyon o zemin üzerine
  * "yoksa oluştur" davranışını EKLER.
+ *
+ * qa-agent BULGUSU (bu ajan tarafından kendi test altyapısında bulunup DÜZELTİLDİ — proje kökü
+ * CLAUDE.md madde 3 "flaky testleri tolere etme, kaynağını bul ve düzelt"): `POST /auth/register`
+ * artık `202 verificationRequired` döner (`email VerifiedAt` NULL kalır) — bu fonksiyon ÖNCEDEN
+ * `markEmailVerifiedDirectly()`'yi HİÇ çağırmıyordu (yalnızca `support/api.ts::ensureAdminSession`/
+ * `getFixtureUserToken` çağırıyordu). Bir spec dosyası (`customer-portal-module-toggle.spec.ts`
+ * gibi) bu fonksiyonla kullanıcıyı OLUŞTURUP sonra `getFixtureUserToken()` ile token ALMAYA
+ * çalışırsa — ikinci çağrı `409` alır (kullanıcı zaten var) ve KENDİSİ DE doğrulamayı ATLAR (yalnızca
+ * TAZE `202`de doğrular) — sonuç: `emailVerifiedAt` SONSUZA KADAR NULL kalır, `POST /auth/login`
+ * `requiresEmailVerification: true` döner (token YOK) ve çağıran taraf `body.data.tokens` okurken
+ * `TypeError` alır. Düzeltme: `email` durumundan (202 TAZE / 409 ZATEN VAR) BAĞIMSIZ OLARAK HER
+ * ZAMAN `markEmailVerifiedDirectly()` çağrılır (idempotent SQL `UPDATE ... WHERE email = ...`,
+ * zaten doğrulanmışsa no-op) — `saas_e2e` paylaşımlı veritabanında önceki bir koşumdan kalmış
+ * doğrulanmamış bir fixture kullanıcısı bulunsa BİLE bu fonksiyon onu HER ZAMAN doğrular.
  */
 export async function registerFixtureUser(email: string, password: string, name: string): Promise<void> {
   const res = await fetch(`${API_BASE_URL}/auth/register`, {
@@ -70,8 +84,10 @@ export async function registerFixtureUser(email: string, password: string, name:
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password, name }),
   });
-  if (res.status === 409) return; // zaten var — `resetFixtureUserToBaseline()` temiz zemine getirmiş olmalı
-  await json(res);
+  if (res.status !== 409) {
+    await json(res); // 409 DIŞINDA bir hata varsa (yeni kullanıcı için 202 dışında bir şey) fırlatır.
+  }
+  markEmailVerifiedDirectly(email);
 }
 
 /**

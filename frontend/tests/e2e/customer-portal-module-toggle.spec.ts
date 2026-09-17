@@ -220,9 +220,11 @@ test("security-agent open-redirect fix — /login?next=//evil.com harici bir adr
   await page.getByLabel("E-posta").fill(CUSTOMER_EMAIL);
   await page.getByLabel("Şifre").fill(CUSTOMER_PASSWORD);
   await page.getByRole("button", { name: "Giriş yap" }).click();
-  // `isSafeInternalPath` reddeder -> güvenli varsayılan `/dashboard`'a düşer, `evil.com`'a HİÇ
-  // gitmez (harici bir navigasyon olsaydı `page.url()` origin'i değişirdi).
-  await page.waitForURL(/\/dashboard$/, { timeout: 15_000 });
+  // `isSafeInternalPath` reddeder -> güvenli varsayılan role göre belirlenir (qa-agent GÜNCELLEMESİ,
+  // 2026-09-17, `/dashboard` emekliliği) — bu kullanıcı `beforeAll`'daki webhook ile CUSTOMER rolüne
+  // terfi etmiştir (panel-DIŞI), bu yüzden `resolvePostLoginPath` `/patient/appointments`'a düşer,
+  // `evil.com`'a HİÇ gitmez (harici bir navigasyon olsaydı `page.url()` origin'i değişirdi).
+  await page.waitForURL(/\/patient\/appointments$/, { timeout: 15_000 });
   expect(new URL(page.url()).hostname).not.toContain("evil.com");
   await context.close();
 });

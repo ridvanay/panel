@@ -25,7 +25,7 @@ const API_BASE_URL = process.env.E2E_API_URL ?? "http://localhost:4001/api/v1";
  * `emailVerifiedAt` doğrudan yazılır. `email` üzerinden çalışır (userId'ye gerek YOKTUR) —
  * `getFixtureUserToken`/`ensureAdminSession` register yanıtından artık userId ALAMIYOR.
  */
-function markEmailVerifiedDirectly(email: string): void {
+export function markEmailVerifiedDirectly(email: string): void {
   const esc = (value: string) => value.replace(/'/g, "''");
   const sql = `UPDATE "users" SET "emailVerifiedAt" = now() WHERE email = '${esc(email.toLowerCase())}';`;
   execFileSync("npx", ["prisma", "db", "execute", "--stdin", `--url=${E2E_DATABASE_URL}`], {
