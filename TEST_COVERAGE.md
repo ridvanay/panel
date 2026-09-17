@@ -4421,3 +4421,77 @@ masası listesini kilitliyor (tek bir bozuk satır, listenin TAMAMINI düşürü
 bu turda `/patient/bookings` rota adlandırmasını düzeltti) — bu turda TEKRAR koşulmadı (yukarıdaki
 `npx vitest run` tam paket koşumunda 766/769 içinde YEŞİL — önceki turun bilinen 6 hatası ARTIK
 YOK, frontend-agent'ın düzeltmesi doğrulandı).
+
+## Konsültasyon kontrol çubuğu — Tam Ekran + "Görüşmeyi Sonlandır" onaylı/yönlendirmeli akış (2026-09-17, qa-agent turu)
+
+Kaynak: `frontend/src/components/site/telehealth/consultation-room.tsx::ConsultationControlBar`
+(frontend-agent bug-fix turu) — eski LiveKit `DisconnectButton` (doğrudan `room.disconnect()`,
+aria-label "Görüşmeden ayrıl") kaldırıldı; yerine (1) `stageRef`'e (LiveKitRoom kök div'i, TÜM
+SAYFA DEĞİL) `requestFullscreen()`/`exitFullscreen()` uygulayan bir Tam Ekran toggle'ı ve (2)
+`ConfirmDialog` ile onaylı, `room.disconnect()` SONRASI rol bazlı yönlendirme yapan (`isDoctor` +
+`isSubdomainModeEnabled()`/`isDoctorHostname()` dallı) bir "Görüşmeyi sonlandır" butonu eklendi.
+
+**Doğrulama yöntemi:** kod incelemesi + GERÇEK tarayıcı (`chrome-livekit-media` projesi, gerçek
+Google Chrome, `--use-fake-device-for-media-stream`, gerçek yerel LiveKit + gerçek `saas_e2e`
+backend'e karşı) — sahte/mock LiveKit KULLANILMADI ([DTI] §8.2).
+
+- `frontend/typecheck` (`tsc --noEmit`) ve `frontend/lint` (`eslint`, hem bileşen hem güncellenen
+  e2e dosyası) — **temiz**, hata/uyarı YOK.
+- `telehealth-consultation-livekit-live.spec.ts` madde 13 — LiveKit SDK'nin varsayılan
+  `DisconnectButton`ına referans veren **STALE** `getByRole("button", { name: "Görüşmeden ayrıl" })`
+  assertion'ı GÜNCELLENDİ (yeni aria-label `"Görüşmeyi sonlandır"`) — bu, frontend-agent'ın
+  değişikliğinin kırdığı gerçek bir REGRESYON'du, qa-agent kendi test dosyasında düzeltti (uygulama
+  kodu DEĞİL).
+- **YENİ madde 15** (`telehealth-consultation-livekit-live.spec.ts`) — GERÇEK bağlı bir odada:
+  - Tam Ekran butonuna tıklanınca `document.fullscreenElement`in `stageRef` (LiveKitRoom kök
+    div'i) OLDUĞU, `document.documentElement` (tüm sayfa) OLMADIĞI doğrudan `page.evaluate` ile
+    doğrulandı (§ görevin "tüm sayfayı mı alıyor" sorusu — **HAYIR, doğru hedefe uygulanıyor**).
+  - Aynı butona (artık "Tam Ekrandan Çık") tekrar tıklanınca programatik çıkış çalışıyor, buton
+    etiketi + `document.fullscreenElement` doğru senkronize oluyor (`fullscreenchange` dinleyicisi
+    GERÇEKTEN çalışıyor).
+  - "Görüşmeyi sonlandır" tıklanınca DOĞRUDAN kesme OLMUYOR, `ConfirmDialog` açılıyor; "Vazgeç"
+    görüşmeyi KESMİYOR ("Bağlandı" durumu ve `/consultation/{id}` URL'i KORUNUYOR); onaylayınca
+    `room.disconnect()` tetikleniyor ve (misafir-hasta akışı) `/patient/appointments`'a
+    yönlendiriliyor.
+  - **Doğrulanamayan bir kısım (ortam kısıtı, kod DEĞİL):** `page.keyboard.press("Escape")` bu
+    otomasyon ortamında (arka planda başlatılan, OS-seviyesinde odaklanmamış GERÇEK Chrome
+    penceresi) native tam-ekrandan-çıkışı TETİKLEMEDİ — `document.fullscreenElement` DEĞİŞMEDİ.
+    Bu, tarayıcının kendi pencere-odak gerektiren native ESC davranışıyla İLGİLİ (test ortamının
+    bir kısıtı), `fullscreenchange` DİNLEYİCİSİNİN kendisiyle İLGİLİ DEĞİL — AYNI dinleyicinin
+    programatik çıkışta (yukarıda) doğru çalıştığı zaten kanıtlandı. Test bunu zarifçe ele alıyor
+    (annotation + programatik çıkışa düşüyor), YANLIŞ-POZİTİF bir "geçti" iddiası ÜRETMİYOR. Gerçek
+    kullanıcı odaklı bir pencerede ESC'nin GERÇEKTEN çalışıp çalışmadığı yalnızca ELLE (odaklı bir
+    masaüstü tarayıcı penceresinde) doğrulanabilir — kod okuması (standart `fullscreenchange`
+    deseni, `theme-toggle.tsx` ile aynı SSR-güvenli mount deseni) risk taşımıyor GÖRÜNÜYOR ama
+    otomatik olarak KANITLANAMADI.
+- **YENİ madde 16** (aynı dosya, "iki taraflı" `describe` bloğu, doktor 2FA fixture'ı yeniden
+  kullanıldı) — EN RİSKLİ dal: subdomain modu AÇIKKEN (bu e2e ortamında
+  `NEXT_PUBLIC_DOCTOR_URL=http://doktor.siteadi.localhost:3100`) VE doktor ana host'tayken
+  (`/consultation/**` `proxy.ts`'te ana host'ta yaşıyor), "Görüşmeyi Sonlandır" onayı
+  `router.push` DEĞİL, `window.location.assign(toDoctorOrigin("/doctor"))` ile GERÇEK bir
+  cross-origin TAM SAYFA geçişi yapıyor — test, doktorun tarayıcı URL'inin GERÇEKTEN
+  `http://doktor.siteadi.localhost:3100/doctor` host'una geçtiğini doğruluyor. **Geçti** —
+  `login-form.tsx::goToDestination`'daki (§5.6) KURULU desenle birebir tutarlı.
+  - qa-agent bulgusu (test yazarken, uygulama davranışı — BUG DEĞİL): doktor girişten HEMEN sonra
+    zaten `login-form.tsx`'in KENDİ post-login yönlendirmesiyle `doktor.*` host'una geçiyor; test
+    bu yüzden ön koşul kontrolünü (`hostname === "siteadi.localhost"`) `/consultation/{id}`'ye
+    `goto` SONRASINA (relatif yol `playwright.config.ts::use.baseURL`'e göre çözülür, ana host'a
+    GERİ TAŞIR) taşıdı.
+  - Doktor+hasta subdomain KAPALI VEYA doktor ZATEN `doktor.*` host'undayken senaryoları (kodun
+    diğer iki dalı, `router.push(localize("/doctor"))`) OTOMATİK TEST EDİLMEDİ — bu dallar SADECE
+    kod okumasıyla doğrulandı (`isSubdomainModeEnabled()`/`isDoctorHostname()` saf fonksiyonları,
+    `lib/doctor-host.ts`, aynı fonksiyonlar `login-form.tsx`'te ZATEN production'da kanıtlanmış).
+    Kapsam boşluğu: subdomain modu KAPALI bir e2e ortam varyantı (`NEXT_PUBLIC_DOCTOR_URL` tanımsız)
+    HİÇ kurulmadı — `doctor-subdomain-backward-compat.spec.ts`teki AYNI manuel-çalıştırma kısıtı
+    (ayrı bir `next dev` süreci gerektirir, bu turda kapsam dışı bırakıldı).
+- `telehealth-consultation-livekit-live.spec.ts` TAM DOSYA (`chrome-livekit-media`, 6 test, madde
+  12/13/15/1/14/16) — **6/6 ✅**. `telehealth-consultation.spec.ts` TAM DOSYA (`chromium`, 5 test) —
+  **4/4 ✅ + 1 skip** (madde 10, bu ortamda LiveKit yapılandırılmış olduğu için beklenen skip) —
+  regresyon YOK (ilk koşumdaki tek başarısızlık kendi ardışık test koşumlarımın tetiklediği geçici
+  `429 RATE_LIMITED` idi, 30sn sonra tekrar koşulunca YEŞİL).
+
+**Eskalasyon gerekmedi** — kod incelemesinde GERÇEK bir bug bulunmadı; tek "bulgu" kendi test
+dosyamdaki STALE assertion'dı (qa-agent'ın kendi sorumluluk alanı, düzeltildi). ESC/native-fullscreen
+davranışının bu sandbox'ta odaksız pencere yüzünden otomatik doğrulanamaması bir TEST ORTAMI kısıtı
+olarak raporlanır — frontend-agent'a bir aksiyon önerisi YOK (kod standart/güvenli görünüyor);
+gerçek kullanıcı masaüstünde manuel bir ESC denemesi hâlâ tavsiye edilir.

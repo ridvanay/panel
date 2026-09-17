@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type RefObject } from "react";
+import { useRouter } from "next/navigation";
 import "@livekit/components-styles";
 import {
-  DisconnectButton,
   LiveKitRoom,
   ParticipantTile,
   RoomAudioRenderer,
@@ -17,8 +17,10 @@ import { ConnectionState, DisconnectReason, RoomEvent, Track } from "livekit-cli
 import {
   AlertTriangle,
   Loader2,
+  Maximize,
   Mic,
   MicOff,
+  Minimize,
   PhoneOff,
   ScreenShare,
   ScreenShareOff,
@@ -31,16 +33,19 @@ import {
 } from "lucide-react";
 import * as telehealthApi from "@/lib/api/telehealth";
 import { listPublicModules } from "@/lib/api/modules";
+import { isDoctorHostname, isSubdomainModeEnabled, toDoctorOrigin } from "@/lib/doctor-host";
 import { ApiClientError } from "@/lib/api/error";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { useAuthOptional } from "@/context/auth-context";
-import { useActiveLocaleCode } from "@/context/locale-alternates-context";
+import { useActiveLocaleCode, useLocalizePath } from "@/context/locale-alternates-context";
 import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import type { Appointment, ConsultationRecording, MeetingTokenResponse, RecordingSignalPayload } from "@/lib/api/types";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { RecordingConsentDialog } from "@/components/site/telehealth/recording-consent-dialog";
 import { RecordingIndicator } from "@/components/site/telehealth/recording-indicator";
 import { RecordingControls } from "@/components/site/telehealth/recording-controls";
@@ -272,15 +277,99 @@ function ToggleButton({
 
 /**
  * §5 — video üzerine bindirilen yüzen kontrol çubuğu (bu projedeki TEK sistemik "cam" istisnası).
- * `LiveKitRoom` içeriğinde (RoomContext) render edilir.
+ * `LiveKitRoom` içeriğinde (RoomContext) render edilir. `stageRef` video sahnesini (tüm sayfayı
+ * DEĞİL) tam ekrana almak için `ConsultationVideoRoom`'daki `<LiveKitRoom>` kök `div`'ine bağlıdır.
  */
-function ConsultationControlBar() {
+function ConsultationControlBar({
+  isDoctor,
+  stageRef,
+}: {
+  isDoctor: boolean;
+  stageRef: RefObject<HTMLDivElement | null>;
+}) {
   const mic = useTrackToggle({ source: Track.Source.Microphone });
   const camera = useTrackToggle({ source: Track.Source.Camera });
   const screenShare = useTrackToggle({ source: Track.Source.ScreenShare });
+  const room = useRoomContext();
+  const router = useRouter();
+  const localize = useLocalizePath();
+
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  // SSR'da `document` YOKTUR — başlangıç değeri `false` (server ile hydration uyuşmazlığı
+  // yaratmaz), mount sonrası gerçek tarayıcı desteğiyle güncellenir.
+  const [fullscreenSupported, setFullscreenSupported] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
+
+  useEffect(() => {
+    // `theme-toggle.tsx`'teki AYNI desen: tarayıcı özelliği tespiti sunucuda YAPILAMAZ, hydration
+    // uyuşmazlığını önlemek için ilk client render'dan SONRA bir kez senkron işaretlenir.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setFullscreenSupported(
+      typeof document !== "undefined" &&
+        document.fullscreenEnabled !== false &&
+        typeof document.documentElement.requestFullscreen === "function"
+    );
+  }, []);
+
+  // Kullanıcı ESC'ye basarak tam ekrandan çıkabilir — bu, bizim `toggleFullscreen`
+  // çağrımızdan GEÇMEZ, o yüzden state'i `fullscreenchange` olayından senkronize ederiz.
+  useEffect(() => {
+    function handleFullscreenChange() {
+      setIsFullscreen(document.fullscreenElement === stageRef.current);
+    }
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+  }, [stageRef]);
+
+  async function toggleFullscreen() {
+    const el = stageRef.current;
+    if (!el) return;
+    try {
+      if (document.fullscreenElement === el) {
+        await document.exitFullscreen();
+      } else {
+        await el.requestFullscreen();
+      }
+    } catch {
+      // Tarayıcı izni reddedebilir (ör. kullanıcı jesti dışında çağrı) — sessizce yok say.
+    }
+  }
+
+  /**
+   * `room.disconnect()` medya track'lerini durdurur ve `onDisconnected` (`handleDisconnected`,
+   * `CLIENT_INITIATED` nedeniyle) tetiklenir; yönlendirme bunun ARDINDAN yapılır ki sayfa geçişiyle
+   * yarış (race) oluşmasın.
+   *
+   * Bug-fix turu (2026-09-17, frontend-agent) — doktor dalı `login-form.tsx`'teki
+   * `goToDestination`'daki KURULU desenle (§5.6) birebir uyumlu hâle getirildi: subdomain modu
+   * AÇIKKEN VE şu an doktor host'unda DEĞİLKEN `/doctor` hedefine `router.push` ile GİDİLEMEZ
+   * (Next'in client router'ı cross-origin'i garanti izlemez) — bu durumda
+   * `window.location.assign(toDoctorOrigin("/doctor"))` ile TAM SAYFA cross-origin geçiş yapılır.
+   * Subdomain modu kapalıyken veya zaten doktor host'undaysak normal client-side navigasyon
+   * yeterlidir. Hasta dalı (`/patient/appointments`) subdomain kavramından bağımsızdır, DEĞİŞMEDİ.
+   */
+  async function handleConfirmEndCall() {
+    setDisconnecting(true);
+    try {
+      await room.disconnect();
+    } finally {
+      setDisconnecting(false);
+      setConfirmOpen(false);
+      if (isDoctor) {
+        if (isSubdomainModeEnabled() && !isDoctorHostname(window.location.hostname)) {
+          window.location.assign(toDoctorOrigin("/doctor"));
+        } else {
+          router.push(localize("/doctor"));
+        }
+      } else {
+        router.push(localize("/patient/appointments"));
+      }
+    }
+  }
 
   return (
-    <div className="absolute inset-x-0 bottom-6 flex items-center justify-center gap-3">
+    <div className="absolute inset-x-0 bottom-6 flex flex-wrap items-center justify-center gap-3 px-4">
       <div className="flex items-center gap-2 rounded-full bg-black/70 px-3 py-2 backdrop-blur-md">
         <ToggleButton
           enabled={mic.enabled}
@@ -309,13 +398,47 @@ function ConsultationControlBar() {
           OnIcon={ScreenShare}
           OffIcon={ScreenShareOff}
         />
+        {fullscreenSupported && (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
+                  aria-label={isFullscreen ? "Tam Ekrandan Çık" : "Tam Ekran"}
+                  onClick={() => void toggleFullscreen()}
+                  className="flex h-12 w-12 items-center justify-center rounded-full bg-white/15 text-white transition-colors duration-150 hover:bg-white/25"
+                />
+              }
+            >
+              {isFullscreen ? (
+                <Minimize className="h-5 w-5" aria-hidden="true" />
+              ) : (
+                <Maximize className="h-5 w-5" aria-hidden="true" />
+              )}
+            </TooltipTrigger>
+            <TooltipContent>{isFullscreen ? "Tam Ekrandan Çık" : "Tam Ekran"}</TooltipContent>
+          </Tooltip>
+        )}
       </div>
-      <DisconnectButton
-        aria-label="Görüşmeden ayrıl"
+      <button
+        type="button"
+        aria-label="Görüşmeyi sonlandır"
+        onClick={() => setConfirmOpen(true)}
         className="ml-2 flex h-14 w-14 items-center justify-center rounded-full bg-danger text-white transition-colors hover:bg-danger/90"
       >
         <PhoneOff className="h-5 w-5" aria-hidden="true" />
-      </DisconnectButton>
+      </button>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        tone="danger"
+        title="Görüşmeyi sonlandırmak istediğinize emin misiniz?"
+        confirmText="Görüşmeyi Sonlandır"
+        cancelText="Vazgeç"
+        loading={disconnecting}
+        onConfirm={() => void handleConfirmEndCall()}
+      />
     </div>
   );
 }
@@ -532,6 +655,11 @@ function ConsultationVideoRoom({
   onConsentResolved,
   onConsentDismiss,
 }: ConsultationVideoRoomProps) {
+  // Tam ekran hedefi: bu `<LiveKitRoom>`'un kök `div`'i (video sahnesi) — TÜM SAYFA DEĞİL.
+  // `LiveKitRoomProps` `React.RefAttributes<HTMLDivElement>` genişletir, yani ref doğrudan
+  // altındaki DOM düğümüne bağlanır (bkz. `@livekit/components-react` LiveKitRoom.d.ts).
+  const stageRef = useRef<HTMLDivElement | null>(null);
+
   return (
     <LiveKitRoom
       // Bug-fix turu (2026-09-18, frontend-agent) — `key`, token değiştiğinde (ilk katılım VE
@@ -540,6 +668,7 @@ function ConsultationVideoRoom({
       // mantığına güvenmek yerine (aynı bileşen örneğinde eski WebRTC/sinyal durumunun kalıntısı
       // KALMASIN diye).
       key={meeting.token}
+      ref={stageRef}
       token={meeting.token}
       serverUrl={meeting.serverUrl}
       video
@@ -560,7 +689,7 @@ function ConsultationVideoRoom({
         <RecordingIndicator status={recording?.status} />
       </div>
       <ConsultationStage />
-      <ConsultationControlBar />
+      <ConsultationControlBar isDoctor={isDoctor} stageRef={stageRef} />
 
       {isDoctor && recordingModuleEnabled && (
         <div className="absolute bottom-6 left-4 z-10">

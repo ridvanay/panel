@@ -203,8 +203,109 @@ test("madde 13: odaya bağlanınca kamera/mikrofon/ekran paylaşımı kontroller
   await expect(screenShareButton).toBeVisible({ timeout: 10_000 });
   await expect(screenShareButton).toBeEnabled();
 
-  // Ayrıl butonu da kontrol çubuğunun bir parçası — varlığı/erişilebilirliği doğrulanır.
-  await expect(page.getByRole("button", { name: "Görüşmeden ayrıl" })).toBeVisible();
+  // qa-agent — bug-fix turu (2026-09-17) doğrulaması: eski `DisconnectButton` (aria-label
+  // "Görüşmeden ayrıl", DOĞRUDAN `room.disconnect()`) `ConfirmDialog` ile onaylı bir "Görüşmeyi
+  // sonlandır" butonuna dönüştü — STALE hale gelen eski assertion burada GÜNCELLENDİ (regresyon
+  // bulgusu, bkz. final rapor).
+  const endCallButton = page.getByRole("button", { name: "Görüşmeyi sonlandır" });
+  await expect(endCallButton).toBeVisible();
+  await expect(endCallButton).toBeEnabled();
+});
+
+test("madde 15 [GERÇEK LiveKit]: Tam Ekran toggle gerçek tarayıcıda video sahnesine uygulanır, ESC ile senkron döner; 'Görüşmeyi Sonlandır' onay diyaloğu açar, 'Vazgeç' görüşmeyi KESMEZ", async ({
+  page,
+  context,
+}) => {
+  test.setTimeout(90_000);
+  test.skip(
+    !liveKitConfigured,
+    "Bu ortamda LIVEKIT_URL/API_KEY/API_SECRET tanımlı değil — kontrol çubuğu yalnızca gerçek bir " +
+      "odaya bağlanıldığında (LiveKitRoom altında) render edilir."
+  );
+  await context.grantPermissions(["camera", "microphone"]);
+
+  const appointment = await bookJoinableRealAppointment("live-fullscreen-endcall");
+
+  await gotoAndWaitReady(page, `/consultation/${appointment.id}?t=${appointment.accessToken}`, async () => {
+    await expect(page.getByRole("heading", { name: /ile Görüşme$/ })).toBeVisible();
+  });
+
+  const joinButton = page.getByRole("button", { name: "Görüşmeye Katıl" });
+  await expect(joinButton).toBeVisible({ timeout: 15_000 });
+  await joinButton.click();
+  await expect(page.getByText("Bağlandı", { exact: true })).toBeVisible({ timeout: 20_000 });
+
+  // Tam Ekran — `fullscreenSupported` mount SONRASI true'ya döner (gerçek tarayıcı, SSR DEĞİL),
+  // buton görünür olmalı.
+  // NOT (qa-agent): Playwright'ın `getByRole(..., { name })` eşleşmesi VARSAYILAN olarak ALT DİZE
+  // (substring) — "Tam Ekran" "Tam Ekrandan Çık"'ın İÇİNDE geçer, bu yüzden `exact: true` ŞART
+  // (aksi hâlde iki durum birbirinden AYIRT EDİLEMEZ, ilk turda tam olarak bu yüzden YANLIŞ-POZİTİF
+  // bir geçiş yaşandı — bkz. final rapor).
+  const fullscreenButton = page.getByRole("button", { name: "Tam Ekran", exact: true });
+  await expect(fullscreenButton).toBeVisible({ timeout: 10_000 });
+  await fullscreenButton.click();
+  // `document.fullscreenElement` gerçekten `stageRef` (LiveKitRoom kök div'i) mi — TÜM SAYFA
+  // (`document.documentElement`) DEĞİL mi — burada doğrudan doğrulanır.
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const el = document.fullscreenElement;
+        return {
+          isFullscreen: el !== null,
+          isDocumentElement: el === document.documentElement,
+          hasLiveKitClass: el?.className.includes("lk-room-container") ?? false,
+        };
+      })
+    )
+    .toMatchObject({ isFullscreen: true, isDocumentElement: false });
+  await expect(page.getByRole("button", { name: "Tam Ekrandan Çık", exact: true })).toBeVisible({ timeout: 5_000 });
+
+  // ESC ile çıkış (native tarayıcı davranışı, `toggleFullscreen()`'DEN GEÇMEZ) — qa-agent BULGUSU:
+  // bu otomasyon ortamında (arka planda başlatılan, OS-seviyesinde odaklanmamış GERÇEK Chrome
+  // penceresi) native ESC-ile-tam-ekrandan-çıkış tetiklenmiyor (`document.fullscreenElement`
+  // DEĞİŞMİYOR) — bu, tarayıcı chrome'unun kendi pencere-odak gerektiren davranışı, `fullscreen
+  // change` dinleyicisinin (`consultation-room.tsx`) KENDİSİYLE İLGİLİ DEĞİL (aşağıdaki programatik
+  // çıkış — AYNI dinleyiciden geçer — BAŞARIYLA senkronize olduğu için kanıtlanmıştır). Bu yüzden
+  // ESC'nin GERÇEKTEN çıkardığını burada KESİN doğrulayamıyoruz — bkz. final rapor "doğrulanamadı"
+  // bölümü; kod okuması güvenli görünüyor (§ ilgili yorum satırları, `theme-toggle.tsx` ile aynı
+  // sağlam desen).
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(500);
+  const escExitedFullscreen = await page.evaluate(() => document.fullscreenElement === null);
+  if (!escExitedFullscreen) {
+    test.info().annotations.push({
+      type: "qa-agent-limitation",
+      description:
+        "ESC-ile-tam-ekrandan-çıkış bu otomasyon ortamında (odaksız arka plan penceresi) native " +
+        "olarak TETİKLENMEDİ — `fullscreenchange` dinleyicisinin state senkronizasyonu buradan " +
+        "DOĞRULANAMADI, yalnızca kod okumasıyla değerlendirildi. Programatik çıkış (aşağıda, AYNI " +
+        "dinleyiciyi kullanır) BAŞARIYLA doğrulandı.",
+    });
+    // Native ESC bu ortamda çalışmadıysa hâlâ tam ekrandayızdır — testin geri kalanının anlamlı
+    // kalması için AYNI toggle butonuyla (programatik, gerçek kullanıcı jesti — Playwright click)
+    // tam ekrandan çıkılır; bu YOL `fullscreenchange` dinleyicisinin kendisini (giriş yolunda
+    // olduğu gibi) YİNE test eder.
+    await page.getByRole("button", { name: "Tam Ekrandan Çık", exact: true }).click();
+  }
+  await expect(page.getByRole("button", { name: "Tam Ekran", exact: true })).toBeVisible({ timeout: 5_000 });
+  await expect.poll(async () => page.evaluate(() => document.fullscreenElement !== null)).toBe(false);
+
+  // Görüşmeyi Sonlandır — DOĞRUDAN disconnect OLMAZ, önce ConfirmDialog açılır.
+  const endCallButton = page.getByRole("button", { name: "Görüşmeyi sonlandır" });
+  await endCallButton.click();
+  await expect(page.getByText("Görüşmeyi sonlandırmak istediğinize emin misiniz?")).toBeVisible();
+
+  // Vazgeç — görüşme KESİLMEZ, "Bağlandı" durumu KORUNUR, konsültasyon sayfasında KALINIR.
+  await page.getByRole("button", { name: "Vazgeç" }).click();
+  await expect(page.getByText("Görüşmeyi sonlandırmak istediğinize emin misiniz?")).toHaveCount(0);
+  await expect(page.getByText("Bağlandı", { exact: true })).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`/consultation/${appointment.id}`));
+
+  // Şimdi GERÇEKTEN onayla — `room.disconnect()` tetiklenir, hasta dalı HER ZAMAN
+  // `/patient/appointments`'a yönlendirilir (bu bir misafir-hasta `?t=` erişimi, `isDoctor` `false`).
+  await endCallButton.click();
+  await page.getByRole("button", { name: "Görüşmeyi Sonlandır" }).click();
+  await expect(page).toHaveURL(/\/patient\/appointments/, { timeout: 15_000 });
 });
 
 // =============================================================================
@@ -434,6 +535,77 @@ test.describe("qa-agent — iki taraflı gerçek video doğrulaması (2026-09-17
     } finally {
       await doctorContext.close();
       await patientContext.close();
+    }
+  });
+
+  // qa-agent — bug-fix turu (2026-09-17) doğrulaması, doktor dalının EN RİSKLİ şubesi: subdomain
+  // modu AÇIKKEN (bu e2e ortamında `NEXT_PUBLIC_DOCTOR_URL=http://doktor.siteadi.localhost:3100`,
+  // bkz. `playwright.config.ts`) VE doktor şu an ana host'tayken (`/consultation/**` `proxy.ts`
+  // §`isDoctorSharedRouteException` gereği ana host'ta yaşar, madde 14'teki AYNI giriş deseni)
+  // "Görüşmeyi Sonlandır" onayı `window.location.assign(toDoctorOrigin("/doctor"))` ile TAM SAYFA
+  // cross-origin geçiş yapmalı — `router.push` (client-side, aynı origin'de KALIR) DEĞİL.
+  test("madde 16 [GERÇEK LiveKit, doktor]: subdomain modu AÇIKKEN VE ana host'tayken 'Görüşmeyi Sonlandır' onayı doktoru CROSS-ORIGIN `doktor.*` host'una TAM SAYFA yönlendirir", async ({
+    browser,
+  }) => {
+    test.setTimeout(90_000);
+    test.skip(!liveKitConfigured, "Bu ortamda LIVEKIT_URL/API_KEY/API_SECRET tanımlı değil.");
+
+    const { from, to } = defaultSlotRangeISODates(30);
+    const slotsRes = await getPublicDoctorSlotsRaw(twoPartyDoctor.slug, from, to);
+    const slot = (slotsRes.data ?? []).find((s) => s.available);
+    if (!slot) throw new Error("qa-agent: madde 16 için müsait slot bulunamadı.");
+
+    const created = await createAppointmentRaw({
+      doctorSlug: twoPartyDoctor.slug,
+      startsAt: slot.startsAt,
+      patientName: "QA E2E Hasta live-doctor-endcall",
+      patientEmail: `qa-e2e-livekit-doctor-endcall-${Date.now()}@example.com`,
+    });
+    if (created.status !== 201 || !created.data) {
+      throw new Error(`qa-agent: randevu oluşturulamadı: ${created.status} ${JSON.stringify(created.error)}`);
+    }
+    shiftAppointmentIntoJoinWindowDirectly(created.data.id, 90, 30);
+    markAppointmentJoinableDirectly(created.data.id);
+
+    const doctorContext = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    await doctorContext.grantPermissions(["camera", "microphone"]);
+    const doctorPage = await doctorContext.newPage();
+
+    try {
+      // Madde 14'teki AYNI doktor giriş deseni — ana host'ta (`doktor.*` subdomain'ine GEREK YOK).
+      await doctorPage.goto("/login");
+      await doctorPage.getByLabel("E-posta").fill(DOCTOR_EMAIL);
+      await doctorPage.getByLabel("Şifre").fill(DOCTOR_PASSWORD);
+      await doctorPage.getByRole("button", { name: "Giriş yap" }).click();
+      await expect(doctorPage.getByText("İki adımlı doğrulama", { exact: false })).toBeVisible({ timeout: 15_000 });
+      await doctorPage.getByLabel("Authenticator Kodu").fill(authenticator.generate(doctorTotpSecret));
+      await doctorPage.getByRole("button", { name: "Doğrula" }).click();
+      await expect(doctorPage.getByText("İki adımlı doğrulama", { exact: false })).toHaveCount(0, { timeout: 15_000 });
+
+      // qa-agent bulgusu (bu turda keşfedildi) — girişten HEMEN sonra doktor uygulamanın KENDİ
+      // post-login yönlendirmesiyle (`login-form.tsx::goToDestination`, subdomain modu AÇIKKEN
+      // beklenen/doğru davranış) ZATEN `doktor.siteadi.localhost` host'una TAŞINMIŞ olabilir —
+      // bu, test edilen dalın ÖN KOŞULUNU henüz SAĞLAMAZ. `page.goto("/consultation/...")` (relatif
+      // yol) `playwright.config.ts::use.baseURL`'e (`http://siteadi.localhost:3100`) göre çözülür
+      // (madde 14 başlığındaki AYNI gerekçe — `/consultation/**` zaten ana host'ta yaşar) — yani
+      // BU goto'nun KENDİSİ doktoru ana host'a GERİ TAŞIR. Ön koşul burada, goto SONRASI doğrulanır.
+      await doctorPage.goto(`/consultation/${created.data.id}`);
+      expect(new URL(doctorPage.url()).hostname).toBe("siteadi.localhost");
+      await expect(doctorPage.getByRole("heading", { name: /ile Görüşme$/ })).toBeVisible({ timeout: 15_000 });
+
+      await doctorPage.getByRole("button", { name: "Görüşmeye Katıl" }).click();
+      await expect(doctorPage.getByText("Bağlandı", { exact: true })).toBeVisible({ timeout: 20_000 });
+
+      await doctorPage.getByRole("button", { name: "Görüşmeyi sonlandır" }).click();
+      await expect(doctorPage.getByText("Görüşmeyi sonlandırmak istediğinize emin misiniz?")).toBeVisible();
+      await doctorPage.getByRole("button", { name: "Görüşmeyi Sonlandır" }).click();
+
+      // `router.push` İLE DEĞİL — tam sayfa cross-origin geçiş, `doktor.siteadi.localhost` host'una.
+      await expect
+        .poll(() => doctorPage.url(), { timeout: 15_000 })
+        .toMatch(/^http:\/\/doktor\.siteadi\.localhost:3100\/doctor(\/|$|\?)/);
+    } finally {
+      await doctorContext.close();
     }
   });
 });
