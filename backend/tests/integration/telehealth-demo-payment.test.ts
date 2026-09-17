@@ -145,8 +145,19 @@ describe("telehealth demo-pay — prod-benzeri konfigürasyon (NODE_ENV=producti
   let app: FastifyInstance;
   let buildApp: () => FastifyInstance;
 
+  // backend-agent (2026-09-17) — `config/env.ts`'in YENİ `FRONTEND_URL` fail-closed boot koruması
+  // (bkz. `env-frontend-url-boot-guard.test.ts`), `.env.test`'in `FRONTEND_URL=http://localhost:3000`
+  // değeriyle (hostname LİTERAL "localhost") birleşince, aşağıdaki `NODE_ENV=production` (İŞLEM
+  // İÇİNDE, subprocess YOK) simülasyonunda `process.exit(1)` ile TÜM vitest worker'ını öldürürdü —
+  // `PUBLIC_URL` İÇİN zaten `siteadi.localhost` trick'i (bkz. .env.test'teki not) uygulanmıştı, ama
+  // `.env.test`'in KENDİSİNİ değiştirmek çok sayıda BAŞKA testi (email/magic-link/revalidate URL'leri
+  // `http://localhost:3000` LİTERAL string'ini bekliyor) kırardı. Bu yüzden `PUBLIC_URL` yerine
+  // yalnızca BU test bloğu için `FRONTEND_URL`'i geçici olarak gerçek bir domain'e override ediyoruz.
+  const ORIGINAL_FRONTEND_URL = process.env.FRONTEND_URL;
+
   beforeAll(async () => {
     process.env.NODE_ENV = "production";
+    process.env.FRONTEND_URL = "https://wmhealthistanbul.com";
     delete process.env.ENABLE_DEMO_PAYMENTS; // fail-closed boot korumasını TETİKLEMEMEK için false kalır.
     vi.resetModules();
     ({ buildApp } = await import("../../src/app"));
@@ -160,6 +171,7 @@ describe("telehealth demo-pay — prod-benzeri konfigürasyon (NODE_ENV=producti
     await resetDatabase(app.prisma);
     await app.close();
     process.env.NODE_ENV = "test";
+    process.env.FRONTEND_URL = ORIGINAL_FRONTEND_URL;
     vi.resetModules();
   });
 

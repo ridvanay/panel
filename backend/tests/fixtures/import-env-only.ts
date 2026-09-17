@@ -6,4 +6,6 @@
 import { env, isDemoPaymentsEnabled } from "../../src/config/env";
 
 // eslint-disable-next-line no-console
-console.log(JSON.stringify({ ok: true, isDemoPaymentsEnabled, publicUrl: env.PUBLIC_URL }));
+console.log(
+  JSON.stringify({ ok: true, isDemoPaymentsEnabled, publicUrl: env.PUBLIC_URL, frontendUrl: env.FRONTEND_URL })
+);

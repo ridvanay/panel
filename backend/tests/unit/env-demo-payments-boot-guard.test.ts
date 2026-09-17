@@ -35,10 +35,16 @@ describe("config/env.ts — ENABLE_DEMO_PAYMENTS fail-closed boot koruması (§1
   });
 
   it("NODE_ENV=production + ENABLE_DEMO_PAYMENTS=false (varsayılan) → boot BAŞARILI, isDemoPaymentsEnabled=false", () => {
-    // `PUBLIC_URL` bilinçli olarak gerçek bir domain'e override edilir — bu test ENABLE_DEMO_PAYMENTS'i
-    // doğrular, `.env.test`'in PUBLIC_URL değerine (yerel test sabiti) bağımlı OLMAMALIDIR (bkz.
-    // `env-public-url-boot-guard.test.ts` — PUBLIC_URL'in KENDİ production/localhost koruması AYRI test edilir).
-    const result = runEnvFixture({ NODE_ENV: "production", ENABLE_DEMO_PAYMENTS: undefined, PUBLIC_URL: "https://api.example.com" });
+    // `PUBLIC_URL`/`FRONTEND_URL` bilinçli olarak gerçek birer domain'e override edilir — bu test
+    // ENABLE_DEMO_PAYMENTS'i doğrular, `.env.test`'in PUBLIC_URL/FRONTEND_URL değerlerine (yerel test
+    // sabitleri, localhost olabilir) bağımlı OLMAMALIDIR (bkz. `env-public-url-boot-guard.test.ts` /
+    // `env-frontend-url-boot-guard.test.ts` — bu değişkenlerin KENDİ production/localhost korumaları AYRI test edilir).
+    const result = runEnvFixture({
+      NODE_ENV: "production",
+      ENABLE_DEMO_PAYMENTS: undefined,
+      PUBLIC_URL: "https://api.example.com",
+      FRONTEND_URL: "https://wmhealthistanbul.com",
+    });
     expect(result.status).toBe(0);
     expect(JSON.parse(result.stdout.trim())).toMatchObject({ ok: true, isDemoPaymentsEnabled: false });
   });

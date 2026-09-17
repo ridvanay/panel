@@ -56,7 +56,15 @@ describe("config/env.ts — PUBLIC_URL fail-closed boot koruması", () => {
   });
 
   it("NODE_ENV=production + PUBLIC_URL=https://api.example.com (gerçek domain) → boot BAŞARILI", () => {
-    const result = runEnvFixture({ NODE_ENV: "production", PUBLIC_URL: "https://api.example.com" });
+    // `FRONTEND_URL` bilinçli olarak gerçek bir domain'e override edilir — bu test PUBLIC_URL'i
+    // doğrular, `.env.test`'in FRONTEND_URL değerine (yerel test sabiti, localhost olabilir) bağımlı
+    // OLMAMALIDIR (bkz. `env-frontend-url-boot-guard.test.ts` — FRONTEND_URL'in KENDİ
+    // production/localhost koruması AYRI test edilir).
+    const result = runEnvFixture({
+      NODE_ENV: "production",
+      PUBLIC_URL: "https://api.example.com",
+      FRONTEND_URL: "https://wmhealthistanbul.com",
+    });
     expect(result.status).toBe(0);
     expect(JSON.parse(result.stdout.trim())).toMatchObject({ ok: true, publicUrl: "https://api.example.com" });
   });

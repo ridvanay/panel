@@ -274,6 +274,23 @@ if (isProd && (publicUrlHostname === "localhost" || publicUrlHostname === "127.0
   process.exit(1);
 }
 
+// qa-agent bulgusu (2026-09-17) — `PUBLIC_URL` İLE AYNI ilke, `FRONTEND_URL` için: bu değişken CORS
+// `origin` allow-list'ini (plugins/security.ts) VE kullanıcıya giden e-posta linklerinin (şifre
+// sıfırlama, hoş geldin, randevu onayı vb.) taban adresini besler. Production'da AÇIKÇA (veya
+// varsayılan yoluyla, ikisi de aynı sonuca varır) `localhost`/`127.0.0.1`'e ayarlanmışsa CORS TÜM
+// gerçek origin'i reddeder (login DAHİL her istek "ağ hatası" gibi görünür) VE gönderilen e-posta
+// linkleri gerçek kullanıcıların KENDİ makinesine işaret eder.
+const frontendUrlHostname = new URL(env.FRONTEND_URL).hostname;
+if (isProd && (frontendUrlHostname === "localhost" || frontendUrlHostname === "127.0.0.1")) {
+  // eslint-disable-next-line no-console
+  console.error(
+    `Ortam değişkenleri geçersiz: FRONTEND_URL production'da "${frontendUrlHostname}" olamaz ` +
+      "(CORS tüm gerçek origin'i reddeder VE kullanıcıya giden e-posta linkleri (şifre sıfırlama vb.) " +
+      "gerçek kullanıcıların tarayıcısına localhost olarak gider — gerçek genel erişilebilir domain'i girin)."
+  );
+  process.exit(1);
+}
+
 // İstek 1 §1.3 madde 1 — "VEYA" değil, üç katmanlı gating'in İLK katmanı (VE, iki bayrak birden).
 // Yukarıdaki fail-closed koruması sayesinde bu satıra ulaşıldığında `isProd && env.ENABLE_DEMO_PAYMENTS`
 // hiçbir zaman `true` olamaz; `env.NODE_ENV !== "production"` kontrolü yine de AÇIKÇA yazılır (tek
