@@ -124,9 +124,9 @@ test("senaryo 1+2+10+12: doktor host'ta giriş sonrası — SiteHeader/Footer YO
   await doctorPage.getByLabel("Şifre").fill(FIXTURE_PASSWORD);
   await doctorPage.getByRole("button", { name: "Giriş yap" }).click();
 
-  await expect(doctorPage.getByText("Kimlik doğrulama uygulamanızdaki 6 haneli kodu", { exact: false })).toBeVisible({ timeout: 15_000 });
+  await expect(doctorPage.getByText("İki adımlı doğrulama", { exact: false })).toBeVisible({ timeout: 15_000 });
   const code = authenticator.generate(doctorTotpSecret);
-  await doctorPage.getByLabel("Doğrulama Kodu").fill(code);
+  await doctorPage.getByLabel("Authenticator Kodu").fill(code);
   await doctorPage.getByRole("button", { name: "Doğrula" }).click();
 
   // Giriş hedefi (`resolvePostLoginPath`) `/doctor`'dır — LoginForm zaten doktor host'unda olduğumuzu

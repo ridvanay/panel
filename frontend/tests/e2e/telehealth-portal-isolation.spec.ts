@@ -103,9 +103,9 @@ async function loginDoctorDirectlyWithTwoFactor(
   await page.getByLabel("Şifre").fill(password);
   await page.getByRole("button", { name: "Giriş yap" }).click();
 
-  await expect(page.getByText("Kimlik doğrulama uygulamanızdaki 6 haneli kodu", { exact: false })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("İki adımlı doğrulama", { exact: false })).toBeVisible({ timeout: 15_000 });
   const code = authenticator.generate(totpSecret);
-  await page.getByLabel("Doğrulama Kodu").fill(code);
+  await page.getByLabel("Authenticator Kodu").fill(code);
   await page.getByRole("button", { name: "Doğrula" }).click();
 
   await page.waitForURL(/\/doctor$/, { timeout: 15_000 });
