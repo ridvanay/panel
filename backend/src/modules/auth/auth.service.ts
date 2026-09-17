@@ -18,6 +18,27 @@ interface RequestMeta {
   ipAddress?: string;
 }
 
+/**
+ * Bug-fix turu (2026-09-18, kullanıcı onaylı — bkz. görev notu) — YALNIZCA
+ * `NODE_ENV === "development"` iken (asla production/test) çalışır. Amaç: gerçek SMTP
+ * gönderimi dev'de de başarısız olursa (dev'de SMTP hiç yapılandırılmamışsa zaten otomatik bir
+ * Ethereal test hesabı kullanılır ve `lib/mail.ts::sendMail` KENDİ `previewUrl`'ini loglar —
+ * bu yalnızca O yolun DA başarısız olduğu nadir durum İÇİNDİR, örn. Ethereal'e internet
+ * erişimi yok) geliştiriciye e-postayı hiç görmeden test etmeye devam edebileceği bir kaçış
+ * kapısı sağlamak.
+ *
+ * **BİLİNÇLİ OLARAK YAPILMAYAN İki şey** (görev talimatı bunları istedi, güvenlik gerekçesiyle
+ * REDDEDİLDİ): (1) kod production log'larına ASLA yazılmaz — `lib/mail.ts::sendMail`'in "hassas
+ * veri LOGLANMAZ" disiplini burada da geçerlidir; (2) sabit/evrensel bir "fallback kod" (ör.
+ * `123456`) İCAT EDİLMEZ — bu, `lib/otp.ts`'in HMAC-biberleme + deneme-sınırı + sabit-zamanlı
+ * karşılaştırma korumalarının TAMAMINI atlayan bir kimlik doğrulama backdoor'u olurdu
+ * (`.claude/security-review-guest-account-otp.md` KARAR 1'i doğrudan ihlal eder).
+ */
+function logDevFallbackOtpCode(app: FastifyInstance, userId: string, email: string, code: string): void {
+  if (env.NODE_ENV !== "development") return;
+  app.log.warn({ userId, email, code }, "[AUTH_OTP] E-posta gönderilemedi (yalnızca dev ortamı) — doğrulama kodu yukarıda");
+}
+
 export interface TokenIssue {
   accessToken: string;
   accessTokenExpiresAt: Date;
@@ -105,6 +126,7 @@ export async function register(
     await sendEmailVerificationCode(app, { email: user.email, name: user.name }, issued.code, issued.expiresAt);
   } catch (err) {
     app.log.error({ err, userId: user.id }, "Doğrulama kodu e-postası gönderilemedi (register)");
+    logDevFallbackOtpCode(app, user.id, user.email, issued.code);
   }
 
   return {
@@ -240,6 +262,7 @@ export async function resendVerificationCode(app: FastifyInstance, email: string
 
   void sendPromise.catch((err) => {
     app.log.error({ err, userId: user.id, purpose }, "Doğrulama/aktivasyon kodu e-postası gönderilemedi (resend)");
+    logDevFallbackOtpCode(app, user.id, user.email, issued.code);
   });
 }
 

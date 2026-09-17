@@ -89,6 +89,38 @@ describe("POST /auth/register — kırıcı sözleşme değişikliği (202, toke
     });
     expect(JSON.stringify(res.json())).not.toMatch(/"code"\s*:\s*"\d{6}"/);
   });
+
+  /**
+   * Bug-fix turu (2026-09-18) — `auth.service.ts::logDevFallbackOtpCode` YALNIZCA
+   * `NODE_ENV === "development"` iken kodu loglar (dev'de SMTP/Ethereal DAHİ başarısız olursa
+   * geliştirici kaçış kapısı). Bu test suite `NODE_ENV=test` ile çalışır (bkz. `backend/.env.test`)
+   * — bu ortamda e-posta gönderimi ZATEN her zaman başarısız olur (`lib/mail.ts` §3.1 adım 4,
+   * SMTP yapılandırılmamış → `EmailDeliveryError`), yani HER `register()` çağrısı doğal olarak bu
+   * fonksiyonun catch dalından geçer. Test ortamında (ve elbette production'da) kodun HİÇBİR
+   * log satırına yazılmadığını doğrular — kullanıcı tarafından İSTENEN ama güvenlik gerekçesiyle
+   * REDDEDİLEN "production log'larına gerçek OTP yaz" talebinin tam tersinin kilitlenmiş hâli.
+   */
+  it("doğrulama kodu test/production ortamında HİÇBİR log satırına yazılmaz (yalnızca development'a özel kaçış kapısı)", async () => {
+    const warnCalls: unknown[][] = [];
+    const originalWarn = app.log.warn.bind(app.log);
+    app.log.warn = ((...args: unknown[]) => {
+      warnCalls.push(args);
+      return (originalWarn as (...a: unknown[]) => unknown)(...args);
+    }) as typeof app.log.warn;
+
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/auth/register",
+        payload: { email: uniqueEmail("no-dev-log"), password: "Sifre12345!", name: "No Dev Log" },
+      });
+      expect(res.statusCode).toBe(202);
+    } finally {
+      app.log.warn = originalWarn;
+    }
+
+    expect(warnCalls.some((args) => JSON.stringify(args).includes("AUTH_OTP"))).toBe(false);
+  });
 });
 
 describe("POST /auth/verify-email + POST /auth/login — e-posta doğrulama gate'i", () => {
