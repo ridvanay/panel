@@ -1,6 +1,31 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TokenVerifier } from "livekit-server-sdk";
-import { buildParticipantIdentity, createMeetingToken, getLiveKitConfig, isLiveKitConfigured, type LiveKitConfig } from "../../src/modules/telehealth/lib/livekit";
+
+/**
+ * `ensureRoomConfigured` — `RoomServiceClient.createRoom` GERÇEK bir LiveKit sunucusuna HTTP
+ * çağrısı yapar; burada yalnızca ÇAĞRI PARAMETRELERİ (host dönüşümü + timeout değerleri)
+ * doğrulanır, `AccessToken`/`TokenVerifier` GERÇEK kalır (`createMeetingToken` testleri İLE AYNI
+ * dosyada, mock'lanmaları GEREKMEZ).
+ */
+const createRoomMock = vi.fn().mockResolvedValue(undefined);
+vi.mock("livekit-server-sdk", async (importActual) => {
+  const actual = await importActual<typeof import("livekit-server-sdk")>();
+  return {
+    ...actual,
+    RoomServiceClient: vi.fn().mockImplementation(function RoomServiceClientMock(this: { createRoom: typeof createRoomMock }) {
+      this.createRoom = createRoomMock;
+    }),
+  };
+});
+
+import {
+  buildParticipantIdentity,
+  createMeetingToken,
+  ensureRoomConfigured,
+  getLiveKitConfig,
+  isLiveKitConfigured,
+  type LiveKitConfig,
+} from "../../src/modules/telehealth/lib/livekit";
 
 /**
  * `.claude/architect-scope-telehealth-template.md` §4.4/§8 — integration-agent'ın SAHASI.
@@ -14,6 +39,9 @@ const TEST_CONFIG: LiveKitConfig = {
   apiKey: "test-api-key",
   apiSecret: "test-api-secret-value-should-never-leak",
   tokenTtlMin: 15,
+  roomEmptyTimeoutSec: 300,
+  roomDepartureTimeoutSec: 60,
+  internalUrl: "http://test-internal.example:7880",
 };
 
 describe("modules/telehealth/lib/livekit", () => {
@@ -111,6 +139,46 @@ describe("modules/telehealth/lib/livekit", () => {
       );
       expect(result.token).not.toContain(TEST_CONFIG.apiSecret);
       expect(JSON.stringify(result)).not.toContain(TEST_CONFIG.apiSecret);
+    });
+  });
+
+  // 2026-09-19 (kullanıcı talebi) — "boşta kalan odaların otomatik kapanması".
+  describe("ensureRoomConfigured — oda empty/departure timeout'larıyla AÇIKÇA oluşturulur", () => {
+    beforeEach(() => {
+      createRoomMock.mockClear();
+    });
+
+    it("RoomServiceClient.createRoom'u oda adı + yapılandırılmış timeout'larla çağırır", async () => {
+      await ensureRoomConfigured("room_deadbeef", TEST_CONFIG);
+
+      expect(createRoomMock).toHaveBeenCalledTimes(1);
+      expect(createRoomMock).toHaveBeenCalledWith({
+        name: "room_deadbeef",
+        emptyTimeout: TEST_CONFIG.roomEmptyTimeoutSec,
+        departureTimeout: TEST_CONFIG.roomDepartureTimeoutSec,
+      });
+    });
+
+    it("RoomServiceClient'ı `internalUrl`le kurar — tarayıcı-erişilebilir `url` (ws(s)://) DEĞİL (bkz. env.ts dosya başı yorumu: konteyner *.localhost'u çözemez)", async () => {
+      const { RoomServiceClient } = await import("livekit-server-sdk");
+      await ensureRoomConfigured("room_host_check", TEST_CONFIG);
+      expect(RoomServiceClient).toHaveBeenCalledWith(TEST_CONFIG.internalUrl, TEST_CONFIG.apiKey, TEST_CONFIG.apiSecret);
+    });
+
+    it("`internalUrl` boşsa (varsayılan, LIVEKIT_INTERNAL_URL tanımsız) SESSİZCE atlanır — hata FIRLATMAZ", async () => {
+      await expect(ensureRoomConfigured("room_no_internal_url", { ...TEST_CONFIG, internalUrl: "" })).resolves.toBeUndefined();
+      expect(createRoomMock).not.toHaveBeenCalled();
+    });
+
+    it("farklı oda adları için AYNI (url/apiKey) config'te istemci yeniden kurulmaz (önbellek)", async () => {
+      const { RoomServiceClient } = await import("livekit-server-sdk");
+      const callsBefore = vi.mocked(RoomServiceClient).mock.calls.length;
+      await ensureRoomConfigured("room_a", TEST_CONFIG);
+      await ensureRoomConfigured("room_b", TEST_CONFIG);
+      // İki farklı oda için `createRoom` İKİ KEZ çağrılır ama `RoomServiceClient` constructor'ı
+      // (pahalı kurulum) yeniden ÇAĞRILMAZ — `sendMail`'in transporter önbelleğiyle AYNI ilke.
+      expect(createRoomMock).toHaveBeenCalledTimes(2);
+      expect(vi.mocked(RoomServiceClient).mock.calls.length).toBe(callsBefore);
     });
   });
 });

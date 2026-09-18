@@ -12,7 +12,7 @@ import { hashToken } from "../../lib/tokens";
 import { timingSafeEqualHex } from "../../lib/api-key";
 import { logAudit } from "../../lib/audit";
 import { AppointmentIdParamSchema, AccessTokenQuerySchema, CompleteAppointmentRequestSchema } from "./telehealth.schemas";
-import { createMeetingToken, isLiveKitConfigured } from "./lib/livekit";
+import { createMeetingToken, ensureRoomConfigured, isLiveKitConfigured } from "./lib/livekit";
 import { computeEarlyJoinAuditMetadata } from "./lib/early-join";
 import { encryptSecret } from "../../lib/crypto";
 import { sanitizeRichHtml } from "../../lib/html-sanitize";
@@ -150,8 +150,19 @@ export async function telehealthLiveKitRoutes(app: FastifyInstance) {
 
       // [TCT] §9.7.6 (bağlayıcı) — "Çoklu slot = TEK oda": booking'e bağlıysa KANONİK oda
       // `AppointmentBooking.meetingRoomName`'dir (aksi hâlde hasta ikinci slotta odadan düşer).
+      const roomName = booking ? booking.meetingRoomName : appointment.meetingRoomName;
+
+      // 2026-09-19 (kullanıcı talebi) — boşta kalan odaların otomatik kapanması: BEST-EFFORT,
+      // LiveKit Server API'sine ulaşılamazsa/oda zaten varsa görüşme akışı BOZULMAZ (bkz.
+      // lib/livekit.ts::ensureRoomConfigured dosya başı yorumu) — yalnızca loglanır.
+      try {
+        await ensureRoomConfigured(roomName);
+      } catch (err) {
+        app.log.warn({ err, roomName }, "LiveKit odası açık timeout'larla önceden yapılandırılamadı (best-effort) — katılım engellenmedi.");
+      }
+
       const meeting = await createMeetingToken({
-        roomName: booking ? booking.meetingRoomName : appointment.meetingRoomName,
+        roomName,
         participant: isDoctor ? { kind: "doctor", id: appointment.doctor.id } : { kind: "patient", id: appointment.id },
       });
 

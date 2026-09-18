@@ -75,6 +75,22 @@ const EnvSchema = z.object({
   LIVEKIT_URL: z.string().default(""),
   LIVEKIT_API_KEY: z.string().default(""),
   LIVEKIT_API_SECRET: z.string().default(""),
+  // 2026-09-19 — `LIVEKIT_URL` TARAYICI-erişilebilir bir adrestir (ws(s)://, `FRONTEND_URL`/
+  // `PUBLIC_URL` İLE AYNI "sunucu-taraflı config ama tarayıcı-erişilebilir değer" deseni,
+  // bkz. `docker-compose.yml`'deki AYNI notun tekrarı). `ensureRoomConfigured()`'ın
+  // `RoomServiceClient` (LiveKit Server API, twirp/HTTP) çağrısı İSE BACKEND KONTEYNERİNİN
+  // KENDİSİNDEN yapılır — `INTERNAL_FRONTEND_URL`/`PUBLIC_URL` vs `INTERNAL_API_URL` İLE AYNI
+  // ayrım: konteyner içi Node.js çözümleyicisi `*.localhost` sözde-alan adını ÇÖZEMEZ (yalnızca
+  // tarayıcı/host OS çözer — GERÇEKTEN test edilip doğrulandı: `LIVEKIT_URL`i doğrudan kullanmak
+  // "getaddrinfo ENOTFOUND siteadi.localhost" ile PATLADI). Bu yüzden AYRI, backend'in KENDİ
+  // ağından erişilebilir bir adres GEREKİR (dev Docker Compose: `http://livekit:7880`, prod'da
+  // genelde LiveKit backend İLE AYNI sunucuda/ağdadır: `http://127.0.0.1:7880` gibi, nginx'i
+  // ATLAR). TANIMSIZ/boş bırakılırsa `ensureRoomConfigured()` SESSİZCE atlanır (hata DEĞİL,
+  // "dürüst yapılandırılmamışlık" — `LIVEKIT_URL` İLE AYNI felsefe): oda yine de İLK katılımda
+  // OTOMATİK oluşur, yalnızca bu turun öngörülebilir empty/departure timeout garantisi olmaz.
+  // ws(s):// DEĞİL doğrudan http(s):// beklenir (Server API zaten HTTP'dir, otomatik şema
+  // dönüşümü YAPILMAZ — belirsizliğe/nginx path-prefix varsayımına MAHAL VERİLMEZ).
+  LIVEKIT_INTERNAL_URL: z.string().default(""),
   // Bug-fix turu (2026-09-17, backend-agent, kullanıcı onaylı — §8'in ÖNCEKİ 15dk/60dk tavanı
   // gerçek görüşme süresine yetmiyordu: token dolunca LiveKit istemciyi ODADAN GERÇEKTEN ATIYORDU,
   // "401/oturum kapandı" olarak raporlanan hatanın kök nedeni buydu). TTL artık görüşme süresine
@@ -83,6 +99,26 @@ const EnvSchema = z.object({
   // sınırlıdır (`roomCreate`/`roomAdmin` YOK, bkz. lib/livekit.ts) — süre uzasa da grant kapsamı
   // DEĞİŞMEDİ.
   LIVEKIT_TOKEN_TTL_MIN: z.coerce.number().int().positive().max(240).default(180),
+  // 2026-09-19 (kullanıcı talebi, "boşta kalan odaların otomatik kapanması") — bu iki değişken
+  // OLMADAN önce oda ASLA açıkça oluşturulmuyordu: LiveKit odayı İLK `roomJoin` token'ıyla
+  // OTOMATİK oluşturuyor ve sunucunun kendi (bu repoda YAŞAMAYAN, prod'da harici `livekit.yaml`
+  // — bkz. `.claude/compliance-notes-support-desk.md` İLE AYNI "repo dışı config" deseni)
+  // `room.empty_timeout`/`room.departure_timeout` varsayılanlarını kullanıyordu — koda gömülü,
+  // sürüm kontrollü bir garanti YOKTU. Artık `lib/livekit.ts::ensureRoomConfigured()` her
+  // token isteğinden ÖNCE `RoomServiceClient.createRoom()` ile bu değerleri AÇIKÇA set eder
+  // (LiveKit'in `CreateRoom` RPC'si İDEMPOTENTTİR — oda zaten varsa mevcut ayarları KORUR, hata
+  // FIRLATMAZ). Varsayılanlar LiveKit'in kendi tipik sunucu varsayılanlarıyla AYNI BÜYÜKLÜK
+  // MERTEBESİNDE, makul/muhafazakar seçildi (kesin sunucu varsayılanı sürüme göre değişebilir,
+  // bu yüzden burada koda gömülü AÇIK bir değer tercih edildi — "repo dışı YAML'a güvenme"
+  // ilkesiyle TUTARLI).
+  //
+  // Hiçbir katılımcı KATILMADAN odanın açık tutulacağı süre (sn) — bir hasta randevu penceresi
+  // açılır açılmaz token alıp bağlanmayı denerken doktoru bekleyebilir.
+  LIVEKIT_ROOM_EMPTY_TIMEOUT_SEC: z.coerce.number().int().positive().max(3600).default(300),
+  // SON katılımcı ayrıldıktan SONRA odanın açık tutulacağı süre (sn) — kısa bir ağ kopması
+  // sonrası yeniden katılmaya izin veren bir tolerans penceresi; süre dolunca LiveKit odayı
+  // KENDİLİĞİNDEN kapatır (kaynaklar serbest kalır).
+  LIVEKIT_ROOM_DEPARTURE_TIMEOUT_SEC: z.coerce.number().int().nonnegative().max(3600).default(60),
 
   // `.claude/architect-scope-telehealth-template.md` (TUR 3, bağlayıcı) — LiveKit Egress
   // arşivleme. Egress BACKEND KONTEYNERİNİN DIŞINDA çalışır: `S3_ENDPOINT` docker-içi bir adres

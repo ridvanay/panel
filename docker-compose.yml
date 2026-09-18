@@ -91,14 +91,21 @@ services:
       # İLE AYNI gerekçeyle burada `environment:` ile override edilir (env_file: ./backend/.env
       # zaten bu üçünü taşıyabilir, ama bu compose'un kendi kendine yeten/tekrarlanabilir bir
       # "clone edip `docker compose up` de, LiveKit dahil her şey çalışsın" deneyimi sunması
-      # hedeflendi). NOT: backend, token üretimi için LiveKit sunucusuna ağ üzerinden HİÇ
-      # bağlanmaz (`src/modules/telehealth/lib/livekit.ts::createMeetingToken()` JWT'yi
-      # `livekit-server-sdk`'nin `AccessToken` sınıfıyla tamamen yerel imzalar) — bu yüzden
-      # LIVEKIT_URL container-içi bir ağ adı (`ws://livekit:7880`) DEĞİL, TARAYICININ erişeceği
-      # `ws://siteadi.localhost:7880` olmalı (bu değer olduğu gibi `serverUrl` alanı olarak
-      # tarayıcıya döner, bkz. FRONTEND_URL'in yukarıdaki notuyla AYNI "sunucu-taraflı config ama
-      # tarayıcı-erişilebilir değer" deseni). Anahtarlar aşağıdaki `livekit` servisinin
-      # `--keys` argümanıyla BİREBİR eşleşmeli.
+      # hedeflendi). LIVEKIT_URL container-içi bir ağ adı (`ws://livekit:7880`) DEĞİL,
+      # TARAYICININ erişeceği `ws://siteadi.localhost:7880` olmalı (bu değer olduğu gibi
+      # `serverUrl` alanı olarak tarayıcıya döner, bkz. FRONTEND_URL'in yukarıdaki notuyla AYNI
+      # "sunucu-taraflı config ama tarayıcı-erişilebilir değer" deseni). Anahtarlar aşağıdaki
+      # `livekit` servisinin `--keys` argümanıyla BİREBİR eşleşmeli.
+      #
+      # 2026-09-19 GÜNCELLEME — "backend, LiveKit sunucusuna ağ üzerinden HİÇ bağlanmaz" notu
+      # ARTIK GEÇERLİ DEĞİL: `ensureRoomConfigured()` (boşta kalan odaların otomatik kapanması,
+      # bkz. lib/livekit.ts) LiveKit'in Server API'sine (RoomServiceClient, twirp/HTTP) GERÇEKTEN
+      # bağlanır — token imzalamanın kendisi (`createMeetingToken`) HÂLÂ tamamen yerel/ağsızdır,
+      # bu YENİ ayrı bir çağrıdır. `LIVEKIT_URL`ü (tarayıcı-erişilebilir `siteadi.localhost`)
+      # KULLANAMAZ — backend konteynerinin KENDİ DNS çözümleyicisi `*.localhost`'u ÇÖZEMEZ
+      # (GERÇEKTEN test edilip doğrulandı: "getaddrinfo ENOTFOUND siteadi.localhost"). Bu yüzden
+      # AYRI, konteyner-içi Docker ağ adıyla (`livekit` servis adı) verilir.
+      LIVEKIT_INTERNAL_URL: http://livekit:7880
       # 2026-09-18 KRİTİK DÜZELTME — bu değer eskiden SABİT `ws://siteadi.localhost:7880` idi;
       # hiçbir override mekanizması OLMADIĞI için bu dosyanın canlı ortamda (yanlışlıkla) doğrudan
       # `docker compose up --build` ile kullanılması durumunda tarayıcı LiveKit'e bağlanamıyordu.
