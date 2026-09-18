@@ -8,6 +8,7 @@ import prismaPlugin from "./plugins/prisma";
 import securityPlugin from "./plugins/security";
 import errorHandlerPlugin from "./plugins/error-handler";
 import requestIdPlugin from "./plugins/request-id";
+import sanitizeLocalhostMediaUrlsPlugin from "./plugins/sanitize-localhost-media-urls";
 import uploadsPlugin, { MAX_UPLOAD_BYTES } from "./plugins/uploads";
 
 import healthRoutes from "./modules/health/health.routes";
@@ -161,6 +162,7 @@ export function buildApp() {
   app.register(errorHandlerPlugin);
   app.register(securityPlugin);
   app.register(requestIdPlugin);
+  app.register(sanitizeLocalhostMediaUrlsPlugin);
   app.register(prismaPlugin);
   app.register(uploadsPlugin);
 

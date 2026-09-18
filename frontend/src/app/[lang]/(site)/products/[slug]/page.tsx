@@ -19,7 +19,7 @@ import { withLocalePrefix } from "@/lib/i18n/site-path";
 import { buildContentMetadata } from "@/lib/seo";
 import { buildProductJsonLd, buildProductBreadcrumbJsonLd } from "@/lib/product-json-ld";
 import { JsonLdScript } from "@/components/site/json-ld-script";
-import { SITE_URL } from "@/lib/env";
+import { SITE_URL, toPublicMediaUrl } from "@/lib/env";
 import { buttonVariants } from "@/components/ui/button";
 import { ArrowRight } from "lucide-react";
 import Link from "next/link";
@@ -50,7 +50,11 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       title: product.seoTitle || product.title,
       description: product.seoDescription || product.excerpt,
       ogTitle: product.ogTitle,
-      ogImageUrl: product.ogImageUrl,
+      // `toPublicMediaUrl` — bkz. `lib/env.ts` başlık yorumu: `fetchProductBySlugServer` Docker'da
+      // `toInternalMediaUrl` uyguladığından `ogImageUrl`/`coverMedia.url` internal (`backend:4000`
+      // gibi) bir host taşıyor olabilir; og:image dış sosyal paylaşım bot'larının DOĞRUDAN erişmesi
+      // gereken GERÇEK genel URL'i taşımalıdır.
+      ogImageUrl: toPublicMediaUrl(product.ogImageUrl),
       canonicalUrl: product.canonicalUrl,
       noIndex: product.noIndex,
     },
@@ -58,7 +62,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       fallbackCanonicalUrl: `${SITE_URL}${lang === defaultLocale?.code ? "" : `/${lang}`}/products/${slug}`,
       siteName: settings.siteName,
       type: "website",
-      fallbackImageUrl: product.coverMedia?.url ?? null,
+      fallbackImageUrl: toPublicMediaUrl(product.coverMedia?.url),
       localizations: product.localizations,
       locales,
       activeLocale: lang,

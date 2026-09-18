@@ -1,5 +1,6 @@
 import type { DoctorProfile } from "@/lib/api/types";
 import { safeJsonLdString } from "@/lib/page-builder/structured-data";
+import { toPublicMediaUrl } from "@/lib/env";
 
 /**
  * `.claude/architect-scope-telehealth-template.md` §9.5 — `/doctors/[slug]` `schema.org/Physician`
@@ -15,6 +16,11 @@ import { safeJsonLdString } from "@/lib/page-builder/structured-data";
  */
 export function buildDoctorJsonLd(doctor: DoctorProfile, canonicalUrl: string): string {
   const name = `${doctor.title} ${doctor.fullName}`.trim();
+  // `toPublicMediaUrl` — bkz. `lib/env.ts` başlık yorumu: `doctor.avatarMedia.url`, `server-
+  // telehealth.ts::toInternalMediaUrl` tarafından (Docker'da) `INTERNAL_MEDIA_ORIGIN`'e çevrilmiş
+  // olabilir — JSON-LD `image` alanı arama motoru bot'larının DOĞRUDAN erişmesi gereken, GERÇEK
+  // genel URL'i taşımalıdır, next/image'in sunucu-taraflı optimize fetch'inin kullandığı DEĞİL.
+  const publicAvatarUrl = toPublicMediaUrl(doctor.avatarMedia?.url);
 
   return safeJsonLdString({
     "@context": "https://schema.org",
@@ -22,7 +28,7 @@ export function buildDoctorJsonLd(doctor: DoctorProfile, canonicalUrl: string): 
     name,
     ...(doctor.title ? { honorificPrefix: doctor.title } : {}),
     ...(doctor.bio ? { description: doctor.bio } : {}),
-    ...(doctor.avatarMedia?.url ? { image: doctor.avatarMedia.url } : {}),
+    ...(publicAvatarUrl ? { image: publicAvatarUrl } : {}),
     url: canonicalUrl,
     ...(doctor.specialty ? { medicalSpecialty: doctor.specialty.name } : {}),
     ...(doctor.languages.length > 0 ? { knowsLanguage: doctor.languages } : {}),

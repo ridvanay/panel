@@ -77,3 +77,36 @@ export function toInternalMediaUrl(rawJsonText: string): string {
   if (!INTERNAL_MEDIA_ORIGIN || !PUBLIC_MEDIA_ORIGIN) return rawJsonText;
   return rawJsonText.split(PUBLIC_MEDIA_ORIGIN).join(INTERNAL_MEDIA_ORIGIN);
 }
+
+/**
+ * 2026-09-19 (kullanıcı talebi) — `toInternalMediaUrl`'ün TERSİ. O dönüşüm `server-products.ts`/
+ * `server-telehealth.ts` gibi fetcher'ların döndürdüğü HER medya alanına (yalnızca `next/image`'in
+ * kendi sunucu-taraflı fetch'inin tükettiği alanlara DEĞİL — TÜM ham JSON metnine) uygulanır; bu
+ * yüzden `generateMetadata`'daki `openGraph.images`/`ogImageUrl` gibi TARAYICI/dış-crawler'ın
+ * DOĞRUDAN erişmesi gereken alanlar da yanlışlıkla `INTERNAL_MEDIA_ORIGIN`'e (Docker'da
+ * `http://backend:4000`) çevrilmiş oluyordu — sosyal paylaşım kartları (Facebook/Twitter/LinkedIn
+ * bot'ları) hiçbir zaman erişemeyecekleri bir host görüyordu. `generateMetadata` içindeki HER medya
+ * URL'si `next/image`/`SafeImage`e DEĞİL bu fonksiyona verilmelidir.
+ *
+ * Savunma derinliği: dönüşten SONRA hâlâ bir loopback host (`localhost`/`127.0.0.1`/RFC 6761
+ * `*.localhost`) kalırsa (ör. backend `PUBLIC_URL`'i henüz yanlış yapılandırılmışsa — backend'in
+ * `config/env.ts::isLoopbackHostname` İLE AYNI üç sınıf) kök-göreceli bir yola indirger ve
+ * `SITE_URL` ile MUTLAKLAŞTIRIR — dış crawler'lara ASLA erişilemez bir host GİTMEZ.
+ */
+export function toPublicMediaUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  let result = url;
+  if (INTERNAL_MEDIA_ORIGIN && PUBLIC_MEDIA_ORIGIN && result.startsWith(INTERNAL_MEDIA_ORIGIN)) {
+    result = PUBLIC_MEDIA_ORIGIN + result.slice(INTERNAL_MEDIA_ORIGIN.length);
+  }
+  try {
+    const parsed = new URL(result);
+    const isLoopback = parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1" || parsed.hostname.endsWith(".localhost");
+    if (isLoopback) {
+      result = `${SITE_URL}${parsed.pathname}${parsed.search}`;
+    }
+  } catch {
+    // Zaten göreceli bir yol (mutlak URL DEĞİL) — dokunma, olduğu gibi bırak.
+  }
+  return result;
+}

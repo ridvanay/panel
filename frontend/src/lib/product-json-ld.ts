@@ -1,7 +1,7 @@
 import type { Product } from "@/lib/api/types";
 import { safeJsonLdString } from "@/lib/page-builder/structured-data";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
-import { SITE_URL } from "@/lib/env";
+import { SITE_URL, toPublicMediaUrl } from "@/lib/env";
 
 /**
  * PDP `schema.org/Product` + `BreadcrumbList` JSON-LD üreticileri.
@@ -32,11 +32,14 @@ function availabilitySchema(inStock: boolean): string {
  * `offers` üretilemez — uydurma bir fiyat/stok göstermek yerine JSON-LD `null` döner.
  */
 export function buildProductJsonLd(product: Product, canonicalUrl: string): string | null {
-  const images =
+  // `toPublicMediaUrl` — bkz. `lib/env.ts` başlık yorumu: `server-products.ts::toInternalMediaUrl`
+  // (Docker'da) HER medya alanını `INTERNAL_MEDIA_ORIGIN`'e çevirdiğinden, JSON-LD `image` alanı
+  // arama motoru bot'larının DOĞRUDAN erişmesi gereken GERÇEK genel URL'e geri çevrilmelidir.
+  const images: string[] =
     product.images.length > 0
-      ? product.images.map((image) => image.media.url)
+      ? (product.images.map((image) => toPublicMediaUrl(image.media.url)).filter((url): url is string => url !== null))
       : product.coverMedia
-        ? [product.coverMedia.url]
+        ? ([toPublicMediaUrl(product.coverMedia.url)].filter((url): url is string => url !== null))
         : [];
 
   const base = {

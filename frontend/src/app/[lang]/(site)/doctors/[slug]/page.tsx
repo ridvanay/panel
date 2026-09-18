@@ -16,7 +16,7 @@ import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import { getSiteDictionary } from "@/lib/i18n/site-dictionaries";
 import { buildDoctorJsonLd } from "@/lib/doctor-json-ld";
 import { JsonLdScript } from "@/components/site/json-ld-script";
-import { SITE_URL } from "@/lib/env";
+import { SITE_URL, toPublicMediaUrl } from "@/lib/env";
 import type { Locale } from "@/lib/api/types";
 
 /**
@@ -82,7 +82,12 @@ export async function generateMetadata({ params }: DoctorDetailPageProps): Promi
   const canonical = resolveCanonicalUrl(lang, defaultLocaleCode, slug);
   const title = `${doctor.title} ${doctor.fullName}${doctor.specialty ? ` | ${doctor.specialty.name}` : ""}`.trim();
   const description = truncateForDescription(doctor.bio);
-  const images = doctor.avatarMedia?.url ? [doctor.avatarMedia.url] : undefined;
+  // `toPublicMediaUrl` — bkz. `lib/env.ts` başlık yorumu: `fetchDoctorBySlugServer` Docker'da
+  // `toInternalMediaUrl` uyguladığından `doctor.avatarMedia.url` internal (`backend:4000` gibi)
+  // bir host taşıyor olabilir; og:image dış sosyal paylaşım bot'larının DOĞRUDAN erişmesi gereken
+  // GERÇEK genel URL'i taşımalıdır.
+  const publicAvatarUrl = toPublicMediaUrl(doctor.avatarMedia?.url);
+  const images = publicAvatarUrl ? [publicAvatarUrl] : undefined;
 
   return {
     title,
