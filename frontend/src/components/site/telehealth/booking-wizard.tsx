@@ -1,11 +1,12 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarCheck, ChevronLeft } from "lucide-react";
 import * as telehealthApi from "@/lib/api/telehealth";
 import { ApiClientError } from "@/lib/api/error";
 import { friendlyErrorMessage, fieldErrorsFrom } from "@/lib/api/friendly-error";
+import { API_BASE_URL } from "@/lib/env";
 import type { AvailabilitySlot, BookingIdentityInput, CreateBookingResult, DoctorProfile, SitePage } from "@/lib/api/types";
 import { formatDayLabel, formatTime } from "@/lib/telehealth-format";
 import { formatPriceFromCents } from "@/lib/format-price";
@@ -70,6 +71,45 @@ export function BookingWizard({ doctor, doctorSlug, doctorTimeZone, lang, defaul
   const identityFormRef = useRef<HTMLFormElement>(null);
 
   const [bookingResult, setBookingResult] = useState<CreateBookingResult | null>(null);
+
+  /**
+   * 2026-09-18 (kullanıcı talebi) — booking oluşturulduktan (Adım 4) SONRA ödeme tamamlanmadan
+   * akış terk edilirse (sayfa kapatılır/yenilenir/başka bir sayfaya gidilir) tutulan slot ANINDA
+   * serbest bırakılır — 5dk'lık süpürücüyü (`booking-expiry.ts`) veya 30dk'lık süre dolumunu
+   * BEKLEMEZ. Backend'de bunun için ZATEN `POST /appointments/bookings/{id}/cancel` var (booking
+   * `PENDING` iken randevu satırlarını ANINDA siler) — eksik olan bu ucun "terk anında"
+   * ÇAĞRILMASIYDI. `bookingFinalizedRef`, ödeme BAŞLATILDIĞINDA (Stripe'a yönlendirmeden hemen
+   * önce, bkz. `BookingPaymentStep`'e geçilen `onPaymentStarted`) veya demo ödeme BAŞARILI
+   * olduğunda `true` olur — bu andan SONRA "terk edildi" sanıp iptal etmek, tam da ödeme
+   * yapılırken/yapıldıktan hemen sonra rezervasyonu bozar.
+   */
+  const bookingFinalizedRef = useRef(false);
+
+  // İKİ AYRI terk senaryosu, İKİ AYRI mekanizma gerektirir:
+  //   1) SPA-içi unmount (başka bir sayfaya `next/link` ile gidilir) — tarayıcı sayfası KAPANMAZ,
+  //      normal `cancelBooking()` fetch'i (fire-and-forget) TAMAMLANABİLİR.
+  //   2) Gerçek sayfa kapanışı (sekme kapatma/F5/geri tuşu) — React'in unmount temizliği bu anda
+  //      ÇALIŞMAYABİLİR/tamamlanamayabilir; `pagehide`da `navigator.sendBeacon` KULLANILIR
+  //      (tarayıcı, sayfa kapanırken bile isteğin TESLİM EDİLECEĞİNİ garanti eder — normal
+  //      `fetch` bunu GARANTİ ETMEZ).
+  useEffect(() => {
+    if (!bookingResult) return;
+    const { bookingId, accessToken } = bookingResult;
+
+    function handlePageHide() {
+      if (bookingFinalizedRef.current) return;
+      const url = `${API_BASE_URL}/appointments/bookings/${bookingId}/cancel?t=${encodeURIComponent(accessToken)}`;
+      navigator.sendBeacon(url);
+    }
+
+    window.addEventListener("pagehide", handlePageHide);
+    return () => {
+      window.removeEventListener("pagehide", handlePageHide);
+      if (!bookingFinalizedRef.current) {
+        void telehealthApi.cancelBooking(bookingId, accessToken).catch(() => {});
+      }
+    };
+  }, [bookingResult]);
 
   async function handleIdentityContinue(identity: BookingIdentityInput, patientName: string, patientEmail: string) {
     if (selectedSlots.length === 0) return;
@@ -223,6 +263,9 @@ export function BookingWizard({ doctor, doctorSlug, doctorTimeZone, lang, defaul
                     // ödeme yönlendirmesi AYNI rotayı üretsin diye burada da `defaultLocaleCode`
                     // geçilir, `lang` DEĞİL.
                     lang={defaultLocaleCode}
+                    onPaymentStarted={() => {
+                      bookingFinalizedRef.current = true;
+                    }}
                   />
                 )}
               </div>

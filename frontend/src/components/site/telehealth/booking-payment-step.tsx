@@ -63,6 +63,15 @@ interface BookingPaymentStepProps {
    * rotaya (`?payment=success`) `router.push` edilir — Stripe'ın `success_url`'i İLE AYNI sonuç.
    */
   onDemoPaid?: (booking: AppointmentBooking) => void;
+  /**
+   * 2026-09-18 (kullanıcı talebi) — `booking-wizard.tsx`'in terk-edilen rezervasyonu ANINDA
+   * serbest bırakma mekanizmasına (bkz. o dosyanın başındaki yorum) sinyal verir: ödeme
+   * BAŞLATILDIĞINDA (Stripe'a yönlendirmeden HEMEN ÖNCE) veya demo ödeme BAŞARILI olduğunda
+   * çağrılır — bu andan SONRA booking'i "terk edilmiş" sayıp iptal etmek KESİNLİKLE YANLIŞ olur.
+   * Yalnızca sihirbaz bu prop'u geçer; `patient-booking-detail-panel.tsx` (zaten oluşturulmuş bir
+   * booking'i gösteren AYRI bir sayfa, bu terk-etme mekanizmasına sahip DEĞİL) GEÇMEZ.
+   */
+  onPaymentStarted?: () => void;
 }
 
 function PaymentsNotConfiguredPanel({ onRetry, retrying }: { onRetry: () => void; retrying: boolean }) {
@@ -106,7 +115,7 @@ function DemoPaymentPanel({ onDemoPay, loading }: { onDemoPay: () => void; loadi
   );
 }
 
-export function BookingPaymentStep({ bookingId, accessToken, totalCents, currency, lang, onDemoPaid }: BookingPaymentStepProps) {
+export function BookingPaymentStep({ bookingId, accessToken, totalCents, currency, lang, onDemoPaid, onPaymentStarted }: BookingPaymentStepProps) {
   const router = useRouter();
   // Görev (2026-09-16) — currency/locale format denetimi: `lang` prop'u BİLİNÇLİ OLARAK
   // varsayılan dili taşır (bkz. üstteki `lang` yorumu, redirect amaçlı) — GÖRÜNTÜLENEN fiyat
@@ -145,6 +154,7 @@ export function BookingPaymentStep({ bookingId, accessToken, totalCents, currenc
     setNotConfigured(false);
     try {
       const session = await telehealthApi.createBookingCheckoutSession(bookingId, accessToken);
+      onPaymentStarted?.();
       window.location.href = session.checkoutUrl;
     } catch (err) {
       if (err instanceof ApiClientError && err.status === 503) {
@@ -168,6 +178,7 @@ export function BookingPaymentStep({ bookingId, accessToken, totalCents, currenc
     setDemoError(null);
     try {
       const paidBooking = await telehealthApi.demoPayBooking(bookingId, accessToken);
+      onPaymentStarted?.();
       if (onDemoPaid) {
         onDemoPaid(paidBooking);
       } else {
