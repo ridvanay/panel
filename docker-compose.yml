@@ -105,7 +105,16 @@ services:
       # KULLANAMAZ — backend konteynerinin KENDİ DNS çözümleyicisi `*.localhost`'u ÇÖZEMEZ
       # (GERÇEKTEN test edilip doğrulandı: "getaddrinfo ENOTFOUND siteadi.localhost"). Bu yüzden
       # AYRI, konteyner-içi Docker ağ adıyla (`livekit` servis adı) verilir.
-      LIVEKIT_INTERNAL_URL: http://livekit:7880
+      #
+      # 2026-09-19 KRİTİK DÜZELTME (canlıda doğrulandı) — bu satır İLK yazıldığında SABİT
+      # `http://livekit:7880` idi, NEXT_PUBLIC_*/LIVEKIT_URL'deki AYNI hatayı (yukarıdaki
+      # "2026-09-18 KRİTİK DÜZELTME" notu) TEKRARLIYORDU: bu dosyanın canlıda `docker compose up
+      # -d --build` ile DOĞRUDAN kullanıldığı DOĞRULANDI (UFW'de 50000-60000/udp GERÇEK bir
+      # prod LiveKit kurulumuna işaret ediyor — bu compose'un `--dev` modlu `livekit` servisi
+      # DEĞİL, bkz. o servisin dosya başı yorumu) — sabit değer, sunucudaki kök `.env`'de
+      # ayarlanan HERHANGİ bir değeri `environment:`nin `env_file:`e önceliği yüzünden SESSİZCE
+      # ezerdi. Artık kök `.env`den okunur, tanımsızsa AYNI dev varsayılanına düşer.
+      LIVEKIT_INTERNAL_URL: ${LIVEKIT_INTERNAL_URL:-http://livekit:7880}
       # 2026-09-18 KRİTİK DÜZELTME — bu değer eskiden SABİT `ws://siteadi.localhost:7880` idi;
       # hiçbir override mekanizması OLMADIĞI için bu dosyanın canlı ortamda (yanlışlıkla) doğrudan
       # `docker compose up --build` ile kullanılması durumunda tarayıcı LiveKit'e bağlanamıyordu.
