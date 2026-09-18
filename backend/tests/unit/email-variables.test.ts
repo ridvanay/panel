@@ -39,9 +39,17 @@ describe("getSystemVariablesForPurpose", () => {
   it("[TCT] §9.7.8 — matches the exact APPOINTMENT_CONFIRMATION variable set relied upon by modules/telehealth/lib/notifications.ts, and contains NO specialty/complaint/document leak", () => {
     const keys = getSystemVariablesForPurpose("APPOINTMENT_CONFIRMATION").map((v) => v.key);
     expect(keys).toEqual(
-      expect.arrayContaining(["booking_number", "patient_name", "slots_summary", "total_formatted", "magic_link"])
+      expect.arrayContaining(["booking_number", "patient_name", "slots_summary", "total_formatted", "magic_link", "join_link"])
     );
     expect(keys).not.toEqual(expect.arrayContaining(["specialty", "specialty_name", "complaint", "note", "document_name"]));
+  });
+
+  it("2026-09-18 — matches the exact BOOKING_PAYMENT_PENDING variable set relied upon by modules/telehealth/lib/notifications.ts, and contains NO specialty/complaint/document leak or join_link", () => {
+    const keys = getSystemVariablesForPurpose("BOOKING_PAYMENT_PENDING").map((v) => v.key);
+    expect(keys).toEqual(
+      expect.arrayContaining(["booking_number", "patient_name", "slots_summary", "total_formatted", "payment_link"])
+    );
+    expect(keys).not.toEqual(expect.arrayContaining(["specialty", "specialty_name", "complaint", "note", "document_name", "join_link"]));
   });
 });
 

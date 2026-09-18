@@ -18,7 +18,11 @@ vi.mock("../../src/lib/localization", () => ({
   getLocaleSet: (...args: unknown[]) => getLocaleSetMock(...args),
 }));
 
-import { resendBookingAccessLink, triggerAppointmentConfirmationEmail } from "../../src/modules/telehealth/lib/notifications";
+import {
+  resendBookingAccessLink,
+  triggerAppointmentConfirmationEmail,
+  triggerBookingPaymentPendingEmail,
+} from "../../src/modules/telehealth/lib/notifications";
 
 function fakeApp(overrides: {
   doctorTimeZone?: string;
@@ -45,6 +49,8 @@ function fakeApp(overrides: {
   return { app, findUniqueDoctor, findUniqueBooking, updateBooking, findManyAppointments };
 }
 
+const KNOWN_RAW_TOKEN = "known-raw-token-xyz";
+
 const BOOKING = {
   id: "11111111-1111-1111-1111-111111111111",
   doctorId: "22222222-2222-2222-2222-222222222222",
@@ -54,6 +60,7 @@ const BOOKING = {
   totalCents: 75000,
   currency: "TRY",
   paymentStatus: "PAID",
+  accessTokenHash: hashToken(KNOWN_RAW_TOKEN),
 };
 
 describe("modules/telehealth/lib/notifications", () => {
@@ -65,7 +72,10 @@ describe("modules/telehealth/lib/notifications", () => {
   describe("triggerAppointmentConfirmationEmail", () => {
     it("APPOINTMENT_CONFIRMATION amacıyla, doktorun saat diliminde biçimlendirilmiş slotlarla gönderir", async () => {
       const { app } = fakeApp({ doctorTimeZone: "Europe/Istanbul" });
-      const appointments = [{ startsAt: new Date("2025-01-06T06:00:00.000Z") }, { startsAt: new Date("2025-01-06T06:30:00.000Z") }];
+      const appointments = [
+        { id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", startsAt: new Date("2025-01-06T06:00:00.000Z") },
+        { id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", startsAt: new Date("2025-01-06T06:30:00.000Z") },
+      ];
 
       await triggerAppointmentConfirmationEmail(app, {
         booking: BOOKING as never,
@@ -83,15 +93,28 @@ describe("modules/telehealth/lib/notifications", () => {
       expect(values.patient_name).toBe("Ayşe Yılmaz");
       expect(values.total_formatted).toBe("750.00 TRY");
       expect(values.magic_link).toBe("http://localhost:3000/tr/patient/bookings/11111111-1111-1111-1111-111111111111?t=raw-token-abc");
+      // 2026-09-18 (kullanıcı talebi) — DOĞRUDAN görüşme odasına giden bağlantı, EN ERKEN
+      // randevuya (appointments[0], `firstAppointment`) işaret eder — `JoinMeetingButton` İLE
+      // AYNI seçim kuralı.
+      expect(values.join_link).toBe("http://localhost:3000/tr/consultation/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa?t=raw-token-abc");
     });
 
-    it("bağlayıcı sızma yasağı — gönderilen değişken setinde uzmanlık/şikâyet/belge adı YOKTUR", async () => {
+    it("appointments boşsa join_link ATLANIR (literal {{join_link}} basılmaz, anahtar hiç gönderilmez)", async () => {
       const { app } = fakeApp();
       await triggerAppointmentConfirmationEmail(app, { booking: BOOKING as never, appointments: [], rawAccessToken: "t" });
 
       const values = sendTemplateEmailMock.mock.calls[0]![3];
+      expect(values).not.toHaveProperty("join_link");
+    });
+
+    it("bağlayıcı sızma yasağı — gönderilen değişken setinde uzmanlık/şikâyet/belge adı YOKTUR", async () => {
+      const { app } = fakeApp();
+      const appointments = [{ id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", startsAt: new Date("2025-01-06T06:00:00.000Z") }];
+      await triggerAppointmentConfirmationEmail(app, { booking: BOOKING as never, appointments, rawAccessToken: "t" });
+
+      const values = sendTemplateEmailMock.mock.calls[0]![3];
       expect(Object.keys(values).sort()).toEqual(
-        ["booking_number", "magic_link", "patient_name", "slots_summary", "total_formatted"].sort()
+        ["booking_number", "join_link", "magic_link", "patient_name", "slots_summary", "total_formatted"].sort()
       );
     });
 
@@ -125,7 +148,8 @@ describe("modules/telehealth/lib/notifications", () => {
     });
 
     it("PAID booking'de YENİ bir token üretir (rotate), hash'ini saklar ve o token ile e-posta gönderir", async () => {
-      const { app, updateBooking } = fakeApp({ booking: BOOKING, appointments: [{ startsAt: new Date("2025-01-06T06:00:00.000Z") }] });
+      const appointments = [{ id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", startsAt: new Date("2025-01-06T06:00:00.000Z") }];
+      const { app, updateBooking } = fakeApp({ booking: BOOKING, appointments });
 
       await resendBookingAccessLink(app, BOOKING.id);
 
@@ -134,12 +158,73 @@ describe("modules/telehealth/lib/notifications", () => {
       expect(updateArgs.where.id).toBe(BOOKING.id);
 
       expect(sendTemplateEmailMock).toHaveBeenCalledTimes(1);
-      const values = sendTemplateEmailMock.mock.calls[0]![3] as { magic_link: string };
+      const [, purpose, , values] = sendTemplateEmailMock.mock.calls[0]! as [unknown, unknown, unknown, { magic_link: string }];
+      expect(purpose).toBe("APPOINTMENT_CONFIRMATION");
       const sentRawToken = new URL(values.magic_link).searchParams.get("t")!;
       // Gönderilen ham token'ın hash'i, DB'ye YAZILAN hash İLE AYNI olmalı (yanlış/eski token
       // gönderilmemeli) — ama ham token'ın KENDİSİ asla response'ta/log'da dönmez (bu test
       // yalnızca iç tutarlılığı doğrular, hiçbir HTTP yanıtı üretmez).
       expect(hashToken(sentRawToken)).toBe(updateArgs.data.accessTokenHash);
+    });
+
+    // 2026-09-18 (kullanıcı talebi) — Adım 4, ödeme öncesi.
+    it("PENDING booking + token verilmezse hiçbir şey yapmaz (varlık/oturum sızdırılmaz)", async () => {
+      const { app, updateBooking } = fakeApp({ booking: { ...BOOKING, paymentStatus: "PENDING" } });
+      await resendBookingAccessLink(app, BOOKING.id);
+      expect(updateBooking).not.toHaveBeenCalled();
+      expect(sendTemplateEmailMock).not.toHaveBeenCalled();
+    });
+
+    it("PENDING booking + YANLIŞ token verilirse hiçbir şey yapmaz", async () => {
+      const { app, updateBooking } = fakeApp({ booking: { ...BOOKING, paymentStatus: "PENDING" } });
+      await resendBookingAccessLink(app, BOOKING.id, "wrong-token");
+      expect(updateBooking).not.toHaveBeenCalled();
+      expect(sendTemplateEmailMock).not.toHaveBeenCalled();
+    });
+
+    it("PENDING booking + DOĞRU token verilirse BOOKING_PAYMENT_PENDING gönderir, token ROTATE ETMEZ", async () => {
+      const appointments = [{ startsAt: new Date("2025-01-06T06:00:00.000Z") }];
+      const { app, updateBooking } = fakeApp({ booking: { ...BOOKING, paymentStatus: "PENDING" }, appointments });
+
+      await resendBookingAccessLink(app, BOOKING.id, KNOWN_RAW_TOKEN);
+
+      // Token rotate EDİLMEZ — aksi halde arayanın (booking-wizard.tsx) AKTİF sekmede elinde
+      // tuttuğu `accessToken` bir sonraki intake/checkout-session çağrısında 403'e düşer.
+      expect(updateBooking).not.toHaveBeenCalled();
+
+      expect(sendTemplateEmailMock).toHaveBeenCalledTimes(1);
+      const [, purpose, to, values] = sendTemplateEmailMock.mock.calls[0]! as [unknown, unknown, unknown, { payment_link: string }];
+      expect(purpose).toBe("BOOKING_PAYMENT_PENDING");
+      expect(to).toBe("ayse@example.com");
+      expect(new URL(values.payment_link).searchParams.get("t")).toBe(KNOWN_RAW_TOKEN);
+    });
+  });
+
+  describe("triggerBookingPaymentPendingEmail", () => {
+    it("BOOKING_PAYMENT_PENDING amacıyla gönderir, join_link İÇERMEZ (ödeme tamamlanmadan görüşme odasına girilemez)", async () => {
+      const appointments = [{ startsAt: new Date("2025-01-06T06:00:00.000Z") }];
+      const { app } = fakeApp({ booking: { ...BOOKING, paymentStatus: "PENDING" }, appointments });
+
+      await triggerBookingPaymentPendingEmail(app, { booking: { ...BOOKING, paymentStatus: "PENDING" } as never, rawAccessToken: "raw-tok" });
+
+      expect(sendTemplateEmailMock).toHaveBeenCalledTimes(1);
+      const [, purpose, , values] = sendTemplateEmailMock.mock.calls[0]!;
+      expect(purpose).toBe("BOOKING_PAYMENT_PENDING");
+      expect(Object.keys(values).sort()).toEqual(
+        ["booking_number", "patient_name", "payment_link", "slots_summary", "total_formatted"].sort()
+      );
+      expect(values.payment_link).toBe("http://localhost:3000/tr/patient/bookings/11111111-1111-1111-1111-111111111111?t=raw-tok");
+    });
+
+    it("sessiz başarısızlık YOK — sendTemplateEmail reddedilirse hata loglanır, ÇAĞIRAN akış bozulmaz", async () => {
+      const { app } = fakeApp({ booking: { ...BOOKING, paymentStatus: "PENDING" } });
+      sendTemplateEmailMock.mockRejectedValueOnce(new Error("smtp down"));
+
+      await expect(
+        triggerBookingPaymentPendingEmail(app, { booking: { ...BOOKING, paymentStatus: "PENDING" } as never, rawAccessToken: "t" })
+      ).resolves.toBeUndefined();
+
+      expect(app.log.error).toHaveBeenCalledTimes(1);
     });
   });
 });

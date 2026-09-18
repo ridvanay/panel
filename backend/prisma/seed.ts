@@ -197,8 +197,29 @@ async function main() {
       isActive: true,
       subject: "Your appointment is confirmed",
       bodyHtml:
-        "<p>Hello {{patient_name}},</p><p>We have received your payment for booking <strong>{{booking_number}}</strong> and your appointment is confirmed.</p><p>Appointment time(s): {{slots_summary}}</p><p>Total: {{total_formatted}}</p><p>You can use the link below to view your booking details and join the consultation:</p><p><a href=\"{{magic_link}}\">View My Booking</a></p>",
-      availableVariables: ["booking_number", "patient_name", "slots_summary", "total_formatted", "magic_link"],
+        "<p>Hello {{patient_name}},</p><p>We have received your payment for booking <strong>{{booking_number}}</strong> and your appointment is confirmed.</p><p>Appointment time(s): {{slots_summary}}</p><p>Total: {{total_formatted}}</p><p><a href=\"{{join_link}}\">Join Consultation</a></p><p>You can also use the link below to view your booking details:</p><p><a href=\"{{magic_link}}\">View My Booking</a></p>",
+      availableVariables: ["booking_number", "patient_name", "slots_summary", "total_formatted", "magic_link", "join_link"],
+    },
+  });
+
+  // 2026-09-18 (kullanıcı talebi) — rezervasyon oluşturuldu, ödeme HENÜZ tamamlanmadı (Adım 4,
+  // "Bağlantıyı e-posta ile gönder"). APPOINTMENT_CONFIRMATION İLE AYNI PII/sızma disiplini —
+  // doktor uzmanlığı/şikâyet notu YOK. `join_link` BİLİNÇLİ OLARAK YOK (ödeme tamamlanmadan
+  // görüşme odasına girilemez) — bkz. lib/notifications.ts::triggerBookingPaymentPendingEmail.
+  await prisma.emailTemplate.upsert({
+    where: { key: "BOOKING_PAYMENT_PENDING" },
+    update: {},
+    create: {
+      key: "BOOKING_PAYMENT_PENDING",
+      name: "Booking Payment Pending Email",
+      purpose: "BOOKING_PAYMENT_PENDING",
+      editorMode: "RAW",
+      isSystem: true,
+      isActive: true,
+      subject: "Complete your booking payment",
+      bodyHtml:
+        "<p>Hello {{patient_name}},</p><p>Your reservation <strong>{{booking_number}}</strong> has been created, but payment has not been completed yet.</p><p>Appointment time(s): {{slots_summary}}</p><p>Total: {{total_formatted}}</p><p>Please use the link below to complete your payment and confirm your appointment:</p><p><a href=\"{{payment_link}}\">Complete Payment</a></p>",
+      availableVariables: ["booking_number", "patient_name", "slots_summary", "total_formatted", "payment_link"],
     },
   });
 

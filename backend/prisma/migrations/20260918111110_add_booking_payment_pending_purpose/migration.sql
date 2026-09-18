@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "EmailTemplatePurpose" ADD VALUE 'BOOKING_PAYMENT_PENDING';

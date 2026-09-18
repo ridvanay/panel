@@ -93,6 +93,11 @@ const SYSTEM_VARIABLES_BY_PURPOSE: Record<EmailTemplatePurpose, EmailVariableDef
     { key: "slots_summary", label: "Randevu Saatleri", sampleValue: "06.01.2025 09:00, 06.01.2025 09:30", source: "system" },
     { key: "total_formatted", label: "Toplam Tutar", sampleValue: "750.00 TRY", source: "system" },
     { key: "magic_link", label: "Rezervasyon Bağlantısı", sampleValue: "https://example.com/tr/patient/bookings/abc?t=xyz", source: "system" },
+    // 2026-09-18 (kullanıcı talebi) — `magic_link`in aksine DOĞRUDAN görüşme odasına gider
+    // (`/consultation/{appointmentId}?t=...`, en erken randevuya). `APPOINTMENT_REMINDER_30M`in
+    // `join_link`inden FARKLI hedef (o, `/patient/bookings/{id}` — burada BİLİNÇLİ olarak DOĞRUDAN
+    // konsültasyon linki, kullanıcı talebiyle).
+    { key: "join_link", label: "Görüşmeye Katıl Bağlantısı", sampleValue: "https://example.com/tr/consultation/xyz?t=abc", source: "system" },
   ],
   /**
    * NOT — 2026-09-15 (backend-agent, "Admin randevu yeniden planlama") — ADMIN bir randevuyu
@@ -160,6 +165,22 @@ const SYSTEM_VARIABLES_BY_PURPOSE: Record<EmailTemplatePurpose, EmailVariableDef
     { key: "expires_in_hours", label: "Geçerlilik Süresi (saat)", sampleValue: "24", source: "system" },
     { key: "activation_url", label: "Hesap Aktivasyon Bağlantısı", sampleValue: "https://example.com/tr/activate-account?email=ayse%40example.com", source: "system" },
     { key: "booking_number", label: "Rezervasyon Numarası", sampleValue: "BKG-L4K2J1-A1B2", source: "system" },
+  ],
+  /**
+   * 2026-09-18 (kullanıcı talebi) — rezervasyon oluşturuldu, ödeme HENÜZ tamamlanmadı iken
+   * hastanın kendi isteğiyle ("Bağlantıyı e-posta ile gönder", Adım 4) tetiklenir.
+   * `APPOINTMENT_CONFIRMATION` İLE AYNI bağlayıcı sızma yasağı: doktorun uzmanlık adı, şikâyet
+   * notu veya belge adı ASLA yer almaz. `payment_link` ÖDEME TAMAMLAMA sayfasına gider
+   * (`/patient/bookings/{id}` — booking hâlâ `PENDING` olduğu için o sayfa otomatik olarak ödeme
+   * adımını gösterir, bkz. `patient-booking-detail-panel.tsx`); `join_link` BİLİNÇLİ OLARAK YOK
+   * (ödeme tamamlanmadan görüşme odasına girilemez).
+   */
+  BOOKING_PAYMENT_PENDING: [
+    { key: "booking_number", label: "Rezervasyon Numarası", sampleValue: "BKG-L4K2J1-A1B2", source: "system" },
+    { key: "patient_name", label: "Hasta Adı", sampleValue: "Ayşe Yılmaz", source: "system" },
+    { key: "slots_summary", label: "Randevu Saatleri", sampleValue: "06.01.2025 09:00, 06.01.2025 09:30", source: "system" },
+    { key: "total_formatted", label: "Toplam Tutar", sampleValue: "750.00 TRY", source: "system" },
+    { key: "payment_link", label: "Ödeme Tamamlama Bağlantısı", sampleValue: "https://example.com/tr/patient/bookings/abc?t=xyz", source: "system" },
   ],
   CUSTOM: [],
 };

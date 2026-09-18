@@ -1033,6 +1033,11 @@ export const EmailTemplatePurposeSchema = z.enum([
   // DTO-seviyesi ayna (mirror) burada SENKRONİZE edilir (`APPOINTMENT_RESCHEDULED` ile AYNI desen).
   "EMAIL_VERIFICATION",
   "ACCOUNT_ACTIVATION",
+  // 2026-09-18 (kullanıcı talebi) — rezervasyon oluşturuldu, ödeme HENÜZ tamamlanmadı durumunda
+  // gönderilen ödeme tamamlama bağlantısı şablonu. Prisma `EmailTemplatePurpose` enum'una İZOLE
+  // bir migration'da eklendi — bu DTO-seviyesi ayna (mirror) burada SENKRONİZE edilir
+  // (`APPOINTMENT_RESCHEDULED` yorumuyla AYNI desen).
+  "BOOKING_PAYMENT_PENDING",
   "CUSTOM",
 ]);
 export type EmailTemplatePurpose = z.infer<typeof EmailTemplatePurposeSchema>;

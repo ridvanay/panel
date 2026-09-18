@@ -3,6 +3,7 @@ import type { Appointment, AppointmentBooking, EmailTemplatePurpose } from "@pri
 import { env } from "../../../config/env";
 import { getLocaleSet } from "../../../lib/localization";
 import { generateOpaqueToken, hashToken } from "../../../lib/tokens";
+import { timingSafeEqualHex } from "../../../lib/api-key";
 import { sendTemplateEmail } from "../../email-templates/email-templates.service";
 import { getWallClockParts } from "./timezone";
 
@@ -64,15 +65,33 @@ async function buildMagicLink(app: FastifyInstance, bookingId: string, rawAccess
   return `${env.FRONTEND_URL}/${localeSet.default.code}/patient/bookings/${bookingId}?t=${rawAccessToken}`;
 }
 
+/**
+ * 2026-09-18 (kullanıcı talebi) — `buildMagicLink` İLE AYNI dil-segmenti kaynağı, ama hedef
+ * booking yönetim sayfası DEĞİL DOĞRUDAN görüşme odası (`/consultation/{appointmentId}`).
+ * `?t=` aynı booking-seviyeli `rawAccessToken`'dır — `telehealth.routes.ts::assertBookingViewAccess`
+ * randevunun KENDİ `accessTokenHash`'i YOKSA (silinmemiş normal akış) booking'in
+ * `accessTokenHash`'ine düşer (bkz. o dosyanın başındaki yorum), yani AYNI token burada da geçerli.
+ */
+async function buildConsultationJoinLink(app: FastifyInstance, appointmentId: string, rawAccessToken: string): Promise<string> {
+  const localeSet = await getLocaleSet(app);
+  return `${env.FRONTEND_URL}/${localeSet.default.code}/consultation/${appointmentId}?t=${rawAccessToken}`;
+}
+
 export async function triggerAppointmentConfirmationEmail(
   app: FastifyInstance,
-  input: { booking: AppointmentBooking; appointments: readonly Pick<Appointment, "startsAt">[]; rawAccessToken: string }
+  input: { booking: AppointmentBooking; appointments: readonly Pick<Appointment, "id" | "startsAt">[]; rawAccessToken: string }
 ): Promise<void> {
   const { booking, appointments, rawAccessToken } = input;
   try {
-    const [doctorTimeZone, magicLink] = await Promise.all([
+    // En erken randevu (çağıran taraflarda HER ZAMAN `startsAt: "asc"` sıralı, bkz.
+    // `confirmBookingPayment`/`resendBookingAccessLink`) — `JoinMeetingButton`'ın `firstAppointment`
+    // seçimiyle AYNI kural (§ dosya başı yorum).
+    const firstAppointment = appointments[0];
+
+    const [doctorTimeZone, magicLink, joinLink] = await Promise.all([
       resolveDoctorTimeZone(app, booking.doctorId),
       buildMagicLink(app, booking.id, rawAccessToken),
+      firstAppointment ? buildConsultationJoinLink(app, firstAppointment.id, rawAccessToken) : Promise.resolve(undefined),
     ]);
 
     await sendTemplateEmail(app, "APPOINTMENT_CONFIRMATION", booking.patientEmail, {
@@ -81,6 +100,7 @@ export async function triggerAppointmentConfirmationEmail(
       slots_summary: formatSlotsSummary(appointments, doctorTimeZone),
       total_formatted: formatMoney(booking.totalCents, booking.currency),
       magic_link: magicLink,
+      ...(joinLink ? { join_link: joinLink } : {}),
     });
   } catch (err) {
     app.log.error({ err, bookingId: booking.id }, "Randevu onay e-postası gönderilemedi");
@@ -263,20 +283,72 @@ export async function triggerAppointmentReminderEmail(
 }
 
 /**
- * `POST /appointments/bookings/{bookingId}/resend-link` (§9.7.10, notification-agent sahası) —
- * openapi.yaml (BAĞLAYICI kontrat) burada AÇIKÇA "yeni bir accessToken üretir" der: her çağrı
- * `accessTokenHash`'i ROTATE eder (eski bağlantı bu andan itibaren ÇALIŞMAZ) ve YALNIZCA kayıtlı
- * `patientEmail`'e gönderir — ham token YANITTA ASLA dönmez (route bu fonksiyonun dönüş değerini
- * kullanmaz, `void`).
- *
- * Varlık sızdırılmaz: booking yoksa VEYA henüz `PAID` değilse (bu turda tek şablon
- * `APPOINTMENT_CONFIRMATION`dır ve "onaylandı" der — ödenmemiş bir booking için gönderilemez,
- * §9.7.8) SESSİZCE hiçbir şey yapmadan döner; çağıran route HER durumda `202` döner. Rate limit
- * (1 istek/dk, `BOOKING_RESEND_LINK_RATE_LIMIT`) route katmanındadır.
+ * 2026-09-18 (kullanıcı talebi) — Adım 4'te (ödeme ÖNCESİ) "Bağlantıyı e-posta ile gönder"
+ * butonu artık BOŞ dönmüyor: booking henüz `PAID` değilken bu şablon (ödeme tamamlama linki,
+ * `payment_link` → `/patient/bookings/{id}` — o sayfa `paymentStatus === "PENDING"/"FAILED"`
+ * iken zaten `BookingPaymentStep`'i kendiliğinden render eder, bkz.
+ * `patient-booking-detail-panel.tsx`) gönderilir. `triggerAppointmentConfirmationEmail` İLE AYNI
+ * best-effort/try-catch disiplini + AYNI sızma yasağı (doktor uzmanlığı/şikâyet notu YOK).
+ * `join_link` BİLİNÇLİ OLARAK YOK — ödeme tamamlanmadan görüşme odasına girilemez.
  */
-export async function resendBookingAccessLink(app: FastifyInstance, bookingId: string): Promise<void> {
+export async function triggerBookingPaymentPendingEmail(
+  app: FastifyInstance,
+  input: { booking: AppointmentBooking; rawAccessToken: string }
+): Promise<void> {
+  const { booking, rawAccessToken } = input;
+  try {
+    const [doctorTimeZone, appointments, paymentLink] = await Promise.all([
+      resolveDoctorTimeZone(app, booking.doctorId),
+      app.prisma.appointment.findMany({
+        where: { bookingId: booking.id },
+        orderBy: { startsAt: "asc" },
+        select: { startsAt: true },
+      }),
+      buildMagicLink(app, booking.id, rawAccessToken),
+    ]);
+
+    await sendTemplateEmail(app, "BOOKING_PAYMENT_PENDING", booking.patientEmail, {
+      booking_number: booking.bookingNumber,
+      patient_name: booking.patientName,
+      slots_summary: formatSlotsSummary(appointments, doctorTimeZone),
+      total_formatted: formatMoney(booking.totalCents, booking.currency),
+      payment_link: paymentLink,
+    });
+  } catch (err) {
+    app.log.error({ err, bookingId: booking.id }, "Ödeme bekleyen rezervasyon e-postası gönderilemedi");
+  }
+}
+
+/**
+ * `POST /appointments/bookings/{bookingId}/resend-link` (§9.7.10, notification-agent sahası) —
+ * booking `PAID` iken openapi.yaml'ın (BAĞLAYICI kontrat) tarif ettiği ORİJİNAL davranış AYNEN
+ * korunur: yeni bir `accessToken` üretir, hash'ini saklar (eski bağlantı bu andan itibaren
+ * ÇALIŞMAZ) ve `APPOINTMENT_CONFIRMATION`'ı (artık `join_link` dahil) gönderir.
+ *
+ * 2026-09-18 (kullanıcı talebi) — booking HENÜZ `PAID` DEĞİLKEN artık SESSİZCE no-op DÖNMEZ:
+ * `BOOKING_PAYMENT_PENDING` gönderilir. **Token BURADA ROTATE EDİLMEZ** — arayan taraf
+ * (`booking-wizard.tsx`, Adım 4/5'te AYNI sekmede intake/ödeme adımlarına devam edecek) booking
+ * oluşturulduğunda aldığı `accessToken`'ı hâlâ bellekte tutuyor ve sonraki `intake`/
+ * `checkout-session` çağrılarında KULLANMAYA devam edecek; rotate edilirse o token 403'e düşer
+ * ve AKTİF rezervasyon akışı KIRILIR. Bu yüzden `providedToken` (çağıranın ZATEN sahip olduğu
+ * token, `?t=` — `AppointmentAccessToken` parametresiyle AYNI desen) booking'in KENDİ
+ * `accessTokenHash`'iyle SABİT ZAMANLI (`timingSafeEqualHex`) doğrulanır; eşleşmezse/verilmezse
+ * SESSİZCE hiçbir şey yapmadan döner (varlık/oturum sızdırılmaz — PAID dalıyla AYNI ilke).
+ *
+ * Varlık sızdırılmaz: booking hiç yoksa SESSİZCE döner; çağıran route HER durumda `202` döner.
+ * Rate limit (1 istek/dk, `BOOKING_RESEND_LINK_RATE_LIMIT`) route katmanındadır.
+ */
+export async function resendBookingAccessLink(app: FastifyInstance, bookingId: string, providedToken?: string): Promise<void> {
   const existing = await app.prisma.appointmentBooking.findUnique({ where: { id: bookingId } });
-  if (!existing || existing.paymentStatus !== "PAID") return;
+  if (!existing) return;
+
+  if (existing.paymentStatus !== "PAID") {
+    if (!providedToken) return;
+    const providedHash = hashToken(providedToken);
+    if (!timingSafeEqualHex(providedHash, existing.accessTokenHash)) return;
+    await triggerBookingPaymentPendingEmail(app, { booking: existing, rawAccessToken: providedToken });
+    return;
+  }
 
   const rawAccessToken = generateOpaqueToken();
   const accessTokenHash = hashToken(rawAccessToken);
@@ -289,7 +361,7 @@ export async function resendBookingAccessLink(app: FastifyInstance, bookingId: s
   const appointments = await app.prisma.appointment.findMany({
     where: { bookingId: booking.id },
     orderBy: { startsAt: "asc" },
-    select: { startsAt: true },
+    select: { id: true, startsAt: true },
   });
 
   await triggerAppointmentConfirmationEmail(app, { booking, appointments, rawAccessToken });

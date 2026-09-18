@@ -234,9 +234,16 @@ export function getBookingInvoice(bookingId: string, accessToken?: string): Prom
   return apiFetch<BookingInvoice>(`/appointments/bookings/${bookingId}/invoice`, { query: { t: accessToken } });
 }
 
-/** Magic-link'i yeniden gönderir — ham token yanıtta DÖNMEZ, her zaman `202` (varlık sızdırılmaz). Hız sınırı 1/dk. */
-export function resendBookingLink(bookingId: string): Promise<void> {
-  return apiFetch<void>(`/appointments/bookings/${bookingId}/resend-link`, { method: "POST" });
+/**
+ * Magic-link'i yeniden gönderir — ham token yanıtta DÖNMEZ, her zaman `202` (varlık sızdırılmaz).
+ * Hız sınırı 1/dk. `accessToken` — booking henüz `PAID` DEĞİLKEN (Adım 4, ödeme öncesi) ZORUNLU:
+ * backend token'ı ROTATE ETMEZ, arayanın (booking oluşturulduğunda aldığı) `accessToken`'ı
+ * booking'in kendi hash'iyle eşleştiğini KANITLamalıdır (bkz. `backend/.../lib/notifications.ts
+ * ::resendBookingAccessLink` dosya başı yorumu) — verilmezse/eşleşmezse sessizce hiçbir şey
+ * gönderilmez. `PAID` sonrası (mevcut davranış) opsiyoneldir/kullanılmaz.
+ */
+export function resendBookingLink(bookingId: string, accessToken?: string): Promise<void> {
+  return apiFetch<void>(`/appointments/bookings/${bookingId}/resend-link`, { method: "POST", query: { t: accessToken } });
 }
 
 /** §9.7.5 KARAR J — opsiyonel adım, AYRI açık rıza (`healthDataConsent`) ZORUNLU. */

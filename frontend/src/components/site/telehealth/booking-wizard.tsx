@@ -114,7 +114,10 @@ export function BookingWizard({ doctor, doctorSlug, doctorTimeZone, lang, defaul
     setResendState("sending");
     setResendError(null);
     try {
-      await telehealthApi.resendBookingLink(bookingResult.bookingId);
+      // Ödeme öncesi (booking henüz `PAID` değilken) backend token'ı ROTATE ETMEDİĞİ için kendi
+      // `accessToken`'ımızı kanıt olarak göndermemiz gerekir — bkz. `lib/api/telehealth.ts
+      // ::resendBookingLink` yorumu. `PAID` sonrası zararsızdır (backend kullanmaz).
+      await telehealthApi.resendBookingLink(bookingResult.bookingId, bookingResult.accessToken);
       setResendState("sent");
     } catch (err) {
       setResendState("error");
