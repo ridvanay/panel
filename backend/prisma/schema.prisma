@@ -1734,12 +1734,12 @@ enum EmailTemplatePurpose {
   // (`add_email_verification_codes`) AYNI dosyada DEĞİL — APPOINTMENT_REMINDER_* emsali.
   EMAIL_VERIFICATION
   ACCOUNT_ACTIVATION
-  // 2026-09-18 (kullanıcı talebi) — rezervasyon oluşturuldu ama ödeme HENÜZ tamamlanmadı
-  // durumunda hastanın kendi isteğiyle ("Bağlantıyı e-posta ile gönder", Adım 4) tetiklediği,
-  // ödeme tamamlama bağlantısı taşıyan sade şablon (bkz. `modules/telehealth/lib/
-  // notifications.ts::triggerBookingPaymentPendingEmail`). `APPOINTMENT_CONFIRMATION` İLE AYNI
-  // sızma yasağı: doktor uzmanlığı/şikâyet notu ASLA yer almaz. `ALTER TYPE ... ADD VALUE` geri
-  // alınamaz — bu yüzden İZOLE bir migration'da (`add_booking_payment_pending_purpose`) eklenir.
+  // KULLANILMIYOR (2026-09-18) — 2026-09-18'de kısa bir süre için "ödeme öncesi hatırlatma"
+  // e-postası amacıyla eklenmişti (`add_booking_payment_pending_purpose` migration'ı); kullanıcı
+  // BİLİNÇLİ olarak GERİ ALDI (ödeme tamamlanmadan HİÇBİR e-posta gönderilmemeli). `ALTER TYPE
+  // ... ADD VALUE` geri alınamadığı için bu enum değeri BURADA KALIR, ama hiçbir kod yolu onu
+  // üretmez/tüketmez (bkz. `src/lib/email-variables.ts` ve `src/schemas/entities.ts`'teki AYNI
+  // notlar) — YENİDEN KULLANILMAMALIDIR.
   BOOKING_PAYMENT_PENDING
   CUSTOM
 }

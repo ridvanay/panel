@@ -3,7 +3,7 @@ import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
 import { requireModuleEnabled } from "../../middleware/module-guard";
 import { BOOKING_RESEND_LINK_RATE_LIMIT } from "../../lib/rate-limit";
-import { AccessTokenQuerySchema, BookingIdParamSchema } from "./telehealth.schemas";
+import { BookingIdParamSchema } from "./telehealth.schemas";
 import { resendBookingAccessLink } from "./lib/notifications";
 
 /**
@@ -25,12 +25,6 @@ export async function telehealthNotificationRoutes(app: FastifyInstance) {
       config: { rateLimit: BOOKING_RESEND_LINK_RATE_LIMIT },
       schema: {
         params: BookingIdParamSchema,
-        // 2026-09-18 (kullanıcı talebi) — booking HENÜZ `PAID` DEĞİLKEN (Adım 4) bu ucun artık
-        // no-op DÖNMEMESİ için ZORUNLU: arayanın ZATEN sahip olduğu `accessToken`, booking'in
-        // KENDİ `accessTokenHash`'iyle doğrulanır (bkz. lib/notifications.ts::resendBookingAccessLink
-        // dosya başı yorumu — token rotate EDİLMEZ, aksi halde AKTİF rezervasyon akışı kırılır).
-        // `PAID` dalında (mevcut davranış) opsiyoneldir/kullanılmaz.
-        querystring: AccessTokenQuerySchema,
         response: { 202: z.undefined() },
       },
     },
@@ -38,7 +32,9 @@ export async function telehealthNotificationRoutes(app: FastifyInstance) {
       // openapi.yaml (bağlayıcı) — booking var olsun olmasın, ödenmiş olsun olmasın yanıt HER
       // ZAMAN 202'dir (varlık/ödeme durumu sızdırılmaz); ham token YANITTA ASLA dönmez, yalnızca
       // kayıtlı `patientEmail`'e gönderilir (bkz. lib/notifications.ts::resendBookingAccessLink).
-      await resendBookingAccessLink(app, request.params.bookingId, request.query.t);
+      // 2026-09-18 KRİTİK DÜZELTME (kullanıcı talebi) — booking `PAID` DEĞİLKEN bu uç KESİNLİKLE
+      // hiçbir e-posta göndermez (bkz. resendBookingAccessLink dosya başı yorumu).
+      await resendBookingAccessLink(app, request.params.bookingId);
       return reply.code(202).send();
     }
   );

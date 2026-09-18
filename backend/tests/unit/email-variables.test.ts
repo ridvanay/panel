@@ -44,12 +44,13 @@ describe("getSystemVariablesForPurpose", () => {
     expect(keys).not.toEqual(expect.arrayContaining(["specialty", "specialty_name", "complaint", "note", "document_name"]));
   });
 
-  it("2026-09-18 — matches the exact BOOKING_PAYMENT_PENDING variable set relied upon by modules/telehealth/lib/notifications.ts, and contains NO specialty/complaint/document leak or join_link", () => {
+  // 2026-09-18 KRİTİK DÜZELTME — BOOKING_PAYMENT_PENDING amacı KULLANIM DIŞI bırakıldı (ödeme
+  // öncesi e-posta gönderme özelliği kullanıcı talebiyle GERİ ALINDI); bu amaç hiçbir zaman
+  // hiçbir e-posta göndermemeli. Boş kaldığını doğrular (yanlışlıkla yeniden içerik eklenip
+  // kullanılmaya başlanmasına karşı bir bekçi testi).
+  it("2026-09-18 — BOOKING_PAYMENT_PENDING is unused (reverted feature) and carries no system variables", () => {
     const keys = getSystemVariablesForPurpose("BOOKING_PAYMENT_PENDING").map((v) => v.key);
-    expect(keys).toEqual(
-      expect.arrayContaining(["booking_number", "patient_name", "slots_summary", "total_formatted", "payment_link"])
-    );
-    expect(keys).not.toEqual(expect.arrayContaining(["specialty", "specialty_name", "complaint", "note", "document_name", "join_link"]));
+    expect(keys).toEqual(["site_name", "site_url"]);
   });
 });
 

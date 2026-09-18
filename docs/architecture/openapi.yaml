@@ -8346,31 +8346,23 @@ paths:
   /appointments/bookings/{bookingId}/resend-link:
     parameters:
       - $ref: "#/components/parameters/BookingId"
-      - $ref: "#/components/parameters/AppointmentAccessToken"
     post:
       tags: [TeleHealth]
       security: []
       summary: Güvenli erişim bağlantısını (magic-link) e-postayla yeniden gönder
       description: >
-        Booking **`PAID`** ise: yeni bir `accessToken` üretir, hash'ini saklar
-        (eski bağlantı bu andan itibaren çalışmaz) ve `APPOINTMENT_CONFIRMATION`
-        şablonunu **yalnızca kayıtlı `patientEmail` adresine** gönderir.
+        Yeni bir `accessToken` üretir, hash'ini saklar ve **yalnızca kayıtlı
+        `patientEmail` adresine** gönderir — ham token **YANITTA DÖNMEZ**
+        (e-posta numaralandırma/ele geçirme yüzeyi). Yanıt, booking var olsun
+        olmasın **her zaman `202`** döner (varlık sızdırılmaz).
 
 
-        Booking **henüz `PAID` DEĞİLSE** (2026-09-18 karar — Adım 4, ödeme
-        öncesi): token **ROTATE EDİLMEZ** — arayan tarafın (aktif rezervasyon
-        akışında hâlâ kullandığı) **kendi `accessToken`'ını `t` query
-        parametresiyle sağlaması GEREKİR**; booking'in kendi `accessTokenHash`'iyle
-        eşleşirse `BOOKING_PAYMENT_PENDING` şablonu (ödeme tamamlama bağlantısı)
-        gönderilir, eşleşmezse/verilmezse **sessizce hiçbir şey yapılmaz**.
-
-
-        Her iki dalda da ham token **YANITTA DÖNMEZ** (e-posta
-        numaralandırma/ele geçirme yüzeyi). Yanıt, booking var olsun olmasın
-        **her zaman `202`** döner (varlık/ödeme durumu sızdırılmaz).
-        Hız sınırı **1 istek/dakika**. Şablon/tetikleyici **notification-agent**'ındır;
-        e-posta içeriğinde uzmanlık adı, intake notu veya belge adı **YER ALAMAZ**
-        (§9.7.8).
+        2026-09-18 KRİTİK KARAR (bağlayıcı) — booking henüz **`PAID` DEĞİLSE**
+        bu uç **KESİNLİKLE hiçbir e-posta göndermez** (ödeme tamamlanmadan/
+        randevu kesinleşmeden HİÇBİR bildirim gitmemelidir); SESSİZCE `202`
+        döner. Hız sınırı **1 istek/dakika**. Şablon/tetikleyici
+        **notification-agent**'ındır; e-posta içeriğinde uzmanlık adı, intake
+        notu veya belge adı **YER ALAMAZ** (§9.7.8).
       responses:
         "202": { description: "İstek alındı (e-posta varsa gönderildi)" }
         "429": { $ref: "#/components/responses/TooManyRequests" }

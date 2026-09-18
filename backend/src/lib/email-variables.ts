@@ -167,21 +167,16 @@ const SYSTEM_VARIABLES_BY_PURPOSE: Record<EmailTemplatePurpose, EmailVariableDef
     { key: "booking_number", label: "Rezervasyon Numarası", sampleValue: "BKG-L4K2J1-A1B2", source: "system" },
   ],
   /**
-   * 2026-09-18 (kullanıcı talebi) — rezervasyon oluşturuldu, ödeme HENÜZ tamamlanmadı iken
-   * hastanın kendi isteğiyle ("Bağlantıyı e-posta ile gönder", Adım 4) tetiklenir.
-   * `APPOINTMENT_CONFIRMATION` İLE AYNI bağlayıcı sızma yasağı: doktorun uzmanlık adı, şikâyet
-   * notu veya belge adı ASLA yer almaz. `payment_link` ÖDEME TAMAMLAMA sayfasına gider
-   * (`/patient/bookings/{id}` — booking hâlâ `PENDING` olduğu için o sayfa otomatik olarak ödeme
-   * adımını gösterir, bkz. `patient-booking-detail-panel.tsx`); `join_link` BİLİNÇLİ OLARAK YOK
-   * (ödeme tamamlanmadan görüşme odasına girilemez).
+   * KULLANILMIYOR (2026-09-18) — bu amaç kısa bir süre "ödeme öncesi hatırlatma" e-postası için
+   * eklenmişti, kullanıcı BİLİNÇLİ olarak GERİ ALDI: ödeme tamamlanmadan/randevu kesinleşmeden
+   * HİÇBİR e-posta gönderilmemelidir (bkz. `lib/notifications.ts::resendBookingAccessLink` dosya
+   * başı yorumu). Hiçbir çağrı yeri `sendTemplateEmail(app, "BOOKING_PAYMENT_PENDING", ...)`
+   * ÇAĞIRMAZ ve `prisma/seed.ts` artık bu amaç için bir şablon OLUŞTURMAZ. Bu girdi yalnızca
+   * `Record<EmailTemplatePurpose, ...>` tip zorunluluğu (Prisma `EmailTemplatePurpose` enum'undan
+   * bir değer `ALTER TYPE ... DROP VALUE` desteklenmediği için GERİ ALINAMAZ) yüzünden burada
+   * durur — YENİDEN AKTİFLEŞTİRİLMEMELİDİR.
    */
-  BOOKING_PAYMENT_PENDING: [
-    { key: "booking_number", label: "Rezervasyon Numarası", sampleValue: "BKG-L4K2J1-A1B2", source: "system" },
-    { key: "patient_name", label: "Hasta Adı", sampleValue: "Ayşe Yılmaz", source: "system" },
-    { key: "slots_summary", label: "Randevu Saatleri", sampleValue: "06.01.2025 09:00, 06.01.2025 09:30", source: "system" },
-    { key: "total_formatted", label: "Toplam Tutar", sampleValue: "750.00 TRY", source: "system" },
-    { key: "payment_link", label: "Ödeme Tamamlama Bağlantısı", sampleValue: "https://example.com/tr/patient/bookings/abc?t=xyz", source: "system" },
-  ],
+  BOOKING_PAYMENT_PENDING: [],
   CUSTOM: [],
 };
 

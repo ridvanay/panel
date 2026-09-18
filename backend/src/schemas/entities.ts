@@ -1033,10 +1033,11 @@ export const EmailTemplatePurposeSchema = z.enum([
   // DTO-seviyesi ayna (mirror) burada SENKRONİZE edilir (`APPOINTMENT_RESCHEDULED` ile AYNI desen).
   "EMAIL_VERIFICATION",
   "ACCOUNT_ACTIVATION",
-  // 2026-09-18 (kullanıcı talebi) — rezervasyon oluşturuldu, ödeme HENÜZ tamamlanmadı durumunda
-  // gönderilen ödeme tamamlama bağlantısı şablonu. Prisma `EmailTemplatePurpose` enum'una İZOLE
-  // bir migration'da eklendi — bu DTO-seviyesi ayna (mirror) burada SENKRONİZE edilir
-  // (`APPOINTMENT_RESCHEDULED` yorumuyla AYNI desen).
+  // KULLANILMIYOR (2026-09-18) — kısa süreli bir "ödeme öncesi hatırlatma" özelliği için eklenmiş,
+  // kullanıcı talebiyle GERİ ALINMIŞ bir Prisma enum değeri (bkz.
+  // `lib/email-variables.ts::SYSTEM_VARIABLES_BY_PURPOSE.BOOKING_PAYMENT_PENDING` yorumu — enum
+  // değeri `ALTER TYPE ... DROP VALUE` desteklenmediği için DB'den GERİ ALINAMAZ, bu yüzden bu
+  // DTO-seviyesi ayna da kalıyor). Hiçbir kod yolu bu amacı ÜRETMEZ/TÜKETMEZ.
   "BOOKING_PAYMENT_PENDING",
   "CUSTOM",
 ]);

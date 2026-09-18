@@ -98,9 +98,19 @@ jobs:
         with:
           context: ./${{ matrix.service }}
           push: true
+          # 2026-09-18 KRİTİK DÜZELTME — `NEXT_PUBLIC_DOCTOR_URL`/`NEXT_PUBLIC_INTERNAL_MEDIA_URL`
+          # eskiden burada YOKTU: bu iki build-arg boş kalınca `frontend/Dockerfile`'daki `ARG`
+          # varsayılanı da boş olduğu için sorun değildi (hekim portalı subdomain izolasyonu/
+          # next/image sunucu-taraflı optimize fetch'i "tanımsız = devre dışı" olarak zaten güvenli
+          # geriye dönük uyumluluk davranışına düşer, bkz. docker-compose.yml'deki aynı build-arg'ların
+          # yorumu) — ama sessizce eksik kalmaları yerine burada da AÇIKÇA env secret'larından
+          # geçirilir, ileride bu özellikler prod'da AÇILMAK istendiğinde tek yapılacak şey
+          # GitHub Environment secret'larını doldurmaktır.
           build-args: |
             NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}
             NEXT_PUBLIC_SITE_URL=${{ secrets.NEXT_PUBLIC_SITE_URL }}
+            NEXT_PUBLIC_DOCTOR_URL=${{ secrets.NEXT_PUBLIC_DOCTOR_URL }}
+            NEXT_PUBLIC_INTERNAL_MEDIA_URL=${{ secrets.NEXT_PUBLIC_INTERNAL_MEDIA_URL }}
           tags: |
             ${{ secrets.REGISTRY_URL }}/${{ matrix.service }}:${{ github.sha }}
             ${{ secrets.REGISTRY_URL }}/${{ matrix.service }}:latest

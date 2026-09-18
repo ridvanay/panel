@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CalendarCheck, ChevronLeft, Mail } from "lucide-react";
+import { CalendarCheck, ChevronLeft } from "lucide-react";
 import * as telehealthApi from "@/lib/api/telehealth";
 import { ApiClientError } from "@/lib/api/error";
 import { friendlyErrorMessage, fieldErrorsFrom } from "@/lib/api/friendly-error";
@@ -17,7 +17,6 @@ import { BookingPaymentStep } from "@/components/site/telehealth/booking-payment
 import { DoctorServiceSummaryPanel } from "@/components/site/telehealth/doctor-service-summary";
 import { BookingStepperBar, type BookingStepperStep } from "@/components/site/telehealth/booking-stepper-bar";
 import { Alert } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
 
 /**
  * Grid görevi (2026-09-14) Görev 1 — kurumsal, TEK butonlu, numaralandırılmış randevu sihirbazı.
@@ -71,8 +70,6 @@ export function BookingWizard({ doctor, doctorSlug, doctorTimeZone, lang, defaul
   const identityFormRef = useRef<HTMLFormElement>(null);
 
   const [bookingResult, setBookingResult] = useState<CreateBookingResult | null>(null);
-  const [resendState, setResendState] = useState<"idle" | "sending" | "sent" | "error">("idle");
-  const [resendError, setResendError] = useState<string | null>(null);
 
   async function handleIdentityContinue(identity: BookingIdentityInput, patientName: string, patientEmail: string) {
     if (selectedSlots.length === 0) return;
@@ -106,22 +103,6 @@ export function BookingWizard({ doctor, doctorSlug, doctorTimeZone, lang, defaul
       }
     } finally {
       setIdentitySubmitting(false);
-    }
-  }
-
-  async function handleResend() {
-    if (!bookingResult) return;
-    setResendState("sending");
-    setResendError(null);
-    try {
-      // Ödeme öncesi (booking henüz `PAID` değilken) backend token'ı ROTATE ETMEDİĞİ için kendi
-      // `accessToken`'ımızı kanıt olarak göndermemiz gerekir — bkz. `lib/api/telehealth.ts
-      // ::resendBookingLink` yorumu. `PAID` sonrası zararsızdır (backend kullanmaz).
-      await telehealthApi.resendBookingLink(bookingResult.bookingId, bookingResult.accessToken);
-      setResendState("sent");
-    } catch (err) {
-      setResendState("error");
-      setResendError(friendlyErrorMessage(err));
     }
   }
 
@@ -214,18 +195,18 @@ export function BookingWizard({ doctor, doctorSlug, doctorTimeZone, lang, defaul
                       {bookingResult.slotCount} Slot · Toplam {formatPriceFromCents(bookingResult.totalCents, bookingResult.currency, intlLocale)}. Bu
                       rezervasyon slotu <strong>30 dakika</strong> tutar; bu süre içinde ödemeyi tamamlamanız gerekir.
                     </p>
+                    {/* 2026-09-18 KRİTİK DÜZELTME (kullanıcı talebi) — ödeme TAMAMLANMADAN hiçbir
+                        e-posta GÖNDERİLMEMELİDİR: eskiden burada ödeme öncesi de çalışan bir
+                        "Bağlantıyı e-posta ile gönder" butonu vardı (`resendBookingLink`), bu
+                        gereksiz e-posta trafiği yarattığı için KALDIRILDI. Randevu bağlantısı
+                        ARTIK YALNIZCA ödeme başarıyla tamamlandığında (webhook/demo ödeme) otomatik
+                        olarak gönderilir (bkz. `backend/.../lib/notifications.ts
+                        ::triggerAppointmentConfirmationEmail`) — burada yalnızca tarayıcıda not
+                        alma/yer imi tavsiyesi kalır. */}
                     <p className="text-sm">
-                      Randevunuzu daha sonra görüntülemek için bu bağlantıyı not alın veya yer imlerine ekleyin — ödeme
-                      onaylandığında aynı bağlantı e-posta ile de gönderilir.
+                      Randevunuzu daha sonra görüntülemek için bu bağlantıyı not alın veya yer imlerine ekleyin. Ödeme
+                      onaylandığında görüşme bağlantınız otomatik olarak e-posta ile gönderilecektir.
                     </p>
-                    <div className="flex flex-wrap items-center gap-2 pt-1">
-                      <Button type="button" variant="outline" size="sm" onClick={() => void handleResend()} loading={resendState === "sending"}>
-                        <Mail className="h-3.5 w-3.5" aria-hidden="true" />
-                        Bağlantıyı e-posta ile gönder
-                      </Button>
-                      {resendState === "sent" && <span className="text-xs text-success">Gönderildi (e-posta kayıtlıysa).</span>}
-                      {resendState === "error" && <span className="text-xs text-danger">{resendError}</span>}
-                    </div>
                   </div>
                 </Alert>
 

@@ -3,7 +3,6 @@ import type { Appointment, AppointmentBooking, EmailTemplatePurpose } from "@pri
 import { env } from "../../../config/env";
 import { getLocaleSet } from "../../../lib/localization";
 import { generateOpaqueToken, hashToken } from "../../../lib/tokens";
-import { timingSafeEqualHex } from "../../../lib/api-key";
 import { sendTemplateEmail } from "../../email-templates/email-templates.service";
 import { getWallClockParts } from "./timezone";
 
@@ -283,72 +282,23 @@ export async function triggerAppointmentReminderEmail(
 }
 
 /**
- * 2026-09-18 (kullanıcı talebi) — Adım 4'te (ödeme ÖNCESİ) "Bağlantıyı e-posta ile gönder"
- * butonu artık BOŞ dönmüyor: booking henüz `PAID` değilken bu şablon (ödeme tamamlama linki,
- * `payment_link` → `/patient/bookings/{id}` — o sayfa `paymentStatus === "PENDING"/"FAILED"`
- * iken zaten `BookingPaymentStep`'i kendiliğinden render eder, bkz.
- * `patient-booking-detail-panel.tsx`) gönderilir. `triggerAppointmentConfirmationEmail` İLE AYNI
- * best-effort/try-catch disiplini + AYNI sızma yasağı (doktor uzmanlığı/şikâyet notu YOK).
- * `join_link` BİLİNÇLİ OLARAK YOK — ödeme tamamlanmadan görüşme odasına girilemez.
- */
-export async function triggerBookingPaymentPendingEmail(
-  app: FastifyInstance,
-  input: { booking: AppointmentBooking; rawAccessToken: string }
-): Promise<void> {
-  const { booking, rawAccessToken } = input;
-  try {
-    const [doctorTimeZone, appointments, paymentLink] = await Promise.all([
-      resolveDoctorTimeZone(app, booking.doctorId),
-      app.prisma.appointment.findMany({
-        where: { bookingId: booking.id },
-        orderBy: { startsAt: "asc" },
-        select: { startsAt: true },
-      }),
-      buildMagicLink(app, booking.id, rawAccessToken),
-    ]);
-
-    await sendTemplateEmail(app, "BOOKING_PAYMENT_PENDING", booking.patientEmail, {
-      booking_number: booking.bookingNumber,
-      patient_name: booking.patientName,
-      slots_summary: formatSlotsSummary(appointments, doctorTimeZone),
-      total_formatted: formatMoney(booking.totalCents, booking.currency),
-      payment_link: paymentLink,
-    });
-  } catch (err) {
-    app.log.error({ err, bookingId: booking.id }, "Ödeme bekleyen rezervasyon e-postası gönderilemedi");
-  }
-}
-
-/**
  * `POST /appointments/bookings/{bookingId}/resend-link` (§9.7.10, notification-agent sahası) —
- * booking `PAID` iken openapi.yaml'ın (BAĞLAYICI kontrat) tarif ettiği ORİJİNAL davranış AYNEN
- * korunur: yeni bir `accessToken` üretir, hash'ini saklar (eski bağlantı bu andan itibaren
- * ÇALIŞMAZ) ve `APPOINTMENT_CONFIRMATION`'ı (artık `join_link` dahil) gönderir.
+ * openapi.yaml (BAĞLAYICI kontrat) burada AÇIKÇA "yeni bir accessToken üretir" der: her çağrı
+ * `accessTokenHash`'i ROTATE eder (eski bağlantı bu andan itibaren ÇALIŞMAZ) ve YALNIZCA kayıtlı
+ * `patientEmail`'e gönderir — ham token YANITTA ASLA dönmez (route bu fonksiyonun dönüş değerini
+ * kullanmaz, `void`).
  *
- * 2026-09-18 (kullanıcı talebi) — booking HENÜZ `PAID` DEĞİLKEN artık SESSİZCE no-op DÖNMEZ:
- * `BOOKING_PAYMENT_PENDING` gönderilir. **Token BURADA ROTATE EDİLMEZ** — arayan taraf
- * (`booking-wizard.tsx`, Adım 4/5'te AYNI sekmede intake/ödeme adımlarına devam edecek) booking
- * oluşturulduğunda aldığı `accessToken`'ı hâlâ bellekte tutuyor ve sonraki `intake`/
- * `checkout-session` çağrılarında KULLANMAYA devam edecek; rotate edilirse o token 403'e düşer
- * ve AKTİF rezervasyon akışı KIRILIR. Bu yüzden `providedToken` (çağıranın ZATEN sahip olduğu
- * token, `?t=` — `AppointmentAccessToken` parametresiyle AYNI desen) booking'in KENDİ
- * `accessTokenHash`'iyle SABİT ZAMANLI (`timingSafeEqualHex`) doğrulanır; eşleşmezse/verilmezse
- * SESSİZCE hiçbir şey yapmadan döner (varlık/oturum sızdırılmaz — PAID dalıyla AYNI ilke).
- *
- * Varlık sızdırılmaz: booking hiç yoksa SESSİZCE döner; çağıran route HER durumda `202` döner.
+ * 2026-09-18 KRİTİK DÜZELTME (kullanıcı talebi) — booking `PAID` DEĞİLKEN bu fonksiyon KESİNLİKLE
+ * hiçbir e-posta göndermez: ödeme tamamlanmadan/randevu kesinleşmeden hiçbir bildirim gitmemelidir
+ * (gereksiz e-posta trafiği + kafa karıştırıcı UX). Bu turdan önce kısa bir süre bu davranış
+ * "ödeme tamamlama linki" gönderecek şekilde genişletilmişti (bkz. git geçmişi) — kullanıcı
+ * BİLİNÇLİ olarak bunu GERİ ALDI, tekrar EKLENMEMELİDİR. Varlık sızdırılmaz: booking yoksa VEYA
+ * henüz `PAID` değilse SESSİZCE hiçbir şey yapmadan döner; çağıran route HER durumda `202` döner.
  * Rate limit (1 istek/dk, `BOOKING_RESEND_LINK_RATE_LIMIT`) route katmanındadır.
  */
-export async function resendBookingAccessLink(app: FastifyInstance, bookingId: string, providedToken?: string): Promise<void> {
+export async function resendBookingAccessLink(app: FastifyInstance, bookingId: string): Promise<void> {
   const existing = await app.prisma.appointmentBooking.findUnique({ where: { id: bookingId } });
-  if (!existing) return;
-
-  if (existing.paymentStatus !== "PAID") {
-    if (!providedToken) return;
-    const providedHash = hashToken(providedToken);
-    if (!timingSafeEqualHex(providedHash, existing.accessTokenHash)) return;
-    await triggerBookingPaymentPendingEmail(app, { booking: existing, rawAccessToken: providedToken });
-    return;
-  }
+  if (!existing || existing.paymentStatus !== "PAID") return;
 
   const rawAccessToken = generateOpaqueToken();
   const accessTokenHash = hashToken(rawAccessToken);

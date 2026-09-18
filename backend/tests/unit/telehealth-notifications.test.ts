@@ -18,11 +18,7 @@ vi.mock("../../src/lib/localization", () => ({
   getLocaleSet: (...args: unknown[]) => getLocaleSetMock(...args),
 }));
 
-import {
-  resendBookingAccessLink,
-  triggerAppointmentConfirmationEmail,
-  triggerBookingPaymentPendingEmail,
-} from "../../src/modules/telehealth/lib/notifications";
+import { resendBookingAccessLink, triggerAppointmentConfirmationEmail } from "../../src/modules/telehealth/lib/notifications";
 
 function fakeApp(overrides: {
   doctorTimeZone?: string;
@@ -167,64 +163,14 @@ describe("modules/telehealth/lib/notifications", () => {
       expect(hashToken(sentRawToken)).toBe(updateArgs.data.accessTokenHash);
     });
 
-    // 2026-09-18 (kullanıcı talebi) — Adım 4, ödeme öncesi.
-    it("PENDING booking + token verilmezse hiçbir şey yapmaz (varlık/oturum sızdırılmaz)", async () => {
+    // 2026-09-18 KRİTİK DÜZELTME (kullanıcı talebi) — booking `PAID` değilken bu fonksiyon
+    // KESİNLİKLE hiçbir e-posta göndermez, hiçbir koşulda (token verilse/geçerli olsa bile) —
+    // ödeme tamamlanmadan/randevu kesinleşmeden HİÇBİR bildirim gitmemelidir.
+    it("PENDING booking'de hiçbir şey yapmaz — token DOĞRU olsa bile e-posta gönderilmez", async () => {
       const { app, updateBooking } = fakeApp({ booking: { ...BOOKING, paymentStatus: "PENDING" } });
       await resendBookingAccessLink(app, BOOKING.id);
       expect(updateBooking).not.toHaveBeenCalled();
       expect(sendTemplateEmailMock).not.toHaveBeenCalled();
-    });
-
-    it("PENDING booking + YANLIŞ token verilirse hiçbir şey yapmaz", async () => {
-      const { app, updateBooking } = fakeApp({ booking: { ...BOOKING, paymentStatus: "PENDING" } });
-      await resendBookingAccessLink(app, BOOKING.id, "wrong-token");
-      expect(updateBooking).not.toHaveBeenCalled();
-      expect(sendTemplateEmailMock).not.toHaveBeenCalled();
-    });
-
-    it("PENDING booking + DOĞRU token verilirse BOOKING_PAYMENT_PENDING gönderir, token ROTATE ETMEZ", async () => {
-      const appointments = [{ startsAt: new Date("2025-01-06T06:00:00.000Z") }];
-      const { app, updateBooking } = fakeApp({ booking: { ...BOOKING, paymentStatus: "PENDING" }, appointments });
-
-      await resendBookingAccessLink(app, BOOKING.id, KNOWN_RAW_TOKEN);
-
-      // Token rotate EDİLMEZ — aksi halde arayanın (booking-wizard.tsx) AKTİF sekmede elinde
-      // tuttuğu `accessToken` bir sonraki intake/checkout-session çağrısında 403'e düşer.
-      expect(updateBooking).not.toHaveBeenCalled();
-
-      expect(sendTemplateEmailMock).toHaveBeenCalledTimes(1);
-      const [, purpose, to, values] = sendTemplateEmailMock.mock.calls[0]! as [unknown, unknown, unknown, { payment_link: string }];
-      expect(purpose).toBe("BOOKING_PAYMENT_PENDING");
-      expect(to).toBe("ayse@example.com");
-      expect(new URL(values.payment_link).searchParams.get("t")).toBe(KNOWN_RAW_TOKEN);
-    });
-  });
-
-  describe("triggerBookingPaymentPendingEmail", () => {
-    it("BOOKING_PAYMENT_PENDING amacıyla gönderir, join_link İÇERMEZ (ödeme tamamlanmadan görüşme odasına girilemez)", async () => {
-      const appointments = [{ startsAt: new Date("2025-01-06T06:00:00.000Z") }];
-      const { app } = fakeApp({ booking: { ...BOOKING, paymentStatus: "PENDING" }, appointments });
-
-      await triggerBookingPaymentPendingEmail(app, { booking: { ...BOOKING, paymentStatus: "PENDING" } as never, rawAccessToken: "raw-tok" });
-
-      expect(sendTemplateEmailMock).toHaveBeenCalledTimes(1);
-      const [, purpose, , values] = sendTemplateEmailMock.mock.calls[0]!;
-      expect(purpose).toBe("BOOKING_PAYMENT_PENDING");
-      expect(Object.keys(values).sort()).toEqual(
-        ["booking_number", "patient_name", "payment_link", "slots_summary", "total_formatted"].sort()
-      );
-      expect(values.payment_link).toBe("http://localhost:3000/tr/patient/bookings/11111111-1111-1111-1111-111111111111?t=raw-tok");
-    });
-
-    it("sessiz başarısızlık YOK — sendTemplateEmail reddedilirse hata loglanır, ÇAĞIRAN akış bozulmaz", async () => {
-      const { app } = fakeApp({ booking: { ...BOOKING, paymentStatus: "PENDING" } });
-      sendTemplateEmailMock.mockRejectedValueOnce(new Error("smtp down"));
-
-      await expect(
-        triggerBookingPaymentPendingEmail(app, { booking: { ...BOOKING, paymentStatus: "PENDING" } as never, rawAccessToken: "t" })
-      ).resolves.toBeUndefined();
-
-      expect(app.log.error).toHaveBeenCalledTimes(1);
     });
   });
 });

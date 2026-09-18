@@ -19,6 +19,16 @@
 #
 # NOT: backend servisi `backend/.env` dosyasını `env_file` ile okur — bu dosya repoya girmez
 # (.gitignore), her geliştirici kendi `.env.example`'ından türetir.
+#
+# 2026-09-18 KRİTİK DÜZELTME — yukarıdaki `siteadi.localhost` adresleri SADECE bu dosyanın
+# dokümantasyonu/dev varsayılanıdır, ASLA canlı ortam yapılandırması İÇİN KULLANILMAMALIDIR: asıl
+# üretim deploy yolu `.github/workflows/deploy.yml`'in `docker build --build-arg` adımıdır (bu
+# dosyayı/`docker compose`u HİÇ kullanmaz). Bu dosya YİNE DE canlıda YANLIŞLIKLA doğrudan
+# `docker compose up --build` ile çalıştırılırsa artık ÇÖKMEZ: `frontend.build.args` ve
+# `backend.environment.LIVEKIT_URL` altındaki `NEXT_PUBLIC_*`/`LIVEKIT_URL` değerleri kök `.env`
+# dosyasından (bu makineye özel, repoya GİRMEZ) okunur — sunucuda o dosyaya GERÇEK prod
+# değerlerini (`NEXT_PUBLIC_API_URL=https://wmhealthistanbul.com/api/v1` vb.) yazmak yeterlidir,
+# bu YAML dosyasının KENDİSİ hiçbir zaman değiştirilmemelidir.
 
 services:
   db:
@@ -89,7 +99,13 @@ services:
       # tarayıcıya döner, bkz. FRONTEND_URL'in yukarıdaki notuyla AYNI "sunucu-taraflı config ama
       # tarayıcı-erişilebilir değer" deseni). Anahtarlar aşağıdaki `livekit` servisinin
       # `--keys` argümanıyla BİREBİR eşleşmeli.
-      LIVEKIT_URL: ws://siteadi.localhost:7880
+      # 2026-09-18 KRİTİK DÜZELTME — bu değer eskiden SABİT `ws://siteadi.localhost:7880` idi;
+      # hiçbir override mekanizması OLMADIĞI için bu dosyanın canlı ortamda (yanlışlıkla) doğrudan
+      # `docker compose up --build` ile kullanılması durumunda tarayıcı LiveKit'e bağlanamıyordu.
+      # Artık kök `.env` dosyasından (bu makineye özel, repoya GİRMEZ — bkz. dosya başı NOT)
+      # `LIVEKIT_URL` okunur, tanımsızsa AYNI dev varsayılanına düşer — repoyu yeni klonlayan biri
+      # için davranış DEĞİŞMEZ.
+      LIVEKIT_URL: ${LIVEKIT_URL:-ws://siteadi.localhost:7880}
       LIVEKIT_API_KEY: devkey
       LIVEKIT_API_SECRET: secret_livekit_local_dev_key_32bytes
     ports:
@@ -129,13 +145,24 @@ services:
         # edilebilir üst alan adı altında olması ZORUNLUDUR (§6.1 deneyi, §6.2 kararı) — bu artık
         # yalnızca bare-metal değil, Docker Compose için de geçerlidir (tarayıcı ikisinde de aynı
         # host şemasını görür).
-        NEXT_PUBLIC_API_URL: http://siteadi.localhost:4000/api/v1
-        NEXT_PUBLIC_SITE_URL: http://siteadi.localhost:3000
-        # Hekim portalı (`/doctor/**`) subdomain izolasyonu — YENİ. NEXT_PUBLIC_SITE_URL ile AYNI
-        # desen (build-time inline edilir, runtime `environment:` YETMEZ). TANIMSIZ bırakılırsa
+        # 2026-09-18 KRİTİK DÜZELTME — bu 4 build-arg eskiden SABİT `siteadi.localhost` değerleri
+        # taşıyordu, HİÇBİR override mekanizması YOKTU. Bu dosyanın canlı ortamda (yanlışlıkla)
+        # doğrudan `docker compose up --build` ile kullanılması, derlenen Next.js bundle'ına
+        # `siteadi.localhost`u GÖMDÜ ve tarayıcıdan yapılan TÜM API istekleri
+        # `ERR_CONNECTION_REFUSED` ile çöktü (gerçek olayda görüldü). Artık kök `.env`
+        # dosyasından (bu makineye özel, repoya GİRMEZ — bkz. dosya başı NOT) okunur, tanımsızsa
+        # AYNI dev varsayılanına düşer — repoyu yeni klonlayan biri için davranış DEĞİŞMEZ. Canlı
+        # ortamda `docker compose` KULLANILACAKSA (asıl yol GitHub Actions `deploy.yml`'in
+        # `docker build --build-arg` adımıdır, bkz. o dosya), sunucudaki kök `.env`'e
+        # `NEXT_PUBLIC_API_URL=https://wmhealthistanbul.com/api/v1` vb. GERÇEK değerler
+        # yazılmalıdır — bu dosyada ASLA hardcode EDİLMEZ.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://siteadi.localhost:4000/api/v1}
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://siteadi.localhost:3000}
+        # Hekim portalı (`/doctor/**`) subdomain izolasyonu. NEXT_PUBLIC_SITE_URL ile AYNI desen
+        # (build-time inline edilir, runtime `environment:` YETMEZ). TANIMSIZ bırakılırsa
         # özelliğin tamamı devre dışı kalır (§3.4 geriye dönük uyumluluk) — bu compose şablonunda
-        # özelliği örneklemek için dolu bırakıldı.
-        NEXT_PUBLIC_DOCTOR_URL: http://doktor.siteadi.localhost:3000
+        # dev varsayılanı özelliği örneklemek için dolu bırakıldı.
+        NEXT_PUBLIC_DOCTOR_URL: ${NEXT_PUBLIC_DOCTOR_URL:-http://doktor.siteadi.localhost:3000}
         # DİĞER İKİSİNİN TAM TERSİ: bu SADECE next/image'in KENDİ sunucu-taraflı optimize fetch'i
         # (frontend container'ının İÇİNDE çalışır, `/_next/image` route'u) içindir — backend'in
         # `Media.url`'i tarayıcıya göre mutlaklaştırdığı `localhost:4000`'e o container'dan
@@ -144,7 +171,9 @@ services:
         # doğrudan çözmeye çalışmaz (next/image optimize edilen görseller için DAİMA aynı-origin
         # `/_next/image?url=...` ister) — bu yüzden `INTERNAL_API_URL`'in aksine NEXT_PUBLIC_*
         # build-arg'ı olması güvenlidir/gereklidir (bkz. frontend/src/lib/image-hosts.ts notu).
-        NEXT_PUBLIC_INTERNAL_MEDIA_URL: http://backend:4000
+        # Varsayılanı `http://backend:4000` — docker ağ adı, dev/prod FARK ETMEKSİZİN aynı kalır
+        # (compose ağında bu servis her zaman "backend" adıyla erişilir).
+        NEXT_PUBLIC_INTERNAL_MEDIA_URL: ${NEXT_PUBLIC_INTERNAL_MEDIA_URL:-http://backend:4000}
     # backend servisiyle AYNI desen (bkz. dosya başındaki NOT) — frontend/.dockerignore
     # `.env*`'i imaja HİÇ almaz (bkz. src/app/api/revalidate/route.ts'in REVALIDATE_SECRET'ı),
     # bu yüzden runtime env'i env_file ile enjekte etmek gerekiyor.

@@ -202,27 +202,6 @@ async function main() {
     },
   });
 
-  // 2026-09-18 (kullanıcı talebi) — rezervasyon oluşturuldu, ödeme HENÜZ tamamlanmadı (Adım 4,
-  // "Bağlantıyı e-posta ile gönder"). APPOINTMENT_CONFIRMATION İLE AYNI PII/sızma disiplini —
-  // doktor uzmanlığı/şikâyet notu YOK. `join_link` BİLİNÇLİ OLARAK YOK (ödeme tamamlanmadan
-  // görüşme odasına girilemez) — bkz. lib/notifications.ts::triggerBookingPaymentPendingEmail.
-  await prisma.emailTemplate.upsert({
-    where: { key: "BOOKING_PAYMENT_PENDING" },
-    update: {},
-    create: {
-      key: "BOOKING_PAYMENT_PENDING",
-      name: "Booking Payment Pending Email",
-      purpose: "BOOKING_PAYMENT_PENDING",
-      editorMode: "RAW",
-      isSystem: true,
-      isActive: true,
-      subject: "Complete your booking payment",
-      bodyHtml:
-        "<p>Hello {{patient_name}},</p><p>Your reservation <strong>{{booking_number}}</strong> has been created, but payment has not been completed yet.</p><p>Appointment time(s): {{slots_summary}}</p><p>Total: {{total_formatted}}</p><p>Please use the link below to complete your payment and confirm your appointment:</p><p><a href=\"{{payment_link}}\">Complete Payment</a></p>",
-      availableVariables: ["booking_number", "patient_name", "slots_summary", "total_formatted", "payment_link"],
-    },
-  });
-
   // NOT — 2026-09-15: Admin randevu yeniden planlama (reschedule) akışı — hastaya VE doktora
   // (AYNI şablon, İKİ ayrı gönderim: hastaya giderken {{recipient_name}}=hasta adı, doktora
   // giderken {{recipient_name}}=doktor adı) "Randevunuz Yeniden Planlandı" bildirimi için tek
