@@ -11,12 +11,17 @@ ARG NODE_VERSION=20-alpine
 # ---- deps ----
 FROM node:${NODE_VERSION} AS deps
 WORKDIR /app
+# Trivy CRITICAL/HIGH Alpine paket yamaları — base imajın apk paketlerini güncel güvenlik
+# yamalarına getirir (her stage ayrı bir dosya sistemi katmanıdır, bu yüzden her `FROM
+# node:...` stage'inde AYRICA çalıştırılması gerekir).
+RUN apk update && apk upgrade --no-cache
 COPY package.json package-lock.json ./
 RUN npm ci
 
 # ---- builder ----
 FROM node:${NODE_VERSION} AS builder
 WORKDIR /app
+RUN apk update && apk upgrade --no-cache
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
@@ -56,7 +61,8 @@ ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 WORKDIR /app
 
-RUN addgroup -S nodejs && adduser -S nextjs -G nodejs
+RUN apk update && apk upgrade --no-cache \
+  && addgroup -S nodejs && adduser -S nextjs -G nodejs
 
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./

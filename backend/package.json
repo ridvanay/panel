@@ -33,7 +33,7 @@
     "argon2": "^0.40.3",
     "csv-parse": "^7.0.2",
     "dotenv": "^16.4.5",
-    "fastify": "^5.11.2",
+    "fastify": "^5.12.1",
     "fastify-type-provider-zod": "^4.0.2",
     "geoip-lite": "^2.0.3",
     "image-size": "^2.0.2",
@@ -76,5 +76,8 @@
     "argon2@0.40.3": true,
     "esbuild@0.28.1": true,
     "prisma@5.22.0": true
+  },
+  "overrides": {
+    "fast-uri": "^4.1.3"
   }
 }

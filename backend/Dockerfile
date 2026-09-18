@@ -12,6 +12,10 @@ ARG NODE_VERSION=20-alpine
 # ---- deps: tüm bağımlılıklar (build için gerekli devDependencies dahil) ----
 FROM node:${NODE_VERSION} AS deps
 WORKDIR /app
+# Trivy CRITICAL/HIGH Alpine paket yamaları — base imajın apk paketlerini güncel güvenlik
+# yamalarına getirir (her stage ayrı bir dosya sistemi katmanıdır, bu yüzden her `FROM
+# node:...` stage'inde AYRICA çalıştırılması gerekir).
+RUN apk update && apk upgrade --no-cache
 # Prisma engine'leri musl (alpine) hedefi için openssl'e ihtiyaç duyar.
 RUN apk add --no-cache openssl
 COPY package.json package-lock.json ./
@@ -31,6 +35,7 @@ RUN npm run build
 # ---- prod-deps: sadece production bağımlılıkları + üretilen Prisma client ----
 FROM node:${NODE_VERSION} AS prod-deps
 WORKDIR /app
+RUN apk update && apk upgrade --no-cache
 RUN apk add --no-cache openssl
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
@@ -46,7 +51,8 @@ FROM node:${NODE_VERSION} AS runtime
 ENV NODE_ENV=production
 WORKDIR /app
 
-RUN apk add --no-cache openssl \
+RUN apk update && apk upgrade --no-cache \
+  && apk add --no-cache openssl \
   && addgroup -S nodejs \
   && adduser -S nodejs -G nodejs
 
