@@ -30,6 +30,7 @@ import {
   Stethoscope,
   Tag,
   CalendarClock,
+  CreditCard,
 } from "lucide-react";
 import {
   Sidebar,
@@ -127,6 +128,18 @@ export const navItems: NavItem[] = [
     href: "/admin/telehealth/appointments",
     labelKey: "nav.telehealthAppointments",
     icon: CalendarClock,
+    module: "telehealth",
+    roles: ["ADMIN", "MANAGER"],
+  },
+  // 2026-09-19 (kullanıcı talebi) — canlı ortamda demo ödeme modu KASITLI OLARAK açılamadığı
+  // (`ENABLE_DEMO_PAYMENTS` prod'da fail-closed boot koruması, bkz. config/env.ts) için, ödemesi
+  // bekleyen bir test rezervasyonunu ADMIN'in manuel `mark-paid` ucuyla (zaten var olan, ADMIN-only
+  // bir uç — §9.7.1 madde 7) ilerletebilmesi için TEK tıkla arayüz. `/admin/telehealth/appointments`
+  // İLE AYNI görünürlük kuralı (hasta PII'si + para hareketi, EDITOR'e GÖSTERİLMEZ).
+  {
+    href: "/admin/telehealth/bookings",
+    labelKey: "nav.telehealthBookings",
+    icon: CreditCard,
     module: "telehealth",
     roles: ["ADMIN", "MANAGER"],
   },

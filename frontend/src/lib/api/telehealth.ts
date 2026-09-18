@@ -541,6 +541,52 @@ export function listAdminAppointments(params: ListAdminAppointmentsParams = {}):
   });
 }
 
+export interface ListAdminBookingsParams {
+  doctorId?: string;
+  paymentStatus?: AppointmentBooking["paymentStatus"];
+  search?: string;
+  cursor?: string;
+  limit?: number;
+}
+
+/**
+ * 2026-09-19 (kullanıcı talebi) — `GET /admin/telehealth/bookings`, SALT-OKUNUR, ADMIN/MANAGER
+ * (`listAdminAppointments` İLE AYNI eşik, hasta PII'si). `Appointment`'tan farklı olarak burada
+ * `paymentStatus` (booking seviyesinde, `PENDING`/`PAID`/...) FİLTRELENEBİLİR — canlı ortamda demo
+ * ödeme modu AÇILAMADIĞI (bkz. `markBookingPaid` yorumu) için, ödeme bekleyen test
+ * rezervasyonlarını bulmanın TEK yolu budur.
+ */
+export function listAdminBookings(params: ListAdminBookingsParams = {}): Promise<Page<AppointmentBooking>> {
+  return apiFetchPage<AppointmentBooking>("/admin/telehealth/bookings", {
+    query: {
+      doctorId: params.doctorId,
+      paymentStatus: params.paymentStatus,
+      search: params.search,
+      cursor: params.cursor,
+      limit: params.limit ?? 50,
+    },
+  });
+}
+
+/**
+ * `POST /admin/telehealth/bookings/{bookingId}/mark-paid` — YALNIZCA ADMIN (MANAGER dahil diğer
+ * roller 403 alır, `reschedule` İLE AYNI eşik disiplini, §9.7.1 madde 7 — para hareketi beyanı).
+ *
+ * 2026-09-19 (kullanıcı talebi) — canlı ortamda `ENABLE_DEMO_PAYMENTS=true` KESİNLİKLE
+ * AÇILAMAZ: `backend/src/config/env.ts`'de `NODE_ENV=production` iken bu bayrak `true` olursa
+ * backend BOOT ANINDA `process.exit(1)` ile çöker (bilinçli, belgelenmiş fail-closed koruması —
+ * demo ödeme simülatörü gerçek parayı atlar, üretimde asla açılamaz). Bu yüzden canlıda uçtan
+ * uca test etmenin GÜVENLİ yolu, zaten var olan bu ADMIN-only ucu bir arayüz butonuyla
+ * çağırmaktır — booking'i GERÇEKTEN `PAID`e çevirir (aynı `confirmBookingPayment` transaction'ı,
+ * onay e-postası + LiveKit oda hazırlığı AYNI kod yolundan tetiklenir).
+ */
+export function markBookingPaid(bookingId: string, reason: string): Promise<AppointmentBooking> {
+  return apiFetch<AppointmentBooking>(`/admin/telehealth/bookings/${bookingId}/mark-paid`, {
+    method: "POST",
+    body: { reason },
+  });
+}
+
 /**
  * Görev (2026-09-15) — `PATCH /admin/telehealth/appointments/{id}/reschedule`, YALNIZCA ADMIN
  * (MANAGER dahil diğer roller 403). `id` bir **Appointment ID'sidir** (booking ID DEĞİL) — yalnızca
