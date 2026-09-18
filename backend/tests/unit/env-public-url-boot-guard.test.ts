@@ -55,6 +55,13 @@ describe("config/env.ts — PUBLIC_URL fail-closed boot koruması", () => {
     expect(result.stderr).toContain("PUBLIC_URL");
   });
 
+  it("NODE_ENV=production + PUBLIC_URL=http://siteadi.localhost:4000 → boot BAŞARISIZ olur (RFC 6761 *.localhost, .env.example placeholder'ı prod'a taşınmışsa da yakalanır)", () => {
+    const result = runEnvFixture({ NODE_ENV: "production", PUBLIC_URL: "http://siteadi.localhost:4000" });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("PUBLIC_URL");
+    expect(result.stderr).toContain("siteadi.localhost");
+  });
+
   it("NODE_ENV=production + PUBLIC_URL=https://api.example.com (gerçek domain) → boot BAŞARILI", () => {
     // `FRONTEND_URL` bilinçli olarak gerçek bir domain'e override edilir — bu test PUBLIC_URL'i
     // doğrular, `.env.test`'in FRONTEND_URL değerine (yerel test sabiti, localhost olabilir) bağımlı

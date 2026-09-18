@@ -295,13 +295,24 @@ if (isProd && env.ENABLE_DEMO_PAYMENTS) {
   process.exit(1);
 }
 
+// RFC 6761 — TÜM `.localhost` alt-alan-adları (`siteadi.localhost` dahil, sadece çıplak
+// "localhost" değil) yalnızca ÇÖZEN makinenin kendi loopback'ine işaret eder; bu repodaki
+// `.env.example`/dev dokümantasyonu ÖZELLİKLE `siteadi.localhost` deseniyle DOLU (çoklu-site dev
+// kurulumu için) — biri bu placeholder'ı prod'a taşırken değiştirmeyi unutursa (`PUBLIC_URL`/
+// `FRONTEND_URL` hâlâ `*.localhost` kalırsa) eski çıplak-"localhost" kontrolü bunu YAKALAMAZ,
+// gerçek kullanıcıların tarayıcısı bu host'u ASLA çözemez (medya/dosya URL'leri ve e-posta
+// linkleri kırık kalır) — 2026-09-18 canlı bulgusu bu boşluğu doğruladı.
+function isLoopbackHostname(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname.endsWith(".localhost");
+}
+
 // qa-agent bulgusu (2026-09-17) — `PUBLIC_URL` yukarıda ZORUNLU kılındı (varsayılan YOK) ama biri
 // production'da onu YİNE DE yanlışlıkla `http://localhost:...`'a ayarlayabilir (ör. `.env` dosyası
 // kopyala-yapıştır hatası) — bu durumda Medya Kütüphanesi/ürün görselleri/doktor avatarları GERÇEK
 // kullanıcıların tarayıcısına `http://localhost:.../uploads/...` (kendi makineleri) olarak gider.
 // `ENABLE_DEMO_PAYMENTS` İLE AYNI ilke: sessiz yanlış veri yerine gürültülü boot hatası.
 const publicUrlHostname = new URL(env.PUBLIC_URL).hostname;
-if (isProd && (publicUrlHostname === "localhost" || publicUrlHostname === "127.0.0.1")) {
+if (isProd && isLoopbackHostname(publicUrlHostname)) {
   // eslint-disable-next-line no-console
   console.error(
     `Ortam değişkenleri geçersiz: PUBLIC_URL production'da "${publicUrlHostname}" olamaz ` +
@@ -313,11 +324,11 @@ if (isProd && (publicUrlHostname === "localhost" || publicUrlHostname === "127.0
 // qa-agent bulgusu (2026-09-17) — `PUBLIC_URL` İLE AYNI ilke, `FRONTEND_URL` için: bu değişken CORS
 // `origin` allow-list'ini (plugins/security.ts) VE kullanıcıya giden e-posta linklerinin (şifre
 // sıfırlama, hoş geldin, randevu onayı vb.) taban adresini besler. Production'da AÇIKÇA (veya
-// varsayılan yoluyla, ikisi de aynı sonuca varır) `localhost`/`127.0.0.1`'e ayarlanmışsa CORS TÜM
-// gerçek origin'i reddeder (login DAHİL her istek "ağ hatası" gibi görünür) VE gönderilen e-posta
-// linkleri gerçek kullanıcıların KENDİ makinesine işaret eder.
+// varsayılan yoluyla, ikisi de aynı sonuca varır) `localhost`/`127.0.0.1`/`*.localhost`'a
+// ayarlanmışsa CORS TÜM gerçek origin'i reddeder (login DAHİL her istek "ağ hatası" gibi
+// görünür) VE gönderilen e-posta linkleri gerçek kullanıcıların KENDİ makinesine işaret eder.
 const frontendUrlHostname = new URL(env.FRONTEND_URL).hostname;
-if (isProd && (frontendUrlHostname === "localhost" || frontendUrlHostname === "127.0.0.1")) {
+if (isProd && isLoopbackHostname(frontendUrlHostname)) {
   // eslint-disable-next-line no-console
   console.error(
     `Ortam değişkenleri geçersiz: FRONTEND_URL production'da "${frontendUrlHostname}" olamaz ` +

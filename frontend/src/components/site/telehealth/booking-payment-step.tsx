@@ -148,6 +148,49 @@ export function BookingPaymentStep({ bookingId, accessToken, totalCents, currenc
 
   const showDemoPanel = DEMO_PAYMENTS_ENABLED && demoPaymentsRuntimeEnabled;
 
+  /**
+   * 2026-09-19 (kullanıcı talebi, GÖREV 2) — Adım 5'teki bekleme ekranında hasta hiçbir şey
+   * yapmasa da (ör. admin panelinden "Ödendi İşaretle (Test)" ile canlı ortamda uçtan uca test
+   * ederken, bkz. `admin/telehealth/bookings/page.tsx`) ödeme tamamlandığında ekran KENDİLİĞİNDEN
+   * onay/katılım moduna geçmelidir. 3-5sn'lik polling yerine 4sn sabit aralık (istekte belirtilen
+   * bandın ortası) — `getBooking` HAFİF bir GET, ek bir WebSocket/SSE altyapısı İCAT EDİLMEZ (bu
+   * bileşen zaten `getBooking`'i başka amaçla KULLANMIYOR olsa da `patient-booking-detail-panel.tsx`
+   * İLE AYNI uç). `PAID` görüldüğünde `handleDemoPay`'in başarı dalıyla BİREBİR AYNI yönlendirme
+   * mantığı izlenir (`onDemoPaid` verilmişse üst state'e yazılır, verilmemişse Stripe'ın
+   * `success_url`'i İLE AYNI rotaya `router.push` edilir) — yeni bir "onaylandı" ekranı İCAT
+   * EDİLMEZ, mevcut TEK hedef rotaya YÖNLENDİRİLİR.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    async function poll() {
+      try {
+        const booking = await telehealthApi.getBooking(bookingId, accessToken);
+        if (cancelled) return;
+        if (booking.paymentStatus === "PAID") {
+          onPaymentStarted?.();
+          if (onDemoPaid) {
+            onDemoPaid(booking);
+          } else {
+            const tokenSuffix = accessToken ? `&t=${encodeURIComponent(accessToken)}` : "";
+            router.push(`/${lang}/patient/bookings/${bookingId}?payment=success${tokenSuffix}`);
+          }
+          return;
+        }
+      } catch {
+        // Geçici ağ/sunucu hatası — polling'i DURDURMAZ, bir sonraki turda sessizce tekrar dener.
+      }
+      if (!cancelled) timer = setTimeout(poll, 4000);
+    }
+
+    timer = setTimeout(poll, 4000);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [bookingId, accessToken, lang, onDemoPaid, onPaymentStarted, router]);
+
   async function handlePay() {
     setRequesting(true);
     setError(null);

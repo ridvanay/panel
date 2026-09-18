@@ -9,8 +9,10 @@ import { hashToken } from "../../src/lib/tokens";
  * de mock'lanır (Locale tablosuna sorgu atmadan varsayılan dili sabitlemek için).
  */
 const sendTemplateEmailMock = vi.fn();
+const buildEmailRenderContextMock = vi.fn();
 vi.mock("../../src/modules/email-templates/email-templates.service", () => ({
   sendTemplateEmail: (...args: unknown[]) => sendTemplateEmailMock(...args),
+  buildEmailRenderContext: (...args: unknown[]) => buildEmailRenderContextMock(...args),
 }));
 
 const getLocaleSetMock = vi.fn();
@@ -18,6 +20,15 @@ vi.mock("../../src/lib/localization", () => ({
   getLocaleSet: (...args: unknown[]) => getLocaleSetMock(...args),
 }));
 
+// 2026-09-19 — `NotFoundError` (DB'de aktif APPOINTMENT_CONFIRMATION şablonu YOK) dalında
+// `triggerAppointmentConfirmationEmail`'in koda gömülü yedeğe düşüp `sendMail`'i DOĞRUDAN
+// çağırdığını doğrulamak için ayrıca mock'lanır (mail.test.ts İLE AYNI desen).
+const sendMailMock = vi.fn();
+vi.mock("../../src/lib/mail", () => ({
+  sendMail: (...args: unknown[]) => sendMailMock(...args),
+}));
+
+import { NotFoundError } from "../../src/lib/errors";
 import { resendBookingAccessLink, triggerAppointmentConfirmationEmail } from "../../src/modules/telehealth/lib/notifications";
 
 function fakeApp(overrides: {
@@ -63,6 +74,13 @@ describe("modules/telehealth/lib/notifications", () => {
   beforeEach(() => {
     sendTemplateEmailMock.mockReset().mockResolvedValue(undefined);
     getLocaleSetMock.mockReset().mockResolvedValue({ default: { code: "tr" }, enabled: [{ code: "tr" }] });
+    buildEmailRenderContextMock.mockReset().mockResolvedValue({
+      siteName: "Global TeleHealth",
+      siteUrl: "http://localhost:3000",
+      logoUrl: null,
+      legalPages: [],
+    });
+    sendMailMock.mockReset().mockResolvedValue({ messageId: "fake" });
   });
 
   describe("triggerAppointmentConfirmationEmail", () => {
@@ -125,6 +143,47 @@ describe("modules/telehealth/lib/notifications", () => {
       expect(app.log.error).toHaveBeenCalledTimes(1);
       const [logPayload] = (app.log.error as ReturnType<typeof vi.fn>).mock.calls[0]!;
       expect(logPayload).toMatchObject({ bookingId: BOOKING.id });
+    });
+
+    // 2026-09-19 (kullanıcı talebi) — DB'de aktif APPOINTMENT_CONFIRMATION şablonu YOKSA (canlı
+    // bulgusu: "Aktif e-posta şablonu bulunamadı") ödenmiş bir randevunun onay e-postası + görüşme
+    // linki SESSİZCE kaybolmamalı — koda gömülü yedek şablonla `sendMail` DOĞRUDAN çağrılır, AYRICA
+    // hata loglanır (asıl DB satırı hâlâ eksik sayılmalı, ops fark etmeli).
+    it("APPOINTMENT_CONFIRMATION şablonu bulunamazsa (NotFoundError) koda gömülü yedek şablonla sendMail DOĞRUDAN çağrılır VE hata loglanır", async () => {
+      const { app } = fakeApp();
+      sendTemplateEmailMock.mockRejectedValueOnce(new NotFoundError("Aktif e-posta şablonu bulunamadı (amaç: APPOINTMENT_CONFIRMATION)."));
+      const appointments = [{ id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", startsAt: new Date("2025-01-06T06:00:00.000Z") }];
+
+      await expect(
+        triggerAppointmentConfirmationEmail(app, { booking: BOOKING as never, appointments, rawAccessToken: "raw-token-abc" })
+      ).resolves.toBeUndefined();
+
+      expect(sendMailMock).toHaveBeenCalledTimes(1);
+      const [, mailInput] = sendMailMock.mock.calls[0]! as [unknown, { to: string; subject: string; html: string }];
+      expect(mailInput.to).toBe("ayse@example.com");
+      expect(mailInput.subject).toBe("Your appointment is confirmed");
+      expect(mailInput.html).toContain("BKG-ABC123-XYZ9");
+      expect(mailInput.html).toContain("Ayşe Yılmaz");
+      expect(mailInput.html).toContain("http://localhost:3000/tr/consultation/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa?t=raw-token-abc");
+      // Sağlık verisi/uzmanlık/şikâyet notu YOK — bağlayıcı sızma yasağı yedek şablonda da geçerli.
+      expect(mailInput.html).not.toMatch(/specialt|complaint|diagnos/i);
+
+      // Fallback BAŞARILI olsa da DB satırının eksikliği loglanmalı — sessiz DEĞİL.
+      expect(app.log.error).toHaveBeenCalledTimes(1);
+      const [logPayload] = (app.log.error as ReturnType<typeof vi.fn>).mock.calls[0]!;
+      expect(logPayload).toMatchObject({ bookingId: BOOKING.id });
+    });
+
+    it("sendTemplateEmail BAŞKA bir hatayla (NotFoundError DIŞINDA) reddedilirse yedek şablon DENENMEZ — mevcut best-effort davranışı korunur", async () => {
+      const { app } = fakeApp();
+      sendTemplateEmailMock.mockRejectedValueOnce(new Error("smtp down"));
+
+      await expect(
+        triggerAppointmentConfirmationEmail(app, { booking: BOOKING as never, appointments: [], rawAccessToken: "t" })
+      ).resolves.toBeUndefined();
+
+      expect(sendMailMock).not.toHaveBeenCalled();
+      expect(app.log.error).toHaveBeenCalledTimes(1);
     });
   });
 

@@ -36,21 +36,36 @@ describe("config/env.ts — FRONTEND_URL fail-closed boot koruması", () => {
   // "tanımsız" senaryosunu spawn edilen process seviyesinde GÜVENİLİR biçimde simüle etmek MÜMKÜN DEĞİL —
   // guard'ın varsayılanı DA yakaladığı aşağıdaki AÇIKÇA `http://localhost:3000` testiyle zaten doğrulanır
   // (varsayılanın kendisi zaten `http://localhost:3000`, birebir aynı değer).
+  // NOT: repodaki `.env`'in `PUBLIC_URL`'i de `http://siteadi.localhost:4000` (dev subdomain
+  // kurulumu) — `config/env.ts`'in PUBLIC_URL guard'ı ARTIK (bu tur itibarıyla, bkz.
+  // `env-public-url-boot-guard.test.ts`) `*.localhost`'u DA yakaladığından, bu dosya SADECE
+  // FRONTEND_URL'i test edebilmek için PUBLIC_URL'i her production senaryosunda AÇIKÇA gerçek bir
+  // domain'e override eder (aksi halde PUBLIC_URL guard'ı FRONTEND_URL guard'ından ÖNCE devreye
+  // girer ve stderr'de "FRONTEND_URL" değil "PUBLIC_URL" görünür).
+  const REAL_PUBLIC_URL = "https://api.example.com";
+
   it("NODE_ENV=production + FRONTEND_URL=http://localhost:3000 (açıkça yazılmış, varsayılanla BİREBİR AYNI değer) → boot BAŞARISIZ olur (CORS tüm gerçek origin'i reddeder, e-posta linkleri kendi makinesine işaret eder)", () => {
-    const result = runEnvFixture({ NODE_ENV: "production", FRONTEND_URL: "http://localhost:3000" });
+    const result = runEnvFixture({ NODE_ENV: "production", PUBLIC_URL: REAL_PUBLIC_URL, FRONTEND_URL: "http://localhost:3000" });
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("FRONTEND_URL");
     expect(result.stderr).toContain("localhost");
   });
 
   it("NODE_ENV=production + FRONTEND_URL=http://127.0.0.1:3000 → boot BAŞARISIZ olur (localhost İLE AYNI risk, ayrıca kontrol edilir)", () => {
-    const result = runEnvFixture({ NODE_ENV: "production", FRONTEND_URL: "http://127.0.0.1:3000" });
+    const result = runEnvFixture({ NODE_ENV: "production", PUBLIC_URL: REAL_PUBLIC_URL, FRONTEND_URL: "http://127.0.0.1:3000" });
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("FRONTEND_URL");
   });
 
+  it("NODE_ENV=production + FRONTEND_URL=http://siteadi.localhost:3000 → boot BAŞARISIZ olur (RFC 6761 *.localhost, .env.example placeholder'ı prod'a taşınmışsa da yakalanır)", () => {
+    const result = runEnvFixture({ NODE_ENV: "production", PUBLIC_URL: REAL_PUBLIC_URL, FRONTEND_URL: "http://siteadi.localhost:3000" });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("FRONTEND_URL");
+    expect(result.stderr).toContain("siteadi.localhost");
+  });
+
   it("NODE_ENV=production + FRONTEND_URL=https://wmhealthistanbul.com (gerçek domain) → boot BAŞARILI", () => {
-    const result = runEnvFixture({ NODE_ENV: "production", FRONTEND_URL: "https://wmhealthistanbul.com" });
+    const result = runEnvFixture({ NODE_ENV: "production", PUBLIC_URL: REAL_PUBLIC_URL, FRONTEND_URL: "https://wmhealthistanbul.com" });
     expect(result.status).toBe(0);
     expect(JSON.parse(result.stdout.trim())).toMatchObject({ ok: true, frontendUrl: "https://wmhealthistanbul.com" });
   });

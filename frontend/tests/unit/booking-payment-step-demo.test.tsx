@@ -18,6 +18,12 @@ const pushMock = vi.hoisted(() => vi.fn());
 const createBookingCheckoutSessionMock = vi.hoisted(() => vi.fn());
 const demoPayBookingMock = vi.hoisted(() => vi.fn());
 const getPublicSettingsMock = vi.hoisted(() => vi.fn());
+// 2026-09-19 (GÖREV 2) — bileşen artık Adım 5'te arka planda `getBooking` ile polling YAPAR
+// (bkz. `booking-payment-step.tsx` başındaki yorum); mock'lanmazsa gerçek bir modül fonksiyonu
+// OLMADIĞI için `undefined(...)` çağrısı fırlatılır (polling'in KENDİ try/catch'i bunu yutar,
+// ama testler bunu ÖRTÜK YERİNE AÇIKÇA kontrol eder) — varsayılan olarak HER ZAMAN `PENDING`
+// döner, böylece polling hiçbir testte kendiliğinden `router.push` TETİKLEMEZ.
+const getBookingMock = vi.hoisted(() => vi.fn());
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: pushMock }),
@@ -26,6 +32,7 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/api/telehealth", () => ({
   createBookingCheckoutSession: (...args: unknown[]) => createBookingCheckoutSessionMock(...args),
   demoPayBooking: (...args: unknown[]) => demoPayBookingMock(...args),
+  getBooking: (...args: unknown[]) => getBookingMock(...args),
 }));
 
 // Bileşen, gösterim koşulunu (§Madde 4) doğrulamak için herkese açık `GET /settings`i
@@ -57,6 +64,7 @@ describe("BookingPaymentStep — dev-only demo ödeme butonu", () => {
     demoPayBookingMock.mockReset();
     getPublicSettingsMock.mockReset();
     getPublicSettingsMock.mockResolvedValue({ demoPaymentsEnabled: true });
+    getBookingMock.mockReset().mockResolvedValue({ paymentStatus: "PENDING" });
   });
 
   afterEach(() => {
@@ -144,5 +152,63 @@ describe("BookingPaymentStep — dev-only demo ödeme butonu", () => {
     await userEvent.click(await screen.findByRole("button", { name: /demo ödemeyi tamamla/i }));
 
     await waitFor(() => expect(screen.getByText(/bulunamadı/i)).toBeInTheDocument());
+  });
+
+  describe("Adım 5 arka plan polling'i (GÖREV 2, 2026-09-19)", () => {
+    // `use-export-jobs-polling.test.tsx` İLE AYNI BİLİNÇLİ tercih — bu projede
+    // `vi.useFakeTimers()` polling koduyla GÜVENİLİR etkileşMEDİĞİ İÇİN GERÇEK zamanlayıcı
+    // kullanılır; sabit 4sn'lik polling aralığı testin vitest varsayılan 5sn zaman aşımına
+    // (`testTimeout`) ÇOK yakın olduğundan HER üç test'e de AÇIKÇA daha geniş bir zaman aşımı
+    // (üçüncü `it(...)` argümanı) verilir — hasta HİÇBİR ŞEY YAPMASA da (ör. admin panelinden
+    // "Ödendi İşaretle (Test)" ile ayrı bir sekmede işaretlenirse) bu ekran birkaç saniye içinde
+    // KENDİLİĞİNDEN onay/katılım rotasına geçmeli — `handleDemoPay`'in başarı dalıyla BİREBİR
+    // AYNI hedef.
+    it(
+      "polling PAID görürse onDemoPaid verilmemişse ?payment=success rotasına yönlendirir",
+      async () => {
+        vi.stubEnv("NEXT_PUBLIC_ENABLE_DEMO_PAYMENTS", "false");
+        getBookingMock.mockResolvedValue({ id: "booking-1", paymentStatus: "PAID" });
+
+        await renderStep({ accessToken: "magic-token-xyz" });
+
+        await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/tr/patient/bookings/booking-1?payment=success&t=magic-token-xyz"), {
+          timeout: 8000,
+        });
+      },
+      10000
+    );
+
+    it(
+      "polling PAID görürse onDemoPaid verilmişse yönlendirme YAPILMAZ, callback güncel booking ile çağrılır",
+      async () => {
+        vi.stubEnv("NEXT_PUBLIC_ENABLE_DEMO_PAYMENTS", "false");
+        const paidBooking = { id: "booking-1", paymentStatus: "PAID" };
+        getBookingMock.mockResolvedValue(paidBooking);
+        const onDemoPaid = vi.fn();
+
+        await renderStep({ onDemoPaid });
+
+        await waitFor(() => expect(onDemoPaid).toHaveBeenCalledWith(paidBooking), { timeout: 8000 });
+        expect(pushMock).not.toHaveBeenCalled();
+      },
+      10000
+    );
+
+    it(
+      "polling PENDING gördüğü sürece hiçbir yönlendirme TETİKLEMEZ",
+      async () => {
+        vi.stubEnv("NEXT_PUBLIC_ENABLE_DEMO_PAYMENTS", "false");
+        getBookingMock.mockResolvedValue({ id: "booking-1", paymentStatus: "PENDING" });
+
+        await renderStep();
+        // İlk poll denemesinin (4sn) ne "geç kaldığını" ne de gereksiz yere UZUN sürdüğünü
+        // doğrulamak için TAM O anın hemen SONRASINA kadar bekler — bu süre boyunca pushMock
+        // ÇAĞRILMAMALIDIR (PENDING durumu yönlendirme tetiklemez).
+        await new Promise((resolve) => setTimeout(resolve, 4500));
+
+        expect(pushMock).not.toHaveBeenCalled();
+      },
+      8000
+    );
   });
 });

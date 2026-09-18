@@ -3,8 +3,32 @@ import type { Appointment, AppointmentBooking, EmailTemplatePurpose } from "@pri
 import { env } from "../../../config/env";
 import { getLocaleSet } from "../../../lib/localization";
 import { generateOpaqueToken, hashToken } from "../../../lib/tokens";
-import { sendTemplateEmail } from "../../email-templates/email-templates.service";
+import { NotFoundError } from "../../../lib/errors";
+import { sendMail } from "../../../lib/mail";
+import { renderTemplate } from "../../../lib/template-render";
+import { renderComplianceFooterFragment } from "../../../lib/email-renderer";
+import { sendTemplateEmail, buildEmailRenderContext } from "../../email-templates/email-templates.service";
 import { getWallClockParts } from "./timezone";
+
+/**
+ * 2026-09-19 (kullanıcı talebi) — `sendTemplateEmail`'in `APPOINTMENT_CONFIRMATION` için
+ * `NotFoundError` fırlattığı TEK durumda (DB'de `isActive:true` bir satır YOK — bkz.
+ * `prisma/seed.ts::APPOINTMENT_CONFIRMATION`, kök neden GENELLİKLE `npm run seed`'in bu ortamda
+ * hiç/güncel şablonla çalıştırılmamış olmasıdır) devreye giren, koda GÖMÜLÜ tek seferlik yedek
+ * içerik. BİLİNÇLİ OLARAK SADECE bu şablon için ve SADECE `NotFoundError` için (SMTP/ağ hatası
+ * gibi BAŞKA bir sebeple gönderim başarısız olursa fallback DENENMEZ, olduğu gibi loglanıp
+ * yutulur — `catch` bloğuna bkz.): ödenmiş bir randevunun onay e-postası + görüşme linki, DB
+ * yapılandırma eksikliği yüzünden hastaya HİÇ ULAŞMAMALI. `sendTemplateEmail`'in KENDİSİNE (TÜM
+ * amaçlar için genel bir fallback) DEĞİL yalnızca bu tetikleyiciye eklenmesinin nedeni: diğer 10+
+ * sistem e-postası (WELCOME/PASSWORD_RESET vb.) için "sessizce yutmuyoruz" (§10.16.3) ilkesi
+ * AYNEN korunur — yalnızca bu tek, ödeme-sonrası kritik akış için dayanıklılık eklenir. Asıl DB
+ * satırı hâlâ EKSİK sayılır ve `app.log.error` HER ZAMAN (fallback başarılı olsa DA) çağrılır ki
+ * ops bunu fark edip gerçek düzeltmeyi (seed) uygulasın — bu yüzden "sessiz" bir fallback DEĞİL.
+ */
+const FALLBACK_APPOINTMENT_CONFIRMATION_SUBJECT = "Your appointment is confirmed";
+const FALLBACK_APPOINTMENT_CONFIRMATION_BODY_HTML =
+  '<p>Hello {{patient_name}},</p><p>We have received your payment for booking <strong>{{booking_number}}</strong> and your appointment is confirmed.</p><p>Appointment time(s): {{slots_summary}}</p><p>Total: {{total_formatted}}</p><p><a href="{{join_link}}">Join Consultation</a></p><p>You can also use the link below to view your booking details:</p><p><a href="{{magic_link}}">View My Booking</a></p>';
+const FALLBACK_APPOINTMENT_CONFIRMATION_KEYS = ["patient_name", "booking_number", "slots_summary", "total_formatted", "magic_link", "join_link"];
 
 /**
  * [TCT] §9.7.8 (bağlayıcı) — bildirim TETİKLEYİCİSİ. Şablonun İÇERİĞİ (`EmailTemplate` satırı,
@@ -93,14 +117,30 @@ export async function triggerAppointmentConfirmationEmail(
       firstAppointment ? buildConsultationJoinLink(app, firstAppointment.id, rawAccessToken) : Promise.resolve(undefined),
     ]);
 
-    await sendTemplateEmail(app, "APPOINTMENT_CONFIRMATION", booking.patientEmail, {
+    const values: Record<string, string> = {
       booking_number: booking.bookingNumber,
       patient_name: booking.patientName,
       slots_summary: formatSlotsSummary(appointments, doctorTimeZone),
       total_formatted: formatMoney(booking.totalCents, booking.currency),
       magic_link: magicLink,
       ...(joinLink ? { join_link: joinLink } : {}),
-    });
+    };
+
+    try {
+      await sendTemplateEmail(app, "APPOINTMENT_CONFIRMATION", booking.patientEmail, values);
+    } catch (err) {
+      if (!(err instanceof NotFoundError)) throw err;
+      // DB'de aktif APPOINTMENT_CONFIRMATION şablonu YOK — yukarıdaki sabit yorum, gerekçe.
+      app.log.error(
+        { bookingId: booking.id },
+        "Aktif APPOINTMENT_CONFIRMATION e-posta şablonu bulunamadı (muhtemelen `npm run seed` bu ortamda çalıştırılmadı) — koda gömülü yedek şablonla gönderiliyor, DB satırı YİNE DE eksik sayılmalı."
+      );
+      const context = await buildEmailRenderContext(app);
+      const html =
+        renderTemplate(FALLBACK_APPOINTMENT_CONFIRMATION_BODY_HTML, values, FALLBACK_APPOINTMENT_CONFIRMATION_KEYS) +
+        renderComplianceFooterFragment(context);
+      await sendMail(app, { to: booking.patientEmail, subject: FALLBACK_APPOINTMENT_CONFIRMATION_SUBJECT, html });
+    }
   } catch (err) {
     app.log.error({ err, bookingId: booking.id }, "Randevu onay e-postası gönderilemedi");
   }
