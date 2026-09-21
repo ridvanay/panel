@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type RefObject } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import "@livekit/components-styles";
 import {
@@ -17,6 +18,7 @@ import { ConnectionState, DisconnectReason, RoomEvent, Track } from "livekit-cli
 import {
   AlertTriangle,
   Loader2,
+  LogIn,
   Maximize,
   Mic,
   MicOff,
@@ -25,6 +27,7 @@ import {
   ScreenShare,
   ScreenShareOff,
   Settings2,
+  ShieldAlert,
   Video,
   VideoOff,
   Wifi,
@@ -117,6 +120,45 @@ function formatFarCountdownSentence(ms: number): string {
   const minutes = totalMinutes % 60;
   if (hours > 0) return `Randevunuza ${hours} saat ${minutes} dakika kaldı.`;
   return `Randevunuza ${minutes} dakika kaldı.`;
+}
+
+/**
+ * Bug-fix turu (2026-09-21, kullanıcı talebi) — ön doğrulama katmanı (gatekeeper): `?t=` misafir
+ * token'ı YOK ve oturum kesin olarak `"unauthenticated"` (henüz `"loading"` DEĞİL) iken artık
+ * `GET /appointments/{id}` HİÇ ÇAĞRILMAZ (zaten `404` döneceği KESİN — backend'in IDOR-güvenli
+ * tasarımı gereği randevu var/yok ayrımı YAPILMAZ, bkz. `telehealth.routes.ts::assertAppointmentAccess`
+ * dosya başı yorumu). Bunun yerine bu temiz "Erişim Doğrulama" ekranı gösterilir — eskiden bu
+ * durumda `getAppointment` çağrılır, `404` alınır, ekrana ham "Randevu bulunamadı." metni +
+ * anlamsız bir "Tekrar Dene" butonu düşerdi (kullanıcı raporundaki "beklenmedik hata" izlenimi
+ * BUNDAN kaynaklanıyordu — teknik olarak React Error Boundary DEĞİL, ama kullanıcıya sunulan tek
+ * seçenek "tekrar dene" olduğu için aynı şekilde çıkmaz bir yol gibi görünüyordu).
+ *
+ * `/login?next=...` — `patient-booking-detail-panel.tsx`'teki AYNI kurulu desen (`resolvePostLoginPath`
+ * güvenli/dahili `next` yolunu doğrular, YENİ bir yönlendirme mekanizması İCAT EDİLMEDİ).
+ */
+function ConsultationAccessGate({ appointmentId }: { appointmentId: string }) {
+  return (
+    <Alert variant="warning">
+      <div className="space-y-3">
+        <span className="flex items-center gap-2 font-medium">
+          <ShieldAlert className="h-4 w-4 shrink-0" aria-hidden="true" />
+          Erişim Doğrulama Gerekli
+        </span>
+        <p className="text-sm text-foreground/70">
+          Bu görüşme sayfasına ulaşmak için hesabınıza giriş yapmalı ya da randevu onay e-postanızdaki
+          bağlantıyı kullanmalısınız. Bağlantınız yoksa veya çalışmıyorsa, e-postanızdaki onay mesajını ya
+          da randevularım sayfasını kontrol edin.
+        </p>
+        <Link
+          href={`/login?next=${encodeURIComponent(`/consultation/${appointmentId}`)}`}
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+        >
+          <LogIn className="h-4 w-4" aria-hidden="true" />
+          Giriş Yap
+        </Link>
+      </div>
+    </Alert>
+  );
 }
 
 function ConsultationSkeleton() {
@@ -824,10 +866,10 @@ function ConsultationRoomLoaded({ appointment, accessToken }: { appointment: App
     <div className="space-y-6">
       <div className="rounded-[var(--site-radius)] border border-border bg-surface p-5">
         <h1 className="font-heading text-2xl font-semibold text-foreground sm:text-3xl">
-          {appointment.doctor.title} {appointment.doctor.fullName} ile Görüşme
+          {appointment.doctor ? `${appointment.doctor.title ?? ""} ${appointment.doctor.fullName ?? ""}`.trim() : "Doktor"} ile Görüşme
         </h1>
         <p className="mt-1 text-sm text-foreground/60">
-          {dateTimeFormatter.format(new Date(appointment.startsAt))} · {appointment.patientName}
+          {appointment.startsAt ? dateTimeFormatter.format(new Date(appointment.startsAt)) : "—"} · {appointment.patientName ?? "Hasta"}
         </p>
       </div>
 
@@ -878,6 +920,12 @@ export function ConsultationRoom({ appointmentId, accessToken }: { appointmentId
    */
   const auth = useAuthOptional();
   const waitingForSession = !accessToken && auth?.status === "loading";
+  // Ön doğrulama katmanı — ne misafir token'ı (`?t=`) NE DE bir oturum varsa, `GET
+  // /appointments/{id}`'nin `404` döneceği ZATEN KESİNDİR (bkz. `ConsultationAccessGate` dosya
+  // başı yorumu) — bu durumda istek hiç ATILMAZ, kullanıcıya doğrudan "Erişim Doğrulama" ekranı
+  // gösterilir. Oturum durumu HENÜZ çözülmemişse (`"loading"`) bu dal TETİKLENMEZ, `waitingForSession`
+  // önce devreye girer.
+  const noAccessSignal = !accessToken && auth?.status === "unauthenticated";
 
   const loadAppointment = useCallback(async () => {
     setAppointment(undefined);
@@ -892,13 +940,21 @@ export function ConsultationRoom({ appointmentId, accessToken }: { appointmentId
   }, [appointmentId, accessToken]);
 
   useEffect(() => {
-    if (waitingForSession) return;
+    if (waitingForSession || noAccessSignal) return;
     (async () => {
       await loadAppointment();
     })();
-  }, [loadAppointment, waitingForSession]);
+  }, [loadAppointment, waitingForSession, noAccessSignal]);
 
-  if (waitingForSession || appointment === undefined) {
+  if (waitingForSession) {
+    return <ConsultationSkeleton />;
+  }
+
+  if (noAccessSignal) {
+    return <ConsultationAccessGate appointmentId={appointmentId} />;
+  }
+
+  if (appointment === undefined) {
     return <ConsultationSkeleton />;
   }
 

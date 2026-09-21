@@ -11,6 +11,21 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`fix(telehealth)`: `/consultation/[id]` sayfası yetkisiz/doğrudan erişimde artık çökmüyor.**
+  Oturumu olmayan VE `?t=` misafir token'ı taşımayan ziyaretçiler için `GET /appointments/{id}`
+  hiç çağrılmadan (zaten `404` döneceği kesin — backend'in IDOR-güvenli, varlık sızdırmayan
+  tasarımı gereği) temiz bir "Erişim Doğrulama Gerekli" paneli gösterilir ("Giriş Yap" CTA'sı
+  `/login?next=/consultation/{id}` ile geri döner — `patient-booking-detail-panel.tsx`'teki
+  kurulu desenle aynı). Randevu/doktor/hasta alanlarına erişim artık savunmacı (`?.`/fallback)
+  yapılıyor. Yeni bir `consultation/error.tsx` sınır bileşeni, gerçekten beklenmeyen bir render
+  hatasını segment içinde yakalar — artık `global-error.tsx`'e kadar yükselip tüm site
+  kabuğunu (header/nav dahil) "Beklenmeyen bir hata oluştu" ekranıyla değiştirmiyor. LiveKit
+  `POST /appointments/{id}/meeting-token` ucu KASITLI olarak `404` döndürmeye devam ediyor
+  (401/403 DEĞİL — mevcut IDOR-güvenli konvansiyon, `assertAppointmentAccess` ile aynı); bu
+  hata frontend'de zaten satır içi, kibar bir uyarı olarak yakalanıp gösteriliyordu.
+
 ### Added
 
 - **`feat(telehealth)`: Doktor seans ücreti opsiyonel/açılır-kapanır hale getirildi**
