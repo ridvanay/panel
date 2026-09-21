@@ -181,9 +181,18 @@ describe("webhooks/stripe — telehealth booking ödeme akışı ([TCT] §9.7.1 
     expect(staleAccess.statusCode).toBe(404);
 
     expect(sendTemplateEmailMock).toHaveBeenCalledTimes(1);
-    const [, purpose, to] = sendTemplateEmailMock.mock.calls[0] as unknown as [unknown, string, string, unknown];
+    const [, purpose, to, values] = sendTemplateEmailMock.mock.calls[0] as unknown as [
+      unknown,
+      string,
+      string,
+      Record<string, string>,
+    ];
     expect(purpose).toBe("APPOINTMENT_CONFIRMATION");
     expect(to).toBe(updatedBooking.patientEmail);
+    // Ücretli randevu (totalCents > 0) — ücretsiz seansın "başarıyla oluşturuldu" metninden
+    // AYRI, ödeme onayına özgü cümle; görüşme linki (join_link) burada da gönderilir.
+    expect(values.status_message).toBe("We have received your payment and your appointment is confirmed.");
+    expect(values.join_link).toContain(`/consultation/${appointments[0]!.id}`);
   });
 
   it("**KRİTİK TASARIM KARARI** — `metadata.rawAccessToken` VARSA (checkout-session ucunun misafir `?t=` akışı) accessToken ROTATE EDİLMEZ; hastanın orijinal magic-link'i ödeme SONRASI da ÇALIŞIR", async () => {

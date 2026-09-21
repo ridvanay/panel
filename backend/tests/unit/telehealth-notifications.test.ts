@@ -111,6 +111,21 @@ describe("modules/telehealth/lib/notifications", () => {
       // randevuya (appointments[0], `firstAppointment`) işaret eder — `JoinMeetingButton` İLE
       // AYNI seçim kuralı.
       expect(values.join_link).toBe("http://localhost:3000/tr/consultation/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa?t=raw-token-abc");
+      // 2026-09-21 (kullanıcı talebi) — ücretli randevu (totalCents > 0): ödeme onayına özgü cümle.
+      expect(values.status_message).toBe("We have received your payment and your appointment is confirmed.");
+    });
+
+    it("2026-09-21 (kullanıcı talebi) — totalCents === 0 (ücretsiz/bilgi-alınız doktor) iken status_message 'ödeme aldık' DEĞİL 'başarıyla oluşturuldu' der", async () => {
+      const { app } = fakeApp();
+      const appointments = [{ id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", startsAt: new Date("2025-01-06T06:00:00.000Z") }];
+      const freeBooking = { ...BOOKING, totalCents: 0 };
+
+      await triggerAppointmentConfirmationEmail(app, { booking: freeBooking as never, appointments, rawAccessToken: "t" });
+
+      const values = sendTemplateEmailMock.mock.calls[0]![3];
+      expect(values.status_message).toBe("Your appointment has been successfully created and confirmed.");
+      // join_link ücretsiz randevularda da GÖNDERİLİR — bu turun asıl şikâyeti buydu.
+      expect(values.join_link).toBe("http://localhost:3000/tr/consultation/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa?t=t");
     });
 
     it("appointments boşsa join_link ATLANIR (literal {{join_link}} basılmaz, anahtar hiç gönderilmez)", async () => {
@@ -128,7 +143,7 @@ describe("modules/telehealth/lib/notifications", () => {
 
       const values = sendTemplateEmailMock.mock.calls[0]![3];
       expect(Object.keys(values).sort()).toEqual(
-        ["booking_number", "join_link", "magic_link", "patient_name", "slots_summary", "total_formatted"].sort()
+        ["booking_number", "join_link", "magic_link", "patient_name", "slots_summary", "status_message", "total_formatted"].sort()
       );
     });
 

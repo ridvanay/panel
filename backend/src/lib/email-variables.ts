@@ -90,6 +90,16 @@ const SYSTEM_VARIABLES_BY_PURPOSE: Record<EmailTemplatePurpose, EmailVariableDef
   APPOINTMENT_CONFIRMATION: [
     { key: "booking_number", label: "Rezervasyon Numarası", sampleValue: "BKG-L4K2J1-A1B2", source: "system" },
     { key: "patient_name", label: "Hasta Adı", sampleValue: "Ayşe Yılmaz", source: "system" },
+    // 2026-09-21 (kullanıcı talebi) — `total_formatted` `0.00 X` olduğunda ("Ücretsiz" doktor,
+    // `sessionPriceCents: null`) hiçbir ödeme ALINMADI; durum cümlesi bu yüzden `total`e göre İKİ
+    // FARKLI metin arasından `triggerAppointmentConfirmationEmail`'de ÇÖZÜLÜR (şablon koşullu blok
+    // desteklemez, bkz. `lib/template-render.ts`).
+    {
+      key: "status_message",
+      label: "Durum Cümlesi (ücretli/ücretsiz)",
+      sampleValue: "We have received your payment and your appointment is confirmed.",
+      source: "system",
+    },
     { key: "slots_summary", label: "Randevu Saatleri", sampleValue: "06.01.2025 09:00, 06.01.2025 09:30", source: "system" },
     { key: "total_formatted", label: "Toplam Tutar", sampleValue: "750.00 TRY", source: "system" },
     { key: "magic_link", label: "Rezervasyon Bağlantısı", sampleValue: "https://example.com/tr/patient/bookings/abc?t=xyz", source: "system" },

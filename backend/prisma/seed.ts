@@ -184,7 +184,11 @@ async function main() {
   // `localeSet.default.code` yalnızca KVKK footer linklerinin (`/{locale}/{slug}`) dilini
   // belirler, gövde/konu metnini DEĞİL — o yüzden gövde/konu burada ELLE İngilizceye çevrildi.
   // NOT: `upsert.update: {}` (idempotency) zaten SEED EDİLMİŞ bir DB satırını GÜNCELLEMEZ —
-  // mevcut ortamlarda `scripts/translate-appointment-email-templates-en.ts` ile AYRICA uygulandı.
+  // mevcut ortamlarda `scripts/translate-appointment-email-templates-en.ts` ile AYRICA uygulandı;
+  // `{{join_link}}` eklenmesi `scripts/add-consultation-join-link-to-confirmation-email.ts` ile,
+  // `{{status_message}}` (2026-09-21, kullanıcı talebi — ücretsiz/0 tutarlı randevularda "Ödemenizi
+  // aldık" YANLIŞ metnini önler) `scripts/add-status-message-to-confirmation-email.ts` ile — bu
+  // ÜÇ script ZİNCİRLEME sırayla, YALNIZCA henüz uygulanmamış ortamlarda uygulanmalıdır.
   await prisma.emailTemplate.upsert({
     where: { key: "APPOINTMENT_CONFIRMATION" },
     update: {},
@@ -197,8 +201,8 @@ async function main() {
       isActive: true,
       subject: "Your appointment is confirmed",
       bodyHtml:
-        "<p>Hello {{patient_name}},</p><p>We have received your payment for booking <strong>{{booking_number}}</strong> and your appointment is confirmed.</p><p>Appointment time(s): {{slots_summary}}</p><p>Total: {{total_formatted}}</p><p><a href=\"{{join_link}}\">Join Consultation</a></p><p>You can also use the link below to view your booking details:</p><p><a href=\"{{magic_link}}\">View My Booking</a></p>",
-      availableVariables: ["booking_number", "patient_name", "slots_summary", "total_formatted", "magic_link", "join_link"],
+        "<p>Hello {{patient_name}},</p><p>{{status_message}}</p><p>Booking Number: <strong>{{booking_number}}</strong></p><p>Appointment time(s): {{slots_summary}}</p><p>Total: {{total_formatted}}</p><p><a href=\"{{join_link}}\">Join Consultation</a></p><p>You can also use the link below to view your booking details:</p><p><a href=\"{{magic_link}}\">View My Booking</a></p>",
+      availableVariables: ["booking_number", "patient_name", "status_message", "slots_summary", "total_formatted", "magic_link", "join_link"],
     },
   });
 

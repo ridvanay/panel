@@ -13,6 +13,23 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
 
 ### Fixed
 
+- **`fix(telehealth)`: Randevu onay e-postasına görüşme bağlantısı eklendi, ücretsiz randevularda
+  yanlış "ödemenizi aldık" metni düzeltildi.** Kök neden (1): `APPOINTMENT_CONFIRMATION` şablonuna
+  `{{join_link}}` daha önce bir ONE-OFF script'le (`scripts/add-consultation-join-link-to-
+  confirmation-email.ts`) eklenmişti — `prisma/seed.ts`'in `upsert.update: {}` idempotency'si zaten
+  seed edilmiş ortamları GÜNCELLEMEZ, bu script mevcut/canlı ortamlarda HİÇ ÇALIŞTIRILMAMIŞSA
+  e-postada görüşme bağlantısı YOK olur (kod HATASI değil, uygulanmamış veri migrasyonu). Kök
+  neden (2): "We have received your payment…" ifadesi `sessionPriceCents: null` (ücretsiz/bilgi-
+  alınız) doktorlarda `totalCents === 0` olduğu halde SABİTTİ — hiçbir ödeme alınmadığı halde
+  yanıltıcıydı. Yeni `{{status_message}}` değişkeni (`notifications.ts::buildConfirmationStatusMessage`)
+  `total`e göre "We have received your payment and your appointment is confirmed." / "Your
+  appointment has been successfully created and confirmed." arasında seçim yapar — şablon koşullu
+  blok desteklemediği için karar tetikleyicide verilir. Yeni tek seferlik script
+  (`scripts/add-status-message-to-confirmation-email.ts`) mevcut ortamların DB satırını günceller
+  (idempotent, özelleştirilmiş şablonlara DOKUNMAZ). `EmailTemplate` modelinde locale/translations
+  alanı YOKTUR (tek dilli — varsayılan İngilizce, bkz. `.claude/architect-scope-i18n.md`) — ayrı
+  TR/EN sistem e-posta şablonları bu turun kapsamında DEĞİLDİR, mevcut mimari sınır.
+
 - **`fix(telehealth)`: LiveKit görüşme odası "Bağlanıyor…"da sonsuza dek takılı kalmıyor artık.**
   Kök neden: `<LiveKitRoom>`in `onDisconnected`'ı YALNIZCA önce kurulmuş bir bağlantı koptuğunda
   tetiklenir — `room.connect()`'in kendisi (ilk WS/ICE handshake) başarısız olursa NE bu callback

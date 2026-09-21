@@ -27,8 +27,30 @@ import { getWallClockParts } from "./timezone";
  */
 const FALLBACK_APPOINTMENT_CONFIRMATION_SUBJECT = "Your appointment is confirmed";
 const FALLBACK_APPOINTMENT_CONFIRMATION_BODY_HTML =
-  '<p>Hello {{patient_name}},</p><p>We have received your payment for booking <strong>{{booking_number}}</strong> and your appointment is confirmed.</p><p>Appointment time(s): {{slots_summary}}</p><p>Total: {{total_formatted}}</p><p><a href="{{join_link}}">Join Consultation</a></p><p>You can also use the link below to view your booking details:</p><p><a href="{{magic_link}}">View My Booking</a></p>';
-const FALLBACK_APPOINTMENT_CONFIRMATION_KEYS = ["patient_name", "booking_number", "slots_summary", "total_formatted", "magic_link", "join_link"];
+  '<p>Hello {{patient_name}},</p><p>{{status_message}}</p><p>Booking Number: <strong>{{booking_number}}</strong></p><p>Appointment time(s): {{slots_summary}}</p><p>Total: {{total_formatted}}</p><p><a href="{{join_link}}">Join Consultation</a></p><p>You can also use the link below to view your booking details:</p><p><a href="{{magic_link}}">View My Booking</a></p>';
+const FALLBACK_APPOINTMENT_CONFIRMATION_KEYS = [
+  "patient_name",
+  "status_message",
+  "booking_number",
+  "slots_summary",
+  "total_formatted",
+  "magic_link",
+  "join_link",
+];
+
+/**
+ * Bug-fix turu (2026-09-21, kullanıcı talebi) — `sessionPriceCents: null` (ücretsiz/bilgi-alınız)
+ * doktorlarda `booking.totalCents === 0`dır; "Ödemenizi aldık" ifadesi bu durumda YANLIŞ/kafa
+ * karıştırıcıdır (hiçbir ödeme YAPILMADI/ALINMADI — `confirmBookingPayment`'ın `paidBy: "free"`
+ * dalı, bkz. `telehealth.routes.ts`). Bu yüzden durum cümlesi `total`e göre İKİ FARKLI metinle
+ * değişken olarak (`{{status_message}}`) geçirilir — şablonun KENDİSİ koşullu blok DESTEKLEMEZ
+ * (`lib/template-render.ts` dosya başı notu), bu yüzden koşul BURADA (tetikleyicide) çözülür.
+ */
+function buildConfirmationStatusMessage(totalCents: number): string {
+  return totalCents === 0
+    ? "Your appointment has been successfully created and confirmed."
+    : "We have received your payment and your appointment is confirmed.";
+}
 
 /**
  * [TCT] §9.7.8 (bağlayıcı) — bildirim TETİKLEYİCİSİ. Şablonun İÇERİĞİ (`EmailTemplate` satırı,
@@ -120,6 +142,7 @@ export async function triggerAppointmentConfirmationEmail(
     const values: Record<string, string> = {
       booking_number: booking.bookingNumber,
       patient_name: booking.patientName,
+      status_message: buildConfirmationStatusMessage(booking.totalCents),
       slots_summary: formatSlotsSummary(appointments, doctorTimeZone),
       total_formatted: formatMoney(booking.totalCents, booking.currency),
       magic_link: magicLink,

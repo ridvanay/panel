@@ -113,9 +113,19 @@ describe("telehealth — ücretsiz doktor (sessionPriceCents: null) booking akı
     expect(dbAppointments.every((a) => a.status === "SCHEDULED")).toBe(true);
 
     expect(sendTemplateEmailMock).toHaveBeenCalledTimes(1);
-    const [, purpose, to] = sendTemplateEmailMock.mock.calls[0] as unknown as [unknown, string, string, unknown];
+    const [, purpose, to, values] = sendTemplateEmailMock.mock.calls[0] as unknown as [
+      unknown,
+      string,
+      string,
+      Record<string, string>,
+    ];
     expect(purpose).toBe("APPOINTMENT_CONFIRMATION");
     expect(to).toBe(dbBooking.patientEmail);
+    // Ücretsiz seans (totalCents === 0) — "Ödemenizi aldık" YANLIŞ/kafa karıştırıcı olurdu;
+    // görüşme linki (join_link) HER durumda (ücretli/ücretsiz) gönderilir.
+    expect(values.status_message).toBe("Your appointment has been successfully created and confirmed.");
+    expect(values.join_link).toContain(`/consultation/${body.appointments[0].id}`);
+    expect(values.join_link).toContain(`t=${body.accessToken}`);
 
     // Rotate EDİLMEDİ — misafirin booking oluşturma anında aldığı token HÂLÂ ÇALIŞIR.
     const detail = await app.inject({ method: "GET", url: `/api/v1/appointments/bookings/${body.bookingId}?t=${body.accessToken}` });
