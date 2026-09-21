@@ -13,6 +13,18 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
 
 ### Fixed
 
+- **`fix(telehealth)`: LiveKit görüşme odası "Bağlanıyor…"da sonsuza dek takılı kalmıyor artık.**
+  Kök neden: `<LiveKitRoom>`in `onDisconnected`'ı YALNIZCA önce kurulmuş bir bağlantı koptuğunda
+  tetiklenir — `room.connect()`'in kendisi (ilk WS/ICE handshake) başarısız olursa NE bu callback
+  NE DE herhangi bir yerel state güncellenirdi; `onError`/`onMediaDeviceFailure` HİÇ BAĞLANMAMIŞTI.
+  İkisi de artık bağlı: bağlantı kurulamazsa veya kamera/mikrofon izni reddedilirse (Türkçe,
+  nedene özel mesaj — izin reddi/cihaz bulunamadı/cihaz meşgul) kullanıcı açık bir hatayla
+  ön-katılım ekranına döner, çıkmaz bir "Bağlanıyor…" durumunda kalmaz. `adaptiveStream`/
+  `dynacast` (SDK varsayılanında İKİSİ DE kapalı) artık açık — zayıf ağlarda bant genişliği/CPU
+  baskısını azaltır. Sunucu tarafında (nginx WS upgrade/timeout + LiveKit UDP medya port aralığı)
+  bu oturumda sunucuya erişim olmadığı için doğrudan düzeltilemedi — `INFRA.md`'ye referans
+  nginx config'i + kontrol listesi + teşhis komutları eklendi (canlıda manuel doğrulanmalı).
+
 - **`fix(telehealth)`: `/consultation/[id]` sayfası yetkisiz/doğrudan erişimde artık çökmüyor.**
   Oturumu olmayan VE `?t=` misafir token'ı taşımayan ziyaretçiler için `GET /appointments/{id}`
   hiç çağrılmadan (zaten `404` döneceği kesin — backend'in IDOR-güvenli, varlık sızdırmayan

@@ -14,7 +14,7 @@ import {
   useTrackToggle,
   useTracks,
 } from "@livekit/components-react";
-import { ConnectionState, DisconnectReason, RoomEvent, Track } from "livekit-client";
+import { ConnectionState, DisconnectReason, MediaDeviceFailure, RoomEvent, Track } from "livekit-client";
 import {
   AlertTriangle,
   Loader2,
@@ -669,6 +669,15 @@ function RecordingSignalBridge({
 interface ConsultationVideoRoomProps {
   meeting: MeetingTokenResponse;
   onLeave: (reason?: DisconnectReason) => void;
+  /**
+   * Bug-fix turu (2026-09-21, kullanıcı talebi) — `<LiveKitRoom>`'un `onDisconnected`'ı YALNIZCA
+   * ÖNCE KURULMUŞ bir bağlantı koptuğunda tetiklenir; `room.connect()`'in KENDİSİ başarısız olursa
+   * (ör. WS handshake reddi, ICE/TURN'e hiç ulaşılamaması — tam da nginx yanlış yapılandırılmışsa
+   * OLACAK durum) `onDisconnected` HİÇ ÇAĞRILMAZ ve kullanıcı "Bağlanıyor…" rozetinde SONSUZA
+   * KADAR asılı kalırdı (eskiden `onError`/`onMediaDeviceFailure` HİÇ BAĞLANMAMIŞTI). Bu callback
+   * her iki durumda da ön-katılım ekranına AÇIK bir hata mesajıyla döner.
+   */
+  onConnectionError: (message: string) => void;
   appointmentId: string;
   accessToken?: string;
   isDoctor: boolean;
@@ -683,9 +692,24 @@ interface ConsultationVideoRoomProps {
   onConsentDismiss: () => void;
 }
 
+/** İnsan-okunur Türkçe karşılıklar — `livekit-client`'ın `MediaDeviceFailure` enum'u. */
+function mediaDeviceFailureMessage(failure?: MediaDeviceFailure): string {
+  switch (failure) {
+    case MediaDeviceFailure.PermissionDenied:
+      return "Kamera/mikrofon izni reddedildi. Tarayıcı adres çubuğundaki site izinlerinden kamera/mikrofona erişime izin verip tekrar deneyin.";
+    case MediaDeviceFailure.NotFound:
+      return "Kamera veya mikrofon bulunamadı. Cihazınızın bağlı olduğundan emin olup tekrar deneyin.";
+    case MediaDeviceFailure.DeviceInUse:
+      return "Kamera veya mikrofon başka bir uygulama tarafından kullanılıyor. Diğer uygulamayı kapatıp tekrar deneyin.";
+    default:
+      return "Kamera/mikrofon erişiminde bir sorun oluştu. Lütfen tekrar deneyin.";
+  }
+}
+
 function ConsultationVideoRoom({
   meeting,
   onLeave,
+  onConnectionError,
   appointmentId,
   accessToken,
   isDoctor,
@@ -716,6 +740,23 @@ function ConsultationVideoRoom({
       video
       audio
       connect
+      // Bug-fix turu (2026-09-21, kullanıcı talebi) — SDK varsayılanları `adaptiveStream: false`/
+      // `dynacast: false`'tır (bkz. `livekit-client/src/room/defaults.ts`); bu proje bunları HİÇ
+      // AÇMAMIŞTI. `adaptiveStream` görünmeyen/küçük video elemanları için abonelik kalitesini
+      // otomatik düşürür, `dynacast` yayınlanan-ama-hiç-abone-olunmayan katmanları duraklatır —
+      // İKİSİ de zayıf ağlarda bant genişliği/CPU baskısını azaltarak bağlantı istikrarını
+      // İYİLEŞTİRİR (kesin çözüm sunucu/altyapı tarafında olsa da, istemci tarafında ÜCRETSİZ bir
+      // kazanç). `reconnectPolicy` zaten `RoomOptions` varsayılanında `DefaultReconnectPolicy`
+      // (10 deneme, ~47sn'ye kadar artan gecikme) — burada TEKRAR YAZILMADI, override GEREKSİZ.
+      options={{ adaptiveStream: true, dynacast: true }}
+      // Bug-fix turu (2026-09-21, kullanıcı talebi) — `onDisconnected` YALNIZCA ÖNCE KURULMUŞ bir
+      // bağlantı koptuğunda tetiklenir; `room.connect()`'in KENDİSİ (ilk WS/ICE handshake)
+      // başarısız olursa NE `onDisconnected` NE DE herhangi bir yerel state güncellenirdi —
+      // kullanıcı "Bağlanıyor…" rozetinde SONSUZA KADAR asılı kalırdı (raporlanan asıl semptom).
+      // `onError`/`onMediaDeviceFailure` artık BAĞLANMIŞ, ikisi de `onConnectionError` üzerinden
+      // ön-katılım ekranına AÇIK bir hata mesajıyla döner.
+      onError={(err) => onConnectionError(err.message || "Görüşmeye bağlanılamadı. Bağlantınızı kontrol edip tekrar deneyin.")}
+      onMediaDeviceFailure={(failure) => onConnectionError(mediaDeviceFailureMessage(failure))}
       onDisconnected={onLeave}
       className="relative aspect-video w-full overflow-hidden rounded-[var(--site-radius)] bg-[#0F172A]"
     >
@@ -862,6 +903,20 @@ function ConsultationRoomLoaded({ appointment, accessToken }: { appointment: App
     setMeeting(null);
   }
 
+  /**
+   * Bug-fix turu (2026-09-21, kullanıcı talebi) — `ConsultationVideoRoom`'un `onError`/
+   * `onMediaDeviceFailure`'ından gelir (bkz. o bileşendeki yorum): `room.connect()`'in İLK
+   * denemesi hiç kurulamadan başarısız olduğunda `handleDisconnected` TETİKLENMEZ (henüz
+   * bağlıyken kopma değil, hiç BAĞLANAMAMA) — bu callback OLMADAN kullanıcı "Bağlanıyor…"
+   * rozetinde sonsuza dek asılı kalırdı. `autoReconnectedRef` de sıfırlanır ki bir SONRAKİ
+   * `handleJoin` tekrar bir otomatik yeniden bağlanma HAKKI kazansın.
+   */
+  function handleConnectionError(message: string) {
+    autoReconnectedRef.current = false;
+    setJoinError(message);
+    setMeeting(null);
+  }
+
   return (
     <div className="space-y-6">
       <div className="rounded-[var(--site-radius)] border border-border bg-surface p-5">
@@ -877,6 +932,7 @@ function ConsultationRoomLoaded({ appointment, accessToken }: { appointment: App
         <ConsultationVideoRoom
           meeting={meeting}
           onLeave={(reason) => void handleDisconnected(reason)}
+          onConnectionError={handleConnectionError}
           appointmentId={appointment.id}
           accessToken={accessToken}
           isDoctor={isDoctor}

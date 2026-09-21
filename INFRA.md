@@ -568,6 +568,73 @@ yazılacaksa, e2e Playwright koşumunun `docker compose up`daki `livekit` servis
 `tsx src/server.ts` çalıştırılan senaryoda (Docker `livekit` servisi ayakta değilse) token
 üretimi/409 gibi durum kodları hâlâ doğrulanabilir ama gerçek medya akışı test edilemez.
 
+### Tele-Sağlık (LiveKit) — Canlı ortam Nginx/reverse-proxy + UDP medya referansı (2026-09-21, kullanıcı raporu: "Bağlanıyor…"da takılıp düşüyor)
+
+**Önemli sınır:** bu repo hiçbir nginx/reverse-proxy config dosyası İÇERMEZ (bkz. dosya başındaki
+"reverse-proxy/nginx config İÇERMİYOR" notu) VE canlıdaki gerçek LiveKit kurulumu bu compose'un
+`--dev` modlu `livekit` servisi DEĞİLDİR — yukarıdaki "2026-09-19 KRİTİK DÜZELTME" notu (`docker-
+compose.yml`, `LIVEKIT_INTERNAL_URL` civarı) UFW'deki `50000-60000/udp` kuralının GERÇEK, ayrı bir
+prod LiveKit kurulumuna işaret ettiğini doğruluyor. Yani hem nginx hem de prod LiveKit'in kendisi
+sunucuda EL İLE yönetiliyor, bu repodan görülemiyor/test edilemiyor — "Bağlanıyor…"da takılıp
+düşme şikâyetinin en olası kök nedeni BURADAdır, ama bu turda (SSH erişimi/kimlik bilgisi
+verilmediği için) sunucuya bağlanıp DOĞRUDAN doğrulanamadı. Aşağıdaki referans config + kontrol
+listesi sunucuda EL İLE uygulanmalı/doğrulanmalıdır.
+
+**1) Nginx — LiveKit WS sinyalleşme yolu (`wss://.../` → LiveKit `7880`):**
+```nginx
+location /livekit/ {           # veya LIVEKIT_URL'ün gerçek path'i neyse
+    proxy_pass http://127.0.0.1:7880/;   # gerçek prod LiveKit'in dinlediği host:port
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    # WS uzun ömürlü bir bağlantıdır — varsayılan 60sn'lik proxy timeout'u SESSİZCE keser,
+    # SDK bunu "Bağlanıyor…"dan "Yeniden Bağlanıyor…"a düşüp sonra tamamen kopma olarak yaşar.
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+}
+```
+`Upgrade`/`Connection: upgrade` eksikse veya `proxy_read_timeout` kısa bırakılmışsa (nginx
+varsayılanı 60sn) WS handshake ya HİÇ tamamlanmaz ya da birkaç dakika içinde sessizce kesilir —
+bu turda frontend'e eklenen `onError` callback'i (bkz. `consultation-room.tsx`) artık BU durumda
+en azından kullanıcıya açık bir hata gösterir (eskiden sonsuza dek "Bağlanıyor…"da asılı kalırdı),
+ama asıl DÜZELTME sunucudaki bu config'tir.
+
+**2) UDP medya (RTP, ICE) — nginx bu katmanı HİÇ göremez:**
+Nginx bir HTTP/WS proxy'sidir, ham UDP RTP medyasını PROXY'LEYEMEZ — WebRTC medyası nginx'i
+ATLAYIP doğrudan LiveKit sunucusunun kendi UDP port aralığına ulaşmak ZORUNDADIR. Kontrol listesi:
+- Sunucu güvenlik duvarında `50000-60000/udp` (UFW notu bunu doğruluyor) LiveKit'in dinlediği
+  ARAYÜZE açık olmalı — `ufw status | grep 50000` ile doğrulanır.
+- Prod LiveKit'in kendi `livekit.yaml`'ında (bu repoda YOK, sunucuda) `rtc.port_range_start:
+  50000` / `rtc.port_range_end: 60000` VE `rtc.use_external_ip: true` tanımlı olmalı — aksi
+  halde LiveKit ICE candidate'lerini konteyner/özel bir IP ile duyurur, tarayıcı asla o adrese
+  ulaşamaz (sinyalleşme/token üretimi ÇALIŞIYORMUŞ GİBİ görünür ama medya HİÇ akmaz — dev-mode
+  servisinin dosya başı yorumundaki "yaygın self-host tuzağı" İLE AYNI hata, prod'da tekrarı).
+- Bulut sağlayıcı güvenlik grubu (varsa, ör. AWS SG/GCP firewall) UFW'nin ÜZERİNDE AYRI bir
+  katmandır — UFW açık olsa bile sağlayıcı seviyesinde aynı port aralığı açılmamışsa medya YİNE
+  akmaz. İkisi de ayrı ayrı kontrol edilmelidir.
+
+**3) Hızlı sunucu-taraflı teşhis komutları (SSH ile):**
+```bash
+# nginx WS proxy config'i gerçekten devrede mi?
+nginx -T 2>/dev/null | grep -B2 -A15 "livekit\|7880"
+
+# LiveKit gerçekten doğru portlarda dinliyor mu?
+ss -tlnp | grep -E "7880|7881"
+ss -ulnp | grep -E "7882|500[0-9][0-9]|5[1-9][0-9][0-9][0-9]|6000"
+
+# WS handshake sunucudan gerçekten yükseliyor mu? (101 Switching Protocols beklenir)
+curl -i -N -H "Connection: Upgrade" -H "Upgrade: websocket" -H "Sec-WebSocket-Version: 13" \
+  -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" https://<domain>/livekit/
+```
+
+Bu bölüm yalnızca REFERANS/kontrol listesidir — sunucuya bu oturumda erişilmediği için hiçbir
+komut gerçekten ÇALIŞTIRILMADI, yalnızca kod tabanındaki mevcut kanıtlardan (UFW yorumu,
+`LIVEKIT_INTERNAL_URL` notu, `--dev` servisinin dosya başı uyarısı) türetildi.
+
 ### Tele-Sağlık (Tur 2) — `PRIVATE_UPLOAD_DIR` volume/backup/izin (devops-agent)
 
 `.claude/architect-scope-telehealth-template.md` §9.7 "TADİLAT TURU 2" ve
