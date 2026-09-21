@@ -13,6 +13,22 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
 
 ### Fixed
 
+- **`fix(telehealth)`: Randevu sihirbazı (`/doctors/[slug]#randevu`) tamamlanmış bir rezervasyondan
+  sonra çıkmaz duruma girmiyor artık.** Kök neden: mount-anı kurtarma effect'i (sayfa yenileme/geri
+  dönüşte `?booking=&t=`'yi okuyup backend'den güncel durumu sorar) ücretsiz (`totalCents === 0`)
+  doktor bookinglerini `PAID` bulduğunda bilerek Adım 5'e (tamamlandı ekranı) geri döndürüyordu —
+  bu, booking oluşturulduktan HEMEN SONRA bir yenilemede doğruydu, ama kullanıcı SONRA aynı sayfaya
+  (aynı doktordan yeni randevu almak için) döndüğünde onu eski "Ödeme adımı gerekmiyor —
+  randevunuz tamamlandı" ekranında SIKIŞTIRIYORDU; yeni tarih/saat seçilemiyordu. Artık ZATEN
+  ödenmiş (ücretsiz dahil) her booking mount'ta sessizce temizlenir, Adım 2'den (Tarih & Saat)
+  TEMİZ başlanır — booking'in kendi onay e-postası (görüşme linki dahil, bkz. az önceki madde)
+  zaten gönderildi, sihirbazın ekranı tek/kalıcı onay kaynağı değildi. Ayrıca: (1) ücretsiz booking
+  onay panelinde "Yeni Randevu Oluştur" butonu eklendi (aynı oturumda hemen tekrar randevu almak
+  isteyenler için); (2) `booking-selection-context.tsx`'e paylaşılan `hasCompletedBooking`/
+  `resetSignal`/`requestBookingReset` eklendi — sağ sticky "Randevu Oluştur" kartı (KARDEŞ ağaç,
+  prop-drilling ile ulaşılamaz) artık sihirbaz tamamlanmış bir rezervasyon gösteriyorken tıklanırsa
+  salt kaydırma yerine sihirbazı Adım 2'ye sıfırlar.
+
 - **`fix(telehealth)`: Randevu onay e-postasına görüşme bağlantısı eklendi, ücretsiz randevularda
   yanlış "ödemenizi aldık" metni düzeltildi.** Kök neden (1): `APPOINTMENT_CONFIRMATION` şablonuna
   `{{join_link}}` daha önce bir ONE-OFF script'le (`scripts/add-consultation-join-link-to-

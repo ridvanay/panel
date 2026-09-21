@@ -1,3 +1,5 @@
+"use client";
+
 import { CalendarClock, FileText, ShieldCheck } from "lucide-react";
 import type { DoctorProfile } from "@/lib/api/types";
 import { buttonVariants } from "@/components/ui/button";
@@ -5,6 +7,7 @@ import { formatPriceFromCents } from "@/lib/format-price";
 import { formatDayLabel } from "@/lib/telehealth-format";
 import { formatSiteString } from "@/lib/i18n/site-dictionaries";
 import type { TelehealthStrings } from "@/lib/i18n/site-dictionaries";
+import { useBookingSelection } from "@/components/site/telehealth/booking-selection-context";
 import { cn } from "@/lib/utils";
 
 /**
@@ -16,6 +19,12 @@ import { cn } from "@/lib/utils";
  * çözülen "çift buton/çakışan randevu akışı" sorununun GERİ GELMEMESİ için). GERÇEK randevu
  * seçimi/oluşturma TEK yerde (`BookingWizard`, `#randevu` section'ı) kalır — bu kart yalnızca o
  * section'a `<a href="#randevu">` ile KAYDIRIR.
+ *
+ * 2026-09-21 GÜNCELLEME (kullanıcı talebi) — "context'e bağımsız" ilkesi HÂLÂ geçerlidir (kendi
+ * booking mantığı/state'i İNŞA ETMEZ), ama artık `booking-selection-context.tsx`'in paylaşılan
+ * `hasCompletedBooking`/`requestBookingReset`ını OKUR/TETİKLER — sihirbaz zaten tamamlanmış bir
+ * rezervasyon gösteriyorken bu CTA'ya tıklamak salt kaydırma YERİNE sihirbazı Adım 2'ye sıfırlar
+ * (bkz. `booking-wizard.tsx`'teki `resetWizard`/`resetSignal` notu).
  */
 interface DoctorQuickBookingCardProps {
   doctor: DoctorProfile;
@@ -34,6 +43,12 @@ interface DoctorQuickBookingCardProps {
 
 export function DoctorQuickBookingCard({ doctor, earliestAvailableIso, intlLocale, dict }: DoctorQuickBookingCardProps) {
   const unitPrice = doctor.sessionPriceCents != null ? formatPriceFromCents(doctor.sessionPriceCents, doctor.currency, intlLocale) : dict.freeSessionLabel;
+  // Bug-fix turu (2026-09-21, kullanıcı talebi) — bu kart KENDİ booking mantığını İNŞA ETMEZ
+  // (dosya başı yorum, DEĞİŞMEDİ), ama `BookingWizard` (KARDEŞ ağaç, `booking-selection-context.tsx`
+  // paylaşılan context'i üzerinden) ZATEN tamamlanmış bir rezervasyonu gösteriyorsa, bu CTA'ya
+  // tıklamak yalnızca `#randevu`'ya kaydırmak YERİNE sihirbazı TEMİZ Adım 2'ye SIFIRLAMALIDIR —
+  // aksi halde kullanıcı eski "randevunuz tamamlandı" ekranına kaydırılır, yeni tarih SEÇEMEZ.
+  const { hasCompletedBooking, requestBookingReset } = useBookingSelection();
 
   return (
     <div className="rounded-[var(--site-radius)] border border-border bg-surface p-5 shadow-sm">
@@ -67,6 +82,7 @@ export function DoctorQuickBookingCard({ doctor, earliestAvailableIso, intlLocal
           sınıfları kazandırır. */}
       <a
         href="#randevu"
+        onClick={hasCompletedBooking ? () => requestBookingReset() : undefined}
         className={cn(
           buttonVariants({ variant: "default", size: "lg" }),
           "mt-4 h-11 w-full rounded-[var(--site-radius)] text-base font-semibold",

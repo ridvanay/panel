@@ -17,6 +17,7 @@ import { BookingPaymentStep } from "@/components/site/telehealth/booking-payment
 import { DoctorServiceSummaryPanel } from "@/components/site/telehealth/doctor-service-summary";
 import { BookingStepperBar, type BookingStepperStep } from "@/components/site/telehealth/booking-stepper-bar";
 import { Alert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 
 /**
@@ -140,7 +141,7 @@ type WizardStep = 2 | 3 | 4 | 5;
 
 export function BookingWizard({ doctor, doctorSlug, doctorTimeZone, lang, defaultLocaleCode, initialSlots, kvkkPage, intlLocale }: BookingWizardProps) {
   const router = useRouter();
-  const { selectedSlots, clearAllSlots, displayTimeZone } = useBookingSelection();
+  const { selectedSlots, clearAllSlots, displayTimeZone, setHasCompletedBooking, resetSignal } = useBookingSelection();
 
   const [currentStep, setCurrentStep] = useState<WizardStep>(2);
   const [conflictNotice, setConflictNotice] = useState<string | null>(null);
@@ -214,9 +215,6 @@ export function BookingWizard({ doctor, doctorSlug, doctorTimeZone, lang, defaul
         const booking = await telehealthApi.getBooking(stored.bookingId, stored.accessToken);
         if (cancelled) return;
         const notExpired = new Date(booking.expiresAt).getTime() > Date.now();
-        // Ücretsiz doktor bookingleri backend'de ANINDA `PAID` olur (Stripe akışının aksine bu
-        // sayfadan HİÇ AYRILINMAZ) — sayfa bu adımda yenilenirse `PENDING` DEĞİL `PAID` bulunur,
-        // yine de Adım 5'e (ödeme adımı atlanmış onay paneli) kurtarılabilir olmalıdır.
         if (booking.paymentStatus === "PENDING" && notExpired) {
           setBookingResult({
             bookingId: booking.id,
@@ -229,20 +227,16 @@ export function BookingWizard({ doctor, doctorSlug, doctorTimeZone, lang, defaul
             paymentStatus: booking.paymentStatus,
           });
           setCurrentStep(4);
-        } else if (booking.paymentStatus === "PAID" && booking.totalCents === 0) {
-          setBookingResult({
-            bookingId: booking.id,
-            accessToken: stored.accessToken,
-            bookingNumber: booking.bookingNumber,
-            slotCount: booking.slotCount,
-            totalCents: booking.totalCents,
-            currency: booking.currency,
-            appointments: booking.appointments,
-            paymentStatus: booking.paymentStatus,
-          });
-          bookingFinalizedRef.current = true;
-          setCurrentStep(5);
         } else {
+          // Bug-fix turu (2026-09-21, kullanıcı talebi) — eskiden `PAID && totalCents === 0`
+          // (ücretsiz doktor) Adım 5'e (onay paneli) kurtarılıyordu, ki bu ANLIK yeniden yüklemede
+          // (booking'in oluşturulduğu andan HEMEN sonra) doğru olsa da, kullanıcı DAHA SONRA
+          // sayfaya (aynı doktorun rezervasyon bağlantısına) TEKRAR gelip YENİ bir randevu almak
+          // istediğinde onu ESKİ tamamlanmış randevunun "Ödeme adımı gerekmiyor" ekranında ÇIKMAZ
+          // bir durumda bırakıyordu (bu turun asıl şikâyeti). Artık ZATEN ödenmiş (`PAID`, ücretsiz
+          // DAHİL) ya da süresi dolmuş/iptal/başarısız HER durumda kalıcı kayıt SESSİZCE temizlenir
+          // ve Adım 2'den TEMİZ başlanır — onay e-postası (join_link dahil) ZATEN gönderildi,
+          // sihirbazın kendi ekranı tek/kalıcı onay kaynağı DEĞİLDİR.
           clearPendingBooking(doctorSlug);
         }
       } catch {
@@ -256,6 +250,46 @@ export function BookingWizard({ doctor, doctorSlug, doctorTimeZone, lang, defaul
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- yalnızca mount anında BİR KEZ çalışır (kalıcı depo/URL okuması, `doctorSlug` sayfa ömrü boyunca sabittir).
   }, []);
+
+  /**
+   * Bug-fix turu (2026-09-21, kullanıcı talebi) — `booking-selection-context.tsx::hasCompletedBooking`
+   * KARDEŞ `DoctorQuickBookingCard`'ın "Book Appointment" tıklamasının salt kaydırma mı yoksa TAM
+   * SIFIRLAMA mı tetikleyeceğine karar vermesi için OKUDUĞU bayraktır — sihirbaz TEK doğruluk
+   * kaynağı olarak bunu kendi `bookingResult`inden türetip YAZAR. Yalnızca ücretsiz doktor
+   * bookingi (`paymentStatus === "PAID"`) bu sayfada AYRILMADAN görünür kalır (ücretli akış her
+   * zaman `/patient/bookings/...`e YÖNLENDİRİR, bkz. `booking-payment-step.tsx::handlePay`/
+   * `handleDemoPay`) — ama bayrak genel tutuldu (gelecekte başka bir "sayfada kalan tamamlanmış
+   * durum" eklenirse ayrıca güncellenmesi gerekmesin diye).
+   */
+  useEffect(() => {
+    setHasCompletedBooking(bookingResult?.paymentStatus === "PAID");
+  }, [bookingResult, setHasCompletedBooking]);
+
+  /**
+   * Sihirbazın TEK tam-sıfırlama noktası — hem kendi "Yeni Randevu Oluştur" butonundan (aşağıda)
+   * HEM DE `DoctorQuickBookingCard`'ın context üzerinden gönderdiği `resetSignal`den (bir alttaki
+   * `useEffect`) tetiklenir. Kalıcı depo/URL + booking state + seçili slotlar TEMİZLENİR, adım 2'ye
+   * (Tarih & Saat) dönülür — booking henüz backend'de terk edilmiş SAYILMAZ (`bookingFinalizedRef`
+   * `true` kalır) çünkü GERÇEKTEN tamamlanmış (`PAID`) bir booking'i şimdi iptal etmek YANLIŞ olur,
+   * yalnızca sihirbazın YEREL görünümü sıfırlanır.
+   */
+  function resetWizard() {
+    clearPendingBooking(doctorSlug);
+    setBookingResult(null);
+    setCurrentStep(2);
+    setConflictNotice(null);
+    clearAllSlots();
+  }
+
+  const isFirstResetSignal = useRef(true);
+  useEffect(() => {
+    if (isFirstResetSignal.current) {
+      isFirstResetSignal.current = false;
+      return;
+    }
+    resetWizard();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- yalnızca `resetSignal` DEĞİŞTİĞİNDE tetiklenmeli (kart tıklaması), `resetWizard` her render'da YENİDEN oluşturulan bir closure'dır.
+  }, [resetSignal]);
 
   async function handleIdentityContinue(identity: BookingIdentityInput, patientName: string, patientEmail: string) {
     if (selectedSlots.length === 0) return;
@@ -432,7 +466,15 @@ export function BookingWizard({ doctor, doctorSlug, doctorTimeZone, lang, defaul
                   <BookingIntakeStep bookingId={bookingResult.bookingId} accessToken={bookingResult.accessToken} onDone={() => setCurrentStep(5)} />
                 ) : isFreeBooking ? (
                   <Alert variant="success">
-                    <p className="text-sm font-medium">Ödeme adımı gerekmiyor — randevunuz tamamlandı.</p>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <p className="text-sm font-medium">Ödeme adımı gerekmiyor — randevunuz tamamlandı.</p>
+                      {/* Bug-fix turu (2026-09-21, kullanıcı talebi) — bu ekran artık sayfa
+                          yenilenince otomatik gösterilmiyor (yukarıdaki kurtarma effect'i notu),
+                          ama kullanıcı AYNI oturumda hemen yeni bir randevu almak isteyebilir. */}
+                      <Button type="button" variant="outline" size="sm" onClick={resetWizard} className="rounded-[var(--site-radius)]">
+                        Yeni Randevu Oluştur
+                      </Button>
+                    </div>
                   </Alert>
                 ) : (
                   <BookingPaymentStep

@@ -43,6 +43,25 @@ interface BookingSelectionContextValue {
   displayTimeZone: string;
   visitorTimeZone: string | undefined;
   doctorTimeZone: string;
+  /**
+   * Bug-fix turu (2026-09-21, kullanıcı talebi) — `booking-wizard.tsx` (sihirbaz) ile
+   * `doctor-quick-booking-card.tsx` (sağ sticky "Hızlı Randevu" kartı) KARDEŞ ağaçlardır (dosya
+   * başı yorum) ve prop-drilling ile HABERLEŞEMEZ — bu context zaten TEK paylaşım kanalıdır.
+   * `hasCompletedBooking`: sihirbaz KENDİ tamamlanmış/ücretsiz-onaylanmış durumunu buraya YAZAR
+   * (`setHasCompletedBooking`); kart bunu OKUYUP "Book Appointment" tıklamasının salt kaydırma mı
+   * yoksa TAM SIFIRLAMA mı tetikleyeceğine karar verir (devam eden bir 2/3/4. adım formunu
+   * YANLIŞLIKLA silmemek için — yalnızca GERÇEKTEN tamamlanmışken sıfırlama TETİKLENİR).
+   */
+  hasCompletedBooking: boolean;
+  setHasCompletedBooking: (value: boolean) => void;
+  /**
+   * Kart tıklandığında (yalnızca `hasCompletedBooking` iken) çağrılır — `resetSignal`i artırır,
+   * sihirbaz bunu bir `useEffect`te izleyip KENDİ tam sıfırlama mantığını (booking state'i +
+   * kalıcı depo/URL + seçili slotlar) çalıştırır. Basit bir sayaç (state paylaşımı yerine "sinyal"
+   * deseni) — kartın sihirbazın İÇ state şeklini (`WizardBookingState`) BİLMESİNE gerek KALMAZ.
+   */
+  resetSignal: number;
+  requestBookingReset: () => void;
 }
 
 const BookingSelectionContext = createContext<BookingSelectionContextValue | null>(null);
@@ -50,6 +69,12 @@ const BookingSelectionContext = createContext<BookingSelectionContextValue | nul
 export function BookingSelectionProvider({ doctorTimeZone, children }: { doctorTimeZone: string; children: ReactNode }) {
   const [selectedSlots, setSelectedSlots] = useState<AvailabilitySlot[]>([]);
   const [visitorTimeZone, setVisitorTimeZone] = useState<string | undefined>(undefined);
+  const [hasCompletedBooking, setHasCompletedBooking] = useState(false);
+  const [resetSignal, setResetSignal] = useState(0);
+
+  function requestBookingReset() {
+    setResetSignal((n) => n + 1);
+  }
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- ziyaretçi dilimi yalnızca istemcide okunabilir (Intl), bu değeri React dışı bir kaynaktan React state'ine SENKRONİZE etmenin tek yolu budur (§4.2)
@@ -96,7 +121,19 @@ export function BookingSelectionProvider({ doctorTimeZone, children }: { doctorT
 
   return (
     <BookingSelectionContext.Provider
-      value={{ selectedSlots, toggleSlot, removeSlot, clearAllSlots, displayTimeZone, visitorTimeZone, doctorTimeZone }}
+      value={{
+        selectedSlots,
+        toggleSlot,
+        removeSlot,
+        clearAllSlots,
+        displayTimeZone,
+        visitorTimeZone,
+        doctorTimeZone,
+        hasCompletedBooking,
+        setHasCompletedBooking,
+        resetSignal,
+        requestBookingReset,
+      }}
     >
       {children}
     </BookingSelectionContext.Provider>
