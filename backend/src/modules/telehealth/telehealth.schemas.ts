@@ -280,7 +280,9 @@ export const CreateDoctorRequestSchema = z.object({
   timeZone: z.string().trim().min(1).max(80),
   specialtyId: z.string().uuid().nullable().optional(),
   sessionDurationMin: z.number().int().min(5).max(240),
-  sessionPriceCents: z.number().int().min(0),
+  // `null` = ücret bilgisi tanımlanmamış (admin panelde "Ücretli Hizmet" toggle'ı kapalı) —
+  // booking akışı bunu ücretsiz/bilgi-alınız seans olarak yorumlar, ödeme adımı atlanır.
+  sessionPriceCents: z.number().int().min(0).nullable(),
   currency: z.string().trim().length(3).optional(),
   avatarMediaId: z.string().uuid().nullable().optional(),
   // §7.2 şablon disiplini yalnızca `demo-templates` içe aktarıcısını bağlar — burası GERÇEK admin

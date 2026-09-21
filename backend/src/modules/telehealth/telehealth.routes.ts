@@ -45,7 +45,9 @@ import { hashToken } from "../../lib/tokens";
 import { timingSafeEqualHex } from "../../lib/api-key";
 import { buildPageMeta, parseCursor } from "../../lib/pagination";
 import { generateAvailableSlots, parseIsoCalendarDate } from "./lib/availability";
-import { bookAppointment, createBooking } from "./lib/booking";
+import { bookAppointment, confirmBookingPayment, createBooking } from "./lib/booking";
+import { triggerAppointmentConfirmationEmail } from "./lib/notifications";
+import { provisionPatientAccountForBooking } from "./lib/patient-account";
 import { encryptSecret, decryptSecret } from "../../lib/crypto";
 import { detectUploadMimeType } from "../../lib/mime-detect";
 import { telehealthDocumentStorage } from "../../lib/telehealth-document-storage";
@@ -476,6 +478,29 @@ export async function telehealthRoutes(app: FastifyInstance) {
         },
       });
 
+      let booking = result.booking;
+      let appointments = result.appointments;
+      let rawAccessToken = result.rawAccessToken;
+
+      // Doktorun `sessionPriceCents`'i `null`sa (ücretsiz/bilgi-alınız seans) `createBooking`
+      // `unitPriceCents`i 0 üretir (bkz. `lib/booking.ts`) — ödeme adımı hiç YOKTUR, booking
+      // AYNI `confirmBookingPayment` hook noktasından (Stripe webhook/ADMIN mark-paid/demo-pay
+      // İLE AYNI fonksiyon, kod tekrarı YASAK) `paidBy: "free"` ile ANINDA onaylanır.
+      if (booking.totalCents === 0) {
+        const confirmed = await confirmBookingPayment(app, {
+          bookingId: booking.id,
+          paidBy: "free",
+          paidNote: "Ücretsiz seans — ücret bilgisi tanımlanmamış, ödeme gerekmez.",
+          knownRawAccessToken: rawAccessToken,
+        });
+        booking = confirmed.booking;
+        appointments = confirmed.appointments;
+        rawAccessToken = confirmed.rawAccessToken;
+
+        await triggerAppointmentConfirmationEmail(app, { booking, appointments, rawAccessToken });
+        await provisionPatientAccountForBooking(app, booking);
+      }
+
       // [TCT] §9.7.1 madde 6 (bağlayıcı) — yapılandırılmamışken booking yine `201` döner;
       // `checkoutUrl` her zaman `null`'dur (gerçek Stripe Checkout URL'i yalnızca
       // integration-agent'ın `POST .../checkout-session` ucundan gelir, burada ASLA üretilmez).
@@ -483,18 +508,18 @@ export async function telehealthRoutes(app: FastifyInstance) {
 
       return reply.code(201).send(
         ok({
-          bookingId: result.booking.id,
-          bookingNumber: result.booking.bookingNumber,
+          bookingId: booking.id,
+          bookingNumber: booking.bookingNumber,
           doctorSlug,
-          slotCount: result.booking.slotCount,
-          unitPriceCents: result.booking.unitPriceCents,
-          subtotalCents: result.booking.subtotalCents,
-          totalCents: result.booking.totalCents,
-          currency: result.booking.currency,
-          paymentStatus: result.booking.paymentStatus,
-          expiresAt: result.booking.expiresAt.toISOString(),
-          appointments: result.appointments.map((appointment) => toAppointmentDto({ ...appointment, doctor: result.doctor })),
-          accessToken: result.rawAccessToken,
+          slotCount: booking.slotCount,
+          unitPriceCents: booking.unitPriceCents,
+          subtotalCents: booking.subtotalCents,
+          totalCents: booking.totalCents,
+          currency: booking.currency,
+          paymentStatus: booking.paymentStatus,
+          expiresAt: booking.expiresAt.toISOString(),
+          appointments: appointments.map((appointment) => toAppointmentDto({ ...appointment, doctor: result.doctor })),
+          accessToken: rawAccessToken,
           paymentsConfigured,
           checkoutUrl: null,
         })

@@ -72,4 +72,14 @@ describe("AdminTelehealthDoctorsPage — Ücret/Süre/Saat Dilimi (görev tanım
     expect(screen.getByText(/£5.000,00|£5,000.00/)).toBeInTheDocument();
     expect(screen.getByText("Europe/London")).toBeInTheDocument();
   });
+
+  it("`sessionPriceCents: null` (admin panelde 'Ücretli Hizmet' kapalı) doktor için 'Ücretsiz' gösterir", async () => {
+    const page: Page<DoctorProfile> = { items: [makeDoctor({ sessionPriceCents: null })], meta: { nextCursor: null } };
+    vi.mocked(telehealthApi.listAdminDoctors).mockResolvedValue(page);
+
+    render(<AdminTelehealthDoctorsPage />);
+
+    await waitFor(() => expect(screen.getByText(/James Whitfield/)).toBeInTheDocument());
+    expect(screen.getByText(/Ücretsiz/)).toBeInTheDocument();
+  });
 });

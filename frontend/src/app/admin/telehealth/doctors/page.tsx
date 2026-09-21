@@ -147,7 +147,8 @@ export default function AdminTelehealthDoctorsPage() {
                       </TableCell>
                       <TableCell className="text-sm text-foreground/70">{doctor.specialty?.name ?? "—"}</TableCell>
                       <TableCell className="text-sm text-foreground/70">
-                        {doctor.sessionDurationMin} dk · {formatPriceFromCents(doctor.sessionPriceCents, doctor.currency)}
+                        {doctor.sessionDurationMin} dk ·{" "}
+                        {doctor.sessionPriceCents != null ? formatPriceFromCents(doctor.sessionPriceCents, doctor.currency) : "Ücretsiz"}
                       </TableCell>
                       <TableCell>
                         <Badge tone="neutral" size="sm" className="gap-1">

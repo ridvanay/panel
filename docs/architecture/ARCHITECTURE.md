@@ -5989,7 +5989,7 @@ Migration `add_telehealth_module` (salt-ekleme, `ALTER TYPE` yok, tek migration)
 | Model | Rolü |
 |---|---|
 | `Specialty` | Tıbbi uzmanlık alanı (Kardiyoloji vb.) — `icon-box` bloğuyla AYNI `lucide-react` ikon sözlüğü. |
-| `DoctorProfile` | Doktor profili. `userId` **nullable** — panel/hesap kullanıcısı OLMADAN da tam bir kayıttır ([TCT] §2.5); şablon bu alanı DAİMA `null` bırakır. `rating`/`reviewCount` YOKTUR — dayanaksız sosyal kanıt reddi (`OrderItem`/[EPT] disipliniyle AYNI). Fiyatlama seans başınadır (`sessionPriceCents`), saat başına DEĞİL. |
+| `DoctorProfile` | Doktor profili. `userId` **nullable** — panel/hesap kullanıcısı OLMADAN da tam bir kayıttır ([TCT] §2.5); şablon bu alanı DAİMA `null` bırakır. `rating`/`reviewCount` YOKTUR — dayanaksız sosyal kanıt reddi (`OrderItem`/[EPT] disipliniyle AYNI). Fiyatlama seans başınadır (`sessionPriceCents`), saat başına DEĞİL. `sessionPriceCents` **nullable** — `null` ücretsiz/bilgi-alınız seans anlamına gelir (admin panelde "Ücretli Hizmet" toggle'ı kapalı); booking akışı bu durumda `unitPriceCents`i `0` kabul edip ödeme adımını atlar. |
 | `DoctorAvailability` | Haftalık **TEKRARLAYAN** kural — üretilmiş slot satırı DEĞİLDİR (§10.23.3). |
 | `Appointment` | Randevu. **`MeetingRoom` tablosu YOKTUR** — LiveKit oda adı (`meetingRoomName`) tek bir string olarak randevunun üzerindedir; token üretimi kod'dur, veri değil. |
 

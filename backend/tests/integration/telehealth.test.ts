@@ -530,6 +530,47 @@ describe("telehealth — admin RBAC ve CRUD (§8.4)", () => {
     expect(setAvailability.json().data).toHaveLength(1);
   });
 
+  it("`sessionPriceCents: null` ile doktor oluşturulabilir (ücretsiz/bilgi-alınız seans) ve tekrar bir ücrete güncellenebilir", async () => {
+    const createFree = await app.inject({
+      method: "POST",
+      url: "/api/v1/admin/telehealth/doctors",
+      headers: authHeader(adminToken),
+      payload: {
+        title: "Dr.",
+        fullName: "Ücretsiz Danışmanlık Doktoru",
+        bio: "Panelden oluşturuldu.",
+        languages: ["tr"],
+        timeZone: "Europe/Istanbul",
+        sessionDurationMin: 30,
+        sessionPriceCents: null,
+      },
+    });
+    expect(createFree.statusCode).toBe(201);
+    const doctorId = createFree.json().data.id;
+    expect(createFree.json().data.sessionPriceCents).toBeNull();
+
+    const getDoctor = await app.inject({ method: "GET", url: `/api/v1/admin/telehealth/doctors/${doctorId}`, headers: authHeader(adminToken) });
+    expect(getDoctor.json().data.sessionPriceCents).toBeNull();
+
+    const updateToFee = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/admin/telehealth/doctors/${doctorId}`,
+      headers: authHeader(adminToken),
+      payload: { sessionPriceCents: 60000 },
+    });
+    expect(updateToFee.statusCode).toBe(200);
+    expect(updateToFee.json().data.sessionPriceCents).toBe(60000);
+
+    const updateBackToFree = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/admin/telehealth/doctors/${doctorId}`,
+      headers: authHeader(adminToken),
+      payload: { sessionPriceCents: null },
+    });
+    expect(updateBackToFree.statusCode).toBe(200);
+    expect(updateBackToFree.json().data.sessionPriceCents).toBeNull();
+  });
+
   it("EDITOR doktor/uzmanlık YAZAMAZ (403) ama panel kapısını GEÇER (okuma 200)", async () => {
     const readSpecialties = await app.inject({ method: "GET", url: "/api/v1/admin/telehealth/specialties", headers: authHeader(editorToken) });
     expect(readSpecialties.statusCode).toBe(200);

@@ -36,6 +36,8 @@ export const telehealthStrings = {
   spokenLanguagesAriaLabel: "Languages spoken: {languages}",
   /** `{minutes}` yer tutucusu — seans süresi (ör. "30 min"). */
   sessionDurationLabel: "{minutes} min",
+  /** `doctor.sessionPriceCents === null` — ücret bilgisi tanımlanmamış doktorlarda fiyat yerine gösterilir. */
+  freeSessionLabel: "Free / Contact for pricing",
   bookAppointmentCta: "Book Appointment",
   viewProfileCta: "View Profile",
   /** `doctor-quick-booking-card.tsx` — büyük CTA, `bookAppointmentCta`'dan BİLİNÇLİ OLARAK ayrı (kaynakta da farklı metin). */

@@ -2192,7 +2192,10 @@ model DoctorProfile {
   /// Satılan birim seans'tır, saat DEĞİL ([EPT] §1.2 "fiyat satılan seviyede yaşar" ilkesi).
   /// `hourlyRate` REDDEDİLDİ: 30 dk seansta bölme yuvarlama hatası üretir.
   sessionDurationMin Int    @default(30)
-  sessionPriceCents  Int
+  /// `null` = ücret bilgisi tanımlanmamış (ücretsiz/bilgi-alınız seans, admin panelde "Ücretli
+  /// Hizmet" toggle'ı kapalı) — booking akışı bu durumda ödeme adımını atlar (§9.7.1 madde 6'nın
+  /// tersi değil, ONUN üzerine kurulu bir dal: `unitPriceCents = sessionPriceCents ?? 0`).
+  sessionPriceCents  Int?
   currency           String @default("TRY")
 
   /// Avatar GERÇEK bir Media satırıdır ([DTI] §4.2) — serbest `avatarUrl` string'i REDDEDİLDİ:

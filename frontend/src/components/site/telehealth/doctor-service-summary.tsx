@@ -97,9 +97,10 @@ export function DoctorServiceSummaryPanel({
     return () => window.removeEventListener(COOKIE_BANNER_VISIBILITY_EVENT, handleVisibility);
   }, []);
 
-  const unitPrice = formatPriceFromCents(doctor.sessionPriceCents, doctor.currency, intlLocale);
+  const isFree = doctor.sessionPriceCents == null;
+  const unitPrice = doctor.sessionPriceCents != null ? formatPriceFromCents(doctor.sessionPriceCents, doctor.currency, intlLocale) : dict.freeSessionLabel;
   const slotCount = selectedSlots.length;
-  const totalCents = doctor.sessionPriceCents * slotCount;
+  const totalCents = (doctor.sessionPriceCents ?? 0) * slotCount;
   // §2.4.3 — `doctor-profile-hero.tsx`'in uzmanlık chip'iyle AYNI fallback zinciri, sabit
   // "Profesyonel Danışmanlık Seansı" metni İCAT EDİLMEZ.
   const specialtyName = doctor.specialty?.name ?? dict.generalConsultationSpecialty;
@@ -194,17 +195,17 @@ export function DoctorServiceSummaryPanel({
               <span>
                 {unitPrice} × {slotCount} {dict.sessionsUnitWord}
               </span>
-              <span>{formatPriceFromCents(doctor.sessionPriceCents * slotCount, doctor.currency, intlLocale)}</span>
+              <span>{isFree ? dict.freeSessionLabel : formatPriceFromCents(totalCents, doctor.currency, intlLocale)}</span>
             </div>
             <div className="flex items-baseline justify-between">
               <span className="text-sm font-semibold text-foreground">{dict.totalLabel}</span>
-              <span className="text-2xl font-semibold text-foreground">{formatPriceFromCents(totalCents, doctor.currency, intlLocale)}</span>
+              <span className="text-2xl font-semibold text-foreground">{isFree ? dict.freeSessionLabel : formatPriceFromCents(totalCents, doctor.currency, intlLocale)}</span>
             </div>
           </div>
         ) : (
           <div className="mt-4 flex items-baseline gap-1.5">
             <span className="text-2xl font-semibold text-foreground">{unitPrice}</span>
-            <span className="text-sm text-foreground/60">{dict.perSessionPriceSuffix}</span>
+            {!isFree && <span className="text-sm text-foreground/60">{dict.perSessionPriceSuffix}</span>}
           </div>
         )}
 
@@ -238,7 +239,9 @@ export function DoctorServiceSummaryPanel({
           )}
         >
           <div className="flex h-full items-center gap-3 px-4">
-            <div className="min-w-0 text-base font-semibold text-foreground">{slotCount > 1 ? formatPriceFromCents(totalCents, doctor.currency, intlLocale) : unitPrice}</div>
+            <div className="min-w-0 text-base font-semibold text-foreground">
+              {slotCount > 1 ? (isFree ? dict.freeSessionLabel : formatPriceFromCents(totalCents, doctor.currency, intlLocale)) : unitPrice}
+            </div>
             <div className="flex-1" />
             <Button type="button" size="lg" className="rounded-[var(--site-radius)]" disabled={continueDisabled} loading={continueLoading} onClick={onContinue}>
               {dict.continueCta}

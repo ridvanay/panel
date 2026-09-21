@@ -210,7 +210,9 @@ export function DoctorProfilePanel() {
           </div>
           <div>
             <dt className="text-xs text-foreground/50">Seans ücreti</dt>
-            <dd className="text-foreground">{formatPriceFromCents(savedProfile.sessionPriceCents, savedProfile.currency, intlLocale)}</dd>
+            <dd className="text-foreground">
+              {savedProfile.sessionPriceCents != null ? formatPriceFromCents(savedProfile.sessionPriceCents, savedProfile.currency, intlLocale) : "Ücretsiz / Bilgi Alınız"}
+            </dd>
           </div>
         </dl>
 

@@ -33,7 +33,7 @@ interface DoctorQuickBookingCardProps {
 }
 
 export function DoctorQuickBookingCard({ doctor, earliestAvailableIso, intlLocale, dict }: DoctorQuickBookingCardProps) {
-  const unitPrice = formatPriceFromCents(doctor.sessionPriceCents, doctor.currency, intlLocale);
+  const unitPrice = doctor.sessionPriceCents != null ? formatPriceFromCents(doctor.sessionPriceCents, doctor.currency, intlLocale) : dict.freeSessionLabel;
 
   return (
     <div className="rounded-[var(--site-radius)] border border-border bg-surface p-5 shadow-sm">

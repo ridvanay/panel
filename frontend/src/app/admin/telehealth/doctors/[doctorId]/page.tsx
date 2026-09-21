@@ -4,7 +4,7 @@ import { use, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { useForm, Controller } from "react-hook-form";
+import { useForm, useWatch, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { AlertCircle, ChevronLeft, Stethoscope, Trash2 } from "lucide-react";
@@ -37,6 +37,7 @@ const formSchema = z.object({
   languages: z.array(z.string()).min(1, "En az bir dil seçin.").max(6),
   timeZone: z.string().min(1, "Saat dilimi gerekli."),
   specialtyId: z.string().optional(),
+  hasFee: z.boolean(),
   sessionDurationMin: z.coerce.number().int().min(5).max(240),
   sessionPriceLira: z.coerce.number({ invalid_type_error: "Geçerli bir ücret girin." }).min(0),
   currency: z.string().min(1),
@@ -71,6 +72,8 @@ export default function EditDoctorPage({ params }: { params: Promise<{ doctorId:
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({ resolver: zodResolver(formSchema) });
 
+  const hasFee = useWatch({ control, name: "hasFee" });
+
   const load = useCallback(async () => {
     try {
       const [doc, specialtyList, availability] = await Promise.all([
@@ -90,8 +93,9 @@ export default function EditDoctorPage({ params }: { params: Promise<{ doctorId:
         languages: doc.languages,
         timeZone: doc.timeZone,
         specialtyId: doc.specialtyId ?? "",
+        hasFee: doc.sessionPriceCents != null,
         sessionDurationMin: doc.sessionDurationMin,
-        sessionPriceLira: doc.sessionPriceCents / 100,
+        sessionPriceLira: doc.sessionPriceCents != null ? doc.sessionPriceCents / 100 : 0,
         currency: doc.currency,
         isActive: doc.isActive,
         isVerified: doc.isVerified,
@@ -120,7 +124,7 @@ export default function EditDoctorPage({ params }: { params: Promise<{ doctorId:
         timeZone: values.timeZone,
         specialtyId: values.specialtyId || null,
         sessionDurationMin: values.sessionDurationMin,
-        sessionPriceCents: Math.round(values.sessionPriceLira * 100),
+        sessionPriceCents: values.hasFee ? Math.round(values.sessionPriceLira * 100) : null,
         currency: values.currency,
         avatarMediaId: avatar?.id ?? null,
         isActive: values.isActive,
@@ -297,25 +301,41 @@ export default function EditDoctorPage({ params }: { params: Promise<{ doctorId:
                 {errors.languages && <p className="mt-1 text-xs text-danger">{errors.languages.message}</p>}
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-3">
-                <Field id="sessionDurationMin" label="Seans süresi (dk)" error={errors.sessionDurationMin?.message} required>
-                  {(inputProps) => <Input {...inputProps} type="number" min={5} max={240} {...register("sessionDurationMin")} />}
-                </Field>
-                <Field id="sessionPriceLira" label="Seans ücreti" error={errors.sessionPriceLira?.message} required>
-                  {(inputProps) => <Input {...inputProps} type="number" step="0.01" min="0" {...register("sessionPriceLira")} />}
-                </Field>
-                <Field id="currency" label="Para birimi" required>
-                  {(inputProps) => (
-                    <Select {...inputProps} {...register("currency")}>
-                      {CURRENCIES.map((code) => (
-                        <option key={code} value={code}>
-                          {code}
-                        </option>
-                      ))}
-                    </Select>
-                  )}
-                </Field>
+              <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
+                <div>
+                  <p className="text-sm font-medium text-foreground">Ücret Bilgisi Belirle / Ücretli Hizmet</p>
+                  <p className="text-xs text-foreground/60">
+                    Kapalıysa bu doktor ücretsiz/bilgi-alınız olarak listelenir; rezervasyonda ödeme adımı atlanır.
+                  </p>
+                </div>
+                <Controller
+                  control={control}
+                  name="hasFee"
+                  render={({ field }) => <Switch checked={field.value} onCheckedChange={field.onChange} aria-label="Ücretli hizmet mi" />}
+                />
               </div>
+
+              {hasFee && (
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <Field id="sessionDurationMin" label="Seans süresi (dk)" error={errors.sessionDurationMin?.message} required>
+                    {(inputProps) => <Input {...inputProps} type="number" min={5} max={240} {...register("sessionDurationMin")} />}
+                  </Field>
+                  <Field id="sessionPriceLira" label="Seans ücreti" error={errors.sessionPriceLira?.message} required>
+                    {(inputProps) => <Input {...inputProps} type="number" step="0.01" min="0" {...register("sessionPriceLira")} />}
+                  </Field>
+                  <Field id="currency" label="Para birimi" required>
+                    {(inputProps) => (
+                      <Select {...inputProps} {...register("currency")}>
+                        {CURRENCIES.map((code) => (
+                          <option key={code} value={code}>
+                            {code}
+                          </option>
+                        ))}
+                      </Select>
+                    )}
+                  </Field>
+                </div>
+              )}
 
               <MediaSelectField id="avatar" label="Avatar" value={avatar} onChange={setAvatar} />
 

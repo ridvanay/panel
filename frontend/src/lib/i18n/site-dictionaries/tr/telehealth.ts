@@ -22,6 +22,7 @@ export const telehealthStrings: TelehealthStrings = {
   generalConsultationSpecialty: "Genel Danışmanlık",
   spokenLanguagesAriaLabel: "Konuşulan diller: {languages}",
   sessionDurationLabel: "{minutes} dk",
+  freeSessionLabel: "Ücretsiz / Bilgi Alınız",
   bookAppointmentCta: "Randevu Al",
   viewProfileCta: "Profili Gör",
   createAppointmentCta: "Randevu Oluştur",

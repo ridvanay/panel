@@ -111,7 +111,9 @@ export function DoctorCard({
       <div className="flex items-baseline gap-1.5 text-sm">
         <span className="text-foreground/60">{formatSiteString(dict.sessionDurationLabel, { minutes: doctor.sessionDurationMin })}</span>
         <span aria-hidden="true">·</span>
-        <span className="font-semibold text-foreground">{formatPriceFromCents(doctor.sessionPriceCents, doctor.currency, intlLocale)}</span>
+        <span className="font-semibold text-foreground">
+          {doctor.sessionPriceCents != null ? formatPriceFromCents(doctor.sessionPriceCents, doctor.currency, intlLocale) : dict.freeSessionLabel}
+        </span>
       </div>
 
       <Link

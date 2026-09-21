@@ -13,6 +13,19 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
 
 ### Added
 
+- **`feat(telehealth)`: Doktor seans ücreti opsiyonel/açılır-kapanır hale getirildi**
+  (`docs/architecture/openapi.yaml`). Admin panelde doktor ekleme/düzenleme formunda
+  ("Seans süresi"/"Seans ücreti"/"Para birimi" alanlarının üstünde) "Ücret Bilgisi Belirle /
+  Ücretli Hizmet" switch'i eklendi — kapalıyken bu alanlar gizlenir ve `sessionPriceCents`
+  `null` (ücretsiz/bilgi-alınız) olarak gönderilir. `DoctorProfile.sessionPriceCents`
+  (Prisma) artık nullable; backend booking akışı `sessionPriceCents === null` doktorlarda
+  `unitPriceCents`'i `0` kabul eder ve rezervasyonu **oluşturulur oluşturulmaz** (mevcut
+  `confirmBookingPayment` — Stripe webhook/demo-pay/ADMIN mark-paid İLE AYNI fonksiyon,
+  `paidBy: "free"`) ödeme adımı hiç sunulmadan `PAID`/`SCHEDULED`'a çevirir; onay e-postası
+  ve misafir hesap sağlama diğer ödeme yollarıyla AYNI şekilde tetiklenir. Hasta tarafında
+  doktor kartı/profili/hızlı randevu kartı/hizmet özeti ücret yerine "Ücretsiz / Bilgi
+  Alınız" gösterir; randevu sihirbazı Adım 5'te ödeme formu yerine bir onay notu render eder.
+
 - **`feat(telehealth)`: Erken katılım güvenlik onay modalı, otomatik randevu hatırlatma
   e-postaları ve canlı destek yönetim masası** (bağlayıcı karar dokümanı
   `.claude/architect-scope-support-desk-and-reminders.md`, KVKK değerlendirmesi

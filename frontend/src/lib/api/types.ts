@@ -3734,7 +3734,8 @@ export interface DoctorProfile {
   /** IANA saat dilimi ("Europe/Istanbul"). */
   timeZone: string;
   sessionDurationMin: number;
-  sessionPriceCents: number;
+  /** `null` = ücret bilgisi tanımlanmamış (ücretsiz/bilgi-alınız seans). */
+  sessionPriceCents: number | null;
   currency: string;
   avatarMediaId: string | null;
   avatarMedia: Media | null;
@@ -3761,7 +3762,8 @@ export interface CreateDoctorRequest {
   timeZone: string;
   specialtyId?: string | null;
   sessionDurationMin: number;
-  sessionPriceCents: number;
+  /** `null` = ücret bilgisi tanımlanmamış (ücretsiz/bilgi-alınız seans). */
+  sessionPriceCents: number | null;
   currency?: string;
   avatarMediaId?: string | null;
   isVerified?: boolean;

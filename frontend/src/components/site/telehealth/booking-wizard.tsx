@@ -6,7 +6,7 @@ import { CalendarCheck, ChevronLeft } from "lucide-react";
 import * as telehealthApi from "@/lib/api/telehealth";
 import { ApiClientError } from "@/lib/api/error";
 import { friendlyErrorMessage, fieldErrorsFrom } from "@/lib/api/friendly-error";
-import type { Appointment, AvailabilitySlot, BookingIdentityInput, DoctorProfile, SitePage } from "@/lib/api/types";
+import type { Appointment, AvailabilitySlot, BookingIdentityInput, BookingPaymentStatus, DoctorProfile, SitePage } from "@/lib/api/types";
 import { formatDayLabel, formatTime } from "@/lib/telehealth-format";
 import { formatPriceFromCents } from "@/lib/format-price";
 import { useBookingSelection } from "@/components/site/telehealth/booking-selection-context";
@@ -60,6 +60,10 @@ interface WizardBookingState {
   totalCents: number;
   currency: string;
   appointments: Appointment[];
+  /** `totalCents === 0` (ücretsiz doktor) bookinginde backend booking'i ANINDA `PAID`e çevirir
+   * (bkz. backend `telehealth.routes.ts::POST /appointments/bookings`) — Adım 5'te bu durumda
+   * `BookingPaymentStep` HİÇ render edilmez, ödeme gerekmediğini belirten bir onay paneli gösterilir. */
+  paymentStatus: BookingPaymentStatus;
 }
 
 /** `sessionStorage`/URL kalıcılığı için — doktora göre kapsamlı (aynı tarayıcıda farklı doktor için AYRI kayıt). */
@@ -210,6 +214,9 @@ export function BookingWizard({ doctor, doctorSlug, doctorTimeZone, lang, defaul
         const booking = await telehealthApi.getBooking(stored.bookingId, stored.accessToken);
         if (cancelled) return;
         const notExpired = new Date(booking.expiresAt).getTime() > Date.now();
+        // Ücretsiz doktor bookingleri backend'de ANINDA `PAID` olur (Stripe akışının aksine bu
+        // sayfadan HİÇ AYRILINMAZ) — sayfa bu adımda yenilenirse `PENDING` DEĞİL `PAID` bulunur,
+        // yine de Adım 5'e (ödeme adımı atlanmış onay paneli) kurtarılabilir olmalıdır.
         if (booking.paymentStatus === "PENDING" && notExpired) {
           setBookingResult({
             bookingId: booking.id,
@@ -219,8 +226,22 @@ export function BookingWizard({ doctor, doctorSlug, doctorTimeZone, lang, defaul
             totalCents: booking.totalCents,
             currency: booking.currency,
             appointments: booking.appointments,
+            paymentStatus: booking.paymentStatus,
           });
           setCurrentStep(4);
+        } else if (booking.paymentStatus === "PAID" && booking.totalCents === 0) {
+          setBookingResult({
+            bookingId: booking.id,
+            accessToken: stored.accessToken,
+            bookingNumber: booking.bookingNumber,
+            slotCount: booking.slotCount,
+            totalCents: booking.totalCents,
+            currency: booking.currency,
+            appointments: booking.appointments,
+            paymentStatus: booking.paymentStatus,
+          });
+          bookingFinalizedRef.current = true;
+          setCurrentStep(5);
         } else {
           clearPendingBooking(doctorSlug);
         }
@@ -253,6 +274,10 @@ export function BookingWizard({ doctor, doctorSlug, doctorTimeZone, lang, defaul
       });
       setBookingResult(result);
       persistPendingBooking(doctorSlug, { bookingId: result.bookingId, accessToken: result.accessToken });
+      // Ücretsiz doktor (`totalCents === 0`) bookingi backend'de ANINDA `PAID` döner — terk-edilirse-
+      // iptal-et temizleyicisi (yukarıdaki `useEffect`) bu booking'i YANLIŞLIKLA iptal etmesin diye
+      // `bookingFinalizedRef` burada da (Stripe/demo ödeme BAŞLADIĞINDA İLE AYNI noktada) `true` olur.
+      if (result.paymentStatus === "PAID") bookingFinalizedRef.current = true;
       setCurrentStep(4);
     } catch (err) {
       if (err instanceof ApiClientError && err.status === 409) {
@@ -355,7 +380,12 @@ export function BookingWizard({ doctor, doctorSlug, doctorTimeZone, lang, defaul
               </div>
             )}
 
-            {currentStep >= 4 && bookingResult && (
+            {currentStep >= 4 && bookingResult && (() => {
+              // Ücretsiz doktor (`sessionPriceCents === null`) bookingi backend'de ANINDA `PAID`
+              // döner (bkz. `telehealth.routes.ts::POST /appointments/bookings`) — bu akışta ödeme
+              // adımı hiç YOKTUR, Adım 5'te `BookingPaymentStep` yerine bir onay notu gösterilir.
+              const isFreeBooking = bookingResult.paymentStatus === "PAID" && bookingResult.totalCents === 0;
+              return (
               <div className="space-y-4">
                 <Alert variant="success">
                   <div className="space-y-2">
@@ -370,27 +400,40 @@ export function BookingWizard({ doctor, doctorSlug, doctorTimeZone, lang, defaul
                         </span>
                       ))}
                     </div>
-                    <p className="text-sm">
-                      {bookingResult.slotCount} Slot · Toplam {formatPriceFromCents(bookingResult.totalCents, bookingResult.currency, intlLocale)}. Bu
-                      rezervasyon slotu <strong>30 dakika</strong> tutar; bu süre içinde ödemeyi tamamlamanız gerekir.
-                    </p>
-                    {/* 2026-09-18 KRİTİK DÜZELTME (kullanıcı talebi) — ödeme TAMAMLANMADAN hiçbir
-                        e-posta GÖNDERİLMEMELİDİR: eskiden burada ödeme öncesi de çalışan bir
-                        "Bağlantıyı e-posta ile gönder" butonu vardı (`resendBookingLink`), bu
-                        gereksiz e-posta trafiği yarattığı için KALDIRILDI. Randevu bağlantısı
-                        ARTIK YALNIZCA ödeme başarıyla tamamlandığında (webhook/demo ödeme) otomatik
-                        olarak gönderilir (bkz. `backend/.../lib/notifications.ts
-                        ::triggerAppointmentConfirmationEmail`) — burada yalnızca tarayıcıda not
-                        alma/yer imi tavsiyesi kalır. */}
-                    <p className="text-sm">
-                      Randevunuzu daha sonra görüntülemek için bu bağlantıyı not alın veya yer imlerine ekleyin. Ödeme
-                      onaylandığında görüşme bağlantınız otomatik olarak e-posta ile gönderilecektir.
-                    </p>
+                    {isFreeBooking ? (
+                      <p className="text-sm">
+                        {bookingResult.slotCount} Slot · Bu randevu ücretsizdir, ödeme gerekmez. Randevunuz onaylandı ve görüşme bağlantınız
+                        e-posta ile gönderildi.
+                      </p>
+                    ) : (
+                      <>
+                        <p className="text-sm">
+                          {bookingResult.slotCount} Slot · Toplam {formatPriceFromCents(bookingResult.totalCents, bookingResult.currency, intlLocale)}. Bu
+                          rezervasyon slotu <strong>30 dakika</strong> tutar; bu süre içinde ödemeyi tamamlamanız gerekir.
+                        </p>
+                        {/* 2026-09-18 KRİTİK DÜZELTME (kullanıcı talebi) — ödeme TAMAMLANMADAN hiçbir
+                            e-posta GÖNDERİLMEMELİDİR: eskiden burada ödeme öncesi de çalışan bir
+                            "Bağlantıyı e-posta ile gönder" butonu vardı (`resendBookingLink`), bu
+                            gereksiz e-posta trafiği yarattığı için KALDIRILDI. Randevu bağlantısı
+                            ARTIK YALNIZCA ödeme başarıyla tamamlandığında (webhook/demo ödeme) otomatik
+                            olarak gönderilir (bkz. `backend/.../lib/notifications.ts
+                            ::triggerAppointmentConfirmationEmail`) — burada yalnızca tarayıcıda not
+                            alma/yer imi tavsiyesi kalır. */}
+                        <p className="text-sm">
+                          Randevunuzu daha sonra görüntülemek için bu bağlantıyı not alın veya yer imlerine ekleyin. Ödeme
+                          onaylandığında görüşme bağlantınız otomatik olarak e-posta ile gönderilecektir.
+                        </p>
+                      </>
+                    )}
                   </div>
                 </Alert>
 
                 {currentStep === 4 ? (
                   <BookingIntakeStep bookingId={bookingResult.bookingId} accessToken={bookingResult.accessToken} onDone={() => setCurrentStep(5)} />
+                ) : isFreeBooking ? (
+                  <Alert variant="success">
+                    <p className="text-sm font-medium">Ödeme adımı gerekmiyor — randevunuz tamamlandı.</p>
+                  </Alert>
                 ) : (
                   <BookingPaymentStep
                     bookingId={bookingResult.bookingId}
@@ -408,7 +451,8 @@ export function BookingWizard({ doctor, doctorSlug, doctorTimeZone, lang, defaul
                   />
                 )}
               </div>
-            )}
+              );
+            })()}
           </div>
         )}
 

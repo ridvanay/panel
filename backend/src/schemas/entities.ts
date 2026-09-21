@@ -2440,7 +2440,8 @@ export const DoctorProfileSchema = z.object({
   // IANA saat dilimi ("Europe/Istanbul") — bkz. modules/telehealth/lib/timezone.ts.
   timeZone: z.string(),
   sessionDurationMin: z.number().int(),
-  sessionPriceCents: z.number().int(),
+  // `null` = ücret bilgisi tanımlanmamış (ücretsiz/bilgi-alınız seans) — bkz. schema.prisma notu.
+  sessionPriceCents: z.number().int().nullable(),
   currency: z.string(),
   avatarMediaId: z.string().uuid().nullable(),
   avatarMedia: MediaSchema.nullable(),

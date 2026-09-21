@@ -18357,7 +18357,7 @@ components:
           description: "ISO 639-1 kodları (\"tr\", \"en\")."
         timeZone: { type: string, description: "IANA saat dilimi (\"Europe/Istanbul\"). Ofset string'i (\"UTC+3\") KABUL EDİLMEZ." }
         sessionDurationMin: { type: integer }
-        sessionPriceCents: { type: integer }
+        sessionPriceCents: { type: integer, nullable: true, description: "`null` = ücret bilgisi tanımlanmamış (ücretsiz/bilgi-alınız seans)." }
         currency: { type: string }
         avatarMediaId: { type: string, format: uuid, nullable: true }
         avatarMedia:
@@ -19229,7 +19229,7 @@ components:
         timeZone: { type: string, minLength: 1, maxLength: 80 }
         specialtyId: { type: string, format: uuid, nullable: true }
         sessionDurationMin: { type: integer, minimum: 5, maximum: 240 }
-        sessionPriceCents: { type: integer, minimum: 0 }
+        sessionPriceCents: { type: integer, minimum: 0, nullable: true, description: "`null` = ücret bilgisi tanımlanmamış (ücretsiz/bilgi-alınız seans) — admin panelde \"Ücretli Hizmet\" toggle'ı kapalı." }
         currency: { type: string, minLength: 3, maxLength: 3 }
         avatarMediaId: { type: string, format: uuid, nullable: true }
         isVerified:

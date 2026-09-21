@@ -148,6 +148,12 @@ describe("DoctorServiceSummaryPanel", () => {
     expect(screen.getAllByText(formatPriceFromCents(45000, "TRY")).length).toBeGreaterThan(0);
   });
 
+  it("`sessionPriceCents: null` (ücretsiz doktor) — fiyat yerine 'Ücretsiz / Bilgi Alınız' gösterilir, '/ seans' eki gizlenir", () => {
+    renderPanel(makeDoctor({ sessionPriceCents: null }));
+    expect(screen.getAllByText("Ücretsiz / Bilgi Alınız").length).toBeGreaterThan(0);
+    expect(screen.queryByText("/ seans")).not.toBeInTheDocument();
+  });
+
   it("Grid görevi (2026-09-14) — TEK 'Devam Et' butonu render edilir (masaüstü panel + mobil çubuk, iki kez), `continueDisabled` ile devre dışı kalır", () => {
     renderPanel(undefined, { continueDisabled: true });
     // Mobil alt çubuk ilk render'da `aria-hidden="true"` (bkz. aşağıdaki "mobil alt çubuk..."

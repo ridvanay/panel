@@ -206,7 +206,10 @@ export async function createBooking(app: FastifyInstance, input: CreateBookingIn
       const existing = await tx.appointment.findFirst({ where: { doctorId: doctor.id, startsAt: { in: sortedSlots } } });
       if (existing) throw new SlotTakenError();
 
-      const unitPriceCents = doctor.sessionPriceCents;
+      // Ücret bilgisi tanımlanmamış (admin panelde "Ücretli Hizmet" kapalı) doktorlarda
+      // `sessionPriceCents` `null`dır — bu bir HATA DEĞİL, ücretsiz/bilgi-alınız seans anlamına
+      // gelir (route katmanı `totalCents === 0`ı görüp ödeme adımını atlar, bkz. `telehealth.routes.ts`).
+      const unitPriceCents = doctor.sessionPriceCents ?? 0;
       const slotCount = sortedSlots.length;
       const subtotalCents = unitPriceCents * slotCount;
       const totalCents = subtotalCents;
