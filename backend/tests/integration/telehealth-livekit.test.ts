@@ -307,6 +307,103 @@ describe("telehealth/livekit — meeting-token, LiveKit YAPILANDIRILMIŞKEN (sah
   });
 });
 
+/**
+ * 2026-09-21 (kullanıcı talebi) — kullanıcı raporu: doktor tarafı "Bağlanıyor…"da takılıp
+ * düşüyor, hastada karşı taraf `doctor:…` kimliğiyle görünüyor. Derinlemesine (empirik, canlı
+ * `docker compose`'daki LiveKit dev sunucusunun GERÇEK loglarına karşı) araştırıldı: aynı doktorun
+ * HER bağlantısında SABİT kimliğinin (`doctor:<DoctorProfile.id>`) bir yeniden-bağlanma
+ * çakışmasına yol açtığına dair HİÇBİR kanıt bulunamadı (21binin üzerinde gerçek log satırında tek
+ * bir "duplicate"/"evict"/"kick" olayı YOK — her yeniden bağlanma ÖNCEKİ bağlantı TAMAMEN
+ * kapandıktan SONRA sıralı gerçekleşiyor). `Appointment.id`'den TÜRETİLEN tahmin edilebilir bir
+ * oda adına (`consultation_${id}`) geçiş TEKLİF EDİLMİŞTİ ama REDDEDİLDİ — `lib/booking.ts::
+ * generateMeetingRoomName` dosya başı yorumu BAĞLAYICI bir güvenlik kararıdır ("oda adı TAHMİN
+ * EDİLEMEZ, Appointment.id'den TÜRETİLMEZ") ve bu, kanıtlanmamış bir teoriyle GERİYE ALINAMAZ.
+ *
+ * Bu test onun YERİNE, GERÇEKTEN doğru olan mimariyi (aynı randevu için doktor/hasta AYNI odaya,
+ * FARKLI ve ÇAKIŞMAYAN kimliklerle) kalıcı bir regresyon bekçisi olarak KİLİTLER — JWT'nin `sub`
+ * (identity) ve `video.room` claim'lerini `jsonwebtoken`'ın KENDİSİYLE (imza doğrulaması OLMADAN,
+ * saf decode) okuyarak. AYRI `app`/describe (yukarıdaki paylaşılan bloğun 10/dk hız sınırı
+ * bütçesine EKLENMEMEK için — `telehealth-checkout.test.ts`/bu dosyanın KENDİ "hız sınırı (AYRI
+ * app örneği)" bloğuyla AYNI, bu depoda YERLEŞİK desen).
+ */
+describe("telehealth/livekit — meeting-token, doktor/hasta oda+kimlik ayrımı (2026-09-21, AYRI app örneği)", () => {
+  let app: FastifyInstance;
+  let adminToken: string;
+
+  beforeAll(async () => {
+    process.env.LIVEKIT_URL = "wss://fake-project.livekit.cloud";
+    process.env.LIVEKIT_API_KEY = "fake-api-key";
+    process.env.LIVEKIT_API_SECRET = "fake-api-secret-for-tests-only";
+    vi.resetModules();
+
+    const { buildApp } = await import("../../src/app");
+    app = buildApp();
+    await app.ready();
+    await resetDatabase(app.prisma);
+    await setTelehealthModuleEnabled(app, true);
+
+    const admin = await registerTestUser(app, { email: "telehealth-livekit-identity-admin@example.com" });
+    adminToken = admin.accessToken;
+  });
+
+  afterAll(async () => {
+    await resetDatabase(app.prisma);
+    await app.close();
+    delete process.env.LIVEKIT_URL;
+    delete process.env.LIVEKIT_API_KEY;
+    delete process.env.LIVEKIT_API_SECRET;
+    vi.resetModules();
+  });
+
+  it("doktor VE hasta AYNI randevu için token isterse: AYNI oda adı, FARKLI (çakışmayan) kimlikler döner", async () => {
+    const jwt = await import("jsonwebtoken");
+    const { doctor } = await createDoctorWithAvailability(app);
+    const doctorUser = await createUserDirect(app, "USER");
+    const doctorUserToken = await loginAs(app, doctorUser.email);
+    await app.inject({
+      method: "PATCH",
+      url: `/api/v1/admin/telehealth/doctors/${doctor.id}`,
+      headers: authHeader(adminToken),
+      payload: { userId: doctorUser.id },
+    });
+
+    const { appointment, rawAccessToken } = await createAppointmentDirect(app, doctor);
+
+    const doctorRes = await app.inject({
+      method: "POST",
+      url: `/api/v1/appointments/${appointment.id}/meeting-token`,
+      headers: authHeader(doctorUserToken),
+    });
+    expect(doctorRes.statusCode).toBe(200);
+    const doctorData = doctorRes.json().data;
+
+    const patientRes = await app.inject({
+      method: "POST",
+      url: `/api/v1/appointments/${appointment.id}/meeting-token?t=${rawAccessToken}`,
+    });
+    expect(patientRes.statusCode).toBe(200);
+    const patientData = patientRes.json().data;
+
+    // Aynı randevu → AYNI oda (booking'e bağlı DEĞİLSE `Appointment.meetingRoomName`, bkz.
+    // `telehealth.livekit.routes.ts` "Çoklu slot = TEK oda" yorumu — burada tek appointment).
+    expect(doctorData.roomName).toBe(appointment.meetingRoomName);
+    expect(patientData.roomName).toBe(appointment.meetingRoomName);
+    expect(doctorData.roomName).toBe(patientData.roomName);
+
+    const doctorClaims = jwt.decode(doctorData.token) as { sub?: string; video?: { room?: string } };
+    const patientClaims = jwt.decode(patientData.token) as { sub?: string; video?: { room?: string } };
+
+    expect(doctorClaims.video?.room).toBe(appointment.meetingRoomName);
+    expect(patientClaims.video?.room).toBe(appointment.meetingRoomName);
+
+    // Kimlikler `kind:id` biçiminde, birbirinden FARKLI, PII İÇERMEZ (DoctorProfile.id/
+    // Appointment.id — e-posta/ad YOK) — `buildParticipantIdentity` İLE BİREBİR AYNI sözleşme.
+    expect(doctorClaims.sub).toBe(`doctor:${doctor.id}`);
+    expect(patientClaims.sub).toBe(`patient:${appointment.id}`);
+    expect(doctorClaims.sub).not.toBe(patientClaims.sub);
+  });
+});
+
 describe("telehealth/livekit — meeting-token, katılım penceresi ÖDEME DURUMUNA göre (rol ayrımı YOK — integration-agent görevi, 2026-09-15)", () => {
   let app: FastifyInstance;
   let adminToken: string;
