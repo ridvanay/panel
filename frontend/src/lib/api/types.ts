@@ -3640,6 +3640,13 @@ export interface Specialty {
   description: string | null;
   order: number;
   isActive: boolean;
+  /** Kart görseli (Media id) — yoksa `null`. */
+  imageMediaId: string | null;
+  /**
+   * Kart görselinin mutlak URL'i. YALNIZCA uzmanlık uçlarında dolar; doktor yanıtındaki gömülü
+   * `specialty` nesnesinde her zaman `null`dır.
+   */
+  imageUrl: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -3651,6 +3658,8 @@ export interface CreateSpecialtyRequest {
   description?: string | null;
   order?: number;
   isActive?: boolean;
+  /** Yalnızca PNG/JPG/WebP medya; `null` görseli kaldırır. */
+  imageMediaId?: string | null;
 }
 
 export type UpdateSpecialtyRequest = Partial<CreateSpecialtyRequest>;

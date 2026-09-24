@@ -133,6 +133,7 @@ import { BeforeAfterSliderBlockEditor } from "./blocks/before-after-slider-block
 import { LogoMarqueeBlockEditor } from "./blocks/logo-marquee-block";
 import { SkillBarBlockEditor } from "./blocks/skill-bar-block";
 import { TeamBlockEditor } from "./blocks/team-block";
+import { SpecialtyCardsBlockEditor } from "./blocks/specialty-cards-block";
 import { AdvancedSliderBlockEditor } from "./blocks/advanced-slider-block";
 import { GoogleMapBlockEditor } from "./blocks/google-map-block";
 
@@ -457,6 +458,8 @@ function ContentBlockBody({ block, onChange }: { block: ContentBlock; onChange: 
       return <SkillBarBlockEditor block={block} onChange={onChange} />;
     case "team":
       return <TeamBlockEditor block={block} onChange={onChange} />;
+    case "specialty-cards":
+      return <SpecialtyCardsBlockEditor block={block} onChange={onChange} />;
     case "advanced-slider":
       return <AdvancedSliderBlockEditor block={block} onChange={onChange} />;
     case "google-map":

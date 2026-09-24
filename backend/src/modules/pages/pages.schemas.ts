@@ -855,6 +855,29 @@ const TeamBlockSchema = z.object({
   reveal: RevealEffectSettingsSchema.optional(),
 });
 
+/* ---------- Uzmanlık Kartları — veri Uzmanlıklar modülünden gelir, blok yalnızca görünümü taşır ----------
+ * Frontend `lib/page-builder/types.ts::SpecialtyCardsBlock` ile BİREBİR aynı. Metinler düz metindir
+ * (React kaçışlar). `content` anahtarları küçük harf BCP-47 dil kodudur. */
+const SpecialtyCardsLocaleContentSchema = z.object({
+  title: z.string().trim().max(120).default(""),
+  subtitle: z.string().trim().max(300).default(""),
+});
+const SpecialtyCardsBlockDataSchema = z.object({
+  content: z
+    .record(z.string().regex(/^[a-z]{2,3}(-[a-z0-9]{2,8})*$/, "Geçersiz dil kodu."), SpecialtyCardsLocaleContentSchema)
+    .refine((value) => Object.keys(value).length <= 20, "En fazla 20 dil.")
+    .default({}),
+  columns: z.union([z.literal(3), z.literal(4), z.literal(6)]).default(4),
+  showDescription: z.boolean().default(true),
+  imageShape: z.enum(["circle", "square", "rounded"]).default("circle"),
+});
+const SpecialtyCardsBlockSchema = z.object({
+  id: z.string().min(1),
+  type: z.literal("specialty-cards"),
+  data: SpecialtyCardsBlockDataSchema,
+  reveal: RevealEffectSettingsSchema.optional(),
+});
+
 /* ---------- Gelişmiş Slider / Hero Studio — bkz. .claude/architect-scope-advanced-slider.md §3.5/§6.1 ---------- */
 
 /**
@@ -1143,6 +1166,7 @@ const PageNodeSchema: z.ZodType<unknown, z.ZodTypeDef, unknown> = z.record(z.unk
   if (type === "skill-bar") return applySubSchema(SkillBarBlockSchema, node, ctx);
   if (type === "team") return applySubSchema(TeamBlockSchema, node, ctx);
   if (type === "advanced-slider") return applySubSchema(AdvancedSliderBlockSchema, node, ctx);
+  if (type === "specialty-cards") return applySubSchema(SpecialtyCardsBlockSchema, node, ctx);
   // KRİTİK (mimar §5/6 + §9 R2, security-review §7/5): bu dal EKSİK kalırsa `google-map` bloğu
   // HİÇ DOĞRULANMADAN geçer ve §2'deki `embedUrl` beyaz listesi TAMAMEN BAYPAS EDİLİR — bu
   // eklemenin en kritik satırıdır, bir regresyon testiyle AYRICA doğrulanır.

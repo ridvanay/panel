@@ -14255,7 +14255,8 @@ components:
         `featured-portfolio` · `heading` · `button` · `icon-box` · `divider` · `video` ·
         `accordion` · `tabs` · `counter` · `testimonial` · `pricing-table` · `latest-posts` ·
         `contact-form` · `custom-html` · `before-after-slider` · `logo-marquee` · `skill-bar` ·
-        `team` · `advanced-slider` · `google-map` · `about-page` ("Hakkımızda" şablonu — YALNIZCA
+        `team` · `advanced-slider` · `google-map` · `specialty-cards` (Uzmanlık Kartları — bkz.
+        `SpecialtyCardsBlockData`) · `about-page` ("Hakkımızda" şablonu — YALNIZCA
         tek kök düğüm olarak, bkz. `AboutPageBlockData`) · **`container`** (kanonik konteyner düğümü,
         §10.19) · `columns` (**deprecated**, salt okuma/geçiş, aşağıya bkz.).
 
@@ -14273,7 +14274,7 @@ components:
         `gallery` ve bu turda genişletilen `heading`/`button`/`icon-box`/`divider`/`video`/
         `accordion`/`tabs`/`cta`/`counter`/`testimonial`/`pricing-table`/`latest-posts`/
         `contact-form`/`custom-html`/`before-after-slider`/`logo-marquee`/`skill-bar`/`team`/
-        `advanced-slider`/**`google-map`** dahil) kendi DAR Zod şemalarından geçer (bkz.
+        `advanced-slider`/**`google-map`**/`specialty-cards` dahil) kendi DAR Zod şemalarından geçer (bkz.
         `pages.schemas.ts::PageNodeSchema` dispatch'i).
 
 
@@ -14314,6 +14315,7 @@ components:
               team,
               advanced-slider,
               google-map,
+              specialty-cards,
               about-page,
               container,
               columns,
@@ -18461,10 +18463,29 @@ components:
             ADMIN'in `DELETE .../recording` çağrısı.
         createdAt: { type: string, format: date-time }
 
+    SpecialtyCardsBlockData:
+      type: object
+      description: >
+        `type: "specialty-cards"` bloğunun `data`'sı. Kartların içeriği (ad, görsel, açıklama,
+        bağlantı) Uzmanlıklar modülünden (aktif uzmanlıklar, `order` sırası) render anında gelir;
+        blok yalnızca görünümü taşır. Başlıklar dil kodu → metin (düz metin).
+      properties:
+        content:
+          type: object
+          maxProperties: 20
+          additionalProperties:
+            type: object
+            properties:
+              title: { type: string, maxLength: 120 }
+              subtitle: { type: string, maxLength: 300 }
+        columns: { type: integer, enum: [3, 4, 6], default: 4, description: "Masaüstü kolon sayısı; mobil 2, tablet 3 sabit." }
+        showDescription: { type: boolean, default: true }
+        imageShape: { type: string, enum: [circle, square, rounded], default: circle }
+
     Specialty:
       type: object
       description: "Tıbbi uzmanlık alanı (ör. Kardiyoloji) — `icon-box` bloğuyla AYNI lucide-react ikon sözlüğü."
-      required: [id, name, slug, icon, order, isActive, createdAt, updatedAt]
+      required: [id, name, slug, icon, order, isActive, imageMediaId, imageUrl, createdAt, updatedAt]
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
@@ -18473,6 +18494,13 @@ components:
         description: { type: string, nullable: true }
         order: { type: integer }
         isActive: { type: boolean }
+        imageMediaId: { type: string, format: uuid, nullable: true, description: "Uzmanlık kartı görseli (Media id)." }
+        imageUrl:
+          type: string
+          nullable: true
+          description: >
+            Kart görselinin mutlak URL'i. Yalnızca uzmanlık uçlarında (`/specialties*`,
+            `/admin/telehealth/specialties*`) dolar; doktor yanıtındaki gömülü `specialty` nesnesinde null.
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
 
@@ -19471,6 +19499,11 @@ components:
         description: { type: string, maxLength: 500, nullable: true }
         order: { type: integer, minimum: 0 }
         isActive: { type: boolean }
+        imageMediaId:
+          type: string
+          format: uuid
+          nullable: true
+          description: "Kart görseli — yalnızca PNG/JPG/WebP medya (aksi 422); null görseli kaldırır."
 
     UpdateSpecialtyRequest:
       allOf: [{ $ref: "#/components/schemas/CreateSpecialtyRequest" }]

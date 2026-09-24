@@ -1636,7 +1636,7 @@ export function toSliderUsageDto(entry: {
 // TeleHealth — `.claude/architect-scope-telehealth-template.md`.
 // -------------------------------------------------------------------------
 
-export function toSpecialtyDto(specialty: Specialty): SpecialtyDto {
+export function toSpecialtyDto(specialty: Specialty & { imageMedia?: Media | null }): SpecialtyDto {
   return {
     id: specialty.id,
     name: specialty.name,
@@ -1645,13 +1645,15 @@ export function toSpecialtyDto(specialty: Specialty): SpecialtyDto {
     description: specialty.description,
     order: specialty.order,
     isActive: specialty.isActive,
+    imageMediaId: specialty.imageMediaId,
+    imageUrl: specialty.imageMedia ? absolutizeMediaUrl(specialty.imageMedia.url) : null,
     createdAt: specialty.createdAt.toISOString(),
     updatedAt: specialty.updatedAt.toISOString(),
   };
 }
 
 /** `GET /specialties/{slug}` (public) — `toSpecialtyDto` + `doctorCount` (route katmanında ayrıca sorgulanır). */
-export function toSpecialtyWithDoctorCountDto(specialty: Specialty, doctorCount: number): SpecialtyWithDoctorCountDto {
+export function toSpecialtyWithDoctorCountDto(specialty: Specialty & { imageMedia?: Media | null }, doctorCount: number): SpecialtyWithDoctorCountDto {
   return { ...toSpecialtyDto(specialty), doctorCount };
 }
 

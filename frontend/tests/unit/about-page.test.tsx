@@ -30,6 +30,8 @@ function makeDoctor(id: string, overrides: Partial<DoctorProfile> = {}): DoctorP
       description: null,
       order: 0,
       isActive: true,
+      imageMediaId: null,
+      imageUrl: null,
       createdAt: "2026-01-01T00:00:00.000Z",
       updatedAt: "2026-01-01T00:00:00.000Z",
     },

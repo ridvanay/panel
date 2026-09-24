@@ -242,6 +242,8 @@ export const CreateSpecialtyRequestSchema = z.object({
   description: z.string().trim().max(500).nullable().optional(),
   order: z.number().int().min(0).optional(),
   isActive: z.boolean().optional(),
+  /** Kart görseli — Media id (yalnızca PNG/JPG/WebP); `null` görseli kaldırır. */
+  imageMediaId: z.string().uuid().nullable().optional(),
 });
 export type CreateSpecialtyRequest = z.infer<typeof CreateSpecialtyRequestSchema>;
 

@@ -2321,6 +2321,14 @@ export const SpecialtySchema = z.object({
   description: z.string().nullable(),
   order: z.number().int(),
   isActive: z.boolean(),
+  /** Kart görseli (Media id) — yoksa null. */
+  imageMediaId: z.string().nullable(),
+  /**
+   * Kart görselinin mutlak URL'i. YALNIZCA uzmanlık uçları (`/specialties*`,
+   * `/admin/telehealth/specialties*`) medya ilişkisini yükler; doktor DTO'sunun içindeki
+   * gömülü `specialty` nesnesinde her zaman null'dır.
+   */
+  imageUrl: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

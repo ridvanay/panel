@@ -25,6 +25,7 @@ import {
   Users2,
   GalleryHorizontal,
   MapPin,
+  Stethoscope,
   type LucideIcon,
 } from "lucide-react";
 import { GOOGLE_MAP_DEFAULT_HEIGHT_PX, GOOGLE_MAP_DEFAULT_ZOOM, type ContentBlock, type ContentBlockType } from "./types";
@@ -97,6 +98,12 @@ export const blockRegistry: Record<
   "latest-posts": { label: "Son Blog Yazıları", category: "dynamic", icon: Newspaper },
   "contact-form": { label: "İletişim Formu", category: "dynamic", icon: Mail },
   "custom-html": { label: "Özel HTML / Kod", category: "dynamic", icon: Code2 },
+  "specialty-cards": {
+    label: "Uzmanlık Kartları",
+    category: "dynamic",
+    icon: Stethoscope,
+    keywords: ["uzmanlık", "branş", "specialty", "specialties", "tele-sağlık"],
+  },
 };
 
 export function newId(): string {
@@ -232,6 +239,20 @@ export function createBlock(type: PaletteBlockType): ContentBlock {
       return { id, type, data: { heading: "Son Yazılar", limit: 3 } };
     case "contact-form":
       return { id, type, data: { showTitle: true } };
+    case "specialty-cards":
+      return {
+        id,
+        type,
+        data: {
+          content: {
+            tr: { title: "Uzmanlık Alanlarımız", subtitle: "" },
+            en: { title: "Our Specialties", subtitle: "" },
+          },
+          columns: 4,
+          showDescription: true,
+          imageShape: "circle",
+        },
+      };
     case "custom-html":
       return { id, type, data: { html: "" } };
     case "before-after-slider":

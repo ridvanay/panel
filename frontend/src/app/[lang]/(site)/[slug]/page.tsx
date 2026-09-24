@@ -138,7 +138,7 @@ export default async function DynamicPage({ params }: PageProps) {
         />
       ) : (
         <>
-          <BlockRenderer nodes={normalizedNodes} chrome="page" />
+          <BlockRenderer nodes={normalizedNodes} chrome="page" siteContext={{ lang, defaultLocaleCode: defaultLocale?.code ?? lang }} />
           {appearance.socialShareEnabled && appearance.socialShareNetworks.length > 0 && (
             <div className="mx-auto max-w-3xl px-4 pb-10 sm:px-6">
               <SocialShareButtons url={canonicalUrl} title={page.title} networks={appearance.socialShareNetworks} />

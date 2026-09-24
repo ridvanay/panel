@@ -1614,6 +1614,8 @@ model Media {
   // Tele-Sağlık — bkz. .claude/architect-scope-telehealth-template.md §3.3/§3.7.
   // DoctorProfile.avatarMediaId için zorunlu karşı-ilişki alanı.
   doctorAvatars         DoctorProfile[]   @relation("DoctorAvatarMedia")
+  // Specialty.imageMediaId için zorunlu karşı-ilişki alanı.
+  specialtyImages       Specialty[]       @relation("SpecialtyImageMedia")
 
   @@index([folderId])
   @@map("media")
@@ -2131,22 +2133,27 @@ enum AppointmentStatus {
 }
 
 model Specialty {
-  id          String   @id @default(uuid())
-  seq         Int      @unique @default(autoincrement())
-  name        String
-  slug        String   @unique
+  id           String   @id @default(uuid())
+  seq          Int      @unique @default(autoincrement())
+  name         String
+  slug         String   @unique
   /// lucide-react ikon anahtarı (ör. "heart-pulse") — `icon-box` bloğuyla AYNI sözlük.
   /// Görsel/Media DEĞİL: ikon setine bağlanmak sıfır varlık maliyeti + keskin render (§[DTI] 4.4).
-  icon        String
-  description String?
-  order       Int      @default(0)
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  icon         String
+  description  String?
+  order        Int      @default(0)
+  isActive     Boolean  @default(true)
+  /// Uzmanlık kartı görseli (anasayfa "Uzmanlık kartları" bloğu) — GERÇEK bir Media satırı
+  /// (`DoctorProfile.avatarMediaId` ile aynı desen). Yalnızca PNG/JPG/WebP. Boş = ikonlu varsayılan kart.
+  imageMediaId String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  doctors DoctorProfile[]
+  doctors    DoctorProfile[]
+  imageMedia Media?          @relation("SpecialtyImageMedia", fields: [imageMediaId], references: [id], onDelete: SetNull)
 
   @@index([isActive, order])
+  @@index([imageMediaId])
   @@map("specialties")
 }
 

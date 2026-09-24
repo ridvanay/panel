@@ -16,6 +16,10 @@ interface MediaSelectFieldProps {
   value: Media | null;
   onChange: (media: Media | null) => void;
   required?: boolean;
+  /** Dosya seçicinin `accept` değeri — varsayılan `image/*` (mevcut davranış). */
+  accept?: string;
+  /** Alanın altında gösterilen kısa yardım metni (opsiyonel). */
+  hint?: string;
 }
 
 /**
@@ -28,7 +32,7 @@ interface MediaSelectFieldProps {
  * yansıtır, burada DEĞİŞTİRİLEMEZ. Alt-text değişikliği yalnızca medya kütüphanesi sayfasından
  * yapılır (bkz. görev notu) — bu bileşenin sorumluluğu değildir.
  */
-export function MediaSelectField({ id, label, value, onChange, required }: MediaSelectFieldProps) {
+export function MediaSelectField({ id, label, value, onChange, required, accept = "image/*", hint }: MediaSelectFieldProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -108,12 +112,14 @@ export function MediaSelectField({ id, label, value, onChange, required }: Media
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/*"
+          accept={accept}
           aria-label="Bilgisayardan görsel yükle"
           className="hidden"
           onChange={handleFileChange}
         />
       </div>
+
+      {hint && <p className="text-xs text-foreground/60">{hint}</p>}
 
       {error && (
         <p role="alert" className="text-xs text-danger">

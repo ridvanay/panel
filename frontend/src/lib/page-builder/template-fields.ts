@@ -43,6 +43,9 @@ export const TEMPLATE_EDITABLE_FIELDS: Record<string, readonly string[]> = {
   "before-after-slider": ["data.beforeUrl", "data.afterUrl", "data.beforeLabel", "data.afterLabel"],
   "logo-marquee": ["data.items"],
   "skill-bar": ["data.items"],
+  // Uzmanlık Kartları — standart kullanıcı başlık/alt başlığı ve açıklamanın görünürlüğünü
+  // düzenler; kolon sayısı ve görsel şekli (düzen kararı) kilitli.
+  "specialty-cards": ["data.content", "data.showDescription"],
   team: ["data.members"],
   // Standart kullanıcı hangi slider'ın gösterileceğini DEĞİŞTİREBİLİR (içerik seçimi),
   // ama slider'ın kendisini düzenleyemez (o /admin/sliders yetkisidir).

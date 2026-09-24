@@ -13,6 +13,16 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
 
 ### Added
 
+- **`feat(site)`: Sayfa oluşturucuya "Uzmanlık Kartları" bloğu.** Kartlar Tele-Sağlık → Uzmanlıklar
+  modülündeki aktif uzmanlıklardan, oradaki sırayla otomatik oluşur: görsel, ad (en fazla 2 satır),
+  isteğe bağlı açıklama; kartın tamamı uzmanlık sayfasına bağlantıdır. Tüm kartlar aynı yükseklikte
+  ve aynı yazı boyutunda; mobilde 2, tablette 3, masaüstünde 3/4/6 kolon. Blok ayarları: TR/EN
+  başlık ve alt başlık, masaüstü kolon sayısı, açıklamayı göster/gizle, görsel şekli
+  (daire/kare/köşeli). Görseli olmayan uzmanlıkta uzmanlığın ikonu açık zeminde gösterilir.
+  Admin → Tele-Sağlık → Uzmanlıklar'a "Görsel" alanı eklendi (medya kütüphanesinden seç veya yükle;
+  yalnızca PNG/JPG/WebP). **Şema değişikliği:** `specialties.imageMediaId` (boş geçilebilir) —
+  migration `20260926090000_add_specialty_image`. Anasayfadaki mevcut bölüm DEĞİŞTİRİLMEDİ.
+
 - **`feat(telehealth)`: Acil durum uyarısı yeniden düzenlendi — katlanabilir şerit, admin anahtarı ve
   düzenlenebilir metinler.** Doktorlar, uzmanlıklar ve görüşme sayfalarında header altındaki şerit
   artık kapalı (tek satırlık özet + "Ayrıntılar" düğmesi) başlar; düğme tam metni açar/kapatır

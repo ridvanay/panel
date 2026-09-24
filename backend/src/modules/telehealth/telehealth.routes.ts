@@ -264,7 +264,11 @@ export async function telehealthRoutes(app: FastifyInstance) {
     "/specialties",
     { schema: { response: { 200: ApiSuccessSchema(z.array(SpecialtySchema)) } } },
     async (_request, reply) => {
-      const rows = await app.prisma.specialty.findMany({ where: { isActive: true }, orderBy: { order: "asc" } });
+      const rows = await app.prisma.specialty.findMany({
+        where: { isActive: true },
+        orderBy: { order: "asc" },
+        include: { imageMedia: true },
+      });
       return reply.send(ok(rows.map(toSpecialtyDto)));
     }
   );
@@ -275,6 +279,7 @@ export async function telehealthRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const specialty = await app.prisma.specialty.findFirst({
         where: { slug: request.params.slug, isActive: true },
+        include: { imageMedia: true },
       });
       if (!specialty) throw new NotFoundError("Uzmanlık alanı bulunamadı.");
 
