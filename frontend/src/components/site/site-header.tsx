@@ -3,7 +3,19 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CalendarClock, ChevronDown, Heart, LogOut, Receipt, ShoppingCart, Stethoscope, User as UserIcon } from "lucide-react";
+import {
+  CalendarClock,
+  ChevronDown,
+  Heart,
+  LogOut,
+  Menu,
+  Receipt,
+  ShoppingCart,
+  Stethoscope,
+  User as UserIcon,
+  XIcon,
+  type LucideIcon,
+} from "lucide-react";
 import { useCartOptional } from "@/context/cart-context";
 import { useAuthOptional } from "@/context/auth-context";
 import {
@@ -12,6 +24,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Sheet, SheetClose, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Accordion, AccordionItem, AccordionPanel, AccordionTrigger } from "@/components/ui/accordion";
 import { LanguageSwitcher } from "@/components/site/language-switcher";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
 import { formatSiteString } from "@/lib/i18n/site-dictionaries";
@@ -157,6 +171,38 @@ function isDoctorDetailRoute(pathname: string | null): boolean {
   return /^\/(?:[a-z]{2}\/)?doctors\/[^/]+\/?$/.test(pathname);
 }
 
+/** Mobil menü panelinin `id`'si — hamburger düğmesinin `aria-controls` hedefi. */
+const MOBILE_MENU_ID = "site-mobile-menu";
+
+/** Mobil menü panelindeki hesap/sepet linkleri — dokunma alanı en az 44px (`min-h-11`). */
+function MobileMenuLink({
+  href,
+  icon: Icon,
+  label,
+  ariaLabel,
+  onNavigate,
+}: {
+  href: string;
+  icon: LucideIcon;
+  label: string;
+  ariaLabel?: string;
+  onNavigate: () => void;
+}) {
+  return (
+    <li>
+      <Link
+        href={href}
+        aria-label={ariaLabel}
+        onClick={onNavigate}
+        className="flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm text-foreground hover:bg-surface-muted"
+      >
+        <Icon className="h-4 w-4 text-foreground/60" aria-hidden="true" />
+        {label}
+      </Link>
+    </li>
+  );
+}
+
 /** İdle/hover/aktif durumları arasında geçiş yapan nav link/tetikleyici metin rengi sınıfları. */
 const NAV_LINK_TEXT_CLASSES =
   "text-[var(--site-header-link)] hover:text-[var(--site-header-link-hover)] focus-visible:text-[var(--site-header-link-hover)]";
@@ -256,6 +302,20 @@ export function SiteHeader({
   const localize = (path: string) =>
     activeLocale ? withLocalePrefix(path, activeLocale.code, defaultLocaleCode) : path;
 
+  // Mobil/tablet menü paneli (lg altı). Sayfa (pathname) değişince kapanır; aynı sayfaya giden bir
+  // linke tıklanırsa route değişmediği için `closeMobileMenu` link'in onClick'inde ayrıca çağrılır.
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [menuPathname, setMenuPathname] = useState(pathname);
+  if (pathname !== menuPathname) {
+    setMenuPathname(pathname);
+    setMobileMenuOpen(false);
+  }
+  const closeMobileMenu = () => setMobileMenuOpen(false);
+  const ctaClassName = cn(
+    "rounded-[var(--site-radius)] font-medium transition-all duration-300 hover:opacity-85",
+    SITE_BUTTON_STYLE_CLASSES[buttonStyle]
+  );
+
   return (
     <header
       className={cn(
@@ -269,10 +329,10 @@ export function SiteHeader({
       )}
     >
       <nav
-        className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6"
+        className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:flex-wrap lg:gap-4 lg:py-4"
         aria-label={dict.siteNavigationAriaLabel}
       >
-        <Link href={localize("/")} className="flex items-center gap-2 text-lg font-semibold text-foreground">
+        <Link href={localize("/")} className="flex min-w-0 items-center gap-2 text-lg font-semibold text-foreground">
           {settings.logoUrl ? (
             // Sabit KARE kutu modeli TERK EDİLDİ: logo artık kendi doğal en-boy oranını korur.
             // Render yüksekliği `headerLogoHeight` (varsayılan `DEFAULT_HEADER_LOGO_HEIGHT`) ile
@@ -280,24 +340,28 @@ export function SiteHeader({
             // bir taşma tavanı olarak uygulanır. `shrink-0`: header dar bir viewport'ta sıkışırsa
             // flexbox'ın img'yi orantısızca küçültmesini engeller. Logo varken site adı metni
             // DOM'dan kaldırılır — img'nin `alt`'ı link'in tek erişilebilir adı kaynağıdır.
-            <span className="flex shrink-0 items-center">
+            // Mobil/tablette (lg altı) logo, CTA + hamburger'a yer açmak için gerektiğinde küçülür
+            // (`min-w-0` + `max-width: 100%`, `object-contain` en-boy oranını korur); masaüstünde
+            // davranış aynı (yeterli yer olduğu için küçülmez).
+            <span className="flex min-w-0 items-center lg:shrink-0">
               {/* eslint-disable-next-line @next/next/no-img-element -- logo URL'si medya kütüphanesinden gelir, next/image remotePatterns henüz tanımlı değil */}
               <img
                 src={settings.logoUrl}
                 alt={settings.siteName?.trim() || "Site"}
-                className="block w-auto object-contain"
+                className="block w-auto object-contain object-left"
                 style={{
                   height: `${settings.headerLogoHeight ?? DEFAULT_HEADER_LOGO_HEIGHT}px`,
-                  ...(settings.headerLogoMaxWidth ? { maxWidth: `${settings.headerLogoMaxWidth}px` } : {}),
+                  maxWidth: settings.headerLogoMaxWidth ? `min(${settings.headerLogoMaxWidth}px, 100%)` : "100%",
                 }}
               />
             </span>
           ) : (
-            <span>{settings.siteName?.trim() || "Site"}</span>
+            <span className="truncate">{settings.siteName?.trim() || "Site"}</span>
           )}
         </Link>
 
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
+        {/* Masaüstü (lg ve üstü) — görünüm DEĞİŞMEDİ (yalnızca alt menü genişliği içeriğe göre). */}
+        <div className="hidden flex-wrap items-center gap-x-5 gap-y-1 text-sm lg:flex">
           {navTree.map((link) => {
             if (link.children.length > 0) {
               const hasActiveChild = link.children.some((child) => isNavLinkActive(pathname, localize(child.href)));
@@ -318,10 +382,20 @@ export function SiteHeader({
                     {link.label}
                     <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start">
+                  {/* Genişlik tetikleyiciye (`--anchor-width`) değil İÇERİĞE göre: kısa öğeler tek satırda
+                      kalır, uzunlar en fazla 22rem'de 2 satıra kırılır (`line-clamp-2`, tam metin `title`da).
+                      Sağ kenara sığmazsa Base UI'nin çarpışma önlemesi menüyü sola kaydırır. */}
+                  <DropdownMenuContent
+                    align="start"
+                    className="w-max min-w-[max(8rem,var(--anchor-width))] max-w-[min(22rem,var(--available-width))]"
+                  >
                     {link.children.map((child) => (
-                      <DropdownMenuItem key={child.id} render={<Link href={localize(child.href)} />}>
-                        {child.label}
+                      <DropdownMenuItem
+                        key={child.id}
+                        className="items-start py-1.5 whitespace-normal"
+                        render={<Link href={localize(child.href)} title={child.label} />}
+                      >
+                        <span className="line-clamp-2">{child.label}</span>
                       </DropdownMenuItem>
                     ))}
                   </DropdownMenuContent>
@@ -347,13 +421,7 @@ export function SiteHeader({
             // yazılır, bkz. globals.css `.site-scope` fallback bloğu). Admin'in `--primary`
             // token'ından KASITLI olarak bağımsız. `buttonStyle` yapısal bir sınıf varyantıdır
             // (design-notes-theme-typography.md §3.2) — CSS custom property DEĞİLDİR.
-            <Link
-              href={localize(ctaHref as string)}
-              className={cn(
-                "rounded-[var(--site-radius)] px-3.5 py-1.5 text-sm font-medium transition-all duration-300 hover:opacity-85",
-                SITE_BUTTON_STYLE_CLASSES[buttonStyle]
-              )}
-            >
+            <Link href={localize(ctaHref as string)} className={cn(ctaClassName, "px-3.5 py-1.5 text-sm")}>
               {ctaLabel}
             </Link>
           )}
@@ -463,6 +531,189 @@ export function SiteHeader({
               )}
             </Link>
           )}
+        </div>
+
+        {/* Mobil/tablet (lg altı) — yalnızca logo + CTA + hamburger. CTA gizlenmez; dar ekranda
+            küçültülür (`text-xs`, dar padding; `sm` ve üstünde normal boyut). */}
+        <div className="flex shrink-0 items-center gap-1.5 lg:hidden">
+          {showCta && (
+            <Link
+              href={localize(ctaHref as string)}
+              className={cn(ctaClassName, "inline-flex min-h-11 items-center px-3 text-xs whitespace-nowrap sm:px-3.5 sm:text-sm")}
+            >
+              {ctaLabel}
+            </Link>
+          )}
+          {/* Base UI Dialog (`Sheet`): odak panelde tutulur, Esc/dış tıklama kapatır, kapanınca odak
+              hamburger'a döner, açıkken arka plan kaydırılamaz. */}
+          <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+            <SheetTrigger
+              render={
+                <button
+                  type="button"
+                  aria-label={mobileMenuOpen ? dict.closeMenu : dict.openMenu}
+                  aria-expanded={mobileMenuOpen}
+                  aria-controls={MOBILE_MENU_ID}
+                  className={cn(
+                    "inline-flex h-11 w-11 items-center justify-center rounded-lg transition-colors hover:bg-surface-muted",
+                    ICON_LINK_TEXT_CLASSES
+                  )}
+                />
+              }
+            >
+              <Menu className="h-6 w-6" aria-hidden="true" />
+            </SheetTrigger>
+            <SheetContent
+              id={MOBILE_MENU_ID}
+              side="right"
+              showCloseButton={false}
+              className="w-[min(20rem,88vw)] gap-0 overflow-y-auto p-0 data-[side=right]:w-[min(20rem,88vw)]"
+            >
+              <div className="flex items-center justify-between border-b border-border py-1.5 pl-4 pr-2">
+                <SheetTitle className="text-base font-semibold text-foreground">{dict.menuTitle}</SheetTitle>
+                <SheetClose
+                  render={
+                    <button
+                      type="button"
+                      aria-label={dict.closeMenu}
+                      className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-foreground/70 hover:bg-surface-muted"
+                    />
+                  }
+                >
+                  <XIcon className="h-5 w-5" aria-hidden="true" />
+                </SheetClose>
+              </div>
+
+              <div className="flex flex-col gap-3 p-3">
+                <ul className="flex flex-col gap-0.5">
+                  {navTree.map((link) => {
+                    if (link.children.length > 0) {
+                      const hasActiveChild = link.children.some((child) => isNavLinkActive(pathname, localize(child.href)));
+                      return (
+                        <li key={link.id}>
+                          <Accordion defaultValue={hasActiveChild ? [link.id] : []}>
+                            <AccordionItem value={link.id} className="rounded-lg border-0">
+                              <AccordionTrigger className="min-h-11 rounded-lg px-3 text-base">
+                                <span className="flex-1">{link.label}</span>
+                              </AccordionTrigger>
+                              <AccordionPanel>
+                                <ul className="flex flex-col gap-0.5 pb-1 pl-3">
+                                  {link.children.map((child) => {
+                                    const href = localize(child.href);
+                                    const active = isNavLinkActive(pathname, href);
+                                    return (
+                                      <li key={child.id}>
+                                        <Link
+                                          href={href}
+                                          aria-current={active ? "page" : undefined}
+                                          onClick={closeMobileMenu}
+                                          className={cn(
+                                            "flex min-h-11 items-center rounded-lg px-3 py-2 text-sm hover:bg-surface-muted",
+                                            active ? "font-medium text-[var(--site-header-link-active)]" : "text-foreground/80"
+                                          )}
+                                        >
+                                          {child.label}
+                                        </Link>
+                                      </li>
+                                    );
+                                  })}
+                                </ul>
+                              </AccordionPanel>
+                            </AccordionItem>
+                          </Accordion>
+                        </li>
+                      );
+                    }
+                    const href = localize(link.href);
+                    const active = isNavLinkActive(pathname, href);
+                    return (
+                      <li key={link.id}>
+                        <Link
+                          href={href}
+                          aria-current={active ? "page" : undefined}
+                          onClick={closeMobileMenu}
+                          className={cn(
+                            "flex min-h-11 items-center rounded-lg px-3 text-base font-medium hover:bg-surface-muted",
+                            active ? "text-[var(--site-header-link-active)]" : "text-foreground"
+                          )}
+                        >
+                          {link.label}
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+
+                {locales && activeLocale && locales.length > 1 && (
+                  <div className="border-t border-border pt-3">
+                    <LanguageSwitcher
+                      variant="list"
+                      locales={locales}
+                      activeLocale={activeLocale}
+                      heading={dict.languageHeading}
+                      onNavigate={closeMobileMenu}
+                    />
+                  </div>
+                )}
+
+                <ul className="flex flex-col gap-0.5 border-t border-border pt-3">
+                  {status === "authenticated" && user ? (
+                    <>
+                      {isDoctorSession && telehealthModuleEnabled && (
+                        <MobileMenuLink href={localize("/doctor")} icon={Stethoscope} label={dict.doctorPortal} onNavigate={closeMobileMenu} />
+                      )}
+                      {!isDoctorSession && telehealthModuleEnabled && (
+                        <MobileMenuLink
+                          href={localize("/patient/appointments")}
+                          icon={CalendarClock}
+                          label={dict.myAppointments}
+                          onNavigate={closeMobileMenu}
+                        />
+                      )}
+                      <MobileMenuLink href={localize("/hesabim")} icon={UserIcon} label={dict.myAccount} onNavigate={closeMobileMenu} />
+                      {productsModuleEnabled && !isDoctorSession && (
+                        <MobileMenuLink href={localize("/hesabim/siparislerim")} icon={Receipt} label={dict.myOrders} onNavigate={closeMobileMenu} />
+                      )}
+                      {productsModuleEnabled && !isDoctorSession && (
+                        <MobileMenuLink href={localize("/hesabim/favorilerim")} icon={Heart} label={dict.wishlist} onNavigate={closeMobileMenu} />
+                      )}
+                    </>
+                  ) : (
+                    <MobileMenuLink
+                      href={`/login?next=${encodeURIComponent(pathname)}`}
+                      icon={UserIcon}
+                      label={dict.login}
+                      onNavigate={closeMobileMenu}
+                    />
+                  )}
+                  {showCartIcon && (
+                    <MobileMenuLink
+                      href={localize("/cart")}
+                      icon={ShoppingCart}
+                      label={itemCount > 0 ? `${dict.cart} (${itemCount > 99 ? "99+" : itemCount})` : dict.cart}
+                      ariaLabel={formatSiteString(dict.cartAriaLabel, { count: itemCount })}
+                      onNavigate={closeMobileMenu}
+                    />
+                  )}
+                  {status === "authenticated" && user && (
+                    <li>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          closeMobileMenu();
+                          void auth?.logout();
+                        }}
+                        className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-sm text-foreground hover:bg-surface-muted"
+                      >
+                        <LogOut className="h-4 w-4 text-foreground/60" aria-hidden="true" />
+                        {dict.logout}
+                      </button>
+                    </li>
+                  )}
+                </ul>
+              </div>
+            </SheetContent>
+          </Sheet>
         </div>
       </nav>
     </header>

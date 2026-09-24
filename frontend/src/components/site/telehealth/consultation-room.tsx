@@ -308,7 +308,7 @@ function ToggleButton({
       disabled={pending}
       onClick={onClick}
       className={cn(
-        "flex h-12 w-12 items-center justify-center rounded-full transition-colors duration-150 disabled:opacity-60",
+        "flex h-11 w-11 items-center justify-center rounded-full transition-colors duration-150 disabled:opacity-60 lg:h-12 lg:w-12",
         enabled ? "bg-white/15 text-white hover:bg-white/25" : "bg-white/90 text-black"
       )}
     >
@@ -410,9 +410,11 @@ function ConsultationControlBar({
     }
   }
 
+  // Mobil/tablet (lg altı): düğmeler 44px, aralıklar daha dar — 360px'te bile TEK satıra sığar
+  // (iki satıra kırılınca sahneyi ve önizlemeyi örtüyordu). Masaüstü (lg) değerleri değişmedi.
   return (
-    <div className="absolute inset-x-0 bottom-6 flex flex-wrap items-center justify-center gap-3 px-4">
-      <div className="flex items-center gap-2 rounded-full bg-black/70 px-3 py-2 backdrop-blur-md">
+    <div className="absolute inset-x-0 bottom-3 flex flex-wrap items-center justify-center gap-2 px-2 lg:bottom-6 lg:gap-3 lg:px-4">
+      <div className="flex items-center gap-1.5 rounded-full bg-black/70 px-2 py-1.5 backdrop-blur-md lg:gap-2 lg:px-3 lg:py-2">
         <ToggleButton
           enabled={mic.enabled}
           pending={mic.pending}
@@ -448,7 +450,7 @@ function ConsultationControlBar({
                   type="button"
                   aria-label={isFullscreen ? "Tam Ekrandan Çık" : "Tam Ekran"}
                   onClick={() => void toggleFullscreen()}
-                  className="flex h-12 w-12 items-center justify-center rounded-full bg-white/15 text-white transition-colors duration-150 hover:bg-white/25"
+                  className="flex h-11 w-11 items-center justify-center rounded-full bg-white/15 text-white transition-colors duration-150 hover:bg-white/25 lg:h-12 lg:w-12"
                 />
               }
             >
@@ -466,7 +468,7 @@ function ConsultationControlBar({
         type="button"
         aria-label="Görüşmeyi sonlandır"
         onClick={() => setConfirmOpen(true)}
-        className="ml-2 flex h-14 w-14 items-center justify-center rounded-full bg-danger text-white transition-colors hover:bg-danger/90"
+        className="ml-1 flex h-12 w-12 items-center justify-center rounded-full bg-danger text-white transition-colors hover:bg-danger/90 lg:ml-2 lg:h-14 lg:w-14"
       >
         <PhoneOff className="h-5 w-5" aria-hidden="true" />
       </button>
@@ -559,7 +561,9 @@ function ConsultationStage() {
       )}
 
       {localCameraTrack && (
-        <div className="absolute bottom-6 right-6 z-10 h-24 w-32 overflow-hidden rounded-[var(--site-radius)] border border-white/20 shadow-lg sm:h-28 sm:w-40">
+        // Mobil/tablet (lg altı): sağ üstte, kayıt göstergesinin (right-4 top-4) altında — alttaki kontrol
+        // çubuğunu örtmez. Masaüstü (lg): eskisi gibi sağ altta, 160×112.
+        <div className="absolute right-3 top-12 z-10 h-24 w-32 overflow-hidden rounded-[var(--site-radius)] border border-white/20 shadow-lg lg:bottom-6 lg:right-6 lg:top-auto lg:h-28 lg:w-40">
           <ParticipantTile trackRef={localCameraTrack} className="h-full w-full" />
         </div>
       )}
@@ -758,7 +762,7 @@ function ConsultationVideoRoom({
       onError={(err) => onConnectionError(err.message || "Görüşmeye bağlanılamadı. Bağlantınızı kontrol edip tekrar deneyin.")}
       onMediaDeviceFailure={(failure) => onConnectionError(mediaDeviceFailureMessage(failure))}
       onDisconnected={onLeave}
-      className="relative aspect-video w-full overflow-hidden rounded-[var(--site-radius)] bg-[#0F172A]"
+      className="relative aspect-[3/4] max-h-[calc(100dvh-2rem)] w-full overflow-hidden rounded-[var(--site-radius)] bg-[#0F172A] sm:aspect-video lg:max-h-none"
     >
       <RoomAudioRenderer />
       <RecordingSignalBridge
@@ -775,7 +779,7 @@ function ConsultationVideoRoom({
       <ConsultationControlBar isDoctor={isDoctor} stageRef={stageRef} />
 
       {isDoctor && recordingModuleEnabled && (
-        <div className="absolute bottom-6 left-4 z-10">
+        <div className="absolute left-3 top-12 z-10 lg:bottom-6 lg:left-4 lg:top-auto">
           <RecordingControls appointmentId={appointmentId} recording={recording} onUpdate={onRecordingSnapshot} />
         </div>
       )}

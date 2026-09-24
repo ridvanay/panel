@@ -13,6 +13,20 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
 
 ### Added
 
+- **`feat(site)`: Site simgesi (favicon) ve Apple touch icon admin panelinden değiştirilebilir.**
+  Admin → Navigasyon'da logonun altına "Site simgesi (favicon)" ve "Apple touch icon (opsiyonel)"
+  alanları eklendi (medya kütüphanesinden seçme veya yükleme). Yalnızca PNG (SVG bilinçli olarak
+  desteklenmez — medya kütüphanesi SVG'yi XSS riski nedeniyle reddeder; ayrı iş). Site ve doktor
+  portalı `<link rel="icon">`/`apple-touch-icon` etiketlerini bu ayardan üretir; adresten türetilen
+  `?v=` sürüm parametresi simge değişince tarayıcı önbelleğini kırar. Ayar boşsa varsayılan
+  `/favicon.ico` (`src/app/favicon.ico` → `public/favicon.ico` taşındı). **Şema değişikliği:**
+  `SiteSettings.faviconUrl` / `appleTouchIconUrl` (boş geçilebilir) — migration
+  `20260925090000_add_site_favicon` yalnızca bu iki kolonu ekler.
+- **`feat(site)`: Mobil/tablet (1024px altı) header'da hamburger menü.** Başlıkta yalnızca logo, CTA
+  ve hamburger; sağdan açılan panelde menü öğeleri (alt menüler akordeon), dil listesi ve
+  giriş/hesap linkleri. Odak panelde kalır, Esc/dış tıklama kapatır, kapanınca odak düğmeye döner,
+  sayfa değişince kapanır, arka plan kaymaz; dokunma alanları ≥44px. Masaüstü görünümü değişmedi.
+
 - **`feat(site)`: "Hakkımızda" (`/about`, `/en/about`) sayfası admin panelinden düzenlenebilir.**
   İçerik, admin → Sayfalar'daki `slug = "about"` CMS kaydının tek kök `about-page` bloğunda
   (tr: `blocks`, diğer diller: `translations.<locale>.blocks`) tutulur; tasarım kodda sabittir.
@@ -36,6 +50,19 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
   (`FOUNDER_DOCTOR_SLUG`, kaldırıldı) yerine admin'de seçilen doktorun `id`'siyle belirlenir.
 
 ### Fixed
+
+- **`fix(site)`: Masaüstü açılır menü (ör. Specialties) tetikleyici kadar dar açılıyordu** — öğeler 3
+  satıra kırılıyordu. Genişlik artık içeriğe göre (en fazla 22rem); öğeler en fazla 2 satır
+  (`line-clamp-2`, tam metin `title`da); sağ kenara sığmazsa menü sola açılır.
+- **`fix(site)`: Hero Studio'da dar ekranlarda metin ile buton üst üste biniyordu.** 1280px altında
+  katmanlar mutlak konum yerine alt alta akışla dizilir (dikey sıra ve yatay hiza admin'deki
+  konumdan türetilir, slider gerekirse içeriğe göre uzar; katmanların cihaz ayarları yine
+  mobil/tablet/masaüstü eşiklerine göre seçilir). ≥1280px değişmedi.
+- **`fix(telehealth)`: Görüşme ekranında mobilde yerel kamera önizlemesi "Görüşmeyi sonlandır" ve
+  "Tam Ekran" düğmelerini örtüyordu.** 1024px altında: önizleme sağ üstte (kayıt göstergesinin
+  altında), kontrol düğmeleri 44px ve tek satırda, doktorun kayıt kontrolü sol üstte; dikey
+  telefonda sahne 3:4 ve hiçbir yönde ekran yüksekliğini aşmaz (yatay telefonda kontroller
+  ekranda kalır). Masaüstü (≥1024px) görüşme ekranı değişmedi.
 
 - **`fix(site)`: Public sayfaların gizli RSC verisine yayındaki TÜM sayfaların içeriği gömülüyordu.**
   `(site)/layout.tsx` header'ın yedek menüsü için `SiteHeader`'a (istemci bileşeni) tam `SitePage`

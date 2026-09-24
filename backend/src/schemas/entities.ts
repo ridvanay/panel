@@ -809,6 +809,9 @@ export type SiteTemplate = z.infer<typeof SiteTemplateSchema>;
 export const SiteSettingsSchema = z.object({
   siteName: z.string(),
   logoUrl: z.string().nullable(),
+  // Site simgesi (PNG) / Apple touch icon — `null` = varsayılan simge.
+  faviconUrl: z.string().nullable(),
+  appleTouchIconUrl: z.string().nullable(),
   tagline: z.string().nullable(),
   // Header logo boyutu — null ise frontend varsayılanı (yükseklik 32px, genişlik sınırsız) kullanır.
   headerLogoHeight: z.number().nullable(),

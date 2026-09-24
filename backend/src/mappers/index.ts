@@ -419,6 +419,8 @@ export function toSiteSettingsDto(settings: SiteSettings): SiteSettingsDto {
   return {
     siteName: settings.siteName,
     logoUrl: settings.logoUrl,
+    faviconUrl: settings.faviconUrl,
+    appleTouchIconUrl: settings.appleTouchIconUrl,
     tagline: settings.tagline,
     headerLogoHeight: settings.headerLogoHeight,
     headerLogoMaxWidth: settings.headerLogoMaxWidth,

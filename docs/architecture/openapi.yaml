@@ -16100,6 +16100,14 @@ components:
           type: string
           description: "Boş string (`\"\"`) de geçerlidir — zorunlu bir alan DEĞİLDİR (bkz. UpdateSiteSettingsRequest.siteName notu)."
         logoUrl: { type: string, nullable: true }
+        faviconUrl:
+          type: string
+          nullable: true
+          description: "Site simgesi (favicon) — medya kütüphanesinden PNG. `null` = varsayılan `/favicon.ico`. Site `<link rel=\"icon\">` etiketine adresten türetilen `?v=` sürüm parametresiyle yazılır (önbellek kırma)."
+        appleTouchIconUrl:
+          type: string
+          nullable: true
+          description: "Apple touch icon — PNG (önerilen 180×180). `null` ise `faviconUrl` kullanılır; ikisi de boşsa etiket üretilmez."
         tagline: { type: string, nullable: true, description: "Site sloganı/açıklaması (WordPress \"Site Identity\" > Tagline benzeri), en fazla 160 karakter." }
         headerLogoHeight: { type: integer, nullable: true, minimum: 16, maximum: 96, description: "Header logo render yüksekliği (px) — null ise frontend varsayılanı 32 kullanır." }
         headerLogoMaxWidth: { type: integer, nullable: true, minimum: 40, maximum: 400, description: "Header logo maks. genişliği (px) — null ise genişlik tavanı yok (sınırsız)." }
@@ -16234,6 +16242,18 @@ components:
           maxLength: 200
           description: "**`minLength` KASITLI olarak YOK** — boş string gönderilebilir (kullanıcı site adını temizleyebilir), doğrulama hatası fırlatmaz."
         logoUrl: { type: string, nullable: true }
+        faviconUrl:
+          type: string
+          nullable: true
+          maxLength: 2048
+          pattern: '\.png(?:[?#].*)?$'
+          description: "Yalnızca PNG (SVG bilinçli olarak desteklenmez — medya kütüphanesi SVG'yi XSS riski nedeniyle reddeder). `SafeHrefSchema` (relative `/…` veya `http(s)://`) + `.png` uzantısı; aksi halde **422**. `null` = varsayılan simgeye dön."
+        appleTouchIconUrl:
+          type: string
+          nullable: true
+          maxLength: 2048
+          pattern: '\.png(?:[?#].*)?$'
+          description: "`faviconUrl` ile aynı kurallar."
         tagline: { type: string, nullable: true, maxLength: 160 }
         headerLogoHeight: { type: integer, nullable: true, minimum: 16, maximum: 96, description: "Header logo render yüksekliği (px) — null ise frontend varsayılanı 32 kullanır." }
         headerLogoMaxWidth: { type: integer, nullable: true, minimum: 40, maximum: 400, description: "Header logo maks. genişliği (px) — null ise genişlik tavanı yok (sınırsız)." }

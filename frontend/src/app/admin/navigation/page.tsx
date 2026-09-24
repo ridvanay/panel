@@ -75,9 +75,16 @@ interface LocalFooterColumn {
   links: LocalFooterLink[];
 }
 
+/** Backend `settings.schemas.ts::SiteIconUrlSchema` ile aynı kural — yalnızca PNG. */
+function isPngUrl(url: string): boolean {
+  return /\.png(?:[?#].*)?$/i.test(url);
+}
+
 interface LocationsSnapshot {
   siteName: string;
   logoUrl: string;
+  faviconUrl: string;
+  appleTouchIconUrl: string;
   tagline: string;
   headerLogoHeight: number | null;
   headerLogoMaxWidth: number | null;
@@ -189,6 +196,8 @@ function AdminNavigationPageContent() {
 
   const [siteName, setSiteName] = useState("");
   const [logoUrl, setLogoUrl] = useState("");
+  const [faviconUrl, setFaviconUrl] = useState("");
+  const [appleTouchIconUrl, setAppleTouchIconUrl] = useState("");
   const [tagline, setTagline] = useState("");
   const [headerLogoHeight, setHeaderLogoHeight] = useState<number | null>(null);
   const [headerLogoMaxWidth, setHeaderLogoMaxWidth] = useState<number | null>(null);
@@ -221,6 +230,8 @@ function AdminNavigationPageContent() {
 
       setSiteName(settings.siteName);
       setLogoUrl(settings.logoUrl ?? "");
+      setFaviconUrl(settings.faviconUrl ?? "");
+      setAppleTouchIconUrl(settings.appleTouchIconUrl ?? "");
       setTagline(settings.tagline ?? "");
       setHeaderLogoHeight(settings.headerLogoHeight);
       setHeaderLogoMaxWidth(settings.headerLogoMaxWidth);
@@ -268,6 +279,8 @@ function AdminNavigationPageContent() {
       setLocationsSnapshot({
         siteName: settings.siteName,
         logoUrl: settings.logoUrl ?? "",
+        faviconUrl: settings.faviconUrl ?? "",
+        appleTouchIconUrl: settings.appleTouchIconUrl ?? "",
         tagline: settings.tagline ?? "",
         headerLogoHeight: settings.headerLogoHeight,
         headerLogoMaxWidth: settings.headerLogoMaxWidth,
@@ -300,6 +313,8 @@ function AdminNavigationPageContent() {
     const current: LocationsSnapshot = {
       siteName,
       logoUrl,
+      faviconUrl,
+      appleTouchIconUrl,
       tagline,
       headerLogoHeight,
       headerLogoMaxWidth,
@@ -313,6 +328,8 @@ function AdminNavigationPageContent() {
   }, [
     siteName,
     logoUrl,
+    faviconUrl,
+    appleTouchIconUrl,
     tagline,
     headerLogoHeight,
     headerLogoMaxWidth,
@@ -461,6 +478,8 @@ function AdminNavigationPageContent() {
         settingsApi.updateSettings({
           siteName,
           logoUrl: logoUrl || null,
+          faviconUrl: faviconUrl || null,
+          appleTouchIconUrl: appleTouchIconUrl || null,
           tagline: tagline.trim() || null,
           headerLogoHeight: safeHeaderLogoHeight,
           headerLogoMaxWidth: safeHeaderLogoMaxWidth,
@@ -473,6 +492,8 @@ function AdminNavigationPageContent() {
       setLocationsSnapshot({
         siteName,
         logoUrl,
+        faviconUrl,
+        appleTouchIconUrl,
         tagline,
         headerLogoHeight: safeHeaderLogoHeight,
         headerLogoMaxWidth: safeHeaderLogoMaxWidth,
@@ -724,6 +745,33 @@ function AdminNavigationPageContent() {
                       {!logoUrl && (
                         <p className="text-xs text-foreground/50 sm:col-span-2">Önce bir logo yükleyin.</p>
                       )}
+                    </div>
+
+                    {/* Site simgesi — yalnızca PNG (SVG ayrı bir iş). Backend de `.png` dışını 422 ile reddeder. */}
+                    <div className="grid gap-4 sm:col-span-2 sm:grid-cols-2">
+                      <div className="space-y-1.5">
+                        <ImageUploadField id="faviconUrl" label="Site simgesi (favicon)" value={faviconUrl} onChange={setFaviconUrl} />
+                        <p className="text-xs text-foreground/60">
+                          Tarayıcı sekmesinde görünür. Kare PNG, en az 48×48 px (önerilen 512×512). Boş bırakılırsa varsayılan simge kullanılır.
+                        </p>
+                        {faviconUrl && !isPngUrl(faviconUrl) && (
+                          <p className="text-xs text-danger">Site simgesi PNG olmalıdır.</p>
+                        )}
+                      </div>
+                      <div className="space-y-1.5">
+                        <ImageUploadField
+                          id="appleTouchIconUrl"
+                          label="Apple touch icon (opsiyonel)"
+                          value={appleTouchIconUrl}
+                          onChange={setAppleTouchIconUrl}
+                        />
+                        <p className="text-xs text-foreground/60">
+                          iPhone/iPad ana ekranına eklenince görünür. Kare PNG, önerilen 180×180 px. Boş bırakılırsa site simgesi kullanılır.
+                        </p>
+                        {appleTouchIconUrl && !isPngUrl(appleTouchIconUrl) && (
+                          <p className="text-xs text-danger">Apple touch icon PNG olmalıdır.</p>
+                        )}
+                      </div>
                     </div>
 
                     <div className="space-y-1.5 sm:col-span-2">

@@ -4,6 +4,8 @@ import type { SiteSettings, SitePage } from "./types";
 const DEFAULT_SETTINGS: SiteSettings = {
   siteName: "Site",
   logoUrl: null,
+  faviconUrl: null,
+  appleTouchIconUrl: null,
   tagline: null,
   homePageId: null,
   siteTemplate: "SHOWCASE",

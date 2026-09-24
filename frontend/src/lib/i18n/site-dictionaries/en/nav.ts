@@ -20,6 +20,13 @@ export const navStrings = {
   wishlistAriaLabel: "Wishlist",
   /** `{count}` yer tutucusu `formatSiteString`'e gider. */
   cartAriaLabel: "Cart, {count} items",
+  /** Mobil/tablet (lg altı) hamburger düğmesi ve açılan panel. */
+  openMenu: "Open menu",
+  closeMenu: "Close menu",
+  menuTitle: "Menu",
+  languageHeading: "Language",
+  wishlist: "Wishlist",
+  cart: "Cart",
 } as const;
 
 export type NavStrings = Record<keyof typeof navStrings, string>;

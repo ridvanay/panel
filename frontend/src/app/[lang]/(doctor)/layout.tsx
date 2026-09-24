@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { notFound } from "next/navigation";
 import { fetchSiteSettingsServer } from "@/lib/api/server-settings";
+import { buildSiteIconsMetadata } from "@/lib/site-settings/site-icons";
 import { fetchSiteAppearanceServer } from "@/lib/api/server-appearance";
 import { fetchLocalesServer } from "@/lib/api/server-locales";
 import { LocaleAlternatesProvider } from "@/context/locale-alternates-context";
@@ -35,7 +36,7 @@ import { DoctorTopBar } from "@/components/site/telehealth/doctor-top-bar";
  */
 export async function generateMetadata(): Promise<Metadata> {
   const settings = await fetchSiteSettingsServer();
-  return { title: { absolute: `Doktor Paneli | ${settings.siteName}` } };
+  return { title: { absolute: `Doktor Paneli | ${settings.siteName}` }, icons: buildSiteIconsMetadata(settings) };
 }
 
 export default async function DoctorScopeLayout({

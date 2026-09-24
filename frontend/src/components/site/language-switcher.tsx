@@ -17,6 +17,16 @@ interface LanguageSwitcherProps {
   /** `GET /locales` — `enabled: true`, `sortOrder` sıralı. */
   locales: Locale[];
   activeLocale: Locale;
+  /**
+   * `dropdown` (varsayılan) — header'daki açılır menü. `list` — mobil menü panelinin içinde düz
+   * link listesi (modal panel içinde iç içe bir açılır menü açmak yerine; dokunma alanı ≥44px).
+   * Her iki görünüm de AYNI `hrefFor` mantığını kullanır.
+   */
+  variant?: "dropdown" | "list";
+  /** Yalnızca `list` — başlık metni (ör. "Language"). */
+  heading?: string;
+  /** Yalnızca `list` — bir dil linkine tıklanınca (ör. paneli kapatmak için). */
+  onNavigate?: () => void;
 }
 
 /**
@@ -24,7 +34,7 @@ interface LanguageSwitcherProps {
  * `nativeLabel`, bayrak YOK (§4). Aynı içeriğin o dildeki karşılığına gider (`localizations`'tan,
  * `context/locale-alternates-context.tsx` köprüsüyle); yoksa o dilin ana sayfasına düşer.
  */
-export function LanguageSwitcher({ locales, activeLocale }: LanguageSwitcherProps) {
+export function LanguageSwitcher({ locales, activeLocale, variant = "dropdown", heading, onNavigate }: LanguageSwitcherProps) {
   const alternates = useLocaleAlternates();
 
   if (locales.length <= 1) return null;
@@ -46,6 +56,35 @@ export function LanguageSwitcher({ locales, activeLocale }: LanguageSwitcherProp
     }
     // Eşleşen çeviri/alternates yoksa (liste sayfaları, sepet, vb.) o dilin ana sayfasına düş.
     return withLocalePrefix("/", locale.code, defaultCode(locales));
+  }
+
+  if (variant === "list") {
+    return (
+      <div>
+        {heading && <p className="px-3 pb-1 text-xs font-semibold uppercase tracking-wide text-foreground/50">{heading}</p>}
+        <ul>
+          {locales.map((l) => {
+            const active = l.code === activeLocale.code;
+            return (
+              <li key={l.code}>
+                <Link
+                  href={hrefFor(l)}
+                  lang={l.code}
+                  hrefLang={l.hreflang ?? l.code}
+                  aria-current={active ? "true" : undefined}
+                  onClick={onNavigate}
+                  className="flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm text-foreground hover:bg-surface-muted"
+                >
+                  <Globe className="h-4 w-4 text-foreground/50" aria-hidden="true" />
+                  {l.nativeLabel}
+                  {active && <Check className="ml-auto h-4 w-4" aria-hidden="true" />}
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+    );
   }
 
   return (

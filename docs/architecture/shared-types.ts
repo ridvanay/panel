@@ -1907,3 +1907,24 @@ export interface UpdateSiteSettingsDemoPaymentRequestFields {
 // `SiteSettings.demoPaymentsEnabled = false` → 403. Env kapalıyken (üretim) bu kod ASLA
 // dönmez — `404` önceliklidir (bkz. openapi.yaml, `DemoPaymentsDisabledError`).
 export type DemoPaymentDisabledErrorCode = "DEMO_PAYMENTS_DISABLED";
+
+// ---------- Site simgesi (favicon) / Apple touch icon (2026-09-25) ----------
+//
+// Kaynak: `docs/architecture/openapi.yaml` (`SiteSettings`, `UpdateSiteSettingsRequest`).
+// Çelişkide **openapi.yaml kazanır**. Yukarıdaki demo ödeme bölümüyle AYNI DAR kapsam deseni.
+
+/**
+ * `SiteSettings`e eklenen iki alan — medya kütüphanesinden seçilen PNG'nin URL'i. `null` =
+ * varsayılan `/favicon.ico` (apple-touch-icon için: `faviconUrl` kullanılır, o da yoksa etiket
+ * üretilmez). SVG bilinçli olarak desteklenmez (ayrı iş, güvenlik incelemesi gerektirir).
+ */
+export interface SiteSettingsIconFields {
+  faviconUrl: string | null;
+  appleTouchIconUrl: string | null;
+}
+
+/** `PATCH /admin/settings` — yalnızca `.png` URL'leri (SafeHref); aksi halde `422`. */
+export interface UpdateSiteSettingsIconRequestFields {
+  faviconUrl?: string | null;
+  appleTouchIconUrl?: string | null;
+}
