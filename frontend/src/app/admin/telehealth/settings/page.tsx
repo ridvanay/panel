@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { AlertCircle, Palette } from "lucide-react";
 import * as telehealthApi from "@/lib/api/telehealth";
-import type { TelehealthThemeSettings } from "@/lib/api/types";
+import type { EmergencyNoticeSettings, TelehealthThemeSettings, UpdateTelehealthThemeSettingsRequest } from "@/lib/api/types";
 import { PageHeading } from "@/components/admin/page-heading";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,9 @@ import { Alert } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
 import { ColorField } from "@/components/admin/appearance/color-field";
 import { fieldErrorsFrom, friendlyErrorMessage } from "@/lib/api/friendly-error";
+import { useAuth } from "@/context/auth-context";
+import { EmergencyNoticeSettingsCard } from "@/components/admin/telehealth/emergency-notice-settings";
+import { DEFAULT_EMERGENCY_NOTICE_SETTINGS } from "@/lib/emergency-notice";
 
 /**
  * Görev (2026-09-14) Görev 1 — "Arayüz & Tema Renkleri" sekmesi. `/admin/telehealth/overview`
@@ -26,7 +29,20 @@ import { fieldErrorsFrom, friendlyErrorMessage } from "@/lib/api/friendly-error"
 
 const HEX_REGEX = /^#[0-9a-fA-F]{6}$/;
 
-const COLOR_FIELD_DEFS: { key: keyof TelehealthThemeSettings; label: string }[] = [
+type ThemeColorForm = Required<UpdateTelehealthThemeSettingsRequest>;
+type ThemeColorKey = keyof ThemeColorForm;
+
+/** Renk formu YALNIZCA 4 renk alanını taşır — `emergencyNotice` ayrı kartta, ayrı uç noktayla kaydedilir. */
+function toColorForm(settings: TelehealthThemeSettings): ThemeColorForm {
+  return {
+    primaryColor: settings.primaryColor,
+    secondaryColor: settings.secondaryColor,
+    accentColor: settings.accentColor,
+    calendarActiveBg: settings.calendarActiveBg,
+  };
+}
+
+const COLOR_FIELD_DEFS: { key: ThemeColorKey; label: string }[] = [
   { key: "primaryColor", label: "Birincil Renk" },
   { key: "secondaryColor", label: "İkincil Renk" },
   { key: "accentColor", label: "Vurgu Rengi" },
@@ -34,8 +50,10 @@ const COLOR_FIELD_DEFS: { key: keyof TelehealthThemeSettings; label: string }[] 
 ];
 
 export default function AdminTelehealthSettingsPage() {
-  const [theme, setTheme] = useState<TelehealthThemeSettings | null>(null);
-  const [form, setForm] = useState<TelehealthThemeSettings | null>(null);
+  const { user } = useAuth();
+  const [theme, setTheme] = useState<ThemeColorForm | null>(null);
+  const [form, setForm] = useState<ThemeColorForm | null>(null);
+  const [emergencyNotice, setEmergencyNotice] = useState<EmergencyNoticeSettings>(DEFAULT_EMERGENCY_NOTICE_SETTINGS);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -45,8 +63,9 @@ export default function AdminTelehealthSettingsPage() {
     setLoadError(null);
     try {
       const data = await telehealthApi.getTelehealthThemeSettings();
-      setTheme(data);
-      setForm(data);
+      setTheme(toColorForm(data));
+      setForm(toColorForm(data));
+      setEmergencyNotice(data.emergencyNotice ?? DEFAULT_EMERGENCY_NOTICE_SETTINGS);
     } catch (err) {
       setLoadError(friendlyErrorMessage(err));
     }
@@ -58,7 +77,7 @@ export default function AdminTelehealthSettingsPage() {
     })();
   }, [load]);
 
-  function updateField(key: keyof TelehealthThemeSettings, value: string) {
+  function updateField(key: ThemeColorKey, value: string) {
     setForm((prev) => (prev ? { ...prev, [key]: value } : prev));
   }
 
@@ -74,8 +93,9 @@ export default function AdminTelehealthSettingsPage() {
     setSaving(true);
     try {
       const updated = await telehealthApi.updateTelehealthThemeSettings(form);
-      setTheme(updated);
-      setForm(updated);
+      setTheme(toColorForm(updated));
+      setForm(toColorForm(updated));
+      setEmergencyNotice(updated.emergencyNotice ?? DEFAULT_EMERGENCY_NOTICE_SETTINGS);
       toast.success("Tema renkleri kaydedildi.");
     } catch (err) {
       const message = friendlyErrorMessage(err);
@@ -200,6 +220,13 @@ export default function AdminTelehealthSettingsPage() {
           Kaydet
         </Button>
       </div>
+
+      <EmergencyNoticeSettingsCard
+        key={JSON.stringify(emergencyNotice)}
+        settings={emergencyNotice}
+        canEdit={user?.role === "ADMIN"}
+        onSaved={setEmergencyNotice}
+      />
     </div>
   );
 }

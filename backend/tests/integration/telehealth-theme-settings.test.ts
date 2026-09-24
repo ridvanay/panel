@@ -18,6 +18,9 @@ const DEFAULTS = {
   calendarActiveBg: "#0f766e",
 };
 
+/** Yanıta eklenen acil durum uyarısı ayarlarının varsayılanı (şerit AÇIK, admin metni yok). */
+const DEFAULT_EMERGENCY_NOTICE = { enabled: true, summary: {}, full: {} };
+
 function authHeader(token: string) {
   return { authorization: `Bearer ${token}` };
 }
@@ -79,11 +82,11 @@ describe("telehealth theme settings — GET/PATCH /admin/telehealth/settings + G
   it("SiteModule.settings satırı hiç yokken GET varsayılanları döner (bozuk/eksik JSON'a sessizce düşer)", async () => {
     const res = await app.inject({ method: "GET", url: "/api/v1/admin/telehealth/settings", headers: authHeader(adminToken) });
     expect(res.statusCode).toBe(200);
-    expect(res.json().data).toEqual(DEFAULTS);
+    expect(res.json().data).toEqual({ ...DEFAULTS, emergencyNotice: DEFAULT_EMERGENCY_NOTICE });
 
     const publicRes = await app.inject({ method: "GET", url: "/api/v1/telehealth/theme" });
     expect(publicRes.statusCode).toBe(200);
-    expect(publicRes.json().data).toEqual(DEFAULTS);
+    expect(publicRes.json().data).toEqual({ ...DEFAULTS, emergencyNotice: DEFAULT_EMERGENCY_NOTICE });
   });
 
   it("RBAC — GET: ADMIN/MANAGER/EDITOR 200, CUSTOMER 401/403; PATCH: ADMIN/MANAGER 200, EDITOR/CUSTOMER 403", async () => {
@@ -126,6 +129,7 @@ describe("telehealth theme settings — GET/PATCH /admin/telehealth/settings + G
       secondaryColor: DEFAULTS.secondaryColor,
       accentColor: "#abcdef",
       calendarActiveBg: DEFAULTS.calendarActiveBg,
+      emergencyNotice: DEFAULT_EMERGENCY_NOTICE,
     });
 
     const getRes = await app.inject({ method: "GET", url: "/api/v1/admin/telehealth/settings", headers: authHeader(adminToken) });

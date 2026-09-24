@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { isModuleEnabledServer } from "@/lib/api/server-modules";
 import { fetchTelehealthThemeServer } from "@/lib/api/server-telehealth";
 import { EmergencyNoticeStrip } from "@/components/site/telehealth/emergency-notice";
+import { resolveEmergencyNotice } from "@/lib/emergency-notice";
 import { getSiteDictionary } from "@/lib/i18n/site-dictionaries";
 
 /**
@@ -25,6 +26,7 @@ export default async function SpecialtiesLayout({
   if (!enabled) notFound();
 
   const [theme, dict] = await Promise.all([fetchTelehealthThemeServer(), getSiteDictionary(lang)]);
+  const notice = resolveEmergencyNotice(theme, lang, dict.telehealth);
 
   const telehealthScopeStyle = {
     "--telehealth-primary": theme.primaryColor,
@@ -37,7 +39,17 @@ export default async function SpecialtiesLayout({
 
   return (
     <div className="telehealth-scope" style={telehealthScopeStyle}>
-      <EmergencyNoticeStrip text={dict.telehealth.emergencyNotice} />
+      {/* Admin → TeleHealth ayarlarındaki "Acil durum uyarısını göster" anahtarı yalnızca bu şeridi
+          kontrol eder (varsayılan AÇIK). Görüşme ekranındaki şerit ve doktor detay kartı anahtardan
+          bağımsız, her zaman gösterilir. */}
+      {notice.stripEnabled && (
+        <EmergencyNoticeStrip
+          summary={notice.summary}
+          full={notice.full}
+          showDetailsLabel={notice.showDetailsLabel}
+          hideDetailsLabel={notice.hideDetailsLabel}
+        />
+      )}
       {children}
     </div>
   );

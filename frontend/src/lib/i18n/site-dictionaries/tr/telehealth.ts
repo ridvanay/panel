@@ -1,9 +1,11 @@
 import type { TelehealthStrings } from "../en/telehealth";
 
 export const telehealthStrings: TelehealthStrings = {
-  /** §14.7 — TR okuyucusu ezici çoğunlukla Türkiye'de olduğu için mevcut metin AYNEN korunur. */
-  emergencyNotice:
-    "Bu platform acil tıbbi durumlar için KULLANILAMAZ ve acil sağlık hizmetinin yerine geçmez. Acil durumda Türkiye'deyseniz 112'yi, Türkiye dışındaysanız bulunduğunuz ülkenin acil durum numarasını arayın.",
+  emergencyNoticeSummary: "Acil durumlar için kullanılamaz. Acil bir durumda yerel acil numarayı arayın.",
+  emergencyNoticeFull:
+    "Bu platform acil durumlar için kullanılamaz ve acil tıbbi bakımın yerine geçmez. Acil bir durumda bulunduğunuz ülkenin acil numarasını arayın (Türkiye ve AB'de 112).",
+  emergencyNoticeShowDetails: "Ayrıntılar",
+  emergencyNoticeHideDetails: "Ayrıntıları gizle",
 
   doctorsPageTitle: "Doktorlarımız",
   doctorsPageSubtitle: "Uzmanına göre filtreleyin, uygun saati seçin ve online randevunuzu alın.",

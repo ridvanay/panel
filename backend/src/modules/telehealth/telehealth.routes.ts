@@ -19,7 +19,6 @@ import {
   DoctorProfileSchema,
   SpecialtySchema,
   SpecialtyWithDoctorCountSchema,
-  TelehealthThemeSettingsSchema,
 } from "../../schemas/entities";
 import {
   toAppointmentBookingDto,
@@ -52,7 +51,7 @@ import { encryptSecret, decryptSecret } from "../../lib/crypto";
 import { detectUploadMimeType } from "../../lib/mime-detect";
 import { telehealthDocumentStorage } from "../../lib/telehealth-document-storage";
 import { logAudit } from "../../lib/audit";
-import { parseTelehealthTheme } from "./lib/theme-settings";
+import { TelehealthSettingsResponseSchema, toTelehealthSettingsDto } from "./lib/emergency-notice";
 import { BOOKING_CREATE_RATE_LIMIT, BOOKING_DOCUMENT_UPLOAD_RATE_LIMIT } from "../../lib/rate-limit";
 import { MAX_UPLOAD_BYTES } from "../../plugins/uploads";
 import { env } from "../../config/env";
@@ -294,10 +293,12 @@ export async function telehealthRoutes(app: FastifyInstance) {
   // preHandler'ı zaten modül kapalıyken bu route'u da doğal olarak 404'e düşürür, EKSTRA kontrol GEREKMEZ.
   server.get(
     "/telehealth/theme",
-    { schema: { response: { 200: ApiSuccessSchema(TelehealthThemeSettingsSchema) } } },
+    // Tema renkleri + acil durum uyarısı (göster/gizle + dil başına metinler) — ikisi de hassas veri
+    // DEĞİL, site sayfaları sunucu tarafında okur (bkz. `lib/emergency-notice.ts`).
+    { schema: { response: { 200: ApiSuccessSchema(TelehealthSettingsResponseSchema) } } },
     async (_request, reply) => {
       const row = await app.prisma.siteModule.findUnique({ where: { key: "telehealth" } });
-      return reply.send(ok(parseTelehealthTheme(row?.settings)));
+      return reply.send(ok(toTelehealthSettingsDto(row?.settings)));
     }
   );
 

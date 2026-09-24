@@ -46,6 +46,7 @@ import type {
   UpdateDoctorRequest,
   UpdateDoctorSelfProfileRequest,
   UpdateSpecialtyRequest,
+  UpdateEmergencyNoticeRequest,
   UpdateTelehealthThemeSettingsRequest,
   UpsertIntakeRequest,
 } from "./types";
@@ -624,4 +625,9 @@ export function getTelehealthThemeSettings(): Promise<TelehealthThemeSettings> {
 /** `PATCH /admin/telehealth/settings` — yalnızca ADMIN/MANAGER (EDITOR → 403). KISMİ gövde. */
 export function updateTelehealthThemeSettings(input: UpdateTelehealthThemeSettingsRequest): Promise<TelehealthThemeSettings> {
   return apiFetch<TelehealthThemeSettings>("/admin/telehealth/settings", { method: "PATCH", body: input });
+}
+
+/** `PATCH /admin/telehealth/settings/emergency-notice` — acil durum uyarısı; YALNIZCA ADMIN (diğerleri 403). */
+export function updateEmergencyNoticeSettings(input: UpdateEmergencyNoticeRequest): Promise<TelehealthThemeSettings> {
+  return apiFetch<TelehealthThemeSettings>("/admin/telehealth/settings/emergency-notice", { method: "PATCH", body: input });
 }

@@ -8021,6 +8021,103 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "422": { $ref: "#/components/responses/ValidationError" }
 
+  /telehealth/theme:
+    get:
+      tags: [TeleHealth]
+      summary: Randevu sihirbazı tema renkleri + acil durum uyarısı ayarı (PUBLIC)
+      description: >
+        Kimlik doğrulama GEREKTİRMEZ. `SiteModule(key="telehealth").settings` JSON'undan okunur;
+        eksik/bozuk alanlar varsayılana düşer. `emergencyNotice.enabled` yalnızca açıkça `false`
+        kaydedildiyse `false` döner (varsayılan AÇIK). `summary`/`full` yalnızca admin'in girdiği
+        dillerin metinlerini taşır — olmayan dilde frontend sözlük varsayılanını gösterir.
+      security: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/TelehealthSettings" }
+
+  /admin/telehealth/settings:
+    get:
+      tags: [TeleHealth]
+      summary: Tele-sağlık tema ayarları + acil durum uyarısı (panel rolleri okuyabilir)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/TelehealthSettings" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    patch:
+      tags: [TeleHealth]
+      summary: Tema renklerini KISMİ güncelle (yalnızca ADMIN/MANAGER — EDITOR 403)
+      description: >
+        Gövde 0-4 renk alanı taşır; gönderilmeyen renkler korunur. `settings` JSON'undaki diğer
+        anahtarlar (ör. `emergencyNotice`) KORUNUR — tema kaydı acil durum uyarısı ayarını SİLMEZ.
+        Bilinmeyen alanlar yok sayılır.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateTelehealthThemeSettingsRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/TelehealthSettings" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/telehealth/settings/emergency-notice:
+    patch:
+      tags: [TeleHealth]
+      summary: Acil durum uyarısı anahtarı ve metinleri (YALNIZCA ADMIN — MANAGER/EDITOR 403)
+      description: >
+        `enabled` yalnızca `/doctors*` ve `/specialties*` sayfalarındaki header altı şeridi kontrol
+        eder; görüşme ekranındaki (`/consultation/*`) şerit ve doktor detay sayfasındaki uyarı kartı
+        her zaman gösterilir.
+        `summary`/`full` dil kodu → düz metin; `null` o dilin özel metnini siler (sözlük varsayılanına
+        döner). Sınırlar: özet 10–90, tam metin 20–300 karakter (trim sonrası); HTML reddedilir (422).
+        İçerik kuralı: `en` metinleri "emergency", `tr` metinleri "acil" kelimesini (büyük/küçük harf
+        duyarsız) içermelidir, aksi halde 422; diğer dillerde bu kontrol uygulanmaz.
+        En az bir alan zorunlu. Tema renkleri KORUNUR. Her değişiklik denetim kaydına
+        `telehealth.emergency_notice.update` eylemiyle yazılır (`metadata.before`/`after`, anahtar
+        değiştiyse `enabledChanged: {from, to}`), ardından site önbelleği yenilenir.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateEmergencyNoticeRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/TelehealthSettings" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
   # ==========================================================================
   # TeleHealth — §9.7 TADİLAT TURU 2: çoklu slot rezervasyonu (booking), ödeme,
   # sağlık verisi (intake + belge), doktor/hasta portalı.
@@ -19255,6 +19352,56 @@ components:
         commissionCents: { type: integer }
         netCents: { type: integer }
 
+    TelehealthSettings:
+      type: object
+      required: [primaryColor, secondaryColor, accentColor, calendarActiveBg, emergencyNotice]
+      properties:
+        primaryColor: { type: string, pattern: "^#[0-9a-fA-F]{6}$" }
+        secondaryColor: { type: string, pattern: "^#[0-9a-fA-F]{6}$" }
+        accentColor: { type: string, pattern: "^#[0-9a-fA-F]{6}$" }
+        calendarActiveBg: { type: string, pattern: "^#[0-9a-fA-F]{6}$" }
+        emergencyNotice: { $ref: "#/components/schemas/EmergencyNoticeSettings" }
+    UpdateTelehealthThemeSettingsRequest:
+      type: object
+      properties:
+        primaryColor: { type: string, pattern: "^#[0-9a-fA-F]{6}$" }
+        secondaryColor: { type: string, pattern: "^#[0-9a-fA-F]{6}$" }
+        accentColor: { type: string, pattern: "^#[0-9a-fA-F]{6}$" }
+        calendarActiveBg: { type: string, pattern: "^#[0-9a-fA-F]{6}$" }
+    EmergencyNoticeSettings:
+      type: object
+      required: [enabled, summary, full]
+      properties:
+        enabled:
+          type: boolean
+          description: /doctors ve /specialties şeridi gösterilsin mi (varsayılan true). Görüşme ekranı şeridini ve doktor detay kartını ETKİLEMEZ.
+        summary:
+          type: object
+          description: Dil kodu → şeridin kapalı hâlindeki özet (10–90 karakter, düz metin).
+          additionalProperties: { type: string, minLength: 10, maxLength: 90 }
+        full:
+          type: object
+          description: Dil kodu → tam metin (şeridin açık hâli + doktor detay kartı; 20–300 karakter, düz metin).
+          additionalProperties: { type: string, minLength: 20, maxLength: 300 }
+    UpdateEmergencyNoticeRequest:
+      type: object
+      minProperties: 1
+      properties:
+        enabled: { type: boolean }
+        summary:
+          type: object
+          maxProperties: 10
+          additionalProperties:
+            oneOf:
+              - { type: string, minLength: 10, maxLength: 90 }
+              - { type: "null" }
+        full:
+          type: object
+          maxProperties: 10
+          additionalProperties:
+            oneOf:
+              - { type: string, minLength: 20, maxLength: 300 }
+              - { type: "null" }
     TelehealthOverview:
       type: object
       description: >
