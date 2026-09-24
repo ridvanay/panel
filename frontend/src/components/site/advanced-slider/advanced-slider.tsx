@@ -9,6 +9,7 @@ import { DEFAULT_CONTAINER_MAX_WIDTH, type BlockChrome } from "@/lib/page-builde
 import { SlideLayerView } from "./slide-layer";
 import { usePointerSwipe } from "./use-pointer-swipe";
 import { useResolvedLayers } from "./resolve-responsive";
+import { orderLayersForStack, stackPaddingInlinePercent, useStackedSliderLayout } from "./stacked-layout";
 
 /** §5.1 architect — eşik 50px VEYA hız > 0.4px/ms; `slide` track sürüklemesinde de AYNI eşik. */
 const SWIPE_THRESHOLD_PX = 50;
@@ -127,6 +128,11 @@ function SlideOverlay({ slide }: { slide: PublicSlide }) {
   return <div className="absolute inset-0" style={{ backgroundColor: hexToRgba(slide.bgOverlayColor, slide.bgOverlayOpacity) }} aria-hidden />;
 }
 
+/** Akış düzeninde (1280px altı) içeriğin üst/alt iç boşluğu; altta gezinme noktaları için ek pay. */
+const STACK_PADDING_TOP_PX = 32;
+const STACK_PADDING_BOTTOM_PX = 32;
+const STACK_PADDING_BOTTOM_WITH_BULLETS_PX = 56;
+
 function SlideStage({
   slide,
   index,
@@ -134,6 +140,9 @@ function SlideStage({
   total,
   sliderName,
   reducedMotion,
+  stacked,
+  reserveBottomPx,
+  onStackContentHeight,
 }: {
   slide: PublicSlide;
   index: number;
@@ -141,9 +150,25 @@ function SlideStage({
   total: number;
   sliderName: string;
   reducedMotion: boolean;
+  stacked: boolean;
+  reserveBottomPx: number;
+  /** Akış düzeninde içerik yüksekliği (px) — kök, slider'ı en az bu kadar uzatır (kırpma olmaz). */
+  onStackContentHeight: (heightPx: number) => void;
 }) {
   const isActive = index === active;
   const resolvedLayers = useResolvedLayers(slide.layers);
+  const stackedLayers = useMemo(() => (stacked ? orderLayersForStack(resolvedLayers) : []), [stacked, resolvedLayers]);
+  const stackRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = stackRef.current;
+    if (!stacked || !isActive || !el || typeof ResizeObserver === "undefined") return;
+    const report = () => onStackContentHeight(el.offsetHeight);
+    report();
+    const observer = new ResizeObserver(report);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [stacked, isActive, stackedLayers, onStackContentHeight]);
 
   return (
     <div
@@ -169,13 +194,35 @@ function SlideStage({
           tabIndex={isActive ? 0 : -1}
         />
       )}
-      <div className="absolute inset-0 z-10">
+      <div className={cn("absolute inset-0 z-10", stacked && "flex flex-col")}>
         <AnimatePresence>
-          {isActive && (
-            <motion.div key={`layers-${slide.id}`} className="absolute inset-0" initial={false}>
-              {resolvedLayers.map((layer, li) => (!layer.hidden ? <SlideLayerView key={layer.id} layer={layer} layerIndex={li} reducedMotion={reducedMotion} /> : null))}
-            </motion.div>
-          )}
+          {isActive &&
+            (stacked ? (
+              // 1280px altı — alt alta akış (bkz. `stacked-layout.ts`). `my-auto`: içerik kısaysa dikeyde
+              // ortalanır; uzunsa kök slider bu yüksekliğe göre uzar (`onStackContentHeight`).
+              <motion.div
+                key={`layers-${slide.id}`}
+                ref={stackRef}
+                initial={false}
+                className="relative my-auto flex w-full flex-col gap-3 md:gap-4"
+                style={{
+                  // Sol boşluk tasarımdaki sol kenarı korur; sağda yalnızca küçük bir pay (en fazla %4)
+                  // bırakılır ki dar ekranda satırlar gereksiz yere kırılmasın.
+                  paddingLeft: `${stackPaddingInlinePercent(stackedLayers)}%`,
+                  paddingRight: `${Math.min(4, stackPaddingInlinePercent(stackedLayers))}%`,
+                  paddingTop: STACK_PADDING_TOP_PX,
+                  paddingBottom: reserveBottomPx,
+                }}
+              >
+                {stackedLayers.map((layer, li) => (
+                  <SlideLayerView key={layer.id} layer={layer} layerIndex={li} reducedMotion={reducedMotion} stacked />
+                ))}
+              </motion.div>
+            ) : (
+              <motion.div key={`layers-${slide.id}`} className="absolute inset-0" initial={false}>
+                {resolvedLayers.map((layer, li) => (!layer.hidden ? <SlideLayerView key={layer.id} layer={layer} layerIndex={li} reducedMotion={reducedMotion} /> : null))}
+              </motion.div>
+            ))}
         </AnimatePresence>
       </div>
     </div>
@@ -237,6 +284,21 @@ export function AdvancedSlider({ slider, chrome = "page" }: { slider: PublicSlid
 
   const rootRef = useRef<HTMLDivElement>(null);
   const trackWrapRef = useRef<HTMLDivElement>(null);
+
+  // 1280px altı akış düzeni (bkz. `stacked-layout.ts`) — slider en az içerik kadar yüksek olur
+  // (içerik kısaysa oran/sabit yükseklik korunur). Slaytlar arasında zıplama olmasın diye görülen
+  // EN YÜKSEK değer tutulur; genişlik sınıfı değişince sıfırlanır. ≥1280px'te `minHeight` HİÇ uygulanmaz.
+  const stacked = useStackedSliderLayout();
+  const [stackMinHeight, setStackMinHeight] = useState(0);
+  const [stackedPrev, setStackedPrev] = useState(stacked);
+  if (stackedPrev !== stacked) {
+    setStackedPrev(stacked);
+    setStackMinHeight(0);
+  }
+  const handleStackContentHeight = useCallback((heightPx: number) => {
+    setStackMinHeight((prev) => (heightPx > prev ? heightPx : prev));
+  }, []);
+  const stackReserveBottomPx = slider.showBullets && slides.length > 1 ? STACK_PADDING_BOTTOM_WITH_BULLETS_PX : STACK_PADDING_BOTTOM_PX;
 
   const desktopHeight = useMemo(
     () => heightStyle(slider.heightMode, slider.heightPx, slider.aspectRatioWidth, slider.aspectRatioHeight),
@@ -362,7 +424,7 @@ export function AdvancedSlider({ slider, chrome = "page" }: { slider: PublicSlid
       onFocus={() => slider.pauseOnHover && setHoverPaused(true)}
       onBlur={() => slider.pauseOnHover && setHoverPaused(false)}
       className="advanced-slider group/slider relative w-full overflow-hidden bg-black/5 outline-none"
-      style={desktopHeight}
+      style={stacked && stackMinHeight > 0 ? { ...desktopHeight, minHeight: stackMinHeight } : desktopHeight}
     >
       {mobileOverrideNeeded && mobileHeight && (
         <style>{`@media (max-width: 767px) { #${rootId} { ${cssDeclarations(mobileHeight)} } }`}</style>
@@ -388,7 +450,17 @@ export function AdvancedSlider({ slider, chrome = "page" }: { slider: PublicSlid
           >
             {slides.map((slide, index) => (
               <div key={slide.id} className="relative h-full shrink-0" style={{ width: trackWidth ? `${trackWidth}px` : "100%" }}>
-                <SlideStage slide={slide} index={index} active={active} total={slides.length} sliderName={slider.name} reducedMotion={reducedMotion} />
+                <SlideStage
+                  slide={slide}
+                  index={index}
+                  active={active}
+                  total={slides.length}
+                  sliderName={slider.name}
+                  reducedMotion={reducedMotion}
+                  stacked={stacked}
+                  reserveBottomPx={stackReserveBottomPx}
+                  onStackContentHeight={handleStackContentHeight}
+                />
               </div>
             ))}
           </motion.div>
@@ -397,7 +469,17 @@ export function AdvancedSlider({ slider, chrome = "page" }: { slider: PublicSlid
             const motionProps = crossfadeMotionProps(transitionEffect, index, active, transitionDurationSec);
             return (
               <motion.div key={slide.id} className="absolute inset-0" animate={motionProps.animate} transition={motionProps.transition} style={motionProps.style}>
-                <SlideStage slide={slide} index={index} active={active} total={slides.length} sliderName={slider.name} reducedMotion={reducedMotion} />
+                <SlideStage
+                  slide={slide}
+                  index={index}
+                  active={active}
+                  total={slides.length}
+                  sliderName={slider.name}
+                  reducedMotion={reducedMotion}
+                  stacked={stacked}
+                  reserveBottomPx={stackReserveBottomPx}
+                  onStackContentHeight={handleStackContentHeight}
+                />
               </motion.div>
             );
           })

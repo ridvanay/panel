@@ -7,6 +7,7 @@ import { SLIDER_BUTTON_SIZE_CLASS, SLIDER_BUTTON_VARIANT_CLASS, LAYER_FONT_FAMIL
 import { SLIDER_LAYER_OUT_DURATION_MS } from "@/lib/sliders/types";
 import { ORIGIN_PERCENT, IN_EFFECT_VARIANTS, buildLayerContentStyle, buildLayerTransition } from "@/lib/sliders/layer-render";
 import type { ResolvedSliderLayer } from "./resolve-responsive";
+import { stackAlignSelf } from "./stacked-layout";
 import { cn } from "@/lib/utils";
 
 function buttonIcon(name: string | undefined, className: string) {
@@ -24,10 +25,16 @@ export function SlideLayerView({
   layer,
   layerIndex,
   reducedMotion,
+  stacked = false,
 }: {
   layer: ResolvedSliderLayer;
   layerIndex: number;
   reducedMotion: boolean;
+  /**
+   * `true` (1280px altı): katman mutlak konumla değil, alt alta akış içinde render edilir —
+   * konum yalnızca sıralama ve yatay hiza için kullanılır (bkz. `stacked-layout.ts`).
+   */
+  stacked?: boolean;
 }) {
   if (layer.hidden) return null;
 
@@ -44,14 +51,18 @@ export function SlideLayerView({
 
   return (
     <div
-      className="absolute"
-      style={{
-        left: `${position.xPercent}%`,
-        top: `${position.yPercent}%`,
-        transform: `translate(-${origin.x}%, -${origin.y}%) translate(${offsetX}px, ${offsetY}px)`,
-        width: position.widthPercent ? `${position.widthPercent}%` : undefined,
-        zIndex: position.zIndex ?? layerIndex,
-      }}
+      className={stacked ? "relative max-w-full" : "absolute"}
+      style={
+        stacked
+          ? { alignSelf: stackAlignSelf(layer) }
+          : {
+              left: `${position.xPercent}%`,
+              top: `${position.yPercent}%`,
+              transform: `translate(-${origin.x}%, -${origin.y}%) translate(${offsetX}px, ${offsetY}px)`,
+              width: position.widthPercent ? `${position.widthPercent}%` : undefined,
+              zIndex: position.zIndex ?? layerIndex,
+            }
+      }
     >
       <motion.div
         initial={initial}
