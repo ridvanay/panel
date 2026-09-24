@@ -64,7 +64,9 @@ export default async function SiteLayout({
           <DoctorPortalRouteGuard />
           <SiteHeader
             settings={settings}
-            pages={pages}
+            // Yalnızca menüde kullanılan alanlar — bkz. `SiteHeaderProps.pages` yorumu (RSC verisine
+            // sayfaların blok/çeviri içeriği sızmasın).
+            pages={pages.map(({ id, slug, title }) => ({ id, slug, title }))}
             navigationItems={navigation.navigationItems}
             ctaLabel={navigation.headerCtaLabel}
             ctaHref={navigation.headerCtaHref}

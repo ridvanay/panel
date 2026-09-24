@@ -1,23 +1,22 @@
-import Image from "next/image";
 import Link from "next/link";
 import { ArrowDown, MapPin } from "lucide-react";
-import type { AboutStrings } from "@/lib/i18n/site-dictionaries";
+import type { AboutPageContent } from "@/lib/about-page";
+import { SafeImage } from "@/components/site/safe-image";
 import { Eyebrow } from "./eyebrow";
 import { aboutButtonClass, aboutContainerClass } from "./about-buttons";
 
 interface AboutHeroProps {
-  dict: AboutStrings;
+  hero: AboutPageContent["hero"];
   homeLabel: string;
+  breadcrumbCurrent: string;
   homeHref: string;
-  bookHref: string;
-  /** `false` iken (doktor bölümü gizliyse) "#doctors" bağlantısı render edilmez — ölü çapa olmasın. */
-  showMeetDoctorsLink: boolean;
-  /** Fotoğraf eklendiğinde verilir; verilmezse nötr yer tutucu gösterilir. */
-  imageSrc?: string;
-  imageAlt?: string;
+  /** Dile göre çözülmüş birincil CTA hedefi. */
+  primaryHref: string;
+  /** Dile göre çözülmüş ikincil CTA hedefi — `null` ise (ör. hedef çapa gizli bir bölümdeyse) link render edilmez. */
+  secondaryHref: string | null;
 }
 
-export function AboutHero({ dict, homeLabel, homeHref, bookHref, showMeetDoctorsLink, imageSrc, imageAlt = "" }: AboutHeroProps) {
+export function AboutHero({ hero, homeLabel, breadcrumbCurrent, homeHref, primaryHref, secondaryHref }: AboutHeroProps) {
   return (
     <section className="bg-background">
       <div className={`${aboutContainerClass} pt-8 pb-16 sm:pt-10 lg:pb-24`}>
@@ -30,29 +29,29 @@ export function AboutHero({ dict, homeLabel, homeHref, bookHref, showMeetDoctors
             </li>
             <li aria-hidden="true">/</li>
             <li aria-current="page" className="font-medium text-foreground">
-              {dict.breadcrumbCurrent}
+              {breadcrumbCurrent}
             </li>
           </ol>
         </nav>
 
         <div className="mt-6 grid items-center gap-10 lg:mt-10 lg:grid-cols-2 lg:gap-16">
           <div>
-            <Eyebrow>{dict.heroEyebrow}</Eyebrow>
+            <Eyebrow>{hero.eyebrow}</Eyebrow>
             <h1 className="about-serif mt-5 text-4xl leading-[1.1] tracking-tight text-foreground sm:text-5xl lg:text-[56px]">
-              {dict.heroTitle}
+              {hero.title}
             </h1>
-            <p className="mt-6 max-w-xl text-base leading-relaxed text-[var(--about-body-text)] sm:text-lg">{dict.heroBody}</p>
+            <p className="mt-6 max-w-xl text-base leading-relaxed text-[var(--about-body-text)] sm:text-lg">{hero.body}</p>
             <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-3">
-              <Link href={bookHref} className={aboutButtonClass.primary}>
-                {dict.bookConsultationCta}
+              <Link href={primaryHref} className={aboutButtonClass.primary}>
+                {hero.primaryCta.label}
               </Link>
-              {showMeetDoctorsLink && (
+              {secondaryHref && (
                 <a
-                  href="#doctors"
+                  href={secondaryHref}
                   className="inline-flex min-h-11 items-center gap-2 text-base font-semibold text-primary underline-offset-4 hover:underline"
                 >
-                  {dict.meetDoctorsCta}
-                  <ArrowDown className="size-4" aria-hidden="true" />
+                  {hero.secondaryCta.label}
+                  {secondaryHref.startsWith("#") && <ArrowDown className="size-4" aria-hidden="true" />}
                 </a>
               )}
             </div>
@@ -60,10 +59,10 @@ export function AboutHero({ dict, homeLabel, homeHref, bookHref, showMeetDoctors
 
           <div className="relative">
             <div className="relative aspect-[4/3] overflow-hidden rounded-[28px] bg-[var(--about-accent-tint)] sm:aspect-[5/4]">
-              {imageSrc ? (
-                <Image src={imageSrc} alt={imageAlt} fill priority sizes="(min-width: 1024px) 600px, 100vw" className="object-cover" />
+              {hero.imageUrl ? (
+                <SafeImage src={hero.imageUrl} alt={hero.imageAlt} fill priority sizes="(min-width: 1024px) 600px, 100vw" className="object-cover" />
               ) : (
-                // Nötr yer tutucu — fotoğraf eklenene kadar. Dekoratif, ekran okuyucudan gizli.
+                // Nötr yer tutucu — görsel seçilene kadar. Dekoratif, ekran okuyucudan gizli.
                 <div
                   className="absolute inset-0 bg-[linear-gradient(135deg,var(--about-accent-tint),color-mix(in_oklch,var(--site-primary)_14%,var(--site-surface)))]"
                   aria-hidden="true"
@@ -76,8 +75,8 @@ export function AboutHero({ dict, homeLabel, homeHref, bookHref, showMeetDoctors
                 <MapPin className="size-5" aria-hidden="true" />
               </span>
               <div className="min-w-0">
-                <p className="font-bold text-foreground">{dict.locationTitle}</p>
-                <p className="text-sm text-[var(--about-muted-text)]">{dict.locationSubtitle}</p>
+                <p className="font-bold text-foreground">{hero.locationTitle}</p>
+                <p className="text-sm text-[var(--about-muted-text)]">{hero.locationSubtitle}</p>
               </div>
             </div>
           </div>

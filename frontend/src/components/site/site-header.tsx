@@ -23,7 +23,12 @@ import { cn } from "@/lib/utils";
 
 interface SiteHeaderProps {
   settings: SiteSettings;
-  pages: SitePage[];
+  /**
+   * Yedek menü için YALNIZCA `id`/`slug`/`title` kullanılır. Bu bir istemci bileşeni olduğu için
+   * verilen her alan sayfanın RSC verisine serileştirilir — tam `SitePage` (bloklar + TÜM dillerin
+   * çevirileri) geçirilirse her sayfa, yayındaki bütün sayfaların içeriğini gizli veri olarak taşır.
+   */
+  pages: Pick<SitePage, "id" | "slug" | "title">[];
   /** Doluysa header menüsü bunu kullanır; boş/undefined ise `pages` + sabit "Blog" linkine düşer (geriye dönük uyumluluk). */
   navigationItems?: NavigationItemDto[];
   ctaLabel?: string | null;

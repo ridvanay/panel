@@ -52,6 +52,10 @@ export const TEMPLATE_EDITABLE_FIELDS: Record<string, readonly string[]> = {
   // parti bir iframe kaynağını (`embedUrl`) veya bir adresi belirlemek `custom-html` ile AYNI
   // sınıfta "gelişmiş" bir eylemdir.
   "google-map": [],
+  // "Hakkımızda" şablonu (bkz. lib/about-page-template.ts) — Yazar rolü bölümlerin İÇERİĞİNİ
+  // (metin, bağlantı, liste öğeleri, göster/gizle, kurucu seçimi) düzenleyebilir; bloğun kendisi
+  // (tek kök düğüm) şablon modunda silinemez/taşınamaz.
+  "about-page": ["data.hero", "data.treatments", "data.approach", "data.doctors", "data.closing"],
   // Saf düzen elemanları — şablon modunda tamamen kilitli.
   divider: [],
   // §3.3 — KESİN istisna: ham HTML yazmak tanım gereği "gelişmiş" bir eylemdir, `data.html`

@@ -1609,7 +1609,56 @@ export type ContentBlockType =
   | "gallery"
   | "cta"
   | "featured-products"
-  | "featured-portfolio";
+  | "featured-portfolio"
+  // "Hakkımızda" şablonu — YALNIZCA tek kök düğüm olarak (openapi.yaml `AboutPageBlockData`).
+  | "about-page";
+
+/**
+ * `about-page` bloğunun `data` şekli — openapi.yaml `AboutPageBlockData`, backend
+ * `pages.schemas.ts::AboutPageBlockSchema`, frontend `lib/about-page.ts::AboutPageContent`.
+ * Tüm metinler düz metindir; boş string = public sayfada sözlük varsayılanı. Şema/migration
+ * değişikliği YOKTUR (içerik `Page.blocks` / `translations.<locale>.blocks` içinde yaşar).
+ */
+export type AboutPageIcon =
+  | "Scale" | "Ribbon" | "Baby" | "Smile" | "Scissors" | "Sparkles" | "Stethoscope" | "ClipboardCheck"
+  | "Globe" | "HeartPulse" | "Heart" | "Brain" | "Bone" | "Eye" | "Activity" | "ShieldCheck"
+  | "ShieldPlus" | "Syringe" | "Pill" | "Microscope" | "Hospital" | "Users" | "Handshake" | "Plane"
+  | "MapPin" | "Award" | "Clock" | "MessageCircle" | "Languages" | "BadgeCheck";
+
+/** `href`: boş, SafeHref (`/…`, `http(s)://`) veya sayfa içi çapa (`#doctors`). */
+export interface AboutPageCta {
+  label: string;
+  href: string;
+}
+
+export interface AboutPageBlockData {
+  hero: {
+    eyebrow: string;
+    title: string;
+    body: string;
+    primaryCta: AboutPageCta;
+    secondaryCta: AboutPageCta;
+    imageUrl: string;
+    imageAlt: string;
+    locationTitle: string;
+    locationSubtitle: string;
+  };
+  treatments: { enabled: boolean; eyebrow: string; title: string; body: string; items: { id: string; name: string; icon: AboutPageIcon }[] };
+  /** Numaralar sıradan üretilir, saklanmaz. */
+  approach: { enabled: boolean; eyebrow: string; title: string; items: { id: string; title: string; body: string; icon: AboutPageIcon }[] };
+  doctors: {
+    enabled: boolean;
+    eyebrow: string;
+    title: string;
+    ctaLabel: string;
+    /** 1–6 */
+    count: number;
+    /** `DoctorProfile.id`; pasif/silinmişse etiketsiz ilk `count` doktor gösterilir. */
+    founderDoctorId: string | null;
+    founderLabel: string;
+  };
+  closing: { title: string; primaryCta: AboutPageCta; secondaryCta: AboutPageCta };
+}
 
 /** Kanonik konteyner düğümü tipi. */
 export type ContainerNodeType = "container";

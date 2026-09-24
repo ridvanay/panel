@@ -1,13 +1,14 @@
 import Link from "next/link";
 import type { DoctorProfile } from "@/lib/api/types";
-import type { AboutStrings, TelehealthStrings } from "@/lib/i18n/site-dictionaries";
+import type { AboutPageContent } from "@/lib/about-page";
+import type { TelehealthStrings } from "@/lib/i18n/site-dictionaries";
 import { DoctorCard } from "@/components/site/telehealth/doctor-card";
 import { Badge } from "@/components/ui/badge";
 import { Eyebrow } from "./eyebrow";
 import { aboutButtonClass, aboutContainerClass } from "./about-buttons";
 
 interface AboutDoctorsProps {
-  dict: AboutStrings;
+  section: AboutPageContent["doctors"];
   telehealthDict: TelehealthStrings;
   doctors: DoctorProfile[];
   founderId: string | null;
@@ -18,11 +19,11 @@ interface AboutDoctorsProps {
 }
 
 /**
- * Mevcut `DoctorCard` ile en fazla 3 doktor. Uzmanlık adı doğrudan veritabanından gelir (canlıda
- * admin panelinden çevrilmiş). Çağıran sayfa `doctors` boşsa bu bölümü HİÇ render etmez.
+ * Mevcut `DoctorCard` ile admin'in seçtiği sayıda (1–6) doktor. Uzmanlık adı doğrudan
+ * veritabanından gelir. Çağıran sayfa bölüm kapalıysa veya `doctors` boşsa bunu HİÇ render etmez.
  */
 export function AboutDoctors({
-  dict,
+  section,
   telehealthDict,
   doctors,
   founderId,
@@ -35,16 +36,16 @@ export function AboutDoctors({
     <section id="doctors" className="scroll-mt-24 bg-card" aria-labelledby="about-doctors-title">
       <div className={`${aboutContainerClass} grid gap-8 py-16 sm:grid-cols-[1fr_auto] sm:items-end lg:py-24`}>
         <div>
-          <Eyebrow>{dict.doctorsEyebrow}</Eyebrow>
+          <Eyebrow>{section.eyebrow}</Eyebrow>
           <h2 id="about-doctors-title" className="about-serif mt-5 text-3xl leading-tight text-foreground sm:text-4xl">
-            {dict.doctorsTitle}
+            {section.title}
           </h2>
         </div>
 
         {/* Mobilde kartların ALTINA iner (`order-last`), sm+ başlığın sağında durur. */}
         <div className="order-last sm:order-none">
           <Link href={doctorsHref} className={aboutButtonClass.outlinePrimary}>
-            {dict.viewAllDoctorsCta}
+            {section.ctaLabel}
           </Link>
         </div>
 
@@ -60,7 +61,7 @@ export function AboutDoctors({
                 badge={
                   doctor.id === founderId ? (
                     <Badge size="sm" className="bg-[var(--about-accent-tint)] font-semibold uppercase tracking-wider text-primary">
-                      {dict.founderBadge}
+                      {section.founderLabel}
                     </Badge>
                   ) : undefined
                 }

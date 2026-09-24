@@ -360,3 +360,92 @@ describe("demo-templates importer — bugfix: ecommerce-pro force-reapply sonras
     expect(linkedProductCount).toBeGreaterThan(0);
   });
 });
+
+/**
+ * "Hakkımızda" koruma regresyonu — Demo Şablonlar "uygula" işlemi `about` sayfasını SİLMEZ ve
+ * EZMEZ. Importer sayfalara yalnızca EKLEME yapar (`tx.page.create`, çakışan slug'ı otomatik
+ * benzersizleştirir); menü/footer/sosyal link tabloları ise TAMAMEN değiştirilir (bu test onları
+ * kapsamaz — bilinen, belgelenmiş davranış). Kayıtlı TÜM şablonlar, en agresif seçeneklerle
+ * (`force: true`, `setAsHomePage: true`) uygulanır.
+ */
+describe("demo-templates importer — 'about' (Hakkımızda) sayfası korunur", () => {
+  let app: FastifyInstance;
+  let actorId: string;
+  const actorEmail = "demo-template-about-guard-admin@example.com";
+
+  beforeAll(async () => {
+    app = await buildTestApp();
+    await resetDatabase(app.prisma);
+    const admin = await registerTestUser(app, { email: actorEmail });
+    actorId = admin.userId;
+  });
+
+  afterAll(async () => {
+    await resetDatabase(app.prisma);
+    await app.close();
+  });
+
+  it("tüm şablonlar uygulandıktan sonra about kaydı, içeriği ve slug satırları birebir aynı kalır", async () => {
+    const { importDemoTemplate, listDemoTemplateSummaries } = await import("../../src/modules/demo-templates/importer");
+
+    const aboutBlocks = [{ id: "about-page-root", type: "about-page", data: { hero: { title: "Admin başlığı" } } }];
+    const about = await app.prisma.page.create({
+      data: {
+        title: "Hakkımızda",
+        slug: "about",
+        status: "PUBLISHED",
+        editMode: "TEMPLATE",
+        blocks: aboutBlocks,
+        translations: { en: { title: "About Us", blocks: aboutBlocks } },
+        publishedAt: new Date(),
+      },
+    });
+    await app.prisma.contentSlug.createMany({
+      data: [
+        { entityType: "PAGE", entityId: about.id, locale: "tr", slug: "about" },
+        { entityType: "PAGE", entityId: about.id, locale: "en", slug: "about" },
+      ],
+    });
+
+    const templates = await listDemoTemplateSummaries(app);
+    const keys = templates.map((t: { key: string }) => t.key).filter((key: string) => key !== "broken-template");
+    expect(keys.length).toBeGreaterThan(0);
+
+    const applied: string[] = [];
+    for (const templateKey of keys) {
+      try {
+        await importDemoTemplate(app, {
+          templateKey,
+          body: { confirm: true, force: true, setAsHomePage: true, enableRequiredModules: true },
+          actorId,
+          actorEmail,
+        });
+        applied.push(templateKey);
+      } catch {
+        // Bir şablonun başka bir nedenle (ör. test ortamında eksik asset) başarısız olması bu testin
+        // konusu DEĞİL — hata olsa bile about kaydına dokunulmamış olmalıdır (aşağıda doğrulanır).
+      }
+    }
+
+    // Test anlamlı olsun: en az bir şablon GERÇEKTEN uygulanmış ve yeni sayfalar eklenmiş olmalı.
+    expect(applied.length).toBeGreaterThan(0);
+    expect(await app.prisma.page.count()).toBeGreaterThan(1);
+
+    const after = await app.prisma.page.findUnique({ where: { id: about.id } });
+    expect(after).not.toBeNull();
+    expect(after!.deletedAt).toBeNull();
+    expect(after!.slug).toBe("about");
+    expect(after!.title).toBe("Hakkımızda");
+    expect(after!.status).toBe("PUBLISHED");
+    expect(after!.blocks).toEqual(aboutBlocks);
+    expect(after!.translations).toEqual({ en: { title: "About Us", blocks: aboutBlocks } });
+    expect(after!.updatedAt.getTime()).toBe(about.updatedAt.getTime());
+    expect(await app.prisma.page.count({ where: { slug: "about" } })).toBe(1);
+    expect(
+      await app.prisma.contentSlug.findMany({ where: { entityId: about.id }, select: { locale: true, slug: true }, orderBy: { locale: "asc" } })
+    ).toEqual([
+      { locale: "en", slug: "about" },
+      { locale: "tr", slug: "about" },
+    ]);
+  });
+});
