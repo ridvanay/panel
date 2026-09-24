@@ -97,7 +97,7 @@ async function resolveNotificationTemplate(app: FastifyInstance, form: ContactFo
  * `notificationError` doldurulur ve `app.log.error` ile loglanır. `notifyEmail` boşsa (bildirim
  * kapalı) sessizce atlanır — bu bir HATA DEĞİLDİR.
  */
-async function sendNotificationBestEffort(app: FastifyInstance, form: ContactForm, submission: ContactSubmission): Promise<void> {
+export async function sendNotificationBestEffort(app: FastifyInstance, form: ContactForm, submission: ContactSubmission): Promise<void> {
   if (!form.notifyEmail) return;
 
   try {

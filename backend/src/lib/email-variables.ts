@@ -78,6 +78,11 @@ const SYSTEM_VARIABLES_BY_PURPOSE: Record<EmailTemplatePurpose, EmailVariableDef
     { key: "form_title", label: "Form Başlığı", sampleValue: "İletişim", source: "system" },
     { key: "submitted_at", label: "Gönderim Tarihi", sampleValue: "17.08.2026 14:30", source: "system" },
     { key: "submission_url", label: "Yönetim Paneli Bağlantısı", sampleValue: "https://example.com/admin/contact/submissions/abc", source: "system" },
+    // İletişim sayfası (`/contact`) sabit alanları — dinamik form alanı değildir. "İlgilenilen
+    // tedavi" BİLİNÇLİ OLARAK EKLENMEZ (özel nitelikli veri; yalnızca yönetim panelinde görülür).
+    { key: "phone", label: "Telefon (iletişim sayfası)", sampleValue: "+90 555 000 00 00", source: "system" },
+    { key: "country", label: "Ülke kodu (iletişim sayfası)", sampleValue: "TR", source: "system" },
+    { key: "contact_method", label: "Tercih edilen iletişim yolu", sampleValue: "email", source: "system" },
   ],
   /**
    * [TCT] §9.7.8 (bağlayıcı) — YALNIZCA ödeme onaylandığında hastaya. **Bağlayıcı sızma

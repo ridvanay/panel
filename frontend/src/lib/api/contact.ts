@@ -1,5 +1,8 @@
 import { apiFetch, apiFetchPage } from "./client";
 import type {
+  AdminContactPage,
+  ContactPageContent,
+  ContactPageSubmissionRequest,
   ContactForm,
   ContactFormField,
   ContactSubmission,
@@ -67,4 +70,27 @@ export function getPublicContactForm() {
 
 export function submitContactForm(input: CreateContactSubmissionRequest) {
   return apiFetch<CreateContactSubmissionResponse>("/contact/submissions", { method: "POST", body: input });
+}
+
+// ---- İletişim sayfası (`/contact`) ----
+
+/** İmzalı zaman damgası — form açıldığında (ve süresi dolunca) tarayıcıdan alınır. */
+export function getContactPageToken() {
+  return apiFetch<{ token: string }>("/contact/page/token");
+}
+
+/**
+ * Gönderim TARAYICIDAN doğrudan API'ye yapılır (`NEXT_PUBLIC_API_URL`, prod'da nginx `/api`) —
+ * Next.js sunucusu aracı değildir; rate limit gerçek ziyaretçi IP'sine göre işler.
+ */
+export function submitContactPage(input: ContactPageSubmissionRequest) {
+  return apiFetch<{ id: string }>("/contact/page-submissions", { method: "POST", body: input });
+}
+
+export function getAdminContactPage() {
+  return apiFetch<AdminContactPage>("/admin/contact/page");
+}
+
+export function updateAdminContactPage(content: ContactPageContent) {
+  return apiFetch<AdminContactPage>("/admin/contact/page", { method: "PUT", body: content });
 }

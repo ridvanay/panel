@@ -30,6 +30,7 @@ import { Alert } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
 import { LinkButton } from "@/components/ui/link-button";
 import { FieldEditorRow } from "@/components/admin/contact/field-editor-row";
+import { ContactPageContentCard } from "@/components/admin/contact/contact-page-content-card";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 
 function newFieldId(): string {
@@ -212,6 +213,15 @@ export default function ContactAdminPage() {
           </span>
         </Alert>
       )}
+
+      <ContactPageContentCard />
+
+      <Alert variant="info">
+        /contact sayfası sabit alanlı bir form kullanır (ad, e-posta, telefon, ülke, tedavi, iletişim yolu, mesaj) ve
+        onay metinlerini sunucudaki onaylı metinlerden alır. Aşağıdaki &quot;Form etkin&quot;, bildirim e-postası,
+        saklama süresi ve aydınlatma metni sayfası ayarları /contact için de geçerlidir; alan listesi ve onay metni
+        yalnızca sayfalara eklenen &quot;İletişim Formu&quot; bloğunu etkiler.
+      </Alert>
 
       <Card className="space-y-4">
         <h2 className="admin-h2">Genel Ayarlar</h2>

@@ -5,6 +5,7 @@ import { telehealthStrings } from "./telehealth";
 import { legalStrings } from "./legal";
 import { errorStrings } from "./errors";
 import { aboutStrings } from "./about";
+import { contactStrings } from "./contact";
 
 /** KAYNAK dil (source of truth, `.claude/architect-scope-i18n.md` §14.2) — yeni anahtar ÖNCE buraya. */
 export const siteDictionary: SiteDictionary = {
@@ -14,4 +15,5 @@ export const siteDictionary: SiteDictionary = {
   legal: legalStrings,
   errors: errorStrings,
   about: aboutStrings,
+  contact: contactStrings,
 };

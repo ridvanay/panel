@@ -1873,6 +1873,9 @@ model ContactForm {
   consentLegalPageId     String?
   /// Gönderimlerin saklama süresi (gün). 0 = süresiz (compliance-agent onayı gerekir).
   retentionDays          Int      @default(180)
+  /// `/contact` sayfasının içeriği (dil başına başlık/metin/iletişim bilgileri/çalışma saatleri +
+  /// harita görseli/bağlantısı) — bkz. `modules/contact/contact-page.ts::ContactPageContentSchema`.
+  pageContent            Json     @default("{}")
   updatedById            String?
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt

@@ -1,7 +1,7 @@
 import { cache } from "react";
 import type { SiteDictionary, SiteUiLocale } from "./types";
 
-export type { SiteDictionary, SiteUiLocale, CommonStrings, NavStrings, TelehealthStrings, LegalStrings, ErrorStrings, AboutStrings } from "./types";
+export type { SiteDictionary, SiteUiLocale, CommonStrings, NavStrings, TelehealthStrings, LegalStrings, ErrorStrings, AboutStrings, ContactStrings } from "./types";
 
 /**
  * `.claude/architect-scope-i18n.md` §14.2 — KAYNAK dil. Bilinmeyen/sözlüğü olmayan bir dil

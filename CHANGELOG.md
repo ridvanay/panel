@@ -13,6 +13,24 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
 
 ### Added
 
+- **`feat(site)`: İletişim sayfası (`/contact`) yeniden tasarlandı.** Breadcrumb, "Contact" etiketi,
+  Hakkımızda ile aynı serif başlık; masaüstünde form (7/12) + bilgi kartları (5/12): iletişim
+  bilgileri (telefon, WhatsApp, e-posta, adres — tıklanabilir), çalışma saatleri, TeleHealth acil
+  durum uyarısının özet metni ve harita (statik görsel + "Google Haritalar'da aç"; iframe ve üçüncü
+  taraf çerezi YOK). Mobilde tek kolon, başlığın altında Ara/WhatsApp düğmeleri. Form: ad soyad,
+  e-posta, ülke kodlu telefon, ülke (tam liste), ilgilenilen tedavi (Uzmanlıklar modülünden +
+  "Henüz emin değilim", isteğe bağlı), tercih edilen iletişim yolu, mesaj, aydınlatma metni onayı.
+  Tedavi seçilirse ayrı, varsayılan işaretsiz ve zorunlu açık rıza kutusu çıkar; metin kopyası ve
+  zamanı gönderimle saklanır (compliance-agent onaylı metinler). Doğrulama istemci + sunucu; hatalar
+  alanın altında, ilk hatalı alana odak; hata olursa veri kaybolmaz. Spam: honeypot + 5/dk rate
+  limit + imzalı zaman damgası (security-agent). Gönderim tarayıcıdan doğrudan API'ye; kayıtlar
+  mevcut Admin → İletişim → Gelen Kutusu'nda, bildirim mevcut e-posta şablonuyla (tedavi e-postaya
+  yazılmaz). Admin → İletişim'e "İletişim sayfası" kartı (TR/EN ayrı metinler ve iletişim
+  bilgileri, çalışma saati satırları, harita görseli/bağlantısı). Yeni uçlar: `GET /contact/page`,
+  `GET /contact/page/token`, `POST /contact/page-submissions`, `GET|PUT /admin/contact/page`.
+  **Şema değişikliği:** `contact_forms.pageContent` (JSONB, varsayılan `{}`) — migration
+  `20260926092000_add_contact_page_content`.
+
 - **`feat(site)`: Canlı sohbet düğmesi alt çubuklarla çakışmıyor; konum seçeneği (sağ alt / sol alt).**
   Ekranın altına sabitlenen her çubuk (`data-bottom-bar`: çerez bildirimi, doktor sayfasının mobil
   randevu çubuğu, ürün sepete ekle çubuğu) ortak bir gözlemciyle ölçülür ve `--site-bottom-inset`
