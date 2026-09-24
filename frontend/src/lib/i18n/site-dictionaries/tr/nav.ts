@@ -12,4 +12,10 @@ export const navStrings: NavStrings = {
   loginAriaLabel: "Giriş yap",
   wishlistAriaLabel: "Favorilerim",
   cartAriaLabel: "Sepet, {count} ürün",
+  openMenu: "Menüyü aç",
+  closeMenu: "Menüyü kapat",
+  menuTitle: "Menü",
+  languageHeading: "Dil",
+  wishlist: "Favorilerim",
+  cart: "Sepet",
 };
