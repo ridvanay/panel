@@ -20,6 +20,8 @@ export const SETTINGS_ID = "singleton";
 export const DEFAULTS = {
   siteName: "WM Health Istanbul",
   logoUrl: null as string | null,
+  faviconUrl: null as string | null,
+  appleTouchIconUrl: null as string | null,
   tagline: "Uzman Doktorlarla Güvenli Online Görüşme" as string | null,
   headerLogoHeight: null as number | null,
   headerLogoMaxWidth: null as number | null,

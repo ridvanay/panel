@@ -1190,6 +1190,11 @@ model SiteSettings {
   id                         String       @id @default("singleton")
   siteName                   String       @default("Site")
   logoUrl                    String?
+  // Site simgesi (favicon) ve Apple touch icon — medya kütüphanesinden seçilen PNG'nin URL'i.
+  // `null` = varsayılan simge (`frontend/public/favicon.ico`). SVG bilinçli olarak desteklenmez
+  // (medya kütüphanesi SVG'yi XSS riski nedeniyle reddeder; ayrı bir iş olarak ele alınacak).
+  faviconUrl                 String?
+  appleTouchIconUrl          String?
   // WP "Tagline" — footer'da logo/site adının altında gösterilir, opsiyonel
   tagline                    String?
   // Header logo render yüksekliği/opsiyonel max-genişlik tavanı — footer logosu bundan

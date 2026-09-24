@@ -1692,6 +1692,10 @@ export type SiteTemplate = "SHOWCASE" | "COMMERCE" | "PORTFOLIO";
 export interface SiteSettings {
   siteName: string;
   logoUrl: string | null;
+  /** Site simgesi (PNG). `null`/yok = varsayılan `/favicon.ico`. */
+  faviconUrl?: string | null;
+  /** Apple touch icon (PNG, önerilen 180×180). `null`/yok = favicon kullanılır. */
+  appleTouchIconUrl?: string | null;
   tagline: string | null;
   homePageId: string | null;
   siteTemplate: SiteTemplate;
@@ -1755,6 +1759,8 @@ export interface SiteSettings {
 export interface UpdateSiteSettingsRequest {
   siteName?: string;
   logoUrl?: string | null;
+  faviconUrl?: string | null;
+  appleTouchIconUrl?: string | null;
   tagline?: string | null;
   homePageId?: string | null;
   siteTemplate?: SiteTemplate;

@@ -1,9 +1,21 @@
 import { z } from "zod";
+import { SafeHrefSchema } from "../../schemas/common";
+
+/**
+ * Site simgesi (favicon) / Apple touch icon — yalnızca PNG (karar: SVG ayrı bir iş). Medya
+ * kütüphanesi dosya uzantısını TESPİT EDİLEN MIME türünden ürettiği için (`local.storage.ts`)
+ * `.png` uzantısı içerik türünün güvenilir bir göstergesidir. `null` = varsayılan simge.
+ */
+const SiteIconUrlSchema = SafeHrefSchema.refine((value) => /\.png(?:[?#].*)?$/i.test(value), "Site simgesi PNG olmalıdır.")
+  .nullable()
+  .optional();
 
 export const UpdateSiteSettingsRequestSchema = z
   .object({
     siteName: z.string().trim().max(200).optional(),
     logoUrl: z.string().nullable().optional(),
+    faviconUrl: SiteIconUrlSchema,
+    appleTouchIconUrl: SiteIconUrlSchema,
     tagline: z.string().trim().max(160).nullable().optional(),
     // Header logo boyutu — ui-designer spesifikasyonu: yükseklik 16-96px (varsayılan 32, frontend'de),
     // maks-genişlik 40-400px opsiyonel (null = sınırsız).

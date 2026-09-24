@@ -4,6 +4,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { Providers } from "./providers";
 import { HtmlLangSync } from "@/components/html-lang-sync";
 import { SITE_URL } from "@/lib/env";
+import { DEFAULT_FAVICON_PATH } from "@/lib/site-settings/site-icons";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -24,6 +25,9 @@ export const metadata: Metadata = {
     template: "%s · WM Health Istanbul",
   },
   description: "Uzman doktorlarla güvenli online görüşme ve randevu platformu.",
+  // Varsayılan simge (`public/favicon.ico`) — admin/panel yüzeyleri için. Site ve doktor portalı
+  // layout'ları bunu admin'de seçilen simgeyle (`SiteSettings.faviconUrl`) geçersiz kılar.
+  icons: { icon: [{ url: DEFAULT_FAVICON_PATH, sizes: "any" }] },
 };
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

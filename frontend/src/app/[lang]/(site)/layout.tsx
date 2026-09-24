@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { notFound } from "next/navigation";
 import Script from "next/script";
@@ -21,6 +22,16 @@ import { CartDrawer } from "@/components/site/cart-drawer";
 import { SiteScope } from "@/components/site/site-scope";
 import { getFooterLogoHeight } from "@/lib/site-settings/logo";
 import { escapeEmbeddedClosingTags } from "@/lib/site-settings/appearance";
+import { buildSiteIconsMetadata } from "@/lib/site-settings/site-icons";
+
+/**
+ * Site simgesi (favicon) / Apple touch icon — admin → Navigasyon'daki ayardan (`SiteSettings`), boşsa
+ * varsayılan `/favicon.ico`. Sayfalar `icons` tanımlamadığı için bu değer tüm `(site)` sayfalarına geçer.
+ */
+export async function generateMetadata(): Promise<Metadata> {
+  const settings = await fetchSiteSettingsServer();
+  return { icons: buildSiteIconsMetadata(settings) };
+}
 
 export default async function SiteLayout({
   children,
