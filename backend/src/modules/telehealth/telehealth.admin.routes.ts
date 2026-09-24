@@ -15,7 +15,6 @@ import {
   DoctorAvailabilityRuleSchema,
   DoctorProfileSchema,
   SpecialtySchema,
-  TelehealthThemeSettingsSchema,
   UpdateTelehealthThemeSettingsRequestSchema,
 } from "../../schemas/entities";
 import { toAppointmentBookingDto, toAppointmentDto, toDoctorProfileDto, toSpecialtyDto } from "../../mappers";
@@ -32,6 +31,14 @@ import { confirmBookingPayment } from "./lib/booking";
 import { triggerAppointmentConfirmationEmail, triggerAppointmentRescheduledEmail } from "./lib/notifications";
 import { provisionPatientAccountForBooking } from "./lib/patient-account";
 import { parseTelehealthTheme } from "./lib/theme-settings";
+import {
+  TelehealthSettingsResponseSchema,
+  UpdateEmergencyNoticeRequestSchema,
+  applyEmergencyNoticeUpdate,
+  mergeTelehealthSettings,
+  parseEmergencyNotice,
+  toTelehealthSettingsDto,
+} from "./lib/emergency-notice";
 import { wallTimeToUtc } from "./lib/timezone";
 import {
   AppointmentIdParamSchema,
@@ -702,11 +709,11 @@ export async function adminTelehealthSettingsRoutes(app: FastifyInstance) {
     "/",
     {
       preHandler: requireSiteRole(...ROLES_PANEL),
-      schema: { response: { 200: ApiSuccessSchema(TelehealthThemeSettingsSchema) } },
+      schema: { response: { 200: ApiSuccessSchema(TelehealthSettingsResponseSchema) } },
     },
     async (_request, reply) => {
       const row = await app.prisma.siteModule.findUnique({ where: { key: "telehealth" } });
-      return reply.send(ok(parseTelehealthTheme(row?.settings)));
+      return reply.send(ok(toTelehealthSettingsDto(row?.settings)));
     }
   );
 
@@ -716,13 +723,17 @@ export async function adminTelehealthSettingsRoutes(app: FastifyInstance) {
       preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
       schema: {
         body: UpdateTelehealthThemeSettingsRequestSchema,
-        response: { 200: ApiSuccessSchema(TelehealthThemeSettingsSchema) },
+        response: { 200: ApiSuccessSchema(TelehealthSettingsResponseSchema) },
       },
     },
     async (request, reply) => {
       const existing = await app.prisma.siteModule.findUnique({ where: { key: "telehealth" } });
       const currentTheme = parseTelehealthTheme(existing?.settings);
-      const merged = { ...currentTheme, ...request.body };
+      const themeMerged = { ...currentTheme, ...request.body };
+      // HATA DÜZELTMESİ: önceden JSON yalnızca tema alanlarına indirgenip yazılıyordu — aynı JSON'daki
+      // diğer alanlar (ör. `emergencyNotice`) her tema kaydında SESSİZCE siliniyordu. Artık ham
+      // mevcut nesnenin üzerine birleştirilir.
+      const merged = mergeTelehealthSettings(existing?.settings, themeMerged);
 
       const row = await app.prisma.siteModule.upsert({
         where: { key: "telehealth" },
@@ -736,7 +747,7 @@ export async function adminTelehealthSettingsRoutes(app: FastifyInstance) {
         action: "telehealth.settings.update",
         targetType: "SiteModule",
         targetId: "telehealth",
-        metadata: merged,
+        metadata: themeMerged,
         ipAddress: request.ip,
       });
 
@@ -746,7 +757,54 @@ export async function adminTelehealthSettingsRoutes(app: FastifyInstance) {
       // ÇELİŞİYORDU). `appearance.routes.ts`'in AYNI global best-effort revalidation deseni.
       await triggerGlobalRevalidation(app);
 
-      return reply.send(ok(parseTelehealthTheme(row.settings)));
+      return reply.send(ok(toTelehealthSettingsDto(row.settings)));
+    }
+  );
+
+  /**
+   * Acil durum uyarısı — göster/gizle anahtarı (yalnızca header altındaki şerit; doktor detay kartı
+   * her zaman görünür) ve dil başına özet/tam metin. Tema renklerinden (ADMIN+MANAGER) FARKLI olarak
+   * YALNIZCA `ADMIN` değiştirebilir (uyumluluk metni). Her değişiklik eski/yeni değerlerle denetim
+   * kaydına düşer (kim = actor, ne zaman = kayıt zamanı).
+   */
+  server.patch(
+    "/emergency-notice",
+    {
+      preHandler: requireSiteRole(...ROLES_ADMIN),
+      schema: {
+        body: UpdateEmergencyNoticeRequestSchema,
+        response: { 200: ApiSuccessSchema(TelehealthSettingsResponseSchema) },
+      },
+    },
+    async (request, reply) => {
+      const existing = await app.prisma.siteModule.findUnique({ where: { key: "telehealth" } });
+      const before = parseEmergencyNotice(existing?.settings);
+      const after = applyEmergencyNoticeUpdate(before, request.body);
+      const merged = mergeTelehealthSettings(existing?.settings, { emergencyNotice: after });
+
+      const row = await app.prisma.siteModule.upsert({
+        where: { key: "telehealth" },
+        create: { key: "telehealth", settings: merged, updatedById: request.user!.id },
+        update: { settings: merged, updatedById: request.user!.id },
+      });
+
+      await logAudit(app, {
+        actorId: request.user!.id,
+        actorEmail: request.user!.email,
+        action: "telehealth.emergency_notice.update",
+        targetType: "SiteModule",
+        targetId: "telehealth",
+        metadata: {
+          before,
+          after,
+          ...(before.enabled !== after.enabled ? { enabledChanged: { from: before.enabled, to: after.enabled } } : {}),
+        },
+        ipAddress: request.ip,
+      });
+
+      await triggerGlobalRevalidation(app);
+
+      return reply.send(ok(toTelehealthSettingsDto(row.settings)));
     }
   );
 }
