@@ -9,7 +9,7 @@ import {
   type ShapeDividerSettings,
   type ShapeDividerType,
 } from "@/lib/page-builder/types";
-import { BlockRenderer } from "./index";
+import { BlockRenderer, type BlockSiteContext } from "./index";
 
 /**
  * Konteyner (`container`) render motoru — mimar dokümanı §6.1/§6.2 sınıf/inline-style
@@ -72,7 +72,7 @@ function ShapeDivider({ position, settings }: { position: "top" | "bottom"; sett
   );
 }
 
-export function ContainerBlockView({ block }: { block: ContainerNode }) {
+export function ContainerBlockView({ block, siteContext }: { block: ContainerNode; siteContext?: BlockSiteContext }) {
   const { settings, children } = block;
 
   const layoutClass = settings.layout === "boxed" ? "mx-auto w-full px-4 sm:px-6" : "w-full";
@@ -108,7 +108,7 @@ export function ContainerBlockView({ block }: { block: ContainerNode }) {
       {settings.topDivider && <ShapeDivider position="top" settings={settings.topDivider} />}
       {/* §6.3 "chrome" sözleşmesi — bir konteynerin İÇİNDEKİ yaprak bloklar HER ZAMAN "bare":
           kendi dış gutter'larını bırakırlar, boşluk bu konteynerin padding/gap'inden gelir. */}
-      <BlockRenderer nodes={children} chrome="bare" />
+      <BlockRenderer nodes={children} chrome="bare" siteContext={siteContext} />
       {settings.bottomDivider && <ShapeDivider position="bottom" settings={settings.bottomDivider} />}
     </div>
   );

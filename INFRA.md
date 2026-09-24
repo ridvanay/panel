@@ -568,6 +568,51 @@ yazılacaksa, e2e Playwright koşumunun `docker compose up`daki `livekit` servis
 `tsx src/server.ts` çalıştırılan senaryoda (Docker `livekit` servisi ayakta değilse) token
 üretimi/409 gibi durum kodları hâlâ doğrulanabilir ama gerçek medya akışı test edilemez.
 
+### Canlı ortam — Nginx `/api/` + `TRUST_PROXY` (2026-09-25, kullanıcı tarafından canlıda doğrulandı)
+
+Backend'in `request.ip` değeri (rate limit sayaçları — ör. iletişim formu 5/dk/IP —, denetim kaydı
+`ipAddress`, iletişim gönderimlerinin `ipAddress`'i) canlıda aşağıdaki yapıya dayanır. Nginx config'i
+bu repoda DEĞİL, sunucuda el ile yönetilir; bu bölüm onun REFERANSIDIR.
+
+**Mevcut canlı yapı:**
+- Backend `4000` portu yalnızca `127.0.0.1`'e bağlıdır — internetten doğrudan erişilemez, tek giriş
+  noktası nginx'tir.
+- Nginx `/api/` bloğu `X-Forwarded-For`'u istemcinin gönderdiğiyle BİRLEŞTİRMEZ, gerçek bağlantı
+  adresiyle ÜZERİNE YAZAR:
+  ```nginx
+  location /api/ {
+      proxy_pass http://127.0.0.1:4000;
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $remote_addr;   # $proxy_add_x_forwarded_for DEĞİL
+      proxy_set_header X-Forwarded-Proto $scheme;
+  }
+  ```
+- `backend/.env`: `TRUST_PROXY=true`.
+
+**Neden güvenli:** `$proxy_add_x_forwarded_for` istemcinin gönderdiği sahte `X-Forwarded-For`
+değerini zincirin başına ekler; `TRUST_PROXY=true` ile Fastify en soldaki adresi kullanacağından
+ziyaretçi IP'sini taklit edip rate limiti atlatabilirdi. `$remote_addr` ile üzerine yazıldığında
+backend'e yalnızca nginx'in gördüğü gerçek adres ulaşır; 4000 portu dışarı kapalı olduğu için
+nginx'i atlayıp header gönderen de olamaz. **Bu iki şarttan biri değişirse** (ör. önüne Cloudflare/
+ikinci bir proxy eklenirse ya da 4000 dışarı açılırsa) `TRUST_PROXY=true` güvensiz hale gelir —
+o durumda `TRUST_PROXY` yalnızca proxy'nin IP/CIDR'ına ayarlanmalı ve nginx gerçek istemci adresini
+(ör. `CF-Connecting-IP`) doğrulanmış kaynaktan almalıdır.
+
+**Doğrulama komutları (sunucuda):**
+```bash
+docker compose exec backend printenv TRUST_PROXY          # beklenen: true
+sudo nginx -T 2>/dev/null | grep -n "X-Forwarded-For"     # /api/ bloğunda: $remote_addr
+ss -ltnp | grep ':4000'                                    # beklenen: 127.0.0.1:4000 (0.0.0.0 DEĞİL)
+# Etki: kayıtlarda gerçek ziyaretçi/yönetici IP'leri görünmeli, 127.0.0.1/172.x/10.x DEĞİL
+docker compose exec db psql -U postgres -d <DB> -c 'select "ipAddress", count(*) from audit_logs group by 1 order by 2 desc limit 10;'
+```
+
+**İlgili:** iletişim sayfası formu (`POST /contact/page-submissions`) tarayıcıdan DOĞRUDAN `/api`ye
+gönderilir (Next.js sunucusu aracı değildir) — rate limit bu yapı sayesinde gerçek ziyaretçi
+IP'sine göre işler. Next.js sunucusunun kendi SSR istekleri ise tek bir iç adresten gelir (ayrı
+bir iş olarak not edildi: SSR istekleri için ayrı limit/muafiyet).
+
 ### Tele-Sağlık (LiveKit) — Canlı ortam Nginx/reverse-proxy + UDP medya referansı (2026-09-21, kullanıcı raporu: "Bağlanıyor…"da takılıp düşüyor)
 
 **Önemli sınır:** bu repo hiçbir nginx/reverse-proxy config dosyası İÇERMEZ (bkz. dosya başındaki
@@ -589,7 +634,7 @@ location /livekit/ {           # veya LIVEKIT_URL'ün gerçek path'i neyse
     proxy_set_header Connection "upgrade";
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-For $remote_addr;   # /api/ bloğuyla aynı ilke (yukarıdaki TRUST_PROXY bölümü)
     proxy_set_header X-Forwarded-Proto $scheme;
     # WS uzun ömürlü bir bağlantıdır — varsayılan 60sn'lik proxy timeout'u SESSİZCE keser,
     # SDK bunu "Bağlanıyor…"dan "Yeniden Bağlanıyor…"a düşüp sonra tamamen kopma olarak yaşar.

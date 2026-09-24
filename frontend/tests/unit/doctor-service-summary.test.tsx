@@ -5,6 +5,8 @@ import { AvailabilityCalendar } from "@/components/site/telehealth/availability-
 import { BookingSelectionProvider } from "@/components/site/telehealth/booking-selection-context";
 import { formatPriceFromCents } from "@/lib/format-price";
 import type { AvailabilitySlot, DoctorProfile } from "@/lib/api/types";
+import type { TelehealthStrings } from "@/lib/i18n/site-dictionaries";
+import { telehealthStrings as enTelehealthStrings } from "@/lib/i18n/site-dictionaries/en/telehealth";
 
 /**
  * `.claude/design-notes-telehealth.md` §2.4 — "Hizmet Özeti" paneli (§2.1.4'ün sade fiyat+CTA
@@ -60,6 +62,8 @@ function makeDoctor(overrides: Partial<DoctorProfile> = {}): DoctorProfile {
       description: null,
       order: 0,
       isActive: true,
+      imageMediaId: null,
+      imageUrl: null,
       createdAt: "2026-01-01T00:00:00.000Z",
       updatedAt: "2026-01-01T00:00:00.000Z",
     },
@@ -100,6 +104,7 @@ function renderPanel(
     continueLoading: boolean;
     showContinueButton: boolean;
     locked: boolean;
+    dict: TelehealthStrings;
   }> = {}
 ) {
   return render(
@@ -112,6 +117,7 @@ function renderPanel(
         continueLoading={props.continueLoading ?? false}
         showContinueButton={props.showContinueButton ?? true}
         locked={props.locked ?? false}
+        dict={props.dict}
       />
     </BookingSelectionProvider>
   );
@@ -152,6 +158,15 @@ describe("DoctorServiceSummaryPanel", () => {
     renderPanel(makeDoctor({ sessionPriceCents: null }));
     expect(screen.getAllByText("Ücretsiz / Bilgi Alınız").length).toBeGreaterThan(0);
     expect(screen.queryByText("/ seans")).not.toBeInTheDocument();
+  });
+
+  it("İngilizce sözlük verilince mobil çubuk dahil fiyat etiketi, 'Continue' ve adım sayacı İngilizce (Türkçe sızmaz)", () => {
+    renderPanel(makeDoctor({ sessionPriceCents: null }), { dict: enTelehealthStrings });
+    expect(screen.getAllByText("Free / Contact for pricing").length).toBe(2); // panel + mobil çubuk
+    expect(screen.getAllByRole("button", { name: "Continue", hidden: true })).toHaveLength(2);
+    expect(screen.getByText("Step 2 / 5")).toBeInTheDocument();
+    expect(screen.queryByText("Ücretsiz / Bilgi Alınız")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Devam Et", hidden: true })).toBeNull();
   });
 
   it("Grid görevi (2026-09-14) — TEK 'Devam Et' butonu render edilir (masaüstü panel + mobil çubuk, iki kez), `continueDisabled` ile devre dışı kalır", () => {

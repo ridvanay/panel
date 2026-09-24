@@ -218,6 +218,7 @@ export default async function DoctorDetailPage({ params }: DoctorDetailPageProps
                 initialSlots={slots}
                 kvkkPage={kvkkPage}
                 intlLocale={contentLocaleToIntl(lang)}
+                telehealthDict={dict.telehealth}
               />
             </div>
           </section>

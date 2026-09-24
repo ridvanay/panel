@@ -147,7 +147,12 @@ export type ApiErrorCode =
    * jenerik hata. Kullanıcı yok / canlı kod yok / kod yanlış / süresi dolmuş / deneme tükenmiş /
    * amaç eşleşmiyor — HEPSİ bu AYNI kodla, AYNI mesajla döner (hesap-varlık oracle'ı yok). 401.
    */
-  | "VERIFICATION_CODE_INVALID";
+  | "VERIFICATION_CODE_INVALID"
+  /**
+   * İletişim sayfası — imzalı zaman damgası geçersiz ya da 24 saatten eski (`details.token`:
+   * `invalid` | `expired`). İstemci yeni damga alıp formu verisini kaybetmeden tekrar gönderir. 422.
+   */
+  | "CONTACT_FORM_TOKEN_INVALID";
 
 export class ApiError extends Error {
   statusCode: number;

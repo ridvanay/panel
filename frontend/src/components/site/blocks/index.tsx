@@ -28,6 +28,7 @@ import { SkillBarBlockView } from "./skill-bar-block";
 import { TeamBlockView } from "./team-block";
 import { AdvancedSliderBlockView } from "./advanced-slider-block";
 import { GoogleMapBlockView } from "./google-map-block";
+import { SpecialtyCardsBlockView } from "./specialty-cards-block";
 
 /**
  * §6.3 mimar dokümanı — "chrome" sözleşmesi. Kök dizideki yaprak bloklar `chrome: "page"`
@@ -42,7 +43,16 @@ import { GoogleMapBlockView } from "./google-map-block";
  * Bilinmeyen/tanınmayan `type` → sessizce `null` (ileri uyumluluk — `normalizePageNodes` bu
  * düğümleri OLDUĞU GİBİ geçirir, burada güvenle atlanır).
  */
-function renderNodeBody(node: PageNode, chrome: BlockChrome) {
+/**
+ * Sayfanın aktif dili — dile göre metin/bağlantı üreten bloklar (ör. Uzmanlık Kartları) için.
+ * OPSİYONELDİR: verilmezse (ör. admin önizlemesi) bloklar varsayılan dile göre davranır.
+ */
+export interface BlockSiteContext {
+  lang: string;
+  defaultLocaleCode: string;
+}
+
+function renderNodeBody(node: PageNode, chrome: BlockChrome, siteContext?: BlockSiteContext) {
   switch (node.type) {
     case "hero":
       return <HeroBlockView block={node} chrome={chrome} />;
@@ -96,18 +106,20 @@ function renderNodeBody(node: PageNode, chrome: BlockChrome) {
       return <AdvancedSliderBlockView block={node} chrome={chrome} />;
     case "google-map":
       return <GoogleMapBlockView block={node} chrome={chrome} />;
+    case "specialty-cards":
+      return <SpecialtyCardsBlockView block={node} chrome={chrome} siteContext={siteContext} />;
     case "container":
-      return <ContainerBlockView block={node} />;
+      return <ContainerBlockView block={node} siteContext={siteContext} />;
     default:
       return null;
   }
 }
 
-export function BlockRenderer({ nodes, chrome }: { nodes: PageNode[]; chrome: BlockChrome }) {
+export function BlockRenderer({ nodes, chrome, siteContext }: { nodes: PageNode[]; chrome: BlockChrome; siteContext?: BlockSiteContext }) {
   return (
     <>
       {nodes.map((node) => {
-        const body = renderNodeBody(node, chrome);
+        const body = renderNodeBody(node, chrome, siteContext);
         if (body === null) return null;
 
         // Giriş Animasyonu (Scroll Reveal) — `node.reveal` VARSA ve `effect !== "none"` ise,

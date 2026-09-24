@@ -39,6 +39,7 @@ import { adminLocalesRoutes, publicLocalesRoutes } from "./modules/localization/
 import { systemRoutes } from "./modules/system/system.routes";
 import { emailTemplatesRoutes } from "./modules/email-templates/email-templates.routes";
 import { adminContactRoutes, publicContactRoutes } from "./modules/contact/contact.routes";
+import { adminContactPageRoutes, publicContactPageRoutes } from "./modules/contact/contact-page.routes";
 import { registerContactRetentionScheduler } from "./lib/contact-retention";
 import { securityTwoFactorRoutes, securitySessionsRoutes } from "./modules/security/security.routes";
 import { adminImportRoutes } from "./modules/import/import.routes";
@@ -229,6 +230,9 @@ export function buildApp() {
       // contact.routes.ts). Bir MODÜL DEĞİLDİR (MODULE_REGISTRY'ye eklenmez, §10.16.7).
       api.register(publicContactRoutes, { prefix: "/contact" });
       api.register(adminContactRoutes, { prefix: "/admin/contact" });
+      // `/contact` sayfası — sabit alanlı form + sayfa içeriği (bkz. contact-page.ts).
+      api.register(publicContactPageRoutes, { prefix: "/contact" });
+      api.register(adminContactPageRoutes, { prefix: "/admin/contact" });
       // §10.4 Güvenlik & 2FA + Aktif Oturumlar — bkz. ARCHITECTURE.md §10.4.
       api.register(securityTwoFactorRoutes, { prefix: "/admin/settings/security/2fa" });
       api.register(securitySessionsRoutes, { prefix: "/admin/settings/security/sessions" });

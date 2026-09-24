@@ -6,7 +6,7 @@ import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import * as telehealthApi from "@/lib/api/telehealth";
-import type { Specialty } from "@/lib/api/types";
+import type { Media, Specialty } from "@/lib/api/types";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
@@ -20,6 +20,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PageHeading } from "@/components/admin/page-heading";
 import { IconPickerField } from "@/components/admin/page-builder/blocks/icon-picker";
+import { MediaSelectField } from "@/components/admin/media/media-select-field";
 import { resolveIcon } from "@/lib/page-builder/icon-options";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { AlertCircle, Pencil, Stethoscope, X } from "lucide-react";
@@ -41,6 +42,27 @@ const specialtyFormSchema = z.object({
 
 type SpecialtyFormValues = z.infer<typeof specialtyFormSchema>;
 
+/**
+ * Uzmanlık DTO'su yalnızca `imageMediaId` + `imageUrl` taşır; `MediaSelectField` bir `Media`
+ * nesnesi beklediği için önizleme amaçlı asgari bir nesne üretilir (alt metin kütüphaneden gelir,
+ * burada bilinmez).
+ */
+function specialtyImageAsMedia(specialty: Specialty): Media | null {
+  if (!specialty.imageMediaId || !specialty.imageUrl) return null;
+  return {
+    id: specialty.imageMediaId,
+    url: specialty.imageUrl,
+    filename: "",
+    mimeType: "",
+    sizeBytes: 0,
+    altText: null,
+    width: null,
+    height: null,
+    folderId: null,
+    createdAt: specialty.updatedAt,
+  } as Media;
+}
+
 const EMPTY_FORM: SpecialtyFormValues = { name: "", slug: "", icon: "", description: "", order: 0, isActive: true };
 
 export default function AdminTelehealthSpecialtiesPage() {
@@ -51,6 +73,7 @@ export default function AdminTelehealthSpecialtiesPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Specialty | null>(null);
   const [formOpen, setFormOpen] = useState(false);
+  const [image, setImage] = useState<Media | null>(null);
 
   const {
     register,
@@ -78,6 +101,7 @@ export default function AdminTelehealthSpecialtiesPage() {
   function openCreateForm() {
     setEditingId(null);
     reset(EMPTY_FORM);
+    setImage(null);
     setFormOpen(true);
   }
 
@@ -91,6 +115,7 @@ export default function AdminTelehealthSpecialtiesPage() {
       order: specialty.order,
       isActive: specialty.isActive,
     });
+    setImage(specialtyImageAsMedia(specialty));
     setFormOpen(true);
   }
 
@@ -109,6 +134,7 @@ export default function AdminTelehealthSpecialtiesPage() {
         description: values.description || null,
         order: values.order ?? 0,
         isActive: values.isActive,
+        imageMediaId: image?.id ?? null,
       };
       if (editingId) {
         await telehealthApi.updateSpecialty(editingId, body);
@@ -199,9 +225,14 @@ export default function AdminTelehealthSpecialtiesPage() {
               return (
                 <TableRow key={specialty.id}>
                   <TableCell>
-                    <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                      <Icon className="h-4 w-4" aria-hidden />
-                    </span>
+                    {specialty.imageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element -- admin tablosunda küçük önizleme
+                      <img src={specialty.imageUrl} alt="" className="h-8 w-8 rounded-lg object-cover" />
+                    ) : (
+                      <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                        <Icon className="h-4 w-4" aria-hidden />
+                      </span>
+                    )}
                   </TableCell>
                   <TableCell>
                     <span className="font-medium text-foreground">{specialty.name}</span>
@@ -269,6 +300,17 @@ export default function AdminTelehealthSpecialtiesPage() {
                 )}
               />
               {errors.icon && <p className="mt-1 text-xs text-danger">{errors.icon.message}</p>}
+            </div>
+
+            <div className="sm:col-span-2">
+              <MediaSelectField
+                id="specialty-image"
+                label="Görsel"
+                value={image}
+                onChange={setImage}
+                accept="image/png,image/jpeg,image/webp"
+                hint="Anasayfadaki Uzmanlık kartları bloğunda gösterilir. PNG, JPG veya WebP; kare (ör. 512×512) önerilir. Boş bırakılırsa ikon gösterilir."
+              />
             </div>
 
             <div className="sm:col-span-2">

@@ -37,7 +37,8 @@ export type ContentBlockType =
   | "skill-bar"
   | "team"
   | "advanced-slider"
-  | "google-map";
+  | "google-map"
+  | "specialty-cards";
 
 /** Kanonik konteyner düğümü. */
 export type ContainerNodeType = "container";
@@ -602,7 +603,38 @@ export type ContentBlock =
   | SkillBarBlock
   | TeamBlock
   | AdvancedSliderBlock
-  | GoogleMapBlock;
+  | GoogleMapBlock
+  | SpecialtyCardsBlock;
+
+/**
+ * Uzmanlık Kartları — veriyi Uzmanlıklar modülünden (aktif uzmanlıklar, modüldeki sıra) OTOMATİK
+ * çeker; blok yalnızca görünüm ayarlarını ve dil başına başlık/alt başlığı taşır. Başlıklar
+ * sayfanın dil kopyasından BAĞIMSIZ olarak blokta dil kodu → metin şeklinde tutulur (anasayfanın
+ * her kurulumda ayrı bir dil kopyası olmayabilir). Backend karşılığı:
+ * `backend/src/modules/pages/pages.schemas.ts::SpecialtyCardsBlockSchema` — BİREBİR aynı.
+ */
+export const SPECIALTY_CARDS_COLUMNS = [3, 4, 6] as const;
+export type SpecialtyCardsColumns = (typeof SPECIALTY_CARDS_COLUMNS)[number];
+export type SpecialtyCardsImageShape = "circle" | "square" | "rounded";
+export const SPECIALTY_CARDS_TITLE_MAX = 120;
+export const SPECIALTY_CARDS_SUBTITLE_MAX = 300;
+
+export interface SpecialtyCardsLocaleContent {
+  title: string;
+  subtitle: string;
+}
+
+export interface SpecialtyCardsBlock extends BaseNode {
+  type: "specialty-cards";
+  data: {
+    /** Dil kodu (küçük harf BCP-47) → başlık/alt başlık. Boş başlık = başlık gösterilmez. */
+    content: Record<string, SpecialtyCardsLocaleContent>;
+    /** Masaüstü (lg+) kolon sayısı; mobil 2, tablet 3 SABİTTİR. */
+    columns: SpecialtyCardsColumns;
+    showDescription: boolean;
+    imageShape: SpecialtyCardsImageShape;
+  };
+}
 
 /** @deprecated v2 adı — yalnızca geçiş sırasında import kırılmasın diye. Yeni kodda `ContentBlock` kullanın. */
 export type LeafBlock = ContentBlock;

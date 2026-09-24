@@ -11,7 +11,53 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
 
 ## [Unreleased]
 
+### Documentation
+
+- **`docs(infra)`: Canlı ortam Nginx `/api/` + `TRUST_PROXY` yapısı belgelendi.** `X-Forwarded-For`
+  nginx'te `$remote_addr` ile üzerine yazılıyor, backend 4000 portu yalnızca `127.0.0.1`'e bağlı,
+  `TRUST_PROXY=true` (canlıda doğrulandı). INFRA.md'ye referans config, güvenlik gerekçesi ve
+  doğrulama komutları; `backend/.env.example` notu güncellendi.
+
 ### Added
+
+- **`feat(site)`: İletişim sayfası (`/contact`) yeniden tasarlandı.** Breadcrumb, "Contact" etiketi,
+  Hakkımızda ile aynı serif başlık; masaüstünde form (7/12) + bilgi kartları (5/12): iletişim
+  bilgileri (telefon, WhatsApp, e-posta, adres — tıklanabilir), çalışma saatleri, TeleHealth acil
+  durum uyarısının özet metni ve harita (statik görsel + "Google Haritalar'da aç"; iframe ve üçüncü
+  taraf çerezi YOK). Mobilde tek kolon, başlığın altında Ara/WhatsApp düğmeleri. Form: ad soyad,
+  e-posta, ülke kodlu telefon, ülke (tam liste), ilgilenilen tedavi (Uzmanlıklar modülünden +
+  "Henüz emin değilim", isteğe bağlı), tercih edilen iletişim yolu, mesaj, aydınlatma metni onayı.
+  Tedavi seçilirse ayrı, varsayılan işaretsiz ve zorunlu açık rıza kutusu çıkar; metin kopyası ve
+  zamanı gönderimle saklanır (compliance-agent onaylı metinler). Doğrulama istemci + sunucu; hatalar
+  alanın altında, ilk hatalı alana odak; hata olursa veri kaybolmaz. Spam: honeypot + 5/dk rate
+  limit + imzalı zaman damgası (security-agent). Gönderim tarayıcıdan doğrudan API'ye; kayıtlar
+  mevcut Admin → İletişim → Gelen Kutusu'nda, bildirim mevcut e-posta şablonuyla (tedavi e-postaya
+  yazılmaz). Admin → İletişim'e "İletişim sayfası" kartı (TR/EN ayrı metinler ve iletişim
+  bilgileri, çalışma saati satırları, harita görseli/bağlantısı). Yeni uçlar: `GET /contact/page`,
+  `GET /contact/page/token`, `POST /contact/page-submissions`, `GET|PUT /admin/contact/page`.
+  **Şema değişikliği:** `contact_forms.pageContent` (JSONB, varsayılan `{}`) — migration
+  `20260926092000_add_contact_page_content`.
+
+- **`feat(site)`: Canlı sohbet düğmesi alt çubuklarla çakışmıyor; konum seçeneği (sağ alt / sol alt).**
+  Ekranın altına sabitlenen her çubuk (`data-bottom-bar`: çerez bildirimi, doktor sayfasının mobil
+  randevu çubuğu, ürün sepete ekle çubuğu) ortak bir gözlemciyle ölçülür ve `--site-bottom-inset`
+  değişkenine yazılır; sohbet ve "yukarı çık" düğmeleri bununla çubukların üstüne çıkar, iPhone
+  güvenli alanı (`safe-area-inset-bottom`) da hesaba katılır. Yeni bir alt çubuk için yalnızca
+  özniteliği eklemek yeterli. "Yukarı çık" düğmesi aynı köşedeki sohbet düğmesinin üstüne yığılır.
+  Admin → Ayarlar → Canlı Destek'e "Konum" eklendi (yalnızca dahili sohbet; açılan pencere de
+  seçilen tarafa hizalanır). Görüşme ekranında sohbet düğmesi gösterilmez (değişmedi). **Şema
+  değişikliği:** `site_settings.liveChatPosition` (enum, varsayılan `BOTTOM_RIGHT`) — migration
+  `20260926091000_add_live_chat_position`.
+
+- **`feat(site)`: Sayfa oluşturucuya "Uzmanlık Kartları" bloğu.** Kartlar Tele-Sağlık → Uzmanlıklar
+  modülündeki aktif uzmanlıklardan, oradaki sırayla otomatik oluşur: görsel, ad (en fazla 2 satır),
+  isteğe bağlı açıklama; kartın tamamı uzmanlık sayfasına bağlantıdır. Tüm kartlar aynı yükseklikte
+  ve aynı yazı boyutunda; mobilde 2, tablette 3, masaüstünde 3/4/6 kolon. Blok ayarları: TR/EN
+  başlık ve alt başlık, masaüstü kolon sayısı, açıklamayı göster/gizle, görsel şekli
+  (daire/kare/köşeli). Görseli olmayan uzmanlıkta uzmanlığın ikonu açık zeminde gösterilir.
+  Admin → Tele-Sağlık → Uzmanlıklar'a "Görsel" alanı eklendi (medya kütüphanesinden seç veya yükle;
+  yalnızca PNG/JPG/WebP). **Şema değişikliği:** `specialties.imageMediaId` (boş geçilebilir) —
+  migration `20260926090000_add_specialty_image`. Anasayfadaki mevcut bölüm DEĞİŞTİRİLMEDİ.
 
 - **`feat(telehealth)`: Acil durum uyarısı yeniden düzenlendi — katlanabilir şerit, admin anahtarı ve
   düzenlenebilir metinler.** Doktorlar, uzmanlıklar ve görüşme sayfalarında header altındaki şerit
@@ -67,6 +113,11 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
   (`FOUNDER_DOCTOR_SLUG`, kaldırıldı) yerine admin'de seçilen doktorun `id`'siyle belirlenir.
 
 ### Fixed
+
+- **`fix(telehealth)`: İngilizce doktor detay sayfasında randevu özeti ve mobil randevu çubuğu
+  Türkçe görünüyordu** ("Ücretsiz / Bilgi Alınız", "Devam Et", adım sayacı). Randevu sihirbazı
+  özet paneline aktif dilin sözlüğünü iletmiyordu, panel Türkçe varsayılana düşüyordu; artık sayfanın
+  dil sözlüğü iletiliyor.
 
 - **`fix(telehealth)`: Tema renkleri kaydedilince `site_modules.settings` içindeki diğer ayarlar
   siliniyordu.** `PATCH /admin/telehealth/settings` artık mevcut JSON'u birleştirerek yazar; tema

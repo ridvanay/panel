@@ -27,7 +27,8 @@ export type ApiErrorCode =
   | "VALIDATION_ERROR"
   | "CONFLICT"
   | "RATE_LIMITED"
-  | "INTERNAL_ERROR";
+  | "INTERNAL_ERROR"
+  | "CONTACT_FORM_TOKEN_INVALID";
 
 export interface PaginationMeta {
   nextCursor: string | null;

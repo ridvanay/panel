@@ -64,7 +64,9 @@ export type ApiErrorCode =
   // `/auth/activate-account` ortak jenerik hatası. Kullanıcı yok / canlı kod yok / kod yanlış /
   // süresi dolmuş / deneme tükenmiş / amaç eşleşmiyor — HEPSİ AYNI gövdeyle döner (numaralandırma
   // yüzeyi yok).
-  | "VERIFICATION_CODE_INVALID";
+  | "VERIFICATION_CODE_INVALID"
+  /** İletişim sayfası — imzalı zaman damgası geçersiz/süresi dolmuş (`details.token`: invalid|expired). 422. */
+  | "CONTACT_FORM_TOKEN_INVALID";
 
 export type MembershipRole = "OWNER" | "ADMIN" | "MEMBER";
 export type MembershipStatus = "ACTIVE" | "INVITED" | "SUSPENDED";
@@ -1754,7 +1756,11 @@ export interface SiteSettings {
   liveChatRequirePhone?: boolean;
   /** Form gösterilirken E-posta alanı zorunlu mu. Backend varsayılanı `false`. */
   liveChatRequireEmail?: boolean;
+  /** Dahili sohbet düğmesinin köşesi — varsayılan `BOTTOM_RIGHT`. Harici sağlayıcılar kullanmaz. */
+  liveChatPosition?: LiveChatPosition;
 }
+
+export type LiveChatPosition = "BOTTOM_RIGHT" | "BOTTOM_LEFT";
 
 export interface UpdateSiteSettingsRequest {
   siteName?: string;
@@ -1781,6 +1787,8 @@ export interface UpdateSiteSettingsRequest {
   liveChatRequireName?: boolean;
   liveChatRequirePhone?: boolean;
   liveChatRequireEmail?: boolean;
+  /** Dahili sohbet düğmesinin köşesi — varsayılan `BOTTOM_RIGHT`. Harici sağlayıcılar kullanmaz. */
+  liveChatPosition?: LiveChatPosition;
 }
 
 export interface UpdateBlogPostRequest {
@@ -3640,6 +3648,13 @@ export interface Specialty {
   description: string | null;
   order: number;
   isActive: boolean;
+  /** Kart görseli (Media id) — yoksa `null`. */
+  imageMediaId: string | null;
+  /**
+   * Kart görselinin mutlak URL'i. YALNIZCA uzmanlık uçlarında dolar; doktor yanıtındaki gömülü
+   * `specialty` nesnesinde her zaman `null`dır.
+   */
+  imageUrl: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -3651,6 +3666,8 @@ export interface CreateSpecialtyRequest {
   description?: string | null;
   order?: number;
   isActive?: boolean;
+  /** Yalnızca PNG/JPG/WebP medya; `null` görseli kaldırır. */
+  imageMediaId?: string | null;
 }
 
 export type UpdateSpecialtyRequest = Partial<CreateSpecialtyRequest>;
@@ -4435,3 +4452,70 @@ export interface UpdateEmergencyNoticeRequest {
 
 /** `PATCH /admin/telehealth/settings` gövdesi — KISMİ, hepsi opsiyonel (0-4 renk alanı). */
 export type UpdateTelehealthThemeSettingsRequest = Partial<Omit<TelehealthThemeSettings, "emergencyNotice">>;
+
+// ---------------------------------------------------------------------------
+// İletişim sayfası (`/contact`) — backend `modules/contact/contact-page.ts`.
+// ---------------------------------------------------------------------------
+
+export type ContactPageLocale = "en" | "tr";
+
+export interface ContactPageHoursRow {
+  label: string;
+  value: string;
+}
+
+/** Dil başına sayfa içeriği — boş alan = sözlük varsayılanı / satır gösterilmez. */
+export interface ContactPageLocaleContent {
+  title: string;
+  intro: string;
+  phone: string;
+  whatsapp: string;
+  email: string;
+  address: string;
+  hours: ContactPageHoursRow[];
+  responseTime: string;
+}
+
+export interface ContactPageContent {
+  locales: Partial<Record<ContactPageLocale, ContactPageLocaleContent>>;
+  mapImageMediaId: string | null;
+  mapUrl: string;
+}
+
+/** `GET /contact/page?locale=` */
+export interface PublicContactPage {
+  locale: ContactPageLocale;
+  content: ContactPageLocaleContent;
+  whatsappDigits: string;
+  mapImageUrl: string | null;
+  mapUrl: string;
+  privacyPage: { slug: string; localizedSlugs: Record<string, string> } | null;
+  /** Onay kutusu metinleri — SUNUCUDA tutulur, gösterilen = saklanan. */
+  consent: { notice: string; explicit: string; privacyLinkLabel: string };
+  treatmentNotSure: "not_sure";
+}
+
+/** `GET/PUT /admin/contact/page` */
+export interface AdminContactPage {
+  content: ContactPageContent;
+  mapImageUrl: string | null;
+}
+
+export type ContactMethod = "email" | "phone" | "whatsapp";
+
+/** `POST /contact/page-submissions` — tarayıcıdan doğrudan API'ye gönderilir. */
+export interface ContactPageSubmissionRequest {
+  token: string;
+  website: string;
+  locale: ContactPageLocale;
+  fullName: string;
+  email: string;
+  phoneCountry?: string;
+  phoneNumber?: string;
+  country?: string;
+  treatment?: string;
+  contactMethod: ContactMethod;
+  message: string;
+  noticeAccepted: boolean;
+  explicitConsent?: boolean;
+}

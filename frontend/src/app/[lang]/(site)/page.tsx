@@ -123,7 +123,7 @@ export default async function RootPage({ params }: PageProps) {
         />
       ) : (
         <>
-          <BlockRenderer nodes={normalizedNodes} chrome="page" />
+          <BlockRenderer nodes={normalizedNodes} chrome="page" siteContext={{ lang, defaultLocaleCode: defaultLocale?.code ?? lang }} />
           {/* Sayfa başına TEK `FAQPage`/`Place` script — mimar §7.5 Boşluk 1/3, bkz.
               `lib/page-builder/structured-data.ts`. */}
           {!noIndexEffective && (

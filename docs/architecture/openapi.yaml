@@ -4393,6 +4393,129 @@ paths:
                       data: { $ref: "#/components/schemas/PublicContactForm" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /contact/page:
+    get:
+      tags: [ContactForms]
+      summary: İletişim sayfası içeriği (PUBLIC, dile göre) + onay metinleri
+      security: []
+      description: >
+        `/contact` sayfasının dil başına içeriği (başlık, giriş metni, telefon, WhatsApp, e-posta,
+        adres, çalışma saatleri, yanıt süresi), harita görseli/bağlantısı, gizlilik sayfası ve onay
+        kutusu metinleri. Onay metinleri SUNUCUDA tutulur — gösterilen metin gönderimde saklanan
+        metinle birebir aynıdır. `locale` `tr` değilse `en` kabul edilir. Form kapalıysa 404.
+      parameters:
+        - { name: locale, in: query, required: false, schema: { type: string, enum: [en, tr] } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/PublicContactPage" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /contact/page/token:
+    get:
+      tags: [ContactForms]
+      summary: İletişim formu için imzalı zaman damgası (PUBLIC, önbelleğe alınmaz)
+      security: []
+      description: >
+        HMAC-SHA256 imzalı `v1.<ms>.<imza>` damgası; anahtar JWT imza anahtarından HKDF ile
+        `contact-form-timestamp` etiketiyle türetilir. Gönderimde 3 sn'den genç damga sessizce SPAM
+        sayılır, 24 saatten eski damga `422 CONTACT_FORM_TOKEN_INVALID` döner. `Cache-Control: no-store`.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { type: object, required: [token], properties: { token: { type: string } } }
+
+  /contact/page-submissions:
+    post:
+      tags: [ContactForms]
+      summary: İletişim sayfası gönderimi (PUBLIC, sabit alanlı)
+      security: []
+      description: >
+        Tarayıcıdan DOĞRUDAN çağrılır (Next.js sunucusu aracı değildir) — route rate limiti 5/dk,
+        `request.ip` (gerçek ziyaretçi IP'si; `TRUST_PROXY` doğru ayarlı olmalı). Sıra: form kapalı →
+        404 · honeypot (`website`) dolu → sahte 201 + `SPAM`, e-posta yok · damga geçersiz/24 saatten
+        eski → 422 `CONTACT_FORM_TOKEN_INVALID` (`details.token`: invalid|expired) · damga 3 sn'den
+        genç → sahte 201 + `SPAM` · alan doğrulaması → 422 (`details` anahtarları alan adları, değerler
+        hata kodları: required, invalid_email, invalid_phone, phone_required_for_method,
+        invalid_country, too_long, invalid_treatment) · `treatment` aktif bir uzmanlık ise
+        `explicitConsent: true` ZORUNLU (yoksa 422 `details.explicitConsent`). Saklanan: yalnızca form
+        alanları + `locale`; `consentAt` + aydınlatma onayı metni kopyası (`consentTextSnapshot`);
+        tedavi seçildiyse `data.explicit_consent_at` + `data.explicit_consent_text`. Kayıt mevcut
+        `ContactSubmission` tablosuna (`data.source = "contact_page"`) yazılır; admin bildirimi mevcut
+        şablonla gider (tedavi e-postaya yazılmaz).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ContactPageSubmissionRequest" }
+      responses:
+        "201":
+          description: Kaydedildi (honeypot/çok hızlı gönderimde de aynı yanıt — bota sinyal verilmez)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { type: object, required: [id], properties: { id: { type: string, format: uuid } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { description: "Aynı IP'den dakikada 5'ten fazla gönderim." }
+
+  /admin/contact/page:
+    get:
+      tags: [ContactForms]
+      summary: İletişim sayfası içeriği (panel rolleri okuyabilir)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/AdminContactPage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    put:
+      tags: [ContactForms]
+      summary: İletişim sayfası içeriğini kaydet (TAM değiştirme; ADMIN/MANAGER)
+      description: >
+        Düz metin (HTML reddedilir). Harita bağlantısı yalnızca `https://www.google.com/maps/…`,
+        `https://maps.google.com/…`, `https://maps.app.goo.gl/…`. Harita görseli yalnızca PNG/JPG/WebP
+        medya. Desteklenen diller `en`, `tr`. Denetim kaydı `contact.page_update`; site önbelleği yenilenir.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ContactPageContent" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/AdminContactPage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
   /contact/submissions:
     post:
       tags: [ContactForms]
@@ -14255,7 +14378,8 @@ components:
         `featured-portfolio` · `heading` · `button` · `icon-box` · `divider` · `video` ·
         `accordion` · `tabs` · `counter` · `testimonial` · `pricing-table` · `latest-posts` ·
         `contact-form` · `custom-html` · `before-after-slider` · `logo-marquee` · `skill-bar` ·
-        `team` · `advanced-slider` · `google-map` · `about-page` ("Hakkımızda" şablonu — YALNIZCA
+        `team` · `advanced-slider` · `google-map` · `specialty-cards` (Uzmanlık Kartları — bkz.
+        `SpecialtyCardsBlockData`) · `about-page` ("Hakkımızda" şablonu — YALNIZCA
         tek kök düğüm olarak, bkz. `AboutPageBlockData`) · **`container`** (kanonik konteyner düğümü,
         §10.19) · `columns` (**deprecated**, salt okuma/geçiş, aşağıya bkz.).
 
@@ -14273,7 +14397,7 @@ components:
         `gallery` ve bu turda genişletilen `heading`/`button`/`icon-box`/`divider`/`video`/
         `accordion`/`tabs`/`cta`/`counter`/`testimonial`/`pricing-table`/`latest-posts`/
         `contact-form`/`custom-html`/`before-after-slider`/`logo-marquee`/`skill-bar`/`team`/
-        `advanced-slider`/**`google-map`** dahil) kendi DAR Zod şemalarından geçer (bkz.
+        `advanced-slider`/**`google-map`**/`specialty-cards` dahil) kendi DAR Zod şemalarından geçer (bkz.
         `pages.schemas.ts::PageNodeSchema` dispatch'i).
 
 
@@ -14314,6 +14438,7 @@ components:
               team,
               advanced-slider,
               google-map,
+              specialty-cards,
               about-page,
               container,
               columns,
@@ -15528,6 +15653,80 @@ components:
       properties:
         status: { $ref: "#/components/schemas/ContactSubmissionStatus" }
 
+    ContactPageLocaleContent:
+      type: object
+      properties:
+        title: { type: string, maxLength: 120 }
+        intro: { type: string, maxLength: 300 }
+        phone: { type: string, maxLength: 30, description: "Görünen telefon, ör. +90 212 000 00 00 (boş = gösterilmez)" }
+        whatsapp: { type: string, maxLength: 20, description: "Ülke koduyla; public yanıtta yalnızca rakamlar `whatsappDigits` olarak döner" }
+        email: { type: string, maxLength: 254 }
+        address: { type: string, maxLength: 300 }
+        hours:
+          type: array
+          maxItems: 10
+          items: { type: object, properties: { label: { type: string, maxLength: 60 }, value: { type: string, maxLength: 60 } } }
+        responseTime: { type: string, maxLength: 160 }
+
+    ContactPageContent:
+      type: object
+      properties:
+        locales:
+          type: object
+          additionalProperties: false
+          properties:
+            en: { $ref: "#/components/schemas/ContactPageLocaleContent" }
+            tr: { $ref: "#/components/schemas/ContactPageLocaleContent" }
+        mapImageMediaId: { type: string, format: uuid, nullable: true }
+        mapUrl: { type: string, maxLength: 500, description: "Yalnızca Google Haritalar bağlantısı; boş = adresten arama bağlantısı" }
+
+    AdminContactPage:
+      type: object
+      required: [content, mapImageUrl]
+      properties:
+        content: { $ref: "#/components/schemas/ContactPageContent" }
+        mapImageUrl: { type: string, nullable: true }
+
+    PublicContactPage:
+      type: object
+      required: [locale, content, whatsappDigits, mapImageUrl, mapUrl, privacyPage, consent, treatmentNotSure]
+      properties:
+        locale: { type: string, enum: [en, tr] }
+        content: { $ref: "#/components/schemas/ContactPageLocaleContent" }
+        whatsappDigits: { type: string, description: "https://wa.me/<whatsappDigits>" }
+        mapImageUrl: { type: string, nullable: true }
+        mapUrl: { type: string }
+        privacyPage:
+          type: object
+          nullable: true
+          properties:
+            slug: { type: string }
+            localizedSlugs: { type: object, additionalProperties: { type: string } }
+        consent:
+          type: object
+          properties:
+            notice: { type: string, description: "Aydınlatma metni onayı (zorunlu kutu)" }
+            explicit: { type: string, description: "Açık rıza (yalnızca tedavi seçilince, zorunlu kutu)" }
+            privacyLinkLabel: { type: string }
+        treatmentNotSure: { type: string, enum: [not_sure] }
+
+    ContactPageSubmissionRequest:
+      type: object
+      properties:
+        token: { type: string }
+        website: { type: string, description: "Honeypot — insanlar boş bırakır" }
+        locale: { type: string, enum: [en, tr] }
+        fullName: { type: string, minLength: 2, maxLength: 120 }
+        email: { type: string, maxLength: 254 }
+        phoneCountry: { type: string, description: "ISO 3166-1 alpha-2 (izin listesi)" }
+        phoneNumber: { type: string, maxLength: 20 }
+        country: { type: string, description: "ISO 3166-1 alpha-2 (izin listesi)" }
+        treatment: { type: string, description: "Aktif uzmanlık slug'ı veya `not_sure`; isteğe bağlı" }
+        contactMethod: { type: string, enum: [email, phone, whatsapp], default: email }
+        message: { type: string, minLength: 1, maxLength: 3000 }
+        noticeAccepted: { type: boolean, enum: [true] }
+        explicitConsent: { type: boolean, description: "Tedavi bir uzmanlık ise ZORUNLU true" }
+
     PublicContactForm:
       type: object
       description: >
@@ -16329,6 +16528,13 @@ components:
           type: boolean
           description: "Form gösterilirken E-posta alanı ZORUNLU mu. Varsayılan `false`."
           default: false
+        liveChatPosition:
+          type: string
+          enum: [BOTTOM_RIGHT, BOTTOM_LEFT]
+          default: BOTTOM_RIGHT
+          description: >
+            Dahili sohbet düğmesinin ve açılan pencerenin köşesi. Harici sağlayıcılar (Crisp/Tawk.to)
+            kendi konumlarını yönetir, bu alanı kullanmaz.
 
     UpdateSiteSettingsRequest:
       description: "`PATCH /admin/settings` gövdesi — tüm alanlar opsiyoneldir, satır yoksa `DEFAULTS` ile birlikte oluşturulur (upsert)."
@@ -16388,6 +16594,7 @@ components:
         liveChatRequireName: { type: boolean, description: "Formdaki Ad Soyad alanı zorunlu mu." }
         liveChatRequirePhone: { type: boolean, description: "Formdaki Telefon alanı zorunlu mu." }
         liveChatRequireEmail: { type: boolean, description: "Formdaki E-posta alanı zorunlu mu." }
+        liveChatPosition: { type: string, enum: [BOTTOM_RIGHT, BOTTOM_LEFT], description: "Dahili sohbet düğmesinin köşesi (geçersiz değer 422)." }
         # NOT: `liveChatPreChatEnabled = true` iken `liveChatRequire*` alanlarının ÜÇÜ birden
         # `false` olabilir (form gösterilir, hiçbir alan zorunlu değildir, ziyaretçi boş
         # geçebilir) — bu KASITLIDIR, çapraz-alan `422` kuralı YOKTUR.
@@ -18461,10 +18668,29 @@ components:
             ADMIN'in `DELETE .../recording` çağrısı.
         createdAt: { type: string, format: date-time }
 
+    SpecialtyCardsBlockData:
+      type: object
+      description: >
+        `type: "specialty-cards"` bloğunun `data`'sı. Kartların içeriği (ad, görsel, açıklama,
+        bağlantı) Uzmanlıklar modülünden (aktif uzmanlıklar, `order` sırası) render anında gelir;
+        blok yalnızca görünümü taşır. Başlıklar dil kodu → metin (düz metin).
+      properties:
+        content:
+          type: object
+          maxProperties: 20
+          additionalProperties:
+            type: object
+            properties:
+              title: { type: string, maxLength: 120 }
+              subtitle: { type: string, maxLength: 300 }
+        columns: { type: integer, enum: [3, 4, 6], default: 4, description: "Masaüstü kolon sayısı; mobil 2, tablet 3 sabit." }
+        showDescription: { type: boolean, default: true }
+        imageShape: { type: string, enum: [circle, square, rounded], default: circle }
+
     Specialty:
       type: object
       description: "Tıbbi uzmanlık alanı (ör. Kardiyoloji) — `icon-box` bloğuyla AYNI lucide-react ikon sözlüğü."
-      required: [id, name, slug, icon, order, isActive, createdAt, updatedAt]
+      required: [id, name, slug, icon, order, isActive, imageMediaId, imageUrl, createdAt, updatedAt]
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
@@ -18473,6 +18699,13 @@ components:
         description: { type: string, nullable: true }
         order: { type: integer }
         isActive: { type: boolean }
+        imageMediaId: { type: string, format: uuid, nullable: true, description: "Uzmanlık kartı görseli (Media id)." }
+        imageUrl:
+          type: string
+          nullable: true
+          description: >
+            Kart görselinin mutlak URL'i. Yalnızca uzmanlık uçlarında (`/specialties*`,
+            `/admin/telehealth/specialties*`) dolar; doktor yanıtındaki gömülü `specialty` nesnesinde null.
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
 
@@ -19471,6 +19704,11 @@ components:
         description: { type: string, maxLength: 500, nullable: true }
         order: { type: integer, minimum: 0 }
         isActive: { type: boolean }
+        imageMediaId:
+          type: string
+          format: uuid
+          nullable: true
+          description: "Kart görseli — yalnızca PNG/JPG/WebP medya (aksi 422); null görseli kaldırır."
 
     UpdateSpecialtyRequest:
       allOf: [{ $ref: "#/components/schemas/CreateSpecialtyRequest" }]

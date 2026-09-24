@@ -16,6 +16,7 @@ import { SiteHeader } from "@/components/site/site-header";
 import { SiteFooter } from "@/components/site/site-footer";
 import { DoctorPortalRouteGuard } from "@/components/site/doctor-portal-route-guard";
 import { LiveChatWidget } from "@/components/site/live-chat-widget";
+import { BottomBarInsetObserver } from "@/components/site/bottom-bar-inset";
 import { BackToTopButton } from "@/components/site/back-to-top-button";
 import { CookieConsentBanner } from "@/components/site/cookie-consent-banner";
 import { CartDrawer } from "@/components/site/cart-drawer";
@@ -121,6 +122,9 @@ export default async function SiteLayout({
               `/consultation/**`de kendini HİÇ render etmez ve `liveChatEnabled` kapalıyken de
               HİÇBİR ŞEY render etmez — bu yüzden burada AYRICA bir koşul YAZILMAZ. */}
           <LiveChatWidget settings={settings} />
+          {/* Alta sabit çubukların yüksekliğini `--site-bottom-inset`e yazar — yüzen düğmeler
+              (sohbet, yukarı çık) bununla çubukların üstüne çıkar (bkz. bottom-bar-inset.tsx). */}
+          <BottomBarInsetObserver />
         </SiteScope>
       </LocaleAlternatesProvider>
 

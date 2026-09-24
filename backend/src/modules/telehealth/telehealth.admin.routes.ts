@@ -112,6 +112,21 @@ async function assertImageMedia(app: FastifyInstance, mediaId: string) {
   }
 }
 
+/** Uzmanlık kartı görseli için izin verilen türler — GIF/PDF/SVG KABUL EDİLMEZ. */
+const SPECIALTY_IMAGE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
+
+async function assertSpecialtyImageMedia(app: FastifyInstance, mediaId: string) {
+  const media = await app.prisma.media.findUnique({ where: { id: mediaId } });
+  if (!media) throw new NotFoundError("Medya bulunamadı.");
+  if (!SPECIALTY_IMAGE_MIME_TYPES.has(media.mimeType)) {
+    throw new ValidationError("Uzmanlık görseli yalnızca PNG, JPG veya WebP olabilir.", {
+      imageMediaId: ["Uzmanlık görseli yalnızca PNG, JPG veya WebP olabilir."],
+    });
+  }
+}
+
+const WITH_SPECIALTY_IMAGE = { imageMedia: true } as const;
+
 /** `/admin/telehealth/specialties` prefix'i altında bağlanır — okuma panel kapısı, yazma ADMIN+MANAGER (§8.4). */
 export async function adminTelehealthSpecialtiesRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
@@ -126,7 +141,7 @@ export async function adminTelehealthSpecialtiesRoutes(app: FastifyInstance) {
     "/",
     { schema: { response: { 200: ApiSuccessSchema(z.array(SpecialtySchema)) } } },
     async (_request, reply) => {
-      const rows = await app.prisma.specialty.findMany({ orderBy: { order: "asc" } });
+      const rows = await app.prisma.specialty.findMany({ orderBy: { order: "asc" }, include: WITH_SPECIALTY_IMAGE });
       return reply.send(ok(rows.map(toSpecialtyDto)));
     }
   );
@@ -138,7 +153,8 @@ export async function adminTelehealthSpecialtiesRoutes(app: FastifyInstance) {
       schema: { body: CreateSpecialtyRequestSchema, response: { 201: ApiSuccessSchema(SpecialtySchema) } },
     },
     async (request, reply) => {
-      const { name, slug, icon, description, order, isActive } = request.body;
+      const { name, slug, icon, description, order, isActive, imageMediaId } = request.body;
+      if (imageMediaId) await assertSpecialtyImageMedia(app, imageMediaId);
       const specialty = await app.prisma.specialty.create({
         data: {
           name,
@@ -147,7 +163,9 @@ export async function adminTelehealthSpecialtiesRoutes(app: FastifyInstance) {
           description: description ?? null,
           order: order ?? 0,
           isActive: isActive ?? true,
+          imageMediaId: imageMediaId ?? null,
         },
+        include: WITH_SPECIALTY_IMAGE,
       });
       return reply.code(201).send(ok(toSpecialtyDto(specialty)));
     }
@@ -164,7 +182,8 @@ export async function adminTelehealthSpecialtiesRoutes(app: FastifyInstance) {
       },
     },
     async (request, reply) => {
-      const { slug, description, ...rest } = request.body;
+      const { slug, description, imageMediaId, ...rest } = request.body;
+      if (imageMediaId) await assertSpecialtyImageMedia(app, imageMediaId);
       const specialty = await app.prisma.specialty
         .update({
           where: { id: request.params.specialtyId },
@@ -172,7 +191,9 @@ export async function adminTelehealthSpecialtiesRoutes(app: FastifyInstance) {
             ...rest,
             ...(slug !== undefined ? { slug: slugify(slug) } : {}),
             ...(description !== undefined ? { description } : {}),
+            ...(imageMediaId !== undefined ? { imageMediaId } : {}),
           },
+          include: WITH_SPECIALTY_IMAGE,
         })
         .catch(() => {
           throw new NotFoundError("Uzmanlık bulunamadı.");
