@@ -11,6 +11,13 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
 
 ## [Unreleased]
 
+### Documentation
+
+- **`docs(infra)`: Canlı ortam Nginx `/api/` + `TRUST_PROXY` yapısı belgelendi.** `X-Forwarded-For`
+  nginx'te `$remote_addr` ile üzerine yazılıyor, backend 4000 portu yalnızca `127.0.0.1`'e bağlı,
+  `TRUST_PROXY=true` (canlıda doğrulandı). INFRA.md'ye referans config, güvenlik gerekçesi ve
+  doğrulama komutları; `backend/.env.example` notu güncellendi.
+
 ### Added
 
 - **`feat(site)`: İletişim sayfası (`/contact`) yeniden tasarlandı.** Breadcrumb, "Contact" etiketi,
