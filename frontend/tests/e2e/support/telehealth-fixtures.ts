@@ -956,3 +956,32 @@ export async function patchAdminTelehealthThemeSettings(
   if (!res.ok) throw new Error(`Tema ayarları güncellenemedi: ${res.status} ${JSON.stringify(body)}`);
   return body.data as FixtureTelehealthThemeSettings;
 }
+
+export interface FixtureEmergencyNoticeSettings {
+  enabled: boolean;
+  summary: Record<string, string>;
+  full: Record<string, string>;
+}
+
+/** `PATCH /admin/telehealth/settings/emergency-notice` — YALNIZCA ADMIN. `null` o dilin metnini siler. */
+export async function patchAdminEmergencyNotice(
+  token: string,
+  patch: { enabled?: boolean; summary?: Record<string, string | null>; full?: Record<string, string | null> }
+): Promise<FixtureEmergencyNoticeSettings> {
+  const res = await fetch(`${API_BASE_URL}/admin/telehealth/settings/emergency-notice`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(patch),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw new Error(`Acil durum uyarısı güncellenemedi: ${res.status} ${JSON.stringify(body)}`);
+  return (body.data as { emergencyNotice: FixtureEmergencyNoticeSettings }).emergencyNotice;
+}
+
+/** `GET /admin/telehealth/settings` yanıtındaki acil durum uyarısı ayarı (teardown'da geri yazmak için). */
+export async function getAdminEmergencyNotice(token: string): Promise<FixtureEmergencyNoticeSettings> {
+  const res = await fetch(`${API_BASE_URL}/admin/telehealth/settings`, { headers: authHeadersNoBody(token) });
+  const body = await safeJson(res);
+  if (!res.ok) throw new Error(`Acil durum uyarısı okunamadı: ${res.status} ${JSON.stringify(body)}`);
+  return (body.data as { emergencyNotice: FixtureEmergencyNoticeSettings }).emergencyNotice;
+}
