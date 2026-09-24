@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import * as settingsApi from "@/lib/api/settings";
 import * as pagesApi from "@/lib/api/pages";
-import type { PermissionsMatrix, SitePage, SiteRole } from "@/lib/api/types";
+import type { PermissionsMatrix, SitePage, SiteRole, LiveChatPosition } from "@/lib/api/types";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card } from "@/components/ui/card";
@@ -108,6 +108,7 @@ interface GeneralSettingsSnapshot {
   liveChatRequireName: boolean;
   liveChatRequirePhone: boolean;
   liveChatRequireEmail: boolean;
+  liveChatPosition: LiveChatPosition;
 }
 
 function RoleBadge({ role, active }: { role: SiteRole; active: boolean }) {
@@ -183,6 +184,7 @@ export default function AdminSettingsPage() {
   const [liveChatRequireName, setLiveChatRequireName] = useState(true);
   const [liveChatRequirePhone, setLiveChatRequirePhone] = useState(true);
   const [liveChatRequireEmail, setLiveChatRequireEmail] = useState(false);
+  const [liveChatPosition, setLiveChatPosition] = useState<LiveChatPosition>("BOTTOM_RIGHT");
 
   const [permissions, setPermissions] = useState<PermissionsMatrix | null>(null);
   const [permissionsLoading, setPermissionsLoading] = useState(false);
@@ -213,6 +215,7 @@ export default function AdminSettingsPage() {
       setLiveChatRequireName(settings.liveChatRequireName ?? true);
       setLiveChatRequirePhone(settings.liveChatRequirePhone ?? true);
       setLiveChatRequireEmail(settings.liveChatRequireEmail ?? false);
+      setLiveChatPosition(settings.liveChatPosition ?? "BOTTOM_RIGHT");
       setSnapshot({
         siteName: settings.siteName,
         logoUrl: settings.logoUrl ?? "",
@@ -226,6 +229,7 @@ export default function AdminSettingsPage() {
         liveChatRequireName: settings.liveChatRequireName ?? true,
         liveChatRequirePhone: settings.liveChatRequirePhone ?? true,
         liveChatRequireEmail: settings.liveChatRequireEmail ?? false,
+        liveChatPosition: settings.liveChatPosition ?? "BOTTOM_RIGHT",
       });
       setLoaded(true);
     } catch (err) {
@@ -253,7 +257,8 @@ export default function AdminSettingsPage() {
       liveChatPreChatEnabled !== snapshot.liveChatPreChatEnabled ||
       liveChatRequireName !== snapshot.liveChatRequireName ||
       liveChatRequirePhone !== snapshot.liveChatRequirePhone ||
-      liveChatRequireEmail !== snapshot.liveChatRequireEmail
+      liveChatRequireEmail !== snapshot.liveChatRequireEmail ||
+      liveChatPosition !== snapshot.liveChatPosition
     );
   }, [
     siteName,
@@ -268,6 +273,7 @@ export default function AdminSettingsPage() {
     liveChatRequireName,
     liveChatRequirePhone,
     liveChatRequireEmail,
+    liveChatPosition,
     snapshot,
   ]);
 
@@ -340,6 +346,7 @@ export default function AdminSettingsPage() {
         liveChatRequireName,
         liveChatRequirePhone,
         liveChatRequireEmail,
+        liveChatPosition,
       });
       setSaved(true);
       // Nihai (env `&&` DB) değer sunucudan geri döner — `demoPaymentsSupported=false` (üretim)
@@ -365,6 +372,7 @@ export default function AdminSettingsPage() {
         liveChatRequireName,
         liveChatRequirePhone,
         liveChatRequireEmail,
+        liveChatPosition,
       });
       toast.success("Ayarlar kaydedildi.");
     } catch (err) {
@@ -649,6 +657,25 @@ export default function AdminSettingsPage() {
                         </Select>
                       )}
                     </Field>
+
+                    {liveChatProvider === "internal" && (
+                      <Field
+                        id="liveChatPosition"
+                        label="Konum"
+                        hint="Sohbet düğmesi ve açılan pencere bu köşeye hizalanır. Sayfada alta sabit bir çubuk varsa düğme otomatik olarak üstüne çıkar."
+                      >
+                        {(inputProps) => (
+                          <Select
+                            {...inputProps}
+                            value={liveChatPosition}
+                            onChange={(e) => setLiveChatPosition(e.target.value as LiveChatPosition)}
+                          >
+                            <option value="BOTTOM_RIGHT">Sağ alt (varsayılan)</option>
+                            <option value="BOTTOM_LEFT">Sol alt</option>
+                          </Select>
+                        )}
+                      </Field>
+                    )}
 
                     {liveChatProvider !== "internal" && (
                       <Field

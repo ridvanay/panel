@@ -1187,8 +1187,8 @@ enum SiteTemplate {
 
 // Tek satırlık (singleton) global site ayarları — id her zaman "singleton" sabiti.
 model SiteSettings {
-  id                         String       @id @default("singleton")
-  siteName                   String       @default("Site")
+  id                         String           @id @default("singleton")
+  siteName                   String           @default("Site")
   logoUrl                    String?
   // Site simgesi (favicon) ve Apple touch icon — medya kütüphanesinden seçilen PNG'nin URL'i.
   // `null` = varsayılan simge (`frontend/public/favicon.ico`). SVG bilinçli olarak desteklenmez
@@ -1206,7 +1206,7 @@ model SiteSettings {
   // modüllerin/blok tiplerinin önerildiğini UI'da göstermek için kullanılır, hiçbir modülü
   // OTOMATIK açmaz/kapatmaz (bkz. ARCHITECTURE.md, kullanıcı kararı). SHOWCASE=Tanıtım Sitesi,
   // COMMERCE=Satış Sitesi, PORTFOLIO=Portföy Sitesi.
-  siteTemplate               SiteTemplate @default(SHOWCASE)
+  siteTemplate               SiteTemplate     @default(SHOWCASE)
   headerCtaLabel             String?
   headerCtaHref              String?
   footerCopyrightText        String?
@@ -1228,34 +1228,42 @@ model SiteSettings {
   // `false`, bu yüzden varsayılan `true` prod'da güvenlik açığı YARATMAZ). Bkz.
   // .claude/security-review-demo-payment-toggle.md, .claude/architect-scope-demo-payment-doctor-counters.md
   // "EK KARAR — 2026-09-15".
-  demoPaymentsEnabled        Boolean      @default(true)
+  demoPaymentsEnabled        Boolean          @default(true)
   // NOT — 2026-09-15: Sağ alt canlı destek widget'ı — admin panelden aç/kapa. Varsayılan
   // KAPALI (`false`): `demoPaymentsEnabled`in aksine, yeni bir UI özelliğinin sessizce her
   // ortamda otomatik açık gelmesi istenmiyor — admin bilinçli olarak açar.
-  liveChatEnabled            Boolean      @default(false)
+  liveChatEnabled            Boolean          @default(false)
   /// "internal" (varsayılan, dahili mock arayüz) | "crisp" | "tawkto" — serbest metin, enum
   /// DEĞİL (yeni bir sağlayıcı eklemek enum migration'ı gerektirmemeli, `demoPaymentsEnabled`
   /// ile aynı "opsiyonel özellik alanı" grubunda).
-  liveChatProvider           String       @default("internal")
+  liveChatProvider           String           @default("internal")
   /// Yalnızca liveChatProvider harici bir sağlayıcıysa kullanılır (ör. Crisp Website ID,
   /// Tawk.to widget ID). "internal" iken yoksayılır.
   liveChatScriptId           String?
   /// [ASD §7] Ön görüşme (pre-chat) formu — açık olduğunda misafir widget ilk mesajdan ÖNCE
   /// bir form gösterir. Varsayılan KAPALI (mevcut davranışı korur, geriye dönük uyumlu).
-  liveChatPreChatEnabled     Boolean      @default(false)
+  liveChatPreChatEnabled     Boolean          @default(false)
   /// Yalnızca `liveChatPreChatEnabled` açıkken anlamlıdır; sunucu bunu ZORUNLU KILMAZ
   /// (`architect-scope-support-desk-and-reminders.md` §7.3 madde 2) — yalnızca istemci tarafı
   /// doğrulama kuralıdır.
-  liveChatRequireName        Boolean      @default(true)
-  liveChatRequirePhone       Boolean      @default(true)
-  liveChatRequireEmail       Boolean      @default(false)
-  updatedAt                  DateTime     @updatedAt
+  liveChatRequireName        Boolean          @default(true)
+  liveChatRequirePhone       Boolean          @default(true)
+  liveChatRequireEmail       Boolean          @default(false)
+  /// Dahili sohbet düğmesinin/penceresinin köşesi. Harici sağlayıcılar (Crisp/Tawk.to) kendi
+  /// konumlarını yönetir, bu alanı kullanmaz.
+  liveChatPosition           LiveChatPosition @default(BOTTOM_RIGHT)
+  updatedAt                  DateTime         @updatedAt
 
   // Kök `/` rotasında render edilecek sayfa. Sayfa silinirse otomatik null'a düşer
   // (bkz. pages.routes.ts) — frontend bu durumda varsayılan (SaaS pazarlama) fallback'i gösterir.
   homePage Page? @relation(fields: [homePageId], references: [id], onDelete: SetNull)
 
   @@map("site_settings")
+}
+
+enum LiveChatPosition {
+  BOTTOM_RIGHT
+  BOTTOM_LEFT
 }
 
 enum PageHeaderStyle {

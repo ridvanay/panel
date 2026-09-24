@@ -449,6 +449,7 @@ export function toSiteSettingsDto(settings: SiteSettings): SiteSettingsDto {
     liveChatRequireName: settings.liveChatRequireName,
     liveChatRequirePhone: settings.liveChatRequirePhone,
     liveChatRequireEmail: settings.liveChatRequireEmail,
+    liveChatPosition: settings.liveChatPosition,
   };
 }
 

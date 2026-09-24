@@ -53,6 +53,7 @@ export const DEFAULTS = {
   liveChatRequireName: true,
   liveChatRequirePhone: true,
   liveChatRequireEmail: false,
+  liveChatPosition: "BOTTOM_RIGHT" as const,
 };
 
 /**

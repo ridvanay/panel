@@ -13,6 +13,17 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
 
 ### Added
 
+- **`feat(site)`: Canlı sohbet düğmesi alt çubuklarla çakışmıyor; konum seçeneği (sağ alt / sol alt).**
+  Ekranın altına sabitlenen her çubuk (`data-bottom-bar`: çerez bildirimi, doktor sayfasının mobil
+  randevu çubuğu, ürün sepete ekle çubuğu) ortak bir gözlemciyle ölçülür ve `--site-bottom-inset`
+  değişkenine yazılır; sohbet ve "yukarı çık" düğmeleri bununla çubukların üstüne çıkar, iPhone
+  güvenli alanı (`safe-area-inset-bottom`) da hesaba katılır. Yeni bir alt çubuk için yalnızca
+  özniteliği eklemek yeterli. "Yukarı çık" düğmesi aynı köşedeki sohbet düğmesinin üstüne yığılır.
+  Admin → Ayarlar → Canlı Destek'e "Konum" eklendi (yalnızca dahili sohbet; açılan pencere de
+  seçilen tarafa hizalanır). Görüşme ekranında sohbet düğmesi gösterilmez (değişmedi). **Şema
+  değişikliği:** `site_settings.liveChatPosition` (enum, varsayılan `BOTTOM_RIGHT`) — migration
+  `20260926091000_add_live_chat_position`.
+
 - **`feat(site)`: Sayfa oluşturucuya "Uzmanlık Kartları" bloğu.** Kartlar Tele-Sağlık → Uzmanlıklar
   modülündeki aktif uzmanlıklardan, oradaki sırayla otomatik oluşur: görsel, ad (en fazla 2 satır),
   isteğe bağlı açıklama; kartın tamamı uzmanlık sayfasına bağlantıdır. Tüm kartlar aynı yükseklikte

@@ -847,6 +847,7 @@ export const SiteSettingsSchema = z.object({
   liveChatRequireName: z.boolean(),
   liveChatRequirePhone: z.boolean(),
   liveChatRequireEmail: z.boolean(),
+  liveChatPosition: z.enum(["BOTTOM_RIGHT", "BOTTOM_LEFT"]),
 });
 export type SiteSettingsDto = z.infer<typeof SiteSettingsSchema>;
 

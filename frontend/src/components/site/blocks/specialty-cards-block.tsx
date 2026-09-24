@@ -20,6 +20,12 @@ const SHAPE_CLASS: Record<SpecialtyCardsImageShape, string> = {
   rounded: "rounded-[calc(var(--site-radius)+0.25rem)]",
 };
 
+/** `icon-box-block.tsx`deki AYNI `react-hooks/static-components` yanlış-pozitifi kaçınma deseni. */
+function iconGlyph(name: string, className: string) {
+  const Icon = resolveIcon(name);
+  return <Icon className={className} aria-hidden="true" />;
+}
+
 /** Dil kopyası yoksa varsayılan dilin başlığı; o da yoksa başlıksız. */
 function resolveContent(block: SpecialtyCardsBlock, siteContext?: BlockSiteContext) {
   const content = block.data.content ?? {};
@@ -96,7 +102,6 @@ function SpecialtyCard({
   showDescription: boolean;
   dense: boolean;
 }) {
-  const Icon = resolveIcon(specialty.icon);
   const mediaSize = dense ? "size-16 sm:size-20 lg:size-16" : "size-16 sm:size-20";
 
   return (
@@ -115,7 +120,7 @@ function SpecialtyCard({
               "bg-[color-mix(in_oklch,var(--site-primary)_10%,var(--site-surface))] text-[var(--site-primary)]"
             )}
           >
-            <Icon className="size-7 sm:size-8" aria-hidden="true" />
+            {iconGlyph(specialty.icon, "size-7 sm:size-8")}
           </span>
         )}
       </span>

@@ -15,7 +15,7 @@ import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { fetchLegalPagesClient, resolveKvkkNoticePage } from "@/lib/legal-pages";
 import { useLocalizePath } from "@/context/locale-alternates-context";
 import { useAuthOptional } from "@/context/auth-context";
-import type { SitePage, SiteSettings, SupportChatMessagePublic, SupportSessionStatus } from "@/lib/api/types";
+import type { LiveChatPosition, SitePage, SiteSettings, SupportChatMessagePublic, SupportSessionStatus } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 
 /**
@@ -39,6 +39,7 @@ interface LiveChatWidgetProps {
     | "liveChatRequireName"
     | "liveChatRequirePhone"
     | "liveChatRequireEmail"
+    | "liveChatPosition"
   >;
 }
 
@@ -358,6 +359,8 @@ function InternalChatPanel({ siteName, onClose, preChatEnabled, requireName, req
       role="dialog"
       aria-label={`${siteName} Destek`}
       className="flex h-[28rem] w-[22rem] max-w-[calc(100vw-3rem)] flex-col overflow-hidden rounded-[var(--site-radius)] border border-border bg-surface shadow-lg"
+      // Alt çubuk + güvenli alan varken pencere ekranın üstünden taşmasın.
+      style={{ maxHeight: "calc(100dvh - var(--site-bottom-inset, 0px) - env(safe-area-inset-bottom, 0px) - 3rem)" }}
     >
       <div className="flex items-center justify-between gap-2 border-b border-border bg-primary/5 px-4 py-3">
         <p className="text-sm font-semibold text-foreground">{siteName} Destek</p>
@@ -571,7 +574,16 @@ function InternalChatPanel({ siteName, onClose, preChatEnabled, requireName, req
   );
 }
 
+/**
+ * Yüzen düğme konumu — alt çubuk varsa (`--site-bottom-inset`, bkz. `bottom-bar-inset.tsx`) onun
+ * üstüne, iPhone güvenli alanı (`safe-area-inset-bottom`) kadar da yukarı çıkar.
+ */
+export const FLOATING_BOTTOM = "calc(1.5rem + var(--site-bottom-inset, 0px) + env(safe-area-inset-bottom, 0px))";
+/** Sohbet düğmesi (3.5rem) + boşluk (0.75rem) — aynı köşedeki "yukarı çık" düğmesi bunun üstüne çıkar. */
+const CHAT_STACK_OFFSET = "4.25rem";
+
 interface InternalLiveChatWidgetProps {
+  position: LiveChatPosition;
   siteName: string;
   preChatEnabled: boolean;
   requireName: boolean;
@@ -580,11 +592,26 @@ interface InternalLiveChatWidgetProps {
 }
 
 /** "internal" sağlayıcı — kendi (gerçek backend'e bağlı) sohbet arayüzü. */
-function InternalLiveChatWidget({ siteName, preChatEnabled, requireName, requirePhone, requireEmail }: InternalLiveChatWidgetProps) {
+function InternalLiveChatWidget({ position, siteName, preChatEnabled, requireName, requirePhone, requireEmail }: InternalLiveChatWidgetProps) {
   const [open, setOpen] = useState(false);
+  const side = position === "BOTTOM_LEFT" ? "left" : "right";
+
+  // Aynı köşedeki "yukarı çık" düğmesi sohbet düğmesinin üstüne çıksın diye yığın payını yayınla.
+  useEffect(() => {
+    const root = document.documentElement;
+    const variable = `--site-chat-stack-${side}`;
+    root.style.setProperty(variable, CHAT_STACK_OFFSET);
+    return () => {
+      root.style.removeProperty(variable);
+    };
+  }, [side]);
 
   return (
-    <div className="fixed bottom-6 right-6 z-50">
+    <div
+      data-live-chat-position={side}
+      className={cn("fixed z-50 flex flex-col transition-[bottom] duration-300", side === "left" ? "items-start" : "items-end")}
+      style={{ bottom: FLOATING_BOTTOM, [side]: "1.5rem" }}
+    >
       <AnimatePresence mode="wait">
         {open ? (
           <motion.div
@@ -665,6 +692,7 @@ export function LiveChatWidget({ settings }: LiveChatWidgetProps) {
 
   return (
     <InternalLiveChatWidget
+      position={settings.liveChatPosition ?? "BOTTOM_RIGHT"}
       siteName={settings.siteName}
       // §7.4 — pre-chat bayrakları da `liveChatEnabled` İLE AYNI "backend henüz yetişmemişse
       // güvenli (kapalı) varsayılan" disipliniyle `?? ` düşer. `liveChatRequireName/Phone` backend

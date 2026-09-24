@@ -16331,6 +16331,13 @@ components:
           type: boolean
           description: "Form gösterilirken E-posta alanı ZORUNLU mu. Varsayılan `false`."
           default: false
+        liveChatPosition:
+          type: string
+          enum: [BOTTOM_RIGHT, BOTTOM_LEFT]
+          default: BOTTOM_RIGHT
+          description: >
+            Dahili sohbet düğmesinin ve açılan pencerenin köşesi. Harici sağlayıcılar (Crisp/Tawk.to)
+            kendi konumlarını yönetir, bu alanı kullanmaz.
 
     UpdateSiteSettingsRequest:
       description: "`PATCH /admin/settings` gövdesi — tüm alanlar opsiyoneldir, satır yoksa `DEFAULTS` ile birlikte oluşturulur (upsert)."
@@ -16390,6 +16397,7 @@ components:
         liveChatRequireName: { type: boolean, description: "Formdaki Ad Soyad alanı zorunlu mu." }
         liveChatRequirePhone: { type: boolean, description: "Formdaki Telefon alanı zorunlu mu." }
         liveChatRequireEmail: { type: boolean, description: "Formdaki E-posta alanı zorunlu mu." }
+        liveChatPosition: { type: string, enum: [BOTTOM_RIGHT, BOTTOM_LEFT], description: "Dahili sohbet düğmesinin köşesi (geçersiz değer 422)." }
         # NOT: `liveChatPreChatEnabled = true` iken `liveChatRequire*` alanlarının ÜÇÜ birden
         # `false` olabilir (form gösterilir, hiçbir alan zorunlu değildir, ziyaretçi boş
         # geçebilir) — bu KASITLIDIR, çapraz-alan `422` kuralı YOKTUR.

@@ -353,6 +353,30 @@ describe("settings — liveChatEnabled/liveChatProvider/liveChatScriptId", () =>
     });
     expect(res.statusCode).toBe(422);
   });
+
+  it("liveChatPosition: varsayılan BOTTOM_RIGHT; BOTTOM_LEFT yazılır ve public GET'te döner; geçersiz değer 422", async () => {
+    const before = await app.inject({ method: "GET", url: "/api/v1/settings" });
+    expect(before.json().data.liveChatPosition).toBe("BOTTOM_RIGHT");
+
+    const patch = await app.inject({
+      method: "PATCH",
+      url: "/api/v1/admin/settings",
+      headers: authHeader(),
+      payload: { liveChatPosition: "BOTTOM_LEFT" },
+    });
+    expect(patch.statusCode).toBe(200);
+    const row = await app.prisma.siteSettings.findUniqueOrThrow({ where: { id: "singleton" } });
+    expect(row.liveChatPosition).toBe("BOTTOM_LEFT");
+    expect((await app.inject({ method: "GET", url: "/api/v1/settings" })).json().data.liveChatPosition).toBe("BOTTOM_LEFT");
+
+    const invalid = await app.inject({
+      method: "PATCH",
+      url: "/api/v1/admin/settings",
+      headers: authHeader(),
+      payload: { liveChatPosition: "TOP_LEFT" },
+    });
+    expect(invalid.statusCode).toBe(422);
+  });
 });
 
 /**

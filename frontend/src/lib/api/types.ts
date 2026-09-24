@@ -1754,7 +1754,11 @@ export interface SiteSettings {
   liveChatRequirePhone?: boolean;
   /** Form gösterilirken E-posta alanı zorunlu mu. Backend varsayılanı `false`. */
   liveChatRequireEmail?: boolean;
+  /** Dahili sohbet düğmesinin köşesi — varsayılan `BOTTOM_RIGHT`. Harici sağlayıcılar kullanmaz. */
+  liveChatPosition?: LiveChatPosition;
 }
+
+export type LiveChatPosition = "BOTTOM_RIGHT" | "BOTTOM_LEFT";
 
 export interface UpdateSiteSettingsRequest {
   siteName?: string;
@@ -1781,6 +1785,8 @@ export interface UpdateSiteSettingsRequest {
   liveChatRequireName?: boolean;
   liveChatRequirePhone?: boolean;
   liveChatRequireEmail?: boolean;
+  /** Dahili sohbet düğmesinin köşesi — varsayılan `BOTTOM_RIGHT`. Harici sağlayıcılar kullanmaz. */
+  liveChatPosition?: LiveChatPosition;
 }
 
 export interface UpdateBlogPostRequest {

@@ -51,6 +51,8 @@ export const UpdateSiteSettingsRequestSchema = z
     liveChatRequireName: z.boolean().optional(),
     liveChatRequirePhone: z.boolean().optional(),
     liveChatRequireEmail: z.boolean().optional(),
+    // Dahili sohbet düğmesinin köşesi — DB'de enum (serbest metin DEĞİL).
+    liveChatPosition: z.enum(["BOTTOM_RIGHT", "BOTTOM_LEFT"]).optional(),
   })
   .refine(
     (data) =>

@@ -47,7 +47,7 @@ export function CookieConsentBanner({ text, policyHref }: CookieConsentBannerPro
      * `bg-[var(--site-secondary)]` yerine sabit, WCAG AA garantili koyu bir nötr zemin
      * (`bg-neutral-900`) kullanılır — banner artık `--site-secondary`'den TAMAMEN bağımsız.
      */
-    <div className="fixed inset-x-0 bottom-0 z-50 bg-neutral-900 text-white shadow-lg">
+    <div data-bottom-bar="" className="fixed inset-x-0 bottom-0 z-50 bg-neutral-900 text-white shadow-lg">
       <div className="mx-auto flex max-w-5xl flex-col items-start gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
         <p className="text-sm text-white/90">
           {text || DEFAULT_TEXT}{" "}

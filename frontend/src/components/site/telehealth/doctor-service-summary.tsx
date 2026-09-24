@@ -231,6 +231,7 @@ export function DoctorServiceSummaryPanel({
           zaten görünür, mobilde de İKİNCİ bir sabit CTA ÇUBUĞU YARATILMAZ. */}
       {showContinueButton && (
         <div
+          data-bottom-bar=""
           aria-hidden={!barVisible}
           className={cn(
             "fixed inset-x-0 z-40 h-16 border-t border-border bg-surface/95 shadow-[0_-2px_12px_rgba(0,0,0,0.08)] backdrop-blur-sm transition-transform duration-300 lg:hidden",
