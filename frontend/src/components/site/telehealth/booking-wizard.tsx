@@ -1,5 +1,6 @@
 "use client";
 
+import type { TelehealthStrings } from "@/lib/i18n/site-dictionaries";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarCheck, ChevronLeft } from "lucide-react";
@@ -135,11 +136,26 @@ interface BookingWizardProps {
   initialSlots: AvailabilitySlot[];
   kvkkPage: Pick<SitePage, "title" | "slug"> | null;
   intlLocale?: string;
+  /**
+   * Aktif dilin tele-sağlık sözlüğü — özet paneline ve mobil alt çubuğa (fiyat/"Ücretsiz" etiketi,
+   * "Devam Et", adım sayacı) iletilir. Verilmezse panel eski davranışla Türkçe'ye düşer.
+   */
+  telehealthDict?: TelehealthStrings;
 }
 
 type WizardStep = 2 | 3 | 4 | 5;
 
-export function BookingWizard({ doctor, doctorSlug, doctorTimeZone, lang, defaultLocaleCode, initialSlots, kvkkPage, intlLocale }: BookingWizardProps) {
+export function BookingWizard({
+  doctor,
+  doctorSlug,
+  doctorTimeZone,
+  lang,
+  defaultLocaleCode,
+  initialSlots,
+  kvkkPage,
+  intlLocale,
+  telehealthDict,
+}: BookingWizardProps) {
   const router = useRouter();
   const { selectedSlots, clearAllSlots, displayTimeZone, setHasCompletedBooking, resetSignal } = useBookingSelection();
 
@@ -514,6 +530,7 @@ export function BookingWizard({ doctor, doctorSlug, doctorTimeZone, lang, defaul
             continueLoading={continueLoading}
             showContinueButton={showContinueButton}
             locked={currentStep >= 4}
+            dict={telehealthDict}
           />
         </aside>
       </div>

@@ -107,6 +107,11 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
 
 ### Fixed
 
+- **`fix(telehealth)`: İngilizce doktor detay sayfasında randevu özeti ve mobil randevu çubuğu
+  Türkçe görünüyordu** ("Ücretsiz / Bilgi Alınız", "Devam Et", adım sayacı). Randevu sihirbazı
+  özet paneline aktif dilin sözlüğünü iletmiyordu, panel Türkçe varsayılana düşüyordu; artık sayfanın
+  dil sözlüğü iletiliyor.
+
 - **`fix(telehealth)`: Tema renkleri kaydedilince `site_modules.settings` içindeki diğer ayarlar
   siliniyordu.** `PATCH /admin/telehealth/settings` artık mevcut JSON'u birleştirerek yazar; tema
   kaydı acil durum uyarısı ayarını (ve tersi) korur. Regresyon testi eklendi.
