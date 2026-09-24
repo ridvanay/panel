@@ -13,6 +13,23 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
 
 ### Added
 
+- **`feat(telehealth)`: Acil durum uyarısı yeniden düzenlendi — katlanabilir şerit, admin anahtarı ve
+  düzenlenebilir metinler.** Doktorlar, uzmanlıklar ve görüşme sayfalarında header altındaki şerit
+  artık kapalı (tek satırlık özet + "Ayrıntılar" düğmesi) başlar; düğme tam metni açar/kapatır
+  ("Ayrıntıları gizle"). Ziyaretçi şeridi tamamen kapatamaz, durum hatırlanmaz (her sayfada kapalı
+  başlar); `role="note"`, `aria-expanded`/`aria-controls`, 44px dokunma alanı. Yazı 1280px'e kadar
+  13px, üstünde 14px; zemin birincil rengin açık tonu, ikon `--warning`. Admin → TeleHealth →
+  "Arayüz & Tema Renkleri" sayfasına "Acil Durum Uyarısı" kartı eklendi: "Acil durum uyarısını göster"
+  anahtarı (varsayılan AÇIK, kapatmak onay ister) yalnızca doktorlar ve uzmanlıklar sayfalarındaki
+  şeridi kontrol eder — görüşme ekranındaki şerit ve doktor detay sayfasındaki uyarı kartı (tam
+  metin) her zaman görünür. TR/EN özet (10–90) ve tam metin (20–300) düzenlenebilir, boş
+  bırakılamaz, düz metin; EN metinler "emergency", TR metinler "acil" kelimesini içermek zorunda
+  (sunucu 422 döner, form anlaşılır hata gösterir). "Varsayılana dön" dil sözlüğündeki metne döner.
+  Yalnızca ADMIN rolü değiştirebilir; her değişiklik denetim kaydına (önce/sonra) yazılır. Yeni uç:
+  `PATCH /admin/telehealth/settings/emergency-notice`; `GET /telehealth/theme` ve
+  `GET|PATCH /admin/telehealth/settings` yanıtına `emergencyNotice` eklendi. Şema değişikliği YOK
+  (ayar `site_modules.settings` JSON'unda).
+
 - **`feat(site)`: Site simgesi (favicon) ve Apple touch icon admin panelinden değiştirilebilir.**
   Admin → Navigasyon'da logonun altına "Site simgesi (favicon)" ve "Apple touch icon (opsiyonel)"
   alanları eklendi (medya kütüphanesinden seçme veya yükleme). Yalnızca PNG (SVG bilinçli olarak
@@ -50,6 +67,10 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
   (`FOUNDER_DOCTOR_SLUG`, kaldırıldı) yerine admin'de seçilen doktorun `id`'siyle belirlenir.
 
 ### Fixed
+
+- **`fix(telehealth)`: Tema renkleri kaydedilince `site_modules.settings` içindeki diğer ayarlar
+  siliniyordu.** `PATCH /admin/telehealth/settings` artık mevcut JSON'u birleştirerek yazar; tema
+  kaydı acil durum uyarısı ayarını (ve tersi) korur. Regresyon testi eklendi.
 
 - **`fix(site)`: Masaüstü açılır menü (ör. Specialties) tetikleyici kadar dar açılıyordu** — öğeler 3
   satıra kırılıyordu. Genişlik artık içeriğe göre (en fazla 22rem); öğeler en fazla 2 satır
