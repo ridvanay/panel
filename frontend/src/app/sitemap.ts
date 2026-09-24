@@ -109,6 +109,15 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: "daily",
       priority: 0.8,
     },
+    // Statik `/about` sayfası (`[lang]/(site)/about/page.tsx`) — içerik sözlükten geldiği için her
+    // aktif dilde mevcuttur; `buildSpecialtyLanguageAlternates` AYNI "kendine referans" haritasını
+    // üretir (`"" + "/about"`).
+    {
+      url: `${SITE_URL}/about`,
+      changeFrequency: "monthly",
+      priority: 0.6,
+      alternates: { languages: buildSpecialtyLanguageAlternates(locales, defaultLocale, "", "about") },
+    },
   ];
 
   for (const page of pages) {

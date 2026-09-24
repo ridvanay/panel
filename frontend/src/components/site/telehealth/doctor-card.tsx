@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { BadgeCheck } from "lucide-react";
 import type { DoctorProfile } from "@/lib/api/types";
@@ -44,6 +45,7 @@ export function DoctorCard({
   ctaHref,
   intlLocale,
   dict = sourceTelehealthStrings,
+  badge,
 }: {
   doctor: DoctorProfile;
   activeLocaleCode?: string;
@@ -69,6 +71,11 @@ export function DoctorCard({
    * BURADA ÇAĞRILMAZ. Verilmezse KAYNAK dile (`en`) sessizce düşer (§14.3).
    */
   dict?: TelehealthStrings;
+  /**
+   * İsim satırının üstünde gösterilen isteğe bağlı küçük etiket (ör. `/about`'taki "Founder").
+   * Görsel stili çağıran taraf belirler; verilmezse kart DEĞİŞMEDEN render edilir.
+   */
+  badge?: ReactNode;
 }) {
   const href = activeLocaleCode
     ? withLocalePrefix(`/doctors/${doctor.slug}`, activeLocaleCode, defaultLocaleCode ?? activeLocaleCode)
@@ -87,6 +94,7 @@ export function DoctorCard({
       <div className="flex items-center gap-4">
         <DoctorAvatar doctor={doctor} size={size} verifiedSrLabel={dict.verifiedPhysicianSrOnly} />
         <div className="min-w-0">
+          {badge && <div className="mb-1">{badge}</div>}
           <Link href={href} className="hover:underline">
             <h3 className={cn("truncate font-semibold text-foreground", size === "lg" ? "text-2xl sm:text-3xl" : "text-sm")}>
               {doctor.title} {doctor.fullName}
