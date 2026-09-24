@@ -4412,7 +4412,26 @@ export interface TelehealthThemeSettings {
   secondaryColor: string;
   accentColor: string;
   calendarActiveBg: string;
+  /** Acil durum uyarısı — backend `modules/telehealth/lib/emergency-notice.ts`. */
+  emergencyNotice?: EmergencyNoticeSettings;
 }
 
-/** `PATCH /admin/telehealth/settings` gövdesi — KISMİ, hepsi opsiyonel (0-4 alan). */
-export type UpdateTelehealthThemeSettingsRequest = Partial<TelehealthThemeSettings>;
+/**
+ * Acil durum uyarısı ayarları. `enabled` yalnızca header altındaki şeridi kontrol eder (doktor detay
+ * kartı her zaman görünür). `summary`/`full`: dil kodu → admin metni; olmayan dilde sözlük varsayılanı.
+ */
+export interface EmergencyNoticeSettings {
+  enabled: boolean;
+  summary: Record<string, string>;
+  full: Record<string, string>;
+}
+
+/** `PATCH /admin/telehealth/settings/emergency-notice` — yalnızca ADMIN; `null` o dilin metnini siler. */
+export interface UpdateEmergencyNoticeRequest {
+  enabled?: boolean;
+  summary?: Record<string, string | null>;
+  full?: Record<string, string | null>;
+}
+
+/** `PATCH /admin/telehealth/settings` gövdesi — KISMİ, hepsi opsiyonel (0-4 renk alanı). */
+export type UpdateTelehealthThemeSettingsRequest = Partial<Omit<TelehealthThemeSettings, "emergencyNotice">>;

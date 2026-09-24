@@ -5,11 +5,18 @@
  */
 export const telehealthStrings = {
   /**
-   * §14.7 — compliance-agent onaylı NİHAİ metin. `112` Türkiye'ye özeldir, İngilizce sürüm jenerik +
-   * eyleme geçirilebilir örnek numaralarla (`tr/telehealth.ts`'teki metinle KARIŞTIRILMAZ).
+   * Acil durum uyarısı — VARSAYILAN metinler (ürün sahibinin 2026-09-25 kararı; admin → TeleHealth
+   * ayarlarında dil başına değiştirilebilir, admin alanı boşsa bunlar gösterilir). `Summary`:
+   * header altındaki şeridin kapalı hâli (tek satırlık özet); `Full`: şeridin açık hâli ve doktor
+   * detay sayfasındaki kart (her zaman tam metin). Sınırlar: özet 10–90, tam metin 20–300 karakter;
+   * EN metinler "emergency" kelimesini içermelidir (TR sözlükte "acil").
    */
-  emergencyNotice:
-    "This platform must NOT be used for medical emergencies and is not a substitute for emergency medical care. In an emergency, call your local emergency number — for example 112 (Türkiye/EU), 911 (US/Canada), or 999 (UK) — or the relevant number for your country.",
+  emergencyNoticeSummary: "Not for emergencies. In an emergency, call your local emergency number.",
+  emergencyNoticeFull:
+    "This platform is not for emergencies and is not a substitute for emergency medical care. In an emergency, call your local emergency number (112 in Türkiye/EU, 911 in the US/Canada, 999 in the UK).",
+  /** Şeridi açan/kapatan düğme. */
+  emergencyNoticeShowDetails: "Details",
+  emergencyNoticeHideDetails: "Hide details",
 
   // --- /doctors ızgarası (madde 4/5/6) ---
   doctorsPageTitle: "Our Doctors",

@@ -10,6 +10,8 @@ import { DoctorProfileTabs } from "@/components/site/telehealth/doctor-profile-t
 import { DoctorQuickBookingCard } from "@/components/site/telehealth/doctor-quick-booking-card";
 import { BookingSelectionProvider } from "@/components/site/telehealth/booking-selection-context";
 import { EmergencyNoticeCard } from "@/components/site/telehealth/emergency-notice";
+import { resolveEmergencyNotice } from "@/lib/emergency-notice";
+import { fetchTelehealthThemeServer } from "@/lib/api/server-telehealth";
 import { BookingWizard } from "@/components/site/telehealth/booking-wizard";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
 import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
@@ -125,12 +127,13 @@ export default async function DoctorDetailPage({ params }: DoctorDetailPageProps
   const { lang, slug } = await params;
   const { from, to } = defaultSlotRange();
 
-  const [doctor, locales, pages, slots, dict] = await Promise.all([
+  const [doctor, locales, pages, slots, dict, telehealthSettings] = await Promise.all([
     fetchDoctorBySlugServer(slug),
     fetchLocalesServer(),
     fetchPublishedPagesServer(lang),
     fetchDoctorSlotsServer(slug, from, to),
     getSiteDictionary(lang),
+    fetchTelehealthThemeServer(),
   ]);
   if (!doctor) notFound();
 
@@ -202,7 +205,8 @@ export default async function DoctorDetailPage({ params }: DoctorDetailPageProps
           <section id="randevu" className="mt-10 scroll-mt-24">
             <h2 className="text-xl font-semibold text-foreground">{dict.telehealth.availabilityAndBookingTitle}</h2>
             <div className="mt-4">
-              <EmergencyNoticeCard text={dict.telehealth.emergencyNotice} />
+              {/* Anahtardan BAĞIMSIZ, her zaman TAM metinle (admin metni, yoksa sözlük varsayılanı). */}
+              <EmergencyNoticeCard text={resolveEmergencyNotice(telehealthSettings, lang, dict.telehealth).full} />
             </div>
             <div className="mt-4">
               <BookingWizard

@@ -74,6 +74,8 @@ const TELEHEALTH_THEME_DEFAULTS: TelehealthThemeSettings = {
   secondaryColor: "#0369a1",
   accentColor: "#f59e0b",
   calendarActiveBg: "#0f766e",
+  // Acil durum uyarısı — backend erişilemezse de şerit AÇIK ve sözlük metinleri (güvenli taraf).
+  emergencyNotice: { enabled: true, summary: {}, full: {} },
 };
 
 export async function fetchTelehealthThemeServer(): Promise<TelehealthThemeSettings> {
