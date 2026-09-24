@@ -3,6 +3,7 @@ import type { NavStrings } from "./en/nav";
 import type { TelehealthStrings } from "./en/telehealth";
 import type { LegalStrings } from "./en/legal";
 import type { ErrorStrings } from "./en/errors";
+import type { AboutStrings } from "./en/about";
 
 /**
  * `.claude/architect-scope-i18n.md` §14.2 — public site UI STRING KAPSAMI. `Locale.code`
@@ -17,6 +18,7 @@ export type SiteDictionary = {
   telehealth: TelehealthStrings;
   legal: LegalStrings;
   errors: ErrorStrings;
+  about: AboutStrings;
 };
 
-export type { CommonStrings, NavStrings, TelehealthStrings, LegalStrings, ErrorStrings };
+export type { CommonStrings, NavStrings, TelehealthStrings, LegalStrings, ErrorStrings, AboutStrings };

@@ -535,6 +535,30 @@
 }
 
 /*
+ * `/about` sayfası token'ları — SABİT renk YOK, hepsi `.site-scope`'un `--site-*` değişkenlerinden
+ * türetilir (renkler admin panelinden Görünüm ayarlarıyla yönetilir). İkincil (dekoratif) renk
+ * `--site-accent`'tir, `--site-secondary` DEĞİL: `--site-secondary` doktor profil hero bandında
+ * beyaz metnin KOYU zemini olarak kullanılır, açık bir renge çekilemez. `--about-accent` beyaz
+ * zeminde METİN rengi olarak KULLANILMAZ (kontrast yetersiz) — yalnızca çizgi/şerit/ikon kutusu.
+ */
+.about-page {
+  --about-accent: var(--site-accent);
+  --about-accent-tint: color-mix(in oklch, var(--site-accent) 18%, white);
+  /* Admin'deki "Gövde Metni" alanı `mutedTextColor`'dır (`--site-muted-text`); "Başlık Metni" ise
+     `textColor`. İkincil metin (breadcrumb, konum kartı alt satırı) için ayrı bir ayar YOK —
+     gövde metninden sayfa zeminine doğru hafifçe açılarak türetilir. */
+  --about-body-text: var(--site-muted-text);
+  --about-muted-text: color-mix(in oklch, var(--site-muted-text) 85%, var(--site-background));
+}
+
+/* `.site-scope h1` (0,1,1) kuralını ezmek için iki sınıflı seçici (0,2,0) — Newsreader yalnızca
+   bu sayfanın h1/h2 başlıklarında ve "Why" numaralarında kullanılır (`about-fonts.ts`). */
+.about-page .about-serif {
+  font-family: var(--font-about-serif), Georgia, "Times New Roman", serif;
+  font-weight: 400;
+}
+
+/*
  * Page-builder — görsel widget'lar/konteyner arka planları için SAF CSS animasyonları (harici
  * kütüphane YOK, "hafif tut" isteği). Renkler/hız gibi DİNAMİK değerler her zaman ilgili
  * bileşenin inline `style`'ında (`container-block.tsx`, `logo-marquee-block.tsx`) kalır —
