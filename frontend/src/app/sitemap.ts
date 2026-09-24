@@ -8,6 +8,7 @@ import { fetchDoctorsServer, fetchSpecialtiesServer } from "@/lib/api/server-tel
 import { fetchSiteSettingsServer } from "@/lib/api/server-settings";
 import { fetchLocalesServer } from "@/lib/api/server-locales";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
+import { ABOUT_PAGE_SLUG } from "@/lib/about-page";
 import type { ContentLocalization, Locale } from "@/lib/api/types";
 
 /**
@@ -109,20 +110,24 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: "daily",
       priority: 0.8,
     },
-    // Statik `/about` sayfası (`[lang]/(site)/about/page.tsx`) — içerik sözlükten geldiği için her
-    // aktif dilde mevcuttur; `buildSpecialtyLanguageAlternates` AYNI "kendine referans" haritasını
-    // üretir (`"" + "/about"`).
+    // Statik `/about` sayfası (`[lang]/(site)/about/page.tsx`) — CMS kaydı olsun olmasın her aktif
+    // dilde mevcuttur (kayıt yoksa sözlük metinleri); `buildSpecialtyLanguageAlternates` AYNI
+    // "kendine referans" haritasını üretir (`"" + "/about"`). CMS kaydı aşağıdaki sayfa döngüsünde
+    // ATLANIR — aynı URL iki kez girmesin.
     {
-      url: `${SITE_URL}/about`,
+      url: `${SITE_URL}/${ABOUT_PAGE_SLUG}`,
+      lastModified: pages.find((page) => page.slug === ABOUT_PAGE_SLUG)?.updatedAt,
       changeFrequency: "monthly",
       priority: 0.6,
-      alternates: { languages: buildSpecialtyLanguageAlternates(locales, defaultLocale, "", "about") },
+      alternates: { languages: buildSpecialtyLanguageAlternates(locales, defaultLocale, "", ABOUT_PAGE_SLUG) },
     },
   ];
 
   for (const page of pages) {
     // Ana sayfa olarak seçilen sayfa kök URL'de zaten temsil ediliyor — mükerrer girdi olmasın.
     if (page.id === settings.homePageId) continue;
+    // "Hakkımızda" kaydı yukarıdaki statik `/about` girdisiyle temsil ediliyor.
+    if (page.slug === ABOUT_PAGE_SLUG) continue;
     entries.push({
       url: `${SITE_URL}/${page.slug}`,
       lastModified: page.updatedAt,

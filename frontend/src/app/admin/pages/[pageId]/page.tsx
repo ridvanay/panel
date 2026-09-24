@@ -32,6 +32,8 @@ import { LocaleFallbackBadge, FALLBACK_FIELD_CLASSES } from "@/components/admin/
 import { BuilderCanvas } from "@/components/admin/page-builder/builder-canvas";
 import { ContainerSettingsPanel } from "@/components/admin/page-builder/container-settings-panel";
 import { TemplateEditorView } from "@/components/admin/page-builder/template-editor-view";
+import { AboutTemplateForm } from "@/components/admin/page-builder/about-template-form";
+import { findAboutBlockData, findAboutBlockId, isAboutTemplatePage, toAboutBlocks, toEditableAboutContent, type AboutPageContent } from "@/lib/about-page";
 import { SeoPreview } from "@/components/admin/seo-preview";
 import { RevisionHistory } from "@/components/admin/revision-history";
 import { ImageUploadField } from "@/components/admin/media/image-upload-field";
@@ -135,6 +137,10 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
   // BuilderCanvas'ın `key`'ine dahil edilerek tüm blok editörleri TAM REMOUNT edilir —
   // böylece restore sonrası editör state'i her zaman güncel blok verisiyle senkron kalır.
   const [editorGeneration, setEditorGeneration] = useState(0);
+  // "Hakkımızda" şablonu (bkz. `lib/about-page.ts`) — sayfa bu şablonu kullanıyorsa blok tuvali
+  // HİÇBİR rolde gösterilmez; yerine yapılandırılmış içerik formu (`AboutTemplateForm`) gelir ve
+  // bloklar normalize/konteynere sarma işleminden GEÇİRİLMEZ (backend "tek kök blok" kuralı).
+  const [isAboutTemplate, setIsAboutTemplate] = useState(false);
 
   const defaultLocale = locales.find((l) => l.isDefault) ?? null;
   const isDefaultLocale = !defaultLocale || locale === defaultLocale.code;
@@ -169,10 +175,12 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
   // sarmayı "yapısal değişiklik" sayıp 403 döndürür.
   const enBlocks = useMemo(
     () =>
-      !canUseAdvancedBuilder
-        ? normalizePageNodes(translations[locale]?.blocks ?? [])
-        : wrapBareRootBlocks(normalizePageNodes(translations[locale]?.blocks ?? [])),
-    [translations, locale, canUseAdvancedBuilder]
+      isAboutTemplate
+        ? ((translations[locale]?.blocks ?? []) as PageNode[])
+        : !canUseAdvancedBuilder
+          ? normalizePageNodes(translations[locale]?.blocks ?? [])
+          : wrapBareRootBlocks(normalizePageNodes(translations[locale]?.blocks ?? [])),
+    [translations, locale, canUseAdvancedBuilder, isAboutTemplate]
   );
 
   function setEnBlocks(nextBlocks: PageNode[]) {
@@ -181,6 +189,17 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
 
   const activeNodes = isDefaultLocale ? blocks : enBlocks;
   const setActiveNodes = isDefaultLocale ? setBlocks : setEnBlocks;
+
+  const aboutContent = useMemo(
+    () => (isAboutTemplate ? toEditableAboutContent(findAboutBlockData(activeNodes)) : null),
+    [isAboutTemplate, activeNodes]
+  );
+  function setAboutContent(next: AboutPageContent) {
+    // Aynı blok `id`'si korunur — şablon modu guard'ı (Yazar rolü) düğümleri `id` ile eşleştirir.
+    // Başka bir dilde henüz blok yoksa, varsayılan dilin bloğunun `id`'si kullanılır.
+    const blockId = findAboutBlockId(activeNodes.length > 0 ? activeNodes : blocks);
+    setActiveNodes(toAboutBlocks(next, blockId) as unknown as PageNode[]);
+  }
   // design-notes-page-builder-standard-mode.md §2.1 — `BuilderCanvas` bu durumda HİÇ mount edilmez.
   // Kullanıcı kararıyla sıkılaştırıldı: standart kullanıcı (canUseAdvancedBuilder: false)
   // `editMode` NE OLURSA OLSUN (FREEFORM dahil) serbest tuvale erişemez, yalnızca
@@ -209,9 +228,13 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
       // state'i değil, dolayısıyla `simpleMode`'daki gecikme sorunu burada yoktur); yine de tutarlılık
       // için doğrudan capability üzerinden hesaplanır.
       const isSimpleModePage = !canUseAdvancedBuilder;
-      const loadedBlocks = isSimpleModePage
-        ? normalizePageNodes(page.blocks)
-        : wrapBareRootBlocks(normalizePageNodes(page.blocks));
+      const aboutTemplate = isAboutTemplatePage(page);
+      const loadedBlocks = aboutTemplate
+        ? ((Array.isArray(page.blocks) ? page.blocks : []) as unknown as PageNode[])
+        : isSimpleModePage
+          ? normalizePageNodes(page.blocks)
+          : wrapBareRootBlocks(normalizePageNodes(page.blocks));
+      setIsAboutTemplate(aboutTemplate);
       setTitle(page.title);
       setSlug(page.slug);
       setEditMode(page.editMode);
@@ -624,8 +647,15 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
                   );
                 }}
               </Field>
-              <Field id="slug" label="Slug (URL)" required>
-                {(inputProps) => <Input {...inputProps} required value={slug} onChange={(e) => setSlug(e.target.value)} />}
+              <Field
+                id="slug"
+                label="Slug (URL)"
+                required
+                hint={isAboutTemplate ? "Hakkımızda şablonunun adresi sabittir (/about)." : undefined}
+              >
+                {(inputProps) => (
+                  <Input {...inputProps} required value={slug} readOnly={isAboutTemplate} onChange={(e) => setSlug(e.target.value)} />
+                )}
               </Field>
             </div>
 
@@ -676,6 +706,25 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
             )}
           </Card>
 
+          {isAboutTemplate && aboutContent ? (
+            <div>
+              <h2 className="admin-h2">
+                Hakkımızda içeriği {!isDefaultLocale && <span className="text-foreground/40">({locale.toUpperCase()})</span>}
+              </h2>
+              <p className="mt-1 admin-text-secondary">
+                Tasarım sabittir; yalnızca metinleri, bağlantıları, görseli ve listeleri düzenleyebilirsiniz.
+              </p>
+              <div className="mt-4">
+                <AboutTemplateForm
+                  key={`${locale}-${editorGeneration}`}
+                  value={aboutContent}
+                  onChange={setAboutContent}
+                  localeCode={locale}
+                  idPrefix={`about-${locale}`}
+                />
+              </div>
+            </div>
+          ) : (
           <div>
             <h2 className="admin-h2">
               İçerik blokları {!isDefaultLocale && <span className="text-foreground/40">({locale.toUpperCase()})</span>}
@@ -735,6 +784,7 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
               )}
             </div>
           </div>
+          )}
         </TabsContent>
 
         <TabsContent value="seo" className="mt-6 outline-none">

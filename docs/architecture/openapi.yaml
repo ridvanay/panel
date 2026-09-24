@@ -14158,7 +14158,8 @@ components:
         `featured-portfolio` · `heading` · `button` · `icon-box` · `divider` · `video` ·
         `accordion` · `tabs` · `counter` · `testimonial` · `pricing-table` · `latest-posts` ·
         `contact-form` · `custom-html` · `before-after-slider` · `logo-marquee` · `skill-bar` ·
-        `team` · `advanced-slider` · `google-map` · **`container`** (kanonik konteyner düğümü,
+        `team` · `advanced-slider` · `google-map` · `about-page` ("Hakkımızda" şablonu — YALNIZCA
+        tek kök düğüm olarak, bkz. `AboutPageBlockData`) · **`container`** (kanonik konteyner düğümü,
         §10.19) · `columns` (**deprecated**, salt okuma/geçiş, aşağıya bkz.).
 
 
@@ -14216,6 +14217,7 @@ components:
               team,
               advanced-slider,
               google-map,
+              about-page,
               container,
               columns,
             ]
@@ -14227,7 +14229,8 @@ components:
             "columns"` için bkz. `PageColumnsBlockData` (**deprecated**). `type:
             "advanced-slider"` için bkz. `AdvancedSliderBlockData`. `type: "google-map"` için
             bkz. `GoogleMapBlockData` (embed URL beyaz listesi + `apiKey` alanının KASITLI
-            olarak yokluğu orada belgelenir). `type: "container"` düğümlerinde bu alan
+            olarak yokluğu orada belgelenir). `type: "about-page"` için bkz.
+            `AboutPageBlockData`. `type: "container"` düğümlerinde bu alan
             YOKTUR — bkz. `PageContainerNode`.
 
     PageContainerSettings:
@@ -14487,6 +14490,119 @@ components:
           enum: [boxed, "full-width"]
           description: "Ön yüzdeki genişlik modu — `boxed` (varsayılan, max-w-7xl ortalanmış) veya `full-width` (viewport kenarına dayanan tam genişlik). Yoksa `widthMode ?? \"boxed\"` düşer."
       additionalProperties: false
+
+    AboutPageBlockData:
+      type: object
+      description: >
+        "Hakkımızda" (About Us) şablonu — `slug = "about"` olan sayfanın `blocks` dizisinde (ve
+        `translations.<locale>.blocks`'ta) TEK KÖK düğüm olarak bulunan `about-page` bloğunun `data`
+        şekli (backend `pages.schemas.ts::AboutPageBlockSchema`, sabitler
+        `lib/about-page-template.ts`). Tasarım frontend kodunda sabittir; blok yalnızca İÇERİK taşır.
+        Şema değişikliği YOKTUR — mevcut `blocks`/`translations`/`editMode: TEMPLATE` altyapısı kullanılır.
+
+
+        **Yapısal kural:** `about-page` bloğu içeren bir `blocks` dizisi başka HİÇBİR blok içeremez,
+        blok bir konteynerin içine konamaz ve birden fazla olamaz → aksi halde **422**.
+
+
+        **Boş string = varsayılan:** tüm metin/bağlantı alanları opsiyoneldir (varsayılan `""`); public
+        sayfa boş alan için kod içindeki sözlük metnini gösterir. Liste boşsa varsayılan liste gösterilir.
+        Tüm metinler DÜZ METİNDİR (HTML yorumlanmaz, React kaçışlar). Bilinmeyen alanlar atılır.
+
+
+        **Bağlantılar:** `SafeHrefSchema` (relative `/…` veya `http(s)://`) VEYA yalnızca sayfa içi çapa
+        (`^#[A-Za-z][A-Za-z0-9_-]{0,63}$`, ör. `#doctors`); `javascript:`/`data:`/`vbscript:` → **422**.
+        Site içi yollar render sırasında aktif dilin önekini alır.
+
+
+        **Şablon modu (Yazar rolü):** `TEMPLATE_EDITABLE_FIELDS["about-page"]` =
+        `data.hero`, `data.treatments`, `data.approach`, `data.doctors`, `data.closing`.
+      properties:
+        hero:
+          type: object
+          properties:
+            eyebrow: { type: string, maxLength: 120 }
+            title: { type: string, maxLength: 200 }
+            body: { type: string, maxLength: 2000 }
+            primaryCta: { $ref: "#/components/schemas/AboutPageCta" }
+            secondaryCta: { $ref: "#/components/schemas/AboutPageCta" }
+            imageUrl: { type: string, maxLength: 2048, description: "Boş veya SafeHref (medya kütüphanesinden)." }
+            imageAlt: { type: string, maxLength: 200 }
+            locationTitle: { type: string, maxLength: 120 }
+            locationSubtitle: { type: string, maxLength: 200 }
+        treatments:
+          type: object
+          properties:
+            enabled: { type: boolean, default: true }
+            eyebrow: { type: string, maxLength: 120 }
+            title: { type: string, maxLength: 200 }
+            body: { type: string, maxLength: 1000 }
+            items:
+              type: array
+              maxItems: 12
+              items:
+                type: object
+                required: [id, icon]
+                properties:
+                  id: { type: string, minLength: 1, maxLength: 64 }
+                  name: { type: string, maxLength: 120 }
+                  icon: { $ref: "#/components/schemas/AboutPageIcon" }
+        approach:
+          type: object
+          description: Numaralar (01, 02…) madde sırasından render sırasında üretilir; saklanmaz.
+          properties:
+            enabled: { type: boolean, default: true }
+            eyebrow: { type: string, maxLength: 120 }
+            title: { type: string, maxLength: 200 }
+            items:
+              type: array
+              maxItems: 6
+              items:
+                type: object
+                required: [id, icon]
+                properties:
+                  id: { type: string, minLength: 1, maxLength: 64 }
+                  title: { type: string, maxLength: 160 }
+                  body: { type: string, maxLength: 600 }
+                  icon: { $ref: "#/components/schemas/AboutPageIcon" }
+        doctors:
+          type: object
+          properties:
+            enabled: { type: boolean, default: true }
+            eyebrow: { type: string, maxLength: 120 }
+            title: { type: string, maxLength: 200 }
+            ctaLabel: { type: string, maxLength: 80 }
+            count: { type: integer, minimum: 1, maximum: 6, default: 3 }
+            founderDoctorId:
+              type: string
+              format: uuid
+              nullable: true
+              description: >
+                `DoctorProfile.id`. Doktor pasif/silinmişse sayfa hata vermez; kurucu etiketi gösterilmeden
+                ilk `count` aktif doktor (`GET /doctors` sırası = `seq`) listelenir.
+            founderLabel: { type: string, maxLength: 40 }
+        closing:
+          type: object
+          properties:
+            title: { type: string, maxLength: 200 }
+            primaryCta: { $ref: "#/components/schemas/AboutPageCta" }
+            secondaryCta: { $ref: "#/components/schemas/AboutPageCta" }
+
+    AboutPageCta:
+      type: object
+      properties:
+        label: { type: string, maxLength: 80 }
+        href: { type: string, maxLength: 2048, description: "Boş, SafeHref veya sayfa içi çapa (`#doctors`)." }
+
+    AboutPageIcon:
+      type: string
+      description: Kapalı ikon listesi (lucide-react bileşen adları) — backend ve frontend'de birebir aynı.
+      enum:
+        [
+          Scale, Ribbon, Baby, Smile, Scissors, Sparkles, Stethoscope, ClipboardCheck, Globe, HeartPulse,
+          Heart, Brain, Bone, Eye, Activity, ShieldCheck, ShieldPlus, Syringe, Pill, Microscope,
+          Hospital, Users, Handshake, Plane, MapPin, Award, Clock, MessageCircle, Languages, BadgeCheck,
+        ]
 
     CreatePageRequest:
       type: object

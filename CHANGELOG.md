@@ -11,7 +11,37 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
 
 ## [Unreleased]
 
+### Added
+
+- **`feat(site)`: "Hakkımızda" (`/about`, `/en/about`) sayfası admin panelinden düzenlenebilir.**
+  İçerik, admin → Sayfalar'daki `slug = "about"` CMS kaydının tek kök `about-page` bloğunda
+  (tr: `blocks`, diğer diller: `translations.<locale>.blocks`) tutulur; tasarım kodda sabittir.
+  Sayfa bu şablonu kullanıyorsa editör blok tuvali yerine her rolde yapılandırılmış bir form
+  gösterir (Hero, Tedavi alanları, Why WM Health, Doktorlar, Kapanış bandı; kart/madde ekle-sil-
+  sırala, ikon listesi, medya kütüphanesinden görsel, aktif doktorlardan kurucu seçimi, tedavi/
+  yaklaşım/doktor bölümleri için göster/gizle, gösterilecek doktor sayısı 1–6). SEO alanları
+  mevcut CMS alanlarıdır. **Şema değişikliği yok**; backend `pages.schemas.ts`'e `about-page`
+  blok şeması (düz metin, `SafeHrefSchema` + yalnızca sayfa içi çapa, kapalı ikon listesi,
+  "tek kök blok" kuralı → aksi halde 422) ve `TEMPLATE_EDITABLE_FIELDS["about-page"]` eklendi
+  (openapi `AboutPageBlockData`). **Geriye dönük güvenlik:** kayıt yoksa/yayında değilse/
+  silinmişse ya da bir alan boşsa sayfa sözlük metinlerini gösterir; bir dilin kendi içeriği
+  yoksa o dilin sözlüğü gösterilir (Türkçe içerik İngilizce sayfaya düşmez). **Veri migration'ı**
+  `20260924120000_add_about_page_content` kaydı sözlük metinleriyle (PUBLISHED, TEMPLATE) oluşturur;
+  varsayılan dili `locales` tablosundan okur (varsayılan `en` → ana alanlar İngilizce + `translations.tr`;
+  varsayılan `tr` → ana alanlar Türkçe + `translations.en`; başka bir dil → hiçbir şey eklemez), etkin
+  `en`/`tr` için slug satırı ekler. İdempotenttir, `about` slug'ı varsa (çöp kutusu dahil) hiçbir şey
+  yapmaz, UPDATE/DELETE içermez, tek SQL ifadesidir.
+  Demo Şablonlar "uygula" işleminin `about` sayfasına dokunmadığı regresyon testiyle korunur
+  (menü/footer ise o işlemde bilinen şekilde tamamen değiştirilir). Kurucu artık koddaki sabit slug
+  (`FOUNDER_DOCTOR_SLUG`, kaldırıldı) yerine admin'de seçilen doktorun `id`'siyle belirlenir.
+
 ### Fixed
+
+- **`fix(site)`: Public sayfaların gizli RSC verisine yayındaki TÜM sayfaların içeriği gömülüyordu.**
+  `(site)/layout.tsx` header'ın yedek menüsü için `SiteHeader`'a (istemci bileşeni) tam `SitePage`
+  nesnelerini (bloklar + tüm dillerin çevirileri) geçiriyordu; bu veri her sayfanın HTML'ine
+  serileştiriliyordu (ör. Türkçe `/about`'ta İngilizce içerik görünmez veri olarak bulunuyordu).
+  Artık yalnızca menüde kullanılan `id`/`slug`/`title` geçirilir; görünür davranış değişmedi.
 
 - **`fix(telehealth)`: Randevu sihirbazı (`/doctors/[slug]#randevu`) tamamlanmış bir rezervasyondan
   sonra çıkmaz duruma girmiyor artık.** Kök neden: mount-anı kurtarma effect'i (sayfa yenileme/geri

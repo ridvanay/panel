@@ -7,7 +7,21 @@ import {
   SAFE_ABSOLUTE_URL_RE,
   SafeHrefSchema,
 } from "../../schemas/common";
-import { scanPageNodeStructure, MAX_CONTAINER_DEPTH, MAX_CHILDREN_PER_CONTAINER, MAX_TOTAL_PAGE_NODES } from "../../lib/page-blocks";
+import {
+  scanPageNodeStructure,
+  flattenPageBlocks,
+  MAX_CONTAINER_DEPTH,
+  MAX_CHILDREN_PER_CONTAINER,
+  MAX_TOTAL_PAGE_NODES,
+} from "../../lib/page-blocks";
+import {
+  ABOUT_PAGE_BLOCK_TYPE,
+  ABOUT_ICON_KEYS,
+  ABOUT_MAX_TREATMENT_ITEMS,
+  ABOUT_MAX_APPROACH_ITEMS,
+  ABOUT_MIN_DOCTORS,
+  ABOUT_MAX_DOCTORS,
+} from "../../lib/about-page-template";
 
 // §10.20 — `PageEditModeSchema` artık `schemas/entities.ts`'ten import edilir (bkz. `PageSchema`
 // alanı da AYNI kaynağı kullanır). YALNIZCA `CreatePageRequestSchema`/`UpdatePageRequestSchema`'ya
@@ -991,6 +1005,84 @@ const GoogleMapBlockSchema = z.object({
   reveal: RevealEffectSettingsSchema.optional(),
 });
 
+/* ---------- "Hakkımızda" şablon bloğu — bkz. lib/about-page-template.ts ----------
+ * Yapılandırılmış İÇERİK taşır; tasarım kodda sabittir. Tüm metinler DÜZ METİNDİR (React
+ * tarafından kaçışlanarak render edilir, HTML kabul edilmez/yorumlanmaz — `sanitize-blocks`
+ * yalnızca `data.html` alanlarıyla ilgilendiği için bu blokta ek bir temizlik GEREKMEZ). Boş
+ * string "varsayılanı kullan" anlamına gelir: public sayfa o alan için koddaki sözlük metnini
+ * gösterir. Bağlantılar `SafeHrefSchema`'dan geçer; ek olarak YALNIZCA sayfa içi çapa (`#doctors`
+ * gibi) kabul edilir — `javascript:` vb. her iki dalda da reddedilir. */
+const ABOUT_ANCHOR_HREF_RE = /^#[A-Za-z][A-Za-z0-9_-]{0,63}$/;
+const aboutText = (max: number) => z.string().trim().max(max).default("");
+const AboutHrefSchema = z
+  .union([z.literal(""), z.string().trim().regex(ABOUT_ANCHOR_HREF_RE), SafeHrefSchema])
+  .default("");
+const AboutCtaSchema = z.object({ label: aboutText(80), href: AboutHrefSchema }).default({});
+const AboutIconSchema = z.enum(ABOUT_ICON_KEYS);
+const AboutItemIdSchema = z.string().min(1).max(64);
+
+const AboutPageBlockDataSchema = z.object({
+  hero: z
+    .object({
+      eyebrow: aboutText(120),
+      title: aboutText(200),
+      body: aboutText(2000),
+      primaryCta: AboutCtaSchema,
+      secondaryCta: AboutCtaSchema,
+      imageUrl: z.union([z.literal(""), SafeHrefSchema]).default(""),
+      imageAlt: aboutText(200),
+      locationTitle: aboutText(120),
+      locationSubtitle: aboutText(200),
+    })
+    .default({}),
+  treatments: z
+    .object({
+      enabled: z.boolean().default(true),
+      eyebrow: aboutText(120),
+      title: aboutText(200),
+      body: aboutText(1000),
+      items: z
+        .array(z.object({ id: AboutItemIdSchema, name: aboutText(120), icon: AboutIconSchema }))
+        .max(ABOUT_MAX_TREATMENT_ITEMS)
+        .default([]),
+    })
+    .default({}),
+  approach: z
+    .object({
+      enabled: z.boolean().default(true),
+      eyebrow: aboutText(120),
+      title: aboutText(200),
+      items: z
+        .array(z.object({ id: AboutItemIdSchema, title: aboutText(160), body: aboutText(600), icon: AboutIconSchema }))
+        .max(ABOUT_MAX_APPROACH_ITEMS)
+        .default([]),
+    })
+    .default({}),
+  doctors: z
+    .object({
+      enabled: z.boolean().default(true),
+      eyebrow: aboutText(120),
+      title: aboutText(200),
+      ctaLabel: aboutText(80),
+      count: z.number().int().min(ABOUT_MIN_DOCTORS).max(ABOUT_MAX_DOCTORS).default(3),
+      founderDoctorId: z.string().uuid().nullable().default(null),
+      founderLabel: aboutText(40),
+    })
+    .default({}),
+  closing: z
+    .object({
+      title: aboutText(200),
+      primaryCta: AboutCtaSchema,
+      secondaryCta: AboutCtaSchema,
+    })
+    .default({}),
+});
+const AboutPageBlockSchema = z.object({
+  id: z.string().min(1),
+  type: z.literal(ABOUT_PAGE_BLOCK_TYPE),
+  data: AboutPageBlockDataSchema,
+});
+
 /* ---------- özyinelemeli düğüm — §5.4 ---------- */
 
 function applySubSchema(schema: z.ZodTypeAny, node: unknown, ctx: z.RefinementCtx): unknown {
@@ -1055,6 +1147,7 @@ const PageNodeSchema: z.ZodType<unknown, z.ZodTypeDef, unknown> = z.record(z.unk
   // HİÇ DOĞRULANMADAN geçer ve §2'deki `embedUrl` beyaz listesi TAMAMEN BAYPAS EDİLİR — bu
   // eklemenin en kritik satırıdır, bir regresyon testiyle AYRICA doğrulanır.
   if (type === "google-map") return applySubSchema(GoogleMapBlockSchema, node, ctx);
+  if (type === ABOUT_PAGE_BLOCK_TYPE) return applySubSchema(AboutPageBlockSchema, node, ctx);
   return node;
 });
 
@@ -1139,6 +1232,23 @@ export const PageBlockListSchema = z
         message: `blocks gövdesi en fazla ${MAX_PAGE_BLOCKS_BYTES / 1024} KB olabilir.`,
       });
       return z.NEVER;
+    }
+
+    // "Hakkımızda" şablon bloğu yalnızca TEK ve KÖK düğüm olarak bulunabilir — başka bloklarla
+    // karıştırılamaz, bir konteynerin içine konamaz (şablonun tasarımı kodda sabittir).
+    const aboutNodeCount = flattenPageBlocks(blocks).filter(
+      (node) => (node as { type?: unknown } | null)?.type === ABOUT_PAGE_BLOCK_TYPE
+    ).length;
+    if (aboutNodeCount > 0) {
+      const isSoleRoot =
+        aboutNodeCount === 1 && blocks.length === 1 && (blocks[0] as { type?: unknown } | null)?.type === ABOUT_PAGE_BLOCK_TYPE;
+      if (!isSoleRoot) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Hakkımızda şablon bloğu sayfadaki tek ve en üst seviyedeki blok olmalıdır.",
+        });
+        return z.NEVER;
+      }
     }
   })
   .pipe(z.array(PageNodeSchema));

@@ -64,4 +64,8 @@ export const TEMPLATE_EDITABLE_FIELDS: Record<string, readonly string[]> = {
   // kural zaten boş küme üretirdi; AÇIKÇA yazılması bunun bir unutkanlık değil karar olduğunu
   // belgeler.
   "google-map": [],
+  // "Hakkımızda" şablonu (bkz. lib/about-page-template.ts) — Yazar rolü bölümlerin İÇERİĞİNİ
+  // (metin, bağlantı, liste öğeleri, göster/gizle, kurucu seçimi) düzenleyebilir; bloğun kendisi
+  // (tek kök düğüm) şablon modunda silinemez/taşınamaz.
+  "about-page": ["data.hero", "data.treatments", "data.approach", "data.doctors", "data.closing"],
 };

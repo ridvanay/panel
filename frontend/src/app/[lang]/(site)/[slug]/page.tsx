@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 import { fetchPageBySlugServer } from "@/lib/api/server-pages";
 import { fetchSiteSettingsServer } from "@/lib/api/server-settings";
 import { fetchLocalesServer } from "@/lib/api/server-locales";
@@ -12,6 +12,8 @@ import { LegalDocumentNotice } from "@/components/site/legal-document-notice";
 import { PageHeader } from "@/components/site/page-header";
 import { SocialShareButtons } from "@/components/site/social-share-buttons";
 import { redirectToCanonicalSlug } from "@/lib/i18n/canonical-slug";
+import { withLocalePrefix } from "@/lib/i18n/site-path";
+import { ABOUT_PAGE_SLUG, isAboutTemplatePage } from "@/lib/about-page";
 import { buildContentMetadata } from "@/lib/seo";
 import { SITE_URL } from "@/lib/env";
 import { getSiteDictionary, formatSiteString } from "@/lib/i18n/site-dictionaries";
@@ -72,6 +74,13 @@ export default async function DynamicPage({ params }: PageProps) {
     getSiteDictionary(lang),
   ]);
   if (!page) notFound();
+
+  // "Hakkımızda" şablon sayfası YALNIZCA statik `/about` rotasında render edilir (tasarım kodda);
+  // başka bir slug'dan (ör. dile özel slug) ulaşılırsa oraya kalıcı yönlendirilir.
+  if (isAboutTemplatePage(page)) {
+    const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? lang;
+    permanentRedirect(withLocalePrefix(`/${ABOUT_PAGE_SLUG}`, lang, defaultLocaleCode));
+  }
 
   // §12.2 — `/en/<TR-kanonik-slug>` gibi istekler içeriği DOĞRU bulur (backend slug fallback'i)
   // ama EN'in KENDİ slug'ı DEĞİLSE, duplicate content'i önlemek için oraya kalıcı yönlendirilir.
