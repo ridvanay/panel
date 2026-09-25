@@ -6,6 +6,7 @@ import { legalStrings } from "./legal";
 import { errorStrings } from "./errors";
 import { aboutStrings } from "./about";
 import { contactStrings } from "./contact";
+import { homeStrings } from "./home";
 
 export const siteDictionary: SiteDictionary = {
   common: commonStrings,
@@ -15,4 +16,5 @@ export const siteDictionary: SiteDictionary = {
   errors: errorStrings,
   about: aboutStrings,
   contact: contactStrings,
+  home: homeStrings,
 };

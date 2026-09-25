@@ -33,6 +33,10 @@ import { BuilderCanvas } from "@/components/admin/page-builder/builder-canvas";
 import { ContainerSettingsPanel } from "@/components/admin/page-builder/container-settings-panel";
 import { TemplateEditorView } from "@/components/admin/page-builder/template-editor-view";
 import { AboutTemplateForm } from "@/components/admin/page-builder/about-template-form";
+import { HomeTemplateForm } from "@/components/admin/page-builder/home-template-form";
+import { buildDefaultHomeContent, findHomeBlockData, findHomeBlockId, isHomeTemplatePage, toEditableHomeContent, toHomeBlocks, type HomePageContent } from "@/lib/home-page";
+import { homeStrings as enHomeStrings } from "@/lib/i18n/site-dictionaries/en/home";
+import { homeStrings as trHomeStrings } from "@/lib/i18n/site-dictionaries/tr/home";
 import { findAboutBlockData, findAboutBlockId, isAboutTemplatePage, toAboutBlocks, toEditableAboutContent, type AboutPageContent } from "@/lib/about-page";
 import { SeoPreview } from "@/components/admin/seo-preview";
 import { RevisionHistory } from "@/components/admin/revision-history";
@@ -141,6 +145,10 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
   // HİÇBİR rolde gösterilmez; yerine yapılandırılmış içerik formu (`AboutTemplateForm`) gelir ve
   // bloklar normalize/konteynere sarma işleminden GEÇİRİLMEZ (backend "tek kök blok" kuralı).
   const [isAboutTemplate, setIsAboutTemplate] = useState(false);
+  // "Anasayfa" şablonu (bkz. `lib/home-page.ts`) — Hakkımızda ile AYNI kural: yapılandırılmış form,
+  // normalize/sarma YOK.
+  const [isHomeTemplate, setIsHomeTemplate] = useState(false);
+  const isStructuredTemplate = isAboutTemplate || isHomeTemplate;
 
   const defaultLocale = locales.find((l) => l.isDefault) ?? null;
   const isDefaultLocale = !defaultLocale || locale === defaultLocale.code;
@@ -175,12 +183,12 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
   // sarmayı "yapısal değişiklik" sayıp 403 döndürür.
   const enBlocks = useMemo(
     () =>
-      isAboutTemplate
+      isStructuredTemplate
         ? ((translations[locale]?.blocks ?? []) as PageNode[])
         : !canUseAdvancedBuilder
           ? normalizePageNodes(translations[locale]?.blocks ?? [])
           : wrapBareRootBlocks(normalizePageNodes(translations[locale]?.blocks ?? [])),
-    [translations, locale, canUseAdvancedBuilder, isAboutTemplate]
+    [translations, locale, canUseAdvancedBuilder, isStructuredTemplate]
   );
 
   function setEnBlocks(nextBlocks: PageNode[]) {
@@ -194,6 +202,17 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
     () => (isAboutTemplate ? toEditableAboutContent(findAboutBlockData(activeNodes)) : null),
     [isAboutTemplate, activeNodes]
   );
+  const homeContent = useMemo(
+    () =>
+      isHomeTemplate
+        ? toEditableHomeContent(findHomeBlockData(activeNodes), buildDefaultHomeContent(locale === "tr" ? trHomeStrings : enHomeStrings))
+        : null,
+    [isHomeTemplate, activeNodes, locale]
+  );
+  function setHomeContent(next: HomePageContent) {
+    const blockId = findHomeBlockId(activeNodes.length > 0 ? activeNodes : blocks);
+    setActiveNodes(toHomeBlocks(next, blockId) as unknown as PageNode[]);
+  }
   function setAboutContent(next: AboutPageContent) {
     // Aynı blok `id`'si korunur — şablon modu guard'ı (Yazar rolü) düğümleri `id` ile eşleştirir.
     // Başka bir dilde henüz blok yoksa, varsayılan dilin bloğunun `id`'si kullanılır.
@@ -229,12 +248,14 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
       // için doğrudan capability üzerinden hesaplanır.
       const isSimpleModePage = !canUseAdvancedBuilder;
       const aboutTemplate = isAboutTemplatePage(page);
-      const loadedBlocks = aboutTemplate
+      const homeTemplate = isHomeTemplatePage(page);
+      const loadedBlocks = aboutTemplate || homeTemplate
         ? ((Array.isArray(page.blocks) ? page.blocks : []) as unknown as PageNode[])
         : isSimpleModePage
           ? normalizePageNodes(page.blocks)
           : wrapBareRootBlocks(normalizePageNodes(page.blocks));
       setIsAboutTemplate(aboutTemplate);
+      setIsHomeTemplate(homeTemplate);
       setTitle(page.title);
       setSlug(page.slug);
       setEditMode(page.editMode);
@@ -706,7 +727,26 @@ export default function PageBuilderPage({ params }: { params: Promise<{ pageId: 
             )}
           </Card>
 
-          {isAboutTemplate && aboutContent ? (
+          {isHomeTemplate && homeContent ? (
+            <div>
+              <h2 className="admin-h2">
+                Anasayfa içeriği {!isDefaultLocale && <span className="text-foreground/40">({locale.toUpperCase()})</span>}
+              </h2>
+              <p className="mt-1 admin-text-secondary">
+                Tasarım sabittir; metinleri, bağlantıları, görseli, maddeleri ve bölümlerin görünürlüğünü düzenleyebilirsiniz.
+                Bu sayfayı anasayfa yapmak için Ayarlar → Anasayfa seçimini kullanın.
+              </p>
+              <div className="mt-4">
+                <HomeTemplateForm
+                  key={`${locale}-${editorGeneration}`}
+                  value={homeContent}
+                  onChange={setHomeContent}
+                  localeCode={locale}
+                  idPrefix={`home-${locale}`}
+                />
+              </div>
+            </div>
+          ) : isAboutTemplate && aboutContent ? (
             <div>
               <h2 className="admin-h2">
                 Hakkımızda içeriği {!isDefaultLocale && <span className="text-foreground/40">({locale.toUpperCase()})</span>}

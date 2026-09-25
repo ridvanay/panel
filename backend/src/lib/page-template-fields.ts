@@ -71,4 +71,7 @@ export const TEMPLATE_EDITABLE_FIELDS: Record<string, readonly string[]> = {
   // (metin, bağlantı, liste öğeleri, göster/gizle, kurucu seçimi) düzenleyebilir; bloğun kendisi
   // (tek kök düğüm) şablon modunda silinemez/taşınamaz.
   "about-page": ["data.hero", "data.treatments", "data.approach", "data.doctors", "data.closing"],
+  // "Anasayfa" şablonu (bkz. lib/home-page-template.ts) — "Hakkımızda" ile aynı: bölüm içerikleri
+  // düzenlenebilir, bloğun kendisi şablon modunda silinemez/taşınamaz.
+  "home-page": ["data.hero", "data.trust", "data.specialties", "data.how", "data.doctors", "data.closing"],
 };

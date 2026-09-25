@@ -50,6 +50,11 @@ export const ABOUT_ICON_KEYS = [
   "MessageCircle",
   "Languages",
   "BadgeCheck",
+  // Anasayfa şablonu ("Nasıl çalışır" adımları, hero kartı) için eklendi.
+  "Search",
+  "Calendar",
+  "Video",
+  "Lock",
 ] as const;
 export type AboutIconKey = (typeof ABOUT_ICON_KEYS)[number];
 
@@ -177,26 +182,26 @@ export function buildDefaultAboutBlock(dict: AboutStrings): AboutPageBlock {
   return { id: ABOUT_PAGE_BLOCK_ID, type: ABOUT_PAGE_BLOCK_TYPE, data: buildDefaultAboutContent(dict) };
 }
 
-// --- savunmacı birleştirme -------------------------------------------------------------------
+// --- savunmacı birleştirme (anasayfa şablonu `lib/home-page.ts` de kullanır) ------------------
 
-function asRecord(value: unknown): Record<string, unknown> {
+export function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
-function text(value: unknown, fallback: string): string {
+export function text(value: unknown, fallback: string): string {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : fallback;
 }
 
-function optionalText(value: unknown): string {
+export function optionalText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function cta(value: unknown, fallback: AboutCta): AboutCta {
+export function cta(value: unknown, fallback: AboutCta): AboutCta {
   const raw = asRecord(value);
   return { label: text(raw.label, fallback.label), href: text(raw.href, fallback.href) };
 }
 
-function flag(value: unknown, fallback: boolean): boolean {
+export function flag(value: unknown, fallback: boolean): boolean {
   return typeof value === "boolean" ? value : fallback;
 }
 
@@ -204,11 +209,11 @@ export function isAboutIconKey(value: unknown): value is AboutIconKey {
   return typeof value === "string" && (ABOUT_ICON_KEYS as readonly string[]).includes(value);
 }
 
-function icon(value: unknown, fallback: AboutIconKey): AboutIconKey {
+export function icon(value: unknown, fallback: AboutIconKey): AboutIconKey {
   return isAboutIconKey(value) ? value : fallback;
 }
 
-function itemId(value: unknown, index: number, prefix: string): string {
+export function itemId(value: unknown, index: number, prefix: string): string {
   return typeof value === "string" && value.length > 0 ? value : `${prefix}-${index + 1}`;
 }
 

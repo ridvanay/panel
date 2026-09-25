@@ -542,7 +542,8 @@
  * zeminde METİN rengi olarak KULLANILMAZ (kontrast yetersiz) — yalnızca çizgi/şerit/ikon kutusu.
  */
 .about-page,
-.contact-page {
+.contact-page,
+.home-page {
   --about-accent: var(--site-accent);
   --about-accent-tint: color-mix(in oklch, var(--site-accent) 18%, white);
   /* Admin'deki "Gövde Metni" alanı `mutedTextColor`'dır (`--site-muted-text`); "Başlık Metni" ise
@@ -555,7 +556,8 @@
 /* `.site-scope h1` (0,1,1) kuralını ezmek için iki sınıflı seçici (0,2,0) — Newsreader yalnızca
    bu sayfanın h1/h2 başlıklarında ve "Why" numaralarında kullanılır (`about-fonts.ts`). */
 .about-page .about-serif,
-.contact-page .about-serif {
+.contact-page .about-serif,
+.home-page .about-serif {
   font-family: var(--font-about-serif), Georgia, "Times New Roman", serif;
   font-weight: 400;
 }

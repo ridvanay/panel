@@ -4,6 +4,7 @@ import type { AboutPageContent } from "@/lib/about-page";
 import type { TelehealthStrings } from "@/lib/i18n/site-dictionaries";
 import { DoctorCard } from "@/components/site/telehealth/doctor-card";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import { Eyebrow } from "./eyebrow";
 import { aboutButtonClass, aboutContainerClass } from "./about-buttons";
 
@@ -16,6 +17,11 @@ interface AboutDoctorsProps {
   activeLocaleCode: string;
   defaultLocaleCode: string;
   intlLocale: string;
+  /**
+   * `home`: anasayfa şablonu — sayfa zemini tonu, daha geniş dikey boşluk, 44 px başlık, mobilde
+   * tam genişlik buton. Varsayılan `about` görünümü DEĞİŞMEZ.
+   */
+  variant?: "about" | "home";
 }
 
 /**
@@ -31,20 +37,25 @@ export function AboutDoctors({
   activeLocaleCode,
   defaultLocaleCode,
   intlLocale,
+  variant = "about",
 }: AboutDoctorsProps) {
+  const home = variant === "home";
   return (
-    <section id="doctors" className="scroll-mt-24 bg-card" aria-labelledby="about-doctors-title">
-      <div className={`${aboutContainerClass} grid gap-8 py-16 sm:grid-cols-[1fr_auto] sm:items-end lg:py-24`}>
+    <section id="doctors" className={cn("scroll-mt-24", home ? "bg-background" : "bg-card")} aria-labelledby="about-doctors-title">
+      <div className={cn(aboutContainerClass, "grid gap-8 sm:grid-cols-[1fr_auto] sm:items-end", home ? "py-16 lg:gap-y-12 lg:py-28" : "py-16 lg:py-24")}>
         <div>
           <Eyebrow>{section.eyebrow}</Eyebrow>
-          <h2 id="about-doctors-title" className="about-serif mt-5 text-3xl leading-tight text-foreground sm:text-4xl">
+          <h2
+            id="about-doctors-title"
+            className={cn("about-serif mt-5 leading-tight text-foreground", home ? "text-[32px] sm:text-4xl lg:text-[44px]" : "text-3xl sm:text-4xl")}
+          >
             {section.title}
           </h2>
         </div>
 
         {/* Mobilde kartların ALTINA iner (`order-last`), sm+ başlığın sağında durur. */}
         <div className="order-last sm:order-none">
-          <Link href={doctorsHref} className={aboutButtonClass.outlinePrimary}>
+          <Link href={doctorsHref} className={cn(aboutButtonClass.outlinePrimary, home && "w-full sm:w-auto")}>
             {section.ctaLabel}
           </Link>
         </div>

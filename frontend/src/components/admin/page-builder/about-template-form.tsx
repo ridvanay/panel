@@ -60,9 +60,13 @@ const ICON_LABELS: Record<AboutIconKey, string> = {
   MessageCircle: "Mesaj",
   Languages: "Diller",
   BadgeCheck: "Onay rozeti",
+  Search: "Büyüteç (arama)",
+  Calendar: "Takvim",
+  Video: "Video kamera",
+  Lock: "Kilit",
 };
 
-function IconSelect({ id, value, onChange }: { id: string; value: AboutIconKey; onChange: (icon: AboutIconKey) => void }) {
+export function IconSelect({ id, value, onChange }: { id: string; value: AboutIconKey; onChange: (icon: AboutIconKey) => void }) {
   const Icon = ABOUT_ICONS[value];
   return (
     <Field id={id} label="İkon">
@@ -84,7 +88,7 @@ function IconSelect({ id, value, onChange }: { id: string; value: AboutIconKey; 
   );
 }
 
-function SectionCard({
+export function SectionCard({
   title,
   description,
   toggle,
@@ -116,7 +120,7 @@ function SectionCard({
   );
 }
 
-function ItemToolbar({
+export function ItemToolbar({
   label,
   index,
   count,
@@ -147,7 +151,7 @@ function ItemToolbar({
   );
 }
 
-function moveInList<T>(list: T[], index: number, direction: -1 | 1): T[] {
+export function moveInList<T>(list: T[], index: number, direction: -1 | 1): T[] {
   const target = index + direction;
   if (target < 0 || target >= list.length) return list;
   const next = [...list];
