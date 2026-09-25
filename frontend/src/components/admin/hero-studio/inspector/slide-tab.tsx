@@ -6,11 +6,38 @@ import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { MediaSelectField } from "@/components/admin/media/media-select-field";
 import type { Media } from "@/lib/api/types";
+import type { DeviceMode } from "@/lib/page-builder/types";
 import type { Slide, SlideBackgroundType } from "@/lib/sliders/types";
+import { resolveSlideBackgrounds } from "@/components/site/advanced-slider/background";
+import { FocalPointPicker } from "./focal-point-picker";
 
-/** Slide seviyesi alanların HİÇBİRİNDE cihaz override YOKTUR (yalnızca katman position/style/
- *  animation'ında var, bkz. architect §2.4) — bu sekme cihaz görünümünden BAĞIMSIZ çalışır. */
-export function SlideInspectorTab({ slide, onUpdate }: { slide: Slide; onUpdate: (patch: Partial<Slide>) => void }) {
+const DEVICE_LABEL: Record<DeviceMode, string> = { desktop: "Masaüstü", tablet: "Tablet", mobile: "Mobil" };
+
+/** Düz karartma açılırken opaklık 0 ise makul bir başlangıç değeri. */
+const DEFAULT_OVERLAY_OPACITY = 40;
+
+/**
+ * Slayt ayarları. Arka plan görselinin cihaza göre seçimi ve odak noktası cihazdan bağımsız
+ * listelenir; odak noktası üst çubukta SEÇİLİ CİHAZ için düzenlenir (tablet/mobil boşsa bir üst
+ * cihazın değeri geçerlidir — `background.ts::resolveSlideBackgrounds` ile AYNI yedek zinciri).
+ */
+export function SlideInspectorTab({ slide, device, onUpdate }: { slide: Slide; device: DeviceMode; onUpdate: (patch: Partial<Slide>) => void }) {
+  const backgrounds = resolveSlideBackgrounds(slide);
+  const current = backgrounds[device];
+  const overlayOn = slide.bgOverlayOpacity > 0;
+  const focalOverridden = device === "tablet" ? slide.bgTabletPositionX !== null : device === "mobile" ? slide.bgMobilePositionX !== null : false;
+
+  function setFocal(x: number, y: number) {
+    if (device === "tablet") onUpdate({ bgTabletPositionX: x, bgTabletPositionY: y });
+    else if (device === "mobile") onUpdate({ bgMobilePositionX: x, bgMobilePositionY: y });
+    else onUpdate({ bgPositionX: x, bgPositionY: y });
+  }
+
+  function resetFocal() {
+    if (device === "tablet") onUpdate({ bgTabletPositionX: null, bgTabletPositionY: null });
+    if (device === "mobile") onUpdate({ bgMobilePositionX: null, bgMobilePositionY: null });
+  }
+
   return (
     <div className="space-y-4">
       <Field id="slide-label" label="Panel içi etiket" hint="Yalnızca slayt şeridinde görünür, public sitede render edilmez.">
@@ -29,19 +56,51 @@ export function SlideInspectorTab({ slide, onUpdate }: { slide: Slide; onUpdate:
 
       {slide.bgType === "image" && (
         <>
-          <MediaSelectField id="slide-bgMedia" label="Arka plan görseli" value={slide.bgMedia} onChange={(media: Media | null) => onUpdate({ bgMedia: media })} required />
-          <div className="grid grid-cols-2 gap-3">
-            <Field id="slide-bgPosX" label="Odak X (%)">
-              {(inputProps) => (
-                <Input {...inputProps} type="number" min={0} max={100} value={slide.bgPositionX} onChange={(e) => onUpdate({ bgPositionX: Number(e.target.value) })} />
-              )}
-            </Field>
-            <Field id="slide-bgPosY" label="Odak Y (%)">
-              {(inputProps) => (
-                <Input {...inputProps} type="number" min={0} max={100} value={slide.bgPositionY} onChange={(e) => onUpdate({ bgPositionY: Number(e.target.value) })} />
-              )}
-            </Field>
-          </div>
+          <MediaSelectField id="slide-bgMedia" label="Masaüstü görseli" value={slide.bgMedia} onChange={(media: Media | null) => onUpdate({ bgMedia: media })} required />
+          <MediaSelectField
+            id="slide-bgTabletMedia"
+            label="Tablet görseli"
+            hint="Boş bırakılırsa masaüstü görseli kullanılır."
+            value={slide.bgTabletMedia}
+            onChange={(media: Media | null) => onUpdate({ bgTabletMedia: media })}
+          />
+          <MediaSelectField
+            id="slide-bgMobileMedia"
+            label="Mobil görseli"
+            hint="Dikey banner önerilir. Boş bırakılırsa tablet, o da yoksa masaüstü görseli kullanılır."
+            value={slide.bgMobileMedia}
+            onChange={(media: Media | null) => onUpdate({ bgMobileMedia: media })}
+          />
+
+          {current && (
+            <div className="space-y-2 rounded-md border border-border p-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-medium text-foreground">Odak noktası — {DEVICE_LABEL[device]}</p>
+                {focalOverridden && (
+                  <button type="button" className="text-xs text-primary hover:underline" onClick={resetFocal}>
+                    Üst cihazın değerini kullan
+                  </button>
+                )}
+              </div>
+              <p className="text-xs text-foreground/50">
+                Görsel kırpıldığında hangi bölümün görünür kalacağını belirler. Diğer cihazlar için üst çubuktan cihaz değiştirin.
+              </p>
+              <FocalPointPicker media={current.media} x={current.x} y={current.y} onChange={setFocal} label={`Odak noktası (${DEVICE_LABEL[device]})`} />
+              <div className="grid grid-cols-2 gap-3">
+                <Field id="slide-bgPosX" label="Yatay (%)">
+                  {(inputProps) => (
+                    <Input {...inputProps} type="number" min={0} max={100} value={current.x} onChange={(e) => setFocal(Number(e.target.value), current.y)} />
+                  )}
+                </Field>
+                <Field id="slide-bgPosY" label="Dikey (%)">
+                  {(inputProps) => (
+                    <Input {...inputProps} type="number" min={0} max={100} value={current.y} onChange={(e) => setFocal(current.x, Number(e.target.value))} />
+                  )}
+                </Field>
+              </div>
+            </div>
+          )}
+
           <label className="flex items-center gap-2 text-sm text-foreground">
             <Switch checked={slide.bgKenBurns} onCheckedChange={(v) => onUpdate({ bgKenBurns: v })} aria-label="Ken Burns" />
             Yavaş yakınlaşma (Ken Burns)
@@ -75,22 +134,64 @@ export function SlideInspectorTab({ slide, onUpdate }: { slide: Slide; onUpdate:
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3 border-t border-border pt-4">
-        <Field id="slide-overlayColor" label="Overlay rengi">
-          {(inputProps) => <Input {...inputProps} type="color" value={slide.bgOverlayColor ?? "#000000"} onChange={(e) => onUpdate({ bgOverlayColor: e.target.value })} />}
-        </Field>
-        <Field id="slide-overlayOpacity" label="Overlay opaklığı (%)">
-          {(inputProps) => (
-            <Input
-              {...inputProps}
-              type="number"
-              min={0}
-              max={100}
-              value={slide.bgOverlayOpacity}
-              onChange={(e) => onUpdate({ bgOverlayOpacity: Number(e.target.value) })}
-            />
-          )}
-        </Field>
+      <div className="space-y-3 border-t border-border pt-4">
+        <div>
+          <p className="text-xs font-medium uppercase tracking-wide text-foreground/50">Karartma</p>
+          <p className="mt-1 text-xs text-foreground/50">İçinde yazı olan açık renkli banner&apos;larda ikisini de kapalı tutun.</p>
+        </div>
+
+        <label className="flex items-center gap-2 text-sm text-foreground">
+          <Switch
+            checked={overlayOn}
+            onCheckedChange={(v) =>
+              onUpdate(v ? { bgOverlayOpacity: DEFAULT_OVERLAY_OPACITY, bgOverlayColor: slide.bgOverlayColor ?? "#000000" } : { bgOverlayOpacity: 0 })
+            }
+            aria-label="Düz karartma"
+          />
+          Düz karartma (tüm görselin üstünde)
+        </label>
+        {overlayOn && (
+          <div className="grid grid-cols-2 gap-3">
+            <Field id="slide-overlayColor" label="Renk">
+              {(inputProps) => <Input {...inputProps} type="color" value={slide.bgOverlayColor ?? "#000000"} onChange={(e) => onUpdate({ bgOverlayColor: e.target.value })} />}
+            </Field>
+            <Field id="slide-overlayOpacity" label="Opaklık (%)">
+              {(inputProps) => (
+                <Input
+                  {...inputProps}
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={slide.bgOverlayOpacity}
+                  onChange={(e) => onUpdate({ bgOverlayOpacity: Math.max(1, Number(e.target.value)) })}
+                />
+              )}
+            </Field>
+          </div>
+        )}
+
+        {slide.bgType === "image" && (
+          <>
+            <label className="flex items-center gap-2 text-sm text-foreground">
+              <Switch checked={slide.bgScrimEnabled} onCheckedChange={(v) => onUpdate({ bgScrimEnabled: v })} aria-label="Soldan okunabilirlik gradyanı" />
+              Soldan okunabilirlik gradyanı (koyudan şeffafa)
+            </label>
+            {slide.bgScrimEnabled && (
+              <Field id="slide-scrimOpacity" label="Gradyan koyuluğu (%)" hint="Sol kenardaki koyuluk; sağa doğru şeffaflaşır.">
+                {(inputProps) => (
+                  <Input
+                    {...inputProps}
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={slide.bgScrimOpacity}
+                    onChange={(e) => onUpdate({ bgScrimOpacity: Math.max(1, Number(e.target.value)) })}
+                  />
+                )}
+              </Field>
+            )}
+          </>
+        )}
       </div>
 
       <Field id="slide-duration" label="Bu slaytın süresi (ms)" hint="Boş bırakılırsa slider'ın genel süresi kullanılır.">

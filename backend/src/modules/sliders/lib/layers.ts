@@ -66,6 +66,9 @@ const LayerAnimationSchema = z.object({
   delayMs: z.number().int().min(0).max(10_000).multipleOf(50),
   durationMs: z.number().int().min(100).max(3000).multipleOf(50),
   easing: z.enum(["linear", "ease-out", "ease-in-out", "spring"]).optional(),
+  // Girişten sonra hafif, sürekli yukarı-aşağı süzülme (yalnızca transform — CLS üretmez;
+  // prefers-reduced-motion'da frontend uygulamaz).
+  float: z.boolean().optional(),
 });
 
 /**
@@ -90,6 +93,9 @@ const LayerBase = {
   position: LayerPositionSchema,
   style: LayerStyleSchema.default({}),
   animation: LayerAnimationSchema,
+  // Masaüstünde (≥1024px) gizle — tablet/mobil gizleme `responsive.<cihaz>.hidden`'dadır.
+  // Kök alan: masaüstü için `responsive` anahtarı YOKTUR (kök alanlar masaüstüdür).
+  hiddenOnDesktop: z.boolean().optional(),
   responsive: z
     .object({
       tablet: LayerOverrideSchema.optional(),
@@ -105,6 +111,10 @@ export const SliderLayerSchema = z.discriminatedUnion("type", [
     content: z.object({
       text: z.string().min(1).max(200),
       level: z.union([z.literal(1), z.literal(2), z.literal(3)]).default(2),
+      // İki renkli başlık — vurgu metni AYNI başlık etiketinin içinde `<span>` olarak render edilir.
+      accentText: z.string().min(1).max(200).optional(),
+      accentColor: z.string().regex(HEX6).optional(),
+      accentOnNewLine: z.boolean().optional(),
     }),
   }),
   z.object({

@@ -2,6 +2,7 @@
 
 import { AlertTriangle } from "lucide-react";
 import { Field } from "@/components/ui/field";
+import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
@@ -98,6 +99,14 @@ export function AnimationInspectorTab({
           </Select>
         )}
       </Field>
+
+      <label className="flex items-center gap-2 text-sm text-foreground">
+        <Switch checked={animation.float ?? false} onCheckedChange={(v) => patch({ float: v })} aria-label="Hafif süzülme" />
+        Hafif süzülme (girişten sonra yavaşça yukarı-aşağı)
+      </label>
+      <p className="-mt-2 text-xs text-foreground/50">
+        Hareket azaltma tercihi açık ziyaretçilerde tüm animasyonlar kapalıdır; yerleşim kaymaz.
+      </p>
 
       {exceedsSlideDuration && (
         <div className="flex items-start gap-1.5 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">

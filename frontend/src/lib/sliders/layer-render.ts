@@ -5,7 +5,7 @@
  * ve giriş animasyonu varyantları iki yerde AYRIŞMASIN diye buradan gelir.
  */
 import type { Easing } from "framer-motion";
-import type { SliderLayerAnimation, SliderLayerOrigin, SliderLayerStyle } from "./types";
+import type { SliderLayer, SliderLayerAnimation, SliderLayerOrigin, SliderLayerStyle } from "./types";
 import { SHADOW_VAR } from "./design-tokens";
 
 export const ORIGIN_PERCENT: Record<SliderLayerOrigin, { x: number; y: number }> = {
@@ -95,4 +95,33 @@ export function buildLayerTransition(animation: SliderLayerAnimation, reducedMot
   }
   if (animation.easing === "spring") return { delay, duration: visualDuration, type: "spring" as const, bounce: 0.3 };
   return { delay, duration: visualDuration, ease: EASING_MAP[animation.easing ?? "ease-out"] };
+}
+
+/**
+ * Katmanın cihaz görünürlüğü — CSS medya sorgusu sınıfları (mobil <768, tablet 768–1023,
+ * masaüstü ≥1024; `resolve-responsive.ts` eşikleriyle AYNI). JS'e bağlı DEĞİL: SSR HTML'i ilk
+ * karede doğru cihaz görünümünü taşır (mobilde gizli bir katman bir an bile görünmez).
+ * Miras `resolveLayerForDevice` ile aynı: mobil ayarı yoksa tabletin değeri geçerlidir.
+ */
+export function layerVisibilityClasses(layer: Pick<SliderLayer, "hiddenOnDesktop" | "responsive">): string[] {
+  const tabletHidden = layer.responsive?.tablet?.hidden ?? false;
+  const mobileHidden = layer.responsive?.mobile?.hidden ?? tabletHidden;
+  return [layer.hiddenOnDesktop ? "lg:hidden" : "", tabletHidden ? "md:max-lg:hidden" : "", mobileHidden ? "max-md:hidden" : ""].filter(Boolean);
+}
+
+/** Hafif süzülme — ±6px, 5 sn'lik yavaş döngü; giriş animasyonu bittikten sonra başlar. */
+export const LAYER_FLOAT_OFFSET_PX = 6;
+export const LAYER_FLOAT_PERIOD_S = 5;
+
+export function buildLayerFloat(animation: SliderLayerAnimation, reducedMotion: boolean) {
+  if (!animation.float || reducedMotion) return null;
+  return {
+    animate: { y: [0, -LAYER_FLOAT_OFFSET_PX, 0] },
+    transition: {
+      duration: LAYER_FLOAT_PERIOD_S,
+      repeat: Infinity,
+      ease: "easeInOut" as const,
+      delay: (animation.delayMs + animation.durationMs) / 1000,
+    },
+  };
 }

@@ -172,6 +172,7 @@ import {
   BACKGROUND_TYPE_FROM_PRISMA,
   NAVIGATION_THEME_FROM_PRISMA,
   WIDTH_MODE_FROM_PRISMA,
+  IMAGE_FIT_FROM_PRISMA,
   heightModeFromPrisma,
 } from "../modules/sliders/lib/enum-maps";
 import type { ModuleDefinition } from "../lib/module-registry";
@@ -1510,7 +1511,12 @@ export function toWebhookDeliveryDto(delivery: WebhookDelivery): WebhookDelivery
 // `Product`/`PortfolioItem` mapper'larının aksine SEO skoru/yayın/çeviri alanı TAŞIMAZ.
 // ---------------------------------------------------------------------------
 
-type SlideWithRelations = Slide & { bgMedia: Media | null; bgVideoPosterMedia: Media | null };
+type SlideWithRelations = Slide & {
+  bgMedia: Media | null;
+  bgVideoPosterMedia: Media | null;
+  bgTabletMedia: Media | null;
+  bgMobileMedia: Media | null;
+};
 
 /** `SliderSchema`/`PublicSliderSchema`'nın PAYLAŞTIĞI ayar alanları (bkz. schemas/entities.ts::SliderSettingsSchema). */
 function toSliderSettingsFields(slider: Slider) {
@@ -1530,6 +1536,7 @@ function toSliderSettingsFields(slider: Slider) {
     mobileAspectRatioWidth: slider.mobileAspectRatioWidth,
     mobileAspectRatioHeight: slider.mobileAspectRatioHeight,
     widthMode: WIDTH_MODE_FROM_PRISMA[slider.widthMode],
+    imageFit: IMAGE_FIT_FROM_PRISMA[slider.imageFit],
     showArrows: slider.showArrows,
     showBullets: slider.showBullets,
     showProgressBar: slider.showProgressBar,
@@ -1549,8 +1556,16 @@ export function toSlideDto(slide: SlideWithRelations): SlideDto {
     bgVideoPosterMedia: slide.bgVideoPosterMedia ? toMediaDto(slide.bgVideoPosterMedia) : null,
     bgPositionX: slide.bgPositionX,
     bgPositionY: slide.bgPositionY,
+    bgTabletMedia: slide.bgTabletMedia ? toMediaDto(slide.bgTabletMedia) : null,
+    bgMobileMedia: slide.bgMobileMedia ? toMediaDto(slide.bgMobileMedia) : null,
+    bgTabletPositionX: slide.bgTabletPositionX,
+    bgTabletPositionY: slide.bgTabletPositionY,
+    bgMobilePositionX: slide.bgMobilePositionX,
+    bgMobilePositionY: slide.bgMobilePositionY,
     bgOverlayColor: slide.bgOverlayColor,
     bgOverlayOpacity: slide.bgOverlayOpacity,
+    bgScrimEnabled: slide.bgScrimEnabled,
+    bgScrimOpacity: slide.bgScrimOpacity,
     bgGradientFrom: slide.bgGradientFrom,
     bgGradientTo: slide.bgGradientTo,
     bgGradientAngle: slide.bgGradientAngle,

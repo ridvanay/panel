@@ -890,6 +890,8 @@ export const ECOMMERCE_PRO_TEMPLATE: DemoTemplateDefinition = {
         bgPositionY: 50,
         bgOverlayColor: null,
         bgOverlayOpacity: 0,
+        // Tasarım, eskiden kodda sabit uygulanan soldan gradyanla yapıldı — şablon görünümü korunur.
+        bgScrimEnabled: true,
         bgGradientFrom: null,
         bgGradientTo: null,
         bgGradientAngle: 0,
@@ -914,6 +916,8 @@ export const ECOMMERCE_PRO_TEMPLATE: DemoTemplateDefinition = {
         bgPositionY: 50,
         bgOverlayColor: null,
         bgOverlayOpacity: 0,
+        // Tasarım, eskiden kodda sabit uygulanan soldan gradyanla yapıldı — şablon görünümü korunur.
+        bgScrimEnabled: true,
         bgGradientFrom: null,
         bgGradientTo: null,
         bgGradientAngle: 0,
@@ -938,6 +942,8 @@ export const ECOMMERCE_PRO_TEMPLATE: DemoTemplateDefinition = {
         bgPositionY: 50,
         bgOverlayColor: null,
         bgOverlayOpacity: 0,
+        // Tasarım, eskiden kodda sabit uygulanan soldan gradyanla yapıldı — şablon görünümü korunur.
+        bgScrimEnabled: true,
         bgGradientFrom: null,
         bgGradientTo: null,
         bgGradientAngle: 0,

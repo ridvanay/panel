@@ -682,6 +682,9 @@ export type SliderHeightMode = z.infer<typeof SliderHeightModeSchema>;
 // px-4/sm:px-6) BİREBİR yeniden kullanır. Mobil override YOKTUR (heightMode'dan sapma).
 export const SliderWidthModeSchema = z.enum(["full-width", "boxed"]);
 export type SliderWidthMode = z.infer<typeof SliderWidthModeSchema>;
+/** `cover` = kırp (varsayılan); `contain` = görselin tamamı, yükseklik görsel oranından (bkz. schema.prisma). */
+export const SliderImageFitSchema = z.enum(["cover", "contain"]);
+export type SliderImageFit = z.infer<typeof SliderImageFitSchema>;
 
 export const SlideBackgroundTypeSchema = z.enum(["image", "video", "gradient"]);
 export type SlideBackgroundType = z.infer<typeof SlideBackgroundTypeSchema>;
@@ -706,6 +709,7 @@ export const SliderSettingsSchema = z.object({
   mobileAspectRatioWidth: z.number().int().nullable(),
   mobileAspectRatioHeight: z.number().int().nullable(),
   widthMode: SliderWidthModeSchema,
+  imageFit: SliderImageFitSchema,
   showArrows: z.boolean(),
   showBullets: z.boolean(),
   showProgressBar: z.boolean(),
@@ -745,8 +749,17 @@ export const SlideSchema = z.object({
   bgVideoPosterMedia: MediaSchema.nullable(),
   bgPositionX: z.number().int(),
   bgPositionY: z.number().int(),
+  // Cihaza göre arka plan — `null` = yedeğe düşülür (tablet → masaüstü; mobil → tablet → masaüstü).
+  bgTabletMedia: MediaSchema.nullable(),
+  bgMobileMedia: MediaSchema.nullable(),
+  bgTabletPositionX: z.number().int().nullable(),
+  bgTabletPositionY: z.number().int().nullable(),
+  bgMobilePositionX: z.number().int().nullable(),
+  bgMobilePositionY: z.number().int().nullable(),
   bgOverlayColor: z.string().nullable(),
   bgOverlayOpacity: z.number().int(),
+  bgScrimEnabled: z.boolean(),
+  bgScrimOpacity: z.number().int(),
   bgGradientFrom: z.string().nullable(),
   bgGradientTo: z.string().nullable(),
   bgGradientAngle: z.number().int(),

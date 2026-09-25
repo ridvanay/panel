@@ -1006,6 +1006,14 @@ model Slider {
   // --- Genişlik (yerleşim) ---
   widthMode SliderWidthMode @default(FULL_WIDTH)
 
+  // --- Arka plan görseli sığdırma ---
+  // COVER: kutuyu doldurur, taşan kısım kırpılır (bu alan eklenmeden önceki TEK davranış).
+  // CONTAIN: görselin tamamı görünür; slider yüksekliği ilk slaytın o cihazdaki görselinin
+  // oranından türetilir (yükseklik ayarları yalnızca görsel boyutu bilinmiyorsa kullanılır).
+  // Slider seviyesindedir — tüm slaytlar aynı kutuyu paylaşır, slayt başına olsaydı geçişte
+  // yükseklik zıplardı.
+  imageFit SliderImageFit @default(COVER)
+
   // --- Navigasyon ---
   showArrows      Boolean               @default(true)
   showBullets     Boolean               @default(true)
@@ -1051,9 +1059,22 @@ model Slide {
   // Odak noktası (%), CSS object-position — kırpma kontrolü.
   bgPositionX          Int                 @default(50)
   bgPositionY          Int                 @default(50)
+  // Cihaza göre ayrı arka plan görseli (yalnızca bgType=IMAGE). Yedek sırası: tablet yoksa
+  // masaüstü; mobil yoksa tablet, o da yoksa masaüstü. Silinirse SetNull → yedeğe düşer.
+  bgTabletMediaId      String?
+  bgMobileMediaId      String?
+  // Cihaza göre odak noktası — null = masaüstü değeri (bgPositionX/Y).
+  bgTabletPositionX    Int?
+  bgTabletPositionY    Int?
+  bgMobilePositionX    Int?
+  bgMobilePositionY    Int?
   // ContainerBackgroundOverlay ile AYNI desen: renk 6 haneli hex, alfa AYRI alanda.
   bgOverlayColor       String?
   bgOverlayOpacity     Int                 @default(0)
+  // Soldan sağa okunabilirlik gradyanı (siyah, opaklık → %57'si → 0). Eskiden görselli HER
+  // slayta kodda sabit uygulanıyordu (%70); artık slayt ayarıdır ve varsayılan KAPALI.
+  bgScrimEnabled       Boolean             @default(false)
+  bgScrimOpacity       Int                 @default(70)
   bgGradientFrom       String?
   bgGradientTo         String?
   bgGradientAngle      Int                 @default(180)
@@ -1077,11 +1098,15 @@ model Slide {
   slider             Slider @relation(fields: [sliderId], references: [id], onDelete: Cascade)
   bgMedia            Media? @relation("SlideBackgroundMedia", fields: [bgMediaId], references: [id], onDelete: SetNull)
   bgVideoPosterMedia Media? @relation("SlideVideoPosterMedia", fields: [bgVideoPosterMediaId], references: [id], onDelete: SetNull)
+  bgTabletMedia      Media? @relation("SlideTabletBackgroundMedia", fields: [bgTabletMediaId], references: [id], onDelete: SetNull)
+  bgMobileMedia      Media? @relation("SlideMobileBackgroundMedia", fields: [bgMobileMediaId], references: [id], onDelete: SetNull)
 
   @@unique([sliderId, order])
   @@index([sliderId])
   @@index([bgMediaId])
   @@index([bgVideoPosterMediaId])
+  @@index([bgTabletMediaId])
+  @@index([bgMobileMediaId])
   @@map("slides")
 }
 
@@ -1352,6 +1377,11 @@ enum SliderWidthMode {
   BOXED
 }
 
+enum SliderImageFit {
+  COVER
+  CONTAIN
+}
+
 // Düz renk için AYRI tip YOK — GRADIENT ile from == to verilir (branş sayısını azaltmak
 // için bilinçli karar).
 enum SlideBackgroundType {
@@ -1604,26 +1634,28 @@ model Media {
   folder MediaFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
 
   // §10.9.2 Ürünler Modülü — bkz. ARCHITECTURE.md §10.9.2.
-  productCovers         Product[]         @relation("ProductCoverMedia")
-  productGalleryItems   ProductImage[]    @relation("ProductGalleryImage")
+  productCovers          Product[]         @relation("ProductCoverMedia")
+  productGalleryItems    ProductImage[]    @relation("ProductGalleryImage")
   // §1/§2 (.claude/architect-scope-ecommerce-pro-template.md) — varyasyon görseli ve
   // teknik döküman (PDF) karşı-ilişkileri.
-  productVariantImages  ProductVariant[]  @relation("ProductVariantImage")
-  productDocuments      ProductDocument[] @relation("ProductDocumentMedia")
+  productVariantImages   ProductVariant[]  @relation("ProductVariantImage")
+  productDocuments       ProductDocument[] @relation("ProductDocumentMedia")
   // §10.9.4 Portföy Modülü — bkz. ARCHITECTURE.md §10.9.4.
-  portfolioCovers       PortfolioItem[]   @relation("PortfolioCoverMedia")
-  portfolioGalleryItems PortfolioImage[]  @relation("PortfolioGalleryImage")
+  portfolioCovers        PortfolioItem[]   @relation("PortfolioCoverMedia")
+  portfolioGalleryItems  PortfolioImage[]  @relation("PortfolioGalleryImage")
   // §10.12.2 Site Özelleştirme — SiteAppearance.pageHeaderBackgroundMediaId için
   // zorunlu karşı-ilişki alanı.
-  pageHeaderBackgrounds SiteAppearance[]  @relation("SiteAppearancePageHeaderBackground")
+  pageHeaderBackgrounds  SiteAppearance[]  @relation("SiteAppearancePageHeaderBackground")
   // Gelişmiş Slider — Slide.bgMediaId / Slide.bgVideoPosterMediaId karşı-ilişkileri.
-  slideBackgrounds      Slide[]           @relation("SlideBackgroundMedia")
-  slideVideoPosters     Slide[]           @relation("SlideVideoPosterMedia")
+  slideBackgrounds       Slide[]           @relation("SlideBackgroundMedia")
+  slideVideoPosters      Slide[]           @relation("SlideVideoPosterMedia")
+  slideTabletBackgrounds Slide[]           @relation("SlideTabletBackgroundMedia")
+  slideMobileBackgrounds Slide[]           @relation("SlideMobileBackgroundMedia")
   // Tele-Sağlık — bkz. .claude/architect-scope-telehealth-template.md §3.3/§3.7.
   // DoctorProfile.avatarMediaId için zorunlu karşı-ilişki alanı.
-  doctorAvatars         DoctorProfile[]   @relation("DoctorAvatarMedia")
+  doctorAvatars          DoctorProfile[]   @relation("DoctorAvatarMedia")
   // Specialty.imageMediaId için zorunlu karşı-ilişki alanı.
-  specialtyImages       Specialty[]       @relation("SpecialtyImageMedia")
+  specialtyImages        Specialty[]       @relation("SpecialtyImageMedia")
 
   @@index([folderId])
   @@map("media")
