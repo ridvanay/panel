@@ -74,6 +74,7 @@ import {
   UpdateBlogPostRequestSchema,
   UpdateBlogTagRequestSchema,
 } from "./blog.schemas";
+import { CACHE_TAGS, revalidateTagsOnWrite } from "../../lib/revalidate";
 
 /**
  * Yazı detay/liste sorgularında kategori + yazar özetini de dönmek için (bkz. ARCHITECTURE.md
@@ -187,6 +188,9 @@ async function toBlogPostDtosLocalized(app: FastifyInstance, posts: Parameters<t
 /** `/admin/blog` prefix'i altında bağlanır (bkz. app.ts) — tüm durumlar (taslak dahil), authenticated. */
 export async function adminBlogPostsRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
+  // Yayındaki yazı/kategori/etiket değişiklikleri (autosave dahil — canlı içeriği doğrudan yazar)
+  // sitede birkaç saniye içinde görünsün: yalnızca `blog` etiketli veri yenilenir.
+  revalidateTagsOnWrite(app, () => [CACHE_TAGS.blog]);
   server.addHook("preHandler", authenticate);
   server.addHook("preHandler", requirePanelAccess());
 
@@ -681,6 +685,9 @@ export async function adminBlogPostsRoutes(app: FastifyInstance) {
 /** `/admin/blog/categories` prefix'i altında bağlanır — authenticated. */
 export async function adminBlogCategoriesRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
+  // Yayındaki yazı/kategori/etiket değişiklikleri (autosave dahil — canlı içeriği doğrudan yazar)
+  // sitede birkaç saniye içinde görünsün: yalnızca `blog` etiketli veri yenilenir.
+  revalidateTagsOnWrite(app, () => [CACHE_TAGS.blog]);
   server.addHook("preHandler", authenticate);
   server.addHook("preHandler", requirePanelAccess());
 
@@ -756,6 +763,9 @@ export async function adminBlogCategoriesRoutes(app: FastifyInstance) {
  */
 export async function adminBlogTagsRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
+  // Yayındaki yazı/kategori/etiket değişiklikleri (autosave dahil — canlı içeriği doğrudan yazar)
+  // sitede birkaç saniye içinde görünsün: yalnızca `blog` etiketli veri yenilenir.
+  revalidateTagsOnWrite(app, () => [CACHE_TAGS.blog]);
   server.addHook("preHandler", authenticate);
   server.addHook("preHandler", requirePanelAccess());
 

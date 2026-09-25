@@ -5,8 +5,9 @@ import { fetchBlogPostsServer } from "@/lib/api/server-blog";
 import { fetchProductsServer } from "@/lib/api/server-products";
 import { fetchPortfolioItemsServer } from "@/lib/api/server-portfolio";
 import { fetchDoctorsServer, fetchSpecialtiesServer } from "@/lib/api/server-telehealth";
-import { fetchSiteSettingsServer } from "@/lib/api/server-settings";
-import { fetchLocalesServer } from "@/lib/api/server-locales";
+import { DEFAULT_SETTINGS, fetchSiteSettingsServer } from "@/lib/api/server-settings";
+import { FALLBACK_LOCALES, fetchLocalesServer } from "@/lib/api/server-locales";
+import { withBuildTimeFallback } from "@/lib/api/server-fetch";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
 import { ABOUT_PAGE_SLUG } from "@/lib/about-page";
 import type { ContentLocalization, Locale } from "@/lib/api/types";
@@ -76,18 +77,18 @@ function buildSpecialtyLanguageAlternates(
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const [pages, posts, products, portfolioItems, doctors, specialties, settings, locales] = await Promise.all([
-    fetchPublishedPagesServer(),
-    fetchBlogPostsServer(),
-    fetchProductsServer(),
-    fetchPortfolioItemsServer(),
+    withBuildTimeFallback(() => fetchPublishedPagesServer(), []),
+    withBuildTimeFallback(() => fetchBlogPostsServer(), []),
+    withBuildTimeFallback(() => fetchProductsServer(), []),
+    withBuildTimeFallback(() => fetchPortfolioItemsServer(), []),
     // `.claude/architect-scope-telehealth-template.md` §9.5 — `telehealth` modülü kapalıyken
     // `GET /doctors` 404 döner ve `fetchDoctorsServer` bunu `[]`e çevirir (bkz. yorumu);
     // dolayısıyla modül kapalı/hiç doktor yokken aşağıdaki döngü hiçbir girdi üretmez.
-    fetchDoctorsServer({}),
+    withBuildTimeFallback(() => fetchDoctorsServer({}), []),
     // AYNI gerekçe — `GET /specialties` de `telehealth` modülü kapalıyken 404 döner, `[]`e çevrilir.
-    fetchSpecialtiesServer(),
-    fetchSiteSettingsServer(),
-    fetchLocalesServer(),
+    withBuildTimeFallback(() => fetchSpecialtiesServer(), []),
+    withBuildTimeFallback(() => fetchSiteSettingsServer(), DEFAULT_SETTINGS),
+    withBuildTimeFallback(() => fetchLocalesServer(), FALLBACK_LOCALES),
   ]);
 
   const defaultLocale = locales.find((l) => l.isDefault) ?? locales[0];

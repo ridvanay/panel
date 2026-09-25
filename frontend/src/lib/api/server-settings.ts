@@ -1,7 +1,8 @@
-import { SERVER_API_BASE_URL } from "../env";
+import { CACHE_TAGS } from "../cache-tags";
+import { fetchServerJson } from "./server-fetch";
 import type { SiteSettings, SitePage } from "./types";
 
-const DEFAULT_SETTINGS: SiteSettings = {
+export const DEFAULT_SETTINGS: SiteSettings = {
   siteName: "Site",
   logoUrl: null,
   faviconUrl: null,
@@ -15,7 +16,7 @@ const DEFAULT_SETTINGS: SiteSettings = {
   freeShippingThresholdCents: null,
   shippingEstimatedDaysMin: null,
   shippingEstimatedDaysMax: null,
-  // Fetch başarısız olursa güvenli (fail-closed) varsayılan — gerçek değer her zaman `/settings`den gelir.
+  // Yalnızca 404'te kullanılır (diğer hatalar fırlatır, bkz. server-fetch.ts) — güvenli (fail-closed) varsayılan.
   demoPaymentsEnabled: false,
   demoPaymentsSupported: false,
   // Bkz. `types.ts::SiteSettings.liveChatEnabled` yorumu — backend mapper/şema wiring'i henüz
@@ -28,24 +29,13 @@ const DEFAULT_SETTINGS: SiteSettings = {
 
 /** Sunucu bileşenlerinden çağrılır — bkz. server-plans.ts'teki apiFetch kullanılmama gerekçesi. */
 export async function fetchSiteSettingsServer(): Promise<SiteSettings> {
-  try {
-    const res = await fetch(`${SERVER_API_BASE_URL}/settings`, { next: { revalidate: 60 } });
-    if (!res.ok) return DEFAULT_SETTINGS;
-    const json = (await res.json()) as { data: SiteSettings };
-    return json.data;
-  } catch {
-    return DEFAULT_SETTINGS;
-  }
+  const json = await fetchServerJson<{ data: SiteSettings }>("/settings", { tags: [CACHE_TAGS.settings] });
+  return json?.data ?? DEFAULT_SETTINGS;
 }
 
 /** Kök `/` rotası için: seçili ve yayınlanmış ana sayfayı çözümler, yoksa null döner. */
 export async function fetchHomepageServer(): Promise<SitePage | null> {
-  try {
-    const res = await fetch(`${SERVER_API_BASE_URL}/settings/homepage`, { next: { revalidate: 60 } });
-    if (!res.ok) return null;
-    const json = (await res.json()) as { data: SitePage | null };
-    return json.data;
-  } catch {
-    return null;
-  }
+  // `settings`: anasayfa seçimi değişince. Seçili sayfanın içeriği değişince backend `/<dil>` path'ini yeniler.
+  const json = await fetchServerJson<{ data: SitePage | null }>("/settings/homepage", { tags: [CACHE_TAGS.settings] });
+  return json?.data ?? null;
 }

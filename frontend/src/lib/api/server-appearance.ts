@@ -1,4 +1,5 @@
-import { SERVER_API_BASE_URL } from "../env";
+import { CACHE_TAGS } from "../cache-tags";
+import { fetchServerJson } from "./server-fetch";
 import type { PublicSiteAppearance } from "./types";
 
 /**
@@ -58,14 +59,8 @@ const DEFAULT_APPEARANCE: PublicSiteAppearance = {
  * (§10.12.9): görünüm değişikliği siteye en geç 60 saniyede yansır, `cache: "no-store"` YASAKTIR.
  */
 export async function fetchSiteAppearanceServer(): Promise<PublicSiteAppearance> {
-  try {
-    const res = await fetch(`${SERVER_API_BASE_URL}/appearance`, { next: { revalidate: 60 } });
-    if (!res.ok) return DEFAULT_APPEARANCE;
-    const json = (await res.json()) as { data: PublicSiteAppearance };
-    return json.data;
-  } catch {
-    return DEFAULT_APPEARANCE;
-  }
+  const json = await fetchServerJson<{ data: PublicSiteAppearance }>("/appearance", { tags: [CACHE_TAGS.appearance] });
+  return json?.data ?? DEFAULT_APPEARANCE;
 }
 
 export { DEFAULT_APPEARANCE };

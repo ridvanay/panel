@@ -1,4 +1,5 @@
-import { SERVER_API_BASE_URL } from "../env";
+import { sliderCacheTag } from "../cache-tags";
+import { fetchServerJson } from "./server-fetch";
 import type { PublicSlider } from "../sliders/types";
 
 /**
@@ -8,12 +9,6 @@ import type { PublicSlider } from "../sliders/types";
  * render etmez (`server-portfolio.ts` deseniyle AYNI, bkz. architect §5.1/§6.2).
  */
 export async function fetchSliderServer(sliderId: string): Promise<PublicSlider | null> {
-  try {
-    const res = await fetch(`${SERVER_API_BASE_URL}/sliders/${sliderId}`, { next: { revalidate: 60 } });
-    if (!res.ok) return null;
-    const json = (await res.json()) as { data: PublicSlider };
-    return json.data;
-  } catch {
-    return null;
-  }
+  const json = await fetchServerJson<{ data: PublicSlider }>(`/sliders/${sliderId}`, { tags: [sliderCacheTag(sliderId)] });
+  return json?.data ?? null;
 }

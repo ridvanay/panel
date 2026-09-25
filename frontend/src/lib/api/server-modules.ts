@@ -1,18 +1,13 @@
 import { redirect } from "next/navigation";
-import { SERVER_API_BASE_URL } from "../env";
+import { CACHE_TAGS } from "../cache-tags";
+import { fetchServerJson } from "./server-fetch";
 import { localizePathServer } from "./server-locales";
 import type { PublicModule } from "./types";
 
 /** Sunucu bileşenlerinden çağrılır — bkz. server-pages.ts'teki apiFetch kullanılmama gerekçesi. */
 export async function fetchPublicModulesServer(): Promise<PublicModule[]> {
-  try {
-    const res = await fetch(`${SERVER_API_BASE_URL}/modules`, { next: { revalidate: 60 } });
-    if (!res.ok) return [];
-    const json = (await res.json()) as { data: PublicModule[] };
-    return json.data;
-  } catch {
-    return [];
-  }
+  const json = await fetchServerJson<{ data: PublicModule[] }>("/modules", { tags: [CACHE_TAGS.modules] });
+  return json?.data ?? [];
 }
 
 /** Tek bir modülün açık olup olmadığını kontrol eder — bkz. `(site)/products/layout.tsx`. */

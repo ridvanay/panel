@@ -1,10 +1,11 @@
-import { SERVER_API_BASE_URL } from "../env";
+import { CACHE_TAGS } from "../cache-tags";
+import { fetchServerJson } from "./server-fetch";
 import { withLocalePrefix } from "../i18n/site-path";
 import type { Locale } from "./types";
 
 /**
- * Tek başına içerik olmadığında bile site her zaman en az bir dilde çalışmalıdır — ağ hatasında
- * "tr" varsayılan dile düşülür (bkz. server-settings.ts'teki AYNI fail-open deseni). Bu SADECE
+ * Tek başına içerik olmadığında bile site her zaman en az bir dilde çalışmalıdır — uç 404 veya boş
+ * liste dönerse "tr" varsayılan dile düşülür (429/5xx/ağ hatası fırlatır, bkz. server-fetch.ts). Bu SADECE
  * bir son çare fallback'idir; normal koşulda liste her zaman `GET /locales`'ten gelir (sabit dil
  * listesi KODA GÖMÜLMEZ — `.claude/architect-scope-i18n.md` §4.3).
  */
@@ -17,15 +18,9 @@ const FALLBACK_LOCALES: Locale[] = [
  * Önbellek politikası `GET /appearance` ile AYNIDIR (`revalidate: 60`, bkz. proxy.ts).
  */
 export async function fetchLocalesServer(): Promise<Locale[]> {
-  try {
-    const res = await fetch(`${SERVER_API_BASE_URL}/locales`, { next: { revalidate: 60 } });
-    if (!res.ok) return FALLBACK_LOCALES;
-    const json = (await res.json()) as { data: Locale[] };
-    if (!json.data || json.data.length === 0) return FALLBACK_LOCALES;
-    return json.data;
-  } catch {
-    return FALLBACK_LOCALES;
-  }
+  const json = await fetchServerJson<{ data: Locale[] }>("/locales", { tags: [CACHE_TAGS.locales] });
+  if (!json?.data || json.data.length === 0) return FALLBACK_LOCALES;
+  return json.data;
 }
 
 export async function fetchDefaultLocaleServer(): Promise<Locale> {

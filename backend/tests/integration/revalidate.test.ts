@@ -44,7 +44,7 @@ describe("on-demand revalidation webhook tetikleyicisi (lib/revalidate.ts)", () 
     return { authorization: `Bearer ${accessToken}` };
   }
 
-  function lastCallBody(): { paths: string[] } {
+  function lastCallBody(): { paths: string[]; tags?: string[] } {
     const init = fetchSpy.mock.calls[fetchSpy.mock.calls.length - 1]?.[1] as RequestInit;
     return JSON.parse(init.body as string);
   }
@@ -64,7 +64,8 @@ describe("on-demand revalidation webhook tetikleyicisi (lib/revalidate.ts)", () 
     expect(url).toBe("http://localhost:3000/api/revalidate");
     expect(init.method).toBe("POST");
     expect((init.headers as Record<string, string>)["x-revalidate-secret"]).toBe("test-revalidate-secret");
-    expect(JSON.parse(init.body as string)).toEqual({ paths: [`/tr/${slug}`] });
+    // `pages`: layout'taki yayınlanmış sayfa listesi (menü) de yenilenir.
+    expect(JSON.parse(init.body as string)).toEqual({ paths: [`/tr/${slug}`], tags: ["pages"] });
   });
 
   it("DRAFT olarak oluşturulan bir sayfa webhook'u TETİKLEMEZ", async () => {
@@ -294,13 +295,12 @@ describe("on-demand revalidation webhook tetikleyicisi (lib/revalidate.ts)", () 
 });
 
 /**
- * Global (layout) revalidation tetikleyicisi (bkz. `lib/revalidate.ts::triggerGlobalRevalidation`,
- * appearance.routes.ts/navigation.routes.ts çağrı noktaları). Yukarıdaki sayfa-bazlı testlerin
- * AKSİNE burada path hesaplaması YOK — sabit `{ paths: ["/"], type: "layout" }` gönderildiği
- * doğrulanır. Kapsamlı bir appearance/navigation test suite'i DEĞİLDİR (bkz. appearance.test.ts,
- * navigation.test.ts) — yalnızca bu yeni davranışın regresyona karşı bir birim testi.
+ * Etiket (tag) revalidation — `lib/revalidate.ts::triggerTagRevalidation` / `revalidateTagsOnWrite`.
+ * Tek bir alanı değiştiren admin kayıtları TÜM siteyi (`{ paths: ["/"], type: "layout" }`) DEĞİL,
+ * yalnızca o veriyi kullanan sayfaları yeniler: frontend `{ tags }` alır ve `revalidateTag` çağırır.
+ * Kapsamlı bir modül test suite'i DEĞİLDİR — her alanın DOĞRU etiketi gönderdiğinin regresyon testi.
  */
-describe("global (layout) revalidation tetikleyicisi — appearance ve navigation (lib/revalidate.ts::triggerGlobalRevalidation)", () => {
+describe("etiket revalidation — admin kayıtları yalnızca ilgili veriyi yeniler", () => {
   let app: FastifyInstance;
   let accessToken: string;
   let fetchSpy: ReturnType<typeof vi.spyOn>;
@@ -308,9 +308,10 @@ describe("global (layout) revalidation tetikleyicisi — appearance ve navigatio
   beforeAll(async () => {
     app = await buildTestApp();
     await resetDatabase(app.prisma);
-    // İlk kayıt olan kullanıcı otomatik ADMIN olur — appearance custom-code (ADMIN-only) ve
-    // navigation PUT (ADMIN+MANAGER) uçlarının hepsine erişebilsin diye.
+    // İlk kayıt olan kullanıcı otomatik ADMIN olur — appearance custom-code (ADMIN-only), settings
+    // (ADMIN) ve diğer ADMIN+MANAGER uçlarının hepsine erişebilsin diye.
     ({ accessToken } = await registerTestUser(app));
+    await app.prisma.siteModule.upsert({ where: { key: "telehealth" }, create: { key: "telehealth", enabled: true }, update: { enabled: true } });
   });
 
   afterAll(async () => {
@@ -330,59 +331,24 @@ describe("global (layout) revalidation tetikleyicisi — appearance ve navigatio
     return { authorization: `Bearer ${accessToken}` };
   }
 
-  function lastCallBody(): { paths: string[]; type?: string } {
+  function lastCallBody(): { paths?: string[]; tags?: string[]; type?: string } {
     const init = fetchSpy.mock.calls[fetchSpy.mock.calls.length - 1]?.[1] as RequestInit;
     return JSON.parse(init.body as string);
   }
 
-  it("PATCH /admin/appearance webhook'u sabit { paths: ['/'], type: 'layout' } ile tetikler", async () => {
-    const res = await app.inject({
-      method: "PATCH",
-      url: "/api/v1/admin/appearance",
-      headers: authHeader(),
-      payload: { primaryColor: "#123456" },
-    });
+  it.each([
+    ["PATCH /admin/appearance", "PATCH", "/api/v1/admin/appearance", { primaryColor: "#123456" }],
+    ["POST /admin/appearance/reset", "POST", "/api/v1/admin/appearance/reset", {}],
+    ["PUT /admin/appearance/custom-code/css", "PUT", "/api/v1/admin/appearance/custom-code/css", { css: "body { color: red; }", acknowledged: true }],
+    ["PUT /admin/appearance/custom-code/js", "PUT", "/api/v1/admin/appearance/custom-code/js", { js: "console.log('hi')", acknowledged: true }],
+  ] as const)("%s → yalnızca `appearance` etiketi (tüm site DEĞİL)", async (_label, method, url, payload) => {
+    const res = await app.inject({ method, url, headers: authHeader(), payload });
     expect(res.statusCode).toBe(200);
     expect(fetchSpy).toHaveBeenCalledTimes(1);
-    expect(lastCallBody()).toEqual({ paths: ["/"], type: "layout" });
+    expect(lastCallBody()).toEqual({ tags: ["appearance"] });
   });
 
-  it("POST /admin/appearance/reset global revalidation'ı tetikler", async () => {
-    fetchSpy.mockClear();
-    const res = await app.inject({ method: "POST", url: "/api/v1/admin/appearance/reset", headers: authHeader(), payload: {} });
-    expect(res.statusCode).toBe(200);
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
-    expect(lastCallBody()).toEqual({ paths: ["/"], type: "layout" });
-  });
-
-  it("PUT /admin/appearance/custom-code/css global revalidation'ı tetikler", async () => {
-    fetchSpy.mockClear();
-    const res = await app.inject({
-      method: "PUT",
-      url: "/api/v1/admin/appearance/custom-code/css",
-      headers: authHeader(),
-      payload: { css: "body { color: red; }", acknowledged: true },
-    });
-    expect(res.statusCode).toBe(200);
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
-    expect(lastCallBody()).toEqual({ paths: ["/"], type: "layout" });
-  });
-
-  it("PUT /admin/appearance/custom-code/js global revalidation'ı tetikler", async () => {
-    fetchSpy.mockClear();
-    const res = await app.inject({
-      method: "PUT",
-      url: "/api/v1/admin/appearance/custom-code/js",
-      headers: authHeader(),
-      payload: { js: "console.log('hi')", acknowledged: true },
-    });
-    expect(res.statusCode).toBe(200);
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
-    expect(lastCallBody()).toEqual({ paths: ["/"], type: "layout" });
-  });
-
-  it("PUT /admin/navigation global revalidation'ı tetikler", async () => {
-    fetchSpy.mockClear();
+  it("PUT /admin/navigation → `navigation` etiketi", async () => {
     const res = await app.inject({
       method: "PUT",
       url: "/api/v1/admin/navigation",
@@ -391,7 +357,54 @@ describe("global (layout) revalidation tetikleyicisi — appearance ve navigatio
     });
     expect(res.statusCode).toBe(200);
     expect(fetchSpy).toHaveBeenCalledTimes(1);
-    expect(lastCallBody()).toEqual({ paths: ["/"], type: "layout" });
+    expect(lastCallBody()).toEqual({ tags: ["navigation"] });
+  });
+
+  it("PATCH /admin/settings (logo, favicon, anasayfa seçimi) → `settings` etiketi", async () => {
+    const res = await app.inject({ method: "PATCH", url: "/api/v1/admin/settings", headers: authHeader(), payload: { logoUrl: "/uploads/yeni-logo.png" } });
+    expect(res.statusCode).toBe(200);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(lastCallBody()).toEqual({ tags: ["settings"] });
+  });
+
+  it("blog yazısı oluşturma/güncelleme/autosave → `blog` etiketi", async () => {
+    const create = await app.inject({ method: "POST", url: "/api/v1/admin/blog", headers: authHeader(), payload: { title: "Etiket Testi", status: "PUBLISHED" } });
+    expect(create.statusCode).toBe(201);
+    expect(lastCallBody()).toEqual({ tags: ["blog"] });
+    const postId = create.json().data.id;
+
+    fetchSpy.mockClear();
+    const autosave = await app.inject({ method: "POST", url: `/api/v1/admin/blog/${postId}/autosave`, headers: authHeader(), payload: { title: "Canlı düzeltme" } });
+    expect(autosave.statusCode).toBe(200);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(lastCallBody()).toEqual({ tags: ["blog"] });
+  });
+
+  it("başarısız yazma (404/400) ve okuma (GET) tetiklemez", async () => {
+    const missing = await app.inject({ method: "PATCH", url: "/api/v1/admin/blog/00000000-0000-4000-8000-000000000000", headers: authHeader(), payload: { title: "x" } });
+    expect(missing.statusCode).toBe(404);
+    const list = await app.inject({ method: "GET", url: "/api/v1/admin/blog", headers: authHeader() });
+    expect(list.statusCode).toBe(200);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("uzmanlık kaydı → `specialties` + `doctors` etiketleri", async () => {
+    const res = await app.inject({ method: "POST", url: "/api/v1/admin/telehealth/specialties", headers: authHeader(), payload: { name: "Etiket Kardiyoloji", icon: "HeartPulse" } });
+    expect(res.statusCode).toBe(201);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(lastCallBody()).toEqual({ tags: ["specialties", "doctors"] });
+  });
+
+  it("slider güncelleme → yalnızca o slider'ın `slider:<id>` etiketi; oluşturma tetiklemez", async () => {
+    const create = await app.inject({ method: "POST", url: "/api/v1/admin/sliders", headers: authHeader(), payload: { name: "Etiket Slider" } });
+    expect(create.statusCode).toBe(201);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    const sliderId = create.json().data.id;
+
+    const update = await app.inject({ method: "PATCH", url: `/api/v1/admin/sliders/${sliderId}`, headers: authHeader(), payload: { name: "Etiket Slider 2" } });
+    expect(update.statusCode).toBe(200);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(lastCallBody()).toEqual({ tags: [`slider:${sliderId}`] });
   });
 });
 
@@ -431,6 +444,26 @@ describe("REVALIDATE_SECRET boşken revalidation tamamen no-op olur", () => {
 
   afterEach(() => {
     fetchSpy.mockRestore();
+  });
+
+  it("açılış uyarısı: sır yoksa `warnIfRevalidationDisabled` bir uyarı loglar", async () => {
+    const { warnIfRevalidationDisabled } = await import("../../src/lib/revalidate");
+    const warn = vi.spyOn(app.log, "warn");
+    warnIfRevalidationDisabled(app);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0]?.[0])).toContain("REVALIDATE_SECRET");
+    warn.mockRestore();
+  });
+
+  it("etiket tetikleyicisi (ayarlar kaydı) da fetch ÇAĞIRMAZ", async () => {
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/api/v1/admin/settings",
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: { siteName: "Sırsız" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it("PUBLISHED bir sayfa oluşturulsa dahi fetch hiç ÇAĞRILMAZ", async () => {

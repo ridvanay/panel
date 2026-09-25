@@ -13,6 +13,7 @@ import { ConflictError, NotFoundError, ValidationError } from "../../lib/errors"
 import { logAudit } from "../../lib/audit";
 import { LOCALE_CODE_PATTERN, listAllLocales, normalizeLocaleCode } from "../../lib/localization";
 import { LocaleCodeParamSchema, LocaleUpdateRequestSchema, LocaleUpsertRequestSchema } from "./localization.schemas";
+import { CACHE_TAGS, revalidateTagsOnWrite } from "../../lib/revalidate";
 
 /**
  * §10.5 Çoklu Dil & Yerelleştirme — `/admin/locales` prefix'i altında bağlanır.
@@ -21,6 +22,7 @@ import { LocaleCodeParamSchema, LocaleUpdateRequestSchema, LocaleUpsertRequestSc
  */
 export async function adminLocalesRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
+  revalidateTagsOnWrite(app, () => [CACHE_TAGS.locales]);
   server.addHook("preHandler", authenticate);
   server.addHook("preHandler", requirePanelAccess());
 

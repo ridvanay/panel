@@ -17,7 +17,7 @@
  *    isteğinin (sayfa kaydetme/yayınlama) response'u ASLA bundan etkilenmez/reddedilmez.
  *  - Hassas veri (REVALIDATE_SECRET'ın kendisi) LOGLANMAZ.
  */
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { env } from "../config/env";
 import { getLocaleSet } from "./localization";
 import { slugify } from "./slug";
@@ -88,10 +88,12 @@ export async function triggerPublicPageRevalidation(
     const paths = await resolveAffectedPaths(app, page, options?.isHomePage ?? false);
     if (paths.length === 0) return;
 
+    // `pages`: header/footer'daki yayınlanmış sayfa listesi (layout) — başlık/slug/yayın durumu
+    // değişikliği her sayfanın menüsüne yansısın. Sayfanın kendi içeriği `paths` ile yenilenir.
     const res = await fetch(`${env.INTERNAL_FRONTEND_URL ?? env.FRONTEND_URL}/api/revalidate`, {
       method: "POST",
       headers: { "x-revalidate-secret": env.REVALIDATE_SECRET, "content-type": "application/json" },
-      body: JSON.stringify({ paths }),
+      body: JSON.stringify({ paths, tags: [CACHE_TAGS.pages] }),
     });
 
     if (!res.ok) {
@@ -104,42 +106,9 @@ export async function triggerPublicPageRevalidation(
 }
 
 /**
- * `.claude/architect-scope-doctor-portfolio-identity-console.md` (**[DPI]**) §1.4 madde 4 —
- * `PUT /doctor/profile` yazımından SONRA çağrılır. `triggerPublicPageRevalidation`'ın AKSİNE
- * bir `Page` satırı YOKTUR (`DoctorProfile` `pages` tablosuna kayıtlı değildir) — bu yüzden
- * path'ler doğrudan doktor route yapısından (`[lang]/(site)/doctors/page.tsx` +
- * `[lang]/(site)/doctors/[slug]/page.tsx`) kurulur, `resolveAffectedPaths`'in çeviri arama
- * mantığı KULLANILMAZ (doktor profili şu an çok-dilli DEĞİLDİR). Guard/try-catch/log deseni
- * `triggerPublicPageRevalidation` İLE BİREBİR AYNIDIR (best-effort, asıl admin isteğini ASLA
- * etkilemez).
- */
-export async function triggerDoctorProfileRevalidation(app: FastifyInstance, slug: string): Promise<void> {
-  if (!env.REVALIDATE_SECRET) return; // yapılandırılmamış — özellik sessizce devre dışı (bkz. config/env.ts)
-
-  try {
-    const { enabled } = await getLocaleSet(app);
-    const paths = enabled.flatMap((locale) => [`/${locale.code}/doctors`, `/${locale.code}/doctors/${slug}`]);
-    if (paths.length === 0) return;
-
-    const res = await fetch(`${env.INTERNAL_FRONTEND_URL ?? env.FRONTEND_URL}/api/revalidate`, {
-      method: "POST",
-      headers: { "x-revalidate-secret": env.REVALIDATE_SECRET, "content-type": "application/json" },
-      body: JSON.stringify({ paths }),
-    });
-
-    if (!res.ok) {
-      app.log.warn({ status: res.status, paths }, "Doktor profili on-demand revalidation isteği başarısız oldu");
-    }
-  } catch (err) {
-    // Asıl `PUT /doctor/profile` isteğini ASLA bozmaz — bkz. dosya başlığı.
-    app.log.warn({ err, slug }, "Doktor profili on-demand revalidation isteği gönderilemedi");
-  }
-}
-
-/**
- * Görünüm (appearance) ve navigasyon (navigation) gibi TEK bir sayfayı değil TÜM public site
- * layout'unu (header/footer, renkler/tipografi, özel CSS-JS, her locale) etkileyen admin
- * işlemlerinden sonra çağrılır. `triggerPublicPageRevalidation`'ın AKSİNE burada path hesaplaması
+ * TÜM public siteyi etkileyen toplu işlemlerden (demo şablon içe aktarma) sonra çağrılır. Tek bir
+ * alanı değiştiren admin kayıtları bunu DEĞİL `triggerTagRevalidation`'ı kullanır (yalnızca ilgili
+ * veri yenilenir). `triggerPublicPageRevalidation`'ın AKSİNE burada path hesaplaması
  * YOK — hangi sayfaların etkilendiğini tek tek çıkarmak yerine sabit `{ paths: ["/"], type:
  * "layout" }` gönderilir; frontend tarafı `revalidatePath("/", "layout")` çağırır ki bu Next.js'in
  * "tüm cache'i temizle" paterni olduğundan her locale/route otomatik kapsanır (bkz. frontend
@@ -163,4 +132,88 @@ export async function triggerGlobalRevalidation(app: FastifyInstance): Promise<v
     // Asıl admin isteğini ASLA bozmaz — bkz. dosya başlığı (`lib/mail.ts` ile AYNI tolerans deseni).
     app.log.warn({ err }, "Frontend global (layout) on-demand revalidation isteği gönderilemedi");
   }
+}
+
+/**
+ * Açılışta BİR KEZ çağrılır (bkz. app.ts `onReady`) — sır yoksa tetikleyiciler sessizce hiçbir şey
+ * göndermez; operatör bunu ancak "admin değişikliği ~60 sn gecikiyor" belirtisinden anlayabilirdi.
+ */
+export function warnIfRevalidationDisabled(app: FastifyInstance): void {
+  if (env.REVALIDATE_SECRET) return;
+  app.log.warn(
+    "REVALIDATE_SECRET tanımsız/boş — admin kayıtlarından sonra frontend önbellek yenilemesi GÖNDERİLMEZ, değişiklikler sitede ~60 sn sonra görünür. Frontend ile AYNI değeri backend/.env'e ekleyin (bkz. INFRA.md)."
+  );
+}
+
+/**
+ * Sunucu tarafı veri fetch'lerinin önbellek etiketleri — frontend `src/lib/cache-tags.ts` ile
+ * BİREBİR aynı olmalı (frontend `tests/unit/cache-tags.test.ts` bu dosyayı metin olarak okuyup
+ * kaymayı yakalar).
+ */
+export const CACHE_TAGS = {
+  settings: "settings",
+  appearance: "appearance",
+  navigation: "navigation",
+  locales: "locales",
+  modules: "modules",
+  pages: "pages",
+  specialties: "specialties",
+  doctors: "doctors",
+  contactPage: "contact-page",
+  blog: "blog",
+  telehealthTheme: "telehealth-theme",
+} as const;
+
+/** Slider başına etiket — frontend `sliderCacheTag` ile aynı biçim. */
+export function sliderCacheTag(sliderId: string): string {
+  return `slider:${sliderId}`;
+}
+
+/**
+ * Admin kaydından sonra YALNIZCA etkilenen verinin etiketlerini yeniler (`{ tags }` →
+ * frontend `revalidateTag(tag, { expire: 0 })`) — o veriyi kullanan sayfalar bir sonraki
+ * ziyarette taze render edilir, tüm site DEĞİL (`triggerGlobalRevalidation`'ın aksine).
+ * Guard/try-catch/log deseni `triggerPublicPageRevalidation` ile BİREBİR aynıdır (best-effort,
+ * asıl admin isteğini ASLA etkilemez).
+ */
+export async function triggerTagRevalidation(app: FastifyInstance, tags: string[]): Promise<void> {
+  if (!env.REVALIDATE_SECRET) return; // yapılandırılmamış — özellik sessizce devre dışı (bkz. config/env.ts)
+  const unique = [...new Set(tags)];
+  if (unique.length === 0) return;
+
+  try {
+    const res = await fetch(`${env.INTERNAL_FRONTEND_URL ?? env.FRONTEND_URL}/api/revalidate`, {
+      method: "POST",
+      headers: { "x-revalidate-secret": env.REVALIDATE_SECRET, "content-type": "application/json" },
+      body: JSON.stringify({ tags: unique }),
+    });
+
+    if (!res.ok) {
+      app.log.warn({ status: res.status, tags: unique }, "Frontend etiket (tag) revalidation isteği başarısız oldu");
+    }
+  } catch (err) {
+    // Asıl admin isteğini ASLA bozmaz — bkz. dosya başlığı.
+    app.log.warn({ err, tags: unique }, "Frontend etiket (tag) revalidation isteği gönderilemedi");
+  }
+}
+
+const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+/**
+ * Bir admin route plugin'inin TÜM başarılı yazma isteklerinden (POST/PUT/PATCH/DELETE, 2xx) sonra
+ * `resolveTags(request)`'in döndürdüğü etiketleri yeniler — her handler'a tek tek çağrı eklemek
+ * yerine plugin seviyesinde; yeni eklenen bir yazma ucu da otomatik kapsanır. `onSend`: yanıt
+ * gönderilmeden ÖNCE (inline `await trigger...(); return reply.send(...)` deseniyle aynı sıra),
+ * best-effort (`triggerTagRevalidation` asla fırlatmaz). `null`/boş dizi → tetiklenmez.
+ */
+export function revalidateTagsOnWrite(
+  app: FastifyInstance,
+  resolveTags: (request: FastifyRequest) => string[] | null
+): void {
+  app.addHook("onSend", async (request, reply, payload) => {
+    if (!WRITE_METHODS.has(request.method) || reply.statusCode >= 400) return payload;
+    const tags = resolveTags(request);
+    if (tags && tags.length > 0) await triggerTagRevalidation(app, tags);
+    return payload;
+  });
 }

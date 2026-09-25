@@ -610,8 +610,126 @@ docker compose exec db psql -U postgres -d <DB> -c 'select "ipAddress", count(*)
 
 **İlgili:** iletişim sayfası formu (`POST /contact/page-submissions`) tarayıcıdan DOĞRUDAN `/api`ye
 gönderilir (Next.js sunucusu aracı değildir) — rate limit bu yapı sayesinde gerçek ziyaretçi
-IP'sine göre işler. Next.js sunucusunun kendi SSR istekleri ise tek bir iç adresten gelir (ayrı
-bir iş olarak not edildi: SSR istekleri için ayrı limit/muafiyet).
+IP'sine göre işler. Next.js sunucusunun kendi SSR istekleri ise tek bir iç adresten gelir — ayrı
+kovaya alınır, bkz. aşağıdaki bölüm.
+
+### Rate limit kovaları — iç istemci (frontend) ve `/uploads` (2026-09-25, `fix/rate-limit-and-revalidation`)
+
+**Sorun (canlı belirti: art arda yenilemede logo kırılıyordu):** (1) Frontend'in sunucu tarafı
+istekleri (SSR veri fetch'leri + `next/image` optimizasyonu) Nginx'i atlayıp doğrudan
+`http://backend:4000`'e gider ve TÜM ziyaretçiler için tek bir iç adresten (frontend konteyneri)
+görünür — hepsi ziyaretçi limitini (300/dk) tek kovada paylaşıyordu; kova dolunca ayarlar
+fetch'i varsayılana (`logoUrl: null`) düşüyor, sayfalar 404 dönüyordu. (2) `/uploads` önbelleksiz
+(`max-age=0`) sunuluyordu ve ziyaretçi başına 60/dk ek limiti vardı — her yenileme logo/favicon/
+görselleri yeniden isteyip birkaç yenilemede 429 alıyordu. Yerel senaryo testi (aynı sayfaya 100
+istek) iki belirtiyi de master'da yeniden üretti.
+
+**Kovalar (yeni ortam değişkeni YOK — sabitler `backend/src/lib/rate-limit.ts`):**
+
+| İstek kaynağı | API (global) kovası | `/uploads/*` kovası |
+|---|---|---|
+| Ziyaretçi (Nginx üzerinden, XFF'teki gerçek IP) | IP başına `RATE_LIMIT_MAX` (300/dk) | IP başına 600/dk, API kovasını TÜKETMEZ |
+| İç istemci (frontend konteyneri) | tek kova, 10.000/dk | tek kova, 10.000/dk |
+
+Route-özel sıkı limitler (giriş 5/dk, iletişim formu 5/dk…) değişmedi. `/uploads` yanıtları:
+UUID adlı dosyalar `Cache-Control: public, max-age=31536000, immutable`, diğerleri
+`public, max-age=86400`.
+
+**İç istemci nasıl tanınır (güven varsayımları — security-agent onayı):**
+- Karar YALNIZCA ham soket adresine (`request.socket.remoteAddress`) dayanır — `request.ip`/
+  `X-Forwarded-For` DEĞİL; `TRUST_PROXY=true` olsa da XFF sahteciliği bu kontrolü etkilemez.
+- Adres, mevcut `INTERNAL_FRONTEND_URL` (compose: `http://frontend:3000`) host adının DNS
+  çözümüyle (`resolve4/6`, `/etc/hosts` DEĞİL) eşleşmelidir; 30 sn'de bir (adres yokken 5 sn'de bir)
+  tazelenir. Değişken yoksa / host `localhost` ise / çözümlenemezse kimse iç sayılmaz (fail-closed —
+  değişiklik öncesi davranış). Deploy sırasında backend frontend'den önce başlar; ilk birkaç
+  saniye SSR ziyaretçi kovasında kalır, log: `İç istemci (frontend) adresi çözümlendi`.
+- Nginx host'tan `127.0.0.1:4000`'e bağlanır → backend'de Docker gateway/proxy adresi görünür;
+  frontend aynı compose ağından bağlanır → kendi konteyner adresi görünür. Bu iki adres farklıdır.
+  Dışarıdan gelen bir TCP bağlantısı el sıkışmayı tamamlamak zorunda olduğundan frontend'in iç ağ
+  adresi taklit edilemez.
+
+**Varsayımlar KIRILIRSA:**
+- *4000 portu dışarı açılırsa:* iç sınıflandırma kırılmaz (dış istemcinin adresi frontend'inki
+  olamaz) ama `TRUST_PROXY=true` yüzünden TÜM diğer IP tabanlı limitler/denetim kaydı XFF
+  sahteciliğine açılır (yukarıdaki bölüm). Repodaki `docker-compose.yml` `"4000:4000"` yayınlar;
+  canlıda sunucudaki override dosyası `127.0.0.1`'e bağlar (2026-09-25 doğrulandı) — repodaki
+  compose'un düzeltilmesi ayrı bir iş olarak not edildi.
+- *Önüne Cloudflare (veya başka bir proxy) girerse:* iç sınıflandırma ETKİLENMEZ (Cloudflare
+  trafiği yine Nginx'ten gelir). Ancak Nginx'in `$remote_addr`'ı Cloudflare kenar sunucusunun
+  adresi olur → tüm ziyaretçiler birkaç Cloudflare IP'sinde toplanıp birbirinin 300/dk ve 600/dk
+  limitini tüketir (bu dalın düzelttiği belirtinin aynısı, bu kez ziyaretçi tarafında). O durumda
+  Nginx'te Cloudflare IP aralıkları için `set_real_ip_from <CF aralıkları>;` +
+  `real_ip_header CF-Connecting-IP;` ZORUNLUDUR (başlık yalnızca Cloudflare aralıklarından gelen
+  bağlantılarda kabul edilmeli, aksi halde taklit edilebilir).
+- *Docker ağ/NAT davranışı değişirse* (userland-proxy, host network modu) veya *frontend'le aynı
+  ağa güvenilmeyen bir servis eklenirse*: aşağıdaki doğrulama tekrarlanmalı.
+
+**Doğrulama komutları (sunucuda, deploy sonrası):**
+```bash
+docker compose logs backend | grep "frontend) adres"      # "çözümlendi" + frontend konteyner IP'si
+docker compose exec frontend wget -S -qO /dev/null http://backend:4000/api/v1/settings 2>&1 | grep -i x-ratelimit-limit
+# beklenen: 10000 (iç kova)
+curl -sI https://<site>/api/v1/settings | grep -i x-ratelimit-limit           # beklenen: 300 (ziyaretçi)
+curl -sI https://<site>/uploads/<uuid>.png | grep -iE "cache-control|x-ratelimit-limit"
+# beklenen: public, max-age=31536000, immutable + 600
+```
+
+**`/uploads` önbelleği ve silinen medya (compliance-agent koşullu onayı):** `/uploads/*` altında
+yalnızca yönetici tarafından yüklenen kurumsal içerik (logo, favicon, doktor fotoğrafları,
+blog/sayfa görselleri) sunulur; dosyalar UUID adıyla saklanır ve asla üzerine yazılmaz. Bir görsel
+panelden silindiğinde sunucu 404 döner, ancak daha önce bu URL'i getirmiş tarayıcılar (ve ileride
+eklenirse CDN'ler) 1 yıla kadar önbellekten göstermeye devam edebilir — "silindi ama hâlâ
+görünüyor" şikayetleri için destek ekibi bilgilendirilmelidir. Kimliği tanımlayan bir görselin acil
+kaldırılması gerekiyorsa sayfadan kaldırılıp yeni dosya (yeni UUID) yüklenmeli, CDN varsa önbelleği
+elle temizlenmelidir. Hasta belgeleri/reçeteler bu genel depoya HİÇBİR ZAMAN girmez (ayrı,
+yetkilendirmeli depo); ileride hasta tarafından yüklenen herhangi bir görsel de `/uploads`'a
+DEĞİL yetkilendirmeli bir yola gitmelidir. Nihai hukuki uygunluk hukuk danışmanı onayına tabidir.
+
+**Admin değişikliklerinin anında yansıması (on-demand revalidation):** backend admin kayıtlarından
+sonra frontend'in `POST /api/revalidate` ucuna ilgili önbellek etiketlerini gönderir (ör.
+`settings`, `navigation`, `blog`, `slider:<id>`; bkz. `backend/src/lib/revalidate.ts::CACHE_TAGS`)
+— yalnızca o veriyi kullanan sayfalar bir sonraki ziyarette taze render edilir; `revalidate: 60`
+yedek olarak kalır. Uç dakikada 120 istekle sınırlıdır. **Çalışması için `REVALIDATE_SECRET`
+backend'de ve frontend'de TANIMLI ve AYNI olmalıdır** (2026-09-25: canlıda ikisi de BOŞ bulundu —
+`sha256 = e3b0c442…`, boş dizenin özeti).
+
+**Sır boşsa davranış (fail-closed):** frontend `/api/revalidate` HER isteği 401 ile reddeder
+(sırsız veya boş sırla gelen istek dahil); backend hiç yenileme isteği göndermez. Yalnızca boşluk
+ve eski örnek yer tutucu `change-me-in-production` da "tanımsız" sayılır. İki taraf da açılışta
+BİR KEZ uyarı loglar: backend `REVALIDATE_SECRET tanımsız/boş — …`, frontend `[revalidate]
+REVALIDATE_SECRET tanımsız/boş …`. Değişiklikler bu durumda ~60 sn'lik yedek yenilemeyle görünür.
+
+**Değişken nasıl geçiyor:** kök `.env` KULLANILMAZ ve compose'un `environment:` bloklarında bu
+değişken YOKTUR — her servis kendi `env_file`'ından okur:
+
+| Servis | Dosya (sunucuda, repo kökünden) | Okunma zamanı |
+|---|---|---|
+| backend | `backend/.env` → `REVALIDATE_SECRET=<değer>` | açılışta (`config/env.ts`) |
+| frontend | `frontend/.env.local` → `REVALIDATE_SECRET=<değer>` | çalışma zamanında, istek başına (`NEXT_PUBLIC_` DEĞİL; `.dockerignore` `.env*`'i imaja almaz) |
+
+Frontend için **yeniden derleme GEREKMEZ**, ama env_file yalnızca konteyner oluşturulurken okunur —
+`docker compose up -d --no-deps backend frontend` değişen env_file'ı görüp iki konteyneri yeniden
+oluşturur (`restart` YETMEZ). Sunucudaki override compose dosyası bu servislere ayrıca
+`environment: REVALIDATE_SECRET` veriyorsa o değer env_file'ı ezer — kontrol edin.
+
+**Sırrı kurma ve doğrulama (sunucuda, repo kökünden):**
+```bash
+SECRET=$(openssl rand -hex 32)
+# Satır varsa değiştir, yoksa ekle — değer ekrana basılmaz:
+for f in backend/.env frontend/.env.local; do
+  if grep -q '^REVALIDATE_SECRET=' "$f"; then sed -i "s|^REVALIDATE_SECRET=.*|REVALIDATE_SECRET=$SECRET|" "$f"
+  else printf '
+REVALIDATE_SECRET=%s
+' "$SECRET" >> "$f"; fi
+done
+unset SECRET
+docker compose up -d --no-deps backend frontend            # env_file değişti → iki konteyner yeniden oluşturulur
+docker compose exec backend  sh -c 'printf %s "$REVALIDATE_SECRET" | sha256sum'
+docker compose exec frontend sh -c 'printf %s "$REVALIDATE_SECRET" | sha256sum'
+# iki çıktı AYNI ve e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 (boş) DEĞİL olmalı
+docker compose logs backend frontend | grep -i "REVALIDATE_SECRET tanımsız"   # çıktı OLMAMALI
+docker compose logs backend | grep -i "revalidation isteği"                   # uyarı olmamalı
+```
 
 ### Tele-Sağlık (LiveKit) — Canlı ortam Nginx/reverse-proxy + UDP medya referansı (2026-09-21, kullanıcı raporu: "Bağlanıyor…"da takılıp düşüyor)
 

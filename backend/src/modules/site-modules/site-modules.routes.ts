@@ -13,6 +13,7 @@ import { NotFoundError } from "../../lib/errors";
 import { logAudit } from "../../lib/audit";
 import { MODULE_REGISTRY, getModuleDefinition } from "../../lib/module-registry";
 import { ModuleKeyParamSchema, UpdateModuleRequestSchema } from "./site-modules.schemas";
+import { CACHE_TAGS, revalidateTagsOnWrite } from "../../lib/revalidate";
 
 /**
  * §10.9 Eklenti/Modül Yönetimi — `/admin/modules` prefix'i altında bağlanır.
@@ -22,6 +23,7 @@ import { ModuleKeyParamSchema, UpdateModuleRequestSchema } from "./site-modules.
  */
 export async function adminSiteModulesRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
+  revalidateTagsOnWrite(app, () => [CACHE_TAGS.modules]);
   server.addHook("preHandler", authenticate);
   server.addHook("preHandler", requirePanelAccess());
 

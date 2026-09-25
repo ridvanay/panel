@@ -1,4 +1,5 @@
-import { SERVER_API_BASE_URL } from "../env";
+import { CACHE_TAGS } from "../cache-tags";
+import { fetchServerJson } from "./server-fetch";
 import type { ContactPageLocale, PublicContactPage, PublicContactForm } from "./types";
 
 /**
@@ -6,14 +7,8 @@ import type { ContactPageLocale, PublicContactPage, PublicContactForm } from "./
  * `isEnabled=false` ise backend 404 döner; bu durumda `null` dönülür (istemci `notFound()` çağırır).
  */
 export async function fetchPublicContactFormServer(): Promise<PublicContactForm | null> {
-  try {
-    const res = await fetch(`${SERVER_API_BASE_URL}/contact/form`, { cache: "no-store" });
-    if (!res.ok) return null;
-    const json = (await res.json()) as { data: PublicContactForm };
-    return json.data;
-  } catch {
-    return null;
-  }
+  const json = await fetchServerJson<{ data: PublicContactForm }>("/contact/form", { noStore: true });
+  return json?.data ?? null;
 }
 
 /**
@@ -21,12 +16,6 @@ export async function fetchPublicContactFormServer(): Promise<PublicContactForm 
  * (sayfa `notFound()` çağırır). Admin kaydı site önbelleğini yeniler; ek olarak 60 sn ISR.
  */
 export async function fetchContactPageServer(locale: ContactPageLocale): Promise<PublicContactPage | null> {
-  try {
-    const res = await fetch(`${SERVER_API_BASE_URL}/contact/page?locale=${locale}`, { next: { revalidate: 60 } });
-    if (!res.ok) return null;
-    const json = (await res.json()) as { data: PublicContactPage };
-    return json.data;
-  } catch {
-    return null;
-  }
+  const json = await fetchServerJson<{ data: PublicContactPage }>(`/contact/page?locale=${locale}`, { tags: [CACHE_TAGS.contactPage] });
+  return json?.data ?? null;
 }

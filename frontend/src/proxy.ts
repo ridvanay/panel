@@ -4,6 +4,7 @@ import { SERVER_API_BASE_URL } from "@/lib/env";
 import { DOCTOR_HOST, DOCTOR_ORIGIN, SITE_HOST, SITE_ORIGIN, isDoctorHostname } from "@/lib/doctor-host";
 import { isSafeInternalPath } from "@/lib/safe-redirect";
 import type { PublicSiteAppearance, Locale } from "@/lib/api/types";
+import { CACHE_TAGS } from "@/lib/cache-tags";
 
 /**
  * §10.12.5 Bakım Modu — SUNUM anahtarıdır, bir GÜVENLİK kontrolü DEĞİLDİR: API'yi kapatmaz,
@@ -120,7 +121,7 @@ const FALLBACK_LOCALE_CODE = "tr";
  *  (Next'in `fetch` önbelleği zaten aynı URL için istekleri tekilleştirir). */
 async function fetchEnabledLocales(): Promise<Locale[]> {
   try {
-    const res = await fetch(`${SERVER_API_BASE_URL}/locales`, { next: { revalidate: 60 } });
+    const res = await fetch(`${SERVER_API_BASE_URL}/locales`, { next: { revalidate: 60, tags: [CACHE_TAGS.locales] } });
     if (!res.ok) throw new Error("locales fetch failed");
     const json = (await res.json()) as { data: Locale[] };
     if (!json.data || json.data.length === 0) throw new Error("empty locales");
@@ -189,7 +190,7 @@ async function handleMainHost(request: NextRequest, pathname: string, defaultLoc
   try {
     // `GET /appearance` — `(site)` layout'unun kendi çağrısıyla AYNI önbellek politikası
     // (`revalidate: 60`, §10.12.9) — bakım anahtarı için ikinci bir uç/politika İCAT edilmez.
-    const res = await fetch(`${SERVER_API_BASE_URL}/appearance`, { next: { revalidate: 60 } });
+    const res = await fetch(`${SERVER_API_BASE_URL}/appearance`, { next: { revalidate: 60, tags: [CACHE_TAGS.appearance] } });
     if (res.ok) {
       const json = (await res.json()) as { data: PublicSiteAppearance };
       maintenanceEnabled = Boolean(json.data?.maintenanceModeEnabled);
