@@ -8,6 +8,14 @@ import type { Instrumentation } from "next";
 export async function register(): Promise<void> {
   if (process.env.NEXT_RUNTIME === "nodejs") {
     await import("./sentry.server.config");
+    // Sır yoksa admin kayıtları sitede ancak 60 sn'lik yedek yenilemeyle görünür — sessiz kalmasın.
+    const { getRevalidateSecret } = await import("./lib/revalidate-secret");
+    if (!getRevalidateSecret()) {
+      console.warn(
+        "[revalidate] REVALIDATE_SECRET tanımsız/boş (veya örnek yer tutucu) — POST /api/revalidate her isteği 401 ile reddeder; " +
+          "admin değişiklikleri sitede ~60 sn sonra görünür. Backend ile AYNI değeri frontend/.env.local'e ekleyin (bkz. INFRA.md)."
+      );
+    }
   }
   if (process.env.NEXT_RUNTIME === "edge") {
     await import("./sentry.edge.config");

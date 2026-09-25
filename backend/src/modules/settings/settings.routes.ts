@@ -15,6 +15,7 @@ import { PERMISSIONS_MATRIX } from "../../lib/permissions-matrix";
 import { isDemoPaymentsEnabled } from "../../config/env";
 import { computeDemoPaymentsEnabled } from "../../lib/demo-payments";
 import { PermissionsMatrixDto, PermissionsMatrixSchema, UpdateSiteSettingsRequestSchema } from "./settings.schemas";
+import { CACHE_TAGS, triggerTagRevalidation } from "../../lib/revalidate";
 
 export const SETTINGS_ID = "singleton";
 export const DEFAULTS = {
@@ -178,6 +179,10 @@ export async function adminSettingsRoutes(app: FastifyInstance) {
         },
         ipAddress: request.ip,
       });
+
+      // Logo/favicon/site adı (layout), anasayfa seçimi (`/` ve eski/yeni anasayfanın `/<slug>`
+      // yönlendirmesi) — hepsi `settings` etiketli fetch'lerden okunur (bkz. lib/revalidate.ts).
+      await triggerTagRevalidation(app, [CACHE_TAGS.settings]);
 
       return reply.send(ok(toSiteSettingsDto(settings)));
     }

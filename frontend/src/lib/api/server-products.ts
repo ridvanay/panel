@@ -1,4 +1,5 @@
-import { SERVER_API_BASE_URL, toInternalMediaUrl } from "../env";
+import { toInternalMediaUrl } from "../env";
+import { fetchServerJson } from "./server-fetch";
 import { buildCatalogApiQuery, type CatalogFilters } from "../catalog-search-params";
 import type { Product, ProductCatalogMeta, ProductListItem } from "./types";
 
@@ -10,15 +11,9 @@ import type { Product, ProductCatalogMeta, ProductListItem } from "./types";
  * `ProductListItem`'ın kapsadığı alanları okur).
  */
 export async function fetchProductsServer(locale?: string): Promise<ProductListItem[]> {
-  try {
-    const query = locale ? `&locale=${encodeURIComponent(locale)}` : "";
-    const res = await fetch(`${SERVER_API_BASE_URL}/products?limit=50${query}`, { next: { revalidate: 60 } });
-    if (!res.ok) return [];
-    const json = JSON.parse(toInternalMediaUrl(await res.text())) as { data: ProductListItem[] };
-    return json.data;
-  } catch {
-    return [];
-  }
+  const query = locale ? `&locale=${encodeURIComponent(locale)}` : "";
+  const json = await fetchServerJson<{ data: ProductListItem[] }>(`/products?limit=50${query}`, { transformText: toInternalMediaUrl });
+  return json?.data ?? [];
 }
 
 export interface ProductCatalogResult {
@@ -34,25 +29,13 @@ export interface ProductCatalogResult {
  * KARIŞTIRMAMAK için ayırt eder ve ikincisinde `error.tsx` sınırına düşecek şekilde fırlatır.
  */
 export async function fetchProductCatalogServer(filters: CatalogFilters, locale?: string): Promise<ProductCatalogResult | null> {
-  try {
-    const query = buildCatalogApiQuery(filters, locale);
-    const res = await fetch(`${SERVER_API_BASE_URL}/products?${query}`, { next: { revalidate: 60 } });
-    if (!res.ok) return null;
-    const json = JSON.parse(toInternalMediaUrl(await res.text())) as { data: ProductListItem[]; meta: ProductCatalogMeta };
-    return { items: json.data, meta: json.meta };
-  } catch {
-    return null;
-  }
+  const query = buildCatalogApiQuery(filters, locale);
+  const json = await fetchServerJson<{ data: ProductListItem[]; meta: ProductCatalogMeta }>(`/products?${query}`, { transformText: toInternalMediaUrl });
+  return json ? { items: json.data, meta: json.meta } : null;
 }
 
 export async function fetchProductBySlugServer(slug: string, locale?: string): Promise<Product | null> {
-  try {
-    const query = locale ? `?locale=${encodeURIComponent(locale)}` : "";
-    const res = await fetch(`${SERVER_API_BASE_URL}/products/${slug}${query}`, { next: { revalidate: 60 } });
-    if (!res.ok) return null;
-    const json = JSON.parse(toInternalMediaUrl(await res.text())) as { data: Product };
-    return json.data;
-  } catch {
-    return null;
-  }
+  const query = locale ? `?locale=${encodeURIComponent(locale)}` : "";
+  const json = await fetchServerJson<{ data: Product }>(`/products/${slug}${query}`, { transformText: toInternalMediaUrl });
+  return json?.data ?? null;
 }

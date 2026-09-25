@@ -13,6 +13,29 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
 
 ### Fixed
 
+- **`fix(backend)`: Art arda yenilemede kırılan logo/görseller ve önbelleğe giren 404'ler.**
+  Frontend'in sunucu tarafı istekleri (SSR + `next/image`) artık ziyaretçi limitini paylaşmıyor:
+  frontend konteyneri ham soket adresinden tanınır (mevcut `INTERNAL_FRONTEND_URL`'in DNS çözümü,
+  `X-Forwarded-For`'a güvenilmez) ve ayrı bir kovaya (10.000/dk) alınır. `/uploads/*` API kovasını
+  tüketmiyor, ziyaretçi başına limiti 60 → 600/dk; UUID adlı dosyalar 1 yıl `immutable`, diğerleri
+  1 gün önbelleklenir. Frontend'in veri çeken fonksiyonları yalnızca gerçek 404'te "bulunamadı"
+  döner, 429/5xx/ağ hatasında hata fırlatır — hatalı render (404, logosuz sayfa) önbelleğe girmez,
+  önbellekteki veri sunulmaya devam eder; önbellek yoksa TR/EN "Sayfa şu anda yüklenemedi" ekranı.
+  Yeni ortam değişkeni ve migration yok. Güven varsayımları ve Cloudflare senaryosu: `INFRA.md`.
+- **`fix(site)`: Admin değişiklikleri sitede birkaç saniye içinde görünüyor.** Site ayarları
+  (logo, favicon, anasayfa seçimi), blog, uzmanlıklar, doktorlar, slider'lar, diller ve modüller
+  kayıttan sonra yalnızca ilgili önbellek etiketini yeniler; görünüm, navigasyon, iletişim sayfası
+  ve TeleHealth teması artık tüm siteyi değil yalnızca kendi etiketini yeniler; sayfa kaydı
+  menüdeki sayfa listesini de tazeler. `revalidate: 60` yedek olarak kaldı. `/api/revalidate`
+  `tags` alanını kabul eder ve dakikada 120 istekle sınırlıdır. Canlıda `REVALIDATE_SECRET`'ın
+  backend (`backend/.env`) ve frontend'de (`frontend/.env.local`) aynı olması gerekir — kurulum ve
+  doğrulama komutları `INFRA.md`'de.
+- **`fix(security)`: `REVALIDATE_SECRET` boşken fail-closed ve görünür.** Uç sır tanımsız/boş
+  iken zaten 401 dönüyordu; artık yalnızca boşluk ve örnek dosyadaki yer tutucu
+  (`change-me-in-production`) da "tanımsız" sayılıyor (örneği olduğu gibi kopyalayan bir kurulumda
+  sır herkesçe biliniyordu). Backend sır yoksa istek göndermiyor; iki taraf da açılışta bir kez
+  uyarı logluyor. `frontend/.env.local.example`'daki yer tutucu kaldırıldı.
+
 - **`fix(site)`: Görüntülenme sayacı ziyaretçilere gösterilmiyor.** CMS sayfaları, blog yazıları,
   portfolyo ve ürün detayındaki "N görüntülenme" satırı kaldırıldı (dilden bağımsız Türkçe
   görünüyor, şablon sayfalarında tasarımı bozuyordu). Sayım (`ViewTracker`) ve admin'deki

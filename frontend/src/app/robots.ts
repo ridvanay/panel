@@ -1,6 +1,7 @@
 import type { MetadataRoute } from "next";
 import { SITE_URL } from "@/lib/env";
-import { fetchLocalesServer } from "@/lib/api/server-locales";
+import { FALLBACK_LOCALES, fetchLocalesServer } from "@/lib/api/server-locales";
+import { withBuildTimeFallback } from "@/lib/api/server-fetch";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
 
 /**
@@ -29,7 +30,7 @@ import { withLocalePrefix } from "@/lib/i18n/site-path";
  * prefix'siz `/patient/`/`/doctor/` satırlarıyla kapsanır, döngüde TEKRAR EDİLMEZ.
  */
 export default async function robots(): Promise<MetadataRoute.Robots> {
-  const locales = await fetchLocalesServer();
+  const locales = await withBuildTimeFallback(() => fetchLocalesServer(), FALLBACK_LOCALES);
   const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? locales[0]?.code ?? "tr";
 
   const disallow = ["/admin", "/dashboard", "/patient/", "/doctor/"];

@@ -5,6 +5,8 @@ import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
 import cookie from "@fastify/cookie";
 import { env } from "../config/env";
+import { createInternalClientResolver } from "../lib/internal-clients";
+import { INTERNAL_RATE_LIMIT_KEY, INTERNAL_RATE_LIMIT_MAX } from "../lib/rate-limit";
 
 export default fp(async function securityPlugin(app: FastifyInstance) {
   await app.register(helmet, {
@@ -37,10 +39,24 @@ export default fp(async function securityPlugin(app: FastifyInstance) {
 
   await app.register(cookie);
 
+  // İç istemci (frontend konteyneri) tanıma — bkz. lib/internal-clients.ts (güven modeli, fail-closed).
+  // İlk çözümleme açılışta beklenir ki ilk SSR istekleri de doğru kovaya düşsün.
+  const internalClients = createInternalClientResolver(env.INTERNAL_FRONTEND_URL, app.log);
+  await internalClients.refresh().catch(() => {});
+  app.decorate("internalClients", internalClients);
+  app.addHook("onClose", async () => internalClients.close());
+
   await app.register(rateLimit, {
     global: true,
-    max: env.RATE_LIMIT_MAX,
+    // Ziyaretçi: IP başına `RATE_LIMIT_MAX`. İç istemci (SSR + next/image): tek AYRI kova,
+    // `INTERNAL_RATE_LIMIT_MAX`. Karar ham soket adresine dayanır, `request.ip`/XFF'ye DEĞİL.
+    // Route-özel limitler (auth, iletişim formu…) bu anahtarı miras alır ama kendi `max`'larını korur.
+    keyGenerator: (request) =>
+      internalClients.isInternal(request.socket.remoteAddress) ? INTERNAL_RATE_LIMIT_KEY : request.ip,
+    max: (_request, key) => (key === INTERNAL_RATE_LIMIT_KEY ? INTERNAL_RATE_LIMIT_MAX : env.RATE_LIMIT_MAX),
     timeWindow: env.RATE_LIMIT_WINDOW,
+    // `/uploads/*` statik medya API kovasını TÜKETMEZ — kendi ayrı limiti var (plugins/uploads.ts).
+    allowList: (request) => request.url.startsWith("/uploads/"),
     // Varsayılan header davranışı korunur (Retry-After dahil x-ratelimit-* header'ları
     // otomatik eklenir, bkz. addHeaders/addHeadersOnExceeding varsayılanları) — burada sadece
     // JSON gövdesini projenin standart hata zarfıyla (`{ error: { code, message, details } }`,

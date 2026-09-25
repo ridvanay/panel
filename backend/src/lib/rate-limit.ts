@@ -10,13 +10,26 @@
 export const SENSITIVE_ACTION_RATE_LIMIT = { max: 5, timeWindow: "1 minute" };
 
 /**
- * `/uploads/*` (bkz. plugins/uploads.ts) — auth GEREKTİRMEYEN, herkese açık statik medya
- * servisi. `env.RATE_LIMIT_MAX`'tan (300/dk, admin panel navigasyonu için gevşetildi) daha
- * sıkı bir üst sınır: kimliksiz bir istemci global limitin tamamını tek başına (scraping/
- * kaba-kuvvet dosya keşfi/bant genişliği tüketimi amacıyla) harcayabilir. 60/dk normal bir
- * sayfa yüklemesini (birkaç görsel) rahatça karşılarken otomatize kötüye kullanımı sınırlar.
+ * `/uploads/*` (bkz. plugins/uploads.ts) — auth GEREKTİRMEYEN, herkese açık statik medya servisi.
+ * API kovasından (`env.RATE_LIMIT_MAX`) AYRI, ziyaretçi IP'si başına kendi kovası vardır: eskiden
+ * 60/dk idi ve global kovayı da tüketiyordu — önbelleksiz sunulan logo/favicon/görseller birkaç
+ * hızlı yenilemede 429'a düşüp sitede kırık görsel olarak görünüyordu. Dosyalar artık uzun süreli
+ * önbelleklendiği için (bkz. uploads.ts `Cache-Control`) tarayıcı tekrar istemez; 600/dk otomatize
+ * toplu indirmeyi (scraping/dosya keşfi) yine sınırlar.
  */
-export const UPLOADS_RATE_LIMIT = { max: 60, timeWindow: "1 minute" };
+export const UPLOADS_RATE_LIMIT = { max: 600, timeWindow: "1 minute" };
+
+/**
+ * İç istemci (frontend konteyneri — SSR veri fetch'leri + `next/image` optimizasyonu, bkz.
+ * lib/internal-clients.ts) için AYRI kova tavanı. Tüm ziyaretçilerin sunucu tarafı trafiği bu tek
+ * kovadan geçer; tam muafiyet DEĞİL, kaçak bir döngüye karşı emniyet sınırıdır (kullanıcı kararı
+ * 2026-09-25). Global limitte ve `/uploads/*` limitinde uygulanır; route-özel sıkı limitler
+ * (auth, iletişim formu vb.) kendi `max` değerlerini korur.
+ */
+export const INTERNAL_RATE_LIMIT_MAX = 10_000;
+
+/** Global limiter ve `/uploads/*` limiter'ı için ortak kova anahtarı — iç istemci tek kovada toplanır. */
+export const INTERNAL_RATE_LIMIT_KEY = "internal:frontend";
 
 // ---------------------------------------------------------------------------
 // §10.13 Üçüncü Parti Entegrasyon — API Anahtarları + Public API + Giden Webhook'lar.

@@ -14,7 +14,7 @@ import { toPublicSiteAppearanceDto, toSiteAppearanceDto, toSiteCustomCodeDto } f
 import { ForbiddenError, NotFoundError, ValidationError } from "../../lib/errors";
 import { isImageMimeType } from "../../lib/mime-detect";
 import { logAudit } from "../../lib/audit";
-import { triggerGlobalRevalidation } from "../../lib/revalidate";
+import { CACHE_TAGS, triggerTagRevalidation } from "../../lib/revalidate";
 import { env } from "../../config/env";
 import { APPEARANCE_PRESETS, getAppearancePreset } from "../../lib/appearance-presets";
 import {
@@ -202,9 +202,9 @@ export async function adminAppearanceRoutes(app: FastifyInstance) {
         ipAddress: request.ip,
       });
 
-      // Renk/tipografi/görünüm ayarları TÜM public layout'u (her locale) etkiler — tek bir sayfa
-      // path'i değil, best-effort global revalidation (bkz. lib/revalidate.ts).
-      await triggerGlobalRevalidation(app);
+      // Renk/tipografi/görünüm ayarları layout'taki `appearance` verisini kullanan tüm sayfaları
+      // etkiler — yalnızca o etiket yenilenir (bkz. lib/revalidate.ts::triggerTagRevalidation).
+      await triggerTagRevalidation(app, [CACHE_TAGS.appearance]);
 
       return reply.send(ok(toSiteAppearanceDto(row)));
     }
@@ -253,7 +253,7 @@ export async function adminAppearanceRoutes(app: FastifyInstance) {
         ipAddress: request.ip,
       });
 
-      await triggerGlobalRevalidation(app);
+      await triggerTagRevalidation(app, [CACHE_TAGS.appearance]);
 
       return reply.send(ok(toSiteAppearanceDto(row)));
     }
@@ -306,7 +306,7 @@ export async function adminAppearanceRoutes(app: FastifyInstance) {
         ipAddress: request.ip,
       });
 
-      await triggerGlobalRevalidation(app);
+      await triggerTagRevalidation(app, [CACHE_TAGS.appearance]);
 
       return reply.send(ok(toSiteCustomCodeDto(row, env.CUSTOM_CODE_ENABLED)));
     }
@@ -344,7 +344,7 @@ export async function adminAppearanceRoutes(app: FastifyInstance) {
         ipAddress: request.ip,
       });
 
-      await triggerGlobalRevalidation(app);
+      await triggerTagRevalidation(app, [CACHE_TAGS.appearance]);
 
       return reply.send(ok(toSiteCustomCodeDto(row, env.CUSTOM_CODE_ENABLED)));
     }

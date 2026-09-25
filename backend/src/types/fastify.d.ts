@@ -4,6 +4,8 @@ import type { PrismaClient, MembershipRole, SiteRole, ApiKeyScope } from "@prism
 declare module "fastify" {
   interface FastifyInstance {
     prisma: PrismaClient;
+    /** bkz. lib/internal-clients.ts — frontend konteynerinin ham soket adresini tanır (rate limit kovası). */
+    internalClients: import("../lib/internal-clients").InternalClientResolver;
   }
 
   interface FastifyRequest {

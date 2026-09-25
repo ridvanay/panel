@@ -83,6 +83,7 @@ import { registerAppointmentReminderSweeper } from "./lib/appointment-reminders"
 import { adminSupportRoutes } from "./modules/support/support.routes";
 import { supportPublicRoutes } from "./modules/support/support.public.routes";
 import { registerSupportRetentionScheduler } from "./lib/support-retention";
+import { warnIfRevalidationDisabled } from "./lib/revalidate";
 
 export function buildApp() {
   // `SENTRY_DSN` tanımsızsa no-op (bkz. lib/sentry.ts) — her `buildApp()` çağrısında
@@ -166,6 +167,7 @@ export function buildApp() {
   app.register(sanitizeLocalhostMediaUrlsPlugin);
   app.register(prismaPlugin);
   app.register(uploadsPlugin);
+  app.addHook("onReady", async () => warnIfRevalidationDisabled(app));
 
   app.register(healthRoutes, { prefix: "/api/v1" });
 

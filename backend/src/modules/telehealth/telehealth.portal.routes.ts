@@ -22,7 +22,7 @@ import { env } from "../../config/env";
 import { logAudit } from "../../lib/audit";
 import { sanitizeRichHtml } from "../../lib/html-sanitize";
 import { canAccessBookingHealthData } from "../../lib/telehealth-access";
-import { triggerDoctorProfileRevalidation } from "../../lib/revalidate";
+import { CACHE_TAGS, triggerTagRevalidation } from "../../lib/revalidate";
 import { DoctorBookingsQuerySchema, PatientBookingsQuerySchema, UpdateDoctorSelfProfileRequestSchema } from "./telehealth.schemas";
 import { splitCommission } from "./lib/commission";
 import { JOIN_WINDOW_BEFORE_START_MS } from "./lib/booking";
@@ -169,8 +169,9 @@ export async function telehealthDoctorPortalRoutes(app: FastifyInstance) {
         ipAddress: request.ip,
       });
 
-      // [DPI] §1.4 madde 4 — public doktor sayfası ISR'dir, yazma SONRASI tetiklenir (best-effort).
-      await triggerDoctorProfileRevalidation(app, updated.slug);
+      // [DPI] §1.4 madde 4 — yazma SONRASI tetiklenir (best-effort). Etiket: doktor listesi/profili
+      // yalnızca `/doctors*`'ta değil anasayfa ve uzmanlık sayfalarında da görünür.
+      await triggerTagRevalidation(app, [CACHE_TAGS.doctors, CACHE_TAGS.specialties]);
 
       return reply.send(ok(toDoctorPortalProfileDto(user, updated)));
     }

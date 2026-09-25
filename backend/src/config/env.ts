@@ -144,7 +144,15 @@ const EnvSchema = z.object({
   // akışı bundan ETKİLENMEZ (ISR zaten 60sn'lik zaman-tabanlı revalidate ile geri düşer,
   // bu yüzden ZORUNLU tutulmadı — `ENCRYPTION_KEY` gibi eksikliği güvenlik açığına yol
   // açan bir alan DEĞİL, yalnızca bir gecikme/latency optimizasyonu).
-  REVALIDATE_SECRET: z.string().default(""),
+  // Boşluk ve `frontend/.env.local.example`'daki herkesin bildiği yer tutucu "tanımsız" sayılır —
+  // bu durumda yenileme isteği HİÇ gönderilmez, açılışta bir kez uyarı loglanır (bkz. lib/revalidate.ts).
+  REVALIDATE_SECRET: z
+    .string()
+    .default("")
+    .transform((value) => {
+      const trimmed = value.trim();
+      return trimmed === "change-me-in-production" ? "" : trimmed;
+    }),
 
   // Global (route-özel override edilmemiş) uçlar için istek limiti. 100/dk admin panelinin
   // normal kullanımında (10sn'de bir /admin/health polling'i, sayfa geçişlerinde paralel

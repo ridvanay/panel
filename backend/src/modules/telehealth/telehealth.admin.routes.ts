@@ -25,7 +25,7 @@ import { slugify } from "../../lib/slug";
 import { logAudit } from "../../lib/audit";
 import { sanitizeRichHtml } from "../../lib/html-sanitize";
 import { canAccessBookingHealthData } from "../../lib/telehealth-access";
-import { triggerGlobalRevalidation } from "../../lib/revalidate";
+import { CACHE_TAGS, revalidateTagsOnWrite, triggerTagRevalidation } from "../../lib/revalidate";
 import { runSerializable } from "../../lib/serializable-tx";
 import { confirmBookingPayment } from "./lib/booking";
 import { triggerAppointmentConfirmationEmail, triggerAppointmentRescheduledEmail } from "./lib/notifications";
@@ -130,6 +130,8 @@ const WITH_SPECIALTY_IMAGE = { imageMedia: true } as const;
 /** `/admin/telehealth/specialties` prefix'i altında bağlanır — okuma panel kapısı, yazma ADMIN+MANAGER (§8.4). */
 export async function adminTelehealthSpecialtiesRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
+  // Uzmanlık adı/görseli doktor sayfalarında, doktor sayısı uzmanlık sayfalarında görünür — ikisi birlikte yenilenir.
+  revalidateTagsOnWrite(app, () => [CACHE_TAGS.specialties, CACHE_TAGS.doctors]);
   // §8.6/DoD (bağlayıcı, security-agent düzeltmesi) — modül kapalıyken TÜM public/admin
   // tele-sağlık uçları 404 döner; `authenticate`'DEN ÖNCE kontrol edilir (auth denemesi bile
   // kapalı bir modülün admin yüzeyinin VARLIĞINI sızdırmasın — public route'larla AYNI sıra).
@@ -220,6 +222,8 @@ export async function adminTelehealthSpecialtiesRoutes(app: FastifyInstance) {
 /** `/admin/telehealth/doctors` prefix'i altında bağlanır — okuma panel kapısı, yazma ADMIN+MANAGER (§8.4). */
 export async function adminTelehealthDoctorsRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
+  // Uzmanlık adı/görseli doktor sayfalarında, doktor sayısı uzmanlık sayfalarında görünür — ikisi birlikte yenilenir.
+  revalidateTagsOnWrite(app, () => [CACHE_TAGS.specialties, CACHE_TAGS.doctors]);
   // §8.6/DoD (bağlayıcı, security-agent düzeltmesi) — bkz. adminTelehealthSpecialtiesRoutes yorumu.
   server.addHook("preHandler", requireModuleEnabled("telehealth"));
   server.addHook("preHandler", authenticate);
@@ -775,8 +779,8 @@ export async function adminTelehealthSettingsRoutes(app: FastifyInstance) {
       // qa-agent bulgusu (2026-09-14) — tema rengi `/doctors/[slug]`'ın `revalidate: 60`
       // önbelleğine tabi (`fetchTelehealthThemeServer`); bu satır OLMADAN admin'deki bir renk
       // değişikliği ~60sn'ye kadar yansımıyordu (görev talimatının "ANINDA" beklentisiyle
-      // ÇELİŞİYORDU). `appearance.routes.ts`'in AYNI global best-effort revalidation deseni.
-      await triggerGlobalRevalidation(app);
+      // ÇELİŞİYORDU). Yalnızca `telehealth-theme` etiketi yenilenir (tüm site DEĞİL).
+      await triggerTagRevalidation(app, [CACHE_TAGS.telehealthTheme]);
 
       return reply.send(ok(toTelehealthSettingsDto(row.settings)));
     }
@@ -823,7 +827,7 @@ export async function adminTelehealthSettingsRoutes(app: FastifyInstance) {
         ipAddress: request.ip,
       });
 
-      await triggerGlobalRevalidation(app);
+      await triggerTagRevalidation(app, [CACHE_TAGS.telehealthTheme]);
 
       return reply.send(ok(toTelehealthSettingsDto(row.settings)));
     }

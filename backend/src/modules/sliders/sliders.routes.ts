@@ -16,7 +16,6 @@ import { isImageMimeType } from "../../lib/mime-detect";
 import { parseCursor, buildPageMetaWithCounts } from "../../lib/pagination";
 import { slugify } from "../../lib/slug";
 import { logAudit } from "../../lib/audit";
-import { triggerPublicPageRevalidation } from "../../lib/revalidate";
 import { parseSlideLayers, type SliderLayer } from "./lib/layers";
 import { MAX_SLIDES_PER_SLIDER } from "./lib/constants";
 import { findSliderUsage } from "./lib/slider-usage";
@@ -39,6 +38,7 @@ import {
   UpdateSlideRequestSchema,
   ReorderSlidesRequestSchema,
 } from "./sliders.schemas";
+import { revalidateTagsOnWrite, sliderCacheTag } from "../../lib/revalidate";
 
 /**
  * §2.2 madde 5 (.claude/architect-scope-ecommerce-pro-template.md, bağlayıcı) ve openapi.yaml
@@ -82,25 +82,6 @@ async function renumberSlides(tx: Prisma.TransactionClient, orderedIds: string[]
   }
   for (let i = 0; i < orderedIds.length; i++) {
     await tx.slide.update({ where: { id: orderedIds[i]! }, data: { order: i } });
-  }
-}
-
-/**
- * Bir slider güncellendiğinde onu KULLANAN tüm (silinmemiş) sayfaların public path'lerini
- * anında revalidate eder — bkz. lib/revalidate.ts. Best-effort (triggerPublicPageRevalidation
- * kendi içinde try/catch'li), admin isteğini ASLA bloklamaz/reddetmez.
- */
-async function revalidateSliderPages(app: FastifyInstance, sliderId: string): Promise<void> {
-  const usage = await findSliderUsage(app, sliderId);
-  const seen = new Set<string>();
-  for (const entry of usage) {
-    if (entry.pageDeletedAt !== null || seen.has(entry.pageId)) continue;
-    seen.add(entry.pageId);
-    await triggerPublicPageRevalidation(
-      app,
-      { id: entry.pageId, slug: entry.pageSlug, translations: {} },
-      { isHomePage: entry.isHomePage }
-    );
   }
 }
 
@@ -163,6 +144,12 @@ function buildSlideWriteData(body: SlideWriteBody): Record<string, unknown> {
 /** `/admin/sliders` prefix'i altında bağlanır (bkz. app.ts) — §1.7 yetki tablosu: okuma ADMIN/MANAGER/EDITOR, yazma ADMIN/MANAGER. */
 export async function adminSlidersRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
+  // Slider/slayt değişikliği — o slider'ı kullanan HER yer (sayfa blokları, blog/sayfa kısa kodları)
+  // `slider:<id>` etiketiyle yenilenir. Oluşturma (`POST /`) henüz hiçbir yerde kullanılmadığı için tetiklemez.
+  revalidateTagsOnWrite(app, (request) => {
+    const { sliderId } = (request.params ?? {}) as { sliderId?: string };
+    return sliderId ? [sliderCacheTag(sliderId)] : null;
+  });
   server.addHook("preHandler", authenticate);
   server.addHook("preHandler", requirePanelAccess());
 
@@ -296,7 +283,6 @@ export async function adminSlidersRoutes(app: FastifyInstance) {
         ipAddress: request.ip,
       });
 
-      await revalidateSliderPages(app, updated.id);
 
       return reply.send(ok(toSliderDto(updated)));
     }
@@ -554,7 +540,6 @@ export async function adminSlidersRoutes(app: FastifyInstance) {
         ipAddress: request.ip,
       });
 
-      await revalidateSliderPages(app, slider.id);
 
       return reply.code(201).send(ok(toSlideDto(created)));
     }
@@ -605,7 +590,6 @@ export async function adminSlidersRoutes(app: FastifyInstance) {
         ...SLIDES_ORDER_ASC,
       });
 
-      await revalidateSliderPages(app, slider.id);
 
       return reply.send(ok(updated.map(toSlideDto)));
     }
@@ -646,7 +630,6 @@ export async function adminSlidersRoutes(app: FastifyInstance) {
         ipAddress: request.ip,
       });
 
-      await revalidateSliderPages(app, sliderId);
 
       return reply.send(ok(toSlideDto(updated)));
     }
@@ -683,7 +666,6 @@ export async function adminSlidersRoutes(app: FastifyInstance) {
         ipAddress: request.ip,
       });
 
-      await revalidateSliderPages(app, sliderId);
 
       return reply.code(204).send();
     }
@@ -756,7 +738,6 @@ export async function adminSlidersRoutes(app: FastifyInstance) {
         ipAddress: request.ip,
       });
 
-      await revalidateSliderPages(app, sliderId);
 
       return reply.code(201).send(ok(toSlideDto(duplicated!)));
     }

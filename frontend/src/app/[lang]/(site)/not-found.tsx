@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { Card } from "@/components/ui/card";
 import { LinkButton } from "@/components/ui/link-button";
-import { fetchSiteAppearanceServer } from "@/lib/api/server-appearance";
+import { DEFAULT_APPEARANCE, fetchSiteAppearanceServer } from "@/lib/api/server-appearance";
 import { getSiteDictionary } from "@/lib/i18n/site-dictionaries";
 
 const DEFAULT_BUTTON_HREF = "/";
@@ -24,7 +24,8 @@ export async function generateMetadata(): Promise<Metadata> {
  * olanı kullanmaya devam eder (§10.12.7, bağlayıcı).
  *
  * Ayar çağrısı ASLA hata fırlatmamalıdır — bir 404 bileşeninde fırlatılan hata 500'e dönüşür.
- * `fetchSiteAppearanceServer` zaten try/catch → varsayılan deseni izliyor (bkz. server-appearance.ts).
+ * `fetchSiteAppearanceServer` 429/5xx'te fırlatır (bkz. server-fetch.ts), bu yüzden burada
+ * varsayılan görünüme düşülür — 404 sayfası özelleştirilmiş metin yerine sözlük metniyle çıkar.
  *
  * `.claude/architect-scope-i18n.md` §14.5 madde 12 — `not-found.js`/`global-not-found.js`
  * bileşenleri HİÇBİR prop ALMAZ (bkz. `node_modules/next/dist/docs/01-app/03-api-reference/
@@ -32,7 +33,10 @@ export async function generateMetadata(): Promise<Metadata> {
  * İLE AYNI çözüm: `proxy.ts`'in her site isteğine yazdığı `x-active-locale` header'ı okunur.
  */
 export default async function SiteNotFound() {
-  const [appearance, dict] = await Promise.all([fetchSiteAppearanceServer(), getSiteDictionary(await resolveActiveLocale())]);
+  const [appearance, dict] = await Promise.all([
+    fetchSiteAppearanceServer().catch(() => DEFAULT_APPEARANCE),
+    getSiteDictionary(await resolveActiveLocale()),
+  ]);
 
   const title = appearance.notFoundTitle?.trim() || dict.errors.notFoundTitle;
   const message = appearance.notFoundMessage?.trim() || dict.errors.notFoundMessage;

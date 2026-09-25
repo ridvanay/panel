@@ -1,4 +1,4 @@
-import { SERVER_API_BASE_URL } from "../env";
+import { fetchServerJson } from "./server-fetch";
 import type { Plan } from "./types";
 
 /**
@@ -9,12 +9,6 @@ import type { Plan } from "./types";
  * yol açar. GET /plans zaten herkese açık olduğundan basit, damgasız bir fetch yeterli.
  */
 export async function fetchPlansServer(): Promise<Plan[]> {
-  try {
-    const res = await fetch(`${SERVER_API_BASE_URL}/plans`, { next: { revalidate: 60 } });
-    if (!res.ok) return [];
-    const json = (await res.json()) as { data: Plan[] };
-    return json.data;
-  } catch {
-    return [];
-  }
+  const json = await fetchServerJson<{ data: Plan[] }>("/plans");
+  return json?.data ?? [];
 }

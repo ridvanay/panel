@@ -12,7 +12,7 @@ import { NotFoundError, ValidationError } from "../../lib/errors";
 import { logAudit } from "../../lib/audit";
 import { CONTACT_SUBMIT_RATE_LIMIT } from "../../lib/rate-limit";
 import { absolutizeMediaUrl } from "../../mappers";
-import { triggerGlobalRevalidation } from "../../lib/revalidate";
+import { CACHE_TAGS, triggerTagRevalidation } from "../../lib/revalidate";
 import { CONTACT_FORM_ID } from "./contact.constants";
 import {
   CONTACT_PAGE_CONSENT_TEXTS,
@@ -189,7 +189,7 @@ export async function adminContactPageRoutes(app: FastifyInstance) {
         metadata: { locales: Object.keys(content.locales), mapImage: Boolean(content.mapImageMediaId), mapUrl: Boolean(content.mapUrl) },
         ipAddress: request.ip,
       });
-      await triggerGlobalRevalidation(app);
+      await triggerTagRevalidation(app, [CACHE_TAGS.contactPage]);
 
       return reply.send(ok({ content, mapImageUrl: await mapImageUrlFor(app, content.mapImageMediaId) }));
     }

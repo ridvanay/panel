@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
+import { REVALIDATE_MAX_PER_MINUTE, resetRevalidateRateLimitForTests } from "@/lib/revalidate-rate-limit";
 
 /**
  * `POST /api/revalidate` (bkz. `src/app/api/revalidate/route.ts`) — backend'in on-demand ISR
@@ -20,8 +21,10 @@ import { NextRequest } from "next/server";
 // ile `undefined` `type` ile AÇIKÇA çağrılan (`revalidatePath(path, undefined)`) arasındaki farkı
 // koru, aksi halde `toHaveBeenCalledWith(path)` (tek argüman) assertion'ları yanlış-negatif verir.
 const revalidatePathMock = vi.fn();
+const revalidateTagMock = vi.fn();
 vi.mock("next/cache", () => ({
   revalidatePath: (...args: [string, ("page" | "layout")?]) => revalidatePathMock(...args),
+  revalidateTag: (...args: [string, { expire?: number }]) => revalidateTagMock(...args),
 }));
 
 function makeRequest(headers: Record<string, string>, rawBody: string): NextRequest {
@@ -38,6 +41,8 @@ describe("POST /api/revalidate", () => {
   beforeEach(() => {
     process.env.REVALIDATE_SECRET = "test-shared-secret";
     revalidatePathMock.mockClear();
+    revalidateTagMock.mockClear();
+    resetRevalidateRateLimitForTests();
   });
 
   afterEach(() => {
@@ -54,7 +59,7 @@ describe("POST /api/revalidate", () => {
     );
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ revalidated: true, paths: ["/tr", "/tr/hakkimizda"] });
+    expect(await res.json()).toEqual({ revalidated: true, paths: ["/tr", "/tr/hakkimizda"], tags: [] });
     expect(revalidatePathMock).toHaveBeenCalledTimes(2);
     expect(revalidatePathMock).toHaveBeenNthCalledWith(1, "/tr");
     expect(revalidatePathMock).toHaveBeenNthCalledWith(2, "/tr/hakkimizda");
@@ -98,7 +103,7 @@ describe("POST /api/revalidate", () => {
     );
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ revalidated: true, paths: ["/"] });
+    expect(await res.json()).toEqual({ revalidated: true, paths: ["/"], tags: [] });
     expect(revalidatePathMock).toHaveBeenCalledTimes(1);
     expect(revalidatePathMock).toHaveBeenNthCalledWith(1, "/", "layout");
   });
@@ -155,6 +160,21 @@ describe("POST /api/revalidate", () => {
     expect(revalidatePathMock).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["yalnızca boşluk", "   "],
+    ["örnek dosyadaki yer tutucu", "change-me-in-production"],
+  ])("sır %s ise AYNI değeri gönderen istek de 401 (fail-closed), hiçbir şey yenilenmez", async (_label, value) => {
+    process.env.REVALIDATE_SECRET = value;
+    const { POST } = await import("@/app/api/revalidate/route");
+    const res = await POST(
+      makeRequest({ "x-revalidate-secret": value, "content-type": "application/json" }, JSON.stringify({ paths: ["/tr"], tags: ["settings"] }))
+    );
+
+    expect(res.status).toBe(401);
+    expect(revalidatePathMock).not.toHaveBeenCalled();
+    expect(revalidateTagMock).not.toHaveBeenCalled();
+  });
+
   it("boş `paths` dizisi -> 400, revalidatePath ÇAĞRILMAZ", async () => {
     const { POST } = await import("@/app/api/revalidate/route");
     const res = await POST(
@@ -198,6 +218,50 @@ describe("POST /api/revalidate", () => {
     );
 
     expect(res.status).toBe(400);
+  });
+
+  it("`tags` -> her etiket için `revalidateTag(tag, { expire: 0 })`; yalnız etiketle (path'siz) istek de geçerli", async () => {
+    const { POST } = await import("@/app/api/revalidate/route");
+    const res = await POST(
+      makeRequest(
+        { "x-revalidate-secret": "test-shared-secret", "content-type": "application/json" },
+        JSON.stringify({ tags: ["settings", "slider:3f2c9a1e-0b4d-4c55-9d7e-1a2b3c4d5e6f"] })
+      )
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ revalidated: true, paths: [], tags: ["settings", "slider:3f2c9a1e-0b4d-4c55-9d7e-1a2b3c4d5e6f"] });
+    expect(revalidateTagMock).toHaveBeenNthCalledWith(1, "settings", { expire: 0 });
+    expect(revalidateTagMock).toHaveBeenNthCalledWith(2, "slider:3f2c9a1e-0b4d-4c55-9d7e-1a2b3c4d5e6f", { expire: 0 });
+    expect(revalidatePathMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["geçersiz karakter", ["Settings"]],
+    ["boşluk/slash", ["blog/../x"]],
+    ["string olmayan", [42]],
+    ["20'den fazla", Array.from({ length: 21 }, (_, i) => `tag-${i}`)],
+  ])("geçersiz `tags` (%s) -> 400, hiçbir şey yenilenmez", async (_label, tags) => {
+    const { POST } = await import("@/app/api/revalidate/route");
+    const res = await POST(
+      makeRequest({ "x-revalidate-secret": "test-shared-secret", "content-type": "application/json" }, JSON.stringify({ paths: ["/tr"], tags }))
+    );
+
+    expect(res.status).toBe(400);
+    expect(revalidatePathMock).not.toHaveBeenCalled();
+    expect(revalidateTagMock).not.toHaveBeenCalled();
+  });
+
+  it(`dakikada ${REVALIDATE_MAX_PER_MINUTE} istekten sonrası 429 — sızmış bir sırla yenileme fırtınası üretilemez`, async () => {
+    const { POST } = await import("@/app/api/revalidate/route");
+    const send = () =>
+      POST(makeRequest({ "x-revalidate-secret": "test-shared-secret", "content-type": "application/json" }, JSON.stringify({ tags: ["blog"] })));
+    for (let i = 0; i < REVALIDATE_MAX_PER_MINUTE; i++) {
+      expect((await send()).status).toBe(200);
+    }
+    const over = await send();
+    expect(over.status).toBe(429);
+    expect(revalidateTagMock).toHaveBeenCalledTimes(REVALIDATE_MAX_PER_MINUTE);
   });
 
   it("bozuk (malformed) JSON gövdesi -> 400", async () => {
