@@ -5,7 +5,6 @@ import { fetchSiteSettingsServer } from "@/lib/api/server-settings";
 import { fetchLocalesServer } from "@/lib/api/server-locales";
 import { fetchSiteAppearanceServer } from "@/lib/api/server-appearance";
 import { ViewTracker } from "@/components/site/view-tracker";
-import { ViewCount } from "@/components/site/view-count";
 import { SyncLocaleAlternates } from "@/components/site/sync-locale-alternates";
 import { PageHeader } from "@/components/site/page-header";
 import { SocialShareButtons } from "@/components/site/social-share-buttons";
@@ -85,9 +84,6 @@ export default async function BlogPostPage({ params }: PageProps) {
         <SyncLocaleAlternates kind="blog" items={post.localizations} />
         <ViewTracker kind="blog" slug={slug} />
         {post.category && <p className="text-sm font-medium text-primary">{post.category.name}</p>}
-        <div className="mt-2">
-          <ViewCount count={post.viewCount} />
-        </div>
         {post.coverImageUrl && (
           // eslint-disable-next-line @next/next/no-img-element -- kapak URL'si medya kütüphanesinden gelecek, next/image remotePatterns henüz tanımlı değil
           <img src={post.coverImageUrl} alt="" className="mt-6 w-full rounded-lg object-cover" />

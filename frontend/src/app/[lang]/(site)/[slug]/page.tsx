@@ -6,7 +6,6 @@ import { fetchLocalesServer } from "@/lib/api/server-locales";
 import { fetchSiteAppearanceServer } from "@/lib/api/server-appearance";
 import { BlockRenderer } from "@/components/site/blocks";
 import { ViewTracker } from "@/components/site/view-tracker";
-import { ViewCount } from "@/components/site/view-count";
 import { SyncLocaleAlternates } from "@/components/site/sync-locale-alternates";
 import { LegalDocumentNotice } from "@/components/site/legal-document-notice";
 import { PageHeader } from "@/components/site/page-header";
@@ -123,9 +122,6 @@ export default async function DynamicPage({ params }: PageProps) {
     <>
       <SyncLocaleAlternates kind="page" items={page.localizations} />
       <ViewTracker kind="page" slug={slug} />
-      <div className="mx-auto max-w-3xl px-4 pt-4 sm:px-6">
-        <ViewCount count={page.viewCount} />
-      </div>
       {/* Anasayfa şablonu kendi hero'sunu taşır — sayfa başlık bandı gösterilmez (ör. anasayfa seçilmeden önce önizleme). */}
       {!isHomeTemplate && (
         <PageHeader
@@ -151,7 +147,8 @@ export default async function DynamicPage({ params }: PageProps) {
           <div className={isHomeTemplate ? aboutSerif.variable : undefined}>
             <BlockRenderer nodes={normalizedNodes} chrome="page" siteContext={{ lang, defaultLocaleCode: defaultLocale?.code ?? lang }} />
           </div>
-          {appearance.socialShareEnabled && appearance.socialShareNetworks.length > 0 && (
+          {/* Şablon sayfası `/` adresindeki görünümüyle aynı kalır — CMS paylaşım satırı eklenmez. */}
+          {!isHomeTemplate && appearance.socialShareEnabled && appearance.socialShareNetworks.length > 0 && (
             <div className="mx-auto max-w-3xl px-4 pb-10 sm:px-6">
               <SocialShareButtons url={canonicalUrl} title={page.title} networks={appearance.socialShareNetworks} />
             </div>
