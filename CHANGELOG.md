@@ -11,6 +11,14 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`fix(site)`: Görüntülenme sayacı ziyaretçilere gösterilmiyor.** CMS sayfaları, blog yazıları,
+  portfolyo ve ürün detayındaki "N görüntülenme" satırı kaldırıldı (dilden bağımsız Türkçe
+  görünüyor, şablon sayfalarında tasarımı bozuyordu). Sayım (`ViewTracker`) ve admin'deki
+  "Görüntülenme" sütunu/istatistikler değişmedi. Anasayfa şablonu kendi adresinde açıldığında
+  CMS paylaşım satırı da gösterilmiyor (`/` görünümüyle aynı). Ayar veya migration yok.
+
 ### Added
 
 - **`feat(site)`: "Anasayfa" şablonu.** Hakkımızda şablonuyla aynı yapı (tek kök `home-page` bloğu,

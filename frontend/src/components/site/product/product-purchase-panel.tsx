@@ -7,7 +7,6 @@ import type { Product } from "@/lib/api/types";
 import { Badge } from "@/components/ui/badge";
 import { AddToCartButton } from "@/components/site/add-to-cart-button";
 import { FavoriteButton } from "@/components/site/favorite-button";
-import { ViewCount } from "@/components/site/view-count";
 import { useCartOptional } from "@/context/cart-context";
 import { ProductGallery, type ProductGalleryImage } from "@/components/site/product/product-gallery";
 import { ProductVariantSelector } from "@/components/site/product/product-variant-selector";
@@ -139,19 +138,19 @@ export function ProductPurchasePanel({
       <div>
         <h1 className="text-2xl font-semibold text-foreground sm:text-3xl">{product.title}</h1>
 
-        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-foreground/60">
-          <span>
-            {product.category && categoryHref && (
-              <Link href={categoryHref} className="hover:text-foreground hover:underline">
-                {product.category.name}
-              </Link>
-            )}
-            {product.category && product.sku && " · "}
-            {product.sku && <>SKU: {product.sku}</>}
-          </span>
-          {(product.category || product.sku) && <span aria-hidden="true">·</span>}
-          <ViewCount count={product.viewCount} />
-        </div>
+        {(product.category || product.sku) && (
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-foreground/60">
+            <span>
+              {product.category && categoryHref && (
+                <Link href={categoryHref} className="hover:text-foreground hover:underline">
+                  {product.category.name}
+                </Link>
+              )}
+              {product.category && product.sku && " · "}
+              {product.sku && <>SKU: {product.sku}</>}
+            </span>
+          </div>
+        )}
 
         <div ref={purchaseSectionRef} className="mt-4">
           <div className="text-2xl font-semibold text-foreground">

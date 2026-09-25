@@ -6,7 +6,6 @@ import { fetchSiteSettingsServer } from "@/lib/api/server-settings";
 import { fetchLocalesServer } from "@/lib/api/server-locales";
 import { fetchSiteAppearanceServer } from "@/lib/api/server-appearance";
 import { ViewTracker } from "@/components/site/view-tracker";
-import { ViewCount } from "@/components/site/view-count";
 import { SyncLocaleAlternates } from "@/components/site/sync-locale-alternates";
 import { PageHeader } from "@/components/site/page-header";
 import { SocialShareButtons } from "@/components/site/social-share-buttons";
@@ -92,7 +91,6 @@ export default async function PortfolioDetailPage({ params }: PageProps) {
 
         {item.category && <p className="text-sm font-medium text-primary">{item.category.name}</p>}
         <div className="mt-2 flex flex-wrap items-center gap-3">
-          <ViewCount count={item.viewCount} />
           {item.clientName && <span className="text-sm text-foreground/60">Müşteri: {item.clientName}</span>}
           {item.completedAt && (
             <span className="text-sm text-foreground/60">
