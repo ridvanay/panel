@@ -26,6 +26,8 @@ import { ImageUploadField } from "@/components/admin/media/image-upload-field";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { cn } from "@/lib/cn";
 import { useAuth } from "@/context/auth-context";
+import * as localesApi from "@/lib/api/locales";
+import { buildHomeTemplateCreatePayload } from "@/lib/home-page";
 
 /** Backend'deki `slugify` (bkz. `backend/src/lib/slug.ts`) ile eşdeğer, sadece istemci tarafı önizlemesi içindir. */
 function slugify(input: string): string {
@@ -103,6 +105,10 @@ export default function NewPagePage() {
   const [error, setError] = useState<string | null>(null);
 
   const [admins, setAdmins] = useState<AdminUser[]>([]);
+  // "Anasayfa şablonu" — sayfa `editMode: TEMPLATE` ile oluşur; backend bu alanı yalnızca
+  // ADMIN/MANAGER'dan kabul eder, bu yüzden seçenek yalnızca onlara gösterilir.
+  const canUseTemplates = user?.role === "ADMIN" || user?.role === "MANAGER";
+  const [template, setTemplate] = useState<"blank" | "home">("blank");
 
   const {
     register,
@@ -180,7 +186,12 @@ export default function NewPagePage() {
   async function onSubmit(values: FormValues) {
     setError(null);
     try {
+      // Anasayfa şablonu: varsayılan dilin bloğu + (EN/TR'den varsayılan olmayanı) çevirisi, sözlük
+      // metinleriyle DOLU oluşturulur (bkz. lib/home-page.ts::buildHomeTemplateCreatePayload).
+      const templatePayload =
+        template === "home" && canUseTemplates ? buildHomeTemplateCreatePayload(await localesApi.listAdminLocales()) : {};
       const page = await pagesApi.createPage({
+        ...templatePayload,
         title: values.title,
         slug: values.slug || undefined,
         status: values.status,
@@ -225,6 +236,43 @@ export default function NewPagePage() {
             </Alert>
           )}
           <form className="space-y-4" onSubmit={handleSubmit(onSubmit)} noValidate>
+            {canUseTemplates && (
+              <fieldset className="space-y-2">
+                <legend className="text-sm font-medium text-foreground">Şablon</legend>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {(
+                    [
+                      ["blank", "Boş sayfa", "Blokları kendiniz eklersiniz."],
+                      ["home", "Anasayfa şablonu", "Hazır bölümler; EN/TR varsayılan metinlerle dolu gelir."],
+                    ] as const
+                  ).map(([value, label, hint]) => (
+                    <label
+                      key={value}
+                      className="flex cursor-pointer items-start gap-3 rounded-lg border border-border p-3 text-sm transition-colors hover:border-primary/40 has-[:checked]:border-primary has-[:checked]:bg-primary/5"
+                    >
+                      <input
+                        type="radio"
+                        name="template"
+                        value={value}
+                        checked={template === value}
+                        onChange={() => setTemplate(value)}
+                        className="mt-0.5 accent-[var(--color-primary)]"
+                      />
+                      <span>
+                        <span className="block font-medium text-foreground">{label}</span>
+                        <span className="block text-xs text-foreground/60">{hint}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+                {template === "home" && (
+                  <p className="text-xs text-foreground/60">
+                    Oluşturduktan sonra içerik düzenleme ekranında açılır. Anasayfa yapmak için Ayarlar → Anasayfa seçiminden bu sayfayı
+                    seçin; mevcut anasayfanız değişmez, geri dönmek için onu yeniden seçmeniz yeterlidir.
+                  </p>
+                )}
+              </fieldset>
+            )}
             <Field id="title" label="Başlık" error={errors.title?.message} required>
               {(inputProps) => (
                 <Input

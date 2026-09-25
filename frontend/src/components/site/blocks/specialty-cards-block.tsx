@@ -55,8 +55,6 @@ export async function SpecialtyCardsBlockView({
   if (specialties.length === 0) return null;
 
   const { title, subtitle } = resolveContent(block, siteContext);
-  const columns = DESKTOP_COLUMNS_CLASS[block.data.columns] ?? DESKTOP_COLUMNS_CLASS[4];
-  const dense = block.data.columns === 6;
 
   return (
     <section className={cn("specialty-cards", chrome === "page" && "px-4 py-16 sm:px-6")}>
@@ -67,25 +65,67 @@ export async function SpecialtyCardsBlockView({
             {subtitle && <p className="mt-3 text-base leading-relaxed text-foreground/70">{subtitle}</p>}
           </div>
         )}
-        <ul className={cn("grid auto-rows-fr grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3", columns)}>
-          {specialties.map((specialty) => (
-            <li key={specialty.id} className="min-w-0">
-              <SpecialtyCard
-                specialty={specialty}
-                href={
-                  siteContext
-                    ? withLocalePrefix(`/specialties/${specialty.slug}`, siteContext.lang, siteContext.defaultLocaleCode)
-                    : `/specialties/${specialty.slug}`
-                }
-                shape={block.data.imageShape}
-                showDescription={block.data.showDescription}
-                dense={dense}
-              />
-            </li>
-          ))}
-        </ul>
+        <SpecialtyCardsGrid
+          specialties={specialties}
+          siteContext={siteContext}
+          columns={block.data.columns}
+          imageShape={block.data.imageShape}
+          showDescription={block.data.showDescription}
+        />
       </div>
     </section>
+  );
+}
+
+/**
+ * Kart ızgarası — Uzmanlık Kartları bloğu ve anasayfa şablonunun "Uzmanlıklar" bölümü ORTAK kullanır
+ * (aynı kart, aynı eşit yükseklik kuralları). Mobil 2, tablet 3, masaüstü `columns`.
+ */
+export function SpecialtyCardsGrid({
+  specialties,
+  siteContext,
+  columns,
+  imageShape = "circle",
+  showDescription = true,
+  appearance = "block",
+}: {
+  specialties: Specialty[];
+  siteContext?: BlockSiteContext;
+  columns: SpecialtyCardsColumns;
+  imageShape?: SpecialtyCardsImageShape;
+  showDescription?: boolean;
+  /**
+   * `home`: anasayfa şablonu tasarımı — 20 px köşe, 80 px vurgu (accent) tonlu daire, 6 kolonda da
+   * küçültülmez, daha geniş aralık. Varsayılan (`block`) Uzmanlık Kartları bloğunun görünümüdür.
+   */
+  appearance?: "block" | "home";
+}) {
+  const home = appearance === "home";
+  return (
+    <ul
+      className={cn(
+        "grid auto-rows-fr grid-cols-2 md:grid-cols-3",
+        home ? "gap-3 sm:gap-5" : "gap-3 sm:gap-4",
+        DESKTOP_COLUMNS_CLASS[columns] ?? DESKTOP_COLUMNS_CLASS[4]
+      )}
+    >
+      {specialties.map((specialty) => (
+        <li key={specialty.id} className="min-w-0">
+          <SpecialtyCard
+            specialty={specialty}
+            href={
+              siteContext
+                ? withLocalePrefix(`/specialties/${specialty.slug}`, siteContext.lang, siteContext.defaultLocaleCode)
+                : `/specialties/${specialty.slug}`
+            }
+            shape={imageShape}
+            showDescription={showDescription}
+            dense={columns === 6 && appearance !== "home"}
+            home={appearance === "home"}
+          />
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -95,19 +135,24 @@ function SpecialtyCard({
   shape,
   showDescription,
   dense,
+  home = false,
 }: {
   specialty: Specialty;
   href: string;
   shape: SpecialtyCardsImageShape;
   showDescription: boolean;
   dense: boolean;
+  home?: boolean;
 }) {
-  const mediaSize = dense ? "size-16 sm:size-20 lg:size-16" : "size-16 sm:size-20";
+  const mediaSize = home ? "size-16 sm:size-20" : dense ? "size-16 sm:size-20 lg:size-16" : "size-16 sm:size-20";
 
   return (
     <Link
       href={href}
-      className="group flex h-full flex-col items-center rounded-[var(--site-radius)] border border-border bg-surface px-3 py-5 text-center transition-[border-color,box-shadow] duration-200 hover:border-primary/40 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--site-primary)] sm:px-4 sm:py-6"
+      className={cn(
+        "group flex h-full flex-col items-center border border-border bg-surface px-3 text-center transition-[border-color,box-shadow] duration-200 hover:border-primary/40 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--site-primary)] sm:px-4",
+        home ? "rounded-[20px] py-6 sm:py-8" : "rounded-[var(--site-radius)] py-5 sm:py-6"
+      )}
     >
       <span className={cn("relative flex shrink-0 items-center justify-center overflow-hidden", mediaSize, SHAPE_CLASS[shape])}>
         {specialty.imageUrl ? (
@@ -117,7 +162,9 @@ function SpecialtyCard({
           <span
             className={cn(
               "flex h-full w-full items-center justify-center",
-              "bg-[color-mix(in_oklch,var(--site-primary)_10%,var(--site-surface))] text-[var(--site-primary)]"
+              home
+                ? "bg-[color-mix(in_oklch,var(--site-accent)_18%,var(--site-surface))] text-[var(--site-primary)]"
+                : "bg-[color-mix(in_oklch,var(--site-primary)_10%,var(--site-surface))] text-[var(--site-primary)]"
             )}
           >
             {iconGlyph(specialty.icon, "size-7 sm:size-8")}

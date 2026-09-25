@@ -110,3 +110,16 @@ export function toPublicMediaUrl(url: string | null | undefined): string | null 
   }
   return result;
 }
+
+/**
+ * Göreli medya yolunu (`/uploads/...`) next/image'in kabul ettiği MUTLAK bir URL'e çevirir —
+ * yalnızca SUNUCU bileşenlerinde, `next/image` ile optimize edilecek görseller için (ör. anasayfa
+ * hero görseli). Göreli yol, backend'in loopback host'ları yanıtlardan temizlemesiyle (yerel
+ * geliştirme) ya da eski kayıtlardan gelebilir. Öncelik: Docker iç medya host'u (optimize edici
+ * sunucu tarafında onu çözer), yoksa API'nin public host'u. Mutlak URL'ler olduğu gibi döner.
+ */
+export function toOptimizableMediaUrl(url: string): string {
+  if (!url.startsWith("/") || url.startsWith("//")) return url;
+  const origin = INTERNAL_MEDIA_ORIGIN || PUBLIC_MEDIA_ORIGIN;
+  return origin ? `${origin.replace(/\/+$/, "")}${url}` : url;
+}

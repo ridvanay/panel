@@ -29,6 +29,10 @@ import {
   Stethoscope,
   Syringe,
   Users,
+  Search,
+  Calendar,
+  Video,
+  Lock,
   type LucideIcon,
 } from "lucide-react";
 import type { AboutIconKey } from "@/lib/about-page";
@@ -65,4 +69,8 @@ export const ABOUT_ICONS: Record<AboutIconKey, LucideIcon> = {
   MessageCircle,
   Languages,
   BadgeCheck,
+  Search,
+  Calendar,
+  Video,
+  Lock,
 };

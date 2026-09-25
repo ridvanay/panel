@@ -22,6 +22,17 @@ import {
   ABOUT_MIN_DOCTORS,
   ABOUT_MAX_DOCTORS,
 } from "../../lib/about-page-template";
+import {
+  HOME_DEFAULT_DOCTORS,
+  HOME_DEFAULT_SPECIALTY_COLUMNS,
+  HOME_MAX_DOCTORS,
+  HOME_MAX_STEPS,
+  HOME_MAX_TRUST_ITEMS,
+  HOME_MIN_DOCTORS,
+  HOME_MIN_STEPS,
+  HOME_MIN_TRUST_ITEMS,
+  HOME_PAGE_BLOCK_TYPE,
+} from "../../lib/home-page-template";
 
 // §10.20 — `PageEditModeSchema` artık `schemas/entities.ts`'ten import edilir (bkz. `PageSchema`
 // alanı da AYNI kaynağı kullanır). YALNIZCA `CreatePageRequestSchema`/`UpdatePageRequestSchema`'ya
@@ -1106,6 +1117,73 @@ const AboutPageBlockSchema = z.object({
   data: AboutPageBlockDataSchema,
 });
 
+/* ---------- "Anasayfa" şablon bloğu — bkz. lib/home-page-template.ts ----------
+ * `about-page` ile AYNI kurallar: düz metin, boş string = sözlük varsayılanı, bağlantılar
+ * `SafeHrefSchema` veya sayfa içi çapa (`#how`). Bölüm sırası sabittir; her bölümün
+ * `enabled` anahtarı vardır. Güven şeridi 1–4, adımlar 2–4 madde; doktor sayısı 1–8. */
+const HomeItemSchema = z.object({ id: AboutItemIdSchema, icon: AboutIconSchema, title: aboutText(120), text: aboutText(400) });
+const HomePageBlockDataSchema = z.object({
+  hero: z
+    .object({
+      enabled: z.boolean().default(true),
+      eyebrow: aboutText(120),
+      title: aboutText(200),
+      body: aboutText(600),
+      primaryCta: AboutCtaSchema,
+      secondaryCta: AboutCtaSchema,
+      imageUrl: z.union([z.literal(""), SafeHrefSchema]).default(""),
+      imageAlt: aboutText(200),
+      cardTitle: aboutText(120),
+      cardText: aboutText(160),
+    })
+    .default({}),
+  trust: z
+    .object({
+      enabled: z.boolean().default(true),
+      items: z.array(HomeItemSchema).min(HOME_MIN_TRUST_ITEMS).max(HOME_MAX_TRUST_ITEMS),
+    })
+    .optional(),
+  specialties: z
+    .object({
+      enabled: z.boolean().default(true),
+      eyebrow: aboutText(120),
+      title: aboutText(200),
+      viewAllLabel: aboutText(80),
+      columns: z.union([z.literal(3), z.literal(4), z.literal(6)]).default(HOME_DEFAULT_SPECIALTY_COLUMNS),
+    })
+    .default({}),
+  how: z
+    .object({
+      enabled: z.boolean().default(true),
+      eyebrow: aboutText(120),
+      title: aboutText(200),
+      steps: z.array(HomeItemSchema).min(HOME_MIN_STEPS).max(HOME_MAX_STEPS),
+    })
+    .optional(),
+  doctors: z
+    .object({
+      enabled: z.boolean().default(true),
+      eyebrow: aboutText(120),
+      title: aboutText(200),
+      ctaLabel: aboutText(80),
+      count: z.number().int().min(HOME_MIN_DOCTORS).max(HOME_MAX_DOCTORS).default(HOME_DEFAULT_DOCTORS),
+    })
+    .default({}),
+  closing: z
+    .object({
+      enabled: z.boolean().default(true),
+      title: aboutText(200),
+      primaryCta: AboutCtaSchema,
+      secondaryCta: AboutCtaSchema,
+    })
+    .default({}),
+});
+const HomePageBlockSchema = z.object({
+  id: z.string().min(1),
+  type: z.literal(HOME_PAGE_BLOCK_TYPE),
+  data: HomePageBlockDataSchema,
+});
+
 /* ---------- özyinelemeli düğüm — §5.4 ---------- */
 
 function applySubSchema(schema: z.ZodTypeAny, node: unknown, ctx: z.RefinementCtx): unknown {
@@ -1172,6 +1250,7 @@ const PageNodeSchema: z.ZodType<unknown, z.ZodTypeDef, unknown> = z.record(z.unk
   // eklemenin en kritik satırıdır, bir regresyon testiyle AYRICA doğrulanır.
   if (type === "google-map") return applySubSchema(GoogleMapBlockSchema, node, ctx);
   if (type === ABOUT_PAGE_BLOCK_TYPE) return applySubSchema(AboutPageBlockSchema, node, ctx);
+  if (type === HOME_PAGE_BLOCK_TYPE) return applySubSchema(HomePageBlockSchema, node, ctx);
   return node;
 });
 
@@ -1258,18 +1337,19 @@ export const PageBlockListSchema = z
       return z.NEVER;
     }
 
-    // "Hakkımızda" şablon bloğu yalnızca TEK ve KÖK düğüm olarak bulunabilir — başka bloklarla
-    // karıştırılamaz, bir konteynerin içine konamaz (şablonun tasarımı kodda sabittir).
-    const aboutNodeCount = flattenPageBlocks(blocks).filter(
-      (node) => (node as { type?: unknown } | null)?.type === ABOUT_PAGE_BLOCK_TYPE
-    ).length;
-    if (aboutNodeCount > 0) {
-      const isSoleRoot =
-        aboutNodeCount === 1 && blocks.length === 1 && (blocks[0] as { type?: unknown } | null)?.type === ABOUT_PAGE_BLOCK_TYPE;
+    // Şablon blokları ("Hakkımızda", "Anasayfa") yalnızca TEK ve KÖK düğüm olarak bulunabilir —
+    // başka bloklarla karıştırılamaz, bir konteynerin içine konamaz (tasarım kodda sabittir).
+    for (const [templateType, label] of [
+      [ABOUT_PAGE_BLOCK_TYPE, "Hakkımızda"],
+      [HOME_PAGE_BLOCK_TYPE, "Anasayfa"],
+    ] as const) {
+      const count = flattenPageBlocks(blocks).filter((node) => (node as { type?: unknown } | null)?.type === templateType).length;
+      if (count === 0) continue;
+      const isSoleRoot = count === 1 && blocks.length === 1 && (blocks[0] as { type?: unknown } | null)?.type === templateType;
       if (!isSoleRoot) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: "Hakkımızda şablon bloğu sayfadaki tek ve en üst seviyedeki blok olmalıdır.",
+          message: `${label} şablon bloğu sayfadaki tek ve en üst seviyedeki blok olmalıdır.`,
         });
         return z.NEVER;
       }

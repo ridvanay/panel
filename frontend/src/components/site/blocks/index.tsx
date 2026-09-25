@@ -29,6 +29,8 @@ import { TeamBlockView } from "./team-block";
 import { AdvancedSliderBlockView } from "./advanced-slider-block";
 import { GoogleMapBlockView } from "./google-map-block";
 import { SpecialtyCardsBlockView } from "./specialty-cards-block";
+import { HomePageView } from "@/components/site/home/home-page-view";
+import { HOME_PAGE_BLOCK_TYPE } from "@/lib/home-page";
 
 /**
  * §6.3 mimar dokümanı — "chrome" sözleşmesi. Kök dizideki yaprak bloklar `chrome: "page"`
@@ -53,6 +55,10 @@ export interface BlockSiteContext {
 }
 
 function renderNodeBody(node: PageNode, chrome: BlockChrome, siteContext?: BlockSiteContext) {
+  // "Anasayfa" şablon bloğu — sayfanın TEK kök düğümü (bkz. lib/home-page.ts); `PageNode` birliğinde
+  // değil (içerik bloğu değil, şablon), bu yüzden tip anahtarından önce ayrıca yakalanır.
+  const raw = node as unknown as { type?: string; data?: unknown };
+  if (raw.type === HOME_PAGE_BLOCK_TYPE) return <HomePageView data={raw.data} siteContext={siteContext} />;
   switch (node.type) {
     case "hero":
       return <HeroBlockView block={node} chrome={chrome} />;

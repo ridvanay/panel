@@ -6,6 +6,7 @@ import { legalStrings } from "./legal";
 import { errorStrings } from "./errors";
 import { aboutStrings } from "./about";
 import { contactStrings } from "./contact";
+import { homeStrings } from "./home";
 
 /** KAYNAK dil (source of truth, `.claude/architect-scope-i18n.md` §14.2) — yeni anahtar ÖNCE buraya. */
 export const siteDictionary: SiteDictionary = {
@@ -16,4 +17,5 @@ export const siteDictionary: SiteDictionary = {
   errors: errorStrings,
   about: aboutStrings,
   contact: contactStrings,
+  home: homeStrings,
 };

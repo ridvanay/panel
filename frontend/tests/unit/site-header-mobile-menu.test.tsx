@@ -129,9 +129,10 @@ describe("SiteHeader — masaüstü açılır menü", () => {
     await user.click(screen.getByRole("button", { name: /^Specialties/ }));
     const item = await screen.findByRole("menuitem", { name: LONG_LABEL });
     expect(item).toHaveAttribute("title", LONG_LABEL);
-    expect(item.querySelector("span")).toHaveClass("line-clamp-2");
-    const content = item.closest("[data-slot=dropdown-menu-content]");
-    expect(content).toHaveClass("w-max");
-    expect(content?.className).not.toContain("w-(--anchor-width)");
+    expect(item.querySelector("span.line-clamp-2")).toHaveTextContent(LONG_LABEL);
+    // Yeni açılır panel (nav-dropdown.tsx): genişlik içerik/kolon sayısına göre sabit, tetikleyiciye bağlı değil.
+    const content = item.closest("[data-slot=nav-dropdown]");
+    expect(content).not.toBeNull();
+    expect(content?.className).not.toContain("--anchor-width");
   });
 });

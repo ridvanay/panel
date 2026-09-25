@@ -11,6 +11,32 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
 
 ## [Unreleased]
 
+### Added
+
+- **`feat(site)`: "Anasayfa" şablonu.** Hakkımızda şablonuyla aynı yapı (tek kök `home-page` bloğu,
+  `TEMPLATE` düzenleme modu, EN/TR içerik, sözlükte varsayılan metinler). Bölümler (sıra sabit, her
+  biri göster/gizle): hero (eyebrow, başlık, açıklama, iki buton, medya kütüphanesinden görsel ve
+  görsel üstü kart), güven şeridi (1–4 madde), uzmanlıklar (Uzmanlık Kartları ızgarası; masaüstü
+  3/4/6 kolon, varsayılan 6), nasıl çalışır (2–4 adım, masaüstünde kesikli bağlantı çizgisi, `#how`
+  çapası), doktorlar (Hakkımızda doktor bölümü ve doktor kartı; 1–8, varsayılan 3) ve kapanış bandı
+  (altında TeleHealth acil durum özeti her zaman). Hero görseli `next/image` ile öncelikli (priority,
+  `fetchpriority=high`), `sizes` tanımlı, sabit oranlı kutuda (mobil 7:6, masaüstü ~1:1) ve yer tutuculu. Admin → Sayfalar → Yeni
+  Sayfa'da "Anasayfa şablonu" seçeneği (yalnızca ADMIN/MANAGER): sayfa EN/TR varsayılan metinlerle
+  dolu oluşur; düzenleme ekranında yapılandırılmış form açılır. Ayarlar'daki mevcut anasayfa
+  seçimiyle devreye alınır, eski sayfayı yeniden seçmek geri almaya yeter. Anasayfa olarak seçilen
+  sayfa kendi `/<slug>` adresinden `/` (EN'de `/en`) adresine 307 ile yönlendirilir; canonical dile
+  uygun hale getirildi. Mevcut anasayfa kaydına dokunulmadı; şema değişikliği yok.
+
+### Changed
+
+- **`feat(site)`: Header açılır menüsü yeniden tasarlandı.** Panel header'ın ~12 px altında, düğmeye
+  küçük bir okla bağlı; beyaz, 18 px köşe, ince kenarlık, yumuşak gölge; üstte üst menü öğesinin adı.
+  4'ten fazla alt öğede 2 kolon. Uzmanlığa giden alt öğelerde (`/specialties/<slug>` veya
+  `/doctors?specialty=<slug>`) 42 px yuvarlak uzmanlık görseli, görsel yoksa uzmanlık ikonu. Alt
+  bölümde "View all …" (üst öğenin kendi linki varsa) ve uzmanlık menüsünde "Find a doctor". Açıkken
+  düğme vurgulu, ok döner; ~150 ms geçiş, `prefers-reduced-motion`'da animasyonsuz. Klavye erişimi ve
+  mobil panel değişmedi; menü öğeleri Admin → Navigasyon'dan gelmeye devam eder.
+
 ### Documentation
 
 - **`docs(infra)`: Canlı ortam Nginx `/api/` + `TRUST_PROXY` yapısı belgelendi.** `X-Forwarded-For`

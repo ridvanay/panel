@@ -44,6 +44,11 @@ export const ABOUT_ICON_KEYS = [
   "MessageCircle",
   "Languages",
   "BadgeCheck",
+  // Anasayfa şablonu ("Nasıl çalışır" adımları, hero kartı) için eklendi.
+  "Search",
+  "Calendar",
+  "Video",
+  "Lock",
 ] as const;
 
 export const ABOUT_MAX_TREATMENT_ITEMS = 12;

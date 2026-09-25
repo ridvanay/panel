@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { notFound, permanentRedirect } from "next/navigation";
+import { notFound, permanentRedirect, redirect } from "next/navigation";
 import { fetchPageBySlugServer } from "@/lib/api/server-pages";
 import { fetchSiteSettingsServer } from "@/lib/api/server-settings";
 import { fetchLocalesServer } from "@/lib/api/server-locales";
@@ -14,6 +14,8 @@ import { SocialShareButtons } from "@/components/site/social-share-buttons";
 import { redirectToCanonicalSlug } from "@/lib/i18n/canonical-slug";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
 import { ABOUT_PAGE_SLUG, isAboutTemplatePage } from "@/lib/about-page";
+import { isHomeTemplatePage } from "@/lib/home-page";
+import { aboutSerif } from "@/components/site/about/about-fonts";
 import { buildContentMetadata } from "@/lib/seo";
 import { SITE_URL } from "@/lib/env";
 import { getSiteDictionary, formatSiteString } from "@/lib/i18n/site-dictionaries";
@@ -34,9 +36,9 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
   const defaultLocale = locales.find((l) => l.isDefault);
   const isHomePage = page.id === settings.homePageId;
-  const fallbackCanonicalUrl = isHomePage
-    ? SITE_URL
-    : `${SITE_URL}${lang === defaultLocale?.code ? "" : `/${lang}`}/${slug}`;
+  // Anasayfa → dile uygun kök (`/` veya `/en`), yinelenen içerik olmasın.
+  const localeRoot = `${SITE_URL}${lang === defaultLocale?.code ? "" : `/${lang}`}`;
+  const fallbackCanonicalUrl = isHomePage ? localeRoot : `${localeRoot}/${slug}`;
 
   // §5.1 — hukuki belgenin çevrilmemiş dildeki bildirim sayfası içeriksizdir, indekslenmemeli.
   const activeLocalization = page.localizations.find((l) => l.locale === lang);
@@ -82,6 +84,15 @@ export default async function DynamicPage({ params }: PageProps) {
     permanentRedirect(withLocalePrefix(`/${ABOUT_PAGE_SLUG}`, lang, defaultLocaleCode));
   }
 
+  // Ayarlar'da anasayfa olarak seçilmiş sayfa kendi slug adresinden de açılırsa aynı içerik iki
+  // adreste yayınlanmış olur — dile uygun köke (`/` veya `/en`) GEÇİCİ (307) yönlendirilir.
+  // Kalıcı (308) DEĞİL: tarayıcılar 308'i önbelleğe alır; anasayfa seçimi geri alındığında bu
+  // adres eski sayfaya dönmelidir.
+  if (page.id === settings.homePageId) {
+    const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? lang;
+    redirect(withLocalePrefix("/", lang, defaultLocaleCode));
+  }
+
   // §12.2 — `/en/<TR-kanonik-slug>` gibi istekler içeriği DOĞRU bulur (backend slug fallback'i)
   // ama EN'in KENDİ slug'ı DEĞİLSE, duplicate content'i önlemek için oraya kalıcı yönlendirilir.
   redirectToCanonicalSlug({
@@ -105,10 +116,8 @@ export default async function DynamicPage({ params }: PageProps) {
   const noIndexEffective = page.noIndex || showLegalNotice;
   const normalizedNodes = normalizePageNodes(page.blocks);
 
-  const isHomePage = page.id === settings.homePageId;
-  const canonicalUrl = isHomePage
-    ? SITE_URL
-    : `${SITE_URL}${lang === defaultLocale?.code ? "" : `/${lang}`}/${slug}`;
+  const canonicalUrl = `${SITE_URL}${lang === defaultLocale?.code ? "" : `/${lang}`}/${slug}`;
+  const isHomeTemplate = isHomeTemplatePage(page);
 
   return (
     <>
@@ -117,7 +126,8 @@ export default async function DynamicPage({ params }: PageProps) {
       <div className="mx-auto max-w-3xl px-4 pt-4 sm:px-6">
         <ViewCount count={page.viewCount} />
       </div>
-      {!isHomePage && (
+      {/* Anasayfa şablonu kendi hero'sunu taşır — sayfa başlık bandı gösterilmez (ör. anasayfa seçilmeden önce önizleme). */}
+      {!isHomeTemplate && (
         <PageHeader
           title={page.title}
           style={appearance.pageHeaderStyle}
@@ -138,7 +148,9 @@ export default async function DynamicPage({ params }: PageProps) {
         />
       ) : (
         <>
-          <BlockRenderer nodes={normalizedNodes} chrome="page" siteContext={{ lang, defaultLocaleCode: defaultLocale?.code ?? lang }} />
+          <div className={isHomeTemplate ? aboutSerif.variable : undefined}>
+            <BlockRenderer nodes={normalizedNodes} chrome="page" siteContext={{ lang, defaultLocaleCode: defaultLocale?.code ?? lang }} />
+          </div>
           {appearance.socialShareEnabled && appearance.socialShareNetworks.length > 0 && (
             <div className="mx-auto max-w-3xl px-4 pb-10 sm:px-6">
               <SocialShareButtons url={canonicalUrl} title={page.title} networks={appearance.socialShareNetworks} />
