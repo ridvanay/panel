@@ -5,7 +5,15 @@ import Link from "next/link";
 import { resolveIcon } from "@/lib/page-builder/icon-options";
 import { SLIDER_BUTTON_SIZE_CLASS, SLIDER_BUTTON_VARIANT_CLASS, LAYER_FONT_FAMILY_VAR } from "@/lib/sliders/design-tokens";
 import { SLIDER_LAYER_OUT_DURATION_MS } from "@/lib/sliders/types";
-import { ORIGIN_PERCENT, IN_EFFECT_VARIANTS, buildLayerContentStyle, buildLayerTransition } from "@/lib/sliders/layer-render";
+import {
+  ORIGIN_PERCENT,
+  IN_EFFECT_VARIANTS,
+  buildLayerContentStyle,
+  buildLayerFloat,
+  buildLayerTransition,
+  layerVisibilityClasses,
+} from "@/lib/sliders/layer-render";
+import type { HeadingLayerContent } from "@/lib/sliders/types";
 import type { ResolvedSliderLayer } from "./resolve-responsive";
 import { stackAlignSelf } from "./stacked-layout";
 import { cn } from "@/lib/utils";
@@ -15,10 +23,24 @@ function buttonIcon(name: string | undefined, className: string) {
   return <Icon className={className} aria-hidden />;
 }
 
-/** 1..3 dışında bir `level` gelmez (Zod ile sınırlı) — yine de `??2` ile güvenli varsayılan. */
-function HeadingContent({ text, level }: { text: string; level?: 1 | 2 | 3 }) {
-  const Tag = (`h${level ?? 2}`) as "h1" | "h2" | "h3";
-  return <Tag className="m-0">{text}</Tag>;
+/**
+ * 1..3 dışında bir `level` gelmez (Zod ile sınırlı) — yine de `??2` ile güvenli varsayılan.
+ * İki renkli başlık: vurgu metni AYNI başlık etiketinin içinde (tek h1/h2 — erişilebilir ad bütün kalır).
+ */
+export function HeadingContent({ content }: { content: HeadingLayerContent }) {
+  const Tag = (`h${content.level ?? 2}`) as "h1" | "h2" | "h3";
+  const accent = content.accentText?.trim();
+  return (
+    <Tag className="m-0">
+      {content.text}
+      {accent && (
+        <>
+          {content.accentOnNewLine ? <br /> : " "}
+          <span style={{ color: content.accentColor }}>{accent}</span>
+        </>
+      )}
+    </Tag>
+  );
 }
 
 export function SlideLayerView({
@@ -36,7 +58,8 @@ export function SlideLayerView({
    */
   stacked?: boolean;
 }) {
-  if (layer.hidden) return null;
+  // Akış düzeninde (yalnızca istemcide) gizli katman hiç render edilmez; mutlak düzende CSS sınıfları gizler.
+  if (stacked && layer.hidden) return null;
 
   const { position, style, animation } = layer;
   const origin = ORIGIN_PERCENT[position.origin];
@@ -48,10 +71,11 @@ export function SlideLayerView({
   const variant = IN_EFFECT_VARIANTS[animation.inEffect];
   const initial = reducedMotion ? { opacity: 1 } : variant.initial;
   const animate = reducedMotion ? { opacity: 1 } : variant.animate;
+  const float = buildLayerFloat(animation, reducedMotion);
 
   return (
     <div
-      className={stacked ? "relative max-w-full" : "absolute"}
+      className={cn(stacked ? "relative max-w-full" : "absolute", ...layerVisibilityClasses(layer))}
       style={
         stacked
           ? { alignSelf: stackAlignSelf(layer) }
@@ -70,8 +94,8 @@ export function SlideLayerView({
         exit={{ opacity: 0, transition: { duration: SLIDER_LAYER_OUT_DURATION_MS / 1000, ease: "easeOut" } }}
         transition={buildLayerTransition(animation, reducedMotion)}
       >
-        <div style={contentStyle} className="min-w-0">
-          {layer.type === "heading" && <HeadingContent text={layer.content.text} level={layer.content.level} />}
+        <motion.div style={contentStyle} className="min-w-0" animate={float?.animate} transition={float?.transition}>
+          {layer.type === "heading" && <HeadingContent content={layer.content} />}
           {layer.type === "text" && <p className="m-0 whitespace-pre-line">{layer.content.text}</p>}
           {layer.type === "badge" && (
             <span className="inline-block rounded-full bg-[var(--site-primary)] px-3 py-1 text-xs font-semibold text-[var(--site-button-text)]">
@@ -96,7 +120,7 @@ export function SlideLayerView({
               {layer.content.label}
             </Link>
           )}
-        </div>
+        </motion.div>
       </motion.div>
     </div>
   );

@@ -68,12 +68,14 @@ export function removeLayerGroupOverride(layer: SliderLayer, device: ResponsiveD
 }
 
 export function isLayerHiddenOnDevice(layer: SliderLayer, device: DeviceMode): boolean {
-  if (device === "desktop") return false;
+  if (device === "desktop") return layer.hiddenOnDesktop ?? false;
   if (device === "tablet") return layer.responsive?.tablet?.hidden ?? false;
   return layer.responsive?.mobile?.hidden ?? layer.responsive?.tablet?.hidden ?? false;
 }
 
-export function setLayerHidden(layer: SliderLayer, device: ResponsiveDevice, hidden: boolean): SliderLayer {
+export function setLayerHidden(layer: SliderLayer, device: DeviceMode, hidden: boolean): SliderLayer {
+  // Masaüstü için `responsive` anahtarı YOKTUR (kök alanlar masaüstüdür) — kök `hiddenOnDesktop`.
+  if (device === "desktop") return { ...layer, hiddenOnDesktop: hidden || undefined } as SliderLayer;
   const responsive = layer.responsive ?? {};
   const deviceOverride = responsive[device] ?? {};
   return { ...layer, responsive: { ...responsive, [device]: { ...deviceOverride, hidden } } } as SliderLayer;

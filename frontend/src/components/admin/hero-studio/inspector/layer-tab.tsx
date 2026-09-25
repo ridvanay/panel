@@ -21,7 +21,8 @@ import {
   type ResponsiveDevice,
 } from "../layer-mutations";
 
-const DEVICE_LABEL: Record<ResponsiveDevice, string> = { tablet: "Tablet", mobile: "Mobil" };
+const DEVICE_LABEL: Record<DeviceMode, string> = { desktop: "Masaüstü", tablet: "Tablet", mobile: "Mobil" };
+const VISIBILITY_DEVICES: DeviceMode[] = ["desktop", "tablet", "mobile"];
 
 const ORIGIN_OPTIONS: { value: SliderLayerOrigin; label: string }[] = [
   { value: "top-left", label: "Üst Sol" },
@@ -39,14 +40,70 @@ function updateContent(layer: SliderLayer, patch: Record<string, unknown>): Slid
   return { ...layer, content: { ...layer.content, ...patch } } as SliderLayer;
 }
 
-function LayerContentFields({ layer, onUpdate }: { layer: SliderLayer; onUpdate: (updater: (layer: SliderLayer) => SliderLayer) => void }) {
+function LayerContentFields({
+  layer,
+  h1Count,
+  onUpdate,
+}: {
+  layer: SliderLayer;
+  h1Count: number;
+  onUpdate: (updater: (layer: SliderLayer) => SliderLayer) => void;
+}) {
   if (layer.type === "heading") {
+    const accentOn = layer.content.accentText !== undefined;
     return (
       <>
         <Field id="layer-heading-text" label="Metin" required>
           {(p) => <Textarea {...p} rows={2} value={layer.content.text} onChange={(e) => onUpdate((l) => updateContent(l, { text: e.target.value }))} />}
         </Field>
-        <Field id="layer-heading-level" label="Başlık seviyesi" hint="Sayfada tek h1 kuralına dikkat edin.">
+        <label className="flex items-center gap-2 text-sm text-foreground">
+          <Switch
+            checked={accentOn}
+            onCheckedChange={(v) =>
+              onUpdate((l) =>
+                updateContent(l, v ? { accentText: "Vurgu", accentColor: "#0d9488" } : { accentText: undefined, accentColor: undefined, accentOnNewLine: undefined })
+              )
+            }
+            aria-label="İki renkli başlık"
+          />
+          İki renkli başlık (vurgu metni)
+        </label>
+        {accentOn && (
+          <div className="space-y-3 rounded-md border border-border p-3">
+            <Field id="layer-heading-accent" label="Vurgu metni" hint="Aynı başlığın devamıdır — tek başlık etiketi içinde, ayrı renkte gösterilir.">
+              {(p) => (
+                <Input {...p} value={layer.content.accentText ?? ""} onChange={(e) => onUpdate((l) => updateContent(l, { accentText: e.target.value }))} />
+              )}
+            </Field>
+            <Field id="layer-heading-accentColor" label="Vurgu rengi">
+              {(p) => (
+                <Input
+                  {...p}
+                  type="color"
+                  value={layer.content.accentColor ?? "#0d9488"}
+                  onChange={(e) => onUpdate((l) => updateContent(l, { accentColor: e.target.value }))}
+                />
+              )}
+            </Field>
+            <label className="flex items-center gap-2 text-sm text-foreground">
+              <Switch
+                checked={layer.content.accentOnNewLine ?? false}
+                onCheckedChange={(v) => onUpdate((l) => updateContent(l, { accentOnNewLine: v || undefined }))}
+                aria-label="Vurguyu alt satıra al"
+              />
+              Vurguyu alt satırda göster
+            </label>
+          </div>
+        )}
+        <Field
+          id="layer-heading-level"
+          label="Başlık seviyesi"
+          hint={
+            h1Count > 1
+              ? `Bu slider'da ${h1Count} adet H1 var — sayfada yalnızca bir H1 olmalı (arama motorları ve ekran okuyucular için).`
+              : "Sayfanın ana başlığıysa H1 seçin; sayfada yalnızca bir H1 olmalı."
+          }
+        >
           {(p) => (
             <Select {...p} value={String(layer.content.level ?? 2)} onChange={(e) => onUpdate((l) => updateContent(l, { level: Number(e.target.value) }))}>
               <option value="1">H1</option>
@@ -120,11 +177,14 @@ function LayerContentFields({ layer, onUpdate }: { layer: SliderLayer; onUpdate:
 export function LayerInspectorTab({
   layer,
   device,
+  h1Count,
   onUpdateLayer,
   onDeleteLayer,
 }: {
   layer: SliderLayer | null;
   device: DeviceMode;
+  /** Slider'daki H1 başlık katmanı sayısı — birden fazlaysa uyarı gösterilir. */
+  h1Count: number;
   onUpdateLayer: (updater: (layer: SliderLayer) => SliderLayer) => void;
   onDeleteLayer: () => void;
 }) {
@@ -136,17 +196,19 @@ export function LayerInspectorTab({
       </p>
     );
   }
-  return <LayerFields layer={layer} device={device} onUpdate={onUpdateLayer} onDelete={onDeleteLayer} />;
+  return <LayerFields layer={layer} device={device} h1Count={h1Count} onUpdate={onUpdateLayer} onDelete={onDeleteLayer} />;
 }
 
 function LayerFields({
   layer,
   device,
+  h1Count,
   onUpdate,
   onDelete,
 }: {
   layer: SliderLayer;
   device: DeviceMode;
+  h1Count: number;
   onUpdate: (updater: (layer: SliderLayer) => SliderLayer) => void;
   onDelete: () => void;
 }) {
@@ -174,7 +236,7 @@ function LayerFields({
 
       <div className="space-y-3">
         <p className="text-xs font-medium uppercase tracking-wide text-foreground/50">İçerik</p>
-        <LayerContentFields layer={layer} onUpdate={onUpdate} />
+        <LayerContentFields layer={layer} h1Count={h1Count} onUpdate={onUpdate} />
       </div>
 
       <div className={cn("space-y-3 rounded-md p-3", isResponsiveDevice && "border border-dashed border-border")}>
@@ -281,22 +343,22 @@ function LayerFields({
         </Field>
       </div>
 
-      {isResponsiveDevice && (
-        <div className="space-y-2 rounded-md border border-dashed border-border p-3">
-          <p className="text-xs font-medium uppercase tracking-wide text-foreground/50">Cihaz Görünürlüğü</p>
-          <label className="flex items-center justify-between gap-2 text-sm text-foreground">
-            <span className="inline-flex items-center gap-1.5">
-              {isLayerHiddenOnDevice(layer, device) ? <EyeOff className="h-3.5 w-3.5 text-foreground/50" /> : <Eye className="h-3.5 w-3.5 text-foreground/50" />}
-              {DEVICE_LABEL[device as ResponsiveDevice]}&apos;de göster
-            </span>
-            <Switch
-              checked={!isLayerHiddenOnDevice(layer, device)}
-              onCheckedChange={(checked) => onUpdate((l) => setLayerHidden(l, device as ResponsiveDevice, !checked))}
-              aria-label={`${DEVICE_LABEL[device as ResponsiveDevice]}'de göster/gizle`}
-            />
-          </label>
-        </div>
-      )}
+      <div className="space-y-2 rounded-md border border-dashed border-border p-3">
+        <p className="text-xs font-medium uppercase tracking-wide text-foreground/50">Cihaz Görünürlüğü</p>
+        <p className="text-xs text-foreground/50">Mobil &lt;768px, tablet 768–1023px, masaüstü ≥1024px.</p>
+        {VISIBILITY_DEVICES.map((d) => {
+          const hidden = isLayerHiddenOnDevice(layer, d);
+          return (
+            <label key={d} className="flex items-center justify-between gap-2 text-sm text-foreground">
+              <span className="inline-flex items-center gap-1.5">
+                {hidden ? <EyeOff className="h-3.5 w-3.5 text-foreground/50" /> : <Eye className="h-3.5 w-3.5 text-foreground/50" />}
+                {DEVICE_LABEL[d]}
+              </span>
+              <Switch checked={!hidden} onCheckedChange={(checked) => onUpdate((l) => setLayerHidden(l, d, !checked))} aria-label={`${DEVICE_LABEL[d]}'da göster/gizle`} />
+            </label>
+          );
+        })}
+      </div>
     </div>
   );
 }

@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import type { DeviceMode } from "@/lib/page-builder/types";
-import type { Slider, SliderHeightMode, SliderNavigationTheme, SliderTransitionEffect, SliderWidthMode } from "@/lib/sliders/types";
+import type { Slider, SliderHeightMode, SliderImageFit, SliderNavigationTheme, SliderTransitionEffect, SliderWidthMode } from "@/lib/sliders/types";
 
 export function SliderInspectorTab({ slider, device, onUpdate }: { slider: Slider; device: DeviceMode; onUpdate: (patch: Partial<Slider>) => void }) {
   return (
@@ -89,7 +89,34 @@ export function SliderInspectorTab({ slider, device, onUpdate }: { slider: Slide
       </div>
 
       <div className="space-y-3 border-t border-border pt-4">
+        <p className="text-xs font-medium uppercase tracking-wide text-foreground/50">Arka Plan Görseli</p>
+        <Field
+          id="slider-imageFit"
+          label="Görsel sığdırma"
+          hint={
+            slider.imageFit === "contain"
+              ? "Görselin tamamı görünür; yükseklik ilk slaytın o cihazdaki görselinin oranına göre ayarlanır. İçinde yazı olan banner'lar için önerilir."
+              : "Görsel kutuyu doldurur; taşan kısım kırpılır (odak noktası kırpmayı yönlendirir)."
+          }
+        >
+          {(p) => (
+            <Select {...p} value={slider.imageFit} onChange={(e) => onUpdate({ imageFit: e.target.value as SliderImageFit })}>
+              <option value="cover">Kırp (cover)</option>
+              <option value="contain">Görselin tamamını göster</option>
+            </Select>
+          )}
+        </Field>
+      </div>
+
+      <div className="space-y-3 border-t border-border pt-4">
         <p className="text-xs font-medium uppercase tracking-wide text-foreground/50">Yükseklik {device !== "desktop" && `— ${device === "tablet" ? "Tablet" : "Mobil"}`}</p>
+
+        {slider.imageFit === "contain" && (
+          <p className="rounded-md border border-dashed border-border p-3 text-xs text-foreground/50">
+            &quot;Görselin tamamını göster&quot; açıkken yükseklik görselin oranından gelir; aşağıdaki ayarlar yalnızca görsel boyutu
+            bilinmiyorsa kullanılır.
+          </p>
+        )}
 
         {device === "tablet" && (
           <p className="rounded-md border border-dashed border-border p-3 text-xs text-foreground/50">

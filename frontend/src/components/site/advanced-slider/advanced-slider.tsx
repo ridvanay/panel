@@ -2,14 +2,26 @@
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
 import { AnimatePresence, motion, useReducedMotion, type PanInfo } from "framer-motion";
+import { getImageProps } from "next/image";
 import { ChevronLeft, ChevronRight, Pause, Play } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { PublicSlide, PublicSlider, SliderHeightMode, SliderNavigationTheme, SliderTransitionEffect } from "@/lib/sliders/types";
+import { toOptimizableMediaUrl } from "@/lib/env";
+import { isOptimizableImageUrl } from "@/lib/image-hosts";
+import type { PublicSlide, PublicSlider, SliderHeightMode, SliderImageFit, SliderNavigationTheme, SliderTransitionEffect } from "@/lib/sliders/types";
 import { DEFAULT_CONTAINER_MAX_WIDTH, type BlockChrome } from "@/lib/page-builder/types";
 import { SlideLayerView } from "./slide-layer";
 import { usePointerSwipe } from "./use-pointer-swipe";
 import { useResolvedLayers } from "./resolve-responsive";
 import { orderLayersForStack, stackPaddingInlinePercent, useStackedSliderLayout } from "./stacked-layout";
+import {
+  SLIDER_MOBILE_MEDIA,
+  SLIDER_TABLET_MEDIA,
+  SLIDER_TABLET_OR_SMALLER_MEDIA,
+  containAspectRatios,
+  resolveSlideBackgrounds,
+  scrimBackground,
+  type DeviceBackground,
+} from "./background";
 
 /** §5.1 architect — eşik 50px VEYA hız > 0.4px/ms; `slide` track sürüklemesinde de AYNI eşik. */
 const SWIPE_THRESHOLD_PX = 50;
@@ -66,16 +78,82 @@ const NAV_THEME_CLASS: Record<SliderNavigationTheme, { control: string; track: s
   },
 };
 
+/**
+ * `next/image` optimizasyonu (`getImageProps`) — host `remotePatterns` dışındaysa ham URL'e düşer
+ * (`SafeImage` ile AYNI kural). Göreli `/uploads/...` yolu önce optimize edilebilir mutlak URL'e çevrilir.
+ */
+function backgroundImageProps(url: string, sizes: string, priority: boolean) {
+  const src = toOptimizableMediaUrl(url);
+  if (!isOptimizableImageUrl(src)) return { src: url, srcSet: undefined, sizes: undefined, style: undefined };
+  // Cihaza göre farklı görsel olabildiği için `preload` DEĞİL `eager` + `fetchPriority` (Next docs: art direction).
+  return getImageProps({ src, alt: "", fill: true, sizes, ...(priority ? { loading: "eager" as const, fetchPriority: "high" as const } : {}) }).props;
+}
+
+/**
+ * Cihaza göre arka plan görseli — `<picture>` ile tarayıcı DOĞRU görseli ilk istekte seçer (JS
+ * beklemez, SSR HTML'i doğrudur). Tablet görseli masaüstünden, mobil görseli tabletten farklıysa
+ * `<source>` yazılır; odak noktası cihaz başına CSS değişkeniyle medya sorgusunda uygulanır.
+ */
+function SlideBackgroundPicture({
+  slide,
+  fit,
+  sizes,
+  priority,
+}: {
+  slide: PublicSlide;
+  fit: SliderImageFit;
+  sizes: string;
+  priority: boolean;
+}) {
+  const { desktop, tablet, mobile } = resolveSlideBackgrounds(slide);
+  if (!desktop) return null;
+  const position = (bg: DeviceBackground | null) => `${bg?.x ?? desktop.x}% ${bg?.y ?? desktop.y}%`;
+  const desktopProps = backgroundImageProps(desktop.media.url, sizes, priority);
+  const tabletProps = tablet && tablet.media.url !== desktop.media.url ? backgroundImageProps(tablet.media.url, sizes, priority) : null;
+  const mobileProps = mobile && mobile.media.url !== (tablet ?? desktop).media.url ? backgroundImageProps(mobile.media.url, sizes, priority) : null;
+
+  return (
+    <picture>
+      {mobileProps && <source media={SLIDER_MOBILE_MEDIA} srcSet={mobileProps.srcSet ?? mobileProps.src} sizes={mobileProps.sizes} />}
+      {tabletProps && <source media={SLIDER_TABLET_OR_SMALLER_MEDIA} srcSet={tabletProps.srcSet ?? tabletProps.src} sizes={tabletProps.sizes} />}
+      {/* `getImageProps` çıktısı — <picture> içindeki kaynak seçimi için düz <img> ZORUNLU */}
+      <img
+        {...desktopProps}
+        alt=""
+        // Optimize edilemeyen host'ta (`getImageProps` atlanır) da ilk slayt öncelikli kalsın.
+        loading={priority ? "eager" : "lazy"}
+        fetchPriority={priority ? "high" : undefined}
+        className={cn(
+          "absolute inset-0 h-full w-full [object-position:var(--slide-bg-pos-d)] max-lg:[object-position:var(--slide-bg-pos-t)] max-md:[object-position:var(--slide-bg-pos-m)]",
+          fit === "contain" ? "object-contain" : "object-cover"
+        )}
+        style={
+          {
+            ...desktopProps.style,
+            "--slide-bg-pos-d": position(desktop),
+            "--slide-bg-pos-t": position(tablet),
+            "--slide-bg-pos-m": position(mobile),
+          } as CSSProperties
+        }
+      />
+    </picture>
+  );
+}
+
 function SlideBackgroundView({
   slide,
   isActive,
   priority,
   reducedMotion,
+  fit,
+  sizes,
 }: {
   slide: PublicSlide;
   isActive: boolean;
   priority: boolean;
   reducedMotion: boolean;
+  fit: SliderImageFit;
+  sizes: string;
 }) {
   const kenBurns = slide.bgKenBurns && !reducedMotion;
 
@@ -86,15 +164,7 @@ function SlideBackgroundView({
         animate={kenBurns ? { scale: [1, 1.12, 1] } : undefined}
         transition={kenBurns ? { duration: 18, repeat: Infinity, ease: "linear" } : undefined}
       >
-        {/* eslint-disable-next-line @next/next/no-img-element -- image-block.tsx ile AYNI gerekçe (URL medya kütüphanesinden gelir, next/image remotePatterns henüz tanımlı değil) */}
-        <img
-          src={slide.bgMedia.url}
-          alt=""
-          loading={priority ? "eager" : "lazy"}
-          fetchPriority={priority ? "high" : undefined}
-          className="absolute inset-0 h-full w-full object-cover"
-          style={{ objectPosition: `${slide.bgPositionX}% ${slide.bgPositionY}%` }}
-        />
+        <SlideBackgroundPicture slide={slide} fit={fit} sizes={sizes} priority={priority} />
       </motion.div>
     );
   }
@@ -128,6 +198,12 @@ function SlideOverlay({ slide }: { slide: PublicSlide }) {
   return <div className="absolute inset-0" style={{ backgroundColor: hexToRgba(slide.bgOverlayColor, slide.bgOverlayOpacity) }} aria-hidden />;
 }
 
+/** Soldan okunabilirlik gradyanı — slayt ayarı, varsayılan KAPALI (eskiden görselli her slaytta sabitti). */
+function SlideScrim({ slide }: { slide: PublicSlide }) {
+  if (!slide.bgScrimEnabled || !slide.bgScrimOpacity) return null;
+  return <div className="absolute inset-0" style={{ background: scrimBackground(slide.bgScrimOpacity) }} aria-hidden />;
+}
+
 /** Akış düzeninde (1280px altı) içeriğin üst/alt iç boşluğu; altta gezinme noktaları için ek pay. */
 const STACK_PADDING_TOP_PX = 32;
 const STACK_PADDING_BOTTOM_PX = 32;
@@ -143,6 +219,8 @@ function SlideStage({
   stacked,
   reserveBottomPx,
   onStackContentHeight,
+  fit,
+  sizes,
 }: {
   slide: PublicSlide;
   index: number;
@@ -152,6 +230,8 @@ function SlideStage({
   reducedMotion: boolean;
   stacked: boolean;
   reserveBottomPx: number;
+  fit: SliderImageFit;
+  sizes: string;
   /** Akış düzeninde içerik yüksekliği (px) — kök, slider'ı en az bu kadar uzatır (kırpma olmaz). */
   onStackContentHeight: (heightPx: number) => void;
 }) {
@@ -179,10 +259,8 @@ function SlideStage({
       inert={!isActive}
       className="relative h-full w-full"
     >
-      <SlideBackgroundView slide={slide} isActive={isActive} priority={index === 0} reducedMotion={reducedMotion} />
-      {slide.bgType === "image" && (
-        <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/40 to-transparent" aria-hidden />
-      )}
+      <SlideBackgroundView slide={slide} isActive={isActive} priority={index === 0} reducedMotion={reducedMotion} fit={fit} sizes={sizes} />
+      {slide.bgType === "image" && <SlideScrim slide={slide} />}
       <SlideOverlay slide={slide} />
       {slide.linkHref && (
         <a
@@ -219,8 +297,12 @@ function SlideStage({
                 ))}
               </motion.div>
             ) : (
+              // Gizli katmanlar da render edilir — cihaz görünürlüğü CSS medya sorgusuyla uygulanır
+              // (`slide-layer.tsx::layerVisibilityClasses`), böylece SSR HTML'i JS beklemeden doğrudur.
               <motion.div key={`layers-${slide.id}`} className="absolute inset-0" initial={false}>
-                {resolvedLayers.map((layer, li) => (!layer.hidden ? <SlideLayerView key={layer.id} layer={layer} layerIndex={li} reducedMotion={reducedMotion} /> : null))}
+                {resolvedLayers.map((layer, li) => (
+                  <SlideLayerView key={layer.id} layer={layer} layerIndex={li} reducedMotion={reducedMotion} />
+                ))}
               </motion.div>
             ))}
         </AnimatePresence>
@@ -288,7 +370,11 @@ export function AdvancedSlider({ slider, chrome = "page" }: { slider: PublicSlid
   // 1280px altı akış düzeni (bkz. `stacked-layout.ts`) — slider en az içerik kadar yüksek olur
   // (içerik kısaysa oran/sabit yükseklik korunur). Slaytlar arasında zıplama olmasın diye görülen
   // EN YÜKSEK değer tutulur; genişlik sınıfı değişince sıfırlanır. ≥1280px'te `minHeight` HİÇ uygulanmaz.
-  const stacked = useStackedSliderLayout();
+  // "Görselin tamamını göster" modunda katmanlar GÖRSELE göre konumlanır (kutu görselin oranında,
+  // yüzde konumlar görselin aynı noktasına düşer) — alt alta akış görseldeki metnin üstüne bindirirdi.
+  const imageFit: SliderImageFit = slider.imageFit ?? "cover";
+  const stackedViewport = useStackedSliderLayout();
+  const stacked = stackedViewport && imageFit !== "contain";
   const [stackMinHeight, setStackMinHeight] = useState(0);
   const [stackedPrev, setStackedPrev] = useState(stacked);
   if (stackedPrev !== stacked) {
@@ -300,11 +386,28 @@ export function AdvancedSlider({ slider, chrome = "page" }: { slider: PublicSlid
   }, []);
   const stackReserveBottomPx = slider.showBullets && slides.length > 1 ? STACK_PADDING_BOTTOM_WITH_BULLETS_PX : STACK_PADDING_BOTTOM_PX;
 
-  const desktopHeight = useMemo(
-    () => heightStyle(slider.heightMode, slider.heightPx, slider.aspectRatioWidth, slider.aspectRatioHeight),
-    [slider.heightMode, slider.heightPx, slider.aspectRatioWidth, slider.aspectRatioHeight]
+  // "Görselin tamamını göster": oran İLK slaytın cihaz görselinden (SSR'da satır içi + medya sorgulu
+  // <style>; JS ölçümü YOK → CLS 0). Boyut bilinmeyen cihazda slider'ın yükseklik ayarına düşülür.
+  const containRatios = useMemo(() => (imageFit === "contain" ? containAspectRatios(slides[0]) : null), [imageFit, slides]);
+  const desktopHeight = useMemo<CSSProperties>(
+    () =>
+      containRatios?.desktop
+        ? { aspectRatio: containRatios.desktop }
+        : heightStyle(slider.heightMode, slider.heightPx, slider.aspectRatioWidth, slider.aspectRatioHeight),
+    [containRatios, slider.heightMode, slider.heightPx, slider.aspectRatioWidth, slider.aspectRatioHeight]
   );
-  const mobileOverrideNeeded = slider.mobileHeightMode != null;
+  const containDeviceCss = useMemo(() => {
+    if (!containRatios) return "";
+    const rules: string[] = [];
+    if (containRatios.tablet && containRatios.tablet !== containRatios.desktop) {
+      rules.push(`@media ${SLIDER_TABLET_MEDIA} { #${rootId} { ${cssDeclarations({ aspectRatio: containRatios.tablet, height: "auto" })} } }`);
+    }
+    if (containRatios.mobile && containRatios.mobile !== containRatios.desktop) {
+      rules.push(`@media ${SLIDER_MOBILE_MEDIA} { #${rootId} { ${cssDeclarations({ aspectRatio: containRatios.mobile, height: "auto" })} } }`);
+    }
+    return rules.join(" ");
+  }, [containRatios, rootId]);
+  const mobileOverrideNeeded = slider.mobileHeightMode != null && !containRatios?.mobile;
   const mobileHeight = useMemo(
     () =>
       mobileOverrideNeeded
@@ -399,6 +502,9 @@ export function AdvancedSlider({ slider, chrome = "page" }: { slider: PublicSlid
   });
 
   const navTheme = NAV_THEME_CLASS[slider.navigationTheme];
+  // Arka plan görseli slider genişliğinde — boxed yerleşimde kap genişliği kadar.
+  const imageSizes =
+    slider.widthMode === "boxed" && chrome === "page" ? `(min-width: ${DEFAULT_CONTAINER_MAX_WIDTH}px) ${DEFAULT_CONTAINER_MAX_WIDTH}px, 100vw` : "100vw";
   const transitionDurationSec = reducedMotion ? 0 : slider.transitionDurationMs / 1000;
   // Yerel `const`e ayrılır — TS narrowing'i JSX'teki iç içe `.map()` kapanışları (closure) ARASINDA
   // korumak için (`slider.transitionEffect` doğrudan property erişimi kapanış sınırında sıfırlanır).
@@ -429,6 +535,7 @@ export function AdvancedSlider({ slider, chrome = "page" }: { slider: PublicSlid
       {mobileOverrideNeeded && mobileHeight && (
         <style>{`@media (max-width: 767px) { #${rootId} { ${cssDeclarations(mobileHeight)} } }`}</style>
       )}
+      {containDeviceCss && <style>{containDeviceCss}</style>}
 
       <div
         ref={trackWrapRef}
@@ -460,6 +567,8 @@ export function AdvancedSlider({ slider, chrome = "page" }: { slider: PublicSlid
                   stacked={stacked}
                   reserveBottomPx={stackReserveBottomPx}
                   onStackContentHeight={handleStackContentHeight}
+                  fit={imageFit}
+                  sizes={imageSizes}
                 />
               </div>
             ))}
@@ -479,6 +588,8 @@ export function AdvancedSlider({ slider, chrome = "page" }: { slider: PublicSlid
                   stacked={stacked}
                   reserveBottomPx={stackReserveBottomPx}
                   onStackContentHeight={handleStackContentHeight}
+                  fit={imageFit}
+                  sizes={imageSizes}
                 />
               </motion.div>
             );

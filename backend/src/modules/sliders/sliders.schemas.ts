@@ -5,6 +5,7 @@ import {
   SlideBackgroundTypeSchema,
   SliderNavigationThemeSchema,
   SliderWidthModeSchema,
+  SliderImageFitSchema,
 } from "../../schemas/entities";
 import { CursorQuerySchema, TrashedFilterSchema, SafeHrefSchema } from "../../schemas/common";
 import { MAX_SLIDES_PER_SLIDER } from "./lib/constants";
@@ -75,6 +76,7 @@ export const UpdateSliderRequestSchema = z.object({
   mobileAspectRatioWidth: z.number().int().min(1).max(64).nullable().optional(),
   mobileAspectRatioHeight: z.number().int().min(1).max(64).nullable().optional(),
   widthMode: SliderWidthModeSchema.optional(),
+  imageFit: SliderImageFitSchema.optional(),
   showArrows: z.boolean().optional(),
   showBullets: z.boolean().optional(),
   showProgressBar: z.boolean().optional(),
@@ -98,8 +100,17 @@ export const UpdateSlideRequestSchema = z.object({
   bgVideoPosterMediaId: z.string().uuid().nullable().optional(),
   bgPositionX: z.number().int().min(0).max(100).optional(),
   bgPositionY: z.number().int().min(0).max(100).optional(),
+  // Cihaza göre arka plan görseli/odak noktası — `null` yedeğe düşürür (bkz. schema.prisma).
+  bgTabletMediaId: z.string().uuid().nullable().optional(),
+  bgMobileMediaId: z.string().uuid().nullable().optional(),
+  bgTabletPositionX: z.number().int().min(0).max(100).nullable().optional(),
+  bgTabletPositionY: z.number().int().min(0).max(100).nullable().optional(),
+  bgMobilePositionX: z.number().int().min(0).max(100).nullable().optional(),
+  bgMobilePositionY: z.number().int().min(0).max(100).nullable().optional(),
   bgOverlayColor: z.string().regex(HEX6, "Geçersiz renk değeri.").nullable().optional(),
   bgOverlayOpacity: z.number().int().min(0).max(100).optional(),
+  bgScrimEnabled: z.boolean().optional(),
+  bgScrimOpacity: z.number().int().min(0).max(100).optional(),
   bgGradientFrom: z.string().regex(HEX6, "Geçersiz renk değeri.").nullable().optional(),
   bgGradientTo: z.string().regex(HEX6, "Geçersiz renk değeri.").nullable().optional(),
   bgGradientAngle: z.number().int().min(0).max(360).optional(),

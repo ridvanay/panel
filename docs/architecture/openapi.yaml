@@ -20589,6 +20589,17 @@ components:
         sunucu HTML'inde HESAPLANABİLİR olmak zorundadır, JS ile ölçülemez.
       enum: [full-screen, custom-px, aspect-ratio]
 
+    SliderImageFit:
+      type: string
+      description: >
+        Arka plan görseli sığdırma. `cover` → kutuyu doldurur, taşan kısım kırpılır
+        (**varsayılan**, bu alan eklenmeden önceki TEK davranış). `contain` → görselin TAMAMI
+        görünür; slider yüksekliği İLK slaytın o cihazdaki görselinin oranından türetilir
+        (masaüstü/tablet/mobil ayrı, SSR HTML'inde satır içi + medya sorgusu — JS ölçümü yok,
+        CLS 0). Görsel boyutu (`Media.width/height`) bilinmiyorsa `heightMode` kullanılır.
+        `contain` modunda katmanlar dar ekranda alt alta dizilmez, görsele göre konumlanır.
+      enum: [cover, contain]
+
     SliderWidthMode:
       type: string
       description: >
@@ -20759,6 +20770,12 @@ components:
           type: string
           description: "Verilmezse `ease-out`. `spring` framer-motion yay fiziğine eşlenir."
           enum: [linear, ease-out, ease-in-out, spring]
+        float:
+          type: boolean
+          description: >
+            Girişten sonra hafif, sürekli yukarı-aşağı süzülme (±6 px, 5 sn). Yalnızca
+            transform — yerleşim kaymaz (CLS yok). `prefers-reduced-motion: reduce` altında
+            uygulanmaz.
 
     SliderLayerResponsiveOverride:
       type: object
@@ -20776,7 +20793,9 @@ components:
       properties:
         hidden:
           type: boolean
-          description: "`true` → katman bu cihazda HİÇ render edilmez (DOM'a da girmez)."
+          description: >
+            `true` → katman bu cihazda gizlenir. Gizleme CSS medya sorgusuyla uygulanır
+            (mobil <768, tablet 768–1023 px) — SSR HTML'i ilk karede doğrudur.
         position: { $ref: "#/components/schemas/SliderLayerPosition" }
         style: { $ref: "#/components/schemas/SliderLayerStyle" }
         animation: { $ref: "#/components/schemas/SliderLayerAnimation" }
@@ -20797,7 +20816,7 @@ components:
 
         | `type` | `content` alanları |
         |---|---|
-        | `heading` | `text` (düz metin, ≤200), `level` (1\|2\|3 — SEO: sayfada TEK `h1`, varsayılan 2) |
+        | `heading` | `text` (düz metin, ≤200), `level` (1\|2\|3 — SEO: sayfada TEK `h1`, varsayılan 2), `accentText?` (≤200 — iki renkli başlık: aynı başlık etiketi içinde `<span>`), `accentColor?` (`#RRGGBB`), `accentOnNewLine?` (boolean) |
         | `text` | `text` (düz metin, ≤600; satır sonları `<p>`'ye çevrilir — **HTML DEĞİL**, `AccordionQAItem.answer` ile AYNI gerekçe: yeni sanitizasyon yolu açılmaz) |
         | `button` | `label` (≤60), `href` (`SafeHrefSchema` — protokol beyaz listesi), `variant` (`solid\|outline\|ghost`), `size` (`sm\|md\|lg`), `icon?` (`icon-options.ts` allowlist) |
         | `image` | `url` (≤2048), `alt` (≤200, ZORUNLU — a11y) |
@@ -20817,6 +20836,9 @@ components:
         position: { $ref: "#/components/schemas/SliderLayerPosition" }
         style: { $ref: "#/components/schemas/SliderLayerStyle" }
         animation: { $ref: "#/components/schemas/SliderLayerAnimation" }
+        hiddenOnDesktop:
+          type: boolean
+          description: "Masaüstünde (≥1024 px) gizle. Tablet/mobil gizleme `responsive.<cihaz>.hidden`'dadır."
         responsive: { $ref: "#/components/schemas/SliderLayerResponsive" }
 
     Slide:
@@ -20852,8 +20874,29 @@ components:
             kadar boş/siyah bir kutu görünür ve LCP ölçümü videoya kayar.
         bgPositionX: { type: integer, minimum: 0, maximum: 100, description: "Odak noktası %, CSS `object-position`. Varsayılan 50." }
         bgPositionY: { type: integer, minimum: 0, maximum: 100 }
+        bgTabletMedia:
+          allOf:
+            - $ref: "#/components/schemas/Media"
+          nullable: true
+          description: "Tablet (768–1023 px) arka plan görseli. `null` → masaüstü görseli (`bgMedia`)."
+        bgMobileMedia:
+          allOf:
+            - $ref: "#/components/schemas/Media"
+          nullable: true
+          description: "Mobil (<768 px) arka plan görseli. `null` → tablet görseli, o da yoksa masaüstü görseli."
+        bgTabletPositionX: { type: integer, nullable: true, minimum: 0, maximum: 100, description: "`null` → `bgPositionX`." }
+        bgTabletPositionY: { type: integer, nullable: true, minimum: 0, maximum: 100, description: "`null` → `bgPositionY`." }
+        bgMobilePositionX: { type: integer, nullable: true, minimum: 0, maximum: 100, description: "`null` → tablet değeri (o da yoksa masaüstü)." }
+        bgMobilePositionY: { type: integer, nullable: true, minimum: 0, maximum: 100, description: "`null` → tablet değeri (o da yoksa masaüstü)." }
         bgOverlayColor: { type: string, nullable: true, pattern: "^#[0-9a-fA-F]{6}$" }
         bgOverlayOpacity: { type: integer, minimum: 0, maximum: 100, description: "0 = katman hiç render edilmez." }
+        bgScrimEnabled:
+          type: boolean
+          description: >
+            Soldan sağa okunabilirlik gradyanı (siyah; opaklık → orta nokta %57'si → 0).
+            **Varsayılan `false`** — eskiden görselli her slayta kodda sabit uygulanıyordu,
+            mevcut slaytlarda da kapalı başlar.
+        bgScrimOpacity: { type: integer, minimum: 0, maximum: 100, description: "Sol kenardaki koyuluk. Varsayılan 70." }
         bgGradientFrom: { type: string, nullable: true, pattern: "^#[0-9a-fA-F]{6}$" }
         bgGradientTo: { type: string, nullable: true, pattern: "^#[0-9a-fA-F]{6}$" }
         bgGradientAngle: { type: integer, minimum: 0, maximum: 360, description: "Varsayılan 180 (yukarıdan aşağı)." }
@@ -20892,6 +20935,7 @@ components:
           aspectRatioWidth,
           aspectRatioHeight,
           widthMode,
+          imageFit,
           showArrows,
           showBullets,
           showProgressBar,
@@ -20923,6 +20967,10 @@ components:
         mobileHeightPx: { type: integer, nullable: true, minimum: 120, maximum: 2000 }
         mobileAspectRatioWidth: { type: integer, nullable: true, minimum: 1, maximum: 64 }
         mobileAspectRatioHeight: { type: integer, nullable: true, minimum: 1, maximum: 64 }
+        imageFit:
+          allOf:
+            - $ref: "#/components/schemas/SliderImageFit"
+          description: "Varsayılan `cover` (eski kayıtlar bugünkü davranışı korur)."
         widthMode:
           allOf:
             - $ref: "#/components/schemas/SliderWidthMode"
@@ -21096,8 +21144,16 @@ components:
         bgVideoPosterMediaId: { type: string, format: uuid, nullable: true }
         bgPositionX: { type: integer, minimum: 0, maximum: 100 }
         bgPositionY: { type: integer, minimum: 0, maximum: 100 }
+        bgTabletMediaId: { type: string, format: uuid, nullable: true, description: "Yalnızca görsel medya (`image/*`) — aksi halde 422." }
+        bgMobileMediaId: { type: string, format: uuid, nullable: true, description: "Yalnızca görsel medya (`image/*`) — aksi halde 422." }
+        bgTabletPositionX: { type: integer, nullable: true, minimum: 0, maximum: 100 }
+        bgTabletPositionY: { type: integer, nullable: true, minimum: 0, maximum: 100 }
+        bgMobilePositionX: { type: integer, nullable: true, minimum: 0, maximum: 100 }
+        bgMobilePositionY: { type: integer, nullable: true, minimum: 0, maximum: 100 }
         bgOverlayColor: { type: string, nullable: true, pattern: "^#[0-9a-fA-F]{6}$" }
         bgOverlayOpacity: { type: integer, minimum: 0, maximum: 100 }
+        bgScrimEnabled: { type: boolean }
+        bgScrimOpacity: { type: integer, minimum: 0, maximum: 100 }
         bgGradientFrom: { type: string, nullable: true, pattern: "^#[0-9a-fA-F]{6}$" }
         bgGradientTo: { type: string, nullable: true, pattern: "^#[0-9a-fA-F]{6}$" }
         bgGradientAngle: { type: integer, minimum: 0, maximum: 360 }

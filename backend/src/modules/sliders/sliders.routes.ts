@@ -25,6 +25,7 @@ import {
   BACKGROUND_TYPE_TO_PRISMA,
   NAVIGATION_THEME_TO_PRISMA,
   WIDTH_MODE_TO_PRISMA,
+  IMAGE_FIT_TO_PRISMA,
   heightModeToPrisma,
 } from "./lib/enum-maps";
 import {
@@ -56,7 +57,7 @@ async function assertImageMedia(app: FastifyInstance, mediaId: string): Promise<
 }
 
 /** Slayt detay/liste sorgularında arka plan medyalarını da dönmek için (bkz. portfolio.routes.ts::WITH_RELATIONS). */
-const WITH_SLIDE_RELATIONS = { bgMedia: true, bgVideoPosterMedia: true } as const;
+const WITH_SLIDE_RELATIONS = { bgMedia: true, bgVideoPosterMedia: true, bgTabletMedia: true, bgMobileMedia: true } as const;
 const SLIDES_ORDER_ASC = { orderBy: { order: "asc" as const } };
 
 /** `slug` verilmezse `name`'den üretilir, çakışmada `-2`/`-3`… eki (bkz. `import.worker.ts::findAvailableSlug` AYNI desen). */
@@ -74,11 +75,13 @@ async function findAvailableSliderSlug(app: FastifyInstance, base: string): Prom
  * `@@unique([sliderId, order])` uyarısı (§2.5, db-agent bağlayıcı notu) — ara adımlarda çift
  * `order` çakışmasını önlemek için İKİ AŞAMALI: (1) tüm satırları geçici NEGATİF `order`'a
  * taşı, (2) hedef `0..n-1` değerlerini yaz. `orderedIds` HEDEF sırayı (0. indeks = order 0)
- * temsil eder.
+ * temsil eder. Geçici değerler `-(n+1)…-(2n)` aralığındadır: slayt kopyalama yeni satırı önce
+ * `order: -1` ile oluşturur — geçici değerler `-1`'den başlasaydı ilk satır kopyayla çakışır ve
+ * kopyalama 409 dönerdi (kopyalanan slayt sonuncu değilse her seferinde).
  */
 async function renumberSlides(tx: Prisma.TransactionClient, orderedIds: string[]): Promise<void> {
   for (let i = 0; i < orderedIds.length; i++) {
-    await tx.slide.update({ where: { id: orderedIds[i]! }, data: { order: -(i + 1) } });
+    await tx.slide.update({ where: { id: orderedIds[i]! }, data: { order: -(orderedIds.length + i + 1) } });
   }
   for (let i = 0; i < orderedIds.length; i++) {
     await tx.slide.update({ where: { id: orderedIds[i]! }, data: { order: i } });
@@ -109,6 +112,7 @@ function buildSliderSettingsData(body: z.infer<typeof UpdateSliderRequestSchema>
   if (body.mobileAspectRatioWidth !== undefined) data.mobileAspectRatioWidth = body.mobileAspectRatioWidth;
   if (body.mobileAspectRatioHeight !== undefined) data.mobileAspectRatioHeight = body.mobileAspectRatioHeight;
   if (body.widthMode !== undefined) data.widthMode = WIDTH_MODE_TO_PRISMA[body.widthMode];
+  if (body.imageFit !== undefined) data.imageFit = IMAGE_FIT_TO_PRISMA[body.imageFit];
   if (body.showArrows !== undefined) data.showArrows = body.showArrows;
   if (body.showBullets !== undefined) data.showBullets = body.showBullets;
   if (body.showProgressBar !== undefined) data.showProgressBar = body.showProgressBar;
@@ -129,8 +133,16 @@ function buildSlideWriteData(body: SlideWriteBody): Record<string, unknown> {
   if (body.bgVideoPosterMediaId !== undefined) data.bgVideoPosterMediaId = body.bgVideoPosterMediaId;
   if (body.bgPositionX !== undefined) data.bgPositionX = body.bgPositionX;
   if (body.bgPositionY !== undefined) data.bgPositionY = body.bgPositionY;
+  if (body.bgTabletMediaId !== undefined) data.bgTabletMediaId = body.bgTabletMediaId;
+  if (body.bgMobileMediaId !== undefined) data.bgMobileMediaId = body.bgMobileMediaId;
+  if (body.bgTabletPositionX !== undefined) data.bgTabletPositionX = body.bgTabletPositionX;
+  if (body.bgTabletPositionY !== undefined) data.bgTabletPositionY = body.bgTabletPositionY;
+  if (body.bgMobilePositionX !== undefined) data.bgMobilePositionX = body.bgMobilePositionX;
+  if (body.bgMobilePositionY !== undefined) data.bgMobilePositionY = body.bgMobilePositionY;
   if (body.bgOverlayColor !== undefined) data.bgOverlayColor = body.bgOverlayColor;
   if (body.bgOverlayOpacity !== undefined) data.bgOverlayOpacity = body.bgOverlayOpacity;
+  if (body.bgScrimEnabled !== undefined) data.bgScrimEnabled = body.bgScrimEnabled;
+  if (body.bgScrimOpacity !== undefined) data.bgScrimOpacity = body.bgScrimOpacity;
   if (body.bgGradientFrom !== undefined) data.bgGradientFrom = body.bgGradientFrom;
   if (body.bgGradientTo !== undefined) data.bgGradientTo = body.bgGradientTo;
   if (body.bgGradientAngle !== undefined) data.bgGradientAngle = body.bgGradientAngle;
@@ -422,6 +434,7 @@ export async function adminSlidersRoutes(app: FastifyInstance) {
             mobileAspectRatioWidth: source.mobileAspectRatioWidth,
             mobileAspectRatioHeight: source.mobileAspectRatioHeight,
             widthMode: source.widthMode,
+            imageFit: source.imageFit,
             showArrows: source.showArrows,
             showBullets: source.showBullets,
             showProgressBar: source.showProgressBar,
@@ -443,8 +456,16 @@ export async function adminSlidersRoutes(app: FastifyInstance) {
               bgVideoPosterMediaId: slide.bgVideoPosterMediaId,
               bgPositionX: slide.bgPositionX,
               bgPositionY: slide.bgPositionY,
+              bgTabletMediaId: slide.bgTabletMediaId,
+              bgMobileMediaId: slide.bgMobileMediaId,
+              bgTabletPositionX: slide.bgTabletPositionX,
+              bgTabletPositionY: slide.bgTabletPositionY,
+              bgMobilePositionX: slide.bgMobilePositionX,
+              bgMobilePositionY: slide.bgMobilePositionY,
               bgOverlayColor: slide.bgOverlayColor,
               bgOverlayOpacity: slide.bgOverlayOpacity,
+              bgScrimEnabled: slide.bgScrimEnabled,
+              bgScrimOpacity: slide.bgScrimOpacity,
               bgGradientFrom: slide.bgGradientFrom,
               bgGradientTo: slide.bgGradientTo,
               bgGradientAngle: slide.bgGradientAngle,
@@ -507,6 +528,8 @@ export async function adminSlidersRoutes(app: FastifyInstance) {
 
       if (rest.bgMediaId) await assertImageMedia(app, rest.bgMediaId);
       if (rest.bgVideoPosterMediaId) await assertImageMedia(app, rest.bgVideoPosterMediaId);
+      if (rest.bgTabletMediaId) await assertImageMedia(app, rest.bgTabletMediaId);
+      if (rest.bgMobileMediaId) await assertImageMedia(app, rest.bgMobileMediaId);
 
       const currentCount = await app.prisma.slide.count({ where: { sliderId: slider.id } });
       if (currentCount >= MAX_SLIDES_PER_SLIDER) {
@@ -611,6 +634,8 @@ export async function adminSlidersRoutes(app: FastifyInstance) {
 
       if (rest.bgMediaId) await assertImageMedia(app, rest.bgMediaId);
       if (rest.bgVideoPosterMediaId) await assertImageMedia(app, rest.bgVideoPosterMediaId);
+      if (rest.bgTabletMediaId) await assertImageMedia(app, rest.bgTabletMediaId);
+      if (rest.bgMobileMediaId) await assertImageMedia(app, rest.bgMobileMediaId);
 
       const data = buildSlideWriteData(rest);
       if (parsedLayers !== undefined) data.layers = parsedLayers as unknown as Prisma.InputJsonValue;
@@ -706,8 +731,16 @@ export async function adminSlidersRoutes(app: FastifyInstance) {
             bgVideoPosterMediaId: existing.bgVideoPosterMediaId,
             bgPositionX: existing.bgPositionX,
             bgPositionY: existing.bgPositionY,
+            bgTabletMediaId: existing.bgTabletMediaId,
+            bgMobileMediaId: existing.bgMobileMediaId,
+            bgTabletPositionX: existing.bgTabletPositionX,
+            bgTabletPositionY: existing.bgTabletPositionY,
+            bgMobilePositionX: existing.bgMobilePositionX,
+            bgMobilePositionY: existing.bgMobilePositionY,
             bgOverlayColor: existing.bgOverlayColor,
             bgOverlayOpacity: existing.bgOverlayOpacity,
+            bgScrimEnabled: existing.bgScrimEnabled,
+            bgScrimOpacity: existing.bgScrimOpacity,
             bgGradientFrom: existing.bgGradientFrom,
             bgGradientTo: existing.bgGradientTo,
             bgGradientAngle: existing.bgGradientAngle,

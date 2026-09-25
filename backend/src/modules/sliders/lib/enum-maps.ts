@@ -4,6 +4,7 @@ import type {
   SlideBackgroundType as PrismaSlideBackgroundType,
   SliderNavigationTheme as PrismaSliderNavigationTheme,
   SliderWidthMode as PrismaSliderWidthMode,
+  SliderImageFit as PrismaSliderImageFit,
 } from "@prisma/client";
 import type {
   SliderTransitionEffect,
@@ -11,6 +12,7 @@ import type {
   SlideBackgroundType,
   SliderNavigationTheme,
   SliderWidthMode,
+  SliderImageFit,
 } from "../../../schemas/entities";
 
 /**
@@ -71,6 +73,15 @@ export const WIDTH_MODE_TO_PRISMA: Record<SliderWidthMode, PrismaSliderWidthMode
 export const WIDTH_MODE_FROM_PRISMA: Record<PrismaSliderWidthMode, SliderWidthMode> = {
   FULL_WIDTH: "full-width",
   BOXED: "boxed",
+};
+
+export const IMAGE_FIT_TO_PRISMA: Record<SliderImageFit, PrismaSliderImageFit> = {
+  cover: "COVER",
+  contain: "CONTAIN",
+};
+export const IMAGE_FIT_FROM_PRISMA: Record<PrismaSliderImageFit, SliderImageFit> = {
+  COVER: "cover",
+  CONTAIN: "contain",
 };
 
 export function heightModeToPrisma(value: SliderHeightMode | null | undefined): PrismaSliderHeightMode | null | undefined {

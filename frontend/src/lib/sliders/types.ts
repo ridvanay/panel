@@ -18,6 +18,13 @@ export type SliderHeightMode = "full-screen" | "custom-px" | "aspect-ratio";
  */
 export type SliderWidthMode = "full-width" | "boxed";
 
+/**
+ * Arka plan görseli sığdırma. `cover` = kutuyu doldurur, taşan kırpılır (varsayılan, eski TEK
+ * davranış). `contain` = görselin tamamı görünür; slider yüksekliği ilk slaytın o cihazdaki
+ * görselinin oranından türetilir (bkz. `components/site/advanced-slider/background.ts`).
+ */
+export type SliderImageFit = "cover" | "contain";
+
 /** Düz renk için AYRI tip YOK — `gradient` ile `bgGradientFrom == bgGradientTo` verilir. */
 export type SlideBackgroundType = "image" | "video" | "gradient";
 
@@ -92,6 +99,8 @@ export interface SliderLayerAnimation {
   delayMs: number;
   durationMs: number;
   easing?: "linear" | "ease-out" | "ease-in-out" | "spring";
+  /** Girişten sonra hafif, sürekli yukarı-aşağı süzülme — yalnızca transform, reduced-motion'da kapalı. */
+  float?: boolean;
 }
 
 /** `content` BİLİNÇLİ OLARAK override EDİLEMEZ (v1 sınırı) — bkz. architect §2.4. */
@@ -114,12 +123,18 @@ interface SliderLayerBase {
   position: SliderLayerPosition;
   style: SliderLayerStyle;
   animation: SliderLayerAnimation;
+  /** Masaüstünde (≥1024px) gizle — tablet/mobil gizleme `responsive.<cihaz>.hidden`'dadır. */
+  hiddenOnDesktop?: boolean;
   responsive?: SliderLayerResponsive;
 }
 
 export interface HeadingLayerContent {
   text: string;
   level?: 1 | 2 | 3;
+  /** İki renkli başlık — aynı başlık etiketinin içinde `<span>` olarak render edilir. */
+  accentText?: string;
+  accentColor?: string;
+  accentOnNewLine?: boolean;
 }
 export interface TextLayerContent {
   text: string;
@@ -159,8 +174,19 @@ export interface Slide {
   bgVideoPosterMedia: Media | null;
   bgPositionX: number;
   bgPositionY: number;
+  /** Cihaza göre arka plan — `null` → yedek: tablet → masaüstü; mobil → tablet → masaüstü. */
+  bgTabletMedia: Media | null;
+  bgMobileMedia: Media | null;
+  /** Cihaza göre odak noktası — `null` → masaüstü değeri. */
+  bgTabletPositionX: number | null;
+  bgTabletPositionY: number | null;
+  bgMobilePositionX: number | null;
+  bgMobilePositionY: number | null;
   bgOverlayColor: string | null;
   bgOverlayOpacity: number;
+  /** Soldan okunabilirlik gradyanı (varsayılan kapalı; eskiden kodda sabitti). */
+  bgScrimEnabled: boolean;
+  bgScrimOpacity: number;
   bgGradientFrom: string | null;
   bgGradientTo: string | null;
   bgGradientAngle: number;
@@ -194,6 +220,7 @@ export interface SliderSettings {
   mobileAspectRatioWidth?: number | null;
   mobileAspectRatioHeight?: number | null;
   widthMode: SliderWidthMode;
+  imageFit: SliderImageFit;
   showArrows: boolean;
   showBullets: boolean;
   showProgressBar: boolean;
@@ -261,8 +288,16 @@ export interface UpdateSlideRequest {
   bgVideoPosterMediaId?: string | null;
   bgPositionX?: number;
   bgPositionY?: number;
+  bgTabletMediaId?: string | null;
+  bgMobileMediaId?: string | null;
+  bgTabletPositionX?: number | null;
+  bgTabletPositionY?: number | null;
+  bgMobilePositionX?: number | null;
+  bgMobilePositionY?: number | null;
   bgOverlayColor?: string | null;
   bgOverlayOpacity?: number;
+  bgScrimEnabled?: boolean;
+  bgScrimOpacity?: number;
   bgGradientFrom?: string | null;
   bgGradientTo?: string | null;
   bgGradientAngle?: number;

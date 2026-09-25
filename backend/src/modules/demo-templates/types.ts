@@ -443,6 +443,8 @@ export interface DemoTemplateDefinition {
       bgPositionY: number;
       bgOverlayColor: string | null;
       bgOverlayOpacity: number;
+      /** Soldan okunabilirlik gradyanı — verilmezse kapalı (bkz. schema.prisma `Slide.bgScrimEnabled`). */
+      bgScrimEnabled?: boolean;
       bgGradientFrom: string | null;
       bgGradientTo: string | null;
       bgGradientAngle: number;

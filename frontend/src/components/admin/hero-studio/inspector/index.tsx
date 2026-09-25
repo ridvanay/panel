@@ -45,14 +45,20 @@ export function HeroStudioInspector({
 
         <TabsContent value="slide" className="pt-4">
           {slide ? (
-            <SlideInspectorTab slide={slide} onUpdate={onUpdateSlide} />
+            <SlideInspectorTab slide={slide} device={device} onUpdate={onUpdateSlide} />
           ) : (
             <p className="text-sm text-foreground/50">Düzenlemek için bir slayt seçin.</p>
           )}
         </TabsContent>
 
         <TabsContent value="layer" className="pt-4">
-          <LayerInspectorTab layer={layer} device={device} onUpdateLayer={onUpdateLayer} onDeleteLayer={onDeleteLayer} />
+          <LayerInspectorTab
+            layer={layer}
+            device={device}
+            h1Count={slider.slides.flatMap((s) => s.layers).filter((l) => l.type === "heading" && l.content.level === 1).length}
+            onUpdateLayer={onUpdateLayer}
+            onDeleteLayer={onDeleteLayer}
+          />
         </TabsContent>
 
         <TabsContent value="animation" className="pt-4">

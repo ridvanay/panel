@@ -383,11 +383,10 @@ test.describe("Gelişmiş Slider — page-builder entegrasyonu + public render",
       await expect(page.locator(".advanced-slider")).toBeVisible({ timeout: 15_000 });
       await expect(page.getByRole("button", { name: "1. slayta git" })).toHaveAttribute("aria-current", "true");
 
-      // Fix 3 (`.claude/architect-scope-advanced-slider.md` — arka planı okunaklı kılan gradyan)
-      // — `bgType: "image"` olan (bu senaryodaki tek slayt, 1. slayt) HER ZAMAN render ediliyor;
-      // `bgType: "gradient"` olan 2. slaytta (varsayılan, `createSlide` `bgType` GÖNDERMEDİĞİ için)
-      // BULUNMUYOR — tam olarak 1 tane.
-      await expect(page.locator(".advanced-slider .bg-gradient-to-r")).toHaveCount(1);
+      // Okunabilirlik gradyanı artık slayt ayarıdır (`bgScrimEnabled`, varsayılan KAPALI) — eskiden
+      // görselli her slayta kodda sabit uygulanan `bg-gradient-to-r` katmanı HİÇ render edilmez.
+      await expect(page.locator(".advanced-slider .bg-gradient-to-r")).toHaveCount(0);
+      await expect(page.locator(".advanced-slider [style*='linear-gradient(to right']")).toHaveCount(0);
 
       // Ken Burns yok — arka plan görselinin sarmalayıcısında zaman içinde ölçek DEĞİŞMİYOR.
       const bgWrapper = page.locator(".advanced-slider img").first().locator("xpath=ancestor::div[1]");

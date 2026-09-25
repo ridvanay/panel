@@ -756,6 +756,8 @@ export const MODERN_ARCHITECTURE_TEMPLATE: DemoTemplateDefinition = {
         bgPositionY: 50,
         bgOverlayColor: "#1F2124",
         bgOverlayOpacity: 58,
+        // Tasarım, eskiden kodda sabit uygulanan soldan gradyanla yapıldı — şablon görünümü korunur.
+        bgScrimEnabled: true,
         bgGradientFrom: null,
         bgGradientTo: null,
         bgGradientAngle: 0,
@@ -779,6 +781,8 @@ export const MODERN_ARCHITECTURE_TEMPLATE: DemoTemplateDefinition = {
         bgPositionY: 50,
         bgOverlayColor: "#1F2124",
         bgOverlayOpacity: 58,
+        // Tasarım, eskiden kodda sabit uygulanan soldan gradyanla yapıldı — şablon görünümü korunur.
+        bgScrimEnabled: true,
         bgGradientFrom: null,
         bgGradientTo: null,
         bgGradientAngle: 0,
@@ -802,6 +806,8 @@ export const MODERN_ARCHITECTURE_TEMPLATE: DemoTemplateDefinition = {
         bgPositionY: 50,
         bgOverlayColor: "#1F2124",
         bgOverlayOpacity: 58,
+        // Tasarım, eskiden kodda sabit uygulanan soldan gradyanla yapıldı — şablon görünümü korunur.
+        bgScrimEnabled: true,
         bgGradientFrom: null,
         bgGradientTo: null,
         bgGradientAngle: 0,

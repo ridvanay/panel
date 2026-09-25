@@ -738,6 +738,7 @@ async function writeTemplateInTransaction(
           bgPositionY: slide.bgPositionY,
           bgOverlayColor: slide.bgOverlayColor,
           bgOverlayOpacity: slide.bgOverlayOpacity,
+          bgScrimEnabled: slide.bgScrimEnabled ?? false,
           bgGradientFrom: slide.bgGradientFrom,
           bgGradientTo: slide.bgGradientTo,
           bgGradientAngle: slide.bgGradientAngle,

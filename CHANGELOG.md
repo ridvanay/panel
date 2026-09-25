@@ -11,6 +11,39 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
 
 ## [Unreleased]
 
+### Added
+
+- **`feat(slider)`: Hero Studio — cihaza göre görsel, "görselin tamamını göster", katman seçenekleri.**
+  - **Cihaza göre arka plan:** slayta tablet ve mobil görseli (medya kütüphanesinden) eklenebilir;
+    yedek sırası tablet → masaüstü, mobil → tablet → masaüstü. Odak noktası cihaz başına ayarlanır
+    (önizlemeye tıklayarak veya sayıyla); boş bırakılan cihaz bir üsttekinin değerini kullanır.
+    Tarayıcı doğru görseli `<picture>` ile ilk istekte seçer (JS beklemez).
+  - **Görsel sığdırma (slider ayarı):** "Kırp (cover)" (varsayılan, eski davranış) veya "Görselin
+    tamamını göster". İkincisinde slider yüksekliği ilk slaytın o cihazdaki görselinin oranından
+    gelir (SSR'da CSS ile — kayma yok); katmanlar dar ekranda alt alta dizilmez, görsele göre
+    konumlanır.
+  - **Katmanlar:** masaüstü/tablet/mobil için ayrı görünürlük anahtarları (CSS ile uygulanır, SSR
+    HTML'i baştan doğru); "hafif süzülme" animasyonu (giriş bittikten sonra, `prefers-reduced-
+    motion`'da kapalı, yalnızca transform); başlıkta iki renkli vurgu (aynı `h1`/`h2` içinde) ve
+    birden fazla H1 uyarısı.
+  - **Görseller `next/image` ile** optimize edilir; ilk slayt öncelikli (`eager` +
+    `fetchpriority=high`), diğerleri gecikmeli yüklenir.
+  - **Şema:** migration `20260927090000_add_slider_hero_options` — `sliders.imageFit`,
+    `slides.bgTabletMediaId/bgMobileMediaId`, cihaz odak noktaları, `bgScrimEnabled/Opacity`. Yalnızca
+    ekleme; metin/dil alanı yok.
+
+### Fixed
+
+- **`fix(slider)`: Görselli slaytlardaki sabit gri karartma kaldırıldı.** Kodda her görselli slayta
+  koşulsuz uygulanan soldan koyu gradyan (siyah %70 → %40 → 0) admin'den kapatılamıyor ve açık
+  renkli banner'ları griye boğuyordu; admin önizlemesinde de görünmüyordu. Artık slayt ayarı
+  ("Soldan okunabilirlik gradyanı", koyuluk ayarlı) ve **varsayılan kapalı — mevcut slaytlarda da
+  kapalı** (kullanıcı kararı). Düz karartma (renk + opaklık) aynen duruyor, "Karartma" bölümünde
+  açık/kapalı anahtarıyla. Demo şablonlarının görselli slaytları tasarımlarını korumak için gradyan
+  açık gelir.
+- **`fix(slider)`: Slayt kopyalama 409 dönüyordu.** Kopyalanan slayt son sırada değilse sıra
+  numaralarının geçici değeri kopyanın geçici değeriyle çakışıyordu.
+
 ### Fixed
 
 - **`fix(backend)`: Art arda yenilemede kırılan logo/görseller ve önbelleğe giren 404'ler.**

@@ -25,6 +25,25 @@ function buttonLayer(id: string, href: string) {
 }
 
 describe("parseSlideLayers — SlideLayersSchema/lib/layers.ts", () => {
+  it("hero seçenekleri: masaüstünde gizle, hafif süzülme ve iki renkli başlık kabul edilir", () => {
+    const [layer] = parseSlideLayers([
+      headingLayer("h1", {
+        content: { text: "Online Doktor", level: 1, accentText: "Görüşmesi", accentColor: "#008c96", accentOnNewLine: true },
+        animation: { inEffect: "fade-up", delayMs: 200, durationMs: 700, float: true },
+        hiddenOnDesktop: true,
+      }),
+    ]);
+    expect(layer).toMatchObject({
+      hiddenOnDesktop: true,
+      animation: { float: true },
+      content: { accentText: "Görüşmesi", accentColor: "#008c96", accentOnNewLine: true },
+    });
+  });
+
+  it("geçersiz vurgu rengi (hex değil) 422 ile reddedilir", () => {
+    expect(() => parseSlideLayers([headingLayer("h1", { content: { text: "A", accentText: "B", accentColor: "red" } })])).toThrow(ValidationError);
+  });
+
   it("accepts a well-formed single-layer array", () => {
     const result = parseSlideLayers([headingLayer("l1")]);
     expect(result).toHaveLength(1);

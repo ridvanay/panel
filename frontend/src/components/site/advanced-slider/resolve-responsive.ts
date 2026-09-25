@@ -58,7 +58,7 @@ function mergeAnimation(base: SliderLayerAnimation, override?: Partial<SliderLay
  * seviyesinde SIĞ birleştirilir (`content` HİÇBİR ZAMAN override edilmez).
  */
 export function resolveLayerForDevice(layer: SliderLayer, device: SliderViewportDevice): ResolvedSliderLayer {
-  if (device === "desktop") return { ...layer, hidden: false };
+  if (device === "desktop") return { ...layer, hidden: layer.hiddenOnDesktop ?? false };
 
   const tabletOverride = layer.responsive?.tablet;
   const tabletPosition = mergePosition(layer.position, tabletOverride?.position);

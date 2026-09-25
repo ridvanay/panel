@@ -9,9 +9,15 @@ import type { Slide, Slider, SliderLayer } from "@/lib/sliders/types";
 import { SLIDER_BUTTON_SIZE_CLASS, SLIDER_BUTTON_VARIANT_CLASS } from "@/lib/sliders/design-tokens";
 import { ORIGIN_PERCENT, IN_EFFECT_VARIANTS, buildLayerContentStyle, buildLayerTransition } from "@/lib/sliders/layer-render";
 import { isLayerHiddenOnDevice, patchLayerGroup, resolveGroupForEditing } from "./layer-mutations";
+import { containAspectRatios, resolveSlideBackgrounds, scrimBackground } from "@/components/site/advanced-slider/background";
 
 /** §4.3 ui-designer — admin tuvali stage'e SIĞDIRILMIŞ bir ÖNİZLEMEDİR, gerçek `100svh` DEĞİL. */
 function canvasBoxStyle(slider: Slider, device: DeviceMode): React.CSSProperties {
+  // "Görselin tamamını göster" — public render ile AYNI kural: ilk (aktif) slaytın o cihazdaki görsel oranı.
+  if (slider.imageFit === "contain") {
+    const ratio = containAspectRatios(slider.slides.find((s) => s.isActive) ?? slider.slides[0])[device];
+    if (ratio) return { aspectRatio: ratio, maxHeight: "70vh" };
+  }
   const useMobile = device === "mobile" && slider.mobileHeightMode != null;
   const mode = useMobile ? slider.mobileHeightMode! : slider.heightMode;
   const heightPx = useMobile ? slider.mobileHeightPx : slider.heightPx;
@@ -31,15 +37,17 @@ function canvasWidthClass(device: DeviceMode) {
   );
 }
 
-function SlideBackgroundPreview({ slide }: { slide: Slide }) {
-  if (slide.bgType === "image" && slide.bgMedia) {
+function SlideBackgroundPreview({ slide, device, fit }: { slide: Slide; device: DeviceMode; fit: Slider["imageFit"] }) {
+  // Seçili cihazın görseli ve odak noktası — public `<picture>` ile AYNI yedek zinciri (background.ts).
+  const background = slide.bgType === "image" ? resolveSlideBackgrounds(slide)[device] : null;
+  if (background) {
     return (
       // eslint-disable-next-line @next/next/no-img-element -- admin canvas önizlemesi, next/image gerekmez
       <img
-        src={slide.bgMedia.url}
+        src={background.media.url}
         alt=""
-        className="absolute inset-0 h-full w-full object-cover"
-        style={{ objectPosition: `${slide.bgPositionX}% ${slide.bgPositionY}%` }}
+        className={cn("absolute inset-0 h-full w-full", fit === "contain" ? "object-contain" : "object-cover")}
+        style={{ objectPosition: `${background.x}% ${background.y}%` }}
       />
     );
   }
@@ -69,9 +77,16 @@ function LayerContentBody({ layer }: { layer: SliderLayer }) {
   const contentStyle = buildLayerContentStyle(layer.style);
   if (layer.type === "heading") {
     const Tag = (`h${layer.content.level ?? 2}`) as "h1" | "h2" | "h3";
+    const accent = layer.content.accentText?.trim();
     return (
       <Tag className="m-0" style={contentStyle}>
         {layer.content.text || "(boş başlık)"}
+        {accent && (
+          <>
+            {layer.content.accentOnNewLine ? <br /> : " "}
+            <span style={{ color: layer.content.accentColor }}>{accent}</span>
+          </>
+        )}
       </Tag>
     );
   }
@@ -351,7 +366,10 @@ export function HeroCanvas({
             onSelectLayer(null);
           }}
         >
-          <SlideBackgroundPreview slide={slide} />
+          <SlideBackgroundPreview slide={slide} device={device} fit={slider.imageFit} />
+          {slide.bgType === "image" && slide.bgScrimEnabled && slide.bgScrimOpacity > 0 && (
+            <div className="absolute inset-0" style={{ background: scrimBackground(slide.bgScrimOpacity) }} />
+          )}
           {slide.bgOverlayColor && slide.bgOverlayOpacity > 0 && (
             <div
               className="absolute inset-0"
