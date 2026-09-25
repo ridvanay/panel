@@ -11,6 +11,16 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
 
 ## [Unreleased]
 
+### Changed
+
+- **`feat(site)`: Header açılır menüsü yeniden tasarlandı.** Panel header'ın ~12 px altında, düğmeye
+  küçük bir okla bağlı; beyaz, 18 px köşe, ince kenarlık, yumuşak gölge; üstte üst menü öğesinin adı.
+  4'ten fazla alt öğede 2 kolon. Uzmanlığa giden alt öğelerde (`/specialties/<slug>` veya
+  `/doctors?specialty=<slug>`) 42 px yuvarlak uzmanlık görseli, görsel yoksa uzmanlık ikonu. Alt
+  bölümde "View all …" (üst öğenin kendi linki varsa) ve uzmanlık menüsünde "Find a doctor". Açıkken
+  düğme vurgulu, ok döner; ~150 ms geçiş, `prefers-reduced-motion`'da animasyonsuz. Klavye erişimi ve
+  mobil panel değişmedi; menü öğeleri Admin → Navigasyon'dan gelmeye devam eder.
+
 ### Documentation
 
 - **`docs(infra)`: Canlı ortam Nginx `/api/` + `TRUST_PROXY` yapısı belgelendi.** `X-Forwarded-For`

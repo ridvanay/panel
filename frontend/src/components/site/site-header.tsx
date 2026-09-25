@@ -5,7 +5,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   CalendarClock,
-  ChevronDown,
   Heart,
   LogOut,
   Menu,
@@ -27,6 +26,7 @@ import {
 import { Sheet, SheetClose, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Accordion, AccordionItem, AccordionPanel, AccordionTrigger } from "@/components/ui/accordion";
 import { LanguageSwitcher } from "@/components/site/language-switcher";
+import { NavDropdown, type NavSpecialty } from "@/components/site/nav-dropdown";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
 import { formatSiteString } from "@/lib/i18n/site-dictionaries";
 import type { NavStrings } from "@/lib/i18n/site-dictionaries";
@@ -97,6 +97,11 @@ interface SiteHeaderProps {
    * verilir) etkilenmez.
    */
   dict?: NavStrings;
+  /**
+   * Açılır menüde uzmanlık sayfasına giden alt öğelerin görseli/ikonu için (bkz. `nav-dropdown.tsx`).
+   * Verilmezse (admin önizleme, testler) uzmanlık öğeleri varsayılan ikonla gösterilir.
+   */
+  navSpecialties?: NavSpecialty[];
 }
 
 /**
@@ -272,6 +277,7 @@ export function SiteHeader({
   headerStickyBlurEnabled = true,
   telehealthModuleEnabled = false,
   dict = legacyFallbackNavStrings,
+  navSpecialties = [],
 }: SiteHeaderProps) {
   // `useCartOptional`: bu bileşen `admin/navigation/page.tsx`'teki canlı önizlemede
   // `CartProvider` OLMADAN da render edilir (admin layout'unda sepet KASTEN yok) — o durumda
@@ -366,40 +372,17 @@ export function SiteHeader({
             if (link.children.length > 0) {
               const hasActiveChild = link.children.some((child) => isNavLinkActive(pathname, localize(child.href)));
               return (
-                <DropdownMenu key={link.id}>
-                  <DropdownMenuTrigger
-                    render={
-                      <button
-                        type="button"
-                        aria-current={hasActiveChild ? "page" : undefined}
-                        className={cn(
-                          "flex items-center gap-1 outline-none",
-                          hasActiveChild ? NAV_LINK_ACTIVE_TEXT_CLASS : NAV_LINK_TEXT_CLASSES
-                        )}
-                      />
-                    }
-                  >
-                    {link.label}
-                    <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
-                  </DropdownMenuTrigger>
-                  {/* Genişlik tetikleyiciye (`--anchor-width`) değil İÇERİĞE göre: kısa öğeler tek satırda
-                      kalır, uzunlar en fazla 22rem'de 2 satıra kırılır (`line-clamp-2`, tam metin `title`da).
-                      Sağ kenara sığmazsa Base UI'nin çarpışma önlemesi menüyü sola kaydırır. */}
-                  <DropdownMenuContent
-                    align="start"
-                    className="w-max min-w-[max(8rem,var(--anchor-width))] max-w-[min(22rem,var(--available-width))]"
-                  >
-                    {link.children.map((child) => (
-                      <DropdownMenuItem
-                        key={child.id}
-                        className="items-start py-1.5 whitespace-normal"
-                        render={<Link href={localize(child.href)} title={child.label} />}
-                      >
-                        <span className="line-clamp-2">{child.label}</span>
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <NavDropdown
+                  key={link.id}
+                  link={link}
+                  localize={localize}
+                  active={hasActiveChild}
+                  specialties={navSpecialties}
+                  viewAllLabel={formatSiteString(dict.dropdownViewAll, { label: link.label.toLocaleLowerCase(activeLocale?.code ?? "en") })}
+                  findDoctorLabel={dict.dropdownFindDoctor}
+                  triggerClassName={NAV_LINK_TEXT_CLASSES}
+                  activeTriggerClassName={NAV_LINK_ACTIVE_TEXT_CLASS}
+                />
               );
             }
 

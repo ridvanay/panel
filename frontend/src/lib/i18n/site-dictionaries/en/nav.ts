@@ -27,6 +27,9 @@ export const navStrings = {
   languageHeading: "Language",
   wishlist: "Wishlist",
   cart: "Cart",
+  /** Masaüstü açılır menünün alt bölümü — `{label}` üst menü öğesinin adı (aktif dilde küçük harfle). */
+  dropdownViewAll: "View all {label}",
+  dropdownFindDoctor: "Find a doctor",
 } as const;
 
 export type NavStrings = Record<keyof typeof navStrings, string>;

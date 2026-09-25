@@ -18,4 +18,6 @@ export const navStrings: NavStrings = {
   languageHeading: "Dil",
   wishlist: "Favorilerim",
   cart: "Sepet",
+  dropdownViewAll: "Tüm {label}",
+  dropdownFindDoctor: "Doktor bulun",
 };

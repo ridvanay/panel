@@ -8,6 +8,7 @@ import { fetchNavigationConfigServer } from "@/lib/api/server-navigation";
 import { fetchSiteAppearanceServer } from "@/lib/api/server-appearance";
 import { fetchLocalesServer } from "@/lib/api/server-locales";
 import { isModuleEnabledServer } from "@/lib/api/server-modules";
+import { fetchSpecialtiesServer } from "@/lib/api/server-telehealth";
 import { getSiteDictionary } from "@/lib/i18n/site-dictionaries";
 import { CartProvider } from "@/context/cart-context";
 import { WishlistProvider } from "@/context/wishlist-context";
@@ -61,6 +62,7 @@ export default async function SiteLayout({
     isModuleEnabledServer("telehealth"),
     getSiteDictionary(lang),
   ]);
+  const navSpecialties = telehealthModuleEnabled ? await fetchSpecialtiesServer() : [];
 
   const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? activeLocale.code;
 
@@ -89,6 +91,8 @@ export default async function SiteLayout({
             stickyHeaderEnabled={appearance.stickyHeaderEnabled}
             headerStickyBlurEnabled={appearance.headerStickyBlurEnabled}
             telehealthModuleEnabled={telehealthModuleEnabled}
+            // Açılır menüde uzmanlık görseli/ikonu — yalnızca menünün kullandığı alanlar.
+            navSpecialties={navSpecialties.map(({ slug, name, icon, imageUrl }) => ({ slug, name, icon, imageUrl }))}
             dict={dict.nav}
           />
           <main className="flex-1">{children}</main>
