@@ -1,4 +1,5 @@
 import type { SocialPlatform } from "@/lib/api/types";
+import type { HomeJourneyContent } from "@/lib/home-page";
 
 // ============================================================================
 // Page-builder hiyerarşik konteyner (container) veri modeli — v3.
@@ -38,7 +39,8 @@ export type ContentBlockType =
   | "team"
   | "advanced-slider"
   | "google-map"
-  | "specialty-cards";
+  | "specialty-cards"
+  | "journey-map";
 
 /** Kanonik konteyner düğümü. */
 export type ContainerNodeType = "container";
@@ -420,8 +422,11 @@ export interface AccordionQAItem {
 }
 
 /** `accordion.layoutStyle` — sabit sınıf tablosuna eşlenir (bkz. `site/blocks/accordion-block.tsx`
- *  `ACCORDION_LAYOUT_CLASSES`, ui-designer §2). `bordered` = bugünkü görünüm, PİKSEL-EŞ. */
-export type AccordionLayoutStyle = "bordered" | "card" | "minimal";
+ *  `ACCORDION_LAYOUT_CLASSES`, ui-designer §2). `bordered` = bugünkü görünüm, PİKSEL-EŞ.
+ *  `spotlight` (2026-10-03, journey-faq-blok turu) — imperiumhealthgroup.com referanslı,
+ *  ortada hap-etiket + giriş metni, kartlarda gradyan dolgu + dönen +/− ikonu, yumuşak
+ *  yükseklik animasyonu. `bordered`/`card`/`minimal` DEĞİŞMEDEN kalır. */
+export type AccordionLayoutStyle = "bordered" | "card" | "minimal" | "spotlight";
 
 /** Akordiyon / SSS — Schema.org FAQPage JSON-LD üretir (bkz. `site/blocks/accordion-block.tsx`). */
 export interface AccordionBlock extends BaseNode {
@@ -431,6 +436,14 @@ export interface AccordionBlock extends BaseNode {
     allowMultipleOpen: boolean;
     /** YENİ, OPSİYONEL — yoksa `layoutStyle ?? "bordered"` bugünkü görünümle piksel-eş davranır. */
     layoutStyle?: AccordionLayoutStyle;
+    /** YENİ, OPSİYONEL — yalnızca `layoutStyle: "spotlight"` kullanır (diğerleri yok sayar).
+     *  Ortadaki hap-etiket metni (ör. "FAQ"). */
+    badge?: string;
+    /** YENİ, OPSİYONEL — yalnızca `spotlight`. Etiketin altındaki kısa açıklama. */
+    intro?: string;
+    /** YENİ, OPSİYONEL — yalnızca `spotlight`. `true` ise İLK soru varsayılan olarak açık gelir
+     *  (`items[].isOpenDefault`'tan BAĞIMSIZ, ayrı bir anahtar — spotlight'a özgü UX kararı). */
+    defaultOpenFirst?: boolean;
   };
 }
 
@@ -604,7 +617,8 @@ export type ContentBlock =
   | TeamBlock
   | AdvancedSliderBlock
   | GoogleMapBlock
-  | SpecialtyCardsBlock;
+  | SpecialtyCardsBlock
+  | JourneyMapBlock;
 
 /**
  * Uzmanlık Kartları — veriyi Uzmanlıklar modülünden (aktif uzmanlıklar, modüldeki sıra) OTOMATİK
@@ -634,6 +648,21 @@ export interface SpecialtyCardsBlock extends BaseNode {
     showDescription: boolean;
     imageShape: SpecialtyCardsImageShape;
   };
+}
+
+/**
+ * "Hasta Yolculuğu / Dünya Haritası" (2026-10-03, journey-faq-blok turu) — `home-page` şablonunun
+ * sabit `journey` bölümüyle (`lib/home-page.ts::HomePageContent.journey`) AYNI veri şeklini
+ * (`HomeJourneyContent`) paylaşan, sayfa oluşturucuya EKLENEBİLİR/SİLİNEBİLİR bir blok hâli —
+ * görsel/animasyon kodu `components/site/home/home-journey.tsx::HomeJourney`'DE TEKTİR, bu blok
+ * onu sarmalar (`site/blocks/journey-map-block.tsx`). Sınırlar `lib/home-page.ts::
+ * HOME_MIN_JOURNEY_STEPS`/`HOME_MAX_JOURNEY_STEPS`/`HOME_MAX_JOURNEY_COUNTRIES` İLE AYNI
+ * sabitlerdir (buradan YENİDEN TANIMLANMAZ, oradan import edilir) — backend karşılığı
+ * `pages.schemas.ts::JourneyMapBlockSchema` bu üç sayıyla SAYISAL OLARAK BİREBİR AYNI olmalı.
+ */
+export interface JourneyMapBlock extends BaseNode {
+  type: "journey-map";
+  data: HomeJourneyContent;
 }
 
 /** @deprecated v2 adı — yalnızca geçiş sırasında import kırılmasın diye. Yeni kodda `ContentBlock` kullanın. */

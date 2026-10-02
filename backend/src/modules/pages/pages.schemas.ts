@@ -551,7 +551,17 @@ const AccordionBlockDataSchema = z.object({
     )
     .max(ACCORDION_MAX_ITEMS),
   allowMultipleOpen: z.boolean().default(false),
-  layoutStyle: z.enum(["bordered", "card", "minimal"]).optional(),
+  /** `spotlight` (2026-10-03, journey-faq-blok turu) — frontend `AccordionLayoutStyle` İLE AYNI
+   *  dört değer. `bordered`/`card`/`minimal` DEĞİŞMEDEN kalır. */
+  layoutStyle: z.enum(["bordered", "card", "minimal", "spotlight"]).optional(),
+  /** YENİ, OPSİYONEL — yalnızca `layoutStyle: "spotlight"` kullanır. Frontend `AccordionBlock`
+   *  yorumuyla AYNI: ortadaki hap-etiket. `question`/`answer` İLE AYNI desen (düz `z.string()`,
+   *  bu bloğun `aboutText()` helper'ını hiç KULLANMAYAN kendi yerel konvansiyonu). */
+  badge: z.string().trim().max(60).optional(),
+  /** YENİ, OPSİYONEL — yalnızca `spotlight`. Etiketin altındaki kısa açıklama. */
+  intro: z.string().trim().max(300).optional(),
+  /** YENİ, OPSİYONEL — yalnızca `spotlight`. İLK sorunun varsayılan açık gelmesi. */
+  defaultOpenFirst: z.boolean().optional(),
 });
 const AccordionBlockSchema = z.object({
   id: z.string().min(1),
@@ -1206,6 +1216,27 @@ const HomePageBlockSchema = z.object({
   data: HomePageBlockDataSchema,
 });
 
+/**
+ * "Hasta Yolculuğu / Dünya Haritası" (2026-10-03, journey-faq-blok turu) — frontend
+ * `lib/page-builder/types.ts::JourneyMapBlock` İLE BİREBİR aynı şekil. `HomeItemSchema`/
+ * `HomeCountrySchema`/`HOME_MIN_JOURNEY_STEPS`/`HOME_MAX_JOURNEY_STEPS`/
+ * `HOME_MAX_JOURNEY_COUNTRIES` — `home-page` şablonunun `journey` bölümüyle (yukarısı) AYNI
+ * sabitler/alt-şemalar, BURADA YENİDEN TANIMLANMAZ.
+ */
+const JourneyMapBlockDataSchema = z.object({
+  eyebrow: aboutText(120),
+  title: aboutText(200),
+  body: aboutText(600),
+  steps: z.array(HomeItemSchema).min(HOME_MIN_JOURNEY_STEPS).max(HOME_MAX_JOURNEY_STEPS),
+  countries: z.array(HomeCountrySchema).max(HOME_MAX_JOURNEY_COUNTRIES).default([]),
+});
+const JourneyMapBlockSchema = z.object({
+  id: z.string().min(1),
+  type: z.literal("journey-map"),
+  data: JourneyMapBlockDataSchema,
+  reveal: RevealEffectSettingsSchema.optional(),
+});
+
 /* ---------- özyinelemeli düğüm — §5.4 ---------- */
 
 function applySubSchema(schema: z.ZodTypeAny, node: unknown, ctx: z.RefinementCtx): unknown {
@@ -1273,6 +1304,7 @@ const PageNodeSchema: z.ZodType<unknown, z.ZodTypeDef, unknown> = z.record(z.unk
   if (type === "google-map") return applySubSchema(GoogleMapBlockSchema, node, ctx);
   if (type === ABOUT_PAGE_BLOCK_TYPE) return applySubSchema(AboutPageBlockSchema, node, ctx);
   if (type === HOME_PAGE_BLOCK_TYPE) return applySubSchema(HomePageBlockSchema, node, ctx);
+  if (type === "journey-map") return applySubSchema(JourneyMapBlockSchema, node, ctx);
   return node;
 });
 

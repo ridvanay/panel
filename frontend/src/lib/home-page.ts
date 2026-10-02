@@ -52,6 +52,20 @@ export interface HomeCountry {
   label: string;
 }
 
+/**
+ * "Küresel hasta yolculuğu" içeriğinin paylaşılan şekli — `enabled` TAŞIMAZ (o, home şablonunun
+ * bölüm-gizleme sözleşmesidir, sayfa oluşturucu `journey-map` bloğunda anlamsızdır: blok ya
+ * eklidir ya değildir). `components/site/home/home-journey.tsx::HomeJourney` VE
+ * `lib/page-builder/types.ts::JourneyMapBlock` BU TEK şekli paylaşır — kodu/şekli kopyalama.
+ */
+export interface HomeJourneyContent {
+  eyebrow: string;
+  title: string;
+  body: string;
+  steps: HomeItem[];
+  countries: HomeCountry[];
+}
+
 export interface HomePageContent {
   hero: {
     enabled: boolean;
@@ -69,7 +83,7 @@ export interface HomePageContent {
   specialties: { enabled: boolean; eyebrow: string; title: string; viewAllLabel: string; columns: HomeSpecialtyColumns };
   how: { enabled: boolean; eyebrow: string; title: string; steps: HomeItem[] };
   /** "From Across the World to Istanbul" — TrustStrip'in hemen altında, uzmanlıklardan önce. */
-  journey: { enabled: boolean; eyebrow: string; title: string; body: string; steps: HomeItem[]; countries: HomeCountry[] };
+  journey: HomeJourneyContent & { enabled: boolean };
   doctors: { enabled: boolean; eyebrow: string; title: string; ctaLabel: string; count: number };
   closing: { enabled: boolean; title: string; primaryCta: AboutCta; secondaryCta: AboutCta };
 }

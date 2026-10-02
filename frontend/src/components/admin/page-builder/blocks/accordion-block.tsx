@@ -12,6 +12,7 @@ const LAYOUT_STYLE_OPTIONS: { value: AccordionLayoutStyle; label: string }[] = [
   { value: "bordered", label: "Çerçeveli" },
   { value: "card", label: "Kart" },
   { value: "minimal", label: "Minimal" },
+  { value: "spotlight", label: "Öne Çıkan (Spotlight)" },
 ];
 
 export function AccordionBlockEditor({
@@ -75,6 +76,35 @@ export function AccordionBlockEditor({
               onChange={(layoutStyle) => onChange({ ...block, data: { ...block.data, layoutStyle } })}
             />
           </div>
+          {block.data.layoutStyle === "spotlight" && (
+            <div className="space-y-3 rounded-lg border border-border/60 p-3">
+              <Field id={`${block.id}-badge`} label="Hap etiket (ör. FAQ)">
+                {(inputProps) => (
+                  <Input {...inputProps} value={block.data.badge ?? ""} onChange={(e) => onChange({ ...block, data: { ...block.data, badge: e.target.value } })} />
+                )}
+              </Field>
+              <Field id={`${block.id}-intro`} label="Giriş metni">
+                {(inputProps) => (
+                  <Textarea
+                    {...inputProps}
+                    rows={2}
+                    value={block.data.intro ?? ""}
+                    onChange={(e) => onChange({ ...block, data: { ...block.data, intro: e.target.value } })}
+                  />
+                )}
+              </Field>
+              <div className="flex items-center justify-between">
+                <label htmlFor={`${block.id}-default-open-first`} className="text-sm font-medium text-foreground">
+                  İlk soru varsayılan olarak açık gelsin
+                </label>
+                <Switch
+                  id={`${block.id}-default-open-first`}
+                  checked={block.data.defaultOpenFirst ?? false}
+                  onCheckedChange={(defaultOpenFirst) => onChange({ ...block, data: { ...block.data, defaultOpenFirst } })}
+                />
+              </div>
+            </div>
+          )}
           {showMultipleOpenWarning && (
             <div className="flex items-start gap-1.5 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
               <span>

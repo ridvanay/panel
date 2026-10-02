@@ -26,6 +26,7 @@ import {
   GalleryHorizontal,
   MapPin,
   Stethoscope,
+  Globe,
   type LucideIcon,
 } from "lucide-react";
 import { GOOGLE_MAP_DEFAULT_HEIGHT_PX, GOOGLE_MAP_DEFAULT_ZOOM, type ContentBlock, type ContentBlockType } from "./types";
@@ -103,6 +104,12 @@ export const blockRegistry: Record<
     category: "dynamic",
     icon: Stethoscope,
     keywords: ["uzmanlık", "branş", "specialty", "specialties", "tele-sağlık"],
+  },
+  "journey-map": {
+    label: "Hasta Yolculuğu / Dünya Haritası",
+    category: "marketing",
+    icon: Globe,
+    keywords: ["yolculuk", "journey", "harita", "map", "dünya", "istanbul", "hasta"],
   },
 };
 
@@ -251,6 +258,21 @@ export function createBlock(type: PaletteBlockType): ContentBlock {
           columns: 4,
           showDescription: true,
           imageShape: "circle",
+        },
+      };
+    case "journey-map":
+      return {
+        id,
+        type,
+        data: {
+          eyebrow: "Global patient journey",
+          title: "From Across the World to Istanbul",
+          body: "",
+          steps: [
+            { id: newId(), icon: "BadgeCheck", title: "", text: "" },
+            { id: newId(), icon: "BadgeCheck", title: "", text: "" },
+          ],
+          countries: [],
         },
       };
     case "custom-html":

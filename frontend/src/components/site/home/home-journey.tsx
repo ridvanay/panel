@@ -7,7 +7,7 @@ import { Eyebrow } from "@/components/site/about/eyebrow";
 import { aboutContainerClass } from "@/components/site/about/about-buttons";
 import { formatSiteString } from "@/lib/i18n/site-dictionaries";
 import type { AboutIconKey } from "@/lib/about-page";
-import type { HomePageContent } from "@/lib/home-page";
+import type { HomeJourneyContent } from "@/lib/home-page";
 import { cn } from "@/lib/utils";
 
 /** Adımlar arası döngüsel vurgu aralığı (ms) — `prefers-reduced-motion` açıkken hiç çalışmaz. */
@@ -93,8 +93,13 @@ function toPercent(coordinate: number): number {
  * SVG dünya küresi + ülkelerden İstanbul'a çizilen uçuş rotaları. `prefers-reduced-motion` açıkken
  * (framer-motion `useReducedMotion` — `window.matchMedia` sarmalayıcısı) döngü ve çizim animasyonu
  * tamamen kapanır; adımlar/rotalar doğrudan son haliyle görünür, ilk adım sabit vurgulu kalır.
+ *
+ * Paylaşılan bileşen — hem `home-page` şablonunun (`home-page-view.tsx`) sabit bölümü hem
+ * page-builder `journey-map` bloğu (`site/blocks/journey-map-block.tsx`) BU bileşeni kullanır,
+ * koda ikinci bir kopyası YOKTUR. `journey` prop'u `HomeJourneyContent` (paylaşılan şekil,
+ * `enabled` TAŞIMAZ — o çağıranın sorumluluğudur) kabul eder.
  */
-export function HomeJourney({ journey, stepLabel, istanbulLabel }: { journey: HomePageContent["journey"]; stepLabel: string; istanbulLabel: string }) {
+export function HomeJourney({ journey, stepLabel, istanbulLabel }: { journey: HomeJourneyContent; stepLabel: string; istanbulLabel: string }) {
   const sectionRef = useRef<HTMLDivElement>(null);
   const inView = useInView(sectionRef, { once: true, amount: 0.2 });
   const reduceMotion = useReducedMotion();

@@ -29,6 +29,7 @@ import { TeamBlockView } from "./team-block";
 import { AdvancedSliderBlockView } from "./advanced-slider-block";
 import { GoogleMapBlockView } from "./google-map-block";
 import { SpecialtyCardsBlockView } from "./specialty-cards-block";
+import { JourneyMapBlockView } from "./journey-map-block";
 import { HomePageView } from "@/components/site/home/home-page-view";
 import { HOME_PAGE_BLOCK_TYPE } from "@/lib/home-page";
 
@@ -114,6 +115,8 @@ function renderNodeBody(node: PageNode, chrome: BlockChrome, siteContext?: Block
       return <GoogleMapBlockView block={node} chrome={chrome} />;
     case "specialty-cards":
       return <SpecialtyCardsBlockView block={node} chrome={chrome} siteContext={siteContext} />;
+    case "journey-map":
+      return <JourneyMapBlockView block={node} siteContext={siteContext} />;
     case "container":
       return <ContainerBlockView block={node} siteContext={siteContext} />;
     default:

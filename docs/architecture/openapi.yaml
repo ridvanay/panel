@@ -14379,7 +14379,9 @@ components:
         `accordion` · `tabs` · `counter` · `testimonial` · `pricing-table` · `latest-posts` ·
         `contact-form` · `custom-html` · `before-after-slider` · `logo-marquee` · `skill-bar` ·
         `team` · `advanced-slider` · `google-map` · `specialty-cards` (Uzmanlık Kartları — bkz.
-        `SpecialtyCardsBlockData`) · `home-page` ("Anasayfa" şablonu — YALNIZCA tek kök düğüm, bkz.
+        `SpecialtyCardsBlockData`) · `journey-map` (Hasta Yolculuğu / Dünya Haritası — `home-page`
+        şablonunun `journey` bölümüyle AYNI şekil, bkz. `JourneyMapBlockData`) ·
+        `home-page` ("Anasayfa" şablonu — YALNIZCA tek kök düğüm, bkz.
         `HomePageBlockData`) · `about-page` ("Hakkımızda" şablonu — YALNIZCA
         tek kök düğüm olarak, bkz. `AboutPageBlockData`) · **`container`** (kanonik konteyner düğümü,
         §10.19) · `columns` (**deprecated**, salt okuma/geçiş, aşağıya bkz.).
@@ -14440,6 +14442,7 @@ components:
               advanced-slider,
               google-map,
               specialty-cards,
+              journey-map,
               home-page,
               about-page,
               container,
@@ -18794,6 +18797,40 @@ components:
         columns: { type: integer, enum: [3, 4, 6], default: 4, description: "Masaüstü kolon sayısı; mobil 2, tablet 3 sabit." }
         showDescription: { type: boolean, default: true }
         imageShape: { type: string, enum: [circle, square, rounded], default: circle }
+
+    JourneyMapBlockData:
+      type: object
+      description: >
+        `type: "journey-map"` bloğunun `data`'sı (2026-10-03, journey-faq-blok turu) — `home-page`
+        şablonunun `journey` bölümüyle (`HomePageBlockData.journey`) AYNI şekil, `enabled` HARİÇ
+        (blok ya sayfada EKLİDİR ya da DEĞİLDİR, ayrı bir gizleme bayrağı TAŞIMAZ). Görsel/animasyon
+        kodu `components/site/home/home-journey.tsx::HomeJourney`'DE TEKTİR, her iki tüketici de
+        (home şablonu + bu blok) onu paylaşır.
+      required: [eyebrow, title, body, steps]
+      properties:
+        eyebrow: { type: string, maxLength: 120 }
+        title: { type: string, maxLength: 200 }
+        body: { type: string, maxLength: 600 }
+        steps:
+          type: array
+          minItems: 2
+          maxItems: 4
+          items:
+            type: object
+            properties:
+              id: { type: string, maxLength: 64 }
+              icon: { type: string, description: "AboutIconKey — Hakkımızda/Anasayfa şablonlarıyla ORTAK ikon sözlüğü." }
+              title: { type: string, maxLength: 120 }
+              text: { type: string, maxLength: 400 }
+        countries:
+          type: array
+          maxItems: 8
+          default: []
+          items:
+            type: object
+            properties:
+              id: { type: string, maxLength: 64 }
+              label: { type: string, maxLength: 80 }
 
     Specialty:
       type: object
