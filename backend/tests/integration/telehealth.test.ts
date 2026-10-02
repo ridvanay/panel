@@ -583,4 +583,189 @@ describe("telehealth — admin RBAC ve CRUD (§8.4)", () => {
     });
     expect(writeSpecialty.statusCode).toBe(403);
   });
+
+  it("POST /admin/telehealth/doctors — `additionalSpecialtyIds` ile EK uzmanlık ekler; birincil ile ÇAKIŞIRSA 422", async () => {
+    const specialtyA = await app.prisma.specialty.create({
+      data: { name: `Ek-A ${crypto.randomUUID()}`, slug: `ek-a-${crypto.randomUUID()}`, icon: "heart-pulse" },
+    });
+    const specialtyB = await app.prisma.specialty.create({
+      data: { name: `Ek-B ${crypto.randomUUID()}`, slug: `ek-b-${crypto.randomUUID()}`, icon: "brain" },
+    });
+
+    // Çakışma: specialtyId === additionalSpecialtyIds içindeki bir ID — 422.
+    const conflict = await app.inject({
+      method: "POST",
+      url: "/api/v1/admin/telehealth/doctors",
+      headers: authHeader(adminToken),
+      payload: {
+        title: "Dr.",
+        fullName: `Ek Uzmanlık Çakışma ${crypto.randomUUID()}`,
+        bio: "Test.",
+        languages: ["tr"],
+        timeZone: "Europe/Istanbul",
+        sessionDurationMin: 30,
+        sessionPriceCents: 10000,
+        specialtyId: specialtyA.id,
+        additionalSpecialtyIds: [specialtyA.id],
+      },
+    });
+    expect(conflict.statusCode).toBe(422);
+
+    // Geçerli: birincil A, ek B (+ aynı ID iki kez gönderilse bile skipDuplicates sorunsuz yönetir).
+    const create = await app.inject({
+      method: "POST",
+      url: "/api/v1/admin/telehealth/doctors",
+      headers: authHeader(adminToken),
+      payload: {
+        title: "Dr.",
+        fullName: `Ek Uzmanlık Testi ${crypto.randomUUID()}`,
+        bio: "Test.",
+        languages: ["tr"],
+        timeZone: "Europe/Istanbul",
+        sessionDurationMin: 30,
+        sessionPriceCents: 10000,
+        specialtyId: specialtyA.id,
+        additionalSpecialtyIds: [specialtyB.id],
+      },
+    });
+    expect(create.statusCode).toBe(201);
+    const createdBody = create.json().data;
+    expect(createdBody.specialtyId).toBe(specialtyA.id);
+    expect(createdBody.additionalSpecialties).toEqual([
+      expect.objectContaining({ id: specialtyB.id, name: specialtyB.name, slug: specialtyB.slug }),
+    ]);
+
+    // Güncelleme: `additionalSpecialtyIds` GÖNDERİLMEZSE mevcut ek uzmanlıklara DOKUNULMAZ.
+    const patchNoop = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/admin/telehealth/doctors/${createdBody.id}`,
+      headers: authHeader(adminToken),
+      payload: { bio: "Güncellenmiş bio." },
+    });
+    expect(patchNoop.statusCode).toBe(200);
+    expect(patchNoop.json().data.additionalSpecialties).toHaveLength(1);
+
+    // Güncelleme: `additionalSpecialtyIds: []` GÖNDERİLİRSE ek uzmanlıklar TAMAMEN temizlenir
+    // (deleteMany + createMany "tam değiştirme" sözleşmesi).
+    const patchClear = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/admin/telehealth/doctors/${createdBody.id}`,
+      headers: authHeader(adminToken),
+      payload: { additionalSpecialtyIds: [] },
+    });
+    expect(patchClear.statusCode).toBe(200);
+    expect(patchClear.json().data.additionalSpecialties).toEqual([]);
+  });
+});
+
+describe("telehealth — ek uzmanlıklar (DoctorAdditionalSpecialty) listeleme/filtreleme", () => {
+  let app: FastifyInstance;
+
+  beforeAll(async () => {
+    app = await buildTestApp();
+    await resetDatabase(app.prisma);
+    await setTelehealthModuleEnabled(app, true);
+  });
+
+  afterAll(async () => {
+    await resetDatabase(app.prisma);
+    await app.close();
+  });
+
+  it("GET /doctors?specialtySlug= — birincil VEYA ek uzmanlığı eşleşen doktorları döner; ikisi de eşleşse TEK SATIR", async () => {
+    const specialtyPrimary = await app.prisma.specialty.create({
+      data: { name: `Obesity Test ${crypto.randomUUID()}`, slug: `obesity-test-${crypto.randomUUID()}`, icon: "heart-pulse" },
+    });
+    const specialtyExtra = await app.prisma.specialty.create({
+      data: { name: `Oncology Test ${crypto.randomUUID()}`, slug: `oncology-test-${crypto.randomUUID()}`, icon: "brain" },
+    });
+
+    // Doktor 1: birincil=primary, ek=extra (İKİ uzmanlıkta da eşleşir — dedup kanıtı).
+    const doctorBoth = await app.prisma.doctorProfile.create({
+      data: {
+        title: "Dr.",
+        fullName: `İki Uzmanlıklı Doktor ${crypto.randomUUID()}`,
+        slug: `iki-uzmanlikli-${crypto.randomUUID()}`,
+        bio: "Test.",
+        languages: ["tr"],
+        timeZone: "Europe/Istanbul",
+        specialtyId: specialtyPrimary.id,
+        sessionDurationMin: 30,
+        sessionPriceCents: 50000,
+        isActive: true,
+      },
+    });
+    await app.prisma.doctorAdditionalSpecialty.create({
+      data: { doctorId: doctorBoth.id, specialtyId: specialtyExtra.id },
+    });
+
+    // Doktor 2: SADECE ek uzmanlık olarak extra'ya bağlı (başka bir birincil uzmanlığı var).
+    const otherPrimary = await app.prisma.specialty.create({
+      data: { name: `Başka Branş ${crypto.randomUUID()}`, slug: `baska-branş-${crypto.randomUUID()}`, icon: "stethoscope" },
+    });
+    const doctorOnlyExtra = await app.prisma.doctorProfile.create({
+      data: {
+        title: "Dr.",
+        fullName: `Sadece Ek Uzmanlık Doktoru ${crypto.randomUUID()}`,
+        slug: `sadece-ek-${crypto.randomUUID()}`,
+        bio: "Test.",
+        languages: ["tr"],
+        timeZone: "Europe/Istanbul",
+        specialtyId: otherPrimary.id,
+        sessionDurationMin: 30,
+        sessionPriceCents: 50000,
+        isActive: true,
+      },
+    });
+    await app.prisma.doctorAdditionalSpecialty.create({
+      data: { doctorId: doctorOnlyExtra.id, specialtyId: specialtyExtra.id },
+    });
+
+    // Doktor 3: HİÇ ilgisi yok (ne birincil ne ek uzmanlık `specialtyExtra`ya bağlı) — listede ÇIKMAMALI.
+    const doctorUnrelated = await app.prisma.doctorProfile.create({
+      data: {
+        title: "Dr.",
+        fullName: `İlgisiz Doktor ${crypto.randomUUID()}`,
+        slug: `ilgisiz-${crypto.randomUUID()}`,
+        bio: "Test.",
+        languages: ["tr"],
+        timeZone: "Europe/Istanbul",
+        specialtyId: otherPrimary.id,
+        sessionDurationMin: 30,
+        sessionPriceCents: 50000,
+        isActive: true,
+      },
+    });
+
+    const list = await app.inject({ method: "GET", url: `/api/v1/doctors?specialtySlug=${specialtyExtra.slug}` });
+    expect(list.statusCode).toBe(200);
+    const body = list.json().data as { id: string; additionalSpecialties?: { id: string }[] }[];
+
+    // `doctorBoth` TEK SATIR olarak çıkmalı (OR filtresi JOIN çarpımı ÜRETMEZ, dedup kanıtı).
+    const matches = body.filter((d) => d.id === doctorBoth.id);
+    expect(matches).toHaveLength(1);
+    expect(matches[0]?.additionalSpecialties?.some((s) => s.id === specialtyExtra.id)).toBe(true);
+
+    expect(body.some((d) => d.id === doctorOnlyExtra.id)).toBe(true);
+    expect(body.some((d) => d.id === doctorUnrelated.id)).toBe(false);
+
+    // Birincil uzmanlık filtresi hâlâ çalışır (geriye dönük uyumluluk).
+    const listPrimary = await app.inject({ method: "GET", url: `/api/v1/doctors?specialtySlug=${specialtyPrimary.slug}` });
+    expect(listPrimary.statusCode).toBe(200);
+    expect(listPrimary.json().data.some((d: { id: string }) => d.id === doctorBoth.id)).toBe(true);
+
+    // `search` ile birlikte kullanıldığında da specialty filtresi EZİLMEZ (AND/OR obje çakışması regresyonu).
+    const listCombined = await app.inject({
+      method: "GET",
+      url: `/api/v1/doctors?specialtySlug=${specialtyExtra.slug}&search=${encodeURIComponent("İlgisiz")}`,
+    });
+    expect(listCombined.statusCode).toBe(200);
+    // "İlgisiz Doktor" extra uzmanlığa bağlı DEĞİL, arama eşleşse bile specialty filtresi onu ELEMELİ.
+    expect(listCombined.json().data.some((d: { id: string }) => d.id === doctorUnrelated.id)).toBe(false);
+
+    // GET /specialties/:slug doctorCount — ek uzmanlıkları da sayar (doctorBoth + doctorOnlyExtra = 2).
+    const specialtyDetail = await app.inject({ method: "GET", url: `/api/v1/specialties/${specialtyExtra.slug}` });
+    expect(specialtyDetail.statusCode).toBe(200);
+    expect(specialtyDetail.json().data.doctorCount).toBe(2);
+  });
 });

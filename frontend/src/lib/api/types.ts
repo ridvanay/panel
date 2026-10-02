@@ -3786,6 +3786,13 @@ export interface DoctorProfile {
   availability: DoctorAvailabilityRule[];
   createdAt: string;
   updatedAt: string;
+  /**
+   * Birincil (`specialtyId`) DIŞINDA, doktorun EK/ikincil uzmanlıkları — bkz.
+   * `DoctorAdditionalSpecialty`. Yalnızca listeleme/filtreleme ve profil rozeti amaçlı;
+   * booking/ödeme/bildirim akışları HÂLÂ yalnızca `specialtyId`'yi kullanır. Opsiyonel:
+   * `include` yapılmadan dönen eski/özet sorgularda alan hiç gelmeyebilir.
+   */
+  additionalSpecialties?: { id: string; name: string; slug: string }[];
 }
 
 export interface CreateDoctorRequest {
@@ -3803,6 +3810,13 @@ export interface CreateDoctorRequest {
   languages: string[];
   timeZone: string;
   specialtyId?: string | null;
+  /**
+   * Birincil (`specialtyId`) DIŞINDA, doktorun EK/ikincil uzmanlıkları — SADECE listeleme/
+   * filtreleme için (bkz. `DoctorAdditionalSpecialty`). En fazla 5; birincil `specialtyId`
+   * ile çakışırsa backend `422` döner. Gönderilirse dizinin TAMAMINI değiştirir; gönderilmezse
+   * (`undefined`) mevcut ek uzmanlıklara DOKUNULMAZ.
+   */
+  additionalSpecialtyIds?: string[];
   sessionDurationMin: number;
   /** `null` = ücret bilgisi tanımlanmamış (ücretsiz/bilgi-alınız seans). */
   sessionPriceCents: number | null;

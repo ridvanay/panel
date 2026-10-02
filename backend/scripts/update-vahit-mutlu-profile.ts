@@ -1,15 +1,17 @@
 /**
  * Tek seferlik İÇERİK güncelleme script'i (KOD DEĞİŞİKLİĞİ DEĞİL) — 2026-10-02 görev dosyası
- * (`docs/prompts/2026-10-02-wm-health-icerik-guncellemesi.md` §4, "Doktor: Doç. Dr. Vahit Mutlu").
+ * (`docs/prompts/2026-10-02-wm-health-icerik-guncellemesi.md` §4, "Doktor: Doç. Dr. Vahit Mutlu";
+ * düzeltmeler için `docs/prompts/2026-10-02-wm-health-duzeltme-1.md` madde 2).
  * `add-status-message-to-confirmation-email.ts`/`link-telehealth-demo-doctor-user.ts` İLE AYNI
  * desen (idempotent, Prisma client'ı doğrudan kullanır, `main().catch().finally()` iskeleti).
  *
  * İDEMPOTENCY TANIMI (bilerek `create-faq-page.ts`'ten FARKLI): bu bir KAYIT OLUŞTURMA script'i
  * DEĞİL, bir İÇERİK HEDEFLEME script'idir — "tekrar çalıştırınca HİÇBİR ŞEY yapmaz" ANLAMINDA
  * değil, "tekrar çalıştırınca HER ZAMAN AYNI hedef duruma getirir, bozuk/farklı bir sonuç
- * ÜRETMEZ" anlamında idempotent. `title`/`subSpecialty`/`aboutHtml`/`specialtyId`/`socialLinks`
- * HER ÇALIŞTIRMADA aynı hedef değere set edilir (admin panelden elle farklı bir şey girilmişse
- * BİLEREK ezilir — bu script doktorun resmi/onaylı içeriğini zorunlu kılar).
+ * ÜRETMEZ" anlamında idempotent. `title`/`aboutHtml`/`socialLinks` HER ÇALIŞTIRMADA aynı hedef
+ * değere set edilir (admin panelden elle farklı bir şey girilmişse BİLEREK ezilir — bu script
+ * doktorun resmi/onaylı içeriğini zorunlu kılar). `specialtyId`/`subSpecialty` ise ARTIK
+ * KOŞULSUZ EZİLMEZ (bkz. "UZMANLIK İLİŞKİSİ" notu, düzeltme-1 madde 2).
  *
  * NE YAPMAZ:
  *  - Doktor OLUŞTURMAZ. Hedef `DoctorProfile` ZATEN VAR OLMALIDIR (demo şablon veya admin panel
@@ -18,17 +20,19 @@
  *  - `DoctorProfile.id`/`slug`/`userId` alanlarına DOKUNMAZ (görev dosyası "KIRMIZI ÇİZGİ"
  *    bölümü — bu alanlar randevu/LiveKit oda adı/token kimliği üretiminde kullanılıyor).
  *  - `fullName`'e DOKUNMAZ — doktor ZATEN "Vahit Mutlu" adıyla bulunduğu için değişmesi gerekmez.
+ *  - `subSpecialty`'ye ARTIK DOKUNMAZ — mevcut değeri (ne ise) olduğu gibi bırakır (düzeltme-1).
  *  - WhatsApp numarası EKLEMEZ (görev dosyası açıkça yasaklıyor — sitenin kendi WhatsApp hattıyla
  *    karışmasın).
  *
- * UZMANLIK İLİŞKİSİ — ÖNEMLİ KARAR: `schema.prisma`'da `DoctorProfile.specialtyId` TEK bir
- * FK'dır (satır ~2208) — doktor↔uzmanlık arasında AYRI bir ilişki tablosu (ör. `DoctorSpecialty`)
- * YOKTUR. Görev dosyası iki uzmanlığa ("Obesity & Metabolic Surgery" + "Surgical Oncology")
- * bağlanmayı istiyor; TEK FK olduğu için BİRİNCİL uzmanlık `specialtyId`'ye yazılır (Obesity &
- * Metabolic Surgery — WM Health'in ana odağı), İKİNCİL uzmanlık ise [DPI] §1.1'in `subSpecialty`
- * tanımına ("alt uzmanlık alanı", serbest metin) UYGUN olduğu için `subSpecialty` alanına yazılır.
- * YENİ bir ilişki tablosu/şema değişikliği İCAT EDİLMEDİ — bu db-agent'ın sahasıdır, gerekirse
- * ayrı bir talep olarak iletilmelidir.
+ * UZMANLIK İLİŞKİSİ — DÜZELTME-1 MADDE 2 (db-agent'ın eklediği `DoctorAdditionalSpecialty`
+ * tablosu KULLANILARAK GÜNCELLENDİ): `DoctorProfile.specialtyId` TEK bir FK olarak KALIR (bu
+ * script onu KOŞULSUZ EZMEZ) — yalnızca `specialtyId` `null` İSE "Obesity & Metabolic Surgery"ye
+ * `connect` edilir; doluysa (hangi uzmanlık olursa olsun) OLDUĞU GİBİ bırakılır. Ardından
+ * {Obesity & Metabolic Surgery, Surgical Oncology} ikilisinden BİRİNCİL uzmanlığa denk GELMEYEN
+ * taraf (ya da her ikisi de denk gelmiyorsa ikisi BİRDEN) `DoctorAdditionalSpecialty.upsert` ile
+ * EK uzmanlık olarak eklenir — composite PK (`doctorId_specialtyId`) tekrar çalıştırmada
+ * ikinci bir satır oluşturulmasını zaten engeller, SİLME YAPILMAZ. `subSpecialty` artık
+ * "Surgical Oncology" ile EZİLMEZ.
  *
  * TR ÇEVİRİSİ — BİLİNEN SINIRLAMA (şema değişikliği gerektirir, bu script'in kapsamı DIŞINDA):
  * `DoctorProfile` modelinde `Page`/`Product`/diğer içerik modellerindeki gibi bir
@@ -104,7 +108,7 @@ async function main() {
 
   const doctor = await prisma.doctorProfile.findFirst({
     where: { OR: [{ slug: DOCTOR_SLUG }, { fullName: { contains: DOCTOR_NAME_NEEDLE, mode: "insensitive" } }] },
-    select: { id: true, slug: true, fullName: true, title: true, subSpecialty: true },
+    select: { id: true, slug: true, fullName: true, title: true, subSpecialty: true, specialtyId: true, aboutHtml: true, socialLinks: true },
   });
 
   if (!doctor) {
@@ -142,21 +146,49 @@ async function main() {
   console.log(`[bulundu] birincil uzmanlık="${primarySpecialty.name}" (${primarySpecialty.slug}), ikincil uzmanlık="${secondarySpecialty.name}" (${secondarySpecialty.slug})`);
 
   const targetAboutHtml = buildAboutHtml(EN_ABOUT_PARAGRAPHS);
-  // İkincil uzmanlık `subSpecialty` serbest metin alanına yazılır — bkz. dosya başı "UZMANLIK
-  // İLİŞKİSİ" notu (TEK FK `specialtyId`, çoklu ilişki tablosu YOK).
-  const targetSubSpecialty = secondarySpecialty.name;
 
-  const data: Prisma.DoctorProfileUpdateInput = {
-    title: TARGET_TITLE,
-    subSpecialty: targetSubSpecialty,
-    aboutHtml: targetAboutHtml.length > 0 ? targetAboutHtml : null,
-    specialty: { connect: { id: primarySpecialty.id } },
-    socialLinks: TARGET_SOCIAL_LINKS as unknown as Prisma.InputJsonValue,
-  };
+  // `specialtyId` KOŞULSUZ EZİLMEZ (düzeltme-1 madde 2): yalnızca mevcut değer `null` ise
+  // birincil uzmanlık (Obesity & Metabolic Surgery) bağlanır; doluysa OLDUĞU GİBİ bırakılır.
+  const willConnectPrimary = doctor.specialtyId === null;
+  const finalPrimarySpecialtyId = doctor.specialtyId ?? primarySpecialty.id;
+
+  // {Obesity & Metabolic Surgery, Surgical Oncology} ikilisinden BİRİNCİL uzmanlığa denk
+  // GELMEYEN taraf(lar) EK uzmanlık olarak eklenir (tipik durumda yalnızca biri — bkz. dosya
+  // başı "UZMANLIK İLİŞKİSİ" notu).
+  const additionalSpecialtiesToAdd = [primarySpecialty, secondarySpecialty].filter(
+    (specialty) => specialty.id !== finalPrimarySpecialtyId
+  );
+
+  // Yazmadan ÖNCE eski (mevcut) değerleri aç — geri alınabilsin diye (görev dosyası madde 5).
+  console.log("[ÖNCESİ] title:", JSON.stringify(doctor.title));
+  console.log("[ÖNCESİ] subSpecialty:", JSON.stringify(doctor.subSpecialty), "(bu script ARTIK bu alana DOKUNMUYOR)");
+  console.log(
+    "[ÖNCESİ] specialtyId:",
+    doctor.specialtyId ?? "null",
+    willConnectPrimary ? "(null → Obesity & Metabolic Surgery'ye bağlanacak)" : "(ZATEN dolu, DOKUNULMAYACAK)"
+  );
+  console.log("[ÖNCESİ] aboutHtml (ilk 100 karakter):", JSON.stringify((doctor.aboutHtml ?? "").slice(0, 100)));
+  console.log("[ÖNCESİ] socialLinks:", JSON.stringify(doctor.socialLinks));
 
   if (dryRun) {
-    console.log(`[dry-run] doktor "${doctor.fullName}" (${doctor.slug}) için güncellenecekti (hiçbir şey YAZILMADI):`);
-    console.log(JSON.stringify({ title: data.title, subSpecialty: data.subSpecialty, specialtyId: primarySpecialty.id, socialLinks: TARGET_SOCIAL_LINKS }, null, 2));
+    console.log(`\n[dry-run] doktor "${doctor.fullName}" (${doctor.slug}) için ÖNCE → SONRA (hiçbir şey YAZILMADI):`);
+    console.log(`  title: ${JSON.stringify(doctor.title)} → ${JSON.stringify(TARGET_TITLE)}`);
+    console.log(
+      `  specialtyId: ${JSON.stringify(doctor.specialtyId ?? null)} → ${JSON.stringify(finalPrimarySpecialtyId)} ` +
+        (willConnectPrimary ? "(YENİ bağlanacak)" : "(DEĞİŞMEYECEK, zaten dolu)")
+    );
+    console.log(`  subSpecialty: ${JSON.stringify(doctor.subSpecialty)} → DEĞİŞMEYECEK (artık ezilmiyor)`);
+    console.log(
+      `  eklenecek ek uzmanlık(lar) (DoctorAdditionalSpecialty, upsert): ${
+        additionalSpecialtiesToAdd.length > 0 ? additionalSpecialtiesToAdd.map((s) => s.name).join(", ") : "(yok)"
+      }`
+    );
+    console.log(
+      `  aboutHtml ilk 100 karakter: ${JSON.stringify((doctor.aboutHtml ?? "").slice(0, 100))} → ${JSON.stringify(
+        targetAboutHtml.slice(0, 100)
+      )}`
+    );
+    console.log(`  socialLinks: ${JSON.stringify(doctor.socialLinks)} → ${JSON.stringify(TARGET_SOCIAL_LINKS)}`);
     console.log(
       "\n[NOT] TR çevirisi YAZILMAYACAK — DoctorProfile şemasında bir `translations` alanı/tablosu yok (bkz. script başı yorumu)."
     );
@@ -165,9 +197,31 @@ async function main() {
     return;
   }
 
+  const data: Prisma.DoctorProfileUpdateInput = {
+    title: TARGET_TITLE,
+    aboutHtml: targetAboutHtml.length > 0 ? targetAboutHtml : null,
+    socialLinks: TARGET_SOCIAL_LINKS as unknown as Prisma.InputJsonValue,
+    ...(willConnectPrimary ? { specialty: { connect: { id: primarySpecialty.id } } } : {}),
+  };
+
   await prisma.doctorProfile.update({ where: { id: doctor.id }, data });
 
-  console.log(`[fix] doktor "${doctor.fullName}" (${doctor.slug}) güncellendi: title="${TARGET_TITLE}", subSpecialty="${targetSubSpecialty}", specialty="${primarySpecialty.name}", socialLinks=${TARGET_SOCIAL_LINKS.length} öğe.`);
+  // Ek uzmanlıklar — composite PK (`doctorId_specialtyId`) SAYESİNDE `upsert` tekrar
+  // çalıştırmada ikinci bir satır OLUŞTURMAZ; mevcut ek uzmanlıklar SİLİNMEZ.
+  for (const specialty of additionalSpecialtiesToAdd) {
+    await prisma.doctorAdditionalSpecialty.upsert({
+      where: { doctorId_specialtyId: { doctorId: doctor.id, specialtyId: specialty.id } },
+      create: { doctorId: doctor.id, specialtyId: specialty.id },
+      update: {},
+    });
+  }
+
+  console.log(
+    `[fix] doktor "${doctor.fullName}" (${doctor.slug}) güncellendi: title="${TARGET_TITLE}", ` +
+      `specialtyId=${willConnectPrimary ? `YENİ bağlandı (${primarySpecialty.name})` : "değişmedi"}, ` +
+      `ek uzmanlık(lar)=${additionalSpecialtiesToAdd.map((s) => s.name).join(", ") || "(yok)"}, ` +
+      `subSpecialty DOKUNULMADI, socialLinks=${TARGET_SOCIAL_LINKS.length} öğe.`
+  );
   console.log(
     "\n[NOT] TR çevirisi YAZILMADI — DoctorProfile şemasında bir `translations` alanı/tablosu yok; " +
       '`/tr/doctors/vahit-mutlu` ve `/en/doctors/vahit-mutlu` şu an AYNI (tek dilli) içeriği gösteriyor. ' +

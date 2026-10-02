@@ -21,6 +21,7 @@ import { Switch } from "@/components/ui/switch";
 import { Alert } from "@/components/ui/alert";
 import { MediaSelectField } from "@/components/admin/media/media-select-field";
 import { DoctorSocialLinksEditor } from "@/components/site/telehealth/doctor-social-links-editor";
+import { DoctorAdditionalSpecialtiesField } from "@/components/admin/telehealth/doctor-additional-specialties-field";
 import { PageHeading } from "@/components/admin/page-heading";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 
@@ -64,6 +65,7 @@ export default function NewDoctorPage() {
   const [specialties, setSpecialties] = useState<Specialty[]>([]);
   const [avatar, setAvatar] = useState<Media | null>(null);
   const [socialLinks, setSocialLinks] = useState<DoctorSocialLink[]>([]);
+  const [additionalSpecialtyIds, setAdditionalSpecialtyIds] = useState<string[]>([]);
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -93,6 +95,15 @@ export default function NewDoctorPage() {
 
   const fullName = useWatch({ control, name: "fullName" });
   const hasFee = useWatch({ control, name: "hasFee" });
+  const specialtyId = useWatch({ control, name: "specialtyId" });
+
+  // Birincil uzmanlık değişip yeni değer o an ek-uzmanlık listesinde seçiliyse, çakışma
+  // oluşmasın diye o seçimi otomatik kaldır (bkz. docs/prompts madde 2). `useEffect` İÇİNDE
+  // senkron `setState` YERİNE, değişimin KAYNAĞI olan input'un `onChange`'ine bağlanır.
+  function handleSpecialtyChange(value: string) {
+    if (!value) return;
+    setAdditionalSpecialtyIds((prev) => prev.filter((id) => id !== value));
+  }
 
   useEffect(() => {
     (async () => {
@@ -119,6 +130,7 @@ export default function NewDoctorPage() {
         languages: values.languages,
         timeZone: values.timeZone,
         specialtyId: values.specialtyId || null,
+        additionalSpecialtyIds,
         sessionDurationMin: values.sessionDurationMin,
         sessionPriceCents: values.hasFee ? Math.round(values.sessionPriceLira * 100) : null,
         currency: values.currency,
@@ -181,7 +193,7 @@ export default function NewDoctorPage() {
             <div className="grid gap-4 sm:grid-cols-2">
               <Field id="specialtyId" label="Uzmanlık">
                 {(inputProps) => (
-                  <Select {...inputProps} {...register("specialtyId")}>
+                  <Select {...inputProps} {...register("specialtyId", { onChange: (e) => handleSpecialtyChange(e.target.value) })}>
                     <option value="">Uzmanlıksız</option>
                     {specialties.map((s) => (
                       <option key={s.id} value={s.id}>
@@ -195,6 +207,13 @@ export default function NewDoctorPage() {
                 {(inputProps) => <Input {...inputProps} {...register("timeZone")} />}
               </Field>
             </div>
+
+            <DoctorAdditionalSpecialtiesField
+              specialties={specialties}
+              primarySpecialtyId={specialtyId ?? ""}
+              selectedIds={additionalSpecialtyIds}
+              onChange={setAdditionalSpecialtyIds}
+            />
 
             <div>
               <span className="block text-sm font-medium text-foreground">

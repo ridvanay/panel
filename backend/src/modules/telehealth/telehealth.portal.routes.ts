@@ -38,7 +38,12 @@ const PORTAL_FEED_NOTIFICATION_MAX_ITEMS = 10;
 /** `GET /doctor/portal-feed` — her kaynak sorgusunun kendi `take` sınırı. */
 const PORTAL_FEED_NOTIFICATION_PER_SOURCE_LIMIT = 5;
 
-const WITH_DOCTOR_RELATIONS = { specialty: true, avatarMedia: true, availability: true } as const;
+const WITH_DOCTOR_RELATIONS = {
+  specialty: true,
+  avatarMedia: true,
+  availability: true,
+  additionalSpecialties: { include: { specialty: true } },
+} as const;
 const WITH_BOOKING_RELATIONS = {
   doctor: { select: { id: true, title: true, fullName: true, slug: true, userId: true } },
   // `startsAt asc` — `telehealth.routes.ts::WITH_BOOKING_RELATIONS` İLE AYNI disiplin (ilişki

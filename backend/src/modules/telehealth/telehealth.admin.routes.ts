@@ -57,7 +57,12 @@ import {
   UpdateSpecialtyRequestSchema,
 } from "./telehealth.schemas";
 
-const WITH_DOCTOR_RELATIONS = { specialty: true, avatarMedia: true, availability: true } as const;
+const WITH_DOCTOR_RELATIONS = {
+  specialty: true,
+  avatarMedia: true,
+  availability: true,
+  additionalSpecialties: { include: { specialty: true } },
+} as const;
 const WITH_APPOINTMENT_RELATIONS = { doctor: { select: { id: true, title: true, fullName: true, slug: true } } } as const;
 const WITH_BOOKING_RELATIONS = {
   doctor: { select: { id: true, title: true, fullName: true, slug: true, userId: true } },
@@ -301,6 +306,20 @@ export async function adminTelehealthDoctorsRoutes(app: FastifyInstance) {
           order: body.order ?? 0,
           userId: body.userId ?? null,
         },
+      });
+
+      // Birincil (`specialtyId`) DIŞINDAKİ EK uzmanlıklar — `additionalSpecialtyIds`
+      // gönderilmezse (`undefined`) hiç yazılmaz (yeni doktorda zaten boş). `skipDuplicates`
+      // hem DB'deki (burada yok) hem AYNI dizi içindeki olası tekrarları sessizce atlar.
+      if (body.additionalSpecialtyIds !== undefined && body.additionalSpecialtyIds.length > 0) {
+        await app.prisma.doctorAdditionalSpecialty.createMany({
+          data: body.additionalSpecialtyIds.map((specialtyId) => ({ doctorId: doctor.id, specialtyId })),
+          skipDuplicates: true,
+        });
+      }
+
+      const doctorWithRelations = await app.prisma.doctorProfile.findUniqueOrThrow({
+        where: { id: doctor.id },
         include: WITH_DOCTOR_RELATIONS,
       });
 
@@ -317,7 +336,7 @@ export async function adminTelehealthDoctorsRoutes(app: FastifyInstance) {
         });
       }
 
-      return reply.code(201).send(ok(toDoctorProfileDto(doctor)));
+      return reply.code(201).send(ok(toDoctorProfileDto(doctorWithRelations)));
     }
   );
 
@@ -350,11 +369,21 @@ export async function adminTelehealthDoctorsRoutes(app: FastifyInstance) {
       const existing = await app.prisma.doctorProfile.findUnique({ where: { id: request.params.doctorId } });
       if (!existing) throw new NotFoundError("Doktor bulunamadı.");
 
-      const { slug, avatarMediaId, aboutHtml, cvEntries, publications, socialLinks, practiceStartYear, ...rest } = request.body;
+      const {
+        slug,
+        avatarMediaId,
+        aboutHtml,
+        cvEntries,
+        publications,
+        socialLinks,
+        practiceStartYear,
+        additionalSpecialtyIds,
+        ...rest
+      } = request.body;
       if (avatarMediaId) await assertImageMedia(app, avatarMediaId);
       assertPracticeStartYearNotFuture(practiceStartYear);
 
-      const doctor = await app.prisma.doctorProfile.update({
+      await app.prisma.doctorProfile.update({
         where: { id: request.params.doctorId },
         data: {
           ...rest,
@@ -366,6 +395,28 @@ export async function adminTelehealthDoctorsRoutes(app: FastifyInstance) {
           ...(publications !== undefined ? { publications: publications as Prisma.InputJsonValue } : {}),
           ...(socialLinks !== undefined ? { socialLinks: socialLinks as Prisma.InputJsonValue } : {}),
         },
+      });
+
+      // Birincil (`specialtyId`) DIŞINDAKİ EK uzmanlıklar — `additionalSpecialtyIds`
+      // gövdede YOKSA (`undefined`) mevcut ilişkilere DOKUNULMAZ. Gönderildiyse dizinin
+      // TAMAMI hedef durumu temsil eder: önce mevcut tüm satırlar silinir, SONRA yeni liste
+      // yazılır (`cvEntries`/`socialLinks` İLE AYNI "tam değiştirme" sözleşmesi).
+      if (additionalSpecialtyIds !== undefined) {
+        await app.prisma.$transaction([
+          app.prisma.doctorAdditionalSpecialty.deleteMany({ where: { doctorId: request.params.doctorId } }),
+          ...(additionalSpecialtyIds.length > 0
+            ? [
+                app.prisma.doctorAdditionalSpecialty.createMany({
+                  data: additionalSpecialtyIds.map((specialtyId) => ({ doctorId: request.params.doctorId, specialtyId })),
+                  skipDuplicates: true,
+                }),
+              ]
+            : []),
+        ]);
+      }
+
+      const doctor = await app.prisma.doctorProfile.findUniqueOrThrow({
+        where: { id: request.params.doctorId },
         include: WITH_DOCTOR_RELATIONS,
       });
 

@@ -2194,6 +2194,10 @@ model Specialty {
 
   doctors    DoctorProfile[]
   imageMedia Media?          @relation("SpecialtyImageMedia", fields: [imageMediaId], references: [id], onDelete: SetNull)
+  /// Birincil (`specialtyId`) DIŞINDA, doktorun İKİNCİL/EK uzmanlık bağlantıları —
+  /// bkz. `DoctorAdditionalSpecialty`. `doctors` (yukarıdaki, tekil FK üzerinden) İLE
+  /// KARIŞTIRILMAZ: o birincil uzmanlık, bu ek uzmanlıklardır.
+  additionalDoctors DoctorAdditionalSpecialty[]
 
   @@index([isActive, order])
   @@index([imageMediaId])
@@ -2278,11 +2282,38 @@ model DoctorProfile {
   appointments        Appointment[]
   // [TCT] §9.7.4 (bağlayıcı) — çoklu slot rezervasyon üst kayıtları.
   appointmentBookings AppointmentBooking[]
+  /// `specialtyId` (birincil uzmanlık, TEK FK) DIŞINDA doktorun bağlı olduğu EK
+  /// uzmanlıklar — bkz. `DoctorAdditionalSpecialty`. Bir doktor birden fazla uzmanlık
+  /// sekmesinde/listesinde görünebilsin diye (ör. Obesity & Metabolic Surgery +
+  /// Surgical Oncology) eklendi; `specialtyId`'nin anlamı/davranışı DEĞİŞMEDİ.
+  additionalSpecialties DoctorAdditionalSpecialty[]
 
   @@index([specialtyId])
   @@index([avatarMediaId])
   @@index([isActive, order])
   @@map("doctor_profiles")
+}
+
+/// Doktor ↔ uzmanlık EK (ikincil) ilişki tablosu. `DoctorProfile.specialtyId`
+/// (birincil, tek FK) İLE KARIŞTIRILMAZ: bu tablo bir doktorun BİRDEN FAZLA
+/// uzmanlıkta listelenebilmesini sağlar (ör. hem "Obesity & Metabolic Surgery" hem
+/// "Surgical Oncology"). Composite PK aynı doktor-uzmanlık çiftinin DB seviyesinde
+/// yalnızca bir kez eklenebilmesini garanti eder. Her iki FK de `onDelete: Cascade`:
+/// doktor veya uzmanlık silinirse bu YARDIMCI ilişki kaydı da kendiliğinden silinir
+/// (birincil `specialtyId String?`'in `SetNull` davranışından BİLEREK FARKLI — o alan
+/// null'a düşebilir, hâlbuki doktor/uzmanlık kaydının kendisi artık yoksa bu yardımcı
+/// satırın yaşamasının bir anlamı yoktur).
+model DoctorAdditionalSpecialty {
+  doctorId    String
+  specialtyId String
+  createdAt   DateTime @default(now())
+
+  doctor    DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  specialty Specialty     @relation(fields: [specialtyId], references: [id], onDelete: Cascade)
+
+  @@id([doctorId, specialtyId])
+  @@index([specialtyId])
+  @@map("doctor_additional_specialties")
 }
 
 /// Haftalık TEKRARLAYAN müsaitlik penceresi. BURADA SLOT SATIRI TUTULMAZ — slotlar

@@ -1688,6 +1688,10 @@ type DoctorProfileWithRelations = DoctorProfile & {
   specialty: Specialty | null;
   avatarMedia: Media | null;
   availability?: DoctorAvailability[];
+  // `include: { additionalSpecialties: { include: { specialty: true } } }` yapılmadan
+  // çağrılan (eski/özet) sorgularda bu alan Prisma tarafından hiç DÖNMEZ — `undefined`
+  // olabilir, bkz. `toDoctorProfileDto` içindeki `?.` kullanımı.
+  additionalSpecialties?: Array<{ specialty: Specialty }>;
 };
 
 /**
@@ -1733,6 +1737,12 @@ export function toDoctorProfileDto(doctor: DoctorProfileWithRelations): DoctorPr
     availability: (doctor.availability ?? []).map(toDoctorAvailabilityRuleDto),
     createdAt: doctor.createdAt.toISOString(),
     updatedAt: doctor.updatedAt.toISOString(),
+    additionalSpecialties:
+      doctor.additionalSpecialties?.map((row) => ({
+        id: row.specialty.id,
+        name: row.specialty.name,
+        slug: row.specialty.slug,
+      })) ?? [],
   };
 }
 

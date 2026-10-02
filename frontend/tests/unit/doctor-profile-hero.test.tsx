@@ -193,4 +193,36 @@ describe("DoctorProfileHero", () => {
     expect(heading.className).not.toContain("truncate");
     expect(heading).toHaveTextContent("Dr. Çok Uzun Bir Ad Soyad Örneği Testi");
   });
+
+  /**
+   * `docs/prompts/2026-10-02-wm-health-icerik-guncellemesi.md` madde 2 — birincil uzmanlığın
+   * YANINDA, `additionalSpecialties` doluysa rozet olarak gösterilir; boşsa/yoksa HİÇ render
+   * edilmez (sahte veri yok).
+   */
+  it("`additionalSpecialties` DOLUYSA birincil uzmanlığın yanında rozet olarak gösterir", () => {
+    render(
+      <DoctorProfileHero
+        doctor={makeDoctor({
+          additionalSpecialties: [
+            { id: "s2", name: "Cerrahi Onkoloji", slug: "cerrahi-onkoloji" },
+            { id: "s3", name: "Genel Cerrahi", slug: "genel-cerrahi" },
+          ],
+        })}
+        dict={trTelehealthStrings}
+        lang="tr"
+      />
+    );
+    expect(screen.getByText("Cerrahi Onkoloji")).toBeInTheDocument();
+    expect(screen.getByText("Genel Cerrahi")).toBeInTheDocument();
+  });
+
+  it("`additionalSpecialties` BOŞSA (`[]`) veya YOKSA (`undefined`) hiçbir ek rozet render edilmez", () => {
+    const { rerender } = render(
+      <DoctorProfileHero doctor={makeDoctor({ additionalSpecialties: [] })} dict={trTelehealthStrings} lang="tr" />
+    );
+    expect(screen.queryByText("Cerrahi Onkoloji")).not.toBeInTheDocument();
+
+    rerender(<DoctorProfileHero doctor={makeDoctor({ additionalSpecialties: undefined })} dict={trTelehealthStrings} lang="tr" />);
+    expect(screen.queryByText("Cerrahi Onkoloji")).not.toBeInTheDocument();
+  });
 });

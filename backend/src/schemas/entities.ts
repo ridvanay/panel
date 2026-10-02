@@ -2503,6 +2503,13 @@ export const DoctorProfileSchema = z.object({
   availability: z.array(DoctorAvailabilityRuleSchema),
   createdAt: z.string(),
   updatedAt: z.string(),
+  // Birincil (`specialtyId`) DIŞINDA, doktorun EK/ikincil uzmanlıkları — bkz.
+  // `DoctorAdditionalSpecialty`. Yalnızca listeleme/filtreleme ve profil rozeti amaçlı;
+  // booking/ödeme/bildirim akışları HÂLÂ yalnızca `specialtyId`'yi kullanır. Opsiyonel:
+  // `include` yapılmadan dönen eski/özet sorgularda alan hiç gelmeyebilir.
+  additionalSpecialties: z
+    .array(z.object({ id: z.string().uuid(), name: z.string(), slug: z.string() }))
+    .optional(),
 });
 export type DoctorProfileDto = z.infer<typeof DoctorProfileSchema>;
 

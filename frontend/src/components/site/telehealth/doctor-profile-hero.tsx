@@ -87,6 +87,19 @@ export function DoctorProfileHero({ doctor, dict, lang }: { doctor: DoctorProfil
           {doctor.specialty?.name ?? dict.generalConsultationSpecialty}
         </Badge>
 
+        {/* `docs/prompts/2026-10-02-wm-health-icerik-guncellemesi.md` madde 2 — birincil
+            uzmanlığın YANINDA, varsa EK uzmanlıklar küçük rozet olarak gösterilir. Dizi boşsa/yoksa
+            HİÇBİR ŞEY render edilmez. Aynı koyu-zemin kontrast kuralı (opak rozet) korunur. */}
+        {doctor.additionalSpecialties && doctor.additionalSpecialties.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {doctor.additionalSpecialties.map((specialty) => (
+              <Badge key={specialty.id} tone="primary" solid size="sm" className="gap-1">
+                {specialty.name}
+              </Badge>
+            ))}
+          </div>
+        )}
+
         {/* Alt uzmanlık/merkez — DÜZ METİN, teal DEĞİL, white/80 (Görev'de white/70'ten hafifçe
             koyulaştırıldı, kontrastı DÜŞÜRMEZ sadece ARTIRIR). `Building2` ikonu "bağlı merkez"
             bilgisine görsel bir çapa verir — YENİ VERİ ALANI İCAT EDİLMEDİ, sadece VAR OLAN

@@ -80,8 +80,17 @@ import {
   UpsertIntakeRequestSchema,
 } from "./telehealth.schemas";
 
-/** Doktor liste/detay sorgularında uzmanlık + avatarını de dönmek için ortak `include`. */
-const WITH_DOCTOR_RELATIONS = { specialty: true, avatarMedia: true, availability: true } as const;
+/**
+ * Doktor liste/detay sorgularında uzmanlık + avatarını de dönmek için ortak `include`.
+ * `additionalSpecialties` — birincil (`specialty`) DIŞINDAKİ EK uzmanlıklar; yalnızca
+ * listeleme/rozet amaçlı (DTO mapping'i bkz. mappers/index.ts::toDoctorProfileDto).
+ */
+const WITH_DOCTOR_RELATIONS = {
+  specialty: true,
+  avatarMedia: true,
+  availability: true,
+  additionalSpecialties: { include: { specialty: true } },
+} as const;
 const WITH_APPOINTMENT_RELATIONS = { doctor: { select: { id: true, title: true, fullName: true, slug: true } } } as const;
 const WITH_BOOKING_DOCTOR = { id: true, title: true, fullName: true, slug: true, userId: true } as const;
 const WITH_BOOKING_RELATIONS = {
@@ -176,16 +185,29 @@ export async function telehealthRoutes(app: FastifyInstance) {
         where: {
           isActive: true,
           ...(cursorSeq ? { seq: { gt: cursorSeq } } : {}),
-          ...(specialty ? { specialtyId: specialty.id } : {}),
           ...(language ? { languages: { has: language } } : {}),
-          ...(search
-            ? {
-                OR: [
-                  { fullName: { contains: search, mode: "insensitive" } },
-                  { bio: { contains: search, mode: "insensitive" } },
-                ],
-              }
-            : {}),
+          // `specialty` ve `search` filtrelerinin HER İKİSİ de kendi `OR` kolunu taşıyor —
+          // ikisini aynı obje seviyesinde ayrı birer `OR` anahtarı olarak spread etmek
+          // (object key collision) biri diğerini SESSİZCE EZER. Bu yüzden bağımsız iki `OR`
+          // koşulu bir `AND` dizisinde taşınır (her ikisi de true olmalı).
+          AND: [
+            // Birincil (`specialtyId`) VEYA ek (`DoctorAdditionalSpecialty`) uzmanlığı eşleşen
+            // doktorlar — `some` bir `WHERE EXISTS` türevi ürettiğinden JOIN çarpımı/satır
+            // tekrarı OLUŞMAZ (bkz. tests: "aynı doktor birincil+ek ikisi eşleşse bile tek satır").
+            ...(specialty
+              ? [{ OR: [{ specialtyId: specialty.id }, { additionalSpecialties: { some: { specialtyId: specialty.id } } }] }]
+              : []),
+            ...(search
+              ? [
+                  {
+                    OR: [
+                      { fullName: { contains: search, mode: "insensitive" as const } },
+                      { bio: { contains: search, mode: "insensitive" as const } },
+                    ],
+                  },
+                ]
+              : []),
+          ],
         },
         orderBy: { seq: "asc" },
         take: limit,
@@ -285,7 +307,12 @@ export async function telehealthRoutes(app: FastifyInstance) {
 
       // Yalnızca AKTİF doktorlar sayılır — `/doctors` liste ucunun `isActive: true` filtresiyle
       // TUTARLI (pasif doktorlar public yüzeyde hiçbir yerde SAYILMAZ/GÖSTERİLMEZ).
-      const doctorCount = await app.prisma.doctorProfile.count({ where: { specialtyId: specialty.id, isActive: true } });
+      const doctorCount = await app.prisma.doctorProfile.count({
+        where: {
+          isActive: true,
+          OR: [{ specialtyId: specialty.id }, { additionalSpecialties: { some: { specialtyId: specialty.id } } }],
+        },
+      });
 
       return reply.send(ok(toSpecialtyWithDoctorCountDto(specialty, doctorCount)));
     }

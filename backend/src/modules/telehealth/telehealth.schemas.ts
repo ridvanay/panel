@@ -264,7 +264,7 @@ export type ListAdminDoctorsQuery = z.infer<typeof ListAdminDoctorsQuerySchema>;
 
 const LANGUAGES_SCHEMA = z.array(z.string().regex(ISO_639_1_RE, "ISO 639-1 kod bekleniyor (ör. \"tr\")")).max(6);
 
-export const CreateDoctorRequestSchema = z.object({
+const DoctorRequestBaseSchema = z.object({
   title: z.string().trim().min(1).max(40),
   // [DPI] §1.1 — alt branş/bağlı merkez, serbest metin, enum DEĞİL.
   subSpecialty: z.string().trim().min(1).max(120).nullable().optional(),
@@ -282,6 +282,11 @@ export const CreateDoctorRequestSchema = z.object({
   languages: LANGUAGES_SCHEMA,
   timeZone: z.string().trim().min(1).max(80),
   specialtyId: z.string().uuid().nullable().optional(),
+  // Birincil (`specialtyId`) DIŞINDA, doktorun EK/ikincil uzmanlıkları — SADECE listeleme/
+  // filtreleme için (bkz. `DoctorAdditionalSpecialty`). Gönderilirse dizinin TAMAMINI
+  // değiştirir (`cvEntries`/`socialLinks` İLE AYNI "tam değiştirme" sözleşmesi);
+  // gönderilmezse (`undefined`) mevcut ek uzmanlıklara DOKUNULMAZ.
+  additionalSpecialtyIds: z.array(z.string().uuid()).max(5).optional(),
   sessionDurationMin: z.number().int().min(5).max(240),
   // `null` = ücret bilgisi tanımlanmamış (admin panelde "Ücretli Hizmet" toggle'ı kapalı) —
   // booking akışı bunu ücretsiz/bilgi-alınız seans olarak yorumlar, ödeme adımı atlanır.
@@ -296,9 +301,30 @@ export const CreateDoctorRequestSchema = z.object({
   // Opsiyonel panel kullanıcısı bağlantısı (§2.5) — `User.id`, `@@unique` ihlali `409 CONFLICT`.
   userId: z.string().uuid().nullable().optional(),
 });
+
+/**
+ * Birincil `specialtyId` aynı anda `additionalSpecialtyIds` içinde OLAMAZ — aynı istek
+ * gövdesinde ikisi de gönderilmişse çakışma `422` döner. (Bir güncellemede yalnızca
+ * `additionalSpecialtyIds` gönderilip `specialtyId` mevcut DB değeriyle çakışması bu
+ * şema-seviyesi kontrolün KAPSAMI DIŞINDADIR — route katmanı DB'den okumaz.)
+ */
+function refineSpecialtyOverlap(
+  data: { specialtyId?: string | null; additionalSpecialtyIds?: string[] },
+  ctx: z.RefinementCtx
+) {
+  if (data.specialtyId && data.additionalSpecialtyIds?.includes(data.specialtyId)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Birincil uzmanlık (specialtyId) ek uzmanlıklar listesinde (additionalSpecialtyIds) tekrar edemez.",
+      path: ["additionalSpecialtyIds"],
+    });
+  }
+}
+
+export const CreateDoctorRequestSchema = DoctorRequestBaseSchema.superRefine(refineSpecialtyOverlap);
 export type CreateDoctorRequest = z.infer<typeof CreateDoctorRequestSchema>;
 
-export const UpdateDoctorRequestSchema = CreateDoctorRequestSchema.partial();
+export const UpdateDoctorRequestSchema = DoctorRequestBaseSchema.partial().superRefine(refineSpecialtyOverlap);
 export type UpdateDoctorRequest = z.infer<typeof UpdateDoctorRequestSchema>;
 
 /**

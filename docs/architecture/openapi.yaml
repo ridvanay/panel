@@ -18948,6 +18948,21 @@ components:
           items: { $ref: "#/components/schemas/DoctorAvailabilityRule" }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+        additionalSpecialties:
+          type: array
+          description: >
+            Birincil (`specialtyId`) DIŞINDA, doktorun EK/ikincil uzmanlıkları — bkz.
+            `DoctorAdditionalSpecialty`. Yalnızca listeleme/filtreleme ve profil rozeti
+            amaçlıdır; randevu/ödeme/bildirim akışları HÂLÂ yalnızca `specialtyId`'yi
+            kullanır. OPSİYONEL alan: `include` yapılmadan dönen eski/özet sorgularda
+            hiç gelmeyebilir.
+          items:
+            type: object
+            required: [id, name, slug]
+            properties:
+              id: { type: string, format: uuid }
+              name: { type: string }
+              slug: { type: string }
 
     DoctorCvEntry:
       type: object
@@ -19857,6 +19872,16 @@ components:
           maxItems: 6
         timeZone: { type: string, minLength: 1, maxLength: 80 }
         specialtyId: { type: string, format: uuid, nullable: true }
+        additionalSpecialtyIds:
+          type: array
+          maxItems: 5
+          items: { type: string, format: uuid }
+          description: >
+            Birincil (`specialtyId`) DIŞINDA, doktorun EK/ikincil uzmanlıkları — bkz.
+            `DoctorAdditionalSpecialty`. Gönderilirse dizinin TAMAMINI değiştirir
+            (`cvEntries`/`socialLinks` İLE AYNI "tam değiştirme" sözleşmesi);
+            gönderilmezse (alan hiç yoksa) mevcut ek uzmanlıklara DOKUNULMAZ.
+            `specialtyId` ile AYNI ID'yi İÇEREMEZ (422).
         sessionDurationMin: { type: integer, minimum: 5, maximum: 240 }
         sessionPriceCents: { type: integer, minimum: 0, nullable: true, description: "`null` = ücret bilgisi tanımlanmamış (ücretsiz/bilgi-alınız seans) — admin panelde \"Ücretli Hizmet\" toggle'ı kapalı." }
         currency: { type: string, minLength: 3, maxLength: 3 }
