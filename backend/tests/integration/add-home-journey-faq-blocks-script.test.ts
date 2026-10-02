@@ -116,7 +116,7 @@ describe("scripts/add-home-journey-faq-blocks.ts — script-smoke-test (izole te
     const faqBlock = blocks[1]!;
     expect(faqBlock.data.layoutStyle).toBe("spotlight");
     expect(faqBlock.data.badge).toBe("FAQ");
-    expect(faqBlock.data.defaultOpenFirst).toBe(true);
+    expect(faqBlock.data.defaultOpenFirst).toBe(false);
     expect((faqBlock.data.items as unknown[]).length).toBe(8);
   });
 

@@ -14,7 +14,7 @@
  *    sırayı buradan okur.
  *  - `--journey-after=<sıra>`: `journey-map` bloğunu o sıradaki bloğun HEMEN ARKASINA ekler.
  *  - `--faq-before=<sıra>`: SSS akordiyonunu (`layoutStyle: "spotlight"`, `badge:"FAQ"`,
- *    `intro`, `defaultOpenFirst:true`, 8 soru — metinler `lib/faq-content.ts`'TEN, create-faq-
+ *    `intro`, `defaultOpenFirst:false` (kullanıcı isteği: hepsi kapalı), 8 soru — metinler `lib/faq-content.ts`'TEN, create-faq-
  *    page.ts İLE PAYLAŞIMLI, TEKRAR YAZILMAZ) o sıradaki bloğun HEMEN ÖNÜNE ekler.
  *  - Varsayılan dil EN içerikle, `translations.tr` (VARSA) TR içerikle AYNI anda güncellenir.
  *    `translations.tr.blocks` YOKSA o dile DOKUNULMAZ, konsola NET bir uyarı yazılır (sessizce
@@ -182,7 +182,7 @@ function buildFaqBlock(code: string): Prisma.InputJsonValue {
       layoutStyle: "spotlight",
       badge: "FAQ",
       intro: copy.subtitle,
-      defaultOpenFirst: true,
+      defaultOpenFirst: false,
     },
   } as unknown as Prisma.InputJsonValue;
 }
