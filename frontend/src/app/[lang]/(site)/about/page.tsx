@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { fetchDoctorsServer } from "@/lib/api/server-telehealth";
+import { fetchDoctorsServer, fetchSpecialtiesServer } from "@/lib/api/server-telehealth";
 import { fetchLocalesServer } from "@/lib/api/server-locales";
 import { fetchSiteSettingsServer } from "@/lib/api/server-settings";
 import { fetchPageBySlugServer } from "@/lib/api/server-pages";
@@ -101,18 +101,25 @@ export async function generateMetadata({ params }: AboutPageProps): Promise<Meta
 
 export default async function AboutPage({ params }: AboutPageProps) {
   const { lang } = await params;
-  const [locales, dict, page, allDoctors] = await Promise.all([
+  const [locales, dict, page, allDoctors, specialties] = await Promise.all([
     fetchLocalesServer(),
     getSiteDictionary(lang),
     // Yalnızca YAYINDAKİ kaydı döner; yoksa/hata olursa `null` → sözlük metinleri.
     fetchPageBySlugServer(ABOUT_PAGE_SLUG),
     // `telehealth` modülü kapalıysa/backend erişilemezse `[]` döner → doktor bölümü gizlenir.
     fetchDoctorsServer({}),
+    // Aynı şekilde `[]` döner → "Tedavi alanları" kutuları hiçbirinde bağlantı olmaz, sade kutu kalır.
+    fetchSpecialtiesServer(),
   ]);
 
   const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? lang;
   const content = resolveAboutContent(getAboutDataForLocale(page, lang, defaultLocaleCode), buildDefaultAboutContent(dict.about));
   const href = (value: string) => resolveAboutHref(value, lang, defaultLocaleCode);
+
+  // "Tedavi alanları" kutusu adı (isim bazlı, case-insensitive) bir uzmanlığa karşılık geliyorsa
+  // dil önekli `/specialties/<slug>`'a bağlanır — `AboutTreatmentItem`'da ayrı bir slug alanı YOK.
+  const specialtyHrefByName: Record<string, string> = {};
+  for (const specialty of specialties) specialtyHrefByName[specialty.name.trim().toLowerCase()] = href(`/specialties/${specialty.slug}`);
 
   const { doctors, founderId } = content.doctors.enabled
     ? selectAboutDoctors(allDoctors, content.doctors.founderDoctorId, content.doctors.count)
@@ -132,7 +139,7 @@ export default async function AboutPage({ params }: AboutPageProps) {
         primaryHref={href(content.hero.primaryCta.href)}
         secondaryHref={secondaryHeroHref}
       />
-      {content.treatments.enabled && <TreatmentAreas treatments={content.treatments} />}
+      {content.treatments.enabled && <TreatmentAreas treatments={content.treatments} specialtyHrefByName={specialtyHrefByName} />}
       {content.approach.enabled && <WhyWmHealth approach={content.approach} />}
       {showDoctors && (
         <AboutDoctors

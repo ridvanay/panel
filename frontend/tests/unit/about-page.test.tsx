@@ -45,6 +45,7 @@ function makeDoctor(id: string, overrides: Partial<DoctorProfile> = {}): DoctorP
     experienceYears: null,
     cvEntries: [],
     publications: [],
+    socialLinks: [],
     languages: ["en"],
     timeZone: "Europe/Istanbul",
     sessionDurationMin: 30,

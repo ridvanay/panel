@@ -58,7 +58,8 @@ export function AboutHero({ hero, homeLabel, breadcrumbCurrent, homeHref, primar
           </div>
 
           <div className="relative">
-            <div className="relative aspect-[4/3] overflow-hidden rounded-[28px] bg-[var(--about-accent-tint)] sm:aspect-[5/4]">
+            {/* ~16:13 — üstte yazı alanı olan hero görseline uygun (ör. 2026-10 güncellemesi); masaüstü/mobil AYNI oran. */}
+            <div className="relative aspect-[16/13] overflow-hidden rounded-[28px] bg-[var(--about-accent-tint)]">
               {hero.imageUrl ? (
                 <SafeImage src={hero.imageUrl} alt={hero.imageAlt} fill priority sizes="(min-width: 1024px) 600px, 100vw" className="object-cover" />
               ) : (
