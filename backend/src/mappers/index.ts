@@ -148,6 +148,7 @@ import type {
   ConsultationRecordingDto,
   DoctorCvEntryDto,
   DoctorPublicationDto,
+  DoctorSocialLinkDto,
   BookingIdentitySummaryDto,
   SupportChatMessagePublicDto,
   SupportChatMessageDto,
@@ -1717,6 +1718,7 @@ export function toDoctorProfileDto(doctor: DoctorProfileWithRelations): DoctorPr
     // yolunda YENİDEN doğrulanmaz (`toPageDto`'nun `blocks` alanıyla AYNI disiplin).
     cvEntries: (doctor.cvEntries as unknown as DoctorCvEntryDto[]) ?? [],
     publications: (doctor.publications as unknown as DoctorPublicationDto[]) ?? [],
+    socialLinks: (doctor.socialLinks as unknown as DoctorSocialLinkDto[]) ?? [],
     languages: doctor.languages,
     timeZone: doctor.timeZone,
     sessionDurationMin: doctor.sessionDurationMin,

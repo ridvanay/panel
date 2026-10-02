@@ -10,7 +10,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { AlertCircle, ChevronLeft, Stethoscope } from "lucide-react";
 import * as telehealthApi from "@/lib/api/telehealth";
-import type { Media, Specialty } from "@/lib/api/types";
+import type { DoctorSocialLink, Media, Specialty } from "@/lib/api/types";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
@@ -20,6 +20,7 @@ import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Alert } from "@/components/ui/alert";
 import { MediaSelectField } from "@/components/admin/media/media-select-field";
+import { DoctorSocialLinksEditor } from "@/components/site/telehealth/doctor-social-links-editor";
 import { PageHeading } from "@/components/admin/page-heading";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 
@@ -62,6 +63,7 @@ export default function NewDoctorPage() {
   const router = useRouter();
   const [specialties, setSpecialties] = useState<Specialty[]>([]);
   const [avatar, setAvatar] = useState<Media | null>(null);
+  const [socialLinks, setSocialLinks] = useState<DoctorSocialLink[]>([]);
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -122,6 +124,7 @@ export default function NewDoctorPage() {
         currency: values.currency,
         avatarMediaId: avatar?.id ?? null,
         isActive: values.isActive,
+        socialLinks,
       });
       toast.success("Doktor oluşturuldu.");
       router.push(`/admin/telehealth/doctors/${doctor.id}`);
@@ -263,6 +266,16 @@ export default function NewDoctorPage() {
             )}
 
             <MediaSelectField id="avatar" label="Avatar (opsiyonel)" value={avatar} onChange={setAvatar} />
+
+            <div className="space-y-3 rounded-lg border border-border p-3">
+              <div>
+                <h2 className="text-sm font-semibold text-foreground">Sosyal Medya / Web Bağlantıları</h2>
+                <p className="text-xs text-foreground/60">
+                  Profil fotoğrafının altında yuvarlak ikon olarak gösterilir — en fazla 8 bağlantı.
+                </p>
+              </div>
+              <DoctorSocialLinksEditor links={socialLinks} onChange={setSocialLinks} />
+            </div>
 
             <Button type="submit" loading={isSubmitting} disabled={!fullName?.trim()}>
               Oluştur ve müsaitliği ayarla

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DoctorCvEntrySchema, DoctorPublicationSchema } from "../../schemas/entities";
+import { DoctorCvEntrySchema, DoctorPublicationSchema, DoctorSocialLinkSchema } from "../../schemas/entities";
 
 /** `.claude/architect-scope-telehealth-template.md` §3.2/§4.1 — Zod istek/param şemaları. */
 
@@ -278,6 +278,7 @@ export const CreateDoctorRequestSchema = z.object({
   practiceStartYear: z.number().int().min(1950).nullable().optional(),
   cvEntries: z.array(DoctorCvEntrySchema).max(60).optional(),
   publications: z.array(DoctorPublicationSchema).max(200).optional(),
+  socialLinks: z.array(DoctorSocialLinkSchema).max(8).optional(),
   languages: LANGUAGES_SCHEMA,
   timeZone: z.string().trim().min(1).max(80),
   specialtyId: z.string().uuid().nullable().optional(),
@@ -324,7 +325,8 @@ function isValidIanaTimeZone(timeZone: string): boolean {
  * TÜRETİLMEZ** (admin şemasına ileride eklenecek bir alan sessizce doktorun yazma yüzeyine
  * düşmesin diye AYRI bir şema). `.strict()`: kapsam dışı alan (ör. `title`/`sessionPriceCents`/
  * `experienceYears`) → `422`, sessiz yok sayma YOK. Tüm alanlar opsiyoneldir (yalnızca
- * gönderilenler güncellenir); `cvEntries`/`publications` gönderilirse dizinin TAMAMINI değiştirir.
+ * gönderilenler güncellenir); `cvEntries`/`publications`/`socialLinks` gönderilirse dizinin
+ * TAMAMINI değiştirir (parça güncelleme YOK — AYNI davranış `socialLinks` için de geçerli).
  *
  * `timeZone` — backend-agent görev notu (2026-09-15) ile eklendi: doktor konsolundaki saat
  * bilgisi hastanın rezervasyon saatiyle karşılaştırılamıyordu çünkü doktor kendi `timeZone`'unu
@@ -341,6 +343,7 @@ export const UpdateDoctorSelfProfileRequestSchema = z
     languages: LANGUAGES_SCHEMA.optional(),
     cvEntries: z.array(DoctorCvEntrySchema).max(60).optional(),
     publications: z.array(DoctorPublicationSchema).max(200).optional(),
+    socialLinks: z.array(DoctorSocialLinkSchema).max(8).optional(),
     timeZone: z
       .string()
       .trim()

@@ -2441,6 +2441,30 @@ export const DoctorPublicationSchema = z.object({
 });
 export type DoctorPublicationDto = z.infer<typeof DoctorPublicationSchema>;
 
+/**
+ * [DPI] §1.1 — `DoctorProfile.socialLinks` öğesi. `DoctorCvEntrySchema`/`DoctorPublicationSchema`
+ * İLE AYNI desen: ayrı bir ilişkisel tablo/Prisma enum DEĞİL (JSON içinde enum yaşamaz, `platform`
+ * literal union olarak Zod ile zorlanır). `url` — profil sayfasında DOĞRUDAN `<a href target="_blank">`
+ * olarak render edileceği için `DoctorPublicationSchema.url` İLE AYNI gerekçeyle `https://` zorunlu.
+ */
+export const DoctorSocialLinkPlatformSchema = z.enum([
+  "instagram",
+  "facebook",
+  "youtube",
+  "linkedin",
+  "x",
+  "tiktok",
+  "website",
+]);
+export type DoctorSocialLinkPlatform = z.infer<typeof DoctorSocialLinkPlatformSchema>;
+
+export const DoctorSocialLinkSchema = z.object({
+  platform: DoctorSocialLinkPlatformSchema,
+  url: httpsOnlyField(z.string().trim().max(500).url()),
+  label: plainTextField(z.string().trim().max(80)).optional(),
+});
+export type DoctorSocialLinkDto = z.infer<typeof DoctorSocialLinkSchema>;
+
 export const DoctorProfileSchema = z.object({
   id: z.string().uuid(),
   // §2.5 — opsiyonel panel kullanıcısı bağlantısı. Şablon bu alanı DAİMA null bırakır.
@@ -2461,6 +2485,7 @@ export const DoctorProfileSchema = z.object({
   experienceYears: z.number().int().nullable(),
   cvEntries: z.array(DoctorCvEntrySchema),
   publications: z.array(DoctorPublicationSchema),
+  socialLinks: z.array(DoctorSocialLinkSchema),
   languages: z.array(z.string()),
   // IANA saat dilimi ("Europe/Istanbul") — bkz. modules/telehealth/lib/timezone.ts.
   timeZone: z.string(),

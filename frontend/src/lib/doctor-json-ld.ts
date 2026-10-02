@@ -32,5 +32,8 @@ export function buildDoctorJsonLd(doctor: DoctorProfile, canonicalUrl: string): 
     url: canonicalUrl,
     ...(doctor.specialty ? { medicalSpecialty: doctor.specialty.name } : {}),
     ...(doctor.languages.length > 0 ? { knowsLanguage: doctor.languages } : {}),
+    // [DPI] §1.1 — doktorun kendi beyan ettiği sosyal medya/web profilleri. Dizi BOŞSA alan HİÇ
+    // eklenmez (diğer opsiyonel alanlarla AYNI `...(koşul ? {...} : {})` deseni).
+    ...(doctor.socialLinks.length > 0 ? { sameAs: doctor.socialLinks.map((link) => link.url) } : {}),
   });
 }

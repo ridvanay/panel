@@ -286,6 +286,7 @@ export async function adminTelehealthDoctorsRoutes(app: FastifyInstance) {
           practiceStartYear: body.practiceStartYear ?? null,
           cvEntries: (body.cvEntries ?? []) as Prisma.InputJsonValue,
           publications: (body.publications ?? []) as Prisma.InputJsonValue,
+          socialLinks: (body.socialLinks ?? []) as Prisma.InputJsonValue,
           languages: body.languages,
           timeZone: body.timeZone,
           specialtyId: body.specialtyId ?? null,
@@ -349,7 +350,7 @@ export async function adminTelehealthDoctorsRoutes(app: FastifyInstance) {
       const existing = await app.prisma.doctorProfile.findUnique({ where: { id: request.params.doctorId } });
       if (!existing) throw new NotFoundError("Doktor bulunamadı.");
 
-      const { slug, avatarMediaId, aboutHtml, cvEntries, publications, practiceStartYear, ...rest } = request.body;
+      const { slug, avatarMediaId, aboutHtml, cvEntries, publications, socialLinks, practiceStartYear, ...rest } = request.body;
       if (avatarMediaId) await assertImageMedia(app, avatarMediaId);
       assertPracticeStartYearNotFuture(practiceStartYear);
 
@@ -363,6 +364,7 @@ export async function adminTelehealthDoctorsRoutes(app: FastifyInstance) {
           ...(practiceStartYear !== undefined ? { practiceStartYear } : {}),
           ...(cvEntries !== undefined ? { cvEntries: cvEntries as Prisma.InputJsonValue } : {}),
           ...(publications !== undefined ? { publications: publications as Prisma.InputJsonValue } : {}),
+          ...(socialLinks !== undefined ? { socialLinks: socialLinks as Prisma.InputJsonValue } : {}),
         },
         include: WITH_DOCTOR_RELATIONS,
       });

@@ -2,6 +2,7 @@ import { BadgeCheck, Briefcase, Building2, Stethoscope } from "lucide-react";
 import type { DoctorProfile } from "@/lib/api/types";
 import { Badge } from "@/components/ui/badge";
 import { DoctorAvatarMedia } from "@/components/site/telehealth/doctor-avatar";
+import { DoctorSocialLinks } from "@/components/site/telehealth/doctor-social-links";
 import { formatSiteString } from "@/lib/i18n/site-dictionaries";
 import type { TelehealthStrings } from "@/lib/i18n/site-dictionaries";
 
@@ -48,14 +49,20 @@ export function DoctorProfileHero({ doctor, dict, lang }: { doctor: DoctorProfil
           etmiyor), avatarı koyu banttan hafifçe kabartmak için. `DoctorAvatarMedia`'nın kendi İÇ
           katmanı (görsel + monogram fallback) `sizeClassName` üzerinden AYNI `rounded-full`'a
           uyumlu kırpılır (bkz. o bileşendeki `rounded-full` eklentisi). */}
-      <div className="h-32 w-32 shrink-0 overflow-hidden rounded-full border-4 border-white/20 shadow-lg lg:h-36 lg:w-36">
-        <DoctorAvatarMedia
-          doctor={doctor}
-          sizeClassName="h-full w-full rounded-full"
-          textClassName="text-3xl sm:text-4xl"
-          sizes="144px"
-          priority
-        />
+      <div className="flex shrink-0 flex-col items-center gap-3">
+        <div className="h-32 w-32 overflow-hidden rounded-full border-4 border-white/20 shadow-lg lg:h-36 lg:w-36">
+          <DoctorAvatarMedia
+            doctor={doctor}
+            sizeClassName="h-full w-full rounded-full"
+            textClassName="text-3xl sm:text-4xl"
+            sizes="144px"
+            priority
+          />
+        </div>
+
+        {/* [DPI] §1.1 — doktor fotoğrafının ALTINDA, boşsa HİÇ render edilmez (bkz.
+            `doctor-social-links.tsx` dosya başı yorumu). */}
+        <DoctorSocialLinks links={doctor.socialLinks} />
       </div>
 
       <div className="min-w-0 flex-1">

@@ -2238,6 +2238,11 @@ model DoctorProfile {
   /// [DPI] §1.1/§1.3 — akademik yayın listesi (`DoctorPublication` şekli Zod ile zorlanır).
   /// Dizi SIRASI doktorundur, sunucu yeniden sıralamaz. HTML KABUL ETMEZ — HTML gelirse `422`.
   publications      Json     @default("[]")
+  /// Doktorun sosyal medya linkleri — platform + url + opsiyonel etiket, en fazla 8 öğe
+  /// (Zod ile YAZMA ANINDA zorlanır, backend-agent). `cvEntries`/`publications` İLE AYNI
+  /// desen: ayrı bir ilişkisel tablo/Prisma enum DEĞİL (JSON içinde enum yaşamaz, platform
+  /// string olarak saklanır). Kök `SocialLink` modeliyle (site-wide footer/header) İLİŞKİSİZ.
+  socialLinks       Json     @default("[]")
   /// ISO 639-1 kodları ("tr", "en", "de") — en fazla 6, Zod ile zorlanır.
   languages         String[]
   /// IANA saat dilimi ("Europe/Istanbul"). Müsaitlik kuralları BU dilimin DUVAR SAATİNDE

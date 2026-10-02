@@ -43,6 +43,7 @@ function makeDoctor(overrides: Partial<DoctorProfile> = {}): DoctorProfile {
     experienceYears: null,
     cvEntries: [],
     publications: [],
+    socialLinks: [],
     languages: ["en"],
     timeZone: "Europe/London",
     sessionDurationMin: 45,

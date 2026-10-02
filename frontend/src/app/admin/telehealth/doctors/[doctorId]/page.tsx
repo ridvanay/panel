@@ -9,7 +9,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { AlertCircle, ChevronLeft, Stethoscope, Trash2 } from "lucide-react";
 import * as telehealthApi from "@/lib/api/telehealth";
-import type { DoctorAvailabilityRuleInput, DoctorProfile, Media, Specialty } from "@/lib/api/types";
+import type { DoctorAvailabilityRuleInput, DoctorProfile, DoctorSocialLink, Media, Specialty } from "@/lib/api/types";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
@@ -23,6 +23,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { MediaSelectField } from "@/components/admin/media/media-select-field";
 import { PageHeading } from "@/components/admin/page-heading";
 import { WeeklyAvailabilityEditor } from "@/components/admin/telehealth/weekly-availability-editor";
+import { DoctorSocialLinksEditor } from "@/components/site/telehealth/doctor-social-links-editor";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { ApiClientError } from "@/lib/api/error";
 
@@ -54,6 +55,7 @@ export default function EditDoctorPage({ params }: { params: Promise<{ doctorId:
   const [doctor, setDoctor] = useState<DoctorProfile | null>(null);
   const [specialties, setSpecialties] = useState<Specialty[]>([]);
   const [avatar, setAvatar] = useState<Media | null>(null);
+  const [socialLinks, setSocialLinks] = useState<DoctorSocialLink[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -84,6 +86,7 @@ export default function EditDoctorPage({ params }: { params: Promise<{ doctorId:
       setDoctor(doc);
       setSpecialties(specialtyList);
       setAvatar(doc.avatarMedia);
+      setSocialLinks(doc.socialLinks);
       setRules(availability.map((rule) => ({ dayOfWeek: rule.dayOfWeek, startMinute: rule.startMinute, endMinute: rule.endMinute, isActive: rule.isActive })));
       reset({
         title: doc.title,
@@ -129,8 +132,10 @@ export default function EditDoctorPage({ params }: { params: Promise<{ doctorId:
         avatarMediaId: avatar?.id ?? null,
         isActive: values.isActive,
         isVerified: values.isVerified,
+        socialLinks,
       });
       setDoctor(updated);
+      setSocialLinks(updated.socialLinks);
       toast.success("Doktor güncellendi.");
     } catch (err) {
       const message = friendlyErrorMessage(err);
@@ -338,6 +343,16 @@ export default function EditDoctorPage({ params }: { params: Promise<{ doctorId:
               )}
 
               <MediaSelectField id="avatar" label="Avatar" value={avatar} onChange={setAvatar} />
+
+              <div className="space-y-3 rounded-lg border border-border p-3">
+                <div>
+                  <h2 className="text-sm font-semibold text-foreground">Sosyal Medya / Web Bağlantıları</h2>
+                  <p className="text-xs text-foreground/60">
+                    Profil fotoğrafının altında yuvarlak ikon olarak gösterilir — en fazla 8 bağlantı.
+                  </p>
+                </div>
+                <DoctorSocialLinksEditor links={socialLinks} onChange={setSocialLinks} />
+              </div>
 
               {/* K8 — bağlama/çözme SADECE `/admin/users`'ta yapılır (ADMIN-only, backend
                * `PATCH .../doctors/{id}` gövdesinde `userId` alanı ADMIN'e kilitli); burada

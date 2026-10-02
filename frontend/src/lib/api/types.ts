@@ -3729,6 +3729,21 @@ export interface DoctorPublication {
   url?: string | null;
 }
 
+/**
+ * [DPI] — `DoctorProfile.socialLinks` öğesi. `platform` serbest string DEĞİL, sabit literal union
+ * (backend `schemas/entities.ts::DoctorSocialLinkPlatformSchema` İLE BİREBİR). `url` — profil
+ * sayfasında DOĞRUDAN `<a href target="_blank">` olarak render edildiği için `DoctorPublication.url`
+ * İLE AYNI gerekçeyle YALNIZCA `https://` kabul edilir (sunucu `http:`/`javascript:`/`data:` → 422).
+ */
+export type DoctorSocialLinkPlatform = "instagram" | "facebook" | "youtube" | "linkedin" | "x" | "tiktok" | "website";
+
+export interface DoctorSocialLink {
+  platform: DoctorSocialLinkPlatform;
+  /** Yalnızca `https://` — sunucu başka şema kabul etmez. */
+  url: string;
+  label?: string;
+}
+
 export interface DoctorProfile {
   id: string;
   userId: string | null;
@@ -3752,6 +3767,8 @@ export interface DoctorProfile {
   cvEntries: DoctorCvEntry[];
   /** Bilimsel yayınlar — `cvEntries` İLE AYNI sıra disiplini. */
   publications: DoctorPublication[];
+  /** Sosyal medya/web bağlantıları — en fazla 8, boşsa `[]`. Dizi sırası doktorundur. */
+  socialLinks: DoctorSocialLink[];
   /** ISO 639-1 kodları ("tr", "en"), en fazla 6. */
   languages: string[];
   /** IANA saat dilimi ("Europe/Istanbul"). */
@@ -3781,6 +3798,8 @@ export interface CreateDoctorRequest {
   practiceStartYear?: number | null;
   cvEntries?: DoctorCvEntry[];
   publications?: DoctorPublication[];
+  /** En fazla 8 — gönderilirse dizinin TAMAMINI değiştirir (parça güncelleme YOK). */
+  socialLinks?: DoctorSocialLink[];
   languages: string[];
   timeZone: string;
   specialtyId?: string | null;
@@ -3816,6 +3835,8 @@ export interface UpdateDoctorSelfProfileRequest {
   timeZone?: string;
   cvEntries?: DoctorCvEntry[];
   publications?: DoctorPublication[];
+  /** En fazla 8 — gönderilirse dizinin TAMAMINI değiştirir (parça güncelleme YOK). */
+  socialLinks?: DoctorSocialLink[];
 }
 
 export interface SetDoctorAvailabilityRequest {

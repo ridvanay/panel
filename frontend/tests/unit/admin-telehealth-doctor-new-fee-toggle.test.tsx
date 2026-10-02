@@ -39,6 +39,7 @@ function makeDoctor(overrides: Partial<DoctorProfile> = {}): DoctorProfile {
     experienceYears: null,
     cvEntries: [],
     publications: [],
+    socialLinks: [],
     languages: ["tr"],
     timeZone: "Europe/Istanbul",
     sessionDurationMin: 30,
@@ -94,5 +95,62 @@ describe("NewDoctorPage — 'Ücretli Hizmet' switch (opsiyonel seans ücreti)",
 
     await waitFor(() => expect(createDoctor).toHaveBeenCalledTimes(1));
     expect(createDoctor.mock.calls[0]![0]).toMatchObject({ sessionPriceCents: null });
+  });
+});
+
+/**
+ * [DPI] §1.1 — `DoctorSocialLinksEditor` admin "Yeni Doktor" formuna kablolanmış mı (ekle/sil/
+ * gönder). Editörün KENDİ liste mantığı (`platform`/`url`/`label` alan davranışı) `doctor-cv-
+ * entries-editor.tsx`/`doctor-publications-editor.tsx` İLE AYNI "kontrollü liste" desenidir —
+ * burada yalnızca formla UÇTAN UCA entegrasyon doğrulanır.
+ */
+describe("NewDoctorPage — sosyal medya/web bağlantıları", () => {
+  beforeEach(() => {
+    createDoctor.mockReset();
+    routerPush.mockReset();
+  });
+
+  it("'Bağlantı Ekle' ile eklenen satır doldurulup `createDoctor`'a `socialLinks` olarak gönderilir", async () => {
+    createDoctor.mockResolvedValue(
+      makeDoctor({ socialLinks: [{ platform: "instagram", url: "https://instagram.com/doc", label: "" }] })
+    );
+    const user = userEvent.setup();
+    render(<NewDoctorPage />);
+
+    await user.click(screen.getByRole("button", { name: "Bağlantı Ekle" }));
+    await user.type(screen.getByLabelText("Bağlantı 1 adresi"), "https://instagram.com/doc");
+
+    await user.type(screen.getByLabelText(/Ad soyad/), "Sosyal Doktor");
+    await user.type(screen.getByLabelText(/Biyografi/), "Kısa biyografi.");
+    await user.click(screen.getByRole("button", { name: /Oluştur ve müsaitliği ayarla/ }));
+
+    await waitFor(() => expect(createDoctor).toHaveBeenCalledTimes(1));
+    expect(createDoctor.mock.calls[0]![0].socialLinks).toEqual([
+      { platform: "instagram", url: "https://instagram.com/doc", label: "" },
+    ]);
+  });
+
+  it("'N. bağlantıyı kaldır' ile eklenen satır formdan silinir", async () => {
+    const user = userEvent.setup();
+    render(<NewDoctorPage />);
+
+    await user.click(screen.getByRole("button", { name: "Bağlantı Ekle" }));
+    expect(screen.getByLabelText("Bağlantı 1 adresi")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "1. bağlantıyı kaldır" }));
+    expect(screen.queryByLabelText("Bağlantı 1 adresi")).not.toBeInTheDocument();
+  });
+
+  it("8 bağlantıya ulaşınca 'Bağlantı Ekle' butonu devre dışı kalır", async () => {
+    const user = userEvent.setup();
+    render(<NewDoctorPage />);
+
+    const addButton = screen.getByRole("button", { name: "Bağlantı Ekle" });
+    for (let i = 0; i < 8; i++) {
+      await user.click(addButton);
+    }
+
+    expect(screen.getAllByLabelText(/Bağlantı \d+ adresi/)).toHaveLength(8);
+    expect(addButton).toBeDisabled();
   });
 });

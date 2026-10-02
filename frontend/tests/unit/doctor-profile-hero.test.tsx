@@ -39,6 +39,7 @@ function makeDoctor(overrides: Partial<DoctorProfile> = {}): DoctorProfile {
     experienceYears: null,
     cvEntries: [],
     publications: [],
+    socialLinks: [],
     languages: ["tr", "en"],
     timeZone: "Europe/Istanbul",
     sessionDurationMin: 30,
@@ -155,6 +156,35 @@ describe("DoctorProfileHero", () => {
       expect(screen.getByText("EA")).toBeInTheDocument();
     }
   );
+
+  it("`socialLinks` VARSA fotoğrafın altında erişilebilir yuvarlak bağlantı düğmeleri gösterir", () => {
+    render(
+      <DoctorProfileHero
+        doctor={makeDoctor({
+          socialLinks: [
+            { platform: "instagram", url: "https://instagram.com/doc" },
+            { platform: "website", url: "https://doc.com", label: "Kişisel Site" },
+          ],
+        })}
+        dict={trTelehealthStrings}
+        lang="tr"
+      />
+    );
+
+    const instagramLink = screen.getByRole("link", { name: "Instagram" });
+    expect(instagramLink).toHaveAttribute("href", "https://instagram.com/doc");
+    expect(instagramLink).toHaveAttribute("target", "_blank");
+    expect(instagramLink).toHaveAttribute("rel", "noopener noreferrer");
+
+    // `label` DOLUYSA erişilebilir isim olarak platform adının YERİNE geçer.
+    const websiteLink = screen.getByRole("link", { name: "Kişisel Site" });
+    expect(websiteLink).toHaveAttribute("href", "https://doc.com");
+  });
+
+  it("`socialLinks` BOŞSA (`[]`) bağlantı bölümü HİÇ render edilmez", () => {
+    render(<DoctorProfileHero doctor={makeDoctor({ socialLinks: [] })} dict={trTelehealthStrings} lang="tr" />);
+    expect(screen.queryByLabelText("Sosyal medya ve web bağlantıları")).not.toBeInTheDocument();
+  });
 
   it("uzun ad `break-words` ile ikinci satıra sarkar, `truncate` KULLANILMAZ (kesilmez)", () => {
     render(<DoctorProfileHero doctor={makeDoctor({ fullName: "Çok Uzun Bir Ad Soyad Örneği Testi" })} dict={trTelehealthStrings} lang="tr" />);
