@@ -32,13 +32,15 @@ describe("JourneyMapBlockView", () => {
     expect(screen.getByText("Pre-Travel Planning")).toBeInTheDocument();
     expect(screen.getByText("Arrival in Istanbul")).toBeInTheDocument();
     expect(screen.getByText("Germany")).toBeInTheDocument();
-    expect(screen.getByText("Istanbul")).toBeInTheDocument();
+    // İstanbul pill'i büyük harfle render edilir (journey-v2 tasarımı) — sr-only adım metninden
+    // ayırt etmek için TAM BÜYÜK HARF eşleşmesi kullanılır.
+    expect(screen.getByText("ISTANBUL")).toBeInTheDocument();
     expect(screen.getByText(/Step 1/)).toBeInTheDocument();
   });
 
   it("siteContext.lang=tr iken TR etiketlerini (Adım/İstanbul) kullanır", () => {
     render(<JourneyMapBlockView block={journeyBlock()} siteContext={{ lang: "tr", defaultLocaleCode: "tr" }} />);
-    expect(screen.getByText("İstanbul")).toBeInTheDocument();
+    expect(screen.getByText("İSTANBUL")).toBeInTheDocument();
     expect(screen.getByText(/Adım 1/)).toBeInTheDocument();
   });
 });
