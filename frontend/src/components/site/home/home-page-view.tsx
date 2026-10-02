@@ -15,6 +15,7 @@ import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import { resolveAboutHref, selectAboutDoctors, type AboutIconKey } from "@/lib/about-page";
 import { resolveEmergencyNotice } from "@/lib/emergency-notice";
 import { buildDefaultHomeContent, HOME_HOW_ANCHOR, resolveHomeContent, type HomePageContent } from "@/lib/home-page";
+import { HomeJourney } from "@/components/site/home/home-journey";
 import { cn } from "@/lib/utils";
 import { toOptimizableMediaUrl } from "@/lib/env";
 
@@ -91,6 +92,9 @@ export async function HomePageView({ data, siteContext }: { data: unknown; siteC
         <HomeHero hero={content.hero} primaryHref={href(content.hero.primaryCta.href)} secondaryHref={heroSecondaryHref} />
       )}
       {content.trust.enabled && content.trust.items.length > 0 && <TrustStrip items={content.trust.items} />}
+      {content.journey.enabled && content.journey.steps.length > 0 && (
+        <HomeJourney journey={content.journey} stepLabel={dict.home.stepLabel} istanbulLabel={dict.home.journeyIstanbulLabel} />
+      )}
       {content.specialties.enabled && specialties.length > 0 && (
         <section className="bg-background" aria-labelledby="home-specialties-title">
           <div className={cn(aboutContainerClass, SECTION_Y)}>

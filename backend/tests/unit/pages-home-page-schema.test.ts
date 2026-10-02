@@ -27,6 +27,7 @@ describe("home-page blok şeması", () => {
     expect(data.data.closing).toMatchObject({ enabled: true });
     expect(data.data.trust).toBeUndefined();
     expect(data.data.how).toBeUndefined();
+    expect(data.data.journey).toBeUndefined();
   });
 
   it("tam dolu bloğu kabul eder; sayfa içi çapa, göreli ve https bağlantılar geçerlidir", () => {
@@ -41,6 +42,14 @@ describe("home-page blok şeması", () => {
         },
         trust: { enabled: true, items: [item("a"), item("b"), item("c"), item("d")] },
         how: { steps: [item("s1"), item("s2")] },
+        journey: {
+          eyebrow: "Global patient journey",
+          steps: [item("j1"), item("j2"), item("j3")],
+          countries: [
+            { id: "uk", label: "United Kingdom" },
+            { id: "de", label: "Germany" },
+          ],
+        },
         specialties: { columns: 4 },
         doctors: { count: 8 },
         closing: { enabled: false, primaryCta: { label: "Contact", href: "/contact" } },
@@ -61,8 +70,19 @@ describe("home-page blok şeması", () => {
     ["0 doktor", { doctors: { count: 0 } }],
     ["5 kolon", { specialties: { columns: 5 } }],
     ["çok uzun başlık", { hero: { title: "x".repeat(201) } }],
+    ["yolculukta tek adım", { journey: { steps: [item("j1")] } }],
+    ["yolculukta 5 adım", { journey: { steps: ["1", "2", "3", "4", "5"].map(item) } }],
+    ["yolculukta listede olmayan ikon", { journey: { steps: [{ id: "j1", icon: "Rocket", title: "", text: "" }, item("j2")] } }],
+    ["yolculukta 9 ülke", { journey: { steps: [item("j1"), item("j2")], countries: Array.from({ length: 9 }, (_, i) => ({ id: `c${i}`, label: "X" })) } }],
   ])("reddeder: %s", (_label, data) => {
     expect(parse([homeBlock(data)]).success).toBe(false);
+  });
+
+  it("yolculuk ülkeleri boş dizi veya hiç verilmeden de kabul edilir (min 0)", () => {
+    const result = parse([homeBlock({ journey: { steps: [item("j1"), item("j2")] } })]);
+    expect(result.success).toBe(true);
+    const data = (result.success ? result.data.blocks?.[0] : null) as { data: Record<string, Record<string, unknown>> };
+    expect(data.data.journey).toMatchObject({ enabled: true, countries: [] });
   });
 
   it("yalnızca tek ve kök düğüm olabilir (başka blokla veya konteyner içinde reddedilir)", () => {
@@ -74,6 +94,7 @@ describe("home-page blok şeması", () => {
     expect(TEMPLATE_EDITABLE_FIELDS["home-page"]).toEqual([
       "data.hero",
       "data.trust",
+      "data.journey",
       "data.specialties",
       "data.how",
       "data.doctors",

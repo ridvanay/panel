@@ -18721,6 +18721,28 @@ components:
               minItems: 2
               maxItems: 4
               items: { $ref: "#/components/schemas/HomePageItem" }
+        journey:
+          type: object
+          description: >
+            "Global hasta yolculuğu" — TrustStrip'in (24/7 Access / Encrypted Consultation /
+            Verified Profiles) hemen altında, Uzmanlıklar bölümünden önce render edilir
+            (2026-10-02). Eski kayıtlarda bu alan YOKSA frontend varsayılan içerikle ve
+            `enabled: true` ile doldurur (bkz. `frontend/src/lib/home-page.ts::resolveHomeContent`).
+          properties:
+            enabled: { type: boolean, default: true }
+            eyebrow: { type: string, maxLength: 120 }
+            title: { type: string, maxLength: 200 }
+            body: { type: string, maxLength: 600 }
+            steps:
+              type: array
+              minItems: 2
+              maxItems: 4
+              items: { $ref: "#/components/schemas/HomePageItem" }
+            countries:
+              type: array
+              maxItems: 8
+              description: "Dünya küresi SVG'sindeki nokta/uçuş çizgisi etiketleri — ikon/metin taşımaz."
+              items: { $ref: "#/components/schemas/HomePageCountry" }
         doctors:
           type: object
           properties:
@@ -18745,6 +18767,14 @@ components:
         icon: { type: string, description: "Hakkımızda şablonuyla ortak kapalı ikon listesi (ABOUT_ICON_KEYS)" }
         title: { type: string, maxLength: 120 }
         text: { type: string, maxLength: 400 }
+
+    HomePageCountry:
+      type: object
+      required: [id]
+      description: "`journey.countries` öğesi — ikon/metin YOK, yalnızca id (nokta eşlemesi) ve label (kart metni)."
+      properties:
+        id: { type: string, maxLength: 64 }
+        label: { type: string, maxLength: 80 }
 
     SpecialtyCardsBlockData:
       type: object

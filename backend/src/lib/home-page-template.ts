@@ -18,3 +18,10 @@ export const HOME_MAX_DOCTORS = 8;
 export const HOME_DEFAULT_DOCTORS = 3;
 export const HOME_SPECIALTY_COLUMNS = [3, 4, 6] as const;
 export const HOME_DEFAULT_SPECIALTY_COLUMNS = 6;
+// "Global hasta yolculuğu" bölümü (TrustStrip'in altı, uzmanlıklardan önce) — 2026-10-02.
+// Adımlar güven şeridiyle AYNI `HomeItem` şeklini (id/icon/title/text) kullanır; ülkeler
+// yalnızca `id`/`label` taşıyan ayrı, daha küçük bir öğedir (ikon yok, dünya küresi
+// SVG'sindeki noktalarla eşlenir).
+export const HOME_MIN_JOURNEY_STEPS = 2;
+export const HOME_MAX_JOURNEY_STEPS = 4;
+export const HOME_MAX_JOURNEY_COUNTRIES = 8;

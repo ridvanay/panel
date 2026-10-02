@@ -26,9 +26,12 @@ import {
   HOME_DEFAULT_DOCTORS,
   HOME_DEFAULT_SPECIALTY_COLUMNS,
   HOME_MAX_DOCTORS,
+  HOME_MAX_JOURNEY_COUNTRIES,
+  HOME_MAX_JOURNEY_STEPS,
   HOME_MAX_STEPS,
   HOME_MAX_TRUST_ITEMS,
   HOME_MIN_DOCTORS,
+  HOME_MIN_JOURNEY_STEPS,
   HOME_MIN_STEPS,
   HOME_MIN_TRUST_ITEMS,
   HOME_PAGE_BLOCK_TYPE,
@@ -1120,8 +1123,12 @@ const AboutPageBlockSchema = z.object({
 /* ---------- "Anasayfa" şablon bloğu — bkz. lib/home-page-template.ts ----------
  * `about-page` ile AYNI kurallar: düz metin, boş string = sözlük varsayılanı, bağlantılar
  * `SafeHrefSchema` veya sayfa içi çapa (`#how`). Bölüm sırası sabittir; her bölümün
- * `enabled` anahtarı vardır. Güven şeridi 1–4, adımlar 2–4 madde; doktor sayısı 1–8. */
+ * `enabled` anahtarı vardır. Güven şeridi 1–4, adımlar 2–4 madde; doktor sayısı 1–8; yolculuk
+ * adımları 2–4 madde, yolculuk ülkeleri en fazla 8 madde. */
 const HomeItemSchema = z.object({ id: AboutItemIdSchema, icon: AboutIconSchema, title: aboutText(120), text: aboutText(400) });
+/** Dünya küresindeki bir nokta/ülke etiketi — `HomeItemSchema`'dan FARKLI: ikon/metin YOK,
+ *  yalnızca `id` (SVG nokta eşlemesi) ve `label` (kart metni) taşır. */
+const HomeCountrySchema = z.object({ id: AboutItemIdSchema, label: aboutText(80) });
 const HomePageBlockDataSchema = z.object({
   hero: z
     .object({
@@ -1141,6 +1148,21 @@ const HomePageBlockDataSchema = z.object({
     .object({
       enabled: z.boolean().default(true),
       items: z.array(HomeItemSchema).min(HOME_MIN_TRUST_ITEMS).max(HOME_MAX_TRUST_ITEMS),
+    })
+    .optional(),
+  // "Global hasta yolculuğu" — TrustStrip'in altında, Uzmanlıklar'dan önce (2026-10-02).
+  // `trust`/`how` İLE AYNI gerekçeyle `.optional()`: `steps` en az 2 öğe gerektirir, bu yüzden
+  // zod seviyesinde anlamlı bir `.default()` YOK — eski kayıtlarda (alan hiç YOKSA) geriye dönük
+  // uyumluluk FRONTEND'deki `resolveHomeContent` tarafından varsayılan içerikle + `enabled: true`
+  // doldurulur (bkz. `frontend/src/lib/home-page.ts`, bu şemanın aynası).
+  journey: z
+    .object({
+      enabled: z.boolean().default(true),
+      eyebrow: aboutText(120),
+      title: aboutText(200),
+      body: aboutText(600),
+      steps: z.array(HomeItemSchema).min(HOME_MIN_JOURNEY_STEPS).max(HOME_MAX_JOURNEY_STEPS),
+      countries: z.array(HomeCountrySchema).max(HOME_MAX_JOURNEY_COUNTRIES).default([]),
     })
     .optional(),
   specialties: z

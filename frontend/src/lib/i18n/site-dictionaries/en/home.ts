@@ -38,6 +38,28 @@ export const homeStrings = {
   /** Ekran okuyucu için adım numarası — `{number}` yer tutucusu. */
   stepLabel: "Step {number}",
 
+  // --- Global patient journey ---
+  journeyEyebrow: "Global patient journey",
+  journeyTitle: "From Across the World to Istanbul",
+  journeyBody:
+    "WM Health coordinates each stage of your journey to Istanbul, with treatment planning guided by your medical needs.",
+  journeyStep1Title: "Pre-Travel Planning",
+  journeyStep1Text: "Share your medical history and treatment goals so we can prepare a plan tailored to you before you travel.",
+  journeyStep2Title: "Arrival in Istanbul",
+  journeyStep2Text: "Our team welcomes you, arranges your accommodation, and confirms your appointment schedule.",
+  journeyStep3Title: "Examination and Treatment",
+  journeyStep3Text: "Your treating physician completes any necessary examinations and carries out your treatment plan.",
+  journeyStep4Title: "Follow-Up After Your Return",
+  journeyStep4Text: "We stay in touch after you return home to support your recovery and answer any questions.",
+  journeyCountry1: "United Kingdom",
+  journeyCountry2: "Germany",
+  journeyCountry3: "Russia",
+  journeyCountry4: "Kazakhstan",
+  journeyCountry5: "Saudi Arabia",
+  journeyCountry6: "United States",
+  /** Harita üzerindeki merkez noktanın sabit etiketi — ülke listesinden bağımsız. */
+  journeyIstanbulLabel: "Istanbul",
+
   // --- Doctors ---
   doctorsEyebrow: "Our medical team",
   doctorsTitle: "Meet our doctors",

@@ -27,6 +27,9 @@ export const HOME_MIN_TRUST_ITEMS = 1;
 export const HOME_MAX_TRUST_ITEMS = 4;
 export const HOME_MIN_STEPS = 2;
 export const HOME_MAX_STEPS = 4;
+export const HOME_MIN_JOURNEY_STEPS = 2;
+export const HOME_MAX_JOURNEY_STEPS = 4;
+export const HOME_MAX_JOURNEY_COUNTRIES = 8;
 export const HOME_MIN_DOCTORS = 1;
 export const HOME_MAX_DOCTORS = 8;
 export const HOME_DEFAULT_DOCTORS = 3;
@@ -41,6 +44,12 @@ export interface HomeItem {
   icon: AboutIconKey;
   title: string;
   text: string;
+}
+
+/** "Küresel hasta yolculuğu" bölümündeki bir ülke etiketi (ikon/metin yok, yalnızca `id` + `label`). */
+export interface HomeCountry {
+  id: string;
+  label: string;
 }
 
 export interface HomePageContent {
@@ -59,6 +68,8 @@ export interface HomePageContent {
   trust: { enabled: boolean; items: HomeItem[] };
   specialties: { enabled: boolean; eyebrow: string; title: string; viewAllLabel: string; columns: HomeSpecialtyColumns };
   how: { enabled: boolean; eyebrow: string; title: string; steps: HomeItem[] };
+  /** "From Across the World to Istanbul" — TrustStrip'in hemen altında, uzmanlıklardan önce. */
+  journey: { enabled: boolean; eyebrow: string; title: string; body: string; steps: HomeItem[]; countries: HomeCountry[] };
   doctors: { enabled: boolean; eyebrow: string; title: string; ctaLabel: string; count: number };
   closing: { enabled: boolean; title: string; primaryCta: AboutCta; secondaryCta: AboutCta };
 }
@@ -109,6 +120,26 @@ export function buildDefaultHomeContent(dict: HomeStrings): HomePageContent {
         { id: "step-3", icon: "Video", title: dict.step3Title, text: dict.step3Text },
       ],
     },
+    journey: {
+      enabled: true,
+      eyebrow: dict.journeyEyebrow,
+      title: dict.journeyTitle,
+      body: dict.journeyBody,
+      steps: [
+        { id: "journey-1", icon: "ClipboardCheck", title: dict.journeyStep1Title, text: dict.journeyStep1Text },
+        { id: "journey-2", icon: "Plane", title: dict.journeyStep2Title, text: dict.journeyStep2Text },
+        { id: "journey-3", icon: "Stethoscope", title: dict.journeyStep3Title, text: dict.journeyStep3Text },
+        { id: "journey-4", icon: "Video", title: dict.journeyStep4Title, text: dict.journeyStep4Text },
+      ],
+      countries: [
+        { id: "country-1", label: dict.journeyCountry1 },
+        { id: "country-2", label: dict.journeyCountry2 },
+        { id: "country-3", label: dict.journeyCountry3 },
+        { id: "country-4", label: dict.journeyCountry4 },
+        { id: "country-5", label: dict.journeyCountry5 },
+        { id: "country-6", label: dict.journeyCountry6 },
+      ],
+    },
     doctors: {
       enabled: true,
       eyebrow: dict.doctorsEyebrow,
@@ -140,6 +171,13 @@ function readItems(raw: unknown, max: number, prefix: string, fallbackIcon: Abou
   });
 }
 
+function readCountries(raw: unknown, max: number): HomeCountry[] {
+  return (Array.isArray(raw) ? raw : []).slice(0, max).map((item, index) => {
+    const r = asRecord(item);
+    return { id: itemId(r.id, index, "country"), label: optionalText(r.label) };
+  });
+}
+
 /**
  * Ham blok verisini (DB'den, tip güvencesi YOK) sözlük varsayılanlarıyla ALAN BAZINDA birleştirir:
  * boş/eksik alan → varsayılan; başlığı boş madde atlanır; liste boş kalırsa (veya en az sayının
@@ -151,11 +189,14 @@ export function resolveHomeContent(raw: unknown, defaults: HomePageContent): Hom
   const trust = asRecord(data.trust);
   const specialties = asRecord(data.specialties);
   const how = asRecord(data.how);
+  const journey = asRecord(data.journey);
   const doctors = asRecord(data.doctors);
   const closing = asRecord(data.closing);
 
   const trustItems = readItems(trust.items, HOME_MAX_TRUST_ITEMS, "trust", "BadgeCheck").filter((i) => i.title.length > 0);
   const steps = readItems(how.steps, HOME_MAX_STEPS, "step", "BadgeCheck").filter((i) => i.title.length > 0);
+  const journeySteps = readItems(journey.steps, HOME_MAX_JOURNEY_STEPS, "journey", "BadgeCheck").filter((i) => i.title.length > 0);
+  const journeyCountries = readCountries(journey.countries, HOME_MAX_JOURNEY_COUNTRIES).filter((c) => c.label.length > 0);
 
   return {
     hero: {
@@ -187,6 +228,14 @@ export function resolveHomeContent(raw: unknown, defaults: HomePageContent): Hom
       title: text(how.title, defaults.how.title),
       steps: steps.length >= HOME_MIN_STEPS ? steps : defaults.how.steps,
     },
+    journey: {
+      enabled: flag(journey.enabled, defaults.journey.enabled),
+      eyebrow: text(journey.eyebrow, defaults.journey.eyebrow),
+      title: text(journey.title, defaults.journey.title),
+      body: text(journey.body, defaults.journey.body),
+      steps: journeySteps.length >= HOME_MIN_JOURNEY_STEPS ? journeySteps : defaults.journey.steps,
+      countries: journeyCountries.length > 0 ? journeyCountries : defaults.journey.countries,
+    },
     doctors: {
       enabled: flag(doctors.enabled, defaults.doctors.enabled),
       eyebrow: text(doctors.eyebrow, defaults.doctors.eyebrow),
@@ -213,6 +262,7 @@ export function toEditableHomeContent(raw: unknown, defaults: HomePageContent): 
   const trust = asRecord(data.trust);
   const specialties = asRecord(data.specialties);
   const how = asRecord(data.how);
+  const journey = asRecord(data.journey);
   const doctors = asRecord(data.doctors);
   const closing = asRecord(data.closing);
   const str = (value: unknown) => (typeof value === "string" ? value : "");
@@ -225,8 +275,15 @@ export function toEditableHomeContent(raw: unknown, defaults: HomePageContent): 
       const r = asRecord(item);
       return { id: itemId(r.id, index, prefix), icon: icon(r.icon, "BadgeCheck"), title: str(r.title), text: str(r.text) };
     });
+  const countryItems = (value: unknown, max: number) =>
+    (Array.isArray(value) ? value : []).slice(0, max).map((item, index) => {
+      const r = asRecord(item);
+      return { id: itemId(r.id, index, "country"), label: str(r.label) };
+    });
   const trustItems = items(trust.items, HOME_MAX_TRUST_ITEMS, "trust");
   const steps = items(how.steps, HOME_MAX_STEPS, "step");
+  const journeySteps = items(journey.steps, HOME_MAX_JOURNEY_STEPS, "journey");
+  const journeyCountries = countryItems(journey.countries, HOME_MAX_JOURNEY_COUNTRIES);
 
   return {
     hero: {
@@ -255,6 +312,15 @@ export function toEditableHomeContent(raw: unknown, defaults: HomePageContent): 
       eyebrow: str(how.eyebrow),
       title: str(how.title),
       steps: steps.length > 0 ? steps : defaults.how.steps,
+    },
+    // Liste hiç kaydedilmemişse form varsayılan madde/ülkelerle başlar (kaydedilebilir olsun diye).
+    journey: {
+      enabled: flag(journey.enabled, true),
+      eyebrow: str(journey.eyebrow),
+      title: str(journey.title),
+      body: str(journey.body),
+      steps: journeySteps.length > 0 ? journeySteps : defaults.journey.steps,
+      countries: journeyCountries.length > 0 ? journeyCountries : defaults.journey.countries,
     },
     doctors: {
       enabled: flag(doctors.enabled, true),

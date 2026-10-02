@@ -13,13 +13,17 @@ import { newId } from "@/lib/page-builder/registry";
 import type { AboutCta } from "@/lib/about-page";
 import {
   HOME_MAX_DOCTORS,
+  HOME_MAX_JOURNEY_COUNTRIES,
+  HOME_MAX_JOURNEY_STEPS,
   HOME_MAX_STEPS,
   HOME_MAX_TRUST_ITEMS,
   HOME_MIN_DOCTORS,
+  HOME_MIN_JOURNEY_STEPS,
   HOME_MIN_STEPS,
   HOME_MIN_TRUST_ITEMS,
   HOME_SPECIALTY_COLUMNS,
   buildDefaultHomeContent,
+  type HomeCountry,
   type HomeItem,
   type HomePageContent,
   type HomeSpecialtyColumns,
@@ -72,7 +76,7 @@ export function HomeTemplateForm({ value, onChange, localeCode, idPrefix = "home
   }
 
   function itemList(
-    section: "trust" | "how",
+    section: "trust" | "how" | "journey",
     items: HomeItem[],
     min: number,
     max: number,
@@ -125,7 +129,40 @@ export function HomeTemplateForm({ value, onChange, localeCode, idPrefix = "home
     );
   }
 
-  const { hero, trust, specialties, how, doctors, closing } = value;
+  function countryList(countries: HomeCountry[], max: number, apply: (countries: HomeCountry[]) => void) {
+    return (
+      <div className="space-y-3">
+        {countries.map((country, index) => (
+          <div key={country.id} className="space-y-3 rounded-lg border border-border/60 p-3">
+            <ItemToolbar
+              label={`Ülke ${index + 1}`}
+              index={index}
+              count={countries.length}
+              onMove={(direction) => apply(moveInList(countries, index, direction))}
+              onRemove={() => apply(countries.filter((c) => c.id !== country.id))}
+            />
+            {textField(`journey-${country.id}-label`, "Ülke adı", country.label, "Ör. Almanya", (t) =>
+              apply(countries.map((c) => (c.id === country.id ? { ...c, label: t } : c)))
+            )}
+          </div>
+        ))}
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            type="button"
+            variant="outline"
+            disabled={countries.length >= max}
+            onClick={() => apply([...countries, { id: newId(), label: "" }])}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Ülke ekle
+          </Button>
+          <span className="text-xs text-foreground/60">En fazla {max} ülke.</span>
+        </div>
+      </div>
+    );
+  }
+
+  const { hero, trust, specialties, how, journey, doctors, closing } = value;
 
   return (
     <div className="space-y-6">
@@ -159,6 +196,20 @@ export function HomeTemplateForm({ value, onChange, localeCode, idPrefix = "home
         toggle={{ id: id("trust-enabled"), checked: trust.enabled, onChange: (enabled) => patch("trust", { enabled }) }}
       >
         {itemList("trust", trust.items, HOME_MIN_TRUST_ITEMS, HOME_MAX_TRUST_ITEMS, "Madde", (items) => patch("trust", { items }))}
+      </SectionCard>
+
+      <SectionCard
+        title="Küresel hasta yolculuğu"
+        description="Güven şeridinin hemen altında, uzmanlıklardan önce gösterilir. 2–4 adım, en fazla 8 ülke."
+        toggle={{ id: id("journey-enabled"), checked: journey.enabled, onChange: (enabled) => patch("journey", { enabled }) }}
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
+          {textField("journey-eyebrow", "Üst etiket", journey.eyebrow, defaults.journey.eyebrow, (t) => patch("journey", { eyebrow: t }))}
+          {textField("journey-title", "Başlık", journey.title, defaults.journey.title, (t) => patch("journey", { title: t }))}
+        </div>
+        {textField("journey-body", "Açıklama", journey.body, defaults.journey.body, (t) => patch("journey", { body: t }), true)}
+        {itemList("journey", journey.steps, HOME_MIN_JOURNEY_STEPS, HOME_MAX_JOURNEY_STEPS, "Adım", (steps) => patch("journey", { steps }))}
+        {countryList(journey.countries, HOME_MAX_JOURNEY_COUNTRIES, (countries) => patch("journey", { countries }))}
       </SectionCard>
 
       <SectionCard

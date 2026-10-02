@@ -59,7 +59,7 @@ beforeEach(() => {
 });
 
 describe("lib/home-page", () => {
-  it("boş veri → sözlük varsayılanları (3 güven maddesi, 3 adım, 6 kolon, 3 doktor)", () => {
+  it("boş veri → sözlük varsayılanları (3 güven maddesi, 3 adım, 6 kolon, 3 doktor, 4 journey adımı, 6 ülke)", () => {
     const content = resolveHomeContent({}, buildDefaultHomeContent(en));
     expect(content.hero.title).toBe(en.heroTitle);
     expect(content.hero.secondaryCta).toEqual({ label: en.heroSecondaryCta, href: "#how" });
@@ -67,6 +67,51 @@ describe("lib/home-page", () => {
     expect(content.how.steps).toHaveLength(3);
     expect(content.specialties.columns).toBe(6);
     expect(content.doctors.count).toBe(3);
+    expect(content.journey.enabled).toBe(true);
+    expect(content.journey.title).toBe(en.journeyTitle);
+    expect(content.journey.steps).toHaveLength(4);
+    expect(content.journey.steps.map((s) => s.title)).toEqual([
+      en.journeyStep1Title,
+      en.journeyStep2Title,
+      en.journeyStep3Title,
+      en.journeyStep4Title,
+    ]);
+    expect(content.journey.countries).toHaveLength(6);
+    expect(content.journey.countries[0]!.label).toBe(en.journeyCountry1);
+  });
+
+  it("eski kayıtlarda journey alanı yoksa (geriye dönük uyumluluk): varsayılan içerik + enabled:true", () => {
+    // Backend'den gelen eski bir kayıt gibi — `journey` anahtarı HİÇ yok (önceki şema sürümü).
+    const legacyRaw = { hero: { title: "Legacy" }, trust: { items: [] } };
+    const content = resolveHomeContent(legacyRaw, buildDefaultHomeContent(en));
+    expect(content.journey).toEqual(buildDefaultHomeContent(en).journey);
+    expect(content.journey.enabled).toBe(true);
+  });
+
+  it("journey: dolu alanlar kullanılır, 2 adımın altı varsayılana düşer, ülke sınırı 8 ile kısıtlanır", () => {
+    const tooManyCountries = Array.from({ length: 12 }, (_, i) => ({ id: `c${i}`, label: `Country ${i}` }));
+    const content = resolveHomeContent(
+      {
+        journey: {
+          eyebrow: "Custom eyebrow",
+          steps: [{ id: "s1", icon: "Globe", title: "Only one step", text: "" }],
+          countries: tooManyCountries,
+        },
+      },
+      buildDefaultHomeContent(en)
+    );
+    expect(content.journey.eyebrow).toBe("Custom eyebrow");
+    // Tek adım HOME_MIN_JOURNEY_STEPS (2) altında → tüm liste varsayılana düşer.
+    expect(content.journey.steps).toHaveLength(4);
+    expect(content.journey.countries).toHaveLength(8);
+    expect(content.journey.countries[0]!.label).toBe("Country 0");
+  });
+
+  it("journey admin formu: doldurmadan okuma, liste kaydedilmemişse varsayılan maddelerle başlar", () => {
+    const editable = toEditableHomeContent({ journey: { eyebrow: "" } }, buildDefaultHomeContent(en));
+    expect(editable.journey.eyebrow).toBe("");
+    expect(editable.journey.steps).toHaveLength(4); // kaydedilmemiş → form varsayılan adımlarla başlar
+    expect(editable.journey.countries).toHaveLength(6);
   });
 
   it("dolu alanlar kullanılır, boş alan varsayılana düşer, başlıksız madde atlanır", () => {
@@ -127,14 +172,16 @@ describe("HomePageView", () => {
     const viewAll = screen.getAllByRole("link", { name: /View all specialties/ });
     expect(viewAll).toHaveLength(2);
     for (const link of viewAll) expect(link).toHaveAttribute("href", "/en/specialties");
-    expect(screen.getByText("Step 1")).toBeInTheDocument();
+    expect(screen.getAllByText("Step 1").length).toBeGreaterThan(0); // "Nasıl çalışır" VE "journey" bölümlerinde ortak etiket
+    expect(screen.getByRole("heading", { level: 2, name: en.journeyTitle })).toBeInTheDocument();
+    expect(screen.getByText(en.journeyStep1Title)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "kardiyoloji" })).toHaveAttribute("href", "/en/specialties/kardiyoloji");
     expect(screen.getByTestId("doctor-count")).toHaveTextContent("3");
     // Şerit anahtarı kapalı olsa bile kapanış bandında acil durum özeti her zaman.
     expect(within(screen.getByRole("note")).getByText(enTelehealth.emergencyNoticeSummary)).toBeInTheDocument();
 
     const headings = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
-    expect(headings).toEqual([en.specialtiesTitle, en.howTitle, en.doctorsTitle, en.closingTitle]);
+    expect(headings).toEqual([en.journeyTitle, en.specialtiesTitle, en.howTitle, en.doctorsTitle, en.closingTitle]);
   });
 
   it("gizlenen bölümler render edilmez; how gizliyse hero'daki #how butonu da gösterilmez; görsel priority ile yüklenir", async () => {
@@ -189,5 +236,29 @@ describe("HomeTemplateForm", () => {
     expect(screen.getByLabelText("Masaüstü kolon sayısı")).toHaveValue("6");
     expect(screen.getByLabelText("Gösterilecek doktor sayısı")).toHaveValue(3);
     expect(screen.getAllByPlaceholderText(en.heroTitle).length).toBeGreaterThan(0);
+  });
+
+  it("journey bölümü: gizleme, 4/4 adımda ekleme butonu kapalı, ülke ekleme/silme", () => {
+    const onChange = vi.fn();
+    const value = toEditableHomeContent({}, buildDefaultHomeContent(en));
+    render(<HomeTemplateForm value={value} onChange={onChange} localeCode="en" />);
+
+    fireEvent.click(screen.getAllByRole("switch", { name: "Bölümü göster" })[2]!); // Küresel hasta yolculuğu
+    expect(onChange.mock.calls.at(-1)![0].journey.enabled).toBe(false);
+
+    // Varsayılan 4 adım == HOME_MAX_JOURNEY_STEPS → journey'nin "Adım ekle"si (DOM'da ilki, "Nasıl
+    // çalışır" bölümünden ÖNCE gelir) devre dışı; "how" bölümünün 3 adımı max'ın (4) altında kaldığı
+    // için onunki değil.
+    expect(screen.getAllByRole("button", { name: /Adım ekle/ })[0]).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: /Ülke ekle/ }));
+    expect(onChange.mock.calls.at(-1)![0].journey.countries).toHaveLength(7); // 6 varsayılan + 1
+
+    // Son ülke satırını (6.) bul ve o satırın İÇİNDEKİ "Sil" butonuna tıkla — "Sil" adı başka
+    // bölümlerde (güven/adım maddeleri) de kullanıldığı için `within` ile satıra SCOPE'lanır.
+    const lastCountryInput = screen.getAllByPlaceholderText("Ör. Almanya").at(-1)!;
+    const lastCountryRow = lastCountryInput.closest("div.rounded-lg") as HTMLElement;
+    fireEvent.click(within(lastCountryRow).getByRole("button", { name: "Sil" }));
+    expect(onChange.mock.calls.at(-1)![0].journey.countries).toHaveLength(5); // orijinal 6 − 1 (ekleme ile BAĞIMSIZ; `value` bu testte yeniden render arasında güncellenmiyor)
   });
 });
