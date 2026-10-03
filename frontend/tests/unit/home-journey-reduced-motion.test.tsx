@@ -31,4 +31,19 @@ describe("HomeJourney — prefers-reduced-motion AÇIKKEN", () => {
     expect(container.querySelectorAll("circle[filter]").length).toBe(0);
     expect(container.querySelectorAll("path[stroke^='url(#journey-line']").length).toBe(1);
   });
+
+  it("journey-v3: RotatingGlobe'un rAF döngüsü HİÇ başlamaz (küre dönmez, görev dosyası §\"prefers-reduced-motion\")", async () => {
+    const rafSpy = vi.spyOn(window, "requestAnimationFrame");
+    const { HomeJourney } = await import("@/components/site/home/home-journey");
+    const journey = {
+      eyebrow: "Global patient journey",
+      title: "From Across the World to Istanbul",
+      body: "Body text",
+      steps: [{ id: "s1", icon: "Plane" as const, title: "Pre-Travel Planning", text: "Plan ahead." }],
+      countries: [{ id: "c1", label: "Germany" }],
+    };
+    render(<HomeJourney journey={journey} stepLabel="Step {number}" istanbulLabel="Istanbul" />);
+    expect(rafSpy).not.toHaveBeenCalled();
+    rafSpy.mockRestore();
+  });
 });

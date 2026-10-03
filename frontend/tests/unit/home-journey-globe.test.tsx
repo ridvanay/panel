@@ -94,10 +94,15 @@ function journey(overrides: Partial<HomeJourneyContent> = {}): HomeJourneyConten
 }
 
 describe("HomeJourney — reduced-motion KAPALIYKEN (varsayılan jsdom davranışı)", () => {
-  it("comet noktaları (glow filtreli circle) render edilir, çizgiler de DOM'dadır", () => {
+  it("mount sonrası RotatingGlobe'a geçer: comet noktaları (glow filtreli circle) ve 2 uçuş çizgisi DOM'dadır", () => {
+    // RTL'in `render()`'ı effect'leri senkron akıttığı için `mounted` hemen `true` olur —
+    // journey-v3'te bu, StaticGlobe'dan RotatingGlobe'a geçişi tetikler (bkz. home-journey.tsx
+    // `animated` hesaplaması). Bu yüzden seçiciler `data-flight-line`/`data-comet` gibi HER İKİ
+    // dalda da ortak olan, implementasyondan bağımsız test kancalarını kullanır.
     const { container } = render(<HomeJourney journey={journey()} stepLabel="Step {number}" istanbulLabel="Istanbul" />);
-    expect(container.querySelectorAll('circle[filter]').length).toBeGreaterThan(0);
-    expect(container.querySelectorAll("path[stroke^='url(#journey-line']").length).toBe(2);
+    expect(container.querySelectorAll("circle[filter]").length).toBeGreaterThan(0);
+    expect(container.querySelectorAll("path[data-flight-line]").length).toBe(2);
+    expect(container.querySelectorAll("circle[data-comet]").length).toBe(2);
   });
 });
 
