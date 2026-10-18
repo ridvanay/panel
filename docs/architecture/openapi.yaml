@@ -2050,12 +2050,125 @@ paths:
         "422": { $ref: "#/components/responses/ValidationError" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
 
+  /admin/users/{userId}/2fa/reset:
+    parameters:
+      - name: userId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [AdminUsers]
+      summary: Kullanıcının 2FA'sını sıfırla (YALNIZCA ADMIN, step-up)
+      description: >
+        2026-10-18 (Paket B1). İşlemi yapan ADMIN KENDİ authenticator kodunu (`code`, 6 hane TOTP;
+        yedek kod kabul edilmez) girer. Tek transaction'da hedefin `twoFactorEnabled=false`,
+        `twoFactorSecret=null`, `twoFactorVerifiedAt=null` yapılır, yedek kodları silinir, TÜM refresh
+        token'ları ve bekleyen şifre sıfırlama bağlantıları iptal edilir. Audit:
+        `admin_users.2fa_reset` (başarısız step-up `FAILURE`). Bilgilendirme e-postası best-effort
+        (`emailStatus`). Doktor portalı `twoFactorEnabled`'ı her istekte DB'den okuduğundan hedef bir
+        sonraki girişte kurulum ekranına düşer (`403 TWO_FACTOR_REQUIRED`).
+
+
+        **Kurallar:** kendisi → `409`; hedef başka bir ADMIN → `403 FORBIDDEN`; admin'in kendi 2FA'sı
+        kapalı → `403 STEP_UP_2FA_NOT_ENABLED`; kod yanlış → `403 STEP_UP_INVALID_CODE`; hedefin 2FA'sı
+        zaten kapalı → `409`; `DELETED`/yok → `404`.
+
+
+        **Hız sınırı:** IP başına 5/dk + aktör başına son 15 dakikada 5 başarısız step-up → `429`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: { type: string, pattern: "^\\d{6}$" }
+      responses:
+        "200":
+          description: Sıfırlandı
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: object
+                        required: [user, emailStatus]
+                        properties:
+                          user: { $ref: "#/components/schemas/AdminUser" }
+                          emailStatus: { type: string, enum: [sent, failed] }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: "`FORBIDDEN` (MANAGER/hedef ADMIN), `STEP_UP_2FA_NOT_ENABLED` veya `STEP_UP_INVALID_CODE`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /admin/users/{userId}/resend-activation:
+    parameters:
+      - name: userId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [AdminUsers]
+      summary: Etkinleştirme (şifre belirleme) e-postasını yeniden gönder (YALNIZCA ADMIN)
+      description: >
+        2026-10-18 (Paket B1). `POST /admin/users` akışındaki şifre belirleme bağlantısını yeniden
+        üretir; önceki kullanılmamış bağlantılar aynı transaction'da geçersiz kılınır. Kullanıcı
+        şifresini ve (doktorsa) 2FA'sını kendisi kurar. YALNIZCA hiç giriş yapmamış (`lastLoginAt =
+        null`) ACTIVE hesaplar için — aksi hâlde `409 ACCOUNT_ALREADY_ACTIVE` (şifre için
+        `PATCH /admin/users/{userId}/password`). Kendisi/askıya alınmış → `409`. Audit:
+        `admin_users.activation_resend`.
+      responses:
+        "200":
+          description: Gönderim sonucu
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: object
+                        required: [emailStatus]
+                        properties:
+                          emailStatus: { type: string, enum: [sent, failed] }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
   /admin/users/{userId}:
     parameters:
       - name: userId
         in: path
         required: true
         schema: { type: string, format: uuid }
+    get:
+      tags: [AdminUsers]
+      summary: Tek kullanıcı (YALNIZCA ADMIN)
+      description: "2026-10-18 (Paket B1) — doktor detayında bağlı hesabın 2FA/son giriş durumu için."
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/AdminUser" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
     delete:
       tags: [AdminUsers]
       summary: Kullanıcıyı sil — YUMUŞAK SİLME (yalnızca ADMIN)
@@ -7841,6 +7954,11 @@ paths:
           in: query
           required: false
           schema: { type: string, format: uuid }
+        - name: includeArchived
+          in: query
+          required: false
+          description: "2026-10-18 (Paket B) — `true` ise arşivliler de listelenir. Varsayılan `false`."
+          schema: { type: string, enum: ["true", "false"], default: "false" }
         - $ref: "#/components/parameters/SearchQuery"
       responses:
         "200":
@@ -7953,6 +8071,96 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
 
+  /admin/telehealth/doctors/{doctorId}/deletion-check:
+    parameters:
+      - name: doctorId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [TeleHealth]
+      summary: Doktor kalıcı silinebilir mi (panel kapısı)
+      description: >
+        2026-10-18 (Paket B2) — `deletable` = randevu VE booking geçmişi yok. Geçmiş varsa arayüz
+        "Arşivle" sunar; `upcomingAppointmentCount > 0` ise arşivleme de engellidir.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: object
+                        required: [deletable, appointmentCount, bookingCount, upcomingAppointmentCount]
+                        properties:
+                          deletable: { type: boolean }
+                          appointmentCount: { type: integer }
+                          bookingCount: { type: integer }
+                          upcomingAppointmentCount: { type: integer }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/telehealth/doctors/{doctorId}/archive:
+    parameters:
+      - name: doctorId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [TeleHealth]
+      summary: Doktoru arşivle (ADMIN veya MANAGER)
+      description: >
+        2026-10-18 (Paket B2) — `archivedAt=now` + `isActive=false`. Arşivli doktor public
+        `/doctors`, `/doctors/{slug}`, slot ucu, arama, sitemap, featured-doctors ve uzmanlık
+        sayaçlarında görünmez; yeni randevu alamaz. `id`/`slug`/`userId` ve geçmiş randevu/fatura/kayıt
+        değişmez; bağlı kullanıcı hesabına dokunulmaz. Gelecekte açık randevu → `409
+        DOCTOR_HAS_UPCOMING_APPOINTMENTS`; zaten arşivli → `409 CONFLICT`. Audit: `telehealth.doctor.archived`.
+      responses:
+        "200":
+          description: Arşivlendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/DoctorProfile" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /admin/telehealth/doctors/{doctorId}/unarchive:
+    parameters:
+      - name: doctorId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [TeleHealth]
+      summary: Doktoru arşivden çıkar (ADMIN veya MANAGER)
+      description: >
+        Yalnızca `archivedAt=null`; `isActive` false kalır (admin ayrıca aktifleştirir). Arşivliyken
+        `PATCH` ile `isActive=true` → `409`. Audit: `telehealth.doctor.unarchived`.
+      responses:
+        "200":
+          description: Arşivden çıkarıldı
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/DoctorProfile" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
   /admin/telehealth/doctors/{doctorId}/availability:
     parameters:
       - $ref: "#/components/parameters/DoctorId"
@@ -8018,6 +8226,11 @@ paths:
           in: query
           required: false
           schema: { $ref: "#/components/schemas/AppointmentStatus" }
+        - name: includeArchived
+          in: query
+          required: false
+          description: "2026-10-18 (Paket B) — `true` ise arşivliler de listelenir. Varsayılan `false`."
+          schema: { type: string, enum: ["true", "false"], default: "false" }
         - $ref: "#/components/parameters/SearchQuery"
       responses:
         "200":
@@ -9319,6 +9532,11 @@ paths:
           in: query
           required: false
           schema: { $ref: "#/components/schemas/BookingPaymentStatus" }
+        - name: includeArchived
+          in: query
+          required: false
+          description: "2026-10-18 (Paket B) — `true` ise arşivliler de listelenir. Varsayılan `false`."
+          schema: { type: string, enum: ["true", "false"], default: "false" }
         - $ref: "#/components/parameters/SearchQuery"
       responses:
         "200":
@@ -9372,6 +9590,67 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
         "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/telehealth/bookings/{bookingId}/archive:
+    parameters:
+      - $ref: "#/components/parameters/BookingId"
+    post:
+      tags: [TeleHealth]
+      summary: Rezervasyonu test olarak arşivle (YALNIZCA ADMIN, gerekçe zorunlu)
+      description: >
+        2026-10-18 (Paket B4) — yalnızca `archivedAt` + `archivedReason` yazar; HİÇBİR şey silinmez,
+        ödeme/fatura/kayıt alanları değişmez. Arşivli booking ve randevuları doktor kazancı
+        (`/doctor/earnings`), konsol sayaçları/listesi/akışı, analitik, admin randevu ve rezervasyon
+        listeleri (varsayılan) ve hasta panelinden hariç tutulur. BİLİNÇLİ olarak hariç TUTULMADIĞI
+        yerler: slot doluluğu, süpürücüler, Stripe webhook, fatura ve magic-link booking detayı.
+        Açık (`PENDING_PAYMENT`/`SCHEDULED`/`IN_PROGRESS`) veya gelecekte iptal edilmemiş randevu →
+        `409 BOOKING_NOT_ARCHIVABLE`; zaten arşivli → `409 CONFLICT`. Audit: `telehealth.booking.archived`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 3, maxLength: 500 }
+      responses:
+        "200":
+          description: Arşivlendi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/AppointmentBooking" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/telehealth/bookings/{bookingId}/unarchive:
+    parameters:
+      - $ref: "#/components/parameters/BookingId"
+    post:
+      tags: [TeleHealth]
+      summary: Rezervasyonu arşivden çıkar (YALNIZCA ADMIN)
+      description: "`archivedAt`/`archivedReason` null'lanır; arşivde değilse `409`. Audit: `telehealth.booking.unarchived`."
+      responses:
+        "200":
+          description: Arşivden çıkarıldı
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/AppointmentBooking" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
 
   # ==========================================================================
   # Gelişmiş Slider / Hero Studio — bkz. `Sliders` tag'i ve
@@ -13066,6 +13345,12 @@ components:
                   RECORDING_NOT_ACTIVE,
                   RECORDING_NOT_AVAILABLE,
                   DEMO_PAYMENTS_DISABLED,
+                  STEP_UP_2FA_NOT_ENABLED,
+                  STEP_UP_INVALID_CODE,
+                  ACCOUNT_ALREADY_ACTIVE,
+                  DOCTOR_HAS_HISTORY,
+                  DOCTOR_HAS_UPCOMING_APPOINTMENTS,
+                  BOOKING_NOT_ARCHIVABLE,
                 ]
             message: { type: string }
             details:
@@ -19091,6 +19376,11 @@ components:
           description: "Kimlik/diploma doğrulaması rozeti. Demo şablonunun ürettiği profillerde DAİMA false."
         verifiedAt: { type: string, format: date-time, nullable: true }
         isActive: { type: boolean }
+        archivedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: "2026-10-18 (Paket B2) — arşiv damgası; public uçlarda daima `null` (arşivli doktor dönmez)."
         order: { type: integer }
         availability:
           type: array
@@ -19568,6 +19858,15 @@ components:
             `min(startsAt) - 10 dk` (§9.7.6 — §4.5'teki 5 dk tadil edildi).
             `paymentStatus !== PAID` ise `null` döner: ödenmemiş görüşme açılmaz.
         joinableUntil: { type: string, format: date-time, nullable: true }
+        archivedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: "2026-10-18 (Paket B4) — test olarak arşivlenme damgası."
+        archivedReason:
+          type: string
+          nullable: true
+          description: "Arşiv gerekçesi; yalnızca sağlık verisi erişimi olan aktörlere (ADMIN/doktor) dolu döner."
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
 

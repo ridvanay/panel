@@ -2272,6 +2272,10 @@ model DoctorProfile {
   verifiedAt DateTime?
   isActive   Boolean   @default(true)
   order      Int       @default(0)
+  /// 2026-10-18 (Paket B2) — arşiv damgası. Randevu geçmişi olan doktor `Appointment.doctor`
+  /// `onDelete: Restrict` nedeniyle silinemez; arşivlenir. Arşivli doktor public yüzeyde, sitemap'te
+  /// ve sayaçlarda GÖRÜNMEZ; geçmiş randevu/fatura/kayıt bozulmaz. Arşivleme `isActive=false` da yapar.
+  archivedAt DateTime?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
@@ -2518,6 +2522,14 @@ model AppointmentBooking {
   /// (Order.distanceSalesApprovedAt emsali). İstekten gelen zaman damgası KABUL EDİLMEZ.
   consentAt      DateTime
   consentVersion String
+
+  /// 2026-10-18 (Paket B4) — "test olarak arşivle" damgası. Arşivli booking ve randevuları doktor
+  /// kazancı, analitik, admin/doktor/hasta listelerinden HARİÇ tutulur; veri SİLİNMEZ, ödeme/fatura/
+  /// kayıt alanlarına dokunulmaz. Slot doluluğu ve süpürücüler (expiry/auto-close/retention) bu
+  /// alanı BİLİNÇLİ OLARAK yok sayar.
+  archivedAt     DateTime?
+  /// Arşivleme gerekçesi (admin girer, zorunlu). Hasta PII'si yazılmaz.
+  archivedReason String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -1734,6 +1734,7 @@ export function toDoctorProfileDto(doctor: DoctorProfileWithRelations): DoctorPr
     verifiedAt: doctor.verifiedAt ? doctor.verifiedAt.toISOString() : null,
     isActive: doctor.isActive,
     order: doctor.order,
+    archivedAt: doctor.archivedAt ? doctor.archivedAt.toISOString() : null,
     availability: (doctor.availability ?? []).map(toDoctorAvailabilityRuleDto),
     createdAt: doctor.createdAt.toISOString(),
     updatedAt: doctor.updatedAt.toISOString(),
@@ -1855,6 +1856,8 @@ export function toAppointmentBookingDto(booking: AppointmentBookingWithRelations
     documentCount: booking.documents?.length ?? 0,
     joinableFrom: joinableFrom ? joinableFrom.toISOString() : null,
     joinableUntil: joinableUntil ? joinableUntil.toISOString() : null,
+    archivedAt: booking.archivedAt ? booking.archivedAt.toISOString() : null,
+    archivedReason: hasHealthDataAccess ? booking.archivedReason : null,
     createdAt: booking.createdAt.toISOString(),
     updatedAt: booking.updatedAt.toISOString(),
   };

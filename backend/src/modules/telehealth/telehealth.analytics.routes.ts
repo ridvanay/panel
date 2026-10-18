@@ -11,6 +11,7 @@ import { resolveStatsRange, type DateRange } from "../../lib/stats-query";
 import { addUtcDays, bucketDateKey, startOfUtcMonth, startOfUtcWeek, toDateKey, type StatsGranularity } from "../../lib/date";
 import { env } from "../../config/env";
 import { TelehealthOverviewQuerySchema } from "./telehealth.schemas";
+import { NOT_ARCHIVED_APPOINTMENT_WHERE, NOT_ARCHIVED_BOOKING_WHERE } from "./lib/archive-filters";
 
 /**
  * [TCT] §9.7.7 KARAR K10a — `range.from/to/toExclusive` UTC gece yarısına yuvarlanmıştır (bkz.
@@ -113,34 +114,38 @@ export async function adminTelehealthAnalyticsRoutes(app: FastifyInstance) {
       const [statusRows, bookingRows, currencyRows, seriesRows, doctorRows] = await Promise.all([
         app.prisma.appointment.groupBy({
           by: ["status"],
-          where: { startsAt: { gte: range.from, lt: range.toExclusive } },
+          where: { startsAt: { gte: range.from, lt: range.toExclusive }, ...NOT_ARCHIVED_APPOINTMENT_WHERE },
           _count: { _all: true },
         }),
         app.prisma.appointmentBooking.groupBy({
           by: ["paymentStatus"],
-          where: { createdAt: { gte: range.from, lt: range.toExclusive } },
+          where: { createdAt: { gte: range.from, lt: range.toExclusive }, ...NOT_ARCHIVED_BOOKING_WHERE },
           _count: { _all: true },
         }),
         // Aralıktaki COMPLETED randevuların para birimi dağılımı + toplam gross/commission —
         // §10.8.10 disiplini: in-memory toplama YASAK, satır bazında yuvarlama Postgres `round()`
         // ile yapılır (`splitCommission` İLE AYNI tanım, bkz. lib/commission.ts).
         app.prisma.$queryRaw<CurrencyRevenueRow[]>`
-          SELECT currency,
+          SELECT a.currency AS currency,
                  COUNT(*)::bigint AS count,
-                 COALESCE(SUM("priceCents"), 0)::bigint AS gross_cents,
-                 COALESCE(SUM(round("priceCents" * ${rate}::numeric / 100)), 0)::bigint AS commission_cents
-          FROM "appointments"
-          WHERE status = 'COMPLETED' AND "startsAt" >= ${range.from} AND "startsAt" < ${range.toExclusive}
-          GROUP BY currency
+                 COALESCE(SUM(a."priceCents"), 0)::bigint AS gross_cents,
+                 COALESCE(SUM(round(a."priceCents" * ${rate}::numeric / 100)), 0)::bigint AS commission_cents
+          FROM "appointments" a
+          LEFT JOIN "appointment_bookings" b ON b.id = a."bookingId"
+          WHERE a.status = 'COMPLETED' AND a."startsAt" >= ${range.from} AND a."startsAt" < ${range.toExclusive}
+            AND (a."bookingId" IS NULL OR b."archivedAt" IS NULL)
+          GROUP BY a.currency
         `,
         app.prisma.$queryRaw<SeriesRow[]>`
-          SELECT date_trunc(${granularity}, "startsAt") AS bucket,
-                 COUNT(*) FILTER (WHERE status = 'COMPLETED')::bigint AS completed_count,
-                 COUNT(*) FILTER (WHERE status = 'CANCELLED')::bigint AS cancelled_count,
-                 COALESCE(SUM("priceCents") FILTER (WHERE status = 'COMPLETED'), 0)::bigint AS gross_cents,
-                 COALESCE(SUM(round("priceCents" * ${rate}::numeric / 100)) FILTER (WHERE status = 'COMPLETED'), 0)::bigint AS commission_cents
-          FROM "appointments"
-          WHERE "startsAt" >= ${range.from} AND "startsAt" < ${range.toExclusive}
+          SELECT date_trunc(${granularity}, a."startsAt") AS bucket,
+                 COUNT(*) FILTER (WHERE a.status = 'COMPLETED')::bigint AS completed_count,
+                 COUNT(*) FILTER (WHERE a.status = 'CANCELLED')::bigint AS cancelled_count,
+                 COALESCE(SUM(a."priceCents") FILTER (WHERE a.status = 'COMPLETED'), 0)::bigint AS gross_cents,
+                 COALESCE(SUM(round(a."priceCents" * ${rate}::numeric / 100)) FILTER (WHERE a.status = 'COMPLETED'), 0)::bigint AS commission_cents
+          FROM "appointments" a
+          LEFT JOIN "appointment_bookings" b ON b.id = a."bookingId"
+          WHERE a."startsAt" >= ${range.from} AND a."startsAt" < ${range.toExclusive}
+            AND (a."bookingId" IS NULL OR b."archivedAt" IS NULL)
           GROUP BY bucket
           ORDER BY bucket ASC
         `,
@@ -152,7 +157,9 @@ export async function adminTelehealthAnalyticsRoutes(app: FastifyInstance) {
                  COALESCE(SUM(round(a."priceCents" * ${rate}::numeric / 100)) FILTER (WHERE a.status = 'COMPLETED'), 0)::bigint AS commission_cents
           FROM "appointments" a
           JOIN "doctor_profiles" d ON d.id = a."doctorId"
+          LEFT JOIN "appointment_bookings" b ON b.id = a."bookingId"
           WHERE a."startsAt" >= ${range.from} AND a."startsAt" < ${range.toExclusive}
+            AND (a."bookingId" IS NULL OR b."archivedAt" IS NULL)
           GROUP BY a."doctorId", d.title, d."fullName", d.slug
         `,
       ]);

@@ -30,6 +30,7 @@ import { addCalendarDays, formatCalendarDateKey, getStartOfCalendarDayInTimeZone
 import { BOOKINGS_WITH_APPOINTMENTS_FILTER, buildDoctorBookingScopeFilter } from "./lib/doctor-booking-scope";
 import { buildPatientBookingScopeCountFilters, buildPatientBookingScopeFilter } from "./lib/patient-booking-scope";
 import { DOCTOR_PORTAL_ANNOUNCEMENTS } from "./lib/portal-announcements";
+import { NOT_ARCHIVED_APPOINTMENT_WHERE, NOT_ARCHIVED_BOOKING_WHERE } from "./lib/archive-filters";
 
 /** `GET /doctor/portal-feed` — bildirim besleme penceresi (son 14 gün). */
 const PORTAL_FEED_NOTIFICATION_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
@@ -230,6 +231,8 @@ export async function telehealthDoctorPortalRoutes(app: FastifyInstance) {
       const rows = await app.prisma.appointmentBooking.findMany({
         where: {
           doctorId: doctorProfileId,
+          // Paket B4 — test olarak arşivlenmiş booking'ler doktor konsolunda görünmez.
+          ...NOT_ARCHIVED_BOOKING_WHERE,
           ...(cursorSeq ? { seq: { gt: cursorSeq } } : {}),
           ...(paymentStatus ? { paymentStatus } : {}),
           ...(excludeAppointmentlessBookings ? BOOKINGS_WITH_APPOINTMENTS_FILTER : {}),
@@ -288,7 +291,7 @@ export async function telehealthDoctorPortalRoutes(app: FastifyInstance) {
       // `summary` — SAYFALAMA UYGULANMADAN tüm tamamlanmış randevular üzerinden hesaplanır (satır
       // bazında YUVARLA, SONRA topla — `sessions.items` ile toplamda TUTARSIZLIK olmasın).
       const allCompleted = await app.prisma.appointment.findMany({
-        where: { doctorId: doctorProfileId, status: "COMPLETED" },
+        where: { doctorId: doctorProfileId, status: "COMPLETED", ...NOT_ARCHIVED_APPOINTMENT_WHERE },
         select: { priceCents: true },
       });
       let grossCents = 0;
@@ -307,6 +310,7 @@ export async function telehealthDoctorPortalRoutes(app: FastifyInstance) {
         where: {
           doctorId: doctorProfileId,
           status: "COMPLETED",
+          ...NOT_ARCHIVED_APPOINTMENT_WHERE,
           ...(cursorSeq ? { seq: { lt: cursorSeq } } : {}),
         },
         orderBy: { seq: "desc" },
@@ -380,14 +384,14 @@ export async function telehealthDoctorPortalRoutes(app: FastifyInstance) {
         await Promise.all([
           app.prisma.appointment.groupBy({
             by: ["status"],
-            where: { doctorId: doctorProfileId, startsAt: { gte: todayStart, lt: tomorrowStart } },
+            where: { doctorId: doctorProfileId, startsAt: { gte: todayStart, lt: tomorrowStart }, ...NOT_ARCHIVED_APPOINTMENT_WHERE },
             _count: { _all: true },
           }),
-          app.prisma.appointment.count({ where: { doctorId: doctorProfileId, status: "COMPLETED" } }),
+          app.prisma.appointment.count({ where: { doctorId: doctorProfileId, status: "COMPLETED", ...NOT_ARCHIVED_APPOINTMENT_WHERE } }),
           // [DPI] §3.1 — "Toplam Hasta" TÜM `PAID` booking'ler üzerinde `DISTINCT` ister; imleç
           // tabanlı `/doctor/bookings` bunu doğru yapamaz (bu uçun var olma gerekçesi budur).
           app.prisma.appointmentBooking.findMany({
-            where: { doctorId: doctorProfileId, paymentStatus: "PAID" },
+            where: { doctorId: doctorProfileId, paymentStatus: "PAID", ...NOT_ARCHIVED_BOOKING_WHERE },
             select: { identityNumberHash: true, patientUserId: true, patientEmail: true },
           }),
           app.prisma.appointmentDocument.count({
@@ -396,20 +400,21 @@ export async function telehealthDoctorPortalRoutes(app: FastifyInstance) {
               booking: {
                 doctorId: doctorProfileId,
                 paymentStatus: "PAID",
+                ...NOT_ARCHIVED_BOOKING_WHERE,
                 appointments: { some: { status: { in: ["SCHEDULED", "IN_PROGRESS"] } } },
               },
             },
           }),
           app.prisma.appointment.findFirst({
-            where: { doctorId: doctorProfileId, status: { in: ["SCHEDULED", "IN_PROGRESS"] }, startsAt: { gt: now } },
+            where: { doctorId: doctorProfileId, status: { in: ["SCHEDULED", "IN_PROGRESS"] }, startsAt: { gt: now }, ...NOT_ARCHIVED_APPOINTMENT_WHERE },
             orderBy: { startsAt: "asc" },
             select: { id: true, bookingId: true, startsAt: true },
           }),
           // `upcomingBookingTotal` = `GET /bookings?scope=upcoming` İLE BİREBİR AYNI filtre, sayım hâli.
-          app.prisma.appointmentBooking.count({ where: { doctorId: doctorProfileId, ...(upcomingScopeFilter ?? {}) } }),
+          app.prisma.appointmentBooking.count({ where: { doctorId: doctorProfileId, ...NOT_ARCHIVED_BOOKING_WHERE, ...(upcomingScopeFilter ?? {}) } }),
           // `allBookingTotal` = `GET /bookings`'in varsayılan `scope=all` davranışıyla BİREBİR AYNI
           // ("hayalet" EXPIRED/appointmentsiz booking'ler HARİÇ).
-          app.prisma.appointmentBooking.count({ where: { doctorId: doctorProfileId, ...BOOKINGS_WITH_APPOINTMENTS_FILTER } }),
+          app.prisma.appointmentBooking.count({ where: { doctorId: doctorProfileId, ...NOT_ARCHIVED_BOOKING_WHERE, ...BOOKINGS_WITH_APPOINTMENTS_FILTER } }),
         ]);
 
       // ---- today (`PENDING_PAYMENT` HARİÇ; `cancelled` = CANCELLED + NO_SHOW) ----
@@ -488,13 +493,13 @@ export async function telehealthDoctorPortalRoutes(app: FastifyInstance) {
 
       const [recentBookings, recentCompletedAppointments] = await Promise.all([
         app.prisma.appointmentBooking.findMany({
-          where: { doctorId: doctorProfileId, createdAt: { gte: windowStart } },
+          where: { doctorId: doctorProfileId, createdAt: { gte: windowStart }, ...NOT_ARCHIVED_BOOKING_WHERE },
           orderBy: { createdAt: "desc" },
           take: PORTAL_FEED_NOTIFICATION_PER_SOURCE_LIMIT,
           select: { id: true, bookingNumber: true, patientName: true, createdAt: true, consentAt: true },
         }),
         app.prisma.appointment.findMany({
-          where: { doctorId: doctorProfileId, status: "COMPLETED", endedAt: { gte: windowStart } },
+          where: { doctorId: doctorProfileId, status: "COMPLETED", endedAt: { gte: windowStart }, ...NOT_ARCHIVED_APPOINTMENT_WHERE },
           orderBy: { endedAt: "desc" },
           take: PORTAL_FEED_NOTIFICATION_PER_SOURCE_LIMIT,
           select: { id: true, patientName: true, endedAt: true },
@@ -562,10 +567,10 @@ async function countPatientBookingScopes(
 ): Promise<{ all: number; upcoming: number; past: number; cancelled: number }> {
   const scopeCountFilters = buildPatientBookingScopeCountFilters(now);
   const [all, upcoming, past, cancelled] = await Promise.all([
-    app.prisma.appointmentBooking.count({ where: { patientUserId, ...scopeCountFilters.all } }),
-    app.prisma.appointmentBooking.count({ where: { patientUserId, ...scopeCountFilters.upcoming } }),
-    app.prisma.appointmentBooking.count({ where: { patientUserId, ...scopeCountFilters.past } }),
-    app.prisma.appointmentBooking.count({ where: { patientUserId, ...scopeCountFilters.cancelled } }),
+    app.prisma.appointmentBooking.count({ where: { patientUserId, ...NOT_ARCHIVED_BOOKING_WHERE, ...scopeCountFilters.all } }),
+    app.prisma.appointmentBooking.count({ where: { patientUserId, ...NOT_ARCHIVED_BOOKING_WHERE, ...scopeCountFilters.upcoming } }),
+    app.prisma.appointmentBooking.count({ where: { patientUserId, ...NOT_ARCHIVED_BOOKING_WHERE, ...scopeCountFilters.past } }),
+    app.prisma.appointmentBooking.count({ where: { patientUserId, ...NOT_ARCHIVED_BOOKING_WHERE, ...scopeCountFilters.cancelled } }),
   ]);
   return { all, upcoming, past, cancelled };
 }
@@ -604,6 +609,8 @@ export async function telehealthPatientPortalRoutes(app: FastifyInstance) {
         app.prisma.appointmentBooking.findMany({
           where: {
             patientUserId: request.user!.id,
+            // Paket B4 — test olarak arşivlenmiş booking'ler hasta panelinde listelenmez.
+            ...NOT_ARCHIVED_BOOKING_WHERE,
             ...(cursorSeq ? { seq: { gt: cursorSeq } } : {}),
             ...(scopeFilter ?? {}),
           },

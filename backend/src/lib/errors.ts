@@ -132,6 +132,22 @@ export type ApiErrorCode =
   | "APPOINTMENT_RESCHEDULE_CONFLICT"
   | "APPOINTMENT_NOT_DELETABLE"
   /**
+   * 2026-10-18 (Paket B1) — admin 2FA sıfırlama step-up hataları. `TWO_FACTOR_REQUIRED` BİLİNÇLİ
+   * OLARAK KULLANILMAZ: frontend o kodu doktor portalında kurulum paneli tetikleyicisi olarak okur.
+   * `STEP_UP_2FA_NOT_ENABLED` = işlemi yapan admin'in kendi 2FA'sı kapalı; `STEP_UP_INVALID_CODE` =
+   * girilen TOTP kodu yanlış. İkisi de 403.
+   */
+  | "STEP_UP_2FA_NOT_ENABLED"
+  | "STEP_UP_INVALID_CODE"
+  /** Paket B1 — `resend-activation`: hesap daha önce giriş yapmış (etkinleşmiş). 409. */
+  | "ACCOUNT_ALREADY_ACTIVE"
+  /** Paket B2 — randevu/booking geçmişi olan doktor kalıcı silinemez (arşivlenebilir). 409. */
+  | "DOCTOR_HAS_HISTORY"
+  /** Paket B2 — gelecekte aktif randevusu olan doktor arşivlenemez (önce iptal edilmeli). 409. */
+  | "DOCTOR_HAS_UPCOMING_APPOINTMENTS"
+  /** Paket B4 — gelecekteki/açık randevusu olan booking test olarak arşivlenemez. 409. */
+  | "BOOKING_NOT_ARCHIVABLE"
+  /**
    * `.claude/architect-scope-support-desk-and-reminders.md` §3.5 (bağlayıcı) — `CLOSED` bir
    * destek oturumuna ziyaretçi VEYA temsilci mesaj göndermeye çalışırsa. Ziyaretçi kapanmış bir
    * oturumu diriltemez (widget "yeni sohbet başlat" gösterir). 409.
@@ -495,6 +511,44 @@ export class AppointmentRescheduleConflictError extends ApiError {
 export class AppointmentNotDeletableError extends ApiError {
   constructor(blockerCodes: string[], message = "Bu randevu kalıcı olarak silinemez.") {
     super(409, "APPOINTMENT_NOT_DELETABLE", message, { blockers: blockerCodes });
+  }
+}
+
+/** 2026-10-18 (Paket B1) — step-up: işlemi yapan admin'in kendi 2FA'sı kapalı. */
+export class StepUpTwoFactorNotEnabledError extends ApiError {
+  constructor(message = "Bu işlemi onaylamak için önce kendi hesabınızda 2FA'yı etkinleştirin.") {
+    super(403, "STEP_UP_2FA_NOT_ENABLED", message);
+  }
+}
+
+/** 2026-10-18 (Paket B1) — step-up: girilen doğrulama kodu hatalı. */
+export class StepUpInvalidCodeError extends ApiError {
+  constructor(message = "Doğrulama kodu hatalı.") {
+    super(403, "STEP_UP_INVALID_CODE", message);
+  }
+}
+
+export class AccountAlreadyActiveError extends ApiError {
+  constructor(message = "Bu kullanıcı hesabını zaten etkinleştirmiş; şifre için \"Şifre Değiştir\" işlemini kullanın.") {
+    super(409, "ACCOUNT_ALREADY_ACTIVE", message);
+  }
+}
+
+export class DoctorHasHistoryError extends ApiError {
+  constructor(message = "Bu doktorun randevu geçmişi olduğu için kalıcı olarak silinemez; arşivleyebilirsiniz.") {
+    super(409, "DOCTOR_HAS_HISTORY", message);
+  }
+}
+
+export class DoctorHasUpcomingAppointmentsError extends ApiError {
+  constructor(message = "Bu doktorun gelecekte aktif randevusu var; önce bu randevuları iptal edin ya da taşıyın.") {
+    super(409, "DOCTOR_HAS_UPCOMING_APPOINTMENTS", message);
+  }
+}
+
+export class BookingNotArchivableError extends ApiError {
+  constructor(message = "Bu rezervasyonun gelecekteki veya açık bir randevusu var; arşivlenemez.") {
+    super(409, "BOOKING_NOT_ARCHIVABLE", message);
   }
 }
 

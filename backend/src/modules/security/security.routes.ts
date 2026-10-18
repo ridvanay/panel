@@ -14,7 +14,7 @@ import { verifyPassword } from "../../lib/password";
 import { REFRESH_COOKIE_NAME } from "../../lib/cookies";
 import { hashToken } from "../../lib/tokens";
 import { logAudit } from "../../lib/audit";
-import { NotFoundError, UnauthorizedError } from "../../lib/errors";
+import { ConflictError, NotFoundError, UnauthorizedError } from "../../lib/errors";
 import { SENSITIVE_ACTION_RATE_LIMIT } from "../../lib/rate-limit";
 import {
   SetupTwoFactorResponseSchema,
@@ -80,6 +80,14 @@ export async function securityTwoFactorRoutes(app: FastifyInstance) {
 
       if (!verifyTotp(payload.secret, request.body.code)) {
         throw new UnauthorizedError("Geçersiz doğrulama kodu.");
+      }
+
+      // 2026-10-18 (Paket B1, security-review ORTA-1) — etkin bir 2FA, şifre/TOTP istemeyen bu uçla
+      // ÜZERİNE YAZILAMAZ: çalıntı bir access token secret'ı kendi cihazına taşıyıp hesabı kalıcı
+      // sahiplenemesin. Değiştirmek isteyen önce `/disable` (şifreli) ile kapatır.
+      const current = await app.prisma.user.findUnique({ where: { id: request.user!.id }, select: { twoFactorEnabled: true } });
+      if (current?.twoFactorEnabled) {
+        throw new ConflictError("İki adımlı doğrulama zaten etkin; yeniden kurmak için önce kapatın.");
       }
 
       await app.prisma.user.update({

@@ -86,6 +86,14 @@ export type CancelAppointmentRequest = z.infer<typeof CancelAppointmentRequestSc
 /** 2026-10-18 (Paket A1) — `DELETE /admin/telehealth/appointments/{id}`: ikinci onay adımı gövdede zorunlu. */
 export const DeleteAppointmentRequestSchema = z.object({ confirm: z.literal(true) });
 
+/** 2026-10-18 (Paket B2) — "Sil" penceresi: geçmişi olan doktor için "Arşivle" teklif edilir. */
+export const DoctorDeletionCheckSchema = z.object({
+  deletable: z.boolean(),
+  appointmentCount: z.number().int(),
+  bookingCount: z.number().int(),
+  upcomingAppointmentCount: z.number().int(),
+});
+
 export const AppointmentDeletionCheckSchema = z.object({
   deletable: z.boolean(),
   blockers: z.array(z.object({ code: z.string(), message: z.string() })),
@@ -178,14 +186,29 @@ export const AppointmentDocumentIdParamSchema = z.object({
   documentId: z.string().uuid(),
 });
 
+/**
+ * 2026-10-18 (Paket B) — `includeArchived`: varsayılan `false` (arşivliler listede görünmez).
+ * `admin-users.schemas.ts::includeDeleted` İLE AYNI gerekçe: `z.coerce.boolean()` "false"u `true` yapardı.
+ */
+const IncludeArchivedQuerySchema = z
+  .enum(["true", "false"])
+  .default("false")
+  .transform((v) => v === "true");
+
 /** §9.7.1 madde 7 (bağlayıcı) — YALNIZCA ADMIN, `reason` ZORUNLU (denetim kaydı + `paidNote`). */
 export const MarkBookingPaidRequestSchema = z.object({
   reason: z.string().trim().min(1).max(500),
 });
 export type MarkBookingPaidRequest = z.infer<typeof MarkBookingPaidRequestSchema>;
 
+/** 2026-10-18 (Paket B4) — "Test olarak arşivle": gerekçe ZORUNLU (audit + `archivedReason`). */
+export const ArchiveBookingRequestSchema = z.object({
+  reason: z.string().trim().min(3, "Gerekçe en az 3 karakter olmalı.").max(500),
+});
+
 export const ListAdminBookingsQuerySchema = z.object({
   doctorId: z.string().uuid().optional(),
+  includeArchived: IncludeArchivedQuerySchema,
   paymentStatus: z.enum(["PENDING", "PAID", "FAILED", "EXPIRED", "REFUNDED"]).optional(),
   search: z.string().trim().min(1).max(120).optional(),
   cursor: z.string().optional(),
@@ -265,6 +288,7 @@ export const DoctorIdParamSchema = z.object({
 export const ListAdminDoctorsQuerySchema = z.object({
   specialtyId: z.string().uuid().optional(),
   search: z.string().trim().min(1).max(120).optional(),
+  includeArchived: IncludeArchivedQuerySchema,
   cursor: z.string().optional(),
   limit: z.coerce.number().int().positive().max(100).default(20),
 });
@@ -452,6 +476,7 @@ export type RescheduleAppointmentRequest = z.infer<typeof RescheduleAppointmentR
 
 export const ListAdminAppointmentsQuerySchema = z.object({
   doctorId: z.string().uuid().optional(),
+  includeArchived: IncludeArchivedQuerySchema,
   // [TCT] §9.7.3 — `PENDING_PAYMENT` eklendi (tutulmuş-ama-ödenmemiş slot da artık bir filtre değeridir).
   status: z.enum(["PENDING_PAYMENT", "SCHEDULED", "IN_PROGRESS", "COMPLETED", "CANCELLED", "NO_SHOW"]).optional(),
   search: z.string().trim().min(1).max(120).optional(),

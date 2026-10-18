@@ -13,3 +13,5 @@ storage/exports/
 # radyoloji belgesi). `uploads/`/`storage/exports/` ile AYNI gerekçe + KVKK md.6 özel nitelikli
 # veri — asla repoya girmez. Bkz. .claude/compliance-notes-telehealth.md "TUR 2".
 storage/private-uploads/
+# Paket B2 — demo doktor purge yedekleri (PII + şifreli alan içerir, asla repoya girmez).
+storage/purge-backups/

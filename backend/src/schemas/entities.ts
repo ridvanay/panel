@@ -2500,6 +2500,8 @@ export const DoctorProfileSchema = z.object({
   verifiedAt: z.string().nullable(),
   isActive: z.boolean(),
   order: z.number().int(),
+  // 2026-10-18 (Paket B2) — arşiv damgası; public uçlarda arşivli doktor hiç dönmediği için daima `null`.
+  archivedAt: z.string().nullable().optional(),
   availability: z.array(DoctorAvailabilityRuleSchema),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -2700,6 +2702,10 @@ export const AppointmentBookingSchema = z.object({
   documentCount: z.number().int(),
   joinableFrom: z.string().nullable(),
   joinableUntil: z.string().nullable(),
+  // 2026-10-18 (Paket B4) — "test olarak arşivle". `archivedReason` yalnızca sağlık verisi erişimi
+  // olan aktörlere (ADMIN/doktor) dolu döner; hasta/MANAGER için `null`.
+  archivedAt: z.string().nullable().optional(),
+  archivedReason: z.string().nullable().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

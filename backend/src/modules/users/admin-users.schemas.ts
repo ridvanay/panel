@@ -46,3 +46,16 @@ export const UpdateAdminUserStatusRequestSchema = z.object({
 export const SetAdminUserPasswordRequestSchema = z.object({
   password: z.string().min(8, "Şifre en az 8 karakter olmalı.").max(200),
 });
+
+/**
+ * 2026-10-18 (Paket B1) — `POST /admin/users/{userId}/2fa/reset` step-up gövdesi: işlemi yapan
+ * ADMIN'in KENDİ authenticator uygulamasındaki 6 haneli TOTP kodu. Yedek kod KABUL EDİLMEZ
+ * (yedek kod tek kullanımlık bir kurtarma aracıdır, rutin onay için harcanmamalı).
+ */
+export const ResetUserTwoFactorRequestSchema = z.object({
+  code: z.string().trim().regex(/^\d{6}$/, "6 haneli doğrulama kodunu girin."),
+});
+
+export const EmailDispatchStatusSchema = z.object({
+  emailStatus: z.enum(["sent", "failed"]),
+});

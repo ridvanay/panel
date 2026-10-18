@@ -18,7 +18,17 @@ import {
   UpdateTelehealthThemeSettingsRequestSchema,
 } from "../../schemas/entities";
 import { toAppointmentBookingDto, toAppointmentDto, toDoctorProfileDto, toSpecialtyDto } from "../../mappers";
-import { AppointmentNotDeletableError, AppointmentRescheduleConflictError, ConflictError, ForbiddenError, NotFoundError, ValidationError } from "../../lib/errors";
+import {
+  AppointmentNotDeletableError,
+  AppointmentRescheduleConflictError,
+  BookingNotArchivableError,
+  ConflictError,
+  DoctorHasHistoryError,
+  DoctorHasUpcomingAppointmentsError,
+  ForbiddenError,
+  NotFoundError,
+  ValidationError,
+} from "../../lib/errors";
 import { buildPageMeta, parseCursor } from "../../lib/pagination";
 import { isImageMimeType } from "../../lib/mime-detect";
 import { slugify } from "../../lib/slug";
@@ -42,12 +52,21 @@ import {
 } from "./lib/emergency-notice";
 import { wallTimeToUtc } from "./lib/timezone";
 import {
+  NOT_ARCHIVED_APPOINTMENT_WHERE,
+  NOT_ARCHIVED_BOOKING_WHERE,
+  NOT_ARCHIVED_DOCTOR_WHERE,
+  isBookingArchivable,
+  upcomingDoctorAppointmentsWhere,
+} from "./lib/archive-filters";
+import {
   AppointmentDeletionCheckSchema,
   AppointmentIdParamSchema,
+  ArchiveBookingRequestSchema,
   BookingIdParamSchema,
   CreateDoctorRequestSchema,
   CreateSpecialtyRequestSchema,
   DeleteAppointmentRequestSchema,
+  DoctorDeletionCheckSchema,
   DoctorIdParamSchema,
   ListAdminAppointmentsQuerySchema,
   ListAdminBookingsQuerySchema,
@@ -246,12 +265,13 @@ export async function adminTelehealthDoctorsRoutes(app: FastifyInstance) {
       },
     },
     async (request, reply) => {
-      const { specialtyId, search, cursor, limit } = request.query;
+      const { specialtyId, search, includeArchived, cursor, limit } = request.query;
       const cursorSeq = parseCursor(cursor);
 
       const rows = await app.prisma.doctorProfile.findMany({
         where: {
           ...(cursorSeq ? { seq: { gt: cursorSeq } } : {}),
+          ...(includeArchived ? {} : NOT_ARCHIVED_DOCTOR_WHERE),
           ...(specialtyId ? { specialtyId } : {}),
           ...(search
             ? {
@@ -382,6 +402,10 @@ export async function adminTelehealthDoctorsRoutes(app: FastifyInstance) {
 
       const existing = await app.prisma.doctorProfile.findUnique({ where: { id: request.params.doctorId } });
       if (!existing) throw new NotFoundError("Doktor bulunamadı.");
+      // Paket B2 — arşivli doktor önce arşivden çıkarılmadan aktifleştirilemez.
+      if (existing.archivedAt && request.body.isActive === true) {
+        throw new ConflictError("Arşivlenmiş bir doktor aktifleştirilemez; önce arşivden çıkarın.");
+      }
 
       const {
         slug,
@@ -463,10 +487,30 @@ export async function adminTelehealthDoctorsRoutes(app: FastifyInstance) {
     }
   );
 
-  // §3.7/§9 — kalıcı silme. `Appointment.doctor` `onDelete: Restrict` olduğu için doktorun
-  // GEÇMİŞ/gelecek randevusu varsa Prisma `P2003` (foreign key) fırlatır → genel error-handler
-  // bunu 500'e DÜŞÜRMEZ (bkz. plugins/error-handler.ts — bilinmeyen Prisma hataları ayrı bir
-  // dalda YAKALANMADIĞI için burada AÇIKÇA 409'a çevrilir).
+  /**
+   * 2026-10-18 (Paket B2) — "Sil" penceresinin ön kontrolü: randevu/booking geçmişi varsa arayüz
+   * kalıcı silme yerine "Arşivle" sunar. Karar `DELETE` içinde yeniden verilir (P2003 → 409).
+   */
+  server.get(
+    "/:doctorId/deletion-check",
+    { schema: { params: DoctorIdParamSchema, response: { 200: ApiSuccessSchema(DoctorDeletionCheckSchema) } } },
+    async (request, reply) => {
+      const doctor = await app.prisma.doctorProfile.findUnique({ where: { id: request.params.doctorId }, select: { id: true } });
+      if (!doctor) throw new NotFoundError("Doktor bulunamadı.");
+      const [appointmentCount, bookingCount, upcomingAppointmentCount] = await Promise.all([
+        app.prisma.appointment.count({ where: { doctorId: doctor.id } }),
+        app.prisma.appointmentBooking.count({ where: { doctorId: doctor.id } }),
+        app.prisma.appointment.count({ where: upcomingDoctorAppointmentsWhere(doctor.id, new Date()) }),
+      ]);
+      return reply.send(
+        ok({ deletable: appointmentCount === 0 && bookingCount === 0, appointmentCount, bookingCount, upcomingAppointmentCount })
+      );
+    }
+  );
+
+  // §3.7/§9 — kalıcı silme. `Appointment.doctor` ve `AppointmentBooking.doctor` `onDelete: Restrict`
+  // olduğu için geçmişi olan doktorda Prisma `P2003` fırlatır → `409 DOCTOR_HAS_HISTORY` (arayüz
+  // bu kodda "Arşivle" teklif eder).
   server.delete(
     "/:doctorId",
     { preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER), schema: { params: DoctorIdParamSchema, response: { 204: z.undefined() } } },
@@ -476,11 +520,83 @@ export async function adminTelehealthDoctorsRoutes(app: FastifyInstance) {
           throw new NotFoundError("Doktor bulunamadı.");
         }
         if (err && typeof err === "object" && "code" in err && (err as { code?: string }).code === "P2003") {
-          throw new ConflictError("Bu doktorun randevu geçmişi var; önce pasife alın.");
+          throw new DoctorHasHistoryError();
         }
         throw err;
       });
       return reply.code(204).send();
+    }
+  );
+
+  /**
+   * 2026-10-18 (Paket B2) — arşivleme: `archivedAt=now` + `isActive=false` (kırmızı çizgideki
+   * `lib/booking.ts` `isActive: true` kontrolüyle yeni booking'i dokunmadan engeller). `id`/`slug`/
+   * `userId` DEĞİŞMEZ; bağlı kullanıcı hesabına dokunulmaz (geçmiş kayıtlara portal erişimi sürer,
+   * gerekirse admin kullanıcıyı ayrıca askıya alır). Gelecekte aktif randevusu varsa 409.
+   */
+  server.post(
+    "/:doctorId/archive",
+    {
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
+      schema: { params: DoctorIdParamSchema, response: { 200: ApiSuccessSchema(DoctorProfileSchema) } },
+    },
+    async (request, reply) => {
+      const now = new Date();
+      const doctor = await runSerializable(app, async (tx) => {
+        const existing = await tx.doctorProfile.findUnique({ where: { id: request.params.doctorId } });
+        if (!existing) throw new NotFoundError("Doktor bulunamadı.");
+        if (existing.archivedAt) throw new ConflictError("Bu doktor zaten arşivlenmiş.");
+        const upcoming = await tx.appointment.count({ where: upcomingDoctorAppointmentsWhere(existing.id, now) });
+        if (upcoming > 0) throw new DoctorHasUpcomingAppointmentsError();
+        return tx.doctorProfile.update({
+          where: { id: existing.id },
+          data: { archivedAt: now, isActive: false },
+          include: WITH_DOCTOR_RELATIONS,
+        });
+      });
+
+      await logAudit(app, {
+        actorId: request.user!.id,
+        actorEmail: request.user!.email,
+        action: "telehealth.doctor.archived",
+        targetType: "DoctorProfile",
+        targetId: doctor.id,
+        metadata: { slug: doctor.slug },
+        ipAddress: request.ip,
+      });
+
+      return reply.send(ok(toDoctorProfileDto(doctor)));
+    }
+  );
+
+  /** Arşivden çıkarma yalnızca `archivedAt=null` yapar; `isActive` false kalır, admin elle açar. */
+  server.post(
+    "/:doctorId/unarchive",
+    {
+      preHandler: requireSiteRole(...ROLES_ADMIN_MANAGER),
+      schema: { params: DoctorIdParamSchema, response: { 200: ApiSuccessSchema(DoctorProfileSchema) } },
+    },
+    async (request, reply) => {
+      const existing = await app.prisma.doctorProfile.findUnique({ where: { id: request.params.doctorId } });
+      if (!existing) throw new NotFoundError("Doktor bulunamadı.");
+      if (!existing.archivedAt) throw new ConflictError("Bu doktor arşivde değil.");
+      const doctor = await app.prisma.doctorProfile.update({
+        where: { id: existing.id },
+        data: { archivedAt: null },
+        include: WITH_DOCTOR_RELATIONS,
+      });
+
+      await logAudit(app, {
+        actorId: request.user!.id,
+        actorEmail: request.user!.email,
+        action: "telehealth.doctor.unarchived",
+        targetType: "DoctorProfile",
+        targetId: doctor.id,
+        metadata: { slug: doctor.slug },
+        ipAddress: request.ip,
+      });
+
+      return reply.send(ok(toDoctorProfileDto(doctor)));
     }
   );
 
@@ -558,12 +674,14 @@ export async function adminTelehealthAppointmentsRoutes(app: FastifyInstance) {
       },
     },
     async (request, reply) => {
-      const { doctorId, status, search, cursor, limit } = request.query;
+      const { doctorId, status, search, includeArchived, cursor, limit } = request.query;
       const cursorSeq = parseCursor(cursor);
 
       const rows = await app.prisma.appointment.findMany({
         where: {
           ...(cursorSeq ? { seq: { gt: cursorSeq } } : {}),
+          // Paket B4 — test olarak arşivlenmiş booking'lerin randevuları varsayılan listede görünmez.
+          ...(includeArchived ? {} : NOT_ARCHIVED_APPOINTMENT_WHERE),
           ...(doctorId ? { doctorId } : {}),
           ...(status ? { status } : {}),
           ...(search
@@ -781,12 +899,13 @@ export async function adminTelehealthBookingsRoutes(app: FastifyInstance) {
       },
     },
     async (request, reply) => {
-      const { doctorId, paymentStatus, search, cursor, limit } = request.query;
+      const { doctorId, paymentStatus, search, includeArchived, cursor, limit } = request.query;
       const cursorSeq = parseCursor(cursor);
 
       const rows = await app.prisma.appointmentBooking.findMany({
         where: {
           ...(cursorSeq ? { seq: { gt: cursorSeq } } : {}),
+          ...(includeArchived ? {} : NOT_ARCHIVED_BOOKING_WHERE),
           ...(doctorId ? { doctorId } : {}),
           ...(paymentStatus ? { paymentStatus } : {}),
           ...(search
@@ -864,6 +983,90 @@ export async function adminTelehealthBookingsRoutes(app: FastifyInstance) {
       // Bu uç yalnızca `ROLES_ADMIN` içindir (mark-paid preHandler) — `canAccessBookingHealthData`
       // ADMIN için her zaman `true` döner, ama tek kaynak disiplini için yine de çağrılır.
       return reply.send(ok(toAppointmentBookingDto(withRelations, canAccessBookingHealthData(withRelations, { user: request.user }))));
+    }
+  );
+
+
+  /**
+   * 2026-10-18 (Paket B4) — "Test olarak arşivle". YALNIZCA ADMIN, gerekçe zorunlu, audit'li.
+   * Hiçbir şey SİLİNMEZ; ödeme/fatura/kayıt alanlarına dokunulmaz — yalnızca `archivedAt` +
+   * `archivedReason` yazılır. Açık/gelecek randevusu olan booking arşivlenemez (409).
+   */
+  server.post(
+    "/:bookingId/archive",
+    {
+      preHandler: requireSiteRole(...ROLES_ADMIN),
+      schema: {
+        params: BookingIdParamSchema,
+        body: ArchiveBookingRequestSchema,
+        response: { 200: ApiSuccessSchema(AppointmentBookingSchema) },
+      },
+    },
+    async (request, reply) => {
+      const now = new Date();
+      const booking = await runSerializable(app, async (tx) => {
+        const existing = await tx.appointmentBooking.findUnique({
+          where: { id: request.params.bookingId },
+          include: { appointments: { select: { status: true, startsAt: true } } },
+        });
+        if (!existing) throw new NotFoundError("Rezervasyon bulunamadı.");
+        if (existing.archivedAt) throw new ConflictError("Bu rezervasyon zaten arşivlenmiş.");
+        if (!isBookingArchivable(existing.appointments, now)) throw new BookingNotArchivableError();
+        return tx.appointmentBooking.update({
+          where: { id: existing.id },
+          data: { archivedAt: now, archivedReason: request.body.reason },
+          include: WITH_BOOKING_RELATIONS,
+        });
+      });
+
+      await logAudit(app, {
+        actorId: request.user!.id,
+        actorEmail: request.user!.email,
+        action: "telehealth.booking.archived",
+        targetType: "AppointmentBooking",
+        targetId: booking.id,
+        metadata: {
+          bookingNumber: booking.bookingNumber,
+          reason: request.body.reason,
+          paymentStatus: booking.paymentStatus,
+          totalCents: booking.totalCents,
+          currency: booking.currency,
+          source: "admin_panel",
+        },
+        ipAddress: request.ip,
+      });
+
+      return reply.send(ok(toAppointmentBookingDto(booking, canAccessBookingHealthData(booking, { user: request.user }))));
+    }
+  );
+
+  server.post(
+    "/:bookingId/unarchive",
+    {
+      preHandler: requireSiteRole(...ROLES_ADMIN),
+      schema: { params: BookingIdParamSchema, response: { 200: ApiSuccessSchema(AppointmentBookingSchema) } },
+    },
+    async (request, reply) => {
+      const existing = await app.prisma.appointmentBooking.findUnique({ where: { id: request.params.bookingId } });
+      if (!existing) throw new NotFoundError("Rezervasyon bulunamadı.");
+      if (!existing.archivedAt) throw new ConflictError("Bu rezervasyon arşivde değil.");
+      const booking = await app.prisma.appointmentBooking.update({
+        where: { id: existing.id },
+        data: { archivedAt: null, archivedReason: null },
+        include: WITH_BOOKING_RELATIONS,
+      });
+
+      await logAudit(app, {
+        actorId: request.user!.id,
+        actorEmail: request.user!.email,
+        action: "telehealth.booking.unarchived",
+        targetType: "AppointmentBooking",
+        targetId: booking.id,
+        metadata: { bookingNumber: booking.bookingNumber, previousReason: existing.archivedReason },
+        ipAddress: request.ip,
+      });
+
+      return reply.send(ok(toAppointmentBookingDto(booking, canAccessBookingHealthData(booking, { user: request.user }))));
     }
   );
 }

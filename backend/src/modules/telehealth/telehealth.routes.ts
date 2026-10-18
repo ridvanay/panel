@@ -47,6 +47,7 @@ import { generateAvailableSlots, parseIsoCalendarDate } from "./lib/availability
 import { bookAppointment, confirmBookingPayment, createBooking } from "./lib/booking";
 import { triggerAppointmentConfirmationEmail } from "./lib/notifications";
 import { provisionPatientAccountForBooking } from "./lib/patient-account";
+import { PUBLIC_DOCTOR_WHERE } from "./lib/archive-filters";
 import { encryptSecret, decryptSecret } from "../../lib/crypto";
 import { detectUploadMimeType } from "../../lib/mime-detect";
 import { telehealthDocumentStorage } from "../../lib/telehealth-document-storage";
@@ -183,7 +184,8 @@ export async function telehealthRoutes(app: FastifyInstance) {
 
       const rows = await app.prisma.doctorProfile.findMany({
         where: {
-          isActive: true,
+          // Paket B2 — arşivli doktor public yüzeyde (liste, arama, sitemap, featured-doctors) görünmez.
+          ...PUBLIC_DOCTOR_WHERE,
           ...(cursorSeq ? { seq: { gt: cursorSeq } } : {}),
           ...(language ? { languages: { has: language } } : {}),
           // `specialty` ve `search` filtrelerinin HER İKİSİ de kendi `OR` kolunu taşıyor —
@@ -223,7 +225,7 @@ export async function telehealthRoutes(app: FastifyInstance) {
     { schema: { params: DoctorSlugParamSchema, response: { 200: ApiSuccessSchema(DoctorProfileSchema) } } },
     async (request, reply) => {
       const doctor = await app.prisma.doctorProfile.findFirst({
-        where: { slug: request.params.slug, isActive: true },
+        where: { slug: request.params.slug, ...PUBLIC_DOCTOR_WHERE },
         include: WITH_DOCTOR_RELATIONS,
       });
       if (!doctor) throw new NotFoundError("Doktor bulunamadı.");
@@ -242,7 +244,7 @@ export async function telehealthRoutes(app: FastifyInstance) {
     },
     async (request, reply) => {
       const doctor = await app.prisma.doctorProfile.findFirst({
-        where: { slug: request.params.slug, isActive: true },
+        where: { slug: request.params.slug, ...PUBLIC_DOCTOR_WHERE },
         include: { availability: true },
       });
       if (!doctor) throw new NotFoundError("Doktor bulunamadı.");
@@ -256,6 +258,8 @@ export async function telehealthRoutes(app: FastifyInstance) {
       const rangeStartMs = Date.UTC(fromDate.year, fromDate.month - 1, fromDate.day) - 24 * 60 * 60 * 1000;
       const rangeEndMs = Date.UTC(toDate.year, toDate.month - 1, toDate.day) + 2 * 24 * 60 * 60 * 1000;
 
+      // Paket B4 — arşiv filtresi BİLİNÇLİ OLARAK UYGULANMAZ: test olarak arşivlenmiş booking'in
+      // slotu dolu kalır (çakışma kontrolü `lib/booking.ts`'te arşivi bilmez, ikisi ayrışmamalı).
       const bookedAppointments = await app.prisma.appointment.findMany({
         where: { doctorId: doctor.id, startsAt: { gte: new Date(rangeStartMs), lte: new Date(rangeEndMs) } },
         select: { startsAt: true },
@@ -309,7 +313,7 @@ export async function telehealthRoutes(app: FastifyInstance) {
       // TUTARLI (pasif doktorlar public yüzeyde hiçbir yerde SAYILMAZ/GÖSTERİLMEZ).
       const doctorCount = await app.prisma.doctorProfile.count({
         where: {
-          isActive: true,
+          ...PUBLIC_DOCTOR_WHERE,
           OR: [{ specialtyId: specialty.id }, { additionalSpecialties: { some: { specialtyId: specialty.id } } }],
         },
       });
