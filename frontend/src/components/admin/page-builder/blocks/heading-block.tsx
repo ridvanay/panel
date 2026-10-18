@@ -56,6 +56,18 @@ export function HeadingBlockEditor({
             <p className="text-sm font-medium text-foreground">Hizalama</p>
             <SegmentedToggle value={block.data.align} options={ALIGN_OPTIONS} onChange={(align) => onChange({ ...block, data: { ...block.data, align } })} />
           </div>
+          <Field id={`${block.id}-href`} label="Bağlantı" hint="Opsiyonel — site içi (/doctors) veya https:// ile başlayan dış bağlantı. Dış bağlantı yeni sekmede açılır.">
+            {(inputProps) => (
+              <Input
+                {...inputProps}
+                type="text"
+                inputMode="url"
+                placeholder="/doctors"
+                value={block.data.href ?? ""}
+                onChange={(e) => onChange({ ...block, data: { ...block.data, href: e.target.value.trim() || undefined } })}
+              />
+            )}
+          </Field>
           <div className="flex items-center justify-between">
             <label htmlFor={`${block.id}-underline`} className="text-sm font-medium text-foreground">
               Alt çizgi vurgusu

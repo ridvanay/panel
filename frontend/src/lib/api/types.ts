@@ -3892,6 +3892,12 @@ export interface Appointment {
   updatedAt: string;
 }
 
+/** `GET /admin/telehealth/appointments/{id}/deletion-check` — boş `blockers` = kalıcı silinebilir. */
+export interface AppointmentDeletionCheck {
+  deletable: boolean;
+  blockers: { code: string; message: string }[];
+}
+
 export interface CreateAppointmentRequest {
   doctorSlug: string;
   /** GERÇEK bir slot başlangıcı olmalı (dakika çözünürlüğü, UTC `Z`'li ISO an). */

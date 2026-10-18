@@ -15,7 +15,9 @@ import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AppointmentStatusBadge } from "@/components/site/telehealth/appointment-status-badge";
-import { JoinMeetingButton } from "@/components/site/telehealth/join-meeting-button";
+import { JoinEndedLabel, JoinMeetingButton } from "@/components/site/telehealth/join-meeting-button";
+import { getJoinState } from "@/lib/telehealth-join-window";
+import { useNow } from "@/hooks/use-now";
 import { cn } from "@/lib/utils";
 
 /**
@@ -65,6 +67,8 @@ export function PatientHeroPanel() {
   const intlLocale = contentLocaleToIntl(useActiveLocaleCode());
   const [bookings, setBookings] = useState<AppointmentBooking[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Dakikada bir yeniden hesaplanır — pencere sayfa açıkken kapanırsa "Katıl" kendiliğinden kaybolur.
+  const nowMs = useNow();
 
   const load = useCallback(async () => {
     setLoadError(null);
@@ -88,18 +92,12 @@ export function PatientHeroPanel() {
   }
 
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  // eslint-disable-next-line react-hooks/purity -- `join-meeting-button.tsx` İLE AYNI gerekçe: render anındaki "şu an" yeterli, tick atan bir sayaç GEREKMEZ
-  const nowMs = Date.now();
   const nearest = bookings ? pickNearestBooking(bookings, nowMs) : null;
   const firstAppointment = nearest?.appointments[0] ?? null;
 
-  const joinWindowOpen =
-    !!nearest &&
-    nearest.paymentStatus === "PAID" &&
-    !!nearest.joinableFrom &&
-    !!nearest.joinableUntil &&
-    nowMs >= new Date(nearest.joinableFrom).getTime() &&
-    nowMs <= new Date(nearest.joinableUntil).getTime();
+  // Paket A2 — tek karar kaynağı `getJoinState` (backend `getBookingJoinWindow` ile aynı pencere).
+  const joinState = nearest && nearest.appointments.length > 0 ? getJoinState(nearest, nowMs) : null;
+  const joinWindowOpen = !!nearest && nearest.paymentStatus === "PAID" && joinState === "open";
   const isUnpaid = !!nearest && nearest.paymentStatus === "PENDING";
 
   return (
@@ -154,6 +152,15 @@ export function PatientHeroPanel() {
               </Link>
             ) : joinWindowOpen ? (
               <JoinMeetingButton booking={nearest} size="sm" />
+            ) : joinState === "ended" ? (
+              <div className="flex items-center gap-2">
+                <JoinEndedLabel />
+                <Link href={localize(`/patient/bookings/${nearest.id}`)}>
+                  <Button type="button" variant="outline" size="sm">
+                    Randevu Detayını Gör
+                  </Button>
+                </Link>
+              </div>
             ) : (
               <Link href={localize(`/patient/bookings/${nearest.id}`)}>
                 <Button type="button" variant="outline" size="sm">

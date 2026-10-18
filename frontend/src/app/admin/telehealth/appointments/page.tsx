@@ -2,21 +2,21 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { toast } from "sonner";
-import { AlertCircle, CalendarClock, Search } from "lucide-react";
+import { AlertCircle, CalendarClock, Search, Trash2 } from "lucide-react";
 import * as telehealthApi from "@/lib/api/telehealth";
 import type { Appointment, AppointmentStatus } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
 import { EmptyState } from "@/components/ui/empty-state";
-import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Select } from "@/components/ui/select";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PageHeading } from "@/components/admin/page-heading";
 import { RescheduleAppointmentDialog } from "@/components/admin/telehealth/reschedule-appointment-dialog";
+import { CancelAppointmentDialog } from "@/components/admin/telehealth/cancel-appointment-dialog";
+import { DeleteAppointmentDialog } from "@/components/admin/telehealth/delete-appointment-dialog";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { formatPriceFromCents } from "@/lib/format-price";
 
@@ -37,6 +37,8 @@ import { formatPriceFromCents } from "@/lib/format-price";
  * aksiyon eklenmesini istiyor, mevcut iptal mantığını genişletmeyi DEĞİL).
  */
 const RESCHEDULABLE_STATUSES: AppointmentStatus[] = ["SCHEDULED", "IN_PROGRESS"];
+/** Kalıcı silme yalnızca bu durumlarda sunulur; asıl uygunluk kararı sunucudadır (deletion-check). */
+const DELETABLE_STATUSES: AppointmentStatus[] = ["CANCELLED", "COMPLETED"];
 const STATUS_LABELS: Record<AppointmentStatus, string> = {
   PENDING_PAYMENT: "Ödeme Bekliyor",
   SCHEDULED: "Planlandı",
@@ -63,7 +65,7 @@ export default function AdminTelehealthAppointmentsPage() {
   const [status, setStatus] = useState<AppointmentStatus | "">("");
   const [search, setSearch] = useState("");
   const [pendingCancel, setPendingCancel] = useState<Appointment | null>(null);
-  const [cancelling, setCancelling] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<Appointment | null>(null);
   const [pendingReschedule, setPendingReschedule] = useState<Appointment | null>(null);
 
   const load = useCallback(async (status?: AppointmentStatus, search?: string) => {
@@ -81,27 +83,12 @@ export default function AdminTelehealthAppointmentsPage() {
     return () => clearTimeout(handle);
   }, [load, status, search]);
 
-  async function handleCancel() {
-    if (!pendingCancel) return;
-    setCancelling(true);
-    try {
-      await telehealthApi.cancelAppointment(pendingCancel.id);
-      toast.success("Randevu iptal edildi.");
-      setPendingCancel(null);
-      await load(status || undefined, search);
-    } catch (err) {
-      toast.error(friendlyErrorMessage(err));
-    } finally {
-      setCancelling(false);
-    }
-  }
-
   return (
     <div className="space-y-6">
       <PageHeading
         icon={CalendarClock}
         title="Randevular"
-        description="Tüm doktorların randevuları — hasta PII'si içerir; planlanmış/devam eden randevular iptal edilebilir veya (yalnızca ADMIN) yeniden planlanabilir."
+        description="Tüm doktorların randevuları — hasta PII'si içerir; planlanmış/devam eden randevular iptal edilebilir veya (yalnızca ADMIN) yeniden planlanabilir; ödemesiz test randevuları (yalnızca ADMIN) kalıcı silinebilir."
       />
 
       {error && (
@@ -200,6 +187,18 @@ export default function AdminTelehealthAppointmentsPage() {
                               İptal Et
                             </Button>
                           )}
+                          {DELETABLE_STATUSES.includes(appointment.status) && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-destructive"
+                              onClick={() => setPendingDelete(appointment)}
+                              aria-label={`"${appointment.patientName}" randevusunu kalıcı olarak sil`}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              Sil
+                            </Button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -211,21 +210,24 @@ export default function AdminTelehealthAppointmentsPage() {
         </>
       )}
 
-      <ConfirmDialog
+      <CancelAppointmentDialog
+        key={`cancel-${pendingCancel?.id ?? "closed"}`}
         open={pendingCancel !== null}
         onOpenChange={(open) => {
           if (!open) setPendingCancel(null);
         }}
-        title="Randevuyu iptal et"
-        description={
-          pendingCancel
-            ? `"${pendingCancel.patientName}" için ${dateFormatter.format(new Date(pendingCancel.startsAt))} tarihli randevu iptal edilecek. Bu saat başka bir hastaya AÇILMAZ (slot kalıcı olarak kapalı kalır).`
-            : undefined
-        }
-        confirmText="İptal Et"
-        tone="warning"
-        loading={cancelling}
-        onConfirm={handleCancel}
+        appointment={pendingCancel}
+        onCancelled={() => load(status || undefined, search)}
+      />
+
+      <DeleteAppointmentDialog
+        key={`delete-${pendingDelete?.id ?? "closed"}`}
+        open={pendingDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingDelete(null);
+        }}
+        appointment={pendingDelete}
+        onDeleted={() => load(status || undefined, search)}
       />
 
       <RescheduleAppointmentDialog

@@ -40,6 +40,7 @@ export type ContentBlockType =
   | "advanced-slider"
   | "google-map"
   | "specialty-cards"
+  | "featured-doctors"
   | "journey-map";
 
 /** Kanonik konteyner düğümü. */
@@ -94,7 +95,8 @@ export interface HeroBlock extends BaseNode {
 
 export interface TextBlock extends BaseNode {
   type: "text";
-  data: { html: string };
+  /** `align` (Paket A3) opsiyonel — eski kayıtlarda yok, okuyan taraf sola düşer. */
+  data: { html: string; align?: TextAlign };
 }
 
 /** Görselin köşe yuvarlaklığı — sabit Tailwind sınıf tablosuna eşlenir (bkz. `site/blocks/image-block.tsx`). */
@@ -111,6 +113,8 @@ export interface ImageBlock extends BaseNode {
     radius?: ImageRadius;
     /** `true` ise görsele tıklamak `gallery-lightbox.tsx`'i TEK görsellik bir dizi ile açar. */
     lightbox?: boolean;
+    /** Paket A3 — opsiyonel bağlantı (`SafeHrefSchema`); doluysa `lightbox`'ın önüne geçer. */
+    href?: string;
   };
 }
 
@@ -339,7 +343,7 @@ export type TextAlign = "left" | "center" | "right";
 
 export interface HeadingBlock extends BaseNode {
   type: "heading";
-  data: { text: string; level: HeadingLevel; align: TextAlign; underline: boolean };
+  data: { text: string; level: HeadingLevel; align: TextAlign; underline: boolean; href?: string };
 }
 
 /**
@@ -618,6 +622,7 @@ export type ContentBlock =
   | AdvancedSliderBlock
   | GoogleMapBlock
   | SpecialtyCardsBlock
+  | FeaturedDoctorsBlock
   | JourneyMapBlock;
 
 /**
@@ -647,6 +652,39 @@ export interface SpecialtyCardsBlock extends BaseNode {
     columns: SpecialtyCardsColumns;
     showDescription: boolean;
     imageShape: SpecialtyCardsImageShape;
+  };
+}
+
+/**
+ * Öne Çıkan Doktorlar (2026-10-18, Paket A3) — admin doktor kayıtlarından seçer (sıra = gösterim
+ * sırası); fotoğraf, ünvan, ad, uzmanlık ve `/doctors/<slug>` bağlantısı doktor kaydından gelir.
+ * Pasif doktorlar public `/doctors` yanıtında olmadığından kendiliğinden gizlenir. Backend
+ * karşılığı: `backend/src/modules/pages/pages.schemas.ts::FeaturedDoctorsBlockSchema` — BİREBİR aynı.
+ */
+export const FEATURED_DOCTORS_MAX = 8;
+export const FEATURED_DOCTORS_COLUMNS = [3, 4] as const;
+export type FeaturedDoctorsColumns = (typeof FEATURED_DOCTORS_COLUMNS)[number];
+export type FeaturedDoctorsImageShape = "circle" | "oval" | "square";
+export const FEATURED_DOCTORS_TITLE_MAX = 120;
+export const FEATURED_DOCTORS_SUBTITLE_MAX = 300;
+export const FEATURED_DOCTORS_BUTTON_LABEL_MAX = 60;
+
+export interface FeaturedDoctorsLocaleContent {
+  title: string;
+  subtitle: string;
+  /** "Tüm doktorlar" butonunun etiketi — boşsa dilin varsayılan etiketi kullanılır. */
+  buttonLabel: string;
+}
+
+export interface FeaturedDoctorsBlock extends BaseNode {
+  type: "featured-doctors";
+  data: {
+    content: Record<string, FeaturedDoctorsLocaleContent>;
+    /** `DoctorProfile.id` listesi, en fazla `FEATURED_DOCTORS_MAX`, tekrarsız. */
+    doctorIds: string[];
+    columns: FeaturedDoctorsColumns;
+    imageShape: FeaturedDoctorsImageShape;
+    showAllButton: boolean;
   };
 }
 

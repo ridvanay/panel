@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
 import type { BlockChrome, HeadingBlock } from "@/lib/page-builder/types";
+import { linkAttrs } from "@/lib/page-builder/link-attrs";
 
 const TAG_MAP = { 1: "h1", 2: "h2", 3: "h3", 4: "h4", 5: "h5", 6: "h6" } as const;
 
@@ -20,13 +21,16 @@ const ALIGN_CLASS: Record<HeadingBlock["data"]["align"], string> = {
 
 export function HeadingBlockView({ block, chrome }: { block: HeadingBlock; chrome: BlockChrome }) {
   const Tag = TAG_MAP[block.data.level];
+  const text = block.data.underline ? <span className="inline-block border-b-4 border-primary pb-1">{block.data.text}</span> : block.data.text;
   return (
     <section className={cn(chrome === "page" && "px-4 py-8 sm:px-6")}>
       <Tag className={cn(SIZE_CLASS[block.data.level], ALIGN_CLASS[block.data.align], "text-foreground")}>
-        {block.data.underline ? (
-          <span className="inline-block border-b-4 border-primary pb-1">{block.data.text}</span>
+        {block.data.href ? (
+          <a {...linkAttrs(block.data.href)} className="transition-colors hover:text-primary">
+            {text}
+          </a>
         ) : (
-          block.data.text
+          text
         )}
       </Tag>
     </section>

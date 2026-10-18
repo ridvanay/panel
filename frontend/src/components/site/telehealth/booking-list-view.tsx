@@ -12,6 +12,7 @@ import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import { PaymentStatusBadge } from "@/components/site/telehealth/payment-status-badge";
 import { AppointmentStatusBadge } from "@/components/site/telehealth/appointment-status-badge";
 import { JoinMeetingButton } from "@/components/site/telehealth/join-meeting-button";
+import { useNow } from "@/hooks/use-now";
 import { BookingDocumentsDialog } from "@/components/site/telehealth/booking-documents-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -197,8 +198,8 @@ export function BookingListView({ bookings, loadError, onRetry, perspective, tim
   const [submitting, setSubmitting] = useState(false);
   const [completeError, setCompleteError] = useState<string | null>(null);
 
-  // eslint-disable-next-line react-hooks/purity -- `join-meeting-button.tsx` İLE AYNI gerekçe: katılım penceresi durumunu "şu an" ile karşılaştırmak GEREKİR, saniyede bir tick atan bir sayaç GEREKMEZ, yalnızca render anındaki an yeterlidir
-  const now = Date.now();
+  // Dakikada bir yeniden hesaplanır (Paket A2) — "Katıl"/"Seansı Tamamla" pencere kapanınca kendiliğinden güncellenir.
+  const now = useNow();
 
   if (bookings === null && !loadError) {
     return <BookingListSkeleton />;

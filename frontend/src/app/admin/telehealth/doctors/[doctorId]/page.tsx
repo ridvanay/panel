@@ -25,17 +25,27 @@ import { PageHeading } from "@/components/admin/page-heading";
 import { WeeklyAvailabilityEditor } from "@/components/admin/telehealth/weekly-availability-editor";
 import { DoctorSocialLinksEditor } from "@/components/site/telehealth/doctor-social-links-editor";
 import { DoctorAdditionalSpecialtiesField } from "@/components/admin/telehealth/doctor-additional-specialties-field";
-import { friendlyErrorMessage } from "@/lib/api/friendly-error";
+import {
+  DoctorCvBasicFields,
+  DoctorCvRichSections,
+  DoctorLanguagesField,
+  describeArrayItemErrors,
+  doctorCvValueFromProfile,
+  emptyDoctorCvValue,
+  toDoctorCvPayload,
+  type DoctorCvFieldErrors,
+  type DoctorCvFormValue,
+} from "@/components/site/telehealth/doctor-cv-fields";
+import { fieldErrorsFrom, friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { ApiClientError } from "@/lib/api/error";
 
-const LANGUAGE_OPTIONS = ["tr", "en", "de", "fr", "es", "ar"] as const;
 const CURRENCIES = ["TRY", "USD", "EUR", "GBP"] as const;
 
 const formSchema = z.object({
   title: z.string().min(1, "Unvan gerekli.").max(40),
   fullName: z.string().min(1, "Ad soyad gerekli.").max(120),
   slug: z.string().min(1, "Slug gerekli.").max(80),
-  bio: z.string().min(1, "Biyografi gerekli.").max(5000),
+  bio: z.string().min(1, "Kısa özet gerekli.").max(5000),
   languages: z.array(z.string()).min(1, "En az bir dil seçin.").max(6),
   timeZone: z.string().min(1, "Saat dilimi gerekli."),
   specialtyId: z.string().optional(),
@@ -60,6 +70,10 @@ export default function EditDoctorPage({ params }: { params: Promise<{ doctorId:
   const [additionalSpecialtyIds, setAdditionalSpecialtyIds] = useState<string[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveErrorDetails, setSaveErrorDetails] = useState<string[]>([]);
+  // Paket A4 — CV alanları doktorun "Profilim" formuyla ortak (`doctor-cv-fields.tsx`).
+  const [cv, setCv] = useState<DoctorCvFormValue>(emptyDoctorCvValue);
+  const [cvErrors, setCvErrors] = useState<DoctorCvFieldErrors>({});
 
   const [rules, setRules] = useState<DoctorAvailabilityRuleInput[]>([]);
   const [savingAvailability, setSavingAvailability] = useState(false);
@@ -98,6 +112,7 @@ export default function EditDoctorPage({ params }: { params: Promise<{ doctorId:
       setSpecialties(specialtyList);
       setAvatar(doc.avatarMedia);
       setSocialLinks(doc.socialLinks);
+      setCv(doctorCvValueFromProfile(doc));
       setAdditionalSpecialtyIds(doc.additionalSpecialties?.map((s) => s.id) ?? []);
       setRules(availability.map((rule) => ({ dayOfWeek: rule.dayOfWeek, startMinute: rule.startMinute, endMinute: rule.endMinute, isActive: rule.isActive })));
       reset({
@@ -129,8 +144,11 @@ export default function EditDoctorPage({ params }: { params: Promise<{ doctorId:
 
   async function onSubmit(values: FormValues) {
     setSaveError(null);
+    setSaveErrorDetails([]);
+    setCvErrors({});
     try {
       const updated = await telehealthApi.updateDoctor(doctorId, {
+        ...toDoctorCvPayload(cv),
         title: values.title,
         fullName: values.fullName,
         slug: values.slug,
@@ -149,11 +167,15 @@ export default function EditDoctorPage({ params }: { params: Promise<{ doctorId:
       });
       setDoctor(updated);
       setSocialLinks(updated.socialLinks);
+      setCv(doctorCvValueFromProfile(updated));
       setAdditionalSpecialtyIds(updated.additionalSpecialties?.map((s) => s.id) ?? []);
       toast.success("Doktor güncellendi.");
     } catch (err) {
       const message = friendlyErrorMessage(err);
       setSaveError(message);
+      const fieldErrors = fieldErrorsFrom(err);
+      setCvErrors({ subSpecialty: fieldErrors.subSpecialty, practiceStartYear: fieldErrors.practiceStartYear });
+      setSaveErrorDetails(describeArrayItemErrors(fieldErrors));
       toast.error(message);
     }
   }
@@ -247,6 +269,13 @@ export default function EditDoctorPage({ params }: { params: Promise<{ doctorId:
                   <AlertCircle className="h-4 w-4 shrink-0" />
                   {saveError}
                 </span>
+                {saveErrorDetails.length > 0 && (
+                  <ul className="mt-1.5 list-disc space-y-0.5 pl-4">
+                    {saveErrorDetails.map((detail) => (
+                      <li key={detail}>{detail}</li>
+                    ))}
+                  </ul>
+                )}
               </Alert>
             )}
 
@@ -264,9 +293,11 @@ export default function EditDoctorPage({ params }: { params: Promise<{ doctorId:
                 {(inputProps) => <Input {...inputProps} {...register("slug")} />}
               </Field>
 
-              <Field id="bio" label="Biyografi" error={errors.bio?.message} required>
+              <Field id="bio" label="Biyografi (kısa özet)" error={errors.bio?.message} required hint="Doktor kartında ve arama sonuçlarında görünür.">
                 {(inputProps) => <Textarea {...inputProps} rows={5} {...register("bio")} />}
               </Field>
+
+              <DoctorCvBasicFields value={cv} onChange={(patch) => setCv((prev) => ({ ...prev, ...patch }))} errors={cvErrors} />
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field id="specialtyId" label="Uzmanlık">
@@ -293,39 +324,11 @@ export default function EditDoctorPage({ params }: { params: Promise<{ doctorId:
                 onChange={setAdditionalSpecialtyIds}
               />
 
-              <div>
-                <span className="block text-sm font-medium text-foreground">
-                  Konuşulan diller <span className="text-danger">*</span>
-                </span>
-                <div className="mt-1.5 flex flex-wrap gap-3">
-                  <Controller
-                    control={control}
-                    name="languages"
-                    render={({ field }) => (
-                      <>
-                        {LANGUAGE_OPTIONS.map((lang) => {
-                          const checked = field.value?.includes(lang) ?? false;
-                          return (
-                            <label key={lang} className="flex items-center gap-1.5 text-sm text-foreground/80">
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={(e) => {
-                                  const current = field.value ?? [];
-                                  if (e.target.checked) field.onChange([...current, lang]);
-                                  else field.onChange(current.filter((v) => v !== lang));
-                                }}
-                              />
-                              {lang.toUpperCase()}
-                            </label>
-                          );
-                        })}
-                      </>
-                    )}
-                  />
-                </div>
-                {errors.languages && <p className="mt-1 text-xs text-danger">{errors.languages.message}</p>}
-              </div>
+              <Controller
+                control={control}
+                name="languages"
+                render={({ field }) => <DoctorLanguagesField value={field.value ?? []} onChange={field.onChange} error={errors.languages?.message} />}
+              />
 
               <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
                 <div>
@@ -374,6 +377,12 @@ export default function EditDoctorPage({ params }: { params: Promise<{ doctorId:
                 </div>
                 <DoctorSocialLinksEditor links={socialLinks} onChange={setSocialLinks} />
               </div>
+
+              <DoctorCvRichSections
+                value={cv}
+                onChange={(patch) => setCv((prev) => ({ ...prev, ...patch }))}
+                sectionClassName="space-y-3 rounded-lg border border-border p-3"
+              />
 
               {/* K8 — bağlama/çözme SADECE `/admin/users`'ta yapılır (ADMIN-only, backend
                * `PATCH .../doctors/{id}` gövdesinde `userId` alanı ADMIN'e kilitli); burada

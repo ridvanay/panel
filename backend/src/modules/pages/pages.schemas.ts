@@ -420,6 +420,8 @@ const HeadingBlockDataSchema = z.object({
   level: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6)]).default(2),
   align: z.enum(["left", "center", "right"]).default("left"),
   underline: z.boolean().default(false),
+  // 2026-10-18 (Paket A3) — opsiyonel bağlantı; dış bağlantıda frontend `rel="noopener"` ekler.
+  href: SafeHrefSchema.optional(),
 });
 const HeadingBlockSchema = z.object({
   id: z.string().min(1),
@@ -493,6 +495,8 @@ const ImageBlockDataSchema = z.object({
   caption: z.string().max(300).optional(),
   radius: z.enum(["none", "sm", "md", "lg", "full"]).optional(),
   lightbox: z.boolean().optional(),
+  // 2026-10-18 (Paket A3) — opsiyonel bağlantı; doluysa `lightbox`'ın önüne geçer.
+  href: SafeHrefSchema.optional(),
 });
 const ImageBlockSchema = z.object({
   id: z.string().min(1),
@@ -902,6 +906,56 @@ const SpecialtyCardsBlockSchema = z.object({
   reveal: RevealEffectSettingsSchema.optional(),
 });
 
+/* ---------- Metin bloğu — 2026-10-18 (Paket A3) ----------
+ * Önceden şemasızdı (`data.html` yalnızca `sanitize-blocks.ts`'ten geçer). Bu tur yalnızca `align`
+ * eklendiği için minimal tanımlanır; `.passthrough()` bilinmeyen eski alanları KORUR. */
+const TextBlockSchema = z
+  .object({
+    // Şemasız dönemde `id`'siz metin blokları da kabul ediliyordu — davranış korunur.
+    id: z.string().min(1).optional(),
+    type: z.literal("text"),
+    data: z
+      .object({
+        html: z.string().default(""),
+        align: z.enum(["left", "center", "right"]).optional(),
+      })
+      .passthrough(),
+    reveal: RevealEffectSettingsSchema.optional(),
+  })
+  .passthrough();
+
+/* ---------- Öne Çıkan Doktorlar — 2026-10-18 (Paket A3) ----------
+ * Kartların içeriği (fotoğraf, ünvan, ad, uzmanlık, bağlantı) doktor kaydından gelir; blok yalnızca
+ * seçilen doktor id'lerini (sıra = gösterim sırası) ve görünüm ayarlarını taşır. Pasif doktorlar
+ * public `/doctors` yanıtında olmadığı için render tarafında kendiliğinden düşer.
+ * Frontend `lib/page-builder/types.ts::FeaturedDoctorsBlock` ile BİREBİR aynı. */
+export const FEATURED_DOCTORS_MAX = 8;
+const FeaturedDoctorsLocaleContentSchema = z.object({
+  title: z.string().trim().max(120).default(""),
+  subtitle: z.string().trim().max(300).default(""),
+  buttonLabel: z.string().trim().max(60).default(""),
+});
+const FeaturedDoctorsBlockDataSchema = z.object({
+  content: z
+    .record(z.string().regex(/^[a-z]{2,3}(-[a-z0-9]{2,8})*$/, "Geçersiz dil kodu."), FeaturedDoctorsLocaleContentSchema)
+    .refine((value) => Object.keys(value).length <= 20, "En fazla 20 dil.")
+    .default({}),
+  doctorIds: z
+    .array(z.string().uuid())
+    .max(FEATURED_DOCTORS_MAX, `En fazla ${FEATURED_DOCTORS_MAX} doktor seçilebilir.`)
+    .refine((ids) => new Set(ids).size === ids.length, "Aynı doktor iki kez seçilemez.")
+    .default([]),
+  columns: z.union([z.literal(3), z.literal(4)]).default(4),
+  imageShape: z.enum(["circle", "oval", "square"]).default("oval"),
+  showAllButton: z.boolean().default(true),
+});
+const FeaturedDoctorsBlockSchema = z.object({
+  id: z.string().min(1),
+  type: z.literal("featured-doctors"),
+  data: FeaturedDoctorsBlockDataSchema,
+  reveal: RevealEffectSettingsSchema.optional(),
+});
+
 /* ---------- Gelişmiş Slider / Hero Studio — bkz. .claude/architect-scope-advanced-slider.md §3.5/§6.1 ---------- */
 
 /**
@@ -1298,6 +1352,8 @@ const PageNodeSchema: z.ZodType<unknown, z.ZodTypeDef, unknown> = z.record(z.unk
   if (type === "team") return applySubSchema(TeamBlockSchema, node, ctx);
   if (type === "advanced-slider") return applySubSchema(AdvancedSliderBlockSchema, node, ctx);
   if (type === "specialty-cards") return applySubSchema(SpecialtyCardsBlockSchema, node, ctx);
+  if (type === "featured-doctors") return applySubSchema(FeaturedDoctorsBlockSchema, node, ctx);
+  if (type === "text") return applySubSchema(TextBlockSchema, node, ctx);
   // KRİTİK (mimar §5/6 + §9 R2, security-review §7/5): bu dal EKSİK kalırsa `google-map` bloğu
   // HİÇ DOĞRULANMADAN geçer ve §2'deki `embedUrl` beyaz listesi TAMAMEN BAYPAS EDİLİR — bu
   // eklemenin en kritik satırıdır, bir regresyon testiyle AYRICA doğrulanır.

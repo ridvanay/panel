@@ -46,6 +46,8 @@ export const TEMPLATE_EDITABLE_FIELDS: Record<string, readonly string[]> = {
   // Uzmanlık Kartları — standart kullanıcı başlık/alt başlığı ve açıklamanın görünürlüğünü
   // düzenler; kolon sayısı ve görsel şekli (düzen kararı) kilitli.
   "specialty-cards": ["data.content", "data.showDescription"],
+  // Öne Çıkan Doktorlar — backend `page-template-fields.ts` ile BİREBİR aynı.
+  "featured-doctors": ["data.content", "data.doctorIds", "data.showAllButton"],
   team: ["data.members"],
   // Standart kullanıcı hangi slider'ın gösterileceğini DEĞİŞTİREBİLİR (içerik seçimi),
   // ama slider'ın kendisini düzenleyemez (o /admin/sliders yetkisidir).

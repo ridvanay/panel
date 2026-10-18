@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Ban, Clock } from "lucide-react";
+import { CircleCheck, Clock } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -11,6 +11,8 @@ import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import type { AppointmentBooking } from "@/lib/api/types";
 import { SITE_ORIGIN } from "@/lib/doctor-host";
 import { EARLY_JOIN_WARNING_THRESHOLD_MINUTES, formatDayLabel, formatTime } from "@/lib/telehealth-format";
+import { getJoinState } from "@/lib/telehealth-join-window";
+import { useNow } from "@/hooks/use-now";
 import { cn } from "@/lib/utils";
 
 /**
@@ -33,8 +35,8 @@ import { cn } from "@/lib/utils";
  * render edilir — zaman durumuna göre YALNIZCA görsel varyant/yanındaki rozet değişir:
  *   1) pencere henüz açılmadıysa: `variant="outline"` (soluk) buton + "X dk içinde" uyarı rozeti,
  *   2) pencere açıksa: `activeVariant` (yeşil) buton, rozet yok,
- *   3) pencere kapandıysa: `activeVariant` buton + "Süresi Geçti" nötr rozet (doktor geç kalan bir
- *      görüşmeye de girebilmeli — backend zaten izin veriyor, buton disabled/gizli OLMAZ).
+ *   3) pencere kapandıysa: 2026-10-18 (Paket A2) itibarıyla buton GÖSTERİLMEZ, "Görüşme sona erdi"
+ *      etiketi gelir (`lib/telehealth-join-window.ts::getJoinState`, tüm modlarda aynı karar).
  * Ödeme eksik/randevu yok durumları (nadir görülür) mevcut disabled-tooltip desenine DÜŞER.
  *
  * Varsayılan (`mergeRemainingTime` verilmezse) davranış DEĞİŞMEDİ —`booking-list-view.tsx`/
@@ -72,6 +74,19 @@ interface JoinMeetingButtonProps {
   activeVariant?: "default" | "success";
 }
 
+/**
+ * 2026-10-18 (Paket A2) — katılım penceresi kapandığında veya randevu COMPLETED/CANCELLED/NO_SHOW
+ * olduğunda buton yerine gösterilen etiket (`getJoinState(...) === "ended"`).
+ */
+export function JoinEndedLabel() {
+  return (
+    <Badge tone="neutral" size="sm" className="gap-1">
+      <CircleCheck className="h-3 w-3" aria-hidden="true" />
+      Görüşme sona erdi
+    </Badge>
+  );
+}
+
 function earlyJoinAckKey(appointmentId: string): string {
   return `early-join-ack:${appointmentId}`;
 }
@@ -90,8 +105,9 @@ export function JoinMeetingButton({
   // Görev (2026-09-16) — takvim/randevu gün-ay-saat biçimlendirmesi denetimi (bkz. `useActiveLocaleCode` yorumu).
   const intlLocale = contentLocaleToIntl(useActiveLocaleCode());
   const firstAppointment = booking.appointments[0];
-  // eslint-disable-next-line react-hooks/purity -- `availability-calendar.tsx` İLE AYNI gerekçe: katılım penceresi durumunu "şu an" ile karşılaştırmak GEREKİR, saniyede bir tick atan bir sayaç GEREKMEZ, yalnızca render anındaki an yeterlidir
-  const now = nowMs ?? Date.now();
+  // Dakikada bir yeniden hesaplanır — pencere sayfa açıkken kapanırsa buton kendiliğinden kaybolur.
+  const tickNowMs = useNow();
+  const now = nowMs ?? tickNowMs;
   const [earlyJoinDialogOpen, setEarlyJoinDialogOpen] = useState(false);
 
   const relativeHref = firstAppointment
@@ -150,6 +166,12 @@ export function JoinMeetingButton({
     />
   );
 
+  // Paket A2 — pencere kapandıysa veya randevu sonlandıysa HİÇBİR modda buton gösterilmez.
+  // Backend kuralı (409 APPOINTMENT_NOT_JOINABLE) değişmedi; bu yalnızca arayüz kararıdır.
+  if (firstAppointment && getJoinState(booking, now) === "ended") {
+    return <JoinEndedLabel />;
+  }
+
   // §mergeRemainingTime — ödeme tamamsa VE katılım penceresi bilgisi mevcutsa, buton HER DURUMDA
   // (pencere açılmamış/açık/kapanmış fark etmeksizin) gerçek, tıklanabilir bir `<a>` olarak render
   // edilir — backend doktoru zaman kısıtlamasından muaf tuttuğu için tıklamak her zaman çalışır
@@ -157,7 +179,6 @@ export function JoinMeetingButton({
   // değişir; buton asla kaybolmaz.
   if (mergeRemainingTime && firstAppointment && booking.paymentStatus === "PAID" && booking.joinableFrom && booking.joinableUntil) {
     const fromMs = new Date(booking.joinableFrom).getTime();
-    const untilMs = new Date(booking.joinableUntil).getTime();
     const resolvedTimeZone = timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
     const outlineButtonClassName = cn(buttonVariants({ size, variant: "outline" }), "rounded-[var(--site-radius)]");
 
@@ -187,22 +208,6 @@ export function JoinMeetingButton({
             <Badge tone="warning" solid size="sm" className="gap-1">
               <Clock className="h-3 w-3" aria-hidden="true" />
               {minutesLeft} dk içinde
-            </Badge>
-          </div>
-          {earlyJoinDialog}
-        </>
-      );
-    }
-    if (now > untilMs) {
-      return (
-        <>
-          <div className="flex flex-col items-end gap-1">
-            <a href={href} onClick={handleJoinClick} className={activeButtonClassName}>
-              {activeLabel}
-            </a>
-            <Badge tone="neutral" size="sm" className="gap-1">
-              <Ban className="h-3 w-3" aria-hidden="true" />
-              Süresi Geçti
             </Badge>
           </div>
           {earlyJoinDialog}

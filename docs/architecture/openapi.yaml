@@ -7217,6 +7217,8 @@ paths:
         Yalnızca `SCHEDULED` randevular iptal edilebilir. **İptal edilen randevu
         slotu SERBEST BIRAKMAZ** — `startsAt` DEĞİŞMEZ, o saat kalıcı olarak
         kapalı kalır (§4.3, backlog: `feature/appointment-reschedule`).
+        2026-10-18 (Paket A1) — gövde tamamen OPSİYONELDİR: gövdesiz istek (Content-Type yok),
+        `{}` veya `{ reason }` kabul edilir (önceden gövdesiz istek 422 dönüyordu).
       requestBody:
         required: false
         content:
@@ -8102,6 +8104,77 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409":
           description: "Yeni zaman aralığı doktorun başka bir aktif randevusuyla çakışıyor (`error.code: APPOINTMENT_RESCHEDULE_CONFLICT`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/telehealth/appointments/{id}/deletion-check:
+    parameters:
+      - $ref: "#/components/parameters/AppointmentId"
+    get:
+      tags: [TeleHealth]
+      summary: Randevunun kalıcı silinebilirlik kontrolü (YALNIZCA ADMIN)
+      description: >
+        2026-10-18 (Paket A1) — `DELETE` ile AYNI kural (`lib/appointment-deletion.ts`). Silinebilir
+        = durum `CANCELLED`/`COMPLETED` VE ödeme kaydı yok (PAID/REFUNDED/FAILED, `paidAt`,
+        PaymentIntent; `paidBy: "free"` dahil — yalnızca `paidBy: "demo"` hariç) VE konsültasyon notu,
+        kayıt (recording), sağlık formu, belge yok VE (demo dışı) gerçekten başlamış tamamlanmış
+        görüşme değil. Engeller `blockers[]` olarak (kod + Türkçe mesaj) döner.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: object
+                        required: [deletable, blockers]
+                        properties:
+                          deletable: { type: boolean }
+                          blockers:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                code:
+                                  type: string
+                                  enum: [STATUS_NOT_FINAL, HAS_PAYMENT, HAS_CONSULTATION_NOTE, HAS_RECORDING, HAS_HEALTH_INTAKE, HAS_DOCUMENTS, CONSULTATION_HELD]
+                                message: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/telehealth/appointments/{id}:
+    parameters:
+      - $ref: "#/components/parameters/AppointmentId"
+    delete:
+      tags: [TeleHealth]
+      summary: Test randevusunu kalıcı sil (YALNIZCA ADMIN, iki adımlı onay)
+      description: >
+        2026-10-18 (Paket A1) — yalnızca `deletion-check` engeli olmayan randevular. İkinci onay
+        adımı gövdede ZORUNLUDUR (`confirm: true`). Booking'in son randevusuysa (ödemesiz) booking
+        de silinir. Başarılı silme `telehealth.appointment.deleted` audit kaydı yazar (hasta PII'si
+        audit'e kopyalanmaz). Kural transaction içinde yeniden değerlendirilir.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [confirm]
+              properties:
+                confirm: { type: boolean, enum: [true] }
+      responses:
+        "204": { description: Silindi }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "Silme kuralını karşılamıyor (`error.code: APPOINTMENT_NOT_DELETABLE`, `error.details.blockers`: engel kodları)"
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
@@ -14379,7 +14452,8 @@ components:
         `accordion` · `tabs` · `counter` · `testimonial` · `pricing-table` · `latest-posts` ·
         `contact-form` · `custom-html` · `before-after-slider` · `logo-marquee` · `skill-bar` ·
         `team` · `advanced-slider` · `google-map` · `specialty-cards` (Uzmanlık Kartları — bkz.
-        `SpecialtyCardsBlockData`) · `journey-map` (Hasta Yolculuğu / Dünya Haritası — `home-page`
+        `SpecialtyCardsBlockData`) · `featured-doctors` (Öne Çıkan Doktorlar — bkz.
+        `FeaturedDoctorsBlockData`) · `journey-map` (Hasta Yolculuğu / Dünya Haritası — `home-page`
         şablonunun `journey` bölümüyle AYNI şekil, bkz. `JourneyMapBlockData`) ·
         `home-page` ("Anasayfa" şablonu — YALNIZCA tek kök düğüm, bkz.
         `HomePageBlockData`) · `about-page` ("Hakkımızda" şablonu — YALNIZCA
@@ -14400,7 +14474,7 @@ components:
         `gallery` ve bu turda genişletilen `heading`/`button`/`icon-box`/`divider`/`video`/
         `accordion`/`tabs`/`cta`/`counter`/`testimonial`/`pricing-table`/`latest-posts`/
         `contact-form`/`custom-html`/`before-after-slider`/`logo-marquee`/`skill-bar`/`team`/
-        `advanced-slider`/**`google-map`**/`specialty-cards` dahil) kendi DAR Zod şemalarından geçer (bkz.
+        `advanced-slider`/**`google-map`**/`specialty-cards`/`featured-doctors` dahil) kendi DAR Zod şemalarından geçer (bkz.
         `pages.schemas.ts::PageNodeSchema` dispatch'i).
 
 
@@ -14408,6 +14482,13 @@ components:
         `lib/html-sanitize.ts::sanitizeRichHtml`'den geçer — **konteyner İÇİNDEKİLER DAHİL**
         (iteratif tarama + özyinelemeli sanitize, derinlik `MAX_CONTAINER_DEPTH` ile
         sınırlı; bu özyineleme yapılmazsa stored XSS oluşur, bkz. §10.19.6).
+
+
+        2026-10-18 (Paket A3) — `text` artık minimal bir şemadan geçer: `data.align`
+        (`left`/`center`/`right`, opsiyonel; bilinmeyen eski alanlar korunur). `image` ve
+        `heading` bloklarına opsiyonel `data.href` (`SafeHref`: `/…` veya http(s) mutlak) eklendi;
+        dış bağlantı sitede yeni sekmede `rel="noopener noreferrer"` ile açılır, `image.href`
+        doluysa `lightbox`'ın önüne geçer.
       required: [id, type, data]
       properties:
         id: { type: string }
@@ -14442,6 +14523,7 @@ components:
               advanced-slider,
               google-map,
               specialty-cards,
+              featured-doctors,
               journey-map,
               home-page,
               about-page,
@@ -18797,6 +18879,33 @@ components:
         columns: { type: integer, enum: [3, 4, 6], default: 4, description: "Masaüstü kolon sayısı; mobil 2, tablet 3 sabit." }
         showDescription: { type: boolean, default: true }
         imageShape: { type: string, enum: [circle, square, rounded], default: circle }
+
+    FeaturedDoctorsBlockData:
+      type: object
+      description: >
+        2026-10-18 (Paket A3) — `type: "featured-doctors"` bloğunun `data`'sı. Kartların fotoğrafı,
+        ünvanı, adı, uzmanlığı ve `/doctors/<slug>` bağlantısı render anında public `GET /doctors`
+        yanıtından gelir (pasif doktorlar orada olmadığından kendiliğinden gizlenir); blok yalnızca
+        seçilen doktor id'lerini (sıra = gösterim sırası) ve görünümü taşır.
+      properties:
+        content:
+          type: object
+          maxProperties: 20
+          additionalProperties:
+            type: object
+            properties:
+              title: { type: string, maxLength: 120 }
+              subtitle: { type: string, maxLength: 300 }
+              buttonLabel: { type: string, maxLength: 60, description: "Boşsa dilin varsayılan etiketi." }
+        doctorIds:
+          type: array
+          maxItems: 8
+          uniqueItems: true
+          default: []
+          items: { type: string, format: uuid }
+        columns: { type: integer, enum: [3, 4], default: 4, description: "Masaüstü sütun sayısı; mobil 1, tablet 2 sabit." }
+        imageShape: { type: string, enum: [circle, oval, square], default: oval }
+        showAllButton: { type: boolean, default: true }
 
     JourneyMapBlockData:
       type: object

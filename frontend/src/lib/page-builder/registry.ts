@@ -26,6 +26,7 @@ import {
   GalleryHorizontal,
   MapPin,
   Stethoscope,
+  UserRound,
   Globe,
   type LucideIcon,
 } from "lucide-react";
@@ -104,6 +105,12 @@ export const blockRegistry: Record<
     category: "dynamic",
     icon: Stethoscope,
     keywords: ["uzmanlık", "branş", "specialty", "specialties", "tele-sağlık"],
+  },
+  "featured-doctors": {
+    label: "Öne Çıkan Doktorlar",
+    category: "dynamic",
+    icon: UserRound,
+    keywords: ["doktor", "hekim", "doctor", "doctors", "featured", "tele-sağlık"],
   },
   "journey-map": {
     label: "Hasta Yolculuğu / Dünya Haritası",
@@ -246,6 +253,21 @@ export function createBlock(type: PaletteBlockType): ContentBlock {
       return { id, type, data: { heading: "Son Yazılar", limit: 3 } };
     case "contact-form":
       return { id, type, data: { showTitle: true } };
+    case "featured-doctors":
+      return {
+        id,
+        type,
+        data: {
+          content: {
+            tr: { title: "Öne Çıkan Doktorlarımız", subtitle: "", buttonLabel: "Tüm Doktorlar" },
+            en: { title: "Featured Doctors", subtitle: "", buttonLabel: "All Doctors" },
+          },
+          doctorIds: [],
+          columns: 4,
+          imageShape: "oval",
+          showAllButton: true,
+        },
+      };
     case "specialty-cards":
       return {
         id,

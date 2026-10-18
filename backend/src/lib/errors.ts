@@ -130,6 +130,7 @@ export type ApiErrorCode =
    * için) — genel `ConflictError` desenine UYAR ama kendi machine-readable kodu vardır. 409.
    */
   | "APPOINTMENT_RESCHEDULE_CONFLICT"
+  | "APPOINTMENT_NOT_DELETABLE"
   /**
    * `.claude/architect-scope-support-desk-and-reminders.md` §3.5 (bağlayıcı) — `CLOSED` bir
    * destek oturumuna ziyaretçi VEYA temsilci mesaj göndermeye çalışırsa. Ziyaretçi kapanmış bir
@@ -487,6 +488,13 @@ export class DemoPaymentsDisabledError extends ApiError {
 export class AppointmentRescheduleConflictError extends ApiError {
   constructor(message = "Bu doktorun yeni zaman aralığında zaten başka bir aktif randevusu var.") {
     super(409, "APPOINTMENT_RESCHEDULE_CONFLICT", message);
+  }
+}
+
+/** 2026-10-18 (Paket A1) — kalıcı silme kuralını karşılamayan randevu. `details.blockers` engel kodlarıdır. */
+export class AppointmentNotDeletableError extends ApiError {
+  constructor(blockerCodes: string[], message = "Bu randevu kalıcı olarak silinemez.") {
+    super(409, "APPOINTMENT_NOT_DELETABLE", message, { blockers: blockerCodes });
   }
 }
 

@@ -22,6 +22,7 @@ import { LogoMarqueeBlockEditor } from "./blocks/logo-marquee-block";
 import { SkillBarBlockEditor } from "./blocks/skill-bar-block";
 import { TeamBlockEditor } from "./blocks/team-block";
 import { SpecialtyCardsBlockEditor } from "./blocks/specialty-cards-block";
+import { FeaturedDoctorsBlockEditor } from "./blocks/featured-doctors-block";
 
 /**
  * design-notes-page-builder-standard-mode.md §2.6 — `ContentBlockBody`'nin (builder-canvas.tsx)
@@ -45,11 +46,13 @@ export function TemplateBlockFields({
     case "hero":
       return <HeroBlockEditor block={block} onChange={onChange} />;
     case "text":
-      return <TextBlockEditor block={block} onChange={onChange} />;
+      return <TextBlockEditor block={block} onChange={onChange} simple />;
     case "team":
       return <TeamBlockEditor block={block} onChange={onChange} />;
     case "specialty-cards":
       return <SpecialtyCardsBlockEditor block={block} onChange={onChange} simple />;
+    case "featured-doctors":
+      return <FeaturedDoctorsBlockEditor block={block} onChange={onChange} simple />;
     case "contact-form":
       return <ContactFormBlockEditor block={block} onChange={onChange} />;
     case "counter":

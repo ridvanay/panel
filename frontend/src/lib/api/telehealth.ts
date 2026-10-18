@@ -6,6 +6,7 @@ import type {
   ApiErrorBody,
   Appointment,
   AppointmentBooking,
+  AppointmentDeletionCheck,
   AppointmentDocument,
   AppointmentIntake,
   AvailabilitySlot,
@@ -98,12 +99,24 @@ export function getAppointment(id: string, accessToken?: string): Promise<Appoin
   return apiFetch<Appointment>(`/appointments/${id}`, { query: { t: accessToken } });
 }
 
+/** Gerekçe yoksa da `{}` gönderilir — gövdesiz istek eski backend'de 422 "Girdi doğrulama hatası" veriyordu. */
 export function cancelAppointment(id: string, accessToken?: string, reason?: string): Promise<Appointment> {
+  const trimmedReason = reason?.trim();
   return apiFetch<Appointment>(`/appointments/${id}/cancel`, {
     method: "POST",
     query: { t: accessToken },
-    body: reason ? { reason } : undefined,
+    body: trimmedReason ? { reason: trimmedReason } : {},
   });
+}
+
+/** `GET /admin/telehealth/appointments/{id}/deletion-check` — YALNIZCA ADMIN. */
+export function getAppointmentDeletionCheck(id: string): Promise<AppointmentDeletionCheck> {
+  return apiFetch<AppointmentDeletionCheck>(`/admin/telehealth/appointments/${id}/deletion-check`);
+}
+
+/** `DELETE /admin/telehealth/appointments/{id}` — YALNIZCA ADMIN, kalıcı; ikinci onay `confirm: true`. */
+export function deleteAppointment(id: string): Promise<void> {
+  return apiFetch<void>(`/admin/telehealth/appointments/${id}`, { method: "DELETE", body: { confirm: true } });
 }
 
 /**

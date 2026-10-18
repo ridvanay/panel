@@ -18,7 +18,7 @@ import {
   UpdateTelehealthThemeSettingsRequestSchema,
 } from "../../schemas/entities";
 import { toAppointmentBookingDto, toAppointmentDto, toDoctorProfileDto, toSpecialtyDto } from "../../mappers";
-import { AppointmentRescheduleConflictError, ConflictError, ForbiddenError, NotFoundError, ValidationError } from "../../lib/errors";
+import { AppointmentNotDeletableError, AppointmentRescheduleConflictError, ConflictError, ForbiddenError, NotFoundError, ValidationError } from "../../lib/errors";
 import { buildPageMeta, parseCursor } from "../../lib/pagination";
 import { isImageMimeType } from "../../lib/mime-detect";
 import { slugify } from "../../lib/slug";
@@ -28,6 +28,7 @@ import { canAccessBookingHealthData } from "../../lib/telehealth-access";
 import { CACHE_TAGS, revalidateTagsOnWrite, triggerTagRevalidation } from "../../lib/revalidate";
 import { runSerializable } from "../../lib/serializable-tx";
 import { confirmBookingPayment } from "./lib/booking";
+import { APPOINTMENT_DELETION_INCLUDE, getAppointmentDeletionBlockers, toDeletionInput } from "./lib/appointment-deletion";
 import { triggerAppointmentConfirmationEmail, triggerAppointmentRescheduledEmail } from "./lib/notifications";
 import { provisionPatientAccountForBooking } from "./lib/patient-account";
 import { parseTelehealthTheme } from "./lib/theme-settings";
@@ -41,10 +42,12 @@ import {
 } from "./lib/emergency-notice";
 import { wallTimeToUtc } from "./lib/timezone";
 import {
+  AppointmentDeletionCheckSchema,
   AppointmentIdParamSchema,
   BookingIdParamSchema,
   CreateDoctorRequestSchema,
   CreateSpecialtyRequestSchema,
+  DeleteAppointmentRequestSchema,
   DoctorIdParamSchema,
   ListAdminAppointmentsQuerySchema,
   ListAdminBookingsQuerySchema,
@@ -323,6 +326,17 @@ export async function adminTelehealthDoctorsRoutes(app: FastifyInstance) {
         include: WITH_DOCTOR_RELATIONS,
       });
 
+      // 2026-10-18 (Paket A4) — admin doktor kaydı denetimi; yalnızca alan ADLARI yazılır (içerik değil).
+      await logAudit(app, {
+        actorId: request.user!.id,
+        actorEmail: request.user!.email,
+        action: "telehealth.doctor.created",
+        targetType: "DoctorProfile",
+        targetId: doctor.id,
+        metadata: { fields: Object.keys(body).sort() },
+        ipAddress: request.ip,
+      });
+
       // K8 — bağlama denetimi (yeni profil, `previousUserId` her zaman `null`).
       if ("userId" in body) {
         await logAudit(app, {
@@ -418,6 +432,18 @@ export async function adminTelehealthDoctorsRoutes(app: FastifyInstance) {
       const doctor = await app.prisma.doctorProfile.findUniqueOrThrow({
         where: { id: request.params.doctorId },
         include: WITH_DOCTOR_RELATIONS,
+      });
+
+      // 2026-10-18 (Paket A4) — admin güncellemesi denetimi; yalnızca değişen alan ADLARI yazılır
+      // (CV/biyografi içeriği audit'e kopyalanmaz).
+      await logAudit(app, {
+        actorId: request.user!.id,
+        actorEmail: request.user!.email,
+        action: "telehealth.doctor.updated",
+        targetType: "DoctorProfile",
+        targetId: doctor.id,
+        metadata: { fields: Object.keys(request.body).sort() },
+        ipAddress: request.ip,
       });
 
       // K8 — bağlama/çözme denetimi.
@@ -656,6 +682,81 @@ export async function adminTelehealthAppointmentsRoutes(app: FastifyInstance) {
       });
 
       return reply.send(ok(toAppointmentDto(updated)));
+    }
+  );
+
+  /**
+   * 2026-10-18 (Paket A1) — kalıcı silme uygunluğu. Arayüz "Sil" penceresinde engellerin
+   * nedenini bu uçtan gösterir; kararın kendisi `DELETE` içinde YENİDEN verilir.
+   */
+  server.get(
+    "/:id/deletion-check",
+    {
+      preHandler: requireSiteRole(...ROLES_ADMIN),
+      schema: { params: AppointmentIdParamSchema, response: { 200: ApiSuccessSchema(AppointmentDeletionCheckSchema) } },
+    },
+    async (request, reply) => {
+      const appointment = await app.prisma.appointment.findUnique({
+        where: { id: request.params.id },
+        include: APPOINTMENT_DELETION_INCLUDE,
+      });
+      if (!appointment) throw new NotFoundError("Randevu bulunamadı.");
+      const blockers = getAppointmentDeletionBlockers(toDeletionInput(appointment));
+      return reply.send(ok({ deletable: blockers.length === 0, blockers }));
+    }
+  );
+
+  /**
+   * 2026-10-18 (Paket A1) — YALNIZCA ADMIN, iki adımlı onayın ikincisi gövdede (`confirm: true`).
+   * Yalnızca ödeme/not/kayıt/sağlık verisi OLMAYAN iptal/tamamlanmış test randevuları silinir
+   * (`lib/appointment-deletion.ts`). Booking'in son randevusuysa booking da silinir.
+   */
+  server.delete(
+    "/:id",
+    {
+      preHandler: requireSiteRole(...ROLES_ADMIN),
+      schema: { params: AppointmentIdParamSchema, body: DeleteAppointmentRequestSchema, response: { 204: z.undefined() } },
+    },
+    async (request, reply) => {
+      const result = await runSerializable(app, async (tx) => {
+        const appointment = await tx.appointment.findUnique({
+          where: { id: request.params.id },
+          include: APPOINTMENT_DELETION_INCLUDE,
+        });
+        if (!appointment) throw new NotFoundError("Randevu bulunamadı.");
+
+        const blockers = getAppointmentDeletionBlockers(toDeletionInput(appointment));
+        if (blockers.length > 0) throw new AppointmentNotDeletableError(blockers.map((b) => b.code));
+
+        await tx.appointment.delete({ where: { id: appointment.id } });
+        const bookingDeleted = appointment.booking !== null && appointment.booking._count.appointments <= 1;
+        if (bookingDeleted && appointment.booking) {
+          await tx.appointmentBooking.delete({ where: { id: appointment.booking.id } });
+        }
+        return { appointment, bookingDeleted };
+      });
+
+      // Hasta adı/e-postası audit'e YAZILMAZ — silinen PII'nin kopyası kalmasın.
+      const { appointment, bookingDeleted } = result;
+      await logAudit(app, {
+        actorId: request.user!.id,
+        actorEmail: request.user!.email,
+        action: "telehealth.appointment.deleted",
+        targetType: "Appointment",
+        targetId: appointment.id,
+        metadata: {
+          seq: appointment.seq,
+          status: appointment.status,
+          doctorId: appointment.doctorId,
+          startsAt: appointment.startsAt.toISOString(),
+          bookingId: appointment.booking?.id ?? null,
+          bookingNumber: appointment.booking?.bookingNumber ?? null,
+          bookingDeleted,
+        },
+        ipAddress: request.ip,
+      });
+
+      return reply.code(204).send();
     }
   );
 }

@@ -83,6 +83,14 @@ export const CancelAppointmentRequestSchema = z.object({
 });
 export type CancelAppointmentRequest = z.infer<typeof CancelAppointmentRequestSchema>;
 
+/** 2026-10-18 (Paket A1) — `DELETE /admin/telehealth/appointments/{id}`: ikinci onay adımı gövdede zorunlu. */
+export const DeleteAppointmentRequestSchema = z.object({ confirm: z.literal(true) });
+
+export const AppointmentDeletionCheckSchema = z.object({
+  deletable: z.boolean(),
+  blockers: z.array(z.object({ code: z.string(), message: z.string() })),
+});
+
 /**
  * `POST /appointments/{id}/complete` — opsiyonel epikriz/konsültasyon notu. `note` boş/undefined
  * ise mevcut davranış (yalnızca status/`endedAt`) DEĞİŞMEZ; DOLU ise (Tiptap zengin metin
@@ -280,7 +288,14 @@ const DoctorRequestBaseSchema = z.object({
   publications: z.array(DoctorPublicationSchema).max(200).optional(),
   socialLinks: z.array(DoctorSocialLinkSchema).max(8).optional(),
   languages: LANGUAGES_SCHEMA,
-  timeZone: z.string().trim().min(1).max(80),
+  // 2026-10-18 (Paket A4) — doktorun kendi profil formundaki (`UpdateDoctorSelfProfileRequestSchema`)
+  // IANA doğrulaması admin formunda da uygulanır (fonksiyon bildirimi hoisted, aşağıda tanımlı).
+  timeZone: z
+    .string()
+    .trim()
+    .min(1)
+    .max(80)
+    .refine((value) => isValidIanaTimeZone(value), { message: "Geçerli bir IANA saat dilimi kimliği olmalı (ör. \"Europe/Istanbul\")." }),
   specialtyId: z.string().uuid().nullable().optional(),
   // Birincil (`specialtyId`) DIŞINDA, doktorun EK/ikincil uzmanlıkları — SADECE listeleme/
   // filtreleme için (bkz. `DoctorAdditionalSpecialty`). Gönderilirse dizinin TAMAMINI

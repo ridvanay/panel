@@ -18,6 +18,7 @@ import { Alert } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { CalendarX2, AlertTriangle } from "lucide-react";
+import { useNow } from "@/hooks/use-now";
 
 /**
  * `.claude/architect-scope-doctor-portfolio-identity-console.md` (**[DPI]**) §3 +
@@ -177,8 +178,8 @@ export function DoctorBookingsPanel() {
     }
   }
 
-  // eslint-disable-next-line react-hooks/purity -- "kalan süre" rozetleri render anındaki "şu an" ile hesaplanır; saniyede bir tick atan bir sayaç GEREKMEZ
-  const clientNowMs = Date.now();
+  // Dakikada bir yeniden hesaplanır (Paket A2) — "kalan süre" rozetleri ve "Katıl" pencere kapanınca güncellenir.
+  const clientNowMs = useNow();
   const calibratedNowMs = useMemo(() => {
     if (!overview || fetchedAtMs === null) return clientNowMs;
     return new Date(overview.generatedAt).getTime() + (clientNowMs - fetchedAtMs);

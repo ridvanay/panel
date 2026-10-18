@@ -47,6 +47,8 @@ export const TEMPLATE_EDITABLE_FIELDS: Record<string, readonly string[]> = {
   // Uzmanlık Kartları — standart kullanıcı başlık/alt başlığı ve açıklamanın görünürlüğünü
   // düzenler; kolon sayısı ve görsel şekli (düzen kararı) kilitli.
   "specialty-cards": ["data.content", "data.showDescription"],
+  // Öne Çıkan Doktorlar — başlıklar ve doktor seçimi açık; kolon/şekil (düzen kararı) kilitli.
+  "featured-doctors": ["data.content", "data.doctorIds", "data.showAllButton"],
   team: ["data.members"],
   // Saf düzen elemanları — şablon modunda tamamen kilitli.
   divider: [],

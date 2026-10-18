@@ -13,6 +13,31 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
 
 ### Added
 
+- **`feat(telehealth)`: admin ve hasta tarafı düzeltmeleri (Paket A, 2026-10-18).**
+  - **Randevu iptali:** admin iptali artık "Girdi doğrulama hatası" vermiyor (gövdesiz istek 422
+    dönüyordu; backend gövdeyi opsiyonel kabul ediyor, frontend her zaman `{}` gönderiyor). İptal
+    penceresine opsiyonel "İptal gerekçesi" alanı eklendi.
+  - **Test randevusu silme (yalnızca ADMIN):** iptal edilmiş/tamamlanmış, ödeme kaydı (ücretsiz seans
+    dahil), konsültasyon notu, kayıt, sağlık formu/belge olmayan ve gerçekten yapılmamış randevular
+    iki adımlı onayla ("SİL" yazarak) kalıcı silinebilir; uygun değilse arayüz nedeni gösterir.
+    Silme audit log'a yazılır (`telehealth.appointment.deleted`). Yeni uçlar:
+    `GET /admin/telehealth/appointments/{id}/deletion-check`, `DELETE /admin/telehealth/appointments/{id}`.
+  - **"Katıl" butonu:** geçmiş/sona ermiş görüşmelerde artık görünmüyor, yerine "Görüşme sona erdi"
+    etiketi geliyor (tek karar kaynağı `lib/telehealth-join-window.ts`, pencere backend'in
+    `getBookingJoinWindow` kuralıyla aynı: 10 dk önce – 15 dk sonra). Sayfa açıkken dakikada bir
+    yeniden hesaplanır. Backend token kuralı değişmedi.
+  - **Sayfa oluşturucu — "Öne Çıkan Doktorlar" bloğu:** doktor kayıtlarından seçim (en fazla 8,
+    sürükle-bırak sıralama), fotoğraf/ünvan/ad/uzmanlık otomatik, kartın tamamı `/doctors/<slug>`
+    bağlantısı, hover'da yükselme + fotoğraf zoom, pasif doktorlar gizli, TR/EN başlık, 3/4 sütun,
+    daire/oval/kare fotoğraf, "Tüm doktorlar" butonu.
+  - **Sayfa oluşturucu — genel:** metin bloğuna hizalama (sol/orta/sağ); görsel ve başlık bloklarına
+    opsiyonel bağlantı (dış bağlantı yeni sekmede, `rel="noopener noreferrer"`).
+  - **Admin doktor formu:** doktorun "Profilim" formundaki tüm CV alanları (alt branş, hakkında,
+    mesleğe başlama yılı, özgeçmiş, yayınlar, diller, saat dilimi) admin yeni/düzenle formlarında;
+    form bileşenleri ortak (`doctor-cv-fields.tsx`). Admin saat dilimi IANA doğrulamasından geçer;
+    oluşturma/güncelleme audit log'a yazılır (`telehealth.doctor.created` / `telehealth.doctor.updated`,
+    yalnızca alan adları). Migration yok.
+
 - **`feat(slider)`: Hero Studio — cihaza göre görsel, "görselin tamamını göster", katman seçenekleri.**
   - **Cihaza göre arka plan:** slayta tablet ve mobil görseli (medya kütüphanesinden) eklenebilir;
     yedek sırası tablet → masaüstü, mobil → tablet → masaüstü. Odak noktası cihaz başına ayarlanır

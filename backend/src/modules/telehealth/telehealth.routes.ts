@@ -424,7 +424,9 @@ export async function telehealthRoutes(app: FastifyInstance) {
       schema: {
         params: AppointmentIdParamSchema,
         querystring: AccessTokenQuerySchema,
-        body: CancelAppointmentRequestSchema,
+        // `.nullish()` — gövdesiz istekte Fastify `request.body`yi `null` bırakır (bkz.
+        // `bookings/:bookingId/cancel` yorumu); aksi hâlde gerekçesiz iptal 422 dönüyordu.
+        body: CancelAppointmentRequestSchema.nullish(),
         response: { 200: ApiSuccessSchema(AppointmentSchema) },
       },
     },
@@ -451,7 +453,7 @@ export async function telehealthRoutes(app: FastifyInstance) {
 
       const updated = await app.prisma.appointment.update({
         where: { id: appointment.id },
-        data: { status: "CANCELLED", cancelledAt: new Date(), cancelReason: request.body.reason ?? null },
+        data: { status: "CANCELLED", cancelledAt: new Date(), cancelReason: request.body?.reason ?? null },
         include: WITH_APPOINTMENT_RELATIONS,
       });
 
