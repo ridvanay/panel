@@ -508,6 +508,7 @@ export async function telehealthDoctorPortalRoutes(app: FastifyInstance) {
           id: `booking-created:${booking.id}`,
           kind: "BOOKING_CREATED",
           message: `Yeni randevu talebi: ${booking.bookingNumber}`,
+          subject: booking.bookingNumber,
           occurredAt: booking.createdAt.toISOString(),
         });
       }
@@ -518,6 +519,7 @@ export async function telehealthDoctorPortalRoutes(app: FastifyInstance) {
           id: `consent-given:${booking.id}`,
           kind: "CONSENT_GIVEN",
           message: `${booking.patientName} rıza onayını verdi`,
+          subject: booking.patientName,
           occurredAt: booking.consentAt.toISOString(),
         });
       }
@@ -529,6 +531,7 @@ export async function telehealthDoctorPortalRoutes(app: FastifyInstance) {
           id: `appointment-completed:${appointment.id}`,
           kind: "APPOINTMENT_COMPLETED",
           message: `Randevu tamamlandı: ${appointment.patientName}`,
+          subject: appointment.patientName,
           occurredAt: appointment.endedAt.toISOString(),
         });
       }

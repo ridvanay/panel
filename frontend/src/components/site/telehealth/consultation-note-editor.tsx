@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { fmt, usePortalStrings } from "@/lib/i18n/use-portal-strings";
 
 /**
  * §13.4.1 tadilat turu 4 — doktorun "Seansı Tamamla" akışındaki epikriz/reçete editörü.
@@ -37,11 +38,7 @@ import { cn } from "@/lib/utils";
  * attribute'u üretir, bu backend sanitize allow-list'inde YOK.
  */
 
-const TEMPLATE_EPICRISIS_HTML =
-  "<h3>Şikayet</h3><p></p><h3>Muayene Bulguları</h3><p></p><h3>Tanı</h3><p></p><h3>Öneriler</h3><p></p>";
 
-const TEMPLATE_PRESCRIPTION_HTML =
-  '<h3>Reçete</h3><table><tbody><tr><th><p>İlaç Adı</p></th><th><p>Dozaj</p></th><th><p>Kullanım Şekli</p></th></tr><tr><td><p></p></td><td><p></p></td><td><p></p></td></tr></tbody></table><p></p>';
 
 function ToolbarButton({
   active,
@@ -80,6 +77,7 @@ export function ConsultationNoteEditor({
 }) {
   // Yalnızca GÖRSEL geri bildirim amaçlı — hangi şablonun EN SON uygulandığını izler, editör
   // içeriğinin o şablonla hâlâ eşleşip eşleşmediğini DOĞRULAMAZ (kullanıcı serbestçe düzenleyebilir).
+  const { t } = usePortalStrings();
   const [selectedTemplate, setSelectedTemplate] = useState<"epicrisis" | "prescription" | null>(null);
 
   const editor = useEditor({
@@ -98,7 +96,7 @@ export function ConsultationNoteEditor({
       TableHeader,
       TableCell,
       CharacterCount,
-      Placeholder.configure({ placeholder: "Epikriz veya reçete içeriğinizi buraya yazın…" }),
+      Placeholder.configure({ placeholder: t.richEditor.notePlaceholder }),
     ],
     content,
     immediatelyRender: false,
@@ -116,10 +114,10 @@ export function ConsultationNoteEditor({
     if (!editor) return;
     const isEmpty = editor.getText().trim().length === 0;
     if (!isEmpty) {
-      const confirmed = window.confirm("Şablon değiştirmek mevcut notun üzerine yazacak. Devam etmek istiyor musunuz?");
+      const confirmed = window.confirm(t.richEditor.templateOverwriteConfirm);
       if (!confirmed) return;
     }
-    const templateHtml = template === "epicrisis" ? TEMPLATE_EPICRISIS_HTML : TEMPLATE_PRESCRIPTION_HTML;
+    const templateHtml = template === "epicrisis" ? t.richEditor.templateEpicrisisHtml : t.richEditor.templatePrescriptionHtml;
     editor.commands.setContent(templateHtml);
     onChange(editor.getHTML());
     setSelectedTemplate(template);
@@ -138,7 +136,7 @@ export function ConsultationNoteEditor({
           )}
         >
           <ClipboardList className="h-3.5 w-3.5" aria-hidden="true" />
-          Standart Epikriz
+          {t.richEditor.templateEpicrisis}
         </button>
         <button
           type="button"
@@ -150,30 +148,30 @@ export function ConsultationNoteEditor({
           )}
         >
           <Pill className="h-3.5 w-3.5" aria-hidden="true" />
-          İlaç Reçetesi
+          {t.richEditor.templatePrescription}
         </button>
       </div>
 
       <div className="rounded-lg border border-input transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50">
         <div className="flex flex-wrap items-center gap-1 border-b border-input px-2 py-1.5">
-          <ToolbarButton label="Kalın" active={editor?.isActive("bold")} onClick={() => editor?.chain().focus().toggleBold().run()}>
+          <ToolbarButton label={t.richEditor.bold} active={editor?.isActive("bold")} onClick={() => editor?.chain().focus().toggleBold().run()}>
             <Bold />
           </ToolbarButton>
-          <ToolbarButton label="İtalik" active={editor?.isActive("italic")} onClick={() => editor?.chain().focus().toggleItalic().run()}>
+          <ToolbarButton label={t.richEditor.italic} active={editor?.isActive("italic")} onClick={() => editor?.chain().focus().toggleItalic().run()}>
             <Italic />
           </ToolbarButton>
 
           <div className="mx-1 h-5 w-px bg-border" />
 
           <ToolbarButton
-            label="Başlık 2"
+            label={t.richEditor.heading2}
             active={editor?.isActive("heading", { level: 2 })}
             onClick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()}
           >
             <Heading2 />
           </ToolbarButton>
           <ToolbarButton
-            label="Başlık 3"
+            label={t.richEditor.heading3}
             active={editor?.isActive("heading", { level: 3 })}
             onClick={() => editor?.chain().focus().toggleHeading({ level: 3 }).run()}
           >
@@ -183,14 +181,14 @@ export function ConsultationNoteEditor({
           <div className="mx-1 h-5 w-px bg-border" />
 
           <ToolbarButton
-            label="Madde listesi"
+            label={t.richEditor.bulletList}
             active={editor?.isActive("bulletList")}
             onClick={() => editor?.chain().focus().toggleBulletList().run()}
           >
             <List />
           </ToolbarButton>
           <ToolbarButton
-            label="Numaralı liste"
+            label={t.richEditor.orderedList}
             active={editor?.isActive("orderedList")}
             onClick={() => editor?.chain().focus().toggleOrderedList().run()}
           >
@@ -200,7 +198,7 @@ export function ConsultationNoteEditor({
           <div className="mx-1 h-5 w-px bg-border" />
 
           <ToolbarButton
-            label="Tablo ekle"
+            label={t.richEditor.insertTable}
             active={editor?.isActive("table")}
             onClick={() => editor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}
           >
@@ -209,19 +207,19 @@ export function ConsultationNoteEditor({
 
           {editor?.isActive("table") && (
             <>
-              <ToolbarButton label="Satır ekle" onClick={() => editor?.chain().focus().addRowAfter().run()}>
+              <ToolbarButton label={t.richEditor.addRow} onClick={() => editor?.chain().focus().addRowAfter().run()}>
                 <Rows3 />
               </ToolbarButton>
-              <ToolbarButton label="Sütun ekle" onClick={() => editor?.chain().focus().addColumnAfter().run()}>
+              <ToolbarButton label={t.richEditor.addColumn} onClick={() => editor?.chain().focus().addColumnAfter().run()}>
                 <Columns3 />
               </ToolbarButton>
-              <ToolbarButton label="Satır sil" onClick={() => editor?.chain().focus().deleteRow().run()}>
+              <ToolbarButton label={t.richEditor.deleteRow} onClick={() => editor?.chain().focus().deleteRow().run()}>
                 <Trash2 />
               </ToolbarButton>
-              <ToolbarButton label="Sütun sil" onClick={() => editor?.chain().focus().deleteColumn().run()}>
+              <ToolbarButton label={t.richEditor.deleteColumn} onClick={() => editor?.chain().focus().deleteColumn().run()}>
                 <Trash2 />
               </ToolbarButton>
-              <ToolbarButton label="Tabloyu sil" onClick={() => editor?.chain().focus().deleteTable().run()}>
+              <ToolbarButton label={t.richEditor.deleteTable} onClick={() => editor?.chain().focus().deleteTable().run()}>
                 <Trash2 />
               </ToolbarButton>
             </>
@@ -229,16 +227,16 @@ export function ConsultationNoteEditor({
 
           <div className="mx-1 h-5 w-px bg-border" />
 
-          <ToolbarButton label="Geri al" onClick={() => editor?.chain().focus().undo().run()}>
+          <ToolbarButton label={t.richEditor.undo} onClick={() => editor?.chain().focus().undo().run()}>
             <Undo2 />
           </ToolbarButton>
-          <ToolbarButton label="Yinele" onClick={() => editor?.chain().focus().redo().run()}>
+          <ToolbarButton label={t.richEditor.redo} onClick={() => editor?.chain().focus().redo().run()}>
             <Redo2 />
           </ToolbarButton>
         </div>
         <EditorContent editor={editor} className="px-3 py-2" />
         <div className="border-t border-input px-3 py-1 text-right text-xs text-muted-foreground">
-          {editor?.storage.characterCount.characters() ?? 0} karakter
+          {fmt(t.richEditor.characters, { count: editor?.storage.characterCount.characters() ?? 0 })}
         </div>
       </div>
     </div>

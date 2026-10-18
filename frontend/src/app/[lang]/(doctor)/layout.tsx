@@ -10,6 +10,7 @@ import { SiteScope } from "@/components/site/site-scope";
 import { SiteBrandingProvider } from "@/context/site-branding-context";
 import { DoctorPortalProvider } from "@/components/site/telehealth/doctor-portal-provider";
 import { DoctorTopBar } from "@/components/site/telehealth/doctor-top-bar";
+import { getSiteDictionary } from "@/lib/i18n/site-dictionaries";
 
 /**
  * `.claude/architect-scope-doctor-subdomain.md` §5 — hekim portalının (`/doctor/**`, `/doctor/login`)
@@ -34,9 +35,10 @@ import { DoctorTopBar } from "@/components/site/telehealth/doctor-top-bar";
  * de aktarıldı. En dışa sarmalandı ki hem `DoctorTopBar` hem `children` (dolayısıyla `doctor/login`
  * dahil ALT AĞAÇTAKİ HER SAYFA) context'e erişebilsin.
  */
-export async function generateMetadata(): Promise<Metadata> {
-  const settings = await fetchSiteSettingsServer();
-  return { title: { absolute: `Doktor Paneli | ${settings.siteName}` }, icons: buildSiteIconsMetadata(settings) };
+export async function generateMetadata({ params }: { params: Promise<{ lang: string }> }): Promise<Metadata> {
+  const { lang } = await params;
+  const [settings, dict] = await Promise.all([fetchSiteSettingsServer(), getSiteDictionary(lang)]);
+  return { title: { absolute: `${dict.portal.doctorPortal.metaTitle} | ${settings.siteName}` }, icons: buildSiteIconsMetadata(settings) };
 }
 
 export default async function DoctorScopeLayout({

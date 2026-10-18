@@ -4,12 +4,11 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle } from "lucide-react";
 import * as telehealthApi from "@/lib/api/telehealth";
-import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import type { AppointmentBooking } from "@/lib/api/types";
 import { useAuth } from "@/context/auth-context";
-import { useLocalizePath, useActiveLocaleCode } from "@/context/locale-alternates-context";
+import { useLocalizePath } from "@/context/locale-alternates-context";
+import { fmt, useFriendlyError, usePortalStrings } from "@/lib/i18n/use-portal-strings";
 import { formatFullDayLabel, formatTime } from "@/lib/telehealth-format";
-import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
@@ -64,7 +63,8 @@ function HeroSkeleton() {
 export function PatientHeroPanel() {
   const { user } = useAuth();
   const localize = useLocalizePath();
-  const intlLocale = contentLocaleToIntl(useActiveLocaleCode());
+  const { t, intlLocale } = usePortalStrings();
+  const friendlyErrorMessage = useFriendlyError();
   const [bookings, setBookings] = useState<AppointmentBooking[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   // Dakikada bir yeniden hesaplanır — pencere sayfa açıkken kapanırsa "Katıl" kendiliğinden kaybolur.
@@ -79,7 +79,7 @@ export function PatientHeroPanel() {
     } catch (err) {
       setLoadError(friendlyErrorMessage(err));
     }
-  }, []);
+  }, [friendlyErrorMessage]);
 
   useEffect(() => {
     (async () => {
@@ -102,8 +102,8 @@ export function PatientHeroPanel() {
 
   return (
     <div className="rounded-[var(--site-radius)] border border-border bg-surface p-6 sm:p-8">
-      <h1 className="text-2xl font-semibold text-foreground">Merhaba, {user?.name ?? ""}</h1>
-      <p className="mt-1 text-sm text-foreground/60">İşte hasta portalınızın genel görünümü.</p>
+      <h1 className="text-2xl font-semibold text-foreground">{fmt(t.patientHero.greeting, { name: user?.name ?? "" })}</h1>
+      <p className="mt-1 text-sm text-foreground/60">{t.patientHero.subtitle}</p>
 
       {loadError && (
         <div className="mt-4">
@@ -114,7 +114,7 @@ export function PatientHeroPanel() {
                 {loadError}
               </span>
               <Button type="button" variant="outline" size="sm" onClick={() => void load()}>
-                Tekrar Dene
+                {t.common.retry}
               </Button>
             </span>
           </Alert>
@@ -138,7 +138,7 @@ export function PatientHeroPanel() {
                 <span>
                   {formatFullDayLabel(firstAppointment.startsAt, timeZone, intlLocale)} · {formatTime(firstAppointment.startsAt, timeZone, intlLocale)}
                 </span>
-                <AppointmentStatusBadge status={firstAppointment.status} />
+                <AppointmentStatusBadge status={firstAppointment.status} ended={joinState === "ended"} />
               </p>
             </div>
           </div>
@@ -147,7 +147,7 @@ export function PatientHeroPanel() {
             {isUnpaid ? (
               <Link href={localize(`/patient/bookings/${nearest.id}`)}>
                 <Button type="button" size="sm">
-                  Ödemeyi Tamamla
+                  {t.common.completePayment}
                 </Button>
               </Link>
             ) : joinWindowOpen ? (
@@ -157,14 +157,14 @@ export function PatientHeroPanel() {
                 <JoinEndedLabel />
                 <Link href={localize(`/patient/bookings/${nearest.id}`)}>
                   <Button type="button" variant="outline" size="sm">
-                    Randevu Detayını Gör
+                    {t.common.viewBookingDetail}
                   </Button>
                 </Link>
               </div>
             ) : (
               <Link href={localize(`/patient/bookings/${nearest.id}`)}>
                 <Button type="button" variant="outline" size="sm">
-                  Randevu Detayını Gör
+                  {t.common.viewBookingDetail}
                 </Button>
               </Link>
             )}
@@ -174,10 +174,10 @@ export function PatientHeroPanel() {
 
       {!loadError && !nearest && (
         <div className="mt-4 flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-sm text-foreground/60">Henüz bir randevunuz bulunmuyor.</p>
+          <p className="text-sm text-foreground/60">{t.patientHero.noAppointments}</p>
           <Link href={localize("/doctors")}>
             <Button type="button" size="sm">
-              Randevu Al
+              {t.common.bookAppointment}
             </Button>
           </Link>
         </div>

@@ -3,8 +3,8 @@
 import { Ban, CalendarX2, IdCard, NotebookPen, Paperclip } from "lucide-react";
 import type { AppointmentBooking } from "@/lib/api/types";
 import { computeAppointmentBlock, formatFullDayLabel, formatTime, formatTimeZoneAbbreviation } from "@/lib/telehealth-format";
-import { useActiveLocaleCode } from "@/context/locale-alternates-context";
-import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
+import { fmt, usePortalStrings } from "@/lib/i18n/use-portal-strings";
+import { getJoinState } from "@/lib/telehealth-join-window";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -46,10 +46,11 @@ interface DoctorConsolePatientCardProps {
 function ApproxAgeLabel({ birthYear }: { birthYear: number }) {
   const currentYear = new Date().getUTCFullYear();
   const approxAge = currentYear - birthYear;
+  const { t } = usePortalStrings();
   return (
     <Tooltip>
-      <TooltipTrigger render={<span className="shrink-0 text-xs text-foreground/50" />}>~{approxAge} yaş</TooltipTrigger>
-      <TooltipContent>Yalnızca doğum yılından hesaplanan yaklaşık yaş</TooltipContent>
+      <TooltipTrigger render={<span className="shrink-0 text-xs text-foreground/50" />}>{fmt(t.doctorConsole.approxAge, { age: approxAge })}</TooltipTrigger>
+      <TooltipContent>{t.doctorConsole.approxAgeTooltip}</TooltipContent>
     </Tooltip>
   );
 }
@@ -61,6 +62,7 @@ function ApproxAgeLabel({ birthYear }: { birthYear: number }) {
  * stili bir ton daha soluklaştırıldı (`border-border/70` → `/50`, `text-foreground/40` → `/35`).
  */
 function IdentityBadge({ maskedNumber }: { maskedNumber: string | null }) {
+  const { t } = usePortalStrings();
   if (maskedNumber) {
     return (
       <Badge tone="neutral" size="sm" className="gap-1 font-mono tabular-nums">
@@ -72,14 +74,13 @@ function IdentityBadge({ maskedNumber }: { maskedNumber: string | null }) {
   return (
     <span className="inline-flex items-center gap-1.5 rounded-[var(--site-radius)] border border-dashed border-border/50 px-2 py-1 text-xs text-foreground/60">
       <Ban className="h-3 w-3" aria-hidden="true" />
-      Doğrulanmamış
+      {t.doctorConsole.unverified}
     </span>
   );
 }
 
 export function DoctorConsolePatientCard({ booking, calibratedNowMs, timeZone, onOpenDocuments, onOpenNoteEditor }: DoctorConsolePatientCardProps) {
-  // Görev (2026-09-16) — takvim/randevu gün-ay-saat biçimlendirmesi denetimi (bkz. `useActiveLocaleCode` yorumu).
-  const intlLocale = contentLocaleToIntl(useActiveLocaleCode());
+  const { t, intlLocale } = usePortalStrings();
   // Grid görevi (2026-09-14) Görev 2 madde 1 — SORU backend-agent'a: bazı booking'lerde
   // `appointments` BOŞ geliyor ("Randevu saati yok" dalı buradan tetikleniyordu). Bu turda
   // GÖZLEMLENEN: dev/e2e veri setinde bu duruma rastlamadım (grep ile bulunan tüm booking
@@ -111,24 +112,27 @@ export function DoctorConsolePatientCard({ booking, calibratedNowMs, timeZone, o
                 {formatTime(blockStartIso, timeZone, intlLocale)} - {formatTime(new Date(block.endMs).toISOString(), timeZone, intlLocale)}{" "}
                 <span className="text-xs font-medium tabular-nums text-foreground/50">
                   {timeZone === "Europe/Istanbul"
-                    ? "(TSİ)"
-                    : `${formatTimeZoneAbbreviation(blockStartIso, timeZone)} (${formatTime(blockStartIso, "Europe/Istanbul", intlLocale)} TSİ)`}
+                    ? t.doctorConsole.istanbulTimeShort
+                    : fmt(t.doctorConsole.istanbulTimeWithOffset, {
+                        abbr: formatTimeZoneAbbreviation(blockStartIso, timeZone),
+                        time: formatTime(blockStartIso, "Europe/Istanbul", intlLocale),
+                      })}
                 </span>
               </p>
               <p className="mt-0.5 text-xs font-medium text-foreground/60">{formatFullDayLabel(blockStartIso, timeZone, intlLocale)}</p>
               {hasMultipleSlots && (
                 <Badge tone="neutral" size="sm" className="mt-1">
-                  {booking.appointments.length} Slot ({block.totalMinutes} Dk)
+                  {fmt(t.doctorConsole.slotSummary, { count: booking.appointments.length, minutes: block.totalMinutes })}
                 </Badge>
               )}
             </div>
           ) : (
             <div className="flex items-center gap-1.5 text-foreground/60">
               <CalendarX2 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-              <p className="text-xs">Randevu saati bilgisi eksik</p>
+              <p className="text-xs">{t.doctorConsole.missingTime}</p>
             </div>
           )}
-          {status && !showRemainingBadge && <AppointmentStatusBadge status={status} size="sm" />}
+          {status && !showRemainingBadge && <AppointmentStatusBadge status={status} size="sm" ended={getJoinState(booking, calibratedNowMs) === "ended"} />}
         </div>
 
         {/* Orta bölge: hasta künyesi */}
@@ -149,7 +153,7 @@ export function DoctorConsolePatientCard({ booking, calibratedNowMs, timeZone, o
                 >
                   <Badge tone="primary" solid size="sm" className="gap-1">
                     <Paperclip className="h-3 w-3" aria-hidden="true" />
-                    Tıbbi Belgeler {booking.documentCount > 0 ? `(${booking.documentCount})` : ""}
+                    {t.doctorConsole.medicalDocuments} {booking.documentCount > 0 ? `(${booking.documentCount})` : ""}
                   </Badge>
                 </button>
               )}
@@ -165,12 +169,12 @@ export function DoctorConsolePatientCard({ booking, calibratedNowMs, timeZone, o
             mergeRemainingTime
             timeZone={timeZone}
             nowMs={calibratedNowMs}
-            activeLabel="Odaya Katıl"
+            activeLabel={t.doctorConsole.joinRoom}
             activeVariant="success"
           />
           <Button type="button" variant="outline" size="sm" onClick={onOpenNoteEditor} className="gap-1.5 rounded-[var(--site-radius)]">
             <NotebookPen className="h-3.5 w-3.5" aria-hidden="true" />
-            Konsültasyon Notu Ekle
+            {t.doctorConsole.addConsultationNote}
           </Button>
         </div>
       </div>

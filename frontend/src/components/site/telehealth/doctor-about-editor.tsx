@@ -7,6 +7,7 @@ import { Placeholder } from "@tiptap/extension-placeholder";
 import { Bold, Italic, Heading2, Heading3, Link as LinkIcon, List, ListOrdered, Redo2, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { fmt, usePortalStrings } from "@/lib/i18n/use-portal-strings";
 
 /**
  * `.claude/architect-scope-doctor-portfolio-identity-console.md` (**[DPI]**) §1.2/§1.4 —
@@ -43,6 +44,7 @@ function ToolbarButton({
 }
 
 export function DoctorAboutEditor({ content, onChange }: { content: string; onChange: (html: string) => void }) {
+  const { t } = usePortalStrings();
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -54,7 +56,7 @@ export function DoctorAboutEditor({ content, onChange }: { content: string; onCh
         link: { openOnClick: false, autolink: false },
       }),
       CharacterCount.configure({ limit: MAX_ABOUT_HTML_LENGTH }),
-      Placeholder.configure({ placeholder: "Uzun biyografinizi buraya yazın…" }),
+      Placeholder.configure({ placeholder: t.richEditor.aboutPlaceholder }),
     ],
     content,
     immediatelyRender: false,
@@ -68,7 +70,7 @@ export function DoctorAboutEditor({ content, onChange }: { content: string; onCh
   function handleSetLink() {
     if (!editor) return;
     const previousUrl = editor.getAttributes("link").href as string | undefined;
-    const url = window.prompt("Bağlantı URL'si (yalnızca https://)", previousUrl ?? "https://");
+    const url = window.prompt(t.richEditor.linkPrompt, previousUrl ?? "https://");
     if (url === null) return;
     if (url === "") {
       editor.chain().focus().extendMarkRange("link").unsetLink().run();
@@ -81,24 +83,24 @@ export function DoctorAboutEditor({ content, onChange }: { content: string; onCh
     <div className="space-y-2">
       <div className="rounded-lg border border-input transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50">
         <div className="flex flex-wrap items-center gap-1 border-b border-input px-2 py-1.5">
-          <ToolbarButton label="Kalın" active={editor?.isActive("bold")} onClick={() => editor?.chain().focus().toggleBold().run()}>
+          <ToolbarButton label={t.richEditor.bold} active={editor?.isActive("bold")} onClick={() => editor?.chain().focus().toggleBold().run()}>
             <Bold />
           </ToolbarButton>
-          <ToolbarButton label="İtalik" active={editor?.isActive("italic")} onClick={() => editor?.chain().focus().toggleItalic().run()}>
+          <ToolbarButton label={t.richEditor.italic} active={editor?.isActive("italic")} onClick={() => editor?.chain().focus().toggleItalic().run()}>
             <Italic />
           </ToolbarButton>
 
           <div className="mx-1 h-5 w-px bg-border" />
 
           <ToolbarButton
-            label="Başlık 2"
+            label={t.richEditor.heading2}
             active={editor?.isActive("heading", { level: 2 })}
             onClick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()}
           >
             <Heading2 />
           </ToolbarButton>
           <ToolbarButton
-            label="Başlık 3"
+            label={t.richEditor.heading3}
             active={editor?.isActive("heading", { level: 3 })}
             onClick={() => editor?.chain().focus().toggleHeading({ level: 3 }).run()}
           >
@@ -107,32 +109,32 @@ export function DoctorAboutEditor({ content, onChange }: { content: string; onCh
 
           <div className="mx-1 h-5 w-px bg-border" />
 
-          <ToolbarButton label="Madde listesi" active={editor?.isActive("bulletList")} onClick={() => editor?.chain().focus().toggleBulletList().run()}>
+          <ToolbarButton label={t.richEditor.bulletList} active={editor?.isActive("bulletList")} onClick={() => editor?.chain().focus().toggleBulletList().run()}>
             <List />
           </ToolbarButton>
           <ToolbarButton
-            label="Numaralı liste"
+            label={t.richEditor.orderedList}
             active={editor?.isActive("orderedList")}
             onClick={() => editor?.chain().focus().toggleOrderedList().run()}
           >
             <ListOrdered />
           </ToolbarButton>
-          <ToolbarButton label="Bağlantı" active={editor?.isActive("link")} onClick={handleSetLink}>
+          <ToolbarButton label={t.richEditor.link} active={editor?.isActive("link")} onClick={handleSetLink}>
             <LinkIcon />
           </ToolbarButton>
 
           <div className="mx-1 h-5 w-px bg-border" />
 
-          <ToolbarButton label="Geri al" onClick={() => editor?.chain().focus().undo().run()}>
+          <ToolbarButton label={t.richEditor.undo} onClick={() => editor?.chain().focus().undo().run()}>
             <Undo2 />
           </ToolbarButton>
-          <ToolbarButton label="Yinele" onClick={() => editor?.chain().focus().redo().run()}>
+          <ToolbarButton label={t.richEditor.redo} onClick={() => editor?.chain().focus().redo().run()}>
             <Redo2 />
           </ToolbarButton>
         </div>
         <EditorContent editor={editor} className="px-3 py-2" />
         <div className="border-t border-input px-3 py-1 text-right text-xs text-muted-foreground">
-          {editor?.storage.characterCount.characters() ?? 0} / {MAX_ABOUT_HTML_LENGTH} karakter
+          {fmt(t.richEditor.charactersWithLimit, { count: editor?.storage.characterCount.characters() ?? 0, limit: MAX_ABOUT_HTML_LENGTH })}
         </div>
       </div>
     </div>

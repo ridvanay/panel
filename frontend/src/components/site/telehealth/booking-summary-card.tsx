@@ -1,10 +1,10 @@
 "use client";
 
-import { useLocalizePath, useActiveLocaleCode } from "@/context/locale-alternates-context";
+import { useLocalizePath } from "@/context/locale-alternates-context";
+import { usePortalStrings } from "@/lib/i18n/use-portal-strings";
 import type { AppointmentBooking } from "@/lib/api/types";
 import { formatDayLabel, formatTime } from "@/lib/telehealth-format";
 import { formatPriceFromCents } from "@/lib/format-price";
-import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import { PaymentStatusBadge } from "@/components/site/telehealth/payment-status-badge";
 import { JoinMeetingButton } from "@/components/site/telehealth/join-meeting-button";
 import { buttonVariants } from "@/components/ui/button";
@@ -17,14 +17,14 @@ import { cn } from "@/lib/utils";
  */
 export function BookingSummaryCard({ booking, accessToken, timeZone }: { booking: AppointmentBooking; accessToken?: string; timeZone: string }) {
   const localize = useLocalizePath();
-  const intlLocale = contentLocaleToIntl(useActiveLocaleCode());
+  const { t, intlLocale } = usePortalStrings();
   const firstSlot = booking.appointments[0];
 
   return (
     <div className="rounded-[var(--site-radius)] border border-border bg-surface p-5">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-foreground/50">Rezervasyon No</p>
+          <p className="text-xs font-semibold uppercase tracking-wider text-foreground/50">{t.common.bookingNumber}</p>
           <p className="text-sm font-medium text-foreground">{booking.bookingNumber}</p>
         </div>
         <PaymentStatusBadge status={booking.paymentStatus} size="lg" />
@@ -46,7 +46,7 @@ export function BookingSummaryCard({ booking, accessToken, timeZone }: { booking
       </div>
 
       <div className="mt-4 flex items-baseline justify-between border-t border-border pt-4">
-        <span className="text-sm font-semibold text-foreground">Toplam</span>
+        <span className="text-sm font-semibold text-foreground">{t.common.total}</span>
         <span className="text-xl font-semibold text-foreground">{formatPriceFromCents(booking.totalCents, booking.currency, intlLocale)}</span>
       </div>
 
@@ -57,7 +57,7 @@ export function BookingSummaryCard({ booking, accessToken, timeZone }: { booking
             href={localize(`/patient/bookings/${booking.id}/invoice${accessToken ? `?t=${encodeURIComponent(accessToken)}` : ""}`)}
             className={cn(buttonVariants({ variant: "outline", size: "sm" }), "rounded-[var(--site-radius)]")}
           >
-            Ödeme Belgesi
+            {t.common.paymentDocument}
           </a>
         )}
       </div>

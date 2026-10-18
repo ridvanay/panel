@@ -4,13 +4,11 @@ import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, Percent, PiggyBank, Wallet } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import * as telehealthApi from "@/lib/api/telehealth";
-import { friendlyErrorMessage } from "@/lib/api/friendly-error";
+import { fmt, useFriendlyError, usePortalStrings } from "@/lib/i18n/use-portal-strings";
 import type { DoctorEarningsSession, DoctorEarningsSummary } from "@/lib/api/types";
 import { useDoctorPortalProfile } from "@/components/site/telehealth/doctor-portal-context";
 import { formatDayLabel, formatTime } from "@/lib/telehealth-format";
 import { formatPriceFromCents } from "@/lib/format-price";
-import { useActiveLocaleCode } from "@/context/locale-alternates-context";
-import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert } from "@/components/ui/alert";
@@ -61,8 +59,8 @@ function EarningsSkeleton() {
 export function DoctorEarningsPanel() {
   const profile = useDoctorPortalProfile();
   const timeZone = profile.doctorProfile.timeZone;
-  // Görev (2026-09-16) — currency/locale format denetimi (bkz. `useActiveLocaleCode` yorumu).
-  const intlLocale = contentLocaleToIntl(useActiveLocaleCode());
+  const { t, intlLocale } = usePortalStrings();
+  const friendlyErrorMessage = useFriendlyError();
 
   const [summary, setSummary] = useState<DoctorEarningsSummary | null>(null);
   const [sessions, setSessions] = useState<DoctorEarningsSession[] | null>(null);
@@ -82,7 +80,7 @@ export function DoctorEarningsPanel() {
     } catch (err) {
       setLoadError(friendlyErrorMessage(err));
     }
-  }, []);
+  }, [friendlyErrorMessage]);
 
   useEffect(() => {
     (async () => {
@@ -108,8 +106,8 @@ export function DoctorEarningsPanel() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-semibold text-foreground">Kazançlarım</h1>
-        <p className="mt-1 text-sm text-foreground/60">Tamamlanan seanslarınızın brüt/net kazanç dökümünü buradan takip edin.</p>
+        <h1 className="text-2xl font-semibold text-foreground">{t.doctorEarnings.title}</h1>
+        <p className="mt-1 text-sm text-foreground/60">{t.doctorEarnings.subtitle}</p>
       </div>
 
       {summary === null && !loadError ? (
@@ -122,7 +120,7 @@ export function DoctorEarningsPanel() {
               {loadError}
             </span>
             <Button type="button" variant="outline" size="sm" onClick={() => void load()}>
-              Tekrar Dene
+              {t.common.retry}
             </Button>
           </span>
         </Alert>
@@ -131,20 +129,20 @@ export function DoctorEarningsPanel() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <StatCard
               icon={Wallet}
-              label="Toplam Brüt Kazanç"
+              label={t.doctorEarnings.totalGross}
               value={formatPriceFromCents(summary.grossCents, summary.currency, intlLocale)}
-              sublabel={`Tamamlanan ${summary.completedSessionCount} seans`}
+              sublabel={fmt(t.doctorEarnings.completedSessions, { count: summary.completedSessionCount })}
             />
             <StatCard
               icon={Percent}
-              label={`Platform Komisyonu (%${summary.commissionRatePercent})`}
+              label={fmt(t.doctorEarnings.commission, { rate: summary.commissionRatePercent })}
               value={formatPriceFromCents(summary.commissionCents, summary.currency, intlLocale)}
             />
             <StatCard
               icon={PiggyBank}
-              label="Net Kazanç"
+              label={t.doctorEarnings.net}
               value={formatPriceFromCents(summary.netCents, summary.currency, intlLocale)}
-              sublabel="Komisyon sonrası, size ödenecek tutar"
+              sublabel={t.doctorEarnings.netHint}
               highlighted
             />
           </div>
@@ -152,7 +150,7 @@ export function DoctorEarningsPanel() {
           {!sessions || sessions.length === 0 ? (
             <div className="flex flex-col items-center gap-2 rounded-[var(--site-radius)] border border-border bg-surface p-10 text-center">
               <Wallet className="h-8 w-8 text-foreground/30" aria-hidden="true" />
-              <p className="text-sm font-medium text-foreground">Henüz tamamlanmış bir seansınız yok.</p>
+              <p className="text-sm font-medium text-foreground">{t.doctorEarnings.empty}</p>
             </div>
           ) : (
             <div className="mt-8">
@@ -166,15 +164,15 @@ export function DoctorEarningsPanel() {
                     </p>
                     <div className="mt-2 space-y-1 text-xs">
                       <div className="flex justify-between">
-                        <span className="text-foreground/50">Brüt</span>
+                        <span className="text-foreground/50">{t.doctorEarnings.grossShort}</span>
                         <span className="tabular-nums text-foreground">{formatPriceFromCents(session.grossCents, session.currency, intlLocale)}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-foreground/50">Komisyon</span>
+                        <span className="text-foreground/50">{t.doctorEarnings.commissionShort}</span>
                         <span className="tabular-nums text-foreground">{formatPriceFromCents(session.commissionCents, session.currency, intlLocale)}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-foreground/50">Net</span>
+                        <span className="text-foreground/50">{t.doctorEarnings.netShort}</span>
                         <span className="tabular-nums font-medium text-foreground">{formatPriceFromCents(session.netCents, session.currency, intlLocale)}</span>
                       </div>
                     </div>
@@ -186,11 +184,11 @@ export function DoctorEarningsPanel() {
               <table className="hidden w-full text-sm md:table">
                 <thead>
                   <tr className="border-b border-border text-left text-xs font-semibold uppercase tracking-wider text-foreground/50">
-                    <th className="py-2 pr-4">Hasta</th>
-                    <th className="py-2 pr-4">Tarih</th>
-                    <th className="py-2 pr-4 text-right">Brüt Tutar</th>
-                    <th className="py-2 pr-4 text-right">Komisyon</th>
-                    <th className="py-2 text-right">Net Tutar</th>
+                    <th className="py-2 pr-4">{t.doctorEarnings.columnPatient}</th>
+                    <th className="py-2 pr-4">{t.doctorEarnings.columnDate}</th>
+                    <th className="py-2 pr-4 text-right">{t.doctorEarnings.columnGross}</th>
+                    <th className="py-2 pr-4 text-right">{t.doctorEarnings.columnCommission}</th>
+                    <th className="py-2 text-right">{t.doctorEarnings.columnNet}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/60">
@@ -215,7 +213,7 @@ export function DoctorEarningsPanel() {
               {nextCursor && (
                 <div className="mt-4 flex justify-center">
                   <Button type="button" variant="outline" size="sm" loading={loadingMore} onClick={() => void loadMore()}>
-                    Daha Fazla Yükle
+                    {t.common.loadMore}
                   </Button>
                 </div>
               )}

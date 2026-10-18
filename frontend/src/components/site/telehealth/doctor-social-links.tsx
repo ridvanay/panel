@@ -40,11 +40,11 @@ const PLATFORM_LABEL: Record<DoctorSocialLinkPlatform, string> = {
   website: "Website",
 };
 
-export function DoctorSocialLinks({ links }: { links: DoctorSocialLink[] }) {
+export function DoctorSocialLinks({ links, ariaLabel }: { links: DoctorSocialLink[]; ariaLabel: string }) {
   if (links.length === 0) return null;
 
   return (
-    <ul className="flex flex-wrap items-center justify-center gap-2" aria-label="Sosyal medya ve web bağlantıları">
+    <ul className="flex flex-wrap items-center justify-center gap-2" aria-label={ariaLabel}>
       {links.map((link, index) => {
         const Icon = PLATFORM_ICON[link.platform];
         const accessibleLabel = link.label?.trim() || PLATFORM_LABEL[link.platform];

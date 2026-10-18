@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Download, Film, Trash2 } from "lucide-react";
 import * as telehealthApi from "@/lib/api/telehealth";
-import { friendlyErrorMessage } from "@/lib/api/friendly-error";
+import { useFriendlyError, usePortalStrings } from "@/lib/i18n/use-portal-strings";
 import type { ConsultationRecording } from "@/lib/api/types";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -37,6 +37,8 @@ interface RecordingAccessPanelProps {
  * `booking-documents-dialog.tsx`).
  */
 export function RecordingAccessPanel({ appointmentId, accessToken, canDelete }: RecordingAccessPanelProps) {
+  const { t } = usePortalStrings();
+  const friendlyErrorMessage = useFriendlyError();
   const [recording, setRecording] = useState<ConsultationRecording | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -51,7 +53,7 @@ export function RecordingAccessPanel({ appointmentId, accessToken, canDelete }: 
       setRecording(null);
       setError(friendlyErrorMessage(err));
     }
-  }, [appointmentId, accessToken]);
+  }, [appointmentId, accessToken, friendlyErrorMessage]);
 
   useEffect(() => {
     (async () => {
@@ -84,7 +86,7 @@ export function RecordingAccessPanel({ appointmentId, accessToken, canDelete }: 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="flex items-center gap-2 text-sm font-semibold text-foreground">
           <Film className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
-          Görüşme Kaydı
+          {t.recording.title}
         </p>
         <div className="flex items-center gap-2 text-xs text-foreground/50">
           {recording.durationSeconds !== null && <span>{formatDurationSeconds(recording.durationSeconds)}</span>}
@@ -101,16 +103,16 @@ export function RecordingAccessPanel({ appointmentId, accessToken, canDelete }: 
           rel="noopener noreferrer"
           className={cn(buttonVariants({ variant: "outline", size: "sm" }), "rounded-[var(--site-radius)]")}
         >
-          İzle
+          {t.recording.watch}
         </a>
         <a href={downloadUrl} className={cn(buttonVariants({ variant: "outline", size: "sm" }), "rounded-[var(--site-radius)]")}>
           <Download className="h-3.5 w-3.5" aria-hidden="true" />
-          İndir
+          {t.recording.download}
         </a>
         {canDelete && (
           <Button type="button" variant="destructive" size="sm" onClick={() => setConfirmOpen(true)}>
             <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-            Sil
+            {t.recording.delete}
           </Button>
         )}
       </div>
@@ -119,9 +121,9 @@ export function RecordingAccessPanel({ appointmentId, accessToken, canDelete }: 
         <ConfirmDialog
           open={confirmOpen}
           onOpenChange={setConfirmOpen}
-          title="Görüşme kaydını sil"
-          description="Bu görüşme kaydı kalıcı olarak silinecek. Bu işlem geri alınamaz."
-          confirmText="Sil"
+          title={t.recording.deleteTitle}
+          description={t.recording.deleteDescription}
+          confirmText={t.recording.delete}
           tone="danger"
           loading={deleting}
           onConfirm={() => void handleDelete()}

@@ -28,6 +28,7 @@ export const telehealthStrings: TelehealthStrings = {
   bookAppointmentCta: "Randevu Al",
   viewProfileCta: "Profili Gör",
   createAppointmentCta: "Randevu Oluştur",
+  socialLinksAriaLabel: "Sosyal medya ve web bağlantıları",
   experienceYearsBadge: "{years} Yıl Deneyim",
 
   tabAbout: "Doktor Hakkında",

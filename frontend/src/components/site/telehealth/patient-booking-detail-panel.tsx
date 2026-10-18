@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, CircleCheck, FileText, Loader2, Printer, StickyNote, Trash2 } from "lucide-react";
 import * as telehealthApi from "@/lib/api/telehealth";
-import { friendlyErrorMessage } from "@/lib/api/friendly-error";
+import { useFriendlyError, usePortalStrings } from "@/lib/i18n/use-portal-strings";
 import type { AppointmentBooking } from "@/lib/api/types";
 import { useAuth } from "@/context/auth-context";
 import { useLocalizePath } from "@/context/locale-alternates-context";
@@ -53,6 +53,8 @@ export function PatientBookingDetailPanel({
   lang: string;
 }) {
   const localize = useLocalizePath();
+  const { t } = usePortalStrings();
+  const friendlyErrorMessage = useFriendlyError();
   /**
    * Bug-fix turu (2026-09-15, frontend-agent) — `patient-booking-invoice-panel.tsx`teki AYNI
    * yarış durumu (bkz. o dosyanın dosya başı yorumu): `accessToken` YOKKEN (oturum-bazlı erişim)
@@ -90,7 +92,7 @@ export function PatientBookingDetailPanel({
       setLoadError(friendlyErrorMessage(err));
       return null;
     }
-  }, [bookingId, accessToken]);
+  }, [bookingId, accessToken, friendlyErrorMessage]);
 
   useEffect(() => {
     if (waitingForSession) return;
@@ -124,7 +126,7 @@ export function PatientBookingDetailPanel({
 
   async function handleCancel() {
     if (!booking) return;
-    if (!window.confirm("Bu rezervasyonu iptal etmek istediğinizden emin misiniz?")) return;
+    if (!window.confirm(t.bookingDetail.cancelConfirm)) return;
     setCancelling(true);
     try {
       await telehealthApi.cancelBooking(booking.id, accessToken);
@@ -169,7 +171,7 @@ export function PatientBookingDetailPanel({
   }
 
   async function handleDeleteNote() {
-    if (!window.confirm("Şikâyet notunuzu ve rızanızı silmek istediğinizden emin misiniz?")) return;
+    if (!window.confirm(t.bookingDetail.deleteNoteConfirm)) return;
     try {
       await telehealthApi.deleteBookingIntake(bookingId, accessToken);
       setIntakeNote(null);
@@ -194,15 +196,15 @@ export function PatientBookingDetailPanel({
           <div className="space-y-2">
             <span className="flex items-center gap-2">
               <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
-              {loadError ?? "Bu rezervasyon bulunamadı ya da erişim bağlantınız geçersiz."}
+              {loadError ?? t.bookingDetail.notFound}
             </span>
             <div className="flex items-center gap-2">
               <Button type="button" variant="outline" size="sm" onClick={() => void load()}>
-                Tekrar Dene
+                {t.common.retry}
               </Button>
               {!accessToken && (
                 <Link href={`/login?next=${encodeURIComponent(`/patient/bookings/${bookingId}`)}`} className="text-xs text-primary hover:underline">
-                  Giriş yap
+                  {t.bookingDetail.signIn}
                 </Link>
               )}
             </div>
@@ -219,7 +221,7 @@ export function PatientBookingDetailPanel({
         {!accessToken && (
           <Alert variant="warning">
             <div className="space-y-2">
-              <p>Bu bağlantıya erişmek için onay e-postanızdaki bağlantıyı kullanın veya yeni bir bağlantı isteyin.</p>
+              <p>{t.bookingDetail.accessHint}</p>
               <div className="flex items-center gap-2">
                 <Button
                   type="button"
@@ -228,9 +230,9 @@ export function PatientBookingDetailPanel({
                   loading={resendLinkState === "sending"}
                   onClick={() => void handleResendLink()}
                 >
-                  Yeni Bağlantı İste
+                  {t.bookingDetail.requestNewLink}
                 </Button>
-                {resendLinkState === "sent" && <span className="text-xs text-success">Gönderildi (e-posta kayıtlıysa).</span>}
+                {resendLinkState === "sent" && <span className="text-xs text-success">{t.bookingDetail.linkSent}</span>}
                 {resendLinkState === "error" && <span className="text-xs text-danger">{resendLinkError}</span>}
               </div>
             </div>
@@ -251,15 +253,14 @@ export function PatientBookingDetailPanel({
           <Alert variant="success">
             <span className="flex items-center gap-2">
               <CircleCheck className="h-4 w-4 shrink-0" aria-hidden="true" />
-              Ödemeniz alındı, randevunuz onaylandı.
+              {t.bookingDetail.paymentReceived}
             </span>
           </Alert>
           {/* `.claude/architect-scope-guest-account-otp.md` §8.3/§6 vektör 6 — STATİK, KOŞULSUZ
               metin. Hesabın önceden var olup olmadığına göre DEĞİŞMEZ ve bunun için backend'e
               HİÇBİR sorgu ATILMAZ (hesap-varlık oracle'ı sızdırılmaz). */}
           <Alert variant="info">
-            Bu randevu, e-posta adresinize bağlı hesabınıza eklendi. Hesabınız yoksa, hesabınızı
-            oluşturmanız için gereken talimatları e-posta ile gönderdik.
+            {t.bookingDetail.accountLinked}
           </Alert>
         </>
       )}
@@ -267,33 +268,33 @@ export function PatientBookingDetailPanel({
         <Alert variant="info">
           <span className="flex items-center gap-2">
             <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden="true" />
-            Ödemeniz onaylanıyor, lütfen birkaç saniye bekleyin…
+            {t.bookingDetail.paymentConfirming}
           </span>
         </Alert>
       )}
       {paymentOutcome === "success" && !polling && booking.paymentStatus === "PENDING" && (
         <Alert variant="warning">
           <span className="flex flex-wrap items-center justify-between gap-3">
-            <span>Ödemeniz henüz onaylanmadı. Bu birkaç dakika sürebilir; sayfayı yenileyerek tekrar kontrol edebilirsiniz.</span>
+            <span>{t.bookingDetail.paymentNotConfirmed}</span>
             <Button type="button" variant="outline" size="sm" onClick={() => void load()}>
-              Yenile
+              {t.bookingDetail.refresh}
             </Button>
           </span>
         </Alert>
       )}
       {paymentOutcome === "cancelled" && booking.paymentStatus === "PENDING" && (
         <Alert variant="warning">
-          <span>Ödeme tamamlanmadı. Rezervasyonunuz slotu süresi dolana kadar tutuluyor — aşağıdan tekrar deneyebilirsiniz.</span>
+          <span>{t.bookingDetail.paymentCancelled}</span>
         </Alert>
       )}
       {booking.paymentStatus === "EXPIRED" && (
         <Alert variant="error">
-          <span>Bu rezervasyonun slot tutma süresi dolmuş. Yeni bir randevu oluşturmanız gerekiyor.</span>
+          <span>{t.bookingDetail.bookingExpired}</span>
         </Alert>
       )}
       {booking.paymentStatus === "FAILED" && (
         <Alert variant="error">
-          <span>Ödeme girişimi başarısız oldu. Aşağıdan tekrar deneyebilirsiniz.</span>
+          <span>{t.bookingDetail.paymentFailed}</span>
         </Alert>
       )}
 
@@ -325,13 +326,13 @@ export function PatientBookingDetailPanel({
       {cancellable && (
         <div>
           <Button type="button" variant="destructive" size="sm" loading={cancelling} onClick={() => void handleCancel()}>
-            Rezervasyonu İptal Et
+            {t.bookingDetail.cancelBooking}
           </Button>
         </div>
       )}
 
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold text-foreground">Tıbbi Belgeler ve Ön Bilgiler</h2>
+        <h2 className="text-sm font-semibold text-foreground">{t.bookingDetail.documentsTitle}</h2>
 
         {intakeError && <Alert variant="error">{intakeError}</Alert>}
 
@@ -340,22 +341,22 @@ export function PatientBookingDetailPanel({
             <div className="flex items-center justify-between rounded-[var(--site-radius)] border border-border bg-muted/50 p-3">
               <span className="flex items-center gap-2 text-sm text-foreground">
                 <FileText className="h-4 w-4 shrink-0 text-foreground/40" aria-hidden="true" />
-                Kayıtlı bir şikâyet notunuz var.
+                {t.bookingDetail.hasIntakeNote}
               </span>
               <div className="flex items-center gap-2">
                 {intakeNote === undefined && (
                   <button type="button" onClick={() => void handleViewNote()} className="text-xs font-medium text-primary hover:underline">
-                    Görüntüle
+                    {t.bookingDetail.view}
                   </button>
                 )}
-                <button type="button" onClick={() => void handleDeleteNote()} className="text-foreground/40 hover:text-danger" aria-label="Notu ve rızayı sil">
+                <button type="button" onClick={() => void handleDeleteNote()} className="text-foreground/40 hover:text-danger" aria-label={t.bookingDetail.deleteNoteAria}>
                   <Trash2 className="h-4 w-4" aria-hidden="true" />
                 </button>
               </div>
             </div>
             {intakeNote !== undefined && (
               <p className="rounded-[var(--site-radius)] border border-border bg-surface p-3 text-sm text-foreground/80 whitespace-pre-line">
-                {intakeNote ?? "(Not girilmemiş — yalnızca belge paylaşılmış.)"}
+                {intakeNote ?? t.bookingDetail.noNoteOnlyDocuments}
               </p>
             )}
             <DocumentUploader bookingId={booking.id} accessToken={accessToken} />
@@ -364,9 +365,9 @@ export function PatientBookingDetailPanel({
           <BookingIntakeStep bookingId={booking.id} accessToken={accessToken} onDone={() => void load().then(() => setAddingIntake(false))} />
         ) : (
           <div className="rounded-[var(--site-radius)] border border-border bg-muted/50 p-4 text-sm text-foreground/60">
-            <p>Bu rezervasyon için henüz paylaşılmış bir şikâyet notu/belge yok.</p>
+            <p>{t.bookingDetail.noIntakeYet}</p>
             <button type="button" onClick={() => setAddingIntake(true)} className="mt-2 text-xs font-medium text-primary hover:underline">
-              Ekle
+              {t.bookingDetail.add}
             </button>
           </div>
         )}
@@ -377,12 +378,12 @@ export function PatientBookingDetailPanel({
           <div className="flex items-center justify-between print:hidden">
             <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
               <StickyNote className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
-              Doktor Notu / Reçete
+              {t.bookingDetail.doctorNoteTitle}
             </h2>
             {consultationNote && (
               <Button type="button" variant="outline" size="sm" onClick={() => window.print()}>
                 <Printer className="h-4 w-4" aria-hidden="true" />
-                Yazdır
+                {t.bookingDetail.print}
               </Button>
             )}
           </div>
@@ -398,7 +399,7 @@ export function PatientBookingDetailPanel({
                 </p>
               </div>
               <div className="text-right">
-                <p className="text-xs text-foreground/50">Hasta</p>
+                <p className="text-xs text-foreground/50">{t.bookingDetail.patient}</p>
                 <p className="text-sm font-medium text-foreground">{booking.patientName}</p>
               </div>
             </div>
@@ -410,7 +411,7 @@ export function PatientBookingDetailPanel({
               onClick={() => void handleViewConsultationNote()}
               className="text-xs font-medium text-primary hover:underline"
             >
-              Görüntüle
+              {t.bookingDetail.view}
             </button>
           ) : (
             <div className="rounded-[var(--site-radius)] border border-border bg-surface p-4">
@@ -430,7 +431,7 @@ export function PatientBookingDetailPanel({
       {!accessToken && (
         <p className="text-xs text-foreground/40">
           <Link href={localize("/patient/appointments")} className="hover:underline">
-            ← Tüm randevularım
+            {t.bookingDetail.allAppointments}
           </Link>
         </p>
       )}

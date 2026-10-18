@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation";
 import { CalendarCheck, ChevronLeft } from "lucide-react";
 import * as telehealthApi from "@/lib/api/telehealth";
 import { ApiClientError } from "@/lib/api/error";
-import { friendlyErrorMessage, fieldErrorsFrom } from "@/lib/api/friendly-error";
+import { fieldErrorsFrom } from "@/lib/api/friendly-error";
+import { fmt, useFriendlyError, useLocalizedFieldErrors, usePortalStrings } from "@/lib/i18n/use-portal-strings";
 import type { Appointment, AvailabilitySlot, BookingIdentityInput, BookingPaymentStatus, DoctorProfile, SitePage } from "@/lib/api/types";
 import { formatDayLabel, formatTime } from "@/lib/telehealth-format";
 import { formatPriceFromCents } from "@/lib/format-price";
@@ -135,6 +136,8 @@ interface BookingWizardProps {
   defaultLocaleCode: string;
   initialSlots: AvailabilitySlot[];
   kvkkPage: Pick<SitePage, "title" | "slug"> | null;
+  /** Paket A2 — sağlık verisi açık rıza metni sayfası (yoksa onay metni link olmadan gösterilir). */
+  explicitConsentPage?: Pick<SitePage, "title" | "slug"> | null;
   intlLocale?: string;
   /**
    * Aktif dilin tele-sağlık sözlüğü — özet paneline ve mobil alt çubuğa (fiyat/"Ücretsiz" etiketi,
@@ -153,12 +156,16 @@ export function BookingWizard({
   defaultLocaleCode,
   initialSlots,
   kvkkPage,
+  explicitConsentPage = null,
   intlLocale,
   telehealthDict,
 }: BookingWizardProps) {
   const router = useRouter();
   const { selectedSlots, clearAllSlots, displayTimeZone, setHasCompletedBooking, resetSignal } = useBookingSelection();
 
+  const { t } = usePortalStrings();
+  const friendlyErrorMessage = useFriendlyError();
+  const localizeFieldErrors = useLocalizedFieldErrors();
   const [currentStep, setCurrentStep] = useState<WizardStep>(2);
   const [conflictNotice, setConflictNotice] = useState<string | null>(null);
 
@@ -331,7 +338,7 @@ export function BookingWizard({
       setCurrentStep(4);
     } catch (err) {
       if (err instanceof ApiClientError && err.status === 409) {
-        setConflictNotice("Seçtiğiniz saatlerden biri az önce başka biri tarafından alındı. Lütfen yeniden seçin.");
+        setConflictNotice(t.wizard.slotTaken);
         clearAllSlots();
         setCurrentStep(2);
         // Slotları yeniden getirerek ızgarayı tazele — kullanıcı aynı hatayı tekrar görmesin.
@@ -340,7 +347,7 @@ export function BookingWizard({
         // [DPI] §2.6 — 422 (geçersiz kimlik/yaş) adımda KALINIR, ilgili `Field`'ın hata slotu
         // sunucu mesajıyla doldurulur; hiçbir slot tutulmaz (backend tarafı).
         setIdentityServerError(friendlyErrorMessage(err));
-        setIdentityFieldErrors(fieldErrorsFrom(err));
+        setIdentityFieldErrors(localizeFieldErrors(fieldErrorsFrom(err)));
       }
     } finally {
       setIdentitySubmitting(false);
@@ -363,10 +370,10 @@ export function BookingWizard({
 
   const steps: BookingStepperStep[] = [
     { index: 1, label: `${doctor.title} ${doctor.fullName}`.trim(), status: "completed" },
-    { index: 2, label: "Tarih & Saat", status: currentStep === 2 ? "current" : "completed" },
-    { index: 3, label: "Hasta & Kimlik", status: currentStep === 3 ? "current" : currentStep > 3 ? "completed" : "upcoming" },
-    { index: 4, label: "Tıbbi Belge", status: currentStep === 4 ? "current" : currentStep > 4 ? "completed" : "upcoming" },
-    { index: 5, label: "Ödeme & Onay", status: currentStep === 5 ? "current" : "upcoming" },
+    { index: 2, label: t.wizard.stepDateTime, status: currentStep === 2 ? "current" : "completed" },
+    { index: 3, label: t.wizard.stepPatient, status: currentStep === 3 ? "current" : currentStep > 3 ? "completed" : "upcoming" },
+    { index: 4, label: t.wizard.stepDocuments, status: currentStep === 4 ? "current" : currentStep > 4 ? "completed" : "upcoming" },
+    { index: 5, label: t.wizard.stepPayment, status: currentStep === 5 ? "current" : "upcoming" },
   ];
 
   const showContinueButton = currentStep === 2 || currentStep === 3;
@@ -414,7 +421,7 @@ export function BookingWizard({
                   className="mb-3 inline-flex items-center gap-1 rounded-[var(--site-radius)] text-sm font-medium text-foreground/60 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
                 >
                   <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-                  Tarih & Saat seçimine dön
+                  {t.wizard.backToDateTime}
                 </button>
                 <BookingIdentityStep
                   ref={identityFormRef}
@@ -441,7 +448,7 @@ export function BookingWizard({
                   <div className="space-y-2">
                     <p className="flex items-center gap-1.5 font-medium">
                       <CalendarCheck className="h-4 w-4 shrink-0" aria-hidden="true" />
-                      Rezervasyonunuz oluşturuldu ({bookingResult.bookingNumber}).
+                      {fmt(t.wizard.bookingCreated, { bookingNumber: bookingResult.bookingNumber })}
                     </p>
                     <div className="flex flex-wrap gap-1.5">
                       {bookingResult.appointments.map((appointment) => (
@@ -452,14 +459,17 @@ export function BookingWizard({
                     </div>
                     {isFreeBooking ? (
                       <p className="text-sm">
-                        {bookingResult.slotCount} Slot · Bu randevu ücretsizdir, ödeme gerekmez. Randevunuz onaylandı ve görüşme bağlantınız
-                        e-posta ile gönderildi.
+                        {fmt(t.wizard.freeBooking, { count: bookingResult.slotCount })}
                       </p>
                     ) : (
                       <>
                         <p className="text-sm">
-                          {bookingResult.slotCount} Slot · Toplam {formatPriceFromCents(bookingResult.totalCents, bookingResult.currency, intlLocale)}. Bu
-                          rezervasyon slotu <strong>30 dakika</strong> tutar; bu süre içinde ödemeyi tamamlamanız gerekir.
+                          {fmt(t.wizard.paidBookingPrefix, {
+                            count: bookingResult.slotCount,
+                            total: formatPriceFromCents(bookingResult.totalCents, bookingResult.currency, intlLocale),
+                          })}{" "}
+                          <strong>{t.wizard.holdDuration}</strong>
+                          {t.wizard.paidBookingSuffix}
                         </p>
                         {/* 2026-09-18 KRİTİK DÜZELTME (kullanıcı talebi) — ödeme TAMAMLANMADAN hiçbir
                             e-posta GÖNDERİLMEMELİDİR: eskiden burada ödeme öncesi de çalışan bir
@@ -470,8 +480,7 @@ export function BookingWizard({
                             ::triggerAppointmentConfirmationEmail`) — burada yalnızca tarayıcıda not
                             alma/yer imi tavsiyesi kalır. */}
                         <p className="text-sm">
-                          Randevunuzu daha sonra görüntülemek için bu bağlantıyı not alın veya yer imlerine ekleyin. Ödeme
-                          onaylandığında görüşme bağlantınız otomatik olarak e-posta ile gönderilecektir.
+                          {t.wizard.bookmarkHint}
                         </p>
                       </>
                     )}
@@ -479,16 +488,21 @@ export function BookingWizard({
                 </Alert>
 
                 {currentStep === 4 ? (
-                  <BookingIntakeStep bookingId={bookingResult.bookingId} accessToken={bookingResult.accessToken} onDone={() => setCurrentStep(5)} />
+                  <BookingIntakeStep
+                    bookingId={bookingResult.bookingId}
+                    accessToken={bookingResult.accessToken}
+                    explicitConsentPage={explicitConsentPage}
+                    onDone={() => setCurrentStep(5)}
+                  />
                 ) : isFreeBooking ? (
                   <Alert variant="success">
                     <div className="flex flex-wrap items-center justify-between gap-3">
-                      <p className="text-sm font-medium">Ödeme adımı gerekmiyor — randevunuz tamamlandı.</p>
+                      <p className="text-sm font-medium">{t.wizard.noPaymentNeeded}</p>
                       {/* Bug-fix turu (2026-09-21, kullanıcı talebi) — bu ekran artık sayfa
                           yenilenince otomatik gösterilmiyor (yukarıdaki kurtarma effect'i notu),
                           ama kullanıcı AYNI oturumda hemen yeni bir randevu almak isteyebilir. */}
                       <Button type="button" variant="outline" size="sm" onClick={resetWizard} className="rounded-[var(--site-radius)]">
-                        Yeni Randevu Oluştur
+                        {t.wizard.newBooking}
                       </Button>
                     </div>
                   </Alert>

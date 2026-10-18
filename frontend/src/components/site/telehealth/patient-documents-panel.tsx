@@ -4,11 +4,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Paperclip, Plus } from "lucide-react";
 import * as telehealthApi from "@/lib/api/telehealth";
-import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import type { AppointmentBooking } from "@/lib/api/types";
-import { useLocalizePath, useActiveLocaleCode } from "@/context/locale-alternates-context";
+import { useLocalizePath } from "@/context/locale-alternates-context";
+import { fmt, useFriendlyError, usePortalStrings } from "@/lib/i18n/use-portal-strings";
+import { getJoinState } from "@/lib/telehealth-join-window";
+import { useNow } from "@/hooks/use-now";
 import { formatFullDayLabel, formatTime } from "@/lib/telehealth-format";
-import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -44,7 +45,9 @@ function DocumentCardsSkeleton() {
 
 export function PatientDocumentsPanel() {
   const localize = useLocalizePath();
-  const intlLocale = contentLocaleToIntl(useActiveLocaleCode());
+  const { t, intlLocale } = usePortalStrings();
+  const friendlyErrorMessage = useFriendlyError();
+  const now = useNow();
   const router = useRouter();
   const [bookings, setBookings] = useState<AppointmentBooking[] | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -62,7 +65,7 @@ export function PatientDocumentsPanel() {
     } catch (err) {
       setLoadError(friendlyErrorMessage(err));
     }
-  }, []);
+  }, [friendlyErrorMessage]);
 
   // `doctor-bookings-panel.tsx`teki `hasLoadedOverviewRef` ile AYNI StrictMode-fantom-çağrı
   // koruması (o dosyanın başındaki yoruma bkz.) — bu panelde `scope` sabittir ("all"), bu yüzden
@@ -94,8 +97,8 @@ export function PatientDocumentsPanel() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-semibold text-foreground">Belgelerim</h1>
-        <p className="mt-1 text-sm text-foreground/60">Randevularınıza yüklediğiniz tıbbi belgeleri buradan görüntüleyin.</p>
+        <h1 className="text-2xl font-semibold text-foreground">{t.patientDocuments.title}</h1>
+        <p className="mt-1 text-sm text-foreground/60">{t.patientDocuments.subtitle}</p>
       </div>
 
       {bookings === null && !loadError && <DocumentCardsSkeleton />}
@@ -108,7 +111,7 @@ export function PatientDocumentsPanel() {
               {loadError}
             </span>
             <Button type="button" variant="outline" size="sm" onClick={() => void load()}>
-              Tekrar Dene
+              {t.common.retry}
             </Button>
           </span>
         </Alert>
@@ -117,11 +120,11 @@ export function PatientDocumentsPanel() {
       {bookings !== null && !loadError && bookings.length === 0 && (
         <EmptyState
           icon={Paperclip}
-          title="Henüz belgeniz yok"
-          description="Randevularınıza yüklediğiniz tıbbi belgeler burada listelenir."
+          title={t.patientDocuments.emptyTitle}
+          description={t.patientDocuments.emptyDescription}
           action={
             <Button type="button" variant="outline" size="sm" onClick={() => router.push(localize("/patient/appointments"))}>
-              Randevularım
+              {t.patientDocuments.goToAppointments}
             </Button>
           }
         />
@@ -149,7 +152,7 @@ export function PatientDocumentsPanel() {
                       </p>
                       {firstAppointment && (
                         <div className="mt-1">
-                          <AppointmentStatusBadge status={firstAppointment.status} />
+                          <AppointmentStatusBadge status={firstAppointment.status} ended={getJoinState(booking, now) === "ended"} />
                         </div>
                       )}
                     </div>
@@ -161,28 +164,28 @@ export function PatientDocumentsPanel() {
                     <>
                       <Badge tone="primary" solid size="sm" className="gap-1">
                         <Paperclip className="h-3 w-3" aria-hidden="true" />
-                        Tıbbi Belgeler ({booking.documentCount})
+                        {fmt(t.bookingList.medicalDocuments, { count: booking.documentCount })}
                       </Badge>
                       <Button type="button" variant="outline" size="sm" onClick={() => setDocumentsBookingId(booking.id)}>
-                        Görüntüle
+                        {t.patientDocuments.view}
                       </Button>
                     </>
                   ) : (
                     <>
                       <Badge tone="neutral" size="sm" className="gap-1">
                         <Paperclip className="h-3 w-3" aria-hidden="true" />
-                        Henüz belge yok
+                        {t.patientDocuments.noDocumentsYet}
                       </Badge>
                       <Button
                         type="button"
                         variant="outline"
                         size="sm"
                         className="gap-1"
-                        aria-label={`${booking.doctor.title} ${booking.doctor.fullName} randevusuna belge ekle`}
+                        aria-label={fmt(t.patientDocuments.addDocumentAria, { doctor: `${booking.doctor.title} ${booking.doctor.fullName}` })}
                         onClick={() => router.push(localize(`/patient/bookings/${booking.id}`))}
                       >
                         <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-                        Belge Ekle
+                        {t.patientDocuments.addDocument}
                       </Button>
                     </>
                   )}
@@ -196,7 +199,7 @@ export function PatientDocumentsPanel() {
       {nextCursor && (
         <div className="flex justify-center">
           <Button type="button" variant="outline" size="sm" loading={loadingMore} onClick={() => void loadMore()}>
-            Daha Fazla Yükle
+            {t.common.loadMore}
           </Button>
         </div>
       )}

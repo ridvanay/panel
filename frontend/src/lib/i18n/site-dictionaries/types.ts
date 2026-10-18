@@ -6,6 +6,7 @@ import type { ErrorStrings } from "./en/errors";
 import type { AboutStrings } from "./en/about";
 import type { ContactStrings } from "./en/contact";
 import type { HomeStrings } from "./en/home";
+import type { PortalStrings } from "./en/portal";
 
 /**
  * `.claude/architect-scope-i18n.md` §14.2 — public site UI STRING KAPSAMI. `Locale.code`
@@ -23,6 +24,7 @@ export type SiteDictionary = {
   about: AboutStrings;
   contact: ContactStrings;
   home: HomeStrings;
+  portal: PortalStrings;
 };
 
-export type { CommonStrings, NavStrings, TelehealthStrings, LegalStrings, ErrorStrings, AboutStrings, ContactStrings, HomeStrings };
+export type { CommonStrings, NavStrings, TelehealthStrings, LegalStrings, ErrorStrings, AboutStrings, ContactStrings, HomeStrings, PortalStrings };

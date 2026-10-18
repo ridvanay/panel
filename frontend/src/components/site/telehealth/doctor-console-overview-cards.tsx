@@ -2,6 +2,7 @@ import { CalendarClock, CircleCheck, Info, Paperclip, Users } from "lucide-react
 import type { DoctorConsoleOverview } from "@/lib/api/types";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/cn";
+import { usePortalStrings } from "@/lib/i18n/use-portal-strings";
 
 /**
  * `.claude/design-notes-doctor-portfolio-console.md` §3.2 — dört metrik kartı, [TDN] §13.5.1'in
@@ -56,23 +57,24 @@ function OverviewCard({ label, icon: Icon, value, tone, tooltip }: CardDef) {
 }
 
 export function DoctorConsoleOverviewCards({ overview }: { overview: DoctorConsoleOverview }) {
+  const { t } = usePortalStrings();
   return (
     <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      <OverviewCard label="Bugünkü Seanslar" icon={CalendarClock} value={overview.today.total} tone="primary" />
+      <OverviewCard label={t.doctorConsole.cardTodaySessions} icon={CalendarClock} value={overview.today.total} tone="primary" />
       <OverviewCard
-        label="Tamamlanan Konsültasyonlar"
+        label={t.doctorConsole.cardCompleted}
         icon={CircleCheck}
         value={overview.completedConsultationTotal}
         tone="success"
       />
       <OverviewCard
-        label="Bekleyen Tıbbi Belgeler"
+        label={t.doctorConsole.cardPendingDocuments}
         icon={Paperclip}
         value={overview.pendingDocumentCount}
         tone="warning"
-        tooltip="Bu sayı bir tıbbi inceleme onayı değildir; yalnızca belge yüklenmiş ama seansı henüz tamamlanmamış randevu sayısını gösterir."
+        tooltip={t.doctorConsole.cardPendingDocumentsTooltip}
       />
-      <OverviewCard label="Toplam Hasta" icon={Users} value={overview.distinctPatientTotal} tone="neutral" />
+      <OverviewCard label={t.doctorConsole.cardTotalPatients} icon={Users} value={overview.distinctPatientTotal} tone="neutral" />
     </section>
   );
 }

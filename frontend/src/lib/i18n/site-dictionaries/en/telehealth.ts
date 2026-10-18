@@ -50,6 +50,7 @@ export const telehealthStrings = {
   /** `doctor-quick-booking-card.tsx` — büyük CTA, `bookAppointmentCta`'dan BİLİNÇLİ OLARAK ayrı (kaynakta da farklı metin). */
   createAppointmentCta: "Book Appointment",
   /** `{years}` yer tutucusu. */
+  socialLinksAriaLabel: "Social media and web links",
   experienceYearsBadge: "{years} Years of Experience",
 
   // --- doctor-profile-tabs.tsx (madde 9) ---

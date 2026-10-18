@@ -4293,7 +4293,10 @@ export type DoctorPortalNotificationKind = "BOOKING_CREATED" | "CONSENT_GIVEN" |
 export interface DoctorPortalNotification {
   id: string;
   kind: DoctorPortalNotificationKind;
+  /** Türkçe hazır metin (geriye uyumluluk). */
   message: string;
+  /** Paket A2 — `message` içindeki değişken kısım; varsa metin aktif dilde sözlükten kurulur. */
+  subject?: string;
   occurredAt: string;
 }
 

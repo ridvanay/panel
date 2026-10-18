@@ -4,11 +4,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, CreditCard, FileText } from "lucide-react";
 import * as telehealthApi from "@/lib/api/telehealth";
-import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import type { AppointmentBooking } from "@/lib/api/types";
-import { useLocalizePath, useActiveLocaleCode } from "@/context/locale-alternates-context";
+import { useLocalizePath } from "@/context/locale-alternates-context";
+import { fmt, useFriendlyError, usePortalStrings } from "@/lib/i18n/use-portal-strings";
 import { formatPriceFromCents } from "@/lib/format-price";
-import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import { computeAppointmentBlock, formatDayLabel, formatTime } from "@/lib/telehealth-format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -38,8 +37,8 @@ function PaymentsSkeleton() {
 
 export function PatientPaymentsPanel() {
   const localize = useLocalizePath();
-  // Görev (2026-09-16) — currency/locale format denetimi (bkz. `useActiveLocaleCode` yorumu).
-  const intlLocale = contentLocaleToIntl(useActiveLocaleCode());
+  const { t, intlLocale } = usePortalStrings();
+  const friendlyErrorMessage = useFriendlyError();
   const router = useRouter();
   const [bookings, setBookings] = useState<AppointmentBooking[] | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -57,7 +56,7 @@ export function PatientPaymentsPanel() {
     } catch (err) {
       setLoadError(friendlyErrorMessage(err));
     }
-  }, []);
+  }, [friendlyErrorMessage]);
 
   // `patient-documents-panel.tsx` İLE AYNI StrictMode-fantom-çağrı koruması.
   const hasLoadedRef = useRef(false);
@@ -86,8 +85,8 @@ export function PatientPaymentsPanel() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-semibold text-foreground">Ödemelerim</h1>
-        <p className="mt-1 text-sm text-foreground/60">Tamamlanmış ödemelerinizi ve makbuzlarını buradan görüntüleyin.</p>
+        <h1 className="text-2xl font-semibold text-foreground">{t.patientPayments.title}</h1>
+        <p className="mt-1 text-sm text-foreground/60">{t.patientPayments.subtitle}</p>
       </div>
 
       {bookings === null && !loadError && <PaymentsSkeleton />}
@@ -100,14 +99,14 @@ export function PatientPaymentsPanel() {
               {loadError}
             </span>
             <Button type="button" variant="outline" size="sm" onClick={() => void load()}>
-              Tekrar Dene
+              {t.common.retry}
             </Button>
           </span>
         </Alert>
       )}
 
       {bookings !== null && !loadError && paidBookings.length === 0 && (
-        <EmptyState icon={CreditCard} title="Henüz ödemeniz yok" description="Tamamladığınız ödemeler burada listelenir." />
+        <EmptyState icon={CreditCard} title={t.patientPayments.emptyTitle} description={t.patientPayments.emptyDescription} />
       )}
 
       {bookings !== null && paidBookings.length > 0 && (
@@ -130,13 +129,13 @@ export function PatientPaymentsPanel() {
                       <p className="mt-0.5 text-xs text-foreground/50">{booking.bookingNumber}</p>
                     </div>
                     <Badge tone="success" size="sm">
-                      Ödendi
+                      {t.paymentStatus.PAID}
                     </Badge>
                   </div>
 
                   <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-foreground/60">
                     <span>
-                      {booking.slotCount} Slot ({block.totalMinutes} Dk)
+                      {fmt(t.patientPayments.slotSummary, { count: booking.slotCount, minutes: block.totalMinutes })}
                     </span>
                     <span aria-hidden="true">·</span>
                     <span className="font-medium text-foreground">{formatPriceFromCents(booking.totalCents, booking.currency, intlLocale)}</span>
@@ -151,7 +150,7 @@ export function PatientPaymentsPanel() {
                       onClick={() => router.push(localize(`/patient/bookings/${booking.id}/invoice`))}
                     >
                       <FileText className="h-3.5 w-3.5" aria-hidden="true" />
-                      Makbuzu Görüntüle
+                      {t.patientPayments.viewReceipt}
                     </Button>
                   </div>
                 </div>
@@ -163,13 +162,13 @@ export function PatientPaymentsPanel() {
           <table className="hidden w-full text-sm md:table">
             <thead>
               <tr className="border-b border-border text-left text-xs font-semibold uppercase tracking-wider text-foreground/50">
-                <th className="py-2 pr-4">Tarih</th>
-                <th className="py-2 pr-4">Rezervasyon No</th>
-                <th className="py-2 pr-4">Doktor</th>
-                <th className="py-2 pr-4">Süre / Slot</th>
-                <th className="py-2 pr-4">Tutar</th>
-                <th className="py-2 pr-4">Durum</th>
-                <th className="py-2 pr-4 text-right">İşlem</th>
+                <th className="py-2 pr-4">{t.patientPayments.columnDate}</th>
+                <th className="py-2 pr-4">{t.patientPayments.columnBookingNumber}</th>
+                <th className="py-2 pr-4">{t.patientPayments.columnDoctor}</th>
+                <th className="py-2 pr-4">{t.patientPayments.columnDuration}</th>
+                <th className="py-2 pr-4">{t.patientPayments.columnAmount}</th>
+                <th className="py-2 pr-4">{t.patientPayments.columnStatus}</th>
+                <th className="py-2 pr-4 text-right">{t.patientPayments.columnAction}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/60">
@@ -186,12 +185,12 @@ export function PatientPaymentsPanel() {
                       {booking.doctor.title} {booking.doctor.fullName}
                     </td>
                     <td className="py-3 pr-4 text-foreground/70">
-                      {booking.slotCount} Slot ({block.totalMinutes} Dk)
+                      {fmt(t.patientPayments.slotSummary, { count: booking.slotCount, minutes: block.totalMinutes })}
                     </td>
                     <td className="py-3 pr-4 font-medium text-foreground">{formatPriceFromCents(booking.totalCents, booking.currency, intlLocale)}</td>
                     <td className="py-3 pr-4">
                       <Badge tone="success" size="sm">
-                        Ödendi
+                        {t.paymentStatus.PAID}
                       </Badge>
                     </td>
                     <td className="py-3 pr-4 text-right">
@@ -203,7 +202,7 @@ export function PatientPaymentsPanel() {
                         onClick={() => router.push(localize(`/patient/bookings/${booking.id}/invoice`))}
                       >
                         <FileText className="h-3.5 w-3.5" aria-hidden="true" />
-                        Makbuzu Görüntüle
+                        {t.patientPayments.viewReceipt}
                       </Button>
                     </td>
                   </tr>
@@ -217,7 +216,7 @@ export function PatientPaymentsPanel() {
       {nextCursor && (
         <div className="flex justify-center">
           <Button type="button" variant="outline" size="sm" loading={loadingMore} onClick={() => void loadMore()}>
-            Daha Fazla Yükle
+            {t.common.loadMore}
           </Button>
         </div>
       )}

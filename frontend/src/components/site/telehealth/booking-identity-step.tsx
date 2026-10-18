@@ -27,6 +27,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Alert } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
+import { usePortalStrings } from "@/lib/i18n/use-portal-strings";
+import type { PortalStrings } from "@/lib/i18n/site-dictionaries/en/portal";
 
 /**
  * Grid görevi (2026-09-14) Görev 1 — eski `identity-step-dialog.tsx`'in `Dialog`/`DialogContent`
@@ -52,26 +54,19 @@ import { cn } from "@/lib/utils";
  * yeterli olmalı.
  */
 
-const bookingFormSchema = z.object({
-  patientName: z.string().trim().min(1, "Ad soyad gerekli.").max(120),
-  patientEmail: z.string().trim().min(1, "E-posta gerekli.").email("Geçerli bir e-posta girin.").max(255),
-});
-type BookingFormValues = z.infer<typeof bookingFormSchema>;
+function buildBookingFormSchema(t: PortalStrings["identity"]) {
+  return z.object({
+    patientName: z.string().trim().min(1, t.nameRequired).max(120),
+    patientEmail: z.string().trim().min(1, t.emailRequired).email(t.emailInvalid).max(255),
+  });
+}
+type BookingFormValues = z.infer<ReturnType<typeof buildBookingFormSchema>>;
 
-const TR_MONTHS = [
-  "Ocak",
-  "Şubat",
-  "Mart",
-  "Nisan",
-  "Mayıs",
-  "Haziran",
-  "Temmuz",
-  "Ağustos",
-  "Eylül",
-  "Ekim",
-  "Kasım",
-  "Aralık",
-];
+/** Ay adları aktif dilde `Intl` ile üretilir (eski sabit `TR_MONTHS` listesinin yerine). */
+function buildMonthNames(intlLocale: string): string[] {
+  const formatter = new Intl.DateTimeFormat(intlLocale, { month: "long", timeZone: "UTC" });
+  return Array.from({ length: 12 }, (_, i) => formatter.format(new Date(Date.UTC(2000, i, 1))));
+}
 
 function buildYearOptions(now: Date): number[] {
   const currentYear = now.getUTCFullYear();
@@ -97,6 +92,22 @@ export const BookingIdentityStep = forwardRef<HTMLFormElement, BookingIdentitySt
   { submitting, serverFieldErrors, serverError, onContinue, onCanContinueChange, kvkkPage, lang, defaultLocaleCode },
   ref
 ) {
+  const { t, lang: uiLang, intlLocale } = usePortalStrings();
+  const bookingFormSchema = useMemo(() => buildBookingFormSchema(t.identity), [t]);
+  const monthNames = useMemo(() => buildMonthNames(intlLocale), [intlLocale]);
+  const countryOptions = useMemo(() => {
+    if (uiLang === "tr") return ISO_COUNTRIES_EXCLUDING_TR.map((c) => ({ code: c.code, name: c.nameTr }));
+    let regionNames: Intl.DisplayNames | null = null;
+    try {
+      regionNames = new Intl.DisplayNames([intlLocale], { type: "region" });
+    } catch {
+      regionNames = null;
+    }
+    return ISO_COUNTRIES_EXCLUDING_TR.map((c) => ({ code: c.code, name: regionNames?.of(c.code) ?? c.nameTr })).sort((a, b) =>
+      a.name.localeCompare(b.name, intlLocale)
+    );
+  }, [uiLang, intlLocale]);
+  const [consentBefore, consentAfter = ""] = t.identity.consentText.split("{notice}");
   const [citizenshipType, setCitizenshipType] = useState<Exclude<CitizenshipType, "FOREIGN_RESIDENT">>("TR");
   const [tcNumber, setTcNumber] = useState("");
   const [passportNumber, setPassportNumber] = useState("");
@@ -134,9 +145,9 @@ export const BookingIdentityStep = forwardRef<HTMLFormElement, BookingIdentitySt
   const age = birthDateParsed ? calculateAgeYears(birthDateParsed, now) : null;
   const birthDateError =
     day && month && year && !birthDateParsed
-      ? "Geçersiz doğum tarihi."
+      ? t.identity.birthDateInvalid
       : age !== null && age < MIN_IDENTITY_AGE_YEARS
-        ? "Bu platform 18 yaşından küçük kullanıcılar için kullanılamaz."
+        ? t.identity.minorNotAllowed
         : (serverFieldErrors?.birthDate ?? null);
 
   const identityFieldError = serverFieldErrors?.identityNumber;
@@ -185,42 +196,42 @@ export const BookingIdentityStep = forwardRef<HTMLFormElement, BookingIdentitySt
       noValidate
     >
       <div>
-        <h3 className="text-sm font-semibold text-foreground">Hasta Bilgileri</h3>
-        <p className="mt-0.5 text-xs text-foreground/60">Randevu kaydınızla ilişkilendirilecek iletişim bilgileri.</p>
+        <h3 className="text-sm font-semibold text-foreground">{t.identity.patientInfoTitle}</h3>
+        <p className="mt-0.5 text-xs text-foreground/60">{t.identity.patientInfoDescription}</p>
       </div>
 
-      <Field id="patientName" label="Ad soyad" error={errors.patientName?.message} required>
+      <Field id="patientName" label={t.identity.fullName} error={errors.patientName?.message} required>
         {(inputProps) => <Input {...inputProps} {...register("patientName")} />}
       </Field>
       <Field
         id="patientEmail"
-        label="E-posta"
+        label={t.identity.email}
         error={errors.patientEmail?.message}
         required
-        hint="Ödeme onaylandığında güvenli erişim bağlantınız bu adrese gönderilecektir."
+        hint={t.identity.emailHint}
       >
         {(inputProps) => <Input {...inputProps} type="email" {...register("patientEmail")} />}
       </Field>
 
       <div className="border-t border-border pt-4">
-        <h3 className="text-sm font-semibold text-foreground">Kimlik Bilgileri</h3>
+        <h3 className="text-sm font-semibold text-foreground">{t.identity.identityTitle}</h3>
         <p className="mt-0.5 text-xs text-foreground/60">
-          Randevunuzun size düzenlenecek reçete/epikriz belgeleriyle doğru şekilde ilişkilendirilebilmesi için gereklidir.
+          {t.identity.identityDescription}
         </p>
       </div>
 
       <Tabs value={citizenshipType} onValueChange={(value) => setCitizenshipType(value as "TR" | "FOREIGN")}>
         <TabsList className="w-full">
           <TabsTrigger value="TR" className="flex-1">
-            T.C. Vatandaşı
+            {t.identity.turkishCitizen}
           </TabsTrigger>
           <TabsTrigger value="FOREIGN" className="flex-1">
-            Yabancı Uyruklu
+            {t.identity.foreignNational}
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="TR" className="mt-4 space-y-4">
-          <Field id="identityNumber" label="T.C. Kimlik Numarası" required error={identityFieldError}>
+          <Field id="identityNumber" label={t.identity.tcNumber} required error={identityFieldError}>
             {(inputProps) => (
               <div className="relative">
                 <Input
@@ -228,7 +239,7 @@ export const BookingIdentityStep = forwardRef<HTMLFormElement, BookingIdentitySt
                   inputMode="numeric"
                   autoComplete="off"
                   maxLength={11}
-                  placeholder="11 haneli kimlik numaranız"
+                  placeholder={t.identity.tcPlaceholder}
                   value={tcNumber}
                   onChange={(e) => setTcNumber(e.target.value.replace(/[^\d]/g, "").slice(0, 11))}
                   className={cn(
@@ -242,12 +253,12 @@ export const BookingIdentityStep = forwardRef<HTMLFormElement, BookingIdentitySt
                     {tcStatus === "valid" ? (
                       <Badge tone="success" solid size="sm" className="gap-1">
                         <CircleCheck className="h-3 w-3" aria-hidden="true" />
-                        Geçerli
+                        {t.identity.valid}
                       </Badge>
                     ) : (
                       <Badge tone="danger" solid size="sm" className="gap-1">
                         <AlertCircle className="h-3 w-3" aria-hidden="true" />
-                        Geçersiz
+                        {t.identity.invalid}
                       </Badge>
                     )}
                   </span>
@@ -258,29 +269,29 @@ export const BookingIdentityStep = forwardRef<HTMLFormElement, BookingIdentitySt
         </TabsContent>
 
         <TabsContent value="FOREIGN" className="mt-4 space-y-4">
-          <Field id="identityCountryCode" label="Uyruk Ülkesi" required error={countryFieldError}>
+          <Field id="identityCountryCode" label={t.identity.nationality} required error={countryFieldError}>
             {(inputProps) => (
               <Select {...inputProps} value={countryCode} onChange={(e) => setCountryCode(e.target.value)}>
                 <option value="" disabled>
-                  Ülke seçin
+                  {t.identity.selectCountry}
                 </option>
-                {ISO_COUNTRIES_EXCLUDING_TR.map((c) => (
+                {countryOptions.map((c) => (
                   <option key={c.code} value={c.code}>
-                    {c.nameTr}
+                    {c.name}
                   </option>
                 ))}
               </Select>
             )}
           </Field>
 
-          <Field id="passportNumber" label="Pasaport Numarası" required error={identityFieldError}>
+          <Field id="passportNumber" label={t.identity.passportNumber} required error={identityFieldError}>
             {(inputProps) => (
               <div className="relative">
                 <Input
                   {...inputProps}
                   autoComplete="off"
                   maxLength={20}
-                  placeholder="Pasaport numaranız"
+                  placeholder={t.identity.passportPlaceholder}
                   value={passportNumber}
                   onChange={(e) => setPassportNumber(e.target.value.toUpperCase())}
                   className={cn(
@@ -294,12 +305,12 @@ export const BookingIdentityStep = forwardRef<HTMLFormElement, BookingIdentitySt
                     {passportStatus === "valid" ? (
                       <Badge tone="success" solid size="sm" className="gap-1">
                         <CircleCheck className="h-3 w-3" aria-hidden="true" />
-                        Geçerli
+                        {t.identity.valid}
                       </Badge>
                     ) : (
                       <Badge tone="danger" solid size="sm" className="gap-1">
                         <AlertCircle className="h-3 w-3" aria-hidden="true" />
-                        Geçersiz
+                        {t.identity.invalid}
                       </Badge>
                     )}
                   </span>
@@ -310,12 +321,12 @@ export const BookingIdentityStep = forwardRef<HTMLFormElement, BookingIdentitySt
         </TabsContent>
       </Tabs>
 
-      <Field id="birthDate" label="Doğum Tarihi" required error={birthDateError ?? undefined}>
+      <Field id="birthDate" label={t.identity.birthDate} required error={birthDateError ?? undefined}>
         {() => (
           <div className="grid grid-cols-3 gap-2">
-            <Select aria-label="Gün" value={day} onChange={(e) => setDay(e.target.value)}>
+            <Select aria-label={t.identity.day} value={day} onChange={(e) => setDay(e.target.value)}>
               <option value="" disabled>
-                Gün
+                {t.identity.day}
               </option>
               {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
                 <option key={d} value={d}>
@@ -323,19 +334,19 @@ export const BookingIdentityStep = forwardRef<HTMLFormElement, BookingIdentitySt
                 </option>
               ))}
             </Select>
-            <Select aria-label="Ay" value={month} onChange={(e) => setMonth(e.target.value)}>
+            <Select aria-label={t.identity.month} value={month} onChange={(e) => setMonth(e.target.value)}>
               <option value="" disabled>
-                Ay
+                {t.identity.month}
               </option>
-              {TR_MONTHS.map((m, i) => (
+              {monthNames.map((m, i) => (
                 <option key={m} value={i + 1}>
                   {m}
                 </option>
               ))}
             </Select>
-            <Select aria-label="Yıl" value={year} onChange={(e) => setYear(e.target.value)}>
+            <Select aria-label={t.identity.year} value={year} onChange={(e) => setYear(e.target.value)}>
               <option value="" disabled>
-                Yıl
+                {t.identity.year}
               </option>
               {yearOptions.map((y) => (
                 <option key={y} value={y}>
@@ -350,19 +361,19 @@ export const BookingIdentityStep = forwardRef<HTMLFormElement, BookingIdentitySt
       <div className="flex items-start gap-2">
         <Checkbox id="identityConsent" checked={consent} onCheckedChange={(checked) => setConsent(checked === true)} className="mt-0.5" />
         <label htmlFor="identityConsent" className="text-xs leading-5 text-foreground/70">
+          {consentBefore}
           {kvkkPage ? (
             <Link
               href={withLocalePrefix(`/${kvkkPage.slug}`, lang, defaultLocaleCode)}
               target="_blank"
               className="text-primary underline-offset-4 hover:underline"
             >
-              KVKK Aydınlatma Metni
+              {t.identity.kvkkNotice}
             </Link>
           ) : (
-            "KVKK Aydınlatma Metni"
+            t.identity.kvkkNotice
           )}
-          {"'"}ni okudum; ad-soyad, e-posta, T.C. Kimlik No/Pasaport No, doğum tarihi ve uyruk bilgim dahil kişisel
-          verilerimin bu randevu kapsamında işlenmesine açık rızamı veriyorum.
+          {consentAfter}
         </label>
       </div>
 
@@ -372,7 +383,7 @@ export const BookingIdentityStep = forwardRef<HTMLFormElement, BookingIdentitySt
           bu formu `requestSubmit()` ile tetikler (`booking-wizard.tsx`). `submitting` durumu da
           o butonun `loading` prop'una taşınır. */}
       <span className="sr-only" aria-live="polite">
-        {submitting ? "Randevu oluşturuluyor…" : ""}
+        {submitting ? t.identity.submitting : ""}
       </span>
     </form>
   );

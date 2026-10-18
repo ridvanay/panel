@@ -4,7 +4,8 @@ import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { CalendarCheck, CalendarClock, CalendarX2 } from "lucide-react";
 import * as telehealthApi from "@/lib/api/telehealth";
-import { friendlyErrorMessage } from "@/lib/api/friendly-error";
+import { useFriendlyError, usePortalStrings } from "@/lib/i18n/use-portal-strings";
+import type { PortalStrings } from "@/lib/i18n/site-dictionaries/en/portal";
 import type { AppointmentBooking, PatientBookingCounts, PatientBookingsScope } from "@/lib/api/types";
 import { useLocalizePath } from "@/context/locale-alternates-context";
 import { BookingListView } from "@/components/site/telehealth/booking-list-view";
@@ -20,20 +21,22 @@ import { Spinner } from "@/components/ui/spinner";
  * seti hastaya özgü (`.claude/architect-scope-telehealth-template.md` §9.8.4 KARAR O). `?scope=`
  * URL query state'i olarak tutulur (sekme değişince liste ve URL BİRLİKTE değişir).
  */
-const SCOPE_TABS: { value: PatientBookingsScope; label: string }[] = [
-  { value: "upcoming", label: "Aktif" },
-  { value: "past", label: "Geçmiş" },
-  { value: "cancelled", label: "İptal" },
+type PatientBookingsStrings = PortalStrings["patientBookings"];
+
+const SCOPE_TABS: { value: PatientBookingsScope; labelKey: keyof PatientBookingsStrings }[] = [
+  { value: "upcoming", labelKey: "tabUpcoming" },
+  { value: "past", labelKey: "tabPast" },
+  { value: "cancelled", labelKey: "tabCancelled" },
 ];
 
-const EMPTY_STATE_COPY: Record<PatientBookingsScope, { icon: typeof CalendarClock; title: string; description: string; showAction: boolean }> = {
-  all: { icon: CalendarX2, title: "Henüz bir randevunuz yok.", description: "Bir doktordan randevu aldığınızda burada listelenecek.", showAction: true },
-  upcoming: { icon: CalendarClock, title: "Aktif randevunuz yok", description: "Bir uzmanla görüşmek için hemen randevu alın.", showAction: true },
-  past: { icon: CalendarCheck, title: "Geçmiş randevunuz bulunmuyor", description: "Tamamlanmış randevularınız burada listelenecek.", showAction: false },
+const EMPTY_STATE_COPY: Record<PatientBookingsScope, { icon: typeof CalendarClock; titleKey: keyof PatientBookingsStrings; descriptionKey: keyof PatientBookingsStrings; showAction: boolean }> = {
+  all: { icon: CalendarX2, titleKey: "emptyAllTitle", descriptionKey: "emptyAllDescription", showAction: true },
+  upcoming: { icon: CalendarClock, titleKey: "emptyUpcomingTitle", descriptionKey: "emptyUpcomingDescription", showAction: true },
+  past: { icon: CalendarCheck, titleKey: "emptyPastTitle", descriptionKey: "emptyPastDescription", showAction: false },
   cancelled: {
     icon: CalendarX2,
-    title: "İptal edilmiş randevunuz yok",
-    description: "İptal edilen veya süresi dolan randevular burada görünür.",
+    titleKey: "emptyCancelledTitle",
+    descriptionKey: "emptyCancelledDescription",
     showAction: false,
   },
 };
@@ -52,6 +55,8 @@ function PatientBookingsPanelContent() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const localize = useLocalizePath();
+  const { t } = usePortalStrings();
+  const friendlyErrorMessage = useFriendlyError();
 
   const scopeParam = searchParams.get("scope");
   const scope: PatientBookingsScope = isPatientBookingsScope(scopeParam) ? scopeParam : "upcoming";
@@ -73,7 +78,7 @@ function PatientBookingsPanelContent() {
     } catch (err) {
       setLoadError(friendlyErrorMessage(err));
     }
-  }, []);
+  }, [friendlyErrorMessage]);
 
   // `doctor-bookings-panel.tsx`teki AYNI StrictMode-fantom-çağrı koruması (o dosyanın başındaki
   // yoruma bkz.) — `scope` GERÇEKTEN değiştiğinde (sekme tıklaması/URL navigasyonu) yeniden fetch eder.
@@ -111,15 +116,15 @@ function PatientBookingsPanelContent() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-semibold text-foreground">Randevularım</h1>
-        <p className="mt-1 text-sm text-foreground/60">Rezervasyonlarınızı, ödeme durumlarını ve ödeme belgelerinizi buradan görüntüleyin.</p>
+        <h1 className="text-2xl font-semibold text-foreground">{t.patientBookings.title}</h1>
+        <p className="mt-1 text-sm text-foreground/60">{t.patientBookings.subtitle}</p>
       </div>
 
       <Tabs value={scope} onValueChange={(value) => setScope(value as PatientBookingsScope)}>
         <TabsList>
           {SCOPE_TABS.map((tab) => (
             <TabsTrigger key={tab.value} value={tab.value} className="gap-1.5">
-              {tab.label}
+              {t.patientBookings[tab.labelKey]}
               <Badge tone="neutral" size="sm" className="px-1.5 py-0 text-[10px] font-semibold">
                 {counts ? counts[tab.value] : "–"}
               </Badge>
@@ -131,12 +136,12 @@ function PatientBookingsPanelContent() {
       {isEmpty ? (
         <EmptyState
           icon={emptyCopy.icon}
-          title={emptyCopy.title}
-          description={emptyCopy.description}
+          title={t.patientBookings[emptyCopy.titleKey]}
+          description={t.patientBookings[emptyCopy.descriptionKey]}
           action={
             emptyCopy.showAction ? (
               <Button type="button" size="sm" onClick={() => router.push(localize("/doctors"))}>
-                Randevu Al
+                {t.common.bookAppointment}
               </Button>
             ) : undefined
           }
@@ -154,7 +159,7 @@ function PatientBookingsPanelContent() {
       {nextCursor && (
         <div className="flex justify-center">
           <Button type="button" variant="outline" size="sm" loading={loadingMore} onClick={() => void loadMore()}>
-            Daha Fazla Yükle
+            {t.common.loadMore}
           </Button>
         </div>
       )}

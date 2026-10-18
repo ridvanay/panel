@@ -80,6 +80,7 @@ import { registerBookingExpirySweeper } from "./lib/booking-expiry";
 import { registerIntakeRetentionScheduler } from "./lib/intake-retention";
 import { registerRecordingRetentionScheduler } from "./lib/recording-retention";
 import { registerAppointmentReminderSweeper } from "./lib/appointment-reminders";
+import { registerAppointmentAutoCloseSweeper } from "./lib/appointment-auto-close";
 import { adminSupportRoutes } from "./modules/support/support.routes";
 import { supportPublicRoutes } from "./modules/support/support.public.routes";
 import { registerSupportRetentionScheduler } from "./lib/support-retention";
@@ -460,6 +461,14 @@ export function buildApp() {
       registerAppointmentReminderSweeper(app);
     } catch (err) {
       app.log.error({ err }, "Randevu hatırlatma (appointment-reminders) scheduler kurulumu başarısız oldu.");
+    }
+
+    try {
+      // Paket A2 (2026-10-18) — 5 dakikalık kadans, süresi geçmiş SCHEDULED/IN_PROGRESS randevuları
+      // kanıta göre COMPLETED/NO_SHOW'a çeker (bkz. lib/appointment-auto-close.ts). AYNI izolasyon.
+      registerAppointmentAutoCloseSweeper(app);
+    } catch (err) {
+      app.log.error({ err }, "Randevu otomatik kapatma (appointment-auto-close) scheduler kurulumu başarısız oldu.");
     }
 
     try {

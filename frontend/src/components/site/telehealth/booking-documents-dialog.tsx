@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Check, ExternalLink, FileImage, FileText, StickyNote } from "lucide-react";
 import * as telehealthApi from "@/lib/api/telehealth";
-import { friendlyErrorMessage } from "@/lib/api/friendly-error";
+import { useFriendlyError, usePortalStrings } from "@/lib/i18n/use-portal-strings";
 import type { AppointmentDocument } from "@/lib/api/types";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -64,6 +64,8 @@ export function BookingDocumentsDialog({
   open,
   onOpenChange,
 }: BookingDocumentsDialogProps) {
+  const { t } = usePortalStrings();
+  const friendlyErrorMessage = useFriendlyError();
   const [documents, setDocuments] = useState<AppointmentDocument[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
@@ -103,7 +105,7 @@ export function BookingDocumentsDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, bookingId, accessToken]);
+  }, [open, bookingId, accessToken, friendlyErrorMessage]);
 
   // Seçili belgenin gömülü önizlemesi — belge değiştiğinde önceki blob URL temizlenir (cleanup).
   useEffect(() => {
@@ -134,7 +136,7 @@ export function BookingDocumentsDialog({
       cancelled = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [open, selectedDocId, accessToken]);
+  }, [open, selectedDocId, accessToken, friendlyErrorMessage]);
 
   async function revealNote() {
     setLoadingNote(true);
@@ -169,8 +171,8 @@ export function BookingDocumentsDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Tıbbi Belgeler</DialogTitle>
-          <DialogDescription>Bu rezervasyon için yüklenen belgeler ve hasta notu.</DialogDescription>
+          <DialogTitle>{t.documentsDialog.title}</DialogTitle>
+          <DialogDescription>{t.documentsDialog.description}</DialogDescription>
         </DialogHeader>
 
         {error && <Alert variant="error">{error}</Alert>}
@@ -184,16 +186,16 @@ export function BookingDocumentsDialog({
             <div className="flex items-center justify-between gap-2">
               <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-foreground/50">
                 <StickyNote className="h-3.5 w-3.5" aria-hidden="true" />
-                Hasta Notu
+                {t.documentsDialog.patientNote}
               </p>
               {!noteRevealed && (
                 <Button type="button" variant="outline" size="sm" onClick={() => void revealNote()} loading={loadingNote}>
-                  Görüntüle
+                  {t.documentsDialog.view}
                 </Button>
               )}
             </div>
             {noteRevealed && (
-              <p className="mt-2 whitespace-pre-line text-sm text-foreground/80">{note ?? "Bu rezervasyon için not girilmemiş."}</p>
+              <p className="mt-2 whitespace-pre-line text-sm text-foreground/80">{note ?? t.documentsDialog.noNote}</p>
             )}
           </div>
         )}
@@ -204,7 +206,7 @@ export function BookingDocumentsDialog({
             <Skeleton className="h-14 w-full rounded-[var(--site-radius)]" />
           </div>
         ) : documents.length === 0 ? (
-          <p className="text-sm text-foreground/60">Bu rezervasyon için yüklenmiş bir belge yok.</p>
+          <p className="text-sm text-foreground/60">{t.documentsDialog.noDocuments}</p>
         ) : (
           <>
             {documents.length > 1 && (
@@ -249,7 +251,7 @@ export function BookingDocumentsDialog({
                       disabled={openingExternalId === selectedDoc.id}
                       onClick={() => void openInNewTab(selectedDoc)}
                       className="flex items-center gap-1 text-foreground/50 hover:text-primary disabled:opacity-60"
-                      aria-label="Yeni sekmede aç"
+                      aria-label={t.documentsDialog.openInNewTab}
                     >
                       <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
                     </button>

@@ -62,6 +62,30 @@ export function resolveKvkkNoticePage(pages: SitePage[]): Pick<SitePage, "title"
 }
 
 /**
+ * Paket A2 (2026-10-18) — randevu ONAY KUTULARI için katı eşleştirme. Yukarıdaki çözümleyicilerin
+ * aksine eşleşme yoksa başka bir yasal belgeye DÜŞMEZ, `null` döner: hastanın onayladığı metin
+ * yanlış bir sayfaya bağlanmaz, link olmadan düz metin gösterilir (admin'e ayrıca uyarı düşer,
+ * bkz. `components/admin/telehealth/missing-legal-pages-alert.tsx`). TR ve EN anahtar kelimeler
+ * birlikte aranır (EN dilinde sayfa başlıkları/slug'ları İngilizce olabilir).
+ */
+const KVKK_CONSENT_TITLE = /kvkk|aydınlatma|privacy notice|privacy policy|data protection/i;
+const KVKK_CONSENT_SLUG = /kvkk|aydinlatma|privacy|data-protection/i;
+const EXPLICIT_CONSENT_TITLE = /açık rıza|explicit consent/i;
+const EXPLICIT_CONSENT_SLUG = /acik-riza|explicit-consent/i;
+
+function resolveLegalPageStrict(pages: SitePage[], titlePattern: RegExp, slugPattern: RegExp): Pick<SitePage, "title" | "slug"> | null {
+  return pages.find((page) => page.isLegalDocument && (titlePattern.test(page.title) || slugPattern.test(page.slug))) ?? null;
+}
+
+export function resolveKvkkConsentPage(pages: SitePage[]): Pick<SitePage, "title" | "slug"> | null {
+  return resolveLegalPageStrict(pages, KVKK_CONSENT_TITLE, KVKK_CONSENT_SLUG);
+}
+
+export function resolveExplicitConsentPage(pages: SitePage[]): Pick<SitePage, "title" | "slug"> | null {
+  return resolveLegalPageStrict(pages, EXPLICIT_CONSENT_TITLE, EXPLICIT_CONSENT_SLUG);
+}
+
+/**
  * `GET /pages` (public) — checkout `resolveDistanceSalesPage`/`resolvePreliminaryInfoPage`'i
  * beslemek için client bileşenlerinden çağrılır (`fetchPublishedPagesServer`'ın AKSİNE, `/checkout`
  * bütünüyle bir Client Component'tir, sunucu bileşeni sarmalayıcısı YOK — bkz.

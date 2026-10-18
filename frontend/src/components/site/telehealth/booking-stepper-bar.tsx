@@ -1,5 +1,6 @@
 import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { usePortalStrings } from "@/lib/i18n/use-portal-strings";
 
 /**
  * ui-designer — randevu sihirbazı (`/doctors/[slug]`) için SAF SUNUM adım çubuğu. Hiçbir
@@ -23,8 +24,9 @@ export interface BookingStepperStep {
 }
 
 export function BookingStepperBar({ steps }: { steps: BookingStepperStep[] }) {
+  const { t } = usePortalStrings();
   return (
-    <nav aria-label="Randevu adımları" data-testid="booking-stepper-bar" className="w-full">
+    <nav aria-label={t.wizard.stepsAria} data-testid="booking-stepper-bar" className="w-full">
       <ol className="flex w-full items-start">
         {steps.map((step, idx) => {
           const isLast = idx === steps.length - 1;

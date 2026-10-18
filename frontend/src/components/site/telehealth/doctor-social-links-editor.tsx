@@ -5,6 +5,7 @@ import type { DoctorSocialLink, DoctorSocialLinkPlatform } from "@/lib/api/types
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { fmt, usePortalStrings } from "@/lib/i18n/use-portal-strings";
 
 /**
  * `.claude/architect-scope-doctor-portfolio-identity-console.md` (**[DPI]**) — `DoctorProfile.
@@ -23,7 +24,6 @@ const PLATFORM_OPTIONS: { value: DoctorSocialLinkPlatform; label: string }[] = [
   { value: "linkedin", label: "LinkedIn" },
   { value: "x", label: "X (Twitter)" },
   { value: "tiktok", label: "TikTok" },
-  { value: "website", label: "Web Sitesi" },
 ];
 
 const MAX_SOCIAL_LINKS = 8;
@@ -37,6 +37,9 @@ export function DoctorSocialLinksEditor({
   links: DoctorSocialLink[];
   onChange: (links: DoctorSocialLink[]) => void;
 }) {
+  const { t } = usePortalStrings();
+  const platformOptions = [...PLATFORM_OPTIONS, { value: "website" as const, label: t.socialLinksEditor.website }];
+
   function addLink() {
     if (links.length >= MAX_SOCIAL_LINKS) return;
     onChange([...links, { ...EMPTY_LINK }]);
@@ -52,20 +55,20 @@ export function DoctorSocialLinksEditor({
 
   return (
     <div className="space-y-3">
-      {links.length === 0 && <p className="text-xs text-foreground/50">Henüz sosyal medya/web bağlantısı eklenmedi.</p>}
+      {links.length === 0 && <p className="text-xs text-foreground/50">{t.socialLinksEditor.noLinks}</p>}
 
       {links.map((link, index) => (
         <div key={index} className="space-y-3 rounded-[var(--site-radius)] border border-border p-3">
           <div className="flex items-start justify-between gap-2">
             <div className="grid flex-1 grid-cols-1 gap-2 sm:grid-cols-2">
               <label className="space-y-1 text-xs font-medium text-foreground/70">
-                Platform
+                {t.socialLinksEditor.platform}
                 <Select
-                  aria-label={`Bağlantı ${index + 1} platformu`}
+                  aria-label={fmt(t.socialLinksEditor.platformAria, { index: index + 1 })}
                   value={link.platform}
                   onChange={(e) => updateLink(index, { platform: e.target.value as DoctorSocialLinkPlatform })}
                 >
-                  {PLATFORM_OPTIONS.map((opt) => (
+                  {platformOptions.map((opt) => (
                     <option key={opt.value} value={opt.value}>
                       {opt.label}
                     </option>
@@ -73,19 +76,19 @@ export function DoctorSocialLinksEditor({
                 </Select>
               </label>
               <label className="space-y-1 text-xs font-medium text-foreground/70">
-                Etiket (opsiyonel)
+                {t.socialLinksEditor.labelOptional}
                 <Input
-                  aria-label={`Bağlantı ${index + 1} etiketi`}
+                  aria-label={fmt(t.socialLinksEditor.labelAria, { index: index + 1 })}
                   value={link.label ?? ""}
                   maxLength={80}
-                  placeholder="Örn. Kişisel Instagram"
+                  placeholder={t.socialLinksEditor.labelPlaceholder}
                   onChange={(e) => updateLink(index, { label: e.target.value || undefined })}
                 />
               </label>
               <label className="space-y-1 text-xs font-medium text-foreground/70 sm:col-span-2">
-                URL (yalnızca https://)
+                {t.socialLinksEditor.url}
                 <Input
-                  aria-label={`Bağlantı ${index + 1} adresi`}
+                  aria-label={fmt(t.socialLinksEditor.urlAria, { index: index + 1 })}
                   type="url"
                   value={link.url}
                   maxLength={500}
@@ -94,7 +97,7 @@ export function DoctorSocialLinksEditor({
                 />
               </label>
             </div>
-            <Button type="button" variant="ghost" size="icon-sm" aria-label={`${index + 1}. bağlantıyı kaldır`} onClick={() => removeLink(index)}>
+            <Button type="button" variant="ghost" size="icon-sm" aria-label={fmt(t.socialLinksEditor.removeAria, { index: index + 1 })} onClick={() => removeLink(index)}>
               <Trash2 className="h-3.5 w-3.5" />
             </Button>
           </div>
@@ -103,7 +106,7 @@ export function DoctorSocialLinksEditor({
 
       <Button type="button" variant="outline" size="sm" className="gap-1.5" disabled={links.length >= MAX_SOCIAL_LINKS} onClick={addLink}>
         <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-        Bağlantı Ekle
+        {t.socialLinksEditor.addLink}
       </Button>
     </div>
   );

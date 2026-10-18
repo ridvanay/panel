@@ -19,6 +19,9 @@ import { CancelAppointmentDialog } from "@/components/admin/telehealth/cancel-ap
 import { DeleteAppointmentDialog } from "@/components/admin/telehealth/delete-appointment-dialog";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { formatPriceFromCents } from "@/lib/format-price";
+import { resolveDisplayedAppointmentStatus } from "@/components/site/telehealth/appointment-status-badge";
+import { getJoinState } from "@/lib/telehealth-join-window";
+import { useNow } from "@/hooks/use-now";
 
 /**
  * `.claude/architect-scope-telehealth-template.md` §5.1/§8.4 — randevu listesi, hasta PII'si
@@ -48,6 +51,9 @@ const STATUS_LABELS: Record<AppointmentStatus, string> = {
   NO_SHOW: "Gelmedi",
 };
 
+/** Paket A2 — `IN_PROGRESS` ama katılım penceresi kapanmış (otomatik kapatma henüz çalışmamış). */
+const ENDED_LABEL = "Sona erdi";
+
 const STATUS_TONES: Record<AppointmentStatus, "neutral" | "primary" | "success" | "danger" | "warning"> = {
   PENDING_PAYMENT: "neutral",
   SCHEDULED: "primary",
@@ -61,6 +67,7 @@ const dateFormatter = new Intl.DateTimeFormat("tr-TR", { dateStyle: "medium", ti
 
 export default function AdminTelehealthAppointmentsPage() {
   const [appointments, setAppointments] = useState<Appointment[] | null>(null);
+  const now = useNow();
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<AppointmentStatus | "">("");
   const [search, setSearch] = useState("");
@@ -165,9 +172,15 @@ export default function AdminTelehealthAppointmentsPage() {
                       <TableCell className="text-sm text-foreground/70">{dateFormatter.format(new Date(appointment.startsAt))}</TableCell>
                       <TableCell className="text-sm text-foreground/70">{formatPriceFromCents(appointment.priceCents, appointment.currency)}</TableCell>
                       <TableCell>
-                        <Badge tone={STATUS_TONES[appointment.status]} size="sm">
-                          {STATUS_LABELS[appointment.status]}
-                        </Badge>
+                        {resolveDisplayedAppointmentStatus(appointment.status, getJoinState({ appointments: [appointment] }, now) === "ended") === "ENDED" ? (
+                          <Badge tone="neutral" size="sm">
+                            {ENDED_LABEL}
+                          </Badge>
+                        ) : (
+                          <Badge tone={STATUS_TONES[appointment.status]} size="sm">
+                            {STATUS_LABELS[appointment.status]}
+                          </Badge>
+                        )}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1">

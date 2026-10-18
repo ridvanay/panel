@@ -2951,7 +2951,10 @@ export const DoctorPortalNotificationKindSchema = z.enum(["BOOKING_CREATED", "CO
 export const DoctorPortalNotificationSchema = z.object({
   id: z.string(),
   kind: DoctorPortalNotificationKindSchema,
+  /** Türkçe hazır metin (geriye uyumluluk). */
   message: z.string(),
+  /** Paket A2 — `message` içindeki değişken kısım (rezervasyon no / hasta adı); istemci metni kendi dilinde kurar. */
+  subject: z.string().optional(),
   occurredAt: z.string(),
 });
 export type DoctorPortalNotification = z.infer<typeof DoctorPortalNotificationSchema>;

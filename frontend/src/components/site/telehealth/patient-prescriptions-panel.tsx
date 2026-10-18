@@ -3,11 +3,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, ClipboardList } from "lucide-react";
 import * as telehealthApi from "@/lib/api/telehealth";
-import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import type { AppointmentBooking } from "@/lib/api/types";
 import { formatFullDayLabel, formatTime } from "@/lib/telehealth-format";
-import { useActiveLocaleCode } from "@/context/locale-alternates-context";
-import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
+import { useFriendlyError, usePortalStrings } from "@/lib/i18n/use-portal-strings";
+import { getJoinState } from "@/lib/telehealth-join-window";
+import { useNow } from "@/hooks/use-now";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -36,7 +36,9 @@ function PrescriptionCardsSkeleton() {
 }
 
 export function PatientPrescriptionsPanel() {
-  const intlLocale = contentLocaleToIntl(useActiveLocaleCode());
+  const { t, intlLocale } = usePortalStrings();
+  const friendlyErrorMessage = useFriendlyError();
+  const now = useNow();
   const [bookings, setBookings] = useState<AppointmentBooking[] | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -53,7 +55,7 @@ export function PatientPrescriptionsPanel() {
     } catch (err) {
       setLoadError(friendlyErrorMessage(err));
     }
-  }, []);
+  }, [friendlyErrorMessage]);
 
   // `doctor-bookings-panel.tsx`teki `hasLoadedOverviewRef` ile AYNI StrictMode-fantom-çağrı
   // koruması (o dosyanın başındaki yoruma bkz.) — bu panelde `scope` sabittir ("all"), bu yüzden
@@ -86,8 +88,8 @@ export function PatientPrescriptionsPanel() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-semibold text-foreground">Reçetelerim</h1>
-        <p className="mt-1 text-sm text-foreground/60">Doktorunuzun oluşturduğu konsültasyon notlarını/reçeteleri buradan görüntüleyin.</p>
+        <h1 className="text-2xl font-semibold text-foreground">{t.patientPrescriptions.title}</h1>
+        <p className="mt-1 text-sm text-foreground/60">{t.patientPrescriptions.subtitle}</p>
       </div>
 
       {bookings === null && !loadError && <PrescriptionCardsSkeleton />}
@@ -100,7 +102,7 @@ export function PatientPrescriptionsPanel() {
               {loadError}
             </span>
             <Button type="button" variant="outline" size="sm" onClick={() => void load()}>
-              Tekrar Dene
+              {t.common.retry}
             </Button>
           </span>
         </Alert>
@@ -109,8 +111,8 @@ export function PatientPrescriptionsPanel() {
       {bookings !== null && !loadError && prescribedBookings.length === 0 && (
         <EmptyState
           icon={ClipboardList}
-          title="Henüz epikriz kaydınız yok"
-          description="Doktorunuzun oluşturduğu konsültasyon notları tamamlandıktan sonra burada görünür."
+          title={t.patientPrescriptions.emptyTitle}
+          description={t.patientPrescriptions.emptyDescription}
         />
       )}
 
@@ -135,7 +137,7 @@ export function PatientPrescriptionsPanel() {
                       </p>
                       {firstAppointment && (
                         <div className="mt-1">
-                          <AppointmentStatusBadge status={firstAppointment.status} />
+                          <AppointmentStatusBadge status={firstAppointment.status} ended={getJoinState(booking, now) === "ended"} />
                         </div>
                       )}
                     </div>
@@ -145,10 +147,10 @@ export function PatientPrescriptionsPanel() {
                 <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-3">
                   <Badge tone="primary" solid size="sm" className="gap-1">
                     <ClipboardList className="h-3 w-3" aria-hidden="true" />
-                    Epikriz Mevcut
+                    {t.patientPrescriptions.epicrisisAvailable}
                   </Badge>
                   <Button type="button" variant="outline" size="sm" onClick={() => setNoteBookingId(booking.id)}>
-                    Görüntüle
+                    {t.patientPrescriptions.view}
                   </Button>
                 </div>
               </div>
@@ -160,7 +162,7 @@ export function PatientPrescriptionsPanel() {
       {nextCursor && (
         <div className="flex justify-center">
           <Button type="button" variant="outline" size="sm" loading={loadingMore} onClick={() => void loadMore()}>
-            Daha Fazla Yükle
+            {t.common.loadMore}
           </Button>
         </div>
       )}

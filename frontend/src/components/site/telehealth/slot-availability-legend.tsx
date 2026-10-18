@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { usePortalStrings } from "@/lib/i18n/use-portal-strings";
 
 /**
  * ui-designer — randevu sihirbazının "Tarih & Saat" adımı için SAF SUNUM lejant şeridi. Prop
@@ -26,6 +27,7 @@ import { cn } from "@/lib/utils";
  * bir girdi içerir.
  */
 export function SlotAvailabilityLegend({ className }: { className?: string }) {
+  const { t } = usePortalStrings();
   return (
     <div
       data-testid="slot-availability-legend"
@@ -33,16 +35,16 @@ export function SlotAvailabilityLegend({ className }: { className?: string }) {
     >
       <LegendItem
         swatchClassName="border-primary/30 bg-primary/10"
-        label="Müsait"
+        label={t.calendar.legendAvailable}
       />
       <LegendItem
         swatchClassName="border-border/60 bg-muted"
-        label="Dolu"
+        label={t.calendar.legendFull}
         labelClassName="text-foreground/40"
       />
       <LegendItem
         swatchClassName="border-[var(--site-secondary)]/30 bg-[var(--site-secondary)]/10"
-        label="Hafta Sonu"
+        label={t.calendar.legendWeekend}
       />
     </div>
   );

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertCircle, FileImage, FileText, Paperclip, Trash2, UploadCloud, X } from "lucide-react";
 import * as telehealthApi from "@/lib/api/telehealth";
 import { ApiClientError } from "@/lib/api/error";
-import { friendlyErrorMessage } from "@/lib/api/friendly-error";
+import { fmt, useFriendlyError, usePortalStrings } from "@/lib/i18n/use-portal-strings";
 import type { AppointmentDocument } from "@/lib/api/types";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatBytes } from "@/lib/format-bytes";
@@ -51,6 +51,8 @@ interface DocumentUploaderProps {
 }
 
 export function DocumentUploader({ bookingId, accessToken, disabled, disabledReason }: DocumentUploaderProps) {
+  const { t } = usePortalStrings();
+  const friendlyErrorMessage = useFriendlyError();
   const [documents, setDocuments] = useState<AppointmentDocument[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [uploading, setUploading] = useState<UploadingItem[]>([]);
@@ -67,7 +69,7 @@ export function DocumentUploader({ bookingId, accessToken, disabled, disabledRea
       setLoadError(friendlyErrorMessage(err));
       setDocuments([]);
     }
-  }, [bookingId, accessToken]);
+  }, [bookingId, accessToken, friendlyErrorMessage]);
 
   useEffect(() => {
     void loadDocuments();
@@ -76,9 +78,9 @@ export function DocumentUploader({ bookingId, accessToken, disabled, disabledRea
   const activeCount = (documents?.length ?? 0) + uploading.length;
 
   function validateClientSide(file: File): string | null {
-    if (file.size > MAX_UPLOAD_BYTES) return "Dosya 5MB sınırını aşıyor.";
+    if (file.size > MAX_UPLOAD_BYTES) return t.uploader.tooLarge;
     if (!ACCEPTED_MIME_TYPES.includes(file.type)) {
-      return "Desteklenmeyen dosya biçimi — yalnızca PDF, PNG veya JPG yükleyebilirsiniz.";
+      return t.uploader.unsupportedType;
     }
     return null;
   }
@@ -89,7 +91,7 @@ export function DocumentUploader({ bookingId, accessToken, disabled, disabledRea
     const key = `${file.name}-${Date.now()}`;
 
     if (activeCount >= MAX_DOCUMENTS) {
-      setErrors((prev) => [...prev, { key, filename: file.name, message: "En fazla 5 belge yükleyebilirsiniz." }]);
+      setErrors((prev) => [...prev, { key, filename: file.name, message: t.uploader.limitReached }]);
       return;
     }
 
@@ -114,9 +116,9 @@ export function DocumentUploader({ bookingId, accessToken, disabled, disabledRea
         setUploading((prev) => prev.filter((u) => u.key !== key));
         const message =
           err instanceof ApiClientError && err.code === "DOCUMENT_LIMIT_REACHED"
-            ? "En fazla 5 belge yükleyebilirsiniz."
+            ? t.uploader.limitReached
             : err instanceof ApiClientError && err.code === "UNSUPPORTED_DOCUMENT_TYPE"
-              ? "Desteklenmeyen dosya biçimi — yalnızca PDF, PNG veya JPG yükleyebilirsiniz."
+              ? t.uploader.unsupportedType
               : friendlyErrorMessage(err);
         setErrors((prev) => [...prev, { key, filename: file.name, message }]);
       });
@@ -146,7 +148,7 @@ export function DocumentUploader({ bookingId, accessToken, disabled, disabledRea
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-danger">{loadError}</p>
           <button type="button" onClick={() => void loadDocuments()} className="mt-1 text-xs font-medium text-danger underline-offset-4 hover:underline">
-            Tekrar dene
+            {t.uploader.retry}
           </button>
         </div>
       </div>
@@ -159,12 +161,12 @@ export function DocumentUploader({ bookingId, accessToken, disabled, disabledRea
     <div className="space-y-2">
       {disabled ? (
         <p className="rounded-[var(--site-radius)] border border-border bg-muted/50 px-4 py-3 text-sm text-foreground/60">
-          {disabledReason ?? "Belge yüklemek için önce sağlık verisi paylaşım iznini onaylayın."}
+          {disabledReason ?? t.uploader.consentRequired}
         </p>
       ) : atLimit ? (
         <div className="flex items-center gap-2 rounded-[var(--site-radius)] border border-border bg-muted/50 px-4 py-3 text-sm text-foreground/60">
           <Paperclip className="h-4 w-4 shrink-0" aria-hidden="true" />
-          Belge sınırına ulaşıldı (5/5) — yeni bir belge eklemeden önce mevcut bir belgeyi kaldırın.
+          {t.uploader.atLimit}
         </div>
       ) : (
         <div
@@ -195,13 +197,13 @@ export function DocumentUploader({ bookingId, accessToken, disabled, disabledRea
         >
           <UploadCloud className={cn("h-8 w-8", dragOver ? "text-primary" : "text-foreground/40")} aria-hidden="true" />
           {dragOver ? (
-            <p className="text-sm font-medium text-primary">Bırakmak için serbest bırakın</p>
+            <p className="text-sm font-medium text-primary">{t.uploader.dropHere}</p>
           ) : (
             <>
               <p className="text-sm font-medium text-foreground">
-                Dosyaları buraya sürükleyin veya <span className="text-primary underline-offset-4">seçmek için tıklayın</span>
+                {t.uploader.dragOrClick} <span className="text-primary underline-offset-4">{t.uploader.clickToSelect}</span>
               </p>
-              <p className="text-xs text-foreground/50">PDF, PNG veya JPG · maksimum 5MB</p>
+              <p className="text-xs text-foreground/50">{t.uploader.formats}</p>
             </>
           )}
           <input
@@ -226,7 +228,7 @@ export function DocumentUploader({ bookingId, accessToken, disabled, disabledRea
               <div className="h-full rounded-full bg-primary transition-all duration-150" style={{ width: `${item.progress}%` }} />
             </div>
           </div>
-          <span className="shrink-0 text-xs tabular-nums text-foreground/50">%{item.progress}</span>
+          <span className="shrink-0 text-xs tabular-nums text-foreground/50">{fmt(t.uploader.progress, { percent: item.progress })}</span>
         </div>
       ))}
 
@@ -239,7 +241,7 @@ export function DocumentUploader({ bookingId, accessToken, disabled, disabledRea
           </div>
           <button
             type="button"
-            aria-label={`${document.filename} dosyasını kaldır`}
+            aria-label={fmt(t.uploader.removeFileAria, { filename: document.filename })}
             onClick={() => void handleRemove(document)}
             className="shrink-0 text-foreground/40 hover:text-danger"
           >
@@ -257,7 +259,7 @@ export function DocumentUploader({ bookingId, accessToken, disabled, disabledRea
           </div>
           <button
             type="button"
-            aria-label="Hatayı kapat"
+            aria-label={t.uploader.dismissErrorAria}
             onClick={() => setErrors((prev) => prev.filter((e) => e.key !== error.key))}
             className="shrink-0 text-danger/60 hover:text-danger"
           >

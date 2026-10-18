@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Bell, LogOut } from "lucide-react";
 import { useAuth } from "@/context/auth-context";
 import { useLocalizePath } from "@/context/locale-alternates-context";
+import { fmt, usePortalStrings } from "@/lib/i18n/use-portal-strings";
 import { useDoctorPortalContext } from "@/components/site/telehealth/doctor-portal-context";
 import { DEFAULT_HEADER_LOGO_HEIGHT } from "@/lib/site-settings/logo";
 import { cn } from "@/lib/utils";
@@ -35,6 +36,7 @@ interface DoctorTopBarProps {
 export function DoctorTopBar({ siteName, logoUrl, logoHeight }: DoctorTopBarProps) {
   const auth = useAuth();
   const localize = useLocalizePath();
+  const { t } = usePortalStrings();
   const { status, profile } = useDoctorPortalContext();
 
   const showIdentity = status === "ready" || status === "error";
@@ -44,7 +46,7 @@ export function DoctorTopBar({ siteName, logoUrl, logoHeight }: DoctorTopBarProp
   return (
     <header className="border-b border-border bg-[var(--site-header-bg)]">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
-        <Link href={bookingsHref} className="flex shrink-0 items-center gap-2 text-sm font-semibold text-foreground" aria-label={`${siteName?.trim() || "Site"} — Hekim Portalı`}>
+        <Link href={bookingsHref} className="flex shrink-0 items-center gap-2 text-sm font-semibold text-foreground" aria-label={fmt(t.doctorPortal.portalLabel, { site: siteName?.trim() || "Site" })}>
           {logoUrl ? (
             // eslint-disable-next-line @next/next/no-img-element -- site-header.tsx ile AYNI desen (remotePatterns garanti değil)
             <img
@@ -68,21 +70,21 @@ export function DoctorTopBar({ siteName, logoUrl, logoHeight }: DoctorTopBarProp
             {showNotifications && (
               <Link
                 href={`${bookingsHref}#doctor-portal-feed-card`}
-                aria-label="Portal Akışı ve Duyurular"
+                aria-label={t.doctorPortal.notificationsAria}
                 className={cn("flex items-center gap-1.5 rounded-lg px-2 py-1.5 transition-colors hover:bg-surface-muted")}
               >
                 <Bell className="h-4 w-4" aria-hidden="true" />
-                <span className="hidden sm:inline">Bildirimler</span>
+                <span className="hidden sm:inline">{t.doctorPortal.notifications}</span>
               </Link>
             )}
             <button
               type="button"
               onClick={() => void auth.logout()}
-              aria-label="Çıkış yap"
+              aria-label={t.doctorPortal.logoutAria}
               className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm transition-colors hover:bg-surface-muted"
             >
               <LogOut className="h-4 w-4" aria-hidden="true" />
-              <span className="hidden sm:inline">Çıkış Yap</span>
+              <span className="hidden sm:inline">{t.doctorPortal.logout}</span>
             </button>
           </div>
         )}

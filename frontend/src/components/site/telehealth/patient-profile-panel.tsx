@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -8,12 +8,10 @@ import { z } from "zod";
 import { AlertCircle, AlertTriangle, CircleCheck, IdCard, Mail, Phone } from "lucide-react";
 import * as telehealthApi from "@/lib/api/telehealth";
 import * as usersApi from "@/lib/api/users";
-import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import type { AppointmentBooking, BookingIdentitySummary } from "@/lib/api/types";
 import { useAuth } from "@/context/auth-context";
-import { useActiveLocaleCode } from "@/context/locale-alternates-context";
+import { fmt, useFriendlyError, usePortalStrings } from "@/lib/i18n/use-portal-strings";
 import { formatFullDayLabel } from "@/lib/telehealth-format";
-import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
@@ -29,15 +27,17 @@ import { Input } from "@/components/ui/input";
 const PHONE_REGEX = /^[0-9+()\-\s]{7,20}$/;
 
 /** `PATCH /users/me` gövdesini yansıtan istemci şeması — boş bırakılabilir (`phone: null` gönderilir). */
-const contactFormSchema = z.object({
-  phone: z
-    .string()
-    .trim()
-    .refine((value) => value === "" || PHONE_REGEX.test(value), "Geçerli bir telefon numarası giriniz.")
-    .optional(),
-});
+function buildContactFormSchema(phoneInvalidMessage: string) {
+  return z.object({
+    phone: z
+      .string()
+      .trim()
+      .refine((value) => value === "" || PHONE_REGEX.test(value), phoneInvalidMessage)
+      .optional(),
+  });
+}
 
-type ContactFormValues = z.infer<typeof contactFormSchema>;
+type ContactFormValues = z.infer<ReturnType<typeof buildContactFormSchema>>;
 
 /**
  * `.claude/architect-scope-telehealth-template.md` §9.8.5 KARAR P — `/patient/profile`. Yeni veri
@@ -72,7 +72,9 @@ function ProfileSkeleton() {
 
 export function PatientProfilePanel() {
   const { user, refreshSession } = useAuth();
-  const intlLocale = contentLocaleToIntl(useActiveLocaleCode());
+  const { t, intlLocale } = usePortalStrings();
+  const friendlyErrorMessage = useFriendlyError();
+  const contactFormSchema = useMemo(() => buildContactFormSchema(t.patientProfile.phoneInvalid), [t]);
   const [bookings, setBookings] = useState<AppointmentBooking[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -85,7 +87,7 @@ export function PatientProfilePanel() {
     } catch (err) {
       setLoadError(friendlyErrorMessage(err));
     }
-  }, []);
+  }, [friendlyErrorMessage]);
 
   useEffect(() => {
     (async () => {
@@ -112,7 +114,7 @@ export function PatientProfilePanel() {
     try {
       await usersApi.updateMe({ phone: values.phone || null });
       await refreshSession();
-      toast.success("Telefon numaranız güncellendi.");
+      toast.success(t.patientProfile.phoneUpdated);
     } catch (err) {
       const message = friendlyErrorMessage(err);
       setContactFormError("root", { message });
@@ -123,8 +125,8 @@ export function PatientProfilePanel() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-semibold text-foreground">Profilim</h1>
-        <p className="mt-1 text-sm text-foreground/60">Hesap bilgilerinizi ve son paylaştığınız kimlik özetini buradan görüntüleyin.</p>
+        <h1 className="text-2xl font-semibold text-foreground">{t.patientProfile.title}</h1>
+        <p className="mt-1 text-sm text-foreground/60">{t.patientProfile.subtitle}</p>
       </div>
 
       {loadError && (
@@ -135,7 +137,7 @@ export function PatientProfilePanel() {
               {loadError}
             </span>
             <Button type="button" variant="outline" size="sm" onClick={() => void load()}>
-              Tekrar Dene
+              {t.common.retry}
             </Button>
           </span>
         </Alert>
@@ -148,12 +150,12 @@ export function PatientProfilePanel() {
           <section className="space-y-3 rounded-[var(--site-radius)] border border-border bg-surface p-5">
             <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
               <IdCard className="h-4 w-4 text-foreground/50" aria-hidden="true" />
-              Kimlik Bilgileri
+              {t.patientProfile.identityTitle}
             </h2>
             {(() => {
               const identity = bookings ? latestIdentity(bookings) : null;
               if (!identity) {
-                return <p className="text-sm text-foreground/50">Kimlik bilgisi bulunmuyor</p>;
+                return <p className="text-sm text-foreground/50">{t.patientProfile.noIdentity}</p>;
               }
               return (
                 <div className="space-y-1.5">
@@ -161,9 +163,13 @@ export function PatientProfilePanel() {
                     <Badge tone="neutral" size="sm" className="gap-1 font-mono tabular-nums">
                       {identity.maskedNumber}
                     </Badge>
-                    <span className="text-sm text-foreground/60">{identity.citizenshipType === "TR" ? "T.C. Vatandaşı" : identity.countryCode}</span>
+                    <span className="text-sm text-foreground/60">{identity.citizenshipType === "TR" ? t.patientProfile.turkishCitizen : identity.countryCode}</span>
                   </div>
-                  <p className="text-xs text-foreground/50">Kimlik bilgisi alındı — {formatFullDayLabel(identity.capturedAt, Intl.DateTimeFormat().resolvedOptions().timeZone, intlLocale)}</p>
+                  <p className="text-xs text-foreground/50">
+                    {fmt(t.patientProfile.identityCaptured, {
+                      date: formatFullDayLabel(identity.capturedAt, Intl.DateTimeFormat().resolvedOptions().timeZone, intlLocale),
+                    })}
+                  </p>
                 </div>
               );
             })()}
@@ -172,19 +178,19 @@ export function PatientProfilePanel() {
           <section className="space-y-3 rounded-[var(--site-radius)] border border-border bg-surface p-5">
             <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
               <Mail className="h-4 w-4 text-foreground/50" aria-hidden="true" />
-              Hesap Bilgileri
+              {t.patientProfile.accountTitle}
             </h2>
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-sm text-foreground">{user?.email}</span>
               {user?.emailVerifiedAt ? (
                 <Badge tone="success" solid size="sm" className="gap-1">
                   <CircleCheck className="h-3 w-3" aria-hidden="true" />
-                  E-posta Doğrulandı
+                  {t.patientProfile.emailVerified}
                 </Badge>
               ) : (
                 <Badge tone="neutral" size="sm" className="gap-1">
                   <Mail className="h-3 w-3" aria-hidden="true" />
-                  E-posta Doğrulanmadı
+                  {t.patientProfile.emailNotVerified}
                 </Badge>
               )}
             </div>
@@ -193,7 +199,7 @@ export function PatientProfilePanel() {
           <section className="space-y-3 rounded-[var(--site-radius)] border border-border bg-surface p-5">
             <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
               <Phone className="h-4 w-4 text-foreground/50" aria-hidden="true" />
-              İletişim Bilgileri
+              {t.patientProfile.contactTitle}
             </h2>
 
             {contactErrors.root?.message && (
@@ -206,18 +212,18 @@ export function PatientProfilePanel() {
             )}
 
             <form onSubmit={handleContactFormSubmit(onContactSubmit)} noValidate className="space-y-4">
-              <Field id="name" label="Ad Soyad">
+              <Field id="name" label={t.patientProfile.fullName}>
                 {(inputProps) => <Input {...inputProps} value={user?.name ?? ""} disabled readOnly />}
               </Field>
 
-              <Field id="phone" label="Telefon Numarası" error={contactErrors.phone?.message} hint="Ör. 0555 123 45 67">
+              <Field id="phone" label={t.patientProfile.phone} error={contactErrors.phone?.message} hint={t.patientProfile.phoneHint}>
                 {(inputProps) => (
                   <Input {...inputProps} type="tel" autoComplete="tel" placeholder="0555 123 45 67" {...registerContact("phone")} />
                 )}
               </Field>
 
               <Button type="submit" loading={contactSaving}>
-                Kaydet
+                {t.common.save}
               </Button>
             </form>
           </section>

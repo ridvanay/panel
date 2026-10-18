@@ -5,6 +5,8 @@ import type { DoctorPublication, DoctorPublicationKind } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { usePortalStrings } from "@/lib/i18n/use-portal-strings";
+import type { PortalStrings } from "@/lib/i18n/site-dictionaries/en/portal";
 
 /**
  * `.claude/architect-scope-doctor-portfolio-identity-console.md` (**[DPI]**) §1.3/§1.4 —
@@ -14,12 +16,12 @@ import { Select } from "@/components/ui/select";
  * `422` ile zorlar; bu editör yalnızca `type="url"` tarayıcı-yerleşik biçim ipucunu kullanır.
  */
 
-const KIND_OPTIONS: { value: DoctorPublicationKind; label: string }[] = [
-  { value: "INTERNATIONAL_ARTICLE", label: "Uluslararası Makale" },
-  { value: "NATIONAL_ARTICLE", label: "Ulusal Makale" },
-  { value: "PROCEEDING", label: "Bildiri" },
-  { value: "BOOK_CHAPTER", label: "Kitap Bölümü" },
-  { value: "OTHER", label: "Diğer" },
+const KIND_OPTIONS: { value: DoctorPublicationKind; labelKey: keyof PortalStrings["doctorCv"] }[] = [
+  { value: "INTERNATIONAL_ARTICLE", labelKey: "pubInternational" },
+  { value: "NATIONAL_ARTICLE", labelKey: "pubNational" },
+  { value: "PROCEEDING", labelKey: "pubProceeding" },
+  { value: "BOOK_CHAPTER", labelKey: "pubBookChapter" },
+  { value: "OTHER", labelKey: "pubOther" },
 ];
 
 const MAX_PUBLICATIONS = 200;
@@ -41,6 +43,8 @@ export function DoctorPublicationsEditor({
   publications: DoctorPublication[];
   onChange: (publications: DoctorPublication[]) => void;
 }) {
+  const { t } = usePortalStrings();
+
   function addPublication() {
     if (publications.length >= MAX_PUBLICATIONS) return;
     onChange([...publications, { ...EMPTY_PUBLICATION }]);
@@ -56,49 +60,49 @@ export function DoctorPublicationsEditor({
 
   return (
     <div className="space-y-3">
-      {publications.length === 0 && <p className="text-xs text-foreground/50">Henüz bilimsel yayın eklenmedi.</p>}
+      {publications.length === 0 && <p className="text-xs text-foreground/50">{t.doctorCv.noPublications}</p>}
 
       {publications.map((pub, index) => (
         <div key={index} className="space-y-3 rounded-[var(--site-radius)] border border-border p-3">
           <div className="flex items-start justify-between gap-2">
             <div className="grid flex-1 grid-cols-1 gap-2 sm:grid-cols-2">
               <label className="space-y-1 text-xs font-medium text-foreground/70">
-                Tür
+                {t.doctorCv.type}
                 <Select value={pub.kind} onChange={(e) => updatePublication(index, { kind: e.target.value as DoctorPublicationKind })}>
                   {KIND_OPTIONS.map((opt) => (
                     <option key={opt.value} value={opt.value}>
-                      {opt.label}
+                      {t.doctorCv[opt.labelKey]}
                     </option>
                   ))}
                 </Select>
               </label>
               <label className="space-y-1 text-xs font-medium text-foreground/70">
-                Yıl
+                {t.doctorCv.year}
                 <Input type="number" min={1950} value={pub.year} onChange={(e) => updatePublication(index, { year: Number(e.target.value) })} />
               </label>
               <label className="space-y-1 text-xs font-medium text-foreground/70 sm:col-span-2">
-                Başlık
+                {t.doctorCv.title}
                 <Input value={pub.title} maxLength={300} onChange={(e) => updatePublication(index, { title: e.target.value })} />
               </label>
               <label className="space-y-1 text-xs font-medium text-foreground/70">
-                Dergi/Kongre/Kitap Adı
+                {t.doctorCv.venue}
                 <Input value={pub.venue} maxLength={200} onChange={(e) => updatePublication(index, { venue: e.target.value })} />
               </label>
               <label className="space-y-1 text-xs font-medium text-foreground/70">
-                Yazarlar (opsiyonel)
+                {t.doctorCv.authorsOptional}
                 <Input
                   value={pub.authors ?? ""}
                   maxLength={300}
-                  placeholder="Aydemir E., Bennett L. ve ark."
+                  placeholder={t.doctorCv.authorsPlaceholder}
                   onChange={(e) => updatePublication(index, { authors: e.target.value || null })}
                 />
               </label>
               <label className="space-y-1 text-xs font-medium text-foreground/70">
-                DOI (opsiyonel)
+                {t.doctorCv.doiOptional}
                 <Input value={pub.doi ?? ""} maxLength={120} onChange={(e) => updatePublication(index, { doi: e.target.value || null })} />
               </label>
               <label className="space-y-1 text-xs font-medium text-foreground/70">
-                URL (opsiyonel, yalnızca https://)
+                {t.doctorCv.urlOptional}
                 <Input
                   type="url"
                   value={pub.url ?? ""}
@@ -108,7 +112,7 @@ export function DoctorPublicationsEditor({
                 />
               </label>
             </div>
-            <Button type="button" variant="ghost" size="icon-sm" aria-label="Yayını kaldır" onClick={() => removePublication(index)}>
+            <Button type="button" variant="ghost" size="icon-sm" aria-label={t.doctorCv.removePublicationAria} onClick={() => removePublication(index)}>
               <Trash2 className="h-3.5 w-3.5" />
             </Button>
           </div>
@@ -124,7 +128,7 @@ export function DoctorPublicationsEditor({
         onClick={addPublication}
       >
         <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-        Yayın Ekle
+        {t.doctorCv.addPublication}
       </Button>
     </div>
   );

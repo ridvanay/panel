@@ -1,13 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import * as telehealthApi from "@/lib/api/telehealth";
-import { friendlyErrorMessage, fieldErrorsFrom } from "@/lib/api/friendly-error";
+import { fieldErrorsFrom } from "@/lib/api/friendly-error";
+import { fmt, useFriendlyError, usePortalStrings } from "@/lib/i18n/use-portal-strings";
+import type { PortalStrings } from "@/lib/i18n/site-dictionaries/en/portal";
 import { useDoctorPortalProfile } from "@/components/site/telehealth/doctor-portal-context";
 import {
   DoctorCvBasicFields,
@@ -20,8 +22,6 @@ import {
   type DoctorCvFormValue,
 } from "@/components/site/telehealth/doctor-cv-fields";
 import { formatPriceFromCents } from "@/lib/format-price";
-import { useActiveLocaleCode } from "@/context/locale-alternates-context";
-import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import { Badge } from "@/components/ui/badge";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -45,18 +45,24 @@ import { Alert } from "@/components/ui/alert";
 
 // Paket A4 (2026-10-18) — alt branş, mesleğe başlama yılı, hakkında, özgeçmiş, yayınlar ve diller
 // admin doktor formuyla ORTAK bileşenlerden gelir (`doctor-cv-fields.tsx`).
-const profileFormSchema = z.object({
-  bio: z.string().trim().min(1, "Kısa özet gerekli.").max(5000),
-  languages: z.array(z.string()).min(1, "En az bir dil seçin.").max(6),
-  timeZone: z.string().trim().min(1, "Saat dilimi gerekli.").max(80),
-});
-type ProfileFormValues = z.infer<typeof profileFormSchema>;
+function buildProfileFormSchema(t: PortalStrings["doctorProfile"]) {
+  return z.object({
+    bio: z.string().trim().min(1, t.bioRequired).max(5000),
+    languages: z.array(z.string()).min(1, t.languagesRequired).max(6),
+    timeZone: z.string().trim().min(1, t.timeZoneRequired).max(80),
+  });
+}
+
+type ProfileFormValues = z.infer<ReturnType<typeof buildProfileFormSchema>>;
 
 export function DoctorProfilePanel() {
   const portalProfile = useDoctorPortalProfile();
   const { doctorProfile } = portalProfile;
-  // Görev (2026-09-16) — currency/locale format denetimi (bkz. `useActiveLocaleCode` yorumu).
-  const intlLocale = contentLocaleToIntl(useActiveLocaleCode());
+  const { t, lang, intlLocale } = usePortalStrings();
+  const friendlyErrorMessage = useFriendlyError();
+  const profileFormSchema = useMemo(() => buildProfileFormSchema(t.doctorProfile), [t]);
+  // Sunucunun alan hata mesajları Türkçedir; TR dışı dillerde genel "geçersiz değer" gösterilir.
+  const localizeFieldMessage = (message: string | undefined) => (message === undefined || lang === "tr" ? message : t.doctorCv.invalidValue);
 
   // [DPI] §1.4 — `aboutHtml`/`cvEntries`/`publications` karmaşık/dizi veridir; proje genelinde
   // zengin metin/dizi editörleri RHF'in DIŞINDA, düz `useState` ile yönetilir — bu AYNI, ZATEN kurulu desendir.
@@ -102,7 +108,7 @@ export function DoctorProfilePanel() {
       // Sol-alt toast, sayfa akışını bozan sabit üst banner'ın YERİNİ alır — 4sn sonra kendiliğinden
       // kapanır, `closeButton` ile de manuel kapatılabilir (bkz. proje genelinde ZATEN kurulu
       // `components/ui/sonner.tsx` — YENİ bir bildirim sistemi İCAT EDİLMEZ).
-      toast.success("Profiliniz güncellendi. Kurumsal profil sayfanız kısa süre içinde yenilenecek.", {
+      toast.success(t.doctorProfile.saved, {
         position: "bottom-left",
         duration: 4000,
         closeButton: true,
@@ -115,18 +121,23 @@ export function DoctorProfilePanel() {
       // genel `Alert`in altında listelenir (artık sessizce genel mesaja gömülmüyor).
       const fieldErrors = fieldErrorsFrom(err);
       for (const field of ["bio", "timeZone"] as const) {
-        if (fieldErrors[field]) setError(field, { message: fieldErrors[field] });
+        if (fieldErrors[field]) setError(field, { message: localizeFieldMessage(fieldErrors[field]) });
       }
-      setCvErrors({ subSpecialty: fieldErrors.subSpecialty, practiceStartYear: fieldErrors.practiceStartYear });
-      setSubmitErrorDetails(describeArrayItemErrors(fieldErrors));
+      setCvErrors({ subSpecialty: localizeFieldMessage(fieldErrors.subSpecialty), practiceStartYear: localizeFieldMessage(fieldErrors.practiceStartYear) });
+      setSubmitErrorDetails(
+        describeArrayItemErrors(
+          Object.fromEntries(Object.entries(fieldErrors).map(([field, message]) => [field, localizeFieldMessage(message) ?? message])),
+          t.doctorCv
+        )
+      );
     }
   }
 
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-semibold text-foreground">Profilim</h1>
-        <p className="mt-1 text-sm text-foreground/60">Kurumsal özgeçmişinizi ve biyografinizi düzenleyin.</p>
+        <h1 className="text-2xl font-semibold text-foreground">{t.doctorProfile.title}</h1>
+        <p className="mt-1 text-sm text-foreground/60">{t.doctorProfile.subtitle}</p>
       </div>
 
       {/* Salt-okunur özet — unvan/ad/uzmanlık/fiyat/süre DOKTOR TARAFINDAN DEĞİŞTİRİLEMEZ. Saat
@@ -138,12 +149,12 @@ export function DoctorProfilePanel() {
             <p className="text-sm font-semibold text-foreground">
               {savedProfile.title} {savedProfile.fullName}
             </p>
-            <p className="text-xs text-foreground/60">{savedProfile.specialty?.name ?? "Genel Danışmanlık"}</p>
+            <p className="text-xs text-foreground/60">{savedProfile.specialty?.name ?? t.doctorProfile.generalConsultation}</p>
           </div>
           {portalProfile.twoFactorEnabled && (
             <Badge tone="success" solid size="sm" className="gap-1">
               <ShieldCheck className="h-3 w-3" aria-hidden="true" />
-              2FA Etkin
+              {t.doctorProfile.twoFactorEnabled}
             </Badge>
           )}
         </div>
@@ -152,23 +163,23 @@ export function DoctorProfilePanel() {
 
         <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
           <div>
-            <dt className="text-xs text-foreground/50">E-posta</dt>
+            <dt className="text-xs text-foreground/50">{t.doctorProfile.email}</dt>
             <dd className="text-foreground">{portalProfile.email}</dd>
           </div>
           <div>
-            <dt className="text-xs text-foreground/50">Seans süresi</dt>
-            <dd className="text-foreground">{savedProfile.sessionDurationMin} dakika</dd>
+            <dt className="text-xs text-foreground/50">{t.doctorProfile.sessionDuration}</dt>
+            <dd className="text-foreground">{fmt(t.doctorProfile.sessionDurationValue, { minutes: savedProfile.sessionDurationMin })}</dd>
           </div>
           <div>
-            <dt className="text-xs text-foreground/50">Seans ücreti</dt>
+            <dt className="text-xs text-foreground/50">{t.doctorProfile.sessionPrice}</dt>
             <dd className="text-foreground">
-              {savedProfile.sessionPriceCents != null ? formatPriceFromCents(savedProfile.sessionPriceCents, savedProfile.currency, intlLocale) : "Ücretsiz / Bilgi Alınız"}
+              {savedProfile.sessionPriceCents != null ? formatPriceFromCents(savedProfile.sessionPriceCents, savedProfile.currency, intlLocale) : t.doctorProfile.free}
             </dd>
           </div>
         </dl>
 
         <p className="mt-4 text-xs text-foreground/50">
-          Unvan, ad-soyad, uzmanlık alanı, fiyat ve süreyi/profil fotoğrafınızı değiştirmek için yönetici ile iletişime geçin.
+          {t.doctorProfile.adminOnlyHint}
         </p>
       </div>
 
@@ -187,9 +198,9 @@ export function DoctorProfilePanel() {
         )}
 
         <div className="space-y-4 rounded-[var(--site-radius)] border border-border bg-surface p-5">
-          <h2 className="text-sm font-semibold text-foreground">Kurumsal Bilgiler</h2>
+          <h2 className="text-sm font-semibold text-foreground">{t.doctorProfile.corporateInfo}</h2>
 
-          <Field id="bio" label="Kısa Özet" error={errors.bio?.message} required hint="Doktor kartında ve arama sonuçlarında görünür (~280 karakter önerilir).">
+          <Field id="bio" label={t.doctorProfile.bio} error={errors.bio?.message} required hint={t.doctorProfile.bioHint}>
             {(inputProps) => <Textarea {...inputProps} rows={3} maxLength={5000} {...register("bio")} />}
           </Field>
 
@@ -197,10 +208,10 @@ export function DoctorProfilePanel() {
 
           <Field
             id="timeZone"
-            label="Saat dilimi (IANA)"
+            label={t.doctorProfile.timeZone}
             error={errors.timeZone?.message}
             required
-            hint='Randevu saatleriniz bu dilimde gösterilir. Ör. "Europe/Istanbul".'
+            hint={t.doctorProfile.timeZoneHint}
           >
             {(inputProps) => <Input {...inputProps} {...register("timeZone")} />}
           </Field>
@@ -219,7 +230,7 @@ export function DoctorProfilePanel() {
         />
 
         <Button type="submit" loading={isSubmitting} className="rounded-[var(--site-radius)]">
-          Kaydet
+          {t.common.save}
         </Button>
       </form>
     </div>

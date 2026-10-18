@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { AuthPageShell } from "@/components/auth/auth-page-shell";
 import { LoginForm } from "@/components/auth/login-form";
 import { Spinner } from "@/components/ui/spinner";
+import { getSiteDictionary } from "@/lib/i18n/site-dictionaries";
 
 /**
  * `.claude/architect-scope-doctor-subdomain.md` §4 — hekim girişi İÇİN gerçek, kanonik bir rota.
@@ -19,9 +20,11 @@ export function generateMetadata(): Metadata {
   return { robots: { index: false, follow: false } };
 }
 
-export default function DoctorLoginPage() {
+export default async function DoctorLoginPage({ params }: { params: Promise<{ lang: string }> }) {
+  const { lang } = await params;
+  const { portal } = await getSiteDictionary(lang);
   return (
-    <AuthPageShell title="Hekim Girişi" subtitle="Doktor portalına erişmek için hesap bilgilerinizi girin.">
+    <AuthPageShell title={portal.doctorPortal.loginTitle} subtitle={portal.doctorPortal.loginSubtitle}>
       <Suspense fallback={<Spinner className="h-5 w-5 text-primary" />}>
         <LoginForm variant="doctor" />
       </Suspense>

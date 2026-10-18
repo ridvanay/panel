@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, CalendarPlus, CheckCircle2, Megaphone, ShieldCheck } from "lucide-react";
 import * as telehealthApi from "@/lib/api/telehealth";
-import { friendlyErrorMessage } from "@/lib/api/friendly-error";
+import { fmt, useFriendlyError, usePortalStrings } from "@/lib/i18n/use-portal-strings";
+import type { PortalStrings } from "@/lib/i18n/site-dictionaries/en/portal";
 import type {
   DoctorPortalAnnouncement,
   DoctorPortalAnnouncementSeverity,
@@ -13,8 +14,6 @@ import type {
 } from "@/lib/api/types";
 import { useDoctorPortalProfile } from "@/components/site/telehealth/doctor-portal-context";
 import { formatDayLabel, formatTime } from "@/lib/telehealth-format";
-import { useActiveLocaleCode } from "@/context/locale-alternates-context";
-import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
@@ -52,10 +51,18 @@ const SEVERITY_ACCENT_BORDER: Record<DoctorPortalAnnouncementSeverity, string> =
   SYSTEM: "border-l-danger",
 };
 
-const SEVERITY_LABEL: Record<DoctorPortalAnnouncementSeverity, string> = {
-  INFO: "Bilgi",
-  IMPORTANT: "Önemli",
-  SYSTEM: "Sistem",
+type DoctorFeedStrings = PortalStrings["doctorFeed"];
+
+const SEVERITY_LABEL_KEY: Record<DoctorPortalAnnouncementSeverity, keyof DoctorFeedStrings> = {
+  INFO: "severityInfo",
+  IMPORTANT: "severityImportant",
+  SYSTEM: "severitySystem",
+};
+
+const NOTIFICATION_TEMPLATE_KEY: Record<DoctorPortalNotificationKind, keyof DoctorFeedStrings> = {
+  BOOKING_CREATED: "notificationBookingCreated",
+  CONSENT_GIVEN: "notificationConsentGiven",
+  APPOINTMENT_COMPLETED: "notificationAppointmentCompleted",
 };
 
 const NOTIFICATION_ICON: Record<DoctorPortalNotificationKind, typeof CalendarPlus> = {
@@ -74,8 +81,7 @@ function FeedSkeleton() {
 }
 
 function AnnouncementRow({ announcement, timeZone }: { announcement: DoctorPortalAnnouncement; timeZone: string }) {
-  // Görev (2026-09-16) — takvim/randevu gün-ay-saat biçimlendirmesi denetimi (bkz. `useActiveLocaleCode` yorumu).
-  const intlLocale = contentLocaleToIntl(useActiveLocaleCode());
+  const { t, intlLocale } = usePortalStrings();
   return (
     <div
       data-testid="doctor-portal-feed-announcement"
@@ -85,7 +91,7 @@ function AnnouncementRow({ announcement, timeZone }: { announcement: DoctorPorta
       <div className="flex flex-wrap items-start justify-between gap-1.5">
         <p className="text-sm font-medium text-foreground">{announcement.title}</p>
         <Badge tone={SEVERITY_BADGE_TONE[announcement.severity]} size="sm">
-          {SEVERITY_LABEL[announcement.severity]}
+          {t.doctorFeed[SEVERITY_LABEL_KEY[announcement.severity]]}
         </Badge>
       </div>
       <p className="mt-1 text-xs text-foreground/70">{announcement.body}</p>
@@ -98,7 +104,10 @@ function AnnouncementRow({ announcement, timeZone }: { announcement: DoctorPorta
 
 function NotificationRow({ notification, timeZone }: { notification: DoctorPortalNotification; timeZone: string }) {
   const Icon = NOTIFICATION_ICON[notification.kind];
-  const intlLocale = contentLocaleToIntl(useActiveLocaleCode());
+  const { t, intlLocale } = usePortalStrings();
+  // Eski backend `subject` döndürmüyorsa sunucunun hazır (Türkçe) metnine düşülür.
+  const message =
+    notification.subject !== undefined ? fmt(t.doctorFeed[NOTIFICATION_TEMPLATE_KEY[notification.kind]], { subject: notification.subject }) : notification.message;
   return (
     <div
       data-testid="doctor-portal-feed-notification"
@@ -107,7 +116,7 @@ function NotificationRow({ notification, timeZone }: { notification: DoctorPorta
     >
       <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-foreground/50" aria-hidden="true" />
       <div className="min-w-0">
-        <p className="text-xs text-foreground">{notification.message}</p>
+        <p className="text-xs text-foreground">{message}</p>
         <p className="mt-0.5 text-[11px] text-foreground/40">
           {formatDayLabel(notification.occurredAt, timeZone, intlLocale)} · {formatTime(notification.occurredAt, timeZone, intlLocale)}
         </p>
@@ -119,6 +128,8 @@ function NotificationRow({ notification, timeZone }: { notification: DoctorPorta
 export function DoctorPortalFeedCard() {
   const profile = useDoctorPortalProfile();
   const timeZone = profile.doctorProfile.timeZone;
+  const { t } = usePortalStrings();
+  const friendlyErrorMessage = useFriendlyError();
 
   const [feed, setFeed] = useState<DoctorPortalFeed | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -131,7 +142,7 @@ export function DoctorPortalFeedCard() {
     } catch (err) {
       setError(friendlyErrorMessage(err));
     }
-  }, []);
+  }, [friendlyErrorMessage]);
 
   // frontend-agent bug fix (§5.4 invariant 4) — `DoctorPortalFeedCard` `DoctorPortalShell`'in
   // `status === "ready"` olana KADAR HİÇ mount edilmez (bkz. shell'in koşullu render'ı); yani bu
@@ -160,7 +171,7 @@ export function DoctorPortalFeedCard() {
     <section id="doctor-portal-feed-card" data-testid="doctor-portal-feed-card" className="space-y-3 rounded-[var(--site-radius)] border border-border bg-surface p-4">
       <div className="flex items-center gap-1.5">
         <Megaphone className="h-3.5 w-3.5 text-foreground/50" aria-hidden="true" />
-        <h2 className="text-xs font-semibold uppercase tracking-wide text-foreground/70">Portal Akışı &amp; Duyurular</h2>
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-foreground/70">{t.doctorFeed.title}</h2>
       </div>
 
       {error ? (
@@ -171,7 +182,7 @@ export function DoctorPortalFeedCard() {
               {error}
             </span>
             <Button type="button" variant="outline" size="sm" onClick={() => void loadFeed()}>
-              Tekrar Dene
+              {t.common.retry}
             </Button>
           </span>
         </Alert>
@@ -179,10 +190,10 @@ export function DoctorPortalFeedCard() {
         // Sidebar dar sütununda YATAY 2-kolon (duyuru/bildirim yan yana) EZİLİR — TEK dikey sütun.
         <div className="space-y-4">
           <div className="space-y-2">
-            <h3 className="text-[11px] font-semibold uppercase tracking-wide text-foreground/50">Yönetim Duyuruları</h3>
+            <h3 className="text-[11px] font-semibold uppercase tracking-wide text-foreground/50">{t.doctorFeed.announcementsTitle}</h3>
             {feed.announcements.length === 0 ? (
               <p data-testid="doctor-portal-feed-announcements-empty" className="text-xs text-foreground/50">
-                Şu an yeni bir duyuru yok.
+                {t.doctorFeed.noAnnouncements}
               </p>
             ) : (
               <div className="space-y-2">
@@ -194,10 +205,10 @@ export function DoctorPortalFeedCard() {
           </div>
 
           <div className="space-y-2">
-            <h3 className="text-[11px] font-semibold uppercase tracking-wide text-foreground/50">Hızlı Bildirimler</h3>
+            <h3 className="text-[11px] font-semibold uppercase tracking-wide text-foreground/50">{t.doctorFeed.notificationsTitle}</h3>
             {feed.notifications.length === 0 ? (
               <p data-testid="doctor-portal-feed-notifications-empty" className="text-xs text-foreground/50">
-                Şu an yeni bir bildirim yok.
+                {t.doctorFeed.noNotifications}
               </p>
             ) : (
               <div className="divide-y divide-border/50">

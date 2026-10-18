@@ -1,9 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import * as telehealthApi from "@/lib/api/telehealth";
-import { friendlyErrorMessage } from "@/lib/api/friendly-error";
+import { useFriendlyError, usePortalStrings } from "@/lib/i18n/use-portal-strings";
+import { useLocalizePath } from "@/context/locale-alternates-context";
+import { fetchLegalPagesClient, resolveExplicitConsentPage } from "@/lib/legal-pages";
+import type { SitePage } from "@/lib/api/types";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
@@ -27,9 +31,31 @@ interface BookingIntakeStepProps {
   /** Misafir hasta magic-link'i — oturum-tabanlı erişimde (booking'in kendi sahibi) verilmez. */
   accessToken?: string;
   onDone: () => void;
+  /**
+   * Paket A2 — sağlık verisi açık rıza metni sayfası. Sihirbaz sunucuda çözüp geçirir; verilmezse
+   * (ör. hasta randevu detayından sonradan ekliyorsa) yayınlanmış sayfalar istemcide okunur.
+   * Sayfa yoksa metin link OLMADAN gösterilir.
+   */
+  explicitConsentPage?: Pick<SitePage, "title" | "slug"> | null;
 }
 
-export function BookingIntakeStep({ bookingId, accessToken, onDone }: BookingIntakeStepProps) {
+export function BookingIntakeStep({ bookingId, accessToken, onDone, explicitConsentPage }: BookingIntakeStepProps) {
+  const { t, lang } = usePortalStrings();
+  const friendlyErrorMessage = useFriendlyError();
+  const localize = useLocalizePath();
+  const [fetchedConsentPage, setFetchedConsentPage] = useState<Pick<SitePage, "title" | "slug"> | null>(null);
+  useEffect(() => {
+    if (explicitConsentPage !== undefined) return;
+    let cancelled = false;
+    void fetchLegalPagesClient(lang).then((pages) => {
+      if (!cancelled) setFetchedConsentPage(resolveExplicitConsentPage(pages));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [explicitConsentPage, lang]);
+  const consentPage = explicitConsentPage ?? fetchedConsentPage;
+  const [consentBodyBefore, consentBodyAfter = ""] = t.intake.consentBody.split("{notice}");
   const [note, setNote] = useState("");
   const [consent, setConsent] = useState(false);
   const [consentTouched, setConsentTouched] = useState(false);
@@ -60,11 +86,11 @@ export function BookingIntakeStep({ bookingId, accessToken, onDone }: BookingInt
     return (
       <div className="space-y-4">
         <Alert variant="success">
-          <span>Bilgileriniz kaydedildi. Dilerseniz aşağıdan ilgili belgeleri de ekleyebilirsiniz.</span>
+          <span>{t.intake.saved}</span>
         </Alert>
         <DocumentUploader bookingId={bookingId} accessToken={accessToken} />
         <Button type="button" onClick={onDone} className="w-full rounded-[var(--site-radius)]">
-          Devam Et
+          {t.intake.continue}
         </Button>
       </div>
     );
@@ -72,18 +98,18 @@ export function BookingIntakeStep({ bookingId, accessToken, onDone }: BookingInt
 
   return (
     <div className="space-y-4 rounded-[var(--site-radius)] border border-border bg-surface p-4">
-      <p className="text-xs text-foreground/60">Bu adım opsiyoneldir — dosyanız yoksa bu adımı atlayabilirsiniz.</p>
+      <p className="text-xs text-foreground/60">{t.intake.optionalHint}</p>
 
       <div className="space-y-1.5">
         <label htmlFor="intake-note" className="block text-sm font-medium text-foreground">
-          Şikâyet / ön not <span className="font-normal text-foreground/50">(opsiyonel)</span>
+          {t.intake.noteLabel} <span className="font-normal text-foreground/50">{t.intake.optional}</span>
         </label>
         <Textarea
           id="intake-note"
           rows={4}
           maxLength={2000}
           disabled={!consent}
-          placeholder="Görüşme öncesinde doktorunuzun bilmesini istediğiniz kısa bir not yazabilirsiniz…"
+          placeholder={t.intake.notePlaceholder}
           value={note}
           onChange={(e) => setNote(e.target.value)}
         />
@@ -96,21 +122,23 @@ export function BookingIntakeStep({ bookingId, accessToken, onDone }: BookingInt
         alanlar devre dışı; backend: 422 HEALTH_CONSENT_REQUIRED).
       */}
       <div className="rounded-[var(--site-radius)] border border-border bg-muted/50 p-3">
-        <p className="text-sm font-semibold text-foreground">Sağlık Verisi Paylaşım İzni (isteğe bağlıdır)</p>
+        <p className="text-sm font-semibold text-foreground">{t.intake.consentTitle}</p>
         <p className="mt-1.5 text-xs leading-5 text-foreground/70">
-          Şikâyet notu yazmak ve/veya tıbbi belge (reçete, tahlil sonucu, radyoloji görüntüsü vb.) yüklemek
-          tamamen isteğe bağlıdır. Bu adımı atlayabilirsiniz — atlamanız randevunuzu, ödemenizi veya
-          görüşmenizi hiçbir şekilde etkilemez.
+          {t.intake.consentIntro}
         </p>
         <p className="mt-2 text-xs leading-5 text-foreground/70">
-          Paylaşmak isterseniz: Sağlık Verisi Açık Rıza Metni&apos;ni okudum. Yazdığım şikâyet notunun ve/veya
-          yüklediğim belgelerin — Kişisel Verilerin Korunması Kanunu kapsamında özel nitelikli kişisel veri
-          (sağlık verisi) sayıldığını biliyorum ve bunların yalnızca bu randevu kapsamında, ilgili doktorumla
-          paylaşılması ve şifrelenerek saklanması amacıyla işlenmesine açık rızamı veriyorum.
+          {consentBodyBefore}
+          {consentPage ? (
+            <Link href={localize(`/${consentPage.slug}`)} target="_blank" className="text-primary underline-offset-4 hover:underline">
+              {t.intake.explicitConsentNotice}
+            </Link>
+          ) : (
+            t.intake.explicitConsentNotice
+          )}
+          {consentBodyAfter}
         </p>
         <p className="mt-2 text-xs leading-5 text-foreground/70">
-          Bu rızanın yukarıdaki randevu onayından bağımsız olduğunu, istediğim zaman paylaştığım notu/belgeleri
-          bekletmeksizin silebileceğimi ve bu rızayı geri alabileceğimi biliyorum.
+          {t.intake.consentWithdrawal}
         </p>
 
         <label htmlFor="health-data-consent" className="mt-3 flex items-start gap-2.5 text-sm text-foreground/80">
@@ -121,11 +149,11 @@ export function BookingIntakeStep({ bookingId, accessToken, onDone }: BookingInt
             checked={consent}
             onCheckedChange={(checked) => setConsent(checked === true)}
           />
-          <span>Yukarıdaki metni okudum, sağlık verimin işlenmesine açık rıza veriyorum.</span>
+          <span>{t.intake.consentCheckbox}</span>
         </label>
         {consentTouched && !consent && (
           <p role="alert" className="mt-1 pl-6 text-xs text-danger">
-            Not yazmak veya belge yüklemek için bu kutuyu işaretlemelisiniz. İstemiyorsanız bu adımı atlayabilirsiniz.
+            {t.intake.consentRequired}
           </p>
         )}
       </div>
@@ -134,11 +162,11 @@ export function BookingIntakeStep({ bookingId, accessToken, onDone }: BookingInt
 
       <div className="flex flex-col gap-2 sm:flex-row">
         <Button type="button" variant="outline" onClick={onDone} className="rounded-[var(--site-radius)] sm:flex-1">
-          Bu adımı atla
+          {t.intake.skip}
         </Button>
         <Button type="button" onClick={() => void handleSave()} loading={saving} className="rounded-[var(--site-radius)] sm:flex-1">
           {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-          Kaydet ve Devam Et
+          {t.intake.saveAndContinue}
         </Button>
       </div>
     </div>

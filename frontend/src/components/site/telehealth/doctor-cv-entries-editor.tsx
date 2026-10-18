@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { usePortalStrings } from "@/lib/i18n/use-portal-strings";
+import type { PortalStrings } from "@/lib/i18n/site-dictionaries/en/portal";
 
 /**
  * `.claude/architect-scope-doctor-portfolio-identity-console.md` (**[DPI]**) §1.3/§1.4 —
@@ -15,12 +17,12 @@ import { Textarea } from "@/components/ui/textarea";
  * yüzden `onChange` her değişiklikte TÜM diziyi geri verir.
  */
 
-const KIND_OPTIONS: { value: DoctorCvEntryKind; label: string }[] = [
-  { value: "EDUCATION", label: "Eğitim" },
-  { value: "EXPERIENCE", label: "Deneyim" },
-  { value: "CERTIFICATE", label: "Sertifika" },
-  { value: "MEMBERSHIP", label: "Üyelik" },
-  { value: "AWARD", label: "Ödül" },
+const KIND_OPTIONS: { value: DoctorCvEntryKind; labelKey: keyof PortalStrings["doctorCv"] }[] = [
+  { value: "EDUCATION", labelKey: "kindEducation" },
+  { value: "EXPERIENCE", labelKey: "kindExperience" },
+  { value: "CERTIFICATE", labelKey: "kindCertificate" },
+  { value: "MEMBERSHIP", labelKey: "kindMembership" },
+  { value: "AWARD", labelKey: "kindAward" },
 ];
 
 const MAX_CV_ENTRIES = 60;
@@ -36,6 +38,8 @@ const EMPTY_ENTRY: DoctorCvEntry = {
 };
 
 export function DoctorCvEntriesEditor({ entries, onChange }: { entries: DoctorCvEntry[]; onChange: (entries: DoctorCvEntry[]) => void }) {
+  const { t } = usePortalStrings();
+
   function addEntry() {
     if (entries.length >= MAX_CV_ENTRIES) return;
     onChange([...entries, { ...EMPTY_ENTRY }]);
@@ -51,32 +55,32 @@ export function DoctorCvEntriesEditor({ entries, onChange }: { entries: DoctorCv
 
   return (
     <div className="space-y-3">
-      {entries.length === 0 && <p className="text-xs text-foreground/50">Henüz özgeçmiş öğesi eklenmedi.</p>}
+      {entries.length === 0 && <p className="text-xs text-foreground/50">{t.doctorCv.noEntries}</p>}
 
       {entries.map((entry, index) => (
         <div key={index} className="space-y-3 rounded-[var(--site-radius)] border border-border p-3">
           <div className="flex items-start justify-between gap-2">
             <div className="grid flex-1 grid-cols-1 gap-2 sm:grid-cols-2">
               <label className="space-y-1 text-xs font-medium text-foreground/70">
-                Tür
+                {t.doctorCv.type}
                 <Select value={entry.kind} onChange={(e) => updateEntry(index, { kind: e.target.value as DoctorCvEntryKind })}>
                   {KIND_OPTIONS.map((opt) => (
                     <option key={opt.value} value={opt.value}>
-                      {opt.label}
+                      {t.doctorCv[opt.labelKey]}
                     </option>
                   ))}
                 </Select>
               </label>
               <label className="space-y-1 text-xs font-medium text-foreground/70">
-                Başlık
+                {t.doctorCv.title}
                 <Input value={entry.title} maxLength={160} onChange={(e) => updateEntry(index, { title: e.target.value })} />
               </label>
               <label className="space-y-1 text-xs font-medium text-foreground/70">
-                Kurum
+                {t.doctorCv.organization}
                 <Input value={entry.organization} maxLength={160} onChange={(e) => updateEntry(index, { organization: e.target.value })} />
               </label>
               <label className="space-y-1 text-xs font-medium text-foreground/70">
-                Konum (opsiyonel)
+                {t.doctorCv.locationOptional}
                 <Input
                   value={entry.location ?? ""}
                   maxLength={120}
@@ -84,7 +88,7 @@ export function DoctorCvEntriesEditor({ entries, onChange }: { entries: DoctorCv
                 />
               </label>
               <label className="space-y-1 text-xs font-medium text-foreground/70">
-                Başlangıç Yılı
+                {t.doctorCv.startYear}
                 <Input
                   type="number"
                   min={1950}
@@ -93,7 +97,7 @@ export function DoctorCvEntriesEditor({ entries, onChange }: { entries: DoctorCv
                 />
               </label>
               <div className="space-y-1 text-xs font-medium text-foreground/70">
-                Bitiş Yılı
+                {t.doctorCv.endYear}
                 <div className="flex items-center gap-2">
                   <Input
                     type="number"
@@ -108,12 +112,12 @@ export function DoctorCvEntriesEditor({ entries, onChange }: { entries: DoctorCv
                       checked={entry.endYear === null}
                       onChange={(e) => updateEntry(index, { endYear: e.target.checked ? null : new Date().getUTCFullYear() })}
                     />
-                    Devam ediyor
+                    {t.doctorCv.ongoing}
                   </label>
                 </div>
               </div>
               <label className="space-y-1 text-xs font-medium text-foreground/70 sm:col-span-2">
-                Açıklama (opsiyonel, düz metin)
+                {t.doctorCv.descriptionOptional}
                 <Textarea
                   value={entry.description ?? ""}
                   maxLength={500}
@@ -122,7 +126,7 @@ export function DoctorCvEntriesEditor({ entries, onChange }: { entries: DoctorCv
                 />
               </label>
             </div>
-            <Button type="button" variant="ghost" size="icon-sm" aria-label="Özgeçmiş öğesini kaldır" onClick={() => removeEntry(index)}>
+            <Button type="button" variant="ghost" size="icon-sm" aria-label={t.doctorCv.removeEntryAria} onClick={() => removeEntry(index)}>
               <Trash2 className="h-3.5 w-3.5" />
             </Button>
           </div>
@@ -131,7 +135,7 @@ export function DoctorCvEntriesEditor({ entries, onChange }: { entries: DoctorCv
 
       <Button type="button" variant="outline" size="sm" className="gap-1.5" disabled={entries.length >= MAX_CV_ENTRIES} onClick={addEntry}>
         <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-        Özgeçmiş Öğesi Ekle
+        {t.doctorCv.addEntry}
       </Button>
     </div>
   );

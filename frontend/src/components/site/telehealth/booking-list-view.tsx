@@ -5,10 +5,10 @@ import { useRouter } from "next/navigation";
 import { AlertTriangle, CalendarX2, CheckCircle2, CreditCard, Paperclip, StickyNote } from "lucide-react";
 import type { AppointmentBooking, AppointmentStatus } from "@/lib/api/types";
 import { formatDayLabel, formatTime } from "@/lib/telehealth-format";
-import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import * as telehealthApi from "@/lib/api/telehealth";
-import { useLocalizePath, useActiveLocaleCode } from "@/context/locale-alternates-context";
-import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
+import { useLocalizePath } from "@/context/locale-alternates-context";
+import { fmt, useFriendlyError, usePortalStrings } from "@/lib/i18n/use-portal-strings";
+import { getJoinState } from "@/lib/telehealth-join-window";
 import { PaymentStatusBadge } from "@/components/site/telehealth/payment-status-badge";
 import { AppointmentStatusBadge } from "@/components/site/telehealth/appointment-status-badge";
 import { JoinMeetingButton } from "@/components/site/telehealth/join-meeting-button";
@@ -78,6 +78,7 @@ function BookingActions({
 }) {
   const router = useRouter();
   const localize = useLocalizePath();
+  const { t } = usePortalStrings();
 
   const status = booking.appointments[0]?.status;
 
@@ -101,11 +102,11 @@ function BookingActions({
             variant="outline"
             size="sm"
             className="gap-1"
-            aria-label={`${booking.bookingNumber} numaralı rezervasyon için ödemeyi tamamla`}
+            aria-label={fmt(t.bookingList.completePaymentAria, { bookingNumber: booking.bookingNumber })}
             onClick={() => router.push(localize(`/patient/bookings/${booking.id}`))}
           >
             <CreditCard className="h-3.5 w-3.5" aria-hidden="true" />
-            Ödemeyi Tamamla
+            {t.common.completePayment}
           </Button>
         )}
       </>
@@ -118,12 +119,12 @@ function BookingActions({
 
   return (
     <>
-      {showBadge && <AppointmentStatusBadge status={status} size="sm" />}
+      {showBadge && <AppointmentStatusBadge status={status} size="sm" ended={getJoinState(booking, now) === "ended"} />}
       {showJoin && <JoinMeetingButton booking={booking} accessToken={accessToken} size="sm" />}
       {showComplete && (
         <Button type="button" variant="success" size="sm" className="gap-1" onClick={onComplete}>
           <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
-          Seansı Tamamla
+          {t.bookingList.completeSession}
         </Button>
       )}
       {showPaymentAction && (
@@ -132,11 +133,11 @@ function BookingActions({
           variant="outline"
           size="sm"
           className="gap-1"
-          aria-label={`${booking.bookingNumber} numaralı rezervasyon için ödemeyi tamamla`}
+          aria-label={fmt(t.bookingList.completePaymentAria, { bookingNumber: booking.bookingNumber })}
           onClick={() => router.push(localize(`/patient/bookings/${booking.id}`))}
         >
           <CreditCard className="h-3.5 w-3.5" aria-hidden="true" />
-          Ödemeyi Tamamla
+          {t.common.completePayment}
         </Button>
       )}
     </>
@@ -153,6 +154,7 @@ function BookingDocumentsIndicator({
   perspective: "doctor" | "patient";
   onOpen: () => void;
 }) {
+  const { t } = usePortalStrings();
   if (!(booking.documentCount > 0 || booking.hasIntakeNote)) return null;
 
   const content = (
@@ -160,7 +162,7 @@ function BookingDocumentsIndicator({
       {booking.documentCount > 0 && (
         <Badge tone="primary" solid size="sm" className="gap-1">
           <Paperclip className="h-3 w-3" aria-hidden="true" />
-          Tıbbi Belgeler ({booking.documentCount})
+          {fmt(t.bookingList.medicalDocuments, { count: booking.documentCount })}
         </Badge>
       )}
       {booking.hasIntakeNote && (
@@ -168,7 +170,7 @@ function BookingDocumentsIndicator({
           <TooltipTrigger render={<span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-primary" />}>
             <StickyNote className="h-3 w-3" aria-hidden="true" />
           </TooltipTrigger>
-          <TooltipContent>Hasta notu da mevcut</TooltipContent>
+          <TooltipContent>{t.bookingList.patientNoteAvailable}</TooltipContent>
         </Tooltip>
       )}
     </>
@@ -190,8 +192,8 @@ function BookingDocumentsIndicator({
 }
 
 export function BookingListView({ bookings, loadError, onRetry, perspective, timeZone, accessToken }: BookingListViewProps) {
-  // Görev (2026-09-16) — takvim/randevu gün-ay-saat biçimlendirmesi denetimi (bkz. `useActiveLocaleCode` yorumu).
-  const intlLocale = contentLocaleToIntl(useActiveLocaleCode());
+  const { t, intlLocale } = usePortalStrings();
+  const friendlyErrorMessage = useFriendlyError();
   const [documentsBookingId, setDocumentsBookingId] = useState<string | null>(null);
   const [completingId, setCompletingId] = useState<string | null>(null);
   const [note, setNote] = useState("");
@@ -214,7 +216,7 @@ export function BookingListView({ bookings, loadError, onRetry, perspective, tim
             {loadError}
           </span>
           <Button type="button" variant="outline" size="sm" onClick={onRetry}>
-            Tekrar Dene
+            {t.common.retry}
           </Button>
         </span>
       </Alert>
@@ -225,9 +227,9 @@ export function BookingListView({ bookings, loadError, onRetry, perspective, tim
     return (
       <div className="flex flex-col items-center gap-2 rounded-[var(--site-radius)] border border-border bg-surface p-10 text-center">
         <CalendarX2 className="h-8 w-8 text-foreground/30" aria-hidden="true" />
-        <p className="text-sm font-medium text-foreground">Henüz bir randevunuz yok.</p>
+        <p className="text-sm font-medium text-foreground">{t.bookingList.emptyTitle}</p>
         <p className="text-xs text-foreground/50">
-          {perspective === "doctor" ? "Hastalarınız randevu aldığında burada listelenecek." : "Bir doktordan randevu aldığınızda burada listelenecek."}
+          {perspective === "doctor" ? t.bookingList.emptyDoctorDescription : t.bookingList.emptyPatientDescription}
         </p>
       </div>
     );
@@ -307,11 +309,11 @@ export function BookingListView({ bookings, loadError, onRetry, perspective, tim
       <table className="hidden w-full text-sm md:table">
         <thead>
           <tr className="border-b border-border text-left text-xs font-semibold uppercase tracking-wider text-foreground/50">
-            <th className="py-2 pr-4">{perspective === "doctor" ? "Hasta" : "Doktor"}</th>
-            <th className="py-2 pr-4">Slotlar</th>
-            <th className="py-2 pr-4">Ödeme</th>
-            <th className="py-2 pr-4">Belgeler</th>
-            <th className="py-2 pr-4 text-right">Aksiyon</th>
+            <th className="py-2 pr-4">{perspective === "doctor" ? t.bookingList.columnPatient : t.bookingList.columnDoctor}</th>
+            <th className="py-2 pr-4">{t.bookingList.columnSlots}</th>
+            <th className="py-2 pr-4">{t.bookingList.columnPayment}</th>
+            <th className="py-2 pr-4">{t.bookingList.columnDocuments}</th>
+            <th className="py-2 pr-4 text-right">{t.bookingList.columnAction}</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-border/60">
@@ -371,26 +373,29 @@ export function BookingListView({ bookings, loadError, onRetry, perspective, tim
         <Dialog open={completingId !== null} onOpenChange={(open) => !open && setCompletingId(null)}>
           <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Seansı Tamamla</DialogTitle>
+              <DialogTitle>{t.bookingList.completeSession}</DialogTitle>
               <DialogDescription>
-                {completingBooking.patientName} ile {formatDayLabel(completingFirstAppointment.startsAt, timeZone, intlLocale)} ·{" "}
-                {formatTime(completingFirstAppointment.startsAt, timeZone, intlLocale)} seansını tamamlandı olarak işaretleyeceksiniz.
+                {fmt(t.bookingList.completeDialogDescription, {
+                  patient: completingBooking.patientName,
+                  date: formatDayLabel(completingFirstAppointment.startsAt, timeZone, intlLocale),
+                  time: formatTime(completingFirstAppointment.startsAt, timeZone, intlLocale),
+                })}
               </DialogDescription>
             </DialogHeader>
 
             {completeError && <Alert variant="error">{completeError}</Alert>}
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Epikriz / Konsültasyon Notu (opsiyonel)</label>
+              <label className="text-sm font-medium text-foreground">{t.bookingList.consultationNoteLabel}</label>
               <ConsultationNoteEditor content={note} onChange={setNote} />
             </div>
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setCompletingId(null)}>
-                Vazgeç
+                {t.common.cancel}
               </Button>
               <Button type="button" variant="success" loading={submitting} onClick={() => void handleComplete()}>
-                Seansı Tamamla
+                {t.bookingList.completeSession}
               </Button>
             </DialogFooter>
           </DialogContent>

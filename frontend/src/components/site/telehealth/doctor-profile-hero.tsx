@@ -62,7 +62,7 @@ export function DoctorProfileHero({ doctor, dict, lang }: { doctor: DoctorProfil
 
         {/* [DPI] §1.1 — doktor fotoğrafının ALTINDA, boşsa HİÇ render edilmez (bkz.
             `doctor-social-links.tsx` dosya başı yorumu). */}
-        <DoctorSocialLinks links={doctor.socialLinks} />
+        <DoctorSocialLinks links={doctor.socialLinks} ariaLabel={dict.socialLinksAriaLabel} />
       </div>
 
       <div className="min-w-0 flex-1">

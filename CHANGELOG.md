@@ -13,6 +13,24 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
 
 ### Added
 
+- **`fix(telehealth)`: biten görüşmelerin durumu, portallarda TR/EN dil desteği, yasal sayfa linkleri (Paket A2, 2026-10-18).**
+  - **Otomatik kapatma:** yeni 5 dakikalık süpürücü (`lib/appointment-auto-close.ts`) süresi geçmiş
+    (`max(endsAt) + 15 dk`, booking bazında) `SCHEDULED`/`IN_PROGRESS` randevuları kapatır: görüşme
+    başlamışsa (`startedAt`) `COMPLETED` (`endedAt` = planlanan bitiş), hiç başlamamışsa `NO_SHOW`.
+    Ödenmemiş booking'ler atlanır. Her geçiş audit log'a yazılır (`telehealth.appointment.auto_closed`,
+    actor: system); e-posta gönderilmez, ödeme/not/kayıt verisine dokunulmaz. Geçmiş kayıtlar için
+    tek seferlik `scripts/close-stale-appointments.ts` (`--dry-run` destekli). Migration yok.
+  - **Rozet güvenlik ağı:** katılım penceresi kapanmış ama hâlâ `IN_PROGRESS` olan görüşme hasta
+    paneli, doktor konsolu ve admin listesinde "Devam Ediyor" yerine "Sona erdi" gösterir.
+  - **Dil desteği:** hasta portalı, doktor portalı ve randevu sihirbazı EN/TR sözlükten
+    (`site-dictionaries/{en,tr}/portal.ts`) okunur; tarih/saat/para `Intl` ile aktif dilde. EN'de
+    backend hata mesajları hata koduna göre çevrilir. Doktor akışı bildirimlerine opsiyonel `subject`
+    alanı eklendi. Admin paneli Türkçe kalır.
+  - **Yasal linkler:** randevu onay kutuları yalnızca ilgili yasal sayfa (KVKK aydınlatma / sağlık
+    verisi açık rıza) yayındaysa link verir, yoksa metin link olmadan gösterilir ve admin TeleHealth
+    özetinde uyarı çıkar. Menü/footer/CTA iç linklerinde slug doğrulaması (yalnızca `a-z0-9-`; başlık
+    yazılırsa 422). Canlıdaki kırık linkleri bulmak için salt okunur `scripts/audit-legal-links.ts`.
+
 - **`feat(telehealth)`: admin ve hasta tarafı düzeltmeleri (Paket A, 2026-10-18).**
   - **Randevu iptali:** admin iptali artık "Girdi doğrulama hatası" vermiyor (gövdesiz istek 422
     dönüyordu; backend gövdeyi opsiyonel kabul ediyor, frontend her zaman `{}` gönderiyor). İptal

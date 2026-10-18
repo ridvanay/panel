@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { Check, ChevronLeft, ChevronRight, CloudSun, Globe, ShieldAlert, Sun } from "lucide-react";
 import { useAuthOptional } from "@/context/auth-context";
 import * as telehealthApi from "@/lib/api/telehealth";
-import { friendlyErrorMessage } from "@/lib/api/friendly-error";
+import { fmt, useFriendlyError, usePortalStrings } from "@/lib/i18n/use-portal-strings";
 import type { AvailabilitySlot } from "@/lib/api/types";
 import { MAX_BOOKING_SLOTS } from "@/lib/api/types";
 import { formatDayKey, formatTime } from "@/lib/telehealth-format";
@@ -48,7 +48,8 @@ interface AvailabilityCalendarProps {
  * ürettiği `HH:mm` dizesinden saat kısmı `parseInt` ile okunur (ikinci bir saat biçimlendirici
  * İCAT EDİLMEZ, mevcut `formatTime` ile AYNI kaynaktan türer).
  */
-const HOUR_GROUP_LABELS = ["Sabah", "Öğleden Sonra"] as const;
+/** Grup anahtarları dahili; görünen başlık sözlükten gelir (`t.calendar.morning` / `afternoon`). */
+const HOUR_GROUP_LABELS = ["morning", "afternoon"] as const;
 type HourGroupLabel = (typeof HOUR_GROUP_LABELS)[number];
 
 /**
@@ -60,7 +61,7 @@ type HourGroupLabel = (typeof HOUR_GROUP_LABELS)[number];
  */
 function getHourGroupLabel(iso: string, timeZone: string): HourGroupLabel {
   const hour = parseInt(formatTime(iso, timeZone).slice(0, 2), 10);
-  return hour < 12 ? "Sabah" : "Öğleden Sonra";
+  return hour < 12 ? "morning" : "afternoon";
 }
 
 /** §2.2.1/§12.2.1 — seçim pili taban dili, çoklu seçimde de DEĞİŞMEDEN kullanılır. */
@@ -153,6 +154,14 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
   const { selectedSlots, toggleSlot, displayTimeZone, visitorTimeZone } = useBookingSelection();
   // Görev (2026-09-16) — takvim gün/ay isimleri denetimi: sabit `"tr-TR"` yerine aktif site dili.
   const intlLocale = contentLocaleToIntl(useActiveLocaleCode());
+  const { t } = usePortalStrings();
+  const friendlyErrorMessage = useFriendlyError();
+  // Pazartesi'den başlayan kısa gün adları — aktif dilde `Intl` ile (2024-01-01 bir Pazartesi).
+  const weekdayLabels = useMemo(() => {
+    const formatter = new Intl.DateTimeFormat(intlLocale, { weekday: "short", timeZone: "UTC" });
+    return Array.from({ length: 7 }, (_, i) => formatter.format(new Date(Date.UTC(2024, 0, 1 + i))));
+  }, [intlLocale]);
+  const [timesShownBefore, timesShownAfter = ""] = t.calendar.timesShownIn.split("{timeZone}");
   const [slots, setSlots] = useState<AvailabilitySlot[]>(initialSlots);
   const [monthFetchError, setMonthFetchError] = useState<string | null>(null);
   const [dayChangedNotice, setDayChangedNotice] = useState(false);
@@ -283,7 +292,7 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
         {isDoctorSession && (
           <Alert variant="warning" className="flex items-start gap-2" data-testid="doctor-session-booking-blocked-notice">
             <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-            <span>Hekim oturumu ile randevu alınamaz.</span>
+            <span>{t.calendar.doctorSessionBlocked}</span>
           </Alert>
         )}
 
@@ -298,15 +307,17 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
           <Globe className="mt-0.5 h-3.5 w-3.5 shrink-0 text-foreground/50" aria-hidden="true" />
           {visitorTimeZone ? (
             <span>
-              Saatler <strong className="font-medium text-foreground">{visitorTimeZone}</strong> diliminizde gösteriliyor
-              <span className="text-foreground/50"> (doktorun yerel saat dilimi: {doctorTimeZone})</span>
+              {timesShownBefore}
+              <strong className="font-medium text-foreground">{visitorTimeZone}</strong>
+              {timesShownAfter}
+              <span className="text-foreground/50"> {fmt(t.calendar.doctorTimeZone, { timeZone: doctorTimeZone })}</span>
             </span>
           ) : (
-            <span>Saat dilimi algılanıyor…</span>
+            <span>{t.calendar.detectingTimeZone}</span>
           )}
         </div>
 
-        {slots.length === 0 && <p className="text-sm text-foreground/60">Önümüzdeki günlerde müsait bir saat bulunmuyor.</p>}
+        {slots.length === 0 && <p className="text-sm text-foreground/60">{t.calendar.noUpcomingSlots}</p>}
       </div>
 
       {slots.length > 0 && (
@@ -322,7 +333,7 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
               <div className="mb-6 flex items-center justify-between sm:mb-8">
                 <button
                   type="button"
-                  aria-label="Önceki ay"
+                  aria-label={t.calendar.previousMonth}
                   disabled={isPrevMonthDisabled}
                   onClick={() => changeMonth(-1)}
                   className="flex h-9 w-9 items-center justify-center rounded-[var(--site-radius)] border border-border text-foreground/70 transition-colors duration-150 hover:border-primary/50 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-border disabled:hover:bg-transparent"
@@ -334,7 +345,7 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                 </p>
                 <button
                   type="button"
-                  aria-label="Sonraki ay"
+                  aria-label={t.calendar.nextMonth}
                   onClick={() => changeMonth(1)}
                   className="flex h-9 w-9 items-center justify-center rounded-[var(--site-radius)] border border-border text-foreground/70 transition-colors duration-150 hover:border-primary/50 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
                 >
@@ -343,8 +354,8 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
               </div>
 
               <div className="mb-1 grid grid-cols-7 gap-1">
-                {["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"].map((d) => (
-                  <span key={d} className="flex h-6 items-center justify-center text-[11px] font-semibold uppercase tracking-wide text-foreground/40">
+                {weekdayLabels.map((d, i) => (
+                  <span key={i} className="flex h-6 items-center justify-center text-[11px] font-semibold uppercase tracking-wide text-foreground/40">
                     {d}
                   </span>
                 ))}
@@ -375,7 +386,7 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                           key={dayKey}
                           type="button"
                           aria-pressed="true"
-                          aria-label={`${datePart} — seçili${isEarliest ? ", en yakın randevu tarihi" : ""}`}
+                          aria-label={`${fmt(t.calendar.cellSelected, { date: datePart })}${isEarliest ? t.calendar.cellEarliestSuffix : ""}`}
                           onClick={() => setSelectedDayKey(dayKey)}
                           // Görev (2026-09-14) Görev 2 — takvim SEÇİLİ GÜN hücresi artık admin
                           // panelinden yönetilen `calendarActiveBg`'e (`.telehealth-scope`'un
@@ -394,7 +405,7 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                         <button
                           key={dayKey}
                           type="button"
-                          aria-label={`${datePart} — müsait${isEarliest ? ", en yakın randevu tarihi" : ""}${isWeekend ? ", hafta sonu" : ""}`}
+                          aria-label={`${fmt(t.calendar.cellAvailable, { date: datePart })}${isEarliest ? t.calendar.cellEarliestSuffix : ""}${isWeekend ? t.calendar.cellWeekendSuffix : ""}`}
                           onClick={() => setSelectedDayKey(dayKey)}
                           className={cn(
                             "flex aspect-square w-full flex-col items-center justify-center gap-0.5 rounded-[var(--site-radius)] border text-sm font-medium tabular-nums transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface sm:text-base",
@@ -406,7 +417,7 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                           <span>{day}</span>
                           {isEarliest ? (
                             <span aria-hidden="true" className="text-[8px] font-semibold uppercase leading-none tracking-wide text-primary">
-                              Erken
+                              {t.calendar.earliest}
                             </span>
                           ) : (
                             <span
@@ -421,7 +432,7 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                     return (
                       <span
                         key={dayKey}
-                        aria-label={`${datePart} — müsait saat yok`}
+                        aria-label={fmt(t.calendar.cellUnavailable, { date: datePart })}
                         className="flex aspect-square w-full cursor-not-allowed items-center justify-center rounded-[var(--site-radius)] border border-transparent text-sm font-medium tabular-nums text-foreground/25 sm:text-base"
                       >
                         {day}
@@ -438,7 +449,7 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
               {selectedDayKey === earliestKey && earliestKey !== null && (
                 <p className="mt-3 flex items-center gap-1.5 text-xs font-medium text-primary">
                   <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
-                  En yakın müsait randevu tarihi seçili.
+                  {t.calendar.earliestSelected}
                 </p>
               )}
 
@@ -460,14 +471,14 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                     edildiği için erişilebilir ad zaten o `<label>`'ın metninden ("Dolu saatleri
                     gizle") türetilir; İKİSİNİ BİRDEN vermek çift/yinelenen bir isimle sonuçlanırdı. */}
                 <Switch size="sm" checked={hideFullSlots} onCheckedChange={setHideFullSlots} />
-                Dolu saatleri gizle
+                {t.calendar.hideFull}
               </label>
             </div>
 
             <div className="rounded-[var(--site-radius)] border border-border bg-surface p-4 sm:p-5 max-h-[460px] overflow-y-auto">
               {displayedHourGroups.length === 0 && activeDayItems.length > 0 && (
                 <p className="rounded-[var(--site-radius)] border border-dashed border-border p-4 text-center text-sm text-foreground/50">
-                  Bu gün için gösterilecek müsait saat yok. &quot;Dolu saatleri gizle&quot;yi kapatırsanız tüm saatleri görebilirsiniz.
+                  {t.calendar.noVisibleSlots}
                 </p>
               )}
 
@@ -475,7 +486,7 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                 <div className="space-y-3">
                   {displayedHourGroups.map((group) => (
                     <section key={group.label} className="overflow-hidden rounded-[var(--site-radius)] border border-border">
-                      {group.label === "Sabah" ? (
+                      {group.label === "morning" ? (
                         // Görev (2026-09-14) Görev 2 — "Sabah" grup başlığı sabit amber yerine
                         // `--telehealth-accent`'e (admin "Vurgu Rengi") EXPLICIT bağlanır;
                         // `color-mix` ile hafif bir zemin tonu üretilir (`--primary` cascade'inden
@@ -486,19 +497,19 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                         >
                           <Sun className="h-4 w-4 shrink-0" style={{ color: "var(--telehealth-accent)" }} aria-hidden="true" />
                           <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--telehealth-accent)" }}>
-                            ÖÖ Sabah
+                            {t.calendar.morning}
                           </span>
                         </div>
                       ) : (
                         <div className="flex items-center gap-2 bg-muted px-4 py-2.5">
                           <CloudSun className="h-4 w-4 shrink-0 text-foreground/50" aria-hidden="true" />
-                          <span className="text-xs font-semibold uppercase tracking-wider text-foreground/70">ÖS Öğleden Sonra</span>
+                          <span className="text-xs font-semibold uppercase tracking-wider text-foreground/70">{t.calendar.afternoon}</span>
                         </div>
                       )}
 
                       <div
                         role="group"
-                        aria-label={`${group.label} müsaitlik saatleri, en fazla ${MAX_BOOKING_SLOTS} seçim`}
+                        aria-label={fmt(group.label === "morning" ? t.calendar.morningGroupAria : t.calendar.afternoonGroupAria, { max: MAX_BOOKING_SLOTS })}
                         className="grid grid-cols-3 gap-2.5 p-3 sm:grid-cols-4"
                       >
                         {group.items.map((slot) => {
@@ -513,7 +524,7 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                                 type="button"
                                 role="checkbox"
                                 aria-checked="true"
-                                aria-label={`${time} — seçili`}
+                                aria-label={fmt(t.calendar.slotSelected, { time })}
                                 onClick={() => handleSlotClick(slot)}
                                 className={cn(SELECTION_PILL_BASE, "px-3 min-w-[84px]", SELECTION_PILL_SELECTED)}
                               >
@@ -531,13 +542,13 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                                 <TooltipTrigger>
                                   <span
                                     aria-disabled="true"
-                                    aria-label={`${time} — müsait, ancak hekim oturumu ile randevu alınamaz`}
+                                    aria-label={fmt(t.calendar.slotDoctorBlocked, { time })}
                                     className={cn(SELECTION_PILL_BASE, "px-3 min-w-[84px]", SELECTION_PILL_AT_LIMIT)}
                                   >
                                     {time}
                                   </span>
                                 </TooltipTrigger>
-                                <TooltipContent>Hekim oturumu ile randevu alınamaz.</TooltipContent>
+                                <TooltipContent>{t.calendar.doctorSessionBlocked}</TooltipContent>
                               </Tooltip>
                             );
                           }
@@ -546,7 +557,7 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                             return (
                               <span
                                 key={slot.startsAt}
-                                aria-label={`${time} — geçmiş, artık kullanılamaz`}
+                                aria-label={fmt(t.calendar.slotPast, { time })}
                                 className="flex h-10 min-w-[84px] cursor-not-allowed items-center justify-center rounded-[var(--site-radius)] border border-transparent px-3 text-sm font-medium tabular-nums text-foreground/25"
                               >
                                 {time}
@@ -558,12 +569,12 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                             return (
                               <span
                                 key={slot.startsAt}
-                                aria-label={`${time} — dolu, seçilemez`}
+                                aria-label={fmt(t.calendar.slotFull, { time })}
                                 aria-disabled="true"
                                 className="flex h-10 min-w-[84px] cursor-not-allowed flex-col items-center justify-center rounded-[var(--site-radius)] border border-border/60 bg-muted px-3 text-sm font-medium tabular-nums text-foreground/40"
                               >
                                 <span className="line-through decoration-foreground/30">{time}</span>
-                                <span className="text-[10px] text-foreground/50">Dolu</span>
+                                <span className="text-[10px] text-foreground/50">{t.calendar.full}</span>
                               </span>
                             );
                           }
@@ -576,13 +587,13 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                                 <TooltipTrigger>
                                   <span
                                     aria-disabled="true"
-                                    aria-label={`${time} — müsait, ancak en fazla ${MAX_BOOKING_SLOTS} slot seçilebilir`}
+                                    aria-label={fmt(t.calendar.slotAtLimit, { time, max: MAX_BOOKING_SLOTS })}
                                     className={cn(SELECTION_PILL_BASE, "px-3 min-w-[84px]", SELECTION_PILL_AT_LIMIT)}
                                   >
                                     {time}
                                   </span>
                                 </TooltipTrigger>
-                                <TooltipContent>En fazla {MAX_BOOKING_SLOTS} slot seçebilirsiniz</TooltipContent>
+                                <TooltipContent>{fmt(t.calendar.atLimitTooltip, { max: MAX_BOOKING_SLOTS })}</TooltipContent>
                               </Tooltip>
                             );
                           }
@@ -593,7 +604,7 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
                               type="button"
                               role="checkbox"
                               aria-checked="false"
-                              aria-label={`${time} — müsait`}
+                              aria-label={fmt(t.calendar.slotAvailable, { time })}
                               onClick={() => handleSlotClick(slot)}
                               className={cn(SELECTION_PILL_BASE, "px-3 min-w-[84px]", SELECTION_PILL_AVAILABLE)}
                             >
@@ -611,7 +622,7 @@ export function AvailabilityCalendar({ doctorSlug, doctorTimeZone, initialSlots,
             {/* §12.2.3 — farklı bir gün seçildiğinde önceki seçim otomatik temizlenir + bilgi notu. */}
             {dayChangedNotice && (
               <Alert variant="info" className="mt-3">
-                Farklı bir gün seçtiğiniz için önceki seçiminiz temizlendi.
+                {t.calendar.dayChanged}
               </Alert>
             )}
           </div>

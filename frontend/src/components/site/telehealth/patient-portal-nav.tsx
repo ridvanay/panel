@@ -7,6 +7,8 @@ import type { ComponentType } from "react";
 import type { LucideProps } from "lucide-react";
 import { useLocalizePath } from "@/context/locale-alternates-context";
 import { cn } from "@/lib/utils";
+import { usePortalStrings } from "@/lib/i18n/use-portal-strings";
+import type { PortalStrings } from "@/lib/i18n/site-dictionaries/en/portal";
 
 /**
  * `.claude/design-notes-telehealth.md` §14.1 — hasta portalı gezinme paterni. TEK bileşen, `variant`
@@ -22,17 +24,17 @@ import { cn } from "@/lib/utils";
 
 interface NavItem {
   href: string;
-  label: string;
+  labelKey: keyof Omit<PortalStrings["patientNav"], "ariaLabel">;
   icon: ComponentType<LucideProps>;
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { href: "/patient", label: "Genel Bakış", icon: LayoutDashboard },
-  { href: "/patient/appointments", label: "Randevularım", icon: CalendarClock },
-  { href: "/patient/documents", label: "Belgelerim", icon: FileText },
-  { href: "/patient/prescriptions", label: "Reçetelerim", icon: ClipboardList },
-  { href: "/patient/payments", label: "Ödemelerim", icon: CreditCard },
-  { href: "/patient/profile", label: "Profilim", icon: UserCog },
+  { href: "/patient", labelKey: "overview", icon: LayoutDashboard },
+  { href: "/patient/appointments", labelKey: "appointments", icon: CalendarClock },
+  { href: "/patient/documents", labelKey: "documents", icon: FileText },
+  { href: "/patient/prescriptions", labelKey: "prescriptions", icon: ClipboardList },
+  { href: "/patient/payments", labelKey: "payments", icon: CreditCard },
+  { href: "/patient/profile", labelKey: "profile", icon: UserCog },
 ];
 
 const BASE_LINK_CLASS =
@@ -48,11 +50,12 @@ function isNavItemActive(pathname: string | null, localizedHref: string): boolea
 export function PatientPortalNav({ variant, className }: { variant: "rail" | "strip"; className?: string }) {
   const pathname = usePathname();
   const localize = useLocalizePath();
+  const { t } = usePortalStrings();
   const localizedOverviewHref = localize("/patient");
 
   return (
     <nav
-      aria-label="Hasta portalı gezinmesi"
+      aria-label={t.patientNav.ariaLabel}
       className={cn(
         variant === "rail" ? "flex flex-col gap-1" : "-mx-4 flex gap-1 overflow-x-auto px-4 pb-1 sm:-mx-6 sm:px-6",
         className
@@ -77,7 +80,7 @@ export function PatientPortalNav({ variant, className }: { variant: "rail" | "st
             )}
           >
             <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
-            {item.label}
+            {t.patientNav[item.labelKey]}
           </Link>
         );
       })}

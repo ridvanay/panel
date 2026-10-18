@@ -7,7 +7,7 @@ import { useLocalizePath } from "@/context/locale-alternates-context";
 import { useAuth } from "@/context/auth-context";
 import { useDoctorPortalContext } from "@/components/site/telehealth/doctor-portal-context";
 import { TwoFactorSetupPanel } from "@/components/site/security/two-factor-setup-panel";
-import { friendlyErrorMessage } from "@/lib/api/friendly-error";
+import { useFriendlyError, usePortalStrings } from "@/lib/i18n/use-portal-strings";
 import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
 import type { ReactNode } from "react";
@@ -46,6 +46,8 @@ export function DoctorPortalShell({ children }: DoctorPortalShellProps) {
   const localize = useLocalizePath();
   const { refreshSession } = useAuth();
   const { status, error, retry } = useDoctorPortalContext();
+  const { t } = usePortalStrings();
+  const friendlyErrorMessage = useFriendlyError();
 
   /**
    * `.claude/architect-scope-doctor-subdomain.md` §5.6.2 "Çıkış koşulu" — BAĞLAYICI sıra.
@@ -72,9 +74,9 @@ export function DoctorPortalShell({ children }: DoctorPortalShellProps) {
       <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
         <div className="flex flex-col items-center gap-3 rounded-[var(--site-radius)] border border-border bg-surface p-10 text-center">
           <AlertTriangle className="h-8 w-8 text-foreground/40" aria-hidden="true" />
-          <p className="text-sm font-medium text-foreground">Bu hesaba bağlı bir doktor profili bulunamadı.</p>
+          <p className="text-sm font-medium text-foreground">{t.doctorPortal.notADoctorTitle}</p>
           <p className="max-w-sm text-xs text-foreground/50">
-            Doktor portalına yalnızca sisteme kayıtlı bir doktor profiliyle ilişkilendirilmiş hesaplar erişebilir.
+            {t.doctorPortal.notADoctorDescription}
           </p>
         </div>
       </div>
@@ -91,9 +93,9 @@ export function DoctorPortalShell({ children }: DoctorPortalShellProps) {
         <div className="mx-auto flex max-w-lg flex-col items-center gap-4 rounded-[var(--site-radius)] border border-warning/30 bg-warning/5 p-8 text-center sm:p-10">
           <ShieldAlert className="h-8 w-8 text-warning" aria-hidden="true" />
           <div className="space-y-1">
-            <p className="text-sm font-medium text-foreground">Bu işlem için iki adımlı doğrulamanın (2FA) etkin olması gerekir.</p>
+            <p className="text-sm font-medium text-foreground">{t.doctorPortal.twoFactorTitle}</p>
             <p className="text-xs text-foreground/60">
-              Doktor portalına erişebilmek için önce iki adımlı doğrulamayı etkinleştirin.
+              {t.doctorPortal.twoFactorDescription}
             </p>
           </div>
           <TwoFactorSetupPanel onCompleted={handleTwoFactorSetupCompleted} />
@@ -109,7 +111,7 @@ export function DoctorPortalShell({ children }: DoctorPortalShellProps) {
           <AlertTriangle className="h-8 w-8 text-danger" aria-hidden="true" />
           <p className="text-sm font-medium text-foreground">{friendlyErrorMessage(error)}</p>
           <Button type="button" variant="outline" size="sm" onClick={retry}>
-            Tekrar Dene
+            {t.common.retry}
           </Button>
         </div>
       </div>
@@ -124,13 +126,13 @@ export function DoctorPortalShell({ children }: DoctorPortalShellProps) {
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
       <nav className="mb-6 flex flex-wrap items-center gap-4 border-b border-border pb-4 text-sm text-foreground/70">
         <Link href={bookingsHref} className={pathname === bookingsHref ? "font-medium text-primary" : "hover:text-foreground"}>
-          Randevularım
+          {t.doctorPortal.navAppointments}
         </Link>
         <Link href={earningsHref} className={pathname === earningsHref ? "font-medium text-primary" : "hover:text-foreground"}>
-          Kazançlarım
+          {t.doctorPortal.navEarnings}
         </Link>
         <Link href={profileHref} className={pathname === profileHref ? "font-medium text-primary" : "hover:text-foreground"}>
-          Profilim
+          {t.doctorPortal.navProfile}
         </Link>
       </nav>
       {children}

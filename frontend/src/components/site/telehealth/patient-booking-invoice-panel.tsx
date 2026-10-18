@@ -3,13 +3,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, Printer } from "lucide-react";
 import * as telehealthApi from "@/lib/api/telehealth";
-import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import type { BookingInvoice } from "@/lib/api/types";
 import { formatPriceFromCents } from "@/lib/format-price";
 import { formatDayLabel, formatTime } from "@/lib/telehealth-format";
 import { useAuth } from "@/context/auth-context";
-import { useActiveLocaleCode } from "@/context/locale-alternates-context";
-import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
+import { useFriendlyError, usePortalStrings } from "@/lib/i18n/use-portal-strings";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -26,8 +24,8 @@ export function PatientBookingInvoicePanel({ bookingId, accessToken }: { booking
   const [invoice, setInvoice] = useState<BookingInvoice | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  // Görev (2026-09-16) — currency/locale format denetimi (bkz. `useActiveLocaleCode` yorumu).
-  const intlLocale = contentLocaleToIntl(useActiveLocaleCode());
+  const { t, intlLocale } = usePortalStrings();
+  const friendlyErrorMessage = useFriendlyError();
 
   /**
    * Bug-fix turu (2026-09-15, frontend-agent) — bu sayfaya `booking-summary-card.tsx`teki fatura
@@ -59,7 +57,7 @@ export function PatientBookingInvoicePanel({ bookingId, accessToken }: { booking
       setLoadError(friendlyErrorMessage(err));
       setFailedAttempts((prev) => prev + 1);
     }
-  }, [bookingId, accessToken]);
+  }, [bookingId, accessToken, friendlyErrorMessage]);
 
   useEffect(() => {
     if (waitingForSession) return;
@@ -95,7 +93,7 @@ export function PatientBookingInvoicePanel({ bookingId, accessToken }: { booking
             {loadError}
           </span>
           <Button type="button" variant="outline" size="sm" onClick={() => void load()}>
-            Tekrar Dene
+            {t.common.retry}
           </Button>
         </span>
       </Alert>
@@ -105,32 +103,32 @@ export function PatientBookingInvoicePanel({ bookingId, accessToken }: { booking
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between print:hidden">
-        <h1 className="text-xl font-semibold text-foreground">Ödeme Belgesi (bilgi amaçlıdır)</h1>
+        <h1 className="text-xl font-semibold text-foreground">{t.invoice.title}</h1>
         <Button type="button" variant="outline" size="sm" onClick={() => window.print()}>
           <Printer className="h-4 w-4" aria-hidden="true" />
-          Yazdır
+          {t.invoice.print}
         </Button>
       </div>
 
       <div className="rounded-[var(--site-radius)] border border-border bg-surface p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="text-xs text-foreground/50">Rezervasyon No</p>
+            <p className="text-xs text-foreground/50">{t.invoice.bookingNumber}</p>
             <p className="text-sm font-medium text-foreground">{invoice.bookingNumber}</p>
           </div>
           <div className="text-right">
-            <p className="text-xs text-foreground/50">Düzenlenme Tarihi</p>
+            <p className="text-xs text-foreground/50">{t.invoice.issuedAt}</p>
             <p className="text-sm font-medium text-foreground">{new Intl.DateTimeFormat(intlLocale, { dateStyle: "long" }).format(new Date(invoice.issuedAt))}</p>
           </div>
         </div>
 
         <div className="my-4 grid grid-cols-1 gap-4 border-t border-border pt-4 sm:grid-cols-2">
           <div>
-            <p className="text-xs text-foreground/50">Satıcı</p>
+            <p className="text-xs text-foreground/50">{t.invoice.seller}</p>
             <p className="text-sm text-foreground">{invoice.seller.name}</p>
           </div>
           <div>
-            <p className="text-xs text-foreground/50">Alıcı</p>
+            <p className="text-xs text-foreground/50">{t.invoice.buyer}</p>
             <p className="text-sm text-foreground">{invoice.buyer.name}</p>
             <p className="text-xs text-foreground/60">{invoice.buyer.email}</p>
           </div>
@@ -139,9 +137,9 @@ export function PatientBookingInvoicePanel({ bookingId, accessToken }: { booking
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border text-left text-xs font-semibold uppercase tracking-wider text-foreground/50">
-              <th className="py-2">Açıklama</th>
-              <th className="py-2">Tarih</th>
-              <th className="py-2 text-right">Tutar</th>
+              <th className="py-2">{t.invoice.description}</th>
+              <th className="py-2">{t.invoice.date}</th>
+              <th className="py-2 text-right">{t.invoice.amount}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border/60">
@@ -158,7 +156,7 @@ export function PatientBookingInvoicePanel({ bookingId, accessToken }: { booking
         </table>
 
         <div className="mt-4 flex items-baseline justify-between border-t border-border pt-4">
-          <span className="text-sm font-semibold text-foreground">Toplam</span>
+          <span className="text-sm font-semibold text-foreground">{t.invoice.total}</span>
           <span className="text-xl font-semibold text-foreground">{formatPriceFromCents(invoice.totalCents, invoice.currency, intlLocale)}</span>
         </div>
 

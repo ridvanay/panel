@@ -4,7 +4,7 @@ import { fetchDoctorBySlugServer, fetchDoctorSlotsServer } from "@/lib/api/serve
 import { fetchLocalesServer } from "@/lib/api/server-locales";
 import { fetchSiteSettingsServer } from "@/lib/api/server-settings";
 import { fetchPublishedPagesServer } from "@/lib/api/server-pages";
-import { resolveKvkkNoticePage } from "@/lib/legal-pages";
+import { resolveExplicitConsentPage, resolveKvkkConsentPage } from "@/lib/legal-pages";
 import { DoctorProfileHero } from "@/components/site/telehealth/doctor-profile-hero";
 import { DoctorProfileTabs } from "@/components/site/telehealth/doctor-profile-tabs";
 import { DoctorQuickBookingCard } from "@/components/site/telehealth/doctor-quick-booking-card";
@@ -138,7 +138,9 @@ export default async function DoctorDetailPage({ params }: DoctorDetailPageProps
   if (!doctor) notFound();
 
   const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? lang;
-  const kvkkPage = resolveKvkkNoticePage(pages);
+  // Paket A2 — onay kutusu linkleri katı eşleşir: ilgili sayfa yoksa link yerine düz metin gösterilir.
+  const kvkkPage = resolveKvkkConsentPage(pages);
+  const explicitConsentPage = resolveExplicitConsentPage(pages);
   const canonicalUrl = resolveCanonicalUrl(lang, defaultLocaleCode, slug);
 
   /* Grid görevi (2026-09-14) Görev 2a — `DoctorQuickBookingCard`'ın "En erken müsait tarih"
@@ -217,6 +219,7 @@ export default async function DoctorDetailPage({ params }: DoctorDetailPageProps
                 defaultLocaleCode={defaultLocaleCode}
                 initialSlots={slots}
                 kvkkPage={kvkkPage}
+                explicitConsentPage={explicitConsentPage}
                 intlLocale={contentLocaleToIntl(lang)}
                 telehealthDict={dict.telehealth}
               />

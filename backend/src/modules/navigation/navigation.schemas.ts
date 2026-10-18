@@ -14,6 +14,14 @@ const HrefSchema = z
   .regex(
     /^(https?:\/\/|\/(?!\/|\\)|#)/,
     "Geçersiz bağlantı: yalnızca http(s)://, / (protokol-relative olmayan) veya # ile başlayan yollar kabul edilir"
+  )
+  // Paket A2 (2026-10-18) — canlıda `/pages/Distance%20Service%20Agreement` 404'ü: iç bağlantıya slug
+  // yerine sayfa BAŞLIĞI yazılmıştı. Site içi yolun (sorgu/fragment hariç) yalnızca küçük harf,
+  // rakam ve `-` (dosya yolları için `.`/`_`) içermesi zorunlu; boşluk, büyük harf, Türkçe karakter
+  // ve `%` kodlaması reddedilir.
+  .refine(
+    (href) => !href.startsWith("/") || /^\/[a-z0-9\-._/]*$/.test(href.split(/[?#]/)[0]!),
+    "Geçersiz site içi bağlantı: yol yalnızca küçük harf, rakam ve - içerebilir (ör. /kullanim-kosullari). Sayfa başlığını değil slug'ını yazın."
   );
 
 export const NavigationItemInputSchema = z.object({

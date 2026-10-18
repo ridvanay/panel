@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Printer } from "lucide-react";
 import * as telehealthApi from "@/lib/api/telehealth";
-import { friendlyErrorMessage } from "@/lib/api/friendly-error";
+import { fmt, useFriendlyError, usePortalStrings } from "@/lib/i18n/use-portal-strings";
 import type { AppointmentBooking } from "@/lib/api/types";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -31,6 +31,8 @@ export function PatientConsultationNoteDialog({
   // çağıranlarındaki AYNI koşullu render deseni) yalnızca `open` iken mount edilir — kapanışta
   // tamamen UNMOUNT olur, bir sonraki açılışta state doğal olarak sıfırlanır (ayrı bir sıfırlama
   // efekti GEREKMEZ, `react-hooks/set-state-in-effect` uyarısını da doğar).
+  const { t } = usePortalStrings();
+  const friendlyErrorMessage = useFriendlyError();
   const [note, setNote] = useState<string | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -52,9 +54,9 @@ export function PatientConsultationNoteDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader className="print:hidden">
-          <DialogTitle>Doktor Notu / Reçete</DialogTitle>
+          <DialogTitle>{t.consultationNote.title}</DialogTitle>
           <DialogDescription>
-            {booking.doctor.title} {booking.doctor.fullName} tarafından oluşturulan konsültasyon notu.
+            {fmt(t.consultationNote.description, { doctor: `${booking.doctor.title} ${booking.doctor.fullName}` })}
           </DialogDescription>
         </DialogHeader>
 
@@ -67,7 +69,7 @@ export function PatientConsultationNoteDialog({
               {booking.doctor.title} {booking.doctor.fullName}
             </p>
             <div className="text-right">
-              <p className="text-xs text-foreground/50">Hasta</p>
+              <p className="text-xs text-foreground/50">{t.consultationNote.patient}</p>
               <p className="text-sm font-medium text-foreground">{booking.patientName}</p>
             </div>
           </div>
@@ -78,7 +80,7 @@ export function PatientConsultationNoteDialog({
             <Skeleton className="h-40 w-full rounded-[var(--site-radius)]" />
           ) : (
             <Button type="button" variant="outline" size="sm" onClick={() => void loadNote()}>
-              Görüntüle
+              {t.consultationNote.view}
             </Button>
           )
         ) : (
@@ -86,7 +88,7 @@ export function PatientConsultationNoteDialog({
             <div className="flex justify-end print:hidden">
               <Button type="button" variant="outline" size="sm" onClick={() => window.print()}>
                 <Printer className="h-4 w-4" aria-hidden="true" />
-                Yazdır
+                {t.consultationNote.print}
               </Button>
             </div>
             <div className="rounded-[var(--site-radius)] border border-border bg-surface p-4">

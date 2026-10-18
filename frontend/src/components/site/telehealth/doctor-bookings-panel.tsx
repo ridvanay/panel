@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as telehealthApi from "@/lib/api/telehealth";
-import { friendlyErrorMessage } from "@/lib/api/friendly-error";
+import { useFriendlyError, usePortalStrings } from "@/lib/i18n/use-portal-strings";
+import type { PortalStrings } from "@/lib/i18n/site-dictionaries/en/portal";
 import type { AppointmentBooking, DoctorBookingsScope, DoctorConsoleOverview } from "@/lib/api/types";
 import { useDoctorPortalProfile } from "@/components/site/telehealth/doctor-portal-context";
 import { DoctorPortalFeedCard } from "@/components/site/telehealth/doctor-portal-feed-card";
@@ -33,11 +34,13 @@ import { useNow } from "@/hooks/use-now";
  * randevuları görür, duyurular altta kalır (ekstra `order-*` sınıfı GEREKMEZ).
  */
 
-const SCOPE_TABS: { value: DoctorBookingsScope; label: string }[] = [
-  { value: "all", label: "Tümü" },
-  { value: "today", label: "Bugün" },
-  { value: "upcoming", label: "Gelecek Randevular" },
-  { value: "completed", label: "Tamamlananlar" },
+type DoctorConsoleStrings = PortalStrings["doctorConsole"];
+
+const SCOPE_TABS: { value: DoctorBookingsScope; labelKey: keyof DoctorConsoleStrings }[] = [
+  { value: "all", labelKey: "tabAll" },
+  { value: "today", labelKey: "tabToday" },
+  { value: "upcoming", labelKey: "tabUpcoming" },
+  { value: "completed", labelKey: "tabCompleted" },
 ];
 
 /**
@@ -56,23 +59,11 @@ export function scopeCount(scope: DoctorBookingsScope, overview: DoctorConsoleOv
   return overview.allBookingTotal;
 }
 
-const EMPTY_STATE_COPY: Record<DoctorBookingsScope, { title: string; description: string }> = {
-  all: {
-    title: "Henüz bir randevunuz yok.",
-    description: "Hastalarınız randevu aldığında burada listelenecek.",
-  },
-  today: {
-    title: "Bugün için planlanmış randevunuz bulunmamaktadır.",
-    description: "Hastalarınız randevu aldığında burada listelenecek.",
-  },
-  upcoming: {
-    title: "Yaklaşan bir randevunuz yok.",
-    description: "Hastalarınız randevu aldığında burada listelenecek.",
-  },
-  completed: {
-    title: "Tamamlanmış bir randevunuz yok.",
-    description: "Tamamlanan konsültasyonlarınız burada listelenecek.",
-  },
+const EMPTY_STATE_COPY: Record<DoctorBookingsScope, { titleKey: keyof DoctorConsoleStrings; descriptionKey: keyof DoctorConsoleStrings }> = {
+  all: { titleKey: "emptyAllTitle", descriptionKey: "emptyDescription" },
+  today: { titleKey: "emptyTodayTitle", descriptionKey: "emptyDescription" },
+  upcoming: { titleKey: "emptyUpcomingTitle", descriptionKey: "emptyDescription" },
+  completed: { titleKey: "emptyCompletedTitle", descriptionKey: "emptyCompletedDescription" },
 };
 
 function OverviewSkeleton() {
@@ -99,6 +90,8 @@ function BookingCardsSkeleton() {
 export function DoctorBookingsPanel() {
   const profile = useDoctorPortalProfile();
   const timeZone = profile.doctorProfile.timeZone;
+  const { t } = usePortalStrings();
+  const friendlyErrorMessage = useFriendlyError();
 
   const [overview, setOverview] = useState<DoctorConsoleOverview | null>(null);
   const [overviewError, setOverviewError] = useState<string | null>(null);
@@ -125,7 +118,7 @@ export function DoctorBookingsPanel() {
     } catch (err) {
       setOverviewError(friendlyErrorMessage(err));
     }
-  }, []);
+  }, [friendlyErrorMessage]);
 
   const loadBookings = useCallback(async (nextScope: DoctorBookingsScope) => {
     setLoadError(null);
@@ -137,7 +130,7 @@ export function DoctorBookingsPanel() {
     } catch (err) {
       setLoadError(friendlyErrorMessage(err));
     }
-  }, []);
+  }, [friendlyErrorMessage]);
 
   // frontend-agent bug fix (`.claude/architect-scope-doctor-subdomain.md` §5.4 invariant 4 —
   // qa-agent'ın bulduğu bug, bkz. `doctor-portal-feed-card.tsx`'teki AYNI kök neden açıklaması):
@@ -191,8 +184,8 @@ export function DoctorBookingsPanel() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-semibold text-foreground">Doktor Konsolu</h1>
-        <p className="mt-1 text-sm text-foreground/60">Hastalarınızın rezervasyonlarını, belgelerini ve konsültasyon notlarını buradan yönetin.</p>
+        <h1 className="text-2xl font-semibold text-foreground">{t.doctorConsole.title}</h1>
+        <p className="mt-1 text-sm text-foreground/60">{t.doctorConsole.subtitle}</p>
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12 lg:items-start">
@@ -206,7 +199,7 @@ export function DoctorBookingsPanel() {
                   {overviewError}
                 </span>
                 <Button type="button" variant="outline" size="sm" onClick={() => void loadOverview()}>
-                  Tekrar Dene
+                  {t.common.retry}
                 </Button>
               </span>
             </Alert>
@@ -222,7 +215,7 @@ export function DoctorBookingsPanel() {
                 const count = scopeCount(tab.value, overview);
                 return (
                   <TabsTrigger key={tab.value} value={tab.value} className="gap-1.5">
-                    {tab.label}
+                    {t.doctorConsole[tab.labelKey]}
                     {count !== null && (
                       <Badge tone="neutral" size="sm" className="px-1.5 py-0 text-[10px] font-semibold">
                         {count}
@@ -244,7 +237,7 @@ export function DoctorBookingsPanel() {
                   {loadError}
                 </span>
                 <Button type="button" variant="outline" size="sm" onClick={() => void loadBookings(scope)}>
-                  Tekrar Dene
+                  {t.common.retry}
                 </Button>
               </span>
             </Alert>
@@ -253,8 +246,8 @@ export function DoctorBookingsPanel() {
           {bookings && bookings.length === 0 && !loadError && (
             <EmptyState
               icon={CalendarX2}
-              title={EMPTY_STATE_COPY[scope].title}
-              description={EMPTY_STATE_COPY[scope].description}
+              title={t.doctorConsole[EMPTY_STATE_COPY[scope].titleKey]}
+              description={t.doctorConsole[EMPTY_STATE_COPY[scope].descriptionKey]}
             />
           )}
 
@@ -276,7 +269,7 @@ export function DoctorBookingsPanel() {
           {nextCursor && (
             <div className="flex justify-center">
               <Button type="button" variant="outline" size="sm" loading={loadingMore} onClick={() => void loadMore()}>
-                Daha Fazla Yükle
+                {t.common.loadMore}
               </Button>
             </div>
           )}

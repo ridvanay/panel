@@ -13,6 +13,7 @@ import { TelehealthRevenueChart } from "@/components/admin/telehealth/overview/t
 import { TelehealthAppointmentsChart } from "@/components/admin/telehealth/overview/telehealth-appointments-chart";
 import { TelehealthDoctorBreakdownTable } from "@/components/admin/telehealth/overview/telehealth-doctor-breakdown-table";
 import { Alert } from "@/components/ui/alert";
+import { MissingLegalPagesAlert } from "@/components/admin/telehealth/missing-legal-pages-alert";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Card } from "@/components/ui/card";
@@ -85,6 +86,8 @@ function AdminTelehealthOverviewPageContent() {
         description="Randevu, ödeme ve komisyon geliri analitiği — doktor bazlı kırılım dahil."
         actions={<DateRangeFilter value={filter} onChange={updateFilter} />}
       />
+
+      <MissingLegalPagesAlert />
 
       {overview.isError && (
         <Alert variant="error">

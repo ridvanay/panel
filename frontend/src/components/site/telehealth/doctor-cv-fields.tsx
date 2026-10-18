@@ -6,6 +6,11 @@ import { DoctorCvEntriesEditor } from "@/components/site/telehealth/doctor-cv-en
 import { DoctorPublicationsEditor } from "@/components/site/telehealth/doctor-publications-editor";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { fmt, usePortalStrings } from "@/lib/i18n/use-portal-strings";
+import type { PortalStrings } from "@/lib/i18n/site-dictionaries/en/portal";
+import { portalStrings as trPortalStrings } from "@/lib/i18n/site-dictionaries/tr/portal";
+
+type DoctorCvStrings = PortalStrings["doctorCv"];
 
 /**
  * 2026-10-18 (Paket A4) — doktorun "Profilim" formu (`doctor-profile-panel.tsx`) ile admin doktor
@@ -56,43 +61,44 @@ export function toDoctorCvPayload(value: DoctorCvFormValue) {
   };
 }
 
-const PUBLICATION_FIELD_LABELS: Record<string, string> = {
-  kind: "Tür",
-  title: "Başlık",
-  venue: "Dergi/Kongre/Kitap Adı",
-  authors: "Yazarlar",
-  year: "Yıl",
-  doi: "DOI",
-  url: "URL",
+const PUBLICATION_FIELD_KEYS: Record<string, keyof DoctorCvStrings> = {
+  kind: "type",
+  title: "title",
+  venue: "venue",
+  authors: "authors",
+  year: "year",
+  doi: "doi",
+  url: "url",
 };
 
-const CV_ENTRY_FIELD_LABELS: Record<string, string> = {
-  kind: "Tür",
-  title: "Başlık",
-  organization: "Kurum",
-  location: "Konum",
-  startYear: "Başlangıç Yılı",
-  endYear: "Bitiş Yılı",
-  description: "Açıklama",
+const CV_ENTRY_FIELD_KEYS: Record<string, keyof DoctorCvStrings> = {
+  kind: "type",
+  title: "title",
+  organization: "organization",
+  location: "location",
+  startYear: "startYear",
+  endYear: "endYear",
+  description: "description",
 };
 
 /**
  * Sunucu `cvEntries.0.doi` gibi dizin-içi anahtarlarla döner (bkz. backend `flattenZodIssues`) —
  * dizi editörleri RHF'e register edilmediği için okunabilir Türkçe metne çevrilip listelenir.
  */
-export function describeArrayItemError(field: string, message: string): string | null {
+/** `strings` verilmezse TR (admin paneli Türkçe kalır); portal aktif dilin sözlüğünü geçirir. */
+export function describeArrayItemError(field: string, message: string, strings: DoctorCvStrings = trPortalStrings.doctorCv): string | null {
   const match = field.match(/^(publications|cvEntries)\.(\d+)\.(.+)$/);
   if (!match) return null;
   const [, listKey, indexStr, subField] = match;
   const index = Number(indexStr) + 1;
-  const listLabel = listKey === "publications" ? "Yayın" : "Özgeçmiş";
-  const fieldLabels = listKey === "publications" ? PUBLICATION_FIELD_LABELS : CV_ENTRY_FIELD_LABELS;
-  return `${listLabel} ${index} - ${fieldLabels[subField!] ?? subField}: ${message}`;
+  const listLabel = listKey === "publications" ? strings.publicationItem : strings.cvItem;
+  const fieldKey = (listKey === "publications" ? PUBLICATION_FIELD_KEYS : CV_ENTRY_FIELD_KEYS)[subField!];
+  return fmt(strings.arrayItemError, { list: listLabel, index, field: fieldKey ? strings[fieldKey] : subField!, message });
 }
 
-export function describeArrayItemErrors(fieldErrors: Record<string, string>): string[] {
+export function describeArrayItemErrors(fieldErrors: Record<string, string>, strings: DoctorCvStrings = trPortalStrings.doctorCv): string[] {
   return Object.entries(fieldErrors)
-    .map(([field, message]) => describeArrayItemError(field, message))
+    .map(([field, message]) => describeArrayItemError(field, message, strings))
     .filter((message): message is string => message !== null);
 }
 
@@ -106,14 +112,15 @@ export function DoctorCvBasicFields({
   onChange: (patch: Partial<DoctorCvFormValue>) => void;
   errors?: DoctorCvFieldErrors;
 }) {
+  const { t } = usePortalStrings();
   return (
     <>
-      <Field id="subSpecialty" label="Alt Branş / Bağlı Merkez (opsiyonel)" error={errors.subSpecialty}>
+      <Field id="subSpecialty" label={t.doctorCv.subSpecialty} error={errors.subSpecialty}>
         {(inputProps) => (
           <Input
             {...inputProps}
             maxLength={120}
-            placeholder="Örn. Girişimsel Kardiyoloji"
+            placeholder={t.doctorCv.subSpecialtyPlaceholder}
             value={value.subSpecialty}
             onChange={(e) => onChange({ subSpecialty: e.target.value })}
           />
@@ -121,9 +128,9 @@ export function DoctorCvBasicFields({
       </Field>
       <Field
         id="practiceStartYear"
-        label="Mesleğe Başlama Yılı (opsiyonel)"
+        label={t.doctorCv.practiceStartYear}
         error={errors.practiceStartYear}
-        hint="Deneyim rozeti bu yıldan otomatik hesaplanır."
+        hint={t.doctorCv.practiceStartYearHint}
       >
         {(inputProps) => (
           <Input
@@ -150,28 +157,29 @@ export function DoctorCvRichSections({
   onChange: (patch: Partial<DoctorCvFormValue>) => void;
   sectionClassName: string;
 }) {
+  const { t } = usePortalStrings();
   return (
     <>
       <div className={sectionClassName}>
         <div>
-          <h2 className="text-sm font-semibold text-foreground">Doktor Hakkında (uzun biyografi)</h2>
-          <p className="text-xs text-foreground/50">“Doktor Hakkında” sekmesinde kısa özetin altında gösterilir.</p>
+          <h2 className="text-sm font-semibold text-foreground">{t.doctorCv.aboutTitle}</h2>
+          <p className="text-xs text-foreground/50">{t.doctorCv.aboutHint}</p>
         </div>
         <DoctorAboutEditor content={value.aboutHtml} onChange={(aboutHtml) => onChange({ aboutHtml })} />
       </div>
 
       <div className={sectionClassName}>
         <div>
-          <h2 className="text-sm font-semibold text-foreground">Özgeçmiş</h2>
-          <p className="text-xs text-foreground/50">Eğitim, deneyim, sertifika, üyelik ve ödüller — eklendiği SIRAYLA gösterilir.</p>
+          <h2 className="text-sm font-semibold text-foreground">{t.doctorCv.cvTitle}</h2>
+          <p className="text-xs text-foreground/50">{t.doctorCv.cvHint}</p>
         </div>
         <DoctorCvEntriesEditor entries={value.cvEntries} onChange={(cvEntries) => onChange({ cvEntries })} />
       </div>
 
       <div className={sectionClassName}>
         <div>
-          <h2 className="text-sm font-semibold text-foreground">Bilimsel Yayınlar</h2>
-          <p className="text-xs text-foreground/50">Makale, bildiri, kitap bölümü ve diğer yayınlar — türüne göre gruplanarak gösterilir.</p>
+          <h2 className="text-sm font-semibold text-foreground">{t.doctorCv.publicationsTitle}</h2>
+          <p className="text-xs text-foreground/50">{t.doctorCv.publicationsHint}</p>
         </div>
         <DoctorPublicationsEditor publications={value.publications} onChange={(publications) => onChange({ publications })} />
       </div>
@@ -181,10 +189,11 @@ export function DoctorCvRichSections({
 
 /** Konuşulan diller — kontrollü onay kutuları (en fazla 6, backend `LANGUAGES_SCHEMA`). */
 export function DoctorLanguagesField({ value, onChange, error }: { value: string[]; onChange: (next: string[]) => void; error?: string }) {
+  const { t } = usePortalStrings();
   return (
     <div>
       <span className="block text-sm font-medium text-foreground">
-        Konuşulan Diller <span className="text-danger">*</span>
+        {t.doctorCv.spokenLanguages} <span className="text-danger">*</span>
       </span>
       <div className="mt-1.5 flex flex-wrap gap-3">
         {DOCTOR_LANGUAGE_OPTIONS.map((lang) => (

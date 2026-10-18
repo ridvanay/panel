@@ -6,8 +6,8 @@ import { buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { useLocalizePath, useActiveLocaleCode } from "@/context/locale-alternates-context";
-import { contentLocaleToIntl } from "@/lib/i18n/content-locale-to-intl";
+import { useLocalizePath } from "@/context/locale-alternates-context";
+import { fmt, usePortalStrings } from "@/lib/i18n/use-portal-strings";
 import type { AppointmentBooking } from "@/lib/api/types";
 import { SITE_ORIGIN } from "@/lib/doctor-host";
 import { EARLY_JOIN_WARNING_THRESHOLD_MINUTES, formatDayLabel, formatTime } from "@/lib/telehealth-format";
@@ -79,10 +79,11 @@ interface JoinMeetingButtonProps {
  * olduğunda buton yerine gösterilen etiket (`getJoinState(...) === "ended"`).
  */
 export function JoinEndedLabel() {
+  const { t } = usePortalStrings();
   return (
     <Badge tone="neutral" size="sm" className="gap-1">
       <CircleCheck className="h-3 w-3" aria-hidden="true" />
-      Görüşme sona erdi
+      {t.join.meetingEnded}
     </Badge>
   );
 }
@@ -98,12 +99,12 @@ export function JoinMeetingButton({
   mergeRemainingTime = false,
   timeZone,
   nowMs,
-  activeLabel = "Toplantıya Katıl",
+  activeLabel: activeLabelProp,
   activeVariant = "default",
 }: JoinMeetingButtonProps) {
   const localize = useLocalizePath();
-  // Görev (2026-09-16) — takvim/randevu gün-ay-saat biçimlendirmesi denetimi (bkz. `useActiveLocaleCode` yorumu).
-  const intlLocale = contentLocaleToIntl(useActiveLocaleCode());
+  const { t, intlLocale } = usePortalStrings();
+  const activeLabel = activeLabelProp ?? t.join.joinMeeting;
   const firstAppointment = booking.appointments[0];
   // Dakikada bir yeniden hesaplanır — pencere sayfa açıkken kapanırsa buton kendiliğinden kaybolur.
   const tickNowMs = useNow();
@@ -158,10 +159,10 @@ export function JoinMeetingButton({
       open={earlyJoinDialogOpen}
       onOpenChange={setEarlyJoinDialogOpen}
       tone="warning"
-      title="Erken Katılım"
-      description="Dikkat: Randevu saatinizden erken katılıyorsunuz. Görüşmeyi erken başlatıp sonlandırmanız durumunda, asıl randevu saatinizde odaya yeniden giriş yapılamayabilir. Devam etmek istiyor musunuz?"
-      cancelText="Vazgeç"
-      confirmText="Anladım, Odaya Katıl"
+      title={t.join.earlyJoinTitle}
+      description={t.join.earlyJoinDescription}
+      cancelText={t.common.cancel}
+      confirmText={t.join.earlyJoinConfirm}
       onConfirm={handleConfirmEarlyJoin}
     />
   );
@@ -207,7 +208,7 @@ export function JoinMeetingButton({
             </a>
             <Badge tone="warning" solid size="sm" className="gap-1">
               <Clock className="h-3 w-3" aria-hidden="true" />
-              {minutesLeft} dk içinde
+              {fmt(t.join.inMinutes, { minutes: minutesLeft })}
             </Badge>
           </div>
           {earlyJoinDialog}
@@ -231,10 +232,10 @@ export function JoinMeetingButton({
   // `joinableUntil`e bakan kısmı backend'den DAHA SIKI davranıp butonu erken/gereksiz yere
   // devre dışı bırakıyordu — TEK kalan kısıt artık ödeme durumu.
   let disabled = true;
-  let disabledReason = "Görüşme bilgisi bulunamadı.";
+  let disabledReason = t.join.noMeetingInfo;
 
   if (booking.paymentStatus !== "PAID") {
-    disabledReason = "Görüşmeye katılmak için önce ödeme tamamlanmalıdır.";
+    disabledReason = t.join.paymentRequired;
   } else {
     disabled = false;
   }

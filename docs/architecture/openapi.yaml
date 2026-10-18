@@ -2281,7 +2281,10 @@ paths:
         sunucu önce kök öğeleri, sonra alt öğeleri yazar (self-FK sıralama garantisi —
         bkz. ARCHITECTURE.md "Navigasyon Hiyerarşisi"). Menüye içerikten (sayfa/blog/ürün/portföy)
         eklenen öğeler de sıradan öğelerdir: yalnızca `label`/`href` snapshot'ı taşınır,
-        kaynak içeriğe kalıcı referans TUTULMAZ.
+        kaynak içeriğe kalıcı referans TUTULMAZ. Paket A2 (2026-10-18): `/` ile başlayan site içi
+        `href`/`url`/`headerCtaHref` değerlerinin yol kısmı (sorgu ve fragment hariç) yalnızca
+        `a-z`, `0-9`, `-`, `.`, `_` ve `/` içerebilir; boşluk, büyük harf veya Türkçe karakter
+        içeren yol 422 `VALIDATION_ERROR` döner.
       requestBody:
         required: true
         content:
