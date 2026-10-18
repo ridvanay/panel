@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
-import { AlertCircle, CreditCard, Search } from "lucide-react";
+import { AlertCircle, Archive, CreditCard, Search } from "lucide-react";
 import * as telehealthApi from "@/lib/api/telehealth";
 import type { AppointmentBooking, BookingPaymentStatus } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
@@ -13,9 +13,11 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Select } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PageHeading } from "@/components/admin/page-heading";
+import { ArchiveBookingDialog } from "@/components/admin/telehealth/archive-booking-dialog";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { formatPriceFromCents } from "@/lib/format-price";
 
@@ -63,16 +65,28 @@ export default function AdminTelehealthBookingsPage() {
   const [search, setSearch] = useState("");
   const [pendingMarkPaid, setPendingMarkPaid] = useState<AppointmentBooking | null>(null);
   const [markingPaid, setMarkingPaid] = useState(false);
+  // 2026-10-18 (Paket B4) — "Test olarak arşivle" (yalnızca ADMIN, gerekçe zorunlu).
+  const [showArchived, setShowArchived] = useState(false);
+  const [pendingArchive, setPendingArchive] = useState<AppointmentBooking | null>(null);
+  const [unarchivingId, setUnarchivingId] = useState<string | null>(null);
 
-  const load = useCallback(async (paymentStatus?: BookingPaymentStatus, search?: string) => {
-    try {
-      const page = await telehealthApi.listAdminBookings({ paymentStatus: paymentStatus || undefined, search: search || undefined, limit: 100 });
-      setBookings(page.items);
-      setError(null);
-    } catch (err) {
-      setError(friendlyErrorMessage(err));
-    }
-  }, []);
+  const load = useCallback(
+    async (paymentStatus?: BookingPaymentStatus, search?: string) => {
+      try {
+        const page = await telehealthApi.listAdminBookings({
+          paymentStatus: paymentStatus || undefined,
+          search: search || undefined,
+          includeArchived: showArchived,
+          limit: 100,
+        });
+        setBookings(page.items);
+        setError(null);
+      } catch (err) {
+        setError(friendlyErrorMessage(err));
+      }
+    },
+    [showArchived]
+  );
 
   useEffect(() => {
     const handle = setTimeout(() => void load(paymentStatus || undefined, search), 250);
@@ -91,6 +105,19 @@ export default function AdminTelehealthBookingsPage() {
       toast.error(friendlyErrorMessage(err));
     } finally {
       setMarkingPaid(false);
+    }
+  }
+
+  async function handleUnarchive(booking: AppointmentBooking) {
+    setUnarchivingId(booking.id);
+    try {
+      await telehealthApi.unarchiveBooking(booking.id);
+      toast.success(`${booking.bookingNumber} arşivden çıkarıldı.`);
+      await load(paymentStatus || undefined, search);
+    } catch (err) {
+      toast.error(friendlyErrorMessage(err));
+    } finally {
+      setUnarchivingId(null);
     }
   }
 
@@ -149,6 +176,10 @@ export default function AdminTelehealthBookingsPage() {
                 </option>
               ))}
             </Select>
+            <label className="flex items-center gap-2 text-sm text-foreground/70">
+              <Switch checked={showArchived} onCheckedChange={setShowArchived} aria-label="Arşivi göster" />
+              Arşivi göster
+            </label>
           </div>
 
           {bookings.length === 0 ? (
@@ -188,12 +219,37 @@ export default function AdminTelehealthBookingsPage() {
                       </TableCell>
                       <TableCell className="text-sm text-foreground/70">{formatPriceFromCents(booking.totalCents, booking.currency)}</TableCell>
                       <TableCell>
-                        <Badge tone={STATUS_TONES[booking.paymentStatus]} size="sm">
-                          {STATUS_LABELS[booking.paymentStatus]}
-                        </Badge>
+                        <div className="flex flex-wrap gap-1.5">
+                          <Badge tone={STATUS_TONES[booking.paymentStatus]} size="sm">
+                            {STATUS_LABELS[booking.paymentStatus]}
+                          </Badge>
+                          {booking.archivedAt && (
+                            <Badge tone="warning" size="sm">
+                              Arşivli (test)
+                            </Badge>
+                          )}
+                        </div>
+                        {booking.archivedReason && <p className="mt-1 max-w-48 truncate text-xs text-foreground/50">{booking.archivedReason}</p>}
                       </TableCell>
                       <TableCell className="text-right">
-                        {booking.paymentStatus === "PENDING" && (
+                        {booking.archivedAt ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            loading={unarchivingId === booking.id}
+                            onClick={() => void handleUnarchive(booking)}
+                          >
+                            Arşivden çıkar
+                          </Button>
+                        ) : (
+                          booking.paymentStatus !== "PENDING" && (
+                            <Button variant="ghost" size="sm" onClick={() => setPendingArchive(booking)} aria-label={`${booking.bookingNumber} test olarak arşivle`}>
+                              <Archive className="h-3.5 w-3.5" />
+                              Test olarak arşivle
+                            </Button>
+                          )
+                        )}
+                        {!booking.archivedAt && booking.paymentStatus === "PENDING" && (
                           <Button
                             variant="ghost"
                             size="sm"
@@ -229,6 +285,14 @@ export default function AdminTelehealthBookingsPage() {
         tone="warning"
         loading={markingPaid}
         onConfirm={handleMarkPaid}
+      />
+
+      <ArchiveBookingDialog
+        booking={pendingArchive}
+        onOpenChange={(open) => {
+          if (!open) setPendingArchive(null);
+        }}
+        onArchived={() => void load(paymentStatus || undefined, search)}
       />
     </div>
   );

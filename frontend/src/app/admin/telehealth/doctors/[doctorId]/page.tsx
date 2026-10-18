@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { useForm, useWatch, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { AlertCircle, ChevronLeft, Stethoscope, Trash2 } from "lucide-react";
+import { AlertCircle, Archive, ChevronLeft, Stethoscope, Trash2 } from "lucide-react";
 import * as telehealthApi from "@/lib/api/telehealth";
 import type { DoctorAvailabilityRuleInput, DoctorProfile, DoctorSocialLink, Media, Specialty } from "@/lib/api/types";
 import { Card } from "@/components/ui/card";
@@ -19,12 +19,13 @@ import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Alert } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
-import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { MediaSelectField } from "@/components/admin/media/media-select-field";
 import { PageHeading } from "@/components/admin/page-heading";
 import { WeeklyAvailabilityEditor } from "@/components/admin/telehealth/weekly-availability-editor";
 import { DoctorSocialLinksEditor } from "@/components/site/telehealth/doctor-social-links-editor";
 import { DoctorAdditionalSpecialtiesField } from "@/components/admin/telehealth/doctor-additional-specialties-field";
+import { DoctorDeleteOrArchiveDialog } from "@/components/admin/telehealth/doctor-delete-or-archive-dialog";
+import { DoctorLinkedAccountPanel } from "@/components/admin/telehealth/doctor-linked-account-panel";
 import {
   DoctorCvBasicFields,
   DoctorCvRichSections,
@@ -37,7 +38,6 @@ import {
   type DoctorCvFormValue,
 } from "@/components/site/telehealth/doctor-cv-fields";
 import { fieldErrorsFrom, friendlyErrorMessage } from "@/lib/api/friendly-error";
-import { ApiClientError } from "@/lib/api/error";
 
 const CURRENCIES = ["TRY", "USD", "EUR", "GBP"] as const;
 
@@ -80,7 +80,7 @@ export default function EditDoctorPage({ params }: { params: Promise<{ doctorId:
   const [availabilityError, setAvailabilityError] = useState<string | null>(null);
 
   const [pendingDelete, setPendingDelete] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+  const [unarchiving, setUnarchiving] = useState(false);
 
   const {
     register,
@@ -200,21 +200,16 @@ export default function EditDoctorPage({ params }: { params: Promise<{ doctorId:
     }
   }
 
-  async function handleDelete() {
-    setDeleting(true);
+  async function handleUnarchive() {
+    setUnarchiving(true);
     try {
-      await telehealthApi.deleteDoctor(doctorId);
-      toast.success("Doktor silindi.");
-      router.push("/admin/telehealth/doctors");
+      const updated = await telehealthApi.unarchiveDoctor(doctorId);
+      setDoctor(updated);
+      toast.success("Doktor arşivden çıkarıldı. Sitede görünmesi için \"Aktif\" anahtarını açıp kaydedin.");
     } catch (err) {
-      if (err instanceof ApiClientError && err.status === 409) {
-        toast.error("Bu doktorun randevu geçmişi var; önce pasife alın.");
-      } else {
-        toast.error(friendlyErrorMessage(err));
-      }
-      setPendingDelete(false);
+      toast.error(friendlyErrorMessage(err));
     } finally {
-      setDeleting(false);
+      setUnarchiving(false);
     }
   }
 
@@ -233,10 +228,11 @@ export default function EditDoctorPage({ params }: { params: Promise<{ doctorId:
         title={doctor ? `${doctor.title} ${doctor.fullName}` : "Doktoru düzenle"}
         description="Profil bilgilerini ve haftalık müsaitlik ızgarasını yönetin."
         actions={
-          doctor && (
+          doctor &&
+          !doctor.archivedAt && (
             <Button type="button" variant="destructive" onClick={() => setPendingDelete(true)}>
               <Trash2 className="h-4 w-4" />
-              Kalıcı Sil
+              Sil / Arşivle
             </Button>
           )
         }
@@ -251,6 +247,20 @@ export default function EditDoctorPage({ params }: { params: Promise<{ doctorId:
             </span>
             <Button type="button" variant="outline" size="sm" onClick={() => void load()}>
               Tekrar Dene
+            </Button>
+          </span>
+        </Alert>
+      )}
+
+      {doctor?.archivedAt && (
+        <Alert variant="warning">
+          <span className="flex flex-wrap items-center justify-between gap-3">
+            <span className="flex items-center gap-2">
+              <Archive className="h-4 w-4 shrink-0" />
+              Bu doktor arşivlenmiş: sitede, aramada ve sitemap&apos;te görünmez, yeni randevu alamaz. Geçmiş kayıtlar korunur.
+            </span>
+            <Button type="button" variant="outline" size="sm" loading={unarchiving} onClick={() => void handleUnarchive()}>
+              Arşivden çıkar
             </Button>
           </span>
         </Alert>
@@ -387,17 +397,7 @@ export default function EditDoctorPage({ params }: { params: Promise<{ doctorId:
               {/* K8 — bağlama/çözme SADECE `/admin/users`'ta yapılır (ADMIN-only, backend
                * `PATCH .../doctors/{id}` gövdesinde `userId` alanı ADMIN'e kilitli); burada
                * salt-okunur bir durum satırı + oraya yönlendiren bir bağlantı gösterilir. */}
-              <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
-                <div>
-                  <p className="text-sm font-medium text-foreground">Bağlı hesap</p>
-                  <p className="text-xs text-foreground/60">
-                    {doctor.userId ? "Bağlı ✓" : "Bağlı hesap yok"}
-                  </p>
-                </div>
-                <Link href="/admin/users" className="text-xs font-medium text-primary hover:underline">
-                  Bağlantıyı /admin/users üzerinden yönetin →
-                </Link>
-              </div>
+              <DoctorLinkedAccountPanel userId={doctor.userId} />
 
               <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
                 <div>
@@ -459,19 +459,11 @@ export default function EditDoctorPage({ params }: { params: Promise<{ doctorId:
         </>
       ) : null}
 
-      <ConfirmDialog
-        open={pendingDelete}
+      <DoctorDeleteOrArchiveDialog
+        doctor={pendingDelete ? doctor : null}
         onOpenChange={setPendingDelete}
-        title="Doktoru kalıcı sil"
-        description={
-          doctor
-            ? `"${doctor.title} ${doctor.fullName}" kalıcı olarak silinecek. Bu doktorun randevu geçmişi varsa işlem engellenir. Bu işlem geri alınamaz.`
-            : undefined
-        }
-        confirmText="Kalıcı Sil"
-        tone="danger"
-        loading={deleting}
-        onConfirm={handleDelete}
+        onDeleted={() => router.push("/admin/telehealth/doctors")}
+        onArchived={() => void load()}
       />
     </div>
   );

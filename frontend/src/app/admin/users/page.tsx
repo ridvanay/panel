@@ -9,8 +9,10 @@ import {
   Download,
   KeyRound,
   Link2,
+  Mail,
   RotateCcw,
   Search,
+  ShieldOff,
   Trash2,
   Unlink,
   UserCheck,
@@ -22,6 +24,7 @@ import * as telehealthApi from "@/lib/api/telehealth";
 import type { AdminUser, SiteRole, SiteUserStatus } from "@/lib/api/types";
 import { LinkDoctorDialog } from "@/components/admin/telehealth/link-doctor-dialog";
 import { SetUserPasswordDialog } from "@/components/admin/users/set-user-password-dialog";
+import { ResetTwoFactorDialog } from "@/components/admin/users/reset-two-factor-dialog";
 import { useModules } from "@/context/modules-context";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -99,6 +102,9 @@ export default function AdminUsersPage() {
   // (`components/admin/sidebar.tsx::navItems`) SADECE ADMIN'e gösterilir, ek bir rol denetimine
   // burada gerek YOKTUR (MANAGER bu sayfaya hiç ulaşamaz, `listAdminUsers()` bile 403 alır).
   const [passwordChangeUser, setPasswordChangeUser] = useState<AdminUser | null>(null);
+  // 2026-10-18 (Paket B1) — 2FA sıfırlama (step-up) + etkinleştirme e-postası.
+  const [resetTwoFactorUser, setResetTwoFactorUser] = useState<AdminUser | null>(null);
+  const [resendingActivationId, setResendingActivationId] = useState<string | null>(null);
 
   const [pendingStatusChange, setPendingStatusChange] = useState<AdminUser | null>(null);
   const [statusUpdating, setStatusUpdating] = useState(false);
@@ -262,6 +268,19 @@ export default function AdminUsersPage() {
       toast.error(friendlyErrorMessage(err));
     } finally {
       setUnlinkDoctorLoading(false);
+    }
+  }
+
+  async function handleResendActivation(user: AdminUser) {
+    setResendingActivationId(user.id);
+    try {
+      const result = await usersAdminApi.resendActivationEmail(user.id);
+      if (result.emailStatus === "sent") toast.success(`"${user.name}" için etkinleştirme (şifre belirleme) e-postası gönderildi.`);
+      else toast.warning("E-posta gönderilemedi; SMTP ayarlarını kontrol edin.");
+    } catch (err) {
+      toast.error(friendlyErrorMessage(err));
+    } finally {
+      setResendingActivationId(null);
     }
   }
 
@@ -800,6 +819,37 @@ export default function AdminUsersPage() {
                                   </TooltipTrigger>
                                   <TooltipContent>Şifre Değiştir</TooltipContent>
                                 </Tooltip>
+                                {user.twoFactorEnabled && !isSelf && user.role !== "ADMIN" && (
+                                  <Tooltip>
+                                    <TooltipTrigger render={<span tabIndex={0} className="inline-flex" />}>
+                                      <Button
+                                        variant="ghost"
+                                        size="icon-sm"
+                                        aria-label="2FA'yı sıfırla"
+                                        onClick={() => setResetTwoFactorUser(user)}
+                                      >
+                                        <ShieldOff className="h-4 w-4" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>2FA&apos;yı sıfırla</TooltipContent>
+                                  </Tooltip>
+                                )}
+                                {user.lastLoginAt === null && user.status === "ACTIVE" && !isSelf && (
+                                  <Tooltip>
+                                    <TooltipTrigger render={<span tabIndex={0} className="inline-flex" />}>
+                                      <Button
+                                        variant="ghost"
+                                        size="icon-sm"
+                                        aria-label="Etkinleştirme e-postasını yeniden gönder"
+                                        loading={resendingActivationId === user.id}
+                                        onClick={() => void handleResendActivation(user)}
+                                      >
+                                        <Mail className="h-4 w-4" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Etkinleştirme e-postasını yeniden gönder</TooltipContent>
+                                  </Tooltip>
+                                )}
                                 <Tooltip>
                                   <TooltipTrigger render={<span tabIndex={0} className="inline-flex" />}>
                                     <Button
@@ -979,6 +1029,15 @@ export default function AdminUsersPage() {
           if (!open) setPasswordChangeUser(null);
         }}
         user={passwordChangeUser}
+      />
+
+      <ResetTwoFactorDialog
+        open={resetTwoFactorUser !== null}
+        onOpenChange={(open) => {
+          if (!open) setResetTwoFactorUser(null);
+        }}
+        user={resetTwoFactorUser}
+        onReset={() => void load()}
       />
 
       <LinkDoctorDialog

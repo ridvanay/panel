@@ -11,6 +11,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Select } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PageHeading } from "@/components/admin/page-heading";
@@ -75,15 +76,23 @@ export default function AdminTelehealthAppointmentsPage() {
   const [pendingDelete, setPendingDelete] = useState<Appointment | null>(null);
   const [pendingReschedule, setPendingReschedule] = useState<Appointment | null>(null);
 
+  // 2026-10-18 (Paket B4) — test olarak arşivlenmiş booking'lerin randevuları varsayılan olarak gizli.
+  const [showArchived, setShowArchived] = useState(false);
+
   const load = useCallback(async (status?: AppointmentStatus, search?: string) => {
     try {
-      const page = await telehealthApi.listAdminAppointments({ status: status || undefined, search: search || undefined, limit: 100 });
+      const page = await telehealthApi.listAdminAppointments({
+        status: status || undefined,
+        search: search || undefined,
+        includeArchived: showArchived,
+        limit: 100,
+      });
       setAppointments(page.items);
       setError(null);
     } catch (err) {
       setError(friendlyErrorMessage(err));
     }
-  }, []);
+  }, [showArchived]);
 
   useEffect(() => {
     const handle = setTimeout(() => void load(status || undefined, search), 250);
@@ -138,6 +147,10 @@ export default function AdminTelehealthAppointmentsPage() {
                 </option>
               ))}
             </Select>
+            <label className="flex items-center gap-2 text-sm text-foreground/70">
+              <Switch checked={showArchived} onCheckedChange={setShowArchived} aria-label="Arşivi göster" />
+              Arşivi göster
+            </label>
           </div>
 
           {appointments.length === 0 ? (

@@ -30,6 +30,7 @@ import type {
   DoctorEarningsSummary,
   DoctorPortalFeed,
   DoctorPortalProfile,
+  DoctorDeletionCheck,
   DoctorProfile,
   GetDoctorEarningsParams,
   ListDoctorBookingsParams,
@@ -498,13 +499,21 @@ export function deleteSpecialty(specialtyId: string): Promise<void> {
 export interface ListAdminDoctorsParams {
   specialtyId?: string;
   search?: string;
+  /** Varsayılan `false` — arşivli doktorlar listede görünmez. */
+  includeArchived?: boolean;
   cursor?: string;
   limit?: number;
 }
 
 export function listAdminDoctors(params: ListAdminDoctorsParams = {}): Promise<Page<DoctorProfile>> {
   return apiFetchPage<DoctorProfile>("/admin/telehealth/doctors", {
-    query: { specialtyId: params.specialtyId, search: params.search, cursor: params.cursor, limit: params.limit ?? 100 },
+    query: {
+      specialtyId: params.specialtyId,
+      search: params.search,
+      includeArchived: params.includeArchived || undefined,
+      cursor: params.cursor,
+      limit: params.limit ?? 100,
+    },
   });
 }
 
@@ -520,9 +529,24 @@ export function updateDoctor(doctorId: string, input: UpdateDoctorRequest): Prom
   return apiFetch<DoctorProfile>(`/admin/telehealth/doctors/${doctorId}`, { method: "PATCH", body: input });
 }
 
-/** Kalıcı silme — `Appointment.doctor` `onDelete: Restrict`; geçmiş/gelecek randevusu varsa `409`. */
+/** Kalıcı silme — randevu/booking geçmişi varsa `409 DOCTOR_HAS_HISTORY` (arşivlenebilir). */
 export function deleteDoctor(doctorId: string): Promise<void> {
   return apiFetch<void>(`/admin/telehealth/doctors/${doctorId}`, { method: "DELETE" });
+}
+
+/** "Sil" penceresi ön kontrolü — geçmişi olan doktor için "Arşivle" teklif edilir. */
+export function getDoctorDeletionCheck(doctorId: string): Promise<DoctorDeletionCheck> {
+  return apiFetch<DoctorDeletionCheck>(`/admin/telehealth/doctors/${doctorId}/deletion-check`);
+}
+
+/** Arşivle — `isActive=false` da yapılır. Gelecekte açık randevu varsa `409 DOCTOR_HAS_UPCOMING_APPOINTMENTS`. */
+export function archiveDoctor(doctorId: string): Promise<DoctorProfile> {
+  return apiFetch<DoctorProfile>(`/admin/telehealth/doctors/${doctorId}/archive`, { method: "POST" });
+}
+
+/** Arşivden çıkar — doktor pasif kalır, aktifleştirme ayrıca yapılır. */
+export function unarchiveDoctor(doctorId: string): Promise<DoctorProfile> {
+  return apiFetch<DoctorProfile>(`/admin/telehealth/doctors/${doctorId}/unarchive`, { method: "POST" });
 }
 
 export function getDoctorAvailability(doctorId: string): Promise<DoctorAvailabilityRule[]> {
@@ -536,6 +560,8 @@ export function setDoctorAvailability(doctorId: string, input: SetDoctorAvailabi
 
 export interface ListAdminAppointmentsParams {
   doctorId?: string;
+  /** Varsayılan `false` — test olarak arşivlenmiş booking'lerin randevuları gizlenir. */
+  includeArchived?: boolean;
   status?: Appointment["status"];
   search?: string;
   cursor?: string;
@@ -549,6 +575,7 @@ export function listAdminAppointments(params: ListAdminAppointmentsParams = {}):
       doctorId: params.doctorId,
       status: params.status,
       search: params.search,
+      includeArchived: params.includeArchived || undefined,
       cursor: params.cursor,
       limit: params.limit ?? 50,
     },
@@ -557,6 +584,8 @@ export function listAdminAppointments(params: ListAdminAppointmentsParams = {}):
 
 export interface ListAdminBookingsParams {
   doctorId?: string;
+  /** Varsayılan `false` — test olarak arşivlenmiş booking'ler gizlenir. */
+  includeArchived?: boolean;
   paymentStatus?: AppointmentBooking["paymentStatus"];
   search?: string;
   cursor?: string;
@@ -576,6 +605,7 @@ export function listAdminBookings(params: ListAdminBookingsParams = {}): Promise
       doctorId: params.doctorId,
       paymentStatus: params.paymentStatus,
       search: params.search,
+      includeArchived: params.includeArchived || undefined,
       cursor: params.cursor,
       limit: params.limit ?? 50,
     },
@@ -599,6 +629,18 @@ export function markBookingPaid(bookingId: string, reason: string): Promise<Appo
     method: "POST",
     body: { reason },
   });
+}
+
+/**
+ * 2026-10-18 (Paket B4) — "Test olarak arşivle", YALNIZCA ADMIN, gerekçe zorunlu. Kazanç/analitik/
+ * listelerden çıkarır; hiçbir şey silinmez. Açık/gelecek randevu varsa `409 BOOKING_NOT_ARCHIVABLE`.
+ */
+export function archiveBooking(bookingId: string, reason: string): Promise<AppointmentBooking> {
+  return apiFetch<AppointmentBooking>(`/admin/telehealth/bookings/${bookingId}/archive`, { method: "POST", body: { reason } });
+}
+
+export function unarchiveBooking(bookingId: string): Promise<AppointmentBooking> {
+  return apiFetch<AppointmentBooking>(`/admin/telehealth/bookings/${bookingId}/unarchive`, { method: "POST" });
 }
 
 /**

@@ -3,7 +3,9 @@ import type {
   AdminUser,
   CreateAdminUserRequest,
   CreateAdminUserResponse,
+  EmailDispatchStatus,
   Page,
+  ResetUserTwoFactorResponse,
   SetAdminUserPasswordRequest,
   SiteRole,
   SiteUserStatus,
@@ -81,4 +83,22 @@ export function deleteUser(userId: string): Promise<AdminUser> {
  */
 export function restoreUser(userId: string): Promise<AdminUser> {
   return apiFetch<AdminUser>(`/admin/users/${userId}/restore`, { method: "POST" });
+}
+
+/** `GET /admin/users/{userId}` — tek kullanıcı (ör. doktor detayında bağlı hesabın 2FA durumu). */
+export function getAdminUser(userId: string): Promise<AdminUser> {
+  return apiFetch<AdminUser>(`/admin/users/${userId}`);
+}
+
+/**
+ * 2026-10-18 (Paket B1) — `POST /admin/users/{userId}/2fa/reset`. `code` işlemi yapan ADMIN'in
+ * KENDİ authenticator kodudur (step-up). Hedefin tüm oturumları kapanır, bilgilendirme e-postası gider.
+ */
+export function resetUserTwoFactor(userId: string, code: string): Promise<ResetUserTwoFactorResponse> {
+  return apiFetch<ResetUserTwoFactorResponse>(`/admin/users/${userId}/2fa/reset`, { method: "POST", body: { code } });
+}
+
+/** `POST /admin/users/{userId}/resend-activation` — şifre belirleme (etkinleştirme) e-postasını yeniden gönderir. */
+export function resendActivationEmail(userId: string): Promise<EmailDispatchStatus> {
+  return apiFetch<EmailDispatchStatus>(`/admin/users/${userId}/resend-activation`, { method: "POST" });
 }

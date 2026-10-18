@@ -42,6 +42,13 @@ export type ApiErrorCode =
   | "DOCUMENT_LIMIT_REACHED"
   | "TWO_FACTOR_REQUIRED"
   | "NOT_A_DOCTOR"
+  // 2026-10-18 (Paket B) — 2FA sıfırlama step-up, etkinleştirme e-postası ve arşivleme kodları.
+  | "STEP_UP_2FA_NOT_ENABLED"
+  | "STEP_UP_INVALID_CODE"
+  | "ACCOUNT_ALREADY_ACTIVE"
+  | "DOCTOR_HAS_HISTORY"
+  | "DOCTOR_HAS_UPCOMING_APPOINTMENTS"
+  | "BOOKING_NOT_ARCHIVABLE"
   // `.claude/architect-scope-doctor-portfolio-identity-console.md` (**[DPI]**) §2 — hasta kimlik
   // bilgisi akışı. Mesajlar SABİT/JENERİKTİR (bkz. backend `lib/errors.ts`), girilen kimlik
   // numarası/doğum tarihi bu hatalara ASLA enjekte edilmez.
@@ -150,6 +157,17 @@ export interface AdminUser {
   deletedAt: string | null;
   /** Bkz. `User.doctorProfileId` — TS arayüzleri backend Zod `.extend()` gibi miras almadığı için elle eklenir. */
   readonly doctorProfileId: string | null;
+  /** Backend `UserSchema.twoFactorEnabled` — admin "2FA'yı sıfırla" işleminin görünürlüğü buna bağlıdır. */
+  readonly twoFactorEnabled?: boolean;
+}
+
+/** 2026-10-18 (Paket B1) — e-posta gönderen admin işlemlerinin (2FA sıfırlama, etkinleştirme e-postası) sonucu. */
+export interface EmailDispatchStatus {
+  emailStatus: "sent" | "failed";
+}
+
+export interface ResetUserTwoFactorResponse extends EmailDispatchStatus {
+  user: AdminUser;
 }
 
 export interface CreateAdminUserRequest {
@@ -3783,6 +3801,8 @@ export interface DoctorProfile {
   verifiedAt: string | null;
   isActive: boolean;
   order: number;
+  /** 2026-10-18 (Paket B2) — arşiv damgası; arşivli doktor public yüzeyde görünmez. */
+  archivedAt?: string | null;
   availability: DoctorAvailabilityRule[];
   createdAt: string;
   updatedAt: string;
@@ -4067,8 +4087,19 @@ export interface AppointmentBooking {
   /** `min(startsAt) - 10dk`. `paymentStatus !== "PAID"` ise `null` (ödenmemiş görüşme açılmaz). */
   joinableFrom: string | null;
   joinableUntil: string | null;
+  /** 2026-10-18 (Paket B4) — "test olarak arşivle" damgası ve gerekçesi (gerekçe yalnızca ADMIN/doktora dolu döner). */
+  archivedAt?: string | null;
+  archivedReason?: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** 2026-10-18 (Paket B2) — `GET /admin/telehealth/doctors/{doctorId}/deletion-check`. */
+export interface DoctorDeletionCheck {
+  deletable: boolean;
+  appointmentCount: number;
+  bookingCount: number;
+  upcomingAppointmentCount: number;
 }
 
 export interface CancelBookingRequest {

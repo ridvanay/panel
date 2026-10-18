@@ -10,13 +10,13 @@ import { LinkButton } from "@/components/ui/link-button";
 import { Alert } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
 import { EmptyState } from "@/components/ui/empty-state";
-import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PageHeading } from "@/components/admin/page-heading";
+import { DoctorDeleteOrArchiveDialog } from "@/components/admin/telehealth/doctor-delete-or-archive-dialog";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
-import { ApiClientError } from "@/lib/api/error";
 import { formatPriceFromCents } from "@/lib/format-price";
 import { toast } from "sonner";
 import Link from "next/link";
@@ -26,45 +26,42 @@ import Link from "next/link";
  * (`admin/products/page.tsx`) AKSİNE `useContentList` (yumuşak silme/çöp/toplu işlem)
  * KULLANILMAZ: `DoctorProfile`'da `deletedAt`/trash kavramı YOK (yalnızca `isActive` +
  * kalıcı silme, bkz. openapi.yaml `DELETE /admin/telehealth/doctors/{doctorId}`).
+ * 2026-10-18 (Paket B2) — geçmişi olan doktor silinmez, arşivlenir; liste varsayılan olarak
+ * arşivlenmemişleri gösterir, "Arşivi göster" ile arşivliler de listelenir.
  */
 export default function AdminTelehealthDoctorsPage() {
   const [doctors, setDoctors] = useState<DoctorProfile[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [pendingDelete, setPendingDelete] = useState<DoctorProfile | null>(null);
-  const [deleting, setDeleting] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+  const [unarchivingId, setUnarchivingId] = useState<string | null>(null);
 
   const load = useCallback(async (search?: string) => {
     try {
-      const page = await telehealthApi.listAdminDoctors({ search: search || undefined, limit: 100 });
+      const page = await telehealthApi.listAdminDoctors({ search: search || undefined, includeArchived: showArchived, limit: 100 });
       setDoctors(page.items);
       setError(null);
     } catch (err) {
       setError(friendlyErrorMessage(err));
     }
-  }, []);
+  }, [showArchived]);
 
   useEffect(() => {
     const handle = setTimeout(() => void load(search), 250);
     return () => clearTimeout(handle);
   }, [load, search]);
 
-  async function handleDelete() {
-    if (!pendingDelete) return;
-    setDeleting(true);
+  async function handleUnarchive(doctor: DoctorProfile) {
+    setUnarchivingId(doctor.id);
     try {
-      await telehealthApi.deleteDoctor(pendingDelete.id);
-      toast.success("Doktor silindi.");
-      setPendingDelete(null);
+      await telehealthApi.unarchiveDoctor(doctor.id);
+      toast.success("Doktor arşivden çıkarıldı. Sitede görünmesi için profilden aktifleştirin.");
       await load(search);
     } catch (err) {
-      if (err instanceof ApiClientError && err.status === 409) {
-        toast.error("Bu doktorun randevu geçmişi var; önce pasife alın.");
-      } else {
-        toast.error(friendlyErrorMessage(err));
-      }
+      toast.error(friendlyErrorMessage(err));
     } finally {
-      setDeleting(false);
+      setUnarchivingId(null);
     }
   }
 
@@ -104,17 +101,23 @@ export default function AdminTelehealthDoctorsPage() {
         </div>
       ) : (
         <>
-          <InputGroup className="w-full sm:max-w-xs border-2 border-border bg-muted">
-            <InputGroupAddon>
-              <Search />
-            </InputGroupAddon>
-            <InputGroupInput
-              placeholder="Ada veya slug'a göre ara..."
-              aria-label="Doktor ara"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </InputGroup>
+          <div className="flex flex-wrap items-center gap-4">
+            <InputGroup className="w-full sm:max-w-xs border-2 border-border bg-muted">
+              <InputGroupAddon>
+                <Search />
+              </InputGroupAddon>
+              <InputGroupInput
+                placeholder="Ada veya slug'a göre ara..."
+                aria-label="Doktor ara"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </InputGroup>
+            <label className="flex items-center gap-2 text-sm text-foreground/70">
+              <Switch checked={showArchived} onCheckedChange={setShowArchived} aria-label="Arşivi göster" />
+              Arşivi göster
+            </label>
+          </div>
 
           {doctors.length === 0 ? (
             <EmptyState
@@ -158,7 +161,11 @@ export default function AdminTelehealthDoctorsPage() {
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-wrap gap-1.5">
-                          {doctor.isActive ? (
+                          {doctor.archivedAt ? (
+                            <Badge tone="warning" size="sm">
+                              Arşivli
+                            </Badge>
+                          ) : doctor.isActive ? (
                             <Badge tone="success" size="sm">
                               Aktif
                             </Badge>
@@ -179,9 +186,15 @@ export default function AdminTelehealthDoctorsPage() {
                           <LinkButton href={`/admin/telehealth/doctors/${doctor.id}`} variant="ghost" size="sm">
                             Düzenle
                           </LinkButton>
-                          <Button variant="ghost" size="sm" onClick={() => setPendingDelete(doctor)}>
-                            Sil
-                          </Button>
+                          {doctor.archivedAt ? (
+                            <Button variant="ghost" size="sm" loading={unarchivingId === doctor.id} onClick={() => void handleUnarchive(doctor)}>
+                              Arşivden çıkar
+                            </Button>
+                          ) : (
+                            <Button variant="ghost" size="sm" onClick={() => setPendingDelete(doctor)}>
+                              Sil
+                            </Button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -193,21 +206,13 @@ export default function AdminTelehealthDoctorsPage() {
         </>
       )}
 
-      <ConfirmDialog
-        open={pendingDelete !== null}
+      <DoctorDeleteOrArchiveDialog
+        doctor={pendingDelete}
         onOpenChange={(open) => {
           if (!open) setPendingDelete(null);
         }}
-        title="Doktoru kalıcı sil"
-        description={
-          pendingDelete
-            ? `"${pendingDelete.title} ${pendingDelete.fullName}" kalıcı olarak silinecek. Bu doktorun randevu geçmişi varsa işlem engellenir. Bu işlem geri alınamaz.`
-            : undefined
-        }
-        confirmText="Kalıcı Sil"
-        tone="danger"
-        loading={deleting}
-        onConfirm={handleDelete}
+        onDeleted={() => void load(search)}
+        onArchived={() => void load(search)}
       />
     </div>
   );
