@@ -152,4 +152,39 @@ describe("legal-pages-publisher (Paket J)", () => {
     expect((await readBackup(result.preRestoreBackup)).pages.find((p) => p.slug === "kvkk-aydinlatma-metni-2")!.title).toBe("KVKK Aydınlatma Metni");
     expect(await app.prisma.auditLog.count({ where: { action: RESTORE_AUDIT_ACTION } })).toBe(1);
   });
+
+  it("çeviri dili (EN) etkin değilse gerçek yükleme durur; --allow-disabled-locale ile bilerek yapılabilir", async () => {
+    await app.prisma.locale.update({ where: { code: "en" }, data: { enabled: false } });
+    const plan = await buildPublishPlan(app.prisma, LEGAL_DIR, FULL_VALUES);
+    expect(plan.pages.every((p) => !p.translationLocaleEnabled)).toBe(true);
+    await expect(publishLegalPages(app.prisma, plan, { ...OP, confirm: "publish-legal", backupDir, revalidate: false })).rejects.toThrow(/etkin değil/);
+    expect(await fs.readdir(backupDir)).toEqual([]);
+    await publishLegalPages(app.prisma, plan, { ...OP, confirm: "publish-legal", backupDir, revalidate: false, allowDisabledLocale: true });
+    expect((await app.prisma.page.findUniqueOrThrow({ where: { slug: "kvkk-aydinlatma-metni-2" } })).title).toBe("KVKK Aydınlatma Metni");
+    await app.prisma.locale.update({ where: { code: "en" }, data: { enabled: true } });
+  });
+
+  it("geri dönüş sahte/elle düzenlenmiş yedeği reddeder: yabancı slug ve geçersiz bloklar; içerik sanitize edilir", async () => {
+    const other = await app.prisma.page.create({ data: { slug: "hakkimizda", title: "Hakkımızda", status: "PUBLISHED" } });
+    const base = { kind: "legal-pages-backup", createdAt: new Date().toISOString(), defaultLocale: "tr" };
+    const write = async (name: string, pages: unknown[]) => {
+      const file = path.join(backupDir, name);
+      await fs.writeFile(file, JSON.stringify({ ...base, pages }));
+      return file;
+    };
+    const foreign = await write("foreign.json", [{ id: other.id, slug: "hakkimizda", title: "X", blocks: [], translations: {}, updatedAt: "" }]);
+    await expect(restoreLegalPages(app.prisma, foreign, { ...OP, confirm: "restore-legal", backupDir, revalidate: false })).rejects.toThrow(/yönetilmeyen/);
+
+    const kvkk = await app.prisma.page.findUniqueOrThrow({ where: { slug: "kvkk-aydinlatma-metni-2" } });
+    const badBlocks = await write("bad.json", [{ id: kvkk.id, slug: kvkk.slug, title: "X", blocks: "<script>alert(1)</script>", translations: {}, updatedAt: "" }]);
+    await expect(restoreLegalPages(app.prisma, badBlocks, { ...OP, confirm: "restore-legal", backupDir, revalidate: false })).rejects.toThrow(/geçersiz/);
+
+    const xss = await write("xss.json", [
+      { id: kvkk.id, slug: kvkk.slug, title: "X", blocks: [{ id: "a", type: "text", data: { html: '<p>ok</p><img src=x onerror="alert(1)">' } }], translations: {}, updatedAt: "" },
+    ]);
+    await restoreLegalPages(app.prisma, xss, { ...OP, confirm: "restore-legal", backupDir, revalidate: false });
+    const restored = await app.prisma.page.findUniqueOrThrow({ where: { id: kvkk.id } });
+    expect(JSON.stringify(restored.blocks)).not.toContain("onerror");
+    expect((await app.prisma.page.findUniqueOrThrow({ where: { id: other.id } })).title).toBe("Hakkımızda");
+  });
 });

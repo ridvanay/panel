@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { FastifyInstance } from "fastify";
 import type { Locale, Prisma, PrismaClient } from "@prisma/client";
-import { sanitizePageBlocks } from "../modules/pages/lib/sanitize-blocks";
+import { sanitizePageBlocks, sanitizePageTranslations } from "../modules/pages/lib/sanitize-blocks";
 import { PageBlockListSchema } from "../modules/pages/pages.schemas";
 import { syncContentSlugs } from "./localization";
 import { triggerPublicPageRevalidation } from "./revalidate";
@@ -355,7 +355,7 @@ async function writeBackup(db: Db, backupDir: string, slugs: string[], now: Date
     defaultLocale: defaultCode,
     pages: pages.map((p) => ({ id: p.id, slug: p.slug, title: p.title, blocks: p.blocks, translations: p.translations, updatedAt: p.updatedAt.toISOString() })),
   };
-  await fs.mkdir(backupDir, { recursive: true });
+  await fs.mkdir(backupDir, { recursive: true, mode: 0o700 });
   const file = path.join(backupDir, `legal-pages-${now.toISOString().replace(/[:.]/g, "-")}.json`);
   await fs.writeFile(file, JSON.stringify(backup, null, 2), { encoding: "utf8", mode: 0o600 });
   return file;
@@ -375,12 +375,20 @@ export interface PublishResult {
 export async function publishLegalPages(
   db: Db,
   plan: PublishPlan,
-  options: OperatorInfo & { confirm?: string; backupDir: string; now?: Date; revalidate?: boolean }
+  options: OperatorInfo & { confirm?: string; backupDir: string; now?: Date; revalidate?: boolean; allowDisabledLocale?: boolean }
 ): Promise<PublishResult> {
   if (options.confirm !== PUBLISH_CONFIRM_KEY) throw new LegalPublishError(`Gerçek yükleme için --confirm=${PUBLISH_CONFIRM_KEY} gerekir.`);
   assertOperator(options);
   if (plan.missing.length) {
     throw new LegalPublishError(`Eksik yer tutucular var; gerçek yükleme yapılmadı:\n${plan.missing.map((m) => `  - ${m.slug} [${m.lang}]: ${m.keys.join(", ")}`).join("\n")}`);
+  }
+  // compliance incelemesi — çeviri dili etkin değilse o dildeki aydınlatma metni sitede GÖRÜNMEZ
+  // (isLegalDocument sayfalarda sessiz fallback yok). Bilinçli onay olmadan yükleme yapılmaz.
+  const disabled = plan.pages.find((p) => !p.translationLocaleEnabled);
+  if (disabled && !options.allowDisabledLocale) {
+    throw new LegalPublishError(
+      `"${disabled.translationLang}" dili etkin değil; çeviri sitede görünmez. Önce dili etkinleştirin ya da bilerek --allow-disabled-locale ekleyin.`
+    );
   }
 
   const now = options.now ?? new Date();
@@ -430,10 +438,36 @@ export async function publishLegalPages(
   return { backupFile, slugs };
 }
 
+const ALLOWED_SLUGS = new Set<string>(LEGAL_PAGE_MAP.map((m) => m.slug));
+
+/**
+ * security incelemesi — yedek dosyası operatör girdisidir; elle düzenlenmiş/sahte bir yedekle başka
+ * sayfaların üzerine yazılamasın ve sanitize edilmemiş HTML girmesin: yalnızca bu paketin dört slug'ı
+ * kabul edilir, bloklar şemadan + sanitize'dan, çeviriler sanitize'dan geçer.
+ */
 export async function readBackup(file: string): Promise<LegalBackup> {
   const parsed = JSON.parse(await fs.readFile(file, "utf8")) as LegalBackup;
-  if (parsed?.kind !== "legal-pages-backup" || !Array.isArray(parsed.pages)) throw new LegalPublishError("Geçerli bir yasal sayfa yedeği değil.");
-  return parsed;
+  if (parsed?.kind !== "legal-pages-backup" || !Array.isArray(parsed.pages) || parsed.pages.length === 0) {
+    throw new LegalPublishError("Geçerli bir yasal sayfa yedeği değil.");
+  }
+  const pages = parsed.pages.map((p) => {
+    if (!p || typeof p.id !== "string" || typeof p.slug !== "string" || typeof p.title !== "string") {
+      throw new LegalPublishError("Yedekte eksik alanlı sayfa var.");
+    }
+    if (!ALLOWED_SLUGS.has(p.slug)) throw new LegalPublishError(`Yedekte bu araçla yönetilmeyen bir slug var: "${p.slug}".`);
+    if (!Array.isArray(p.blocks) || !PageBlockListSchema.safeParse(p.blocks).success) {
+      throw new LegalPublishError(`Yedekteki "${p.slug}" blokları geçersiz.`);
+    }
+    if (!p.translations || typeof p.translations !== "object" || Array.isArray(p.translations)) {
+      throw new LegalPublishError(`Yedekteki "${p.slug}" çevirileri geçersiz.`);
+    }
+    return {
+      ...p,
+      blocks: sanitizePageBlocks(p.blocks as unknown[]),
+      translations: sanitizePageTranslations(p.translations as Record<string, Record<string, unknown> | null>),
+    };
+  });
+  return { ...parsed, pages };
 }
 
 /** Yedekteki hâli (başlık, bloklar, çeviriler) birebir geri yazar; önce mevcut hâlin yedeğini alır. */

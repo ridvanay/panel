@@ -13,6 +13,7 @@
  *   --dir=<yol>         docs/legal klasörü (varsayılan ../docs/legal)
  *   --backup-dir=<yol>  yedek klasörü (varsayılan backups; prod konteynerinde yazılabilir olan storage/legal-backups)
  *   --no-revalidate     yükleme sonrası ISR yenilemesini atla
+ *   --allow-disabled-locale  çeviri dili (ör. en) etkin değilken bilerek yükle (çeviri sitede görünmez)
  */
 
 import os from "node:os";
@@ -55,7 +56,13 @@ async function main() {
       console.log("\nKURU ÇALIŞMA — hiçbir şey yazılmadı. Yüklemek için --confirm=publish-legal --operator=\"Ad Soyad\" ekleyin.");
       return;
     }
-    const result = await publishLegalPages(prisma, plan, { ...operatorInfo, confirm, backupDir, revalidate });
+    const result = await publishLegalPages(prisma, plan, {
+      ...operatorInfo,
+      confirm,
+      backupDir,
+      revalidate,
+      allowDisabledLocale: process.argv.includes("--allow-disabled-locale"),
+    });
     console.log(`\nYüklendi: ${result.slugs.join(", ")}`);
     console.log(`Yedek: ${result.backupFile}`);
     console.log(`Geri dönüş: npx tsx scripts/publish-legal-pages.ts --restore=${result.backupFile} --confirm=restore-legal --operator="..."`);
