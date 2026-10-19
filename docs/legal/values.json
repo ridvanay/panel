@@ -1,6 +1,18 @@
 {
-  "SIRKET_UNVANI": { "tr": "", "en": "" },
-  "ADRES": { "tr": "", "en": "" },
-  "TELEFON": { "tr": "", "en": "" },
-  "SUNUCU_KONUMU": { "tr": "", "en": "" }
+  "SIRKET_UNVANI": {
+    "tr": "WM Health Istanbul",
+    "en": "WM Health Istanbul"
+  },
+  "ADRES": {
+    "tr": "",
+    "en": ""
+  },
+  "TELEFON": {
+    "tr": "",
+    "en": ""
+  },
+  "SUNUCU_KONUMU": {
+    "tr": "",
+    "en": ""
+  }
 }
