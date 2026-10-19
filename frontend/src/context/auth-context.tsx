@@ -33,6 +33,8 @@ interface AuthContextValue {
   status: AuthStatus;
   user: User | null;
   memberships: AuthSession["memberships"];
+  /** Paket G — personel için zorunlu 2FA tarihi (`/auth/me`); ADMIN/MANAGER dışı ya da kapalıysa `null`. */
+  staffTwoFactorRequiredAt: string | null;
   login: (input: LoginRequest) => Promise<LoginOutcome>;
   /**
    * `.claude/architect-scope-guest-account-otp.md` §2.1 (bağlayıcı) — ARTIK oturum KURMAZ
@@ -60,6 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>("loading");
   const [user, setUser] = useState<User | null>(null);
   const [memberships, setMemberships] = useState<AuthSession["memberships"]>([]);
+  const [staffTwoFactorRequiredAt, setStaffTwoFactorRequiredAt] = useState<string | null>(null);
 
   /**
    * `session.user`'ı RETURN eder — `login()`/`verifyTwoFactor()` bunu senkron olarak outcome'a
@@ -73,6 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const session = await authApi.getSession();
       setUser(session.user);
       setMemberships(session.memberships);
+      setStaffTwoFactorRequiredAt(session.staffTwoFactorRequiredAt ?? null);
       setStatus("authenticated");
       // Sentry hata event'lerini "hangi kullanıcı" sorusuna bağlamak için — SADECE id
       // (PII olmadan, bkz. proje kökü CLAUDE.md § Kurallar); email/isim ASLA gönderilmez.
@@ -188,6 +192,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     status,
     user,
     memberships,
+    staffTwoFactorRequiredAt,
     login,
     register,
     logout,

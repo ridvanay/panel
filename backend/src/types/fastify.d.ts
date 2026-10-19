@@ -11,7 +11,9 @@ declare module "fastify" {
   interface FastifyRequest {
     // `.claude/architect-scope-rbac-5-tier.md` §3 — `advancedBuilderEnabled` alanı KALDIRILDI;
     // `lib/builder-capability.ts::canUseAdvancedBuilder(request.user)` artık saf `role` türevidir.
-    user?: { id: string; email: string; role: SiteRole };
+    // Paket G — `twoFactorEnabled`: personel için zorunlu 2FA kapısı (middleware/site-rbac.ts) ek
+    // sorgu yapmadan karar verebilsin diye `authenticate` tarafından DB'den taze doldurulur.
+    user?: { id: string; email: string; role: SiteRole; twoFactorEnabled?: boolean };
     membership?: { role: MembershipRole; organizationId: string };
     // §10.13.4 — Public API (`/api/v1/public/*`) kimlik doğrulaması, `middleware/api-key-auth.ts`
     // tarafından set edilir. `request.user` İLE ASLA BİRLİKTE set edilmez: bir API anahtarı bir

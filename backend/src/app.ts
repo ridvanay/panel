@@ -30,6 +30,7 @@ import { adminSlidersRoutes, publicSlidersRoutes } from "./modules/sliders/slide
 import { adminMediaRoutes } from "./modules/media/media.routes";
 import { adminStatsRoutes } from "./modules/stats/stats.routes";
 import { adminSettingsRoutes, publicSettingsRoutes } from "./modules/settings/settings.routes";
+import { adminStaffTwoFactorRoutes } from "./modules/settings/settings.staff-two-factor.routes";
 import { adminEmailSettingsRoutes } from "./modules/settings/settings.email.routes";
 import { adminAppearanceRoutes, publicAppearanceRoutes } from "./modules/appearance/appearance.routes";
 import { adminDemoTemplatesRoutes } from "./modules/demo-templates/demo-templates.routes";
@@ -212,6 +213,8 @@ export function buildApp() {
       api.register(adminStatsRoutes, { prefix: "/admin/stats" });
       api.register(publicSettingsRoutes, { prefix: "/settings" });
       api.register(adminSettingsRoutes, { prefix: "/admin/settings" });
+      // Paket G — personel için zorunlu 2FA anahtarı (YALNIZCA ADMIN + 2FA + şifre/TOTP step-up).
+      api.register(adminStaffTwoFactorRoutes, { prefix: "/admin/settings/staff-two-factor" });
       // §10.12 Site Özelleştirme — bkz. ARCHITECTURE.md §10.12. `/admin/settings` NASIL ÇALIŞTIĞI,
       // bu ise NASIL GÖRÜNDÜĞÜ (rota sınırı §10.12.1).
       api.register(publicAppearanceRoutes, { prefix: "/appearance" });

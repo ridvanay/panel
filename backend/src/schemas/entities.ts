@@ -947,6 +947,10 @@ export const AuthSessionSchema = z.object({
       role: MembershipRoleSchema,
     })
   ),
+  /** Paket G — personel için zorunlu 2FA aktif ve bu kullanıcının 2FA'sı kapalı (ADMIN/MANAGER). */
+  twoFactorSetupRequired: z.boolean(),
+  /** Paket G — zorunluluk tarihi (yalnızca ADMIN/MANAGER için; diğerlerine `null`). Uyarı şeridi için. */
+  staffTwoFactorRequiredAt: z.string().nullable(),
 });
 export type AuthSessionDto = z.infer<typeof AuthSessionSchema>;
 

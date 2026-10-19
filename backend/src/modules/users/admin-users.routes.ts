@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { assertNotLastTwoFactorAdmin } from "../../lib/staff-two-factor";
 import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { Prisma, type SiteRole, type SiteUserStatus } from "@prisma/client";
@@ -258,6 +259,8 @@ export async function adminUsersRoutes(app: FastifyInstance) {
 
         if (target.role === "ADMIN" && role !== "ADMIN") {
           await assertNotLastActiveAdmin(tx, target.id);
+          // Paket G — zorunlu 2FA açıkken 2FA'sı etkin son yönetici devre dışı bırakılamaz.
+          await assertNotLastTwoFactorAdmin(tx, target.id);
         }
 
         const updated = await tx.user.update({
@@ -313,6 +316,8 @@ export async function adminUsersRoutes(app: FastifyInstance) {
 
         if (target.role === "ADMIN" && status === "SUSPENDED") {
           await assertNotLastActiveAdmin(tx, target.id);
+          // Paket G — zorunlu 2FA açıkken 2FA'sı etkin son yönetici devre dışı bırakılamaz.
+          await assertNotLastTwoFactorAdmin(tx, target.id);
         }
 
         return tx.user.update({
@@ -599,6 +604,8 @@ export async function adminUsersRoutes(app: FastifyInstance) {
 
         if (target.role === "ADMIN" && target.status === "ACTIVE") {
           await assertNotLastActiveAdmin(tx, target.id);
+          // Paket G — zorunlu 2FA açıkken 2FA'sı etkin son yönetici devre dışı bırakılamaz.
+          await assertNotLastTwoFactorAdmin(tx, target.id);
         }
 
         const deletedAt = new Date();

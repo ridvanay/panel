@@ -27,6 +27,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { PageHeading } from "@/components/admin/page-heading";
+import { StaffTwoFactorPolicyCard } from "@/components/admin/staff-two-factor-policy-card";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 
 type DeviceType = "desktop" | "mobile" | "tablet";
@@ -272,6 +273,9 @@ export default function SecurityPage() {
           )}
         </Card>
       </motion.div>
+
+      {/* Paket G — personel için zorunlu 2FA anahtarı (yalnızca ADMIN). */}
+      {user?.role === "ADMIN" && <StaffTwoFactorPolicyCard actorHasTwoFactor={user.twoFactorEnabled === true} />}
 
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.05 }}>
         <Card className="space-y-4">

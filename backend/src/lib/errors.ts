@@ -30,6 +30,7 @@ export type ApiErrorCode =
    */
   | "APPOINTMENT_NOT_JOINABLE"
   | "QA_LISTENER_NOT_ALLOWED"
+  | "TWO_FACTOR_SETUP_REQUIRED"
   /**
    * §4.4/§8/§12 — LiveKit ortam değişkenleri (`LIVEKIT_URL`/`LIVEKIT_API_KEY`/
    * `LIVEKIT_API_SECRET`) tanımsızken `POST /appointments/{id}/meeting-token`. Kod TÜRÜ burada
@@ -370,6 +371,17 @@ export class DocumentLimitReachedError extends ApiError {
  * `true` OLMADIĞI sürece 403 döner. Yeni bir DB kolonu/2FA ucu YOKTUR — mevcut TOTP kurulum
  * uçları (`/admin/settings/security/2fa/*`) kullanılır.
  */
+/**
+ * Paket G — personel için zorunlu 2FA aktifken 2FA'sı kapalı ADMIN/MANAGER `/admin/*` uçlarında alır.
+ * `TWO_FACTOR_REQUIRED`'dan (doktor portalı / step-up) BİLİNÇLİ OLARAK ayrı: istemci bu kodla
+ * kullanıcıyı 2FA kurulum sayfasına yönlendirir.
+ */
+export class TwoFactorSetupRequiredError extends ApiError {
+  constructor(message = "Yönetim paneline erişmek için iki adımlı doğrulamayı (2FA) kurmanız gerekiyor.") {
+    super(403, "TWO_FACTOR_SETUP_REQUIRED", message);
+  }
+}
+
 export class TwoFactorRequiredError extends ApiError {
   constructor(message = "Bu işlem için iki adımlı doğrulamanın (2FA) etkin olması gerekir.") {
     super(403, "TWO_FACTOR_REQUIRED", message);

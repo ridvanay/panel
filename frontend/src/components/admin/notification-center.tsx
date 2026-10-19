@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import * as usersAdminApi from "@/lib/api/users-admin";
 import * as logsApi from "@/lib/api/logs";
+import { ApiClientError } from "@/lib/api/error";
 import type { AdminUser, AuditLog } from "@/lib/api/types";
 import { useAdminLocale } from "@/context/i18n-context";
 import { toIntlLocale } from "@/lib/i18n/intl-locale";
@@ -70,7 +71,11 @@ export function NotificationCenter() {
       setCriticalLogs(logsPage.items.filter((log) => isCriticalStatus(log.status)).slice(0, 5));
       setLoadState("loaded");
     } catch (err) {
-      console.error("Bildirimler yüklenemedi:", err);
+      // Paket G — personel için zorunlu 2FA aktifken (kurulum sayfasındaki kabukta) bu 403 beklenir;
+      // konsola hata basılmaz.
+      if (!(err instanceof ApiClientError && err.code === "TWO_FACTOR_SETUP_REQUIRED")) {
+        console.error("Bildirimler yüklenemedi:", err);
+      }
       setLoadState("error");
     }
   }, []);

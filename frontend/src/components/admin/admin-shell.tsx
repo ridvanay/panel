@@ -16,6 +16,9 @@ import { CommandPalette } from "@/components/admin/command-palette";
 import { KeyboardShortcutsModal } from "@/components/admin/keyboard-shortcuts-modal";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
+import { StaffTwoFactorNotice } from "@/components/admin/staff-two-factor-notice";
+import { useNow } from "@/hooks/use-now";
+import { STAFF_TWO_FACTOR_SETUP_PATH, getStaffTwoFactorState } from "@/lib/staff-two-factor";
 
 /** §10.21 §7.4 — panel erişimi olan roller; backend `requirePanelAccess()` ile AYNI küme. */
 const ROLES_PANEL = new Set<SiteRole>(["ADMIN", "MANAGER", "EDITOR"]);
@@ -29,9 +32,19 @@ const ROLES_PANEL = new Set<SiteRole>(["ADMIN", "MANAGER", "EDITOR"]);
  * panelinden kaldırılması).
  */
 export function AdminShell({ children }: { children: ReactNode }) {
-  const { status, user } = useAuth();
+  const { status, user, staffTwoFactorRequiredAt } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+
+  // Paket G — personel için zorunlu 2FA: zorunluluk aktifse ve 2FA kapalıysa yalnızca 2FA kurulum
+  // sayfası açılır (diğer sayfalar hiç mount edilmez — `/admin/*` istekleri zaten 403 döner).
+  const now = useNow(30_000);
+  const staffTwoFactorState = getStaffTwoFactorState(user, staffTwoFactorRequiredAt, now);
+  const redirectingToTwoFactorSetup =
+    status === "authenticated" && staffTwoFactorState === "required" && pathname !== STAFF_TWO_FACTOR_SETUP_PATH;
+  useEffect(() => {
+    if (redirectingToTwoFactorSetup) router.replace(STAFF_TWO_FACTOR_SETUP_PATH);
+  }, [redirectingToTwoFactorSetup, router]);
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -67,7 +80,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
   const redirectingEditorFromDashboard = status === "authenticated" && user?.role === "EDITOR" && pathname === "/admin";
   const redirectingNonPanelRole = status === "authenticated" && user !== null && !ROLES_PANEL.has(user.role);
 
-  if (status !== "authenticated" || redirectingEditorFromDashboard || redirectingNonPanelRole) {
+  if (status !== "authenticated" || redirectingEditorFromDashboard || redirectingNonPanelRole || redirectingToTwoFactorSetup) {
     return (
       <main className="flex min-h-screen items-center justify-center">
         <Spinner className="h-6 w-6 text-primary" />
@@ -108,6 +121,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
                     transition={{ duration: 0.2 }}
                   >
                     <AdminBreadcrumb pathname={pathname} />
+                    <StaffTwoFactorNotice state={staffTwoFactorState} requiredAt={staffTwoFactorRequiredAt} />
                     {children}
                   </motion.div>
                 </AnimatePresence>

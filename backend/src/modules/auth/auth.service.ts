@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { getStaffTwoFactorRequiredAt, isStaffRole, requiresStaffTwoFactorSetup } from "../../lib/staff-two-factor";
 import type { User } from "@prisma/client";
 
 // [TCT] §9.7.7 KARAR K3 (bağlayıcı) — `toUserDto`/`toAdminUserDto`'nun gerektirdiği `doctorProfile`
@@ -504,5 +505,13 @@ export async function getSession(app: FastifyInstance, userId: string) {
     select: { organizationId: true, role: true },
   });
 
-  return { user: toUserDto(user), memberships };
+  // Paket G — personel için zorunlu 2FA: panel kabuğu bu alanla 2FA kurulum sayfasına yönlendirir.
+  const staff = isStaffRole(user.role);
+  const requiredAt = staff ? await getStaffTwoFactorRequiredAt(app.prisma) : null;
+  return {
+    user: toUserDto(user),
+    memberships,
+    twoFactorSetupRequired: requiresStaffTwoFactorSetup(user, requiredAt),
+    staffTwoFactorRequiredAt: requiredAt?.toISOString() ?? null,
+  };
 }

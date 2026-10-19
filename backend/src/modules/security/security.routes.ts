@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { assertNotLastTwoFactorAdmin } from "../../lib/staff-two-factor";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
 import { authenticate } from "../../middleware/authenticate";
@@ -151,6 +152,9 @@ export async function securityTwoFactorRoutes(app: FastifyInstance) {
         });
         throw new UnauthorizedError("Şifre hatalı.");
       }
+
+      // Paket G — zorunlu 2FA açıkken 2FA'sı etkin son yönetici kendi 2FA'sını kapatamaz.
+      await assertNotLastTwoFactorAdmin(app.prisma, user.id);
 
       const rawRefreshToken = request.cookies[REFRESH_COOKIE_NAME];
       const currentHash = rawRefreshToken ? hashToken(rawRefreshToken) : undefined;

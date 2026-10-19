@@ -42,6 +42,7 @@ export type ApiErrorCode =
   | "UNSUPPORTED_DOCUMENT_TYPE"
   | "DOCUMENT_LIMIT_REACHED"
   | "TWO_FACTOR_REQUIRED"
+  | "TWO_FACTOR_SETUP_REQUIRED"
   | "NOT_A_DOCTOR"
   // 2026-10-18 (Paket B) — 2FA sıfırlama step-up, etkinleştirme e-postası ve arşivleme kodları.
   | "STEP_UP_2FA_NOT_ENABLED"
@@ -260,6 +261,23 @@ export interface AuthResponse {
 export interface AuthSession {
   user: User;
   memberships: Array<Pick<Membership, "organizationId" | "role">>;
+  /** Paket G — personel için zorunlu 2FA aktif ve bu kullanıcının 2FA'sı kapalı. */
+  twoFactorSetupRequired?: boolean;
+  /** Paket G — zorunluluk tarihi (yalnızca ADMIN/MANAGER için dolu). */
+  staffTwoFactorRequiredAt?: string | null;
+}
+
+/** Paket G — `GET/PUT /admin/settings/staff-two-factor`. */
+export interface StaffTwoFactorPolicy {
+  requiredAt: string | null;
+  minGraceDays: number;
+  staffWithoutTwoFactor: Array<{ id: string; email: string; role: string }>;
+}
+
+export interface UpdateStaffTwoFactorPolicyRequest {
+  requiredAt: string | null;
+  password: string;
+  code: string;
 }
 
 export interface RegisterRequest {

@@ -1,6 +1,7 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type { SiteRole } from "@prisma/client";
-import { ForbiddenError, UnauthorizedError } from "../lib/errors";
+import { ForbiddenError, TwoFactorSetupRequiredError, UnauthorizedError } from "../lib/errors";
+import { getStaffTwoFactorRequiredAt, isStaffRole, isStaffTwoFactorEnforced } from "../lib/staff-two-factor";
 import { logAudit } from "../lib/audit";
 
 /**
@@ -22,6 +23,15 @@ export function requireSiteRole(...allowedRoles: SiteRole[]) {
         ipAddress: request.ip,
       });
       throw new ForbiddenError("Bu işlem için yetkiniz yok.");
+    }
+
+    // Paket G — personel için zorunlu 2FA. 2FA'sı açık kullanıcı için ek sorgu YOK; ayar yalnızca
+    // 2FA'sı kapalı ADMIN/MANAGER için okunur.
+    if (request.user.twoFactorEnabled !== true && isStaffRole(request.user.role)) {
+      const requiredAt = await getStaffTwoFactorRequiredAt(request.server.prisma);
+      if (isStaffTwoFactorEnforced(requiredAt)) {
+        throw new TwoFactorSetupRequiredError();
+      }
     }
   };
 }
