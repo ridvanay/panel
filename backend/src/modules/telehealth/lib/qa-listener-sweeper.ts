@@ -67,6 +67,21 @@ export function isQaListenerIdentity(identity: string): boolean {
   return identity.startsWith(QA_LISTENER_IDENTITY_PREFIX);
 }
 
+async function hasOpenSessionForIdentity(app: FastifyInstance, identity: string): Promise<boolean> {
+  const joined = await app.prisma.auditLog.findFirst({
+    where: { action: JOINED_ACTION, metadata: { path: ["identity"], equals: identity } },
+    orderBy: { seq: "desc" },
+    select: { metadata: true },
+  });
+  const sessionId = joined ? readMeta(joined.metadata).sessionId : undefined;
+  if (!sessionId) return false;
+  const left = await app.prisma.auditLog.findFirst({
+    where: { action: LEFT_ACTION, metadata: { path: ["sessionId"], equals: sessionId } },
+    select: { id: true },
+  });
+  return left === null;
+}
+
 /** Tek atma kapısı — önek tutmuyorsa ASLA çağrı yapılmaz. */
 async function removeListener(deps: QaListenerSweepDeps, roomName: string, identity: string): Promise<"removed" | "absent" | "unavailable"> {
   if (!isQaListenerIdentity(identity)) throw new Error("QA dinleyici olmayan katılımcı atılamaz.");
@@ -184,6 +199,9 @@ export async function runQaListenerSweep(app: FastifyInstance, options: QaListen
     if (identities === null) break; // LiveKit Server API yapılandırılmamış — hiçbir odada yapılamaz.
     for (const identity of identities) {
       if (!isQaListenerIdentity(identity) || stillValidIdentities.has(identity)) continue;
+      // Güvenlik notu G D-1 — tarama sürerken açılmış yeni bir oturum "kaçak" sayılmasın: kimliğe ait
+      // açık (left'i olmayan) bir joined kaydı varsa atlanır.
+      if (await hasOpenSessionForIdentity(app, identity)) continue;
       try {
         if ((await removeListener(deps, roomName, identity)) !== "removed") continue;
       } catch (err) {

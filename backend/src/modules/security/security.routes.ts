@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { runSerializable } from "../../lib/serializable-tx";
 import { assertNotLastTwoFactorAdmin } from "../../lib/staff-two-factor";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
@@ -153,29 +154,30 @@ export async function securityTwoFactorRoutes(app: FastifyInstance) {
         throw new UnauthorizedError("Şifre hatalı.");
       }
 
-      // Paket G — zorunlu 2FA açıkken 2FA'sı etkin son yönetici kendi 2FA'sını kapatamaz.
-      await assertNotLastTwoFactorAdmin(app.prisma, user.id);
-
       const rawRefreshToken = request.cookies[REFRESH_COOKIE_NAME];
       const currentHash = rawRefreshToken ? hashToken(rawRefreshToken) : undefined;
 
-      await app.prisma.$transaction([
-        app.prisma.user.update({
+      // Paket G — zorunlu 2FA açıkken 2FA'sı etkin son yönetici kendi 2FA'sını kapatamaz. Kontrol ve
+      // yazım AYNI serializable transaction'da (security-review O-1: iki yöneticinin eşzamanlı
+      // kapatmasıyla korumanın aşılmaması için).
+      await runSerializable(app, async (tx) => {
+        await assertNotLastTwoFactorAdmin(tx, user.id);
+        await tx.user.update({
           where: { id: user.id },
           data: { twoFactorEnabled: false, twoFactorSecret: null, twoFactorVerifiedAt: null, twoFactorLastUsedStep: null },
-        }),
-        app.prisma.backupCode.deleteMany({ where: { userId: user.id } }),
+        });
+        await tx.backupCode.deleteMany({ where: { userId: user.id } });
         // Mevcut oturum HARİÇ tüm refresh token'lar iptal edilir — 2FA kapatma hassas
         // bir işlem olduğu için diğer cihazlardaki oturumlar zorla sonlandırılır.
-        app.prisma.refreshToken.updateMany({
+        await tx.refreshToken.updateMany({
           where: {
             userId: user.id,
             revoked: false,
             ...(currentHash ? { tokenHash: { not: currentHash } } : {}),
           },
           data: { revoked: true },
-        }),
-      ]);
+        });
+      });
 
       await logAudit(app, {
         actorId: user.id,

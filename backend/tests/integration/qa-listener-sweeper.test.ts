@@ -220,4 +220,34 @@ describe("QA dinleyici temizleyicisi (Paket G)", () => {
     expect(removeCalls).toEqual([]);
     expect((await leftRow(sessionId))?.metadata).toMatchObject({ removed: false });
   });
+
+  it("güvenlik notu G D-1 — tarama sürerken açılan yeni oturum kaçak sayılıp atılmaz", async () => {
+    const admin = await createAdmin();
+    const appointment = await createAppointment();
+    await openSession(admin, appointment, 5);
+    const lateSessionId = crypto.randomUUID();
+    const lateIdentity = `qa-listener-${admin.id}-${lateSessionId.slice(0, 8)}`;
+    let injected = false;
+    deps.listParticipants = vi.fn(async (roomName: string) => {
+      if (!injected) {
+        injected = true;
+        // Tarama başladıktan SONRA açılan oturum (joined kaydı + odaya bağlanma).
+        await app.prisma.auditLog.create({
+          data: {
+            actorId: admin.id,
+            actorEmail: admin.email,
+            action: JOINED,
+            targetType: "Appointment",
+            targetId: appointment.id,
+            metadata: { sessionId: lateSessionId, identity: lateIdentity, roomName: appointment.meetingRoomName },
+          },
+        });
+        roomParticipants.set(roomName, [...(roomParticipants.get(roomName) ?? []), lateIdentity]);
+      }
+      return roomParticipants.get(roomName) ?? [];
+    });
+    const result = await runQaListenerSweep(app, { deps });
+    expect(result.strayRemoved).toEqual([]);
+    expect(removeCalls).toEqual([]);
+  });
 });
