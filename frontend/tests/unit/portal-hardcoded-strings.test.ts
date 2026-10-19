@@ -30,6 +30,8 @@ const CONSULTATION_ONLY_FILES = new Set([
   "components/site/telehealth/recording-controls.tsx",
   "components/site/telehealth/recording-indicator.tsx",
   "components/site/telehealth/recording-consent-dialog.tsx",
+  // Paket C — görüşme odasındaki kalite kontrol dinleyicisi uyarısı (metin compliance onaylı, TR).
+  "components/site/telehealth/qa-listener-notice.tsx",
 ]);
 
 /** Dosya bazında izinli literal metinler (çevrilmesi anlamsız: semboller, marka, birim kodu…). */

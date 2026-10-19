@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { AlertCircle, CalendarClock, Search, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { AlertCircle, CalendarClock, Headphones, History, Search, Trash2 } from "lucide-react";
 import * as telehealthApi from "@/lib/api/telehealth";
-import type { Appointment, AppointmentStatus } from "@/lib/api/types";
+import type { Appointment, AppointmentStatus, QaListenerTokenResponse } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
@@ -18,6 +19,10 @@ import { PageHeading } from "@/components/admin/page-heading";
 import { RescheduleAppointmentDialog } from "@/components/admin/telehealth/reschedule-appointment-dialog";
 import { CancelAppointmentDialog } from "@/components/admin/telehealth/cancel-appointment-dialog";
 import { DeleteAppointmentDialog } from "@/components/admin/telehealth/delete-appointment-dialog";
+import { QaListenerJoinDialog } from "@/components/admin/telehealth/qa-listener-join-dialog";
+import { QaListenerHistoryDialog } from "@/components/admin/telehealth/qa-listener-history-dialog";
+import { QaListenerSessionPanel } from "@/components/admin/telehealth/qa-listener-session-panel";
+import { useAuth } from "@/context/auth-context";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { formatPriceFromCents } from "@/lib/format-price";
 import { resolveDisplayedAppointmentStatus } from "@/components/site/telehealth/appointment-status-badge";
@@ -76,6 +81,14 @@ export default function AdminTelehealthAppointmentsPage() {
   const [pendingDelete, setPendingDelete] = useState<Appointment | null>(null);
   const [pendingReschedule, setPendingReschedule] = useState<Appointment | null>(null);
 
+  // Paket C — kalite kontrol dinleyicisi: YALNIZCA 2FA'sı etkin ADMIN (sunucu da ayrıca zorlar).
+  const { user } = useAuth();
+  const isAdmin = user?.role === "ADMIN";
+  const canListen = isAdmin && user?.twoFactorEnabled === true;
+  const [pendingListen, setPendingListen] = useState<Appointment | null>(null);
+  const [historyFor, setHistoryFor] = useState<Appointment | null>(null);
+  const [listenerSession, setListenerSession] = useState<{ appointment: Appointment; session: QaListenerTokenResponse } | null>(null);
+
   // 2026-10-18 (Paket B4) — test olarak arşivlenmiş booking'lerin randevuları varsayılan olarak gizli.
   const [showArchived, setShowArchived] = useState(false);
 
@@ -106,6 +119,24 @@ export default function AdminTelehealthAppointmentsPage() {
         title="Randevular"
         description="Tüm doktorların randevuları — hasta PII'si içerir; planlanmış/devam eden randevular iptal edilebilir veya (yalnızca ADMIN) yeniden planlanabilir; ödemesiz test randevuları (yalnızca ADMIN) kalıcı silinebilir."
       />
+
+      {isAdmin && !canListen && (
+        <Alert variant="info">
+          Görüşmelere kalite kontrol dinleyicisi olarak katılmak için hesabınızda iki adımlı doğrulama (2FA) etkin olmalı.{" "}
+          <Link href="/admin/settings/security" className="font-medium underline">
+            2FA ayarları
+          </Link>
+        </Alert>
+      )}
+
+      {listenerSession && (
+        <QaListenerSessionPanel
+          key={listenerSession.session.sessionId}
+          appointment={listenerSession.appointment}
+          session={listenerSession.session}
+          onEnded={() => setListenerSession(null)}
+        />
+      )}
 
       {error && (
         <Alert variant="error">
@@ -197,6 +228,30 @@ export default function AdminTelehealthAppointmentsPage() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1">
+                          {isAdmin && appointment.status === "IN_PROGRESS" && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              disabled={!canListen || listenerSession !== null}
+                              title={!canListen ? "2FA etkin olmalı" : undefined}
+                              onClick={() => setPendingListen(appointment)}
+                              aria-label={`"${appointment.patientName}" görüşmesine dinleyici olarak katıl`}
+                            >
+                              <Headphones className="h-3.5 w-3.5" />
+                              Dinleyici olarak katıl
+                            </Button>
+                          )}
+                          {isAdmin && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setHistoryFor(appointment)}
+                              aria-label={`"${appointment.patientName}" görüşmesinin dinleyici geçmişi`}
+                            >
+                              <History className="h-3.5 w-3.5" />
+                              Dinleyici geçmişi
+                            </Button>
+                          )}
                           {RESCHEDULABLE_STATUSES.includes(appointment.status) && (
                             <Button
                               variant="ghost"
@@ -254,6 +309,25 @@ export default function AdminTelehealthAppointmentsPage() {
         }}
         appointment={pendingDelete}
         onDeleted={() => load(status || undefined, search)}
+      />
+
+      <QaListenerJoinDialog
+        key={`listen-${pendingListen?.id ?? "closed"}`}
+        open={pendingListen !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingListen(null);
+        }}
+        appointment={pendingListen}
+        onJoined={(appointment, session) => setListenerSession({ appointment, session })}
+      />
+
+      <QaListenerHistoryDialog
+        key={`history-${historyFor?.id ?? "closed"}`}
+        open={historyFor !== null}
+        onOpenChange={(open) => {
+          if (!open) setHistoryFor(null);
+        }}
+        appointment={historyFor}
       />
 
       <RescheduleAppointmentDialog

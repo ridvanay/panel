@@ -50,6 +50,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { RecordingConsentDialog } from "@/components/site/telehealth/recording-consent-dialog";
+import { QaListenerNotice, isQaListenerParticipant } from "@/components/site/telehealth/qa-listener-notice";
 import { RecordingIndicator } from "@/components/site/telehealth/recording-indicator";
 import { RecordingControls } from "@/components/site/telehealth/recording-controls";
 import { cn } from "@/lib/utils";
@@ -543,11 +544,12 @@ function ConsultationStage() {
     { source: Track.Source.Camera, withPlaceholder: true },
     { source: Track.Source.ScreenShare, withPlaceholder: false },
   ]);
-  const hasRemoteParticipant = participants.some((p) => !p.isLocal);
+  // Paket C — kalite kontrol dinleyicisi "karşı taraf" sayılmaz (bekleme odası/spotlight onu yok sayar).
+  const hasRemoteParticipant = participants.some((p) => !p.isLocal && !isQaListenerParticipant(p));
 
   const remoteTrack =
-    tracks.find((t) => !t.participant.isLocal && t.source === Track.Source.ScreenShare) ??
-    tracks.find((t) => !t.participant.isLocal && t.source === Track.Source.Camera);
+    tracks.find((t) => !t.participant.isLocal && !isQaListenerParticipant(t.participant) && t.source === Track.Source.ScreenShare) ??
+    tracks.find((t) => !t.participant.isLocal && !isQaListenerParticipant(t.participant) && t.source === Track.Source.Camera);
   const localCameraTrack = tracks.find((t) => t.participant.isLocal && t.source === Track.Source.Camera);
 
   return (
@@ -772,6 +774,7 @@ function ConsultationVideoRoom({
         onSignal={onRecordingSignal}
       />
       <ConnectionStatusBadge />
+      <QaListenerNotice />
       <div className="absolute right-4 top-4 z-10">
         <RecordingIndicator status={recording?.status} />
       </div>

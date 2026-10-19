@@ -142,3 +142,61 @@ export async function createMeetingToken(
 
   return { token, serverUrl: config.url, roomName: input.roomName, expiresAt };
 }
+
+/**
+ * Paket C (2026-10-18, kullanıcı onaylı kırmızı çizgi istisnası) — ADMIN kalite kontrol
+ * dinleyicisi. `createMeetingToken`'dan BİLİNÇLİ OLARAK AYRI: hasta/doktor token'ının grant'ı,
+ * kimliği ve TTL'i bu fonksiyondan ETKİLENMEZ.
+ *
+ * - Yayın YOK: `canPublish: false`, `canPublishData: false` (kayıt sinyali/sohbet de gönderilemez).
+ * - Görünür katılım: `hidden` grant'ı KULLANILMAZ; görünen ad ve `role: "qa_listener"` metadata'sı
+ *   hasta/doktor istemcisinin kalıcı uyarıyı göstermesini sağlar (`qa-listener-notice.tsx`).
+ *   `canUpdateOwnMetadata: false` — dinleyici kendi rolünü/adını değiştirip uyarıyı kapatamaz.
+ * - Kısa TTL: token yalnızca KATILIM için geçerlidir; süre `QA_LISTENER_TOKEN_TTL_SEC`.
+ */
+export const QA_LISTENER_TOKEN_TTL_SEC = 10 * 60;
+export const QA_LISTENER_IDENTITY_PREFIX = "qa-listener-";
+export const QA_LISTENER_DISPLAY_NAME = "WM Health – Kalite Kontrol";
+export const QA_LISTENER_ROLE = "qa_listener";
+
+export function buildQaListenerIdentity(userId: string): string {
+  return `${QA_LISTENER_IDENTITY_PREFIX}${userId}`;
+}
+
+export async function createQaListenerToken(
+  input: { roomName: string; userId: string },
+  config: LiveKitConfig = getLiveKitConfig()
+): Promise<MeetingTokenResult & { identity: string }> {
+  const identity = buildQaListenerIdentity(input.userId);
+
+  const accessToken = new AccessToken(config.apiKey, config.apiSecret, {
+    identity,
+    name: QA_LISTENER_DISPLAY_NAME,
+    metadata: JSON.stringify({ role: QA_LISTENER_ROLE }),
+    ttl: QA_LISTENER_TOKEN_TTL_SEC,
+  });
+  accessToken.addGrant({
+    roomJoin: true,
+    room: input.roomName,
+    canSubscribe: true,
+    canPublish: false,
+    canPublishData: false,
+    canUpdateOwnMetadata: false,
+  });
+
+  const token = await accessToken.toJwt();
+  const expiresAt = new Date(Date.now() + QA_LISTENER_TOKEN_TTL_SEC * 1000).toISOString();
+
+  return { token, serverUrl: config.url, roomName: input.roomName, expiresAt, identity };
+}
+
+/**
+ * Dinleyici ayrıldığında odadan sunucu tarafında da çıkarılır (sekme kapanıp bağlantı asılı kalsa
+ * bile uyarı gereksiz yere ekranda kalmasın). `internalUrl` boşsa atlanır ve `false` döner
+ * (`ensureRoomConfigured` İLE AYNI ilke); hata çağırana fırlatılır, route best-effort yakalar.
+ */
+export async function removeRoomParticipant(roomName: string, identity: string, config: LiveKitConfig = getLiveKitConfig()): Promise<boolean> {
+  if (!config.internalUrl) return false;
+  await getRoomServiceClient(config).removeParticipant(roomName, identity);
+  return true;
+}

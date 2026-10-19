@@ -8364,6 +8364,113 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /admin/telehealth/appointments/{id}/listener-token:
+    parameters:
+      - $ref: "#/components/parameters/AppointmentId"
+    post:
+      tags: [TeleHealth]
+      summary: Kalite kontrol dinleyicisi token'ı (YALNIZCA ADMIN + 2FA)
+      description: >
+        2026-10-18 (Paket C) — devam eden (`IN_PROGRESS`) bir görüşmeye ADMIN'in AÇIK ve BİLDİRİMLİ
+        dinleyici olarak katılması. Hasta/doktor `POST /appointments/{id}/meeting-token` ucundan
+        TAMAMEN ayrıdır ve onu değiştirmez. Token: identity `qa-listener-<userId>`, ad
+        "WM Health – Kalite Kontrol", metadata `{"role":"qa_listener"}`, grant
+        `canSubscribe: true, canPublish: false, canPublishData: false, canUpdateOwnMetadata: false`
+        (`hidden` YOK), TTL 10 dk. `expiresAt` yalnızca KATILIM token'ının geçerlilik sonudur —
+        bağlı oturumu sınırlamaz. Görüşmenin durumunu/`startedAt`'ini değiştirmez. Audit:
+        `telehealth.qa_listener.joined` (sessionId, gerekçe). Hız sınırı 5/dk.
+        Sıra: 403 `TWO_FACTOR_REQUIRED` → 503 `LIVEKIT_NOT_CONFIGURED` → 404 → 409 `QA_LISTENER_NOT_ALLOWED`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 10, maxLength: 500, description: "Katılım gerekçesi (trim sonrası)." }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: object
+                        required: [token, serverUrl, roomName, expiresAt, sessionId]
+                        properties:
+                          token: { type: string }
+                          serverUrl: { type: string }
+                          roomName: { type: string }
+                          expiresAt: { type: string, format: date-time }
+                          sessionId: { type: string, format: uuid }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: ADMIN değil (`FORBIDDEN`) veya 2FA etkin değil (`TWO_FACTOR_REQUIRED`).
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "Görüşme `IN_PROGRESS` değil (`error.code: QA_LISTENER_NOT_ALLOWED`)."
+        "422":
+          description: Gerekçe eksik/kısa.
+        "503":
+          description: LiveKit yapılandırılmamış (`LIVEKIT_NOT_CONFIGURED`).
+
+  /admin/telehealth/appointments/{id}/listener-sessions/{sessionId}/leave:
+    parameters:
+      - $ref: "#/components/parameters/AppointmentId"
+      - name: sessionId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [TeleHealth]
+      summary: Kalite kontrol dinleyicisinin ayrılışı (YALNIZCA ADMIN, idempotent)
+      description: >
+        Paket C — yalnızca oturumu açan admin kapatabilir (başkasının oturumu → 404). Audit:
+        `telehealth.qa_listener.left` (sessionId, durationSeconds). İkinci çağrı yeni kayıt yazmaz.
+        `LIVEKIT_INTERNAL_URL` doluysa katılımcı odadan sunucu tarafında da çıkarılır (best-effort).
+        İstemci `fetch(..., { keepalive: true })` ile `pagehide`'da da çağırır.
+      responses:
+        "204": { description: Kaydedildi (veya zaten kayıtlıydı). }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/telehealth/appointments/{id}/listener-history:
+    parameters:
+      - $ref: "#/components/parameters/AppointmentId"
+    get:
+      tags: [TeleHealth]
+      summary: Randevunun dinleyici geçmişi (YALNIZCA ADMIN)
+      description: >
+        Paket C — `AuditLog`'daki `joined`/`left` kayıtları `sessionId` ile eşlenir, en yeni önce.
+        `leftAt: null` → çıkış kaydı yok (oturum açık ya da ayrılış iletilemedi).
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: array
+                        items:
+                          type: object
+                          required: [sessionId, adminEmail, reason, joinedAt, leftAt]
+                          properties:
+                            sessionId: { type: string }
+                            adminEmail: { type: string, nullable: true }
+                            reason: { type: string, nullable: true }
+                            joinedAt: { type: string, format: date-time }
+                            leftAt: { type: string, format: date-time, nullable: true }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
   /admin/telehealth/appointments/{id}:
     parameters:
       - $ref: "#/components/parameters/AppointmentId"
@@ -13328,6 +13435,7 @@ components:
                   INTERNAL_ERROR,
                   SLOT_TAKEN,
                   APPOINTMENT_NOT_JOINABLE,
+                  QA_LISTENER_NOT_ALLOWED,
                   LIVEKIT_NOT_CONFIGURED,
                   PAYMENTS_NOT_CONFIGURED,
                   BOOKING_NOT_PAYABLE,

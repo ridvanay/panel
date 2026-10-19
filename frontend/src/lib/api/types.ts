@@ -31,6 +31,7 @@ export type ApiErrorCode =
   // `.claude/architect-scope-telehealth-template.md` §12 — `TeleHealth` tag'i.
   | "SLOT_TAKEN"
   | "APPOINTMENT_NOT_JOINABLE"
+  | "QA_LISTENER_NOT_ALLOWED"
   | "LIVEKIT_NOT_CONFIGURED"
   // `.claude/architect-scope-telehealth-template.md` §9.7.10 — TADİLAT TURU 2 (booking/ödeme/
   // sağlık verisi/portal) hata kodları. Bkz. `backend/src/lib/errors.ts`.
@@ -3950,6 +3951,20 @@ export interface MeetingTokenResponse {
   serverUrl: string;
   roomName: string;
   expiresAt: string;
+}
+
+/** Paket C — kalite kontrol dinleyicisi token'ı. `expiresAt` yalnızca KATILIM token'ının geçerlilik sonudur, oturum bitişi değil. */
+export interface QaListenerTokenResponse extends MeetingTokenResponse {
+  sessionId: string;
+}
+
+/** Paket C — "Dinleyici geçmişi" satırı. `leftAt: null` → çıkış kaydı yok (oturum açık ya da ayrılış iletilemedi). */
+export interface QaListenerHistoryEntry {
+  sessionId: string;
+  adminEmail: string | null;
+  reason: string | null;
+  joinedAt: string;
+  leftAt: string | null;
 }
 
 /**

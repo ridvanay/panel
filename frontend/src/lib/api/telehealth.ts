@@ -4,6 +4,8 @@ import { ApiClientError } from "./error";
 import { apiFetch, apiFetchPage, apiFetchWithMeta } from "./client";
 import type {
   ApiErrorBody,
+  QaListenerHistoryEntry,
+  QaListenerTokenResponse,
   Appointment,
   AppointmentBooking,
   AppointmentDeletionCheck,
@@ -685,4 +687,43 @@ export function updateTelehealthThemeSettings(input: UpdateTelehealthThemeSettin
 /** `PATCH /admin/telehealth/settings/emergency-notice` — acil durum uyarısı; YALNIZCA ADMIN (diğerleri 403). */
 export function updateEmergencyNoticeSettings(input: UpdateEmergencyNoticeRequest): Promise<TelehealthThemeSettings> {
   return apiFetch<TelehealthThemeSettings>("/admin/telehealth/settings/emergency-notice", { method: "PATCH", body: input });
+}
+
+/**
+ * Paket C (2026-10-18) — `POST /admin/telehealth/appointments/{id}/listener-token`. YALNIZCA 2FA'sı
+ * etkin ADMIN; yalnızca `IN_PROGRESS` görüşme (aksi 409 `QA_LISTENER_NOT_ALLOWED`). Gerekçe zorunlu
+ * (10–500 karakter), audit log'a yazılır. Hasta/doktor `requestMeetingToken` ucundan TAMAMEN ayrıdır.
+ */
+export function requestQaListenerToken(appointmentId: string, reason: string): Promise<QaListenerTokenResponse> {
+  return apiFetch<QaListenerTokenResponse>(`/admin/telehealth/appointments/${appointmentId}/listener-token`, {
+    method: "POST",
+    body: { reason },
+  });
+}
+
+/**
+ * Dinleyici ayrılışı (idempotent). Normal yol (`Ayrıl`, bağlantı kopması) `apiFetch` ile — 15 dk'yı
+ * aşan oturumda access token'ın süresi dolmuşsa 401'de yenilenip tekrar denenir. Yalnızca `pagehide`
+ * sırasında (`keepalive: true`) tarayıcı isteği sayfa kapanırken de tamamlasın diye tek atımlık ham
+ * `fetch` kullanılır. Best-effort: hata yutulur, kayıt eksik kalırsa geçmişte "çıkış kaydı yok" görünür.
+ */
+export async function leaveQaListenerSession(appointmentId: string, sessionId: string, options: { keepalive?: boolean } = {}): Promise<void> {
+  const path = `/admin/telehealth/appointments/${appointmentId}/listener-sessions/${sessionId}/leave`;
+  try {
+    if (!options.keepalive) {
+      await apiFetch<void>(path, { method: "POST" });
+      return;
+    }
+    const headers: Record<string, string> = {};
+    const token = getAccessToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
+    await fetch(`${API_BASE_URL}${path}`, { method: "POST", headers, credentials: "include", keepalive: true });
+  } catch {
+    // Best-effort.
+  }
+}
+
+/** `GET /admin/telehealth/appointments/{id}/listener-history` — YALNIZCA ADMIN, en yeni önce. */
+export function getQaListenerHistory(appointmentId: string): Promise<QaListenerHistoryEntry[]> {
+  return apiFetch<QaListenerHistoryEntry[]>(`/admin/telehealth/appointments/${appointmentId}/listener-history`);
 }

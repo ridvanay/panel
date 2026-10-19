@@ -29,6 +29,7 @@ export type ApiErrorCode =
    * yazar ama bu uçta KULLANMAZ). 409.
    */
   | "APPOINTMENT_NOT_JOINABLE"
+  | "QA_LISTENER_NOT_ALLOWED"
   /**
    * §4.4/§8/§12 — LiveKit ortam değişkenleri (`LIVEKIT_URL`/`LIVEKIT_API_KEY`/
    * `LIVEKIT_API_SECRET`) tanımsızken `POST /appointments/{id}/meeting-token`. Kod TÜRÜ burada
@@ -291,6 +292,16 @@ export class SlotTakenError extends ApiError {
 export class AppointmentNotJoinableError extends ApiError {
   constructor(message = "Bu randevuya şu anda katılım penceresi dışında olduğunuz için katılamazsınız.") {
     super(409, "APPOINTMENT_NOT_JOINABLE", message);
+  }
+}
+
+/**
+ * Paket C (2026-10-18) — kalite kontrol dinleyicisi YALNIZCA `IN_PROGRESS` (devam eden) bir
+ * görüşmeye katılabilir. 409: istek geçerli, randevunun durumu uygun değil.
+ */
+export class QaListenerNotAllowedError extends ApiError {
+  constructor(message = "Dinleyici olarak yalnızca devam eden bir görüşmeye katılabilirsiniz.") {
+    super(409, "QA_LISTENER_NOT_ALLOWED", message);
   }
 }
 

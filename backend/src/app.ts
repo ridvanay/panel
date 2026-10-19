@@ -76,6 +76,7 @@ import { telehealthRecordingRoutes } from "./modules/telehealth/telehealth.recor
 import { telehealthRecordingAccessRoutes } from "./modules/telehealth/telehealth.recording-access.routes";
 import { telehealthEgressWebhookRoutes } from "./modules/telehealth/telehealth.egress-webhook.routes";
 import { telehealthIdentityRoutes } from "./modules/telehealth/telehealth.identity.routes";
+import { adminTelehealthQaListenerRoutes } from "./modules/telehealth/telehealth.qa-listener.routes";
 import { registerBookingExpirySweeper } from "./lib/booking-expiry";
 import { registerIntakeRetentionScheduler } from "./lib/intake-retention";
 import { registerRecordingRetentionScheduler } from "./lib/recording-retention";
@@ -323,6 +324,8 @@ export function buildApp() {
       api.register(adminTelehealthSpecialtiesRoutes, { prefix: "/admin/telehealth/specialties" });
       api.register(adminTelehealthDoctorsRoutes, { prefix: "/admin/telehealth/doctors" });
       api.register(adminTelehealthAppointmentsRoutes, { prefix: "/admin/telehealth/appointments" });
+      // Paket C — kalite kontrol dinleyicisi (YALNIZCA ADMIN + 2FA). Ayrı dosya, aynı prefix.
+      api.register(adminTelehealthQaListenerRoutes, { prefix: "/admin/telehealth/appointments" });
       // [TCT] §9.7.10 — booking listesi (ADMIN+MANAGER) + manuel ödendi işaretleme (YALNIZCA ADMIN).
       api.register(adminTelehealthBookingsRoutes, { prefix: "/admin/telehealth/bookings" });
       // [TCT] §9.7.7 KARAR K10a — salt-okunur analitik özet (ADMIN+MANAGER, EDITOR dışlanır).
