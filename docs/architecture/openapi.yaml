@@ -8727,6 +8727,7 @@ paths:
                             reason: { type: string, nullable: true }
                             joinedAt: { type: string, format: date-time }
                             leftAt: { type: string, format: date-time, nullable: true }
+                            leftReason: { type: string, nullable: true, description: "Paket G — null: admin kendisi ayrıldı; auto:max_duration | auto:appointment_ended | auto:actor_revoked: sunucu kapattı." }
                       meta:
                         type: object
                         properties:

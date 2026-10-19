@@ -12,6 +12,13 @@ import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 
 const dateTimeFormatter = new Intl.DateTimeFormat("tr-TR", { dateStyle: "medium", timeStyle: "medium" });
 
+/** Paket G — sunucunun kapattığı oturumların nedeni (bkz. backend qa-listener-sweeper.ts). */
+const AUTO_LEFT_REASON_LABELS: Record<string, string> = {
+  "auto:max_duration": "otomatik: 60 dk sınırı",
+  "auto:appointment_ended": "otomatik: görüşme sona erdi",
+  "auto:actor_revoked": "otomatik: yetki/2FA geçersiz",
+};
+
 interface QaListenerHistoryDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -92,6 +99,7 @@ export function QaListenerHistoryDialog({ open, onOpenChange, appointment }: QaL
                 <p className="mt-2 text-xs text-foreground/50">
                   Giriş: {dateTimeFormatter.format(new Date(entry.joinedAt))} · Çıkış:{" "}
                   {entry.leftAt ? dateTimeFormatter.format(new Date(entry.leftAt)) : "çıkış kaydı yok"}
+                  {entry.leftReason && AUTO_LEFT_REASON_LABELS[entry.leftReason] ? ` (${AUTO_LEFT_REASON_LABELS[entry.leftReason]})` : ""}
                 </p>
               </li>
             ))}

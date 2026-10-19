@@ -55,6 +55,8 @@ const ListenerHistoryEntrySchema = z.object({
   reason: z.string().nullable(),
   joinedAt: z.string(),
   leftAt: z.string().nullable(),
+  /** Paket G — `null`: admin kendisi ayrıldı; `auto:*`: sunucu kapattı (bkz. qa-listener-sweeper.ts). */
+  leftReason: z.string().nullable(),
 });
 
 type JoinedMetadata = { sessionId?: string; reason?: string; identity?: string; roomName?: string };
@@ -221,10 +223,10 @@ export async function adminTelehealthQaListenerRoutes(app: FastifyInstance) {
             select: { metadata: true, createdAt: true },
           })
         : [];
-      const leftAtBySession = new Map<string, Date>();
+      const leftBySession = new Map<string, { at: Date; reason: string | null }>();
       for (const row of leftRows) {
-        const { sessionId } = readMetadata(row.metadata);
-        if (sessionId) leftAtBySession.set(sessionId, row.createdAt);
+        const meta = readMetadata(row.metadata) as { sessionId?: string; reason?: unknown };
+        if (meta.sessionId) leftBySession.set(meta.sessionId, { at: row.createdAt, reason: typeof meta.reason === "string" ? meta.reason : null });
       }
 
       const entries = joinedRows.map((row) => {
@@ -235,7 +237,8 @@ export async function adminTelehealthQaListenerRoutes(app: FastifyInstance) {
           adminEmail: row.actorEmail,
           reason: typeof meta.reason === "string" ? meta.reason : null,
           joinedAt: row.createdAt.toISOString(),
-          leftAt: leftAtBySession.get(sessionId)?.toISOString() ?? null,
+          leftAt: leftBySession.get(sessionId)?.at.toISOString() ?? null,
+          leftReason: leftBySession.get(sessionId)?.reason ?? null,
         };
       });
 

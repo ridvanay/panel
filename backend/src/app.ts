@@ -82,6 +82,7 @@ import { registerIntakeRetentionScheduler } from "./lib/intake-retention";
 import { registerRecordingRetentionScheduler } from "./lib/recording-retention";
 import { registerAppointmentReminderSweeper } from "./lib/appointment-reminders";
 import { registerAppointmentAutoCloseSweeper } from "./lib/appointment-auto-close";
+import { registerQaListenerSweeper } from "./modules/telehealth/lib/qa-listener-sweeper";
 import { adminSupportRoutes } from "./modules/support/support.routes";
 import { supportPublicRoutes } from "./modules/support/support.public.routes";
 import { registerSupportRetentionScheduler } from "./lib/support-retention";
@@ -472,6 +473,14 @@ export function buildApp() {
       registerAppointmentAutoCloseSweeper(app);
     } catch (err) {
       app.log.error({ err }, "Randevu otomatik kapatma (appointment-auto-close) scheduler kurulumu başarısız oldu.");
+    }
+
+    try {
+      // Paket G (2026-10-19) — dakikalık kadans, QA dinleyici oturumlarını sunucu tarafında kapatır
+      // (60 dk sınırı, biten görüşme, yetkisi düşen admin) — bkz. qa-listener-sweeper.ts.
+      registerQaListenerSweeper(app);
+    } catch (err) {
+      app.log.error({ err }, "QA dinleyici temizleyicisi (qa-listener-sweeper) scheduler kurulumu başarısız oldu.");
     }
 
     try {

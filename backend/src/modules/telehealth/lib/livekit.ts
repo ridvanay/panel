@@ -205,3 +205,18 @@ export async function removeRoomParticipant(roomName: string, identity: string, 
   await getRoomServiceClient(config).removeParticipant(roomName, identity);
   return true;
 }
+
+/**
+ * Paket G — QA dinleyici temizleyicisi için odadaki katılımcı kimlikleri. `internalUrl` boşsa
+ * `null` (yapılandırılmamış: çağıran hiçbir şey atmaz). Oda yoksa (LiveKit `not_found`) boş liste.
+ */
+export async function listRoomParticipantIdentities(roomName: string, config: LiveKitConfig = getLiveKitConfig()): Promise<string[] | null> {
+  if (!config.internalUrl) return null;
+  try {
+    const participants = await getRoomServiceClient(config).listParticipants(roomName);
+    return participants.map((p) => p.identity);
+  } catch (err) {
+    if ((err as { code?: string }).code === "not_found") return [];
+    throw err;
+  }
+}

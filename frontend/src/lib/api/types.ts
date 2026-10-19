@@ -3975,6 +3975,8 @@ export interface QaListenerHistoryEntry {
   reason: string | null;
   joinedAt: string;
   leftAt: string | null;
+  /** Paket G — `null`: admin kendisi ayrıldı; `auto:*`: sunucu kapattı. */
+  leftReason?: string | null;
 }
 
 /**

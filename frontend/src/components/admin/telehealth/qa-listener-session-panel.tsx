@@ -56,8 +56,26 @@ interface QaListenerSessionPanelProps {
  * Ayrılış (`leave`) üç yoldan biriyle TEK KEZ bildirilir: "Ayrıl" düğmesi, bağlantı kopması,
  * sayfadan çıkış (`pagehide`, keepalive). `meeting-token` ucu bu bileşende KULLANILMAZ.
  */
+/** Paket G — sunucu tarafı azami dinleme süresi (backend `QA_LISTENER_MAX_SESSION_MS` ile aynı). */
+export const QA_LISTENER_MAX_SESSION_MS = 60 * 60 * 1000;
+
+export function formatRemaining(ms: number): string {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
 export function QaListenerSessionPanel({ appointment, session, onEnded }: QaListenerSessionPanelProps) {
   const leftRef = useRef(false);
+  // Kalan süre yalnızca bilgilendirme — asıl sınırı sunucu uygular (oturum açılış anından 60 dk).
+  const [startedAt] = useState(() => Date.now());
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const remainingMs = startedAt + QA_LISTENER_MAX_SESSION_MS - now;
   const [connectionError, setConnectionError] = useState<string | null>(null);
 
   const reportLeave = useCallback(
@@ -103,6 +121,10 @@ export function QaListenerSessionPanel({ appointment, session, onEnded }: QaList
             <p className="text-sm text-foreground/60">
               {appointment.doctor.title} {appointment.doctor.fullName} · {appointment.patientName}. Hasta ve doktor ekranında
               dinlendiklerine dair uyarı görüyor.
+            </p>
+            <p className="mt-1 text-xs text-foreground/50">
+              Oturum en fazla 60 dakika sürer; süre dolunca otomatik sonlanır. Kalan süre:{" "}
+              <span className="font-mono tabular-nums">{formatRemaining(remainingMs)}</span>
             </p>
           </div>
         </div>

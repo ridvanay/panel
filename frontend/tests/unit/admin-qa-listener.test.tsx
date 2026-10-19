@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QaListenerJoinDialog } from "@/components/admin/telehealth/qa-listener-join-dialog";
-import { QaListenerSessionPanel, describeParticipant } from "@/components/admin/telehealth/qa-listener-session-panel";
+import { QaListenerSessionPanel, describeParticipant, formatRemaining } from "@/components/admin/telehealth/qa-listener-session-panel";
 import type { Appointment } from "@/lib/api/types";
 
 /** Paket C — admin dinleyici akışı: zorunlu gerekçe, yalnızca-dinleme odası, tek seferlik ayrılış kaydı. */
@@ -103,5 +103,18 @@ describe("QaListenerSessionPanel", () => {
     expect(describeParticipant({ identity: "patient:a1" })).toBe("Hasta");
     expect(describeParticipant({ identity: "doctor:d1" })).toBe("Doktor");
     expect(describeParticipant({ identity: "qa-listener-u1" })).toBe("Kalite kontrol dinleyicisi");
+  });
+});
+
+describe("Paket G — kalan süre göstergesi", () => {
+  it("formatRemaining mm:ss üretir, negatifte 00:00", () => {
+    expect(formatRemaining(60 * 60 * 1000)).toBe("60:00");
+    expect(formatRemaining(61_500)).toBe("01:01");
+    expect(formatRemaining(-5)).toBe("00:00");
+  });
+
+  it("panel 60 dk sınırını gösterir", () => {
+    render(<QaListenerSessionPanel appointment={appointment} session={session} onEnded={vi.fn()} />);
+    expect(screen.getByText(/en fazla 60 dakika/)).toBeInTheDocument();
   });
 });
