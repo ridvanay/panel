@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Controller, useForm, type FieldValues } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -9,7 +9,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Spinner } from "@/components/ui/spinner";
 import * as contactApi from "@/lib/api/contact";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
-import type { ContactFormField, PublicContactForm } from "@/lib/api/types";
+import type { ContactFormField, PublicContactForm, SitePage } from "@/lib/api/types";
+import { fetchLegalPagesClient, resolveKvkkConsentPage } from "@/lib/legal-pages";
 
 /** design-notes §Ek — public form alan çerçevesi, `--site-*` tokenleri (admin `--primary` DEĞİL). */
 const FIELD_CLASSES =
@@ -95,7 +96,35 @@ function FormField({ field, register, error }: { field: ContactFormField; regist
   );
 }
 
+/**
+ * Paket J (2026-10-19) — "Aydınlatma Metni" linki YALNIZCA KVKK aydınlatma sayfasına gider. Admin'in
+ * seçtiği onay sayfası (`form.consentLegalPage`) KVKK/aydınlatma kalıbına uyuyorsa o kullanılır;
+ * uymuyorsa (canlıda mesafeli hizmet sözleşmesi seçiliydi) yayınlanmış yasal sayfalar arasından
+ * sıkı `resolveKvkkConsentPage` ile bulunur. Bulunamazsa link GÖSTERİLMEZ (yanlış metne düşülmez).
+ */
+function useKvkkConsentLink(configured: PublicContactForm["consentLegalPage"]): Pick<SitePage, "title" | "slug"> | null {
+  const configuredKvkk = useMemo(
+    () => (configured ? resolveKvkkConsentPage([{ ...configured, isLegalDocument: true } as SitePage]) : null),
+    [configured]
+  );
+  const [resolved, setResolved] = useState<Pick<SitePage, "title" | "slug"> | null>(null);
+  useEffect(() => {
+    if (configuredKvkk) return;
+    let cancelled = false;
+    fetchLegalPagesClient()
+      .then((pages) => {
+        if (!cancelled) setResolved(resolveKvkkConsentPage(pages));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [configuredKvkk]);
+  return configuredKvkk ?? resolved;
+}
+
 export function ContactFormClient({ form }: { form: PublicContactForm }) {
+  const kvkkLink = useKvkkConsentLink(form.consentLegalPage);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -169,9 +198,9 @@ export function ContactFormClient({ form }: { form: PublicContactForm }) {
             />
             <label htmlFor="consent" className="text-sm leading-snug text-foreground/80">
               {form.consentText}{" "}
-              {form.consentLegalPage && (
+              {kvkkLink && (
                 <Link
-                  href={`/${form.consentLegalPage.slug}`}
+                  href={`/${kvkkLink.slug}`}
                   className="font-medium text-[var(--site-primary)] underline underline-offset-2 hover:opacity-80"
                 >
                   Aydınlatma Metni

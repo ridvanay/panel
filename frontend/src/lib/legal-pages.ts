@@ -46,19 +46,21 @@ export function resolvePreliminaryInfoPage(pages: SitePage[]): Pick<SitePage, "t
 }
 
 /**
- * Checkout kişisel veri toplayan bölümlerindeki (teslimat adresi/fatura) KVKK Aydınlatma Metni
- * notu için — `resolveReturnsPolicyPage` ile BİREBİR aynı anahtar kelime sezgisi felsefesi.
- * `.claude/compliance-notes-checkout-redesign.md` §3 (RELEASE ENGELLEYİCİ bulgu) — mesafeli
- * satış/ön bilgilendirme onaylarının (sözleşme onayı) YERİNE GEÇMEZ, ayrı bir hukuki konudur.
+ * Checkout kişisel veri toplayan bölümlerindeki (teslimat adresi/fatura) ve canlı destek
+ * formundaki KVKK Aydınlatma Metni notu için. `.claude/compliance-notes-checkout-redesign.md` §3
+ * (RELEASE ENGELLEYİCİ bulgu) — mesafeli satış/ön bilgilendirme onaylarının (sözleşme onayı)
+ * YERİNE GEÇMEZ, ayrı bir hukuki konudur.
+ *
+ * Paket J (2026-10-19) — eskiden eşleşme yoksa İLK yasal belgeye (`legalPages[0]`, ör. mesafeli
+ * hizmet sözleşmesi) düşüyordu; aydınlatma linki yanlış metne gidebiliyordu. Artık katıdır:
+ * önce KVKK/aydınlatma (TR+EN, `resolveKvkkConsentPage` ile aynı kalıp), sonra gizlilik/privacy
+ * aranır; hiçbiri yoksa `null` (bileşen linki göstermez).
  */
-export function resolveKvkkNoticePage(pages: SitePage[]): Pick<SitePage, "title" | "slug"> | null {
-  const legalPages = pages.filter((page) => page.isLegalDocument);
-  if (legalPages.length === 0) return null;
+const KVKK_NOTICE_FALLBACK_TITLE = /gizlilik/i;
+const KVKK_NOTICE_FALLBACK_SLUG = /gizlilik/i;
 
-  const keywordMatch = legalPages.find(
-    (page) => /kvkk|aydınlatma|gizlilik/i.test(page.title) || /kvkk|aydinlatma|gizlilik/i.test(page.slug)
-  );
-  return keywordMatch ?? legalPages[0];
+export function resolveKvkkNoticePage(pages: SitePage[]): Pick<SitePage, "title" | "slug"> | null {
+  return resolveKvkkConsentPage(pages) ?? resolveLegalPageStrict(pages, KVKK_NOTICE_FALLBACK_TITLE, KVKK_NOTICE_FALLBACK_SLUG);
 }
 
 /**
