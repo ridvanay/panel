@@ -27,7 +27,7 @@ Bu sözleşme, Danışan'ın internet sitesi üzerinden satın aldığı çevrim
 
 ## 5. Hizmetin İfası
 
-- Görüşme bağlantısı, Danışan'a e-posta ve hesap paneli üzerinden iletilir.
+- Görüşme bağlantısı Danışan'ın hesap panelinde yer alır; randevu onayı ayrıca e-postayla bildirilir.
 - Danışan'ın uygun internet bağlantısı, kamera ve mikrofonla belirtilen saatte görüşmeye katılması gerekir.
 - WM Health Istanbul veya doktor kaynaklı bir nedenle görüşme yapılamazsa, Danışan'a yeni bir randevu veya ücretin tamamının iadesi seçeneği sunulur.
 
@@ -39,7 +39,7 @@ Bu sözleşme, Danışan'ın internet sitesi üzerinden satın aldığı çevrim
 
 ## 7. İptal, Erteleme ve İade
 
-- Danışan, randevu saatinden en az 24 saat önce randevusunu ücretsiz iptal edebilir veya erteleyebilir.
+- Danışan, randevu saatinden en az 24 saat önce info@wmhealthistanbul.com adresine yazarak randevusunun ücretsiz iptalini veya ertelenmesini talep edebilir.
 - Randevuya 24 saatten az süre kala yapılan iptallerde ve Danışan'ın görüşmeye katılmaması durumunda ücret iade edilmeyebilir. Haklı sebeplerle yapılan talepler ayrıca değerlendirilir.
 - Kabul edilen iadeler, ödemenin yapıldığı yönteme, iade talebinin kabulünden itibaren en geç 14 gün içinde yapılır. Bankanın hesaba yansıtma süresi bankaya göre değişebilir.
 
@@ -53,4 +53,4 @@ Bu sözleşmeden doğan uyuşmazlıklarda, Ticaret Bakanlığı'nca her yıl ila
 
 ## 10. Yürürlük
 
-Danışan, randevu sırasında bu sözleşmeyi elektronik ortamda onayladığında sözleşme kurulmuş sayılır ve yürürlüğe girer. Sözleşmenin bir kopyası Danışan'ın e-posta adresine gönderilir.
+Sözleşme, Danışan'ın randevuyu oluşturup ödemeyi tamamlamasıyla kurulur ve yürürlüğe girer. Sözleşmenin güncel metni bu sayfada her zaman erişilebilir durumdadır.

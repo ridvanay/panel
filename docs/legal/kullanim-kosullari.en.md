@@ -13,7 +13,7 @@ These terms govern the use of the wmhealthistanbul.com website and online health
 
 ## 2. User Obligations
 
-- Appointments for persons under 18 may only be made by a parent or legal guardian and under their supervision.
+- The platform may only be used by persons aged 18 or over; appointments cannot be made for persons under 18.
 - You are responsible for the accuracy and completeness of the information you provide when booking and in the pre-assessment.
 - You must not share your account details or consultation links with third parties.
 - You must not record or publish consultations without the permission of the doctor and WM Health Istanbul.

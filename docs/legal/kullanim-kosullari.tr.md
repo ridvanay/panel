@@ -13,7 +13,7 @@ Bu koşullar, {{SIRKET_UNVANI}} ("WM Health Istanbul") tarafından işletilen wm
 
 ## 2. Kullanıcı Yükümlülükleri
 
-- 18 yaşından küçükler için randevu, yalnızca veli veya yasal temsilci tarafından ve onun gözetiminde alınabilir.
+- Platform yalnızca 18 yaşını doldurmuş kişiler tarafından kullanılabilir; 18 yaşından küçükler için randevu oluşturulamaz.
 - Randevu ve ön değerlendirme sırasında verdiğiniz bilgilerin doğru ve güncel olması sizin sorumluluğunuzdadır.
 - Hesap bilgilerinizi ve görüşme bağlantılarınızı üçüncü kişilerle paylaşmamalısınız.
 - Görüşmeleri, doktorun ve WM Health Istanbul'un izni olmadan kaydetmemeli ve yayımlamamalısınız.

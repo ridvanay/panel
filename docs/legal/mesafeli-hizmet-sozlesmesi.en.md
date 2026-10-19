@@ -27,7 +27,7 @@ This agreement sets out the rights and obligations of the parties for the online
 
 ## 5. Performance of the Service
 
-- The consultation link is sent to the Client by e-mail and through the account dashboard.
+- The consultation link is available in the Client's account dashboard; the appointment confirmation is also sent by e-mail.
 - The Client must join the consultation at the scheduled time with a suitable internet connection, camera and microphone.
 - If the consultation cannot take place for a reason attributable to WM Health Istanbul or the doctor, the Client will be offered a new appointment or a full refund.
 
@@ -39,7 +39,7 @@ This agreement sets out the rights and obligations of the parties for the online
 
 ## 7. Cancellation, Rescheduling and Refunds
 
-- The Client may cancel or reschedule free of charge up to 24 hours before the appointment time.
+- The Client may request free cancellation or rescheduling by writing to info@wmhealthistanbul.com at least 24 hours before the appointment time.
 - For cancellations made less than 24 hours before the appointment, or if the Client does not attend, the fee may not be refunded. Requests based on justified reasons are assessed individually.
 - Approved refunds are made to the original payment method within 14 days of approval at the latest. The time it takes for the amount to appear on the account depends on the bank.
 
@@ -53,4 +53,4 @@ For disputes arising from this agreement, the consumer arbitration committees (w
 
 ## 10. Entry into Force
 
-The agreement is concluded and enters into force when the Client approves it electronically during booking. A copy of the agreement is sent to the Client's e-mail address.
+The agreement is concluded and enters into force when the Client books the appointment and completes payment. The current text of the agreement is always available on this page.

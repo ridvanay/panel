@@ -23,7 +23,7 @@ açık rıza veriyorum.
 
 ## 3. Görüşme Kaydı Politikası ve Rızası
 
-Görüntülü görüşmeler varsayılan olarak **kaydedilmez**. Görüşmenin ses ve görüntü kaydı yalnızca görüşme başlamadan önce ekranda ayrıca onay vermem hâlinde alınır. Kayıt alınırken ekranda kayıt göstergesi görünür. Kayıt yalnızca tıbbi takip ve şikâyet incelemesi amacıyla kullanılır, yetkisiz kişilerle paylaşılmaz ve ilgili mevzuattaki süreler sonunda silinir. Kayda onay vermemem hizmeti almama engel değildir.
+Görüntülü görüşmeler varsayılan olarak **kaydedilmez**. Doktor görüşme sırasında kayıt başlatmak isterse, kayıt ancak benim ekranda ayrıca onay vermem hâlinde başlar. Kayıt alınırken ekranda kayıt göstergesi görünür. Kayıt yalnızca tıbbi takip ve şikâyet incelemesi amacıyla kullanılır, yetkisiz kişilerle paylaşılmaz ve 30 gün sonunda otomatik olarak silinir. Kayda onay vermemem hizmeti almama engel değildir.
 
 ## 4. Görüşmelerin Kalite Kontrolü
 

@@ -21,7 +21,7 @@ I explicitly consent to the health data I share when booking and that arises dur
 
 ## 3. Consultation Recording Policy and Consent
 
-Video consultations are **not recorded** by default. An audio and video recording is made only if I give separate consent on screen before the consultation starts. A recording indicator is shown on screen while recording. Recordings are used only for medical follow-up and complaint investigation, are not shared with unauthorised persons and are deleted at the end of the periods set by applicable law. Refusing to consent to recording does not prevent me from receiving the service.
+Video consultations are **not recorded** by default. If the doctor wishes to record during the consultation, recording starts only if I give separate consent on screen. A recording indicator is shown on screen while recording. Recordings are used only for medical follow-up and complaint investigation, are not shared with unauthorised persons and are automatically deleted after 30 days. Refusing to consent to recording does not prevent me from receiving the service.
 
 ## 4. Quality Control of Consultations
 
