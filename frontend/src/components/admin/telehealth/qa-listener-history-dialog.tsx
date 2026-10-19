@@ -5,6 +5,7 @@ import { History } from "lucide-react";
 import * as telehealthApi from "@/lib/api/telehealth";
 import type { Appointment, QaListenerHistoryEntry } from "@/lib/api/types";
 import { Alert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
@@ -21,14 +22,19 @@ interface QaListenerHistoryDialogProps {
 export function QaListenerHistoryDialog({ open, onOpenChange, appointment }: QaListenerHistoryDialogProps) {
   const [entries, setEntries] = useState<QaListenerHistoryEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Paket G — geçmiş sayfalı; "Daha fazla göster" bir sonraki sayfayı ekler.
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   useEffect(() => {
     if (!open || !appointment) return;
     let cancelled = false;
     telehealthApi
       .getQaListenerHistory(appointment.id)
-      .then((rows) => {
-        if (!cancelled) setEntries(rows);
+      .then((page) => {
+        if (cancelled) return;
+        setEntries(page.items);
+        setNextCursor(page.meta.nextCursor);
       })
       .catch((err) => {
         if (!cancelled) setError(friendlyErrorMessage(err));
@@ -37,6 +43,20 @@ export function QaListenerHistoryDialog({ open, onOpenChange, appointment }: QaL
       cancelled = true;
     };
   }, [open, appointment]);
+
+  async function loadMore() {
+    if (!appointment || !nextCursor) return;
+    setLoadingMore(true);
+    try {
+      const page = await telehealthApi.getQaListenerHistory(appointment.id, nextCursor);
+      setEntries((prev) => [...(prev ?? []), ...page.items]);
+      setNextCursor(page.meta.nextCursor);
+    } catch (err) {
+      setError(friendlyErrorMessage(err));
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -75,6 +95,13 @@ export function QaListenerHistoryDialog({ open, onOpenChange, appointment }: QaL
                 </p>
               </li>
             ))}
+            {nextCursor && (
+              <li className="flex justify-center">
+                <Button type="button" variant="outline" size="sm" loading={loadingMore} onClick={() => void loadMore()}>
+                  Daha fazla göster
+                </Button>
+              </li>
+            )}
           </ul>
         )}
       </DialogContent>

@@ -159,15 +159,20 @@ export const QA_LISTENER_IDENTITY_PREFIX = "qa-listener-";
 export const QA_LISTENER_DISPLAY_NAME = "WM Health – Kalite Kontrol";
 export const QA_LISTENER_ROLE = "qa_listener";
 
-export function buildQaListenerIdentity(userId: string): string {
-  return `${QA_LISTENER_IDENTITY_PREFIX}${userId}`;
+/**
+ * Paket G (güvenlik notu D-1/D-2) — kimlik oturuma özgüdür: `qa-listener-<userId>-<sessionId ilk 8>`.
+ * Aynı admin iki sekmeden katılınca birbirini düşürmez; bir oturumun `leave`/temizleyici çağrısı
+ * diğer oturumu odadan atmaz. Önek değişmediği için hasta/doktor ekranındaki tespit aynı kalır.
+ */
+export function buildQaListenerIdentity(userId: string, sessionId: string): string {
+  return `${QA_LISTENER_IDENTITY_PREFIX}${userId}-${sessionId.slice(0, 8)}`;
 }
 
 export async function createQaListenerToken(
-  input: { roomName: string; userId: string },
+  input: { roomName: string; userId: string; sessionId: string },
   config: LiveKitConfig = getLiveKitConfig()
 ): Promise<MeetingTokenResult & { identity: string }> {
-  const identity = buildQaListenerIdentity(input.userId);
+  const identity = buildQaListenerIdentity(input.userId, input.sessionId);
 
   const accessToken = new AccessToken(config.apiKey, config.apiSecret, {
     identity,

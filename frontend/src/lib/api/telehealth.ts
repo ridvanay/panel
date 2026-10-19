@@ -723,7 +723,12 @@ export async function leaveQaListenerSession(appointmentId: string, sessionId: s
   }
 }
 
-/** `GET /admin/telehealth/appointments/{id}/listener-history` — YALNIZCA ADMIN, en yeni önce. */
-export function getQaListenerHistory(appointmentId: string): Promise<QaListenerHistoryEntry[]> {
-  return apiFetch<QaListenerHistoryEntry[]>(`/admin/telehealth/appointments/${appointmentId}/listener-history`);
+/**
+ * `GET /admin/telehealth/appointments/{id}/listener-history` — YALNIZCA ADMIN, en yeni önce.
+ * Paket G — sayfalı (`cursor`, `limit` ≤ 100, `meta.nextCursor`).
+ */
+export function getQaListenerHistory(appointmentId: string, cursor?: string): Promise<Page<QaListenerHistoryEntry>> {
+  return apiFetchPage<QaListenerHistoryEntry>(`/admin/telehealth/appointments/${appointmentId}/listener-history`, {
+    query: { cursor, limit: 50 },
+  });
 }

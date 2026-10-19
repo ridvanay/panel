@@ -7,8 +7,9 @@ import { requireSiteRole } from "../../middleware/site-rbac";
 import { requireModuleEnabled } from "../../middleware/module-guard";
 import { ROLES_ADMIN } from "../../lib/site-roles";
 import { ok } from "../../lib/envelope";
-import { ApiSuccessSchema } from "../../schemas/common";
-import { LiveKitNotConfiguredError, NotFoundError, QaListenerNotAllowedError, TwoFactorRequiredError } from "../../lib/errors";
+import { ApiSuccessSchema, ApiSuccessWithMeta } from "../../schemas/common";
+import { buildPageMeta, parseCursor } from "../../lib/pagination";
+import { LiveKitNotConfiguredError, NotFoundError, QaListenerNotAllowedError, TwoFactorRequiredError, ValidationError } from "../../lib/errors";
 import { logAudit } from "../../lib/audit";
 import { createQaListenerToken, isLiveKitConfigured, removeRoomParticipant } from "./lib/livekit";
 import { AppointmentIdParamSchema } from "./telehealth.schemas";
@@ -42,6 +43,11 @@ const ListenerTokenResponseSchema = z.object({
 });
 
 const ListenerSessionParamSchema = AppointmentIdParamSchema.extend({ sessionId: z.string().uuid() });
+
+const ListenerHistoryQuerySchema = z.object({
+  cursor: z.string().max(64).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
 
 const ListenerHistoryEntrySchema = z.object({
   sessionId: z.string(),
@@ -95,8 +101,8 @@ export async function adminTelehealthQaListenerRoutes(app: FastifyInstance) {
 
       // `meeting-token` İLE AYNI oda çözümü — çoklu slot booking'de kanonik oda booking'indir.
       const roomName = appointment.booking ? appointment.booking.meetingRoomName : appointment.meetingRoomName;
-      const listener = await createQaListenerToken({ roomName, userId: request.user!.id });
       const sessionId = crypto.randomUUID();
+      const listener = await createQaListenerToken({ roomName, userId: request.user!.id, sessionId });
 
       // Güvenlik notu O-1 — `logAudit` hatayı YUTAR (fail-open); dinleyici kaydı ise ZORUNLU olduğu
       // için doğrudan yazılır: DB yazımı başarısız olursa istek 500 ile düşer ve token istemciye
@@ -176,41 +182,64 @@ export async function adminTelehealthQaListenerRoutes(app: FastifyInstance) {
   server.get(
     "/:id/listener-history",
     {
-      schema: { params: AppointmentIdParamSchema, response: { 200: ApiSuccessSchema(z.array(ListenerHistoryEntrySchema)) } },
+      schema: {
+        params: AppointmentIdParamSchema,
+        querystring: ListenerHistoryQuerySchema,
+        response: { 200: ApiSuccessWithMeta(z.array(ListenerHistoryEntrySchema), z.object({ nextCursor: z.string().nullable() })) },
+      },
     },
     async (request, reply) => {
-      const rows = await app.prisma.auditLog.findMany({
+      // Paket G (güvenlik notu D-3) — eskiden joined+left karışık 200 satırla sessizce kesiliyordu.
+      // Artık önce joined satırları (en yeni önce, `seq` imleciyle sayfalı), sonra YALNIZCA bu
+      // oturumların left satırları okunur.
+      const { cursor, limit } = request.query;
+      const cursorSeq = parseCursor(cursor);
+      if (cursor && cursorSeq === undefined) {
+        throw new ValidationError("Geçersiz sayfa imleci.", { cursor: ["Geçersiz sayfa imleci."] });
+      }
+      const joinedRows = await app.prisma.auditLog.findMany({
         where: {
           targetType: "Appointment",
           targetId: request.params.id,
-          action: { in: [QA_LISTENER_JOINED_ACTION, QA_LISTENER_LEFT_ACTION] },
+          action: QA_LISTENER_JOINED_ACTION,
+          ...(cursorSeq ? { seq: { lt: cursorSeq } } : {}),
         },
-        orderBy: { createdAt: "desc" },
-        take: 200,
-        select: { action: true, actorEmail: true, metadata: true, createdAt: true },
+        orderBy: { seq: "desc" },
+        take: limit,
+        select: { seq: true, actorEmail: true, metadata: true, createdAt: true },
       });
 
+      const sessionIds = joinedRows.map((row) => readMetadata(row.metadata).sessionId).filter((id): id is string => Boolean(id));
+      const leftRows = sessionIds.length
+        ? await app.prisma.auditLog.findMany({
+            where: {
+              targetType: "Appointment",
+              targetId: request.params.id,
+              action: QA_LISTENER_LEFT_ACTION,
+              OR: sessionIds.map((sessionId) => ({ metadata: { path: ["sessionId"], equals: sessionId } })),
+            },
+            select: { metadata: true, createdAt: true },
+          })
+        : [];
       const leftAtBySession = new Map<string, Date>();
-      for (const row of rows) {
+      for (const row of leftRows) {
         const { sessionId } = readMetadata(row.metadata);
-        if (row.action === QA_LISTENER_LEFT_ACTION && sessionId) leftAtBySession.set(sessionId, row.createdAt);
+        if (sessionId) leftAtBySession.set(sessionId, row.createdAt);
       }
 
-      const entries = rows
-        .filter((row) => row.action === QA_LISTENER_JOINED_ACTION)
-        .map((row) => {
-          const meta = readMetadata(row.metadata);
-          const sessionId = meta.sessionId ?? "";
-          return {
-            sessionId,
-            adminEmail: row.actorEmail,
-            reason: typeof meta.reason === "string" ? meta.reason : null,
-            joinedAt: row.createdAt.toISOString(),
-            leftAt: leftAtBySession.get(sessionId)?.toISOString() ?? null,
-          };
-        });
+      const entries = joinedRows.map((row) => {
+        const meta = readMetadata(row.metadata);
+        const sessionId = meta.sessionId ?? "";
+        return {
+          sessionId,
+          adminEmail: row.actorEmail,
+          reason: typeof meta.reason === "string" ? meta.reason : null,
+          joinedAt: row.createdAt.toISOString(),
+          leftAt: leftAtBySession.get(sessionId)?.toISOString() ?? null,
+        };
+      });
 
-      return reply.send(ok(entries));
+      return reply.send(ok(entries, buildPageMeta(joinedRows, limit)));
     }
   );
 }

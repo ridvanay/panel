@@ -155,7 +155,8 @@ describe("telehealth/qa-listener — ADMIN kalite kontrol dinleyicisi", () => {
     expect(JSON.stringify(res.json())).not.toContain(FAKE_SECRET);
 
     const claims = jwt.verify(data.token, FAKE_SECRET) as ListenerClaims;
-    expect(claims.sub).toBe(`qa-listener-${admin.user.id}`);
+    // Paket G — kimlik oturuma özgü: qa-listener-<userId>-<sessionId ilk 8>.
+    expect(claims.sub).toBe(`qa-listener-${admin.user.id}-${data.sessionId.slice(0, 8)}`);
     expect(claims.name).toBe("WM Health – Kalite Kontrol");
     expect(JSON.parse(claims.metadata ?? "{}")).toEqual({ role: "qa_listener" });
     expect(claims.video.roomJoin).toBe(true);
@@ -305,5 +306,48 @@ describe("telehealth/qa-listener — ADMIN kalite kontrol dinleyicisi", () => {
     expect(claims.video.canPublish).toBe(true);
     expect(claims.video.canPublishData).toBe(true);
     expect(claims.metadata ?? "").not.toContain("qa_listener");
+  });
+
+  it("Paket G — aynı admin iki oturumda farklı kimlik alır (birbirini düşürmez)", async () => {
+    const admin = await createAdmin({ twoFactor: true });
+    const { appointment } = await createAppointment("IN_PROGRESS");
+    const [a, b] = [await requestListenerToken(appointment.id, admin.token), await requestListenerToken(appointment.id, admin.token)];
+    const subA = (jwt.verify(a.json().data.token, FAKE_SECRET) as ListenerClaims).sub;
+    const subB = (jwt.verify(b.json().data.token, FAKE_SECRET) as ListenerClaims).sub;
+    expect(subA).not.toBe(subB);
+    expect(subA.startsWith(`qa-listener-${admin.user.id}-`)).toBe(true);
+  });
+
+  it("Paket G — dinleyici geçmişi sayfalı: limit + nextCursor, çıkışlar doğru oturumla eşleşir, geçersiz imleç 422", async () => {
+    const admin = await createAdmin({ twoFactor: true });
+    const { appointment } = await createAppointment("IN_PROGRESS");
+    const sessionIds: string[] = [];
+    for (let i = 0; i < 3; i += 1) {
+      const res = await requestListenerToken(appointment.id, admin.token, `Sayfalama testi oturum ${i}`);
+      sessionIds.push(res.json().data.sessionId as string);
+    }
+    // Yalnızca ilk oturum ayrıldı.
+    await app.inject({
+      method: "POST",
+      url: `/api/v1/admin/telehealth/appointments/${appointment.id}/listener-sessions/${sessionIds[0]}/leave`,
+      headers: authHeader(admin.token),
+    });
+
+    const url = `/api/v1/admin/telehealth/appointments/${appointment.id}/listener-history`;
+    const page1 = await app.inject({ method: "GET", url: `${url}?limit=2`, headers: authHeader(admin.token) });
+    expect(page1.statusCode).toBe(200);
+    const body1 = page1.json() as { data: Array<{ sessionId: string; leftAt: string | null }>; meta: { nextCursor: string | null } };
+    expect(body1.data.map((e) => e.sessionId)).toEqual([sessionIds[2], sessionIds[1]]);
+    expect(body1.meta.nextCursor).not.toBeNull();
+
+    const page2 = await app.inject({ method: "GET", url: `${url}?limit=2&cursor=${body1.meta.nextCursor}`, headers: authHeader(admin.token) });
+    const body2 = page2.json() as { data: Array<{ sessionId: string; leftAt: string | null }>; meta: { nextCursor: string | null } };
+    expect(body2.data.map((e) => e.sessionId)).toEqual([sessionIds[0]]);
+    expect(body2.data[0]!.leftAt).not.toBeNull();
+    expect(body2.meta.nextCursor).toBeNull();
+    expect(body1.data.every((e) => e.leftAt === null)).toBe(true);
+
+    const bad = await app.inject({ method: "GET", url: `${url}?cursor=%%%`, headers: authHeader(admin.token) });
+    expect(bad.statusCode).toBe(422);
   });
 });
