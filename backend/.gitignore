@@ -15,3 +15,4 @@ storage/exports/
 storage/private-uploads/
 # Paket B2 — demo doktor purge yedekleri (PII + şifreli alan içerir, asla repoya girmez).
 storage/purge-backups/
+backups/
