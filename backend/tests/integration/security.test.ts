@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { authenticator } from "otplib";
 import { buildTestApp } from "../helpers/build-test-app";
+import { awaitFreshTotpStep } from "../helpers/totp";
 import { resetDatabase } from "../helpers/reset-db";
 import { registerTestUser } from "../helpers/auth";
 
@@ -66,6 +67,7 @@ describe("security — 2FA & aktif oturumlar", () => {
   let backupCodes: string[] = [];
 
   it("doğru TOTP koduyla 2FA etkinleştirilir ve yedek kodlar döner", async () => {
+    await awaitFreshTotpStep();
     const code = authenticator.generate(secret);
 
     const res = await app.inject({
@@ -106,6 +108,7 @@ describe("security — 2FA & aktif oturumlar", () => {
     expect(wrongRes.statusCode).toBe(401);
 
     // Doğru TOTP kodu → normal login ile aynı token çifti.
+    await awaitFreshTotpStep();
     const code = authenticator.generate(secret);
 
     // Paket G — kurulumda (/enable) kullanılan kod aynı 30 sn'de girişte YENİDEN kullanılamaz

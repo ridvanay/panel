@@ -4,6 +4,7 @@ import type { FastifyInstance } from "fastify";
 import { authenticator } from "otplib";
 import { buildTestApp } from "../helpers/build-test-app";
 import { resetDatabase } from "../helpers/reset-db";
+import { awaitFreshTotpStep } from "../helpers/totp";
 import { encryptSecret } from "../../src/lib/crypto";
 import { hashPassword } from "../../src/lib/password";
 import { hashBackupCode } from "../../src/lib/backup-codes";
@@ -17,11 +18,6 @@ import { signAccessToken, signTwoFactorSetupToken } from "../../src/lib/jwt";
 
 const PASSWORD = "Sifre12345!";
 
-/** Pencere 0 olduğu için kod adım sınırında geçersizleşebilir — sınıra 4 sn'den az kaldıysa sonraki adımı bekle. */
-async function awaitFreshTotpStep() {
-  const remaining = TOTP_STEP_MS - (Date.now() % TOTP_STEP_MS);
-  if (remaining < 4000) await new Promise((r) => setTimeout(r, remaining + 50));
-}
 
 describe("TOTP tekrar kullanımı ve yedek kod yarışı (Paket G)", () => {
   let app: FastifyInstance;

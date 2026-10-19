@@ -1,11 +1,11 @@
 import { test, expect, type Browser, type Page } from "@playwright/test";
-import { authenticator } from "otplib";
 import {
   getCachedAdminSession,
   getSiteModules,
   patchSiteModule,
   getFixtureUserToken,
   setupAndEnableTwoFactorForSelf,
+  nextTotpCode,
 } from "./support/api";
 import { resetFixtureUserToBaseline, adminGetUserByEmail } from "./support/admin-users-fixtures";
 import {
@@ -16,6 +16,10 @@ import {
   linkDoctorUserRaw,
   type CreatedFixtureDoctor,
 } from "./support/telehealth-fixtures";
+
+// Paket G — 2FA girişleri `nextTotpCode` ile yeni bir 30 sn'lik adımı bekleyebilir (TOTP tekrar
+// kullanım koruması); varsayılan 30 sn test süresi buna yetmez.
+test.describe.configure({ timeout: 120_000 });
 
 /**
  * qa-agent — `.claude/architect-scope-doctor-subdomain.md` §5.6.2 "2FA'sız doktor kalıcı olarak
@@ -150,7 +154,7 @@ async function loginDoctorWithTwoFactor(
   await page.getByLabel("Şifre").fill(password);
   await page.getByRole("button", { name: "Giriş yap" }).click();
   await expect(page.getByText("İki adımlı doğrulama", { exact: false })).toBeVisible({ timeout: 15_000 });
-  const code = authenticator.generate(totpSecret);
+  const code = await nextTotpCode(totpSecret);
   await page.getByLabel("Authenticator Kodu").fill(code);
   await page.getByRole("button", { name: "Doğrula" }).click();
   await page.waitForURL(/\/doctor$/, { timeout: 15_000 });
@@ -218,7 +222,7 @@ test("madde 1: 2FA'sı olmayan doktor /doctor uyarı ekranında 2FA'yı satır i
     // --- GERÇEK bir TOTP kodu üret (otplib, backend'in otpauthUrl'sindeki secret'tan) ve doğrula ---
     // Paket G — kurulum hesap şifresini de ister (step-up).
     await page.getByLabel("Hesap Şifreniz").fill(FIXTURE_PASSWORD);
-    const code = authenticator.generate(manualSecret!);
+    const code = await nextTotpCode(manualSecret!);
     await codeInput.fill(code);
 
     // Navigasyon YOK marker'ı — "Portala Gir" tıklamasının GERÇEKTEN sayfa yenilemediğini (tam

@@ -1,6 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { authenticator } from "otplib";
-import { getCachedAdminSession, getSiteModules, patchSiteModule, getFixtureUserToken, setupAndEnableTwoFactorForSelf } from "./support/api";
+import { getCachedAdminSession, getSiteModules, patchSiteModule, getFixtureUserToken, setupAndEnableTwoFactorForSelf, nextTotpCode } from "./support/api";
 import { adminGetUserByEmail, adminUpdateStatus } from "./support/admin-users-fixtures";
 import {
   ensureTelehealthModuleWithDoctors,
@@ -21,6 +20,10 @@ import {
   type CreatedAppointment,
   type CreatedFixtureDoctor,
 } from "./support/telehealth-fixtures";
+
+// Paket G — 2FA girişleri `nextTotpCode` ile yeni bir 30 sn'lik adımı bekleyebilir (TOTP tekrar
+// kullanım koruması); varsayılan 30 sn test süresi buna yetmez.
+test.describe.configure({ timeout: 120_000 });
 
 /**
  * qa-agent — gerçek yerel LiveKit doğrulama turu (2026-09-15). `telehealth-consultation.spec.ts`
@@ -477,7 +480,7 @@ test.describe("qa-agent — iki taraflı gerçek video doğrulaması (2026-09-17
       await doctorPage.getByLabel("Şifre").fill(DOCTOR_PASSWORD);
       await doctorPage.getByRole("button", { name: "Giriş yap" }).click();
       await expect(doctorPage.getByText("İki adımlı doğrulama", { exact: false })).toBeVisible({ timeout: 15_000 });
-      await doctorPage.getByLabel("Authenticator Kodu").fill(authenticator.generate(doctorTotpSecret));
+      await doctorPage.getByLabel("Authenticator Kodu").fill(await nextTotpCode(doctorTotpSecret));
       await doctorPage.getByRole("button", { name: "Doğrula" }).click();
       // Doğrulama sonrası nereye yönlendirilirse yönlendirilsin (post-login-destination) — bu
       // testin ilgisi dışında; görüşme sayfasına DOĞRUDAN gidilir.
@@ -578,7 +581,7 @@ test.describe("qa-agent — iki taraflı gerçek video doğrulaması (2026-09-17
       await doctorPage.getByLabel("Şifre").fill(DOCTOR_PASSWORD);
       await doctorPage.getByRole("button", { name: "Giriş yap" }).click();
       await expect(doctorPage.getByText("İki adımlı doğrulama", { exact: false })).toBeVisible({ timeout: 15_000 });
-      await doctorPage.getByLabel("Authenticator Kodu").fill(authenticator.generate(doctorTotpSecret));
+      await doctorPage.getByLabel("Authenticator Kodu").fill(await nextTotpCode(doctorTotpSecret));
       await doctorPage.getByRole("button", { name: "Doğrula" }).click();
       await expect(doctorPage.getByText("İki adımlı doğrulama", { exact: false })).toHaveCount(0, { timeout: 15_000 });
 

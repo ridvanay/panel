@@ -802,6 +802,27 @@ export async function adminGetOrderActivity(
 // AYNI RFC 6238 TOTP algoritmasını üretir (bkz. o dosyanın AYNI kütüphane notu).
 // ---------------------------------------------------------------------------
 
+/**
+ * Paket G — backend aynı 30 sn'lik adımın TOTP kodunu ikinci kez kabul etmez (replay koruması) ve
+ * otplib penceresi 0'dır. Bu yardımcı, verilen secret için bu süreçte HENÜZ kullanılmamış ve sınıra
+ * en az 4 sn uzak bir adımın kodunu üretir (gerekirse bir sonraki adımı bekler). E2E'de TÜM TOTP
+ * kodları buradan alınmalıdır.
+ */
+const lastUsedTotpStep = new Map<string, number>();
+export async function nextTotpCode(secret: string): Promise<string> {
+  for (;;) {
+    const now = Date.now();
+    const step = Math.floor(now / 30_000);
+    const remaining = 30_000 - (now % 30_000);
+    const used = lastUsedTotpStep.get(secret);
+    if (remaining >= 4000 && (used === undefined || step > used)) {
+      lastUsedTotpStep.set(secret, step);
+      return authenticator.generate(secret);
+    }
+    await new Promise((r) => setTimeout(r, remaining + 50));
+  }
+}
+
 /** `POST /admin/settings/security/2fa/setup` + `/enable` — bearer sahibinin KENDİ hesabında
  * gerçek 2FA'yı uçtan uca etkinleştirir (kurulum akışını ATLAMAZ). Dönen `secret` yalnızca
  * testin ihtiyaç duyduğu (giriş sırasında kod üretmek için) değerdir — DB'ye asla doğrudan
@@ -817,7 +838,7 @@ export async function setupAndEnableTwoFactorForSelf(token: string, password: st
   if (!secret) {
     throw new Error("qa-agent: /2fa/setup yanıtındaki otpauthUrl içinde 'secret' parametresi bulunamadı.");
   }
-  const code = authenticator.generate(secret);
+  const code = await nextTotpCode(secret);
   const enableRes = await fetch(`${API_BASE_URL}/admin/settings/security/2fa/enable`, {
     method: "POST",
     headers: authHeaders(token),

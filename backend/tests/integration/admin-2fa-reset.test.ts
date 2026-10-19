@@ -21,6 +21,7 @@ vi.mock("../../src/modules/email-templates/email-templates.service", async (impo
 
 import { buildTestApp } from "../helpers/build-test-app";
 import { resetDatabase } from "../helpers/reset-db";
+import { awaitFreshTotpStep } from "../helpers/totp";
 import { registerTestUser } from "../helpers/auth";
 import { encryptSecret } from "../../src/lib/crypto";
 import { hashPassword } from "../../src/lib/password";
@@ -77,6 +78,8 @@ describe("Admin 2FA sıfırlama (Paket B1)", () => {
     adminToken = admin.accessToken;
     adminId = admin.userId;
     adminSecret = await enableTwoFactor(app, adminId);
+    // Paket G — TOTP penceresi 0: test boyunca kodlar aynı 30 sn'lik adımda kalsın.
+    await awaitFreshTotpStep();
     sendMailMock.mockReset().mockResolvedValue({ messageId: "test" });
     sendPasswordResetEmailMock.mockReset().mockResolvedValue({ messageId: "test" });
   });

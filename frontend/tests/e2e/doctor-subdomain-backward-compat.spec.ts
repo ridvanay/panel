@@ -1,8 +1,11 @@
 import { test, expect } from "@playwright/test";
-import { authenticator } from "otplib";
-import { getCachedAdminSession, getSiteModules, patchSiteModule, getFixtureUserToken, setupAndEnableTwoFactorForSelf } from "./support/api";
+import { getCachedAdminSession, getSiteModules, patchSiteModule, getFixtureUserToken, setupAndEnableTwoFactorForSelf, nextTotpCode } from "./support/api";
 import { resetFixtureUserToBaseline, adminGetUserByEmail } from "./support/admin-users-fixtures";
 import { ensureTelehealthModuleWithDoctors, createAdminDoctorFixture, deleteAdminDoctorFixture, setDoctorAvailabilityRaw, linkDoctorUserRaw, type CreatedFixtureDoctor } from "./support/telehealth-fixtures";
+
+// Paket G — 2FA girişleri `nextTotpCode` ile yeni bir 30 sn'lik adımı bekleyebilir (TOTP tekrar
+// kullanım koruması); varsayılan 30 sn test süresi buna yetmez.
+test.describe.configure({ timeout: 120_000 });
 
 /**
  * qa-agent — `.claude/architect-scope-doctor-subdomain.md` §7.4 senaryo 13 (geriye dönük
@@ -113,7 +116,7 @@ test("senaryo 13b: NEXT_PUBLIC_DOCTOR_URL tanımsızken doktor girişi SAME-ORIG
   await page.getByRole("button", { name: "Giriş yap" }).click();
 
   await expect(page.getByText("İki adımlı doğrulama", { exact: false })).toBeVisible({ timeout: 15_000 });
-  const code = authenticator.generate(doctorTotpSecret);
+  const code = await nextTotpCode(doctorTotpSecret);
   await page.getByLabel("Authenticator Kodu").fill(code);
   await page.getByRole("button", { name: "Doğrula" }).click();
 

@@ -1,8 +1,11 @@
 import { test, expect, type Page } from "@playwright/test";
-import { authenticator } from "otplib";
-import { getCachedAdminSession, getSiteModules, patchSiteModule, getFixtureUserToken, setupAndEnableTwoFactorForSelf, setMaintenanceMode } from "./support/api";
+import { getCachedAdminSession, getSiteModules, patchSiteModule, getFixtureUserToken, setupAndEnableTwoFactorForSelf, setMaintenanceMode, nextTotpCode } from "./support/api";
 import { resetFixtureUserToBaseline, adminGetUserByEmail } from "./support/admin-users-fixtures";
 import { ensureTelehealthModuleWithDoctors, createAdminDoctorFixture, deleteAdminDoctorFixture, setDoctorAvailabilityRaw, linkDoctorUserRaw, type CreatedFixtureDoctor } from "./support/telehealth-fixtures";
+
+// Paket G — 2FA girişleri `nextTotpCode` ile yeni bir 30 sn'lik adımı bekleyebilir (TOTP tekrar
+// kullanım koruması); varsayılan 30 sn test süresi buna yetmez.
+test.describe.configure({ timeout: 120_000 });
 
 /**
  * qa-agent — `.claude/architect-scope-doctor-subdomain.md` §7.4, bağlayıcı 14 senaryolu tablo.
@@ -125,7 +128,7 @@ test("senaryo 1+2+10+12: doktor host'ta giriş sonrası — SiteHeader/Footer YO
   await doctorPage.getByRole("button", { name: "Giriş yap" }).click();
 
   await expect(doctorPage.getByText("İki adımlı doğrulama", { exact: false })).toBeVisible({ timeout: 15_000 });
-  const code = authenticator.generate(doctorTotpSecret);
+  const code = await nextTotpCode(doctorTotpSecret);
   await doctorPage.getByLabel("Authenticator Kodu").fill(code);
   await doctorPage.getByRole("button", { name: "Doğrula" }).click();
 

@@ -4,10 +4,10 @@ import type { FastifyInstance } from "fastify";
 import { authenticator } from "otplib";
 import { buildTestApp } from "../helpers/build-test-app";
 import { resetDatabase } from "../helpers/reset-db";
+import { awaitFreshTotpStep } from "../helpers/totp";
 import { encryptSecret } from "../../src/lib/crypto";
 import { hashPassword } from "../../src/lib/password";
 import { signAccessToken, signTwoFactorSetupToken } from "../../src/lib/jwt";
-import { TOTP_STEP_MS } from "../../src/lib/totp";
 import { BREAK_GLASS_AUDIT_ACTION, BreakGlassError, resetUserTwoFactorBreakGlass } from "../../src/lib/break-glass-two-factor";
 
 /**
@@ -18,10 +18,6 @@ import { BREAK_GLASS_AUDIT_ACTION, BreakGlassError, resetUserTwoFactorBreakGlass
 const PASSWORD = "Sifre12345!";
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-async function awaitFreshTotpStep() {
-  const remaining = TOTP_STEP_MS - (Date.now() % TOTP_STEP_MS);
-  if (remaining < 4000) await new Promise((r) => setTimeout(r, remaining + 50));
-}
 
 describe("Personel için zorunlu 2FA (Paket G)", () => {
   let app: FastifyInstance;

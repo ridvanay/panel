@@ -21,7 +21,7 @@ import { encryptSecret } from "../../src/lib/crypto";
 import { hashPassword } from "../../src/lib/password";
 import { signAccessToken, signChallengeToken } from "../../src/lib/jwt";
 import { jwtPrivateKey } from "../../src/lib/keys";
-import { TOTP_STEP_MS } from "../../src/lib/totp";
+import { awaitFreshTotpStep } from "../helpers/totp";
 import { createPasswordResetToken } from "../../src/modules/auth/auth.service";
 
 const PASSWORD = "Sifre12345!";
@@ -93,8 +93,7 @@ describe("Erişim token'ı iptali — sessionsValidAfter (Paket G)", () => {
     const target = await createUser("USER", { twoFactor: true });
     expect((await me(target.token)).statusCode).toBe(200);
 
-    const remaining = TOTP_STEP_MS - (Date.now() % TOTP_STEP_MS);
-    if (remaining < 4000) await new Promise((r) => setTimeout(r, remaining + 50));
+    await awaitFreshTotpStep();
     const res = await app.inject({
       method: "POST",
       url: `/api/v1/admin/users/${target.user.id}/2fa/reset`,
@@ -131,6 +130,7 @@ describe("Erişim token'ı iptali — sessionsValidAfter (Paket G)", () => {
     expect([200, 204]).toContain(reset.statusCode);
     expect((await me(target.token)).statusCode).toBe(401);
 
+    await awaitFreshTotpStep();
     const verify = await app.inject({
       method: "POST",
       url: "/api/v1/auth/2fa/verify",
