@@ -429,7 +429,7 @@ test.describe("qa-agent — iki taraflı gerçek video doğrulaması (2026-09-17
     if (!doctorUser) throw new Error("qa-agent: LiveKit iki taraflı test doktor kullanıcısı oluşturulamadı.");
     doctorUserId = doctorUser.id;
     await linkDoctorUserRaw(adminToken, twoPartyDoctor.id, doctorUserId);
-    const twoFactor = await setupAndEnableTwoFactorForSelf(doctorUserToken);
+    const twoFactor = await setupAndEnableTwoFactorForSelf(doctorUserToken, DOCTOR_PASSWORD);
     doctorTotpSecret = twoFactor.secret;
   });
 

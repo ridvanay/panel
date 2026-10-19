@@ -113,7 +113,7 @@ test.beforeAll(async ({}, testInfo) => {
   if (!withTwoFactorUser) throw new Error("qa-agent: 2FA'lı doktor fixture kullanıcısı oluşturulamadı.");
   withTwoFactorDoctorUserId = withTwoFactorUser.id;
   await linkDoctorUserRaw(adminToken, withTwoFactorDoctorFixture.id, withTwoFactorDoctorUserId);
-  const enabled = await setupAndEnableTwoFactorForSelf(withTwoFactorToken);
+  const enabled = await setupAndEnableTwoFactorForSelf(withTwoFactorToken, FIXTURE_PASSWORD);
   withTwoFactorDoctorSecret = enabled.secret;
 });
 
@@ -216,6 +216,8 @@ test("madde 1: 2FA'sı olmayan doktor /doctor uyarı ekranında 2FA'yı satır i
     }
 
     // --- GERÇEK bir TOTP kodu üret (otplib, backend'in otpauthUrl'sindeki secret'tan) ve doğrula ---
+    // Paket G — kurulum hesap şifresini de ister (step-up).
+    await page.getByLabel("Hesap Şifreniz").fill(FIXTURE_PASSWORD);
     const code = authenticator.generate(manualSecret!);
     await codeInput.fill(code);
 

@@ -64,6 +64,7 @@ export async function securityTwoFactorRoutes(app: FastifyInstance) {
   server.post(
     "/enable",
     {
+      config: { rateLimit: SENSITIVE_ACTION_RATE_LIMIT },
       schema: { body: EnableTwoFactorRequestSchema, response: { 200: ApiSuccessSchema(EnableTwoFactorResponseSchema) } },
     },
     async (request, reply) => {
@@ -76,6 +77,20 @@ export async function securityTwoFactorRoutes(app: FastifyInstance) {
 
       if (payload.sub !== request.user!.id) {
         throw new UnauthorizedError("Geçersiz kurulum isteği.");
+      }
+
+      // Paket G — şifre doğrulaması (step-up). Mesaj `/disable` ile birebir aynı.
+      const owner = await app.prisma.user.findUnique({ where: { id: request.user!.id }, select: { passwordHash: true } });
+      if (!owner || !(await verifyPassword(owner.passwordHash, request.body.password))) {
+        await logAudit(app, {
+          actorId: request.user!.id,
+          actorEmail: request.user!.email,
+          action: "security.2fa_enable",
+          status: "FAILURE",
+          metadata: { reason: "password_invalid" },
+          ipAddress: request.ip,
+        });
+        throw new UnauthorizedError("Şifre hatalı.");
       }
 
       const step = matchTotpStep(payload.secret, request.body.code);

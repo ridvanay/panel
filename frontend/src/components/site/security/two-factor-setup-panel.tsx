@@ -47,6 +47,8 @@ export function TwoFactorSetupPanel({ onCompleted }: TwoFactorSetupPanelProps) {
   const [setupLoading, setSetupLoading] = useState(true);
   const [setupError, setSetupError] = useState<string | null>(null);
   const [code, setCode] = useState("");
+  // Paket G — 2FA kurulumu hesap şifresini de ister (step-up).
+  const [password, setPassword] = useState("");
   const [enabling, setEnabling] = useState(false);
   const [enableError, setEnableError] = useState<string | null>(null);
   const [backupCodes, setBackupCodes] = useState<string[] | null>(null);
@@ -88,7 +90,7 @@ export function TwoFactorSetupPanel({ onCompleted }: TwoFactorSetupPanelProps) {
     setEnableError(null);
     setEnabling(true);
     try {
-      const result = await securityApi.enableTwoFactor({ setupToken: setupData.setupToken, code });
+      const result = await securityApi.enableTwoFactor({ setupToken: setupData.setupToken, code, password });
       setBackupCodes(result.backupCodes);
       toast.success("İki faktörlü doğrulama etkinleştirildi.");
     } catch (err) {
@@ -160,6 +162,19 @@ export function TwoFactorSetupPanel({ onCompleted }: TwoFactorSetupPanelProps) {
           </span>
         </Alert>
       )}
+
+      <Field id="doctor-2fa-setup-password" label="Hesap Şifreniz" hint="Güvenliğiniz için hesap şifreniz istenir. Şifrenizi bilmiyorsanız çıkış yapıp “Şifremi unuttum” ile yeni şifre belirleyin." required>
+        {(inputProps) => (
+          <Input
+            {...inputProps}
+            type="password"
+            autoComplete="current-password"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+        )}
+      </Field>
 
       <Field id="doctor-2fa-setup-code" label="Doğrulama Kodu" required>
         {(inputProps) => (

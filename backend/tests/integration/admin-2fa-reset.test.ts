@@ -251,7 +251,7 @@ describe("Admin 2FA sıfırlama (Paket B1)", () => {
       method: "POST",
       url: "/api/v1/admin/settings/security/2fa/enable",
       headers: authHeader(adminToken),
-      payload: { setupToken, code: authenticator.generate(newSecret) },
+      payload: { setupToken, code: authenticator.generate(newSecret), password: PASSWORD },
     });
 
     expect(res.statusCode).toBe(409);

@@ -81,7 +81,7 @@ test.beforeAll(async ({}, testInfo) => {
   const doctorUser = await adminGetUserByEmail(adminToken, DOCTOR_USER_EMAIL);
   if (!doctorUser) throw new Error("qa-agent: doktor fixture kullanıcısı oluşturulamadı.");
   await linkDoctorUserRaw(adminToken, doctorFixture.id, doctorUser.id);
-  const twoFactor = await setupAndEnableTwoFactorForSelf(doctorUserToken);
+  const twoFactor = await setupAndEnableTwoFactorForSelf(doctorUserToken, FIXTURE_PASSWORD);
   doctorTotpSecret = twoFactor.secret;
 });
 

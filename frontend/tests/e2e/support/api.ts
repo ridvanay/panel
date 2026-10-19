@@ -806,7 +806,8 @@ export async function adminGetOrderActivity(
  * gerçek 2FA'yı uçtan uca etkinleştirir (kurulum akışını ATLAMAZ). Dönen `secret` yalnızca
  * testin ihtiyaç duyduğu (giriş sırasında kod üretmek için) değerdir — DB'ye asla doğrudan
  * yazılmaz. */
-export async function setupAndEnableTwoFactorForSelf(token: string): Promise<{ secret: string }> {
+/** Paket G — `/enable` artık hesabın şifresini de ister (step-up). */
+export async function setupAndEnableTwoFactorForSelf(token: string, password: string): Promise<{ secret: string }> {
   const setupRes = await fetch(`${API_BASE_URL}/admin/settings/security/2fa/setup`, {
     method: "POST",
     headers: authHeadersNoBody(token),
@@ -820,7 +821,7 @@ export async function setupAndEnableTwoFactorForSelf(token: string): Promise<{ s
   const enableRes = await fetch(`${API_BASE_URL}/admin/settings/security/2fa/enable`, {
     method: "POST",
     headers: authHeaders(token),
-    body: JSON.stringify({ setupToken: setupBody.data.setupToken, code }),
+    body: JSON.stringify({ setupToken: setupBody.data.setupToken, code, password }),
   });
   await json(enableRes);
   return { secret };

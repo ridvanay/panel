@@ -168,4 +168,32 @@ describe("TOTP tekrar kullanımı ve yedek kod yarışı (Paket G)", () => {
     expect(disabled.statusCode).toBe(204);
     expect((await app.prisma.user.findUniqueOrThrow({ where: { id: user.id } })).twoFactorLastUsedStep).toBeNull();
   });
+
+  it("/2fa/enable şifre ister: şifre yoksa 4xx, yanlışsa 401 + FAILURE audit; 2FA kapalı kalır", async () => {
+    const email = `enable-pw-${crypto.randomUUID()}@example.com`;
+    const user = await app.prisma.user.create({
+      data: { email, name: "Kurulum", passwordHash: await hashPassword(PASSWORD), role: "USER", status: "ACTIVE", emailVerifiedAt: new Date() },
+    });
+    const auth = { authorization: `Bearer ${signAccessToken({ sub: user.id, email }).token}` };
+    const secret = authenticator.generateSecret();
+    const setupToken = signTwoFactorSetupToken(user.id, secret);
+    await awaitFreshTotpStep();
+    const code = authenticator.generate(secret);
+
+    const missing = await app.inject({ method: "POST", url: "/api/v1/admin/settings/security/2fa/enable", headers: auth, payload: { setupToken, code }, remoteAddress: nextIp() });
+    expect([400, 422]).toContain(missing.statusCode);
+
+    const wrong = await app.inject({
+      method: "POST",
+      url: "/api/v1/admin/settings/security/2fa/enable",
+      headers: auth,
+      payload: { setupToken, code, password: "yanlis-sifre" },
+      remoteAddress: nextIp(),
+    });
+    expect(wrong.statusCode).toBe(401);
+    expect(wrong.json().error.message).toBe("Şifre hatalı.");
+    const failure = await app.prisma.auditLog.findFirst({ where: { actorId: user.id, action: "security.2fa_enable", status: "FAILURE" } });
+    expect(failure).not.toBeNull();
+    expect((await app.prisma.user.findUniqueOrThrow({ where: { id: user.id } })).twoFactorEnabled).toBe(false);
+  });
 });

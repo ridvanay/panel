@@ -80,7 +80,7 @@ test.beforeAll(async ({}, testInfo) => {
   await linkDoctorUserRaw(adminToken, doctorFixture.id, doctorUser.id);
   // §5.4/§9.7.7 KAPI — 2FA kapalıyken `/doctor/me` `403 TWO_FACTOR_REQUIRED` döner (backend-agent,
   // `telehealth.portal.routes.ts`); doktor portalına erişebilmek için ÖNCE 2FA açılmalı.
-  const twoFactor = await setupAndEnableTwoFactorForSelf(doctorUserToken);
+  const twoFactor = await setupAndEnableTwoFactorForSelf(doctorUserToken, FIXTURE_PASSWORD);
   doctorTotpSecret = twoFactor.secret;
 });
 

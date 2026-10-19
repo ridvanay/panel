@@ -16,6 +16,11 @@ export type SetupTwoFactorResponseDto = z.infer<typeof SetupTwoFactorResponseSch
 export const EnableTwoFactorRequestSchema = z.object({
   setupToken: z.string().min(1),
   code: z.string().min(4),
+  /**
+   * Paket G (security-review ORTA-1 kalanı) — ele geçirilmiş bir oturum (access token) şifreyi
+   * bilmeden kendi authenticator'ını bağlayıp hesabı sahiplenemesin.
+   */
+  password: z.string().min(1, "Şifrenizi girin."),
 });
 
 export const EnableTwoFactorResponseSchema = z.object({

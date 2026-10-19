@@ -252,7 +252,7 @@ test.beforeAll(async ({}, testInfo) => {
   if (!doctorUser) throw new Error("qa-agent: doktor fixture kullanıcısı oluşturulamadı.");
   doctorUserId = doctorUser.id;
   await linkDoctorUserRaw(adminToken, fixtureDoctor.id, doctorUserId);
-  await setupAndEnableTwoFactorForSelf(doctorUserToken);
+  await setupAndEnableTwoFactorForSelf(doctorUserToken, FIXTURE_PASSWORD);
 
   // ---- "başka doktor" hesabı (madde d) — `GET .../identity` `requireDoctorPortalAccess`
   // GEREKTİRMEZ (`telehealthIdentityRoutes` yalnızca `authenticateOptional` taşır), 2FA GEREKMEZ ----

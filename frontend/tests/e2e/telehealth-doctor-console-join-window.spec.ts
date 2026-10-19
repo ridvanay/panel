@@ -111,7 +111,7 @@ test.beforeAll(async ({}, testInfo) => {
   if (!doctorTrUser) throw new Error("qa-agent: TSİ doktor fixture kullanıcısı oluşturulamadı.");
   doctorTrUserId = doctorTrUser.id;
   await linkDoctorUserRaw(adminToken, doctorTr.id, doctorTrUserId);
-  const doctorTrTwoFactor = await setupAndEnableTwoFactorForSelf(doctorTrUserToken);
+  const doctorTrTwoFactor = await setupAndEnableTwoFactorForSelf(doctorTrUserToken, FIXTURE_PASSWORD);
   doctorTrTotpSecret = doctorTrTwoFactor.secret;
 
   const trSlot = await pickAvailableSlotIso(doctorTr.slug);
@@ -152,7 +152,7 @@ test.beforeAll(async ({}, testInfo) => {
   if (!doctorNyUser) throw new Error("qa-agent: NY doktor fixture kullanıcısı oluşturulamadı.");
   doctorNyUserId = doctorNyUser.id;
   await linkDoctorUserRaw(adminToken, doctorNy.id, doctorNyUserId);
-  const doctorNyTwoFactor = await setupAndEnableTwoFactorForSelf(doctorNyUserToken);
+  const doctorNyTwoFactor = await setupAndEnableTwoFactorForSelf(doctorNyUserToken, FIXTURE_PASSWORD);
   doctorNyTotpSecret = doctorNyTwoFactor.secret;
 
   const nySlot = await pickAvailableSlotIso(doctorNy.slug);

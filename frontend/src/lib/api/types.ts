@@ -2067,6 +2067,8 @@ export interface TwoFactorSetupResponse {
 export interface EnableTwoFactorRequest {
   setupToken: string;
   code: string;
+  /** Paket G — hesabın şifresi (step-up); hatalıysa 401 "Şifre hatalı.". */
+  password: string;
 }
 export interface EnableTwoFactorResponse {
   backupCodes: string[];

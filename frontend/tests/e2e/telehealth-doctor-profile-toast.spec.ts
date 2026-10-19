@@ -70,7 +70,7 @@ test("doktor /doctor/profile'da serbest DOI ile yayın kaydeder; başarı toast'
   const doctorUser = await adminGetUserByEmail(adminToken, DOCTOR_USER_EMAIL);
   if (!doctorUser) throw new Error("qa-agent: doktor fixture kullanıcısı oluşturulamadı.");
   await linkDoctorUserRaw(adminToken, doctorFixture.id, doctorUser.id);
-  const { secret } = await setupAndEnableTwoFactorForSelf(doctorUserToken);
+  const { secret } = await setupAndEnableTwoFactorForSelf(doctorUserToken, FIXTURE_PASSWORD);
 
   // ---- GERÇEK tarayıcı login'i — e-posta/şifre + TOTP kodu (`otplib`, backend'in `lib/totp.ts`
   // sarmalayıcısının BEKLEDİĞİ AYNI RFC 6238 algoritması) ----

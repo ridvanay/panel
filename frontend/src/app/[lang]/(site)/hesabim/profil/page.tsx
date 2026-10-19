@@ -152,6 +152,8 @@ export default function AccountProfilePage() {
   const [setupLoading, setSetupLoading] = useState(false);
   const [setupError, setSetupError] = useState<string | null>(null);
   const [setupCode, setSetupCode] = useState("");
+  // Paket G — 2FA kurulumu hesap şifresini de ister (step-up).
+  const [setupPassword, setSetupPassword] = useState("");
   const [enabling, setEnabling] = useState(false);
 
   const [backupCodesOpen, setBackupCodesOpen] = useState(false);
@@ -238,6 +240,7 @@ export default function AccountProfilePage() {
       const data = await securityApi.setupTwoFactor();
       setSetupData(data);
       setSetupCode("");
+      setSetupPassword("");
       setSetupOpen(true);
     } catch (err) {
       toast.error(friendlyErrorMessage(err));
@@ -251,7 +254,7 @@ export default function AccountProfilePage() {
     setSetupError(null);
     setEnabling(true);
     try {
-      const result = await securityApi.enableTwoFactor({ setupToken: setupData.setupToken, code: setupCode });
+      const result = await securityApi.enableTwoFactor({ setupToken: setupData.setupToken, code: setupCode, password: setupPassword });
       setSetupOpen(false);
       setSetupData(null);
       setBackupCodes(result.backupCodes);
@@ -580,6 +583,19 @@ export default function AccountProfilePage() {
                   </span>
                 </Alert>
               )}
+
+              <Field id="setupPassword" label="Hesap Şifreniz" hint="Güvenliğiniz için hesap şifreniz istenir. Şifrenizi bilmiyorsanız çıkış yapıp “Şifremi unuttum” ile yeni şifre belirleyin." required>
+                {(inputProps) => (
+                  <Input
+                    {...inputProps}
+                    type="password"
+                    autoComplete="current-password"
+                    required
+                    value={setupPassword}
+                    onChange={(e) => setSetupPassword(e.target.value)}
+                  />
+                )}
+              </Field>
 
               <Field id="setupCode" label="Doğrulama Kodu" required>
                 {(inputProps) => (
