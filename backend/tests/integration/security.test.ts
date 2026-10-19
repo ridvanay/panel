@@ -72,7 +72,7 @@ describe("security — 2FA & aktif oturumlar", () => {
       method: "POST",
       url: "/api/v1/admin/settings/security/2fa/enable",
       headers: authHeader(user.accessToken),
-      payload: { setupToken, code },
+      payload: { setupToken, code, password: user.password },
     });
 
     expect(res.statusCode).toBe(200);
@@ -107,6 +107,12 @@ describe("security — 2FA & aktif oturumlar", () => {
 
     // Doğru TOTP kodu → normal login ile aynı token çifti.
     const code = authenticator.generate(secret);
+
+    // Paket G — kurulumda (/enable) kullanılan kod aynı 30 sn'de girişte YENİDEN kullanılamaz
+    // (`two-factor-replay.test.ts`). Bu test giriş akışını sınadığı için kayıtlı adım temizlenir
+    // (bir sonraki 30 sn'lik adımı beklemek yerine).
+    await app.prisma.user.update({ where: { email: user.email }, data: { twoFactorLastUsedStep: null } });
+
     const verifyRes = await app.inject({
       method: "POST",
       url: "/api/v1/auth/2fa/verify",

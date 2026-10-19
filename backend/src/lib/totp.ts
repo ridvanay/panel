@@ -13,12 +13,30 @@ export function buildOtpauthUrl(secret: string, email: string): string {
   return authenticator.keyuri(email, ISSUER, secret);
 }
 
-/** otplib'in varsayılan ±1 zaman penceresi (adım başına 30sn) toleransıyla doğrular. */
+/** TOTP zaman adımı (sn) — otplib varsayılanı. */
+export const TOTP_STEP_MS = 30_000;
+
+/**
+ * Kodu doğrular. otplib'in etkin penceresi 0'dır (`authenticator.allOptions().window === 0`):
+ * yalnızca o anki 30 sn'lik adımın kodu kabul edilir. Paket G — eskiden burada "±1 pencere" yazıyordu,
+ * bu yanlıştı. Yeniden kullanım koruması GEREKEN yerlerde (giriş, step-up, 2FA kurulumu) bunun yerine
+ * `lib/two-factor.ts::verifyAndConsumeTotp` kullanılır.
+ */
 export function verifyTotp(secret: string, code: string): boolean {
+  return matchTotpStep(secret, code) !== null;
+}
+
+/**
+ * Kodun eşleştiği zaman adımını (`floor(epochMs / 30000)`) döndürür; eşleşmezse `null`. Adım ve
+ * doğrulama AYNI `nowMs` ile yapılır (adım sınırında yarış olmasın diye).
+ */
+export function matchTotpStep(secret: string, code: string, nowMs: number = Date.now()): number | null {
   try {
-    return authenticator.verify({ token: code, secret });
+    const delta = authenticator.clone({ epoch: nowMs }).checkDelta(code, secret);
+    if (delta === null) return null;
+    return Math.floor(nowMs / TOTP_STEP_MS) + delta;
   } catch {
-    return false;
+    return null;
   }
 }
 

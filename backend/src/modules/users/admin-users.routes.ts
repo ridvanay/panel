@@ -29,7 +29,7 @@ import { env } from "../../config/env";
 import { runSerializable } from "../../lib/serializable-tx";
 import { decryptSecret } from "../../lib/crypto";
 import { generateOpaqueToken, hashToken } from "../../lib/tokens";
-import { verifyTotp } from "../../lib/totp";
+import { verifyAndConsumeTotp, TOTP_REUSED_MESSAGE } from "../../lib/two-factor";
 import { sendTwoFactorResetNotice } from "../../lib/security-notice-email";
 import {
   AdminUserIdParamSchema,
@@ -447,7 +447,8 @@ export async function adminUsersRoutes(app: FastifyInstance) {
         throw new ApiError(429, "RATE_LIMITED", "Çok fazla hatalı doğrulama denemesi. 15 dakika sonra tekrar deneyin.");
       }
 
-      if (!verifyTotp(decryptSecret(actor.twoFactorSecret), request.body.code)) {
+      const stepUp = await verifyAndConsumeTotp(app.prisma, actorId, decryptSecret(actor.twoFactorSecret), request.body.code);
+      if (stepUp !== "ok") {
         await logAudit(app, {
           actorId,
           actorEmail: request.user!.email,
@@ -455,10 +456,10 @@ export async function adminUsersRoutes(app: FastifyInstance) {
           status: "FAILURE",
           targetType: "User",
           targetId,
-          metadata: { reason: "step_up_failed" },
+          metadata: { reason: stepUp === "reused" ? "step_up_code_reused" : "step_up_failed" },
           ipAddress: request.ip,
         });
-        throw new StepUpInvalidCodeError();
+        throw stepUp === "reused" ? new StepUpInvalidCodeError(TOTP_REUSED_MESSAGE) : new StepUpInvalidCodeError();
       }
 
       const target = await app.prisma.user.findUnique({ where: { id: targetId } });
@@ -476,7 +477,7 @@ export async function adminUsersRoutes(app: FastifyInstance) {
       const [user, , revoked] = await app.prisma.$transaction([
         app.prisma.user.update({
           where: { id: target.id },
-          data: { twoFactorEnabled: false, twoFactorSecret: null, twoFactorVerifiedAt: null },
+          data: { twoFactorEnabled: false, twoFactorSecret: null, twoFactorVerifiedAt: null, twoFactorLastUsedStep: null },
           include: { doctorProfile: { select: { id: true } } },
         }),
         app.prisma.backupCode.deleteMany({ where: { userId: target.id } }),

@@ -7,7 +7,7 @@ import { ApiSuccessSchema } from "../../schemas/common";
 import { SessionSchema } from "../../schemas/entities";
 import { toSessionDto } from "../../mappers";
 import { encryptSecret } from "../../lib/crypto";
-import { generateSecret, buildOtpauthUrl, verifyTotp, generateQrCodeDataUrl } from "../../lib/totp";
+import { generateSecret, buildOtpauthUrl, matchTotpStep, generateQrCodeDataUrl } from "../../lib/totp";
 import { generateBackupCodes, hashBackupCode } from "../../lib/backup-codes";
 import { signTwoFactorSetupToken, verifyTwoFactorSetupToken } from "../../lib/jwt";
 import { verifyPassword } from "../../lib/password";
@@ -78,26 +78,28 @@ export async function securityTwoFactorRoutes(app: FastifyInstance) {
         throw new UnauthorizedError("Geçersiz kurulum isteği.");
       }
 
-      if (!verifyTotp(payload.secret, request.body.code)) {
+      const step = matchTotpStep(payload.secret, request.body.code);
+      if (step === null) {
         throw new UnauthorizedError("Geçersiz doğrulama kodu.");
       }
 
       // 2026-10-18 (Paket B1, security-review ORTA-1) — etkin bir 2FA, şifre/TOTP istemeyen bu uçla
       // ÜZERİNE YAZILAMAZ: çalıntı bir access token secret'ı kendi cihazına taşıyıp hesabı kalıcı
       // sahiplenemesin. Değiştirmek isteyen önce `/disable` (şifreli) ile kapatır.
-      const current = await app.prisma.user.findUnique({ where: { id: request.user!.id }, select: { twoFactorEnabled: true } });
-      if (current?.twoFactorEnabled) {
-        throw new ConflictError("İki adımlı doğrulama zaten etkin; yeniden kurmak için önce kapatın.");
-      }
-
-      await app.prisma.user.update({
-        where: { id: request.user!.id },
+      // Paket G — kontrol ve yazım tek atomik adım (eşzamanlı iki /enable birbirini ezemez); kurulum
+      // kodunun adımı kaydedilir, aynı kod hemen ardından girişte/step-up'ta yeniden kullanılamaz.
+      const { count } = await app.prisma.user.updateMany({
+        where: { id: request.user!.id, twoFactorEnabled: false },
         data: {
           twoFactorEnabled: true,
           twoFactorSecret: encryptSecret(payload.secret),
           twoFactorVerifiedAt: new Date(),
+          twoFactorLastUsedStep: step,
         },
       });
+      if (count === 0) {
+        throw new ConflictError("İki adımlı doğrulama zaten etkin; yeniden kurmak için önce kapatın.");
+      }
 
       // Etkinleştirme her zaman yedek kod setini SIFIRLAR (önceki kurulumdan kalan
       // kullanılmamış kodlar varsa geçersiz kılınır).
@@ -141,7 +143,7 @@ export async function securityTwoFactorRoutes(app: FastifyInstance) {
       await app.prisma.$transaction([
         app.prisma.user.update({
           where: { id: user.id },
-          data: { twoFactorEnabled: false, twoFactorSecret: null, twoFactorVerifiedAt: null },
+          data: { twoFactorEnabled: false, twoFactorSecret: null, twoFactorVerifiedAt: null, twoFactorLastUsedStep: null },
         }),
         app.prisma.backupCode.deleteMany({ where: { userId: user.id } }),
         // Mevcut oturum HARİÇ tüm refresh token'lar iptal edilir — 2FA kapatma hassas

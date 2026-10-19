@@ -19,7 +19,7 @@ import { logAudit } from "../../lib/audit";
 import { ForbiddenError, UnauthorizedError } from "../../lib/errors";
 import { verifyChallengeToken } from "../../lib/jwt";
 import { decryptSecret } from "../../lib/crypto";
-import { verifyTotp } from "../../lib/totp";
+import { verifyAndConsumeTotp, TOTP_REUSED_MESSAGE, type TotpConsumeResult } from "../../lib/two-factor";
 import { hashBackupCode } from "../../lib/backup-codes";
 import { VERIFICATION_CODE_RESEND_RATE_LIMIT } from "../../lib/rate-limit";
 import * as authService from "./auth.service";
@@ -186,29 +186,28 @@ export default async function authRoutes(app: FastifyInstance) {
         throw new UnauthorizedError();
       }
 
-      let verified = false;
+      let result: TotpConsumeResult;
       if (BACKUP_CODE_PATTERN.test(code)) {
-        const codeHash = hashBackupCode(code);
-        const backupCode = await app.prisma.backupCode.findFirst({
-          where: { userId: user.id, codeHash, usedAt: null },
+        // Paket G — tüketim atomik: eşzamanlı iki istek aynı yedek kodu iki kez kullanamaz.
+        const { count } = await app.prisma.backupCode.updateMany({
+          where: { userId: user.id, codeHash: hashBackupCode(code), usedAt: null },
+          data: { usedAt: new Date() },
         });
-        if (backupCode) {
-          await app.prisma.backupCode.update({ where: { id: backupCode.id }, data: { usedAt: new Date() } });
-          verified = true;
-        }
+        result = count === 1 ? "ok" : "invalid";
       } else {
-        verified = verifyTotp(decryptSecret(user.twoFactorSecret), code);
+        result = await verifyAndConsumeTotp(app.prisma, user.id, decryptSecret(user.twoFactorSecret), code);
       }
 
-      if (!verified) {
+      if (result !== "ok") {
         await logAudit(app, {
           actorId: user.id,
           actorEmail: user.email,
           action: "auth.2fa_verify",
           status: "FAILURE",
+          ...(result === "reused" ? { metadata: { reason: "code_reused" } } : {}),
           ipAddress: request.ip,
         });
-        throw new UnauthorizedError("Geçersiz doğrulama kodu.");
+        throw new UnauthorizedError(result === "reused" ? TOTP_REUSED_MESSAGE : "Geçersiz doğrulama kodu.");
       }
 
       await app.prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
