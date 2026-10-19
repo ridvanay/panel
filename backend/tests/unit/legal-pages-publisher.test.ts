@@ -7,7 +7,6 @@ import {
   extractTitle,
   fillPlaceholders,
   loadLegalDocument,
-  loadValues,
   markdownToHtml,
 } from "../../src/lib/legal-pages-publisher";
 
@@ -95,10 +94,18 @@ describe("docs/legal gerçek dosyaları", () => {
     expect(LEGAL_PAGE_MAP.map((m) => m.slug)).toEqual(["kvkk-aydinlatma-metni-2", "acik-riza-metni-2", "kullanim-kosullari-2", "distance-service-agreement"]);
   });
 
-  it("values.json boşken her dosya eksik anahtarları raporlar (gerçek yükleme engellenir)", async () => {
-    const values = await loadValues(LEGAL_DIR);
-    const doc = await loadLegalDocument(LEGAL_DIR, "kvkk-aydinlatma-metni", "tr", values);
-    expect(doc.missing).toEqual(expect.arrayContaining(["ADRES", "SIRKET_UNVANI", "SUNUCU_KONUMU", "TELEFON"]));
+  it("değerler boşken her dosya eksik anahtarları raporlar (gerçek yükleme engellenir)", async () => {
+    // Gerçek values.json'dan bağımsız: test kendi boş değerlerini oluşturur (dosya doldurulsa da geçerli kalır).
+    const emptyValues = {
+      SIRKET_UNVANI: { tr: "", en: "" },
+      ADRES: { tr: "", en: "" },
+      TELEFON: { tr: "", en: "" },
+      SUNUCU_KONUMU: { tr: "", en: "" },
+    };
+    for (const lang of ["tr", "en"] as const) {
+      const doc = await loadLegalDocument(LEGAL_DIR, "kvkk-aydinlatma-metni", lang, emptyValues);
+      expect(doc.missing, lang).toEqual(expect.arrayContaining(["ADRES", "SIRKET_UNVANI", "SUNUCU_KONUMU", "TELEFON"]));
+    }
   });
 
   it("değerler doluyken 8 dosyanın hepsi eksiksiz, geçerli bloklara dönüşür", async () => {
