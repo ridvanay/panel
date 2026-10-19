@@ -111,6 +111,8 @@ const SERVER_ONLY_PREVIEW_LABELS: Partial<Record<ContentBlock["type"], string>> 
   // şablonun önizlemesi "Creating promises inside a Client Component…" çalışma zamanı
   // hatası veriyordu (`AdvancedSliderBlockView` de async bir sunucu bileşenidir). Düzeltildi.
   "advanced-slider": "Gelişmiş Slider",
+  // Paket D — `FeaturedDoctorsBlockView` de async bir sunucu bileşenidir (aynı gerekçe).
+  "featured-doctors": "Öne Çıkan Doktorlar",
 };
 
 function previewPlaceholderHtml(label: string): string {

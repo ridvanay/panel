@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { DoctorProfile } from "@/lib/api/types";
 import type { FeaturedDoctorsBlock, HeadingBlock, ImageBlock, TextBlock } from "@/lib/page-builder/types";
@@ -9,11 +9,12 @@ import { createBlock } from "@/lib/page-builder/registry";
  * Paket A3 (2026-10-18) — "Öne Çıkan Doktorlar" bloğu + metin hizalama + görsel/başlık bağlantısı.
  */
 const fetchDoctorsServer = vi.fn<() => Promise<DoctorProfile[]>>();
-vi.mock("@/lib/api/server-telehealth", () => ({ fetchDoctorsServer: () => fetchDoctorsServer() }));
+vi.mock("@/lib/api/server-telehealth", () => ({ fetchAllDoctorsServer: () => fetchDoctorsServer() }));
 const listAdminDoctors = vi.fn();
 vi.mock("@/lib/api/telehealth", () => ({ listAdminDoctors: (...args: unknown[]) => listAdminDoctors(...args) }));
 
-import { FeaturedDoctorsBlockView, pickFeaturedDoctors } from "@/components/site/blocks/featured-doctors-block";
+import { FeaturedDoctorsBlockView, pickFeaturedDoctors, resolveFeaturedDoctors } from "@/components/site/blocks/featured-doctors-block";
+import { FEATURED_DOCTORS_AUTOPLAY_MS, FeaturedDoctorsCarousel } from "@/components/site/blocks/featured-doctors-carousel";
 import { FeaturedDoctorsBlockEditor } from "@/components/admin/page-builder/blocks/featured-doctors-block";
 import { TextBlockView } from "@/components/site/blocks/text-block";
 import { HeadingBlockView } from "@/components/site/blocks/heading-block";
@@ -165,5 +166,212 @@ describe("metin hizalama ve bağlantılar", () => {
     expect(imageLink).toHaveAttribute("href", "/doctors/ayse");
     expect(imageLink).not.toHaveAttribute("target");
     expect(screen.queryByRole("button", { name: /Görseli büyüt/ })).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * Paket D (2026-10-19) — eşit kartlar, `source: "all"`, carousel düzeni.
+ */
+describe("Paket D — eşit kart yapısı", () => {
+  function skeleton(element: Element): string {
+    return `${element.tagName}.${element.getAttribute("class")}[${Array.from(element.children).map(skeleton).join(",")}]`;
+  }
+
+  it("isim ve uzmanlık line-clamp-2 + iki satırlık min-height taşır; uzun ve kısa isimde DOM yapısı aynıdır", async () => {
+    fetchDoctorsServer.mockResolvedValue([
+      doctor({ id: ID_A, title: "Op. Dr.", fullName: "Hasan Tuna TÜRKMEN", slug: "hasan", subSpecialty: "Gynecologic Oncology Surgery Specialist" }),
+      doctor({ id: ID_B, title: "Doç. Dr.", fullName: "Vahit MUTLU", slug: "vahit", specialty: { name: "Ortopedi" } as DoctorProfile["specialty"] }),
+      doctor({ id: ID_C, title: "Dr.", fullName: "Ali", slug: "ali" }),
+    ]);
+    render(
+      await FeaturedDoctorsBlockView({
+        block: block({ doctorIds: [ID_A, ID_B, ID_C] }),
+        chrome: "page",
+        siteContext: { lang: "en", defaultLocaleCode: "en" },
+      })
+    );
+    const cards = screen.getAllByRole("link").filter((link) => /\/doctors\/[a-z]/.test(link.getAttribute("href") ?? ""));
+    expect(cards).toHaveLength(3);
+
+    for (const card of cards) {
+      const name = card.querySelector(".featured-doctor-name")!;
+      const specialty = card.querySelector(".featured-doctor-specialty")!;
+      expect(name.className).toContain("line-clamp-2");
+      expect(name.className).toContain("min-h-14");
+      expect(specialty.className).toContain("line-clamp-2");
+      expect(specialty.className).toContain("min-h-10");
+      expect(name).toHaveAttribute("title", card.getAttribute("aria-label"));
+    }
+    // Uzmanlık satırı boş olsa bile (Dr. Ali) aynı DOM üretilir — hizalama bozulmaz.
+    expect(new Set(cards.map(skeleton)).size).toBe(1);
+    // `subSpecialty` doluysa o, değilse birincil uzmanlık adı.
+    expect(within(cards[0]!).getByText("Gynecologic Oncology Surgery Specialist")).toBeInTheDocument();
+    expect(within(cards[1]!).getByText("Ortopedi")).toBeInTheDocument();
+  });
+});
+
+describe("Paket D — resolveFeaturedDoctors", () => {
+  const ID_D = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+
+  it("source=all pasif ve arşivli doktorları dışlar, liste (seq) sırasını korur; doctorIds yok sayılır", () => {
+    const list = [
+      doctor({ id: ID_C }),
+      doctor({ id: ID_A, isActive: false }),
+      doctor({ id: ID_B, archivedAt: "2026-10-18T00:00:00.000Z" }),
+      doctor({ id: ID_D }),
+    ];
+    const data = { ...block().data, source: "all" as const, doctorIds: [ID_A] };
+    expect(resolveFeaturedDoctors(list, data).map((d) => d.id)).toEqual([ID_C, ID_D]);
+  });
+
+  it("seçili kaynakta ızgara 8, carousel 24 doktorla sınırlanır", () => {
+    const ids = Array.from({ length: 30 }, (_, i) => `id-${i}`);
+    const list = ids.map((id) => doctor({ id }));
+    expect(resolveFeaturedDoctors(list, { ...block().data, doctorIds: ids })).toHaveLength(8);
+    expect(resolveFeaturedDoctors(list, { ...block().data, doctorIds: ids, layout: "carousel" })).toHaveLength(24);
+  });
+});
+
+describe("Paket D — carousel", () => {
+  const labels = {
+    region: "Featured Doctors",
+    previous: "Previous doctors",
+    next: "Next doctors",
+    goToPage: "Page {page} of {total}",
+    pause: "Pause automatic scrolling",
+    play: "Resume automatic scrolling",
+  };
+  const items = (n: number) => Array.from({ length: n }, (_, i) => ({ key: `k${i}`, node: <a href={`/doctors/${i}`}>Doktor {i}</a> }));
+
+  function mockMatchMedia(matching: string[]) {
+    const original = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      matches: matching.includes(query),
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    })) as unknown as typeof window.matchMedia;
+    return () => {
+      window.matchMedia = original;
+    };
+  }
+
+  it("blok carousel düzeninde region + aria-roledescription ve sözlükten gelen etiketlerle render edilir", async () => {
+    fetchDoctorsServer.mockResolvedValue(Array.from({ length: 6 }, (_, i) => doctor({ id: `id-${i}`, slug: `d-${i}` })));
+    render(
+      await FeaturedDoctorsBlockView({
+        block: block({ layout: "carousel", source: "all" }),
+        chrome: "page",
+        siteContext: { lang: "tr", defaultLocaleCode: "en" },
+      })
+    );
+    const region = screen.getByRole("region", { name: "Öne Çıkan Doktorlarımız" });
+    expect(region).toHaveAttribute("aria-roledescription", "carousel");
+    expect(screen.getByRole("button", { name: "Önceki doktorlar" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Sonraki doktorlar" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sayfa 2 / 2" })).toBeInTheDocument();
+    expect(within(region).getAllByRole("link")).toHaveLength(6);
+  });
+
+  it("doktor sayısı görünür kart sayısına eşit ya da azsa oklar ve noktalar gizlenir, kartlar ortalanır", () => {
+    // matchMedia yok → masaüstü varsayımı (4 görünür kart).
+    const { rerender, container } = render(<FeaturedDoctorsCarousel items={items(4)} labels={labels} />);
+    expect(screen.queryByRole("button", { name: "Next doctors" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Page/ })).not.toBeInTheDocument();
+    expect(container.querySelector("ul")!.className).toContain("justify-center-safe");
+
+    rerender(<FeaturedDoctorsCarousel items={items(5)} labels={labels} />);
+    expect(screen.getByRole("button", { name: "Next doctors" })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /^Page \d of 2$/ })).toHaveLength(2);
+  });
+
+  it("10 sayfadan fazlasında noktalar yerine sayfa sayacı gösterilir", () => {
+    render(<FeaturedDoctorsCarousel items={items(48)} labels={labels} />);
+    expect(screen.queryByRole("button", { name: /^Page / })).not.toBeInTheDocument();
+    // jsdom düzen ölçmez (scrollWidth 0), aktif sayfa değeri anlamsızdır; toplam doğrulanır.
+    expect(screen.getByText(/^\d+ \/ 12$/)).toBeInTheDocument();
+  });
+
+  it("mobilde (1 görünür kart) 2 doktorla oklar görünür", () => {
+    const restore = mockMatchMedia([]);
+    try {
+      render(<FeaturedDoctorsCarousel items={items(2)} labels={labels} />);
+      expect(screen.getByRole("button", { name: "Previous doctors" })).toBeInTheDocument();
+    } finally {
+      restore();
+    }
+  });
+
+  it("autoplay açıkken 5 saniyelik timer kurulur; prefers-reduced-motion açıkken hiç başlamaz", () => {
+    const spy = vi.spyOn(window, "setInterval");
+    const restore = mockMatchMedia(["(min-width: 1024px)"]);
+    try {
+      const { unmount } = render(<FeaturedDoctorsCarousel items={items(6)} labels={labels} autoplay />);
+      expect(spy).toHaveBeenCalledWith(expect.any(Function), FEATURED_DOCTORS_AUTOPLAY_MS);
+      // Kartlar slayt olarak etiketlenir; görünür Duraklat düğmesi (WCAG 2.2.2) timer'ı durdurur.
+      expect(screen.getAllByRole("group", { name: /^\d+ \/ 6$/ })).toHaveLength(6);
+      spy.mockClear();
+      fireEvent.click(screen.getByRole("button", { name: "Pause automatic scrolling" }));
+      expect(screen.getByRole("button", { name: "Resume automatic scrolling" })).toHaveAttribute("aria-pressed", "true");
+      expect(spy).not.toHaveBeenCalled();
+      unmount();
+    } finally {
+      restore();
+    }
+
+    spy.mockClear();
+    const restoreReduced = mockMatchMedia(["(min-width: 1024px)", "(prefers-reduced-motion: reduce)"]);
+    try {
+      render(<FeaturedDoctorsCarousel items={items(6)} labels={labels} autoplay />);
+      expect(spy).not.toHaveBeenCalledWith(expect.any(Function), FEATURED_DOCTORS_AUTOPLAY_MS);
+      expect(screen.queryByRole("button", { name: "Pause automatic scrolling" })).not.toBeInTheDocument();
+    } finally {
+      restoreReduced();
+      spy.mockRestore();
+    }
+  });
+
+  it("autoplay varsayılan olarak kapalıdır (timer kurulmaz)", () => {
+    const spy = vi.spyOn(window, "setInterval");
+    render(<FeaturedDoctorsCarousel items={items(6)} labels={labels} />);
+    expect(spy).not.toHaveBeenCalledWith(expect.any(Function), FEATURED_DOCTORS_AUTOPLAY_MS);
+    spy.mockRestore();
+  });
+});
+
+describe("Paket D — editör", () => {
+  it("Kaydırmalı düzende sınır 24 olur ve otomatik kaydır görünür; Tüm aktif doktorlar seçimi gizler; önizleme düzeni izler", async () => {
+    const user = userEvent.setup();
+    listAdminDoctors.mockResolvedValue({ items: [doctor({ id: ID_A }), doctor({ id: ID_B, isActive: false })], meta: { nextCursor: null } });
+    const onChange = vi.fn();
+    const { rerender } = render(<FeaturedDoctorsBlockEditor block={block({ doctorIds: [ID_A] })} onChange={onChange} />);
+    expect(await screen.findByText("1/8")).toBeInTheDocument();
+    expect(screen.queryByRole("switch", { name: "Otomatik kaydır" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Kaydırmalı" }));
+    expect(onChange.mock.calls.at(-1)![0].data.layout).toBe("carousel");
+
+    const carousel = block({ doctorIds: [ID_A], layout: "carousel" });
+    rerender(<FeaturedDoctorsBlockEditor block={carousel} onChange={onChange} />);
+    expect(screen.getByText("1/24")).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "Otomatik kaydır" })).toBeInTheDocument();
+    expect(screen.getByTestId("featured-doctors-preview")).toHaveAttribute("data-layout", "carousel");
+
+    await user.click(screen.getByRole("button", { name: "Tüm aktif doktorlar" }));
+    expect(onChange.mock.calls.at(-1)![0].data.source).toBe("all");
+    rerender(<FeaturedDoctorsBlockEditor block={{ ...carousel, data: { ...carousel.data, source: "all" } }} onChange={onChange} />);
+    expect(screen.queryByLabelText("Doktor ekle")).not.toBeInTheDocument();
+    // Önizleme yalnızca aktif doktoru gösterir.
+    await waitFor(() => expect(within(screen.getByTestId("featured-doctors-preview")).getAllByRole("listitem")).toHaveLength(1));
+  });
+
+  it("ızgaraya dönüşte 8'den fazla seçim 8'e kırpılır", async () => {
+    const user = userEvent.setup();
+    listAdminDoctors.mockResolvedValue({ items: [], meta: { nextCursor: null } });
+    const onChange = vi.fn();
+    const ten = Array.from({ length: 10 }, (_, i) => `0000000${i}-0000-4000-8000-000000000000`);
+    render(<FeaturedDoctorsBlockEditor block={block({ doctorIds: ten, layout: "carousel" })} onChange={onChange} />);
+    await user.click(screen.getByRole("button", { name: "Izgara" }));
+    expect(onChange.mock.calls.at(-1)![0].data).toMatchObject({ layout: "grid", doctorIds: ten.slice(0, 8) });
   });
 });

@@ -63,6 +63,33 @@ describe("featured-doctors blok şeması", () => {
     expect(result.success).toBe(false);
   });
 
+  it("Paket D — layout/source/autoplay opsiyonel: verilmezse çıktıya eklenmez, verilirse korunur", () => {
+    const legacy = parseBlocks([{ id: "fd", type: "featured-doctors", data: { doctorIds: [ID(1)] } }]);
+    expect(firstData(legacy)!.data).not.toHaveProperty("layout");
+    expect(firstData(legacy)!.data).not.toHaveProperty("source");
+    expect(firstData(legacy)!.data).not.toHaveProperty("autoplay");
+
+    const carousel = parseBlocks([{ id: "fd", type: "featured-doctors", data: { layout: "carousel", source: "all", autoplay: true } }]);
+    expect(carousel.success).toBe(true);
+    expect(firstData(carousel)!.data).toMatchObject({ layout: "carousel", source: "all", autoplay: true });
+  });
+
+  it("Paket D — carousel düzeninde 24 doktora kadar kabul edilir, 25 reddedilir; ızgarada 8 sınırı sürer", () => {
+    const ids = (n: number) => Array.from({ length: n }, (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`);
+    expect(parseBlocks([{ id: "fd", type: "featured-doctors", data: { layout: "carousel", doctorIds: ids(24) } }]).success).toBe(true);
+    expect(parseBlocks([{ id: "fd", type: "featured-doctors", data: { layout: "carousel", doctorIds: ids(25) } }]).success).toBe(false);
+    expect(parseBlocks([{ id: "fd", type: "featured-doctors", data: { layout: "grid", doctorIds: ids(9) } }]).success).toBe(false);
+    expect(parseBlocks([{ id: "fd", type: "featured-doctors", data: { doctorIds: ids(8) } }]).success).toBe(true);
+  });
+
+  it.each([
+    ["geçersiz layout", { layout: "slider" }],
+    ["geçersiz source", { source: "featured" }],
+    ["boolean olmayan autoplay", { autoplay: "yes" }],
+  ])("Paket D — %s reddedilir", (_label, data) => {
+    expect(parseBlocks([{ id: "fd", type: "featured-doctors", data }]).success).toBe(false);
+  });
+
   it("şablon modunda başlıklar/seçim/buton düzenlenebilir, düzen kilitli", () => {
     expect(TEMPLATE_EDITABLE_FIELDS["featured-doctors"]).toEqual(["data.content", "data.doctorIds", "data.showAllButton"]);
   });

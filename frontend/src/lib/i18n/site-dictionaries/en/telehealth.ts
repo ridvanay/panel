@@ -116,6 +116,15 @@ export const telehealthStrings = {
   doctorCountOther: "{count} doctors",
   specialtyDoctorsEmptyTitle: "No doctors found in this specialty",
   specialtyDoctorsEmptyDescription: "There are currently no published doctors in this specialty.",
+
+  // --- Öne Çıkan Doktorlar carousel'i (Paket D) ---
+  featuredDoctorsCarouselLabel: "Featured doctors",
+  featuredDoctorsPrevious: "Previous doctors",
+  featuredDoctorsNext: "Next doctors",
+  /** `{page}`/`{total}` yer tutucuları. */
+  featuredDoctorsPause: "Pause automatic scrolling",
+  featuredDoctorsPlay: "Resume automatic scrolling",
+  featuredDoctorsGoToPage: "Page {page} of {total}",
 } as const;
 
 export type TelehealthStrings = Record<keyof typeof telehealthStrings, string>;

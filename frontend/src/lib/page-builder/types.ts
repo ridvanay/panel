@@ -662,6 +662,11 @@ export interface SpecialtyCardsBlock extends BaseNode {
  * karşılığı: `backend/src/modules/pages/pages.schemas.ts::FeaturedDoctorsBlockSchema` — BİREBİR aynı.
  */
 export const FEATURED_DOCTORS_MAX = 8;
+/** Paket D (2026-10-19) — kaydırmalı (carousel) düzende seçilebilecek en fazla doktor. */
+export const FEATURED_DOCTORS_CAROUSEL_MAX = 24;
+export type FeaturedDoctorsLayout = "grid" | "carousel";
+/** `selected`: `doctorIds` sırası; `all`: tüm aktif (arşivsiz) doktorlar, doktor kaydı sırasıyla (`seq`). */
+export type FeaturedDoctorsSource = "selected" | "all";
 export const FEATURED_DOCTORS_COLUMNS = [3, 4] as const;
 export type FeaturedDoctorsColumns = (typeof FEATURED_DOCTORS_COLUMNS)[number];
 export type FeaturedDoctorsImageShape = "circle" | "oval" | "square";
@@ -680,12 +685,22 @@ export interface FeaturedDoctorsBlock extends BaseNode {
   type: "featured-doctors";
   data: {
     content: Record<string, FeaturedDoctorsLocaleContent>;
-    /** `DoctorProfile.id` listesi, en fazla `FEATURED_DOCTORS_MAX`, tekrarsız. */
+    /** `DoctorProfile.id` listesi, tekrarsız; en fazla `featuredDoctorsMax(layout)`. */
     doctorIds: string[];
     columns: FeaturedDoctorsColumns;
     imageShape: FeaturedDoctorsImageShape;
     showAllButton: boolean;
+    /** Paket D — yoksa `grid` (eski kayıtlar değişmez). */
+    layout?: FeaturedDoctorsLayout;
+    /** Paket D — yoksa `selected`. */
+    source?: FeaturedDoctorsSource;
+    /** Paket D — yalnızca carousel'de; 5 sn'de bir kart ilerler. Yoksa kapalı. */
+    autoplay?: boolean;
   };
+}
+
+export function featuredDoctorsMax(layout: FeaturedDoctorsLayout | undefined): number {
+  return layout === "carousel" ? FEATURED_DOCTORS_CAROUSEL_MAX : FEATURED_DOCTORS_MAX;
 }
 
 /**

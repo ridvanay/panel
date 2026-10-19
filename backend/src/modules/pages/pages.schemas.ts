@@ -930,6 +930,8 @@ const TextBlockSchema = z
  * public `/doctors` yanıtında olmadığı için render tarafında kendiliğinden düşer.
  * Frontend `lib/page-builder/types.ts::FeaturedDoctorsBlock` ile BİREBİR aynı. */
 export const FEATURED_DOCTORS_MAX = 8;
+/** Paket D (2026-10-19) — carousel düzeninde sınır 24; `grid` (varsayılan) için 8 aynen geçerli. */
+export const FEATURED_DOCTORS_CAROUSEL_MAX = 24;
 const FeaturedDoctorsLocaleContentSchema = z.object({
   title: z.string().trim().max(120).default(""),
   subtitle: z.string().trim().max(300).default(""),
@@ -942,12 +944,20 @@ const FeaturedDoctorsBlockDataSchema = z.object({
     .default({}),
   doctorIds: z
     .array(z.string().uuid())
-    .max(FEATURED_DOCTORS_MAX, `En fazla ${FEATURED_DOCTORS_MAX} doktor seçilebilir.`)
+    .max(FEATURED_DOCTORS_CAROUSEL_MAX, `En fazla ${FEATURED_DOCTORS_CAROUSEL_MAX} doktor seçilebilir.`)
     .refine((ids) => new Set(ids).size === ids.length, "Aynı doktor iki kez seçilemez.")
     .default([]),
   columns: z.union([z.literal(3), z.literal(4)]).default(4),
   imageShape: z.enum(["circle", "oval", "square"]).default("oval"),
   showAllButton: z.boolean().default(true),
+  // Paket D — opsiyonel, varsayılan YOK: eski kayıtlar parse sonrası birebir aynı kalır.
+  layout: z.enum(["grid", "carousel"]).optional(),
+  source: z.enum(["selected", "all"]).optional(),
+  autoplay: z.boolean().optional(),
+}).superRefine((data, ctx) => {
+  if (data.layout !== "carousel" && data.doctorIds.length > FEATURED_DOCTORS_MAX) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["doctorIds"], message: `En fazla ${FEATURED_DOCTORS_MAX} doktor seçilebilir.` });
+  }
 });
 const FeaturedDoctorsBlockSchema = z.object({
   id: z.string().min(1),

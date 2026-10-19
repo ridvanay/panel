@@ -80,4 +80,13 @@ export const telehealthStrings: TelehealthStrings = {
   doctorCountOther: "{count} doktor",
   specialtyDoctorsEmptyTitle: "Bu uzmanlık alanında doktor bulunamadı",
   specialtyDoctorsEmptyDescription: "Şu anda bu branşta yayınlanmış bir doktor yok.",
+
+  // --- Öne Çıkan Doktorlar carousel'i (Paket D) ---
+  featuredDoctorsCarouselLabel: "Öne çıkan doktorlar",
+  featuredDoctorsPrevious: "Önceki doktorlar",
+  featuredDoctorsNext: "Sonraki doktorlar",
+  /** `{page}`/`{total}` yer tutucuları. */
+  featuredDoctorsPause: "Otomatik kaydırmayı durdur",
+  featuredDoctorsPlay: "Otomatik kaydırmayı sürdür",
+  featuredDoctorsGoToPage: "Sayfa {page} / {total}",
 };

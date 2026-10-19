@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { cn } from "@/lib/utils";
-import { fetchDoctorsServer } from "@/lib/api/server-telehealth";
+import { fetchAllDoctorsServer } from "@/lib/api/server-telehealth";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
 import type { DoctorProfile } from "@/lib/api/types";
 import { DoctorAvatarMedia } from "@/components/site/telehealth/doctor-avatar";
+import { getSiteDictionary } from "@/lib/i18n/site-dictionaries";
 import type {
   BlockChrome,
   FeaturedDoctorsBlock,
@@ -11,7 +12,9 @@ import type {
   FeaturedDoctorsImageShape,
   FeaturedDoctorsLocaleContent,
 } from "@/lib/page-builder/types";
+import { featuredDoctorsMax } from "@/lib/page-builder/types";
 import type { BlockSiteContext } from "./index";
+import { FeaturedDoctorsCarousel } from "./featured-doctors-carousel";
 
 /** Mobil 1, tablet (sm) 2 SABİT; masaüstü (lg) blok ayarından. Tailwind tam sınıf adları (JIT). */
 const DESKTOP_COLUMNS_CLASS: Record<FeaturedDoctorsColumns, string> = {
@@ -50,7 +53,21 @@ export function pickFeaturedDoctors(doctors: DoctorProfile[], doctorIds: readonl
 }
 
 /**
- * Öne Çıkan Doktorlar (Paket A3). Seçili doktor yoksa veya hepsi pasifse hiçbir şey render edilmez.
+ * Paket D — `source: "all"`: public `/doctors` yanıtı zaten aktif + arşivsiz doktorları `seq` sırasıyla
+ * döndürür; filtre burada da tekrarlanır (savunma). Seçili kaynakta en fazla `featuredDoctorsMax(layout)`.
+ */
+export function resolveFeaturedDoctors(doctors: DoctorProfile[], data: FeaturedDoctorsBlock["data"]): DoctorProfile[] {
+  if (data.source === "all") return doctors.filter((doctor) => doctor.isActive && !doctor.archivedAt);
+  return pickFeaturedDoctors(doctors, (data.doctorIds ?? []).slice(0, featuredDoctorsMax(data.layout)));
+}
+
+/** Kart alt satırı: `subSpecialty` doluysa o, değilse birincil uzmanlığın adı. */
+export function featuredDoctorSpecialtyText(doctor: DoctorProfile): string {
+  return doctor.subSpecialty?.trim() || doctor.specialty?.name || "";
+}
+
+/**
+ * Öne Çıkan Doktorlar (Paket A3, Paket D). Gösterilecek doktor yoksa hiçbir şey render edilmez.
  * Kartın tamamı tek bir bağlantıdır (`/doctors/<slug>`), erişilebilir adı doktorun ünvan + adıdır.
  */
 export async function FeaturedDoctorsBlockView({
@@ -62,14 +79,17 @@ export async function FeaturedDoctorsBlockView({
   chrome: BlockChrome;
   siteContext?: BlockSiteContext;
 }) {
-  const doctorIds = block.data.doctorIds ?? [];
-  if (doctorIds.length === 0) return null;
-  const doctors = pickFeaturedDoctors(await fetchDoctorsServer(), doctorIds);
+  const { data } = block;
+  if (data.source !== "all" && (data.doctorIds ?? []).length === 0) return null;
+  const doctors = resolveFeaturedDoctors(await fetchAllDoctorsServer(), data);
   if (doctors.length === 0) return null;
 
   const { title, subtitle, buttonLabel } = resolveFeaturedDoctorsContent(block, siteContext);
   const localizedHref = (path: string) => (siteContext ? withLocalePrefix(path, siteContext.lang, siteContext.defaultLocaleCode) : path);
   const allButtonLabel = buttonLabel || DEFAULT_BUTTON_LABEL[siteContext?.lang ?? "tr"] || DEFAULT_BUTTON_LABEL.tr;
+  const dict = await getSiteDictionary(siteContext?.lang ?? "tr");
+  const shape = data.imageShape ?? "oval";
+  const renderCard = (doctor: DoctorProfile) => <FeaturedDoctorCard doctor={doctor} href={localizedHref(`/doctors/${doctor.slug}`)} shape={shape} />;
 
   return (
     <section className={cn("featured-doctors", chrome === "page" && "px-4 py-16 sm:px-6")}>
@@ -80,14 +100,29 @@ export async function FeaturedDoctorsBlockView({
             {subtitle && <p className="mt-3 text-base leading-relaxed text-foreground/70">{subtitle}</p>}
           </div>
         )}
-        <ul className={cn("grid grid-cols-1 gap-6 sm:grid-cols-2", DESKTOP_COLUMNS_CLASS[block.data.columns] ?? DESKTOP_COLUMNS_CLASS[4])}>
-          {doctors.map((doctor) => (
-            <li key={doctor.id} className="min-w-0">
-              <FeaturedDoctorCard doctor={doctor} href={localizedHref(`/doctors/${doctor.slug}`)} shape={block.data.imageShape ?? "oval"} />
-            </li>
-          ))}
-        </ul>
-        {block.data.showAllButton && (
+        {data.layout === "carousel" ? (
+          <FeaturedDoctorsCarousel
+            autoplay={data.autoplay === true}
+            labels={{
+              region: title || dict.telehealth.featuredDoctorsCarouselLabel,
+              previous: dict.telehealth.featuredDoctorsPrevious,
+              next: dict.telehealth.featuredDoctorsNext,
+              goToPage: dict.telehealth.featuredDoctorsGoToPage,
+              pause: dict.telehealth.featuredDoctorsPause,
+              play: dict.telehealth.featuredDoctorsPlay,
+            }}
+            items={doctors.map((doctor) => ({ key: doctor.id, node: renderCard(doctor) }))}
+          />
+        ) : (
+          <ul className={cn("grid grid-cols-1 gap-6 sm:grid-cols-2", DESKTOP_COLUMNS_CLASS[data.columns] ?? DESKTOP_COLUMNS_CLASS[4])}>
+            {doctors.map((doctor) => (
+              <li key={doctor.id} className="flex min-w-0">
+                {renderCard(doctor)}
+              </li>
+            ))}
+          </ul>
+        )}
+        {data.showAllButton && (
           <div className="mt-10 flex justify-center">
             <Link
               href={localizedHref("/doctors")}
@@ -102,23 +137,36 @@ export async function FeaturedDoctorsBlockView({
   );
 }
 
+/**
+ * Paket D — tüm kartlar AYNI DOM ve tipografi: isim/uzmanlık en fazla 2 satır (`line-clamp-2`) ve
+ * sabit iki satırlık `min-h` ile tek satırlık metinler de aynı yeri kaplar, alt satırlar hizalı başlar.
+ */
 function FeaturedDoctorCard({ doctor, href, shape }: { doctor: DoctorProfile; href: string; shape: FeaturedDoctorsImageShape }) {
   const displayName = `${doctor.title} ${doctor.fullName}`.trim();
+  const specialtyText = featuredDoctorSpecialtyText(doctor);
 
   return (
     <Link
       href={href}
       aria-label={displayName}
-      className="group flex h-full flex-col items-center rounded-[var(--site-radius)] px-4 py-6 text-center transition-[transform,box-shadow] duration-300 hover:-translate-y-1 hover:shadow-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--site-primary)] motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+      className="group flex h-full w-full flex-col items-center rounded-[var(--site-radius)] px-4 py-6 text-center transition-[transform,box-shadow] duration-300 hover:-translate-y-1 hover:shadow-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--site-primary)] motion-reduce:transition-none motion-reduce:hover:translate-y-0"
     >
       <span className={cn("relative block w-full max-w-[220px] overflow-hidden bg-muted", SHAPE_CLASS[shape] ?? SHAPE_CLASS.oval)}>
-        {/* Hover'da fotoğraf hafifçe yakınlaşır; `DoctorAvatarMedia` Docker iç medya host'unu ve fotoğrafsız monogramı yönetir. */}
-        <span className="block h-full w-full transition-transform duration-500 group-hover:scale-105 motion-reduce:transition-none motion-reduce:group-hover:scale-100">
+        {/* Hover'da fotoğraf hafifçe yakınlaşır; `DoctorAvatarMedia` Docker iç medya host'unu ve fotoğrafsız monogramı yönetir.
+            Sabit oran + `object-cover`; `[&_img]:object-top` yüzü kadrajda tutar. */}
+        <span className="block h-full w-full transition-transform duration-500 [&_img]:object-top group-hover:scale-105 motion-reduce:transition-none motion-reduce:group-hover:scale-100">
           <DoctorAvatarMedia doctor={doctor} sizeClassName="h-full w-full" textClassName="text-4xl" sizes="220px" />
         </span>
       </span>
-      <span className="mt-5 block text-lg font-semibold text-foreground transition-colors group-hover:text-[var(--site-primary)]">{displayName}</span>
-      {doctor.specialty?.name && <span className="mt-1 block text-sm text-foreground/65">{doctor.specialty.name}</span>}
+      <span
+        title={displayName}
+        className="featured-doctor-name mt-5 line-clamp-2 min-h-14 w-full text-lg font-semibold leading-7 text-foreground transition-colors group-hover:text-[var(--site-primary)]"
+      >
+        {displayName}
+      </span>
+      <span title={specialtyText || undefined} className="featured-doctor-specialty mt-1 line-clamp-2 min-h-10 w-full text-sm leading-5 text-foreground/65">
+        {specialtyText}
+      </span>
     </Link>
   );
 }

@@ -27,6 +27,28 @@ export async function fetchDoctorsServer(filters: ListDoctorsServerFilters = {})
   return json?.data ?? [];
 }
 
+/**
+ * Paket D — public doktorların TAMAMI (cursor ile sayfalanır). `fetchDoctorsServer` tek sayfa (100)
+ * döndürür; 100'den fazla aktif doktorda öne çıkan doktorlar bloğu seçili doktoru kaçırmasın diye.
+ * Sonsuz döngüye karşı en fazla `maxPages` sayfa.
+ */
+export async function fetchAllDoctorsServer(maxPages = 10): Promise<DoctorProfile[]> {
+  const doctors: DoctorProfile[] = [];
+  let cursor: string | null = null;
+  for (let page = 0; page < maxPages; page++) {
+    const query = new URLSearchParams({ limit: "100" });
+    if (cursor) query.set("cursor", cursor);
+    const json: { data: DoctorProfile[]; meta?: { nextCursor?: string | null } } | null = await fetchServerJson(`/doctors?${query.toString()}`, {
+      tags: [CACHE_TAGS.doctors],
+      transformText: toInternalMediaUrl,
+    });
+    doctors.push(...(json?.data ?? []));
+    cursor = json?.meta?.nextCursor ?? null;
+    if (!cursor) break;
+  }
+  return doctors;
+}
+
 export async function fetchDoctorBySlugServer(slug: string): Promise<DoctorProfile | null> {
   const json = await fetchServerJson<{ data: DoctorProfile }>(`/doctors/${encodeURIComponent(slug)}`, {
     tags: [CACHE_TAGS.doctors],
