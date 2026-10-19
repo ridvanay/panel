@@ -25,8 +25,12 @@ describe("downloadExportJob", () => {
   });
 
   it("başarılı yanıtta blob'u indirir ve geçici bir <a download> elemanı ile tetikler", async () => {
-    const blob = new Blob(["id,views\n1,10\n"], { type: "text/csv" });
-    fetchMock.mockResolvedValueOnce(new Response(blob, { status: 200 }));
+    // Paket I (2026-10-19) — gövde jsdom `Blob`'u DEĞİL, düz metin + Content-Type: jsdom ortamında
+    // global `Blob` jsdom'a aittir (`stream()` yok), `Response` ise Node'un yerleşik undici sınıfıdır;
+    // Node 22'nin undici'si Blob-benzeri gövdeyi `object.stream()` ile okur ve "object.stream is not
+    // a function" ile düşer (Node 20'de dosya hiç yüklenmiyordu, Node 24'te geçiyordu). Gerçek
+    // tarayıcıda gövde sunucudan akış olarak gelir; uygulama kodu `res.blob()` ile okur.
+    fetchMock.mockResolvedValueOnce(new Response("id,views\n1,10\n", { status: 200, headers: { "Content-Type": "text/csv" } }));
 
     const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
 
@@ -39,6 +43,10 @@ describe("downloadExportJob", () => {
     expect(init?.credentials).toBe("include");
 
     expect(createObjectURLMock).toHaveBeenCalledTimes(1);
+    // İndirilen blob gerçekten yanıt gövdesini taşır (yalnızca çağrı sayısı değil).
+    const downloaded = (createObjectURLMock.mock.calls[0] as unknown[])[0] as { type: string; text: () => Promise<string> };
+    expect(downloaded.type).toBe("text/csv");
+    expect(await downloaded.text()).toBe("id,views\n1,10\n");
     expect(clickSpy).toHaveBeenCalledTimes(1);
     expect(revokeObjectURLMock).toHaveBeenCalledWith("blob:mock-url");
 
