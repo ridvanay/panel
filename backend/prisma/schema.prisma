@@ -296,6 +296,10 @@ model User {
   // AES-256-GCM ile şifrelenmiş base32 TOTP secret — DÜZ METİN SAKLANMAZ (bkz. lib/crypto.ts).
   twoFactorSecret     String?
   twoFactorVerifiedAt DateTime?
+  // Son kabul edilen TOTP zaman adımı (floor(epochMs/30000)) — replay önleme.
+  twoFactorLastUsedStep Int?
+  // Bu andan önce üretilmiş erişim token'ları geçersiz (2FA/şifre sıfırlama vb.).
+  sessionsValidAfter DateTime?
 
   // NOT: `advancedBuilderEnabled` kolonu KALDIRILDI (bkz.
   // .claude/architect-scope-rbac-5-tier.md §3, bağlayıcı karar dokümanı — bu doküman
@@ -1278,6 +1282,8 @@ model SiteSettings {
   /// konumlarını yönetir, bu alanı kullanmaz.
   liveChatPosition           LiveChatPosition @default(BOTTOM_RIGHT)
   updatedAt                  DateTime         @updatedAt
+  // Dolu ve geçmişteyse ADMIN/MANAGER için 2FA zorunlu; null = kapalı (varsayılan).
+  staffTwoFactorRequiredAt DateTime?
 
   // Kök `/` rotasında render edilecek sayfa. Sayfa silinirse otomatik null'a düşer
   // (bkz. pages.routes.ts) — frontend bu durumda varsayılan (SaaS pazarlama) fallback'i gösterir.
