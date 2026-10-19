@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 import { Controller, useForm } from "react-hook-form";
@@ -11,6 +12,7 @@ import * as usersApi from "@/lib/api/users";
 import type { SiteRole } from "@/lib/api/types";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { RevokeOtherSessionsOption, passwordChangedMessage } from "@/components/shared/revoke-other-sessions-option";
 import { Badge } from "@/components/ui/badge";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -87,6 +89,9 @@ export default function AccountPage() {
     },
   });
 
+  // Paket G — isteğe bağlı "Diğer cihazlardaki oturumları hemen kapat".
+  const [revokeOtherSessions, setRevokeOtherSessions] = useState(false);
+
   if (!user) return null;
 
   async function onProfileSubmit(values: ProfileFormValues) {
@@ -115,9 +120,14 @@ export default function AccountPage() {
     }
 
     try {
-      await usersApi.changePassword({ currentPassword: values.currentPassword, newPassword: values.newPassword });
+      await usersApi.changePassword({
+        currentPassword: values.currentPassword,
+        newPassword: values.newPassword,
+        revokeOtherSessions,
+      });
       resetPasswordForm();
-      toast.success("Şifreniz değiştirildi. Diğer cihazlardaki oturumlarınız kapatıldı.");
+      toast.success(passwordChangedMessage(revokeOtherSessions));
+      setRevokeOtherSessions(false);
     } catch (err) {
       const message = friendlyErrorMessage(err);
       setPasswordFormError("root", { message });
@@ -238,6 +248,8 @@ export default function AccountPage() {
                 <Input {...inputProps} type="password" autoComplete="new-password" {...registerPassword("newPasswordConfirm")} />
               )}
             </Field>
+
+            <RevokeOtherSessionsOption id="admin-revoke-other-sessions" checked={revokeOtherSessions} onCheckedChange={setRevokeOtherSessions} />
 
             <Button type="submit" variant="default" loading={passwordSaving}>
               Şifreyi Değiştir

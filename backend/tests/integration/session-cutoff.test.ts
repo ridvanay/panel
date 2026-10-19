@@ -154,4 +154,56 @@ describe("Erişim token'ı iptali — sessionsValidAfter (Paket G)", () => {
     expect((await me(target.token)).statusCode).toBe(401);
     expect((await me(admin.token)).statusCode).toBe(200);
   });
+
+  it("şifre değiştirme: 'diğer cihazları hemen kapat' diğer cihazın token'ını düşürür, mevcut oturum yeni token ile sürer", async () => {
+    const { user, email } = await createUser("USER");
+    const login = async () => {
+      const res = await app.inject({ method: "POST", url: "/api/v1/auth/login", payload: { email, password: PASSWORD }, remoteAddress: nextIp() });
+      expect(res.statusCode).toBe(200);
+      return { access: res.json().data.tokens.accessToken as string, cookie: res.cookies.find((c) => c.name === "refresh_token")!.value };
+    };
+    const thisDevice = await login();
+    const otherDevice = await login();
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/users/me/change-password",
+      headers: { authorization: `Bearer ${thisDevice.access}`, cookie: `refresh_token=${thisDevice.cookie}` },
+      payload: { currentPassword: PASSWORD, newPassword: "YeniSifre123!", revokeOtherSessions: true },
+      remoteAddress: nextIp(),
+    });
+    expect(res.statusCode).toBe(200);
+    const newAccess = res.json().data.accessToken as string;
+
+    expect((await me(otherDevice.access)).statusCode).toBe(401);
+    expect((await me(thisDevice.access)).statusCode).toBe(401);
+    expect((await me(newAccess)).statusCode).toBe(200);
+
+    // Mevcut cihazın refresh token'ı korunur; diğerininki iptal.
+    const refreshThis = await app.inject({ method: "POST", url: "/api/v1/auth/refresh", cookies: { refresh_token: thisDevice.cookie }, remoteAddress: nextIp() });
+    expect(refreshThis.statusCode).toBe(200);
+    const refreshOther = await app.inject({ method: "POST", url: "/api/v1/auth/refresh", cookies: { refresh_token: otherDevice.cookie }, remoteAddress: nextIp() });
+    expect(refreshOther.statusCode).toBe(401);
+    const audit = await app.prisma.auditLog.findFirstOrThrow({ where: { action: "security.password_change", targetId: user.id } });
+    expect(audit.metadata).toMatchObject({ revokeOtherSessions: true });
+  });
+
+  it("şifre değiştirme: seçenek yoksa davranış aynı (204, diğer cihazın access token'ı süresi dolana kadar çalışır)", async () => {
+    const { email } = await createUser("USER");
+    const tokens = await Promise.all(
+      [0, 1].map(async () => {
+        const res = await app.inject({ method: "POST", url: "/api/v1/auth/login", payload: { email, password: PASSWORD }, remoteAddress: nextIp() });
+        return res.json().data.tokens.accessToken as string;
+      })
+    );
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/users/me/change-password",
+      headers: { authorization: `Bearer ${tokens[0]}` },
+      payload: { currentPassword: PASSWORD, newPassword: "YeniSifre123!" },
+      remoteAddress: nextIp(),
+    });
+    expect(res.statusCode).toBe(204);
+    expect((await me(tokens[1]!)).statusCode).toBe(200);
+  });
 });

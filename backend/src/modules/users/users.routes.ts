@@ -11,12 +11,14 @@ import { ConflictError, NotFoundError, UnauthorizedError, ValidationError } from
 import { hashPassword, verifyPassword } from "../../lib/password";
 import { REFRESH_COOKIE_NAME } from "../../lib/cookies";
 import { hashToken } from "../../lib/tokens";
+import { signAccessToken } from "../../lib/jwt";
 import { logAudit } from "../../lib/audit";
 import { SENSITIVE_ACTION_RATE_LIMIT } from "../../lib/rate-limit";
 import { parseCursor, buildPageMeta } from "../../lib/pagination";
 import {
   UpdateUserRequestSchema,
   ChangePasswordRequestSchema,
+  ChangePasswordResponseSchema,
   AddressIdParamSchema,
   CreateAddressRequestSchema,
   UpdateAddressRequestSchema,
@@ -71,7 +73,10 @@ export default async function usersRoutes(app: FastifyInstance) {
     "/me/change-password",
     {
       config: { rateLimit: SENSITIVE_ACTION_RATE_LIMIT },
-      schema: { body: ChangePasswordRequestSchema, response: { 204: z.undefined() } },
+      schema: {
+        body: ChangePasswordRequestSchema,
+        response: { 200: ApiSuccessSchema(ChangePasswordResponseSchema), 204: z.undefined() },
+      },
     },
     async (request, reply) => {
       const user = await app.prisma.user.findUnique({ where: { id: request.user!.id } });
@@ -98,11 +103,14 @@ export default async function usersRoutes(app: FastifyInstance) {
 
       const rawRefreshToken = request.cookies[REFRESH_COOKIE_NAME];
       const currentHash = rawRefreshToken ? hashToken(rawRefreshToken) : undefined;
+      const revokeOtherSessions = request.body.revokeOtherSessions === true;
 
       await app.prisma.$transaction([
         app.prisma.user.update({
           where: { id: user.id },
-          data: { passwordHash },
+          // Paket G — "Diğer cihazlardaki oturumları hemen kapat": bu andan önceki TÜM access
+          // token'lar (bu isteğinki dahil) geçersiz; mevcut oturuma aşağıda yeni token verilir.
+          data: { passwordHash, ...(revokeOtherSessions ? { sessionsValidAfter: new Date() } : {}) },
         }),
         // Mevcut oturum HARİÇ tüm refresh token'lar iptal edilir — `/2fa/disable` ile
         // birebir tutarlı politika (bkz. security.routes.ts:138-153).
@@ -122,9 +130,14 @@ export default async function usersRoutes(app: FastifyInstance) {
         action: "security.password_change",
         targetType: "User",
         targetId: user.id,
+        ...(revokeOtherSessions ? { metadata: { revokeOtherSessions: true } } : {}),
         ipAddress: request.ip,
       });
 
+      if (revokeOtherSessions) {
+        const { token, expiresAt } = signAccessToken({ sub: user.id, email: user.email });
+        return reply.send(ok({ accessToken: token, accessTokenExpiresAt: expiresAt.toISOString() }));
+      }
       return reply.code(204).send();
     }
   );

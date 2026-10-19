@@ -17,6 +17,17 @@ export const UpdateUserRequestSchema = z.object({
 export const ChangePasswordRequestSchema = z.object({
   currentPassword: z.string().min(1),
   newPassword: z.string().min(8, "Şifre en az 8 karakter olmalı."),
+  /**
+   * Paket G — true ise diğer cihazların AÇIK access token'ları da HEMEN geçersiz olur
+   * (`sessionsValidAfter`); mevcut oturum düşmez, yanıtta yeni bir access token döner. false/yok:
+   * mevcut davranış (diğer cihazların refresh token'ları iptal, access token'ları en geç 15 dk).
+   */
+  revokeOtherSessions: z.boolean().optional(),
+});
+
+export const ChangePasswordResponseSchema = z.object({
+  accessToken: z.string(),
+  accessTokenExpiresAt: z.string(),
 });
 
 // ---------- Müşteri & E-Ticaret Alanı (Customer Portal) — bkz.

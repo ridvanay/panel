@@ -16,6 +16,7 @@ import type { Session, TwoFactorSetupResponse } from "@/lib/api/types";
 import { getRoleBadgeInfo } from "@/lib/role-badge";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { RevokeOtherSessionsOption, passwordChangedMessage } from "@/components/shared/revoke-other-sessions-option";
 import { Badge } from "@/components/ui/badge";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -202,6 +203,9 @@ export default function AccountProfilePage() {
     }
   }
 
+  // Paket G — isteğe bağlı "Diğer cihazlardaki oturumları hemen kapat".
+  const [revokeOtherSessions, setRevokeOtherSessions] = useState(false);
+
   async function onPasswordSubmit(values: PasswordFormValues) {
     if (values.newPassword !== values.newPasswordConfirm) {
       setPasswordFormError("root", { message: "Yeni şifreler eşleşmiyor." });
@@ -212,9 +216,14 @@ export default function AccountProfilePage() {
       return;
     }
     try {
-      await usersApi.changePassword({ currentPassword: values.currentPassword, newPassword: values.newPassword });
+      await usersApi.changePassword({
+        currentPassword: values.currentPassword,
+        newPassword: values.newPassword,
+        revokeOtherSessions,
+      });
       resetPasswordForm();
-      toast.success("Şifreniz değiştirildi. Diğer cihazlardaki oturumlarınız kapatıldı.");
+      toast.success(passwordChangedMessage(revokeOtherSessions));
+      setRevokeOtherSessions(false);
     } catch (err) {
       const message = friendlyErrorMessage(err);
       setPasswordFormError("root", { message });
@@ -415,6 +424,8 @@ export default function AccountProfilePage() {
                 <Input {...inputProps} type="password" autoComplete="new-password" {...registerPassword("newPasswordConfirm")} />
               )}
             </Field>
+
+            <RevokeOtherSessionsOption id="profile-revoke-other-sessions" checked={revokeOtherSessions} onCheckedChange={setRevokeOtherSessions} />
 
             <Button type="submit" loading={passwordSaving}>
               Şifreyi Değiştir

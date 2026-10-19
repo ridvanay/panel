@@ -318,6 +318,14 @@ export interface UpdateUserRequest {
 export interface ChangePasswordRequest {
   currentPassword: string;
   newPassword: string;
+  /** Paket G — true: diğer cihazların açık oturumları HEMEN kapanır; yanıtta yeni access token döner. */
+  revokeOtherSessions?: boolean;
+}
+
+/** Paket G — `revokeOtherSessions: true` iken dönen yeni access token (mevcut oturum sürsün diye). */
+export interface ChangePasswordResponse {
+  accessToken: string;
+  accessTokenExpiresAt: string;
 }
 
 export interface CreateInvitationRequest {

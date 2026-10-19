@@ -1,7 +1,9 @@
 import { apiFetch, apiFetchPage } from "./client";
+import { setAccessToken } from "./token-store";
 import type {
   Address,
   ChangePasswordRequest,
+  ChangePasswordResponse,
   CreateAddressRequest,
   Order,
   Page,
@@ -19,8 +21,13 @@ export function updateMe(input: UpdateUserRequest) {
   return apiFetch<User>("/users/me", { method: "PATCH", body: input });
 }
 
-export function changePassword(input: ChangePasswordRequest) {
-  return apiFetch<void>("/users/me/change-password", { method: "POST", body: input });
+/**
+ * `revokeOtherSessions: true` iken sunucu bu isteği yapan token dahil eski access token'ları
+ * geçersiz kılar ve yenisini döner — oturum düşmesin diye hemen bellekteki token'la değiştirilir.
+ */
+export async function changePassword(input: ChangePasswordRequest): Promise<void> {
+  const result = await apiFetch<ChangePasswordResponse | undefined>("/users/me/change-password", { method: "POST", body: input });
+  if (result?.accessToken) setAccessToken(result.accessToken);
 }
 
 export interface ListMyOrdersParams {
