@@ -7,21 +7,36 @@ export interface AccessTokenPayload {
   email: string;
 }
 
+/**
+ * Paket G — doğrulanmış access token. `issuedAtMs`: token'ın milisaniye hassasiyetli üretim anı
+ * (`ims` claim'i; Paket G öncesi token'larda yok, o durumda saniyelik `iat * 1000`).
+ * `User.sessionsValidAfter` ile karşılaştırılır (bkz. middleware/authenticate.ts).
+ */
+export interface VerifiedAccessToken extends AccessTokenPayload {
+  issuedAtMs: number;
+}
+
 export function signAccessToken(payload: AccessTokenPayload): { token: string; expiresAt: Date } {
   const expiresInSec = env.ACCESS_TOKEN_TTL_MIN * 60;
-  const token = jwt.sign(payload, jwtPrivateKey, {
+  const token = jwt.sign({ sub: payload.sub, email: payload.email, ims: Date.now() }, jwtPrivateKey, {
     algorithm: "RS256",
     expiresIn: expiresInSec,
   });
   return { token, expiresAt: new Date(Date.now() + expiresInSec * 1000) };
 }
 
-export function verifyAccessToken(token: string): AccessTokenPayload {
+export function verifyAccessToken(token: string): VerifiedAccessToken {
   const decoded = jwt.verify(token, jwtPublicKey, { algorithms: ["RS256"] });
   if (typeof decoded === "string" || !decoded.sub || !decoded.email) {
     throw new Error("Geçersiz token gövdesi.");
   }
-  return { sub: decoded.sub as string, email: decoded.email as string };
+  const issuedAtMs = typeof decoded.ims === "number" ? decoded.ims : (decoded.iat ?? 0) * 1000;
+  return { sub: decoded.sub as string, email: decoded.email as string, issuedAtMs };
+}
+
+/** Paket G — `sessionsValidAfter`'dan ÖNCE üretilmiş token geçersizdir (null: kısıt yok). */
+export function isIssuedBeforeSessionCutoff(issuedAtMs: number, sessionsValidAfter: Date | null): boolean {
+  return sessionsValidAfter !== null && issuedAtMs < sessionsValidAfter.getTime();
 }
 
 /**
@@ -36,12 +51,12 @@ export function signChallengeToken(userId: string): string {
   });
 }
 
-export function verifyChallengeToken(token: string): { sub: string } {
+export function verifyChallengeToken(token: string): { sub: string; issuedAtMs: number } {
   const decoded = jwt.verify(token, jwtPublicKey, { algorithms: ["RS256"] });
   if (typeof decoded === "string" || decoded.purpose !== "2fa_challenge" || !decoded.sub) {
     throw new Error("Geçersiz 2FA challenge token'ı.");
   }
-  return { sub: decoded.sub as string };
+  return { sub: decoded.sub as string, issuedAtMs: (decoded.iat ?? 0) * 1000 };
 }
 
 /**

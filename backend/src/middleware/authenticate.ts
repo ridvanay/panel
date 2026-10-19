@@ -1,5 +1,5 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { verifyAccessToken } from "../lib/jwt";
+import { isIssuedBeforeSessionCutoff, verifyAccessToken } from "../lib/jwt";
 import { ForbiddenError, UnauthorizedError } from "../lib/errors";
 
 /**
@@ -24,9 +24,14 @@ export async function authenticate(request: FastifyRequest, _reply: FastifyReply
 
   const user = await request.server.prisma.user.findUnique({
     where: { id: payload.sub },
-    select: { id: true, email: true, role: true, status: true },
+    select: { id: true, email: true, role: true, status: true, sessionsValidAfter: true },
   });
   if (!user) throw new UnauthorizedError();
+  // Paket G — 2FA/şifre sıfırlama ya da "diğer cihazları kapat" anından ÖNCE üretilmiş access
+  // token'lar süresi dolmadan da geçersizdir.
+  if (isIssuedBeforeSessionCutoff(payload.issuedAtMs, user.sessionsValidAfter)) {
+    throw new UnauthorizedError("Oturumunuz sonlandırıldı. Lütfen yeniden giriş yapın.");
+  }
   // `DELETED` (yumuşak silme, bkz. DELETE /admin/users/{userId}) `SUSPENDED` ile BİREBİR aynı
   // şekilde ele alınır: silinen bir kullanıcı, access token'ının ömrü boyunca sistemi kullanmaya
   // devam edemesin diye (defense-in-depth — silme zaten refresh token'ları iptal eder, ama bu
@@ -59,9 +64,10 @@ export async function authenticateOptional(request: FastifyRequest, _reply: Fast
 
   const user = await request.server.prisma.user.findUnique({
     where: { id: payload.sub },
-    select: { id: true, email: true, role: true, status: true },
+    select: { id: true, email: true, role: true, status: true, sessionsValidAfter: true },
   });
   if (!user) return;
+  if (isIssuedBeforeSessionCutoff(payload.issuedAtMs, user.sessionsValidAfter)) return;
   if (user.status === "SUSPENDED" || user.status === "DELETED") return;
 
   request.user = { id: user.id, email: user.email, role: user.role };

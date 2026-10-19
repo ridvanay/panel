@@ -479,7 +479,8 @@ export async function resetPassword(app: FastifyInstance, rawToken: string, newP
   await app.prisma.$transaction([
     app.prisma.user.update({
       where: { id: resetToken.userId },
-      data: { passwordHash, ...(user.emailVerifiedAt === null ? { emailVerifiedAt: new Date() } : {}) },
+      // Paket G — açık access token'lar da HEMEN geçersiz (refresh'ler aşağıda iptal).
+      data: { passwordHash, sessionsValidAfter: new Date(), ...(user.emailVerifiedAt === null ? { emailVerifiedAt: new Date() } : {}) },
     }),
     app.prisma.passwordResetToken.update({ where: { id: resetToken.id }, data: { usedAt: new Date() } }),
     app.prisma.refreshToken.updateMany({

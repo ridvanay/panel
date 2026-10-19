@@ -369,7 +369,8 @@ export async function adminUsersRoutes(app: FastifyInstance) {
         }),
         app.prisma.user.update({
           where: { id: target.id },
-          data: { passwordHash },
+          // Paket G — hedefin açık access token'ları da HEMEN geçersiz.
+          data: { passwordHash, sessionsValidAfter: new Date() },
           include: { doctorProfile: { select: { id: true } } },
         }),
       ]);
@@ -477,7 +478,15 @@ export async function adminUsersRoutes(app: FastifyInstance) {
       const [user, , revoked] = await app.prisma.$transaction([
         app.prisma.user.update({
           where: { id: target.id },
-          data: { twoFactorEnabled: false, twoFactorSecret: null, twoFactorVerifiedAt: null, twoFactorLastUsedStep: null },
+          // Paket G — `sessionsValidAfter`: sıfırlama anındaki açık access token'lar da HEMEN geçersiz
+          // (security-review ORTA-1 kalanı: 15 dk'lık pencerede /setup + /enable yapılamaz).
+          data: {
+            twoFactorEnabled: false,
+            twoFactorSecret: null,
+            twoFactorVerifiedAt: null,
+            twoFactorLastUsedStep: null,
+            sessionsValidAfter: resetAt,
+          },
           include: { doctorProfile: { select: { id: true } } },
         }),
         app.prisma.backupCode.deleteMany({ where: { userId: target.id } }),

@@ -172,8 +172,9 @@ export default async function authRoutes(app: FastifyInstance) {
       const { challengeToken, code } = request.body;
 
       let userId: string;
+      let challengeIssuedAtMs: number;
       try {
-        userId = verifyChallengeToken(challengeToken).sub;
+        ({ sub: userId, issuedAtMs: challengeIssuedAtMs } = verifyChallengeToken(challengeToken));
       } catch {
         throw new UnauthorizedError("Geçersiz veya süresi dolmuş doğrulama isteği.");
       }
@@ -184,6 +185,11 @@ export default async function authRoutes(app: FastifyInstance) {
       });
       if (!user || !user.twoFactorEnabled || !user.twoFactorSecret) {
         throw new UnauthorizedError();
+      }
+      // Paket G — şifre/2FA sıfırlamasından ÖNCE (eski şifreyle) alınmış challenge geçersiz.
+      // `iat` saniyelik olduğundan aynı saniyedeki challenge'a izin verilir (en fazla 1 sn, kabul).
+      if (user.sessionsValidAfter && challengeIssuedAtMs < Math.floor(user.sessionsValidAfter.getTime() / 1000) * 1000) {
+        throw new UnauthorizedError("Geçersiz veya süresi dolmuş doğrulama isteği.");
       }
 
       let result: TotpConsumeResult;
