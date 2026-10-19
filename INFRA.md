@@ -25,7 +25,7 @@ compose up` doğrulaması" bölümündeki adım adım komut ve kalıcı çözüm
 ## Dosyalar
 
 - `backend/Dockerfile`, `backend/.dockerignore` — multi-stage (deps → build → prod-deps →
-  runtime), `node:20-alpine`, non-root kullanıcı, `prisma` CLI runtime'dan silinir (yalnızca
+  runtime), `node:22-alpine` (Paket H, 2026-10-19 — önceden 20), non-root kullanıcı, `prisma` CLI runtime'dan silinir (yalnızca
   üretilen `@prisma/client` kalır).
 - `frontend/Dockerfile`, `frontend/.dockerignore` — multi-stage, `next.config.ts`'teki
   `output: "standalone"` ile minimal runtime (tam `node_modules` kopyalanmaz).
@@ -1053,9 +1053,12 @@ kapsamı):
   (~110MB) ve `@prisma`/`@aws-sdk` paketleri. Fonksiyonel olarak gerekli bağımlılıklar
   (bağımlılık seçimi backend-agent'ın kapsamında) — devops-agent tarafında yapılabilecek
   optimizasyon (prisma CLI'nin runtime'dan silinmesi) zaten uygulandı.
-- **frontend devDependencies bazı paketler Node 22+ istiyor** (`jsdom`, `@testing-library/jest-dom`
-  vb. — `npm ci` sırasında `EBADENGINE` uyarısı verir, Node 20 ile build/test yine de başarılı
-  oluyor). İleride Node 22 LTS'e geçiş düşünülebilir, şu an engelleyici değil.
+- **Node 22 LTS'e geçildi (Paket H, 2026-10-19).** Dockerfile'lar (`ARG NODE_VERSION=22-alpine`),
+  `ci.yml` (`NODE_VERSION: "22"`) ve `deploy.yml` (`node-version: "22"`) güncellendi. Sebep: AWS SDK
+  Ocak 2027'den sonra yayımlanan sürümlerinde `node >=22` istiyor; ayrıca frontend devDependencies'teki
+  `jsdom`/`@testing-library/jest-dom` gibi paketlerin Node 22+ şartı (`EBADENGINE` uyarısı) da
+  ortadan kalktı. `@types/node` bilinçli olarak 20 tiplerinde bırakıldı (Node 22'de sorunsuz).
+  Geri dönüş: `ARG NODE_VERSION` değerini `20-alpine`'a çevirip imajları yeniden derlemek.
 - **`deploy.yml` bir şablondur** — gerçek hosting hedefi seçilmeden production'a fiilen deploy
   edilemez (bkz. yukarıdaki "CD" bölümü).
 

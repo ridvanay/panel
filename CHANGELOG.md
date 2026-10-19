@@ -11,6 +11,13 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
 
 ## [Unreleased]
 
+### Changed
+
+- **`chore`: Paket H — Node 20 → Node 22 (2026-10-19).** Backend/frontend Docker imajları
+  `node:22-alpine`, CI (`ci.yml`) ve deploy (`deploy.yml`) iş akışları Node 22. Yalnızca çalışma
+  zamanı sürümü değişti; uygulama kodu, bağımlılıklar (`package*.json`), migration, docker-compose ve
+  LiveKit değişmedi. Sebep: AWS SDK'nın Ocak 2027 sonrası sürümleri `node >=22` istiyor.
+
 ### Added
 
 - **`feat(security)`: Paket G — Güvenlik backlog'u (2026-10-19).**
