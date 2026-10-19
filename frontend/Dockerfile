@@ -6,7 +6,7 @@
 # dosyaları içerir (tam node_modules kopyalanmaz).
 # ---------------------------------------------------------------------------
 
-ARG NODE_VERSION=20-alpine
+ARG NODE_VERSION=22-alpine
 
 # ---- deps ----
 FROM node:${NODE_VERSION} AS deps

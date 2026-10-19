@@ -7,7 +7,7 @@
 # yalnızca derlenmiş `dist/` + production node_modules kopyalanır.
 # ---------------------------------------------------------------------------
 
-ARG NODE_VERSION=20-alpine
+ARG NODE_VERSION=22-alpine
 
 # ---- deps: tüm bağımlılıklar (build için gerekli devDependencies dahil) ----
 FROM node:${NODE_VERSION} AS deps
