@@ -215,7 +215,7 @@ describe("telehealth/livekit — meeting-token, LiveKit YAPILANDIRILMIŞKEN (sah
     expect(audit).not.toBeNull();
   });
 
-  it("§4.5/§8 IDOR — token OLMADAN/YANLIŞ token ile misafir erişemez (404); ADMIN token olmadan erişir; MANAGER erişemez (404)", async () => {
+  it("§4.5/§8 IDOR — token OLMADAN/YANLIŞ token ile misafir erişemez (404); randevuyla ilgisi olmayan ADMIN (Paket E) ve MANAGER erişemez (404)", async () => {
     const { doctor } = await createDoctorWithAvailability(app);
     const { appointment } = await createAppointmentDirect(app, doctor);
 
@@ -225,8 +225,10 @@ describe("telehealth/livekit — meeting-token, LiveKit YAPILANDIRILMIŞKEN (sah
     const wrongToken = await app.inject({ method: "POST", url: `/api/v1/appointments/${appointment.id}/meeting-token?t=yanlis-token` });
     expect(wrongToken.statusCode).toBe(404);
 
+    // Paket E (2026-10-19) — ADMIN rolü tek başına meeting-token VERMEZ (eskiden 200 + `patient:`
+    // kimlikli yayın yetkili token dönüyordu); denetim için bildirimli listener-token ucu kullanılır.
     const asAdmin = await app.inject({ method: "POST", url: `/api/v1/appointments/${appointment.id}/meeting-token`, headers: authHeader(adminToken) });
-    expect(asAdmin.statusCode).toBe(200);
+    expect(asAdmin.statusCode).toBe(404);
 
     const manager = await createUserDirect(app, "MANAGER");
     const managerToken = await loginAs(app, manager.email);

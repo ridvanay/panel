@@ -161,7 +161,7 @@ describe("[qa] telehealth — ödenmemiş booking'de meeting-token (§9.7.11 mad
     expect(dbAppointment.status).toBe("PENDING_PAYMENT");
   });
 
-  it("ADMIN oturumu bile ödenmemiş bir booking randevusunda meeting-token ALAMAZ (ödeme kapısı role bakılmaksızın uygulanır)", async () => {
+  it("randevunun hastası olan ADMIN bile ödenmemiş bir booking randevusunda meeting-token ALAMAZ (ödeme kapısı role bakılmaksızın uygulanır)", async () => {
     const admin = await registerTestUser(app, { email: `telehealth-qa-livekit-admin-${crypto.randomUUID()}@example.com` });
     await app.prisma.user.update({ where: { id: admin.userId }, data: { role: "ADMIN" } });
 
@@ -172,6 +172,9 @@ describe("[qa] telehealth — ödenmemiş booking'de meeting-token (§9.7.11 mad
       payload: bookingPayload(doctor.slug, [nextMondayNineAmUtc()]),
     });
     const body = created.json().data as { appointments: { id: string }[] };
+    // Paket E (2026-10-19) — ADMIN rolü artık tek başına erişim vermiyor; ödeme kapısını sınamak
+    // için admin randevunun HASTASI yapılır (aksi hâlde istek ödeme kapısına varmadan 404 olurdu).
+    await app.prisma.appointment.update({ where: { id: body.appointments[0]!.id }, data: { patientUserId: admin.userId } });
 
     const res = await app.inject({
       method: "POST",

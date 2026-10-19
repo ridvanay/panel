@@ -49,14 +49,19 @@ type AppointmentAccessSubject = {
  * (randevunun KENDİ + booking'in) kabul edilir (geriye dönük uyumluluk + yeni akış, İKİSİ
  * BİRDEN). `bookingAccessTokenHash` YOKSA (bookingId null — bu tur ÖNCESİ tekil randevu) yalnızca
  * randevunun kendi hash'i karşılaştırılır (davranış DEĞİŞMEDİ).
+ *
+ * Paket E (2026-10-19, kullanıcı onaylı kırmızı çizgi istisnası) — eskiden `role === "ADMIN"` olan
+ * HERKES burada `patient:<appointmentId>` kimlikli, yayın yetkili token alabiliyordu (bildirimsiz
+ * katılım; gerçek hastayı aynı kimlikle odadan düşürebiliyordu). Bu kestirme KALDIRILDI: rol erişim
+ * vermez, yalnızca randevunun hastası/doktoru olmak ya da geçerli `?t=` verir. Denetim amaçlı
+ * katılım YALNIZCA bildirimli `POST /admin/telehealth/appointments/{id}/listener-token` ile yapılır.
  */
 function isAuthorizedForMeetingAccess(
   appointment: AppointmentAccessSubject,
-  request: { user?: { id: string; role: string }; providedToken?: string },
+  request: { user?: { id: string }; providedToken?: string },
   bookingAccessTokenHash?: string | null
 ): { authorized: boolean; isDoctor: boolean } {
   if (request.user) {
-    if (request.user.role === "ADMIN") return { authorized: true, isDoctor: false };
     if (appointment.patientUserId && appointment.patientUserId === request.user.id) {
       return { authorized: true, isDoctor: false };
     }
@@ -188,7 +193,6 @@ export async function telehealthLiveKitRoutes(app: FastifyInstance) {
         targetId: appointment.id,
         metadata: {
           participantKind: isDoctor ? "doctor" : "patient",
-          viaAdmin: request.user?.role === "ADMIN",
           ...computeEarlyJoinAuditMetadata(appointment.startsAt),
         },
         ipAddress: request.ip,

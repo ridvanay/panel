@@ -7373,11 +7373,13 @@ paths:
       security: []
       summary: LiveKit konsültasyon odası token'ı üret (integration-agent'ın ucu, §4.4/§4.5/§8)
       description: >
-        Hız sınırı **10 istek/dakika**. Erişim §4.5'teki 4 yoldan biriyle
+        Hız sınırı **10 istek/dakika**. Erişim 3 yoldan biriyle
         sınırlıdır: (a) oturum sahibi hasta, (b) doğru `?t=` sunan misafir
-        hasta, (c) doktorun bağlı `User`'ı, (d) `SiteRole.ADMIN` (**MANAGER
-        DAHİL DEĞİL** — `GET /appointments/{id}` ile aynı eşik değildir, bu
-        daha dar bir yetki yüzeyidir). Yetkisiz erişim `404` döner (IDOR).
+        hasta, (c) doktorun bağlı `User`'ı. **Paket E (2026-10-19):** eski (d)
+        `SiteRole.ADMIN` yolu KALDIRILDI — ADMIN yalnızca randevunun hastası ya
+        da doktoruysa erişebilir; denetim için bildirimli
+        `POST /admin/telehealth/appointments/{id}/listener-token` ucu kullanılır.
+        MANAGER/EDITOR da erişemez. Yetkisiz erişim `404` döner (IDOR).
         Randevu `SCHEDULED`/`IN_PROGRESS` DIŞINDA bir durumdaysa
         **`409 APPOINTMENT_NOT_JOINABLE`**.
 
