@@ -42,6 +42,30 @@ x-site-rbac:
     oturumların) uçlarıdır, `authenticated` kalır ve 5 rolün hepsi erişir.
 
 
+    **Personel 2FA zorunluluğu (Paket G, 2026-10-19):** `staffTwoFactorRequiredAt` dolu ve
+    geçmişteyken 2FA'sı KAPALI `ADMIN|MANAGER`, `requireSiteRole` kullanan `/admin/*`
+    uçlarında **`403 TWO_FACTOR_SETUP_REQUIRED`** alır. Muaf: `/auth/*`, `/users/*`,
+    `/admin/settings/security/2fa/*`, `/admin/settings/security/sessions/*`. Politika
+    yalnızca `GET|PUT /admin/settings/staff-two-factor` ile yönetilir (YALNIZCA ADMIN; PUT
+    şifre + TOTP step-up ister). Zorunluluk aktifken 2FA'sı etkin SON `ACTIVE` ADMIN'in
+    2FA'sı kapatılamaz/sıfırlanamaz → `409 CONFLICT`.
+
+
+    **Erişim token'ı iptali (Paket G, 2026-10-19):** her kullanıcının bir `sessionsValidAfter`
+    damgası vardır; `iat`'ı bu damgadan ÖNCE olan access token'lar `401` alır (refresh
+    iptalinden bağımsız, ≤15 dk bekleme penceresini kapatır). Damga şu olaylarda atılır:
+    admin 2FA sıfırlaması (`POST /admin/users/{userId}/2fa/reset`), şifremi unuttum ile
+    sıfırlama (`POST /auth/reset-password`), admin'in şifre belirlemesi
+    (`PATCH /admin/users/{userId}/password`) ve kendi şifre değişikliğinde
+    `revokeOtherSessions: true` (`POST /users/me/change-password`).
+
+
+    **TOTP tekrar koruması (Paket G, 2026-10-19):** bir TOTP kodu aynı 30 sn adımında İKİNCİ
+    KEZ kabul edilmez — giriş 2FA adımı (`POST /auth/2fa/verify`),
+    `POST /admin/settings/security/2fa/enable`, admin 2FA sıfırlama step-up'ı ve
+    `PUT /admin/settings/staff-two-factor` step-up'ı dahil tüm TOTP doğrulamaları.
+
+
     **Varsayılan rol:** `USER` (public `POST /auth/register` ile açılan her hesap; sıfırdan
     kurulan bir ortamda İLK hesap `ADMIN`). `USER → CUSTOMER` terfisi, kimliği doğrulanmış
     bir kullanıcının siparişi ÖDENDİĞİNDE otomatik gerçekleşir; başka hiçbir rol otomatik
@@ -1171,6 +1195,10 @@ paths:
       tags: [Auth]
       security: []
       summary: Şifreyi token ile sıfırla
+      description: >
+        Başarılı sıfırlama kullanıcının tüm refresh token'larını iptal eder. **Paket G
+        (2026-10-19):** ayrıca `sessionsValidAfter` damgası atılır — sıfırlamadan önce üretilmiş
+        TÜM erişim token'ları da hemen `401` alır (bkz. kök `x-site-rbac`).
       requestBody:
         required: true
         content:
@@ -1189,6 +1217,10 @@ paths:
     get:
       tags: [Auth]
       summary: Mevcut oturumun kullanıcı ve üyelik bilgisi
+      description: >
+        **Paket G (2026-10-19):** yanıta `twoFactorSetupRequired` (sunucuda hesaplanır) ve
+        `staffTwoFactorRequiredAt` (yalnızca ADMIN/MANAGER için dolu olabilir) eklendi — bkz.
+        `AuthSession`. Bu uç `TWO_FACTOR_SETUP_REQUIRED` kapısından muaftır.
       responses:
         "200":
           description: OK
@@ -1506,13 +1538,34 @@ paths:
         yani diğer cihazlardaki oturumlar zorla kapanır, isteği yapan cihaz açık kalır.
         Hassas uç: route-level rate limit uygulanır (5 istek / 1 dakika).
         Şifre sıfırlama (token ile, oturumsuz) akışı için bkz. `/auth/reset-password`.
+
+
+        **Paket G (2026-10-19) — `revokeOtherSessions` (opsiyonel, varsayılan `false`):**
+
+        - `false` → mevcut davranış: `204`; diğer cihazların refresh token'ları iptal edilir,
+          ellerindeki erişim token'ları en fazla ömrü kadar (≤15 dk) çalışmaya devam eder.
+
+        - `true` → ek olarak kullanıcının `sessionsValidAfter` damgası atılır: diğer
+          cihazların erişim token'ları HEMEN `401` alır. Damga isteği yapan cihazın token'ını
+          da geçersiz kılacağından mevcut oturum DÜŞMEZ — yanıt `200` + yeni
+          `{ accessToken, accessTokenExpiresAt }` döner; istemci bundan sonra yeni token'ı
+          kullanmak ZORUNDADIR (mevcut refresh cookie geçerli kalır).
       requestBody:
         required: true
         content:
           application/json:
             schema: { $ref: "#/components/schemas/ChangePasswordRequest" }
       responses:
-        "204": { description: Şifre değiştirildi (gövde yok) }
+        "200":
+          description: "Paket G — `revokeOtherSessions: true` ile şifre değiştirildi; mevcut oturum için yeni erişim token'ı."
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/AuthTokens" }
+        "204": { description: "Şifre değiştirildi (gövde yok) — `revokeOtherSessions` false/eksik." }
         "401":
           description: >
             `currentPassword` hatalı veya oturum geçersiz. Mesaj, hangi alanın hatalı
@@ -2018,6 +2071,8 @@ paths:
         DAHİL — "bu cihaz hariç" ayrımı YOKTUR, bkz. `POST /users/me/change-password`
         ile FARKI) iptal edilir; kullanıcı yeni şifreyle yeniden giriş yapmalıdır.
         Şifre hash'i/düz metni ne yanıtta ne audit log metadata'sında görünür.
+        **Paket G (2026-10-19):** ayrıca hedefin `sessionsValidAfter` damgası atılır — hedefin
+        mevcut erişim token'ları da hemen `401` alır (bkz. kök `x-site-rbac`).
 
 
         **Silme ile ilişkisi:** `PATCH /role`/`/status` ile TUTARLI olarak,
@@ -2072,6 +2127,15 @@ paths:
         **Kurallar:** kendisi → `409`; hedef başka bir ADMIN → `403 FORBIDDEN`; admin'in kendi 2FA'sı
         kapalı → `403 STEP_UP_2FA_NOT_ENABLED`; kod yanlış → `403 STEP_UP_INVALID_CODE`; hedefin 2FA'sı
         zaten kapalı → `409`; `DELETED`/yok → `404`.
+
+
+        **Paket G (2026-10-19):** (1) Başarılı sıfırlama hedefin `sessionsValidAfter` damgasını
+        atar — hedefin MEVCUT erişim token'ları da hemen `401` alır (bkz. kök `x-site-rbac`
+        "Erişim token'ı iptali"). (2) Step-up TOTP kodu aynı 30 sn adımında ikinci kez
+        kullanılamaz (tekrar → `403 STEP_UP_INVALID_CODE`). (3) Personel 2FA zorunluluğu
+        aktifken hedef 2FA'sı etkin SON `ACTIVE` ADMIN ise → `409 CONFLICT` ("Son iki adımlı
+        doğrulamalı yönetici"); pratikte admin→admin sıfırlama zaten `403` olduğundan bu kural
+        derinlemesine savunmadır.
 
 
         **Hız sınırı:** IP başına 5/dk + aktör başına son 15 dakikada 5 başarısız step-up → `429`.
@@ -5187,6 +5251,13 @@ paths:
         yalnızca KISITLAYICIDIR: `env.ts`'teki boot-time fail-closed koruma (üretimde
         demo ödeme İMKÂNSIZ) DEĞİŞMEDİ ve bu bayrakla bypass EDİLEMEZ. Bkz.
         `.claude/security-review-demo-payment-toggle.md`.
+
+
+        **Paket G (2026-10-19):** personel 2FA zorunluluğu (`staffTwoFactorRequiredAt`) bu
+        uçla YAZILAMAZ ve ne bu uçların ne de public `GET /settings`'in yanıtında YER ALMAZ —
+        tek yazma/okuma yolu step-up korumalı `GET|PUT /admin/settings/staff-two-factor`'dır
+        (genel PATCH gövdeyi körlemesine yayar; şifre+TOTP isteyen bir alan burada barınamaz —
+        SMTP ayarlarıyla AYNI gerekçe).
       requestBody:
         required: true
         content:
@@ -5205,6 +5276,166 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationError" }
+
+  /admin/settings/staff-two-factor:
+    get:
+      tags: [Settings]
+      summary: Personel 2FA zorunluluğu politikasını oku (YALNIZCA ADMIN)
+      description: >
+        Paket G (2026-10-19). Zorunluluk aktifken (`requiredAt` dolu ve geçmişte) 2FA'sı kapalı
+        `ADMIN|MANAGER` hesapları `requireSiteRole` kullanan `/admin/*` uçlarında
+        `403 TWO_FACTOR_SETUP_REQUIRED` alır (muafiyetler için bkz. kök `x-site-rbac`).
+        `staffWithoutTwoFactor`: 2FA'sı KAPALI, durumu `ACTIVE` olan `ADMIN|MANAGER` hesapları
+        (yalnızca `id`, `email`, `role` — başka PII yok). `minGraceDays` sabittir (7), istemci
+        tarih seçicinin alt sınırı için kullanır. MANAGER/EDITOR → 403.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/StaffTwoFactorPolicy" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    put:
+      tags: [Settings]
+      summary: Personel 2FA zorunluluğunu ayarla/kapat (YALNIZCA ADMIN, şifre + TOTP step-up)
+      description: >
+        Paket G (2026-10-19). İsteyen ADMIN'in KENDİ 2FA'sı etkin olmalıdır — değilse
+        `403 TWO_FACTOR_REQUIRED` (zorunluluğu koyan kişi ondan muaf olamaz). Gövdede kendi
+        şifresi (`password`) ve authenticator kodu (`code`, 6 hane TOTP; yedek kod kabul
+        edilmez, aynı 30 sn adımında ikinci kez kullanılamaz) ZORUNLUDUR.
+
+
+        `requiredAt`: şu andan EN AZ 7 gün (`minGraceDays`) ileride olmalı → değilse `422`
+        (`details.requiredAt`); `null` → zorunluluğu kapatır (kapatmada alt sınır yok).
+        İleri bir tarihe ertelemek de aynı 7 gün kuralına tabidir.
+
+
+        **Hatalar:** şifre hatalı → `401` ("Şifre hatalı."); TOTP kodu hatalı/tekrar
+        kullanılmış → `403 STEP_UP_INVALID_CODE`. Audit: `security.staff_2fa_policy_updated`
+        (`metadata`: önceki/yeni `requiredAt`; başarısız step-up `status: FAILURE`). Hız sınırı:
+        SENSITIVE (5 istek / 1 dakika).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateStaffTwoFactorPolicyRequest" }
+      responses:
+        "200":
+          description: Güncellendi (güncel politika döner)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/StaffTwoFactorPolicy" }
+        "401":
+          description: Oturum geçersiz veya şifre hatalı ("Şifre hatalı.").
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "403":
+          description: "`FORBIDDEN` (ADMIN değil), `TWO_FACTOR_REQUIRED` (isteyenin 2FA'sı kapalı) veya `STEP_UP_INVALID_CODE`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /admin/settings/security/2fa/enable:
+    post:
+      tags: [Settings]
+      summary: Kendi 2FA'mı etkinleştir (self-servis, 5 rolün hepsi)
+      description: >
+        §10.4 — `POST /admin/settings/security/2fa/setup` ile alınan `setupToken` ve
+        authenticator kodu (`code`) ile 2FA'yı kalıcı hale getirir; yanıtta 10 yedek kod
+        (düz metin, YALNIZCA bir kez) döner. Audit: `security.2fa_enable`.
+        `/admin/*` panel kapısının self-servis istisnasıdır (bkz. kök `x-site-rbac`) ve
+        `TWO_FACTOR_SETUP_REQUIRED` kapısından MUAFTIR.
+
+
+        **Paket G (2026-10-19):** gövdeye ZORUNLU `password` eklendi — çalıntı bir access
+        token'la 2FA'yı saldırganın cihazına bağlayıp hesabı kalıcı sahiplenme yolu kapatıldı.
+        Şifre hatalı → `401` ("Şifre hatalı.", `security.2fa_enable` `status: FAILURE`).
+        Hız sınırı: SENSITIVE (5 istek / 1 dakika). TOTP kodu aynı 30 sn adımında ikinci kez
+        kullanılamaz (tekrar → `401`). 2FA zaten etkinse `409` (mevcut — önce `/disable`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [setupToken, code, password]
+              properties:
+                setupToken: { type: string, minLength: 1 }
+                code: { type: string, minLength: 4 }
+                password: { type: string, minLength: 1, description: "Paket G (2026-10-19) — kullanıcının mevcut şifresi." }
+      responses:
+        "200":
+          description: Etkinleştirildi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - properties:
+                      data:
+                        type: object
+                        required: [backupCodes]
+                        properties:
+                          backupCodes:
+                            type: array
+                            items: { type: string }
+        "401":
+          description: Şifre hatalı, kurulum isteği geçersiz/süresi dolmuş veya doğrulama kodu geçersiz/tekrar kullanılmış.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /admin/settings/security/2fa/disable:
+    post:
+      tags: [Settings]
+      summary: Kendi 2FA'mı kapat (self-servis, şifreli)
+      description: >
+        §10.4 — şifre doğrulanır; 2FA alanları ve yedek kodlar temizlenir, mevcut oturum HARİÇ
+        tüm refresh token'lar iptal edilir. Audit: `security.2fa_disable`. Hız sınırı: SENSITIVE.
+
+
+        **Paket G (2026-10-19) — son 2FA'lı ADMIN koruması:** personel 2FA zorunluluğu aktifken
+        (`staffTwoFactorRequiredAt` dolu) isteyen kişi 2FA'sı etkin SON `ACTIVE` ADMIN ise →
+        `409 CONFLICT` ("Son iki adımlı doğrulamalı yönetici"). Aksi hâlde politikayı
+        değiştirebilecek (bkz. `PUT /admin/settings/staff-two-factor`) kimse kalmazdı.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password: { type: string, minLength: 1 }
+      responses:
+        "204": { description: Kapatıldı }
+        "401":
+          description: Şifre hatalı ("Şifre hatalı.").
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "409":
+          description: "Paket G — zorunluluk aktifken son 2FA'lı ADMIN (`error.code: CONFLICT`)."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
   # ---------------------------------------------------------------------------
   # E-POSTA (SMTP) YAPILANDIRMASI — AJAN KAPSAM NOTU (architect, bağlayıcı)
@@ -8375,13 +8606,23 @@ paths:
       description: >
         2026-10-18 (Paket C) — devam eden (`IN_PROGRESS`) bir görüşmeye ADMIN'in AÇIK ve BİLDİRİMLİ
         dinleyici olarak katılması. Hasta/doktor `POST /appointments/{id}/meeting-token` ucundan
-        TAMAMEN ayrıdır ve onu değiştirmez. Token: identity `qa-listener-<userId>`, ad
+        TAMAMEN ayrıdır ve onu değiştirmez. Token: identity
+        `qa-listener-<userId>-<sessionId ilk 8 karakter>` (Paket G, 2026-10-19 — her dinleyici
+        oturumu odada ayrı bir katılımcıdır, aynı admin'in iki sekmesi birbirini düşürmez), ad
         "WM Health – Kalite Kontrol", metadata `{"role":"qa_listener"}`, grant
         `canSubscribe: true, canPublish: false, canPublishData: false, canUpdateOwnMetadata: false`
         (`hidden` YOK), TTL 10 dk. `expiresAt` yalnızca KATILIM token'ının geçerlilik sonudur —
         bağlı oturumu sınırlamaz. Görüşmenin durumunu/`startedAt`'ini değiştirmez. Audit:
         `telehealth.qa_listener.joined` (sessionId, gerekçe). Hız sınırı 5/dk.
         Sıra: 403 `TWO_FACTOR_REQUIRED` → 503 `LIVEKIT_NOT_CONFIGURED` → 404 → 409 `QA_LISTENER_NOT_ALLOWED`.
+
+
+        **Oturum süresi ve otomatik çıkarma (Paket G, 2026-10-19):** bir dinleyici oturumu EN
+        FAZLA 60 dakikadır. Sunucu dakikada bir açık dinleyici oturumlarını tarar ve şu
+        durumlarda katılımcıyı odadan çıkarıp `telehealth.qa_listener.left` kaydı yazar
+        (metadata `reason`): 60 dk aşıldı → `auto:max_duration`; görüşme artık `IN_PROGRESS`
+        değil → `auto:appointment_ended`; oturumu açan kişi artık aktif ADMIN değil ya da 2FA'sı
+        kapalı → `auto:actor_revoked`. Elle ayrılış (`.../leave`) kaydında `reason` yoktur.
       requestBody:
         required: true
         content:
@@ -8450,6 +8691,22 @@ paths:
       description: >
         Paket C — `AuditLog`'daki `joined`/`left` kayıtları `sessionId` ile eşlenir, en yeni önce.
         `leftAt: null` → çıkış kaydı yok (oturum açık ya da ayrılış iletilemedi).
+
+
+        **Sayfalama (Paket G, 2026-10-19):** cursor tabanlı — `cursor` opak bir string'dir
+        (istemci içeriğini yorumlamaz, yalnızca bir önceki yanıtın `meta.nextCursor` değerini
+        geri gönderir); `limit` 1–100, varsayılan 50. `meta.nextCursor: null` → son sayfa.
+        Geçersiz/bozuk `cursor` → `422`.
+      parameters:
+        - name: cursor
+          in: query
+          required: false
+          description: Opak sayfa imleci (önceki yanıtın `meta.nextCursor` değeri).
+          schema: { type: string }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
       responses:
         "200":
           description: OK
@@ -8470,8 +8727,13 @@ paths:
                             reason: { type: string, nullable: true }
                             joinedAt: { type: string, format: date-time }
                             leftAt: { type: string, format: date-time, nullable: true }
+                      meta:
+                        type: object
+                        properties:
+                          nextCursor: { type: string, nullable: true }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
 
   /admin/telehealth/appointments/{id}:
     parameters:
@@ -13423,6 +13685,16 @@ components:
               #     bilinçli kapatma → `CUSTOM_CODE_ENABLED=false` iken `PUT
               #     /admin/appearance/custom-code/*` 403'ü ile AYNI sınıf. Env kapısı
               #     kapalıyken (üretim) bu kod ASLA dönmez — 404 önceliklidir.
+              #
+              # Paket G (2026-10-19, personel 2FA zorunluluğu) ile eklenen:
+              #   TWO_FACTOR_SETUP_REQUIRED (403) — `SiteSettings.staffTwoFactorRequiredAt` dolu
+              #     ve geçmişte iken 2FA'sı KAPALI ADMIN/MANAGER, `requireSiteRole` kullanan
+              #     `/admin/*` uçlarında alır. Muaf: `/auth/*`, `/users/*`,
+              #     `/admin/settings/security/2fa/*`, `/admin/settings/security/sessions/*`
+              #     (kullanıcı 2FA'yı kurabilsin diye). `TWO_FACTOR_REQUIRED`'dan (doktor portalı /
+              #     tekil hassas uç kapısı) AYRIDIR: bu kod "hesabın kurulumu eksik → kurulum
+              #     ekranına git" anlamı taşır, istemci `GET /auth/me.twoFactorSetupRequired` ile
+              #     aynı yönlendirmeyi yapar.
               enum:
                 [
                   BAD_REQUEST,
@@ -13446,6 +13718,7 @@ components:
                   UNSUPPORTED_DOCUMENT_TYPE,
                   DOCUMENT_LIMIT_REACHED,
                   TWO_FACTOR_REQUIRED,
+                  TWO_FACTOR_SETUP_REQUIRED,
                   NOT_A_DOCTOR,
                   RECORDING_NOT_CONFIGURED,
                   RECORDING_ALREADY_ACTIVE,
@@ -13743,6 +14016,25 @@ components:
             properties:
               organizationId: { type: string, format: uuid }
               role: { type: string, enum: [OWNER, ADMIN, MEMBER] }
+        twoFactorSetupRequired:
+          type: boolean
+          readOnly: true
+          description: >
+            Paket G (2026-10-19) — SUNUCUDA hesaplanır, istemci türetmez: `true` ⇔ rol
+            `ADMIN|MANAGER` VE 2FA kapalı VE `staffTwoFactorRequiredAt` dolu ve GEÇMİŞTE.
+            `true` iken `requireSiteRole` kullanan `/admin/*` uçları
+            `403 TWO_FACTOR_SETUP_REQUIRED` döner; istemci kullanıcıyı 2FA kurulum ekranına
+            (`/admin/settings/security/2fa/*`) yönlendirir.
+        staffTwoFactorRequiredAt:
+          type: string
+          format: date-time
+          nullable: true
+          readOnly: true
+          description: >
+            Paket G (2026-10-19) — personel 2FA zorunluluğunun yürürlük anı (bkz.
+            `GET /admin/settings/staff-two-factor`). Panelde geri sayım/uyarı şeridi için
+            kullanılır. Rol `ADMIN|MANAGER` DEĞİLSE her zaman `null` (politika bilgisi
+            gereksiz yere sızdırılmaz); zorunluluk kapalıysa da `null`.
 
     AuthResponse:
       type: object
@@ -13877,6 +14169,52 @@ components:
       properties:
         currentPassword: { type: string, minLength: 1 }
         newPassword: { type: string, minLength: 8 }
+        revokeOtherSessions:
+          type: boolean
+          default: false
+          description: >
+            Paket G (2026-10-19) — `true` ise kullanıcının `sessionsValidAfter` damgası atılır:
+            diğer cihazlardaki ERİŞİM token'ları da HEMEN geçersiz olur (yalnızca refresh
+            değil). Mevcut oturum düşmez — yanıt `200` + yeni `AuthTokens` olur. `false`
+            (varsayılan) → mevcut davranış, `204`.
+
+    StaffTwoFactorPolicy:
+      description: >
+        Paket G (2026-10-19) — `GET|PUT /admin/settings/staff-two-factor` yanıtı. `SiteSettings`
+        şemasında YER ALMAZ.
+      type: object
+      required: [requiredAt, staffWithoutTwoFactor, minGraceDays]
+      properties:
+        requiredAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: "Zorunluluğun yürürlük anı; `null` = zorunluluk kapalı."
+        staffWithoutTwoFactor:
+          type: array
+          description: "2FA'sı kapalı, `ACTIVE` durumdaki `ADMIN|MANAGER` hesapları."
+          items:
+            type: object
+            required: [id, email, role]
+            properties:
+              id: { type: string, format: uuid }
+              email: { type: string, format: email }
+              role: { type: string, enum: [ADMIN, MANAGER] }
+        minGraceDays:
+          type: integer
+          enum: [7]
+          description: "`requiredAt` için şu andan itibaren asgari gün sayısı (sabit)."
+
+    UpdateStaffTwoFactorPolicyRequest:
+      description: >
+        Paket G (2026-10-19) — `PUT /admin/settings/staff-two-factor` gövdesi. `requiredAt`
+        null değilse şu andan en az 7 gün ileride olmalıdır (aksi `422`).
+      type: object
+      required: [requiredAt, password, code]
+      properties:
+        requiredAt: { type: string, format: date-time, nullable: true }
+        password: { type: string, minLength: 1 }
+        code: { type: string, pattern: "^\\d{6}$", description: "İsteyen ADMIN'in 6 haneli TOTP kodu (yedek kod kabul edilmez)." }
 
     CreateOrganizationRequest:
       type: object
