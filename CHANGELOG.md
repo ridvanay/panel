@@ -13,6 +13,22 @@ Bu dosya onların **özetidir**, ikinci bir doğruluk kaynağı değildir.
 
 ### Added
 
+- **`feat(security)`: Paket G — Güvenlik backlog'u (2026-10-19).**
+  - **TOTP tekrar kullanımı:** aynı 30 sn adımındaki kod ikinci kez kabul edilmez (giriş, step-up,
+    2FA kurulumu); yedek kod tüketimi atomik.
+  - **Erişim token'ı iptali (`sessionsValidAfter`):** admin 2FA sıfırlaması, şifremi unuttum ve
+    admin'in şifre belirlemesi anında açık access token'ları da geçersiz kılar.
+  - **Şifre değiştirme:** isteğe bağlı "Diğer cihazlardaki oturumları hemen kapat" (`revokeOtherSessions`).
+  - **2FA kurulumu:** `/2fa/enable` hesap şifresi ister; arayüzlerde "Hesap Şifreniz" alanı.
+  - **QA dinleyicisi:** kimlik oturuma özgü; dinleyici geçmişi sayfalı; oturumlar sunucu tarafında
+    60 dk / görüşme bitince / yetki düşünce otomatik kapanır, kaçak dinleyiciler atılır.
+  - **Yönetici zorunlu 2FA:** ADMIN/MANAGER için (varsayılan KAPALI; Admin → Güvenlik'ten, en az
+    7 gün bekleme süresiyle açılır), son 2FA'lı yönetici koruması. Acil durum betiği
+    `scripts/reset-user-2fa.ts`, salt okunur `scripts/report-staff-2fa.ts`.
+  - **Migration:** `20261019120000_security_backlog_session_totp_staff2fa` (3 nullable kolon).
+  - **Kontrat:** `openapi.yaml` güncellendi (`/admin/settings/staff-two-factor`,
+    `TWO_FACTOR_SETUP_REQUIRED`, `/2fa/enable` password, `revokeOtherSessions`, listener-history sayfalama).
+
 - **`fix(telehealth)`: biten görüşmelerin durumu, portallarda TR/EN dil desteği, yasal sayfa linkleri (Paket A2, 2026-10-18).**
   - **Otomatik kapatma:** yeni 5 dakikalık süpürücü (`lib/appointment-auto-close.ts`) süresi geçmiş
     (`max(endsAt) + 15 dk`, booking bazında) `SCHEDULED`/`IN_PROGRESS` randevuları kapatır: görüşme
