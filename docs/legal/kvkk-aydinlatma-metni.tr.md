@@ -47,7 +47,7 @@ Kişisel verileriniz yalnızca yukarıdaki amaçlar için gerekli olduğu ölç�
 - Hukuken yetkili kamu kurum ve kuruluşlarına,
 - Barındırma ve teknik altyapı hizmeti aldığımız tedarikçilere.
 
-Platformun sunucuları ve görüntülü görüşme altyapısı {{SUNUCU_KONUMU}} konumundaki sunucularda çalışır. Görüntülü görüşmeler üçüncü taraf bir görüşme hizmetine aktarılmaz; WM Health Istanbul'un kendi sunucusu üzerinden yürütülür.
+Platformun sunucuları ve görüntülü görüşme altyapısı {{SUNUCU_KONUMU}} konumundaki sunucularda çalışır. Görüntülü görüşmeler üçüncü taraf bir görüşme hizmetine aktarılmaz; WM Health Istanbul'un kiraladığı ve yönettiği sunucu üzerinden yürütülür.
 
 ## 6. Toplama Yöntemi
 

@@ -47,7 +47,7 @@ Your personal data may be shared only as far as necessary for the purposes above
 - public authorities legally entitled to request it,
 - suppliers that provide our hosting and technical infrastructure.
 
-The platform's servers and video consultation infrastructure run on servers located in {{SUNUCU_KONUMU}}. Video consultations are not routed through a third-party video service; they run on WM Health Istanbul's own server.
+The platform's servers and video consultation infrastructure run on servers located in {{SUNUCU_KONUMU}}. Video consultations are not routed through a third-party video service; they run on a server rented and managed by WM Health Istanbul.
 
 ## 6. How We Collect Data
 
