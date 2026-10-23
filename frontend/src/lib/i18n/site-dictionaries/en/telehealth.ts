@@ -63,6 +63,8 @@ export const telehealthStrings = {
   publicationsEmpty: "No scientific publications have been shared for this doctor yet.",
   expertiseEmpty: "No area-of-expertise information has been shared for this doctor yet.",
   cvOngoing: "Ongoing",
+  /** Paket L — CV kalemine ekli belge (sertifika PDF'i), yeni sekmede açılır. */
+  cvViewCertificate: "View certificate",
   publicationInternational: "International Articles",
   publicationNational: "National Articles",
   publicationProceeding: "Proceedings",

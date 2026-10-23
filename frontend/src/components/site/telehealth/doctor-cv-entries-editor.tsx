@@ -88,12 +88,13 @@ export function DoctorCvEntriesEditor({ entries, onChange }: { entries: DoctorCv
                 />
               </label>
               <label className="space-y-1 text-xs font-medium text-foreground/70">
-                {t.doctorCv.startYear}
+                {entry.kind === "MEMBERSHIP" ? t.doctorCv.startYearOptionalMembership : t.doctorCv.startYear}
+                {/* Paket L — yılı bilinmeyen üyelik boş kalabilir (`null`); diğer türlerde sunucu zorunlu tutar. */}
                 <Input
                   type="number"
                   min={1950}
-                  value={entry.startYear}
-                  onChange={(e) => updateEntry(index, { startYear: Number(e.target.value) })}
+                  value={entry.startYear ?? ""}
+                  onChange={(e) => updateEntry(index, { startYear: e.target.value ? Number(e.target.value) : null })}
                 />
               </label>
               <div className="space-y-1 text-xs font-medium text-foreground/70">

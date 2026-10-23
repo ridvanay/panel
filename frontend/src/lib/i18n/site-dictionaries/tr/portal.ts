@@ -366,6 +366,7 @@ export const portalStrings: PortalStrings = {
     location: "Konum",
     locationOptional: "Konum (opsiyonel)",
     startYear: "Başlangıç Yılı",
+    startYearOptionalMembership: "Başlangıç Yılı (üyeliklerde opsiyonel)",
     endYear: "Bitiş Yılı",
     ongoing: "Devam ediyor",
     description: "Açıklama",

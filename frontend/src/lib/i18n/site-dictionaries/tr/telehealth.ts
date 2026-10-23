@@ -40,6 +40,7 @@ export const telehealthStrings: TelehealthStrings = {
   publicationsEmpty: "Bu doktor için henüz bilimsel yayın paylaşılmamış.",
   expertiseEmpty: "Bu doktor için henüz uzmanlık alanı bilgisi paylaşılmamış.",
   cvOngoing: "Devam ediyor",
+  cvViewCertificate: "Sertifikayı görüntüle",
   publicationInternational: "Uluslararası Makaleler",
   publicationNational: "Ulusal Makaleler",
   publicationProceeding: "Bildiriler",

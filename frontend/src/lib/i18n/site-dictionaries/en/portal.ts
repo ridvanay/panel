@@ -371,6 +371,7 @@ export const portalStrings = {
     location: "Location",
     locationOptional: "Location (optional)",
     startYear: "Start Year",
+    startYearOptionalMembership: "Start Year (optional for memberships)",
     endYear: "End Year",
     ongoing: "Ongoing",
     description: "Description",

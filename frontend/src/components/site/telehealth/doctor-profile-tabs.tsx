@@ -50,6 +50,29 @@ const CV_KIND_ICON: Record<DoctorCvEntryKind, typeof GraduationCap> = {
   AWARD: Trophy,
 };
 
+/** Paket L — yıl satırı: yılsız üyelikte yok; başlangıç = bitiş ise tek yıl. */
+export function cvYearLabel(entry: DoctorCvEntry, ongoing: string): string | null {
+  if (entry.startYear == null) return null;
+  if (entry.endYear === entry.startYear) return String(entry.startYear);
+  return `${entry.startYear} — ${entry.endYear ?? ongoing}`;
+}
+
+/** Paket L — ekli belge bağlantısı (sertifika PDF'i); yeni sekmede açılır. */
+function CvDocumentLink({ entry, dict }: { entry: DoctorCvEntry; dict: TelehealthStrings }) {
+  if (!entry.url) return null;
+  return (
+    <a
+      href={entry.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="mt-1 inline-flex items-center gap-1 text-sm font-medium text-[var(--site-primary)] hover:underline"
+    >
+      {dict.cvViewCertificate}
+      <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+    </a>
+  );
+}
+
 function CvTimeline({ entries, dict }: { entries: DoctorCvEntry[]; dict: TelehealthStrings }) {
   if (entries.length === 0) return <EmptyTabState dict={dict} tab="cv" />;
 
@@ -57,20 +80,20 @@ function CvTimeline({ entries, dict }: { entries: DoctorCvEntry[]; dict: Telehea
     <ol className="relative space-y-8 border-l border-border pl-8">
       {entries.map((entry, idx) => {
         const KindIcon = CV_KIND_ICON[entry.kind];
+        const years = cvYearLabel(entry, dict.cvOngoing);
         return (
           <li key={idx} className="relative">
             <span className="absolute -left-[calc(2rem+1px)] flex h-8 w-8 items-center justify-center rounded-full border border-border bg-surface text-foreground/60">
               <KindIcon className="h-4 w-4" aria-hidden="true" />
             </span>
-            <p className="text-xs font-semibold uppercase tracking-wider text-foreground/50">
-              {entry.startYear} — {entry.endYear ?? dict.cvOngoing}
-            </p>
+            {years && <p className="text-xs font-semibold uppercase tracking-wider text-foreground/50">{years}</p>}
             <h3 className="mt-1 text-base font-semibold text-foreground">{entry.title}</h3>
             <p className="text-sm text-foreground/70">
               {entry.organization}
               {entry.location ? ` · ${entry.location}` : ""}
             </p>
             {entry.description && <p className="mt-2 text-sm leading-7 text-foreground/80">{entry.description}</p>}
+            <CvDocumentLink entry={entry} dict={dict} />
           </li>
         );
       })}
@@ -195,9 +218,10 @@ function ExpertisePanel({ doctor, dict }: { doctor: DoctorProfile; dict: Telehea
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-foreground">{entry.title}</p>
                     <p className="text-xs text-foreground/60">
-                      {entry.organization} · {entry.startYear}
-                      {entry.endYear ? `–${entry.endYear}` : ""}
+                      {entry.organization}
+                      {entry.startYear != null ? ` · ${cvYearLabel(entry, dict.cvOngoing)}` : ""}
                     </p>
+                    <CvDocumentLink entry={entry} dict={dict} />
                   </div>
                 </li>
               );

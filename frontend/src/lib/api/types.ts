@@ -3756,10 +3756,14 @@ export interface DoctorCvEntry {
   title: string;
   organization: string;
   location?: string | null;
-  startYear: number;
+  /** Paket L — yalnızca `MEMBERSHIP` kaleminde boş olabilir (yılı bilinmeyen üyelik). */
+  startYear?: number | null;
   /** `null` = hâlen devam ediyor. `startYear`'dan küçük olamaz → 422. */
   endYear?: number | null;
   description?: string | null;
+  /** Paket L — ekli belge (ör. sertifika PDF'i). `url`: `https://…` ya da site alan adındaki `/uploads/…`. */
+  mediaId?: string | null;
+  url?: string | null;
 }
 
 /** [DPI] — `DoctorProfile.publications` öğesi. `DoctorCvEntry` İLE AYNI kurallar (HTML YASAK). */
