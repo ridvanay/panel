@@ -57,7 +57,7 @@ describe("Paket O — tüm route gruplarında aynı site simgesi", () => {
     expect(ico.readUInt16LE(2)).toBe(1);
     expect(ico.readUInt16LE(4)).toBeGreaterThanOrEqual(3);
     const firstImageOffset = ico.readUInt32LE(6 + 12);
-    expect(ico.subarray(firstImageOffset, firstImageOffset + 4).toString("latin1")).toBe("PNG");
+    expect(ico.subarray(firstImageOffset, firstImageOffset + 4).toString("latin1")).toBe(`${String.fromCharCode(0x89)}PNG`);
     const apple = readFileSync(resolve(__dirname, "../../public/apple-touch-icon.png"));
     expect(apple.readUInt32BE(16)).toBe(180);
     expect(apple.readUInt32BE(20)).toBe(180);

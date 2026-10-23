@@ -54,13 +54,13 @@ export interface LocaleTabsProps {
 export function LocaleTabs({ locales, value, onValueChange, statusFor, partialDetailFor }: LocaleTabsProps) {
   return (
     <Tabs value={value} onValueChange={(v) => onValueChange(String(v))}>
-      <TabsList variant="line" className="flex-nowrap overflow-x-auto">
+      <TabsList variant="line" className="h-auto max-w-full flex-wrap justify-start gap-1">
         {locales.map((l) => {
           const status = statusFor(l.code);
           const detail = status === "partial" ? partialDetailFor?.(l.code) : undefined;
           const tooltip = detail ? `${STATUS_LABEL[status]} (${detail})` : STATUS_LABEL[status];
           return (
-            <TabsTrigger key={l.code} value={l.code} className="min-w-16 shrink-0 justify-center gap-1.5">
+            <TabsTrigger key={l.code} value={l.code} className="h-7 min-w-16 flex-none justify-center gap-1.5">
               <span className="uppercase">{l.code}</span>
               {/* Varsayılan dil sekmesi hiçbir zaman durum ikonu TAŞIMAZ — "kaynak dil" olduğunun
                   kendisi zaten bir sinyaldir (design-notes-i18n.md §2.2). */}

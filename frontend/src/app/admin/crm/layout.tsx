@@ -53,8 +53,8 @@ export default function CrmLayout({ children }: { children: ReactNode }) {
         </Alert>
       ) : (
         <>
-          <nav aria-label="CRM ekranları" className="-mx-1 overflow-x-auto">
-            <ul className="flex min-w-max gap-1 px-1">
+          <nav aria-label="CRM ekranları">
+            <ul className="flex flex-wrap gap-1">
               {CRM_SECTIONS.map((section) => {
                 const active = section.href === "/admin/crm" ? pathname === "/admin/crm" : pathname.startsWith(section.href);
                 return (

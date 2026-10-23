@@ -77,19 +77,21 @@ export function SupportSessionList({
         onValueChange={(v) => onStatusChange(v === "ALL" ? undefined : (v as SupportSessionStatus))}
         className="min-w-0"
       >
-        <TabsList variant="line" className="w-full max-w-full flex-nowrap justify-start overflow-x-auto">
-          <TabsTrigger value="ALL">
-            Tümü <span className="ml-1 tabular-nums text-foreground/70">({counts?.all ?? 0})</span>
-          </TabsTrigger>
-          <TabsTrigger value="PENDING">
-            Bekleyen <span className="ml-1 tabular-nums text-foreground/70">({counts?.pending ?? 0})</span>
-          </TabsTrigger>
-          <TabsTrigger value="ANSWERED">
-            Yanıtlandı <span className="ml-1 tabular-nums text-foreground/70">({counts?.answered ?? 0})</span>
-          </TabsTrigger>
-          <TabsTrigger value="CLOSED">
-            Kapatıldı <span className="ml-1 tabular-nums text-foreground/70">({counts?.closed ?? 0})</span>
-          </TabsTrigger>
+        {/* Paket O — dar sütunda yatay kaydırma çubuğu yerine satır kaydırma; sayı ayrı rozet. */}
+        <TabsList variant="line" className="h-auto w-full max-w-full flex-wrap justify-start gap-1">
+          {(
+            [
+              ["ALL", "Tümü", counts?.all],
+              ["PENDING", "Bekleyen", counts?.pending],
+              ["ANSWERED", "Yanıtlandı", counts?.answered],
+              ["CLOSED", "Kapatıldı", counts?.closed],
+            ] as const
+          ).map(([value, label, count]) => (
+            <TabsTrigger key={value} value={value} className="h-7 flex-none px-2">
+              {label}
+              <span className="rounded-full bg-muted px-1.5 text-xs tabular-nums text-foreground/70">{count ?? 0}</span>
+            </TabsTrigger>
+          ))}
         </TabsList>
       </Tabs>
 
