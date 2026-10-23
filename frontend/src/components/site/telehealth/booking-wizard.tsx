@@ -181,6 +181,12 @@ export function BookingWizard({
   // kare boyunca gereksiz bir yükleniyor spinner'ı yanıp söner.
   const [recovering, setRecovering] = useState(() => readPendingBooking(doctorSlug) !== null);
 
+  // Paket N — CRM: yalnızca "N. adıma geçildi" bilgisi yayılır (form alanı içeriği ASLA). Takip modülü
+  // yüklü değilse (onay yok/takip kapalı) olayı dinleyen yoktur, hiçbir şey olmaz.
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent("wmcrm:booking-step", { detail: { step: currentStep } }));
+  }, [currentStep]);
+
   /**
    * 2026-09-18 (kullanıcı talebi) — booking oluşturulduktan (Adım 4) SONRA ödeme tamamlanmadan
    * akış SPA-İÇİNDE terk edilirse (başka bir sayfaya `next/link` ile gidilir) tutulan slot ANINDA
@@ -331,6 +337,8 @@ export function BookingWizard({
       });
       setBookingResult(result);
       persistPendingBooking(doctorSlug, { bookingId: result.bookingId, accessToken: result.accessToken });
+      // Paket N — oturum düzeyinde randevu atfı (takip modülü yüklüyse; sahiplik sunucuda token ile doğrulanır).
+      window.dispatchEvent(new CustomEvent("wmcrm:booking-created", { detail: { bookingId: result.bookingId, accessToken: result.accessToken } }));
       // Ücretsiz doktor (`totalCents === 0`) bookingi backend'de ANINDA `PAID` döner — terk-edilirse-
       // iptal-et temizleyicisi (yukarıdaki `useEffect`) bu booking'i YANLIŞLIKLA iptal etmesin diye
       // `bookingFinalizedRef` burada da (Stripe/demo ödeme BAŞLADIĞINDA İLE AYNI noktada) `true` olur.
@@ -394,7 +402,8 @@ export function BookingWizard({
   }
 
   return (
-    <div className="space-y-6">
+    // Paket N — sihirbaz içi tıklamalar/form gönderimi CRM'e yazılmaz (yalnızca adım olayları).
+    <div className="space-y-6" data-crm-ignore="">
       <BookingStepperBar steps={steps} />
 
       {/* Grid görevi (2026-09-14) — TEK `lg:grid-cols-12` dış grid, grid SAHİPLİĞİ artık

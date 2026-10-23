@@ -3,6 +3,7 @@ import { Globe } from "lucide-react";
 import { withLocalePrefix } from "@/lib/i18n/site-path";
 import { SOCIAL_PLATFORM_ICONS, SOCIAL_PLATFORM_LABELS } from "@/lib/social-platform-icons";
 import type { FooterColumnDto, SocialLinkDto } from "@/lib/api/types";
+import { CookiePreferencesButton } from "@/components/site/cookie-preferences-button";
 
 interface SiteFooterProps {
   siteName: string;
@@ -16,6 +17,8 @@ interface SiteFooterProps {
   /** Verilmezse öneklemeye GİRİLMEZ (geriye dönük uyumluluk — admin canlı önizleme). */
   activeLocaleCode?: string;
   defaultLocaleCode?: string;
+  /** Paket N — verilirse alt satırda "Çerez tercihleri" bağlantısı (onay bandı açıkken). */
+  cookiePreferencesLabel?: string | null;
 }
 
 export function SiteFooter({
@@ -28,6 +31,7 @@ export function SiteFooter({
   copyrightText,
   activeLocaleCode,
   defaultLocaleCode,
+  cookiePreferencesLabel,
 }: SiteFooterProps) {
   const localize = (path: string) =>
     activeLocaleCode ? withLocalePrefix(path, activeLocaleCode, defaultLocaleCode ?? activeLocaleCode) : path;
@@ -102,7 +106,10 @@ export function SiteFooter({
           )}
         </div>
 
-        <div className="mt-8 border-t border-border pt-6 text-sm text-foreground/50">{copyrightLine}</div>
+        <div className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-6 text-sm text-foreground/50">
+          <span>{copyrightLine}</span>
+          {cookiePreferencesLabel && <CookiePreferencesButton label={cookiePreferencesLabel} />}
+        </div>
       </div>
     </footer>
   );

@@ -20,6 +20,8 @@ import { LiveChatWidget } from "@/components/site/live-chat-widget";
 import { BottomBarInsetObserver } from "@/components/site/bottom-bar-inset";
 import { BackToTopButton } from "@/components/site/back-to-top-button";
 import { CookieConsentBanner } from "@/components/site/cookie-consent-banner";
+import { CrmTrackerLoader } from "@/components/site/crm-tracker-loader";
+import { fetchCrmConfigServer } from "@/lib/api/server-crm";
 import { CartDrawer } from "@/components/site/cart-drawer";
 import { SiteScope } from "@/components/site/site-scope";
 import { getFooterLogoHeight } from "@/lib/site-settings/logo";
@@ -53,7 +55,7 @@ export default async function SiteLayout({
   const activeLocale = locales.find((l) => l.code === lang);
   if (!activeLocale) notFound();
 
-  const [settings, pages, navigation, appearance, productsModuleEnabled, telehealthModuleEnabled, dict] = await Promise.all([
+  const [settings, pages, navigation, appearance, productsModuleEnabled, telehealthModuleEnabled, dict, crmConfig] = await Promise.all([
     fetchSiteSettingsServer(),
     fetchPublishedPagesServer(lang),
     fetchNavigationConfigServer(),
@@ -61,6 +63,7 @@ export default async function SiteLayout({
     isModuleEnabledServer("products"),
     isModuleEnabledServer("telehealth"),
     getSiteDictionary(lang),
+    fetchCrmConfigServer(),
   ]);
   const navSpecialties = telehealthModuleEnabled ? await fetchSpecialtiesServer() : [];
 
@@ -106,14 +109,15 @@ export default async function SiteLayout({
             copyrightText={navigation.footerCopyrightText}
             activeLocaleCode={activeLocale.code}
             defaultLocaleCode={defaultLocaleCode}
+            cookiePreferencesLabel={appearance.cookieBannerEnabled ? dict.consent.footerLink : null}
           />
           {appearance.backToTopEnabled && <BackToTopButton />}
+          {/* Paket N — açık rızaya dayalı onay bandı (Kabul / Reddet / Tercihler). Bant kapalıysa onay
+              alınamaz → CRM takibi de hiç başlamaz. */}
           {appearance.cookieBannerEnabled && (
-            <CookieConsentBanner
-              text={appearance.cookieBannerText ?? ""}
-              policyHref={appearance.cookieBannerPolicyHref}
-            />
+            <CookieConsentBanner dict={dict.consent} policyHref={appearance.cookieBannerPolicyHref} locale={lang} />
           )}
+          <CrmTrackerLoader config={crmConfig} />
           {/* `.claude/design-notes-ecommerce-storefront.md` §6 — `.site-scope` İÇİNDE mount
               edilir ki `--site-primary`/`--site-radius` token'larını miras alsın. Yalnızca
               `productsModuleEnabled` iken (bu `content` her iki dalda da render edildiği için

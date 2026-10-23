@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { toast } from "sonner";
 import { useAuth } from "@/context/auth-context";
+import { markStaffDevice } from "@/lib/crm/consent";
 import type { SiteRole } from "@/lib/api/types";
 import { AccentProvider } from "@/context/accent-context";
 import { ModulesProvider } from "@/context/modules-context";
@@ -45,6 +46,11 @@ export function AdminShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (redirectingToTwoFactorSetup) router.replace(STAFF_TWO_FACTOR_SETUP_PATH);
   }, [redirectingToTwoFactorSetup, router]);
+
+  // Paket N — personel cihazı CRM takibinden hariç tutulur (CRM ayarındaki "personeli de takip et" kapalıyken).
+  useEffect(() => {
+    if (status === "authenticated" && user && ROLES_PANEL.has(user.role)) markStaffDevice();
+  }, [status, user]);
 
   useEffect(() => {
     if (status === "unauthenticated") {

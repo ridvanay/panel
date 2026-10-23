@@ -7,6 +7,7 @@ import type { AboutStrings } from "./en/about";
 import type { ContactStrings } from "./en/contact";
 import type { HomeStrings } from "./en/home";
 import type { PortalStrings } from "./en/portal";
+import type { ConsentStrings } from "./en/consent";
 
 /**
  * `.claude/architect-scope-i18n.md` §14.2 — public site UI STRING KAPSAMI. `Locale.code`
@@ -25,6 +26,7 @@ export type SiteDictionary = {
   contact: ContactStrings;
   home: HomeStrings;
   portal: PortalStrings;
+  consent: ConsentStrings;
 };
 
-export type { CommonStrings, NavStrings, TelehealthStrings, LegalStrings, ErrorStrings, AboutStrings, ContactStrings, HomeStrings, PortalStrings };
+export type { CommonStrings, NavStrings, TelehealthStrings, LegalStrings, ErrorStrings, AboutStrings, ContactStrings, HomeStrings, PortalStrings, ConsentStrings };

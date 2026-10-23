@@ -1823,7 +1823,7 @@ export default function AdminAppearancePage() {
                       <Cookie className="h-4 w-4 shrink-0 text-foreground/50" aria-hidden="true" />
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium text-foreground">Çerez Bandı</p>
-                        <p className="text-xs text-foreground/60">Bilgilendirme amaçlıdır — onay yönetimi yapmaz, hiçbir script&apos;i engellemez.</p>
+                        <p className="text-xs text-foreground/60">Kabul / Reddet / Tercihler seçenekli onay bandı. Kapalıysa onay alınamaz ve CRM takibi başlamaz.</p>
                       </div>
                       <Switch
                         checked={form.cookieBannerEnabled}
@@ -1833,7 +1833,9 @@ export default function AdminAppearancePage() {
                       <AccordionTrigger className="w-auto p-1.5" aria-label="Çerez Bandı ek ayarları" />
                     </div>
                     <AccordionPanel className="space-y-3 px-3 pb-3">
-                      <Field id="cookieBannerText" label="Çerez bandı metni">
+                      {/* Paket N — bant metni artık site sözlüklerinden (6 dil) gelir; bu alan geriye dönük
+                          uyumluluk için saklanır ama sitede gösterilmez. */}
+                      <Field id="cookieBannerText" label="Çerez bandı metni (kullanılmıyor)" hint="Onay bandı metinleri artık her dil için site sözlüğünden gelir; bu alan sitede gösterilmez.">
                         {(p) => (
                           <Textarea
                             {...p}
