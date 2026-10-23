@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
+import type { Prisma } from "@prisma/client";
 import { authenticate } from "../../middleware/authenticate";
 import { requireSiteRole } from "../../middleware/site-rbac";
 import { requirePanelAccess } from "../../middleware/panel-access";
@@ -12,8 +13,15 @@ import { logAudit } from "../../lib/audit";
 import { CACHE_TAGS, triggerTagRevalidation } from "../../lib/revalidate";
 import { DEFAULTS, SETTINGS_ID } from "../settings/settings.routes";
 import { UpdateNavigationConfigRequestSchema } from "./navigation.schemas";
+import { LocaleQuerySchema } from "../../schemas/common";
+import { getLocaleSet } from "../../lib/localization";
+import { localizeFields, resolveContentLocaleCode } from "../../lib/entity-translations";
 
-async function readNavigationConfig(app: FastifyInstance) {
+/**
+ * `locale` verilirse (public okuma) menü/footer etiketleri o dilde döner (çeviri yoksa kanonik EN)
+ * ve ham `translations` haritaları yanıttan çıkarılır; admin okuması `locale`'siz → ham kayıt.
+ */
+async function readNavigationConfig(app: FastifyInstance, locale?: string) {
   const [settings, navigationItems, socialLinks, footerColumns] = await Promise.all([
     app.prisma.siteSettings.findUnique({ where: { id: SETTINGS_ID } }),
     // Kök öğeler her zaman alt öğelerden önce gelir (nulls first) — tüketici tek geçişte
@@ -24,16 +32,34 @@ async function readNavigationConfig(app: FastifyInstance) {
     app.prisma.socialLink.findMany({ orderBy: { order: "asc" } }),
     app.prisma.footerColumn.findMany({ orderBy: { order: "asc" }, include: { links: { orderBy: { order: "asc" } } } }),
   ]);
-  return toNavigationConfigDto({ settings, navigationItems, socialLinks, footerColumns });
+  if (locale === undefined) return toNavigationConfigDto({ settings, navigationItems, socialLinks, footerColumns });
+
+  const contentLocale = resolveContentLocaleCode(await getLocaleSet(app), locale);
+  return toNavigationConfigDto(
+    {
+      settings,
+      navigationItems: navigationItems.map((item) => localizeFields(item, contentLocale, ["label"])),
+      socialLinks,
+      footerColumns: footerColumns.map((column) => ({
+        ...localizeFields(column, contentLocale, ["title"]),
+        links: column.links.map((link) => localizeFields(link, contentLocale, ["label"])),
+      })),
+    },
+    { omitTranslations: true }
+  );
 }
 
 /** `/navigation` prefix'i altında bağlanır — herkese açık, site header/nav/footer'ı bunu okur. */
 export async function publicNavigationRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
 
-  server.get("/", { schema: { response: { 200: ApiSuccessSchema(NavigationConfigSchema) } } }, async (_request, reply) => {
-    return reply.send(ok(await readNavigationConfig(app)));
-  });
+  server.get(
+    "/",
+    { schema: { querystring: LocaleQuerySchema, response: { 200: ApiSuccessSchema(NavigationConfigSchema) } } },
+    async (request, reply) => {
+      return reply.send(ok(await readNavigationConfig(app, request.query.locale ?? "")));
+    }
+  );
 }
 
 /**
@@ -80,7 +106,9 @@ export async function adminNavigationRoutes(app: FastifyInstance) {
           // durumunda dahi FK ihlalini engeller. ATLAMA — bkz. ARCHITECTURE.md §10.10.3.
           const roots = body.navigationItems.filter((item) => item.parentId == null);
           const children = body.navigationItems.filter((item) => item.parentId != null);
-          await tx.navigationItem.createMany({ data: [...roots, ...children] });
+          await tx.navigationItem.createMany({
+            data: [...roots, ...children].map((item) => ({ ...item, translations: (item.translations ?? {}) as Prisma.InputJsonValue })),
+          });
         }
 
         await tx.socialLink.deleteMany({});
@@ -89,7 +117,15 @@ export async function adminNavigationRoutes(app: FastifyInstance) {
         // Kolonları silmek Cascade ile bağlı footerLink'leri de otomatik siler (bkz. schema.prisma).
         await tx.footerColumn.deleteMany({});
         for (const col of body.footerColumns) {
-          await tx.footerColumn.create({ data: { title: col.title, order: col.order, links: { create: col.links } } });
+          await tx.footerColumn.create({
+            data: {
+              id: col.id,
+              title: col.title,
+              order: col.order,
+              translations: (col.translations ?? {}) as Prisma.InputJsonValue,
+              links: { create: col.links.map((link) => ({ ...link, translations: (link.translations ?? {}) as Prisma.InputJsonValue })) },
+            },
+          });
         }
       });
 

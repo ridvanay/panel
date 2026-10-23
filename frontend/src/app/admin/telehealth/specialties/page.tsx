@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { useForm, Controller } from "react-hook-form";
+import { useForm, useWatch, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import * as telehealthApi from "@/lib/api/telehealth";
@@ -21,6 +21,15 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { PageHeading } from "@/components/admin/page-heading";
 import { IconPickerField } from "@/components/admin/page-builder/blocks/icon-picker";
 import { MediaSelectField } from "@/components/admin/media/media-select-field";
+import {
+  CANONICAL_LOCALE_CODE,
+  TranslationLocaleTabs,
+  getTranslation,
+  isCanonicalLocale,
+  setTranslation,
+  useTranslationLocales,
+} from "@/components/admin/translation-locale-tabs";
+import type { TextTranslations } from "@/lib/api/types";
 import { resolveIcon } from "@/lib/page-builder/icon-options";
 import { friendlyErrorMessage } from "@/lib/api/friendly-error";
 import { AlertCircle, Pencil, Stethoscope, X } from "lucide-react";
@@ -74,6 +83,11 @@ export default function AdminTelehealthSpecialtiesPage() {
   const [pendingDelete, setPendingDelete] = useState<Specialty | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [image, setImage] = useState<Media | null>(null);
+  // Paket O — dil sekmeleri: EN = kanonik `name`/`description`; diğer diller (TR dahil) `translations`.
+  const translationLocales = useTranslationLocales();
+  const [contentLocale, setContentLocale] = useState(CANONICAL_LOCALE_CODE);
+  const [translations, setTranslations] = useState<TextTranslations>({});
+  const canonicalLocale = isCanonicalLocale(contentLocale);
 
   const {
     register,
@@ -82,6 +96,9 @@ export default function AdminTelehealthSpecialtiesPage() {
     control,
     formState: { errors },
   } = useForm<SpecialtyFormValues>({ resolver: zodResolver(specialtyFormSchema), defaultValues: EMPTY_FORM });
+  // Dil sekmelerinde EN metni yer tutucu olarak gösterilir.
+  const canonicalName = useWatch({ control, name: "name" });
+  const canonicalDescription = useWatch({ control, name: "description" });
 
   const load = useCallback(async () => {
     try {
@@ -102,6 +119,8 @@ export default function AdminTelehealthSpecialtiesPage() {
     setEditingId(null);
     reset(EMPTY_FORM);
     setImage(null);
+    setTranslations({});
+    setContentLocale(CANONICAL_LOCALE_CODE);
     setFormOpen(true);
   }
 
@@ -116,6 +135,8 @@ export default function AdminTelehealthSpecialtiesPage() {
       isActive: specialty.isActive,
     });
     setImage(specialtyImageAsMedia(specialty));
+    setTranslations(specialty.translations ?? {});
+    setContentLocale(CANONICAL_LOCALE_CODE);
     setFormOpen(true);
   }
 
@@ -135,6 +156,7 @@ export default function AdminTelehealthSpecialtiesPage() {
         order: values.order ?? 0,
         isActive: values.isActive,
         imageMediaId: image?.id ?? null,
+        translations,
       };
       if (editingId) {
         await telehealthApi.updateSpecialty(editingId, body);
@@ -278,9 +300,32 @@ export default function AdminTelehealthSpecialtiesPage() {
 
           <form className="mt-4 grid gap-4 sm:grid-cols-2" onSubmit={handleSubmit(onSubmit)} noValidate>
             <div className="sm:col-span-2">
-              <Field id="specialty-name" label="Uzmanlık adı" error={errors.name?.message} required>
-                {(inputProps) => <Input {...inputProps} {...register("name")} placeholder="Kardiyoloji" />}
-              </Field>
+              <TranslationLocaleTabs
+                locales={translationLocales}
+                value={contentLocale}
+                onValueChange={setContentLocale}
+                entries={[{ translations, fields: ["name", "description"] }]}
+              />
+            </div>
+
+            <div className="sm:col-span-2">
+              {canonicalLocale ? (
+                <Field key="name-en" id="specialty-name" label="Uzmanlık adı" error={errors.name?.message} required>
+                  {(inputProps) => <Input {...inputProps} {...register("name")} placeholder="Kardiyoloji" />}
+                </Field>
+              ) : (
+                <Field key={`name-${contentLocale}`} id={`specialty-name-${contentLocale}`} label={`Uzmanlık adı (${contentLocale.toUpperCase()})`} error={errors.name?.message}>
+                  {(inputProps) => (
+                    <Input
+                      {...inputProps}
+                      value={getTranslation(translations, contentLocale, "name")}
+                      onChange={(e) => setTranslations((prev) => setTranslation(prev, contentLocale, "name", e.target.value))}
+                      placeholder={canonicalName}
+                      maxLength={80}
+                    />
+                  )}
+                </Field>
+              )}
             </div>
 
             <Field id="specialty-slug" label="Slug" hint="Boş bırakılırsa addan üretilir.">
@@ -314,9 +359,24 @@ export default function AdminTelehealthSpecialtiesPage() {
             </div>
 
             <div className="sm:col-span-2">
-              <Field id="specialty-description" label="Açıklama" hint="Opsiyonel, en fazla 500 karakter.">
-                {(inputProps) => <Textarea {...inputProps} rows={3} {...register("description")} />}
-              </Field>
+              {canonicalLocale ? (
+                <Field key="description-en" id="specialty-description" label="Açıklama" hint="Opsiyonel, en fazla 500 karakter.">
+                  {(inputProps) => <Textarea {...inputProps} rows={3} {...register("description")} />}
+                </Field>
+              ) : (
+                <Field key={`description-${contentLocale}`} id={`specialty-description-${contentLocale}`} label={`Açıklama (${contentLocale.toUpperCase()})`} hint="Boş bırakılırsa EN açıklama gösterilir.">
+                  {(inputProps) => (
+                    <Textarea
+                      {...inputProps}
+                      rows={3}
+                      value={getTranslation(translations, contentLocale, "description")}
+                      onChange={(e) => setTranslations((prev) => setTranslation(prev, contentLocale, "description", e.target.value))}
+                      placeholder={canonicalDescription ?? ""}
+                      maxLength={500}
+                    />
+                  )}
+                </Field>
+              )}
             </div>
 
             <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5 sm:col-span-2">

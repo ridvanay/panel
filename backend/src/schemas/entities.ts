@@ -768,13 +768,17 @@ export const SlideSchema = z.object({
   linkHref: z.string().nullable(),
   linkNewTab: z.boolean(),
   layers: z.array(z.record(z.unknown())),
+  /** Paket O — dile özel arka plan görselleri (yalnızca admin; public yanıt aktif dili zaten uygular). */
+  translations: z
+    .record(z.string(), z.object({ bgMedia: MediaSchema, bgTabletMedia: MediaSchema.nullable(), bgMobileMedia: MediaSchema.nullable() }))
+    .optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
 export type SlideDto = z.infer<typeof SlideSchema>;
 
-/** `Slide` ile AYNI şekil EKSİ `label`/`isActive` (bkz. `GET /sliders/{sliderId}`). */
-export const PublicSlideSchema = SlideSchema.omit({ label: true, isActive: true });
+/** `Slide` ile AYNI şekil EKSİ `label`/`isActive`/`translations` (bkz. `GET /sliders/{sliderId}`). */
+export const PublicSlideSchema = SlideSchema.omit({ label: true, isActive: true, translations: true });
 export type PublicSlideDto = z.infer<typeof PublicSlideSchema>;
 
 /** Admin detay DTO — ayarlar + TÜM slaytlar (pasifler dahil), bkz. `GET /admin/sliders/{sliderId}`. */
@@ -890,12 +894,16 @@ export type PublicSiteModuleDto = z.infer<typeof PublicSiteModuleSchema>;
 
 export const SocialPlatformSchema = z.enum(["TWITTER", "GITHUB", "LINKEDIN", "INSTAGRAM", "FACEBOOK", "YOUTUBE", "OTHER"]);
 
+/** Paket O — dil başına düz metin çevirileri `{ "<dil>": { alan: metin } }` (yalnızca admin okumasında). */
+export const TextTranslationsDtoSchema = z.record(z.string(), z.record(z.string(), z.string()));
+
 export const NavigationItemSchema = z.object({
   id: z.string(),
   label: z.string(),
   href: z.string(),
   order: z.number(),
   parentId: z.string().nullable(),
+  translations: TextTranslationsDtoSchema.optional(),
 });
 export type NavigationItemDto = z.infer<typeof NavigationItemSchema>;
 
@@ -912,6 +920,7 @@ export const FooterLinkSchema = z.object({
   label: z.string(),
   href: z.string(),
   order: z.number(),
+  translations: TextTranslationsDtoSchema.optional(),
 });
 export type FooterLinkDto = z.infer<typeof FooterLinkSchema>;
 
@@ -919,6 +928,7 @@ export const FooterColumnSchema = z.object({
   id: z.string(),
   title: z.string(),
   order: z.number(),
+  translations: TextTranslationsDtoSchema.optional(),
   links: z.array(FooterLinkSchema),
 });
 export type FooterColumnDto = z.infer<typeof FooterColumnSchema>;
@@ -2341,6 +2351,8 @@ export const SpecialtySchema = z.object({
   isActive: z.boolean(),
   /** Kart görseli (Media id) — yoksa null. */
   imageMediaId: z.string().nullable(),
+  /** Paket O — dil başına ad/açıklama `{ "<dil>": { name, description } }`; public uçlar aktif dili zaten uygular. */
+  translations: TextTranslationsDtoSchema.optional(),
   /**
    * Kart görselinin mutlak URL'i. YALNIZCA uzmanlık uçları (`/specialties*`,
    * `/admin/telehealth/specialties*`) medya ilişkisini yükler; doktor DTO'sunun içindeki

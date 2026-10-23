@@ -109,13 +109,13 @@ describe("content-translations (Paket L)", () => {
     };
   }
 
-  it("export salt okumadır; yasal sayfa yok, uzmanlık bilgi amaçlı (importable: false)", async () => {
+  it("export salt okumadır; yasal sayfa yok; uzmanlık Paket O'dan beri içe aktarılabilir", async () => {
     const before = await app.prisma.page.findMany({ orderBy: { slug: "asc" } });
     const data = await buildTranslationExport(app.prisma);
     expect(data.canonicalLocale).toBe("en");
     expect(data.items.filter((i) => i.type === "page").map((i) => i.ref)).toEqual(["about"]);
     expect(data.items.find((i) => i.type === "doctor")).toMatchObject({ importable: true, fields: { title: "Dr.", bio: "General surgeon." } });
-    expect(data.items.find((i) => i.type === "specialty")).toMatchObject({ importable: false });
+    expect(data.items.find((i) => i.type === "specialty")).toMatchObject({ importable: true, fields: { name: "Surgical Oncology" } });
     expect(await app.prisma.page.findMany({ orderBy: { slug: "asc" } })).toEqual(before);
   });
 
@@ -184,7 +184,8 @@ describe("content-translations (Paket L)", () => {
     const plan = await buildImportPlan(app.prisma, await readTranslationFile(file));
     expect(plan.pages.map((p) => p.locale)).toEqual(["es"]);
     expect(plan.doctors.map((d) => d.locale)).toEqual(["ar"]);
-    expect(plan.skipped.map((s) => `${s.type}/${s.locale ?? "-"}`)).toEqual(expect.arrayContaining(["page/de", "specialty/-"]));
+    expect(plan.skipped.map((s) => `${s.type}/${s.locale ?? "-"}`)).toEqual(["page/de"]);
+    expect(plan.entities.map((e) => `${e.type}/${e.locale}`)).toEqual(["specialty/ru"]);
 
     // Kuru çalışma (plan) hiçbir şey yazmadı.
     expect((await app.prisma.page.findUniqueOrThrow({ where: { id: pageId } })).translations).not.toHaveProperty("es");

@@ -117,8 +117,10 @@ export { TELEHEALTH_THEME_DEFAULTS };
  * `telehealth` modülü kapalıysa (404) `[]` döner — çağıran sayfalar (`/specialties`, `sitemap.ts`)
  * bu durumda boş liste/empty-state render eder. 429/5xx/ağ hatası fırlatır (bkz. server-fetch.ts).
  */
-export async function fetchSpecialtiesServer(): Promise<Specialty[]> {
-  const json = await fetchServerJson<{ data: Specialty[] }>("/specialties", { tags: [CACHE_TAGS.specialties] });
+export async function fetchSpecialtiesServer(locale?: string): Promise<Specialty[]> {
+  // Paket O — `locale`: uzmanlık adı/açıklaması o dilde (çeviri yoksa kanonik EN).
+  const query = locale ? `?locale=${encodeURIComponent(locale)}` : "";
+  const json = await fetchServerJson<{ data: Specialty[] }>(`/specialties${query}`, { tags: [CACHE_TAGS.specialties] });
   return json?.data ?? [];
 }
 
@@ -126,7 +128,10 @@ export async function fetchSpecialtiesServer(): Promise<Specialty[]> {
  * `GET /specialties/{slug}` (public) — `Specialty` + `doctorCount`. `fetchDoctorBySlugServer` İLE
  * AYNI desen: bulunamazsa/404 ise `null` (varlığı SIZDIRILMAZ, `notFound()` çağıran taraftadır).
  */
-export async function fetchSpecialtyBySlugServer(slug: string): Promise<SpecialtyWithDoctorCount | null> {
-  const json = await fetchServerJson<{ data: SpecialtyWithDoctorCount }>(`/specialties/${encodeURIComponent(slug)}`, { tags: [CACHE_TAGS.specialties] });
+export async function fetchSpecialtyBySlugServer(slug: string, locale?: string): Promise<SpecialtyWithDoctorCount | null> {
+  const query = locale ? `?locale=${encodeURIComponent(locale)}` : "";
+  const json = await fetchServerJson<{ data: SpecialtyWithDoctorCount }>(`/specialties/${encodeURIComponent(slug)}${query}`, {
+    tags: [CACHE_TAGS.specialties],
+  });
   return json?.data ?? null;
 }

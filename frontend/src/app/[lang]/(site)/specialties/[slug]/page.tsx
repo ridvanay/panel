@@ -62,7 +62,7 @@ function buildSelfLanguageAlternates(locales: Locale[], defaultLocaleCode: strin
 export async function generateMetadata({ params }: SpecialtyDetailPageProps): Promise<Metadata> {
   const { lang, slug } = await params;
   const [specialty, locales, settings] = await Promise.all([
-    fetchSpecialtyBySlugServer(slug),
+    fetchSpecialtyBySlugServer(slug, lang),
     fetchLocalesServer(),
     fetchSiteSettingsServer(),
   ]);
@@ -101,7 +101,7 @@ export default async function SpecialtyDetailPage({ params }: SpecialtyDetailPag
   const { lang, slug } = await params;
 
   const [specialty, doctors, locales, dict] = await Promise.all([
-    fetchSpecialtyBySlugServer(slug),
+    fetchSpecialtyBySlugServer(slug, lang),
     fetchDoctorsServer({ specialtySlug: slug, locale: lang }),
     fetchLocalesServer(),
     getSiteDictionary(lang),

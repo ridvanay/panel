@@ -20,6 +20,8 @@ import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrate
 import { ListTree } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
 import { DropIndicator, NavTreeRow, NavTreeRowOverlay } from "./nav-tree-row";
+import type { TextTranslations } from "@/lib/api/types";
+import { CANONICAL_LOCALE_CODE } from "@/components/admin/translation-locale-tabs";
 import {
   buildTree,
   canIndent,
@@ -41,6 +43,8 @@ interface NavTreeEditorProps {
   items: FlatNavItem[];
   onChange: (items: FlatNavItem[]) => void;
   hrefHint: string;
+  /** Paket O — düzenlenen dil; kanonik (EN) dışında etiket alanı `translations.<dil>.label`'ı düzenler. */
+  locale?: string;
 }
 
 /**
@@ -48,7 +52,7 @@ interface NavTreeEditorProps {
  * iç-içe geçirilebilen menü ağacı. dnd-kit'in resmi "Sortable Tree" örneğindeki izdüşüm
  * (projection) mantığı referans alınmıştır — somut kurallar `nav-tree-utils.ts`'te.
  */
-export function NavTreeEditor({ items, onChange, hrefHint }: NavTreeEditorProps) {
+export function NavTreeEditor({ items, onChange, hrefHint, locale = CANONICAL_LOCALE_CODE }: NavTreeEditorProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
   const [offsetLeft, setOffsetLeft] = useState(0);
@@ -112,7 +116,7 @@ export function NavTreeEditor({ items, onChange, hrefHint }: NavTreeEditorProps)
   const handleMoveUp = useCallback((id: string) => onChange(moveSibling(items, id, -1)), [items, onChange]);
   const handleMoveDown = useCallback((id: string) => onChange(moveSibling(items, id, 1)), [items, onChange]);
   const handleUpdate = useCallback(
-    (id: string, patch: { label?: string; href?: string }) => onChange(updateItem(items, id, patch)),
+    (id: string, patch: { label?: string; href?: string; translations?: TextTranslations }) => onChange(updateItem(items, id, patch)),
     [items, onChange]
   );
   const handleRemove = useCallback((id: string) => onChange(removeItemCascade(items, id)), [items, onChange]);
@@ -168,6 +172,7 @@ export function NavTreeEditor({ items, onChange, hrefHint }: NavTreeEditorProps)
                 onUpdate={handleUpdate}
                 onRemove={handleRemove}
                 hrefHint={hrefHint}
+                locale={locale}
               />
               {node.children.length > 0 && (
                 <div className="relative ml-3 space-y-2 border-l border-dashed border-border/60 pl-5">
@@ -187,6 +192,7 @@ export function NavTreeEditor({ items, onChange, hrefHint }: NavTreeEditorProps)
                         onUpdate={handleUpdate}
                         onRemove={handleRemove}
                         hrefHint={hrefHint}
+                        locale={locale}
                       />
                     </div>
                   ))}

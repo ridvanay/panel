@@ -8,9 +8,9 @@
  * İçe aktarma KURALLARI:
  *  - Yalnızca `translations.es|de|ar|ru` (ve koşullu `tr`, bkz. Paket O) yazılır. Kanonik kolonlara ve
  *    `translations.en`'e ASLA dokunulmaz; dosyada başka bir dil anahtarı varsa işlem reddedilir.
- *  - Yalnızca `translations` kolonu olan içerik yazılabilir: sayfa (`Page`) ve doktor profili.
- *    Uzmanlık, menü, footer ve site ayarları export'ta "importable: false" olarak listelenir
- *    (bu modellerde çeviri kolonu yok; ayrı bir migration gerektirir).
+ *  - Yalnızca `translations` kolonu olan içerik yazılabilir: sayfa (`Page`), doktor profili ve
+ *    (Paket O'dan itibaren) uzmanlık, menü öğesi, footer sütunu/bağlantısı. Site ayarları hâlâ
+ *    "importable: false" (çeviri kolonu yok).
  *  - Yasal sayfalar (`isLegalDocument`) export'a girmez, import'ta da reddedilir (yeni dillerde EN'e düşer).
  *  - Sayfa bloklarında çevirmen yalnızca metni değiştirebilir: ağaç yapısı, id/tip, bağlantılar,
  *    URL'ler, renkler ve sayılar kanonikle birebir aynı olmalıdır. HTML sanitize edilir.
@@ -22,6 +22,9 @@
  *    YALNIZCA hedefte TR çevirisi yoksa ya da `overwriteLocales` içinde "tr" varsa
  *    (`--overwrite-locale=tr`) yazılır. `en` anahtarı her zaman reddedilir — kanonik metne dokunulmaz.
  *  - Export `only` seçicileriyle (`--only=page:home,doctor:vahit-mutlu`) yalnızca seçilen kalemleri yazar.
+ *  - Uzmanlık (`name`, `description`), menü öğesi (`label`), footer sütunu (`title`) ve bağlantısı
+ *    (`label`) içe aktarılabilir. Menü/footer'da `updatedAt` yok: bayatlık, export'taki kanonik
+ *    metnin şimdiki metinle birebir aynı olmasıyla kontrol edilir.
  */
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -77,10 +80,69 @@ export interface TranslationExport {
 
 type Db = Pick<
   PrismaClient,
-  "page" | "doctorProfile" | "specialty" | "navigationItem" | "footerColumn" | "siteSettings" | "locale" | "contentSlug" | "auditLog" | "$transaction"
+  | "page"
+  | "doctorProfile"
+  | "specialty"
+  | "navigationItem"
+  | "footerColumn"
+  | "footerLink"
+  | "siteSettings"
+  | "locale"
+  | "contentSlug"
+  | "auditLog"
+  | "$transaction"
 >;
 
 const NO_COLUMN_NOTE = "Bu modelde çeviri kolonu yok; içe aktarılmaz (ayrı bir migration gerektirir).";
+
+/**
+ * Paket O — basit (düz metin alanlı) içerik türleri: alan → { en fazla karakter, zorunlu mu }.
+ * Kanonik kolon adlarıyla AYNI alan adları `translations.<dil>` altına yazılır.
+ */
+type EntityType = "specialty" | "navigationItem" | "footerColumn" | "footerLink";
+const ENTITY_FIELDS: Record<EntityType, Record<string, { max: number; required: boolean }>> = {
+  specialty: { name: { max: 80, required: true }, description: { max: 500, required: false } },
+  navigationItem: { label: { max: 80, required: true } },
+  footerColumn: { title: { max: 80, required: true } },
+  footerLink: { label: { max: 80, required: true } },
+};
+const isEntityType = (type: string): type is EntityType => type in ENTITY_FIELDS;
+
+interface EntityRow {
+  id: string;
+  translations: unknown;
+  updatedAt?: Date;
+  [field: string]: unknown;
+}
+
+async function findEntity(db: Db, type: EntityType, id: string): Promise<EntityRow | null> {
+  switch (type) {
+    case "specialty":
+      return db.specialty.findUnique({ where: { id } });
+    case "navigationItem":
+      return db.navigationItem.findUnique({ where: { id } });
+    case "footerColumn":
+      return db.footerColumn.findUnique({ where: { id } });
+    case "footerLink":
+      return db.footerLink.findUnique({ where: { id } });
+  }
+}
+
+async function updateEntityTranslations(tx: Prisma.TransactionClient, type: EntityType, id: string, translations: Prisma.InputJsonValue) {
+  const args = { where: { id }, data: { translations } };
+  switch (type) {
+    case "specialty":
+      return tx.specialty.update(args);
+    case "navigationItem":
+      return tx.navigationItem.update(args);
+    case "footerColumn":
+      return tx.footerColumn.update(args);
+    case "footerLink":
+      return tx.footerLink.update(args);
+  }
+}
+
+const entityKey = (type: string, id: string) => `${type}:${id}`;
 
 const INSTRUCTIONS =
   "Her kalemde `fields` kanonik (EN) metindir. Çeviriyi aynı alan adlarıyla `translations.<tr|es|de|ar|ru>` içine yazın. " +
@@ -159,17 +221,25 @@ export async function buildTranslationExport(db: Db, now = new Date(), options: 
     });
   }
 
+  const entityItem = (type: EntityType, row: EntityRow, ref: string, fields: Record<string, unknown>): ExportItem => ({
+    type,
+    id: row.id,
+    ref,
+    importable: true,
+    updatedAt: row.updatedAt ? row.updatedAt.toISOString() : null,
+    fields,
+    translations: emptyTranslations(),
+    existingLocales: filledLocales(row.translations),
+  });
   for (const s of await db.specialty.findMany({ where: { isActive: true }, orderBy: { order: "asc" } })) {
-    items.push({ type: "specialty", id: s.id, ref: s.slug, importable: false, note: NO_COLUMN_NOTE, updatedAt: s.updatedAt.toISOString(), fields: { name: s.name, description: s.description }, translations: emptyTranslations() });
+    items.push(entityItem("specialty", s, s.slug, { name: s.name, description: s.description }));
   }
   for (const n of await db.navigationItem.findMany({ orderBy: [{ parentId: "asc" }, { order: "asc" }] })) {
-    items.push({ type: "navigationItem", id: n.id, ref: n.href, importable: false, note: NO_COLUMN_NOTE, updatedAt: null, fields: { label: n.label }, translations: emptyTranslations() });
+    items.push(entityItem("navigationItem", n, n.href, { label: n.label }));
   }
   for (const c of await db.footerColumn.findMany({ orderBy: { order: "asc" }, include: { links: { orderBy: { order: "asc" } } } })) {
-    items.push({ type: "footerColumn", id: c.id, ref: c.title, importable: false, note: NO_COLUMN_NOTE, updatedAt: null, fields: { title: c.title }, translations: emptyTranslations() });
-    for (const l of c.links) {
-      items.push({ type: "footerLink", id: l.id, ref: l.href, importable: false, note: NO_COLUMN_NOTE, updatedAt: null, fields: { label: l.label }, translations: emptyTranslations() });
-    }
+    items.push(entityItem("footerColumn", c, c.title, { title: c.title }));
+    for (const l of c.links) items.push(entityItem("footerLink", l, l.href, { label: l.label }));
   }
   const settings = await db.siteSettings.findFirst();
   if (settings) {
@@ -288,12 +358,39 @@ export interface PreparedDoctor {
   value: { title: string; bio: string; aboutHtml?: string; subSpecialty?: string };
 }
 
+/** Paket O — uzmanlık / menü / footer çevirisi. */
+export interface PreparedEntity {
+  type: EntityType;
+  id: string;
+  ref: string;
+  locale: TargetLocale;
+  value: Record<string, string>;
+}
+
 export interface ImportPlan {
   pages: PreparedPage[];
   doctors: PreparedDoctor[];
+  entities: PreparedEntity[];
   skipped: { type: string; ref: string; locale?: string; reason: string }[];
   /** Plan anındaki `translations` damgaları — yazma sırasında eşzamanlı değişiklik kontrolü. */
-  stamps: { pages: Record<string, string>; doctors: Record<string, string>; updatedAt: Record<string, string> };
+  stamps: { pages: Record<string, string>; doctors: Record<string, string>; updatedAt: Record<string, string>; entities: Record<string, string> };
+}
+
+export function prepareEntityTranslation(type: EntityType, input: Record<string, unknown>): Record<string, string> {
+  const spec = ENTITY_FIELDS[type];
+  const unknownKeys = Object.keys(input).filter((key) => !(key in spec));
+  if (unknownKeys.length) throw new TranslationImportError(`Bilinmeyen alan: ${unknownKeys.join(", ")}`);
+  const value: Record<string, string> = {};
+  for (const [field, { max, required }] of Object.entries(spec)) {
+    const v = plainText(input[field], field, max, required);
+    if (v) value[field] = v;
+  }
+  return value;
+}
+
+/** Export'taki kanonik metin şimdikiyle aynı mı (menü/footer'da `updatedAt` yok). */
+function sameCanonicalFields(type: EntityType, row: EntityRow, fields: Record<string, unknown>): boolean {
+  return Object.keys(ENTITY_FIELDS[type]).every((field) => (row[field] ?? null) === (fields?.[field] ?? null));
 }
 
 export async function readTranslationFile(file: string): Promise<TranslationExport> {
@@ -336,11 +433,33 @@ function guardLocales(
 }
 
 export async function buildImportPlan(db: Db, data: TranslationExport, options: ImportPlanOptions = {}): Promise<ImportPlan> {
-  const plan: ImportPlan = { pages: [], doctors: [], skipped: [], stamps: { pages: {}, doctors: {}, updatedAt: {} } };
+  const plan: ImportPlan = { pages: [], doctors: [], entities: [], skipped: [], stamps: { pages: {}, doctors: {}, updatedAt: {}, entities: {} } };
 
   for (const item of data.items) {
     const filled = IMPORT_LOCALES.filter((l) => item.translations?.[l]);
     if (filled.length === 0) continue;
+    if (isEntityType(item.type)) {
+      const type = item.type;
+      const row = await findEntity(db, type, item.id);
+      if (!row) {
+        plan.skipped.push({ type, ref: item.ref, reason: "Kayıt bulunamadı (menü/footer yeniden kaydedildiyse yeniden export alın)." });
+        continue;
+      }
+      const stale = row.updatedAt ? item.updatedAt !== null && row.updatedAt.toISOString() !== item.updatedAt : !sameCanonicalFields(type, row, item.fields);
+      if (stale) {
+        plan.skipped.push({ type, ref: item.ref, reason: "Kanonik metin export'tan sonra değişmiş; yeniden export/çeviri gerekir." });
+        continue;
+      }
+      plan.stamps.entities[entityKey(type, row.id)] = JSON.stringify(row.translations ?? {});
+      for (const locale of guardLocales(plan, item, filled, row.translations, options)) {
+        try {
+          plan.entities.push({ type, id: row.id, ref: item.ref, locale, value: prepareEntityTranslation(type, item.translations[locale]!) });
+        } catch (err) {
+          plan.skipped.push({ type, ref: item.ref, locale, reason: (err as Error).message });
+        }
+      }
+      continue;
+    }
     if (item.type !== "page" && item.type !== "doctor") {
       plan.skipped.push({ type: item.type, ref: item.ref, reason: NO_COLUMN_NOTE });
       continue;
@@ -429,7 +548,11 @@ export function prepareDoctorTranslation(input: Record<string, unknown>, canonic
 export function formatImportPlan(plan: ImportPlan): string {
   const count = (list: { locale: string }[]) =>
     IMPORT_LOCALES.map((l) => `${l}=${list.filter((x) => x.locale === l).length}`).join(" ");
-  const lines = [`Sayfa çevirileri: ${plan.pages.length} (${count(plan.pages)})`, `Doktor çevirileri: ${plan.doctors.length} (${count(plan.doctors)})`];
+  const lines = [
+    `Sayfa çevirileri: ${plan.pages.length} (${count(plan.pages)})`,
+    `Doktor çevirileri: ${plan.doctors.length} (${count(plan.doctors)})`,
+    `Uzmanlık/menü/footer çevirileri: ${plan.entities.length} (${count(plan.entities)})`,
+  ];
   if (plan.skipped.length) {
     lines.push(`Atlanan (${plan.skipped.length}):`);
     for (const s of plan.skipped) lines.push(`  - [${s.type}${s.locale ? `/${s.locale}` : ""}] ${s.ref}: ${s.reason}`);
@@ -455,6 +578,8 @@ export interface TranslationsBackup {
   locales?: string[];
   pages: { id: string; translations: unknown }[];
   doctors: { id: string; translations: unknown }[];
+  /** Paket O — uzmanlık/menü/footer (eski yedeklerde yok). */
+  entities?: { type: EntityType; id: string; translations: unknown }[];
 }
 
 function assertOperator(info: OperatorInfo) {
@@ -465,10 +590,23 @@ function assertOperator(info: OperatorInfo) {
   }
 }
 
-async function writeBackup(db: Db, backupDir: string, pageIds: string[], doctorIds: string[], now: Date, locales: string[]): Promise<string> {
+async function writeBackup(
+  db: Db,
+  backupDir: string,
+  pageIds: string[],
+  doctorIds: string[],
+  now: Date,
+  locales: string[],
+  entityRefs: { type: EntityType; id: string }[] = []
+): Promise<string> {
   const pages = await db.page.findMany({ where: { id: { in: pageIds } }, select: { id: true, translations: true } });
   const doctors = await db.doctorProfile.findMany({ where: { id: { in: doctorIds } }, select: { id: true, translations: true } });
-  const backup: TranslationsBackup = { kind: "content-translations-backup", createdAt: now.toISOString(), locales, pages, doctors };
+  const entities: NonNullable<TranslationsBackup["entities"]> = [];
+  for (const ref of entityRefs) {
+    const row = await findEntity(db, ref.type, ref.id);
+    if (row) entities.push({ type: ref.type, id: row.id, translations: row.translations ?? {} });
+  }
+  const backup: TranslationsBackup = { kind: "content-translations-backup", createdAt: now.toISOString(), locales, pages, doctors, entities };
   await fs.mkdir(backupDir, { recursive: true, mode: 0o700 });
   const file = path.join(backupDir, `translations-${now.toISOString().replace(/[:.]/g, "-")}.json`);
   await fs.writeFile(file, JSON.stringify(backup, null, 2), { encoding: "utf8", mode: 0o600 });
@@ -490,30 +628,35 @@ function mergeTargetLocales(current: unknown, updates: { locale: TargetLocale; v
   return next;
 }
 
-async function revalidateAll(db: Db, pageIds: string[], doctorsChanged: boolean) {
+async function revalidateAll(db: Db, pageIds: string[], doctorsChanged: boolean, entityTypes: EntityType[] = []) {
   const app = appLike(db);
   if (pageIds.length) {
     const pages = await db.page.findMany({ where: { id: { in: pageIds } } });
     for (const page of pages) if (page.status === "PUBLISHED") await triggerPublicPageRevalidation(app, page);
   }
-  if (doctorsChanged) await triggerTagRevalidation(app, [CACHE_TAGS.doctors]);
+  const tags = new Set<string>();
+  if (doctorsChanged) tags.add(CACHE_TAGS.doctors);
+  if (entityTypes.includes("specialty")) [CACHE_TAGS.specialties, CACHE_TAGS.doctors].forEach((t) => tags.add(t));
+  if (entityTypes.some((t) => t !== "specialty")) tags.add(CACHE_TAGS.navigation);
+  if (tags.size) await triggerTagRevalidation(app, [...tags]);
 }
 
 export async function applyImportPlan(
   db: Db,
   plan: ImportPlan,
   options: OperatorInfo & { confirm?: string; backupDir: string; sourceFile: string; now?: Date; revalidate?: boolean }
-): Promise<{ backupFile: string; pages: number; doctors: number }> {
+): Promise<{ backupFile: string; pages: number; doctors: number; entities: number }> {
   if (options.confirm !== IMPORT_CONFIRM_KEY) throw new TranslationImportError(`Gerçek yazma için --confirm=${IMPORT_CONFIRM_KEY} gerekir.`);
   assertOperator(options);
   const pageIds = [...new Set(plan.pages.map((p) => p.id))];
   const doctorIds = [...new Set(plan.doctors.map((d) => d.id))];
-  if (pageIds.length + doctorIds.length === 0) throw new TranslationImportError("Yazılacak çeviri yok.");
+  const entityRefs = [...new Map(plan.entities.map((e) => [entityKey(e.type, e.id), { type: e.type, id: e.id }])).values()];
+  if (pageIds.length + doctorIds.length + entityRefs.length === 0) throw new TranslationImportError("Yazılacak çeviri yok.");
   const now = options.now ?? new Date();
-  const writtenLocales = IMPORT_LOCALES.filter((l) => [...plan.pages, ...plan.doctors].some((x) => x.locale === l));
+  const writtenLocales = IMPORT_LOCALES.filter((l) => [...plan.pages, ...plan.doctors, ...plan.entities].some((x) => x.locale === l));
   // Yedek her zaman hedef dilleri kapsar (eski davranış); TR yalnızca bu import TR yazdıysa.
   const backupLocales = [...new Set<string>([...TARGET_LOCALES, ...writtenLocales])];
-  const backupFile = await writeBackup(db, options.backupDir, pageIds, doctorIds, now, backupLocales);
+  const backupFile = await writeBackup(db, options.backupDir, pageIds, doctorIds, now, backupLocales, entityRefs);
   const targetLocaleRows = await db.locale.findMany({ where: { code: { in: [...TARGET_LOCALES] } } });
 
   await db.$transaction(async (tx) => {
@@ -542,6 +685,17 @@ export async function applyImportPlan(
       );
       await tx.doctorProfile.update({ where: { id }, data: { translations: translations as Prisma.InputJsonValue } });
     }
+    for (const ref of entityRefs) {
+      const current = await findEntity(tx as unknown as Db, ref.type, ref.id);
+      if (!current || JSON.stringify(current.translations ?? {}) !== plan.stamps.entities[entityKey(ref.type, ref.id)]) {
+        throw new TranslationImportError(`${ref.type} "${ref.id}" çevirileri plan sonrası değişmiş; işlem geri alındı.`);
+      }
+      const translations = mergeTargetLocales(
+        current.translations,
+        plan.entities.filter((e) => e.type === ref.type && e.id === ref.id).map((e) => ({ locale: e.locale, value: e.value }))
+      );
+      await updateEntityTranslations(tx, ref.type, ref.id, translations as Prisma.InputJsonValue);
+    }
     await tx.auditLog.create({
       data: {
         actorId: null,
@@ -557,13 +711,14 @@ export async function applyImportPlan(
           backupFile: path.basename(backupFile),
           pages: plan.pages.length,
           doctors: plan.doctors.length,
+          entities: plan.entities.length,
         },
       },
     });
   });
 
-  if (options.revalidate !== false) await revalidateAll(db, pageIds, doctorIds.length > 0);
-  return { backupFile, pages: plan.pages.length, doctors: plan.doctors.length };
+  if (options.revalidate !== false) await revalidateAll(db, pageIds, doctorIds.length > 0, entityRefs.map((r) => r.type));
+  return { backupFile, pages: plan.pages.length, doctors: plan.doctors.length, entities: plan.entities.length };
 }
 
 export async function readTranslationsBackup(file: string): Promise<TranslationsBackup> {
@@ -575,8 +730,11 @@ export async function readTranslationsBackup(file: string): Promise<Translations
     throw new TranslationImportError("Yedekteki dil listesi geçersiz.");
   }
   const isMap = (v: unknown) => v !== null && typeof v === "object" && !Array.isArray(v);
-  for (const row of [...parsed.pages, ...parsed.doctors]) {
+  for (const row of [...parsed.pages, ...parsed.doctors, ...(parsed.entities ?? [])]) {
     if (typeof row?.id !== "string" || !isMap(row.translations)) throw new TranslationImportError("Yedekte geçersiz kayıt var.");
+  }
+  if (parsed.entities !== undefined && (!Array.isArray(parsed.entities) || parsed.entities.some((e) => !isEntityType(e?.type)))) {
+    throw new TranslationImportError("Yedekte geçersiz kayıt türü var.");
   }
   return parsed;
 }
@@ -598,7 +756,8 @@ export async function restoreTranslations(
   const doctorIds = backup.doctors.map((d) => d.id);
   // Geri dönülecek diller: yedeğin kaydettiği import dilleri (eski yedek → yalnızca hedef diller). `en` asla.
   const restoreLocales = (backup.locales ?? [...TARGET_LOCALES]).filter((l): l is TargetLocale => (IMPORT_LOCALES as readonly string[]).includes(l));
-  const preRestoreBackup = await writeBackup(db, options.backupDir, pageIds, doctorIds, options.now ?? new Date(), restoreLocales);
+  const entityRefs = (backup.entities ?? []).map((e) => ({ type: e.type, id: e.id }));
+  const preRestoreBackup = await writeBackup(db, options.backupDir, pageIds, doctorIds, options.now ?? new Date(), restoreLocales, entityRefs);
   const targetLocaleRows = await db.locale.findMany({ where: { code: { in: [...TARGET_LOCALES] } } });
 
   /** Yalnızca hedef diller; her girdi beklenen alanlara indirgenir ve doğrulanır (yedek operatör girdisidir). */
@@ -648,6 +807,12 @@ export async function restoreTranslations(
       const next = restoreTargets(current.translations, row.translations, cleanDoctor);
       await tx.doctorProfile.update({ where: { id: row.id }, data: { translations: next as Prisma.InputJsonValue } });
     }
+    for (const row of backup.entities ?? []) {
+      const current = await findEntity(tx as unknown as Db, row.type, row.id);
+      if (!current) throw new TranslationImportError(`Yedekteki ${row.type} bulunamadı (id=${row.id}).`);
+      const next = restoreTargets(current.translations, row.translations, (entry) => prepareEntityTranslation(row.type, entry));
+      await updateEntityTranslations(tx, row.type, row.id, next as Prisma.InputJsonValue);
+    }
     await tx.auditLog.create({
       data: {
         actorId: null,
@@ -666,6 +831,6 @@ export async function restoreTranslations(
     });
   });
 
-  if (options.revalidate !== false) await revalidateAll(db, pageIds, doctorIds.length > 0);
+  if (options.revalidate !== false) await revalidateAll(db, pageIds, doctorIds.length > 0, entityRefs.map((r) => r.type));
   return { preRestoreBackup };
 }

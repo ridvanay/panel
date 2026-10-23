@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { DoctorCvEntrySchema, DoctorPublicationSchema, DoctorSocialLinkSchema } from "../../schemas/entities";
+import { textTranslationsSchema } from "../../lib/entity-translations";
 
 /** `.claude/architect-scope-telehealth-template.md` §3.2/§4.1 — Zod istek/param şemaları. */
 
@@ -277,6 +278,8 @@ export const CreateSpecialtyRequestSchema = z.object({
   isActive: z.boolean().optional(),
   /** Kart görseli — Media id (yalnızca PNG/JPG/WebP); `null` görseli kaldırır. */
   imageMediaId: z.string().uuid().nullable().optional(),
+  /** Paket O — dil başına ad/açıklama; gönderilirse haritanın TAMAMI yazılır (boş dil → kanonik EN). */
+  translations: textTranslationsSchema({ name: 80, description: 500 }).optional(),
 });
 export type CreateSpecialtyRequest = z.infer<typeof CreateSpecialtyRequestSchema>;
 

@@ -69,7 +69,7 @@ export async function HomePageView({ data, siteContext }: { data: unknown; siteC
   const telehealthEnabled = await isModuleEnabledServer("telehealth");
   const [specialties, allDoctors, telehealthSettings] = telehealthEnabled
     ? await Promise.all([
-        content.specialties.enabled ? fetchSpecialtiesServer() : Promise.resolve([]),
+        content.specialties.enabled ? fetchSpecialtiesServer(lang) : Promise.resolve([]),
         content.doctors.enabled ? fetchDoctorsServer({ locale: lang }) : Promise.resolve([]),
         fetchTelehealthThemeServer(),
       ])

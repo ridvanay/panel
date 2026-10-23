@@ -184,7 +184,7 @@ export async function adminTelehealthSpecialtiesRoutes(app: FastifyInstance) {
       schema: { body: CreateSpecialtyRequestSchema, response: { 201: ApiSuccessSchema(SpecialtySchema) } },
     },
     async (request, reply) => {
-      const { name, slug, icon, description, order, isActive, imageMediaId } = request.body;
+      const { name, slug, icon, description, order, isActive, imageMediaId, translations } = request.body;
       if (imageMediaId) await assertSpecialtyImageMedia(app, imageMediaId);
       const specialty = await app.prisma.specialty.create({
         data: {
@@ -195,6 +195,7 @@ export async function adminTelehealthSpecialtiesRoutes(app: FastifyInstance) {
           order: order ?? 0,
           isActive: isActive ?? true,
           imageMediaId: imageMediaId ?? null,
+          translations: translations ?? {},
         },
         include: WITH_SPECIALTY_IMAGE,
       });

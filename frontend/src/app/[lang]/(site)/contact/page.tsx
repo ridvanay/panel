@@ -60,7 +60,7 @@ export default async function ContactPage({ params }: PageProps) {
   if (!page) notFound();
 
   const [specialties, telehealthSettings] = telehealthEnabled
-    ? await Promise.all([fetchSpecialtiesServer(), fetchTelehealthThemeServer()])
+    ? await Promise.all([fetchSpecialtiesServer(lang), fetchTelehealthThemeServer()])
     : [[], null];
 
   const t = dict.contact;

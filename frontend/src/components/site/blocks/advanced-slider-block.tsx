@@ -1,6 +1,7 @@
 import { fetchSliderServer } from "@/lib/api/server-sliders";
 import { AdvancedSlider } from "@/components/site/advanced-slider/advanced-slider";
 import type { AdvancedSliderBlock, BlockChrome } from "@/lib/page-builder/types";
+import type { BlockSiteContext } from "./index";
 
 /**
  * §6.2/§6.4 architect — `data.sliderId` yoksa VEYA slider bulunamıyorsa/silinmişse SESSİZCE
@@ -10,10 +11,19 @@ import type { AdvancedSliderBlock, BlockChrome } from "@/lib/page-builder/types"
  * bu bileşen üç yerden tüketildiği için (bu blok, Hero Studio önizlemesi, kısa kod render'ı)
  * sarmalayıcıyı çağıranlara dağıtmak kopya üretirdi.
  */
-export async function AdvancedSliderBlockView({ block, chrome }: { block: AdvancedSliderBlock; chrome: BlockChrome }) {
+export async function AdvancedSliderBlockView({
+  block,
+  chrome,
+  siteContext,
+}: {
+  block: AdvancedSliderBlock;
+  chrome: BlockChrome;
+  siteContext?: BlockSiteContext;
+}) {
   if (!block.data.sliderId) return null;
 
-  const slider = await fetchSliderServer(block.data.sliderId);
+  // Paket O — aktif dilin slayt görselleri (tanımlıysa); yoksa varsayılan görseller.
+  const slider = await fetchSliderServer(block.data.sliderId, siteContext?.lang);
   if (!slider || slider.slides.length === 0) return null;
 
   return <AdvancedSlider slider={slider} chrome={chrome} />;

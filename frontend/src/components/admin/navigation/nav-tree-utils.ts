@@ -8,6 +8,8 @@
  * fonksiyonu tarafından korunur — dizinin ortasına "yabancı" bir kök sokulmaz.
  */
 
+import type { TextTranslations } from "@/lib/api/types";
+
 export const INDENTATION_WIDTH = 32;
 /** Maksimum derinlik 2 (kök + 1 alt) — ARCHITECTURE.md §10.10.1 ile bağlayıcı. */
 export const MAX_DEPTH = 1;
@@ -18,6 +20,8 @@ export interface FlatNavItem {
   href: string;
   /** null ise kök seviye öğe. */
   parentId: string | null;
+  /** Paket O — dil başına etiket (`label` = kanonik EN). */
+  translations?: TextTranslations;
 }
 
 export function getDepth(item: Pick<FlatNavItem, "parentId">): 0 | 1 {
@@ -38,7 +42,7 @@ export function removeItemCascade(items: FlatNavItem[], id: string): FlatNavItem
   return items.filter((item) => item.id !== id && item.parentId !== id);
 }
 
-export function updateItem(items: FlatNavItem[], id: string, patch: Partial<Pick<FlatNavItem, "label" | "href">>): FlatNavItem[] {
+export function updateItem(items: FlatNavItem[], id: string, patch: Partial<Pick<FlatNavItem, "label" | "href" | "translations">>): FlatNavItem[] {
   return items.map((item) => (item.id === id ? { ...item, ...patch } : item));
 }
 
@@ -273,15 +277,15 @@ export function moveItem(items: FlatNavItem[], activeId: string, overId: string 
 }
 
 /** `PUT /admin/navigation` payload'ı — sunucunun beklediği kardeş-kapsamlı `order`'ı hesaplar. */
-export function toNavigationItemsPayload(
-  items: FlatNavItem[]
-): { id: string; label: string; href: string; order: number; parentId: string | null }[] {
+type NavigationItemPayload = { id: string; label: string; href: string; order: number; parentId: string | null; translations: TextTranslations };
+
+export function toNavigationItemsPayload(items: FlatNavItem[]): NavigationItemPayload[] {
   const tree = buildTree(items);
-  const result: { id: string; label: string; href: string; order: number; parentId: string | null }[] = [];
+  const result: NavigationItemPayload[] = [];
   tree.forEach((node, rootOrder) => {
-    result.push({ id: node.item.id, label: node.item.label, href: node.item.href, order: rootOrder, parentId: null });
+    result.push({ id: node.item.id, label: node.item.label, href: node.item.href, order: rootOrder, parentId: null, translations: node.item.translations ?? {} });
     node.children.forEach((child, childOrder) => {
-      result.push({ id: child.id, label: child.label, href: child.href, order: childOrder, parentId: node.item.id });
+      result.push({ id: child.id, label: child.label, href: child.href, order: childOrder, parentId: node.item.id, translations: child.translations ?? {} });
     });
   });
   return result;

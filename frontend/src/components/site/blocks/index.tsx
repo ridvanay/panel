@@ -111,7 +111,7 @@ function renderNodeBody(node: PageNode, chrome: BlockChrome, siteContext?: Block
     case "team":
       return <TeamBlockView block={node} chrome={chrome} />;
     case "advanced-slider":
-      return <AdvancedSliderBlockView block={node} chrome={chrome} />;
+      return <AdvancedSliderBlockView block={node} chrome={chrome} siteContext={siteContext} />;
     case "google-map":
       return <GoogleMapBlockView block={node} chrome={chrome} />;
     case "specialty-cards":

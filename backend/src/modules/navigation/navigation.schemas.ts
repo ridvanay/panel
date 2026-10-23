@@ -1,5 +1,10 @@
 import { z } from "zod";
 import { SocialPlatform } from "@prisma/client";
+import { textTranslationsSchema } from "../../lib/entity-translations";
+
+/** Paket O — dil başına etiket/başlık (kanonik metin EN; boş dil → kanonik). */
+const LabelTranslationsSchema = textTranslationsSchema({ label: 80 });
+const TitleTranslationsSchema = textTranslationsSchema({ title: 80 });
 
 // Not: `\/(?!\/|\\)` yalnızca TEK bir "/" ile başlayan gerçek göreli yollara izin verir.
 // Bare "/" whitelisti "//evil.com" (protokol-relative URL) veya "/\evil.com" (tarayıcılar
@@ -35,6 +40,7 @@ export const NavigationItemInputSchema = z.object({
   order: z.number().int().min(0),
   // Üst öğenin `id`'si; yok/null ise kök seviye öğe. Maksimum derinlik 2 — bkz. superRefine.
   parentId: z.string().uuid().nullable().optional(),
+  translations: LabelTranslationsSchema.optional(),
 });
 
 export const SocialLinkInputSchema = z.object({
@@ -43,17 +49,35 @@ export const SocialLinkInputSchema = z.object({
   order: z.number().int().min(0),
 });
 
+// Paket O — `id` opsiyonel: verilirse korunur (tam-replace kayıtta id'ler sabit kalır → çeviri
+// export/import'u kayıt sonrası da eşleşir). Payload içi benzersizlik `footerColumns` üzerinde.
 export const FooterLinkInputSchema = z.object({
+  id: z.string().uuid().optional(),
   label: z.string().min(1).max(80),
   href: HrefSchema,
   order: z.number().int().min(0),
+  translations: LabelTranslationsSchema.optional(),
 });
 
 export const FooterColumnInputSchema = z.object({
+  id: z.string().uuid().optional(),
   title: z.string().min(1).max(80),
   order: z.number().int().min(0),
   links: z.array(FooterLinkInputSchema).max(20),
+  translations: TitleTranslationsSchema.optional(),
 });
+
+const FooterColumnsArraySchema = z
+  .array(FooterColumnInputSchema)
+  .max(8)
+  .superRefine((columns, ctx) => {
+    const seen = new Set<string>();
+    const ids = columns.flatMap((column) => [column.id, ...column.links.map((link) => link.id)]).filter((id): id is string => Boolean(id));
+    for (const id of ids) {
+      if (seen.has(id)) ctx.addIssue({ code: z.ZodIssueCode.custom, message: `Tekrarlanan footer id: '${id}'.` });
+      seen.add(id);
+    }
+  });
 
 /**
  * `navigationItems` dizi bütününe bakan çapraz-alan kuralları — bkz. ARCHITECTURE.md
@@ -128,5 +152,5 @@ export const UpdateNavigationConfigRequestSchema = z.object({
   footerCopyrightText: z.string().max(200).nullable().optional(),
   navigationItems: NavigationItemsArraySchema,
   socialLinks: z.array(SocialLinkInputSchema).max(15),
-  footerColumns: z.array(FooterColumnInputSchema).max(8),
+  footerColumns: FooterColumnsArraySchema,
 });

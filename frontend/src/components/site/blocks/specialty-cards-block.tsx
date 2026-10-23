@@ -52,7 +52,7 @@ export async function SpecialtyCardsBlockView({
   chrome: BlockChrome;
   siteContext?: BlockSiteContext;
 }) {
-  const specialties = await fetchSpecialtiesServer();
+  const specialties = await fetchSpecialtiesServer(siteContext?.lang);
   if (specialties.length === 0) return null;
 
   const { title, subtitle } = resolveContent(block, siteContext);

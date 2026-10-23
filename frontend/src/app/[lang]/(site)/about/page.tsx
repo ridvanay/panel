@@ -109,7 +109,7 @@ export default async function AboutPage({ params }: AboutPageProps) {
     // `telehealth` modülü kapalıysa/backend erişilemezse `[]` döner → doktor bölümü gizlenir.
     fetchDoctorsServer({ locale: lang }),
     // Aynı şekilde `[]` döner → "Tedavi alanları" kutuları hiçbirinde bağlantı olmaz, sade kutu kalır.
-    fetchSpecialtiesServer(),
+    fetchSpecialtiesServer(lang),
   ]);
 
   const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? lang;

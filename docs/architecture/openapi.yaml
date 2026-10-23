@@ -2425,6 +2425,12 @@ paths:
       tags: [Navigation]
       security: []
       summary: Yayındaki navigasyon/header/footer yapılandırmasını getir (public)
+      description: >
+        Paket O — `?locale=` verilirse menü/footer etiketleri o dilde döner (`translations.<dil>`;
+        yoksa kanonik EN metin; varsayılan dil TR dahil). Public yanıtta ham `translations`
+        haritası YOKTUR (yalnızca `GET /admin/navigation`).
+      parameters:
+        - $ref: "#/components/parameters/LocaleQuery"
       responses:
         "200":
           description: OK
@@ -7438,7 +7444,10 @@ paths:
       tags: [TeleHealth]
       security: []
       summary: Aktif uzmanlık (branş) alanlarını listele (public)
+      parameters:
+        - $ref: "#/components/parameters/LocaleQuery"
       description: >
+        Paket O — `?locale=`: `name`/`description` o dilde (yoksa kanonik EN; varsayılan dil dahil).
         `telehealth` modülü kapalıysa `404 NOT_FOUND`. Yalnızca `isActive: true`
         satırlar, `order` artan sırayla döner — sayfalama YOK (küçük/kapalı bir
         taksonomi, `/admin/telehealth/specialties` İLE AYNI "tüm satırları tek
@@ -7464,7 +7473,10 @@ paths:
       tags: [TeleHealth]
       security: []
       summary: Uzmanlık (branş) detayı — o branştaki aktif doktor sayısıyla birlikte (public)
+      parameters:
+        - $ref: "#/components/parameters/LocaleQuery"
       description: >
+        Paket O — `?locale=`: `name`/`description` o dilde (yoksa kanonik EN).
         `telehealth` modülü kapalıysa VEYA `slug` bulunamazsa/`isActive: false`
         ise `404 NOT_FOUND` (varlığı SIZDIRILMAZ, `/doctors/{slug}` İLE AYNI disiplin).
         `doctorCount` — bu branşa bağlı, YALNIZCA `isActive: true` doktor sayısı.
@@ -10453,7 +10465,11 @@ paths:
       tags: [Sliders]
       security: []
       summary: Slider'ı render için getir (public)
+      parameters:
+        - $ref: "#/components/parameters/LocaleQuery"
       description: >
+        Paket O — `?locale=`: slaytta o dil için görsel tanımlıysa (`Slide.translations`, yalnızca
+        `bgType=image`) varsayılan görsellerin yerine o döner; yoksa varsayılan görseller.
         `advanced-slider` bloğunun sunucu bileşeni bu ucu çağırır
         (`fetchSliderServer`, `next: { revalidate: 60 }`). **Slug ile DEĞİL, `sliderId`
         (uuid) ile erişilir** — blok `data.sliderId` tutar, ad/slug değişince bağ kopmaz.
@@ -15051,6 +15067,25 @@ components:
       properties:
         portalUrl: { type: string, format: uri }
 
+    TextTranslations:
+      type: object
+      description: >
+        Paket O — dil başına düz metin çevirileri `{ "<dil>": { "<alan>": "metin" } }`. Kanonik kolon
+        EN metindir; TR dahil diğer diller burada. Boş metin/dil kaydı atılır (= kanonik metne düş).
+        İstekte bilinmeyen alan veya geçersiz dil kodu 422; en fazla 20 dil.
+      additionalProperties:
+        type: object
+        additionalProperties: { type: string }
+
+    SlideLocaleMedia:
+      type: object
+      description: "Paket O — bir dilin slayt arka plan görselleri (yalnızca medya kütüphanesi)."
+      required: [bgMedia, bgTabletMedia, bgMobileMedia]
+      properties:
+        bgMedia: { $ref: "#/components/schemas/Media" }
+        bgTabletMedia: { allOf: [{ $ref: "#/components/schemas/Media" }], nullable: true }
+        bgMobileMedia: { allOf: [{ $ref: "#/components/schemas/Media" }], nullable: true }
+
     NavigationItem:
       description: >
         Hiyerarşik (iç içe geçebilen) menü öğesi. Yapı DÜZ BİR DİZİ + `parentId` ile ifade
@@ -15076,6 +15111,9 @@ components:
           format: uuid
           nullable: true
           description: "Üst öğenin `id`'si; null ise kök seviye öğedir."
+        translations:
+          allOf: [{ $ref: "#/components/schemas/TextTranslations" }]
+          description: "Paket O — `{ <dil>: { label } }`. Yalnızca admin okumasında."
 
     SocialLink:
       type: object
@@ -15092,6 +15130,9 @@ components:
         label: { type: string }
         href: { type: string }
         order: { type: integer }
+        translations:
+          allOf: [{ $ref: "#/components/schemas/TextTranslations" }]
+          description: "Paket O — `{ <dil>: { label } }`. Yalnızca admin okumasında."
 
     FooterColumn:
       type: object
@@ -15099,6 +15140,9 @@ components:
         id: { type: string }
         title: { type: string }
         order: { type: integer }
+        translations:
+          allOf: [{ $ref: "#/components/schemas/TextTranslations" }]
+          description: "Paket O — `{ <dil>: { title } }`. Yalnızca admin okumasında."
         links:
           type: array
           items: { $ref: "#/components/schemas/FooterLink" }
@@ -15123,7 +15167,9 @@ components:
       description: >
         Tam değiştirme (replace) semantiği — `navigationItems`/`socialLinks`/`footerColumns`
         dizileri gönderilen haliyle mevcut kayıtların tamamının yerini alır.
-        `socialLinks`/`footerColumns` için `id` istemciden GÖNDERİLMEZ (sunucu üretir).
+        `socialLinks` için `id` istemciden GÖNDERİLMEZ (sunucu üretir). Paket O — `footerColumns`
+        ve bağlantıları için `id` (UUID) opsiyonel olarak gönderilebilir ve korunur (payload içinde
+        benzersiz olmalı, aksi 422); her öğe `translations` (`TextTranslations`) taşıyabilir.
         `navigationItems` bunun İSTİSNASIDIR: hiyerarşi (`parentId`) aynı payload içinde
         çözülebilsin diye istemci her öğe için kendi ürettiği bir UUID'yi (`crypto.randomUUID()`)
         `id` olarak gönderebilir ve bu değer gerçek `NavigationItem.id` olarak yazılır
@@ -15171,6 +15217,9 @@ components:
                 format: uuid
                 nullable: true
                 description: "Üst öğenin `id`'si; yok/null ise kök seviye öğe."
+              translations:
+                allOf: [{ $ref: "#/components/schemas/TextTranslations" }]
+                description: "Paket O — `{ <dil>: { label (≤80) } }`."
         socialLinks:
           type: array
           maxItems: 15
@@ -15188,8 +15237,12 @@ components:
             type: object
             required: [title, order, links]
             properties:
+              id: { type: string, format: uuid }
               title: { type: string, minLength: 1, maxLength: 80 }
               order: { type: integer, minimum: 0 }
+              translations:
+                allOf: [{ $ref: "#/components/schemas/TextTranslations" }]
+                description: "Paket O — `{ <dil>: { title (≤80) } }`."
               links:
                 type: array
                 maxItems: 20
@@ -15197,9 +15250,13 @@ components:
                   type: object
                   required: [label, href, order]
                   properties:
+                    id: { type: string, format: uuid }
                     label: { type: string, minLength: 1, maxLength: 80 }
                     href: { type: string, minLength: 1, maxLength: 500 }
                     order: { type: integer, minimum: 0 }
+                    translations:
+                      allOf: [{ $ref: "#/components/schemas/TextTranslations" }]
+                      description: "Paket O — `{ <dil>: { label (≤80) } }`."
 
 
     DailyViewStats:
@@ -20485,6 +20542,11 @@ components:
           description: >
             Kart görselinin mutlak URL'i. Yalnızca uzmanlık uçlarında (`/specialties*`,
             `/admin/telehealth/specialties*`) dolar; doktor yanıtındaki gömülü `specialty` nesnesinde null.
+        translations:
+          allOf: [{ $ref: "#/components/schemas/TextTranslations" }]
+          description: >
+            Paket O — `{ <dil>: { name, description } }`. Public uçlar (`?locale=`) ve doktor
+            yanıtlarındaki gömülü `specialty` aktif dili zaten uygular.
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
 
@@ -21546,6 +21608,9 @@ components:
           format: uuid
           nullable: true
           description: "Kart görseli — yalnızca PNG/JPG/WebP medya (aksi 422); null görseli kaldırır."
+        translations:
+          allOf: [{ $ref: "#/components/schemas/TextTranslations" }]
+          description: "Paket O — `{ <dil>: { name (≤80), description (≤500) } }`; gönderilirse harita tamamen yazılır."
 
     UpdateSpecialtyRequest:
       allOf: [{ $ref: "#/components/schemas/CreateSpecialtyRequest" }]
@@ -22686,6 +22751,12 @@ components:
           type: array
           maxItems: 20
           items: { $ref: "#/components/schemas/SliderLayer" }
+        translations:
+          type: object
+          description: >
+            Paket O — dile özel arka plan görselleri (yalnızca admin DTO; public yanıtta YOK,
+            `?locale=` ile uygulanmış hâli döner). Medya silinmişse o dil kaydı görünmez.
+          additionalProperties: { $ref: "#/components/schemas/SlideLocaleMedia" }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
 
@@ -22789,7 +22860,7 @@ components:
         ifade edemediği için `allOf` + bu uzantı kullanılır; **mapper'da (`toPublicSliderDto`)
         bu iki alan MUTLAKA düşürülür** — `label` panel içi bir not olabilir (sızdırılmaz),
         `isActive` public'te her zaman `true` olurdu (anlamsız alan).
-      x-omitted-properties: [label, isActive]
+      x-omitted-properties: [label, isActive, translations]
       allOf:
         - $ref: "#/components/schemas/Slide"
 
@@ -22934,6 +23005,19 @@ components:
           type: array
           maxItems: 20
           items: { $ref: "#/components/schemas/SliderLayer" }
+        translations:
+          type: object
+          description: >
+            Paket O — `{ <dil>: { bgMediaId, bgTabletMediaId?, bgMobileMediaId? } }`. YALNIZCA medya
+            kütüphanesi id'leri (UUID; dış URL/bilinmeyen alan 422) ve görsel MIME (aksi 422; yok → 404).
+            Masaüstü görseli olmayan dil kaydı atılır. Gönderilirse harita tamamen yazılır.
+          additionalProperties:
+            type: object
+            additionalProperties: false
+            properties:
+              bgMediaId: { type: string, format: uuid, nullable: true }
+              bgTabletMediaId: { type: string, format: uuid, nullable: true }
+              bgMobileMediaId: { type: string, format: uuid, nullable: true }
       additionalProperties: false
 
     ReorderSlidesRequest:

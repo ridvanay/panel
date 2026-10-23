@@ -32,6 +32,7 @@ import { HeroCanvas } from "./hero-canvas";
 import { HeroStudioTimeline } from "./timeline";
 import { HeroStudioInspector, type InspectorTabValue } from "./inspector";
 import { QuickAddToolbar } from "./quick-add-toolbar";
+import { toSlideTranslationsRequest } from "./inspector/slide-locale-images";
 import { SegmentedToggle } from "@/components/admin/page-builder/blocks/segmented-toggle";
 
 const DEVICE_OPTIONS: { value: DeviceMode; label: string; icon: typeof Monitor }[] = [
@@ -108,6 +109,7 @@ function toUpdateSlideRequest(slide: Slide): UpdateSlideRequest {
     linkHref: slide.linkHref,
     linkNewTab: slide.linkNewTab,
     layers: slide.layers,
+    translations: toSlideTranslationsRequest(slide.translations),
   };
 }
 

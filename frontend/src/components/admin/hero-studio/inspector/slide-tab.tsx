@@ -10,6 +10,7 @@ import type { DeviceMode } from "@/lib/page-builder/types";
 import type { Slide, SlideBackgroundType } from "@/lib/sliders/types";
 import { resolveSlideBackgrounds } from "@/components/site/advanced-slider/background";
 import { FocalPointPicker } from "./focal-point-picker";
+import { SlideLocaleImages } from "./slide-locale-images";
 
 const DEVICE_LABEL: Record<DeviceMode, string> = { desktop: "Masaüstü", tablet: "Tablet", mobile: "Mobil" };
 
@@ -71,6 +72,8 @@ export function SlideInspectorTab({ slide, device, onUpdate }: { slide: Slide; d
             value={slide.bgMobileMedia}
             onChange={(media: Media | null) => onUpdate({ bgMobileMedia: media })}
           />
+
+          <SlideLocaleImages slide={slide} onUpdate={onUpdate} />
 
           {current && (
             <div className="space-y-2 rounded-md border border-border p-3">

@@ -9,6 +9,7 @@ import {
 } from "../../schemas/entities";
 import { CursorQuerySchema, TrashedFilterSchema, SafeHrefSchema } from "../../schemas/common";
 import { MAX_SLIDES_PER_SLIDER } from "./lib/constants";
+import { SlideTranslationsSchema } from "./lib/slide-translations";
 
 export const SliderIdParamSchema = z.object({
   sliderId: z.string().uuid(),
@@ -119,6 +120,8 @@ export const UpdateSlideRequestSchema = z.object({
   linkHref: SafeHrefSchema.nullable().optional(),
   linkNewTab: z.boolean().optional(),
   layers: z.array(z.unknown()).optional(),
+  /** Paket O — dile özel arka plan görselleri (yalnızca medya kütüphanesi id'leri; dış URL reddedilir). */
+  translations: SlideTranslationsSchema.optional(),
 });
 
 /**

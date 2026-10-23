@@ -20,6 +20,16 @@ import { parseSlideLayers, type SliderLayer } from "./lib/layers";
 import { MAX_SLIDES_PER_SLIDER } from "./lib/constants";
 import { findSliderUsage } from "./lib/slider-usage";
 import {
+  attachTranslationMedia,
+  localizeSlideBackground,
+  slideTranslationMediaIds,
+  withSlideMedia,
+  withSliderMedia,
+} from "./lib/slide-translations";
+import { LocaleQuerySchema } from "../../schemas/common";
+import { getLocaleSet } from "../../lib/localization";
+import { resolveContentLocaleCode } from "../../lib/entity-translations";
+import {
   TRANSITION_EFFECT_TO_PRISMA,
   HEIGHT_MODE_TO_PRISMA,
   BACKGROUND_TYPE_TO_PRISMA,
@@ -150,7 +160,14 @@ function buildSlideWriteData(body: SlideWriteBody): Record<string, unknown> {
   if (body.durationMs !== undefined) data.durationMs = body.durationMs;
   if (body.linkHref !== undefined) data.linkHref = body.linkHref;
   if (body.linkNewTab !== undefined) data.linkNewTab = body.linkNewTab;
+  // Paket O — dile özel görseller: gönderilirse haritanın TAMAMI yazılır (id'ler route'ta doğrulanır).
+  if (body.translations !== undefined) data.translations = body.translations;
   return data;
+}
+
+/** Paket O — dil görsellerinin her biri kütüphanede VAR olan bir GÖRSEL olmalı (dış URL zaten şemada reddedilir). */
+async function assertSlideTranslationMedia(app: FastifyInstance, translations: unknown): Promise<void> {
+  for (const id of slideTranslationMediaIds(translations)) await assertImageMedia(app, id);
 }
 
 /** `/admin/sliders` prefix'i altında bağlanır (bkz. app.ts) — §1.7 yetki tablosu: okuma ADMIN/MANAGER/EDITOR, yazma ADMIN/MANAGER. */
@@ -258,7 +275,7 @@ export async function adminSlidersRoutes(app: FastifyInstance) {
         include: { slides: { include: WITH_SLIDE_RELATIONS, ...SLIDES_ORDER_ASC } },
       });
       if (!slider) throw new NotFoundError("Slider bulunamadı.");
-      return reply.send(ok(toSliderDto(slider)));
+      return reply.send(ok(toSliderDto(await withSliderMedia(app.prisma, slider))));
     }
   );
 
@@ -296,7 +313,7 @@ export async function adminSlidersRoutes(app: FastifyInstance) {
       });
 
 
-      return reply.send(ok(toSliderDto(updated)));
+      return reply.send(ok(toSliderDto(await withSliderMedia(app.prisma, updated))));
     }
   );
 
@@ -364,7 +381,7 @@ export async function adminSlidersRoutes(app: FastifyInstance) {
         where: { id: existing.id },
         include: { slides: { include: WITH_SLIDE_RELATIONS, ...SLIDES_ORDER_ASC } },
       });
-      return reply.send(ok(toSliderDto(slider!)));
+      return reply.send(ok(toSliderDto(await withSliderMedia(app.prisma, slider!))));
     }
   );
 
@@ -474,6 +491,7 @@ export async function adminSlidersRoutes(app: FastifyInstance) {
               linkHref: slide.linkHref,
               linkNewTab: slide.linkNewTab,
               layers: regenerateLayerIds(slide.layers) as unknown as Prisma.InputJsonValue,
+              translations: (slide.translations ?? {}) as Prisma.InputJsonValue,
             },
           });
         }
@@ -493,7 +511,7 @@ export async function adminSlidersRoutes(app: FastifyInstance) {
         ipAddress: request.ip,
       });
 
-      return reply.code(201).send(ok(toSliderDto(duplicated!)));
+      return reply.code(201).send(ok(toSliderDto(await withSliderMedia(app.prisma, duplicated!))));
     }
   );
 
@@ -530,6 +548,7 @@ export async function adminSlidersRoutes(app: FastifyInstance) {
       if (rest.bgVideoPosterMediaId) await assertImageMedia(app, rest.bgVideoPosterMediaId);
       if (rest.bgTabletMediaId) await assertImageMedia(app, rest.bgTabletMediaId);
       if (rest.bgMobileMediaId) await assertImageMedia(app, rest.bgMobileMediaId);
+      await assertSlideTranslationMedia(app, rest.translations);
 
       const currentCount = await app.prisma.slide.count({ where: { sliderId: slider.id } });
       if (currentCount >= MAX_SLIDES_PER_SLIDER) {
@@ -564,7 +583,7 @@ export async function adminSlidersRoutes(app: FastifyInstance) {
       });
 
 
-      return reply.code(201).send(ok(toSlideDto(created)));
+      return reply.code(201).send(ok(toSlideDto(await withSlideMedia(app.prisma, created))));
     }
   );
 
@@ -614,7 +633,7 @@ export async function adminSlidersRoutes(app: FastifyInstance) {
       });
 
 
-      return reply.send(ok(updated.map(toSlideDto)));
+      return reply.send(ok((await attachTranslationMedia(app.prisma, updated)).map(toSlideDto)));
     }
   );
 
@@ -636,6 +655,7 @@ export async function adminSlidersRoutes(app: FastifyInstance) {
       if (rest.bgVideoPosterMediaId) await assertImageMedia(app, rest.bgVideoPosterMediaId);
       if (rest.bgTabletMediaId) await assertImageMedia(app, rest.bgTabletMediaId);
       if (rest.bgMobileMediaId) await assertImageMedia(app, rest.bgMobileMediaId);
+      await assertSlideTranslationMedia(app, rest.translations);
 
       const data = buildSlideWriteData(rest);
       if (parsedLayers !== undefined) data.layers = parsedLayers as unknown as Prisma.InputJsonValue;
@@ -656,7 +676,7 @@ export async function adminSlidersRoutes(app: FastifyInstance) {
       });
 
 
-      return reply.send(ok(toSlideDto(updated)));
+      return reply.send(ok(toSlideDto(await withSlideMedia(app.prisma, updated))));
     }
   );
 
@@ -749,6 +769,7 @@ export async function adminSlidersRoutes(app: FastifyInstance) {
             linkHref: existing.linkHref,
             linkNewTab: existing.linkNewTab,
             layers: regenerateLayerIds(existing.layers) as unknown as Prisma.InputJsonValue,
+            translations: (existing.translations ?? {}) as Prisma.InputJsonValue,
           },
         });
 
@@ -772,7 +793,7 @@ export async function adminSlidersRoutes(app: FastifyInstance) {
       });
 
 
-      return reply.code(201).send(ok(toSlideDto(duplicated!)));
+      return reply.code(201).send(ok(toSlideDto(await withSlideMedia(app.prisma, duplicated!))));
     }
   );
 }
@@ -787,7 +808,7 @@ export async function publicSlidersRoutes(app: FastifyInstance) {
   server.get(
     "/:sliderId",
     {
-      schema: { params: SliderIdParamSchema, response: { 200: ApiSuccessSchema(PublicSliderSchema) } },
+      schema: { params: SliderIdParamSchema, querystring: LocaleQuerySchema, response: { 200: ApiSuccessSchema(PublicSliderSchema) } },
     },
     async (request, reply) => {
       // Filtre: `deletedAt = null` VE yalnızca `isActive: true` slaytlar, `order asc`.
@@ -797,7 +818,10 @@ export async function publicSlidersRoutes(app: FastifyInstance) {
       });
       if (!slider) throw new NotFoundError("Slider bulunamadı.");
 
-      return reply.send(ok(toPublicSliderDto(slider)));
+      // Paket O — `?locale=`: dile özel görsel varsa varsayılan görsellerin yerine geçer (varsayılan dil dahil).
+      const contentLocale = request.query.locale ? resolveContentLocaleCode(await getLocaleSet(app), request.query.locale) : undefined;
+      const withMedia = await withSliderMedia(app.prisma, slider);
+      return reply.send(ok(toPublicSliderDto({ ...withMedia, slides: withMedia.slides.map((slide) => localizeSlideBackground(slide, contentLocale)) })));
     }
   );
 }

@@ -7,7 +7,8 @@ import { authenticateOptional } from "../../middleware/authenticate";
 import { ok } from "../../lib/envelope";
 import { ApiSuccessSchema, LocaleQuerySchema } from "../../schemas/common";
 import { getLocaleSet, resolveEffectiveLocaleCode } from "../../lib/localization";
-import { localizeDoctor } from "./lib/doctor-localization";
+import { localizeDoctor, localizeDoctorSpecialties, localizeSpecialty } from "./lib/doctor-localization";
+import { resolveContentLocaleCode } from "../../lib/entity-translations";
 import {
   AppointmentBookingSchema,
   AppointmentDocumentSchema,
@@ -220,8 +221,16 @@ export async function telehealthRoutes(app: FastifyInstance) {
       });
 
       // Paket L — `?locale=` ile title/bio/aboutHtml/subSpecialty çevirisi (yoksa kanonik).
-      const effectiveLocale = locale ? resolveEffectiveLocaleCode(await getLocaleSet(app), locale) : undefined;
-      return reply.send(ok(rows.map((row) => toDoctorProfileDto(localizeDoctor(row, effectiveLocale))), buildPageMeta(rows, limit)));
+      // Paket O — uzmanlık adları da aktif dilde (varsayılan dil dahil; yoksa kanonik EN).
+      const localeSet = locale ? await getLocaleSet(app) : null;
+      const effectiveLocale = localeSet ? resolveEffectiveLocaleCode(localeSet, locale) : undefined;
+      const contentLocale = localeSet ? resolveContentLocaleCode(localeSet, locale) : undefined;
+      return reply.send(
+        ok(
+          rows.map((row) => toDoctorProfileDto(localizeDoctorSpecialties(localizeDoctor(row, effectiveLocale), contentLocale))),
+          buildPageMeta(rows, limit)
+        )
+      );
     }
   );
 
@@ -235,8 +244,10 @@ export async function telehealthRoutes(app: FastifyInstance) {
       });
       if (!doctor) throw new NotFoundError("Doktor bulunamadı.");
       const { locale } = request.query;
-      const effectiveLocale = locale ? resolveEffectiveLocaleCode(await getLocaleSet(app), locale) : undefined;
-      return reply.send(ok(toDoctorProfileDto(localizeDoctor(doctor, effectiveLocale))));
+      const localeSet = locale ? await getLocaleSet(app) : null;
+      const effectiveLocale = localeSet ? resolveEffectiveLocaleCode(localeSet, locale) : undefined;
+      const contentLocale = localeSet ? resolveContentLocaleCode(localeSet, locale) : undefined;
+      return reply.send(ok(toDoctorProfileDto(localizeDoctorSpecialties(localizeDoctor(doctor, effectiveLocale), contentLocale))));
     }
   );
 
@@ -295,20 +306,23 @@ export async function telehealthRoutes(app: FastifyInstance) {
   // İLE AYNI "tüm satırları tek seferde dön" kararı, bkz. telehealth.admin.routes.ts).
   server.get(
     "/specialties",
-    { schema: { response: { 200: ApiSuccessSchema(z.array(SpecialtySchema)) } } },
-    async (_request, reply) => {
+    { schema: { querystring: LocaleQuerySchema, response: { 200: ApiSuccessSchema(z.array(SpecialtySchema)) } } },
+    async (request, reply) => {
       const rows = await app.prisma.specialty.findMany({
         where: { isActive: true },
         orderBy: { order: "asc" },
         include: { imageMedia: true },
       });
-      return reply.send(ok(rows.map(toSpecialtyDto)));
+      const contentLocale = request.query.locale ? resolveContentLocaleCode(await getLocaleSet(app), request.query.locale) : undefined;
+      return reply.send(ok(rows.map((row) => toSpecialtyDto(localizeSpecialty(row, contentLocale)))));
     }
   );
 
   server.get(
     "/specialties/:slug",
-    { schema: { params: SpecialtySlugParamSchema, response: { 200: ApiSuccessSchema(SpecialtyWithDoctorCountSchema) } } },
+    {
+      schema: { params: SpecialtySlugParamSchema, querystring: LocaleQuerySchema, response: { 200: ApiSuccessSchema(SpecialtyWithDoctorCountSchema) } },
+    },
     async (request, reply) => {
       const specialty = await app.prisma.specialty.findFirst({
         where: { slug: request.params.slug, isActive: true },
@@ -325,7 +339,8 @@ export async function telehealthRoutes(app: FastifyInstance) {
         },
       });
 
-      return reply.send(ok(toSpecialtyWithDoctorCountDto(specialty, doctorCount)));
+      const contentLocale = request.query.locale ? resolveContentLocaleCode(await getLocaleSet(app), request.query.locale) : undefined;
+      return reply.send(ok(toSpecialtyWithDoctorCountDto(localizeSpecialty(specialty, contentLocale), doctorCount)));
     }
   );
 

@@ -195,12 +195,23 @@ export interface Slide {
   linkHref: string | null;
   linkNewTab: boolean;
   layers: SliderLayer[];
+  /**
+   * Paket O — dile özel arka plan görselleri (yalnızca admin): görsele gömülü yazı dile göre
+   * değişsin diye. Yalnızca medya kütüphanesinden; tablet/mobil yoksa o dilin masaüstü görseli.
+   */
+  translations?: Record<string, SlideLocaleMedia>;
   createdAt: string;
   updatedAt: string;
 }
 
-/** `GET /sliders/{sliderId}` yanıtındaki slayt şekli — `label`/`isActive` DÜŞÜRÜLMÜŞTÜR. */
-export type PublicSlide = Omit<Slide, "label" | "isActive">;
+export interface SlideLocaleMedia {
+  bgMedia: Media;
+  bgTabletMedia: Media | null;
+  bgMobileMedia: Media | null;
+}
+
+/** `GET /sliders/{sliderId}` yanıtındaki slayt şekli — `label`/`isActive`/`translations` DÜŞÜRÜLMÜŞTÜR (public uç aktif dili uygular). */
+export type PublicSlide = Omit<Slide, "label" | "isActive" | "translations">;
 
 /** Slider seviyesi davranış/görünüm ayarları — `Slider` ve `PublicSlider` bunu PAYLAŞIR. */
 export interface SliderSettings {
@@ -306,6 +317,8 @@ export interface UpdateSlideRequest {
   linkHref?: string | null;
   linkNewTab?: boolean;
   layers?: SliderLayer[];
+  /** Paket O — dil başına görsel id'leri (yalnızca kütüphane medyası); gönderilirse tamamı yazılır. */
+  translations?: Record<string, { bgMediaId: string; bgTabletMediaId?: string | null; bgMobileMediaId?: string | null }>;
 }
 
 export interface CreateSlideRequest extends UpdateSlideRequest {

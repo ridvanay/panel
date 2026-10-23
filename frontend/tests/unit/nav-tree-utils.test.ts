@@ -234,11 +234,11 @@ describe("nav-tree-utils", () => {
 
       const payload = toNavigationItemsPayload(items);
       expect(payload).toEqual([
-        { id: "a", label: "a", href: "/a", order: 0, parentId: null },
-        { id: "a1", label: "a1", href: "/a1", order: 0, parentId: "a" },
-        { id: "a2", label: "a2", href: "/a2", order: 1, parentId: "a" },
-        { id: "b", label: "b", href: "/b", order: 1, parentId: null },
-        { id: "b1", label: "b1", href: "/b1", order: 0, parentId: "b" },
+        { id: "a", label: "a", href: "/a", order: 0, parentId: null, translations: {} },
+        { id: "a1", label: "a1", href: "/a1", order: 0, parentId: "a", translations: {} },
+        { id: "a2", label: "a2", href: "/a2", order: 1, parentId: "a", translations: {} },
+        { id: "b", label: "b", href: "/b", order: 1, parentId: null, translations: {} },
+        { id: "b1", label: "b1", href: "/b1", order: 0, parentId: "b", translations: {} },
       ]);
     });
   });

@@ -1096,6 +1096,11 @@ model Slide {
   // MAX_SLIDE_LAYERS_BYTES (64 KB); ikisi de backend Zod katmanında zorlanır.
   layers Json @default("[]")
 
+  // Paket O — dile özel arka plan görseli (görsele gömülü yazılar için):
+  // { "<dil>": { "bgMediaId": "<uuid>", "bgTabletMediaId"?: "<uuid>", "bgMobileMediaId"?: "<uuid>" } }.
+  // YALNIZCA medya kütüphanesi id'leri (görsel MIME) — dış URL kabul edilmez. Yoksa varsayılan görseller.
+  translations Json @default("{}")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1555,6 +1560,8 @@ model NavigationItem {
   // (cycle) ve kendine referans yapısal olarak imkânsızdır.
   parentId  String?
   createdAt DateTime @default(now())
+  // Paket O — dil başına etiket: { "<dil>": { "label": "..." } }. Yoksa kanonik (EN) `label`.
+  translations Json @default("{}")
 
   // Self-relation. Cascade: bir üst öğe silinirse alt öğeleri de silinir — DB'de asla
   // öksüz (orphan) alt menü kalmaz. (PUT /admin/navigation tam-replace olduğu için pratikte
@@ -1596,6 +1603,8 @@ model FooterColumn {
   order     Int
   title     String
   createdAt DateTime @default(now())
+  // Paket O — dil başına başlık: { "<dil>": { "title": "..." } }. Yoksa kanonik (EN) `title`.
+  translations Json @default("{}")
 
   links FooterLink[]
 
@@ -1609,6 +1618,8 @@ model FooterLink {
   order    Int
   label    String
   href     String
+  // Paket O — dil başına etiket: { "<dil>": { "label": "..." } }. Yoksa kanonik (EN) `label`.
+  translations Json @default("{}")
 
   column FooterColumn @relation(fields: [columnId], references: [id], onDelete: Cascade)
 
@@ -2197,6 +2208,8 @@ model Specialty {
   imageMediaId String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  /// Paket O — dil başına ad/açıklama: { "<dil>": { "name": "...", "description": "..." } }. Yoksa kanonik (EN).
+  translations Json     @default("{}")
 
   doctors    DoctorProfile[]
   imageMedia Media?          @relation("SpecialtyImageMedia", fields: [imageMediaId], references: [id], onDelete: SetNull)

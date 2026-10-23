@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { FlatNavItem } from "./nav-tree-utils";
+import type { TextTranslations } from "@/lib/api/types";
+import { CANONICAL_LOCALE_CODE, getTranslation, isCanonicalLocale, setTranslation } from "@/components/admin/translation-locale-tabs";
 
 interface NavTreeRowProps {
   item: FlatNavItem;
@@ -24,9 +26,11 @@ interface NavTreeRowProps {
   onOutdent: (id: string) => void;
   onMoveUp: (id: string) => void;
   onMoveDown: (id: string) => void;
-  onUpdate: (id: string, patch: { label?: string; href?: string }) => void;
+  onUpdate: (id: string, patch: { label?: string; href?: string; translations?: TextTranslations }) => void;
   onRemove: (id: string) => void;
   hrefHint: string;
+  /** Paket O — düzenlenen dil (varsayılan kanonik EN). */
+  locale?: string;
 }
 
 /**
@@ -53,8 +57,12 @@ export const NavTreeRow = memo(function NavTreeRow({
   onUpdate,
   onRemove,
   hrefHint,
+  locale = CANONICAL_LOCALE_CODE,
 }: NavTreeRowProps) {
   const [editOpen, setEditOpen] = useState(false);
+  const canonical = isCanonicalLocale(locale);
+  const translatedLabel = canonical ? "" : getTranslation(item.translations, locale, "label");
+  const displayLabel = translatedLabel || item.label;
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
 
   const style = {
@@ -82,7 +90,9 @@ export const NavTreeRow = memo(function NavTreeRow({
         >
           <GripVertical className="h-4 w-4" />
         </button>
-        <span className="flex-1 truncate text-sm font-medium text-foreground">{item.label || "Adsız öğe"}</span>
+        <span className={cn("flex-1 truncate text-sm font-medium text-foreground", !canonical && !translatedLabel && "text-foreground/50 italic")}>
+          {displayLabel || "Adsız öğe"}
+        </span>
         <span className="hidden max-w-[160px] truncate text-xs text-foreground/40 sm:inline">{item.href}</span>
         <Button
           type="button"
@@ -140,14 +150,25 @@ export const NavTreeRow = memo(function NavTreeRow({
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <label htmlFor={`nav-tree-label-${item.id}`} className="block text-xs font-medium text-foreground/70">
-                Etiket
+                {canonical ? "Etiket" : `Etiket (${locale.toUpperCase()})`}
               </label>
-              <Input
-                id={`nav-tree-label-${item.id}`}
-                value={item.label}
-                onChange={(e) => onUpdate(item.id, { label: e.target.value })}
-                placeholder="Ör. Hakkımızda"
-              />
+              {canonical ? (
+                <Input
+                  id={`nav-tree-label-${item.id}`}
+                  value={item.label}
+                  onChange={(e) => onUpdate(item.id, { label: e.target.value })}
+                  placeholder="Ör. Hakkımızda"
+                />
+              ) : (
+                <Input
+                  key={locale}
+                  id={`nav-tree-label-${item.id}`}
+                  value={translatedLabel}
+                  onChange={(e) => onUpdate(item.id, { translations: setTranslation(item.translations, locale, "label", e.target.value) })}
+                  placeholder={item.label}
+                  maxLength={80}
+                />
+              )}
             </div>
             <div className="space-y-1.5">
               <label htmlFor={`nav-tree-href-${item.id}`} className="block text-xs font-medium text-foreground/70">

@@ -8,7 +8,9 @@ import type { PublicSlider } from "../sliders/types";
  * bulunamayan slider → `404` → burada `null`'a düşer, blok public tarafta SESSİZCE hiçbir şey
  * render etmez (`server-portfolio.ts` deseniyle AYNI, bkz. architect §5.1/§6.2).
  */
-export async function fetchSliderServer(sliderId: string): Promise<PublicSlider | null> {
-  const json = await fetchServerJson<{ data: PublicSlider }>(`/sliders/${sliderId}`, { tags: [sliderCacheTag(sliderId)] });
+export async function fetchSliderServer(sliderId: string, locale?: string): Promise<PublicSlider | null> {
+  // Paket O — `?locale=`: slayta o dil için görsel tanımlıysa varsayılan görselin yerine o döner.
+  const query = locale ? `?locale=${encodeURIComponent(locale)}` : "";
+  const json = await fetchServerJson<{ data: PublicSlider }>(`/sliders/${sliderId}${query}`, { tags: [sliderCacheTag(sliderId)] });
   return json?.data ?? null;
 }

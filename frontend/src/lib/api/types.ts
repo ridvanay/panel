@@ -1923,6 +1923,12 @@ export type SocialPlatform = "TWITTER" | "GITHUB" | "LINKEDIN" | "INSTAGRAM" | "
  * grubu içinde 0'dan artar). Sunucu diziyi `(parentId NULLS FIRST, order)` ile döner — kök
  * öğeler her zaman alt öğelerden önce gelir. Bkz. ARCHITECTURE.md §10.10.1.
  */
+/**
+ * Paket O — dil başına düz metin çevirileri `{ "<dil>": { alan: metin } }`. Kanonik kolon EN metindir;
+ * TR dahil diğer diller burada. Yalnızca admin okumalarında gelir (public yanıt aktif dili uygular).
+ */
+export type TextTranslations = Record<string, Record<string, string>>;
+
 export interface NavigationItemDto {
   id: string;
   label: string;
@@ -1930,6 +1936,7 @@ export interface NavigationItemDto {
   order: number;
   /** Üst öğenin `id`'si; null ise kök seviye öğedir. */
   parentId: string | null;
+  translations?: TextTranslations;
 }
 
 export interface SocialLinkDto {
@@ -1944,6 +1951,7 @@ export interface FooterLinkDto {
   label: string;
   href: string;
   order: number;
+  translations?: TextTranslations;
 }
 
 export interface FooterColumnDto {
@@ -1951,6 +1959,7 @@ export interface FooterColumnDto {
   title: string;
   order: number;
   links: FooterLinkDto[];
+  translations?: TextTranslations;
 }
 
 export interface NavigationConfigDto {
@@ -1975,9 +1984,16 @@ export interface UpdateNavigationConfigRequest {
   headerCtaLabel?: string | null;
   headerCtaHref?: string | null;
   footerCopyrightText?: string | null;
-  navigationItems: { id?: string; label: string; href: string; order: number; parentId?: string | null }[];
+  navigationItems: { id?: string; label: string; href: string; order: number; parentId?: string | null; translations?: TextTranslations }[];
   socialLinks: { platform: SocialPlatform; url: string; order: number }[];
-  footerColumns: { title: string; order: number; links: { label: string; href: string; order: number }[] }[];
+  /** Paket O — footer `id`'leri korunur (çeviri export/import eşleşmesi için) ve dil başına metinler. */
+  footerColumns: {
+    id?: string;
+    title: string;
+    order: number;
+    translations?: TextTranslations;
+    links: { id?: string; label: string; href: string; order: number; translations?: TextTranslations }[];
+  }[];
 }
 
 /**
@@ -3702,6 +3718,8 @@ export interface Specialty {
    * `specialty` nesnesinde her zaman `null`dır.
    */
   imageUrl: string | null;
+  /** Paket O — dil başına `name`/`description` (EN kanonik; TR dahil diğer diller burada). */
+  translations?: TextTranslations;
   createdAt: string;
   updatedAt: string;
 }
@@ -3715,6 +3733,8 @@ export interface CreateSpecialtyRequest {
   isActive?: boolean;
   /** Yalnızca PNG/JPG/WebP medya; `null` görseli kaldırır. */
   imageMediaId?: string | null;
+  /** Paket O — gönderilirse haritanın tamamı yazılır. */
+  translations?: TextTranslations;
 }
 
 export type UpdateSpecialtyRequest = Partial<CreateSpecialtyRequest>;

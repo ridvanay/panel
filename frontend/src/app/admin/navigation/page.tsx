@@ -42,6 +42,15 @@ import { useModules } from "@/context/modules-context";
 import { ContentPickerPanel, type ContentPickerSection } from "@/components/admin/navigation/content-picker-panel";
 import { NavTreeEditor } from "@/components/admin/navigation/nav-tree-editor";
 import { appendRootItems, toNavigationItemsPayload, type FlatNavItem } from "@/components/admin/navigation/nav-tree-utils";
+import {
+  CANONICAL_LOCALE_CODE,
+  TranslationLocaleTabs,
+  getTranslation,
+  isCanonicalLocale,
+  setTranslation,
+  useTranslationLocales,
+} from "@/components/admin/translation-locale-tabs";
+import type { TextTranslations } from "@/lib/api/types";
 import { useUnsavedChangesGuard } from "@/hooks/use-unsaved-changes-guard";
 
 const HREF_HINT =
@@ -63,16 +72,27 @@ interface LocalSocialLink {
   url: string;
 }
 
+// Paket O — `localId` aynı zamanda kalıcı `id`dir (UUID; kayıtta korunur → çeviri export/import eşleşir).
 interface LocalFooterLink {
   localId: string;
   label: string;
   href: string;
+  translations?: TextTranslations;
 }
 
 interface LocalFooterColumn {
   localId: string;
   title: string;
   links: LocalFooterLink[];
+  translations?: TextTranslations;
+}
+
+function footerSnapshot(columns: LocalFooterColumn[]): LocationsSnapshot["footerColumns"] {
+  return columns.map((c) => ({
+    title: c.title,
+    translations: c.translations ?? {},
+    links: c.links.map((l) => ({ label: l.label, href: l.href, translations: l.translations ?? {} })),
+  }));
 }
 
 /** Backend `settings.schemas.ts::SiteIconUrlSchema` ile aynı kural — yalnızca PNG. */
@@ -92,7 +112,7 @@ interface LocationsSnapshot {
   headerCtaHref: string;
   footerCopyrightText: string;
   socialLinks: { platform: SocialPlatform; url: string }[];
-  footerColumns: { title: string; links: { label: string; href: string }[] }[];
+  footerColumns: { title: string; translations: TextTranslations; links: { label: string; href: string; translations: TextTranslations }[] }[];
 }
 
 /** Sayı input'larını (ör. logo boyutu) blur anında [min, max] aralığına sıkıştırır — kullanıcı
@@ -214,6 +234,10 @@ function AdminNavigationPageContent() {
   const [footerCopyrightText, setFooterCopyrightText] = useState("");
   const [socialLinks, setSocialLinks] = useState<LocalSocialLink[]>([]);
   const [footerColumns, setFooterColumns] = useState<LocalFooterColumn[]>([]);
+  // Paket O — menü/footer etiketlerinin düzenlenen dili (EN = kanonik).
+  const translationLocales = useTranslationLocales();
+  const [contentLocale, setContentLocale] = useState(CANONICAL_LOCALE_CODE);
+  const canonicalLocale = isCanonicalLocale(contentLocale);
   const [locationsSnapshot, setLocationsSnapshot] = useState<LocationsSnapshot | null>(null);
 
   const load = useCallback(async () => {
@@ -256,7 +280,7 @@ function AdminNavigationPageContent() {
 
       const loadedNavItems: FlatNavItem[] = [...navConfig.navigationItems]
         .sort((a, b) => a.order - b.order)
-        .map((item) => ({ id: item.id, label: item.label, href: item.href, parentId: item.parentId }));
+        .map((item) => ({ id: item.id, label: item.label, href: item.href, parentId: item.parentId, translations: item.translations ?? {} }));
       setNavigationItems(loadedNavItems);
       setMenuSnapshot(loadedNavItems);
 
@@ -268,11 +292,12 @@ function AdminNavigationPageContent() {
       const loadedFooterColumns = [...navConfig.footerColumns]
         .sort((a, b) => a.order - b.order)
         .map((column) => ({
-          localId: crypto.randomUUID(),
+          localId: column.id,
           title: column.title,
+          translations: column.translations ?? {},
           links: [...column.links]
             .sort((a, b) => a.order - b.order)
-            .map((link) => ({ localId: crypto.randomUUID(), label: link.label, href: link.href })),
+            .map((link) => ({ localId: link.id, label: link.label, href: link.href, translations: link.translations ?? {} })),
         }));
       setFooterColumns(loadedFooterColumns);
 
@@ -288,7 +313,7 @@ function AdminNavigationPageContent() {
         headerCtaHref: navConfig.headerCtaHref ?? "",
         footerCopyrightText: navConfig.footerCopyrightText ?? "",
         socialLinks: loadedSocialLinks.map((l) => ({ platform: l.platform, url: l.url })),
-        footerColumns: loadedFooterColumns.map((c) => ({ title: c.title, links: c.links.map((l) => ({ label: l.label, href: l.href })) })),
+        footerColumns: footerSnapshot(loadedFooterColumns),
       });
 
       setLoaded(true);
@@ -322,7 +347,7 @@ function AdminNavigationPageContent() {
       headerCtaHref,
       footerCopyrightText,
       socialLinks: socialLinks.map((l) => ({ platform: l.platform, url: l.url })),
-      footerColumns: footerColumns.map((c) => ({ title: c.title, links: c.links.map((l) => ({ label: l.label, href: l.href })) })),
+      footerColumns: footerSnapshot(footerColumns),
     };
     return JSON.stringify(current) !== JSON.stringify(locationsSnapshot);
   }, [
@@ -369,7 +394,30 @@ function AdminNavigationPageContent() {
     setFooterColumns((prev) => [...prev, { localId: crypto.randomUUID(), title: "", links: [] }]);
   }
   function updateFooterColumnTitle(index: number, title: string) {
-    setFooterColumns((prev) => prev.map((col, i) => (i === index ? { ...col, title } : col)));
+    setFooterColumns((prev) =>
+      prev.map((col, i) =>
+        i !== index ? col : canonicalLocale ? { ...col, title } : { ...col, translations: setTranslation(col.translations, contentLocale, "title", title) }
+      )
+    );
+  }
+  /** Paket O — etiket: EN sekmesinde kanonik `label`, diğer dillerde `translations.<dil>.label`. */
+  function updateFooterColumnLinkLabel(columnIndex: number, linkIndex: number, label: string) {
+    setFooterColumns((prev) =>
+      prev.map((col, i) =>
+        i !== columnIndex
+          ? col
+          : {
+              ...col,
+              links: col.links.map((link, j) =>
+                j !== linkIndex
+                  ? link
+                  : canonicalLocale
+                    ? { ...link, label }
+                    : { ...link, translations: setTranslation(link.translations, contentLocale, "label", label) }
+              ),
+            }
+      )
+    );
   }
   function moveFooterColumn(index: number, direction: -1 | 1) {
     setFooterColumns((prev) => moveItemInList(prev, index, direction));
@@ -468,9 +516,17 @@ function AdminNavigationPageContent() {
         navigationItems: toNavigationItemsPayload(navigationItems),
         socialLinks: socialLinks.map((link, index) => ({ platform: link.platform, url: link.url, order: index })),
         footerColumns: footerColumns.map((col, index) => ({
+          id: col.localId,
           title: col.title,
           order: index,
-          links: col.links.map((link, linkIndex) => ({ label: link.label, href: link.href, order: linkIndex })),
+          translations: col.translations ?? {},
+          links: col.links.map((link, linkIndex) => ({
+            id: link.localId,
+            label: link.label,
+            href: link.href,
+            order: linkIndex,
+            translations: link.translations ?? {},
+          })),
         })),
       };
 
@@ -501,7 +557,7 @@ function AdminNavigationPageContent() {
         headerCtaHref,
         footerCopyrightText,
         socialLinks: socialLinks.map((l) => ({ platform: l.platform, url: l.url })),
-        footerColumns: footerColumns.map((c) => ({ title: c.title, links: c.links.map((l) => ({ label: l.label, href: l.href })) })),
+        footerColumns: footerSnapshot(footerColumns),
       });
     } catch (err) {
       const message = friendlyErrorMessage(err);
@@ -647,7 +703,13 @@ function AdminNavigationPageContent() {
                     Sürükleyerek sıralayın; sağa sürükleyerek (veya girinti butonlarıyla) bir üst öğenin altına taşıyın.
                   </p>
                 </div>
-                <NavTreeEditor items={navigationItems} onChange={setNavigationItems} hrefHint={HREF_HINT} />
+                <TranslationLocaleTabs
+                  locales={translationLocales}
+                  value={contentLocale}
+                  onValueChange={setContentLocale}
+                  entries={navigationItems.map((item) => ({ translations: item.translations, fields: ["label"] }))}
+                />
+                <NavTreeEditor items={navigationItems} onChange={setNavigationItems} hrefHint={HREF_HINT} locale={contentLocale} />
               </Card>
             </motion.div>
           </div>
@@ -890,6 +952,15 @@ function AdminNavigationPageContent() {
 
                 <SectionCard title="Footer Sütunları" description="Footer'da sütunlar halinde gösterilecek link grupları.">
                   <div className="space-y-4">
+                    <TranslationLocaleTabs
+                      locales={translationLocales}
+                      value={contentLocale}
+                      onValueChange={setContentLocale}
+                      entries={footerColumns.flatMap((column) => [
+                        { translations: column.translations, fields: ["title"] },
+                        ...column.links.map((link) => ({ translations: link.translations, fields: ["label"] })),
+                      ])}
+                    />
                     {footerColumns.length === 0 && (
                       <p className="rounded-lg border border-dashed border-border p-4 text-center text-sm text-foreground/50">
                         Henüz footer sütunu yok.
@@ -900,13 +971,13 @@ function AdminNavigationPageContent() {
                         <div className="flex flex-wrap items-end gap-2">
                           <div className="min-w-[160px] flex-1 space-y-1.5">
                             <label htmlFor={`col-title-${column.localId}`} className="block text-xs font-medium text-foreground/70">
-                              Sütun başlığı
+                              {canonicalLocale ? "Sütun başlığı" : `Sütun başlığı (${contentLocale.toUpperCase()})`}
                             </label>
                             <Input
                               id={`col-title-${column.localId}`}
-                              value={column.title}
+                              value={canonicalLocale ? column.title : getTranslation(column.translations, contentLocale, "title")}
                               onChange={(e) => updateFooterColumnTitle(columnIndex, e.target.value)}
-                              placeholder="Ör. Şirket"
+                              placeholder={canonicalLocale ? "Ör. Şirket" : column.title}
                             />
                           </div>
                           <RowActions
@@ -923,13 +994,13 @@ function AdminNavigationPageContent() {
                             <div key={link.localId} className="flex flex-wrap items-end gap-2 rounded-lg border border-border/60 p-3">
                               <div className="min-w-[120px] flex-1 space-y-1.5">
                                 <label htmlFor={`col-link-label-${link.localId}`} className="block text-xs font-medium text-foreground/70">
-                                  Etiket
+                                  {canonicalLocale ? "Etiket" : `Etiket (${contentLocale.toUpperCase()})`}
                                 </label>
                                 <Input
                                   id={`col-link-label-${link.localId}`}
-                                  value={link.label}
-                                  onChange={(e) => updateFooterColumnLink(columnIndex, linkIndex, { label: e.target.value })}
-                                  placeholder="Ör. Gizlilik Politikası"
+                                  value={canonicalLocale ? link.label : getTranslation(link.translations, contentLocale, "label")}
+                                  onChange={(e) => updateFooterColumnLinkLabel(columnIndex, linkIndex, e.target.value)}
+                                  placeholder={canonicalLocale ? "Ör. Gizlilik Politikası" : link.label}
                                 />
                               </div>
                               <div className="min-w-[140px] flex-1 space-y-1.5">

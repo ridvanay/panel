@@ -47,14 +47,14 @@ export default async function SiteLayout({
   const [settings, pages, navigation, appearance, productsModuleEnabled, telehealthModuleEnabled, dict, crmConfig] = await Promise.all([
     fetchSiteSettingsServer(),
     fetchPublishedPagesServer(lang),
-    fetchNavigationConfigServer(),
+    fetchNavigationConfigServer(lang),
     fetchSiteAppearanceServer(),
     isModuleEnabledServer("products"),
     isModuleEnabledServer("telehealth"),
     getSiteDictionary(lang),
     fetchCrmConfigServer(),
   ]);
-  const navSpecialties = telehealthModuleEnabled ? await fetchSpecialtiesServer() : [];
+  const navSpecialties = telehealthModuleEnabled ? await fetchSpecialtiesServer(lang) : [];
 
   const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? activeLocale.code;
 

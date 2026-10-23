@@ -166,6 +166,8 @@ import {
   computeProductSeoScore,
 } from "../lib/seo-score";
 import { canUseAdvancedBuilder } from "../lib/builder-capability";
+import { readTranslations } from "../lib/entity-translations";
+import { readSlideTranslations, resolveSlideTranslationMedia } from "../modules/sliders/lib/slide-translations";
 import { DUPLICATE_STRATEGY_FROM_PRISMA, SEVERITY_FROM_PRISMA } from "../modules/import/import.constants";
 import {
   TRANSITION_EFFECT_FROM_PRISMA,
@@ -484,7 +486,12 @@ interface NavigationConfigInput {
   footerColumns: FooterColumnWithLinks[];
 }
 
-export function toNavigationConfigDto({ settings, navigationItems, socialLinks, footerColumns }: NavigationConfigInput): NavigationConfigDto {
+/** Paket O — `omitTranslations`: public (dil uygulanmış) yanıtta ham çeviri haritaları gönderilmez. */
+export function toNavigationConfigDto(
+  { settings, navigationItems, socialLinks, footerColumns }: NavigationConfigInput,
+  { omitTranslations = false }: { omitTranslations?: boolean } = {}
+): NavigationConfigDto {
+  const translationsOf = (value: unknown) => (omitTranslations ? {} : { translations: readTranslations(value) });
   return {
     headerCtaLabel: settings?.headerCtaLabel ?? null,
     headerCtaHref: settings?.headerCtaHref ?? null,
@@ -495,6 +502,7 @@ export function toNavigationConfigDto({ settings, navigationItems, socialLinks, 
       href: item.href,
       order: item.order,
       parentId: item.parentId,
+      ...translationsOf(item.translations),
     })),
     socialLinks: socialLinks.map((link) => ({
       id: link.id,
@@ -506,6 +514,7 @@ export function toNavigationConfigDto({ settings, navigationItems, socialLinks, 
       id: column.id,
       title: column.title,
       order: column.order,
+      ...translationsOf(column.translations),
       links: column.links
         .slice()
         .sort((a, b) => a.order - b.order)
@@ -514,6 +523,7 @@ export function toNavigationConfigDto({ settings, navigationItems, socialLinks, 
           label: link.label,
           href: link.href,
           order: link.order,
+          ...translationsOf(link.translations),
         })),
     })),
   };
@@ -1517,7 +1527,24 @@ type SlideWithRelations = Slide & {
   bgVideoPosterMedia: Media | null;
   bgTabletMedia: Media | null;
   bgMobileMedia: Media | null;
+  /** Paket O — `translations` içindeki dil görsellerinin Media satırları (bkz. sliders/lib/slide-translations.ts). */
+  translationMedia?: Media[];
 };
+
+/** Paket O — admin DTO'su: dil başına seçili görseller (silinmiş/eksik medya → dil kaydı görünmez). */
+function toSlideTranslationsDto(slide: SlideWithRelations): SlideDto["translations"] {
+  const out: NonNullable<SlideDto["translations"]> = {};
+  for (const locale of Object.keys(readSlideTranslations(slide.translations))) {
+    const media = resolveSlideTranslationMedia(slide, locale);
+    if (!media) continue;
+    out[locale] = {
+      bgMedia: toMediaDto(media.bgMedia),
+      bgTabletMedia: media.bgTabletMedia ? toMediaDto(media.bgTabletMedia) : null,
+      bgMobileMedia: media.bgMobileMedia ? toMediaDto(media.bgMobileMedia) : null,
+    };
+  }
+  return out;
+}
 
 /** `SliderSchema`/`PublicSliderSchema`'nın PAYLAŞTIĞI ayar alanları (bkz. schemas/entities.ts::SliderSettingsSchema). */
 function toSliderSettingsFields(slider: Slider) {
@@ -1577,6 +1604,7 @@ export function toSlideDto(slide: SlideWithRelations): SlideDto {
     // §2.2 — `layers` bilinçli olarak Json'dur; yazma anında `lib/layers.ts::parseSlideLayers`
     // ile doğrulanmış hâliyle DB'ye yazılır, burada olduğu gibi geri döner.
     layers: Array.isArray(slide.layers) ? (slide.layers as Record<string, unknown>[]) : [],
+    translations: toSlideTranslationsDto(slide),
     createdAt: slide.createdAt.toISOString(),
     updatedAt: slide.updatedAt.toISOString(),
   };
@@ -1584,7 +1612,7 @@ export function toSlideDto(slide: SlideWithRelations): SlideDto {
 
 /** `Slide` ile AYNI şekil EKSİ `label`/`isActive` (bkz. `GET /sliders/{sliderId}`). */
 function toPublicSlideDto(slide: SlideWithRelations): PublicSlideDto {
-  const { label: _label, isActive: _isActive, ...rest } = toSlideDto(slide);
+  const { label: _label, isActive: _isActive, translations: _translations, ...rest } = toSlideDto(slide);
   return rest;
 }
 
@@ -1664,6 +1692,7 @@ export function toSpecialtyDto(specialty: Specialty & { imageMedia?: Media | nul
     isActive: specialty.isActive,
     imageMediaId: specialty.imageMediaId,
     imageUrl: specialty.imageMedia ? absolutizeMediaUrl(specialty.imageMedia.url) : null,
+    translations: readTranslations(specialty.translations),
     createdAt: specialty.createdAt.toISOString(),
     updatedAt: specialty.updatedAt.toISOString(),
   };

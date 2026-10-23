@@ -24,7 +24,7 @@ export async function generateMetadata({ params }: SpecialtiesPageProps): Promis
   const [locales, settings, specialties, dict] = await Promise.all([
     fetchLocalesServer(),
     fetchSiteSettingsServer(),
-    fetchSpecialtiesServer(),
+    fetchSpecialtiesServer(lang),
     getSiteDictionary(lang),
   ]);
   const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? lang;
@@ -58,7 +58,7 @@ export async function generateMetadata({ params }: SpecialtiesPageProps): Promis
 
 export default async function SpecialtiesIndexPage({ params }: SpecialtiesPageProps) {
   const { lang } = await params;
-  const [specialties, locales, dict] = await Promise.all([fetchSpecialtiesServer(), fetchLocalesServer(), getSiteDictionary(lang)]);
+  const [specialties, locales, dict] = await Promise.all([fetchSpecialtiesServer(lang), fetchLocalesServer(), getSiteDictionary(lang)]);
   const defaultLocaleCode = locales.find((l) => l.isDefault)?.code ?? lang;
 
   return (

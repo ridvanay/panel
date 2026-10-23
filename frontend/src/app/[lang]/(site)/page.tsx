@@ -89,7 +89,7 @@ export default async function RootPage({ params }: PageProps) {
     fetchHomepageServer(),
     fetchLocalesServer(),
     fetchSiteSettingsServer(),
-    fetchNavigationConfigServer(),
+    fetchNavigationConfigServer(lang),
     // Görev (2026-09-16) — `MedicalOrganization` yalnızca `telehealth` modülü açıkken render
     // edilir (bu site şablonu/tema-nötr bir iskelet, HER kurulum bir sağlık kuruluşu DEĞİL —
     // `doctors/layout.tsx`'teki AYNI `isModuleEnabledServer("telehealth")` kapı deseni).
