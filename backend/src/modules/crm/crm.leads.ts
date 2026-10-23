@@ -324,7 +324,12 @@ export async function runLeadIngest(app: FastifyInstance, now: Date = new Date()
   if (rows.length > 0) {
     const refs = rows.map((r) => r.sourceRefId!);
     const before = new Set(
-      (await app.prisma.crmLead.findMany({ where: { sourceRefId: { in: refs } }, select: { channel: true, sourceRefId: true } })).map(
+      (
+        await app.prisma.crmLead.findMany({
+          where: { channel: { in: [...new Set(rows.map((r) => r.channel))] }, sourceRefId: { in: refs } },
+          select: { channel: true, sourceRefId: true },
+        })
+      ).map(
         (l) => `${l.channel}|${l.sourceRefId}`
       )
     );
@@ -378,14 +383,15 @@ export async function findBookingSuggestions(app: FastifyInstance, lead: Pick<Cr
 
 /**
  * Elle bağlamak için aday ziyaretçiler: Ref kodu eşleşenler + talebin oluştuğu andan 30 dk önce /
- * 5 dk sonra arasında temas tıklaması yapan ziyaretçiler. Otomatik bağlama YAPILMAZ.
+ * 5 dk sonra arasında TEMAS TIKLAMASI yapan ziyaretçiler (yalnızca aynı anda sitede olan ilgisiz
+ * ziyaretçiler gösterilmez — veri minimizasyonu). Otomatik bağlama YAPILMAZ.
  */
 export async function findVisitorCandidates(app: FastifyInstance, lead: Pick<CrmLead, "refCode" | "createdAt">) {
   const byRef = lead.refCode ? await app.prisma.crmVisitor.findMany({ where: { refCode: lead.refCode }, take: 5 }) : [];
   const from = new Date(lead.createdAt.getTime() - 30 * 60_000);
   const to = new Date(lead.createdAt.getTime() + 5 * 60_000);
   const sessions = await app.prisma.crmSession.findMany({
-    where: { botFlagged: false, lastSeenAt: { gte: from }, startedAt: { lte: to } },
+    where: { botFlagged: false, contactClicked: true, lastSeenAt: { gte: from }, startedAt: { lte: to } },
     orderBy: { lastSeenAt: "desc" },
     take: 20,
     include: { visitor: true },
@@ -393,7 +399,7 @@ export async function findVisitorCandidates(app: FastifyInstance, lead: Pick<Crm
   const map = new Map<string, { visitor: (typeof byRef)[number]; reason: string }>();
   for (const v of byRef) map.set(v.id, { visitor: v, reason: "Ref kodu eşleşti" });
   for (const s of sessions) {
-    if (!map.has(s.visitorId)) map.set(s.visitorId, { visitor: s.visitor, reason: s.contactClicked ? "Aynı zamanda temas tıklaması" : "Aynı zaman aralığında sitede" });
+    if (!map.has(s.visitorId)) map.set(s.visitorId, { visitor: s.visitor, reason: "Aynı zamanda temas tıklaması" });
   }
   return [...map.values()].slice(0, 20).map(({ visitor, reason }) => ({
     id: visitor.id,
@@ -420,7 +426,19 @@ export async function anonymizeExpiredLeads(app: FastifyInstance, now: Date = ne
     app.prisma.crmLeadNote.deleteMany({ where: { leadId: { in: ids } } }),
     app.prisma.crmLead.updateMany({
       where: { id: { in: ids } },
-      data: { name: null, phone: null, email: null, refCode: null, gclid: null, visitorId: null, anonymizedAt: now },
+      data: {
+        name: null,
+        phone: null,
+        email: null,
+        refCode: null,
+        gclid: null,
+        visitorId: null,
+        bookingId: null,
+        sourceRefId: null,
+        assignedToId: null,
+        landingPath: null,
+        anonymizedAt: now,
+      },
     }),
   ]);
   return ids.length;

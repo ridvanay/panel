@@ -191,6 +191,10 @@ describe("CRM N1 — uçlar", () => {
     expect((await collect(app, { ...body, extra: 1 })).statusCode).toBe(400);
     expect((await collect(app, payload(id(), id(), [{ t: "pageview", p: "/en", value: "gizli" }]))).statusCode).toBe(400);
     expect((await collect(app, payload(id(), id(), [{ t: "booking_completed", p: "/en" }]))).statusCode).toBe(400);
+    // Yol yalnızca site-içi pathname: protokol-bağıl, ters eğik çizgili, javascript:/data: ve tam URL reddedilir.
+    for (const p of ["//evil.com/x", "/\\evil.com/x", "javascript:alert(1)", "data:text/html,x", "https://evil.com/", "evil", "/a b"]) {
+      expect((await collect(app, payload(id(), id(), [{ t: "pageview", p }]))).statusCode, p).toBe(400);
+    }
     expect(await app.prisma.crmEvent.count()).toBe(0);
   });
 
@@ -259,6 +263,8 @@ describe("CRM N1 — uçlar", () => {
         { t: "pageview", p: "/admin/crm" },
         { t: "pageview", p: "/tr/kampanya-test" },
         { t: "pageview", p: "/tr/hesabim/profil" },
+        { t: "pageview", p: "/en//admin/x" },
+        { t: "pageview", p: "/en/consultation//x" },
       ])
     );
     expect(res.statusCode).toBe(204);
@@ -317,8 +323,17 @@ describe("CRM N1 — uçlar", () => {
     const rows = await app.prisma.crmConsent.findMany();
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ analytics: false, marketing: false, action: "REJECT_ALL", visitorId: null });
+
+    // Pazarlama onayı geri alınınca (analitik açık kalır) reklam tıklama kimlikleri silinir.
+    const mkVid = id("v");
+    const mkSid = id("s");
+    await collect(app, payload(mkVid, mkSid, [{ t: "pageview", p: "/en" }], { mk: true, ctx: { gclid: "Cj0KCQ-mk" } }));
+    expect((await app.prisma.crmSession.findUniqueOrThrow({ where: { id: mkSid } })).gclid).toBe("Cj0KCQ-mk");
+    expect((await consent({ cid: id("c"), vid: mkVid, v: "2026-10-23", a: true, m: false, act: "CUSTOM" })).statusCode).toBe(204);
+    expect((await app.prisma.crmSession.findUniqueOrThrow({ where: { id: mkSid } })).gclid).toBeNull();
+    expect(await app.prisma.crmVisitor.count({ where: { id: mkVid } })).toBe(1);
     expect(await app.prisma.crmVisitor.count({ where: { id: vid } })).toBe(0);
-    expect(await app.prisma.crmEvent.count()).toBe(0);
+    expect(await app.prisma.crmEvent.count({ where: { visitorId: vid } })).toBe(0);
 
     expect((await consent({ cid: id("c"), v: "x", a: true, m: true, act: "OOPS" })).statusCode).toBe(400);
     expect(
@@ -404,6 +419,28 @@ describe("CRM N1 — uçlar", () => {
     const clickRows = rows.filter((r) => r.dimension === "click");
     expect(clickRows).toHaveLength(2);
     expect(clickRows.map((r) => JSON.parse(r.label!).text).sort()).toEqual(["Ara", "Randevu"]);
+  });
+
+  it("uzun kaynak/ortam/kampanya değerleri günlük özet anahtarında çakışma üretmez", async () => {
+    await enableTracking(app);
+    const long = (c: string) => c.repeat(150);
+    await collect(app, payload(id("v"), id("s"), [{ t: "pageview", p: "/en" }], { ctx: { us: long("a"), um: long("b"), uc: `${long("c").slice(0, 149)}1` } }));
+    await collect(app, payload(id("v"), id("s"), [{ t: "pageview", p: "/en" }], { ctx: { us: long("a"), um: long("b"), uc: `${long("c").slice(0, 149)}2` } }));
+    await expect(runCrmRollupForDate(app, istanbulDate())).resolves.toBeGreaterThan(0);
+    const sources = await app.prisma.crmDailyRollup.findMany({ where: { dimension: "source" } });
+    expect(sources).toHaveLength(1);
+    expect(sources[0]!.sessions).toBe(2);
+  });
+
+  it("reklam tıklama kimlikleri 90 gün sonra boşaltılır", async () => {
+    await enableTracking(app);
+    const sid = id("s");
+    await collect(app, payload(id("v"), sid, [{ t: "pageview", p: "/en" }], { mk: true, ctx: { gclid: "Cj0KCQ-old" } }));
+    await app.prisma.crmSession.update({ where: { id: sid }, data: { startedAt: new Date(Date.now() - 100 * 86_400_000) } });
+    await app.prisma.crmAttribution.create({ data: { bookingId: crypto.randomUUID(), lastSource: "google", lastMedium: "cpc", gclid: "Cj0KCQ-attr", createdAt: new Date(Date.now() - 100 * 86_400_000) } });
+    await runCrmRetentionSweep(app);
+    expect((await app.prisma.crmSession.findUniqueOrThrow({ where: { id: sid } })).gclid).toBeNull();
+    expect((await app.prisma.crmAttribution.findFirstOrThrow()).gclid).toBeNull();
   });
 
   it("saklama süresi temizliği eski ziyaret/oturum/olayları siler, yenilere dokunmaz", async () => {

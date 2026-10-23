@@ -51,9 +51,18 @@ export function isExcludedPath(path: string, extra: readonly string[] = []): boo
   return [...CRM_ALWAYS_EXCLUDED_PATHS, ...extra].some((prefix) => matchesPrefix(bare, prefix) || matchesPrefix(full, prefix));
 }
 
+/**
+ * Olay yolu yalnızca site-içi mutlak bir pathname olabilir: `/` ile başlar, `//` ya da ters eğik çizgi
+ * içermez (admin ısı haritası bu yolu iframe `src`'i olarak açar — `//evil.com`, `/\\evil.com`,
+ * `javascript:` gibi değerler başka siteye gitmesin diye toplama ucunda reddedilir).
+ */
+export function isSafeSitePath(path: string): boolean {
+  return path.startsWith("/") && !path.startsWith("//") && !path.includes("\\") && !/[\s<>"']/.test(path);
+}
+
 /** Panelde gösterilecek / saklanacak yol: yalnızca pathname, en fazla 300 karakter. */
 export function normalizePath(path: string): string {
-  const clean = (path.split(/[?#]/)[0] || "/").replace(/\/{2,}/g, "/");
+  const clean = (path.split(/[?#]/)[0] || "/").replace(/\\/g, "/").replace(/\/{2,}/g, "/");
   const trimmed = clean.length > 1 ? clean.replace(/\/+$/, "") : clean;
   return sanitizeText(trimmed, 300) || "/";
 }

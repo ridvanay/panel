@@ -108,7 +108,7 @@ export async function computeFunnel(app: FastifyInstance, query: FunnelQuery): P
          FROM "crm_events" e
          JOIN "crm_sessions" s ON s."id" = e."sessionId"
          WHERE NOT s."botFlagged" AND e."type" = 'PAGEVIEW' AND e."path" ~ '/doctors/[^/]+'
-           AND s."startedAt" >= $1 AND s."startedAt" < $2
+           AND s."startedAt" >= $1::timestamp AND s."startedAt" < $2::timestamp
          GROUP BY 1`
       : `SELECT ${sessionKey(query.groupBy, query.model)} AS k,
             COUNT(*)::int AS visits,
@@ -116,7 +116,7 @@ export async function computeFunnel(app: FastifyInstance, query: FunnelQuery): P
             (COUNT(*) FILTER (WHERE s."bookingStarted"))::int AS booking_started
          FROM "crm_sessions" s
          JOIN "crm_visitors" v ON v."id" = s."visitorId"
-         WHERE NOT s."botFlagged" AND s."startedAt" >= $1 AND s."startedAt" < $2
+         WHERE NOT s."botFlagged" AND s."startedAt" >= $1::timestamp AND s."startedAt" < $2::timestamp
          GROUP BY 1`;
 
   const bookingSql = `
@@ -131,12 +131,12 @@ export async function computeFunnel(app: FastifyInstance, query: FunnelQuery): P
     FROM "crm_attributions" a
     JOIN "appointment_bookings" b ON b."id" = a."bookingId"
     LEFT JOIN "doctor_profiles" d ON d."id" = b."doctorId"
-    WHERE b."archivedAt" IS NULL AND a."createdAt" >= $1 AND a."createdAt" < $2
+    WHERE b."archivedAt" IS NULL AND a."createdAt" >= $1::timestamp AND a."createdAt" < $2::timestamp
     GROUP BY 1, 2`;
 
   const [sessionRows, bookingRows] = await Promise.all([
-    app.prisma.$queryRawUnsafe<SessionAgg[]>(sessionSql, start, end),
-    app.prisma.$queryRawUnsafe<BookingAgg[]>(bookingSql, start, end),
+    app.prisma.$queryRawUnsafe<SessionAgg[]>(sessionSql, start.toISOString(), end.toISOString()),
+    app.prisma.$queryRawUnsafe<BookingAgg[]>(bookingSql, start.toISOString(), end.toISOString()),
   ]);
 
   const rows = new Map<string, FunnelRow>();

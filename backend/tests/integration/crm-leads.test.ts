@@ -241,7 +241,7 @@ describe("CRM N2 — talepler ve huni", () => {
     await app.prisma.crmLead.update({ where: { id: lead.id }, data: { createdAt: new Date(Date.now() - 800 * 86_400_000) } });
     expect(await anonymizeExpiredLeads(app)).toBe(1);
     const row = await app.prisma.crmLead.findUniqueOrThrow({ where: { id: lead.id } });
-    expect(row).toMatchObject({ name: null, phone: null, email: null });
+    expect(row).toMatchObject({ name: null, phone: null, email: null, bookingId: null, sourceRefId: null, assignedToId: null, landingPath: null });
     expect(row.anonymizedAt).not.toBeNull();
     expect(await app.prisma.crmLeadNote.count({ where: { leadId: lead.id } })).toBe(0);
   });

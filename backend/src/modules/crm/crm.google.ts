@@ -28,7 +28,8 @@ export const ServiceAccountSchema = z
     type: z.literal("service_account"),
     client_email: z.string().email().max(300),
     private_key: z.string().min(100).max(10_000).includes("PRIVATE KEY"),
-    token_uri: z.string().url().optional(),
+    // `token_uri` ŞEMADA VAR ama KULLANILMAZ — istek her zaman sabit Google adresine gider (SSRF önlemi).
+    token_uri: z.string().optional(),
   })
   .passthrough();
 
@@ -62,7 +63,7 @@ export async function connectSearchConsole(app: FastifyInstance, input: z.infer<
     ...settings,
     searchConsole: {
       propertyUrl: input.propertyUrl,
-      credentialsCiphertext: encryptSecret(JSON.stringify({ client_email: account.client_email, private_key: account.private_key, token_uri: account.token_uri })),
+      credentialsCiphertext: encryptSecret(JSON.stringify({ client_email: account.client_email, private_key: account.private_key })),
       clientEmail: account.client_email,
       lastSyncAt: null,
       lastSyncError: null,
@@ -83,7 +84,10 @@ export async function disconnectSearchConsole(app: FastifyInstance, actorId: str
 
 // --- Search Console: senkron -------------------------------------------------------------------
 
-export type FetchLike = (url: string, init: { method: string; headers: Record<string, string>; body: string }) => Promise<{ ok: boolean; status: number; json: () => Promise<unknown> }>;
+export type FetchLike = (
+  url: string,
+  init: { method: string; headers: Record<string, string>; body: string; redirect: "error" }
+) => Promise<{ ok: boolean; status: number; json: () => Promise<unknown> }>;
 
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const SCOPE = "https://www.googleapis.com/auth/webmasters.readonly";
@@ -135,9 +139,10 @@ export async function syncSearchConsole(app: FastifyInstance, fetchImpl: FetchLi
   };
 
   try {
-    const account = JSON.parse(decryptSecret(sc.credentialsCiphertext)) as { client_email: string; private_key: string; token_uri?: string };
-    const tokenRes = await fetchImpl(account.token_uri || TOKEN_URL, {
+    const account = JSON.parse(decryptSecret(sc.credentialsCiphertext)) as { client_email: string; private_key: string };
+    const tokenRes = await fetchImpl(TOKEN_URL, {
       method: "POST",
+      redirect: "error",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({ grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion: buildServiceAccountJwt(account) }).toString(),
     });
@@ -150,6 +155,7 @@ export async function syncSearchConsole(app: FastifyInstance, fetchImpl: FetchLi
     for (let startRow = 0; startRow < 500_000; startRow += ROW_LIMIT) {
       const res = await fetchImpl(url, {
         method: "POST",
+        redirect: "error",
         headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
         body: JSON.stringify({ startDate: from, endDate: to, dimensions: ["date", "query", "page"], rowLimit: ROW_LIMIT, startRow, dataState: "final" }),
       });
@@ -280,7 +286,8 @@ export async function keywordsReport(app: FastifyInstance, query: z.infer<typeof
 const GCLID = /^[A-Za-z0-9_-]{10,200}$/;
 
 function csvField(value: string): string {
-  return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+  const safe = /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+  return /[",\r\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
 }
 
 /** `yyyy-MM-dd HH:mm:ss` (Europe/Istanbul) — dosyanın ilk satırındaki `TimeZone` parametresiyle uyumlu. */
@@ -309,7 +316,8 @@ export async function buildAdsConversionsCsv(app: FastifyInstance, query: z.infe
     SELECT a."gclid", a."gbraid", a."wbraid", b."paidAt", b."totalCents", b."currency"
     FROM "crm_attributions" a
     JOIN "appointment_bookings" b ON b."id" = a."bookingId"
-    WHERE b."paymentStatus" = 'PAID' AND b."archivedAt" IS NULL AND b."paidAt" >= ${start} AND b."paidAt" < ${end}`;
+    WHERE b."paymentStatus" = 'PAID' AND b."archivedAt" IS NULL
+      AND b."paidAt" >= ${start.toISOString()}::timestamp AND b."paidAt" < ${end.toISOString()}::timestamp`;
   const treated = await app.prisma.crmLead.findMany({
     where: { status: "TREATED", statusChangedAt: { gte: start, lt: end }, gclid: { not: null } },
     select: { gclid: true, statusChangedAt: true },

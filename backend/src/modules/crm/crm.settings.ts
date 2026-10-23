@@ -58,7 +58,7 @@ export const CrmSettingsSchema = z.object({
   excludedIps: z.array(CIDR_OR_IP).max(100),
   excludedPaths: z.array(PATH_PREFIX).max(100),
   /** Ham ziyaret verisi (ziyaretçi/oturum/olay) saklama süresi. */
-  retentionDays: z.number().int().min(7).max(730),
+  retentionDays: z.number().int().min(7).max(365),
   /** Talep (lead) kayıtları — süre dolunca anonimleştirilir. */
   leadRetentionDays: z.number().int().min(30).max(3650),
   notificationEmail: z.string().trim().email().max(320).nullable(),
@@ -86,8 +86,9 @@ export const DEFAULT_CRM_SETTINGS: CrmSettings = {
   whatsappRef: false,
   scoreWeights: { perEngagedMinute: 2, perPageview: 3, perReturnVisit: 10, bookingPage: 20, contactClick: 25, hotThreshold: 50 },
   slaHours: 2,
-  adsConversionName: "Ödenen randevu",
-  adsLeadConversionName: "Tedavi oldu",
+  // Google'a giden dosyada sağlık bilgisi ima etmeyen NÖTR adlar (ör. "Tedavi oldu" YAZILMAZ).
+  adsConversionName: "Randevu dönüşümü",
+  adsLeadConversionName: "Talep dönüşümü",
   searchConsole: {
     propertyUrl: null,
     credentialsCiphertext: null,

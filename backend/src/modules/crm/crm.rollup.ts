@@ -18,6 +18,8 @@ export const CRM_RETENTION_INTERVAL_MS = 60 * 60 * 1000;
 export const CRM_ROLLUP_RETENTION_DAYS = 730;
 /** Onay kayıtları (ispat yükümlülüğü) — 3 yıl. */
 export const CRM_CONSENT_RETENTION_DAYS = 1095;
+/** gclid/gbraid/wbraid — Google Ads çevrimdışı dönüşüm penceresi. */
+export const CRM_AD_CLICK_ID_RETENTION_DAYS = 90;
 
 const ISTANBUL_OFFSET_MS = 3 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -86,9 +88,9 @@ const INSERT_COLUMNS = `("id", "date", "dimension", "key", "label", "visitors", 
 function dimensionSql(def: DimensionDef): string {
   const entriesJoin = def.entryKeyExpr
     ? `LEFT JOIN (
-         SELECT (${def.entryKeyExpr}) AS k, COUNT(*) AS "entries"
+         SELECT LEFT((${def.entryKeyExpr}), 300) AS k, COUNT(*) AS "entries"
          FROM "crm_sessions" s
-         WHERE NOT s."botFlagged" AND s."startedAt" >= $2 AND s."startedAt" < $3
+         WHERE NOT s."botFlagged" AND s."startedAt" >= $2::timestamp AND s."startedAt" < $3::timestamp
          GROUP BY 1
        ) en ON en.k = e.k`
     : `LEFT JOIN (SELECT NULL::text AS k, 0 AS "entries") en ON FALSE`;
@@ -96,10 +98,10 @@ function dimensionSql(def: DimensionDef): string {
     INSERT INTO "crm_daily_rollups" ${INSERT_COLUMNS}
     SELECT gen_random_uuid(), $1::date, '${def.name}', LEFT(e.k, 300), NULL, ${METRICS_SELECT}
     FROM (
-      SELECT (${def.keyExpr}) AS k, e.*
+      SELECT LEFT((${def.keyExpr}), 300) AS k, e.*
       FROM "crm_events" e
       JOIN "crm_sessions" s ON s."id" = e."sessionId"
-      WHERE NOT s."botFlagged" AND e."occurredAt" >= $2 AND e."occurredAt" < $3
+      WHERE NOT s."botFlagged" AND e."occurredAt" >= $2::timestamp AND e."occurredAt" < $3::timestamp
     ) e
     ${entriesJoin}
     WHERE e.k IS NOT NULL
@@ -118,7 +120,7 @@ const PRE_CONTACT_SQL = `
     FROM "crm_events" c
     JOIN "crm_sessions" s ON s."id" = c."sessionId"
     WHERE NOT s."botFlagged" AND c."type" IN ('WHATSAPP_CLICK', 'PHONE_CLICK', 'EMAIL_CLICK')
-      AND c."occurredAt" >= $2 AND c."occurredAt" < $3
+      AND c."occurredAt" >= $2::timestamp AND c."occurredAt" < $3::timestamp
     GROUP BY c."sessionId"
   ) fc ON fc."sessionId" = e."sessionId"
   WHERE e."type" = 'PAGEVIEW' AND e."occurredAt" <= fc.t
@@ -140,7 +142,7 @@ const CLICK_SQL = `
   FROM "crm_events" e
   JOIN "crm_sessions" s ON s."id" = e."sessionId"
   WHERE NOT s."botFlagged" AND e."type" IN ('CLICK', 'WHATSAPP_CLICK', 'PHONE_CLICK', 'EMAIL_CLICK')
-    AND e."occurredAt" >= $2 AND e."occurredAt" < $3
+    AND e."occurredAt" >= $2::timestamp AND e."occurredAt" < $3::timestamp
   GROUP BY e."path", e."selector", e."text", e."target"`;
 
 /** Bir İstanbul gününün bütün özet satırlarını yeniden hesaplar (sil + yaz, tek transaction). */
@@ -150,9 +152,11 @@ export async function runCrmRollupForDate(app: FastifyInstance, date: string): P
     async (tx) => {
       await tx.$executeRaw`DELETE FROM "crm_daily_rollups" WHERE "date" = ${date}::date`;
       let inserted = 0;
-      for (const def of DIMENSIONS) inserted += await tx.$executeRawUnsafe(dimensionSql(def), date, start, end);
-      inserted += await tx.$executeRawUnsafe(PRE_CONTACT_SQL, date, start, end);
-      inserted += await tx.$executeRawUnsafe(CLICK_SQL, date, start, end);
+      // Zaman parametreleri ISO metni + `::timestamp` — veritabanı oturum saat diliminden bağımsız (kolonlar UTC, tz'siz).
+      const [s, e] = [start.toISOString(), end.toISOString()];
+      for (const def of DIMENSIONS) inserted += await tx.$executeRawUnsafe(dimensionSql(def), date, s, e);
+      inserted += await tx.$executeRawUnsafe(PRE_CONTACT_SQL, date, s, e);
+      inserted += await tx.$executeRawUnsafe(CLICK_SQL, date, s, e);
       return inserted;
     },
     { timeout: 60_000 }
@@ -174,7 +178,13 @@ export async function runCrmRetentionSweep(app: FastifyInstance, now: Date = new
   const rawCutoff = new Date(now.getTime() - settings.retentionDays * DAY_MS);
   const visitors = await app.prisma.crmVisitor.deleteMany({ where: { lastSeenAt: { lt: rawCutoff } } });
   const sessions = await app.prisma.crmSession.deleteMany({ where: { startedAt: { lt: rawCutoff } } });
-  const events = await app.prisma.crmEvent.deleteMany({ where: { occurredAt: { lt: rawCutoff } } });
+  // Olaylar 10.000'lik parçalar hâlinde silinir (saklama süresi kısaltıldığında tek dev transaction olmasın).
+  let deletedEvents = 0;
+  for (;;) {
+    const n = await app.prisma.$executeRaw`DELETE FROM "crm_events" WHERE "id" IN (SELECT "id" FROM "crm_events" WHERE "occurredAt" < ${rawCutoff.toISOString()}::timestamp LIMIT 10000)`;
+    deletedEvents += n;
+    if (n < 10000) break;
+  }
   const rollups = await app.prisma.crmDailyRollup.deleteMany({
     where: { date: { lt: new Date(now.getTime() - CRM_ROLLUP_RETENTION_DAYS * DAY_MS) } },
   });
@@ -184,10 +194,17 @@ export async function runCrmRetentionSweep(app: FastifyInstance, now: Date = new
   const attributions = await app.prisma.crmAttribution.deleteMany({
     where: { createdAt: { lt: new Date(now.getTime() - settings.leadRetentionDays * DAY_MS) } },
   });
+  // Reklam tıklama kimlikleri 90 gün sonra boşaltılır (Google Ads çevrimdışı dönüşüm penceresi bu kadar).
+  const adCutoff = new Date(now.getTime() - CRM_AD_CLICK_ID_RETENTION_DAYS * DAY_MS);
+  const adIds = { gclid: null, gbraid: null, wbraid: null };
+  const hasAdId = [{ gclid: { not: null } }, { gbraid: { not: null } }, { wbraid: { not: null } }];
+  await app.prisma.crmSession.updateMany({ where: { startedAt: { lt: adCutoff }, OR: hasAdId }, data: adIds });
+  await app.prisma.crmAttribution.updateMany({ where: { createdAt: { lt: adCutoff }, OR: hasAdId }, data: adIds });
+  await app.prisma.crmLead.updateMany({ where: { createdAt: { lt: adCutoff }, gclid: { not: null } }, data: { gclid: null } });
   return {
     deletedVisitors: visitors.count,
     deletedSessions: sessions.count,
-    deletedEvents: events.count,
+    deletedEvents,
     deletedRollups: rollups.count,
     deletedConsents: consents.count,
     deletedAttributions: attributions.count,

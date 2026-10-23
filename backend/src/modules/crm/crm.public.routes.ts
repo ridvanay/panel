@@ -17,7 +17,12 @@ export const CRM_BODY_LIMIT = 64 * 1024;
 function allowedOrigins(): string[] {
   const origins: string[] = [];
   try {
-    origins.push(new URL(env.FRONTEND_URL).origin);
+    const url = new URL(env.FRONTEND_URL);
+    origins.push(url.origin);
+    // `alanadi.com` ↔ `www.alanadi.com` — aynı sitenin iki adı; diğerinden gelen ziyaretçi sessizce 403 almasın.
+    const alt = new URL(url.origin);
+    alt.hostname = url.hostname.startsWith("www.") ? url.hostname.slice(4) : `www.${url.hostname}`;
+    if (!/^(localhost|\d+\.\d+\.\d+\.\d+)$/.test(url.hostname)) origins.push(alt.origin);
   } catch {
     // env doğrulaması zaten URL zorunlu tutar
   }

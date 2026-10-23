@@ -112,6 +112,12 @@ export type ConsentRequest = z.infer<typeof ConsentRequestSchema>;
 export async function recordConsent(app: FastifyInstance, input: ConsentRequest): Promise<void> {
   if (!input.a && input.vid) {
     await app.prisma.crmVisitor.deleteMany({ where: { id: input.vid } });
+  } else if (!input.m && input.vid) {
+    // Pazarlama onayı yok/geri alındı: bu ziyaretçinin oturumlarındaki reklam tıklama kimlikleri silinir.
+    await app.prisma.crmSession.updateMany({
+      where: { visitorId: input.vid, OR: [{ gclid: { not: null } }, { gbraid: { not: null } }, { wbraid: { not: null } }] },
+      data: { gclid: null, gbraid: null, wbraid: null },
+    });
   }
   await app.prisma.crmConsent.create({
     data: {

@@ -6,7 +6,7 @@ import { env } from "../../config/env";
 import { readCrmSettings, type CrmSettings } from "./crm.settings";
 import { classifySource } from "./crm.source";
 import { computeVisitorScore } from "./crm.score";
-import { ipMatchesList, isBotUserAgent, isExcludedPath, maskIp, normalizePath, parseUserAgent, sanitizeText, stripLocale } from "./crm.privacy";
+import { ipMatchesList, isBotUserAgent, isExcludedPath, isSafeSitePath, maskIp, normalizePath, parseUserAgent, sanitizeText, stripLocale } from "./crm.privacy";
 
 /**
  * Paket N1 — `POST /crm/collect` gövdesi. İstemci `navigator.sendBeacon` ile `text/plain` gönderir
@@ -39,7 +39,7 @@ const CollectEventSchema = z
   .object({
     t: z.enum(Object.keys(EVENT_TYPES) as [keyof typeof EVENT_TYPES, ...(keyof typeof EVENT_TYPES)[]]),
     ts: z.number().int().nonnegative(),
-    p: z.string().min(1).max(500),
+    p: z.string().min(1).max(500).refine(isSafeSitePath, "Geçersiz yol."),
     ti: z.string().max(300).optional(),
     sel: z.string().max(400).optional(),
     tx: z.string().max(300).optional(),
@@ -170,7 +170,8 @@ export async function ingestCollect(app: FastifyInstance, payload: CollectPayloa
   const nowDate = meta.now ?? new Date();
   const now = nowDate.getTime();
 
-  const events = payload.events.filter((event) => !isExcludedPath(event.p, settings.excludedPaths));
+  // Hariç-yol kontrolü SAKLANACAK (normalize edilmiş) yol üzerinde — `//admin`, `/en//admin` atlatamaz.
+  const events = payload.events.filter((event) => !isExcludedPath(normalizePath(event.p), settings.excludedPaths));
   if (events.length === 0) return { accepted: 0, dropped: "excluded_path" };
 
   if (registerFloodHit(payload.sid, events.length, now)) {

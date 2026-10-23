@@ -132,7 +132,7 @@ export async function overview(app: FastifyInstance, range: RangeQuery) {
     countLive(app),
     app.prisma.$queryRaw<{ n: number }[]>`
       SELECT COUNT(DISTINCT "visitorId")::int AS n FROM "crm_sessions"
-      WHERE NOT "botFlagged" AND "lastSeenAt" >= ${start} AND "startedAt" < ${end}`,
+      WHERE NOT "botFlagged" AND "lastSeenAt" >= ${start.toISOString()}::timestamp AND "startedAt" < ${end.toISOString()}::timestamp`,
     sumRollup(app, "total", range),
     app.prisma.crmDailyRollup.findMany({ where: { dimension: "total", date: { gte: fromDate, lte: toDate } }, orderBy: { date: "asc" } }),
     sumRollup(app, "source", range, { orderBy: "sessions", take: 10 }),

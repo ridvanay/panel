@@ -101,12 +101,14 @@ describe("CRM N4 — Google", () => {
   });
 
   it("senkron (mock): ilk seferde 90 gün, sonra 3 gün; satırlar idempotent; 403 hatası kaydedilir", async () => {
-    await app.inject({ method: "POST", url: "/api/v1/admin/crm/search-console/connect", headers: auth(), payload: { propertyUrl: "https://ornek.com/", credentialsJson: SERVICE_ACCOUNT } });
-    const calls: { url: string; body: string }[] = [];
+    // `token_uri` saldırgan bir adrese çevrilse bile istek sabit Google adresine gider (SSRF yok).
+    const evilAccount = JSON.stringify({ ...JSON.parse(SERVICE_ACCOUNT), token_uri: "http://169.254.169.254/latest" });
+    await app.inject({ method: "POST", url: "/api/v1/admin/crm/search-console/connect", headers: auth(), payload: { propertyUrl: "https://ornek.com/", credentialsJson: evilAccount } });
+    const calls: { url: string; body: string; redirect: string }[] = [];
     const yesterday = shiftDate(istanbulDate(), -1);
     let queryStatus = 200;
     const mockFetch: FetchLike = async (url, init) => {
-      calls.push({ url, body: init.body });
+      calls.push({ url, body: init.body, redirect: init.redirect });
       if (url.includes("oauth2")) return { ok: true, status: 200, json: async () => ({ access_token: "tok-123" }) };
       if (queryStatus !== 200) return { ok: false, status: queryStatus, json: async () => ({}) };
       return {
@@ -124,6 +126,7 @@ describe("CRM N4 — Google", () => {
     const first = await syncSearchConsole(app, mockFetch);
     expect(first).toMatchObject({ ok: true, to: yesterday, from: shiftDate(yesterday, -89), rows: 2 });
     expect(calls[0]!.url).toBe("https://oauth2.googleapis.com/token");
+    expect(calls.every((c) => c.redirect === "error")).toBe(true);
     expect(calls[0]!.body).toContain("grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer");
     expect(calls[1]!.url).toBe("https://www.googleapis.com/webmasters/v3/sites/https%3A%2F%2Fornek.com%2F/searchAnalytics/query");
     expect(JSON.parse(calls[1]!.body)).toMatchObject({ dimensions: ["date", "query", "page"], endDate: yesterday });
@@ -217,8 +220,8 @@ describe("CRM N4 — Google", () => {
     const lines = res.body.trim().split("\r\n");
     expect(lines[0]).toBe("Parameters:TimeZone=Europe/Istanbul");
     expect(lines[1]).toBe("Google Click ID,Conversion Name,Conversion Time,Conversion Value,Conversion Currency");
-    expect(lines).toContain("Cj0KCQjwValid_gclid-123,Ödenen randevu,2026-10-15 12:30:00,150.00,EUR");
-    expect(lines).toContain("EAIaIQobChMI_lead-9,Tedavi oldu,2026-10-16 15:00:00,,");
+    expect(lines).toContain("Cj0KCQjwValid_gclid-123,Randevu dönüşümü,2026-10-15 12:30:00,150.00,EUR");
+    expect(lines).toContain("EAIaIQobChMI_lead-9,Talep dönüşümü,2026-10-16 15:00:00,,");
     expect(lines).toHaveLength(4);
     expect(res.body).not.toContain("HYPERLINK");
     expect(res.headers["x-crm-skipped-braid"]).toBe("1");

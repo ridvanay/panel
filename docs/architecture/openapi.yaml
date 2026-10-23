@@ -14223,7 +14223,7 @@ components:
         ipMode: { type: string, enum: [masked, full], default: masked }
         excludedIps: { type: array, items: { type: string, description: IP ya da CIDR } }
         excludedPaths: { type: array, items: { type: string } }
-        retentionDays: { type: integer, minimum: 7, maximum: 730, default: 180 }
+        retentionDays: { type: integer, minimum: 7, maximum: 365, default: 180 }
         leadRetentionDays: { type: integer, minimum: 30, maximum: 3650, default: 730 }
         notificationEmail: { type: string, format: email, nullable: true }
         whatsappRef: { type: boolean, default: false }
