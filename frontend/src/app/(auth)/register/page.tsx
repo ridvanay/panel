@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useState, type FormEvent } from "react";
-import Link from "next/link";
+import { AuthLink } from "@/components/auth/auth-link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/context/auth-context";
 import { AuthPageShell } from "@/components/auth/auth-page-shell";
@@ -10,13 +10,18 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
-import { fieldErrorsFrom, friendlyErrorMessage } from "@/lib/api/friendly-error";
+import { fieldErrorsFrom } from "@/lib/api/friendly-error";
+import { useFriendlyError, useLocalizedFieldErrors } from "@/lib/i18n/use-portal-strings";
+import { useAuthStrings } from "@/lib/i18n/use-auth-strings";
 import { isSafeInternalPath } from "@/lib/safe-redirect";
 
 function RegisterForm() {
   const { register } = useAuth();
   const router = useRouter();
   const next = useSearchParams().get("next");
+  const t = useAuthStrings().register;
+  const friendlyErrorMessage = useFriendlyError();
+  const localizeFieldErrors = useLocalizedFieldErrors();
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -44,7 +49,7 @@ function RegisterForm() {
       if (isSafeInternalPath(next)) query.set("next", next);
       router.replace(`/verify-email?${query.toString()}`);
     } catch (err) {
-      setFieldErrors(fieldErrorsFrom(err));
+      setFieldErrors(localizeFieldErrors(fieldErrorsFrom(err)));
       setError(friendlyErrorMessage(err));
     } finally {
       setSubmitting(false);
@@ -55,13 +60,13 @@ function RegisterForm() {
     <form className="space-y-4" onSubmit={handleSubmit} noValidate>
       {error && <Alert variant="error">{error}</Alert>}
 
-      <Field id="name" label="Ad Soyad" error={fieldErrors.name} required>
+      <Field id="name" label={t.name} error={fieldErrors.name} required>
         {(inputProps) => (
           <Input {...inputProps} autoComplete="name" required value={name} onChange={(e) => setName(e.target.value)} />
         )}
       </Field>
 
-      <Field id="email" label="E-posta" error={fieldErrors.email} required>
+      <Field id="email" label={t.email} error={fieldErrors.email} required>
         {(inputProps) => (
           <Input
             {...inputProps}
@@ -74,7 +79,7 @@ function RegisterForm() {
         )}
       </Field>
 
-      <Field id="password" label="Şifre" error={fieldErrors.password} hint="En az 8 karakter." required>
+      <Field id="password" label={t.password} error={fieldErrors.password} hint={t.passwordHint} required>
         {(inputProps) => (
           <Input
             {...inputProps}
@@ -89,23 +94,24 @@ function RegisterForm() {
       </Field>
 
       <Button type="submit" className="w-full" loading={submitting}>
-        Hesap oluştur
+        {t.submit}
       </Button>
     </form>
   );
 }
 
 export default function RegisterPage() {
+  const t = useAuthStrings().register;
   return (
     <AuthPageShell
-      title="Hesap oluştur"
-      subtitle="Birkaç saniyede başlayın, kredi kartı gerekmez."
+      title={t.title}
+      subtitle={t.subtitle}
       footer={
         <>
-          Zaten hesabınız var mı?{" "}
-          <Link href="/login" className="font-medium text-primary hover:underline">
-            Giriş yapın
-          </Link>
+          {t.haveAccount}{" "}
+          <AuthLink href="/login" className="font-medium text-primary hover:underline">
+            {t.loginLink}
+          </AuthLink>
         </>
       }
     >

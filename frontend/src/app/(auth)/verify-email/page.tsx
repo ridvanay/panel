@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useState, type FormEvent } from "react";
-import Link from "next/link";
+import { AuthLink } from "@/components/auth/auth-link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/context/auth-context";
 import * as authApi from "@/lib/api/auth";
@@ -12,7 +12,9 @@ import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
 import { ApiClientError } from "@/lib/api/error";
-import { friendlyErrorMessage } from "@/lib/api/friendly-error";
+import { useFriendlyError } from "@/lib/i18n/use-portal-strings";
+import { splitTemplate, useAuthStrings } from "@/lib/i18n/use-auth-strings";
+import { fmt } from "@/lib/i18n/use-portal-strings";
 import { isSafeInternalPath } from "@/lib/safe-redirect";
 
 /**
@@ -22,13 +24,6 @@ import { isSafeInternalPath } from "@/lib/safe-redirect";
  */
 const RESEND_COOLDOWN_MS = 60_000;
 
-/** §4.3 — `VERIFICATION_CODE_INVALID` tek jenerik hatasını kullanıcı dostu göster. */
-function verifyEmailErrorMessage(err: unknown): string {
-  if (err instanceof ApiClientError && err.code === "VERIFICATION_CODE_INVALID") {
-    return "Kod hatalı veya süresi dolmuş, yeniden gönderin.";
-  }
-  return friendlyErrorMessage(err);
-}
 
 function parseFutureTimestamp(value: string | null): number | null {
   if (!value) return null;
@@ -55,6 +50,11 @@ function VerifyEmailForm() {
   const next = params.get("next");
   const initialResendAvailableAt = params.get("resendAvailableAt");
   const expiresAtHint = params.get("expiresAt");
+  const t = useAuthStrings().verify;
+  const friendlyErrorMessage = useFriendlyError();
+  /** §4.3 — `VERIFICATION_CODE_INVALID` tek jenerik hatasını kullanıcı dostu göster. */
+  const verifyEmailErrorMessage = (err: unknown): string =>
+    err instanceof ApiClientError && err.code === "VERIFICATION_CODE_INVALID" ? t.invalidCode : friendlyErrorMessage(err);
 
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -115,7 +115,7 @@ function VerifyEmailForm() {
       setCooldownUntil(Date.now() + RESEND_COOLDOWN_MS);
       // Olay işleyicisi içinde — effect'in ilk "tick"ini beklemeden anında doğru değeri gösterir.
       setRemainingSeconds(Math.ceil(RESEND_COOLDOWN_MS / 1000));
-      setResendNotice("Yeni bir kod gönderildiyse birkaç dakika içinde e-postanıza ulaşacaktır.");
+      setResendNotice(t.resendNotice);
     } catch (err) {
       setError(friendlyErrorMessage(err));
     } finally {
@@ -128,8 +128,14 @@ function VerifyEmailForm() {
   return (
     <div className="space-y-4">
       <p className="text-sm text-foreground/60">
-        <strong className="font-medium text-foreground">{email}</strong> adresine gönderilen 6 haneli kodu girin.
-        {expiresAtHint && " Kod kısa süre içinde geçerliliğini yitirir."}
+        {splitTemplate(t.codeSentTo, {
+          email: (
+            <strong key="email" className="font-medium text-foreground" dir="ltr">
+              {email}
+            </strong>
+          ),
+        })}
+        {expiresAtHint && ` ${t.expiresSoon}`}
       </p>
 
       <form className="space-y-4" onSubmit={handleSubmit} noValidate>
@@ -140,22 +146,25 @@ function VerifyEmailForm() {
                 gösterilir; koşullu hale getirmek hesap-varlık oracle'ını yeniden açar. */}
             {verifyFailed && (
               <p className="text-sm text-foreground/60">
-                Bu e-posta ile daha önce kayıt olmadıysanız veya kaydınız zaten tamamlanmışsa,{" "}
-                <Link href="/register" className="font-medium text-primary hover:underline">
-                  Kayıt Ol
-                </Link>{" "}
-                veya{" "}
-                <Link href="/login" className="font-medium text-primary hover:underline">
-                  Giriş Yap
-                </Link>{" "}
-                sayfalarını deneyin.
+                {splitTemplate(t.notRegisteredHint, {
+                  register: (
+                    <AuthLink key="register" href="/register" className="font-medium text-primary hover:underline">
+                      {t.registerLink}
+                    </AuthLink>
+                  ),
+                  login: (
+                    <AuthLink key="login" href="/login" className="font-medium text-primary hover:underline">
+                      {t.loginLink}
+                    </AuthLink>
+                  ),
+                })}
               </p>
             )}
           </div>
         )}
         {resendNotice && !error && <Alert variant="success">{resendNotice}</Alert>}
 
-        <Field id="code" label="Doğrulama Kodu" required>
+        <Field id="code" label={t.codeLabel} required>
           {(inputProps) => (
             <Input
               {...inputProps}
@@ -174,7 +183,7 @@ function VerifyEmailForm() {
         </Field>
 
         <Button type="submit" className="w-full" loading={submitting} disabled={code.length !== 6}>
-          Doğrula
+          {t.submit}
         </Button>
       </form>
 
@@ -187,11 +196,7 @@ function VerifyEmailForm() {
           disabled={cooldownActive || resending}
           onClick={handleResend}
         >
-          {cooldownActive
-            ? `${remainingSeconds} saniye sonra tekrar gönderebilirsiniz`
-            : codeAlreadySent
-              ? "Kodu tekrar gönder"
-              : "Kod gönder"}
+          {cooldownActive ? fmt(t.resendIn, { seconds: remainingSeconds }) : codeAlreadySent ? t.resendAgain : t.sendCode}
         </Button>
       </div>
     </div>
@@ -199,16 +204,17 @@ function VerifyEmailForm() {
 }
 
 export default function VerifyEmailPage() {
+  const t = useAuthStrings().verify;
   return (
     <AuthPageShell
-      title="E-postanızı doğrulayın"
-      subtitle="Hesabınızı etkinleştirmek için e-postanıza gönderdiğimiz kodu girin."
+      title={t.title}
+      subtitle={t.subtitle}
       footer={
         <>
-          Yanlış hesap mı?{" "}
-          <Link href="/login" className="font-medium text-primary hover:underline">
-            Girişe dön
-          </Link>
+          {t.wrongAccount}{" "}
+          <AuthLink href="/login" className="font-medium text-primary hover:underline">
+            {t.backToLogin}
+          </AuthLink>
         </>
       }
     >

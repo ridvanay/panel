@@ -1,16 +1,19 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import Link from "next/link";
+import { AuthLink } from "@/components/auth/auth-link";
 import * as authApi from "@/lib/api/auth";
 import { AuthPageShell } from "@/components/auth/auth-page-shell";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
-import { friendlyErrorMessage } from "@/lib/api/friendly-error";
+import { useFriendlyError } from "@/lib/i18n/use-portal-strings";
+import { useAuthStrings } from "@/lib/i18n/use-auth-strings";
 
 export default function ForgotPasswordPage() {
+  const t = useAuthStrings().forgot;
+  const friendlyErrorMessage = useFriendlyError();
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
@@ -33,22 +36,20 @@ export default function ForgotPasswordPage() {
 
   return (
     <AuthPageShell
-      title="Şifremi unuttum"
-      subtitle="E-posta adresinize bir sıfırlama bağlantısı gönderelim."
+      title={t.title}
+      subtitle={t.subtitle}
       footer={
-        <Link href="/login" className="font-medium text-primary hover:underline">
-          Girişe dön
-        </Link>
+        <AuthLink href="/login" className="font-medium text-primary hover:underline">
+          {t.backToLogin}
+        </AuthLink>
       }
     >
       {submitted ? (
-        <Alert variant="success">
-          Bu e-posta adresine kayıtlı bir hesap varsa, birazdan bir şifre sıfırlama bağlantısı alacaksınız.
-        </Alert>
+        <Alert variant="success">{t.sentNotice}</Alert>
       ) : (
         <form className="space-y-4" onSubmit={handleSubmit} noValidate>
           {error && <Alert variant="error">{error}</Alert>}
-          <Field id="email" label="E-posta" required>
+          <Field id="email" label={t.email} required>
             {(inputProps) => (
               <Input
                 {...inputProps}
@@ -61,7 +62,7 @@ export default function ForgotPasswordPage() {
             )}
           </Field>
           <Button type="submit" className="w-full" loading={submitting}>
-            Sıfırlama bağlantısı gönder
+            {t.submit}
           </Button>
         </form>
       )}

@@ -14,5 +14,11 @@ export function isSafeInternalPath(path: string | null | undefined): path is str
   if (!path.startsWith("/")) return false;
   // `//evil.com` (protokol-göreli) ve `/\evil.com` (ters slash normalize) bypass'ları.
   if (path.startsWith("//") || path.startsWith("/\\")) return false;
+  // Paket O — tarayıcılar URL içindeki TAB/CR/LF karakterlerini siler ("/<TAB>/evil.com" → "//evil.com")
+  // ve ters eğik çizgiyi "/" sayar; yolun HERHANGİ bir yerindeki kontrol karakteri ya da "\" reddedilir.
+  for (let i = 0; i < path.length; i++) {
+    const code = path.charCodeAt(i);
+    if (code < 0x20 || code === 0x7f || code === 0x5c) return false;
+  }
   return true;
 }

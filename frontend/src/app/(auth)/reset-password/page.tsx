@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useState, type FormEvent } from "react";
-import Link from "next/link";
+import { AuthLink } from "@/components/auth/auth-link";
 import { useRouter, useSearchParams } from "next/navigation";
 import * as authApi from "@/lib/api/auth";
 import { AuthPageShell } from "@/components/auth/auth-page-shell";
@@ -10,11 +10,14 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
-import { friendlyErrorMessage } from "@/lib/api/friendly-error";
+import { useFriendlyError } from "@/lib/i18n/use-portal-strings";
+import { useAuthStrings } from "@/lib/i18n/use-auth-strings";
 
 function ResetPasswordForm() {
   const router = useRouter();
   const token = useSearchParams().get("token") ?? "";
+  const t = useAuthStrings().reset;
+  const friendlyErrorMessage = useFriendlyError();
 
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -35,13 +38,13 @@ function ResetPasswordForm() {
   }
 
   if (!token) {
-    return <Alert variant="error">Bağlantı geçersiz. Sıfırlama e-postasındaki bağlantıyı tekrar kullanın.</Alert>;
+    return <Alert variant="error">{t.invalidLink}</Alert>;
   }
 
   return (
     <form className="space-y-4" onSubmit={handleSubmit} noValidate>
       {error && <Alert variant="error">{error}</Alert>}
-      <Field id="password" label="Yeni şifre" hint="En az 8 karakter." required>
+      <Field id="password" label={t.newPassword} hint={t.passwordHint} required>
         {(inputProps) => (
           <Input
             {...inputProps}
@@ -55,20 +58,21 @@ function ResetPasswordForm() {
         )}
       </Field>
       <Button type="submit" className="w-full" loading={submitting}>
-        Şifreyi güncelle
+        {t.submit}
       </Button>
     </form>
   );
 }
 
 export default function ResetPasswordPage() {
+  const t = useAuthStrings().reset;
   return (
     <AuthPageShell
-      title="Yeni şifre belirle"
+      title={t.title}
       footer={
-        <Link href="/login" className="font-medium text-primary hover:underline">
-          Girişe dön
-        </Link>
+        <AuthLink href="/login" className="font-medium text-primary hover:underline">
+          {t.backToLogin}
+        </AuthLink>
       }
     >
       <Suspense fallback={<Spinner className="h-5 w-5 text-primary" />}>

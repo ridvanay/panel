@@ -5,6 +5,7 @@ import { DOCTOR_HOST, DOCTOR_ORIGIN, SITE_HOST, SITE_ORIGIN, isDoctorHostname } 
 import { isSafeInternalPath } from "@/lib/safe-redirect";
 import type { PublicSiteAppearance, Locale } from "@/lib/api/types";
 import { CACHE_TAGS } from "@/lib/cache-tags";
+import { SITE_LOCALE_COOKIE, SITE_LOCALE_COOKIE_MAX_AGE, resolveAuthLocale } from "@/lib/i18n/auth-locale";
 
 /**
  * §10.12.5 Bakım Modu — SUNUM anahtarıdır, bir GÜVENLİK kontrolü DEĞİLDİR: API'yi kapatmaz,
@@ -182,6 +183,31 @@ function crossOriginUrl(origin: string, pathname: string, search: string): URL {
   return new URL(`${safePathname}${search}`, origin);
 }
 
+/**
+ * Paket O — `[lang]` dışındaki giriş/kayıt/şifre/doğrulama ekranlarının ve doktor host'undaki `/login`'in
+ * dili: `next` öneki → `wm-locale` çerezi → Accept-Language → varsayılan (bkz. `lib/i18n/auth-locale.ts`).
+ */
+function resolveRequestAuthLocale(request: NextRequest, locales: Locale[], defaultLocale: Locale): string {
+  return resolveAuthLocale({
+    next: request.nextUrl.searchParams.get("next"),
+    cookie: request.cookies.get(SITE_LOCALE_COOKIE)?.value,
+    acceptLanguage: request.headers.get("accept-language"),
+    enabledCodes: locales.map((l) => l.code),
+    defaultCode: defaultLocale.code,
+  });
+}
+
+/**
+ * Paket O — ziyaretçinin dil tercihi (zorunlu kategori: "dil seçimi"); yalnızca değiştiyse yazılır.
+ * `[lang]` dışındaki ekranlar (giriş vb.) bu çereze göre açılır.
+ */
+function withLocaleCookie(request: NextRequest, response: NextResponse, code: string): NextResponse {
+  if (request.cookies.get(SITE_LOCALE_COOKIE)?.value !== code) {
+    response.cookies.set(SITE_LOCALE_COOKIE, code, { path: "/", maxAge: SITE_LOCALE_COOKIE_MAX_AGE, sameSite: "lax" });
+  }
+  return response;
+}
+
 /** §3.1 ANA HOST dalı — bakım modu, `/doctor/**` devri, locale redirect/rewrite. */
 async function handleMainHost(request: NextRequest, pathname: string, defaultLocale: Locale, localeCodes: Set<string>): Promise<NextResponse> {
   // [3] BAKIM MODU (503) — MEVCUT KOD, DEĞİŞMEDİ.
@@ -236,7 +262,7 @@ async function handleMainHost(request: NextRequest, pathname: string, defaultLoc
   if (localeCodes.has(firstSegment)) {
     const headers = new Headers(request.headers);
     headers.set("x-active-locale", firstSegment);
-    return NextResponse.next({ request: { headers } });
+    return withLocaleCookie(request, NextResponse.next({ request: { headers } }), firstSegment);
   }
 
   // Prefix'siz istek (varsayılan dil) → dahili `/{defaultLocale}/...`'a REWRITE (redirect DEĞİL) —
@@ -245,17 +271,18 @@ async function handleMainHost(request: NextRequest, pathname: string, defaultLoc
   url.pathname = `/${defaultLocale.code}${pathname === "/" ? "" : pathname}`;
   const headers = new Headers(request.headers);
   headers.set("x-active-locale", defaultLocale.code);
-  return NextResponse.rewrite(url, { request: { headers } });
+  return withLocaleCookie(request, NextResponse.rewrite(url, { request: { headers } }), defaultLocale.code);
 }
 
 /** §3.1 DOKTOR HOST dalı — bakım modu UYGULANMAZ (§3.3), auth yüzeyi, tek dilli portal rotaları. */
-function handleDoctorHost(request: NextRequest, pathname: string, defaultLocale: Locale): NextResponse {
-  // [7] AUTH YÜZEYİ.
+function handleDoctorHost(request: NextRequest, pathname: string, defaultLocale: Locale, locales: Locale[]): NextResponse {
+  // [7] AUTH YÜZEYİ. Paket O — giriş ekranının dili ana sitedeki giriş ekranlarıyla aynı kuralla seçilir.
   if (pathname === "/login") {
+    const lang = resolveRequestAuthLocale(request, locales, defaultLocale);
     const url = request.nextUrl.clone();
-    url.pathname = `/${defaultLocale.code}/doctor/login`;
+    url.pathname = `/${lang}/doctor/login`;
     const headers = new Headers(request.headers);
-    headers.set("x-active-locale", defaultLocale.code);
+    headers.set("x-active-locale", lang);
     return NextResponse.rewrite(url, { request: { headers } });
   }
   if (pathname === "/forgot-password" || pathname === "/reset-password" || pathname === "/verify-email") {
@@ -326,18 +353,21 @@ export async function proxy(request: NextRequest) {
 
   const isDoctorHost = isDoctorHostname(host);
 
-  // [1] SaaS auth yüzeyi erken çıkışı — YALNIZCA ana host'ta, locale/bakım-modu fetch'lerinden ÖNCE.
-  if (!isDoctorHost && SAAS_AUTH_SURFACE_PATHS.has(pathname)) {
-    return NextResponse.next();
-  }
-
   // [2] Locale listesi — her iki host için de gerekli (rewrite hedefi + `<html lang>`).
   const locales = await fetchEnabledLocales();
   const defaultLocale = locales.find((l) => l.isDefault) ?? locales[0]!;
   const localeCodes = new Set(locales.map((l) => l.code));
 
+  // [1] SaaS auth yüzeyi — YALNIZCA ana host'ta, bakım modu fetch'inden ÖNCE. Paket O: URL değişmez,
+  // yalnızca dil belirlenip `x-active-locale` başlığına yazılır (`<html lang/dir>` + ekran metinleri).
+  if (!isDoctorHost && SAAS_AUTH_SURFACE_PATHS.has(pathname)) {
+    const headers = new Headers(request.headers);
+    headers.set("x-active-locale", resolveRequestAuthLocale(request, locales, defaultLocale));
+    return NextResponse.next({ request: { headers } });
+  }
+
   if (isDoctorHost) {
-    return withDoctorPortalHeaders(handleDoctorHost(request, pathname, defaultLocale));
+    return withDoctorPortalHeaders(handleDoctorHost(request, pathname, defaultLocale, locales));
   }
 
   return handleMainHost(request, pathname, defaultLocale, localeCodes);

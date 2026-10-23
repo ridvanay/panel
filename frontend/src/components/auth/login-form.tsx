@@ -8,7 +8,11 @@ import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
-import { friendlyErrorMessage } from "@/lib/api/friendly-error";
+import { useFriendlyError } from "@/lib/i18n/use-portal-strings";
+import { useAuthStrings } from "@/lib/i18n/use-auth-strings";
+import { localizeDestination } from "@/lib/i18n/auth-locale";
+import { useLocaleCodes } from "@/context/locale-alternates-context";
+import { AuthLink } from "@/components/auth/auth-link";
 import { isSafeInternalPath } from "@/lib/safe-redirect";
 import { isDoctorPortalPath, resolvePostLoginPath } from "@/lib/post-login-destination";
 import { SITE_ORIGIN, isDoctorHostname, isSubdomainModeEnabled, toDoctorOrigin } from "@/lib/doctor-host";
@@ -30,9 +34,6 @@ export interface LoginFormProps {
   variant?: "default" | "doctor";
 }
 
-const NOT_A_DOCTOR_MESSAGE =
-  "Bu hesap bir doktor profiline bağlı değil. Doktor portalına yalnızca sisteme kayıtlı bir doktor profiliyle ilişkilendirilmiş hesaplar erişebilir.";
-
 /**
  * `.claude/architect-scope-doctor-subdomain.md` §4 — eskiden `app/(auth)/login/page.tsx` İÇİNDE
  * tanımlıydı (2FA challenge akışı, `goToDestination`, `friendlyErrorMessage`); KOPYALANMADAN bu
@@ -46,6 +47,11 @@ export function LoginForm({ variant = "default" }: LoginFormProps) {
   const { login, verifyTwoFactor } = useAuth();
   const router = useRouter();
   const next = useSearchParams().get("next");
+  // Paket O — metinler aktif dilde (proxy: `next` öneki → dil çerezi → Accept-Language → varsayılan).
+  const t = useAuthStrings().login;
+  const friendlyErrorMessage = useFriendlyError();
+  const { activeLocaleCode, defaultLocaleCode } = useLocaleCodes();
+  const [notADoctor, setNotADoctor] = useState(false);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -73,7 +79,8 @@ export function LoginForm({ variant = "default" }: LoginFormProps) {
    */
   async function goToDestination(user: User) {
     if (variant === "doctor" && user.doctorProfileId === null) {
-      setError(NOT_A_DOCTOR_MESSAGE);
+      setNotADoctor(true);
+      setError(t.notADoctor);
       return;
     }
 
@@ -88,7 +95,12 @@ export function LoginForm({ variant = "default" }: LoginFormProps) {
       }
     }
 
-    const destination = resolvePostLoginPath({ next, doctorProfileId: user.doctorProfileId, telehealthEnabled, role: user.role });
+    // Paket O — öneksiz site hedefi (ör. hasta varsayılanı) aktif dilin önekini alır; admin/doktor portalı tek dillidir.
+    const destination = localizeDestination(
+      resolvePostLoginPath({ next, doctorProfileId: user.doctorProfileId, telehealthEnabled, role: user.role }),
+      activeLocaleCode,
+      defaultLocaleCode
+    );
     if (isSubdomainModeEnabled() && isDoctorPortalPath(destination) && !isDoctorHostname(window.location.hostname)) {
       window.location.assign(toDoctorOrigin(destination));
       return;
@@ -99,6 +111,7 @@ export function LoginForm({ variant = "default" }: LoginFormProps) {
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setError(null);
+    setNotADoctor(false);
     setSubmitting(true);
     try {
       const result = await login({ email, password });
@@ -143,13 +156,10 @@ export function LoginForm({ variant = "default" }: LoginFormProps) {
             başlık taşır — kullanıcı e-postasına gelen kodu DEĞİL, kimlik doğrulama uygulamasında
             (ör. Google Authenticator) üretilen kodu girmelidir; bu ekrana e-posta ile İLGİSİ
             OLMAYAN bir akıştan (2FA challenge) ulaşılır. */}
-        <p className="text-sm font-medium text-foreground">İki adımlı doğrulama</p>
-        <p className="text-sm text-foreground/60">
-          Bu bir e-posta kodu değildir. Kimlik doğrulama uygulamanızda (ör. Google Authenticator)
-          görünen 6 haneli kodu ya da bir yedek kodu girin.
-        </p>
+        <p className="text-sm font-medium text-foreground">{t.twoFactorTitle}</p>
+        <p className="text-sm text-foreground/60">{t.twoFactorHelp}</p>
 
-        <Field id="code" label="Authenticator Kodu" required>
+        <Field id="code" label={t.authenticatorCode} required>
           {(inputProps) => (
             <Input
               {...inputProps}
@@ -158,7 +168,7 @@ export function LoginForm({ variant = "default" }: LoginFormProps) {
               autoComplete="one-time-code"
               autoFocus
               required
-              placeholder="123456 veya XXXX-XXXX"
+              placeholder={t.codePlaceholder}
               value={code}
               onChange={(e) => setCode(e.target.value)}
             />
@@ -166,7 +176,7 @@ export function LoginForm({ variant = "default" }: LoginFormProps) {
         </Field>
 
         <Button type="submit" className="w-full" loading={submitting}>
-          Doğrula
+          {t.verify}
         </Button>
 
         <div className="flex justify-center text-sm">
@@ -179,7 +189,7 @@ export function LoginForm({ variant = "default" }: LoginFormProps) {
               setError(null);
             }}
           >
-            Geri
+            {t.back}
           </button>
         </div>
       </form>
@@ -192,19 +202,19 @@ export function LoginForm({ variant = "default" }: LoginFormProps) {
         <Alert variant="error">
           {error}
           {/* §4 KARARI — `doctorProfileId === null` hata mesajının yanında ana siteye dönüş bağlantısı. */}
-          {variant === "doctor" && error === NOT_A_DOCTOR_MESSAGE && (
+          {variant === "doctor" && notADoctor && (
             <div className="mt-2">
               {/* Doktor host'unda "/" portal ana sayfasına rewrite edilir — ana siteye dönmek
                   subdomain modu açıkken CROSS-ORIGIN bir bağlantı gerektirir (§3.6/§6.4). */}
               <Link href={isSubdomainModeEnabled() ? SITE_ORIGIN : "/"} className="font-medium underline">
-                Ana siteye dön
+                {t.backToSite}
               </Link>
             </div>
           )}
         </Alert>
       )}
 
-      <Field id="email" label="E-posta" required>
+      <Field id="email" label={t.email} required>
         {(inputProps) => (
           <Input
             {...inputProps}
@@ -217,7 +227,7 @@ export function LoginForm({ variant = "default" }: LoginFormProps) {
         )}
       </Field>
 
-      <Field id="password" label="Şifre" required>
+      <Field id="password" label={t.password} required>
         {(inputProps) => (
           <Input
             {...inputProps}
@@ -231,13 +241,13 @@ export function LoginForm({ variant = "default" }: LoginFormProps) {
       </Field>
 
       <div className="flex justify-end text-sm">
-        <Link href="/forgot-password" className="text-primary hover:underline">
-          Şifremi unuttum
-        </Link>
+        <AuthLink href="/forgot-password" className="text-primary hover:underline">
+          {t.forgotPassword}
+        </AuthLink>
       </div>
 
       <Button type="submit" className="w-full" loading={submitting}>
-        Giriş yap
+        {t.submit}
       </Button>
     </form>
   );

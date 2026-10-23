@@ -194,8 +194,8 @@ describe("proxy — hekim portalı host-izolasyonu (.claude/architect-scope-doct
       expect(res.status).not.toBe(301);
       expect(res.headers.get("x-middleware-rewrite")).toBeNull();
     }
-    // Bu dört yol locale/bakım-modu fetch'lerinden ÖNCE `next()` ile döner — hiç fetch atılmaz.
-    expect(fetchMock).not.toHaveBeenCalled();
+    // Paket O — dil seçimi için (önbellekli) `/locales` okunur; bakım modu (`/appearance`) bu yollara uygulanmaz.
+    expect(fetchMock.mock.calls.every(([url]) => String(url).includes("/locales"))).toBe(true);
   });
 
   it("bakım modu AÇIK: ana host 503 döner, doktor host `/doctor` 200'e denk REWRITE ile devam eder (§3.3/§7.4 senaryo 9)", async () => {

@@ -61,6 +61,12 @@ export function useLocalizePath(): (path: string) => string {
   );
 }
 
+/** Paket O — aktif ve varsayılan dil kodları (giriş sonrası hedefi önekleme vb. için). */
+export function useLocaleCodes(): { activeLocaleCode: string; defaultLocaleCode: string } {
+  const ctx = useContext(LocaleAlternatesContext);
+  return { activeLocaleCode: ctx?.activeLocaleCode ?? "tr", defaultLocaleCode: ctx?.defaultLocaleCode ?? ctx?.activeLocaleCode ?? "tr" };
+}
+
 export function useLocaleAlternates(): LocaleAlternates | null {
   const ctx = useContext(LocaleAlternatesContext);
   return ctx?.alternates ?? null;

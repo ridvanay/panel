@@ -1,22 +1,24 @@
 "use client";
 
 import { Suspense } from "react";
-import Link from "next/link";
 import { AuthPageShell } from "@/components/auth/auth-page-shell";
+import { AuthLink } from "@/components/auth/auth-link";
 import { LoginForm } from "@/components/auth/login-form";
 import { Spinner } from "@/components/ui/spinner";
+import { useAuthStrings } from "@/lib/i18n/use-auth-strings";
 
 export default function LoginPage() {
+  const t = useAuthStrings().login;
   return (
     <AuthPageShell
-      title="Giriş yap"
-      subtitle="Hesabınıza erişmek için bilgilerinizi girin."
+      title={t.title}
+      subtitle={t.subtitle}
       footer={
         <>
-          Hesabınız yok mu?{" "}
-          <Link href="/register" className="font-medium text-primary hover:underline">
-            Kayıt olun
-          </Link>
+          {t.noAccount}{" "}
+          <AuthLink href="/register" className="font-medium text-primary hover:underline">
+            {t.registerLink}
+          </AuthLink>
         </>
       }
     >
